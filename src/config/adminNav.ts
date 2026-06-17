@@ -84,14 +84,14 @@ export const ADMIN_GROUPS: AdminNavGroup[] = [
     items: [
       { key: 'flow-instances', label: '流程实例', prd: 'PRD-73' },
       { key: 'flow-tasks', label: '流程任务', prd: 'PRD-74' },
-      { key: 'user-groups', label: '用户分组', prd: 'PRD-70' },
       { key: 'flow-listeners', label: '流程监听器', prd: 'PRD-72' },
       { key: 'flow-expressions', label: '流程表达式', prd: 'PRD-71' },
     ],
   },
   {
-    key: 'business', label: '业务数据', icon: DatabaseOutlined, scope: 'ops',
+    key: 'business', label: '业务管理', icon: DatabaseOutlined, scope: 'ops',
     items: [
+      { key: 'user-groups', label: '用户分组', prd: 'PRD-70' },
       { key: 'customers', label: '客户管理', prd: 'PRD-87' },
       { key: 'products', label: '产品管理', prd: 'PRD-85' },
     ],

@@ -4,6 +4,7 @@ import {
   PauseCircleOutlined, SwapOutlined, PhoneOutlined, MessageOutlined,
   PaperClipOutlined, RollbackOutlined, BellOutlined, CheckCircleOutlined,
   StarFilled, PlayCircleOutlined, DownloadOutlined, ThunderboltOutlined,
+  HistoryOutlined,
 } from '@ant-design/icons-vue';
 import {
   CATEGORY_META, ROLE_BADGE, softBg,
@@ -33,13 +34,13 @@ const LEGEND = Object.values(CATEGORY_META);
   <div class="timeline-card">
     <!-- 标题 -->
     <div class="tl-header">
-      <span class="tl-title">工单动态</span>
+      <span class="tl-title"><HistoryOutlined :style="{ fontSize: '15px' }" />工单动态</span>
       <span class="tl-sub">全流程关键事件 · 状态 + 动作合一（建单 / 对客沟通 / 催办 / 解决 / 好评）</span>
     </div>
 
     <div class="tl-body">
-      <!-- 图例 -->
       <div class="legend">
+        <span class="legend-label">图例</span>
         <span v-for="l in LEGEND" :key="l.label" class="legend-item">
           <span class="legend-dot" :style="{ background: l.color }"></span>{{ l.label }}
         </span>
@@ -113,20 +114,22 @@ const LEGEND = Object.values(CATEGORY_META);
   padding: 12px 14px;
   border-bottom: 1px solid #eff0f2;
 }
-.tl-title { font-size: 14px; font-weight: 700; color: #111827; }
+.tl-title { font-size: 14px; font-weight: 700; color: #111827; display: flex; align-items: center; gap: 6px; }
 .tl-sub { font-size: 11px; color: #9ca3af; }
 
-.tl-body { display: flex; flex-direction: column; gap: 12px; padding: 16px; }
+.tl-body { display: flex; flex-direction: column; gap: 16px; padding: 16px; }
 
 .legend {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 14px;
   padding: 8px 12px;
   background: #fafafa;
   border: 1px solid #eef0f2;
   border-radius: 8px;
 }
+.legend-label { font-size: 11px; font-weight: 700; color: #6b7280; }
 .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #6b7280; }
 .legend-dot { width: 8px; height: 8px; border-radius: 4px; }
 

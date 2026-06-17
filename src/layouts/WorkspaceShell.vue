@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
+import { SIDER_COLLAPSED_WIDTH, SIDER_WIDTH } from '@/config/layout';
 import AppHeader from './AppHeader.vue';
 import WorkspaceSidebar from './WorkspaceSidebar.vue';
 
@@ -18,8 +19,8 @@ function toggleCollapsed() {
       <!-- 须用 a-layout-sider，否则 ant-layout 默认纵向堆叠，侧栏与内容区会错乱 -->
       <a-layout-sider
         v-model:collapsed="collapsed"
-        :width="220"
-        :collapsed-width="64"
+        :width="SIDER_WIDTH"
+        :collapsed-width="SIDER_COLLAPSED_WIDTH"
         :trigger="null"
         theme="light"
         class="workspace-sider"

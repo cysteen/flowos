@@ -7,13 +7,15 @@ import { ADMIN_ALL_ITEMS } from '@/config/adminNav';
 
 // 管理后台模块路由。Phase B：租户与组织组已实现真实页（AdminModuleView 按 key 解析列表/卡片，
 // tenant-basic 为表单页）；其余模块自动落到 AdminModuleView 内的占位回退。
+// 已实现真实页的模块 key → 专属组件；其余走 AdminModuleView（列表/卡片/占位回退）
+const ADMIN_SPECIAL_VIEWS: Record<string, () => Promise<unknown>> = {
+  'tenant-basic': () => import('@/views/admin/TenantProfileView.vue'),
+  roles: () => import('@/views/admin/RolePermissionView.vue'),
+};
 const adminModuleRoutes: RouteRecordRaw[] = ADMIN_ALL_ITEMS.map((it) => ({
   path: it.key,
   name: `admin-${it.key}`,
-  component:
-    it.key === 'tenant-basic'
-      ? () => import('@/views/admin/TenantProfileView.vue')
-      : () => import('@/views/admin/AdminModuleView.vue'),
+  component: ADMIN_SPECIAL_VIEWS[it.key] ?? (() => import('@/views/admin/AdminModuleView.vue')),
   meta: { adminOnly: true, title: it.label, prd: it.prd, group: it.group },
 }));
 

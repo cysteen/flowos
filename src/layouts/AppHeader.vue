@@ -142,7 +142,7 @@ function onMenuClick({ key }: { key: string | number }) {
 
 /* Logo 区 */
 .logo-area {
-  width: 200px;
+  width: var(--flowos-sider-width);
   flex: none;
   display: flex;
   align-items: center;

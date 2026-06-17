@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { SIDER_WIDTH } from '@/config/layout';
 import AppHeader from './AppHeader.vue';
 import AdminSidebar from './AdminSidebar.vue';
 
@@ -11,7 +12,7 @@ function noop() {}
     <a-layout class="admin-body">
       <!-- 须用 a-layout-sider，否则侧栏与内容区纵向堆叠 -->
       <a-layout-sider
-        :width="240"
+        :width="SIDER_WIDTH"
         :collapsible="false"
         theme="light"
         class="admin-sider"
