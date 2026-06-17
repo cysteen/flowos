@@ -24,4 +24,9 @@ export default defineConfig({
   server: {
     port: 3000,
   },
+  preview: {
+    // host: true 绑定 0.0.0.0，局域网同事可通过本机内网 IP 访问
+    host: true,
+    port: 4173,
+  },
 });
