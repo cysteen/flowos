@@ -1,9 +1,26 @@
 <script setup lang="ts">
+import { watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { SIDER_WIDTH } from '@/config/layout';
 import AppHeader from './AppHeader.vue';
 import AdminSidebar from './AdminSidebar.vue';
+import AdminPageTabs from './AdminPageTabs.vue';
+import { useAdminTabsStore } from '@/stores/adminTabs';
 
 function noop() {}
+
+const route = useRoute();
+const tabsStore = useAdminTabsStore();
+
+watch(
+  () => route.path,
+  (path) => {
+    if (path.startsWith('/admin/') && path !== '/admin') {
+      tabsStore.syncFromRoute(path, route.meta.title as string);
+    }
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
@@ -20,7 +37,10 @@ function noop() {}
         <AdminSidebar />
       </a-layout-sider>
       <a-layout-content class="admin-content">
-        <router-view />
+        <AdminPageTabs />
+        <div class="admin-page-body">
+          <router-view />
+        </div>
       </a-layout-content>
     </a-layout>
   </a-layout>
@@ -42,6 +62,14 @@ function noop() {}
   min-width: 0;
   background: #f9fafb;
   padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-page-body {
+  flex: 1;
+  min-height: 0;
   overflow: auto;
 }
 

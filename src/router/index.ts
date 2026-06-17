@@ -11,6 +11,7 @@ import { ADMIN_ALL_ITEMS } from '@/config/adminNav';
 const ADMIN_SPECIAL_VIEWS: Record<string, () => Promise<unknown>> = {
   'tenant-basic': () => import('@/views/admin/TenantProfileView.vue'),
   roles: () => import('@/views/admin/RolePermissionView.vue'),
+  'audit-logs': () => import('@/views/admin/AuditLogsView.vue'),
 };
 const adminModuleRoutes: RouteRecordRaw[] = ADMIN_ALL_ITEMS.map((it) => ({
   path: it.key,
@@ -87,6 +88,12 @@ const routes: RouteRecordRaw[] = [
         name: 'admin-overview',
         component: () => import('@/views/admin/AdminOverviewView.vue'),
         meta: { adminOnly: true, title: '数据总览' },
+      },
+      {
+        path: 'approval',
+        name: 'admin-approval',
+        component: () => import('@/views/admin/ApprovalCenterView.vue'),
+        meta: { adminOnly: true, title: '审批中心' },
       },
       // 平台超管页
       {

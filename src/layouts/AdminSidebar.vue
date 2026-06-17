@@ -2,7 +2,8 @@
 import { computed, ref, watchEffect } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { LeftOutlined, DownOutlined } from '@ant-design/icons-vue';
-import { adminGroupsFor, ADMIN_OVERVIEW, PLATFORM_NAV } from '@/config/adminNav';
+import { adminGroupsFor, ADMIN_OVERVIEW, ADMIN_APPROVAL, PLATFORM_NAV } from '@/config/adminNav';
+import { APPROVALS } from '@/mock/approvalCenter';
 import { useUserStore } from '@/stores/user';
 
 const route = useRoute();
@@ -11,6 +12,7 @@ const user = useUserStore();
 // 平台超管(系统管理员)→「系统管理」精简导航；租户管理员/运营管理员→ 数据总览 + 各自 scope 分组
 const isPlatform = computed(() => user.role.adminScope === 'platform');
 const groups = computed(() => adminGroupsFor(user.role.adminScope));
+const approvalBadge = computed(() => APPROVALS.filter((a) => a.status === '待审批').length);
 
 const activeKey = computed(() => {
   const seg = route.path.split('/admin/')[1];
@@ -72,6 +74,17 @@ function backToWorkspace() {
       >
         <component :is="ADMIN_OVERVIEW.icon" class="nav-icon" />
         <span class="nav-label">{{ ADMIN_OVERVIEW.label }}</span>
+      </div>
+
+      <!-- 审批中心（一级直达，对齐 main-navigation A8#approval） -->
+      <div
+        class="nav-item top"
+        :class="{ active: activeKey === 'approval' }"
+        @click="go('/admin/approval')"
+      >
+        <component :is="ADMIN_APPROVAL.icon" class="nav-icon" />
+        <span class="nav-label">{{ ADMIN_APPROVAL.label }}</span>
+        <span v-if="approvalBadge > 0" class="nav-badge">{{ approvalBadge }}</span>
       </div>
 
       <!-- 分组（按角色 scope） -->
@@ -159,6 +172,18 @@ function backToWorkspace() {
 .nav-label {
   font-size: 14px;
   flex: 1;
+}
+.nav-badge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
 }
 .chev {
   font-size: 12px;

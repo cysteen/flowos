@@ -58,6 +58,24 @@ export interface Ticket {
   updatedAt?: string;
 }
 
+/** 新建工单弹窗预填（子单 / reopen 场景从原单继承客户/产品/渠道等） */
+export interface CreateTicketPrefill {
+  mode?: 'normal' | 'child' | 'reopen';
+  parentNo?: string;
+  parentTitle?: string;
+  customerName?: string;
+  customerPhone?: string;
+  vip?: boolean;
+  product?: string;
+  sn?: string;
+  channel?: Channel;
+  type?: TicketType;
+  priority?: Priority;
+  complaintType?: string;
+  desc?: string;
+  expectTime?: string;
+}
+
 // ---- 配色映射（.pen 实测 + 设计规范 §2.3 语义色）----
 export const TYPE_COLOR: Record<TicketType, string> = {
   投诉: '#EF4444',

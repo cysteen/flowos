@@ -1,26 +1,62 @@
 <script setup lang="ts">
-import { computed } from 'vue';
-import { useRoute } from 'vue-router';
+import { computed, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 import {
   CopyOutlined, PhoneOutlined, StarOutlined,
-  PrinterOutlined, EllipsisOutlined, MailOutlined,
+  PrinterOutlined, EllipsisOutlined,
   PaperClipOutlined, FormOutlined, ThunderboltOutlined, BookOutlined,
 } from '@ant-design/icons-vue';
 import OpTimeline from './components/OpTimeline.vue';
-import { TICKET_DETAIL, TIMELINE } from '@/mock/ticketDetail';
+import OpActionBar from './components/OpActionBar.vue';
+import CreateTicketModal from './components/CreateTicketModal.vue';
+import { useTicketOperation } from './composables/useTicketOperation';
+import { buildChildTicketPrefill, buildReopenTicketPrefill } from './composables/childTicketPrefill';
+import type { CreateTicketPrefill, Ticket } from './types/ticket';
 
 const route = useRoute();
-const d = TICKET_DETAIL;
-const ticketNo = computed(() => (route.params.ticketNo as string) || d.no);
+const router = useRouter();
+const {
+  detail: d, timeline, opState, suspendInfo, draftSavedAt,
+  dispatch, confirmCancel, confirmWithdraw, addChildTicket, addReopenTicket,
+} = useTicketOperation();
+const ticketNo = computed(() => (route.params.ticketNo as string) || d.value.no);
 
-const EMOTIONS = ['满意', '中性', '不满', '愤怒'] as const;
+const createOpen = ref(false);
+const createPrefill = ref<CreateTicketPrefill | null>(null);
 
-function act(name: string) {
-  message.success(`「${name}」已执行（占位）`);
+const MAX_TYPE_TAGS = 4;
+
+const visibleCustomerTypes = computed(() => d.value.customer.types.slice(0, MAX_TYPE_TAGS));
+const customerTypeOverflow = computed(() => Math.max(0, d.value.customer.types.length - MAX_TYPE_TAGS));
+
+function call(phone?: string) {
+  const target = phone ?? d.value.customer.phones[0] ?? '';
+  message.info(`正在呼叫客户 ${target}（CTI 占位）`);
 }
-function call() {
-  message.info(`正在呼叫客户 ${d.customer.phone}（CTI 占位）`);
+
+function openChildCreate() {
+  createPrefill.value = buildChildTicketPrefill(d.value);
+  createOpen.value = true;
+}
+
+function openReopenCreate() {
+  createPrefill.value = buildReopenTicketPrefill(d.value);
+  createOpen.value = true;
+}
+
+function onTicketCreated(ticket: Ticket, processAfter?: boolean) {
+  if (createPrefill.value?.mode === 'child') addChildTicket(ticket);
+  else if (createPrefill.value?.mode === 'reopen') addReopenTicket(ticket);
+  if (processAfter) {
+    router.push(`/tickets/${ticket.no}`);
+  }
+}
+function onAction(payload: Record<string, unknown>) {
+  dispatch(payload);
+}
+function toast(name: string) {
+  message.info(`「${name}」（演示）`);
 }
 function copyNo() {
   message.success('工单号已复制');
@@ -57,9 +93,9 @@ function copyNo() {
           <span class="sla-val" :class="d.slaNodeOverdue ? 'red' : 'amber'">{{ d.slaNode }}</span>
         </div>
         <button class="call-btn" @click="call"><PhoneOutlined />呼叫客户</button>
-        <button class="icon-btn" @click="act('关注')"><StarOutlined /></button>
-        <button class="icon-btn" @click="act('打印')"><PrinterOutlined /></button>
-        <button class="icon-btn" @click="act('更多')"><EllipsisOutlined /></button>
+        <button class="icon-btn" @click="toast('关注')"><StarOutlined /></button>
+        <button class="icon-btn" @click="toast('打印')"><PrinterOutlined /></button>
+        <button class="icon-btn" @click="toast('更多')"><EllipsisOutlined /></button>
       </div>
     </div>
 
@@ -69,7 +105,7 @@ function copyNo() {
         <div class="dunning-band">
           <span class="db-icon">🔔</span>
           <span class="db-text">客户已催单 {{ d.dunningTimes }} 次（最近 {{ d.dunningLast }}），情绪偏急，建议优先处理</span>
-          <span class="db-link" @click="act('查看催单记录')">查看催单记录 ›</span>
+          <span class="db-link" @click="toast('查看催单记录')">查看催单记录 ›</span>
         </div>
 
         <div class="detail-card">
@@ -92,55 +128,73 @@ function copyNo() {
           </div>
         </div>
 
-        <OpTimeline :entries="TIMELINE" />
+        <OpTimeline :entries="timeline" />
       </div>
 
       <div class="op-side">
         <!-- 客户信息 -->
         <div class="side-card">
-          <div class="cust-top">
-            <span class="cust-av">{{ d.customer.name.charAt(0) }}</span>
-            <div class="cust-id">
-              <div class="cust-name-row">
-                <span class="cust-name">{{ d.customer.name }}</span>
-                <span v-if="d.customer.vip" class="vip">VIP</span>
-              </div>
-              <div class="cust-level">{{ d.customer.level }}</div>
+          <div class="card-title">客户信息</div>
+          <div class="kv kv-name">
+            <span class="k">客户名称</span>
+            <div class="kv-value-with-tags">
+              <span class="v">{{ d.customer.name }}</span>
+              <span class="pill-tags">
+                <span v-for="t in visibleCustomerTypes" :key="t" class="pill-tag">{{ t }}</span>
+                <span v-if="customerTypeOverflow > 0" class="pill-tag">+{{ customerTypeOverflow }}</span>
+              </span>
             </div>
           </div>
-          <div class="cust-row">
-            <PhoneOutlined :style="{ color: '#9CA3AF', fontSize: '13px' }" />
-            <span>{{ d.customer.phone }}</span>
-            <span class="call-mini" @click="call">呼叫</span>
+          <div class="kv">
+            <span class="k">客户性别</span>
+            <span class="v">{{ d.customer.gender }}</span>
           </div>
-          <div class="cust-row">
-            <MailOutlined :style="{ color: '#9CA3AF', fontSize: '13px' }" />
-            <span>{{ d.customer.email }}</span>
+          <div class="kv-block">
+            <span class="k">联系电话</span>
+            <div
+              v-for="phone in d.customer.phones"
+              :key="phone"
+              class="phone-row"
+            >
+              <PhoneOutlined :style="{ color: '#9CA3AF', fontSize: '13px' }" />
+              <span class="v">{{ phone }}</span>
+              <span class="call-mini" @click="call(phone)">呼叫</span>
+            </div>
           </div>
-          <div class="cust-emotion">
-            <span class="ce-label">客户情绪</span>
-            <span
-              v-for="e in EMOTIONS"
-              :key="e"
-              class="ce-pill"
-              :class="{ active: d.customer.emotion === e }"
-            >{{ e }}</span>
+          <div class="kv">
+            <span class="k">省市区</span>
+            <span class="v">{{ d.customer.region }}</span>
+          </div>
+          <div class="kv">
+            <span class="k">详细地址</span>
+            <span class="v">{{ d.customer.address }}</span>
           </div>
           <div class="cust-history">
             <span>历史工单 {{ d.customer.historyCount }} 单 · 近30天 {{ d.customer.recent30 }} 单</span>
-            <span class="link" @click="act('查看历史工单')">查看 ›</span>
+            <span class="link" @click="toast('查看历史工单')">查看 ›</span>
           </div>
         </div>
 
         <!-- 产品信息 -->
         <div class="side-card">
-          <div class="card-title-row">
-            <span class="card-title">产品信息</span>
-            <span v-if="d.product.inWarranty" class="warranty">保修内</span>
+          <div class="card-title">产品信息</div>
+          <div class="kv">
+            <span class="k">产品分类</span>
+            <span class="v">{{ d.product.category }}</span>
           </div>
-          <div class="kv"><span class="k">产品</span><span class="v">{{ d.product.name }}</span></div>
-          <div class="kv"><span class="k">SN</span><span class="v">{{ d.product.sn }}</span></div>
-          <div class="kv"><span class="k">保修至</span><span class="v">{{ d.product.warranty }}</span></div>
+          <div class="kv kv-name">
+            <span class="k">产品名称</span>
+            <div class="kv-value-with-tags">
+              <span class="v">{{ d.product.name }}</span>
+              <span class="pill-tags">
+                <span v-for="tag in d.product.tags" :key="tag" class="pill-tag">{{ tag }}</span>
+              </span>
+            </div>
+          </div>
+          <div class="kv">
+            <span class="k">SN</span>
+            <span class="v">{{ d.product.sn }}</span>
+          </div>
         </div>
 
         <!-- 关联工单 -->
@@ -150,13 +204,13 @@ function copyNo() {
           <div class="sub-section">
             <div class="sub-head">
               <span class="sub-title">子工单 ({{ d.childTickets.length }})</span>
-              <span class="sub-action" @click="act('新建子单')">+ 新建子单</span>
+              <span class="sub-action" @click="openChildCreate">+ 新建子单</span>
             </div>
             <div
               v-for="c in d.childTickets"
               :key="c.no"
               class="ticket-item"
-              @click="act('打开 ' + c.no)"
+              @click="toast('打开 ' + c.no)"
             >
               <div class="ticket-item-top">
                 <span class="ticket-no">{{ c.no }}</span>
@@ -178,24 +232,24 @@ function copyNo() {
             <div class="sub-head">
               <span class="sub-title">关联记录 ({{ d.linkedRecords.length }})</span>
               <span class="sub-btns">
-                <button class="mini-btn" @click="act('关联历史')">关联历史</button>
-                <button class="mini-btn" @click="act('重新建单')">重新建单</button>
+                <button class="mini-btn" @click="toast('关联历史')">关联历史</button>
+                <button class="mini-btn" @click="openReopenCreate">重新建单</button>
               </span>
             </div>
             <div
               v-for="r in d.linkedRecords"
               :key="r.no"
               class="ticket-item"
-              @click="act('打开 ' + r.no)"
+              @click="toast('打开 ' + r.no)"
             >
               <div class="ticket-item-top">
                 <span class="ticket-no">{{ r.no }}</span>
-                <span class="mini-tag link-tag">{{ r.tag }}</span>
+                <span class="mini-tag link-tag" :class="{ 'reopen-tag': r.tag === 'Reopen' }">{{ r.tag }}</span>
               </div>
               <div class="ticket-item-title solo">{{ r.title }}</div>
               <div class="ticket-item-bottom">
                 <span class="ticket-item-time">{{ r.meta }}</span>
-                <span class="unlink" @click.stop="act('解除关联')">解除关联</span>
+                <span class="unlink" @click.stop="toast('解除关联')">解除关联</span>
               </div>
             </div>
           </div>
@@ -214,15 +268,15 @@ function copyNo() {
             <div class="similar-title">{{ d.similarTicket.title }}</div>
             <div class="similar-solution">{{ d.similarTicket.solution }}</div>
             <div class="similar-actions">
-              <button class="btn-ghost-purple" @click="act('查看方案')">查看</button>
-              <button class="btn-purple" @click="act('复用方案')">复用方案</button>
+              <button class="btn-ghost-purple" @click="toast('查看方案')">查看</button>
+              <button class="btn-purple" @click="toast('复用方案')">复用方案</button>
             </div>
           </div>
 
           <div class="ai-sub">知识推荐</div>
           <div v-for="(k, i) in d.knowledge" :key="i" class="ai-know">
             <span class="ai-know-text"><BookOutlined :style="{ color: '#7C3AED', fontSize: '13px' }" />{{ k }}</span>
-            <span class="ai-adopt" @click="act('采纳知识')">采纳</span>
+            <span class="ai-adopt" @click="toast('采纳知识')">采纳</span>
           </div>
 
           <div class="ai-block">
@@ -245,25 +299,28 @@ function copyNo() {
           <textarea class="add-textarea" placeholder="填写内部备注（仅团队可见）…"></textarea>
           <div class="add-foot">
             <span class="add-hint"><PaperClipOutlined /> 附件</span>
-            <button class="add-btn" @click="act('添加记录')">添加</button>
+            <button class="add-btn" @click="toast('添加记录')">添加</button>
           </div>
         </div>
       </div>
     </div>
 
     <!-- 底部操作条 -->
-    <div class="op-actionbar">
-      <div class="ab-left">
-        <button class="btn-outline" @click="act('保存草稿')">保存草稿</button>
-      </div>
-      <div class="ab-right">
-        <button class="btn-outline" @click="act('转办')">转办</button>
-        <button class="btn-outline" @click="act('挂起')">挂起</button>
-        <button class="btn-outline" @click="act('退回')">退回</button>
-        <button class="btn-outline" @click="act('升级')">升级</button>
-        <button class="btn-resolve" @click="act('标记已解决')">标记已解决</button>
-      </div>
-    </div>
+    <OpActionBar
+      :ticket-no="ticketNo"
+      :op-state="opState"
+      :suspend-info="suspendInfo"
+      :draft-saved-at="draftSavedAt"
+      @action="onAction"
+      @cancel="confirmCancel"
+      @withdraw="confirmWithdraw"
+    />
+
+    <CreateTicketModal
+      v-model:open="createOpen"
+      :prefill="createPrefill"
+      @created="onTicketCreated"
+    />
   </div>
 </template>
 
@@ -339,36 +396,34 @@ function copyNo() {
   font-size: 12px; color: #374151; background: #f3f4f6; border-radius: 6px; padding: 6px 10px;
 }
 
-.side-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
-.card-title-row { display: flex; align-items: center; justify-content: space-between; }
+.side-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
 .card-title { font-size: 14px; font-weight: 700; color: #111827; }
-.warranty { font-size: 10px; font-weight: 600; color: #059669; background: #ecfdf5; padding: 2px 8px; border-radius: 3px; }
 
-.cust-top { display: flex; align-items: center; gap: 10px; }
-.cust-av { width: 40px; height: 40px; border-radius: 20px; background: #1a6fff22; color: #1a6fff; font-size: 16px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
-.cust-name-row { display: flex; align-items: center; gap: 6px; }
-.cust-name { font-size: 14px; font-weight: 600; color: #111827; }
-.vip { font-size: 10px; font-weight: 600; color: #b45309; background: #fef3c7; padding: 1px 6px; border-radius: 3px; }
-.cust-level { font-size: 12px; color: #9ca3af; }
-.cust-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #374151; }
+.kv { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.kv .k { color: #9ca3af; flex: none; }
+.kv .v { color: #374151; font-weight: 500; }
+.kv-name { align-items: flex-start; }
+.kv-value-with-tags { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; flex: 1; }
+.pill-tags { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.pill-tag {
+  font-size: 10px; font-weight: 400; color: #374151;
+  background: #f3f4f6; border-radius: 3px; padding: 2px 6px; flex: none;
+}
+.kv-block { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.kv-block > .k { color: #9ca3af; }
+.phone-row { display: flex; align-items: center; gap: 8px; }
+.phone-row .v { color: #374151; font-weight: 500; flex: 1; min-width: 0; }
 .call-mini {
-  margin-left: auto; display: inline-flex; align-items: center; gap: 4px;
+  flex: none; display: inline-flex; align-items: center; gap: 4px;
   font-size: 11px; font-weight: 600; color: #059669; background: #ecfdf5;
   border: 1px solid #a7f3d0; border-radius: 4px; padding: 3px 8px; cursor: pointer;
 }
-.cust-emotion { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.ce-label { font-size: 12px; color: #6b7280; }
-.ce-pill {
-  font-size: 12px; color: #6b7280; background: #fff;
-  border: 1px solid #d1d5db; border-radius: 12px; padding: 4px 12px;
+.cust-history {
+  display: flex; align-items: center; justify-content: space-between;
+  background: #f9fafb; border-radius: 6px; padding: 8px 10px;
+  font-size: 12px; color: #6b7280;
 }
-.ce-pill.active { color: #6b7280; font-weight: 600; background: #6b72801f; border-color: #6b7280; }
-.cust-history { display: flex; align-items: center; justify-content: space-between; background: #f9fafb; border-radius: 6px; padding: 8px 10px; font-size: 12px; color: #6b7280; }
 .link { color: #1a6fff; cursor: pointer; font-weight: 500; }
-
-.kv { display: flex; gap: 8px; font-size: 12px; }
-.kv .k { color: #9ca3af; width: 48px; flex: none; }
-.kv .v { color: #374151; font-weight: 500; }
 
 .sub-section { display: flex; flex-direction: column; gap: 6px; }
 .sub-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -387,6 +442,7 @@ function copyNo() {
 .ticket-tags { display: flex; gap: 4px; }
 .mini-tag { font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 3px; }
 .link-tag { color: #06b6d4; background: #06b6d41f; }
+.reopen-tag { color: #ef4444; background: #ef44441f; }
 .ticket-item-bottom { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .ticket-item-title { font-size: 12px; color: #6b7280; }
 .ticket-item-title.solo { margin-top: 0; }
@@ -426,15 +482,4 @@ function copyNo() {
 .add-foot { display: flex; align-items: center; justify-content: space-between; }
 .add-hint { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #6b7280; cursor: pointer; }
 .add-btn { font-size: 12px; font-weight: 600; color: #fff; background: #1a6fff; border: none; border-radius: 6px; padding: 6px 18px; cursor: pointer; }
-
-.op-actionbar {
-  position: sticky; bottom: 0; z-index: 10;
-  display: flex; align-items: center; justify-content: space-between;
-  background: #fff; padding: 12px 24px; border-top: 1px solid #e5e7eb;
-}
-.ab-right, .ab-left { display: flex; gap: 10px; }
-.btn-outline { font-size: 13px; color: #374151; background: #fff; border: 1px solid #d1d5db; border-radius: 6px; padding: 9px 16px; cursor: pointer; }
-.btn-outline:hover { border-color: #1a6fff; color: #1a6fff; }
-.btn-resolve { font-size: 13px; font-weight: 600; color: #fff; background: #10b981; border: none; border-radius: 6px; padding: 9px 16px; cursor: pointer; }
-.btn-resolve:hover { background: #059669; }
 </style>

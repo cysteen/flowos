@@ -47,15 +47,20 @@ export interface TicketDetailMeta {
   attachments: string[];
   customer: {
     name: string;
-    level: string;
-    vip: boolean;
-    phone: string;
-    email: string;
-    emotion: '满意' | '中性' | '不满' | '愤怒';
+    types: string[];
+    gender: string;
+    phones: string[];
+    region: string;
+    address: string;
     historyCount: number;
     recent30: number;
   };
-  product: { name: string; sn: string; warranty: string; inWarranty: boolean };
+  product: {
+    category: string;
+    name: string;
+    tags: string[];
+    sn: string;
+  };
   childTickets: ChildTicket[];
   linkedRecords: LinkedRecord[];
   similarTicket: SimilarTicket;
@@ -85,15 +90,20 @@ export const TICKET_DETAIL: TicketDetailMeta = {
   attachments: ['故障录屏.mp4', '设置截图.png'],
   customer: {
     name: '张小凡',
-    level: '钻石会员 · 满意度 4.8',
-    vip: true,
-    phone: '138 0013 8000',
-    email: 'zhang@example.com',
-    emotion: '中性',
+    types: ['G个人用户', 'J家长', 'J教研员', 'D代理商', 'J教育局', 'G个人自媒体'],
+    gender: '男',
+    phones: ['138 0013 8000', '021-8888 6666'],
+    region: '安徽省 / 合肥市 / 蜀山区',
+    address: '望江西路 666 号讯飞大厦 A 座',
     historyCount: 12,
     recent30: 3,
   },
-  product: { name: '智能音箱 X1', sn: 'SN-X1-88421003', warranty: '2026-11-20', inWarranty: true },
+  product: {
+    category: '智能键盘',
+    name: '讯飞智能键盘K710',
+    tags: ['红色', '科大讯飞'],
+    sn: 'K710A240915001234',
+  },
   childTickets: [
     {
       no: 'LCMN-20260610-70021',

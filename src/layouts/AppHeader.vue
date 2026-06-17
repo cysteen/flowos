@@ -13,6 +13,7 @@ import {
   DownOutlined,
 } from '@ant-design/icons-vue';
 import { useUserStore } from '@/stores/user';
+import { useAdminTabsStore } from '@/stores/adminTabs';
 import { ROLE_OPTION_GROUPS, isRoleKey } from '@/config/roles';
 import { firstMenuPath, NAV_ITEMS } from '@/config/navigation';
 
@@ -48,6 +49,7 @@ function onMenuClick({ key }: { key: string | number }) {
     return;
   }
   if (k === 'logout') {
+    useAdminTabsStore().reset();
     user.logout();
     router.push('/login');
     return;

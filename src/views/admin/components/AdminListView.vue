@@ -186,10 +186,10 @@ function onBatchDelete() {
 </template>
 
 <style scoped>
-.admin-list { display: flex; flex-direction: column; gap: 16px; padding: 20px 24px; }
+.admin-list { display: flex; flex-direction: column; gap: 16px; padding: 16px 24px; }
 
 .filter-card {
-  background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px;
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 16px;
   display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
 }
 .filters { display: flex; gap: 16px; flex-wrap: wrap; }

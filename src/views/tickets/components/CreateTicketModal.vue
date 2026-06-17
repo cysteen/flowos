@@ -9,10 +9,24 @@ import {
   ClockCircleOutlined,
   WarningOutlined,
 } from '@ant-design/icons-vue';
-import type { Priority, Ticket, TicketType, Channel } from '@/views/tickets/types/ticket';
+import type { Priority, Ticket, TicketType, Channel, CreateTicketPrefill } from '@/views/tickets/types/ticket';
 
-defineProps<{ open: boolean }>();
-const emit = defineEmits<{ 'update:open': [v: boolean]; created: [t: Ticket] }>();
+const props = defineProps<{
+  open: boolean;
+  prefill?: CreateTicketPrefill | null;
+}>();
+const emit = defineEmits<{
+  'update:open': [v: boolean];
+  created: [t: Ticket, processAfter?: boolean];
+}>();
+
+const isChildMode = computed(() => props.prefill?.mode === 'child');
+const isReopenMode = computed(() => props.prefill?.mode === 'reopen');
+const modalTitle = computed(() => {
+  if (isChildMode.value) return '新建子单';
+  if (isReopenMode.value) return '重新建单';
+  return '新建工单';
+});
 
 const APPS = ['集团客户服务平台', '开放平台', '企业版'];
 const TYPES: TicketType[] = ['投诉', '报修', '咨询', '安装', '退换', '技术'];
@@ -79,6 +93,27 @@ function reset() {
   errors.app = errors.type = errors.channel = errors.customer = errors.desc = false;
 }
 
+function applyPrefill(p: CreateTicketPrefill) {
+  form.app = '集团客户服务平台';
+  form.type = p.type ?? (p.mode === 'child' ? '技术' : '投诉');
+  form.channel = p.channel ?? '在线客服';
+  form.customerQuery = p.customerName
+    ? `${p.customerName}${p.customerPhone ? ` · ${p.customerPhone}` : ''}`
+    : '';
+  form.product = p.product ?? '智能音箱 X1';
+  form.sn = p.sn ?? '';
+  form.complaintType = p.complaintType ?? '产品质量';
+  form.severity = p.priority === 'P0' ? '高' : '中';
+  form.desc = p.desc ?? '';
+  form.priority = p.priority ?? 'P1';
+  form.expectTime = p.expectTime ?? '今日 18:00';
+  customerSelected.value = !!p.customerName;
+  snVerified.value = !!p.sn;
+  aiAdopted.value = false;
+  assignAdopted.value = false;
+  errors.app = errors.type = errors.channel = errors.customer = errors.desc = false;
+}
+
 function onCancel() {
   emit('update:open', false);
 }
@@ -102,15 +137,16 @@ function validate(): boolean {
 }
 
 function buildTicket(): Ticket {
+  const name = props.prefill?.customerName ?? '张小凡';
   return {
     id: 'new-' + Date.now(),
     no: genNo(),
     type: form.type!,
     channel: form.channel!,
-    title: form.desc.trim(),
+    title: form.desc.trim().slice(0, 40) + (form.desc.trim().length > 40 ? '…' : ''),
     smartMarks: form.type === '投诉' ? ['升级'] : [],
-    customer: '张小凡',
-    vip: true,
+    customer: name,
+    vip: props.prefill?.vip ?? true,
     product: form.product,
     nodeStatus: '待受理',
     nodeStep: 1,
@@ -129,10 +165,12 @@ function onCreate(processAfter = false) {
   if (!validate()) return;
   submitting.value = true;
   const ticket = buildTicket();
-  emit('created', ticket);
-  message.success(
-    processAfter ? `工单 ${ticket.no} 已创建，进入处理页（占位）` : `工单 ${ticket.no} 已创建`,
-  );
+  emit('created', ticket, processAfter);
+  const suffix = processAfter ? '，进入处理页' : '';
+  let msg = `工单 ${ticket.no} 已创建${suffix}`;
+  if (isChildMode.value) msg = `子工单 ${ticket.no} 已创建${suffix}`;
+  else if (isReopenMode.value) msg = `Reopen 工单 ${ticket.no} 已创建${suffix}`;
+  message.success(msg);
   submitting.value = false;
   emit('update:open', false);
   reset();
@@ -147,6 +185,15 @@ watch(
   () => form.type,
   () => {
     aiAdopted.value = false;
+  },
+);
+
+watch(
+  () => props.open,
+  (v) => {
+    if (!v) return;
+    if (props.prefill) applyPrefill(props.prefill);
+    else reset();
   },
 );
 </script>
@@ -164,7 +211,7 @@ watch(
     <!-- Header -->
     <div class="modal-header">
       <div class="modal-title-row">
-        <span class="modal-title">新建工单</span>
+        <span class="modal-title">{{ modalTitle }}</span>
         <span class="smart-tag">
           <ThunderboltOutlined :style="{ fontSize: '12px' }" />
           智能填单
@@ -175,6 +222,15 @@ watch(
 
     <!-- Body -->
     <div class="modal-body">
+      <div
+        v-if="(isChildMode || isReopenMode) && prefill?.parentNo"
+        class="parent-banner"
+        :class="{ reopen: isReopenMode }"
+      >
+        <span class="pb-label">{{ isReopenMode ? 'Reopen 原单' : '关联主单' }}</span>
+        <span class="pb-no">{{ prefill.parentNo }}</span>
+        <span class="pb-title">{{ prefill.parentTitle }}</span>
+      </div>
       <!-- 应用 / 类型 / 渠道 -->
       <div class="row-3">
         <div class="field">
@@ -359,7 +415,9 @@ watch(
     <div class="modal-footer">
       <div class="footer-hint">
         <WarningOutlined :style="{ color: '#F59E0B', fontSize: '13px' }" />
-        <span>检测到疑似重复工单 1 张，请确认</span>
+        <span v-if="isChildMode">子单将自动关联主单，主单在所有子单完成前保持挂起</span>
+        <span v-else-if="isReopenMode">新建工单将自动建立 Reopen 关联，原单状态不变</span>
+        <span v-else>检测到疑似重复工单 1 张，请确认</span>
       </div>
       <div class="footer-btns">
         <button type="button" class="btn-ghost" @click="onCancel">取消</button>
@@ -428,6 +486,27 @@ watch(
   max-height: calc(100vh - 220px);
   overflow-y: auto;
 }
+
+.parent-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  background: #f5f3ff;
+  border: 1px solid #ddd6fe;
+  border-radius: 8px;
+  font-size: 12px;
+}
+.pb-label { color: #6d28d9; font-weight: 600; }
+.pb-no { font-family: ui-monospace, monospace; color: #7c3aed; font-weight: 600; }
+.pb-title { color: #4b5563; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.parent-banner.reopen {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+.parent-banner.reopen .pb-label { color: #dc2626; }
+.parent-banner.reopen .pb-no { color: #ef4444; }
 
 .row-3 {
   display: grid;

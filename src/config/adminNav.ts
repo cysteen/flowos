@@ -1,8 +1,8 @@
 import type { Component } from 'vue';
 import {
   DashboardOutlined, TeamOutlined, AppstoreOutlined, FieldTimeOutlined,
-  FileTextOutlined, BranchesOutlined, DatabaseOutlined, ApiOutlined,
-  SafetyCertificateOutlined, BankOutlined, SettingOutlined, ClusterOutlined,
+  FileTextOutlined,   BranchesOutlined, DatabaseOutlined, ApiOutlined,
+  SafetyCertificateOutlined, BankOutlined, SettingOutlined, CheckCircleOutlined,
 } from '@ant-design/icons-vue';
 
 import type { AdminScope } from '@/config/roles';
@@ -28,6 +28,9 @@ export interface AdminNavGroup {
 /** 一级直达：数据总览 */
 export const ADMIN_OVERVIEW = { key: 'overview', label: '数据总览', icon: DashboardOutlined };
 
+/** 一级直达：审批中心（审核运营员提交的配置变更发布申请，对齐 A8#approval） */
+export const ADMIN_APPROVAL = { key: 'approval', label: '审批中心', icon: CheckCircleOutlined };
+
 // 全部分组（按管理角色 scope 标注）。租户管理员与运营管理员各看其 scope 的分组。
 export const ADMIN_GROUPS: AdminNavGroup[] = [
   // ===== 租户管理员：组织 / 权限 / 集成 / 安全 =====
@@ -50,8 +53,7 @@ export const ADMIN_GROUPS: AdminNavGroup[] = [
     key: 'security', label: '安全与审计', icon: SafetyCertificateOutlined, scope: 'tenant',
     items: [
       { key: 'third-party-login', label: '第三方登录', prd: 'PRD-44' },
-      { key: 'operation-logs', label: '操作日志', prd: 'PRD-40' },
-      { key: 'login-logs', label: '登录日志', prd: 'PRD-41' },
+      { key: 'audit-logs', label: '审计日志', prd: 'PRD-40' },
     ],
   },
   // ===== 运营管理员：工单流转全链路 =====
@@ -91,17 +93,11 @@ export const ADMIN_GROUPS: AdminNavGroup[] = [
   {
     key: 'business', label: '业务管理', icon: DatabaseOutlined, scope: 'ops',
     items: [
-      { key: 'user-groups', label: '用户分组', prd: 'PRD-70' },
+      { key: 'teams', label: '用户分组', prd: 'PRD-59b' },
       { key: 'customers', label: '客户管理', prd: 'PRD-87' },
       { key: 'products', label: '产品管理', prd: 'PRD-85' },
-    ],
-  },
-  {
-    key: 'ops-access', label: '接入与班组', icon: ClusterOutlined, scope: 'ops',
-    items: [
       { key: 'channels', label: '渠道管理', prd: 'PRD-53' },
       { key: 'apps', label: '应用管理', prd: 'PRD-54' },
-      { key: 'teams', label: '班组管理', prd: 'PRD-59b' },
     ],
   },
 ];

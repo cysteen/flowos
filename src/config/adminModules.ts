@@ -128,18 +128,18 @@ const roles: ListConfig = {
   ],
 };
 
-// ---------- 班组管理 (PRD-59b) ----------
+// ---------- 用户分组管理 (PRD-59b，原班组管理) ----------
 const teams: ListConfig = {
   type: 'list',
-  newLabel: '新增班组',
+  newLabel: '新增用户分组',
   rowKey: 'name',
   filters: [
-    { key: 'name', label: '班组名称', type: 'text', placeholder: '请输入班组名称' },
+    { key: 'name', label: '分组名称', type: 'text', placeholder: '请输入分组名称' },
     { key: 'leader', label: '负责人', type: 'text', placeholder: '请输入负责人' },
     { key: 'status', label: '状态', type: 'select', options: STATUS_OPTS },
   ],
   columns: [
-    { key: 'name', title: '班组名称', kind: 'link', width: 150 },
+    { key: 'name', title: '分组名称', kind: 'link', width: 150 },
     { key: 'leader', title: '负责人', width: 100 },
     { key: 'members', title: '成员数', width: 90 },
     { key: 'skills', title: '技能标签', kind: 'tags' },
@@ -148,7 +148,7 @@ const teams: ListConfig = {
   ],
   rowActions: ['编辑', '成员', '删除'],
   formFields: [
-    { key: 'name', label: '班组名称', type: 'text', required: true },
+    { key: 'name', label: '分组名称', type: 'text', required: true },
     { key: 'leader', label: '负责人', type: 'select', required: true, options: ['王坐席', '陈坐席', '林组长', '孙莉'] },
     { key: 'memberList', label: '成员', type: 'multiselect', options: ['张三', '李四', '王坐席', '陈坐席', '孙莉', '周杰'] },
     { key: 'skillList', label: '技能标签', type: 'multiselect', options: ['售前', '技术·二线', '退换', '上门', 'VIP', '投诉'] },
@@ -218,60 +218,6 @@ const apps: CardConfig = {
     { name: '售后系统', code: 'aftersale', appType: '售后', status: '启用', admin: '孙莉', memberCount: 18, color: '#10B981' },
     { name: '开放平台', code: 'openapi', appType: '开放平台', status: '启用', admin: '王坐席', memberCount: 9, color: '#A855F7' },
     { name: '企业版门户', code: 'enterprise', appType: '企业内部', status: '停用', admin: '李四', memberCount: 5, color: '#F59E0B' },
-  ],
-};
-
-// ---------- 操作日志 (PRD-40, 只读) ----------
-const operationLogs: ListConfig = {
-  type: 'list', newLabel: '', rowKey: 'id', readonly: true,
-  filters: [
-    { key: 'operator', label: '操作人', type: 'text', placeholder: '请输入操作人' },
-    { key: 'action', label: '操作类型', type: 'select', options: ['全部', '新增', '编辑', '删除', '导出', '分配权限', '登录'] },
-    { key: 'result', label: '结果', type: 'select', options: ['全部', '成功', '失败'] },
-  ],
-  columns: [
-    { key: 'time', title: '时间', width: 160 },
-    { key: 'operator', title: '操作人', width: 110 },
-    { key: 'action', title: '操作类型', kind: 'tag', width: 100 },
-    { key: 'target', title: '操作对象' },
-    { key: 'ip', title: 'IP 地址', width: 130 },
-    { key: 'result', title: '结果', kind: 'status', width: 90 },
-  ],
-  rowActions: ['详情'],
-  formFields: [],
-  rows: [
-    { id: 'L1', time: '2026-06-17 11:32', operator: '赵管理', action: '分配权限', target: '角色「客服班组长」', ip: '10.10.129.66', result: '成功' },
-    { id: 'L2', time: '2026-06-17 10:58', operator: '赵管理', action: '编辑', target: '用户「李四」', ip: '10.10.129.66', result: '成功' },
-    { id: 'L3', time: '2026-06-17 10:20', operator: '周运营', action: '导出', target: '工单数据（128 条）', ip: '10.10.130.12', result: '成功' },
-    { id: 'L4', time: '2026-06-17 09:45', operator: '王坐席', action: '删除', target: '渠道「企业微信」', ip: '10.10.131.5', result: '失败' },
-    { id: 'L5', time: '2026-06-16 18:10', operator: '赵管理', action: '新增', target: '用户「孙莉」', ip: '10.10.129.66', result: '成功' },
-    { id: 'L6', time: '2026-06-16 16:30', operator: '孙系统', action: '登录', target: '管理后台', ip: '10.10.129.40', result: '成功' },
-  ],
-};
-
-// ---------- 登录日志 (PRD-41, 只读) ----------
-const loginLogs: ListConfig = {
-  type: 'list', newLabel: '', rowKey: 'id', readonly: true,
-  filters: [
-    { key: 'account', label: '账号', type: 'text', placeholder: '请输入账号' },
-    { key: 'result', label: '结果', type: 'select', options: ['全部', '成功', '失败'] },
-  ],
-  columns: [
-    { key: 'time', title: '时间', width: 160 },
-    { key: 'account', title: '账号', width: 130 },
-    { key: 'ip', title: 'IP 地址', width: 130 },
-    { key: 'device', title: '设备 / 浏览器' },
-    { key: 'location', title: '登录地点', width: 120 },
-    { key: 'result', title: '结果', kind: 'status', width: 90 },
-  ],
-  rowActions: ['详情'],
-  formFields: [],
-  rows: [
-    { id: 'G1', time: '2026-06-17 09:01', account: 'zhangsan', ip: '10.10.129.66', device: 'Chrome 124 / Win11', location: '合肥', result: '成功' },
-    { id: 'G2', time: '2026-06-17 08:50', account: 'lisi', ip: '10.10.130.12', device: 'Edge 124 / Win11', location: '合肥', result: '成功' },
-    { id: 'G3', time: '2026-06-17 08:42', account: 'unknown', ip: '203.0.113.9', device: 'curl / -', location: '境外', result: '失败' },
-    { id: 'G4', time: '2026-06-16 22:15', account: 'wangwu', ip: '10.10.131.5', device: 'Safari / macOS', location: '上海', result: '成功' },
-    { id: 'G5', time: '2026-06-16 20:30', account: 'zhaoliu', ip: '10.10.129.88', device: 'Chrome 124 / Win10', location: '合肥', result: '失败' },
   ],
 };
 
@@ -372,8 +318,6 @@ const messageCenter: ListConfig = {
 
 export const ADMIN_MODULES: Record<string, ListConfig | CardConfig> = {
   users, roles, teams, channels, apps,
-  'operation-logs': operationLogs,
-  'login-logs': loginLogs,
   'third-party-login': thirdPartyLogin,
   connectors,
   'message-center': messageCenter,
