@@ -68,7 +68,13 @@ function onQuick(key: string) {
     mine: () => router.push('/tickets'),
     kb: () => message.info('打开知识库（占位）'),
     transfer: () => message.info('打开转派记录（占位）'),
-    report: () => message.info('打开统计报表（占位）'),
+    report: () => {
+      if (user.roleKey === 'team-leader' || user.roleKey === 'tenant-admin') {
+        router.push('/tickets/list');
+      } else {
+        message.info('打开统计报表（占位）');
+      }
+    },
   };
   map[key]?.();
 }

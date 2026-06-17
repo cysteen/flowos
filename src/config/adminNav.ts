@@ -1,0 +1,110 @@
+import type { Component } from 'vue';
+import {
+  DashboardOutlined, TeamOutlined, AppstoreOutlined, FieldTimeOutlined,
+  FileTextOutlined, BranchesOutlined, DatabaseOutlined, ApiOutlined,
+  SafetyCertificateOutlined,
+} from '@ant-design/icons-vue';
+
+// 管理后台侧边栏（乐享式分组，对齐设计稿 wynSy / PRD-09）。
+// 数据总览为一级直达项 + 8 个可折叠分组；二级页（编辑器/设计器/明细）点列表进入、不占导航。
+
+export interface AdminNavItem {
+  key: string;
+  label: string;
+  /** 对应 PRD 编号（占位页展示） */
+  prd?: string;
+}
+export interface AdminNavGroup {
+  key: string;
+  label: string;
+  icon: Component;
+  items: AdminNavItem[];
+}
+
+/** 一级直达：数据总览 */
+export const ADMIN_OVERVIEW = { key: 'overview', label: '数据总览', icon: DashboardOutlined };
+
+/** 8 个分组 */
+export const ADMIN_GROUPS: AdminNavGroup[] = [
+  {
+    key: 'org', label: '租户与组织', icon: TeamOutlined,
+    items: [
+      { key: 'tenant-basic', label: '基本信息', prd: 'PRD-59' },
+      { key: 'users', label: '用户管理', prd: 'PRD-50' },
+      { key: 'roles', label: '角色与权限', prd: 'PRD-51' },
+      { key: 'teams', label: '班组管理', prd: 'PRD-59b' },
+      { key: 'apps', label: '应用管理', prd: 'PRD-54' },
+      { key: 'channels', label: '渠道管理', prd: 'PRD-53' },
+    ],
+  },
+  {
+    key: 'ticket-config', label: '工单配置', icon: AppstoreOutlined,
+    items: [
+      { key: 'ticket-types', label: '工单类型管理', prd: 'PRD-60' },
+      { key: 'dicts', label: '字典管理', prd: 'PRD-52' },
+      { key: 'entity-dict', label: '流程实体字典', prd: 'PRD-88' },
+    ],
+  },
+  {
+    key: 'sla', label: 'SLA 与规则', icon: FieldTimeOutlined,
+    items: [
+      { key: 'sla-policy', label: 'SLA策略', prd: 'PRD-55' },
+      { key: 'sla-calendar', label: 'SLA工作日历', prd: 'PRD-56' },
+      { key: 'sla-monitor', label: 'SLA监控看板', prd: 'PRD-57' },
+      { key: 'rules', label: '规则中心', prd: 'PRD-58' },
+    ],
+  },
+  {
+    key: 'templates', label: '模板库', icon: FileTextOutlined,
+    items: [
+      { key: 'form-templates', label: '表单模板库', prd: 'PRD-66' },
+      { key: 'flow-templates', label: '流程模板库', prd: 'PRD-67' },
+    ],
+  },
+  {
+    key: 'workflow', label: '工作流程', icon: BranchesOutlined,
+    items: [
+      { key: 'flow-instances', label: '流程实例', prd: 'PRD-73' },
+      { key: 'flow-tasks', label: '流程任务', prd: 'PRD-74' },
+      { key: 'user-groups', label: '用户分组', prd: 'PRD-70' },
+      { key: 'flow-listeners', label: '流程监听器', prd: 'PRD-72' },
+      { key: 'flow-expressions', label: '流程表达式', prd: 'PRD-71' },
+    ],
+  },
+  {
+    key: 'business', label: '业务数据', icon: DatabaseOutlined,
+    items: [
+      { key: 'customers', label: '客户管理', prd: 'PRD-87' },
+      { key: 'products', label: '产品管理', prd: 'PRD-85' },
+    ],
+  },
+  {
+    key: 'integration', label: '集成对接', icon: ApiOutlined,
+    items: [
+      { key: 'connectors', label: '连接器总览', prd: 'PRD-86' },
+      { key: 'message-center', label: '消息中心', prd: 'PRD-30' },
+    ],
+  },
+  {
+    key: 'security', label: '安全与审计', icon: SafetyCertificateOutlined,
+    items: [
+      { key: 'third-party-login', label: '第三方登录', prd: 'PRD-44' },
+      { key: 'operation-logs', label: '操作日志', prd: 'PRD-40' },
+      { key: 'login-logs', label: '登录日志', prd: 'PRD-41' },
+    ],
+  },
+];
+
+/** 所有模块 key（路由占位用） */
+export const ADMIN_ALL_ITEMS = ADMIN_GROUPS.flatMap((g) =>
+  g.items.map((i) => ({ ...i, group: g.label })),
+);
+
+/** 落地页「全部配置模块」网格用：8 组 + 简述 */
+export const ADMIN_MODULE_CARDS = ADMIN_GROUPS.map((g) => ({
+  key: g.key,
+  label: g.label,
+  icon: g.icon,
+  desc: g.items.map((i) => i.label).join(' · '),
+  firstPath: `/admin/${g.items[0].key}`,
+}));

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 import {
   MenuFoldOutlined,
@@ -21,6 +21,7 @@ const emit = defineEmits<{ toggle: [] }>();
 
 const user = useUserStore();
 const route = useRoute();
+const router = useRouter();
 
 const logoUrl = import.meta.env.BASE_URL + 'logo.png';
 
@@ -36,9 +37,12 @@ function onMenuClick({ key }: { key: string | number }) {
     user.setRole(k as RoleKey);
     return;
   }
+  if (k === 'admin') {
+    router.push('/admin');
+    return;
+  }
   const map: Record<string, string> = {
     profile: '打开「个人设置」（占位）',
-    admin: '进入「管理后台」（后续 Phase）',
     logout: '退出登录（占位）',
   };
   message.info(map[k] ?? '');

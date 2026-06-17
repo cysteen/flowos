@@ -2,6 +2,8 @@
 // 业务规则对齐 PRD-02。
 
 export type TabKey = 'mine' | 'team' | 'pool' | 'cc' | 'review';
+/** 工单列表（全量库）视图 Tab */
+export type ListViewKey = 'all' | 'mine' | 'team' | 'pool' | 'archived';
 export type ChipKey =
   | 'all'
   | 'pending'
@@ -50,6 +52,10 @@ export interface Ticket {
   /** 距超时分钟数，用于 SLA 智能排序（超时为负） */
   slaMinutes: number;
   tab: TabKey;
+  /** 工单列表：是否已归档 */
+  archived?: boolean;
+  /** 更新时间（列表默认排序） */
+  updatedAt?: string;
 }
 
 // ---- 配色映射（.pen 实测 + 设计规范 §2.3 语义色）----
@@ -110,6 +116,36 @@ export const TABS: TabMeta[] = [
   { key: 'cc', label: '我抄送', badge: '#9CA3AF' },
   { key: 'review', label: '待审核', badge: '#F59E0B' },
 ];
+
+export interface ListViewMeta {
+  key: ListViewKey;
+  label: string;
+}
+export const LIST_VIEWS: ListViewMeta[] = [
+  { key: 'all', label: '全部' },
+  { key: 'mine', label: '我的' },
+  { key: 'team', label: '本组' },
+  { key: 'pool', label: '工单池' },
+  { key: 'archived', label: '已归档' },
+];
+
+/** 工单列表视图范围 */
+export function inListView(t: Ticket, view: ListViewKey): boolean {
+  if (view === 'archived') return !!t.archived;
+  if (t.archived) return false;
+  switch (view) {
+    case 'all':
+      return true;
+    case 'mine':
+      return t.tab === 'mine' || t.tab === 'cc';
+    case 'team':
+      return t.tab === 'team' || t.tab === 'review';
+    case 'pool':
+      return t.tab === 'pool';
+    default:
+      return true;
+  }
+}
 
 export interface ChipMeta {
   key: ChipKey;
