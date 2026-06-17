@@ -1,0 +1,34 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  color: #1f2937;
+  background: #f9fafb;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* a-app 包裹层需撑满，否则 100vh 布局塌陷 */
+#app > .ant-app {
+  height: 100%;
+}
+
+/* 设计风格规范品牌色变量（供自定义样式引用） */
+:root {
+  --flowos-primary: #1a6fff;
+  --flowos-primary-hover: #0f4fcc;
+  --flowos-primary-light: #eff6ff;
+  --flowos-text: #374151;
+  --flowos-text-secondary: #6b7280;
+  --flowos-content-bg: #f9fafb;
+}
