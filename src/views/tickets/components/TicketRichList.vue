@@ -152,9 +152,12 @@ const emit = defineEmits<{
 .rich-list {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
-/* 列宽（取自 .pen SJpgc） */
-.col-title { flex: 1; min-width: 0; }
+/* 列宽对齐 .pen SJpgc thead/row body */
+.col-title { flex: 1; min-width: 160px; }
 .col-customer { width: 170px; flex: none; }
 .col-node { width: 146px; flex: none; }
 .col-priority { width: 58px; flex: none; }
@@ -170,6 +173,7 @@ const emit = defineEmits<{
   padding: 11px 20px;
   background: #fafafb;
   border-bottom: 1px solid #e5e7eb;
+  flex: none;
 }
 .th {
   font-size: 12px;
@@ -184,6 +188,7 @@ const emit = defineEmits<{
   padding: 13px 16px;
   border-left: 4px solid transparent;
   border-bottom: 1px solid #f0f0f0;
+  flex: none;
 }
 .row:hover {
   background: #fafbff;

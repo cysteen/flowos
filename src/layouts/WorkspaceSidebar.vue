@@ -21,7 +21,7 @@ function go(path: string) {
 </script>
 
 <template>
-  <aside class="sidebar" :class="{ collapsed }">
+  <div class="sidebar" :class="{ collapsed }">
     <div
       v-for="item in menuItems"
       :key="item.key"
@@ -33,23 +33,16 @@ function go(path: string) {
       <component :is="item.icon" class="nav-icon" />
       <span v-if="!collapsed" class="nav-label">{{ item.label }}</span>
     </div>
-  </aside>
+  </div>
 </template>
 
 <style scoped>
 .sidebar {
-  width: 220px;
-  flex: none;
-  background: #fff;
-  border-right: 1px solid #e5e7eb;
   padding: 12px 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  transition: width 0.18s ease;
-}
-.sidebar.collapsed {
-  width: 64px;
+  height: 100%;
 }
 
 .nav-item {

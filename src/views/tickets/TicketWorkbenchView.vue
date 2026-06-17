@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
+import { useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 import { useUserStore } from '@/stores/user';
 import AppPagination from '@/components/AppPagination.vue';
@@ -13,13 +14,18 @@ import { useTicketWorkbench } from './composables/useTicketWorkbench';
 import type { Ticket } from './types/ticket';
 
 const user = useUserStore();
+const router = useRouter();
 const wb = useTicketWorkbench();
 const createOpen = ref(false);
 
-// 「处理 / 详情 / 审核」进操作页（Prompt 3 占位）；其余即时反馈
+function openOperation(t: Ticket) {
+  router.push(`/tickets/${t.no}`);
+}
+
+// 「处理 / 详情 / 审核 / 受理」进工单操作页（PRD-03）；其余即时反馈
 function onAction(label: string, t: Ticket) {
   if (['处理', '详情', '审核', '受理'].includes(label)) {
-    message.info(`「${label}」${t.no} → 进入工单操作页（Prompt 3 / PRD-03）`);
+    openOperation(t);
   } else if (label === '领单') {
     message.success(`已领取 ${t.no}，转入「我的工单」`);
   } else {
@@ -27,7 +33,7 @@ function onAction(label: string, t: Ticket) {
   }
 }
 function onClickNo(t: Ticket) {
-  message.info(`${t.no} → 工单操作页（Prompt 3 / PRD-03）`);
+  openOperation(t);
 }
 function onClickCustomer(t: Ticket) {
   message.info(`查看客户「${t.customer}」详情卡（占位）`);
@@ -44,15 +50,18 @@ function onCreated(t: Ticket) {
 
 <template>
   <div class="workbench">
-    <!-- ① 多视图 Tab -->
-    <TicketTabs
-      :active="wb.activeTab.value"
-      :counts="wb.tabCounts.value"
-      :hidden-tabs="user.hiddenTabs"
-      @change="wb.setTab"
-    />
+    <!-- ① 多视图 Tab（全宽贴顶，对齐 .pen） -->
+    <div class="workbench-tabs">
+      <TicketTabs
+        :active="wb.activeTab.value"
+        :counts="wb.tabCounts.value"
+        :hidden-tabs="user.hiddenTabs"
+        @change="wb.setTab"
+      />
+    </div>
 
-    <!-- ② AI 建议条 -->
+    <div class="workbench-body">
+      <!-- ② AI 建议条 -->
       <AiSuggestionBar
         v-if="wb.aiBarVisible.value"
         @view="message.info('展开今日 AI 建议清单（占位）')"
@@ -91,17 +100,20 @@ function onCreated(t: Ticket) {
           @click-customer="onClickCustomer"
         />
         <div class="pager">
-          <span class="pager-left">
-            共 {{ wb.total.value }} 条 · 已选 {{ wb.selectedCount.value }} 项
-          </span>
+          <div class="pager-left">
+            <span class="pager-total">共 {{ wb.total.value }} 条</span>
+            <span class="pager-selected">已选 {{ wb.selectedCount.value }} 项</span>
+          </div>
           <AppPagination
             :total="wb.total.value"
             :current="wb.current.value"
             :page-size="wb.pageSize.value"
+            :show-total="false"
             @change="wb.setPage"
           />
         </div>
       </div>
+    </div>
 
     <CreateTicketModal v-model:open="createOpen" @created="onCreated" />
   </div>
@@ -111,9 +123,23 @@ function onCreated(t: Ticket) {
 .workbench {
   display: flex;
   flex-direction: column;
+  min-height: 100%;
+  width: 100%;
+  min-width: 0;
+}
+.workbench-tabs {
+  flex: none;
+  background: #fff;
+  border-bottom: 1px solid #e5e7eb;
+}
+.workbench-body {
+  display: flex;
+  flex-direction: column;
   gap: 16px;
   padding: 20px;
-  min-height: 100%;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
 }
 .table-card {
   background: #fff;
@@ -122,16 +148,28 @@ function onCreated(t: Ticket) {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 .pager {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 20px;
+  padding: 12px 20px;
   border-top: 1px solid #e5e7eb;
+  flex: none;
 }
 .pager-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.pager-total {
   font-size: 13px;
   color: #6b7280;
+}
+.pager-selected {
+  font-size: 13px;
+  color: #9ca3af;
 }
 </style>

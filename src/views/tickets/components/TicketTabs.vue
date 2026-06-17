@@ -40,8 +40,6 @@ const visibleTabs = computed(() => TABS.filter((t) => !props.hiddenTabs.includes
   display: flex;
   gap: 4px;
   padding: 0 16px;
-  background: #fff;
-  border-bottom: 1px solid #e5e7eb;
 }
 .tab {
   display: flex;

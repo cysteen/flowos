@@ -25,6 +25,7 @@ const route = useRoute();
 const logoUrl = import.meta.env.BASE_URL + 'logo.png';
 
 const currentTitle = computed(() => {
+  if (route.meta.breadcrumb) return route.meta.breadcrumb as string;
   const item = NAV_ITEMS.find((n) => n.key === route.meta.menu);
   return item?.label ?? (route.meta.title as string) ?? '';
 });

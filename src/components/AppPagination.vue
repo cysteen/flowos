@@ -6,11 +6,13 @@ withDefaults(
     current?: number;
     pageSize?: number;
     showSizeChanger?: boolean;
+    showTotal?: boolean;
   }>(),
   {
     current: 1,
     pageSize: 10,
     showSizeChanger: true,
+    showTotal: true,
   }
 );
 
@@ -20,7 +22,7 @@ const emit = defineEmits<{
   'update:pageSize': [size: number];
 }>();
 
-function showTotal(total: number): string {
+function showTotalFn(total: number): string {
   return `共 ${total} 条`;
 }
 
@@ -38,7 +40,7 @@ function onChange(page: number, size: number) {
       :current="current"
       :page-size="pageSize"
       :show-size-changer="showSizeChanger"
-      :show-total="showTotal"
+      :show-total="showTotal ? showTotalFn : undefined"
       :page-size-options="['10', '20', '50']"
       show-quick-jumper
       @change="onChange"
@@ -50,6 +52,5 @@ function onChange(page: number, size: number) {
 .app-pagination {
   display: flex;
   justify-content: flex-end;
-  padding: 16px 0 4px;
 }
 </style>

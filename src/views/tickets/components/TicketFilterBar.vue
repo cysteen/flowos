@@ -79,12 +79,22 @@ function chipTextColor(key: ChipKey, active: boolean, tone?: 'warn') {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: nowrap;
   gap: 12px;
+  width: 100%;
+  min-width: 0;
 }
 .chips {
   display: flex;
   gap: 8px;
-  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  scrollbar-width: none;
+}
+.chips::-webkit-scrollbar {
+  display: none;
 }
 .chip {
   display: flex;
@@ -94,6 +104,8 @@ function chipTextColor(key: ChipKey, active: boolean, tone?: 'warn') {
   border: 1px solid;
   border-radius: 15px;
   cursor: pointer;
+  flex: none;
+  white-space: nowrap;
 }
 .chip-label {
   font-size: 13px;
@@ -107,6 +119,7 @@ function chipTextColor(key: ChipKey, active: boolean, tone?: 'warn') {
   align-items: center;
   gap: 10px;
   flex: none;
+  flex-shrink: 0;
 }
 .time-filter {
   display: flex;

@@ -12,14 +12,20 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'home',
         name: 'home',
-        component: () => import('@/views/home/HomePlaceholder.vue'),
-        meta: { menu: 'home', title: '首页' },
+        component: () => import('@/views/home/HomeOverviewView.vue'),
+        meta: { menu: 'home', title: '首页', breadcrumb: '首页 · 工作概览' },
       },
       {
         path: 'tickets',
         name: 'tickets',
         component: () => import('@/views/tickets/TicketWorkbenchView.vue'),
         meta: { menu: 'tickets', title: '工单工作台' },
+      },
+      {
+        path: 'tickets/:ticketNo',
+        name: 'ticket-operation',
+        component: () => import('@/views/tickets/TicketOperationView.vue'),
+        meta: { menu: 'tickets', title: '工单处理' },
       },
       {
         path: 'aftersale',

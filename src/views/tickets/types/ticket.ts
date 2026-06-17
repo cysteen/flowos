@@ -8,6 +8,7 @@ export type ChipKey =
   | 'processing'
   | 'held'
   | 'review'
+  | 'delegate'
   | 'soon'
   | 'overdue';
 
@@ -122,6 +123,7 @@ export const CHIPS: ChipMeta[] = [
   { key: 'processing', label: '处理中' },
   { key: 'held', label: '已挂起' },
   { key: 'review', label: '待审核' },
+  { key: 'delegate', label: '委派' },
   { key: 'soon', label: '临期', tone: 'warn' },
   { key: 'overdue', label: '超时' },
 ];
@@ -158,6 +160,8 @@ export function matchChip(t: Ticket, chip: ChipKey): boolean {
       return t.nodeStatus === '已挂起·待客户';
     case 'review':
       return t.nodeStatus === '待审核';
+    case 'delegate':
+      return t.nodeStatus === '已升级·二线';
     case 'soon':
       return t.slaState === 'soon';
     case 'overdue':

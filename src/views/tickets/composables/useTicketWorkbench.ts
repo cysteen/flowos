@@ -73,7 +73,9 @@ export function useTicketWorkbench() {
 
   // 当前 Tab 下各 chip 计数
   const chipCounts = computed<Record<ChipKey, number>>(() => {
-    const keys: ChipKey[] = ['all', 'pending', 'processing', 'held', 'review', 'soon', 'overdue'];
+    const keys: ChipKey[] = [
+      'all', 'pending', 'processing', 'held', 'review', 'delegate', 'soon', 'overdue',
+    ];
     const map = {} as Record<ChipKey, number>;
     for (const k of keys) map[k] = tabRows.value.filter((t) => matchChip(t, k)).length;
     return map;
