@@ -4,83 +4,91 @@ import { useRoute, useRouter } from 'vue-router';
 import { useUserStore } from '@/stores/user';
 import { NAV_ITEMS } from '@/config/navigation';
 
-defineProps<{ collapsed: boolean }>();
+const props = defineProps<{ collapsed: boolean }>();
 
 const user = useUserStore();
 const route = useRoute();
 const router = useRouter();
 
-// 按角色裁剪菜单（隐藏 ≠ 路由不存在，深链仍由守卫拦截）
 const menuItems = computed(() => NAV_ITEMS.filter((n) => user.visibleMenus.includes(n.key)));
 
-const selectedKeys = computed(() => {
-  const menu = route.meta.menu;
-  return menu ? [menu] : [];
-});
-
-function onClick({ key }: { key: string | number }) {
-  const item = NAV_ITEMS.find((n) => n.key === key);
-  if (item && route.path !== item.path) {
-    router.push(item.path);
-  }
+function isActive(key: string) {
+  return route.meta.menu === key;
+}
+function go(path: string) {
+  if (route.path !== path) router.push(path);
 }
 </script>
 
 <template>
-  <a-layout-sider
-    :collapsed="collapsed"
-    :width="220"
-    :collapsed-width="80"
-    :trigger="null"
-    theme="light"
-    class="workspace-sider"
-  >
-    <a-menu
-      mode="inline"
-      :selected-keys="selectedKeys"
-      :inline-collapsed="collapsed"
-      class="workspace-menu"
-      @click="onClick"
+  <aside class="sidebar" :class="{ collapsed }">
+    <div
+      v-for="item in menuItems"
+      :key="item.key"
+      class="nav-item"
+      :class="{ active: isActive(item.key) }"
+      :title="collapsed ? item.label : ''"
+      @click="go(item.path)"
     >
-      <a-menu-item v-for="item in menuItems" :key="item.key">
-        <template #icon><component :is="item.icon" /></template>
-        <span>{{ item.label }}</span>
-      </a-menu-item>
-    </a-menu>
-  </a-layout-sider>
+      <component :is="item.icon" class="nav-icon" />
+      <span v-if="!collapsed" class="nav-label">{{ item.label }}</span>
+    </div>
+  </aside>
 </template>
 
 <style scoped>
-.workspace-sider {
+.sidebar {
+  width: 220px;
+  flex: none;
   background: #fff;
-  border-right: 1px solid #f0f0f0;
+  border-right: 1px solid #e5e7eb;
+  padding: 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  transition: width 0.18s ease;
+}
+.sidebar.collapsed {
+  width: 64px;
 }
 
-.workspace-menu {
-  border-inline-end: none !important;
-  padding: 8px;
-}
-
-/* 未激活态：文字 #374151、图标 #6B7280（设计规范） */
-.workspace-menu :deep(.ant-menu-item) {
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-left: 3px solid transparent;
+  cursor: pointer;
   color: #374151;
-  border-radius: 6px;
 }
-
-.workspace-menu :deep(.ant-menu-item .anticon) {
+.nav-item:hover {
+  background: #f9fafb;
+}
+.nav-icon {
+  font-size: 16px;
   color: #6b7280;
+  flex: none;
+}
+.nav-label {
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
-/* 激活态：浅底 #EFF6FF、文字主色 600、左边框 3px 主色 */
-.workspace-menu :deep(.ant-menu-item-selected) {
-  background: #eff6ff !important;
-  color: #1a6fff !important;
-  font-weight: 600;
-  border-left: 3px solid #1a6fff;
-  border-radius: 0 6px 6px 0;
+.nav-item.active {
+  background: #eff6ff;
+  border-left-color: #1a6fff;
 }
-
-.workspace-menu :deep(.ant-menu-item-selected .anticon) {
+.nav-item.active .nav-icon {
   color: #1a6fff;
+}
+.nav-item.active .nav-label {
+  color: #1a6fff;
+  font-weight: 600;
+}
+
+.sidebar.collapsed .nav-item {
+  justify-content: center;
+  padding: 10px 0;
 }
 </style>

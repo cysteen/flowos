@@ -34,7 +34,7 @@ function toggleCollapsed() {
 
 .workspace-content {
   background: var(--flowos-content-bg, #f9fafb);
-  padding: 24px;
+  padding: 0;
   overflow: auto;
 }
 </style>

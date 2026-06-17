@@ -5,12 +5,12 @@ import { message } from 'ant-design-vue';
 import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  HomeOutlined,
   SearchOutlined,
   BellOutlined,
   QuestionCircleOutlined,
   GlobalOutlined,
   DownOutlined,
-  UserOutlined,
 } from '@ant-design/icons-vue';
 import { useUserStore } from '@/stores/user';
 import { ROLE_OPTIONS, type RoleKey } from '@/config/roles';
@@ -22,76 +22,84 @@ const emit = defineEmits<{ toggle: [] }>();
 const user = useUserStore();
 const route = useRoute();
 
-// 面包屑当前页标题
+const logoUrl = import.meta.env.BASE_URL + 'logo.png';
+
 const currentTitle = computed(() => {
   const item = NAV_ITEMS.find((n) => n.key === route.meta.menu);
-  return item?.label ?? '';
+  return item?.label ?? (route.meta.title as string) ?? '';
 });
 
-function onSwitchRole(value: unknown) {
-  user.setRole(value as RoleKey);
-}
-
-function onUserMenuClick({ key }: { key: string | number }) {
+function onMenuClick({ key }: { key: string | number }) {
+  const k = String(key);
+  if (ROLE_OPTIONS.some((r) => r.value === k)) {
+    user.setRole(k as RoleKey);
+    return;
+  }
   const map: Record<string, string> = {
     profile: '打开「个人设置」（占位）',
     admin: '进入「管理后台」（后续 Phase）',
     logout: '退出登录（占位）',
   };
-  message.info(map[String(key)] ?? '');
+  message.info(map[k] ?? '');
 }
 </script>
 
 <template>
-  <a-layout-header class="app-header">
-    <div class="app-header__left">
-      <div class="app-header__logo">iFLY<span class="dot">.</span>FlowOS</div>
-      <a-button type="text" class="collapse-btn" @click="emit('toggle')">
-        <MenuUnfoldOutlined v-if="collapsed" />
-        <MenuFoldOutlined v-else />
-      </a-button>
-      <a-breadcrumb class="app-header__crumb">
-        <a-breadcrumb-item>运行工作区</a-breadcrumb-item>
-        <a-breadcrumb-item>{{ currentTitle }}</a-breadcrumb-item>
-      </a-breadcrumb>
+  <header class="app-header">
+    <!-- Logo 区（200，右边框分隔） -->
+    <div class="logo-area">
+      <img class="logo-icon" :src="logoUrl" alt="iFLY" />
+      <div class="logo-text">
+        <div class="logo-title">iFLY.FlowOS</div>
+        <div class="logo-sub">智能工单流转平台</div>
+      </div>
     </div>
 
-    <div class="app-header__right">
-      <a-input class="global-search" placeholder="搜索工单 / 客户 / 关键词" allow-clear>
-        <template #prefix><SearchOutlined style="color: #9ca3af" /></template>
-        <template #suffix><span class="kbd">⌘K</span></template>
-      </a-input>
+    <div class="header-main">
+      <!-- 折叠按钮 -->
+      <div class="toggle" @click="emit('toggle')">
+        <MenuUnfoldOutlined v-if="collapsed" :style="{ fontSize: '18px', color: '#6B7280' }" />
+        <MenuFoldOutlined v-else :style="{ fontSize: '18px', color: '#6B7280' }" />
+      </div>
 
-      <a-tooltip title="Dev：切换演示角色，验证菜单裁剪与路由守卫">
-        <a-select
-          :value="user.roleKey"
-          :options="ROLE_OPTIONS"
-          size="small"
-          class="role-switch"
-          @change="onSwitchRole"
-        />
-      </a-tooltip>
+      <!-- 面包屑：home / 当前页 -->
+      <div class="breadcrumb">
+        <HomeOutlined :style="{ fontSize: '14px', color: '#6B7280' }" />
+        <span class="sep">/</span>
+        <span class="current">{{ currentTitle }}</span>
+      </div>
 
-      <a-space :size="4" class="header-icons">
-        <a-button type="text" shape="circle"><BellOutlined /></a-button>
-        <a-button type="text" shape="circle"><QuestionCircleOutlined /></a-button>
-        <a-button type="text" shape="circle"><GlobalOutlined /></a-button>
-      </a-space>
+      <!-- 搜索（260） -->
+      <div class="search">
+        <SearchOutlined :style="{ fontSize: '14px', color: '#9CA3AF' }" />
+        <span class="search-ph">搜索功能、数据...</span>
+        <div class="search-sp"></div>
+        <span class="kbd">⌘K</span>
+      </div>
 
+      <!-- 工具图标 -->
+      <div class="tools">
+        <div class="tool"><BellOutlined :style="{ fontSize: '16px', color: '#6B7280' }" /></div>
+        <div class="tool"><QuestionCircleOutlined :style="{ fontSize: '16px', color: '#6B7280' }" /></div>
+        <div class="tool"><GlobalOutlined :style="{ fontSize: '16px', color: '#6B7280' }" /></div>
+      </div>
+
+      <!-- 用户区 -->
       <a-dropdown placement="bottomRight">
-        <div class="user-area">
-          <a-avatar :size="32" style="background: #1a6fff; flex: none">
-            <template #icon><UserOutlined /></template>
-          </a-avatar>
+        <div class="user">
+          <span class="user-av">{{ user.name.charAt(0) }}</span>
           <div class="user-meta">
             <div class="user-name">{{ user.name }}</div>
             <div class="user-role">{{ user.role.name }}</div>
           </div>
-          <DownOutlined class="user-caret" />
+          <DownOutlined :style="{ fontSize: '14px', color: '#9CA3AF' }" />
         </div>
         <template #overlay>
-          <a-menu @click="onUserMenuClick">
+          <a-menu @click="onMenuClick">
             <a-menu-item key="profile">个人设置</a-menu-item>
+            <a-sub-menu key="role" title="切换演示角色">
+              <a-menu-item v-for="r in ROLE_OPTIONS" :key="r.value">{{ r.label }}</a-menu-item>
+            </a-sub-menu>
             <a-menu-item v-if="user.hasAdminEntry" key="admin">管理后台</a-menu-item>
             <a-menu-divider />
             <a-menu-item key="logout">退出登录</a-menu-item>
@@ -99,106 +107,176 @@ function onUserMenuClick({ key }: { key: string | number }) {
         </template>
       </a-dropdown>
     </div>
-  </a-layout-header>
+  </header>
 </template>
 
 <style scoped>
 .app-header {
+  display: flex;
+  align-items: stretch;
   height: 56px;
-  line-height: 56px;
-  padding: 0 16px 0 0;
   background: #fff;
-  border-bottom: 1px solid #f0f0f0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  border-bottom: 1px solid #e5e7eb;
 }
 
-.app-header__left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.app-header__logo {
+/* Logo 区 */
+.logo-area {
   width: 200px;
-  padding-left: 24px;
-  font-size: 18px;
-  font-weight: 700;
-  color: #1a6fff;
-  letter-spacing: 0.2px;
-}
-
-.app-header__logo .dot {
-  color: #0f4fcc;
-}
-
-.collapse-btn {
-  font-size: 16px;
-  color: #6b7280;
-}
-
-.app-header__crumb {
-  margin-left: 4px;
-}
-
-.app-header__right {
+  flex: none;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  padding: 0 20px;
+  border-right: 1px solid #e5e7eb;
 }
-
-.global-search {
-  width: 260px;
+.logo-icon {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  flex: none;
 }
-
-.kbd {
-  display: inline-block;
-  padding: 0 6px;
-  font-size: 12px;
+.logo-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.1;
+}
+.logo-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: #111827;
+  letter-spacing: -0.16px;
+}
+.logo-sub {
+  font-size: 10px;
   color: #9ca3af;
-  background: #f3f4f6;
-  border-radius: 4px;
-  line-height: 18px;
 }
 
-.role-switch {
-  width: 132px;
-}
-
-.header-icons :deep(.ant-btn) {
-  color: #6b7280;
-}
-
-.user-area {
+.header-main {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 56px;
-  padding-left: 8px;
+  padding: 0 16px 0 8px;
+}
+
+.toggle {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
   cursor: pointer;
 }
+.toggle:hover {
+  background: #f3f4f6;
+}
 
+.breadcrumb {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+}
+.breadcrumb .sep {
+  font-size: 12px;
+  color: #d1d5db;
+}
+.breadcrumb .current {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.search {
+  width: 260px;
+  flex: none;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  cursor: text;
+}
+.search-ph {
+  font-size: 12px;
+  color: #9ca3af;
+}
+.search-sp {
+  flex: 1;
+}
+.kbd {
+  font-size: 10px;
+  color: #9ca3af;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 3px;
+  padding: 1px 6px;
+}
+
+.tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+.tool {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.tool:hover {
+  background: #f3f4f6;
+}
+
+.user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 12px 4px 4px;
+  border-radius: 10px;
+  cursor: pointer;
+  flex: none;
+}
+.user:hover {
+  background: #f9fafb;
+}
+.user-av {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: 18px;
+  background: #1a6fff;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 .user-meta {
   display: flex;
   flex-direction: column;
   line-height: 1.2;
 }
-
 .user-name {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
-  color: #1f2937;
+  color: #111827;
 }
-
 .user-role {
-  font-size: 12px;
-  color: #6b7280;
-}
-
-.user-caret {
-  font-size: 12px;
+  font-size: 10px;
   color: #9ca3af;
 }
 </style>
