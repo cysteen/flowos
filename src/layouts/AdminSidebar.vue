@@ -2,14 +2,15 @@
 import { computed, ref, watchEffect } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { LeftOutlined, DownOutlined } from '@ant-design/icons-vue';
-import { ADMIN_GROUPS, ADMIN_OVERVIEW, PLATFORM_NAV } from '@/config/adminNav';
+import { adminGroupsFor, ADMIN_OVERVIEW, PLATFORM_NAV } from '@/config/adminNav';
 import { useUserStore } from '@/stores/user';
 
 const route = useRoute();
 const router = useRouter();
 const user = useUserStore();
-// 平台超管（系统/运营管理员）显示「系统管理」精简导航；租户管理员显示数据总览 + 8 组
+// 平台超管(系统管理员)→「系统管理」精简导航；租户管理员/运营管理员→ 数据总览 + 各自 scope 分组
 const isPlatform = computed(() => user.role.adminScope === 'platform');
+const groups = computed(() => adminGroupsFor(user.role.adminScope));
 
 const activeKey = computed(() => {
   const seg = route.path.split('/admin/')[1];
@@ -17,7 +18,7 @@ const activeKey = computed(() => {
 });
 
 function groupOf(key: string): string | null {
-  return ADMIN_GROUPS.find((g) => g.items.some((i) => i.key === key))?.key ?? null;
+  return groups.value.find((g) => g.items.some((i) => i.key === key))?.key ?? null;
 }
 
 const expanded = ref<string | null>(null);
@@ -61,7 +62,7 @@ function backToWorkspace() {
       </div>
     </div>
 
-    <!-- 租户管理员：数据总览 + 8 组 -->
+    <!-- 租户管理员 / 运营管理员：数据总览 + 各自 scope 分组 -->
     <div v-else class="menu-list">
       <!-- 数据总览（一级直达） -->
       <div
@@ -73,8 +74,8 @@ function backToWorkspace() {
         <span class="nav-label">{{ ADMIN_OVERVIEW.label }}</span>
       </div>
 
-      <!-- 8 个分组 -->
-      <div v-for="g in ADMIN_GROUPS" :key="g.key" class="group">
+      <!-- 分组（按角色 scope） -->
+      <div v-for="g in groups" :key="g.key" class="group">
         <div class="group-head" @click="toggle(g.key)">
           <component :is="g.icon" class="nav-icon" />
           <span class="nav-label">{{ g.label }}</span>

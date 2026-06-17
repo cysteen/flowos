@@ -8,7 +8,8 @@ export type RoleKey =
   | 'ops-admin'
   | 'tenant-admin';
 
-export type AdminScope = 'platform' | 'tenant';
+// platform=平台超管(系统管理员)；tenant=租户管理员(人/权限/安全)；ops=运营管理员(工单流转)
+export type AdminScope = 'platform' | 'tenant' | 'ops';
 
 export interface RoleDef {
   key: RoleKey;
@@ -60,7 +61,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
     menus: ['home', 'tickets', 'aftersale', 'team-board'],
     hiddenTabs: [],
     hasAdminEntry: true,
-    adminScope: 'platform',
+    adminScope: 'ops',
   },
   'tenant-admin': {
     key: 'tenant-admin',

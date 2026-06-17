@@ -6,9 +6,13 @@ import { RightOutlined } from '@ant-design/icons-vue';
 import {
   TENANT_INFO, KPIS, TREND, TODOS, QUICK_CONFIG, SYSTEM_STATUS, ANNOUNCEMENTS,
 } from '@/mock/adminOverview';
-import { ADMIN_MODULE_CARDS } from '@/config/adminNav';
+import { moduleCardsFor } from '@/config/adminNav';
+import { useUserStore } from '@/stores/user';
 
 const router = useRouter();
+const user = useUserStore();
+// 按当前管理角色（租户/运营）显示对应模块网格
+const moduleCards = computed(() => moduleCardsFor(user.role.adminScope));
 const trendMax = computed(() => Math.max(...TREND.flatMap((d) => [d.created, d.resolved])));
 const seatPct = Math.round((TENANT_INFO.seatUsed / TENANT_INFO.seatTotal) * 100);
 const storagePct = Math.round((TENANT_INFO.storageUsed / TENANT_INFO.storageTotal) * 100);
@@ -128,7 +132,7 @@ function goPath(path: string) {
     <div class="card">
       <div class="card-head"><span class="card-title">全部配置模块</span></div>
       <div class="module-grid">
-        <div v-for="m in ADMIN_MODULE_CARDS" :key="m.key" class="module" @click="goPath(m.firstPath)">
+        <div v-for="m in moduleCards" :key="m.key" class="module" @click="goPath(m.firstPath)">
           <div class="module-top">
             <span class="module-icon"><component :is="m.icon" /></span>
             <span class="module-name">{{ m.label }}</span>
