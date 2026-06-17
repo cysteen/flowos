@@ -24,3 +24,6 @@ pnpm-debug.log*
 
 # 本地截图临时文件
 _shot.png
+
+# gh-pages 部署工作目录
+.deploy-gh-pages
