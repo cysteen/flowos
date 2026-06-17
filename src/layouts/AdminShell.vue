@@ -2,7 +2,6 @@
 import AppHeader from './AppHeader.vue';
 import AdminSidebar from './AdminSidebar.vue';
 
-// 管理后台外壳（AppShell）：复用统一顶栏 + 配置侧栏。
 function noop() {}
 </script>
 
@@ -10,7 +9,15 @@ function noop() {}
   <a-layout class="admin-shell">
     <AppHeader :collapsed="false" @toggle="noop" />
     <a-layout class="admin-body">
-      <AdminSidebar />
+      <!-- 须用 a-layout-sider，否则侧栏与内容区纵向堆叠 -->
+      <a-layout-sider
+        :width="240"
+        :collapsible="false"
+        theme="light"
+        class="admin-sider"
+      >
+        <AdminSidebar />
+      </a-layout-sider>
       <a-layout-content class="admin-content">
         <router-view />
       </a-layout-content>
@@ -22,12 +29,28 @@ function noop() {}
 .admin-shell {
   height: 100vh;
 }
+
 .admin-body {
-  height: calc(100vh - 56px);
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
 }
+
 .admin-content {
+  flex: 1;
+  min-width: 0;
   background: #f9fafb;
   padding: 0;
+  overflow: auto;
+}
+
+:deep(.admin-sider) {
+  background: #f5f6f7 !important;
+  border-right: 1px solid #e5e7eb;
+}
+
+:deep(.admin-sider .ant-layout-sider-children) {
+  height: 100%;
   overflow: auto;
 }
 </style>

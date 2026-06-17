@@ -217,4 +217,15 @@ function goPath(path: string) {
 .module-icon { color: #1a6fff; font-size: 16px; }
 .module-name { flex: 1; font-size: 14px; font-weight: 600; color: #111827; }
 .module-desc { margin-top: 8px; font-size: 12px; color: #9ca3af; line-height: 1.6; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+@media (max-width: 1200px) {
+  .kpi-row { grid-template-columns: repeat(3, 1fr); }
+  .module-grid { grid-template-columns: repeat(2, 1fr); }
+  .cols { flex-direction: column; }
+  .col-side { width: 100%; }
+}
+@media (max-width: 900px) {
+  .tenant-bar { flex-direction: column; align-items: flex-start; gap: 16px; }
+  .tb-usage { flex-wrap: wrap; width: 100%; }
+}
 </style>

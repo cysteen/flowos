@@ -5,15 +5,25 @@ import { useUserStore } from '@/stores/user';
 import { firstMenuPath } from '@/config/navigation';
 import { ADMIN_ALL_ITEMS } from '@/config/adminNav';
 
-// 管理后台模块占位路由（Phase A：统一占位页；Phase B 逐组替换为真实列表页）
+// 管理后台模块路由。Phase B：租户与组织组已实现真实页（AdminModuleView 按 key 解析列表/卡片，
+// tenant-basic 为表单页）；其余模块自动落到 AdminModuleView 内的占位回退。
 const adminModuleRoutes: RouteRecordRaw[] = ADMIN_ALL_ITEMS.map((it) => ({
   path: it.key,
   name: `admin-${it.key}`,
-  component: () => import('@/views/admin/AdminPlaceholder.vue'),
+  component:
+    it.key === 'tenant-basic'
+      ? () => import('@/views/admin/TenantProfileView.vue')
+      : () => import('@/views/admin/AdminModuleView.vue'),
   meta: { adminOnly: true, title: it.label, prd: it.prd, group: it.group },
 }));
 
 const routes: RouteRecordRaw[] = [
+  {
+    path: '/login',
+    name: 'login',
+    component: () => import('@/views/auth/LoginView.vue'),
+    meta: { public: true, title: '登录' },
+  },
   {
     path: '/',
     component: WorkspaceShell,
@@ -72,8 +82,8 @@ const routes: RouteRecordRaw[] = [
       ...adminModuleRoutes,
     ],
   },
-  // 兜底：未知路径回工单工作台
-  { path: '/:pathMatch(.*)*', redirect: '/tickets' },
+  // 兜底
+  { path: '/:pathMatch(.*)*', redirect: '/login' },
 ];
 
 const router = createRouter({
@@ -82,9 +92,23 @@ const router = createRouter({
   routes,
 });
 
-// 角色守卫：无权访问的菜单 → redirect 至该角色首个有权限页（§2.3）
+// 登录 + 角色守卫
 router.beforeEach((to) => {
   const user = useUserStore();
+
+  // 公开页：登录
+  if (to.meta.public) {
+    if (to.name === 'login' && user.isLoggedIn) {
+      return firstMenuPath(user.visibleMenus);
+    }
+    return true;
+  }
+
+  // 未登录 → 登录页
+  if (!user.isLoggedIn) {
+    return { path: '/login', query: { redirect: to.fullPath } };
+  }
+
   // 管理后台门禁：仅租户管理员可达，坐席误入拦回工作区（PRD-09 F4）
   if (to.meta.adminOnly && !user.hasAdminEntry) {
     return firstMenuPath(user.visibleMenus);

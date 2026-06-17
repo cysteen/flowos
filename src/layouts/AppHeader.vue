@@ -41,9 +41,13 @@ function onMenuClick({ key }: { key: string | number }) {
     router.push('/admin');
     return;
   }
+  if (k === 'logout') {
+    user.logout();
+    router.push('/login');
+    return;
+  }
   const map: Record<string, string> = {
     profile: '打开「个人设置」（占位）',
-    logout: '退出登录（占位）',
   };
   message.info(map[k] ?? '');
 }

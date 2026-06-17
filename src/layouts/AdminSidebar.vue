@@ -35,7 +35,7 @@ function backToWorkspace() {
 </script>
 
 <template>
-  <aside class="admin-sidebar">
+  <div class="admin-sidebar">
     <!-- 返回工作区 + 标题 -->
     <div class="sb-header" @click="backToWorkspace">
       <LeftOutlined :style="{ fontSize: '15px', color: '#6B7280' }" />
@@ -73,15 +73,13 @@ function backToWorkspace() {
         </div>
       </div>
     </div>
-  </aside>
+  </div>
 </template>
 
 <style scoped>
 .admin-sidebar {
-  width: 240px;
-  flex: none;
+  height: 100%;
   background: #f5f6f7;
-  border-right: 1px solid #e5e7eb;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
