@@ -33,6 +33,8 @@ export interface ListConfig {
   formFields: FieldDef[];
   rowKey: string;
   rows: Record<string, unknown>[];
+  /** 只读列表（日志类）：隐藏「新增」「批量删除」 */
+  readonly?: boolean;
 }
 export interface CardConfig {
   type: 'cards';
@@ -219,6 +221,160 @@ const apps: CardConfig = {
   ],
 };
 
+// ---------- 操作日志 (PRD-40, 只读) ----------
+const operationLogs: ListConfig = {
+  type: 'list', newLabel: '', rowKey: 'id', readonly: true,
+  filters: [
+    { key: 'operator', label: '操作人', type: 'text', placeholder: '请输入操作人' },
+    { key: 'action', label: '操作类型', type: 'select', options: ['全部', '新增', '编辑', '删除', '导出', '分配权限', '登录'] },
+    { key: 'result', label: '结果', type: 'select', options: ['全部', '成功', '失败'] },
+  ],
+  columns: [
+    { key: 'time', title: '时间', width: 160 },
+    { key: 'operator', title: '操作人', width: 110 },
+    { key: 'action', title: '操作类型', kind: 'tag', width: 100 },
+    { key: 'target', title: '操作对象' },
+    { key: 'ip', title: 'IP 地址', width: 130 },
+    { key: 'result', title: '结果', kind: 'status', width: 90 },
+  ],
+  rowActions: ['详情'],
+  formFields: [],
+  rows: [
+    { id: 'L1', time: '2026-06-17 11:32', operator: '赵管理', action: '分配权限', target: '角色「客服班组长」', ip: '10.10.129.66', result: '成功' },
+    { id: 'L2', time: '2026-06-17 10:58', operator: '赵管理', action: '编辑', target: '用户「李四」', ip: '10.10.129.66', result: '成功' },
+    { id: 'L3', time: '2026-06-17 10:20', operator: '周运营', action: '导出', target: '工单数据（128 条）', ip: '10.10.130.12', result: '成功' },
+    { id: 'L4', time: '2026-06-17 09:45', operator: '王坐席', action: '删除', target: '渠道「企业微信」', ip: '10.10.131.5', result: '失败' },
+    { id: 'L5', time: '2026-06-16 18:10', operator: '赵管理', action: '新增', target: '用户「孙莉」', ip: '10.10.129.66', result: '成功' },
+    { id: 'L6', time: '2026-06-16 16:30', operator: '孙系统', action: '登录', target: '管理后台', ip: '10.10.129.40', result: '成功' },
+  ],
+};
+
+// ---------- 登录日志 (PRD-41, 只读) ----------
+const loginLogs: ListConfig = {
+  type: 'list', newLabel: '', rowKey: 'id', readonly: true,
+  filters: [
+    { key: 'account', label: '账号', type: 'text', placeholder: '请输入账号' },
+    { key: 'result', label: '结果', type: 'select', options: ['全部', '成功', '失败'] },
+  ],
+  columns: [
+    { key: 'time', title: '时间', width: 160 },
+    { key: 'account', title: '账号', width: 130 },
+    { key: 'ip', title: 'IP 地址', width: 130 },
+    { key: 'device', title: '设备 / 浏览器' },
+    { key: 'location', title: '登录地点', width: 120 },
+    { key: 'result', title: '结果', kind: 'status', width: 90 },
+  ],
+  rowActions: ['详情'],
+  formFields: [],
+  rows: [
+    { id: 'G1', time: '2026-06-17 09:01', account: 'zhangsan', ip: '10.10.129.66', device: 'Chrome 124 / Win11', location: '合肥', result: '成功' },
+    { id: 'G2', time: '2026-06-17 08:50', account: 'lisi', ip: '10.10.130.12', device: 'Edge 124 / Win11', location: '合肥', result: '成功' },
+    { id: 'G3', time: '2026-06-17 08:42', account: 'unknown', ip: '203.0.113.9', device: 'curl / -', location: '境外', result: '失败' },
+    { id: 'G4', time: '2026-06-16 22:15', account: 'wangwu', ip: '10.10.131.5', device: 'Safari / macOS', location: '上海', result: '成功' },
+    { id: 'G5', time: '2026-06-16 20:30', account: 'zhaoliu', ip: '10.10.129.88', device: 'Chrome 124 / Win10', location: '合肥', result: '失败' },
+  ],
+};
+
+// ---------- 第三方登录 (PRD-44) ----------
+const thirdPartyLogin: ListConfig = {
+  type: 'list', newLabel: '新增三方应用', rowKey: 'appId',
+  filters: [
+    { key: 'name', label: '应用名称', type: 'text', placeholder: '请输入应用名称' },
+    { key: 'type', label: '类型', type: 'select', options: ['全部', '微信', '企业微信', '钉钉', 'OAuth2'] },
+    { key: 'status', label: '状态', type: 'select', options: STATUS_OPTS },
+  ],
+  columns: [
+    { key: 'name', title: '应用名称', kind: 'link', width: 150 },
+    { key: 'type', title: '类型', kind: 'tag', width: 100 },
+    { key: 'appId', title: 'AppID', width: 180 },
+    { key: 'boundUsers', title: '绑定用户', width: 90 },
+    { key: 'status', title: '状态', kind: 'status', width: 90 },
+    { key: 'createdAt', title: '创建时间', width: 160 },
+  ],
+  rowActions: ['编辑', '删除'],
+  formFields: [
+    { key: 'name', label: '应用名称', type: 'text', required: true },
+    { key: 'type', label: '类型', type: 'select', required: true, options: ['微信', '企业微信', '钉钉', 'OAuth2'] },
+    { key: 'appId', label: 'AppID', type: 'text', required: true },
+    { key: 'secret', label: 'AppSecret', type: 'password', required: true },
+    { key: 'callback', label: '回调地址', type: 'text', placeholder: 'https://...' },
+    { key: 'status', label: '状态', type: 'radio', options: ['启用', '停用'] },
+  ],
+  rows: [
+    { name: '企业微信扫码登录', type: '企业微信', appId: 'ww-1a2b3c4d5e', boundUsers: 64, status: '启用', createdAt: '2026-05-10 09:00' },
+    { name: '微信开放平台', type: '微信', appId: 'wx-88f0a1b2c3', boundUsers: 12, status: '启用', createdAt: '2026-05-12 14:30' },
+    { name: '钉钉免登', type: '钉钉', appId: 'ding-77x9y8z6', boundUsers: 8, status: '停用', createdAt: '2026-05-15 11:20' },
+    { name: 'OAuth2 接入（第三方门户）', type: 'OAuth2', appId: 'oauth-c1d2e3f4', boundUsers: 3, status: '启用', createdAt: '2026-05-20 16:00' },
+  ],
+};
+
+// ---------- 连接器总览 (PRD-86) ----------
+const connectors: ListConfig = {
+  type: 'list', newLabel: '新增连接器', rowKey: 'name',
+  filters: [
+    { key: 'name', label: '名称', type: 'text', placeholder: '请输入连接器名称' },
+    { key: 'type', label: '类型', type: 'select', options: ['全部', 'Webhook', 'HTTP API', '消息队列', '数据库'] },
+    { key: 'status', label: '状态', type: 'select', options: STATUS_OPTS },
+  ],
+  columns: [
+    { key: 'name', title: '连接器名称', kind: 'link', width: 170 },
+    { key: 'type', title: '类型', kind: 'tag', width: 110 },
+    { key: 'endpoint', title: '端点 / 地址' },
+    { key: 'lastSync', title: '最近同步', width: 150 },
+    { key: 'status', title: '状态', kind: 'status', width: 90 },
+  ],
+  rowActions: ['编辑', '测试', '删除'],
+  formFields: [
+    { key: 'name', label: '连接器名称', type: 'text', required: true },
+    { key: 'type', label: '类型', type: 'select', required: true, options: ['Webhook', 'HTTP API', '消息队列', '数据库'] },
+    { key: 'endpoint', label: '端点 / 地址', type: 'text', required: true, placeholder: 'https://... 或连接串' },
+    { key: 'auth', label: '认证方式', type: 'select', options: ['无', 'API Key', 'Bearer Token', 'Basic'] },
+    { key: 'status', label: '状态', type: 'radio', options: ['启用', '停用'] },
+  ],
+  rows: [
+    { name: '工单回写 Webhook', type: 'Webhook', endpoint: 'https://erp.iflytek.com/hook/ticket', lastSync: '2026-06-17 11:20', status: '启用' },
+    { name: '客户主数据 API', type: 'HTTP API', endpoint: 'https://crm.iflytek.com/api/v2', lastSync: '2026-06-17 10:05', status: '启用' },
+    { name: '工单事件 MQ', type: '消息队列', endpoint: 'kafka://10.10.20.5:9092/ticket-events', lastSync: '2026-06-17 11:30', status: '启用' },
+    { name: '历史工单同步库', type: '数据库', endpoint: 'mysql://10.10.20.9:3306/legacy', lastSync: '2026-06-16 02:00', status: '停用' },
+  ],
+};
+
+// ---------- 消息中心 (PRD-30) ----------
+const messageCenter: ListConfig = {
+  type: 'list', newLabel: '新增模板', rowKey: 'name',
+  filters: [
+    { key: 'name', label: '模板名称', type: 'text', placeholder: '请输入模板名称' },
+    { key: 'type', label: '类型', type: 'select', options: ['全部', '短信', '邮件', '站内信', '通知公告'] },
+    { key: 'status', label: '状态', type: 'select', options: STATUS_OPTS },
+  ],
+  columns: [
+    { key: 'name', title: '模板名称', kind: 'link', width: 180 },
+    { key: 'type', title: '类型', kind: 'tag', width: 100 },
+    { key: 'channel', title: '渠道 / 签名', width: 150 },
+    { key: 'updatedAt', title: '最近更新', width: 160 },
+    { key: 'status', title: '状态', kind: 'status', width: 90 },
+  ],
+  rowActions: ['编辑', '预览', '删除'],
+  formFields: [
+    { key: 'name', label: '模板名称', type: 'text', required: true },
+    { key: 'type', label: '类型', type: 'select', required: true, options: ['短信', '邮件', '站内信', '通知公告'] },
+    { key: 'channel', label: '渠道 / 签名', type: 'text' },
+    { key: 'content', label: '模板内容', type: 'textarea', required: true },
+    { key: 'status', label: '状态', type: 'radio', options: ['启用', '停用'] },
+  ],
+  rows: [
+    { name: '工单受理通知', type: '短信', channel: '阿里云·讯飞客服', updatedAt: '2026-06-14 10:00', status: '启用' },
+    { name: 'SLA 临期提醒', type: '站内信', channel: '系统', updatedAt: '2026-06-13 16:30', status: '启用' },
+    { name: '工单解决回访邮件', type: '邮件', channel: 'noreply@iflytek.com', updatedAt: '2026-06-12 09:20', status: '启用' },
+    { name: '系统维护公告', type: '通知公告', channel: '全员', updatedAt: '2026-06-10 18:00', status: '停用' },
+  ],
+};
+
 export const ADMIN_MODULES: Record<string, ListConfig | CardConfig> = {
   users, roles, teams, channels, apps,
+  'operation-logs': operationLogs,
+  'login-logs': loginLogs,
+  'third-party-login': thirdPartyLogin,
+  connectors,
+  'message-center': messageCenter,
 };

@@ -135,7 +135,7 @@ function onBatchDelete() {
           <span class="tb-title">{{ title }}</span>
           <span class="tb-count">共 {{ filtered.length }} 条</span>
         </div>
-        <div class="tb-right">
+        <div v-if="!config.readonly" class="tb-right">
           <a-button type="primary" @click="onNew"><template #icon><PlusOutlined /></template>{{ config.newLabel }}</a-button>
           <a-button :disabled="selectedKeys.length === 0" danger @click="onBatchDelete">批量删除 ({{ selectedKeys.length }})</a-button>
         </div>
@@ -146,7 +146,7 @@ function onBatchDelete() {
         :data-source="filtered"
         :row-key="config.rowKey"
         :pagination="pagination"
-        :row-selection="{ selectedRowKeys: selectedKeys, onChange: (k: (string|number)[]) => (selectedKeys = k) }"
+        :row-selection="config.readonly ? undefined : { selectedRowKeys: selectedKeys, onChange: (k: (string|number)[]) => (selectedKeys = k) }"
         size="middle"
       >
         <template #bodyCell="{ column, record, text }">
