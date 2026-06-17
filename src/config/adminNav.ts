@@ -2,7 +2,7 @@ import type { Component } from 'vue';
 import {
   DashboardOutlined, TeamOutlined, AppstoreOutlined, FieldTimeOutlined,
   FileTextOutlined, BranchesOutlined, DatabaseOutlined, ApiOutlined,
-  SafetyCertificateOutlined,
+  SafetyCertificateOutlined, BankOutlined, SettingOutlined,
 } from '@ant-design/icons-vue';
 
 // 管理后台侧边栏（乐享式分组，对齐设计稿 wynSy / PRD-09）。
@@ -99,6 +99,21 @@ export const ADMIN_GROUPS: AdminNavGroup[] = [
 export const ADMIN_ALL_ITEMS = ADMIN_GROUPS.flatMap((g) =>
   g.items.map((i) => ({ ...i, group: g.label })),
 );
+
+// ===== 平台超管侧栏（系统管理员 / 运营管理员，adminScope='platform'）=====
+// 对齐参考原型 main-navigation.html?mode=system → A7-platform-admin。
+export interface AdminNavItemP {
+  key: string;
+  label: string;
+  icon: Component;
+}
+export const PLATFORM_NAV: { groupLabel: string; items: AdminNavItemP[] } = {
+  groupLabel: '系统管理',
+  items: [
+    { key: 'tenants', label: '租户管理', icon: BankOutlined },
+    { key: 'sys-settings', label: '系统参数', icon: SettingOutlined },
+  ],
+};
 
 /** 落地页「全部配置模块」网格用：8 组 + 简述 */
 export const ADMIN_MODULE_CARDS = ADMIN_GROUPS.map((g) => ({

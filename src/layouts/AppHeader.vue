@@ -13,8 +13,8 @@ import {
   DownOutlined,
 } from '@ant-design/icons-vue';
 import { useUserStore } from '@/stores/user';
-import { ROLE_OPTIONS, type RoleKey } from '@/config/roles';
-import { NAV_ITEMS } from '@/config/navigation';
+import { ROLE_OPTION_GROUPS, isRoleKey } from '@/config/roles';
+import { firstMenuPath, NAV_ITEMS } from '@/config/navigation';
 
 defineProps<{ collapsed: boolean }>();
 const emit = defineEmits<{ toggle: [] }>();
@@ -33,8 +33,14 @@ const currentTitle = computed(() => {
 
 function onMenuClick({ key }: { key: string | number }) {
   const k = String(key);
-  if (ROLE_OPTIONS.some((r) => r.value === k)) {
-    user.setRole(k as RoleKey);
+  if (isRoleKey(k)) {
+    user.setRole(k);
+    message.success(`已切换为「${user.role.name}」`);
+    if (route.path.startsWith('/admin') && !user.hasAdminEntry) {
+      router.push(firstMenuPath(user.visibleMenus));
+    } else if (route.meta.menu && !user.canAccess(route.meta.menu as string)) {
+      router.push(firstMenuPath(user.visibleMenus));
+    }
     return;
   }
   if (k === 'admin') {
@@ -107,7 +113,13 @@ function onMenuClick({ key }: { key: string | number }) {
           <a-menu @click="onMenuClick">
             <a-menu-item key="profile">个人设置</a-menu-item>
             <a-sub-menu key="role" title="切换演示角色">
-              <a-menu-item v-for="r in ROLE_OPTIONS" :key="r.value">{{ r.label }}</a-menu-item>
+              <template v-for="group in ROLE_OPTION_GROUPS" :key="group.label">
+                <a-menu-item-group :title="group.label">
+                  <a-menu-item v-for="r in group.options" :key="r.value">
+                    {{ r.label }}
+                  </a-menu-item>
+                </a-menu-item-group>
+              </template>
             </a-sub-menu>
             <a-menu-item v-if="user.hasAdminEntry" key="admin">管理后台</a-menu-item>
             <a-menu-divider />

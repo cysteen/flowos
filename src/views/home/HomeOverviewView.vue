@@ -69,7 +69,7 @@ function onQuick(key: string) {
     kb: () => message.info('打开知识库（占位）'),
     transfer: () => message.info('打开转派记录（占位）'),
     report: () => {
-      if (user.roleKey === 'team-leader' || user.roleKey === 'tenant-admin') {
+      if (['team-leader', 'tenant-admin', 'ops-admin', 'system-admin'].includes(user.roleKey)) {
         router.push('/tickets/list');
       } else {
         message.info('打开统计报表（占位）');

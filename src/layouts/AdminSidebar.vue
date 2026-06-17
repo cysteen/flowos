@@ -2,10 +2,14 @@
 import { computed, ref, watchEffect } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { LeftOutlined, DownOutlined } from '@ant-design/icons-vue';
-import { ADMIN_GROUPS, ADMIN_OVERVIEW } from '@/config/adminNav';
+import { ADMIN_GROUPS, ADMIN_OVERVIEW, PLATFORM_NAV } from '@/config/adminNav';
+import { useUserStore } from '@/stores/user';
 
 const route = useRoute();
 const router = useRouter();
+const user = useUserStore();
+// 平台超管（系统/运营管理员）显示「系统管理」精简导航；租户管理员显示数据总览 + 8 组
+const isPlatform = computed(() => user.role.adminScope === 'platform');
 
 const activeKey = computed(() => {
   const seg = route.path.split('/admin/')[1];
@@ -42,7 +46,23 @@ function backToWorkspace() {
       <span class="sb-title">管理后台</span>
     </div>
 
-    <div class="menu-list">
+    <!-- 平台超管：系统管理（租户管理 / 系统参数） -->
+    <div v-if="isPlatform" class="menu-list">
+      <div class="plat-group-title">{{ PLATFORM_NAV.groupLabel }}</div>
+      <div
+        v-for="it in PLATFORM_NAV.items"
+        :key="it.key"
+        class="nav-item top"
+        :class="{ active: activeKey === it.key }"
+        @click="go(`/admin/${it.key}`)"
+      >
+        <component :is="it.icon" class="nav-icon" />
+        <span class="nav-label">{{ it.label }}</span>
+      </div>
+    </div>
+
+    <!-- 租户管理员：数据总览 + 8 组 -->
+    <div v-else class="menu-list">
       <!-- 数据总览（一级直达） -->
       <div
         class="nav-item top"
@@ -104,6 +124,13 @@ function backToWorkspace() {
   flex-direction: column;
   gap: 4px;
   padding: 8px 0 16px;
+}
+.plat-group-title {
+  padding: 8px 20px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #9ca3af;
+  letter-spacing: 0.05em;
 }
 
 .nav-item,

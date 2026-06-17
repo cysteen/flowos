@@ -67,17 +67,37 @@ const routes: RouteRecordRaw[] = [
       },
     ],
   },
-  // 管理后台（独立 AppShell，仅租户管理员，从头像下拉进入）
+  // 管理后台（独立 AppShell，从头像下拉进入）。
+  // 平台超管(系统/运营管理员)→ 租户管理/系统参数；租户管理员 → 数据总览 + 8 组配置。
   {
     path: '/admin',
     component: AdminShell,
     children: [
-      { path: '', redirect: '/admin/overview' },
+      {
+        path: '',
+        redirect: () => {
+          const u = useUserStore();
+          return u.role.adminScope === 'platform' ? '/admin/tenants' : '/admin/overview';
+        },
+      },
       {
         path: 'overview',
         name: 'admin-overview',
         component: () => import('@/views/admin/AdminOverviewView.vue'),
         meta: { adminOnly: true, title: '数据总览' },
+      },
+      // 平台超管页
+      {
+        path: 'tenants',
+        name: 'admin-tenants',
+        component: () => import('@/views/admin/PlatformTenantsView.vue'),
+        meta: { adminOnly: true, platformOnly: true, title: '租户管理' },
+      },
+      {
+        path: 'sys-settings',
+        name: 'admin-sys-settings',
+        component: () => import('@/views/admin/PlatformSettingsView.vue'),
+        meta: { adminOnly: true, platformOnly: true, title: '系统参数' },
       },
       ...adminModuleRoutes,
     ],
@@ -109,9 +129,13 @@ router.beforeEach((to) => {
     return { path: '/login', query: { redirect: to.fullPath } };
   }
 
-  // 管理后台门禁：仅租户管理员可达，坐席误入拦回工作区（PRD-09 F4）
+  // 管理后台门禁：仅管理员可达，坐席误入拦回工作区（PRD-09 F4）
   if (to.meta.adminOnly && !user.hasAdminEntry) {
     return firstMenuPath(user.visibleMenus);
+  }
+  // 平台超管页门禁：仅 adminScope=platform（系统/运营管理员）可达
+  if (to.meta.platformOnly && user.role.adminScope !== 'platform') {
+    return '/admin/overview';
   }
   const menu = to.meta.menu;
   if (menu && !user.canAccess(menu)) {
