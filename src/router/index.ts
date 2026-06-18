@@ -36,7 +36,7 @@ const routes: RouteRecordRaw[] = [
         path: 'home',
         name: 'home',
         component: () => import('@/views/home/HomeOverviewView.vue'),
-        meta: { menu: 'home', title: '首页', breadcrumb: '首页 · 工作概览' },
+        meta: { menu: 'home', title: '个人门户', breadcrumb: '个人门户 · 工作概览' },
       },
       {
         path: 'tickets',

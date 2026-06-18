@@ -1,6 +1,8 @@
 // 工单工作台类型与配色映射。配色值全部取自 iFLY-FlowOS-坐席视角.pen 画板 SJpgc 实测，
 // 业务规则对齐 PRD-02。
 
+import type { CreateFormTicketType } from '@/views/tickets/types/createTicket';
+
 export type TabKey = 'mine' | 'team' | 'pool' | 'cc' | 'review';
 /** 工单列表（全量库）视图 Tab */
 export type ListViewKey = 'all' | 'mine' | 'team' | 'pool' | 'archived';
@@ -69,7 +71,10 @@ export interface CreateTicketPrefill {
   product?: string;
   sn?: string;
   channel?: Channel;
+  /** 列表侧工单类型（旧枚举，兼容 Mock） */
   type?: TicketType;
+  /** 新建弹窗表单工单类型（投诉/建议/商机/咨询） */
+  formTicketType?: CreateFormTicketType;
   priority?: Priority;
   complaintType?: string;
   desc?: string;

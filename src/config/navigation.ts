@@ -18,7 +18,7 @@ export interface NavItem {
 }
 
 export const NAV_ITEMS: NavItem[] = [
-  { key: 'home', label: '首页', path: '/home', icon: HomeOutlined }, // house
+  { key: 'home', label: '个人门户', path: '/home', icon: HomeOutlined }, // house
   { key: 'tickets', label: '工单工作台', path: '/tickets', icon: CustomerServiceOutlined }, // headset
   { key: 'aftersale', label: '售后工作台', path: '/aftersale', icon: ToolOutlined }, // wrench
   { key: 'team-board', label: '班组看板', path: '/team-board', icon: DashboardOutlined }, // gauge

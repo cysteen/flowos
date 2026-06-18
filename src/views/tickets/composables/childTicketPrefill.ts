@@ -1,5 +1,6 @@
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
-import type { CreateTicketPrefill, Channel, TicketType, Priority } from '@/views/tickets/types/ticket';
+import type { CreateTicketPrefill, Channel, Priority } from '@/views/tickets/types/ticket';
+import type { CreateFormTicketType } from '@/views/tickets/types/createTicket';
 
 const CHANNEL_MAP: Record<string, Channel> = {
   在线客服: '在线客服',
@@ -10,14 +11,14 @@ const CHANNEL_MAP: Record<string, Channel> = {
   APP: 'APP',
 };
 
-/** 主单类型 → 推荐子单类型 */
-const CHILD_TYPE_HINT: Record<string, TicketType> = {
-  投诉: '技术',
-  报修: '报修',
+/** 主单类型 → 推荐子单表单类型 */
+const CHILD_FORM_TYPE_HINT: Record<string, CreateFormTicketType> = {
+  投诉: '咨询',
+  报修: '咨询',
   咨询: '咨询',
-  安装: '安装',
-  退换: '退换',
-  技术: '技术',
+  安装: '咨询',
+  退换: '咨询',
+  技术: '咨询',
 };
 
 function mapPriority(p: string): Priority {
@@ -27,8 +28,8 @@ function mapPriority(p: string): Priority {
 
 /** 从主单详情生成子单新建弹窗预填数据 */
 export function buildChildTicketPrefill(parent: TicketDetailMeta): CreateTicketPrefill {
-  const parentType = parent.type as TicketType;
-  const childType = CHILD_TYPE_HINT[parent.type] ?? '技术';
+  const parentType = parent.type;
+  const childFormType = CHILD_FORM_TYPE_HINT[parent.type] ?? '咨询';
   const demandShort = parent.demand.length > 80 ? `${parent.demand.slice(0, 80)}…` : parent.demand;
 
   return {
@@ -41,7 +42,7 @@ export function buildChildTicketPrefill(parent: TicketDetailMeta): CreateTicketP
     product: parent.product.name,
     sn: parent.product.sn,
     channel: CHANNEL_MAP[parent.channel] ?? '在线客服',
-    type: childType,
+    formTicketType: childFormType,
     priority: mapPriority(parent.priority),
     complaintType: parent.complaintType,
     expectTime: parent.expectedResolve,
@@ -56,7 +57,9 @@ export function buildChildTicketPrefill(parent: TicketDetailMeta): CreateTicketP
 
 /** 从原单详情生成 reopen（重新建单）弹窗预填数据 */
 export function buildReopenTicketPrefill(parent: TicketDetailMeta): CreateTicketPrefill {
-  const parentType = parent.type as TicketType;
+  const parentType = parent.type;
+  const formTicketType: CreateFormTicketType =
+    parent.type === '投诉' ? '投诉' : '咨询';
   const demandShort = parent.demand.length > 80 ? `${parent.demand.slice(0, 80)}…` : parent.demand;
 
   return {
@@ -69,7 +72,7 @@ export function buildReopenTicketPrefill(parent: TicketDetailMeta): CreateTicket
     product: parent.product.name,
     sn: parent.product.sn,
     channel: CHANNEL_MAP[parent.channel] ?? '在线客服',
-    type: parentType,
+    formTicketType,
     priority: mapPriority(parent.priority),
     complaintType: parent.complaintType,
     expectTime: parent.expectedResolve,

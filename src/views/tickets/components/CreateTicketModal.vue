@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, watch } from 'vue';
 import { message } from 'ant-design-vue';
 import {
   ThunderboltOutlined,
@@ -8,17 +8,75 @@ import {
   CloseOutlined,
   ClockCircleOutlined,
   WarningOutlined,
+  RightOutlined,
+  UserAddOutlined,
 } from '@ant-design/icons-vue';
-import type { Priority, Ticket, TicketType, Channel, CreateTicketPrefill } from '@/views/tickets/types/ticket';
+import type { Ticket, CreateTicketPrefill } from '@/views/tickets/types/ticket';
+import {
+  BUSINESS_TYPES,
+  CREATE_TICKET_TYPES,
+  PRODUCT_CATEGORIES,
+  PRIORITY_OPTIONS,
+  EXPECT_TIMES,
+  COMPLAINT_TYPE_OPTIONS,
+  COMPLAINT_PLATFORM_OPTIONS,
+  BUSINESS_LINE_OPTIONS,
+  YES_NO_OPTIONS,
+  SERVICE_REVIEW_OPTIONS,
+  COMPLAINT_L1_OPTIONS,
+  COMPLAINT_L2_MAP,
+  SUGGEST_L1_OPTIONS,
+  SUGGEST_L2_MAP,
+  formatCustomerSubline,
+} from '@/views/tickets/types/createTicket';
+import { useCreateTicketForm } from '@/views/tickets/composables/useCreateTicketForm';
+import CreateTicketPartCard from './create-ticket/CreateTicketPartCard.vue';
+import CustomerInfoModal from './create-ticket/CustomerInfoModal.vue';
+import FormSelect from './create-ticket/FormSelect.vue';
 
 const props = defineProps<{
   open: boolean;
   prefill?: CreateTicketPrefill | null;
 }>();
+
 const emit = defineEmits<{
   'update:open': [v: boolean];
   created: [t: Ticket, processAfter?: boolean];
 }>();
+
+const {
+  form,
+  aiAdopted,
+  assignAdopted,
+  submitting,
+  customerModalOpen,
+  editingCustomer,
+  errors,
+  problemL1Options,
+  problemL2Options,
+  problemL3Options,
+  productNameOptions,
+  showTypePart,
+  typePartSubtitle,
+  showAiBar,
+  customerAddressRequired,
+  slaPreview,
+  aiSummary,
+  reset,
+  applyPrefill,
+  onTitleInput,
+  onProductCategoryChange,
+  onProductNameChange,
+  onProblemL1Change,
+  onProblemL2Change,
+  searchCustomer,
+  openCreateCustomer,
+  openEditCustomer,
+  saveCustomer,
+  validate,
+  buildTicket,
+  syncTitle,
+} = useCreateTicketForm(() => props.prefill);
 
 const isChildMode = computed(() => props.prefill?.mode === 'child');
 const isReopenMode = computed(() => props.prefill?.mode === 'reopen');
@@ -28,137 +86,13 @@ const modalTitle = computed(() => {
   return '新建工单';
 });
 
-const APPS = ['集团客户服务平台', '开放平台', '企业版'];
-const TYPES: TicketType[] = ['投诉', '报修', '咨询', '安装', '退换', '技术'];
-const CHANNELS: Channel[] = ['在线客服', '电话', '邮件', '小程序', 'APP'];
-const PRODUCTS = ['智能音箱 X1', '扫地机器人 R2', '空气净化器 P3', '蓝牙耳机 Air'];
-const COMPLAINT_TYPES = ['产品质量', '服务态度', '物流问题', '其他'];
-const SEVERITIES = ['高', '中', '低'];
-const PRIORITIES: { value: Priority; label: string }[] = [
-  { value: 'P0', label: 'P0（VIP + 紧急）' },
-  { value: 'P1', label: 'P1（紧急）' },
-  { value: 'P2', label: 'P2（普通）' },
-  { value: 'P3', label: 'P3（低）' },
-];
-const EXPECT_TIMES = ['今日 18:00', '今日 20:00', '明日 12:00', '3 个工作日内'];
-
-const form = reactive({
-  app: '集团客户服务平台' as string | undefined,
-  type: '投诉' as TicketType | undefined,
-  channel: '在线客服' as Channel | undefined,
-  customerQuery: '',
-  product: '智能音箱 X1',
-  sn: 'SN-X1-88421003',
-  complaintType: '产品质量',
-  severity: '高',
-  desc: '在线播放频繁跳歌，重启无效，影响使用，要求尽快解决。',
-  priority: 'P0' as Priority,
-  expectTime: '今日 18:00',
-});
-const customerSelected = ref(true);
-const snVerified = ref(true);
-const aiAdopted = ref(false);
-const assignAdopted = ref(false);
-const errors = reactive({ app: false, type: false, channel: false, customer: false, desc: false });
-const submitting = ref(false);
-
-const showTypeFields = computed(() => form.type === '投诉');
-const showAiBar = computed(() => form.desc.trim().length > 0);
-const slaPreview = computed(() => {
-  const map: Record<Priority, string> = {
-    P0: '响应≤15min · 解决≤4h',
-    P1: '响应≤30min · 解决≤8h',
-    P2: '响应≤2h · 解决≤24h',
-    P3: '响应≤4h · 解决≤48h',
-  };
-  return map[form.priority];
-});
-
-function reset() {
-  form.app = '集团客户服务平台';
-  form.type = '投诉';
-  form.channel = '在线客服';
-  form.customerQuery = '';
-  form.product = '智能音箱 X1';
-  form.sn = 'SN-X1-88421003';
-  form.complaintType = '产品质量';
-  form.severity = '高';
-  form.desc = '在线播放频繁跳歌，重启无效，影响使用，要求尽快解决。';
-  form.priority = 'P0';
-  form.expectTime = '今日 18:00';
-  customerSelected.value = true;
-  snVerified.value = true;
-  aiAdopted.value = false;
-  assignAdopted.value = false;
-  errors.app = errors.type = errors.channel = errors.customer = errors.desc = false;
-}
-
-function applyPrefill(p: CreateTicketPrefill) {
-  form.app = '集团客户服务平台';
-  form.type = p.type ?? (p.mode === 'child' ? '技术' : '投诉');
-  form.channel = p.channel ?? '在线客服';
-  form.customerQuery = p.customerName
-    ? `${p.customerName}${p.customerPhone ? ` · ${p.customerPhone}` : ''}`
-    : '';
-  form.product = p.product ?? '智能音箱 X1';
-  form.sn = p.sn ?? '';
-  form.complaintType = p.complaintType ?? '产品质量';
-  form.severity = p.priority === 'P0' ? '高' : '中';
-  form.desc = p.desc ?? '';
-  form.priority = p.priority ?? 'P1';
-  form.expectTime = p.expectTime ?? '今日 18:00';
-  customerSelected.value = !!p.customerName;
-  snVerified.value = !!p.sn;
-  aiAdopted.value = false;
-  assignAdopted.value = false;
-  errors.app = errors.type = errors.channel = errors.customer = errors.desc = false;
-}
+const complaintL2Options = computed(
+  () => COMPLAINT_L2_MAP[form.complaintL1] ?? [],
+);
+const suggestL2Options = computed(() => SUGGEST_L2_MAP[form.suggestL1] ?? []);
 
 function onCancel() {
   emit('update:open', false);
-}
-
-function genNo() {
-  const n = Math.floor(10000 + Math.random() * 89999);
-  return `LCMN-20260617-${n}`;
-}
-
-function validate(): boolean {
-  errors.app = !form.app;
-  errors.type = !form.type;
-  errors.channel = !form.channel;
-  errors.customer = !customerSelected.value;
-  errors.desc = !form.desc.trim();
-  if (errors.app || errors.type || errors.channel || errors.customer || errors.desc) {
-    message.error('请填写必填项');
-    return false;
-  }
-  return true;
-}
-
-function buildTicket(): Ticket {
-  const name = props.prefill?.customerName ?? '张小凡';
-  return {
-    id: 'new-' + Date.now(),
-    no: genNo(),
-    type: form.type!,
-    channel: form.channel!,
-    title: form.desc.trim().slice(0, 40) + (form.desc.trim().length > 40 ? '…' : ''),
-    smartMarks: form.type === '投诉' ? ['升级'] : [],
-    customer: name,
-    vip: props.prefill?.vip ?? true,
-    product: form.product,
-    nodeStatus: '待受理',
-    nodeStep: 1,
-    nodeTotal: 5,
-    priority: form.priority,
-    slaText: form.priority === 'P0' ? '00:15:00' : '08:00:00',
-    slaSub: '距超时',
-    slaState: form.priority === 'P0' ? 'soon' : 'ok',
-    slaMinutes: form.priority === 'P0' ? 15 : 480,
-    assignee: assignAdopted.value ? '王坐席' : '张三',
-    tab: 'mine',
-  };
 }
 
 function onCreate(processAfter = false) {
@@ -166,10 +100,9 @@ function onCreate(processAfter = false) {
   submitting.value = true;
   const ticket = buildTicket();
   emit('created', ticket, processAfter);
-  const suffix = processAfter ? '，进入处理页' : '';
-  let msg = `工单 ${ticket.no} 已创建${suffix}`;
-  if (isChildMode.value) msg = `子工单 ${ticket.no} 已创建${suffix}`;
-  else if (isReopenMode.value) msg = `Reopen 工单 ${ticket.no} 已创建${suffix}`;
+  let msg = `工单 ${ticket.no} 已创建${processAfter ? '，进入处理页' : ''}`;
+  if (isChildMode.value) msg = `子工单 ${ticket.no} 已创建${processAfter ? '，进入处理页' : ''}`;
+  else if (isReopenMode.value) msg = `Reopen 工单 ${ticket.no} 已创建${processAfter ? '，进入处理页' : ''}`;
   message.success(msg);
   submitting.value = false;
   emit('update:open', false);
@@ -181,19 +114,35 @@ function onDraft() {
   emit('update:open', false);
 }
 
-watch(
-  () => form.type,
-  () => {
-    aiAdopted.value = false;
-  },
-);
+function toggleReporter() {
+  form.showReporter = !form.showReporter;
+}
 
 watch(
   () => props.open,
   (v) => {
     if (!v) return;
     if (props.prefill) applyPrefill(props.prefill);
-    else reset();
+    else {
+      reset();
+      syncTitle();
+    }
+  },
+);
+
+watch(
+  () => form.complaintL1,
+  () => {
+    const opts = COMPLAINT_L2_MAP[form.complaintL1] ?? [];
+    if (!opts.includes(form.complaintL2)) form.complaintL2 = opts[0] ?? '';
+  },
+);
+
+watch(
+  () => form.suggestL1,
+  () => {
+    const opts = SUGGEST_L2_MAP[form.suggestL1] ?? [];
+    if (!opts.includes(form.suggestL2)) form.suggestL2 = opts[0] ?? '';
   },
 );
 </script>
@@ -201,14 +150,13 @@ watch(
 <template>
   <a-modal
     :open="open"
-    :width="720"
+    :width="800"
     :footer="null"
     :closable="false"
     class="create-ticket-modal"
     destroy-on-close
     @cancel="onCancel"
   >
-    <!-- Header -->
     <div class="modal-header">
       <div class="modal-title-row">
         <span class="modal-title">{{ modalTitle }}</span>
@@ -220,7 +168,6 @@ watch(
       <CloseOutlined class="modal-close" @click="onCancel" />
     </div>
 
-    <!-- Body -->
     <div class="modal-body">
       <div
         v-if="(isChildMode || isReopenMode) && prefill?.parentNo"
@@ -231,187 +178,391 @@ watch(
         <span class="pb-no">{{ prefill.parentNo }}</span>
         <span class="pb-title">{{ prefill.parentTitle }}</span>
       </div>
-      <!-- 应用 / 类型 / 渠道 -->
-      <div class="row-3">
-        <div class="field">
-          <label class="label"><span class="req">*</span>应用</label>
-          <a-select
-            v-model:value="form.app"
-            class="full"
-            :status="errors.app ? 'error' : ''"
-            :options="APPS.map((v) => ({ value: v, label: v }))"
-          />
-        </div>
-        <div class="field">
-          <label class="label"><span class="req">*</span>工单类型</label>
-          <a-select
-            v-model:value="form.type"
-            class="full"
-            :status="errors.type ? 'error' : ''"
-            :options="TYPES.map((v) => ({ value: v, label: v }))"
-          />
-        </div>
-        <div class="field">
-          <label class="label"><span class="req">*</span>渠道</label>
-          <a-select
-            v-model:value="form.channel"
-            class="full"
-            :status="errors.channel ? 'error' : ''"
-            :options="CHANNELS.map((v) => ({ value: v, label: v }))"
-          />
-        </div>
-      </div>
 
-      <!-- 客户 -->
-      <div class="field">
-        <label class="label"><span class="req">*</span>客户</label>
-        <div class="customer-search-row">
-          <div class="search-box">
-            <SearchOutlined :style="{ color: '#9CA3AF', fontSize: '15px' }" />
-            <input
-              v-model="form.customerQuery"
-              class="search-input"
-              placeholder="搜索手机号 / 姓名 / 客户编号"
+      <!-- ① 工单基础：三字段单行三列（对齐 .pen yTou1 / m8cXVW） -->
+      <CreateTicketPartCard title="工单基础">
+        <div class="row-3 basic-row">
+          <div class="inline-field basic-field">
+            <label class="inline-label base"><span class="req">*</span>业务类型</label>
+            <FormSelect
+              v-model:value="form.businessType"
+              class="inline-control field-control"
+              size="middle"
+              :status="errors.businessType ? 'error' : ''"
+              :options="BUSINESS_TYPES.map((v) => ({ value: v, label: v }))"
             />
           </div>
-          <button type="button" class="btn-outline" @click="message.info('新建客户（占位）')">
-            <PlusOutlined />
-            新建客户
-          </button>
+          <div class="inline-field basic-field">
+            <label class="inline-label base"><span class="req">*</span>工单类型</label>
+            <FormSelect
+              v-model:value="form.ticketType"
+              class="inline-control field-control"
+              size="middle"
+              :status="errors.ticketType ? 'error' : ''"
+              :options="CREATE_TICKET_TYPES.map((v) => ({ value: v, label: v }))"
+            />
+          </div>
+          <div class="inline-field basic-field">
+            <label class="inline-label base">工单来源</label>
+            <div class="readonly-field" :title="form.ticketSource">{{ form.ticketSource }}</div>
+          </div>
         </div>
-        <div v-if="customerSelected" class="customer-card">
-          <div class="cust-avatar">张</div>
-          <div class="cust-info">
-            <div class="cust-name-row">
-              <span class="cust-name">张小凡</span>
-              <span class="vip-tag">VIP</span>
+      </CreateTicketPartCard>
+
+      <!-- ② 客户信息（对齐 .pen tvmVK / i67UL） -->
+      <CreateTicketPartCard title="客户信息">
+        <div class="customer-body">
+          <div class="customer-toolbar">
+            <div class="search-box" @keyup.enter="searchCustomer">
+              <SearchOutlined :style="{ color: '#9CA3AF', fontSize: '15px' }" />
+              <input
+                v-model="form.customerQuery"
+                class="search-input"
+                placeholder="搜索手机号 / 姓名 / 客户编号"
+              />
             </div>
-            <div class="cust-meta">钻石会员 · 历史工单 12 单 · 近30天 3 单</div>
+            <button type="button" class="btn-outline" @click="openCreateCustomer">
+              <PlusOutlined />
+              新建客户
+            </button>
+            <button type="button" class="btn-outline" @click="toggleReporter">
+              <UserAddOutlined />
+              新增代报人
+            </button>
           </div>
-          <span class="link" @click="customerSelected = false">更换</span>
-        </div>
-      </div>
 
-      <!-- 产品 / SN -->
-      <div class="row-2">
-        <div class="field">
-          <label class="label">关联产品</label>
-          <a-select
-            v-model:value="form.product"
-            class="full"
-            :options="PRODUCTS.map((v) => ({ value: v, label: v }))"
-          />
-        </div>
-        <div class="field">
-          <label class="label"><span class="req">*</span>SN 序列号</label>
-          <div class="sn-row">
-            <a-input v-model:value="form.sn" class="sn-input" />
-            <span v-if="snVerified" class="sn-badge">校验成功</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- 类型专属字段 -->
-      <template v-if="showTypeFields">
-        <div class="type-section-label">
-          <i class="type-bar" />
-          <span>「{{ form.type }}」工单专属字段（随工单类型动态加载）</span>
-        </div>
-        <div class="row-2">
-          <div class="field">
-            <label class="label"><span class="req">*</span>投诉类型</label>
-            <a-select
-              v-model:value="form.complaintType"
-              class="full"
-              :options="COMPLAINT_TYPES.map((v) => ({ value: v, label: v }))"
+          <div v-if="form.showReporter" class="reporter-row">
+            <a-input v-model:value="form.reporter.name" placeholder="代报人姓名" />
+            <a-input v-model:value="form.reporter.phone" placeholder="代报人手机" />
+            <FormSelect
+              v-model:value="form.reporter.relation"
+              :options="['家属', '同事', '朋友', '其他'].map((v) => ({ value: v, label: v }))"
             />
           </div>
-          <div class="field">
-            <label class="label"><span class="req">*</span>严重程度</label>
-            <a-select
-              v-model:value="form.severity"
-              class="full"
-              :options="SEVERITIES.map((v) => ({ value: v, label: v }))"
-            />
-          </div>
-        </div>
-      </template>
 
-      <!-- 客户诉求 -->
-      <div class="field">
-        <label class="label"><span class="req">*</span>客户诉求</label>
-        <a-textarea v-model:value="form.desc" :rows="3" class="desc-area" />
-        <div v-if="showAiBar" class="ai-bar">
-          <ThunderboltOutlined :style="{ color: '#7C3AED', fontSize: '13px', flex: 'none' }" />
-          <span class="ai-text">
-            AI 已识别：类型={{ form.type }} · 紧急度 {{ form.severity }} · 关键词 跳歌/在线歌单/重启无效
-          </span>
-          <button
-            type="button"
-            class="ai-adopt"
-            :class="{ adopted: aiAdopted }"
-            @click="aiAdopted = true"
+          <div
+            v-if="form.customer"
+            class="customer-card"
+            :class="{ 'addr-missing': customerAddressRequired && errors.customerAddress }"
           >
-            {{ aiAdopted ? '已采纳' : '采纳' }}
-          </button>
+            <div class="cust-avatar">{{ form.customer.name.slice(0, 1) }}</div>
+            <div class="cust-info">
+              <div class="cust-line1">
+                <span class="cust-name">{{ form.customer.name }}</span>
+                <span v-if="form.customer.vip" class="vip-tag">VIP</span>
+                <span class="cust-phone">{{ form.customer.phone }}</span>
+              </div>
+              <div class="cust-line2">
+                {{ formatCustomerSubline(form.customer) }}
+                <span
+                  v-if="customerAddressRequired && errors.customerAddress"
+                  class="addr-warn"
+                >
+                  · * 省市区未填写
+                </span>
+              </div>
+            </div>
+            <div class="cust-actions">
+              <span class="link" @click="openEditCustomer">编辑</span>
+            </div>
+          </div>
+          <div v-else class="customer-empty" :class="{ error: errors.customer }">
+            请搜索或新建客户
+          </div>
         </div>
-      </div>
+      </CreateTicketPartCard>
 
-      <!-- 优先级 / 期望时间 / SLA -->
-      <div class="row-3 row-bottom">
-        <div class="field">
-          <label class="label"><span class="req">*</span>优先级</label>
-          <a-select
+      <!-- ③ 产品问题（对齐 .pen BaY72 / OKN77） -->
+      <CreateTicketPartCard title="产品问题">
+        <div class="product-body">
+        <div class="product-top-row">
+          <div class="product-cascade">
+            <div class="inline-field flex1">
+              <label class="inline-label sm"><span class="req">*</span>产品分类</label>
+              <FormSelect
+                v-model:value="form.productCategory"
+                class="inline-control field-control"
+                size="middle"
+                :status="errors.productCategory ? 'error' : ''"
+                :options="PRODUCT_CATEGORIES.map((v) => ({ value: v, label: v }))"
+                @change="onProductCategoryChange"
+              />
+            </div>
+            <RightOutlined class="cascade-arrow" />
+            <div class="inline-field flex1">
+              <label class="inline-label sm"><span class="req">*</span>产品名称</label>
+              <FormSelect
+                :key="form.productCategory"
+                v-model:value="form.productName"
+                class="inline-control field-control"
+                size="middle"
+                :status="errors.productName ? 'error' : ''"
+                :disabled="!productNameOptions.length"
+                :placeholder="productNameOptions.length ? '请选择' : '请先选分类'"
+                :options="productNameOptions.map((v) => ({ value: v, label: v }))"
+                @change="onProductNameChange"
+              />
+            </div>
+          </div>
+          <div class="inline-field product-sn-field">
+            <label class="inline-label xs">设备SN</label>
+            <a-input
+              v-model:value="form.deviceSn"
+              class="inline-control field-control"
+              size="middle"
+              placeholder="请输入设备SN"
+            />
+          </div>
+        </div>
+
+        <div class="problem-cascade">
+          <div class="inline-field flex1">
+            <label class="inline-label sm"><span class="req">*</span>问题一类</label>
+            <FormSelect
+              v-model:value="form.problemL1"
+              class="inline-control field-control"
+              size="middle"
+              :status="errors.problemL1 ? 'error' : ''"
+              :options="problemL1Options.map((v) => ({ value: v, label: v }))"
+              @change="onProblemL1Change"
+            />
+          </div>
+          <RightOutlined class="cascade-arrow" />
+          <div class="inline-field flex1">
+            <label class="inline-label sm"><span class="req">*</span>问题二类</label>
+            <FormSelect
+              v-model:value="form.problemL2"
+              class="inline-control field-control"
+              size="middle"
+              :status="errors.problemL2 ? 'error' : ''"
+              :options="problemL2Options.map((v) => ({ value: v, label: v }))"
+              @change="onProblemL2Change"
+            />
+          </div>
+          <RightOutlined class="cascade-arrow" />
+          <div class="inline-field flex1">
+            <label class="inline-label sm"><span class="req">*</span>问题三类</label>
+            <FormSelect
+              v-model:value="form.problemL3"
+              class="inline-control field-control"
+              size="middle"
+              :status="errors.problemL3 ? 'error' : ''"
+              :options="problemL3Options.map((v) => ({ value: v, label: v }))"
+            />
+          </div>
+        </div>
+
+        <div class="inline-field priority-row">
+          <label class="inline-label priority"><span class="req">*</span>优先级</label>
+          <FormSelect
             v-model:value="form.priority"
-            class="full"
-            :options="PRIORITIES.map((p) => ({ value: p.value, label: p.label }))"
+            class="inline-control field-control"
+            size="middle"
+            :options="PRIORITY_OPTIONS.map((p) => ({ value: p.value, label: p.label }))"
           />
         </div>
-        <div class="field">
-          <label class="label">期望解决时间</label>
-          <a-select
-            v-model:value="form.expectTime"
-            class="full"
-            :options="EXPECT_TIMES.map((v) => ({ value: v, label: v }))"
-          />
-        </div>
-        <div class="field">
-          <label class="label">SLA 预览</label>
-          <div class="sla-preview">
-            <ClockCircleOutlined :style="{ color: '#D97706', fontSize: '13px' }" />
-            <span>{{ slaPreview }}</span>
-          </div>
-        </div>
-      </div>
 
-      <!-- 智能分派建议 -->
-      <div class="assign-box">
-        <div class="assign-head">
-          <span class="assign-title">
-            <ThunderboltOutlined :style="{ color: '#7C3AED', fontSize: '14px' }" />
-            智能分派建议
-          </span>
-          <span class="link" @click="message.info('改派 / 转工单池（占位）')">改派 / 转工单池</span>
-        </div>
-        <div class="assign-card">
-          <div class="cust-avatar sm">王</div>
-          <div class="assign-info">
-            <div class="assign-name">投诉处理一组 · 王坐席</div>
-            <div class="assign-meta">技能匹配 · 当前负载低 3/8 · SLA 达成 96%</div>
+        <div class="desc-block">
+          <div class="desc-label-row">
+            <span class="req">*</span>
+            <span>问题描述</span>
           </div>
-          <button
-            type="button"
-            class="assign-adopt"
-            :class="{ adopted: assignAdopted }"
-            @click="assignAdopted = true"
-          >
-            {{ assignAdopted ? '已采纳' : '采纳' }}
-          </button>
+          <a-textarea
+            v-model:value="form.description"
+            :rows="3"
+            :status="errors.description ? 'error' : ''"
+            class="desc-area"
+          />
+          <div v-if="showAiBar" class="ai-bar">
+            <ThunderboltOutlined :style="{ color: '#7C3AED', fontSize: '13px', flex: 'none' }" />
+            <span class="ai-text">{{ aiSummary }}</span>
+            <button
+              type="button"
+              class="ai-adopt"
+              :class="{ adopted: aiAdopted }"
+              @click="aiAdopted = true"
+            >
+              {{ aiAdopted ? '已采纳' : '采纳' }}
+            </button>
+          </div>
         </div>
-      </div>
+        </div>
+      </CreateTicketPartCard>
+
+      <!-- ④ 类型专属 -->
+      <CreateTicketPartCard
+        v-if="showTypePart"
+        :subtitle="typePartSubtitle"
+        :body-gap="10"
+      >
+        <template v-if="form.ticketType === '投诉'">
+          <div class="row-3">
+            <div class="inline-field">
+              <label class="inline-label md"><span class="req">*</span>投诉类型</label>
+              <FormSelect
+                v-model:value="form.complaintType"
+                class="inline-control field-control"
+                :options="COMPLAINT_TYPE_OPTIONS.map((v) => ({ value: v, label: v }))"
+              />
+            </div>
+            <div class="inline-field">
+              <label class="inline-label md">投诉平台</label>
+              <FormSelect
+                v-model:value="form.complaintPlatform"
+                class="inline-control field-control"
+                :options="COMPLAINT_PLATFORM_OPTIONS.map((v) => ({ value: v, label: v }))"
+              />
+            </div>
+            <div class="inline-field">
+              <label class="inline-label lg"><span class="req">*</span>归属业务线</label>
+              <FormSelect
+                v-model:value="form.businessLine"
+                class="inline-control field-control"
+                :options="BUSINESS_LINE_OPTIONS.map((v) => ({ value: v, label: v }))"
+              />
+            </div>
+          </div>
+          <div class="row-3">
+            <div class="inline-field">
+              <label class="inline-label md"><span class="req">*</span>投诉编号</label>
+              <a-input
+                v-model:value="form.complaintNo"
+                placeholder="外部平台单号"
+                class="inline-control field-control"
+              />
+            </div>
+            <div class="inline-field">
+              <label class="inline-label xl"><span class="req">*</span>前期是否反馈</label>
+              <FormSelect
+                v-model:value="form.priorFeedback"
+                class="inline-control field-control"
+                :options="YES_NO_OPTIONS.map((v) => ({ value: v, label: v }))"
+              />
+            </div>
+            <div class="inline-field">
+              <label class="inline-label md"><span class="req">*</span>服务回溯</label>
+              <FormSelect
+                v-model:value="form.serviceReview"
+                class="inline-control field-control"
+                :options="SERVICE_REVIEW_OPTIONS.map((v) => ({ value: v, label: v }))"
+              />
+            </div>
+          </div>
+          <div class="row-3">
+            <div class="inline-field">
+              <label class="inline-label xl"><span class="req">*</span>投诉一类</label>
+              <FormSelect
+                v-model:value="form.complaintL1"
+                class="inline-control field-control"
+                :options="COMPLAINT_L1_OPTIONS.map((v) => ({ value: v, label: v }))"
+              />
+            </div>
+            <div class="inline-field">
+              <label class="inline-label xl"><span class="req">*</span>投诉二类</label>
+              <FormSelect
+                v-model:value="form.complaintL2"
+                class="inline-control field-control"
+                :options="complaintL2Options.map((v) => ({ value: v, label: v }))"
+              />
+            </div>
+            <div class="inline-field">
+              <label class="inline-label xl"><span class="req">*</span>问题发生时间</label>
+              <a-input v-model:value="form.problemTime" class="inline-control field-control" />
+            </div>
+          </div>
+        </template>
+
+        <template v-else-if="form.ticketType === '建议'">
+          <div class="row-2">
+            <div class="inline-field">
+              <label class="inline-label xl"><span class="req">*</span>建议分类一级</label>
+              <FormSelect
+                v-model:value="form.suggestL1"
+                class="inline-control field-control"
+                :options="SUGGEST_L1_OPTIONS.map((v) => ({ value: v, label: v }))"
+              />
+            </div>
+            <div class="inline-field">
+              <label class="inline-label xl"><span class="req">*</span>建议分类二级</label>
+              <FormSelect
+                v-model:value="form.suggestL2"
+                class="inline-control field-control"
+                :options="suggestL2Options.map((v) => ({ value: v, label: v }))"
+              />
+            </div>
+          </div>
+        </template>
+
+        <template v-else-if="form.ticketType === '咨询'">
+          <div class="inline-field">
+            <label class="inline-label xl"><span class="req">*</span>问题发生时间</label>
+            <a-input v-model:value="form.problemTime" class="inline-control field-control" />
+          </div>
+        </template>
+      </CreateTicketPartCard>
+
+      <!-- ⑤ 工单标题（无分区大标题，对齐 SlSwt） -->
+      <CreateTicketPartCard compact>
+        <div class="inline-field">
+          <label class="inline-label title-label">工单标题</label>
+          <a-input
+            v-model:value="form.title"
+            class="inline-control field-control"
+            :status="errors.title ? 'error' : ''"
+            placeholder="产品名称 + 问题三级 + 工单来源"
+            @input="onTitleInput"
+          />
+        </div>
+      </CreateTicketPartCard>
+
+      <!-- ⑥ 处理配置 -->
+      <CreateTicketPartCard title="处理配置">
+        <div class="row-2 handle-row">
+          <div class="inline-field">
+            <label class="inline-label lg">期望解决时间</label>
+            <FormSelect
+              v-model:value="form.expectTime"
+              class="inline-control field-control"
+              size="middle"
+              :options="EXPECT_TIMES.map((v) => ({ value: v, label: v }))"
+            />
+          </div>
+          <div class="inline-field">
+            <label class="inline-label sla-label">SLA 预览</label>
+            <div class="sla-preview">
+              <ClockCircleOutlined :style="{ color: '#D97706', fontSize: '13px' }" />
+              <span>{{ slaPreview }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="assign-panel">
+          <div class="assign-head">
+            <span class="assign-title">
+              <ThunderboltOutlined :style="{ color: '#7C3AED', fontSize: '14px' }" />
+              智能分派建议
+            </span>
+            <span class="link" @click="message.info('改派 / 转工单池（占位）')">改派 / 转工单池</span>
+          </div>
+          <div class="assign-card">
+            <div class="cust-avatar sm">王</div>
+            <div class="assign-info">
+              <div class="assign-name">投诉处理一组 · 王坐席</div>
+              <div class="assign-meta">技能匹配 · 当前负载低 3/8 · SLA 达成 96%</div>
+            </div>
+            <button
+              type="button"
+              class="assign-adopt"
+              :class="{ adopted: assignAdopted }"
+              @click="assignAdopted = true"
+            >
+              {{ assignAdopted ? '已采纳' : '采纳' }}
+            </button>
+          </div>
+        </div>
+      </CreateTicketPartCard>
     </div>
 
-    <!-- Footer -->
     <div class="modal-footer">
       <div class="footer-hint">
         <WarningOutlined :style="{ color: '#F59E0B', fontSize: '13px' }" />
@@ -430,6 +581,13 @@ watch(
         </button>
       </div>
     </div>
+
+    <CustomerInfoModal
+      v-model:open="customerModalOpen"
+      :editing="editingCustomer"
+      :initial="form.customer"
+      @save="saveCustomer"
+    />
   </a-modal>
 </template>
 
@@ -481,9 +639,9 @@ watch(
 .modal-body {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   padding: 20px 24px;
-  max-height: calc(100vh - 220px);
+  max-height: calc(100vh - 200px);
   overflow-y: auto;
 }
 
@@ -501,59 +659,158 @@ watch(
 .pb-label { color: #6d28d9; font-weight: 600; }
 .pb-no { font-family: ui-monospace, monospace; color: #7c3aed; font-weight: 600; }
 .pb-title { color: #4b5563; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.parent-banner.reopen {
-  background: #fef2f2;
-  border-color: #fecaca;
-}
+.parent-banner.reopen { background: #fef2f2; border-color: #fecaca; }
 .parent-banner.reopen .pb-label { color: #dc2626; }
 .parent-banner.reopen .pb-no { color: #ef4444; }
 
-.row-3 {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 14px;
+.inline-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
+.inline-field.flex1 { flex: 1; }
+.inline-label {
+  flex: none;
+  width: 76px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #374151;
+  text-align: left;
+}
+.inline-label.sm { width: 60px; font-size: 12px; }
+.inline-label.xs { width: 48px; font-size: 12px; }
+.inline-label.md { width: 72px; font-size: 12px; }
+.inline-label.lg { width: 84px; font-size: 12px; }
+.inline-label.xl { width: 96px; font-size: 12px; }
+.inline-label.title-label { width: 72px; font-size: 12px; }
+.inline-label.sla-label { width: 55px; font-size: 13px; }
+.inline-label.priority {
+  width: 64px;
+  font-size: 13px;
+}
+.inline-label.base {
+  width: 76px;
+  font-size: 13px;
+}
+.field-control :deep(.ant-select-selector),
+.field-control.ant-input {
+  min-height: 32px;
+}
+.field-control :deep(.ant-select-selector) {
+  align-items: center;
+}
+.handle-row {
+  align-items: flex-end;
+}
+.priority-row {
+  width: 100%;
+}
+.basic-row {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  align-items: center;
+}
+.basic-row .basic-field {
+  min-width: 0;
+  width: 100%;
+}
+.basic-row .inline-label.base {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.basic-row .readonly-field {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  color: #6b7280;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-sizing: border-box;
+}
+.basic-row :deep(.ant-select-single) {
+  height: 32px;
+}
+.basic-row :deep(.ant-select-selector) {
+  height: 32px !important;
+  min-height: 32px !important;
+}
+.inline-control { flex: 1; min-width: 0; }
+.req { color: #f56c6c; margin-right: 2px; }
+
+.readonly-field {
+  flex: 1;
+  padding: 8px 12px;
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #6b7280;
+}
+
 .row-2 {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 14px;
 }
-.row-bottom {
-  align-items: end;
+.row-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
 }
+.row-bottom { align-items: end; }
 
-.field {
+.product-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.product-top-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+.product-cascade {
+  flex: 2;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.product-sn-field {
+  flex: 1;
+  min-width: 0;
+}
+.customer-body {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  min-width: 0;
 }
-.label {
-  font-size: 13px;
-  font-weight: 500;
-  color: #374151;
-}
-.req {
-  color: #f56c6c;
-  margin-right: 2px;
-}
-.full {
-  width: 100%;
-}
-
-.customer-search-row {
+.customer-toolbar {
   display: flex;
   gap: 8px;
+  align-items: center;
+  flex-wrap: nowrap;
 }
 .search-box {
   flex: 1;
+  min-width: 0;
+  height: 35px;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 0 12px;
   background: #fff;
   border: 1px solid #d1d5db;
   border-radius: 6px;
+  box-sizing: border-box;
 }
 .search-input {
   flex: 1;
@@ -563,31 +820,55 @@ watch(
   color: #374151;
   background: transparent;
 }
-.search-input::placeholder {
-  color: #9ca3af;
-}
+.search-input::placeholder { color: #9ca3af; }
 .btn-outline {
   display: flex;
   align-items: center;
   gap: 4px;
   flex: none;
+  height: 35px;
   font-size: 13px;
   color: #1a6fff;
   background: #fff;
   border: 1px solid #d1d5db;
   border-radius: 6px;
-  padding: 8px 12px;
+  padding: 0 12px;
   cursor: pointer;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.reporter-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 120px;
+  gap: 8px;
 }
 
 .customer-card {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-height: 58px;
   padding: 10px;
   background: #f0f7ff;
   border: 1px solid #bfdbfe;
   border-radius: 6px;
+  box-sizing: border-box;
+}
+.customer-card.addr-missing {
+  border-color: #fca5a5;
+}
+.customer-empty {
+  padding: 10px 12px;
+  font-size: 12px;
+  color: #9ca3af;
+  border: 1px dashed #d1d5db;
+  border-radius: 6px;
+}
+.customer-empty.error {
+  border-color: #fca5a5;
+  color: #ef4444;
+  background: #fef2f2;
 }
 .cust-avatar {
   width: 34px;
@@ -602,36 +883,39 @@ watch(
   justify-content: center;
   flex: none;
 }
-.cust-avatar.sm {
-  width: 34px;
-  height: 34px;
-}
-.cust-info {
-  flex: 1;
-  min-width: 0;
-}
-.cust-name-row {
+.cust-avatar.sm { width: 34px; height: 34px; }
+.cust-info { flex: 1; min-width: 0; }
+.cust-line1 {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
 }
-.cust-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: #111827;
-}
+.cust-name { font-size: 13px; font-weight: 600; color: #111827; }
+.cust-phone { font-size: 12px; color: #6b7280; }
 .vip-tag {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   color: #b45309;
   background: #fef3c7;
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: 3px;
+  line-height: 1.4;
 }
-.cust-meta {
+.cust-line2 {
   font-size: 11px;
   color: #9ca3af;
   margin-top: 3px;
+  line-height: 1.4;
+}
+.addr-warn { color: #ef4444; font-weight: 600; }
+.cust-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  flex: none;
+  align-self: stretch;
 }
 .link {
   font-size: 12px;
@@ -641,13 +925,24 @@ watch(
   flex: none;
 }
 
-.sn-row {
+.problem-cascade {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.cascade-arrow {
+  flex: none;
+  font-size: 12px;
+  color: #d1d5db;
+  margin-top: 2px;
+}
+
+.sn-wrap {
+  flex: 1;
   display: flex;
   align-items: center;
   gap: 8px;
-}
-.sn-input {
-  flex: 1;
+  min-width: 0;
 }
 .sn-badge {
   font-size: 11px;
@@ -657,26 +952,25 @@ watch(
   border-radius: 3px;
   padding: 1px 6px;
   flex: none;
+  white-space: nowrap;
 }
 
-.type-section-label {
+.desc-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.desc-label-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #6b7280;
+  gap: 3px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
 }
-.type-bar {
-  display: inline-block;
-  width: 3px;
-  height: 13px;
-  background: #1a6fff;
-  border-radius: 2px;
-}
-
 .desc-area {
   font-size: 13px;
+  min-height: 70px;
 }
 
 .ai-bar {
@@ -705,11 +999,10 @@ watch(
   padding: 3px 10px;
   cursor: pointer;
 }
-.ai-adopt.adopted {
-  background: #a78bfa;
-}
+.ai-adopt.adopted { background: #a78bfa; }
 
 .sla-preview {
+  flex: 1;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -720,14 +1013,15 @@ watch(
   font-size: 12px;
   font-weight: 500;
   color: #d97706;
-  min-height: 38px;
+  min-height: 33px;
+  box-sizing: border-box;
 }
 
-.assign-box {
-  background: #f9fafb;
+.assign-panel {
+  background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
-  padding: 12px;
+  padding: 10px 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -754,20 +1048,9 @@ watch(
   border: 1px solid #e5e7eb;
   border-radius: 6px;
 }
-.assign-info {
-  flex: 1;
-  min-width: 0;
-}
-.assign-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: #111827;
-}
-.assign-meta {
-  font-size: 11px;
-  color: #9ca3af;
-  margin-top: 2px;
-}
+.assign-info { flex: 1; min-width: 0; }
+.assign-name { font-size: 13px; font-weight: 600; color: #111827; }
+.assign-meta { font-size: 11px; color: #9ca3af; margin-top: 2px; }
 .assign-adopt {
   flex: none;
   font-size: 12px;
@@ -779,9 +1062,7 @@ watch(
   padding: 5px 14px;
   cursor: pointer;
 }
-.assign-adopt.adopted {
-  background: #60a5fa;
-}
+.assign-adopt.adopted { background: #60a5fa; }
 
 .modal-footer {
   display: flex;
@@ -813,10 +1094,7 @@ watch(
   padding: 9px 18px;
   cursor: pointer;
 }
-.btn-ghost:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
+.btn-ghost:disabled { opacity: 0.6; cursor: not-allowed; }
 .btn-primary {
   font-size: 13px;
   font-weight: 600;
@@ -827,15 +1105,23 @@ watch(
   padding: 9px 18px;
   cursor: pointer;
 }
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
+.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
 
 @media (max-width: 768px) {
   .row-3,
-  .row-2 {
-    grid-template-columns: 1fr;
+  .row-2,
+  .reporter-row,
+  .product-top-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .problem-cascade,
+  .product-cascade {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .cascade-arrow {
+    display: none;
   }
 }
 </style>
