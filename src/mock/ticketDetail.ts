@@ -1,3 +1,6 @@
+import type {
+  AgentInfo, ComplaintInfo, ContactItem, InsightStats,
+} from '@/views/tickets/types/operation';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 
 // 工单操作页 Mock（样例 = 设计稿 LCMN-20260610-73026 · P-工单处理 定稿）。
@@ -36,31 +39,36 @@ export interface TicketDetailMeta {
   slaWhole: string;
   slaNode: string;
   slaNodeOverdue: boolean;
-  dunningTimes: number;
-  dunningLast: string;
   builder: string;
+  builderShort: string;
   source: string;
   createdAt: string;
-  complaintType: string;
+  createdAtFull: string;
+  businessType: string;
+  businessLine: string;
+  issueOccurredAt: string;
   expectedResolve: string;
   demand: string;
   attachments: string[];
+  isExternalAppeal: boolean;
+  insight: InsightStats;
   customer: {
     name: string;
     types: string[];
     gender: string;
-    phones: string[];
+    contacts: ContactItem[];
     region: string;
     address: string;
-    historyCount: number;
-    recent30: number;
   };
+  agent: AgentInfo | null;
   product: {
     category: string;
     name: string;
     tags: string[];
     sn: string;
+    issueTags: string[];
   };
+  complaint: ComplaintInfo;
   childTickets: ChildTicket[];
   linkedRecords: LinkedRecord[];
   similarTicket: SimilarTicket;
@@ -78,31 +86,62 @@ export const TICKET_DETAIL: TicketDetailMeta = {
   slaWhole: '02:40:15',
   slaNode: '00:12:30',
   slaNodeOverdue: true,
-  dunningTimes: 3,
-  dunningLast: '今天 10:32',
   builder: '李一线（一线坐席）',
+  builderShort: '李一线',
   source: '在线客服',
   createdAt: '今天 09:10',
-  complaintType: '产品质量',
+  createdAtFull: '2026-05-01 16:40',
+  businessType: '学习机',
+  businessLine: '学习机业务线',
+  issueOccurredAt: '2026-06-18 14:30',
   expectedResolve: '今日 18:00',
   demand:
     '使用无线音箱播放在线音乐时，频繁出现自动跳过当前歌曲的情况，重启后仍复现，影响正常使用，要求尽快解决。',
   attachments: ['故障录屏.mp4', '设置截图.png'],
+  isExternalAppeal: false,
+  insight: {
+    inboundCount: 8,
+    historyCount: 12,
+    complaintCount: 1,
+    recent30Count: 30,
+    dunningCount: 1,
+    supplementCount: 3,
+    relatedCount: 10,
+  },
   customer: {
     name: '张小凡',
     types: ['G个人用户', 'J家长', 'J教研员', 'D代理商', 'J教育局', 'G个人自媒体'],
     gender: '男',
-    phones: ['138 0013 8000', '021-8888 6666'],
+    contacts: [
+      { type: 'phone', value: '138 0013 8000' },
+      { type: 'phone', value: '021-8888 6666' },
+      { type: 'email', value: 'zhangxf@iflytek.com' },
+    ],
     region: '安徽省 / 合肥市 / 蜀山区',
     address: '望江西路 666 号讯飞大厦 A 座',
-    historyCount: 12,
-    recent30: 3,
+  },
+  agent: {
+    name: '张太太',
+    relation: '家属',
+    contacts: [
+      { type: 'phone', value: '139 1234 5678' },
+      { type: 'email', value: 'zhangtt@qq.com' },
+    ],
   },
   product: {
     category: '智能键盘',
     name: '讯飞智能键盘K710',
     tags: ['红色', '科大讯飞'],
     sn: 'K710A240915001234',
+    issueTags: ['功能异常', '播放问题', '在线播放'],
+  },
+  complaint: {
+    complaintType: '服务投诉',
+    platform: '黑猫投诉',
+    complaintNo: 'HM20260618001',
+    tags: ['产品质量', '功能缺陷'],
+    priorFeedback: '是',
+    serviceReview: '需要回溯',
   },
   childTickets: [
     {
@@ -217,3 +256,24 @@ export const TIMELINE: TimelineEntry[] = [
     what: '处理很及时，态度也好，五星好评！',
   },
 ];
+
+export const DEFAULT_PROCESS_DRAFT = {
+  problemCause: '在线歌单播放时频繁跳歌，重启无效；客户情绪偏急，已催单 3 次。',
+  processResult: '已远程升级固件至 v2.3.1 并复测 30 分钟，跳歌问题未再复现。',
+  serviceMethod: '远程指导',
+  serviceType: '技术支持（随服务方式自动带出）',
+  conclusion: 'resolved' as const,
+  complaintCat1: '产品质量',
+  complaintCat2: '功能缺陷',
+  complaintCat3: '播放异常',
+  complaintNote: '客户要求 48h 内书面回复，此处修正分类与备注',
+  riskHasRisk: true,
+  riskLevel: '中风险',
+  riskDescription: '客户多次催单，存在升级外投风险，需班组长关注。',
+  appointmentNeeded: true,
+  appointmentStart: '2026-06-19 14:00',
+  appointmentEnd: '2026-06-19 16:00',
+  qualityIsStandard: true,
+  qualityIssueCat: '信息不完整',
+  qualityIssueReason: '',
+};

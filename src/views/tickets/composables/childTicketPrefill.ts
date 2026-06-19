@@ -26,6 +26,10 @@ function mapPriority(p: string): Priority {
   return 'P1';
 }
 
+function firstPhone(parent: TicketDetailMeta): string {
+  return parent.customer.contacts.find((c) => c.type === 'phone')?.value ?? '';
+}
+
 /** 从主单详情生成子单新建弹窗预填数据 */
 export function buildChildTicketPrefill(parent: TicketDetailMeta): CreateTicketPrefill {
   const parentType = parent.type;
@@ -37,14 +41,14 @@ export function buildChildTicketPrefill(parent: TicketDetailMeta): CreateTicketP
     parentNo: parent.no,
     parentTitle: parent.title,
     customerName: parent.customer.name,
-    customerPhone: parent.customer.phones[0] ?? '',
+    customerPhone: firstPhone(parent),
     vip: parent.customer.types.some((t) => t.includes('VIP')),
     product: parent.product.name,
     sn: parent.product.sn,
     channel: CHANNEL_MAP[parent.channel] ?? '在线客服',
     formTicketType: childFormType,
     priority: mapPriority(parent.priority),
-    complaintType: parent.complaintType,
+    complaintType: parent.complaint.complaintType,
     expectTime: parent.expectedResolve,
     desc: [
       `【子单·关联主单 ${parent.no}】`,
@@ -67,14 +71,14 @@ export function buildReopenTicketPrefill(parent: TicketDetailMeta): CreateTicket
     parentNo: parent.no,
     parentTitle: parent.title,
     customerName: parent.customer.name,
-    customerPhone: parent.customer.phones[0] ?? '',
+    customerPhone: firstPhone(parent),
     vip: parent.customer.types.some((t) => t.includes('VIP')),
     product: parent.product.name,
     sn: parent.product.sn,
     channel: CHANNEL_MAP[parent.channel] ?? '在线客服',
     formTicketType,
     priority: mapPriority(parent.priority),
-    complaintType: parent.complaintType,
+    complaintType: parent.complaint.complaintType,
     expectTime: parent.expectedResolve,
     desc: [
       `【Reopen·关联原单 ${parent.no}】`,
