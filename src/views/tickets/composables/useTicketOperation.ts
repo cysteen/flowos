@@ -6,6 +6,7 @@ import type { TicketDetailMeta, ChildTicket } from '@/mock/ticketDetail';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 import type { Ticket, Channel, TicketType, Priority } from '@/views/tickets/types/ticket';
 import { TICKETS } from '@/mock/tickets';
+import { TYPE_SAMPLES } from '@/mock/ticketTypeSamples';
 import { useUserStore } from '@/stores/user';
 import {
   applyOpAction, mapUserRole, pushEntry,
@@ -32,6 +33,10 @@ export function useTicketOperation() {
       base.customer.name = t.customer;
       base.product.name = t.product;
     }
+    // 按类型覆盖概要（需求摘要、处理洞察统计），使工单处理 Tab 与右栏数据随类型差异化。
+    const sample = TYPE_SAMPLES[base.type]?.detail;
+    if (sample?.demand) base.demand = sample.demand;
+    if (sample?.insight) base.insight = sample.insight;
     detail.value = base;
   }
 

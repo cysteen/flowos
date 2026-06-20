@@ -1,6 +1,12 @@
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type { ProcessFormDraft, SupplementChip, SectionKey } from '@/views/tickets/types/operation';
 import { DEFAULT_PROCESS_DRAFT } from '@/mock/ticketDetail';
+import { TYPE_SAMPLES } from '@/mock/ticketTypeSamples';
+
+/** 按工单类型构建 Tab① 处理表单预填（投诉用 base，咨询/商机/建议用类型样例覆盖）。 */
+function buildDraft(type: string): ProcessFormDraft {
+  return { ...DEFAULT_PROCESS_DRAFT, ...(TYPE_SAMPLES[type]?.processDraft ?? {}) };
+}
 
 function countFilledSupplements(form: ProcessFormDraft): number {
   let n = 0;
@@ -11,9 +17,13 @@ function countFilledSupplements(form: ProcessFormDraft): number {
   return n;
 }
 
-export function useProcessForm() {
-  const form = ref<ProcessFormDraft>({ ...DEFAULT_PROCESS_DRAFT });
+export function useProcessForm(getType: () => string) {
+  const form = ref<ProcessFormDraft>(buildDraft(getType()));
   const activeChip = ref<SupplementChip>('complaint');
+
+  watch(getType, (type) => {
+    form.value = buildDraft(type);
+  });
   const expandedSections = ref<Record<SectionKey, boolean>>({
     record: true,
     service: true,

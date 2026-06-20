@@ -27,8 +27,8 @@ const {
 const {
   form, activeChip, expandedSections, filledSupplementCount,
   toggleSection, selectChip,
-} = useProcessForm();
-const { tabData } = useOperationTabs();
+} = useProcessForm(() => d.value.type);
+const { tabData } = useOperationTabs(() => d.value.type);
 
 const ticketNo = computed(() => (route.params.ticketNo as string) || d.value.no);
 const processTabsRef = ref<InstanceType<typeof OpProcessTabs> | null>(null);
