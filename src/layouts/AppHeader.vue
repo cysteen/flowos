@@ -4,7 +4,6 @@ import { message } from 'ant-design-vue';
 import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
-  SearchOutlined,
   BellOutlined,
   QuestionCircleOutlined,
   GlobalOutlined,
@@ -77,14 +76,6 @@ function onMenuClick({ key }: { key: string | number }) {
       <!-- 二线坐席 软电话(CTI) 状态条（替代原面包屑） -->
       <AgentCtiBar />
 
-      <!-- 搜索（260） -->
-      <div class="search">
-        <SearchOutlined :style="{ fontSize: '14px', color: '#9CA3AF' }" />
-        <span class="search-ph">搜索功能、数据...</span>
-        <div class="search-sp"></div>
-        <span class="kbd">⌘K</span>
-      </div>
-
       <!-- 工具图标 -->
       <div class="tools">
         <div class="tool"><BellOutlined :style="{ fontSize: '16px', color: '#6B7280' }" /></div>
@@ -128,7 +119,7 @@ function onMenuClick({ key }: { key: string | number }) {
 .app-header {
   display: flex;
   align-items: stretch;
-  height: 56px;
+  height: 64px;
   background: #fff;
   border-bottom: 1px solid #e5e7eb;
 }

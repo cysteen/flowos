@@ -7,6 +7,7 @@ export type Presence = 'idle' | 'break';
 export type CallPhase = 'none' | 'dialing' | 'talking';
 
 let dialTimer: ReturnType<typeof setTimeout> | undefined;
+let clock: ReturnType<typeof setInterval> | undefined;
 
 export const useCtiStore = defineStore('cti', {
   state: () => ({
@@ -22,15 +23,23 @@ export const useCtiStore = defineStore('cti', {
     callContact: '',
     /** 接通时间戳（通话时长计算用） */
     callSince: 0,
+    /** 共享时钟（每秒更新），供状态时长/通话时长计算 */
+    now: 0,
   }),
   getters: {
     inCall: (s): boolean => s.callPhase !== 'none',
   },
   actions: {
+    ensureClock() {
+      if (clock) return;
+      this.now = Date.now();
+      clock = setInterval(() => { this.now = Date.now(); }, 1000);
+    },
     signIn() {
       this.signedIn = true;
       this.presence = 'idle';
       this.statusSince = Date.now();
+      this.ensureClock();
     },
     signOut(): boolean {
       if (this.inCall) return false;
@@ -47,6 +56,7 @@ export const useCtiStore = defineStore('cti', {
     startCall(num: string, contact = '') {
       if (!num) return;
       if (!this.signedIn) this.signIn();
+      this.ensureClock();
       this.callNumber = num;
       this.callContact = contact;
       this.callPhase = 'dialing';
