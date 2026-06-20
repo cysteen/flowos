@@ -48,7 +48,11 @@ function removeFile(name: string) {
   <div class="textarea-attach">
     <div
       class="textarea-shell"
-      :style="{ background: shellBackground, borderRadius: `${shellRadius}px` }"
+      :style="{
+        background: shellBackground,
+        borderRadius: `${shellRadius}px`,
+        minHeight: `${minInputHeight + 36}px`,
+      }"
     >
       <textarea
         class="textarea-input"
@@ -109,16 +113,21 @@ function removeFile(name: string) {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
   border: 1px solid #e5e7eb;
   padding: 8px;
-  min-height: 88px;
+  resize: vertical;
+  overflow: auto;
 }
 
 .textarea-input {
   width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
   border: none;
   outline: none;
-  resize: vertical;
+  resize: none;
   padding: 0;
   background: transparent;
   font-family: inherit;
@@ -132,6 +141,7 @@ function removeFile(name: string) {
 }
 
 .attach-chips {
+  flex: none;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -176,9 +186,9 @@ function removeFile(name: string) {
 }
 
 .textarea-foot {
+  flex: none;
   display: flex;
   align-items: center;
-  margin-top: auto;
 }
 
 .attach-trigger {
