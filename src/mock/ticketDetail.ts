@@ -281,4 +281,10 @@ export const DEFAULT_PROCESS_DRAFT = {
   qualityIssueCat: '信息不完整',
   qualityIssueReason: '',
   qualityIssueReasonAttachments: [] as string[],
+  suggestCat1: '产品体验',
+  suggestCat2: '功能建议',
+  suggestAdopt: 'adopt' as const,
+  leadIntent: 'mid' as const,
+  leadAmount: '',
+  leadStage: 'following' as const,
 };

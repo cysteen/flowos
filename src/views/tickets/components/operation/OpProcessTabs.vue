@@ -10,7 +10,7 @@ import OpNotifyRecordsTab from './tabs/OpNotifyRecordsTab.vue';
 import OpSurveyRecordsTab from './tabs/OpSurveyRecordsTab.vue';
 import OpCustomerHistoryTab from './tabs/OpCustomerHistoryTab.vue';
 import { PROCESS_TABS, type ProcessTabKey } from '@/views/tickets/types/operation';
-import type { ProcessFormDraft } from '@/views/tickets/types/operation';
+import type { ProcessFormDraft, SectionKey } from '@/views/tickets/types/operation';
 import type { OperationTabData } from '@/views/tickets/types/operationTabs';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 
@@ -18,13 +18,13 @@ defineProps<{
   detail: TicketDetailMeta;
   tabData: OperationTabData;
   form: ProcessFormDraft;
-  expandedSections: { record: boolean; service: boolean; supplement: boolean; external: boolean };
+  expandedSections: Record<SectionKey, boolean>;
   activeChip: import('@/views/tickets/types/operation').SupplementChip;
   filledSupplementCount: number;
 }>();
 
 const emit = defineEmits<{
-  toggleSection: [key: 'record' | 'service' | 'supplement' | 'external'];
+  toggleSection: [key: SectionKey];
   selectChip: [chip: import('@/views/tickets/types/operation').SupplementChip];
   'update:form': [form: ProcessFormDraft];
   'update:tabData': [data: OperationTabData];
@@ -63,6 +63,7 @@ defineExpose({ switchTab });
       <OpProcessForm
         v-if="activeTab === 'process'"
         :form="form"
+        :ticket-type="detail.type"
         :expanded-sections="expandedSections"
         :active-chip="activeChip"
         :filled-supplement-count="filledSupplementCount"

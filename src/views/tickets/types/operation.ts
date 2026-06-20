@@ -54,7 +54,25 @@ export interface ProcessFormDraft {
   qualityIssueCat: string;
   qualityIssueReason: string;
   qualityIssueReasonAttachments: string[];
+  /** 建议专属 */
+  suggestCat1: string;
+  suggestCat2: string;
+  suggestAdopt: 'adopt' | 'reject' | 'toRequirement';
+  /** 商机专属 */
+  leadIntent: 'high' | 'mid' | 'low';
+  leadAmount: string;
+  leadStage: 'converted' | 'following' | 'lost';
 }
+
+/** 处理表单可折叠区块 key（含各工单类型专属区） */
+export type SectionKey =
+  | 'record'
+  | 'service'
+  | 'supplement'
+  | 'external'
+  | 'quality'
+  | 'suggest'
+  | 'lead';
 
 export const PROCESS_TABS = [
   { key: 'process', label: '工单处理' },

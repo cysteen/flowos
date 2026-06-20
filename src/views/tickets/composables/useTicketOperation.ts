@@ -1,9 +1,11 @@
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
 import { TICKET_DETAIL, TIMELINE } from '@/mock/ticketDetail';
 import type { TicketDetailMeta, ChildTicket } from '@/mock/ticketDetail';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 import type { Ticket, Channel, TicketType, Priority } from '@/views/tickets/types/ticket';
+import { TICKETS } from '@/mock/tickets';
 import { useUserStore } from '@/stores/user';
 import {
   applyOpAction, mapUserRole, pushEntry,
@@ -12,8 +14,32 @@ import {
 
 export function useTicketOperation() {
   const user = useUserStore();
+  const route = useRoute();
   const detail = ref<TicketDetailMeta>(JSON.parse(JSON.stringify(TICKET_DETAIL)));
   const timeline = ref<TimelineEntry[]>([...TIMELINE]);
+
+  /** 按列表点击的工单号解析对应工单，覆盖样例 detail 的头部与类型，
+   *  使处理页（Tab① 表单结构）随工单类型而变。匹配不到则回退样例。 */
+  function loadDetail(no: string) {
+    const base = JSON.parse(JSON.stringify(TICKET_DETAIL)) as TicketDetailMeta;
+    const t = TICKETS.find((x) => x.no === no);
+    if (t) {
+      base.no = t.no;
+      base.title = t.title;
+      base.type = t.type;
+      base.channel = t.channel;
+      base.priority = t.priority;
+      base.customer.name = t.customer;
+      base.product.name = t.product;
+    }
+    detail.value = base;
+  }
+
+  watch(
+    () => route.params.ticketNo as string,
+    (no) => { if (no) loadDetail(no); },
+    { immediate: true },
+  );
   const opState = ref<TicketOpState>('processing');
   const suspendInfo = ref<SuspendInfo | null>(null);
   const draftSavedAt = ref<string | null>(null);

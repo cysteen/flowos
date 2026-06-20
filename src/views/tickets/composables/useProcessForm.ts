@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue';
-import type { ProcessFormDraft, SupplementChip } from '@/views/tickets/types/operation';
+import type { ProcessFormDraft, SupplementChip, SectionKey } from '@/views/tickets/types/operation';
 import { DEFAULT_PROCESS_DRAFT } from '@/mock/ticketDetail';
 
 function countFilledSupplements(form: ProcessFormDraft): number {
@@ -14,16 +14,19 @@ function countFilledSupplements(form: ProcessFormDraft): number {
 export function useProcessForm() {
   const form = ref<ProcessFormDraft>({ ...DEFAULT_PROCESS_DRAFT });
   const activeChip = ref<SupplementChip>('complaint');
-  const expandedSections = ref({
+  const expandedSections = ref<Record<SectionKey, boolean>>({
     record: true,
     service: true,
     supplement: true,
     external: false,
+    quality: true,
+    suggest: true,
+    lead: true,
   });
 
   const filledSupplementCount = computed(() => countFilledSupplements(form.value));
 
-  function toggleSection(key: keyof typeof expandedSections.value) {
+  function toggleSection(key: SectionKey) {
     expandedSections.value[key] = !expandedSections.value[key];
   }
 
