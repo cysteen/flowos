@@ -8,6 +8,7 @@ import OpRelatedTab from './tabs/OpRelatedTab.vue';
 import OpContactRecordsTab from './tabs/OpContactRecordsTab.vue';
 import OpNotifyRecordsTab from './tabs/OpNotifyRecordsTab.vue';
 import OpSurveyRecordsTab from './tabs/OpSurveyRecordsTab.vue';
+import OpCustomerHistoryTab from './tabs/OpCustomerHistoryTab.vue';
 import { PROCESS_TABS, type ProcessTabKey } from '@/views/tickets/types/operation';
 import type { ProcessFormDraft } from '@/views/tickets/types/operation';
 import type { OperationTabData } from '@/views/tickets/types/operationTabs';
@@ -94,9 +95,6 @@ defineExpose({ switchTab });
         :related-tickets="tabData.relatedTickets"
         :supplement-records="tabData.supplementRecords"
         :dunning-records="tabData.dunningRecords"
-        :child-tickets="detail.childTickets"
-        @open-child-create="emit('openChildCreate')"
-        @open-reopen-create="emit('openReopenCreate')"
       />
 
       <OpContactRecordsTab
@@ -113,6 +111,11 @@ defineExpose({ switchTab });
         v-else-if="activeTab === 'survey'"
         :records="tabData.surveyRecords"
       />
+
+      <OpCustomerHistoryTab
+        v-else-if="activeTab === 'customerHistory'"
+        :data="tabData.customerHistory"
+      />
     </div>
   </div>
 </template>
@@ -124,13 +127,15 @@ defineExpose({ switchTab });
   flex: 1; min-width: 0;
 }
 .tab-bar {
-  display: flex; flex-wrap: wrap; border-bottom: 1px solid #e5e7eb;
-  overflow-x: auto; flex: none;
+  display: flex; flex-wrap: wrap; align-items: center;
+  border-bottom: 1px solid #e5e7eb;
+  flex: none;
 }
 .tab-item {
   padding: 10px 14px; font-size: 13px; color: #6b7280; font-weight: 500;
   background: none; border: none; border-bottom: 2px solid transparent;
   cursor: pointer; white-space: nowrap; margin-bottom: -1px;
+  font-family: inherit; line-height: 1.2;
 }
 .tab-item:hover { color: #374151; }
 .tab-item.active { color: #1a6fff; font-weight: 600; border-bottom-color: #1a6fff; }

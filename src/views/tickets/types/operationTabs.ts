@@ -3,6 +3,8 @@
 export interface TechProcessDraft {
   problemCause: string;
   processResult: string;
+  problemCauseAttachments: string[];
+  processResultAttachments: string[];
 }
 
 export interface RiskMonitorDraft {
@@ -10,11 +12,14 @@ export interface RiskMonitorDraft {
   reportTarget: string;
   assistContent: string;
   remark: string;
+  remarkAttachments: string[];
   processConclusion: string;
   processReply: string;
+  processReplyAttachments: string[];
   riskFlag: string;
   riskLevel: string;
   riskDesc: string;
+  riskDescAttachments: string[];
 }
 
 export interface FlowHistoryNode {
@@ -26,6 +31,13 @@ export interface FlowHistoryNode {
   active?: boolean;
 }
 
+export interface ProcessInfoEntry {
+  who: string;
+  when: string;
+  content: string;
+  attachments?: string[];
+}
+
 export interface RelatedTicketCard {
   no: string;
   title: string;
@@ -33,10 +45,13 @@ export interface RelatedTicketCard {
   statusColor: string;
   type: string;
   typeColor: string;
+  typeBgColor?: string;
   createdAt: string;
   builder: string;
   demand: string;
   attachments?: string[];
+  processRecords?: ProcessInfoEntry[];
+  /** @deprecated 使用 processRecords */
   processInfo?: string;
 }
 
@@ -50,22 +65,30 @@ export interface SimpleRecord {
 
 export interface ContactRecord {
   id: string;
-  kind: 'call' | 'sms';
+  kind: 'call' | 'sms' | 'email';
   title: string;
+  emoji: string;
   operator: string;
   when: string;
+  /** 元信息前缀，默认「操作人」；邮件为「发送人」 */
+  metaPrefix?: string;
   summary: string;
-  recording?: { duration: string; progress: string };
+  recording?: { progress: string; progressPercent: number };
   asr?: { speaker: string; text: string }[];
   smsContent?: string;
+  emailLines?: { text: string; bold?: boolean; muted?: boolean }[];
 }
+
+export type NotifyKind = 'upgrade' | 'timeout' | 'transfer' | 'dunning' | 'accepted';
 
 export interface NotifyRecord {
   id: string;
-  kind: 'upgrade' | 'timeout' | 'resolved';
+  kind: NotifyKind;
   title: string;
   receiver: string;
   when: string;
+  channel: string;
+  status: string;
   content: string;
 }
 
@@ -76,7 +99,34 @@ export interface SurveyRecord {
   evaluated: boolean;
   linkLabel?: string;
   conclusion?: string;
-  pending?: boolean;
+}
+
+export type CustomerHistoryFilter = 'all' | 'processing' | 'closed' | 'complaint';
+
+export interface CustomerHistoryTicket {
+  id: string;
+  no: string;
+  title: string;
+  status: string;
+  statusColor: string;
+  type: string;
+  typeColor: string;
+  typeBgColor: string;
+  channel: string;
+  date: string;
+  summary: string;
+  isProcessing: boolean;
+  isClosed: boolean;
+  isComplaint: boolean;
+}
+
+export interface CustomerHistoryData {
+  customerName: string;
+  totalCount: number;
+  processingCount: number;
+  closedCount: number;
+  complaintCount: number;
+  tickets: CustomerHistoryTicket[];
 }
 
 export interface OperationTabData {
@@ -90,4 +140,5 @@ export interface OperationTabData {
   contactRecords: ContactRecord[];
   notifyRecords: NotifyRecord[];
   surveyRecords: SurveyRecord[];
+  customerHistory: CustomerHistoryData;
 }

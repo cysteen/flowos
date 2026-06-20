@@ -14,7 +14,7 @@ import { useProcessForm } from './composables/useProcessForm';
 import { useOperationTabs } from './composables/useOperationTabs';
 import { buildChildTicketPrefill, buildReopenTicketPrefill } from './composables/childTicketPrefill';
 import type { CreateTicketPrefill, Ticket } from './types/ticket';
-import type { ProcessFormDraft, ProcessTabKey } from './types/operation';
+import type { ProcessFormDraft } from './types/operation';
 import type { OperationTabData } from './types/operationTabs';
 
 const route = useRoute();
@@ -40,9 +40,8 @@ function onContact(type: 'call' | 'sms' | 'email', value: string) {
   message.info(`${label} ${value}（演示）`);
 }
 
-function onInsightLink(target: 'history' | 'related') {
-  const tab: ProcessTabKey = target === 'history' ? 'history' : 'related';
-  processTabsRef.value?.switchTab(tab);
+function onInsightLink(target: 'customerHistory' | 'related') {
+  processTabsRef.value?.switchTab(target);
 }
 
 function openChildCreate() {

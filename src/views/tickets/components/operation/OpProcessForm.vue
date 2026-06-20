@@ -66,9 +66,13 @@ function chipActiveClass(key: SupplementChip): string {
       <OpRecordFields
         :problem-cause="form.problemCause"
         :process-result="form.processResult"
+        :problem-cause-attachments="form.problemCauseAttachments"
+        :process-result-attachments="form.processResultAttachments"
         sub-hint="结案前必填"
         @update:problem-cause="(v) => emit('update:form', { ...form, problemCause: v })"
         @update:process-result="(v) => emit('update:form', { ...form, processResult: v })"
+        @update:problem-cause-attachments="(v) => emit('update:form', { ...form, problemCauseAttachments: v })"
+        @update:process-result-attachments="(v) => emit('update:form', { ...form, processResultAttachments: v })"
       />
     </OpCollapsibleSection>
 

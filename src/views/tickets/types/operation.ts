@@ -33,6 +33,8 @@ export interface InsightStats {
 export interface ProcessFormDraft {
   problemCause: string;
   processResult: string;
+  problemCauseAttachments: string[];
+  processResultAttachments: string[];
   serviceMethod: string;
   serviceType: string;
   conclusion: 'resolved' | 'concession' | 'unresolved';
@@ -40,15 +42,18 @@ export interface ProcessFormDraft {
   complaintCat2: string;
   complaintCat3: string;
   complaintNote: string;
+  complaintNoteAttachments: string[];
   riskHasRisk: boolean;
   riskLevel: string;
   riskDescription: string;
+  riskDescriptionAttachments: string[];
   appointmentNeeded: boolean;
   appointmentStart: string;
   appointmentEnd: string;
   qualityIsStandard: boolean;
   qualityIssueCat: string;
   qualityIssueReason: string;
+  qualityIssueReasonAttachments: string[];
 }
 
 export const PROCESS_TABS = [
@@ -60,6 +65,7 @@ export const PROCESS_TABS = [
   { key: 'contact', label: '联系记录' },
   { key: 'notify', label: '通知记录' },
   { key: 'survey', label: '调研记录' },
+  { key: 'customerHistory', label: '客户历史工单' },
 ] as const;
 
 export type ProcessTabKey = (typeof PROCESS_TABS)[number]['key'];

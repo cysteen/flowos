@@ -2,6 +2,7 @@
 import { ref } from 'vue';
 import { ContainerOutlined, CheckCircleOutlined, WarningOutlined } from '@ant-design/icons-vue';
 import OpCollapsibleSection from '../OpCollapsibleSection.vue';
+import OpTextareaAttach from '../shared/OpTextareaAttach.vue';
 import type { RiskMonitorDraft } from '@/views/tickets/types/operationTabs';
 
 const props = defineProps<{ draft: RiskMonitorDraft }>();
@@ -16,7 +17,6 @@ function update(partial: Partial<RiskMonitorDraft>) {
 
 <template>
   <div class="risk-tab">
-    <!-- 报备与协助 -->
     <OpCollapsibleSection
       title="报备与协助"
       :icon="ContainerOutlined"
@@ -67,16 +67,17 @@ function update(partial: Partial<RiskMonitorDraft>) {
       </div>
       <div class="stack-field">
         <label class="lbl">备注</label>
-        <a-textarea
-          :value="draft.remark"
-          class="compact-textarea"
+        <OpTextareaAttach
+          :model-value="draft.remark"
+          :attachments="draft.remarkAttachments"
+          :min-input-height="48"
           placeholder="补充报备背景、影响范围等说明…"
-          @update:value="(v: string) => update({ remark: v })"
+          @update:model-value="(v) => update({ remark: v })"
+          @update:attachments="(v) => update({ remarkAttachments: v })"
         />
       </div>
     </OpCollapsibleSection>
 
-    <!-- 处理结论 -->
     <OpCollapsibleSection
       title="处理结论"
       :icon="CheckCircleOutlined"
@@ -99,16 +100,17 @@ function update(partial: Partial<RiskMonitorDraft>) {
       </div>
       <div class="stack-field">
         <label class="lbl">处理答复</label>
-        <a-textarea
-          :value="draft.processReply"
-          class="compact-textarea"
+        <OpTextareaAttach
+          :model-value="draft.processReply"
+          :attachments="draft.processReplyAttachments"
+          :min-input-height="48"
           placeholder="填写对坐席/客户的处理答复…"
-          @update:value="(v: string) => update({ processReply: v })"
+          @update:model-value="(v) => update({ processReply: v })"
+          @update:attachments="(v) => update({ processReplyAttachments: v })"
         />
       </div>
     </OpCollapsibleSection>
 
-    <!-- 风险标记 -->
     <OpCollapsibleSection
       title="风险标记"
       :icon="WarningOutlined"
@@ -147,11 +149,13 @@ function update(partial: Partial<RiskMonitorDraft>) {
       </div>
       <div class="stack-field">
         <label class="lbl">风险描述</label>
-        <a-textarea
-          :value="draft.riskDesc"
-          class="compact-textarea"
+        <OpTextareaAttach
+          :model-value="draft.riskDesc"
+          :attachments="draft.riskDescAttachments"
+          :min-input-height="48"
           placeholder="描述风险点、影响范围与建议处置…"
-          @update:value="(v: string) => update({ riskDesc: v })"
+          @update:model-value="(v) => update({ riskDesc: v })"
+          @update:attachments="(v) => update({ riskDescAttachments: v })"
         />
       </div>
     </OpCollapsibleSection>
@@ -159,7 +163,6 @@ function update(partial: Partial<RiskMonitorDraft>) {
 </template>
 
 <style scoped>
-/* I3oxeM：Tab 内容 gap 16，三区折叠 */
 .risk-tab { display: flex; flex-direction: column; gap: 16px; width: 100%; }
 
 .field-row { display: flex; gap: 8px; align-items: center; }
@@ -199,25 +202,5 @@ function update(partial: Partial<RiskMonitorDraft>) {
 .form-select.ant-select-focused :deep(.ant-select-selector) {
   border-color: #e5e7eb !important;
   box-shadow: none !important;
-}
-
-.compact-textarea :deep(textarea) {
-  min-height: 64px;
-  height: 64px;
-  padding: 8px;
-  border-radius: 6px;
-  border: 1px solid #e5e7eb;
-  background: #fff;
-  font-size: 12px;
-  line-height: 1.5;
-  color: #374151;
-  resize: vertical;
-  box-shadow: none;
-}
-.compact-textarea :deep(textarea::placeholder) { color: #9ca3af; }
-.compact-textarea :deep(textarea:hover),
-.compact-textarea :deep(textarea:focus) {
-  border-color: #e5e7eb;
-  box-shadow: none;
 }
 </style>

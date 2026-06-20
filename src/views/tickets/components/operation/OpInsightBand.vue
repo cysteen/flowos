@@ -3,7 +3,7 @@ import { BellOutlined } from '@ant-design/icons-vue';
 import type { InsightStats } from '@/views/tickets/types/operation';
 
 defineProps<{ insight: InsightStats }>();
-const emit = defineEmits<{ link: [target: 'history' | 'related'] }>();
+const emit = defineEmits<{ link: [target: 'customerHistory' | 'related'] }>();
 </script>
 
 <template>
@@ -21,7 +21,7 @@ const emit = defineEmits<{ link: [target: 'history' | 'related'] }>();
       <span class="muted">；最近30天：</span>
       <span class="emph">{{ insight.recent30Count }}单</span>
       <span class="sep"> · </span>
-      <span class="link" @click="emit('link', 'history')">查看历史工单 ›</span>
+      <span class="link" @click="emit('link', 'customerHistory')">查看历史工单 ›</span>
     </div>
     <div class="ib-line">
       <span class="muted">该工单被催：</span>

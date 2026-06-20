@@ -24,9 +24,13 @@ const expanded = ref(true);
       <OpRecordFields
         :problem-cause="draft.problemCause"
         :process-result="draft.processResult"
+        :problem-cause-attachments="draft.problemCauseAttachments"
+        :process-result-attachments="draft.processResultAttachments"
         sub-hint="技术支持结案必填"
         @update:problem-cause="(v) => emit('update:draft', { ...draft, problemCause: v })"
         @update:process-result="(v) => emit('update:draft', { ...draft, processResult: v })"
+        @update:problem-cause-attachments="(v) => emit('update:draft', { ...draft, problemCauseAttachments: v })"
+        @update:process-result-attachments="(v) => emit('update:draft', { ...draft, processResultAttachments: v })"
       />
     </OpCollapsibleSection>
   </div>

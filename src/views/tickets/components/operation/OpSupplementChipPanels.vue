@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import OpTextareaAttach from './shared/OpTextareaAttach.vue';
 import type { ProcessFormDraft, SupplementChip } from '@/views/tickets/types/operation';
 
 const props = defineProps<{
@@ -36,10 +37,12 @@ function update(partial: Partial<ProcessFormDraft>) {
     </div>
     <div class="field">
       <label>投诉备注</label>
-      <a-textarea
-        :value="form.complaintNote"
-        class="note-textarea"
-        @update:value="(v: string) => update({ complaintNote: v })"
+      <OpTextareaAttach
+        :model-value="form.complaintNote"
+        :attachments="form.complaintNoteAttachments"
+        :min-input-height="40"
+        @update:model-value="(v) => update({ complaintNote: v })"
+        @update:attachments="(v) => update({ complaintNoteAttachments: v })"
       />
     </div>
   </div>
@@ -65,11 +68,13 @@ function update(partial: Partial<ProcessFormDraft>) {
       </div>
       <div class="field">
         <label>风险描述</label>
-        <a-textarea
-          :value="form.riskDescription"
-          class="short-textarea"
+        <OpTextareaAttach
+          :model-value="form.riskDescription"
+          :attachments="form.riskDescriptionAttachments"
+          :min-input-height="40"
           placeholder="请描述风险情况…"
-          @update:value="(v: string) => update({ riskDescription: v })"
+          @update:model-value="(v) => update({ riskDescription: v })"
+          @update:attachments="(v) => update({ riskDescriptionAttachments: v })"
         />
       </div>
     </template>
@@ -136,11 +141,13 @@ function update(partial: Partial<ProcessFormDraft>) {
       </div>
       <div class="field">
         <label>不规范原因</label>
-        <a-textarea
-          :value="form.qualityIssueReason"
-          class="short-textarea"
+        <OpTextareaAttach
+          :model-value="form.qualityIssueReason"
+          :attachments="form.qualityIssueReasonAttachments"
+          :min-input-height="32"
           placeholder="请说明不规范原因…"
-          @update:value="(v: string) => update({ qualityIssueReason: v })"
+          @update:model-value="(v) => update({ qualityIssueReason: v })"
+          @update:attachments="(v) => update({ qualityIssueReasonAttachments: v })"
         />
       </div>
     </div>
@@ -168,12 +175,6 @@ function update(partial: Partial<ProcessFormDraft>) {
   border-radius: 6px; font-size: 12px; color: #111827; min-height: 32px;
 }
 .sel-arrow { color: #9ca3af; margin-left: auto; font-size: 10px; }
-.note-textarea :deep(textarea) {
-  min-height: 56px; padding: 8px; border-radius: 6px; font-size: 12px; resize: vertical;
-}
-.short-textarea :deep(textarea) {
-  min-height: 48px; padding: 8px; border-radius: 5px; font-size: 12px; resize: vertical;
-}
 .cat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 @media (max-width: 720px) { .cat-grid { grid-template-columns: 1fr; } }
 

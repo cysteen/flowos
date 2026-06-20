@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { FormOutlined, PaperClipOutlined } from '@ant-design/icons-vue';
+import { FormOutlined } from '@ant-design/icons-vue';
+import OpTextareaAttach from './shared/OpTextareaAttach.vue';
 
 const emit = defineEmits<{ action: [name: string] }>();
 const activeTab = ref<'note' | 'supplement'>('note');
+const note = ref('');
+const attachments = ref<string[]>([]);
 </script>
 
 <template>
@@ -15,12 +18,18 @@ const activeTab = ref<'note' | 'supplement'>('note');
         <span class="add-tab" :class="{ active: activeTab === 'supplement' }" @click="activeTab = 'supplement'">补充信息</span>
       </div>
     </div>
-    <textarea
-      class="add-textarea"
+
+    <OpTextareaAttach
+      v-model="note"
+      :attachments="attachments"
+      :min-input-height="48"
+      :shell-background="'#f9fafb'"
+      :shell-radius="8"
       :placeholder="activeTab === 'note' ? '填写内部备注（仅团队可见）…' : '填写补充信息…'"
+      @update:attachments="attachments = $event"
     />
+
     <div class="add-foot">
-      <span class="add-hint"><PaperClipOutlined /> 附件</span>
       <button class="add-btn" @click="emit('action', '添加记录')">添加</button>
     </div>
   </div>
@@ -36,12 +45,6 @@ const activeTab = ref<'note' | 'supplement'>('note');
 .add-tabs { display: flex; gap: 2px; background: #f3f4f6; border-radius: 6px; padding: 2px; flex: none; }
 .add-tab { font-size: 12px; color: #6b7280; padding: 4px 10px; border-radius: 5px; cursor: pointer; }
 .add-tab.active { background: #fff; color: #1a6fff; font-weight: 600; border: 1px solid #e5e7eb; }
-.add-textarea {
-  height: 80px; resize: none; border: 1px solid #e5e7eb; border-radius: 8px;
-  padding: 10px; font-size: 12px; color: #374151; outline: none; font-family: inherit; background: #f9fafb;
-}
-.add-textarea::placeholder { color: #9ca3af; }
-.add-foot { display: flex; align-items: center; justify-content: space-between; }
-.add-hint { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #6b7280; cursor: pointer; }
+.add-foot { display: flex; align-items: center; justify-content: flex-end; }
 .add-btn { font-size: 12px; font-weight: 600; color: #fff; background: #1a6fff; border: none; border-radius: 6px; padding: 6px 18px; cursor: pointer; }
 </style>
