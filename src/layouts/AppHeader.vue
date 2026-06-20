@@ -1,22 +1,21 @@
 <script setup lang="ts">
-import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
-  HomeOutlined,
   SearchOutlined,
   BellOutlined,
   QuestionCircleOutlined,
   GlobalOutlined,
   DownOutlined,
 } from '@ant-design/icons-vue';
+import AgentCtiBar from './AgentCtiBar.vue';
 import { useUserStore } from '@/stores/user';
 import { useAdminTabsStore } from '@/stores/adminTabs';
 import { useWorkspaceTabsStore } from '@/stores/workspaceTabs';
 import { ROLE_OPTION_GROUPS, isRoleKey } from '@/config/roles';
-import { firstMenuPath, NAV_ITEMS } from '@/config/navigation';
+import { firstMenuPath } from '@/config/navigation';
 
 defineProps<{ collapsed: boolean }>();
 const emit = defineEmits<{ toggle: [] }>();
@@ -26,12 +25,6 @@ const route = useRoute();
 const router = useRouter();
 
 const logoUrl = import.meta.env.BASE_URL + 'logo.png';
-
-const currentTitle = computed(() => {
-  if (route.meta.breadcrumb) return route.meta.breadcrumb as string;
-  const item = NAV_ITEMS.find((n) => n.key === route.meta.menu);
-  return item?.label ?? (route.meta.title as string) ?? '';
-});
 
 function onMenuClick({ key }: { key: string | number }) {
   const k = String(key);
@@ -81,12 +74,8 @@ function onMenuClick({ key }: { key: string | number }) {
         <MenuFoldOutlined v-else :style="{ fontSize: '18px', color: '#6B7280' }" />
       </div>
 
-      <!-- 面包屑：home / 当前页 -->
-      <div class="breadcrumb">
-        <HomeOutlined :style="{ fontSize: '14px', color: '#6B7280' }" />
-        <span class="sep">/</span>
-        <span class="current">{{ currentTitle }}</span>
-      </div>
+      <!-- 二线坐席 软电话(CTI) 状态条（替代原面包屑） -->
+      <AgentCtiBar />
 
       <!-- 搜索（260） -->
       <div class="search">

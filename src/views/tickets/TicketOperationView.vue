@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 import { useWorkspaceTabsStore, resolveTicketTabTitle } from '@/stores/workspaceTabs';
+import { useCtiStore } from '@/stores/cti';
 import OpHeader from './components/operation/OpHeader.vue';
 import OpInsightBand from './components/operation/OpInsightBand.vue';
 import OpTicketSummary from './components/operation/OpTicketSummary.vue';
@@ -34,6 +35,7 @@ const ticketNo = computed(() => (route.params.ticketNo as string) || d.value.no)
 const processTabsRef = ref<InstanceType<typeof OpProcessTabs> | null>(null);
 
 const tabsStore = useWorkspaceTabsStore();
+const cti = useCtiStore();
 
 /** 工单操作页加载后，用标题同步 Tab（避免仅显示工单号） */
 watch(
@@ -49,7 +51,13 @@ const createOpen = ref(false);
 const createPrefill = ref<CreateTicketPrefill | null>(null);
 
 function onContact(type: 'call' | 'sms' | 'email', value: string) {
-  const label = type === 'call' ? '呼叫' : type === 'sms' ? '短信' : '发邮件';
+  if (type === 'call') {
+    const isAgent = d.value.agent?.contacts?.some((c) => c.value === value);
+    cti.startCall(value, isAgent ? '代办人' : d.value.customer.name || '客户');
+    message.info(`正在外呼 ${value}`);
+    return;
+  }
+  const label = type === 'sms' ? '短信' : '发邮件';
   message.info(`${label} ${value}（演示）`);
 }
 
