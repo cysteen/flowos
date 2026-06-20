@@ -115,15 +115,9 @@ export const MOCK_CUSTOMER: CustomerInfo = {
   address: '望江西路666号',
 };
 
-/** 列表 TicketType 与新建表单类型映射（Mock 列表仍用旧枚举） */
+/** 列表与新建表单工单类型一致 */
 export function mapFormTypeToTicketType(t: CreateFormTicketType): TicketType {
-  const map: Record<CreateFormTicketType, TicketType> = {
-    投诉: '投诉',
-    建议: '咨询',
-    商机: '咨询',
-    咨询: '咨询',
-  };
-  return map[t];
+  return t;
 }
 
 /** 预填渠道 → 工单来源展示 */

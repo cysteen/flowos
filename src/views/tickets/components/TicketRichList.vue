@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { CheckOutlined } from '@ant-design/icons-vue';
 import {
+  CUSTOMER_TAG_COLOR,
   NODE_STATUS_COLOR,
   PRIORITY_COLOR,
   rowActions,
   SLA_COLOR,
-  SMART_MARK_COLOR,
   softBg,
   TYPE_COLOR,
   type Ticket,
@@ -65,20 +65,13 @@ const emit = defineEmits<{
           <span
             class="tag"
             :style="{ color: TYPE_COLOR[t.type], background: softBg(TYPE_COLOR[t.type]) }"
-            >{{ t.type }}</span
-          >
-          <span class="ticket-no" @click="emit('clickNo', t)">{{ t.no }}</span>
-          <span class="channel">· {{ t.channel }}</span>
+          >{{ t.type }}</span>
+          <span class="title-text">{{ t.title }}</span>
         </div>
         <div class="title-line2">
-          <span class="title-text">{{ t.title }}</span>
-          <span
-            v-for="m in t.smartMarks"
-            :key="m"
-            class="tag"
-            :style="{ color: SMART_MARK_COLOR[m], background: softBg(SMART_MARK_COLOR[m]) }"
-            >{{ m }}</span
-          >
+          <span class="channel">{{ t.channel }}</span>
+          <span class="sep">·</span>
+          <span class="ticket-no" @click="emit('clickNo', t)">{{ t.no }}</span>
         </div>
       </div>
 
@@ -86,7 +79,12 @@ const emit = defineEmits<{
       <div class="col-customer cell-customer">
         <div class="cust-line1">
           <span class="cust-name" @click="emit('clickCustomer', t)">{{ t.customer }}</span>
-          <span v-if="t.vip" class="vip">VIP</span>
+          <span
+            v-for="tag in t.customerTags"
+            :key="tag"
+            class="cust-tag"
+            :style="{ color: CUSTOMER_TAG_COLOR[tag], background: softBg(CUSTOMER_TAG_COLOR[tag]) }"
+          >{{ tag }}</span>
         </div>
         <div class="product">{{ t.product }}</div>
       </div>
@@ -218,19 +216,33 @@ const emit = defineEmits<{
   white-space: nowrap;
 }
 
-/* 工单/标题 */
-.cell-title { display: flex; flex-direction: column; gap: 6px; }
-.title-line1 { display: flex; align-items: center; gap: 8px; }
-.ticket-no { font-size: 13px; font-weight: 600; color: #1a6fff; cursor: pointer; }
-.channel { font-size: 11px; color: #9ca3af; }
-.title-line2 { display: flex; align-items: center; gap: 8px; }
-.title-text { font-size: 13px; color: #374151; }
+/* 工单/标题：第一行 类型+标题，第二行 来源+单号 */
+.cell-title { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.title-line1 { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.title-line2 { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.title-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.channel { font-size: 12px; color: #6b7280; flex: none; }
+.sep { font-size: 12px; color: #d1d5db; flex: none; }
+.ticket-no { font-size: 12px; font-weight: 500; color: #1a6fff; cursor: pointer; flex: none; }
+.ticket-no:hover { text-decoration: underline; }
 
 /* 客户 */
 .cell-customer { display: flex; flex-direction: column; gap: 4px; }
-.cust-line1 { display: flex; align-items: center; gap: 5px; }
+.cust-line1 { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
 .cust-name { font-size: 13px; font-weight: 500; color: #111827; cursor: pointer; }
-.vip { font-size: 11px; font-weight: 600; color: #b45309; background: #fef3c7; padding: 2px 8px; border-radius: 4px; }
+.cust-tag {
+  font-size: 11px; font-weight: 600;
+  padding: 2px 8px; border-radius: 4px; flex: none;
+}
 .product { font-size: 12px; color: #9ca3af; }
 
 /* 当前节点 */

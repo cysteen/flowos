@@ -1,8 +1,14 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { SIDER_COLLAPSED_WIDTH, SIDER_WIDTH } from '@/config/layout';
 import AppHeader from './AppHeader.vue';
 import WorkspaceSidebar from './WorkspaceSidebar.vue';
+import WorkspacePageTabs from './WorkspacePageTabs.vue';
+import { useWorkspaceTabsStore } from '@/stores/workspaceTabs';
+
+const route = useRoute();
+const tabsStore = useWorkspaceTabsStore();
 
 // 侧栏折叠状态（§0.3 定稿：实现折叠）
 const collapsed = ref(false);
@@ -10,6 +16,14 @@ const collapsed = ref(false);
 function toggleCollapsed() {
   collapsed.value = !collapsed.value;
 }
+
+watch(
+  () => route.path,
+  (path) => {
+    tabsStore.syncFromRoute(path, route.meta.title as string | undefined);
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
@@ -28,7 +42,14 @@ function toggleCollapsed() {
         <WorkspaceSidebar :collapsed="collapsed" />
       </a-layout-sider>
       <a-layout-content class="workspace-content">
-        <router-view />
+        <WorkspacePageTabs />
+        <div class="workspace-page-body">
+          <router-view v-slot="{ Component, route: r }">
+            <keep-alive :max="12">
+              <component :is="Component" v-if="Component" :key="r.fullPath" />
+            </keep-alive>
+          </router-view>
+        </div>
       </a-layout-content>
     </a-layout>
   </a-layout>
@@ -50,6 +71,14 @@ function toggleCollapsed() {
   min-width: 0;
   background: var(--flowos-content-bg, #f9fafb);
   padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.workspace-page-body {
+  flex: 1;
+  min-height: 0;
   overflow: auto;
 }
 

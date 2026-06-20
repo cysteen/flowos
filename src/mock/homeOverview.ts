@@ -27,10 +27,8 @@ export const HOME_KPIS: HomeKpi[] = [
 export const HOME_TYPE_DIST = [
   { label: '投诉', pct: 32, color: '#EF4444' },
   { label: '咨询', pct: 28, color: '#1A6FFF' },
-  { label: '报修', pct: 18, color: '#F59E0B' },
-  { label: '安装', pct: 12, color: '#10B981' },
-  { label: '退换', pct: 6, color: '#A855F7' },
-  { label: '技术', pct: 4, color: '#06B6D4' },
+  { label: '建议', pct: 22, color: '#10B981' },
+  { label: '商机', pct: 18, color: '#F59E0B' },
 ];
 
 export interface HomeEfficiencyRow {
@@ -83,8 +81,8 @@ export const HOME_TODOS: HomeTodoItem[] = [
     dot: '#EF4444',
     no: 'LCMN-20260610-00320',
     title: '设备无法开机，电源指示灯不亮',
-    type: '报修',
-    typeColor: '#F59E0B',
+    type: '咨询',
+    typeColor: '#1A6FFF',
     sla: '02:15:30',
     slaColor: '#10B981',
     slaBg: '#10B9811F',
@@ -93,7 +91,7 @@ export const HOME_TODOS: HomeTodoItem[] = [
     dot: '#1A6FFF',
     no: 'LCMN-20260609-60387',
     title: '预约上门安装智能门锁',
-    type: '安装',
+    type: '建议',
     typeColor: '#10B981',
     sla: '06:40:00',
     slaColor: '#10B981',
@@ -103,8 +101,8 @@ export const HOME_TODOS: HomeTodoItem[] = [
     dot: '#1A6FFF',
     no: 'LCMN-20260609-55881',
     title: '产品质量问题申请退货',
-    type: '退换',
-    typeColor: '#A855F7',
+    type: '投诉',
+    typeColor: '#EF4444',
     sla: '04:12:30',
     slaColor: '#10B981',
     slaBg: '#10B9811F',

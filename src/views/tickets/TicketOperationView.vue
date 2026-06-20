@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
+import { useWorkspaceTabsStore, resolveTicketTabTitle } from '@/stores/workspaceTabs';
 import OpHeader from './components/operation/OpHeader.vue';
 import OpInsightBand from './components/operation/OpInsightBand.vue';
 import OpTicketSummary from './components/operation/OpTicketSummary.vue';
@@ -31,6 +32,18 @@ const { tabData } = useOperationTabs();
 
 const ticketNo = computed(() => (route.params.ticketNo as string) || d.value.no);
 const processTabsRef = ref<InstanceType<typeof OpProcessTabs> | null>(null);
+
+const tabsStore = useWorkspaceTabsStore();
+
+/** 工单操作页加载后，用标题同步 Tab（避免仅显示工单号） */
+watch(
+  [ticketNo, () => d.value.title, () => d.value.no],
+  ([no, title, detailNo]) => {
+    if (!no) return;
+    tabsStore.updateTitle(`/tickets/${no}`, resolveTicketTabTitle(no, title, detailNo));
+  },
+  { immediate: true },
+);
 
 const createOpen = ref(false);
 const createPrefill = ref<CreateTicketPrefill | null>(null);

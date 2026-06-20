@@ -16,9 +16,11 @@ export type ChipKey =
   | 'soon'
   | 'overdue';
 
-export type TicketType = '投诉' | '报修' | '咨询' | '安装' | '退换' | '技术';
+export type TicketType = CreateFormTicketType;
 export type Channel = '在线客服' | '电话' | '邮件' | '小程序' | 'APP';
 export type SmartMark = '升级' | '情绪' | '相似' | '知识';
+/** 客户身份标签（列表展示，替代 VIP） */
+export type CustomerTag = '记者' | '老师' | '校长' | '自媒体';
 export type Priority = 'P0' | 'P1' | 'P2' | 'P3';
 /** 当前节点状态（状态机） */
 export type NodeStatus =
@@ -39,6 +41,8 @@ export interface Ticket {
   smartMarks: SmartMark[];
   customer: string;
   vip: boolean;
+  /** 客户身份标签，如记者/老师/校长/自媒体 */
+  customerTags?: CustomerTag[];
   product: string;
   nodeStatus: NodeStatus;
   nodeStep: number;
@@ -84,11 +88,9 @@ export interface CreateTicketPrefill {
 // ---- 配色映射（.pen 实测 + 设计规范 §2.3 语义色）----
 export const TYPE_COLOR: Record<TicketType, string> = {
   投诉: '#EF4444',
-  报修: '#F59E0B',
+  建议: '#10B981',
+  商机: '#F59E0B',
   咨询: '#1A6FFF',
-  安装: '#A855F7',
-  退换: '#06B6D4',
-  技术: '#10B981',
 };
 
 export const SMART_MARK_COLOR: Record<SmartMark, string> = {
@@ -96,6 +98,13 @@ export const SMART_MARK_COLOR: Record<SmartMark, string> = {
   情绪: '#F97316',
   相似: '#1A6FFF',
   知识: '#10B981',
+};
+
+export const CUSTOMER_TAG_COLOR: Record<CustomerTag, string> = {
+  记者: '#DC2626',
+  老师: '#2563EB',
+  校长: '#D97706',
+  自媒体: '#9333EA',
 };
 
 export const PRIORITY_COLOR: Record<Priority, string> = {

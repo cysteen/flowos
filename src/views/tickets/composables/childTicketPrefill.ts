@@ -14,11 +14,9 @@ const CHANNEL_MAP: Record<string, Channel> = {
 /** 主单类型 → 推荐子单表单类型 */
 const CHILD_FORM_TYPE_HINT: Record<string, CreateFormTicketType> = {
   投诉: '咨询',
-  报修: '咨询',
+  建议: '咨询',
+  商机: '咨询',
   咨询: '咨询',
-  安装: '咨询',
-  退换: '咨询',
-  技术: '咨询',
 };
 
 function mapPriority(p: string): Priority {
@@ -62,8 +60,7 @@ export function buildChildTicketPrefill(parent: TicketDetailMeta): CreateTicketP
 /** 从原单详情生成 reopen（重新建单）弹窗预填数据 */
 export function buildReopenTicketPrefill(parent: TicketDetailMeta): CreateTicketPrefill {
   const parentType = parent.type;
-  const formTicketType: CreateFormTicketType =
-    parent.type === '投诉' ? '投诉' : '咨询';
+  const formTicketType: CreateFormTicketType = parent.type;
   const demandShort = parent.demand.length > 80 ? `${parent.demand.slice(0, 80)}…` : parent.demand;
 
   return {

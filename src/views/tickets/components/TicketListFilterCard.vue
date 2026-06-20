@@ -6,7 +6,7 @@ import type { TicketType } from '@/views/tickets/types/ticket';
 defineProps<{ filters: ListFilters }>();
 const emit = defineEmits<{ search: []; reset: [] }>();
 
-const TYPE_OPTIONS: TicketType[] = ['投诉', '报修', '咨询', '安装', '退换', '技术'];
+const TYPE_OPTIONS: TicketType[] = ['投诉', '建议', '商机', '咨询'];
 const STATUS_OPTIONS = [
   { value: 'pending', label: '待受理' },
   { value: 'processing', label: '处理中' },
