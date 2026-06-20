@@ -67,6 +67,8 @@ export interface TicketDetailMeta {
     tags: string[];
     sn: string;
     issueTags: string[];
+    /** 产品是否开通售后能力（控制「转售后」操作显隐） */
+    afterSaleEnabled: boolean;
   };
   complaint: ComplaintInfo;
   childTickets: ChildTicket[];
@@ -134,6 +136,7 @@ export const TICKET_DETAIL: TicketDetailMeta = {
     tags: ['红色', '科大讯飞'],
     sn: 'K710A240915001234',
     issueTags: ['功能异常', '播放问题', '在线播放'],
+    afterSaleEnabled: true,
   },
   complaint: {
     complaintType: '服务投诉',

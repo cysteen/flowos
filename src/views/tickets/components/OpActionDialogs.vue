@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
 import { message } from 'ant-design-vue';
-import type { SuspendInfo } from '../composables/opActions';
+import type { SuspendInfo, OpActionType } from '../composables/opActions';
 import {
-  TRANSFER_TARGETS, SUSPEND_REASONS, REJECT_REASONS, REJECT_NODES,
-  ESCALATE_CHANNELS, CLOSE_RESULTS, ROOT_CAUSES, ARCHIVE_REASONS,
-  RESUME_REASONS, PUSH_RD_SYSTEMS,
-  type OpActionType,
+  TRANSFER_TARGETS, DELEGATE_TARGETS, REVIEWERS, FORCE_CLOSE_REASONS, APPROVERS,
+  SUSPEND_REASONS, ESCALATE_CHANNELS, ESCALATE_GROUPS, ESCALATE_MEMBERS,
+  FEISHU_SPACES, AFTERSALE_GROUPS, CLOSE_RESULTS, ROOT_CAUSES, ARCHIVE_REASONS,
+  RESUME_REASONS,
 } from '../composables/opActions';
 
 const props = defineProps<{
@@ -22,75 +22,58 @@ const emit = defineEmits<{
 }>();
 
 const transfer = reactive({ scope: 'same' as 'same' | 'cross', target: TRANSFER_TARGETS[0], reason: '' });
+const delegate = reactive({ assistant: DELEGATE_TARGETS[0], reason: '' });
+const forward = reactive({ reviewer: REVIEWERS[0], conclusion: '' });
+const forceClose = reactive({ reason: '', approver: APPROVERS[0], detail: '' });
 const suspend = reactive({ reason: '', detail: '', resumeAt: '' });
-const reject = reactive({ reason: '', targetNode: '受理', detail: '' });
-const escalate = reactive({ channel: ESCALATE_CHANNELS[0], detail: '', syncContext: true });
+const escalate = reactive({ channel: ESCALATE_CHANNELS[0], group: ESCALATE_GROUPS[0], member: ESCALATE_MEMBERS[0], detail: '', syncContext: true });
+const syncFeishu = reactive({ space: FEISHU_SPACES[0], message: '' });
+const aftersale = reactive({ mode: 'callback' as 'close' | 'callback', group: AFTERSALE_GROUPS[0], detail: '' });
 const resolve = reactive({ solution: '', createCallback: true });
 const close = reactive({
   target: 'resolved' as 'resolved' | 'closed',
-  result: '',
-  solution: '',
-  satisfaction: '满意',
-  rootCause: '',
-  sendSms: false,
+  result: '', solution: '', satisfaction: '满意', rootCause: '', sendSms: false,
 });
 const archive = reactive({ reason: ARCHIVE_REASONS[1], retention: '3y' });
-const pushRd = reactive({ system: PUSH_RD_SYSTEMS[0], detail: '' });
 const resume = reactive({ reason: '', detail: '' });
+
+const escalateToTech = computed(() => escalate.channel.includes('技术支持'));
 
 const title = computed(() => {
   const map: Partial<Record<OpActionType, string>> = {
-    转办: '转办工单', 挂起: '挂起工单', 退回: '退回工单', 升级: '升级工单',
-    标记已解决: '标记已解决', 恢复: '恢复工单', 推送产研: '推送产研',
-    关闭工单: '关闭工单', 归档工单: '归档工单',
+    转办: '转办工单', 委派: '委派协办', 下送: '下送审核', 强结: '强制结案（强结）',
+    挂起: '挂起工单', 升级: '升级工单', 同步飞书: '同步飞书协同', 转售后: '转售后处理',
+    标记已解决: '标记已解决', 恢复: '恢复工单', 关闭工单: '关闭工单', 归档工单: '归档工单',
   };
   return props.action ? map[props.action] ?? props.action : '';
 });
 
 const okText = computed(() => {
   const map: Partial<Record<OpActionType, string>> = {
-    转办: '确认转办', 挂起: '确认挂起', 退回: '确认退回', 升级: '确认升级',
-    标记已解决: '确认标记', 恢复: '确认恢复', 推送产研: '确认推送',
-    关闭工单: '确认关闭', 归档工单: '确认归档',
+    转办: '确认转办', 委派: '确认委派', 下送: '确认下送', 强结: '提交强结审批',
+    挂起: '确认挂起', 升级: '确认升级', 同步飞书: '确认同步', 转售后: '确认转售后',
+    标记已解决: '确认标记', 恢复: '确认恢复', 关闭工单: '确认关闭', 归档工单: '确认归档',
   };
   return props.action ? map[props.action] ?? '确认' : '确认';
 });
 
-const okType = computed(() => {
-  if (props.action === '标记已解决' || props.action === '恢复') return 'primary';
-  if (props.action === '归档工单') return 'default';
-  return 'primary';
-});
-
-const okDanger = computed(() => props.action === '归档工单');
+const okDanger = computed(() => props.action === '归档工单' || props.action === '强结');
 
 function resetForms() {
-  transfer.scope = 'same';
-  transfer.target = TRANSFER_TARGETS[0];
-  transfer.reason = '';
-  suspend.reason = '';
-  suspend.detail = '';
-  suspend.resumeAt = '';
-  reject.reason = '';
-  reject.targetNode = '受理';
-  reject.detail = '';
-  escalate.channel = ESCALATE_CHANNELS[0];
-  escalate.detail = '';
-  escalate.syncContext = true;
-  resolve.solution = '';
-  resolve.createCallback = true;
-  close.target = 'resolved';
-  close.result = '';
-  close.solution = '';
-  close.satisfaction = '满意';
-  close.rootCause = '';
-  close.sendSms = false;
-  archive.reason = ARCHIVE_REASONS[1];
-  archive.retention = '3y';
-  pushRd.system = PUSH_RD_SYSTEMS[0];
-  pushRd.detail = '';
-  resume.reason = '';
-  resume.detail = '';
+  transfer.scope = 'same'; transfer.target = TRANSFER_TARGETS[0]; transfer.reason = '';
+  delegate.assistant = DELEGATE_TARGETS[0]; delegate.reason = '';
+  forward.reviewer = REVIEWERS[0]; forward.conclusion = '';
+  forceClose.reason = ''; forceClose.approver = APPROVERS[0]; forceClose.detail = '';
+  suspend.reason = ''; suspend.detail = ''; suspend.resumeAt = '';
+  escalate.channel = ESCALATE_CHANNELS[0]; escalate.group = ESCALATE_GROUPS[0];
+  escalate.member = ESCALATE_MEMBERS[0]; escalate.detail = ''; escalate.syncContext = true;
+  syncFeishu.space = FEISHU_SPACES[0]; syncFeishu.message = '';
+  aftersale.mode = 'callback'; aftersale.group = AFTERSALE_GROUPS[0]; aftersale.detail = '';
+  resolve.solution = ''; resolve.createCallback = true;
+  close.target = 'resolved'; close.result = ''; close.solution = '';
+  close.satisfaction = '满意'; close.rootCause = ''; close.sendSms = false;
+  archive.reason = ARCHIVE_REASONS[1]; archive.retention = '3y';
+  resume.reason = ''; resume.detail = '';
 }
 
 watch(() => props.open, (v) => { if (v) resetForms(); });
@@ -101,11 +84,17 @@ function closeModal() {
 
 function validate(): boolean {
   switch (props.action) {
+    case '下送':
+      if (!forward.conclusion.trim()) { message.warning('请填写处理结论'); return false; }
+      return true;
+    case '强结':
+      if (!forceClose.reason) { message.warning('请选择强结原因'); return false; }
+      return true;
     case '挂起':
       if (!suspend.reason) { message.warning('请选择挂起原因'); return false; }
       return true;
-    case '退回':
-      if (!reject.reason) { message.warning('请选择退回原因'); return false; }
+    case '同步飞书':
+      if (!syncFeishu.message.trim()) { message.warning('请填写同步内容'); return false; }
       return true;
     case '标记已解决':
       if (!resolve.solution.trim()) { message.warning('请填写解决方案摘要'); return false; }
@@ -124,33 +113,18 @@ function validate(): boolean {
 function onOk() {
   if (!validate()) return;
   switch (props.action) {
-    case '转办':
-      emit('confirm', { type: '转办', data: { ...transfer } });
-      break;
-    case '挂起':
-      emit('confirm', { type: '挂起', data: { ...suspend } });
-      break;
-    case '退回':
-      emit('confirm', { type: '退回', data: { ...reject } });
-      break;
-    case '升级':
-      emit('confirm', { type: '升级', data: { ...escalate } });
-      break;
-    case '标记已解决':
-      emit('confirm', { type: '标记已解决', data: { ...resolve } });
-      break;
-    case '恢复':
-      emit('confirm', { type: '恢复', data: { ...resume } });
-      break;
-    case '推送产研':
-      emit('confirm', { type: '推送产研', data: { ...pushRd } });
-      break;
-    case '关闭工单':
-      emit('confirm', { type: '关闭工单', data: { ...close } });
-      break;
-    case '归档工单':
-      emit('confirm', { type: '归档工单', data: { ...archive } });
-      break;
+    case '转办': emit('confirm', { type: '转办', data: { ...transfer } }); break;
+    case '委派': emit('confirm', { type: '委派', data: { ...delegate } }); break;
+    case '下送': emit('confirm', { type: '下送', data: { ...forward } }); break;
+    case '强结': emit('confirm', { type: '强结', data: { ...forceClose } }); break;
+    case '挂起': emit('confirm', { type: '挂起', data: { ...suspend } }); break;
+    case '升级': emit('confirm', { type: '升级', data: { ...escalate } }); break;
+    case '同步飞书': emit('confirm', { type: '同步飞书', data: { ...syncFeishu } }); break;
+    case '转售后': emit('confirm', { type: '转售后', data: { ...aftersale } }); break;
+    case '标记已解决': emit('confirm', { type: '标记已解决', data: { ...resolve } }); break;
+    case '恢复': emit('confirm', { type: '恢复', data: { ...resume } }); break;
+    case '关闭工单': emit('confirm', { type: '关闭工单', data: { ...close } }); break;
+    case '归档工单': emit('confirm', { type: '归档工单', data: { ...archive } }); break;
   }
   closeModal();
 }
@@ -163,8 +137,7 @@ function onOk() {
     :width="action === '关闭工单' || action === '恢复' ? 560 : action === '标记已解决' ? 520 : 480"
     :ok-text="okText"
     cancel-text="取消"
-    :ok-type="okDanger ? 'default' : okType"
-    :ok-button-props="okDanger ? { danger: true } : action === '标记已解决' || action === '恢复' ? { type: 'primary', style: { background: '#059669', borderColor: '#059669' } } : undefined"
+    :ok-button-props="okDanger ? { danger: true } : action === '标记已解决' || action === '恢复' ? { type: 'primary', style: { background: '#059669', borderColor: '#059669' } } : { type: 'primary' }"
     destroy-on-close
     @update:open="emit('update:open', $event)"
     @ok="onOk"
@@ -187,7 +160,51 @@ function onOk() {
         <div class="label">转办原因</div>
         <a-textarea v-model:value="transfer.reason" :rows="2" placeholder="请输入转办原因..." />
       </div>
-      <div class="tip tip-warn">转办后 48 小时内未响应将自动回滚至原处理人</div>
+      <div class="tip tip-info">转办变更当前处理人，工单状态仍为「处理中」；48 小时未响应将自动回滚。</div>
+    </div>
+
+    <!-- 委派 -->
+    <div v-else-if="action === '委派'" class="dlg-body">
+      <div class="field">
+        <div class="label req">协助办理人</div>
+        <a-select v-model:value="delegate.assistant" :options="DELEGATE_TARGETS.map((t) => ({ value: t, label: t }))" style="width:100%" />
+      </div>
+      <div class="field">
+        <div class="label">委派说明</div>
+        <a-textarea v-model:value="delegate.reason" :rows="2" placeholder="请说明需协助的内容..." />
+      </div>
+      <div class="tip tip-info">委派 ≠ 转办：主责仍在您名下，协助人配合办理，状态不变。</div>
+    </div>
+
+    <!-- 下送 -->
+    <div v-else-if="action === '下送'" class="dlg-body">
+      <div class="field">
+        <div class="label">审核节点 / 审核人</div>
+        <a-select v-model:value="forward.reviewer" :options="REVIEWERS.map((r) => ({ value: r, label: r }))" style="width:100%" />
+      </div>
+      <div class="field">
+        <div class="label req">处理结论</div>
+        <a-textarea v-model:value="forward.conclusion" :rows="3" placeholder="请填写本节点处理结论..." />
+      </div>
+      <div class="tip tip-info">下送是流程向前推进：当前节点办毕，工单进入「待审核」。审核通过→待回访；驳回→退回处理中。</div>
+    </div>
+
+    <!-- 强结 -->
+    <div v-else-if="action === '强结'" class="dlg-body">
+      <div class="tip tip-warn">非正常结案路径：提交后走审批，审批通过将由「待回访」直接进入「已结案」，绕过满意度回访。</div>
+      <div class="field">
+        <div class="label req">强结原因</div>
+        <a-select v-model:value="forceClose.reason" placeholder="请选择..." style="width:100%"
+          :options="FORCE_CLOSE_REASONS.map((r) => ({ value: r, label: r }))" />
+      </div>
+      <div class="field">
+        <div class="label req">审批人</div>
+        <a-select v-model:value="forceClose.approver" :options="APPROVERS.map((r) => ({ value: r, label: r }))" style="width:100%" />
+      </div>
+      <div class="field">
+        <div class="label">补充说明</div>
+        <a-textarea v-model:value="forceClose.detail" :rows="2" placeholder="请补充强结说明..." />
+      </div>
     </div>
 
     <!-- 挂起 -->
@@ -208,38 +225,75 @@ function onOk() {
       <div class="tip tip-info">挂起后 SLA 暂停计时 | 本工单已挂起 0 次（最多 2 次）</div>
     </div>
 
-    <!-- 退回 -->
-    <div v-else-if="action === '退回'" class="dlg-body">
-      <div class="field">
-        <div class="label req">退回原因</div>
-        <a-select v-model:value="reject.reason" placeholder="请选择..." style="width:100%"
-          :options="REJECT_REASONS.map((r) => ({ value: r, label: r }))" />
-      </div>
-      <div class="field">
-        <div class="label">退回目标节点</div>
-        <a-select v-model:value="reject.targetNode" style="width:100%"
-          :options="REJECT_NODES.map((n) => ({ value: n, label: n }))" />
-      </div>
-      <div class="field">
-        <div class="label">补充说明</div>
-        <a-textarea v-model:value="reject.detail" :rows="2" placeholder="请说明退回原因..." />
-      </div>
-      <div class="tip tip-warn">本工单已退回 0 次（最多 3 次）</div>
-    </div>
-
     <!-- 升级 -->
     <div v-else-if="action === '升级'" class="dlg-body">
-      <div class="tip tip-ai">AI 推荐：学习机 + 硬件故障 → 推荐升级通道：售后管理系统</div>
+      <div class="tip tip-ai">AI 推荐：学习机 + 硬件故障 → 推荐升级至「二线技术支持组 · 硬件技术支持组」</div>
       <div class="field">
         <div class="label req">升级通道</div>
         <a-select v-model:value="escalate.channel" style="width:100%"
           :options="ESCALATE_CHANNELS.map((c) => ({ value: c, label: c }))" />
       </div>
+      <template v-if="escalateToTech">
+        <div class="field">
+          <div class="label req">目标组别</div>
+          <a-select v-model:value="escalate.group" style="width:100%"
+            :options="ESCALATE_GROUPS.map((g) => ({ value: g, label: g }))" />
+        </div>
+        <div class="field">
+          <div class="label">目标人员</div>
+          <a-select v-model:value="escalate.member" style="width:100%"
+            :options="ESCALATE_MEMBERS.map((m) => ({ value: m, label: m }))" />
+        </div>
+      </template>
       <div class="field">
         <div class="label">升级说明</div>
         <a-textarea v-model:value="escalate.detail" :rows="2" placeholder="请填写升级说明..." />
       </div>
       <a-checkbox v-model:checked="escalate.syncContext">同步工单上下文至目标系统</a-checkbox>
+    </div>
+
+    <!-- 同步飞书 -->
+    <div v-else-if="action === '同步飞书'" class="dlg-body">
+      <div class="tip tip-info">协同动作：仅在时间线记录一次同步，不改变工单状态，SLA 继续计时。</div>
+      <div class="field">
+        <div class="label req">协同空间</div>
+        <a-select v-model:value="syncFeishu.space" :options="FEISHU_SPACES.map((s) => ({ value: s, label: s }))" style="width:100%" />
+      </div>
+      <div class="field">
+        <div class="label req">同步内容</div>
+        <a-textarea v-model:value="syncFeishu.message" :rows="3" placeholder="请填写需同步给协同团队的信息..." />
+      </div>
+    </div>
+
+    <!-- 转售后 -->
+    <div v-else-if="action === '转售后'" class="dlg-body">
+      <div class="field">
+        <div class="label req">转出模式</div>
+        <a-radio-group v-model:value="aftersale.mode" class="radio-cards">
+          <label class="radio-card" :class="{ on: aftersale.mode === 'callback' }">
+            <a-radio value="callback" />
+            <div>
+              <div class="rc-title">等回流模式</div>
+              <div class="rc-sub">售后处理完成后结果回流，客服侧恢复处理继续面向客户闭环</div>
+            </div>
+          </label>
+          <label class="radio-card" :class="{ on: aftersale.mode === 'close' }">
+            <a-radio value="close" />
+            <div>
+              <div class="rc-title">关闭模式</div>
+              <div class="rc-sub">客服工单进入终态（已关闭），后续由售后工单独立承接</div>
+            </div>
+          </label>
+        </a-radio-group>
+      </div>
+      <div class="field">
+        <div class="label req">售后处理组</div>
+        <a-select v-model:value="aftersale.group" :options="AFTERSALE_GROUPS.map((g) => ({ value: g, label: g }))" style="width:100%" />
+      </div>
+      <div class="field">
+        <div class="label">转出说明</div>
+        <a-textarea v-model:value="aftersale.detail" :rows="2" placeholder="请填写转售后说明..." />
+      </div>
     </div>
 
     <!-- 标记已解决 -->
@@ -273,29 +327,16 @@ function onOk() {
       <div class="tip tip-ok">恢复后 SLA 继续计时</div>
     </div>
 
-    <!-- 推送产研 -->
-    <div v-else-if="action === '推送产研'" class="dlg-body">
-      <div class="field">
-        <div class="label req">目标系统</div>
-        <a-select v-model:value="pushRd.system" style="width:100%"
-          :options="PUSH_RD_SYSTEMS.map((s) => ({ value: s, label: s }))" />
-      </div>
-      <div class="field">
-        <div class="label">推送说明</div>
-        <a-textarea v-model:value="pushRd.detail" :rows="3" placeholder="请描述需产研跟进的问题..." />
-      </div>
-    </div>
-
     <!-- 关闭工单 -->
     <div v-else-if="action === '关闭工单'" class="dlg-body">
-      <div class="tip tip-info">Resolved → Closed → Archived 三态流转；关闭后 30 天无操作将自动归档。</div>
+      <div class="tip tip-info">待回访 → 已关闭 → 已归档 三态流转；关闭后 30 天无操作将自动归档。</div>
       <div class="field">
         <div class="label req">状态落点</div>
         <a-radio-group v-model:value="close.target" class="radio-cards">
           <label class="radio-card" :class="{ on: close.target === 'resolved' }">
             <a-radio value="resolved" />
             <div>
-              <div class="rc-title">标记为已解决（Resolved）</div>
+              <div class="rc-title">标记为已解决（待回访）</div>
               <div class="rc-sub">问题已处理完成，仍需回访确认或等待客户回评</div>
             </div>
           </label>

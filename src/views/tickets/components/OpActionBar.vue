@@ -2,17 +2,19 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { Modal } from 'ant-design-vue';
 import {
-  ArrowRightOutlined, RollbackOutlined, UndoOutlined,
-  PauseCircleOutlined, PlayCircleOutlined, RiseOutlined,
-  FileTextOutlined, CheckOutlined, CheckCircleOutlined,
-  InboxOutlined, CloseOutlined, DownOutlined, SaveOutlined,
+  ArrowRightOutlined, VerticalAlignBottomOutlined, PauseCircleOutlined,
+  PlayCircleOutlined, RiseOutlined, TeamOutlined, UndoOutlined, StopOutlined,
+  ShareAltOutlined, ToolOutlined, CheckCircleOutlined, InboxOutlined,
+  CloseOutlined, CheckOutlined, SaveOutlined, DownOutlined,
 } from '@ant-design/icons-vue';
 import OpActionDialogs from './OpActionDialogs.vue';
-import type { SuspendInfo } from '../composables/opActions';
-import type { OpActionType, TicketOpState } from '../composables/opActions';
+import type { SuspendInfo, OpActionType, TicketOpState } from '../composables/opActions';
+import { availableActions, type ActionDef } from '../composables/opActionRegistry';
 
 const props = defineProps<{
   ticketNo: string;
+  ticketType: string;
+  afterSaleEnabled: boolean;
   opState: TicketOpState;
   suspendInfo: SuspendInfo | null;
   draftSavedAt?: string | null;
@@ -24,17 +26,40 @@ const emit = defineEmits<{
   withdraw: [];
 }>();
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const ICONS: Record<string, any> = {
+  ArrowRightOutlined, VerticalAlignBottomOutlined, PauseCircleOutlined,
+  PlayCircleOutlined, RiseOutlined, TeamOutlined, UndoOutlined, StopOutlined,
+  ShareAltOutlined, ToolOutlined, CheckCircleOutlined, InboxOutlined, CloseOutlined,
+};
+
+const DIALOG_ACTIONS: OpActionType[] = [
+  '转办', '委派', '下送', '强结', '挂起', '恢复', '升级', '同步飞书', '转售后',
+  '标记已解决', '关闭工单', '归档工单',
+];
+
 const moreOpen = ref(false);
 const dialogOpen = ref(false);
 const dialogAction = ref<OpActionType | null>(null);
 
-const isTerminal = computed(() => ['closed', 'archived', 'cancelled'].includes(props.opState));
+const isTerminal = computed(() => ['closed', 'archived', 'cancelled', 'settled'].includes(props.opState));
 const isSuspended = computed(() => props.opState === 'suspended');
 const isResolved = computed(() => props.opState === 'resolved');
 
-const DIALOG_ACTIONS: OpActionType[] = [
-  '转办', '挂起', '退回', '升级', '标记已解决', '恢复', '推送产研', '关闭工单', '归档工单',
-];
+const actions = computed(() =>
+  availableActions({ ticketType: props.ticketType, afterSaleEnabled: props.afterSaleEnabled }),
+);
+const primaryActions = computed(() => actions.value.filter((a) => a.group === 'primary'));
+const moreActions = computed(() => actions.value.filter((a) => a.group === 'more'));
+const manageActions = computed(() => actions.value.filter((a) => a.group === 'manage'));
+
+/** 挂起态下，主区「挂起」展示为「恢复」 */
+function primaryView(a: ActionDef): { key: OpActionType; label: string; icon: string } {
+  if (a.key === '挂起' && isSuspended.value) {
+    return { key: '恢复', label: '恢复', icon: 'PlayCircleOutlined' };
+  }
+  return { key: a.key, label: a.label, icon: a.icon };
+}
 
 function onClickOutside(e: MouseEvent) {
   if (!(e.target as HTMLElement).closest('.more-wrap')) moreOpen.value = false;
@@ -46,37 +71,22 @@ function saveDraft() {
   emit('action', { type: '保存草稿' });
 }
 
-function openDialog(action: OpActionType) {
+function run(action: OpActionType) {
+  moreOpen.value = false;
   if (isTerminal.value) return;
+  if (action === '保存草稿') return saveDraft();
+  if (action === '取消工单') return emit('cancel');
+  if (action === '撤回') return emit('withdraw');
   if (action === '挂起' && isSuspended.value) return;
   if (action === '恢复' && !isSuspended.value) {
     Modal.info({ title: '提示', content: '当前工单未处于挂起状态' });
     return;
   }
   if (action === '标记已解决' && isResolved.value) return;
-  moreOpen.value = false;
   if (DIALOG_ACTIONS.includes(action)) {
     dialogAction.value = action;
     dialogOpen.value = true;
-    return;
   }
-}
-
-function run(action: OpActionType) {
-  moreOpen.value = false;
-  if (action === '保存草稿') {
-    saveDraft();
-    return;
-  }
-  if (action === '取消工单') {
-    emit('cancel');
-    return;
-  }
-  if (action === '撤回') {
-    emit('withdraw');
-    return;
-  }
-  openDialog(action);
 }
 
 function onDialogConfirm(payload: Record<string, unknown>) {
@@ -94,35 +104,16 @@ function onDialogConfirm(payload: Record<string, unknown>) {
 
     <div class="ab-actions">
       <div class="ab-group">
-        <button class="ab-item" :disabled="isTerminal" @click="run('转办')">
-          <ArrowRightOutlined /><span>转办</span>
-        </button>
         <button
-          v-if="!isSuspended"
+          v-for="a in primaryActions"
+          :key="a.key"
           class="ab-item"
+          :class="{ 'ab-success': primaryView(a).key === '恢复' }"
           :disabled="isTerminal"
-          @click="run('挂起')"
+          @click="run(primaryView(a).key)"
         >
-          <PauseCircleOutlined /><span>挂起</span>
-        </button>
-        <button
-          v-else
-          class="ab-item ab-success"
-          :disabled="isTerminal"
-          @click="run('恢复')"
-        >
-          <PlayCircleOutlined /><span>恢复</span>
-        </button>
-        <button class="ab-item" :disabled="isTerminal" @click="run('退回')">
-          <RollbackOutlined /><span>退回</span>
-        </button>
-      </div>
-
-      <div class="ab-divider" />
-
-      <div class="ab-group">
-        <button class="ab-item" :disabled="isTerminal" @click="run('升级')">
-          <RiseOutlined /><span>升级</span>
+          <component :is="ICONS[primaryView(a).icon]" />
+          <span>{{ primaryView(a).label }}</span>
         </button>
       </div>
 
@@ -151,29 +142,24 @@ function onDialogConfirm(payload: Record<string, unknown>) {
           <DownOutlined class="more-chev" />
         </button>
         <div v-show="moreOpen" class="more-menu" @click.stop>
-          <button class="menu-item" @click="run('撤回')">
-            <UndoOutlined /><span>撤回</span>
+          <button
+            v-for="a in moreActions"
+            :key="a.key"
+            class="menu-item"
+            :class="{ 'menu-danger': a.danger }"
+            @click="run(a.key)"
+          >
+            <component :is="ICONS[a.icon]" /><span>{{ a.label }}</span>
           </button>
-          <button v-if="!isSuspended" class="menu-item menu-success" @click="run('恢复')">
-            <PlayCircleOutlined /><span>恢复</span>
-          </button>
-          <div class="menu-divider" />
-          <button class="menu-item" @click="run('推送产研')">
-            <FileTextOutlined /><span>推送产研</span>
-          </button>
-          <div class="menu-divider" />
-          <button class="menu-item menu-success" :disabled="isResolved" @click="run('标记已解决')">
-            <CheckOutlined /><span>标记已解决</span>
-          </button>
-          <button class="menu-item" @click="run('关闭工单')">
-            <CheckCircleOutlined /><span>关闭工单</span>
-          </button>
-          <button class="menu-item" @click="run('归档工单')">
-            <InboxOutlined /><span>归档工单</span>
-          </button>
-          <div class="menu-divider" />
-          <button class="menu-item menu-danger" @click="run('取消工单')">
-            <CloseOutlined /><span>取消工单</span>
+          <div v-if="manageActions.length" class="menu-divider" />
+          <button
+            v-for="a in manageActions"
+            :key="a.key"
+            class="menu-item"
+            :class="{ 'menu-danger': a.danger }"
+            @click="run(a.key)"
+          >
+            <component :is="ICONS[a.icon]" /><span>{{ a.label }}</span>
           </button>
         </div>
       </div>
@@ -319,8 +305,6 @@ function onDialogConfirm(payload: Record<string, unknown>) {
 .menu-item:disabled { opacity: 0.4; cursor: not-allowed; }
 .menu-item :deep(.anticon) { font-size: 15px; color: #6b7280; }
 .menu-item:hover:not(:disabled) { background: #f9fafb; }
-.menu-item.menu-success { color: #059669; }
-.menu-item.menu-success :deep(.anticon) { color: #059669; }
 .menu-item.menu-danger { color: #ef4444; }
 .menu-item.menu-danger :deep(.anticon) { color: #ef4444; }
 .menu-divider { height: 1px; background: #f3f4f6; margin: 2px 0; }

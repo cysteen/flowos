@@ -133,6 +133,8 @@ function updateTabData(next: OperationTabData) {
 
     <OpActionBar
       :ticket-no="ticketNo"
+      :ticket-type="d.type"
+      :after-sale-enabled="d.product.afterSaleEnabled"
       :op-state="opState"
       :suspend-info="suspendInfo"
       :draft-saved-at="draftSavedAt"
