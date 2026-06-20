@@ -191,7 +191,7 @@ function onOk() {
 
     <!-- 强结 -->
     <div v-else-if="action === '强结'" class="dlg-body">
-      <div class="tip tip-warn">非正常结案路径：提交后走审批，审批通过将由「待回访」直接进入「已结案」，绕过满意度回访。</div>
+      <div class="tip tip-warn">非正常结案路径：处理中任意阶段可发起，提交后走单级审批，审批通过直接进入「已结案」，绕过满意度回访。</div>
       <div class="field">
         <div class="label req">强结原因</div>
         <a-select v-model:value="forceClose.reason" placeholder="请选择..." style="width:100%"
