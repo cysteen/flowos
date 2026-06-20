@@ -156,7 +156,9 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
         { id: 'n1', kind: 'transfer', title: '转办通知', receiver: '王坐席(商务)', when: '2026-06-17 11:02:50', channel: '站内信 + i讯飞', status: '已读', content: '商机工单已转办至您名下，请及时商务跟进。' },
         { id: 'n2', kind: 'accepted', title: '工单受理', receiver: '赵敏(客户)', when: '2026-06-17 11:02:30', channel: '邮件', status: '已送达', content: '您的商务咨询已受理，工单号:IFLYKF2026061711020422，商务将尽快与您联系。' },
       ],
-      surveyRecords: [],
+      surveyRecords: [
+        { id: 'v1', title: '转化跟进调研', sentAt: '2026-06-17 16:40:10', evaluated: false, linkLabel: '查看问卷', conclusion: '采购意向: 高 | 是否转化: 待跟进' },
+      ],
       customerHistory: {
         customerName: '赵敏', totalCount: 3, processingCount: 1, closedCount: 2, complaintCount: 0,
         tickets: [
@@ -225,7 +227,9 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
         { id: 'n1', kind: 'transfer', title: '转办通知', receiver: '王坐席(产品反馈)', when: '2026-06-17 14:20:50', channel: '站内信 + i讯飞', status: '已读', content: '建议工单已转办至您名下，请记录并转产品评估。' },
         { id: 'n2', kind: 'accepted', title: '工单受理', receiver: '周杰(客户)', when: '2026-06-17 14:20:30', channel: '短信 + 邮件', status: '已送达', content: '您的建议已受理，工单号:IFLYKF2026061714200522，感谢您的反馈。' },
       ],
-      surveyRecords: [],
+      surveyRecords: [
+        { id: 'v1', title: '建议采纳调研', sentAt: '2026-06-17 14:30:10', evaluated: true, linkLabel: '查看问卷', conclusion: '是否采纳: 转需求 | 客户满意: 满意' },
+      ],
       customerHistory: {
         customerName: '周杰', totalCount: 2, processingCount: 1, closedCount: 1, complaintCount: 0,
         tickets: [

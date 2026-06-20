@@ -92,7 +92,7 @@ export type ProcessTabKey = (typeof PROCESS_TABS)[number]['key'];
 const TAB_TYPE_RESTRICTION: Partial<Record<ProcessTabKey, string[]>> = {
   tech: ['投诉', '咨询'],
   risk: ['投诉'],
-  survey: ['投诉', '咨询'],
+  // 调研记录：四类型均保留（拍板 2026-06-20），不设类型限制
 };
 
 /** 按工单类型过滤可见处理 Tab（商机/建议精简，仅保留通用 Tab）。 */
