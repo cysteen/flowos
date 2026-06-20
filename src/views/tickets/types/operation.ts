@@ -88,4 +88,19 @@ export const PROCESS_TABS = [
 
 export type ProcessTabKey = (typeof PROCESS_TABS)[number]['key'];
 
+/** 各 Tab 的适用工单类型白名单；未列出的 Tab = 所有类型可见。 */
+const TAB_TYPE_RESTRICTION: Partial<Record<ProcessTabKey, string[]>> = {
+  tech: ['投诉', '咨询'],
+  risk: ['投诉'],
+  survey: ['投诉', '咨询'],
+};
+
+/** 按工单类型过滤可见处理 Tab（商机/建议精简，仅保留通用 Tab）。 */
+export function visibleProcessTabs(ticketType: string) {
+  return PROCESS_TABS.filter((t) => {
+    const allow = TAB_TYPE_RESTRICTION[t.key];
+    return !allow || allow.includes(ticketType);
+  });
+}
+
 export type SupplementChip = 'complaint' | 'risk' | 'appointment' | 'quality';

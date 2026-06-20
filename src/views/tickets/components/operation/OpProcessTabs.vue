@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import OpProcessForm from './OpProcessForm.vue';
 import OpTechProcessTab from './tabs/OpTechProcessTab.vue';
 import OpRiskMonitorTab from './tabs/OpRiskMonitorTab.vue';
@@ -9,12 +9,12 @@ import OpContactRecordsTab from './tabs/OpContactRecordsTab.vue';
 import OpNotifyRecordsTab from './tabs/OpNotifyRecordsTab.vue';
 import OpSurveyRecordsTab from './tabs/OpSurveyRecordsTab.vue';
 import OpCustomerHistoryTab from './tabs/OpCustomerHistoryTab.vue';
-import { PROCESS_TABS, type ProcessTabKey } from '@/views/tickets/types/operation';
+import { visibleProcessTabs, type ProcessTabKey } from '@/views/tickets/types/operation';
 import type { ProcessFormDraft, SectionKey } from '@/views/tickets/types/operation';
 import type { OperationTabData } from '@/views/tickets/types/operationTabs';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 
-defineProps<{
+const props = defineProps<{
   detail: TicketDetailMeta;
   tabData: OperationTabData;
   form: ProcessFormDraft;
@@ -33,6 +33,12 @@ const emit = defineEmits<{
 }>();
 
 const activeTab = ref<ProcessTabKey>('process');
+const visibleTabs = computed(() => visibleProcessTabs(props.detail.type));
+
+/** 工单类型变化后，若当前 Tab 已被该类型隐藏，回退到「工单处理」。 */
+watch(visibleTabs, (tabs) => {
+  if (!tabs.some((t) => t.key === activeTab.value)) activeTab.value = 'process';
+});
 
 function switchTab(key: ProcessTabKey) {
   activeTab.value = key;
@@ -49,7 +55,7 @@ defineExpose({ switchTab });
   <div class="process-tabs">
     <div class="tab-bar">
       <button
-        v-for="t in PROCESS_TABS"
+        v-for="t in visibleTabs"
         :key="t.key"
         class="tab-item"
         :class="{ active: activeTab === t.key }"

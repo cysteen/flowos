@@ -20,7 +20,7 @@ const emit = defineEmits<{
     <OpCustomerCard :customer="detail.customer" @contact="(t, v) => emit('contact', t, v)" />
     <OpAgentCard v-if="detail.agent" :agent="detail.agent" @contact="(t, v) => emit('contact', t, v)" />
     <OpProductCard :product="detail.product" />
-    <OpComplaintCard :complaint="detail.complaint" />
+    <OpComplaintCard v-if="detail.type === '投诉'" :complaint="detail.complaint" />
     <OpAiAssistant
       :similar-ticket="detail.similarTicket"
       :knowledge="detail.knowledge"
