@@ -372,6 +372,9 @@ function chipActiveClass(key: SupplementChip): string {
 .sel-arrow { color: #9ca3af; margin-left: auto; font-size: 10px; }
 .conclusion-row { flex-direction: row; align-items: center; gap: 12px; flex-wrap: wrap; }
 .conclusion-row label { width: 96px; flex: none; }
+/* 防止单选项文字（如「否（不规范）」）被挤断行 */
+.process-form :deep(.ant-radio-wrapper) { white-space: nowrap; }
+.process-form :deep(.ant-radio-group) { display: inline-flex; flex-wrap: wrap; gap: 4px 12px; }
 .concession-hint {
   display: flex; align-items: flex-start; gap: 6px;
   font-size: 11px; color: #9ca3af; line-height: 1.5;
