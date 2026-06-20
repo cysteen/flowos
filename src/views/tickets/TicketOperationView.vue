@@ -105,7 +105,7 @@ function updateTabData(next: OperationTabData) {
 
     <div class="op-body">
       <div class="op-main">
-        <OpInsightBand :insight="d.insight" @link="onInsightLink" />
+        <OpInsightBand :insight="d.insight" :ticket-type="d.type" @link="onInsightLink" />
         <OpTicketSummary :detail="d" />
         <OpProcessTabs
           ref="processTabsRef"

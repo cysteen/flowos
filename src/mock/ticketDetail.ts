@@ -105,6 +105,7 @@ export const TICKET_DETAIL: TicketDetailMeta = {
     inboundCount: 8,
     historyCount: 12,
     complaintCount: 1,
+    sameTypeCount: 1,
     recent30Count: 30,
     dunningCount: 1,
     supplementCount: 3,

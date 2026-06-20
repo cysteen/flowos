@@ -24,6 +24,8 @@ export interface InsightStats {
   inboundCount: number;
   historyCount: number;
   complaintCount: number;
+  /** 该客户「与当前工单同类型」的工单数（投诉单看投诉数、咨询单看咨询数…）*/
+  sameTypeCount: number;
   recent30Count: number;
   dunningCount: number;
   supplementCount: number;

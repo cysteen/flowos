@@ -2,7 +2,7 @@
 import { BellOutlined } from '@ant-design/icons-vue';
 import type { InsightStats } from '@/views/tickets/types/operation';
 
-defineProps<{ insight: InsightStats }>();
+defineProps<{ insight: InsightStats; ticketType: string }>();
 const emit = defineEmits<{ link: [target: 'customerHistory' | 'related'] }>();
 </script>
 
@@ -16,8 +16,8 @@ const emit = defineEmits<{ link: [target: 'customerHistory' | 'related'] }>();
       <span class="emph">{{ insight.inboundCount }}次</span>
       <span class="muted">，历史工单：</span>
       <span class="emph">{{ insight.historyCount }}单</span>
-      <span class="muted">；投诉单：</span>
-      <span class="emph">{{ insight.complaintCount }}单</span>
+      <span class="muted">；{{ ticketType }}单：</span>
+      <span class="emph">{{ insight.sameTypeCount }}单</span>
       <span class="muted">；最近30天：</span>
       <span class="emph">{{ insight.recent30Count }}单</span>
       <span class="sep"> · </span>
