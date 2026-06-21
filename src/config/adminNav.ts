@@ -207,8 +207,7 @@ export interface AdminNavItemP {
   label: string;
   icon: Component;
 }
-export const PLATFORM_NAV: { groupLabel: string; items: AdminNavItemP[] } = {
-  groupLabel: '系统管理',
+export const PLATFORM_NAV: { items: AdminNavItemP[] } = {
   items: [
     { key: 'tenants', label: '租户管理', icon: BankOutlined },
     { key: 'plans', label: '套餐管理', icon: GoldOutlined },

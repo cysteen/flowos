@@ -1,47 +1,121 @@
 <script setup lang="ts">
-import { reactive } from 'vue';
+import { onBeforeUnmount, reactive, ref } from 'vue';
 import { message } from 'ant-design-vue';
 import {
-  LockOutlined, EnvironmentOutlined, UploadOutlined, CrownOutlined,
+  LockOutlined, EnvironmentOutlined, UploadOutlined,
 } from '@ant-design/icons-vue';
+import PlanTag from '@/components/admin/PlanTag.vue';
 import { TENANT_INFO } from '@/mock/adminOverview';
 
+const LOGO_MAX_BYTES = 1024 * 1024;
+const LOGO_TYPES = new Set(['image/png', 'image/jpeg', 'image/svg+xml']);
+const LOGO_EXTS = ['.png', '.jpg', '.jpeg', '.svg'];
+
 // 基本信息（PRD-59a）：上半「平台管控·只读概览」与下半「租户可编辑资料」分离，贴合租户自管场景。
-const profile = reactive({
-  // 平台管控（只读）
-  name: TENANT_INFO.name,
-  code: 'IFLY-T0001',
-  plan: TENANT_INFO.plan,
-  status: TENANT_INFO.status,
-  expiry: TENANT_INFO.expiry,
-  seatScale: `${TENANT_INFO.seatTotal} 席`,
-  // 租户可编辑
-  industry: '智能硬件',
-  timezone: 'GMT+8 北京',
-  lang: '简体中文',
-  adminName: '赵管理',
-  phone: '139 0000 0000',
-  email: 'admin@iflytek.com',
-  hotline: '400-100-8000',
-});
+function createProfileState() {
+  return {
+    name: TENANT_INFO.name,
+    code: 'IFLY-T0001',
+    plan: TENANT_INFO.plan,
+    status: TENANT_INFO.status,
+    expiry: TENANT_INFO.expiry,
+    seatScale: `${TENANT_INFO.seatTotal} 席`,
+    industry: '智能硬件',
+    timezone: 'GMT+8 北京',
+    lang: '简体中文',
+    adminName: '赵管理',
+    phone: '139 0000 0000',
+    email: 'admin@iflytek.com',
+    hotline: '400-100-8000',
+    logoUrl: null as string | null,
+    logoText: 'iF',
+  };
+}
+
+const profile = reactive(createProfileState());
+let savedSnapshot = { ...createProfileState() };
+
+const fileInputRef = ref<HTMLInputElement | null>(null);
 
 const INDUSTRIES = ['智能硬件', '互联网', '金融', '教育', '制造', '其他'];
 const TIMEZONES = ['GMT+8 北京', 'GMT+0 伦敦', 'GMT-8 洛杉矶'];
 const LANGS = ['简体中文', 'English'];
 
-function onSave() { message.success('已保存租户资料'); }
-function onReset() { message.info('已还原未保存的修改'); }
+function isLogoFile(file: File) {
+  if (LOGO_TYPES.has(file.type)) return true;
+  const name = file.name.toLowerCase();
+  return LOGO_EXTS.some((ext) => name.endsWith(ext));
+}
+
+function revokeLogoUrl(url: string | null) {
+  if (url?.startsWith('blob:')) URL.revokeObjectURL(url);
+}
+
+function triggerLogoUpload() {
+  fileInputRef.value?.click();
+}
+
+function onLogoFileChange(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file) return;
+
+  if (!isLogoFile(file)) {
+    message.error('仅支持 png / jpg / svg 格式');
+    return;
+  }
+  if (file.size > LOGO_MAX_BYTES) {
+    message.error('Logo 文件不能超过 1MB');
+    return;
+  }
+
+  revokeLogoUrl(profile.logoUrl);
+  profile.logoUrl = URL.createObjectURL(file);
+  message.success('Logo 已更新，请点击底部「保存资料」生效');
+}
+
+function removeLogo() {
+  revokeLogoUrl(profile.logoUrl);
+  profile.logoUrl = null;
+  message.success('已移除 Logo，请点击底部「保存资料」生效');
+}
+
+function snapshotProfile() {
+  return { ...profile, logoUrl: profile.logoUrl };
+}
+
+function applySnapshot(data: ReturnType<typeof snapshotProfile>) {
+  const prev = profile.logoUrl;
+  Object.assign(profile, data);
+  if (prev && prev !== data.logoUrl) revokeLogoUrl(prev);
+}
+
+function onSave() {
+  savedSnapshot = snapshotProfile();
+  message.success('已保存租户资料');
+}
+
+function onReset() {
+  applySnapshot(savedSnapshot);
+  message.info('已还原未保存的修改');
+}
+
+onBeforeUnmount(() => revokeLogoUrl(profile.logoUrl));
 </script>
 
 <template>
   <div class="profile">
     <!-- ① 平台管控·只读概览 -->
     <div class="overview-card">
-      <div class="ov-logo">iF</div>
+      <div class="ov-logo">
+        <img v-if="profile.logoUrl" :src="profile.logoUrl" alt="企业 Logo" class="logo-img" />
+        <span v-else>{{ profile.logoText }}</span>
+      </div>
       <div class="ov-main">
         <div class="ov-name-row">
           <span class="ov-name">{{ profile.name }}</span>
-          <a-tag color="gold"><CrownOutlined /> {{ profile.plan }}</a-tag>
+          <PlanTag :plan="profile.plan" />
           <span class="ov-status">● {{ profile.status }}</span>
         </div>
         <div class="ov-grid">
@@ -68,9 +142,25 @@ function onReset() { message.info('已还原未保存的修改'); }
         </div>
         <a-form-item label="企业 Logo">
           <div class="logo-row">
-            <span class="logo-preview">iF</span>
-            <a-button @click="message.info('上传 Logo')"><template #icon><UploadOutlined /></template>上传</a-button>
-            <span class="ro-tip">png/jpg/svg · ≤1MB · 建议正方形</span>
+            <div class="logo-preview" :class="{ filled: !!profile.logoUrl }">
+              <img v-if="profile.logoUrl" :src="profile.logoUrl" alt="企业 Logo" class="logo-img" />
+              <span v-else>{{ profile.logoText }}</span>
+            </div>
+            <div class="logo-actions">
+              <input
+                ref="fileInputRef"
+                type="file"
+                class="logo-file-input"
+                accept=".png,.jpg,.jpeg,.svg,image/png,image/jpeg,image/svg+xml"
+                @change="onLogoFileChange"
+              />
+              <a-button @click="triggerLogoUpload">
+                <template #icon><UploadOutlined /></template>
+                {{ profile.logoUrl ? '更换' : '上传' }}
+              </a-button>
+              <a-button v-if="profile.logoUrl" @click="removeLogo">移除</a-button>
+              <span class="ro-tip">png/jpg/svg · ≤1MB · 建议正方形</span>
+            </div>
           </div>
         </a-form-item>
       </a-form>
@@ -103,7 +193,8 @@ function onReset() { message.info('已还原未保存的修改'); }
 
 /* 平台管控·只读概览 */
 .overview-card { display: flex; align-items: center; gap: 18px; background: linear-gradient(90deg, #1a6fff, #3b82f6); border-radius: 12px; padding: 20px 24px; color: #fff; }
-.ov-logo { width: 52px; height: 52px; flex: none; border-radius: 12px; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 18px; }
+.ov-logo { width: 52px; height: 52px; flex: none; border-radius: 12px; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 18px; overflow: hidden; }
+.logo-img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .ov-main { flex: 1; min-width: 0; }
 .ov-name-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
 .ov-name { font-size: 18px; font-weight: 700; }
@@ -122,8 +213,11 @@ function onReset() { message.info('已还原未保存的修改'); }
 .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 24px; }
 .card :deep(.ant-form-item) { margin-bottom: 14px; }
 .ro-tip { font-size: 12px; color: #9ca3af; }
-.logo-row { display: flex; align-items: center; gap: 12px; }
-.logo-preview { width: 52px; height: 52px; border-radius: 10px; background: #1a6fff; color: #fff; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+.logo-row { display: flex; align-items: flex-start; gap: 14px; }
+.logo-preview { width: 52px; height: 52px; flex: none; border-radius: 10px; background: #1a6fff; color: #fff; font-weight: 800; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid #e5e7eb; }
+.logo-preview.filled { background: #fff; }
+.logo-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-height: 52px; }
+.logo-file-input { display: none; }
 .admin-note { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #6b7280; background: #f9fafb; border: 1px solid #eef0f2; border-radius: 8px; padding: 10px 12px; margin-top: 4px; }
 
 .actionbar { position: sticky; bottom: 0; margin: 0 -24px -80px; display: flex; justify-content: flex-end; gap: 12px; background: #fff; padding: 14px 24px; border-top: 1px solid #e5e7eb; }

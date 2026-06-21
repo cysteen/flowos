@@ -37,7 +37,6 @@ export const BREAK_LABELS: Record<BreakReason, string> = {
 };
 
 let phaseTimer: ReturnType<typeof setTimeout> | undefined;
-let pulseTimer: ReturnType<typeof setTimeout> | undefined;
 let clock: ReturnType<typeof setInterval> | undefined;
 
 export function maskPhone(num: string): string {
@@ -63,7 +62,6 @@ export const useCtiStore = defineStore('cti', {
     workStatusBeforeCall: null as WorkStatus | null,
     callSession: null as CallSession | null,
     now: 0,
-    barPulse: false,
   }),
   getters: {
     isSignedIn: (s): boolean => s.workStatus !== 'offline',
@@ -123,11 +121,6 @@ export const useCtiStore = defineStore('cti', {
       this.breakReason = reason;
       this.touchWorkStatus('break');
     },
-    pulseBar() {
-      this.barPulse = true;
-      if (pulseTimer) clearTimeout(pulseTimer);
-      pulseTimer = setTimeout(() => { this.barPulse = false; }, 1800);
-    },
     clearPhaseTimer() {
       if (phaseTimer) clearTimeout(phaseTimer);
       phaseTimer = undefined;
@@ -165,7 +158,6 @@ export const useCtiStore = defineStore('cti', {
         startedAt,
         connectedAt: null,
       };
-      this.pulseBar();
       this.schedulePhaseTransitions();
       return true;
     },

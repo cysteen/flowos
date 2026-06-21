@@ -9,6 +9,7 @@ import {
   TENANTS, ROLE_PRESETS, TENANT_ADMIN_SEAT_MAX, PLAN_OPTIONS, SIM_ORG_TREE, SIM_USERS,
   type Tenant, type RolePreset, type SimUser,
 } from '@/mock/platformAdmin';
+import PlanTag from '@/components/admin/PlanTag.vue';
 import { stdPagination } from '@/config/adminUi';
 
 const tenants = ref<Tenant[]>(JSON.parse(JSON.stringify(TENANTS)));
@@ -31,7 +32,6 @@ const stats = computed(() => ({
 }));
 
 const planMeta = computed(() => PLAN_OPTIONS.find((p) => p.value === form.plan));
-const PLAN_TONE: Record<string, string> = { 基础版: 'default', 专业版: 'blue', 旗舰版: 'purple' };
 
 const columns = [
   { title: '租户', key: 'name' },
@@ -49,16 +49,24 @@ const showTenantModal = ref(false);
 const editing = ref<Tenant | null>(null);
 const form = reactive({
   name: '', code: '', plan: '专业版', adminEmail: '', adminPhone: '', adminLimit: TENANT_ADMIN_SEAT_MAX,
-  orderLimit: 1000, apiLimit: 10000, storageLimit: 50,
+  orderLimit: 1000, outboundLimit: 3000, storageLimit: 100,
 });
+function applyPlanQuota(plan: string) {
+  const meta = PLAN_OPTIONS.find((p) => p.value === plan);
+  if (!meta) return;
+  form.orderLimit = meta.quota.orderLimit;
+  form.outboundLimit = meta.quota.outboundLimit;
+  form.storageLimit = meta.quota.storageLimit;
+}
 function openCreate() {
   editing.value = null;
-  Object.assign(form, { name: '', code: '', plan: '专业版', adminEmail: '', adminPhone: '', adminLimit: TENANT_ADMIN_SEAT_MAX, orderLimit: 1000, apiLimit: 10000, storageLimit: 50 });
+  Object.assign(form, { name: '', code: '', plan: '专业版', adminEmail: '', adminPhone: '', adminLimit: TENANT_ADMIN_SEAT_MAX, orderLimit: 1000, outboundLimit: 3000, storageLimit: 100 });
+  applyPlanQuota('专业版');
   showTenantModal.value = true;
 }
 function openEdit(t: Tenant) {
   editing.value = t;
-  Object.assign(form, { name: t.name, code: t.code, plan: t.plan, adminEmail: t.admin, adminPhone: t.adminPhone, adminLimit: t.adminLimit, orderLimit: t.quota.orderLimit, apiLimit: t.quota.apiLimit, storageLimit: t.quota.storageLimit });
+  Object.assign(form, { name: t.name, code: t.code, plan: t.plan, adminEmail: t.admin, adminPhone: t.adminPhone, adminLimit: t.adminLimit, orderLimit: t.quota.orderLimit, outboundLimit: t.quota.outboundLimit, storageLimit: t.quota.storageLimit });
   showTenantModal.value = true;
 }
 function saveTenant() {
@@ -71,7 +79,7 @@ function saveTenant() {
     const t = editing.value;
     t.name = form.name; t.code = form.code; t.plan = form.plan; t.admin = form.adminEmail; t.adminPhone = form.adminPhone;
     t.adminLimit = limit; t.adminCount = Math.min(t.adminCount, limit);
-    t.quota.orderLimit = form.orderLimit; t.quota.apiLimit = form.apiLimit; t.quota.storageLimit = form.storageLimit;
+    t.quota.orderLimit = form.orderLimit; t.quota.outboundLimit = form.outboundLimit; t.quota.storageLimit = form.storageLimit;
     message.success('租户信息已更新');
   } else {
     const colors = ['#1A6FFF', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
@@ -79,7 +87,7 @@ function saveTenant() {
       id: 't' + (tenants.value.length + 1), name: form.name, code: form.code, status: 'active',
       admin: form.adminEmail, adminPhone: form.adminPhone, adminLimit: limit, adminCount: 1, plan: form.plan,
       createdAt: '2026-06-21', color: colors[tenants.value.length % colors.length],
-      quota: { orderLimit: form.orderLimit, orderUsed: 0, orderPct: 0, apiLimit: form.apiLimit, apiUsed: 0, apiPct: 0, storageLimit: form.storageLimit, storageUsed: 0, storagePct: 0 },
+      quota: { orderLimit: form.orderLimit, orderUsed: 0, orderPct: 0, outboundLimit: form.outboundLimit, outboundUsed: 0, outboundPct: 0, storageLimit: form.storageLimit, storageUsed: 0, storagePct: 0 },
       logs: [{ time: '2026-06-21 12:00', action: '创建租户', user: 'admin' }],
     });
     message.success('租户创建成功');
@@ -239,7 +247,7 @@ onBeforeUnmount(() => { if (simTimer) clearInterval(simTimer); });
             <div class="tname"><span class="tavatar" :style="{ background: record.color }">{{ record.name[0] }}</span><span class="tn">{{ record.name }}</span></div>
           </template>
           <a-tag v-else-if="column.key === 'code'" class="code-tag">{{ record.code }}</a-tag>
-          <a-tag v-else-if="column.key === 'plan'" :color="PLAN_TONE[record.plan]">{{ record.plan }}</a-tag>
+          <PlanTag v-else-if="column.key === 'plan'" :plan="record.plan" />
           <a-tag v-else-if="column.key === 'status'" :color="record.status === 'active' ? 'green' : 'default'">{{ record.status === 'active' ? '活跃' : '已停用' }}</a-tag>
           <template v-else-if="column.key === 'admin'">
             <div class="adm"><MailOutlined class="adm-ic" /><span>{{ record.admin }}</span></div>
@@ -269,8 +277,8 @@ onBeforeUnmount(() => { if (simTimer) clearInterval(simTimer); });
           <a-form-item label="租户编码" required><a-input v-model:value="form.code" placeholder="如 XFKJ" /></a-form-item>
         </div>
         <a-form-item label="所属套餐" required>
-          <a-select v-model:value="form.plan" :options="PLAN_OPTIONS.map((p) => ({ value: p.value, label: p.label }))" />
-          <div v-if="planMeta" class="plan-meta">{{ planMeta.seats }} · 工单 {{ planMeta.orders }} · 存储 {{ planMeta.storage }}</div>
+          <a-select v-model:value="form.plan" :options="PLAN_OPTIONS.map((p) => ({ value: p.value, label: p.label }))" @change="applyPlanQuota" />
+          <div v-if="planMeta" class="plan-meta">{{ planMeta.seats }} · 工单 {{ planMeta.orders }} · 外呼 {{ planMeta.outbound }} · 存储 {{ planMeta.storage }}</div>
         </a-form-item>
         <div class="grid2">
           <a-form-item label="管理员邮箱" required><a-input v-model:value="form.adminEmail" placeholder="admin@example.com"><template #prefix><MailOutlined /></template></a-input></a-form-item>
@@ -283,7 +291,7 @@ onBeforeUnmount(() => { if (simTimer) clearInterval(simTimer); });
         <div class="form-sub">配额设置</div>
         <div class="grid3">
           <a-form-item label="工单上限"><a-input-number v-model:value="form.orderLimit" style="width:100%" /></a-form-item>
-          <a-form-item label="API 调用/日"><a-input-number v-model:value="form.apiLimit" style="width:100%" /></a-form-item>
+          <a-form-item label="外呼次数/日"><a-input-number v-model:value="form.outboundLimit" style="width:100%" :min="0" /></a-form-item>
           <a-form-item label="存储空间(GB)"><a-input-number v-model:value="form.storageLimit" style="width:100%" /></a-form-item>
         </div>
       </a-form>
@@ -296,7 +304,7 @@ onBeforeUnmount(() => { if (simTimer) clearInterval(simTimer); });
         <a-descriptions :column="2" bordered size="small">
           <a-descriptions-item label="名称">{{ detail.name }}</a-descriptions-item>
           <a-descriptions-item label="编码"><span class="mono">{{ detail.code }}</span></a-descriptions-item>
-          <a-descriptions-item label="所属套餐"><a-tag :color="PLAN_TONE[detail.plan]">{{ detail.plan }}</a-tag></a-descriptions-item>
+          <a-descriptions-item label="所属套餐"><PlanTag :plan="detail.plan" /></a-descriptions-item>
           <a-descriptions-item label="状态"><a-tag :color="detail.status === 'active' ? 'green' : 'default'">{{ detail.status === 'active' ? '活跃' : '已停用' }}</a-tag></a-descriptions-item>
           <a-descriptions-item label="创建时间">{{ detail.createdAt }}</a-descriptions-item>
           <a-descriptions-item label="管理员邮箱" :span="2">{{ detail.admin }}</a-descriptions-item>
@@ -307,7 +315,7 @@ onBeforeUnmount(() => { if (simTimer) clearInterval(simTimer); });
         <div class="quota">
           <div v-for="q in [
             { l: '工单配额', u: detail.quota.orderUsed, t: detail.quota.orderLimit, p: detail.quota.orderPct },
-            { l: 'API调用/日', u: detail.quota.apiUsed, t: detail.quota.apiLimit, p: detail.quota.apiPct },
+            { l: '外呼次数/日', u: detail.quota.outboundUsed, t: detail.quota.outboundLimit, p: detail.quota.outboundPct },
             { l: '存储空间', u: detail.quota.storageUsed + 'GB', t: detail.quota.storageLimit + 'GB', p: detail.quota.storagePct }]" :key="q.l" class="q-row">
             <div class="q-top"><span>{{ q.l }}</span><span class="mono muted">{{ q.u }} / {{ q.t }}</span></div>
             <div class="q-track"><div class="q-fill" :style="{ width: q.p + '%', background: q.p > 80 ? '#EF4444' : '#1A6FFF' }"></div></div>

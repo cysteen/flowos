@@ -67,7 +67,7 @@ function onMenuClick({ key }: { key: string | number }) {
 </script>
 
 <template>
-  <div class="cti-bar" :class="{ pulse: cti.barPulse }">
+  <div class="cti-bar">
     <template v-if="!cti.isSignedIn">
       <button class="cti-work-btn cti-work-btn--signin" type="button" @click="signIn">
         <span class="cti-work-btn__icon"><CtiAuthIcon kind="sign-in" /></span>
@@ -154,16 +154,6 @@ function onMenuClick({ key }: { key: string | number }) {
   flex: 1; min-width: 0; height: 100%;
   display: flex; align-items: center; gap: 12px;
   padding: 0 8px; overflow: hidden;
-  transition: box-shadow 0.25s;
-}
-.cti-bar.pulse {
-  box-shadow: inset 0 0 0 2px #bfdbfe;
-  border-radius: 8px;
-  animation: ctibarflash 1.8s ease-out;
-}
-@keyframes ctibarflash {
-  0% { background: #eff6ff; }
-  100% { background: transparent; }
 }
 
 .hint { font-size: 12px; color: #9ca3af; flex: none; white-space: nowrap; }

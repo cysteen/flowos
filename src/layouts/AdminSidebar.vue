@@ -57,9 +57,8 @@ function backToWorkspace() {
       </div>
     </a-tooltip>
 
-    <!-- 平台超管：系统管理（租户管理 / 系统参数） -->
+    <!-- 平台超管：租户管理 / 系统参数 -->
     <div v-if="isPlatform" class="menu-list">
-      <div v-if="!collapsed" class="plat-group-title">{{ PLATFORM_NAV.groupLabel }}</div>
       <a-tooltip v-for="it in PLATFORM_NAV.items" :key="it.key" :title="collapsed ? it.label : ''" placement="right">
         <div
           class="nav-item top"
@@ -156,14 +155,6 @@ function backToWorkspace() {
   gap: 4px;
   padding: 8px 0 16px;
 }
-.plat-group-title {
-  padding: 8px 20px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #9ca3af;
-  letter-spacing: 0.05em;
-}
-
 .nav-item,
 .group-head {
   display: flex;
