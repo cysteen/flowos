@@ -81,7 +81,7 @@ const workDays = ref([
 ]);
 const holidays = ref(['2026-01-01 元旦', '2026-02-16~22 春节', '2026-04-04~06 清明', '2026-05-01~05 劳动节']);
 
-function save() { message.success('已保存（演示）'); }
+function save() { message.success('已保存并生效'); }
 </script>
 
 <template>

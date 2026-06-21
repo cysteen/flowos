@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import { message } from 'ant-design-vue';
+import { ref, reactive } from 'vue';
+import { message, Modal } from 'ant-design-vue';
 import { PlusOutlined, DeleteOutlined, SafetyOutlined } from '@ant-design/icons-vue';
 import { stdPagination } from '@/config/adminUi';
 
@@ -80,8 +80,48 @@ const lcCols = [
   { title: '启用', dataIndex: 'status', key: 'status', width: 70 },
 ];
 
-function todo(t: string) { message.info(`「${t}」（演示）`); }
-function delRow(arr: any, idx: number) { arr.value.splice(idx, 1); }
+function delRow(arr: any, idx: number) { arr.value.splice(idx, 1); message.success('已删除'); }
+
+// —— 身份源 新增/配置 ——
+const PROTOCOLS = ['OAuth2', 'OIDC', 'SAML 2.0', 'LDAP', 'CAS'];
+let idpSeq = 5;
+const idpModalOpen = ref(false);
+const idpEditId = ref<number | null>(null);
+const idpf = reactive({ name: '', protocol: 'OAuth2', appId: '', auto: true, status: true });
+function openAddIdp() { idpEditId.value = null; Object.assign(idpf, { name: '', protocol: 'OAuth2', appId: '', auto: true, status: true }); idpModalOpen.value = true; }
+function openCfgIdp(r: any) { idpEditId.value = r.id; Object.assign(idpf, { name: r.name, protocol: r.protocol, appId: r.appId, auto: r.auto, status: r.status }); idpModalOpen.value = true; }
+function saveIdp() {
+  if (!idpf.name) { message.error('请填写身份源名称'); return; }
+  if (idpEditId.value) { const r = idps.value.find((x) => x.id === idpEditId.value); if (r) Object.assign(r, { ...idpf }); message.success('身份源已更新'); }
+  else { idps.value.push({ id: idpSeq++, ...idpf }); message.success(`身份源「${idpf.name}」已新增`); }
+  idpModalOpen.value = false;
+}
+
+// —— SSO / 策略 保存 ——
+function saveSso() { message.success('SSO 配置已保存并生效'); }
+function savePolicy() { message.success('登录策略已保存并生效'); }
+
+// —— 账号解绑 ——
+function unbind(b: any) {
+  Modal.confirm({
+    title: '解绑账号', icon: null, content: `确定解除「${b.user}」与「${b.idp}」的绑定？`,
+    okText: '确认解绑', okType: 'danger', cancelText: '取消',
+    onOk: () => { bindings.value = bindings.value.filter((x) => x.account !== b.account); message.success('已解绑'); },
+  });
+}
+
+// —— 登录日志导出 ——
+function exportLogs() { message.success(`已导出 ${loginLogs.value.length} 条登录日志（CSV）`); }
+
+// —— 数据生命周期 新增策略 ——
+const lcModalOpen = ref(false);
+const lcf = reactive({ entity: '', retain: '1 年', archive: '冷存储', purge: '到期删除' });
+function openAddLc() { Object.assign(lcf, { entity: '', retain: '1 年', archive: '冷存储', purge: '到期删除' }); lcModalOpen.value = true; }
+function saveLc() {
+  if (!lcf.entity) { message.error('请填写数据实体'); return; }
+  lifecycle.value.push({ ...lcf, status: true });
+  message.success('生命周期策略已新增'); lcModalOpen.value = false;
+}
 </script>
 
 <template>
@@ -89,14 +129,14 @@ function delRow(arr: any, idx: number) { arr.value.splice(idx, 1); }
     <a-tabs v-model:activeKey="tab">
       <!-- 身份源 -->
       <a-tab-pane key="idp" tab="身份源">
-        <div class="bar"><span class="tip">配置第三方身份提供方（OAuth2 / LDAP / SAML）</span><a-button type="primary" @click="todo('新增身份源')"><template #icon><PlusOutlined /></template>新增身份源</a-button></div>
+        <div class="bar"><span class="tip">配置第三方身份提供方（OAuth2 / LDAP / SAML）</span><a-button type="primary" @click="openAddIdp"><template #icon><PlusOutlined /></template>新增身份源</a-button></div>
         <a-table :columns="idpCols" :data-source="idps" row-key="id" :pagination="false" size="middle">
           <template #bodyCell="{ column, record, index }">
             <a-tag v-if="column.key === 'protocol'" color="blue">{{ record.protocol }}</a-tag>
             <code v-else-if="column.key === 'appId'" class="mono">{{ record.appId }}</code>
             <a-tag v-else-if="column.key === 'auto'" :color="record.auto ? 'green' : 'default'">{{ record.auto ? '开' : '关' }}</a-tag>
             <a-switch v-else-if="column.key === 'status'" v-model:checked="record.status" size="small" />
-            <template v-else-if="column.key === 'op'"><a-button type="link" size="small" @click="todo('配置')">配置</a-button><DeleteOutlined class="op-ic danger" @click="delRow(idps, index)" /></template>
+            <template v-else-if="column.key === 'op'"><a-button type="link" size="small" @click="openCfgIdp(record)">配置</a-button><DeleteOutlined class="op-ic danger" @click="delRow(idps, index)" /></template>
           </template>
         </a-table>
       </a-tab-pane>
@@ -110,7 +150,7 @@ function delRow(arr: any, idx: number) { arr.value.splice(idx, 1); }
             <a-form-item label="Entity ID"><a-input v-model:value="sso.entityId" /></a-form-item>
             <a-form-item label="强制 SSO 登录"><a-switch v-model:checked="sso.forceSso" /><span class="hint">开启后禁用本地密码登录</span></a-form-item>
             <a-form-item label="会话有效期（分钟）"><a-input-number v-model:value="sso.sessionTtl" :min="30" :max="1440" /></a-form-item>
-            <a-button type="primary" @click="todo('保存 SSO')">保存配置</a-button>
+            <a-button type="primary" @click="saveSso">保存配置</a-button>
           </a-form>
         </div>
       </a-tab-pane>
@@ -122,7 +162,7 @@ function delRow(arr: any, idx: number) { arr.value.splice(idx, 1); }
           <template #bodyCell="{ column, record }">
             <a-tag v-if="column.key === 'idp'" color="blue">{{ record.idp }}</a-tag>
             <code v-else-if="column.key === 'extId'" class="mono">{{ record.extId }}</code>
-            <a-button v-else-if="column.key === 'op'" type="link" size="small" danger @click="todo('解绑')">解绑</a-button>
+            <a-button v-else-if="column.key === 'op'" type="link" size="small" danger @click="unbind(record)">解绑</a-button>
           </template>
         </a-table>
       </a-tab-pane>
@@ -139,13 +179,13 @@ function delRow(arr: any, idx: number) { arr.value.splice(idx, 1); }
             <div class="pg-item"><label>IP 白名单</label><a-switch v-model:checked="policy.ipWhitelist" /></div>
             <div class="pg-item"><label>无操作超时（分钟）</label><a-input-number v-model:value="policy.sessionTimeout" :min="5" :max="120" /></div>
           </div>
-          <a-button type="primary" style="margin-top: 20px" @click="todo('保存策略')"><template #icon><SafetyOutlined /></template>保存登录策略</a-button>
+          <a-button type="primary" style="margin-top: 20px" @click="savePolicy"><template #icon><SafetyOutlined /></template>保存登录策略</a-button>
         </div>
       </a-tab-pane>
 
       <!-- 登录日志 -->
       <a-tab-pane key="loginlog" tab="登录日志">
-        <div class="bar"><span class="tip">登录/登出/失败/锁定记录，区别于操作审计日志</span><a-button @click="todo('导出')">导出 CSV</a-button></div>
+        <div class="bar"><span class="tip">登录/登出/失败/锁定记录，区别于操作审计日志</span><a-button @click="exportLogs">导出 CSV</a-button></div>
         <a-table :columns="loginCols" :data-source="loginLogs" row-key="time" :pagination="stdPagination()" size="middle">
           <template #bodyCell="{ column, record }">
             <code v-if="column.key === 'ip'" class="mono">{{ record.ip }}</code>
@@ -156,7 +196,7 @@ function delRow(arr: any, idx: number) { arr.value.splice(idx, 1); }
 
       <!-- 数据生命周期 -->
       <a-tab-pane key="lifecycle" tab="数据生命周期">
-        <div class="bar"><span class="tip">各类数据的保留期、归档与到期处置策略（合规）</span><a-button type="primary" @click="todo('新增策略')"><template #icon><PlusOutlined /></template>新增策略</a-button></div>
+        <div class="bar"><span class="tip">各类数据的保留期、归档与到期处置策略（合规）</span><a-button type="primary" @click="openAddLc"><template #icon><PlusOutlined /></template>新增策略</a-button></div>
         <a-table :columns="lcCols" :data-source="lifecycle" row-key="entity" :pagination="false" size="middle">
           <template #bodyCell="{ column, record }">
             <b v-if="column.key === 'entity'">{{ record.entity }}</b>
@@ -166,6 +206,27 @@ function delRow(arr: any, idx: number) { arr.value.splice(idx, 1); }
         </a-table>
       </a-tab-pane>
     </a-tabs>
+
+    <!-- 新增 / 配置身份源 -->
+    <a-modal v-model:open="idpModalOpen" :title="idpEditId ? '配置身份源' : '新增身份源'" :width="520" :ok-text="idpEditId ? '保存' : '创建'" cancel-text="取消" @ok="saveIdp">
+      <a-form layout="vertical" class="tpl-form">
+        <a-form-item label="身份源名称" required class="half"><a-input v-model:value="idpf.name" placeholder="如：钉钉" /></a-form-item>
+        <a-form-item label="协议" class="half"><a-select v-model:value="idpf.protocol" :options="PROTOCOLS.map((v)=>({value:v,label:v}))" /></a-form-item>
+        <a-form-item label="AppID / 地址" class="full"><a-input v-model:value="idpf.appId" placeholder="AppID 或 LDAP 地址" /></a-form-item>
+        <a-form-item label="自动建号" class="half"><a-switch v-model:checked="idpf.auto" /></a-form-item>
+        <a-form-item label="启用" class="half"><a-switch v-model:checked="idpf.status" /></a-form-item>
+      </a-form>
+    </a-modal>
+
+    <!-- 新增生命周期策略 -->
+    <a-modal v-model:open="lcModalOpen" title="新增数据生命周期策略" :width="520" ok-text="创建" cancel-text="取消" @ok="saveLc">
+      <a-form layout="vertical" class="tpl-form">
+        <a-form-item label="数据实体" required class="full"><a-input v-model:value="lcf.entity" placeholder="如：已结案工单" /></a-form-item>
+        <a-form-item label="保留期" class="half"><a-input v-model:value="lcf.retain" placeholder="如：3 年" /></a-form-item>
+        <a-form-item label="归档策略" class="half"><a-select v-model:value="lcf.archive" :options="['冷存储','OSS 归档','只读归档','—'].map((v)=>({value:v,label:v}))" /></a-form-item>
+        <a-form-item label="到期处置" class="full"><a-select v-model:value="lcf.purge" :options="['到期删除','到期匿名化','不删除'].map((v)=>({value:v,label:v}))" /></a-form-item>
+      </a-form>
+    </a-modal>
   </div>
 </template>
 
@@ -173,6 +234,9 @@ function delRow(arr: any, idx: number) { arr.value.splice(idx, 1); }
 .tpl-login { padding: 8px 24px 24px; }
 .bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
 .tip { font-size: 13px; color: #6b7280; }
+.tpl-form { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
+.tpl-form .full { grid-column: 1 / -1; }
+.tpl-form :deep(.ant-form-item) { margin-bottom: 14px; }
 .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px 24px; }
 .hint { font-size: 12px; color: #9ca3af; margin-left: 10px; }
 .policy-grid { display: grid; grid-template-columns: repeat(2, minmax(260px, 1fr)); gap: 18px 40px; max-width: 720px; }

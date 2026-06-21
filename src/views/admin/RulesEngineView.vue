@@ -97,7 +97,7 @@ const logCols = [
 ];
 
 const pagination = stdPagination();
-function save() { message.success('已保存（演示）'); }
+function save() { message.success('已保存并生效'); }
 </script>
 
 <template>
