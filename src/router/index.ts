@@ -12,6 +12,7 @@ const ADMIN_SPECIAL_VIEWS: Record<string, () => Promise<unknown>> = {
   'tenant-basic': () => import('@/views/admin/TenantProfileView.vue'),
   roles: () => import('@/views/admin/RolePermissionView.vue'),
   'audit-logs': () => import('@/views/admin/AuditLogsView.vue'),
+  'sla-policy': () => import('@/views/admin/SlaPolicyView.vue'),
 };
 const adminModuleRoutes: RouteRecordRaw[] = ADMIN_ALL_ITEMS.map((it) => ({
   path: it.key,
