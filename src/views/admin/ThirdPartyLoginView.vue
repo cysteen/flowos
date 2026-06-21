@@ -134,7 +134,7 @@ function saveLc() {
         <a-table :columns="idpCols" :data-source="idps" row-key="id" :pagination="false" size="middle">
           <template #bodyCell="{ column, record, index }">
             <a-tag v-if="column.key === 'protocol'" color="blue">{{ record.protocol }}</a-tag>
-            <code v-else-if="column.key === 'appId'" class="mono">{{ record.appId }}</code>
+            <span v-else-if="column.key === 'appId'">{{ record.appId }}</span>
             <a-tag v-else-if="column.key === 'auto'" :color="record.auto ? 'green' : 'default'">{{ record.auto ? '开' : '关' }}</a-tag>
             <a-switch v-else-if="column.key === 'status'" v-model:checked="record.status" size="small" />
             <template v-else-if="column.key === 'op'"><a-button type="link" size="small" @click="openCfgIdp(record)">配置</a-button><DeleteOutlined class="op-ic danger" @click="delRow(idps, index)" /></template>
@@ -162,7 +162,7 @@ function saveLc() {
         <a-table :columns="bindCols" :data-source="bindings" row-key="account" :pagination="stdPagination()" size="middle">
           <template #bodyCell="{ column, record }">
             <a-tag v-if="column.key === 'idp'" color="blue">{{ record.idp }}</a-tag>
-            <code v-else-if="column.key === 'extId'" class="mono">{{ record.extId }}</code>
+            <span v-else-if="column.key === 'extId'">{{ record.extId }}</span>
             <a-button v-else-if="column.key === 'op'" type="link" size="small" danger @click="unbind(record)">解绑</a-button>
           </template>
         </a-table>
@@ -189,7 +189,7 @@ function saveLc() {
         <div class="bar"><span class="tip">登录/登出/失败/锁定记录，区别于操作审计日志</span><a-button @click="exportLogs">导出 CSV</a-button></div>
         <a-table :columns="loginCols" :data-source="loginLogs" row-key="time" :pagination="stdPagination()" size="middle">
           <template #bodyCell="{ column, record }">
-            <code v-if="column.key === 'ip'" class="mono">{{ record.ip }}</code>
+            <span v-if="column.key === 'ip'">{{ record.ip }}</span>
             <a-tag v-else-if="column.key === 'result'" :color="LOGIN_TONE[record.result]">{{ record.result }}</a-tag>
           </template>
         </a-table>
@@ -245,7 +245,6 @@ function saveLc() {
 .policy-grid { display: grid; grid-template-columns: repeat(2, minmax(260px, 1fr)); gap: 18px 40px; max-width: 720px; }
 .pg-item { display: flex; align-items: center; justify-content: space-between; }
 .pg-item label { font-size: 13px; color: #374151; }
-.mono { font-family: ui-monospace, monospace; font-size: 12px; color: #6b7280; }
 .op-ic { color: #ef4444; cursor: pointer; margin-left: 8px; } .op-ic:hover { opacity: 0.7; }
 :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; }
 </style>

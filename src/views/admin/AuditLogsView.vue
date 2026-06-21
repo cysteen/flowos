@@ -213,12 +213,13 @@ function exportCsv() {
   padding: 0;
 }
 .detail-pre {
-  font-size: 11px;
-  font-family: ui-monospace, monospace;
+  font-size: 13px;
   color: #4b5563;
   white-space: pre-wrap;
+  word-break: break-all;
   margin: 0;
   padding: 12px 16px;
+  font-family: inherit;
 }
 
 .storage-info {

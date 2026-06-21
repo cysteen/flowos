@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue';
+import { computed, reactive, ref } from 'vue';
 import { message } from 'ant-design-vue';
 import {
   LockOutlined, EnvironmentOutlined, UploadOutlined,
@@ -14,8 +14,14 @@ const LOGO_EXTS = ['.png', '.jpg', '.jpeg', '.svg'];
 
 const brand = useTenantBrandStore();
 
-// 基本信息（PRD-59a）：上半「平台管控·只读概览」与下半「租户可编辑资料」分离，贴合租户自管场景。
-function createProfileState() {
+type ProfileState = ReturnType<typeof createProfileState>;
+
+function createProfileState(): {
+  name: string; code: string; plan: string; status: string; expiry: string; seatScale: string;
+  industry: string; timezone: string; lang: string;
+  adminName: string; phone: string; email: string; hotline: string;
+  logoUrl: string | null; logoFileName: string | null; logoText: string;
+} {
   return {
     name: TENANT_INFO.name,
     code: 'IFLY-T0001',
@@ -30,20 +36,36 @@ function createProfileState() {
     phone: '139 0000 0000',
     email: 'admin@iflytek.com',
     hotline: '400-100-8000',
-    // 初值取自品牌 store（已持久化的 Logo），形成跨页/刷新闭环
-    logoUrl: brand.logoUrl as string | null,
+    logoUrl: brand.logoUrl,
+    logoFileName: brand.logoFileName,
     logoText: 'iF',
   };
 }
 
 const profile = reactive(createProfileState());
-let savedSnapshot = { ...createProfileState() };
+const savedSnapshot = ref<ProfileState>({ ...createProfileState() });
 
 const fileInputRef = ref<HTMLInputElement | null>(null);
+const dragOver = ref(false);
 
 const INDUSTRIES = ['智能硬件', '互联网', '金融', '教育', '制造', '其他'];
 const TIMEZONES = ['GMT+8 北京', 'GMT+0 伦敦', 'GMT-8 洛杉矶'];
 const LANGS = ['简体中文', 'English'];
+
+const logoDirty = computed(() => profile.logoUrl !== savedSnapshot.value.logoUrl);
+const formDirty = computed(() => JSON.stringify(profile) !== JSON.stringify(savedSnapshot.value));
+
+const logoStatusText = computed(() => {
+  if (logoDirty.value) {
+    if (!profile.logoUrl) return '已移除 Logo，保存后将从数据总览等页面撤下';
+    const name = profile.logoFileName ? `「${profile.logoFileName}」` : '新图片';
+    return `已选择 ${name}，保存后将在租户资料与数据总览同步展示`;
+  }
+  if (brand.logoUrl) {
+    return brand.logoFileName ? `当前 Logo · ${brand.logoFileName} · 已全局生效` : '企业 Logo 已保存并全局生效';
+  }
+  return '尚未设置企业 Logo，上传后请点击底部「保存资料」';
+});
 
 function isLogoFile(file: File) {
   if (LOGO_TYPES.has(file.type)) return true;
@@ -51,16 +73,7 @@ function isLogoFile(file: File) {
   return LOGO_EXTS.some((ext) => name.endsWith(ext));
 }
 
-function triggerLogoUpload() {
-  fileInputRef.value?.click();
-}
-
-function onLogoFileChange(e: Event) {
-  const input = e.target as HTMLInputElement;
-  const file = input.files?.[0];
-  input.value = '';
-  if (!file) return;
-
+function applyLogoFile(file: File) {
   if (!isLogoFile(file)) {
     message.error('仅支持 png / jpg / svg 格式');
     return;
@@ -70,40 +83,56 @@ function onLogoFileChange(e: Event) {
     return;
   }
 
-  // 读为 dataURL（可持久化到 localStorage，刷新后仍在）
   const reader = new FileReader();
   reader.onload = () => {
     profile.logoUrl = reader.result as string;
-    message.success('Logo 已更新，点击底部「保存资料」即生效到全局');
+    profile.logoFileName = file.name;
+    message.success('Logo 已选择，请点击「保存资料」生效');
   };
   reader.onerror = () => message.error('读取图片失败，请重试');
   reader.readAsDataURL(file);
 }
 
+function triggerLogoUpload() {
+  fileInputRef.value?.click();
+}
+
+function onLogoFileChange(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0];
+  (e.target as HTMLInputElement).value = '';
+  if (file) applyLogoFile(file);
+}
+
+function onLogoDrop(e: DragEvent) {
+  dragOver.value = false;
+  const file = e.dataTransfer?.files?.[0];
+  if (file) applyLogoFile(file);
+}
+
 function removeLogo() {
   profile.logoUrl = null;
-  message.success('已移除 Logo，点击底部「保存资料」生效');
+  profile.logoFileName = null;
+  message.success('已移除 Logo，请点击「保存资料」生效');
 }
 
 function onSave() {
-  savedSnapshot = { ...profile };
-  // 提交到品牌 store → 持久化 + 同步数据总览/头部品牌
-  brand.setLogo(profile.logoUrl);
-  message.success('已保存租户资料，企业 Logo 已全局生效');
+  savedSnapshot.value = { ...profile };
+  brand.setLogo(profile.logoUrl, profile.logoFileName);
+  message.success('已保存租户资料，企业 Logo 已同步至数据总览');
 }
 
 function onReset() {
-  Object.assign(profile, savedSnapshot);
+  Object.assign(profile, savedSnapshot.value);
   message.info('已还原未保存的修改');
 }
 </script>
 
 <template>
   <div class="profile">
-    <!-- ① 平台管控·只读概览 -->
+    <!-- ① 平台管控·只读概览（展示已保存的 Logo） -->
     <div class="overview-card">
       <div class="ov-logo">
-        <img v-if="profile.logoUrl" :src="profile.logoUrl" alt="企业 Logo" class="logo-img" />
+        <img v-if="brand.logoUrl" :src="brand.logoUrl" alt="企业 Logo" class="logo-img" />
         <span v-else>{{ profile.logoText }}</span>
       </div>
       <div class="ov-main">
@@ -113,7 +142,7 @@ function onReset() {
           <span class="ov-status">● {{ profile.status }}</span>
         </div>
         <div class="ov-grid">
-          <div class="ov-cell"><label>租户编码</label><span class="mono">{{ profile.code }}</span></div>
+          <div class="ov-cell"><label>租户编码</label><span>{{ profile.code }}</span></div>
           <div class="ov-cell"><label>有效期至</label><span>{{ profile.expiry }}</span></div>
           <div class="ov-cell"><label>坐席规模</label><span>{{ profile.seatScale }}</span></div>
         </div>
@@ -137,11 +166,16 @@ function onReset() {
         <a-form-item label="企业 Logo">
           <div
             class="logo-uploader"
+            :class="{ 'is-drag': dragOver, 'has-draft': logoDirty }"
             role="button"
             tabindex="0"
             @click="triggerLogoUpload"
             @keydown.enter="triggerLogoUpload"
             @keydown.space.prevent="triggerLogoUpload"
+            @dragenter.prevent="dragOver = true"
+            @dragover.prevent="dragOver = true"
+            @dragleave.prevent="dragOver = false"
+            @drop.prevent="onLogoDrop"
           >
             <input
               ref="fileInputRef"
@@ -152,12 +186,12 @@ function onReset() {
             />
 
             <div class="logo-thumb" :class="{ filled: !!profile.logoUrl }">
-              <img v-if="profile.logoUrl" :src="profile.logoUrl" alt="企业 Logo" class="logo-img" />
+              <img v-if="profile.logoUrl" :src="profile.logoUrl" alt="企业 Logo 预览" class="logo-img" />
               <UploadOutlined v-else class="logo-placeholder-ic" />
             </div>
 
             <div class="logo-body">
-              <div class="logo-title">{{ profile.logoUrl ? '更换企业 Logo' : '上传企业 Logo' }}</div>
+              <div class="logo-title">{{ profile.logoUrl ? '点击或拖拽更换' : '点击或拖拽上传' }}</div>
               <div class="logo-hint">PNG、JPG 或 SVG · 不超过 1MB · 建议 1:1 正方形</div>
             </div>
 
@@ -170,6 +204,7 @@ function onReset() {
               移除
             </button>
           </div>
+          <p class="logo-status" :class="{ warn: logoDirty }">{{ logoStatusText }}</p>
         </a-form-item>
       </a-form>
     </div>
@@ -190,8 +225,9 @@ function onReset() {
 
     <!-- 底部操作条 -->
     <div class="actionbar">
-      <a-button @click="onReset">还原</a-button>
-      <a-button type="primary" @click="onSave">保存资料</a-button>
+      <span v-if="formDirty" class="dirty-tip">有未保存的修改</span>
+      <a-button :disabled="!formDirty" @click="onReset">还原</a-button>
+      <a-button type="primary" :disabled="!formDirty" @click="onSave">保存资料</a-button>
     </div>
   </div>
 </template>
@@ -199,7 +235,6 @@ function onReset() {
 <style scoped>
 .profile { display: flex; flex-direction: column; gap: 16px; padding: 20px 24px 80px; }
 
-/* 平台管控·只读概览 */
 .overview-card { display: flex; align-items: center; gap: 18px; background: linear-gradient(90deg, #1a6fff, #3b82f6); border-radius: 12px; padding: 20px 24px; color: #fff; }
 .ov-logo { width: 52px; height: 52px; flex: none; border-radius: 12px; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 18px; overflow: hidden; }
 .logo-img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -213,19 +248,19 @@ function onReset() {
 .ov-cell span { font-size: 14px; font-weight: 600; }
 .ov-lock { flex: none; text-align: right; font-size: 12px; color: rgba(255,255,255,0.9); }
 .ov-lock-sub { font-size: 11px; color: rgba(255,255,255,0.7); margin-top: 4px; max-width: 160px; }
-.mono { font-family: ui-monospace, monospace; }
 
 .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; }
 .card-title { font-size: 14px; font-weight: 700; color: #111827; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #f0f0f0; }
 .grid2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 24px; }
 .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 24px; }
 .card :deep(.ant-form-item) { margin-bottom: 14px; }
+
 .logo-uploader {
   position: relative;
   display: flex;
   align-items: center;
   gap: 16px;
-  max-width: 480px;
+  max-width: 520px;
   padding: 14px 16px;
   border: 1px dashed #d1d5db;
   border-radius: 10px;
@@ -234,10 +269,16 @@ function onReset() {
   transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
 }
 
-.logo-uploader:hover {
+.logo-uploader:hover,
+.logo-uploader.is-drag {
   border-color: #93b4f5;
   background: #f8fbff;
   box-shadow: 0 2px 8px rgba(26, 111, 255, 0.06);
+}
+
+.logo-uploader.has-draft {
+  border-color: #fbbf24;
+  background: #fffbeb;
 }
 
 .logo-uploader:focus-visible {
@@ -260,42 +301,14 @@ function onReset() {
   overflow: hidden;
 }
 
-.logo-thumb.filled {
-  border-color: #e0e7ef;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
-}
+.logo-thumb.filled { border-color: #e0e7ef; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06); }
+.logo-placeholder-ic { font-size: 22px; color: #9ca3af; }
+.logo-uploader:hover .logo-placeholder-ic { color: #1a6fff; }
 
-.logo-placeholder-ic {
-  font-size: 22px;
-  color: #9ca3af;
-}
-
-.logo-uploader:hover .logo-placeholder-ic {
-  color: #1a6fff;
-}
-
-.logo-body {
-  flex: 1;
-  min-width: 0;
-}
-
-.logo-title {
-  font-size: 14px;
-  font-weight: 500;
-  color: #111827;
-  line-height: 1.4;
-}
-
-.logo-uploader:hover .logo-title {
-  color: #1a6fff;
-}
-
-.logo-hint {
-  margin-top: 4px;
-  font-size: 12px;
-  color: #9ca3af;
-  line-height: 1.5;
-}
+.logo-body { flex: 1; min-width: 0; }
+.logo-title { font-size: 14px; font-weight: 500; color: #111827; line-height: 1.4; }
+.logo-uploader:hover .logo-title { color: #1a6fff; }
+.logo-hint { margin-top: 4px; font-size: 12px; color: #9ca3af; line-height: 1.5; }
 
 .logo-remove {
   flex: none;
@@ -310,12 +323,29 @@ function onReset() {
   cursor: pointer;
   transition: color 0.12s;
 }
+.logo-remove:hover { color: #ef4444; }
 
-.logo-remove:hover {
-  color: #ef4444;
+.logo-status {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1.5;
 }
+.logo-status.warn { color: #d97706; }
 
 .admin-note { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #6b7280; background: #f9fafb; border: 1px solid #eef0f2; border-radius: 8px; padding: 10px 12px; margin-top: 4px; }
 
-.actionbar { position: sticky; bottom: 0; margin: 0 -24px -80px; display: flex; justify-content: flex-end; gap: 12px; background: #fff; padding: 14px 24px; border-top: 1px solid #e5e7eb; }
+.actionbar {
+  position: sticky;
+  bottom: 0;
+  margin: 0 -24px -80px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  background: #fff;
+  padding: 14px 24px;
+  border-top: 1px solid #e5e7eb;
+}
+.dirty-tip { margin-right: auto; font-size: 13px; color: #d97706; }
 </style>

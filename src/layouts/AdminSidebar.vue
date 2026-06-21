@@ -101,24 +101,52 @@ function backToWorkspace() {
 
       <!-- 分组（按角色 scope） -->
       <div v-for="g in groups" :key="g.key" class="group">
-        <a-tooltip :title="collapsed ? g.label : ''" placement="right">
-          <div class="group-head" :class="{ active: collapsed && groupOf(sidebarKey) === g.key }" @click="onGroupHead(g)">
+        <!-- 折叠态：hover 弹出飞出子菜单（否则子项无法访问） -->
+        <a-popover
+          v-if="collapsed"
+          placement="rightTop"
+          trigger="hover"
+          :arrow="false"
+          overlay-class-name="admin-flyout-pop"
+        >
+          <template #content>
+            <div class="admin-flyout">
+              <div class="flyout-title">{{ g.label }}</div>
+              <div
+                v-for="it in g.items"
+                :key="it.key"
+                class="flyout-item"
+                :class="{ active: sidebarKey === it.key }"
+                @click="go(`/admin/${it.key}`)"
+              >
+                {{ it.label }}
+              </div>
+            </div>
+          </template>
+          <div class="group-head" :class="{ active: groupOf(sidebarKey) === g.key }" @click="onGroupHead(g)">
             <component :is="g.icon" class="nav-icon" />
-            <span v-if="!collapsed" class="nav-label">{{ g.label }}</span>
-            <DownOutlined v-if="!collapsed" class="chev" :class="{ open: expanded === g.key }" />
           </div>
-        </a-tooltip>
-        <div v-show="!collapsed && expanded === g.key" class="group-items">
-          <div
-            v-for="it in g.items"
-            :key="it.key"
-            class="nav-item sub"
-            :class="{ active: sidebarKey === it.key }"
-            @click="go(`/admin/${it.key}`)"
-          >
-            {{ it.label }}
+        </a-popover>
+
+        <!-- 展开态：手风琴 -->
+        <template v-else>
+          <div class="group-head" @click="toggle(g.key)">
+            <component :is="g.icon" class="nav-icon" />
+            <span class="nav-label">{{ g.label }}</span>
+            <DownOutlined class="chev" :class="{ open: expanded === g.key }" />
           </div>
-        </div>
+          <div v-show="expanded === g.key" class="group-items">
+            <div
+              v-for="it in g.items"
+              :key="it.key"
+              class="nav-item sub"
+              :class="{ active: sidebarKey === it.key }"
+              @click="go(`/admin/${it.key}`)"
+            >
+              {{ it.label }}
+            </div>
+          </div>
+        </template>
       </div>
     </div>
   </div>
@@ -242,4 +270,21 @@ function backToWorkspace() {
   position: absolute; top: 8px; right: 14px;
   width: 7px; height: 7px; border-radius: 50%; background: #ef4444;
 }
+</style>
+
+<!-- 折叠态飞出子菜单（popover 内容 teleport 到 body，需非 scoped 样式） -->
+<style>
+.admin-flyout-pop .ant-popover-inner { padding: 6px; border-radius: 10px; }
+.admin-flyout-pop .ant-popover-inner-content { padding: 0; }
+.admin-flyout { min-width: 168px; }
+.admin-flyout .flyout-title {
+  font-size: 12px; font-weight: 600; color: #9ca3af;
+  padding: 6px 12px 8px; border-bottom: 1px solid #f0f0f0; margin-bottom: 4px;
+}
+.admin-flyout .flyout-item {
+  padding: 8px 12px; border-radius: 7px; font-size: 13px; color: #374151;
+  cursor: pointer; white-space: nowrap;
+}
+.admin-flyout .flyout-item:hover { background: #f9fafb; color: #1a6fff; }
+.admin-flyout .flyout-item.active { background: #eff6ff; color: #1a6fff; font-weight: 600; }
 </style>
