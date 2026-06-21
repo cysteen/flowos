@@ -52,9 +52,27 @@ const createPrefill = ref<CreateTicketPrefill | null>(null);
 
 function onContact(type: 'call' | 'sms' | 'email', value: string) {
   if (type === 'call') {
+    if (cti.workStatus === 'offline') {
+      message.warning('请先签入上班');
+      return;
+    }
+    if (cti.workStatus === 'break') {
+      message.warning('请先切换为就绪');
+      return;
+    }
+    if (cti.callSession) {
+      message.warning('当前有进行中的外呼');
+      return;
+    }
     const isAgent = d.value.agent?.contacts?.some((c) => c.value === value);
-    cti.startCall(value, isAgent ? '代办人' : d.value.customer.name || '客户');
-    message.info(`正在外呼 ${value}`);
+    const role = isAgent ? '代办人' : '客户';
+    const name = isAgent ? (d.value.agent?.name ?? '') : (d.value.customer.name || '');
+    const ok = cti.startCall({
+      ticketId: ticketNo.value,
+      phone: value,
+      contactLabel: name ? `${role}·${name}` : role,
+    });
+    if (ok) message.info(`正在外呼 ${value}`);
     return;
   }
   const label = type === 'sms' ? '短信' : '发邮件';

@@ -2,226 +2,248 @@
 import { computed } from 'vue';
 import { message } from 'ant-design-vue';
 import {
-  CustomerServiceOutlined, CoffeeOutlined, LogoutOutlined, PhoneOutlined,
-  DownOutlined, CloseOutlined,
+  CoffeeOutlined, CustomerServiceOutlined, DownOutlined,
 } from '@ant-design/icons-vue';
-import { useCtiStore, type Presence } from '@/stores/cti';
+import CallSessionBar from '@/components/cti/CallSessionBar.vue';
+import CtiAuthIcon from '@/components/cti/CtiAuthIcon.vue';
+import { useCtiStore, type BreakReason, type ReadyMode, READY_MODE_LABELS } from '@/stores/cti';
 
-// 坐席 CTI 状态栏 —— 1:1 对齐设计稿 iFLY-FlowOS-坐席视角.pen · ropW8（全状态逻辑）。
+const READY_MENU: { key: ReadyMode; label: string }[] = [
+  { key: 'ticket_work', label: READY_MODE_LABELS.ticket_work },
+  { key: 'outbound', label: READY_MODE_LABELS.outbound },
+  { key: 'offline_comm', label: READY_MODE_LABELS.offline_comm },
+];
+
+const BREAK_MENU: { key: BreakReason; label: string }[] = [
+  { key: 'meeting', label: '开会' },
+  { key: 'training', label: '培训' },
+  { key: 'tea', label: '茶歇' },
+  { key: 'meal', label: '用餐' },
+];
+
 const cti = useCtiStore();
 
-const statusLabel = computed(() => {
-  if (cti.callPhase === 'ringing') return '振铃中';
-  if (cti.callPhase === 'dialing' || cti.callPhase === 'connected') return '忙碌';
-  return cti.presence === 'idle' ? '示闲中' : cti.presence === 'break' ? '小休中' : '未准备好';
-});
-const statusTone = computed(() => {
-  if (cti.callPhase === 'ringing') return 'ring';
-  if (cti.inCall) return 'busy';
-  return cti.presence === 'idle' ? 'idle' : cti.presence === 'break' ? 'break' : 'unready';
+const readyActive = computed(() => cti.workStatus === 'ready');
+const breakActive = computed(() => cti.workStatus === 'break');
+const disabled = computed(() => cti.workButtonsDisabled);
+
+const dropdownTone = computed(() => {
+  if (cti.workStatus === 'busy') return 'busy';
+  if (cti.workStatus === 'ready') return 'ready';
+  if (cti.workStatus === 'break') return 'break';
+  return 'unready';
 });
 
-function fmt(ms: number): string {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${pad(m)}:${pad(sec)}`;
+const dropdownWide = computed(() =>
+  cti.workStatus === 'break' || cti.workStatus === 'ready',
+);
+
+const menuSelectedKeys = computed(() => {
+  if (cti.workStatus === 'busy') return ['busy'];
+  if (cti.workStatus === 'ready') return [cti.readyMode];
+  if (cti.workStatus === 'break') return [cti.breakReason];
+  return ['logged_in'];
+});
+
+function signIn() {
+  cti.signIn();
+  message.success('已签入 · 未就绪');
 }
-const statusDuration = computed(() => (cti.statusSince ? fmt(cti.now - cti.statusSince) : '00:00'));
-const dialDuration = computed(() => (cti.dialSince ? fmt(cti.now - cti.dialSince) : '00:00'));
-const callDuration = computed(() => (cti.callSince ? fmt(cti.now - cti.callSince) : '00:00'));
-
-function signIn() { cti.signIn(); message.success('已签入 · 未准备好'); }
-function signOut() { cti.signOut() ? message.info('已签出') : message.warning('通话进行中，请先挂断'); }
-function setPresence(p: Presence) { cti.setPresence(p); }
-function onStatusMenu({ key }: { key: string | number }) { cti.setPresence(String(key) as Presence); }
-function maskNo(n: string): string { return n.length >= 7 ? `${n.slice(0, 3)}****${n.slice(-4)}` : n; }
+function signOut() {
+  if (cti.signOut()) message.info('已签出');
+  else message.warning('通话进行中，请先挂断');
+}
+function onMenuClick({ key }: { key: string | number }) {
+  const k = String(key);
+  if (k === 'busy' || k === 'logged_in') return;
+  if (['ticket_work', 'outbound', 'offline_comm'].includes(k)) {
+    cti.setReadyMode(k as ReadyMode);
+    return;
+  }
+  if (['meeting', 'training', 'tea', 'meal'].includes(k)) {
+    cti.setBreak(k as BreakReason);
+  }
+}
 </script>
 
 <template>
-  <div class="cti-bar">
-    <!-- S1 未签入 -->
-    <template v-if="!cti.signedIn">
-      <button class="btn-signin" type="button" @click="signIn">
-        <PhoneOutlined /><span>签入</span>
+  <div class="cti-bar" :class="{ pulse: cti.barPulse }">
+    <template v-if="!cti.isSignedIn">
+      <button class="cti-work-btn cti-work-btn--signin" type="button" @click="signIn">
+        <span class="cti-work-btn__icon"><CtiAuthIcon kind="sign-in" /></span>
+        <span class="cti-work-btn__label">签入</span>
       </button>
-      <span class="hint">签入后绑定分机号并进入「未准备好」</span>
+      <span class="hint">签入后开始处理工单</span>
     </template>
 
-    <!-- 已签入 -->
     <template v-else>
       <div class="actions">
         <button
-          class="abtn idle" type="button"
-          :class="{ on: !cti.inCall && cti.presence === 'idle' }"
-          :disabled="cti.inCall" @click="setPresence('idle')"
-        ><CustomerServiceOutlined /><span>示闲</span></button>
+          class="cti-work-btn cti-work-btn--ready"
+          type="button"
+          :class="{ 'is-active': readyActive, 'is-disabled': disabled }"
+          :disabled="disabled"
+          @click="cti.setReady('ticket_work')"
+        >
+          <span class="cti-work-btn__icon"><CustomerServiceOutlined /></span>
+          <span class="cti-work-btn__label">就绪</span>
+        </button>
 
         <button
-          class="abtn break" type="button"
-          :class="{ on: !cti.inCall && cti.presence === 'break' }"
-          :disabled="cti.inCall" @click="setPresence('break')"
-        ><CoffeeOutlined /><span>小休</span></button>
+          class="cti-work-btn cti-work-btn--break"
+          type="button"
+          :class="{ 'is-active': breakActive, 'is-disabled': disabled }"
+          :disabled="disabled"
+          @click="cti.setBreak()"
+        >
+          <span class="cti-work-btn__icon"><CoffeeOutlined /></span>
+          <span class="cti-work-btn__label">小休</span>
+        </button>
 
-        <a-dropdown :disabled="cti.inCall" placement="bottomLeft" trigger="click">
-          <button class="status-dd" :class="statusTone" type="button">
-            <span class="dot" :class="{ pulse: cti.callPhase === 'dialing' || cti.callPhase === 'ringing' }" />
-            <span>{{ statusLabel }}</span>
+        <a-dropdown :disabled="disabled" placement="bottomLeft" trigger="click">
+          <button
+            class="status-dd"
+            :class="[dropdownTone, { wide: dropdownWide }]"
+            type="button"
+            :disabled="disabled"
+          >
+            <span>{{ cti.dropdownLabel }}</span>
             <DownOutlined class="dd-arr" />
           </button>
           <template #overlay>
-            <a-menu @click="onStatusMenu">
-              <a-menu-item key="idle">🟠 示闲中</a-menu-item>
-              <a-menu-item key="break">🟣 小休中</a-menu-item>
-              <a-menu-item key="unready">⚪ 未准备好</a-menu-item>
+            <a-menu :selected-keys="menuSelectedKeys" @click="onMenuClick">
+              <template v-if="disabled">
+                <a-menu-item key="busy" disabled>忙碌（外呼通话中）</a-menu-item>
+              </template>
+              <template v-else-if="cti.workStatus === 'ready'">
+                <a-menu-item v-for="item in READY_MENU" :key="item.key">
+                  {{ item.label }}
+                </a-menu-item>
+              </template>
+              <template v-else-if="cti.workStatus === 'break'">
+                <a-menu-item v-for="item in BREAK_MENU" :key="item.key">
+                  {{ item.label }}
+                </a-menu-item>
+              </template>
+              <template v-else>
+                <a-menu-item key="logged_in" disabled>未就绪</a-menu-item>
+              </template>
             </a-menu>
           </template>
         </a-dropdown>
 
-        <button class="abtn out" type="button" :disabled="cti.inCall" @click="signOut">
-          <LogoutOutlined /><span>签出</span>
+        <button
+          class="cti-work-btn cti-work-btn--out"
+          type="button"
+          :class="{ 'is-disabled': disabled }"
+          :disabled="disabled"
+          @click="signOut"
+        >
+          <span class="cti-work-btn__icon"><CtiAuthIcon kind="sign-out" :size="16" /></span>
+          <span class="cti-work-btn__label">签出</span>
         </button>
       </div>
 
-      <div class="divider" />
-
-      <div class="metrics">
-        <div class="m"><span class="ml">状态</span><span class="mv" :class="statusTone">{{ statusLabel }}</span></div>
-        <div class="m"><span class="ml">状态时长</span><span class="mv mono">{{ statusDuration }}</span></div>
-        <div class="m"><span class="ml">分机号</span><span class="mv mono">{{ cti.ext }}</span></div>
-        <div class="m"><span class="ml">工号</span><span class="mv mono">{{ cti.workNo }}</span></div>
-        <template v-if="cti.callPhase === 'connected'">
-          <div class="m"><span class="ml">通话时长</span><span class="mv mono call">{{ callDuration }}</span></div>
-          <div class="m"><span class="ml">通话号码</span><span class="mv mono">{{ maskNo(cti.callNumber) }}</span></div>
-        </template>
-      </div>
-
-      <!-- 通话条：外呼呼叫中（琥珀） -->
-      <div v-if="cti.callPhase === 'dialing'" class="strip dialing">
-        <PhoneOutlined class="ic" />
-        <span class="ph">呼叫中</span>
-        <span class="no">{{ cti.callNumber }}</span>
-        <span class="ring">振铃 {{ dialDuration }}</span>
-        <button class="sb sb-ghost" type="button" @click="cti.cancelDial()"><CloseOutlined />取消</button>
-      </div>
-
-      <!-- 通话条：呼入振铃（蓝） -->
-      <div v-else-if="cti.callPhase === 'ringing'" class="strip ringing">
-        <PhoneOutlined class="ic" />
-        <span class="ph">振铃中</span>
-        <span class="no">{{ cti.callNumber }}</span>
-        <button class="sb sb-green" type="button" @click="cti.answer()"><PhoneOutlined />接听</button>
-        <button class="sb sb-ghost" type="button" @click="cti.reject()"><PhoneOutlined class="off" />拒接</button>
-      </div>
-
-      <!-- 通话条：已接通（绿） -->
-      <div v-else-if="cti.callPhase === 'connected'" class="strip connected">
-        <PhoneOutlined class="ic" />
-        <span class="ph">已接通</span>
-        <span v-if="cti.callContact" class="cc">{{ cti.callContact }}</span>
-        <span class="no">{{ maskNo(cti.callNumber) }}</span>
-        <span class="dur">{{ callDuration }}</span>
-        <span class="signal" title="信号质量：良好"><i class="b1" /><i class="b2" /><i class="b3" /></span>
-        <button class="sb sb-red" type="button" @click="cti.hangup()"><PhoneOutlined class="off" />挂断</button>
-      </div>
+      <CallSessionBar v-if="cti.inCall" class="call-anchor" variant="anchor" />
     </template>
   </div>
 </template>
 
 <style scoped>
-.cti-bar { flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; gap: 14px; padding: 0 8px; overflow: hidden; }
-
-/* 签入 */
-.btn-signin {
-  display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
-  width: 72px; height: 48px; border-radius: 12px; cursor: pointer; flex: none;
-  border: 1px solid #1a6fff; background: #eff6ff; color: #1a6fff; font-size: 11px; font-weight: 600; font-family: inherit;
+.cti-bar {
+  flex: 1; min-width: 0; height: 100%;
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 8px; overflow: hidden;
+  transition: box-shadow 0.25s;
 }
-.btn-signin :deep(.anticon) { font-size: 16px; }
-.btn-signin:hover { background: #e0edff; }
-.hint { font-size: 12px; color: #9ca3af; flex: none; }
+.cti-bar.pulse {
+  box-shadow: inset 0 0 0 2px #bfdbfe;
+  border-radius: 8px;
+  animation: ctibarflash 1.8s ease-out;
+}
+@keyframes ctibarflash {
+  0% { background: #eff6ff; }
+  100% { background: transparent; }
+}
 
-/* 状态按钮组 */
+.hint { font-size: 12px; color: #9ca3af; flex: none; white-space: nowrap; }
+
 .actions { display: flex; align-items: center; gap: 8px; flex: none; }
-.abtn {
-  display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
-  width: 48px; height: 48px; border-radius: 12px; cursor: pointer;
-  border: 1px solid transparent; background: #f9fafb; color: #9ca3af;
-  font-size: 11px; font-weight: 600; font-family: inherit; transition: all 0.12s;
-}
-.abtn :deep(.anticon) { font-size: 16px; }
-.abtn:disabled { opacity: 0.45; cursor: not-allowed; }
-.abtn:not(:disabled):hover { filter: brightness(0.97); }
-.abtn.idle.on { background: #fff7ed; border-color: #fed7aa; color: #ea580c; }
-.abtn.break.on { background: #f5f3ff; border-color: #ddd6fe; color: #7c3aed; }
-.abtn.out { background: #f5f3ff; color: #7c3aed; }
-.abtn.out:not(:disabled):hover { background: #ede9fe; }
 
-/* 状态下拉胶囊 */
+/* 横排胶囊：左图标 + 右文案，高度 36px */
+.cti-work-btn {
+  box-sizing: border-box;
+  display: inline-flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  transition: all 0.12s;
+  flex: none;
+  width: auto;
+  min-width: 0;
+}
+.cti-work-btn__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  line-height: 0;
+}
+.cti-work-btn__icon :deep(.anticon) { font-size: 16px; display: block; }
+.cti-work-btn__label { flex: none; line-height: 1.2; }
+
+.cti-work-btn:disabled,
+.cti-work-btn.is-disabled { opacity: 0.55; cursor: not-allowed; }
+.cti-work-btn:not(:disabled):not(.is-disabled):hover { filter: brightness(0.97); }
+
+.cti-work-btn--signin {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #2563eb;
+}
+.cti-work-btn--signin:hover { background: #dbeafe; }
+
+.cti-work-btn--ready { background: #ecfdf5; color: #10b981; }
+.cti-work-btn--ready.is-active {
+  background: #d1fae5;
+  border-color: #10b981;
+  border-width: 2px;
+  padding: 0 11px;
+}
+.cti-work-btn--break { background: #fffbeb; color: #d97706; }
+.cti-work-btn--break.is-active {
+  background: #fef3c7;
+  border-color: #d97706;
+  border-width: 2px;
+  padding: 0 11px;
+}
+.cti-work-btn--out { background: #f1f5f9; color: #64748b; }
+.cti-work-btn--out:not(:disabled):not(.is-disabled):hover { background: #e2e8f0; }
+
 .status-dd {
-  display: inline-flex; align-items: center; gap: 7px; height: 38px; width: 126px;
-  padding: 0 12px; border-radius: 12px; cursor: pointer; flex: none;
-  border: 1px solid #e5e7eb; background: #fff; font-size: 13px; font-weight: 500; color: #6b7280;
-  font-family: inherit; justify-content: space-between;
+  display: inline-flex; align-items: center; justify-content: space-between; gap: 8px;
+  height: 36px; width: 126px; padding: 0 12px; border-radius: 12px; cursor: pointer; flex: none;
+  border: 1px solid #e5e7eb; background: #fff; font-size: 13px; font-weight: 500;
+  color: #6b7280; font-family: inherit;
 }
-.status-dd[disabled] { opacity: 0.7; cursor: not-allowed; }
-.status-dd .dot { width: 7px; height: 7px; border-radius: 4px; background: #9ca3af; flex: none; }
+.status-dd.wide { width: 148px; }
+.status-dd[disabled] { opacity: 0.55; cursor: not-allowed; }
 .status-dd .dd-arr { font-size: 10px; color: #9ca3af; }
-.status-dd .label { flex: 1; text-align: left; }
-.status-dd.idle { color: #ea580c; } .status-dd.idle .dot { background: #ea580c; }
-.status-dd.break { color: #7c3aed; } .status-dd.break .dot { background: #7c3aed; }
-.status-dd.busy { color: #1a6fff; } .status-dd.busy .dot { background: #1a6fff; }
-.status-dd.ring { color: #1a6fff; } .status-dd.ring .dot { background: #1a6fff; }
-.dot.pulse { animation: ctipulse 1s ease-in-out infinite; }
-@keyframes ctipulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+.status-dd.ready { color: #10b981; }
+.status-dd.break { color: #d97706; background: #fffbeb; border-color: #fcd34d; }
+.status-dd.busy { color: #2563eb; background: #eff6ff; border-color: #bfdbfe; font-weight: 600; }
 
-.divider { width: 1px; height: 28px; background: #e5e7eb; flex: none; }
-
-/* 指标 */
-.metrics { display: flex; align-items: center; gap: 16px; flex: none; }
-.m { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
-.ml { font-size: 11px; color: #9ca3af; }
-.mv { font-size: 12px; font-weight: 600; color: #111827; }
-.mv.mono { font-variant-numeric: tabular-nums; }
-.mv.idle { color: #ea580c; } .mv.break { color: #7c3aed; } .mv.busy { color: #1a6fff; } .mv.ring { color: #1a6fff; } .mv.unready { color: #6b7280; }
-.mv.call { color: #047857; }
-
-/* 通话条 */
-.strip {
-  display: flex; align-items: center; gap: 8px; margin-left: auto; flex: none;
-  height: 36px; padding: 0 8px 0 12px; border-radius: 18px; font-size: 12.5px;
-  border: 1px solid; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
-}
-.strip .ic { font-size: 14px; }
-.strip .ph { font-weight: 700; }
-.strip .no { color: #374151; font-weight: 600; font-variant-numeric: tabular-nums; }
-.strip .cc { color: #374151; font-weight: 600; }
-.strip.dialing { background: #fffbeb; border-color: #fcd34d; color: #d97706; }
-.strip.dialing .ic { animation: ctipulse 1s ease-in-out infinite; }
-.strip.dialing .ring { color: #d97706; font-weight: 600; font-variant-numeric: tabular-nums; }
-.strip.ringing { background: #eff6ff; border-color: #bfdbfe; color: #1a6fff; }
-.strip.ringing .ic { animation: ctipulse 1s ease-in-out infinite; }
-.strip.connected { background: #ecfdf5; border-color: #a7f3d0; color: #047857; padding-left: 10px; padding-right: 6px; }
-.strip.connected .no { color: #6b7280; font-weight: normal; }
-.strip .dur { color: #047857; font-weight: 700; font-variant-numeric: tabular-nums; }
-.signal { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; }
-.signal i { width: 3px; border-radius: 1px; background: #10b981; display: block; }
-.signal .b1 { height: 5px; } .signal .b2 { height: 9px; } .signal .b3 { height: 13px; }
-
-/* 通话条按钮 */
-.sb {
-  display: inline-flex; align-items: center; gap: 4px; flex: none;
-  height: 28px; padding: 0 10px; border-radius: 14px; cursor: pointer;
-  font-size: 12px; font-weight: 600; font-family: inherit; border: 1px solid transparent;
-}
-.sb :deep(.anticon) { font-size: 12px; }
-.sb .off { transform: rotate(135deg); }
-.sb-ghost { background: #fff; border-color: #d1d5db; color: #6b7280; }
-.sb-ghost:hover { background: #f9fafb; }
-.sb-green { background: #10b981; color: #fff; }
-.sb-green:hover { background: #059669; }
-.sb-red { background: #ef4444; color: #fff; }
-.sb-red:hover { background: #dc2626; }
+.call-anchor { margin-left: auto; }
 </style>

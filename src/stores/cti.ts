@@ -1,31 +1,87 @@
 import { defineStore } from 'pinia';
 
-// 软电话(CTI) 共享状态机 —— 对齐设计稿 iFLY-FlowOS-坐席视角.pen · ropW8「坐席CTI状态栏·全状态逻辑」。
-// 状态：未签入 → 未准备好 → 示闲中/小休中 →（外呼呼叫中 / 呼入振铃 → 已接通）→ 挂断回示闲。
-// 外呼由工单操作页（客户/代办人电话 icon）触发 startCall，头部 AgentStatusBar 订阅展示。原型为模拟态。
+// 软电话(CTI) —— 对齐 iFLY-FlowOS-坐席视角.pen · ropW8 双层状态模型（workStatus + callSession）。
 
-export type Presence = 'unready' | 'idle' | 'break'; // 未准备好 / 示闲中 / 小休中
-export type CallPhase = 'none' | 'dialing' | 'ringing' | 'connected';
+export type WorkStatus = 'offline' | 'logged_in' | 'ready' | 'break' | 'busy';
+/** 就绪子态：坐席当前主工作模式（下拉在「就绪」高亮时展示） */
+export type ReadyMode = 'ticket_work' | 'outbound' | 'offline_comm';
+export type BreakReason = 'meeting' | 'training' | 'tea' | 'meal';
+export type CallStatus = 'dialing' | 'ringing' | 'connected';
 
-let dialTimer: ReturnType<typeof setTimeout> | undefined;
+export interface CallSession {
+  ticketId: string;
+  contactLabel: string;
+  phone: string;
+  status: CallStatus;
+  startedAt: number;
+  connectedAt: number | null;
+}
+
+export const READY_MODE_LABELS: Record<ReadyMode, string> = {
+  ticket_work: '工单处理',
+  outbound: '外呼',
+  offline_comm: '线下沟通',
+};
+
+export const READY_MODE_CAPSULE: Record<ReadyMode, string> = {
+  ticket_work: '工单处理中',
+  outbound: '外呼中',
+  offline_comm: '线下沟通中',
+};
+
+export const BREAK_LABELS: Record<BreakReason, string> = {
+  meeting: '开会中',
+  training: '培训中',
+  tea: '茶歇中',
+  meal: '用餐中',
+};
+
+let phaseTimer: ReturnType<typeof setTimeout> | undefined;
+let pulseTimer: ReturnType<typeof setTimeout> | undefined;
 let clock: ReturnType<typeof setInterval> | undefined;
+
+export function maskPhone(num: string): string {
+  const n = num.replace(/\s/g, '');
+  return n.length >= 7 ? `${n.slice(0, 3)}****${n.slice(-4)}` : n;
+}
+
+export function formatCallDuration(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+}
 
 export const useCtiStore = defineStore('cti', {
   state: () => ({
-    workNo: '001006',
-    ext: '8788001006',
-    signedIn: false,
-    presence: 'unready' as Presence,
-    statusSince: 0,
-    callPhase: 'none' as CallPhase,
-    callNumber: '',
-    callContact: '',
-    dialSince: 0,
-    callSince: 0,
+    agentNo: '001006',
+    extension: '8788001006',
+    workStatus: 'offline' as WorkStatus,
+    workStatusSince: 0,
+    readyMode: 'ticket_work' as ReadyMode,
+    breakReason: 'training' as BreakReason,
+    workStatusBeforeCall: null as WorkStatus | null,
+    callSession: null as CallSession | null,
     now: 0,
+    barPulse: false,
   }),
   getters: {
-    inCall: (s): boolean => s.callPhase !== 'none',
+    isSignedIn: (s): boolean => s.workStatus !== 'offline',
+    inCall: (s): boolean => s.callSession !== null,
+    workButtonsDisabled: (s): boolean => s.workStatus === 'busy',
+    dropdownLabel(state): string {
+      if (state.workStatus === 'busy') return '忙碌';
+      if (state.workStatus === 'ready') return READY_MODE_CAPSULE[state.readyMode];
+      if (state.workStatus === 'break') return BREAK_LABELS[state.breakReason];
+      if (state.workStatus === 'logged_in') return '未就绪';
+      return '未就绪';
+    },
+    callTimerMs(state): number {
+      const s = state.callSession;
+      if (!s) return 0;
+      if (s.status === 'connected' && s.connectedAt) return state.now - s.connectedAt;
+      return state.now - s.startedAt;
+    },
   },
   actions: {
     ensureClock() {
@@ -33,68 +89,102 @@ export const useCtiStore = defineStore('cti', {
       this.now = Date.now();
       clock = setInterval(() => { this.now = Date.now(); }, 1000);
     },
-    signIn() {
-      this.signedIn = true;
-      this.presence = 'unready';
-      this.statusSince = Date.now();
+    touchWorkStatus(status: WorkStatus) {
+      this.workStatus = status;
+      this.workStatusSince = Date.now();
       this.ensureClock();
+    },
+    signIn() {
+      this.touchWorkStatus('logged_in');
     },
     signOut(): boolean {
       if (this.inCall) return false;
-      this.signedIn = false;
-      this.presence = 'unready';
-      this.statusSince = 0;
+      this.workStatus = 'offline';
+      this.workStatusSince = 0;
       return true;
     },
-    setPresence(p: Presence) {
-      if (this.inCall) return;
-      this.presence = p;
-      this.statusSince = Date.now();
+    setReady(mode: ReadyMode = this.readyMode) {
+      if (this.workButtonsDisabled) return;
+      this.readyMode = mode;
+      this.touchWorkStatus('ready');
     },
-    /** 外呼：从工单操作页电话 icon 触发 → 呼叫中(振铃) → 约 2.5s 自动接通 */
-    startCall(num: string, contact = '') {
-      if (!num) return;
-      if (!this.signedIn) this.signIn();
-      this.ensureClock();
-      this.callNumber = num;
-      this.callContact = contact;
-      this.callPhase = 'dialing';
-      this.dialSince = Date.now();
-      this.statusSince = Date.now();
-      if (dialTimer) clearTimeout(dialTimer);
-      dialTimer = setTimeout(() => {
-        if (this.callPhase === 'dialing') {
-          this.callPhase = 'connected';
-          this.callSince = Date.now();
+    setReadyMode(mode: ReadyMode) {
+      if (this.workButtonsDisabled) return;
+      this.readyMode = mode;
+      if (this.workStatus !== 'ready') this.touchWorkStatus('ready');
+      else this.workStatusSince = Date.now();
+    },
+    setLoggedIn() {
+      if (this.workButtonsDisabled) return;
+      this.touchWorkStatus('logged_in');
+    },
+    setBreak(reason: BreakReason = this.breakReason) {
+      if (this.workButtonsDisabled) return;
+      this.breakReason = reason;
+      this.touchWorkStatus('break');
+    },
+    pulseBar() {
+      this.barPulse = true;
+      if (pulseTimer) clearTimeout(pulseTimer);
+      pulseTimer = setTimeout(() => { this.barPulse = false; }, 1800);
+    },
+    clearPhaseTimer() {
+      if (phaseTimer) clearTimeout(phaseTimer);
+      phaseTimer = undefined;
+    },
+    schedulePhaseTransitions() {
+      this.clearPhaseTimer();
+      phaseTimer = setTimeout(() => {
+        if (this.callSession?.status === 'dialing') {
+          this.callSession.status = 'ringing';
+          this.schedulePhaseTransitions();
+        } else if (this.callSession?.status === 'ringing') {
+          this.callSession.status = 'connected';
+          this.callSession.connectedAt = Date.now();
         }
-      }, 2500);
+      }, 2000);
     },
-    /** 呼入振铃（原型预留，无外部触发源） */
-    ringIncoming(num: string, contact = '') {
-      if (!this.signedIn) return;
-      this.callNumber = num;
-      this.callContact = contact;
-      this.callPhase = 'ringing';
-      this.statusSince = Date.now();
+    startCall(payload: { ticketId: string; phone: string; contactLabel: string }) {
+      const { ticketId, phone, contactLabel } = payload;
+      if (!phone) return false;
+      if (this.workStatus === 'offline') return false;
+      if (this.workStatus === 'break') return false;
+      if (this.callSession) return false;
+
+      this.workStatusBeforeCall = this.workStatus === 'busy' ? 'ready' : this.workStatus;
+      this.workStatus = 'busy';
+      this.workStatusSince = Date.now();
       this.ensureClock();
+
+      const startedAt = Date.now();
+      this.callSession = {
+        ticketId,
+        contactLabel,
+        phone,
+        status: 'dialing',
+        startedAt,
+        connectedAt: null,
+      };
+      this.pulseBar();
+      this.schedulePhaseTransitions();
+      return true;
     },
-    answer() {
-      if (this.callPhase !== 'ringing') return;
-      this.callPhase = 'connected';
-      this.callSince = Date.now();
+    cancelCall() {
+      if (this.callSession?.status !== 'dialing') return;
+      this.endCall();
     },
-    cancelDial() { this.endCall(); }, // 取消外呼
-    reject() { this.endCall(); },     // 拒接
-    hangup() { this.endCall(); },     // 挂断
+    hangup() {
+      if (!this.callSession) return;
+      if (this.callSession.status === 'dialing') return;
+      this.endCall();
+    },
     endCall() {
-      if (dialTimer) clearTimeout(dialTimer);
-      this.callPhase = 'none';
-      this.callNumber = '';
-      this.callContact = '';
-      this.dialSince = 0;
-      this.callSince = 0;
-      this.presence = 'idle';
-      this.statusSince = Date.now();
+      this.clearPhaseTimer();
+      this.callSession = null;
+      const restore = this.workStatusBeforeCall ?? 'ready';
+      this.workStatusBeforeCall = null;
+      if (restore !== 'offline') this.touchWorkStatus(restore);
+      else this.workStatus = 'offline';
     },
   },
 });
