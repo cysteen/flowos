@@ -174,9 +174,12 @@ const routes: RouteRecordRaw[] = [
       },
       ...adminLegacyRoutes,
       ...adminModuleRoutes,
+      // 非法 /admin/* 子路由 → 按角色回管理后台首页（而非报错/登录页）
+      { path: ':pathMatch(.*)*', redirect: '/admin' },
     ],
   },
-  { path: '/:pathMatch(.*)*', redirect: '/login' },
+  // 其余任何未匹配路由 → 回首页（beforeEach 未登录时再转登录页）
+  { path: '/:pathMatch(.*)*', redirect: '/' },
 ];
 
 const router = createRouter({
