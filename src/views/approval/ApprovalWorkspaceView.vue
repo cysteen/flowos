@@ -18,6 +18,7 @@ import {
   SettingOutlined,
 } from '@ant-design/icons-vue';
 import type { Component } from 'vue';
+import { stdPagination } from '@/config/adminUi';
 
 const NAV = [
   { key: 'launch', label: '发起审批', icon: SendOutlined, count: 0 },
@@ -234,10 +235,11 @@ function withdraw(r: Req) {
 
         <div v-else class="table-wrap">
           <a-table
+            :key="active"
             :columns="baseCols"
             :data-source="rows"
             row-key="id"
-            :pagination="false"
+            :pagination="stdPagination()"
             size="middle"
           >
             <template #bodyCell="{ column, record }">
@@ -604,6 +606,10 @@ function withdraw(r: Req) {
 
 .table-wrap :deep(.ant-table-tbody > tr:hover > td) {
   background: #fafbfc;
+}
+
+.table-wrap :deep(.ant-pagination) {
+  margin: 12px 16px 8px;
 }
 
 .rt {

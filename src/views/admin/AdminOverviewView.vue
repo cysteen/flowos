@@ -7,6 +7,9 @@ import {
 } from '@/mock/adminOverview';
 import { moduleCardsFor } from '@/config/adminNav';
 import { useUserStore } from '@/stores/user';
+import { useTenantBrandStore } from '@/stores/tenantBrand';
+
+const brand = useTenantBrandStore();
 
 const router = useRouter();
 const user = useUserStore();
@@ -32,7 +35,7 @@ function goPath(path: string) {
     <!-- ① 租户信息条 -->
     <div class="tenant-bar">
       <div class="tb-left">
-        <div class="tb-logo">iF</div>
+        <div class="tb-logo"><img v-if="brand.logoUrl" :src="brand.logoUrl" alt="企业 Logo" class="tb-logo-img" /><span v-else>iF</span></div>
         <div class="tb-info">
           <div class="tb-name-row">
             <span class="tb-name">{{ TENANT_INFO.name }}</span>
@@ -157,7 +160,8 @@ function goPath(path: string) {
   border-radius: 12px; padding: 18px 24px; color: #fff;
 }
 .tb-left { display: flex; align-items: center; gap: 14px; }
-.tb-logo { width: 44px; height: 44px; border-radius: 10px; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; }
+.tb-logo { width: 44px; height: 44px; border-radius: 10px; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; overflow: hidden; }
+.tb-logo-img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .tb-name-row { display: flex; align-items: center; gap: 10px; }
 .tb-name { font-size: 17px; font-weight: 700; }
 .tb-plan { font-size: 11px; background: #fde68a; color: #92400e; padding: 2px 8px; border-radius: 4px; font-weight: 600; }

@@ -1,15 +1,18 @@
 <script setup lang="ts">
-import { onBeforeUnmount, reactive, ref } from 'vue';
+import { reactive, ref } from 'vue';
 import { message } from 'ant-design-vue';
 import {
   LockOutlined, EnvironmentOutlined, UploadOutlined,
 } from '@ant-design/icons-vue';
 import PlanTag from '@/components/admin/PlanTag.vue';
 import { TENANT_INFO } from '@/mock/adminOverview';
+import { useTenantBrandStore } from '@/stores/tenantBrand';
 
 const LOGO_MAX_BYTES = 1024 * 1024;
 const LOGO_TYPES = new Set(['image/png', 'image/jpeg', 'image/svg+xml']);
 const LOGO_EXTS = ['.png', '.jpg', '.jpeg', '.svg'];
+
+const brand = useTenantBrandStore();
 
 // 基本信息（PRD-59a）：上半「平台管控·只读概览」与下半「租户可编辑资料」分离，贴合租户自管场景。
 function createProfileState() {
@@ -27,7 +30,8 @@ function createProfileState() {
     phone: '139 0000 0000',
     email: 'admin@iflytek.com',
     hotline: '400-100-8000',
-    logoUrl: null as string | null,
+    // 初值取自品牌 store（已持久化的 Logo），形成跨页/刷新闭环
+    logoUrl: brand.logoUrl as string | null,
     logoText: 'iF',
   };
 }
@@ -45,10 +49,6 @@ function isLogoFile(file: File) {
   if (LOGO_TYPES.has(file.type)) return true;
   const name = file.name.toLowerCase();
   return LOGO_EXTS.some((ext) => name.endsWith(ext));
-}
-
-function revokeLogoUrl(url: string | null) {
-  if (url?.startsWith('blob:')) URL.revokeObjectURL(url);
 }
 
 function triggerLogoUpload() {
@@ -70,38 +70,32 @@ function onLogoFileChange(e: Event) {
     return;
   }
 
-  revokeLogoUrl(profile.logoUrl);
-  profile.logoUrl = URL.createObjectURL(file);
-  message.success('Logo 已更新，请点击底部「保存资料」生效');
+  // 读为 dataURL（可持久化到 localStorage，刷新后仍在）
+  const reader = new FileReader();
+  reader.onload = () => {
+    profile.logoUrl = reader.result as string;
+    message.success('Logo 已更新，点击底部「保存资料」即生效到全局');
+  };
+  reader.onerror = () => message.error('读取图片失败，请重试');
+  reader.readAsDataURL(file);
 }
 
 function removeLogo() {
-  revokeLogoUrl(profile.logoUrl);
   profile.logoUrl = null;
-  message.success('已移除 Logo，请点击底部「保存资料」生效');
-}
-
-function snapshotProfile() {
-  return { ...profile, logoUrl: profile.logoUrl };
-}
-
-function applySnapshot(data: ReturnType<typeof snapshotProfile>) {
-  const prev = profile.logoUrl;
-  Object.assign(profile, data);
-  if (prev && prev !== data.logoUrl) revokeLogoUrl(prev);
+  message.success('已移除 Logo，点击底部「保存资料」生效');
 }
 
 function onSave() {
-  savedSnapshot = snapshotProfile();
-  message.success('已保存租户资料');
+  savedSnapshot = { ...profile };
+  // 提交到品牌 store → 持久化 + 同步数据总览/头部品牌
+  brand.setLogo(profile.logoUrl);
+  message.success('已保存租户资料，企业 Logo 已全局生效');
 }
 
 function onReset() {
-  applySnapshot(savedSnapshot);
+  Object.assign(profile, savedSnapshot);
   message.info('已还原未保存的修改');
 }
-
-onBeforeUnmount(() => revokeLogoUrl(profile.logoUrl));
 </script>
 
 <template>
