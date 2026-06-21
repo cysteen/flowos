@@ -301,6 +301,7 @@ function reject() {
   overflow: hidden;
   padding: 0 1px;
 }
+.table-card :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; }
 .mono {
   font-family: ui-monospace, monospace;
   font-size: 12px;

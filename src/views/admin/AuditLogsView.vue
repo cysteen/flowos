@@ -187,11 +187,11 @@ function exportCsv() {
 .audit-table th {
   text-align: left;
   padding: 12px 16px;
-  background: #f9fafb;
+  background: #f3f4f6;
   border-bottom: 1px solid #e5e7eb;
   font-weight: 600;
-  color: #374151;
-  font-size: 13px;
+  color: #6b7280;
+  font-size: 12px;
 }
 .audit-table td {
   padding: 12px 16px;

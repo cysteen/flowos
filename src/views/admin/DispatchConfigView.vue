@@ -83,7 +83,7 @@ function savePool() {
       <a-table :columns="ruleCols" :data-source="rules" row-key="id" :pagination="false" size="middle">
         <template #bodyCell="{ column, record }">
           <a-tag v-if="column.key === 'priority'" :color="record.priority === 99 ? 'default' : 'blue'">{{ record.priority === 99 ? '兜底' : 'P' + record.priority }}</a-tag>
-          <code v-else-if="column.key === 'cond'" class="cond">{{ record.cond || '—' }}</code>
+          <span v-else-if="column.key === 'cond'" class="cond">{{ record.cond || '—' }}</span>
           <a-tag v-else-if="column.key === 'target'" color="geekblue"><TeamOutlined /> {{ record.target }}</a-tag>
           <a-switch v-else-if="column.key === 'status'" v-model:checked="record.status" size="small" />
           <DeleteOutlined v-else-if="column.key === 'op'" class="op-ic danger" @click="delRule(record.id)" />
@@ -133,7 +133,7 @@ function savePool() {
 .s-desc { font-size: 12px; color: #6b7280; margin-top: 4px; line-height: 1.5; }
 .s-check { position: absolute; top: 12px; right: 14px; color: #1a6fff; font-weight: 700; }
 .strat-params { margin-top: 18px; padding-top: 16px; border-top: 1px dashed #eef0f2; }
-.cond { font-family: ui-monospace, monospace; font-size: 12px; background: #f6f8fa; color: #0550ae; padding: 2px 8px; border-radius: 5px; }
+.cond { font-size: 13px; color: #374151; background: #f6f8fa; padding: 2px 8px; border-radius: 5px; }
 .op-ic { color: #ef4444; cursor: pointer; } .op-ic:hover { opacity: 0.7; }
 .pool-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
 .pool { border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px; }

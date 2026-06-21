@@ -104,6 +104,7 @@ function saveModal() {
 
 <template>
   <div class="msg-center">
+    <div class="hub-panel">
     <a-tabs v-model:activeKey="channel">
       <!-- 短信 -->
       <a-tab-pane key="sms" tab="短信">
@@ -193,6 +194,7 @@ function saveModal() {
         </a-table>
       </a-tab-pane>
     </a-tabs>
+    </div>
 
     <!-- 统一新增/编辑弹窗 -->
     <a-modal v-model:open="modalOpen" :title="modalTitle" :width="520" :ok-text="editingId ? '保存' : (modalType === 'notice' ? '发布' : '创建')" cancel-text="取消" @ok="saveModal">
@@ -207,7 +209,8 @@ function saveModal() {
 </template>
 
 <style scoped>
-.msg-center { padding: 8px 24px 24px; }
+.msg-center { padding: 16px 20px 20px; background: var(--flowos-content-bg, #f9fafb); min-height: 100%; }
+.hub-panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 24px 24px; }
 .bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
 .tip { font-size: 13px; color: #6b7280; }
 .op-ic { color: #6b7280; cursor: pointer; margin-right: 10px; } .op-ic.danger { color: #ef4444; } .op-ic:hover { opacity: 0.7; }

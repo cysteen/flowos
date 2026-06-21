@@ -105,7 +105,7 @@ function delProduct(p: Product) {
       </div>
       <a-table :columns="cols" :data-source="list" row-key="id" :pagination="stdPagination()" size="middle">
         <template #bodyCell="{ column, record }">
-          <span v-if="column.key === 'snRule'" class="mono">{{ record.snRule }}</span>
+          <span v-if="column.key === 'snRule'">{{ record.snRule }}</span>
           <template v-else-if="column.key === 'aftersale'">
             <a-tag :color="record.aftersale ? 'green' : 'default'">{{ record.aftersale ? '可转售后' : '不可' }}</a-tag>
           </template>
@@ -153,7 +153,6 @@ function delProduct(p: Product) {
 .hint { font-size: 12px; color: #9ca3af; margin-left: 8px; }
 .cnt { font-size: 12px; color: #9ca3af; }
 .cat-item.on .cnt { color: #1a6fff; }
-.mono { font-family: ui-monospace, monospace; font-size: 12px; color: #6b7280; }
 .op-ic { color: #6b7280; cursor: pointer; margin-right: 12px; } .op-ic.danger { color: #ef4444; } .op-ic:hover { opacity: 0.7; }
 .tip { font-size: 12px; color: #6b7280; background: #f9fafb; border-top: 1px solid #f0f0f0; padding: 10px 16px; line-height: 1.6; }
 :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; }

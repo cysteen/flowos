@@ -241,7 +241,7 @@ function withdraw(r: Req) {
             size="middle"
           >
             <template #bodyCell="{ column, record }">
-              <code v-if="column.key === 'id'" class="mono">{{ record.id }}</code>
+              <span v-if="column.key === 'id'">{{ record.id }}</span>
               <span v-else-if="column.key === 'title'" class="rt">
                 {{ record.title }}
                 <span v-if="record.amount" class="amt">{{ record.amount }}</span>
@@ -604,13 +604,6 @@ function withdraw(r: Req) {
 
 .table-wrap :deep(.ant-table-tbody > tr:hover > td) {
   background: #fafbfc;
-}
-
-.mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
-  color: #4b5563;
-  background: transparent;
 }
 
 .rt {

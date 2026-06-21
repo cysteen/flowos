@@ -28,6 +28,7 @@
 | 行内轻操作/跳转 | `type="link" size="small"` | 详情、查看、进度 |
 | 卡片"进入"类主入口 | `type="primary"`（整块）或 `ghost` | 进入设计器、设计 |
 - 同一行内**最多一个** primary；危险操作永远 `danger`。
+- **列表内追加项**（如规则构建器"添加条件/动作"、"添加升级规则"）允许 `type="dashed" block` 的整宽"＋ 添加"按钮，作为追加占位的标准 affordance。
 - 图标按钮统一 `<template #icon>`，不手动塞 `<XxxOutlined/>` 进文字。
 
 ## 3. 表格（Table）与分页

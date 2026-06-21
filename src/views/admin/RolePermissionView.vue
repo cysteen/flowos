@@ -192,7 +192,7 @@ function saveRole() {
 .card-actions { display: flex; gap: 8px; }
 .matrix-wrap { overflow-x: auto; }
 .matrix { width: 100%; border-collapse: collapse; }
-.matrix th { padding: 10px 12px; font-size: 12px; font-weight: 600; color: #6b7280; background: #f9fafb; border-bottom: 1px solid #e5e7eb; text-align: center; white-space: nowrap; }
+.matrix th { padding: 10px 12px; font-size: 12px; font-weight: 600; color: #6b7280; background: #f3f4f6; border-bottom: 1px solid #e5e7eb; text-align: center; white-space: nowrap; }
 .matrix td { padding: 9px 12px; border-bottom: 1px solid #f3f4f6; font-size: 13px; text-align: center; }
 .col-module { text-align: left !important; font-weight: 500; color: #374151; min-width: 120px; }
 .col-act { width: 64px; }

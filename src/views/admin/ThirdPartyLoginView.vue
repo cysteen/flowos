@@ -126,6 +126,7 @@ function saveLc() {
 
 <template>
   <div class="tpl-login">
+    <div class="hub-panel">
     <a-tabs v-model:activeKey="tab">
       <!-- 身份源 -->
       <a-tab-pane key="idp" tab="身份源">
@@ -206,6 +207,7 @@ function saveLc() {
         </a-table>
       </a-tab-pane>
     </a-tabs>
+    </div>
 
     <!-- 新增 / 配置身份源 -->
     <a-modal v-model:open="idpModalOpen" :title="idpEditId ? '配置身份源' : '新增身份源'" :width="520" :ok-text="idpEditId ? '保存' : '创建'" cancel-text="取消" @ok="saveIdp">
@@ -231,7 +233,8 @@ function saveLc() {
 </template>
 
 <style scoped>
-.tpl-login { padding: 8px 24px 24px; }
+.tpl-login { padding: 16px 20px 20px; background: var(--flowos-content-bg, #f9fafb); min-height: 100%; }
+.hub-panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 24px 24px; }
 .bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
 .tip { font-size: 13px; color: #6b7280; }
 .tpl-form { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
