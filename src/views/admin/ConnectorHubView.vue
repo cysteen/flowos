@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import { message } from 'ant-design-vue';
+import { ref, reactive, computed } from 'vue';
+import { message, Modal } from 'ant-design-vue';
 import {
   PlusOutlined, ApiOutlined, CheckCircleFilled, CloseCircleFilled, SyncOutlined,
   DeleteOutlined, CopyOutlined, EyeOutlined, EyeInvisibleOutlined, DownloadOutlined,
@@ -105,8 +105,86 @@ const SDKS = [
   { lang: 'Node.js', ver: 'v2.3.1', icon: '🟢' },
   { lang: 'Go', ver: 'v2.2.4', icon: '🐹' },
 ];
-function copyKey(k: any) { message.success('已复制密钥'); }
-function todo(t: string) { message.info(`「${t}」（演示）`); }
+function copyKey(_k: any) { message.success('已复制密钥'); }
+
+// —— 新增连接器 ——
+const CONN_TYPES = ['IM', 'ERP', 'CRM', '政务', '通讯', '其它'];
+let cSeq = 7;
+const connModalOpen = ref(false);
+const cf = reactive({ name: '', type: 'IM', icon: '🔌' });
+function openAddConn() { Object.assign(cf, { name: '', type: 'IM', icon: '🔌' }); connModalOpen.value = true; }
+function saveConn() {
+  if (!cf.name) { message.error('请填写连接器名称'); return; }
+  connectors.value.push({ id: 'c' + cSeq++, name: cf.name, type: cf.type, icon: cf.icon || '🔌', status: 'idle', lastSync: '—' });
+  message.success(`连接器「${cf.name}」已新增`);
+  connModalOpen.value = false;
+}
+
+// —— 连接器 配置/日志详情 ——
+const detailOpen = ref(false);
+const detailConn = ref<Connector | null>(null);
+function openConnDetail(c: Connector) { detailConn.value = c; detailOpen.value = true; }
+const detailLogs = computed(() => syncLogs.filter((l) => !detailConn.value || l.conn === detailConn.value.name));
+
+// —— 事件订阅 ——
+let eSeq = 5;
+const eventModalOpen = ref(false);
+const ef = reactive({ event: '', desc: '' });
+function openAddEvent() { Object.assign(ef, { event: '', desc: '' }); eventModalOpen.value = true; }
+function saveEvent() {
+  if (!ef.event) { message.error('请填写事件标识'); return; }
+  events.value.push({ id: eSeq++, event: ef.event, desc: ef.desc, subs: 0, status: false });
+  message.success('事件已新增'); eventModalOpen.value = false;
+}
+
+// —— Webhook ——
+const EVENT_OPTS = ['ticket.created', 'ticket.escalated', 'ticket.closed', 'sla.breached'];
+let wSeq = 4;
+const whModalOpen = ref(false);
+const wf = reactive({ name: '', url: '', event: 'ticket.created' });
+function openAddWh() { Object.assign(wf, { name: '', url: '', event: 'ticket.created' }); whModalOpen.value = true; }
+function saveWh() {
+  if (!wf.name || !wf.url) { message.error('请填写名称与回调地址'); return; }
+  webhooks.value.push({ id: wSeq++, name: wf.name, url: wf.url, event: wf.event, secret: '未配置', status: false });
+  message.success('Webhook 已新增'); whModalOpen.value = false;
+}
+function testWh(w: { name: string }) { message.loading('正在发送测试推送…', 1).then(() => message.success(`已推送至「${w.name}」，返回 200`)); }
+function delWh(w: { id: number; name: string }) {
+  Modal.confirm({
+    title: '删除 Webhook', icon: null, content: `确定删除「${w.name}」？`,
+    okText: '确认删除', okType: 'danger', cancelText: '取消',
+    onOk: () => { webhooks.value = webhooks.value.filter((x) => x.id !== w.id); message.success('已删除'); },
+  });
+}
+
+// —— 数据映射 ——
+const TRANSFORMS = ['直连', '日期格式化', '枚举映射', '脚本转换'];
+const mapModalOpen = ref(false);
+const mpf = reactive({ src: '', dst: '', transform: '直连' });
+function openAddMap() { Object.assign(mpf, { src: '', dst: '', transform: '直连' }); mapModalOpen.value = true; }
+function saveMap() {
+  if (!mpf.src || !mpf.dst) { message.error('请填写来源与目标字段'); return; }
+  mappings.value.push({ ...mpf }); message.success('映射已新增'); mapModalOpen.value = false;
+}
+
+// —— 密钥 ——
+let kSeq = 3;
+function genKey() {
+  const a = Math.random().toString(36).slice(2, 6);
+  const b = Math.random().toString(36).slice(2, 6);
+  keys.value.push({ id: 'k' + kSeq++, name: '新建密钥', key: `sk_live_${a}...${b}`, created: '2026-06-21', lastUse: '—', show: false });
+  message.success('已生成新密钥');
+}
+function revokeKey(k: { id: string; name: string }) {
+  Modal.confirm({
+    title: '吊销密钥', icon: null, content: `吊销后使用该密钥的调用将立即失效，确定吊销「${k.name}」？`,
+    okText: '确认吊销', okType: 'danger', cancelText: '取消',
+    onOk: () => { keys.value = keys.value.filter((x) => x.id !== k.id); message.success('已吊销'); },
+  });
+}
+
+// —— SDK 下载 ——
+function downloadSdk(s: { lang: string; ver: string }) { message.success(`已开始下载 ${s.lang} SDK ${s.ver}`); }
 </script>
 
 <template>
@@ -114,7 +192,7 @@ function todo(t: string) { message.info(`「${t}」（演示）`); }
     <a-tabs v-model:activeKey="activeTab">
       <!-- 连接器 -->
       <a-tab-pane key="connectors" tab="连接器">
-        <div class="bar"><span class="tip">已接入 {{ connectors.length }} 个外部系统</span><a-button type="primary" @click="todo('新增连接器')"><template #icon><PlusOutlined /></template>新增连接器</a-button></div>
+        <div class="bar"><span class="tip">已接入 {{ connectors.length }} 个外部系统</span><a-button type="primary" @click="openAddConn"><template #icon><PlusOutlined /></template>新增连接器</a-button></div>
         <div class="conn-grid">
           <div v-for="c in connectors" :key="c.id" class="conn-card">
             <div class="cc-head">
@@ -125,8 +203,8 @@ function todo(t: string) { message.info(`「${t}」（演示）`); }
             <div class="cc-sync">最近同步：{{ c.lastSync }}</div>
             <div class="cc-acts">
               <a-button size="small" @click="testConn(c)">测试连接</a-button>
-              <a-button size="small" @click="todo('配置')">配置</a-button>
-              <a-button size="small" @click="todo('同步日志')">日志</a-button>
+              <a-button size="small" @click="openConnDetail(c)">配置</a-button>
+              <a-button size="small" @click="openConnDetail(c)">日志</a-button>
             </div>
           </div>
         </div>
@@ -142,7 +220,7 @@ function todo(t: string) { message.info(`「${t}」（演示）`); }
 
       <!-- 事件订阅 -->
       <a-tab-pane key="events" tab="事件订阅">
-        <div class="bar"><span class="tip">系统事件总线，供 Webhook / 连接器订阅</span><a-button type="primary" @click="todo('新增事件')"><template #icon><PlusOutlined /></template>新增事件</a-button></div>
+        <div class="bar"><span class="tip">系统事件总线，供 Webhook / 连接器订阅</span><a-button type="primary" @click="openAddEvent"><template #icon><PlusOutlined /></template>新增事件</a-button></div>
         <a-table :columns="[{title:'事件标识',dataIndex:'event',key:'event'},{title:'说明',dataIndex:'desc',key:'desc'},{title:'订阅方',dataIndex:'subs',key:'subs',width:100},{title:'启用',dataIndex:'status',key:'status',width:80}]" :data-source="events" row-key="id" :pagination="false" size="middle">
           <template #bodyCell="{ column, record }">
             <code v-if="column.key === 'event'" class="mono">{{ record.event }}</code>
@@ -154,7 +232,7 @@ function todo(t: string) { message.info(`「${t}」（演示）`); }
 
       <!-- Webhook -->
       <a-tab-pane key="webhook" tab="Webhook">
-        <div class="bar"><span class="tip">事件触发时向外部 URL 推送（HMAC 签名）</span><a-button type="primary" @click="todo('新增Webhook')"><template #icon><PlusOutlined /></template>新增 Webhook</a-button></div>
+        <div class="bar"><span class="tip">事件触发时向外部 URL 推送（HMAC 签名）</span><a-button type="primary" @click="openAddWh"><template #icon><PlusOutlined /></template>新增 Webhook</a-button></div>
         <a-table :columns="whCols" :data-source="webhooks" row-key="id" :pagination="false" size="middle">
           <template #bodyCell="{ column, record }">
             <code v-if="column.key === 'url'" class="mono url">{{ record.url }}</code>
@@ -162,8 +240,8 @@ function todo(t: string) { message.info(`「${t}」（演示）`); }
             <a-tag v-else-if="column.key === 'secret'" :color="record.secret === '已配置' ? 'green' : 'orange'">{{ record.secret }}</a-tag>
             <a-switch v-else-if="column.key === 'status'" v-model:checked="record.status" size="small" />
             <template v-else-if="column.key === 'op'">
-              <a-button type="link" size="small" @click="todo('测试推送')">测试</a-button>
-              <DeleteOutlined class="op-ic danger" @click="todo('删除')" />
+              <a-button type="link" size="small" @click="testWh(record)">测试</a-button>
+              <DeleteOutlined class="op-ic danger" @click="delWh(record)" />
             </template>
           </template>
         </a-table>
@@ -171,7 +249,7 @@ function todo(t: string) { message.info(`「${t}」（演示）`); }
 
       <!-- 数据映射 -->
       <a-tab-pane key="mapping" tab="数据映射">
-        <div class="bar"><span class="tip">外部系统字段 → 工单实体字段的映射与转换</span><a-button type="primary" @click="todo('新增映射')"><template #icon><PlusOutlined /></template>新增映射</a-button></div>
+        <div class="bar"><span class="tip">外部系统字段 → 工单实体字段的映射与转换</span><a-button type="primary" @click="openAddMap"><template #icon><PlusOutlined /></template>新增映射</a-button></div>
         <a-table :columns="mapCols" :data-source="mappings" row-key="src" :pagination="false" size="middle">
           <template #bodyCell="{ column, record }">
             <code v-if="column.key === 'src'" class="mono src">{{ record.src }}</code>
@@ -196,7 +274,7 @@ function todo(t: string) { message.info(`「${t}」（演示）`); }
 
       <!-- SDK & 密钥 -->
       <a-tab-pane key="sdk" tab="SDK & 密钥">
-        <div class="sec-title">API 密钥<a-button type="primary" size="small" @click="todo('生成密钥')"><template #icon><PlusOutlined /></template>生成密钥</a-button></div>
+        <div class="sec-title">API 密钥<a-button type="primary" size="small" @click="genKey"><template #icon><PlusOutlined /></template>生成密钥</a-button></div>
         <div class="key-list">
           <div v-for="k in keys" :key="k.id" class="key-row">
             <div class="kr-name">{{ k.name }}</div>
@@ -204,7 +282,7 @@ function todo(t: string) { message.info(`「${t}」（演示）`); }
             <a-button type="text" size="small" @click="k.show = !k.show"><component :is="k.show ? EyeInvisibleOutlined : EyeOutlined" /></a-button>
             <a-button type="text" size="small" @click="copyKey(k)"><CopyOutlined /></a-button>
             <span class="kr-meta">创建 {{ k.created }} · 最近使用 {{ k.lastUse }}</span>
-            <a-button type="link" size="small" danger @click="todo('吊销')">吊销</a-button>
+            <a-button type="link" size="small" danger @click="revokeKey(k)">吊销</a-button>
           </div>
         </div>
         <div class="sec-title" style="margin-top: 24px">SDK 下载</div>
@@ -213,11 +291,62 @@ function todo(t: string) { message.info(`「${t}」（演示）`); }
             <span class="sdk-emoji">{{ s.icon }}</span>
             <div class="sdk-lang">{{ s.lang }} SDK</div>
             <div class="sdk-ver">{{ s.ver }}</div>
-            <a-button size="small" block @click="todo(`下载 ${s.lang} SDK`)"><template #icon><DownloadOutlined /></template>下载</a-button>
+            <a-button size="small" block @click="downloadSdk(s)"><template #icon><DownloadOutlined /></template>下载</a-button>
           </div>
         </div>
       </a-tab-pane>
     </a-tabs>
+
+    <!-- 新增连接器 -->
+    <a-modal v-model:open="connModalOpen" title="新增连接器" :width="480" ok-text="创建" cancel-text="取消" @ok="saveConn">
+      <a-form layout="vertical" class="ch-form">
+        <a-form-item label="连接器名称" required class="half"><a-input v-model:value="cf.name" placeholder="如：钉钉" /></a-form-item>
+        <a-form-item label="类型" class="half"><a-select v-model:value="cf.type" :options="CONN_TYPES.map((v)=>({value:v,label:v}))" /></a-form-item>
+        <a-form-item label="图标 Emoji" class="full"><a-input v-model:value="cf.icon" placeholder="🔌" /></a-form-item>
+      </a-form>
+    </a-modal>
+
+    <!-- 连接器配置/日志详情 -->
+    <a-modal v-model:open="detailOpen" :title="detailConn ? `${detailConn.icon} ${detailConn.name} · 详情` : ''" :width="600" :footer="null">
+      <template v-if="detailConn">
+        <a-descriptions :column="2" bordered size="small">
+          <a-descriptions-item label="类型">{{ detailConn.type }}</a-descriptions-item>
+          <a-descriptions-item label="状态">{{ ST_MAP[detailConn.status].label }}</a-descriptions-item>
+          <a-descriptions-item label="最近同步" :span="2">{{ detailConn.lastSync }}</a-descriptions-item>
+        </a-descriptions>
+        <div class="lb-title" style="margin-top:16px">同步日志</div>
+        <a-table :columns="logCols" :data-source="detailLogs" row-key="time" :pagination="false" size="small">
+          <template #bodyCell="{ column, record }"><a-tag v-if="column.key === 'result'" :color="record.result === '成功' ? 'green' : 'red'">{{ record.result }}</a-tag></template>
+        </a-table>
+        <a-empty v-if="!detailLogs.length" description="暂无同步日志" :image="false" style="margin-top:12px" />
+      </template>
+    </a-modal>
+
+    <!-- 新增事件 -->
+    <a-modal v-model:open="eventModalOpen" title="新增事件" :width="460" ok-text="创建" cancel-text="取消" @ok="saveEvent">
+      <a-form layout="vertical">
+        <a-form-item label="事件标识" required><a-input v-model:value="ef.event" placeholder="如：ticket.reopened" /></a-form-item>
+        <a-form-item label="说明"><a-input v-model:value="ef.desc" placeholder="如：工单重开" /></a-form-item>
+      </a-form>
+    </a-modal>
+
+    <!-- 新增 Webhook -->
+    <a-modal v-model:open="whModalOpen" title="新增 Webhook" :width="520" ok-text="创建" cancel-text="取消" @ok="saveWh">
+      <a-form layout="vertical">
+        <a-form-item label="名称" required><a-input v-model:value="wf.name" placeholder="如：飞书群通知" /></a-form-item>
+        <a-form-item label="回调地址" required><a-input v-model:value="wf.url" placeholder="https://…" /></a-form-item>
+        <a-form-item label="触发事件"><a-select v-model:value="wf.event" :options="EVENT_OPTS.map((v)=>({value:v,label:v}))" /></a-form-item>
+      </a-form>
+    </a-modal>
+
+    <!-- 新增映射 -->
+    <a-modal v-model:open="mapModalOpen" title="新增数据映射" :width="520" ok-text="创建" cancel-text="取消" @ok="saveMap">
+      <a-form layout="vertical">
+        <a-form-item label="来源字段" required><a-input v-model:value="mpf.src" placeholder="如：crm.customer_name" /></a-form-item>
+        <a-form-item label="目标字段" required><a-input v-model:value="mpf.dst" placeholder="如：ticket.customer.name" /></a-form-item>
+        <a-form-item label="转换规则"><a-select v-model:value="mpf.transform" :options="TRANSFORMS.map((v)=>({value:v,label:v}))" /></a-form-item>
+      </a-form>
+    </a-modal>
   </div>
 </template>
 
@@ -251,4 +380,7 @@ function todo(t: string) { message.info(`「${t}」（演示）`); }
 .sdk-lang { font-size: 14px; font-weight: 600; color: #111827; margin-top: 8px; }
 .sdk-ver { font-size: 12px; color: #9ca3af; margin: 4px 0 12px; }
 :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; }
+.ch-form { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
+.ch-form .full { grid-column: 1 / -1; }
+.ch-form :deep(.ant-form-item) { margin-bottom: 14px; }
 </style>

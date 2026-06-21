@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, reactive } from 'vue';
 import { message } from 'ant-design-vue';
 import { PlusOutlined, DeleteOutlined, ThunderboltOutlined, TeamOutlined, AimOutlined } from '@ant-design/icons-vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
@@ -38,6 +38,17 @@ const fallbackAgent = ref('值班主管(王芳)');
 const maxLoad = ref(8);
 
 function save() { message.success('分派配置已保存并生效'); }
+
+// —— 新增工单池（真实写入）——
+const poolModalOpen = ref(false);
+const pf = reactive({ name: '', scope: '投诉工单', claim: '组内可抢', timeout: '5 分钟未抢自动指派' });
+function openAddPool() { Object.assign(pf, { name: '', scope: '投诉工单', claim: '组内可抢', timeout: '5 分钟未抢自动指派' }); poolModalOpen.value = true; }
+function savePool() {
+  if (!pf.name) { message.error('请填写工单池名称'); return; }
+  pools.value.push({ ...pf, count: 0 });
+  message.success(`工单池「${pf.name}」已创建`);
+  poolModalOpen.value = false;
+}
 </script>
 
 <template>
@@ -82,7 +93,7 @@ function save() { message.success('分派配置已保存并生效'); }
 
     <!-- 工单池 -->
     <section class="block">
-      <div class="b-title">工单池（抢单）<a-button type="primary" size="small" @click="message.info('新增工单池（演示）')"><template #icon><PlusOutlined /></template>新增池</a-button></div>
+      <div class="b-title">工单池（抢单）<a-button type="primary" size="small" @click="openAddPool"><template #icon><PlusOutlined /></template>新增池</a-button></div>
       <div class="pool-grid">
         <div v-for="p in pools" :key="p.name" class="pool">
           <div class="p-head"><b>{{ p.name }}</b><a-badge :count="p.count" :number-style="{ backgroundColor: '#1a6fff' }" /></div>
@@ -94,6 +105,16 @@ function save() { message.success('分派配置已保存并生效'); }
     </section>
 
     <div class="footer"><a-button type="primary" size="large" @click="save">保存并生效</a-button></div>
+
+    <!-- 新增工单池 -->
+    <a-modal v-model:open="poolModalOpen" title="新增工单池" :width="480" ok-text="创建" cancel-text="取消" @ok="savePool">
+      <a-form layout="vertical">
+        <a-form-item label="工单池名称" required><a-input v-model:value="pf.name" placeholder="如：投诉公共池" /></a-form-item>
+        <a-form-item label="适用工单"><a-select v-model:value="pf.scope" :options="['投诉工单','咨询工单','建议工单','商机工单','售后工单'].map((v)=>({value:v,label:v}))" /></a-form-item>
+        <a-form-item label="抢单方式"><a-select v-model:value="pf.claim" :options="['组内可抢','全员可抢','指定组可抢'].map((v)=>({value:v,label:v}))" /></a-form-item>
+        <a-form-item label="超时策略"><a-input v-model:value="pf.timeout" placeholder="如：5 分钟未抢自动指派" /></a-form-item>
+      </a-form>
+    </a-modal>
   </div>
 </template>
 
