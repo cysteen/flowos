@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue';
 import { message } from 'ant-design-vue';
 import { PlusOutlined, AppstoreOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons-vue';
+import { stdPagination } from '@/config/adminUi';
 
 // 产品管理（PRD-85）：产品分类树 + 产品列表（SN 规则 / 保修 / 售后能力，控转售后）。
 interface Cat { key: string; name: string; count: number; }
@@ -56,7 +57,7 @@ function todo(t: string) { message.info(`「${t}」（演示）`); }
         <span>产品列表</span>
         <a-button type="primary" size="small" @click="todo('新增产品')"><template #icon><PlusOutlined /></template>新增产品</a-button>
       </div>
-      <a-table :columns="cols" :data-source="list" row-key="id" :pagination="false" size="middle">
+      <a-table :columns="cols" :data-source="list" row-key="id" :pagination="stdPagination()" size="middle">
         <template #bodyCell="{ column, record }">
           <span v-if="column.key === 'snRule'" class="mono">{{ record.snRule }}</span>
           <template v-else-if="column.key === 'aftersale'">

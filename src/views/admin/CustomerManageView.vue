@@ -2,6 +2,8 @@
 import { ref, computed } from 'vue';
 import { message } from 'ant-design-vue';
 import { PlusOutlined, UserOutlined, PhoneOutlined, ImportOutlined } from '@ant-design/icons-vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import { stdPagination } from '@/config/adminUi';
 
 // 客户管理（PRD-87）：客户列表 + 等级/标签筛选 + 360 详情抽屉（资料/历史工单/联系记录）。
 interface Customer {
@@ -51,17 +53,19 @@ function todo(t: string) { message.info(`「${t}」（演示）`); }
 
 <template>
   <div class="customer-manage">
+    <AdminPageHeader title="客户管理" subtitle="维护客户档案、等级与标签，支撑工单受理时的客户 360 视图">
+      <template #actions>
+        <a-button @click="todo('导入客户')"><template #icon><ImportOutlined /></template>导入</a-button>
+        <a-button type="primary" @click="todo('新建客户')"><template #icon><PlusOutlined /></template>新建客户</a-button>
+      </template>
+    </AdminPageHeader>
     <div class="bar">
       <div class="filters">
         <a-segmented v-model:value="levelFilter" :options="['全部','VIP','金牌','普通']" />
         <a-input-search v-model:value="keyword" placeholder="搜索姓名/电话/客户号" style="width: 240px" allow-clear />
       </div>
-      <div class="btns">
-        <a-button @click="todo('导入客户')"><template #icon><ImportOutlined /></template>导入</a-button>
-        <a-button type="primary" @click="todo('新建客户')"><template #icon><PlusOutlined /></template>新建客户</a-button>
-      </div>
     </div>
-    <a-table :columns="cols" :data-source="list" row-key="id" :pagination="false" size="middle">
+    <a-table :columns="cols" :data-source="list" row-key="id" :pagination="stdPagination()" size="middle">
       <template #bodyCell="{ column, record }">
         <span v-if="column.key === 'name'" class="cname" @click="openDetail(record as Customer)">
           <a-avatar size="small"><template #icon><UserOutlined /></template></a-avatar><b>{{ record.name }}</b><span class="cid">{{ record.id }}</span>

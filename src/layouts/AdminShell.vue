@@ -1,16 +1,20 @@
 <script setup lang="ts">
-import { watch } from 'vue';
+import { ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
-import { SIDER_WIDTH } from '@/config/layout';
+import { SIDER_WIDTH, SIDER_COLLAPSED_WIDTH } from '@/config/layout';
 import AppHeader from './AppHeader.vue';
 import AdminSidebar from './AdminSidebar.vue';
 import AdminPageTabs from './AdminPageTabs.vue';
 import { useAdminTabsStore } from '@/stores/adminTabs';
 
-function noop() {}
-
 const route = useRoute();
 const tabsStore = useAdminTabsStore();
+
+// 侧栏折叠（与运行工作区一致）
+const collapsed = ref(false);
+function toggleCollapsed() {
+  collapsed.value = !collapsed.value;
+}
 
 watch(
   () => route.path,
@@ -25,16 +29,18 @@ watch(
 
 <template>
   <a-layout class="admin-shell">
-    <AppHeader :collapsed="false" @toggle="noop" />
+    <AppHeader :collapsed="collapsed" @toggle="toggleCollapsed" />
     <a-layout class="admin-body">
       <!-- 须用 a-layout-sider，否则侧栏与内容区纵向堆叠 -->
       <a-layout-sider
+        v-model:collapsed="collapsed"
         :width="SIDER_WIDTH"
-        :collapsible="false"
+        :collapsed-width="SIDER_COLLAPSED_WIDTH"
+        :trigger="null"
         theme="light"
         class="admin-sider"
       >
-        <AdminSidebar />
+        <AdminSidebar :collapsed="collapsed" />
       </a-layout-sider>
       <a-layout-content class="admin-content">
         <AdminPageTabs />

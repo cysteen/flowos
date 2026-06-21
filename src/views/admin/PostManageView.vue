@@ -2,6 +2,8 @@
 import { ref } from 'vue';
 import { message } from 'ant-design-vue';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons-vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import { stdPagination } from '@/config/adminUi';
 
 // 岗位管理（PRD-24）：岗位列表 + 关联角色 + 在岗人数。
 interface Post { id: string; name: string; code: string; org: string; roles: string[]; level: string; count: number; status: boolean; }
@@ -31,11 +33,12 @@ function todo(t: string) { message.info(`「${t}」（演示）`); }
 
 <template>
   <div class="post-manage">
-    <div class="bar">
-      <span class="tip">岗位是「机构 × 角色」的复用载体；用户挂岗即继承岗位角色与数据范围</span>
-      <a-button type="primary" @click="addPost"><template #icon><PlusOutlined /></template>新增岗位</a-button>
-    </div>
-    <a-table :columns="cols" :data-source="posts" row-key="id" :pagination="false" size="middle">
+    <AdminPageHeader title="岗位管理" subtitle="岗位是「机构 × 角色」的复用载体；用户挂岗即继承岗位角色与数据范围">
+      <template #actions>
+        <a-button type="primary" @click="addPost"><template #icon><PlusOutlined /></template>新增岗位</a-button>
+      </template>
+    </AdminPageHeader>
+    <a-table :columns="cols" :data-source="posts" row-key="id" :pagination="stdPagination()" size="middle">
       <template #bodyCell="{ column, record }">
         <span v-if="column.key === 'code'" class="mono">{{ record.code }}</span>
         <a-tag v-else-if="column.key === 'level'" color="geekblue">{{ record.level }}</a-tag>
