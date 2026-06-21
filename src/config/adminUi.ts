@@ -1,5 +1,5 @@
 // 管理后台 UI 规范的代码载体（见 docs/admin-ui-spec.md）。
-// 统一分页、状态色、演示反馈，供所有后台页面复用。
+// 统一分页、状态色、操作反馈，供所有后台页面复用。
 
 /** 标准分页配置：数据列表统一使用；短的配置/枚举表显式 :pagination="false"。 */
 export function stdPagination(extra: Record<string, unknown> = {}) {

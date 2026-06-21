@@ -135,7 +135,6 @@ function removeMember(m: Member) {
     onOk: () => { members.value = members.value.filter((x) => x.id !== m.id); message.success('已移出'); },
   });
 }
-function todo(t: string) { message.info(`「${t}」`); }
 </script>
 
 <template>

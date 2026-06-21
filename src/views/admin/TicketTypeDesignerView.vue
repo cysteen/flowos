@@ -229,7 +229,7 @@ function publish() { message.success(`「${typeName.value}」已发布新版本`
 
     <!-- 流程设计器 -->
     <div v-else-if="activeTab === 'flow'" class="pane flow-pane">
-      <div class="flow-toolbar">流程节点（BPMN）· 拖动右键演示；点击 ＋ 在节点后插入</div>
+      <div class="flow-toolbar">流程节点（BPMN）· 点击 ＋ 在节点后插入，可删除中间节点</div>
       <div class="flow-canvas">
         <template v-for="(n, i) in flow" :key="n.id">
           <div class="fnode" :style="{ borderColor: flowKindTone[n.kind] }">
