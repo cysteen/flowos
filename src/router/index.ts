@@ -22,6 +22,7 @@ function adminViewFor(key: string) {
   if (key === 'audit-logs') return () => import('@/views/admin/AuditLogsView.vue');
   if (key === 'dicts') return () => import('@/views/admin/DictManageView.vue');
   if (key === 'entity-dict') return () => import('@/views/admin/EntityDictView.vue');
+  if (key === 'ticket-types') return () => import('@/views/admin/TicketTypesView.vue');
   if (SLA_STUB_KEYS.has(key)) return () => import('@/views/admin/SlaEngineView.vue');
   if (RULES_STUB_KEYS.has(key)) return () => import('@/views/admin/RulesEngineView.vue');
   return () => import('@/views/admin/AdminModuleView.vue');
@@ -133,6 +134,12 @@ const routes: RouteRecordRaw[] = [
         name: 'admin-sys-settings',
         component: () => import('@/views/admin/PlatformSettingsView.vue'),
         meta: { adminOnly: true, platformOnly: true, title: '系统参数' },
+      },
+      {
+        path: 'ticket-types/:id/designer',
+        name: 'admin-ticket-type-designer',
+        component: () => import('@/views/admin/TicketTypeDesignerView.vue'),
+        meta: { adminOnly: true, title: '工单类型设计器', group: '工单配置' },
       },
       ...adminLegacyRoutes,
       ...adminModuleRoutes,
