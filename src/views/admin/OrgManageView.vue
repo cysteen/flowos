@@ -88,12 +88,13 @@ function delOrg(node: OrgNode) {
 }
 
 // —— 组织人员 ——
-const members = [
+interface Member { id: string; name: string; post: string; role: string; ext: string; status: string; }
+const members = ref<Member[]>([
   { id: 'u1', name: '陈静', post: '班组长', role: '一线主管', ext: '8012', status: '在职' },
   { id: 'u2', name: '黄勇', post: '客服专员', role: '一线坐席', ext: '8014', status: '在职' },
   { id: 'u3', name: '周敏', post: '客服专员', role: '一线坐席', ext: '8015', status: '在职' },
   { id: 'u4', name: '吴婷', post: '客服专员', role: '一线坐席', ext: '8016', status: '试用' },
-];
+]);
 const memCols = [
   { title: '姓名', dataIndex: 'name', key: 'name', width: 130 },
   { title: '岗位', dataIndex: 'post', key: 'post', width: 110 },
@@ -103,6 +104,37 @@ const memCols = [
   { title: '操作', key: 'op', width: 120 },
 ];
 const TYPE_TONE: Record<string, string> = { 公司: 'red', 部门: 'blue', 班组: 'green' };
+
+const POST_OPTS = ['客服专员', '高级客服', '班组长', '售后工程师', '质检员'];
+const ROLE_OPTS = ['一线坐席', '二线坐席', '售后坐席', '一线主管', '审批人', '质检员'];
+
+// —— 成员 添加 / 转岗 / 移出（真实本地操作）——
+let memSeq = 5;
+const memModalOpen = ref(false);
+const memMode = ref<'add' | 'transfer'>('add');
+const mf = reactive<Member>({ id: '', name: '', post: '客服专员', role: '一线坐席', ext: '', status: '在职' });
+const memModalTitle = computed(() => (memMode.value === 'transfer' ? '成员转岗' : '添加成员'));
+function openAddMember() { memMode.value = 'add'; Object.assign(mf, { id: '', name: '', post: '客服专员', role: '一线坐席', ext: '', status: '在职' }); memModalOpen.value = true; }
+function openTransfer(m: Member) { memMode.value = 'transfer'; Object.assign(mf, { ...m }); memModalOpen.value = true; }
+function saveMember() {
+  if (!mf.name) { message.error('请填写成员姓名'); return; }
+  if (memMode.value === 'transfer') {
+    const m = members.value.find((x) => x.id === mf.id);
+    if (m) Object.assign(m, { ...mf });
+    message.success(`${mf.name} 已转岗为「${mf.post}」`);
+  } else {
+    members.value.push({ ...mf, id: 'u' + memSeq++ });
+    message.success(`已添加成员「${mf.name}」`);
+  }
+  memModalOpen.value = false;
+}
+function removeMember(m: Member) {
+  Modal.confirm({
+    title: '移出成员', icon: null, content: `确定将「${m.name}」移出本组织？`,
+    okText: '确认移出', okType: 'danger', cancelText: '取消',
+    onOk: () => { members.value = members.value.filter((x) => x.id !== m.id); message.success('已移出'); },
+  });
+}
 function todo(t: string) { message.info(`「${t}」（演示）`); }
 </script>
 
@@ -152,8 +184,7 @@ function todo(t: string) { message.info(`「${t}」（演示）`); }
         <div class="panel-head">
           <span>组织人员管理 · {{ current.title }}（{{ members.length }}）</span>
           <div class="mc-btns">
-            <a-button size="small" @click="todo('调整人员')"><template #icon><TeamOutlined /></template>调整人员</a-button>
-            <a-button type="primary" size="small" @click="todo('添加成员')"><template #icon><PlusOutlined /></template>添加成员</a-button>
+            <a-button type="primary" size="small" @click="openAddMember"><template #icon><PlusOutlined /></template>添加成员</a-button>
           </div>
         </div>
         <a-table :columns="memCols" :data-source="members" row-key="id" :pagination="false" size="middle">
@@ -162,8 +193,8 @@ function todo(t: string) { message.info(`「${t}」（演示）`); }
             <a-tag v-else-if="column.key === 'role'" color="blue">{{ record.role }}</a-tag>
             <a-tag v-else-if="column.key === 'status'" :color="record.status === '在职' ? 'green' : 'orange'">{{ record.status }}</a-tag>
             <template v-else-if="column.key === 'op'">
-              <a-button type="link" size="small" @click="todo('转岗')">转岗</a-button>
-              <a-button type="link" size="small" danger @click="todo('移出')">移出</a-button>
+              <a-button type="link" size="small" @click="openTransfer(record as Member)">转岗</a-button>
+              <a-button type="link" size="small" danger @click="removeMember(record as Member)">移出</a-button>
             </template>
           </template>
         </a-table>
@@ -187,6 +218,17 @@ function todo(t: string) { message.info(`「${t}」（演示）`); }
         <a-form-item label="负责人"><a-input v-model:value="orgForm.leader" placeholder="选择或输入负责人" /></a-form-item>
       </a-form>
     </a-modal>
+
+    <!-- 添加成员 / 转岗 -->
+    <a-modal v-model:open="memModalOpen" :title="memModalTitle" :width="520" :ok-text="memMode === 'transfer' ? '保存' : '添加'" cancel-text="取消" @ok="saveMember">
+      <a-form layout="vertical" class="mem-form">
+        <a-form-item label="姓名" required class="half"><a-input v-model:value="mf.name" :disabled="memMode === 'transfer'" placeholder="请输入" /></a-form-item>
+        <a-form-item label="分机" class="half"><a-input v-model:value="mf.ext" placeholder="如：8012" /></a-form-item>
+        <a-form-item label="岗位" class="half"><a-select v-model:value="mf.post" :options="POST_OPTS.map((v)=>({value:v,label:v}))" /></a-form-item>
+        <a-form-item label="角色" class="half"><a-select v-model:value="mf.role" :options="ROLE_OPTS.map((v)=>({value:v,label:v}))" /></a-form-item>
+        <a-form-item label="状态" class="full"><a-radio-group v-model:value="mf.status" button-style="solid"><a-radio-button value="在职">在职</a-radio-button><a-radio-button value="试用">试用</a-radio-button><a-radio-button value="离职">离职</a-radio-button></a-radio-group></a-form-item>
+      </a-form>
+    </a-modal>
   </div>
 </template>
 
@@ -196,6 +238,9 @@ function todo(t: string) { message.info(`「${t}」（演示）`); }
 .right { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
 .panel-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #e5e7eb; font-size: 14px; font-weight: 600; color: #111827; }
 .mc-btns { display: flex; gap: 8px; }
+.mem-form { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
+.mem-form .full { grid-column: 1 / -1; }
+.mem-form :deep(.ant-form-item) { margin-bottom: 14px; }
 .tree-search { padding: 10px 12px 4px; }
 .org-tree { padding: 4px 8px 8px; }
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import { message } from 'ant-design-vue';
+import { ref, reactive, computed } from 'vue';
+import { message, Modal } from 'ant-design-vue';
 import {
   PlusOutlined, TeamOutlined, UserOutlined, EditOutlined, DeleteOutlined, CrownOutlined,
 } from '@ant-design/icons-vue';
@@ -23,7 +23,7 @@ const groups = ref<Group[]>([
 const selected = ref('g1');
 const sel = computed(() => groups.value.find((g) => g.key === selected.value)!);
 
-const memberMap: Record<string, Member[]> = {
+const memberMap: Record<string, Member[]> = reactive({
   g1: [
     { id: 'u1', name: '王芳', role: '班组长', ext: '8001', status: '在线', tickets: 0 },
     { id: 'u2', name: '陈静', role: '一线坐席', ext: '8012', status: '在线', tickets: 5 },
@@ -43,7 +43,7 @@ const memberMap: Record<string, Member[]> = {
   g4: [{ id: 'u11', name: '孙磊', role: '班组长', ext: '8301', status: '在线', tickets: 2 }],
   g5: [{ id: 'u12', name: '周琳', role: '审批人', ext: '8401', status: '在线', tickets: 0 }],
   g6: [{ id: 'u13', name: '吴昊', role: '质检员', ext: '8501', status: '在线', tickets: 0 }],
-};
+});
 const members = computed(() => memberMap[selected.value] ?? []);
 
 const TYPE_TONE: Record<string, string> = { 业务班组: 'blue', 审批组: 'orange', 虚拟组: 'purple' };
@@ -56,14 +56,69 @@ const memCols = [
   { title: '在办工单', dataIndex: 'tickets', key: 'tickets', width: 100 },
   { title: '操作', key: 'op', width: 110 },
 ];
-function todo(t: string) { message.info(`「${t}」（演示）`); }
+const TYPE_OPTS = ['业务班组', '审批组', '虚拟组'];
+const SHIFT_OPTS = ['白班', '两班', '三班倒', '—'];
+const SKILL_OPTS = ['投诉', '咨询', '技术', '售后', '退换货', '商机', '审批', '质检'];
+const ROLE_OPTS = ['班组长', '一线坐席', '二线坐席', '售后坐席', '审批人', '质检员'];
+
+function syncCount(key: string) { const g = groups.value.find((x) => x.key === key); if (g) g.count = (memberMap[key] ?? []).length; }
+
+// —— 分组 新建/编辑（含排班/技能）——
+let gSeq = 7;
+const groupModalOpen = ref(false);
+const gMode = ref<'create' | 'edit'>('create');
+const gf = reactive<Group>({ key: '', name: '', type: '业务班组', leader: '', skills: [], shift: '白班', count: 0 });
+function openCreateGroup() { gMode.value = 'create'; Object.assign(gf, { key: '', name: '', type: '业务班组', leader: '', skills: [], shift: '白班', count: 0 }); groupModalOpen.value = true; }
+function openEditGroup() { gMode.value = 'edit'; Object.assign(gf, { ...sel.value, skills: [...sel.value.skills] }); groupModalOpen.value = true; }
+function saveGroup() {
+  if (!gf.name) { message.error('请填写分组名称'); return; }
+  if (gMode.value === 'edit') {
+    const g = groups.value.find((x) => x.key === gf.key);
+    if (g) Object.assign(g, { ...gf, skills: [...gf.skills] });
+    message.success('分组已更新');
+  } else {
+    const key = 'g' + gSeq++;
+    groups.value.push({ ...gf, key, count: 0, skills: [...gf.skills] });
+    memberMap[key] = [];
+    selected.value = key;
+    message.success(`分组「${gf.name}」已创建`);
+  }
+  groupModalOpen.value = false;
+}
+
+// —— 成员 添加/移除/设组长 ——
+let mSeq = 14;
+const memModalOpen = ref(false);
+const mf = reactive<Member>({ id: '', name: '', role: '一线坐席', ext: '', status: '在线', tickets: 0 });
+function openAddMember() { Object.assign(mf, { id: '', name: '', role: '一线坐席', ext: '', status: '在线', tickets: 0 }); memModalOpen.value = true; }
+function saveMember() {
+  if (!mf.name) { message.error('请填写成员姓名'); return; }
+  memberMap[selected.value].push({ ...mf, id: 'u' + mSeq++ });
+  syncCount(selected.value);
+  message.success(`已添加成员「${mf.name}」`);
+  memModalOpen.value = false;
+}
+function setLeader(m: Member) {
+  const arr = memberMap[selected.value];
+  arr.forEach((x) => { if (x.role === '班组长') x.role = '一线坐席'; });
+  m.role = '班组长';
+  if (sel.value) sel.value.leader = m.name;
+  message.success(`已将 ${m.name} 设为组长`);
+}
+function removeMember(m: Member) {
+  Modal.confirm({
+    title: '移除成员', icon: null, content: `确定将「${m.name}」移出本组？`,
+    okText: '确认移除', okType: 'danger', cancelText: '取消',
+    onOk: () => { const arr = memberMap[selected.value]; const i = arr.findIndex((x) => x.id === m.id); if (i >= 0) arr.splice(i, 1); syncCount(selected.value); message.success('已移除'); },
+  });
+}
 </script>
 
 <template>
   <div class="user-group">
     <!-- 分组列表 -->
     <div class="left">
-      <div class="panel-head"><span>用户分组</span><a-button type="primary" size="small" @click="todo('新建分组')"><template #icon><PlusOutlined /></template>新建</a-button></div>
+      <div class="panel-head"><span>用户分组</span><a-button type="primary" size="small" @click="openCreateGroup"><template #icon><PlusOutlined /></template>新建</a-button></div>
       <div class="g-list">
         <div v-for="g in groups" :key="g.key" class="g-item" :class="{ on: g.key === selected }" @click="selected = g.key">
           <div class="gi-ic"><TeamOutlined /></div>
@@ -86,14 +141,14 @@ function todo(t: string) { message.info(`「${t}」（演示）`); }
           <div class="gd-cell"><label>成员数</label><span>{{ sel.count }} 人</span></div>
         </div>
         <div class="gd-acts">
-          <a-button size="small" @click="todo('编辑分组')"><template #icon><EditOutlined /></template>编辑分组</a-button>
-          <a-button size="small" @click="todo('排班配置')">排班配置</a-button>
-          <a-button size="small" @click="todo('技能路由')">技能路由</a-button>
+          <a-button size="small" @click="openEditGroup"><template #icon><EditOutlined /></template>编辑分组</a-button>
+          <a-button size="small" @click="openEditGroup">排班配置</a-button>
+          <a-button size="small" @click="openEditGroup">技能路由</a-button>
         </div>
       </div>
 
       <div class="mem-card">
-        <div class="panel-head"><span>组内成员</span><a-button type="primary" size="small" @click="todo('添加成员')"><template #icon><PlusOutlined /></template>添加成员</a-button></div>
+        <div class="panel-head"><span>组内成员</span><a-button type="primary" size="small" @click="openAddMember"><template #icon><PlusOutlined /></template>添加成员</a-button></div>
         <a-table :columns="memCols" :data-source="members" row-key="id" :pagination="false" size="middle">
           <template #bodyCell="{ column, record }">
             <span v-if="column.key === 'name'" class="mem-name"><a-avatar size="small"><template #icon><UserOutlined /></template></a-avatar>{{ record.name }}</span>
@@ -101,13 +156,34 @@ function todo(t: string) { message.info(`「${t}」（演示）`); }
             <a-tag v-else-if="column.key === 'status'" :color="ST_TONE[record.status]">{{ record.status }}</a-tag>
             <span v-else-if="column.key === 'tickets'"><b>{{ record.tickets }}</b></span>
             <template v-else-if="column.key === 'op'">
-              <a-button type="link" size="small" @click="todo('设为组长')">设组长</a-button>
-              <DeleteOutlined class="op-ic danger" @click="todo('移除')" />
+              <a-button type="link" size="small" :disabled="record.role === '班组长'" @click="setLeader(record as Member)">设组长</a-button>
+              <DeleteOutlined class="op-ic danger" @click="removeMember(record as Member)" />
             </template>
           </template>
         </a-table>
       </div>
     </div>
+
+    <!-- 新建 / 编辑分组 -->
+    <a-modal v-model:open="groupModalOpen" :title="gMode === 'edit' ? '编辑分组' : '新建分组'" :width="540" :ok-text="gMode === 'edit' ? '保存' : '创建'" cancel-text="取消" @ok="saveGroup">
+      <a-form layout="vertical" class="g-form">
+        <a-form-item label="分组名称" required class="half"><a-input v-model:value="gf.name" placeholder="如：一线客服组" /></a-form-item>
+        <a-form-item label="分组类型" class="half"><a-select v-model:value="gf.type" :options="TYPE_OPTS.map((v)=>({value:v,label:v}))" /></a-form-item>
+        <a-form-item label="负责人" class="half"><a-input v-model:value="gf.leader" placeholder="组长姓名" /></a-form-item>
+        <a-form-item label="排班" class="half"><a-select v-model:value="gf.shift" :options="SHIFT_OPTS.map((v)=>({value:v,label:v}))" /></a-form-item>
+        <a-form-item label="技能标签（技能路由依据）" class="full"><a-select v-model:value="gf.skills" mode="multiple" :options="SKILL_OPTS.map((v)=>({value:v,label:v}))" placeholder="选择该组承接的技能" /></a-form-item>
+      </a-form>
+    </a-modal>
+
+    <!-- 添加成员 -->
+    <a-modal v-model:open="memModalOpen" title="添加成员" :width="500" ok-text="添加" cancel-text="取消" @ok="saveMember">
+      <a-form layout="vertical" class="g-form">
+        <a-form-item label="成员姓名" required class="half"><a-input v-model:value="mf.name" placeholder="请输入" /></a-form-item>
+        <a-form-item label="分机" class="half"><a-input v-model:value="mf.ext" placeholder="如：8012" /></a-form-item>
+        <a-form-item label="组内角色" class="half"><a-select v-model:value="mf.role" :options="ROLE_OPTS.map((v)=>({value:v,label:v}))" /></a-form-item>
+        <a-form-item label="状态" class="half"><a-select v-model:value="mf.status" :options="['在线','小休','离线'].map((v)=>({value:v,label:v}))" /></a-form-item>
+      </a-form>
+    </a-modal>
   </div>
 </template>
 
@@ -134,6 +210,9 @@ function todo(t: string) { message.info(`「${t}」（演示）`); }
 .gd-acts { display: flex; gap: 10px; margin-top: 18px; padding-top: 16px; border-top: 1px solid #f3f4f6; }
 .mem-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; }
 .mem-name { display: flex; align-items: center; gap: 8px; }
+.g-form { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
+.g-form .full { grid-column: 1 / -1; }
+.g-form :deep(.ant-form-item) { margin-bottom: 14px; }
 .op-ic { color: #ef4444; cursor: pointer; margin-left: 8px; } .op-ic:hover { opacity: 0.7; }
 :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; }
 </style>
