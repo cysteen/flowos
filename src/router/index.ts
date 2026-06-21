@@ -149,10 +149,10 @@ const routes: RouteRecordRaw[] = [
         meta: { adminOnly: true, platformOnly: true, title: '租户管理' },
       },
       {
-        path: 'access',
-        name: 'admin-access',
+        path: 'plans',
+        name: 'admin-plans',
         component: () => import('@/views/admin/PlatformAccessView.vue'),
-        meta: { adminOnly: true, platformOnly: true, title: '平台门禁' },
+        meta: { adminOnly: true, platformOnly: true, title: '套餐管理' },
       },
       {
         path: 'sys-settings',
