@@ -5,6 +5,7 @@ import {
   APPROVALS, APPROVAL_FILTERS, APPROVAL_STATS,
   type ApprovalItem, type ApprovalStatus,
 } from '@/mock/approvalCenter';
+import { stdPagination } from '@/config/adminUi';
 
 const approvals = ref<ApprovalItem[]>([...APPROVALS]);
 const filterIdx = ref(0);
@@ -98,7 +99,7 @@ function reject() {
       <a-table
         :columns="columns"
         :data-source="filtered"
-        :pagination="{ pageSize: 10, showTotal: (t: number) => `共 ${t} 条` }"
+        :pagination="stdPagination()"
         row-key="id"
         size="middle"
       >

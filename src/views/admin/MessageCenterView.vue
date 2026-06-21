@@ -2,6 +2,7 @@
 import { ref } from 'vue';
 import { message } from 'ant-design-vue';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons-vue';
+import { stdPagination } from '@/config/adminUi';
 
 // 消息中心（PRD-30）：短信(渠道/模板/日志) · 邮件(账号/模板/记录) · 站内信(模板/记录) · 通知公告。
 const channel = ref('sms');
@@ -90,7 +91,7 @@ function delRow(arr: any, id: number) { const i = arr.value.findIndex((x: any) =
           </a-table>
         </template>
         <template v-else>
-          <a-table :columns="[{title:'时间',dataIndex:'time',width:160},{title:'号码',dataIndex:'phone',width:140},{title:'模板',dataIndex:'tpl'},{title:'结果',dataIndex:'result',key:'result',width:90}]" :data-source="smsLogs" row-key="time" :pagination="false" size="middle">
+          <a-table :columns="[{title:'时间',dataIndex:'time',width:160},{title:'号码',dataIndex:'phone',width:140},{title:'模板',dataIndex:'tpl'},{title:'结果',dataIndex:'result',key:'result',width:90}]" :data-source="smsLogs" row-key="time" :pagination="stdPagination()" size="middle">
             <template #bodyCell="{ column, record }"><a-tag v-if="column.key === 'result'" :color="RESULT_TONE[record.result]">{{ record.result }}</a-tag></template>
           </a-table>
         </template>
@@ -115,7 +116,7 @@ function delRow(arr: any, id: number) { const i = arr.value.findIndex((x: any) =
           </a-table>
         </template>
         <template v-else>
-          <a-table :columns="[{title:'时间',dataIndex:'time',width:160},{title:'收件人',dataIndex:'to',width:180},{title:'模板',dataIndex:'tpl'},{title:'结果',dataIndex:'result',key:'result',width:90}]" :data-source="mailLogs" row-key="time" :pagination="false" size="middle">
+          <a-table :columns="[{title:'时间',dataIndex:'time',width:160},{title:'收件人',dataIndex:'to',width:180},{title:'模板',dataIndex:'tpl'},{title:'结果',dataIndex:'result',key:'result',width:90}]" :data-source="mailLogs" row-key="time" :pagination="stdPagination()" size="middle">
             <template #bodyCell="{ column, record }"><a-tag v-if="column.key === 'result'" :color="RESULT_TONE[record.result]">{{ record.result }}</a-tag></template>
           </a-table>
         </template>
@@ -134,7 +135,7 @@ function delRow(arr: any, id: number) { const i = arr.value.findIndex((x: any) =
           </a-table>
         </template>
         <template v-else>
-          <a-table :columns="[{title:'时间',dataIndex:'time',width:160},{title:'接收人',dataIndex:'to',width:140},{title:'模板',dataIndex:'tpl'},{title:'已读',dataIndex:'read',key:'read',width:90}]" :data-source="inLogs" row-key="time" :pagination="false" size="middle">
+          <a-table :columns="[{title:'时间',dataIndex:'time',width:160},{title:'接收人',dataIndex:'to',width:140},{title:'模板',dataIndex:'tpl'},{title:'已读',dataIndex:'read',key:'read',width:90}]" :data-source="inLogs" row-key="time" :pagination="stdPagination()" size="middle">
             <template #bodyCell="{ column, record }"><a-tag v-if="column.key === 'read'" :color="record.read ? 'green' : 'orange'">{{ record.read ? '已读' : '未读' }}</a-tag></template>
           </a-table>
         </template>
@@ -143,7 +144,7 @@ function delRow(arr: any, id: number) { const i = arr.value.findIndex((x: any) =
       <!-- 通知公告 -->
       <a-tab-pane key="notice" tab="通知公告">
         <div class="bar"><span class="tip">面向坐席/班组发布的运营公告</span><a-button type="primary" @click="todo('发布公告')"><template #icon><PlusOutlined /></template>发布公告</a-button></div>
-        <a-table :columns="[{title:'标题',dataIndex:'title',key:'title'},{title:'范围',dataIndex:'scope',width:140},{title:'发布日期',dataIndex:'publish',width:130},{title:'状态',dataIndex:'status',key:'status',width:90},{title:'操作',key:'op',width:120}]" :data-source="notices" row-key="id" :pagination="false" size="middle">
+        <a-table :columns="[{title:'标题',dataIndex:'title',key:'title'},{title:'范围',dataIndex:'scope',width:140},{title:'发布日期',dataIndex:'publish',width:130},{title:'状态',dataIndex:'status',key:'status',width:90},{title:'操作',key:'op',width:120}]" :data-source="notices" row-key="id" :pagination="stdPagination()" size="middle">
           <template #bodyCell="{ column, record }">
             <span v-if="column.key === 'title'"><a-tag v-if="record.top" color="red">置顶</a-tag>{{ record.title }}</span>
             <a-tag v-else-if="column.key === 'status'" :color="record.status === '已发布' ? 'green' : 'default'">{{ record.status }}</a-tag>

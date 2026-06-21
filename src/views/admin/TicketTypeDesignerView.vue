@@ -8,6 +8,7 @@ import {
   CalendarOutlined, PaperClipOutlined, NumberOutlined, TableOutlined, GroupOutlined,
   BranchesOutlined, PlayCircleOutlined, CheckCircleOutlined, FlagOutlined,
 } from '@ant-design/icons-vue';
+import { stdPagination } from '@/config/adminUi';
 
 // 工单类型设计器二级页（PRD-62~65）：实体字段 / 表单设计器(可拖拽) / 流程设计器 / 版本管理。
 const route = useRoute();
@@ -256,7 +257,7 @@ function publish() { message.success(`「${typeName.value}」已发布新版本`
 
     <!-- 版本管理 -->
     <div v-else class="pane version-pane">
-      <a-table :columns="verCols" :data-source="versions" row-key="ver" :pagination="false" size="middle">
+      <a-table :columns="verCols" :data-source="versions" row-key="ver" :pagination="stdPagination()" size="middle">
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'ver'">
             <b>{{ record.ver }}</b><a-tag v-if="record.status==='当前'" color="green" style="margin-left:6px">当前</a-tag>

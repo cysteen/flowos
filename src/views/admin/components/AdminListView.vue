@@ -4,6 +4,7 @@ import { message, Modal } from 'ant-design-vue';
 import { PlusOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons-vue';
 import AdminFormModal from './AdminFormModal.vue';
 import type { ListConfig } from '@/config/adminModules';
+import { stdPagination } from '@/config/adminUi';
 
 const props = defineProps<{ config: ListConfig; title: string }>();
 
@@ -41,7 +42,7 @@ const colKind = (key: string) => props.config.columns.find((c) => c.key === key)
 
 // 选择 + 分页
 const selectedKeys = ref<(string | number)[]>([]);
-const pagination = { pageSize: 10, showSizeChanger: true, showTotal: (t: number) => `共 ${t} 条` };
+const pagination = stdPagination();
 
 // 增 / 改
 const modalOpen = ref(false);

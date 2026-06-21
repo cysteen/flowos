@@ -5,6 +5,7 @@ import { message } from 'ant-design-vue';
 import { PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons-vue';
 import AdminSectionTabs from './components/AdminSectionTabs.vue';
 import { adminNavActiveKey } from '@/config/adminNav';
+import { stdPagination } from '@/config/adminUi';
 
 // 工作流引擎（PRD-71~74）：流程实例 / 流程任务 / 流程监听器 / 流程表达式。
 const route = useRoute();
@@ -103,7 +104,7 @@ function todo(t: string) { message.info(`「${t}」（演示）`); }
           <a-segmented v-model:value="instStatus" :options="['全部','运行中','已挂起','已完成','已终止']" />
           <a-input-search placeholder="搜索实例ID/工单号" style="width: 240px" />
         </div>
-        <a-table :columns="instCols" :data-source="instList" row-key="id" :pagination="false" size="middle">
+        <a-table :columns="instCols" :data-source="instList" row-key="id" :pagination="stdPagination()" size="middle">
           <template #bodyCell="{ column, record }">
             <a-tag v-if="column.key === 'status'" :color="INST_TONE[record.status]">{{ record.status }}</a-tag>
             <template v-else-if="column.key === 'op'">
@@ -117,7 +118,7 @@ function todo(t: string) { message.info(`「${t}」（演示）`); }
 
       <!-- 流程任务 -->
       <template v-else-if="activeKey === 'flow-tasks'">
-        <a-table :columns="taskCols" :data-source="tasks" row-key="id" :pagination="false" size="middle">
+        <a-table :columns="taskCols" :data-source="tasks" row-key="id" :pagination="stdPagination()" size="middle">
           <template #bodyCell="{ column, record }">
             <a-tag v-if="column.key === 'status'" :color="TASK_TONE[record.status]">{{ record.status }}</a-tag>
             <template v-else-if="column.key === 'op'">

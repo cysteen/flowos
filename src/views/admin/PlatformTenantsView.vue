@@ -9,6 +9,7 @@ import {
   TENANTS, ROLE_PRESETS, TENANT_ADMIN_SEAT_MAX, PLAN_OPTIONS, SIM_ORG_TREE, SIM_USERS,
   type Tenant, type RolePreset, type SimUser,
 } from '@/mock/platformAdmin';
+import { stdPagination } from '@/config/adminUi';
 
 const tenants = ref<Tenant[]>(JSON.parse(JSON.stringify(TENANTS)));
 
@@ -232,7 +233,7 @@ onBeforeUnmount(() => { if (simTimer) clearInterval(simTimer); });
 
     <!-- 表格 -->
     <div class="table-card">
-      <a-table :columns="columns" :data-source="filtered" row-key="id" :pagination="false" size="middle">
+      <a-table :columns="columns" :data-source="filtered" row-key="id" :pagination="stdPagination()" size="middle">
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'name'">
             <div class="tname"><span class="tavatar" :style="{ background: record.color }">{{ record.name[0] }}</span><span class="tn">{{ record.name }}</span></div>

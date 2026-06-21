@@ -5,6 +5,7 @@ import { message, Modal } from 'ant-design-vue';
 import { PlusOutlined, DeleteOutlined, ThunderboltOutlined } from '@ant-design/icons-vue';
 import AdminSectionTabs from './components/AdminSectionTabs.vue';
 import { RULES_NAV_ITEMS, adminNavActiveKey } from '@/config/adminNav';
+import { stdPagination } from '@/config/adminUi';
 
 // 规则中心（PRD-58）：规则列表 / 可视化编辑 / 流转路由 / 工单池规则 / 升级路由 / 执行日志。
 const route = useRoute();
@@ -95,7 +96,7 @@ const logCols = [
   { title: '结果', dataIndex: 'result', key: 'result', width: 160 },
 ];
 
-const pagination = { pageSize: 10, showTotal: (t: number) => `共 ${t} 条` };
+const pagination = stdPagination();
 function save() { message.success('已保存（演示）'); }
 </script>
 

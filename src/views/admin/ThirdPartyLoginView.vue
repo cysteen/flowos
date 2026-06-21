@@ -2,6 +2,7 @@
 import { ref } from 'vue';
 import { message } from 'ant-design-vue';
 import { PlusOutlined, DeleteOutlined, SafetyOutlined } from '@ant-design/icons-vue';
+import { stdPagination } from '@/config/adminUi';
 
 // 安全与审计·第三方登录（PRD-44）：身份源/SSO/账号绑定/登录策略 + 登录日志 + 数据生命周期。
 const tab = ref('idp');
@@ -117,7 +118,7 @@ function delRow(arr: any, idx: number) { arr.value.splice(idx, 1); }
       <!-- 账号绑定 -->
       <a-tab-pane key="binding" tab="账号绑定">
         <div class="bar"><span class="tip">本地账号与第三方身份的绑定关系</span></div>
-        <a-table :columns="bindCols" :data-source="bindings" row-key="account" :pagination="false" size="middle">
+        <a-table :columns="bindCols" :data-source="bindings" row-key="account" :pagination="stdPagination()" size="middle">
           <template #bodyCell="{ column, record }">
             <a-tag v-if="column.key === 'idp'" color="blue">{{ record.idp }}</a-tag>
             <code v-else-if="column.key === 'extId'" class="mono">{{ record.extId }}</code>
@@ -145,7 +146,7 @@ function delRow(arr: any, idx: number) { arr.value.splice(idx, 1); }
       <!-- 登录日志 -->
       <a-tab-pane key="loginlog" tab="登录日志">
         <div class="bar"><span class="tip">登录/登出/失败/锁定记录，区别于操作审计日志</span><a-button @click="todo('导出')">导出 CSV</a-button></div>
-        <a-table :columns="loginCols" :data-source="loginLogs" row-key="time" :pagination="false" size="middle">
+        <a-table :columns="loginCols" :data-source="loginLogs" row-key="time" :pagination="stdPagination()" size="middle">
           <template #bodyCell="{ column, record }">
             <code v-if="column.key === 'ip'" class="mono">{{ record.ip }}</code>
             <a-tag v-else-if="column.key === 'result'" :color="LOGIN_TONE[record.result]">{{ record.result }}</a-tag>

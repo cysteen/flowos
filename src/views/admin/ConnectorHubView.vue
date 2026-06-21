@@ -5,6 +5,7 @@ import {
   PlusOutlined, ApiOutlined, CheckCircleFilled, CloseCircleFilled, SyncOutlined,
   DeleteOutlined, CopyOutlined, EyeOutlined, EyeInvisibleOutlined, DownloadOutlined,
 } from '@ant-design/icons-vue';
+import { stdPagination } from '@/config/adminUi';
 
 // 集成对接·连接器深化（PRD-86）：连接器/事件/Webhook/数据映射/API网关/SDK·密钥。
 const activeTab = ref('connectors');
@@ -131,7 +132,7 @@ function todo(t: string) { message.info(`「${t}」（演示）`); }
         </div>
         <div class="log-block">
           <div class="lb-title">同步日志</div>
-          <a-table :columns="logCols" :data-source="syncLogs" row-key="time" :pagination="false" size="small">
+          <a-table :columns="logCols" :data-source="syncLogs" row-key="time" :pagination="stdPagination()" size="small">
             <template #bodyCell="{ column, record }">
               <a-tag v-if="column.key === 'result'" :color="record.result === '成功' ? 'green' : 'red'">{{ record.result }}</a-tag>
             </template>

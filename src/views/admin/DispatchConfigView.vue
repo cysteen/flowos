@@ -2,6 +2,7 @@
 import { ref } from 'vue';
 import { message } from 'ant-design-vue';
 import { PlusOutlined, DeleteOutlined, ThunderboltOutlined, TeamOutlined, AimOutlined } from '@ant-design/icons-vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 
 // 智能分派（PRD-90，V1 D1-dispatch）：分派策略 + 规则链 + 工单池 + 兜底。
 const strategy = ref<'skill' | 'load' | 'round' | 'manual'>('skill');
@@ -41,6 +42,7 @@ function save() { message.success('分派配置已保存并生效'); }
 
 <template>
   <div class="dispatch-config">
+    <AdminPageHeader title="智能分派" subtitle="配置工单到坐席的分派策略、规则链、工单池与兜底坐席" />
     <!-- 分派策略 -->
     <section class="block">
       <div class="b-title">分派策略</div>

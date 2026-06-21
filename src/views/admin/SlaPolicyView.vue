@@ -7,6 +7,7 @@ import {
 } from '@ant-design/icons-vue';
 import AdminSectionTabs from './components/AdminSectionTabs.vue';
 import { SLA_NAV_ITEMS, adminNavActiveKey } from '@/config/adminNav';
+import { stdPagination } from '@/config/adminUi';
 
 const route = useRoute();
 const slaActiveKey = computed(() => adminNavActiveKey(route.path));
@@ -90,7 +91,7 @@ function scopeText(p: Policy): string {
   if (p.levels.length) parts.push(p.levels.join('/'));
   return parts.join(' · ');
 }
-const pagination = { pageSize: 10, showSizeChanger: true, showTotal: (t: number) => `共 ${t} 条` };
+const pagination = stdPagination();
 
 // 向导抽屉
 const drawerOpen = ref(false);
