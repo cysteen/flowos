@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue';
+import { computed, onBeforeUnmount, reactive, ref } from 'vue';
 import { message, Modal } from 'ant-design-vue';
 import {
   PlusOutlined, TeamOutlined, MailOutlined, PhoneOutlined, IdcardOutlined,
-  CheckCircleOutlined,
+  CheckCircleOutlined, EyeOutlined, ClockCircleOutlined, ExclamationCircleFilled,
 } from '@ant-design/icons-vue';
 import {
-  TENANTS, ROLE_PRESETS, TENANT_ADMIN_SEAT_MAX, type Tenant, type RolePreset,
+  TENANTS, ROLE_PRESETS, TENANT_ADMIN_SEAT_MAX, SIM_ORG_TREE, SIM_USERS,
+  type Tenant, type RolePreset, type SimUser,
 } from '@/mock/platformAdmin';
 
 const tenants = ref<Tenant[]>(JSON.parse(JSON.stringify(TENANTS)));
@@ -121,10 +122,89 @@ function sendRecommend() {
   message.success(`已向「${recTenant.value?.name}」推荐起步角色：${names}，租户可一键采用`);
   showRecommend.value = false;
 }
+
+// ---- 模拟登录（排障用·严格只读观察，全程不可改动）----
+const showSimulate = ref(false);
+const simTenant = ref<Tenant | null>(null);
+const simActiveDept = ref('dept1');
+const simUserSearch = ref('');
+const simRoleFilter = ref('');
+const simFilteredUsers = computed(() => {
+  let list = SIM_USERS.filter((u) => u.dept === simActiveDept.value);
+  if (simUserSearch.value) {
+    const kw = simUserSearch.value.toLowerCase();
+    list = list.filter((u) => u.name.includes(kw) || u.empId.toLowerCase().includes(kw));
+  }
+  if (simRoleFilter.value) list = list.filter((u) => u.role === simRoleFilter.value);
+  return list;
+});
+function openSimulate(t: Tenant) {
+  if (t.status !== 'active') return;
+  simTenant.value = t; simActiveDept.value = 'dept1'; simUserSearch.value = ''; simRoleFilter.value = '';
+  showSimulate.value = true;
+}
+
+// 模拟确认
+const showSimConfirm = ref(false);
+const simUser = ref<SimUser | null>(null);
+const simDuration = ref('30');
+const simReasonType = ref('');
+const simReasonDetail = ref('');
+function selectSimUser(u: SimUser) {
+  simUser.value = u; simReasonType.value = ''; simReasonDetail.value = ''; simDuration.value = '30';
+  showSimulate.value = false; showSimConfirm.value = true;
+}
+
+// 模拟运行态
+const simulateMode = ref(false);
+const simRemain = ref('30:00');
+let simTimer: number | undefined;
+const showSimLog = ref(false);
+const simLogs = ref<{ time: string; action: string; color: string }[]>([]);
+function enterSimulate() {
+  if (!simUser.value || !simReasonType.value) return;
+  simulateMode.value = true;
+  simLogs.value = [
+    { time: '12:00:00', action: `发起模拟登录: ${simUser.value.name} (${simUser.value.role})`, color: '#1A6FFF' },
+    { time: '12:00:00', action: `模式: 只读观察（不可改动）`, color: '#9CA3AF' },
+    { time: '12:00:00', action: `原因: ${simReasonType.value}`, color: '#9CA3AF' },
+  ];
+  showSimConfirm.value = false;
+  message.success(`已进入只读模拟 - ${simUser.value.name}`);
+  let sec = parseInt(simDuration.value) * 60;
+  simRemain.value = simDuration.value + ':00';
+  if (simTimer) clearInterval(simTimer);
+  simTimer = window.setInterval(() => {
+    sec--;
+    if (sec <= 0) { exitSimulate(); return; }
+    const m = Math.floor(sec / 60), s = sec % 60;
+    simRemain.value = String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+  }, 1000);
+}
+function exitSimulate() {
+  simulateMode.value = false;
+  if (simTimer) { clearInterval(simTimer); simTimer = undefined; }
+  message.success('已退出模拟登录');
+}
+onBeforeUnmount(() => { if (simTimer) clearInterval(simTimer); });
 </script>
 
 <template>
   <div class="plat-tenants">
+    <!-- 模拟登录·只读观察横幅 -->
+    <div v-if="simulateMode" class="sim-banner">
+      <span class="sim-tag">只读观察中</span>
+      <EyeOutlined />
+      <span>操作者：<b>admin</b></span><span class="sep">|</span>
+      <span>租户：<b>{{ simTenant?.name }}</b></span><span class="sep">|</span>
+      <span>目标：<b>{{ simUser?.name }} ({{ simUser?.role }})</b></span><span class="sep">|</span>
+      <span>模式：<b>只读·不可改动</b></span><span class="sep">|</span>
+      <span class="sim-remain"><ClockCircleOutlined /> 剩余 <b>{{ simRemain }}</b></span>
+      <div class="spacer"></div>
+      <button class="sim-btn ghost" @click="showSimLog = true">操作日志</button>
+      <button class="sim-btn exit" @click="exitSimulate">退出模拟</button>
+    </div>
+
     <div class="page-head-row">
       <div class="page-head"><h2>租户管理</h2><p>管理平台所有租户的开通、停用、配额与起步角色推荐</p></div>
       <a-button type="primary" @click="openCreate"><template #icon><PlusOutlined /></template>创建租户</a-button>
@@ -168,6 +248,7 @@ function sendRecommend() {
             <a-button type="link" size="small" @click="openEdit(record)">编辑</a-button>
             <a-button type="link" size="small" :style="{ color: record.status === 'active' ? '#D97706' : '#059669' }" @click="toggleStatus(record)">{{ record.status === 'active' ? '停用' : '启用' }}</a-button>
             <a-button type="link" size="small" :disabled="record.status !== 'active'" style="color:#7C3AED" @click="openRecommend(record)">推荐角色</a-button>
+            <a-button type="link" size="small" :disabled="record.status !== 'active'" style="color:#0EA5E9" @click="openSimulate(record)">模拟登录</a-button>
             <a-button type="link" size="small" danger @click="delTenant(record)">删除</a-button>
           </template>
         </template>
@@ -256,6 +337,83 @@ function sendRecommend() {
         </div>
       </div>
     </a-modal>
+
+    <!-- 模拟登录：组织树 + 人员 -->
+    <a-modal v-model:open="showSimulate" :title="`模拟登录 · ${simTenant?.name ?? ''}`" :width="900" :footer="null">
+      <div class="sim-hint"><EyeOutlined /> 选择要模拟的目标用户，进入后为<b>只读观察</b>——以其视角查看界面与数据，全程<b>不可改动</b>、不可执行任何操作。</div>
+      <div class="sim-wrap">
+        <div class="sim-tree">
+          <a-input v-model:value="simUserSearch" placeholder="搜索部门…" size="small" style="margin-bottom: 8px" />
+          <div v-for="d in SIM_ORG_TREE" :key="d.id" class="dept" :class="{ active: simActiveDept === d.id }" @click="simActiveDept = d.id">
+            <span class="dept-name">{{ d.name }}</span><span class="dept-count">{{ d.count }}</span>
+          </div>
+        </div>
+        <div class="sim-users">
+          <div class="sim-users-head">
+            <a-input v-model:value="simUserSearch" placeholder="搜索姓名、工号…" size="small" style="flex:1" />
+            <a-select v-model:value="simRoleFilter" size="small" style="width:120px" :options="[
+              { value: '', label: '全部角色' }, { value: '客服坐席', label: '客服坐席' }, { value: '组长', label: '组长' }, { value: '运营专员', label: '运营专员' }, { value: '租户管理员', label: '租户管理员' }]" />
+          </div>
+          <a-table :columns="[{ title: '人员', key: 'p' }, { title: '角色', key: 'role', width: 90 }, { title: '状态', key: 'status', width: 70 }, { title: '负载', key: 'load', width: 90 }, { title: '操作', key: 'op', width: 70 }]"
+            :data-source="simFilteredUsers" row-key="id" :pagination="false" size="small">
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'p'">
+                <div class="su"><span class="su-av" :style="{ background: record.avatarBg }">{{ record.name.slice(-1) }}</span><div><div class="su-name">{{ record.name }}</div><div class="su-id mono">{{ record.empId }}</div></div></div>
+              </template>
+              <span v-else-if="column.key === 'role'" class="su-role" :style="{ background: record.roleBg, color: record.roleColor }">{{ record.role }}</span>
+              <span v-else-if="column.key === 'status'" class="su-status">{{ record.status }}</span>
+              <template v-else-if="column.key === 'load'">
+                <div class="load"><div class="load-track"><div class="load-fill" :style="{ width: record.load + '%', background: record.load >= 80 ? '#EF4444' : record.load >= 50 ? '#F59E0B' : '#10B981' }"></div></div><span class="mono">{{ record.load }}%</span></div>
+              </template>
+              <a-button v-else-if="column.key === 'op'" type="primary" size="small" @click="selectSimUser(record)">选择</a-button>
+            </template>
+          </a-table>
+        </div>
+      </div>
+    </a-modal>
+
+    <!-- 模拟确认 -->
+    <a-modal v-model:open="showSimConfirm" title="确认模拟登录" :width="520" :footer="null">
+      <template v-if="simUser">
+        <div class="sc-user">
+          <span class="sc-av" :style="{ background: simUser.avatarBg }">{{ simUser.name.slice(-1) }}</span>
+          <div class="sc-info"><div class="sc-name">{{ simUser.name }}</div><div class="muted">{{ simUser.role }} · {{ simUser.empId }}</div></div>
+          <span class="su-status">{{ simUser.status }}</span>
+        </div>
+        <div class="sc-block">
+          <div class="sc-label">模拟模式</div>
+          <div class="sc-radio active"><b>观察模式（只读）</b><span class="muted">以目标用户视角查看界面和数据，全程不可执行任何操作</span></div>
+        </div>
+        <div class="sc-block">
+          <div class="sc-label">模拟时效</div>
+          <a-select v-model:value="simDuration" style="width:100%" :options="[{ value: '15', label: '15 分钟' }, { value: '30', label: '30 分钟' }, { value: '60', label: '1 小时' }]" />
+        </div>
+        <div class="sc-block">
+          <div class="sc-label"><i>*</i> 模拟原因</div>
+          <a-select v-model:value="simReasonType" style="width:100%; margin-bottom:8px" placeholder="请选择原因分类…" :options="[
+            { value: '排查问题', label: '排查用户反馈问题' }, { value: '权限验证', label: '验证权限配置' }, { value: '流程测试', label: '测试业务流程' }, { value: '其他', label: '其他' }]" />
+          <a-textarea v-model:value="simReasonDetail" :rows="2" placeholder="请补充具体说明…" />
+        </div>
+        <div class="sc-warn">
+          <ExclamationCircleFilled :style="{ color: '#DC2626' }" />
+          <div><b>安全须知</b><div class="muted">本次模拟为只读观察、全程录入审计日志且不可删除。模拟期间您的所有浏览均被记录。</div></div>
+        </div>
+        <div class="sc-foot">
+          <a-button @click="showSimConfirm = false">取消</a-button>
+          <a-button type="primary" :disabled="!simReasonType" style="background:#0EA5E9; border-color:#0EA5E9" @click="enterSimulate"><template #icon><EyeOutlined /></template>进入只读模拟</a-button>
+        </div>
+      </template>
+    </a-modal>
+
+    <!-- 模拟会话日志 -->
+    <a-modal v-model:open="showSimLog" title="模拟会话操作日志" :width="560" :footer="null">
+      <div class="simlog">
+        <div v-for="(l, i) in simLogs" :key="i" class="simlog-row">
+          <span class="mono muted">{{ l.time }}</span><span class="dot" :style="{ background: l.color }"></span><span>{{ l.action }}</span>
+        </div>
+      </div>
+      <div class="simlog-foot"><span class="muted">日志不可删除，永久保留</span><a-button @click="showSimLog = false">关闭</a-button></div>
+    </a-modal>
   </div>
 </template>
 
@@ -320,4 +478,45 @@ function sendRecommend() {
 .rec-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 20px; padding-top: 16px; border-top: 1px solid #f0f0f0; }
 
 :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; }
+
+/* 模拟登录·只读观察 */
+.sim-banner { display: flex; align-items: center; gap: 10px; background: linear-gradient(90deg, #0EA5E9, #0284C7); color: #fff; padding: 10px 18px; font-size: 13px; border-radius: 10px; margin-bottom: 16px; }
+.sim-tag { background: rgba(255,255,255,.2); padding: 2px 10px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+.sim-banner .sep { opacity: .4; }
+.sim-remain { display: flex; align-items: center; gap: 4px; }
+.sim-banner .spacer { flex: 1; }
+.sim-btn { border: 1px solid rgba(255,255,255,.3); border-radius: 6px; padding: 5px 12px; font-size: 12px; cursor: pointer; }
+.sim-btn.ghost { background: rgba(255,255,255,.15); color: #fff; }
+.sim-btn.exit { background: #fff; color: #0284C7; font-weight: 600; border-color: #fff; }
+
+.sim-hint { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #0369a1; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; }
+.sim-wrap { display: flex; height: 460px; margin: 0 -24px -12px; border-top: 1px solid #f0f0f0; }
+.sim-tree { width: 230px; border-right: 1px solid #e5e7eb; padding: 12px; overflow-y: auto; }
+.dept { display: flex; align-items: center; justify-content: space-between; padding: 7px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.dept:hover { background: #f5f5f5; } .dept.active { background: #E8F1FF; color: #1A6FFF; font-weight: 600; }
+.dept-count { font-size: 10px; background: #f0f0f0; color: #9ca3af; padding: 1px 7px; border-radius: 9px; }
+.sim-users { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.sim-users-head { display: flex; gap: 8px; padding: 12px; border-bottom: 1px solid #f0f0f0; }
+.su { display: flex; align-items: center; gap: 8px; }
+.su-av { width: 28px; height: 28px; border-radius: 50%; color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.su-name { font-size: 12px; font-weight: 500; } .su-id { font-size: 10px; color: #9ca3af; }
+.su-role { font-size: 10px; padding: 1px 7px; border-radius: 9px; font-weight: 600; }
+.su-status { font-size: 11px; color: #6b7280; }
+.load { display: flex; align-items: center; gap: 6px; }
+.load-track { width: 40px; height: 4px; background: #e5e7eb; border-radius: 2px; overflow: hidden; }
+.load-fill { height: 100%; border-radius: 2px; }
+
+.sc-user { display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: 8px; background: #f9fafb; border: 1px solid #e5e7eb; }
+.sc-av { width: 44px; height: 44px; border-radius: 50%; color: #fff; font-size: 15px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.sc-name { font-weight: 600; font-size: 14px; }
+.sc-block { margin-top: 16px; }
+.sc-label { font-size: 12px; font-weight: 600; color: #4b5563; margin-bottom: 8px; }
+.sc-label i { color: #EF4444; font-style: normal; }
+.sc-radio { display: flex; flex-direction: column; gap: 2px; padding: 10px; border-radius: 6px; border: 1px solid #1A6FFF; background: #E8F1FF; font-size: 12px; }
+.sc-warn { display: flex; gap: 8px; margin-top: 16px; padding: 10px; border-radius: 6px; background: #FEF2F2; border: 1px solid #FECACA; font-size: 11px; color: #DC2626; }
+.sc-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+
+.simlog-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #f0f0f0; font-size: 12px; }
+.simlog-row .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.simlog-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; }
 </style>
