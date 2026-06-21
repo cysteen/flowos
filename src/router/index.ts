@@ -20,6 +20,8 @@ function adminViewFor(key: string) {
   if (key === 'tenant-basic') return () => import('@/views/admin/TenantProfileView.vue');
   if (key === 'roles') return () => import('@/views/admin/RolePermissionView.vue');
   if (key === 'audit-logs') return () => import('@/views/admin/AuditLogsView.vue');
+  if (key === 'dicts') return () => import('@/views/admin/DictManageView.vue');
+  if (key === 'entity-dict') return () => import('@/views/admin/EntityDictView.vue');
   if (SLA_STUB_KEYS.has(key)) return () => import('@/views/admin/SlaEngineView.vue');
   if (RULES_STUB_KEYS.has(key)) return () => import('@/views/admin/RulesEngineView.vue');
   return () => import('@/views/admin/AdminModuleView.vue');
