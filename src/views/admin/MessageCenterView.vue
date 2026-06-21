@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, reactive, computed } from 'vue';
 import { message } from 'ant-design-vue';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons-vue';
 import { stdPagination } from '@/config/adminUi';
@@ -61,8 +61,45 @@ const notices = ref([
 
 const RESULT_TONE: Record<string, string> = { 成功: 'green', 失败: 'red' };
 const AUDIT_TONE: Record<string, string> = { 已审核: 'green', 待审核: 'orange' };
-function todo(t: string) { message.info(`「${t}」（演示）`); }
-function delRow(arr: any, id: number) { const i = arr.value.findIndex((x: any) => x.id === id); if (i >= 0) arr.value.splice(i, 1); }
+function delRow(arr: any, id: number) {
+  const i = arr.value.findIndex((x: any) => x.id === id);
+  if (i >= 0) arr.value.splice(i, 1);
+  message.success('已删除');
+}
+
+// —— 统一的「新增/编辑」弹窗（schema 驱动，覆盖各子页实体）——
+interface FieldSpec { k: string; l: string; req?: boolean; type?: 'text' | 'textarea'; }
+type EntityKey = 'smsChannel' | 'smsTpl' | 'mailAccount' | 'mailTpl' | 'inTpl' | 'notice';
+const SCHEMAS: Record<EntityKey, { title: string; fields: FieldSpec[]; target: any; create: (f: any) => any }> = {
+  smsChannel: { title: '短信渠道', fields: [{ k: 'name', l: '渠道名称', req: true }, { k: 'sign', l: '短信签名', req: true }, { k: 'daily', l: '日配额' }], target: smsChannels, create: (f) => ({ id: Date.now(), name: f.name, sign: f.sign, daily: f.daily || '0', used: 0, status: true }) },
+  smsTpl: { title: '短信模板', fields: [{ k: 'code', l: '模板编码', req: true }, { k: 'name', l: '模板名称', req: true }, { k: 'content', l: '模板内容', req: true, type: 'textarea' }], target: smsTpls, create: (f) => ({ id: Date.now(), code: f.code, name: f.name, content: f.content, status: '待审核' }) },
+  mailAccount: { title: '邮件账号', fields: [{ k: 'name', l: '账号名', req: true }, { k: 'addr', l: '邮箱地址', req: true }, { k: 'smtp', l: 'SMTP' }], target: mailAccounts, create: (f) => ({ id: Date.now(), name: f.name, addr: f.addr, smtp: f.smtp || '', status: true }) },
+  mailTpl: { title: '邮件模板', fields: [{ k: 'code', l: '模板编码', req: true }, { k: 'name', l: '模板名称', req: true }, { k: 'subject', l: '邮件主题', req: true }], target: mailTpls, create: (f) => ({ id: Date.now(), code: f.code, name: f.name, subject: f.subject, status: '待审核' }) },
+  inTpl: { title: '站内信模板', fields: [{ k: 'code', l: '模板编码', req: true }, { k: 'name', l: '模板名称', req: true }, { k: 'content', l: '内容', req: true, type: 'textarea' }], target: inTpls, create: (f) => ({ id: Date.now(), code: f.code, name: f.name, content: f.content, status: '已审核' }) },
+  notice: { title: '通知公告', fields: [{ k: 'title', l: '公告标题', req: true }, { k: 'scope', l: '发布范围' }], target: notices, create: (f) => ({ id: Date.now(), title: f.title, scope: f.scope || '全员', publish: '2026-06-21', status: '已发布', top: false }) },
+};
+const modalOpen = ref(false);
+const modalType = ref<EntityKey>('smsChannel');
+const editingId = ref<number | null>(null);
+const ff = reactive<Record<string, any>>({});
+const curSchema = computed(() => SCHEMAS[modalType.value]);
+const modalTitle = computed(() => (editingId.value ? '编辑' : modalType.value === 'notice' ? '发布' : '新增') + curSchema.value.title);
+function resetForm(record?: any) { Object.keys(ff).forEach((k) => delete ff[k]); curSchema.value.fields.forEach((fl) => (ff[fl.k] = record ? record[fl.k] ?? '' : '')); }
+function openCreate(type: EntityKey) { modalType.value = type; editingId.value = null; resetForm(); modalOpen.value = true; }
+function openEdit(type: EntityKey, record: any) { modalType.value = type; editingId.value = record.id; resetForm(record); modalOpen.value = true; }
+function saveModal() {
+  const s = curSchema.value;
+  for (const fl of s.fields) { if (fl.req && !ff[fl.k]) { message.error('请填写必填项'); return; } }
+  if (editingId.value) {
+    const arr = s.target.value; const i = arr.findIndex((x: any) => x.id === editingId.value);
+    if (i >= 0) arr[i] = { ...arr[i], ...ff };
+    message.success('已更新');
+  } else {
+    s.target.value.unshift(s.create(ff));
+    message.success(modalType.value === 'notice' ? '公告已发布' : `${s.title}已新增`);
+  }
+  modalOpen.value = false;
+}
 </script>
 
 <template>
@@ -72,7 +109,7 @@ function delRow(arr: any, id: number) { const i = arr.value.findIndex((x: any) =
       <a-tab-pane key="sms" tab="短信">
         <a-segmented v-model:value="smsSub" :options="[{value:'channel',label:'渠道'},{value:'template',label:'模板'},{value:'log',label:'发送日志'}]" style="margin-bottom: 16px" />
         <template v-if="smsSub === 'channel'">
-          <div class="bar"><span class="tip">短信通道与签名配置，含日发送配额</span><a-button type="primary" @click="todo('新增渠道')"><template #icon><PlusOutlined /></template>新增渠道</a-button></div>
+          <div class="bar"><span class="tip">短信通道与签名配置，含日发送配额</span><a-button type="primary" @click="openCreate('smsChannel')"><template #icon><PlusOutlined /></template>新增渠道</a-button></div>
           <a-table :columns="[{title:'渠道名称',dataIndex:'name'},{title:'签名',dataIndex:'sign',width:140},{title:'日配额',dataIndex:'daily',width:120},{title:'今日已用',dataIndex:'used',key:'used',width:120},{title:'启用',dataIndex:'status',key:'status',width:80}]" :data-source="smsChannels" row-key="id" :pagination="false" size="middle">
             <template #bodyCell="{ column, record }">
               <span v-if="column.key === 'used'"><b>{{ record.used.toLocaleString() }}</b></span>
@@ -81,12 +118,12 @@ function delRow(arr: any, id: number) { const i = arr.value.findIndex((x: any) =
           </a-table>
         </template>
         <template v-else-if="smsSub === 'template'">
-          <div class="bar"><span class="tip">短信模板需运营商审核后方可发送</span><a-button type="primary" @click="todo('新增模板')"><template #icon><PlusOutlined /></template>新增模板</a-button></div>
+          <div class="bar"><span class="tip">短信模板需运营商审核后方可发送</span><a-button type="primary" @click="openCreate('smsTpl')"><template #icon><PlusOutlined /></template>新增模板</a-button></div>
           <a-table :columns="[{title:'模板编码',dataIndex:'code',key:'code',width:170},{title:'名称',dataIndex:'name',width:140},{title:'内容',dataIndex:'content'},{title:'状态',dataIndex:'status',key:'status',width:90},{title:'操作',key:'op',width:90}]" :data-source="smsTpls" row-key="id" :pagination="false" size="middle">
             <template #bodyCell="{ column, record }">
               <code v-if="column.key === 'code'" class="mono">{{ record.code }}</code>
               <a-tag v-else-if="column.key === 'status'" :color="AUDIT_TONE[record.status]">{{ record.status }}</a-tag>
-              <template v-else-if="column.key === 'op'"><EditOutlined class="op-ic" @click="todo('编辑')" /><DeleteOutlined class="op-ic danger" @click="delRow(smsTpls, record.id)" /></template>
+              <template v-else-if="column.key === 'op'"><EditOutlined class="op-ic" @click="openEdit('smsTpl', record)" /><DeleteOutlined class="op-ic danger" @click="delRow(smsTpls, record.id)" /></template>
             </template>
           </a-table>
         </template>
@@ -101,13 +138,13 @@ function delRow(arr: any, id: number) { const i = arr.value.findIndex((x: any) =
       <a-tab-pane key="mail" tab="邮件">
         <a-segmented v-model:value="mailSub" :options="[{value:'account',label:'账号'},{value:'template',label:'模板'},{value:'log',label:'发送记录'}]" style="margin-bottom: 16px" />
         <template v-if="mailSub === 'account'">
-          <div class="bar"><span class="tip">发件邮箱与 SMTP 配置</span><a-button type="primary" @click="todo('新增账号')"><template #icon><PlusOutlined /></template>新增账号</a-button></div>
+          <div class="bar"><span class="tip">发件邮箱与 SMTP 配置</span><a-button type="primary" @click="openCreate('mailAccount')"><template #icon><PlusOutlined /></template>新增账号</a-button></div>
           <a-table :columns="[{title:'账号名',dataIndex:'name',width:140},{title:'邮箱地址',dataIndex:'addr'},{title:'SMTP',dataIndex:'smtp',width:220},{title:'启用',dataIndex:'status',key:'status',width:80}]" :data-source="mailAccounts" row-key="id" :pagination="false" size="middle">
             <template #bodyCell="{ column, record }"><a-switch v-if="column.key === 'status'" v-model:checked="record.status" size="small" /></template>
           </a-table>
         </template>
         <template v-else-if="mailSub === 'template'">
-          <div class="bar"><span class="tip">支持 HTML 富文本邮件模板</span><a-button type="primary" @click="todo('新增模板')"><template #icon><PlusOutlined /></template>新增模板</a-button></div>
+          <div class="bar"><span class="tip">支持 HTML 富文本邮件模板</span><a-button type="primary" @click="openCreate('mailTpl')"><template #icon><PlusOutlined /></template>新增模板</a-button></div>
           <a-table :columns="[{title:'模板编码',dataIndex:'code',key:'code',width:200},{title:'名称',dataIndex:'name',width:160},{title:'邮件主题',dataIndex:'subject'},{title:'状态',dataIndex:'status',key:'status',width:90}]" :data-source="mailTpls" row-key="id" :pagination="false" size="middle">
             <template #bodyCell="{ column, record }">
               <code v-if="column.key === 'code'" class="mono">{{ record.code }}</code>
@@ -126,7 +163,7 @@ function delRow(arr: any, id: number) { const i = arr.value.findIndex((x: any) =
       <a-tab-pane key="inapp" tab="站内信">
         <a-segmented v-model:value="inSub" :options="[{value:'template',label:'模板'},{value:'log',label:'发送记录'}]" style="margin-bottom: 16px" />
         <template v-if="inSub === 'template'">
-          <div class="bar"><span class="tip">系统内通知模板（工单指派、@提及、审批提醒等）</span><a-button type="primary" @click="todo('新增模板')"><template #icon><PlusOutlined /></template>新增模板</a-button></div>
+          <div class="bar"><span class="tip">系统内通知模板（工单指派、@提及、审批提醒等）</span><a-button type="primary" @click="openCreate('inTpl')"><template #icon><PlusOutlined /></template>新增模板</a-button></div>
           <a-table :columns="[{title:'模板编码',dataIndex:'code',key:'code',width:170},{title:'名称',dataIndex:'name',width:140},{title:'内容',dataIndex:'content'},{title:'状态',dataIndex:'status',key:'status',width:90}]" :data-source="inTpls" row-key="id" :pagination="false" size="middle">
             <template #bodyCell="{ column, record }">
               <code v-if="column.key === 'code'" class="mono">{{ record.code }}</code>
@@ -143,19 +180,29 @@ function delRow(arr: any, id: number) { const i = arr.value.findIndex((x: any) =
 
       <!-- 通知公告 -->
       <a-tab-pane key="notice" tab="通知公告">
-        <div class="bar"><span class="tip">面向坐席/班组发布的运营公告</span><a-button type="primary" @click="todo('发布公告')"><template #icon><PlusOutlined /></template>发布公告</a-button></div>
+        <div class="bar"><span class="tip">面向坐席/班组发布的运营公告</span><a-button type="primary" @click="openCreate('notice')"><template #icon><PlusOutlined /></template>发布公告</a-button></div>
         <a-table :columns="[{title:'标题',dataIndex:'title',key:'title'},{title:'范围',dataIndex:'scope',width:140},{title:'发布日期',dataIndex:'publish',width:130},{title:'状态',dataIndex:'status',key:'status',width:90},{title:'操作',key:'op',width:120}]" :data-source="notices" row-key="id" :pagination="stdPagination()" size="middle">
           <template #bodyCell="{ column, record }">
             <span v-if="column.key === 'title'"><a-tag v-if="record.top" color="red">置顶</a-tag>{{ record.title }}</span>
             <a-tag v-else-if="column.key === 'status'" :color="record.status === '已发布' ? 'green' : 'default'">{{ record.status }}</a-tag>
             <template v-else-if="column.key === 'op'">
-              <a-button type="link" size="small" @click="todo('编辑')">编辑</a-button>
+              <a-button type="link" size="small" @click="openEdit('notice', record)">编辑</a-button>
               <DeleteOutlined class="op-ic danger" @click="delRow(notices, record.id)" />
             </template>
           </template>
         </a-table>
       </a-tab-pane>
     </a-tabs>
+
+    <!-- 统一新增/编辑弹窗 -->
+    <a-modal v-model:open="modalOpen" :title="modalTitle" :width="520" :ok-text="editingId ? '保存' : (modalType === 'notice' ? '发布' : '创建')" cancel-text="取消" @ok="saveModal">
+      <a-form layout="vertical">
+        <a-form-item v-for="fl in curSchema.fields" :key="fl.k" :label="fl.l" :required="fl.req">
+          <a-textarea v-if="fl.type === 'textarea'" v-model:value="ff[fl.k]" :rows="3" :placeholder="`请输入${fl.l}`" />
+          <a-input v-else v-model:value="ff[fl.k]" :placeholder="`请输入${fl.l}`" />
+        </a-form-item>
+      </a-form>
+    </a-modal>
   </div>
 </template>
 
