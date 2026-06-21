@@ -190,11 +190,13 @@ const router = createRouter({
 // 持续部署后旧会话的懒加载 chunk 哈希失效 → 动态 import 失败 → 点击侧栏"无反应"。
 // 检测到此类错误时，跳转到目标并强制拉取新 bundle，用户无感恢复（单次防循环）。
 router.onError((error, to) => {
-  const msg = (error as Error)?.message || '';
-  const isChunkError =
-    /Failed to fetch dynamically imported module|Importing a module script failed|Loading chunk|error loading dynamically imported module/i.test(msg);
+  const msg = `${(error as Error)?.message || ''} ${(error as Error)?.name || ''}`;
+  // 覆盖各浏览器变体：Chrome「Failed to fetch dynamically imported module」、
+  // Firefox「error loading dynamically imported module」、Safari「Importing a module script failed」、
+  // 以及 Loading chunk / Loading CSS chunk failed。
+  const isChunkError = /dynamically imported module|module script|Loading (chunk|CSS chunk)|ChunkLoadError/i.test(msg);
   if (!isChunkError) return;
-  const dest = to?.fullPath ?? '/';
+  const dest = to?.fullPath || '/';
   if (sessionStorage.getItem('flowos-chunk-reload') === dest) return; // 已重试过，避免死循环
   sessionStorage.setItem('flowos-chunk-reload', dest);
   const base = import.meta.env.BASE_URL.replace(/\/$/, '');
