@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useRouter } from 'vue-router';
-import { message } from 'ant-design-vue';
 import { RightOutlined } from '@ant-design/icons-vue';
 import {
   TENANT_INFO, KPIS, TREND, TODOS, QUICK_CONFIG, SYSTEM_STATUS, ANNOUNCEMENTS,
@@ -52,7 +51,6 @@ function goPath(path: string) {
           <div class="usage-top"><span>存储用量</span><span>{{ TENANT_INFO.storageUsed }}G/{{ TENANT_INFO.storageTotal }}G</span></div>
           <div class="usage-track"><div class="usage-fill" :style="{ width: storagePct + '%' }"></div></div>
         </div>
-        <button class="tb-set" @click="message.info('租户设置（占位）')">租户设置</button>
       </div>
     </div>
 
@@ -170,7 +168,6 @@ function goPath(path: string) {
 .usage-top { display: flex; justify-content: space-between; font-size: 12px; color: rgba(255,255,255,0.9); margin-bottom: 4px; }
 .usage-track { height: 5px; background: rgba(255,255,255,0.25); border-radius: 3px; overflow: hidden; }
 .usage-fill { height: 100%; background: #fff; }
-.tb-set { background: #fff; color: #1a6fff; border: none; border-radius: 6px; padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer; }
 
 /* KPI */
 .kpi-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }

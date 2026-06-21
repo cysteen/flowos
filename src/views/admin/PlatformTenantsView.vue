@@ -6,7 +6,7 @@ import {
   CheckCircleOutlined, EyeOutlined, ClockCircleOutlined, ExclamationCircleFilled,
 } from '@ant-design/icons-vue';
 import {
-  TENANTS, ROLE_PRESETS, TENANT_ADMIN_SEAT_MAX, SIM_ORG_TREE, SIM_USERS,
+  TENANTS, ROLE_PRESETS, TENANT_ADMIN_SEAT_MAX, PLAN_OPTIONS, SIM_ORG_TREE, SIM_USERS,
   type Tenant, type RolePreset, type SimUser,
 } from '@/mock/platformAdmin';
 
@@ -29,42 +29,46 @@ const stats = computed(() => ({
   admins: tenants.value.reduce((s, t) => s + t.adminCount, 0),
 }));
 
+const planMeta = computed(() => PLAN_OPTIONS.find((p) => p.value === form.plan));
+const PLAN_TONE: Record<string, string> = { 基础版: 'default', 专业版: 'blue', 旗舰版: 'purple' };
+
 const columns = [
   { title: '租户', key: 'name' },
   { title: '编码', key: 'code', width: 100 },
+  { title: '套餐', key: 'plan', width: 100 },
   { title: '状态', key: 'status', width: 90 },
   { title: '管理员', key: 'admin', width: 230 },
-  { title: '管理员席位', key: 'seats', width: 120 },
-  { title: '创建时间', key: 'createdAt', width: 120 },
-  { title: '操作', key: 'action', width: 230 },
+  { title: '管理员席位', key: 'seats', width: 110 },
+  { title: '创建时间', key: 'createdAt', width: 110 },
+  { title: '操作', key: 'action', width: 280 },
 ];
 
 // ---- 创建 / 编辑 ----
 const showTenantModal = ref(false);
 const editing = ref<Tenant | null>(null);
 const form = reactive({
-  name: '', code: '', adminEmail: '', adminPhone: '', adminLimit: TENANT_ADMIN_SEAT_MAX,
+  name: '', code: '', plan: '专业版', adminEmail: '', adminPhone: '', adminLimit: TENANT_ADMIN_SEAT_MAX,
   orderLimit: 1000, apiLimit: 10000, storageLimit: 50,
 });
 function openCreate() {
   editing.value = null;
-  Object.assign(form, { name: '', code: '', adminEmail: '', adminPhone: '', adminLimit: TENANT_ADMIN_SEAT_MAX, orderLimit: 1000, apiLimit: 10000, storageLimit: 50 });
+  Object.assign(form, { name: '', code: '', plan: '专业版', adminEmail: '', adminPhone: '', adminLimit: TENANT_ADMIN_SEAT_MAX, orderLimit: 1000, apiLimit: 10000, storageLimit: 50 });
   showTenantModal.value = true;
 }
 function openEdit(t: Tenant) {
   editing.value = t;
-  Object.assign(form, { name: t.name, code: t.code, adminEmail: t.admin, adminPhone: t.adminPhone, adminLimit: t.adminLimit, orderLimit: t.quota.orderLimit, apiLimit: t.quota.apiLimit, storageLimit: t.quota.storageLimit });
+  Object.assign(form, { name: t.name, code: t.code, plan: t.plan, adminEmail: t.admin, adminPhone: t.adminPhone, adminLimit: t.adminLimit, orderLimit: t.quota.orderLimit, apiLimit: t.quota.apiLimit, storageLimit: t.quota.storageLimit });
   showTenantModal.value = true;
 }
 function saveTenant() {
-  if (!form.name || !form.code || !form.adminEmail || !form.adminPhone) {
-    message.error('请填写租户名称、编码、管理员邮箱与手机号');
+  if (!form.name || !form.code || !form.plan || !form.adminEmail || !form.adminPhone) {
+    message.error('请填写租户名称、编码、套餐、管理员邮箱与手机号');
     return;
   }
   const limit = Math.min(Math.max(1, form.adminLimit || 1), TENANT_ADMIN_SEAT_MAX);
   if (editing.value) {
     const t = editing.value;
-    t.name = form.name; t.code = form.code; t.admin = form.adminEmail; t.adminPhone = form.adminPhone;
+    t.name = form.name; t.code = form.code; t.plan = form.plan; t.admin = form.adminEmail; t.adminPhone = form.adminPhone;
     t.adminLimit = limit; t.adminCount = Math.min(t.adminCount, limit);
     t.quota.orderLimit = form.orderLimit; t.quota.apiLimit = form.apiLimit; t.quota.storageLimit = form.storageLimit;
     message.success('租户信息已更新');
@@ -72,7 +76,7 @@ function saveTenant() {
     const colors = ['#1A6FFF', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
     tenants.value.unshift({
       id: 't' + (tenants.value.length + 1), name: form.name, code: form.code, status: 'active',
-      admin: form.adminEmail, adminPhone: form.adminPhone, adminLimit: limit, adminCount: 1,
+      admin: form.adminEmail, adminPhone: form.adminPhone, adminLimit: limit, adminCount: 1, plan: form.plan,
       createdAt: '2026-06-21', color: colors[tenants.value.length % colors.length],
       quota: { orderLimit: form.orderLimit, orderUsed: 0, orderPct: 0, apiLimit: form.apiLimit, apiUsed: 0, apiPct: 0, storageLimit: form.storageLimit, storageUsed: 0, storagePct: 0 },
       logs: [{ time: '2026-06-21 12:00', action: '创建租户', user: 'admin' }],
@@ -234,6 +238,7 @@ onBeforeUnmount(() => { if (simTimer) clearInterval(simTimer); });
             <div class="tname"><span class="tavatar" :style="{ background: record.color }">{{ record.name[0] }}</span><span class="tn">{{ record.name }}</span></div>
           </template>
           <a-tag v-else-if="column.key === 'code'" class="code-tag">{{ record.code }}</a-tag>
+          <a-tag v-else-if="column.key === 'plan'" :color="PLAN_TONE[record.plan]">{{ record.plan }}</a-tag>
           <a-tag v-else-if="column.key === 'status'" :color="record.status === 'active' ? 'green' : 'default'">{{ record.status === 'active' ? '活跃' : '已停用' }}</a-tag>
           <template v-else-if="column.key === 'admin'">
             <div class="adm"><MailOutlined class="adm-ic" /><span>{{ record.admin }}</span></div>
@@ -261,6 +266,12 @@ onBeforeUnmount(() => { if (simTimer) clearInterval(simTimer); });
         <div class="grid2">
           <a-form-item label="租户名称" required><a-input v-model:value="form.name" placeholder="输入租户名称" /></a-form-item>
           <a-form-item label="租户编码" required><a-input v-model:value="form.code" placeholder="如 XFKJ" /></a-form-item>
+        </div>
+        <a-form-item label="所属套餐" required>
+          <a-select v-model:value="form.plan" :options="PLAN_OPTIONS.map((p) => ({ value: p.value, label: p.label }))" />
+          <div v-if="planMeta" class="plan-meta">{{ planMeta.seats }} · 工单 {{ planMeta.orders }} · 存储 {{ planMeta.storage }}</div>
+        </a-form-item>
+        <div class="grid2">
           <a-form-item label="管理员邮箱" required><a-input v-model:value="form.adminEmail" placeholder="admin@example.com"><template #prefix><MailOutlined /></template></a-input></a-form-item>
           <a-form-item label="管理员手机号" required><a-input v-model:value="form.adminPhone" placeholder="138 0000 0000"><template #prefix><PhoneOutlined /></template></a-input></a-form-item>
         </div>
@@ -284,6 +295,7 @@ onBeforeUnmount(() => { if (simTimer) clearInterval(simTimer); });
         <a-descriptions :column="2" bordered size="small">
           <a-descriptions-item label="名称">{{ detail.name }}</a-descriptions-item>
           <a-descriptions-item label="编码"><span class="mono">{{ detail.code }}</span></a-descriptions-item>
+          <a-descriptions-item label="所属套餐"><a-tag :color="PLAN_TONE[detail.plan]">{{ detail.plan }}</a-tag></a-descriptions-item>
           <a-descriptions-item label="状态"><a-tag :color="detail.status === 'active' ? 'green' : 'default'">{{ detail.status === 'active' ? '活跃' : '已停用' }}</a-tag></a-descriptions-item>
           <a-descriptions-item label="创建时间">{{ detail.createdAt }}</a-descriptions-item>
           <a-descriptions-item label="管理员邮箱" :span="2">{{ detail.admin }}</a-descriptions-item>
@@ -450,6 +462,7 @@ onBeforeUnmount(() => { if (simTimer) clearInterval(simTimer); });
 .t-form :deep(.ant-form-item) { margin-bottom: 14px; }
 .form-sub { font-size: 12px; font-weight: 600; color: #374151; margin: 6px 0 12px; padding-top: 12px; border-top: 1px solid #f0f0f0; }
 .hint { font-size: 12px; color: #9ca3af; margin-left: 12px; }
+.plan-meta { font-size: 12px; color: #1A6FFF; margin-top: 6px; }
 
 .d-section-title { font-size: 11px; font-weight: 600; color: #9ca3af; letter-spacing: .05em; text-transform: uppercase; margin: 20px 0 12px; }
 .quota { display: flex; flex-direction: column; gap: 14px; }

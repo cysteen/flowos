@@ -9,26 +9,34 @@ export interface TenantLog { time: string; action: string; user: string }
 export interface Tenant {
   id: string; name: string; code: string; status: 'active' | 'suspended';
   admin: string; adminPhone: string; adminLimit: number; adminCount: number;
-  createdAt: string; color: string;
+  plan: string; createdAt: string; color: string;
   quota: TenantQuota; logs: TenantLog[];
 }
 
 /** 平台硬约束：单租户「租户管理员」席位上限 */
 export const TENANT_ADMIN_SEAT_MAX = 3;
 
+/** 套餐选项（与「平台门禁·套餐管理」一致）——新建租户时由系统管理员选择 */
+export interface PlanOption { value: string; label: string; seats: string; orders: string; storage: string; }
+export const PLAN_OPTIONS: PlanOption[] = [
+  { value: '基础版', label: '基础版', seats: '≤10 席', orders: '1,000/月', storage: '10 GB' },
+  { value: '专业版', label: '专业版', seats: '≤50 席', orders: '2万/月', storage: '100 GB' },
+  { value: '旗舰版', label: '旗舰版', seats: '不限', orders: '不限', storage: '1 TB' },
+];
+
 export const TENANTS: Tenant[] = [
   {
-    id: 't1', name: '讯飞科技', code: 'XFKJ', status: 'active', admin: 'zhang@xfyun.cn', adminPhone: '138 0013 8001', adminLimit: 3, adminCount: 2, createdAt: '2025-01-15', color: '#1A6FFF',
+    id: 't1', name: '讯飞科技', code: 'XFKJ', status: 'active', admin: 'zhang@xfyun.cn', adminPhone: '138 0013 8001', adminLimit: 3, adminCount: 2, plan: '旗舰版', createdAt: '2025-01-15', color: '#1A6FFF',
     quota: { orderLimit: 5000, orderUsed: 3200, orderPct: 64, apiLimit: 50000, apiUsed: 38000, apiPct: 76, storageLimit: 500, storageUsed: 280, storagePct: 56 },
     logs: [{ time: '2026-04-20 14:30', action: '调整配额', user: 'admin' }, { time: '2026-04-18 09:15', action: '修改配置', user: 'admin' }, { time: '2025-01-15 10:00', action: '创建租户', user: 'admin' }],
   },
   {
-    id: 't2', name: '教育事业部', code: 'JYSYB', status: 'active', admin: 'li@edu.cn', adminPhone: '139 0013 9002', adminLimit: 3, adminCount: 1, createdAt: '2025-02-20', color: '#10B981',
+    id: 't2', name: '教育事业部', code: 'JYSYB', status: 'active', admin: 'li@edu.cn', adminPhone: '139 0013 9002', adminLimit: 3, adminCount: 1, plan: '专业版', createdAt: '2025-02-20', color: '#10B981',
     quota: { orderLimit: 2000, orderUsed: 1450, orderPct: 73, apiLimit: 20000, apiUsed: 16800, apiPct: 84, storageLimit: 200, storageUsed: 145, storagePct: 73 },
     logs: [{ time: '2026-04-19 11:20', action: '调整API配额', user: 'admin' }, { time: '2025-02-20 15:30', action: '创建租户', user: 'admin' }],
   },
   {
-    id: 't3', name: '智能硬件部', code: 'ZNJYB', status: 'suspended', admin: 'wang@hw.cn', adminPhone: '137 0013 7003', adminLimit: 3, adminCount: 1, createdAt: '2025-03-10', color: '#9CA3AF',
+    id: 't3', name: '智能硬件部', code: 'ZNJYB', status: 'suspended', admin: 'wang@hw.cn', adminPhone: '137 0013 7003', adminLimit: 3, adminCount: 1, plan: '基础版', createdAt: '2025-03-10', color: '#9CA3AF',
     quota: { orderLimit: 500, orderUsed: 480, orderPct: 96, apiLimit: 5000, apiUsed: 4200, apiPct: 84, storageLimit: 50, storageUsed: 42, storagePct: 84 },
     logs: [{ time: '2026-04-21 08:00', action: '停用租户', user: 'admin' }, { time: '2026-04-10 16:45', action: '配额预警', user: 'system' }, { time: '2025-03-10 14:00', action: '创建租户', user: 'admin' }],
   },

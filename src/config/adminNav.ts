@@ -66,7 +66,7 @@ export const ADMIN_GROUPS: AdminNavGroup[] = [
       { key: 'users', label: '用户管理', prd: 'PRD-50', v1Ref: 'A/A5-permission.html#users' },
       { key: 'roles', label: '角色与权限', prd: 'PRD-51', v1Ref: 'A/A5-permission.html#roles' },
       // §六 新增（PRD 有 / V1 侧栏无）
-      { key: 'orgs', label: '机构管理', prd: 'PRD-23' },
+      { key: 'orgs', label: '组织管理', prd: 'PRD-23' },
       { key: 'posts', label: '岗位管理', prd: 'PRD-24' },
       // D2：渠道/应用归运营，见「业务数据」组（不在此）
     ],
