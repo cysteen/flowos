@@ -14,6 +14,7 @@ const SLA_STUB_KEYS = new Set(
   SLA_NAV_ITEMS.map((i) => i.key).filter((k) => k !== 'sla-policy'),
 );
 const RULES_STUB_KEYS = new Set(RULES_NAV_ITEMS.map((i) => i.key));
+const WORKFLOW_STUB_KEYS = new Set(['flow-instances', 'flow-tasks', 'flow-listeners', 'flow-expressions']);
 
 function adminViewFor(key: string) {
   if (key === 'sla-policy') return () => import('@/views/admin/SlaPolicyView.vue');
@@ -24,6 +25,8 @@ function adminViewFor(key: string) {
   if (key === 'entity-dict') return () => import('@/views/admin/EntityDictView.vue');
   if (key === 'ticket-types') return () => import('@/views/admin/TicketTypesView.vue');
   if (key === 'form-templates' || key === 'flow-templates') return () => import('@/views/admin/TemplateLibraryView.vue');
+  if (WORKFLOW_STUB_KEYS.has(key)) return () => import('@/views/admin/WorkflowEngineView.vue');
+  if (key === 'teams') return () => import('@/views/admin/UserGroupView.vue');
   if (SLA_STUB_KEYS.has(key)) return () => import('@/views/admin/SlaEngineView.vue');
   if (RULES_STUB_KEYS.has(key)) return () => import('@/views/admin/RulesEngineView.vue');
   return () => import('@/views/admin/AdminModuleView.vue');
