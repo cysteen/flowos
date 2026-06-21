@@ -3,7 +3,6 @@ import { ref, reactive, computed } from 'vue';
 import { message, Modal } from 'ant-design-vue';
 import {
   PlusOutlined, TeamOutlined, UserOutlined, EditOutlined, CrownOutlined,
-  CalendarOutlined, ApartmentOutlined,
 } from '@ant-design/icons-vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 
@@ -148,11 +147,29 @@ function removeMember(m: Member) {
           </div>
           <div class="gd-body">
             <div class="gd-meta">
-              <div class="gd-cell"><label>组类型</label><span><a-tag :color="TYPE_TONE[sel.type]">{{ sel.type }}</a-tag></span></div>
-              <div class="gd-cell"><label><CrownOutlined /> 负责人</label><span>{{ sel.leader }}</span></div>
-              <div class="gd-cell"><label><CalendarOutlined /> 排班</label><span>{{ sel.shift }}</span></div>
-              <div class="gd-cell"><label>成员数</label><span>{{ sel.count }} 人</span></div>
-              <div class="gd-cell full"><label><ApartmentOutlined /> 技能标签（技能路由依据）</label><span><a-tag v-for="s in sel.skills" :key="s" color="blue">{{ s }}</a-tag></span></div>
+              <div class="gd-kv">
+                <span class="gd-label">组类型</span>
+                <span class="gd-val"><a-tag :color="TYPE_TONE[sel.type]">{{ sel.type }}</a-tag></span>
+              </div>
+              <div class="gd-kv">
+                <span class="gd-label">负责人</span>
+                <span class="gd-val">{{ sel.leader }}</span>
+              </div>
+              <div class="gd-kv">
+                <span class="gd-label">排班</span>
+                <span class="gd-val">{{ sel.shift }}</span>
+              </div>
+              <div class="gd-kv">
+                <span class="gd-label">成员数</span>
+                <span class="gd-val">{{ sel.count }} 人</span>
+              </div>
+              <div class="gd-kv gd-full">
+                <span class="gd-label">技能标签</span>
+                <span class="gd-val">
+                  <a-tag v-for="s in sel.skills" :key="s" color="blue">{{ s }}</a-tag>
+                  <span v-if="!sel.skills.length" class="gd-empty">未配置</span>
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -214,12 +231,38 @@ function removeMember(m: Member) {
 .gi-name { font-size: 13px; font-weight: 600; color: #111827; display: flex; align-items: center; gap: 6px; }
 .gi-tag { transform: scale(0.8); }
 .gi-sub { font-size: 12px; color: #9ca3af; margin-top: 2px; }
-.gd-body { padding: 6px 20px 14px; }
-.gd-meta { display: flex; flex-direction: column; }
-.gd-cell { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 11px 0; border-bottom: 1px dashed #f0f0f0; }
-.gd-cell:last-child { border-bottom: none; }
-.gd-cell label { font-size: 13px; color: #6b7280; flex: none; display: flex; align-items: center; gap: 5px; }
-.gd-cell span { font-size: 13px; color: #374151; text-align: right; min-width: 0; }
+.gd-body { padding: 14px 16px; }
+.gd-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 40px;
+}
+.gd-kv {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+.gd-kv.gd-full {
+  grid-column: 1 / -1;
+}
+.gd-label {
+  flex: none;
+  width: 64px;
+  font-size: 13px;
+  color: #9ca3af;
+}
+.gd-val {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: #374151;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.gd-empty { color: #d1d5db; }
 .mem-name { display: flex; align-items: center; gap: 8px; }
 .g-form { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
 .g-form .full { grid-column: 1 / -1; }

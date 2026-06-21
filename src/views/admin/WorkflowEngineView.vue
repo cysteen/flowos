@@ -127,7 +127,7 @@ function saveExpr() { const i = exprs.value.findIndex((x) => x.id === xf.id); if
 
 <template>
   <div class="wf-engine">
-    <AdminSectionTabs :tabs="TABS" :active-key="activeKey" />
+    <AdminSectionTabs :items="TABS" :active-key="activeKey" />
     <div class="content">
       <!-- 流程实例 -->
       <template v-if="activeKey === 'flow-instances'">
