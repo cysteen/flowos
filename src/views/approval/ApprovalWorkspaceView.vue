@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, reactive, computed } from 'vue';
 import { message } from 'ant-design-vue';
 import {
   PlusOutlined, FileTextOutlined, SendOutlined, TeamOutlined,
@@ -57,7 +57,7 @@ const cc: Req[] = [
   { id: 'AP-2044', title: '退款 ¥1,299', type: '退款审批', applicant: '钱进', node: '主管审核', status: '审批中', submit: '06-19 10:50', amount: '¥1,299' },
   { id: 'AP-2037', title: '配置变更：SLA v3.2 上线', type: '配置变更发布', applicant: '王芳', node: '已完成', status: '已通过', submit: '06-18 17:30' },
 ];
-const dataMap: Record<string, Req[]> = { mine, team, todo, done, cc };
+const dataMap = reactive<Record<string, Req[]>>({ mine, team, todo, done, cc });
 const rows = computed(() => dataMap[active.value] ?? []);
 
 const baseCols = [
@@ -71,10 +71,33 @@ const baseCols = [
   { title: '操作', key: 'op', width: 160 },
 ];
 
-function approve(r: Req) { message.success(`已通过 ${r.id}`); }
-function reject(r: Req) { message.success(`已驳回 ${r.id}`); }
-function startApproval(name: string) { message.info(`发起「${name}」（演示）`); }
-function todoMsg(t: string) { message.info(`「${t}」（演示）`); }
+let apSeq = 2050;
+function moveToDone(r: Req) {
+  const i = dataMap.todo.findIndex((x) => x.id === r.id);
+  if (i >= 0) dataMap.todo.splice(i, 1);
+  dataMap.done.unshift({ ...r });
+}
+function approve(r: Req) { r.status = '已通过'; r.node = '已完成'; moveToDone(r); message.success(`已通过 ${r.id}`); }
+function reject(r: Req) { r.status = '已驳回'; r.node = '已驳回'; moveToDone(r); message.success(`已驳回 ${r.id}`); }
+
+// —— 发起审批（真实写入「我的申请」）——
+const launchOpen = ref(false);
+const lf = reactive({ name: '', reason: '', amount: '' });
+function startApproval(name: string) { lf.name = name; lf.reason = ''; lf.amount = ''; launchOpen.value = true; }
+function submitLaunch() {
+  if (!lf.reason) { message.error('请填写申请说明'); return; }
+  const id = 'AP-' + apSeq++;
+  dataMap.mine.unshift({ id, title: lf.reason.slice(0, 24), type: lf.name, applicant: '我', node: '审批中', status: '审批中', submit: '06-21 12:00', amount: lf.amount || undefined });
+  message.success(`已发起「${lf.name}」`);
+  launchOpen.value = false;
+  active.value = 'mine';
+}
+
+// —— 进度/详情 + 撤回 ——
+const detailOpen = ref(false);
+const detailReq = ref<Req | null>(null);
+function viewDetail(r: Req) { detailReq.value = r; detailOpen.value = true; }
+function withdraw(r: Req) { r.status = '已撤回'; r.node = '已撤回'; message.success(`已撤回 ${r.id}`); }
 </script>
 
 <template>
@@ -123,15 +146,44 @@ function todoMsg(t: string) { message.info(`「${t}」（演示）`); }
                 <a-button danger size="small" style="margin-left:8px" @click="reject(record as Req)"><template #icon><CloseOutlined /></template>驳回</a-button>
               </template>
               <template v-else-if="active === 'mine'">
-                <a-button type="link" size="small" @click="todoMsg('查看进度')">进度</a-button>
-                <a-button type="link" size="small" danger :disabled="record.status !== '审批中'" @click="todoMsg('撤回')">撤回</a-button>
+                <a-button type="link" size="small" @click="viewDetail(record as Req)">进度</a-button>
+                <a-button type="link" size="small" danger :disabled="record.status !== '审批中'" @click="withdraw(record as Req)">撤回</a-button>
               </template>
-              <a-button v-else type="link" size="small" @click="todoMsg('查看详情')">详情</a-button>
+              <a-button v-else type="link" size="small" @click="viewDetail(record as Req)">详情</a-button>
             </template>
           </template>
         </a-table>
       </template>
     </div>
+
+    <!-- 发起审批 -->
+    <a-modal v-model:open="launchOpen" :title="`发起 · ${lf.name}`" :width="520" ok-text="提交申请" cancel-text="取消" @ok="submitLaunch">
+      <a-form layout="vertical">
+        <a-form-item label="申请说明" required><a-textarea v-model:value="lf.reason" :rows="3" placeholder="填写申请事由（如：TK-88231 客户已离线无法继续，申请强结）" /></a-form-item>
+        <a-form-item label="金额（如涉及）"><a-input v-model:value="lf.amount" placeholder="如：¥200" /></a-form-item>
+      </a-form>
+    </a-modal>
+
+    <!-- 进度 / 详情 -->
+    <a-modal v-model:open="detailOpen" :title="detailReq ? `审批详情 · ${detailReq.id}` : ''" :width="560" :footer="null">
+      <template v-if="detailReq">
+        <a-descriptions :column="2" bordered size="small">
+          <a-descriptions-item label="标题" :span="2">{{ detailReq.title }}</a-descriptions-item>
+          <a-descriptions-item label="类型">{{ detailReq.type }}</a-descriptions-item>
+          <a-descriptions-item label="申请人">{{ detailReq.applicant }}</a-descriptions-item>
+          <a-descriptions-item label="当前节点">{{ detailReq.node }}</a-descriptions-item>
+          <a-descriptions-item label="状态"><a-tag :color="STATUS_TONE[detailReq.status]">{{ detailReq.status }}</a-tag></a-descriptions-item>
+          <a-descriptions-item label="提交时间" :span="2">{{ detailReq.submit }}</a-descriptions-item>
+          <a-descriptions-item v-if="detailReq.amount" label="金额" :span="2">{{ detailReq.amount }}</a-descriptions-item>
+        </a-descriptions>
+        <div class="prog-title">审批进度</div>
+        <a-steps :current="detailReq.status === '审批中' ? 1 : 2" size="small" direction="vertical">
+          <a-step title="提交申请" :description="detailReq.submit" />
+          <a-step title="审批中" :description="detailReq.node" />
+          <a-step :title="detailReq.status === '已驳回' ? '已驳回' : '审批完成'" />
+        </a-steps>
+      </template>
+    </a-modal>
   </div>
 </template>
 
@@ -139,6 +191,7 @@ function todoMsg(t: string) { message.info(`「${t}」（演示）`); }
 .approval-ws { display: flex; gap: 16px; padding: 16px 24px; align-items: flex-start; min-height: 100%; }
 .rail { width: 200px; flex: none; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px; }
 .rail-title { font-size: 13px; font-weight: 600; color: #9ca3af; padding: 6px 10px 12px; }
+.prog-title { font-size: 13px; font-weight: 600; color: #374151; margin: 18px 0 12px; }
 .rail-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; cursor: pointer; font-size: 13px; color: #4b5563; margin-bottom: 2px; }
 .rail-item:hover { background: #f9fafb; }
 .rail-item.on { background: #eff6ff; color: #1a6fff; font-weight: 600; }
