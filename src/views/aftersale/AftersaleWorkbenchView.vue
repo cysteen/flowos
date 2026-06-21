@@ -66,7 +66,7 @@ function setTab(key: AftersaleTabKey) {
 
 function onSearch() {
   current.value = 1;
-  message.success('已查询（占位）');
+  message.success('已查询');
 }
 
 function onReset() {
@@ -79,11 +79,11 @@ function onReset() {
 }
 
 function onKpiClick(label: string) {
-  message.info(`筛选「${label}」（占位）`);
+  message.info(`筛选「${label}」`);
 }
 
 function onView(no: string) {
-  message.info(`${no} → 售后单处理页（占位）`);
+  message.info(`${no} → 售后单处理页`);
 }
 
 function setPage(page: number, size: number) {

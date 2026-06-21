@@ -49,7 +49,7 @@ function onMenuClick({ key }: { key: string | number }) {
     return;
   }
   const map: Record<string, string> = {
-    profile: '打开「个人设置」（占位）',
+    profile: '打开「个人设置」',
   };
   message.info(map[k] ?? '');
 }

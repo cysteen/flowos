@@ -5,7 +5,7 @@ import type { SurveyRecord } from '@/views/tickets/types/operationTabs';
 defineProps<{ records: SurveyRecord[] }>();
 
 function openSurvey() {
-  message.info('打开问卷（演示）');
+  message.info('打开问卷');
 }
 </script>
 

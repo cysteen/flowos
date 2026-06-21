@@ -1,22 +1,25 @@
-/* Chrome 胶囊 PageTabs — 全局样式，避免 scoped hash 与 HMR 不同步 */
+/* Chrome 经典 PageTabs — 激活白底衔接内容区，未激活透明 + 分隔线 */
 #workspacePageTabs.tabs-bar,
 #pageTabs.tabs-bar {
+  --page-tab-bar-bg: var(--flowos-tab-bar-bg, #edf1f7);
+  --page-tab-active-bg: var(--flowos-tab-active-bg, #f9fafb);
   height: 40px;
-  background: #eef1f6;
+  background: var(--page-tab-bar-bg);
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   padding: 0 8px;
-  gap: 6px;
+  gap: 0;
   overflow-x: auto;
   flex-shrink: 0;
 }
 
 #workspacePageTabs .page-tab,
 #pageTabs .page-tab {
+  position: relative;
   width: 160px;
-  height: 32px;
+  height: 34px;
   padding: 0 10px 0 12px;
-  border-radius: 8px;
+  border-radius: 8px 8px 0 0;
   font-size: 13px;
   cursor: pointer;
   color: #5f6368;
@@ -35,17 +38,57 @@
   appearance: none;
 }
 
-#workspacePageTabs .page-tab:hover,
-#pageTabs .page-tab:hover {
-  background: rgba(0, 0, 0, 0.06);
+/* 未激活 Tab 之间的竖向分隔线 */
+#workspacePageTabs .page-tab:not(.active) + .page-tab:not(.active)::before,
+#pageTabs .page-tab:not(.active) + .page-tab:not(.active)::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 1px;
+  background: rgba(55, 65, 81, 0.16);
+  pointer-events: none;
+}
+
+#workspacePageTabs .page-tab:hover:not(.active),
+#pageTabs .page-tab:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.55);
   color: #202124;
 }
 
+/* 激活 Tab：白底 + 底部圆角衔接（Chrome 肩形） */
 #workspacePageTabs .page-tab.active,
 #pageTabs .page-tab.active {
-  background: #d3e3fd;
+  height: 36px;
+  background: var(--page-tab-active-bg);
   color: #202124;
   font-weight: 500;
+  z-index: 1;
+}
+
+#workspacePageTabs .page-tab.active::before,
+#workspacePageTabs .page-tab.active::after,
+#pageTabs .page-tab.active::before,
+#pageTabs .page-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  width: 8px;
+  height: 8px;
+  pointer-events: none;
+}
+
+#workspacePageTabs .page-tab.active::before,
+#pageTabs .page-tab.active::before {
+  left: -8px;
+  background: radial-gradient(circle at 0 0, transparent 7.5px, var(--page-tab-active-bg) 7.5px);
+}
+
+#workspacePageTabs .page-tab.active::after,
+#pageTabs .page-tab.active::after {
+  right: -8px;
+  background: radial-gradient(circle at 100% 0, transparent 7.5px, var(--page-tab-active-bg) 7.5px);
 }
 
 #workspacePageTabs .page-tab-text,

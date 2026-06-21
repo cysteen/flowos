@@ -31,6 +31,9 @@ body {
   --flowos-text: #374151;
   --flowos-text-secondary: #6b7280;
   --flowos-content-bg: #f9fafb;
+  /* PageTabs 栏：比内容区略深一档的同色系蓝灰，避免 Chrome 纯灰突兀 */
+  --flowos-tab-bar-bg: #edf1f7;
+  --flowos-tab-active-bg: #f9fafb;
   /* 与 config/layout.ts SIDER_WIDTH 保持一致 */
   --flowos-sider-width: 200px;
   --flowos-sider-collapsed-width: 64px;

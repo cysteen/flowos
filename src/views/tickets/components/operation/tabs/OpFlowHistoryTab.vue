@@ -8,7 +8,7 @@ defineProps<{
 }>();
 
 function viewFlow() {
-  message.info('查看流程图（演示）');
+  message.info('查看流程图');
 }
 </script>
 

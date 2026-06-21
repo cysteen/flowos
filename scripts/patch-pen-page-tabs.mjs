@@ -22,8 +22,8 @@ function makePageTab(label, active = false) {
     id: tabId,
     name: active ? 'PageTab-active' : 'PageTab-inactive',
     width: 160,
-    height: 32,
-    cornerRadius: 8,
+    height: active ? 36 : 34,
+    cornerRadius: active ? [8, 8, 0, 0] : 0,
     gap: 8,
     padding: [0, 10, 0, 12],
     justifyContent: 'space_between',
@@ -54,7 +54,7 @@ function makePageTab(label, active = false) {
       },
     ],
   };
-  if (active) tab.fill = '#D3E3FD';
+  if (active) tab.fill = '#F9FAFB';
   return tab;
 }
 
@@ -65,10 +65,10 @@ function makeTabsBar(tabs, barId = 'wsTabsBar') {
     name: 'PageTabs',
     width: 'fill_container',
     height: 40,
-    fill: '#EEF1F6',
-    gap: 6,
+    fill: '#EDF1F7',
+    gap: 0,
     padding: [0, 8],
-    alignItems: 'center',
+    alignItems: 'end',
     children: tabs.map(({ label, active }) => makePageTab(label, active)),
   };
 }
@@ -226,7 +226,7 @@ function addPageTabsComponentRef(root) {
     width: 1240,
     height: 0,
     content:
-      '【动态 PageTabs · 运行工作区】\n● 位置：WorkspaceShell 侧栏右侧、ContentSlot 上方（h40，bg #EEF1F6）\n● 规则：全动态 Tab，均可 × 关闭；侧栏点击已有页激活、否则新开；关完回默认页\n● 标题：菜单页=导航名；工单操作页=工单标题（非工单号）；列表页=「工单列表」\n● 样式：Chrome 胶囊 Tab · 宽 160 · 未选透明底 #5F6368 · 选中 #D3E3FD 底 #202124 字 · 圆角 8px · 右侧 ×\n● 实现：WorkspacePageTabs.vue + workspaceTabs store（与 Admin 一致）',
+      '【动态 PageTabs · 运行工作区】\n● 位置：WorkspaceShell 侧栏右侧、ContentSlot 上方（h40，bg #EDF1F7）\n● 规则：全动态 Tab，均可 × 关闭；侧栏点击已有页激活、否则新开；关完回默认页\n● 标题：菜单页=导航名；工单操作页=工单标题（非工单号）；列表页=「工单列表」\n● 样式：Chrome 经典 Tab · 栏 #EDF1F7 蓝灰 · 未选透明+分隔线 · 选中 #F9FAFB 衔接内容区 · 右侧 ×\n● 实现：WorkspacePageTabs.vue + workspaceTabs store（与 Admin 一致）',
   };
 
   root.children.push(refFrame, specNote);

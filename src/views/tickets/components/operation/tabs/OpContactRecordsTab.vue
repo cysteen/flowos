@@ -28,7 +28,7 @@ const TITLE_ICON = {
 } as const;
 
 function play() {
-  message.info('播放录音（演示）');
+  message.info('播放录音');
 }
 
 function toggleAsr(id: string) {

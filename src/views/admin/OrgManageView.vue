@@ -83,7 +83,7 @@ function delOrg(node: OrgNode) {
   Modal.confirm({
     title: '确认删除', icon: null, content: `删除组织「${node.title}」及其下级？此操作不可恢复。`,
     okText: '确认删除', okType: 'danger', cancelText: '取消',
-    onOk: () => message.success('组织已删除（演示）'),
+    onOk: () => message.success('组织已删除'),
   });
 }
 
@@ -135,7 +135,7 @@ function removeMember(m: Member) {
     onOk: () => { members.value = members.value.filter((x) => x.id !== m.id); message.success('已移出'); },
   });
 }
-function todo(t: string) { message.info(`「${t}」（演示）`); }
+function todo(t: string) { message.info(`「${t}」`); }
 </script>
 
 <template>

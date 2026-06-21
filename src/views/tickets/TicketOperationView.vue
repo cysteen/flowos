@@ -76,7 +76,7 @@ function onContact(type: 'call' | 'sms' | 'email', value: string) {
     return;
   }
   const label = type === 'sms' ? '短信' : '发邮件';
-  message.info(`${label} ${value}（演示）`);
+  message.info(`${label} ${value}`);
 }
 
 function onInsightLink(target: 'customerHistory' | 'related') {
@@ -104,7 +104,7 @@ function onAction(payload: Record<string, unknown>) {
 }
 
 function toast(name: string) {
-  message.info(`「${name}」（演示）`);
+  message.info(`「${name}」`);
 }
 
 function copyNo() {

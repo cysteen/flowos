@@ -1,5 +1,6 @@
 /**
- * 将 iFLY-FlowOS-坐席视角.pen 中 PageTabs 样式改为 Chrome 胶囊 Tab
+ * 将 iFLY-FlowOS-坐席视角.pen 中 PageTabs 改为 Chrome 经典 Tab
+ * 激活：白底衔接内容区；未激活：透明 + 分隔
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -9,8 +10,8 @@ const __dir = dirname(fileURLToPath(import.meta.url));
 const PEN = join(__dir, '../../iFLY-FlowOS-坐席视角.pen');
 
 const CHROME = {
-  barFill: '#EEF1F6',
-  activeFill: '#D3E3FD',
+  barFill: '#EDF1F7',
+  activeFill: '#F9FAFB',
   activeText: '#202124',
   inactiveText: '#5F6368',
   closeIcon: '#5F636899',
@@ -19,9 +20,9 @@ const CHROME = {
 function patchTabBar(node) {
   if (node.name !== 'PageTabs') return;
   node.fill = CHROME.barFill;
-  node.gap = 6;
+  node.gap = 0;
   node.padding = [0, 8];
-  node.alignItems = 'center';
+  node.alignItems = 'end';
   if (node.strokeWidth) delete node.stroke;
   delete node.strokeWidth;
 }
@@ -29,8 +30,8 @@ function patchTabBar(node) {
 function patchTab(node) {
   if (node.name !== 'PageTab-active' && node.name !== 'PageTab-inactive') return;
   const active = node.name === 'PageTab-active';
-  node.height = 32;
-  node.cornerRadius = 8;
+  node.height = active ? 36 : 34;
+  node.cornerRadius = active ? [8, 8, 0, 0] : 0;
   node.gap = 8;
   node.padding = [0, 10, 0, 12];
   delete node.effect;
@@ -61,6 +62,7 @@ function patchTab(node) {
     }
     if (child.name === 'CloseIcon' && child.type === 'text') {
       child.fill = CHROME.closeIcon;
+      child.fontSize = 14;
     }
   }
 }
@@ -80,9 +82,9 @@ function patchSpecNotes(node) {
   if (node.type !== 'note' || !node.content?.includes('PageTabs')) return;
   node.content = node.content.replace(
     /● 样式：[^\n]+/,
-    '● 样式：Chrome 胶囊 Tab · 宽 160 · 未选透明底 #5F6368 · 选中 #D3E3FD 底 #202124 字 · 圆角 8px · 右侧 ×',
+    '● 样式：Chrome 经典 Tab · 宽 160 · 未选透明 #5F6368 + 竖分隔线 · 选中 #F9FAFB 白底顶圆角衔接内容区 · 右侧 ×',
   );
-  node.content = node.content.replace(/bg #F4F6FA/g, 'bg #EEF1F6');
+  node.content = node.content.replace(/bg #[A-F0-9]{6}/gi, 'bg #EDF1F7');
 }
 
 function walkNotes(node) {
@@ -99,4 +101,4 @@ const doc = JSON.parse(readFileSync(PEN, 'utf8'));
 walk(doc);
 walkNotes(doc);
 writeFileSync(PEN, `${JSON.stringify(doc, null, 2)}\n`, 'utf8');
-console.log('Chrome tab style patched:', PEN);
+console.log('Chrome classic tab style patched:', PEN);

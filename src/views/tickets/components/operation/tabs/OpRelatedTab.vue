@@ -15,7 +15,7 @@ defineProps<{
 const expanded = ref({ related: true, supplement: true, dunning: true });
 
 function toast(name: string) {
-  message.info(`「${name}」（演示）`);
+  message.info(`「${name}」`);
 }
 
 function typeBg(t: RelatedTicketCard) {

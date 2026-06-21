@@ -36,7 +36,7 @@ function onClickNo(t: Ticket) {
   openOperation(t);
 }
 function onClickCustomer(t: Ticket) {
-  message.info(`查看客户「${t.customer}」详情卡（占位）`);
+  message.info(`查看客户「${t.customer}」详情卡`);
 }
 function onBatch() {
   message.success(`已对已选 ${wb.selectedCount.value} 单执行批量操作`);
@@ -64,7 +64,7 @@ function onCreated(t: Ticket) {
       <!-- ② AI 建议条 -->
       <AiSuggestionBar
         v-if="wb.aiBarVisible.value"
-        @view="message.info('展开今日 AI 建议清单（占位）')"
+        @view="message.info('展开今日 AI 建议清单')"
         @close="wb.aiBarVisible.value = false"
       />
 
@@ -82,9 +82,9 @@ function onCreated(t: Ticket) {
       <TicketToolbar
         :selected-count="wb.selectedCount.value"
         @batch="onBatch"
-        @sort="message.info('切换排序（占位）')"
-        @filter="message.info('高级筛选（占位）')"
-        @columns="message.info('列设置（占位）')"
+        @sort="message.info('切换排序')"
+        @filter="message.info('高级筛选')"
+        @columns="message.info('列设置')"
       />
 
       <!-- ⑤ SLA 富列表 + ⑥ 分页 -->

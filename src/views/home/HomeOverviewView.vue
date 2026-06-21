@@ -57,7 +57,7 @@ function trendPoints(values: number[]): string {
 }
 
 function onKpiClick(label: string) {
-  message.info(`跳转工单工作台 · 筛选「${label}」（占位）`);
+  message.info(`跳转工单工作台 · 筛选「${label}」`);
   router.push('/tickets');
 }
 
@@ -66,13 +66,13 @@ function onQuick(key: string) {
     create: () => { createOpen.value = true; },
     pool: () => router.push('/tickets'),
     mine: () => router.push('/tickets'),
-    kb: () => message.info('打开知识库（占位）'),
-    transfer: () => message.info('打开转派记录（占位）'),
+    kb: () => message.info('打开知识库'),
+    transfer: () => message.info('打开转派记录'),
     report: () => {
       if (['team-leader', 'tenant-admin', 'ops-admin', 'system-admin'].includes(user.roleKey)) {
         router.push('/tickets/list');
       } else {
-        message.info('打开统计报表（占位）');
+        message.info('打开统计报表');
       }
     },
   };
@@ -92,7 +92,7 @@ function onTodo(no: string) {
       <span class="notice-tag">公告</span>
       <span class="notice-text">{{ HOME_NOTICE.text }}</span>
       <span class="notice-spacer" />
-      <span class="notice-link" @click="message.info('打开公告列表（占位）')">
+      <span class="notice-link" @click="message.info('打开公告列表')">
         查看全部 ({{ HOME_NOTICE.total }})
         <RightOutlined :style="{ fontSize: '12px' }" />
       </span>
@@ -236,7 +236,7 @@ function onTodo(no: string) {
       </div>
     </div>
 
-    <CreateTicketModal v-model:open="createOpen" @created="message.success('工单已创建（占位）')" />
+    <CreateTicketModal v-model:open="createOpen" @created="message.success('工单已创建')" />
   </div>
 </template>
 

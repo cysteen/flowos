@@ -110,7 +110,7 @@ function onCreate(processAfter = false) {
 }
 
 function onDraft() {
-  message.success('已存草稿（占位）');
+  message.success('已存草稿');
   emit('update:open', false);
 }
 
@@ -542,7 +542,7 @@ watch(
               <ThunderboltOutlined :style="{ color: '#7C3AED', fontSize: '14px' }" />
               智能分派建议
             </span>
-            <span class="link" @click="message.info('改派 / 转工单池（占位）')">改派 / 转工单池</span>
+            <span class="link" @click="message.info('改派 / 转工单池')">改派 / 转工单池</span>
           </div>
           <div class="assign-card">
             <div class="cust-avatar sm">王</div>

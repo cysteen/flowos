@@ -69,7 +69,7 @@ function onReset() { message.info('已还原未保存的修改'); }
         <a-form-item label="企业 Logo">
           <div class="logo-row">
             <span class="logo-preview">iF</span>
-            <a-button @click="message.info('上传 Logo（演示）')"><template #icon><UploadOutlined /></template>上传</a-button>
+            <a-button @click="message.info('上传 Logo')"><template #icon><UploadOutlined /></template>上传</a-button>
             <span class="ro-tip">png/jpg/svg · ≤1MB · 建议正方形</span>
           </div>
         </a-form-item>

@@ -48,7 +48,7 @@ function selectAccount(acc: string) {
 
 function onSmsTab() {
   loginTab.value = 'sms';
-  message.info('短信登录（占位）');
+  message.info('短信登录');
   loginTab.value = 'account';
 }
 
@@ -198,7 +198,7 @@ async function onSubmit() {
               <input v-model="remember" type="checkbox" />
               <span>记住我</span>
             </label>
-            <a class="link" href="#" @click.prevent="message.info('忘记密码（占位）')">忘记密码？</a>
+            <a class="link" href="#" @click.prevent="message.info('忘记密码')">忘记密码？</a>
           </div>
 
           <button type="submit" class="btn-submit" :disabled="submitting">
@@ -207,7 +207,7 @@ async function onSubmit() {
 
           <div class="register-link">
             还没有账号？
-            <a class="link" href="#" @click.prevent="message.info('注册（占位）')">立即注册</a>
+            <a class="link" href="#" @click.prevent="message.info('注册')">立即注册</a>
           </div>
 
           <p class="demo-hint">演示账号见下拉列表，统一密码：123</p>

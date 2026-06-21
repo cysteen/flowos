@@ -36,7 +36,7 @@ function statusStyle(t: CustomerHistoryTicket) {
 }
 
 function openTicket(no: string) {
-  message.info(`打开工单 ${no}（演示）`);
+  message.info(`打开工单 ${no}`);
 }
 </script>
 

@@ -32,7 +32,7 @@ function onFilesSelected(e: Event) {
   const names = Array.from(input.files ?? []).map((f) => f.name);
   if (!names.length) return;
   emit('update:attachments', [...props.attachments, ...names]);
-  message.success(`已添加 ${names.length} 个附件（演示）`);
+  message.success(`已添加 ${names.length} 个附件`);
   input.value = '';
 }
 

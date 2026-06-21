@@ -83,7 +83,7 @@ function doImport() {
   importOpen.value = false;
 }
 
-function todo(t: string) { message.info(`「${t}」（演示）`); }
+function todo(t: string) { message.info(`「${t}」`); }
 </script>
 
 <template>

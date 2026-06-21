@@ -57,11 +57,11 @@ function setDim(dim: TeamBoardDim) {
 }
 
 function onKpiClick(kpi: TeamKpi) {
-  message.info(`下钻「${kpi.label}」风险列表（占位）`);
+  message.info(`下钻「${kpi.label}」风险列表`);
 }
 
 function onExport() {
-  message.info('导出组绩效 / SLA 报表（占位）');
+  message.info('导出组绩效 / SLA 报表');
 }
 
 function onViewMember(name: string) {

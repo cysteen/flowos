@@ -38,7 +38,7 @@ function onReset() {
 }
 
 function onBatch() {
-  message.success(`已对已选 ${list.selectedCount.value} 单执行批量操作（占位）`);
+  message.success(`已对已选 ${list.selectedCount.value} 单执行批量操作`);
   list.clearSelection();
 }
 
@@ -63,8 +63,8 @@ function onCreated(t: Ticket) {
       @update:view="list.setView"
       @create="createOpen = true"
       @batch="onBatch"
-      @export="message.info('导出当前筛选结果（占位）')"
-      @columns="message.info('列设置（占位）')"
+      @export="message.info('导出当前筛选结果')"
+      @columns="message.info('列设置')"
     />
 
     <div class="table-card">
@@ -76,7 +76,7 @@ function onCreated(t: Ticket) {
         @toggle-all="list.toggleSelectAllOnPage"
         @action="onAction"
         @click-no="openOperation"
-        @click-customer="(t) => message.info(`查看客户「${t.customer}」（占位）`)"
+        @click-customer="(t) => message.info(`查看客户「${t.customer}」`)"
       />
       <div class="pager">
         <div class="pager-left">

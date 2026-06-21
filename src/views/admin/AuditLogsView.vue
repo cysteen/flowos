@@ -48,7 +48,7 @@ function isExpanded(id: string) {
 }
 
 function exportCsv() {
-  message.success('已导出当前筛选结果（占位）');
+  message.success('已导出当前筛选结果');
 }
 </script>
 

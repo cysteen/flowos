@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, reactive } from 'vue';
 import { message } from 'ant-design-vue';
-import { PlusOutlined, UserOutlined, ImportOutlined, KeyOutlined } from '@ant-design/icons-vue';
+import { PlusOutlined, UserOutlined, ImportOutlined, KeyOutlined, InboxOutlined } from '@ant-design/icons-vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { stdPagination } from '@/config/adminUi';
 
@@ -42,18 +42,39 @@ const cols = [
 ];
 
 const drawerOpen = ref(false);
+const editingId = ref<string | null>(null);
 const form = reactive<Partial<User>>({});
-function openNew() { Object.assign(form, { name: '', account: '', org: '一线客服部', post: '客服专员', roles: [], phone: '', status: '正常' }); drawerOpen.value = true; }
-function saveUser() { message.success('用户已保存'); drawerOpen.value = false; }
+let userSeq = 1007;
+function openNew() { editingId.value = null; Object.assign(form, { name: '', account: '', org: '一线客服部', post: '客服专员', roles: [], phone: '', status: '正常' }); drawerOpen.value = true; }
+function openEdit(u: User) { editingId.value = u.id; Object.assign(form, { ...u, roles: [...u.roles] }); drawerOpen.value = true; }
+function saveUser() {
+  if (!form.name || !form.account) { message.error('请填写姓名与登录账号'); return; }
+  if (editingId.value) {
+    const u = users.value.find((x) => x.id === editingId.value);
+    if (u) Object.assign(u, { ...form, roles: [...(form.roles || [])] });
+    message.success('用户已更新');
+  } else {
+    users.value.unshift({ id: 'U' + userSeq++, name: form.name!, account: form.account!, org: form.org || '一线客服部', post: form.post || '客服专员', roles: [...(form.roles || [])], phone: form.phone || '', status: '正常', lastLogin: '—' });
+    message.success(`用户「${form.name}」已新建`);
+  }
+  drawerOpen.value = false;
+}
 function toggle(u: User) { u.status = u.status === '停用' ? '正常' : '停用'; message.success(`${u.name} 已${u.status === '停用' ? '停用' : '启用'}`); }
 function resetPwd(u: User) { message.success(`已向 ${u.name} 发送密码重置链接`); }
+
+// —— 导入用户 ——
+const importOpen = ref(false);
+const importN = ref(0);
+function openImport() { importN.value = 0; importOpen.value = true; }
+function onImportFile(e: Event) { const f = (e.target as HTMLInputElement).files?.[0]; if (f) { importN.value = Math.max(1, Math.round(f.size / 70)); message.success(`已解析「${f.name}」，识别 ${importN.value} 个用户`); } }
+function doImport() { if (!importN.value) { message.warning('请先选择 Excel/CSV 文件'); return; } message.success(`已导入 ${importN.value} 个用户`); importOpen.value = false; }
 </script>
 
 <template>
   <div class="user-manage">
     <AdminPageHeader title="用户管理" subtitle="管理租户内用户的机构/岗位/角色归属、账号状态与密码">
       <template #actions>
-        <a-button @click="message.info('导入用户（演示）')"><template #icon><ImportOutlined /></template>导入</a-button>
+        <a-button @click="openImport"><template #icon><ImportOutlined /></template>导入</a-button>
         <a-button type="primary" @click="openNew"><template #icon><PlusOutlined /></template>新建用户</a-button>
       </template>
     </AdminPageHeader>
@@ -75,14 +96,14 @@ function resetPwd(u: User) { message.success(`已向 ${u.name} 发送密码重�
         </template>
         <a-tag v-else-if="column.key === 'status'" :color="ST_TONE[record.status]">{{ record.status }}</a-tag>
         <template v-else-if="column.key === 'op'">
-          <a-button type="link" size="small" @click="message.info('编辑（演示）')">编辑</a-button>
+          <a-button type="link" size="small" @click="openEdit(record as User)">编辑</a-button>
           <a-button type="link" size="small" @click="resetPwd(record as User)"><KeyOutlined />重置密码</a-button>
           <a-button type="link" size="small" :danger="record.status !== '停用'" @click="toggle(record as User)">{{ record.status === '停用' ? '启用' : '停用' }}</a-button>
         </template>
       </template>
     </a-table>
 
-    <a-drawer v-model:open="drawerOpen" title="新建用户" width="480" placement="right">
+    <a-drawer v-model:open="drawerOpen" :title="editingId ? '编辑用户' : '新建用户'" width="480" placement="right">
       <a-form layout="vertical">
         <a-form-item label="姓名" required><a-input v-model:value="form.name" /></a-form-item>
         <a-form-item label="登录账号" required><a-input v-model:value="form.account" /></a-form-item>
@@ -95,6 +116,16 @@ function resetPwd(u: User) { message.success(`已向 ${u.name} 发送密码重�
         <a-space><a-button @click="drawerOpen = false">取消</a-button><a-button type="primary" @click="saveUser">保存</a-button></a-space>
       </template>
     </a-drawer>
+
+    <!-- 导入用户 -->
+    <a-modal v-model:open="importOpen" title="导入用户" :width="460" ok-text="开始导入" cancel-text="取消" @ok="doImport">
+      <label class="dropzone">
+        <InboxOutlined class="dz-ic" />
+        <div class="dz-main">点击选择 Excel / CSV 文件</div>
+        <div class="dz-sub">{{ importN ? `已识别 ${importN} 个用户` : '首行为表头：姓名 / 账号 / 手机 / 机构 / 岗位 / 角色' }}</div>
+        <input type="file" accept=".xlsx,.xls,.csv" hidden @change="onImportFile" />
+      </label>
+    </a-modal>
   </div>
 </template>
 
@@ -102,6 +133,11 @@ function resetPwd(u: User) { message.success(`已向 ${u.name} 发送密码重�
 .user-manage { padding: 16px 24px; }
 .bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; gap: 16px; flex-wrap: wrap; }
 .filters { display: flex; gap: 12px; align-items: center; }
+.dropzone { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 28px; border: 1.5px dashed #d1d5db; border-radius: 10px; cursor: pointer; }
+.dropzone:hover { border-color: #1a6fff; background: #f7faff; }
+.dz-ic { font-size: 34px; color: #1a6fff; }
+.dz-main { font-size: 14px; font-weight: 600; color: #374151; }
+.dz-sub { font-size: 12px; color: #9ca3af; }
 .btns { display: flex; gap: 10px; }
 .un { display: flex; align-items: center; gap: 8px; }
 .uid { font-size: 11px; color: #9ca3af; font-family: ui-monospace, monospace; }

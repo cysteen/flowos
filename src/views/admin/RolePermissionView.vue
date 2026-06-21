@@ -25,7 +25,30 @@ function save() {
   message.success(`角色「${selected.value.name}」权限已保存`);
 }
 function reset() {
-  message.info('已重置为上次保存状态（占位）');
+  message.info('已重置为上次保存状态');
+}
+
+// —— 新增 / 编辑角色（真实写入角色树）——
+const roleModalOpen = ref(false);
+const roleMode = ref<'create' | 'edit'>('create');
+const roleName = ref('');
+const roleGroup = ref(groups.value[0].name);
+function openAddRole() { roleMode.value = 'create'; roleName.value = ''; roleGroup.value = groups.value[0].name; roleModalOpen.value = true; }
+function openEditRole() { roleMode.value = 'edit'; roleName.value = selected.value.name; roleModalOpen.value = true; }
+function saveRole() {
+  if (!roleName.value.trim()) { message.error('请填写角色名称'); return; }
+  if (roleMode.value === 'edit') {
+    selected.value.name = roleName.value.trim();
+    message.success('角色已更新');
+  } else {
+    const g = groups.value.find((x) => x.name === roleGroup.value) ?? groups.value[0];
+    const cloned: RoleDetail = JSON.parse(JSON.stringify(selected.value));
+    cloned.name = roleName.value.trim();
+    g.roles.push(cloned);
+    selected.value = cloned;
+    message.success(`角色「${cloned.name}」已新增`);
+  }
+  roleModalOpen.value = false;
 }
 </script>
 
@@ -35,7 +58,7 @@ function reset() {
     <div class="role-tree">
       <div class="rt-head">
         <span class="rt-title">角色列表 ({{ roleCount }})</span>
-        <button class="rt-add" @click="message.info('新增角色（占位）')"><PlusOutlined :style="{ fontSize: '11px' }" /> 新增</button>
+        <button class="rt-add" @click="openAddRole"><PlusOutlined :style="{ fontSize: '11px' }" /> 新增</button>
       </div>
       <div class="rt-body">
         <div v-for="g in groups" :key="g.name" class="rt-group">
@@ -70,7 +93,7 @@ function reset() {
           <div class="ri-desc">{{ selected.desc }}</div>
         </div>
         <span class="cat-tag" :class="selected.category === '系统管理' ? 'red' : selected.category === '自定义' ? 'purple' : 'blue'">{{ selected.category }}</span>
-        <button class="btn-sec" @click="message.info('编辑角色（占位）')">编辑角色</button>
+        <button class="btn-sec" @click="openEditRole">编辑角色</button>
       </div>
 
       <!-- 三权分立约束 -->
@@ -116,6 +139,15 @@ function reset() {
         </div>
       </div>
     </div>
+
+    <!-- 新增 / 编辑角色 -->
+    <a-modal v-model:open="roleModalOpen" :title="roleMode === 'edit' ? '编辑角色' : '新增角色'" :width="440" :ok-text="roleMode === 'edit' ? '保存' : '创建'" cancel-text="取消" @ok="saveRole">
+      <a-form layout="vertical">
+        <a-form-item label="角色名称" required><a-input v-model:value="roleName" placeholder="如：质检专员" /></a-form-item>
+        <a-form-item v-if="roleMode === 'create'" label="所属分组"><a-select v-model:value="roleGroup" :options="groups.map((g) => ({ value: g.name, label: g.name }))" /></a-form-item>
+      </a-form>
+      <div v-if="roleMode === 'create'" class="role-hint">新角色将复制当前所选角色「{{ selected.name }}」的权限矩阵作为初始模板，可再调整。</div>
+    </a-modal>
   </div>
 </template>
 
@@ -126,6 +158,7 @@ function reset() {
 .role-tree { width: 280px; flex: none; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; }
 .rt-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid #f0f0f0; }
 .rt-title { font-size: 13px; font-weight: 600; color: #111827; }
+.role-hint { font-size: 12px; color: #9ca3af; margin-top: 8px; line-height: 1.6; }
 .rt-add { font-size: 12px; color: #fff; background: #1a6fff; border: none; border-radius: 6px; padding: 5px 10px; cursor: pointer; }
 .rt-body { padding: 8px; overflow-y: auto; }
 .rt-group-title { display: flex; align-items: center; gap: 6px; padding: 6px 10px; font-size: 11px; font-weight: 600; color: #9ca3af; cursor: pointer; letter-spacing: 0.5px; }
