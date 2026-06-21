@@ -188,6 +188,7 @@ export const PLATFORM_NAV: { groupLabel: string; items: AdminNavItemP[] } = {
   groupLabel: '系统管理',
   items: [
     { key: 'tenants', label: '租户管理', icon: BankOutlined },
+    { key: 'access', label: '平台门禁', icon: SafetyCertificateOutlined },
     { key: 'sys-settings', label: '系统参数', icon: SettingOutlined },
   ],
 };
