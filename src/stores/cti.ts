@@ -1,10 +1,11 @@
 import { defineStore } from 'pinia';
 
-// 软电话(CTI) 共享状态：坐席签入/状态 + 外呼通话生命周期。
-// 外呼由工单操作页（客户/代办人电话 icon）触发 startCall，头部话务条订阅展示。原型为模拟态。
+// 软电话(CTI) 共享状态机 —— 对齐设计稿 iFLY-FlowOS-坐席视角.pen · ropW8「坐席CTI状态栏·全状态逻辑」。
+// 状态：未签入 → 未准备好 → 示闲中/小休中 →（外呼呼叫中 / 呼入振铃 → 已接通）→ 挂断回示闲。
+// 外呼由工单操作页（客户/代办人电话 icon）触发 startCall，头部 AgentStatusBar 订阅展示。原型为模拟态。
 
-export type Presence = 'idle' | 'break';
-export type CallPhase = 'none' | 'dialing' | 'talking';
+export type Presence = 'unready' | 'idle' | 'break'; // 未准备好 / 示闲中 / 小休中
+export type CallPhase = 'none' | 'dialing' | 'ringing' | 'connected';
 
 let dialTimer: ReturnType<typeof setTimeout> | undefined;
 let clock: ReturnType<typeof setInterval> | undefined;
@@ -12,18 +13,15 @@ let clock: ReturnType<typeof setInterval> | undefined;
 export const useCtiStore = defineStore('cti', {
   state: () => ({
     workNo: '001006',
-    ext: '8001',
+    ext: '8788001006',
     signedIn: false,
-    presence: 'idle' as Presence,
-    /** 当前状态起始时间戳（状态时长计算用） */
+    presence: 'unready' as Presence,
     statusSince: 0,
     callPhase: 'none' as CallPhase,
     callNumber: '',
-    /** 通话对象名（客户 / 代办人 等，可空） */
     callContact: '',
-    /** 接通时间戳（通话时长计算用） */
+    dialSince: 0,
     callSince: 0,
-    /** 共享时钟（每秒更新），供状态时长/通话时长计算 */
     now: 0,
   }),
   getters: {
@@ -37,13 +35,14 @@ export const useCtiStore = defineStore('cti', {
     },
     signIn() {
       this.signedIn = true;
-      this.presence = 'idle';
+      this.presence = 'unready';
       this.statusSince = Date.now();
       this.ensureClock();
     },
     signOut(): boolean {
       if (this.inCall) return false;
       this.signedIn = false;
+      this.presence = 'unready';
       this.statusSince = 0;
       return true;
     },
@@ -52,7 +51,7 @@ export const useCtiStore = defineStore('cti', {
       this.presence = p;
       this.statusSince = Date.now();
     },
-    /** 外呼：从工单操作页电话 icon 触发 */
+    /** 外呼：从工单操作页电话 icon 触发 → 呼叫中(振铃) → 约 2.5s 自动接通 */
     startCall(num: string, contact = '') {
       if (!num) return;
       if (!this.signedIn) this.signIn();
@@ -60,20 +59,39 @@ export const useCtiStore = defineStore('cti', {
       this.callNumber = num;
       this.callContact = contact;
       this.callPhase = 'dialing';
+      this.dialSince = Date.now();
       this.statusSince = Date.now();
       if (dialTimer) clearTimeout(dialTimer);
       dialTimer = setTimeout(() => {
         if (this.callPhase === 'dialing') {
-          this.callPhase = 'talking';
+          this.callPhase = 'connected';
           this.callSince = Date.now();
         }
-      }, 1800);
+      }, 2500);
     },
-    hangup() {
+    /** 呼入振铃（原型预留，无外部触发源） */
+    ringIncoming(num: string, contact = '') {
+      if (!this.signedIn) return;
+      this.callNumber = num;
+      this.callContact = contact;
+      this.callPhase = 'ringing';
+      this.statusSince = Date.now();
+      this.ensureClock();
+    },
+    answer() {
+      if (this.callPhase !== 'ringing') return;
+      this.callPhase = 'connected';
+      this.callSince = Date.now();
+    },
+    cancelDial() { this.endCall(); }, // 取消外呼
+    reject() { this.endCall(); },     // 拒接
+    hangup() { this.endCall(); },     // 挂断
+    endCall() {
       if (dialTimer) clearTimeout(dialTimer);
       this.callPhase = 'none';
       this.callNumber = '';
       this.callContact = '';
+      this.dialSince = 0;
       this.callSince = 0;
       this.presence = 'idle';
       this.statusSince = Date.now();

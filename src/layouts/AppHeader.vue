@@ -119,7 +119,7 @@ function onMenuClick({ key }: { key: string | number }) {
 .app-header {
   display: flex;
   align-items: stretch;
-  height: 64px;
+  height: 72px;
   background: #fff;
   border-bottom: 1px solid #e5e7eb;
 }
