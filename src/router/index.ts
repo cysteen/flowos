@@ -187,6 +187,23 @@ const router = createRouter({
   routes,
 });
 
+// 持续部署后旧会话的懒加载 chunk 哈希失效 → 动态 import 失败 → 点击侧栏"无反应"。
+// 检测到此类错误时，跳转到目标并强制拉取新 bundle，用户无感恢复（单次防循环）。
+router.onError((error, to) => {
+  const msg = (error as Error)?.message || '';
+  const isChunkError =
+    /Failed to fetch dynamically imported module|Importing a module script failed|Loading chunk|error loading dynamically imported module/i.test(msg);
+  if (!isChunkError) return;
+  const dest = to?.fullPath ?? '/';
+  if (sessionStorage.getItem('flowos-chunk-reload') === dest) return; // 已重试过，避免死循环
+  sessionStorage.setItem('flowos-chunk-reload', dest);
+  const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+  window.location.assign(base + dest);
+});
+router.afterEach(() => {
+  sessionStorage.removeItem('flowos-chunk-reload');
+});
+
 router.beforeEach((to) => {
   const user = useUserStore();
 
