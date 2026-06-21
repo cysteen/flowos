@@ -38,7 +38,9 @@
   - 不允许"既不是列表也不是短表"的随意态。
 - 状态列统一用 `STATUS_TONE[status]` 取色的 `a-tag`，不手写散色。
 
-## 4. 卡片 / 筛选条 / 空态
+## 4. 页面框架 / 卡片 / 筛选条 / 空态
+- **页面框架（基准：`PlatformAccessView`/`ConnectorHubView`）**：根容器灰底（`#f9fafb`）+ 外层 `padding:16px 20px`；内容包入**白底面板**（`#fff` + `1px #e5e7eb` + 圆角 8 + 内边距 `20px 24px`），面板内首行为 `AdminPageHeader`（或两栏页的 `panel-head`）。**禁止裸内容直接铺在灰底上。**
+- 两栏页（左树/列表 + 右详情）：左右各为独立白面板；面板首行 `panel-head`（标题 + 主操作）。
 - 卡片：白底 `#fff` + `1px #e5e7eb` + 圆角 10/12 + 内边距 16–20。
 - 筛选条：左筛选（segmented / select / search）+ 右主操作；统一 `gap: 12px`。
 - 空态统一 `<a-empty>`；列表无数据给一句引导文案。

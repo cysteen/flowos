@@ -99,13 +99,13 @@ function exportCsv() {
         <tbody>
           <template v-for="log in filtered" :key="log.id">
             <tr>
-              <td><span class="mono">{{ log.id }}</span></td>
+              <td>{{ log.id }}</td>
               <td><a-tag :color="CATEGORY_TAG_COLOR[log.category]">{{ log.categoryLabel }}</a-tag></td>
               <td class="event-name">{{ log.event }}</td>
               <td>{{ log.operator }}</td>
               <td class="muted">{{ log.role }}</td>
-              <td><span class="mono">{{ log.targetId }}</span></td>
-              <td><span class="mono muted">{{ log.ip }}</span></td>
+              <td>{{ log.targetId }}</td>
+              <td class="muted">{{ log.ip }}</td>
               <td class="muted">{{ log.time }}</td>
               <td class="action-cell">
                 <a-button size="small" @click="toggleExpand(log)">
@@ -203,10 +203,6 @@ function exportCsv() {
 }
 .event-name { font-weight: 500; }
 .action-cell { text-align: center; }
-.mono {
-  font-family: ui-monospace, monospace;
-  font-size: 11px;
-}
 .muted {
   font-size: 12px;
   color: #6b7280;

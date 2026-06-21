@@ -2,8 +2,10 @@
 import { ref, reactive, computed } from 'vue';
 import { message, Modal } from 'ant-design-vue';
 import {
-  PlusOutlined, TeamOutlined, UserOutlined, EditOutlined, DeleteOutlined, CrownOutlined,
+  PlusOutlined, TeamOutlined, UserOutlined, EditOutlined, CrownOutlined,
+  CalendarOutlined, ApartmentOutlined,
 } from '@ant-design/icons-vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 
 // 用户分组（PRD-70，D3：BPM 用户分组 与 服务班组合并）：分组（含技能/排班/负责人）+ 成员。
 interface Group {
@@ -116,51 +118,60 @@ function removeMember(m: Member) {
 
 <template>
   <div class="user-group">
-    <!-- 分组列表 -->
-    <div class="left">
-      <div class="panel-head"><span>用户分组</span><a-button type="primary" size="small" @click="openCreateGroup"><template #icon><PlusOutlined /></template>新建</a-button></div>
-      <div class="g-list">
-        <div v-for="g in groups" :key="g.key" class="g-item" :class="{ on: g.key === selected }" @click="selected = g.key">
-          <div class="gi-ic"><TeamOutlined /></div>
-          <div class="gi-body">
-            <div class="gi-name">{{ g.name }}<a-tag :color="TYPE_TONE[g.type]" class="gi-tag">{{ g.type }}</a-tag></div>
-            <div class="gi-sub"><CrownOutlined /> {{ g.leader }} · {{ g.count }} 人</div>
+    <AdminPageHeader title="用户分组" subtitle="按班组/审批组/虚拟组管理成员与技能；技能路由、排班依此分派">
+      <template #actions>
+        <a-button type="primary" @click="openCreateGroup"><template #icon><PlusOutlined /></template>新建分组</a-button>
+      </template>
+    </AdminPageHeader>
+
+    <div class="cols">
+      <!-- 分组列表 -->
+      <div class="left">
+        <div class="panel-head"><span>分组列表（{{ groups.length }}）</span></div>
+        <div class="g-list">
+          <div v-for="g in groups" :key="g.key" class="g-item" :class="{ on: g.key === selected }" @click="selected = g.key">
+            <div class="gi-ic"><TeamOutlined /></div>
+            <div class="gi-body">
+              <div class="gi-name">{{ g.name }}<a-tag :color="TYPE_TONE[g.type]" class="gi-tag">{{ g.type }}</a-tag></div>
+              <div class="gi-sub"><CrownOutlined /> {{ g.leader }} · {{ g.count }} 人</div>
+            </div>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- 分组详情 + 成员 -->
-    <div class="right">
-      <div class="g-detail">
-        <div class="gd-title">{{ sel.name }}<a-tag :color="TYPE_TONE[sel.type]">{{ sel.type }}</a-tag></div>
-        <div class="gd-meta">
-          <div class="gd-cell"><label>负责人</label><span><CrownOutlined /> {{ sel.leader }}</span></div>
-          <div class="gd-cell"><label>排班</label><span>{{ sel.shift }}</span></div>
-          <div class="gd-cell"><label>技能标签</label><span><a-tag v-for="s in sel.skills" :key="s" color="blue">{{ s }}</a-tag></span></div>
-          <div class="gd-cell"><label>成员数</label><span>{{ sel.count }} 人</span></div>
+      <!-- 分组详情 + 成员 -->
+      <div class="right">
+        <div class="panel">
+          <div class="panel-head">
+            <span>分组详情 · {{ sel.name }}</span>
+            <a-button size="small" @click="openEditGroup"><template #icon><EditOutlined /></template>编辑分组</a-button>
+          </div>
+          <div class="gd-body">
+            <div class="gd-meta">
+              <div class="gd-cell"><label>组类型</label><span><a-tag :color="TYPE_TONE[sel.type]">{{ sel.type }}</a-tag></span></div>
+              <div class="gd-cell"><label><CrownOutlined /> 负责人</label><span>{{ sel.leader }}</span></div>
+              <div class="gd-cell"><label><CalendarOutlined /> 排班</label><span>{{ sel.shift }}</span></div>
+              <div class="gd-cell"><label>成员数</label><span>{{ sel.count }} 人</span></div>
+              <div class="gd-cell full"><label><ApartmentOutlined /> 技能标签（技能路由依据）</label><span><a-tag v-for="s in sel.skills" :key="s" color="blue">{{ s }}</a-tag></span></div>
+            </div>
+          </div>
         </div>
-        <div class="gd-acts">
-          <a-button size="small" @click="openEditGroup"><template #icon><EditOutlined /></template>编辑分组</a-button>
-          <a-button size="small" @click="openEditGroup">排班配置</a-button>
-          <a-button size="small" @click="openEditGroup">技能路由</a-button>
-        </div>
-      </div>
 
-      <div class="mem-card">
-        <div class="panel-head"><span>组内成员</span><a-button type="primary" size="small" @click="openAddMember"><template #icon><PlusOutlined /></template>添加成员</a-button></div>
-        <a-table :columns="memCols" :data-source="members" row-key="id" :pagination="false" size="middle">
-          <template #bodyCell="{ column, record }">
-            <span v-if="column.key === 'name'" class="mem-name"><a-avatar size="small"><template #icon><UserOutlined /></template></a-avatar>{{ record.name }}</span>
-            <a-tag v-else-if="column.key === 'role'" :color="record.role === '班组长' ? 'gold' : 'default'">{{ record.role }}</a-tag>
-            <a-tag v-else-if="column.key === 'status'" :color="ST_TONE[record.status]">{{ record.status }}</a-tag>
-            <span v-else-if="column.key === 'tickets'"><b>{{ record.tickets }}</b></span>
-            <template v-else-if="column.key === 'op'">
-              <a-button type="link" size="small" :disabled="record.role === '班组长'" @click="setLeader(record as Member)">设组长</a-button>
-              <DeleteOutlined class="op-ic danger" @click="removeMember(record as Member)" />
+        <div class="panel mem-card">
+          <div class="panel-head"><span>组内成员（{{ members.length }}）</span><a-button type="primary" size="small" @click="openAddMember"><template #icon><PlusOutlined /></template>添加成员</a-button></div>
+          <a-table :columns="memCols" :data-source="members" row-key="id" :pagination="false" size="middle">
+            <template #bodyCell="{ column, record }">
+              <span v-if="column.key === 'name'" class="mem-name"><a-avatar size="small"><template #icon><UserOutlined /></template></a-avatar>{{ record.name }}</span>
+              <a-tag v-else-if="column.key === 'role'" :color="record.role === '班组长' ? 'gold' : 'default'">{{ record.role }}</a-tag>
+              <a-tag v-else-if="column.key === 'status'" :color="ST_TONE[record.status]">{{ record.status }}</a-tag>
+              <span v-else-if="column.key === 'tickets'"><b>{{ record.tickets }}</b></span>
+              <template v-else-if="column.key === 'op'">
+                <a-button type="link" size="small" :disabled="record.role === '班组长'" @click="setLeader(record as Member)">设组长</a-button>
+                <a-button type="link" size="small" danger @click="removeMember(record as Member)">移除</a-button>
+              </template>
             </template>
-          </template>
-        </a-table>
+          </a-table>
+        </div>
       </div>
     </div>
 
@@ -188,9 +199,11 @@ function removeMember(m: Member) {
 </template>
 
 <style scoped>
-.user-group { display: flex; gap: 16px; padding: 16px 24px; align-items: flex-start; }
+.user-group { padding: 20px 24px; }
+.cols { display: flex; gap: 16px; align-items: flex-start; }
 .left { width: 300px; flex: none; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; }
 .right { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; }
 .panel-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #e5e7eb; font-size: 14px; font-weight: 600; color: #111827; }
 .g-list { padding: 8px; }
 .g-item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; cursor: pointer; }
@@ -201,14 +214,12 @@ function removeMember(m: Member) {
 .gi-name { font-size: 13px; font-weight: 600; color: #111827; display: flex; align-items: center; gap: 6px; }
 .gi-tag { transform: scale(0.8); }
 .gi-sub { font-size: 12px; color: #9ca3af; margin-top: 2px; }
-.g-detail { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 18px 20px; }
-.gd-title { font-size: 16px; font-weight: 600; color: #111827; display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
-.gd-meta { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px 24px; }
-.gd-cell { display: flex; flex-direction: column; gap: 4px; }
-.gd-cell label { font-size: 12px; color: #9ca3af; }
+.gd-body { padding: 18px 20px; }
+.gd-meta { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px 24px; }
+.gd-cell { display: flex; flex-direction: column; gap: 5px; }
+.gd-cell.full { grid-column: 1 / -1; }
+.gd-cell label { font-size: 12px; color: #9ca3af; display: flex; align-items: center; gap: 4px; }
 .gd-cell span { font-size: 13px; color: #374151; }
-.gd-acts { display: flex; gap: 10px; margin-top: 18px; padding-top: 16px; border-top: 1px solid #f3f4f6; }
-.mem-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; }
 .mem-name { display: flex; align-items: center; gap: 8px; }
 .g-form { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
 .g-form .full { grid-column: 1 / -1; }
