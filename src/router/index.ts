@@ -34,6 +34,7 @@ function adminViewFor(key: string) {
   if (key === 'orgs') return () => import('@/views/admin/OrgManageView.vue');
   if (key === 'posts') return () => import('@/views/admin/PostManageView.vue');
   if (key === 'connectors') return () => import('@/views/admin/ConnectorHubView.vue');
+  if (key === 'message-center') return () => import('@/views/admin/MessageCenterView.vue');
   if (SLA_STUB_KEYS.has(key)) return () => import('@/views/admin/SlaEngineView.vue');
   if (RULES_STUB_KEYS.has(key)) return () => import('@/views/admin/RulesEngineView.vue');
   return () => import('@/views/admin/AdminModuleView.vue');
