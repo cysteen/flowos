@@ -8,26 +8,42 @@ export interface TenantQuota {
 export interface TenantLog { time: string; action: string; user: string }
 export interface Tenant {
   id: string; name: string; code: string; status: 'active' | 'suspended';
-  admin: string; createdAt: string; color: string;
+  admin: string; adminPhone: string; adminLimit: number; adminCount: number;
+  createdAt: string; color: string;
   quota: TenantQuota; logs: TenantLog[];
 }
 
+/** 平台硬约束：单租户「租户管理员」席位上限 */
+export const TENANT_ADMIN_SEAT_MAX = 3;
+
 export const TENANTS: Tenant[] = [
   {
-    id: 't1', name: '讯飞科技', code: 'XFKJ', status: 'active', admin: 'zhang@xfyun.cn', createdAt: '2025-01-15', color: '#1A6FFF',
+    id: 't1', name: '讯飞科技', code: 'XFKJ', status: 'active', admin: 'zhang@xfyun.cn', adminPhone: '138 0013 8001', adminLimit: 3, adminCount: 2, createdAt: '2025-01-15', color: '#1A6FFF',
     quota: { orderLimit: 5000, orderUsed: 3200, orderPct: 64, apiLimit: 50000, apiUsed: 38000, apiPct: 76, storageLimit: 500, storageUsed: 280, storagePct: 56 },
     logs: [{ time: '2026-04-20 14:30', action: '调整配额', user: 'admin' }, { time: '2026-04-18 09:15', action: '修改配置', user: 'admin' }, { time: '2025-01-15 10:00', action: '创建租户', user: 'admin' }],
   },
   {
-    id: 't2', name: '教育事业部', code: 'JYSYB', status: 'active', admin: 'li@edu.cn', createdAt: '2025-02-20', color: '#10B981',
+    id: 't2', name: '教育事业部', code: 'JYSYB', status: 'active', admin: 'li@edu.cn', adminPhone: '139 0013 9002', adminLimit: 3, adminCount: 1, createdAt: '2025-02-20', color: '#10B981',
     quota: { orderLimit: 2000, orderUsed: 1450, orderPct: 73, apiLimit: 20000, apiUsed: 16800, apiPct: 84, storageLimit: 200, storageUsed: 145, storagePct: 73 },
     logs: [{ time: '2026-04-19 11:20', action: '调整API配额', user: 'admin' }, { time: '2025-02-20 15:30', action: '创建租户', user: 'admin' }],
   },
   {
-    id: 't3', name: '智能硬件部', code: 'ZNJYB', status: 'suspended', admin: 'wang@hw.cn', createdAt: '2025-03-10', color: '#9CA3AF',
+    id: 't3', name: '智能硬件部', code: 'ZNJYB', status: 'suspended', admin: 'wang@hw.cn', adminPhone: '137 0013 7003', adminLimit: 3, adminCount: 1, createdAt: '2025-03-10', color: '#9CA3AF',
     quota: { orderLimit: 500, orderUsed: 480, orderPct: 96, apiLimit: 5000, apiUsed: 4200, apiPct: 84, storageLimit: 50, storageUsed: 42, storagePct: 84 },
     logs: [{ time: '2026-04-21 08:00', action: '停用租户', user: 'admin' }, { time: '2026-04-10 16:45', action: '配额预警', user: 'system' }, { time: '2025-03-10 14:00', action: '创建租户', user: 'admin' }],
   },
+];
+
+/** 推荐起步角色预设（帮助新租户快速搭建团队） */
+export interface RolePreset {
+  key: string; name: string; emoji: string; color: string;
+  desc: string; perms: string[]; tenantAdmin?: boolean;
+}
+export const ROLE_PRESETS: RolePreset[] = [
+  { key: 'agent', name: '客服坐席', emoji: '🎧', color: '#1A6FFF', desc: '受理与处理工单，最常用的一线角色', perms: ['工单工作台', '受理/处理/流转', '客户查询'] },
+  { key: 'leader', name: '班组长', emoji: '🧭', color: '#8B5CF6', desc: '管理团队、审批强结/升级、查看看板', perms: ['班组看板', '审批中心', '强结/升级审批', '坐席监控'] },
+  { key: 'ops', name: '运营专员', emoji: '⚙️', color: '#10B981', desc: '维护工单类型、SLA、规则与字典等配置', perms: ['工单配置', 'SLA 与规则', '模板库', '字典管理'] },
+  { key: 'tenant-admin', name: '租户管理员', emoji: '🛡️', color: '#EF4444', desc: '管理组织、用户、权限与安全（受席位上限约束）', perms: ['组织与权限', '用户/角色', '集成对接', '安全审计'], tenantAdmin: true },
 ];
 
 export interface SimDept { id: string; name: string; count: number }

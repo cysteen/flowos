@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { ref, watch, nextTick } from 'vue';
 import { useAdminTabsStore } from '@/stores/adminTabs';
 
 const tabsStore = useAdminTabsStore();
+const barRef = ref<HTMLElement>();
 
 function onTabClick(key: string) {
   tabsStore.activate(key);
@@ -11,10 +13,20 @@ function onClose(e: Event, key: string) {
   e.stopPropagation();
   tabsStore.close(key);
 }
+
+// 激活页签变化时，自动将其滚动进可视区（页签较多时无需手动查找）
+watch(
+  () => tabsStore.activeKey,
+  async () => {
+    await nextTick();
+    const el = barRef.value?.querySelector('.page-tab.active') as HTMLElement | null;
+    el?.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
+  },
+);
 </script>
 
 <template>
-  <div v-if="tabsStore.tabs.length" class="tabs-bar" id="pageTabs">
+  <div v-if="tabsStore.tabs.length" ref="barRef" class="tabs-bar" id="pageTabs">
     <button
       v-for="tab in tabsStore.tabs"
       :key="tab.key"

@@ -110,7 +110,7 @@ function backToWorkspace() {
 <style scoped>
 .admin-sidebar {
   height: 100%;
-  background: #f5f6f7;
+  background: #fff;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -119,7 +119,9 @@ function backToWorkspace() {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 14px 16px 10px;
+  padding: 14px 16px 12px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid #f0f0f0;
   cursor: pointer;
 }
 .sb-header:hover .sb-title {
@@ -151,7 +153,9 @@ function backToWorkspace() {
   gap: 10px;
   cursor: pointer;
   color: #374151;
-  border-right: 3px solid transparent;
+  border-left: 3px solid transparent;
+  border-radius: 0 8px 8px 0;
+  margin-right: 8px;
 }
 .nav-item.top,
 .group-head {
@@ -193,15 +197,15 @@ function backToWorkspace() {
 
 .nav-item:hover,
 .group-head:hover {
-  background: #eceef0;
+  background: #f9fafb;
 }
 
-/* 选中：白底 + 蓝字 + 右 3px 蓝条 */
+/* 选中：浅蓝底 + 蓝字 + 左 3px 蓝条（与前台一致） */
 .nav-item.active {
-  background: #fff;
+  background: #eff6ff;
   color: #1a6fff;
   font-weight: 600;
-  border-right-color: #1a6fff;
+  border-left-color: #1a6fff;
 }
 .nav-item.active .nav-icon {
   color: #1a6fff;

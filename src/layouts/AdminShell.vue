@@ -74,7 +74,7 @@ watch(
 }
 
 :deep(.admin-sider) {
-  background: #f5f6f7 !important;
+  background: #fff !important;
   border-right: 1px solid #e5e7eb;
 }
 
