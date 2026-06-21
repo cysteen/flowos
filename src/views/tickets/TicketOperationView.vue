@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 import { useWorkspaceTabsStore, resolveTicketTabTitle } from '@/stores/workspaceTabs';
@@ -10,7 +10,8 @@ import OpTicketSummary from './components/operation/OpTicketSummary.vue';
 import OpProcessTabs from './components/operation/OpProcessTabs.vue';
 import OpSidePanel from './components/operation/OpSidePanel.vue';
 import OpActionBar from './components/OpActionBar.vue';
-import CreateTicketModal from './components/CreateTicketModal.vue';
+// 建单弹窗仅在「转单/重开」时用，按需异步加载，不阻塞操作页首屏
+const CreateTicketModal = defineAsyncComponent(() => import('./components/CreateTicketModal.vue'));
 import { useTicketOperation } from './composables/useTicketOperation';
 import { useProcessForm } from './composables/useProcessForm';
 import { useOperationTabs } from './composables/useOperationTabs';

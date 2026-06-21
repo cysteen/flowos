@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, ref, watch } from 'vue';
 import OpProcessForm from './OpProcessForm.vue';
-import OpTechProcessTab from './tabs/OpTechProcessTab.vue';
-import OpRiskMonitorTab from './tabs/OpRiskMonitorTab.vue';
-import OpFlowHistoryTab from './tabs/OpFlowHistoryTab.vue';
-import OpRelatedTab from './tabs/OpRelatedTab.vue';
-import OpContactRecordsTab from './tabs/OpContactRecordsTab.vue';
-import OpNotifyRecordsTab from './tabs/OpNotifyRecordsTab.vue';
-import OpSurveyRecordsTab from './tabs/OpSurveyRecordsTab.vue';
-import OpCustomerHistoryTab from './tabs/OpCustomerHistoryTab.vue';
+// 默认「工单处理」表单同步加载；其余 Tab 按需异步加载，缩小首屏 chunk、加快点开速度。
+const OpTechProcessTab = defineAsyncComponent(() => import('./tabs/OpTechProcessTab.vue'));
+const OpRiskMonitorTab = defineAsyncComponent(() => import('./tabs/OpRiskMonitorTab.vue'));
+const OpFlowHistoryTab = defineAsyncComponent(() => import('./tabs/OpFlowHistoryTab.vue'));
+const OpRelatedTab = defineAsyncComponent(() => import('./tabs/OpRelatedTab.vue'));
+const OpContactRecordsTab = defineAsyncComponent(() => import('./tabs/OpContactRecordsTab.vue'));
+const OpNotifyRecordsTab = defineAsyncComponent(() => import('./tabs/OpNotifyRecordsTab.vue'));
+const OpSurveyRecordsTab = defineAsyncComponent(() => import('./tabs/OpSurveyRecordsTab.vue'));
+const OpCustomerHistoryTab = defineAsyncComponent(() => import('./tabs/OpCustomerHistoryTab.vue'));
 import { visibleProcessTabs, type ProcessTabKey } from '@/views/tickets/types/operation';
 import type { ProcessFormDraft, SectionKey } from '@/views/tickets/types/operation';
 import type { OperationTabData } from '@/views/tickets/types/operationTabs';
