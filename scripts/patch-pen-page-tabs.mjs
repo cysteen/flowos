@@ -33,14 +33,14 @@ function makePageTab(label, active = false) {
         type: 'text',
         id: textId,
         name: 'TabText',
-        fill: active ? '#202124' : '#5F6368',
+        fill: active ? '#374151' : '#6B7280',
         textGrowth: 'fixed-width',
         width: 'fill_container',
         content: label,
         textAlign: 'left',
         fontFamily: 'Inter',
         fontSize: 13,
-        fontWeight: active ? '500' : '400',
+        fontWeight: active ? '600' : '400',
       },
       {
         type: 'text',
@@ -54,7 +54,7 @@ function makePageTab(label, active = false) {
       },
     ],
   };
-  if (active) tab.fill = '#F9FAFB';
+  if (active) tab.fill = '#FFFFFF';
   return tab;
 }
 
@@ -65,7 +65,7 @@ function makeTabsBar(tabs, barId = 'wsTabsBar') {
     name: 'PageTabs',
     width: 'fill_container',
     height: 40,
-    fill: '#EDF1F7',
+    fill: '#E1E8F2',
     gap: 0,
     padding: [0, 8],
     alignItems: 'end',

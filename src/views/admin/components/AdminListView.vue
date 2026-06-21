@@ -53,14 +53,14 @@ function onNew() {
   editing.value = null;
   modalOpen.value = true;
 }
+const nameOf = (record: Record<string, unknown>) =>
+  String(record[props.config.columns[0]?.key] ?? record[props.config.columns[1]?.key] ?? '');
+
 function onAction(label: string, record: Record<string, unknown>) {
-  if (label === '编辑') {
-    editing.value = record;
-    modalOpen.value = true;
-  } else if (label === '删除') {
+  if (label === '删除') {
     Modal.confirm({
       title: '确认删除',
-      content: `确定删除「${record[props.config.columns[1]?.key] ?? ''}」？删除后不可恢复。`,
+      content: `确定删除「${nameOf(record)}」？删除后不可恢复。`,
       okText: '删除',
       okType: 'danger',
       cancelText: '取消',
@@ -69,10 +69,25 @@ function onAction(label: string, record: Record<string, unknown>) {
         message.success('已删除');
       },
     });
+  } else if (label === '详情' || label === '预览') {
+    detailRecord.value = record;
+    detailOpen.value = true;
+  } else if (label === '启用' || label === '停用' || label === '启停') {
+    toggleStatus(record);
+  } else if (label === '测试') {
+    message.loading(`正在测试「${nameOf(record)}」…`, 1).then(() => message.success(`${nameOf(record)} 连接正常`));
+  } else if (label === '重置密码') {
+    message.success(`已向「${nameOf(record)}」发送密码重置链接`);
   } else {
-    message.info(`「${label}」（占位，后续接抽屉/弹窗）`);
+    // 编辑 / 配置 / 分配角色 / 分配权限 / 分配数据范围 / 成员 等 → 进入配置弹窗
+    editing.value = record;
+    modalOpen.value = true;
   }
 }
+
+// 详情抽屉
+const detailOpen = ref(false);
+const detailRecord = ref<Record<string, unknown> | null>(null);
 function onSubmit(values: Record<string, unknown>) {
   if (editing.value) {
     Object.assign(editing.value, values);
@@ -183,6 +198,18 @@ function onBatchDelete() {
       :initial="editing"
       @submit="onSubmit"
     />
+
+    <!-- 详情抽屉 -->
+    <a-drawer v-model:open="detailOpen" :title="detailRecord ? `${nameOf(detailRecord)} · 详情` : ''" width="480" placement="right">
+      <a-descriptions v-if="detailRecord" :column="1" bordered size="small">
+        <a-descriptions-item v-for="c in config.columns" :key="c.key" :label="c.title">
+          <template v-if="Array.isArray(detailRecord[c.key])">
+            <a-tag v-for="t in (detailRecord[c.key] as string[])" :key="t" color="blue">{{ t }}</a-tag>
+          </template>
+          <span v-else>{{ detailRecord[c.key] ?? '—' }}</span>
+        </a-descriptions-item>
+      </a-descriptions>
+    </a-drawer>
   </div>
 </template>
 

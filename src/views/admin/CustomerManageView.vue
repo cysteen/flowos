@@ -69,7 +69,7 @@ function saveCreate() {
   createOpen.value = false;
 }
 
-// —— 导入客户（真实弹窗 + 模板下载占位）——
+// —— 导入客户（真实弹窗 + 模板下载）——
 const importOpen = ref(false);
 const importCount = ref(0);
 function openImport() { importCount.value = 0; importOpen.value = true; }
@@ -83,7 +83,16 @@ function doImport() {
   importOpen.value = false;
 }
 
-function todo(t: string) { message.info(`「${t}」`); }
+function downloadTemplate() {
+  const csv = '﻿客户姓名,联系电话,客户等级,所在地区,标签\n张三,13800000000,VIP,上海,高价值;老客户\n';
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = '客户导入模板.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+  message.success('已下载导入模板');
+}
+function callOut(phone: string) { message.success(`正在呼叫 ${phone}…`); }
 </script>
 
 <template>
@@ -124,7 +133,7 @@ function todo(t: string) { message.info(`「${t}」`); }
             <div class="dh-sub"><PhoneOutlined /> {{ current.phone }} · {{ current.region }} · 自 {{ current.firstSeen }}</div>
             <div class="dh-tags"><a-tag v-for="t in current.tags" :key="t" color="blue">{{ t }}</a-tag></div>
           </div>
-          <a-button type="primary" @click="todo('外呼')"><template #icon><PhoneOutlined /></template>外呼</a-button>
+          <a-button type="primary" @click="callOut(current.phone)"><template #icon><PhoneOutlined /></template>外呼</a-button>
         </div>
         <a-tabs>
           <a-tab-pane key="t1" :tab="`历史工单 (${current.tickets})`">
@@ -171,7 +180,7 @@ function todo(t: string) { message.info(`「${t}」`); }
           <div class="dz-sub">{{ importCount ? `已识别 ${importCount} 条客户` : '支持 .xlsx / .csv，首行为表头' }}</div>
           <input type="file" accept=".xlsx,.xls,.csv" hidden @change="onImportFile" />
         </label>
-        <a-button type="link" size="small" @click="todo('下载导入模板')">下载导入模板</a-button>
+        <a-button type="link" size="small" @click="downloadTemplate">下载导入模板</a-button>
       </div>
     </a-modal>
   </div>

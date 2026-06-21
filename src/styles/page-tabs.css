@@ -22,13 +22,13 @@
   border-radius: 8px 8px 0 0;
   font-size: 13px;
   cursor: pointer;
-  color: #5f6368;
+  color: var(--flowos-text-secondary, #6b7280);
   border: none;
   background: transparent;
   display: flex;
   align-items: center;
   gap: 8px;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
   font-weight: 400;
   box-shadow: none;
   flex-shrink: 0;
@@ -57,14 +57,17 @@
   color: #202124;
 }
 
-/* 激活 Tab：白底 + 底部圆角衔接（Chrome 肩形） */
+/* 激活 Tab：纯白浮起 + 品牌顶线 + 肩形衔接 */
 #workspacePageTabs .page-tab.active,
 #pageTabs .page-tab.active {
   height: 36px;
   background: var(--page-tab-active-bg);
-  color: #202124;
-  font-weight: 500;
+  color: var(--flowos-text, #374151);
+  font-weight: 600;
   z-index: 1;
+  box-shadow:
+    inset 0 2px 0 var(--flowos-primary, #1a6fff),
+    0 1px 4px rgba(15, 23, 42, 0.1);
 }
 
 #workspacePageTabs .page-tab.active::before,
@@ -121,6 +124,11 @@
 #pageTabs .page-tab:hover .page-tab-close,
 #pageTabs .page-tab.active .page-tab-close {
   opacity: 0.55;
+}
+
+#workspacePageTabs .page-tab.active .page-tab-close,
+#pageTabs .page-tab.active .page-tab-close {
+  opacity: 0.7;
 }
 
 #workspacePageTabs .page-tab-close:hover,

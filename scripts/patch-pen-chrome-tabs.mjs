@@ -10,11 +10,11 @@ const __dir = dirname(fileURLToPath(import.meta.url));
 const PEN = join(__dir, '../../iFLY-FlowOS-坐席视角.pen');
 
 const CHROME = {
-  barFill: '#EDF1F7',
-  activeFill: '#F9FAFB',
-  activeText: '#202124',
-  inactiveText: '#5F6368',
-  closeIcon: '#5F636899',
+  barFill: '#E1E8F2',
+  activeFill: '#FFFFFF',
+  activeText: '#374151',
+  inactiveText: '#6B7280',
+  closeIcon: '#6B728099',
 };
 
 function patchTabBar(node) {
@@ -38,6 +38,8 @@ function patchTab(node) {
   delete node.stroke;
   if (active) {
     node.fill = CHROME.activeFill;
+    node.stroke = '#1A6FFF';
+    node.strokeWidth = { top: 2 };
   } else {
     delete node.fill;
   }
@@ -46,14 +48,14 @@ function patchTab(node) {
     if (child.name === 'TabText' || child.name === 'TabTextWrap') {
       if (child.type === 'text') {
         child.fill = active ? CHROME.activeText : CHROME.inactiveText;
-        child.fontWeight = active ? '500' : '400';
+        child.fontWeight = active ? '600' : '400';
         child.textAlign = 'left';
         delete child.letterSpacing;
       } else if (child.children) {
         for (const t of child.children) {
           if (t.name === 'TabText' && t.type === 'text') {
             t.fill = active ? CHROME.activeText : CHROME.inactiveText;
-            t.fontWeight = active ? '500' : '400';
+            t.fontWeight = active ? '600' : '400';
             t.textAlign = 'left';
             delete t.letterSpacing;
           }
