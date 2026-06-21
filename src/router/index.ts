@@ -30,6 +30,9 @@ function adminViewFor(key: string) {
   if (key === 'customers') return () => import('@/views/admin/CustomerManageView.vue');
   if (key === 'products') return () => import('@/views/admin/ProductManageView.vue');
   if (key === 'dispatch') return () => import('@/views/admin/DispatchConfigView.vue');
+  if (key === 'users') return () => import('@/views/admin/UserManageView.vue');
+  if (key === 'orgs') return () => import('@/views/admin/OrgManageView.vue');
+  if (key === 'posts') return () => import('@/views/admin/PostManageView.vue');
   if (SLA_STUB_KEYS.has(key)) return () => import('@/views/admin/SlaEngineView.vue');
   if (RULES_STUB_KEYS.has(key)) return () => import('@/views/admin/RulesEngineView.vue');
   return () => import('@/views/admin/AdminModuleView.vue');
