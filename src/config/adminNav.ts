@@ -87,6 +87,20 @@ export const ADMIN_GROUPS: AdminNavGroup[] = [
     ],
   },
   // ===== 运营管理员 =====
+  // 业务管理置于运营组首位（紧邻数据总览，配置高频且重要）
+  {
+    key: 'business', label: '业务管理', icon: DatabaseOutlined, scope: 'ops',
+    items: [
+      // D2：渠道/应用归运营
+      { key: 'channels', label: '渠道管理', prd: 'PRD-53', v1Ref: 'A/A8-tenant-admin.html#channels' },
+      { key: 'apps', label: '应用管理', prd: 'PRD-54', v1Ref: 'A/A8-tenant-admin.html#apps' },
+      { key: 'customers', label: '客户管理', prd: 'PRD-87' },
+      { key: 'products', label: '产品管理', prd: 'PRD-85' },
+      // D3：BPM 用户分组与服务班组(59b)合并为单一「用户分组」，归业务管理
+      { key: 'teams', label: '用户分组', prd: 'PRD-70' },
+      { key: 'dispatch', label: '智能分派', prd: 'PRD-90', v1Ref: 'D/D1-dispatch.html' },
+    ],
+  },
   {
     key: 'ticket-config', label: '工单配置', icon: AppstoreOutlined, scope: 'ops',
     items: [
@@ -96,8 +110,12 @@ export const ADMIN_GROUPS: AdminNavGroup[] = [
     ],
   },
   {
+    // 侧栏仅保留两个模块入口，子项由页内 Tab 承载（避免 14 项平铺）
     key: 'sla', label: 'SLA 与规则', icon: FieldTimeOutlined, scope: 'ops',
-    items: [...SLA_NAV_ITEMS, ...RULES_NAV_ITEMS],
+    items: [
+      { key: 'sla-policy', label: 'SLA 管理', prd: 'PRD-55', v1Ref: 'A/A3-sla-config.html' },
+      { key: 'rules-list', label: '规则中心', prd: 'PRD-58', v1Ref: 'A/A4-rule-engine.html' },
+    ],
   },
   {
     key: 'templates', label: '模板库', icon: FileTextOutlined, scope: 'ops',
@@ -114,19 +132,6 @@ export const ADMIN_GROUPS: AdminNavGroup[] = [
       { key: 'flow-tasks', label: '流程任务', prd: 'PRD-74' },
       { key: 'flow-listeners', label: '流程监听器', prd: 'PRD-71' },
       { key: 'flow-expressions', label: '流程表达式', prd: 'PRD-72' },
-      // D3：BPM 用户分组与服务班组(59b)合并为单一「用户分组」
-      { key: 'teams', label: '用户分组', prd: 'PRD-70' },
-    ],
-  },
-  {
-    key: 'business', label: '业务数据', icon: DatabaseOutlined, scope: 'ops',
-    items: [
-      // D2：渠道/应用归运营
-      { key: 'channels', label: '渠道管理', prd: 'PRD-53', v1Ref: 'A/A8-tenant-admin.html#channels' },
-      { key: 'apps', label: '应用管理', prd: 'PRD-54', v1Ref: 'A/A8-tenant-admin.html#apps' },
-      { key: 'customers', label: '客户管理', prd: 'PRD-87' },
-      { key: 'products', label: '产品管理', prd: 'PRD-85' },
-      { key: 'dispatch', label: '智能分派', prd: 'PRD-90', v1Ref: 'D/D1-dispatch.html' },
     ],
   },
 ];
@@ -137,12 +142,29 @@ export function adminGroupsFor(scope?: AdminScope): AdminNavGroup[] {
   return ADMIN_GROUPS.filter((g) => g.scope === 'tenant');
 }
 
-/** 扁平导航项（路由注册用） */
-export const ADMIN_ALL_ITEMS = ADMIN_GROUPS.flatMap((g) =>
+/** 侧栏可见扁平项 */
+const ADMIN_SIDEBAR_ITEMS = ADMIN_GROUPS.flatMap((g) =>
   g.items.map((i) => ({ ...i, group: g.label, groupKey: g.key })),
 );
 
+/**
+ * 扁平导航项（路由注册用）= 侧栏可见项 + SLA/规则的页内 Tab 子页。
+ * 侧栏只露「SLA 管理 / 规则中心」两入口，但其页内 Tab 仍需注册各自路由。
+ */
+const ADMIN_HIDDEN_ROUTE_ITEMS = [...SLA_NAV_ITEMS, ...RULES_NAV_ITEMS]
+  .filter((i) => !ADMIN_SIDEBAR_ITEMS.some((s) => s.key === i.key))
+  .map((i) => ({ ...i, group: 'SLA 与规则', groupKey: 'sla' }));
+
+export const ADMIN_ALL_ITEMS = [...ADMIN_SIDEBAR_ITEMS, ...ADMIN_HIDDEN_ROUTE_ITEMS];
+
 const NAV_KEY_SET = new Set(ADMIN_ALL_ITEMS.map((i) => i.key));
+
+/** 路由 key → 侧栏高亮项 key（SLA/规则页内 Tab 统一高亮其模块入口） */
+export function adminSidebarKey(activeKey: string): string {
+  if (isSlaNavKey(activeKey)) return 'sla-policy';
+  if (isRulesNavKey(activeKey)) return 'rules-list';
+  return activeKey;
+}
 
 /** 侧栏高亮 key：取 /admin/{key} 第一段 */
 export function adminNavActiveKey(path: string): string {
@@ -155,9 +177,9 @@ export function adminNavItemByKey(key: string) {
   return ADMIN_ALL_ITEMS.find((i) => i.key === key);
 }
 
-/** 子项所属分组 key（侧栏手风琴展开用） */
+/** 子项所属分组 key（侧栏手风琴展开用）——含 SLA/规则页内 Tab 子页映射到 'sla' */
 export function adminNavGroupKeyOf(itemKey: string): string | null {
-  return ADMIN_GROUPS.find((g) => g.items.some((i) => i.key === itemKey))?.key ?? null;
+  return ADMIN_ALL_ITEMS.find((i) => i.key === itemKey)?.groupKey ?? null;
 }
 
 /** 是否为 SLA 子模块（页内 Tab 条可选展示） */

@@ -2,7 +2,7 @@
 import { computed, ref, watchEffect } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { LeftOutlined, DownOutlined } from '@ant-design/icons-vue';
-import { adminGroupsFor, ADMIN_OVERVIEW, ADMIN_APPROVAL, PLATFORM_NAV, adminNavActiveKey, adminNavGroupKeyOf } from '@/config/adminNav';
+import { adminGroupsFor, ADMIN_OVERVIEW, ADMIN_APPROVAL, PLATFORM_NAV, adminNavActiveKey, adminNavGroupKeyOf, adminSidebarKey } from '@/config/adminNav';
 import { APPROVALS } from '@/mock/approvalCenter';
 import { useUserStore } from '@/stores/user';
 
@@ -15,6 +15,8 @@ const groups = computed(() => adminGroupsFor(user.role.adminScope));
 const approvalBadge = computed(() => APPROVALS.filter((a) => a.status === '待审批').length);
 
 const activeKey = computed(() => adminNavActiveKey(route.path));
+// 侧栏高亮 key：SLA/规则页内 Tab 统一高亮其模块入口（sla-policy / rules-list）
+const sidebarKey = computed(() => adminSidebarKey(activeKey.value));
 
 function groupOf(key: string): string | null {
   return adminNavGroupKeyOf(key);
@@ -96,7 +98,7 @@ function backToWorkspace() {
             v-for="it in g.items"
             :key="it.key"
             class="nav-item sub"
-            :class="{ active: activeKey === it.key }"
+            :class="{ active: sidebarKey === it.key }"
             @click="go(`/admin/${it.key}`)"
           >
             {{ it.label }}
