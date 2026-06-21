@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import { message } from 'ant-design-vue';
+import { ref, reactive, computed } from 'vue';
+import { message, Modal } from 'ant-design-vue';
 import { PlusOutlined, AppstoreOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons-vue';
 import { stdPagination } from '@/config/adminUi';
 
@@ -39,13 +39,59 @@ const cols = [
   { title: '状态', dataIndex: 'status', key: 'status', width: 90 },
   { title: '操作', key: 'op', width: 100 },
 ];
-function todo(t: string) { message.info(`「${t}」（演示）`); }
+// —— 新增分类（真实写入，弹窗）——
+let catSeq = 1;
+const catModalOpen = ref(false);
+const catName = ref('');
+function openAddCat() { catName.value = ''; catModalOpen.value = true; }
+function saveCat() {
+  if (!catName.value.trim()) { message.error('请输入分类名称'); return; }
+  cats.value.push({ key: 'cat' + catSeq++, name: catName.value.trim(), count: 0 });
+  message.success(`分类「${catName.value.trim()}」已创建`);
+  catModalOpen.value = false;
+}
+
+// —— 产品 增 / 改 / 删（真实本地操作）——
+let prodSeq = 10;
+const modalOpen = ref(false);
+const editingId = ref<string | null>(null);
+const pform = reactive<Omit<Product, 'id'>>({ name: '', model: '', cat: 'smart', snRule: '', warranty: '', aftersale: true, status: '在售' });
+const catOptions = computed(() => cats.value.filter((c) => c.key !== 'all').map((c) => ({ value: c.key, label: c.name })));
+function openCreate() {
+  editingId.value = null;
+  Object.assign(pform, { name: '', model: '', cat: selected.value === 'all' ? 'smart' : selected.value, snRule: '', warranty: '', aftersale: true, status: '在售' });
+  modalOpen.value = true;
+}
+function openEdit(p: Product) {
+  editingId.value = p.id;
+  Object.assign(pform, { name: p.name, model: p.model, cat: p.cat, snRule: p.snRule, warranty: p.warranty, aftersale: p.aftersale, status: p.status });
+  modalOpen.value = true;
+}
+function saveProduct() {
+  if (!pform.name || !pform.model) { message.error('请填写产品名称与型号'); return; }
+  if (editingId.value) {
+    const p = products.value.find((x) => x.id === editingId.value);
+    if (p) Object.assign(p, { ...pform });
+    message.success('产品已更新');
+  } else {
+    products.value.unshift({ id: 'P' + String(prodSeq++).padStart(2, '0'), ...pform });
+    message.success(`产品「${pform.name}」已新增`);
+  }
+  modalOpen.value = false;
+}
+function delProduct(p: Product) {
+  Modal.confirm({
+    title: '删除产品', icon: null, content: `确定删除产品「${p.name}」？`,
+    okText: '确认删除', okType: 'danger', cancelText: '取消',
+    onOk: () => { products.value = products.value.filter((x) => x.id !== p.id); message.success('产品已删除'); },
+  });
+}
 </script>
 
 <template>
   <div class="product-manage">
     <div class="left">
-      <div class="panel-head"><span>产品分类</span><a-button type="primary" size="small" @click="todo('新增分类')"><template #icon><PlusOutlined /></template>新增</a-button></div>
+      <div class="panel-head"><span>产品分类</span><a-button type="primary" size="small" @click="openAddCat"><template #icon><PlusOutlined /></template>新增</a-button></div>
       <div class="cat-list">
         <div v-for="c in cats" :key="c.key" class="cat-item" :class="{ on: c.key === selected }" @click="selected = c.key">
           <span><AppstoreOutlined /> {{ c.name }}</span><span class="cnt">{{ c.count }}</span>
@@ -55,7 +101,7 @@ function todo(t: string) { message.info(`「${t}」（演示）`); }
     <div class="right">
       <div class="panel-head">
         <span>产品列表</span>
-        <a-button type="primary" size="small" @click="todo('新增产品')"><template #icon><PlusOutlined /></template>新增产品</a-button>
+        <a-button type="primary" size="small" @click="openCreate"><template #icon><PlusOutlined /></template>新增产品</a-button>
       </div>
       <a-table :columns="cols" :data-source="list" row-key="id" :pagination="stdPagination()" size="middle">
         <template #bodyCell="{ column, record }">
@@ -65,12 +111,30 @@ function todo(t: string) { message.info(`「${t}」（演示）`); }
           </template>
           <a-tag v-else-if="column.key === 'status'" :color="record.status === '在售' ? 'blue' : 'default'">{{ record.status }}</a-tag>
           <template v-else-if="column.key === 'op'">
-            <EditOutlined class="op-ic" @click="todo('编辑')" /><DeleteOutlined class="op-ic danger" @click="todo('删除')" />
+            <EditOutlined class="op-ic" @click="openEdit(record as Product)" /><DeleteOutlined class="op-ic danger" @click="delProduct(record as Product)" />
           </template>
         </template>
       </a-table>
       <div class="tip">「可转售后」控制工单操作页「转售后」按钮是否可用；保修期与 SN 规则用于受理时自动带出保修状态。</div>
     </div>
+
+    <!-- 新增分类 -->
+    <a-modal v-model:open="catModalOpen" title="新增产品分类" :width="420" ok-text="创建" cancel-text="取消" @ok="saveCat">
+      <a-form layout="vertical"><a-form-item label="分类名称" required><a-input v-model:value="catName" placeholder="如：智能硬件" /></a-form-item></a-form>
+    </a-modal>
+
+    <!-- 新增 / 编辑产品 -->
+    <a-modal v-model:open="modalOpen" :title="editingId ? '编辑产品' : '新增产品'" :width="560" :ok-text="editingId ? '保存' : '创建'" cancel-text="取消" @ok="saveProduct">
+      <a-form layout="vertical" class="prod-form">
+        <a-form-item label="产品名称" required class="half"><a-input v-model:value="pform.name" placeholder="请输入" /></a-form-item>
+        <a-form-item label="型号" required class="half"><a-input v-model:value="pform.model" placeholder="请输入" /></a-form-item>
+        <a-form-item label="所属分类" class="half"><a-select v-model:value="pform.cat" :options="catOptions" /></a-form-item>
+        <a-form-item label="SN 规则" class="half"><a-input v-model:value="pform.snRule" placeholder="如：TR3+12位 / 无" /></a-form-item>
+        <a-form-item label="保修期" class="half"><a-input v-model:value="pform.warranty" placeholder="如：12 个月" /></a-form-item>
+        <a-form-item label="状态" class="half"><a-radio-group v-model:value="pform.status" button-style="solid"><a-radio-button value="在售">在售</a-radio-button><a-radio-button value="停售">停售</a-radio-button></a-radio-group></a-form-item>
+        <a-form-item label="可转售后" class="full"><a-switch v-model:checked="pform.aftersale" /> <span class="hint">开启后该产品工单可使用「转售后」</span></a-form-item>
+      </a-form>
+    </a-modal>
   </div>
 </template>
 
@@ -83,6 +147,10 @@ function todo(t: string) { message.info(`「${t}」（演示）`); }
 .cat-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-radius: 7px; cursor: pointer; font-size: 13px; color: #4b5563; }
 .cat-item:hover { background: #f9fafb; }
 .cat-item.on { background: #eff6ff; color: #1a6fff; font-weight: 600; }
+.prod-form { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
+.prod-form .full { grid-column: 1 / -1; }
+.prod-form :deep(.ant-form-item) { margin-bottom: 14px; }
+.hint { font-size: 12px; color: #9ca3af; margin-left: 8px; }
 .cnt { font-size: 12px; color: #9ca3af; }
 .cat-item.on .cnt { color: #1a6fff; }
 .mono { font-family: ui-monospace, monospace; font-size: 12px; color: #6b7280; }

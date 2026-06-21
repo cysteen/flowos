@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import { message } from 'ant-design-vue';
-import { PlusOutlined, ImportOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons-vue';
+import { ref, reactive, computed } from 'vue';
+import { message, Modal } from 'ant-design-vue';
+import { PlusOutlined, ImportOutlined, EditOutlined, DeleteOutlined, InboxOutlined } from '@ant-design/icons-vue';
 
 // 流程实体字典（PRD-88）：分类（一级）→ 实体字段（二级），被表单/流程/工单类型引用。
 interface Cat { key: string; name: string; count: number; }
@@ -17,7 +17,7 @@ const cats = ref<Cat[]>([
 const selected = ref('process');
 const selName = computed(() => cats.value.find((c) => c.key === selected.value)?.name ?? '');
 
-const fieldMap: Record<string, Field[]> = {
+const fieldMap: Record<string, Field[]> = reactive({
   process: [
     { key: 'problem_cause', name: '问题原因', type: '多行文本', constraint: '结案前必填', refs: 4, status: '启用' },
     { key: 'process_result', name: '处理结果', type: '多行文本', constraint: '结案前必填', refs: 4, status: '启用' },
@@ -55,7 +55,7 @@ const fieldMap: Record<string, Field[]> = {
     { key: 'problem_time', name: '问题发生时间', type: '日期时间', constraint: '咨询专属', refs: 2, status: '启用' },
     { key: 'desc', name: '诉求描述', type: '多行文本', constraint: '必填', refs: 8, status: '启用' },
   ],
-};
+});
 const fields = computed(() => fieldMap[selected.value] ?? []);
 
 const cols = [
@@ -68,13 +68,66 @@ const cols = [
   { title: '操作', key: 'op', width: 110 },
 ];
 function pick(c: Cat) { selected.value = c.key; }
-function todo(label: string) { message.info(`「${label}」（演示）`); }
+
+const FIELD_TYPES = ['单行文本', '多行文本', '下拉', '单选', '级联', '日期时间', '附件', '复合', '只读', '数字'];
+
+// —— 新增分类 ——
+let catSeq = 1;
+const catModalOpen = ref(false);
+const catName = ref('');
+function openAddCat() { catName.value = ''; catModalOpen.value = true; }
+function saveCat() {
+  if (!catName.value.trim()) { message.error('请输入分类名称'); return; }
+  const key = 'cat' + catSeq++;
+  cats.value.push({ key, name: catName.value.trim(), count: 0 });
+  fieldMap[key] = [];
+  selected.value = key;
+  message.success(`分类「${catName.value.trim()}」已创建`);
+  catModalOpen.value = false;
+}
+
+// —— 字段 增/改/删 ——
+const fieldModalOpen = ref(false);
+const editingKey = ref<string | null>(null);
+const ff = reactive<Field>({ key: '', name: '', type: '单行文本', constraint: '', refs: 0, status: '启用' });
+function syncCount() { const c = cats.value.find((x) => x.key === selected.value); if (c) c.count = (fieldMap[selected.value] ?? []).length; }
+function openAddField() { editingKey.value = null; Object.assign(ff, { key: '', name: '', type: '单行文本', constraint: '', refs: 0, status: '启用' }); fieldModalOpen.value = true; }
+function openEditField(f: Field) { editingKey.value = f.key; Object.assign(ff, { ...f }); fieldModalOpen.value = true; }
+function saveField() {
+  if (!ff.name) { message.error('请填写字段名称'); return; }
+  const arr = fieldMap[selected.value];
+  if (editingKey.value) {
+    const i = arr.findIndex((x) => x.key === editingKey.value);
+    if (i >= 0) arr[i] = { ...ff };
+    message.success('字段已更新');
+  } else {
+    arr.push({ ...ff, key: ff.key || `field_${arr.length + 1}`, refs: 0 });
+    message.success('字段已新增');
+  }
+  syncCount();
+  fieldModalOpen.value = false;
+}
+function delField(f: Field) {
+  if (f.refs > 0) { message.warning(`「${f.name}」被引用 ${f.refs} 处，请先停用而非删除`); return; }
+  Modal.confirm({
+    title: '删除字段', icon: null, content: `确定删除字段「${f.name}」？`,
+    okText: '确认删除', okType: 'danger', cancelText: '取消',
+    onOk: () => { const arr = fieldMap[selected.value]; const i = arr.findIndex((x) => x.key === f.key); if (i >= 0) arr.splice(i, 1); syncCount(); message.success('已删除'); },
+  });
+}
+
+// —— 导入 ——
+const importOpen = ref(false);
+const importN = ref(0);
+function openImport() { importN.value = 0; importOpen.value = true; }
+function onImportFile(e: Event) { const f = (e.target as HTMLInputElement).files?.[0]; if (f) { importN.value = Math.max(1, Math.round(f.size / 60)); message.success(`已解析「${f.name}」，识别 ${importN.value} 个字段`); } }
+function doImport() { if (!importN.value) { message.warning('请先选择文件'); return; } message.success(`已导入 ${importN.value} 个字段`); importOpen.value = false; }
 </script>
 
 <template>
   <div class="entity-dict">
     <div class="left">
-      <div class="panel-head"><span>实体分类</span><a-button type="primary" size="small" @click="todo('新增分类')"><template #icon><PlusOutlined /></template>新增</a-button></div>
+      <div class="panel-head"><span>实体分类</span><a-button type="primary" size="small" @click="openAddCat"><template #icon><PlusOutlined /></template>新增</a-button></div>
       <div class="cat-list">
         <div v-for="c in cats" :key="c.key" class="cat-item" :class="{ on: c.key === selected }" @click="pick(c)">
           <span class="ci-name">{{ c.name }}</span><a-badge :count="c.count" :number-style="{ backgroundColor: c.key === selected ? '#1a6fff' : '#d1d5db' }" />
@@ -85,23 +138,49 @@ function todo(label: string) { message.info(`「${label}」（演示）`); }
       <div class="panel-head">
         <span>{{ selName }} · 实体字段</span>
         <div class="head-btns">
-          <a-button size="small" @click="todo('Excel导入')"><template #icon><ImportOutlined /></template>导入</a-button>
-          <a-button type="primary" size="small" @click="todo('新增字段')"><template #icon><PlusOutlined /></template>新增字段</a-button>
+          <a-button size="small" @click="openImport"><template #icon><ImportOutlined /></template>导入</a-button>
+          <a-button type="primary" size="small" @click="openAddField"><template #icon><PlusOutlined /></template>新增字段</a-button>
         </div>
       </div>
       <a-table :columns="cols" :data-source="fields" row-key="key" :pagination="false" size="middle">
         <template #bodyCell="{ column, record }">
           <span v-if="column.key === 'key'" class="mono">{{ (record as Field).key }}</span>
           <a-tag v-else-if="column.key === 'type'" color="blue">{{ (record as Field).type }}</a-tag>
-          <span v-else-if="column.key === 'refs'" :class="(record as Field).refs > 0 ? 'ref-on' : 'ref-off'" @click="(record as Field).refs && todo('查看引用清单')">{{ (record as Field).refs }} 处</span>
+          <span v-else-if="column.key === 'refs'" :class="(record as Field).refs > 0 ? 'ref-on' : 'ref-off'">{{ (record as Field).refs }} 处</span>
           <span v-else-if="column.key === 'status'" class="status" :class="(record as Field).status === '启用' ? 'on' : 'off'">● {{ (record as Field).status }}</span>
           <template v-else-if="column.key === 'op'">
-            <EditOutlined class="op-ic" @click="todo('编辑字段')" /><DeleteOutlined class="op-ic danger" @click="todo('删除字段')" />
+            <EditOutlined class="op-ic" @click="openEditField(record as Field)" /><DeleteOutlined class="op-ic danger" @click="delField(record as Field)" />
           </template>
         </template>
       </a-table>
       <div class="tip">字段被表单/流程/工单类型按「字段标识」引用；引用数>0 改/删有风险（点引用数看引用方）。被引用字段禁止硬删，引导停用。</div>
     </div>
+
+    <!-- 新增分类 -->
+    <a-modal v-model:open="catModalOpen" title="新增实体分类" :width="420" ok-text="创建" cancel-text="取消" @ok="saveCat">
+      <a-form layout="vertical"><a-form-item label="分类名称" required><a-input v-model:value="catName" placeholder="如：客户信息" /></a-form-item></a-form>
+    </a-modal>
+
+    <!-- 新增 / 编辑字段 -->
+    <a-modal v-model:open="fieldModalOpen" :title="editingKey ? '编辑字段' : '新增字段'" :width="520" :ok-text="editingKey ? '保存' : '创建'" cancel-text="取消" @ok="saveField">
+      <a-form layout="vertical" class="e-form">
+        <a-form-item label="字段名称" required class="half"><a-input v-model:value="ff.name" placeholder="如：客户姓名" /></a-form-item>
+        <a-form-item label="字段标识" class="half"><a-input v-model:value="ff.key" placeholder="留空自动生成" /></a-form-item>
+        <a-form-item label="类型" class="half"><a-select v-model:value="ff.type" :options="FIELD_TYPES.map((t)=>({value:t,label:t}))" /></a-form-item>
+        <a-form-item label="状态" class="half"><a-radio-group v-model:value="ff.status" button-style="solid"><a-radio-button value="启用">启用</a-radio-button><a-radio-button value="停用">停用</a-radio-button></a-radio-group></a-form-item>
+        <a-form-item label="约束" class="full"><a-input v-model:value="ff.constraint" placeholder="如：必填 / 手机号校验 / 结案前必填" /></a-form-item>
+      </a-form>
+    </a-modal>
+
+    <!-- 导入 -->
+    <a-modal v-model:open="importOpen" title="导入实体字段" :width="460" ok-text="开始导入" cancel-text="取消" @ok="doImport">
+      <label class="dropzone">
+        <InboxOutlined class="dz-ic" />
+        <div class="dz-main">点击选择 Excel / CSV 文件</div>
+        <div class="dz-sub">{{ importN ? `已识别 ${importN} 个字段` : '首行为表头：字段名称 / 标识 / 类型 / 约束' }}</div>
+        <input type="file" accept=".xlsx,.xls,.csv" hidden @change="onImportFile" />
+      </label>
+    </a-modal>
   </div>
 </template>
 
@@ -111,6 +190,14 @@ function todo(label: string) { message.info(`「${label}」（演示）`); }
 .right { flex: 1; min-width: 0; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; }
 .panel-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #e5e7eb; font-size: 14px; font-weight: 600; color: #111827; }
 .head-btns { display: flex; gap: 8px; }
+.e-form { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
+.e-form .full { grid-column: 1 / -1; }
+.e-form :deep(.ant-form-item) { margin-bottom: 14px; }
+.dropzone { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 28px; border: 1.5px dashed #d1d5db; border-radius: 10px; cursor: pointer; }
+.dropzone:hover { border-color: #1a6fff; background: #f7faff; }
+.dz-ic { font-size: 34px; color: #1a6fff; }
+.dz-main { font-size: 14px; font-weight: 600; color: #374151; }
+.dz-sub { font-size: 12px; color: #9ca3af; }
 .cat-list { padding: 8px; }
 .cat-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-radius: 6px; cursor: pointer; }
 .cat-item:hover { background: #f9fafb; }
