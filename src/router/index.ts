@@ -23,6 +23,7 @@ function adminViewFor(key: string) {
   if (key === 'dicts') return () => import('@/views/admin/DictManageView.vue');
   if (key === 'entity-dict') return () => import('@/views/admin/EntityDictView.vue');
   if (key === 'ticket-types') return () => import('@/views/admin/TicketTypesView.vue');
+  if (key === 'form-templates' || key === 'flow-templates') return () => import('@/views/admin/TemplateLibraryView.vue');
   if (SLA_STUB_KEYS.has(key)) return () => import('@/views/admin/SlaEngineView.vue');
   if (RULES_STUB_KEYS.has(key)) return () => import('@/views/admin/RulesEngineView.vue');
   return () => import('@/views/admin/AdminModuleView.vue');
@@ -140,6 +141,12 @@ const routes: RouteRecordRaw[] = [
         name: 'admin-ticket-type-designer',
         component: () => import('@/views/admin/TicketTypeDesignerView.vue'),
         meta: { adminOnly: true, title: '工单类型设计器', group: '工单配置' },
+      },
+      {
+        path: 'templates/:kind/:id/designer',
+        name: 'admin-template-designer',
+        component: () => import('@/views/admin/TemplateDesignerView.vue'),
+        meta: { adminOnly: true, title: '模板设计器', group: '模板库' },
       },
       ...adminLegacyRoutes,
       ...adminModuleRoutes,
