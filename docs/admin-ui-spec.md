@@ -46,6 +46,13 @@
 - 筛选条：左筛选（segmented / select / search）+ 右主操作；统一 `gap: 12px`。
 - 空态统一 `<a-empty>`；列表无数据给一句引导文案。
 
+## 4b. 键值对（key-value）展示与编辑
+- **统一左右分布、每行一组**：key 在左、value 在右，**禁止 label-above-value 上下堆叠**。
+- **只读详情/信息面板**：优先 `a-descriptions`(bordered, size small, 标签底 `#f9fafb`)；或自定义左右行 `.kv-row`（`display:flex; justify-content:space-between; align-items:baseline`，key `color:#6b7280` 左、value `color:#374151` 右）。每组独占一行。
+- **示例（详情面板）**：组类型 ………… 业务班组 / 负责人 ………… 王芳，各占一行，左右对齐。
+- 行内编辑态同样遵循「label 左 · 控件右 · 每行一组」；纯创建/编辑表单弹窗的字段排布见 §2/§4（可纵向或两列）。
+- **例外**：概览/统计指标块（数字强调，如 KPI 卡、用量条、租户概览横幅）不属本条，可用上下/网格的"标签小 + 数字大"形态。
+
 ## 5. 弹窗（Modal）/ 抽屉（Drawer）
 - 详情类用 `a-descriptions`（bordered, size small, 标签底 `#f9fafb`）。
 - 分区标题统一"左 3px 蓝条 + 13px/600"样式。

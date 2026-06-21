@@ -256,9 +256,10 @@ function removeMember(m: Member) {
 
 .org-detail { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 18px 20px; }
 .od-title { font-size: 16px; font-weight: 600; color: #111827; display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
-.od-meta { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
-.cell { display: flex; flex-direction: column; gap: 4px; }
-.cell label { font-size: 12px; color: #9ca3af; } .cell span { font-size: 14px; color: #374151; }
+.od-meta { display: flex; flex-direction: column; }
+.cell { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px dashed #f0f0f0; }
+.cell:last-child { border-bottom: none; }
+.cell label { font-size: 13px; color: #6b7280; flex: none; } .cell span { font-size: 13px; color: #374151; text-align: right; }
 .od-tip { margin-top: 16px; padding-top: 14px; border-top: 1px solid #f3f4f6; font-size: 12px; color: #9ca3af; }
 .mem-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; }
 .mn { display: flex; align-items: center; gap: 8px; }

@@ -214,12 +214,12 @@ function removeMember(m: Member) {
 .gi-name { font-size: 13px; font-weight: 600; color: #111827; display: flex; align-items: center; gap: 6px; }
 .gi-tag { transform: scale(0.8); }
 .gi-sub { font-size: 12px; color: #9ca3af; margin-top: 2px; }
-.gd-body { padding: 18px 20px; }
-.gd-meta { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px 24px; }
-.gd-cell { display: flex; flex-direction: column; gap: 5px; }
-.gd-cell.full { grid-column: 1 / -1; }
-.gd-cell label { font-size: 12px; color: #9ca3af; display: flex; align-items: center; gap: 4px; }
-.gd-cell span { font-size: 13px; color: #374151; }
+.gd-body { padding: 6px 20px 14px; }
+.gd-meta { display: flex; flex-direction: column; }
+.gd-cell { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 11px 0; border-bottom: 1px dashed #f0f0f0; }
+.gd-cell:last-child { border-bottom: none; }
+.gd-cell label { font-size: 13px; color: #6b7280; flex: none; display: flex; align-items: center; gap: 5px; }
+.gd-cell span { font-size: 13px; color: #374151; text-align: right; min-width: 0; }
 .mem-name { display: flex; align-items: center; gap: 8px; }
 .g-form { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
 .g-form .full { grid-column: 1 / -1; }
