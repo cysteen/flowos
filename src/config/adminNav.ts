@@ -91,13 +91,13 @@ export const ADMIN_GROUPS: AdminNavGroup[] = [
   {
     key: 'business', label: '业务管理', icon: DatabaseOutlined, scope: 'ops',
     items: [
-      // D2：渠道/应用归运营
-      { key: 'channels', label: '渠道管理', prd: 'PRD-53', v1Ref: 'A/A8-tenant-admin.html#channels' },
-      { key: 'apps', label: '应用管理', prd: 'PRD-54', v1Ref: 'A/A8-tenant-admin.html#apps' },
-      { key: 'customers', label: '客户管理', prd: 'PRD-87' },
-      { key: 'products', label: '产品管理', prd: 'PRD-85' },
       // D3：BPM 用户分组与服务班组(59b)合并为单一「用户分组」，归业务管理
       { key: 'teams', label: '用户分组', prd: 'PRD-70' },
+      // D2：渠道/应用归运营
+      { key: 'apps', label: '应用管理', prd: 'PRD-54', v1Ref: 'A/A8-tenant-admin.html#apps' },
+      { key: 'channels', label: '渠道管理', prd: 'PRD-53', v1Ref: 'A/A8-tenant-admin.html#channels' },
+      { key: 'customers', label: '客户管理', prd: 'PRD-87' },
+      { key: 'products', label: '产品管理', prd: 'PRD-85' },
       { key: 'dispatch', label: '智能分派', prd: 'PRD-90', v1Ref: 'D/D1-dispatch.html' },
     ],
   },

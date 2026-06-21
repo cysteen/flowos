@@ -17,30 +17,15 @@ function makePageTab(label, active = false) {
   const tabId = uid('pt');
   const textId = uid('tx');
   const closeId = uid('cl');
-  return {
+  const tab = {
     type: 'frame',
     id: tabId,
     name: active ? 'PageTab-active' : 'PageTab-inactive',
     width: 160,
-    height: 28,
-    fill: active ? '#1A6FFF' : '#FFFFFF',
-    cornerRadius: [6, 6, 0, 0],
-    effect: active
-      ? {
-          type: 'shadow',
-          shadowType: 'outer',
-          color: '#1A6FFF33',
-          offset: { x: 0, y: 2 },
-          blur: 4,
-        }
-      : {
-          type: 'shadow',
-          shadowType: 'outer',
-          color: '#0000000A',
-          offset: { x: 0, y: 1 },
-          blur: 2,
-        },
-    padding: [6, 8, 6, 12],
+    height: 32,
+    cornerRadius: 8,
+    gap: 8,
+    padding: [0, 10, 0, 12],
     justifyContent: 'space_between',
     alignItems: 'center',
     children: [
@@ -48,28 +33,29 @@ function makePageTab(label, active = false) {
         type: 'text',
         id: textId,
         name: 'TabText',
-        fill: active ? '#FFFFFF' : '#111827',
+        fill: active ? '#202124' : '#5F6368',
         textGrowth: 'fixed-width',
         width: 'fill_container',
         content: label,
-        textAlign: 'center',
+        textAlign: 'left',
         fontFamily: 'Inter',
         fontSize: 13,
-        fontWeight: active ? '600' : '500',
-        letterSpacing: 1,
+        fontWeight: active ? '500' : '400',
       },
       {
         type: 'text',
         id: closeId,
         name: 'CloseIcon',
-        fill: active ? '#FFFFFFCC' : '#11182780',
+        fill: '#5F636899',
         content: '×',
         fontFamily: 'Inter',
-        fontSize: 16,
+        fontSize: 14,
         fontWeight: 'normal',
       },
     ],
   };
+  if (active) tab.fill = '#D3E3FD';
+  return tab;
 }
 
 function makeTabsBar(tabs, barId = 'wsTabsBar') {
@@ -79,12 +65,10 @@ function makeTabsBar(tabs, barId = 'wsTabsBar') {
     name: 'PageTabs',
     width: 'fill_container',
     height: 40,
-    fill: '#F4F6FA',
-    stroke: '#E5E7EB',
-    strokeWidth: { bottom: 1 },
-    gap: 4,
-    padding: [0, 16],
-    alignItems: 'end',
+    fill: '#EEF1F6',
+    gap: 6,
+    padding: [0, 8],
+    alignItems: 'center',
     children: tabs.map(({ label, active }) => makePageTab(label, active)),
   };
 }
@@ -242,7 +226,7 @@ function addPageTabsComponentRef(root) {
     width: 1240,
     height: 0,
     content:
-      '【动态 PageTabs · 运行工作区】\n● 位置：WorkspaceShell 侧栏右侧、ContentSlot 上方（h40，bg #F4F6FA）\n● 规则：全动态 Tab，均可 × 关闭；侧栏点击已有页激活、否则新开；关完回默认页\n● 标题：菜单页=导航名；工单操作页=工单标题（非工单号）；列表页=「工单列表」\n● 样式：宽 160 · 未选白底 #111827 · 选中 #1A6FFF 白字 · 右侧 ×\n● 实现：WorkspacePageTabs.vue + workspaceTabs store（与 Admin 一致）',
+      '【动态 PageTabs · 运行工作区】\n● 位置：WorkspaceShell 侧栏右侧、ContentSlot 上方（h40，bg #EEF1F6）\n● 规则：全动态 Tab，均可 × 关闭；侧栏点击已有页激活、否则新开；关完回默认页\n● 标题：菜单页=导航名；工单操作页=工单标题（非工单号）；列表页=「工单列表」\n● 样式：Chrome 胶囊 Tab · 宽 160 · 未选透明底 #5F6368 · 选中 #D3E3FD 底 #202124 字 · 圆角 8px · 右侧 ×\n● 实现：WorkspacePageTabs.vue + workspaceTabs store（与 Admin 一致）',
   };
 
   root.children.push(refFrame, specNote);

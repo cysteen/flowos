@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, reactive, computed } from 'vue';
 import { message } from 'ant-design-vue';
-import { PlusOutlined, UserOutlined, PhoneOutlined, ImportOutlined } from '@ant-design/icons-vue';
+import { PlusOutlined, UserOutlined, PhoneOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons-vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { stdPagination } from '@/config/adminUi';
 
@@ -48,6 +48,41 @@ const contacts = [
   { time: '2026-05-30 14:33', channel: '在线', summary: '咨询保修政策' },
 ];
 function openDetail(c: Customer) { current.value = c; drawerOpen.value = true; }
+
+// —— 新建客户（真实写入列表）——
+let seq = 1006;
+const createOpen = ref(false);
+const cform = reactive({ name: '', phone: '', level: '普通' as Customer['level'], region: '', tags: '' });
+function openCreate() {
+  Object.assign(cform, { name: '', phone: '', level: '普通', region: '', tags: '' });
+  createOpen.value = true;
+}
+function saveCreate() {
+  if (!cform.name || !cform.phone) { message.error('请填写客户姓名与联系电话'); return; }
+  const today = '2026-06-21';
+  customers.value.unshift({
+    id: 'C' + seq++, name: cform.name, phone: cform.phone, level: cform.level,
+    tags: cform.tags ? cform.tags.split(/[,，]/).map((s) => s.trim()).filter(Boolean) : [],
+    region: cform.region, tickets: 0, lastContact: today, firstSeen: today,
+  });
+  message.success(`客户「${cform.name}」已建档`);
+  createOpen.value = false;
+}
+
+// —— 导入客户（真实弹窗 + 模板下载占位）——
+const importOpen = ref(false);
+const importCount = ref(0);
+function openImport() { importCount.value = 0; importOpen.value = true; }
+function onImportFile(e: Event) {
+  const f = (e.target as HTMLInputElement).files?.[0];
+  if (f) { importCount.value = Math.max(1, Math.round(f.size / 80)); message.success(`已解析文件「${f.name}」，识别 ${importCount.value} 条`); }
+}
+function doImport() {
+  if (!importCount.value) { message.warning('请先选择要导入的 Excel/CSV 文件'); return; }
+  message.success(`已导入 ${importCount.value} 条客户`);
+  importOpen.value = false;
+}
+
 function todo(t: string) { message.info(`「${t}」（演示）`); }
 </script>
 
@@ -55,8 +90,8 @@ function todo(t: string) { message.info(`「${t}」（演示）`); }
   <div class="customer-manage">
     <AdminPageHeader title="客户管理" subtitle="维护客户档案、等级与标签，支撑工单受理时的客户 360 视图">
       <template #actions>
-        <a-button @click="todo('导入客户')"><template #icon><ImportOutlined /></template>导入</a-button>
-        <a-button type="primary" @click="todo('新建客户')"><template #icon><PlusOutlined /></template>新建客户</a-button>
+        <a-button @click="openImport"><template #icon><ImportOutlined /></template>导入</a-button>
+        <a-button type="primary" @click="openCreate"><template #icon><PlusOutlined /></template>新建客户</a-button>
       </template>
     </AdminPageHeader>
     <div class="bar">
@@ -115,6 +150,30 @@ function todo(t: string) { message.info(`「${t}」（演示）`); }
         </a-tabs>
       </template>
     </a-drawer>
+
+    <!-- 新建客户 -->
+    <a-modal v-model:open="createOpen" title="新建客户" :width="520" ok-text="建档" cancel-text="取消" @ok="saveCreate">
+      <a-form layout="vertical" class="create-form">
+        <a-form-item label="客户姓名" required class="half"><a-input v-model:value="cform.name" placeholder="请输入" /></a-form-item>
+        <a-form-item label="联系电话" required class="half"><a-input v-model:value="cform.phone" placeholder="请输入" /></a-form-item>
+        <a-form-item label="客户等级" class="half"><a-select v-model:value="cform.level" :options="['VIP','金牌','普通'].map((v)=>({value:v,label:v}))" /></a-form-item>
+        <a-form-item label="所在地区" class="half"><a-input v-model:value="cform.region" placeholder="如：上海" /></a-form-item>
+        <a-form-item label="标签" class="full"><a-input v-model:value="cform.tags" placeholder="多个标签用逗号分隔，如：高价值, 老客户" /></a-form-item>
+      </a-form>
+    </a-modal>
+
+    <!-- 导入客户 -->
+    <a-modal v-model:open="importOpen" title="导入客户" :width="480" ok-text="开始导入" cancel-text="取消" @ok="doImport">
+      <div class="import-box">
+        <label class="dropzone">
+          <InboxOutlined class="dz-ic" />
+          <div class="dz-main">点击选择 Excel / CSV 文件</div>
+          <div class="dz-sub">{{ importCount ? `已识别 ${importCount} 条客户` : '支持 .xlsx / .csv，首行为表头' }}</div>
+          <input type="file" accept=".xlsx,.xls,.csv" hidden @change="onImportFile" />
+        </label>
+        <a-button type="link" size="small" @click="todo('下载导入模板')">下载导入模板</a-button>
+      </div>
+    </a-modal>
   </div>
 </template>
 
@@ -126,6 +185,15 @@ function todo(t: string) { message.info(`「${t}」（演示）`); }
 .cname { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .cname:hover b { color: #1a6fff; }
 .cid { font-size: 11px; color: #9ca3af; font-family: ui-monospace, monospace; }
+.create-form { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
+.create-form .full { grid-column: 1 / -1; }
+.create-form :deep(.ant-form-item) { margin-bottom: 14px; }
+.import-box { text-align: center; }
+.dropzone { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 28px; border: 1.5px dashed #d1d5db; border-radius: 10px; cursor: pointer; transition: all 0.15s; }
+.dropzone:hover { border-color: #1a6fff; background: #f7faff; }
+.dz-ic { font-size: 34px; color: #1a6fff; }
+.dz-main { font-size: 14px; font-weight: 600; color: #374151; }
+.dz-sub { font-size: 12px; color: #9ca3af; }
 .muted { color: #d1d5db; }
 .d-head { display: flex; align-items: center; gap: 16px; padding-bottom: 16px; border-bottom: 1px solid #f0f0f0; margin-bottom: 8px; }
 .dh-body { flex: 1; }

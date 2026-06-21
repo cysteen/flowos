@@ -1,0 +1,87 @@
+/* Chrome 胶囊 PageTabs — 全局样式，避免 scoped hash 与 HMR 不同步 */
+#workspacePageTabs.tabs-bar,
+#pageTabs.tabs-bar {
+  height: 40px;
+  background: #eef1f6;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  gap: 6px;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+#workspacePageTabs .page-tab,
+#pageTabs .page-tab {
+  width: 160px;
+  height: 32px;
+  padding: 0 10px 0 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  color: #5f6368;
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 0.15s, color 0.15s;
+  font-weight: 400;
+  box-shadow: none;
+  flex-shrink: 0;
+  font-family: inherit;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+#workspacePageTabs .page-tab:hover,
+#pageTabs .page-tab:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: #202124;
+}
+
+#workspacePageTabs .page-tab.active,
+#pageTabs .page-tab.active {
+  background: #d3e3fd;
+  color: #202124;
+  font-weight: 500;
+}
+
+#workspacePageTabs .page-tab-text,
+#pageTabs .page-tab-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  text-align: left;
+}
+
+#workspacePageTabs .page-tab-close,
+#pageTabs .page-tab-close {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  font-size: 14px;
+  line-height: 1;
+  flex-shrink: 0;
+  border-radius: 50%;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+#workspacePageTabs .page-tab:hover .page-tab-close,
+#workspacePageTabs .page-tab.active .page-tab-close,
+#pageTabs .page-tab:hover .page-tab-close,
+#pageTabs .page-tab.active .page-tab-close {
+  opacity: 0.55;
+}
+
+#workspacePageTabs .page-tab-close:hover,
+#pageTabs .page-tab-close:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.1);
+}

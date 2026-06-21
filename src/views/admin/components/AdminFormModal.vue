@@ -30,7 +30,17 @@ watch(
 function defaultVal(f: FieldDef): unknown {
   if (f.type === 'multiselect') return [];
   if (f.type === 'radio' && f.options?.length) return f.options[0];
+  if (isColor(f)) return '#1A6FFF';
   return '';
+}
+
+// 业务增强：颜色字段（背景色/图标颜色）渲染色板 + 取色器
+function isColor(f: FieldDef): boolean {
+  return /color|颜色|色/.test(f.key) || /颜色|背景色/.test(f.label);
+}
+// 长字段（描述/多选）独占整行，其余两列排布 —— 让信息分布更合理
+function isFull(f: FieldDef): boolean {
+  return f.type === 'textarea' || f.type === 'multiselect';
 }
 
 const submitting = ref(false);
@@ -62,7 +72,7 @@ function onCancel() {
   <a-modal
     :open="open"
     :title="title"
-    :width="560"
+    :width="600"
     :confirm-loading="submitting"
     ok-text="确定"
     cancel-text="取消"
@@ -70,11 +80,24 @@ function onCancel() {
     @cancel="onCancel"
   >
     <a-form layout="vertical" class="admin-form">
-      <a-form-item v-for="f in fields" :key="f.key" :validate-status="errors[f.key] ? 'error' : ''">
+      <a-form-item
+        v-for="f in fields"
+        :key="f.key"
+        class="form-cell"
+        :class="{ full: isFull(f) }"
+        :validate-status="errors[f.key] ? 'error' : ''"
+      >
         <template #label>
           <span v-if="f.required" class="req">*</span>{{ f.label }}
         </template>
-        <a-input v-if="f.type === 'text'" v-model:value="form[f.key] as string" :placeholder="f.placeholder || '请输入'" allow-clear />
+
+        <!-- 颜色字段：色板 + hex 输入 -->
+        <div v-if="isColor(f)" class="color-field">
+          <input type="color" class="color-swatch" :value="(form[f.key] as string) || '#1A6FFF'" @input="form[f.key] = ($event.target as HTMLInputElement).value" />
+          <a-input v-model:value="form[f.key] as string" placeholder="#1A6FFF" allow-clear />
+        </div>
+
+        <a-input v-else-if="f.type === 'text'" v-model:value="form[f.key] as string" :placeholder="f.placeholder || '请输入'" allow-clear />
         <a-input-password v-else-if="f.type === 'password'" v-model:value="form[f.key] as string" :placeholder="f.placeholder || '请输入'" />
         <a-textarea v-else-if="f.type === 'textarea'" v-model:value="form[f.key] as string" :rows="3" :placeholder="f.placeholder || '请输入'" />
         <a-input-number v-else-if="f.type === 'number'" v-model:value="form[f.key] as number" style="width: 100%" />
@@ -101,6 +124,16 @@ function onCancel() {
 </template>
 
 <style scoped>
+.admin-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 18px;
+  max-height: 62vh;
+  overflow-y: auto;
+  padding: 4px 4px 0;
+}
+.form-cell { margin-bottom: 14px; }
+.form-cell.full { grid-column: 1 / -1; }
 .req {
   color: #ef4444;
   margin-right: 2px;
@@ -110,9 +143,11 @@ function onCancel() {
   font-size: 12px;
   color: #9ca3af;
 }
-.admin-form {
-  max-height: 60vh;
-  overflow-y: auto;
-  padding-right: 4px;
+.color-field { display: flex; align-items: center; gap: 10px; }
+.color-swatch {
+  width: 34px; height: 32px; flex: none; padding: 0;
+  border: 1px solid #d9d9d9; border-radius: 6px; background: none; cursor: pointer;
 }
+.color-swatch::-webkit-color-swatch-wrapper { padding: 3px; }
+.color-swatch::-webkit-color-swatch { border: none; border-radius: 4px; }
 </style>
