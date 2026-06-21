@@ -121,7 +121,7 @@ function saveModal() {
           <div class="bar"><span class="tip">短信模板需运营商审核后方可发送</span><a-button type="primary" @click="openCreate('smsTpl')"><template #icon><PlusOutlined /></template>新增模板</a-button></div>
           <a-table :columns="[{title:'模板编码',dataIndex:'code',key:'code',width:170},{title:'名称',dataIndex:'name',width:140},{title:'内容',dataIndex:'content'},{title:'状态',dataIndex:'status',key:'status',width:90},{title:'操作',key:'op',width:90}]" :data-source="smsTpls" row-key="id" :pagination="false" size="middle">
             <template #bodyCell="{ column, record }">
-              <code v-if="column.key === 'code'" class="mono">{{ record.code }}</code>
+              <span v-if="column.key === 'code'">{{ record.code }}</span>
               <a-tag v-else-if="column.key === 'status'" :color="AUDIT_TONE[record.status]">{{ record.status }}</a-tag>
               <template v-else-if="column.key === 'op'"><EditOutlined class="op-ic" @click="openEdit('smsTpl', record)" /><DeleteOutlined class="op-ic danger" @click="delRow(smsTpls, record.id)" /></template>
             </template>
@@ -147,7 +147,7 @@ function saveModal() {
           <div class="bar"><span class="tip">支持 HTML 富文本邮件模板</span><a-button type="primary" @click="openCreate('mailTpl')"><template #icon><PlusOutlined /></template>新增模板</a-button></div>
           <a-table :columns="[{title:'模板编码',dataIndex:'code',key:'code',width:200},{title:'名称',dataIndex:'name',width:160},{title:'邮件主题',dataIndex:'subject'},{title:'状态',dataIndex:'status',key:'status',width:90}]" :data-source="mailTpls" row-key="id" :pagination="false" size="middle">
             <template #bodyCell="{ column, record }">
-              <code v-if="column.key === 'code'" class="mono">{{ record.code }}</code>
+              <span v-if="column.key === 'code'">{{ record.code }}</span>
               <a-tag v-else-if="column.key === 'status'" :color="AUDIT_TONE[record.status]">{{ record.status }}</a-tag>
             </template>
           </a-table>
@@ -166,7 +166,7 @@ function saveModal() {
           <div class="bar"><span class="tip">系统内通知模板（工单指派、@提及、审批提醒等）</span><a-button type="primary" @click="openCreate('inTpl')"><template #icon><PlusOutlined /></template>新增模板</a-button></div>
           <a-table :columns="[{title:'模板编码',dataIndex:'code',key:'code',width:170},{title:'名称',dataIndex:'name',width:140},{title:'内容',dataIndex:'content'},{title:'状态',dataIndex:'status',key:'status',width:90}]" :data-source="inTpls" row-key="id" :pagination="false" size="middle">
             <template #bodyCell="{ column, record }">
-              <code v-if="column.key === 'code'" class="mono">{{ record.code }}</code>
+              <span v-if="column.key === 'code'">{{ record.code }}</span>
               <a-tag v-else-if="column.key === 'status'" :color="AUDIT_TONE[record.status]">{{ record.status }}</a-tag>
             </template>
           </a-table>
@@ -210,7 +210,6 @@ function saveModal() {
 .msg-center { padding: 8px 24px 24px; }
 .bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
 .tip { font-size: 13px; color: #6b7280; }
-.mono { font-family: ui-monospace, monospace; font-size: 12px; color: #0550ae; }
 .op-ic { color: #6b7280; cursor: pointer; margin-right: 10px; } .op-ic.danger { color: #ef4444; } .op-ic:hover { opacity: 0.7; }
 :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; }
 </style>

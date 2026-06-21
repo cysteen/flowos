@@ -189,24 +189,33 @@ function downloadSdk(s: { lang: string; ver: string }) { message.success(`已开
 
 <template>
   <div class="connector-hub">
+    <div class="hub-panel">
     <a-tabs v-model:activeKey="activeTab">
       <!-- 连接器 -->
       <a-tab-pane key="connectors" tab="连接器">
         <div class="bar"><span class="tip">已接入 {{ connectors.length }} 个外部系统</span><a-button type="primary" @click="openAddConn"><template #icon><PlusOutlined /></template>新增连接器</a-button></div>
         <div class="conn-grid">
-          <div v-for="c in connectors" :key="c.id" class="conn-card">
-            <div class="cc-head">
+          <article v-for="c in connectors" :key="c.id" class="conn-card">
+            <span class="cc-accent" :style="{ background: ST_MAP[c.status].tone }" aria-hidden="true" />
+            <header class="cc-head">
               <span class="cc-emoji">{{ c.icon }}</span>
-              <div class="cc-meta"><div class="cc-name">{{ c.name }}</div><a-tag>{{ c.type }}</a-tag></div>
-              <span class="cc-st" :style="{ color: ST_MAP[c.status].tone }"><component :is="ST_MAP[c.status].icon" /> {{ ST_MAP[c.status].label }}</span>
-            </div>
-            <div class="cc-sync">最近同步：{{ c.lastSync }}</div>
-            <div class="cc-acts">
-              <a-button size="small" @click="testConn(c)">测试连接</a-button>
-              <a-button size="small" @click="openConnDetail(c)">配置</a-button>
-              <a-button size="small" @click="openConnDetail(c)">日志</a-button>
-            </div>
-          </div>
+              <div class="cc-meta">
+                <div class="cc-name">{{ c.name }}</div>
+                <span class="cc-type">{{ c.type }}</span>
+              </div>
+              <span class="cc-status" :style="{ color: ST_MAP[c.status].tone, background: ST_MAP[c.status].tone + '14' }">
+                <span class="cc-dot" :style="{ background: ST_MAP[c.status].tone }" />{{ ST_MAP[c.status].label }}
+              </span>
+            </header>
+            <div class="cc-sync">最近同步 · {{ c.lastSync }}</div>
+            <footer class="cc-foot">
+              <a-button type="primary" ghost size="small" @click="testConn(c)">测试连接</a-button>
+              <div class="cc-links">
+                <a-button type="link" size="small" @click="openConnDetail(c)">配置</a-button>
+                <a-button type="link" size="small" @click="openConnDetail(c)">日志</a-button>
+              </div>
+            </footer>
+          </article>
         </div>
         <div class="log-block">
           <div class="lb-title">同步日志</div>
@@ -296,6 +305,7 @@ function downloadSdk(s: { lang: string; ver: string }) { message.success(`已开
         </div>
       </a-tab-pane>
     </a-tabs>
+    </div>
 
     <!-- 新增连接器 -->
     <a-modal v-model:open="connModalOpen" title="新增连接器" :width="480" ok-text="创建" cancel-text="取消" @ok="saveConn">
@@ -351,17 +361,24 @@ function downloadSdk(s: { lang: string; ver: string }) { message.success(`已开
 </template>
 
 <style scoped>
-.connector-hub { padding: 8px 24px 24px; }
+.connector-hub { padding: 16px 20px 20px; background: var(--flowos-content-bg, #f9fafb); min-height: 100%; }
+.hub-panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 24px 24px; }
 .bar { display: flex; align-items: center; justify-content: space-between; margin: 4px 0 16px; }
 .tip { font-size: 13px; color: #6b7280; }
-.conn-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
-.conn-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px; }
+.conn-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+.conn-card { position: relative; display: flex; flex-direction: column; background: #fff; border: 1px solid #eef0f3; border-radius: 10px; padding: 16px 16px 12px; overflow: hidden; transition: border-color 0.15s, box-shadow 0.15s; }
+.conn-card:hover { border-color: #e0e4ea; box-shadow: 0 2px 8px rgba(15,23,42,0.05); }
+.cc-accent { position: absolute; top: 0; left: 0; width: 100%; height: 3px; }
 .cc-head { display: flex; align-items: center; gap: 12px; }
-.cc-emoji { font-size: 28px; }
-.cc-meta { flex: 1; } .cc-name { font-size: 14px; font-weight: 600; color: #111827; }
-.cc-st { font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 4px; }
-.cc-sync { font-size: 12px; color: #9ca3af; margin: 12px 0; }
-.cc-acts { display: flex; gap: 8px; }
+.cc-emoji { width: 40px; height: 40px; flex: none; display: flex; align-items: center; justify-content: center; font-size: 22px; background: #f7f8fa; border-radius: 10px; }
+.cc-meta { flex: 1; min-width: 0; }
+.cc-name { font-size: 14px; font-weight: 600; color: #111827; }
+.cc-type { font-size: 12px; color: #9ca3af; }
+.cc-status { flex: none; display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; }
+.cc-dot { width: 6px; height: 6px; border-radius: 50%; }
+.cc-sync { font-size: 12px; color: #9ca3af; margin: 14px 0 12px; padding-bottom: 12px; border-bottom: 1px dashed #eef0f2; }
+.cc-foot { display: flex; align-items: center; justify-content: space-between; }
+.cc-links { display: flex; gap: 2px; }
 .log-block { margin-top: 24px; }
 .lb-title { font-size: 14px; font-weight: 600; color: #111827; margin-bottom: 12px; }
 .mono { font-family: ui-monospace, monospace; font-size: 12px; }

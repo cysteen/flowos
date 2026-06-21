@@ -90,7 +90,7 @@ function doImport() { if (!importN.value) { message.warning('请先选择 Excel/
         <span v-if="column.key === 'name'" class="un">
           <a-avatar size="small"><template #icon><UserOutlined /></template></a-avatar><b>{{ record.name }}</b><span class="uid">{{ record.id }}</span>
         </span>
-        <span v-else-if="column.key === 'account'" class="mono">{{ record.account }}</span>
+        <span v-else-if="column.key === 'account'" class="acct">{{ record.account }}</span>
         <template v-else-if="column.key === 'roles'">
           <a-tag v-for="r in record.roles" :key="r" color="blue">{{ r }}</a-tag>
         </template>
@@ -140,7 +140,7 @@ function doImport() { if (!importN.value) { message.warning('请先选择 Excel/
 .dz-sub { font-size: 12px; color: #9ca3af; }
 .btns { display: flex; gap: 10px; }
 .un { display: flex; align-items: center; gap: 8px; }
-.uid { font-size: 11px; color: #9ca3af; font-family: ui-monospace, monospace; }
-.mono { font-family: ui-monospace, monospace; font-size: 12px; color: #6b7280; }
+.uid { font-size: 12px; color: #9ca3af; font-weight: 400; }
+.acct { color: #374151; }
 :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; }
 </style>

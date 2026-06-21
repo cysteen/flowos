@@ -75,7 +75,7 @@ function delPost(p: Post) {
     </AdminPageHeader>
     <a-table :columns="cols" :data-source="posts" row-key="id" :pagination="stdPagination()" size="middle">
       <template #bodyCell="{ column, record }">
-        <span v-if="column.key === 'code'" class="mono">{{ record.code }}</span>
+        <span v-if="column.key === 'code'">{{ record.code }}</span>
         <a-tag v-else-if="column.key === 'level'" color="geekblue">{{ record.level }}</a-tag>
         <template v-else-if="column.key === 'roles'">
           <a-tag v-for="r in record.roles" :key="r" color="blue">{{ r }}</a-tag>
@@ -107,7 +107,6 @@ function delPost(p: Post) {
 .post-manage { padding: 16px 24px; }
 .bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
 .tip { font-size: 13px; color: #6b7280; }
-.mono { font-family: ui-monospace, monospace; font-size: 12px; color: #6b7280; }
 .muted { color: #d1d5db; }
 .post-form { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
 .post-form .full { grid-column: 1 / -1; }

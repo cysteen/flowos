@@ -141,26 +141,40 @@ onBeforeUnmount(() => revokeLogoUrl(profile.logoUrl));
           <a-form-item label="默认语言"><a-select v-model:value="profile.lang" :options="LANGS.map((v) => ({ value: v, label: v }))" /></a-form-item>
         </div>
         <a-form-item label="企业 Logo">
-          <div class="logo-row">
-            <div class="logo-preview" :class="{ filled: !!profile.logoUrl }">
+          <div
+            class="logo-uploader"
+            role="button"
+            tabindex="0"
+            @click="triggerLogoUpload"
+            @keydown.enter="triggerLogoUpload"
+            @keydown.space.prevent="triggerLogoUpload"
+          >
+            <input
+              ref="fileInputRef"
+              type="file"
+              class="logo-file-input"
+              accept=".png,.jpg,.jpeg,.svg,image/png,image/jpeg,image/svg+xml"
+              @change="onLogoFileChange"
+            />
+
+            <div class="logo-thumb" :class="{ filled: !!profile.logoUrl }">
               <img v-if="profile.logoUrl" :src="profile.logoUrl" alt="企业 Logo" class="logo-img" />
-              <span v-else>{{ profile.logoText }}</span>
+              <UploadOutlined v-else class="logo-placeholder-ic" />
             </div>
-            <div class="logo-actions">
-              <input
-                ref="fileInputRef"
-                type="file"
-                class="logo-file-input"
-                accept=".png,.jpg,.jpeg,.svg,image/png,image/jpeg,image/svg+xml"
-                @change="onLogoFileChange"
-              />
-              <a-button @click="triggerLogoUpload">
-                <template #icon><UploadOutlined /></template>
-                {{ profile.logoUrl ? '更换' : '上传' }}
-              </a-button>
-              <a-button v-if="profile.logoUrl" @click="removeLogo">移除</a-button>
-              <span class="ro-tip">png/jpg/svg · ≤1MB · 建议正方形</span>
+
+            <div class="logo-body">
+              <div class="logo-title">{{ profile.logoUrl ? '更换企业 Logo' : '上传企业 Logo' }}</div>
+              <div class="logo-hint">PNG、JPG 或 SVG · 不超过 1MB · 建议 1:1 正方形</div>
             </div>
+
+            <button
+              v-if="profile.logoUrl"
+              type="button"
+              class="logo-remove"
+              @click.stop="removeLogo"
+            >
+              移除
+            </button>
           </div>
         </a-form-item>
       </a-form>
@@ -212,12 +226,101 @@ onBeforeUnmount(() => revokeLogoUrl(profile.logoUrl));
 .grid2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 24px; }
 .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 24px; }
 .card :deep(.ant-form-item) { margin-bottom: 14px; }
-.ro-tip { font-size: 12px; color: #9ca3af; }
-.logo-row { display: flex; align-items: flex-start; gap: 14px; }
-.logo-preview { width: 52px; height: 52px; flex: none; border-radius: 10px; background: #1a6fff; color: #fff; font-weight: 800; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid #e5e7eb; }
-.logo-preview.filled { background: #fff; }
-.logo-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-height: 52px; }
+.logo-uploader {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  max-width: 480px;
+  padding: 14px 16px;
+  border: 1px dashed #d1d5db;
+  border-radius: 10px;
+  background: #fafbfc;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+
+.logo-uploader:hover {
+  border-color: #93b4f5;
+  background: #f8fbff;
+  box-shadow: 0 2px 8px rgba(26, 111, 255, 0.06);
+}
+
+.logo-uploader:focus-visible {
+  outline: 2px solid #bfdbfe;
+  outline-offset: 2px;
+}
+
 .logo-file-input { display: none; }
+
+.logo-thumb {
+  flex: none;
+  width: 64px;
+  height: 64px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.logo-thumb.filled {
+  border-color: #e0e7ef;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+}
+
+.logo-placeholder-ic {
+  font-size: 22px;
+  color: #9ca3af;
+}
+
+.logo-uploader:hover .logo-placeholder-ic {
+  color: #1a6fff;
+}
+
+.logo-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.logo-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: #111827;
+  line-height: 1.4;
+}
+
+.logo-uploader:hover .logo-title {
+  color: #1a6fff;
+}
+
+.logo-hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #9ca3af;
+  line-height: 1.5;
+}
+
+.logo-remove {
+  flex: none;
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 12px;
+  color: #9ca3af;
+  cursor: pointer;
+  transition: color 0.12s;
+}
+
+.logo-remove:hover {
+  color: #ef4444;
+}
+
 .admin-note { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #6b7280; background: #f9fafb; border: 1px solid #eef0f2; border-radius: 8px; padding: 10px 12px; margin-top: 4px; }
 
 .actionbar { position: sticky; bottom: 0; margin: 0 -24px -80px; display: flex; justify-content: flex-end; gap: 12px; background: #fff; padding: 14px 24px; border-top: 1px solid #e5e7eb; }
