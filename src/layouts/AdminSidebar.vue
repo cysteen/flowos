@@ -2,7 +2,7 @@
 import { computed, ref, watchEffect } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { LeftOutlined, DownOutlined } from '@ant-design/icons-vue';
-import { adminGroupsFor, ADMIN_OVERVIEW, ADMIN_APPROVAL, PLATFORM_NAV } from '@/config/adminNav';
+import { adminGroupsFor, ADMIN_OVERVIEW, ADMIN_APPROVAL, PLATFORM_NAV, adminNavActiveKey, adminNavGroupKeyOf } from '@/config/adminNav';
 import { APPROVALS } from '@/mock/approvalCenter';
 import { useUserStore } from '@/stores/user';
 
@@ -14,13 +14,10 @@ const isPlatform = computed(() => user.role.adminScope === 'platform');
 const groups = computed(() => adminGroupsFor(user.role.adminScope));
 const approvalBadge = computed(() => APPROVALS.filter((a) => a.status === '待审批').length);
 
-const activeKey = computed(() => {
-  const seg = route.path.split('/admin/')[1];
-  return seg ? seg.split('/')[0] : 'overview';
-});
+const activeKey = computed(() => adminNavActiveKey(route.path));
 
 function groupOf(key: string): string | null {
-  return groups.value.find((g) => g.items.some((i) => i.key === key))?.key ?? null;
+  return adminNavGroupKeyOf(key);
 }
 
 const expanded = ref<string | null>(null);

@@ -7,6 +7,7 @@ const route = useRoute();
 const title = computed(() => (route.meta.title as string) ?? '配置模块');
 const prd = computed(() => (route.meta.prd as string) ?? '');
 const group = computed(() => (route.meta.group as string) ?? '');
+const v1Ref = computed(() => (route.meta.v1Ref as string) ?? '');
 </script>
 
 <template>
@@ -19,7 +20,8 @@ const group = computed(() => (route.meta.group as string) ?? '');
       </div>
       <p class="ph-desc">
         <template v-if="group">所属分组：{{ group }}　</template>
-        <template v-if="prd">需求文档：{{ prd }}</template>
+        <template v-if="prd">需求文档：{{ prd }}　</template>
+        <template v-if="v1Ref && v1Ref !== '—'">V1 原型：{{ v1Ref }}</template>
       </p>
       <p class="ph-note">本模块为管理后台 Phase B 待填充列表页，将按其 PRD 以统一「筛选卡 + 表格卡」模板实现。</p>
     </a-card>

@@ -1,26 +1,29 @@
 import type { Component } from 'vue';
 import {
   DashboardOutlined, TeamOutlined, AppstoreOutlined, FieldTimeOutlined,
-  FileTextOutlined,   BranchesOutlined, DatabaseOutlined, ApiOutlined,
+  FileTextOutlined, BranchesOutlined, DatabaseOutlined, ApiOutlined,
   SafetyCertificateOutlined, BankOutlined, SettingOutlined, CheckCircleOutlined,
 } from '@ant-design/icons-vue';
 
 import type { AdminScope } from '@/config/roles';
 
-// 管理后台侧边栏（乐享式分组，对齐设计稿 wynSy / PRD-09）。
-// 数据总览为一级直达项 + 8 个可折叠分组；二级页（编辑器/设计器/明细）点列表进入、不占导航。
+// 管理后台侧边栏（乐享式分组，对齐 PRD-09 / pen wynSy / V1-V2-功能对齐表.md）。
+// 数据总览为一级直达 + 按 scope 分组；SLA/规则按 V1 A3/A4 拆为侧栏子项（路由 key 一一对应）。
 
 export interface AdminNavItem {
   key: string;
   label: string;
-  /** 对应 PRD 编号（占位页展示） */
+  /** 对应 PRD 编号 */
   prd?: string;
+  /** V1 HTML 原型落地路径（对齐表） */
+  v1Ref?: string;
 }
+
 export interface AdminNavGroup {
   key: string;
   label: string;
   icon: Component;
-  /** 归属管理角色：tenant=租户管理员(人/权限/安全)，ops=运营管理员(工单流转) */
+  /** tenant=租户管理员；ops=运营管理员 */
   scope: 'tenant' | 'ops';
   items: AdminNavItem[];
 }
@@ -28,24 +31,50 @@ export interface AdminNavGroup {
 /** 一级直达：数据总览 */
 export const ADMIN_OVERVIEW = { key: 'overview', label: '数据总览', icon: DashboardOutlined };
 
-/** 一级直达：审批中心（审核运营员提交的配置变更发布申请，对齐 A8#approval） */
+/** 一级直达：配置变更审批（V1 A8#approval） */
 export const ADMIN_APPROVAL = { key: 'approval', label: '审批中心', icon: CheckCircleOutlined };
 
-// 全部分组（按管理角色 scope 标注）。租户管理员与运营管理员各看其 scope 的分组。
+/** V1 A3 SLA 引擎 → 侧栏子项（运营） */
+export const SLA_NAV_ITEMS: AdminNavItem[] = [
+  { key: 'sla-policy', label: 'SLA 规则', prd: 'PRD-55', v1Ref: 'A/A3-sla-config.html#rules' },
+  { key: 'sla-timer', label: '双层计时', prd: 'PRD-55', v1Ref: 'A/A3-sla-config.html#timer' },
+  { key: 'sla-suspend', label: '挂起规则', prd: 'PRD-55', v1Ref: 'A/A3-sla-config.html#suspend' },
+  { key: 'sla-alert', label: '预警配置', prd: 'PRD-55', v1Ref: 'A/A3-sla-config.html#alert' },
+  { key: 'sla-escalate', label: '升级链', prd: 'PRD-55', v1Ref: 'A/A3-sla-config.html#escalate' },
+  { key: 'sla-stats', label: '达标统计', prd: 'PRD-57', v1Ref: 'A/A3-sla-config.html#stats' },
+  { key: 'sla-calendar', label: 'SLA 工作日历', prd: 'PRD-56', v1Ref: '—' },
+  { key: 'sla-monitor', label: 'SLA 监控看板', prd: 'PRD-57', v1Ref: '—' },
+  // D5：SLA 模板能力并入「SLA 策略」（策略支持复制派生），不另设导航项。
+];
+
+/** V1 A4 规则引擎 → 侧栏子项（运营） */
+export const RULES_NAV_ITEMS: AdminNavItem[] = [
+  { key: 'rules-list', label: '规则列表', prd: 'PRD-58', v1Ref: 'A/A4-rule-engine.html#list' },
+  { key: 'rules-editor', label: '可视化规则编辑', prd: 'PRD-58', v1Ref: 'A/A4-rule-engine.html#editor' },
+  { key: 'rules-routing', label: '流转路由', prd: 'PRD-58', v1Ref: 'A/A4-rule-engine.html#routing' },
+  { key: 'rules-pool', label: '工单池规则', prd: 'PRD-58', v1Ref: 'A/A4-rule-engine.html#pool' },
+  { key: 'rules-escalation', label: '升级路由', prd: 'PRD-58', v1Ref: 'A/A4-rule-engine.html#escalation' },
+  { key: 'rules-logs', label: '执行日志', prd: 'PRD-58', v1Ref: 'A/A4-rule-engine.html#logs' },
+];
+
 export const ADMIN_GROUPS: AdminNavGroup[] = [
-  // ===== 租户管理员：组织 / 权限 / 集成 / 安全 =====
+  // ===== 租户管理员 =====
   {
     key: 'org', label: '组织与权限', icon: TeamOutlined, scope: 'tenant',
     items: [
       { key: 'tenant-basic', label: '基本信息', prd: 'PRD-59a' },
-      { key: 'users', label: '用户管理', prd: 'PRD-50' },
-      { key: 'roles', label: '角色与权限', prd: 'PRD-51' },
+      { key: 'users', label: '用户管理', prd: 'PRD-50', v1Ref: 'A/A5-permission.html#users' },
+      { key: 'roles', label: '角色与权限', prd: 'PRD-51', v1Ref: 'A/A5-permission.html#roles' },
+      // §六 新增（PRD 有 / V1 侧栏无）
+      { key: 'orgs', label: '机构管理', prd: 'PRD-23' },
+      { key: 'posts', label: '岗位管理', prd: 'PRD-24' },
+      // D2：渠道/应用归运营，见「业务数据」组（不在此）
     ],
   },
   {
     key: 'integration', label: '集成对接', icon: ApiOutlined, scope: 'tenant',
     items: [
-      { key: 'connectors', label: '连接器总览', prd: 'PRD-86' },
+      { key: 'connectors', label: '连接器总览', prd: 'PRD-86', v1Ref: 'H/H-integration.html#connectors' },
       { key: 'message-center', label: '消息中心', prd: 'PRD-30' },
     ],
   },
@@ -53,32 +82,28 @@ export const ADMIN_GROUPS: AdminNavGroup[] = [
     key: 'security', label: '安全与审计', icon: SafetyCertificateOutlined, scope: 'tenant',
     items: [
       { key: 'third-party-login', label: '第三方登录', prd: 'PRD-44' },
-      { key: 'audit-logs', label: '审计日志', prd: 'PRD-40' },
+      { key: 'audit-logs', label: '审计日志', prd: 'PRD-40', v1Ref: 'A/A5-permission.html#audit' },
     ],
   },
-  // ===== 运营管理员：工单流转全链路 =====
+  // ===== 运营管理员 =====
   {
     key: 'ticket-config', label: '工单配置', icon: AppstoreOutlined, scope: 'ops',
     items: [
-      { key: 'ticket-types', label: '工单类型管理', prd: 'PRD-60' },
-      { key: 'dicts', label: '字典管理', prd: 'PRD-52' },
+      { key: 'ticket-types', label: '工单类型管理', prd: 'PRD-60', v1Ref: 'A/A0-workorder-type-list.html' },
+      { key: 'dicts', label: '字典管理', prd: 'PRD-52', v1Ref: 'A/A9-data-dictionary.html' },
       { key: 'entity-dict', label: '流程实体字典', prd: 'PRD-88' },
     ],
   },
   {
     key: 'sla', label: 'SLA 与规则', icon: FieldTimeOutlined, scope: 'ops',
-    items: [
-      { key: 'sla-policy', label: 'SLA策略', prd: 'PRD-55' },
-      { key: 'sla-calendar', label: 'SLA工作日历', prd: 'PRD-56' },
-      { key: 'sla-monitor', label: 'SLA监控看板', prd: 'PRD-57' },
-      { key: 'rules', label: '规则中心', prd: 'PRD-58' },
-    ],
+    items: [...SLA_NAV_ITEMS, ...RULES_NAV_ITEMS],
   },
   {
     key: 'templates', label: '模板库', icon: FileTextOutlined, scope: 'ops',
     items: [
-      { key: 'form-templates', label: '表单模板库', prd: 'PRD-66' },
-      { key: 'flow-templates', label: '流程模板库', prd: 'PRD-67' },
+      { key: 'form-templates', label: '表单模板库', prd: 'PRD-66', v1Ref: 'A/A1-form-designer.html' },
+      { key: 'flow-templates', label: '流程模板库', prd: 'PRD-67', v1Ref: 'A/A2-flow-portal.html' },
+      // D4：A8 模板库能力并入上述两项，不另设「模板库管理」。
     ],
   },
   {
@@ -86,35 +111,74 @@ export const ADMIN_GROUPS: AdminNavGroup[] = [
     items: [
       { key: 'flow-instances', label: '流程实例', prd: 'PRD-73' },
       { key: 'flow-tasks', label: '流程任务', prd: 'PRD-74' },
-      { key: 'flow-listeners', label: '流程监听器', prd: 'PRD-72' },
-      { key: 'flow-expressions', label: '流程表达式', prd: 'PRD-71' },
+      { key: 'flow-listeners', label: '流程监听器', prd: 'PRD-71' },
+      { key: 'flow-expressions', label: '流程表达式', prd: 'PRD-72' },
+      // D3：BPM 用户分组与服务班组(59b)合并为单一「用户分组」
+      { key: 'teams', label: '用户分组', prd: 'PRD-70' },
     ],
   },
   {
-    key: 'business', label: '业务管理', icon: DatabaseOutlined, scope: 'ops',
+    key: 'business', label: '业务数据', icon: DatabaseOutlined, scope: 'ops',
     items: [
-      { key: 'teams', label: '用户分组', prd: 'PRD-59b' },
+      // D2：渠道/应用归运营
+      { key: 'channels', label: '渠道管理', prd: 'PRD-53', v1Ref: 'A/A8-tenant-admin.html#channels' },
+      { key: 'apps', label: '应用管理', prd: 'PRD-54', v1Ref: 'A/A8-tenant-admin.html#apps' },
       { key: 'customers', label: '客户管理', prd: 'PRD-87' },
       { key: 'products', label: '产品管理', prd: 'PRD-85' },
-      { key: 'channels', label: '渠道管理', prd: 'PRD-53' },
-      { key: 'apps', label: '应用管理', prd: 'PRD-54' },
+      { key: 'dispatch', label: '智能分派', prd: 'PRD-90', v1Ref: 'D/D1-dispatch.html' },
     ],
   },
 ];
 
-/** 按管理角色 scope 取分组（tenant / ops） */
+/** 按管理角色 scope 取分组 */
 export function adminGroupsFor(scope?: AdminScope): AdminNavGroup[] {
   if (scope === 'ops') return ADMIN_GROUPS.filter((g) => g.scope === 'ops');
   return ADMIN_GROUPS.filter((g) => g.scope === 'tenant');
 }
 
-/** 所有模块 key（路由用，含两类 scope 全部子项） */
+/** 扁平导航项（路由注册用） */
 export const ADMIN_ALL_ITEMS = ADMIN_GROUPS.flatMap((g) =>
-  g.items.map((i) => ({ ...i, group: g.label })),
+  g.items.map((i) => ({ ...i, group: g.label, groupKey: g.key })),
 );
 
-// ===== 平台超管侧栏（系统管理员 / 运营管理员，adminScope='platform'）=====
-// 对齐参考原型 main-navigation.html?mode=system → A7-platform-admin。
+const NAV_KEY_SET = new Set(ADMIN_ALL_ITEMS.map((i) => i.key));
+
+/** 侧栏高亮 key：取 /admin/{key} 第一段 */
+export function adminNavActiveKey(path: string): string {
+  const seg = path.split('/admin/')[1];
+  return seg ? seg.split('/')[0] : 'overview';
+}
+
+/** 查找导航项定义 */
+export function adminNavItemByKey(key: string) {
+  return ADMIN_ALL_ITEMS.find((i) => i.key === key);
+}
+
+/** 子项所属分组 key（侧栏手风琴展开用） */
+export function adminNavGroupKeyOf(itemKey: string): string | null {
+  return ADMIN_GROUPS.find((g) => g.items.some((i) => i.key === itemKey))?.key ?? null;
+}
+
+/** 是否为 SLA 子模块（页内 Tab 条可选展示） */
+export function isSlaNavKey(key: string): boolean {
+  return SLA_NAV_ITEMS.some((i) => i.key === key);
+}
+
+/** 是否为规则引擎子模块 */
+export function isRulesNavKey(key: string): boolean {
+  return RULES_NAV_ITEMS.some((i) => i.key === key);
+}
+
+/** 旧 key 兼容重定向（rules → rules-list） */
+export const ADMIN_LEGACY_REDIRECTS: Record<string, string> = {
+  rules: 'rules-list',
+};
+
+export function isAdminNavKey(key: string): boolean {
+  return NAV_KEY_SET.has(key) || key in ADMIN_LEGACY_REDIRECTS;
+}
+
+// ===== 平台超管 =====
 export interface AdminNavItemP {
   key: string;
   label: string;
@@ -128,7 +192,7 @@ export const PLATFORM_NAV: { groupLabel: string; items: AdminNavItemP[] } = {
   ],
 };
 
-/** 落地页「全部配置模块」网格：按当前管理角色 scope 取对应分组 */
+/** 落地页「全部配置模块」网格 */
 export function moduleCardsFor(scope?: AdminScope) {
   return adminGroupsFor(scope).map((g) => ({
     key: g.key,

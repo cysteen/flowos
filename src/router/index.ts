@@ -3,23 +3,50 @@ import WorkspaceShell from '@/layouts/WorkspaceShell.vue';
 import AdminShell from '@/layouts/AdminShell.vue';
 import { useUserStore } from '@/stores/user';
 import { firstMenuPath } from '@/config/navigation';
-import { ADMIN_ALL_ITEMS } from '@/config/adminNav';
+import {
+  ADMIN_ALL_ITEMS,
+  ADMIN_LEGACY_REDIRECTS,
+  RULES_NAV_ITEMS,
+  SLA_NAV_ITEMS,
+} from '@/config/adminNav';
 
-// 管理后台模块路由。Phase B：租户与组织组已实现真实页（AdminModuleView 按 key 解析列表/卡片，
-// tenant-basic 为表单页）；其余模块自动落到 AdminModuleView 内的占位回退。
-// 已实现真实页的模块 key → 专属组件；其余走 AdminModuleView（列表/卡片/占位回退）
-const ADMIN_SPECIAL_VIEWS: Record<string, () => Promise<unknown>> = {
-  'tenant-basic': () => import('@/views/admin/TenantProfileView.vue'),
-  roles: () => import('@/views/admin/RolePermissionView.vue'),
-  'audit-logs': () => import('@/views/admin/AuditLogsView.vue'),
-  'sla-policy': () => import('@/views/admin/SlaPolicyView.vue'),
-};
+const SLA_STUB_KEYS = new Set(
+  SLA_NAV_ITEMS.map((i) => i.key).filter((k) => k !== 'sla-policy'),
+);
+const RULES_STUB_KEYS = new Set(RULES_NAV_ITEMS.map((i) => i.key));
+
+function adminViewFor(key: string) {
+  if (key === 'sla-policy') return () => import('@/views/admin/SlaPolicyView.vue');
+  if (key === 'tenant-basic') return () => import('@/views/admin/TenantProfileView.vue');
+  if (key === 'roles') return () => import('@/views/admin/RolePermissionView.vue');
+  if (key === 'audit-logs') return () => import('@/views/admin/AuditLogsView.vue');
+  if (SLA_STUB_KEYS.has(key) || RULES_STUB_KEYS.has(key)) {
+    return () => import('@/views/admin/AdminEngineStubView.vue');
+  }
+  return () => import('@/views/admin/AdminModuleView.vue');
+}
+
 const adminModuleRoutes: RouteRecordRaw[] = ADMIN_ALL_ITEMS.map((it) => ({
   path: it.key,
   name: `admin-${it.key}`,
-  component: ADMIN_SPECIAL_VIEWS[it.key] ?? (() => import('@/views/admin/AdminModuleView.vue')),
-  meta: { adminOnly: true, title: it.label, prd: it.prd, group: it.group },
+  component: adminViewFor(it.key),
+  meta: {
+    adminOnly: true,
+    title: it.label,
+    prd: it.prd,
+    group: it.group,
+    groupKey: it.groupKey,
+    v1Ref: it.v1Ref,
+  },
 }));
+
+// 旧路由 key 重定向（如 rules → rules-list）
+const adminLegacyRoutes: RouteRecordRaw[] = Object.entries(ADMIN_LEGACY_REDIRECTS).map(
+  ([from, to]) => ({
+    path: from,
+    redirect: { name: `admin-${to}` },
+  }),
+);
 
 const routes: RouteRecordRaw[] = [
   {
@@ -32,7 +59,7 @@ const routes: RouteRecordRaw[] = [
     path: '/',
     component: WorkspaceShell,
     children: [
-      { path: '', redirect: '/tickets' }, // 默认 landing（§0.3）
+      { path: '', redirect: '/tickets' },
       {
         path: 'home',
         name: 'home',
@@ -71,8 +98,6 @@ const routes: RouteRecordRaw[] = [
       },
     ],
   },
-  // 管理后台（独立 AppShell，从头像下拉进入）。
-  // 平台超管(系统/运营管理员)→ 租户管理/系统参数；租户管理员 → 数据总览 + 8 组配置。
   {
     path: '/admin',
     component: AdminShell,
@@ -96,7 +121,6 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/admin/ApprovalCenterView.vue'),
         meta: { adminOnly: true, title: '审批中心' },
       },
-      // 平台超管页
       {
         path: 'tenants',
         name: 'admin-tenants',
@@ -109,24 +133,21 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/admin/PlatformSettingsView.vue'),
         meta: { adminOnly: true, platformOnly: true, title: '系统参数' },
       },
+      ...adminLegacyRoutes,
       ...adminModuleRoutes,
     ],
   },
-  // 兜底
   { path: '/:pathMatch(.*)*', redirect: '/login' },
 ];
 
 const router = createRouter({
-  // base 与 vite.config.ts 一致：/flowos/
   history: createWebHistory('/flowos/'),
   routes,
 });
 
-// 登录 + 角色守卫
 router.beforeEach((to) => {
   const user = useUserStore();
 
-  // 公开页：登录
   if (to.meta.public) {
     if (to.name === 'login' && user.isLoggedIn) {
       return firstMenuPath(user.visibleMenus);
@@ -134,16 +155,13 @@ router.beforeEach((to) => {
     return true;
   }
 
-  // 未登录 → 登录页
   if (!user.isLoggedIn) {
     return { path: '/login', query: { redirect: to.fullPath } };
   }
 
-  // 管理后台门禁：仅管理员可达，坐席误入拦回工作区（PRD-09 F4）
   if (to.meta.adminOnly && !user.hasAdminEntry) {
     return firstMenuPath(user.visibleMenus);
   }
-  // 平台超管页门禁：仅 adminScope=platform（系统/运营管理员）可达
   if (to.meta.platformOnly && user.role.adminScope !== 'platform') {
     return '/admin/overview';
   }

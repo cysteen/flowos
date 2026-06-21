@@ -58,7 +58,7 @@ export const QUICK_CONFIG = [
   { label: 'SLA 策略', key: 'sla-policy' },
   { label: '用户管理', key: 'users' },
   { label: '角色权限', key: 'roles' },
-  { label: '规则中心', key: 'rules' },
+  { label: '规则中心', key: 'rules-list' },
   { label: '消息中心', key: 'message-center' },
 ];
 

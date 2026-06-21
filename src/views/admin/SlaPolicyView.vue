@@ -1,9 +1,15 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue';
+import { useRoute } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
 import {
   PlusOutlined, SearchOutlined, ReloadOutlined, DeleteOutlined, ThunderboltOutlined,
 } from '@ant-design/icons-vue';
+import AdminSectionTabs from './components/AdminSectionTabs.vue';
+import { SLA_NAV_ITEMS, adminNavActiveKey } from '@/config/adminNav';
+
+const route = useRoute();
+const slaActiveKey = computed(() => adminNavActiveKey(route.path));
 
 // SLA 策略（PRD-55）：策略列表 + 四步向导（适用范围 → 双层时限矩阵 → 升级规则 → 计时口径）。
 
@@ -174,7 +180,9 @@ const testResult = computed(() => {
 </script>
 
 <template>
-  <div class="admin-page">
+  <div class="sla-page">
+    <AdminSectionTabs :items="SLA_NAV_ITEMS" :active-key="slaActiveKey" />
+    <div class="admin-page">
     <!-- 筛选卡 -->
     <div class="filter-card">
       <div class="filters">
@@ -322,10 +330,16 @@ const testResult = computed(() => {
         </div>
       </div>
     </a-modal>
+    </div>
   </div>
 </template>
 
 <style scoped>
+.sla-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
 .admin-page { display: flex; flex-direction: column; gap: 16px; padding: 16px 24px; }
 .filter-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .filters { display: flex; gap: 16px; flex-wrap: wrap; }
