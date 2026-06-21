@@ -4,6 +4,7 @@ import {
   CustomerServiceOutlined,
   ToolOutlined,
   DashboardOutlined,
+  AuditOutlined,
 } from '@ant-design/icons-vue';
 
 // 运行工作区导航（WorkspaceShell），路径不含角色前缀（对齐 §2.3）。
@@ -22,6 +23,7 @@ export const NAV_ITEMS: NavItem[] = [
   { key: 'tickets', label: '工单工作台', path: '/tickets', icon: CustomerServiceOutlined }, // headset
   { key: 'aftersale', label: '售后工作台', path: '/aftersale', icon: ToolOutlined }, // wrench
   { key: 'team-board', label: '班组看板', path: '/team-board', icon: DashboardOutlined }, // gauge
+  { key: 'approval', label: '审批中心', path: '/approval', icon: AuditOutlined }, // clipboard-check
 ];
 
 /** 取该角色第一个有权限菜单的路径（守卫 redirect 用） */

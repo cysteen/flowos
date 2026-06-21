@@ -111,6 +111,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/team-board/TeamBoardView.vue'),
         meta: { menu: 'team-board', title: '班组看板', breadcrumb: '班组看板' },
       },
+      {
+        path: 'approval',
+        name: 'approval',
+        component: () => import('@/views/approval/ApprovalWorkspaceView.vue'),
+        meta: { menu: 'approval', title: '审批中心', breadcrumb: '审批中心' },
+      },
     ],
   },
   {
