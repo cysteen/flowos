@@ -13,14 +13,16 @@ const emit = defineEmits<{
   create: [];
 }>();
 
-function chipStyle(key: ChipKey, active: boolean, tone?: 'warn') {
+function chipStyle(key: ChipKey, active: boolean, tone?: 'warn' | 'danger') {
   if (active) return { background: '#EFF6FF', borderColor: '#1A6FFF' };
   if (tone === 'warn') return { background: '#FFFBEB', borderColor: '#FCD34D' };
+  if (tone === 'danger') return { background: '#FEF2F2', borderColor: '#FCA5A5' };
   return { background: '#FFFFFF', borderColor: '#E5E7EB' };
 }
-function chipTextColor(key: ChipKey, active: boolean, tone?: 'warn') {
+function chipTextColor(key: ChipKey, active: boolean, tone?: 'warn' | 'danger') {
   if (active) return '#1A6FFF';
   if (tone === 'warn') return '#D97706';
+  if (tone === 'danger') return '#DC2626';
   return '#6B7280';
 }
 </script>
@@ -45,7 +47,7 @@ function chipTextColor(key: ChipKey, active: boolean, tone?: 'warn') {
         >
         <span
           class="chip-count"
-          :style="{ color: chip.key === activeChip ? '#1A6FFF' : chip.tone === 'warn' ? '#D97706' : '#9CA3AF' }"
+          :style="{ color: chip.key === activeChip ? '#1A6FFF' : chip.tone === 'warn' ? '#D97706' : chip.tone === 'danger' ? '#DC2626' : '#9CA3AF' }"
           >{{ chipCounts[chip.key] }}</span
         >
       </div>

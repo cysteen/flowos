@@ -7,7 +7,7 @@ defineEmits<{ view: []; close: [] }>();
 <template>
   <div class="ai-bar">
     <div class="ai-avatar">
-      <ThunderboltOutlined :style="{ color: '#7C3AED', fontSize: '16px' }" />
+      <ThunderboltOutlined :style="{ color: '#1A6FFF', fontSize: '16px' }" />
     </div>
     <div class="ai-text">
       <div class="ai-title">智能助手 · 今日建议</div>
@@ -27,8 +27,8 @@ defineEmits<{ view: []; close: [] }>();
   align-items: center;
   gap: 12px;
   padding: 12px 16px;
-  background: #f5f3ff;
-  border: 1px solid #ddd6fe;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
   border-radius: 10px;
 }
 .ai-avatar {
@@ -36,7 +36,7 @@ defineEmits<{ view: []; close: [] }>();
   height: 30px;
   flex: none;
   border-radius: 15px;
-  background: #ede9fe;
+  background: #eff6ff;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -49,7 +49,7 @@ defineEmits<{ view: []; close: [] }>();
 .ai-title {
   font-size: 13px;
   font-weight: 700;
-  color: #6d28d9;
+  color: #374151;
 }
 .ai-sub {
   font-size: 12px;
@@ -61,12 +61,15 @@ defineEmits<{ view: []; close: [] }>();
 .ai-view-btn {
   font-size: 13px;
   font-weight: 600;
-  color: #7c3aed;
+  color: #1a6fff;
   background: #fff;
-  border: 1px solid #a855f7;
+  border: 1px solid #bfdbfe;
   border-radius: 6px;
   padding: 6px 14px;
   cursor: pointer;
+}
+.ai-view-btn:hover {
+  border-color: #1a6fff;
 }
 .ai-close {
   color: #9ca3af;

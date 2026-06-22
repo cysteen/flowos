@@ -1,13 +1,10 @@
 <script setup lang="ts">
 import { CheckOutlined } from '@ant-design/icons-vue';
 import {
-  CUSTOMER_TAG_COLOR,
-  NODE_STATUS_COLOR,
   PRIORITY_COLOR,
   rowActions,
   SLA_COLOR,
   softBg,
-  TYPE_COLOR,
   type Ticket,
 } from '@/views/tickets/types/ticket';
 
@@ -62,10 +59,7 @@ const emit = defineEmits<{
       <!-- 工单 / 标题 -->
       <div class="col-title cell-title">
         <div class="title-line1">
-          <span
-            class="tag"
-            :style="{ color: TYPE_COLOR[t.type], background: softBg(TYPE_COLOR[t.type]) }"
-          >{{ t.type }}</span>
+          <span class="tag">{{ t.type }}</span>
           <span class="title-text">{{ t.title }}</span>
         </div>
         <div class="title-line2">
@@ -83,7 +77,6 @@ const emit = defineEmits<{
             v-for="tag in t.customerTags"
             :key="tag"
             class="cust-tag"
-            :style="{ color: CUSTOMER_TAG_COLOR[tag], background: softBg(CUSTOMER_TAG_COLOR[tag]) }"
           >{{ tag }}</span>
         </div>
         <div class="product">{{ t.product }}</div>
@@ -91,21 +84,16 @@ const emit = defineEmits<{
 
       <!-- 当前节点 -->
       <div class="col-node cell-node">
-        <span
-          class="node-badge"
-          :style="{ color: NODE_STATUS_COLOR[t.nodeStatus], background: softBg(NODE_STATUS_COLOR[t.nodeStatus]) }"
-          >{{ t.nodeStatus }}</span
-        >
+        <span class="node-badge">{{ t.nodeStatus }}</span>
         <span class="node-step">节点 {{ t.nodeStep }}/{{ t.nodeTotal }}</span>
       </div>
 
-      <!-- 优先级 -->
+      <!-- 优先级（颜色已由左侧色条承载，此处仅文字 + 同色点，避免与 SLA 抢色） -->
       <div class="col-priority">
-        <span
-          class="prio"
-          :style="{ color: PRIORITY_COLOR[t.priority], background: softBg(PRIORITY_COLOR[t.priority]) }"
-          >{{ t.priority }}</span
-        >
+        <span class="prio">
+          <span class="prio-dot" :style="{ background: PRIORITY_COLOR[t.priority] }"></span>
+          {{ t.priority }}
+        </span>
       </div>
 
       <!-- SLA 时效 -->
@@ -121,11 +109,7 @@ const emit = defineEmits<{
       <!-- 处理人 -->
       <div class="col-assignee cell-assignee">
         <template v-if="t.assignee">
-          <span
-            class="avatar"
-            :style="{ color: PRIORITY_COLOR[t.priority], background: softBg(PRIORITY_COLOR[t.priority]) }"
-            >{{ t.assignee.charAt(0) }}</span
-          >
+          <span class="avatar">{{ t.assignee.charAt(0) }}</span>
           <span class="assignee-name">{{ t.assignee }}</span>
         </template>
         <span v-else class="unassigned">— 待领</span>
@@ -208,12 +192,15 @@ const emit = defineEmits<{
   border-color: #1a6fff;
 }
 
+/* 分类信息一律中性灰：类型/节点/客户标签——“是什么”，不抢色 */
 .tag {
   font-size: 11px;
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 4px;
   white-space: nowrap;
+  color: #4b5563;
+  background: #f3f4f6;
 }
 
 /* 工单/标题：第一行 类型+标题，第二行 来源+单号 */
@@ -242,15 +229,23 @@ const emit = defineEmits<{
 .cust-tag {
   font-size: 11px; font-weight: 600;
   padding: 2px 8px; border-radius: 4px; flex: none;
+  color: #4b5563; background: #f3f4f6;
 }
 .product { font-size: 12px; color: #9ca3af; }
 
 /* 当前节点 */
 .cell-node { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
-.node-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; }
+.node-badge {
+  font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px;
+  color: #4b5563; background: #f3f4f6;
+}
 .node-step { font-size: 11px; color: #9ca3af; }
 
-.prio { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; }
+.prio {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; font-weight: 600; color: #4b5563;
+}
+.prio-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
 
 /* SLA */
 .cell-sla { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
@@ -263,9 +258,10 @@ const emit = defineEmits<{
   width: 24px; height: 24px; border-radius: 12px;
   display: flex; align-items: center; justify-content: center;
   font-size: 11px; font-weight: 600; flex: none;
+  color: #4b5563; background: #f3f4f6;
 }
 .assignee-name { font-size: 12px; color: #374151; }
-.unassigned { font-size: 12px; color: #06b6d4; }
+.unassigned { font-size: 12px; color: #6b7280; }
 
 /* 操作 */
 .cell-action { display: flex; align-items: center; gap: 12px; }

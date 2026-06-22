@@ -182,8 +182,8 @@ export function inListView(t: Ticket, view: ListViewKey): boolean {
 export interface ChipMeta {
   key: ChipKey;
   label: string;
-  /** 临期/超时为 SLA 维度，特殊配色 */
-  tone?: 'warn';
+  /** 临期/超时为 SLA 维度，唯一保留彩色（临期=warn 橙 / 超时=danger 红）；其余为状态分类，中性 */
+  tone?: 'warn' | 'danger';
 }
 export const CHIPS: ChipMeta[] = [
   { key: 'all', label: '全部' },
@@ -193,7 +193,7 @@ export const CHIPS: ChipMeta[] = [
   { key: 'review', label: '待审核' },
   { key: 'delegate', label: '委派' },
   { key: 'soon', label: '临期', tone: 'warn' },
-  { key: 'overdue', label: '超时' },
+  { key: 'overdue', label: '超时', tone: 'danger' },
 ];
 
 /** 行内动作：按 当前节点状态 + Tab 推导（PRD-02 §7⑥） */

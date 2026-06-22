@@ -27,7 +27,7 @@ const visibleTabs = computed(() => TABS.filter((t) => !props.hiddenTabs.includes
         :style="
           tab.key === active
             ? { background: '#1A6FFF', color: '#FFFFFF' }
-            : { background: tab.badge + '22', color: '#6B7280' }
+            : { background: '#F3F4F6', color: '#6B7280' }
         "
         >{{ counts[tab.key] }}</span
       >
