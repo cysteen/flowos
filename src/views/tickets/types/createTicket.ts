@@ -5,6 +5,17 @@ export type CreateFormTicketType = '投诉' | '建议' | '商机' | '咨询';
 
 export type BusinessType = '学习机' | '翻录' | '智学网';
 
+/** 工单来源枚举（对齐 PRD-04 / 渠道管理） */
+export type TicketSource = '400呼入' | '在线客服' | '邮件' | '小程序' | 'APP';
+
+export const TICKET_SOURCE_OPTIONS: TicketSource[] = [
+  '400呼入',
+  '在线客服',
+  '邮件',
+  '小程序',
+  'APP',
+];
+
 export interface CustomerInfo {
   id: string;
   name: string;
@@ -29,8 +40,8 @@ export interface ReporterInfo {
 export interface CreateTicketFormState {
   businessType: BusinessType;
   ticketType: CreateFormTicketType;
-  /** 工单来源，默认 400 呼入自动带出 */
-  ticketSource: string;
+  /** 工单来源，默认 400 呼入 */
+  ticketSource: TicketSource;
   customerQuery: string;
   customer: CustomerInfo | null;
   showReporter: boolean;
@@ -43,6 +54,8 @@ export interface CreateTicketFormState {
   problemL3: string;
   priority: Priority;
   description: string;
+  /** 用户期望解决时间备注（自由文本） */
+  resolveTimeRemark: string;
   title: string;
   titleManual: boolean;
   expectTime: string;
@@ -120,11 +133,10 @@ export function mapFormTypeToTicketType(t: CreateFormTicketType): TicketType {
   return t;
 }
 
-/** 预填渠道 → 工单来源展示 */
-export function mapChannelToSource(channel?: Channel): string {
-  if (!channel) return '400呼入（自动带出）';
-  if (channel === '电话') return '400呼入（自动带出）';
-  return `${channel}（自动带出）`;
+/** 预填渠道 → 工单来源 */
+export function mapChannelToSource(channel?: Channel): TicketSource {
+  if (!channel || channel === '电话') return '400呼入';
+  return channel;
 }
 
 export function buildAutoTitle(
@@ -132,8 +144,7 @@ export function buildAutoTitle(
   problemL3: string,
   ticketSource: string,
 ): string {
-  const source = ticketSource.replace(/（自动带出）$/, '');
-  const parts = [productName, problemL3, source].filter(Boolean);
+  const parts = [productName, problemL3, ticketSource].filter(Boolean);
   return parts.join(' · ');
 }
 

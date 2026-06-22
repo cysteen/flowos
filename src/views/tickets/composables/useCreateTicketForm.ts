@@ -1,6 +1,6 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { message } from 'ant-design-vue';
-import type { CreateTicketPrefill, Ticket, Priority } from '@/views/tickets/types/ticket';
+import type { CreateTicketPrefill, Ticket } from '@/views/tickets/types/ticket';
 import {
   type CreateTicketFormState,
   type CustomerInfo,
@@ -14,9 +14,9 @@ import {
 
 function defaultForm(): CreateTicketFormState {
   return {
-    businessType: '学习机',
+    businessType: '翻录',
     ticketType: '投诉',
-    ticketSource: '400呼入（自动带出）',
+    ticketSource: '400呼入',
     customerQuery: '',
     customer: { ...MOCK_CUSTOMER },
     showReporter: false,
@@ -29,6 +29,7 @@ function defaultForm(): CreateTicketFormState {
     problemL3: '在线播放',
     priority: 'P0',
     description: '在线播放频繁跳歌，重启无效，影响使用，要求尽快解决。',
+    resolveTimeRemark: '',
     title: '',
     titleManual: false,
     expectTime: '今日 18:00',
@@ -40,7 +41,7 @@ function defaultForm(): CreateTicketFormState {
     serviceReview: '需要回溯',
     complaintL1: '产品质量',
     complaintL2: '功能缺陷',
-    problemTime: '2026-06-18 14:30',
+    problemTime: '',
     suggestL1: '产品体验',
     suggestL2: '功能建议',
   };
@@ -68,6 +69,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     description: false,
     title: false,
     customerAddress: false,
+    problemTime: false,
   });
 
   const problemL1Options = computed(() => Object.keys(PROBLEM_TREE));
@@ -87,16 +89,9 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   const typePartSubtitle = computed(() => `「${form.ticketType}」工单专属字段`);
   const showAiBar = computed(() => form.description.trim().length > 0);
   const customerAddressRequired = computed(() => form.ticketType === '商机');
-
-  const slaPreview = computed(() => {
-    const map: Record<Priority, string> = {
-      P0: '响应≤15min · 解决≤4h',
-      P1: '响应≤30min · 解决≤8h',
-      P2: '响应≤2h · 解决≤24h',
-      P3: '响应≤4h · 解决≤48h',
-    };
-    return map[form.priority];
-  });
+  const problemTimeRequired = computed(
+    () => form.ticketType === '投诉' || form.ticketType === '咨询',
+  );
 
   const aiSummary = computed(() => {
     const urgency = form.priority === 'P0' || form.priority === 'P1' ? '高' : '中';
@@ -223,12 +218,18 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     errors.customerAddress =
       customerAddressRequired.value &&
       (!form.customer?.region?.trim() || !form.customer?.address?.trim());
+    errors.problemTime =
+      problemTimeRequired.value && !form.problemTime.trim();
 
     const hasError = Object.values(errors).some(Boolean);
     if (hasError) {
-      message.error(customerAddressRequired.value && errors.customerAddress
-        ? '商机工单需填写客户省市区地址'
-        : '请填写必填项');
+      message.error(
+        customerAddressRequired.value && errors.customerAddress
+          ? '商机工单需填写客户省市区地址'
+          : problemTimeRequired.value && errors.problemTime
+            ? '请填写问题发生时间'
+            : '请填写必填项',
+      );
       return false;
     }
     return true;
@@ -302,7 +303,6 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     typePartSubtitle,
     showAiBar,
     customerAddressRequired,
-    slaPreview,
     aiSummary,
     reset,
     applyPrefill,

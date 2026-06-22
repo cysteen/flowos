@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { message } from 'ant-design-vue';
+import { useTicketDraftStore } from '@/stores/ticketDrafts';
 import {
   ThunderboltOutlined,
   SearchOutlined,
   PlusOutlined,
   CloseOutlined,
-  ClockCircleOutlined,
   WarningOutlined,
   RightOutlined,
   UserAddOutlined,
@@ -17,7 +17,7 @@ import {
   CREATE_TICKET_TYPES,
   PRODUCT_CATEGORIES,
   PRIORITY_OPTIONS,
-  EXPECT_TIMES,
+  TICKET_SOURCE_OPTIONS,
   COMPLAINT_TYPE_OPTIONS,
   COMPLAINT_PLATFORM_OPTIONS,
   BUSINESS_LINE_OPTIONS,
@@ -37,7 +37,12 @@ import FormSelect from './create-ticket/FormSelect.vue';
 const props = defineProps<{
   open: boolean;
   prefill?: CreateTicketPrefill | null;
+  /** 从草稿箱「继续编辑」时传入草稿 id，提交/再次存草稿按此回写 */
+  draftId?: string | null;
 }>();
+
+const draftStore = useTicketDraftStore();
+const activeDraftId = ref<string | null>(null);
 
 const emit = defineEmits<{
   'update:open': [v: boolean];
@@ -47,7 +52,6 @@ const emit = defineEmits<{
 const {
   form,
   aiAdopted,
-  assignAdopted,
   submitting,
   customerModalOpen,
   editingCustomer,
@@ -60,7 +64,6 @@ const {
   typePartSubtitle,
   showAiBar,
   customerAddressRequired,
-  slaPreview,
   aiSummary,
   reset,
   applyPrefill,
@@ -104,13 +107,25 @@ function onCreate(processAfter = false) {
   if (isChildMode.value) msg = `子工单 ${ticket.no} 已创建${processAfter ? '，进入处理页' : ''}`;
   else if (isReopenMode.value) msg = `Reopen 工单 ${ticket.no} 已创建${processAfter ? '，进入处理页' : ''}`;
   message.success(msg);
+  // 由草稿提交 → 从草稿箱移除
+  if (activeDraftId.value) { draftStore.remove(activeDraftId.value); activeDraftId.value = null; }
   submitting.value = false;
   emit('update:open', false);
   reset();
 }
 
 function onDraft() {
-  message.success('已存草稿');
+  const id = activeDraftId.value || 'draft-' + Date.now();
+  activeDraftId.value = id;
+  draftStore.save({
+    id,
+    title: form.title || '未命名草稿',
+    typeLabel: form.ticketType || '工单',
+    customerName: form.customer?.name || '未选择客户',
+    savedAt: new Date().toLocaleString('zh-CN', { hour12: false }),
+    form: JSON.parse(JSON.stringify(form)),
+  });
+  message.success('已存草稿，可在工作台「草稿箱」继续编辑');
   emit('update:open', false);
 }
 
@@ -122,10 +137,20 @@ watch(
   () => props.open,
   (v) => {
     if (!v) return;
-    if (props.prefill) applyPrefill(props.prefill);
-    else {
+    const draft = props.draftId ? draftStore.get(props.draftId) : null;
+    if (draft) {
+      // 从草稿箱继续编辑：恢复表单快照
+      reset();
+      Object.assign(form, draft.form);
+      syncTitle();
+      activeDraftId.value = draft.id;
+    } else if (props.prefill) {
+      applyPrefill(props.prefill);
+      activeDraftId.value = null;
+    } else {
       reset();
       syncTitle();
+      activeDraftId.value = null;
     }
   },
 );
@@ -203,8 +228,13 @@ watch(
             />
           </div>
           <div class="inline-field basic-field">
-            <label class="inline-label base">工单来源</label>
-            <div class="readonly-field" :title="form.ticketSource">{{ form.ticketSource }}</div>
+            <label class="inline-label base"><span class="req">*</span>工单来源</label>
+            <FormSelect
+              v-model:value="form.ticketSource"
+              class="inline-control field-control"
+              size="middle"
+              :options="TICKET_SOURCE_OPTIONS.map((v) => ({ value: v, label: v }))"
+            />
           </div>
         </div>
       </CreateTicketPartCard>
@@ -373,6 +403,14 @@ watch(
             :status="errors.description ? 'error' : ''"
             class="desc-area"
           />
+          <div class="inline-field resolve-remark-row">
+            <label class="inline-label remark">解决时间备注</label>
+            <a-input
+              v-model:value="form.resolveTimeRemark"
+              class="inline-control field-control"
+              placeholder="请备注用户期望的解决时间，如：今天下班前"
+            />
+          </div>
           <div v-if="showAiBar" class="ai-bar">
             <ThunderboltOutlined :style="{ color: '#7C3AED', fontSize: '13px', flex: 'none' }" />
             <span class="ai-text">{{ aiSummary }}</span>
@@ -467,7 +505,12 @@ watch(
             </div>
             <div class="inline-field">
               <label class="inline-label xl"><span class="req">*</span>问题发生时间</label>
-              <a-input v-model:value="form.problemTime" class="inline-control field-control" />
+              <a-input
+                v-model:value="form.problemTime"
+                class="inline-control field-control"
+                :status="errors.problemTime ? 'error' : ''"
+                placeholder="请选择问题发生时间"
+              />
             </div>
           </div>
         </template>
@@ -496,7 +539,12 @@ watch(
         <template v-else-if="form.ticketType === '咨询'">
           <div class="inline-field">
             <label class="inline-label xl"><span class="req">*</span>问题发生时间</label>
-            <a-input v-model:value="form.problemTime" class="inline-control field-control" />
+            <a-input
+              v-model:value="form.problemTime"
+              class="inline-control field-control"
+              :status="errors.problemTime ? 'error' : ''"
+              placeholder="请选择问题发生时间"
+            />
           </div>
         </template>
       </CreateTicketPartCard>
@@ -512,53 +560,6 @@ watch(
             placeholder="产品名称 + 问题三级 + 工单来源"
             @input="onTitleInput"
           />
-        </div>
-      </CreateTicketPartCard>
-
-      <!-- ⑥ 处理配置 -->
-      <CreateTicketPartCard title="处理配置">
-        <div class="row-2 handle-row">
-          <div class="inline-field">
-            <label class="inline-label lg">期望解决时间</label>
-            <FormSelect
-              v-model:value="form.expectTime"
-              class="inline-control field-control"
-              size="middle"
-              :options="EXPECT_TIMES.map((v) => ({ value: v, label: v }))"
-            />
-          </div>
-          <div class="inline-field">
-            <label class="inline-label sla-label">SLA 预览</label>
-            <div class="sla-preview">
-              <ClockCircleOutlined :style="{ color: '#D97706', fontSize: '13px' }" />
-              <span>{{ slaPreview }}</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="assign-panel">
-          <div class="assign-head">
-            <span class="assign-title">
-              <ThunderboltOutlined :style="{ color: '#7C3AED', fontSize: '14px' }" />
-              智能分派建议
-            </span>
-            <span class="link" @click="message.info('改派 / 转工单池')">改派 / 转工单池</span>
-          </div>
-          <div class="assign-card">
-            <div class="cust-avatar sm">王</div>
-            <div class="assign-info">
-              <div class="assign-name">投诉处理一组 · 王坐席</div>
-              <div class="assign-meta">技能匹配 · 当前负载低 3/8 · SLA 达成 96%</div>
-            </div>
-            <button
-              type="button"
-              class="assign-adopt"
-              :class="{ adopted: assignAdopted }"
-              @click="assignAdopted = true"
-            >
-              {{ assignAdopted ? '已采纳' : '采纳' }}
-            </button>
-          </div>
         </div>
       </CreateTicketPartCard>
     </div>
@@ -684,7 +685,6 @@ watch(
 .inline-label.lg { width: 84px; font-size: 12px; }
 .inline-label.xl { width: 96px; font-size: 12px; }
 .inline-label.title-label { width: 72px; font-size: 12px; }
-.inline-label.sla-label { width: 55px; font-size: 13px; }
 .inline-label.priority {
   width: 64px;
   font-size: 13px;
@@ -699,9 +699,6 @@ watch(
 }
 .field-control :deep(.ant-select-selector) {
   align-items: center;
-}
-.handle-row {
-  align-items: flex-end;
 }
 .priority-row {
   width: 100%;
@@ -719,21 +716,6 @@ watch(
   flex-shrink: 0;
   white-space: nowrap;
 }
-.basic-row .readonly-field {
-  flex: 1;
-  min-width: 0;
-  height: 32px;
-  min-height: 32px;
-  padding: 0 12px;
-  display: flex;
-  align-items: center;
-  font-size: 13px;
-  color: #6b7280;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  box-sizing: border-box;
-}
 .basic-row :deep(.ant-select-single) {
   height: 32px;
 }
@@ -743,16 +725,6 @@ watch(
 }
 .inline-control { flex: 1; min-width: 0; }
 .req { color: #f56c6c; margin-right: 2px; }
-
-.readonly-field {
-  flex: 1;
-  padding: 8px 12px;
-  background: #f3f4f6;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 13px;
-  color: #6b7280;
-}
 
 .row-2 {
   display: grid;
@@ -972,6 +944,16 @@ watch(
   font-size: 13px;
   min-height: 70px;
 }
+.resolve-remark-row {
+  width: 100%;
+}
+.resolve-remark-row .inline-control {
+  flex: 1;
+}
+.inline-label.remark {
+  width: 84px;
+  font-size: 12px;
+}
 
 .ai-bar {
   display: flex;
@@ -1000,69 +982,6 @@ watch(
   cursor: pointer;
 }
 .ai-adopt.adopted { background: #a78bfa; }
-
-.sla-preview {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 10px;
-  background: #fffbeb;
-  border: 1px solid #fcd34d;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  color: #d97706;
-  min-height: 33px;
-  box-sizing: border-box;
-}
-
-.assign-panel {
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.assign-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.assign-title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 700;
-  color: #111827;
-}
-.assign-card {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px;
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-}
-.assign-info { flex: 1; min-width: 0; }
-.assign-name { font-size: 13px; font-weight: 600; color: #111827; }
-.assign-meta { font-size: 11px; color: #9ca3af; margin-top: 2px; }
-.assign-adopt {
-  flex: none;
-  font-size: 12px;
-  font-weight: 600;
-  color: #fff;
-  background: #1a6fff;
-  border: none;
-  border-radius: 4px;
-  padding: 5px 14px;
-  cursor: pointer;
-}
-.assign-adopt.adopted { background: #60a5fa; }
 
 .modal-footer {
   display: flex;
