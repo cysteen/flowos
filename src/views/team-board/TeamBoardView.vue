@@ -57,7 +57,7 @@ function setDim(dim: TeamBoardDim) {
 }
 
 function onKpiClick(kpi: TeamKpi) {
-  message.info(`下钻「${kpi.label}」风险列表`);
+  router.push({ path: '/tickets/list', query: { filter: kpi.label } });
 }
 
 function onExport() {
@@ -65,8 +65,7 @@ function onExport() {
 }
 
 function onViewMember(name: string) {
-  message.info(`查看 ${name} 的工单明细`);
-  router.push('/tickets/list');
+  router.push({ path: '/tickets/list', query: { assignee: name } });
 }
 </script>
 

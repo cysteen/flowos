@@ -57,8 +57,7 @@ function trendPoints(values: number[]): string {
 }
 
 function onKpiClick(label: string) {
-  message.info(`跳转工单工作台 · 筛选「${label}」`);
-  router.push('/tickets');
+  router.push({ path: '/tickets', query: { filter: label } });
 }
 
 function onQuick(key: string) {
@@ -80,7 +79,7 @@ function onQuick(key: string) {
 }
 
 function onTodo(no: string) {
-  message.info(`${no} → 工单操作页（Prompt 3 / PRD-03）`);
+  router.push(`/tickets/${no}`);
 }
 </script>
 
