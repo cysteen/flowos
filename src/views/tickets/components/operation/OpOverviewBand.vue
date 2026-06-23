@@ -1,26 +1,19 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import { PaperClipOutlined, ArrowsAltOutlined, ShrinkOutlined } from '@ant-design/icons-vue';
+import { PaperClipOutlined } from '@ant-design/icons-vue';
 import OpStatGrid from './OpStatGrid.vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import type { InsightAction } from '@/views/tickets/types/operation';
 
 defineProps<{ detail: TicketDetailMeta }>();
 const emit = defineEmits<{ select: [action: InsightAction] }>();
-
-const descExpanded = ref(false);
-const handleExpanded = ref(false);
 </script>
 
 <template>
   <div class="overview-band">
     <!-- ① 客户诉求 + 工单关键信息（高度封顶，可放大） -->
-    <section class="ob-col ob-desc" :class="{ expanded: descExpanded }">
+    <section class="ob-col ob-desc">
       <div class="ob-head">
         <span class="ob-title">客户诉求</span>
-        <button class="ob-toggle" type="button" :title="descExpanded ? '收起' : '放大'" @click="descExpanded = !descExpanded">
-          <ShrinkOutlined v-if="descExpanded" /><ArrowsAltOutlined v-else />
-        </button>
       </div>
       <div class="ob-body">
         <p class="ob-demand">{{ detail.demand }}</p>
@@ -46,12 +39,9 @@ const handleExpanded = ref(false);
     </section>
 
     <!-- ③ 最新处理（多处理人，高度封顶，可放大） -->
-    <section class="ob-col ob-handle" :class="{ expanded: handleExpanded }">
+    <section class="ob-col ob-handle">
       <div class="ob-head">
         <span class="ob-title">最新处理</span>
-        <button class="ob-toggle" type="button" :title="handleExpanded ? '收起' : '放大'" @click="handleExpanded = !handleExpanded">
-          <ShrinkOutlined v-if="handleExpanded" /><ArrowsAltOutlined v-else />
-        </button>
       </div>
       <div class="ob-body">
         <div v-if="!detail.latestHandling.length" class="ob-empty">暂无处理记录</div>
@@ -65,10 +55,12 @@ const handleExpanded = ref(false);
 </template>
 
 <style scoped>
+/* 固定高度速览带：列等高，描述/处理两列内容超出时内部滚动（不撑高布局） */
 .overview-band {
   display: flex;
   gap: 12px;
   align-items: stretch;
+  height: 150px;
 }
 .ob-col {
   background: #fff;
@@ -79,6 +71,7 @@ const handleExpanded = ref(false);
   flex-direction: column;
   gap: 8px;
   min-width: 0;
+  min-height: 0;
 }
 .ob-desc { flex: 3; }
 .ob-stat { flex: 2; }
@@ -95,36 +88,13 @@ const handleExpanded = ref(false);
   font-weight: 700;
   color: #111827;
 }
-.ob-toggle {
-  border: none;
-  background: transparent;
-  color: #9ca3af;
-  cursor: pointer;
-  font-size: 13px;
-  line-height: 1;
-  padding: 2px;
-}
-.ob-toggle:hover { color: #1a6fff; }
 
-/* 高度封顶 + 渐隐；展开后自适应 */
+/* 固定高度 + 内部滚动 */
 .ob-body {
-  position: relative;
-  max-height: 104px;
-  overflow: hidden;
-}
-.ob-desc.expanded .ob-body,
-.ob-handle.expanded .ob-body {
-  max-height: none;
-  overflow: visible;
-}
-.ob-desc:not(.expanded) .ob-body::after,
-.ob-handle:not(.expanded) .ob-body::after {
-  content: '';
-  position: absolute;
-  left: 0; right: 0; bottom: 0;
-  height: 22px;
-  background: linear-gradient(transparent, #fff);
-  pointer-events: none;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 2px;
 }
 
 .ob-demand {
