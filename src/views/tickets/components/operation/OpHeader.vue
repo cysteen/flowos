@@ -53,7 +53,10 @@ function priorityHex(p: string): string {
       </div>
       <div class="meta-row" :title="metaTitle">
         <span class="meta-text">
-          建单人：{{ detail.builderShort }}，建单时间：{{ detail.createdAtFull }}，期望解决：{{ detail.expectedResolve }}，单号：{{ ticketNo }}
+          <span class="meta-k">建单人</span>：{{ detail.builderShort }}<span class="meta-sep">，</span>
+          <span class="meta-k">建单时间</span>：{{ detail.createdAtFull }}<span class="meta-sep">，</span>
+          <span class="meta-k">期望解决</span>：{{ detail.expectedResolve }}<span class="meta-sep">，</span>
+          <span class="meta-k">单号</span>：{{ ticketNo }}
         </span>
         <CopyOutlined class="copy" @click="emit('copyNo')" />
       </div>
@@ -102,6 +105,13 @@ function priorityHex(p: string): string {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.meta-k {
+  color: #6b7280;
+  font-weight: 600;
+}
+.meta-sep {
+  color: #d1d5db;
 }
 .copy { cursor: pointer; font-size: 13px; flex: none; }
 .copy:hover { color: #6b7280; }

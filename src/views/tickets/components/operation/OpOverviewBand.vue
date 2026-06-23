@@ -18,13 +18,13 @@ const emit = defineEmits<{ select: [action: InsightAction] }>();
       <div class="ob-body">
         <div class="handle-item">
           <div class="hi-meta">
-            <span class="hi-role">产品&问题</span>
+            <span class="hi-label">产品&问题</span>
           </div>
           <div class="hi-text">{{ detail.productIssue }}</div>
         </div>
         <div class="handle-item">
           <div class="hi-meta">
-            <span class="hi-role">问题描述</span>
+            <span class="hi-label">问题描述</span>
           </div>
           <div class="hi-text">{{ detail.demand }}</div>
         </div>
@@ -173,7 +173,8 @@ const emit = defineEmits<{ select: [action: InsightAction] }>();
   margin-bottom: 3px;
 }
 .hi-who { font-size: 12px; font-weight: 600; color: #111827; }
-.hi-role { font-size: 11px; color: #1a6fff; background: #eff6ff; border-radius: 4px; padding: 0 6px; }
+.hi-label { font-size: 12px; font-weight: 600; color: #6b7280; }
+.hi-role { font-size: 11px; color: #6b7280; background: #f3f4f6; border-radius: 4px; padding: 0 6px; }
 .hi-when { font-size: 11px; color: #9ca3af; margin-left: auto; }
 .hi-text { font-size: 12px; color: #374151; line-height: 1.6; }
 .handle-item:first-child .hi-text {

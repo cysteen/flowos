@@ -33,7 +33,7 @@ const items = computed<StatItem[]>(() => {
     },
     { key: 'recent30', label: '近30天', value: i.recent30Count, unit: '单', action: { kind: 'modal', modalKey: 'recent30' } },
     { key: 'dunning', label: '催单', value: i.dunningCount, unit: '次', warn: true, action: { kind: 'tab', tab: 'related' } },
-    { key: 'supplement', label: '补充', value: i.supplementCount, unit: '次', action: { kind: 'tab', tab: 'related' } },
+    { key: 'supplement', label: '补充', value: i.supplementCount, unit: '次', warn: true, action: { kind: 'tab', tab: 'related' } },
     { key: 'related', label: '关联', value: i.relatedCount, unit: '个', action: { kind: 'tab', tab: 'related' } },
   ];
 });
@@ -101,7 +101,7 @@ function isWarn(it: StatItem) {
   color: #9ca3af;
   margin-left: 1px;
 }
-/* 警示项（催单 / 投诉单且 >0）：颜色=需要注意 */
+/* 警示项（催单 / 补充 / 投诉单且 >0）：颜色=需要注意 */
 .stat-item.warn .si-value {
   color: #d97706;
 }

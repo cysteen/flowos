@@ -12,24 +12,32 @@ const summaryLine = computed(
 
 <template>
   <div class="ai-insight" :title="summaryLine">
-    <span class="ai-brand"><ThunderboltOutlined class="ai-icon" />AI洞察</span>
-    <span v-if="insight.riskTag" class="risk-tag">{{ insight.riskTag }}</span>
+    <div class="ai-head">
+      <span class="ai-brand"><ThunderboltOutlined class="ai-icon" />AI洞察</span>
+      <span v-if="insight.riskTag" class="risk-tag">{{ insight.riskTag }}</span>
+    </div>
     <p class="ai-text">{{ summaryLine }}</p>
   </div>
 </template>
 
 <style scoped>
 .ai-insight {
-  flex: none;
+  flex: 1;
+  min-height: 0;
   display: flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 28px;
-  padding: 4px 8px;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
   border-radius: 6px;
   background: linear-gradient(90deg, #faf5ff 0%, #fff 100%);
   border: 1px solid #e9d5ff;
   min-width: 0;
+}
+.ai-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
 }
 .ai-brand {
   display: inline-flex;
@@ -56,13 +64,16 @@ const summaryLine = computed(
 }
 .ai-text {
   flex: 1;
-  min-width: 0;
+  min-height: 0;
   margin: 0;
   font-size: 11px;
-  line-height: 1.35;
+  line-height: 1.45;
   color: #4b5563;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
   overflow: hidden;
-  text-overflow: ellipsis;
+  word-break: break-word;
 }
 </style>
