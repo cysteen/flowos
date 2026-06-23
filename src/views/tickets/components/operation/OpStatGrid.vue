@@ -64,16 +64,17 @@ function isWarn(it: StatItem) {
   justify-content: center;
   gap: 4px;
   padding: 8px 6px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #e8e4f8;
   border-radius: 6px;
-  background: #fff;
+  background: rgba(255, 255, 255, 0.85);
   cursor: pointer;
   font-family: inherit;
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
 }
 .stat-item:hover {
-  border-color: #1a6fff;
-  background: #f5f9ff;
+  border-color: #7c3aed;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(124, 58, 237, 0.12);
 }
 .si-label {
   font-size: 12px;

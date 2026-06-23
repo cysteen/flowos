@@ -69,50 +69,50 @@ function priorityHex(p: string): string {
 <style scoped>
 .op-header {
   display: flex; align-items: center; justify-content: space-between;
-  background: #fff; padding: 14px 24px; border-bottom: 1px solid #e5e7eb;
+  background: #fff; padding: 8px 20px; border-bottom: 1px solid #e5e7eb;
 }
-.oh-left { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.oh-left { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.title-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .badge {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: 13px; font-weight: 600;
-  border-radius: 6px; padding: 0 12px; flex: none; height: 30px;
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 12px; font-weight: 600;
+  border-radius: 4px; padding: 0 8px; flex: none; height: 24px;
 }
 .badge-neutral { color: #6b7280; background: #f3f4f6; }
 .badge-dot {
-  width: 7px; height: 7px; border-radius: 50%;
+  width: 6px; height: 6px; border-radius: 50%;
 }
-.oh-title { font-size: 16px; font-weight: 700; color: #111827; }
+.oh-title { font-size: 14px; font-weight: 700; color: #111827; line-height: 1.3; }
 .meta-row {
   display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
-  font-size: 12px; color: #9ca3af;
+  font-size: 11px; color: #9ca3af; line-height: 1.3;
 }
 .no-row { display: inline-flex; align-items: center; gap: 4px; }
 .copy { cursor: pointer; font-size: 13px; }
 .copy:hover { color: #6b7280; }
 
-.oh-right { display: flex; align-items: center; gap: 20px; flex: none; }
-.oh-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+.oh-right { display: flex; align-items: center; gap: 12px; flex: none; }
+.oh-actions { display: flex; align-items: center; gap: 6px; flex: none; }
 .action-btn {
   box-sizing: border-box;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 10px 18px;
-  font-size: 14px;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1;
   color: #1a6fff;
   background: #fff;
   border: 1.5px solid #93c5fd;
-  border-radius: 8px;
+  border-radius: 6px;
   cursor: pointer;
   flex: none;
   font-family: inherit;
   white-space: nowrap;
   appearance: none;
-  box-shadow: 0 1px 3px rgba(26, 111, 255, 0.12);
+  box-shadow: 0 1px 2px rgba(26, 111, 255, 0.1);
   transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
 .action-btn:hover {

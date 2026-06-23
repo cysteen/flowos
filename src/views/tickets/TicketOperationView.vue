@@ -243,7 +243,7 @@ function updateTabData(next: OperationTabData) {
   display: flex; flex-direction: column; height: 100%; overflow: hidden;
   background: #f9fafb;
 }
-.op-overview-wrap { flex: none; padding: 16px 20px 0; }
+.op-overview-wrap { flex: none; padding: 8px 20px 0; }
 .op-body {
   display: flex; gap: 16px; padding: 16px 20px; flex: 1;
   min-height: 0; align-items: stretch;

@@ -13,7 +13,7 @@ const emit = defineEmits<{ select: [action: InsightAction] }>();
     <!-- ① 客户诉求 + 工单关键信息（高度封顶，可放大） -->
     <section class="ob-col ob-desc">
       <div class="ob-head">
-        <span class="ob-title">问题与诉求</span>
+        <span class="ob-title"><i class="ob-bar" />问题与诉求</span>
       </div>
       <div class="ob-body">
         <div class="ob-field">
@@ -41,14 +41,14 @@ const emit = defineEmits<{ select: [action: InsightAction] }>();
 
     <!-- ② 客户全景统计宫格（逐项可下钻） -->
     <section class="ob-col ob-stat">
-      <div class="ob-head"><span class="ob-title">客户全景</span></div>
+      <div class="ob-head"><span class="ob-title"><i class="ob-bar" />客户全景</span></div>
       <OpStatGrid :insight="detail.insight" :ticket-type="detail.type" @select="emit('select', $event)" />
     </section>
 
     <!-- ③ 最新处理（多处理人，高度封顶，可放大） -->
     <section class="ob-col ob-handle">
       <div class="ob-head">
-        <span class="ob-title">最新处理</span>
+        <span class="ob-title"><i class="ob-bar" />最新处理</span>
       </div>
       <div class="ob-body">
         <div v-if="!detail.latestHandling.length" class="ob-empty">暂无处理记录</div>
@@ -62,39 +62,79 @@ const emit = defineEmits<{ select: [action: InsightAction] }>();
 </template>
 
 <style scoped>
-/* 固定高度速览带：列等高，描述/处理两列内容超出时内部滚动（不撑高布局） */
+/* 固定高度速览带：三列核心信息区，列等高，描述/处理超出时内部滚动 */
 .overview-band {
   display: flex;
   gap: 12px;
   align-items: stretch;
-  height: 150px;
+  height: 172px;
+  padding: 6px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #eef2ff 0%, #f5f7ff 48%, #f9fafb 100%);
+  border: 1px solid #c7d2fe;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 .ob-col {
-  background: #fff;
-  border: 1px solid #e5e7eb;
   border-radius: 8px;
-  padding: 12px 14px;
+  padding: 11px 14px 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
   min-width: 0;
   min-height: 0;
+  border: 1px solid transparent;
+  box-shadow: 0 2px 8px rgba(17, 24, 39, 0.07);
+  transition: box-shadow 0.15s, border-color 0.15s;
 }
-.ob-desc { flex: 3; }
-.ob-stat { flex: 2; }
-.ob-handle { flex: 2; }
+.ob-col:hover {
+  box-shadow: 0 4px 14px rgba(17, 24, 39, 0.1);
+}
+.ob-desc {
+  flex: 3;
+  background: linear-gradient(180deg, #fff 0%, #f8faff 100%);
+  border-color: #bfdbfe;
+  border-top: 3px solid #1a6fff;
+}
+.ob-stat {
+  flex: 2;
+  background: linear-gradient(180deg, #fff 0%, #faf8ff 100%);
+  border-color: #ddd6fe;
+  border-top: 3px solid #7c3aed;
+}
+.ob-handle {
+  flex: 2;
+  background: linear-gradient(180deg, #fff 0%, #f6fdf9 100%);
+  border-color: #a7f3d0;
+  border-top: 3px solid #10b981;
+}
 
 .ob-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex: none;
+  padding-bottom: 2px;
+  border-bottom: 1px solid rgba(17, 24, 39, 0.06);
 }
 .ob-title {
-  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
   font-weight: 700;
   color: #111827;
+  letter-spacing: 0.02em;
 }
+.ob-bar {
+  display: inline-block;
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  flex: none;
+}
+.ob-desc .ob-bar { background: #1a6fff; }
+.ob-stat .ob-bar { background: #7c3aed; }
+.ob-handle .ob-bar { background: #10b981; }
 
 /* 固定高度 + 内部滚动 */
 .ob-body {
@@ -122,6 +162,13 @@ const emit = defineEmits<{ select: [action: InsightAction] }>();
   min-width: 0;
   color: #374151;
   word-break: break-word;
+}
+.ob-field:first-child .fv {
+  font-weight: 600;
+  color: #111827;
+}
+.ob-field:nth-child(2) .fv {
+  color: #1f2937;
 }
 .ob-meta {
   display: flex;
@@ -174,6 +221,10 @@ const emit = defineEmits<{ select: [action: InsightAction] }>();
 .hi-who { font-size: 12px; font-weight: 600; color: #111827; }
 .hi-role { font-size: 11px; color: #1a6fff; background: #eff6ff; border-radius: 4px; padding: 0 6px; }
 .hi-when { font-size: 11px; color: #9ca3af; margin-left: auto; }
-.hi-text { font-size: 12px; color: #6b7280; line-height: 1.6; }
+.hi-text { font-size: 12px; color: #374151; line-height: 1.6; }
+.handle-item:first-child .hi-text {
+  font-weight: 500;
+  color: #111827;
+}
 .ob-empty { font-size: 12px; color: #9ca3af; }
 </style>
