@@ -1,6 +1,13 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router';
 import WorkspaceShell from '@/layouts/WorkspaceShell.vue';
 import AdminShell from '@/layouts/AdminShell.vue';
+import HomeOverviewView from '@/views/home/HomeOverviewView.vue';
+import TicketWorkbenchView from '@/views/tickets/TicketWorkbenchView.vue';
+import TicketListView from '@/views/tickets/TicketListView.vue';
+import TicketOperationView from '@/views/tickets/TicketOperationView.vue';
+import AftersaleWorkbenchView from '@/views/aftersale/AftersaleWorkbenchView.vue';
+import TeamBoardView from '@/views/team-board/TeamBoardView.vue';
+import ApprovalWorkspaceView from '@/views/approval/ApprovalWorkspaceView.vue';
 import { useUserStore } from '@/stores/user';
 import { firstMenuPath } from '@/config/navigation';
 import {
@@ -78,43 +85,43 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'home',
         name: 'home',
-        component: () => import('@/views/home/HomeOverviewView.vue'),
+        component: HomeOverviewView,
         meta: { menu: 'home', title: '个人门户', breadcrumb: '个人门户 · 工作概览' },
       },
       {
         path: 'tickets',
         name: 'tickets',
-        component: () => import('@/views/tickets/TicketWorkbenchView.vue'),
+        component: TicketWorkbenchView,
         meta: { menu: 'tickets', title: '工单工作台' },
       },
       {
         path: 'tickets/list',
         name: 'ticket-list',
-        component: () => import('@/views/tickets/TicketListView.vue'),
+        component: TicketListView,
         meta: { menu: 'tickets', title: '工单列表', breadcrumb: '工单列表' },
       },
       {
         path: 'tickets/:ticketNo',
         name: 'ticket-operation',
-        component: () => import('@/views/tickets/TicketOperationView.vue'),
+        component: TicketOperationView,
         meta: { menu: 'tickets', title: '工单处理' },
       },
       {
         path: 'aftersale',
         name: 'aftersale',
-        component: () => import('@/views/aftersale/AftersaleWorkbenchView.vue'),
+        component: AftersaleWorkbenchView,
         meta: { menu: 'aftersale', title: '售后工作台', breadcrumb: '售后工作台' },
       },
       {
         path: 'team-board',
         name: 'team-board',
-        component: () => import('@/views/team-board/TeamBoardView.vue'),
+        component: TeamBoardView,
         meta: { menu: 'team-board', title: '班组看板', breadcrumb: '班组看板' },
       },
       {
         path: 'approval',
         name: 'approval',
-        component: () => import('@/views/approval/ApprovalWorkspaceView.vue'),
+        component: ApprovalWorkspaceView,
         meta: { menu: 'approval', title: '审批中心', breadcrumb: '审批中心' },
       },
     ],
@@ -194,7 +201,7 @@ router.onError((error, to) => {
   // 覆盖各浏览器变体：Chrome「Failed to fetch dynamically imported module」、
   // Firefox「error loading dynamically imported module」、Safari「Importing a module script failed」、
   // 以及 Loading chunk / Loading CSS chunk failed。
-  const isChunkError = /dynamically imported module|module script|Loading (chunk|CSS chunk)|ChunkLoadError/i.test(msg);
+  const isChunkError = /dynamically imported module|module script|Loading (chunk|CSS chunk)|ChunkLoadError|Invalid or unexpected token|Unexpected token/i.test(msg);
   if (!isChunkError) return;
   const dest = to?.fullPath || '/';
   if (sessionStorage.getItem('flowos-chunk-reload') === dest) return; // 已重试过，避免死循环

@@ -2,9 +2,9 @@
 import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useUserStore } from '@/stores/user';
-import { NAV_ITEMS } from '@/config/navigation';
+import { NAV_ITEMS, type NavItem } from '@/config/navigation';
 
-const props = defineProps<{ collapsed: boolean }>();
+defineProps<{ collapsed: boolean }>();
 
 const user = useUserStore();
 const route = useRoute();
@@ -15,8 +15,15 @@ const menuItems = computed(() => NAV_ITEMS.filter((n) => user.visibleMenus.inclu
 function isActive(key: string) {
   return route.meta.menu === key;
 }
-function go(path: string) {
-  if (route.path !== path) router.push(path);
+
+function go(item: NavItem) {
+  // 已在模块根路径：无需重复跳转
+  if (route.path === item.path) return;
+  router.push(item.path).catch(() => {
+    // 懒加载 chunk 失败时兜底整页跳转（对齐 router.onError 自愈逻辑）
+    const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+    window.location.assign(`${base}${item.path}`);
+  });
 }
 </script>
 
@@ -28,7 +35,7 @@ function go(path: string) {
       class="nav-item"
       :class="{ active: isActive(item.key) }"
       :title="collapsed ? item.label : ''"
-      @click="go(item.path)"
+      @click="go(item)"
     >
       <component :is="item.icon" class="nav-icon" />
       <span v-if="!collapsed" class="nav-label">{{ item.label }}</span>
@@ -53,6 +60,7 @@ function go(path: string) {
   border-left: 3px solid transparent;
   cursor: pointer;
   color: #374151;
+  user-select: none;
 }
 .nav-item:hover {
   background: #f9fafb;
@@ -61,11 +69,13 @@ function go(path: string) {
   font-size: 16px;
   color: #6b7280;
   flex: none;
+  pointer-events: none;
 }
 .nav-label {
   font-size: 14px;
   font-weight: 500;
   white-space: nowrap;
+  pointer-events: none;
 }
 
 .nav-item.active {
