@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue';
 import OpContactRows from './OpContactRows.vue';
+import AdaptiveTags from './AdaptiveTags.vue';
 
-const props = defineProps<{
+defineProps<{
   customer: {
     name: string;
     types: string[];
@@ -14,10 +14,6 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{ contact: [type: 'call' | 'sms' | 'email', value: string] }>();
-
-const MAX_TYPE_TAGS = 4;
-const visibleTypes = computed(() => props.customer.types.slice(0, MAX_TYPE_TAGS));
-const typeOverflow = computed(() => Math.max(0, props.customer.types.length - MAX_TYPE_TAGS));
 </script>
 
 <template>
@@ -27,10 +23,7 @@ const typeOverflow = computed(() => Math.max(0, props.customer.types.length - MA
       <span class="k">客户名称</span>
       <div class="kv-value-with-tags">
         <span class="v">{{ customer.name }}</span>
-        <span class="pill-tags">
-          <span v-for="t in visibleTypes" :key="t" class="pill-tag">{{ t }}</span>
-          <span v-if="typeOverflow > 0" class="pill-tag">+{{ typeOverflow }}</span>
-        </span>
+        <AdaptiveTags :tags="customer.types" />
       </div>
     </div>
     <div class="kv">
@@ -66,10 +59,5 @@ const typeOverflow = computed(() => Math.max(0, props.customer.types.length - MA
 .kv-value-with-tags {
   display: flex; align-items: center; gap: 6px;
   flex: 1; min-width: 0; overflow: hidden;
-}
-.pill-tags { display: inline-flex; align-items: center; gap: 4px; flex-wrap: nowrap; overflow: hidden; }
-.pill-tag {
-  font-size: 10px; color: #374151; background: #f3f4f6;
-  border-radius: 3px; padding: 2px 6px; flex: none;
 }
 </style>
