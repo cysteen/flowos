@@ -1,13 +1,19 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { CopyOutlined, FlagOutlined } from '@ant-design/icons-vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import { PRIORITY_COLOR, softBg, type Priority } from '@/views/tickets/types/ticket';
 import OpSlaBar from './OpSlaBar.vue';
 
-defineProps<{
+const props = defineProps<{
   detail: TicketDetailMeta;
   ticketNo: string;
 }>();
+
+const metaTitle = computed(
+  () =>
+    `建单人：${props.detail.builderShort}，建单时间：${props.detail.createdAtFull}，期望解决：${props.detail.expectedResolve}，单号：${props.ticketNo}`,
+);
 
 const emit = defineEmits<{
   copyNo: [];
@@ -45,17 +51,11 @@ function priorityHex(p: string): string {
         </span>
         <span class="oh-title">{{ detail.title }}</span>
       </div>
-      <div class="meta-row">
-        <span>建单人：{{ detail.builderShort }}，</span>
-        <span>建单时间：{{ detail.createdAtFull }}，</span>
-        <span>业务类型：{{ detail.businessType }}，</span>
-        <span>业务线：{{ detail.businessLine }}，</span>
-        <span>问题发生时间：{{ detail.issueOccurredAt }}，</span>
-        <span>期望解决：{{ detail.expectedResolve }}，</span>
-        <span class="no-row">
-          单号：{{ ticketNo }}
-          <CopyOutlined class="copy" @click="emit('copyNo')" />
+      <div class="meta-row" :title="metaTitle">
+        <span class="meta-text">
+          建单人：{{ detail.builderShort }}，建单时间：{{ detail.createdAtFull }}，期望解决：{{ detail.expectedResolve }}，单号：{{ ticketNo }}
         </span>
+        <CopyOutlined class="copy" @click="emit('copyNo')" />
       </div>
     </div>
     <div class="oh-right">
@@ -88,11 +88,22 @@ function priorityHex(p: string): string {
 }
 .oh-title { font-size: 14px; font-weight: 700; color: #111827; line-height: 1.3; }
 .meta-row {
-  display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
-  font-size: 11px; color: #9ca3af; line-height: 1.3;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-size: 11px;
+  color: #9ca3af;
+  line-height: 1.3;
 }
-.no-row { display: inline-flex; align-items: center; gap: 4px; }
-.copy { cursor: pointer; font-size: 13px; }
+.meta-text {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.copy { cursor: pointer; font-size: 13px; flex: none; }
 .copy:hover { color: #6b7280; }
 
 .oh-right { display: flex; align-items: center; gap: 12px; flex: none; }

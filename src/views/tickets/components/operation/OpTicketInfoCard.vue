@@ -10,11 +10,11 @@ defineProps<{ detail: TicketDetailMeta }>();
     <div class="card-title">工单信息</div>
 
     <!-- 工单属性 -->
-    <div class="kv"><span class="k">业务类型</span><span class="v">{{ detail.businessType }}</span></div>
-    <div class="kv"><span class="k">业务线</span><span class="v">{{ detail.businessLine }}</span></div>
     <div class="kv"><span class="k">工单来源</span><span class="v">{{ detail.source }}</span></div>
-    <div class="kv"><span class="k">问题发生时间</span><span class="v">{{ detail.issueOccurredAt }}</span></div>
-    <div class="kv"><span class="k">期望解决</span><span class="v">{{ detail.expectedResolve }}</span></div>
+    <div class="meta-row">
+      <div class="kv"><span class="k">业务类型</span><span class="v">{{ detail.businessType }}</span></div>
+      <div class="kv"><span class="k">业务线</span><span class="v">{{ detail.businessLine }}</span></div>
+    </div>
 
     <div class="divider" />
 
@@ -38,6 +38,7 @@ defineProps<{ detail: TicketDetailMeta }>();
         </template>
       </div>
     </div>
+    <div class="kv"><span class="k">问题发生时间</span><span class="v">{{ detail.issueOccurredAt }}</span></div>
     <div class="kv"><span class="k">设备SN</span><span class="v sn">{{ detail.product.sn }}</span></div>
 
     <!-- 投诉（仅投诉单） -->
