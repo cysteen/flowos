@@ -4,9 +4,11 @@ import { useRoute, useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 import { useWorkspaceTabsStore, resolveTicketTabTitle } from '@/stores/workspaceTabs';
 import { useCtiStore } from '@/stores/cti';
+import { useUserStore } from '@/stores/user';
 import OpHeader from './components/operation/OpHeader.vue';
 import OpOverviewBand from './components/operation/OpOverviewBand.vue';
 import OpStatDetailModal from './components/operation/OpStatDetailModal.vue';
+import OpSupplementModal from './components/operation/OpSupplementModal.vue';
 import OpProcessTabs from './components/operation/OpProcessTabs.vue';
 import OpSidePanel from './components/operation/OpSidePanel.vue';
 import OpActionBar from './components/OpActionBar.vue';
@@ -39,6 +41,9 @@ const sidePanelRef = ref<InstanceType<typeof OpSidePanel> | null>(null);
 
 const tabsStore = useWorkspaceTabsStore();
 const cti = useCtiStore();
+const user = useUserStore();
+
+const supplementModalOpen = ref(false);
 
 /** 工单操作页加载后，用标题同步 Tab（避免仅显示工单号） */
 watch(
@@ -137,13 +142,33 @@ function toast(name: string) {
   message.info(`「${name}」`);
 }
 
+function formatNow() {
+  const n = new Date();
+  return `今天 ${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`;
+}
+
+function onSupplementSubmit(payload: { supplementType: string; content: string; attachments: string[] }) {
+  const record = {
+    id: `s-${Date.now()}`,
+    who: user.name || '当前坐席',
+    when: formatNow(),
+    supplementType: payload.supplementType,
+    content: payload.content,
+    attachments: payload.attachments.length ? payload.attachments : undefined,
+  };
+  tabData.value.supplementRecords.unshift(record);
+  d.value.insight.supplementCount += 1;
+  processTabsRef.value?.switchTab('related');
+  message.success('补充信息已提交');
+}
+
 function onHeaderAction(name: string) {
   switch (name) {
     case '新建关联':
       openChildCreate();
       break;
     case '新建补充':
-      sidePanelRef.value?.focusAddRecord('supplement');
+      supplementModalOpen.value = true;
       break;
     case '催单':
       sidePanelRef.value?.focusAddRecord('dunning');
@@ -235,6 +260,11 @@ function updateTabData(next: OperationTabData) {
       @update:open="(v) => { if (!v) statModalKey = null; }"
       @open-ticket="onStatOpenTicket"
       @view-all="onStatViewAll"
+    />
+
+    <OpSupplementModal
+      v-model:open="supplementModalOpen"
+      @submit="onSupplementSubmit"
     />
   </div>
 </template>

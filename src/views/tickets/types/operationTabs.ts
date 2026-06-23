@@ -47,6 +47,8 @@ export interface RelatedTicketCard {
   typeColor: string;
   typeBgColor?: string;
   createdAt: string;
+  /** 完整建单时间（表格展示） */
+  createdAtFull?: string;
   builder: string;
   demand: string;
   attachments?: string[];
@@ -59,9 +61,22 @@ export interface SimpleRecord {
   id: string;
   who: string;
   when: string;
+  /** 补充类型（仅补充记录使用） */
+  supplementType?: string;
   content: string;
   attachments?: string[];
 }
+
+/** 坐席新建补充时的类型枚举 */
+export const SUPPLEMENT_TYPE_OPTIONS = [
+  '问题描述补充',
+  '材料附件补充',
+  '客户反馈',
+  '处理进展',
+  '其他',
+] as const;
+
+export type SupplementType = (typeof SUPPLEMENT_TYPE_OPTIONS)[number];
 
 export interface ContactRecord {
   id: string;

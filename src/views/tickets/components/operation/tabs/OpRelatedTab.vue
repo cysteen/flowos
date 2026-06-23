@@ -96,6 +96,7 @@ function processEntries(t: RelatedTicketCard) {
       <div class="simple-list">
         <div v-for="r in supplementRecords" :key="r.id" class="simple-item">
           <div class="who-when">
+            <span v-if="r.supplementType" class="type-tag">{{ r.supplementType }}</span>
             <span class="who">{{ r.who }}</span><span class="sep">·</span><span class="muted">{{ r.when }}</span>
           </div>
           <div class="entry-desc">{{ r.content }}</div>
@@ -162,7 +163,11 @@ function processEntries(t: RelatedTicketCard) {
   padding: 10px 12px; display: flex; flex-direction: column; gap: 6px;
 }
 
-.who-when { display: flex; align-items: center; gap: 4px; font-size: 11px; }
+.who-when { display: flex; align-items: center; gap: 4px; font-size: 11px; flex-wrap: wrap; }
+.type-tag {
+  font-size: 10px; font-weight: 600; color: #6b7280;
+  background: #f3f4f6; border-radius: 3px; padding: 1px 6px; flex: none;
+}
 .who { font-weight: 600; color: #374151; }
 .muted { color: #9ca3af; }
 .entry-desc { font-size: 12px; color: #6b7280; line-height: 1.6; }
