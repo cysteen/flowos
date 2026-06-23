@@ -194,7 +194,7 @@ function switchTenant(tenantId: string) {
 .app-header {
   display: flex;
   align-items: stretch;
-  height: 72px;
+  height: 56px;
   background: #fff;
   border-bottom: 1px solid #e5e7eb;
 }
