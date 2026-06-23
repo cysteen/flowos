@@ -90,19 +90,19 @@ const emit = defineEmits<{ select: [action: InsightAction] }>();
   box-shadow: 0 4px 14px rgba(17, 24, 39, 0.1);
 }
 .ob-desc {
-  flex: 3;
+  flex: 1;
   background: linear-gradient(180deg, #fff 0%, #f8faff 100%);
   border-color: #bfdbfe;
   border-top: 3px solid #1a6fff;
 }
 .ob-stat {
-  flex: 2;
+  flex: 1;
   background: linear-gradient(180deg, #fff 0%, #faf8ff 100%);
   border-color: #ddd6fe;
   border-top: 3px solid #7c3aed;
 }
 .ob-handle {
-  flex: 2;
+  flex: 1;
   background: linear-gradient(180deg, #fff 0%, #f6fdf9 100%);
   border-color: #a7f3d0;
   border-top: 3px solid #10b981;
