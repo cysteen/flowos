@@ -1,8 +1,5 @@
 <script setup lang="ts">
-import {
-  CopyOutlined, StarOutlined, PrinterOutlined, EllipsisOutlined,
-  FlagOutlined,
-} from '@ant-design/icons-vue';
+import { CopyOutlined, FlagOutlined } from '@ant-design/icons-vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import { PRIORITY_COLOR, softBg, type Priority } from '@/views/tickets/types/ticket';
 
@@ -66,9 +63,12 @@ function priorityHex(p: string): string {
         <span class="sla-label">当前节点响应</span>
         <span class="sla-val" :class="detail.slaNodeOverdue ? 'red' : 'amber'">{{ detail.slaNode }}</span>
       </div>
-      <button class="icon-btn" @click="emit('action', '关注')"><StarOutlined /></button>
-      <button class="icon-btn" @click="emit('action', '打印')"><PrinterOutlined /></button>
-      <button class="icon-btn" @click="emit('action', '更多')"><EllipsisOutlined /></button>
+      <div class="oh-actions">
+        <button class="action-btn" @click="emit('action', '新建关联')">新建关联</button>
+        <button class="action-btn" @click="emit('action', '新建补充')">新建补充</button>
+        <button class="action-btn" @click="emit('action', '催单')">催单</button>
+        <button class="action-btn" @click="emit('action', '取消工单')">取消工单</button>
+      </div>
     </div>
   </div>
 </template>
@@ -105,10 +105,12 @@ function priorityHex(p: string): string {
 .sla-val.amber { color: #f59e0b; }
 .sla-val.red { color: #ef4444; }
 .sla-divider { width: 1px; height: 30px; background: #e5e7eb; }
-.icon-btn {
-  width: 32px; height: 32px; border: 1px solid #e5e7eb; border-radius: 6px;
-  background: #f9fafb; color: #6b7280; cursor: pointer;
+.oh-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+.action-btn {
   display: inline-flex; align-items: center; justify-content: center;
+  padding: 6px 16px; border-radius: 4px; border: 1px solid #d9d9d9;
+  background: #f0f0f0; color: #555; cursor: pointer;
+  font-size: 13px; font-family: inherit; transition: all 0.2s; white-space: nowrap;
 }
-.icon-btn:hover { background: #f3f4f6; }
+.action-btn:hover { background: #e6e6e6; color: #333; }
 </style>

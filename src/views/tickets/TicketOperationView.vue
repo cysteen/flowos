@@ -136,6 +136,25 @@ function toast(name: string) {
   message.info(`「${name}」`);
 }
 
+function onHeaderAction(name: string) {
+  switch (name) {
+    case '新建关联':
+      openChildCreate();
+      break;
+    case '新建补充':
+      message.info('新建补充单');
+      break;
+    case '催单':
+      message.info('催单');
+      break;
+    case '取消工单':
+      confirmCancel();
+      break;
+    default:
+      toast(name);
+  }
+}
+
 function copyNo() {
   message.success('工单号已复制');
 }
@@ -155,7 +174,7 @@ function updateTabData(next: OperationTabData) {
       :detail="d"
       :ticket-no="ticketNo"
       @copy-no="copyNo"
-      @action="toast"
+      @action="onHeaderAction"
     />
 
     <!-- 顶部通栏速览带：客户诉求 | 客户全景宫格 | 最新处理（关注信息一屏） -->
