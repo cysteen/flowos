@@ -13,10 +13,17 @@ const emit = defineEmits<{ select: [action: InsightAction] }>();
     <!-- ① 客户诉求 + 工单关键信息（高度封顶，可放大） -->
     <section class="ob-col ob-desc">
       <div class="ob-head">
-        <span class="ob-title">客户诉求</span>
+        <span class="ob-title">问题与诉求</span>
       </div>
       <div class="ob-body">
-        <p class="ob-demand">{{ detail.demand }}</p>
+        <div class="ob-field">
+          <span class="fk">产品&问题</span>
+          <span class="fv">{{ detail.productIssue }}</span>
+        </div>
+        <div class="ob-field">
+          <span class="fk">问题描述</span>
+          <span class="fv">{{ detail.demand }}</span>
+        </div>
         <div class="ob-meta">
           <span><i>来源</i>{{ detail.source }}</span>
           <span><i>业务类型</i>{{ detail.businessType }}</span>
@@ -97,11 +104,23 @@ const emit = defineEmits<{ select: [action: InsightAction] }>();
   padding-right: 2px;
 }
 
-.ob-demand {
-  margin: 0 0 8px;
+.ob-field {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
   font-size: 13px;
-  color: #374151;
   line-height: 1.6;
+}
+.ob-field .fk {
+  flex: none;
+  width: 64px;
+  color: #9ca3af;
+  font-weight: 600;
+}
+.ob-field .fv {
+  flex: 1;
+  min-width: 0;
+  color: #374151;
   word-break: break-word;
 }
 .ob-meta {
