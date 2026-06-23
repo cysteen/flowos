@@ -163,7 +163,6 @@ function switchTenant(tenantId: string) {
                 :disabled="!t.selectable"
               >
                 <span class="tenant-item">
-                  <span class="tenant-dot" :style="{ background: t.color }"></span>
                   <span class="tenant-name">{{ t.name }}</span>
                   <span v-if="!t.selectable" class="tenant-tag">{{ tenantStatusLabel(t.status) }}</span>
                   <CheckOutlined v-else-if="t.id === tenant.currentTenantId" class="tenant-check" />
@@ -325,12 +324,6 @@ function switchTenant(tenantId: string) {
   align-items: center;
   gap: 8px;
   min-width: 140px;
-}
-.tenant-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex: none;
 }
 .tenant-name {
   flex: 1;
