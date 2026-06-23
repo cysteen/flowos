@@ -44,7 +44,7 @@ const tabsStore = useWorkspaceTabsStore();
 const cti = useCtiStore();
 const user = useUserStore();
 
-const supplementModalOpen = ref(false);
+const overviewExpanded = ref(false);
 const dunningModalOpen = ref(false);
 
 /** 工单操作页加载后，用标题同步 Tab（避免仅显示工单号） */
@@ -220,8 +220,8 @@ function updateTabData(next: OperationTabData) {
     />
 
     <!-- 顶部通栏速览带：客户诉求 | 客户全景宫格 | 最新处理（关注信息一屏） -->
-    <div class="op-overview-wrap">
-      <OpOverviewBand :detail="d" @select="onOverviewSelect" />
+    <div class="op-overview-wrap" :class="{ elevated: overviewExpanded }">
+      <OpOverviewBand :detail="d" @select="onOverviewSelect" @expand-change="overviewExpanded = $event" />
     </div>
 
     <div class="op-body">
@@ -298,7 +298,8 @@ function updateTabData(next: OperationTabData) {
   display: flex; flex-direction: column; height: 100%; overflow: hidden;
   background: #f9fafb;
 }
-.op-overview-wrap { flex: none; padding: 8px 20px 0; }
+.op-overview-wrap { flex: none; padding: 8px 20px 0; position: relative; z-index: 1; }
+.op-overview-wrap.elevated { z-index: 50; }
 .op-body {
   display: flex; gap: 16px; padding: 16px 20px; flex: 1;
   min-height: 0; align-items: stretch;

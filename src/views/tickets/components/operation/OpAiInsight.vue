@@ -3,7 +3,7 @@ import { computed } from 'vue';
 import { ThunderboltOutlined } from '@ant-design/icons-vue';
 import type { AiTicketInsight } from '@/views/tickets/types/operation';
 
-const props = defineProps<{ insight: AiTicketInsight }>();
+const props = defineProps<{ insight: AiTicketInsight; expanded?: boolean }>();
 
 const summaryLine = computed(
   () => `客户：${props.insight.customerBrief}；工单：${props.insight.ticketBrief}；建议：${props.insight.suggestion}`,
@@ -11,7 +11,7 @@ const summaryLine = computed(
 </script>
 
 <template>
-  <div class="ai-insight" :title="summaryLine">
+  <div class="ai-insight" :class="{ expanded }" :title="summaryLine">
     <div class="ai-head">
       <span class="ai-brand"><ThunderboltOutlined class="ai-icon" />AI洞察</span>
       <span v-if="insight.riskTag" class="risk-tag">{{ insight.riskTag }}</span>
@@ -75,5 +75,11 @@ const summaryLine = computed(
   line-clamp: 3;
   overflow: hidden;
   word-break: break-word;
+}
+.ai-insight.expanded .ai-text {
+  display: block;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+  overflow: visible;
 }
 </style>

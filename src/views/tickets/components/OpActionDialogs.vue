@@ -1,6 +1,12 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, reactive, watch } from 'vue';
 import { message } from 'ant-design-vue';
+import {
+  SwapOutlined, TeamOutlined, StopOutlined, PauseCircleOutlined,
+  PlayCircleOutlined, RiseOutlined, SyncOutlined, ToolOutlined,
+  CheckCircleOutlined, CloseCircleOutlined, InboxOutlined,
+} from '@ant-design/icons-vue';
+import OpActionModal from './operation/OpActionModal.vue';
 import type { SuspendInfo, OpActionType } from '../composables/opActions';
 import {
   TRANSFER_TARGETS, DELEGATE_TARGETS, REVIEWERS, FORCE_CLOSE_REASONS, APPROVERS,
@@ -58,25 +64,37 @@ watch(() => escalate.channel, (ch) => {
   if (!groups.includes(escalate.group)) escalate.group = groups[0];
 });
 
-const title = computed(() => {
-  const map: Partial<Record<OpActionType, string>> = {
-    转办: '转办工单', 委派: '委派协办', 下送: '下送审核', 强结: '强制结案（强结）',
-    挂起: '挂起工单', 升级: '升级工单', 同步飞书: '同步飞书协同', 转售后: '转售后处理',
-    标记已解决: '标记已解决', 恢复: '恢复工单', 关闭工单: '关闭工单', 归档工单: '归档工单',
-  };
-  return props.action ? map[props.action] ?? props.action : '';
-});
+/** 每个动作的弹窗外观配置：标题 / 图标 / 徽标色 / 宽度 / 主按钮色 / 主按钮文案 */
+interface DlgConfig {
+  title: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  icon: any;
+  tone: 'primary' | 'success' | 'warn' | 'danger';
+  width: number;
+  okTone: 'primary' | 'success' | 'danger';
+  okText: string;
+}
 
-const okText = computed(() => {
-  const map: Partial<Record<OpActionType, string>> = {
-    转办: '确认转办', 委派: '确认委派', 下送: '确认下送', 强结: '提交强结审批',
-    挂起: '确认挂起', 升级: '确认升级', 同步飞书: '确认同步', 转售后: '确认转售后',
-    标记已解决: '确认标记', 恢复: '确认恢复', 关闭工单: '确认关闭', 归档工单: '确认归档',
-  };
-  return props.action ? map[props.action] ?? '确认' : '确认';
-});
+const DLG_CONFIG: Partial<Record<OpActionType, DlgConfig>> = {
+  转办: { title: '转办工单', icon: SwapOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认转办' },
+  委派: { title: '委派协办', icon: TeamOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认委派' },
+  下送: { title: '下送审核', icon: StopOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认下送' },
+  强结: { title: '强制结案（强结）', icon: StopOutlined, tone: 'warn', width: 480, okTone: 'danger', okText: '提交强结审批' },
+  挂起: { title: '挂起工单', icon: PauseCircleOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认挂起' },
+  升级: { title: '升级工单', icon: RiseOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认升级' },
+  同步飞书: { title: '同步飞书协同', icon: SyncOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认同步' },
+  转售后: { title: '转售后处理', icon: ToolOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认转售后' },
+  标记已解决: { title: '标记已解决', icon: CheckCircleOutlined, tone: 'success', width: 520, okTone: 'success', okText: '确认标记' },
+  恢复: { title: '恢复工单', icon: PlayCircleOutlined, tone: 'success', width: 560, okTone: 'success', okText: '确认恢复' },
+  关闭工单: { title: '关闭工单', icon: CloseCircleOutlined, tone: 'warn', width: 560, okTone: 'primary', okText: '确认关闭' },
+  归档工单: { title: '归档工单', icon: InboxOutlined, tone: 'warn', width: 480, okTone: 'danger', okText: '确认归档' },
+};
 
-const okDanger = computed(() => props.action === '归档工单' || props.action === '强结');
+const cfg = computed<DlgConfig>(
+  () => (props.action && DLG_CONFIG[props.action]) || {
+    title: props.action ?? '', icon: undefined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认',
+  },
+);
 
 function resetForms() {
   transfer.scope = 'same'; transfer.target = TRANSFER_TARGETS[0]; transfer.reason = '';
@@ -145,100 +163,100 @@ function onOk() {
 </script>
 
 <template>
-  <a-modal
+  <OpActionModal
     :open="open"
-    :title="title"
-    :width="action === '关闭工单' || action === '恢复' ? 560 : action === '标记已解决' ? 520 : 480"
-    :ok-text="okText"
-    cancel-text="取消"
-    :ok-button-props="okDanger ? { danger: true } : action === '标记已解决' || action === '恢复' ? { type: 'primary', style: { background: '#059669', borderColor: '#059669' } } : { type: 'primary' }"
-    destroy-on-close
+    :title="cfg.title"
+    :icon="cfg.icon"
+    :tone="cfg.tone"
+    :width="cfg.width"
+    :ok-text="cfg.okText"
+    :ok-tone="cfg.okTone"
     @update:open="emit('update:open', $event)"
     @ok="onOk"
     @cancel="closeModal"
   >
     <!-- 转办 -->
-    <div v-if="action === '转办'" class="dlg-body">
-      <div class="field">
-        <div class="label">转办范围</div>
+    <div v-if="action === '转办'" class="op-form">
+      <div class="op-field">
+        <div class="op-label">转办范围</div>
         <a-radio-group v-model:value="transfer.scope">
           <a-radio value="same">同组内</a-radio>
           <a-radio value="cross">跨组</a-radio>
         </a-radio-group>
       </div>
-      <div class="field">
-        <div class="label">目标处理人</div>
+      <div class="op-field">
+        <div class="op-label">目标处理人</div>
         <a-select v-model:value="transfer.target" :options="TRANSFER_TARGETS.map((t) => ({ value: t, label: t }))" style="width:100%" />
       </div>
-      <div class="field">
-        <div class="label">转办原因</div>
+      <div class="op-field">
+        <div class="op-label">转办原因</div>
         <a-textarea v-model:value="transfer.reason" :rows="2" placeholder="请输入转办原因..." />
       </div>
-      <div class="tip tip-info">转办变更当前处理人，工单状态仍为「处理中」；48 小时未响应将自动回滚。</div>
+      <div class="op-tip op-tip-info">转办变更当前处理人，工单状态仍为「处理中」；48 小时未响应将自动回滚。</div>
     </div>
 
     <!-- 委派 -->
-    <div v-else-if="action === '委派'" class="dlg-body">
-      <div class="field">
-        <div class="label req">协助办理人</div>
+    <div v-else-if="action === '委派'" class="op-form">
+      <div class="op-field">
+        <div class="op-label req">协助办理人</div>
         <a-select v-model:value="delegate.assistant" :options="DELEGATE_TARGETS.map((t) => ({ value: t, label: t }))" style="width:100%" />
       </div>
-      <div class="field">
-        <div class="label">委派说明</div>
+      <div class="op-field">
+        <div class="op-label">委派说明</div>
         <a-textarea v-model:value="delegate.reason" :rows="2" placeholder="请说明需协助的内容..." />
       </div>
-      <div class="tip tip-info">委派 ≠ 转办：主责仍在您名下，协助人配合办理，状态不变。</div>
+      <div class="op-tip op-tip-info">委派 ≠ 转办：主责仍在您名下，协助人配合办理，状态不变。</div>
     </div>
 
     <!-- 强结 -->
-    <div v-else-if="action === '强结'" class="dlg-body">
-      <div class="tip tip-warn">非正常结案路径：处理中任意阶段可发起，提交后走单级审批，审批通过直接进入「已结案」，绕过满意度回访。</div>
-      <div class="field">
-        <div class="label req">强结原因</div>
+    <div v-else-if="action === '强结'" class="op-form">
+      <div class="op-tip op-tip-warn">非正常结案路径：处理中任意阶段可发起，提交后走单级审批，审批通过直接进入「已结案」，绕过满意度回访。</div>
+      <div class="op-field">
+        <div class="op-label req">强结原因</div>
         <a-select v-model:value="forceClose.reason" placeholder="请选择..." style="width:100%"
           :options="FORCE_CLOSE_REASONS.map((r) => ({ value: r, label: r }))" />
       </div>
-      <div class="field">
-        <div class="label req">审批人</div>
+      <div class="op-field">
+        <div class="op-label req">审批人</div>
         <a-select v-model:value="forceClose.approver" :options="APPROVERS.map((r) => ({ value: r, label: r }))" style="width:100%" />
       </div>
-      <div class="field">
-        <div class="label">补充说明</div>
+      <div class="op-field">
+        <div class="op-label">补充说明</div>
         <a-textarea v-model:value="forceClose.detail" :rows="2" placeholder="请补充强结说明..." />
       </div>
     </div>
 
     <!-- 挂起 -->
-    <div v-else-if="action === '挂起'" class="dlg-body">
-      <div class="field">
-        <div class="label req">挂起原因</div>
+    <div v-else-if="action === '挂起'" class="op-form">
+      <div class="op-field">
+        <div class="op-label req">挂起原因</div>
         <a-select v-model:value="suspend.reason" placeholder="请选择..." style="width:100%"
           :options="SUSPEND_REASONS.map((r) => ({ value: r, label: r }))" />
       </div>
-      <div class="field">
-        <div class="label">详细说明</div>
+      <div class="op-field">
+        <div class="op-label">详细说明</div>
         <a-textarea v-model:value="suspend.detail" :rows="2" placeholder="请描述挂起原因..." />
       </div>
-      <div class="field">
-        <div class="label">预计恢复时间</div>
+      <div class="op-field">
+        <div class="op-label">预计恢复时间</div>
         <a-input v-model:value="suspend.resumeAt" placeholder="如：明日 10:00" />
       </div>
-      <div class="tip tip-info">挂起后 SLA 暂停计时 | 本工单已挂起 0 次（最多 2 次）</div>
+      <div class="op-tip op-tip-info">挂起后 SLA 暂停计时 | 本工单已挂起 0 次（最多 2 次）</div>
     </div>
 
     <!-- 升级 -->
-    <div v-else-if="action === '升级'" class="dlg-body">
-      <div class="field-row">
-        <div class="field">
-          <div class="label req">升级通道</div>
+    <div v-else-if="action === '升级'" class="op-form">
+      <div class="op-field-row">
+        <div class="op-field">
+          <div class="op-label req">升级通道</div>
           <a-select
             v-model:value="escalate.channel"
             style="width:100%"
             :options="ESCALATE_CHANNELS.map((c) => ({ value: c, label: c }))"
           />
         </div>
-        <div v-if="showEscalateGroup" class="field">
-          <div class="label req">目标组别</div>
+        <div v-if="showEscalateGroup" class="op-field">
+          <div class="op-label req">目标组别</div>
           <a-select
             v-model:value="escalate.group"
             style="width:100%"
@@ -247,127 +265,127 @@ function onOk() {
         </div>
       </div>
       <template v-if="escalateToTech">
-        <div class="field">
-          <div class="label">目标人员</div>
+        <div class="op-field">
+          <div class="op-label">目标人员</div>
           <a-select v-model:value="escalate.member" style="width:100%"
             :options="ESCALATE_MEMBERS.map((m) => ({ value: m, label: m }))" />
         </div>
       </template>
-      <div class="field">
-        <div class="label">升级说明</div>
+      <div class="op-field">
+        <div class="op-label">升级说明</div>
         <a-textarea v-model:value="escalate.detail" :rows="2" placeholder="请填写升级说明..." />
       </div>
       <a-checkbox v-model:checked="escalate.syncContext">同步工单上下文至目标系统</a-checkbox>
     </div>
 
     <!-- 同步飞书 -->
-    <div v-else-if="action === '同步飞书'" class="dlg-body">
-      <div class="tip tip-info">协同动作：仅在时间线记录一次同步，不改变工单状态，SLA 继续计时。</div>
-      <div class="field">
-        <div class="label req">协同空间</div>
+    <div v-else-if="action === '同步飞书'" class="op-form">
+      <div class="op-tip op-tip-info">协同动作：仅在时间线记录一次同步，不改变工单状态，SLA 继续计时。</div>
+      <div class="op-field">
+        <div class="op-label req">协同空间</div>
         <a-select v-model:value="syncFeishu.space" :options="FEISHU_SPACES.map((s) => ({ value: s, label: s }))" style="width:100%" />
       </div>
-      <div class="field">
-        <div class="label req">同步内容</div>
+      <div class="op-field">
+        <div class="op-label req">同步内容</div>
         <a-textarea v-model:value="syncFeishu.message" :rows="3" placeholder="请填写需同步给协同团队的信息..." />
       </div>
     </div>
 
     <!-- 转售后 -->
-    <div v-else-if="action === '转售后'" class="dlg-body">
-      <div class="field">
-        <div class="label req">转出模式</div>
-        <a-radio-group v-model:value="aftersale.mode" class="radio-cards">
-          <label class="radio-card" :class="{ on: aftersale.mode === 'callback' }">
+    <div v-else-if="action === '转售后'" class="op-form">
+      <div class="op-field">
+        <div class="op-label req">转出模式</div>
+        <a-radio-group v-model:value="aftersale.mode" class="op-radio-cards">
+          <label class="op-radio-card" :class="{ on: aftersale.mode === 'callback' }">
             <a-radio value="callback" />
             <div>
-              <div class="rc-title">等回流模式</div>
-              <div class="rc-sub">售后处理完成后结果回流，客服侧恢复处理继续面向客户闭环</div>
+              <div class="op-rc-title">等回流模式</div>
+              <div class="op-rc-sub">售后处理完成后结果回流，客服侧恢复处理继续面向客户闭环</div>
             </div>
           </label>
-          <label class="radio-card" :class="{ on: aftersale.mode === 'close' }">
+          <label class="op-radio-card" :class="{ on: aftersale.mode === 'close' }">
             <a-radio value="close" />
             <div>
-              <div class="rc-title">关闭模式</div>
-              <div class="rc-sub">客服工单进入终态（已关闭），后续由售后工单独立承接</div>
+              <div class="op-rc-title">关闭模式</div>
+              <div class="op-rc-sub">客服工单进入终态（已关闭），后续由售后工单独立承接</div>
             </div>
           </label>
         </a-radio-group>
       </div>
-      <div class="field">
-        <div class="label req">售后处理组</div>
+      <div class="op-field">
+        <div class="op-label req">售后处理组</div>
         <a-select v-model:value="aftersale.group" :options="AFTERSALE_GROUPS.map((g) => ({ value: g, label: g }))" style="width:100%" />
       </div>
-      <div class="field">
-        <div class="label">转出说明</div>
+      <div class="op-field">
+        <div class="op-label">转出说明</div>
         <a-textarea v-model:value="aftersale.detail" :rows="2" placeholder="请填写转售后说明..." />
       </div>
     </div>
 
     <!-- 标记已解决 -->
-    <div v-else-if="action === '标记已解决'" class="dlg-body">
-      <div class="tip tip-ok">标记为 Resolved 后，工单进入「待回访确认」阶段，不等于最终关闭。</div>
-      <div class="field">
-        <div class="label req">解决方案摘要</div>
+    <div v-else-if="action === '标记已解决'" class="op-form">
+      <div class="op-tip op-tip-ok">标记为 Resolved 后，工单进入「待回访确认」阶段，不等于最终关闭。</div>
+      <div class="op-field">
+        <div class="op-label req">解决方案摘要</div>
         <a-textarea v-model:value="resolve.solution" :rows="3" placeholder="请填写本次处理结果与建议..." />
       </div>
       <a-checkbox v-model:checked="resolve.createCallback">自动创建回访任务并在 24 小时内催收满意度</a-checkbox>
     </div>
 
     <!-- 恢复 -->
-    <div v-else-if="action === '恢复'" class="dlg-body">
-      <div v-if="suspendInfo" class="suspend-box">
-        <div class="box-title">当前挂起信息</div>
-        <div class="kv-row"><span>挂起原因</span><span>{{ suspendInfo.reason }}</span></div>
-        <div class="kv-row"><span>挂起时间</span><span>{{ suspendInfo.at }}</span></div>
-        <div class="kv-row"><span>预计恢复</span><span>{{ suspendInfo.resumeAt || '—' }}</span></div>
-        <div class="kv-row"><span>操作人</span><span>{{ suspendInfo.operator }}</span></div>
+    <div v-else-if="action === '恢复'" class="op-form">
+      <div v-if="suspendInfo" class="op-box op-box-warn">
+        <div class="op-box-title">当前挂起信息</div>
+        <div class="op-kv-row"><span>挂起原因</span><span>{{ suspendInfo.reason }}</span></div>
+        <div class="op-kv-row"><span>挂起时间</span><span>{{ suspendInfo.at }}</span></div>
+        <div class="op-kv-row"><span>预计恢复</span><span>{{ suspendInfo.resumeAt || '—' }}</span></div>
+        <div class="op-kv-row"><span>操作人</span><span>{{ suspendInfo.operator }}</span></div>
       </div>
-      <div class="field">
-        <div class="label req">恢复原因</div>
+      <div class="op-field">
+        <div class="op-label req">恢复原因</div>
         <a-select v-model:value="resume.reason" placeholder="请选择..." style="width:100%"
           :options="RESUME_REASONS.map((r) => ({ value: r, label: r }))" />
       </div>
-      <div class="field">
-        <div class="label">详细说明</div>
+      <div class="op-field">
+        <div class="op-label">详细说明</div>
         <a-textarea v-model:value="resume.detail" :rows="2" placeholder="请描述恢复原因和后续处理计划..." />
       </div>
-      <div class="tip tip-ok">恢复后 SLA 继续计时</div>
+      <div class="op-tip op-tip-ok">恢复后 SLA 继续计时</div>
     </div>
 
     <!-- 关闭工单 -->
-    <div v-else-if="action === '关闭工单'" class="dlg-body">
-      <div class="tip tip-info">待回访 → 已关闭 → 已归档 三态流转；关闭后 30 天无操作将自动归档。</div>
-      <div class="field">
-        <div class="label req">状态落点</div>
-        <a-radio-group v-model:value="close.target" class="radio-cards">
-          <label class="radio-card" :class="{ on: close.target === 'resolved' }">
+    <div v-else-if="action === '关闭工单'" class="op-form">
+      <div class="op-tip op-tip-info">待回访 → 已关闭 → 已归档 三态流转；关闭后 30 天无操作将自动归档。</div>
+      <div class="op-field">
+        <div class="op-label req">状态落点</div>
+        <a-radio-group v-model:value="close.target" class="op-radio-cards">
+          <label class="op-radio-card" :class="{ on: close.target === 'resolved' }">
             <a-radio value="resolved" />
             <div>
-              <div class="rc-title">标记为已解决（待回访）</div>
-              <div class="rc-sub">问题已处理完成，仍需回访确认或等待客户回评</div>
+              <div class="op-rc-title">标记为已解决（待回访）</div>
+              <div class="op-rc-sub">问题已处理完成，仍需回访确认或等待客户回评</div>
             </div>
           </label>
-          <label class="radio-card" :class="{ on: close.target === 'closed' }">
+          <label class="op-radio-card" :class="{ on: close.target === 'closed' }">
             <a-radio value="closed" />
             <div>
-              <div class="rc-title">直接关闭（Closed）</div>
-              <div class="rc-sub">已完成回访确认，或无需回访的标准结案场景</div>
+              <div class="op-rc-title">直接关闭（Closed）</div>
+              <div class="op-rc-sub">已完成回访确认，或无需回访的标准结案场景</div>
             </div>
           </label>
         </a-radio-group>
       </div>
-      <div class="field">
-        <div class="label req">处理结果</div>
+      <div class="op-field">
+        <div class="op-label req">处理结果</div>
         <a-select v-model:value="close.result" placeholder="请选择..." style="width:100%"
           :options="CLOSE_RESULTS.map((r) => ({ value: r, label: r }))" />
       </div>
-      <div class="field">
-        <div class="label req">解决方案摘要</div>
+      <div class="op-field">
+        <div class="op-label req">解决方案摘要</div>
         <a-textarea v-model:value="close.solution" :rows="3" placeholder="请填写最终解决方案（必填）..." />
       </div>
-      <div class="field">
-        <div class="label req">客户满意度</div>
+      <div class="op-field">
+        <div class="op-label req">客户满意度</div>
         <a-radio-group v-model:value="close.satisfaction">
           <a-radio value="满意">满意</a-radio>
           <a-radio value="一般">一般</a-radio>
@@ -375,8 +393,8 @@ function onOk() {
           <a-radio value="未评价">未评价</a-radio>
         </a-radio-group>
       </div>
-      <div class="field">
-        <div class="label">根因分类</div>
+      <div class="op-field">
+        <div class="op-label">根因分类</div>
         <a-select v-model:value="close.rootCause" placeholder="请选择..." allow-clear style="width:100%"
           :options="ROOT_CAUSES.map((r) => ({ value: r, label: r }))" />
       </div>
@@ -384,55 +402,25 @@ function onOk() {
     </div>
 
     <!-- 归档 -->
-    <div v-else-if="action === '归档工单'" class="dlg-body">
-      <div class="tip tip-warn">归档后工单将移至冷存储，仅支持只读查询，不可恢复</div>
-      <div class="field">
-        <div class="label">归档原因</div>
+    <div v-else-if="action === '归档工单'" class="op-form">
+      <div class="op-tip op-tip-warn">归档后工单将移至冷存储，仅支持只读查询，不可恢复</div>
+      <div class="op-field">
+        <div class="op-label">归档原因</div>
         <a-select v-model:value="archive.reason" style="width:100%"
           :options="ARCHIVE_REASONS.map((r) => ({ value: r, label: r }))" />
       </div>
-      <div class="field">
-        <div class="label">数据保留策略</div>
+      <div class="op-field">
+        <div class="op-label">数据保留策略</div>
         <a-radio-group v-model:value="archive.retention">
           <a-radio value="3y">保留 3 年</a-radio>
           <a-radio value="5y">保留 5 年</a-radio>
           <a-radio value="forever">永久保留</a-radio>
         </a-radio-group>
       </div>
-      <div class="meta-box">
-        <div class="kv-row"><span>工单编号</span><span class="mono">{{ ticketNo }}</span></div>
-        <div class="kv-row"><span>关联附件</span><span>2 个文件 (256KB)</span></div>
+      <div class="op-box">
+        <div class="op-kv-row"><span>工单编号</span><span class="op-mono">{{ ticketNo }}</span></div>
+        <div class="op-kv-row"><span>关联附件</span><span>2 个文件 (256KB)</span></div>
       </div>
     </div>
-  </a-modal>
+  </OpActionModal>
 </template>
-
-<style scoped>
-.dlg-body { display: flex; flex-direction: column; gap: 14px; }
-.field-row { display: flex; gap: 12px; align-items: flex-start; }
-.field-row .field { flex: 1; min-width: 0; }
-.field { display: flex; flex-direction: column; gap: 6px; }
-.label { font-size: 13px; color: #374151; font-weight: 500; }
-.label.req::before { content: '* '; color: #ef4444; }
-.tip { font-size: 12px; padding: 10px 12px; border-radius: 8px; line-height: 1.5; }
-.tip-warn { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
-.tip-info { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
-.tip-ok { background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; }
-.suspend-box, .meta-box {
-  background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px 14px;
-  display: flex; flex-direction: column; gap: 6px; font-size: 12px;
-}
-.meta-box { background: #f9fafb; border-color: #e5e7eb; }
-.box-title { font-weight: 600; color: #b45309; margin-bottom: 4px; }
-.kv-row { display: flex; justify-content: space-between; gap: 12px; color: #6b7280; }
-.kv-row span:last-child { color: #374151; font-weight: 500; }
-.mono { font-family: ui-monospace, monospace; }
-.radio-cards { display: flex; flex-direction: column; gap: 8px; width: 100%; }
-.radio-card {
-  display: flex; align-items: flex-start; gap: 10px; padding: 12px;
-  border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer;
-}
-.radio-card.on { border-color: #10b981; background: #f0fdf4; }
-.rc-title { font-size: 13px; font-weight: 600; color: #111827; }
-.rc-sub { font-size: 11px; color: #6b7280; margin-top: 2px; }
-</style>
