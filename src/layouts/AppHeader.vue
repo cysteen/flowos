@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 import {
@@ -10,7 +10,6 @@ import {
   GlobalOutlined,
   DownOutlined,
   CheckOutlined,
-  SwapOutlined,
 } from '@ant-design/icons-vue';
 import AgentCtiBar from './AgentCtiBar.vue';
 import { useUserStore } from '@/stores/user';
@@ -27,15 +26,11 @@ const user = useUserStore();
 const tenant = useTenantStore();
 const route = useRoute();
 const router = useRouter();
-const tenantListOpen = ref(false);
 
 const logoUrl = import.meta.env.BASE_URL + 'logo.png';
 
-const userSubtitle = computed(() => {
-  if (user.isPlatformUser) return user.role.name;
-  if (tenant.showTenantName) return `${tenant.currentTenantName} · ${user.role.name}`;
-  return user.role.name;
-});
+// 头部只显示角色名；租户信息在下拉的「切换租户」里体现，避免重复
+const userSubtitle = computed(() => user.role.name);
 
 /** 当前租户内可切换的演示角色（过滤掉不属于本租户的项） */
 const roleOptionGroups = computed(() =>
@@ -57,6 +52,11 @@ function afterContextChange() {
 
 function onMenuClick({ key }: { key: string | number }) {
   const k = String(key);
+
+  if (k.startsWith('tenant:')) {
+    switchTenant(k.slice('tenant:'.length));
+    return;
+  }
 
   if (isRoleKey(k)) {
     if (!user.setRole(k)) {
@@ -91,15 +91,8 @@ function tenantStatusLabel(status: string) {
   return '';
 }
 
-function onUserDropdownOpen(open: boolean) {
-  if (!open) tenantListOpen.value = false;
-}
-
-function onSwitchTenant(tenantId: string) {
-  if (tenantId === tenant.currentTenantId) {
-    tenantListOpen.value = false;
-    return;
-  }
+function switchTenant(tenantId: string) {
+  if (tenantId === tenant.currentTenantId) return;
   if (!tenant.canSwitchTo(tenantId)) {
     message.warning('该租户已停用，无法切换');
     return;
@@ -111,7 +104,6 @@ function onSwitchTenant(tenantId: string) {
   }
   useAdminTabsStore().reset();
   useWorkspaceTabsStore().reset();
-  tenantListOpen.value = false;
   message.success(`已切换至「${tenant.currentTenantName}」· ${ROLES[roleKey].name}`);
   afterContextChange();
   if (route.path.startsWith('/admin')) {
@@ -151,7 +143,7 @@ function onSwitchTenant(tenantId: string) {
       </div>
 
       <!-- 用户区 -->
-      <a-dropdown placement="bottomRight" @open-change="onUserDropdownOpen">
+      <a-dropdown placement="bottomRight">
         <div class="user" :class="{ 'has-tenant-switch': tenant.showTenantSwitcher }">
           <span class="user-av">{{ user.name.charAt(0) }}</span>
           <div class="user-meta">
@@ -162,41 +154,22 @@ function onSwitchTenant(tenantId: string) {
         </div>
         <template #overlay>
           <div class="user-dropdown-panel">
-            <!-- 多租户：默认一行当前租户，点击展开 -->
-            <div v-if="tenant.showTenantSwitcher" class="tenant-switch-block">
-              <button
-                type="button"
-                class="tenant-current-trigger"
-                :class="{ open: tenantListOpen }"
-                @click.stop="tenantListOpen = !tenantListOpen"
+            <a-menu class="user-dropdown-menu" @click="onMenuClick">
+              <a-menu-item key="profile">个人设置</a-menu-item>
+            <a-sub-menu v-if="tenant.showTenantSwitcher" key="tenant" title="切换租户">
+              <a-menu-item
+                v-for="t in tenant.tenantList"
+                :key="`tenant:${t.id}`"
+                :disabled="!t.selectable"
               >
-                <SwapOutlined class="tenant-swap-icon" />
-                <span class="tenant-current-name">{{ tenant.currentTenantName }}</span>
-                <DownOutlined class="tenant-chevron" />
-              </button>
-              <div v-show="tenantListOpen" class="tenant-options">
-                <button
-                  v-for="t in tenant.tenantList"
-                  :key="t.id"
-                  type="button"
-                  class="tenant-option"
-                  :class="{
-                    active: t.id === tenant.currentTenantId,
-                    disabled: !t.selectable,
-                  }"
-                  :disabled="!t.selectable"
-                  @click.stop="onSwitchTenant(t.id)"
-                >
+                <span class="tenant-item">
                   <span class="tenant-dot" :style="{ background: t.color }"></span>
                   <span class="tenant-name">{{ t.name }}</span>
                   <span v-if="!t.selectable" class="tenant-tag">{{ tenantStatusLabel(t.status) }}</span>
                   <CheckOutlined v-else-if="t.id === tenant.currentTenantId" class="tenant-check" />
-                </button>
-              </div>
-            </div>
-
-            <a-menu class="user-dropdown-menu" @click="onMenuClick">
-              <a-menu-item key="profile">个人设置</a-menu-item>
+                </span>
+              </a-menu-item>
+            </a-sub-menu>
             <a-sub-menu v-if="roleOptionGroups.length" key="role" title="切换演示角色">
               <template v-for="group in roleOptionGroups" :key="group.label">
                 <a-menu-item-group :title="group.label">
@@ -346,73 +319,12 @@ function onSwitchTenant(tenantId: string) {
   max-width: 148px;
 }
 
-.tenant-switch-block {
-  padding: 4px 0;
-  border-bottom: 1px solid #f3f4f6;
-}
-.tenant-current-trigger {
+/* 「切换租户」子菜单项内的行布局（与「切换演示角色」同为 a-sub-menu，风格统一） */
+.tenant-item {
   display: flex;
   align-items: center;
   gap: 8px;
-  width: 100%;
-  padding: 8px 12px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  text-align: left;
-}
-.tenant-current-trigger:hover,
-.tenant-current-trigger.open {
-  background: #f9fafb;
-}
-.tenant-swap-icon {
-  font-size: 13px;
-  color: #1a6fff;
-  flex: none;
-}
-.tenant-current-name {
-  flex: 1;
-  min-width: 0;
-  font-size: 13px;
-  font-weight: 600;
-  color: #111827;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.tenant-chevron {
-  font-size: 10px;
-  color: #9ca3af;
-  flex: none;
-  transition: transform 0.2s;
-}
-.tenant-current-trigger.open .tenant-chevron {
-  transform: rotate(180deg);
-}
-.tenant-options {
-  padding: 0 4px 4px;
-}
-.tenant-option {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 7px 8px 7px 28px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  cursor: pointer;
-  text-align: left;
-}
-.tenant-option:hover:not(.disabled) {
-  background: #f3f4f6;
-}
-.tenant-option.active:not(.disabled) {
-  background: #eff6ff;
-}
-.tenant-option.disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
+  min-width: 140px;
 }
 .tenant-dot {
   width: 8px;
