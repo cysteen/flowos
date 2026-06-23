@@ -35,7 +35,7 @@ const emit = defineEmits<{
 <style scoped>
 .op-side {
   width: 360px; flex: none; display: flex; flex-direction: column; gap: 16px;
-  align-self: stretch;
+  align-self: stretch; min-height: 0; overflow-y: auto;
 }
 .side-spacer { flex: 1; min-height: 0; }
 </style>
