@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import {
   CopyOutlined, StarOutlined, PrinterOutlined, EllipsisOutlined,
-  FlagOutlined, MessageOutlined,
+  FlagOutlined,
 } from '@ant-design/icons-vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
+import { PRIORITY_COLOR, softBg, type Priority } from '@/views/tickets/types/ticket';
 
 defineProps<{
   detail: TicketDetailMeta;
@@ -14,19 +15,34 @@ const emit = defineEmits<{
   copyNo: [];
   action: [name: string];
 }>();
+
+/** 状态 → 语义色（对齐 STATUS_TONE：进行中=橙、完成=绿、中性=灰、异常=红） */
+function statusHex(s: string): string {
+  if (/已解决|已完成|已结案|已结单|完成/.test(s)) return '#10B981';
+  if (/挂起|已关闭|撤销|取消|终止/.test(s)) return '#6B7280';
+  if (/升级/.test(s)) return '#A855F7';
+  if (/逾期|超时|异常|驳回|失败/.test(s)) return '#EF4444';
+  if (/处理中|受理|待|审核|进行/.test(s)) return '#F59E0B';
+  return '#1A6FFF';
+}
+/** 淡底标签样式（颜色=语义，避免厚重实底/红色滥用） */
+function tagStyle(hex: string) {
+  return { color: hex, background: softBg(hex) };
+}
+function priorityHex(p: string): string {
+  return PRIORITY_COLOR[p as Priority] ?? '#9CA3AF';
+}
 </script>
 
 <template>
   <div class="op-header">
     <div class="oh-left">
       <div class="title-row">
-        <span class="badge badge-blue">
-          <span class="badge-dot" />{{ detail.status }}
+        <span class="badge" :style="tagStyle(statusHex(detail.status))">
+          <span class="badge-dot" :style="{ background: statusHex(detail.status) }" />{{ detail.status }}
         </span>
-        <span class="badge badge-red">
-          <MessageOutlined />{{ detail.type }}
-        </span>
-        <span class="badge badge-red">
+        <span class="badge badge-neutral">{{ detail.type }}</span>
+        <span class="badge" :style="tagStyle(priorityHex(detail.priority))">
           <FlagOutlined />{{ detail.priority }}
         </span>
         <span class="oh-title">{{ detail.title }}</span>
@@ -66,13 +82,12 @@ const emit = defineEmits<{
 .title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .badge {
   display: inline-flex; align-items: center; gap: 6px;
-  font-size: 13px; font-weight: 600; color: #fff;
-  border-radius: 6px; padding: 8px 14px; flex: none; height: 35px;
+  font-size: 13px; font-weight: 600;
+  border-radius: 6px; padding: 0 12px; flex: none; height: 30px;
 }
-.badge-blue { background: #1a6fff; }
-.badge-red { background: #ef4444; }
+.badge-neutral { color: #6b7280; background: #f3f4f6; }
 .badge-dot {
-  width: 8px; height: 8px; border-radius: 50%; background: #fff;
+  width: 7px; height: 7px; border-radius: 50%;
 }
 .oh-title { font-size: 16px; font-weight: 700; color: #111827; }
 .meta-row {
