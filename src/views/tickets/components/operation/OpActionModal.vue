@@ -120,6 +120,14 @@ function onCancel() {
 .op-mono { font-family: ui-monospace, monospace; }
 
 .op-radio-cards { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.op-radio-cards--row {
+  flex-direction: row;
+  align-items: stretch;
+}
+.op-radio-cards--row .op-radio-card {
+  flex: 1;
+  min-width: 0;
+}
 .op-radio-card {
   display: flex; align-items: flex-start; gap: 10px; padding: 12px;
   border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer;

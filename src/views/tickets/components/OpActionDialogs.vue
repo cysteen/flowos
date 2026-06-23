@@ -11,7 +11,7 @@ import type { SuspendInfo, OpActionType } from '../composables/opActions';
 import {
   TRANSFER_TARGETS, DELEGATE_TARGETS, REVIEWERS, FORCE_CLOSE_REASONS, APPROVERS,
   SUSPEND_REASONS, ESCALATE_CHANNELS, ESCALATE_GROUPS, ESCALATE_MEMBERS,
-  FEISHU_SPACES, AFTERSALE_GROUPS, CLOSE_RESULTS, ROOT_CAUSES, ARCHIVE_REASONS,
+  FEISHU_SPACES, AFTERSALE_GROUPS, CLOSE_RESULTS, ARCHIVE_REASONS,
   RESUME_REASONS,
 } from '../composables/opActions';
 
@@ -37,7 +37,8 @@ const aftersale = reactive({ mode: 'callback' as 'close' | 'callback', group: AF
 const resolve = reactive({ solution: '', createCallback: true });
 const close = reactive({
   target: 'resolved' as 'resolved' | 'closed',
-  result: '', solution: '', satisfaction: '满意', rootCause: '', sendSms: false,
+  result: '',
+  solution: '',
 });
 const archive = reactive({ reason: ARCHIVE_REASONS[1], retention: '3y' });
 const resume = reactive({ reason: '', detail: '' });
@@ -107,7 +108,6 @@ function resetForms() {
   aftersale.mode = 'callback'; aftersale.group = AFTERSALE_GROUPS[0]; aftersale.detail = '';
   resolve.solution = ''; resolve.createCallback = true;
   close.target = 'resolved'; close.result = ''; close.solution = '';
-  close.satisfaction = '满意'; close.rootCause = ''; close.sendSms = false;
   archive.reason = ARCHIVE_REASONS[1]; archive.retention = '3y';
   resume.reason = ''; resume.detail = '';
 }
@@ -355,10 +355,9 @@ function onOk() {
 
     <!-- 关闭工单 -->
     <div v-else-if="action === '关闭工单'" class="op-form">
-      <div class="op-tip op-tip-info">待回访 → 已关闭 → 已归档 三态流转；关闭后 30 天无操作将自动归档。</div>
       <div class="op-field">
         <div class="op-label req">状态落点</div>
-        <a-radio-group v-model:value="close.target" class="op-radio-cards">
+        <a-radio-group v-model:value="close.target" class="op-radio-cards op-radio-cards--row">
           <label class="op-radio-card" :class="{ on: close.target === 'resolved' }">
             <a-radio value="resolved" />
             <div>
@@ -384,21 +383,6 @@ function onOk() {
         <div class="op-label req">解决方案摘要</div>
         <a-textarea v-model:value="close.solution" :rows="3" placeholder="请填写最终解决方案（必填）..." />
       </div>
-      <div class="op-field">
-        <div class="op-label req">客户满意度</div>
-        <a-radio-group v-model:value="close.satisfaction">
-          <a-radio value="满意">满意</a-radio>
-          <a-radio value="一般">一般</a-radio>
-          <a-radio value="不满意">不满意</a-radio>
-          <a-radio value="未评价">未评价</a-radio>
-        </a-radio-group>
-      </div>
-      <div class="op-field">
-        <div class="op-label">根因分类</div>
-        <a-select v-model:value="close.rootCause" placeholder="请选择..." allow-clear style="width:100%"
-          :options="ROOT_CAUSES.map((r) => ({ value: r, label: r }))" />
-      </div>
-      <a-checkbox v-model:checked="close.sendSms">关闭后自动发送满意度调查短信</a-checkbox>
     </div>
 
     <!-- 归档 -->

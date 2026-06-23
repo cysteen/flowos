@@ -38,8 +38,9 @@ export interface SyncFeishuPayload { space: string; message: string; }
 export interface AftersalePayload { mode: 'close' | 'callback'; group: string; detail: string; }
 export interface ResolvePayload { solution: string; createCallback: boolean; }
 export interface ClosePayload {
-  target: 'resolved' | 'closed'; result: string; solution: string;
-  satisfaction: string; rootCause: string; sendSms: boolean;
+  target: 'resolved' | 'closed';
+  result: string;
+  solution: string;
 }
 export interface ArchivePayload { reason: string; retention: string; }
 export interface ResumePayload { reason: string; detail: string; }
@@ -261,12 +262,12 @@ export function applyOpAction(
     }
 
     case '关闭工单': {
-      const { target, result, solution, satisfaction } = payload.data;
+      const { target, result, solution } = payload.data;
       detail.status = target === 'closed' ? '已关闭' : '待回访';
       pushEntry(timeline, {
         category: 'resolved', action: 'resolved', who: operator, role: operatorRole,
         how: target === 'closed' ? '关闭工单' : '标记已解决',
-        what: `处理结果：${result}；满意度：${satisfaction}。${solution}`,
+        what: `处理结果：${result}。${solution}`,
       });
       return {
         opState: target === 'closed' ? 'closed' : 'resolved',

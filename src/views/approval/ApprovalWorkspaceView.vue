@@ -3,25 +3,16 @@ import { ref, reactive, computed } from 'vue';
 import { message } from 'ant-design-vue';
 import {
   FileTextOutlined,
-  SendOutlined,
   TeamOutlined,
   ClockCircleOutlined,
   CheckCircleOutlined,
   BellOutlined,
   CheckOutlined,
   CloseOutlined,
-  LockOutlined,
-  ArrowUpOutlined,
-  PayCircleOutlined,
-  GiftOutlined,
-  CalendarOutlined,
-  SettingOutlined,
 } from '@ant-design/icons-vue';
-import type { Component } from 'vue';
 import { stdPagination } from '@/config/adminUi';
 
 const NAV = [
-  { key: 'launch', label: '发起审批', icon: SendOutlined, count: 0 },
   { key: 'mine', label: '我的申请', icon: FileTextOutlined, count: 3 },
   { key: 'team', label: '团队审批', icon: TeamOutlined, count: 5 },
   { key: 'todo', label: '待我审批', icon: ClockCircleOutlined, count: 4 },
@@ -29,30 +20,6 @@ const NAV = [
   { key: 'cc', label: '抄送我的', icon: BellOutlined, count: 2 },
 ];
 const active = ref('todo');
-
-const launchGroups: { label: string; items: { key: string; name: string; desc: string; icon: Component }[] }[] = [
-  {
-    label: '工单审批',
-    items: [
-      { key: 'force-close', name: '工单强结审批', desc: '未达解决标准强制结案，需班长审批', icon: LockOutlined },
-      { key: 'escalate', name: '工单升级审批', desc: '升级至二线或主管，附升级理由', icon: ArrowUpOutlined },
-    ],
-  },
-  {
-    label: '客户权益',
-    items: [
-      { key: 'refund', name: '退款审批', desc: '售后退款，按金额分级审批', icon: PayCircleOutlined },
-      { key: 'compensate', name: '补偿审批', desc: '客户补偿或赠品发放申请', icon: GiftOutlined },
-    ],
-  },
-  {
-    label: '人事与配置',
-    items: [
-      { key: 'leave', name: '请假调班', desc: '坐席请假与排班调整', icon: CalendarOutlined },
-      { key: 'config', name: '配置变更发布', desc: 'SLA、规则或类型变更上线审批', icon: SettingOutlined },
-    ],
-  },
-];
 
 interface Req {
   id: string;
@@ -110,10 +77,9 @@ const baseCols = [
   { title: '当前节点', dataIndex: 'node', key: 'node', width: 100 },
   { title: '状态', dataIndex: 'status', key: 'status', width: 88 },
   { title: '提交时间', dataIndex: 'submit', key: 'submit', width: 112 },
-  { title: '操作', key: 'op', width: 148 },
+  { title: '操作', key: 'op', width: 220 },
 ];
 
-let apSeq = 2050;
 function moveToDone(r: Req) {
   const i = dataMap.todo.findIndex((x) => x.id === r.id);
   if (i >= 0) dataMap.todo.splice(i, 1);
@@ -130,35 +96,6 @@ function reject(r: Req) {
   r.node = '已驳回';
   moveToDone(r);
   message.success(`已驳回 ${r.id}`);
-}
-
-const launchOpen = ref(false);
-const lf = reactive({ name: '', reason: '', amount: '' });
-function startApproval(name: string) {
-  lf.name = name;
-  lf.reason = '';
-  lf.amount = '';
-  launchOpen.value = true;
-}
-function submitLaunch() {
-  if (!lf.reason) {
-    message.error('请填写申请说明');
-    return;
-  }
-  const id = `AP-${apSeq++}`;
-  dataMap.mine.unshift({
-    id,
-    title: lf.reason.slice(0, 24),
-    type: lf.name,
-    applicant: '我',
-    node: '审批中',
-    status: '审批中',
-    submit: '06-21 12:00',
-    amount: lf.amount || undefined,
-  });
-  message.success(`已发起「${lf.name}」`);
-  launchOpen.value = false;
-  active.value = 'mine';
 }
 
 const detailOpen = ref(false);
@@ -193,47 +130,19 @@ function withdraw(r: Req) {
         </button>
       </aside>
 
-      <main class="content" :class="{ 'is-launch': active === 'launch' }">
-        <header v-if="active !== 'launch'" class="c-head">
+      <main class="content">
+        <header class="c-head">
           <div>
             <h3>{{ activeNav?.label }}</h3>
             <p v-if="active === 'todo'">需要您审批的申请，按提交时间排序</p>
             <p v-else-if="active === 'team'">本团队成员发起的全部审批申请</p>
             <p v-else-if="active === 'cc'">作为抄送人知会您的审批</p>
-            <p v-else-if="active === 'mine'">您发起或参与的审批申请</p>
+            <p v-else-if="active === 'mine'">由业务场景触发的、与您相关的审批申请</p>
             <p v-else-if="active === 'done'">您已处理完成的审批记录</p>
           </div>
         </header>
 
-        <div v-if="active === 'launch'" class="launch-zone">
-          <div class="launch-intro">
-            <h3>发起审批</h3>
-            <p>选择审批类型，填写说明后提交至对应审批流</p>
-          </div>
-
-          <section v-for="g in launchGroups" :key="g.label" class="launch-group">
-            <h4 class="launch-group-title">{{ g.label }}</h4>
-            <div class="launch-grid">
-              <button
-                v-for="t in g.items"
-                :key="t.key"
-                type="button"
-                class="launch-card"
-                @click="startApproval(t.name)"
-              >
-                <span class="launch-icon">
-                  <component :is="t.icon" />
-                </span>
-                <span class="launch-body">
-                  <span class="launch-name">{{ t.name }}</span>
-                  <span class="launch-desc">{{ t.desc }}</span>
-                </span>
-              </button>
-            </div>
-          </section>
-        </div>
-
-        <div v-else class="table-wrap">
+        <div class="table-wrap">
           <a-table
             :key="active"
             :columns="baseCols"
@@ -256,6 +165,9 @@ function withdraw(r: Req) {
                 {{ record.status }}
               </a-tag>
               <template v-else-if="column.key === 'op'">
+                <a-button type="link" size="small" @click="viewDetail(record as Req)">
+                  查看详情
+                </a-button>
                 <template v-if="active === 'todo'">
                   <a-button type="link" size="small" @click="approve(record as Req)">
                     <template #icon><CheckOutlined /></template>
@@ -267,7 +179,6 @@ function withdraw(r: Req) {
                   </a-button>
                 </template>
                 <template v-else-if="active === 'mine'">
-                  <a-button type="link" size="small" @click="viewDetail(record as Req)">进度</a-button>
                   <a-button
                     type="link"
                     size="small"
@@ -278,9 +189,6 @@ function withdraw(r: Req) {
                     撤回
                   </a-button>
                 </template>
-                <a-button v-else type="link" size="small" @click="viewDetail(record as Req)">
-                  详情
-                </a-button>
               </template>
             </template>
             <template #emptyText>
@@ -290,28 +198,6 @@ function withdraw(r: Req) {
         </div>
       </main>
     </div>
-
-    <a-modal
-      v-model:open="launchOpen"
-      :title="`发起 · ${lf.name}`"
-      :width="520"
-      ok-text="提交申请"
-      cancel-text="取消"
-      @ok="submitLaunch"
-    >
-      <a-form layout="vertical">
-        <a-form-item label="申请说明" required>
-          <a-textarea
-            v-model:value="lf.reason"
-            :rows="3"
-            placeholder="填写申请事由（如：TK-88231 客户已离线无法继续，申请强结）"
-          />
-        </a-form-item>
-        <a-form-item label="金额（如涉及）">
-          <a-input v-model:value="lf.amount" placeholder="如：¥200" />
-        </a-form-item>
-      </a-form>
-    </a-modal>
 
     <a-modal
       v-model:open="detailOpen"
@@ -441,11 +327,6 @@ function withdraw(r: Req) {
   padding: 20px 24px 24px;
 }
 
-.content.is-launch {
-  padding: 24px 28px 28px;
-  background: linear-gradient(180deg, #fafbfc 0%, #fff 120px);
-}
-
 .c-head {
   margin-bottom: 20px;
   padding-bottom: 16px;
@@ -464,118 +345,6 @@ function withdraw(r: Req) {
   font-size: 13px;
   color: #9ca3af;
   line-height: 1.5;
-}
-
-.launch-zone {
-  max-width: 720px;
-}
-
-.launch-intro {
-  margin-bottom: 24px;
-}
-
-.launch-intro h3 {
-  font-size: 18px;
-  font-weight: 600;
-  color: #111827;
-  line-height: 1.35;
-}
-
-.launch-intro p {
-  margin-top: 6px;
-  font-size: 13px;
-  color: #9ca3af;
-  line-height: 1.5;
-}
-
-.launch-group + .launch-group {
-  margin-top: 22px;
-}
-
-.launch-group-title {
-  margin: 0 0 10px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #9ca3af;
-  letter-spacing: 0.04em;
-}
-
-.launch-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.launch-card {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  width: 100%;
-  min-height: 88px;
-  padding: 16px;
-  border: 1px solid #e8ebf0;
-  border-radius: 10px;
-  background: #fff;
-  cursor: pointer;
-  font-family: inherit;
-  text-align: left;
-  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
-}
-
-.launch-card:hover {
-  border-color: #c7d9f7;
-  box-shadow: 0 4px 14px rgba(26, 111, 255, 0.08);
-  transform: translateY(-1px);
-}
-
-.launch-card:active {
-  transform: translateY(0);
-  box-shadow: 0 2px 8px rgba(26, 111, 255, 0.06);
-}
-
-.launch-icon {
-  flex: none;
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 10px;
-  background: #eff6ff;
-  color: #1a6fff;
-  font-size: 18px;
-}
-
-.launch-card:hover .launch-icon {
-  background: #dbeafe;
-}
-
-.launch-body {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding-top: 2px;
-}
-
-.launch-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: #111827;
-  line-height: 1.4;
-}
-
-.launch-desc {
-  font-size: 12px;
-  color: #9ca3af;
-  line-height: 1.55;
-}
-
-@media (max-width: 900px) {
-  .launch-grid {
-    grid-template-columns: 1fr;
-  }
 }
 
 .table-wrap {

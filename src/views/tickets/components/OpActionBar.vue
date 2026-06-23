@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { Modal } from 'ant-design-vue';
+import { Modal, message } from 'ant-design-vue';
 import {
   ArrowRightOutlined, VerticalAlignBottomOutlined, PauseCircleOutlined,
   PlayCircleOutlined, RiseOutlined, UndoOutlined, StopOutlined,
@@ -62,7 +62,15 @@ interface BarItem {
   label: string;
   icon: string;
   danger?: boolean;
+  /** 禁止操作示意（如无上一流转可撤回） */
+  forbidden?: boolean;
+  forbiddenTip?: string;
 }
+
+/** 当前工单是否允许撤回（原型默认不可撤回，用于展示禁用态） */
+const withdrawBlocked = computed(
+  () => !['closed', 'archived', 'cancelled', 'settled'].includes(props.opState),
+);
 
 const barActions = computed<BarItem[]>(() => {
   const items: BarItem[] = [];
@@ -73,6 +81,16 @@ const barActions = computed<BarItem[]>(() => {
     }
     const def = actionMap.value.get(key);
     if (!def) continue;
+    if (key === '撤回') {
+      items.push({
+        key: def.key,
+        label: def.label,
+        icon: def.icon,
+        forbidden: withdrawBlocked.value,
+        forbiddenTip: '当前无可撤回的操作',
+      });
+      continue;
+    }
     if (key === '挂起') {
       items.push(
         isSuspended.value
@@ -97,7 +115,13 @@ function run(action: OpActionType | '转单') {
     return;
   }
   if (action === '取消工单') return emit('cancel');
-  if (action === '撤回') return emit('withdraw');
+  if (action === '撤回') {
+    if (withdrawBlocked.value) {
+      message.warning('当前无可撤回的操作');
+      return;
+    }
+    return emit('withdraw');
+  }
   if (action === '挂起' && isSuspended.value) return;
   if (action === '恢复' && !isSuspended.value) {
     Modal.info({ title: '提示', content: '当前工单未处于挂起状态' });
@@ -141,10 +165,16 @@ function onForwardConfirm(data: { ticketTitle: string; resolved: boolean }) {
         :key="a.key"
         type="button"
         class="ab-item"
-        :class="{ danger: a.danger, resume: a.key === '恢复' }"
-        :disabled="isTerminal"
+        :class="{
+          danger: a.danger,
+          resume: a.key === '恢复',
+          forbidden: a.forbidden,
+        }"
+        :disabled="isTerminal || a.forbidden"
+        :title="a.forbidden ? a.forbiddenTip : undefined"
         @click="run(a.key)"
       >
+        <span v-if="a.forbidden" class="forbidden-mark" aria-hidden="true" />
         <component :is="ICONS[a.icon]" />
         <span>{{ a.label }}</span>
       </button>
@@ -229,8 +259,41 @@ function onForwardConfirm(data: { ticketTitle: string; resolved: boolean }) {
 }
 
 .ab-item:disabled {
-  opacity: 0.45;
   cursor: not-allowed;
+}
+
+.ab-item.forbidden {
+  position: relative;
+  color: #9ca3af;
+  opacity: 0.72;
+  background: #f9fafb;
+}
+
+.ab-item.forbidden :deep(.anticon) {
+  color: #9ca3af;
+}
+
+.ab-item.forbidden .forbidden-mark {
+  position: absolute;
+  inset: 7px 10px;
+  border: 1.5px solid rgba(239, 68, 68, 0.45);
+  border-radius: 6px;
+  pointer-events: none;
+}
+
+.ab-item.forbidden .forbidden-mark::after {
+  content: '';
+  position: absolute;
+  left: -2px;
+  right: -2px;
+  top: 50%;
+  height: 1.5px;
+  background: rgba(239, 68, 68, 0.55);
+  transform: rotate(-14deg);
+}
+
+.ab-item:disabled:not(.forbidden) {
+  opacity: 0.45;
 }
 
 .ab-item.ab-save {
