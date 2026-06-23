@@ -32,6 +32,30 @@ export interface InsightStats {
   relatedCount: number;
 }
 
+/** 统计宫格「弹窗下钻」明细表（客户维度：进线/历史/投诉/近30天） */
+export interface InsightDetailTable {
+  title: string;
+  columns: string[];
+  /** 每行单元格，与 columns 对齐；ticketNo 存在时编号列渲染为可点链接 */
+  rows: { cells: string[]; ticketNo?: string }[];
+}
+
+/** 走弹窗下钻的统计项 key（其余项跳对应 Tab） */
+export type InsightModalKey = 'inbound' | 'history' | 'complaint' | 'recent30';
+
+/** 顶部「最新处理」聚合留言（多处理人，最新在前） */
+export interface LatestHandlingItem {
+  who: string;
+  role: string;
+  when: string;
+  text: string;
+}
+
+/** 统计宫格点击后的下钻动作：弹窗看明细 或 跳对应处理 Tab */
+export type InsightAction =
+  | { kind: 'modal'; modalKey: InsightModalKey }
+  | { kind: 'tab'; tab: 'related' | 'customerHistory' };
+
 export interface ProcessFormDraft {
   problemCause: string;
   processResult: string;

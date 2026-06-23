@@ -5,8 +5,8 @@ import { message } from 'ant-design-vue';
 import { useWorkspaceTabsStore, resolveTicketTabTitle } from '@/stores/workspaceTabs';
 import { useCtiStore } from '@/stores/cti';
 import OpHeader from './components/operation/OpHeader.vue';
-import OpInsightBand from './components/operation/OpInsightBand.vue';
-import OpTicketSummary from './components/operation/OpTicketSummary.vue';
+import OpOverviewBand from './components/operation/OpOverviewBand.vue';
+import OpStatDetailModal from './components/operation/OpStatDetailModal.vue';
 import OpProcessTabs from './components/operation/OpProcessTabs.vue';
 import OpSidePanel from './components/operation/OpSidePanel.vue';
 import OpActionBar from './components/OpActionBar.vue';
@@ -17,7 +17,8 @@ import { useProcessForm } from './composables/useProcessForm';
 import { useOperationTabs } from './composables/useOperationTabs';
 import { buildChildTicketPrefill, buildReopenTicketPrefill } from './composables/childTicketPrefill';
 import type { CreateTicketPrefill, Ticket } from './types/ticket';
-import type { ProcessFormDraft } from './types/operation';
+import type { ProcessFormDraft, InsightAction, InsightModalKey } from './types/operation';
+import type { ProcessTabKey } from './types/operation';
 import type { OperationTabData } from './types/operationTabs';
 
 const route = useRoute();
@@ -79,8 +80,36 @@ function onContact(type: 'call' | 'sms' | 'email', value: string) {
   message.info(`${label} ${value}`);
 }
 
-function onInsightLink(target: 'customerHistory' | 'related') {
-  processTabsRef.value?.switchTab(target);
+// —— 顶部速览带：统计宫格双层下钻 ——
+const statModalKey = ref<InsightModalKey | null>(null);
+const statTable = computed(() =>
+  statModalKey.value ? d.value.insightDetails[statModalKey.value] : null,
+);
+// 弹窗「查看完整记录」跳向的 Tab + 文案
+const STAT_VIEW_ALL: Record<InsightModalKey, { tab: ProcessTabKey; label: string }> = {
+  inbound: { tab: 'contact', label: '在「联系记录」中查看全部' },
+  history: { tab: 'customerHistory', label: '在「客户历史工单」中查看全部' },
+  complaint: { tab: 'customerHistory', label: '在「客户历史工单」中查看全部' },
+  recent30: { tab: 'customerHistory', label: '在「客户历史工单」中查看全部' },
+};
+const statViewAllLabel = computed(() =>
+  statModalKey.value ? STAT_VIEW_ALL[statModalKey.value].label : '',
+);
+
+function onOverviewSelect(action: InsightAction) {
+  if (action.kind === 'modal') {
+    statModalKey.value = action.modalKey;
+  } else {
+    processTabsRef.value?.switchTab(action.tab);
+  }
+}
+function onStatViewAll() {
+  if (!statModalKey.value) return;
+  processTabsRef.value?.switchTab(STAT_VIEW_ALL[statModalKey.value].tab);
+  statModalKey.value = null;
+}
+function onStatOpenTicket(no: string) {
+  message.info(`打开工单 ${no}`);
 }
 
 function openChildCreate() {
@@ -107,6 +136,25 @@ function toast(name: string) {
   message.info(`「${name}」`);
 }
 
+function onHeaderAction(name: string) {
+  switch (name) {
+    case '新建关联':
+      openChildCreate();
+      break;
+    case '新建补充':
+      message.info('新建补充单');
+      break;
+    case '催单':
+      message.info('催单');
+      break;
+    case '取消工单':
+      confirmCancel();
+      break;
+    default:
+      toast(name);
+  }
+}
+
 function copyNo() {
   message.success('工单号已复制');
 }
@@ -126,13 +174,16 @@ function updateTabData(next: OperationTabData) {
       :detail="d"
       :ticket-no="ticketNo"
       @copy-no="copyNo"
-      @action="toast"
+      @action="onHeaderAction"
     />
+
+    <!-- 顶部通栏速览带：客户诉求 | 客户全景宫格 | 最新处理（关注信息一屏） -->
+    <div class="op-overview-wrap">
+      <OpOverviewBand :detail="d" @select="onOverviewSelect" />
+    </div>
 
     <div class="op-body">
       <div class="op-main">
-        <OpInsightBand :insight="d.insight" :ticket-type="d.type" @link="onInsightLink" />
-        <OpTicketSummary :detail="d" />
         <OpProcessTabs
           ref="processTabsRef"
           :detail="d"
@@ -174,15 +225,30 @@ function updateTabData(next: OperationTabData) {
       :prefill="createPrefill"
       @created="onTicketCreated"
     />
+
+    <OpStatDetailModal
+      :open="statModalKey !== null"
+      :table="statTable"
+      :view-all-label="statViewAllLabel"
+      @update:open="(v) => { if (!v) statModalKey = null; }"
+      @open-ticket="onStatOpenTicket"
+      @view-all="onStatViewAll"
+    />
   </div>
 </template>
 
 <style scoped>
-.op-page { display: flex; flex-direction: column; min-height: 100%; }
+/* 填满外壳滚动容器，头部 + 速览带常驻，主体区独立滚动 → 关注信息一屏 */
+.op-page {
+  display: flex; flex-direction: column; height: 100%; overflow: hidden;
+  background: #f9fafb;
+}
+.op-overview-wrap { flex: none; padding: 16px 20px 0; }
 .op-body {
-  display: flex; gap: 16px; padding: 20px; flex: 1; align-items: flex-start;
+  display: flex; gap: 16px; padding: 16px 20px; flex: 1;
+  min-height: 0; align-items: stretch;
 }
 .op-main {
-  flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px;
+  flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column;
 }
 </style>

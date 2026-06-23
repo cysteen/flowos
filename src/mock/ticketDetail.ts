@@ -1,5 +1,6 @@
 import type {
   AgentInfo, ComplaintInfo, ContactItem, InsightStats,
+  InsightDetailTable, InsightModalKey, LatestHandlingItem,
 } from '@/views/tickets/types/operation';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 
@@ -52,6 +53,10 @@ export interface TicketDetailMeta {
   attachments: string[];
   isExternalAppeal: boolean;
   insight: InsightStats;
+  /** 统计宫格弹窗下钻明细 */
+  insightDetails: Record<InsightModalKey, InsightDetailTable>;
+  /** 顶部「最新处理」聚合 */
+  latestHandling: LatestHandlingItem[];
   customer: {
     name: string;
     types: string[];
@@ -111,6 +116,57 @@ export const TICKET_DETAIL: TicketDetailMeta = {
     supplementCount: 3,
     relatedCount: 10,
   },
+  insightDetails: {
+    inbound: {
+      title: '进线明细',
+      columns: ['类型', '进线时间', '通话时长', '接线坐席', '呼入类型', '小结'],
+      rows: [
+        { cells: ['热线', '今天 09:10', '04:25', '李一线', '投诉', '反馈音箱在线歌单跳歌，创建工单'] },
+        { cells: ['在线', '今天 09:50', '—', '李一线', '投诉', '补充故障录屏与歌单链接'] },
+        { cells: ['热线', '今天 10:32', '02:10', '王坐席', '催单', '催促处理进度，情绪偏急'] },
+        { cells: ['热线', '昨天 16:20', '03:18', '陈坐席', '咨询', '咨询固件升级方式'] },
+        { cells: ['在线', '2026-06-15 11:05', '—', '赵坐席', '咨询', '询问歌单缓存清理步骤'] },
+        { cells: ['热线', '2026-05-12 14:08', '02:36', '李娜', '投诉', '投诉蓝牙连接不稳定，转售后'] },
+      ],
+    },
+    history: {
+      title: '历史工单',
+      columns: ['工单编号', '工单类型', '创建时间', '工单状态', '当前节点'],
+      rows: [
+        { cells: ['LCMN-20260610-73026', '投诉', '今天 09:10', '处理中', '二线处理'], ticketNo: 'LCMN-20260610-73026' },
+        { cells: ['LCMN-20260605-55881', '投诉', '2026-06-05 10:20', '已解决', '已结单'], ticketNo: 'LCMN-20260605-55881' },
+        { cells: ['LCMN-20260512-41002', '报修', '2026-05-12 14:08', '已完成', '已结单'], ticketNo: 'LCMN-20260512-41002' },
+        { cells: ['LCMN-20260420-32011', '咨询', '2026-04-20 11:30', '已关闭', '已结单'], ticketNo: 'LCMN-20260420-32011' },
+        { cells: ['LCMN-20260308-18890', '咨询', '2026-03-08 09:15', '已关闭', '已结单'], ticketNo: 'LCMN-20260308-18890' },
+      ],
+    },
+    complaint: {
+      title: '投诉单',
+      columns: ['工单编号', '投诉类型', '创建时间', '工单状态', '当前节点'],
+      rows: [
+        { cells: ['LCMN-20260605-55881', '服务投诉', '2026-06-05 10:20', '已解决', '已结单'], ticketNo: 'LCMN-20260605-55881' },
+      ],
+    },
+    recent30: {
+      title: '近 30 天工单',
+      columns: ['工单编号', '工单类型', '创建时间', '工单状态', '当前节点'],
+      rows: [
+        { cells: ['LCMN-20260610-73026', '投诉', '今天 09:10', '处理中', '二线处理'], ticketNo: 'LCMN-20260610-73026' },
+        { cells: ['LCMN-20260605-55881', '投诉', '2026-06-05 10:20', '已解决', '已结单'], ticketNo: 'LCMN-20260605-55881' },
+        { cells: ['LCMN-20260603-50098', '咨询', '2026-06-03 16:40', '已完成', '已结单'], ticketNo: 'LCMN-20260603-50098' },
+      ],
+    },
+  },
+  latestHandling: [
+    {
+      who: '王坐席', role: '二线坐席', when: '今天 16:30',
+      text: '远程升级固件至 v2.3.1 并复测 30 分钟，跳歌问题未再复现，已电话告知客户处理结果与后续观察建议。',
+    },
+    {
+      who: '李一线', role: '一线坐席', when: '今天 10:05',
+      text: '登记问题详情与故障录屏，初判为固件层问题，升级二线（处理人 王坐席）加速排查。',
+    },
+  ],
   customer: {
     name: '张小凡',
     types: ['G个人用户', 'J家长', 'J教研员', 'D代理商', 'J教育局', 'G个人自媒体'],
