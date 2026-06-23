@@ -1,7 +1,7 @@
 // 工单可操作项注册表（单一数据源）。按工单类型 + 条件过滤出底部操作条要展示的操作。
 // 类型矩阵（规范）：
 //   投诉/咨询 = 9 全量；建议 = 8（去转售后）；商机 = 5（强结/下送/转办/委派/撤回）。
-// 常驻的「保存」「标记已解决」不在此表（由 OpActionBar 直接渲染）。
+// 底栏扁平展示顺序见 OpActionBar；此处仅登记能力与类型矩阵。
 import type { TicketType } from '@/views/tickets/types/ticket';
 import type { OpActionType } from './opActions';
 

@@ -55,7 +55,7 @@ function processEntries(t: RelatedTicketCard) {
               >{{ t.status }}</span>
               <span class="rel-title">{{ t.title }}</span>
             </div>
-            <span class="rel-time">{{ t.createdAt }}</span>
+            <span class="rel-time">{{ t.createdAtFull ?? t.createdAt }}</span>
           </div>
           <div class="rel-meta">
             <span class="rel-no">{{ t.no }}</span>
@@ -126,7 +126,6 @@ function processEntries(t: RelatedTicketCard) {
 </template>
 
 <style scoped>
-/* tGx3o：Tab 内容 gap 16 */
 .related-tab { display: flex; flex-direction: column; gap: 16px; width: 100%; }
 
 .card-list, .simple-list { display: flex; flex-direction: column; gap: 8px; }
@@ -141,7 +140,7 @@ function processEntries(t: RelatedTicketCard) {
 .rel-title-row { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
 .status-tag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; flex: none; }
 .rel-title { font-size: 13px; font-weight: 600; color: #111827; min-width: 0; }
-.rel-time { font-size: 11px; color: #9ca3af; flex: none; }
+.rel-time { font-size: 11px; color: #9ca3af; flex: none; white-space: nowrap; }
 
 .rel-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 11px; }
 .rel-no { font-size: 12px; color: #1a6fff; font-weight: 500; }
@@ -164,7 +163,7 @@ function processEntries(t: RelatedTicketCard) {
 }
 
 .who-when { display: flex; align-items: center; gap: 4px; font-size: 11px; flex-wrap: wrap; }
-.type-tag {
+.who-when .type-tag {
   font-size: 10px; font-weight: 600; color: #6b7280;
   background: #f3f4f6; border-radius: 3px; padding: 1px 6px; flex: none;
 }

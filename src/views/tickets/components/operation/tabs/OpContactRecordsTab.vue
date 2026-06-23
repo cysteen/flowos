@@ -15,12 +15,6 @@ defineProps<{ records: ContactRecord[] }>();
 
 const expandedAsr = reactive<Record<string, boolean>>({});
 
-const CARD_THEME = {
-  call: { bg: '#ecfeff', border: '#06b6d4' },
-  sms: { bg: '#ecfdf5', border: '#10b981' },
-  email: { bg: '#f5f3ff', border: '#7c3aed' },
-} as const;
-
 const TITLE_ICON = {
   call: PhoneOutlined,
   sms: MessageOutlined,
@@ -47,10 +41,6 @@ function metaLabel(r: ContactRecord) {
       v-for="r in records"
       :key="r.id"
       class="record-card"
-      :style="{
-        background: CARD_THEME[r.kind].bg,
-        borderLeftColor: CARD_THEME[r.kind].border,
-      }"
     >
       <div class="card-head">
         <div class="title-left">
@@ -124,15 +114,20 @@ function metaLabel(r: ContactRecord) {
 
 <style scoped>
 /* sFxFw：Tab 内容 padding 16/16/24，卡片 gap 12 */
-.contact-tab { display: flex; flex-direction: column; gap: 12px; width: 100%; }
+.contact-tab { display: flex; flex-direction: column; gap: 8px; width: 100%; }
 
 .record-card {
-  border-radius: 8px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
   padding: 12px 14px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  border-left: 3px solid transparent;
+}
+
+.record-card:hover {
+  border-color: #d1d5db;
 }
 
 .card-head {
@@ -149,15 +144,9 @@ function metaLabel(r: ContactRecord) {
   flex: 1;
 }
 .kind-icon {
-  font-size: 16px;
-  color: #374151;
+  font-size: 14px;
+  color: #6b7280;
   flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  line-height: 0;
 }
 .title-text {
   font-size: 14px;
@@ -180,14 +169,14 @@ function metaLabel(r: ContactRecord) {
 .content-block { display: flex; flex-direction: column; gap: 8px; }
 .content-block { gap: 6px; }
 
-.sub-label { font-size: 12px; font-weight: 600; color: #374151; }
+.sub-label { font-size: 11px; font-weight: 600; color: #9ca3af; }
 
 .player {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #fff;
-  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  border: 1px solid #f0f0f0;
   border-radius: 6px;
   padding: 8px 10px;
 }
@@ -195,15 +184,19 @@ function metaLabel(r: ContactRecord) {
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  border: none;
-  background: #1a6fff;
-  color: #fff;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #374151;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex: none;
   font-size: 12px;
+}
+.play-btn:hover {
+  border-color: #93c5fd;
+  color: #1a6fff;
 }
 .progress-track {
   flex: 1;
@@ -212,12 +205,12 @@ function metaLabel(r: ContactRecord) {
   border-radius: 2px;
   overflow: hidden;
 }
-.progress-fill { height: 100%; background: #1a6fff; border-radius: 2px; }
+.progress-fill { height: 100%; background: #9ca3af; border-radius: 2px; }
 .duration { font-size: 11px; color: #9ca3af; flex: none; }
 
 .asr-box {
   background: #f9fafb;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #f0f0f0;
   border-radius: 6px;
   padding: 6px 8px;
 }
@@ -251,8 +244,8 @@ function metaLabel(r: ContactRecord) {
 .speaker { font-weight: 600; color: #6b7280; }
 
 .content-box {
-  background: #fff;
-  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  border: 1px solid #f0f0f0;
   border-radius: 6px;
   padding: 10px;
   font-size: 12px;

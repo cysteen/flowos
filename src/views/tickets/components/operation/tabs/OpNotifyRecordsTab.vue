@@ -1,29 +1,15 @@
 <script setup lang="ts">
-import type { NotifyKind, NotifyRecord } from '@/views/tickets/types/operationTabs';
+import type { NotifyRecord } from '@/views/tickets/types/operationTabs';
 
 defineProps<{ records: NotifyRecord[] }>();
-
-const STYLE: Record<NotifyKind, { bg: string; border: string }> = {
-  upgrade: { bg: '#fffbeb', border: '#f59e0b' },
-  timeout: { bg: '#fef2f2', border: '#ef4444' },
-  transfer: { bg: '#eff6ff', border: '#3b82f6' },
-  dunning: { bg: '#fff7ed', border: '#f97316' },
-  accepted: { bg: '#ecfdf5', border: '#10b981' },
-};
 </script>
 
 <template>
   <div class="notify-tab">
-    <div
-      v-for="r in records"
-      :key="r.id"
-      class="record-card"
-      :style="{ background: STYLE[r.kind].bg, borderLeftColor: STYLE[r.kind].border }"
-    >
+    <div v-for="r in records" :key="r.id" class="record-card">
       <div class="card-head">
         <div class="title-left">
-          <span class="icon-wrap" :style="{ color: STYLE[r.kind].border }" aria-hidden="true">
-            <!-- IcHbm / h3lwVF：设计稿 lucide megaphone 16×16，颜色随卡片语义色 -->
+          <span class="icon-wrap" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M11 6a13 13 0 0 0 8.667 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
               <path d="M11 6V4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
@@ -49,22 +35,26 @@ const STYLE: Record<NotifyKind, { bg: string; border: string }> = {
 </template>
 
 <style scoped>
-/* h3lwVF Tab⑦：卡片 gap 12；标题 14/600，元信息 11，正文区 12 */
 .notify-tab {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   width: 100%;
   font-family: inherit;
 }
 
 .record-card {
-  border-radius: 8px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
   padding: 12px 14px;
-  border-left: 3px solid;
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.record-card:hover {
+  border-color: #d1d5db;
 }
 
 .card-head {
@@ -90,8 +80,10 @@ const STYLE: Record<NotifyKind, { bg: string; border: string }> = {
   justify-content: center;
   width: 16px;
   height: 16px;
+  color: #6b7280;
   line-height: 0;
 }
+
 .icon-wrap svg {
   display: block;
   width: 16px;
@@ -129,13 +121,13 @@ const STYLE: Record<NotifyKind, { bg: string; border: string }> = {
 }
 
 .content-box {
-  background: #fff;
-  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  border: 1px solid #f0f0f0;
   border-radius: 6px;
   padding: 10px;
   font-size: 12px;
   font-weight: 400;
   color: #6b7280;
-  line-height: 18px;
+  line-height: 1.6;
 }
 </style>

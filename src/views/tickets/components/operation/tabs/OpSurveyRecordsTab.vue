@@ -11,12 +11,7 @@ function openSurvey() {
 
 <template>
   <div class="survey-tab">
-    <div
-      v-for="r in records"
-      :key="r.id"
-      class="record-card"
-      :class="r.evaluated ? 'evaluated' : 'unevaluated'"
-    >
+    <div v-for="r in records" :key="r.id" class="record-card">
       <div class="card-head">
         <div class="title-left">
           <span class="icon-wrap" aria-hidden="true">
@@ -47,32 +42,34 @@ function openSurvey() {
 
       <div v-if="r.conclusion" class="conclusion-block">
         <div class="sub-label">评价结论</div>
-        <div class="content-box" :class="{ placeholder: !r.evaluated }">{{ r.conclusion }}</div>
+        <div class="content-box">{{ r.conclusion }}</div>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-/* JZXEW Tab⑧：卡片 gap 12；标题 14/600，元信息 11，详情 12，链接 12/500 */
 .survey-tab {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   width: 100%;
   font-family: inherit;
 }
 
 .record-card {
-  border-radius: 8px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
   padding: 12px 14px;
-  border-left: 3px solid;
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
-.record-card.evaluated { background: #f5f3ff; border-left-color: #7c3aed; }
-.record-card.unevaluated { background: #f9fafb; border-left-color: #9ca3af; }
+
+.record-card:hover {
+  border-color: #d1d5db;
+}
 
 .card-head {
   display: flex;
@@ -98,7 +95,7 @@ function openSurvey() {
   width: 14px;
   height: 14px;
   line-height: 0;
-  color: #374151;
+  color: #6b7280;
 }
 .icon-wrap svg {
   display: block;
@@ -154,14 +151,13 @@ function openSurvey() {
   line-height: 18px;
 }
 .content-box {
-  background: #fff;
-  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  border: 1px solid #f0f0f0;
   border-radius: 6px;
   padding: 10px;
   font-size: 12px;
   font-weight: 400;
   color: #6b7280;
-  line-height: 18px;
+  line-height: 1.6;
 }
-.content-box.placeholder { color: #9ca3af; }
 </style>

@@ -23,7 +23,6 @@ const emit = defineEmits<{
 
 const transfer = reactive({ scope: 'same' as 'same' | 'cross', target: TRANSFER_TARGETS[0], reason: '' });
 const delegate = reactive({ assistant: DELEGATE_TARGETS[0], reason: '' });
-const forward = reactive({ reviewer: REVIEWERS[0], conclusion: '' });
 const forceClose = reactive({ reason: '', approver: APPROVERS[0], detail: '' });
 const suspend = reactive({ reason: '', detail: '', resumeAt: '' });
 const escalate = reactive({ channel: ESCALATE_CHANNELS[0], group: ESCALATE_GROUPS[0], member: ESCALATE_MEMBERS[0], detail: '', syncContext: true });
@@ -38,6 +37,26 @@ const archive = reactive({ reason: ARCHIVE_REASONS[1], retention: '3y' });
 const resume = reactive({ reason: '', detail: '' });
 
 const escalateToTech = computed(() => escalate.channel.includes('技术支持'));
+
+const ESCALATE_CHANNEL_GROUPS: Record<string, string[]> = {
+  '二线技术支持组（推荐）': [...ESCALATE_GROUPS],
+  'RDM 产研系统': ['RDM 硬件缺陷组', 'RDM 软件缺陷组'],
+  'TPD 技术问题单': ['TPD 受理组', 'TPD 跟进组'],
+};
+
+const escalateGroupOptions = computed(() => {
+  const groups = ESCALATE_CHANNEL_GROUPS[escalate.channel];
+  if (!groups?.length) return [];
+  return groups.map((g) => ({ value: g, label: g }));
+});
+
+const showEscalateGroup = computed(() => escalateGroupOptions.value.length > 0);
+
+watch(() => escalate.channel, (ch) => {
+  const groups = ESCALATE_CHANNEL_GROUPS[ch];
+  if (!groups?.length) return;
+  if (!groups.includes(escalate.group)) escalate.group = groups[0];
+});
 
 const title = computed(() => {
   const map: Partial<Record<OpActionType, string>> = {
@@ -62,7 +81,6 @@ const okDanger = computed(() => props.action === '归档工单' || props.action 
 function resetForms() {
   transfer.scope = 'same'; transfer.target = TRANSFER_TARGETS[0]; transfer.reason = '';
   delegate.assistant = DELEGATE_TARGETS[0]; delegate.reason = '';
-  forward.reviewer = REVIEWERS[0]; forward.conclusion = '';
   forceClose.reason = ''; forceClose.approver = APPROVERS[0]; forceClose.detail = '';
   suspend.reason = ''; suspend.detail = ''; suspend.resumeAt = '';
   escalate.channel = ESCALATE_CHANNELS[0]; escalate.group = ESCALATE_GROUPS[0];
@@ -84,9 +102,6 @@ function closeModal() {
 
 function validate(): boolean {
   switch (props.action) {
-    case '下送':
-      if (!forward.conclusion.trim()) { message.warning('请填写处理结论'); return false; }
-      return true;
     case '强结':
       if (!forceClose.reason) { message.warning('请选择强结原因'); return false; }
       return true;
@@ -115,7 +130,6 @@ function onOk() {
   switch (props.action) {
     case '转办': emit('confirm', { type: '转办', data: { ...transfer } }); break;
     case '委派': emit('confirm', { type: '委派', data: { ...delegate } }); break;
-    case '下送': emit('confirm', { type: '下送', data: { ...forward } }); break;
     case '强结': emit('confirm', { type: '强结', data: { ...forceClose } }); break;
     case '挂起': emit('confirm', { type: '挂起', data: { ...suspend } }); break;
     case '升级': emit('confirm', { type: '升级', data: { ...escalate } }); break;
@@ -176,19 +190,6 @@ function onOk() {
       <div class="tip tip-info">委派 ≠ 转办：主责仍在您名下，协助人配合办理，状态不变。</div>
     </div>
 
-    <!-- 下送 -->
-    <div v-else-if="action === '下送'" class="dlg-body">
-      <div class="field">
-        <div class="label">审核节点 / 审核人</div>
-        <a-select v-model:value="forward.reviewer" :options="REVIEWERS.map((r) => ({ value: r, label: r }))" style="width:100%" />
-      </div>
-      <div class="field">
-        <div class="label req">处理结论</div>
-        <a-textarea v-model:value="forward.conclusion" :rows="3" placeholder="请填写本节点处理结论..." />
-      </div>
-      <div class="tip tip-info">下送是流程向前推进：当前节点办毕，工单进入「待审核」。审核通过→待回访；驳回→退回处理中。</div>
-    </div>
-
     <!-- 强结 -->
     <div v-else-if="action === '强结'" class="dlg-body">
       <div class="tip tip-warn">非正常结案路径：处理中任意阶段可发起，提交后走单级审批，审批通过直接进入「已结案」，绕过满意度回访。</div>
@@ -227,18 +228,25 @@ function onOk() {
 
     <!-- 升级 -->
     <div v-else-if="action === '升级'" class="dlg-body">
-      <div class="tip tip-ai">AI 推荐：学习机 + 硬件故障 → 推荐升级至「二线技术支持组 · 硬件技术支持组」</div>
-      <div class="field">
-        <div class="label req">升级通道</div>
-        <a-select v-model:value="escalate.channel" style="width:100%"
-          :options="ESCALATE_CHANNELS.map((c) => ({ value: c, label: c }))" />
+      <div class="field-row">
+        <div class="field">
+          <div class="label req">升级通道</div>
+          <a-select
+            v-model:value="escalate.channel"
+            style="width:100%"
+            :options="ESCALATE_CHANNELS.map((c) => ({ value: c, label: c }))"
+          />
+        </div>
+        <div v-if="showEscalateGroup" class="field">
+          <div class="label req">目标组别</div>
+          <a-select
+            v-model:value="escalate.group"
+            style="width:100%"
+            :options="escalateGroupOptions"
+          />
+        </div>
       </div>
       <template v-if="escalateToTech">
-        <div class="field">
-          <div class="label req">目标组别</div>
-          <a-select v-model:value="escalate.group" style="width:100%"
-            :options="ESCALATE_GROUPS.map((g) => ({ value: g, label: g }))" />
-        </div>
         <div class="field">
           <div class="label">目标人员</div>
           <a-select v-model:value="escalate.member" style="width:100%"
@@ -401,6 +409,8 @@ function onOk() {
 
 <style scoped>
 .dlg-body { display: flex; flex-direction: column; gap: 14px; }
+.field-row { display: flex; gap: 12px; align-items: flex-start; }
+.field-row .field { flex: 1; min-width: 0; }
 .field { display: flex; flex-direction: column; gap: 6px; }
 .label { font-size: 13px; color: #374151; font-weight: 500; }
 .label.req::before { content: '* '; color: #ef4444; }
@@ -408,7 +418,6 @@ function onOk() {
 .tip-warn { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
 .tip-info { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
 .tip-ok { background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; }
-.tip-ai { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; font-weight: 500; }
 .suspend-box, .meta-box {
   background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px 14px;
   display: flex; flex-direction: column; gap: 6px; font-size: 12px;

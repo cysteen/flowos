@@ -30,7 +30,7 @@ export type OpActionType =
 
 export interface TransferPayload { scope: 'same' | 'cross'; target: string; reason: string; }
 export interface DelegatePayload { assistant: string; reason: string; }
-export interface ForwardPayload { reviewer: string; conclusion: string; }
+export interface ForwardPayload { ticketTitle: string; resolved: boolean; reviewer?: string; conclusion?: string; }
 export interface ForceClosePayload { reason: string; approver: string; detail: string; }
 export interface SuspendPayload { reason: string; detail: string; resumeAt: string; }
 export interface EscalatePayload { channel: string; group: string; member: string; detail: string; syncContext: boolean; }
@@ -156,13 +156,14 @@ export function applyOpAction(
     }
 
     case '下送': {
-      const { reviewer, conclusion } = payload.data;
+      const { ticketTitle, resolved } = payload.data;
       detail.status = '待审核';
       pushEntry(timeline, {
         category: 'node', action: 'transfer', who: operator, role: operatorRole,
-        how: '下送审核', what: `下送至「${reviewer}」审核。处理结论：${conclusion || '—'}`,
+        how: '下送审核',
+        what: `工单「${ticketTitle}」下送审核，是否已解决：${resolved ? '是' : '否'}`,
       });
-      return { opState: 'review', suspendInfo, message: `已下送「${reviewer}」审核，工单进入待审核` };
+      return { opState: 'review', suspendInfo, message: '已下送审核，工单进入待审核' };
     }
 
     case '强结': {

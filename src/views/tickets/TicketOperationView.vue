@@ -9,6 +9,7 @@ import OpHeader from './components/operation/OpHeader.vue';
 import OpOverviewBand from './components/operation/OpOverviewBand.vue';
 import OpStatDetailModal from './components/operation/OpStatDetailModal.vue';
 import OpSupplementModal from './components/operation/OpSupplementModal.vue';
+import OpDunningModal from './components/operation/OpDunningModal.vue';
 import OpProcessTabs from './components/operation/OpProcessTabs.vue';
 import OpSidePanel from './components/operation/OpSidePanel.vue';
 import OpActionBar from './components/OpActionBar.vue';
@@ -44,6 +45,7 @@ const cti = useCtiStore();
 const user = useUserStore();
 
 const supplementModalOpen = ref(false);
+const dunningModalOpen = ref(false);
 
 /** 工单操作页加载后，用标题同步 Tab（避免仅显示工单号） */
 watch(
@@ -162,6 +164,20 @@ function onSupplementSubmit(payload: { supplementType: string; content: string; 
   message.success('补充信息已提交');
 }
 
+function onDunningSubmit(payload: { content: string; attachments: string[] }) {
+  const record = {
+    id: `d-${Date.now()}`,
+    who: user.name || '当前坐席',
+    when: formatNow(),
+    content: payload.content,
+    attachments: payload.attachments.length ? payload.attachments : undefined,
+  };
+  tabData.value.dunningRecords.unshift(record);
+  d.value.insight.dunningCount += 1;
+  processTabsRef.value?.switchTab('related');
+  message.success('催单信息已提交');
+}
+
 function onHeaderAction(name: string) {
   switch (name) {
     case '新建关联':
@@ -171,7 +187,7 @@ function onHeaderAction(name: string) {
       supplementModalOpen.value = true;
       break;
     case '催单':
-      sidePanelRef.value?.focusAddRecord('dunning');
+      dunningModalOpen.value = true;
       break;
     case '取消工单':
       confirmCancel();
@@ -237,6 +253,7 @@ function updateTabData(next: OperationTabData) {
 
     <OpActionBar
       :ticket-no="ticketNo"
+      :ticket-title="d.title"
       :ticket-type="d.type"
       :after-sale-enabled="d.product.afterSaleEnabled"
       :op-state="opState"
@@ -245,6 +262,7 @@ function updateTabData(next: OperationTabData) {
       @action="onAction"
       @cancel="confirmCancel"
       @withdraw="confirmWithdraw"
+      @transfer-ticket="openChildCreate"
     />
 
     <CreateTicketModal
@@ -265,6 +283,11 @@ function updateTabData(next: OperationTabData) {
     <OpSupplementModal
       v-model:open="supplementModalOpen"
       @submit="onSupplementSubmit"
+    />
+
+    <OpDunningModal
+      v-model:open="dunningModalOpen"
+      @submit="onDunningSubmit"
     />
   </div>
 </template>
