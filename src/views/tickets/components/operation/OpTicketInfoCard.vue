@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { RightOutlined, PaperClipOutlined } from '@ant-design/icons-vue';
+import { RightOutlined } from '@ant-design/icons-vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 
 defineProps<{ detail: TicketDetailMeta }>();
@@ -10,7 +10,11 @@ defineProps<{ detail: TicketDetailMeta }>();
     <div class="card-title">工单信息</div>
 
     <!-- 工单属性 -->
+    <div class="kv"><span class="k">业务类型</span><span class="v">{{ detail.businessType }}</span></div>
+    <div class="kv"><span class="k">业务线</span><span class="v">{{ detail.businessLine }}</span></div>
     <div class="kv"><span class="k">工单来源</span><span class="v">{{ detail.source }}</span></div>
+    <div class="kv"><span class="k">问题发生时间</span><span class="v">{{ detail.issueOccurredAt }}</span></div>
+    <div class="kv"><span class="k">期望解决</span><span class="v">{{ detail.expectedResolve }}</span></div>
 
     <div class="divider" />
 
@@ -35,14 +39,6 @@ defineProps<{ detail: TicketDetailMeta }>();
       </div>
     </div>
     <div class="kv"><span class="k">设备SN</span><span class="v sn">{{ detail.product.sn }}</span></div>
-    <div v-if="detail.attachments.length" class="kv kv-tags">
-      <span class="k">附件</span>
-      <div class="attach-list">
-        <span v-for="a in detail.attachments" :key="a" class="attach">
-          <PaperClipOutlined :style="{ fontSize: '12px', color: '#6B7280' }" />{{ a }}
-        </span>
-      </div>
-    </div>
 
     <!-- 投诉（仅投诉单） -->
     <template v-if="detail.type === '投诉'">
@@ -95,12 +91,6 @@ defineProps<{ detail: TicketDetailMeta }>();
 }
 .tag-path { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; flex: 1; min-width: 0; }
 .arrow { color: #d1d5db; font-size: 12px; }
-.attach-list { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; min-width: 0; }
-.attach {
-  display: inline-flex; align-items: center; gap: 4px;
-  font-size: 11px; color: #374151; background: #f3f4f6;
-  border-radius: 4px; padding: 3px 7px;
-}
 .meta-row { display: flex; gap: 16px; }
 .meta-row .kv { flex: 1 1 0; min-width: 0; }
 </style>
