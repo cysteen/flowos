@@ -10,6 +10,8 @@ import OpOverviewBand from './components/operation/OpOverviewBand.vue';
 import OpStatDetailModal from './components/operation/OpStatDetailModal.vue';
 import OpSupplementModal from './components/operation/OpSupplementModal.vue';
 import OpDunningModal from './components/operation/OpDunningModal.vue';
+import OpSmsModal from './components/operation/OpSmsModal.vue';
+import OpEmailModal from './components/operation/OpEmailModal.vue';
 import OpProcessTabs from './components/operation/OpProcessTabs.vue';
 import OpSidePanel from './components/operation/OpSidePanel.vue';
 import OpActionBar from './components/OpActionBar.vue';
@@ -38,14 +40,26 @@ const { tabData } = useOperationTabs(() => d.value.type);
 
 const ticketNo = computed(() => (route.params.ticketNo as string) || d.value.no);
 const processTabsRef = ref<InstanceType<typeof OpProcessTabs> | null>(null);
-const sidePanelRef = ref<InstanceType<typeof OpSidePanel> | null>(null);
 
 const tabsStore = useWorkspaceTabsStore();
 const cti = useCtiStore();
 const user = useUserStore();
 
 const overviewExpanded = ref(false);
+const supplementModalOpen = ref(false);
 const dunningModalOpen = ref(false);
+
+// 联系客户：短信 / 邮件弹窗（统一走 OpActionModal 风格）
+const smsModalOpen = ref(false);
+const smsPhone = ref('');
+const emailModalOpen = ref(false);
+const emailTo = ref('');
+const notifyCtx = computed(() => ({
+  no: ticketNo.value,
+  name: d.value.customer.name || '',
+  product: d.value.product.name || '',
+  agent: user.name || '当前坐席',
+}));
 
 /** 工单操作页加载后，用标题同步 Tab（避免仅显示工单号） */
 watch(
@@ -84,8 +98,22 @@ function onContact(type: 'call' | 'sms' | 'email', value: string) {
     });
     return;
   }
-  const label = type === 'sms' ? '短信' : '发邮件';
-  message.info(`${label} ${value}`);
+  if (type === 'sms') {
+    smsPhone.value = value;
+    smsModalOpen.value = true;
+    return;
+  }
+  // email
+  emailTo.value = value;
+  emailModalOpen.value = true;
+}
+
+function onSmsSubmit(payload: { phone: string; templateName: string; content: string }) {
+  message.success(`短信已发送至 ${payload.phone}`);
+}
+
+function onEmailSubmit(payload: { to: string; subject: string }) {
+  message.success(`邮件「${payload.subject}」已发送至 ${payload.to}`);
 }
 
 // —— 顶部速览带：统计宫格双层下钻 ——
@@ -244,7 +272,6 @@ function updateTabData(next: OperationTabData) {
       </div>
 
       <OpSidePanel
-        ref="sidePanelRef"
         :detail="d"
         @contact="onContact"
         @action="toast"
@@ -288,6 +315,20 @@ function updateTabData(next: OperationTabData) {
     <OpDunningModal
       v-model:open="dunningModalOpen"
       @submit="onDunningSubmit"
+    />
+
+    <OpSmsModal
+      v-model:open="smsModalOpen"
+      :phone="smsPhone"
+      :ctx="notifyCtx"
+      @submit="onSmsSubmit"
+    />
+
+    <OpEmailModal
+      v-model:open="emailModalOpen"
+      :email="emailTo"
+      :ctx="notifyCtx"
+      @submit="onEmailSubmit"
     />
   </div>
 </template>
