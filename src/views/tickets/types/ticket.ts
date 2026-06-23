@@ -14,7 +14,8 @@ export type ChipKey =
   | 'review'
   | 'delegate'
   | 'soon'
-  | 'overdue';
+  | 'overdue'
+  | 'draft';
 
 export type TicketType = CreateFormTicketType;
 export type Channel = '在线客服' | '电话' | '邮件' | '小程序' | 'APP';
@@ -85,7 +86,10 @@ export interface CreateTicketPrefill {
   expectTime?: string;
 }
 
-// ---- 配色映射（.pen 实测 + 设计规范 §2.3 语义色）----
+// ---- 配色映射（设计风格规范 §2.3 语义色）----
+// 工作台列表（TicketRichList）：仅用 PRIORITY_COLOR（色条/圆点）、SLA_COLOR；
+//   类型/节点/客户标签一律中性灰 — 见 PRD-02 §7⑨。
+// 操作页/详情/关联列表：TYPE_COLOR、NODE_STATUS_COLOR、CUSTOMER_TAG_COLOR 等仍可用。
 export const TYPE_COLOR: Record<TicketType, string> = {
   投诉: '#EF4444',
   建议: '#10B981',
@@ -182,7 +186,7 @@ export function inListView(t: Ticket, view: ListViewKey): boolean {
 export interface ChipMeta {
   key: ChipKey;
   label: string;
-  /** 临期/超时为 SLA 维度，唯一保留彩色（临期=warn 橙 / 超时=danger 红）；其余为状态分类，中性 */
+  /** 临期/超时为 SLA 维度，唯一保留彩色（临期=warn 橙 / 超时=danger 红）；其余为状态分类，中性。见 PRD-02 §7⑨ */
   tone?: 'warn' | 'danger';
 }
 export const CHIPS: ChipMeta[] = [
@@ -194,6 +198,7 @@ export const CHIPS: ChipMeta[] = [
   { key: 'delegate', label: '委派' },
   { key: 'soon', label: '临期', tone: 'warn' },
   { key: 'overdue', label: '超时', tone: 'danger' },
+  { key: 'draft', label: '草稿' },
 ];
 
 /** 行内动作：按 当前节点状态 + Tab 推导（PRD-02 §7⑥） */
@@ -234,6 +239,9 @@ export function matchChip(t: Ticket, chip: ChipKey): boolean {
       return t.slaState === 'soon';
     case 'overdue':
       return t.slaState === 'overdue';
+    case 'draft':
+      // 草稿不是已发起工单，不在工单列表内匹配，由工作台单独渲染草稿列表
+      return false;
     default:
       return true;
   }

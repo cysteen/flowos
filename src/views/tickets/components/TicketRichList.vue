@@ -32,7 +32,8 @@ const emit = defineEmits<{
         </div>
       </div>
       <div class="col-title th">工单 / 标题</div>
-      <div class="col-customer th">客户 · 产品</div>
+      <div class="col-customer th">客户</div>
+      <div class="col-product th">产品</div>
       <div class="col-node th">当前节点</div>
       <div class="col-priority th">优先级</div>
       <div class="col-sla th">SLA 时效</div>
@@ -69,7 +70,7 @@ const emit = defineEmits<{
         </div>
       </div>
 
-      <!-- 客户 · 产品 -->
+      <!-- 客户 -->
       <div class="col-customer cell-customer">
         <div class="cust-line1">
           <span class="cust-name" @click="emit('clickCustomer', t)">{{ t.customer }}</span>
@@ -79,13 +80,16 @@ const emit = defineEmits<{
             class="cust-tag"
           >{{ tag }}</span>
         </div>
-        <div class="product">{{ t.product }}</div>
+      </div>
+
+      <!-- 产品 -->
+      <div class="col-product cell-product">
+        <span class="product-name" :title="t.product">{{ t.product }}</span>
       </div>
 
       <!-- 当前节点 -->
       <div class="col-node cell-node">
         <span class="node-badge">{{ t.nodeStatus }}</span>
-        <span class="node-step">节点 {{ t.nodeStep }}/{{ t.nodeTotal }}</span>
       </div>
 
       <!-- 优先级（颜色已由左侧色条承载，此处仅文字 + 同色点，避免与 SLA 抢色） -->
@@ -108,10 +112,7 @@ const emit = defineEmits<{
 
       <!-- 处理人 -->
       <div class="col-assignee cell-assignee">
-        <template v-if="t.assignee">
-          <span class="avatar">{{ t.assignee.charAt(0) }}</span>
-          <span class="assignee-name">{{ t.assignee }}</span>
-        </template>
+        <span v-if="t.assignee" class="assignee-name">{{ t.assignee }}</span>
         <span v-else class="unassigned">— 待领</span>
       </div>
 
@@ -139,9 +140,10 @@ const emit = defineEmits<{
   overflow: auto;
 }
 /* 列宽对齐 .pen SJpgc thead/row body */
-.col-title { flex: 1; min-width: 160px; }
-.col-customer { width: 170px; flex: none; }
-.col-node { width: 146px; flex: none; }
+.col-title { flex: 1; min-width: 140px; }
+.col-customer { width: 108px; flex: none; }
+.col-product { width: 128px; flex: none; }
+.col-node { width: 130px; flex: none; }
 .col-priority { width: 58px; flex: none; }
 .col-sla { width: 118px; flex: none; }
 .col-assignee { width: 100px; flex: none; }
@@ -192,7 +194,7 @@ const emit = defineEmits<{
   border-color: #1a6fff;
 }
 
-/* 分类信息一律中性灰：类型/节点/客户标签——“是什么”，不抢色 */
+/* 分类信息一律中性灰：类型/节点/客户标签 — PRD-02 §7⑨ */
 .tag {
   font-size: 11px;
   font-weight: 600;
@@ -223,23 +225,41 @@ const emit = defineEmits<{
 .ticket-no:hover { text-decoration: underline; }
 
 /* 客户 */
-.cell-customer { display: flex; flex-direction: column; gap: 4px; }
-.cust-line1 { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
-.cust-name { font-size: 13px; font-weight: 500; color: #111827; cursor: pointer; }
+.cell-customer { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.cust-line1 { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; min-width: 0; }
+.cust-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #111827;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cust-name:hover { color: #1a6fff; }
 .cust-tag {
   font-size: 11px; font-weight: 600;
   padding: 2px 8px; border-radius: 4px; flex: none;
   color: #4b5563; background: #f3f4f6;
 }
-.product { font-size: 12px; color: #9ca3af; }
+
+/* 产品 */
+.cell-product { display: flex; align-items: center; min-width: 0; }
+.product-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* 当前节点 */
-.cell-node { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.cell-node { display: flex; align-items: center; }
 .node-badge {
   font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px;
   color: #4b5563; background: #f3f4f6;
 }
-.node-step { font-size: 11px; color: #9ca3af; }
 
 .prio {
   display: inline-flex; align-items: center; gap: 5px;
@@ -253,13 +273,7 @@ const emit = defineEmits<{
 .sla-sub { font-size: 11px; color: #9ca3af; }
 
 /* 处理人 */
-.cell-assignee { display: flex; align-items: center; gap: 6px; }
-.avatar {
-  width: 24px; height: 24px; border-radius: 12px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 11px; font-weight: 600; flex: none;
-  color: #4b5563; background: #f3f4f6;
-}
+.cell-assignee { display: flex; align-items: center; }
 .assignee-name { font-size: 12px; color: #374151; }
 .unassigned { font-size: 12px; color: #6b7280; }
 

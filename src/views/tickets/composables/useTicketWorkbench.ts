@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue';
 import { TICKETS } from '@/mock/tickets';
+import { useTicketDraftStore } from '@/stores/ticketDrafts';
 import {
   matchChip,
   type ChipKey,
@@ -22,6 +23,7 @@ function slaUrgencyCompare(a: Ticket, b: Ticket): number {
 
 export function useTicketWorkbench() {
   const all = ref<Ticket[]>([...TICKETS]);
+  const draftStore = useTicketDraftStore();
 
   const activeTab = ref<TabKey>('mine');
   const activeChip = ref<ChipKey>('all');
@@ -78,8 +80,13 @@ export function useTicketWorkbench() {
     ];
     const map = {} as Record<ChipKey, number>;
     for (const k of keys) map[k] = tabRows.value.filter((t) => matchChip(t, k)).length;
+    // 草稿为全局暂存（不分 Tab），计数取草稿箱条数
+    map.draft = draftStore.drafts.length;
     return map;
   });
+
+  /** 草稿列表（草稿 chip 选中时由工作台渲染） */
+  const drafts = computed(() => draftStore.drafts);
 
   const selectedCount = computed(() => selectedIds.value.size);
   const allPageSelected = computed(
@@ -126,9 +133,9 @@ export function useTicketWorkbench() {
   return {
     all, activeTab, activeChip, searchText, selectedIds, aiBarVisible, sortByUrgency,
     current, pageSize,
-    tabRows, filtered, sorted, paged, total, tabCounts, chipCounts,
+    tabRows, filtered, sorted, paged, total, tabCounts, chipCounts, drafts,
     selectedCount, allPageSelected,
     setTab, setChip, setSearch, toggleSelect, toggleSelectAllOnPage, clearSelection,
-    setPage, addTicket,
+    setPage, addTicket, removeDraft: (id: string) => draftStore.remove(id),
   };
 }
