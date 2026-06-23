@@ -19,18 +19,32 @@ import {
   HOME_EFFICIENCY,
   HOME_KPIS,
   HOME_NOTICE,
+  HOME_NOTICES,
   HOME_QUICK_LINKS,
   HOME_TODOS,
   HOME_TREND_DONE,
   HOME_TREND_FOLLOW,
   HOME_TREND_LABELS,
   HOME_TYPE_DIST,
+  type HomeNotice,
 } from '@/mock/homeOverview';
 
 const router = useRouter();
 const user = useUserStore();
 const noticeVisible = ref(true);
 const createOpen = ref(false);
+
+// 公告列表抽屉
+const noticeListOpen = ref(false);
+const activeNotice = ref<HomeNotice | null>(null);
+const noticeTagColor: Record<HomeNotice['tag'], string> = {
+  系统维护: 'orange',
+  运营通知: 'blue',
+  制度更新: 'green',
+};
+function openNotice(n: HomeNotice) {
+  activeNotice.value = n;
+}
 
 const greeting = computed(() => {
   const h = new Date().getHours();
@@ -91,7 +105,7 @@ function onTodo(no: string) {
       <span class="notice-tag">公告</span>
       <span class="notice-text">{{ HOME_NOTICE.text }}</span>
       <span class="notice-spacer" />
-      <span class="notice-link" @click="message.info('打开公告列表')">
+      <span class="notice-link" @click="noticeListOpen = true">
         查看全部 ({{ HOME_NOTICE.total }})
         <RightOutlined :style="{ fontSize: '12px' }" />
       </span>
@@ -236,6 +250,53 @@ function onTodo(no: string) {
     </div>
 
     <CreateTicketModal v-model:open="createOpen" @created="message.success('工单已创建')" />
+
+    <!-- 公告列表抽屉 -->
+    <a-drawer
+      v-model:open="noticeListOpen"
+      title="系统公告"
+      placement="right"
+      :width="480"
+      @close="activeNotice = null"
+    >
+      <!-- 详情视图 -->
+      <div v-if="activeNotice" class="notice-detail">
+        <a-button type="link" class="notice-back" @click="activeNotice = null">
+          ‹ 返回列表
+        </a-button>
+        <div class="nd-head">
+          <a-tag :color="noticeTagColor[activeNotice.tag]">{{ activeNotice.tag }}</a-tag>
+          <h3 class="nd-title">{{ activeNotice.title }}</h3>
+        </div>
+        <div class="nd-meta">
+          <span>{{ activeNotice.publisher }}</span>
+          <span>·</span>
+          <span>{{ activeNotice.publishAt }}</span>
+          <span>·</span>
+          <span>范围：{{ activeNotice.scope }}</span>
+        </div>
+        <p class="nd-body">{{ activeNotice.content }}</p>
+      </div>
+
+      <!-- 列表视图 -->
+      <div v-else class="notice-list">
+        <div
+          v-for="n in HOME_NOTICES"
+          :key="n.id"
+          class="notice-item"
+          @click="openNotice(n)"
+        >
+          <div class="ni-top">
+            <a-tag :color="noticeTagColor[n.tag]">{{ n.tag }}</a-tag>
+            <span v-if="n.top" class="ni-top-flag">置顶</span>
+            <span class="ni-date">{{ n.publishAt }}</span>
+          </div>
+          <div class="ni-title">{{ n.title }}</div>
+          <div class="ni-summary">{{ n.content }}</div>
+          <div class="ni-foot">{{ n.publisher }} · {{ n.scope }}</div>
+        </div>
+      </div>
+    </a-drawer>
   </div>
 </template>
 
@@ -668,5 +729,91 @@ function onTodo(no: string) {
   .bottom-row {
     grid-template-columns: 1fr;
   }
+}
+
+/* 公告列表抽屉 */
+.notice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.notice-item {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.notice-item:hover {
+  border-color: #93c5fd;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.12);
+}
+.ni-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.ni-top-flag {
+  font-size: 12px;
+  color: #f97316;
+  font-weight: 600;
+}
+.ni-date {
+  margin-left: auto;
+  font-size: 12px;
+  color: #9ca3af;
+}
+.ni-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 4px;
+}
+.ni-summary {
+  font-size: 13px;
+  color: #6b7280;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ni-foot {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.notice-detail .notice-back {
+  padding: 0;
+  margin-bottom: 8px;
+}
+.nd-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.nd-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+  line-height: 1.4;
+}
+.nd-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+  color: #9ca3af;
+  margin-bottom: 16px;
+}
+.nd-body {
+  font-size: 14px;
+  color: #374151;
+  line-height: 1.8;
+  white-space: pre-wrap;
 }
 </style>

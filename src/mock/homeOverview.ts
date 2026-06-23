@@ -1,8 +1,53 @@
 /** 首页·工作概览 Mock（对齐 .pen vzMJ3 / PRD-01） */
 
+export interface HomeNotice {
+  id: number;
+  tag: '系统维护' | '运营通知' | '制度更新';
+  title: string;
+  content: string;
+  scope: string;
+  publisher: string;
+  publishAt: string;
+  top?: boolean;
+}
+
+export const HOME_NOTICES: HomeNotice[] = [
+  {
+    id: 1,
+    tag: '系统维护',
+    title: '【系统维护】6/15 工单系统例行升级',
+    content:
+      '6/15 00:00–02:00 工单系统例行升级，请提前保存草稿；维护期间暂停派单，预计 02:00 恢复，给您带来的不便敬请谅解。',
+    scope: '全员',
+    publisher: '运维中心',
+    publishAt: '2026-06-14 18:00',
+    top: true,
+  },
+  {
+    id: 2,
+    tag: '制度更新',
+    title: '客服工单处理时效规范（6 月修订版）发布',
+    content:
+      '投诉类工单首响时限调整为 30 分钟、解决时限 4 小时；咨询类首响 1 小时。请各班组组长组织学习，6/20 起正式执行。',
+    scope: '全体坐席 / 班组长',
+    publisher: '质量管理部',
+    publishAt: '2026-06-12 10:30',
+  },
+  {
+    id: 3,
+    tag: '运营通知',
+    title: '6 月服务之星评选启动',
+    content:
+      '本月起开展“服务之星”评选，依据工单解决量、满意度、SLA 达成率综合排名，TOP3 将获得奖励，截止 6/30。',
+    scope: '全员',
+    publisher: '运营中心',
+    publishAt: '2026-06-10 09:00',
+  },
+];
+
 export const HOME_NOTICE = {
-  text: '【系统维护】6/15 00:00–02:00 工单系统例行升级，请提前保存草稿；维护期间暂停派单。',
-  total: 3,
+  text: HOME_NOTICES[0].content,
+  total: HOME_NOTICES.length,
 };
 
 export interface HomeKpi {
