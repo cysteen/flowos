@@ -2,6 +2,7 @@
 import { CopyOutlined, FlagOutlined } from '@ant-design/icons-vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import { PRIORITY_COLOR, softBg, type Priority } from '@/views/tickets/types/ticket';
+import OpSlaBar from './OpSlaBar.vue';
 
 defineProps<{
   detail: TicketDetailMeta;
@@ -54,20 +55,12 @@ function priorityHex(p: string): string {
       </div>
     </div>
     <div class="oh-right">
-      <div class="sla">
-        <span class="sla-label">整单解决剩余</span>
-        <span class="sla-val amber">{{ detail.slaWhole }}</span>
-      </div>
-      <div class="sla-divider" />
-      <div class="sla">
-        <span class="sla-label">当前节点响应</span>
-        <span class="sla-val" :class="detail.slaNodeOverdue ? 'red' : 'amber'">{{ detail.slaNode }}</span>
-      </div>
+      <OpSlaBar :detail="detail" />
       <div class="oh-actions">
-        <button class="action-btn" @click="emit('action', '新建关联')">新建关联</button>
-        <button class="action-btn" @click="emit('action', '新建补充')">新建补充</button>
-        <button class="action-btn" @click="emit('action', '催单')">催单</button>
-        <button class="action-btn" @click="emit('action', '取消工单')">取消工单</button>
+        <button type="button" class="action-btn" @click="emit('action', '新建关联')">新建关联</button>
+        <button type="button" class="action-btn" @click="emit('action', '新建补充')">新建补充</button>
+        <button type="button" class="action-btn" @click="emit('action', '催单')">催单</button>
+        <button type="button" class="action-btn" @click="emit('action', '取消工单')">取消工单</button>
       </div>
     </div>
   </div>
@@ -99,18 +92,32 @@ function priorityHex(p: string): string {
 .copy:hover { color: #6b7280; }
 
 .oh-right { display: flex; align-items: center; gap: 20px; flex: none; }
-.sla { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
-.sla-label { font-size: 11px; color: #9ca3af; }
-.sla-val { font-size: 16px; font-weight: 700; }
-.sla-val.amber { color: #f59e0b; }
-.sla-val.red { color: #ef4444; }
-.sla-divider { width: 1px; height: 30px; background: #e5e7eb; }
 .oh-actions { display: flex; align-items: center; gap: 8px; flex: none; }
 .action-btn {
-  display: inline-flex; align-items: center; justify-content: center;
-  padding: 6px 16px; border-radius: 4px; border: 1px solid #d9d9d9;
-  background: #f0f0f0; color: #555; cursor: pointer;
-  font-size: 13px; font-family: inherit; transition: all 0.2s; white-space: nowrap;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  color: #1a6fff;
+  background: #fff;
+  border: 1.5px solid #93c5fd;
+  border-radius: 8px;
+  cursor: pointer;
+  flex: none;
+  font-family: inherit;
+  white-space: nowrap;
+  appearance: none;
+  box-shadow: 0 1px 3px rgba(26, 111, 255, 0.12);
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
-.action-btn:hover { background: #e6e6e6; color: #333; }
+.action-btn:hover {
+  background: #eff6ff;
+  border-color: #1a6fff;
+  box-shadow: 0 2px 8px rgba(26, 111, 255, 0.18);
+}
 </style>
