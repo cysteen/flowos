@@ -6,6 +6,8 @@ import { useUserStore } from '@/stores/user';
 import AppPagination from '@/components/AppPagination.vue';
 import TicketTabs from './components/TicketTabs.vue';
 import AiSuggestionBar from './components/AiSuggestionBar.vue';
+import AiSuggestionDrawer from './components/AiSuggestionDrawer.vue';
+import type { AiSuggestion, AiSuggestionFilter } from './types/aiSuggestion';
 import TicketFilterBar from './components/TicketFilterBar.vue';
 import TicketToolbar from './components/TicketToolbar.vue';
 import TicketRichList from './components/TicketRichList.vue';
@@ -18,6 +20,8 @@ const user = useUserStore();
 const router = useRouter();
 const wb = useTicketWorkbench();
 const createOpen = ref(false);
+const aiDrawerOpen = ref(false);
+const aiDrawerFilter = ref<AiSuggestionFilter>('all');
 
 // —— 草稿 ——（「草稿」chip 选中时，列表区渲染草稿列表）
 const editingDraftId = ref<string | null>(null);
@@ -54,6 +58,36 @@ function onCreated(t: Ticket) {
   wb.addTicket(t);
   wb.setTab('mine');
 }
+
+function openAiDrawer() {
+  aiDrawerFilter.value = 'all';
+  aiDrawerOpen.value = true;
+}
+
+function onAiViewTicket(s: AiSuggestion) {
+  const t = wb.ticketById(s.ticketId);
+  if (!t) return;
+  aiDrawerOpen.value = false;
+  openOperation(t);
+}
+
+function onAiPrimaryAction(s: AiSuggestion) {
+  const t = wb.ticketById(s.ticketId);
+  if (!t) return;
+
+  if (s.kind === 'upgrade') {
+    message.success(`已对 ${t.no} 发起升级`);
+  } else if (s.kind === 'similar') {
+    aiDrawerOpen.value = false;
+    router.push({ path: `/tickets/${t.no}`, query: { similar: s.matchedNo ?? '' } });
+    message.success('已带入相似方案摘要');
+    wb.dismissAiSuggestion(s.id);
+    return;
+  } else {
+    message.success(`已标记 ${t.no} 为优先跟进`);
+  }
+  wb.dismissAiSuggestion(s.id);
+}
 </script>
 
 <template>
@@ -71,8 +105,9 @@ function onCreated(t: Ticket) {
     <div class="workbench-body">
       <!-- ② AI 建议条（草稿视图下不展示） -->
       <AiSuggestionBar
-        v-if="wb.aiBarVisible.value && !isDraftView"
-        @view="message.info('展开今日 AI 建议清单')"
+        v-if="wb.showAiBar.value && !isDraftView"
+        :summary="wb.aiSummary.value"
+        @view="openAiDrawer"
         @close="wb.aiBarVisible.value = false"
       />
 
@@ -133,6 +168,16 @@ function onCreated(t: Ticket) {
     </div>
 
     <CreateTicketModal v-model:open="createOpen" :draft-id="editingDraftId" @created="onCreated" />
+
+    <AiSuggestionDrawer
+      v-model:open="aiDrawerOpen"
+      v-model:filter="aiDrawerFilter"
+      :suggestions="wb.aiSuggestions.value"
+      :summary="wb.aiSummary.value"
+      :tickets="wb.all.value"
+      @view-ticket="onAiViewTicket"
+      @primary-action="onAiPrimaryAction"
+    />
   </div>
 </template>
 

@@ -6,13 +6,16 @@ import {
 } from '@ant-design/icons-vue';
 import PlanTag from '@/components/admin/PlanTag.vue';
 import { TENANT_INFO } from '@/mock/adminOverview';
+import { TENANTS } from '@/mock/platformAdmin';
 import { useTenantBrandStore } from '@/stores/tenantBrand';
+import { useTenantStore } from '@/stores/tenant';
 
 const LOGO_MAX_BYTES = 1024 * 1024;
 const LOGO_TYPES = new Set(['image/png', 'image/jpeg', 'image/svg+xml']);
 const LOGO_EXTS = ['.png', '.jpg', '.jpeg', '.svg'];
 
 const brand = useTenantBrandStore();
+const tenantStore = useTenantStore();
 
 type ProfileState = ReturnType<typeof createProfileState>;
 
@@ -22,13 +25,15 @@ function createProfileState(): {
   adminName: string; phone: string; email: string; hotline: string;
   logoUrl: string | null; logoFileName: string | null; logoText: string;
 } {
+  const info = tenantStore.currentProfile ?? TENANT_INFO;
+  const mock = TENANTS.find((t) => t.id === tenantStore.currentTenantId);
   return {
-    name: TENANT_INFO.name,
-    code: 'IFLY-T0001',
-    plan: TENANT_INFO.plan,
-    status: TENANT_INFO.status,
-    expiry: TENANT_INFO.expiry,
-    seatScale: `${TENANT_INFO.seatTotal} 席`,
+    name: info.name,
+    code: mock?.code ?? 'IFLY-T0001',
+    plan: info.plan,
+    status: info.status,
+    expiry: info.expiry,
+    seatScale: `${info.seatTotal} 席`,
     industry: '智能硬件',
     timezone: 'GMT+8 北京',
     lang: '简体中文',

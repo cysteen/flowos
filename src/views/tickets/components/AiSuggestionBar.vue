@@ -1,7 +1,22 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { ThunderboltOutlined, CloseOutlined } from '@ant-design/icons-vue';
+import type { AiSuggestionSummary } from '@/views/tickets/types/aiSuggestion';
+
+const props = defineProps<{
+  summary: AiSuggestionSummary;
+}>();
 
 defineEmits<{ view: []; close: [] }>();
+
+const subtitle = computed(() => {
+  const parts: string[] = [];
+  if (props.summary.upgrade > 0) parts.push(`${props.summary.upgrade} 单建议升级处理`);
+  if (props.summary.similar > 0) parts.push(`${props.summary.similar} 单可复用相似工单方案`);
+  if (props.summary.emotion > 0) parts.push(`${props.summary.emotion} 单客户情绪预警`);
+  if (parts.length === 0) return '暂无待处理建议';
+  return `${parts.join(' · ')}，建议优先跟进`;
+});
 </script>
 
 <template>
@@ -11,9 +26,7 @@ defineEmits<{ view: []; close: [] }>();
     </div>
     <div class="ai-text">
       <div class="ai-title">智能助手 · 今日建议</div>
-      <div class="ai-sub">
-        3 单建议升级处理 · 2 单可复用相似工单方案 · 1 单客户情绪预警，建议优先跟进
-      </div>
+      <div class="ai-sub">{{ subtitle }}</div>
     </div>
     <div class="ai-spacer"></div>
     <div class="ai-view-btn" @click="$emit('view')">查看建议</div>

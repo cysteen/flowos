@@ -1,6 +1,8 @@
 import { computed, ref } from 'vue';
+import { buildAiSuggestions } from '@/mock/aiSuggestions';
 import { TICKETS } from '@/mock/tickets';
 import { useTicketDraftStore } from '@/stores/ticketDrafts';
+import type { AiSuggestionSummary } from '@/views/tickets/types/aiSuggestion';
 import {
   matchChip,
   type ChipKey,
@@ -30,6 +32,7 @@ export function useTicketWorkbench() {
   const searchText = ref('');
   const selectedIds = ref<Set<string>>(new Set());
   const aiBarVisible = ref(true);
+  const dismissedAiIds = ref<Set<string>>(new Set());
   const sortByUrgency = ref(true);
 
   const current = ref(1);
@@ -93,6 +96,18 @@ export function useTicketWorkbench() {
     () => paged.value.length > 0 && paged.value.every((t) => selectedIds.value.has(t.id))
   );
 
+  // AI 建议（PRD-02 §7②：扫描我的在处理单）
+  const aiSuggestions = computed(() =>
+    buildAiSuggestions(all.value).filter((s) => !dismissedAiIds.value.has(s.id)),
+  );
+  const aiSummary = computed<AiSuggestionSummary>(() => ({
+    upgrade: aiSuggestions.value.filter((s) => s.kind === 'upgrade').length,
+    similar: aiSuggestions.value.filter((s) => s.kind === 'similar').length,
+    emotion: aiSuggestions.value.filter((s) => s.kind === 'emotion').length,
+    total: aiSuggestions.value.length,
+  }));
+  const showAiBar = computed(() => aiBarVisible.value && aiSummary.value.total > 0);
+
   // ---- actions ----
   function setTab(tab: TabKey) {
     if (activeTab.value === tab) return;
@@ -129,13 +144,20 @@ export function useTicketWorkbench() {
   function addTicket(t: Ticket) {
     all.value = [t, ...all.value];
   }
+  function dismissAiSuggestion(id: string) {
+    dismissedAiIds.value = new Set([...dismissedAiIds.value, id]);
+  }
+  function ticketById(id: string): Ticket | undefined {
+    return all.value.find((t) => t.id === id);
+  }
 
   return {
     all, activeTab, activeChip, searchText, selectedIds, aiBarVisible, sortByUrgency,
     current, pageSize,
     tabRows, filtered, sorted, paged, total, tabCounts, chipCounts, drafts,
-    selectedCount, allPageSelected,
+    selectedCount, allPageSelected, aiSuggestions, aiSummary, showAiBar,
     setTab, setChip, setSearch, toggleSelect, toggleSelectAllOnPage, clearSelection,
-    setPage, addTicket, removeDraft: (id: string) => draftStore.remove(id),
+    setPage, addTicket, dismissAiSuggestion, ticketById,
+    removeDraft: (id: string) => draftStore.remove(id),
   };
 }

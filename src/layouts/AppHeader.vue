@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 import {
@@ -8,35 +9,65 @@ import {
   QuestionCircleOutlined,
   GlobalOutlined,
   DownOutlined,
+  CheckOutlined,
+  SwapOutlined,
 } from '@ant-design/icons-vue';
 import AgentCtiBar from './AgentCtiBar.vue';
 import { useUserStore } from '@/stores/user';
+import { useTenantStore } from '@/stores/tenant';
 import { useAdminTabsStore } from '@/stores/adminTabs';
 import { useWorkspaceTabsStore } from '@/stores/workspaceTabs';
-import { ROLE_OPTION_GROUPS, isRoleKey } from '@/config/roles';
+import { ROLE_OPTION_GROUPS, isRoleKey, ROLES } from '@/config/roles';
 import { firstMenuPath } from '@/config/navigation';
 
 defineProps<{ collapsed: boolean }>();
 const emit = defineEmits<{ toggle: [] }>();
 
 const user = useUserStore();
+const tenant = useTenantStore();
 const route = useRoute();
 const router = useRouter();
+const tenantListOpen = ref(false);
 
 const logoUrl = import.meta.env.BASE_URL + 'logo.png';
 
+const userSubtitle = computed(() => {
+  if (user.isPlatformUser) return user.role.name;
+  if (tenant.showTenantName) return `${tenant.currentTenantName} · ${user.role.name}`;
+  return user.role.name;
+});
+
+/** 当前租户内可切换的演示角色（过滤掉不属于本租户的项） */
+const roleOptionGroups = computed(() =>
+  ROLE_OPTION_GROUPS.map((group) => ({
+    ...group,
+    options: group.options.filter((r) =>
+      user.isPlatformUser ? true : tenant.membershipFor(tenant.currentTenantId!)?.roles.includes(r.value),
+    ),
+  })).filter((g) => g.options.length > 0),
+);
+
+function afterContextChange() {
+  if (route.path.startsWith('/admin') && !user.hasAdminEntry) {
+    router.push(firstMenuPath(user.visibleMenus));
+  } else if (route.meta.menu && !user.canAccess(route.meta.menu as string)) {
+    router.push(firstMenuPath(user.visibleMenus));
+  }
+}
+
 function onMenuClick({ key }: { key: string | number }) {
   const k = String(key);
+
   if (isRoleKey(k)) {
-    user.setRole(k);
-    message.success(`已切换为「${user.role.name}」`);
-    if (route.path.startsWith('/admin') && !user.hasAdminEntry) {
-      router.push(firstMenuPath(user.visibleMenus));
-    } else if (route.meta.menu && !user.canAccess(route.meta.menu as string)) {
-      router.push(firstMenuPath(user.visibleMenus));
+    if (!user.setRole(k)) {
+      message.warning('当前租户下无此角色权限');
+      return;
     }
+    message.success(`已切换为「${user.role.name}」`);
+    afterContextChange();
     return;
   }
+
   if (k === 'admin') {
     router.push('/admin');
     return;
@@ -52,6 +83,42 @@ function onMenuClick({ key }: { key: string | number }) {
     profile: '打开「个人设置」',
   };
   message.info(map[k] ?? '');
+}
+
+function tenantStatusLabel(status: string) {
+  if (status === 'suspended') return '已停用';
+  if (status === 'expired') return '已到期';
+  return '';
+}
+
+function onUserDropdownOpen(open: boolean) {
+  if (!open) tenantListOpen.value = false;
+}
+
+function onSwitchTenant(tenantId: string) {
+  if (tenantId === tenant.currentTenantId) {
+    tenantListOpen.value = false;
+    return;
+  }
+  if (!tenant.canSwitchTo(tenantId)) {
+    message.warning('该租户已停用，无法切换');
+    return;
+  }
+  const roleKey = user.switchTenant(tenantId);
+  if (!roleKey) {
+    message.error('切换租户失败');
+    return;
+  }
+  useAdminTabsStore().reset();
+  useWorkspaceTabsStore().reset();
+  tenantListOpen.value = false;
+  message.success(`已切换至「${tenant.currentTenantName}」· ${ROLES[roleKey].name}`);
+  afterContextChange();
+  if (route.path.startsWith('/admin')) {
+    router.push('/admin/overview');
+  } else {
+    router.push(firstMenuPath(user.visibleMenus));
+  }
 }
 </script>
 
@@ -84,20 +151,54 @@ function onMenuClick({ key }: { key: string | number }) {
       </div>
 
       <!-- 用户区 -->
-      <a-dropdown placement="bottomRight">
-        <div class="user">
+      <a-dropdown placement="bottomRight" @open-change="onUserDropdownOpen">
+        <div class="user" :class="{ 'has-tenant-switch': tenant.showTenantSwitcher }">
           <span class="user-av">{{ user.name.charAt(0) }}</span>
           <div class="user-meta">
             <div class="user-name">{{ user.name }}</div>
-            <div class="user-role">{{ user.role.name }}</div>
+            <div class="user-role" :title="userSubtitle">{{ userSubtitle }}</div>
           </div>
           <DownOutlined :style="{ fontSize: '14px', color: '#9CA3AF' }" />
         </div>
         <template #overlay>
-          <a-menu @click="onMenuClick">
-            <a-menu-item key="profile">个人设置</a-menu-item>
-            <a-sub-menu key="role" title="切换演示角色">
-              <template v-for="group in ROLE_OPTION_GROUPS" :key="group.label">
+          <div class="user-dropdown-panel">
+            <!-- 多租户：默认一行当前租户，点击展开 -->
+            <div v-if="tenant.showTenantSwitcher" class="tenant-switch-block">
+              <button
+                type="button"
+                class="tenant-current-trigger"
+                :class="{ open: tenantListOpen }"
+                @click.stop="tenantListOpen = !tenantListOpen"
+              >
+                <SwapOutlined class="tenant-swap-icon" />
+                <span class="tenant-current-name">{{ tenant.currentTenantName }}</span>
+                <DownOutlined class="tenant-chevron" />
+              </button>
+              <div v-show="tenantListOpen" class="tenant-options">
+                <button
+                  v-for="t in tenant.tenantList"
+                  :key="t.id"
+                  type="button"
+                  class="tenant-option"
+                  :class="{
+                    active: t.id === tenant.currentTenantId,
+                    disabled: !t.selectable,
+                  }"
+                  :disabled="!t.selectable"
+                  @click.stop="onSwitchTenant(t.id)"
+                >
+                  <span class="tenant-dot" :style="{ background: t.color }"></span>
+                  <span class="tenant-name">{{ t.name }}</span>
+                  <span v-if="!t.selectable" class="tenant-tag">{{ tenantStatusLabel(t.status) }}</span>
+                  <CheckOutlined v-else-if="t.id === tenant.currentTenantId" class="tenant-check" />
+                </button>
+              </div>
+            </div>
+
+            <a-menu class="user-dropdown-menu" @click="onMenuClick">
+              <a-menu-item key="profile">个人设置</a-menu-item>
+            <a-sub-menu v-if="roleOptionGroups.length" key="role" title="切换演示角色">
+              <template v-for="group in roleOptionGroups" :key="group.label">
                 <a-menu-item-group :title="group.label">
                   <a-menu-item v-for="r in group.options" :key="r.value">
                     {{ r.label }}
@@ -108,7 +209,8 @@ function onMenuClick({ key }: { key: string | number }) {
             <a-menu-item v-if="user.hasAdminEntry" key="admin">管理后台</a-menu-item>
             <a-menu-divider />
             <a-menu-item key="logout">退出登录</a-menu-item>
-          </a-menu>
+            </a-menu>
+          </div>
         </template>
       </a-dropdown>
     </div>
@@ -179,53 +281,6 @@ function onMenuClick({ key }: { key: string | number }) {
   background: #f3f4f6;
 }
 
-.breadcrumb {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 8px;
-}
-.breadcrumb .sep {
-  font-size: 12px;
-  color: #d1d5db;
-}
-.breadcrumb .current {
-  font-size: 13px;
-  font-weight: 600;
-  color: #111827;
-}
-
-.search {
-  width: 260px;
-  flex: none;
-  height: 34px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 12px;
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  cursor: text;
-}
-.search-ph {
-  font-size: 12px;
-  color: #9ca3af;
-}
-.search-sp {
-  flex: 1;
-}
-.kbd {
-  font-size: 10px;
-  color: #9ca3af;
-  background: #f3f4f6;
-  border: 1px solid #e5e7eb;
-  border-radius: 3px;
-  padding: 1px 6px;
-}
-
 .tools {
   display: flex;
   align-items: center;
@@ -253,6 +308,7 @@ function onMenuClick({ key }: { key: string | number }) {
   border-radius: 10px;
   cursor: pointer;
   flex: none;
+  max-width: 200px;
 }
 .user:hover {
   background: #f9fafb;
@@ -274,6 +330,7 @@ function onMenuClick({ key }: { key: string | number }) {
   display: flex;
   flex-direction: column;
   line-height: 1.2;
+  min-width: 0;
 }
 .user-name {
   font-size: 12px;
@@ -283,5 +340,116 @@ function onMenuClick({ key }: { key: string | number }) {
 .user-role {
   font-size: 10px;
   color: #9ca3af;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 148px;
+}
+
+.tenant-switch-block {
+  padding: 4px 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+.tenant-current-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+.tenant-current-trigger:hover,
+.tenant-current-trigger.open {
+  background: #f9fafb;
+}
+.tenant-swap-icon {
+  font-size: 13px;
+  color: #1a6fff;
+  flex: none;
+}
+.tenant-current-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tenant-chevron {
+  font-size: 10px;
+  color: #9ca3af;
+  flex: none;
+  transition: transform 0.2s;
+}
+.tenant-current-trigger.open .tenant-chevron {
+  transform: rotate(180deg);
+}
+.tenant-options {
+  padding: 0 4px 4px;
+}
+.tenant-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px 7px 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+.tenant-option:hover:not(.disabled) {
+  background: #f3f4f6;
+}
+.tenant-option.active:not(.disabled) {
+  background: #eff6ff;
+}
+.tenant-option.disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.tenant-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+.tenant-name {
+  flex: 1;
+  font-size: 13px;
+  color: #374151;
+}
+.tenant-tag {
+  font-size: 10px;
+  color: #9ca3af;
+  background: #f3f4f6;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.tenant-check {
+  color: #1a6fff;
+  font-size: 12px;
+}
+</style>
+
+<style>
+.user-dropdown-panel {
+  min-width: 168px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow:
+    0 6px 16px 0 rgba(0, 0, 0, 0.08),
+    0 3px 6px -4px rgba(0, 0, 0, 0.12);
+}
+.user-dropdown-menu.ant-dropdown-menu {
+  min-width: 168px;
+  box-shadow: none;
+  border-radius: 0 0 8px 8px;
 }
 </style>

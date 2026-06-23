@@ -7,17 +7,20 @@ import {
 } from '@/mock/adminOverview';
 import { moduleCardsFor } from '@/config/adminNav';
 import { useUserStore } from '@/stores/user';
+import { useTenantStore } from '@/stores/tenant';
 import { useTenantBrandStore } from '@/stores/tenantBrand';
 
 const brand = useTenantBrandStore();
 
 const router = useRouter();
 const user = useUserStore();
+const tenant = useTenantStore();
+const tenantInfo = computed(() => tenant.currentProfile ?? TENANT_INFO);
 // 按当前管理角色（租户/运营）显示对应模块网格
 const moduleCards = computed(() => moduleCardsFor(user.role.adminScope));
 const trendMax = computed(() => Math.max(...TREND.flatMap((d) => [d.created, d.resolved])));
-const seatPct = Math.round((TENANT_INFO.seatUsed / TENANT_INFO.seatTotal) * 100);
-const storagePct = Math.round((TENANT_INFO.storageUsed / TENANT_INFO.storageTotal) * 100);
+const seatPct = computed(() => Math.round((tenantInfo.value.seatUsed / tenantInfo.value.seatTotal) * 100));
+const storagePct = computed(() => Math.round((tenantInfo.value.storageUsed / tenantInfo.value.storageTotal) * 100));
 
 const TODO_COLOR: Record<string, string> = { warn: '#F59E0B', danger: '#EF4444', info: '#1A6FFF' };
 const HEALTH_COLOR: Record<string, string> = { 正常: '#10B981', 降级: '#F59E0B', 异常: '#EF4444' };
@@ -38,20 +41,20 @@ function goPath(path: string) {
         <div class="tb-logo"><img v-if="brand.logoUrl" :src="brand.logoUrl" alt="企业 Logo" class="tb-logo-img" /><span v-else>iF</span></div>
         <div class="tb-info">
           <div class="tb-name-row">
-            <span class="tb-name">{{ TENANT_INFO.name }}</span>
-            <span class="tb-plan">{{ TENANT_INFO.plan }}</span>
-            <span class="tb-status">● {{ TENANT_INFO.status }}</span>
+            <span class="tb-name">{{ tenantInfo.name }}</span>
+            <span class="tb-plan">{{ tenantInfo.plan }}</span>
+            <span class="tb-status">● {{ tenantInfo.status }}</span>
           </div>
-          <div class="tb-sub">有效期至 {{ TENANT_INFO.expiry }}</div>
+          <div class="tb-sub">有效期至 {{ tenantInfo.expiry }}</div>
         </div>
       </div>
       <div class="tb-usage">
         <div class="usage">
-          <div class="usage-top"><span>坐席配额</span><span>{{ TENANT_INFO.seatUsed }}/{{ TENANT_INFO.seatTotal }}</span></div>
+          <div class="usage-top"><span>坐席配额</span><span>{{ tenantInfo.seatUsed }}/{{ tenantInfo.seatTotal }}</span></div>
           <div class="usage-track"><div class="usage-fill" :style="{ width: seatPct + '%' }"></div></div>
         </div>
         <div class="usage">
-          <div class="usage-top"><span>存储用量</span><span>{{ TENANT_INFO.storageUsed }}G/{{ TENANT_INFO.storageTotal }}G</span></div>
+          <div class="usage-top"><span>存储用量</span><span>{{ tenantInfo.storageUsed }}G/{{ tenantInfo.storageTotal }}G</span></div>
           <div class="usage-track"><div class="usage-fill" :style="{ width: storagePct + '%' }"></div></div>
         </div>
       </div>

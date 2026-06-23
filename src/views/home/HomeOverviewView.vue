@@ -37,10 +37,12 @@ const createOpen = ref(false);
 // 公告列表抽屉
 const noticeListOpen = ref(false);
 const activeNotice = ref<HomeNotice | null>(null);
+// 颜色=是否需要注意：系统维护影响工作（维护窗口/停派单）→ 橙提醒；
+// 运营通知/制度更新为信息性 → 中性灰。类型靠文字区分。
 const noticeTagColor: Record<HomeNotice['tag'], string> = {
   系统维护: 'orange',
-  运营通知: 'blue',
-  制度更新: 'green',
+  运营通知: 'default',
+  制度更新: 'default',
 };
 function openNotice(n: HomeNotice) {
   activeNotice.value = n;
