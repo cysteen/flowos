@@ -1,5 +1,5 @@
 import type {
-  AgentInfo, ComplaintInfo, ContactItem, InsightStats,
+  AgentInfo, AiTicketInsight, ComplaintInfo, ContactItem, InsightStats,
   InsightDetailTable, InsightModalKey, LatestHandlingItem,
 } from '@/views/tickets/types/operation';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
@@ -87,6 +87,8 @@ export interface TicketDetailMeta {
   similarTicket: SimilarTicket;
   knowledge: string[];
   aiSummary: string;
+  /** 客户全景下方 AI 洞察 */
+  aiInsight: AiTicketInsight;
 }
 
 export const TICKET_DETAIL: TicketDetailMeta = {
@@ -258,6 +260,12 @@ export const TICKET_DETAIL: TicketDetailMeta = {
   },
   knowledge: ['X1 跳歌故障排查与固件重置指引', '在线歌单缓存清理方法'],
   aiSummary: '客户反映 X1 音箱在线歌单频繁跳歌、重启无效，情绪中性偏急，产品保修内。',
+  aiInsight: {
+    customerBrief: '30天进线8次、有投诉史，对时效敏感',
+    ticketBrief: 'P0投诉，跳歌问题已升级固件待观察',
+    suggestion: '今日闭环并回访，防外投',
+    riskTag: '外投风险',
+  },
 };
 
 export const TIMELINE: TimelineEntry[] = [

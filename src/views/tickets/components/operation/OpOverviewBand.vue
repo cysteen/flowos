@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { PaperClipOutlined } from '@ant-design/icons-vue';
 import OpStatGrid from './OpStatGrid.vue';
+import OpAiInsight from './OpAiInsight.vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import type { InsightAction } from '@/views/tickets/types/operation';
 
@@ -15,34 +15,25 @@ const emit = defineEmits<{ select: [action: InsightAction] }>();
       <div class="ob-head">
         <span class="ob-title"><i class="ob-bar" />问题与诉求</span>
       </div>
-      <div class="ob-body">
-        <div class="ob-field">
+      <div class="ob-body ob-desc-body">
+        <p class="ob-line ob-product">
           <span class="fk">产品&问题</span>
           <span class="fv">{{ detail.productIssue }}</span>
-        </div>
-        <div class="ob-field">
+        </p>
+        <p class="ob-line ob-demand">
           <span class="fk">问题描述</span>
           <span class="fv">{{ detail.demand }}</span>
-        </div>
-        <div class="ob-meta">
-          <span><i>来源</i>{{ detail.source }}</span>
-          <span><i>业务类型</i>{{ detail.businessType }}</span>
-          <span><i>业务线</i>{{ detail.businessLine }}</span>
-          <span><i>发生时间</i>{{ detail.issueOccurredAt }}</span>
-          <span><i>期望解决</i>{{ detail.expectedResolve }}</span>
-        </div>
-        <div v-if="detail.attachments.length" class="ob-attach">
-          <span v-for="a in detail.attachments" :key="a" class="attach">
-            <PaperClipOutlined :style="{ fontSize: '12px', color: '#6B7280' }" />{{ a }}
-          </span>
-        </div>
+        </p>
       </div>
     </section>
 
-    <!-- ② 客户全景统计宫格（逐项可下钻） -->
+    <!-- ② 客户全景统计宫格 + AI 洞察 -->
     <section class="ob-col ob-stat">
       <div class="ob-head"><span class="ob-title"><i class="ob-bar" />客户全景</span></div>
-      <OpStatGrid :insight="detail.insight" :ticket-type="detail.type" @select="emit('select', $event)" />
+      <div class="ob-stat-body">
+        <OpStatGrid :insight="detail.insight" :ticket-type="detail.type" @select="emit('select', $event)" />
+        <OpAiInsight :insight="detail.aiInsight" />
+      </div>
     </section>
 
     <!-- ③ 最新处理（多处理人，高度封顶，可放大） -->
@@ -62,12 +53,11 @@ const emit = defineEmits<{ select: [action: InsightAction] }>();
 </template>
 
 <style scoped>
-/* 固定高度速览带：三列核心信息区，列等高，描述/处理超出时内部滚动 */
+/* 速览带：高度随内容（客户全景列最高），三列顶对齐 */
 .overview-band {
   display: flex;
   gap: 12px;
-  align-items: stretch;
-  height: 172px;
+  align-items: flex-start;
   padding: 6px;
   border-radius: 10px;
   background: linear-gradient(180deg, #eef2ff 0%, #f5f7ff 48%, #f9fafb 100%);
@@ -76,12 +66,11 @@ const emit = defineEmits<{ select: [action: InsightAction] }>();
 }
 .ob-col {
   border-radius: 8px;
-  padding: 11px 14px 12px;
+  padding: 10px 12px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
-  min-height: 0;
   border: 1px solid transparent;
   box-shadow: 0 2px 8px rgba(17, 24, 39, 0.07);
   transition: box-shadow 0.15s, border-color 0.15s;
@@ -136,70 +125,70 @@ const emit = defineEmits<{ select: [action: InsightAction] }>();
 .ob-stat .ob-bar { background: #7c3aed; }
 .ob-handle .ob-bar { background: #10b981; }
 
-/* 固定高度 + 内部滚动 */
-.ob-body {
+.ob-stat-body {
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ob-stat-body :deep(.stat-item) {
+  padding: 6px 4px;
+}
+.ob-stat-body :deep(.si-value) {
+  font-size: 15px;
+}
+
+/* 最新处理：内容多时可滚动 */
+.ob-handle .ob-body {
+  max-height: 200px;
   overflow-y: auto;
   padding-right: 2px;
 }
 
-.ob-field {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 8px;
-  font-size: 13px;
-  line-height: 1.6;
-}
-.ob-field .fk {
+.ob-desc-body {
   flex: none;
-  width: 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.ob-line {
+  margin: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.ob-line .fk {
+  flex: none;
+  font-size: 11px;
   color: #9ca3af;
   font-weight: 600;
+  white-space: nowrap;
+  padding-top: 1px;
 }
-.ob-field .fv {
+.ob-line .fv {
   flex: 1;
   min-width: 0;
   color: #374151;
   word-break: break-word;
 }
-.ob-field:first-child .fv {
+.ob-product .fv {
   font-weight: 600;
   color: #111827;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
-.ob-field:nth-child(2) .fv {
+.ob-demand .fv {
   color: #1f2937;
-}
-.ob-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 14px;
-  margin-bottom: 8px;
-}
-.ob-meta span {
-  font-size: 12px;
-  color: #374151;
-  white-space: nowrap;
-}
-.ob-meta i {
-  font-style: normal;
-  color: #9ca3af;
-  margin-right: 4px;
-}
-.ob-attach {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.attach {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 12px;
-  color: #374151;
-  background: #f3f4f6;
-  border-radius: 6px;
-  padding: 4px 8px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .handle-item {

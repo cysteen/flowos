@@ -9,6 +9,7 @@ const OpRelatedTab = defineAsyncComponent(() => import('./tabs/OpRelatedTab.vue'
 const OpContactRecordsTab = defineAsyncComponent(() => import('./tabs/OpContactRecordsTab.vue'));
 const OpNotifyRecordsTab = defineAsyncComponent(() => import('./tabs/OpNotifyRecordsTab.vue'));
 const OpSurveyRecordsTab = defineAsyncComponent(() => import('./tabs/OpSurveyRecordsTab.vue'));
+const OpAttachmentHistoryTab = defineAsyncComponent(() => import('./tabs/OpAttachmentHistoryTab.vue'));
 const OpCustomerHistoryTab = defineAsyncComponent(() => import('./tabs/OpCustomerHistoryTab.vue'));
 import { visibleProcessTabs, type ProcessTabKey } from '@/views/tickets/types/operation';
 import type { ProcessFormDraft, SectionKey } from '@/views/tickets/types/operation';
@@ -118,6 +119,11 @@ defineExpose({ switchTab });
       <OpSurveyRecordsTab
         v-else-if="activeTab === 'survey'"
         :records="tabData.surveyRecords"
+      />
+
+      <OpAttachmentHistoryTab
+        v-else-if="activeTab === 'attachments'"
+        :records="tabData.attachmentHistory"
       />
 
       <OpCustomerHistoryTab

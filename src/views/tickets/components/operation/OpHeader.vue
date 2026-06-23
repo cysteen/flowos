@@ -48,6 +48,10 @@ function priorityHex(p: string): string {
       <div class="meta-row">
         <span>建单人：{{ detail.builderShort }}，</span>
         <span>建单时间：{{ detail.createdAtFull }}，</span>
+        <span>业务类型：{{ detail.businessType }}，</span>
+        <span>业务线：{{ detail.businessLine }}，</span>
+        <span>问题发生时间：{{ detail.issueOccurredAt }}，</span>
+        <span>期望解决：{{ detail.expectedResolve }}，</span>
         <span class="no-row">
           单号：{{ ticketNo }}
           <CopyOutlined class="copy" @click="emit('copyNo')" />
@@ -60,7 +64,7 @@ function priorityHex(p: string): string {
         <button type="button" class="action-btn" @click="emit('action', '新建关联')">新建关联</button>
         <button type="button" class="action-btn" @click="emit('action', '新建补充')">新建补充</button>
         <button type="button" class="action-btn" @click="emit('action', '催单')">催单</button>
-        <button type="button" class="action-btn" @click="emit('action', '取消工单')">取消工单</button>
+        <button type="button" class="action-btn action-btn--danger" @click="emit('action', '取消工单')">取消工单</button>
       </div>
     </div>
   </div>
@@ -119,5 +123,17 @@ function priorityHex(p: string): string {
   background: #eff6ff;
   border-color: #1a6fff;
   box-shadow: 0 2px 8px rgba(26, 111, 255, 0.18);
+}
+.action-btn--danger {
+  color: #dc2626;
+  background: #fef2f2;
+  border-color: #fecaca;
+  box-shadow: 0 1px 2px rgba(220, 38, 38, 0.1);
+}
+.action-btn--danger:hover {
+  color: #b91c1c;
+  background: #fee2e2;
+  border-color: #f87171;
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.18);
 }
 </style>

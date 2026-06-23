@@ -37,6 +37,7 @@ export function useTicketOperation() {
     const sample = TYPE_SAMPLES[base.type]?.detail;
     if (sample?.demand) base.demand = sample.demand;
     if (sample?.insight) base.insight = sample.insight;
+    if (sample?.aiInsight) base.aiInsight = sample.aiInsight;
     detail.value = base;
   }
 

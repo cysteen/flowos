@@ -4,7 +4,7 @@
 // 接入：useOperationTabs / useProcessForm / useTicketOperation 按 detail.type 取用。
 
 import type { OperationTabData } from '@/views/tickets/types/operationTabs';
-import type { ProcessFormDraft, InsightStats } from '@/views/tickets/types/operation';
+import type { ProcessFormDraft, InsightStats, AiTicketInsight } from '@/views/tickets/types/operation';
 
 const C = { 投诉: '#EF4444', 建议: '#10B981', 商机: '#F59E0B', 咨询: '#1A6FFF' };
 const bg = (hex: string) => `${hex}1F`;
@@ -12,6 +12,7 @@ const bg = (hex: string) => `${hex}1F`;
 export interface TypeDetailOverride {
   demand?: string;
   insight?: InsightStats;
+  aiInsight?: AiTicketInsight;
 }
 
 export interface TicketTypeSample {
@@ -28,6 +29,11 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
       insight: {
         inboundCount: 2, historyCount: 5, complaintCount: 0, sameTypeCount: 4, recent30Count: 6,
         dunningCount: 0, supplementCount: 1, relatedCount: 2,
+      },
+      aiInsight: {
+        customerBrief: '咨询为主、无投诉，进线频次中等',
+        ticketBrief: 'WiFi登录咨询，远程指导中',
+        suggestion: '推送指引后快速结案',
       },
     },
     processDraft: {
@@ -101,6 +107,12 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
       insight: {
         inboundCount: 1, historyCount: 3, complaintCount: 0, sameTypeCount: 2, recent30Count: 3,
         dunningCount: 0, supplementCount: 0, relatedCount: 1,
+      },
+      aiInsight: {
+        customerBrief: '企业客户，有套餐咨询史，采购意向明确',
+        ticketBrief: '商机单，扩容限流问题，商务跟进中',
+        suggestion: '48h内报价并预约演示',
+        riskTag: '高意向',
       },
     },
     processDraft: {
@@ -176,6 +188,11 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
       insight: {
         inboundCount: 1, historyCount: 2, complaintCount: 0, sameTypeCount: 1, recent30Count: 2,
         dunningCount: 0, supplementCount: 0, relatedCount: 1,
+      },
+      aiInsight: {
+        customerBrief: '个人用户，建议类反馈少',
+        ticketBrief: '门锁临时密码诉求，已转产品评估',
+        suggestion: '结案时告知评估进度',
       },
     },
     processDraft: {

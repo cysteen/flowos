@@ -20,11 +20,20 @@ export interface ComplaintInfo {
   serviceReview: string;
 }
 
+/** 顶部速览带 · AI 对客户与工单的联合洞察 */
+export interface AiTicketInsight {
+  customerBrief: string;
+  ticketBrief: string;
+  suggestion: string;
+  /** 风险提示标签，无则省略 */
+  riskTag?: string;
+}
+
 export interface InsightStats {
   inboundCount: number;
   historyCount: number;
   complaintCount: number;
-  /** 该客户「与当前工单同类型」的工单数（投诉单看投诉数、咨询单看咨询数…）*/
+  /** 该客户「与当前工单同类型」的工单数（投诉单看投诉数、咨询单看咨询数…） */
   sameTypeCount: number;
   recent30Count: number;
   dunningCount: number;
@@ -109,6 +118,7 @@ export const PROCESS_TABS = [
   { key: 'contact', label: '联系记录' },
   { key: 'notify', label: '通知记录' },
   { key: 'survey', label: '调研记录' },
+  { key: 'attachments', label: '附件历史' },
   { key: 'customerHistory', label: '客户历史工单' },
 ] as const;
 
@@ -130,3 +140,15 @@ export function visibleProcessTabs(ticketType: string) {
 }
 
 export type SupplementChip = 'complaint' | 'risk' | 'appointment' | 'quality';
+
+/** 客户全景宫格：与当前工单类型对齐的统计标签（投诉/建议/商机/咨询 → ××单） */
+const SAME_TYPE_STAT_LABEL: Record<string, string> = {
+  投诉: '投诉单',
+  建议: '建议单',
+  商机: '商机单',
+  咨询: '咨询单',
+};
+
+export function insightSameTypeLabel(ticketType: string): string {
+  return SAME_TYPE_STAT_LABEL[ticketType] ?? `${ticketType}单`;
+}

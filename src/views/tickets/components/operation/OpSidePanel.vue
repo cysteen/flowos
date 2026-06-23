@@ -1,10 +1,11 @@
 <script setup lang="ts">
+import { ref } from 'vue';
 import OpCustomerCard from './OpCustomerCard.vue';
 import OpAgentCard from './OpAgentCard.vue';
-import OpProductCard from './OpProductCard.vue';
-import OpComplaintCard from './OpComplaintCard.vue';
+import OpTicketInfoCard from './OpTicketInfoCard.vue';
 import OpAiAssistant from './OpAiAssistant.vue';
 import OpAddRecord from './OpAddRecord.vue';
+import type { AddRecordTab } from './OpAddRecord.vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 
 defineProps<{ detail: TicketDetailMeta }>();
@@ -13,14 +14,21 @@ const emit = defineEmits<{
   contact: [type: 'call' | 'sms' | 'email', value: string];
   action: [name: string];
 }>();
+
+const addRecordRef = ref<InstanceType<typeof OpAddRecord> | null>(null);
+
+function focusAddRecord(tab: AddRecordTab = 'supplement') {
+  addRecordRef.value?.open(tab);
+}
+
+defineExpose({ focusAddRecord });
 </script>
 
 <template>
   <div class="op-side">
     <OpCustomerCard :customer="detail.customer" @contact="(t, v) => emit('contact', t, v)" />
     <OpAgentCard v-if="detail.agent" :agent="detail.agent" @contact="(t, v) => emit('contact', t, v)" />
-    <OpProductCard :product="detail.product" />
-    <OpComplaintCard v-if="detail.type === '投诉'" :complaint="detail.complaint" />
+    <OpTicketInfoCard :detail="detail" />
     <OpAiAssistant
       :similar-ticket="detail.similarTicket"
       :knowledge="detail.knowledge"
@@ -28,7 +36,7 @@ const emit = defineEmits<{
       @action="emit('action', $event)"
     />
     <div class="side-spacer" />
-    <OpAddRecord @action="emit('action', $event)" />
+    <OpAddRecord ref="addRecordRef" @action="emit('action', $event)" />
   </div>
 </template>
 

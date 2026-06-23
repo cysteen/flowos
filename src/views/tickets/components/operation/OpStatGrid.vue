@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { InsightStats, InsightAction } from '@/views/tickets/types/operation';
+import { insightSameTypeLabel } from '@/views/tickets/types/operation';
 
 const props = defineProps<{ insight: InsightStats; ticketType: string }>();
 const emit = defineEmits<{ select: [action: InsightAction] }>();
@@ -18,15 +19,22 @@ interface StatItem {
 // 上排=客户维度（弹窗看明细）；下排=本单维度（跳对应 Tab）
 const items = computed<StatItem[]>(() => {
   const i = props.insight;
+  const sameTypeLabel = insightSameTypeLabel(props.ticketType);
   return [
     { key: 'inbound', label: '进线', value: i.inboundCount, unit: '次', action: { kind: 'modal', modalKey: 'inbound' } },
     { key: 'history', label: '历史', value: i.historyCount, unit: '单', action: { kind: 'modal', modalKey: 'history' } },
-    { key: 'complaint', label: '投诉', value: i.complaintCount, unit: '单', warn: true, action: { kind: 'modal', modalKey: 'complaint' } },
+    {
+      key: 'sameType',
+      label: sameTypeLabel,
+      value: i.sameTypeCount,
+      unit: '单',
+      warn: props.ticketType === '投诉',
+      action: { kind: 'tab', tab: 'customerHistory' },
+    },
     { key: 'recent30', label: '近30天', value: i.recent30Count, unit: '单', action: { kind: 'modal', modalKey: 'recent30' } },
     { key: 'dunning', label: '催单', value: i.dunningCount, unit: '次', warn: true, action: { kind: 'tab', tab: 'related' } },
     { key: 'supplement', label: '补充', value: i.supplementCount, unit: '次', action: { kind: 'tab', tab: 'related' } },
     { key: 'related', label: '关联', value: i.relatedCount, unit: '个', action: { kind: 'tab', tab: 'related' } },
-    { key: 'sameType', label: `${props.ticketType}单`, value: i.sameTypeCount, unit: '单', action: { kind: 'tab', tab: 'customerHistory' } },
   ];
 });
 
@@ -93,7 +101,7 @@ function isWarn(it: StatItem) {
   color: #9ca3af;
   margin-left: 1px;
 }
-/* 警示项（催单/投诉且 >0）：颜色=需要注意 */
+/* 警示项（催单 / 投诉单且 >0）：颜色=需要注意 */
 .stat-item.warn .si-value {
   color: #d97706;
 }

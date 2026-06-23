@@ -101,6 +101,14 @@ export interface SurveyRecord {
   conclusion?: string;
 }
 
+export interface AttachmentHistoryRecord {
+  id: string;
+  name: string;
+  size: string;
+  uploadedAt: string;
+  uploadedBy: string;
+}
+
 export type CustomerHistoryFilter = 'all' | 'processing' | 'closed' | 'complaint';
 
 export interface CustomerHistoryTicket {
@@ -140,5 +148,6 @@ export interface OperationTabData {
   contactRecords: ContactRecord[];
   notifyRecords: NotifyRecord[];
   surveyRecords: SurveyRecord[];
+  attachmentHistory: AttachmentHistoryRecord[];
   customerHistory: CustomerHistoryData;
 }

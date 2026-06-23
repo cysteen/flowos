@@ -22,6 +22,13 @@ const emit = defineEmits<{
 }>();
 
 const fileInput = ref<HTMLInputElement | null>(null);
+const textareaEl = ref<HTMLTextAreaElement | null>(null);
+
+function focusInput() {
+  textareaEl.value?.focus();
+}
+
+defineExpose({ focusInput });
 
 function openFilePicker() {
   fileInput.value?.click();
@@ -55,6 +62,7 @@ function removeFile(name: string) {
       }"
     >
       <textarea
+        ref="textareaEl"
         class="textarea-input"
         :style="{ minHeight: `${minInputHeight}px` }"
         :value="modelValue"

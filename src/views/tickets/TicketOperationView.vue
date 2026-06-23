@@ -35,6 +35,7 @@ const { tabData } = useOperationTabs(() => d.value.type);
 
 const ticketNo = computed(() => (route.params.ticketNo as string) || d.value.no);
 const processTabsRef = ref<InstanceType<typeof OpProcessTabs> | null>(null);
+const sidePanelRef = ref<InstanceType<typeof OpSidePanel> | null>(null);
 
 const tabsStore = useWorkspaceTabsStore();
 const cti = useCtiStore();
@@ -142,10 +143,10 @@ function onHeaderAction(name: string) {
       openChildCreate();
       break;
     case '新建补充':
-      message.info('新建补充单');
+      sidePanelRef.value?.focusAddRecord('supplement');
       break;
     case '催单':
-      message.info('催单');
+      sidePanelRef.value?.focusAddRecord('dunning');
       break;
     case '取消工单':
       confirmCancel();
@@ -202,6 +203,7 @@ function updateTabData(next: OperationTabData) {
       </div>
 
       <OpSidePanel
+        ref="sidePanelRef"
         :detail="d"
         @contact="onContact"
         @action="toast"

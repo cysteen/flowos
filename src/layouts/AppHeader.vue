@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 import {
@@ -7,7 +7,8 @@ import {
   MenuUnfoldOutlined,
   BellOutlined,
   QuestionCircleOutlined,
-  GlobalOutlined,
+  FullscreenOutlined,
+  FullscreenExitOutlined,
   DownOutlined,
   CheckOutlined,
 } from '@ant-design/icons-vue';
@@ -91,6 +92,33 @@ function tenantStatusLabel(status: string) {
   return '';
 }
 
+const isFullscreen = ref(false);
+const toolIconStyle = { fontSize: '16px', color: '#6B7280' };
+
+function syncFullscreen() {
+  isFullscreen.value = !!document.fullscreenElement;
+}
+
+async function toggleFullscreen() {
+  try {
+    if (!document.fullscreenElement) {
+      await document.documentElement.requestFullscreen();
+    } else {
+      await document.exitFullscreen();
+    }
+  } catch {
+    message.warning('当前浏览器不支持全屏');
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('fullscreenchange', syncFullscreen);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('fullscreenchange', syncFullscreen);
+});
+
 function switchTenant(tenantId: string) {
   if (tenantId === tenant.currentTenantId) return;
   if (!tenant.canSwitchTo(tenantId)) {
@@ -139,7 +167,18 @@ function switchTenant(tenantId: string) {
       <div class="tools">
         <div class="tool"><BellOutlined :style="{ fontSize: '16px', color: '#6B7280' }" /></div>
         <div class="tool"><QuestionCircleOutlined :style="{ fontSize: '16px', color: '#6B7280' }" /></div>
-        <div class="tool"><GlobalOutlined :style="{ fontSize: '16px', color: '#6B7280' }" /></div>
+        <div
+          class="tool"
+          role="button"
+          tabindex="0"
+          :title="isFullscreen ? '退出全屏 (Esc)' : '全屏'"
+          :aria-label="isFullscreen ? '退出全屏' : '全屏'"
+          @click="toggleFullscreen"
+          @keydown.enter.prevent="toggleFullscreen"
+        >
+          <FullscreenExitOutlined v-if="isFullscreen" :style="toolIconStyle" />
+          <FullscreenOutlined v-else :style="toolIconStyle" />
+        </div>
       </div>
 
       <!-- 用户区 -->
