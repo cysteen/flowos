@@ -123,9 +123,9 @@ watch(expandedCol, (v) => emit('expand-change', v !== null), { immediate: true }
 /* 速览带：固定占位高度，展开列绝对定位向下延伸并覆盖下方内容 */
 .overview-band {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   align-items: stretch;
-  padding: 6px;
+  padding: 4px 4px 0;
   border-radius: 10px;
   background: linear-gradient(180deg, #eef2ff 0%, #f5f7ff 48%, #f9fafb 100%);
   border: 1px solid #c7d2fe;

@@ -1,15 +1,12 @@
 <script setup lang="ts">
 import OpTextareaAttach from './shared/OpTextareaAttach.vue';
 
-withDefaults(defineProps<{
+defineProps<{
   problemCause: string;
   processResult: string;
   problemCauseAttachments: string[];
   processResultAttachments: string[];
-  subHint?: string;
-}>(), {
-  subHint: '结案前必填',
-});
+}>();
 
 const emit = defineEmits<{
   'update:problemCause': [value: string];
@@ -21,11 +18,6 @@ const emit = defineEmits<{
 
 <template>
   <div class="record-fields">
-    <div class="section-subhead">
-      <span class="sub-title">问题原因与处理结果</span>
-      <span class="sub-hint">{{ subHint }}</span>
-    </div>
-
     <div class="field">
       <label>问题原因</label>
       <OpTextareaAttach
@@ -51,12 +43,7 @@ const emit = defineEmits<{
 </template>
 
 <style scoped>
-.record-fields { display: flex; flex-direction: column; gap: 12px; }
-.section-subhead {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-}
-.sub-title { font-size: 12px; font-weight: 600; color: #111827; }
-.sub-hint { font-size: 11px; color: #9ca3af; flex: none; }
+.record-fields { display: flex; flex-direction: column; gap: 8px; }
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field label { font-size: 12px; font-weight: 600; color: #374151; }
 </style>

@@ -52,33 +52,34 @@ const badgeClass = computed(() => ({
 <style scoped>
 .collapsible { display: flex; flex-direction: column; }
 .coll-head {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  padding: 10px 14px; background: #fff; border: 1px solid #e5e7eb;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 6px 12px; background: #fff; border: 1px solid #e5e7eb;
   border-radius: 8px 8px 0 0; cursor: pointer; user-select: none;
+  min-height: 32px;
 }
 .coll-head.is-collapsed { border-radius: 8px; border-bottom: 1px solid #e5e7eb; }
 .coll-head.split-head { flex-wrap: nowrap; }
 .coll-title-group {
-  display: flex; align-items: center; gap: 10px; flex: none;
+  display: flex; align-items: center; gap: 8px; flex: none;
 }
 .coll-head-extra {
   flex: 1; min-width: 0; display: flex; align-items: center;
   overflow-x: auto;
 }
-.coll-icon { color: #6b7280; font-size: 16px; }
-.coll-title { font-size: 13px; font-weight: 600; color: #374151; white-space: nowrap; }
+.coll-icon { color: #6b7280; font-size: 14px; }
+.coll-title { font-size: 12px; font-weight: 600; color: #374151; white-space: nowrap; }
 .coll-badge {
-  font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 4px; flex: none;
+  font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px; flex: none;
 }
 .badge-req { color: #dc2626; background: #fef2f2; border: 1px solid #fecaca; }
 .badge-hint { color: #7c3aed; background: #f5f3ff; border: 1px solid #ddd6fe; }
 .badge-count { color: #1a6fff; background: #eff6ff; border: 1px solid #bfdbfe; }
 .badge-warn { color: #b45309; background: #fef3c7; border: 1px solid #fde68a; }
-.chevron { color: #9ca3af; font-size: 16px; flex: none; margin-left: auto; }
+.chevron { color: #9ca3af; font-size: 12px; flex: none; margin-left: auto; }
 .coll-body {
-  padding: 12px 14px 14px; background: #f8fafc;
+  padding: 8px 12px 10px; background: #f8fafc;
   border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;
-  display: flex; flex-direction: column; gap: 12px;
+  display: flex; flex-direction: column; gap: 8px;
   overflow: visible;
 }
 .body-risk {

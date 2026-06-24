@@ -26,7 +26,6 @@ const expanded = ref(true);
         :process-result="draft.processResult"
         :problem-cause-attachments="draft.problemCauseAttachments"
         :process-result-attachments="draft.processResultAttachments"
-        sub-hint="技术支持结案必填"
         @update:problem-cause="(v) => emit('update:draft', { ...draft, problemCause: v })"
         @update:process-result="(v) => emit('update:draft', { ...draft, processResult: v })"
         @update:problem-cause-attachments="(v) => emit('update:draft', { ...draft, problemCauseAttachments: v })"
@@ -41,7 +40,7 @@ const expanded = ref(true);
 .tech-tab-pane {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 8px;
   width: 100%;
 }
 </style>

@@ -146,15 +146,15 @@ defineExpose({ switchTab });
   flex: none;
 }
 .tab-item {
-  padding: 10px 14px; font-size: 13px; color: #6b7280; font-weight: 500;
+  padding: 6px 10px; font-size: 12px; color: #6b7280; font-weight: 500;
   background: none; border: none; border-bottom: 2px solid transparent;
   cursor: pointer; white-space: nowrap; margin-bottom: -1px;
-  font-family: inherit; line-height: 1.2;
+  font-family: inherit; line-height: 1.25;
 }
 .tab-item:hover { color: #374151; }
 .tab-item.active { color: #1a6fff; font-weight: 600; border-bottom-color: #1a6fff; }
 .tab-content {
-  padding: 16px 16px 24px; flex: 1 1 auto;
+  padding: 10px 12px 16px; flex: 1 1 auto;
   display: flex; flex-direction: column; min-height: 0;
   overflow-y: auto;
 }

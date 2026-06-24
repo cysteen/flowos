@@ -57,12 +57,12 @@ function viewFlow() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 14px;
-  padding: 10px 14px;
+  margin-bottom: 10px;
+  padding: 6px 12px;
   background: #f0f7ff;
   border: 1px solid #d6e4ff;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: 12px;
   flex: none;
 }
 
@@ -105,7 +105,7 @@ function viewFlow() {
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   background: #fff;
-  padding: 14px 16px;
+  padding: 10px 12px;
 }
 
 .timeline {

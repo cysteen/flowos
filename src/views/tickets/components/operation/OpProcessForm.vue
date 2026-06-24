@@ -89,7 +89,6 @@ function chipActiveClass(key: SupplementChip): string {
         :process-result="form.processResult"
         :problem-cause-attachments="form.problemCauseAttachments"
         :process-result-attachments="form.processResultAttachments"
-        sub-hint="结案前必填"
         @update:problem-cause="(v) => patch({ problemCause: v })"
         @update:process-result="(v) => patch({ processResult: v })"
         @update:problem-cause-attachments="(v) => patch({ problemCauseAttachments: v })"
@@ -350,7 +349,7 @@ function chipActiveClass(key: SupplementChip): string {
 </template>
 
 <style scoped>
-.process-form { display: flex; flex-direction: column; gap: 16px; }
+.process-form { display: flex; flex-direction: column; gap: 8px; }
 .section-subhead {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
 }

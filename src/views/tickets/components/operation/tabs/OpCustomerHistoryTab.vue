@@ -94,7 +94,7 @@ function openTicket(no: string) {
 .customer-history-tab {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   width: 100%;
   font-family: inherit;
 }
@@ -103,8 +103,8 @@ function openTicket(no: string) {
   background: #f9fafb;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
-  padding: 12px 16px;
-  font-size: 13px;
+  padding: 8px 12px;
+  font-size: 12px;
   font-weight: 400;
   color: #374151;
   line-height: 20px;
@@ -151,7 +151,7 @@ function openTicket(no: string) {
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 6px;
-  padding: 12px 14px;
+  padding: 8px 10px;
   display: flex;
   flex-direction: column;
   gap: 8px;

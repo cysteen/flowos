@@ -113,13 +113,13 @@ function processEntries(t: RelatedTicketCard) {
 </template>
 
 <style scoped>
-.related-tab { display: flex; flex-direction: column; gap: 16px; width: 100%; }
+.related-tab { display: flex; flex-direction: column; gap: 8px; width: 100%; }
 
 .card-list { display: flex; flex-direction: column; gap: 8px; }
 
 .rel-card {
   background: #fff; border: 1px solid #e5e7eb; border-radius: 6px;
-  padding: 12px 14px; cursor: pointer; display: flex; flex-direction: column; gap: 10px;
+  padding: 8px 10px; cursor: pointer; display: flex; flex-direction: column; gap: 8px;
 }
 .rel-card:hover { border-color: #d1d5db; }
 

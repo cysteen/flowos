@@ -39,10 +39,10 @@ defineProps<{
   background: v-bind('T.surface');
   border: 1px solid v-bind('T.border');
   border-radius: 8px;
-  padding: 10px 12px;
+  padding: 8px 10px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 .record-meta {

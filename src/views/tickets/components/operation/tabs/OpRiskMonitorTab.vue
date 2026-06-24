@@ -163,7 +163,7 @@ function update(partial: Partial<RiskMonitorDraft>) {
 </template>
 
 <style scoped>
-.risk-tab { display: flex; flex-direction: column; gap: 16px; width: 100%; }
+.risk-tab { display: flex; flex-direction: column; gap: 8px; width: 100%; }
 
 .field-row { display: flex; gap: 8px; align-items: center; }
 .field-row .inline-field { flex: 1 1 0; min-width: 0; }

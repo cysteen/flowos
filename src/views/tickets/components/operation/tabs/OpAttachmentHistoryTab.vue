@@ -91,7 +91,7 @@ function onDownload(name: string) {
 .attach-tab {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 8px;
   width: 100%;
   font-family: inherit;
 }
@@ -155,7 +155,7 @@ function onDownload(name: string) {
 }
 
 .attach-table th {
-  padding: 10px 12px;
+  padding: 6px 10px;
   text-align: left;
   font-weight: 600;
   color: #6b7280;
@@ -164,7 +164,7 @@ function onDownload(name: string) {
 }
 
 .attach-table td {
-  padding: 10px 12px;
+  padding: 6px 10px;
   color: #374151;
   border-bottom: 1px solid #f3f4f6;
   vertical-align: middle;
