@@ -4,12 +4,23 @@ import { CloseOutlined, SendOutlined } from '@ant-design/icons-vue';
 import type { SimilarTicket } from '@/mock/ticketDetail';
 import type { AiTicketInsight } from '@/views/tickets/types/operation';
 
-const props = defineProps<{
-  similarTicket: SimilarTicket;
-  knowledge: string[];
-  aiSummary: string;
-  insight?: AiTicketInsight;
-}>();
+const props = withDefaults(
+  defineProps<{
+    similarTicket?: SimilarTicket;
+    knowledge?: string[];
+    aiSummary?: string;
+    insight?: AiTicketInsight;
+    /** ticket=工单处理页（默认，带工单上下文）；global=个人门户等通用助手 */
+    scope?: 'ticket' | 'global';
+  }>(),
+  {
+    similarTicket: undefined,
+    knowledge: () => [],
+    aiSummary: '',
+    insight: undefined,
+    scope: 'ticket',
+  },
+);
 
 const emit = defineEmits<{ action: [name: string] }>();
 
@@ -25,18 +36,30 @@ interface ChatMessage {
   text: string;
 }
 
-const SCENARIOS = [
+type ScenarioKey =
+  | 'ticket-analysis' | 'script' | 'knowledge' | 'upgrade' | 'empathy' | 'help' | 'faq';
+
+const TICKET_SCENARIOS: { key: ScenarioKey; label: string }[] = [
   { key: 'ticket-analysis', label: '工单分析' },
   { key: 'script', label: '话术推荐' },
   { key: 'knowledge', label: '知识检索' },
   { key: 'upgrade', label: '升级建议' },
   { key: 'empathy', label: '安抚话术' },
-] as const;
-
-type ScenarioKey = (typeof SCENARIOS)[number]['key'];
+];
+const GLOBAL_SCENARIOS: { key: ScenarioKey; label: string }[] = [
+  { key: 'knowledge', label: '知识检索' },
+  { key: 'help', label: '操作帮助' },
+  { key: 'faq', label: '常见问题' },
+];
+const scenarios = computed(() => (props.scope === 'global' ? GLOBAL_SCENARIOS : TICKET_SCENARIOS));
 
 const summaryText = computed(() => {
-  let text = props.aiSummary.trim();
+  let text = (props.aiSummary || '').trim();
+  if (!text) {
+    return props.scope === 'global'
+      ? '你好，我是 FlowOS AI 助手，可帮你检索知识、解答系统操作与流程问题。'
+      : '已根据当前工单生成智能推荐。';
+  }
   if (!text.endsWith('。') && !text.endsWith('.')) text += '。';
   const sug = props.insight?.suggestion?.trim();
   if (sug) {
@@ -47,6 +70,7 @@ const summaryText = computed(() => {
 });
 
 const similarLine = computed(() => {
+  if (!props.similarTicket) return null;
   const { no, title, solution } = props.similarTicket;
   const detail = solution.replace(/^方案[：:]\s*/, '');
   return { no, text: `${title}，${detail}` };
@@ -94,6 +118,10 @@ function scenarioReply(key: ScenarioKey): string {
       return '【升级建议】\n当前为 P0 投诉且客户有投诉史，若今日内无法闭环或客户情绪激化，建议升级二线并同步班组长关注，避免外投风险。';
     case 'empathy':
       return '【安抚话术】\n理解您的心情，播放异常确实影响体验。我们已加急处理并安排技术同事跟进，会及时向您反馈进展，请您放心。';
+    case 'help':
+      return '【操作帮助】\n· 处理工单：在「工单工作台」打开工单进入处理页，按 Tab 填写后用底部操作流转。\n· 草稿：建单弹窗「存草稿」后，可在工作台「草稿」页签继续编辑。\n· 实时提醒：你正在处理的工单若有催单/补充，会在该页右下角弹出提示。';
+    case 'faq':
+      return '【常见问题】\n1. 如何领单？工单池中点「领单」即可转入「我的工单」。\n2. 如何升级？处理页底部「升级」，按通道→目标组别选择。\n3. SLA 怎么看？处理页头部进度条展示整单与当前节点时限。';
     default:
       return '已收到，正在为您分析…';
   }
@@ -123,10 +151,11 @@ function onRecoKnowledge(k: string) {
 }
 
 function onSimilarClick() {
+  if (!similarLine.value) return;
   emit('action', '查看方案');
   pushUser('查看相似工单方案');
   window.setTimeout(() => {
-    pushAssistant(`【相似工单】${similarLine.value.no}\n${similarLine.value.text}\n可参考该方案与客户沟通，必要时申请复用处理流程。`);
+    pushAssistant(`【相似工单】${similarLine.value!.no}\n${similarLine.value!.text}\n可参考该方案与客户沟通，必要时申请复用处理流程。`);
   }, 320);
 }
 
@@ -183,7 +212,7 @@ watch(open, (v) => {
                   {{ k }}
                 </button>
               </div>
-              <button type="button" class="reco-similar" @click="onSimilarClick">
+              <button v-if="similarLine" type="button" class="reco-similar" @click="onSimilarClick">
                 <span class="sim-no">{{ similarLine.no }}</span>
                 <span class="sim-sep">—</span>
                 <span class="sim-text">{{ similarLine.text }}</span>
@@ -208,7 +237,7 @@ watch(open, (v) => {
           <div class="chat-foot">
             <div class="scenario-chips">
               <button
-                v-for="s in SCENARIOS"
+                v-for="s in scenarios"
                 :key="s.key"
                 type="button"
                 class="scenario-chip"

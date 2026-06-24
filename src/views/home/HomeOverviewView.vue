@@ -15,6 +15,10 @@ import {
 } from '@ant-design/icons-vue';
 import { useUserStore } from '@/stores/user';
 import CreateTicketModal from '@/views/tickets/components/CreateTicketModal.vue';
+import OpAiAssistant from '@/views/tickets/components/operation/OpAiAssistant.vue';
+
+/** 个人门户通用知识推荐（无工单上下文） */
+const HOME_AI_KNOWLEDGE = ['工单处理操作指引', '常见问题与话术库', 'SLA 与升级规则说明'];
 import {
   HOME_EFFICIENCY,
   HOME_KPIS,
@@ -299,6 +303,9 @@ function onTodo(no: string) {
         </div>
       </div>
     </a-drawer>
+
+    <!-- 个人门户通用 AI 助手（悬浮 Copilot，无工单上下文） -->
+    <OpAiAssistant scope="global" :knowledge="HOME_AI_KNOWLEDGE" />
   </div>
 </template>
 
