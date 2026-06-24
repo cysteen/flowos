@@ -39,7 +39,6 @@ function adminViewFor(key: string) {
   if (key === 'dispatch') return () => import('@/views/admin/DispatchConfigView.vue');
   if (key === 'users') return () => import('@/views/admin/UserManageView.vue');
   if (key === 'orgs') return () => import('@/views/admin/OrgManageView.vue');
-  if (key === 'posts') return () => import('@/views/admin/PostManageView.vue');
   if (key === 'connectors') return () => import('@/views/admin/ConnectorHubView.vue');
   if (key === 'message-center') return () => import('@/views/admin/MessageCenterView.vue');
   if (key === 'third-party-login') return () => import('@/views/admin/ThirdPartyLoginView.vue');
