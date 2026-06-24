@@ -109,10 +109,33 @@ function onContact(type: 'call' | 'sms' | 'email', value: string) {
 }
 
 function onSmsSubmit(payload: { phone: string; templateName: string; content: string }) {
+  tabData.value.contactRecords.unshift({
+    id: `c-${Date.now()}`,
+    kind: 'sms',
+    title: '短信发送',
+    emoji: '💬',
+    operator: user.name || '当前坐席',
+    when: formatNow(),
+    metaPrefix: '发送人',
+    summary: `接收号码: ${payload.phone} | 状态: 发送成功 | 模板: ${payload.templateName}`,
+    smsContent: payload.content,
+  });
+  processTabsRef.value?.switchTab('contact');
   message.success(`短信已发送至 ${payload.phone}`);
 }
 
 function onEmailSubmit(payload: { to: string; subject: string }) {
+  tabData.value.contactRecords.unshift({
+    id: `c-${Date.now()}`,
+    kind: 'email',
+    title: '邮件发送',
+    emoji: '📧',
+    operator: user.name || '当前坐席',
+    when: formatNow(),
+    metaPrefix: '发送人',
+    summary: `收件邮箱: ${payload.to} | 状态: 发送成功 | 主题: ${payload.subject}`,
+  });
+  processTabsRef.value?.switchTab('contact');
   message.success(`邮件「${payload.subject}」已发送至 ${payload.to}`);
 }
 

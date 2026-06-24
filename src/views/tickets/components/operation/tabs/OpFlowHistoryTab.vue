@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { message } from 'ant-design-vue';
+import { ref } from 'vue';
 import type { FlowHistoryNode } from '@/views/tickets/types/operationTabs';
+import OpFlowChartModal from '../OpFlowChartModal.vue';
 
 defineProps<{
   currentNode: string;
   nodes: FlowHistoryNode[];
 }>();
 
+const flowChartOpen = ref(false);
 function viewFlow() {
-  message.info('查看流程图');
+  flowChartOpen.value = true;
 }
 </script>
 
@@ -39,6 +41,7 @@ function viewFlow() {
         </div>
       </div>
     </div>
+    <OpFlowChartModal v-model:open="flowChartOpen" :current-node="currentNode" />
   </div>
 </template>
 
