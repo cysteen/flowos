@@ -349,7 +349,7 @@ function chipActiveClass(key: SupplementChip): string {
 </template>
 
 <style scoped>
-.process-form { display: flex; flex-direction: column; gap: 8px; }
+.process-form { display: flex; flex-direction: column; gap: 12px; }
 .section-subhead {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
 }

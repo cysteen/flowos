@@ -120,16 +120,11 @@ watch(expandedCol, (v) => emit('expand-change', v !== null), { immediate: true }
 </template>
 
 <style scoped>
-/* 速览带：固定占位高度，展开列绝对定位向下延伸并覆盖下方内容 */
+/* 速览带：三列卡片平铺，无外包裹线框 */
 .overview-band {
   display: flex;
-  gap: 8px;
+  gap: 12px;
   align-items: stretch;
-  padding: 4px 4px 0;
-  border-radius: 10px;
-  background: linear-gradient(180deg, #eef2ff 0%, #f5f7ff 48%, #f9fafb 100%);
-  border: 1px solid #c7d2fe;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
   position: relative;
   z-index: 10;
   overflow: visible;
@@ -200,12 +195,12 @@ watch(expandedCol, (v) => emit('expand-change', v !== null), { immediate: true }
   flex: none;
   padding-bottom: 2px;
   border-bottom: 1px solid rgba(17, 24, 39, 0.06);
-  gap: 8px;
+  gap: 12px;
 }
 .ob-title {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   font-size: 14px;
   font-weight: 700;
   color: #111827;
@@ -298,7 +293,7 @@ watch(expandedCol, (v) => emit('expand-change', v !== null), { immediate: true }
 .hi-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   margin-bottom: 3px;
 }
 .hi-who { font-size: 12px; font-weight: 600; color: #111827; }

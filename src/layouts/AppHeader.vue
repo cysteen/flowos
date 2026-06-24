@@ -19,6 +19,7 @@ import { useAdminTabsStore } from '@/stores/adminTabs';
 import { useWorkspaceTabsStore } from '@/stores/workspaceTabs';
 import { ROLE_OPTION_GROUPS, isRoleKey, ROLES } from '@/config/roles';
 import { firstMenuPath } from '@/config/navigation';
+import { DEFAULT_BRAND_LOGO_URL } from '@/constants/brand';
 
 defineProps<{ collapsed: boolean }>();
 const emit = defineEmits<{ toggle: [] }>();
@@ -28,7 +29,7 @@ const tenant = useTenantStore();
 const route = useRoute();
 const router = useRouter();
 
-const logoUrl = import.meta.env.BASE_URL + 'logo.png';
+const logoUrl = DEFAULT_BRAND_LOGO_URL;
 
 // 头部只显示角色名；租户信息在下拉的「切换租户」里体现，避免重复
 const userSubtitle = computed(() => user.role.name);

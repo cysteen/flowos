@@ -34,7 +34,7 @@ const emit = defineEmits<{
   flex: none;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
   align-self: stretch;
   min-height: 0;
   overflow-y: auto;

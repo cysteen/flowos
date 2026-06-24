@@ -12,12 +12,13 @@ import {
 import { useUserStore } from '@/stores/user';
 import { firstMenuPath } from '@/config/navigation';
 import { DEMO_PASSWORD, LOGIN_ACCOUNTS, findAccount } from '@/mock/loginAccounts';
+import { DEFAULT_BRAND_LOGO_URL } from '@/constants/brand';
 
 const router = useRouter();
 const route = useRoute();
 const user = useUserStore();
 
-const logoUrl = import.meta.env.BASE_URL + 'logo.png';
+const logoUrl = DEFAULT_BRAND_LOGO_URL;
 const loginTab = ref<'account' | 'sms'>('account');
 const account = ref('');
 const password = ref('');

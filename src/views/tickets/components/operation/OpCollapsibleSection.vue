@@ -79,7 +79,7 @@ const badgeClass = computed(() => ({
 .coll-body {
   padding: 8px 12px 10px; background: #f8fafc;
   border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;
-  display: flex; flex-direction: column; gap: 8px;
+  display: flex; flex-direction: column; gap: 10px;
   overflow: visible;
 }
 .body-risk {

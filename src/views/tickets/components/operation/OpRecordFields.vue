@@ -43,7 +43,7 @@ const emit = defineEmits<{
 </template>
 
 <style scoped>
-.record-fields { display: flex; flex-direction: column; gap: 8px; }
+.record-fields { display: flex; flex-direction: column; gap: 10px; }
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field label { font-size: 12px; font-weight: 600; color: #374151; }
 </style>

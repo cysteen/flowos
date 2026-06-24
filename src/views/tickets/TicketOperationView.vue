@@ -499,13 +499,13 @@ function updateTabData(next: OperationTabData) {
 <style scoped>
 /* 填满外壳滚动容器，头部 + 速览带常驻，主体区独立滚动 → 关注信息一屏 */
 .op-page {
-  --op-block-gap: 8px;
+  --op-block-gap: 12px;
   display: flex; flex-direction: column; height: 100%; overflow: hidden;
   background: #f9fafb;
 }
 .op-overview-wrap {
   flex: none;
-  padding: 8px 20px 0;
+  padding: 10px 20px 0;
   position: relative;
   z-index: 1;
 }
@@ -513,7 +513,7 @@ function updateTabData(next: OperationTabData) {
 .op-body {
   display: flex;
   gap: var(--op-block-gap);
-  padding: 6px 20px 12px;
+  padding: 10px 20px 12px;
   flex: 1;
   min-height: 0;
   align-items: stretch;

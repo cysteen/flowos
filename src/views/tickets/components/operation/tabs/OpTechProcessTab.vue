@@ -40,7 +40,7 @@ const expanded = ref(true);
 .tech-tab-pane {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
   width: 100%;
 }
 </style>

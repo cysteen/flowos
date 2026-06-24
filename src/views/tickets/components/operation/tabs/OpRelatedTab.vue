@@ -113,7 +113,7 @@ function processEntries(t: RelatedTicketCard) {
 </template>
 
 <style scoped>
-.related-tab { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.related-tab { display: flex; flex-direction: column; gap: 12px; width: 100%; }
 
 .card-list { display: flex; flex-direction: column; gap: 8px; }
 
