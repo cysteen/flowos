@@ -251,9 +251,12 @@ function onLiveToastClick() {
   processTabsRef.value?.switchTab('related');
 }
 
-/** 原型演示：每 10 秒模拟客户侧推送催单/补充（联调前替代 WebSocket） */
+/** 原型演示：刷新后每 5 秒推送 1 条，共 3 条后停止（联调前替代 WebSocket） */
+const DEMO_MAX_COUNT = 3;
+const DEMO_INTERVAL_MS = 5_000;
 let incomingDemoInterval: ReturnType<typeof setInterval> | null = null;
-let demoTick = 0;
+let incomingDemoTimeout: ReturnType<typeof setTimeout> | null = null;
+let demoFiredCount = 0;
 
 const DEMO_INCOMING_EVENTS: Array<{
   type: TicketLiveEventType;
@@ -262,6 +265,7 @@ const DEMO_INCOMING_EVENTS: Array<{
 }> = [
   { type: 'supplement', content: '设备插电后指示灯不亮,疑似主板供电模块故障', supplementType: '问题描述补充' },
   { type: 'urge', content: '要求今日内安排上门处理' },
+  { type: 'supplement', content: '客户补充：已尝试更换电源线，问题依旧', supplementType: '问题描述补充' },
 ];
 
 function stopIncomingDemo() {
@@ -269,21 +273,39 @@ function stopIncomingDemo() {
     clearInterval(incomingDemoInterval);
     incomingDemoInterval = null;
   }
+  if (incomingDemoTimeout) {
+    clearTimeout(incomingDemoTimeout);
+    incomingDemoTimeout = null;
+  }
+}
+
+function fireDemoEvent() {
+  const item = DEMO_INCOMING_EVENTS[demoFiredCount % DEMO_INCOMING_EVENTS.length];
+  const who = MOCK_FIRST_LINE_AGENTS[demoFiredCount % MOCK_FIRST_LINE_AGENTS.length];
+  onIncomingTicketEvent(item.type, item.content, who, {
+    supplementType: item.supplementType,
+  });
+  demoFiredCount += 1;
+  if (demoFiredCount >= DEMO_MAX_COUNT) {
+    stopIncomingDemo();
+  }
 }
 
 function startIncomingDemo() {
   stopIncomingDemo();
-  demoTick = 0;
-  const fire = () => {
-    const item = DEMO_INCOMING_EVENTS[demoTick % DEMO_INCOMING_EVENTS.length];
-    const who = MOCK_FIRST_LINE_AGENTS[demoTick % MOCK_FIRST_LINE_AGENTS.length];
-    onIncomingTicketEvent(item.type, item.content, who, {
-      supplementType: item.supplementType,
-    });
-    demoTick += 1;
-  };
-  fire();
-  incomingDemoInterval = setInterval(fire, 10_000);
+  if (demoFiredCount >= DEMO_MAX_COUNT) return;
+
+  incomingDemoTimeout = setTimeout(() => {
+    incomingDemoTimeout = null;
+    if (!pageActive.value || demoFiredCount >= DEMO_MAX_COUNT) return;
+    fireDemoEvent();
+    if (demoFiredCount < DEMO_MAX_COUNT) {
+      incomingDemoInterval = setInterval(() => {
+        if (!pageActive.value) return;
+        fireDemoEvent();
+      }, DEMO_INTERVAL_MS);
+    }
+  }, DEMO_INTERVAL_MS);
 }
 
 function pauseLiveNotify() {
@@ -298,6 +320,7 @@ function resumeLiveNotify() {
 }
 
 watch(ticketNo, () => {
+  demoFiredCount = 0;
   if (pageActive.value) startIncomingDemo();
 });
 
@@ -379,7 +402,17 @@ function updateTabData(next: OperationTabData) {
 
     <!-- 顶部通栏速览带：客户诉求 | 客户全景宫格 | 最新处理（关注信息一屏） -->
     <div class="op-overview-wrap" :class="{ elevated: overviewExpanded }">
-      <OpOverviewBand :detail="d" @select="onOverviewSelect" @expand-change="overviewExpanded = $event" />
+      <OpOverviewBand :detail="d" @select="onOverviewSelect" @expand-change="overviewExpanded = $event">
+        <template #live-notify>
+          <TicketEventToastStack
+            v-if="pageActive"
+            embedded
+            :items="liveToasts"
+            @dismiss="dismissLiveToast"
+            @click="onLiveToastClick"
+          />
+        </template>
+      </OpOverviewBand>
     </div>
 
     <div class="op-body">
@@ -459,13 +492,6 @@ function updateTabData(next: OperationTabData) {
       :email="emailTo"
       :ctx="notifyCtx"
       @submit="onEmailSubmit"
-    />
-
-    <TicketEventToastStack
-      v-if="pageActive"
-      :items="liveToasts"
-      @dismiss="dismissLiveToast"
-      @click="onLiveToastClick"
     />
   </div>
 </template>

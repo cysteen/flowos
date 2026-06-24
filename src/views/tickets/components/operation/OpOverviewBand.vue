@@ -68,6 +68,7 @@ watch(expandedCol, (v) => emit('expand-change', v !== null), { immediate: true }
     <!-- ② 客户全景 -->
     <div class="ob-cell">
       <section class="ob-col ob-stat" :class="{ expanded: expandedCol === 'stat' }">
+        <slot name="live-notify" />
         <div class="ob-head">
           <span class="ob-title"><i class="ob-bar" />客户全景</span>
           <button
@@ -183,6 +184,8 @@ watch(expandedCol, (v) => emit('expand-change', v !== null), { immediate: true }
   background: linear-gradient(180deg, #fff 0%, #faf8ff 100%);
   border-color: #ddd6fe;
   border-top: 3px solid #7c3aed;
+  position: relative;
+  overflow: visible;
 }
 .ob-handle {
   background: linear-gradient(180deg, #fff 0%, #f6fdf9 100%);

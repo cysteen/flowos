@@ -1,23 +1,32 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { BellOutlined, MessageOutlined } from '@ant-design/icons-vue';
 import type { TicketLiveToast } from '@/views/tickets/types/ticketLiveNotify';
 import { TICKET_EVENT_NOTIFY_THEME as T } from '@/views/tickets/styles/ticketEventNotifyTheme';
 
-defineProps<{
+const props = defineProps<{
   items: TicketLiveToast[];
+  /** 嵌入客户全景卡片：顶框正中下滑，仅展示最新一条 */
+  embedded?: boolean;
 }>();
 
 const emit = defineEmits<{
   dismiss: [id: string];
   click: [item: TicketLiveToast];
 }>();
+
+const visibleItems = computed(() => (props.embedded ? props.items.slice(0, 1) : props.items));
 </script>
 
 <template>
-  <Teleport to="body">
-    <div v-if="items.length" id="toastWrap" class="ticket-notify-stack">
+  <div
+    v-if="visibleItems.length"
+    id="toastWrap"
+    class="ticket-notify-stack"
+    :class="{ embedded }"
+  >
       <article
-        v-for="item in items"
+        v-for="item in visibleItems"
         :key="item.id"
         class="ticket-notify"
         :class="item.type"
@@ -56,7 +65,6 @@ const emit = defineEmits<{
         <p class="ticket-notify__body">{{ item.content }}</p>
       </article>
     </div>
-  </Teleport>
 </template>
 
 <style scoped>
@@ -68,18 +76,29 @@ const emit = defineEmits<{
  */
 
 .ticket-notify-stack {
-  position: fixed;
-  left: 20px;
-  bottom: 84px;
-  z-index: 1100;
+  position: absolute;
+  top: 8px;
+  right: 0;
+  z-index: 60;
   display: flex;
-  flex-direction: column-reverse;
+  flex-direction: column;
   gap: 8px;
   pointer-events: none;
 }
 
+/* 客户全景卡片内：自顶框正中向下滑入 */
+.ticket-notify-stack.embedded {
+  top: 0;
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  z-index: 35;
+  width: min(92%, 268px);
+  gap: 0;
+}
+
 .ticket-notify {
-  width: 320px;
+  width: 300px;
   padding: 12px 12px 12px 14px;
   border: 1px solid v-bind('T.border');
   border-left: 3px solid transparent;
@@ -90,6 +109,44 @@ const emit = defineEmits<{
   cursor: pointer;
   animation: notify-in 0.28s cubic-bezier(0.22, 1, 0.36, 1);
   transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.ticket-notify-stack.embedded .ticket-notify {
+  position: relative;
+  width: 100%;
+  padding: 11px 10px 10px;
+  border-radius: 0 0 8px 8px;
+  border-top: none;
+  box-shadow: 0 6px 16px rgba(124, 58, 237, 0.12), 0 2px 6px rgba(17, 24, 39, 0.06);
+  animation: notify-drop-in 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ticket-notify-stack.embedded .ticket-notify::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 40px;
+  height: 3px;
+  margin-left: -20px;
+  border-radius: 0 0 3px 3px;
+  background: #7c3aed;
+}
+
+.ticket-notify-stack.embedded .ticket-notify__head {
+  margin-bottom: 4px;
+}
+
+.ticket-notify-stack.embedded .ticket-notify__title {
+  font-size: 12px;
+}
+
+.ticket-notify-stack.embedded .ticket-notify__body {
+  -webkit-line-clamp: 1;
+}
+
+.ticket-notify-stack.embedded .ticket-notify:hover {
+  transform: none;
 }
 
 .ticket-notify:hover {
@@ -212,11 +269,22 @@ const emit = defineEmits<{
 @keyframes notify-in {
   from {
     opacity: 0;
-    transform: translateX(-10px);
+    transform: translateX(10px);
   }
   to {
     opacity: 1;
     transform: translateX(0);
+  }
+}
+
+@keyframes notify-drop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 </style>
