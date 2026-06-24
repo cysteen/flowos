@@ -174,7 +174,12 @@ function onForwardConfirm(data: { ticketTitle: string; resolved: boolean }) {
         :title="a.forbidden ? a.forbiddenTip : undefined"
         @click="run(a.key)"
       >
-        <span v-if="a.forbidden" class="forbidden-mark" aria-hidden="true" />
+        <span v-if="a.forbidden" class="forbidden-mark" aria-hidden="true">
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+            <line x1="4" y1="4" x2="96" y2="96" />
+            <line x1="96" y1="4" x2="4" y2="96" />
+          </svg>
+        </span>
         <component :is="ICONS[a.icon]" />
         <span>{{ a.label }}</span>
       </button>
@@ -274,22 +279,26 @@ function onForwardConfirm(data: { ticketTitle: string; resolved: boolean }) {
 }
 
 .ab-item.forbidden .forbidden-mark {
+  --forbidden-stroke: #d1d5db;
   position: absolute;
-  inset: 7px 10px;
-  border: 1.5px solid rgba(239, 68, 68, 0.45);
+  inset: 6px 8px;
+  border: 1.5px solid var(--forbidden-stroke);
   border-radius: 6px;
   pointer-events: none;
+  z-index: 1;
 }
 
-.ab-item.forbidden .forbidden-mark::after {
-  content: '';
-  position: absolute;
-  left: -2px;
-  right: -2px;
-  top: 50%;
-  height: 1.5px;
-  background: rgba(239, 68, 68, 0.55);
-  transform: rotate(-14deg);
+.ab-item.forbidden .forbidden-mark svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.ab-item.forbidden .forbidden-mark line {
+  stroke: var(--forbidden-stroke);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
 }
 
 .ab-item:disabled:not(.forbidden) {
