@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type { InsightStats, InsightAction } from '@/views/tickets/types/operation';
 import { insightSameTypeLabel } from '@/views/tickets/types/operation';
 
@@ -41,6 +41,31 @@ const items = computed<StatItem[]>(() => {
 function isWarn(it: StatItem) {
   return !!it.warn && it.value > 0;
 }
+
+const bumpedKeys = ref<Set<string>>(new Set());
+
+watch(
+  () => props.insight.dunningCount,
+  (next, prev) => {
+    if (prev !== undefined && next > prev) pulse('dunning');
+  },
+);
+
+watch(
+  () => props.insight.supplementCount,
+  (next, prev) => {
+    if (prev !== undefined && next > prev) pulse('supplement');
+  },
+);
+
+function pulse(key: string) {
+  bumpedKeys.value = new Set(bumpedKeys.value).add(key);
+  window.setTimeout(() => {
+    const next = new Set(bumpedKeys.value);
+    next.delete(key);
+    bumpedKeys.value = next;
+  }, 700);
+}
 </script>
 
 <template>
@@ -50,7 +75,7 @@ function isWarn(it: StatItem) {
       :key="it.key"
       type="button"
       class="stat-item"
-      :class="{ warn: isWarn(it) }"
+      :class="{ warn: isWarn(it), bump: bumpedKeys.has(it.key) }"
       :title="`查看${it.label}明细`"
       @click="emit('select', it.action)"
     >
@@ -111,5 +136,15 @@ function isWarn(it: StatItem) {
 }
 .stat-item.warn:hover {
   border-color: #d97706;
+}
+
+.stat-item.bump {
+  animation: stat-bump 0.65s ease;
+}
+
+@keyframes stat-bump {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.06); box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.2); }
+  100% { transform: scale(1); }
 }
 </style>

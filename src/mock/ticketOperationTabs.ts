@@ -95,7 +95,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
   supplementRecords: [
     {
       id: 's1',
-      who: '王二线',
+      who: '王二线(二线)',
       when: '今天 10:05',
       supplementType: '材料附件补充',
       content: '补充设备 SN 照片及相关检测材料',
@@ -103,7 +103,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
     },
     {
       id: 's2',
-      who: '张晓芸',
+      who: '张晓芸(一线)',
       when: '今天 09:50',
       supplementType: '问题描述补充',
       content: '补充故障录屏与歌单链接',
@@ -113,16 +113,16 @@ export const OPERATION_TAB_DATA: OperationTabData = {
   dunningRecords: [
     {
       id: 'd1',
-      who: '客户',
+      who: '张晓芸(一线)',
       when: '今天 14:10',
-      content: '二次来电催单，要求今日内反馈处理进度',
+      content: '客户二次来电催单，要求今日内反馈处理进度',
       attachments: ['催单通话录音.mp3'],
     },
     {
       id: 'd2',
-      who: '客户',
+      who: '李一线(一线)',
       when: '今天 10:32',
-      content: '来电催单：什么时候能解决？',
+      content: '客户来电催单：什么时候能解决？',
       attachments: ['催单短信截图.png'],
     },
   ],

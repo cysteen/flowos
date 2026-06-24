@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, onActivated, onBeforeUnmount, onDeactivated, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 import { useWorkspaceTabsStore, resolveTicketTabTitle } from '@/stores/workspaceTabs';
@@ -12,6 +12,7 @@ import OpSupplementModal from './components/operation/OpSupplementModal.vue';
 import OpDunningModal from './components/operation/OpDunningModal.vue';
 import OpSmsModal from './components/operation/OpSmsModal.vue';
 import OpEmailModal from './components/operation/OpEmailModal.vue';
+import TicketEventToastStack from './components/operation/TicketEventToastStack.vue';
 import OpProcessTabs from './components/operation/OpProcessTabs.vue';
 import OpSidePanel from './components/operation/OpSidePanel.vue';
 import OpActionBar from './components/OpActionBar.vue';
@@ -20,11 +21,14 @@ const CreateTicketModal = defineAsyncComponent(() => import('./components/Create
 import { useTicketOperation } from './composables/useTicketOperation';
 import { useProcessForm } from './composables/useProcessForm';
 import { useOperationTabs } from './composables/useOperationTabs';
+import { useTicketLiveNotify } from './composables/useTicketLiveNotify';
+import { formatTicketRecordWho, MOCK_FIRST_LINE_AGENTS } from './utils/ticketRecordWho';
 import { buildChildTicketPrefill, buildReopenTicketPrefill } from './composables/childTicketPrefill';
 import type { CreateTicketPrefill, Ticket } from './types/ticket';
 import type { ProcessFormDraft, InsightAction, InsightModalKey } from './types/operation';
 import type { ProcessTabKey } from './types/operation';
 import type { OperationTabData } from './types/operationTabs';
+import type { TicketLiveEventType } from './types/ticketLiveNotify';
 
 const route = useRoute();
 const router = useRouter();
@@ -37,6 +41,15 @@ const {
   toggleSection, selectChip,
 } = useProcessForm(() => d.value.type);
 const { tabData } = useOperationTabs(() => d.value.type);
+const {
+  toasts: liveToasts,
+  push: pushLiveToast,
+  dismiss: dismissLiveToast,
+  dismissAll: dismissAllLiveToasts,
+} = useTicketLiveNotify();
+
+/** keep-alive 下仅当前激活的工单操作 Tab 展示实时通知 */
+const pageActive = ref(false);
 
 const ticketNo = computed(() => (route.params.ticketNo as string) || d.value.no);
 const processTabsRef = ref<InstanceType<typeof OpProcessTabs> | null>(null);
@@ -197,34 +210,128 @@ function toast(name: string) {
 
 function formatNow() {
   const n = new Date();
-  return `今天 ${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`;
+  const hh = String(n.getHours()).padStart(2, '0');
+  const mm = String(n.getMinutes()).padStart(2, '0');
+  const ss = String(n.getSeconds()).padStart(2, '0');
+  return `今天 ${hh}:${mm}:${ss}`;
 }
 
-function onSupplementSubmit(payload: { supplementType: string; content: string; attachments: string[] }) {
-  const record = {
-    id: `s-${Date.now()}`,
-    who: user.name || '当前坐席',
-    when: formatNow(),
-    supplementType: payload.supplementType,
-    content: payload.content,
-    attachments: payload.attachments.length ? payload.attachments : undefined,
+function onIncomingTicketEvent(
+  type: TicketLiveEventType,
+  content: string,
+  who: string,
+  options?: { supplementType?: string; notify?: boolean },
+) {
+  const when = formatNow();
+  if (type === 'urge') {
+    tabData.value.dunningRecords.unshift({
+      id: `d-${Date.now()}`,
+      who,
+      when,
+      content,
+    });
+    d.value.insight.dunningCount += 1;
+  } else {
+    tabData.value.supplementRecords.unshift({
+      id: `s-${Date.now()}`,
+      who,
+      when,
+      supplementType: options?.supplementType ?? '问题描述补充',
+      content,
+    });
+    d.value.insight.supplementCount += 1;
+  }
+
+  if (options?.notify !== false && pageActive.value) {
+    pushLiveToast(type, content, who, when, options?.supplementType);
+  }
+}
+
+function onLiveToastClick() {
+  processTabsRef.value?.switchTab('related');
+}
+
+/** 原型演示：每 10 秒模拟客户侧推送催单/补充（联调前替代 WebSocket） */
+let incomingDemoInterval: ReturnType<typeof setInterval> | null = null;
+let demoTick = 0;
+
+const DEMO_INCOMING_EVENTS: Array<{
+  type: TicketLiveEventType;
+  content: string;
+  supplementType?: string;
+}> = [
+  { type: 'supplement', content: '设备插电后指示灯不亮,疑似主板供电模块故障', supplementType: '问题描述补充' },
+  { type: 'urge', content: '要求今日内安排上门处理' },
+];
+
+function stopIncomingDemo() {
+  if (incomingDemoInterval) {
+    clearInterval(incomingDemoInterval);
+    incomingDemoInterval = null;
+  }
+}
+
+function startIncomingDemo() {
+  stopIncomingDemo();
+  demoTick = 0;
+  const fire = () => {
+    const item = DEMO_INCOMING_EVENTS[demoTick % DEMO_INCOMING_EVENTS.length];
+    const who = MOCK_FIRST_LINE_AGENTS[demoTick % MOCK_FIRST_LINE_AGENTS.length];
+    onIncomingTicketEvent(item.type, item.content, who, {
+      supplementType: item.supplementType,
+    });
+    demoTick += 1;
   };
-  tabData.value.supplementRecords.unshift(record);
-  d.value.insight.supplementCount += 1;
+  fire();
+  incomingDemoInterval = setInterval(fire, 10_000);
+}
+
+function pauseLiveNotify() {
+  pageActive.value = false;
+  stopIncomingDemo();
+  dismissAllLiveToasts();
+}
+
+function resumeLiveNotify() {
+  pageActive.value = true;
+  startIncomingDemo();
+}
+
+watch(ticketNo, () => {
+  if (pageActive.value) startIncomingDemo();
+});
+
+onActivated(() => {
+  resumeLiveNotify();
+});
+
+onDeactivated(() => {
+  pauseLiveNotify();
+});
+
+onBeforeUnmount(() => {
+  pauseLiveNotify();
+});
+
+function onSupplementSubmit(payload: { supplementType: string; content: string; attachments: string[] }) {
+  onIncomingTicketEvent('supplement', payload.content, formatTicketRecordWho(user.name, user.roleKey), {
+    supplementType: payload.supplementType,
+    notify: false,
+  });
+  const record = tabData.value.supplementRecords[0];
+  if (record && payload.attachments.length) {
+    record.attachments = payload.attachments;
+  }
   processTabsRef.value?.switchTab('related');
   message.success('补充信息已提交');
 }
 
 function onDunningSubmit(payload: { content: string; attachments: string[] }) {
-  const record = {
-    id: `d-${Date.now()}`,
-    who: user.name || '当前坐席',
-    when: formatNow(),
-    content: payload.content,
-    attachments: payload.attachments.length ? payload.attachments : undefined,
-  };
-  tabData.value.dunningRecords.unshift(record);
-  d.value.insight.dunningCount += 1;
+  onIncomingTicketEvent('urge', payload.content, formatTicketRecordWho(user.name, user.roleKey), { notify: false });
+  const record = tabData.value.dunningRecords[0];
+  if (record && payload.attachments.length) {
+    record.attachments = payload.attachments;
+  }
   processTabsRef.value?.switchTab('related');
   message.success('催单信息已提交');
 }
@@ -352,6 +459,13 @@ function updateTabData(next: OperationTabData) {
       :email="emailTo"
       :ctx="notifyCtx"
       @submit="onEmailSubmit"
+    />
+
+    <TicketEventToastStack
+      v-if="pageActive"
+      :items="liveToasts"
+      @dismiss="dismissLiveToast"
+      @click="onLiveToastClick"
     />
   </div>
 </template>

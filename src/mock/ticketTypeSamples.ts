@@ -64,7 +64,7 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
         },
       ],
       supplementRecords: [
-        { id: 's1', who: '王坐席', when: '今天 09:18', supplementType: '材料附件补充', content: '补充 WiFi 配置截图', attachments: ['配置截图.png'] },
+        { id: 's1', who: '张晓芸(一线)', when: '今天 09:18', supplementType: '材料附件补充', content: '客户补充 WiFi 配置截图', attachments: ['配置截图.png'] },
       ],
       dunningRecords: [],
       contactRecords: [

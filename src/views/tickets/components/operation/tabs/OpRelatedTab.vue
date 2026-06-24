@@ -4,6 +4,7 @@ import { message } from 'ant-design-vue';
 import { LinkOutlined, FileAddOutlined, BellOutlined } from '@ant-design/icons-vue';
 import OpCollapsibleSection from '../OpCollapsibleSection.vue';
 import OpAttachList from '../shared/OpAttachList.vue';
+import OpSimpleRecordList from '../shared/OpSimpleRecordList.vue';
 import type { RelatedTicketCard, SimpleRecord } from '@/views/tickets/types/operationTabs';
 
 defineProps<{
@@ -93,16 +94,10 @@ function processEntries(t: RelatedTicketCard) {
       :expanded="expanded.supplement"
       @toggle="expanded.supplement = !expanded.supplement"
     >
-      <div class="simple-list">
-        <div v-for="r in supplementRecords" :key="r.id" class="simple-item">
-          <div class="who-when">
-            <span v-if="r.supplementType" class="type-tag">{{ r.supplementType }}</span>
-            <span class="who">{{ r.who }}</span><span class="sep">·</span><span class="muted">{{ r.when }}</span>
-          </div>
-          <div class="entry-desc">{{ r.content }}</div>
-          <OpAttachList v-if="r.attachments?.length" :files="r.attachments" />
-        </div>
-      </div>
+      <OpSimpleRecordList
+        :records="supplementRecords"
+        show-supplement-type
+      />
     </OpCollapsibleSection>
 
     <!-- 催单记录 -->
@@ -112,15 +107,7 @@ function processEntries(t: RelatedTicketCard) {
       :expanded="expanded.dunning"
       @toggle="expanded.dunning = !expanded.dunning"
     >
-      <div class="simple-list">
-        <div v-for="r in dunningRecords" :key="r.id" class="simple-item">
-          <div class="who-when">
-            <span class="who">{{ r.who }}</span><span class="sep">·</span><span class="muted">{{ r.when }}</span>
-          </div>
-          <div class="entry-desc">{{ r.content }}</div>
-          <OpAttachList v-if="r.attachments?.length" :files="r.attachments" />
-        </div>
-      </div>
+      <OpSimpleRecordList :records="dunningRecords" />
     </OpCollapsibleSection>
   </div>
 </template>
@@ -128,7 +115,7 @@ function processEntries(t: RelatedTicketCard) {
 <style scoped>
 .related-tab { display: flex; flex-direction: column; gap: 16px; width: 100%; }
 
-.card-list, .simple-list { display: flex; flex-direction: column; gap: 8px; }
+.card-list { display: flex; flex-direction: column; gap: 8px; }
 
 .rel-card {
   background: #fff; border: 1px solid #e5e7eb; border-radius: 6px;
@@ -156,18 +143,7 @@ function processEntries(t: RelatedTicketCard) {
 
 .process-entry { display: flex; flex-direction: column; gap: 6px; }
 .process-entry + .process-entry { margin-top: 6px; }
-
-.simple-item {
-  background: #fff; border: 1px solid #e5e7eb; border-radius: 6px;
-  padding: 10px 12px; display: flex; flex-direction: column; gap: 6px;
-}
-
-.who-when { display: flex; align-items: center; gap: 4px; font-size: 11px; flex-wrap: wrap; }
-.who-when .type-tag {
-  font-size: 10px; font-weight: 600; color: #6b7280;
-  background: #f3f4f6; border-radius: 3px; padding: 1px 6px; flex: none;
-}
-.who { font-weight: 600; color: #374151; }
-.muted { color: #9ca3af; }
-.entry-desc { font-size: 12px; color: #6b7280; line-height: 1.6; }
+.process-entry .who { font-weight: 600; color: #374151; font-size: 11px; }
+.process-entry .muted { color: #9ca3af; font-size: 11px; }
+.process-entry .entry-desc { font-size: 12px; color: #6b7280; line-height: 1.6; }
 </style>
