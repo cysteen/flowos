@@ -17,7 +17,7 @@ const open = ref(false);
 const recoExpanded = ref(true);
 const inputText = ref('');
 const chatListRef = ref<HTMLElement | null>(null);
-const avatarUrl = `${import.meta.env.BASE_URL}images/ai-assistant-avatar.png`;
+const avatarUrl = `${import.meta.env.BASE_URL}images/ai-assistant-avatar.svg`;
 
 interface ChatMessage {
   id: string;
