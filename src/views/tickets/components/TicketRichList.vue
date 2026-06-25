@@ -119,22 +119,13 @@ const showSelectionColumn = computed(() => props.variant === 'mine' || props.var
       <div v-if="showCol('summary')" class="col-summary cell-summary">
         <a-popover trigger="hover" placement="rightTop" :mouse-enter-delay="0.2">
           <div class="summary-stack">
-            <div class="handle-item">
-              <div class="hi-meta">
-                <span class="hi-label">问题</span>
-              </div>
-              <div class="hi-text line-clamp">{{ t.problemDesc || '—' }}</div>
+            <div class="summary-line">
+              <span class="hi-label">问题</span>
+              <span class="hi-text line-clamp">{{ t.problemDesc || '—' }}</span>
             </div>
-            <div class="handle-item">
-              <div class="hi-meta">
-                <span class="hi-label handle">最新</span>
-                <template v-if="ticketLatestHandlingPreview(t)">
-                  <span class="hi-who">{{ ticketLatestHandlingPreview(t)!.who }}</span>
-                  <span class="hi-role">{{ ticketLatestHandlingPreview(t)!.role }}</span>
-                  <span class="hi-when">{{ ticketLatestHandlingPreview(t)!.when }}</span>
-                </template>
-              </div>
-              <div class="hi-text line-clamp">{{ t.latestHandling || '暂无处理记录' }}</div>
+            <div class="summary-line">
+              <span class="hi-label handle">最新</span>
+              <span class="hi-text line-clamp">{{ t.latestHandling || '暂无处理记录' }}</span>
             </div>
           </div>
           <template #content>
@@ -320,18 +311,47 @@ const showSelectionColumn = computed(() => props.variant === 'mine' || props.var
 .ticket-no { font-size: 12px; font-weight: 500; color: #1a6fff; cursor: pointer; flex: none; }
 .ticket-no:hover { text-decoration: underline; }
 
-/* 工单摘要列：问题 + 最新 两行单行截断，hover 出全文弹窗 */
+/* 工单摘要列：标签 + 内容单行展示 */
 .cell-summary { display: flex; align-items: center; min-width: 0; }
-.summary-stack { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; cursor: default; }
-.summary-brief { display: flex; align-items: center; gap: 6px; min-width: 0; cursor: default; }
-.brief-k {
-  flex: none; font-size: 10px; font-weight: 600; line-height: 16px;
-  padding: 0 5px; border-radius: 3px; color: #6b7280; background: #f3f4f6;
+.summary-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  cursor: default;
 }
-.brief-k.handle { color: #047857; background: #ecfdf5; }
-.brief-v {
-  flex: 1; min-width: 0; font-size: 12px; color: #6b7280; line-height: 1.4;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.summary-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.summary-line .hi-label {
+  flex: none;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  padding: 0 5px;
+  border-radius: 3px;
+  color: #6b7280;
+  background: #f3f4f6;
+}
+.summary-line .hi-label.handle {
+  color: #047857;
+  background: #ecfdf5;
+}
+.summary-line .hi-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1.4;
+}
+.summary-line .hi-text.line-clamp {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .title-text.unread {
@@ -431,10 +451,12 @@ const showSelectionColumn = computed(() => props.variant === 'mine' || props.var
   background: #f3f4f6; border-radius: 3px; padding: 1px 6px;
 }
 .summary-pop .sp-no { font-size: 11px; color: #9ca3af; margin-top: -2px; }
-.summary-pop .sp-field { display: flex; gap: 8px; font-size: 12px; line-height: 1.6; }
-.summary-pop .sp-k {
-  flex: none; width: 52px; font-weight: 600; color: #6b7280;
-}
-.summary-pop .sp-k.handle { color: #047857; }
-.summary-pop .sp-v { flex: 1; min-width: 0; color: #374151; word-break: break-word; }
+.summary-pop .sp-block { display: flex; flex-direction: column; gap: 4px; }
+.summary-pop .hi-meta { display: flex; align-items: center; gap: 8px; }
+.summary-pop .hi-label { font-size: 12px; font-weight: 600; color: #6b7280; }
+.summary-pop .hi-label.handle { color: #047857; }
+.summary-pop .hi-who { font-size: 12px; font-weight: 600; color: #111827; }
+.summary-pop .hi-role { font-size: 11px; color: #6b7280; background: #f3f4f6; border-radius: 4px; padding: 0 6px; }
+.summary-pop .hi-when { font-size: 11px; color: #9ca3af; margin-left: auto; }
+.summary-pop .hi-text { font-size: 12px; color: #374151; line-height: 1.6; word-break: break-word; }
 </style>
