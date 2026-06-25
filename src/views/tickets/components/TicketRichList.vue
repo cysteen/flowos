@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { CheckOutlined } from '@ant-design/icons-vue';
+import { computed } from 'vue';
 import {
+  doneRowActions,
+  isMentionUnread,
+  mentionRowActions,
+  mineRowActions,
+  poolRowActions,
   PRIORITY_COLOR,
   rowActions,
   SLA_COLOR,
@@ -8,18 +14,42 @@ import {
   type Ticket,
 } from '@/views/tickets/types/ticket';
 
-defineProps<{
+const props = defineProps<{
   rows: Ticket[];
   selectedIds: Set<string>;
   allPageSelected: boolean;
+  variant?: 'mine' | 'done' | 'pool' | 'mention' | 'default';
+  showAppointmentColumn?: boolean;
+  highlightMentionUnread?: boolean;
+  /** 列设置：公共属性列显隐（不传=全显，向后兼容） */
+  visibleColumns?: Record<string, boolean>;
 }>();
+
+/** 列是否显示（未配置或未含该列 → 默认显示） */
+function showCol(key: string) {
+  return !props.visibleColumns || props.visibleColumns[key] !== false;
+}
+
 const emit = defineEmits<{
   toggle: [id: string];
   toggleAll: [];
   action: [label: string, ticket: Ticket];
   clickNo: [ticket: Ticket];
   clickCustomer: [ticket: Ticket];
+  open: [ticket: Ticket];
 }>();
+
+function actionsFor(t: Ticket) {
+  if (props.variant === 'mine') return mineRowActions();
+  if (props.variant === 'done') return doneRowActions();
+  if (props.variant === 'mention') return mentionRowActions();
+  if (props.variant === 'pool') return poolRowActions();
+  return rowActions(t);
+}
+
+const showActionColumn = computed(
+  () => props.variant !== 'done' && props.variant !== 'mention',
+);
 </script>
 
 <template>
@@ -32,13 +62,14 @@ const emit = defineEmits<{
         </div>
       </div>
       <div class="col-title th">工单 / 标题</div>
-      <div class="col-customer th">客户</div>
-      <div class="col-product th">产品</div>
-      <div class="col-node th">当前节点</div>
-      <div class="col-priority th">优先级</div>
-      <div class="col-sla th">SLA 时效</div>
-      <div class="col-assignee th">处理人</div>
-      <div class="col-action th">操作</div>
+      <div v-if="showCol('customer')" class="col-customer th">客户</div>
+      <div v-if="showCol('product')" class="col-product th">产品</div>
+      <div v-if="showCol('node')" class="col-node th">当前节点</div>
+      <div v-if="showCol('priority')" class="col-priority th">优先级</div>
+      <div v-if="showCol('sla')" class="col-sla th">SLA 时效</div>
+      <div v-if="showAppointmentColumn" class="col-appointment th">预约倒计时</div>
+      <div v-if="showCol('assignee')" class="col-assignee th">处理人</div>
+      <div v-if="showActionColumn" class="col-action th">操作</div>
     </div>
 
     <!-- 空态 -->
@@ -50,6 +81,7 @@ const emit = defineEmits<{
       :key="t.id"
       class="row"
       :style="{ borderLeftColor: PRIORITY_COLOR[t.priority] }"
+      @dblclick="emit('open', t)"
     >
       <div class="cell-cb">
         <div class="cb" :class="{ checked: selectedIds.has(t.id) }" @click="emit('toggle', t.id)">
@@ -61,7 +93,8 @@ const emit = defineEmits<{
       <div class="col-title cell-title">
         <div class="title-line1">
           <span class="tag">{{ t.type }}</span>
-          <span class="title-text">{{ t.title }}</span>
+          <span class="title-text" :class="{ unread: highlightMentionUnread && isMentionUnread(t) }">{{ t.title }}</span>
+          <span v-if="highlightMentionUnread && isMentionUnread(t)" class="unread-tag">未读</span>
         </div>
         <div class="title-line2">
           <span class="channel">{{ t.channel }}</span>
@@ -71,7 +104,7 @@ const emit = defineEmits<{
       </div>
 
       <!-- 客户 -->
-      <div class="col-customer cell-customer">
+      <div v-if="showCol('customer')" class="col-customer cell-customer">
         <div class="cust-line1">
           <span class="cust-name" @click="emit('clickCustomer', t)">{{ t.customer }}</span>
           <span
@@ -83,17 +116,17 @@ const emit = defineEmits<{
       </div>
 
       <!-- 产品 -->
-      <div class="col-product cell-product">
+      <div v-if="showCol('product')" class="col-product cell-product">
         <span class="product-name" :title="t.product">{{ t.product }}</span>
       </div>
 
       <!-- 当前节点 -->
-      <div class="col-node cell-node">
+      <div v-if="showCol('node')" class="col-node cell-node">
         <span class="node-badge">{{ t.nodeStatus }}</span>
       </div>
 
       <!-- 优先级（颜色已由左侧色条承载，此处仅文字 + 同色点，避免与 SLA 抢色） -->
-      <div class="col-priority">
+      <div v-if="showCol('priority')" class="col-priority">
         <span class="prio">
           <span class="prio-dot" :style="{ background: PRIORITY_COLOR[t.priority] }"></span>
           {{ t.priority }}
@@ -101,7 +134,7 @@ const emit = defineEmits<{
       </div>
 
       <!-- SLA 时效 -->
-      <div class="col-sla cell-sla">
+      <div v-if="showCol('sla')" class="col-sla cell-sla">
         <span
           class="sla-pill"
           :style="{ color: SLA_COLOR[t.slaState], background: softBg(SLA_COLOR[t.slaState]) }"
@@ -110,20 +143,29 @@ const emit = defineEmits<{
         <span class="sla-sub">{{ t.slaSub }}</span>
       </div>
 
+      <!-- 预约倒计时 -->
+      <div v-if="showAppointmentColumn" class="col-appointment cell-appointment">
+        <span
+          v-if="t.hasAppointment && t.appointmentText"
+          class="appt-pill"
+        >{{ t.appointmentText }}</span>
+        <span v-else class="appt-empty">—</span>
+      </div>
+
       <!-- 处理人 -->
-      <div class="col-assignee cell-assignee">
+      <div v-if="showCol('assignee')" class="col-assignee cell-assignee">
         <span v-if="t.assignee" class="assignee-name">{{ t.assignee }}</span>
         <span v-else class="unassigned">— 待领</span>
       </div>
 
       <!-- 操作 -->
-      <div class="col-action cell-action">
+      <div v-if="showActionColumn" class="col-action cell-action">
         <span
-          v-for="a in rowActions(t)"
+          v-for="a in actionsFor(t)"
           :key="a.label"
           class="act"
           :style="{ color: a.primary ? '#1A6FFF' : '#6B7280' }"
-          @click="emit('action', a.label, t)"
+          @click.stop="emit('action', a.label, t)"
           >{{ a.label }}</span
         >
       </div>
@@ -146,6 +188,7 @@ const emit = defineEmits<{
 .col-node { width: 130px; flex: none; }
 .col-priority { width: 58px; flex: none; }
 .col-sla { width: 118px; flex: none; }
+.col-appointment { width: 96px; flex: none; }
 .col-assignee { width: 100px; flex: none; }
 .col-action { width: 132px; flex: none; }
 .cell-cb { width: 16px; flex: none; display: flex; align-items: center; }
@@ -224,6 +267,19 @@ const emit = defineEmits<{
 .ticket-no { font-size: 12px; font-weight: 500; color: #1a6fff; cursor: pointer; flex: none; }
 .ticket-no:hover { text-decoration: underline; }
 
+.title-text.unread {
+  font-weight: 600;
+}
+.unread-tag {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: #dc2626;
+  background: #fef2f2;
+  flex: none;
+}
+
 /* 客户 */
 .cell-customer { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .cust-line1 { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; min-width: 0; }
@@ -271,6 +327,13 @@ const emit = defineEmits<{
 .cell-sla { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
 .sla-pill { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; }
 .sla-sub { font-size: 11px; color: #9ca3af; }
+
+.cell-appointment { display: flex; align-items: center; }
+.appt-pill {
+  font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px;
+  color: #d97706; background: #fffbeb;
+}
+.appt-empty { font-size: 12px; color: #d1d5db; }
 
 /* 处理人 */
 .cell-assignee { display: flex; align-items: center; }

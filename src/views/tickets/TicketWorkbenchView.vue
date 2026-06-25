@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 import { useUserStore } from '@/stores/user';
@@ -9,37 +9,72 @@ import AiSuggestionBar from './components/AiSuggestionBar.vue';
 import AiSuggestionDrawer from './components/AiSuggestionDrawer.vue';
 import type { AiSuggestion, AiSuggestionFilter } from './types/aiSuggestion';
 import TicketFilterBar from './components/TicketFilterBar.vue';
+import TicketMineQueryBar from './components/TicketMineQueryBar.vue';
+import PoolGroupFilter from './components/PoolGroupFilter.vue';
 import TicketToolbar from './components/TicketToolbar.vue';
+import { hasMineQuery } from './types/mineQuery';
 import TicketRichList from './components/TicketRichList.vue';
 import TicketDraftList from './components/TicketDraftList.vue';
 import CreateTicketModal from './components/CreateTicketModal.vue';
 import { useTicketWorkbench } from './composables/useTicketWorkbench';
+import { useTicketColumns } from './composables/useTicketColumns';
 import type { Ticket } from './types/ticket';
 
 const user = useUserStore();
 const router = useRouter();
 const wb = useTicketWorkbench();
+const { visibleColumns, toggleColumn, resetColumns } = useTicketColumns();
 const createOpen = ref(false);
 const aiDrawerOpen = ref(false);
 const aiDrawerFilter = ref<AiSuggestionFilter>('all');
+/** 我的任务 · 结构化筛选面板默认收起 */
+const mineFilterExpanded = ref(false);
 
-// —— 草稿 ——（「草稿」chip 选中时，列表区渲染草稿列表）
+const mineFilterActive = computed(() => hasMineQuery(wb.mineQuery.value));
+
+watch(
+  () => wb.activeTab.value,
+  () => {
+    mineFilterExpanded.value = false;
+  },
+);
+
+// —— 草稿 ——（非「我的任务」Tab 下「草稿」chip 选中时渲染草稿列表）
 const editingDraftId = ref<string | null>(null);
-const isDraftView = computed(() => wb.activeChip.value === 'draft');
+const isDraftView = computed(() => wb.isDraftView.value);
 function openCreate() { editingDraftId.value = null; createOpen.value = true; }
 function editDraft(id: string) { editingDraftId.value = id; createOpen.value = true; }
 function removeDraft(id: string) { wb.removeDraft(id); message.success('草稿已删除'); }
 
 function openOperation(t: Ticket) {
+  if (wb.isMentionTab.value) {
+    wb.acknowledgeMention(t.id);
+  }
   router.push(`/tickets/${t.no}`);
 }
 
 // 「处理 / 详情 / 审核 / 受理」进工单操作页（PRD-03）；其余即时反馈
 function onAction(label: string, t: Ticket) {
+  if (label === '领取') {
+    if (wb.claimTicket(t.id)) {
+      message.success(`已领取 ${t.no}，转入「我的任务」`);
+    } else {
+      message.warning('该工单已被他人认领');
+    }
+    return;
+  }
+  if (label === '转办' || label === '退回') {
+    message.success(`已对 ${t.no} 执行「${label}」`);
+    return;
+  }
   if (['处理', '详情', '审核', '受理'].includes(label)) {
     openOperation(t);
   } else if (label === '领单') {
-    message.success(`已领取 ${t.no}，转入「我的工单」`);
+    if (wb.claimTicket(t.id)) {
+      message.success(`已领取 ${t.no}，转入「我的任务」`);
+    } else {
+      message.warning('该工单已被他人认领');
+    }
   } else {
     message.success(`已对 ${t.no} 执行「${label}」`);
   }
@@ -97,6 +132,7 @@ function onAiPrimaryAction(s: AiSuggestion) {
       <TicketTabs
         :active="wb.activeTab.value"
         :counts="wb.tabCounts.value"
+        :unread-counts="wb.tabUnreadCounts.value"
         :hidden-tabs="user.hiddenTabs"
         @change="wb.setTab"
       />
@@ -111,24 +147,48 @@ function onAiPrimaryAction(s: AiSuggestion) {
         @close="wb.aiBarVisible.value = false"
       />
 
-      <!-- ③ 筛选行 A（末尾含「草稿」chip） -->
+      <!-- ③ 筛选行：本组工单池展示分组筛选；其余 Tab 展示业务 chips -->
+      <div v-if="wb.isPoolTab.value" class="pool-filter-row">
+        <PoolGroupFilter
+          :active="wb.activePoolGroup.value"
+          :groups="wb.poolGroups"
+          :counts="wb.poolGroupCounts.value"
+          @change="wb.setPoolGroup"
+        />
+      </div>
       <TicketFilterBar
         :active-chip="wb.activeChip.value"
         :chip-counts="wb.chipCounts.value"
+        :chips="wb.activeChips.value"
         :search="wb.searchText.value"
+        :show-time-filter="!wb.isMineTab.value"
+        :show-search="!wb.isMineTab.value"
+        :show-mine-filter="wb.isMineTab.value && !isDraftView"
+        :mine-filter-expanded="mineFilterExpanded"
+        :mine-filter-active="mineFilterActive"
         @chip="wb.setChip"
         @update:search="wb.setSearch"
         @create="openCreate"
+        @toggle-mine-filter="mineFilterExpanded = !mineFilterExpanded"
+      />
+
+      <TicketMineQueryBar
+        v-if="wb.isMineTab.value && !isDraftView && mineFilterExpanded"
+        :model-value="wb.mineQuery.value"
+        @update:model-value="wb.setMineQuery"
+        @search="wb.applyMineQuery"
       />
 
       <!-- ④ 工具行 B（草稿视图下不展示批量/排序工具） -->
       <TicketToolbar
         v-if="!isDraftView"
         :selected-count="wb.selectedCount.value"
+        :show-filter="!wb.isMineTab.value"
+        :visible-columns="visibleColumns"
         @batch="onBatch"
-        @sort="message.info('切换排序')"
         @filter="message.info('高级筛选')"
-        @columns="message.info('列设置')"
+        @toggle-column="toggleColumn"
+        @reset-columns="resetColumns"
       />
 
       <!-- ⑤ 列表区：草稿视图 → 草稿列表；否则 → SLA 富列表 + 分页 -->
@@ -144,9 +204,24 @@ function onAiPrimaryAction(s: AiSuggestion) {
             :rows="wb.paged.value"
             :selected-ids="wb.selectedIds.value"
             :all-page-selected="wb.allPageSelected.value"
+            :variant="
+              wb.isMineTab.value
+                ? 'mine'
+                : wb.isDoneTab.value
+                  ? 'done'
+                  : wb.isPoolTab.value
+                    ? 'pool'
+                    : wb.isMentionTab.value
+                      ? 'mention'
+                      : 'default'
+            "
+            :show-appointment-column="wb.showAppointmentColumn.value"
+            :highlight-mention-unread="wb.isMentionTab.value"
+            :visible-columns="visibleColumns"
             @toggle="wb.toggleSelect"
             @toggle-all="wb.toggleSelectAllOnPage"
             @action="onAction"
+            @open="openOperation"
             @click-no="onClickNo"
             @click-customer="onClickCustomer"
           />
@@ -233,5 +308,11 @@ function onAiPrimaryAction(s: AiSuggestion) {
 .pager-selected {
   font-size: 13px;
   color: #9ca3af;
+}
+.pool-filter-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
 }
 </style>
