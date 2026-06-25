@@ -119,6 +119,15 @@ export const COMPLAINT_L2_MAP: Record<string, string[]> = {
   服务态度: ['响应慢', '态度差'],
   物流问题: ['延迟', '破损'],
 };
+export const COMPLAINT_L3_MAP: Record<string, string[]> = {
+  功能缺陷: ['播放异常', '无法开机', '卡顿死机'],
+  外观瑕疵: ['划痕', '色差', '变形'],
+  配件缺失: ['充电器缺失', '数据线缺失', '包装盒缺失'],
+  响应慢: ['等待超时', '无人接听', '反复转接'],
+  态度差: ['用语不当', '推诿扯皮', '服务意识差'],
+  延迟: ['超时未送达', '物流停滞', '错发漏发'],
+  破损: ['外包装破损', '商品破损', '内件损坏'],
+};
 export const SUGGEST_L1_OPTIONS = ['产品体验', '功能优化', '服务流程'];
 export const SUGGEST_L2_MAP: Record<string, string[]> = {
   产品体验: ['功能建议', '交互优化'],

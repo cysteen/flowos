@@ -1,10 +1,16 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import OpTextareaAttach from './shared/OpTextareaAttach.vue';
 import OpQualityStandardFields from './OpQualityStandardFields.vue';
 import OpAppointmentRecords from './OpAppointmentRecords.vue';
 import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue';
 import type { ProcessFormDraft, SupplementChip } from '@/views/tickets/types/operation';
 import { RISK_LEVEL_OPTIONS } from '@/views/tickets/types/operation';
+import {
+  COMPLAINT_L1_OPTIONS,
+  COMPLAINT_L2_MAP,
+  COMPLAINT_L3_MAP,
+} from '@/views/tickets/types/createTicket';
 
 const props = defineProps<{
   activeChip: SupplementChip;
@@ -14,6 +20,13 @@ const props = defineProps<{
 const emit = defineEmits<{ 'update:form': [form: ProcessFormDraft] }>();
 
 const riskLevelOptions = RISK_LEVEL_OPTIONS.map((v) => ({ label: v, value: v }));
+const complaintL1Options = COMPLAINT_L1_OPTIONS.map((v) => ({ label: v, value: v }));
+const complaintL2Options = computed(() =>
+  (COMPLAINT_L2_MAP[props.form.complaintCat1] ?? []).map((v) => ({ label: v, value: v })),
+);
+const complaintL3Options = computed(() =>
+  (COMPLAINT_L3_MAP[props.form.complaintCat2] ?? []).map((v) => ({ label: v, value: v })),
+);
 
 function update(partial: Partial<ProcessFormDraft>) {
   emit('update:form', { ...props.form, ...partial });
@@ -27,6 +40,14 @@ function onRiskChange(hasRisk: boolean) {
     riskDescriptionAttachments: hasRisk ? props.form.riskDescriptionAttachments : [],
   });
 }
+
+function onComplaintCat1Change(v: string | number | undefined) {
+  update({ complaintCat1: String(v ?? ''), complaintCat2: '', complaintCat3: '' });
+}
+
+function onComplaintCat2Change(v: string | number | undefined) {
+  update({ complaintCat2: String(v ?? ''), complaintCat3: '' });
+}
 </script>
 
 <template>
@@ -39,15 +60,35 @@ function onRiskChange(hasRisk: boolean) {
     <div class="cat-grid">
       <div class="field">
         <label class="field-label-sm">分类一</label>
-        <div class="select-like">{{ form.complaintCat1 }} <span class="sel-arrow">▾</span></div>
+        <FormSelect
+          class="cat-select"
+          :value="form.complaintCat1 || undefined"
+          :options="complaintL1Options"
+          placeholder="请选择"
+          @update:value="onComplaintCat1Change"
+        />
       </div>
       <div class="field">
         <label class="field-label-sm">分类二</label>
-        <div class="select-like">{{ form.complaintCat2 }} <span class="sel-arrow">▾</span></div>
+        <FormSelect
+          class="cat-select"
+          :value="form.complaintCat2 || undefined"
+          :options="complaintL2Options"
+          :disabled="!form.complaintCat1"
+          placeholder="请选择"
+          @update:value="onComplaintCat2Change"
+        />
       </div>
       <div class="field">
         <label class="field-label-sm">分类三</label>
-        <div class="select-like">{{ form.complaintCat3 }} <span class="sel-arrow">▾</span></div>
+        <FormSelect
+          class="cat-select"
+          :value="form.complaintCat3 || undefined"
+          :options="complaintL3Options"
+          :disabled="!form.complaintCat2"
+          placeholder="请选择"
+          @update:value="(v) => update({ complaintCat3: String(v ?? '') })"
+        />
       </div>
     </div>
     <div class="field">
@@ -124,13 +165,18 @@ function onRiskChange(hasRisk: boolean) {
 .inline-row { flex-direction: row; align-items: center; gap: 12px; }
 .inline-row .field-label-sm { flex: none; white-space: nowrap; }
 .flex1 { flex: 1; min-width: 0; }
-.select-like {
-  display: flex; align-items: center; gap: 6px;
-  padding: 7px 10px; background: #fff; border: 1px solid #d1d5db;
-  border-radius: 6px; font-size: 12px; color: #111827; min-height: 32px;
-}
-.sel-arrow { color: #9ca3af; margin-left: auto; font-size: 10px; }
 .cat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.cat-select { width: 100%; }
+.cat-select :deep(.ant-select-selector) {
+  height: 32px;
+  min-height: 32px;
+  font-size: 12px;
+}
+.cat-select :deep(.ant-select-selection-item),
+.cat-select :deep(.ant-select-selection-placeholder) {
+  font-size: 12px;
+  line-height: 30px;
+}
 @media (max-width: 720px) { .cat-grid { grid-template-columns: 1fr; } }
 
 .panel-neutral,

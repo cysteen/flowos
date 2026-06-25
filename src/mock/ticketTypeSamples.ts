@@ -120,9 +120,7 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
       processResult: '已记录扩容需求与预算区间，转商务团队跟进报价与合同。',
       processResultAttachments: [],
       qualityIsStandard: true,
-      leadIntent: 'high',
-      leadAmount: '50000',
-      leadStage: 'following',
+      leadStage: 'toSales',
       leadNo: 'OPP-20260610-002',
     },
     tabData: {
@@ -201,8 +199,6 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
       processResult: '已记录产品建议并提交产品组评估，纳入需求池跟踪。',
       processResultAttachments: [],
       qualityIsStandard: true,
-      suggestCat1: '功能优化',
-      suggestCat2: '稳定性',
       suggestAccepted: false,
     },
     tabData: {

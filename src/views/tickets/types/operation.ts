@@ -103,16 +103,10 @@ export interface ProcessFormDraft {
   qualityIssueCat1: string;
   /** 不规范原因子类（联动大类） */
   qualityIssueCat2: string;
-  /** 建议专属 */
-  suggestCat1: string;
-  suggestCat2: string;
-  /** 是否采纳（建议服务结论；默认否，无下级字段） */
+  /** 建议专属 · 是否采纳（建议服务结论；默认否，无下级字段） */
   suggestAccepted: boolean;
-  /** 商机专属 */
-  leadIntent: 'high' | 'mid' | 'low';
-  leadAmount: string;
-  /** 商机解决结论 */
-  leadStage: 'converted' | 'following' | 'lost';
+  /** 商机专属 · 商机解决结论 */
+  leadStage: 'invalid' | 'noContact' | 'toSales';
   /** 商机编号（CRM 商机单号） */
   leadNo: string;
 }

@@ -2,13 +2,12 @@
 import { computed } from 'vue';
 import {
   FileTextOutlined, CheckCircleOutlined, AppstoreOutlined, SoundOutlined,
-  CheckOutlined, BulbOutlined, RiseOutlined,
+  CheckOutlined,
 } from '@ant-design/icons-vue';
 import OpCollapsibleSection from './OpCollapsibleSection.vue';
 import OpRecordFields from './OpRecordFields.vue';
 import OpSupplementChipPanels from './OpSupplementChipPanels.vue';
 import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue';
-import { SUGGEST_L1_OPTIONS, SUGGEST_L2_MAP } from '@/views/tickets/types/createTicket';
 import type {
   ProcessFormDraft, SupplementChip, SectionKey,
 } from '@/views/tickets/types/operation';
@@ -62,12 +61,13 @@ const CONCLUSION_OPTIONS: { label: string; value: ProcessFormDraft['conclusion']
   { label: '退让', value: 'concession' },
   { label: '未解决', value: 'unresolved' },
 ];
+const LEAD_STAGE_OPTIONS: { label: string; value: ProcessFormDraft['leadStage'] }[] = [
+  { label: '无效商机', value: 'invalid' },
+  { label: '未联系上用户', value: 'noContact' },
+  { label: '转销售渠道处理', value: 'toSales' },
+];
 const serviceMethodOptions = SERVICE_METHOD_OPTIONS.map((v) => ({ label: v, value: v }));
 const serviceTypeOptions = SERVICE_TYPE_OPTIONS.map((v) => ({ label: v, value: v }));
-const suggestL1Options = SUGGEST_L1_OPTIONS.map((v) => ({ label: v, value: v }));
-const suggestL2Options = computed(() =>
-  (SUGGEST_L2_MAP[props.form.suggestCat1] ?? []).map((v) => ({ label: v, value: v })),
-);
 
 // 补充处理 chip：投诉=投诉分类/风险/预约/建单规范；咨询/建议/商机=预约/建单规范（参照投诉，四类型统一）
 const supplementChips = computed<{ key: SupplementChip; label: string }[]>(() =>
@@ -194,39 +194,8 @@ function chipActiveClass(key: SupplementChip): string {
       </div>
     </OpCollapsibleSection>
 
-    <!-- ===== 建议：建议分类 + 服务与结论(是否采纳) ===== -->
+    <!-- ===== 建议：服务与结论(是否采纳) ===== -->
     <template v-if="isSuggest">
-      <OpCollapsibleSection
-        title="建议分类"
-        :icon="BulbOutlined"
-        badge="建议专属"
-        badge-variant="hint"
-        :expanded="expandedSections.suggest"
-        @toggle="emit('toggleSection', 'suggest')"
-      >
-        <div class="field-row">
-          <div class="field inline">
-            <label>建议分类（一级）</label>
-            <a-select
-              :value="form.suggestCat1"
-              :options="suggestL1Options"
-              style="width: 100%"
-              @update:value="(v: string) => patch({ suggestCat1: v, suggestCat2: '' })"
-            />
-          </div>
-          <div class="field inline">
-            <label>建议分类（二级）</label>
-            <a-select
-              :value="form.suggestCat2 || undefined"
-              :options="suggestL2Options"
-              placeholder="请选择"
-              style="width: 100%"
-              @update:value="(v: string) => patch({ suggestCat2: v })"
-            />
-          </div>
-        </div>
-      </OpCollapsibleSection>
-
       <OpCollapsibleSection
         title="服务与结论"
         :icon="CheckCircleOutlined"
@@ -248,37 +217,8 @@ function chipActiveClass(key: SupplementChip): string {
       </OpCollapsibleSection>
     </template>
 
-    <!-- ===== 商机：商机跟进 + 服务与结论(商机解决结论 + 商机编号) ===== -->
+    <!-- ===== 商机：服务与结论(商机解决结论 + 商机编号) ===== -->
     <template v-if="isLead">
-      <OpCollapsibleSection
-        title="商机跟进"
-        :icon="RiseOutlined"
-        badge="商机专属"
-        badge-variant="hint"
-        :expanded="expandedSections.lead"
-        @toggle="emit('toggleSection', 'lead')"
-      >
-        <div class="field inline conclusion-row">
-          <label>商机意向</label>
-          <a-radio-group
-            :value="form.leadIntent"
-            @update:value="(v: ProcessFormDraft['leadIntent']) => patch({ leadIntent: v })"
-          >
-            <a-radio value="high">高</a-radio>
-            <a-radio value="mid">中</a-radio>
-            <a-radio value="low">低</a-radio>
-          </a-radio-group>
-        </div>
-        <div class="field inline">
-          <label>预计金额（元）</label>
-          <a-input
-            :value="form.leadAmount"
-            placeholder="如 5000"
-            @update:value="(v: string) => patch({ leadAmount: v })"
-          />
-        </div>
-      </OpCollapsibleSection>
-
       <OpCollapsibleSection
         title="服务与结论"
         :icon="CheckCircleOutlined"
@@ -290,14 +230,13 @@ function chipActiveClass(key: SupplementChip): string {
         <div class="field-row">
           <div class="field inline">
             <label>商机解决结论</label>
-            <a-radio-group
+            <a-select
               :value="form.leadStage"
+              :options="LEAD_STAGE_OPTIONS"
+              placeholder="请选择"
+              style="width: 100%"
               @update:value="(v: ProcessFormDraft['leadStage']) => patch({ leadStage: v })"
-            >
-              <a-radio value="converted">已转化</a-radio>
-              <a-radio value="following">跟进中</a-radio>
-              <a-radio value="lost">已流失</a-radio>
-            </a-radio-group>
+            />
           </div>
           <div class="field inline">
             <label>商机编号</label>
