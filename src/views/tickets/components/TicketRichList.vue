@@ -107,7 +107,7 @@ const showSelectionColumn = computed(() => props.variant === 'mine' || props.var
 /** 列宽（与下方样式一致，用于 grid 对齐表头与数据行） */
 const COL_WIDTH: Record<string, string> = {
   priority: '58px',
-  summary: '220px',
+  summary: '280px',
   customer: '108px',
   groupNames: '108px',
   product: '128px',
@@ -130,12 +130,11 @@ const COL_WIDTH: Record<string, string> = {
 const gridTemplateColumns = computed(() => {
   const parts: string[] = [];
   if (showSelectionColumn.value) parts.push('16px');
-  // 工单/标题列弹性（吸收容器剩余宽度，避免右侧大片留白）；与工单摘要列按比例分摊余量，填充更均衡
-  parts.push('minmax(240px, 1.4fr)');
+  // 工单/标题列略窄；工单摘要列略宽，两者按比例分摊剩余宽度
+  parts.push('minmax(200px, 1fr)');
   for (const key of orderedCols.value) {
-    // 工单摘要列也弹性，避免余量全堆到标题列形成大空档
     if (key === 'summary') {
-      parts.push('minmax(200px, 1fr)');
+      parts.push('minmax(260px, 1.5fr)');
     } else {
       parts.push(COL_WIDTH[key] ?? '88px');
     }
