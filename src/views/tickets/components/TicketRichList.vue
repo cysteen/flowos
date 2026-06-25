@@ -130,8 +130,8 @@ const COL_WIDTH: Record<string, string> = {
 const gridTemplateColumns = computed(() => {
   const parts: string[] = [];
   if (showSelectionColumn.value) parts.push('16px');
-  // 固定列宽，避免各行独立 grid 下 1fr 宽度不一致导致列错位
-  parts.push('240px');
+  // 工单/标题列弹性（吸收容器剩余宽度，避免右侧大片留白）；其余列固定 px
+  parts.push('minmax(240px, 1fr)');
   for (const key of orderedCols.value) {
     parts.push(COL_WIDTH[key] ?? '88px');
   }
@@ -359,8 +359,9 @@ const gridTemplateColumns = computed(() => {
   display: grid;
   /* 不用 column-gap：列间空隙会在带背景的表头露出白缝。改用单元格右内边距撑开间距、表头背景连续 */
   column-gap: 0;
-  min-width: 100%;
-  width: max-content;
+  /* 宽度填满容器，工单/标题列(1fr)吸收剩余宽度；列多溢出时由外层 .rich-list-scroll 横向滚动 */
+  width: 100%;
+  min-width: max-content;
   padding: 0 16px;
   box-sizing: border-box;
 }
