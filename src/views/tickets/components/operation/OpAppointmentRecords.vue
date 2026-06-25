@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { PlusOutlined, DeleteOutlined, CheckOutlined, CheckCircleOutlined } from '@ant-design/icons-vue';
+import { PlusOutlined, DeleteOutlined, CheckOutlined } from '@ant-design/icons-vue';
 import dayjs, { type Dayjs } from 'dayjs';
 import type { AppointmentRecord } from '@/views/tickets/types/operation';
 
@@ -46,9 +46,9 @@ function removeRecord(index: number) {
   commit(props.records.filter((_, i) => i !== index));
 }
 
-/** 标记已完成（已与客户电话沟通） */
-function toggleDone(index: number) {
-  commit(props.records.map((r, i) => (i === index ? { ...r, done: !r.done } : r)));
+/** 标记已与客户电话沟通（对齐关联 Tab「标记已读」） */
+function markDone(index: number) {
+  commit(props.records.map((r, i) => (i === index ? { ...r, done: true } : r)));
 }
 </script>
 
@@ -73,17 +73,16 @@ function toggleDone(index: number) {
           @update:value="(v) => updateRecordTime(index, v)"
         />
         <div class="record-actions">
-          <span v-if="record.done" class="done-tag" title="已与客户电话沟通">
-            <CheckCircleOutlined /> 已完成
+          <span v-if="record.done" class="record-done-tag">
+            <CheckOutlined /> 已沟通
           </span>
           <button
             v-else
             type="button"
-            class="done-btn"
-            title="已与客户电话沟通后标记完成"
-            @click="toggleDone(index)"
+            class="record-done-btn"
+            @click="markDone(index)"
           >
-            <CheckOutlined /> 标记已完成
+            标记已沟通
           </button>
           <button
             type="button"
@@ -145,11 +144,34 @@ function toggleDone(index: number) {
   flex: none;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+}
+.record-done-btn {
+  padding: 1px 10px;
+  height: 22px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #fff;
+  font-size: 12px;
+  color: #1a6fff;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, background 0.15s;
+}
+.record-done-btn:hover {
+  border-color: #1a6fff;
+  background: #f5f9ff;
+}
+.record-done-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  color: #16a34a;
+  white-space: nowrap;
 }
 .add-btn,
-.remove-btn,
-.done-btn {
+.remove-btn {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -160,32 +182,14 @@ function toggleDone(index: number) {
   white-space: nowrap;
   flex: none;
 }
+.remove-btn {
+  padding: 4px;
+  color: #9ca3af;
+}
 .add-btn {
   align-self: flex-start;
   padding: 0;
   color: #1a6fff;
-}
-.done-btn {
-  padding: 3px 8px;
-  border: 1px solid #d1d5db;
-  border-radius: 4px;
-  color: #16a34a;
-}
-.done-btn:hover {
-  border-color: #16a34a;
-  background: #f0fdf4;
-}
-.done-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 3px 8px;
-  font-size: 12px;
-  color: #16a34a;
-}
-.remove-btn {
-  padding: 4px;
-  color: #9ca3af;
 }
 .add-btn:hover {
   color: #1557cc;

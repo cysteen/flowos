@@ -130,10 +130,15 @@ const COL_WIDTH: Record<string, string> = {
 const gridTemplateColumns = computed(() => {
   const parts: string[] = [];
   if (showSelectionColumn.value) parts.push('16px');
-  // 工单/标题列弹性（吸收容器剩余宽度，避免右侧大片留白）；其余列固定 px
-  parts.push('minmax(240px, 1fr)');
+  // 工单/标题列弹性（吸收容器剩余宽度，避免右侧大片留白）；与工单摘要列按比例分摊余量，填充更均衡
+  parts.push('minmax(240px, 1.4fr)');
   for (const key of orderedCols.value) {
-    parts.push(COL_WIDTH[key] ?? '88px');
+    // 工单摘要列也弹性，避免余量全堆到标题列形成大空档
+    if (key === 'summary') {
+      parts.push('minmax(200px, 1fr)');
+    } else {
+      parts.push(COL_WIDTH[key] ?? '88px');
+    }
   }
   if (props.showAppointmentColumn) parts.push(COL_WIDTH.appointment);
   if (showActionColumn.value) parts.push(COL_WIDTH.action);
@@ -507,10 +512,6 @@ const gridTemplateColumns = computed(() => {
   color: #6b7280;
   background: #f3f4f6;
 }
-.summary-line .hi-label.handle {
-  color: #047857;
-  background: #ecfdf5;
-}
 .summary-line .hi-text {
   flex: 1;
   min-width: 0;
@@ -652,7 +653,6 @@ const gridTemplateColumns = computed(() => {
 .summary-pop .sp-block { display: flex; flex-direction: column; gap: 4px; }
 .summary-pop .hi-meta { display: flex; align-items: center; gap: 8px; }
 .summary-pop .hi-label { font-size: 12px; font-weight: 600; color: #6b7280; }
-.summary-pop .hi-label.handle { color: #047857; }
 .summary-pop .hi-who { font-size: 12px; font-weight: 600; color: #111827; }
 .summary-pop .hi-role { font-size: 11px; color: #6b7280; background: #f3f4f6; border-radius: 4px; padding: 0 6px; }
 .summary-pop .hi-when { font-size: 11px; color: #9ca3af; margin-left: auto; }

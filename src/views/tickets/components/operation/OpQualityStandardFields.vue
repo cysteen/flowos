@@ -127,6 +127,16 @@ function onCat1Change(v: string) {
   width: 128px;
   flex: none;
 }
+.quality-select :deep(.ant-select-selector) {
+  height: 28px;
+  min-height: 28px;
+  font-size: 12px;
+}
+.quality-select :deep(.ant-select-selection-item),
+.quality-select :deep(.ant-select-selection-placeholder) {
+  font-size: 12px;
+  line-height: 26px;
+}
 .quality-fields.compact .quality-select {
   width: 112px;
 }

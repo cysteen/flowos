@@ -160,4 +160,14 @@ function onRiskChange(hasRisk: boolean) {
   width: 140px;
   flex: none;
 }
+.risk-level-select :deep(.ant-select-selector) {
+  height: 28px;
+  min-height: 28px;
+  font-size: 12px;
+}
+.risk-level-select :deep(.ant-select-selection-item),
+.risk-level-select :deep(.ant-select-selection-placeholder) {
+  font-size: 12px;
+  line-height: 26px;
+}
 </style>
