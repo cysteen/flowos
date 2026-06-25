@@ -27,6 +27,7 @@ const props = defineProps<{
 
 /** 列是否显示（未配置或未含该列 → 默认显示） */
 function showCol(key: string) {
+  if (key === 'assignee' && props.variant === 'mine') return false;
   return !props.visibleColumns || props.visibleColumns[key] !== false;
 }
 
@@ -50,13 +51,14 @@ function actionsFor(t: Ticket) {
 const showActionColumn = computed(
   () => props.variant !== 'done' && props.variant !== 'mention',
 );
+const showSelectionColumn = computed(() => props.variant === 'mine');
 </script>
 
 <template>
   <div class="rich-list">
     <!-- 表头 -->
     <div class="thead">
-      <div class="cell-cb">
+      <div v-if="showSelectionColumn" class="cell-cb">
         <div class="cb" :class="{ checked: allPageSelected }" @click="emit('toggleAll')">
           <CheckOutlined v-if="allPageSelected" :style="{ color: '#fff', fontSize: '10px' }" />
         </div>
@@ -83,7 +85,7 @@ const showActionColumn = computed(
       :style="{ borderLeftColor: PRIORITY_COLOR[t.priority] }"
       @dblclick="emit('open', t)"
     >
-      <div class="cell-cb">
+      <div v-if="showSelectionColumn" class="cell-cb">
         <div class="cb" :class="{ checked: selectedIds.has(t.id) }" @click="emit('toggle', t.id)">
           <CheckOutlined v-if="selectedIds.has(t.id)" :style="{ color: '#fff', fontSize: '10px' }" />
         </div>
@@ -100,6 +102,14 @@ const showActionColumn = computed(
           <span class="channel">{{ t.channel }}</span>
           <span class="sep">·</span>
           <span class="ticket-no" @click="emit('clickNo', t)">{{ t.no }}</span>
+        </div>
+        <div v-if="t.problemDesc" class="title-brief">
+          <span class="brief-k">问题</span>
+          <span class="brief-v">{{ t.problemDesc }}</span>
+        </div>
+        <div v-if="t.latestHandling" class="title-brief">
+          <span class="brief-k handle">最新</span>
+          <span class="brief-v">{{ t.latestHandling }}</span>
         </div>
       </div>
 
@@ -266,6 +276,18 @@ const showActionColumn = computed(
 .sep { font-size: 12px; color: #d1d5db; flex: none; }
 .ticket-no { font-size: 12px; font-weight: 500; color: #1a6fff; cursor: pointer; flex: none; }
 .ticket-no:hover { text-decoration: underline; }
+
+/* 问题描述 / 最新处理 速览（单行截断） */
+.title-brief { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.brief-k {
+  flex: none; font-size: 10px; font-weight: 600; line-height: 16px;
+  padding: 0 5px; border-radius: 3px; color: #6b7280; background: #f3f4f6;
+}
+.brief-k.handle { color: #047857; background: #ecfdf5; }
+.brief-v {
+  flex: 1; min-width: 0; font-size: 12px; color: #6b7280; line-height: 1.4;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 
 .title-text.unread {
   font-weight: 600;

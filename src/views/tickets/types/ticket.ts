@@ -85,6 +85,10 @@ export interface Ticket {
   /** 客户身份标签，如记者/老师/校长/自媒体 */
   customerTags?: CustomerTag[];
   product: string;
+  /** 问题描述（列表行速览） */
+  problemDesc?: string;
+  /** 最新处理结果（列表行速览） */
+  latestHandling?: string;
   nodeStatus: NodeStatus;
   nodeStep: number;
   nodeTotal: number;

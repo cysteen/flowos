@@ -1,9 +1,9 @@
 import type { Ticket } from '@/views/tickets/types/ticket';
 
 // 工单 Mock 数据（对齐 PRD-02 §9 字段与分布；样例文案参考 .pen SJpgc）。
-// 分布：我的工单 8 / 团队工单 4 / 工单池 3 / 我抄送 2 / 待审核 3 = 20；含 3 条临期/超时。
+// 分布：我的任务 7 / 已办 6 / 本组工单池 5 / @我的工单 3 / 待审核 3 = 24（活跃）+ 归档。
 
-export const TICKETS: Ticket[] = [
+const BASE_TICKETS: Ticket[] = [
   // ---- 我的工单 (mine) 8 ----
   {
     id: 't1', no: 'LCMN-20260610-73026', type: '投诉', channel: '在线客服',
@@ -12,6 +12,9 @@ export const TICKETS: Ticket[] = [
     nodeStatus: '处理中·一线', nodeStep: 3, nodeTotal: 5, priority: 'P0',
     slaText: '00:42:10', slaSub: '距超时', slaState: 'soon', slaMinutes: 42,
     assignee: '王坐席', tab: 'mine',
+    customerPhone: '13800138001', sn: 'SN-X1-20260301', productCategory: '智能硬件',
+    createdAt: '2026-06-10 08:12', updatedAt: '2026-06-10 14:30',
+    responded: true, upgradedByMe: true, hasDunning: true,
   },
   {
     id: 't2', no: 'LCMN-20260610-73118', type: '咨询', channel: '电话',
@@ -20,14 +23,20 @@ export const TICKETS: Ticket[] = [
     nodeStatus: '处理中·一线', nodeStep: 2, nodeTotal: 5, priority: 'P0',
     slaText: '已超 01:12', slaSub: '已超时', slaState: 'overdue', slaMinutes: -72,
     assignee: '王坐席', tab: 'mine',
+    customerPhone: '13912345678', sn: 'SN-R2-882910', productCategory: '智能硬件',
+    createdAt: '2026-06-10 07:45', updatedAt: '2026-06-10 16:02',
+    responded: true, hasDunning: true,
   },
   {
     id: 't3', no: 'LCMN-20260610-74836', type: '咨询', channel: '小程序',
-    title: '如何绑定企业微信账号', smartMarks: [],
+    title: '等待客户补充材料', smartMarks: [],
     customer: '李铭', vip: false, product: '企业版',
     nodeStatus: '已挂起·待客户', nodeStep: 2, nodeTotal: 5, priority: 'P1',
     slaText: '已停表', slaSub: '挂起中', slaState: 'paused', slaMinutes: 9999,
-    assignee: '陈坐席', tab: 'mine',
+    assignee: '王坐席', tab: 'mine',
+    customerPhone: '13600001111', productCategory: '企业服务',
+    createdAt: '2026-06-09 15:20', updatedAt: '2026-06-10 10:00',
+    responded: true, suspendedByMe: true, hasSupplement: true,
   },
   {
     id: 't4', no: 'LCMN-20260610-75002', type: '商机', channel: '邮件',
@@ -36,6 +45,9 @@ export const TICKETS: Ticket[] = [
     nodeStatus: '已升级·二线', nodeStep: 4, nodeTotal: 5, priority: 'P1',
     slaText: '01:48:30', slaSub: '距超时', slaState: 'soon', slaMinutes: 108,
     assignee: '王坐席', tab: 'mine',
+    customerPhone: '13788889999', productCategory: '开放平台',
+    createdAt: '2026-06-10 09:00', updatedAt: '2026-06-10 13:15',
+    responded: true, upgradedByMe: true, hasDelegateHistory: true, hasReturnAction: true,
   },
   {
     id: 't5', no: 'LCMN-20260610-75240', type: '投诉', channel: 'APP',
@@ -44,6 +56,9 @@ export const TICKETS: Ticket[] = [
     nodeStatus: '处理中·一线', nodeStep: 1, nodeTotal: 4, priority: 'P2',
     slaText: '06:20:00', slaSub: '充足', slaState: 'ok', slaMinutes: 380,
     assignee: '王坐席', tab: 'mine',
+    customerPhone: '15800002222', sn: 'SN-AIR-55102', productCategory: '智能硬件',
+    createdAt: '2026-06-10 11:30', updatedAt: '2026-06-10 12:05',
+    responded: true, supplementUnread: true, hasSupplement: true,
   },
   {
     id: 't6', no: 'LCMN-20260610-75518', type: '建议', channel: '电话',
@@ -52,6 +67,10 @@ export const TICKETS: Ticket[] = [
     nodeStatus: '待受理', nodeStep: 1, nodeTotal: 4, priority: 'P2',
     slaText: '04:10:00', slaSub: '充足', slaState: 'ok', slaMinutes: 250,
     assignee: '王坐席', tab: 'mine',
+    customerPhone: '13344445555', sn: 'SN-L1-33001', productCategory: '智能硬件',
+    createdAt: '2026-06-10 13:00', updatedAt: '2026-06-10 13:00',
+    responded: false,
+    hasAppointment: true, appointmentText: '02:15:00',
   },
   {
     id: 't7', no: 'LCMN-20260610-75744', type: '咨询', channel: '在线客服',
@@ -60,6 +79,9 @@ export const TICKETS: Ticket[] = [
     nodeStatus: '处理中·一线', nodeStep: 2, nodeTotal: 5, priority: 'P3',
     slaText: '12:30:00', slaSub: '充足', slaState: 'ok', slaMinutes: 750,
     assignee: '王坐席', tab: 'mine',
+    customerPhone: '18611112222', productCategory: '会员权益',
+    createdAt: '2026-06-08 10:00', updatedAt: '2026-06-09 18:40',
+    responded: true,
   },
   {
     id: 't8', no: 'LCMN-20260610-76010', type: '投诉', channel: '邮件',
@@ -68,16 +90,21 @@ export const TICKETS: Ticket[] = [
     nodeStatus: '处理中·一线', nodeStep: 2, nodeTotal: 5, priority: 'P1',
     slaText: '00:58:00', slaSub: '距超时', slaState: 'soon', slaMinutes: 58,
     assignee: '王坐席', tab: 'mine',
+    customerPhone: '13566667777', sn: 'SN-X1-20260188', productCategory: '智能硬件',
+    createdAt: '2026-06-10 10:20', updatedAt: '2026-06-10 15:50',
+    responded: true, dunningUnread: true, hasDunning: true,
   },
 
-  // ---- 团队工单 (team) 4 ----
+  // ---- 已办 (done) 6 ----
   {
     id: 't9', no: 'LCMN-20260610-72015', type: '咨询', channel: '电话',
     title: '空气净化器滤芯指示灯常亮', smartMarks: [],
     customer: '冯涛', vip: false, product: '空气净化器 P3',
     nodeStatus: '处理中·一线', nodeStep: 2, nodeTotal: 5, priority: 'P2',
     slaText: '03:25:00', slaSub: '充足', slaState: 'ok', slaMinutes: 205,
-    assignee: '陈坐席', tab: 'team',
+    assignee: '陈坐席', tab: 'done', handledByMe: true, myTransferAction: true,
+    customerPhone: '13700001122', sn: 'SN-P3-44102', productCategory: '智能硬件',
+    createdAt: '2026-06-08 14:00', updatedAt: '2026-06-10 09:30',
   },
   {
     id: 't10', no: 'LCMN-20260610-72330', type: '咨询', channel: '小程序',
@@ -85,7 +112,9 @@ export const TICKETS: Ticket[] = [
     customer: '陈静', vip: false, customerTags: ['老师'], product: '企业版',
     nodeStatus: '待受理', nodeStep: 1, nodeTotal: 4, priority: 'P3',
     slaText: '08:00:00', slaSub: '充足', slaState: 'ok', slaMinutes: 480,
-    assignee: '林坐席', tab: 'team',
+    assignee: '林坐席', tab: 'done', handledByMe: true, myDelegateAction: true,
+    customerPhone: '13622223333', productCategory: '企业服务',
+    createdAt: '2026-06-07 10:15', updatedAt: '2026-06-09 16:40',
   },
   {
     id: 't11', no: 'LCMN-20260610-72645', type: '商机', channel: '邮件',
@@ -93,7 +122,9 @@ export const TICKETS: Ticket[] = [
     customer: '韩雪', vip: true, customerTags: ['自媒体'], product: '开放平台',
     nodeStatus: '已升级·二线', nodeStep: 4, nodeTotal: 5, priority: 'P1',
     slaText: '00:35:00', slaSub: '距超时', slaState: 'soon', slaMinutes: 35,
-    assignee: '陈坐席', tab: 'team',
+    assignee: '陈坐席', tab: 'done', handledByMe: true, myUpgradeAction: true,
+    customerPhone: '13588889999', productCategory: '开放平台',
+    createdAt: '2026-06-09 11:20', updatedAt: '2026-06-10 12:00',
   },
   {
     id: 't12', no: 'LCMN-20260610-72901', type: '投诉', channel: 'APP',
@@ -101,17 +132,40 @@ export const TICKETS: Ticket[] = [
     customer: '杨光', vip: false, product: '蓝牙耳机 Air',
     nodeStatus: '处理中·一线', nodeStep: 3, nodeTotal: 5, priority: 'P0',
     slaText: '已超 00:25', slaSub: '已超时', slaState: 'overdue', slaMinutes: -25,
-    assignee: '林坐席', tab: 'team',
+    assignee: '林坐席', tab: 'done', handledByMe: true, myForceCloseAction: true,
+    customerPhone: '15833334444', sn: 'SN-AIR-88201', productCategory: '智能硬件',
+    createdAt: '2026-06-10 08:00', updatedAt: '2026-06-10 15:20',
+  },
+  {
+    id: 't27', no: 'LCMN-20260608-61020', type: '咨询', channel: '电话',
+    title: '路由器固件升级后无法联网', smartMarks: [],
+    customer: '钱进', vip: false, product: '路由器 R2',
+    nodeStatus: '处理中·一线', nodeStep: 5, nodeTotal: 5, priority: 'P2',
+    slaText: '—', slaSub: '已关闭', slaState: 'ok', slaMinutes: 9999,
+    assignee: '陈坐席', tab: 'done', handledByMe: true, myCloseAction: true,
+    customerPhone: '13944445555', sn: 'SN-R2-11002', productCategory: '智能硬件',
+    createdAt: '2026-06-05 09:30', updatedAt: '2026-06-08 17:00',
+  },
+  {
+    id: 't28', no: 'LCMN-20260607-59880', type: '投诉', channel: '在线客服',
+    title: '重复扣费问题已协调处理', smartMarks: [],
+    customer: '谢婷', vip: true, customerTags: ['老师'], product: '会员服务',
+    nodeStatus: '处理中·一线', nodeStep: 5, nodeTotal: 5, priority: 'P1',
+    slaText: '—', slaSub: '已关闭', slaState: 'ok', slaMinutes: 9999,
+    assignee: '林坐席', tab: 'done', handledByMe: true,
+    myTransferAction: true, myCloseAction: true,
+    customerPhone: '18655556666', productCategory: '会员权益',
+    createdAt: '2026-06-04 13:00', updatedAt: '2026-06-07 18:30',
   },
 
-  // ---- 工单池 (pool) 3 ----
+  // ---- 本组工单池 (pool) 5 ----
   {
     id: 't13', no: 'LCMN-20260610-78120', type: '咨询', channel: '在线客服',
     title: '智能音箱无法连接 WiFi', smartMarks: [],
     customer: '何苗', vip: false, product: '智能音箱 X1',
     nodeStatus: '待受理', nodeStep: 1, nodeTotal: 5, priority: 'P2',
     slaText: '02:00:00', slaSub: '距超时', slaState: 'ok', slaMinutes: 120,
-    assignee: null, tab: 'pool',
+    assignee: null, tab: 'pool', groupId: 'line1', hasSupplement: true,
   },
   {
     id: 't14', no: 'LCMN-20260610-78344', type: '咨询', channel: '电话',
@@ -119,7 +173,7 @@ export const TICKETS: Ticket[] = [
     customer: '罗成', vip: false, customerTags: ['校长'], product: '扫地机器人 R2',
     nodeStatus: '待受理', nodeStep: 1, nodeTotal: 5, priority: 'P1',
     slaText: '00:50:00', slaSub: '距超时', slaState: 'soon', slaMinutes: 50,
-    assignee: null, tab: 'pool',
+    assignee: null, tab: 'pool', groupId: 'line2', hasDunning: true,
   },
   {
     id: 't15', no: 'LCMN-20260610-78600', type: '投诉', channel: '小程序',
@@ -127,17 +181,33 @@ export const TICKETS: Ticket[] = [
     customer: '袁媛', vip: true, customerTags: ['老师'], product: '会员服务',
     nodeStatus: '待受理', nodeStep: 1, nodeTotal: 4, priority: 'P3',
     slaText: '05:30:00', slaSub: '充足', slaState: 'ok', slaMinutes: 330,
-    assignee: null, tab: 'pool',
+    assignee: null, tab: 'pool', groupId: 'line1',
+  },
+  {
+    id: 't29', no: 'LCMN-20260610-78810', type: '投诉', channel: 'APP',
+    title: '屏幕花屏需返厂检测', smartMarks: ['情绪'],
+    customer: '唐磊', vip: false, product: '学习机 T20',
+    nodeStatus: '待受理', nodeStep: 1, nodeTotal: 5, priority: 'P0',
+    slaText: '00:28:00', slaSub: '距超时', slaState: 'soon', slaMinutes: 28,
+    assignee: null, tab: 'pool', groupId: 'hardware', hasDunning: true, hasSupplement: true,
+  },
+  {
+    id: 't30', no: 'LCMN-20260610-78902', type: '咨询', channel: '电话',
+    title: 'API 鉴权失败排查', smartMarks: [],
+    customer: '沈悦', vip: true, customerTags: ['自媒体'], product: '开放平台',
+    nodeStatus: '待受理', nodeStep: 1, nodeTotal: 5, priority: 'P1',
+    slaText: '01:20:00', slaSub: '距超时', slaState: 'ok', slaMinutes: 80,
+    assignee: null, tab: 'pool', groupId: 'line2',
   },
 
-  // ---- 我抄送 (cc) 2 ----
+  // ---- @我的工单 (cc) 3 ----
   {
     id: 't16', no: 'LCMN-20260609-66012', type: '商机', channel: '邮件',
     title: '批量导入用户报错', smartMarks: ['知识'],
     customer: '邓超', vip: true, customerTags: ['记者'], product: '开放平台',
     nodeStatus: '处理中·一线', nodeStep: 3, nodeTotal: 5, priority: 'P2',
     slaText: '07:15:00', slaSub: '充足', slaState: 'ok', slaMinutes: 435,
-    assignee: '陈坐席', tab: 'cc',
+    assignee: '陈坐席', tab: 'cc', mentionUnread: true, hasSupplement: true,
   },
   {
     id: 't17', no: 'LCMN-20260609-66248', type: '投诉', channel: '在线客服',
@@ -145,7 +215,15 @@ export const TICKETS: Ticket[] = [
     customer: '曾琳', vip: false, product: '企业版',
     nodeStatus: '已升级·二线', nodeStep: 4, nodeTotal: 5, priority: 'P0',
     slaText: '01:05:00', slaSub: '距超时', slaState: 'soon', slaMinutes: 65,
-    assignee: '林坐席', tab: 'cc',
+    assignee: '林坐席', tab: 'cc', mentionUnread: true, hasDunning: true,
+  },
+  {
+    id: 't31', no: 'LCMN-20260609-66510', type: '咨询', channel: '电话',
+    title: '@王坐席 请协助确认退款政策', smartMarks: [],
+    customer: '白露', vip: false, customerTags: ['老师'], product: '会员服务',
+    nodeStatus: '处理中·一线', nodeStep: 2, nodeTotal: 5, priority: 'P2',
+    slaText: '04:30:00', slaSub: '充足', slaState: 'ok', slaMinutes: 270,
+    assignee: '陈坐席', tab: 'cc', mentionUnread: false,
   },
 
   // ---- 待审核 (review) 3 ----
@@ -189,7 +267,8 @@ export const TICKETS: Ticket[] = [
     customer: '孔明', vip: false, product: '路由器 R2',
     nodeStatus: '处理中·一线', nodeStep: 5, nodeTotal: 5, priority: 'P2',
     slaText: '—', slaSub: '已关闭', slaState: 'ok', slaMinutes: 9999,
-    assignee: '陈坐席', tab: 'team', archived: true, updatedAt: '2025-05-27 11:20',
+    assignee: '陈坐席', tab: 'done', archived: true, updatedAt: '2025-05-27 11:20',
+    handledByMe: true, myTransferAction: true,
   },
   {
     id: 't23', no: 'LCMN-20260526-47201', type: '投诉', channel: '邮件',
@@ -197,7 +276,8 @@ export const TICKETS: Ticket[] = [
     customer: '吕布', vip: true, customerTags: ['记者'], product: '智能音箱 X1',
     nodeStatus: '处理中·一线', nodeStep: 5, nodeTotal: 5, priority: 'P1',
     slaText: '—', slaSub: '已关闭', slaState: 'ok', slaMinutes: 9999,
-    assignee: '林坐席', tab: 'team', archived: true, updatedAt: '2025-05-26 09:45',
+    assignee: '林坐席', tab: 'done', archived: true, updatedAt: '2025-05-26 09:45',
+    handledByMe: true, myCloseAction: true,
   },
   {
     id: 't24', no: 'LCMN-20260525-46188', type: '投诉', channel: 'APP',
@@ -213,7 +293,8 @@ export const TICKETS: Ticket[] = [
     customer: '刘备', vip: false, product: '智能门锁 L1',
     nodeStatus: '处理中·一线', nodeStep: 5, nodeTotal: 5, priority: 'P2',
     slaText: '—', slaSub: '已关闭', slaState: 'ok', slaMinutes: 9999,
-    assignee: '陈坐席', tab: 'team', archived: true, updatedAt: '2025-05-24 17:00',
+    assignee: '陈坐席', tab: 'done', archived: true, updatedAt: '2025-05-24 17:00',
+    handledByMe: true, myDelegateAction: true,
   },
   {
     id: 't26', no: 'LCMN-20260523-43890', type: '商机', channel: '邮件',
@@ -224,3 +305,42 @@ export const TICKETS: Ticket[] = [
     assignee: '林坐席', tab: 'mine', archived: true, updatedAt: '2025-05-23 10:30',
   },
 ];
+
+/** 列表速览：问题描述 + 最新处理结果（按工单 id 合并，便于坐席快速扫读） */
+const TICKET_BRIEFS: Record<string, { problemDesc: string; latestHandling: string }> = {
+  t1: { problemDesc: '在线音乐频繁自动跳过当前歌曲，重启无效', latestHandling: '已远程升级固件并复测，观察中' },
+  t2: { problemDesc: '扫地机器人无法开机、指示灯不亮，重启无效', latestHandling: '已指导强制重启与充电检测，疑似主板供电故障' },
+  t3: { problemDesc: '企业版功能咨询，需客户补充账号与场景信息', latestHandling: '已挂起，等待客户补充材料后继续' },
+  t4: { problemDesc: 'API 调用频繁返回 429 限流，影响集成', latestHandling: '已升级二线，建议提升配额并优化调用频率' },
+  t5: { problemDesc: '收到商品与页面描述不符，要求退货', latestHandling: '已核实订单，引导提交退货申请、待审核' },
+  t6: { problemDesc: '希望预约工程师上门安装智能门锁', latestHandling: '待受理，尚未安排' },
+  t7: { problemDesc: '咨询会员续费优惠的领取方式', latestHandling: '已发送续费优惠领取指引' },
+  t8: { problemDesc: '投诉客服响应慢，要求加急处理', latestHandling: '已致歉并标记加急，安排优先跟进' },
+  t9: { problemDesc: '空气净化器滤芯指示灯常亮，更换后仍亮', latestHandling: '已指导复位滤芯计数，待客户反馈' },
+  t10: { problemDesc: '咨询如何修改已开具发票的抬头', latestHandling: '待受理，尚未安排' },
+  t11: { problemDesc: 'Webhook 推送偶发丢包', latestHandling: '已升级二线，建议开启重试与签名校验' },
+  t12: { problemDesc: '投诉退款长时间未到账', latestHandling: '已联系财务核查流水，预计 1 个工作日反馈' },
+  t13: { problemDesc: '智能音箱无法连接 WiFi', latestHandling: '待受理，尚未安排' },
+  t14: { problemDesc: '扫地机器人无法充电', latestHandling: '待受理，尚未安排' },
+  t15: { problemDesc: '咨询七天无理由退货政策与流程', latestHandling: '待受理，尚未安排' },
+  t16: { problemDesc: '批量导入用户时报错、无法完成', latestHandling: '已收集报错日志，排查模板字段' },
+  t17: { problemDesc: '账号出现异地异常登录，担心被盗', latestHandling: '已升级二线安全组，建议改密并开二次验证' },
+  t18: { problemDesc: '设备主板故障，已更换待审核', latestHandling: '已更换主板并复测正常，提交结单审核' },
+  t19: { problemDesc: '咨询企业微信账号绑定流程', latestHandling: '已答复绑定流程，提交结单审核' },
+  t20: { problemDesc: '退款金额存在争议，已与客户确认', latestHandling: '已确认退款金额，提交审核' },
+  t21: { problemDesc: '咨询账号注销的流程与影响', latestHandling: '已发送注销流程说明' },
+  t22: { problemDesc: '路由器硬件故障无法使用', latestHandling: '已上门更换路由器，客户验收通过' },
+  t23: { problemDesc: '投诉物流长时间未送达', latestHandling: '已协调物流加急，已签收' },
+  t24: { problemDesc: '商品质量问题申请退货退款', latestHandling: '已完成退货退款' },
+  t25: { problemDesc: '预约上门安装智能门锁', latestHandling: '已上门安装完成，功能正常' },
+  t27: { problemDesc: '路由器固件升级后无法联网', latestHandling: '已指导回退固件，待客户验证' },
+  t28: { problemDesc: '被重复扣费，要求退还', latestHandling: '已确认重复扣费，已发起退款' },
+  t29: { problemDesc: '屏幕出现花屏，需返厂检测', latestHandling: '待受理，尚未安排' },
+  t30: { problemDesc: '客户 API 鉴权失败，无法调用', latestHandling: '待受理，尚未安排' },
+  t31: { problemDesc: '同事 @ 请求协助确认退款政策', latestHandling: '待确认退款政策口径' },
+};
+
+export const TICKETS: Ticket[] = BASE_TICKETS.map((t) => ({
+  ...t,
+  ...(TICKET_BRIEFS[t.id] ?? {}),
+}));
