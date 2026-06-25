@@ -5,6 +5,7 @@ import { TABS, type TabKey } from '@/views/tickets/types/ticket';
 const props = defineProps<{
   active: TabKey;
   counts: Record<TabKey, number>;
+  unreadCounts?: Partial<Record<TabKey, number>>;
   hiddenTabs: string[];
 }>();
 const emit = defineEmits<{ change: [tab: TabKey] }>();
@@ -22,6 +23,12 @@ const visibleTabs = computed(() => TABS.filter((t) => !props.hiddenTabs.includes
       @click="emit('change', tab.key)"
     >
       <span class="tab-label">{{ tab.label }}</span>
+      <span
+        v-if="tab.key === 'cc' && (unreadCounts?.cc ?? 0) > 0"
+        class="unread-badge"
+        :class="{ active: tab.key === active }"
+        >{{ unreadCounts!.cc }}</span
+      >
       <span
         class="tab-badge"
         :style="
@@ -66,5 +73,20 @@ const visibleTabs = computed(() => TABS.filter((t) => !props.hiddenTabs.includes
   padding: 1px 7px;
   border-radius: 9px;
   line-height: 16px;
+}
+.unread-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 8px;
+  line-height: 14px;
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+}
+.unread-badge.active {
+  background: #dc2626;
+  color: #fff;
+  border-color: #dc2626;
 }
 </style>

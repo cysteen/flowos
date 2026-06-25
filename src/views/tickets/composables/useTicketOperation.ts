@@ -9,6 +9,10 @@ import { TICKETS } from '@/mock/tickets';
 import { TYPE_SAMPLES } from '@/mock/ticketTypeSamples';
 import { useUserStore } from '@/stores/user';
 import {
+  ticketLatestHandlingItems,
+  ticketProductIssue,
+} from '@/views/tickets/utils/ticketOverview';
+import {
   applyOpAction, mapUserRole, pushEntry,
   type OpActionPayload, type SuspendInfo, type TicketOpState,
 } from './opActions';
@@ -32,10 +36,15 @@ export function useTicketOperation() {
       base.priority = t.priority;
       base.customer.name = t.customer;
       base.product.name = t.product;
+      base.productIssue = ticketProductIssue(t);
+      if (t.problemDesc?.trim()) {
+        base.demand = t.problemDesc.trim();
+      }
+      base.latestHandling = ticketLatestHandlingItems(t);
     }
-    // 按类型覆盖概要（需求摘要、处理洞察统计），使工单处理 Tab 与右栏数据随类型差异化。
+    // 按类型覆盖概要（无工单级文案时回退类型样例）
     const sample = TYPE_SAMPLES[base.type]?.detail;
-    if (sample?.demand) base.demand = sample.demand;
+    if (!t?.problemDesc?.trim() && sample?.demand) base.demand = sample.demand;
     if (sample?.insight) base.insight = sample.insight;
     if (sample?.aiInsight) base.aiInsight = sample.aiInsight;
     detail.value = base;

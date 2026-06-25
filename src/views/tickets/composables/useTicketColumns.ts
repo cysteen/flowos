@@ -7,11 +7,11 @@ export interface TicketColumnDef {
 }
 
 export const TICKET_COLUMN_DEFS: TicketColumnDef[] = [
+  { key: 'priority', label: '优先级' },
   { key: 'summary', label: '工单摘要' },
   { key: 'customer', label: '客户' },
   { key: 'product', label: '产品' },
   { key: 'node', label: '当前节点' },
-  { key: 'priority', label: '优先级' },
   { key: 'sla', label: 'SLA 时效' },
   { key: 'assignee', label: '处理人' },
 ];

@@ -13,6 +13,7 @@ import {
   softBg,
   type Ticket,
 } from '@/views/tickets/types/ticket';
+import { ticketLatestHandlingPreview } from '@/views/tickets/utils/ticketOverview';
 
 const props = defineProps<{
   rows: Ticket[];
@@ -51,7 +52,7 @@ function actionsFor(t: Ticket) {
 const showActionColumn = computed(
   () => props.variant !== 'done' && props.variant !== 'mention',
 );
-const showSelectionColumn = computed(() => props.variant === 'mine');
+const showSelectionColumn = computed(() => props.variant === 'mine' || props.variant === 'pool');
 </script>
 
 <template>
@@ -64,11 +65,11 @@ const showSelectionColumn = computed(() => props.variant === 'mine');
         </div>
       </div>
       <div class="col-title th">工单 / 标题</div>
+      <div v-if="showCol('priority')" class="col-priority th">优先级</div>
       <div v-if="showCol('summary')" class="col-summary th">工单摘要</div>
       <div v-if="showCol('customer')" class="col-customer th">客户</div>
       <div v-if="showCol('product')" class="col-product th">产品</div>
       <div v-if="showCol('node')" class="col-node th">当前节点</div>
-      <div v-if="showCol('priority')" class="col-priority th">优先级</div>
       <div v-if="showCol('sla')" class="col-sla th">SLA 时效</div>
       <div v-if="showAppointmentColumn" class="col-appointment th">预约倒计时</div>
       <div v-if="showCol('assignee')" class="col-assignee th">处理人</div>
@@ -106,30 +107,56 @@ const showSelectionColumn = computed(() => props.variant === 'mine');
         </div>
       </div>
 
-      <!-- 工单摘要：问题 + 最新处理 两行；hover 展示全文（参考工单处理页） -->
+      <!-- 优先级（颜色已由左侧色条承载，此处仅文字 + 同色点，避免与 SLA 抢色） -->
+      <div v-if="showCol('priority')" class="col-priority">
+        <span class="prio">
+          <span class="prio-dot" :style="{ background: PRIORITY_COLOR[t.priority] }"></span>
+          {{ t.priority }}
+        </span>
+      </div>
+
+      <!-- 工单摘要：与处理页速览带同构（hi-meta + hi-text） -->
       <div v-if="showCol('summary')" class="col-summary cell-summary">
         <a-popover trigger="hover" placement="rightTop" :mouse-enter-delay="0.2">
           <div class="summary-stack">
-            <div class="summary-brief">
-              <span class="brief-k">问题</span>
-              <span class="brief-v">{{ t.problemDesc || '—' }}</span>
+            <div class="handle-item">
+              <div class="hi-meta">
+                <span class="hi-label">问题</span>
+              </div>
+              <div class="hi-text line-clamp">{{ t.problemDesc || '—' }}</div>
             </div>
-            <div class="summary-brief">
-              <span class="brief-k handle">最新</span>
-              <span class="brief-v">{{ t.latestHandling || '暂无处理记录' }}</span>
+            <div class="handle-item">
+              <div class="hi-meta">
+                <span class="hi-label handle">最新</span>
+                <template v-if="ticketLatestHandlingPreview(t)">
+                  <span class="hi-who">{{ ticketLatestHandlingPreview(t)!.who }}</span>
+                  <span class="hi-role">{{ ticketLatestHandlingPreview(t)!.role }}</span>
+                  <span class="hi-when">{{ ticketLatestHandlingPreview(t)!.when }}</span>
+                </template>
+              </div>
+              <div class="hi-text line-clamp">{{ t.latestHandling || '暂无处理记录' }}</div>
             </div>
           </div>
           <template #content>
             <div class="summary-pop">
               <div class="sp-title"><span class="sp-type">{{ t.type }}</span>{{ t.title }}</div>
               <div class="sp-no">{{ t.no }}</div>
-              <div class="sp-field">
-                <span class="sp-k">问题描述</span>
-                <span class="sp-v">{{ t.problemDesc || '—' }}</span>
+              <div class="sp-block">
+                <div class="hi-meta">
+                  <span class="hi-label">问题描述</span>
+                </div>
+                <div class="hi-text">{{ t.problemDesc || '—' }}</div>
               </div>
-              <div class="sp-field">
-                <span class="sp-k handle">最新处理</span>
-                <span class="sp-v">{{ t.latestHandling || '暂无处理记录' }}</span>
+              <div class="sp-block">
+                <div class="hi-meta">
+                  <span class="hi-label handle">最新处理</span>
+                  <template v-if="ticketLatestHandlingPreview(t)">
+                    <span class="hi-who">{{ ticketLatestHandlingPreview(t)!.who }}</span>
+                    <span class="hi-role">{{ ticketLatestHandlingPreview(t)!.role }}</span>
+                    <span class="hi-when">{{ ticketLatestHandlingPreview(t)!.when }}</span>
+                  </template>
+                </div>
+                <div class="hi-text">{{ t.latestHandling || '暂无处理记录' }}</div>
               </div>
             </div>
           </template>
@@ -156,14 +183,6 @@ const showSelectionColumn = computed(() => props.variant === 'mine');
       <!-- 当前节点 -->
       <div v-if="showCol('node')" class="col-node cell-node">
         <span class="node-badge">{{ t.nodeStatus }}</span>
-      </div>
-
-      <!-- 优先级（颜色已由左侧色条承载，此处仅文字 + 同色点，避免与 SLA 抢色） -->
-      <div v-if="showCol('priority')" class="col-priority">
-        <span class="prio">
-          <span class="prio-dot" :style="{ background: PRIORITY_COLOR[t.priority] }"></span>
-          {{ t.priority }}
-        </span>
       </div>
 
       <!-- SLA 时效 -->

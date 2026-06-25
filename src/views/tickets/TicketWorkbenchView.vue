@@ -10,7 +10,6 @@ import AiSuggestionDrawer from './components/AiSuggestionDrawer.vue';
 import type { AiSuggestion, AiSuggestionFilter } from './types/aiSuggestion';
 import TicketFilterBar from './components/TicketFilterBar.vue';
 import TicketMineQueryBar from './components/TicketMineQueryBar.vue';
-import PoolGroupFilter from './components/PoolGroupFilter.vue';
 import TicketToolbar from './components/TicketToolbar.vue';
 import { hasMineQuery } from './types/mineQuery';
 import TicketRichList from './components/TicketRichList.vue';
@@ -27,15 +26,18 @@ const { visibleColumns, toggleColumn, resetColumns } = useTicketColumns();
 const createOpen = ref(false);
 const aiDrawerOpen = ref(false);
 const aiDrawerFilter = ref<AiSuggestionFilter>('all');
-/** 我的任务 · 结构化筛选面板默认收起 */
-const mineFilterExpanded = ref(false);
+/** 我的任务 / 已办 · 结构化筛选面板默认收起 */
+const structuredFilterExpanded = ref(false);
 
-const mineFilterActive = computed(() => hasMineQuery(wb.mineQuery.value));
+const batchActions = computed(() =>
+  wb.isPoolTab.value ? ['领取'] : wb.isMineTab.value ? ['转办', '退回'] : [],
+);
+const showBatchToolbar = computed(() => wb.isMineTab.value || wb.isPoolTab.value);
 
 watch(
   () => wb.activeTab.value,
   () => {
-    mineFilterExpanded.value = false;
+    structuredFilterExpanded.value = false;
   },
 );
 
@@ -85,8 +87,22 @@ function onClickNo(t: Ticket) {
 function onClickCustomer(t: Ticket) {
   message.info(`查看客户「${t.customer}」详情卡`);
 }
-function onBatch() {
-  message.success(`已对已选 ${wb.selectedCount.value} 单执行批量操作`);
+function onBatch(action: string) {
+  if (action === '领取') {
+    const { claimed, failed } = wb.claimTickets(wb.selectedIds.value);
+    if (claimed > 0) {
+      message.success(`已领取 ${claimed} 单，转入「我的任务」`);
+    }
+    if (failed > 0) {
+      message.warning(`${failed} 单已被他人认领`);
+    }
+    if (claimed === 0 && failed === 0) {
+      message.info('请先勾选要领取的工单');
+    }
+    wb.clearSelection();
+    return;
+  }
+  message.success(`已对已选 ${wb.selectedCount.value} 单执行批量「${action}」`);
   wb.clearSelection();
 }
 function onCreated(t: Ticket) {
@@ -147,43 +163,41 @@ function onAiPrimaryAction(s: AiSuggestion) {
         @close="wb.aiBarVisible.value = false"
       />
 
-      <!-- ③ 筛选行：本组工单池展示分组筛选；其余 Tab 展示业务 chips -->
-      <div v-if="wb.isPoolTab.value" class="pool-filter-row">
-        <PoolGroupFilter
-          :active="wb.activePoolGroup.value"
-          :groups="wb.poolGroups"
-          :counts="wb.poolGroupCounts.value"
-          @change="wb.setPoolGroup"
-        />
-      </div>
+      <!-- ③ 筛选行 -->
       <TicketFilterBar
         :active-chip="wb.activeChip.value"
         :chip-counts="wb.chipCounts.value"
         :chips="wb.activeChips.value"
         :search="wb.searchText.value"
-        :show-time-filter="!wb.isMineTab.value"
-        :show-search="!wb.isMineTab.value"
-        :show-mine-filter="wb.isMineTab.value && !isDraftView"
-        :mine-filter-expanded="mineFilterExpanded"
-        :mine-filter-active="mineFilterActive"
+        :show-time-filter="!wb.usesStructuredFilter.value"
+        :show-search="!wb.usesStructuredFilter.value"
+        :show-mine-filter="wb.usesStructuredFilter.value && !isDraftView"
+        :mine-filter-expanded="structuredFilterExpanded"
+        :mine-filter-active="structuredFilterActive"
+        :show-create="!wb.isDoneTab.value"
         @chip="wb.setChip"
         @update:search="wb.setSearch"
         @create="openCreate"
-        @toggle-mine-filter="mineFilterExpanded = !mineFilterExpanded"
+        @toggle-mine-filter="structuredFilterExpanded = !structuredFilterExpanded"
       />
 
       <TicketMineQueryBar
-        v-if="wb.isMineTab.value && !isDraftView && mineFilterExpanded"
-        :model-value="wb.mineQuery.value"
-        @update:model-value="wb.setMineQuery"
-        @search="wb.applyMineQuery"
+        v-if="wb.usesStructuredFilter.value && !isDraftView && structuredFilterExpanded"
+        :model-value="wb.structuredQuery.value"
+        :variant="wb.isDoneTab.value ? 'done' : wb.isPoolTab.value ? 'pool' : 'mine'"
+        :pool-groups="wb.poolGroups"
+        @update:model-value="wb.setStructuredQuery"
+        @search="wb.applyStructuredQuery"
       />
 
       <!-- ④ 工具行 B（草稿视图下不展示批量/排序工具） -->
       <TicketToolbar
         v-if="!isDraftView"
         :selected-count="wb.selectedCount.value"
-        :show-filter="!wb.isMineTab.value"
+        :show-filter="!wb.usesStructuredFilter.value"
+        :show-batch="showBatchToolbar"
+        :batch-actions="batchActions"
+        :hide-assignee-column="wb.isMineTab.value"
         :visible-columns="visibleColumns"
         @batch="onBatch"
         @filter="message.info('高级筛选')"
@@ -228,7 +242,7 @@ function onAiPrimaryAction(s: AiSuggestion) {
           <div class="pager">
             <div class="pager-left">
               <span class="pager-total">共 {{ wb.total.value }} 条</span>
-              <span class="pager-selected">已选 {{ wb.selectedCount.value }} 项</span>
+              <span v-if="wb.isMineTab.value || wb.isPoolTab.value" class="pager-selected">已选 {{ wb.selectedCount.value }} 项</span>
             </div>
             <AppPagination
               :total="wb.total.value"
@@ -308,11 +322,5 @@ function onAiPrimaryAction(s: AiSuggestion) {
 .pager-selected {
   font-size: 13px;
   color: #9ca3af;
-}
-.pool-filter-row {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  min-width: 0;
 }
 </style>

@@ -16,12 +16,21 @@ export const TICKET_SOURCE_OPTIONS: TicketSource[] = [
   'APP',
 ];
 
+export interface CustomerContactEntry {
+  type: '手机' | '固话' | '邮箱';
+  value: string;
+}
+
 export interface CustomerInfo {
   id: string;
   name: string;
   phone: string;
   vip: boolean;
   customerType: string;
+  /** 客户类型多选（与 customerType 顿号拼接字段同步） */
+  customerTypes?: string[];
+  /** 联系方式列表（手机号为主键去重） */
+  contacts?: CustomerContactEntry[];
   gender: string;
   region: string;
   address: string;
@@ -123,6 +132,8 @@ export const MOCK_CUSTOMER: CustomerInfo = {
   phone: '138 0013 8000',
   vip: true,
   customerType: '个人客户',
+  customerTypes: ['个人客户'],
+  contacts: [{ type: '手机', value: '138 0013 8000' }],
   gender: '男',
   region: '安徽省/合肥市/蜀山区',
   address: '望江西路666号',
