@@ -13,6 +13,10 @@ defineProps<{
   dunningRecords: SimpleRecord[];
 }>();
 
+const emit = defineEmits<{
+  'mark-read': [id: string];
+}>();
+
 const expanded = ref({ related: true, supplement: true, dunning: true });
 
 function toast(name: string) {
@@ -97,6 +101,7 @@ function processEntries(t: RelatedTicketCard) {
       <OpSimpleRecordList
         :records="supplementRecords"
         show-supplement-type
+        @mark-read="emit('mark-read', $event)"
       />
     </OpCollapsibleSection>
 
@@ -107,7 +112,7 @@ function processEntries(t: RelatedTicketCard) {
       :expanded="expanded.dunning"
       @toggle="expanded.dunning = !expanded.dunning"
     >
-      <OpSimpleRecordList :records="dunningRecords" />
+      <OpSimpleRecordList :records="dunningRecords" @mark-read="emit('mark-read', $event)" />
     </OpCollapsibleSection>
   </div>
 </template>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { CheckOutlined } from '@ant-design/icons-vue';
 import OpAttachList from '../shared/OpAttachList.vue';
 import { TICKET_EVENT_NOTIFY_THEME as T } from '@/views/tickets/styles/ticketEventNotifyTheme';
 import type { SimpleRecord } from '@/views/tickets/types/operationTabs';
@@ -7,11 +8,15 @@ defineProps<{
   records: SimpleRecord[];
   showSupplementType?: boolean;
 }>();
+
+const emit = defineEmits<{
+  'mark-read': [id: string];
+}>();
 </script>
 
 <template>
   <div class="simple-list">
-    <div v-for="r in records" :key="r.id" class="simple-item">
+    <div v-for="r in records" :key="r.id" class="simple-item" :class="{ 'is-read': r.read }">
       <p class="record-meta">
         <span
           v-if="showSupplementType && r.supplementType"
@@ -20,6 +25,15 @@ defineProps<{
         <span class="record-who">{{ r.who }}</span>
         <span class="record-sep">·</span>
         <span class="record-when">{{ r.when }}</span>
+        <span class="record-read-slot">
+          <span v-if="r.read" class="record-read-tag"><CheckOutlined /> 已读</span>
+          <button
+            v-else
+            type="button"
+            class="record-read-btn"
+            @click="emit('mark-read', r.id)"
+          >标记已读</button>
+        </span>
       </p>
 
       <p class="record-body">{{ r.content }}</p>
@@ -67,6 +81,43 @@ defineProps<{
 
 .record-when {
   font-variant-numeric: tabular-nums;
+}
+
+/* 已读控件：靠右 */
+.record-read-slot {
+  margin-left: auto;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+}
+.record-read-btn {
+  padding: 1px 10px;
+  height: 22px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #fff;
+  font-size: 12px;
+  color: #1a6fff;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, background 0.15s;
+}
+.record-read-btn:hover {
+  border-color: #1a6fff;
+  background: #f5f9ff;
+}
+.record-read-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  color: #16a34a;
+}
+.simple-item.is-read {
+  background: #fafafa;
+}
+.simple-item.is-read .record-body {
+  color: v-bind('T.text.meta');
 }
 
 .category-tag {

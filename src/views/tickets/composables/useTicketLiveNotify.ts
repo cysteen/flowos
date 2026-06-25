@@ -30,6 +30,7 @@ export function useTicketLiveNotify() {
     who: string,
     when: string,
     supplementType?: string,
+    recordId?: string,
   ) {
     const item: TicketLiveToast = {
       id: `toast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -39,6 +40,7 @@ export function useTicketLiveNotify() {
       when,
       content: content.trim(),
       supplementType: type === 'supplement' ? supplementType : undefined,
+      recordId,
     };
     toasts.value = [item, ...toasts.value].slice(0, 4);
     timers.set(item.id, setTimeout(() => dismiss(item.id), AUTO_DISMISS_MS));

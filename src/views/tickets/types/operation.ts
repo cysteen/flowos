@@ -38,6 +38,9 @@ export interface InsightStats {
   recent30Count: number;
   dunningCount: number;
   supplementCount: number;
+  /** 催单 / 补充 已读条数（坐席已查看） */
+  dunningReadCount?: number;
+  supplementReadCount?: number;
   relatedCount: number;
 }
 
@@ -65,6 +68,12 @@ export type InsightAction =
   | { kind: 'modal'; modalKey: InsightModalKey }
   | { kind: 'tab'; tab: 'related' | 'customerHistory' };
 
+/** 预约回访 · 单条记录（日期 + 时分秒） */
+export interface AppointmentRecord {
+  id: string;
+  scheduledAt: string;
+}
+
 export interface ProcessFormDraft {
   problemCause: string;
   processResult: string;
@@ -73,6 +82,8 @@ export interface ProcessFormDraft {
   serviceMethod: string;
   serviceType: string;
   conclusion: 'resolved' | 'concession' | 'unresolved';
+  /** 解决结论为退让时填写 */
+  concessionPlan: string;
   complaintCat1: string;
   complaintCat2: string;
   complaintCat3: string;
@@ -83,12 +94,13 @@ export interface ProcessFormDraft {
   riskDescription: string;
   riskDescriptionAttachments: string[];
   appointmentNeeded: boolean;
-  appointmentStart: string;
-  appointmentEnd: string;
+  /** 预约回访记录（每条一个预约时间点） */
+  appointmentRecords: AppointmentRecord[];
   qualityIsStandard: boolean;
-  qualityIssueCat: string;
-  qualityIssueReason: string;
-  qualityIssueReasonAttachments: string[];
+  /** 不规范原因大类 */
+  qualityIssueCat1: string;
+  /** 不规范原因子类（联动大类） */
+  qualityIssueCat2: string;
   /** 建议专属 */
   suggestCat1: string;
   suggestCat2: string;
@@ -140,6 +152,51 @@ export function visibleProcessTabs(ticketType: string) {
 }
 
 export type SupplementChip = 'complaint' | 'risk' | 'appointment' | 'quality';
+
+/** 建单不规范 · 原因大类 */
+export const QUALITY_ISSUE_L1_OPTIONS = ['信息录入', '分类错误', '流程违规', '其他'] as const;
+
+/** 建单不规范 · 原因子类（按大类联动） */
+export const QUALITY_ISSUE_L2_MAP: Record<string, string[]> = {
+  信息录入: ['客户信息缺失', '联系方式错误', '产品信息不全'],
+  分类错误: ['工单类型错误', '问题分类错误', '优先级错误'],
+  流程违规: ['重复建单', '未按规范流转', '遗漏必填项'],
+  其他: ['其他原因'],
+};
+
+/** 服务方式（支持关键词搜索） */
+export const SERVICE_METHOD_OPTIONS = [
+  '远程指导',
+  '电话回访',
+  '上门检修',
+  '寄修办理',
+  '现场接待',
+  '邮件答复',
+] as const;
+
+/** 服务类型（随服务方式默认带出，可搜索改选） */
+export const SERVICE_TYPE_OPTIONS = [
+  '技术支持',
+  '客服跟进',
+  '上门服务',
+  '寄修服务',
+  '门店服务',
+  '书面答复',
+  '品质服务',
+  '售后服务',
+] as const;
+
+export const SERVICE_TYPE_BY_METHOD: Record<string, string> = {
+  远程指导: '技术支持',
+  电话回访: '客服跟进',
+  上门检修: '上门服务',
+  寄修办理: '寄修服务',
+  现场接待: '门店服务',
+  邮件答复: '书面答复',
+};
+
+/** 风险等级 */
+export const RISK_LEVEL_OPTIONS = ['低风险', '中风险', '高风险'] as const;
 
 /** 客户全景宫格：与当前工单类型对齐的统计标签（投诉/建议/商机/咨询 → ××单） */
 const SAME_TYPE_STAT_LABEL: Record<string, string> = {

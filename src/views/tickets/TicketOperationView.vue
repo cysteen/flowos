@@ -28,7 +28,7 @@ import type { CreateTicketPrefill, Ticket } from './types/ticket';
 import type { ProcessFormDraft, InsightAction, InsightModalKey } from './types/operation';
 import type { ProcessTabKey } from './types/operation';
 import type { OperationTabData } from './types/operationTabs';
-import type { TicketLiveEventType } from './types/ticketLiveNotify';
+import type { TicketLiveEventType, TicketLiveToast } from './types/ticketLiveNotify';
 
 const route = useRoute();
 const router = useRouter();
@@ -223,28 +223,47 @@ function onIncomingTicketEvent(
   options?: { supplementType?: string; notify?: boolean },
 ) {
   const when = formatNow();
+  const recordId = `${type === 'urge' ? 'd' : 's'}-${Date.now()}`;
   if (type === 'urge') {
     tabData.value.dunningRecords.unshift({
-      id: `d-${Date.now()}`,
+      id: recordId,
       who,
       when,
       content,
+      read: false,
     });
     d.value.insight.dunningCount += 1;
   } else {
     tabData.value.supplementRecords.unshift({
-      id: `s-${Date.now()}`,
+      id: recordId,
       who,
       when,
       supplementType: options?.supplementType ?? '问题描述补充',
       content,
+      read: false,
     });
     d.value.insight.supplementCount += 1;
   }
 
   if (options?.notify !== false && pageActive.value) {
-    pushLiveToast(type, content, who, when, options?.supplementType);
+    pushLiveToast(type, content, who, when, options?.supplementType, recordId);
   }
+}
+
+/** 标记催单/补充记录为已读，并同步统计宫格的「已读」计数 */
+function onMarkRecordRead(id: string) {
+  const dRec = tabData.value.dunningRecords.find((r) => r.id === id);
+  const rec = dRec ?? tabData.value.supplementRecords.find((r) => r.id === id);
+  if (!rec || rec.read) return;
+  rec.read = true;
+  const ins = d.value.insight;
+  if (dRec) ins.dunningReadCount = (ins.dunningReadCount ?? 0) + 1;
+  else ins.supplementReadCount = (ins.supplementReadCount ?? 0) + 1;
+}
+
+function onToastMarkRead(item: TicketLiveToast) {
+  if (item.recordId) onMarkRecordRead(item.recordId);
+  dismissLiveToast(item.id);
 }
 
 function onLiveToastClick() {
@@ -410,6 +429,7 @@ function updateTabData(next: OperationTabData) {
             :items="liveToasts"
             @dismiss="dismissLiveToast"
             @click="onLiveToastClick"
+            @mark-read="onToastMarkRead"
           />
         </template>
       </OpOverviewBand>
@@ -431,6 +451,7 @@ function updateTabData(next: OperationTabData) {
           @update:tab-data="updateTabData"
           @open-child-create="openChildCreate"
           @open-reopen-create="openReopenCreate"
+          @mark-read="onMarkRecordRead"
         />
       </div>
 

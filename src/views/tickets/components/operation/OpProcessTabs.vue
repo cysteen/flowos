@@ -32,6 +32,7 @@ const emit = defineEmits<{
   'update:tabData': [data: OperationTabData];
   openChildCreate: [];
   openReopenCreate: [];
+  'mark-read': [id: string];
 }>();
 
 const activeTab = ref<ProcessTabKey>('process');
@@ -104,6 +105,7 @@ defineExpose({ switchTab });
         :related-tickets="tabData.relatedTickets"
         :supplement-records="tabData.supplementRecords"
         :dunning-records="tabData.dunningRecords"
+        @mark-read="emit('mark-read', $event)"
       />
 
       <OpContactRecordsTab

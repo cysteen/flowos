@@ -13,6 +13,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   dismiss: [id: string];
   click: [item: TicketLiveToast];
+  'mark-read': [item: TicketLiveToast];
 }>();
 
 const visibleItems = computed(() => (props.embedded ? props.items.slice(0, 1) : props.items));
@@ -63,6 +64,15 @@ const visibleItems = computed(() => (props.embedded ? props.items.slice(0, 1) : 
 
         <!-- L3：具体内容 -->
         <p class="ticket-notify__body">{{ item.content }}</p>
+
+        <!-- L4：操作 -->
+        <footer class="ticket-notify__foot">
+          <button
+            type="button"
+            class="ticket-notify__read-btn"
+            @click.stop="emit('mark-read', item)"
+          >标记已读</button>
+        </footer>
       </article>
     </div>
 </template>
@@ -264,6 +274,29 @@ const visibleItems = computed(() => (props.embedded ? props.items.slice(0, 1) : 
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.ticket-notify__foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.ticket-notify__read-btn {
+  padding: 2px 12px;
+  height: 24px;
+  border: 1px solid v-bind('T.border');
+  border-radius: 4px;
+  background: #fff;
+  font-size: 12px;
+  color: #1a6fff;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.ticket-notify__read-btn:hover {
+  border-color: #1a6fff;
+  background: #f5f9ff;
 }
 
 @keyframes notify-in {

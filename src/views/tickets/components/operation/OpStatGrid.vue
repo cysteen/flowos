@@ -14,6 +14,8 @@ interface StatItem {
   action: InsightAction;
   /** 仅当 value>0 时以警示色呈现（颜色=是否需要注意，对齐 STATUS_TONE 语义） */
   warn?: boolean;
+  /** 已读条数（仅催单 / 补充展示「已读 N」） */
+  readCount?: number;
 }
 
 // 上排=客户维度（弹窗看明细）；下排=本单维度（跳对应 Tab）
@@ -32,8 +34,8 @@ const items = computed<StatItem[]>(() => {
       action: { kind: 'tab', tab: 'customerHistory' },
     },
     { key: 'recent30', label: '近30天', value: i.recent30Count, unit: '单', action: { kind: 'modal', modalKey: 'recent30' } },
-    { key: 'dunning', label: '催单', value: i.dunningCount, unit: '次', warn: true, action: { kind: 'tab', tab: 'related' } },
-    { key: 'supplement', label: '补充', value: i.supplementCount, unit: '次', warn: true, action: { kind: 'tab', tab: 'related' } },
+    { key: 'dunning', label: '催单', value: i.dunningCount, unit: '次', warn: true, readCount: i.dunningReadCount ?? 0, action: { kind: 'tab', tab: 'related' } },
+    { key: 'supplement', label: '补充', value: i.supplementCount, unit: '次', warn: true, readCount: i.supplementReadCount ?? 0, action: { kind: 'tab', tab: 'related' } },
     { key: 'related', label: '关联', value: i.relatedCount, unit: '个', action: { kind: 'tab', tab: 'related' } },
   ];
 });
@@ -79,8 +81,11 @@ function pulse(key: string) {
       :title="`查看${it.label}明细`"
       @click="emit('select', it.action)"
     >
-      <span class="si-label">{{ it.label }}</span>
-      <span class="si-value">{{ it.value }}<span class="si-unit">{{ it.unit }}</span></span>
+      <span class="si-main">
+        <span class="si-label">{{ it.label }}</span>
+        <span class="si-value">{{ it.value }}<span class="si-unit">{{ it.unit }}</span></span>
+      </span>
+      <span v-if="it.readCount !== undefined" class="si-read">已读 {{ it.readCount }}</span>
     </button>
   </div>
 </template>
@@ -93,9 +98,10 @@ function pulse(key: string) {
 }
 .stat-item {
   display: flex;
-  align-items: baseline;
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 2px;
   padding: 8px 6px;
   border: 1px solid #e8e4f8;
   border-radius: 6px;
@@ -103,6 +109,19 @@ function pulse(key: string) {
   cursor: pointer;
   font-family: inherit;
   transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.si-main {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.si-read {
+  font-size: 11px;
+  line-height: 1;
+  color: #9ca3af;
+}
+.stat-item.warn .si-read {
+  color: #b45309;
 }
 .stat-item:hover {
   border-color: #7c3aed;

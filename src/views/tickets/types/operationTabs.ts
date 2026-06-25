@@ -65,6 +65,8 @@ export interface SimpleRecord {
   supplementType?: string;
   content: string;
   attachments?: string[];
+  /** 坐席是否已读（催单/补充明细） */
+  read?: boolean;
 }
 
 /** 坐席新建补充时的类型枚举 */
