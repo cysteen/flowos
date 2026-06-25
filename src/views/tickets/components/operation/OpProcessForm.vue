@@ -142,8 +142,6 @@ function chipActiveClass(key: SupplementChip): string {
       v-if="isComplaint || isConsult"
       title="服务与结论"
       :icon="CheckCircleOutlined"
-      badge="服务方式支持关键词搜索"
-      badge-variant="hint"
       :expanded="expandedSections.service"
       @toggle="emit('toggleSection', 'service')"
     >
@@ -327,6 +325,16 @@ function chipActiveClass(key: SupplementChip): string {
 .field-row { display: flex; gap: 8px; }
 .field-row .field.inline { flex: 1 1 0; min-width: 0; }
 .field-row--service { align-items: flex-start; }
+.field-row--service :deep(.ant-select-selector) {
+  height: 32px;
+  min-height: 32px;
+  font-size: 12px;
+}
+.field-row--service :deep(.ant-select-selection-item),
+.field-row--service :deep(.ant-select-selection-placeholder) {
+  font-size: 12px;
+  line-height: 30px;
+}
 .select-like {
   display: flex; align-items: center; gap: 6px;
   padding: 6px 8px; background: #fff; border: 1px solid #e5e7eb;
