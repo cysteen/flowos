@@ -8,6 +8,7 @@ export interface TicketColumnDef {
 
 export const TICKET_COLUMN_DEFS: TicketColumnDef[] = [
   { key: 'summary', label: '工单摘要' },
+  { key: 'latest', label: '最新处理' },
   { key: 'customer', label: '客户' },
   { key: 'product', label: '产品' },
   { key: 'node', label: '当前节点' },

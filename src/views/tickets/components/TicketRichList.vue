@@ -65,6 +65,7 @@ const showSelectionColumn = computed(() => props.variant === 'mine');
       </div>
       <div class="col-title th">工单 / 标题</div>
       <div v-if="showCol('summary')" class="col-summary th">工单摘要</div>
+      <div v-if="showCol('latest')" class="col-latest th">最新处理</div>
       <div v-if="showCol('customer')" class="col-customer th">客户</div>
       <div v-if="showCol('product')" class="col-product th">产品</div>
       <div v-if="showCol('node')" class="col-node th">当前节点</div>
@@ -112,6 +113,30 @@ const showSelectionColumn = computed(() => props.variant === 'mine');
           <div class="summary-brief">
             <span class="brief-k">问题</span>
             <span class="brief-v">{{ t.problemDesc || '—' }}</span>
+          </div>
+          <template #content>
+            <div class="summary-pop">
+              <div class="sp-title"><span class="sp-type">{{ t.type }}</span>{{ t.title }}</div>
+              <div class="sp-no">{{ t.no }}</div>
+              <div class="sp-field">
+                <span class="sp-k">问题描述</span>
+                <span class="sp-v">{{ t.problemDesc || '—' }}</span>
+              </div>
+              <div class="sp-field">
+                <span class="sp-k handle">最新处理</span>
+                <span class="sp-v">{{ t.latestHandling || '暂无处理记录' }}</span>
+              </div>
+            </div>
+          </template>
+        </a-popover>
+      </div>
+
+      <!-- 最新处理（hover 展示全文） -->
+      <div v-if="showCol('latest')" class="col-latest cell-summary">
+        <a-popover trigger="hover" placement="rightTop" :mouse-enter-delay="0.2">
+          <div class="summary-brief">
+            <span class="brief-k handle">最新</span>
+            <span class="brief-v">{{ t.latestHandling || '暂无处理记录' }}</span>
           </div>
           <template #content>
             <div class="summary-pop">
@@ -210,7 +235,8 @@ const showSelectionColumn = computed(() => props.variant === 'mine');
 }
 /* 列宽对齐 .pen SJpgc thead/row body */
 .col-title { flex: 1; min-width: 140px; }
-.col-summary { width: 200px; flex: none; }
+.col-summary { width: 170px; flex: none; }
+.col-latest { width: 170px; flex: none; }
 .col-customer { width: 108px; flex: none; }
 .col-product { width: 128px; flex: none; }
 .col-node { width: 130px; flex: none; }
