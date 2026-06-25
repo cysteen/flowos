@@ -2,6 +2,10 @@
 import { CheckOutlined } from '@ant-design/icons-vue';
 import { computed } from 'vue';
 import {
+  columnLabel,
+  TICKET_COLUMN_DEFS,
+} from '@/views/tickets/composables/useTicketColumns';
+import {
   doneRowActions,
   isMentionUnread,
   mentionRowActions,
@@ -9,6 +13,7 @@ import {
   poolRowActions,
   PRIORITY_COLOR,
   rowActions,
+  resolveTicketGroupNames,
   SLA_COLOR,
   softBg,
   type Ticket,
@@ -24,12 +29,57 @@ const props = defineProps<{
   highlightMentionUnread?: boolean;
   /** 列设置：公共属性列显隐（不传=全显，向后兼容） */
   visibleColumns?: Record<string, boolean>;
+  /** 列顺序（可配置列 key 列表） */
+  columnOrder?: string[];
 }>();
+
+const DEFAULT_ORDER = TICKET_COLUMN_DEFS.map((c) => c.key);
 
 /** 列是否显示（未配置或未含该列 → 默认显示） */
 function showCol(key: string) {
-  if (key === 'assignee' && props.variant === 'mine') return false;
+  if (key === 'assignee' && (props.variant === 'mine' || props.variant === 'pool')) return false;
+  if (key === 'groupNames' && props.variant !== 'pool') return false;
   return !props.visibleColumns || props.visibleColumns[key] !== false;
+}
+
+const orderedCols = computed(() => {
+  const order = props.columnOrder?.length ? props.columnOrder : DEFAULT_ORDER;
+  return order.filter((key) => showCol(key));
+});
+
+function ticketSourceLabel(t: Ticket): string {
+  if (t.ticketSource) return t.ticketSource;
+  if (t.channel === '电话') return '400呼入';
+  return t.channel;
+}
+
+function plainCellText(t: Ticket, key: string): string {
+  switch (key) {
+    case 'businessType':
+      return t.businessType ?? '—';
+    case 'ticketType':
+      return t.type;
+    case 'ticketSource':
+      return ticketSourceLabel(t);
+    case 'productCategory':
+      return t.productCategory ?? '—';
+    case 'deviceSn':
+      return t.sn ?? '—';
+    case 'problemL1':
+      return t.problemL1 ?? '—';
+    case 'problemL2':
+      return t.problemL2 ?? '—';
+    case 'problemL3':
+      return t.problemL3 ?? '—';
+    case 'resolveTimeRemark':
+      return t.resolveTimeRemark ?? '—';
+    default:
+      return '—';
+  }
+}
+
+function colClass(key: string): string {
+  return `col-${key.replace(/([A-Z])/g, '-$1').toLowerCase()}`;
 }
 
 const emit = defineEmits<{
@@ -53,48 +103,88 @@ const showActionColumn = computed(
   () => props.variant !== 'done' && props.variant !== 'mention',
 );
 const showSelectionColumn = computed(() => props.variant === 'mine' || props.variant === 'pool');
+
+/** 列宽（与下方样式一致，用于 grid 对齐表头与数据行） */
+const COL_WIDTH: Record<string, string> = {
+  priority: '58px',
+  summary: '220px',
+  customer: '108px',
+  groupNames: '108px',
+  product: '128px',
+  node: '130px',
+  sla: '118px',
+  appointment: '96px',
+  assignee: '100px',
+  action: '132px',
+  businessType: '88px',
+  ticketType: '88px',
+  ticketSource: '88px',
+  productCategory: '88px',
+  deviceSn: '120px',
+  problemL1: '88px',
+  problemL2: '88px',
+  problemL3: '88px',
+  resolveTimeRemark: '120px',
+};
+
+const gridTemplateColumns = computed(() => {
+  const parts: string[] = [];
+  if (showSelectionColumn.value) parts.push('16px');
+  // 固定列宽，避免各行独立 grid 下 1fr 宽度不一致导致列错位
+  parts.push('240px');
+  for (const key of orderedCols.value) {
+    parts.push(COL_WIDTH[key] ?? '88px');
+  }
+  if (props.showAppointmentColumn) parts.push(COL_WIDTH.appointment);
+  if (showActionColumn.value) parts.push(COL_WIDTH.action);
+  return parts.join(' ');
+});
 </script>
 
 <template>
   <div class="rich-list">
-    <!-- 表头 -->
-    <div class="thead">
-      <div v-if="showSelectionColumn" class="cell-cb">
-        <div class="cb" :class="{ checked: allPageSelected }" @click="emit('toggleAll')">
-          <CheckOutlined v-if="allPageSelected" :style="{ color: '#fff', fontSize: '10px' }" />
+    <div class="rich-list-scroll">
+      <div v-if="rows.length === 0" class="empty">该筛选下暂无工单</div>
+
+      <div v-else class="table-grid" :style="{ gridTemplateColumns }">
+        <!-- 表头 -->
+        <div class="thead">
+          <div v-if="showSelectionColumn" class="cell-cb th-cell">
+            <div class="cb" :class="{ checked: allPageSelected }" @click="emit('toggleAll')">
+              <CheckOutlined v-if="allPageSelected" :style="{ color: '#fff', fontSize: '10px' }" />
+            </div>
+          </div>
+          <div class="col-title th th-cell">工单 / 标题</div>
+          <template v-for="colKey in orderedCols" :key="`th-${colKey}`">
+            <div :class="[colClass(colKey), 'th', 'th-cell']">{{ columnLabel(colKey) }}</div>
+          </template>
+          <div v-if="showAppointmentColumn" class="col-appointment th th-cell">预约倒计时</div>
+          <div v-if="showActionColumn" class="col-action th th-cell">操作</div>
         </div>
-      </div>
-      <div class="col-title th">工单 / 标题</div>
-      <div v-if="showCol('priority')" class="col-priority th">优先级</div>
-      <div v-if="showCol('summary')" class="col-summary th">工单摘要</div>
-      <div v-if="showCol('customer')" class="col-customer th">客户</div>
-      <div v-if="showCol('product')" class="col-product th">产品</div>
-      <div v-if="showCol('node')" class="col-node th">当前节点</div>
-      <div v-if="showCol('sla')" class="col-sla th">SLA 时效</div>
-      <div v-if="showAppointmentColumn" class="col-appointment th">预约倒计时</div>
-      <div v-if="showCol('assignee')" class="col-assignee th">处理人</div>
-      <div v-if="showActionColumn" class="col-action th">操作</div>
-    </div>
 
-    <!-- 空态 -->
-    <div v-if="rows.length === 0" class="empty">该筛选下暂无工单</div>
-
-    <!-- 数据行 -->
-    <div
-      v-for="t in rows"
-      :key="t.id"
-      class="row"
-      :style="{ borderLeftColor: PRIORITY_COLOR[t.priority] }"
-      @dblclick="emit('open', t)"
-    >
-      <div v-if="showSelectionColumn" class="cell-cb">
+        <!-- 数据行 -->
+        <div
+          v-for="t in rows"
+          :key="t.id"
+          class="row"
+          @dblclick="emit('open', t)"
+        >
+      <div
+        v-if="showSelectionColumn"
+        class="cell-cb row-leading"
+        :style="{ borderLeftColor: PRIORITY_COLOR[t.priority] }"
+      >
         <div class="cb" :class="{ checked: selectedIds.has(t.id) }" @click="emit('toggle', t.id)">
           <CheckOutlined v-if="selectedIds.has(t.id)" :style="{ color: '#fff', fontSize: '10px' }" />
         </div>
       </div>
 
       <!-- 工单 / 标题 -->
-      <div class="col-title cell-title">
+      <div
+        class="col-title cell-title"
+        :class="{ 'row-leading': !showSelectionColumn }"
+        :style="!showSelectionColumn ? { borderLeftColor: PRIORITY_COLOR[t.priority] } : undefined"
+      >
         <div class="title-line1">
           <span class="tag">{{ t.type }}</span>
           <span class="title-text" :class="{ unread: highlightMentionUnread && isMentionUnread(t) }">{{ t.title }}</span>
@@ -107,84 +197,124 @@ const showSelectionColumn = computed(() => props.variant === 'mine' || props.var
         </div>
       </div>
 
-      <!-- 优先级（颜色已由左侧色条承载，此处仅文字 + 同色点，避免与 SLA 抢色） -->
-      <div v-if="showCol('priority')" class="col-priority">
-        <span class="prio">
-          <span class="prio-dot" :style="{ background: PRIORITY_COLOR[t.priority] }"></span>
-          {{ t.priority }}
-        </span>
-      </div>
-
-      <!-- 工单摘要：与处理页速览带同构（hi-meta + hi-text） -->
-      <div v-if="showCol('summary')" class="col-summary cell-summary">
-        <a-popover trigger="hover" placement="rightTop" :mouse-enter-delay="0.2">
-          <div class="summary-stack">
-            <div class="summary-line">
-              <span class="hi-label">问题</span>
-              <span class="hi-text line-clamp">{{ t.problemDesc || '—' }}</span>
-            </div>
-            <div class="summary-line">
-              <span class="hi-label handle">最新</span>
-              <span class="hi-text line-clamp">{{ t.latestHandling || '暂无处理记录' }}</span>
-            </div>
-          </div>
-          <template #content>
-            <div class="summary-pop">
-              <div class="sp-title"><span class="sp-type">{{ t.type }}</span>{{ t.title }}</div>
-              <div class="sp-no">{{ t.no }}</div>
-              <div class="sp-block">
-                <div class="hi-meta">
-                  <span class="hi-label">问题描述</span>
-                </div>
-                <div class="hi-text">{{ t.problemDesc || '—' }}</div>
-              </div>
-              <div class="sp-block">
-                <div class="hi-meta">
-                  <span class="hi-label handle">最新处理</span>
-                  <template v-if="ticketLatestHandlingPreview(t)">
-                    <span class="hi-who">{{ ticketLatestHandlingPreview(t)!.who }}</span>
-                    <span class="hi-role">{{ ticketLatestHandlingPreview(t)!.role }}</span>
-                    <span class="hi-when">{{ ticketLatestHandlingPreview(t)!.when }}</span>
-                  </template>
-                </div>
-                <div class="hi-text">{{ t.latestHandling || '暂无处理记录' }}</div>
-              </div>
-            </div>
-          </template>
-        </a-popover>
-      </div>
-
-      <!-- 客户 -->
-      <div v-if="showCol('customer')" class="col-customer cell-customer">
-        <div class="cust-line1">
-          <span class="cust-name" @click="emit('clickCustomer', t)">{{ t.customer }}</span>
-          <span
-            v-for="tag in t.customerTags"
-            :key="tag"
-            class="cust-tag"
-          >{{ tag }}</span>
+      <template v-for="colKey in orderedCols" :key="`${t.id}-${colKey}`">
+        <div v-if="colKey === 'priority'" class="col-priority">
+          <span class="prio">
+            <span class="prio-dot" :style="{ background: PRIORITY_COLOR[t.priority] }"></span>
+            {{ t.priority }}
+          </span>
         </div>
-      </div>
 
-      <!-- 产品 -->
-      <div v-if="showCol('product')" class="col-product cell-product">
-        <span class="product-name" :title="t.product">{{ t.product }}</span>
-      </div>
+        <div v-else-if="colKey === 'summary'" class="col-summary cell-summary">
+          <a-popover trigger="hover" placement="rightTop" :mouse-enter-delay="0.2">
+            <div class="summary-stack">
+              <div class="summary-line">
+                <span class="hi-label">问题</span>
+                <span class="hi-text line-clamp">{{ t.problemDesc || '—' }}</span>
+              </div>
+              <div class="summary-line">
+                <span class="hi-label handle">最新</span>
+                <span class="hi-text line-clamp">{{ t.latestHandling || '暂无处理记录' }}</span>
+              </div>
+            </div>
+            <template #content>
+              <div class="summary-pop">
+                <div class="sp-title"><span class="sp-type">{{ t.type }}</span>{{ t.title }}</div>
+                <div class="sp-block">
+                  <div class="hi-meta">
+                    <span class="hi-label">问题描述</span>
+                  </div>
+                  <div class="hi-text">{{ t.problemDesc || '—' }}</div>
+                </div>
+                <div class="sp-block">
+                  <div class="hi-meta">
+                    <span class="hi-label handle">最新处理</span>
+                    <template v-if="ticketLatestHandlingPreview(t)">
+                      <span class="hi-who">{{ ticketLatestHandlingPreview(t)!.who }}</span>
+                      <span class="hi-role">{{ ticketLatestHandlingPreview(t)!.role }}</span>
+                      <span class="hi-when">{{ ticketLatestHandlingPreview(t)!.when }}</span>
+                    </template>
+                  </div>
+                  <div class="hi-text">{{ t.latestHandling || '暂无处理记录' }}</div>
+                </div>
+              </div>
+            </template>
+          </a-popover>
+        </div>
 
-      <!-- 当前节点 -->
-      <div v-if="showCol('node')" class="col-node cell-node">
-        <span class="node-badge">{{ t.nodeStatus }}</span>
-      </div>
+        <div v-else-if="colKey === 'customer'" class="col-customer cell-customer">
+          <div class="cust-line1">
+            <span class="cust-name" @click="emit('clickCustomer', t)">{{ t.customer }}</span>
+            <span
+              v-for="tag in t.customerTags"
+              :key="tag"
+              class="cust-tag"
+            >{{ tag }}</span>
+          </div>
+        </div>
 
-      <!-- SLA 时效 -->
-      <div v-if="showCol('sla')" class="col-sla cell-sla">
-        <span
-          class="sla-pill"
-          :style="{ color: SLA_COLOR[t.slaState], background: softBg(SLA_COLOR[t.slaState]) }"
-          >{{ t.slaText }}</span
-        >
-        <span class="sla-sub">{{ t.slaSub }}</span>
-      </div>
+        <div v-else-if="colKey === 'groupNames'" class="col-group-names cell-groups">
+          <a-popover
+            v-if="resolveTicketGroupNames(t).length > 1"
+            trigger="hover"
+            placement="top"
+            :mouse-enter-delay="0.2"
+          >
+            <div class="group-stack">
+              <span
+                v-for="g in resolveTicketGroupNames(t).slice(0, 2)"
+                :key="g"
+                class="group-tag"
+              >{{ g }}</span>
+              <span v-if="resolveTicketGroupNames(t).length > 2" class="group-more">
+                +{{ resolveTicketGroupNames(t).length - 2 }}
+              </span>
+            </div>
+            <template #content>
+              <div class="group-pop">
+                <span
+                  v-for="g in resolveTicketGroupNames(t)"
+                  :key="g"
+                  class="group-tag"
+                >{{ g }}</span>
+              </div>
+            </template>
+          </a-popover>
+          <div v-else-if="resolveTicketGroupNames(t).length" class="group-stack">
+            <span
+              v-for="g in resolveTicketGroupNames(t)"
+              :key="g"
+              class="group-tag"
+            >{{ g }}</span>
+          </div>
+          <span v-else class="group-empty">—</span>
+        </div>
+
+        <div v-else-if="colKey === 'product'" class="col-product cell-product">
+          <span class="product-name" :title="t.product">{{ t.product }}</span>
+        </div>
+
+        <div v-else-if="colKey === 'node'" class="col-node cell-node">
+          <span class="node-badge">{{ t.nodeStatus }}</span>
+        </div>
+
+        <div v-else-if="colKey === 'sla'" class="col-sla cell-sla">
+          <span
+            class="sla-pill"
+            :style="{ color: SLA_COLOR[t.slaState], background: softBg(SLA_COLOR[t.slaState]) }"
+          >{{ t.slaText }}</span>
+          <span class="sla-sub">{{ t.slaSub }}</span>
+        </div>
+
+        <div v-else-if="colKey === 'assignee'" class="col-assignee cell-assignee">
+          <span v-if="t.assignee" class="assignee-name">{{ t.assignee }}</span>
+          <span v-else class="unassigned">— 待领</span>
+        </div>
+
+        <div v-else :class="[colClass(colKey), 'cell-plain']">
+          <span class="plain-text" :title="plainCellText(t, colKey)">{{ plainCellText(t, colKey) }}</span>
+        </div>
+      </template>
 
       <!-- 预约倒计时 -->
       <div v-if="showAppointmentColumn" class="col-appointment cell-appointment">
@@ -193,12 +323,6 @@ const showSelectionColumn = computed(() => props.variant === 'mine' || props.var
           class="appt-pill"
         >{{ t.appointmentText }}</span>
         <span v-else class="appt-empty">—</span>
-      </div>
-
-      <!-- 处理人 -->
-      <div v-if="showCol('assignee')" class="col-assignee cell-assignee">
-        <span v-if="t.assignee" class="assignee-name">{{ t.assignee }}</span>
-        <span v-else class="unassigned">— 待领</span>
       </div>
 
       <!-- 操作 -->
@@ -212,7 +336,9 @@ const showSelectionColumn = computed(() => props.variant === 'mine' || props.var
           >{{ a.label }}</span
         >
       </div>
+      </div>
     </div>
+  </div>
   </div>
 </template>
 
@@ -222,47 +348,89 @@ const showSelectionColumn = computed(() => props.variant === 'mine' || props.var
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
+}
+.rich-list-scroll {
+  flex: 1;
+  min-height: 0;
   overflow: auto;
 }
-/* 列宽对齐 .pen SJpgc thead/row body */
-.col-title { flex: 1; min-width: 140px; }
-.col-summary { width: 220px; flex: none; }
-.col-customer { width: 108px; flex: none; }
-.col-product { width: 128px; flex: none; }
-.col-node { width: 130px; flex: none; }
-.col-priority { width: 58px; flex: none; }
-.col-sla { width: 118px; flex: none; }
-.col-appointment { width: 96px; flex: none; }
-.col-assignee { width: 100px; flex: none; }
-.col-action { width: 132px; flex: none; }
-.cell-cb { width: 16px; flex: none; display: flex; align-items: center; }
-
-.thead {
+.table-grid {
+  display: grid;
+  column-gap: 12px;
+  min-width: 100%;
+  width: max-content;
+  padding: 0 16px;
+  box-sizing: border-box;
+}
+.thead,
+.row {
+  display: contents;
+}
+.th-cell {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 11px 20px;
+  min-height: 0;
+  padding: 11px 0;
   background: #fafafb;
   border-bottom: 1px solid #e5e7eb;
-  flex: none;
 }
+.th-cell.cell-cb {
+  border-left: 4px solid transparent;
+  padding-left: 4px;
+  margin-left: -4px;
+}
+.row > * {
+  display: flex;
+  align-items: center;
+  min-height: 0;
+  padding: 13px 0;
+  border-bottom: 1px solid #f0f0f0;
+  background: #fff;
+}
+.row:hover > * {
+  background: #fafbff;
+}
+.row-leading {
+  border-left: 4px solid transparent;
+  padding-left: 4px;
+  margin-left: -4px;
+}
+/* 列宽由 gridTemplateColumns 控制，此处仅保留单元格内容样式 */
+.col-title { min-width: 0; overflow: hidden; }
+.col-summary { min-width: 0; overflow: hidden; }
+.col-customer { min-width: 0; overflow: hidden; }
+.col-group-names { min-width: 0; overflow: hidden; }
+.col-product { min-width: 0; overflow: hidden; }
+.col-node { min-width: 0; overflow: hidden; }
+.col-priority { min-width: 0; overflow: hidden; }
+.col-sla { min-width: 0; overflow: hidden; }
+.col-appointment { min-width: 0; overflow: hidden; }
+.col-assignee { min-width: 0; overflow: hidden; }
+.col-action { min-width: 0; overflow: hidden; }
+.col-business-type,
+.col-ticket-type,
+.col-ticket-source,
+.col-product-category,
+.col-device-sn,
+.col-problem-l1,
+.col-problem-l2,
+.col-problem-l3,
+.col-resolve-time-remark { min-width: 0; overflow: hidden; }
+.cell-plain { display: flex; align-items: center; min-width: 0; overflow: hidden; }
+.plain-text {
+  font-size: 12px;
+  color: #374151;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cell-cb { width: 16px; flex: none; display: flex; align-items: center; }
+
 .th {
   font-size: 12px;
   font-weight: 600;
   color: #6b7280;
-}
-
-.row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 13px 16px;
-  border-left: 4px solid transparent;
-  border-bottom: 1px solid #f0f0f0;
-  flex: none;
-}
-.row:hover {
-  background: #fafbff;
 }
 
 .cb {
@@ -293,7 +461,7 @@ const showSelectionColumn = computed(() => props.variant === 'mine' || props.var
 }
 
 /* 工单/标题：第一行 类型+标题，第二行 来源+单号 */
-.cell-title { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.cell-title { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
 .title-line1 { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .title-line2 { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .title-text {
@@ -368,7 +536,7 @@ const showSelectionColumn = computed(() => props.variant === 'mine' || props.var
 }
 
 /* 客户 */
-.cell-customer { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.cell-customer { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
 .cust-line1 { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; min-width: 0; }
 .cust-name {
   font-size: 13px;
@@ -385,6 +553,35 @@ const showSelectionColumn = computed(() => props.variant === 'mine' || props.var
   padding: 2px 8px; border-radius: 4px; flex: none;
   color: #4b5563; background: #f3f4f6;
 }
+
+/* 分组名称 */
+.cell-groups { display: flex; align-items: center; min-width: 0; }
+.group-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+.group-tag {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #4b5563;
+  background: #f3f4f6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.group-more {
+  font-size: 11px;
+  color: #6b7280;
+  padding-left: 2px;
+}
+.group-empty { font-size: 12px; color: #d1d5db; }
 
 /* 产品 */
 .cell-product { display: flex; align-items: center; min-width: 0; }
@@ -450,7 +647,6 @@ const showSelectionColumn = computed(() => props.variant === 'mine' || props.var
   flex: none; font-size: 11px; font-weight: 600; color: #4b5563;
   background: #f3f4f6; border-radius: 3px; padding: 1px 6px;
 }
-.summary-pop .sp-no { font-size: 11px; color: #9ca3af; margin-top: -2px; }
 .summary-pop .sp-block { display: flex; flex-direction: column; gap: 4px; }
 .summary-pop .hi-meta { display: flex; align-items: center; gap: 8px; }
 .summary-pop .hi-label { font-size: 12px; font-weight: 600; color: #6b7280; }
@@ -459,4 +655,14 @@ const showSelectionColumn = computed(() => props.variant === 'mine' || props.var
 .summary-pop .hi-role { font-size: 11px; color: #6b7280; background: #f3f4f6; border-radius: 4px; padding: 0 6px; }
 .summary-pop .hi-when { font-size: 11px; color: #9ca3af; margin-left: auto; }
 .summary-pop .hi-text { font-size: 12px; color: #374151; line-height: 1.6; word-break: break-word; }
+.group-pop {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 220px;
+}
+.group-pop .group-tag {
+  flex: none;
+  white-space: nowrap;
+}
 </style>

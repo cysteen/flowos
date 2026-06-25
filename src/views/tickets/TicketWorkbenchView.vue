@@ -11,21 +11,31 @@ import type { AiSuggestion, AiSuggestionFilter } from './types/aiSuggestion';
 import TicketFilterBar from './components/TicketFilterBar.vue';
 import TicketMineQueryBar from './components/TicketMineQueryBar.vue';
 import TicketToolbar from './components/TicketToolbar.vue';
-import { hasMineQuery } from './types/mineQuery';
 import TicketRichList from './components/TicketRichList.vue';
 import TicketDraftList from './components/TicketDraftList.vue';
 import CreateTicketModal from './components/CreateTicketModal.vue';
+import SaveFilterModal from './components/SaveFilterModal.vue';
 import { useTicketWorkbench } from './composables/useTicketWorkbench';
 import { useTicketColumns } from './composables/useTicketColumns';
+import { useMineQueryFields } from './composables/useMineQueryFields';
+import { hasMineQuery } from './types/mineQuery';
 import type { Ticket } from './types/ticket';
 
 const user = useUserStore();
 const router = useRouter();
 const wb = useTicketWorkbench();
-const { visibleColumns, toggleColumn, resetColumns } = useTicketColumns();
+const { optionalVisible, applyOptionalVisible } = useMineQueryFields();
+const {
+  visibleColumns,
+  columnOrder,
+  setColumnVisible,
+  reorderColumn,
+  resetColumns,
+} = useTicketColumns();
 const createOpen = ref(false);
 const aiDrawerOpen = ref(false);
 const aiDrawerFilter = ref<AiSuggestionFilter>('all');
+const saveFilterModalOpen = ref(false);
 /** 我的任务 / 已办 · 结构化筛选面板默认收起 */
 const structuredFilterExpanded = ref(false);
 
@@ -38,6 +48,7 @@ watch(
   () => wb.activeTab.value,
   () => {
     structuredFilterExpanded.value = false;
+    wb.setSearch('');
   },
 );
 
@@ -49,9 +60,6 @@ function editDraft(id: string) { editingDraftId.value = id; createOpen.value = t
 function removeDraft(id: string) { wb.removeDraft(id); message.success('草稿已删除'); }
 
 function openOperation(t: Ticket) {
-  if (wb.isMentionTab.value) {
-    wb.acknowledgeMention(t.id);
-  }
   router.push(`/tickets/${t.no}`);
 }
 
@@ -139,6 +147,26 @@ function onAiPrimaryAction(s: AiSuggestion) {
   }
   wb.dismissAiSuggestion(s.id);
 }
+
+function onChipSelect(chip: string) {
+  wb.setChip(chip, applyOptionalVisible);
+}
+
+function onRequestSaveFilter() {
+  if (!hasMineQuery(wb.structuredQuery.value)) {
+    message.warning('请先设置筛选条件后再保存');
+    return;
+  }
+  saveFilterModalOpen.value = true;
+}
+
+function onConfirmSaveFilter(name: string) {
+  const item = wb.saveCurrentFilter(name, { ...optionalVisible.value }, applyOptionalVisible);
+  if (item) {
+    message.success(`已保存筛选器「${name}」`);
+    structuredFilterExpanded.value = true;
+  }
+}
 </script>
 
 <template>
@@ -148,7 +176,6 @@ function onAiPrimaryAction(s: AiSuggestion) {
       <TicketTabs
         :active="wb.activeTab.value"
         :counts="wb.tabCounts.value"
-        :unread-counts="wb.tabUnreadCounts.value"
         :hidden-tabs="user.hiddenTabs"
         @change="wb.setTab"
       />
@@ -163,47 +190,55 @@ function onAiPrimaryAction(s: AiSuggestion) {
         @close="wb.aiBarVisible.value = false"
       />
 
-      <!-- ③ 筛选行 -->
+      <!-- ③ chips 筛选行（独占一行，释放横向空间） -->
       <TicketFilterBar
+        v-if="!isDraftView"
         :active-chip="wb.activeChip.value"
         :chip-counts="wb.chipCounts.value"
         :chips="wb.activeChips.value"
-        :search="wb.searchText.value"
         :show-time-filter="!wb.usesStructuredFilter.value"
-        :show-search="!wb.usesStructuredFilter.value"
-        :show-mine-filter="wb.usesStructuredFilter.value && !isDraftView"
-        :mine-filter-expanded="structuredFilterExpanded"
-        :mine-filter-active="structuredFilterActive"
-        :show-create="!wb.isDoneTab.value"
-        @chip="wb.setChip"
-        @update:search="wb.setSearch"
-        @create="openCreate"
-        @toggle-mine-filter="structuredFilterExpanded = !structuredFilterExpanded"
+        @chip="onChipSelect"
       />
 
-      <TicketMineQueryBar
-        v-if="wb.usesStructuredFilter.value && !isDraftView && structuredFilterExpanded"
-        :model-value="wb.structuredQuery.value"
-        :variant="wb.isDoneTab.value ? 'done' : wb.isPoolTab.value ? 'pool' : 'mine'"
-        :pool-groups="wb.poolGroups"
-        @update:model-value="wb.setStructuredQuery"
-        @search="wb.applyStructuredQuery"
-      />
+      <!-- ④ 列表控制区：筛选面板向上展开 + 工具行 -->
+      <div v-if="!isDraftView" class="list-controls">
+        <TicketMineQueryBar
+          v-if="wb.usesStructuredFilter.value && structuredFilterExpanded"
+          :expanded="true"
+          :model-value="wb.structuredQuery.value"
+          :variant="wb.isDoneTab.value ? 'done' : wb.isPoolTab.value ? 'pool' : 'mine'"
+          :pool-groups="wb.poolGroups"
+          :optional-visible="optionalVisible"
+          @update:model-value="wb.setStructuredQuery"
+          @search="wb.applyStructuredQuery"
+          @save-filter="onRequestSaveFilter"
+          @apply-optional-visible="applyOptionalVisible"
+        />
 
-      <!-- ④ 工具行 B（草稿视图下不展示批量/排序工具） -->
-      <TicketToolbar
-        v-if="!isDraftView"
-        :selected-count="wb.selectedCount.value"
-        :show-filter="!wb.usesStructuredFilter.value"
-        :show-batch="showBatchToolbar"
-        :batch-actions="batchActions"
-        :hide-assignee-column="wb.isMineTab.value"
-        :visible-columns="visibleColumns"
-        @batch="onBatch"
-        @filter="message.info('高级筛选')"
-        @toggle-column="toggleColumn"
-        @reset-columns="resetColumns"
-      />
+        <TicketToolbar
+          :selected-count="wb.selectedCount.value"
+          :search="wb.searchText.value"
+          :search-placeholder="
+            wb.usesStructuredFilter.value ? '工单号 / 手机号' : '搜索工单号、手机号、SN、产品…'
+          "
+          :show-create="!wb.isDoneTab.value"
+          :show-batch="showBatchToolbar"
+          :batch-actions="batchActions"
+          :hide-assignee-column="wb.isMineTab.value || wb.isPoolTab.value"
+          :hide-group-names-column="!wb.isPoolTab.value"
+          :visible-columns="visibleColumns"
+          :column-order="columnOrder"
+          :show-filter-toggle="wb.usesStructuredFilter.value"
+          :filter-expanded="structuredFilterExpanded"
+          @batch="onBatch"
+          @update:search="wb.setSearch"
+          @create="openCreate"
+          @toggle-filter="structuredFilterExpanded = !structuredFilterExpanded"
+          @set-column-visible="setColumnVisible"
+          @reorder-column="reorderColumn"
+          @reset-columns="resetColumns"
+        />
+      </div>
 
       <!-- ⑤ 列表区：草稿视图 → 草稿列表；否则 → SLA 富列表 + 分页 -->
       <div class="table-card">
@@ -225,13 +260,11 @@ function onAiPrimaryAction(s: AiSuggestion) {
                   ? 'done'
                   : wb.isPoolTab.value
                     ? 'pool'
-                    : wb.isMentionTab.value
-                      ? 'mention'
-                      : 'default'
+                    : 'default'
             "
             :show-appointment-column="wb.showAppointmentColumn.value"
-            :highlight-mention-unread="wb.isMentionTab.value"
             :visible-columns="visibleColumns"
+            :column-order="columnOrder"
             @toggle="wb.toggleSelect"
             @toggle-all="wb.toggleSelectAllOnPage"
             @action="onAction"
@@ -267,6 +300,11 @@ function onAiPrimaryAction(s: AiSuggestion) {
       @view-ticket="onAiViewTicket"
       @primary-action="onAiPrimaryAction"
     />
+
+    <SaveFilterModal
+      v-model:open="saveFilterModalOpen"
+      @save="onConfirmSaveFilter"
+    />
   </div>
 </template>
 
@@ -286,10 +324,17 @@ function onAiPrimaryAction(s: AiSuggestion) {
 .workbench-body {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   padding: 20px;
   flex: 1;
   min-height: 0;
+  min-width: 0;
+}
+.list-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
   min-width: 0;
 }
 .table-card {

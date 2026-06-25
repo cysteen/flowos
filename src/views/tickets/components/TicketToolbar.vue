@@ -1,42 +1,53 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { ref } from 'vue';
 import {
   ThunderboltOutlined,
-  FilterOutlined,
   SettingOutlined,
   UnorderedListOutlined,
   DownOutlined,
+  UpOutlined,
+  SearchOutlined,
 } from '@ant-design/icons-vue';
-import { TICKET_COLUMN_DEFS } from '@/views/tickets/composables/useTicketColumns';
+import TicketColumnSettings from '@/views/tickets/components/TicketColumnSettings.vue';
 
 const props = withDefaults(
   defineProps<{
     selectedCount: number;
-    showFilter?: boolean;
+    search?: string;
+    searchPlaceholder?: string;
+    showSearch?: boolean;
+    showCreate?: boolean;
     showBatch?: boolean;
     batchActions?: string[];
-    /** 列设置：公共属性列显隐 */
     visibleColumns?: Record<string, boolean>;
-    /** 我的任务：处理人固定为当前坐席，列设置中不展示 */
+    columnOrder?: string[];
     hideAssigneeColumn?: boolean;
+    hideGroupNamesColumn?: boolean;
+    showFilterToggle?: boolean;
+    filterExpanded?: boolean;
   }>(),
   {
+    search: '',
+    searchPlaceholder: '搜索工单号、手机号、SN、产品…',
+    showSearch: true,
+    showCreate: true,
     batchActions: () => ['转办', '退回'],
+    showFilterToggle: false,
+    filterExpanded: false,
   },
 );
 
 const emit = defineEmits<{
   batch: [action: string];
-  filter: [];
-  toggleColumn: [key: string];
+  'update:search': [v: string];
+  create: [];
+  'toggle-filter': [];
+  setColumnVisible: [key: string, visible: boolean];
+  reorderColumn: [fromKey: string, toKey: string];
   resetColumns: [];
 }>();
 
-const COLUMN_DEFS = computed(() =>
-  props.hideAssigneeColumn
-    ? TICKET_COLUMN_DEFS.filter((c) => c.key !== 'assignee')
-    : TICKET_COLUMN_DEFS,
-);
+const columnSettingsOpen = ref(false);
 const batchOpen = ref(false);
 
 function pickBatch(action: string, selectedCount: number) {
@@ -48,41 +59,50 @@ function pickBatch(action: string, selectedCount: number) {
 
 <template>
   <div class="wb-toolbar">
-    <div v-if="showFilter !== false" class="wb-toolbar__btn" @click="emit('filter')">
-      <FilterOutlined :style="{ color: '#6B7280', fontSize: '14px' }" />
-      <span>筛选</span>
-    </div>
-
-    <div class="wb-toolbar__spacer" />
-
     <div class="wb-toolbar__sort smart">
       <ThunderboltOutlined :style="{ fontSize: '14px', color: '#1A6FFF' }" />
       <span class="wb-toolbar__sort-text">SLA 紧急度优先</span>
     </div>
 
     <div class="wb-toolbar__cluster">
-      <a-popover trigger="click" placement="bottomRight">
-        <div class="wb-toolbar__btn">
-          <SettingOutlined :style="{ color: '#6B7280', fontSize: '14px' }" />
-          <span>列设置</span>
-        </div>
-        <template #content>
-          <div class="col-settings">
-            <div class="cs-head">显示列（各类工单公共属性）</div>
-            <label v-for="c in COLUMN_DEFS" :key="c.key" class="cs-item">
-              <a-checkbox
-                :checked="visibleColumns ? visibleColumns[c.key] !== false : true"
-                @change="emit('toggleColumn', c.key)"
-              />
-              <span class="cs-label">{{ c.label }}</span>
-            </label>
-            <div class="cs-foot">
-              <span class="cs-fixed">工单/标题、操作 为固定列</span>
-              <a class="cs-reset" @click="emit('resetColumns')">重置默认</a>
-            </div>
-          </div>
-        </template>
-      </a-popover>
+      <div
+        v-if="showSearch"
+        class="wb-toolbar__search"
+      >
+        <SearchOutlined :style="{ color: '#9CA3AF', fontSize: '14px' }" />
+        <input
+          class="wb-toolbar__search-input"
+          :placeholder="searchPlaceholder"
+          :value="search"
+          @input="emit('update:search', ($event.target as HTMLInputElement).value)"
+        />
+      </div>
+
+      <div
+        v-if="showFilterToggle"
+        class="wb-toolbar__btn wb-toolbar__btn--filter"
+        :class="{ 'is-active': filterExpanded }"
+        @click="emit('toggle-filter')"
+      >
+        <span>{{ filterExpanded ? '收起' : '筛选' }}</span>
+        <UpOutlined v-if="filterExpanded" :style="{ fontSize: '11px', color: '#9CA3AF' }" />
+        <DownOutlined v-else :style="{ fontSize: '11px', color: '#9CA3AF' }" />
+      </div>
+
+      <div class="wb-toolbar__btn" @click="columnSettingsOpen = true">
+        <SettingOutlined :style="{ color: '#6B7280', fontSize: '14px' }" />
+        <span>列设置</span>
+      </div>
+      <TicketColumnSettings
+        v-model:open="columnSettingsOpen"
+        :visible-columns="visibleColumns ?? {}"
+        :column-order="columnOrder"
+        :hide-assignee-column="hideAssigneeColumn"
+        :hide-group-names-column="hideGroupNamesColumn"
+        @set-visible="(key, visible) => emit('setColumnVisible', key, visible)"
+        @reorder="(fromKey, toKey) => emit('reorderColumn', fromKey, toKey)"
+        @reset="emit('resetColumns')"
+      />
 
       <a-dropdown
         v-if="showBatch !== false"
@@ -117,37 +137,22 @@ function pickBatch(action: string, selectedCount: number) {
           </a-menu>
         </template>
       </a-dropdown>
+
+      <button v-if="showCreate" type="button" class="wb-toolbar__create" @click="emit('create')">
+        新建工单
+      </button>
     </div>
   </div>
 </template>
 
 <style scoped>
-.col-settings { width: 200px; display: flex; flex-direction: column; gap: 2px; }
-.cs-head { font-size: 12px; font-weight: 600; color: #6b7280; padding: 2px 2px 6px; }
-.cs-item {
-  display: flex; align-items: center; gap: 8px;
-  padding: 6px 6px; border-radius: 6px; cursor: pointer;
-}
-.cs-item:hover { background: #f5f7ff; }
-.cs-label { font-size: 13px; color: #374151; }
-.cs-foot {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  margin-top: 6px; padding-top: 8px; border-top: 1px solid #f0f0f0;
-}
-.cs-fixed { font-size: 11px; color: #9ca3af; }
-.cs-reset { font-size: 12px; color: #1a6fff; cursor: pointer; flex: none; }
-.cs-reset:hover { text-decoration: underline; }
-
 .wb-toolbar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   width: 100%;
   min-width: 0;
-}
-.wb-toolbar__spacer {
-  flex: 1;
-  min-width: 8px;
 }
 .wb-toolbar__sort {
   display: flex;
@@ -181,6 +186,49 @@ function pickBatch(action: string, selectedCount: number) {
   flex: none;
   flex-shrink: 0;
 }
+.wb-toolbar__search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 220px;
+  height: 36px;
+  padding: 0 10px;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  box-sizing: border-box;
+  flex: none;
+}
+.wb-toolbar__search:focus-within {
+  border-color: #1a6fff;
+  box-shadow: 0 0 0 2px rgb(26 111 255 / 10%);
+}
+.wb-toolbar__search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  font-size: 13px;
+  color: #374151;
+  background: transparent;
+}
+.wb-toolbar__search-input::placeholder {
+  color: #9ca3af;
+}
+.wb-toolbar__create {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: #1a6fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.wb-toolbar__create:hover {
+  background: #0f4fcc;
+}
 .wb-toolbar__btn {
   display: inline-flex;
   align-items: center;
@@ -201,6 +249,11 @@ function pickBatch(action: string, selectedCount: number) {
 }
 .wb-toolbar__btn--batch {
   color: #6b7280;
+}
+.wb-toolbar__btn--filter.is-active {
+  color: #1a6fff;
+  border-color: #bfdbfe;
+  background: #f8fbff;
 }
 .wb-toolbar__btn--batch.is-active {
   color: #1a6fff;

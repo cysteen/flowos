@@ -2,7 +2,14 @@ import { computed, ref } from 'vue';
 import { buildAiSuggestions } from '@/mock/aiSuggestions';
 import { TICKETS } from '@/mock/tickets';
 import { useTicketDraftStore } from '@/stores/ticketDrafts';
+import { useSavedFilters } from '@/views/tickets/composables/useSavedFilters';
 import type { AiSuggestionSummary } from '@/views/tickets/types/aiSuggestion';
+import {
+  isSavedFilterChipKey,
+  parseSavedFilterChipKey,
+  savedFilterChipKey,
+  type SavedFilterTab,
+} from '@/views/tickets/types/savedFilters';
 import {
   compareByMineSort,
   DEFAULT_DONE_QUERY,
@@ -16,9 +23,8 @@ import {
   chipsForTab,
   inDoneScope,
   inGroupPoolScope,
-  inMentionScope,
   inMineTaskScope,
-  isMentionUnread,
+  isWorkbenchSearchTab,
   POOL_GROUPS,
   WORKBENCH_HANDLER,
   type ChipKey,
@@ -41,17 +47,22 @@ function slaUrgencyCompare(a: Ticket, b: Ticket): number {
   return PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority];
 }
 
+function savedFilterTab(tab: TabKey): SavedFilterTab | null {
+  if (tab === 'mine' || tab === 'done' || tab === 'pool') return tab;
+  return null;
+}
+
 export function useTicketWorkbench() {
   const all = ref<Ticket[]>([...TICKETS]);
   const draftStore = useTicketDraftStore();
+  const savedFilters = useSavedFilters();
 
   const activeTab = ref<TabKey>('mine');
-  const activeChip = ref<ChipKey>('all');
+  const activeChip = ref<ChipKey | string>('all');
   const searchText = ref('');
   const mineQuery = ref<MineQueryFilter>(EMPTY_MINE_QUERY());
   const doneQuery = ref<MineQueryFilter>(DEFAULT_DONE_QUERY());
   const poolQuery = ref<MineQueryFilter>(EMPTY_MINE_QUERY());
-  const ccQuery = ref<MineQueryFilter>(EMPTY_MINE_QUERY());
   const mineSortRule = ref<MineSortRule>('sla_urgency');
   const selectedIds = ref<Set<string>>(new Set());
   const aiBarVisible = ref(true);
@@ -73,17 +84,20 @@ export function useTicketWorkbench() {
     if (activeTab.value === 'pool') {
       return all.value.filter((t) => inGroupPoolScope(t, VISIBLE_POOL_GROUPS));
     }
-    if (activeTab.value === 'cc') {
-      return all.value.filter((t) => inMentionScope(t));
-    }
     return all.value.filter((t) => t.tab === activeTab.value);
   });
 
   // 叠加 chip / 分组 + 搜索
   const filtered = computed(() => {
     const kw = searchText.value.trim().toLowerCase();
+    const structuredTab = isWorkbenchSearchTab(activeTab.value);
     return tabRows.value.filter((t) => {
-      if (activeTab.value !== 'pool' && !matchChip(t, activeChip.value, activeTab.value)) {
+      const chipKey = activeChip.value as ChipKey;
+      if (
+        activeTab.value !== 'pool'
+        && !isSavedFilterChipKey(activeChip.value)
+        && !matchChip(t, chipKey, activeTab.value)
+      ) {
         return false;
       }
       if (activeTab.value === 'mine') {
@@ -92,11 +106,16 @@ export function useTicketWorkbench() {
         if (!matchMineQuery(t, doneQuery.value)) return false;
       } else if (activeTab.value === 'pool') {
         if (!matchMineQuery(t, poolQuery.value)) return false;
-      } else if (activeTab.value === 'cc') {
-        if (!matchMineQuery(t, ccQuery.value)) return false;
-      } else if (kw) {
-        const hay = `${t.no} ${t.customer} ${t.title}`.toLowerCase();
-        if (!hay.includes(kw)) return false;
+      }
+      if (kw) {
+        if (structuredTab) {
+          const matchNo = t.no.toLowerCase().includes(kw);
+          const phone = (t.customerPhone ?? '').toLowerCase();
+          if (!matchNo && !phone.includes(kw)) return false;
+        } else {
+          const hay = `${t.no} ${t.customer} ${t.title}`.toLowerCase();
+          if (!hay.includes(kw)) return false;
+        }
       }
       return true;
     });
@@ -135,8 +154,6 @@ export function useTicketWorkbench() {
         if (inDoneScope(t, WORKBENCH_HANDLER)) map.done++;
       } else if (t.tab === 'pool') {
         if (inGroupPoolScope(t, VISIBLE_POOL_GROUPS)) map.pool++;
-      } else if (t.tab === 'cc') {
-        if (inMentionScope(t)) map.cc++;
       } else {
         map[t.tab]++;
       }
@@ -144,22 +161,29 @@ export function useTicketWorkbench() {
     return map;
   });
 
-  const activeChips = computed(() => chipsForTab(activeTab.value));
-
-  const mentionUnreadCounts = computed(() => {
-    const rows = all.value.filter((t) => inMentionScope(t));
-    return rows.filter((t) => isMentionUnread(t)).length;
+  const activeChips = computed(() => {
+    const builtin = chipsForTab(activeTab.value);
+    const sfTab = savedFilterTab(activeTab.value);
+    if (!sfTab) return builtin;
+    return [...builtin, ...savedFilters.chipsForTab(sfTab)];
   });
-
-  const tabUnreadCounts = computed<Partial<Record<TabKey, number>>>(() => ({
-    cc: mentionUnreadCounts.value,
-  }));
 
   // 当前 Tab 下各 chip 计数
   const chipCounts = computed<Record<string, number>>(() => {
     const map: Record<string, number> = {};
     for (const chip of activeChips.value) {
-      map[chip.key] = tabRows.value.filter((t) => matchChip(t, chip.key, activeTab.value)).length;
+      if (isSavedFilterChipKey(chip.key)) {
+        const sf = savedFilters.findByChipKey(chip.key);
+        if (sf) {
+          map[chip.key] = tabRows.value.filter((t) => matchMineQuery(t, sf.query)).length;
+        } else {
+          map[chip.key] = 0;
+        }
+      } else {
+        map[chip.key] = tabRows.value.filter((t) =>
+          matchChip(t, chip.key as ChipKey, activeTab.value),
+        ).length;
+      }
     }
     if (activeTab.value === 'review') {
       map.draft = draftStore.drafts.length;
@@ -199,33 +223,52 @@ export function useTicketWorkbench() {
   const isMineTab = computed(() => activeTab.value === 'mine');
   const isDoneTab = computed(() => activeTab.value === 'done');
   const isPoolTab = computed(() => activeTab.value === 'pool');
-  const isMentionTab = computed(() => activeTab.value === 'cc');
-  /** 主作业 Tab：结构化筛选（无 chips 行时间窗/搜索框） */
-  const usesStructuredFilter = computed(
-    () =>
-      activeTab.value === 'mine'
-      || activeTab.value === 'done'
-      || activeTab.value === 'pool'
-      || activeTab.value === 'cc',
-  );
+  /** 我的任务 / 已办 / 本组工单池：快捷搜索 + 结构化筛选 */
+  const usesStructuredFilter = computed(() => isWorkbenchSearchTab(activeTab.value));
   const structuredQuery = computed(() => {
     if (activeTab.value === 'done') return doneQuery.value;
     if (activeTab.value === 'pool') return poolQuery.value;
-    if (activeTab.value === 'cc') return ccQuery.value;
     return mineQuery.value;
   });
 
   // ---- actions ----
+  /** 清空当前 Tab 的结构化查询（已办恢复默认 30 天窗） */
+  function clearStructuredForActiveTab() {
+    setStructuredQueryInternal(
+      activeTab.value === 'done' ? DEFAULT_DONE_QUERY() : EMPTY_MINE_QUERY(),
+    );
+  }
   function setTab(tab: TabKey) {
+    if (tab === 'cc') tab = 'mine';
     if (activeTab.value === tab) return;
     activeTab.value = tab;
     activeChip.value = 'all';
     current.value = 1;
     selectedIds.value = new Set();
+    // 切 Tab 视为干净入口：清掉各 Tab 残留的结构化查询（与 setSearch('') 重置一致），
+    // 避免保存筛选遗留条件在「全部」chip 下静默窄化列表
+    mineQuery.value = EMPTY_MINE_QUERY();
+    poolQuery.value = EMPTY_MINE_QUERY();
+    doneQuery.value = DEFAULT_DONE_QUERY();
   }
-  function setChip(chip: ChipKey) {
+  function setChip(chip: ChipKey | string, onApplyOptionalVisible?: (v: Record<string, boolean>) => void) {
+    const prevChip = activeChip.value;
     activeChip.value = chip;
     current.value = 1;
+    const sfId = parseSavedFilterChipKey(chip);
+    if (sfId) {
+      const sf = savedFilters.findByChipKey(chip);
+      if (sf) {
+        setStructuredQueryInternal(sf.query);
+        if (sf.optionalVisible && onApplyOptionalVisible) {
+          onApplyOptionalVisible(sf.optionalVisible);
+        }
+      }
+    } else if (isSavedFilterChipKey(prevChip)) {
+      // 从「保存筛选」chip 改选内置 chip：清掉保存筛选写入的结构化查询，
+      // 否则「全部」等内置 chip 仍被该查询静默窄化（且面板收起时用户无从察觉）
+      clearStructuredForActiveTab();
+    }
   }
   function setMineQuery(q: MineQueryFilter) {
     mineQuery.value = q;
@@ -235,12 +278,32 @@ export function useTicketWorkbench() {
     doneQuery.value = q;
     current.value = 1;
   }
-  function setStructuredQuery(q: MineQueryFilter) {
+  function setStructuredQueryInternal(q: MineQueryFilter) {
     if (activeTab.value === 'done') doneQuery.value = q;
     else if (activeTab.value === 'pool') poolQuery.value = q;
-    else if (activeTab.value === 'cc') ccQuery.value = q;
     else mineQuery.value = q;
     current.value = 1;
+  }
+  function setStructuredQuery(q: MineQueryFilter) {
+    if (isSavedFilterChipKey(activeChip.value)) {
+      activeChip.value = 'all';
+    }
+    setStructuredQueryInternal(q);
+  }
+  function saveCurrentFilter(
+    name: string,
+    optionalVisible?: Record<string, boolean>,
+    onApplyOptionalVisible?: (v: Record<string, boolean>) => void,
+  ) {
+    const tab = savedFilterTab(activeTab.value);
+    if (!tab) return null;
+    const item = savedFilters.addSavedFilter(tab, name, structuredQuery.value, optionalVisible);
+    activeChip.value = savedFilterChipKey(item.id);
+    if (item.optionalVisible && onApplyOptionalVisible) {
+      onApplyOptionalVisible(item.optionalVisible);
+    }
+    current.value = 1;
+    return item;
   }
   function applyMineQuery() {
     current.value = 1;
@@ -296,10 +359,6 @@ export function useTicketWorkbench() {
     }
     return { claimed, failed };
   }
-  function acknowledgeMention(id: string) {
-    const t = all.value.find((x) => x.id === id);
-    if (t && t.tab === 'cc') t.mentionUnread = false;
-  }
   function dismissAiSuggestion(id: string) {
     dismissedAiIds.value = new Set([...dismissedAiIds.value, id]);
   }
@@ -309,13 +368,13 @@ export function useTicketWorkbench() {
 
   return {
     all, activeTab, activeChip, activeChips, poolGroups,
-    searchText, mineQuery, doneQuery, poolQuery, ccQuery, structuredQuery, mineSortRule, selectedIds, aiBarVisible,
+    searchText, mineQuery, doneQuery, poolQuery, structuredQuery, mineSortRule, selectedIds, aiBarVisible,
     current, pageSize,
-    tabRows, filtered, sorted, paged, total, tabCounts, tabUnreadCounts, chipCounts, drafts,
+    tabRows, filtered, sorted, paged, total, tabCounts, chipCounts, drafts,
     selectedCount, allPageSelected, aiSuggestions, aiSummary, showAiBar,
-    isDraftView, showAppointmentColumn, isMineTab, isDoneTab, isPoolTab, isMentionTab, usesStructuredFilter,
-    setTab, setChip, setMineQuery, setDoneQuery, setStructuredQuery, applyMineQuery, applyStructuredQuery, setMineSortRule, setSearch, toggleSelect, toggleSelectAllOnPage, clearSelection,
-    setPage, addTicket, claimTicket, claimTickets, acknowledgeMention, dismissAiSuggestion, ticketById,
+    isDraftView, showAppointmentColumn, isMineTab, isDoneTab, isPoolTab, usesStructuredFilter,
+    setTab, setChip, setMineQuery, setDoneQuery, setStructuredQuery, saveCurrentFilter, applyMineQuery, applyStructuredQuery, setMineSortRule, setSearch, toggleSelect, toggleSelectAllOnPage, clearSelection,
+    setPage, addTicket, claimTicket, claimTickets, dismissAiSuggestion, ticketById,
     removeDraft: (id: string) => draftStore.remove(id),
   };
 }

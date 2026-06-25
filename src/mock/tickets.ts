@@ -207,7 +207,7 @@ const BASE_TICKETS: Ticket[] = [
     customer: '邓超', vip: true, customerTags: ['记者'], product: '开放平台',
     nodeStatus: '处理中·一线', nodeStep: 3, nodeTotal: 5, priority: 'P2',
     slaText: '07:15:00', slaSub: '充足', slaState: 'ok', slaMinutes: 435,
-    assignee: '陈坐席', tab: 'cc', mentionUnread: true, hasSupplement: true,
+    assignee: '陈坐席', tab: 'pool', mentionUnread: true, hasSupplement: true,
   },
   {
     id: 't17', no: 'LCMN-20260609-66248', type: '投诉', channel: '在线客服',
@@ -215,7 +215,7 @@ const BASE_TICKETS: Ticket[] = [
     customer: '曾琳', vip: false, product: '企业版',
     nodeStatus: '已升级·二线', nodeStep: 4, nodeTotal: 5, priority: 'P0',
     slaText: '01:05:00', slaSub: '距超时', slaState: 'soon', slaMinutes: 65,
-    assignee: '林坐席', tab: 'cc', mentionUnread: true, hasDunning: true,
+    assignee: '林坐席', tab: 'pool', mentionUnread: true, hasDunning: true,
   },
   {
     id: 't31', no: 'LCMN-20260609-66510', type: '咨询', channel: '电话',
@@ -223,7 +223,7 @@ const BASE_TICKETS: Ticket[] = [
     customer: '白露', vip: false, customerTags: ['老师'], product: '会员服务',
     nodeStatus: '处理中·一线', nodeStep: 2, nodeTotal: 5, priority: 'P2',
     slaText: '04:30:00', slaSub: '充足', slaState: 'ok', slaMinutes: 270,
-    assignee: '陈坐席', tab: 'cc', mentionUnread: false,
+    assignee: '陈坐席', tab: 'pool', mentionUnread: false,
   },
 
   // ---- 待审核 (review) 3 ----
@@ -340,7 +340,65 @@ const TICKET_BRIEFS: Record<string, { problemDesc: string; latestHandling: strin
   t31: { problemDesc: '同事 @ 请求协助确认退款政策', latestHandling: '待确认退款政策口径' },
 };
 
+/** 新建工单表单字段（列表可选列展示） */
+const TICKET_FORM_FIELDS: Record<
+  string,
+  {
+    businessType: string;
+    problemL1: string;
+    problemL2: string;
+    problemL3: string;
+    resolveTimeRemark: string;
+  }
+> = {
+  t1: {
+    businessType: '翻录',
+    problemL1: '功能异常',
+    problemL2: '播放问题',
+    problemL3: '在线播放',
+    resolveTimeRemark: '希望今日内恢复播放',
+  },
+  t2: {
+    businessType: '学习机',
+    problemL1: '设备故障',
+    problemL2: '无法开机',
+    problemL3: '无响应',
+    resolveTimeRemark: '明日 12:00 前上门',
+  },
+  t5: {
+    businessType: '学习机',
+    problemL1: '功能异常',
+    problemL2: '播放问题',
+    problemL3: '无法播放',
+    resolveTimeRemark: '3 个工作日内退款',
+  },
+  t6: {
+    businessType: '学习机',
+    problemL1: '设备故障',
+    problemL2: '网络',
+    problemL3: 'WiFi 连不上',
+    resolveTimeRemark: '预约周六上午上门',
+  },
+};
+
+/** 路由分组名称（可多选，如翻录咨询 / 翻录投诉 / 技术支持） */
+const TICKET_GROUP_NAMES: Record<string, string[]> = {
+  t1: ['翻录投诉', '技术支持'],
+  t2: ['翻录咨询'],
+  t4: ['翻录商机', '技术支持'],
+  t5: ['学习机投诉'],
+  t7: ['智学网咨询', '翻录咨询'],
+  t8: ['翻录投诉', '技术支持'],
+  t11: ['学习机投诉', '技术支持'],
+  t13: ['翻录咨询'],
+  t14: ['翻录投诉'],
+  t17: ['学习机咨询', '技术支持'],
+};
+
 export const TICKETS: Ticket[] = BASE_TICKETS.map((t) => ({
   ...t,
   ...(TICKET_BRIEFS[t.id] ?? {}),
+  ...(TICKET_FORM_FIELDS[t.id] ?? {}),
+  ...(TICKET_GROUP_NAMES[t.id] ? { groupNames: TICKET_GROUP_NAMES[t.id] } : {}),
+  ticketSource: t.channel === '电话' ? '400呼入' : t.channel,
 }));

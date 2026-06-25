@@ -13,7 +13,7 @@ interface ContactDraft {
 
 const CONTACT_TYPE_OPTIONS: ContactType[] = ['手机', '固话', '邮箱'];
 const CUSTOMER_TYPE_OPTIONS = ['个人客户', '企业客户', 'VIP客户', '渠道客户'];
-const GENDER_OPTIONS = ['男', '女', '未知'];
+const GENDER_OPTIONS = ['男', '女'];
 
 const props = defineProps<{
   open: boolean;
@@ -146,9 +146,10 @@ function onSave() {
             v-model:value="draft.customerTypes"
             mode="multiple"
             class="full"
-            placeholder="请选择（可多选）"
+            placeholder="点击下拉选择（可多选）"
             :options="CUSTOMER_TYPE_OPTIONS.map((v) => ({ value: v, label: v }))"
             :max-tag-count="1"
+            show-arrow
           />
         </div>
         <div class="field">
@@ -156,7 +157,7 @@ function onSave() {
           <FormSelect
             v-model:value="draft.gender"
             class="full"
-            placeholder="请选择"
+            placeholder="点击下拉选择"
             :options="GENDER_OPTIONS.map((v) => ({ value: v, label: v }))"
           />
         </div>
@@ -208,7 +209,6 @@ function onSave() {
             </div>
           </div>
         </div>
-        <p class="hint">手机号为用户唯一标识，可添加多条联系方式</p>
       </div>
 
       <!-- 行4：省市区 -->
@@ -331,11 +331,5 @@ function onSave() {
 
 .remove-btn:hover {
   color: #ef4444;
-}
-
-.hint {
-  margin: 0;
-  font-size: 10px;
-  color: #9ca3af;
 }
 </style>

@@ -1,4 +1,6 @@
-import type { Priority, Ticket } from '@/views/tickets/types/ticket';
+import type { Priority, SlaState, Ticket, TicketType } from '@/views/tickets/types/ticket';
+import { resolveTicketGroupNames } from '@/views/tickets/types/ticket';
+import type { BusinessType, TicketSource } from '@/views/tickets/types/createTicket';
 
 /** 结构化筛选 · 时间快捷选项 */
 export type MineTimePreset = '' | '7d' | '30d' | '90d' | 'custom';
@@ -27,6 +29,19 @@ export interface MineQueryFilter {
   dateTo: string;
   /** 本组工单池 · 用户分组 ID；空=全部 */
   poolGroup: string;
+  /** 以下经「+ 筛选」加入的可选筛选项 */
+  customer: string;
+  nodeStatus: string;
+  assignee: string;
+  businessType: string;
+  ticketType: '' | TicketType;
+  ticketSource: '' | TicketSource;
+  problemL1: string;
+  problemL2: string;
+  problemL3: string;
+  resolveTimeRemark: string;
+  slaState: '' | SlaState;
+  groupName: string;
 }
 
 export const EMPTY_MINE_QUERY = (): MineQueryFilter => ({
@@ -40,6 +55,18 @@ export const EMPTY_MINE_QUERY = (): MineQueryFilter => ({
   dateFrom: '',
   dateTo: '',
   poolGroup: '',
+  customer: '',
+  nodeStatus: '',
+  assignee: '',
+  businessType: '',
+  ticketType: '',
+  ticketSource: '',
+  problemL1: '',
+  problemL2: '',
+  problemL3: '',
+  resolveTimeRemark: '',
+  slaState: '',
+  groupName: '',
 });
 
 /** 已办 Tab 默认时间窗（数据量较大） */
@@ -149,7 +176,11 @@ export function resolveMineTimeRange(q: MineQueryFilter): { from: number; to: nu
 }
 
 export function matchMineQuery(t: Ticket, q: MineQueryFilter): boolean {
-  if (q.ticketNo && !includes(t.no, q.ticketNo)) return false;
+  if (q.ticketNo) {
+    const kw = q.ticketNo.trim().toLowerCase();
+    const hay = `${t.no} ${t.title}`.toLowerCase();
+    if (!hay.includes(kw)) return false;
+  }
   if (q.phone) {
     const phone = t.customerPhone ?? '';
     if (!includes(phone, q.phone) && !includes(t.customer, q.phone)) return false;
@@ -159,6 +190,29 @@ export function matchMineQuery(t: Ticket, q: MineQueryFilter): boolean {
   if (q.productCategory && t.productCategory !== q.productCategory) return false;
   if (q.productName && t.product !== q.productName) return false;
   if (q.poolGroup && t.groupId !== q.poolGroup) return false;
+  if (q.customer && !includes(t.customer, q.customer)) return false;
+  if (q.nodeStatus && t.nodeStatus !== q.nodeStatus) return false;
+  if (q.assignee) {
+    const name = t.assignee ?? '';
+    if (!includes(name, q.assignee)) return false;
+  }
+  if (q.businessType && t.businessType !== q.businessType) return false;
+  if (q.ticketType && t.type !== q.ticketType) return false;
+  if (q.ticketSource) {
+    const src = t.ticketSource ?? (t.channel === '电话' ? '400呼入' : t.channel);
+    if (src !== q.ticketSource) return false;
+  }
+  if (q.problemL1 && t.problemL1 !== q.problemL1) return false;
+  if (q.problemL2 && t.problemL2 !== q.problemL2) return false;
+  if (q.problemL3 && t.problemL3 !== q.problemL3) return false;
+  if (q.resolveTimeRemark && !(t.resolveTimeRemark && includes(t.resolveTimeRemark, q.resolveTimeRemark))) {
+    return false;
+  }
+  if (q.slaState && t.slaState !== q.slaState) return false;
+  if (q.groupName) {
+    const names = resolveTicketGroupNames(t);
+    if (!names.some((n) => includes(n, q.groupName))) return false;
+  }
 
   const range = resolveMineTimeRange(q);
   if (range) {
@@ -181,6 +235,18 @@ export function hasMineQuery(q: MineQueryFilter): boolean {
     || q.dateFrom
     || q.dateTo
     || q.poolGroup
+    || q.customer
+    || q.nodeStatus
+    || q.assignee
+    || q.businessType
+    || q.ticketType
+    || q.ticketSource
+    || q.problemL1
+    || q.problemL2
+    || q.problemL3
+    || q.resolveTimeRemark
+    || q.slaState
+    || q.groupName
   );
 }
 

@@ -80,6 +80,16 @@ export interface Ticket {
   customerPhone?: string;
   /** 设备 SN（筛选） */
   sn?: string;
+  /** 业务类型（新建工单 · 工单基础） */
+  businessType?: string;
+  /** 工单来源（与 channel 互补，列表列展示） */
+  ticketSource?: string;
+  /** 问题分类（新建工单 · 产品问题） */
+  problemL1?: string;
+  problemL2?: string;
+  problemL3?: string;
+  /** 解决时间备注 */
+  resolveTimeRemark?: string;
   /** 产品分类（筛选） */
   productCategory?: string;
   /** 客户身份标签，如记者/老师/校长/自媒体 */
@@ -138,6 +148,8 @@ export interface Ticket {
   handledByMe?: boolean;
   /** 归属用户分组（本组工单池） */
   groupId?: string;
+  /** 路由/技能分组名称（可多选，列表「分组名称」列） */
+  groupNames?: string[];
   /** @/抄送 未知晓 */
   mentionUnread?: boolean;
   tab: TabKey;
@@ -233,9 +245,13 @@ export const TABS: TabMeta[] = [
   { key: 'mine', label: '我的任务', badge: '#1A6FFF' },
   { key: 'done', label: '已办', badge: '#9CA3AF' },
   { key: 'pool', label: '本组工单池', badge: '#06B6D4' },
-  { key: 'cc', label: '@我的工单', badge: '#9CA3AF' },
   { key: 'review', label: '待审核', badge: '#F59E0B' },
 ];
+
+/** 工作台主 Tab：支持快捷搜索 + 结构化筛选 */
+export function isWorkbenchSearchTab(tab: TabKey): boolean {
+  return tab === 'mine' || tab === 'done' || tab === 'pool';
+}
 
 export interface ListViewMeta {
   key: ListViewKey;
@@ -268,7 +284,8 @@ export function inListView(t: Ticket, view: ListViewKey): boolean {
 }
 
 export interface ChipMeta {
-  key: ChipKey;
+  /** 内置 chip 或已保存筛选器 `sf:{id}` */
+  key: ChipKey | string;
   label: string;
   /** 临期/超时为 SLA 维度，唯一保留彩色（临期=warn 橙 / 超时=danger 红）；其余为状态分类，中性。见 PRD-02 §7⑨ */
   tone?: 'warn' | 'danger';
@@ -333,6 +350,26 @@ export const POOL_GROUPS: PoolGroupMeta[] = [
   { id: 'line2', label: '二线技术支持组' },
   { id: 'hardware', label: '硬件缺陷组' },
 ];
+
+/** 列表「分组名称」列：优先 groupNames，否则按业务线+工单类型推断 */
+export function resolveTicketGroupNames(t: Ticket): string[] {
+  if (t.groupNames?.length) return t.groupNames;
+  const names: string[] = [];
+  const biz = t.businessType?.trim();
+  if (biz) {
+    const typeSuffix: Record<TicketType, string> = {
+      咨询: '咨询',
+      投诉: '投诉',
+      建议: '建议',
+      商机: '商机',
+    };
+    names.push(`${biz}${typeSuffix[t.type] ?? t.type}`);
+  }
+  if (t.nodeStatus === '已升级·二线' || t.smartMarks?.includes('升级')) {
+    if (!names.includes('技术支持')) names.push('技术支持');
+  }
+  return names;
+}
 
 export type PoolGroupFilterKey = 'all' | string;
 
