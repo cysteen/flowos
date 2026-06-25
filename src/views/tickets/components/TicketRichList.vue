@@ -64,6 +64,7 @@ const showSelectionColumn = computed(() => props.variant === 'mine');
         </div>
       </div>
       <div class="col-title th">工单 / 标题</div>
+      <div v-if="showCol('summary')" class="col-summary th">工单摘要</div>
       <div v-if="showCol('customer')" class="col-customer th">客户</div>
       <div v-if="showCol('product')" class="col-product th">产品</div>
       <div v-if="showCol('node')" class="col-node th">当前节点</div>
@@ -103,14 +104,30 @@ const showSelectionColumn = computed(() => props.variant === 'mine');
           <span class="sep">·</span>
           <span class="ticket-no" @click="emit('clickNo', t)">{{ t.no }}</span>
         </div>
-        <div v-if="t.problemDesc" class="title-brief">
-          <span class="brief-k">问题</span>
-          <span class="brief-v">{{ t.problemDesc }}</span>
-        </div>
-        <div v-if="t.latestHandling" class="title-brief">
-          <span class="brief-k handle">最新</span>
-          <span class="brief-v">{{ t.latestHandling }}</span>
-        </div>
+      </div>
+
+      <!-- 工单摘要（hover 展示问题描述 + 最新处理全文，参考工单处理页） -->
+      <div v-if="showCol('summary')" class="col-summary cell-summary">
+        <a-popover trigger="hover" placement="rightTop" :mouse-enter-delay="0.2">
+          <div class="summary-brief">
+            <span class="brief-k">问题</span>
+            <span class="brief-v">{{ t.problemDesc || '—' }}</span>
+          </div>
+          <template #content>
+            <div class="summary-pop">
+              <div class="sp-title"><span class="sp-type">{{ t.type }}</span>{{ t.title }}</div>
+              <div class="sp-no">{{ t.no }}</div>
+              <div class="sp-field">
+                <span class="sp-k">问题描述</span>
+                <span class="sp-v">{{ t.problemDesc || '—' }}</span>
+              </div>
+              <div class="sp-field">
+                <span class="sp-k handle">最新处理</span>
+                <span class="sp-v">{{ t.latestHandling || '暂无处理记录' }}</span>
+              </div>
+            </div>
+          </template>
+        </a-popover>
       </div>
 
       <!-- 客户 -->
@@ -193,6 +210,7 @@ const showSelectionColumn = computed(() => props.variant === 'mine');
 }
 /* 列宽对齐 .pen SJpgc thead/row body */
 .col-title { flex: 1; min-width: 140px; }
+.col-summary { width: 200px; flex: none; }
 .col-customer { width: 108px; flex: none; }
 .col-product { width: 128px; flex: none; }
 .col-node { width: 130px; flex: none; }
@@ -277,8 +295,9 @@ const showSelectionColumn = computed(() => props.variant === 'mine');
 .ticket-no { font-size: 12px; font-weight: 500; color: #1a6fff; cursor: pointer; flex: none; }
 .ticket-no:hover { text-decoration: underline; }
 
-/* 问题描述 / 最新处理 速览（单行截断） */
-.title-brief { display: flex; align-items: center; gap: 6px; min-width: 0; }
+/* 工单摘要列：单元格单行截断，hover 出全文弹窗 */
+.cell-summary { display: flex; align-items: center; min-width: 0; }
+.summary-brief { display: flex; align-items: center; gap: 6px; min-width: 0; cursor: default; }
 .brief-k {
   flex: none; font-size: 10px; font-weight: 600; line-height: 16px;
   padding: 0 5px; border-radius: 3px; color: #6b7280; background: #f3f4f6;
@@ -372,4 +391,24 @@ const showSelectionColumn = computed(() => props.variant === 'mine');
   color: #9ca3af;
   font-size: 13px;
 }
+</style>
+
+<!-- 工单摘要 hover 弹窗内容（teleport 到 body，需非 scoped） -->
+<style>
+.summary-pop { width: 320px; display: flex; flex-direction: column; gap: 8px; }
+.summary-pop .sp-title {
+  font-size: 13px; font-weight: 600; color: #111827; line-height: 1.4;
+  display: flex; align-items: baseline; gap: 6px;
+}
+.summary-pop .sp-type {
+  flex: none; font-size: 11px; font-weight: 600; color: #4b5563;
+  background: #f3f4f6; border-radius: 3px; padding: 1px 6px;
+}
+.summary-pop .sp-no { font-size: 11px; color: #9ca3af; margin-top: -2px; }
+.summary-pop .sp-field { display: flex; gap: 8px; font-size: 12px; line-height: 1.6; }
+.summary-pop .sp-k {
+  flex: none; width: 52px; font-weight: 600; color: #6b7280;
+}
+.summary-pop .sp-k.handle { color: #047857; }
+.summary-pop .sp-v { flex: 1; min-width: 0; color: #374151; word-break: break-word; }
 </style>
