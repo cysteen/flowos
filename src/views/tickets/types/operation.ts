@@ -106,11 +106,15 @@ export interface ProcessFormDraft {
   /** 建议专属 */
   suggestCat1: string;
   suggestCat2: string;
-  suggestAdopt: 'adopt' | 'reject' | 'toRequirement';
+  /** 是否采纳（建议服务结论；默认否，无下级字段） */
+  suggestAccepted: boolean;
   /** 商机专属 */
   leadIntent: 'high' | 'mid' | 'low';
   leadAmount: string;
+  /** 商机解决结论 */
   leadStage: 'converted' | 'following' | 'lost';
+  /** 商机编号（CRM 商机单号） */
+  leadNo: string;
 }
 
 /** 处理表单可折叠区块 key（含各工单类型专属区） */
@@ -121,7 +125,8 @@ export type SectionKey =
   | 'external'
   | 'quality'
   | 'suggest'
-  | 'lead';
+  | 'lead'
+  | 'appointment';
 
 export const PROCESS_TABS = [
   { key: 'process', label: '工单处理' },

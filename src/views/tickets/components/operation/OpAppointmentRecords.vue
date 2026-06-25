@@ -6,12 +6,10 @@ import type { AppointmentRecord } from '@/views/tickets/types/operation';
 const DATE_TIME_FORMAT = 'YYYY-MM-DD HH:mm:ss';
 
 const props = defineProps<{
-  needed: boolean;
   records: AppointmentRecord[];
 }>();
 
 const emit = defineEmits<{
-  'update:needed': [v: boolean];
   'update:records': [v: AppointmentRecord[]];
 }>();
 
@@ -19,10 +17,9 @@ function newRecord(): AppointmentRecord {
   return { id: `appt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, scheduledAt: '', done: false };
 }
 
-/** 列表非空即视为「需要预约」，同步 needed 给父级 */
+/** 单一出口：仅 emit records，needed（是否需要预约）由父级在同一次 patch 内派生，避免两次独立 patch 互相覆盖 */
 function commit(records: AppointmentRecord[]) {
   emit('update:records', records);
-  emit('update:needed', records.length > 0);
 }
 
 function toDayjs(value: string): Dayjs | undefined {

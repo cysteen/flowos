@@ -90,10 +90,8 @@ function onRiskChange(hasRisk: boolean) {
   <!-- 预约 -->
   <div v-else-if="activeChip === 'appointment'" class="chip-panel panel-neutral">
     <OpAppointmentRecords
-      :needed="form.appointmentNeeded"
       :records="form.appointmentRecords"
-      @update:needed="(v) => update({ appointmentNeeded: v })"
-      @update:records="(v) => update({ appointmentRecords: v })"
+      @update:records="(v) => update({ appointmentRecords: v, appointmentNeeded: v.length > 0 })"
     />
   </div>
 

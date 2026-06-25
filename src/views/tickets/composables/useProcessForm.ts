@@ -38,6 +38,7 @@ export function useProcessForm(getType: () => string) {
     quality: true,
     suggest: true,
     lead: true,
+    appointment: true,
   });
 
   const filledSupplementCount = computed(() => countFilledSupplements(form.value));

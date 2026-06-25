@@ -123,6 +123,7 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
       leadIntent: 'high',
       leadAmount: '50000',
       leadStage: 'following',
+      leadNo: 'OPP-20260610-002',
     },
     tabData: {
       currentFlowNode: '工单处理',
@@ -202,7 +203,7 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
       qualityIsStandard: true,
       suggestCat1: '功能优化',
       suggestCat2: '稳定性',
-      suggestAdopt: 'toRequirement',
+      suggestAccepted: false,
     },
     tabData: {
       currentFlowNode: '工单处理',

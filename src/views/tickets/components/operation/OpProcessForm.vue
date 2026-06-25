@@ -2,12 +2,13 @@
 import { computed } from 'vue';
 import {
   FileTextOutlined, CheckCircleOutlined, AppstoreOutlined, SoundOutlined,
-  CheckOutlined,
+  CheckOutlined, CalendarOutlined,
   AuditOutlined, BulbOutlined, RiseOutlined,
 } from '@ant-design/icons-vue';
 import OpCollapsibleSection from './OpCollapsibleSection.vue';
 import OpRecordFields from './OpRecordFields.vue';
 import OpSupplementChipPanels from './OpSupplementChipPanels.vue';
+import OpAppointmentRecords from './OpAppointmentRecords.vue';
 import OpQualityStandardFields from './OpQualityStandardFields.vue';
 import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue';
 import { SUGGEST_L1_OPTIONS, SUGGEST_L2_MAP } from '@/views/tickets/types/createTicket';
@@ -37,6 +38,7 @@ const emit = defineEmits<{
 }>();
 
 const isComplaint = computed(() => props.ticketType === '投诉');
+const isConsult = computed(() => props.ticketType === '咨询');
 const isSuggest = computed(() => props.ticketType === '建议');
 const isLead = computed(() => props.ticketType === '商机');
 
@@ -123,63 +125,65 @@ function chipActiveClass(key: SupplementChip): string {
       />
     </OpCollapsibleSection>
 
-    <!-- ===== 投诉：完整表单（服务与结论 + 补充处理项 + 外投） ===== -->
-    <template v-if="isComplaint">
-      <OpCollapsibleSection
-        title="服务与结论"
-        :icon="CheckCircleOutlined"
-        badge="服务方式支持关键词搜索"
-        badge-variant="hint"
-        :expanded="expandedSections.service"
-        @toggle="emit('toggleSection', 'service')"
-      >
-        <div class="section-subhead">
-          <span class="sub-title">服务方式与解决结论</span>
-          <span class="sub-hint">结案前确认</span>
-        </div>
-        <div class="field-row field-row--service">
-          <div class="field inline">
-            <label>服务方式</label>
-            <FormSelect
-              :value="form.serviceMethod"
-              :options="serviceMethodOptions"
-              placeholder="请选择或搜索"
-              style="width: 100%"
-              @update:value="(v) => onServiceMethodChange(String(v ?? ''))"
-            />
-          </div>
-          <div class="field inline">
-            <label>服务类型</label>
-            <FormSelect
-              :value="form.serviceType"
-              :options="serviceTypeOptions"
-              placeholder="请选择或搜索"
-              style="width: 100%"
-              @update:value="(v) => patch({ serviceType: String(v ?? '') })"
-            />
-          </div>
-          <div class="field inline">
-            <label>问题解决结论</label>
-            <a-select
-              :value="form.conclusion"
-              :options="CONCLUSION_OPTIONS"
-              placeholder="请选择"
-              style="width: 100%"
-              @update:value="onConclusionChange"
-            />
-          </div>
-        </div>
-        <div v-if="form.conclusion === 'concession'" class="field concession-field">
-          <label>退让方案</label>
-          <a-textarea
-            :value="form.concessionPlan"
-            :rows="3"
-            placeholder="请补充退让方案…"
-            @update:value="(v: string) => patch({ concessionPlan: v })"
+    <!-- ===== 服务与结论：投诉 + 咨询（均支持服务方式 / 服务类型 / 问题解决结论） ===== -->
+    <OpCollapsibleSection
+      v-if="isComplaint || isConsult"
+      title="服务与结论"
+      :icon="CheckCircleOutlined"
+      badge="服务方式支持关键词搜索"
+      badge-variant="hint"
+      :expanded="expandedSections.service"
+      @toggle="emit('toggleSection', 'service')"
+    >
+      <div class="section-subhead">
+        <span class="sub-title">服务方式与解决结论</span>
+        <span class="sub-hint">结案前确认</span>
+      </div>
+      <div class="field-row field-row--service">
+        <div class="field inline">
+          <label>服务方式</label>
+          <FormSelect
+            :value="form.serviceMethod"
+            :options="serviceMethodOptions"
+            placeholder="请选择或搜索"
+            style="width: 100%"
+            @update:value="(v) => onServiceMethodChange(String(v ?? ''))"
           />
         </div>
-      </OpCollapsibleSection>
+        <div class="field inline">
+          <label>服务类型</label>
+          <FormSelect
+            :value="form.serviceType"
+            :options="serviceTypeOptions"
+            placeholder="请选择或搜索"
+            style="width: 100%"
+            @update:value="(v) => patch({ serviceType: String(v ?? '') })"
+          />
+        </div>
+        <div class="field inline">
+          <label>问题解决结论</label>
+          <a-select
+            :value="form.conclusion"
+            :options="CONCLUSION_OPTIONS"
+            placeholder="请选择"
+            style="width: 100%"
+            @update:value="onConclusionChange"
+          />
+        </div>
+      </div>
+      <div v-if="form.conclusion === 'concession'" class="field concession-field">
+        <label>退让方案</label>
+        <a-textarea
+          :value="form.concessionPlan"
+          :rows="3"
+          placeholder="请补充退让方案…"
+          @update:value="(v: string) => patch({ concessionPlan: v })"
+        />
+      </div>
+    </OpCollapsibleSection>
 
+    <!-- ===== 投诉：补充处理项 + 外投 ===== -->
+    <template v-if="isComplaint">
       <OpCollapsibleSection
         title="补充处理"
         :icon="AppstoreOutlined"
@@ -298,14 +302,13 @@ function chipActiveClass(key: SupplementChip): string {
           </div>
         </div>
         <div class="field inline conclusion-row">
-          <label>采纳结论</label>
+          <label>是否采纳</label>
           <a-radio-group
-            :value="form.suggestAdopt"
-            @update:value="(v: ProcessFormDraft['suggestAdopt']) => patch({ suggestAdopt: v })"
+            :value="form.suggestAccepted"
+            @update:value="(v: boolean) => patch({ suggestAccepted: v })"
           >
-            <a-radio value="adopt">采纳</a-radio>
-            <a-radio value="reject">不采纳</a-radio>
-            <a-radio value="toRequirement">转需求</a-radio>
+            <a-radio :value="true">是</a-radio>
+            <a-radio :value="false">否</a-radio>
           </a-radio-group>
         </div>
       </OpCollapsibleSection>
@@ -321,7 +324,7 @@ function chipActiveClass(key: SupplementChip): string {
         @toggle="emit('toggleSection', 'lead')"
       >
         <div class="section-subhead">
-          <span class="sub-title">商机意向与转化跟进</span>
+          <span class="sub-title">商机意向与解决结论</span>
           <span class="sub-hint">结案前确认</span>
         </div>
         <div class="field inline conclusion-row">
@@ -345,17 +348,40 @@ function chipActiveClass(key: SupplementChip): string {
             />
           </div>
           <div class="field inline">
-            <label>跟进结论</label>
-            <a-radio-group
-              :value="form.leadStage"
-              @update:value="(v: ProcessFormDraft['leadStage']) => patch({ leadStage: v })"
-            >
-              <a-radio value="converted">已转化</a-radio>
-              <a-radio value="following">跟进中</a-radio>
-              <a-radio value="lost">已流失</a-radio>
-            </a-radio-group>
+            <label>商机编号</label>
+            <a-input
+              :value="form.leadNo"
+              placeholder="CRM 商机单号"
+              @update:value="(v: string) => patch({ leadNo: v })"
+            />
           </div>
         </div>
+        <div class="field inline conclusion-row">
+          <label>商机解决结论</label>
+          <a-radio-group
+            :value="form.leadStage"
+            @update:value="(v: ProcessFormDraft['leadStage']) => patch({ leadStage: v })"
+          >
+            <a-radio value="converted">已转化</a-radio>
+            <a-radio value="following">跟进中</a-radio>
+            <a-radio value="lost">已流失</a-radio>
+          </a-radio-group>
+        </div>
+      </OpCollapsibleSection>
+
+      <!-- 服务预约（咨询/建议/商机；投诉在「补充处理」chip 中，四类型均支持） -->
+      <OpCollapsibleSection
+        title="服务预约"
+        :icon="CalendarOutlined"
+        badge="上门 / 回访"
+        badge-variant="hint"
+        :expanded="expandedSections.appointment"
+        @toggle="emit('toggleSection', 'appointment')"
+      >
+        <OpAppointmentRecords
+          :records="form.appointmentRecords"
+          @update:records="(v) => patch({ appointmentRecords: v, appointmentNeeded: v.length > 0 })"
+        />
       </OpCollapsibleSection>
     </template>
   </div>

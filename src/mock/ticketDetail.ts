@@ -360,8 +360,9 @@ export const DEFAULT_PROCESS_DRAFT = {
   qualityIssueCat2: '',
   suggestCat1: '产品体验',
   suggestCat2: '功能建议',
-  suggestAdopt: 'adopt' as const,
+  suggestAccepted: false,
   leadIntent: 'mid' as const,
   leadAmount: '',
   leadStage: 'following' as const,
+  leadNo: '',
 };
