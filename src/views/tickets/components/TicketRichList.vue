@@ -357,7 +357,8 @@ const gridTemplateColumns = computed(() => {
 }
 .table-grid {
   display: grid;
-  column-gap: 12px;
+  /* 不用 column-gap：列间空隙会在带背景的表头露出白缝。改用单元格右内边距撑开间距、表头背景连续 */
+  column-gap: 0;
   min-width: 100%;
   width: max-content;
   padding: 0 16px;
@@ -371,7 +372,7 @@ const gridTemplateColumns = computed(() => {
   display: flex;
   align-items: center;
   min-height: 0;
-  padding: 11px 0;
+  padding: 11px 12px 11px 0;
   background: #fafafb;
   border-bottom: 1px solid #e5e7eb;
 }
@@ -384,7 +385,7 @@ const gridTemplateColumns = computed(() => {
   display: flex;
   align-items: center;
   min-height: 0;
-  padding: 13px 0;
+  padding: 13px 12px 13px 0;
   border-bottom: 1px solid #f0f0f0;
   background: #fff;
 }
@@ -425,7 +426,7 @@ const gridTemplateColumns = computed(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.cell-cb { width: 16px; flex: none; display: flex; align-items: center; }
+.cell-cb { width: 16px; flex: none; display: flex; align-items: center; padding-right: 0; }
 
 .th {
   font-size: 12px;
