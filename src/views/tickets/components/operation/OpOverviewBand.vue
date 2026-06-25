@@ -260,7 +260,7 @@ watch(expandedCol, (v) => emit('expand-change', v !== null), { immediate: true }
   gap: 6px;
 }
 .ob-stat-body :deep(.stat-item) {
-  padding: 6px 4px;
+  padding: 7px 10px;
 }
 .ob-stat-body :deep(.si-value) {
   font-size: 15px;

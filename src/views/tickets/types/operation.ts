@@ -72,6 +72,8 @@ export type InsightAction =
 export interface AppointmentRecord {
   id: string;
   scheduledAt: string;
+  /** 已完成（已与客户电话沟通） */
+  done?: boolean;
 }
 
 export interface ProcessFormDraft {

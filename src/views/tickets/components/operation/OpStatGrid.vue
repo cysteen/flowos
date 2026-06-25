@@ -19,7 +19,7 @@ interface StatItem {
 }
 
 // 上排=客户维度（弹窗看明细）；下排=本单维度（跳对应 Tab）
-const items = computed<StatItem[]>(() => {
+const topItems = computed<StatItem[]>(() => {
   const i = props.insight;
   const sameTypeLabel = insightSameTypeLabel(props.ticketType);
   return [
@@ -34,6 +34,12 @@ const items = computed<StatItem[]>(() => {
       action: { kind: 'tab', tab: 'customerHistory' },
     },
     { key: 'recent30', label: '近30天', value: i.recent30Count, unit: '单', action: { kind: 'modal', modalKey: 'recent30' } },
+  ];
+});
+
+const bottomItems = computed<StatItem[]>(() => {
+  const i = props.insight;
+  return [
     { key: 'dunning', label: '催单', value: i.dunningCount, unit: '次', warn: true, readCount: i.dunningReadCount ?? 0, action: { kind: 'tab', tab: 'related' } },
     { key: 'supplement', label: '补充', value: i.supplementCount, unit: '次', warn: true, readCount: i.supplementReadCount ?? 0, action: { kind: 'tab', tab: 'related' } },
     { key: 'related', label: '关联', value: i.relatedCount, unit: '个', action: { kind: 'tab', tab: 'related' } },
@@ -72,53 +78,76 @@ function pulse(key: string) {
 
 <template>
   <div class="stat-grid">
-    <button
-      v-for="it in items"
-      :key="it.key"
-      type="button"
-      class="stat-item"
-      :class="{ warn: isWarn(it), bump: bumpedKeys.has(it.key) }"
-      :title="`查看${it.label}明细`"
-      @click="emit('select', it.action)"
-    >
-      <span class="si-main">
+    <div class="stat-row stat-row--top">
+      <button
+        v-for="it in topItems"
+        :key="it.key"
+        type="button"
+        class="stat-item"
+        :class="{ warn: isWarn(it), bump: bumpedKeys.has(it.key) }"
+        :title="`查看${it.label}明细`"
+        @click="emit('select', it.action)"
+      >
         <span class="si-label">{{ it.label }}</span>
         <span class="si-value">{{ it.value }}<span class="si-unit">{{ it.unit }}</span></span>
-      </span>
-      <span v-if="it.readCount !== undefined" class="si-read">已读 {{ it.readCount }}</span>
-    </button>
+      </button>
+    </div>
+    <div class="stat-row stat-row--bottom">
+      <button
+        v-for="it in bottomItems"
+        :key="it.key"
+        type="button"
+        class="stat-item"
+        :class="{ warn: isWarn(it), bump: bumpedKeys.has(it.key) }"
+        :title="`查看${it.label}明细`"
+        @click="emit('select', it.action)"
+      >
+        <span class="si-label">{{ it.label }}</span>
+        <span class="si-value">{{ it.value }}<span class="si-unit">{{ it.unit }}</span></span>
+        <span v-if="it.readCount !== undefined" class="si-read">已读 {{ it.readCount }}</span>
+      </button>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .stat-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-}
-.stat-item {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  gap: 8px;
+}
+.stat-row {
+  display: grid;
+  gap: 8px;
+}
+.stat-row--top {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.stat-row--bottom {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.stat-item {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: baseline;
   justify-content: center;
-  gap: 2px;
-  padding: 8px 6px;
+  flex-wrap: nowrap;
+  gap: 4px;
+  padding: 8px 10px;
   border: 1px solid #e8e4f8;
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.85);
   cursor: pointer;
   font-family: inherit;
+  white-space: nowrap;
+  min-width: 0;
   transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
-}
-.si-main {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 4px;
 }
 .si-read {
   font-size: 11px;
   line-height: 1;
   color: #9ca3af;
+  flex: none;
 }
 .stat-item.warn .si-read {
   color: #b45309;

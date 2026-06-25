@@ -2,15 +2,22 @@
 import { computed } from 'vue';
 import {
   FileTextOutlined, CheckCircleOutlined, AppstoreOutlined, SoundOutlined,
-  CheckOutlined, InfoCircleOutlined, LockOutlined, SearchOutlined,
+  CheckOutlined,
   AuditOutlined, BulbOutlined, RiseOutlined,
 } from '@ant-design/icons-vue';
 import OpCollapsibleSection from './OpCollapsibleSection.vue';
 import OpRecordFields from './OpRecordFields.vue';
 import OpSupplementChipPanels from './OpSupplementChipPanels.vue';
+import OpQualityStandardFields from './OpQualityStandardFields.vue';
+import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue';
 import { SUGGEST_L1_OPTIONS, SUGGEST_L2_MAP } from '@/views/tickets/types/createTicket';
 import type {
   ProcessFormDraft, SupplementChip, SectionKey,
+} from '@/views/tickets/types/operation';
+import {
+  SERVICE_METHOD_OPTIONS,
+  SERVICE_TYPE_BY_METHOD,
+  SERVICE_TYPE_OPTIONS,
 } from '@/views/tickets/types/operation';
 
 const props = defineProps<{
@@ -37,7 +44,27 @@ function patch(part: Partial<ProcessFormDraft>) {
   emit('update:form', { ...props.form, ...part });
 }
 
-const QUALITY_CATS = ['信息不完整', '分类错误', '重复建单', '其他'].map((v) => ({ label: v, value: v }));
+function onConclusionChange(v: ProcessFormDraft['conclusion']) {
+  patch({
+    conclusion: v,
+    ...(v !== 'concession' ? { concessionPlan: '' } : {}),
+  });
+}
+
+function onServiceMethodChange(method: string) {
+  patch({
+    serviceMethod: method,
+    serviceType: SERVICE_TYPE_BY_METHOD[method] ?? props.form.serviceType,
+  });
+}
+
+const CONCLUSION_OPTIONS: { label: string; value: ProcessFormDraft['conclusion'] }[] = [
+  { label: '已解决', value: 'resolved' },
+  { label: '退让', value: 'concession' },
+  { label: '未解决', value: 'unresolved' },
+];
+const serviceMethodOptions = SERVICE_METHOD_OPTIONS.map((v) => ({ label: v, value: v }));
+const serviceTypeOptions = SERVICE_TYPE_OPTIONS.map((v) => ({ label: v, value: v }));
 const suggestL1Options = SUGGEST_L1_OPTIONS.map((v) => ({ label: v, value: v }));
 const suggestL2Options = computed(() =>
   (SUGGEST_L2_MAP[props.form.suggestCat1] ?? []).map((v) => ({ label: v, value: v })),
@@ -47,16 +74,16 @@ const CHIPS: { key: SupplementChip; label: string }[] = [
   { key: 'complaint', label: '投诉分类' },
   { key: 'risk', label: '风险' },
   { key: 'appointment', label: '预约' },
-  { key: 'quality', label: '质量反馈' },
+  { key: 'quality', label: '建单规范' },
 ];
 
 function isChipFilled(key: SupplementChip): boolean {
   const f = props.form;
   switch (key) {
     case 'complaint': return !!(f.complaintCat1 && f.complaintNote);
-    case 'risk': return f.riskHasRisk && !!f.riskDescription.trim();
-    case 'appointment': return f.appointmentNeeded && !!f.appointmentStart;
-    case 'quality': return !f.qualityIsStandard;
+    case 'risk': return f.riskHasRisk && !!f.riskLevel;
+    case 'appointment': return f.appointmentNeeded && f.appointmentRecords.some((r) => r.scheduledAt);
+    case 'quality': return !f.qualityIsStandard && !!f.qualityIssueCat1 && !!f.qualityIssueCat2;
     default: return false;
   }
 }
@@ -110,42 +137,51 @@ function chipActiveClass(key: SupplementChip): string {
           <span class="sub-title">服务方式与解决结论</span>
           <span class="sub-hint">结案前确认</span>
         </div>
-        <div class="field-row">
+        <div class="field-row field-row--service">
           <div class="field inline">
             <label>服务方式</label>
-            <div class="select-like">
-              <SearchOutlined class="sel-icon" />
-              <span>{{ form.serviceMethod }}</span>
-              <span class="sel-arrow">▾</span>
-            </div>
+            <FormSelect
+              :value="form.serviceMethod"
+              :options="serviceMethodOptions"
+              placeholder="请选择或搜索"
+              style="width: 100%"
+              @update:value="(v) => onServiceMethodChange(String(v ?? ''))"
+            />
           </div>
           <div class="field inline">
             <label>服务类型</label>
-            <div class="select-like locked">
-              <span class="locked-text">{{ form.serviceType }}</span>
-              <LockOutlined class="sel-icon" />
-            </div>
+            <FormSelect
+              :value="form.serviceType"
+              :options="serviceTypeOptions"
+              placeholder="请选择或搜索"
+              style="width: 100%"
+              @update:value="(v) => patch({ serviceType: String(v ?? '') })"
+            />
+          </div>
+          <div class="field inline">
+            <label>问题解决结论</label>
+            <a-select
+              :value="form.conclusion"
+              :options="CONCLUSION_OPTIONS"
+              placeholder="请选择"
+              style="width: 100%"
+              @update:value="onConclusionChange"
+            />
           </div>
         </div>
-        <div class="field inline conclusion-row">
-          <label>问题解决结论</label>
-          <a-radio-group
-            :value="form.conclusion"
-            @update:value="(v: ProcessFormDraft['conclusion']) => patch({ conclusion: v })"
-          >
-            <a-radio value="resolved">已解决</a-radio>
-            <a-radio value="concession">退让</a-radio>
-            <a-radio value="unresolved">未解决</a-radio>
-          </a-radio-group>
-        </div>
-        <div class="concession-hint">
-          <InfoCircleOutlined />
-          解决结论选「退让」时，下方展开退让结案面板（类型/方案/客户确认）
+        <div v-if="form.conclusion === 'concession'" class="field concession-field">
+          <label>退让方案</label>
+          <a-textarea
+            :value="form.concessionPlan"
+            :rows="3"
+            placeholder="请补充退让方案…"
+            @update:value="(v: string) => patch({ concessionPlan: v })"
+          />
         </div>
       </OpCollapsibleSection>
 
       <OpCollapsibleSection
-        title="补充处理项"
+        title="补充处理"
         :icon="AppstoreOutlined"
         :badge="`已填 ${filledSupplementCount} 项`"
         badge-variant="count"
@@ -216,37 +252,14 @@ function chipActiveClass(key: SupplementChip): string {
         :expanded="expandedSections.quality"
         @toggle="emit('toggleSection', 'quality')"
       >
-        <div class="field inline conclusion-row">
-          <label>建单是否规范</label>
-          <a-radio-group
-            :value="form.qualityIsStandard ? 'yes' : 'no'"
-            @update:value="(v: string) => patch({ qualityIsStandard: v === 'yes' })"
-          >
-            <a-radio value="yes">是（规范）</a-radio>
-            <a-radio value="no">否（不规范）</a-radio>
-          </a-radio-group>
-        </div>
-        <div v-if="!form.qualityIsStandard" class="quality-detail">
-          <div class="quality-hint">反馈不规范时填写</div>
-          <div class="field">
-            <label>不规范分类（二级）</label>
-            <a-select
-              :value="form.qualityIssueCat"
-              :options="QUALITY_CATS"
-              style="width: 100%"
-              @update:value="(v: string) => patch({ qualityIssueCat: v })"
-            />
-          </div>
-          <div class="field">
-            <label>不规范原因</label>
-            <a-textarea
-              :value="form.qualityIssueReason"
-              :rows="2"
-              placeholder="请说明不规范原因…"
-              @update:value="(v: string) => patch({ qualityIssueReason: v })"
-            />
-          </div>
-        </div>
+        <OpQualityStandardFields
+          :is-standard="form.qualityIsStandard"
+          :issue-cat1="form.qualityIssueCat1"
+          :issue-cat2="form.qualityIssueCat2"
+          @update:is-standard="(v) => patch({ qualityIsStandard: v })"
+          @update:issue-cat1="(v) => patch({ qualityIssueCat1: v })"
+          @update:issue-cat2="(v) => patch({ qualityIssueCat2: v })"
+        />
       </OpCollapsibleSection>
 
       <!-- 建议专属：建议分类 -->
@@ -360,6 +373,7 @@ function chipActiveClass(key: SupplementChip): string {
 .field label { font-size: 12px; font-weight: 600; color: #374151; }
 .field-row { display: flex; gap: 8px; }
 .field-row .field.inline { flex: 1 1 0; min-width: 0; }
+.field-row--service { align-items: flex-start; }
 .select-like {
   display: flex; align-items: center; gap: 6px;
   padding: 6px 8px; background: #fff; border: 1px solid #e5e7eb;
@@ -374,15 +388,9 @@ function chipActiveClass(key: SupplementChip): string {
 /* 防止单选项文字（如「否（不规范）」）被挤断行 */
 .process-form :deep(.ant-radio-wrapper) { white-space: nowrap; }
 .process-form :deep(.ant-radio-group) { display: inline-flex; flex-wrap: wrap; gap: 4px 12px; }
-.concession-hint {
-  display: flex; align-items: flex-start; gap: 6px;
-  font-size: 11px; color: #9ca3af; line-height: 1.5;
+.concession-field {
+  margin-top: 2px;
 }
-.quality-detail {
-  display: flex; flex-direction: column; gap: 10px;
-  background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 10px;
-}
-.quality-hint { font-size: 10px; font-weight: 500; color: #b45309; }
 .chip-row { display: flex; gap: 8px; flex-wrap: nowrap; }
 .chip {
   display: inline-flex; align-items: center; gap: 6px;

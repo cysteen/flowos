@@ -51,7 +51,7 @@ defineProps<{ detail: TicketDetailMeta }>();
       </div>
       <div class="kv"><span class="k">投诉编号</span><span class="v">{{ detail.complaint.complaintNo }}</span></div>
       <div class="kv kv-tags">
-        <span class="k">投诉标签</span>
+        <span class="k">投诉分类</span>
         <div class="tag-path">
           <template v-for="(tag, i) in detail.complaint.tags" :key="tag">
             <span class="pill-tag">{{ tag }}</span>

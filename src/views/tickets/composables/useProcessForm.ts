@@ -5,15 +5,21 @@ import { TYPE_SAMPLES } from '@/mock/ticketTypeSamples';
 
 /** 按工单类型构建 Tab① 处理表单预填（投诉用 base，咨询/商机/建议用类型样例覆盖）。 */
 function buildDraft(type: string): ProcessFormDraft {
-  return { ...DEFAULT_PROCESS_DRAFT, ...(TYPE_SAMPLES[type]?.processDraft ?? {}) };
+  return {
+    ...DEFAULT_PROCESS_DRAFT,
+    qualityIsStandard: true,
+    qualityIssueCat1: '',
+    qualityIssueCat2: '',
+    ...(TYPE_SAMPLES[type]?.processDraft ?? {}),
+  };
 }
 
 function countFilledSupplements(form: ProcessFormDraft): number {
   let n = 0;
   if (form.complaintCat1 && form.complaintNote) n += 1;
-  if (form.riskHasRisk && form.riskDescription.trim()) n += 1;
-  if (form.appointmentNeeded && form.appointmentStart) n += 1;
-  if (!form.qualityIsStandard && form.qualityIssueReason.trim()) n += 1;
+  if (form.riskHasRisk && form.riskLevel) n += 1;
+  if (form.appointmentNeeded && form.appointmentRecords.some((r) => r.scheduledAt)) n += 1;
+  if (!form.qualityIsStandard && form.qualityIssueCat1 && form.qualityIssueCat2) n += 1;
   return n;
 }
 
@@ -43,6 +49,18 @@ export function useProcessForm(getType: () => string) {
   function selectChip(chip: SupplementChip) {
     activeChip.value = chip;
     expandedSections.value.supplement = true;
+    if (
+      chip === 'quality'
+      && !form.value.qualityIssueCat1
+      && !form.value.qualityIssueCat2
+    ) {
+      form.value = {
+        ...form.value,
+        qualityIsStandard: true,
+        qualityIssueCat1: '',
+        qualityIssueCat2: '',
+      };
+    }
   }
 
   return {

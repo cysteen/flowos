@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import OpTextareaAttach from './shared/OpTextareaAttach.vue';
+import OpQualityStandardFields from './OpQualityStandardFields.vue';
+import OpAppointmentRecords from './OpAppointmentRecords.vue';
+import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue';
 import type { ProcessFormDraft, SupplementChip } from '@/views/tickets/types/operation';
+import { RISK_LEVEL_OPTIONS } from '@/views/tickets/types/operation';
 
 const props = defineProps<{
   activeChip: SupplementChip;
@@ -9,8 +13,19 @@ const props = defineProps<{
 
 const emit = defineEmits<{ 'update:form': [form: ProcessFormDraft] }>();
 
+const riskLevelOptions = RISK_LEVEL_OPTIONS.map((v) => ({ label: v, value: v }));
+
 function update(partial: Partial<ProcessFormDraft>) {
   emit('update:form', { ...props.form, ...partial });
+}
+
+function onRiskChange(hasRisk: boolean) {
+  update({
+    riskHasRisk: hasRisk,
+    riskLevel: hasRisk ? props.form.riskLevel : '',
+    riskDescription: hasRisk ? props.form.riskDescription : '',
+    riskDescriptionAttachments: hasRisk ? props.form.riskDescriptionAttachments : [],
+  });
 }
 </script>
 
@@ -48,109 +63,51 @@ function update(partial: Partial<ProcessFormDraft>) {
   </div>
 
   <!-- 风险 -->
-  <div v-else-if="activeChip === 'risk'" class="chip-panel panel-risk">
-    <div class="panel-head">
-      <div class="panel-title risk">风险标记</div>
-      <div class="panel-desc risk">标记后同步洞察条，班组长可见</div>
-    </div>
-    <a-radio-group
-      :value="form.riskHasRisk"
-      class="radio-row"
-      @update:value="(v: boolean) => update({ riskHasRisk: v })"
-    >
-      <a-radio :value="false">无风险</a-radio>
-      <a-radio :value="true">有风险</a-radio>
-    </a-radio-group>
-    <template v-if="form.riskHasRisk">
-      <div class="field inline-row">
-        <label class="field-label-sm">风险等级</label>
-        <div class="select-like flex1">{{ form.riskLevel }} <span class="sel-arrow">▾</span></div>
-      </div>
-      <div class="field">
-        <label>风险描述</label>
-        <OpTextareaAttach
-          :model-value="form.riskDescription"
-          :attachments="form.riskDescriptionAttachments"
-          :min-input-height="40"
-          placeholder="请描述风险情况…"
-          @update:model-value="(v) => update({ riskDescription: v })"
-          @update:attachments="(v) => update({ riskDescriptionAttachments: v })"
+  <div v-else-if="activeChip === 'risk'" class="chip-panel panel-neutral">
+    <div class="field inline-row risk-row">
+      <label>是否有风险</label>
+      <a-radio-group
+        :value="form.riskHasRisk"
+        class="radio-row"
+        @update:value="(v: boolean) => onRiskChange(v)"
+      >
+        <a-radio :value="false">无风险</a-radio>
+        <a-radio :value="true">有风险</a-radio>
+      </a-radio-group>
+      <template v-if="form.riskHasRisk">
+        <label class="field-label-sm risk-level-label">风险等级</label>
+        <FormSelect
+          class="risk-level-select"
+          :value="form.riskLevel || undefined"
+          :options="riskLevelOptions"
+          placeholder="请选择"
+          @update:value="(v) => update({ riskLevel: String(v ?? '') })"
         />
-      </div>
-    </template>
+      </template>
+    </div>
   </div>
 
   <!-- 预约 -->
-  <div v-else-if="activeChip === 'appointment'" class="chip-panel panel-appointment">
-    <div class="panel-head">
-      <div class="panel-title appt">预约回访</div>
-      <div class="panel-desc appt">与客户确认可联系时段</div>
-    </div>
-    <div class="field inline-row">
-      <label class="field-label-sm">预约需求</label>
-      <a-radio-group
-        :value="form.appointmentNeeded"
-        class="radio-row"
-        @update:value="(v: boolean) => update({ appointmentNeeded: v })"
-      >
-        <a-radio :value="false">不需要</a-radio>
-        <a-radio :value="true">需要</a-radio>
-      </a-radio-group>
-    </div>
-    <div v-if="form.appointmentNeeded" class="field-row">
-      <div class="field">
-        <label class="field-label-sm">开始时间</label>
-        <div class="select-like">{{ form.appointmentStart }}</div>
-      </div>
-      <div class="field">
-        <label class="field-label-sm">结束时间</label>
-        <div class="select-like">{{ form.appointmentEnd }}</div>
-      </div>
-    </div>
+  <div v-else-if="activeChip === 'appointment'" class="chip-panel panel-neutral">
+    <OpAppointmentRecords
+      :needed="form.appointmentNeeded"
+      :records="form.appointmentRecords"
+      @update:needed="(v) => update({ appointmentNeeded: v })"
+      @update:records="(v) => update({ appointmentRecords: v })"
+    />
   </div>
 
-  <!-- 质量反馈 -->
+  <!-- 建单是否规范 -->
   <div v-else class="chip-panel panel-quality">
-    <div class="panel-head">
-      <div class="panel-title">一线质量反馈 · 非必填</div>
-      <div class="panel-desc muted">回流质检，不影响工单流转</div>
-    </div>
-    <div class="quality-toggle">
-      <button
-        type="button"
-        class="qt-chip"
-        :class="{ active: form.qualityIsStandard }"
-        @click="update({ qualityIsStandard: true })"
-      >
-        建单规范
-      </button>
-      <button
-        type="button"
-        class="qt-chip warn"
-        :class="{ active: !form.qualityIsStandard }"
-        @click="update({ qualityIsStandard: false })"
-      >
-        反馈不规范
-      </button>
-    </div>
-    <div v-if="!form.qualityIsStandard" class="quality-detail">
-      <div class="quality-detail-hint">反馈不规范时展开</div>
-      <div class="field">
-        <label class="field-label-sm">不规范分类（二级）</label>
-        <div class="select-like">{{ form.qualityIssueCat }} <span class="sel-arrow">▾</span></div>
-      </div>
-      <div class="field">
-        <label>不规范原因</label>
-        <OpTextareaAttach
-          :model-value="form.qualityIssueReason"
-          :attachments="form.qualityIssueReasonAttachments"
-          :min-input-height="32"
-          placeholder="请说明不规范原因…"
-          @update:model-value="(v) => update({ qualityIssueReason: v })"
-          @update:attachments="(v) => update({ qualityIssueReasonAttachments: v })"
-        />
-      </div>
-    </div>
+    <OpQualityStandardFields
+      compact
+      :is-standard="form.qualityIsStandard"
+      :issue-cat1="form.qualityIssueCat1"
+      :issue-cat2="form.qualityIssueCat2"
+      @update:is-standard="(v) => update({ qualityIsStandard: v })"
+      @update:issue-cat1="(v) => update({ qualityIssueCat1: v })"
+      @update:issue-cat2="(v) => update({ qualityIssueCat2: v })"
+    />
   </div>
 </template>
 
@@ -178,35 +135,31 @@ function update(partial: Partial<ProcessFormDraft>) {
 .cat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 @media (max-width: 720px) { .cat-grid { grid-template-columns: 1fr; } }
 
-.panel-risk {
-  background: #fff7ed; border: 1px solid #fed7aa; border-radius: 6px; padding: 12px;
-}
-.panel-appointment {
-  background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 12px;
-}
+.panel-neutral,
 .panel-quality {
   background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px;
 }
 .panel-head { display: flex; flex-direction: column; gap: 2px; }
-.panel-title { font-size: 11px; font-weight: 600; color: #374151; }
-.panel-title.risk { color: #9a3412; }
-.panel-title.appt { color: #1d4ed8; }
-.panel-desc { font-size: 10px; }
-.panel-desc.risk { color: #c2410c; }
-.panel-desc.appt { color: #3b82f6; }
-.panel-desc.muted { color: #6b7280; }
 .radio-row { display: flex; gap: 14px; font-size: 12px; }
-
-.quality-toggle { display: flex; gap: 8px; flex-wrap: wrap; }
-.qt-chip {
-  font-size: 11px; font-weight: 600; padding: 6px 10px; border-radius: 5px; cursor: pointer;
-  border: 1px solid #a7f3d0; background: #ecfdf5; color: #059669;
+.inline-row label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  flex: none;
+  white-space: nowrap;
 }
-.qt-chip.warn { border-color: #fde68a; background: #fffbeb; color: #b45309; }
-.qt-chip.active { box-shadow: inset 0 0 0 1px currentColor; }
-.quality-detail {
-  display: flex; flex-direction: column; gap: 8px;
-  background: #fffbeb; border: 1px solid #fde68a; border-radius: 5px; padding: 10px;
+.chip-panel :deep(.ant-radio-wrapper) {
+  white-space: nowrap;
 }
-.quality-detail-hint { font-size: 10px; font-weight: 500; color: #b45309; }
+.risk-row {
+  flex-wrap: wrap;
+  align-items: center;
+}
+.risk-level-label {
+  margin-left: 4px;
+}
+.risk-level-select {
+  width: 140px;
+  flex: none;
+}
 </style>
