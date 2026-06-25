@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, watch } from 'vue';
+import { reactive, ref, watch } from 'vue';
 import { PlusOutlined } from '@ant-design/icons-vue';
 import type { CustomerInfo } from '@/views/tickets/types/createTicket';
 import FormSelect from './FormSelect.vue';
@@ -14,6 +14,56 @@ interface ContactDraft {
 const CONTACT_TYPE_OPTIONS: ContactType[] = ['手机', '固话', '邮箱'];
 const CUSTOMER_TYPE_OPTIONS = ['个人客户', '企业客户', 'VIP客户', '渠道客户'];
 const GENDER_OPTIONS = ['男', '女'];
+
+/** 省 / 市 / 区 级联数据（原型示例数据集，value=label 便于与字符串互转） */
+interface RegionNode {
+  value: string;
+  label: string;
+  children?: RegionNode[];
+}
+function lv(items: string[]): RegionNode[] {
+  return items.map((v) => ({ value: v, label: v }));
+}
+const REGION_OPTIONS: RegionNode[] = [
+  {
+    value: '北京市', label: '北京市',
+    children: [{ value: '北京市', label: '北京市', children: lv(['朝阳区', '海淀区', '东城区', '西城区', '丰台区']) }],
+  },
+  {
+    value: '上海市', label: '上海市',
+    children: [{ value: '上海市', label: '上海市', children: lv(['浦东新区', '徐汇区', '黄浦区', '静安区', '闵行区']) }],
+  },
+  {
+    value: '安徽省', label: '安徽省',
+    children: [
+      { value: '合肥市', label: '合肥市', children: lv(['蜀山区', '包河区', '庐阳区', '瑶海区', '高新区']) },
+      { value: '芜湖市', label: '芜湖市', children: lv(['镜湖区', '弋江区', '鸠江区']) },
+    ],
+  },
+  {
+    value: '广东省', label: '广东省',
+    children: [
+      { value: '广州市', label: '广州市', children: lv(['天河区', '越秀区', '海珠区', '番禺区']) },
+      { value: '深圳市', label: '深圳市', children: lv(['南山区', '福田区', '罗湖区', '宝安区']) },
+    ],
+  },
+  {
+    value: '浙江省', label: '浙江省',
+    children: [
+      { value: '杭州市', label: '杭州市', children: lv(['西湖区', '余杭区', '滨江区', '拱墅区']) },
+      { value: '宁波市', label: '宁波市', children: lv(['海曙区', '江北区', '鄞州区']) },
+    ],
+  },
+  {
+    value: '江苏省', label: '江苏省',
+    children: [
+      { value: '南京市', label: '南京市', children: lv(['玄武区', '鼓楼区', '建邺区', '江宁区']) },
+      { value: '苏州市', label: '苏州市', children: lv(['姑苏区', '工业园区', '吴中区']) },
+    ],
+  },
+];
+
+const REGION_SEP = ' / ';
 
 const props = defineProps<{
   open: boolean;
@@ -58,6 +108,15 @@ const draft = reactive({
   vip: false,
 });
 
+/** 省市区级联选中值（数组）；与 draft.region 字符串互转 */
+const regionValue = ref<string[]>([]);
+function regionToArray(s: string): string[] {
+  return s ? s.split(REGION_SEP).map((x) => x.trim()).filter(Boolean) : [];
+}
+function onRegionChange(val: unknown) {
+  draft.region = Array.isArray(val) ? (val as string[]).join(REGION_SEP) : '';
+}
+
 watch(
   () => props.open,
   (v) => {
@@ -70,6 +129,7 @@ watch(
     draft.gender = src?.gender ?? '男';
     draft.contacts = contactsFromInitial(src);
     draft.region = src?.region ?? '';
+    regionValue.value = regionToArray(draft.region);
     draft.address = src?.address ?? '';
     draft.vip = src?.vip ?? false;
   },
@@ -211,10 +271,17 @@ function onSave() {
         </div>
       </div>
 
-      <!-- 行4：省市区 -->
+      <!-- 行4：省市区（级联选择） -->
       <div class="field">
         <label class="label"><span class="req">*</span>省市区</label>
-        <a-input v-model:value="draft.region" placeholder="请选择省/市/区" />
+        <a-cascader
+          v-model:value="regionValue"
+          class="full"
+          :options="REGION_OPTIONS"
+          placeholder="请选择省 / 市 / 区"
+          expand-trigger="hover"
+          @change="onRegionChange"
+        />
       </div>
 
       <!-- 行5：详细地址 -->
