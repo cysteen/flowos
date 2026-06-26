@@ -37,6 +37,8 @@ export interface TicketDetailMeta {
   channel: string;
   priority: string;
   status: string;
+  /** 累计退回次数（上限 3 次） */
+  returnCount?: number;
   slaWhole: string;
   slaNode: string;
   slaNodeOverdue: boolean;

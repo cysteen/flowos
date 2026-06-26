@@ -128,6 +128,8 @@ export interface Ticket {
   dunningUnread?: boolean;
   /** 历史存在退回动作 */
   hasReturnAction?: boolean;
+  /** 累计退回次数（上限 3 次） */
+  returnCount?: number;
   /** 我申请挂起且挂起生效 */
   suspendedByMe?: boolean;
   /** 存在催单记录（行标识「催」） */

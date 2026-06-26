@@ -470,6 +470,7 @@ function updateTabData(next: OperationTabData) {
       :op-state="opState"
       :suspend-info="suspendInfo"
       :draft-saved-at="draftSavedAt"
+      :return-count="d.returnCount ?? 0"
       @action="onAction"
       @cancel="confirmCancel"
       @withdraw="confirmWithdraw"

@@ -15,10 +15,13 @@ import TicketRichList from './components/TicketRichList.vue';
 import TicketDraftList from './components/TicketDraftList.vue';
 import CreateTicketModal from './components/CreateTicketModal.vue';
 import SaveFilterModal from './components/SaveFilterModal.vue';
+import OpActionDialogs from './components/OpActionDialogs.vue';
 import { useTicketWorkbench } from './composables/useTicketWorkbench';
 import { useTicketColumns } from './composables/useTicketColumns';
 import { useMineQueryFields } from './composables/useMineQueryFields';
 import { hasMineQuery } from './types/mineQuery';
+import type { OpActionType, ReturnPayload, TransferPayload } from './composables/opActions';
+import { MAX_RETURN_COUNT } from './composables/opActions';
 import type { Ticket } from './types/ticket';
 
 const user = useUserStore();
@@ -38,6 +41,71 @@ const aiDrawerFilter = ref<AiSuggestionFilter>('all');
 const saveFilterModalOpen = ref(false);
 /** 我的任务 / 已办 · 结构化筛选面板默认收起 */
 const structuredFilterExpanded = ref(false);
+
+const opDialogOpen = ref(false);
+const opDialogAction = ref<OpActionType | null>(null);
+const opTargetTickets = ref<Ticket[]>([]);
+
+const opDialogTicketNo = computed(() => {
+  const list = opTargetTickets.value;
+  if (list.length === 1) return list[0].no;
+  if (list.length > 1) return `已选 ${list.length} 单`;
+  return '';
+});
+
+const opReturnCount = computed(() => {
+  if (!opTargetTickets.value.length) return 0;
+  return Math.max(...opTargetTickets.value.map((t) => t.returnCount ?? 0));
+});
+
+function openOpDialog(action: '转办' | '退回', tickets: Ticket[]) {
+  if (!tickets.length) {
+    message.info(`请先选择要${action}的工单`);
+    return;
+  }
+  if (action === '退回') {
+    const blocked = tickets.some((t) => (t.returnCount ?? 0) >= MAX_RETURN_COUNT);
+    if (blocked) {
+      message.warning(`所选工单中有已达退回上限（${MAX_RETURN_COUNT} 次）的单据`);
+      return;
+    }
+  }
+  opTargetTickets.value = tickets;
+  opDialogAction.value = action;
+  opDialogOpen.value = true;
+}
+
+function onOpDialogConfirm(payload: Record<string, unknown>) {
+  const tickets = opTargetTickets.value;
+  const type = payload.type as string;
+
+  if (type === '转办') {
+    const { target } = payload.data as TransferPayload;
+    const name = target.split(' ')[0];
+    for (const t of tickets) {
+      t.assignee = name;
+      t.myTransferAction = true;
+    }
+    const label = tickets.length === 1 ? tickets[0].no : `${tickets.length} 单`;
+    message.success(tickets.length === 1 ? `已转办至 ${name}` : `已对 ${label} 转办至 ${name}`);
+  } else if (type === '退回') {
+    const { targetNode } = payload.data as ReturnPayload;
+    for (const t of tickets) {
+      t.returnCount = (t.returnCount ?? 0) + 1;
+      t.hasReturnAction = true;
+      t.nodeStatus = '待受理';
+    }
+    const label = tickets.length === 1 ? tickets[0].no : `${tickets.length} 单`;
+    message.success(
+      tickets.length === 1
+        ? `已退回至${targetNode}节点`
+        : `已对 ${label} 退回至${targetNode}节点`,
+    );
+  }
+
+  wb.clearSelection();
+  opTargetTickets.value = [];
+}
 
 const batchActions = computed(() =>
   wb.isPoolTab.value ? ['领取'] : wb.isMineTab.value ? ['转办', '退回'] : [],
@@ -74,7 +142,7 @@ function onAction(label: string, t: Ticket) {
     return;
   }
   if (label === '转办' || label === '退回') {
-    message.success(`已对 ${t.no} 执行「${label}」`);
+    openOpDialog(label, [t]);
     return;
   }
   if (['处理', '详情', '审核', '受理'].includes(label)) {
@@ -108,6 +176,13 @@ function onBatch(action: string) {
       message.info('请先勾选要领取的工单');
     }
     wb.clearSelection();
+    return;
+  }
+  if (action === '转办' || action === '退回') {
+    const tickets = [...wb.selectedIds.value]
+      .map((id) => wb.ticketById(id))
+      .filter((t): t is Ticket => !!t);
+    openOpDialog(action, tickets);
     return;
   }
   message.success(`已对已选 ${wb.selectedCount.value} 单执行批量「${action}」`);
@@ -304,6 +379,15 @@ function onConfirmSaveFilter(name: string) {
     <SaveFilterModal
       v-model:open="saveFilterModalOpen"
       @save="onConfirmSaveFilter"
+    />
+
+    <OpActionDialogs
+      v-model:open="opDialogOpen"
+      :action="opDialogAction"
+      :ticket-no="opDialogTicketNo"
+      :suspend-info="null"
+      :return-count="opReturnCount"
+      @confirm="onOpDialogConfirm"
     />
   </div>
 </template>

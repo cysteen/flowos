@@ -5,11 +5,13 @@ import {
   ArrowRightOutlined, VerticalAlignBottomOutlined, PauseCircleOutlined,
   PlayCircleOutlined, RiseOutlined, UndoOutlined, StopOutlined,
   ToolOutlined, CheckCircleOutlined, SaveOutlined, SwapOutlined,
+  RollbackOutlined, TeamOutlined,
 } from '@ant-design/icons-vue';
 import OpActionDialogs from './OpActionDialogs.vue';
 import OpForwardModal from './operation/OpForwardModal.vue';
 import type { SuspendInfo, OpActionType, TicketOpState } from '../composables/opActions';
 import { availableActions } from '../composables/opActionRegistry';
+import { MAX_RETURN_COUNT } from '../composables/opActions';
 
 const props = defineProps<{
   ticketNo: string;
@@ -18,6 +20,7 @@ const props = defineProps<{
   afterSaleEnabled: boolean;
   opState: TicketOpState;
   suspendInfo: SuspendInfo | null;
+  returnCount?: number;
   draftSavedAt?: string | null;
 }>();
 
@@ -33,16 +36,17 @@ const ICONS: Record<string, any> = {
   ArrowRightOutlined, VerticalAlignBottomOutlined, PauseCircleOutlined,
   PlayCircleOutlined, RiseOutlined, UndoOutlined, StopOutlined,
   ToolOutlined, CheckCircleOutlined, SaveOutlined, SwapOutlined,
+  RollbackOutlined, TeamOutlined,
 };
 
 const DIALOG_ACTIONS: OpActionType[] = [
-  '转办', '委派', '强结', '挂起', '恢复', '升级', '同步飞书', '转售后',
+  '转办', '委派', '强结', '挂起', '恢复', '退回', '升级', '同步飞书', '转售后',
   '标记已解决', '关闭工单', '归档工单',
 ];
 
 /** 底栏展示顺序（对齐参考原型 bottom-actions + 强结） */
 const BAR_ORDER: (OpActionType | '转单')[] = [
-  '下送', '升级', '转售后', '撤回', '转办', '转单', '挂起', '关闭工单', '强结',
+  '下送', '升级', '转售后', '撤回', '转办', '委派', '转单', '挂起', '退回', '关闭工单', '强结',
 ];
 
 const dialogOpen = ref(false);
@@ -127,6 +131,12 @@ function run(action: OpActionType | '转单') {
     Modal.info({ title: '提示', content: '当前工单未处于挂起状态' });
     return;
   }
+  if (action === '退回') {
+    if ((props.returnCount ?? 0) >= MAX_RETURN_COUNT) {
+      message.warning(`本工单已退回 ${MAX_RETURN_COUNT} 次，已达上限`);
+      return;
+    }
+  }
   if (action === '下送') {
     forwardModalOpen.value = true;
     return;
@@ -190,6 +200,7 @@ function onForwardConfirm(data: { ticketTitle: string; resolved: boolean }) {
       :action="dialogAction"
       :ticket-no="ticketNo"
       :suspend-info="suspendInfo"
+      :return-count="returnCount ?? 0"
       @confirm="onDialogConfirm"
     />
 

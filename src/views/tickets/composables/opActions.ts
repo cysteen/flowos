@@ -25,11 +25,11 @@ export interface SuspendInfo {
 export type OpActionType =
   | '保存草稿' | '标记已解决'
   | '转办' | '委派' | '下送' | '撤回' | '强结'
-  | '挂起' | '恢复' | '升级' | '同步飞书' | '转售后'
+  | '挂起' | '恢复' | '退回' | '升级' | '同步飞书' | '转售后'
   | '关闭工单' | '归档工单' | '取消工单';
 
 export interface TransferPayload { scope: 'same' | 'cross'; target: string; reason: string; }
-export interface DelegatePayload { assistant: string; reason: string; }
+export interface DelegatePayload { mode: 'person' | 'group'; target: string; reason: string; }
 export interface ForwardPayload { ticketTitle: string; resolved: boolean; reviewer?: string; conclusion?: string; }
 export interface ForceClosePayload { reason: string; approver: string; detail: string; }
 export interface SuspendPayload { reason: string; detail: string; resumeAt: string; }
@@ -44,6 +44,7 @@ export interface ClosePayload {
 }
 export interface ArchivePayload { reason: string; retention: string; }
 export interface ResumePayload { reason: string; detail: string; }
+export interface ReturnPayload { reason: string; targetNode: string; note: string; }
 
 export type OpActionPayload =
   | { type: '保存草稿' }
@@ -58,6 +59,7 @@ export type OpActionPayload =
   | { type: '标记已解决'; data: ResolvePayload }
   | { type: '撤回' }
   | { type: '恢复'; data: ResumePayload }
+  | { type: '退回'; data: ReturnPayload }
   | { type: '关闭工单'; data: ClosePayload }
   | { type: '归档工单'; data: ArchivePayload }
   | { type: '取消工单'; reason: string };
@@ -72,6 +74,12 @@ export const DELEGATE_TARGETS = [
   '孙十 (质检组, 协助调研)',
   '李四 (产品反馈组, 协助整理)',
 ];
+export const DELEGATE_GROUPS = [
+  '技术售前组',
+  '质检协助组',
+  '产品反馈组',
+  '大客户协同组',
+];
 export const REVIEWERS = ['班组长 · 王经理', '质检审核 · 李审核', '上级主管 · 张总监'];
 export const FORCE_CLOSE_REASONS = ['客户失联', '客户主动放弃', '诉求超出处理能力', '重复/无效工单'];
 export const APPROVERS = ['班组长 · 王经理', '客服主管 · 张总监'];
@@ -85,6 +93,9 @@ export const CLOSE_RESULTS = ['已解决', '未解决-客户放弃', '未解决-
 export const ROOT_CAUSES = ['产品缺陷', '使用不当', '配置问题', '第三方问题', '需求变更'];
 export const ARCHIVE_REASONS = ['已关闭超30天自动归档', '手动归档-已完结', '手动归档-合规要求'];
 export const RESUME_REASONS = ['客户已反馈', '问题已解决', '备件已到货', '产研已修复', '退费已到账', '其他'];
+export const RETURN_REASONS = ['信息不全', '分类错误', '不属于本组', '需补充调查'];
+export const RETURN_TARGET_NODES = ['受理', '分派'];
+export const MAX_RETURN_COUNT = 3;
 
 export function nowWhen(): string {
   const d = new Date();
@@ -148,12 +159,14 @@ export function applyOpAction(
     }
 
     case '委派': {
-      const { assistant, reason } = payload.data;
+      const { mode, target, reason } = payload.data;
+      const dest = mode === 'person' ? target.split(' ')[0] : target;
       pushEntry(timeline, {
         category: 'node', action: 'transfer', who: operator, role: operatorRole,
-        how: '委派', what: `委派 ${assistant.split(' ')[0]} 协助办理（主责不变）。${reason ? `说明：${reason}` : ''}`,
+        how: '委派',
+        what: `委派${mode === 'person' ? '至' : '至组'} ${dest} 协办办理（主责不变，完成后回到当前处理人）。${reason ? `说明：${reason}` : ''}`,
       });
-      return { opState, suspendInfo, message: `已委派 ${assistant.split(' ')[0]} 协助` };
+      return { opState, suspendInfo, message: `已委派${mode === 'person' ? '' : '至组'} ${dest} 协办` };
     }
 
     case '下送': {
@@ -259,6 +272,19 @@ export function applyOpAction(
         how: '恢复处理', what: `挂起结束，恢复处理。原因：${reason}${note ? `；${note}` : ''}`,
       });
       return { opState: 'processing', suspendInfo: null, message: '工单已恢复，SLA 继续计时' };
+    }
+
+    case '退回': {
+      const { reason, targetNode, note } = payload.data;
+      const count = (detail.returnCount ?? 0) + 1;
+      detail.returnCount = count;
+      detail.status = targetNode === '受理' ? '待受理' : '待分派';
+      pushEntry(timeline, {
+        category: 'node', action: 'transfer', who: operator, role: operatorRole,
+        how: '退回',
+        what: `退回至「${targetNode}」节点。原因：${reason}${note ? `；说明：${note}` : ''}（第 ${count} 次退回）`,
+      });
+      return { opState: 'processing', suspendInfo, message: `已退回至${targetNode}节点` };
     }
 
     case '关闭工单': {

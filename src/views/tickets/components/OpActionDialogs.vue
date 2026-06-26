@@ -4,7 +4,7 @@ import { message } from 'ant-design-vue';
 import {
   SwapOutlined, TeamOutlined, StopOutlined, PauseCircleOutlined,
   PlayCircleOutlined, RiseOutlined, SyncOutlined, ToolOutlined,
-  CheckCircleOutlined, CloseCircleOutlined, InboxOutlined,
+  CheckCircleOutlined, CloseCircleOutlined, InboxOutlined, RollbackOutlined,
 } from '@ant-design/icons-vue';
 import OpActionModal from './operation/OpActionModal.vue';
 import type { SuspendInfo, OpActionType } from '../composables/opActions';
@@ -12,7 +12,8 @@ import {
   TRANSFER_TARGETS, DELEGATE_TARGETS, REVIEWERS, FORCE_CLOSE_REASONS, APPROVERS,
   SUSPEND_REASONS, ESCALATE_CHANNELS, ESCALATE_GROUPS, ESCALATE_MEMBERS,
   FEISHU_SPACES, AFTERSALE_GROUPS, CLOSE_RESULTS, ARCHIVE_REASONS,
-  RESUME_REASONS,
+  RESUME_REASONS, RETURN_REASONS, RETURN_TARGET_NODES, MAX_RETURN_COUNT,
+  DELEGATE_GROUPS,
 } from '../composables/opActions';
 
 const props = defineProps<{
@@ -20,6 +21,7 @@ const props = defineProps<{
   action: OpActionType | null;
   ticketNo: string;
   suspendInfo: SuspendInfo | null;
+  returnCount: number;
 }>();
 
 const emit = defineEmits<{
@@ -28,7 +30,7 @@ const emit = defineEmits<{
 }>();
 
 const transfer = reactive({ scope: 'same' as 'same' | 'cross', target: TRANSFER_TARGETS[0], reason: '' });
-const delegate = reactive({ assistant: DELEGATE_TARGETS[0], reason: '' });
+const delegate = reactive({ mode: 'person' as 'person' | 'group', target: DELEGATE_TARGETS[0], reason: '' });
 const forceClose = reactive({ reason: '', approver: APPROVERS[0], detail: '' });
 const suspend = reactive({ reason: '', detail: '', resumeAt: '' });
 const escalate = reactive({ channel: ESCALATE_CHANNELS[0], group: ESCALATE_GROUPS[0], member: ESCALATE_MEMBERS[0], detail: '', syncContext: true });
@@ -42,6 +44,7 @@ const close = reactive({
 });
 const archive = reactive({ reason: ARCHIVE_REASONS[1], retention: '3y' });
 const resume = reactive({ reason: '', detail: '' });
+const returnForm = reactive({ reason: '', targetNode: RETURN_TARGET_NODES[0], note: '' });
 
 const escalateToTech = computed(() => escalate.channel.includes('技术支持'));
 
@@ -58,6 +61,15 @@ const escalateGroupOptions = computed(() => {
 });
 
 const showEscalateGroup = computed(() => escalateGroupOptions.value.length > 0);
+
+const delegateTargetOptions = computed(() => {
+  const list = delegate.mode === 'person' ? DELEGATE_TARGETS : DELEGATE_GROUPS;
+  return list.map((t) => ({ value: t, label: t }));
+});
+
+watch(() => delegate.mode, (mode) => {
+  delegate.target = mode === 'person' ? DELEGATE_TARGETS[0] : DELEGATE_GROUPS[0];
+});
 
 watch(() => escalate.channel, (ch) => {
   const groups = ESCALATE_CHANNEL_GROUPS[ch];
@@ -78,7 +90,7 @@ interface DlgConfig {
 
 const DLG_CONFIG: Partial<Record<OpActionType, DlgConfig>> = {
   转办: { title: '转办工单', icon: SwapOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认转办' },
-  委派: { title: '委派协办', icon: TeamOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认委派' },
+  委派: { title: '委派工单', icon: TeamOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认委派' },
   下送: { title: '下送审核', icon: StopOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认下送' },
   强结: { title: '强制结案（强结）', icon: StopOutlined, tone: 'warn', width: 480, okTone: 'danger', okText: '提交强结审批' },
   挂起: { title: '挂起工单', icon: PauseCircleOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认挂起' },
@@ -87,6 +99,7 @@ const DLG_CONFIG: Partial<Record<OpActionType, DlgConfig>> = {
   转售后: { title: '转售后处理', icon: ToolOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认转售后' },
   标记已解决: { title: '标记已解决', icon: CheckCircleOutlined, tone: 'success', width: 520, okTone: 'success', okText: '确认标记' },
   恢复: { title: '恢复工单', icon: PlayCircleOutlined, tone: 'success', width: 560, okTone: 'success', okText: '确认恢复' },
+  退回: { title: '退回工单', icon: RollbackOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认退回' },
   关闭工单: { title: '关闭工单', icon: CloseCircleOutlined, tone: 'warn', width: 560, okTone: 'primary', okText: '确认关闭' },
   归档工单: { title: '归档工单', icon: InboxOutlined, tone: 'warn', width: 480, okTone: 'danger', okText: '确认归档' },
 };
@@ -99,7 +112,7 @@ const cfg = computed<DlgConfig>(
 
 function resetForms() {
   transfer.scope = 'same'; transfer.target = TRANSFER_TARGETS[0]; transfer.reason = '';
-  delegate.assistant = DELEGATE_TARGETS[0]; delegate.reason = '';
+  delegate.mode = 'person'; delegate.target = DELEGATE_TARGETS[0]; delegate.reason = '';
   forceClose.reason = ''; forceClose.approver = APPROVERS[0]; forceClose.detail = '';
   suspend.reason = ''; suspend.detail = ''; suspend.resumeAt = '';
   escalate.channel = ESCALATE_CHANNELS[0]; escalate.group = ESCALATE_GROUPS[0];
@@ -110,6 +123,7 @@ function resetForms() {
   close.target = 'resolved'; close.result = ''; close.solution = '';
   archive.reason = ARCHIVE_REASONS[1]; archive.retention = '3y';
   resume.reason = ''; resume.detail = '';
+  returnForm.reason = ''; returnForm.targetNode = RETURN_TARGET_NODES[0]; returnForm.note = '';
 }
 
 watch(() => props.open, (v) => { if (v) resetForms(); });
@@ -123,6 +137,9 @@ function validate(): boolean {
     case '强结':
       if (!forceClose.reason) { message.warning('请选择强结原因'); return false; }
       return true;
+    case '委派':
+      if (!delegate.target) { message.warning(delegate.mode === 'person' ? '请选择协助办理人' : '请选择协助办理组'); return false; }
+      return true;
     case '挂起':
       if (!suspend.reason) { message.warning('请选择挂起原因'); return false; }
       return true;
@@ -134,6 +151,13 @@ function validate(): boolean {
       return true;
     case '恢复':
       if (!resume.reason) { message.warning('请选择恢复原因'); return false; }
+      return true;
+    case '退回':
+      if (props.returnCount >= MAX_RETURN_COUNT) {
+        message.warning(`本工单已退回 ${MAX_RETURN_COUNT} 次，已达上限`);
+        return false;
+      }
+      if (!returnForm.reason) { message.warning('请选择退回原因'); return false; }
       return true;
     case '关闭工单':
       if (!close.result) { message.warning('请选择处理结果'); return false; }
@@ -155,6 +179,7 @@ function onOk() {
     case '转售后': emit('confirm', { type: '转售后', data: { ...aftersale } }); break;
     case '标记已解决': emit('confirm', { type: '标记已解决', data: { ...resolve } }); break;
     case '恢复': emit('confirm', { type: '恢复', data: { ...resume } }); break;
+    case '退回': emit('confirm', { type: '退回', data: { ...returnForm } }); break;
     case '关闭工单': emit('confirm', { type: '关闭工单', data: { ...close } }); break;
     case '归档工单': emit('confirm', { type: '归档工单', data: { ...archive } }); break;
   }
@@ -198,14 +223,21 @@ function onOk() {
     <!-- 委派 -->
     <div v-else-if="action === '委派'" class="op-form">
       <div class="op-field">
-        <div class="op-label req">协助办理人</div>
-        <a-select v-model:value="delegate.assistant" :options="DELEGATE_TARGETS.map((t) => ({ value: t, label: t }))" style="width:100%" />
+        <div class="op-label req">委派方式</div>
+        <a-radio-group v-model:value="delegate.mode">
+          <a-radio value="person">委派到人</a-radio>
+          <a-radio value="group">委派到组</a-radio>
+        </a-radio-group>
+      </div>
+      <div class="op-field">
+        <div class="op-label req">{{ delegate.mode === 'person' ? '协助办理人' : '协助办理组' }}</div>
+        <a-select v-model:value="delegate.target" :options="delegateTargetOptions" style="width:100%" />
       </div>
       <div class="op-field">
         <div class="op-label">委派说明</div>
         <a-textarea v-model:value="delegate.reason" :rows="2" placeholder="请说明需协助的内容..." />
       </div>
-      <div class="op-tip op-tip-info">委派 ≠ 转办：主责仍在您名下，协助人配合办理，状态不变。</div>
+      <div class="op-tip op-tip-info">委派 ≠ 转办：主责仍在您名下；协办人/组处理完成后，工单回到您处继续处理。</div>
     </div>
 
     <!-- 强结 -->
@@ -351,6 +383,25 @@ function onOk() {
         <a-textarea v-model:value="resume.detail" :rows="2" placeholder="请描述恢复原因和后续处理计划..." />
       </div>
       <div class="op-tip op-tip-ok">恢复后 SLA 继续计时</div>
+    </div>
+
+    <!-- 退回 -->
+    <div v-else-if="action === '退回'" class="op-form">
+      <div class="op-field">
+        <div class="op-label req">退回原因</div>
+        <a-select v-model:value="returnForm.reason" placeholder="请选择..." style="width:100%"
+          :options="RETURN_REASONS.map((r) => ({ value: r, label: r }))" />
+      </div>
+      <div class="op-field">
+        <div class="op-label">退回目标节点</div>
+        <a-select v-model:value="returnForm.targetNode" style="width:100%"
+          :options="RETURN_TARGET_NODES.map((n) => ({ value: n, label: n }))" />
+      </div>
+      <div class="op-field">
+        <div class="op-label">补充说明</div>
+        <a-textarea v-model:value="returnForm.note" :rows="2" placeholder="请说明退回原因..." />
+      </div>
+      <div class="op-tip op-tip-warn">本工单已退回 <strong>{{ returnCount }}</strong> 次（最多 {{ MAX_RETURN_COUNT }} 次）</div>
     </div>
 
     <!-- 关闭工单 -->
