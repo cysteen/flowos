@@ -8,7 +8,7 @@ import { dirname, join } from 'node:path';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const dist = join(root, 'dist');
-const REPO = 'https://github.com/cysteen/flowos.git';
+const REPO = 'git@github.com:cysteen/flowos.git';
 const BRANCH = 'gh-pages';
 
 if (!existsSync(join(dist, 'index.html'))) {
