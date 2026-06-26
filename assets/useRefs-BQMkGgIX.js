@@ -1,0 +1,1 @@
+import{P as e,ct as t}from"./_plugin-vue_export-helper-B3iCUqZ7.js";var n=()=>{let n=t(new Map);return e(()=>{n.value=new Map}),[e=>t=>{n.value.set(e,t)},n]};export{n as t};
