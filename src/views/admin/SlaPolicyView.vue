@@ -7,8 +7,9 @@ import {
   ArrowLeftOutlined, HolderOutlined, DownOutlined, RightOutlined, ExportOutlined,
 } from '@ant-design/icons-vue';
 import AdminSectionTabs from './components/AdminSectionTabs.vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { SLA_NAV_ITEMS, adminNavActiveKey } from '@/config/adminNav';
-import { stdPagination } from '@/config/adminUi';
+import { stdPagination, toneOf } from '@/config/adminUi';
 
 const route = useRoute();
 const router = useRouter();
@@ -195,7 +196,7 @@ const columns = [
   { title: '工作日历', dataIndex: 'calendar', key: 'calendar', width: 170 },
   { title: '状态', dataIndex: 'status', key: 'status', width: 80 },
   { title: '更新时间', dataIndex: 'updatedAt', key: 'updatedAt', width: 150 },
-  { title: '操作', key: 'action', width: 210 },
+  { title: '操作', key: 'action', width: 230 },
 ];
 function scopeText(p: Policy): string {
   const typeLabel = isScopeAll(p.types) ? '全部类型' : p.types.join('/');
@@ -391,6 +392,16 @@ const dueSoonText = (d: DueSoon) => d.mode === 'countdown' ? `剩余 ${d.value}$
 
     <!-- ============ 列表态 ============ -->
     <div v-if="mode === 'list'" class="admin-page">
+      <AdminPageHeader
+        title="SLA 策略"
+        :subtitle="`按工单类型/优先级/产品线/客户等级配置差异化响应与解决时效 · 共 ${filtered.length} 条 · 拖拽调整生效优先级（首条命中）`"
+      >
+        <template #actions>
+          <a-button @click="testOpen = true"><template #icon><ThunderboltOutlined /></template>匹配测试</a-button>
+          <a-button type="primary" @click="openNew"><template #icon><PlusOutlined /></template>新建策略</a-button>
+        </template>
+      </AdminPageHeader>
+
       <!-- 轻量达成概览(检验就近):完整看板见运营看板/数据总览 -->
       <div class="kpi-band">
         <div v-for="k in slaKpis" :key="k.label" class="kb-item" :class="k.tone">
@@ -413,17 +424,6 @@ const dueSoonText = (d: DueSoon) => d.mode === 'countdown' ? `剩余 ${d.value}$
       </div>
 
       <div class="table-card">
-        <div class="toolbar">
-          <div class="tb-left">
-            <span class="tb-title">SLA 策略</span><span class="tb-count">共 {{ filtered.length }} 条</span>
-            <span class="tb-hint">· 拖拽 <HolderOutlined /> 调整生效优先级（越靠上越优先，首条命中）</span>
-          </div>
-          <div class="tb-right">
-            <a-button @click="testOpen = true"><template #icon><ThunderboltOutlined /></template>匹配测试</a-button>
-            <a-button type="primary" @click="openNew"><template #icon><PlusOutlined /></template>新建策略</a-button>
-          </div>
-        </div>
-
         <a-table
           :columns="columns" :data-source="filtered" row-key="no" :pagination="pagination" size="middle"
           :custom-row="(rowProps as any)"
@@ -442,13 +442,13 @@ const dueSoonText = (d: DueSoon) => d.mode === 'countdown' ? `剩余 ${d.value}$
               {{ (record as Policy).rate ? (record as Policy).rate + '%' : '—' }}
             </span>
             <template v-else-if="column.key === 'status'">
-              <span class="status" :class="(record as Policy).status === '启用' ? 'on' : 'off'" @click="toggle(record as Policy)">● {{ (record as Policy).status }}</span>
+              <a-tag :color="toneOf((record as Policy).status)">{{ (record as Policy).status }}</a-tag>
             </template>
             <template v-else-if="column.key === 'action'">
-              <span class="act primary" @click="openEdit(record as Policy)">编辑</span>
-              <span class="act" @click="toggle(record as Policy)">{{ (record as Policy).status === '启用' ? '停用' : '启用' }}</span>
-              <span class="act" @click="copyPolicy(record as Policy)">复制</span>
-              <span v-if="!(record as Policy).isDefault" class="act danger" @click="del(record as Policy)">删除</span>
+              <a-button type="link" size="small" @click="openEdit(record as Policy)">编辑</a-button>
+              <a-button type="link" size="small" @click="toggle(record as Policy)">{{ (record as Policy).status === '启用' ? '停用' : '启用' }}</a-button>
+              <a-button type="link" size="small" @click="copyPolicy(record as Policy)">复制</a-button>
+              <a-button type="link" size="small" danger @click="del(record as Policy)">删除</a-button>
             </template>
           </template>
         </a-table>
@@ -660,21 +660,12 @@ const dueSoonText = (d: DueSoon) => d.mode === 'countdown' ? `剩余 ${d.value}$
 .fi { display: flex; align-items: center; gap: 8px; }
 .fl { font-size: 12px; color: #6b7280; white-space: nowrap; }
 .fa { display: flex; gap: 8px; }
-.table-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; }
-.toolbar { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #e5e7eb; }
-.tb-left { display: flex; align-items: baseline; gap: 8px; }
-.tb-title { font-size: 14px; font-weight: 600; color: #111827; }
-.tb-count { font-size: 12px; color: #9ca3af; }
-.tb-hint { font-size: 12px; color: #b0b4bb; }
-.tb-right { display: flex; gap: 8px; }
-.act { font-size: 13px; color: #6b7280; cursor: pointer; margin-right: 12px; }
-.act.primary { color: #1a6fff; } .act.danger { color: #ef4444; } .act:hover { opacity: 0.7; }
+.table-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
 .cell-link { color: #1a6fff; cursor: pointer; }
 .drag-h { color: #c0c4cc; margin-right: 6px; cursor: grab; }
 .scope-cell { font-size: 12px; color: #4b5563; }
 .rate { font-size: 13px; font-weight: 700; }
 .rate.ok { color: #10b981; } .rate.warn { color: #f59e0b; } .rate.bad { color: #ef4444; }
-.status { cursor: pointer; font-size: 13px; } .status.on { color: #10b981; } .status.off { color: #9ca3af; }
 :deep(.row-dragging) { opacity: 0.5; }
 :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; font-weight: 600; }
 
@@ -691,7 +682,7 @@ const dueSoonText = (d: DueSoon) => d.mode === 'countdown' ? `剩余 ${d.value}$
 .anchor-item.active { color: #1a6fff; background: #eff6ff; border-left-color: #1a6fff; font-weight: 600; }
 .form-area { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
 .sec { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px 20px; scroll-margin-top: 80px; }
-.sec-h { font-size: 14px; font-weight: 600; color: #111827; margin-bottom: 14px; }
+.sec-h { font-size: 13px; font-weight: 600; color: #111827; margin-bottom: 14px; padding-left: 10px; border-left: 3px solid #1a6fff; line-height: 1.4; }
 .sec-sub { font-size: 12px; font-weight: normal; color: #9ca3af; margin-left: 8px; }
 .matrix { width: 100%; border-collapse: collapse; }
 .matrix th { background: #f3f4f6; color: #6b7280; font-size: 12px; font-weight: 600; text-align: left; padding: 8px 10px; border: 1px solid #e5e7eb; }
