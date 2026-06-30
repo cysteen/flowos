@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { message } from 'ant-design-vue';
-import { PlusOutlined, DeleteOutlined, ExportOutlined } from '@ant-design/icons-vue';
+import { PlusOutlined, DeleteOutlined, ExportOutlined, ImportOutlined } from '@ant-design/icons-vue';
 import AdminSectionTabs from './components/AdminSectionTabs.vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { SLA_NAV_ITEMS, adminNavActiveKey } from '@/config/adminNav';
@@ -11,23 +11,19 @@ import { SLA_NAV_ITEMS, adminNavActiveKey } from '@/config/adminNav';
 const route = useRoute();
 const activeKey = computed(() => adminNavActiveKey(route.path));
 
-// —— 双层计时 ——
-const timerMode = ref<'whole' | 'node' | 'both'>('both');
-const nodeRows = ref([
-  { node: '受理节点', resp: '15 分钟', solve: '—', cycle: '—', alert: true },
-  { node: '处理节点', resp: '30 分钟', solve: '4 小时', cycle: '1 小时', alert: true },
-  { node: '审核节点', resp: '30 分钟', solve: '2 小时', cycle: '—', alert: false },
-  { node: '回访节点', resp: '—', solve: '1 工作日', cycle: '—', alert: false },
-]);
+// 平台固定「双层 SLA（整单 + 节点并行）」，不提供计时模式开关（伪动作，已移除）。
+// 节点级时限 = 轻量 OLA（P1），在 SLA 策略内配，不在此页。
 
-// —— 挂起规则 ——
+// —— 挂起规则（参考 V1 A3#suspend：最长挂起防永久挂起 + 自动恢复条件 + 挂起审批）——
 const suspendRows = ref([
-  { state: '已挂起·待客户', pause: true, note: '等客户回复，停表' },
-  { state: '待第三方', pause: true, note: '等外部依赖' },
-  { state: '待备件', pause: true, note: '售后等件' },
-  { state: '待审核', pause: false, note: '下送审核期，默认计入解决时限' },
-  { state: '待回访', pause: true, note: '停整单解决计时，单独起回访时限（已拍板）' },
+  { reason: '等待客户反馈', pause: true, maxDuration: '72 小时', autoResume: '客户回复后自动恢复', needAudit: false },
+  { reason: '等待备件到货', pause: true, maxDuration: '7 天', autoResume: '到货确认后恢复', needAudit: false },
+  { reason: '等待第三方系统', pause: true, maxDuration: '48 小时', autoResume: '接口回调后恢复', needAudit: false },
+  { reason: '等待产研修复', pause: true, maxDuration: '15 天', autoResume: '版本发布后恢复', needAudit: true },
+  { reason: '客户要求暂缓', pause: true, maxDuration: '30 天', autoResume: '客户确认后恢复', needAudit: true },
 ]);
+function addSuspend() { suspendRows.value.push({ reason: '新挂起原因', pause: true, maxDuration: '72 小时', autoResume: '条件满足后恢复', needAudit: false }); }
+function delSuspend(reason: string) { suspendRows.value = suspendRows.value.filter((r) => r.reason !== reason); }
 
 // —— 预警配置 ——
 const alertRows = ref([
@@ -63,20 +59,37 @@ const workDays = ref([
   { day: '周六', on: false, time: '—' },
   { day: '周日', on: false, time: '—' },
 ]);
-const holidays = ref(['2026-01-01 元旦', '2026-02-16~22 春节', '2026-04-04~06 清明', '2026-05-01~05 劳动节']);
+// 节假日按年维护：名称固定，日期/调休逐年不同；可一键导入国务院当年安排。
+const holidayYear = ref('2026');
+const HOLIDAY_YEARS = ['2026', '2027', '2028'];
+const holidays = ref([
+  { name: '元旦', range: '01-01 ~ 01-03', makeup: '—', count: false },
+  { name: '春节', range: '02-16 ~ 02-22', makeup: '02-14, 02-28', count: false },
+  { name: '清明节', range: '04-04 ~ 04-06', makeup: '—', count: false },
+  { name: '劳动节', range: '05-01 ~ 05-05', makeup: '04-26, 05-09', count: false },
+  { name: '端午节', range: '06-19 ~ 06-21', makeup: '—', count: false },
+  { name: '中秋节', range: '09-25 ~ 09-27', makeup: '—', count: false },
+  { name: '国庆节', range: '10-01 ~ 10-07', makeup: '09-27, 10-11', count: false },
+]);
+function importHolidays() { message.info(`已导入 ${holidayYear.value} 年国务院法定节假日及调休安排（演示）`); }
+function addHoliday() { holidays.value.push({ name: '新假期', range: '', makeup: '—', count: false }); }
+function delHoliday(name: string) { holidays.value = holidays.value.filter((h) => h.name !== name); }
 
 // 配置短表列（spec §3：a-table size middle + :pagination=false）
-const nodeCols = [
-  { title: '节点', dataIndex: 'node', key: 'node' },
-  { title: '响应时限', dataIndex: 'resp', key: 'resp' },
-  { title: '解决时限', dataIndex: 'solve', key: 'solve' },
-  { title: '周期更新', dataIndex: 'cycle', key: 'cycle' },
-  { title: '节点预警', key: 'alert', width: 110 },
-];
 const suspendCols = [
-  { title: '状态', dataIndex: 'state', key: 'state' },
-  { title: '是否停表', key: 'pause', width: 110 },
-  { title: '说明', dataIndex: 'note', key: 'note' },
+  { title: '挂起原因', dataIndex: 'reason', key: 'reason' },
+  { title: '暂停计时', key: 'pause', width: 110 },
+  { title: '最长挂起', dataIndex: 'maxDuration', key: 'maxDuration', width: 110 },
+  { title: '自动恢复', dataIndex: 'autoResume', key: 'autoResume' },
+  { title: '需审核', key: 'needAudit', width: 90 },
+  { title: '操作', key: 'op', width: 90 },
+];
+const holidayCols = [
+  { title: '节日', dataIndex: 'name', key: 'name', width: 120 },
+  { title: '放假日期', dataIndex: 'range', key: 'range', width: 180 },
+  { title: '调休补班日', dataIndex: 'makeup', key: 'makeup' },
+  { title: '是否计时', key: 'count', width: 110 },
+  { title: '操作', key: 'op', width: 90 },
 ];
 const calCols = [
   { title: '星期', dataIndex: 'day', key: 'day', width: 120 },
@@ -91,47 +104,48 @@ function save() { message.success('已保存并生效'); }
   <div class="sla-engine">
     <AdminSectionTabs :items="SLA_NAV_ITEMS" :active-key="activeKey" />
     <div class="body">
-      <!-- ===== 计时口径（双层计时 + 挂起规则 + 工作日历 三合一） ===== -->
+      <!-- ===== 工作日历与停表（策略共用的计时基础） ===== -->
       <template v-if="activeKey === 'sla-timing'">
         <div class="panel">
-          <AdminPageHeader title="计时口径" subtitle="整单/节点双层计时、挂起停表、工作日历——所有 SLA 策略共用的计时基础设施">
+          <AdminPageHeader title="工作日历与停表" subtitle="SLA 策略共用的计时基础：工作日历（何时计时）+ 挂起停表（何时暂停）。平台固定双层 SLA（整单 + 节点并行）。">
             <template #actions><a-button type="primary" @click="save">保存</a-button></template>
           </AdminPageHeader>
 
-          <div class="sec-h">双层 SLA 计时模式</div>
-          <div class="intro">整单 SLA（创建→解决）与节点 SLA（进入节点→响应/处理）独立计时；工作台「双层倒计时」即源于此。<br>SLA 钟分 <b>响应 / 解决 / 周期更新</b> 三类，一策略内并行计量，<b>仍唯一命中一条策略</b>（非 ITSM 任意多钟）。</div>
-          <a-radio-group v-model:value="timerMode" class="mb">
-            <a-radio value="whole">仅整单计时</a-radio>
-            <a-radio value="node">仅节点级计时</a-radio>
-            <a-radio value="both">双层并行（推荐）</a-radio>
-          </a-radio-group>
-          <a-table :columns="nodeCols" :data-source="nodeRows" row-key="node" :pagination="false" size="middle">
-            <template #bodyCell="{ column, record }">
-              <a-switch v-if="column.key === 'alert'" v-model:checked="record.alert" size="small" />
-            </template>
-          </a-table>
-
-          <div class="sec-h mt2">挂起 / 停表规则</div>
-          <div class="intro">以下状态停止 SLA 计时，恢复后续算；避免「等客户/等件」期间被判超时。</div>
-          <a-table :columns="suspendCols" :data-source="suspendRows" row-key="state" :pagination="false" size="middle">
-            <template #bodyCell="{ column, record }">
-              <a-switch v-if="column.key === 'pause'" v-model:checked="record.pause" size="small" />
-              <span v-else-if="column.key === 'note'" class="muted">{{ record.note }}</span>
-            </template>
-          </a-table>
-
-          <div class="sec-h mt2">SLA 工作日历 <a-switch v-model:checked="is724" size="small" style="margin-left:6px" /><span class="muted" style="margin-left:6px">7×24 自然时间</span></div>
-          <div class="intro">SLA 时限按工作时段推进，非工作时段（夜间/周末/节假日）不计入计时；勾选 7×24 则按自然时间。</div>
+          <div class="sec-h">SLA 工作日历 <a-switch v-model:checked="is724" size="small" style="margin-left:6px" /><span class="muted" style="margin-left:6px">7×24 自然时间</span></div>
+          <div class="intro">SLA 时限按工作时段推进，非工作时段（夜间/周末/节假日）不计入计时；勾选 7×24 则按自然时间。各策略在「策略 · 计时口径」中引用本日历。</div>
           <a-table :columns="calCols" :data-source="workDays" row-key="day" :pagination="false" size="middle" :class="{ 'tbl-disabled': is724 }">
             <template #bodyCell="{ column, record }">
               <a-switch v-if="column.key === 'on'" v-model:checked="record.on" size="small" :disabled="is724" />
               <span v-else-if="column.key === 'time'" class="muted">{{ record.on ? record.time : '—' }}</span>
             </template>
           </a-table>
-          <div class="sec-h mt2">节假日（跳过 SLA 计时）</div>
-          <div class="holidays">
-            <a-tag v-for="h in holidays" :key="h" color="orange">{{ h }}</a-tag>
+          <div class="sec-h mt2">节假日 / 调休
+            <span class="hd-actions">
+              <span class="muted">年份</span>
+              <a-select v-model:value="holidayYear" size="small" style="width:92px" :options="HOLIDAY_YEARS.map((y) => ({ value: y, label: y + ' 年' }))" />
+              <a-button size="small" @click="importHolidays"><template #icon><ImportOutlined /></template>导入国务院安排</a-button>
+              <a-button size="small" type="primary" @click="addHoliday"><template #icon><PlusOutlined /></template>新增假期</a-button>
+            </span>
           </div>
+          <div class="intro">节日名称固定，但每年日期 / 调休不同 → 按年维护或一键导入国务院当年安排。节假日休息 = 不计时；调休补班日 = 计时；若该日承诺值班可改为「计时」。</div>
+          <a-table :columns="holidayCols" :data-source="holidays" row-key="name" :pagination="false" size="middle">
+            <template #bodyCell="{ column, record }">
+              <a-switch v-if="column.key === 'count'" v-model:checked="record.count" size="small" checked-children="计时" un-checked-children="休息" />
+              <a-button v-else-if="column.key === 'op'" type="link" size="small" danger @click="delHoliday(record.name)">删除</a-button>
+            </template>
+          </a-table>
+
+          <div class="sec-h mt2">挂起 / 停表规则</div>
+          <div class="intro">工单挂起时 SLA 计时暂停，按挂起原因差异化；设「最长挂起」防永久挂起、「自动恢复」条件、敏感原因可要求「需审核」。各策略在「策略 · 计时口径」中引用这些停表状态。</div>
+          <a-table :columns="suspendCols" :data-source="suspendRows" row-key="reason" :pagination="false" size="middle">
+            <template #bodyCell="{ column, record }">
+              <a-switch v-if="column.key === 'pause'" v-model:checked="record.pause" size="small" checked-children="暂停" un-checked-children="计时" />
+              <a-switch v-else-if="column.key === 'needAudit'" v-model:checked="record.needAudit" size="small" />
+              <span v-else-if="column.key === 'autoResume'" class="muted">{{ record.autoResume }}</span>
+              <a-button v-else-if="column.key === 'op'" type="link" size="small" danger @click="delSuspend(record.reason)">删除</a-button>
+            </template>
+          </a-table>
+          <a-button type="dashed" block class="mt" @click="addSuspend"><template #icon><PlusOutlined /></template>添加挂起原因</a-button>
         </div>
       </template>
 
@@ -139,7 +153,10 @@ function save() { message.success('已保存并生效'); }
       <template v-if="activeKey === 'sla-escalate'">
         <div class="panel">
           <AdminPageHeader title="预警与升级" subtitle="到阈值的提醒与升级；升级动作统一在「规则中心·升级路由」维护，此处只读引用">
-            <template #actions><a-button @click="goEscRoute"><template #icon><ExportOutlined /></template>前往升级路由</a-button></template>
+            <template #actions>
+              <a-button type="primary" @click="save">保存</a-button>
+              <a-button @click="goEscRoute"><template #icon><ExportOutlined /></template>前往升级路由</a-button>
+            </template>
           </AdminPageHeader>
 
           <div class="sec-h">SLA 预警配置</div>
@@ -197,6 +214,6 @@ function save() { message.success('已保存并生效'); }
 .cn-action { font-size: 12px; color: #6b7280; margin-top: 2px; }
 .cn-ref { color: #9ca3af; font-weight: normal; font-size: 11px; }
 .cn-line { position: absolute; left: 20px; top: 44px; width: 2px; height: 28px; background: #e5e7eb; }
-.holidays { display: flex; flex-wrap: wrap; gap: 6px; }
+.hd-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; font-weight: 600; }
 </style>

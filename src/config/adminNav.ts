@@ -42,7 +42,7 @@ export const ADMIN_APPROVAL = { key: 'approval', label: '审批中心', icon: Ch
  */
 export const SLA_NAV_ITEMS: AdminNavItem[] = [
   { key: 'sla-policy', label: '策略', prd: 'PRD-55', v1Ref: 'A/A3-sla-config.html#rules' },
-  { key: 'sla-timing', label: '计时口径', prd: 'PRD-55/56', v1Ref: 'A/A3-sla-config.html#timer' },
+  { key: 'sla-timing', label: '工作日历与停表', prd: 'PRD-55/56', v1Ref: 'A/A3-sla-config.html#timer' },
   { key: 'sla-escalate', label: '预警与升级', prd: 'PRD-55/58', v1Ref: 'A/A3-sla-config.html#escalate' },
   // 监控看板（检验层）已移出 SLA 配置：策略列表页保留轻量达成概览，完整看板归运营看板/数据总览、班组看板（单一算法源）。
 ];

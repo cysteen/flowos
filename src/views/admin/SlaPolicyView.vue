@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
 import {
   PlusOutlined, SearchOutlined, ReloadOutlined, DeleteOutlined, ThunderboltOutlined,
-  ArrowLeftOutlined, HolderOutlined, DownOutlined, RightOutlined, ExportOutlined,
+  ArrowLeftOutlined, HolderOutlined, ExportOutlined,
 } from '@ant-design/icons-vue';
 import AdminSectionTabs from './components/AdminSectionTabs.vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
@@ -39,6 +39,10 @@ interface MatrixRow {
 interface EscRule { id: number; dim: '响应' | '解决'; cond: string; escalationRef: string }
 /** ④ 临期规则：独立一等字段（对标 QuickService） */
 interface DueSoon { mode: 'countdown' | 'percent' | 'none'; value: number; unit: Unit }
+/** 节点 SLA：节点级时限，可对客(里程碑,如退款/发货)或对内(OLA,如二线接手) */
+interface NodeSla { id: number; node: string; scope: '对客' | '对内'; limit: number; unit: Unit; action: string; warn: string }
+/** 对客整单承诺哪些钟（按需勾选） */
+interface CommitClocks { resp: boolean; solve: boolean; cycle: boolean }
 interface Policy {
   no: string; name: string;
   types: string[]; channels: string[]; levels: string[]; products: string[];
@@ -47,6 +51,9 @@ interface Policy {
   pauseStates: string[]; remark: string;
   isDefault?: boolean;
   rate: number; // 达标率%（命中该规则工单的双层均达标率；0=新建/无数据）
+  // —— SLA 承诺（计时口径 + 对客整单时限按需 + 节点 SLA）；可选，openEdit 时以 blankPolicy 补默认 ——
+  clockStart?: string; clockEnd?: string; pauseEnabled?: boolean;
+  commitClocks?: CommitClocks; nodeSla?: NodeSla[];
 }
 
 const TYPE_OPTS = ['投诉', '咨询', '建议', '商机', '报修', '退费', '退换', '技术故障'];
@@ -58,6 +65,10 @@ const CAL_OPTS = ['标准工作日历(9:00-18:00)', '7×24 自然时间', '售�
 const PAUSE_OPTS = ['已挂起·待客户', '待第三方', '待备件', '待审核'];
 const UNIT_OPTS: Unit[] = ['分钟', '小时', '工作日'];
 const ESC_COND_OPTS = ['剩余 ≤ 25%', '剩余 ≤ 10%', '已超时', '超时后每 30 分钟'];
+const CLOCK_START_OPTS = ['工单创建', '首次受理', '分派后'];
+const CLOCK_END_OPTS = ['工单结案', '客户确认', '已解决'];
+const NODE_SCOPE_OPTS = ['对客', '对内'];
+const NODE_ACTION_OPTS = ['通知客户', '通知处理人', '通知班组长', '升级二线', '升级主管'];
 
 /** ⑥ 升级规则数据源 = 规则中心·升级路由（mock，含内联预览链） */
 const ESC_RULES = [
@@ -189,8 +200,8 @@ const filtered = computed(() => policies.value.filter((p) => {
 const canReorder = computed(() => !applied.name && applied.type === SCOPE_ALL && applied.status === SCOPE_ALL);
 
 const columns = [
-  { title: '策略名称', dataIndex: 'name', key: 'name', width: 160 },
-  { title: '适用范围', key: 'scope' },
+  { title: '策略名称', dataIndex: 'name', key: 'name', width: 210 },
+  { title: '适用范围', key: 'scope', width: 180, ellipsis: true },
   { title: '优先级覆盖', key: 'cover', width: 140 },
   { title: '达标率', key: 'rate', width: 100, sorter: (a: Policy, b: Policy) => a.rate - b.rate },
   { title: '工作日历', dataIndex: 'calendar', key: 'calendar', width: 170 },
@@ -239,7 +250,6 @@ const mode = ref<'list' | 'edit'>('list');
 const editing = ref<Policy | null>(null);
 const form = reactive<Policy>(blankPolicy());
 const escExpanded = reactive<Record<number, boolean>>({});
-const advancedCondOpen = ref(false);
 
 function blankPolicy(): Policy {
   return {
@@ -247,6 +257,8 @@ function blankPolicy(): Policy {
     calendar: CAL_OPTS[0], priority: 50, status: '启用', updatedAt: '',
     matrix: defMatrix(), dueSoon: { mode: 'countdown', value: 30, unit: '分钟' },
     escalations: [], pauseStates: ['已挂起·待客户'], remark: '', rate: 0,
+    clockStart: '工单创建', clockEnd: '工单结案', pauseEnabled: true,
+    commitClocks: { resp: true, solve: true, cycle: false }, nodeSla: [],
   };
 }
 
@@ -254,10 +266,9 @@ function blankPolicy(): Policy {
 const SECTIONS = [
   { key: 'basic', label: '① 基本信息' },
   { key: 'scope', label: '② 适用范围' },
-  { key: 'matrix', label: '③ 时限矩阵' },
+  { key: 'commit', label: '③ SLA 承诺' },
   { key: 'duesoon', label: '④ 临期规则' },
-  { key: 'timing', label: '⑤ 计时口径' },
-  { key: 'escalate', label: '⑥ 升级' },
+  { key: 'escalate', label: '⑤ 升级' },
 ];
 const activeSection = ref('basic');
 let observer: IntersectionObserver | null = null;
@@ -290,12 +301,11 @@ function openEdit(p: Policy) {
   if (isScopeAll(copy.levels)) copy.levels = [SCOPE_ALL];
   if (isScopeAll(copy.products)) copy.products = [SCOPE_ALL];
   if (!copy.types.length) copy.types = [SCOPE_ALL];
-  Object.assign(form, copy);
+  Object.assign(form, blankPolicy(), copy); // blankPolicy 补齐承诺新字段(老策略可能缺)
   enterEdit();
 }
 function enterEdit() {
   Object.keys(escExpanded).forEach((k) => delete escExpanded[Number(k)]);
-  advancedCondOpen.value = false;
   activeSection.value = 'basic';
   mode.value = 'edit';
   nextTick(setupObserver);
@@ -310,6 +320,8 @@ function addEsc() {
   form.escalations.push({ id, dim: '响应', cond: '剩余 ≤ 25%', escalationRef: 'EC01' });
 }
 function removeEsc(id: number) { form.escalations = form.escalations.filter((e) => e.id !== id); }
+function addNode() { (form.nodeSla ??= []).push({ id: Date.now(), node: '新节点', scope: '对客', limit: 24, unit: '小时', action: '通知客户', warn: '剩余 25%' }); }
+function delNode(id: number) { form.nodeSla = (form.nodeSla ?? []).filter((n) => n.id !== id); }
 function goNewEscRule() { message.info('跳转「规则中心 · 升级路由」新建升级规则（原型占位）'); }
 function goEscRoute() { message.info('前往「规则中心 · 升级路由」（原型占位）'); }
 
@@ -394,7 +406,7 @@ const dueSoonText = (d: DueSoon) => d.mode === 'countdown' ? `剩余 ${d.value}$
     <div v-if="mode === 'list'" class="admin-page">
       <AdminPageHeader
         title="SLA 策略"
-        :subtitle="`按工单类型/优先级/产品线/客户等级配置差异化响应与解决时效 · 共 ${filtered.length} 条 · 拖拽调整生效优先级（首条命中）`"
+        subtitle="SLA 策略 = 服务时效承诺：为匹配范围的工单设定多久内必须响应 / 解决；多策略命中时按生效优先级唯一命中一条。"
       >
         <template #actions>
           <a-button @click="testOpen = true"><template #icon><ThunderboltOutlined /></template>匹配测试</a-button>
@@ -434,7 +446,7 @@ const dueSoonText = (d: DueSoon) => d.mode === 'countdown' ? `剩余 ${d.value}$
               <span class="cell-link" @click="openEdit(record as Policy)">{{ (record as Policy).name }}</span>
               <a-tag v-if="(record as Policy).isDefault" color="default" style="margin-left:6px">兜底</a-tag>
             </template>
-            <span v-else-if="column.key === 'scope'" class="scope-cell">{{ scopeText(record as Policy) }}</span>
+            <span v-else-if="column.key === 'scope'" class="scope-cell" :title="scopeText(record as Policy)">{{ scopeText(record as Policy) }}</span>
             <span v-else-if="column.key === 'cover'">
               <a-tag v-for="m in (record as Policy).matrix" :key="m.level" color="blue" style="margin:1px">{{ m.level.split(' ')[0] }}</a-tag>
             </span>
@@ -519,23 +531,49 @@ const dueSoonText = (d: DueSoon) => d.mode === 'countdown' ? `剩余 ${d.value}$
             </a-form>
           </section>
 
-          <!-- ③ 时限矩阵 -->
-          <section id="sec-matrix" class="sec">
-            <div class="sec-h">③ 时限矩阵 · 有限多钟 <span class="sec-sub">响应 / 解决 / 周期更新 三钟并行，解决 ≥ 响应</span></div>
+          <!-- ③ SLA 承诺 -->
+          <section id="sec-commit" class="sec">
+            <div class="sec-h">③ SLA 承诺 <span class="sec-sub">计时口径 + 对客整单时限 + 节点 SLA</span></div>
+
+            <!-- 计时口径 -->
+            <div class="sub-h">计时口径</div>
+            <a-form layout="vertical">
+              <a-row :gutter="16">
+                <a-col :span="8"><a-form-item label="计时起点"><a-select v-model:value="form.clockStart" :options="CLOCK_START_OPTS.map((o) => ({ value: o, label: o }))" /></a-form-item></a-col>
+                <a-col :span="8"><a-form-item label="计时终点"><a-select v-model:value="form.clockEnd" :options="CLOCK_END_OPTS.map((o) => ({ value: o, label: o }))" /></a-form-item></a-col>
+                <a-col :span="8"><a-form-item label="关联工作日历"><a-select v-model:value="form.calendar" :options="CAL_OPTS.map((o) => ({ value: o, label: o }))" /></a-form-item></a-col>
+              </a-row>
+              <a-row :gutter="16">
+                <a-col :span="8"><a-form-item label="挂起暂停计时"><a-switch v-model:checked="form.pauseEnabled" /><span class="hint" style="margin-left:8px">挂起期间暂停计时</span></a-form-item></a-col>
+                <a-col :span="16"><a-form-item label="暂停状态集（停表 · 引用「工作日历与停表」共用库）"><a-select v-model:value="form.pauseStates" mode="multiple" :options="PAUSE_OPTS.map((o) => ({ value: o, label: o }))" /></a-form-item></a-col>
+              </a-row>
+            </a-form>
+
+            <!-- 对客整单时限 -->
+            <div class="sub-h mt">对客整单时限 <span class="sec-sub">按需勾选承诺哪些钟，各按 P0–P3 设值</span></div>
+            <div class="clock-toggles">
+              <a-checkbox v-model:checked="form.commitClocks!.resp">响应（创建→首响）</a-checkbox>
+              <a-checkbox v-model:checked="form.commitClocks!.solve">整单解决（创建→解决）</a-checkbox>
+              <a-checkbox v-model:checked="form.commitClocks!.cycle">周期更新（对客进展）</a-checkbox>
+            </div>
             <table class="matrix">
-              <thead><tr><th>优先级</th><th>响应时限</th><th>解决时限</th><th>周期更新<span class="th-opt">(可选)</span></th><th>计时</th></tr></thead>
+              <thead><tr><th>优先级</th>
+                <th v-if="form.commitClocks!.resp">响应时限</th>
+                <th v-if="form.commitClocks!.solve">整单解决</th>
+                <th v-if="form.commitClocks!.cycle">周期更新</th>
+                <th>计时</th></tr></thead>
               <tbody>
                 <tr v-for="m in form.matrix" :key="m.level">
                   <td class="lv">{{ m.level }}</td>
-                  <td>
+                  <td v-if="form.commitClocks!.resp">
                     <a-input-number v-model:value="m.respVal" :min="0" size="small" style="width:66px" />
                     <a-select v-model:value="m.respUnit" size="small" style="width:76px;margin-left:4px" :options="UNIT_OPTS.map((u) => ({ value: u, label: u }))" />
                   </td>
-                  <td>
+                  <td v-if="form.commitClocks!.solve">
                     <a-input-number v-model:value="m.solveVal" :min="0" size="small" style="width:66px" placeholder="不设" />
                     <a-select v-model:value="m.solveUnit" size="small" style="width:76px;margin-left:4px" :options="UNIT_OPTS.map((u) => ({ value: u, label: u }))" />
                   </td>
-                  <td>
+                  <td v-if="form.commitClocks!.cycle">
                     <a-input-number v-model:value="m.cycleVal" :min="0" size="small" style="width:66px" placeholder="关闭" />
                     <a-select v-model:value="m.cycleUnit" size="small" style="width:76px;margin-left:4px" :options="UNIT_OPTS.map((u) => ({ value: u, label: u }))" />
                   </td>
@@ -543,12 +581,32 @@ const dueSoonText = (d: DueSoon) => d.mode === 'countdown' ? `剩余 ${d.value}$
                 </tr>
               </tbody>
             </table>
-            <div class="tip">周期更新 = 两次对客进展的最大间隔（防"已受理却晾着"），每次对客回复后重置。三钟独立计时、独立判定、并行。「计时」开关让该优先级单独走 7×24（如 P0）。</div>
+            <div class="tip">响应=创建→首次响应；整单解决=创建→解决；周期更新=两次对客进展最大间隔（防晾着，可选）。「计时」开关让该优先级单独走 7×24（如 P0）。</div>
+
+            <!-- 节点 SLA -->
+            <div class="sub-h mt">节点 SLA <span class="sec-sub">节点级时限，可对客(里程碑) 或 对内(OLA)</span>
+              <a-button type="link" size="small" class="sub-add" @click="addNode"><template #icon><PlusOutlined /></template>添加节点</a-button>
+            </div>
+            <table class="matrix">
+              <thead><tr><th>节点</th><th>归属</th><th>时限</th><th>超时动作</th><th>预警</th><th style="width:64px">操作</th></tr></thead>
+              <tbody>
+                <tr v-for="n in form.nodeSla" :key="n.id">
+                  <td><a-input v-model:value="n.node" size="small" style="width:120px" /></td>
+                  <td><a-select v-model:value="n.scope" size="small" style="width:108px" :options="NODE_SCOPE_OPTS.map((o) => ({ value: o, label: o }))" /></td>
+                  <td><a-input-number v-model:value="n.limit" :min="0" size="small" style="width:62px" /><a-select v-model:value="n.unit" size="small" style="width:76px;margin-left:4px" :options="UNIT_OPTS.map((u) => ({ value: u, label: u }))" /></td>
+                  <td><a-select v-model:value="n.action" size="small" style="width:130px" :options="NODE_ACTION_OPTS.map((o) => ({ value: o, label: o }))" /></td>
+                  <td><a-input v-model:value="n.warn" size="small" style="width:90px" /></td>
+                  <td><a-button type="link" size="small" danger @click="delNode(n.id)">删除</a-button></td>
+                </tr>
+                <tr v-if="!form.nodeSla || !form.nodeSla.length"><td colspan="6" class="empty-node">暂无节点 SLA — 点「添加节点」配置退款/发货(对客里程碑) 或 二线接手/审核(对内 OLA)</td></tr>
+              </tbody>
+            </table>
+            <div class="tip">对客里程碑 = 对客户承诺的节点结果（退款 24时 / 发货 24时 / 上门）；对内 OLA = 内部环节，独立达标、不拖累对客整单 SLA。节点理想绑工单类型流程节点（P1）。</div>
           </section>
 
           <!-- ④ 临期规则 -->
           <section id="sec-duesoon" class="sec">
-            <div class="sec-h">④ 临期规则 <span class="sec-sub">进入临期 → 橙色预警，可作为⑥升级的触发点</span></div>
+            <div class="sec-h">④ 临期规则 <span class="sec-sub">进入临期 → 橙色预警，可作为⑤升级的触发点</span></div>
             <a-radio-group v-model:value="form.dueSoon.mode" class="due-group">
               <div class="due-row">
                 <a-radio value="countdown">到期倒计时</a-radio>
@@ -567,33 +625,9 @@ const dueSoonText = (d: DueSoon) => d.mode === 'countdown' ? `剩余 ${d.value}$
             </a-radio-group>
           </section>
 
-          <!-- ⑤ 计时口径 -->
-          <section id="sec-timing" class="sec">
-            <div class="sec-h">⑤ 计时口径</div>
-            <a-form layout="vertical">
-              <a-form-item label="关联工作日历" required>
-                <a-select v-model:value="form.calendar" style="max-width:360px" :options="CAL_OPTS.map((o) => ({ value: o, label: o }))" />
-                <div class="hint">时限按工作时间推进；非工作时段不计入（除非选 7×24 自然时间）。</div>
-              </a-form-item>
-              <a-form-item label="暂停状态集（停表）">
-                <a-select v-model:value="form.pauseStates" mode="multiple" style="max-width:480px" :options="PAUSE_OPTS.map((o) => ({ value: o, label: o }))" />
-                <div class="hint">这些状态停止 SLA 计时，恢复后续算（如挂起·待客户）。</div>
-              </a-form-item>
-              <div class="adv-toggle" @click="advancedCondOpen = !advancedCondOpen">
-                <component :is="advancedCondOpen ? DownOutlined : RightOutlined" /> 高级：自定义 SLA 开始 / 结束条件
-                <span class="adv-badge">默认跟随状态机</span>
-              </div>
-              <div v-if="advancedCondOpen" class="adv-body">
-                <div class="hint">开始条件 ⊕新增 / 结束条件 ⊕新增（字段 + 运算符 + 值，条件驱动计时）。</div>
-                <a-alert type="info" show-icon banner message="条件驱动计时为 P1 能力，本轮仅预留入口，默认按状态机（建单起 / 首响停 / 下送停）。" />
-              </div>
-              <div class="tip">已拍板：待回访停整单解决计时、单独起回访时限；已结案/已关闭不再计时（PRD-55 §9）。</div>
-            </a-form>
-          </section>
-
-          <!-- ⑥ 升级 -->
+          <!-- ⑤ 升级 -->
           <section id="sec-escalate" class="sec">
-            <div class="sec-h">⑥ 升级 <span class="sec-sub">SLA 设触发阈值 → 引用「规则中心 · 升级路由」升级规则</span></div>
+            <div class="sec-h">⑤ 升级 <span class="sec-sub">SLA 设触发阈值 → 引用「规则中心 · 升级路由」升级规则</span></div>
             <div v-for="e in form.escalations" :key="e.id" class="esc-block">
               <div class="esc-row">
                 <a-select v-model:value="e.dim" size="small" style="width:90px" :options="[{ value: '响应', label: '响应' }, { value: '解决', label: '解决' }]" />
@@ -691,9 +725,11 @@ const dueSoonText = (d: DueSoon) => d.mode === 'countdown' ? `剩余 ${d.value}$
 .th-opt { font-weight: normal; color: #9ca3af; margin-left: 2px; }
 .due-group { display: flex; flex-direction: column; gap: 12px; }
 .due-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #4b5563; }
-.adv-toggle { font-size: 13px; color: #1a6fff; cursor: pointer; display: flex; align-items: center; gap: 6px; margin: 4px 0; }
-.adv-badge { font-size: 11px; color: #9ca3af; background: #f3f4f6; border-radius: 4px; padding: 1px 6px; }
-.adv-body { margin: 6px 0 10px; display: flex; flex-direction: column; gap: 8px; }
+.sub-h { font-size: 13px; font-weight: 600; color: #374151; margin: 4px 0 10px; display: flex; align-items: center; }
+.sub-h.mt { margin-top: 20px; }
+.sub-h .sub-add { margin-left: auto; }
+.clock-toggles { display: flex; gap: 20px; margin-bottom: 12px; }
+.empty-node { text-align: center; color: #9ca3af; font-size: 12px; padding: 14px; }
 .esc-block { margin-bottom: 10px; }
 .esc-row { display: flex; align-items: center; gap: 8px; }
 .esc-row .arrow { color: #9ca3af; }
