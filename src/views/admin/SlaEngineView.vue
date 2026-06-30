@@ -13,10 +13,10 @@ const activeKey = computed(() => adminNavActiveKey(route.path));
 // —— 双层计时 ——
 const timerMode = ref<'whole' | 'node' | 'both'>('both');
 const nodeRows = ref([
-  { node: '受理节点', resp: '15 分钟', solve: '—', alert: true },
-  { node: '处理节点', resp: '30 分钟', solve: '4 小时', alert: true },
-  { node: '审核节点', resp: '30 分钟', solve: '2 小时', alert: false },
-  { node: '回访节点', resp: '—', solve: '1 工作日', alert: false },
+  { node: '受理节点', resp: '15 分钟', solve: '—', cycle: '—', alert: true },
+  { node: '处理节点', resp: '30 分钟', solve: '4 小时', cycle: '1 小时', alert: true },
+  { node: '审核节点', resp: '30 分钟', solve: '2 小时', cycle: '—', alert: false },
+  { node: '回访节点', resp: '—', solve: '1 工作日', cycle: '—', alert: false },
 ]);
 
 // —— 挂起规则 ——
@@ -41,32 +41,15 @@ function delAlert(id: number) { alertRows.value = alertRows.value.filter((r) => 
 
 // —— 升级链 ——
 const escChain = ref([
-  { level: 'L1', trigger: '响应剩余 ≤ 25%', action: '通知处理人', tone: 'info' },
-  { level: 'L2', trigger: '响应已超时', action: '通知班组长 + 打升级标记', tone: 'warn' },
-  { level: 'L3', trigger: '解决已超时', action: '自动升级二线组 + 优先级 +1', tone: 'danger' },
-  { level: 'L4', trigger: '超时后每 30 分钟', action: '升级客服主管 + 飞书同步', tone: 'danger' },
+  { level: 'L1', trigger: '响应剩余 ≤ 25%', action: '通知处理人', ref: 'EC01', tone: 'info' },
+  { level: 'L2', trigger: '响应已超时', action: '通知班组长 + 打升级标记', ref: 'EC01', tone: 'warn' },
+  { level: 'L3', trigger: '解决已超时', action: '自动升级二线组 + 优先级 +1', ref: 'EC02', tone: 'danger' },
+  { level: 'L4', trigger: '超时后每 30 分钟', action: '升级客服主管 + 飞书同步', ref: 'EC03', tone: 'danger' },
 ]);
+function goEscRoute() { message.info('前往「规则中心 · 升级路由」（原型占位）'); }
 
-// —— 达标统计 / 监控看板 ——
-const kpis = [
-  { label: '整单解决达成率', value: '94.2%', tone: 'ok' },
-  { label: '首响达成率', value: '97.8%', tone: 'ok' },
-  { label: '本月超时单', value: '38', tone: 'warn' },
-  { label: '平均处理时长', value: '3.2h', tone: 'normal' },
-];
-const statRows = [
-  { dim: 'P0 紧急', total: 120, met: 110, rate: '91.7%', overdue: 10 },
-  { dim: 'P1 高', total: 340, met: 322, rate: '94.7%', overdue: 18 },
-  { dim: 'P2 中', total: 880, met: 836, rate: '95.0%', overdue: 44 },
-  { dim: 'P3 低', total: 510, met: 498, rate: '97.6%', overdue: 12 },
-];
-const statCols = [
-  { title: '优先级', dataIndex: 'dim', key: 'dim' },
-  { title: '工单数', dataIndex: 'total', key: 'total' },
-  { title: '达标数', dataIndex: 'met', key: 'met' },
-  { title: '达标率', dataIndex: 'rate', key: 'rate' },
-  { title: '超时数', dataIndex: 'overdue', key: 'overdue' },
-];
+// 监控看板（达标统计）已移出 SLA 配置：完整看板归运营看板/数据总览、班组看板（单一算法源）；
+// SLA 策略列表页保留轻量达成概览。
 
 // —— 工作日历 ——
 const is724 = ref(false);
@@ -88,21 +71,21 @@ function save() { message.success('已保存并生效'); }
   <div class="sla-engine">
     <AdminSectionTabs :items="SLA_NAV_ITEMS" :active-key="activeKey" />
     <div class="body">
-      <!-- 双层计时 -->
-      <template v-if="activeKey === 'sla-timer'">
+      <!-- ===== 计时口径（双层计时 + 挂起规则 + 工作日历 三合一） ===== -->
+      <template v-if="activeKey === 'sla-timing'">
         <div class="card">
           <div class="card-title">双层 SLA 计时模式</div>
-          <div class="intro">整单 SLA（创建→解决）与节点 SLA（进入节点→响应/处理）独立计时；工作台「双层倒计时」即源于此。</div>
+          <div class="intro">整单 SLA（创建→解决）与节点 SLA（进入节点→响应/处理）独立计时；工作台「双层倒计时」即源于此。<br>SLA 钟分 <b>响应 / 解决 / 周期更新</b> 三类，一策略内并行计量，<b>仍唯一命中一条策略</b>（非 ITSM 任意多钟）。</div>
           <a-radio-group v-model:value="timerMode" class="mb">
             <a-radio value="whole">仅整单计时</a-radio>
             <a-radio value="node">仅节点级计时</a-radio>
             <a-radio value="both">双层并行（推荐）</a-radio>
           </a-radio-group>
           <table class="grid">
-            <thead><tr><th>节点</th><th>响应时限</th><th>处理/解决时限</th><th>节点预警</th></tr></thead>
+            <thead><tr><th>节点</th><th>响应时限</th><th>解决时限</th><th>周期更新</th><th>节点预警</th></tr></thead>
             <tbody>
               <tr v-for="r in nodeRows" :key="r.node">
-                <td class="b">{{ r.node }}</td><td>{{ r.resp }}</td><td>{{ r.solve }}</td>
+                <td class="b">{{ r.node }}</td><td>{{ r.resp }}</td><td>{{ r.solve }}</td><td>{{ r.cycle }}</td>
                 <td><a-switch v-model:checked="r.alert" size="small" /></td>
               </tr>
             </tbody>
@@ -111,8 +94,8 @@ function save() { message.success('已保存并生效'); }
         </div>
       </template>
 
-      <!-- 挂起规则 -->
-      <template v-else-if="activeKey === 'sla-suspend'">
+      <!-- 挂起规则（计时口径 tab 内） -->
+      <template v-if="activeKey === 'sla-timing'">
         <div class="card">
           <div class="card-title">挂起 / 停表规则</div>
           <div class="intro">以下状态停止 SLA 计时，恢复后续算；避免「等客户/等件」期间被判超时。</div>
@@ -130,8 +113,8 @@ function save() { message.success('已保存并生效'); }
         </div>
       </template>
 
-      <!-- 预警配置 -->
-      <template v-else-if="activeKey === 'sla-alert'">
+      <!-- ===== 预警与升级（预警配置 + 升级链只读引用） ===== -->
+      <template v-if="activeKey === 'sla-escalate'">
         <div class="card">
           <div class="card-title">SLA 预警配置</div>
           <div class="intro">计时到阈值时按通知方式提醒对应对象；与工作台 AI 建议条、首页临期/超时联动。</div>
@@ -146,16 +129,16 @@ function save() { message.success('已保存并生效'); }
         </div>
       </template>
 
-      <!-- 升级链 -->
-      <template v-else-if="activeKey === 'sla-escalate'">
+      <!-- 升级链只读（预警与升级 tab 内） -->
+      <template v-if="activeKey === 'sla-escalate'">
         <div class="card">
-          <div class="card-title">升级链路</div>
-          <div class="intro">逐级升级，防止超时无人管；触发条件满足即执行升级动作并打标。</div>
+          <div class="card-title">升级链（只读 · 来自「规则中心 · 升级路由」）<a-button type="link" size="small" style="margin-left:auto" @click="goEscRoute">前往升级路由 ↗</a-button></div>
+          <div class="intro">升级规则已统一在「规则中心 · 升级路由」维护，此处只读展示当前生效升级链；SLA 策略通过「触发阈值 + 引用」接入（见 SLA 策略 ⑥ 升级）。</div>
           <div class="chain">
             <div v-for="(e, i) in escChain" :key="e.level" class="chain-node" :class="e.tone">
               <div class="cn-level">{{ e.level }}</div>
               <div class="cn-body">
-                <div class="cn-trigger">{{ e.trigger }}</div>
+                <div class="cn-trigger">{{ e.trigger }} <span class="cn-ref">({{ e.ref }})</span></div>
                 <div class="cn-action">→ {{ e.action }}</div>
               </div>
               <div v-if="i < escChain.length - 1" class="cn-line" />
@@ -164,28 +147,8 @@ function save() { message.success('已保存并生效'); }
         </div>
       </template>
 
-      <!-- 达标统计 / 监控看板 -->
-      <template v-else-if="activeKey === 'sla-stats' || activeKey === 'sla-monitor'">
-        <div class="kpi-row">
-          <div v-for="k in kpis" :key="k.label" class="kpi" :class="k.tone">
-            <div class="kpi-val">{{ k.value }}</div>
-            <div class="kpi-label">{{ k.label }}</div>
-          </div>
-        </div>
-        <div class="card">
-          <div class="card-title">按优先级达标统计（近 30 天）</div>
-          <a-table :columns="statCols" :data-source="statRows" row-key="dim" :pagination="false" size="middle">
-            <template #bodyCell="{ column, text }">
-              <span v-if="column.key === 'rate'" :class="parseFloat(text) >= 95 ? 'rate-ok' : 'rate-warn'">{{ text }}</span>
-              <span v-else-if="column.key === 'overdue'" class="rate-warn">{{ text }}</span>
-              <template v-else>{{ text }}</template>
-            </template>
-          </a-table>
-        </div>
-      </template>
-
-      <!-- 工作日历 -->
-      <template v-else-if="activeKey === 'sla-calendar'">
+      <!-- 工作日历（计时口径 tab 内） -->
+      <template v-if="activeKey === 'sla-timing'">
         <div class="card">
           <div class="card-title">SLA 工作日历<a-switch v-model:checked="is724" size="small" style="margin-left:12px" /><span class="muted" style="margin-left:6px">7×24 自然时间</span></div>
           <div class="intro">SLA 时限按工作时段推进，非工作时段（夜间/周末/节假日）不计入计时；勾选 7×24 则按自然时间。</div>
@@ -207,7 +170,7 @@ function save() { message.success('已保存并生效'); }
         </div>
       </template>
 
-      <template v-else>
+      <template v-if="!['sla-timing', 'sla-escalate'].includes(activeKey)">
         <div class="card"><div class="card-title">{{ route.meta.title }}</div><div class="intro">该子页内容待补。</div></div>
       </template>
     </div>
@@ -239,6 +202,8 @@ function save() { message.success('已保存并生效'); }
 .cn-body { flex: 1; }
 .cn-trigger { font-size: 13px; font-weight: 600; color: #111827; }
 .cn-action { font-size: 12px; color: #6b7280; margin-top: 2px; }
+.cn-ref { color: #9ca3af; font-weight: normal; font-size: 11px; }
+.formula { font-size: 12px; color: #6b7280; background: #f0f6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 8px 12px; line-height: 1.6; }
 .cn-line { position: absolute; left: 20px; top: 44px; width: 2px; height: 28px; background: #e5e7eb; }
 .kpi-row { display: flex; gap: 16px; }
 .kpi { flex: 1; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px 18px; }

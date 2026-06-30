@@ -35,17 +35,16 @@ export const ADMIN_OVERVIEW = { key: 'overview', label: '数据总览', icon: Da
 /** 一级直达：配置变更审批（V1 A8#approval） */
 export const ADMIN_APPROVAL = { key: 'approval', label: '审批中心', icon: CheckCircleOutlined };
 
-/** V1 A3 SLA 引擎 → 侧栏子项（运营） */
+/**
+ * SLA 管理页内 Tab（8→4 合并，见《SLA交互改版设计-终版框线图》§A0「Tab 重构」）：
+ * 策略 / 计时口径(双层计时+挂起+日历) / 监控看板(达标+监控) / 预警与升级(预警+升级只读引用)。
+ * 旧 8 key 经 ADMIN_LEGACY_REDIRECTS 重定向到新 4 key。
+ */
 export const SLA_NAV_ITEMS: AdminNavItem[] = [
-  { key: 'sla-policy', label: 'SLA 规则', prd: 'PRD-55', v1Ref: 'A/A3-sla-config.html#rules' },
-  { key: 'sla-timer', label: '双层计时', prd: 'PRD-55', v1Ref: 'A/A3-sla-config.html#timer' },
-  { key: 'sla-suspend', label: '挂起规则', prd: 'PRD-55', v1Ref: 'A/A3-sla-config.html#suspend' },
-  { key: 'sla-alert', label: '预警配置', prd: 'PRD-55', v1Ref: 'A/A3-sla-config.html#alert' },
-  { key: 'sla-escalate', label: '升级链', prd: 'PRD-55', v1Ref: 'A/A3-sla-config.html#escalate' },
-  { key: 'sla-stats', label: '达标统计', prd: 'PRD-57', v1Ref: 'A/A3-sla-config.html#stats' },
-  { key: 'sla-calendar', label: 'SLA 工作日历', prd: 'PRD-56', v1Ref: '—' },
-  { key: 'sla-monitor', label: 'SLA 监控看板', prd: 'PRD-57', v1Ref: '—' },
-  // D5：SLA 模板能力并入「SLA 策略」（策略支持复制派生），不另设导航项。
+  { key: 'sla-policy', label: '策略', prd: 'PRD-55', v1Ref: 'A/A3-sla-config.html#rules' },
+  { key: 'sla-timing', label: '计时口径', prd: 'PRD-55/56', v1Ref: 'A/A3-sla-config.html#timer' },
+  { key: 'sla-escalate', label: '预警与升级', prd: 'PRD-55/58', v1Ref: 'A/A3-sla-config.html#escalate' },
+  // 监控看板（检验层）已移出 SLA 配置：策略列表页保留轻量达成概览，完整看板归运营看板/数据总览、班组看板（单一算法源）。
 ];
 
 /** V1 A4 规则引擎 → 侧栏子项（运营） */
@@ -191,9 +190,16 @@ export function isRulesNavKey(key: string): boolean {
   return RULES_NAV_ITEMS.some((i) => i.key === key);
 }
 
-/** 旧 key 兼容重定向（rules → rules-list） */
+/** 旧 key 兼容重定向（rules → rules-list；SLA 8→4 合并的旧子页 → 新 tab） */
 export const ADMIN_LEGACY_REDIRECTS: Record<string, string> = {
   rules: 'rules-list',
+  'sla-timer': 'sla-timing',
+  'sla-suspend': 'sla-timing',
+  'sla-calendar': 'sla-timing',
+  'sla-alert': 'sla-escalate',
+  // 监控看板移出 SLA 配置 → 旧达标/监控 key 落回 SLA 策略（其页顶有达成概览，完整看板见运营看板/数据总览）
+  'sla-stats': 'sla-policy',
+  'sla-monitor': 'sla-policy',
 };
 
 export function isAdminNavKey(key: string): boolean {

@@ -29,3 +29,32 @@ export const STATUS_TONE: Record<string, string> = {
   锁定: 'red', 失败: 'red', 已驳回: 'red', 异常: 'red', 已逾期: 'red',
 };
 export const toneOf = (status: string): string => STATUS_TONE[status] ?? 'default';
+
+/**
+ * SLA 运行态「处理时效」6 态配色规范（全系统统一：列表/工作台/班组看板/操作页复用）。
+ * 配色铁律：红只给 P0 与 SLA 超时；临期橙、注意黄、充裕绿、暂停/无约束灰。
+ * 详见 docs/admin-ui-spec.md 与《SLA交互改版设计-终版框线图》§4。
+ */
+export type SlaTimelinessState = 'none' | 'ample' | 'notice' | 'soon' | 'overdue' | 'paused';
+
+export const SLA_TIMELINESS: Record<SlaTimelinessState, { color: string; dot: string; label: string }> = {
+  none: { color: '#9ca3af', dot: '—', label: '无约束' },
+  ample: { color: '#10b981', dot: '●', label: '充裕' },
+  notice: { color: '#f59e0b', dot: '●', label: '注意' },
+  soon: { color: '#f97316', dot: '●', label: '临期' },
+  overdue: { color: '#ef4444', dot: '●', label: '超时' },
+  paused: { color: '#9ca3af', dot: '⏸', label: '已暂停' },
+};
+
+/** 按剩余百分比定 6 态之一（overdue/paused 需调用方按运行态另判）。 */
+export function slaStateByRemainPct(remainPct: number): SlaTimelinessState {
+  if (remainPct <= 0) return 'overdue';
+  if (remainPct <= 25) return 'soon';
+  if (remainPct <= 50) return 'notice';
+  return 'ample';
+}
+
+/** 排序权重：已超时最前，剩余越少越前（配合「已超时 > 距超时升序」固定口径）。 */
+export const SLA_STATE_SORT: Record<SlaTimelinessState, number> = {
+  overdue: 0, soon: 1, notice: 2, ample: 3, paused: 4, none: 5,
+};
