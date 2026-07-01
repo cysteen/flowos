@@ -48,12 +48,14 @@ export const SLA_NAV_ITEMS: AdminNavItem[] = [
 ];
 
 /** V1 A4 规则引擎 → 侧栏子项（运营） */
+/**
+ * 规则中心(PRD-58,统一规则引擎 = V1 丰富版 + 触发时机 + 派单边界):规则 / 路由矩阵 / 执行日志。
+ * 可视化编辑(IF嵌套+全运算符+规则测试+冲突检测)收进"规则"统一编辑器;流转/升级矩阵进"路由矩阵";工单池/审核降为动作类型。
+ * 详见《规则中心重定位设计(调研+诊断+设计)》。
+ */
 export const RULES_NAV_ITEMS: AdminNavItem[] = [
-  { key: 'rules-list', label: '规则列表', prd: 'PRD-58', v1Ref: 'A/A4-rule-engine.html#list' },
-  { key: 'rules-editor', label: '可视化规则编辑', prd: 'PRD-58', v1Ref: 'A/A4-rule-engine.html#editor' },
-  { key: 'rules-routing', label: '流转路由', prd: 'PRD-58', v1Ref: 'A/A4-rule-engine.html#routing' },
-  { key: 'rules-pool', label: '工单池规则', prd: 'PRD-58', v1Ref: 'A/A4-rule-engine.html#pool' },
-  { key: 'rules-escalation', label: '升级路由', prd: 'PRD-58', v1Ref: 'A/A4-rule-engine.html#escalation' },
+  { key: 'rules-list', label: '规则', prd: 'PRD-58', v1Ref: 'A/A4-rule-engine.html#list' },
+  { key: 'rules-matrix', label: '路由矩阵', prd: 'PRD-58', v1Ref: 'A/A4-rule-engine.html#matrix' },
   { key: 'rules-logs', label: '执行日志', prd: 'PRD-58', v1Ref: 'A/A4-rule-engine.html#logs' },
 ];
 
@@ -193,6 +195,11 @@ export function isRulesNavKey(key: string): boolean {
 /** 旧 key 兼容重定向（rules → rules-list；SLA 8→4 合并的旧子页 → 新 tab） */
 export const ADMIN_LEGACY_REDIRECTS: Record<string, string> = {
   rules: 'rules-list',
+  // 规则中心:旧子项并入"规则"统一列表+编辑器;路由/升级矩阵进"路由矩阵"
+  'rules-editor': 'rules-list',
+  'rules-routing': 'rules-matrix',
+  'rules-pool': 'rules-list',
+  'rules-escalation': 'rules-matrix',
   'sla-timer': 'sla-timing',
   'sla-suspend': 'sla-timing',
   'sla-calendar': 'sla-timing',

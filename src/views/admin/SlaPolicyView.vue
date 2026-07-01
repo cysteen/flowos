@@ -32,17 +32,15 @@ interface MatrixRow {
   level: string;
   respVal: number; respUnit: Unit;
   solveVal: number | null; solveUnit: Unit;
-  cycleVal: number | null; cycleUnit: Unit;
-  cal247: boolean;
 }
-/** ⑥ 升级：SLA 只设触发阈值 + 引用规则中心升级规则（D6 解耦 + 内联预览） */
+/** ⑥ 升级：SLA 设触发阈值 + 引用 SLA 升级链（A3-05，SLA 引擎·预警与升级 维护 + 内联预览） */
 interface EscRule { id: number; dim: '响应' | '解决'; cond: string; escalationRef: string }
 /** ④ 临期规则：独立一等字段（对标 QuickService） */
 interface DueSoon { mode: 'countdown' | 'percent' | 'none'; value: number; unit: Unit }
-/** 节点 SLA：节点级时限，可对客(里程碑,如退款/发货)或对内(OLA,如二线接手) */
-interface NodeSla { id: number; node: string; scope: '对客' | '对内'; limit: number; unit: Unit; action: string; warn: string }
-/** 对客整单承诺哪些钟（按需勾选） */
-interface CommitClocks { resp: boolean; solve: boolean; cycle: boolean }
+/** 节点时效：每个流程节点的 响应 + 处理 两钟，各自走不同日历 */
+interface NodeSla { id: number; node: string; respLimit: number | null; respUnit: Unit; respCal: string; procLimit: number | null; procUnit: Unit; procCal: string }
+/** 整单时效承诺哪些钟（按需勾选） */
+interface CommitClocks { resp: boolean; solve: boolean }
 interface Policy {
   no: string; name: string;
   types: string[]; channels: string[]; levels: string[]; products: string[];
@@ -54,23 +52,54 @@ interface Policy {
   // —— SLA 承诺（计时口径 + 对客整单时限按需 + 节点 SLA）；可选，openEdit 时以 blankPolicy 补默认 ——
   clockStart?: string; clockEnd?: string; pauseEnabled?: boolean;
   commitClocks?: CommitClocks; nodeSla?: NodeSla[];
+  respCalendar?: string; solveCalendar?: string; // 每类整单时效各自的日历
 }
 
 const TYPE_OPTS = ['投诉', '咨询', '建议', '商机', '报修', '退费', '退换', '技术故障'];
 const CHANNEL_OPTS = ['在线客服', '电话', '邮件', '小程序', 'APP'];
-const LEVEL_OPTS = ['VIP', '普通', '企业客户', '战略客户'];
+const LEVEL_OPTS = ['校长', '教师', '自媒体', '大V博主', '律师', '记者'];
 const PRODUCT_OPTS = ['学习机', '翻译机', '录音笔', '办公本', '智能硬件', 'AI服务', '通用'];
 const SCOPE_ALL = '全部';
 const CAL_OPTS = ['标准工作日历(9:00-18:00)', '7×24 自然时间', '售后工作日历'];
-const PAUSE_OPTS = ['已挂起·待客户', '待第三方', '待备件', '待审核'];
 const UNIT_OPTS: Unit[] = ['分钟', '小时', '工作日'];
 const ESC_COND_OPTS = ['剩余 ≤ 25%', '剩余 ≤ 10%', '已超时', '超时后每 30 分钟'];
-const CLOCK_START_OPTS = ['工单创建', '首次受理', '分派后'];
-const CLOCK_END_OPTS = ['工单结案', '客户确认', '已解决'];
-const NODE_SCOPE_OPTS = ['对客', '对内'];
-const NODE_ACTION_OPTS = ['通知客户', '通知处理人', '通知班组长', '升级二线', '升级主管'];
+const WORK_CAL = '标准工作日历(9:00-18:00)';
 
-/** ⑥ 升级规则数据源 = 规则中心·升级路由（mock，含内联预览链） */
+/** 节点时效预埋（各流程节点独立配置） */
+function defNodeSla(): NodeSla[] {
+  const base = Date.now();
+  const mk = (i: number, node: string, procLimit: number, procUnit: Unit, respLimit = 30, respUnit: Unit = '分钟'): NodeSla => ({
+    id: base + i, node, respLimit, respUnit, respCal: WORK_CAL, procLimit, procUnit, procCal: WORK_CAL,
+  });
+  return [
+    mk(1, '受理/接单', 2, '小时'),
+    mk(2, '分派/派单', 30, '分钟', 15, '分钟'),
+    mk(3, '处理中', 24, '小时', 2, '小时'),
+    mk(4, '审核', 8, '小时', 1, '小时'),
+    mk(5, '回访', 24, '小时', 2, '小时'),
+  ];
+}
+/** 日历短名（列表/紧凑选择器用） */
+const CAL_SHORT: Record<string, string> = {
+  '标准工作日历(9:00-18:00)': '工作日历', '7×24 自然时间': '7×24', '售后工作日历': '售后日历',
+};
+const calSelOpts = CAL_OPTS.map((c) => ({ value: c, label: CAL_SHORT[c] ?? c }));
+
+/** 各工单类型流程节点类型（节点时效"节点"下拉，分组覆盖；理想由工单类型流程节点动态带出，此处先静态覆盖） */
+const NODE_TYPE_GROUPS = [
+  { label: '通用流转', options: ['建单', '受理/接单', '分派/派单', '处理中', '转办/委派', '升级二线', '审核', '解决', '回访', '结案/关闭'] },
+  { label: '投诉', options: ['一线处理', '升级技支', '服务处理'] },
+  { label: '咨询', options: ['解答'] },
+  { label: '建议', options: ['记录/转交'] },
+  { label: '商机', options: ['商机跟进', '转销售'] },
+  { label: '售后·寄修', options: ['派单至网点', '取件', '网点检测', '维修处理', '寄回', '网点完成'] },
+  { label: '售后·退费', options: ['退费审批', '财务退款'] },
+  { label: '售后·退换', options: ['退换审核', '换货发货'] },
+  { label: '技术故障', options: ['一线诊断', '研发处理(飞书/TPD/RDM/磐石)', '验证'] },
+];
+const nodeNameOpts = NODE_TYPE_GROUPS.map((g) => ({ label: g.label, options: g.options.map((o) => ({ value: o, label: o })) }));
+
+/** ⑥ 升级规则数据源 = SLA 引擎·自动升级链（mock，含内联预览链） */
 const ESC_RULES = [
   { no: 'EC01', name: '响应超时升级', chain: ['L1 响应剩余≤25% → 通知处理人', 'L2 响应已超时 → 通知班组长 + 打升级标记'] },
   { no: 'EC02', name: '解决超时升二线', chain: ['L1 解决已超时 → 自动升级二线组', 'L2 超时后每30分 → 优先级+1'] },
@@ -99,10 +128,10 @@ function onProductsChange(values: string[]) { form.products = normalizeScopeSele
 
 function defMatrix(): MatrixRow[] {
   return [
-    { level: 'P0 紧急', respVal: 15, respUnit: '分钟', solveVal: 4, solveUnit: '小时', cycleVal: 1, cycleUnit: '小时', cal247: true },
-    { level: 'P1 高', respVal: 30, respUnit: '分钟', solveVal: 8, solveUnit: '小时', cycleVal: null, cycleUnit: '小时', cal247: false },
-    { level: 'P2 中', respVal: 2, respUnit: '小时', solveVal: 1, solveUnit: '工作日', cycleVal: null, cycleUnit: '小时', cal247: false },
-    { level: 'P3 低', respVal: 4, respUnit: '小时', solveVal: 3, solveUnit: '工作日', cycleVal: null, cycleUnit: '小时', cal247: false },
+    { level: 'P0 紧急', respVal: 15, respUnit: '分钟', solveVal: 4, solveUnit: '小时' },
+    { level: 'P1 高', respVal: 30, respUnit: '分钟', solveVal: 8, solveUnit: '小时' },
+    { level: 'P2 中', respVal: 2, respUnit: '小时', solveVal: 1, solveUnit: '工作日' },
+    { level: 'P3 低', respVal: 4, respUnit: '小时', solveVal: 3, solveUnit: '工作日' },
   ];
 }
 type Lv = 'P0 紧急' | 'P1 高' | 'P2 中' | 'P3 低';
@@ -119,7 +148,7 @@ function matrixWith(overrides: Partial<Record<Lv, { resp: [number, Unit]; solve:
 // 8 条业务约定 SLA 规则（V1 A3 SLA-001~008），映射进 P0–P3 矩阵模型：每条规则的优先级 → 对应矩阵行。
 const policies = ref<Policy[]>([
   {
-    no: 'SLA001', name: 'VIP客户-紧急-学习机', types: ['投诉'], channels: [SCOPE_ALL], levels: ['VIP'], products: ['学习机'],
+    no: 'SLA001', name: 'VIP客户-紧急-学习机', types: ['投诉'], channels: [SCOPE_ALL], levels: ['大V博主'], products: ['学习机'],
     calendar: '7×24 自然时间', priority: 1, status: '启用', updatedAt: '2026-06-14 10:20',
     matrix: matrixWith({ 'P0 紧急': { resp: [30, '分钟'], solve: [4, '小时'] } }),
     dueSoon: { mode: 'countdown', value: 30, unit: '分钟' },
@@ -129,7 +158,7 @@ const policies = ref<Policy[]>([
     ], pauseStates: ['已挂起·待客户'], remark: 'VIP 投诉走最严时限', rate: 96.2,
   },
   {
-    no: 'SLA002', name: 'VIP客户-高优先级', types: [SCOPE_ALL], channels: [SCOPE_ALL], levels: ['VIP'], products: [SCOPE_ALL],
+    no: 'SLA002', name: 'VIP客户-高优先级', types: [SCOPE_ALL], channels: [SCOPE_ALL], levels: ['大V博主'], products: [SCOPE_ALL],
     calendar: '标准工作日历(9:00-18:00)', priority: 2, status: '启用', updatedAt: '2026-06-12 09:00',
     matrix: matrixWith({ 'P1 高': { resp: [1, '小时'], solve: [8, '小时'] } }),
     dueSoon: { mode: 'countdown', value: 1, unit: '小时' },
@@ -137,7 +166,7 @@ const policies = ref<Policy[]>([
     pauseStates: ['已挂起·待客户'], remark: 'VIP 全类型高优先', rate: 93.8,
   },
   {
-    no: 'SLA003', name: '普通客户-紧急', types: ['投诉'], channels: [SCOPE_ALL], levels: ['普通'], products: [SCOPE_ALL],
+    no: 'SLA003', name: '普通客户-紧急', types: ['投诉'], channels: [SCOPE_ALL], levels: ['教师'], products: [SCOPE_ALL],
     calendar: '7×24 自然时间', priority: 3, status: '启用', updatedAt: '2026-06-11 14:00',
     matrix: matrixWith({ 'P0 紧急': { resp: [1, '小时'], solve: [8, '小时'] } }),
     dueSoon: { mode: 'percent', value: 80, unit: '分钟' },
@@ -204,7 +233,7 @@ const columns = [
   { title: '适用范围', key: 'scope', width: 180, ellipsis: true },
   { title: '优先级覆盖', key: 'cover', width: 140 },
   { title: '达标率', key: 'rate', width: 100, sorter: (a: Policy, b: Policy) => a.rate - b.rate },
-  { title: '工作日历', dataIndex: 'calendar', key: 'calendar', width: 170 },
+  { title: '工作日历(响/解)', key: 'calendar', width: 170 },
   { title: '状态', dataIndex: 'status', key: 'status', width: 80 },
   { title: '更新时间', dataIndex: 'updatedAt', key: 'updatedAt', width: 150 },
   { title: '操作', key: 'action', width: 230 },
@@ -212,11 +241,24 @@ const columns = [
 function scopeText(p: Policy): string {
   const typeLabel = isScopeAll(p.types) ? '全部类型' : p.types.join('/');
   const channelLabel = isScopeAll(p.channels) ? '全渠道' : p.channels.join('/');
-  const levelLabel = isScopeAll(p.levels) ? '全部等级' : p.levels.join('/');
+  const levelLabel = isScopeAll(p.levels) ? '全部客户类型' : p.levels.join('/');
   const productLabel = isScopeAll(p.products) ? '全产品线' : p.products.join('/');
   return [typeLabel, channelLabel, levelLabel, productLabel].join(' · ');
 }
+/** 列表「工作日历」列：按时效日历摘要（响应/解决各自日历） */
+function calText(p: Policy): string {
+  const r = CAL_SHORT[p.respCalendar ?? p.calendar] ?? '—';
+  const s = CAL_SHORT[p.solveCalendar ?? p.calendar] ?? '—';
+  return `响:${r} / 解:${s}`;
+}
 const pagination = stdPagination();
+/** 节点时效表列（spec：a-table size middle + pagination false） */
+const nodeCols = [
+  { title: '节点', key: 'node', width: 140 },
+  { title: '节点响应（时限 · 日历）', key: 'resp' },
+  { title: '节点处理（时限 · 日历）', key: 'proc' },
+  { title: '操作', key: 'op', width: 70 },
+];
 
 // —— 拖拽排序（顺序即生效优先级，首条命中）——
 const dragIdx = ref<number>(-1);
@@ -258,7 +300,8 @@ function blankPolicy(): Policy {
     matrix: defMatrix(), dueSoon: { mode: 'countdown', value: 30, unit: '分钟' },
     escalations: [], pauseStates: ['已挂起·待客户'], remark: '', rate: 0,
     clockStart: '工单创建', clockEnd: '工单结案', pauseEnabled: true,
-    commitClocks: { resp: true, solve: true, cycle: false }, nodeSla: [],
+    commitClocks: { resp: true, solve: true }, nodeSla: defNodeSla(),
+    respCalendar: '标准工作日历(9:00-18:00)', solveCalendar: '7×24 自然时间',
   };
 }
 
@@ -320,10 +363,15 @@ function addEsc() {
   form.escalations.push({ id, dim: '响应', cond: '剩余 ≤ 25%', escalationRef: 'EC01' });
 }
 function removeEsc(id: number) { form.escalations = form.escalations.filter((e) => e.id !== id); }
-function addNode() { (form.nodeSla ??= []).push({ id: Date.now(), node: '新节点', scope: '对客', limit: 24, unit: '小时', action: '通知客户', warn: '剩余 25%' }); }
+function addNode() {
+  (form.nodeSla ??= []).push({
+    id: Date.now(), node: '受理/接单', respLimit: 30, respUnit: '分钟', respCal: WORK_CAL,
+    procLimit: 4, procUnit: '小时', procCal: WORK_CAL,
+  });
+}
 function delNode(id: number) { form.nodeSla = (form.nodeSla ?? []).filter((n) => n.id !== id); }
-function goNewEscRule() { message.info('跳转「规则中心 · 升级路由」新建升级规则（原型占位）'); }
-function goEscRoute() { message.info('前往「规则中心 · 升级路由」（原型占位）'); }
+function goNewEscRule() { message.info('跳转「SLA 引擎 · 预警与升级」新建升级链（原型占位）'); }
+function goEscRoute() { message.info('前往「SLA 引擎 · 预警与升级」（原型占位）'); }
 
 function matrixValid(): boolean {
   return form.matrix.every((r) => {
@@ -338,7 +386,7 @@ function matrixValid(): boolean {
 function save() {
   if (!form.name.trim()) { message.warning('请填写策略名称'); scrollToSection('basic'); return; }
   if (!form.types.length) { message.warning('请选择适用工单类型（或全部）'); scrollToSection('scope'); return; }
-  if (!matrixValid()) { message.warning('时限矩阵不合法：响应须>0，解决须 ≥ 响应'); scrollToSection('matrix'); return; }
+  if (!matrixValid()) { message.warning('时限矩阵不合法：响应须>0，解决须 ≥ 响应'); scrollToSection('commit'); return; }
   if (form.escalations.some((e) => !e.escalationRef)) { message.warning('请为每条升级阈值引用一条升级规则'); scrollToSection('escalate'); return; }
   form.updatedAt = '2026-06-29 18:00';
   if (editing.value) {
@@ -382,7 +430,7 @@ function del(p: Policy) {
 const testOpen = ref(false);
 const testType = ref('投诉');
 const testChannel = ref('在线客服');
-const testLevel = ref('VIP');
+const testLevel = ref('校长');
 const testProduct = ref('学习机');
 const testResult = computed(() => {
   // 按列表顺序首条命中（启用态）
@@ -447,6 +495,7 @@ const dueSoonText = (d: DueSoon) => d.mode === 'countdown' ? `剩余 ${d.value}$
               <a-tag v-if="(record as Policy).isDefault" color="default" style="margin-left:6px">兜底</a-tag>
             </template>
             <span v-else-if="column.key === 'scope'" class="scope-cell" :title="scopeText(record as Policy)">{{ scopeText(record as Policy) }}</span>
+            <span v-else-if="column.key === 'calendar'" class="scope-cell">{{ calText(record as Policy) }}</span>
             <span v-else-if="column.key === 'cover'">
               <a-tag v-for="m in (record as Policy).matrix" :key="m.level" color="blue" style="margin:1px">{{ m.level.split(' ')[0] }}</a-tag>
             </span>
@@ -518,7 +567,7 @@ const dueSoonText = (d: DueSoon) => d.mode === 'countdown' ? `剩余 ${d.value}$
                 </a-form-item></a-col>
               </a-row>
               <a-row :gutter="16">
-                <a-col :span="12"><a-form-item label="客户等级">
+                <a-col :span="12"><a-form-item label="客户类型">
                   <a-select v-model:value="form.levels" mode="multiple" placeholder="选择等级，或选「全部」"
                     :options="[SCOPE_ALL, ...LEVEL_OPTS].map((o) => ({ value: o, label: o }))" @change="onLevelsChange" />
                 </a-form-item></a-col>
@@ -527,42 +576,29 @@ const dueSoonText = (d: DueSoon) => d.mode === 'countdown' ? `剩余 ${d.value}$
                     :options="[SCOPE_ALL, ...PRODUCT_OPTS].map((o) => ({ value: o, label: o }))" @change="onProductsChange" />
                 </a-form-item></a-col>
               </a-row>
-              <div class="tip">多策略命中时取列表顺序最靠前一条**唯一生效**，不叠加。</div>
             </a-form>
           </section>
 
           <!-- ③ SLA 承诺 -->
           <section id="sec-commit" class="sec">
-            <div class="sec-h">③ SLA 承诺 <span class="sec-sub">计时口径 + 对客整单时限 + 节点 SLA</span></div>
+            <div class="sec-h">③ SLA 承诺 <span class="sec-sub">整单时效 + 节点时效（每类时效各自走不同日历；起算与停表口径在「工作日历与停表」全局维护）</span></div>
 
-            <!-- 计时口径 -->
-            <div class="sub-h">计时口径</div>
-            <a-form layout="vertical">
-              <a-row :gutter="16">
-                <a-col :span="8"><a-form-item label="计时起点"><a-select v-model:value="form.clockStart" :options="CLOCK_START_OPTS.map((o) => ({ value: o, label: o }))" /></a-form-item></a-col>
-                <a-col :span="8"><a-form-item label="计时终点"><a-select v-model:value="form.clockEnd" :options="CLOCK_END_OPTS.map((o) => ({ value: o, label: o }))" /></a-form-item></a-col>
-                <a-col :span="8"><a-form-item label="关联工作日历"><a-select v-model:value="form.calendar" :options="CAL_OPTS.map((o) => ({ value: o, label: o }))" /></a-form-item></a-col>
-              </a-row>
-              <a-row :gutter="16">
-                <a-col :span="8"><a-form-item label="挂起暂停计时"><a-switch v-model:checked="form.pauseEnabled" /><span class="hint" style="margin-left:8px">挂起期间暂停计时</span></a-form-item></a-col>
-                <a-col :span="16"><a-form-item label="暂停状态集（停表 · 引用「工作日历与停表」共用库）"><a-select v-model:value="form.pauseStates" mode="multiple" :options="PAUSE_OPTS.map((o) => ({ value: o, label: o }))" /></a-form-item></a-col>
-              </a-row>
-            </a-form>
-
-            <!-- 对客整单时限 -->
-            <div class="sub-h mt">对客整单时限 <span class="sec-sub">按需勾选承诺哪些钟，各按 P0–P3 设值</span></div>
+            <!-- 整单时效 -->
+            <div class="sub-h">整单时效 <span class="sec-sub">按需勾选 + 各按 P0–P3 设值；每类时效可走不同日历</span></div>
             <div class="clock-toggles">
-              <a-checkbox v-model:checked="form.commitClocks!.resp">响应（创建→首响）</a-checkbox>
+              <a-checkbox v-model:checked="form.commitClocks!.resp">整单响应（创建→首响）</a-checkbox>
               <a-checkbox v-model:checked="form.commitClocks!.solve">整单解决（创建→解决）</a-checkbox>
-              <a-checkbox v-model:checked="form.commitClocks!.cycle">周期更新（对客进展）</a-checkbox>
             </div>
             <table class="matrix">
-              <thead><tr><th>优先级</th>
-                <th v-if="form.commitClocks!.resp">响应时限</th>
-                <th v-if="form.commitClocks!.solve">整单解决</th>
-                <th v-if="form.commitClocks!.cycle">周期更新</th>
-                <th>计时</th></tr></thead>
+              <thead><tr><th>优先级 \ 时效</th>
+                <th v-if="form.commitClocks!.resp">整单响应</th>
+                <th v-if="form.commitClocks!.solve">整单解决</th></tr></thead>
               <tbody>
+                <tr class="cal-row">
+                  <td class="lv">走哪本日历</td>
+                  <td v-if="form.commitClocks!.resp"><a-select v-model:value="form.respCalendar" size="small" style="width:160px" :options="calSelOpts" /></td>
+                  <td v-if="form.commitClocks!.solve"><a-select v-model:value="form.solveCalendar" size="small" style="width:160px" :options="calSelOpts" /></td>
+                </tr>
                 <tr v-for="m in form.matrix" :key="m.level">
                   <td class="lv">{{ m.level }}</td>
                   <td v-if="form.commitClocks!.resp">
@@ -573,35 +609,32 @@ const dueSoonText = (d: DueSoon) => d.mode === 'countdown' ? `剩余 ${d.value}$
                     <a-input-number v-model:value="m.solveVal" :min="0" size="small" style="width:66px" placeholder="不设" />
                     <a-select v-model:value="m.solveUnit" size="small" style="width:76px;margin-left:4px" :options="UNIT_OPTS.map((u) => ({ value: u, label: u }))" />
                   </td>
-                  <td v-if="form.commitClocks!.cycle">
-                    <a-input-number v-model:value="m.cycleVal" :min="0" size="small" style="width:66px" placeholder="关闭" />
-                    <a-select v-model:value="m.cycleUnit" size="small" style="width:76px;margin-left:4px" :options="UNIT_OPTS.map((u) => ({ value: u, label: u }))" />
-                  </td>
-                  <td><a-switch v-model:checked="m.cal247" size="small" checked-children="7×24" un-checked-children="工作时间" /></td>
                 </tr>
               </tbody>
             </table>
-            <div class="tip">响应=创建→首次响应；整单解决=创建→解决；周期更新=两次对客进展最大间隔（防晾着，可选）。「计时」开关让该优先级单独走 7×24（如 P0）。</div>
+            <div class="tip">整单响应=创建→首次响应；整单解决=创建→解决。各类时效「走哪本日历」独立设置（例：响应走工作日历、解决走 7×24）。</div>
 
-            <!-- 节点 SLA -->
-            <div class="sub-h mt">节点 SLA <span class="sec-sub">节点级时限，可对客(里程碑) 或 对内(OLA)</span>
+            <!-- 节点时效 -->
+            <div class="sub-h mt">节点时效 <span class="sec-sub">每个流程节点的 响应 + 处理 时效，各自走不同日历</span>
               <a-button type="link" size="small" class="sub-add" @click="addNode"><template #icon><PlusOutlined /></template>添加节点</a-button>
             </div>
-            <table class="matrix">
-              <thead><tr><th>节点</th><th>归属</th><th>时限</th><th>超时动作</th><th>预警</th><th style="width:64px">操作</th></tr></thead>
-              <tbody>
-                <tr v-for="n in form.nodeSla" :key="n.id">
-                  <td><a-input v-model:value="n.node" size="small" style="width:120px" /></td>
-                  <td><a-select v-model:value="n.scope" size="small" style="width:108px" :options="NODE_SCOPE_OPTS.map((o) => ({ value: o, label: o }))" /></td>
-                  <td><a-input-number v-model:value="n.limit" :min="0" size="small" style="width:62px" /><a-select v-model:value="n.unit" size="small" style="width:76px;margin-left:4px" :options="UNIT_OPTS.map((u) => ({ value: u, label: u }))" /></td>
-                  <td><a-select v-model:value="n.action" size="small" style="width:130px" :options="NODE_ACTION_OPTS.map((o) => ({ value: o, label: o }))" /></td>
-                  <td><a-input v-model:value="n.warn" size="small" style="width:90px" /></td>
-                  <td><a-button type="link" size="small" danger @click="delNode(n.id)">删除</a-button></td>
-                </tr>
-                <tr v-if="!form.nodeSla || !form.nodeSla.length"><td colspan="6" class="empty-node">暂无节点 SLA — 点「添加节点」配置退款/发货(对客里程碑) 或 二线接手/审核(对内 OLA)</td></tr>
-              </tbody>
-            </table>
-            <div class="tip">对客里程碑 = 对客户承诺的节点结果（退款 24时 / 发货 24时 / 上门）；对内 OLA = 内部环节，独立达标、不拖累对客整单 SLA。节点理想绑工单类型流程节点（P1）。</div>
+            <a-table :columns="nodeCols" :data-source="form.nodeSla" row-key="id" :pagination="false" size="middle">
+              <template #bodyCell="{ column, record }">
+                <a-select v-if="column.key === 'node'" v-model:value="record.node" size="small" style="width:170px" :options="nodeNameOpts" show-search option-filter-prop="label" placeholder="选择节点" />
+                <template v-else-if="column.key === 'resp'">
+                  <a-input-number v-model:value="record.respLimit" :min="0" size="small" style="width:58px" />
+                  <a-select v-model:value="record.respUnit" size="small" style="width:62px;margin:0 4px" :options="UNIT_OPTS.map((u) => ({ value: u, label: u }))" />
+                  <a-select v-model:value="record.respCal" size="small" style="width:118px" :options="calSelOpts" />
+                </template>
+                <template v-else-if="column.key === 'proc'">
+                  <a-input-number v-model:value="record.procLimit" :min="0" size="small" style="width:58px" />
+                  <a-select v-model:value="record.procUnit" size="small" style="width:62px;margin:0 4px" :options="UNIT_OPTS.map((u) => ({ value: u, label: u }))" />
+                  <a-select v-model:value="record.procCal" size="small" style="width:118px" :options="calSelOpts" />
+                </template>
+                <a-button v-else-if="column.key === 'op'" type="link" size="small" danger @click="delNode(record.id)">删除</a-button>
+              </template>
+            </a-table>
+            <div class="tip">节点时效 = 各流程节点的内部时效：节点响应=进入节点→该节点首次响应，节点处理=进入节点→该节点处理完。节点理想绑工单类型流程节点（P1）。</div>
           </section>
 
           <!-- ④ 临期规则 -->
@@ -627,7 +660,7 @@ const dueSoonText = (d: DueSoon) => d.mode === 'countdown' ? `剩余 ${d.value}$
 
           <!-- ⑤ 升级 -->
           <section id="sec-escalate" class="sec">
-            <div class="sec-h">⑤ 升级 <span class="sec-sub">SLA 设触发阈值 → 引用「规则中心 · 升级路由」升级规则</span></div>
+            <div class="sec-h">⑤ 升级 <span class="sec-sub">SLA 设触发阈值 → 引用「SLA 引擎 · 升级链」(A3-05)</span></div>
             <div v-for="e in form.escalations" :key="e.id" class="esc-block">
               <div class="esc-row">
                 <a-select v-model:value="e.dim" size="small" style="width:90px" :options="[{ value: '响应', label: '响应' }, { value: '解决', label: '解决' }]" />
@@ -640,13 +673,13 @@ const dueSoonText = (d: DueSoon) => d.mode === 'countdown' ? `剩余 ${d.value}$
                 <DeleteOutlined class="del-ic" @click="removeEsc(e.id)" />
               </div>
               <div v-if="escExpanded[e.id]" class="esc-preview">
-                <div class="ep-title">{{ escRuleByNo(e.escalationRef)?.name }}（只读 · 来自规则中心）</div>
+                <div class="ep-title">{{ escRuleByNo(e.escalationRef)?.name }}（只读 · 来自 SLA 升级链）</div>
                 <div v-for="(l, i) in escRuleByNo(e.escalationRef)?.chain || []" :key="i" class="ep-line">{{ l }}</div>
               </div>
             </div>
             <a-button type="dashed" block @click="addEsc"><template #icon><PlusOutlined /></template>添加触发阈值</a-button>
-            <div class="tip">升级动作（通知谁 / 改派 / 提优先级）统一在「规则中心 · 升级路由」维护；此处设触发时机并引用，可内联预览，缺规则可
-              <a @click="goEscRoute">前往升级路由 ↗</a> 新建。</div>
+            <div class="tip">升级链（升到谁 / 多级 / 附加动作）统一在「SLA 引擎 · 预警与升级」维护；此处设触发时机并引用，可内联预览，缺升级链可
+              <a @click="goEscRoute">前往预警与升级 ↗</a> 新建。</div>
           </section>
         </div>
       </div>
@@ -662,14 +695,13 @@ const dueSoonText = (d: DueSoon) => d.mode === 'countdown' ? `剩余 ${d.value}$
       <div class="test-body">
         <div class="fi"><span class="fl">工单类型</span><a-select v-model:value="testType" style="width:180px" :options="TYPE_OPTS.map((o) => ({ value: o, label: o }))" /></div>
         <div class="fi"><span class="fl">渠道</span><a-select v-model:value="testChannel" style="width:180px" :options="CHANNEL_OPTS.map((o) => ({ value: o, label: o }))" /></div>
-        <div class="fi"><span class="fl">客户等级</span><a-select v-model:value="testLevel" style="width:180px" :options="LEVEL_OPTS.map((o) => ({ value: o, label: o }))" /></div>
+        <div class="fi"><span class="fl">客户类型</span><a-select v-model:value="testLevel" style="width:180px" :options="LEVEL_OPTS.map((o) => ({ value: o, label: o }))" /></div>
         <div class="fi"><span class="fl">产品线</span><a-select v-model:value="testProduct" style="width:180px" :options="PRODUCT_OPTS.map((o) => ({ value: o, label: o }))" /></div>
         <div class="test-result">
           <template v-if="testResult">
             命中策略：<b>{{ testResult.name }}</b>（生效优先级 {{ testResult.priority }}）
-            <div class="tr-clocks">各钟截止（P0 示例）：响应 {{ fmtClock(testResult.matrix[0].respVal, testResult.matrix[0].respUnit) }}
-              / 解决 {{ fmtClock(testResult.matrix[0].solveVal, testResult.matrix[0].solveUnit) }}
-              / 周期更新 {{ fmtClock(testResult.matrix[0].cycleVal, testResult.matrix[0].cycleUnit) }}</div>
+            <div class="tr-clocks">整单时效（P0 示例）：响应 {{ fmtClock(testResult.matrix[0].respVal, testResult.matrix[0].respUnit) }}（{{ CAL_SHORT[testResult.respCalendar ?? testResult.calendar] ?? '—' }}）
+              / 解决 {{ fmtClock(testResult.matrix[0].solveVal, testResult.matrix[0].solveUnit) }}（{{ CAL_SHORT[testResult.solveCalendar ?? testResult.calendar] ?? '—' }}）</div>
             <div class="tr-clocks">临期：{{ dueSoonText(testResult.dueSoon) }}</div>
           </template>
           <template v-else><span class="miss">无命中——该工单将无 SLA 约束，建议配置默认策略</span></template>
@@ -729,7 +761,7 @@ const dueSoonText = (d: DueSoon) => d.mode === 'countdown' ? `剩余 ${d.value}$
 .sub-h.mt { margin-top: 20px; }
 .sub-h .sub-add { margin-left: auto; }
 .clock-toggles { display: flex; gap: 20px; margin-bottom: 12px; }
-.empty-node { text-align: center; color: #9ca3af; font-size: 12px; padding: 14px; }
+.matrix .cal-row td { background: #fafafa; }
 .esc-block { margin-bottom: 10px; }
 .esc-row { display: flex; align-items: center; gap: 8px; }
 .esc-row .arrow { color: #9ca3af; }

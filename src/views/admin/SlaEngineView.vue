@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { message } from 'ant-design-vue';
-import { PlusOutlined, DeleteOutlined, ExportOutlined, ImportOutlined } from '@ant-design/icons-vue';
+import { PlusOutlined, DeleteOutlined, ImportOutlined, CopyOutlined } from '@ant-design/icons-vue';
 import AdminSectionTabs from './components/AdminSectionTabs.vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { SLA_NAV_ITEMS, adminNavActiveKey } from '@/config/adminNav';
@@ -36,29 +36,64 @@ const TARGETS = ['处理人', '班组长', '处理人 + 班组长', '指定人']
 function addAlert() { alertRows.value.push({ id: Date.now(), dim: '响应', threshold: '剩余 ≤ 25%', channel: ['站内信'], target: '处理人' }); }
 function delAlert(id: number) { alertRows.value = alertRows.value.filter((r) => r.id !== id); }
 
-// —— 升级链 ——
+// —— 自动升级链（A3-05，SLA 引擎自有；区别于规则中心的「升级路由→目标系统」）——
+const ESC_TRIGGERS = ['响应剩余 ≤ 25%', '响应已超时', '解决剩余 ≤ 25%', '解决已超时', '超时后每 30 分钟'];
+const ESC_TARGETS = ['处理人', '班组长', '二线技术支持组', '客服主管', '指定人'];
 const escChain = ref([
-  { level: 'L1', trigger: '响应剩余 ≤ 25%', action: '通知处理人', ref: 'EC01', tone: 'info' },
-  { level: 'L2', trigger: '响应已超时', action: '通知班组长 + 打升级标记', ref: 'EC01', tone: 'warn' },
-  { level: 'L3', trigger: '解决已超时', action: '自动升级二线组 + 优先级 +1', ref: 'EC02', tone: 'danger' },
-  { level: 'L4', trigger: '超时后每 30 分钟', action: '升级客服主管 + 飞书同步', ref: 'EC03', tone: 'danger' },
+  { id: 1, level: 'L1', trigger: '响应剩余 ≤ 25%', target: '处理人', extra: '打升级标记' },
+  { id: 2, level: 'L2', trigger: '响应已超时', target: '班组长', extra: '打升级标记' },
+  { id: 3, level: 'L3', trigger: '解决已超时', target: '二线技术支持组', extra: '优先级 +1' },
+  { id: 4, level: 'L4', trigger: '超时后每 30 分钟', target: '客服主管', extra: '飞书同步' },
 ]);
-function goEscRoute() { message.info('前往「规则中心 · 升级路由」（原型占位）'); }
+function addEsc() { escChain.value.push({ id: Date.now(), level: `L${escChain.value.length + 1}`, trigger: '解决已超时', target: '班组长', extra: '' }); }
+function delEsc(id: number) { escChain.value = escChain.value.filter((e) => e.id !== id); escChain.value.forEach((e, i) => { e.level = `L${i + 1}`; }); }
 
 // 监控看板（达标统计）已移出 SLA 配置：完整看板归运营看板/数据总览、班组看板（单一算法源）；
 // SLA 策略列表页保留轻量达成概览。
 
 // —— 工作日历 ——
+interface WorkDay {
+  day: string;
+  on: boolean;
+  amStart: string;
+  amEnd: string;
+  pmStart: string;
+  pmEnd: string;
+}
 const is724 = ref(false);
-const workDays = ref([
-  { day: '周一', on: true, time: '09:00 - 18:00' },
-  { day: '周二', on: true, time: '09:00 - 18:00' },
-  { day: '周三', on: true, time: '09:00 - 18:00' },
-  { day: '周四', on: true, time: '09:00 - 18:00' },
-  { day: '周五', on: true, time: '09:00 - 18:00' },
-  { day: '周六', on: false, time: '—' },
-  { day: '周日', on: false, time: '—' },
+const workDays = ref<WorkDay[]>([
+  { day: '周一', on: true, amStart: '09:00', amEnd: '12:00', pmStart: '13:30', pmEnd: '18:00' },
+  { day: '周二', on: true, amStart: '09:00', amEnd: '12:00', pmStart: '13:30', pmEnd: '18:00' },
+  { day: '周三', on: true, amStart: '09:00', amEnd: '12:00', pmStart: '13:30', pmEnd: '18:00' },
+  { day: '周四', on: true, amStart: '09:00', amEnd: '12:00', pmStart: '13:30', pmEnd: '18:00' },
+  { day: '周五', on: true, amStart: '09:00', amEnd: '12:00', pmStart: '13:30', pmEnd: '18:00' },
+  { day: '周六', on: false, amStart: '09:00', amEnd: '12:00', pmStart: '13:30', pmEnd: '17:00' },
+  { day: '周日', on: false, amStart: '10:00', amEnd: '12:00', pmStart: '13:30', pmEnd: '17:00' },
 ]);
+const TIME_OPTS = (() => {
+  const opts: { value: string; label: string }[] = [];
+  for (let h = 0; h < 24; h++) {
+    for (let m = 0; m < 60; m += 15) {
+      const t = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+      opts.push({ value: t, label: t });
+    }
+  }
+  return opts;
+})();
+function formatWorkTime(row: WorkDay): string {
+  return `上午 ${row.amStart}–${row.amEnd}；下午 ${row.pmStart}–${row.pmEnd}`;
+}
+function applyMondayToAll() {
+  const mon = workDays.value.find((d) => d.day === '周一');
+  if (!mon) return;
+  workDays.value.forEach((d) => {
+    d.amStart = mon.amStart;
+    d.amEnd = mon.amEnd;
+    d.pmStart = mon.pmStart;
+    d.pmEnd = mon.pmEnd;
+  });
+  message.success('已将以周一工作时段应用到全部 7 天');
+}
 // 节假日按年维护：名称固定，日期/调休逐年不同；可一键导入国务院当年安排。
 const holidayYear = ref('2026');
 const HOLIDAY_YEARS = ['2026', '2027', '2028'];
@@ -92,9 +127,9 @@ const holidayCols = [
   { title: '操作', key: 'op', width: 90 },
 ];
 const calCols = [
-  { title: '星期', dataIndex: 'day', key: 'day', width: 120 },
-  { title: '是否工作日', key: 'on', width: 130 },
-  { title: '工作时段', key: 'time' },
+  { title: '星期', dataIndex: 'day', key: 'day', width: 72 },
+  { title: '是否工作日', key: 'on', width: 100 },
+  { title: '工作时段（上午 / 下午）', key: 'time' },
 ];
 
 function save() { message.success('已保存并生效'); }
@@ -112,11 +147,25 @@ function save() { message.success('已保存并生效'); }
           </AdminPageHeader>
 
           <div class="sec-h">SLA 工作日历 <a-switch v-model:checked="is724" size="small" style="margin-left:6px" /><span class="muted" style="margin-left:6px">7×24 自然时间</span></div>
-          <div class="intro">SLA 时限按工作时段推进，非工作时段（夜间/周末/节假日）不计入计时；勾选 7×24 则按自然时间。各策略在「策略 · 计时口径」中引用本日历。</div>
+          <div class="intro">SLA 时限按工作时段推进，非工作时段（夜间/午休/节假日）不计入计时；勾选 7×24 则按自然时间。每天可配置<strong>上午段 + 下午段</strong>；「是否工作日」仅控制当天是否计入 SLA，时段仍可预先配置（含周六日）。</div>
+          <div class="cal-toolbar">
+            <a-button size="small" :disabled="is724" @click="applyMondayToAll"><template #icon><CopyOutlined /></template>将周一时段应用到全部 7 天</a-button>
+            <span class="cal-preview muted">示例：{{ formatWorkTime(workDays[0]) }}</span>
+          </div>
           <a-table :columns="calCols" :data-source="workDays" row-key="day" :pagination="false" size="middle" :class="{ 'tbl-disabled': is724 }">
             <template #bodyCell="{ column, record }">
               <a-switch v-if="column.key === 'on'" v-model:checked="record.on" size="small" :disabled="is724" />
-              <span v-else-if="column.key === 'time'" class="muted">{{ record.on ? record.time : '—' }}</span>
+              <div v-else-if="column.key === 'time'" class="time-slots" :class="{ 'time-slots--off': !record.on }">
+                <span class="slot-label">上午</span>
+                <a-select v-model:value="record.amStart" size="small" class="time-sel" :options="TIME_OPTS" :disabled="is724" />
+                <span class="slot-sep">—</span>
+                <a-select v-model:value="record.amEnd" size="small" class="time-sel" :options="TIME_OPTS" :disabled="is724" />
+                <span class="slot-divider" />
+                <span class="slot-label">下午</span>
+                <a-select v-model:value="record.pmStart" size="small" class="time-sel" :options="TIME_OPTS" :disabled="is724" />
+                <span class="slot-sep">—</span>
+                <a-select v-model:value="record.pmEnd" size="small" class="time-sel" :options="TIME_OPTS" :disabled="is724" />
+              </div>
             </template>
           </a-table>
           <div class="sec-h mt2">节假日 / 调休
@@ -149,17 +198,14 @@ function save() { message.success('已保存并生效'); }
         </div>
       </template>
 
-      <!-- ===== 预警与升级（预警配置 + 升级链只读引用） ===== -->
+      <!-- ===== 预警与升级（A3-04 分级预警 + A3-05 自动升级链，SLA 引擎自有） ===== -->
       <template v-if="activeKey === 'sla-escalate'">
         <div class="panel">
-          <AdminPageHeader title="预警与升级" subtitle="到阈值的提醒与升级；升级动作统一在「规则中心·升级路由」维护，此处只读引用">
-            <template #actions>
-              <a-button type="primary" @click="save">保存</a-button>
-              <a-button @click="goEscRoute"><template #icon><ExportOutlined /></template>前往升级路由</a-button>
-            </template>
+          <AdminPageHeader title="预警与升级" subtitle="SLA 分级预警(A3-04) + 超时自动升级链(A3-05)，在 SLA 引擎统一维护">
+            <template #actions><a-button type="primary" @click="save">保存</a-button></template>
           </AdminPageHeader>
 
-          <div class="sec-h">SLA 预警配置</div>
+          <div class="sec-h">SLA 分级预警（A3-04）</div>
           <div class="intro">计时到阈值时按通知方式提醒对应对象；与工作台 AI 建议条、首页临期/超时联动。</div>
           <div v-for="r in alertRows" :key="r.id" class="alert-row">
             <a-select v-model:value="r.dim" size="small" style="width:88px" :options="[{value:'响应',label:'响应'},{value:'解决',label:'解决'}]" />
@@ -170,18 +216,17 @@ function save() { message.success('已保存并生效'); }
           </div>
           <a-button type="dashed" block class="mt" @click="addAlert"><template #icon><PlusOutlined /></template>添加预警规则</a-button>
 
-          <div class="sec-h mt2">升级链（只读 · 来自「规则中心 · 升级路由」）</div>
-          <div class="intro">升级规则已统一在「规则中心 · 升级路由」维护，此处只读展示当前生效升级链；SLA 策略通过「触发阈值 + 引用」接入（见 SLA 策略 ⑥ 升级）。</div>
-          <div class="chain">
-            <div v-for="(e, i) in escChain" :key="e.level" class="chain-node" :class="e.tone">
-              <div class="cn-level">{{ e.level }}</div>
-              <div class="cn-body">
-                <div class="cn-trigger">{{ e.trigger }} <span class="cn-ref">({{ e.ref }})</span></div>
-                <div class="cn-action">→ {{ e.action }}</div>
-              </div>
-              <div v-if="i < escChain.length - 1" class="cn-line" />
-            </div>
+          <div class="sec-h mt2">SLA 自动升级链（A3-05）</div>
+          <div class="intro">超时未处理按级别自动升级至上级/指定人员，支持多级。注：规则中心的「升级路由」是升级到目标系统(RDM/TPD/飞书)，与此不同。</div>
+          <div v-for="e in escChain" :key="e.id" class="alert-row">
+            <span class="esc-lv">{{ e.level }}</span>
+            <a-select v-model:value="e.trigger" size="small" style="width:170px" :options="ESC_TRIGGERS.map((o)=>({value:o,label:o}))" />
+            <span class="esc-arrow">→ 升级至</span>
+            <a-select v-model:value="e.target" size="small" style="width:160px" :options="ESC_TARGETS.map((o)=>({value:o,label:o}))" />
+            <a-input v-model:value="e.extra" size="small" style="flex:1" placeholder="附加动作（如 优先级 +1 / 飞书同步）" />
+            <a-button type="link" size="small" danger @click="delEsc(e.id)"><template #icon><DeleteOutlined /></template></a-button>
           </div>
+          <a-button type="dashed" block class="mt" @click="addEsc"><template #icon><PlusOutlined /></template>添加升级级别</a-button>
         </div>
       </template>
 
@@ -202,7 +247,25 @@ function save() { message.success('已保存并生效'); }
 .mb { margin-bottom: 14px; } .mt { margin-top: 14px; }
 .muted { color: #9ca3af; }
 .tbl-disabled { opacity: 0.5; }
+.cal-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+.cal-preview { font-size: 12px; }
+.time-slots {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: nowrap;
+  padding: 2px 0;
+  white-space: nowrap;
+}
+.time-slots--off { opacity: 0.72; }
+.slot-label { font-size: 12px; color: #6b7280; flex: none; }
+.slot-sep { font-size: 12px; color: #9ca3af; flex: none; }
+.slot-divider { width: 10px; flex: none; }
+.time-sel { width: 76px !important; flex: none; }
+.time-slots :deep(.ant-select-selector) { padding: 0 6px !important; }
 .alert-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.esc-lv { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; height: 24px; padding: 0 8px; border-radius: 4px; background: #eef2ff; color: #1a6fff; font-size: 12px; font-weight: 600; }
+.esc-arrow { font-size: 12px; color: #9ca3af; white-space: nowrap; }
 .chain { display: flex; flex-direction: column; gap: 0; padding: 8px 0; }
 .chain-node { position: relative; display: flex; align-items: center; gap: 14px; padding: 12px 0; }
 .cn-level { width: 40px; height: 40px; border-radius: 20px; flex: none; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; z-index: 1; }
