@@ -10,6 +10,10 @@ import AdminSectionTabs from './components/AdminSectionTabs.vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { SLA_NAV_ITEMS, adminNavActiveKey } from '@/config/adminNav';
 import { stdPagination, toneOf } from '@/config/adminUi';
+import {
+  SERVICE_TYPE_OPTIONS,
+  SERVICE_TYPE_TO_METHODS,
+} from '@/views/tickets/types/operation';
 
 const route = useRoute();
 const router = useRouter();
@@ -41,6 +45,55 @@ interface DueSoon { mode: 'countdown' | 'percent' | 'none'; value: number; unit:
 interface NodeSla { id: number; node: string; respLimit: number | null; respUnit: Unit; respCal: string; procLimit: number | null; procUnit: Unit; procCal: string }
 /** 整单时效承诺哪些钟（按需勾选） */
 interface CommitClocks { resp: boolean; solve: boolean }
+/** 整单解决 · 服务方式 × 优先级（P1=处理标准基准，P0/P2/P3 按系数推算） */
+type PriKey = 'P0' | 'P1' | 'P2' | 'P3';
+const PRI_KEYS: PriKey[] = ['P0', 'P1', 'P2', 'P3'];
+const PRI_COEFF: Record<PriKey, number> = { P0: 0.75, P1: 1, P2: 1.25, P3: 1.5 };
+const PRI_LABELS = ['P0 紧急', 'P1 高', 'P2 中', 'P3 低'] as const;
+
+interface ServiceMethodSolveRow {
+  serviceType: string;
+  serviceMethod: string;
+  limits: Record<PriKey, number>;
+}
+
+/** 处理标准（非投诉）· P1 基准解决时限（小时） */
+const SERVICE_METHOD_P1_HOURS: Record<string, number> = {
+  与需求人建立联系: 24,
+  处理人直接解决: 48,
+  再次流转及后台处理: 72,
+  需产研侧升级修复: 72,
+  上门处理: 72,
+  首响人直接办理退费: 24,
+  审核退费: 72,
+  '渠道/第三方退费': 72,
+  '业务线/电商/门店售后': 168,
+};
+
+function spreadHoursFromP1(p1: number): Record<PriKey, number> {
+  return {
+    P0: Math.ceil(p1 * PRI_COEFF.P0),
+    P1: p1,
+    P2: Math.ceil(p1 * PRI_COEFF.P2),
+    P3: Math.ceil(p1 * PRI_COEFF.P3),
+  };
+}
+
+function defServiceMethodSolve(): ServiceMethodSolveRow[] {
+  return SERVICE_TYPE_OPTIONS.flatMap((serviceType) =>
+    (SERVICE_TYPE_TO_METHODS[serviceType] ?? []).map((serviceMethod) => {
+      const p1 = SERVICE_METHOD_P1_HOURS[serviceMethod] ?? 48;
+      return { serviceType, serviceMethod, limits: spreadHoursFromP1(p1) };
+    }),
+  );
+}
+
+function recalcServiceMethodFromP1(rows: ServiceMethodSolveRow[]) {
+  rows.forEach((row) => {
+    row.limits = spreadHoursFromP1(row.limits.P1);
+  });
+}
+
 interface Policy {
   no: string; name: string;
   types: string[]; channels: string[]; levels: string[]; products: string[];
@@ -53,6 +106,9 @@ interface Policy {
   clockStart?: string; clockEnd?: string; pauseEnabled?: boolean;
   commitClocks?: CommitClocks; nodeSla?: NodeSla[];
   respCalendar?: string; solveCalendar?: string; // 每类整单时效各自的日历
+  /** 启用服务方式×优先级解决矩阵（非投诉/有服务方式场景） */
+  solveByServiceMethod?: boolean;
+  serviceMethodSolve?: ServiceMethodSolveRow[];
 }
 
 const TYPE_OPTS = ['投诉', '咨询', '建议', '商机', '报修', '退费', '退换', '技术故障'];
@@ -65,6 +121,9 @@ const UNIT_OPTS: Unit[] = ['分钟', '小时', '工作日'];
 const ESC_COND_OPTS = ['剩余 ≤ 25%', '剩余 ≤ 10%', '已超时', '超时后每 30 分钟'];
 const WORK_CAL = '标准工作日历(9:00-18:00)';
 
+/** 平台标准节点类型（节点时效默认四类） */
+const NODE_SLA_TYPES = ['处理', '技术', '审核', '回访'] as const;
+
 /** 节点时效预埋（各流程节点独立配置） */
 function defNodeSla(): NodeSla[] {
   const base = Date.now();
@@ -72,11 +131,10 @@ function defNodeSla(): NodeSla[] {
     id: base + i, node, respLimit, respUnit, respCal: WORK_CAL, procLimit, procUnit, procCal: WORK_CAL,
   });
   return [
-    mk(1, '受理/接单', 2, '小时'),
-    mk(2, '分派/派单', 30, '分钟', 15, '分钟'),
-    mk(3, '处理中', 24, '小时', 2, '小时'),
-    mk(4, '审核', 8, '小时', 1, '小时'),
-    mk(5, '回访', 24, '小时', 2, '小时'),
+    mk(1, '处理', 4, '小时', 30, '分钟'),
+    mk(2, '技术', 4, '小时', 1, '小时'),
+    mk(3, '审核', 2, '小时', 1, '小时'),
+    mk(4, '回访', 24, '小时', 2, '小时'),
   ];
 }
 /** 日历短名（列表/紧凑选择器用） */
@@ -85,9 +143,10 @@ const CAL_SHORT: Record<string, string> = {
 };
 const calSelOpts = CAL_OPTS.map((c) => ({ value: c, label: CAL_SHORT[c] ?? c }));
 
-/** 各工单类型流程节点类型（节点时效"节点"下拉，分组覆盖；理想由工单类型流程节点动态带出，此处先静态覆盖） */
+/** 各工单类型流程节点（节点时效「节点」下拉；默认四类 + 按类型扩展） */
 const NODE_TYPE_GROUPS = [
-  { label: '通用流转', options: ['建单', '受理/接单', '分派/派单', '处理中', '转办/委派', '升级二线', '审核', '解决', '回访', '结案/关闭'] },
+  { label: '平台节点', options: [...NODE_SLA_TYPES] },
+  { label: '通用流转', options: ['建单', '处理', '技术', '转办/委派', '升级二线', '审核', '解决', '回访', '结案/关闭'] },
   { label: '投诉', options: ['一线处理', '升级技支', '服务处理'] },
   { label: '咨询', options: ['解答'] },
   { label: '建议', options: ['记录/转交'] },
@@ -239,11 +298,11 @@ const columns = [
   { title: '操作', key: 'action', width: 230 },
 ];
 function scopeText(p: Policy): string {
-  const typeLabel = isScopeAll(p.types) ? '全部类型' : p.types.join('/');
-  const channelLabel = isScopeAll(p.channels) ? '全渠道' : p.channels.join('/');
+  const productLabel = isScopeAll(p.products) ? '全部业务类型' : p.products.join('/');
+  const typeLabel = isScopeAll(p.types) ? '全部工单类型' : p.types.join('/');
+  const channelLabel = isScopeAll(p.channels) ? '全部工单来源' : p.channels.join('/');
   const levelLabel = isScopeAll(p.levels) ? '全部客户类型' : p.levels.join('/');
-  const productLabel = isScopeAll(p.products) ? '全产品线' : p.products.join('/');
-  return [typeLabel, channelLabel, levelLabel, productLabel].join(' · ');
+  return [productLabel, typeLabel, channelLabel, levelLabel].join(' · ');
 }
 /** 列表「工作日历」列：按时效日历摘要（响应/解决各自日历） */
 function calText(p: Policy): string {
@@ -302,7 +361,23 @@ function blankPolicy(): Policy {
     clockStart: '工单创建', clockEnd: '工单结案', pauseEnabled: true,
     commitClocks: { resp: true, solve: true }, nodeSla: defNodeSla(),
     respCalendar: '标准工作日历(9:00-18:00)', solveCalendar: '7×24 自然时间',
+    solveByServiceMethod: true, serviceMethodSolve: defServiceMethodSolve(),
   };
+}
+
+const serviceMethodGroups = computed(() => {
+  const map = new Map<string, ServiceMethodSolveRow[]>();
+  (form.serviceMethodSolve ?? []).forEach((row) => {
+    const list = map.get(row.serviceType) ?? [];
+    list.push(row);
+    map.set(row.serviceType, list);
+  });
+  return [...map.entries()].map(([serviceType, rows]) => ({ serviceType, rows }));
+});
+
+function onRecalcServiceMethodLimits() {
+  recalcServiceMethodFromP1(form.serviceMethodSolve ?? []);
+  message.success('已按各服务方式 P1 值重算 P0/P2/P3（系数 0.75 / 1 / 1.25 / 1.5）');
 }
 
 // 锚点导航
@@ -345,6 +420,8 @@ function openEdit(p: Policy) {
   if (isScopeAll(copy.products)) copy.products = [SCOPE_ALL];
   if (!copy.types.length) copy.types = [SCOPE_ALL];
   Object.assign(form, blankPolicy(), copy); // blankPolicy 补齐承诺新字段(老策略可能缺)
+  if (!form.serviceMethodSolve?.length) form.serviceMethodSolve = defServiceMethodSolve();
+  if (form.solveByServiceMethod == null) form.solveByServiceMethod = true;
   enterEdit();
 }
 function enterEdit() {
@@ -365,7 +442,7 @@ function addEsc() {
 function removeEsc(id: number) { form.escalations = form.escalations.filter((e) => e.id !== id); }
 function addNode() {
   (form.nodeSla ??= []).push({
-    id: Date.now(), node: '受理/接单', respLimit: 30, respUnit: '分钟', respCal: WORK_CAL,
+    id: Date.now(), node: '处理', respLimit: 30, respUnit: '分钟', respCal: WORK_CAL,
     procLimit: 4, procUnit: '小时', procCal: WORK_CAL,
   });
 }
@@ -385,7 +462,7 @@ function matrixValid(): boolean {
 }
 function save() {
   if (!form.name.trim()) { message.warning('请填写策略名称'); scrollToSection('basic'); return; }
-  if (!form.types.length) { message.warning('请选择适用工单类型（或全部）'); scrollToSection('scope'); return; }
+  if (!form.types.length) { message.warning('请选择工单类型（或全部）'); scrollToSection('scope'); return; }
   if (!matrixValid()) { message.warning('时限矩阵不合法：响应须>0，解决须 ≥ 响应'); scrollToSection('commit'); return; }
   if (form.escalations.some((e) => !e.escalationRef)) { message.warning('请为每条升级阈值引用一条升级规则'); scrollToSection('escalate'); return; }
   form.updatedAt = '2026-06-29 18:00';
@@ -432,6 +509,47 @@ const testType = ref('投诉');
 const testChannel = ref('在线客服');
 const testLevel = ref('校长');
 const testProduct = ref('学习机');
+const testPriorityIdx = ref(1);
+const testServiceMethod = ref<string | undefined>(undefined);
+const SERVICE_METHOD_OPTS = defServiceMethodSolve().map((r) => ({
+  value: r.serviceMethod,
+  label: r.serviceMethod,
+}));
+
+function priKeyFromIdx(idx: number): PriKey {
+  return PRI_KEYS[idx] ?? 'P1';
+}
+
+function resolveSolveLimit(
+  policy: Policy,
+  priorityIdx: number,
+  serviceMethod?: string,
+): { val: number | null; unit: Unit; source: string } {
+  const fallback = policy.matrix[priorityIdx];
+  if (
+    serviceMethod
+    && policy.solveByServiceMethod
+    && policy.serviceMethodSolve?.length
+  ) {
+    const row = policy.serviceMethodSolve.find((s) => s.serviceMethod === serviceMethod);
+    if (row) {
+      const pk = priKeyFromIdx(priorityIdx);
+      return { val: row.limits[pk], unit: '小时', source: '服务方式动态调整' };
+    }
+  }
+  return {
+    val: fallback?.solveVal ?? null,
+    unit: fallback?.solveUnit ?? '小时',
+    source: '默认（按优先级）',
+  };
+}
+
+const testSolvePreview = computed(() => {
+  if (!testResult.value) return null;
+  const m = testResult.value.matrix[testPriorityIdx.value];
+  return { val: m?.solveVal ?? null, unit: m?.solveUnit ?? '小时' };
+});
+
 const testResult = computed(() => {
   // 按列表顺序首条命中（启用态）
   return policies.value.find((p) => p.status === '启用'
@@ -542,41 +660,56 @@ const dueSoonText = (d: DueSoon) => d.mode === 'countdown' ? `剩余 ${d.value}$
           <!-- ① 基本信息 -->
           <section id="sec-basic" class="sec">
             <div class="sec-h">① 基本信息</div>
-            <a-form layout="vertical">
-              <a-row :gutter="16">
-                <a-col :span="12"><a-form-item label="策略名称" required><a-input v-model:value="form.name" placeholder="如 投诉-VIP 加严" /></a-form-item></a-col>
-                <a-col :span="6"><a-form-item label="生效优先级"><a-input-number v-model:value="form.priority" :min="1" style="width:100%" :disabled="form.isDefault" /></a-form-item></a-col>
-                <a-col :span="6"><a-form-item label="状态"><a-radio-group v-model:value="form.status"><a-radio value="启用">启用</a-radio><a-radio value="停用">停用</a-radio></a-radio-group></a-form-item></a-col>
-              </a-row>
-              <a-form-item label="备注"><a-textarea v-model:value="form.remark" :rows="2" /></a-form-item>
-            </a-form>
+            <div class="kv-form">
+              <div class="kv-grid kv-grid-3">
+                <div class="kv-row">
+                  <span class="kv-label required">策略名称</span>
+                  <a-input v-model:value="form.name" class="kv-control" placeholder="如 投诉-VIP 加严" />
+                </div>
+                <div class="kv-row">
+                  <span class="kv-label">生效优先级</span>
+                  <a-input-number v-model:value="form.priority" class="kv-control" :min="1" :disabled="form.isDefault" />
+                </div>
+                <div class="kv-row">
+                  <span class="kv-label">状态</span>
+                  <a-radio-group v-model:value="form.status" class="kv-control">
+                    <a-radio value="启用">启用</a-radio>
+                    <a-radio value="停用">停用</a-radio>
+                  </a-radio-group>
+                </div>
+              </div>
+              <div class="kv-row">
+                <span class="kv-label">备注</span>
+                <a-textarea v-model:value="form.remark" class="kv-control" :rows="1" :auto-size="{ minRows: 1, maxRows: 3 }" />
+              </div>
+            </div>
           </section>
 
           <!-- ② 适用范围 -->
           <section id="sec-scope" class="sec">
             <div class="sec-h">② 适用范围 <span class="sec-sub">工单同时满足以下条件才命中本策略</span></div>
-            <a-form layout="vertical">
-              <a-row :gutter="16">
-                <a-col :span="12"><a-form-item label="适用工单类型" required>
-                  <a-select v-model:value="form.types" mode="multiple" placeholder="选择类型，或选「全部」"
-                    :options="[SCOPE_ALL, ...TYPE_OPTS].map((o) => ({ value: o, label: o }))" @change="onTypesChange" />
-                </a-form-item></a-col>
-                <a-col :span="12"><a-form-item label="适用渠道">
-                  <a-select v-model:value="form.channels" mode="multiple" placeholder="选择渠道，或选「全部」"
-                    :options="[SCOPE_ALL, ...CHANNEL_OPTS].map((o) => ({ value: o, label: o }))" @change="onChannelsChange" />
-                </a-form-item></a-col>
-              </a-row>
-              <a-row :gutter="16">
-                <a-col :span="12"><a-form-item label="客户类型">
-                  <a-select v-model:value="form.levels" mode="multiple" placeholder="选择等级，或选「全部」"
-                    :options="[SCOPE_ALL, ...LEVEL_OPTS].map((o) => ({ value: o, label: o }))" @change="onLevelsChange" />
-                </a-form-item></a-col>
-                <a-col :span="12"><a-form-item label="产品线 / 应用归属">
-                  <a-select v-model:value="form.products" mode="multiple" placeholder="选择产品线，或选「全部」"
-                    :options="[SCOPE_ALL, ...PRODUCT_OPTS].map((o) => ({ value: o, label: o }))" @change="onProductsChange" />
-                </a-form-item></a-col>
-              </a-row>
-            </a-form>
+            <div class="kv-form kv-grid-2">
+              <div class="kv-row">
+                <span class="kv-label">业务类型</span>
+                <a-select v-model:value="form.products" class="kv-control" mode="multiple" placeholder="选择业务类型，或选「全部」"
+                  :options="[SCOPE_ALL, ...PRODUCT_OPTS].map((o) => ({ value: o, label: o }))" @change="onProductsChange" />
+              </div>
+              <div class="kv-row">
+                <span class="kv-label required">工单类型</span>
+                <a-select v-model:value="form.types" class="kv-control" mode="multiple" placeholder="选择工单类型，或选「全部」"
+                  :options="[SCOPE_ALL, ...TYPE_OPTS].map((o) => ({ value: o, label: o }))" @change="onTypesChange" />
+              </div>
+              <div class="kv-row">
+                <span class="kv-label">工单来源</span>
+                <a-select v-model:value="form.channels" class="kv-control" mode="multiple" placeholder="选择工单来源，或选「全部」"
+                  :options="[SCOPE_ALL, ...CHANNEL_OPTS].map((o) => ({ value: o, label: o }))" @change="onChannelsChange" />
+              </div>
+              <div class="kv-row">
+                <span class="kv-label">客户类型</span>
+                <a-select v-model:value="form.levels" class="kv-control" mode="multiple" placeholder="选择客户类型，或选「全部」"
+                  :options="[SCOPE_ALL, ...LEVEL_OPTS].map((o) => ({ value: o, label: o }))" @change="onLevelsChange" />
+              </div>
+            </div>
           </section>
 
           <!-- ③ SLA 承诺 -->
@@ -584,35 +717,49 @@ const dueSoonText = (d: DueSoon) => d.mode === 'countdown' ? `剩余 ${d.value}$
             <div class="sec-h">③ SLA 承诺 <span class="sec-sub">整单时效 + 节点时效（每类时效各自走不同日历；起算与停表口径在「工作日历与停表」全局维护）</span></div>
 
             <!-- 整单时效 -->
-            <div class="sub-h">整单时效 <span class="sec-sub">按需勾选 + 各按 P0–P3 设值；每类时效可走不同日历</span></div>
+            <div class="sub-h">整单时效</div>
             <div class="clock-toggles">
               <a-checkbox v-model:checked="form.commitClocks!.resp">整单响应（创建→首响）</a-checkbox>
               <a-checkbox v-model:checked="form.commitClocks!.solve">整单解决（创建→解决）</a-checkbox>
             </div>
-            <table class="matrix">
-              <thead><tr><th>优先级 \ 时效</th>
-                <th v-if="form.commitClocks!.resp">整单响应</th>
-                <th v-if="form.commitClocks!.solve">整单解决</th></tr></thead>
-              <tbody>
-                <tr class="cal-row">
-                  <td class="lv">走哪本日历</td>
-                  <td v-if="form.commitClocks!.resp"><a-select v-model:value="form.respCalendar" size="small" style="width:160px" :options="calSelOpts" /></td>
-                  <td v-if="form.commitClocks!.solve"><a-select v-model:value="form.solveCalendar" size="small" style="width:160px" :options="calSelOpts" /></td>
-                </tr>
-                <tr v-for="m in form.matrix" :key="m.level">
-                  <td class="lv">{{ m.level }}</td>
-                  <td v-if="form.commitClocks!.resp">
-                    <a-input-number v-model:value="m.respVal" :min="0" size="small" style="width:66px" />
-                    <a-select v-model:value="m.respUnit" size="small" style="width:76px;margin-left:4px" :options="UNIT_OPTS.map((u) => ({ value: u, label: u }))" />
-                  </td>
-                  <td v-if="form.commitClocks!.solve">
-                    <a-input-number v-model:value="m.solveVal" :min="0" size="small" style="width:66px" placeholder="不设" />
-                    <a-select v-model:value="m.solveUnit" size="small" style="width:76px;margin-left:4px" :options="UNIT_OPTS.map((u) => ({ value: u, label: u }))" />
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-            <div class="tip">整单响应=创建→首次响应；整单解决=创建→解决。各类时效「走哪本日历」独立设置（例：响应走工作日历、解决走 7×24）。</div>
+
+            <!-- 整单响应：一行（P0–P3 横排 + 日历）-->
+            <template v-if="form.commitClocks!.resp">
+              <div class="sub-h sm">整单响应 · 按优先级</div>
+              <div class="resp-inline">
+                <div v-for="m in form.matrix" :key="`${m.level}-resp`" class="ri-cell">
+                  <span class="ri-lv">{{ m.level }}</span>
+                  <a-input-number v-model:value="m.respVal" :min="0" size="small" style="width:60px" />
+                  <a-select v-model:value="m.respUnit" size="small" style="width:66px;margin-left:4px" :options="UNIT_OPTS.map((u) => ({ value: u, label: u }))" />
+                </div>
+                <div class="ri-cell"><span class="ri-lv">走哪本日历</span><a-select v-model:value="form.respCalendar" size="small" style="width:150px" :options="calSelOpts" /></div>
+              </div>
+            </template>
+
+            <!-- 整单解决：按优先级 -->
+            <template v-if="form.commitClocks!.solve">
+              <div class="sub-h sm mt">整单解决 · 按优先级</div>
+              <table class="matrix">
+                <thead>
+                  <tr><th>优先级</th><th>整单解决</th></tr>
+                </thead>
+                <tbody>
+                  <tr class="cal-row">
+                    <td class="lv">走哪本日历</td>
+                    <td><a-select v-model:value="form.solveCalendar" size="small" style="width:160px" :options="calSelOpts" /></td>
+                  </tr>
+                  <tr v-for="m in form.matrix" :key="`${m.level}-solve`">
+                    <td class="lv">{{ m.level }}</td>
+                    <td>
+                      <a-input-number v-model:value="m.solveVal" :min="0" size="small" style="width:66px" placeholder="不设" />
+                      <a-select v-model:value="m.solveUnit" size="small" style="width:76px;margin-left:4px" :options="UNIT_OPTS.map((u) => ({ value: u, label: u }))" />
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </template>
+
+            <div class="tip">整单响应=创建→首次响应；整单解决=创建→解决，均<b>按优先级</b>。服务方式的差异化解决时效属特殊逻辑，在「工作日历与停表 · 整单解决·服务方式动态调整」统一维护，不在标准策略里配。</div>
 
             <!-- 节点时效 -->
             <div class="sub-h mt">节点时效 <span class="sec-sub">每个流程节点的 响应 + 处理 时效，各自走不同日历</span>
@@ -634,7 +781,7 @@ const dueSoonText = (d: DueSoon) => d.mode === 'countdown' ? `剩余 ${d.value}$
                 <a-button v-else-if="column.key === 'op'" type="link" size="small" danger @click="delNode(record.id)">删除</a-button>
               </template>
             </a-table>
-            <div class="tip">节点时效 = 各流程节点的内部时效：节点响应=进入节点→该节点首次响应，节点处理=进入节点→该节点处理完。节点理想绑工单类型流程节点（P1）。</div>
+            <div class="tip">节点时效 = 各流程节点的内部时效：节点响应=进入节点→该节点首次响应，节点处理=进入节点→该节点处理完。此处填 <b>P1 基准</b>；P0/P2/P3 按全局优先级系数（×0.75 / 1 / 1.25 / 1.5）自动推算（与整单口径一致；竞品 OLA 多为条件/任务驱动，本系数为可选轻量差异化）。</div>
           </section>
 
           <!-- ④ 临期规则 -->
@@ -691,17 +838,20 @@ const dueSoonText = (d: DueSoon) => d.mode === 'countdown' ? `剩余 ${d.value}$
     </div>
 
     <!-- 匹配测试 -->
-    <a-modal v-model:open="testOpen" title="SLA 策略匹配测试" :footer="null" width="480">
+    <a-modal v-model:open="testOpen" title="SLA 策略匹配测试" :footer="null" width="520">
       <div class="test-body">
+        <div class="fi"><span class="fl">业务类型</span><a-select v-model:value="testProduct" style="width:180px" :options="PRODUCT_OPTS.map((o) => ({ value: o, label: o }))" /></div>
         <div class="fi"><span class="fl">工单类型</span><a-select v-model:value="testType" style="width:180px" :options="TYPE_OPTS.map((o) => ({ value: o, label: o }))" /></div>
-        <div class="fi"><span class="fl">渠道</span><a-select v-model:value="testChannel" style="width:180px" :options="CHANNEL_OPTS.map((o) => ({ value: o, label: o }))" /></div>
+        <div class="fi"><span class="fl">工单来源</span><a-select v-model:value="testChannel" style="width:180px" :options="CHANNEL_OPTS.map((o) => ({ value: o, label: o }))" /></div>
         <div class="fi"><span class="fl">客户类型</span><a-select v-model:value="testLevel" style="width:180px" :options="LEVEL_OPTS.map((o) => ({ value: o, label: o }))" /></div>
-        <div class="fi"><span class="fl">产品线</span><a-select v-model:value="testProduct" style="width:180px" :options="PRODUCT_OPTS.map((o) => ({ value: o, label: o }))" /></div>
+        <div class="fi"><span class="fl">优先级</span><a-select v-model:value="testPriorityIdx" style="width:180px" :options="PRI_LABELS.map((l, i) => ({ value: i, label: l }))" /></div>
         <div class="test-result">
           <template v-if="testResult">
             命中策略：<b>{{ testResult.name }}</b>（生效优先级 {{ testResult.priority }}）
-            <div class="tr-clocks">整单时效（P0 示例）：响应 {{ fmtClock(testResult.matrix[0].respVal, testResult.matrix[0].respUnit) }}（{{ CAL_SHORT[testResult.respCalendar ?? testResult.calendar] ?? '—' }}）
-              / 解决 {{ fmtClock(testResult.matrix[0].solveVal, testResult.matrix[0].solveUnit) }}（{{ CAL_SHORT[testResult.solveCalendar ?? testResult.calendar] ?? '—' }}）</div>
+            <div class="tr-clocks">整单响应（{{ PRI_LABELS[testPriorityIdx] }}）：{{ fmtClock(testResult.matrix[testPriorityIdx].respVal, testResult.matrix[testPriorityIdx].respUnit) }}（{{ CAL_SHORT[testResult.respCalendar ?? testResult.calendar] ?? '—' }}）</div>
+            <div v-if="testSolvePreview" class="tr-clocks">
+              整单解决（{{ PRI_LABELS[testPriorityIdx] }}）：{{ fmtClock(testSolvePreview.val, testSolvePreview.unit) }}（{{ CAL_SHORT[testResult.solveCalendar ?? testResult.calendar] ?? '—' }}）
+            </div>
             <div class="tr-clocks">临期：{{ dueSoonText(testResult.dueSoon) }}</div>
           </template>
           <template v-else><span class="miss">无命中——该工单将无 SLA 约束，建议配置默认策略</span></template>
@@ -750,15 +900,36 @@ const dueSoonText = (d: DueSoon) => d.mode === 'countdown' ? `剩余 ${d.value}$
 .sec { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px 20px; scroll-margin-top: 80px; }
 .sec-h { font-size: 13px; font-weight: 600; color: #111827; margin-bottom: 14px; padding-left: 10px; border-left: 3px solid #1a6fff; line-height: 1.4; }
 .sec-sub { font-size: 12px; font-weight: normal; color: #9ca3af; margin-left: 8px; }
+.kv-form { display: flex; flex-direction: column; gap: 10px; }
+.kv-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 20px; }
+.kv-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 16px; }
+.kv-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.kv-label { flex: none; font-size: 12px; color: #6b7280; white-space: nowrap; }
+.kv-label.required::before { content: '* '; color: #ff4d4f; }
+.kv-control { flex: 1; min-width: 0; }
+.kv-control :deep(.ant-input-number) { width: 100%; }
+@media (max-width: 900px) {
+  .kv-grid-2, .kv-grid-3 { grid-template-columns: 1fr; }
+}
+.resp-inline { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 18px; padding: 4px 0 8px; }
+.resp-inline .ri-cell { display: flex; flex-direction: column; gap: 3px; }
+.resp-inline .ri-lv { font-size: 12px; color: #6b7280; }
 .matrix { width: 100%; border-collapse: collapse; }
 .matrix th { background: #f3f4f6; color: #6b7280; font-size: 12px; font-weight: 600; text-align: left; padding: 8px 10px; border: 1px solid #e5e7eb; }
 .matrix td { padding: 8px 10px; border: 1px solid #e5e7eb; }
 .matrix td.lv { font-weight: 600; color: #374151; width: 110px; }
+.sm-matrix td.type-cell { vertical-align: top; background: #fafafa; min-width: 100px; }
+.sm-matrix td.method-cell { font-size: 12px; color: #4b5563; min-width: 160px; }
+.unit-tag { font-size: 11px; color: #9ca3af; margin-left: 2px; }
+.tip-info { color: #1e40af; background: #eff6ff; border-color: #bfdbfe; }
 .th-opt { font-weight: normal; color: #9ca3af; margin-left: 2px; }
 .due-group { display: flex; flex-direction: column; gap: 12px; }
 .due-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #4b5563; }
-.sub-h { font-size: 13px; font-weight: 600; color: #374151; margin: 4px 0 10px; display: flex; align-items: center; }
+.sub-h { font-size: 13px; font-weight: 600; color: #374151; margin: 4px 0 10px; display: flex; align-items: center; gap: 10px; }
+.sub-h.sm { font-size: 12px; font-weight: 600; color: #4b5563; margin-top: 12px; }
+.sub-h.sm.mt { margin-top: 16px; }
 .sub-h.mt { margin-top: 20px; }
+.solve-sm-head { flex-wrap: wrap; }
 .sub-h .sub-add { margin-left: auto; }
 .clock-toggles { display: flex; gap: 20px; margin-bottom: 12px; }
 .matrix .cal-row td { background: #fafafa; }

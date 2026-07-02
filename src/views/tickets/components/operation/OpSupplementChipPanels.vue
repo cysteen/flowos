@@ -5,7 +5,7 @@ import OpQualityStandardFields from './OpQualityStandardFields.vue';
 import OpAppointmentRecords from './OpAppointmentRecords.vue';
 import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue';
 import type { ProcessFormDraft, SupplementChip } from '@/views/tickets/types/operation';
-import { RISK_LEVEL_OPTIONS } from '@/views/tickets/types/operation';
+import { RISK_LEVEL_OPTIONS, QUALITY_ISSUE_L2_MAP, QUALITY_ISSUE_L2_TO_L1 } from '@/views/tickets/types/operation';
 import {
   COMPLAINT_L1_OPTIONS,
   COMPLAINT_L2_MAP,
@@ -43,6 +43,27 @@ function onRiskChange(hasRisk: boolean) {
 
 function onComplaintCat1Change(v: string | number | undefined) {
   update({ complaintCat1: String(v ?? ''), complaintCat2: '', complaintCat3: '' });
+}
+
+function onQualityCat1Change(v: string | number | undefined) {
+  const cat1 = String(v ?? '');
+  const allowed = cat1 ? (QUALITY_ISSUE_L2_MAP[cat1] ?? []) : null;
+  const cat2 = props.form.qualityIssueCat2;
+  const keepCat2 = allowed ? allowed.includes(cat2) : !!cat2;
+  update({
+    qualityIssueCat1: cat1,
+    qualityIssueCat2: keepCat2 ? cat2 : '',
+  });
+}
+
+function onQualityCat2Change(v: string | number | undefined) {
+  const cat2 = String(v ?? '');
+  if (!cat2) {
+    update({ qualityIssueCat2: '' });
+    return;
+  }
+  const cat1 = props.form.qualityIssueCat1 || QUALITY_ISSUE_L2_TO_L1[cat2] || '';
+  update({ qualityIssueCat1: cat1, qualityIssueCat2: cat2 });
 }
 
 function onComplaintCat2Change(v: string | number | undefined) {
@@ -143,9 +164,12 @@ function onComplaintCat2Change(v: string | number | undefined) {
       :is-standard="form.qualityIsStandard"
       :issue-cat1="form.qualityIssueCat1"
       :issue-cat2="form.qualityIssueCat2"
-      @update:is-standard="(v) => update({ qualityIsStandard: v })"
-      @update:issue-cat1="(v) => update({ qualityIssueCat1: v })"
-      @update:issue-cat2="(v) => update({ qualityIssueCat2: v })"
+      @update:is-standard="(v) => update({
+        qualityIsStandard: v,
+        ...(v ? { qualityIssueCat1: '', qualityIssueCat2: '' } : {}),
+      })"
+      @update:issue-cat1="onQualityCat1Change"
+      @update:issue-cat2="onQualityCat2Change"
     />
   </div>
 </template>

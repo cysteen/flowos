@@ -80,17 +80,6 @@ export function useTicketOperation() {
     message.success(result.message);
   }
 
-  function confirmCancel() {
-    Modal.confirm({
-      title: '取消工单',
-      content: '取消后工单将终止处理，此操作不可撤销。确定取消？',
-      okText: '确认取消',
-      okType: 'danger',
-      cancelText: '返回',
-      onOk: () => dispatch({ type: '取消工单', reason: '处理人主动取消' }),
-    });
-  }
-
   function confirmWithdraw() {
     Modal.confirm({
       title: '撤回操作',
@@ -149,6 +138,6 @@ export function useTicketOperation() {
 
   return {
     detail, timeline, opState, suspendInfo, draftSavedAt,
-    dispatch, confirmCancel, confirmWithdraw, addChildTicket, addReopenTicket,
+    dispatch, confirmWithdraw, addChildTicket, addReopenTicket,
   };
 }

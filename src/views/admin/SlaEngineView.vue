@@ -6,6 +6,7 @@ import { PlusOutlined, DeleteOutlined, ImportOutlined, CopyOutlined } from '@ant
 import AdminSectionTabs from './components/AdminSectionTabs.vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { SLA_NAV_ITEMS, adminNavActiveKey } from '@/config/adminNav';
+import { SERVICE_TYPE_OPTIONS, SERVICE_TYPE_TO_METHODS } from '@/views/tickets/types/operation';
 
 // SLA 引擎非策略子页（PRD-55/56/57）：双层计时 / 挂起规则 / 预警配置 / 升级链 / 达标统计 / 监控看板 / 工作日历。
 const route = useRoute();
@@ -106,6 +107,32 @@ const holidays = ref([
   { name: '中秋节', range: '09-25 ~ 09-27', makeup: '—', count: false },
   { name: '国庆节', range: '10-01 ~ 10-07', makeup: '09-27, 10-11', count: false },
 ]);
+// —— 整单解决·服务方式动态调整（全局、独立于标准策略：选定服务方式后动态覆盖策略的优先级默认解决时限）——
+type PriK = 'P0' | 'P1' | 'P2' | 'P3';
+const PRI_KEYS: PriK[] = ['P0', 'P1', 'P2', 'P3'];
+const PRI_COEFF: Record<PriK, number> = { P0: 0.75, P1: 1, P2: 1.25, P3: 1.5 };
+const SVC_P1_HOURS: Record<string, number> = {
+  与需求人建立联系: 24, 处理人直接解决: 48, 再次流转及后台处理: 72, 需产研侧升级修复: 72, 上门处理: 72,
+  首响人直接办理退费: 24, 审核退费: 72, '渠道/第三方退费': 72, '业务线/电商/门店售后': 168,
+};
+function svcSpread(p1: number): Record<PriK, number> {
+  return { P0: Math.ceil(p1 * PRI_COEFF.P0), P1: p1, P2: Math.ceil(p1 * PRI_COEFF.P2), P3: Math.ceil(p1 * PRI_COEFF.P3) };
+}
+const svcAdjust = ref(true);
+const svcSolve = ref(
+  SERVICE_TYPE_OPTIONS.flatMap((serviceType) =>
+    (SERVICE_TYPE_TO_METHODS[serviceType] ?? []).map((serviceMethod) => ({
+      serviceType, serviceMethod, limits: svcSpread(SVC_P1_HOURS[serviceMethod] ?? 48),
+    })),
+  ),
+);
+const svcGroups = computed(() => {
+  const map = new Map<string, typeof svcSolve.value>();
+  svcSolve.value.forEach((row) => { const l = map.get(row.serviceType) ?? []; l.push(row); map.set(row.serviceType, l); });
+  return [...map.entries()].map(([serviceType, rows]) => ({ serviceType, rows }));
+});
+function recalcSvc() { svcSolve.value.forEach((r) => { r.limits = svcSpread(r.limits.P1); }); message.success('已按 P1 重算 P0/P2/P3（系数 0.75/1/1.25/1.5）'); }
+
 function importHolidays() { message.info(`已导入 ${holidayYear.value} 年国务院法定节假日及调休安排（演示）`); }
 function addHoliday() { holidays.value.push({ name: '新假期', range: '', makeup: '—', count: false }); }
 function delHoliday(name: string) { holidays.value = holidays.value.filter((h) => h.name !== name); }
@@ -195,6 +222,26 @@ function save() { message.success('已保存并生效'); }
             </template>
           </a-table>
           <a-button type="dashed" block class="mt" @click="addSuspend"><template #icon><PlusOutlined /></template>添加挂起原因</a-button>
+
+          <div class="sec-h mt2">整单解决 · 服务方式动态调整（选填）
+            <a-switch v-model:checked="svcAdjust" size="small" style="margin-left:8px" />
+          </div>
+          <div class="intro">独立于标准 SLA 策略的<strong>特殊逻辑</strong>：工单在处理中<strong>选定服务方式后，整单解决时效按下表动态覆盖</strong>策略里的优先级默认值（服务方式太特殊，不进标准适用范围）。全局共享、按服务方式统一维护。P1=处理标准基准；P0=×0.75、P2=×1.25、P3=×1.5（向上取整），单位小时。</div>
+          <template v-if="svcAdjust">
+            <div style="text-align:right;margin-bottom:8px"><a-button size="small" @click="recalcSvc">按 P1 重算 P0/P2/P3</a-button></div>
+            <table class="svc-matrix">
+              <thead><tr><th>服务类型</th><th>服务方式</th><th v-for="pk in PRI_KEYS" :key="pk">{{ pk }}</th></tr></thead>
+              <tbody>
+                <template v-for="g in svcGroups" :key="g.serviceType">
+                  <tr v-for="(row, idx) in g.rows" :key="row.serviceMethod">
+                    <td v-if="idx === 0" class="rowh" :rowspan="g.rows.length">{{ g.serviceType }}</td>
+                    <td class="mcell">{{ row.serviceMethod }}</td>
+                    <td v-for="pk in PRI_KEYS" :key="pk"><a-input-number v-model:value="row.limits[pk]" :min="1" size="small" style="width:56px" /> <span class="uh">h</span></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </template>
         </div>
       </template>
 
@@ -241,6 +288,12 @@ function save() { message.success('已保存并生效'); }
 .sla-engine { display: flex; flex-direction: column; min-height: 100%; }
 .body { padding: 16px 24px; display: flex; flex-direction: column; gap: 16px; }
 .panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px 24px; }
+.svc-matrix { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+.svc-matrix th, .svc-matrix td { border: 1px solid #e5e7eb; padding: 6px 10px; font-size: 13px; text-align: center; }
+.svc-matrix th { background: #f9fafb; color: #6b7280; font-weight: 600; }
+.svc-matrix .rowh { background: #f9fafb; font-weight: 600; color: #111827; }
+.svc-matrix .mcell { text-align: left; color: #374151; }
+.svc-matrix .uh { color: #9ca3af; font-size: 12px; }
 .sec-h { font-size: 13px; font-weight: 600; color: #111827; margin-bottom: 12px; padding-left: 10px; border-left: 3px solid #1a6fff; line-height: 1.4; display: flex; align-items: center; }
 .sec-h.mt2 { margin-top: 24px; }
 .intro { font-size: 12px; color: #6b7280; background: #f9fafb; border: 1px solid #f0f0f0; border-radius: 6px; padding: 8px 12px; margin-bottom: 14px; line-height: 1.6; }

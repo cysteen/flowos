@@ -83,8 +83,9 @@ export interface ProcessFormDraft {
   processResultAttachments: string[];
   serviceMethod: string;
   serviceType: string;
-  conclusion: 'resolved' | 'concession' | 'unresolved';
-  /** 解决结论为退让时填写 */
+  /** 问题解决结论（独立枚举，不随服务类型/方式级联） */
+  conclusion: string;
+  /** @deprecated 历史字段，新结论枚举不再使用 */
   concessionPlan: string;
   complaintCat1: string;
   complaintCat2: string;
@@ -99,14 +100,14 @@ export interface ProcessFormDraft {
   /** 预约回访记录（每条一个预约时间点） */
   appointmentRecords: AppointmentRecord[];
   qualityIsStandard: boolean;
-  /** 不规范原因大类 */
+  /** 不规范原因（一级） */
   qualityIssueCat1: string;
-  /** 不规范原因子类（联动大类） */
+  /** 不规范分类（联动原因） */
   qualityIssueCat2: string;
   /** 建议专属 · 是否采纳（建议服务结论；默认否，无下级字段） */
   suggestAccepted: boolean;
   /** 商机专属 · 商机解决结论 */
-  leadStage: 'invalid' | 'noContact' | 'toSales';
+  leadStage: 'resolved' | 'unresolvedRejected' | 'noContact' | 'invalid' | 'toSales';
   /** 商机编号（CRM 商机单号） */
   leadNo: string;
 }
@@ -154,47 +155,84 @@ export function visibleProcessTabs(ticketType: string) {
 
 export type SupplementChip = 'complaint' | 'risk' | 'appointment' | 'quality';
 
-/** 建单不规范 · 原因大类 */
-export const QUALITY_ISSUE_L1_OPTIONS = ['信息录入', '分类错误', '流程违规', '其他'] as const;
+/** 建单不规范 · 不规范原因（一级） */
+export const QUALITY_ISSUE_L1_OPTIONS = [
+  '标签类型选择有误',
+  '建单信息有误',
+  '建单要素不完整',
+  '未按已知流程和知识处理',
+  '重复建单',
+  '关联工单建单问题',
+] as const;
 
-/** 建单不规范 · 原因子类（按大类联动） */
+/** 建单不规范 · 不规范分类（按原因联动） */
 export const QUALITY_ISSUE_L2_MAP: Record<string, string[]> = {
-  信息录入: ['客户信息缺失', '联系方式错误', '产品信息不全'],
-  分类错误: ['工单类型错误', '问题分类错误', '优先级错误'],
-  流程违规: ['重复建单', '未按规范流转', '遗漏必填项'],
-  其他: ['其他原因'],
+  标签类型选择有误: [
+    '优先级勾选有误',
+    '呼入类型勾选有误',
+    '投诉标签勾选有误',
+    '产品名称勾选有误',
+    '问题分类勾选有误',
+  ],
+  建单信息有误: ['用户信息有误', '问题描述有误', '预处理描述不清晰'],
+  建单要素不完整: ['必要建单信息不完整', '附件信息提供不完整'],
+  未按已知流程和知识处理: ['预处理不足', '预处理错误', '已知方案场景拦截不足'],
+  重复建单: ['重复建单'],
+  关联工单建单问题: ['非关联场景建关联', '关联单场景未建关联'],
 };
 
-/** 服务方式（支持关键词搜索） */
-export const SERVICE_METHOD_OPTIONS = [
-  '远程指导',
-  '电话回访',
-  '上门检修',
-  '寄修办理',
-  '现场接待',
-  '邮件答复',
-] as const;
+/** 全部不规范分类（未选原因时展示） */
+export const QUALITY_ISSUE_L2_ALL_OPTIONS = Object.values(QUALITY_ISSUE_L2_MAP).flat();
 
-/** 服务类型（随服务方式默认带出，可搜索改选） */
+/** 不规范分类 → 不规范原因（反向联动） */
+export const QUALITY_ISSUE_L2_TO_L1: Record<string, string> = Object.fromEntries(
+  Object.entries(QUALITY_ISSUE_L2_MAP).flatMap(([l1, l2s]) => l2s.map((l2) => [l2, l1])),
+);
+
+/** 服务类型（先选，驱动服务方式级联） */
 export const SERVICE_TYPE_OPTIONS = [
-  '技术支持',
-  '客服跟进',
-  '上门服务',
-  '寄修服务',
-  '门店服务',
-  '书面答复',
-  '品质服务',
-  '售后服务',
+  '商务合作',
+  '软件问题/其他',
+  '退费处理',
+  '硬件维修/退换货',
 ] as const;
 
-export const SERVICE_TYPE_BY_METHOD: Record<string, string> = {
-  远程指导: '技术支持',
-  电话回访: '客服跟进',
-  上门检修: '上门服务',
-  寄修办理: '寄修服务',
-  现场接待: '门店服务',
-  邮件答复: '书面答复',
+/** 服务方式（随服务类型级联过滤） */
+export const SERVICE_TYPE_TO_METHODS: Record<string, readonly string[]> = {
+  商务合作: ['与需求人建立联系'],
+  '软件问题/其他': [
+    '处理人直接解决',
+    '再次流转及后台处理',
+    '需产研侧升级修复',
+    '上门处理',
+  ],
+  退费处理: ['首响人直接办理退费', '审核退费', '渠道/第三方退费'],
+  '硬件维修/退换货': ['业务线/电商/门店售后'],
 };
+
+/** 问题解决结论（独立平铺，不级联） */
+export const RESOLUTION_CONCLUSION_OPTIONS = [
+  '已解决：技术方案解决',
+  '已解决：服务方案解决',
+  '已解决：处理人解决',
+  '未解决：已给方案，用户未操作/未验证',
+  '未解决：有方案，用户对方案不认可',
+  '未解决：联系不上用户',
+  '未解决：无解决方案',
+  '无效商机',
+  '转销售渠道处理',
+  '转售后网点处理',
+  '需求待评估（仅学习机使用）',
+] as const;
+
+/** 商机解决结论 */
+export const LEAD_STAGE_OPTIONS: { label: string; value: ProcessFormDraft['leadStage'] }[] = [
+  { label: '已解决：处理人解决', value: 'resolved' },
+  { label: '未解决：有方案，用户对方案不认可', value: 'unresolvedRejected' },
+  { label: '未解决：联系不上用户', value: 'noContact' },
+  { label: '无效商机', value: 'invalid' },
+  { label: '转销售渠道处理', value: 'toSales' },
+];
 
 /** 风险等级 */
 export const RISK_LEVEL_OPTIONS = ['低风险', '中风险', '高风险'] as const;

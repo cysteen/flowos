@@ -10,6 +10,7 @@ import OpOverviewBand from './components/operation/OpOverviewBand.vue';
 import OpStatDetailModal from './components/operation/OpStatDetailModal.vue';
 import OpSupplementModal from './components/operation/OpSupplementModal.vue';
 import OpDunningModal from './components/operation/OpDunningModal.vue';
+import OpCancelModal from './components/operation/OpCancelModal.vue';
 import OpSmsModal from './components/operation/OpSmsModal.vue';
 import OpEmailModal from './components/operation/OpEmailModal.vue';
 import TicketEventToastStack from './components/operation/TicketEventToastStack.vue';
@@ -34,7 +35,7 @@ const route = useRoute();
 const router = useRouter();
 const {
   detail: d, timeline, opState, suspendInfo, draftSavedAt,
-  dispatch, confirmCancel, confirmWithdraw, addChildTicket, addReopenTicket,
+  dispatch, confirmWithdraw, addChildTicket, addReopenTicket,
 } = useTicketOperation();
 const {
   form, activeChip, expandedSections, filledSupplementCount,
@@ -61,6 +62,7 @@ const user = useUserStore();
 const overviewExpanded = ref(false);
 const supplementModalOpen = ref(false);
 const dunningModalOpen = ref(false);
+const cancelModalOpen = ref(false);
 
 // 联系客户：短信 / 邮件弹窗（统一走 OpActionModal 风格）
 const smsModalOpen = ref(false);
@@ -378,6 +380,14 @@ function onDunningSubmit(payload: { content: string; attachments: string[] }) {
   message.success('催单信息已提交');
 }
 
+function formatCancelReason(reason: string, remark: string) {
+  return remark ? `${reason}：${remark}` : reason;
+}
+
+function onCancelSubmit(payload: { reason: string; remark: string }) {
+  dispatch({ type: '取消工单', reason: formatCancelReason(payload.reason, payload.remark) });
+}
+
 function onHeaderAction(name: string) {
   switch (name) {
     case '新建关联':
@@ -390,7 +400,7 @@ function onHeaderAction(name: string) {
       dunningModalOpen.value = true;
       break;
     case '取消工单':
-      confirmCancel();
+      cancelModalOpen.value = true;
       break;
     default:
       toast(name);
@@ -472,7 +482,7 @@ function updateTabData(next: OperationTabData) {
       :draft-saved-at="draftSavedAt"
       :return-count="d.returnCount ?? 0"
       @action="onAction"
-      @cancel="confirmCancel"
+      @cancel="cancelModalOpen = true"
       @withdraw="confirmWithdraw"
       @transfer-ticket="openChildCreate"
     />
@@ -500,6 +510,11 @@ function updateTabData(next: OperationTabData) {
     <OpDunningModal
       v-model:open="dunningModalOpen"
       @submit="onDunningSubmit"
+    />
+
+    <OpCancelModal
+      v-model:open="cancelModalOpen"
+      @submit="onCancelSubmit"
     />
 
     <OpSmsModal

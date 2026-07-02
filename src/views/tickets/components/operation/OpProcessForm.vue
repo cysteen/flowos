@@ -12,9 +12,10 @@ import type {
   ProcessFormDraft, SupplementChip, SectionKey,
 } from '@/views/tickets/types/operation';
 import {
-  SERVICE_METHOD_OPTIONS,
-  SERVICE_TYPE_BY_METHOD,
+  RESOLUTION_CONCLUSION_OPTIONS,
   SERVICE_TYPE_OPTIONS,
+  SERVICE_TYPE_TO_METHODS,
+  LEAD_STAGE_OPTIONS,
 } from '@/views/tickets/types/operation';
 
 const props = defineProps<{
@@ -42,33 +43,28 @@ function patch(part: Partial<ProcessFormDraft>) {
   emit('update:form', { ...props.form, ...part });
 }
 
-function onConclusionChange(v: ProcessFormDraft['conclusion']) {
-  patch({
-    conclusion: v,
-    ...(v !== 'concession' ? { concessionPlan: '' } : {}),
-  });
+function onConclusionChange(v: string) {
+  patch({ conclusion: v ?? '' });
+}
+
+function onServiceTypeChange(type: string) {
+  const methods = SERVICE_TYPE_TO_METHODS[type] ?? [];
+  const nextMethod = methods.includes(props.form.serviceMethod)
+    ? props.form.serviceMethod
+    : (methods[0] ?? '');
+  patch({ serviceType: type, serviceMethod: nextMethod });
 }
 
 function onServiceMethodChange(method: string) {
-  patch({
-    serviceMethod: method,
-    serviceType: SERVICE_TYPE_BY_METHOD[method] ?? props.form.serviceType,
-  });
+  patch({ serviceMethod: method });
 }
 
-const CONCLUSION_OPTIONS: { label: string; value: ProcessFormDraft['conclusion'] }[] = [
-  { label: '已解决', value: 'resolved' },
-  { label: '退让', value: 'concession' },
-  { label: '未解决', value: 'unresolved' },
-];
-const LEAD_STAGE_OPTIONS: { label: string; value: ProcessFormDraft['leadStage'] }[] = [
-  { label: '无效商机', value: 'invalid' },
-  { label: '未联系上用户', value: 'noContact' },
-  { label: '转销售渠道处理', value: 'toSales' },
-];
-const serviceMethodOptions = SERVICE_METHOD_OPTIONS.map((v) => ({ label: v, value: v }));
+const conclusionOptions = RESOLUTION_CONCLUSION_OPTIONS.map((v) => ({ label: v, value: v }));
 const serviceTypeOptions = SERVICE_TYPE_OPTIONS.map((v) => ({ label: v, value: v }));
-
+const serviceMethodOptions = computed(() => {
+  const methods = SERVICE_TYPE_TO_METHODS[props.form.serviceType] ?? [];
+  return methods.map((v) => ({ label: v, value: v }));
+});
 // 补充处理 chip：投诉=投诉分类/风险/预约/建单规范；咨询/建议/商机=预约/建单规范（参照投诉，四类型统一）
 const supplementChips = computed<{ key: SupplementChip; label: string }[]>(() =>
   isComplaint.value
@@ -151,44 +147,35 @@ function chipActiveClass(key: SupplementChip): string {
       </div>
       <div class="field-row field-row--service">
         <div class="field inline">
-          <label>服务方式</label>
-          <FormSelect
-            :value="form.serviceMethod"
-            :options="serviceMethodOptions"
-            placeholder="请选择或搜索"
-            style="width: 100%"
-            @update:value="(v) => onServiceMethodChange(String(v ?? ''))"
-          />
-        </div>
-        <div class="field inline">
           <label>服务类型</label>
           <FormSelect
             :value="form.serviceType"
             :options="serviceTypeOptions"
             placeholder="请选择或搜索"
             style="width: 100%"
-            @update:value="(v) => patch({ serviceType: String(v ?? '') })"
+            @update:value="(v) => onServiceTypeChange(String(v ?? ''))"
+          />
+        </div>
+        <div class="field inline">
+          <label>服务方式</label>
+          <FormSelect
+            :value="form.serviceMethod"
+            :options="serviceMethodOptions"
+            placeholder="请先选服务类型"
+            style="width: 100%"
+            @update:value="(v) => onServiceMethodChange(String(v ?? ''))"
           />
         </div>
         <div class="field inline">
           <label>问题解决结论</label>
-          <a-select
+          <FormSelect
             :value="form.conclusion"
-            :options="CONCLUSION_OPTIONS"
-            placeholder="请选择"
+            :options="conclusionOptions"
+            placeholder="请选择或搜索"
             style="width: 100%"
-            @update:value="onConclusionChange"
+            @update:value="(v) => onConclusionChange(String(v ?? ''))"
           />
         </div>
-      </div>
-      <div v-if="form.conclusion === 'concession'" class="field concession-field">
-        <label>退让方案</label>
-        <a-textarea
-          :value="form.concessionPlan"
-          :rows="3"
-          placeholder="请补充退让方案…"
-          @update:value="(v: string) => patch({ concessionPlan: v })"
-        />
       </div>
     </OpCollapsibleSection>
 
@@ -353,9 +340,6 @@ function chipActiveClass(key: SupplementChip): string {
 /* 防止单选项文字（如「否（不规范）」）被挤断行 */
 .process-form :deep(.ant-radio-wrapper) { white-space: nowrap; }
 .process-form :deep(.ant-radio-group) { display: inline-flex; flex-wrap: wrap; gap: 4px 12px; }
-.concession-field {
-  margin-top: 2px;
-}
 .chip-row { display: flex; gap: 8px; flex-wrap: nowrap; }
 .chip {
   display: inline-flex; align-items: center; gap: 6px;

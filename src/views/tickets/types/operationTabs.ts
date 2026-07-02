@@ -69,6 +69,15 @@ export interface SimpleRecord {
   read?: boolean;
 }
 
+/** 取消工单原因枚举 */
+export const CANCEL_REASON_OPTIONS = [
+  '客户来电取消',
+  '建单信息错误',
+  '重复建单',
+  '客户问题已自行解决',
+  '其他',
+] as const;
+
 /** 坐席新建补充时的类型枚举 */
 export const SUPPLEMENT_TYPE_OPTIONS = [
   '问题描述补充',
