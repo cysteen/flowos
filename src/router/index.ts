@@ -15,12 +15,14 @@ import {
   ADMIN_LEGACY_REDIRECTS,
   RULES_NAV_ITEMS,
   SLA_NAV_ITEMS,
+  DISPATCH_NAV_ITEMS,
 } from '@/config/adminNav';
 
 const SLA_STUB_KEYS = new Set(
   SLA_NAV_ITEMS.map((i) => i.key).filter((k) => k !== 'sla-policy'),
 );
 const RULES_STUB_KEYS = new Set(RULES_NAV_ITEMS.map((i) => i.key));
+const DISPATCH_KEYS = new Set(DISPATCH_NAV_ITEMS.map((i) => i.key));
 const WORKFLOW_STUB_KEYS = new Set(['flow-instances', 'flow-tasks', 'flow-listeners', 'flow-expressions']);
 
 function adminViewFor(key: string) {
@@ -36,7 +38,7 @@ function adminViewFor(key: string) {
   if (key === 'teams') return () => import('@/views/admin/UserGroupView.vue');
   if (key === 'customers') return () => import('@/views/admin/CustomerManageView.vue');
   if (key === 'products') return () => import('@/views/admin/ProductManageView.vue');
-  if (key === 'dispatch') return () => import('@/views/admin/DispatchConfigView.vue');
+  if (DISPATCH_KEYS.has(key)) return () => import('@/views/admin/DispatchConfigView.vue');
   if (key === 'users') return () => import('@/views/admin/UserManageView.vue');
   if (key === 'orgs') return () => import('@/views/admin/OrgManageView.vue');
   if (key === 'connectors') return () => import('@/views/admin/ConnectorHubView.vue');

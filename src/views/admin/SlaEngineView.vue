@@ -3,9 +3,8 @@ import { computed, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { message } from 'ant-design-vue';
 import { PlusOutlined, DeleteOutlined, ImportOutlined, CopyOutlined } from '@ant-design/icons-vue';
-import AdminSectionTabs from './components/AdminSectionTabs.vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
-import { SLA_NAV_ITEMS, adminNavActiveKey } from '@/config/adminNav';
+import { adminNavActiveKey } from '@/config/adminNav';
 import { SERVICE_TYPE_OPTIONS, SERVICE_TYPE_TO_METHODS } from '@/views/tickets/types/operation';
 
 // SLA 引擎非策略子页（PRD-55/56/57）：双层计时 / 挂起规则 / 预警配置 / 升级链 / 达标统计 / 监控看板 / 工作日历。
@@ -26,28 +25,127 @@ const suspendRows = ref([
 function addSuspend() { suspendRows.value.push({ reason: '新挂起原因', pause: true, maxDuration: '72 小时', autoResume: '条件满足后恢复', needAudit: false }); }
 function delSuspend(reason: string) { suspendRows.value = suspendRows.value.filter((r) => r.reason !== reason); }
 
-// —— 预警配置 ——
-const alertRows = ref([
-  { id: 1, dim: '响应', threshold: '剩余 ≤ 50%', channel: ['站内信'], target: '处理人' },
-  { id: 2, dim: '响应', threshold: '剩余 ≤ 25%', channel: ['站内信', '短信'], target: '处理人 + 班组长' },
-  { id: 3, dim: '解决', threshold: '已超时', channel: ['短信', '邮件'], target: '班组长' },
-]);
-const CHANNELS = ['站内信', '短信', '邮件', 'i讯飞'];
-const TARGETS = ['处理人', '班组长', '处理人 + 班组长', '指定人'];
-function addAlert() { alertRows.value.push({ id: Date.now(), dim: '响应', threshold: '剩余 ≤ 25%', channel: ['站内信'], target: '处理人' }); }
-function delAlert(id: number) { alertRows.value = alertRows.value.filter((r) => r.id !== id); }
+// —— 预警与升级：按时钟维度配置（整单 + 节点，各钟独立）——
+type DueJudgeMode = 'percent' | 'countdown';
+type DueCountUnit = '分钟' | '小时';
+type ClockKind = 'resp' | 'proc' | 'solve';
 
-// —— 自动升级链（A3-05，SLA 引擎自有；区别于规则中心的「升级路由→目标系统」）——
-const ESC_TRIGGERS = ['响应剩余 ≤ 25%', '响应已超时', '解决剩余 ≤ 25%', '解决已超时', '超时后每 30 分钟'];
-const ESC_TARGETS = ['处理人', '班组长', '二线技术支持组', '客服主管', '指定人'];
-const escChain = ref([
-  { id: 1, level: 'L1', trigger: '响应剩余 ≤ 25%', target: '处理人', extra: '打升级标记' },
-  { id: 2, level: 'L2', trigger: '响应已超时', target: '班组长', extra: '打升级标记' },
-  { id: 3, level: 'L3', trigger: '解决已超时', target: '二线技术支持组', extra: '优先级 +1' },
-  { id: 4, level: 'L4', trigger: '超时后每 30 分钟', target: '客服主管', extra: '飞书同步' },
-]);
-function addEsc() { escChain.value.push({ id: Date.now(), level: `L${escChain.value.length + 1}`, trigger: '解决已超时', target: '班组长', extra: '' }); }
-function delEsc(id: number) { escChain.value = escChain.value.filter((e) => e.id !== id); escChain.value.forEach((e, i) => { e.level = `L${i + 1}`; }); }
+interface PreAlertRow {
+  id: number;
+  minutesBefore: number;
+  targets: string[];
+  channels: string[];
+  template: string;
+}
+
+interface NotifyRule {
+  targets: string[];
+  channels: string[];
+  template: string;
+}
+
+interface ClockAlertConfig {
+  enabled: boolean;
+  dueJudge: { mode: DueJudgeMode; value: number; unit: DueCountUnit };
+  preAlerts: PreAlertRow[];
+  dueAlert: NotifyRule;
+  timeoutEnabled: boolean;
+  timeoutAlert: NotifyRule;
+}
+
+interface ClockDim {
+  key: string;
+  group: '整单' | '节点';
+  label: string;
+  kind: ClockKind;
+  node?: string;
+}
+
+const CHANNELS = ['系统弹窗', 'i讯飞', '站内信', '短信', '邮件'];
+const TARGETS = ['处理人', '班组长', '技术顾问', '客服主管'];
+const COUNT_UNIT_OPTS: DueCountUnit[] = ['分钟', '小时'];
+const NODE_CLOCK_NAMES = ['处理', '技术', '审核', '回访'] as const;
+
+const CLOCK_DIMS: ClockDim[] = [
+  { key: 'global:resp', group: '整单', label: '整单响应', kind: 'resp' },
+  { key: 'global:solve', group: '整单', label: '整单解决', kind: 'solve' },
+  ...NODE_CLOCK_NAMES.flatMap((node) => [
+    { key: `node:${node}:resp`, group: '节点' as const, label: `${node} · 响应`, kind: 'resp' as const, node },
+    { key: `node:${node}:proc`, group: '节点' as const, label: `${node} · 处理`, kind: 'proc' as const, node },
+  ]),
+];
+
+function tplPair(dim: ClockDim): [string, string] {
+  if (dim.kind === 'solve') return ['SLA-解决临期前提醒', 'SLA-解决临期提醒'];
+  if (dim.kind === 'proc') return [`SLA-${dim.node}-处理临期前提醒`, `SLA-${dim.node}-处理临期提醒`];
+  if (dim.node) return [`SLA-${dim.node}-响应临期前提醒`, `SLA-${dim.node}-响应临期提醒`];
+  return ['SLA-响应临期前提醒', 'SLA-响应临期提醒'];
+}
+
+function timeoutTpl(dim: ClockDim): string {
+  if (dim.kind === 'solve') return 'SLA-解决超时通知';
+  if (dim.kind === 'proc') return `SLA-${dim.node}-处理超时通知`;
+  if (dim.node) return `SLA-${dim.node}-响应超时通知`;
+  return 'SLA-响应超时通知';
+}
+
+function defClockConfig(dim: ClockDim): ClockAlertConfig {
+  const [preTpl, dueTpl] = tplPair(dim);
+  return {
+    enabled: dim.group === '整单',
+    dueJudge: { mode: 'percent', value: 25, unit: '分钟' },
+    preAlerts: [
+      { id: 1, minutesBefore: 20, targets: ['处理人', '班组长'], channels: ['系统弹窗', 'i讯飞'], template: preTpl },
+      { id: 2, minutesBefore: 10, targets: ['处理人', '班组长'], channels: ['系统弹窗', 'i讯飞'], template: preTpl },
+    ],
+    dueAlert: { targets: ['处理人', '班组长'], channels: ['系统弹窗', 'i讯飞'], template: dueTpl },
+    timeoutEnabled: true,
+    timeoutAlert: { targets: ['班组长'], channels: ['系统弹窗', 'i讯飞', '短信'], template: timeoutTpl(dim) },
+  };
+}
+
+const alertConfigs = ref<Record<string, ClockAlertConfig>>(
+  Object.fromEntries(CLOCK_DIMS.map((d) => [d.key, defClockConfig(d)])),
+);
+const selectedClockKey = ref('global:resp');
+const clockSearch = ref('');
+
+const selectedDim = computed(() => CLOCK_DIMS.find((d) => d.key === selectedClockKey.value) ?? CLOCK_DIMS[0]);
+const currentClock = computed(() => alertConfigs.value[selectedClockKey.value]);
+const currentTemplates = computed(() => tplPair(selectedDim.value));
+const timeoutTemplateOpts = computed(() => [{ value: timeoutTpl(selectedDim.value), label: timeoutTpl(selectedDim.value) }]);
+
+const clockGroups = computed(() => {
+  const q = clockSearch.value.trim();
+  const filtered = q ? CLOCK_DIMS.filter((d) => d.label.includes(q) || d.node?.includes(q)) : CLOCK_DIMS;
+  return (['整单', '节点'] as const).map((g) => ({
+    group: g,
+    items: filtered.filter((d) => d.group === g),
+  })).filter((g) => g.items.length);
+});
+
+function isClockEnabled(key: string) {
+  return alertConfigs.value[key]?.enabled ?? false;
+}
+
+function addPreAlert() {
+  const cfg = currentClock.value;
+  cfg.preAlerts.push({
+    id: Date.now(),
+    minutesBefore: 5,
+    targets: ['处理人', '班组长'],
+    channels: ['系统弹窗'],
+    template: currentTemplates.value[0],
+  });
+}
+function delPreAlert(id: number) {
+  const cfg = currentClock.value;
+  cfg.preAlerts = cfg.preAlerts.filter((r) => r.id !== id);
+}
+
+const channelOpts = CHANNELS.map((c) => ({ value: c, label: c }));
+const targetOpts = TARGETS.map((t) => ({ value: t, label: t }));
+const templateOpts = computed(() => currentTemplates.value.map((t) => ({ value: t, label: t })));
 
 // 监控看板（达标统计）已移出 SLA 配置：完整看板归运营看板/数据总览、班组看板（单一算法源）；
 // SLA 策略列表页保留轻量达成概览。
@@ -81,9 +179,6 @@ const TIME_OPTS = (() => {
   }
   return opts;
 })();
-function formatWorkTime(row: WorkDay): string {
-  return `上午 ${row.amStart}–${row.amEnd}；下午 ${row.pmStart}–${row.pmEnd}`;
-}
 function applyMondayToAll() {
   const mon = workDays.value.find((d) => d.day === '周一');
   if (!mon) return;
@@ -163,23 +258,28 @@ function save() { message.success('已保存并生效'); }
 </script>
 
 <template>
-  <div class="sla-engine">
-    <AdminSectionTabs :items="SLA_NAV_ITEMS" :active-key="activeKey" />
-    <div class="body">
-      <!-- ===== 工作日历与停表（策略共用的计时基础） ===== -->
-      <template v-if="activeKey === 'sla-timing'">
-        <div class="panel">
-          <AdminPageHeader title="工作日历与停表" subtitle="SLA 策略共用的计时基础：工作日历（何时计时）+ 挂起停表（何时暂停）。平台固定双层 SLA（整单 + 节点并行）。">
-            <template #actions><a-button type="primary" @click="save">保存</a-button></template>
-          </AdminPageHeader>
+  <div class="sla-page">
+    <!-- ===== 计时规则 ===== -->
+    <div v-if="activeKey === 'sla-timing'" class="admin-page">
+      <AdminPageHeader
+        title="计时规则"
+        subtitle="计时规则 = 工作日历与停表底座：定义工作时段、节假日/调休及挂起是否暂停计时，供全部 SLA 策略共用。"
+      />
 
-          <div class="sec-h">SLA 工作日历 <a-switch v-model:checked="is724" size="small" style="margin-left:6px" /><span class="muted" style="margin-left:6px">7×24 自然时间</span></div>
-          <div class="intro">SLA 时限按工作时段推进，非工作时段（夜间/午休/节假日）不计入计时；勾选 7×24 则按自然时间。每天可配置<strong>上午段 + 下午段</strong>；「是否工作日」仅控制当天是否计入 SLA，时段仍可预先配置（含周六日）。</div>
-          <div class="cal-toolbar">
-            <a-button size="small" :disabled="is724" @click="applyMondayToAll"><template #icon><CopyOutlined /></template>将周一时段应用到全部 7 天</a-button>
-            <span class="cal-preview muted">示例：{{ formatWorkTime(workDays[0]) }}</span>
+      <div class="content-card">
+          <div class="card-toolbar">
+            <a-button type="primary" @click="save">保存</a-button>
           </div>
+          <div class="sec-h">SLA 工作日历 <a-switch v-model:checked="is724" size="small" style="margin-left:6px" /><span class="muted" style="margin-left:6px">7×24</span></div>
           <a-table :columns="calCols" :data-source="workDays" row-key="day" :pagination="false" size="middle" :class="{ 'tbl-disabled': is724 }">
+            <template #headerCell="{ column }">
+              <template v-if="column.key === 'time'">
+                <div class="cal-time-th">
+                  <span>工作时段（上午 / 下午）</span>
+                  <a-button size="small" :disabled="is724" @click="applyMondayToAll"><template #icon><CopyOutlined /></template>将周一时段应用到全部 7 天</a-button>
+                </div>
+              </template>
+            </template>
             <template #bodyCell="{ column, record }">
               <a-switch v-if="column.key === 'on'" v-model:checked="record.on" size="small" :disabled="is724" />
               <div v-else-if="column.key === 'time'" class="time-slots" :class="{ 'time-slots--off': !record.on }">
@@ -203,7 +303,6 @@ function save() { message.success('已保存并生效'); }
               <a-button size="small" type="primary" @click="addHoliday"><template #icon><PlusOutlined /></template>新增假期</a-button>
             </span>
           </div>
-          <div class="intro">节日名称固定，但每年日期 / 调休不同 → 按年维护或一键导入国务院当年安排。节假日休息 = 不计时；调休补班日 = 计时；若该日承诺值班可改为「计时」。</div>
           <a-table :columns="holidayCols" :data-source="holidays" row-key="name" :pagination="false" size="middle">
             <template #bodyCell="{ column, record }">
               <a-switch v-if="column.key === 'count'" v-model:checked="record.count" size="small" checked-children="计时" un-checked-children="休息" />
@@ -212,7 +311,6 @@ function save() { message.success('已保存并生效'); }
           </a-table>
 
           <div class="sec-h mt2">挂起 / 停表规则</div>
-          <div class="intro">工单挂起时 SLA 计时暂停，按挂起原因差异化；设「最长挂起」防永久挂起、「自动恢复」条件、敏感原因可要求「需审核」。各策略在「策略 · 计时口径」中引用这些停表状态。</div>
           <a-table :columns="suspendCols" :data-source="suspendRows" row-key="reason" :pagination="false" size="middle">
             <template #bodyCell="{ column, record }">
               <a-switch v-if="column.key === 'pause'" v-model:checked="record.pause" size="small" checked-children="暂停" un-checked-children="计时" />
@@ -226,7 +324,6 @@ function save() { message.success('已保存并生效'); }
           <div class="sec-h mt2">整单解决 · 服务方式动态调整（选填）
             <a-switch v-model:checked="svcAdjust" size="small" style="margin-left:8px" />
           </div>
-          <div class="intro">独立于标准 SLA 策略的<strong>特殊逻辑</strong>：工单在处理中<strong>选定服务方式后，整单解决时效按下表动态覆盖</strong>策略里的优先级默认值（服务方式太特殊，不进标准适用范围）。全局共享、按服务方式统一维护。P1=处理标准基准；P0=×0.75、P2=×1.25、P3=×1.5（向上取整），单位小时。</div>
           <template v-if="svcAdjust">
             <div style="text-align:right;margin-bottom:8px"><a-button size="small" @click="recalcSvc">按 P1 重算 P0/P2/P3</a-button></div>
             <table class="svc-matrix">
@@ -242,52 +339,140 @@ function save() { message.success('已保存并生效'); }
               </tbody>
             </table>
           </template>
-        </div>
-      </template>
+      </div>
+    </div>
 
-      <!-- ===== 预警与升级（A3-04 分级预警 + A3-05 自动升级链，SLA 引擎自有） ===== -->
-      <template v-if="activeKey === 'sla-escalate'">
-        <div class="panel">
-          <AdminPageHeader title="预警与升级" subtitle="SLA 分级预警(A3-04) + 超时自动升级链(A3-05)，在 SLA 引擎统一维护">
-            <template #actions><a-button type="primary" @click="save">保存</a-button></template>
-          </AdminPageHeader>
+    <!-- ===== 预警与升级 ===== -->
+    <div v-else-if="activeKey === 'sla-escalate'" class="admin-page">
+      <AdminPageHeader
+        title="预警与升级"
+        subtitle="预警与升级 = 按 SLA 时钟配置临期判定、临期前提醒、临期预警与超时升级；升级动作在 SLA 引擎内闭环，与规则引擎升级路由区分。"
+      />
 
-          <div class="sec-h">SLA 分级预警（A3-04）</div>
-          <div class="intro">计时到阈值时按通知方式提醒对应对象；与工作台 AI 建议条、首页临期/超时联动。</div>
-          <div v-for="r in alertRows" :key="r.id" class="alert-row">
-            <a-select v-model:value="r.dim" size="small" style="width:88px" :options="[{value:'响应',label:'响应'},{value:'解决',label:'解决'}]" />
-            <a-select v-model:value="r.threshold" size="small" style="width:140px" :options="['剩余 ≤ 50%','剩余 ≤ 25%','剩余 ≤ 10%','已超时'].map((o)=>({value:o,label:o}))" />
-            <a-select v-model:value="r.channel" mode="multiple" size="small" style="width:200px" :options="CHANNELS.map((o)=>({value:o,label:o}))" placeholder="通知方式" />
-            <a-select v-model:value="r.target" size="small" style="flex:1" :options="TARGETS.map((o)=>({value:o,label:o}))" />
-            <a-button type="link" size="small" danger @click="delAlert(r.id)"><template #icon><DeleteOutlined /></template></a-button>
+      <div class="content-card content-card--alert">
+          <div class="alert-layout">
+            <aside class="clock-nav">
+              <a-input v-model:value="clockSearch" size="small" placeholder="搜索时钟" allow-clear class="clock-search" />
+              <div v-for="grp in clockGroups" :key="grp.group" class="clock-nav-group">
+                <div class="clock-nav-label">{{ grp.group }}</div>
+                <div
+                  v-for="dim in grp.items"
+                  :key="dim.key"
+                  class="clock-nav-item"
+                  :class="{ on: selectedClockKey === dim.key, off: !isClockEnabled(dim.key) }"
+                  @click="selectedClockKey = dim.key"
+                >
+                  <span class="clock-nav-text">{{ dim.label }}</span>
+                  <a-switch
+                    v-model:checked="alertConfigs[dim.key].enabled"
+                    size="small"
+                    @click.stop
+                  />
+                </div>
+              </div>
+            </aside>
+
+            <div class="alert-main">
+              <div class="alert-main-h">
+                <span>{{ selectedDim.label }}</span>
+                <a-button type="primary" @click="save">保存</a-button>
+              </div>
+
+              <template v-if="currentClock.enabled">
+              <div class="step-block">
+                <div class="step-head"><span class="step-title">临期判定</span></div>
+                <a-radio-group v-model:value="currentClock.dueJudge.mode" class="due-group">
+                  <div class="due-row">
+                    <a-radio value="percent">到期百分比</a-radio>
+                    <template v-if="currentClock.dueJudge.mode === 'percent'">
+                      剩余 ≤ <a-input-number v-model:value="currentClock.dueJudge.value" :min="1" :max="99" size="small" style="width:72px" /> %
+                    </template>
+                  </div>
+                  <div class="due-row">
+                    <a-radio value="countdown">到期倒计时</a-radio>
+                    <template v-if="currentClock.dueJudge.mode === 'countdown'">
+                      剩余 ≤ <a-input-number v-model:value="currentClock.dueJudge.value" :min="1" size="small" style="width:72px" />
+                      <a-select v-model:value="currentClock.dueJudge.unit" size="small" style="width:80px" :options="COUNT_UNIT_OPTS.map((u) => ({ value: u, label: u }))" />
+                    </template>
+                  </div>
+                </a-radio-group>
+              </div>
+
+              <div class="step-block">
+                <div class="step-head step-head--toolbar">
+                  <span class="step-title">临期前提醒</span>
+                  <a-button type="link" size="small" @click="addPreAlert"><template #icon><PlusOutlined /></template>添加</a-button>
+                </div>
+                <table class="alert-matrix">
+                  <thead>
+                    <tr>
+                      <th style="width:140px">临期前</th>
+                      <th style="width:160px">通知对象</th>
+                      <th style="width:200px">通知方式</th>
+                      <th>消息模板</th>
+                      <th style="width:56px" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="row in currentClock.preAlerts" :key="row.id">
+                      <td class="pre-minutes-cell">
+                        <span>前</span>
+                        <a-input-number v-model:value="row.minutesBefore" :min="1" size="small" class="pre-minutes-input" />
+                        <span>分钟</span>
+                      </td>
+                      <td><a-select v-model:value="row.targets" mode="multiple" size="small" style="width:100%" :options="targetOpts" /></td>
+                      <td><a-select v-model:value="row.channels" mode="multiple" size="small" style="width:100%" :options="channelOpts" /></td>
+                      <td><a-select v-model:value="row.template" size="small" style="width:100%" :options="templateOpts" /></td>
+                      <td><a-button type="link" size="small" danger @click="delPreAlert(row.id)"><template #icon><DeleteOutlined /></template></a-button></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="step-block">
+                <div class="step-head"><span class="step-title">临期预警</span></div>
+                <div class="notify-row">
+                  <span class="nr-label">通知对象</span>
+                  <a-select v-model:value="currentClock.dueAlert.targets" mode="multiple" size="small" style="width:180px" :options="targetOpts" />
+                  <span class="nr-label">通知方式</span>
+                  <a-select v-model:value="currentClock.dueAlert.channels" mode="multiple" size="small" style="width:220px" :options="channelOpts" />
+                  <span class="nr-label">消息模板</span>
+                  <a-select v-model:value="currentClock.dueAlert.template" size="small" style="flex:1;min-width:180px" :options="templateOpts" />
+                </div>
+              </div>
+
+              <div class="step-block step-block--timeout">
+                <div class="step-head">
+                  <span class="step-title">超时升级</span>
+                  <a-switch v-model:checked="currentClock.timeoutEnabled" size="small" style="margin-left:8px" />
+                </div>
+                <div v-if="currentClock.timeoutEnabled" class="notify-row">
+                  <span class="nr-label">通知对象</span>
+                  <a-select v-model:value="currentClock.timeoutAlert.targets" mode="multiple" size="small" style="width:180px" :options="targetOpts" />
+                  <span class="nr-label">通知方式</span>
+                  <a-select v-model:value="currentClock.timeoutAlert.channels" mode="multiple" size="small" style="width:220px" :options="channelOpts" />
+                  <span class="nr-label">消息模板</span>
+                  <a-select v-model:value="currentClock.timeoutAlert.template" size="small" style="flex:1;min-width:180px" :options="timeoutTemplateOpts" />
+                </div>
+              </div>
+              </template>
+              <div v-else class="alert-empty">
+                <span class="alert-empty-text">未启用预警策略，该时钟仅计时</span>
+              </div>
+            </div>
           </div>
-          <a-button type="dashed" block class="mt" @click="addAlert"><template #icon><PlusOutlined /></template>添加预警规则</a-button>
-
-          <div class="sec-h mt2">SLA 自动升级链（A3-05）</div>
-          <div class="intro">超时未处理按级别自动升级至上级/指定人员，支持多级。注：规则中心的「升级路由」是升级到目标系统(RDM/TPD/飞书)，与此不同。</div>
-          <div v-for="e in escChain" :key="e.id" class="alert-row">
-            <span class="esc-lv">{{ e.level }}</span>
-            <a-select v-model:value="e.trigger" size="small" style="width:170px" :options="ESC_TRIGGERS.map((o)=>({value:o,label:o}))" />
-            <span class="esc-arrow">→ 升级至</span>
-            <a-select v-model:value="e.target" size="small" style="width:160px" :options="ESC_TARGETS.map((o)=>({value:o,label:o}))" />
-            <a-input v-model:value="e.extra" size="small" style="flex:1" placeholder="附加动作（如 优先级 +1 / 飞书同步）" />
-            <a-button type="link" size="small" danger @click="delEsc(e.id)"><template #icon><DeleteOutlined /></template></a-button>
-          </div>
-          <a-button type="dashed" block class="mt" @click="addEsc"><template #icon><PlusOutlined /></template>添加升级级别</a-button>
-        </div>
-      </template>
-
-      <template v-if="!['sla-timing', 'sla-escalate'].includes(activeKey)">
-        <div class="panel"><AdminPageHeader :title="String(route.meta.title || '')" subtitle="该子页内容待补" /></div>
-      </template>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.sla-engine { display: flex; flex-direction: column; min-height: 100%; }
-.body { padding: 16px 24px; display: flex; flex-direction: column; gap: 16px; }
-.panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px 24px; }
+.sla-page { display: flex; flex-direction: column; min-height: 100%; }
+.admin-page { display: flex; flex-direction: column; gap: 16px; padding: 16px 24px; }
+.content-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px 24px; }
+.content-card--alert { padding: 16px 20px 20px; }
+.card-toolbar { display: flex; justify-content: flex-end; margin-bottom: 16px; }
+.admin-page :deep(.admin-page-header) { margin-bottom: 0; }
 .svc-matrix { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
 .svc-matrix th, .svc-matrix td { border: 1px solid #e5e7eb; padding: 6px 10px; font-size: 13px; text-align: center; }
 .svc-matrix th { background: #f9fafb; color: #6b7280; font-weight: 600; }
@@ -300,8 +485,8 @@ function save() { message.success('已保存并生效'); }
 .mb { margin-bottom: 14px; } .mt { margin-top: 14px; }
 .muted { color: #9ca3af; }
 .tbl-disabled { opacity: 0.5; }
-.cal-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
-.cal-preview { font-size: 12px; }
+.cal-time-th { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; }
+.cal-time-th :deep(.ant-btn) { font-weight: 400; }
 .time-slots {
   display: flex;
   align-items: center;
@@ -316,20 +501,44 @@ function save() { message.success('已保存并生效'); }
 .slot-divider { width: 10px; flex: none; }
 .time-sel { width: 76px !important; flex: none; }
 .time-slots :deep(.ant-select-selector) { padding: 0 6px !important; }
-.alert-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-.esc-lv { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; height: 24px; padding: 0 8px; border-radius: 4px; background: #eef2ff; color: #1a6fff; font-size: 12px; font-weight: 600; }
-.esc-arrow { font-size: 12px; color: #9ca3af; white-space: nowrap; }
-.chain { display: flex; flex-direction: column; gap: 0; padding: 8px 0; }
-.chain-node { position: relative; display: flex; align-items: center; gap: 14px; padding: 12px 0; }
-.cn-level { width: 40px; height: 40px; border-radius: 20px; flex: none; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; z-index: 1; }
-.chain-node.info .cn-level { background: #eff6ff; color: #1a6fff; }
-.chain-node.warn .cn-level { background: #fffbeb; color: #d97706; }
-.chain-node.danger .cn-level { background: #fef2f2; color: #ef4444; }
-.cn-body { flex: 1; }
-.cn-trigger { font-size: 13px; font-weight: 600; color: #111827; }
-.cn-action { font-size: 12px; color: #6b7280; margin-top: 2px; }
-.cn-ref { color: #9ca3af; font-weight: normal; font-size: 11px; }
-.cn-line { position: absolute; left: 20px; top: 44px; width: 2px; height: 28px; background: #e5e7eb; }
+.content-card--alert .alert-layout { border: none; border-radius: 0; }
+.alert-layout { display: flex; gap: 0; min-height: 520px; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
+.clock-nav {
+  width: 176px; flex: none; background: #f9fafb; border-right: 1px solid #e5e7eb;
+  padding: 10px 0; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; max-height: 72vh;
+}
+.clock-search { margin: 0 8px 6px; width: calc(100% - 16px); }
+.clock-nav-group { margin-bottom: 2px; }
+.clock-nav-label { font-size: 10px; font-weight: 600; color: #9ca3af; padding: 4px 8px 2px; letter-spacing: 0.02em; }
+.clock-nav-item {
+  display: flex; align-items: center; gap: 6px; width: 100%; padding: 5px 6px 5px 8px; font-size: 12px; color: #374151;
+  border-left: 2px solid transparent; cursor: pointer;
+}
+.clock-nav-item.off { color: #9ca3af; }
+.clock-nav-item:hover { background: #f3f4f6; }
+.clock-nav-item.on { background: #eff6ff; color: #1a6fff; border-left-color: #1a6fff; }
+.clock-nav-item.on .clock-nav-text { font-weight: 600; }
+.clock-nav-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clock-nav-item :deep(.ant-switch) { flex: none; transform: scale(0.85); transform-origin: center right; }
+.alert-main { flex: 1; padding: 16px 20px; overflow-y: auto; }
+.alert-main-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px; font-weight: 600; color: #111827; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid #f0f0f0; }
+.alert-empty { display: flex; align-items: center; justify-content: center; min-height: 320px; }
+.alert-empty-text { font-size: 13px; color: #9ca3af; }
+.step-block { margin-bottom: 24px; }
+.step-block--timeout { margin-bottom: 0; }
+.step-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.step-head--toolbar { justify-content: space-between; }
+.step-title { font-size: 13px; font-weight: 600; color: #111827; }
+.due-group { display: flex; flex-direction: column; gap: 12px; }
+.due-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #4b5563; flex-wrap: wrap; }
+.alert-matrix { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+.alert-matrix th { background: #f3f4f6; color: #6b7280; font-size: 12px; font-weight: 600; text-align: left; padding: 8px 10px; border: 1px solid #e5e7eb; }
+.alert-matrix td { padding: 8px 10px; border: 1px solid #e5e7eb; font-size: 13px; color: #374151; vertical-align: middle; }
+.pre-minutes-cell { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.pre-minutes-input { width: 56px !important; flex: none; }
+.pre-minutes-cell :deep(.ant-input-number) { width: 56px; }
+.notify-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; }
+.nr-label { color: #6b7280; white-space: nowrap; font-size: 12px; }
 .hd-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; font-weight: 600; }
 </style>

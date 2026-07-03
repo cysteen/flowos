@@ -3,6 +3,7 @@ import { computed, ref, watchEffect } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { LeftOutlined, DownOutlined } from '@ant-design/icons-vue';
 import { adminGroupsFor, ADMIN_OVERVIEW, ADMIN_APPROVAL, PLATFORM_NAV, adminNavActiveKey, adminNavGroupKeyOf, adminSidebarKey } from '@/config/adminNav';
+import type { AdminNavGroup } from '@/config/adminNav';
 import { APPROVALS } from '@/mock/approvalCenter';
 import { useUserStore } from '@/stores/user';
 
@@ -15,9 +16,21 @@ const user = useUserStore();
 const isPlatform = computed(() => user.role.adminScope === 'platform');
 const groups = computed(() => adminGroupsFor(user.role.adminScope));
 const approvalBadge = computed(() => APPROVALS.filter((a) => a.status === '待审批').length);
+// 智能分派 / SLA / 规则引擎 三个引擎分组置于「审批中心」之上
+const TOP_GROUP_KEYS = ['dispatch', 'sla', 'rules'];
+type MenuEntry = { type: 'group'; group: AdminNavGroup } | { type: 'approval' };
+const menuEntries = computed<MenuEntry[]>(() => {
+  const gs = groups.value;
+  const top = gs.filter((g) => TOP_GROUP_KEYS.includes(g.key));
+  const bottom = gs.filter((g) => !TOP_GROUP_KEYS.includes(g.key));
+  return [
+    ...top.map((g) => ({ type: 'group', group: g } as MenuEntry)),
+    { type: 'approval' },
+    ...bottom.map((g) => ({ type: 'group', group: g } as MenuEntry)),
+  ];
+});
 
 const activeKey = computed(() => adminNavActiveKey(route.path));
-// 侧栏高亮 key：SLA/规则页内 Tab 统一高亮其模块入口（sla-policy / rules-list）
 const sidebarKey = computed(() => adminSidebarKey(activeKey.value));
 
 function groupOf(key: string): string | null {
@@ -33,6 +46,14 @@ watchEffect(() => {
 
 function toggle(gk: string) {
   expanded.value = expanded.value === gk ? null : gk;
+}
+function onGroupHeadExpanded(g: { key: string; items: { key: string }[] }) {
+  // 单入口分组：组头即模块入口，点击直达（避免「组名 + 同名子项」双重点击）
+  if (g.items.length === 1) {
+    go(`/admin/${g.items[0].key}`);
+    return;
+  }
+  toggle(g.key);
 }
 function go(path: string) {
   if (route.path !== path) router.push(path);
@@ -85,37 +106,67 @@ function backToWorkspace() {
         </div>
       </a-tooltip>
 
-      <!-- 审批中心（一级直达，对齐 main-navigation A8#approval） -->
-      <a-tooltip :title="collapsed ? ADMIN_APPROVAL.label : ''" placement="right">
-        <div
-          class="nav-item top"
-          :class="{ active: activeKey === 'approval' }"
-          @click="go('/admin/approval')"
-        >
-          <component :is="ADMIN_APPROVAL.icon" class="nav-icon" />
-          <span v-if="!collapsed" class="nav-label">{{ ADMIN_APPROVAL.label }}</span>
-          <span v-if="approvalBadge > 0 && !collapsed" class="nav-badge">{{ approvalBadge }}</span>
-          <span v-if="approvalBadge > 0 && collapsed" class="nav-dot"></span>
-        </div>
-      </a-tooltip>
+      <!-- 引擎分组(智能分派/SLA/规则引擎)在前 → 审批中心 → 其余分组 -->
+      <template v-for="entry in menuEntries" :key="entry.type === 'approval' ? '__approval' : entry.group.key">
+        <!-- 审批中心（一级直达） -->
+        <a-tooltip v-if="entry.type === 'approval'" :title="collapsed ? ADMIN_APPROVAL.label : ''" placement="right">
+          <div
+            class="nav-item top"
+            :class="{ active: activeKey === 'approval' }"
+            @click="go('/admin/approval')"
+          >
+            <component :is="ADMIN_APPROVAL.icon" class="nav-icon" />
+            <span v-if="!collapsed" class="nav-label nav-strike">{{ ADMIN_APPROVAL.label }}</span>
+            <span v-if="approvalBadge > 0 && !collapsed" class="nav-badge">{{ approvalBadge }}</span>
+            <span v-if="approvalBadge > 0 && collapsed" class="nav-dot"></span>
+          </div>
+        </a-tooltip>
 
-      <!-- 分组（按角色 scope） -->
-      <div v-for="g in groups" :key="g.key" class="group">
-        <!-- 折叠态：hover 弹出飞出子菜单（否则子项无法访问） -->
-        <a-popover
-          v-if="collapsed"
-          placement="rightTop"
-          trigger="hover"
-          :arrow="false"
-          overlay-class-name="admin-flyout-pop"
-        >
-          <template #content>
-            <div class="admin-flyout">
-              <div class="flyout-title">{{ g.label }}</div>
+        <!-- 分组（按角色 scope） -->
+        <div v-else class="group">
+          <!-- 折叠态：hover 弹出飞出子菜单 -->
+          <a-popover
+            v-if="collapsed"
+            placement="rightTop"
+            trigger="hover"
+            :arrow="false"
+            overlay-class-name="admin-flyout-pop"
+          >
+            <template #content>
+              <div class="admin-flyout">
+                <div class="flyout-title">{{ entry.group.label }}</div>
+                <div
+                  v-for="it in entry.group.items"
+                  :key="it.key"
+                  class="flyout-item"
+                  :class="{ active: sidebarKey === it.key }"
+                  @click="go(`/admin/${it.key}`)"
+                >
+                  {{ it.label }}
+                </div>
+              </div>
+            </template>
+            <div class="group-head" :class="{ active: groupOf(sidebarKey) === entry.group.key }" @click="onGroupHead(entry.group)">
+              <component :is="entry.group.icon" class="nav-icon" />
+            </div>
+          </a-popover>
+
+          <!-- 展开态：手风琴 -->
+          <template v-else>
+            <div
+              class="group-head"
+              :class="{ active: entry.group.items.length === 1 && groupOf(sidebarKey) === entry.group.key }"
+              @click="onGroupHeadExpanded(entry.group)"
+            >
+              <component :is="entry.group.icon" class="nav-icon" />
+              <span class="nav-label">{{ entry.group.label }}</span>
+              <DownOutlined v-if="entry.group.items.length > 1" class="chev" :class="{ open: expanded === entry.group.key }" />
+            </div>
+            <div v-show="expanded === entry.group.key && entry.group.items.length > 1" class="group-items">
               <div
-                v-for="it in g.items"
+                v-for="it in entry.group.items"
                 :key="it.key"
-                class="flyout-item"
+                class="nav-item sub"
                 :class="{ active: sidebarKey === it.key }"
                 @click="go(`/admin/${it.key}`)"
               >
@@ -123,31 +174,8 @@ function backToWorkspace() {
               </div>
             </div>
           </template>
-          <div class="group-head" :class="{ active: groupOf(sidebarKey) === g.key }" @click="onGroupHead(g)">
-            <component :is="g.icon" class="nav-icon" />
-          </div>
-        </a-popover>
-
-        <!-- 展开态：手风琴 -->
-        <template v-else>
-          <div class="group-head" @click="toggle(g.key)">
-            <component :is="g.icon" class="nav-icon" />
-            <span class="nav-label">{{ g.label }}</span>
-            <DownOutlined class="chev" :class="{ open: expanded === g.key }" />
-          </div>
-          <div v-show="expanded === g.key" class="group-items">
-            <div
-              v-for="it in g.items"
-              :key="it.key"
-              class="nav-item sub"
-              :class="{ active: sidebarKey === it.key }"
-              @click="go(`/admin/${it.key}`)"
-            >
-              {{ it.label }}
-            </div>
-          </div>
-        </template>
-      </div>
+        </div>
+      </template>
     </div>
   </div>
 </template>
@@ -211,6 +239,11 @@ function backToWorkspace() {
   font-size: 14px;
   flex: 1;
 }
+/* 不做/不在本期范围：文字加删除线并置灰 */
+.nav-strike {
+  text-decoration: line-through;
+  color: #9ca3af;
+}
 .nav-badge {
   min-width: 18px;
   height: 18px;
@@ -235,6 +268,16 @@ function backToWorkspace() {
 .nav-item:hover,
 .group-head:hover {
   background: #f9fafb;
+}
+
+.group-head.active {
+  background: #eff6ff;
+  color: #1a6fff;
+  font-weight: 600;
+  border-left-color: #1a6fff;
+}
+.group-head.active .nav-icon {
+  color: #1a6fff;
 }
 
 /* 选中：浅蓝底 + 蓝字 + 左 3px 蓝条（与前台一致） */

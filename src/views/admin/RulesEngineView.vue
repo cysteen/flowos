@@ -8,10 +8,9 @@ import {
   ExperimentOutlined, WarningOutlined, DownOutlined, UpOutlined,
   ClockCircleOutlined,
 } from '@ant-design/icons-vue';
-import AdminSectionTabs from './components/AdminSectionTabs.vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
-import { RULES_NAV_ITEMS, adminNavActiveKey } from '@/config/adminNav';
-import { stdPagination, toneOf } from '@/config/adminUi';
+import { adminNavActiveKey } from '@/config/adminNav';
+import { stdPagination } from '@/config/adminUi';
 
 // 规则中心（PRD-58 / 需求 A4，统一规则引擎 = V1 丰富版 + 触发时机 + 派单边界）。
 // 规则(列表+统一编辑器:触发时机/IF嵌套+全运算符/多动作/规则测试/冲突检测) + 路由矩阵 + 执行日志。
@@ -22,8 +21,8 @@ const route = useRoute();
 const activeKey = computed(() => adminNavActiveKey(route.path));
 
 // —— 数据模型 ——
-type TriggerKind = 'event' | 'timer';
-type ActionKind = '派单' | '升级路由' | '设置审核人' | '通知' | '改字段' | '改优先级' | '打标签' | 'Webhook';
+type TriggerKind = 'event' | 'timer' | 'manual';
+type ActionKind = '派单' | '升级路由' | '内部升级' | '设置审核人' | '通知' | '预警' | '改字段' | '改优先级' | '打标签' | 'Webhook';
 interface Trigger { kind: TriggerKind; event: string; freq: string }
 interface CondLeaf { id: number; field: string; op: string; value: string }
 interface CondGroup { id: number; operator: 'AND' | 'OR'; leaves: CondLeaf[] }
@@ -41,11 +40,16 @@ interface Rule {
 const TRIGGER_KINDS = [
   { value: 'event', label: '事件即时', desc: '工单发生事件时立即评估' },
   { value: 'timer', label: '定时(超时)', desc: '按频率轮询或定点定时，需 IF 时间条件' },
+  { value: 'manual', label: '手动', desc: '坐席在工单上一键触发（宏/场景）' },
 ] as const;
 const EVENT_OPTS = [
   { value: '工单创建', label: '工单创建', desc: '新建工单入库时' },
   { value: '工单更新', label: '工单更新', desc: '任意字段变更时' },
   { value: '状态变更', label: '状态变更', desc: '工单状态流转时' },
+  { value: '工单升级', label: '工单升级', desc: '坐席或系统触发升级路由时' },
+  { value: '催单', label: '催单', desc: '客户或坐席发起催办时' },
+  { value: '补充信息', label: '补充信息', desc: '坐席或客户补充工单信息时' },
+  { value: '新建关联', label: '新建关联', desc: '创建关联工单或子工单时' },
   { value: '客户回复', label: '客户回复', desc: '客户追加回复时' },
   { value: '字段变更', label: '字段变更', desc: '指定业务字段变更时' },
 ];
@@ -79,21 +83,41 @@ function timerFreqLabel(freq: string): string {
 }
 // 条件变量库（左栏；照搬 V1 A4 编辑器：工单字段 / 系统变量 / 流程变量 + 函数 + 模板）
 interface LibField { key: string; label: string; type: string; group?: string }
-// 工单公共属性：跨工单类型通用，按规则配置使用频率排序（前 5 默认展示）
-const WO_PREVIEW_COUNT = 5;
+// 工单公共属性：与新建工单表单字段对齐（工单基础 / 产品问题 / 投诉专属等）
+const WO_PREVIEW_COUNT = 6;
 const WORKORDER_COMMON_FIELDS: LibField[] = [
-  { key: '产品线', label: '产品线', type: '枚举', group: '分类路由' },
-  { key: '问题一级分类', label: '问题一级分类', type: '枚举', group: '分类路由' },
-  { key: '工单类型', label: '工单类型', type: '枚举', group: '基础信息' },
-  { key: '优先级', label: '优先级', type: '枚举', group: '基础信息' },
-  { key: '状态', label: '状态', type: '枚举', group: '基础信息' },
-  { key: '问题二级分类', label: '问题二级分类', type: '枚举', group: '分类路由' },
-  { key: '问题三级分类', label: '问题三级分类', type: '枚举', group: '分类路由' },
-  { key: '渠道', label: '渠道', type: '枚举', group: '基础信息' },
+  { key: '业务类型', label: '业务类型', type: '枚举', group: '工单基础' },
+  { key: '工单类型', label: '工单类型', type: '枚举', group: '工单基础' },
+  { key: '工单来源', label: '工单来源', type: '枚举', group: '工单基础' },
+  { key: '优先级', label: '优先级', type: '枚举', group: '工单基础' },
+  { key: '状态', label: '状态', type: '枚举', group: '工单基础' },
+  { key: '产品分类', label: '产品分类', type: '枚举', group: '产品问题' },
+  { key: '产品名称', label: '产品名称', type: '枚举', group: '产品问题' },
+  { key: '设备SN', label: '设备SN', type: '文本', group: '产品问题' },
+  { key: '问题一类', label: '问题一类', type: '枚举', group: '产品问题' },
+  { key: '问题二类', label: '问题二类', type: '枚举', group: '产品问题' },
+  { key: '问题三类', label: '问题三类', type: '枚举', group: '产品问题' },
+  { key: '产品线', label: '产品线', type: '枚举', group: '产品问题' },
+  { key: '投诉类型', label: '投诉类型', type: '枚举', group: '投诉专属' },
+  { key: '投诉平台', label: '投诉平台', type: '枚举', group: '投诉专属' },
+  { key: '归属业务线', label: '归属业务线', type: '枚举', group: '投诉专属' },
+  { key: '投诉编号', label: '投诉编号', type: '文本', group: '投诉专属' },
+  { key: '前期是否反馈', label: '前期是否反馈', type: '枚举', group: '投诉专属' },
+  { key: '服务回溯', label: '服务回溯', type: '枚举', group: '投诉专属' },
+  { key: '投诉一类', label: '投诉一类', type: '枚举', group: '投诉专属' },
+  { key: '投诉二类', label: '投诉二类', type: '枚举', group: '投诉专属' },
+  { key: '问题发生时间', label: '问题发生时间', type: '日期', group: '投诉专属' },
   { key: '客户类型', label: '客户类型', type: '枚举', group: '客户信息' },
   { key: '客户等级', label: '客户等级', type: '枚举', group: '客户信息' },
   { key: '风险等级', label: '风险等级', type: '枚举', group: '风险与金额' },
   { key: '退费金额', label: '退费金额', type: '数字', group: '风险与金额' },
+  { key: '客户情绪等级', label: '客户情绪等级', type: '枚举', group: '客户信息' },
+  { key: '进线次数', label: '进线次数', type: '数字', group: '客户信息' },
+  { key: '委派次数', label: '委派次数', type: '数字', group: '工单基础' },
+  { key: '工单来源', label: '工单来源', type: '枚举', group: '工单基础' },
+  { key: '最新客户消息', label: '最新客户消息', type: '文本', group: '工单基础' },
+  { key: '预约沟通时间', label: '预约沟通时间', type: '日期', group: '时间' },
+  { key: '挂起时长', label: '挂起时长(小时)', type: '数字', group: '时间' },
   { key: '创建时间', label: '创建时间', type: '日期', group: '时间' },
 ];
 const FIELD_LIBRARY = {
@@ -113,11 +137,33 @@ const FIELD_LIBRARY = {
   agent: [
     { key: '在办工单数', label: '在办工单数', type: '数字' },
     { key: '积压工单数', label: '积压工单数', type: '数字' },
+    { key: '容量上限', label: '容量上限(个人)', type: '数字' },
+    { key: '个人积压率', label: '个人积压率', type: '数字' },
+    { key: '组内待处理数', label: '组内待处理数', type: '数字' },
+    { key: '组内上限', label: '组内上限', type: '数字' },
+    { key: '组内积压率', label: '组内积压率', type: '数字' },
     { key: '今日已处理', label: '今日已处理', type: '数字' },
     { key: '满意度', label: '满意度', type: '数字' },
   ],
 };
 const FIELD_OPTS = [...FIELD_LIBRARY.workorder, ...FIELD_LIBRARY.system, ...FIELD_LIBRARY.process, ...FIELD_LIBRARY.agent].map((f) => f.key);
+const FIELD_ENUM_VALUES: Record<string, string[]> = {
+  工单类型: ['投诉', '建议', '商机', '咨询'],
+  业务类型: ['翻录', '学习机', '翻译机', '录音笔', '智能办公本'],
+  工单来源: ['400呼入', '在线客服', '邮件', 'APP', '微信'],
+  产品分类: ['智能硬件', '软件服务', '教育产品'],
+  投诉类型: ['服务投诉', '产品投诉', '物流投诉'],
+  前期是否反馈: ['是', '否'],
+};
+const TICKET_TYPE_OPTS = FIELD_ENUM_VALUES.工单类型.map((v) => ({ value: v, label: v }));
+function fieldEnumOpts(field: string) {
+  return (FIELD_ENUM_VALUES[field] || []).map((v) => ({ value: v, label: v }));
+}
+function onCondFieldChange(leaf: CondLeaf, field: string) {
+  leaf.field = field;
+  const opts = FIELD_ENUM_VALUES[field];
+  if (opts && !opts.includes(leaf.value)) leaf.value = opts[0];
+}
 interface FuncItem { id: string; sig: string; desc: string; expr: string; field?: string }
 interface FuncCategory { name: string; items: FuncItem[] }
 const FUNCTION_CATEGORIES: FuncCategory[] = [
@@ -134,9 +180,9 @@ const FUNCTION_CATEGORIES: FuncCategory[] = [
     name: '字符串函数',
     items: [
       { id: 'trim', sig: 'trim(s)', desc: '去首尾空格', expr: 'trim(标题) == "投诉"', field: '工单类型' },
-      { id: 'upper', sig: 'upper(s)', desc: '转大写', expr: 'upper(渠道)', field: '渠道' },
-      { id: 'lower', sig: 'lower(s)', desc: '转小写', expr: 'lower(渠道)', field: '渠道' },
-      { id: 'contains', sig: 'contains(s,sub)', desc: '是否包含子串', expr: 'contains(标题, "硬件")', field: '问题一级分类' },
+      { id: 'upper', sig: 'upper(s)', desc: '转大写', expr: 'upper(工单来源)', field: '工单来源' },
+      { id: 'lower', sig: 'lower(s)', desc: '转小写', expr: 'lower(工单来源)', field: '工单来源' },
+      { id: 'contains', sig: 'contains(s,sub)', desc: '是否包含子串', expr: 'contains(标题, "硬件")', field: '问题一类' },
       { id: 'replace', sig: 'replace(s,a,b)', desc: '替换文本', expr: 'replace(标题, "旧", "新")', field: '工单类型' },
       { id: 'mask', sig: 'mask(s,a,b)', desc: '脱敏', expr: 'mask(客户电话, 3, 4)', field: '客户类型' },
     ],
@@ -163,7 +209,7 @@ const FUNCTION_CATEGORIES: FuncCategory[] = [
 ];
 const TEMPLATES: { name: string; leaves: [string, string, string][] }[] = [
   { name: 'VIP客户紧急工单', leaves: [['客户等级', '等于', 'VIP'], ['优先级', '等于', 'P0 紧急']] },
-  { name: '退费金额超限', leaves: [['工单类型', '等于', '退费'], ['退费金额', '大于', '5000']] },
+  { name: '退费金额超限', leaves: [['工单类型', '等于', '投诉'], ['退费金额', '大于', '5000']] },
   { name: '重复进线检测', leaves: [['客户类型', '自定义表达式', 'count(客户ID,7天) >= 3']] },
   { name: 'SLA即将超时', leaves: [['状态', '等于', '处理中']] },
   { name: '坐席积压提醒', leaves: [['积压工单数', '大于', '6']] },
@@ -208,7 +254,7 @@ const OP_OPTS = [
   { label: '空值', options: ['为空', '不为空'].map((o) => ({ value: o, label: o })) },
   { label: '高级', options: ['正则匹配', '区间范围', '自定义表达式'].map((o) => ({ value: o, label: o })) },
 ];
-const ACTION_KINDS: ActionKind[] = ['派单', '升级路由', '设置审核人', '通知', '改字段', '改优先级', '打标签', 'Webhook'];
+const ACTION_KINDS: ActionKind[] = ['派单', '升级路由', '内部升级', '设置审核人', '通知', '预警', '改字段', '改优先级', '打标签', 'Webhook'];
 const DISPATCH_TARGETS = ['组', '池', '人'];
 const GROUP_OPTS = ['学习机处理组', '技术支持组', '大客户专属组', '夜班应急组', '二线技术支持组'];
 const POOL_OPTS = ['通用池', '商机池', '销服池', '大客户专属池'];
@@ -216,7 +262,9 @@ const PERSON_OPTS = ['张三', '李四', '王五'];
 const IN_GROUP_OPTS = ['自动分配到人', '进池待领'];
 // 升级路由（A4-04）：升级到目标系统/通道
 const ESCALATE_TARGETS = ['RDM', 'TPD', '飞书', '磐石', '二线技术支持组'];
-const NOTIFY_TARGETS = ['当前用户', '处理人', '班组长', '处理人+班组长', '指定人'];
+// 内部升级对象（对内：上级组/角色，区别于对外的升级路由目标系统）
+const ESCALATE_INTERNAL = ['班组长', '技术支持组', '二线技术支持组', '主管', '管理层', '产研', '投诉风险组'];
+const NOTIFY_TARGETS = ['当前用户', '处理人', '班组长', '投诉风险组', '产研', '主管', '管理层', '指定人'];
 const NOTIFY_CHANNELS = ['系统通知', '短信', '邮件', 'i讯飞'];
 const PRIORITY_OPTS = ['P0 紧急', 'P1 高', 'P2 中', 'P3 低'];
 const AUDITOR_OPTS = ['客服主管', '质检组', '二线组长'];
@@ -227,10 +275,12 @@ function dispatchValueOpts(target: string): string[] {
 
 // —— 工具：触发/类型/命中策略/摘要 ——
 function triggerText(t: Trigger): string {
+  if (t.kind === 'manual') return '手动触发';
   if (t.kind === 'event') return `事件·${t.event}`;
   return timerFreqKind(t.freq) === 'schedule' ? `定时·每天 ${timerFreqLabel(t.freq)}` : `轮询·每 ${timerFreqLabel(t.freq)}`;
 }
 function triggerPreview(t: Trigger): string {
+  if (t.kind === 'manual') return '坐席在工单上手动触发';
   if (t.kind === 'event') return `当「${t.event}」时评估`;
   return timerFreqKind(t.freq) === 'schedule'
     ? `每天 ${timerFreqLabel(t.freq)} 执行`
@@ -248,12 +298,11 @@ function addTimerCondExample() {
   message.success('已插入定时规则示例条件（待客户回复 + 超 7 天）');
 }
 function actionTypeOf(a: Action): string {
-  if (a.kind === '派单') return a.target === '池' ? '工单池' : '派单';
+  if (a.kind === '派单') return '分派路由';
   if (a.kind === '升级路由') return '升级路由';
-  if (a.kind === '设置审核人') return '审核';
-  if (a.kind === '通知') return '通知';
+  if (a.kind === '通知' || a.kind === '预警' || a.kind === '内部升级') return '监控告警';
   if (a.kind === 'Webhook') return '集成';
-  return '改值'; // 改字段 / 改优先级 / 打标签
+  return '字段处置'; // 设置审核人 / 改字段 / 改优先级 / 打标签
 }
 function typeOf(r: Rule): string {
   const a = r.actions[0];
@@ -264,7 +313,7 @@ function allTypesOf(r: Rule): string {
   return [...new Set(r.actions.map(actionTypeOf))].join(' · ');
 }
 function hitPolicyOf(r: Rule): string {
-  return r.actions.some((a) => a.kind === '派单' || a.kind === '升级路由') ? '首条命中' : '全部命中';
+  return r.actions.some((a) => a.kind === '派单' || a.kind === '升级路由' || a.kind === '内部升级') ? '首条命中' : '全部命中';
 }
 function leafText(c: CondLeaf): string { return `${c.field}${c.op}${c.value}`; }
 function condText(r: Rule): string {
@@ -275,8 +324,10 @@ function condText(r: Rule): string {
 function actionText(a: Action): string {
   if (a.kind === '派单') return `派→${a.value || a.target}${a.target === '组' ? `(${a.inGroup})` : ''}`;
   if (a.kind === '升级路由') return `升级路由→${a.value}`;
+  if (a.kind === '内部升级') return `内部升级→${a.value}`;
   if (a.kind === '设置审核人') return `审核人→${a.value}`;
-  if (a.kind === '通知') return `通知 ${a.notifyTargets.join('+')}·${a.notifyChannels.join('/')}`;
+  if (a.kind === '通知') return `通知 ${a.notifyTargets.join('、')}·${a.notifyChannels.join('/')}`;
+  if (a.kind === '预警') return `预警 ${a.notifyTargets.join('、')}·${a.notifyChannels.join('/')}`;
   if (a.kind === '改优先级') return `改优先级→${a.fieldValue}`;
   if (a.kind === '改字段') return `改${a.fieldName}→${a.fieldValue}`;
   if (a.kind === '打标签') return `打标:${a.value}`;
@@ -300,7 +351,7 @@ const rules = ref<Rule[]>([
   {
     no: 'RL001', name: '投诉自动派学习机组', priority: 1, status: '启用', remark: '',
     trigger: defTrigger('event'),
-    conditions: { operator: 'AND', leaves: [mkLeaf('工单类型', '等于', '投诉'), mkLeaf('产品线', '等于', '学习机')], groups: [] },
+    conditions: { operator: 'AND', leaves: [mkLeaf('工单类型', '等于', '投诉'), mkLeaf('产品名称', '等于', '学习机 T20')], groups: [] },
     actions: [mkAction('派单', { target: '组', value: '学习机处理组' })], hits: 1240,
   },
   {
@@ -311,8 +362,8 @@ const rules = ref<Rule[]>([
   },
   {
     no: 'RL003', name: '硬件故障升级 RDM', priority: 3, status: '启用', remark: '升级到目标系统(A4-04)',
-    trigger: defTrigger('event'),
-    conditions: { operator: 'AND', leaves: [mkLeaf('工单类型', '等于', '售后')], groups: [{ id: nid(), operator: 'OR', leaves: [mkLeaf('产品线', '等于', '学习机'), mkLeaf('产品线', '等于', '翻译机')] }] },
+    trigger: { kind: 'event', event: '工单升级', freq: '每小时' },
+    conditions: { operator: 'AND', leaves: [mkLeaf('工单类型', '等于', '投诉')], groups: [{ id: nid(), operator: 'OR', leaves: [mkLeaf('产品名称', '等于', '学习机 T20'), mkLeaf('产品名称', '等于', '翻译机 3.0')] }] },
     actions: [mkAction('升级路由', { value: 'RDM' })], hits: 86,
   },
   {
@@ -324,7 +375,7 @@ const rules = ref<Rule[]>([
   {
     no: 'RL005', name: '大额退款需审核', priority: 5, status: '启用', remark: '',
     trigger: defTrigger('event'),
-    conditions: { operator: 'AND', leaves: [mkLeaf('工单类型', '等于', '退款')], groups: [{ id: nid(), operator: 'OR', leaves: [mkLeaf('产品线', '等于', '学习机'), mkLeaf('产品线', '等于', '翻译机')] }] },
+    conditions: { operator: 'AND', leaves: [mkLeaf('工单类型', '等于', '投诉')], groups: [{ id: nid(), operator: 'OR', leaves: [mkLeaf('产品名称', '等于', '学习机 T20'), mkLeaf('产品名称', '等于', '翻译机 3.0')] }] },
     actions: [mkAction('设置审核人', { value: '客服主管' })], hits: 64,
   },
   {
@@ -332,6 +383,72 @@ const rules = ref<Rule[]>([
     trigger: defTrigger('timer'),
     conditions: { operator: 'AND', leaves: [mkLeaf('积压工单数', '大于', '6')], groups: [] },
     actions: [mkAction('通知', { notifyTargets: ['当前用户'], notifyChannels: ['系统通知'] })], hits: 38,
+  },
+  {
+    no: 'RL007', name: '扬言投诉/曝光预警', priority: 7, status: '启用', remark: '风险·监控告警',
+    trigger: { kind: 'event', event: '客户回复', freq: '每小时' },
+    conditions: { operator: 'AND', leaves: [mkLeaf('最新客户消息', '包含', '投诉、曝光、12315')], groups: [] },
+    actions: [mkAction('预警', { notifyTargets: ['投诉风险组'], notifyChannels: ['系统通知', 'i讯飞'] })], hits: 27,
+  },
+  {
+    no: 'RL008', name: '用户情绪激动预警', priority: 8, status: '启用', remark: '风险·监控告警',
+    trigger: { kind: 'event', event: '客户回复', freq: '每小时' },
+    conditions: { operator: 'AND', leaves: [mkLeaf('客户情绪等级', '属于列表', '激动,危机')], groups: [] },
+    actions: [mkAction('预警', { notifyTargets: ['处理人', '班组长'], notifyChannels: ['系统通知', 'i讯飞'] })], hits: 45,
+  },
+  {
+    no: 'RL009', name: '批量问题预警', priority: 9, status: '启用', remark: '风险·定时',
+    trigger: { kind: 'timer', event: '工单创建', freq: '每小时' },
+    conditions: { operator: 'AND', leaves: [mkLeaf('问题一类', '自定义表达式', 'count(问题一类, 1小时) >= 10')], groups: [] },
+    actions: [mkAction('预警', { notifyTargets: ['班组长', '产研'], notifyChannels: ['系统通知', 'i讯飞'] })], hits: 12,
+  },
+  {
+    no: 'RL010', name: '外部投诉预警', priority: 10, status: '启用', remark: '风险·监控告警',
+    trigger: { kind: 'event', event: '工单创建', freq: '每小时' },
+    conditions: { operator: 'AND', leaves: [mkLeaf('工单来源', '属于列表', '12315,媒体转办')], groups: [] },
+    actions: [mkAction('预警', { notifyTargets: ['投诉风险组', '管理层'], notifyChannels: ['系统通知', 'i讯飞'] })], hits: 8,
+  },
+  {
+    no: 'RL011', name: '个人严重积压预警', priority: 11, status: '启用', remark: '积压·定时',
+    trigger: { kind: 'timer', event: '工单创建', freq: '每 15 分钟' },
+    conditions: { operator: 'AND', leaves: [mkLeaf('个人积压率', '大于等于', '1')], groups: [] },
+    actions: [mkAction('预警', { notifyTargets: ['处理人', '班组长'], notifyChannels: ['系统通知', 'i讯飞'] })], hits: 33,
+  },
+  {
+    no: 'RL012', name: '组内积压预警', priority: 12, status: '启用', remark: '积压·定时',
+    trigger: { kind: 'timer', event: '工单创建', freq: '每 15 分钟' },
+    conditions: { operator: 'AND', leaves: [mkLeaf('组内积压率', '大于等于', '0.8')], groups: [] },
+    actions: [mkAction('预警', { notifyTargets: ['班组长'], notifyChannels: ['系统通知', 'i讯飞'] })], hits: 19,
+  },
+  {
+    no: 'RL013', name: '重复进线预警', priority: 13, status: '启用', remark: '监控告警',
+    trigger: { kind: 'timer', event: '工单创建', freq: '每小时' },
+    conditions: { operator: 'AND', leaves: [mkLeaf('进线次数', '大于等于', '2')], groups: [] },
+    actions: [mkAction('预警', { notifyTargets: ['处理人', '班组长'], notifyChannels: ['系统通知', 'i讯飞'] })], hits: 51,
+  },
+  {
+    no: 'RL014', name: '频繁转派预警', priority: 14, status: '启用', remark: '监控告警',
+    trigger: { kind: 'event', event: '工单更新', freq: '每小时' },
+    conditions: { operator: 'AND', leaves: [mkLeaf('委派次数', '大于等于', '3')], groups: [] },
+    actions: [mkAction('预警', { notifyTargets: ['班组长'], notifyChannels: ['系统通知', 'i讯飞'] })], hits: 22,
+  },
+  {
+    no: 'RL015', name: '预约沟通提醒', priority: 15, status: '启用', remark: '定时轮询·提醒坐席准备',
+    trigger: { kind: 'timer', event: '工单创建', freq: '每 5 分钟' },
+    conditions: { operator: 'AND', leaves: [mkLeaf('预约沟通时间', '自定义表达式', 'minutesUntil(预约沟通时间) <= 30')], groups: [] },
+    actions: [mkAction('预警', { notifyTargets: ['处理人'], notifyChannels: ['系统通知', 'i讯飞'] })], hits: 76,
+  },
+  {
+    no: 'RL016', name: '挂起临期预警', priority: 16, status: '启用', remark: '定时·引用SLA最长挂起',
+    trigger: { kind: 'timer', event: '工单创建', freq: '每小时' },
+    conditions: { operator: 'AND', leaves: [mkLeaf('状态', '等于', '已挂起'), mkLeaf('挂起时长', '大于等于', '48')], groups: [] },
+    actions: [mkAction('预警', { notifyTargets: ['处理人'], notifyChannels: ['系统通知', 'i讯飞'] })], hits: 14,
+  },
+  {
+    no: 'RL017', name: '超能力内部升级', priority: 17, status: '启用', remark: '手动/事件·内部升级',
+    trigger: { kind: 'manual', event: '工单创建', freq: '每小时' },
+    conditions: { operator: 'AND', leaves: [mkLeaf('工单类型', '等于', '技术')], groups: [] },
+    actions: [mkAction('内部升级', { value: '班组长' })], hits: 9,
   },
 ]);
 
@@ -385,13 +502,12 @@ const currentConflicts = computed(() => {
 const columns = [
   { title: '规则名称', dataIndex: 'name', key: 'name', width: 170 },
   { title: '触发时机', key: 'trigger', width: 130 },
-  { title: '类型', key: 'type', width: 84 },
+  { title: '应用场景', key: 'type', width: 96 },
   { title: '命中策略', key: 'hit', width: 90 },
   { title: 'IF 条件', key: 'cond' },
   { title: 'THEN 动作', key: 'act' },
-  { title: '命中', dataIndex: 'hits', key: 'hits', width: 64 },
-  { title: '状态', key: 'status', width: 76 },
-  { title: '操作', key: 'op', width: 196 },
+  { title: '状态', key: 'status', width: 88 },
+  { title: '操作', key: 'op', width: 168 },
 ];
 const pagination = stdPagination();
 
@@ -464,9 +580,14 @@ function save() {
   }
   backToList();
 }
-function toggle(r: Rule) {
-  const next = r.status === '启用' ? '停用' : '启用';
-  Modal.confirm({ title: '状态变更', content: `确定${next}「${r.name}」？`, onOk: () => { r.status = next; message.success(`已${next}`); } });
+function onListStatusChange(r: Rule, enabled: boolean) {
+  const next = enabled ? '启用' : '停用';
+  if (r.status === next) return;
+  Modal.confirm({
+    title: '状态变更',
+    content: `确定${next}「${r.name}」？`,
+    onOk: () => { r.status = next; message.success(`已${next}`); },
+  });
 }
 function copyRule(r: Rule) {
   rules.value.push({ ...JSON.parse(JSON.stringify(r)), no: `RL${String(rules.value.length + 1).padStart(3, '0')}`, name: `${r.name} 副本`, status: '停用' });
@@ -481,7 +602,7 @@ function del(r: Rule) {
 }
 
 // —— 规则测试 ——
-const sample = reactive<Record<string, string>>({ 工单类型: '投诉', 产品线: '学习机', 客户类型: '普通用户', 状态: '待受理' });
+const sample = reactive<Record<string, string>>({ 业务类型: '翻录', 工单类型: '投诉', 工单来源: '400呼入', 产品名称: '学习机 T20', 状态: '待受理' });
 const testResult = ref<null | { hit: boolean }>(null);
 function evalLeaf(c: CondLeaf): boolean {
   const v = sample[c.field] ?? '';
@@ -509,13 +630,13 @@ function runTest() {
 
 // —— 路由矩阵（mock）——
 const PRODUCTS = ['学习机', '翻译机', '录音笔', '智能办公本'];
-const TICKET_TYPES = ['咨询', '投诉', '售后', '商机'];
+const TICKET_TYPES = ['投诉', '建议', '商机', '咨询'];
 const ESC_TYPES = ['技术问题', '产品缺陷', '紧急事项'];
 const routingMatrix: Record<string, Record<string, string>> = {
-  学习机: { 咨询: '学习机一线组', 投诉: '学习机处理组', 售后: '学习机售后组', 商机: '商机跟进组' },
-  翻译机: { 咨询: '翻译机一线组', 投诉: '翻译机处理组', 售后: '翻译机售后组', 商机: '商机跟进组' },
-  录音笔: { 咨询: '通用一线组', 投诉: '通用处理组', 售后: '硬件售后组', 商机: '商机跟进组' },
-  智能办公本: { 咨询: '通用一线组', 投诉: '通用处理组', 售后: '硬件售后组', 商机: '商机跟进组' },
+  学习机: { 咨询: '学习机一线组', 投诉: '学习机处理组', 建议: '学习机建议组', 商机: '商机跟进组' },
+  翻译机: { 咨询: '翻译机一线组', 投诉: '翻译机处理组', 建议: '翻译机建议组', 商机: '商机跟进组' },
+  录音笔: { 咨询: '通用一线组', 投诉: '通用处理组', 建议: '产品建议组', 商机: '商机跟进组' },
+  智能办公本: { 咨询: '通用一线组', 投诉: '通用处理组', 建议: '产品建议组', 商机: '商机跟进组' },
 };
 // 升级路由矩阵（A4-04：产品线 × 升级类型 → 目标系统/通道）
 const escMatrix: Record<string, Record<string, string>> = {
@@ -544,11 +665,9 @@ const logCols = [
 
 <template>
   <div class="rules-engine">
-    <AdminSectionTabs :items="RULES_NAV_ITEMS" :active-key="activeKey" />
-
     <!-- ============ 路由矩阵 ============ -->
     <div v-if="activeKey === 'rules-matrix'" class="body">
-      <AdminPageHeader title="路由矩阵" subtitle="流转路由 / 升级路由 的直观矩阵视图（产品线 × 类型 → 目标）；编辑仍在「规则」统一编辑器。" />
+      <AdminPageHeader title="路由矩阵" subtitle="流转路由 / 升级路由 的直观矩阵视图（产品线 × 类型 → 目标）；编辑仍在「规则管理」统一编辑器。" />
       <div class="panel">
         <div class="sec-h">流转路由矩阵（产品线 × 工单类型 → 处理组）</div>
         <table class="matrix">
@@ -606,7 +725,7 @@ const logCols = [
 
     <!-- ============ 规则 · 列表 ============ -->
     <div v-else-if="mode === 'list'" class="body">
-      <AdminPageHeader title="规则" subtitle="统一规则引擎：触发时机(事件/定时) → 条件(可嵌套/全运算符) → 动作；命中按类型(派单/升级路由首条、通知/打标全部)。SLA 预警/升级在 SLA 引擎。">
+      <AdminPageHeader title="规则管理" subtitle="配置何时触发、满足何种条件、执行何种动作；SLA 预警与超时升级在 SLA 引擎维护。">
         <template #actions><a-button type="primary" @click="openNew"><template #icon><PlusOutlined /></template>新建规则</a-button></template>
       </AdminPageHeader>
 
@@ -615,39 +734,46 @@ const logCols = [
         <span>检测到 <b>{{ conflicts.length }}</b> 组潜在冲突：{{ conflicts.map((c) => `「${c.a}」与「${c.b}」在 ${c.key} 上目标不同`).join('；') }}</span>
       </div>
 
-      <div class="filter-card">
-        <div class="filters">
-          <div class="fi"><span class="fl">触发时机</span><a-select v-model:value="fTrigger" style="width:130px" :options="[{ value: '全部', label: '全部' }, ...TRIGGER_KINDS]" /></div>
-          <div class="fi"><span class="fl">类型</span><a-select v-model:value="fType" style="width:120px" :options="['全部', '派单', '工单池', '升级路由', '审核', '通知', '改值', '集成'].map((o) => ({ value: o, label: o }))" /></div>
-          <div class="fi"><span class="fl">状态</span><a-select v-model:value="fStatus" style="width:110px" :options="['全部', '启用', '停用'].map((o) => ({ value: o, label: o }))" /></div>
+      <div class="list-card">
+        <div class="list-toolbar">
+          <div class="toolbar-right">
+            <div class="filters">
+              <div class="fi"><span class="fl">触发时机</span><a-select v-model:value="fTrigger" style="width:130px" :options="[{ value: '全部', label: '全部' }, ...TRIGGER_KINDS]" /></div>
+              <div class="fi"><span class="fl">应用场景</span><a-select v-model:value="fType" style="width:130px" :options="['全部', '分派路由', '升级路由', '监控告警', '字段处置', '集成'].map((o) => ({ value: o, label: o }))" /></div>
+              <div class="fi"><span class="fl">状态</span><a-select v-model:value="fStatus" style="width:110px" :options="['全部', '启用', '停用'].map((o) => ({ value: o, label: o }))" /></div>
+            </div>
+            <div class="fa">
+              <a-button type="primary" @click="onQuery"><template #icon><SearchOutlined /></template>查询</a-button>
+              <a-button @click="onReset"><template #icon><ReloadOutlined /></template>重置</a-button>
+            </div>
+          </div>
         </div>
-        <div class="fa">
-          <a-button type="primary" @click="onQuery"><template #icon><SearchOutlined /></template>查询</a-button>
-          <a-button @click="onReset"><template #icon><ReloadOutlined /></template>重置</a-button>
-        </div>
-      </div>
-
-      <div class="table-card">
         <a-table :columns="columns" :data-source="filtered" row-key="no" :pagination="pagination" size="middle" :custom-row="(rowProps as any)">
           <template #bodyCell="{ column, record }">
             <template v-if="column.key === 'name'">
               <HolderOutlined v-if="canReorder" class="drag-h" />
               <span class="cell-link" @click="openEdit(record as Rule)">{{ (record as Rule).name }}</span>
             </template>
-            <a-tag v-else-if="column.key === 'trigger'" color="purple">{{ triggerText((record as Rule).trigger) }}</a-tag>
+            <span v-else-if="column.key === 'trigger'" class="cell-dim">{{ triggerText((record as Rule).trigger) }}</span>
             <a-tooltip v-else-if="column.key === 'type'" :title="`全部动作类型：${allTypesOf(record as Rule)}`">
-              <a-tag color="blue">{{ typeOf(record as Rule) }}<span v-if="(record as Rule).actions.length > 1" class="type-more">+{{ (record as Rule).actions.length - 1 }}</span></a-tag>
+              <span class="cell-pill">{{ typeOf(record as Rule) }}<span v-if="(record as Rule).actions.length > 1" class="type-more">+{{ (record as Rule).actions.length - 1 }}</span></span>
             </a-tooltip>
             <span v-else-if="column.key === 'hit'" class="muted">{{ hitPolicyOf(record as Rule) }}</span>
             <span v-else-if="column.key === 'cond'" class="sum" :title="condText(record as Rule)">{{ condText(record as Rule) }}</span>
             <span v-else-if="column.key === 'act'" class="sum" :title="actionsText(record as Rule)">{{ actionsText(record as Rule) }}</span>
-            <a-tag v-else-if="column.key === 'status'" :color="toneOf((record as Rule).status)">{{ (record as Rule).status }}</a-tag>
-            <template v-else-if="column.key === 'op'">
+            <a-switch
+              v-else-if="column.key === 'status'"
+              size="small"
+              :checked="(record as Rule).status === '启用'"
+              checked-children="启用"
+              un-checked-children="停用"
+              @change="(checked: boolean) => onListStatusChange(record as Rule, checked)"
+            />
+            <div v-else-if="column.key === 'op'" class="row-ops">
               <a-button type="link" size="small" @click="openEdit(record as Rule)">编辑</a-button>
-              <a-button type="link" size="small" @click="toggle(record as Rule)">{{ (record as Rule).status === '启用' ? '停用' : '启用' }}</a-button>
               <a-button type="link" size="small" @click="copyRule(record as Rule)">复制</a-button>
               <a-button type="link" size="small" danger @click="del(record as Rule)">删除</a-button>
-            </template>
+            </div>
           </template>
         </a-table>
       </div>
@@ -740,10 +866,8 @@ const logCols = [
             <div class="block-head">
               <span class="badge badge-meta">INFO</span>
               <span class="block-title">基本信息</span>
-              <span class="block-sub meta-summary">
-                <span v-if="form.no" class="meta-tag">{{ form.no }}</span>
-                <span class="meta-tag">{{ typeOf(form) }}</span>
-                <span class="meta-summary-text">{{ hitPolicyOf(form) }}</span>
+              <span v-if="form.no" class="block-sub meta-summary">
+                <span class="meta-tag">{{ form.no }}</span>
               </span>
             </div>
             <div class="block-body meta-body">
@@ -753,17 +877,19 @@ const logCols = [
                   <a-input v-model:value="form.name" placeholder="如 学习机产品路由规则" />
                 </div>
                 <div class="meta-field meta-field-priority">
-                  <label class="meta-label">优先级<span class="field-tip">（越小越优先）</span></label>
+                  <label class="meta-label" title="数字越小，规则越优先匹配">优先级</label>
                   <a-input-number v-model:value="form.priority" :min="1" class="meta-priority-input" />
                 </div>
                 <div class="meta-field meta-field-status">
                   <label class="meta-label">状态</label>
-                  <a-switch
-                    :checked="form.status === '启用'"
-                    checked-children="启用"
-                    un-checked-children="停用"
-                    @change="setRuleStatus"
-                  />
+                  <div class="meta-control">
+                    <a-switch
+                      :checked="form.status === '启用'"
+                      checked-children="启用"
+                      un-checked-children="停用"
+                      @change="setRuleStatus"
+                    />
+                  </div>
                 </div>
               </div>
               <div class="meta-row-remark">
@@ -851,9 +977,10 @@ const logCols = [
                 </a-radio-group>
               </div>
               <div v-for="c in form.conditions.leaves" :key="c.id" class="logic-row">
-                <a-select v-model:value="c.field" class="cell-field" :options="FIELD_OPTS.map((o) => ({ value: o, label: o }))" />
+                <a-select v-model:value="c.field" class="cell-field" :options="FIELD_OPTS.map((o) => ({ value: o, label: o }))" @change="(v: string) => onCondFieldChange(c, v)" />
                 <a-select v-model:value="c.op" class="cell-op" :options="OP_OPTS" />
-                <a-input v-model:value="c.value" class="cell-val" placeholder="值（属于列表用逗号分隔）" />
+                <a-select v-if="FIELD_ENUM_VALUES[c.field]" v-model:value="c.value" class="cell-val" :options="fieldEnumOpts(c.field)" placeholder="选择值" />
+                <a-input v-else v-model:value="c.value" class="cell-val" placeholder="值（属于列表用逗号分隔）" />
                 <button type="button" class="cell-del" aria-label="删除条件" @click="delRootLeaf(c.id)"><DeleteOutlined /></button>
               </div>
               <div v-for="g in form.conditions.groups" :key="g.id" class="logic-subgrp">
@@ -865,9 +992,10 @@ const logCols = [
                   <a-button type="link" size="small" danger class="sub-del" @click="delGroup(g.id)">删除组</a-button>
                 </div>
                 <div v-for="c in g.leaves" :key="c.id" class="logic-row">
-                  <a-select v-model:value="c.field" class="cell-field" :options="FIELD_OPTS.map((o) => ({ value: o, label: o }))" />
+                  <a-select v-model:value="c.field" class="cell-field" :options="FIELD_OPTS.map((o) => ({ value: o, label: o }))" @change="(v: string) => onCondFieldChange(c, v)" />
                   <a-select v-model:value="c.op" class="cell-op" :options="OP_OPTS" />
-                  <a-input v-model:value="c.value" class="cell-val" placeholder="值" />
+                  <a-select v-if="FIELD_ENUM_VALUES[c.field]" v-model:value="c.value" class="cell-val" :options="fieldEnumOpts(c.field)" placeholder="选择值" />
+                  <a-input v-else v-model:value="c.value" class="cell-val" placeholder="值" />
                   <button type="button" class="cell-del" aria-label="删除条件" @click="delGroupLeaf(g, c.id)"><DeleteOutlined /></button>
                 </div>
                 <a-button type="dashed" size="small" class="logic-add" @click="addGroupLeaf(g)"><template #icon><PlusOutlined /></template>添加条件</a-button>
@@ -897,12 +1025,19 @@ const logCols = [
                   <template v-else-if="a.kind === '升级路由'">
                     <a-select v-model:value="a.value" class="act-grow" :options="ESCALATE_TARGETS.map((o) => ({ value: o, label: o }))" placeholder="升级到目标系统" />
                   </template>
+                  <template v-else-if="a.kind === '内部升级'">
+                    <a-select v-model:value="a.value" class="act-grow" :options="ESCALATE_INTERNAL.map((o) => ({ value: o, label: o }))" placeholder="内部升级对象（上级组/角色）" />
+                  </template>
                   <template v-else-if="a.kind === '设置审核人'">
                     <a-select v-model:value="a.value" class="act-grow" :options="AUDITOR_OPTS.map((o) => ({ value: o, label: o }))" placeholder="审核人" />
                   </template>
                   <template v-else-if="a.kind === '通知'">
                     <a-select v-model:value="a.notifyTargets" mode="multiple" class="act-grow" :options="NOTIFY_TARGETS.map((o) => ({ value: o, label: o }))" placeholder="通知对象" />
                     <a-select v-model:value="a.notifyChannels" mode="multiple" class="act-grow" :options="NOTIFY_CHANNELS.map((o) => ({ value: o, label: o }))" placeholder="通知方式" />
+                  </template>
+                  <template v-else-if="a.kind === '预警'">
+                    <a-select v-model:value="a.notifyTargets" mode="multiple" class="act-grow" :options="NOTIFY_TARGETS.map((o) => ({ value: o, label: o }))" placeholder="预警对象" />
+                    <a-select v-model:value="a.notifyChannels" mode="multiple" class="act-grow" :options="NOTIFY_CHANNELS.map((o) => ({ value: o, label: o }))" placeholder="预警方式" />
                   </template>
                   <template v-else-if="a.kind === '改优先级'">
                     <a-select v-model:value="a.fieldValue" class="act-grow" :options="PRIORITY_OPTS.map((o) => ({ value: o, label: o }))" placeholder="目标优先级" />
@@ -944,7 +1079,7 @@ const logCols = [
           <section class="sec">
             <div class="sec-h">规则概览</div>
             <div class="meta-grid">
-              <div class="meta-item"><span class="mk">类型</span><span class="mv">{{ typeOf(form) }}</span></div>
+              <div class="meta-item"><span class="mk">应用场景</span><span class="mv">{{ typeOf(form) }}</span></div>
               <div class="meta-item"><span class="mk">触发</span><span class="mv">{{ triggerText(form.trigger) }}</span></div>
               <div class="meta-item"><span class="mk">优先级</span><span class="mv">P{{ form.priority }}</span></div>
               <div class="meta-item"><span class="mk">状态</span><span class="mv">{{ form.status }}</span></div>
@@ -955,9 +1090,10 @@ const logCols = [
           <section class="sec">
             <div class="sec-h">规则测试</div>
             <div class="test-col">
-              <div class="ti"><span class="tl">工单类型</span><a-input v-model:value="sample.工单类型" size="small" /></div>
-              <div class="ti"><span class="tl">产品线</span><a-input v-model:value="sample.产品线" size="small" /></div>
-              <div class="ti"><span class="tl">客户类型</span><a-input v-model:value="sample.客户类型" size="small" /></div>
+              <div class="ti"><span class="tl">业务类型</span><a-select v-model:value="sample.业务类型" size="small" :options="fieldEnumOpts('业务类型')" /></div>
+              <div class="ti"><span class="tl">工单类型</span><a-select v-model:value="sample.工单类型" size="small" :options="TICKET_TYPE_OPTS" /></div>
+              <div class="ti"><span class="tl">工单来源</span><a-select v-model:value="sample.工单来源" size="small" :options="fieldEnumOpts('工单来源')" /></div>
+              <div class="ti"><span class="tl">产品名称</span><a-input v-model:value="sample.产品名称" size="small" /></div>
               <div class="ti"><span class="tl">状态</span><a-input v-model:value="sample.状态" size="small" /></div>
               <a-button type="primary" size="small" block @click="runTest">测试命中</a-button>
             </div>
@@ -967,8 +1103,8 @@ const logCols = [
             </div>
           </section>
           <section class="sec">
-            <div class="sec-h">配置提示<span class="field-tip">（类型由动作自动推导；左栏点变量/函数/模板快速搭条件）</span></div>
-            <div class="aux-tip">当前类型 <b>{{ typeOf(form) }}</b>，命中策略 <b>{{ hitPolicyOf(form) }}</b></div>
+            <div class="sec-h">配置提示<span class="field-tip">（应用场景由动作自动推导；左栏点变量/函数/模板快速搭条件）</span></div>
+            <div class="aux-tip">当前应用场景 <b>{{ typeOf(form) }}</b>，命中策略 <b>{{ hitPolicyOf(form) }}</b></div>
           </section>
           <section class="sec">
             <div class="sec-h">版本历史</div>
@@ -995,13 +1131,33 @@ const logCols = [
 
 <style scoped>
 .rules-engine { display: flex; flex-direction: column; min-height: 100%; }
-.body { padding: 16px 24px; display: flex; flex-direction: column; gap: 16px; }
+.body { padding: 16px 24px; display: flex; flex-direction: column; gap: 12px; }
 .panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px 20px; }
-.filter-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-.filters { display: flex; gap: 16px; flex-wrap: wrap; }
+.list-card {
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;
+}
+.list-toolbar {
+  display: flex; align-items: center; justify-content: flex-end;
+  padding: 12px 16px; border-bottom: 1px solid #f0f2f5;
+}
+.toolbar-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+.filters { display: flex; gap: 12px; flex-wrap: wrap; }
 .fi { display: flex; align-items: center; gap: 8px; }
 .fl { font-size: 12px; color: #6b7280; white-space: nowrap; }
 .fa { display: flex; gap: 8px; }
+.list-card :deep(.ant-table-wrapper) { padding: 0 4px 4px; }
+.list-card :deep(.ant-table-thead > tr > th) { background: #fff; color: #6b7280; font-size: 12px; font-weight: 600; border-bottom: 1px solid #f0f2f5; }
+.list-card :deep(.ant-table-tbody > tr > td) { border-bottom: 1px solid #f5f6f8; }
+.cell-dim { font-size: 13px; color: #4b5563; }
+.cell-pill {
+  display: inline-block; padding: 0 8px; border-radius: 4px; font-size: 12px; line-height: 22px;
+  background: #f3f4f6; color: #374151;
+}
+.row-ops {
+  display: inline-flex; align-items: center; flex-wrap: nowrap; white-space: nowrap;
+}
+.row-ops :deep(.ant-btn-link) { padding: 0 6px; height: 22px; line-height: 22px; }
+.filter-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .table-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
 .cell-link { color: #1a6fff; cursor: pointer; }
 .drag-h { color: #c0c4cc; margin-right: 6px; cursor: grab; }
@@ -1097,18 +1253,20 @@ const logCols = [
 }
 .meta-summary-text { font-size: 12px; color: var(--re-text-muted); }
 .meta-row-main {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 72px 64px;
-  gap: 10px;
-  align-items: end;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px 16px;
 }
-.meta-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.meta-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.meta-field-name { flex: 1; min-width: 0; }
+.meta-field-priority { width: 88px; flex-shrink: 0; }
+.meta-field-status { width: 72px; flex-shrink: 0; }
 .meta-label { font-size: 12px; color: #6b7280; line-height: 1.3; }
-.meta-row-main .meta-label { white-space: nowrap; }
 .meta-label .field-tip { font-size: 11px; }
 .meta-req { margin-left: 2px; color: #ef4444; }
+.meta-control { display: flex; align-items: center; min-height: 32px; }
 .meta-priority-input { width: 100%; }
-.meta-field-status :deep(.ant-switch) { margin-top: 0; }
+.meta-field-status :deep(.ant-switch) { margin: 0; }
 .meta-row-remark {
   display: flex;
   flex-direction: column;
@@ -1431,6 +1589,7 @@ const logCols = [
 @media (max-width: 1280px) {
   .ed-main { grid-template-columns: 208px minmax(0, 1fr); }
   .ed-aux { width: auto; }
-  .meta-row-main { grid-template-columns: 1fr 72px 64px; }
+  .meta-row-main { flex-wrap: wrap; }
+  .meta-field-name { flex: 1 1 100%; }
 }
 </style>

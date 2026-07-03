@@ -40,7 +40,7 @@ export interface RoleGroup {
 
 const MODULES = [
   '工单工作台', '工单处理', '客户中心', '产品中心', '知识库',
-  '统计报表', '用户管理', '角色权限', 'SLA 配置', '规则中心',
+  '统计报表', '用户管理', '角色权限', 'SLA 管理', '规则引擎',
 ];
 
 // 按预设档位生成权限矩阵
@@ -53,7 +53,7 @@ function perms(level: 'full' | 'agent' | 'leader' | 'readonly'): ModulePerm[] {
       return { module, menu: true, view: true, create: false, edit: false, del: false, approve: false, export: ['统计报表'].includes(module), scope: 'dept' };
     }
     const isTicket = ['工单工作台', '工单处理', '客户中心', '知识库'].includes(module);
-    const isAdminMod = ['用户管理', '角色权限', 'SLA 配置', '规则中心'].includes(module);
+    const isAdminMod = ['用户管理', '角色权限', 'SLA 管理', '规则引擎'].includes(module);
     if (level === 'leader') {
       return {
         module, menu: !isAdminMod, view: !isAdminMod, create: isTicket, edit: isTicket,

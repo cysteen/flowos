@@ -3,7 +3,7 @@ import {
   DashboardOutlined, TeamOutlined, AppstoreOutlined, FieldTimeOutlined,
   FileTextOutlined, BranchesOutlined, DatabaseOutlined, ApiOutlined,
   SafetyCertificateOutlined, BankOutlined, SettingOutlined, CheckCircleOutlined,
-  GoldOutlined,
+  GoldOutlined, ThunderboltOutlined, DeploymentUnitOutlined,
 } from '@ant-design/icons-vue';
 
 import type { AdminScope } from '@/config/roles';
@@ -36,27 +36,38 @@ export const ADMIN_OVERVIEW = { key: 'overview', label: '数据总览', icon: Da
 export const ADMIN_APPROVAL = { key: 'approval', label: '审批中心', icon: CheckCircleOutlined };
 
 /**
- * SLA 管理页内 Tab（8→4 合并，见《SLA交互改版设计-终版框线图》§A0「Tab 重构」）：
- * 策略 / 计时口径(双层计时+挂起+日历) / 监控看板(达标+监控) / 预警与升级(预警+升级只读引用)。
- * 旧 8 key 经 ADMIN_LEGACY_REDIRECTS 重定向到新 4 key。
+ * SLA 管理侧栏子项（8→3 合并，见《SLA交互改版设计-终版框线图》§A0）：
+ * 策略 / 计时规则 / 预警与升级；旧 8 key 经 ADMIN_LEGACY_REDIRECTS 重定向。
  */
 export const SLA_NAV_ITEMS: AdminNavItem[] = [
-  { key: 'sla-policy', label: '策略', prd: 'PRD-55', v1Ref: 'A/A3-sla-config.html#rules' },
-  { key: 'sla-timing', label: '工作日历与停表', prd: 'PRD-55/56', v1Ref: 'A/A3-sla-config.html#timer' },
+  { key: 'sla-policy', label: 'SLA策略', prd: 'PRD-55', v1Ref: 'A/A3-sla-config.html#rules' },
+  { key: 'sla-timing', label: '计时规则', prd: 'PRD-55/56', v1Ref: 'A/A3-sla-config.html#timer' },
   { key: 'sla-escalate', label: '预警与升级', prd: 'PRD-55/58', v1Ref: 'A/A3-sla-config.html#escalate' },
   // 监控看板（检验层）已移出 SLA 配置：策略列表页保留轻量达成概览，完整看板归运营看板/数据总览、班组看板（单一算法源）。
 ];
 
 /** V1 A4 规则引擎 → 侧栏子项（运营） */
 /**
- * 规则中心(PRD-58,统一规则引擎 = V1 丰富版 + 触发时机 + 派单边界):规则 / 路由矩阵 / 执行日志。
+ * 规则引擎(PRD-58,统一规则引擎 = V1 丰富版 + 触发时机 + 派单边界):规则 / 路由矩阵 / 执行日志。
  * 可视化编辑(IF嵌套+全运算符+规则测试+冲突检测)收进"规则"统一编辑器;流转/升级矩阵进"路由矩阵";工单池/审核降为动作类型。
  * 详见《规则中心重定位设计(调研+诊断+设计)》。
  */
 export const RULES_NAV_ITEMS: AdminNavItem[] = [
-  { key: 'rules-list', label: '规则', prd: 'PRD-58', v1Ref: 'A/A4-rule-engine.html#list' },
+  { key: 'rules-list', label: '规则管理', prd: 'PRD-58', v1Ref: 'A/A4-rule-engine.html#list' },
   { key: 'rules-matrix', label: '路由矩阵', prd: 'PRD-58', v1Ref: 'A/A4-rule-engine.html#matrix' },
   { key: 'rules-logs', label: '执行日志', prd: 'PRD-58', v1Ref: 'A/A4-rule-engine.html#logs' },
+];
+
+/**
+ * 智能分派（PRD-90，工单调度引擎·出池侧）：提为一级分组，页签作二级子项。
+ * 分派监控 / 派单策略 / 工单池管理 / 路由规则 / 坐席画像；旧 `dispatch` → 分派监控。
+ */
+export const DISPATCH_NAV_ITEMS: AdminNavItem[] = [
+  { key: 'dispatch-monitor', label: '分派监控', prd: 'PRD-90', v1Ref: 'D/D1-dispatch.html' },
+  { key: 'dispatch-strategy', label: '派单策略', prd: 'PRD-90' },
+  { key: 'dispatch-pool', label: '工单池管理', prd: 'PRD-90' },
+  { key: 'dispatch-routing', label: '路由规则', prd: 'PRD-90' },
+  { key: 'dispatch-profile', label: '坐席画像', prd: 'PRD-90' },
 ];
 
 export const ADMIN_GROUPS: AdminNavGroup[] = [
@@ -98,7 +109,6 @@ export const ADMIN_GROUPS: AdminNavGroup[] = [
       { key: 'channels', label: '渠道管理', prd: 'PRD-53', v1Ref: 'A/A8-tenant-admin.html#channels' },
       { key: 'customers', label: '客户管理', prd: 'PRD-87' },
       { key: 'products', label: '产品管理', prd: 'PRD-85' },
-      { key: 'dispatch', label: '智能分派', prd: 'PRD-90', v1Ref: 'D/D1-dispatch.html' },
     ],
   },
   {
@@ -110,12 +120,19 @@ export const ADMIN_GROUPS: AdminNavGroup[] = [
     ],
   },
   {
-    // 侧栏仅保留两个模块入口，子项由页内 Tab 承载（避免 14 项平铺）
-    key: 'sla', label: 'SLA 与规则', icon: FieldTimeOutlined, scope: 'ops',
-    items: [
-      { key: 'sla-policy', label: 'SLA 管理', prd: 'PRD-55', v1Ref: 'A/A3-sla-config.html' },
-      { key: 'rules-list', label: '规则中心', prd: 'PRD-58', v1Ref: 'A/A4-rule-engine.html' },
-    ],
+    // 智能分派：工单调度引擎（出池侧），一级分组；页签作二级子项（放 SLA 上面）
+    key: 'dispatch', label: '智能分派', icon: DeploymentUnitOutlined, scope: 'ops',
+    items: [...DISPATCH_NAV_ITEMS],
+  },
+  {
+    // SLA 引擎：承诺/计时/预警升级，与规则引擎解耦（见 PRD-730 §4）
+    key: 'sla', label: 'SLA 管理', icon: FieldTimeOutlined, scope: 'ops',
+    items: [...SLA_NAV_ITEMS],
+  },
+  {
+    // 规则引擎：IF→THEN 自动化（粗路由/通知/打标/升级路由），与 SLA 计时解耦
+    key: 'rules', label: '规则引擎', icon: ThunderboltOutlined, scope: 'ops',
+    items: [...RULES_NAV_ITEMS],
   },
   {
     key: 'templates', label: '模板库', icon: FileTextOutlined, scope: 'ops',
@@ -147,22 +164,13 @@ const ADMIN_SIDEBAR_ITEMS = ADMIN_GROUPS.flatMap((g) =>
   g.items.map((i) => ({ ...i, group: g.label, groupKey: g.key })),
 );
 
-/**
- * 扁平导航项（路由注册用）= 侧栏可见项 + SLA/规则的页内 Tab 子页。
- * 侧栏只露「SLA 管理 / 规则中心」两入口，但其页内 Tab 仍需注册各自路由。
- */
-const ADMIN_HIDDEN_ROUTE_ITEMS = [...SLA_NAV_ITEMS, ...RULES_NAV_ITEMS]
-  .filter((i) => !ADMIN_SIDEBAR_ITEMS.some((s) => s.key === i.key))
-  .map((i) => ({ ...i, group: 'SLA 与规则', groupKey: 'sla' }));
-
-export const ADMIN_ALL_ITEMS = [...ADMIN_SIDEBAR_ITEMS, ...ADMIN_HIDDEN_ROUTE_ITEMS];
+/** 扁平导航项（路由注册用）= 侧栏可见项 */
+export const ADMIN_ALL_ITEMS = [...ADMIN_SIDEBAR_ITEMS];
 
 const NAV_KEY_SET = new Set(ADMIN_ALL_ITEMS.map((i) => i.key));
 
-/** 路由 key → 侧栏高亮项 key（SLA/规则页内 Tab 统一高亮其模块入口） */
+/** 路由 key → 侧栏高亮项 key */
 export function adminSidebarKey(activeKey: string): string {
-  if (isSlaNavKey(activeKey)) return 'sla-policy';
-  if (isRulesNavKey(activeKey)) return 'rules-list';
   return activeKey;
 }
 
@@ -177,7 +185,7 @@ export function adminNavItemByKey(key: string) {
   return ADMIN_ALL_ITEMS.find((i) => i.key === key);
 }
 
-/** 子项所属分组 key（侧栏手风琴展开用）——含 SLA/规则页内 Tab 子页映射到 'sla' */
+/** 子项所属分组 key（侧栏手风琴展开用） */
 export function adminNavGroupKeyOf(itemKey: string): string | null {
   return ADMIN_ALL_ITEMS.find((i) => i.key === itemKey)?.groupKey ?? null;
 }
@@ -192,9 +200,16 @@ export function isRulesNavKey(key: string): boolean {
   return RULES_NAV_ITEMS.some((i) => i.key === key);
 }
 
+/** 是否为智能分派子模块 */
+export function isDispatchNavKey(key: string): boolean {
+  return DISPATCH_NAV_ITEMS.some((i) => i.key === key);
+}
+
 /** 旧 key 兼容重定向（rules → rules-list；SLA 8→4 合并的旧子页 → 新 tab） */
 export const ADMIN_LEGACY_REDIRECTS: Record<string, string> = {
   rules: 'rules-list',
+  // 智能分派提为一级分组：旧单页 dispatch → 分派监控
+  dispatch: 'dispatch-monitor',
   // 规则中心:旧子项并入"规则"统一列表+编辑器;路由/升级矩阵进"路由矩阵"
   'rules-editor': 'rules-list',
   'rules-routing': 'rules-matrix',

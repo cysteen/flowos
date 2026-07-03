@@ -64,7 +64,7 @@ export interface RolePreset {
 export const ROLE_PRESETS: RolePreset[] = [
   { key: 'agent', name: '客服坐席', emoji: '🎧', color: '#1A6FFF', desc: '受理与处理工单，最常用的一线角色', perms: ['工单工作台', '受理/处理/流转', '客户查询'] },
   { key: 'leader', name: '班组长', emoji: '🧭', color: '#8B5CF6', desc: '管理团队、审批强结/升级、查看看板', perms: ['班组看板', '审批中心', '强结/升级审批', '坐席监控'] },
-  { key: 'ops', name: '运营专员', emoji: '⚙️', color: '#10B981', desc: '维护工单类型、SLA、规则与字典等配置', perms: ['工单配置', 'SLA 与规则', '模板库', '字典管理'] },
+  { key: 'ops', name: '运营专员', emoji: '⚙️', color: '#10B981', desc: '维护工单类型、SLA、规则与字典等配置', perms: ['工单配置', 'SLA 管理', '规则引擎', '模板库', '字典管理'] },
   { key: 'tenant-admin', name: '租户管理员', emoji: '🛡️', color: '#EF4444', desc: '管理组织、用户、权限与安全（受席位上限约束）', perms: ['组织与权限', '用户/角色', '集成对接', '安全审计'], tenantAdmin: true },
 ];
 

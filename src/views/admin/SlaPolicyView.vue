@@ -1,23 +1,19 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, reactive, ref } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { useRouter } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
 import {
   PlusOutlined, SearchOutlined, ReloadOutlined, DeleteOutlined, ThunderboltOutlined,
-  ArrowLeftOutlined, HolderOutlined, ExportOutlined,
+  ArrowLeftOutlined, HolderOutlined,
 } from '@ant-design/icons-vue';
-import AdminSectionTabs from './components/AdminSectionTabs.vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
-import { SLA_NAV_ITEMS, adminNavActiveKey } from '@/config/adminNav';
 import { stdPagination, toneOf } from '@/config/adminUi';
 import {
   SERVICE_TYPE_OPTIONS,
   SERVICE_TYPE_TO_METHODS,
 } from '@/views/tickets/types/operation';
 
-const route = useRoute();
 const router = useRouter();
-const slaActiveKey = computed(() => adminNavActiveKey(route.path));
 
 // 轻量达成概览（检验层单一口径：双层均达标 + 分项）；完整看板在运营看板/数据总览。
 const slaKpis = [
@@ -31,7 +27,7 @@ function goFullDashboard() { router.push('/admin/overview'); }
 // SLA 策略（PRD-55，终版单页范式）：列表(拖拽排序) + 单页六分区编辑 + 匹配测试。
 // 设计依据见 PRD/SLA交互改版设计-终版框线图(单页范式).md。
 
-type Unit = '分钟' | '小时' | '工作日';
+type Unit = '分钟' | '小时' | '自然日';
 interface MatrixRow {
   level: string;
   respVal: number; respUnit: Unit;
@@ -117,8 +113,7 @@ const LEVEL_OPTS = ['校长', '教师', '自媒体', '大V博主', '律师', '�
 const PRODUCT_OPTS = ['学习机', '翻译机', '录音笔', '办公本', '智能硬件', 'AI服务', '通用'];
 const SCOPE_ALL = '全部';
 const CAL_OPTS = ['标准工作日历(9:00-18:00)', '7×24 自然时间', '售后工作日历'];
-const UNIT_OPTS: Unit[] = ['分钟', '小时', '工作日'];
-const ESC_COND_OPTS = ['剩余 ≤ 25%', '剩余 ≤ 10%', '已超时', '超时后每 30 分钟'];
+const UNIT_OPTS: Unit[] = ['分钟', '小时', '自然日'];
 const WORK_CAL = '标准工作日历(9:00-18:00)';
 
 /** 平台标准节点类型（节点时效默认四类） */
@@ -142,6 +137,8 @@ const CAL_SHORT: Record<string, string> = {
   '标准工作日历(9:00-18:00)': '工作日历', '7×24 自然时间': '7×24', '售后工作日历': '售后日历',
 };
 const calSelOpts = CAL_OPTS.map((c) => ({ value: c, label: CAL_SHORT[c] ?? c }));
+/** 表单区日历选项（完整名称，便于配置时识别） */
+const calFormOpts = CAL_OPTS.map((c) => ({ value: c, label: c }));
 
 /** 各工单类型流程节点（节点时效「节点」下拉；默认四类 + 按类型扩展） */
 const NODE_TYPE_GROUPS = [
@@ -157,14 +154,6 @@ const NODE_TYPE_GROUPS = [
   { label: '技术故障', options: ['一线诊断', '研发处理(飞书/TPD/RDM/磐石)', '验证'] },
 ];
 const nodeNameOpts = NODE_TYPE_GROUPS.map((g) => ({ label: g.label, options: g.options.map((o) => ({ value: o, label: o })) }));
-
-/** ⑥ 升级规则数据源 = SLA 引擎·自动升级链（mock，含内联预览链） */
-const ESC_RULES = [
-  { no: 'EC01', name: '响应超时升级', chain: ['L1 响应剩余≤25% → 通知处理人', 'L2 响应已超时 → 通知班组长 + 打升级标记'] },
-  { no: 'EC02', name: '解决超时升二线', chain: ['L1 解决已超时 → 自动升级二线组', 'L2 超时后每30分 → 优先级+1'] },
-  { no: 'EC03', name: '高优先直升主管', chain: ['L1 优先级=P0 → 通知客服主管 + 飞书同步'] },
-];
-const escRuleByNo = (no: string) => ESC_RULES.find((r) => r.no === no);
 
 /** 未选或含「全部」= 匹配全部 */
 function isScopeAll(values: string[]): boolean {
@@ -189,8 +178,8 @@ function defMatrix(): MatrixRow[] {
   return [
     { level: 'P0 紧急', respVal: 15, respUnit: '分钟', solveVal: 4, solveUnit: '小时' },
     { level: 'P1 高', respVal: 30, respUnit: '分钟', solveVal: 8, solveUnit: '小时' },
-    { level: 'P2 中', respVal: 2, respUnit: '小时', solveVal: 1, solveUnit: '工作日' },
-    { level: 'P3 低', respVal: 4, respUnit: '小时', solveVal: 3, solveUnit: '工作日' },
+    { level: 'P2 中', respVal: 2, respUnit: '小时', solveVal: 1, solveUnit: '自然日' },
+    { level: 'P3 低', respVal: 4, respUnit: '小时', solveVal: 3, solveUnit: '自然日' },
   ];
 }
 type Lv = 'P0 紧急' | 'P1 高' | 'P2 中' | 'P3 低';
@@ -350,7 +339,6 @@ function rowProps(record: Policy, index: number): Record<string, unknown> {
 const mode = ref<'list' | 'edit'>('list');
 const editing = ref<Policy | null>(null);
 const form = reactive<Policy>(blankPolicy());
-const escExpanded = reactive<Record<number, boolean>>({});
 
 function blankPolicy(): Policy {
   return {
@@ -385,8 +373,6 @@ const SECTIONS = [
   { key: 'basic', label: '① 基本信息' },
   { key: 'scope', label: '② 适用范围' },
   { key: 'commit', label: '③ SLA 承诺' },
-  { key: 'duesoon', label: '④ 临期规则' },
-  { key: 'escalate', label: '⑤ 升级' },
 ];
 const activeSection = ref('basic');
 let observer: IntersectionObserver | null = null;
@@ -425,7 +411,6 @@ function openEdit(p: Policy) {
   enterEdit();
 }
 function enterEdit() {
-  Object.keys(escExpanded).forEach((k) => delete escExpanded[Number(k)]);
   activeSection.value = 'basic';
   mode.value = 'edit';
   nextTick(setupObserver);
@@ -435,11 +420,6 @@ function backToList() {
   mode.value = 'list';
 }
 
-function addEsc() {
-  const id = Date.now();
-  form.escalations.push({ id, dim: '响应', cond: '剩余 ≤ 25%', escalationRef: 'EC01' });
-}
-function removeEsc(id: number) { form.escalations = form.escalations.filter((e) => e.id !== id); }
 function addNode() {
   (form.nodeSla ??= []).push({
     id: Date.now(), node: '处理', respLimit: 30, respUnit: '分钟', respCal: WORK_CAL,
@@ -447,15 +427,18 @@ function addNode() {
   });
 }
 function delNode(id: number) { form.nodeSla = (form.nodeSla ?? []).filter((n) => n.id !== id); }
-function goNewEscRule() { message.info('跳转「SLA 引擎 · 预警与升级」新建升级链（原型占位）'); }
-function goEscRoute() { message.info('前往「SLA 引擎 · 预警与升级」（原型占位）'); }
+
+function unitToMinutes(v: number, u: Unit): number {
+  if (u === '分钟') return v;
+  if (u === '小时') return v * 60;
+  return v * 24 * 60; // 自然日 = 24 小时连续计时
+}
 
 function matrixValid(): boolean {
   return form.matrix.every((r) => {
     if (r.respVal <= 0) return false;
     if (r.solveVal != null && r.solveVal > 0) {
-      const toMin = (v: number, u: Unit) => v * (u === '分钟' ? 1 : u === '小时' ? 60 : 480);
-      if (toMin(r.solveVal, r.solveUnit) < toMin(r.respVal, r.respUnit)) return false;
+      if (unitToMinutes(r.solveVal, r.solveUnit) < unitToMinutes(r.respVal, r.respUnit)) return false;
     }
     return true;
   });
@@ -464,7 +447,6 @@ function save() {
   if (!form.name.trim()) { message.warning('请填写策略名称'); scrollToSection('basic'); return; }
   if (!form.types.length) { message.warning('请选择工单类型（或全部）'); scrollToSection('scope'); return; }
   if (!matrixValid()) { message.warning('时限矩阵不合法：响应须>0，解决须 ≥ 响应'); scrollToSection('commit'); return; }
-  if (form.escalations.some((e) => !e.escalationRef)) { message.warning('请为每条升级阈值引用一条升级规则'); scrollToSection('escalate'); return; }
   form.updatedAt = '2026-06-29 18:00';
   if (editing.value) {
     Object.assign(editing.value, JSON.parse(JSON.stringify(form)));
@@ -544,10 +526,15 @@ function resolveSolveLimit(
   };
 }
 
-const testSolvePreview = computed(() => {
+const testRespPreview = computed(() => {
   if (!testResult.value) return null;
   const m = testResult.value.matrix[testPriorityIdx.value];
-  return { val: m?.solveVal ?? null, unit: m?.solveUnit ?? '小时' };
+  return { val: m?.respVal ?? null, unit: m?.respUnit ?? '分钟' };
+});
+
+const testSolvePreview = computed(() => {
+  if (!testResult.value) return null;
+  return resolveSolveLimit(testResult.value, testPriorityIdx.value, testServiceMethod.value);
 });
 
 const testResult = computed(() => {
@@ -559,15 +546,10 @@ const testResult = computed(() => {
     && matchesScope(p.products, testProduct.value)) ?? null;
 });
 function fmtClock(v: number | null, u: Unit): string { return v == null ? '不设' : `${v}${u}`; }
-
-const dueSoonText = (d: DueSoon) => d.mode === 'countdown' ? `剩余 ${d.value}${d.unit} 进入临期`
-  : d.mode === 'percent' ? `已用 ${d.value}% 进入临期` : '无临期预警';
 </script>
 
 <template>
   <div class="sla-page">
-    <AdminSectionTabs :items="SLA_NAV_ITEMS" :active-key="slaActiveKey" />
-
     <!-- ============ 列表态 ============ -->
     <div v-if="mode === 'list'" class="admin-page">
       <AdminPageHeader
@@ -714,55 +696,74 @@ const dueSoonText = (d: DueSoon) => d.mode === 'countdown' ? `剩余 ${d.value}$
 
           <!-- ③ SLA 承诺 -->
           <section id="sec-commit" class="sec">
-            <div class="sec-h">③ SLA 承诺 <span class="sec-sub">整单时效 + 节点时效（每类时效各自走不同日历；起算与停表口径在「工作日历与停表」全局维护）</span></div>
+            <div class="sec-h">③ SLA 承诺 <span class="sec-sub">整单时效 + 节点时效；临期判定与升级链见「SLA 引擎 · 预警与升级」</span></div>
 
             <!-- 整单时效 -->
-            <div class="sub-h">整单时效</div>
+            <div class="block-h">整单时效</div>
             <div class="clock-toggles">
               <a-checkbox v-model:checked="form.commitClocks!.resp">整单响应（创建→首响）</a-checkbox>
               <a-checkbox v-model:checked="form.commitClocks!.solve">整单解决（创建→解决）</a-checkbox>
             </div>
 
-            <!-- 整单响应：一行（P0–P3 横排 + 日历）-->
-            <template v-if="form.commitClocks!.resp">
-              <div class="sub-h sm">整单响应 · 按优先级</div>
-              <div class="resp-inline">
-                <div v-for="m in form.matrix" :key="`${m.level}-resp`" class="ri-cell">
-                  <span class="ri-lv">{{ m.level }}</span>
-                  <a-input-number v-model:value="m.respVal" :min="0" size="small" style="width:60px" />
-                  <a-select v-model:value="m.respUnit" size="small" style="width:66px;margin-left:4px" :options="UNIT_OPTS.map((u) => ({ value: u, label: u }))" />
+            <!-- 整单响应 / 整单解决：并列展示 -->
+            <div
+              v-if="form.commitClocks!.resp || form.commitClocks!.solve"
+              class="commit-matrix-row"
+              :class="{ 'commit-matrix-row--dual': form.commitClocks!.resp && form.commitClocks!.solve }"
+            >
+              <div v-if="form.commitClocks!.resp" class="commit-matrix-col">
+                <div class="sub-h sm commit-col-head">
+                  <span class="matrix-panel-title">整单响应</span>
+                  <label class="commit-cal-pick">
+                    <span class="commit-cal-label">计时日历</span>
+                    <a-select v-model:value="form.respCalendar" size="small" style="width:196px" :options="calFormOpts" />
+                  </label>
                 </div>
-                <div class="ri-cell"><span class="ri-lv">走哪本日历</span><a-select v-model:value="form.respCalendar" size="small" style="width:150px" :options="calSelOpts" /></div>
+                <table class="matrix">
+                  <thead>
+                    <tr><th>优先级</th><th>时限</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="m in form.matrix" :key="`${m.level}-resp`">
+                      <td class="lv">{{ m.level }}</td>
+                      <td>
+                        <a-input-number v-model:value="m.respVal" :min="0" size="small" style="width:66px" />
+                        <a-select v-model:value="m.respUnit" size="small" style="width:76px;margin-left:4px" :options="UNIT_OPTS.map((u) => ({ value: u, label: u }))" />
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
-            </template>
 
-            <!-- 整单解决：按优先级 -->
-            <template v-if="form.commitClocks!.solve">
-              <div class="sub-h sm mt">整单解决 · 按优先级</div>
-              <table class="matrix">
-                <thead>
-                  <tr><th>优先级</th><th>整单解决</th></tr>
-                </thead>
-                <tbody>
-                  <tr class="cal-row">
-                    <td class="lv">走哪本日历</td>
-                    <td><a-select v-model:value="form.solveCalendar" size="small" style="width:160px" :options="calSelOpts" /></td>
-                  </tr>
-                  <tr v-for="m in form.matrix" :key="`${m.level}-solve`">
-                    <td class="lv">{{ m.level }}</td>
-                    <td>
-                      <a-input-number v-model:value="m.solveVal" :min="0" size="small" style="width:66px" placeholder="不设" />
-                      <a-select v-model:value="m.solveUnit" size="small" style="width:76px;margin-left:4px" :options="UNIT_OPTS.map((u) => ({ value: u, label: u }))" />
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </template>
-
-            <div class="tip">整单响应=创建→首次响应；整单解决=创建→解决，均<b>按优先级</b>。服务方式的差异化解决时效属特殊逻辑，在「工作日历与停表 · 整单解决·服务方式动态调整」统一维护，不在标准策略里配。</div>
+              <div v-if="form.commitClocks!.solve" class="commit-matrix-col">
+                <div class="sub-h sm commit-col-head">
+                  <span class="matrix-panel-title">整单解决</span>
+                  <label class="commit-cal-pick">
+                    <span class="commit-cal-label">计时日历</span>
+                    <a-select v-model:value="form.solveCalendar" size="small" style="width:196px" :options="calFormOpts" />
+                  </label>
+                </div>
+                <table class="matrix">
+                  <thead>
+                    <tr><th>优先级</th><th>时限</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="m in form.matrix" :key="`${m.level}-solve`">
+                      <td class="lv">{{ m.level }}</td>
+                      <td>
+                        <a-input-number v-model:value="m.solveVal" :min="0" size="small" style="width:66px" placeholder="不设" />
+                        <a-select v-model:value="m.solveUnit" size="small" style="width:76px;margin-left:4px" :options="UNIT_OPTS.map((u) => ({ value: u, label: u }))" />
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
 
             <!-- 节点时效 -->
-            <div class="sub-h mt">节点时效 <span class="sec-sub">每个流程节点的 响应 + 处理 时效，各自走不同日历</span>
+            <div class="block-h block-h--mt">
+              <span class="block-h-title">节点时效</span>
+              <span class="block-h-sub">每个流程节点的响应 + 处理时效，各自关联计时日历</span>
               <a-button type="link" size="small" class="sub-add" @click="addNode"><template #icon><PlusOutlined /></template>添加节点</a-button>
             </div>
             <a-table :columns="nodeCols" :data-source="form.nodeSla" row-key="id" :pagination="false" size="middle">
@@ -781,52 +782,6 @@ const dueSoonText = (d: DueSoon) => d.mode === 'countdown' ? `剩余 ${d.value}$
                 <a-button v-else-if="column.key === 'op'" type="link" size="small" danger @click="delNode(record.id)">删除</a-button>
               </template>
             </a-table>
-            <div class="tip">节点时效 = 各流程节点的内部时效：节点响应=进入节点→该节点首次响应，节点处理=进入节点→该节点处理完。此处填 <b>P1 基准</b>；P0/P2/P3 按全局优先级系数（×0.75 / 1 / 1.25 / 1.5）自动推算（与整单口径一致；竞品 OLA 多为条件/任务驱动，本系数为可选轻量差异化）。</div>
-          </section>
-
-          <!-- ④ 临期规则 -->
-          <section id="sec-duesoon" class="sec">
-            <div class="sec-h">④ 临期规则 <span class="sec-sub">进入临期 → 橙色预警，可作为⑤升级的触发点</span></div>
-            <a-radio-group v-model:value="form.dueSoon.mode" class="due-group">
-              <div class="due-row">
-                <a-radio value="countdown">到期倒计时</a-radio>
-                <template v-if="form.dueSoon.mode === 'countdown'">
-                  剩余 <a-input-number v-model:value="form.dueSoon.value" :min="1" size="small" style="width:72px" />
-                  <a-select v-model:value="form.dueSoon.unit" size="small" style="width:80px" :options="UNIT_OPTS.map((u) => ({ value: u, label: u }))" /> 进入临期
-                </template>
-              </div>
-              <div class="due-row">
-                <a-radio value="percent">到期百分比</a-radio>
-                <template v-if="form.dueSoon.mode === 'percent'">
-                  已用 <a-input-number v-model:value="form.dueSoon.value" :min="1" :max="99" size="small" style="width:72px" /> % 进入临期
-                </template>
-              </div>
-              <div class="due-row"><a-radio value="none">无</a-radio></div>
-            </a-radio-group>
-          </section>
-
-          <!-- ⑤ 升级 -->
-          <section id="sec-escalate" class="sec">
-            <div class="sec-h">⑤ 升级 <span class="sec-sub">SLA 设触发阈值 → 引用「SLA 引擎 · 升级链」(A3-05)</span></div>
-            <div v-for="e in form.escalations" :key="e.id" class="esc-block">
-              <div class="esc-row">
-                <a-select v-model:value="e.dim" size="small" style="width:90px" :options="[{ value: '响应', label: '响应' }, { value: '解决', label: '解决' }]" />
-                <a-select v-model:value="e.cond" size="small" style="width:150px" :options="ESC_COND_OPTS.map((o) => ({ value: o, label: o }))" />
-                <span class="arrow">→</span>
-                <a-select v-model:value="e.escalationRef" size="small" style="flex:1;min-width:180px"
-                  :options="ESC_RULES.map((r) => ({ value: r.no, label: `${r.no} ${r.name}` }))" placeholder="引用升级规则" />
-                <a class="esc-link" @click="escExpanded[e.id] = !escExpanded[e.id]">{{ escExpanded[e.id] ? '收起' : '预览' }}</a>
-                <a class="esc-link" @click="goNewEscRule"><ExportOutlined /> 新建</a>
-                <DeleteOutlined class="del-ic" @click="removeEsc(e.id)" />
-              </div>
-              <div v-if="escExpanded[e.id]" class="esc-preview">
-                <div class="ep-title">{{ escRuleByNo(e.escalationRef)?.name }}（只读 · 来自 SLA 升级链）</div>
-                <div v-for="(l, i) in escRuleByNo(e.escalationRef)?.chain || []" :key="i" class="ep-line">{{ l }}</div>
-              </div>
-            </div>
-            <a-button type="dashed" block @click="addEsc"><template #icon><PlusOutlined /></template>添加触发阈值</a-button>
-            <div class="tip">升级链（升到谁 / 多级 / 附加动作）统一在「SLA 引擎 · 预警与升级」维护；此处设触发时机并引用，可内联预览，缺升级链可
-              <a @click="goEscRoute">前往预警与升级 ↗</a> 新建。</div>
           </section>
         </div>
       </div>
@@ -838,24 +793,69 @@ const dueSoonText = (d: DueSoon) => d.mode === 'countdown' ? `剩余 ${d.value}$
     </div>
 
     <!-- 匹配测试 -->
-    <a-modal v-model:open="testOpen" title="SLA 策略匹配测试" :footer="null" width="520">
-      <div class="test-body">
-        <div class="fi"><span class="fl">业务类型</span><a-select v-model:value="testProduct" style="width:180px" :options="PRODUCT_OPTS.map((o) => ({ value: o, label: o }))" /></div>
-        <div class="fi"><span class="fl">工单类型</span><a-select v-model:value="testType" style="width:180px" :options="TYPE_OPTS.map((o) => ({ value: o, label: o }))" /></div>
-        <div class="fi"><span class="fl">工单来源</span><a-select v-model:value="testChannel" style="width:180px" :options="CHANNEL_OPTS.map((o) => ({ value: o, label: o }))" /></div>
-        <div class="fi"><span class="fl">客户类型</span><a-select v-model:value="testLevel" style="width:180px" :options="LEVEL_OPTS.map((o) => ({ value: o, label: o }))" /></div>
-        <div class="fi"><span class="fl">优先级</span><a-select v-model:value="testPriorityIdx" style="width:180px" :options="PRI_LABELS.map((l, i) => ({ value: i, label: l }))" /></div>
-        <div class="test-result">
-          <template v-if="testResult">
-            命中策略：<b>{{ testResult.name }}</b>（生效优先级 {{ testResult.priority }}）
-            <div class="tr-clocks">整单响应（{{ PRI_LABELS[testPriorityIdx] }}）：{{ fmtClock(testResult.matrix[testPriorityIdx].respVal, testResult.matrix[testPriorityIdx].respUnit) }}（{{ CAL_SHORT[testResult.respCalendar ?? testResult.calendar] ?? '—' }}）</div>
-            <div v-if="testSolvePreview" class="tr-clocks">
-              整单解决（{{ PRI_LABELS[testPriorityIdx] }}）：{{ fmtClock(testSolvePreview.val, testSolvePreview.unit) }}（{{ CAL_SHORT[testResult.solveCalendar ?? testResult.calendar] ?? '—' }}）
+    <a-modal
+      v-model:open="testOpen"
+      title="SLA 策略匹配测试"
+      :footer="null"
+      width="560"
+      centered
+      destroy-on-close
+      class="sla-test-modal"
+    >
+      <div class="test-modal">
+        <section class="test-section">
+          <div class="test-section-title">模拟工单</div>
+          <div class="test-form-grid">
+            <div class="test-field">
+              <label>业务类型</label>
+              <a-select v-model:value="testProduct" size="small" :options="PRODUCT_OPTS.map((o) => ({ value: o, label: o }))" />
             </div>
-            <div class="tr-clocks">临期：{{ dueSoonText(testResult.dueSoon) }}</div>
+            <div class="test-field">
+              <label>工单类型</label>
+              <a-select v-model:value="testType" size="small" :options="TYPE_OPTS.map((o) => ({ value: o, label: o }))" />
+            </div>
+            <div class="test-field">
+              <label>工单来源</label>
+              <a-select v-model:value="testChannel" size="small" :options="CHANNEL_OPTS.map((o) => ({ value: o, label: o }))" />
+            </div>
+            <div class="test-field">
+              <label>客户类型</label>
+              <a-select v-model:value="testLevel" size="small" :options="LEVEL_OPTS.map((o) => ({ value: o, label: o }))" />
+            </div>
+            <div class="test-field test-field--full">
+              <label>优先级</label>
+              <a-select v-model:value="testPriorityIdx" size="small" :options="PRI_LABELS.map((l, i) => ({ value: i, label: l }))" />
+            </div>
+          </div>
+        </section>
+
+        <section class="test-section">
+          <div class="test-section-title">匹配结果</div>
+          <template v-if="testResult">
+            <div class="test-hit">
+              <div class="test-hit-head">
+                <span class="test-hit-name">{{ testResult.name }}</span>
+                <span class="test-hit-badge">优先级 {{ testResult.priority }}</span>
+              </div>
+              <div class="test-clocks">
+                <div v-if="testRespPreview" class="test-clock-row">
+                  <span class="test-clock-k">整单响应</span>
+                  <span class="test-clock-v">{{ fmtClock(testRespPreview.val, testRespPreview.unit) }}</span>
+                  <span class="test-clock-cal">{{ CAL_SHORT[testResult.respCalendar ?? testResult.calendar] ?? '—' }}</span>
+                </div>
+                <div v-if="testSolvePreview?.val != null" class="test-clock-row">
+                  <span class="test-clock-k">整单解决</span>
+                  <span class="test-clock-v">{{ fmtClock(testSolvePreview.val, testSolvePreview.unit) }}</span>
+                  <span class="test-clock-cal">{{ CAL_SHORT[testResult.solveCalendar ?? testResult.calendar] ?? '—' }}</span>
+                </div>
+              </div>
+            </div>
           </template>
-          <template v-else><span class="miss">无命中——该工单将无 SLA 约束，建议配置默认策略</span></template>
-        </div>
+          <div v-else class="test-miss">
+            <span class="test-miss-icon">!</span>
+            <span>无命中策略，该工单将无 SLA 约束</span>
+          </div>
+        </section>
       </div>
     </a-modal>
   </div>
@@ -864,6 +864,7 @@ const dueSoonText = (d: DueSoon) => d.mode === 'countdown' ? `剩余 ${d.value}$
 <style scoped>
 .sla-page { display: flex; flex-direction: column; min-height: 100%; }
 .admin-page { display: flex; flex-direction: column; gap: 16px; padding: 16px 24px; }
+.admin-page :deep(.admin-page-header) { margin-bottom: 0; }
 .kpi-band { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .kb-item { flex: 1; min-width: 130px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 16px; }
 .kb-val { font-size: 22px; font-weight: 700; color: #111827; }
@@ -911,9 +912,6 @@ const dueSoonText = (d: DueSoon) => d.mode === 'countdown' ? `剩余 ${d.value}$
 @media (max-width: 900px) {
   .kv-grid-2, .kv-grid-3 { grid-template-columns: 1fr; }
 }
-.resp-inline { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 18px; padding: 4px 0 8px; }
-.resp-inline .ri-cell { display: flex; flex-direction: column; gap: 3px; }
-.resp-inline .ri-lv { font-size: 12px; color: #6b7280; }
 .matrix { width: 100%; border-collapse: collapse; }
 .matrix th { background: #f3f4f6; color: #6b7280; font-size: 12px; font-weight: 600; text-align: left; padding: 8px 10px; border: 1px solid #e5e7eb; }
 .matrix td { padding: 8px 10px; border: 1px solid #e5e7eb; }
@@ -923,8 +921,17 @@ const dueSoonText = (d: DueSoon) => d.mode === 'countdown' ? `剩余 ${d.value}$
 .unit-tag { font-size: 11px; color: #9ca3af; margin-left: 2px; }
 .tip-info { color: #1e40af; background: #eff6ff; border-color: #bfdbfe; }
 .th-opt { font-weight: normal; color: #9ca3af; margin-left: 2px; }
-.due-group { display: flex; flex-direction: column; gap: 12px; }
-.due-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #4b5563; }
+.block-h {
+  font-size: 12px; font-weight: 600; color: #374151;
+  margin: 14px 0 10px; padding-left: 8px;
+  border-left: 2px solid #93c5fd;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  line-height: 1.4;
+}
+.block-h--mt { margin-top: 22px; }
+.block-h-title { font-weight: 600; color: #374151; }
+.block-h-sub { font-size: 12px; font-weight: normal; color: #9ca3af; }
+.block-h .sub-add { margin-left: auto; }
 .sub-h { font-size: 13px; font-weight: 600; color: #374151; margin: 4px 0 10px; display: flex; align-items: center; gap: 10px; }
 .sub-h.sm { font-size: 12px; font-weight: 600; color: #4b5563; margin-top: 12px; }
 .sub-h.sm.mt { margin-top: 16px; }
@@ -932,21 +939,55 @@ const dueSoonText = (d: DueSoon) => d.mode === 'countdown' ? `剩余 ${d.value}$
 .solve-sm-head { flex-wrap: wrap; }
 .sub-h .sub-add { margin-left: auto; }
 .clock-toggles { display: flex; gap: 20px; margin-bottom: 12px; }
+.commit-matrix-row { display: grid; grid-template-columns: 1fr; gap: 16px; margin-top: 4px; }
+.commit-matrix-row--dual { grid-template-columns: 1fr 1fr; }
+.commit-matrix-col { min-width: 0; }
+.commit-matrix-col .sub-h.sm { margin-top: 0; }
+.commit-col-head { justify-content: space-between; flex-wrap: wrap; }
+.matrix-panel-title { font-size: 12px; font-weight: 600; color: #374151; }
+.commit-cal-pick { display: inline-flex; align-items: center; gap: 8px; font-weight: normal; margin-left: auto; }
+.commit-cal-label { font-size: 12px; color: #6b7280; white-space: nowrap; }
+@media (max-width: 1100px) {
+  .commit-matrix-row--dual { grid-template-columns: 1fr; }
+}
 .matrix .cal-row td { background: #fafafa; }
-.esc-block { margin-bottom: 10px; }
-.esc-row { display: flex; align-items: center; gap: 8px; }
-.esc-row .arrow { color: #9ca3af; }
-.esc-link { font-size: 12px; color: #1a6fff; white-space: nowrap; cursor: pointer; }
-.del-ic { color: #ef4444; cursor: pointer; flex: none; }
-.esc-preview { margin: 6px 0 0 98px; padding: 8px 12px; background: #f9fafb; border: 1px solid #eef0f2; border-radius: 6px; }
-.ep-title { font-size: 12px; font-weight: 600; color: #6d28d9; margin-bottom: 4px; }
-.ep-line { font-size: 12px; color: #4b5563; line-height: 1.8; }
 .ed-footer { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: 8px; padding: 12px 24px; background: #fff; border-top: 1px solid #e5e7eb; z-index: 5; }
-.tip { margin-top: 12px; font-size: 12px; color: #b45309; background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 8px 12px; line-height: 1.6; }
-.tip a { color: #1a6fff; }
 .hint { font-size: 11px; color: #9ca3af; margin-top: 4px; }
-.test-body { display: flex; flex-direction: column; gap: 12px; }
-.test-result { margin-top: 8px; padding: 12px; background: #f0f6ff; border: 1px solid #bfdbfe; border-radius: 8px; font-size: 13px; }
-.tr-clocks { margin-top: 6px; font-size: 12px; color: #4b5563; }
-.test-result .miss { color: #b45309; }
+.test-modal { display: flex; flex-direction: column; gap: 16px; }
+.test-section-title { font-size: 12px; font-weight: 600; color: #6b7280; margin-bottom: 10px; }
+.test-form-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px;
+  padding: 12px 14px; background: #f9fafb; border: 1px solid #f0f0f0; border-radius: 8px;
+}
+.test-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.test-field--full { grid-column: 1 / -1; }
+.test-field label { font-size: 12px; color: #6b7280; }
+.test-field :deep(.ant-select) { width: 100%; }
+.test-hit {
+  padding: 12px 14px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px;
+}
+.test-hit-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.test-hit-name { font-size: 14px; font-weight: 600; color: #111827; }
+.test-hit-badge {
+  font-size: 11px; color: #1a6fff; background: #eff6ff; border: 1px solid #bfdbfe;
+  padding: 1px 8px; border-radius: 4px;
+}
+.test-clocks { display: flex; flex-direction: column; gap: 6px; }
+.test-clock-row {
+  display: grid; grid-template-columns: 72px 1fr auto; gap: 8px; align-items: center;
+  font-size: 13px; padding: 8px 10px; background: #f9fafb; border-radius: 6px;
+}
+.test-clock-k { color: #6b7280; font-size: 12px; }
+.test-clock-v { font-weight: 600; color: #111827; }
+.test-clock-cal { font-size: 12px; color: #9ca3af; }
+.test-miss {
+  display: flex; align-items: center; gap: 8px; padding: 12px 14px;
+  background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; font-size: 13px; color: #92400e;
+}
+.test-miss-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 50%; background: #f59e0b; color: #fff;
+  font-size: 12px; font-weight: 700; flex: none;
+}
+:deep(.sla-test-modal .ant-modal-body) { padding-top: 12px; }
 </style>
