@@ -10,7 +10,7 @@ import {
 } from '@ant-design/icons-vue';
 import dayjs from 'dayjs';
 
-// 智能分派：工单调度引擎的「出池」侧。进池由规则引擎路由，坐席归用户/班组管理主数据，此处只引用。
+// 智能分派：工单调度引擎。编排工单池，入池/出池调用规则引擎执行路由/分派规则；坐席归用户/班组管理主数据，此处只引用。
 const router = useRouter();
 const route = useRoute();
 // 页签绑路由：智能分派各二级子项（侧栏）与页内内容一一对应
@@ -563,7 +563,7 @@ function goRules() { router.push('/admin/rules-list'); }
 
 <template>
   <div class="dispatch-config">
-    <AdminPageHeader title="智能分派" subtitle="工单调度引擎：进池由规则引擎路由，此处负责出池选人、积压监控与工单池；坐席主数据在「用户/班组管理」维护。" />
+    <AdminPageHeader title="智能分派" subtitle="工单调度引擎：编排工单池，入池/出池调用规则引擎执行规则；此处配出池选人、积压监控与工单池；坐席主数据在「用户/班组管理」维护。" />
 
     <div class="dc-panels">
       <!-- ① 分派监控面板 -->
@@ -814,7 +814,7 @@ function goRules() { router.push('/admin/rules-list'); }
       <!-- ③ 工单池 -->
       <div v-show="activeTab === 'pool'">
         <section class="block pool-block">
-          <div class="b-title inline">工单池 <span class="b-tip">待分配工单排队区；进池由规则引擎路由，此处定义池与服务方</span>
+          <div class="b-title inline">工单池 <span class="b-tip">待分配工单排队区；入池规则在规则引擎管理执行，此处定义池与服务方</span>
             <a-button size="small" type="primary" class="hd-btn" @click="openCreatePool"><template #icon><PlusOutlined /></template>新建池</a-button>
           </div>
           <div class="pool-grid">
