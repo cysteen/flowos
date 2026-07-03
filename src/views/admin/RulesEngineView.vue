@@ -6,7 +6,7 @@ import {
   PlusOutlined, SearchOutlined, ReloadOutlined, DeleteOutlined,
   ArrowLeftOutlined, HolderOutlined, ThunderboltOutlined,
   ExperimentOutlined, WarningOutlined, DownOutlined, UpOutlined,
-  ClockCircleOutlined,
+  ClockCircleOutlined, ArrowUpOutlined, CheckCircleOutlined,
 } from '@ant-design/icons-vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { adminNavActiveKey } from '@/config/adminNav';
@@ -647,19 +647,31 @@ const escMatrix: Record<string, Record<string, string>> = {
 };
 
 // —— 执行日志 ——
-const logStats = { hitRate: '94.2%', coverage: '78%', total: '12,480' };
-const ranking = computed(() => [...rules.value].sort((a, b) => b.hits - a.hits).slice(0, 5));
-const logRows = [
-  { time: '2026-06-30 11:20:05', rule: 'RL001 投诉自动派学习机组', ticket: 'LCMN-20260610-73026', result: '命中·已派发' },
-  { time: '2026-06-30 11:18:30', rule: 'RL003 硬件故障升级 RDM', ticket: 'LCMN-20260610-75002', result: '命中·已升级路由' },
-  { time: '2026-06-30 11:05:12', rule: 'RL002 VIP 入大客户专属池', ticket: 'LCMN-20260610-73118', result: '命中·已入池' },
-  { time: '2026-06-30 10:50:44', rule: 'RL005 大额退款需审核', ticket: 'LCMN-20260610-72980', result: '命中·待审核' },
+type LogStatIcon = 'timer' | 'event' | 'coverage';
+const logStatCards: { label: string; value: string; delta: string; deltaColor: string; accent: string; iconBg: string; icon: LogStatIcon }[] = [
+  { label: '定时任务今日执行', value: '1,248', delta: '较昨日 +8.2%', deltaColor: '#10b981', accent: '#1a6fff', iconBg: '#eff6ff', icon: 'timer' },
+  { label: '事件规则今日命中', value: '4,320', delta: '较昨日 +5.1%', deltaColor: '#10b981', accent: '#0ea5e9', iconBg: '#f0f9ff', icon: 'event' },
+  { label: '规则覆盖率', value: '78%', delta: '启用 14/17 条', deltaColor: '#6b7280', accent: '#10b981', iconBg: '#ecfdf5', icon: 'coverage' },
 ];
-const logCols = [
-  { title: '执行时间', dataIndex: 'time', key: 'time', width: 170 },
-  { title: '规则', dataIndex: 'rule', key: 'rule' },
-  { title: '工单', dataIndex: 'ticket', key: 'ticket', width: 200 },
-  { title: '结果', dataIndex: 'result', key: 'result', width: 150 },
+const eventRanking = computed(() => [...rules.value].filter((r) => r.trigger.kind === 'event').sort((a, b) => b.hits - a.hits).slice(0, 8));
+const timerLogRows = [
+  { id: 1, time: '2026-06-30 11:15:00', rule: 'RL011 个人严重积压预警', freq: '每 15 分钟', scanned: 128, hits: 3, result: '命中 3 条', duration: '1.2s' },
+  { id: 2, time: '2026-06-30 11:15:00', rule: 'RL012 组内积压预警', freq: '每 15 分钟', scanned: 12, hits: 1, result: '命中 1 条', duration: '0.8s' },
+  { id: 3, time: '2026-06-30 11:10:00', rule: 'RL015 预约沟通提醒', freq: '每 5 分钟', scanned: 856, hits: 5, result: '命中 5 条', duration: '2.1s' },
+  { id: 4, time: '2026-06-30 11:00:00', rule: 'RL004 7天无回复自动关单', freq: '每小时', scanned: 2340, hits: 2, result: '命中 2 条', duration: '4.5s' },
+  { id: 5, time: '2026-06-30 11:00:00', rule: 'RL009 批量问题预警', freq: '每小时', scanned: 890, hits: 0, result: '无命中', duration: '1.6s' },
+  { id: 6, time: '2026-06-30 10:00:00', rule: 'RL016 挂起临期预警', freq: '每小时', scanned: 156, hits: 1, result: '命中 1 条', duration: '0.9s' },
+  { id: 7, time: '2026-06-30 09:00:00', rule: 'RL006 坐席积压提醒', freq: '每小时', scanned: 86, hits: 4, result: '命中 4 条', duration: '0.7s' },
+  { id: 8, time: '2026-06-30 08:00:00', rule: 'RL013 重复进线预警', freq: '每小时', scanned: 1205, hits: 0, result: '无命中', duration: '1.9s' },
+];
+const timerLogCols = [
+  { title: '执行时间', dataIndex: 'time', key: 'time', width: 168 },
+  { title: '规则', dataIndex: 'rule', key: 'rule', width: 200 },
+  { title: '频率', dataIndex: 'freq', key: 'freq', width: 100 },
+  { title: '扫描', dataIndex: 'scanned', key: 'scanned', width: 72 },
+  { title: '命中', dataIndex: 'hits', key: 'hits', width: 64 },
+  { title: '结果', dataIndex: 'result', key: 'result', width: 110 },
+  { title: '耗时', dataIndex: 'duration', key: 'duration', width: 72 },
 ];
 </script>
 
@@ -694,27 +706,41 @@ const logCols = [
 
     <!-- ============ 执行日志 ============ -->
     <div v-else-if="activeKey === 'rules-logs'" class="body">
-      <AdminPageHeader title="执行日志" subtitle="规则命中率 / 覆盖率 / 命中排行 + 明细（灰度发布、版本回滚为 P1）">
-        <template #actions><ThunderboltOutlined style="color:#1a6fff" /></template>
-      </AdminPageHeader>
-      <div class="stat-row">
-        <div class="stat"><div class="s-l">规则命中率</div><div class="s-v rate-ok">{{ logStats.hitRate }}</div></div>
-        <div class="stat"><div class="s-l">规则覆盖率</div><div class="s-v">{{ logStats.coverage }}</div></div>
-        <div class="stat"><div class="s-l">今日执行</div><div class="s-v">{{ logStats.total }}</div></div>
-      </div>
+      <AdminPageHeader title="执行日志" subtitle="定时任务按轮次记录执行情况；事件类规则统计命中次数。手动触发规则不在此页展示。" />
+      <section class="panel stat-block">
+        <div class="stat-row">
+          <div v-for="s in logStatCards" :key="s.label" class="stat-card" :style="{ '--accent': s.accent }">
+            <div class="stat-card-inner">
+              <div class="stat-main">
+                <div class="s-label">{{ s.label }}</div>
+                <div class="s-value">{{ s.value }}</div>
+                <div class="s-delta" :style="{ color: s.deltaColor }">
+                  <ArrowUpOutlined v-if="s.icon !== 'coverage'" class="delta-icon" />
+                  {{ s.delta }}
+                </div>
+              </div>
+              <div class="stat-icon" :style="{ background: s.iconBg, color: s.accent }">
+                <ClockCircleOutlined v-if="s.icon === 'timer'" />
+                <ThunderboltOutlined v-else-if="s.icon === 'event'" />
+                <CheckCircleOutlined v-else />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
       <div class="log-grid">
         <div class="panel">
-          <div class="sec-h">执行明细</div>
-          <a-table :columns="logCols" :data-source="logRows" row-key="time" :pagination="pagination" size="middle">
+          <div class="sec-h">定时任务执行明细<span class="sec-sub">每轮扫描量 / 命中数 / 耗时</span></div>
+          <a-table :columns="timerLogCols" :data-source="timerLogRows" row-key="id" :pagination="pagination" size="middle">
             <template #bodyCell="{ column, record }">
-              <span v-if="column.key === 'result'" class="rate-ok">{{ record.result }}</span>
-              <span v-else-if="column.key === 'ticket'" class="cell-link">{{ record.ticket }}</span>
+              <span v-if="column.key === 'result'" :class="record.hits > 0 ? 'rate-ok' : 'muted'">{{ record.result }}</span>
+              <span v-else-if="column.key === 'hits'" :class="record.hits > 0 ? 'hit-n' : 'muted'">{{ record.hits }}</span>
             </template>
           </a-table>
         </div>
         <div class="panel rank">
-          <div class="sec-h">规则命中排行</div>
-          <div v-for="(r, i) in ranking" :key="r.no" class="rank-row">
+          <div class="sec-h">事件规则命中排行</div>
+          <div v-for="(r, i) in eventRanking" :key="r.no" class="rank-row">
             <span class="rk" :class="{ top: i < 3 }">{{ i + 1 }}</span>
             <span class="rk-name">{{ r.name }}</span>
             <span class="rk-hit">{{ r.hits }}</span>
@@ -1163,6 +1189,7 @@ const logCols = [
 .drag-h { color: #c0c4cc; margin-right: 6px; cursor: grab; }
 .muted { color: #9ca3af; }
 .rate-ok { color: #10b981; font-weight: 600; }
+.hit-n { color: #059669; font-weight: 600; }
 .sum { font-size: 12px; color: #4b5563; display: inline-block; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; font-weight: 600; }
 
@@ -1173,11 +1200,18 @@ const logCols = [
 .matrix th { background: #f9fafb; color: #6b7280; font-weight: 600; }
 .matrix .rowh { background: #f9fafb; color: #111827; font-weight: 600; }
 
+.stat-block { padding: 20px; margin-bottom: 0; }
 .stat-row { display: flex; gap: 16px; }
-.stat { flex: 1; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px 20px; }
-.s-l { font-size: 12px; color: #6b7280; margin-bottom: 6px; }
-.s-v { font-size: 24px; font-weight: 700; color: #111827; }
-.log-grid { display: grid; grid-template-columns: 1fr 320px; gap: 16px; }
+.stat-card { flex: 1; border: 1px solid #eef0f3; border-radius: 8px; padding: 16px 18px; position: relative; overflow: hidden; background: #fff; }
+.stat-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--accent); }
+.stat-card-inner { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.stat-main { flex: 1; min-width: 0; }
+.stat-icon { width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex: none; }
+.s-label { font-size: 12px; color: #6b7280; }
+.s-value { font-size: 28px; font-weight: 700; color: #111827; margin: 6px 0 4px; line-height: 1.1; }
+.s-delta { font-size: 12px; display: flex; align-items: center; gap: 4px; }
+.delta-icon { font-size: 10px; }
+.log-grid { display: grid; grid-template-columns: 1fr 320px; gap: 16px; margin-top: 16px; }
 .rank-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #f3f4f6; font-size: 13px; }
 .rk { width: 20px; height: 20px; border-radius: 4px; background: #f3f4f6; color: #6b7280; font-size: 12px; display: flex; align-items: center; justify-content: center; }
 .rk.top { background: #1a6fff; color: #fff; }

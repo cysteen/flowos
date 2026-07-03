@@ -474,13 +474,13 @@ const profileLineChart = computed(() => {
   return { w, h, line, area, yTicks };
 });
 const loadCols = [
-  { title: '姓名', key: 'name', width: 120 },
-  { title: '处理组', dataIndex: 'group', key: 'group', ellipsis: true },
-  { title: '当前工单数', key: 'current', width: 96 },
-  { title: '容量上限', key: 'capacity', width: 88 },
-  { title: '负载系数', key: 'factor', width: 110 },
-  { title: '负载进度', key: 'progress', width: 100 },
-  { title: '在线状态', key: 'status', width: 88 },
+  { title: '姓名', key: 'name', width: 108 },
+  { title: '处理组', dataIndex: 'group', key: 'group', width: 120, ellipsis: true },
+  { title: '当前工单数', key: 'current', width: 92, align: 'right' as const },
+  { title: '容量上限', key: 'capacity', width: 84, align: 'right' as const },
+  { title: '负载系数', key: 'factor', width: 96 },
+  { title: '负载进度', key: 'progress', width: 88 },
+  { title: '在线状态', key: 'status', width: 84 },
 ];
 const typeStatCols = [
   { title: '工单类型', dataIndex: 'type', key: 'type' },
@@ -1079,13 +1079,15 @@ function goRules() { router.push('/admin/rules-list'); }
 .lg-pc { font-size: 12px; font-weight: 600; color: #111827; }
 /* 负载表格 */
 .load-block :deep(.ant-table) { margin-top: 4px; }
-.agent-name { display: flex; align-items: center; gap: 8px; }
+.load-block :deep(.ant-table table) { table-layout: fixed; }
+.load-block :deep(.ant-table-cell) { overflow: hidden; }
+.agent-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .agent-avatar { width: 28px; height: 28px; border-radius: 50%; color: #fff; font-size: 12px; display: flex; align-items: center; justify-content: center; flex: none; }
 .agent-nm { font-weight: 500; color: #111827; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
 .muted { color: #6b7280; }
 .factor { font-weight: 600; }
-.load-bar { height: 8px; background: #eef0f3; border-radius: 4px; overflow: hidden; min-width: 120px; }
+.load-bar { height: 8px; background: #eef0f3; border-radius: 4px; overflow: hidden; width: 100%; max-width: 72px; }
 .load-bar-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
 /* 坐席画像 · 左右分栏 */
 .profile-split { padding: 16px 20px; margin-bottom: 0; }
@@ -1176,9 +1178,9 @@ function goRules() { router.push('/admin/rules-list'); }
 .pool-metric-lb { font-size: 10px; color: #9ca3af; margin-top: 2px; }
 .pool-foot { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: #374151; padding-top: 10px; border-top: 1px solid #f3f4f6; }
 .pool-foot-lb { color: #9ca3af; }
-.factor-cell { display: inline-flex; align-items: center; gap: 6px; }
-.full-tag { margin: 0; font-size: 11px; line-height: 18px; padding: 0 4px; }
-.status-cell { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.factor-cell { display: inline-flex; align-items: center; gap: 4px; flex-wrap: nowrap; max-width: 100%; }
+.full-tag { margin: 0; font-size: 10px; line-height: 16px; padding: 0 4px; flex: none; }
+.status-cell { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; white-space: nowrap; }
 .status-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
 /* 链式行 */
 .chain-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid #eef0f3; border-radius: 8px; margin-bottom: 8px; background: #fcfcfd; }
