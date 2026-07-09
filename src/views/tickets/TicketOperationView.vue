@@ -169,6 +169,7 @@ const statViewAllLabel = computed(() => {
   if (!statModalKey.value || statModalKey.value === 'contact') return '';
   return STAT_VIEW_ALL[statModalKey.value].label;
 });
+const statModalWidth = computed(() => (statModalKey.value === 'contact' ? 960 : 760));
 
 function onOverviewSelect(action: InsightAction) {
   if (action.kind === 'modal') {
@@ -496,6 +497,7 @@ function updateTabData(next: OperationTabData) {
     <OpStatDetailModal
       :open="statModalKey !== null"
       :table="statTable"
+      :width="statModalWidth"
       :view-all-label="statViewAllLabel"
       @update:open="(v) => { if (!v) statModalKey = null; }"
       @open-ticket="onStatOpenTicket"

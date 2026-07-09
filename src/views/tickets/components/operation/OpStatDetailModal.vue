@@ -10,7 +10,12 @@ const props = defineProps<{
   table: InsightDetailTable | null;
   /** 底部「查看完整记录」入口文案；不传则不显示（联系明细不传） */
   viewAllLabel?: string;
+  /** 弹窗宽度；联系明细列多、小结较长时加宽 */
+  width?: number;
 }>();
+
+const modalWidth = computed(() => props.width ?? 760);
+const isContactDetail = computed(() => props.table?.title === '联系明细');
 
 const emit = defineEmits<{
   'update:open': [v: boolean];
@@ -47,7 +52,7 @@ function onPageChange(page: number, size: number) {
     :open="open"
     :title="table?.title ?? '明细'"
     :footer="null"
-    :width="760"
+    :width="modalWidth"
     @update:open="emit('update:open', $event)"
   >
     <div v-if="table" class="stat-modal-body">
@@ -60,7 +65,11 @@ function onPageChange(page: number, size: number) {
           </thead>
           <tbody>
             <tr v-for="(row, ri) in pagedRows" :key="ri">
-              <td v-for="(cell, ci) in row.cells" :key="ci">
+              <td
+                v-for="(cell, ci) in row.cells"
+                :key="ci"
+                :class="{ 'cell-summary': isContactDetail && ci === row.cells.length - 1 }"
+              >
                 <a
                   v-if="ci === 0 && row.ticketNo"
                   class="cell-link"
@@ -124,6 +133,14 @@ function onPageChange(page: number, size: number) {
   border: 1px solid #e5e7eb;
   color: #555;
   vertical-align: top;
+}
+.detail-table td.cell-summary {
+  min-width: 200px;
+  max-width: 320px;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.5;
+  color: #374151;
 }
 .cell-link {
   color: #1a6fff;
