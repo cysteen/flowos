@@ -6,13 +6,22 @@ import {
   PlusOutlined, SearchOutlined, ReloadOutlined, DeleteOutlined,
   ArrowLeftOutlined, HolderOutlined, ThunderboltOutlined,
   ExperimentOutlined, WarningOutlined, DownOutlined, UpOutlined,
-  ClockCircleOutlined, ArrowUpOutlined, CheckCircleOutlined,
+  ClockCircleOutlined, ArrowUpOutlined, CheckCircleOutlined, QuestionCircleOutlined,
 } from '@ant-design/icons-vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { adminNavActiveKey } from '@/config/adminNav';
 import { stdPagination } from '@/config/adminUi';
 
-// 规则中心（PRD-58 / 需求 A4，统一规则引擎 = V1 丰富版 + 触发时机 + 派单边界）。
+// 规则引擎（PRD-58 / 需求 A4，统一规则引擎 = V1 丰富版 + 触发时机 + 派单边界）。
+const kpiTipOverlayStyle = {
+  maxWidth: '320px',
+  color: '#713f12',
+  fontSize: '12px',
+  lineHeight: '1.65',
+  padding: '10px 12px',
+  boxShadow: '0 6px 16px rgba(180, 130, 20, 0.12)',
+  border: '1px solid #fde68a',
+};
 // 规则(列表+统一编辑器:触发时机/IF嵌套+全运算符/多动作/规则测试/冲突检测) + 路由矩阵 + 执行日志。
 // 边界(按原始需求清单 A3/A4)：SLA「分级预警(A3-04)/自动升级(A3-05)」归 SLA 引擎；
 //   规则引擎的「升级路由(A4-04)」是升级到目标系统(RDM/TPD/飞书)，与 SLA 自动升级不同。
@@ -37,10 +46,10 @@ interface Rule {
   trigger: Trigger; conditions: Conditions; actions: Action[]; hits: number;
 }
 
+// 触发时机本期只做 事件即时 / 定时；「手动（宏/场景）」的工单侧触发入口未落地，列为 P1、暂不放出。
 const TRIGGER_KINDS = [
   { value: 'event', label: '事件即时', desc: '工单发生事件时立即评估' },
   { value: 'timer', label: '定时(超时)', desc: '按频率轮询或定点定时，需 IF 时间条件' },
-  { value: 'manual', label: '手动', desc: '坐席在工单上一键触发（宏/场景）' },
 ] as const;
 const EVENT_OPTS = [
   { value: '工单创建', label: '工单创建', desc: '新建工单入库时' },
@@ -54,32 +63,28 @@ const EVENT_OPTS = [
   { value: '字段变更', label: '字段变更', desc: '指定业务字段变更时' },
 ];
 interface TimerFreqOpt { value: string; label: string; desc: string }
-interface TimerFreqGroup { label: string; options: TimerFreqOpt[] }
-// 定时(超时)：分「按频率轮询」与「定时触发」两类（轻量，非完整 cron）
-const TIMER_FREQ_GROUPS: TimerFreqGroup[] = [
-  {
-    label: '按频率轮询',
-    options: [
-      { value: '每 5 分钟', label: '5 分钟', desc: '高频扫描，适合积压提醒' },
-      { value: '每 15 分钟', label: '15 分钟', desc: '常规扫描' },
-      { value: '每 30 分钟', label: '30 分钟', desc: '常规扫描' },
-      { value: '每小时', label: '1 小时', desc: '默认；适合超时关单等' },
-    ],
-  },
-  {
-    label: '定时触发',
-    options: [
-      { value: '每天 09:00', label: '09:00', desc: '每日早间批处理' },
-      { value: '每天 18:00', label: '18:00', desc: '每日晚间批处理' },
-    ],
-  },
+// 定时(超时)：①按频率轮询（间隔）②周期定时（每天/每周X/每月N日 × 任意时刻 HH:mm）。轻量，非完整 cron。
+const INTERVAL_OPTS: TimerFreqOpt[] = [
+  { value: '每 5 分钟', label: '5 分钟', desc: '高频扫描，适合积压提醒' },
+  { value: '每 15 分钟', label: '15 分钟', desc: '常规扫描' },
+  { value: '每 30 分钟', label: '30 分钟', desc: '常规扫描' },
+  { value: '每小时', label: '1 小时', desc: '默认；适合超时关单等' },
+  { value: '每 2 小时', label: '2 小时', desc: '低频扫描' },
 ];
-const TIMER_FREQ_OPTS = TIMER_FREQ_GROUPS.flatMap((g) => g.options);
+const SCHED_PERIOD_GROUPS = [
+  { label: '每天', options: ['每天'] },
+  { label: '每周', options: ['每周一', '每周二', '每周三', '每周四', '每周五', '每周六', '每周日'] },
+  { label: '每月', options: Array.from({ length: 28 }, (_, i) => `每月${i + 1}日`) },
+];
+const TIMER_MODE_OPTS = [
+  { value: 'interval', label: '频率轮询' },
+  { value: 'schedule', label: '周期定时' },
+];
 function timerFreqKind(freq: string): 'interval' | 'schedule' {
-  return freq.startsWith('每天') ? 'schedule' : 'interval';
+  return /^每(天|周|月)/.test(freq) ? 'schedule' : 'interval';
 }
 function timerFreqLabel(freq: string): string {
-  return TIMER_FREQ_OPTS.find((o) => o.value === freq)?.label || freq;
+  return INTERVAL_OPTS.find((o) => o.value === freq)?.label || freq;
 }
 // 条件变量库（左栏；照搬 V1 A4 编辑器：工单字段 / 系统变量 / 流程变量 + 函数 + 模板）
 interface LibField { key: string; label: string; type: string; group?: string }
@@ -115,10 +120,13 @@ const WORKORDER_COMMON_FIELDS: LibField[] = [
   { key: '进线次数', label: '进线次数', type: '数字', group: '客户信息' },
   { key: '委派次数', label: '委派次数', type: '数字', group: '工单基础' },
   { key: '工单来源', label: '工单来源', type: '枚举', group: '工单基础' },
-  { key: '最新客户消息', label: '最新客户消息', type: '文本', group: '工单基础' },
   { key: '预约沟通时间', label: '预约沟通时间', type: '日期', group: '时间' },
-  { key: '挂起时长', label: '挂起时长(小时)', type: '数字', group: '时间' },
   { key: '创建时间', label: '创建时间', type: '日期', group: '时间' },
+  // 相对时间：距某事件经过的时长（对标 Zendesk「Hours since」/ Freshdesk 时间条件）——结构化「大于/小于 + 数值 + 单位」，免写表达式
+  { key: '创建后经过时长', label: '创建后经过时长', type: '时长', group: '相对时间' },
+  { key: '更新后经过时长', label: '更新后经过时长', type: '时长', group: '相对时间' },
+  { key: '首次响应后经过时长', label: '首次响应后经过时长', type: '时长', group: '相对时间' },
+  { key: '挂起时长', label: '挂起时长', type: '时长', group: '相对时间' },
 ];
 const FIELD_LIBRARY = {
   workorder: WORKORDER_COMMON_FIELDS,
@@ -146,45 +154,88 @@ const FIELD_LIBRARY = {
     { key: '满意度', label: '满意度', type: '数字' },
   ],
 };
-const FIELD_OPTS = [...FIELD_LIBRARY.workorder, ...FIELD_LIBRARY.system, ...FIELD_LIBRARY.process, ...FIELD_LIBRARY.agent].map((f) => f.key);
+const ALL_LIB_FIELDS = [...FIELD_LIBRARY.workorder, ...FIELD_LIBRARY.system, ...FIELD_LIBRARY.process, ...FIELD_LIBRARY.agent];
+const FIELD_OPTS = ALL_LIB_FIELDS.map((f) => f.key);
+const FIELD_TYPE_MAP: Record<string, string> = Object.fromEntries(ALL_LIB_FIELDS.map((f) => [f.key, f.type]));
+function fieldType(field: string): string { return FIELD_TYPE_MAP[field] ?? '文本'; }
+// 枚举公共属性的系统预设值（单一真源应取自「字段字典·枚举值手册」；此处为对齐字典的取值集）。
+// 凡 type='枚举' 的公共属性都在此登记取值 → 条件值渲染为下拉，杜绝自由文本。
 const FIELD_ENUM_VALUES: Record<string, string[]> = {
   工单类型: ['投诉', '建议', '商机', '咨询'],
-  业务类型: ['翻录', '学习机', '翻译机', '录音笔', '智能办公本'],
-  工单来源: ['400呼入', '在线客服', '邮件', 'APP', '微信'],
+  业务类型: ['学习机', '翻译机', '录音笔', '智能办公本', '词典笔'],
+  工单来源: ['400呼入', '在线客服', '邮件', 'APP', '微信', '小程序'],
+  优先级: ['P0 紧急', 'P1 高', 'P2 中', 'P3 低'],
+  状态: ['待受理', '处理中', '已挂起', '待回访', '已解决', '已关闭'],
   产品分类: ['智能硬件', '软件服务', '教育产品'],
+  产品名称: ['学习机', '翻译机', '录音笔', '智能办公本', '词典笔', '智能手表'],
+  问题一类: ['硬件故障', '软件问题', '使用咨询', '售后服务'],
+  问题二类: ['无法开机', '死机卡顿', '功能异常', '账号问题'],
+  问题三类: ['充电异常', '触屏失灵', '同步失败', '其他'],
+  产品线: ['消费者产品线', '教育产品线', '企业产品线'],
   投诉类型: ['服务投诉', '产品投诉', '物流投诉'],
+  投诉平台: ['黑猫投诉', '12315', '工信部', '微博', '抖音'],
+  归属业务线: ['消费者BG', '教育BG', '开放平台'],
   前期是否反馈: ['是', '否'],
+  服务回溯: ['已回溯', '未回溯', '无需回溯'],
+  投诉一类: ['服务态度', '处理时效', '解决方案', '承诺未兑现'],
+  投诉二类: ['响应慢', '推诿', '重复来电', '其他'],
+  客户类型: ['个人', '企业', '渠道', 'VIP'],
+  客户等级: ['普通', '银卡', '金卡', '钻石'],
+  风险等级: ['低', '中', '高', '极高'],
+  客户情绪等级: ['平静', '不满', '愤怒', '扬言投诉'],
 };
 const TICKET_TYPE_OPTS = FIELD_ENUM_VALUES.工单类型.map((v) => ({ value: v, label: v }));
 function fieldEnumOpts(field: string) {
   return (FIELD_ENUM_VALUES[field] || []).map((v) => ({ value: v, label: v }));
 }
+const MULTI_OPS = ['属于列表', '不属于列表'];
+const NULL_OPS = ['为空', '不为空'];
+function isMultiOp(op: string) { return MULTI_OPS.includes(op); }
+function isNullOp(op: string) { return NULL_OPS.includes(op); }
+function toArr(s: string): string[] { return s ? s.split(/[,，]/).map((x) => x.trim()).filter(Boolean) : []; }
+// —— 相对时间「时长」值：编码为 "数值 单位"（如 "7 天"）——
+const DUR_UNITS = ['分钟', '小时', '天'].map((u) => ({ value: u, label: u }));
+function durNum(s: string): number { const n = parseInt(s || '', 10); return Number.isFinite(n) ? n : 24; }
+function durUnit(s: string): string { const m = (s || '').match(/分钟|小时|天/); return m ? m[0] : '小时'; }
+function joinDur(n: number | null, u: string): string { return `${n ?? 0} ${u || '小时'}`; }
+/** 重置某条件的值：枚举单值取首项、枚举多值/文本置空、空值算子不需要值 */
+function resetLeafValue(leaf: CondLeaf) {
+  if (isExprOp(leaf.op)) { leaf.value = ''; return; } // 切到表达式：清空待手写整行布尔表达式
+  const enumOpts = FIELD_ENUM_VALUES[leaf.field];
+  if (isNullOp(leaf.op)) { leaf.value = ''; return; }
+  if (fieldType(leaf.field) === '时长') { leaf.value = /分钟|小时|天/.test(leaf.value) ? leaf.value : '24 小时'; return; }
+  if (enumOpts && !isMultiOp(leaf.op)) { leaf.value = enumOpts.includes(leaf.value) ? leaf.value : enumOpts[0]; return; }
+  leaf.value = isMultiOp(leaf.op) && enumOpts ? '' : leaf.value;
+}
 function onCondFieldChange(leaf: CondLeaf, field: string) {
   leaf.field = field;
-  const opts = FIELD_ENUM_VALUES[field];
-  if (opts && !opts.includes(leaf.value)) leaf.value = opts[0];
+  const allowed = OP_BY_TYPE[fieldType(field)] ?? OP_BY_TYPE['文本'];
+  if (!allowed.includes(leaf.op)) leaf.op = allowed[0];
+  leaf.value = '';
+  resetLeafValue(leaf);
 }
+function onCondOpChange(leaf: CondLeaf) { resetLeafValue(leaf); }
 interface FuncItem { id: string; sig: string; desc: string; expr: string; field?: string }
 interface FuncCategory { name: string; items: FuncItem[] }
 const FUNCTION_CATEGORIES: FuncCategory[] = [
   {
     name: '日期函数',
     items: [
-      { id: 'now', sig: 'now()', desc: '当前时间', expr: 'now()', field: '创建时间' },
+      { id: 'now', sig: 'now()', desc: '当前时间', expr: 'daysBetween(创建时间, now()) <= 1', field: '创建时间' },
       { id: 'daysBetween', sig: 'daysBetween(d1,d2)', desc: '两日期间天数差', expr: 'daysBetween(创建时间, now()) > 7', field: '创建时间' },
-      { id: 'addHours', sig: 'addHours(date,n)', desc: '日期加 n 小时', expr: 'addHours(创建时间, 168)', field: '创建时间' },
-      { id: 'isWorkday', sig: 'isWorkday(date)', desc: '是否工作日', expr: 'isWorkday(now())', field: '创建时间' },
+      { id: 'addHours', sig: 'addHours(date,n)', desc: '日期加 n 小时', expr: 'now() > addHours(创建时间, 168)', field: '创建时间' },
+      { id: 'isWorkday', sig: 'isWorkday(date)', desc: '是否工作日', expr: 'isWorkday(now()) == false', field: '创建时间' },
     ],
   },
   {
     name: '字符串函数',
     items: [
-      { id: 'trim', sig: 'trim(s)', desc: '去首尾空格', expr: 'trim(标题) == "投诉"', field: '工单类型' },
-      { id: 'upper', sig: 'upper(s)', desc: '转大写', expr: 'upper(工单来源)', field: '工单来源' },
-      { id: 'lower', sig: 'lower(s)', desc: '转小写', expr: 'lower(工单来源)', field: '工单来源' },
-      { id: 'contains', sig: 'contains(s,sub)', desc: '是否包含子串', expr: 'contains(标题, "硬件")', field: '问题一类' },
-      { id: 'replace', sig: 'replace(s,a,b)', desc: '替换文本', expr: 'replace(标题, "旧", "新")', field: '工单类型' },
-      { id: 'mask', sig: 'mask(s,a,b)', desc: '脱敏', expr: 'mask(客户电话, 3, 4)', field: '客户类型' },
+      { id: 'trim', sig: 'trim(s)', desc: '去首尾空格', expr: 'trim(设备SN) == "SN001"', field: '设备SN' },
+      { id: 'upper', sig: 'upper(s)', desc: '转大写', expr: 'upper(工单来源) == "APP"', field: '工单来源' },
+      { id: 'lower', sig: 'lower(s)', desc: '转小写', expr: 'lower(工单来源) == "app"', field: '工单来源' },
+      { id: 'contains', sig: 'contains(s,sub)', desc: '是否包含子串', expr: 'contains(设备SN, "SN")', field: '设备SN' },
+      { id: 'replace', sig: 'replace(s,a,b)', desc: '替换文本', expr: 'replace(设备SN, "-", "") == "SN123456"', field: '设备SN' },
+      { id: 'mask', sig: 'mask(s,a,b)', desc: '脱敏', expr: 'mask(投诉编号, 3, 4) != ""', field: '投诉编号' },
     ],
   },
   {
@@ -254,14 +305,32 @@ const OP_OPTS = [
   { label: '空值', options: ['为空', '不为空'].map((o) => ({ value: o, label: o })) },
   { label: '高级', options: ['正则匹配', '区间范围', '自定义表达式'].map((o) => ({ value: o, label: o })) },
 ];
+// 按字段类型限定可用操作符：枚举=等值/集合，文本=含子串/正则，数字/日期=比较/区间。避免"对枚举做文本包含"这类不合理组合。
+// 每类型末尾都带「自定义表达式」作为高级逃生口（写整行布尔表达式，配合内置函数）。
+const OP_BY_TYPE: Record<string, string[]> = {
+  枚举: ['等于', '不等于', '属于列表', '不属于列表', '为空', '不为空', '自定义表达式'],
+  文本: ['等于', '不等于', '包含', '不包含', '开头是', '结尾是', '为空', '不为空', '正则匹配', '自定义表达式'],
+  数字: ['等于', '不等于', '大于', '大于等于', '小于', '小于等于', '区间范围', '为空', '不为空', '自定义表达式'],
+  时长: ['大于', '大于等于', '小于', '小于等于', '为空', '不为空', '自定义表达式'],
+  日期: ['大于', '大于等于', '小于', '小于等于', '区间范围', '为空', '不为空', '自定义表达式'],
+  系统: ['等于', '不等于', '为空', '不为空', '自定义表达式'],
+  流程: ['等于', '不等于', '属于列表', '不属于列表', '为空', '不为空', '自定义表达式'],
+};
+function isExprOp(op: string) { return op === '自定义表达式'; }
+function opOptsFor(field: string) {
+  const allowed = OP_BY_TYPE[fieldType(field)] ?? OP_BY_TYPE['文本'];
+  return OP_OPTS
+    .map((g) => ({ label: g.label, options: g.options.filter((o) => allowed.includes(o.value)) }))
+    .filter((g) => g.options.length);
+}
 const ACTION_KINDS: ActionKind[] = ['派单', '升级路由', '内部升级', '设置审核人', '通知', '预警', '改字段', '改优先级', '打标签', 'Webhook'];
 const DISPATCH_TARGETS = ['组', '池', '人'];
 const GROUP_OPTS = ['学习机处理组', '技术支持组', '大客户专属组', '夜班应急组', '二线技术支持组'];
 const POOL_OPTS = ['通用池', '商机池', '销服池', '大客户专属池'];
 const PERSON_OPTS = ['张三', '李四', '王五'];
 const IN_GROUP_OPTS = ['自动分配到人', '进池待领'];
-// 升级路由（A4-04）：升级到目标系统/通道
-const ESCALATE_TARGETS = ['RDM', 'TPD', '飞书', '磐石', '二线技术支持组'];
+// 升级路由（A4-04）：升级到外部目标系统/通道 或 跨级处理组（技术支持组/二线等）
+const ESCALATE_TARGETS = ['RDM', 'TPD', '飞书', '磐石', '技术支持组', '二线技术支持组'];
 // 内部升级对象（对内：上级组/角色，区别于对外的升级路由目标系统）
 const ESCALATE_INTERNAL = ['班组长', '技术支持组', '二线技术支持组', '主管', '管理层', '产研', '投诉风险组'];
 const NOTIFY_TARGETS = ['当前用户', '处理人', '班组长', '投诉风险组', '产研', '主管', '管理层', '指定人'];
@@ -277,24 +346,37 @@ function dispatchValueOpts(target: string): string[] {
 function triggerText(t: Trigger): string {
   if (t.kind === 'manual') return '手动触发';
   if (t.kind === 'event') return `事件·${t.event}`;
-  return timerFreqKind(t.freq) === 'schedule' ? `定时·每天 ${timerFreqLabel(t.freq)}` : `轮询·每 ${timerFreqLabel(t.freq)}`;
+  return timerFreqKind(t.freq) === 'schedule' ? `定时·${t.freq}` : `轮询·每 ${timerFreqLabel(t.freq)}`;
 }
 function triggerPreview(t: Trigger): string {
   if (t.kind === 'manual') return '坐席在工单上手动触发';
   if (t.kind === 'event') return `当「${t.event}」时评估`;
   return timerFreqKind(t.freq) === 'schedule'
-    ? `每天 ${timerFreqLabel(t.freq)} 执行`
+    ? `${t.freq} 定时执行`
     : `每 ${timerFreqLabel(t.freq)} 轮询`;
 }
 function setTriggerKind(kind: TriggerKind) {
   form.trigger.kind = kind;
   if (kind === 'timer' && !form.trigger.freq) form.trigger.freq = '每小时';
 }
+// 定时模式（轮询/周期）与 周期定时的「周期 + 时刻」——freq 编码：轮询='每小时'，周期='每天 09:00'/'每周一 09:00'/'每月1日 18:00'
+const timerMode = computed<'interval' | 'schedule'>({
+  get: () => timerFreqKind(form.trigger.freq),
+  set: (m) => { form.trigger.freq = m === 'schedule' ? '每天 09:00' : '每小时'; },
+});
+const schedPeriod = computed({
+  get: () => form.trigger.freq.split(' ')[0] || '每天',
+  set: (p: string) => { form.trigger.freq = `${p} ${form.trigger.freq.split(' ')[1] || '09:00'}`; },
+});
+const schedTime = computed({
+  get: () => form.trigger.freq.split(' ')[1] || '09:00',
+  set: (t: string) => { form.trigger.freq = `${form.trigger.freq.split(' ')[0] || '每天'} ${t || '09:00'}`; },
+});
 function setRuleStatus(enabled: boolean) {
   form.status = enabled ? '启用' : '停用';
 }
 function addTimerCondExample() {
-  form.conditions.leaves.push(mkLeaf('状态', '等于', '待客户回复'), mkLeaf('创建时间', '自定义表达式', 'daysBetween(创建时间, now()) > 7'));
+  form.conditions.leaves.push(mkLeaf('更新后经过时长', '大于', '7 天'));
   message.success('已插入定时规则示例条件（待客户回复 + 超 7 天）');
 }
 function actionTypeOf(a: Action): string {
@@ -369,7 +451,7 @@ const rules = ref<Rule[]>([
   {
     no: 'RL004', name: '7天无回复自动关单', priority: 4, status: '启用', remark: '定时(非SLA)',
     trigger: defTrigger('timer'),
-    conditions: { operator: 'AND', leaves: [mkLeaf('状态', '等于', '待客户回复'), mkLeaf('创建时间', '大于', '168小时')], groups: [] },
+    conditions: { operator: 'AND', leaves: [mkLeaf('更新后经过时长', '大于', '7 天')], groups: [] },
     actions: [mkAction('改字段', { fieldName: '状态', fieldValue: '已关闭' })], hits: 210,
   },
   {
@@ -387,7 +469,7 @@ const rules = ref<Rule[]>([
   {
     no: 'RL007', name: '扬言投诉/曝光预警', priority: 7, status: '启用', remark: '风险·监控告警',
     trigger: { kind: 'event', event: '客户回复', freq: '每小时' },
-    conditions: { operator: 'AND', leaves: [mkLeaf('最新客户消息', '包含', '投诉、曝光、12315')], groups: [] },
+    conditions: { operator: 'AND', leaves: [mkLeaf('客户情绪等级', '属于列表', '愤怒,扬言投诉')], groups: [] },
     actions: [mkAction('预警', { notifyTargets: ['投诉风险组'], notifyChannels: ['系统通知', 'i讯飞'] })], hits: 27,
   },
   {
@@ -445,8 +527,8 @@ const rules = ref<Rule[]>([
     actions: [mkAction('预警', { notifyTargets: ['处理人'], notifyChannels: ['系统通知', 'i讯飞'] })], hits: 14,
   },
   {
-    no: 'RL017', name: '超能力内部升级', priority: 17, status: '启用', remark: '手动/事件·内部升级',
-    trigger: { kind: 'manual', event: '工单创建', freq: '每小时' },
+    no: 'RL017', name: '超能力内部升级', priority: 17, status: '启用', remark: '事件·内部升级',
+    trigger: { kind: 'event', event: '工单升级', freq: '每小时' },
     conditions: { operator: 'AND', leaves: [mkLeaf('工单类型', '等于', '技术')], groups: [] },
     actions: [mkAction('内部升级', { value: '班组长' })], hits: 9,
   },
@@ -542,6 +624,11 @@ function blankRule(): Rule {
 }
 const elseEnabled = ref(false);
 const elseTarget = ref('通用池');
+// 升级失败兜底目标（升级目标不可用/超时无响应时转此，避免工单卡在死目标）
+const escFallbackTarget = ref('技术支持组');
+// 兜底对「分派路由」「升级路由」两类有意义、但语义不同：分派=未命中兜底到池；升级=升级目标失效兜底到备选。其余场景无兜底。
+const showFallback = computed(() => ['分派路由', '升级路由'].includes(typeOf(form)));
+const isEscalateRule = computed(() => typeOf(form) === '升级路由');
 function openNew() { editing.value = null; Object.assign(form, blankRule()); testResult.value = null; elseEnabled.value = false; elseTarget.value = '通用池'; woExpanded.value = false; mode.value = 'edit'; }
 function openEdit(r: Rule) { editing.value = r; Object.assign(form, JSON.parse(JSON.stringify(r))); testResult.value = null; elseEnabled.value = false; elseTarget.value = '通用池'; woExpanded.value = false; mode.value = 'edit'; }
 function backToList() { mode.value = 'list'; }
@@ -557,8 +644,8 @@ function delGroupLeaf(g: CondGroup, id: number) { g.leaves = g.leaves.filter((c)
 function addAction() { form.actions.push(mkAction('通知')); }
 function delAction(id: number) { form.actions = form.actions.filter((a) => a.id !== id); }
 // 变量库交互：点字段/函数/模板 快速搭条件
-function defaultOp(type: string): string { return type === '数字' ? '大于' : type === '日期' ? '大于' : '等于'; }
-function addFieldToCond(f: { key: string; type: string }) { form.conditions.leaves.push(mkLeaf(f.key, defaultOp(f.type), '')); }
+function defaultOp(type: string): string { return (type === '数字' || type === '日期' || type === '时长') ? '大于' : '等于'; }
+function addFieldToCond(f: { key: string; type: string }) { const leaf = mkLeaf(f.key, defaultOp(f.type), ''); resetLeafValue(leaf); form.conditions.leaves.push(leaf); }
 function insertFuncItem(item: FuncItem) {
   form.conditions.leaves.push(mkLeaf(item.field || '创建时间', '自定义表达式', item.expr));
   message.success(`已插入 ${item.sig}，可按需修改表达式`);
@@ -603,7 +690,8 @@ function del(r: Rule) {
 
 // —— 规则测试 ——
 const sample = reactive<Record<string, string>>({ 业务类型: '翻录', 工单类型: '投诉', 工单来源: '400呼入', 产品名称: '学习机 T20', 状态: '待受理' });
-const testResult = ref<null | { hit: boolean }>(null);
+interface TestRow { no: string; name: string; priority: number; cur: boolean; matched: boolean; scene: string; policy: string }
+const testResult = ref<null | { rows: TestRow[]; curOutcome: string; curMatched: boolean }>(null);
 function evalLeaf(c: CondLeaf): boolean {
   const v = sample[c.field] ?? '';
   switch (c.op) {
@@ -621,11 +709,39 @@ function evalLeaf(c: CondLeaf): boolean {
   }
 }
 function combine(op: 'AND' | 'OR', arr: boolean[]): boolean { return arr.length === 0 ? true : (op === 'AND' ? arr.every(Boolean) : arr.some(Boolean)); }
+/** 评估一条规则的 IF：自底向上——叶→子组→根（见 §6.8 判定逻辑） */
+function evalConditions(cond: Rule['conditions']): boolean {
+  const rootLeaves = cond.leaves.map(evalLeaf);
+  const groupRes = cond.groups.map((g) => combine(g.operator, g.leaves.map(evalLeaf)));
+  return combine(cond.operator, [...rootLeaves, ...groupRes]);
+}
+/** 候选规则 = 与当前规则同触发时机的启用规则（事件类还需同事件） */
+function sameTriggerCtx(t: Trigger): boolean {
+  if (t.kind !== form.trigger.kind) return false;
+  if (t.kind === 'event') return t.event === form.trigger.event;
+  return true;
+}
 function runTest() {
-  const c = form.conditions;
-  const rootLeaves = c.leaves.map(evalLeaf);
-  const groupRes = c.groups.map((g) => combine(g.operator, g.leaves.map(evalLeaf)));
-  testResult.value = { hit: combine(c.operator, [...rootLeaves, ...groupRes]) };
+  // 全规则集模拟：① 选候选（同触发时机+启用）② 并入当前编辑规则 ③ 按生效优先级升序 ④ 逐条评估 ⑤ 首条命中即止 → 看当前规则是否真正生效
+  const curRule = { no: form.no || '（当前）', name: form.name || '当前规则', priority: form.priority, conditions: form.conditions, actions: form.actions, cur: true };
+  const others = rules.value
+    .filter((r) => r.status === '启用' && r.no !== form.no && sameTriggerCtx(r.trigger))
+    .map((r) => ({ no: r.no, name: r.name, priority: r.priority, conditions: r.conditions, actions: r.actions, cur: false }));
+  const pool = [...others, curRule].sort((a, b) => a.priority - b.priority);
+  const rows: TestRow[] = pool.map((r) => ({
+    no: r.no, name: r.name, priority: r.priority, cur: r.cur,
+    matched: evalConditions(r.conditions),
+    scene: typeOf({ actions: r.actions } as Rule),
+    policy: hitPolicyOf({ actions: r.actions } as Rule),
+  }));
+  const firstMatched = rows.find((r) => r.matched) || null;
+  const curRow = rows.find((r) => r.cur)!;
+  let curOutcome: string;
+  if (!curRow.matched) curOutcome = '当前规则未命中样例工单（IF 条件不满足）';
+  else if (firstMatched && curRow.no === firstMatched.no) curOutcome = '✓ 当前规则命中，且为最高优先级命中 → 生效';
+  else if (curRow.policy === '全部命中') curOutcome = '✓ 当前规则命中 → 与其他叠加类规则一并生效';
+  else curOutcome = `当前规则命中，但被更高优先级的「${firstMatched?.name}」遮蔽（同为首条命中即止）`;
+  testResult.value = { rows, curOutcome, curMatched: curRow.matched };
 }
 
 // —— 路由矩阵（mock）——
@@ -649,9 +765,12 @@ const escMatrix: Record<string, Record<string, string>> = {
 // —— 执行日志 ——
 type LogStatIcon = 'timer' | 'event' | 'coverage';
 const logStatCards: { label: string; value: string; delta: string; deltaColor: string; accent: string; iconBg: string; icon: LogStatIcon }[] = [
-  { label: '定时任务今日执行', value: '1,248', delta: '较昨日 +8.2%', deltaColor: '#10b981', accent: '#1a6fff', iconBg: '#eff6ff', icon: 'timer' },
-  { label: '事件规则今日命中', value: '4,320', delta: '较昨日 +5.1%', deltaColor: '#10b981', accent: '#0ea5e9', iconBg: '#f0f9ff', icon: 'event' },
-  { label: '规则覆盖率', value: '78%', delta: '启用 14/17 条', deltaColor: '#6b7280', accent: '#10b981', iconBg: '#ecfdf5', icon: 'coverage' },
+  { label: '定时任务今日执行', value: '1,248', delta: '较昨日 +8.2%', deltaColor: '#10b981', accent: '#1a6fff', iconBg: '#eff6ff', icon: 'timer',
+    tip: '当日 00:00 至此刻，所有定时规则按各自频率轮询执行的总轮次数（每条定时规则每触发一轮计 1）。环比 = (今日同时段 − 昨日同时段) / 昨日同时段。衡量定时规则的整体负载。' },
+  { label: '事件规则今日命中', value: '4,320', delta: '较昨日 +5.1%', deltaColor: '#10b981', accent: '#0ea5e9', iconBg: '#f0f9ff', icon: 'event',
+    tip: '当日事件类规则被工单事件触发并「命中」（IF 条件满足）的总次数；一次事件可命中多条规则、各计 1 次。环比同上口径。衡量事件规则的活跃度。' },
+  { label: '规则覆盖率', value: '78%', delta: '启用 14/17 条', deltaColor: '#6b7280', accent: '#10b981', iconBg: '#ecfdf5', icon: 'coverage',
+    tip: '规则覆盖率 = 启用规则数 / 规则总数 ×100%（如 14/17 ≈ 78%）。衡量已启用规则占比；过低可能存在大量规则被停用或闲置，需排查。' },
 ];
 const eventRanking = computed(() => [...rules.value].filter((r) => r.trigger.kind === 'event').sort((a, b) => b.hits - a.hits).slice(0, 8));
 const timerLogRows = [
@@ -706,13 +825,18 @@ const timerLogCols = [
 
     <!-- ============ 执行日志 ============ -->
     <div v-else-if="activeKey === 'rules-logs'" class="body">
-      <AdminPageHeader title="执行日志" subtitle="定时任务按轮次记录执行情况；事件类规则统计命中次数。手动触发规则不在此页展示。" />
+      <AdminPageHeader title="执行日志" subtitle="定时任务按轮次记录执行情况；事件类规则统计命中次数。" />
       <section class="panel stat-block">
         <div class="stat-row">
           <div v-for="s in logStatCards" :key="s.label" class="stat-card" :style="{ '--accent': s.accent }">
             <div class="stat-card-inner">
               <div class="stat-main">
-                <div class="s-label">{{ s.label }}</div>
+                <div class="s-label">
+                  {{ s.label }}
+                  <a-tooltip :title="s.tip" placement="top" :mouse-enter-delay="0.1" color="#fffbeb" :overlay-inner-style="kpiTipOverlayStyle">
+                    <QuestionCircleOutlined class="s-tip-ic" />
+                  </a-tooltip>
+                </div>
                 <div class="s-value">{{ s.value }}</div>
                 <div class="s-delta" :style="{ color: s.deltaColor }">
                   <ArrowUpOutlined v-if="s.icon !== 'coverage'" class="delta-icon" />
@@ -739,7 +863,11 @@ const timerLogCols = [
           </a-table>
         </div>
         <div class="panel rank">
-          <div class="sec-h">事件规则命中排行</div>
+          <div class="sec-h">事件规则命中排行
+            <a-tooltip title="仅统计事件类规则，按累计命中次数降序取前 8 名，前 3 名序号高亮。用于识别高频规则（可能需拆分/优化）与长期零命中的低效规则。" placement="top" color="#fffbeb" :overlay-inner-style="kpiTipOverlayStyle">
+              <QuestionCircleOutlined class="s-tip-ic" style="margin-left:6px" />
+            </a-tooltip>
+          </div>
           <div v-for="(r, i) in eventRanking" :key="r.no" class="rank-row">
             <span class="rk" :class="{ top: i < 3 }">{{ i + 1 }}</span>
             <span class="rk-name">{{ r.name }}</span>
@@ -750,7 +878,7 @@ const timerLogCols = [
     </div>
 
     <!-- ============ 规则 · 列表 ============ -->
-    <div v-else-if="mode === 'list'" class="body">
+    <div v-else-if="mode === 'list'" class="body body--list">
       <AdminPageHeader title="规则管理" subtitle="配置何时触发、满足何种条件、执行何种动作；SLA 预警与超时升级在 SLA 引擎维护。">
         <template #actions><a-button type="primary" @click="openNew"><template #icon><PlusOutlined /></template>新建规则</a-button></template>
       </AdminPageHeader>
@@ -961,23 +1089,22 @@ const timerLogCols = [
                 </div>
                 <template v-else>
                   <div class="when-sentence">
-                    <template v-if="timerFreqKind(form.trigger.freq) === 'schedule'">
-                      <span class="ws-part">每天</span>
-                      <a-select v-model:value="form.trigger.freq" class="when-inline-select when-inline-select--time">
-                        <a-select-opt-group v-for="grp in TIMER_FREQ_GROUPS" :key="grp.label" :label="grp.label">
-                          <a-select-option v-for="o in grp.options" :key="o.value" :value="o.value" :title="o.desc">{{ o.label }}</a-select-option>
-                        </a-select-opt-group>
-                      </a-select>
-                      <span class="ws-part">定时执行，匹配 IF 条件</span>
+                    <span class="ws-part">按</span>
+                    <a-select v-model:value="timerMode" class="when-inline-select when-inline-select--time" :options="TIMER_MODE_OPTS" />
+                    <template v-if="timerMode === 'interval'">
+                      <span class="ws-part">·每</span>
+                      <a-select v-model:value="form.trigger.freq" class="when-inline-select when-inline-select--freq" :options="INTERVAL_OPTS.map((o) => ({ value: o.value, label: o.label, title: o.desc }))" />
+                      <span class="ws-part">轮询一次，匹配 IF 条件</span>
                     </template>
                     <template v-else>
-                      <span class="ws-part">每</span>
-                      <a-select v-model:value="form.trigger.freq" class="when-inline-select when-inline-select--freq">
-                        <a-select-opt-group v-for="grp in TIMER_FREQ_GROUPS" :key="grp.label" :label="grp.label">
-                          <a-select-option v-for="o in grp.options" :key="o.value" :value="o.value" :title="o.desc">{{ o.label }}</a-select-option>
+                      <span class="ws-part">·</span>
+                      <a-select v-model:value="schedPeriod" class="when-inline-select when-inline-select--time">
+                        <a-select-opt-group v-for="grp in SCHED_PERIOD_GROUPS" :key="grp.label" :label="grp.label">
+                          <a-select-option v-for="o in grp.options" :key="o" :value="o">{{ o }}</a-select-option>
                         </a-select-opt-group>
                       </a-select>
-                      <span class="ws-part">轮询一次，匹配 IF 条件</span>
+                      <a-time-picker v-model:value="schedTime" class="when-inline-time" format="HH:mm" value-format="HH:mm" :minute-step="5" :allow-clear="false" />
+                      <span class="ws-part">定时执行，匹配 IF 条件</span>
                     </template>
                   </div>
                   <div class="when-actions">
@@ -1002,11 +1129,18 @@ const timerLogCols = [
                   <a-radio-button value="OR">OR</a-radio-button>
                 </a-radio-group>
               </div>
-              <div v-for="c in form.conditions.leaves" :key="c.id" class="logic-row">
-                <a-select v-model:value="c.field" class="cell-field" :options="FIELD_OPTS.map((o) => ({ value: o, label: o }))" @change="(v: string) => onCondFieldChange(c, v)" />
-                <a-select v-model:value="c.op" class="cell-op" :options="OP_OPTS" />
-                <a-select v-if="FIELD_ENUM_VALUES[c.field]" v-model:value="c.value" class="cell-val" :options="fieldEnumOpts(c.field)" placeholder="选择值" />
-                <a-input v-else v-model:value="c.value" class="cell-val" placeholder="值（属于列表用逗号分隔）" />
+              <div v-for="c in form.conditions.leaves" :key="c.id" :class="['logic-row', { 'logic-row--expr': isExprOp(c.op) }]">
+                <a-select v-if="!isExprOp(c.op)" v-model:value="c.field" class="cell-field" :options="FIELD_OPTS.map((o) => ({ value: o, label: o }))" @change="(v: string) => onCondFieldChange(c, v)" />
+                <a-select v-model:value="c.op" class="cell-op" :options="opOptsFor(c.field)" @change="() => onCondOpChange(c)" />
+                <a-input v-if="isExprOp(c.op)" v-model:value="c.value" class="cell-expr" placeholder="布尔表达式，如 daysBetween(创建时间, now()) > 7（点左侧内置函数插入）" />
+                <span v-else-if="isNullOp(c.op)" class="cell-val cell-val--none">无需填值</span>
+                <span v-else-if="fieldType(c.field) === '时长'" class="cell-val cell-dur">
+                  <a-input-number :value="durNum(c.value)" :min="0" @change="(v: number) => (c.value = joinDur(v, durUnit(c.value)))" class="dur-num" />
+                  <a-select :value="durUnit(c.value)" :options="DUR_UNITS" @change="(u: string) => (c.value = joinDur(durNum(c.value), u))" class="dur-unit" />
+                </span>
+                <a-select v-else-if="FIELD_ENUM_VALUES[c.field] && isMultiOp(c.op)" mode="multiple" :value="toArr(c.value)" @change="(v: string[]) => (c.value = v.join(','))" class="cell-val" :options="fieldEnumOpts(c.field)" placeholder="选择一个或多个值" />
+                <a-select v-else-if="FIELD_ENUM_VALUES[c.field]" v-model:value="c.value" class="cell-val" :options="fieldEnumOpts(c.field)" placeholder="选择值" />
+                <a-input v-else v-model:value="c.value" class="cell-val" placeholder="值" />
                 <button type="button" class="cell-del" aria-label="删除条件" @click="delRootLeaf(c.id)"><DeleteOutlined /></button>
               </div>
               <div v-for="g in form.conditions.groups" :key="g.id" class="logic-subgrp">
@@ -1018,9 +1152,16 @@ const timerLogCols = [
                   <a-button type="link" size="small" danger class="sub-del" @click="delGroup(g.id)">删除组</a-button>
                 </div>
                 <div v-for="c in g.leaves" :key="c.id" class="logic-row">
-                  <a-select v-model:value="c.field" class="cell-field" :options="FIELD_OPTS.map((o) => ({ value: o, label: o }))" @change="(v: string) => onCondFieldChange(c, v)" />
-                  <a-select v-model:value="c.op" class="cell-op" :options="OP_OPTS" />
-                  <a-select v-if="FIELD_ENUM_VALUES[c.field]" v-model:value="c.value" class="cell-val" :options="fieldEnumOpts(c.field)" placeholder="选择值" />
+                  <a-select v-if="!isExprOp(c.op)" v-model:value="c.field" class="cell-field" :options="FIELD_OPTS.map((o) => ({ value: o, label: o }))" @change="(v: string) => onCondFieldChange(c, v)" />
+                  <a-select v-model:value="c.op" class="cell-op" :options="opOptsFor(c.field)" @change="() => onCondOpChange(c)" />
+                  <a-input v-if="isExprOp(c.op)" v-model:value="c.value" class="cell-expr" placeholder="布尔表达式，如 count(问题一类, 1) >= 10（点左侧内置函数插入）" />
+                  <span v-else-if="isNullOp(c.op)" class="cell-val cell-val--none">无需填值</span>
+                  <span v-else-if="fieldType(c.field) === '时长'" class="cell-val cell-dur">
+                    <a-input-number :value="durNum(c.value)" :min="0" @change="(v: number) => (c.value = joinDur(v, durUnit(c.value)))" class="dur-num" />
+                    <a-select :value="durUnit(c.value)" :options="DUR_UNITS" @change="(u: string) => (c.value = joinDur(durNum(c.value), u))" class="dur-unit" />
+                  </span>
+                  <a-select v-else-if="FIELD_ENUM_VALUES[c.field] && isMultiOp(c.op)" mode="multiple" :value="toArr(c.value)" @change="(v: string[]) => (c.value = v.join(','))" class="cell-val" :options="fieldEnumOpts(c.field)" placeholder="选择一个或多个值" />
+                  <a-select v-else-if="FIELD_ENUM_VALUES[c.field]" v-model:value="c.value" class="cell-val" :options="fieldEnumOpts(c.field)" placeholder="选择值" />
                   <a-input v-else v-model:value="c.value" class="cell-val" placeholder="值" />
                   <button type="button" class="cell-del" aria-label="删除条件" @click="delGroupLeaf(g, c.id)"><DeleteOutlined /></button>
                 </div>
@@ -1086,16 +1227,23 @@ const timerLogCols = [
             </div>
           </section>
 
-          <!-- ELSE 兜底（可选） -->
-          <section class="rule-block else-block">
+          <!-- 兜底（可选）——分派路由=未命中兜底到池；升级路由=升级失败/无响应兜底到备选目标 -->
+          <section v-if="showFallback" class="rule-block else-block">
             <div class="block-head">
-              <span class="badge badge-else">ELSE</span>
-              <span class="block-title">否则执行（可选）</span>
+              <span class="badge badge-else">兜底</span>
+              <span class="block-title">{{ isEscalateRule ? '升级失败兜底（可选）' : '否则路由（可选）' }}</span>
               <a-checkbox v-model:checked="elseEnabled" class="else-toggle">启用</a-checkbox>
+              <span class="block-sub">{{ isEscalateRule ? '升级目标不可用 / 超时无响应时转备选目标，避免工单卡在死目标' : '条件未命中时把工单兜底到指定池，避免无人认领' }}</span>
             </div>
             <div v-if="elseEnabled" class="block-body else-body">
-              <span class="else-label">路由到</span>
-              <a-select v-model:value="elseTarget" class="else-target" :options="POOL_OPTS.map((o) => ({ value: o, label: o }))" />
+              <template v-if="isEscalateRule">
+                <span class="else-label">升级失败 / 超时无响应 → 转</span>
+                <a-select v-model:value="escFallbackTarget" class="else-target" :options="ESCALATE_TARGETS.map((o) => ({ value: o, label: o }))" />
+              </template>
+              <template v-else>
+                <span class="else-label">路由到</span>
+                <a-select v-model:value="elseTarget" class="else-target" :options="POOL_OPTS.map((o) => ({ value: o, label: o }))" />
+              </template>
             </div>
           </section>
         </div>
@@ -1123,9 +1271,15 @@ const timerLogCols = [
               <div class="ti"><span class="tl">状态</span><a-input v-model:value="sample.状态" size="small" /></div>
               <a-button type="primary" size="small" block @click="runTest">测试命中</a-button>
             </div>
-            <div v-if="testResult" class="test-res" :class="testResult.hit ? 'ok' : 'no'">
-              <template v-if="testResult.hit">✓ 命中 → {{ actionsText(form) }}</template>
-              <template v-else>✗ 未命中（条件不满足）</template>
+            <div v-if="testResult" class="test-res-full">
+              <div class="test-outcome" :class="testResult.curMatched ? 'ok' : 'no'">{{ testResult.curOutcome }}</div>
+              <div class="test-flow-h">全规则集模拟 · 同触发时机 · 按生效优先级</div>
+              <div v-for="r in testResult.rows" :key="r.no" class="trr" :class="{ cur: r.cur, hit: r.matched }">
+                <span class="trr-pri">{{ r.priority }}</span>
+                <span class="trr-name">{{ r.name }}<span v-if="r.cur" class="trr-cur">本条</span></span>
+                <span class="trr-scene">{{ r.scene }}</span>
+                <span class="trr-res" :class="r.matched ? 'y' : 'n'">{{ r.matched ? '✓ 命中' : '✗' }}</span>
+              </div>
             </div>
           </section>
           <section class="sec">
@@ -1158,13 +1312,15 @@ const timerLogCols = [
 <style scoped>
 .rules-engine { display: flex; flex-direction: column; min-height: 100%; }
 .body { padding: 16px 24px; display: flex; flex-direction: column; gap: 12px; }
+.body--list { gap: 8px; }
+.body--list :deep(.admin-page-header) { margin-bottom: 0; }
 .panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px 20px; }
 .list-card {
   background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;
 }
 .list-toolbar {
   display: flex; align-items: center; justify-content: flex-end;
-  padding: 12px 16px; border-bottom: 1px solid #f0f2f5;
+  padding: 8px 16px; border-bottom: 1px solid #f0f2f5;
 }
 .toolbar-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
 .filters { display: flex; gap: 12px; flex-wrap: wrap; }
@@ -1207,7 +1363,9 @@ const timerLogCols = [
 .stat-card-inner { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .stat-main { flex: 1; min-width: 0; }
 .stat-icon { width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex: none; }
-.s-label { font-size: 12px; color: #6b7280; }
+.s-label { font-size: 12px; color: #6b7280; display: flex; align-items: center; gap: 4px; }
+.s-tip-ic { color: #1a6fff; font-size: 13px; cursor: help; opacity: 0.75; }
+.s-tip-ic:hover { opacity: 1; }
 .s-value { font-size: 28px; font-weight: 700; color: #111827; margin: 6px 0 4px; line-height: 1.1; }
 .s-delta { font-size: 12px; display: flex; align-items: center; gap: 4px; }
 .delta-icon { font-size: 10px; }
@@ -1397,7 +1555,8 @@ const timerLogCols = [
 .ws-part { white-space: nowrap; }
 .when-inline-select { width: 148px; flex: none; }
 .when-inline-select--freq { width: 96px; }
-.when-inline-select--time { width: 88px; }
+.when-inline-select--time { width: 116px; }
+.when-inline-time { width: 100px; flex: none; }
 .when-actions {
   display: flex;
   align-items: center;
@@ -1423,6 +1582,9 @@ const timerLogCols = [
   align-items: center;
   margin-bottom: 6px;
 }
+/* 自定义表达式：去掉字段列，op | 整行表达式 | 删除 */
+.logic-row--expr { grid-template-columns: 112px minmax(160px, 1fr) 28px; }
+.cell-expr { width: 100%; font-family: 'SF Mono', 'Cascadia Code', Consolas, monospace; font-size: 12px; }
 .logic-subgrp {
   margin: 6px 0 8px;
   padding: 8px 10px;
@@ -1509,6 +1671,10 @@ const timerLogCols = [
 .ed-canvas :deep(.ant-input-number) { width: 100%; }
 .cell-field, .cell-op, .cell-val,
 .when-event, .else-target, .act-sub-val { width: 100%; min-width: 0; }
+.cell-val--none { display: inline-flex; align-items: center; height: 32px; padding: 0 11px; color: #9ca3af; font-size: 13px; background: #f9fafb; border: 1px dashed #e5e7eb; border-radius: 6px; }
+.cell-dur { display: flex; gap: 6px; }
+.cell-dur .dur-num { flex: 1; min-width: 0; }
+.cell-dur .dur-unit { width: 76px; flex: none; }
 
 /* IF 顶层 AND/OR + 子组 toggle */
 .logic-toggle :deep(.ant-radio-button-wrapper-checked),
@@ -1603,6 +1769,21 @@ const timerLogCols = [
 .test-res { margin-top: 8px; padding: 8px 10px; border-radius: 6px; font-size: 12px; }
 .test-res.ok { background: var(--re-success-bg); border: 1px solid #bbf7d0; color: var(--re-success); }
 .test-res.no { background: var(--re-danger-bg); border: 1px solid #fecaca; color: var(--re-danger); }
+.test-res-full { margin-top: 8px; }
+.test-outcome { padding: 8px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; margin-bottom: 8px; }
+.test-outcome.ok { background: var(--re-success-bg); border: 1px solid #bbf7d0; color: var(--re-success); }
+.test-outcome.no { background: var(--re-danger-bg); border: 1px solid #fecaca; color: var(--re-danger); }
+.test-flow-h { font-size: 11px; color: #9ca3af; margin: 4px 0 6px; }
+.trr { display: grid; grid-template-columns: 22px 1fr auto auto; gap: 8px; align-items: center; padding: 5px 8px; border: 1px solid #eef0f3; border-radius: 6px; margin-bottom: 4px; font-size: 12px; }
+.trr.cur { border-color: #1a6fff; background: #f5f9ff; }
+.trr.hit { background: #f0fdf4; }
+.trr.cur.hit { background: #eff6ff; }
+.trr-pri { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; border-radius: 5px; background: #eef4ff; color: #1a6fff; font-weight: 600; font-size: 11px; }
+.trr-name { color: #111827; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trr-cur { margin-left: 5px; padding: 0 5px; border-radius: 4px; background: #1a6fff; color: #fff; font-size: 10px; }
+.trr-scene { color: #6b7280; font-size: 11px; }
+.trr-res.y { color: #10b981; font-weight: 600; }
+.trr-res.n { color: #c0c4cc; }
 .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .meta-item { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; border: 1px solid #eef0f3; border-radius: 6px; background: #fafbfc; }
 .mk { font-size: 11px; color: #9ca3af; }

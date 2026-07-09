@@ -24,7 +24,7 @@ export interface SuspendInfo {
 // 规范的 9 子流程操作 + 常驻（保存/标记已解决）+ 管理类（关闭/归档/取消）
 export type OpActionType =
   | '保存草稿' | '标记已解决'
-  | '转办' | '委派' | '下送' | '撤回' | '强结'
+  | '调剂' | '委派' | '下送' | '撤回' | '强结'
   | '挂起' | '恢复' | '退回' | '升级' | '同步飞书' | '转售后'
   | '关闭工单' | '归档工单' | '取消工单';
 
@@ -48,7 +48,7 @@ export interface ReturnPayload { reason: string; targetNode: string; note: strin
 
 export type OpActionPayload =
   | { type: '保存草稿' }
-  | { type: '转办'; data: TransferPayload }
+  | { type: '调剂'; data: TransferPayload }
   | { type: '委派'; data: DelegatePayload }
   | { type: '下送'; data: ForwardPayload }
   | { type: '强结'; data: ForceClosePayload }
@@ -136,6 +136,13 @@ export function statusLabel(state: TicketOpState): string {
   return map[state];
 }
 
+/** 计时终止（结案/关闭/取消）：所有活跃钟置「停表」，永久停止、不可重启 */
+function terminateClocks(detail: TicketDetailMeta): void {
+  detail.slaClocks.forEach((c) => {
+    c.phase = 'stopped';
+  });
+}
+
 export function applyOpAction(
   detail: TicketDetailMeta,
   timeline: TimelineEntry[],
@@ -149,13 +156,13 @@ export function applyOpAction(
     case '保存草稿':
       return { opState, suspendInfo, message: '已保存，可稍后继续处理' };
 
-    case '转办': {
+    case '调剂': {
       const { target, reason } = payload.data;
       pushEntry(timeline, {
         category: 'node', action: 'transfer', who: operator, role: operatorRole,
-        how: '转办', what: `转办至 ${target.split(' ')[0]}（处理人变更，状态仍为处理中）。原因：${reason || '—'}`,
+        how: '调剂', what: `调剂至 ${target.split(' ')[0]}（处理人变更，状态仍为处理中）。原因：${reason || '—'}`,
       });
-      return { opState, suspendInfo, message: `已转办至 ${target.split(' ')[0]}` };
+      return { opState, suspendInfo, message: `已调剂至 ${target.split(' ')[0]}` };
     }
 
     case '委派': {
@@ -183,6 +190,7 @@ export function applyOpAction(
     case '强结': {
       const { reason, approver, detail: note } = payload.data;
       detail.status = '已结案';
+      terminateClocks(detail);
       pushEntry(timeline, {
         category: 'resolved', action: 'resolved', who: operator, role: operatorRole,
         how: '强结 · 审批通过', what: `【强制结案】原因：${reason}；审批：${approver}。${note ? `说明：${note}` : ''}（绕过满意度回访）`,
@@ -193,9 +201,10 @@ export function applyOpAction(
     case '挂起': {
       const { reason, detail: note, resumeAt } = payload.data;
       detail.status = '已挂起';
-      detail.slaNode = '已停表';
-      detail.slaWhole = '已停表';
-      detail.slaNodeOverdue = false;
+      // 暂停：计时冻结，剩余秒保留，恢复后可续算
+      detail.slaClocks.forEach((c) => {
+        c.phase = 'paused';
+      });
       const info: SuspendInfo = { reason, detail: note, resumeAt, operator, at: nowWhen() };
       pushEntry(timeline, {
         category: 'node', action: 'hold', who: operator, role: operatorRole,
@@ -265,8 +274,27 @@ export function applyOpAction(
     case '恢复': {
       const { reason, detail: note } = payload.data;
       detail.status = '处理中';
-      detail.slaNode = '01:45:00';
-      detail.slaWhole = '02:15:00';
+      detail.slaClocks = [
+        {
+          label: '整单解决',
+          kind: 'whole',
+          phase: 'running',
+          remainSec: 8100, // 02:15:00
+          totalSec: 17280,
+          warnSec: 1800,
+          dueBy: '今日 16:40',
+          nodePctOnWhole: 71,
+        },
+        {
+          label: '节点·处理',
+          kind: 'node',
+          phase: 'running',
+          remainSec: 6300, // 01:45:00
+          totalSec: 7200,
+          warnSec: 900,
+          dueBy: '今日 15:20',
+        },
+      ];
       pushEntry(timeline, {
         category: 'node', action: 'accept', who: operator, role: operatorRole,
         how: '恢复处理', what: `挂起结束，恢复处理。原因：${reason}${note ? `；${note}` : ''}`,
@@ -290,6 +318,7 @@ export function applyOpAction(
     case '关闭工单': {
       const { target, result, solution } = payload.data;
       detail.status = target === 'closed' ? '已关闭' : '待回访';
+      if (target === 'closed') terminateClocks(detail);
       pushEntry(timeline, {
         category: 'resolved', action: 'resolved', who: operator, role: operatorRole,
         how: target === 'closed' ? '关闭工单' : '标记已解决',
@@ -313,6 +342,7 @@ export function applyOpAction(
 
     case '取消工单': {
       detail.status = '已取消';
+      terminateClocks(detail);
       pushEntry(timeline, {
         category: 'node', action: 'transfer', who: operator, role: operatorRole,
         how: '取消工单', what: payload.reason || '工单已取消。',

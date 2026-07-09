@@ -31,7 +31,7 @@ const props = withDefaults(
     searchPlaceholder: '搜索工单号、手机号、SN、产品…',
     showSearch: true,
     showCreate: true,
-    batchActions: () => ['转办', '退回'],
+    batchActions: () => ['调剂', '退回'],
     showFilterToggle: false,
     filterExpanded: false,
   },

@@ -25,7 +25,7 @@ const COMPLAINT_CONSULT: TicketType[] = ['投诉', '咨询']; // 仅投诉/咨�
 
 export const ACTION_DEFS: ActionDef[] = [
   // —— 主操作区（高频流转）——
-  { key: '转办', label: '转办', icon: 'ArrowRightOutlined', group: 'primary', types: ALL },
+  { key: '调剂', label: '调剂', icon: 'ArrowRightOutlined', group: 'primary', types: ALL },
   { key: '委派', label: '委派', icon: 'TeamOutlined', group: 'primary', types: ALL },
   { key: '下送', label: '下送', icon: 'VerticalAlignBottomOutlined', group: 'primary', types: ALL },
   { key: '挂起', label: '挂起', icon: 'PauseCircleOutlined', group: 'primary', types: NO_LEAD },

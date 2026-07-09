@@ -248,7 +248,7 @@ watch(
               <input
                 v-model="form.customerQuery"
                 class="search-input"
-                placeholder="搜索手机号 / 姓名 / 客户编号"
+                placeholder="搜索手机号 / 姓名"
               />
             </div>
             <button type="button" class="btn-outline" @click="openCreateCustomer">

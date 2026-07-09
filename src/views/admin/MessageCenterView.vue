@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, computed } from 'vue';
-import { message } from 'ant-design-vue';
+import { message, Modal } from 'ant-design-vue';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons-vue';
 import { stdPagination } from '@/config/adminUi';
 
@@ -17,14 +17,15 @@ const smsChannels = ref([
   { id: 3, name: '备用通道', sign: '【讯飞】', daily: '10000', used: 0, status: false },
 ]);
 const smsTpls = ref([
-  { id: 1, code: 'SMS_WO_CREATE', name: '工单创建通知', content: '您的工单${no}已创建，我们将尽快处理', status: '已审核' },
-  { id: 2, code: 'SMS_WO_DONE', name: '工单结案通知', content: '您的工单${no}已处理完成，感谢您的耐心', status: '已审核' },
-  { id: 3, code: 'SMS_SLA_ALERT', name: '超时提醒', content: '工单${no}即将超时，请及时处理', status: '待审核' },
+  { id: 1, channelId: 1, code: 'SMS_WO_CREATE', name: '工单创建通知', content: '您的工单${no}已创建，我们将尽快处理', status: '已审核' },
+  { id: 2, channelId: 1, code: 'SMS_WO_DONE', name: '工单结案通知', content: '您的工单${no}已处理完成，感谢您的耐心', status: '已审核' },
+  { id: 3, channelId: 2, code: 'SMS_SLA_ALERT', name: '超时提醒', content: '工单${no}即将超时，请及时处理', status: '待审核' },
 ]);
-const smsLogs = ref([
-  { time: '2026-06-19 10:21', phone: '138****2046', tpl: '工单创建通知', result: '成功' },
-  { time: '2026-06-19 10:15', phone: '139****8821', tpl: '工单结案通知', result: '成功' },
-  { time: '2026-06-19 09:40', phone: '137****5510', tpl: '超时提醒', result: '失败' },
+interface SmsLog { time: string; phone: string; tpl: string; result: string; channel?: string; content?: string; failReason?: string; }
+const smsLogs = ref<SmsLog[]>([
+  { time: '2026-06-19 10:21', phone: '138****2046', tpl: '工单创建通知', result: '成功', channel: '阿里云短信', content: '【讯飞客服】您的工单WO-001已创建，我们将尽快处理' },
+  { time: '2026-06-19 10:15', phone: '139****8821', tpl: '工单结案通知', result: '成功', channel: '阿里云短信', content: '【讯飞客服】您的工单WO-002已处理完成，感谢您的耐心' },
+  { time: '2026-06-19 09:40', phone: '137****5510', tpl: '超时提醒', result: '失败', channel: '腾讯云短信', content: '【讯飞售后】工单WO-003即将超时，请及时处理', failReason: '号码停机' },
 ]);
 
 /* 邮件 */
@@ -61,10 +62,102 @@ const notices = ref([
 
 const RESULT_TONE: Record<string, string> = { 成功: 'green', 失败: 'red' };
 const AUDIT_TONE: Record<string, string> = { 已审核: 'green', 待审核: 'orange' };
-function delRow(arr: any, id: number) {
-  const i = arr.value.findIndex((x: any) => x.id === id);
+
+function nowStr() {
+  return new Date().toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-');
+}
+
+function delRow(arr: { value: { id: number }[] }, id: number) {
+  const i = arr.value.findIndex((x) => x.id === id);
   if (i >= 0) arr.value.splice(i, 1);
   message.success('已删除');
+}
+
+function confirmDel(title: string, content: string, onOk: () => void) {
+  Modal.confirm({ title, content, okText: '删除', okType: 'danger', cancelText: '取消', onOk });
+}
+
+function onChannelStatusChange(record: { name: string; status: boolean }) {
+  message.success(`渠道「${record.name}」已${record.status ? '启用' : '停用'}`);
+}
+
+function delSmsChannel(record: { id: number; name: string }) {
+  const refs = smsTpls.value.filter((t) => t.channelId === record.id);
+  if (refs.length) {
+    Modal.warning({
+      title: '无法删除',
+      content: `该渠道已被 ${refs.length} 个短信模板引用，请先解绑或删除模板后再删渠道。`,
+    });
+    return;
+  }
+  confirmDel('删除短信渠道', `确认删除「${record.name}」？删除后不可恢复。`, () => delRow(smsChannels, record.id));
+}
+
+function testSmsChannel(record: { id: number; name: string; status: boolean }) {
+  if (!record.status) {
+    message.warning('渠道已停用，请先启用后再测试');
+    return;
+  }
+  smsLogs.value.unshift({
+    time: nowStr(),
+    phone: '管理员手机',
+    tpl: '连通性测试',
+    result: '成功',
+    channel: record.name,
+    content: `${record.name} 渠道连通性测试短信`,
+  });
+  message.success(`测试短信已通过「${record.name}」发送，请查收并在发送日志中核对`);
+}
+
+function delSmsTpl(record: { id: number; name: string }) {
+  confirmDel('删除短信模板', `确认删除模板「${record.name}」？删除后凡调用该编码的业务将发送失败。`, () => delRow(smsTpls, record.id));
+}
+
+function testSmsTpl(record: { name: string; content: string; status: string }) {
+  if (record.status !== '已审核') {
+    message.warning('模板尚未审核通过，无法发送测试');
+    return;
+  }
+  smsLogs.value.unshift({
+    time: nowStr(),
+    phone: '管理员手机',
+    tpl: record.name,
+    result: '成功',
+    content: record.content.replace('${no}', 'WO-TEST').replace('${name}', '测试客户'),
+  });
+  message.success(`测试短信「${record.name}」已发送`);
+}
+
+const logDetailOpen = ref(false);
+const logDetail = ref<SmsLog | null>(null);
+function openSmsLogDetail(record: SmsLog) {
+  logDetail.value = record;
+  logDetailOpen.value = true;
+}
+
+function resendSmsLog(record: SmsLog) {
+  Modal.confirm({
+    title: '重发短信',
+    content: `确认向 ${record.phone} 重发「${record.tpl}」？将生成一条新的发送记录。`,
+    okText: '重发',
+    cancelText: '取消',
+    onOk: () => {
+      smsLogs.value.unshift({ ...record, time: nowStr(), result: '成功', failReason: undefined });
+      message.success('重发成功，已写入发送日志');
+    },
+  });
+}
+
+function delMailAccount(record: { id: number; name: string }) {
+  confirmDel('删除邮件账号', `确认删除「${record.name}」？`, () => delRow(mailAccounts, record.id));
+}
+
+function delMailTpl(record: { id: number; name: string }) {
+  confirmDel('删除邮件模板', `确认删除「${record.name}」？`, () => delRow(mailTpls, record.id));
+}
+
+function delInTpl(record: { id: number; name: string }) {
+  confirmDel('删除站内信模板', `确认删除「${record.name}」？`, () => delRow(inTpls, record.id));
 }
 
 // —— 统一的「新增/编辑」弹窗（schema 驱动，覆盖各子页实体）——
@@ -72,7 +165,7 @@ interface FieldSpec { k: string; l: string; req?: boolean; type?: 'text' | 'text
 type EntityKey = 'smsChannel' | 'smsTpl' | 'mailAccount' | 'mailTpl' | 'inTpl' | 'notice';
 const SCHEMAS: Record<EntityKey, { title: string; fields: FieldSpec[]; target: any; create: (f: any) => any }> = {
   smsChannel: { title: '短信渠道', fields: [{ k: 'name', l: '渠道名称', req: true }, { k: 'sign', l: '短信签名', req: true }, { k: 'daily', l: '日配额' }], target: smsChannels, create: (f) => ({ id: Date.now(), name: f.name, sign: f.sign, daily: f.daily || '0', used: 0, status: true }) },
-  smsTpl: { title: '短信模板', fields: [{ k: 'code', l: '模板编码', req: true }, { k: 'name', l: '模板名称', req: true }, { k: 'content', l: '模板内容', req: true, type: 'textarea' }], target: smsTpls, create: (f) => ({ id: Date.now(), code: f.code, name: f.name, content: f.content, status: '待审核' }) },
+  smsTpl: { title: '短信模板', fields: [{ k: 'code', l: '模板编码', req: true }, { k: 'name', l: '模板名称', req: true }, { k: 'content', l: '模板内容', req: true, type: 'textarea' }], target: smsTpls, create: (f) => ({ id: Date.now(), channelId: smsChannels.value.find((c) => c.status)?.id ?? smsChannels.value[0]?.id, code: f.code, name: f.name, content: f.content, status: '待审核' }) },
   mailAccount: { title: '邮件账号', fields: [{ k: 'name', l: '账号名', req: true }, { k: 'addr', l: '邮箱地址', req: true }, { k: 'smtp', l: 'SMTP' }], target: mailAccounts, create: (f) => ({ id: Date.now(), name: f.name, addr: f.addr, smtp: f.smtp || '', status: true }) },
   mailTpl: { title: '邮件模板', fields: [{ k: 'code', l: '模板编码', req: true }, { k: 'name', l: '模板名称', req: true }, { k: 'subject', l: '邮件主题', req: true }], target: mailTpls, create: (f) => ({ id: Date.now(), code: f.code, name: f.name, subject: f.subject, status: '待审核' }) },
   inTpl: { title: '站内信模板', fields: [{ k: 'code', l: '模板编码', req: true }, { k: 'name', l: '模板名称', req: true }, { k: 'content', l: '内容', req: true, type: 'textarea' }], target: inTpls, create: (f) => ({ id: Date.now(), code: f.code, name: f.name, content: f.content, status: '已审核' }) },
@@ -111,26 +204,42 @@ function saveModal() {
         <a-segmented v-model:value="smsSub" :options="[{value:'channel',label:'渠道'},{value:'template',label:'模板'},{value:'log',label:'发送日志'}]" style="margin-bottom: 16px" />
         <template v-if="smsSub === 'channel'">
           <div class="bar"><span class="tip">短信通道与签名配置，含日发送配额</span><a-button type="primary" @click="openCreate('smsChannel')"><template #icon><PlusOutlined /></template>新增渠道</a-button></div>
-          <a-table :columns="[{title:'渠道名称',dataIndex:'name'},{title:'签名',dataIndex:'sign',width:140},{title:'日配额',dataIndex:'daily',width:120},{title:'今日已用',dataIndex:'used',key:'used',width:120},{title:'启用',dataIndex:'status',key:'status',width:80}]" :data-source="smsChannels" row-key="id" :pagination="false" size="middle">
+          <a-table :columns="[{title:'渠道名称',dataIndex:'name'},{title:'签名',dataIndex:'sign',width:140},{title:'日配额',dataIndex:'daily',width:120},{title:'今日已用',dataIndex:'used',key:'used',width:120},{title:'启用',dataIndex:'status',key:'status',width:80},{title:'操作',key:'op',width:180}]" :data-source="smsChannels" row-key="id" :pagination="stdPagination()" size="middle">
             <template #bodyCell="{ column, record }">
               <span v-if="column.key === 'used'"><b>{{ record.used.toLocaleString() }}</b></span>
-              <a-switch v-else-if="column.key === 'status'" v-model:checked="record.status" size="small" />
+              <a-switch v-else-if="column.key === 'status'" v-model:checked="record.status" size="small" @change="() => onChannelStatusChange(record)" />
+              <template v-else-if="column.key === 'op'">
+                <a-button type="link" size="small" @click="openEdit('smsChannel', record)">编辑</a-button>
+                <a-button type="link" size="small" @click="testSmsChannel(record)">测试</a-button>
+                <a-button type="link" size="small" danger @click="delSmsChannel(record)">删除</a-button>
+              </template>
             </template>
           </a-table>
         </template>
         <template v-else-if="smsSub === 'template'">
           <div class="bar"><span class="tip">短信模板需运营商审核后方可发送</span><a-button type="primary" @click="openCreate('smsTpl')"><template #icon><PlusOutlined /></template>新增模板</a-button></div>
-          <a-table :columns="[{title:'模板编码',dataIndex:'code',key:'code',width:170},{title:'名称',dataIndex:'name',width:140},{title:'内容',dataIndex:'content'},{title:'状态',dataIndex:'status',key:'status',width:90},{title:'操作',key:'op',width:90}]" :data-source="smsTpls" row-key="id" :pagination="false" size="middle">
+          <a-table :columns="[{title:'模板编码',dataIndex:'code',key:'code',width:170},{title:'名称',dataIndex:'name',width:140},{title:'内容',dataIndex:'content'},{title:'状态',dataIndex:'status',key:'status',width:90},{title:'操作',key:'op',width:160}]" :data-source="smsTpls" row-key="id" :pagination="stdPagination()" size="middle">
             <template #bodyCell="{ column, record }">
               <span v-if="column.key === 'code'">{{ record.code }}</span>
               <a-tag v-else-if="column.key === 'status'" :color="AUDIT_TONE[record.status]">{{ record.status }}</a-tag>
-              <template v-else-if="column.key === 'op'"><EditOutlined class="op-ic" @click="openEdit('smsTpl', record)" /><DeleteOutlined class="op-ic danger" @click="delRow(smsTpls, record.id)" /></template>
+              <template v-else-if="column.key === 'op'">
+                <a-button type="link" size="small" @click="openEdit('smsTpl', record)">编辑</a-button>
+                <a-button type="link" size="small" @click="testSmsTpl(record)">测试</a-button>
+                <a-button type="link" size="small" danger @click="delSmsTpl(record)">删除</a-button>
+              </template>
             </template>
           </a-table>
         </template>
         <template v-else>
-          <a-table :columns="[{title:'时间',dataIndex:'time',width:160},{title:'号码',dataIndex:'phone',width:140},{title:'模板',dataIndex:'tpl'},{title:'结果',dataIndex:'result',key:'result',width:90}]" :data-source="smsLogs" row-key="time" :pagination="stdPagination()" size="middle">
-            <template #bodyCell="{ column, record }"><a-tag v-if="column.key === 'result'" :color="RESULT_TONE[record.result]">{{ record.result }}</a-tag></template>
+          <div class="bar"><span class="tip">只读发送流水；失败记录可重发（生成新日志）</span></div>
+          <a-table :columns="[{title:'时间',dataIndex:'time',width:160},{title:'号码',dataIndex:'phone',width:140},{title:'模板',dataIndex:'tpl'},{title:'结果',dataIndex:'result',key:'result',width:90},{title:'操作',key:'op',width:120}]" :data-source="smsLogs" row-key="time" :pagination="stdPagination()" size="middle">
+            <template #bodyCell="{ column, record }">
+              <a-tag v-if="column.key === 'result'" :color="RESULT_TONE[record.result]">{{ record.result }}</a-tag>
+              <template v-else-if="column.key === 'op'">
+                <a-button type="link" size="small" @click="openSmsLogDetail(record)">详情</a-button>
+                <a-button v-if="record.result === '失败'" type="link" size="small" @click="resendSmsLog(record)">重发</a-button>
+              </template>
+            </template>
           </a-table>
         </template>
       </a-tab-pane>
@@ -140,16 +249,26 @@ function saveModal() {
         <a-segmented v-model:value="mailSub" :options="[{value:'account',label:'账号'},{value:'template',label:'模板'},{value:'log',label:'发送记录'}]" style="margin-bottom: 16px" />
         <template v-if="mailSub === 'account'">
           <div class="bar"><span class="tip">发件邮箱与 SMTP 配置</span><a-button type="primary" @click="openCreate('mailAccount')"><template #icon><PlusOutlined /></template>新增账号</a-button></div>
-          <a-table :columns="[{title:'账号名',dataIndex:'name',width:140},{title:'邮箱地址',dataIndex:'addr'},{title:'SMTP',dataIndex:'smtp',width:220},{title:'启用',dataIndex:'status',key:'status',width:80}]" :data-source="mailAccounts" row-key="id" :pagination="false" size="middle">
-            <template #bodyCell="{ column, record }"><a-switch v-if="column.key === 'status'" v-model:checked="record.status" size="small" /></template>
+          <a-table :columns="[{title:'账号名',dataIndex:'name',width:140},{title:'邮箱地址',dataIndex:'addr'},{title:'SMTP',dataIndex:'smtp',width:220},{title:'启用',dataIndex:'status',key:'status',width:80},{title:'操作',key:'op',width:120}]" :data-source="mailAccounts" row-key="id" :pagination="stdPagination()" size="middle">
+            <template #bodyCell="{ column, record }">
+              <a-switch v-if="column.key === 'status'" v-model:checked="record.status" size="small" />
+              <template v-else-if="column.key === 'op'">
+                <a-button type="link" size="small" @click="openEdit('mailAccount', record)">编辑</a-button>
+                <a-button type="link" size="small" danger @click="delMailAccount(record)">删除</a-button>
+              </template>
+            </template>
           </a-table>
         </template>
         <template v-else-if="mailSub === 'template'">
           <div class="bar"><span class="tip">支持 HTML 富文本邮件模板</span><a-button type="primary" @click="openCreate('mailTpl')"><template #icon><PlusOutlined /></template>新增模板</a-button></div>
-          <a-table :columns="[{title:'模板编码',dataIndex:'code',key:'code',width:200},{title:'名称',dataIndex:'name',width:160},{title:'邮件主题',dataIndex:'subject'},{title:'状态',dataIndex:'status',key:'status',width:90}]" :data-source="mailTpls" row-key="id" :pagination="false" size="middle">
+          <a-table :columns="[{title:'模板编码',dataIndex:'code',key:'code',width:200},{title:'名称',dataIndex:'name',width:160},{title:'邮件主题',dataIndex:'subject'},{title:'状态',dataIndex:'status',key:'status',width:90},{title:'操作',key:'op',width:120}]" :data-source="mailTpls" row-key="id" :pagination="stdPagination()" size="middle">
             <template #bodyCell="{ column, record }">
               <span v-if="column.key === 'code'">{{ record.code }}</span>
               <a-tag v-else-if="column.key === 'status'" :color="AUDIT_TONE[record.status]">{{ record.status }}</a-tag>
+              <template v-else-if="column.key === 'op'">
+                <a-button type="link" size="small" @click="openEdit('mailTpl', record)">编辑</a-button>
+                <a-button type="link" size="small" danger @click="delMailTpl(record)">删除</a-button>
+              </template>
             </template>
           </a-table>
         </template>
@@ -165,10 +284,14 @@ function saveModal() {
         <a-segmented v-model:value="inSub" :options="[{value:'template',label:'模板'},{value:'log',label:'发送记录'}]" style="margin-bottom: 16px" />
         <template v-if="inSub === 'template'">
           <div class="bar"><span class="tip">系统内通知模板（工单指派、@提及、审批提醒等）</span><a-button type="primary" @click="openCreate('inTpl')"><template #icon><PlusOutlined /></template>新增模板</a-button></div>
-          <a-table :columns="[{title:'模板编码',dataIndex:'code',key:'code',width:170},{title:'名称',dataIndex:'name',width:140},{title:'内容',dataIndex:'content'},{title:'状态',dataIndex:'status',key:'status',width:90}]" :data-source="inTpls" row-key="id" :pagination="false" size="middle">
+          <a-table :columns="[{title:'模板编码',dataIndex:'code',key:'code',width:170},{title:'名称',dataIndex:'name',width:140},{title:'内容',dataIndex:'content'},{title:'状态',dataIndex:'status',key:'status',width:90},{title:'操作',key:'op',width:120}]" :data-source="inTpls" row-key="id" :pagination="stdPagination()" size="middle">
             <template #bodyCell="{ column, record }">
               <span v-if="column.key === 'code'">{{ record.code }}</span>
               <a-tag v-else-if="column.key === 'status'" :color="AUDIT_TONE[record.status]">{{ record.status }}</a-tag>
+              <template v-else-if="column.key === 'op'">
+                <a-button type="link" size="small" @click="openEdit('inTpl', record)">编辑</a-button>
+                <a-button type="link" size="small" danger @click="delInTpl(record)">删除</a-button>
+              </template>
             </template>
           </a-table>
         </template>
@@ -201,9 +324,27 @@ function saveModal() {
       <a-form layout="vertical">
         <a-form-item v-for="fl in curSchema.fields" :key="fl.k" :label="fl.l" :required="fl.req">
           <a-textarea v-if="fl.type === 'textarea'" v-model:value="ff[fl.k]" :rows="3" :placeholder="`请输入${fl.l}`" />
-          <a-input v-else v-model:value="ff[fl.k]" :placeholder="`请输入${fl.l}`" />
+          <a-input v-else v-model:value="ff[fl.k]" :placeholder="`请输入${fl.l}`" :disabled="!!editingId && fl.k === 'code'" />
         </a-form-item>
       </a-form>
+    </a-modal>
+
+    <!-- 短信日志详情 -->
+    <a-modal v-model:open="logDetailOpen" title="短信发送详情" :width="560" :footer="null">
+      <template v-if="logDetail">
+        <a-descriptions bordered size="small" :column="1">
+          <a-descriptions-item label="发送时间">{{ logDetail.time }}</a-descriptions-item>
+          <a-descriptions-item label="接收号码">{{ logDetail.phone }}</a-descriptions-item>
+          <a-descriptions-item label="模板">{{ logDetail.tpl }}</a-descriptions-item>
+          <a-descriptions-item v-if="logDetail.channel" label="渠道">{{ logDetail.channel }}</a-descriptions-item>
+          <a-descriptions-item label="发送状态"><a-tag :color="RESULT_TONE[logDetail.result]">{{ logDetail.result }}</a-tag></a-descriptions-item>
+          <a-descriptions-item v-if="logDetail.failReason" label="失败原因">{{ logDetail.failReason }}</a-descriptions-item>
+          <a-descriptions-item label="完整内容">{{ logDetail.content || '—' }}</a-descriptions-item>
+        </a-descriptions>
+        <div v-if="logDetail.result === '失败'" style="margin-top: 16px; text-align: right">
+          <a-button type="primary" @click="resendSmsLog(logDetail); logDetailOpen = false">重发</a-button>
+        </div>
+      </template>
     </a-modal>
   </div>
 </template>

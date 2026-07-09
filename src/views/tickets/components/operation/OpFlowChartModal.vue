@@ -31,7 +31,7 @@ const STAGES: FlowStage[] = [
 
 const BRANCH_ITEMS = [
   { label: '挂起', desc: '暂停计时' },
-  { label: '转办', desc: '换人处理' },
+  { label: '调剂', desc: '换人处理' },
   { label: '升级', desc: '提至上级' },
   { label: '关联单', desc: '绑定工单' },
 ];
@@ -66,7 +66,7 @@ function connectorStatus(i: number): 'done' | 'pending' {
   >
     <div class="flow-chart">
       <p class="flow-desc">
-        主流程自左向右推进；坐席处理阶段可触发挂起、转办等旁路，完成后回到主链继续流转。
+        主流程自左向右推进；坐席处理阶段可触发挂起、调剂等旁路，完成后回到主链继续流转。
       </p>
 
       <div class="flow-track-wrap">

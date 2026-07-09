@@ -30,6 +30,33 @@ export interface SimilarTicket {
   solution: string;
 }
 
+/**
+ * SLA 时效钟生命周期：
+ * running 计时中（随真实时间每秒递减；由剩余秒派生 正常绿/临期橙/超时红）
+ * paused  暂停（挂起·灰·计时冻结、剩余保留、可恢复续算）
+ * stopped 停表终止（结案/关闭/取消·深灰·计时永久结束、不可重启）
+ */
+export type SlaClockPhase = 'running' | 'paused' | 'stopped';
+
+export interface SlaClock {
+  /** 时效名称，如 节点·处理 / 整单解决 / 首响 / 回访 */
+  label: string;
+  /** 钟类型：node=节点 / whole=整单 / first=首响 / callback=回访 */
+  kind: 'node' | 'whole' | 'first' | 'callback';
+  /** 生命周期：running 时随真实时间递减；paused/stopped 冻结 */
+  phase: SlaClockPhase;
+  /** 剩余秒（负值=已超时秒数）；phase=running 时每秒 -1 */
+  remainSec: number;
+  /** 该时效总时长秒（进度条 = (total-remain)/total） */
+  totalSec: number;
+  /** 临期阈值秒：剩余 ≤ 此值 → 临期(橙) */
+  warnSec: number;
+  /** 绝对截止时刻（展示用），如 今日 14:30 */
+  dueBy: string;
+  /** 节点截止在整单时间轴上的位置占比（0-100），仅 kind=whole 时用于嵌套 tick */
+  nodePctOnWhole?: number;
+}
+
 export interface TicketDetailMeta {
   no: string;
   title: string;
@@ -39,13 +66,8 @@ export interface TicketDetailMeta {
   status: string;
   /** 累计退回次数（上限 3 次） */
   returnCount?: number;
-  slaWhole: string;
-  slaNode: string;
-  slaNodeOverdue: boolean;
-  /** 整单 SLA 已消耗比例（0-100，进度条已用段=当前进度） */
-  slaElapsedPct: number;
-  /** 当前节点截止时刻在整单时间轴上的位置（0-100，应 > 已用，表示节点是更早的检查点） */
-  slaNodePct: number;
+  /** 当前活跃的 SLA 时效钟（按"最快到期"排序，最紧急置顶） */
+  slaClocks: SlaClock[];
   builder: string;
   builderShort: string;
   source: string;
@@ -100,11 +122,27 @@ export const TICKET_DETAIL: TicketDetailMeta = {
   channel: '在线客服',
   priority: 'P0',
   status: '处理中',
-  slaWhole: '02:40:15',
-  slaNode: '00:12:30',
-  slaNodeOverdue: false,
-  slaElapsedPct: 60,
-  slaNodePct: 66,
+  slaClocks: [
+    {
+      label: '整单解决',
+      kind: 'whole',
+      phase: 'running',
+      remainSec: 9615, // 02:40:15
+      totalSec: 17280, // 整单解决时限 4.8h
+      warnSec: 1800, // 剩 ≤30min 临期
+      dueBy: '今日 16:40',
+      nodePctOnWhole: 71,
+    },
+    {
+      label: '节点·处理',
+      kind: 'node',
+      phase: 'running',
+      remainSec: 750, // 00:12:30
+      totalSec: 3600, // 节点处理时限 1h
+      warnSec: 900, // 剩 ≤15min 临期
+      dueBy: '今日 14:30',
+    },
+  ],
   builder: '李一线（一线坐席）',
   builderShort: '李一线',
   source: '在线客服',
@@ -120,7 +158,7 @@ export const TICKET_DETAIL: TicketDetailMeta = {
   attachments: ['故障录屏.mp4', '设置截图.png'],
   isExternalAppeal: false,
   insight: {
-    inboundCount: 8,
+    contactCount: 12,
     historyCount: 12,
     complaintCount: 1,
     sameTypeCount: 1,
@@ -130,18 +168,22 @@ export const TICKET_DETAIL: TicketDetailMeta = {
     relatedCount: 10,
   },
   insightDetails: {
-    inbound: {
-      title: '进线明细',
-      columns: ['类型', '进线时间', '通话时长', '接线坐席', '呼入类型', '产品分类', '产品型号', '小结'],
+    contact: {
+      title: '联系明细',
+      columns: ['联系方式', '联系时间', '结束时间', '接线坐席', '呼入类型', '产品分类', '产品型号', '小结'],
       rows: [
-        { cells: ['热线', '2026-06-18 09:23:15', '05:42', '张晓芸', '咨询', '智能键盘', '讯飞智能键盘K710', '客户咨询维修进度，告知预计 3 个工作日完成'] },
-        { cells: ['IM', '2026-06-18 09:30:12', '08:20', '刘洋', '咨询', '智能键盘', '讯飞智能键盘K710', '客户问询备件库存，确认可现场更换'] },
-        { cells: ['热线', '2026-06-17 16:20:18', '03:18', '陈伟', '报修', '智能键盘', '讯飞智能键盘K710', '确认故障现象，预约上门时间'] },
-        { cells: ['IM', '2026-06-17 15:45:00', '12:05', '刘洋', '报修', '智能键盘', '讯飞智能键盘K710', '客户描述故障并上传照片，初步判定屏幕组件故障'] },
-        { cells: ['热线', '2026-06-17 10:15:32', '04:25', '张晓芸', '报修', '智能键盘', '讯飞智能键盘K710', '客户来电报修，创建工单 IFLYKF2026061809340156'] },
-        { cells: ['热线', '2026-05-12 14:08:50', '02:36', '李娜', '投诉', '智能鼠标', '讯飞智能鼠标M310', '客户投诉鼠标滚轮失灵，转售后处理'] },
-        { cells: ['IM', '2026-06-05 10:11:30', '04:48', '赵敏', '咨询', '录音笔', '讯飞AI录音笔H2', '咨询固件升级问题，已发送升级指引'] },
-        { cells: ['热线', '2026-03-08 09:15:45', '06:10', '王芳', '咨询', '录音笔', '讯飞AI录音笔H2', '咨询使用问题，在线讲解操作步骤'] },
+        { cells: ['热线-呼入', '2026-06-18 09:23:15', '2026-06-18 09:28:57', '张晓芸', '咨询', '智能键盘', '讯飞智能键盘K710', '客户咨询维修进度，告知预计 3 个工作日完成'] },
+        { cells: ['在线', '2026-06-18 09:30:12', '2026-06-18 09:38:32', '刘洋', '咨询', '智能键盘', '讯飞智能键盘K710', '客户问询备件库存，确认可现场更换'] },
+        { cells: ['热线-呼入', '2026-06-17 16:20:18', '2026-06-17 16:23:36', '陈伟', '报修', '智能键盘', '讯飞智能键盘K710', '确认故障现象，预约上门时间'] },
+        { cells: ['在线', '2026-06-17 15:45:00', '2026-06-17 15:57:05', '刘洋', '报修', '智能键盘', '讯飞智能键盘K710', '客户描述故障并上传照片，初步判定屏幕组件故障'] },
+        { cells: ['热线-呼出', '2026-06-17 14:02:08', '2026-06-17 14:04:23', '王芳', '咨询', '智能键盘', '讯飞智能键盘K710', '一线外呼确认上门地址，客户确认无误'] },
+        { cells: ['热线-呼入', '2026-05-12 14:08:50', '2026-05-12 14:11:26', '李娜', '投诉', '智能鼠标', '讯飞智能鼠标M310', '客户投诉鼠标滚轮失灵，转售后处理'] },
+        { cells: ['在线', '2026-06-05 10:11:30', '2026-06-05 10:16:18', '赵敏', '咨询', '录音笔', '讯飞AI录音笔H2', '咨询固件升级问题，已发送升级指引'] },
+        { cells: ['热线-呼入', '2026-03-08 09:15:45', '2026-03-08 09:21:55', '王芳', '咨询', '录音笔', '讯飞AI录音笔H2', '咨询使用问题，在线讲解操作步骤'] },
+        { cells: ['在线', '2026-02-20 11:05:22', '2026-02-20 11:12:40', '刘洋', '咨询', '智能键盘', '讯飞智能键盘K710', '咨询键盘蓝牙连接问题'] },
+        { cells: ['热线-呼出', '2026-02-18 15:30:00', '2026-02-18 15:33:12', '张晓芸', '报修', '智能键盘', '讯飞智能键盘K710', '回访确认维修方案'] },
+        { cells: ['热线-呼入', '2026-02-10 08:45:18', '2026-02-10 08:50:33', '陈伟', '投诉', '智能鼠标', '讯飞智能鼠标M310', '反馈鼠标连接不稳定'] },
+        { cells: ['在线', '2026-01-28 14:20:05', '2026-01-28 14:28:50', '赵敏', '咨询', '录音笔', '讯飞AI录音笔H2', '询问录音文件导出方式'] },
       ],
     },
     history: {
@@ -263,7 +305,7 @@ export const TICKET_DETAIL: TicketDetailMeta = {
   knowledge: ['X1 跳歌故障排查与固件重置指引', '在线歌单缓存清理方法'],
   aiSummary: '客户反映 X1 音箱在线歌单频繁跳歌、重启无效，情绪中性偏急，产品保修内。',
   aiInsight: {
-    customerBrief: '30天进线8次、有投诉史，对时效敏感',
+    customerBrief: '30天联系12次、有投诉史，对时效敏感',
     ticketBrief: 'P0投诉，跳歌问题已升级固件待观察',
     suggestion: '今日闭环并回访，防外投',
     riskTag: '外投风险',

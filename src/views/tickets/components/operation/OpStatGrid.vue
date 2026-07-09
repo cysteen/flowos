@@ -23,7 +23,7 @@ const topItems = computed<StatItem[]>(() => {
   const i = props.insight;
   const sameTypeLabel = insightSameTypeLabel(props.ticketType);
   return [
-    { key: 'inbound', label: '进线', value: i.inboundCount, unit: '次', action: { kind: 'modal', modalKey: 'inbound' } },
+    { key: 'contact', label: '联系', value: i.contactCount, unit: '次', action: { kind: 'modal', modalKey: 'contact' } },
     { key: 'history', label: '历史', value: i.historyCount, unit: '单', action: { kind: 'modal', modalKey: 'history' } },
     {
       key: 'sameType',

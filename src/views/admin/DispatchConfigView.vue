@@ -6,20 +6,55 @@ import { message, Modal } from 'ant-design-vue';
 import {
   PlusOutlined, ArrowUpOutlined, ArrowDownOutlined,
   SwapOutlined, CheckCircleOutlined, SafetyCertificateOutlined, InboxOutlined, StarFilled,
-  EditOutlined, DeleteOutlined, SearchOutlined,
+  EditOutlined, DeleteOutlined, SearchOutlined, QuestionCircleOutlined,
 } from '@ant-design/icons-vue';
 import dayjs from 'dayjs';
+
+const kpiTipOverlayStyle = {
+  maxWidth: '320px',
+  color: '#713f12',
+  fontSize: '12px',
+  lineHeight: '1.65',
+  padding: '10px 12px',
+  boxShadow: '0 6px 16px rgba(180, 130, 20, 0.12)',
+  border: '1px solid #fde68a',
+};
 
 // 智能分派：工单调度引擎。编排工单池，入池/出池调用规则引擎执行路由/分派规则；坐席归用户/班组管理主数据，此处只引用。
 const router = useRouter();
 const route = useRoute();
 // 页签绑路由：智能分派各二级子项（侧栏）与页内内容一一对应
+// 页头与侧栏子项一一对应（显式配置，避免路由复用同一组件时标题不刷新）
+const DISPATCH_PAGE_META: Record<string, { title: string; subtitle: string }> = {
+  'dispatch-monitor': {
+    title: '分派监控',
+    subtitle: '智能分派的运行看板：一屏看清今日分派效果、SLA 达标、坐席负载与工单池积压，供运营监控异常并及时介入。',
+  },
+  'dispatch-strategy': {
+    title: '派单策略',
+    subtitle: '配置"工单派给谁"的选人规则：候选门槛 → 强制优先（指定/熟客）→ 综合评分择优 → 未接兜底；组内具体选人由派单引擎执行。',
+  },
+  'dispatch-pool': {
+    title: '工单池管理',
+    subtitle: '定义待分配工单的排队池（常驻 / 临时活动池）及其服务方与超时；"工单怎么进池"由规则引擎的入池规则决定。',
+  },
+  'dispatch-routing': {
+    title: '路由规则',
+    subtitle: '"工单路由进池"的规则一览（派单→池 / 升级入池），本页只读；规则的新增与编辑在规则引擎。',
+  },
+  'dispatch-profile': {
+    title: '坐席画像',
+    subtitle: '坐席能力画像只读看板：技能、负载、在线与历史表现，供派单择人参考；坐席主数据在「用户/班组管理」维护。',
+  },
+};
 const TAB_TO_KEY: Record<string, string> = { monitor: 'dispatch-monitor', dispatch: 'dispatch-strategy', pool: 'dispatch-pool', inpool: 'dispatch-routing', profile: 'dispatch-profile' };
 const KEY_TO_TAB: Record<string, string> = { 'dispatch-monitor': 'monitor', 'dispatch-strategy': 'dispatch', 'dispatch-pool': 'pool', 'dispatch-routing': 'inpool', 'dispatch-profile': 'profile' };
+const dispatchRouteKey = computed(() => adminNavActiveKey(route.path));
 const activeTab = computed({
-  get: () => KEY_TO_TAB[adminNavActiveKey(route.path)] ?? 'monitor',
-  set: (v: string) => { const k = TAB_TO_KEY[v]; if (k && adminNavActiveKey(route.path) !== k) router.push(`/admin/${k}`); },
+  get: () => KEY_TO_TAB[dispatchRouteKey.value] ?? 'monitor',
+  set: (v: string) => { const k = TAB_TO_KEY[v]; if (k && dispatchRouteKey.value !== k) router.push(`/admin/${k}`); },
 });
+const pageHeader = computed(() => DISPATCH_PAGE_META[dispatchRouteKey.value] ?? DISPATCH_PAGE_META['dispatch-monitor']);
 
 // 主数据引用（来自 用户/班组管理）
 const GROUP_OPTS = ['一线客服组', '大客户组', '技术支持组', '售后服务组', '二线技术支持组', '夜班应急组'];
@@ -41,11 +76,14 @@ const POOL_THEMES: Record<PoolTheme, { bg: string; icon: string }> = {
   red: { bg: '#fee2e2', icon: '#dc2626' },
 };
 const THEME_CYCLE: PoolTheme[] = ['blue', 'purple', 'orange', 'red'];
+// 工单池与「池积压监控」同源对齐：6 个池，在办量/处理人数与监控表一致（count=在办、handlers=处理人总数）
 const pools = ref<Pool[]>([
-  { id: 1, name: '一线客服池', code: 'POOL-GENERAL', type: '常驻', period: '', condition: '无特殊标记的工单，默认入池', groups: ['一线客服组'], agents: [], mode: '系统派单', timeout: '超时自动分配', status: true, count: 234, handlers: 45, avgTime: '2.5h', theme: 'blue' },
-  { id: 2, name: '大客户专属池', code: 'POOL-VIP', type: '常驻', period: '', condition: '客户等级为大客户 / VIP', groups: ['大客户组'], agents: [], mode: '系统派单', timeout: '转派至大客户主管', status: true, count: 67, handlers: 12, avgTime: '4.2h', theme: 'purple' },
-  { id: 3, name: '技术支持池', code: 'POOL-TECH', type: '常驻', period: '', condition: '售后服务类 / 技术类工单', groups: ['技术支持组'], agents: [], mode: '组内抢单', timeout: '升级至售后主管', status: true, count: 156, handlers: 32, avgTime: '3.1h', theme: 'orange' },
-  { id: 4, name: '618大促反馈池', code: 'POOL-618', type: '临时', period: '2026-06-01 ~ 2026-06-30', condition: '标签 = 618大促反馈', groups: [], agents: ['张三', '李四', '王五', '赵敏'], mode: '组内抢单', timeout: '升级至组长', status: true, count: 18, handlers: 8, avgTime: '0.8h', theme: 'red' },
+  { id: 1, name: '一线客服池', code: 'POOL-GENERAL', type: '常驻', period: '', condition: '无特殊标记的工单，默认入池', groups: ['一线客服组'], agents: [], mode: '系统派单', timeout: '超时自动分配', status: true, count: 234, handlers: 15, avgTime: '2.5h', theme: 'blue' },
+  { id: 2, name: '学习机售后池', code: 'POOL-XXJSH', type: '常驻', period: '', condition: '产品线 = 学习机 且 类型 ∈ {故障, 退款}', groups: ['学习机售后组'], agents: [], mode: '系统派单', timeout: '升级至售后主管', status: true, count: 42, handlers: 10, avgTime: '3.2h', theme: 'green' },
+  { id: 3, name: '技术支持池', code: 'POOL-TECH', type: '常驻', period: '', condition: '售后服务类 / 技术类工单', groups: ['技术支持组'], agents: [], mode: '组内抢单', timeout: '升级至售后主管', status: true, count: 31, handlers: 6, avgTime: '3.1h', theme: 'orange' },
+  { id: 4, name: '大客户专属池', code: 'POOL-VIP', type: '常驻', period: '', condition: '客户等级为大客户 / VIP', groups: ['大客户组'], agents: [], mode: '系统派单', timeout: '转派至大客户主管', status: true, count: 12, handlers: 3, avgTime: '4.2h', theme: 'purple' },
+  { id: 5, name: '618大促反馈池', code: 'POOL-618', type: '临时', period: '2026-06-01 ~ 2026-06-30', condition: '标签 = 618大促反馈', groups: [], agents: ['张三', '李四', '王五', '赵敏', '陈静', '周杰', '吴磊', '郑爽', '孙俊', '钱丽', '冯超', '蒋雯'], mode: '组内抢单', timeout: '升级至组长', status: true, count: 36, handlers: 12, avgTime: '0.8h', theme: 'red' },
+  { id: 6, name: '投诉升级池', code: 'POOL-COMPLAINT', type: '常驻', period: '', condition: '投诉升级 / 二线投诉类工单', groups: ['投诉处理组', '二线技术支持组'], agents: [], mode: '组内抢单', timeout: '升级至客服主管', status: true, count: 28, handlers: 5, avgTime: '5.6h', theme: 'cyan' },
 ]);
 function assignModeText(mode: string) {
   if (mode === '组内抢单') return '处理人主动认领';
@@ -153,11 +191,15 @@ const profileRows = [
 
 // ===================== ① 积压监控 =====================
 type StatIcon = 'swap' | 'check' | 'sla' | 'inbox';
-const statCards: { label: string; value: string; delta: string; deltaColor: string; accent: string; iconBg: string; icon: StatIcon }[] = [
-  { label: '今日分派总量', value: '356', delta: '较昨日 +12.3%', deltaColor: '#10b981', accent: '#1a6fff', iconBg: '#eff6ff', icon: 'swap' },
-  { label: '平均匹配分数', value: '87.6', delta: '+2.1', deltaColor: '#10b981', accent: '#0ea5e9', iconBg: '#f0f9ff', icon: 'check' },
-  { label: 'SLA 达标率', value: '96.2%', delta: '目标 95%', deltaColor: '#6b7280', accent: '#10b981', iconBg: '#ecfdf5', icon: 'sla' },
-  { label: '待处理队列', value: '23', delta: '较 1 小时前 +5', deltaColor: '#f59e0b', accent: '#f59e0b', iconBg: '#fffbeb', icon: 'inbox' },
+const statCards: { label: string; value: string; delta: string; deltaColor: string; accent: string; iconBg: string; icon: StatIcon; tip: string; flat?: boolean }[] = [
+  { label: '今日分派总量', value: '356', delta: '今日累计', deltaColor: '#6b7280', accent: '#1a6fff', iconBg: '#eff6ff', icon: 'swap', flat: true,
+    tip: '当日 00:00 至此刻，分派引擎成功出池派给坐席的工单数（系统派 + 组内抢单 + 混合，按去重工单计，改派不重复计）。衡量调度吞吐规模。（不做"今日同时段 vs 昨日同时段"环比——过细且需存分时曲线、计算不划算）' },
+  { label: '平均匹配分数', value: '87.6', delta: '满分 100', deltaColor: '#6b7280', accent: '#0ea5e9', iconBg: '#f0f9ff', icon: 'check', flat: true,
+    tip: '当日成功分派工单「出池综合评分」的算术平均（满分 100）。综合评分 = 技能熟练度 35% + 负载 25% + 紧急度 20% + 最久空闲 15% + 成本 5%。分越高=派得越匹配；强制优先（指定/熟客）短路的单不计入平均。衡量派单策略实际效果。' },
+  { label: 'SLA 达标率', value: '96.2%', delta: '目标 95%', deltaColor: '#6b7280', accent: '#10b981', iconBg: '#ecfdf5', icon: 'sla', flat: true,
+    tip: '当日纳入统计工单中，响应与解决均在 SLA 时效内完成的占比 = 达标数 / 统计数 ×100%。口径与 SLA 引擎达标率同源（单一算法源）。目标线 95%，低于目标转红。' },
+  { label: '待处理队列', value: '23', delta: '较 1 小时前 +5', deltaColor: '#f59e0b', accent: '#f59e0b', iconBg: '#fffbeb', icon: 'inbox',
+    tip: '当前所有工单池中「已入池、尚未出池（未分派给坐席）」的工单数，等于下方各池积压之和。较 1 小时前的增量为便宜的快照差（非同时段环比）。是积压削峰、触发调节规则的先行信号。' },
 ];
 const trendRange = ref<'7' | '30'>('7');
 const trend30Labels = Array.from({ length: 30 }, (_, i) => dayjs('2026-02-24').add(i, 'day').format('M/D'));
@@ -316,9 +358,10 @@ function agentFactor(a: Agent) { return a.capacity ? a.current / a.capacity : 0;
 const loadRows = computed(() => [...agents]
   .sort((x, y) => agentFactor(y) - agentFactor(x))
   .slice(0, LOAD_TOP_N)
-  .map((a) => ({ name: a.name, group: a.group, current: a.current, capacity: a.capacity, status: a.status, color: a.color, loadFactor: agentFactor(a) })));
+  .map((a) => ({ name: a.name, group: a.group, current: a.current, capacity: a.capacity, status: a.status, loadFactor: agentFactor(a) })));
 function goAgents() { router.push('/admin/users'); }
 function goProfile() { activeTab.value = 'profile'; }
+function goPool() { activeTab.value = 'pool'; }
 // —— ⑤ 坐席画像 tab ——
 interface TypeStat { type: string; avgTime: string; count: number; rate: string; }
 interface AgentDetail {
@@ -479,7 +522,6 @@ const loadCols = [
   { title: '当前工单数', key: 'current', width: 92, align: 'right' as const },
   { title: '容量上限', key: 'capacity', width: 84, align: 'right' as const },
   { title: '负载系数', key: 'factor', width: 96 },
-  { title: '负载进度', key: 'progress', width: 88 },
   { title: '在线状态', key: 'status', width: 84 },
 ];
 const typeStatCols = [
@@ -492,18 +534,24 @@ function loadFactorColor(f: number) { return f >= 0.8 ? '#ef4444' : f >= 0.5 ? '
 function statusText(s: AgentStatus) { return s === 'online' ? '在线' : s === 'busy' ? '忙碌' : '离线'; }
 function statusColor(s: AgentStatus) { return s === 'online' ? '#10b981' : s === 'busy' ? '#f59e0b' : '#9ca3af'; }
 const monitorCols = [
-  { title: '工单池', dataIndex: 'pool', key: 'pool' },
-  { title: '在线坐席', dataIndex: 'online', key: 'online', width: 100 },
-  { title: '在办', dataIndex: 'load', key: 'load', width: 80 },
-  { title: '积压', key: 'backlog', width: 90 },
-  { title: '平均等待', dataIndex: 'wait', key: 'wait', width: 110 },
-  { title: '分派成功率', dataIndex: 'rate', key: 'rate', width: 120 },
+  { title: '工单池', dataIndex: 'pool', key: 'pool', width: 140 },
+  { title: '在线坐席', dataIndex: 'online', key: 'online', width: 80 },
+  { title: '在办', dataIndex: 'load', key: 'load', width: 52, align: 'right' as const },
+  { title: '积压', key: 'backlog', width: 52, align: 'right' as const },
+  { title: '平均等待', dataIndex: 'wait', key: 'wait', width: 80 },
+  { title: '分派成功率', dataIndex: 'rate', key: 'rate', width: 88 },
 ];
 const monitorRows = [
+  { pool: '一线客服池', online: '12 / 15', load: 234, backlog: 18, wait: '2.8 分', rate: '97%' },
   { pool: '学习机售后池', online: '8 / 10', load: 42, backlog: 12, wait: '3.2 分', rate: '98%' },
   { pool: '技术支持池', online: '5 / 6', load: 31, backlog: 58, wait: '11.4 分', rate: '95%' },
   { pool: '大客户专属池', online: '3 / 3', load: 12, backlog: 0, wait: '1.4 分', rate: '100%' },
   { pool: '618大促反馈池', online: '12', load: 36, backlog: 23, wait: '2.1 分', rate: '97%' },
+  { pool: '投诉升级池', online: '4 / 5', load: 28, backlog: 35, wait: '8.6 分', rate: '92%' },
+  { pool: '退款专项池', online: '6 / 8', load: 19, backlog: 7, wait: '4.5 分', rate: '96%' },
+  { pool: '夜班应急池', online: '2 / 4', load: 15, backlog: 41, wait: '15.2 分', rate: '88%' },
+  { pool: '智能硬件池', online: '7 / 9', load: 24, backlog: 9, wait: '3.9 分', rate: '99%' },
+  { pool: '二次回访池', online: '5 / 6', load: 11, backlog: 3, wait: '1.8 分', rate: '100%' },
 ];
 function backlogColor(n: number) { return n > 50 ? '#ef4444' : n > 20 ? '#f59e0b' : '#10b981'; }
 
@@ -554,7 +602,7 @@ const inpoolRows = [
   { name: '618 大促入池', cond: '标签 = 618大促反馈', pool: '618大促反馈池', priority: 'P1', status: true },
   { name: '学习机入池', cond: '产品线 = 学习机 且 类型 ∈ {故障, 退款}', pool: '学习机售后池', priority: 'P2', status: true },
   { name: '技术类入池', cond: '工单类型 = 系统问题', pool: '技术支持池', priority: 'P2', status: true },
-  { name: '升级入池', cond: '二线坐席点击「升级」', pool: '二线升级池', priority: '', status: true },
+  { name: '投诉升级入池', cond: '投诉升级 / 二线坐席点击「升级」', pool: '投诉升级池', priority: 'P1', status: true },
   { name: '默认入池', cond: '其它全部', pool: '一线客服池', priority: '兜底', status: true },
 ];
 const PRIORITY_COLOR: Record<string, string> = { P0: 'red', P1: 'orange', P2: 'blue', 兜底: 'default' };
@@ -562,8 +610,8 @@ function goRules() { router.push('/admin/rules-list'); }
 </script>
 
 <template>
-  <div class="dispatch-config">
-    <AdminPageHeader title="智能分派" subtitle="工单调度引擎：编排工单池，入池/出池调用规则引擎执行规则；此处配出池选人、积压监控与工单池；坐席主数据在「用户/班组管理」维护。" />
+  <div class="dispatch-config" :key="dispatchRouteKey">
+    <AdminPageHeader :title="pageHeader.title" :subtitle="pageHeader.subtitle" />
 
     <div class="dc-panels">
       <!-- ① 分派监控面板 -->
@@ -573,11 +621,24 @@ function goRules() { router.push('/admin/rules-list'); }
             <div v-for="s in statCards" :key="s.label" class="stat-card" :style="{ '--accent': s.accent }">
               <div class="stat-card-inner">
                 <div class="stat-main">
-                  <div class="s-label">{{ s.label }}</div>
-                  <div class="s-value">{{ s.value }}</div>
-                  <div class="s-delta" :style="{ color: s.deltaColor }">
-                    <ArrowUpOutlined v-if="s.icon !== 'sla'" class="delta-icon" />
-                    {{ s.delta }}
+                  <div class="s-label">
+                    {{ s.label }}
+                    <a-tooltip
+                      :title="s.tip"
+                      placement="top"
+                      :mouse-enter-delay="0.1"
+                      color="#fffbeb"
+                      :overlay-inner-style="kpiTipOverlayStyle"
+                    >
+                      <QuestionCircleOutlined class="s-tip-ic" />
+                    </a-tooltip>
+                  </div>
+                  <div class="s-value-row">
+                    <div class="s-value">{{ s.value }}</div>
+                    <div class="s-delta" :style="{ color: s.deltaColor }">
+                      <ArrowUpOutlined v-if="!s.flat" class="delta-icon" />
+                      {{ s.delta }}
+                    </div>
                   </div>
                 </div>
                 <div class="stat-icon" :style="{ background: s.iconBg, color: s.accent }">
@@ -676,44 +737,43 @@ function goRules() { router.push('/admin/rules-list'); }
           </section>
         </div>
 
-        <section class="block load-block">
-          <div class="b-title inline">处理人负载概览 <span class="b-tip">按负载降序取前 10 · 满载(≥1)不再派单</span>
-            <a-button type="link" size="small" class="hd-btn" @click="goProfile">查看全部处理人 →</a-button>
-          </div>
-          <a-table :columns="loadCols" :data-source="loadRows" row-key="name" :pagination="false" size="middle">
-            <template #bodyCell="{ column, record }">
-              <template v-if="column.key === 'name'">
-                <div class="agent-name">
-                  <span class="agent-avatar" :style="{ background: record.color }">{{ record.name.charAt(0) }}</span>
+        <div class="monitor-table-row">
+          <section class="block load-block">
+            <div class="b-title inline">处理人负载概览 <span class="b-tip">按负载降序取前 10 · 满载(≥1)不再派单</span>
+              <a-button type="link" size="small" class="hd-btn" @click="goProfile">查看全部处理人 →</a-button>
+            </div>
+            <a-table :columns="loadCols" :data-source="loadRows" row-key="name" :pagination="false" size="middle">
+              <template #bodyCell="{ column, record }">
+                <template v-if="column.key === 'name'">
                   <span class="agent-nm">{{ record.name }}</span>
-                </div>
+                </template>
+                <span v-else-if="column.key === 'current'" class="mono">{{ record.current }}</span>
+                <span v-else-if="column.key === 'capacity'" class="mono muted">{{ record.capacity }}</span>
+                <span v-else-if="column.key === 'factor'" class="factor-cell">
+                  <span class="mono factor" :style="{ color: loadFactorColor(record.loadFactor) }">{{ record.loadFactor.toFixed(2) }}</span>
+                  <a-tag v-if="record.loadFactor >= 1" color="red" class="full-tag">满载</a-tag>
+                </span>
+                <span v-else-if="column.key === 'status'" class="status-cell">
+                  <span class="status-dot" :style="{ background: statusColor(record.status) }" />
+                  <span :style="{ color: statusColor(record.status) }">{{ statusText(record.status) }}</span>
+                </span>
               </template>
-              <span v-else-if="column.key === 'current'" class="mono">{{ record.current }}</span>
-              <span v-else-if="column.key === 'capacity'" class="mono muted">{{ record.capacity }}</span>
-              <span v-else-if="column.key === 'factor'" class="factor-cell">
-                <span class="mono factor" :style="{ color: loadFactorColor(record.loadFactor) }">{{ record.loadFactor.toFixed(2) }}</span>
-                <a-tag v-if="record.loadFactor >= 1" color="red" class="full-tag">满载</a-tag>
-              </span>
-              <div v-else-if="column.key === 'progress'" class="load-bar">
-                <div class="load-bar-fill" :style="{ width: Math.min(record.loadFactor * 100, 100) + '%', background: loadFactorColor(record.loadFactor) }" />
-              </div>
-              <span v-else-if="column.key === 'status'" class="status-cell">
-                <span class="status-dot" :style="{ background: statusColor(record.status) }" />
-                <span :style="{ color: statusColor(record.status) }">{{ statusText(record.status) }}</span>
-              </span>
-            </template>
-          </a-table>
-        </section>
+            </a-table>
+          </section>
 
-        <section class="block">
-          <div class="b-title">池积压监控</div>
-          <a-table :columns="monitorCols" :data-source="monitorRows" row-key="pool" :pagination="false" size="middle">
-            <template #bodyCell="{ column, record }">
-              <span v-if="column.key === 'backlog'" :style="{ color: backlogColor(record.backlog), fontWeight: 600 }">{{ record.backlog }}</span>
-              <span v-else-if="column.key === 'rate'" class="ok">{{ record.rate }}</span>
-            </template>
-          </a-table>
-        </section>
+          <section class="block monitor-block">
+            <div class="b-title inline">池积压监控
+              <a-button type="link" size="small" class="hd-btn" @click="goPool">查看全部工单池 →</a-button>
+            </div>
+            <a-table :columns="monitorCols" :data-source="monitorRows" row-key="pool" :pagination="false" size="middle" :scroll="{ x: 520 }">
+              <template #bodyCell="{ column, record }">
+                <span v-if="column.key === 'pool'" class="pool-name">{{ record.pool }}</span>
+                <span v-else-if="column.key === 'backlog'" :style="{ color: backlogColor(record.backlog), fontWeight: 600 }">{{ record.backlog }}</span>
+                <span v-else-if="column.key === 'rate'" class="ok">{{ record.rate }}</span>
+              </template>
+            </a-table>
+          </section>
+        </div>
 
         <section class="block">
           <div class="b-title">积压调节规则 <span class="b-tip">积压超阈值自动调整派单策略；预警通知在「规则引擎 / SLA」配置</span>
@@ -814,7 +874,7 @@ function goRules() { router.push('/admin/rules-list'); }
       <!-- ③ 工单池 -->
       <div v-show="activeTab === 'pool'">
         <section class="block pool-block">
-          <div class="b-title inline">工单池 <span class="b-tip">待分配工单排队区；入池规则在规则引擎管理执行，此处定义池与服务方</span>
+          <div class="b-title inline">工单池 <span class="b-tip">定义排队池与服务方；工单怎么进池由规则引擎的入池规则决定</span>
             <a-button size="small" type="primary" class="hd-btn" @click="openCreatePool"><template #icon><PlusOutlined /></template>新建池</a-button>
           </div>
           <div class="pool-grid">
@@ -889,7 +949,7 @@ function goRules() { router.push('/admin/rules-list'); }
       <!-- ⑤ 坐席画像 -->
       <div v-show="activeTab === 'profile'">
         <section class="block profile-split">
-          <div class="b-title inline">坐席画像 <span class="b-tip">运力侧只读看板 · 引用「用户/班组管理」与历史统计</span></div>
+          <div class="b-title inline">坐席画像 <span class="b-tip">坐席能力画像只读看板 · 引用「用户/班组管理」与历史统计</span></div>
           <div class="profile-layout">
             <aside class="profile-list-panel">
               <div class="pf-toolbar">
@@ -1033,16 +1093,19 @@ function goRules() { router.push('/admin/rules-list'); }
 .wsum { margin-left: auto; font-size: 12px; font-weight: normal; color: #6b7280; }
 .wsum.warn { color: #f59e0b; }
 /* 统计卡片 */
-.stat-block { padding: 20px; }
+.stat-block { padding: 16px 20px; margin-bottom: 16px; }
 .stat-row { display: flex; gap: 16px; }
-.stat-card { flex: 1; border: 1px solid #eef0f3; border-radius: 8px; padding: 16px 18px; position: relative; overflow: hidden; background: #fff; }
+.stat-card { flex: 1; border: 1px solid #eef0f3; border-radius: 8px; padding: 16px 18px; position: relative; overflow: hidden; background: #fff; min-height: 96px; }
 .stat-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--accent); }
-.stat-card-inner { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.stat-card-inner { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-top: 2px; }
 .stat-main { flex: 1; min-width: 0; }
 .stat-icon { width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex: none; }
-.s-label { font-size: 12px; color: #6b7280; }
-.s-value { font-size: 28px; font-weight: 700; color: #111827; margin: 6px 0 4px; line-height: 1.1; }
-.s-delta { font-size: 12px; display: flex; align-items: center; gap: 4px; }
+.s-label { font-size: 12px; color: #6b7280; display: flex; align-items: center; gap: 4px; line-height: 1.4; }
+.s-tip-ic { color: #1a6fff; font-size: 13px; cursor: help; opacity: 0.75; }
+.s-tip-ic:hover { opacity: 1; }
+.s-value-row { display: flex; align-items: flex-end; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.s-value { font-size: 28px; font-weight: 700; color: #111827; line-height: 1.1; }
+.s-delta { font-size: 12px; display: flex; align-items: center; gap: 4px; padding-bottom: 3px; white-space: nowrap; line-height: 1.2; }
 .delta-icon { font-size: 10px; }
 /* 图表 */
 .chart-row { display: flex; gap: 16px; }
@@ -1077,18 +1140,30 @@ function goRules() { router.push('/admin/rules-list'); }
 .lg-sw { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .lg-nm { font-size: 12px; color: #374151; }
 .lg-pc { font-size: 12px; font-weight: 600; color: #111827; }
+/* 监控双表并排 */
+.monitor-table-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.monitor-table-row .block { margin-bottom: 0; min-width: 0; }
+.monitor-block :deep(.ant-table table) { table-layout: auto; }
+.monitor-block :deep(.ant-table-cell) { overflow: visible; }
+.pool-name { font-weight: 500; color: #111827; white-space: nowrap; }
+@media (max-width: 1200px) {
+  .monitor-table-row { grid-template-columns: 1fr; }
+  .monitor-table-row .block { margin-bottom: 16px; }
+  .monitor-table-row .block:last-child { margin-bottom: 0; }
+}
 /* 负载表格 */
 .load-block :deep(.ant-table) { margin-top: 4px; }
 .load-block :deep(.ant-table table) { table-layout: fixed; }
 .load-block :deep(.ant-table-cell) { overflow: hidden; }
-.agent-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.agent-avatar { width: 28px; height: 28px; border-radius: 50%; color: #fff; font-size: 12px; display: flex; align-items: center; justify-content: center; flex: none; }
 .agent-nm { font-weight: 500; color: #111827; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
 .muted { color: #6b7280; }
 .factor { font-weight: 600; }
-.load-bar { height: 8px; background: #eef0f3; border-radius: 4px; overflow: hidden; width: 100%; max-width: 72px; }
-.load-bar-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
 /* 坐席画像 · 左右分栏 */
 .profile-split { padding: 16px 20px; margin-bottom: 0; }
 .profile-layout {

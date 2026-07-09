@@ -30,7 +30,7 @@ export interface AiTicketInsight {
 }
 
 export interface InsightStats {
-  inboundCount: number;
+  contactCount: number;
   historyCount: number;
   complaintCount: number;
   /** 该客户「与当前工单同类型」的工单数（投诉单看投诉数、咨询单看咨询数…） */
@@ -44,7 +44,7 @@ export interface InsightStats {
   relatedCount: number;
 }
 
-/** 统计宫格「弹窗下钻」明细表（客户维度：进线/历史/投诉/近30天） */
+/** 统计宫格「弹窗下钻」明细表（客户维度：联系/历史/投诉/近30天） */
 export interface InsightDetailTable {
   title: string;
   columns: string[];
@@ -53,7 +53,7 @@ export interface InsightDetailTable {
 }
 
 /** 走弹窗下钻的统计项 key（其余项跳对应 Tab） */
-export type InsightModalKey = 'inbound' | 'history' | 'complaint' | 'recent30';
+export type InsightModalKey = 'contact' | 'history' | 'complaint' | 'recent30';
 
 /** 顶部「最新处理」聚合留言（多处理人，最新在前） */
 export interface LatestHandlingItem {

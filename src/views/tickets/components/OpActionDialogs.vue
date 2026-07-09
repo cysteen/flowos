@@ -89,7 +89,7 @@ interface DlgConfig {
 }
 
 const DLG_CONFIG: Partial<Record<OpActionType, DlgConfig>> = {
-  转办: { title: '转办工单', icon: SwapOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认转办' },
+  调剂: { title: '调剂工单', icon: SwapOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认调剂' },
   委派: { title: '委派工单', icon: TeamOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认委派' },
   下送: { title: '下送审核', icon: StopOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认下送' },
   强结: { title: '强制结案（强结）', icon: StopOutlined, tone: 'warn', width: 480, okTone: 'danger', okText: '提交强结审批' },
@@ -141,7 +141,7 @@ function validate(): boolean {
       if (!delegate.target) { message.warning(delegate.mode === 'person' ? '请选择协助办理人' : '请选择协助办理组'); return false; }
       return true;
     case '挂起':
-      if (!suspend.reason) { message.warning('请选择挂起原因'); return false; }
+      if (!suspend.reason) { message.warning('请选择挂起场景'); return false; }
       return true;
     case '同步飞书':
       if (!syncFeishu.message.trim()) { message.warning('请填写同步内容'); return false; }
@@ -170,7 +170,7 @@ function validate(): boolean {
 function onOk() {
   if (!validate()) return;
   switch (props.action) {
-    case '转办': emit('confirm', { type: '转办', data: { ...transfer } }); break;
+    case '调剂': emit('confirm', { type: '调剂', data: { ...transfer } }); break;
     case '委派': emit('confirm', { type: '委派', data: { ...delegate } }); break;
     case '强结': emit('confirm', { type: '强结', data: { ...forceClose } }); break;
     case '挂起': emit('confirm', { type: '挂起', data: { ...suspend } }); break;
@@ -200,10 +200,10 @@ function onOk() {
     @ok="onOk"
     @cancel="closeModal"
   >
-    <!-- 转办 -->
-    <div v-if="action === '转办'" class="op-form">
+    <!-- 调剂 -->
+    <div v-if="action === '调剂'" class="op-form">
       <div class="op-field">
-        <div class="op-label">转办范围</div>
+        <div class="op-label">调剂范围</div>
         <a-radio-group v-model:value="transfer.scope">
           <a-radio value="same">同组内</a-radio>
           <a-radio value="cross">跨组</a-radio>
@@ -214,10 +214,10 @@ function onOk() {
         <a-select v-model:value="transfer.target" :options="TRANSFER_TARGETS.map((t) => ({ value: t, label: t }))" style="width:100%" />
       </div>
       <div class="op-field">
-        <div class="op-label">转办原因</div>
-        <a-textarea v-model:value="transfer.reason" :rows="2" placeholder="请输入转办原因..." />
+        <div class="op-label">调剂原因</div>
+        <a-textarea v-model:value="transfer.reason" :rows="2" placeholder="请输入调剂原因..." />
       </div>
-      <div class="op-tip op-tip-info">转办变更当前处理人，工单状态仍为「处理中」；48 小时未响应将自动回滚。</div>
+      <div class="op-tip op-tip-info">调剂变更当前处理人，工单状态仍为「处理中」；48 小时未响应将自动回滚。</div>
     </div>
 
     <!-- 委派 -->
@@ -237,7 +237,7 @@ function onOk() {
         <div class="op-label">委派说明</div>
         <a-textarea v-model:value="delegate.reason" :rows="2" placeholder="请说明需协助的内容..." />
       </div>
-      <div class="op-tip op-tip-info">委派 ≠ 转办：主责仍在您名下；协办人/组处理完成后，工单回到您处继续处理。</div>
+      <div class="op-tip op-tip-info">委派 ≠ 调剂：主责仍在您名下；协办人/组处理完成后，工单回到您处继续处理。</div>
     </div>
 
     <!-- 强结 -->
@@ -261,13 +261,13 @@ function onOk() {
     <!-- 挂起 -->
     <div v-else-if="action === '挂起'" class="op-form">
       <div class="op-field">
-        <div class="op-label req">挂起原因</div>
+        <div class="op-label req">挂起场景</div>
         <a-select v-model:value="suspend.reason" placeholder="请选择..." style="width:100%"
           :options="SUSPEND_REASONS.map((r) => ({ value: r, label: r }))" />
       </div>
       <div class="op-field">
         <div class="op-label">详细说明</div>
-        <a-textarea v-model:value="suspend.detail" :rows="2" placeholder="请描述挂起原因..." />
+        <a-textarea v-model:value="suspend.detail" :rows="2" placeholder="请补充说明..." />
       </div>
       <div class="op-field">
         <div class="op-label">预计恢复时间</div>
@@ -368,7 +368,7 @@ function onOk() {
     <div v-else-if="action === '恢复'" class="op-form">
       <div v-if="suspendInfo" class="op-box op-box-warn">
         <div class="op-box-title">当前挂起信息</div>
-        <div class="op-kv-row"><span>挂起原因</span><span>{{ suspendInfo.reason }}</span></div>
+        <div class="op-kv-row"><span>挂起场景</span><span>{{ suspendInfo.reason }}</span></div>
         <div class="op-kv-row"><span>挂起时间</span><span>{{ suspendInfo.at }}</span></div>
         <div class="op-kv-row"><span>预计恢复</span><span>{{ suspendInfo.resumeAt || '—' }}</span></div>
         <div class="op-kv-row"><span>操作人</span><span>{{ suspendInfo.operator }}</span></div>

@@ -160,15 +160,15 @@ const statTable = computed(() =>
   statModalKey.value ? d.value.insightDetails[statModalKey.value] : null,
 );
 // 弹窗「查看完整记录」跳向的 Tab + 文案
-const STAT_VIEW_ALL: Record<InsightModalKey, { tab: ProcessTabKey; label: string }> = {
-  inbound: { tab: 'contact', label: '在「联系记录」中查看全部' },
+const STAT_VIEW_ALL: Record<Exclude<InsightModalKey, 'contact'>, { tab: ProcessTabKey; label: string }> = {
   history: { tab: 'customerHistory', label: '在「客户历史工单」中查看全部' },
   complaint: { tab: 'customerHistory', label: '在「客户历史工单」中查看全部' },
   recent30: { tab: 'customerHistory', label: '在「客户历史工单」中查看全部' },
 };
-const statViewAllLabel = computed(() =>
-  statModalKey.value ? STAT_VIEW_ALL[statModalKey.value].label : '',
-);
+const statViewAllLabel = computed(() => {
+  if (!statModalKey.value || statModalKey.value === 'contact') return '';
+  return STAT_VIEW_ALL[statModalKey.value].label;
+});
 
 function onOverviewSelect(action: InsightAction) {
   if (action.kind === 'modal') {

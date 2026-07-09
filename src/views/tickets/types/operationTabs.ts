@@ -91,7 +91,7 @@ export type SupplementType = (typeof SUPPLEMENT_TYPE_OPTIONS)[number];
 
 export interface ContactRecord {
   id: string;
-  kind: 'call' | 'sms' | 'email';
+  kind: 'call' | 'sms' | 'email' | 'im';
   title: string;
   emoji: string;
   operator: string;
@@ -103,6 +103,14 @@ export interface ContactRecord {
   asr?: { speaker: string; text: string }[];
   smsContent?: string;
   emailLines?: { text: string; bold?: boolean; muted?: boolean }[];
+  /** 记录来源：一线（关联沟通）/ 二线（本席产生）；默认二线 */
+  source?: '一线' | '二线';
+  /** 一线关联沟通的渠道：热线 / IM */
+  channel?: '热线' | 'IM';
+  /** 一线小结（热线卡片，可展开查看全文）；替代二线的文本转写 */
+  note?: string;
+  /** IM 会话元信息（消息条数、会话时长） */
+  im?: { sessionDuration: string; messageCount: number };
 }
 
 export type NotifyKind = 'upgrade' | 'timeout' | 'transfer' | 'dunning' | 'accepted';

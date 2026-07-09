@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useRoute } from 'vue-router';
-import { message } from 'ant-design-vue';
-import { PlusOutlined, DeleteOutlined, ImportOutlined, CopyOutlined } from '@ant-design/icons-vue';
+import { message, Modal } from 'ant-design-vue';
+import dayjs, { type Dayjs } from 'dayjs';
+import { PlusOutlined, ImportOutlined, CopyOutlined } from '@ant-design/icons-vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import { slaCalendars, addCalendar, removeCalendar, renameCalendar, type SlaCalendar } from '@/config/slaCalendars';
+import SlaNotifyRuleList from '@/views/admin/components/sla/SlaNotifyRuleList.vue';
+import SlaPreAlertList from '@/views/admin/components/sla/SlaPreAlertList.vue';
 import { adminNavActiveKey } from '@/config/adminNav';
 import { SERVICE_TYPE_OPTIONS, SERVICE_TYPE_TO_METHODS } from '@/views/tickets/types/operation';
 
@@ -15,17 +19,21 @@ const activeKey = computed(() => adminNavActiveKey(route.path));
 // 节点级时限 = 轻量 OLA（P1），在 SLA 策略内配，不在此页。
 
 // —— 挂起规则（参考 V1 A3#suspend：最长挂起防永久挂起 + 自动恢复条件 + 挂起审批）——
+let suspendSeq = 0;
 const suspendRows = ref([
-  { reason: '等待客户反馈', pause: true, maxDuration: '72 小时', autoResume: '客户回复后自动恢复', needAudit: false },
-  { reason: '等待备件到货', pause: true, maxDuration: '7 天', autoResume: '到货确认后恢复', needAudit: false },
-  { reason: '等待第三方系统', pause: true, maxDuration: '48 小时', autoResume: '接口回调后恢复', needAudit: false },
-  { reason: '等待产研修复', pause: true, maxDuration: '15 天', autoResume: '版本发布后恢复', needAudit: true },
-  { reason: '客户要求暂缓', pause: true, maxDuration: '30 天', autoResume: '客户确认后恢复', needAudit: true },
+  { id: ++suspendSeq, reason: '等待客户反馈', pause: true, maxDuration: '72 小时', autoResume: '客户回复后自动恢复', needAudit: false },
+  { id: ++suspendSeq, reason: '等待备件到货', pause: true, maxDuration: '7 天', autoResume: '到货确认后恢复', needAudit: false },
+  { id: ++suspendSeq, reason: '等待第三方系统', pause: true, maxDuration: '48 小时', autoResume: '接口回调后恢复', needAudit: false },
+  { id: ++suspendSeq, reason: '等待产研修复', pause: true, maxDuration: '15 天', autoResume: '版本发布后恢复', needAudit: true },
+  { id: ++suspendSeq, reason: '客户要求暂缓', pause: true, maxDuration: '30 天', autoResume: '客户确认后恢复', needAudit: true },
 ]);
-function addSuspend() { suspendRows.value.push({ reason: '新挂起原因', pause: true, maxDuration: '72 小时', autoResume: '条件满足后恢复', needAudit: false }); }
-function delSuspend(reason: string) { suspendRows.value = suspendRows.value.filter((r) => r.reason !== reason); }
+function addSuspend() { suspendRows.value.push({ id: ++suspendSeq, reason: '', pause: true, maxDuration: '', autoResume: '', needAudit: false }); }
+function delSuspend(id: number) { suspendRows.value = suspendRows.value.filter((r) => r.id !== id); }
+/** 挂起场景枚举（对客承诺停表原因；来自字段字典·挂起原因） */
+const SUSPEND_SCENES = ['等待客户反馈', '等待备件到货', '等待第三方系统', '等待产研修复', '等待上级审批', '客户要求暂缓', '其他'];
+const suspendSceneOpts = SUSPEND_SCENES.map((s) => ({ value: s, label: s }));
 
-// —— 预警与升级：按时钟维度配置（整单 + 节点，各钟独立）——
+// —— 预警与升级：按时效维度配置（整单 + 节点，各时效独立）——
 type DueJudgeMode = 'percent' | 'countdown';
 type DueCountUnit = '分钟' | '小时';
 type ClockKind = 'resp' | 'proc' | 'solve';
@@ -38,7 +46,8 @@ interface PreAlertRow {
   template: string;
 }
 
-interface NotifyRule {
+interface NotifyRuleRow {
+  id: number;
   targets: string[];
   channels: string[];
   template: string;
@@ -47,10 +56,12 @@ interface NotifyRule {
 interface ClockAlertConfig {
   enabled: boolean;
   dueJudge: { mode: DueJudgeMode; value: number; unit: DueCountUnit };
+  preAlertEnabled: boolean;
   preAlerts: PreAlertRow[];
-  dueAlert: NotifyRule;
+  dueAlertEnabled: boolean;
+  dueAlerts: NotifyRuleRow[];
   timeoutEnabled: boolean;
-  timeoutAlert: NotifyRule;
+  timeoutAlerts: NotifyRuleRow[];
 }
 
 interface ClockDim {
@@ -94,13 +105,19 @@ function defClockConfig(dim: ClockDim): ClockAlertConfig {
   return {
     enabled: dim.group === '整单',
     dueJudge: { mode: 'percent', value: 25, unit: '分钟' },
+    preAlertEnabled: true,
     preAlerts: [
       { id: 1, minutesBefore: 20, targets: ['处理人', '班组长'], channels: ['系统弹窗', 'i讯飞'], template: preTpl },
       { id: 2, minutesBefore: 10, targets: ['处理人', '班组长'], channels: ['系统弹窗', 'i讯飞'], template: preTpl },
     ],
-    dueAlert: { targets: ['处理人', '班组长'], channels: ['系统弹窗', 'i讯飞'], template: dueTpl },
+    dueAlertEnabled: true,
+    dueAlerts: [
+      { id: 1, targets: ['处理人', '班组长'], channels: ['系统弹窗', 'i讯飞'], template: dueTpl },
+    ],
     timeoutEnabled: true,
-    timeoutAlert: { targets: ['班组长'], channels: ['系统弹窗', 'i讯飞', '短信'], template: timeoutTpl(dim) },
+    timeoutAlerts: [
+      { id: 1, targets: ['班组长'], channels: ['系统弹窗', 'i讯飞', '短信'], template: timeoutTpl(dim) },
+    ],
   };
 }
 
@@ -143,9 +160,40 @@ function delPreAlert(id: number) {
   cfg.preAlerts = cfg.preAlerts.filter((r) => r.id !== id);
 }
 
+function addDueAlert() {
+  const cfg = currentClock.value;
+  const dueTpl = currentTemplates.value[1];
+  cfg.dueAlerts.push({
+    id: Date.now(),
+    targets: ['处理人', '班组长'],
+    channels: ['系统弹窗'],
+    template: dueTpl,
+  });
+}
+function delDueAlert(id: number) {
+  const cfg = currentClock.value;
+  cfg.dueAlerts = cfg.dueAlerts.filter((r) => r.id !== id);
+}
+
+function addTimeoutAlert() {
+  const cfg = currentClock.value;
+  const tpl = timeoutTpl(selectedDim.value);
+  cfg.timeoutAlerts.push({
+    id: Date.now(),
+    targets: ['班组长'],
+    channels: ['系统弹窗', 'i讯飞'],
+    template: tpl,
+  });
+}
+function delTimeoutAlert(id: number) {
+  const cfg = currentClock.value;
+  cfg.timeoutAlerts = cfg.timeoutAlerts.filter((r) => r.id !== id);
+}
+
 const channelOpts = CHANNELS.map((c) => ({ value: c, label: c }));
 const targetOpts = TARGETS.map((t) => ({ value: t, label: t }));
-const templateOpts = computed(() => currentTemplates.value.map((t) => ({ value: t, label: t })));
+const preTemplateOpts = computed(() => [{ value: currentTemplates.value[0], label: currentTemplates.value[0] }]);
+const dueTemplateOpts = computed(() => [{ value: currentTemplates.value[1], label: currentTemplates.value[1] }]);
 
 // 监控看板（达标统计）已移出 SLA 配置：完整看板归运营看板/数据总览、班组看板（单一算法源）；
 // SLA 策略列表页保留轻量达成概览。
@@ -159,16 +207,41 @@ interface WorkDay {
   pmStart: string;
   pmEnd: string;
 }
-const is724 = ref(false);
-const workDays = ref<WorkDay[]>([
-  { day: '周一', on: true, amStart: '09:00', amEnd: '12:00', pmStart: '13:30', pmEnd: '18:00' },
-  { day: '周二', on: true, amStart: '09:00', amEnd: '12:00', pmStart: '13:30', pmEnd: '18:00' },
-  { day: '周三', on: true, amStart: '09:00', amEnd: '12:00', pmStart: '13:30', pmEnd: '18:00' },
-  { day: '周四', on: true, amStart: '09:00', amEnd: '12:00', pmStart: '13:30', pmEnd: '18:00' },
-  { day: '周五', on: true, amStart: '09:00', amEnd: '12:00', pmStart: '13:30', pmEnd: '18:00' },
-  { day: '周六', on: false, amStart: '09:00', amEnd: '12:00', pmStart: '13:30', pmEnd: '17:00' },
-  { day: '周日', on: false, amStart: '10:00', amEnd: '12:00', pmStart: '13:30', pmEnd: '17:00' },
-]);
+// —— 多套工作日历（共享单一真源；策略下拉同源引用）——
+const currentCalId = ref(slaCalendars[0].id);
+const selectedCal = computed<SlaCalendar>(() => slaCalendars.find((c) => c.id === currentCalId.value) ?? slaCalendars[0]);
+const calSelectOpts = computed(() => slaCalendars.map((c) => ({ value: c.id, label: c.name })));
+const workDays = computed(() => selectedCal.value.workDays);
+const is724 = computed({
+  get: () => selectedCal.value.is724,
+  set: (v: boolean) => { selectedCal.value.is724 = v; },
+});
+function onAddCal() {
+  const cal = addCalendar();
+  currentCalId.value = cal.id;
+  message.success('已新增日历，请编辑其工作时段并命名');
+}
+function onDeleteCal() {
+  const cal = selectedCal.value;
+  if (cal.builtin) { message.info('内置日历不可删除'); return; }
+  Modal.confirm({
+    title: '删除日历',
+    content: `确定删除「${cal.name}」？引用它的 SLA 策略需改选其他日历。`,
+    okType: 'danger',
+    onOk: () => { if (removeCalendar(cal.id)) { currentCalId.value = slaCalendars[0].id; message.success('已删除'); } },
+  });
+}
+const renaming = ref(false);
+const renameInput = ref('');
+function openRename() {
+  if (selectedCal.value.builtin) { message.info('内置日历不可重命名'); return; }
+  renameInput.value = selectedCal.value.name;
+  renaming.value = true;
+}
+function confirmRename() {
+  if (renameCalendar(currentCalId.value, renameInput.value)) { renaming.value = false; message.success('已重命名'); }
+  else message.warning('名称不能为空或与其他日历重复');
+}
 const TIME_OPTS = (() => {
   const opts: { value: string; label: string }[] = [];
   for (let h = 0; h < 24; h++) {
@@ -193,14 +266,17 @@ function applyMondayToAll() {
 // 节假日按年维护：名称固定，日期/调休逐年不同；可一键导入国务院当年安排。
 const holidayYear = ref('2026');
 const HOLIDAY_YEARS = ['2026', '2027', '2028'];
-const holidays = ref([
-  { name: '元旦', range: '01-01 ~ 01-03', makeup: '—', count: false },
-  { name: '春节', range: '02-16 ~ 02-22', makeup: '02-14, 02-28', count: false },
-  { name: '清明节', range: '04-04 ~ 04-06', makeup: '—', count: false },
-  { name: '劳动节', range: '05-01 ~ 05-05', makeup: '04-26, 05-09', count: false },
-  { name: '端午节', range: '06-19 ~ 06-21', makeup: '—', count: false },
-  { name: '中秋节', range: '09-25 ~ 09-27', makeup: '—', count: false },
-  { name: '国庆节', range: '10-01 ~ 10-07', makeup: '09-27, 10-11', count: false },
+let holidaySeq = 0;
+interface Holiday { id: number; name: string; range: [Dayjs, Dayjs] | null; makeup: (Dayjs | null)[]; count: boolean }
+function hd(md: string): Dayjs { return dayjs(`${holidayYear.value}-${md}`); }
+const holidays = ref<Holiday[]>([
+  { id: ++holidaySeq, name: '元旦', range: [hd('01-01'), hd('01-03')], makeup: [], count: false },
+  { id: ++holidaySeq, name: '春节', range: [hd('02-16'), hd('02-22')], makeup: [hd('02-14'), hd('02-28')], count: false },
+  { id: ++holidaySeq, name: '清明节', range: [hd('04-04'), hd('04-06')], makeup: [], count: false },
+  { id: ++holidaySeq, name: '劳动节', range: [hd('05-01'), hd('05-05')], makeup: [hd('04-26'), hd('05-09')], count: false },
+  { id: ++holidaySeq, name: '端午节', range: [hd('06-19'), hd('06-21')], makeup: [], count: false },
+  { id: ++holidaySeq, name: '中秋节', range: [hd('09-25'), hd('09-27')], makeup: [], count: false },
+  { id: ++holidaySeq, name: '国庆节', range: [hd('10-01'), hd('10-07')], makeup: [hd('09-27'), hd('10-11')], count: false },
 ]);
 // —— 整单解决·服务方式动态调整（全局、独立于标准策略：选定服务方式后动态覆盖策略的优先级默认解决时限）——
 type PriK = 'P0' | 'P1' | 'P2' | 'P3';
@@ -213,29 +289,42 @@ const SVC_P1_HOURS: Record<string, number> = {
 function svcSpread(p1: number): Record<PriK, number> {
   return { P0: Math.ceil(p1 * PRI_COEFF.P0), P1: p1, P2: Math.ceil(p1 * PRI_COEFF.P2), P3: Math.ceil(p1 * PRI_COEFF.P3) };
 }
-const svcAdjust = ref(true);
+const svcAdjust = ref(false);
+let svcRowSeq = 0;
 const svcSolve = ref(
   SERVICE_TYPE_OPTIONS.flatMap((serviceType) =>
     (SERVICE_TYPE_TO_METHODS[serviceType] ?? []).map((serviceMethod) => ({
-      serviceType, serviceMethod, limits: svcSpread(SVC_P1_HOURS[serviceMethod] ?? 48),
+      id: ++svcRowSeq, serviceType, serviceMethod, limits: svcSpread(SVC_P1_HOURS[serviceMethod] ?? 48),
     })),
   ),
 );
-const svcGroups = computed(() => {
-  const map = new Map<string, typeof svcSolve.value>();
-  svcSolve.value.forEach((row) => { const l = map.get(row.serviceType) ?? []; l.push(row); map.set(row.serviceType, l); });
-  return [...map.entries()].map(([serviceType, rows]) => ({ serviceType, rows }));
-});
+const svcTypeOpts = SERVICE_TYPE_OPTIONS.map((t) => ({ value: t, label: t }));
+function svcMethodOpts(serviceType: string) {
+  return (SERVICE_TYPE_TO_METHODS[serviceType] ?? []).map((m) => ({ value: m, label: m }));
+}
+/** 改服务类型后，若原服务方式不属于新类型则重置为该类型首项 */
+function onSvcTypeChange(row: { serviceType: string; serviceMethod: string }) {
+  const methods = SERVICE_TYPE_TO_METHODS[row.serviceType] ?? [];
+  if (!methods.includes(row.serviceMethod)) row.serviceMethod = methods[0] ?? '';
+}
+function addSvcRow() {
+  const serviceType = SERVICE_TYPE_OPTIONS[0];
+  const serviceMethod = (SERVICE_TYPE_TO_METHODS[serviceType] ?? [])[0] ?? '';
+  svcSolve.value.push({ id: ++svcRowSeq, serviceType, serviceMethod, limits: svcSpread(SVC_P1_HOURS[serviceMethod] ?? 48) });
+}
+function delSvcRow(id: number) { svcSolve.value = svcSolve.value.filter((r) => r.id !== id); }
 function recalcSvc() { svcSolve.value.forEach((r) => { r.limits = svcSpread(r.limits.P1); }); message.success('已按 P1 重算 P0/P2/P3（系数 0.75/1/1.25/1.5）'); }
 
-function importHolidays() { message.info(`已导入 ${holidayYear.value} 年国务院法定节假日及调休安排（演示）`); }
-function addHoliday() { holidays.value.push({ name: '新假期', range: '', makeup: '—', count: false }); }
-function delHoliday(name: string) { holidays.value = holidays.value.filter((h) => h.name !== name); }
+function importHolidays() { message.success(`已导入 ${holidayYear.value} 年国务院法定节假日与调休安排`); }
+function addHoliday() { holidays.value.push({ id: ++holidaySeq, name: '', range: null, makeup: [], count: false }); }
+function delHoliday(id: number) { holidays.value = holidays.value.filter((h) => h.id !== id); }
+function addMakeup(h: Holiday) { h.makeup.push(null); }
+function delMakeup(h: Holiday, idx: number) { h.makeup.splice(idx, 1); }
 
 // 配置短表列（spec §3：a-table size middle + :pagination=false）
 const suspendCols = [
-  { title: '挂起原因', dataIndex: 'reason', key: 'reason' },
-  { title: '暂停计时', key: 'pause', width: 110 },
+  { title: '挂起场景', dataIndex: 'reason', key: 'reason', width: 180 },
+  { title: '是否暂停', key: 'pause', width: 110 },
   { title: '最长挂起', dataIndex: 'maxDuration', key: 'maxDuration', width: 110 },
   { title: '自动恢复', dataIndex: 'autoResume', key: 'autoResume' },
   { title: '需审核', key: 'needAudit', width: 90 },
@@ -243,7 +332,7 @@ const suspendCols = [
 ];
 const holidayCols = [
   { title: '节日', dataIndex: 'name', key: 'name', width: 120 },
-  { title: '放假日期', dataIndex: 'range', key: 'range', width: 180 },
+  { title: '放假日期', dataIndex: 'range', key: 'range', width: 230 },
   { title: '调休补班日', dataIndex: 'makeup', key: 'makeup' },
   { title: '是否计时', key: 'count', width: 110 },
   { title: '操作', key: 'op', width: 90 },
@@ -264,13 +353,21 @@ function save() { message.success('已保存并生效'); }
       <AdminPageHeader
         title="计时规则"
         subtitle="计时规则 = 工作日历与停表底座：定义工作时段、节假日/调休及挂起是否暂停计时，供全部 SLA 策略共用。"
-      />
+      >
+        <template #actions>
+          <a-button type="primary" @click="save">保存</a-button>
+        </template>
+      </AdminPageHeader>
 
       <div class="content-card">
-          <div class="card-toolbar">
-            <a-button type="primary" @click="save">保存</a-button>
+          <div class="sec-h cal-h">
+            <span>SLA 工作日历</span>
+            <a-select v-model:value="currentCalId" size="small" style="width:200px" :options="calSelectOpts" />
+            <a-button size="small" @click="onAddCal"><template #icon><PlusOutlined /></template>新建</a-button>
+            <a-button size="small" :disabled="selectedCal.builtin" @click="openRename">重命名</a-button>
+            <a-button size="small" danger :disabled="selectedCal.builtin" @click="onDeleteCal">删除</a-button>
+            <span class="cal-724"><a-switch v-model:checked="is724" size="small" /><span class="muted">7×24 连续计时</span></span>
           </div>
-          <div class="sec-h">SLA 工作日历 <a-switch v-model:checked="is724" size="small" style="margin-left:6px" /><span class="muted" style="margin-left:6px">7×24</span></div>
           <a-table :columns="calCols" :data-source="workDays" row-key="day" :pagination="false" size="middle" :class="{ 'tbl-disabled': is724 }">
             <template #headerCell="{ column }">
               <template v-if="column.key === 'time'">
@@ -295,6 +392,10 @@ function save() { message.success('已保存并生效'); }
               </div>
             </template>
           </a-table>
+          <a-modal v-model:open="renaming" title="重命名日历" ok-text="保存" cancel-text="取消" @ok="confirmRename">
+            <a-input v-model:value="renameInput" placeholder="请输入日历名称" allow-clear @press-enter="confirmRename" />
+          </a-modal>
+
           <div class="sec-h mt2">节假日 / 调休
             <span class="hd-actions">
               <span class="muted">年份</span>
@@ -303,42 +404,61 @@ function save() { message.success('已保存并生效'); }
               <a-button size="small" type="primary" @click="addHoliday"><template #icon><PlusOutlined /></template>新增假期</a-button>
             </span>
           </div>
-          <a-table :columns="holidayCols" :data-source="holidays" row-key="name" :pagination="false" size="middle">
+          <a-table :columns="holidayCols" :data-source="holidays" row-key="id" :pagination="false" size="middle">
             <template #bodyCell="{ column, record }">
-              <a-switch v-if="column.key === 'count'" v-model:checked="record.count" size="small" checked-children="计时" un-checked-children="休息" />
-              <a-button v-else-if="column.key === 'op'" type="link" size="small" danger @click="delHoliday(record.name)">删除</a-button>
+              <a-input v-if="column.key === 'name'" v-model:value="record.name" size="small" placeholder="节日名称" />
+              <a-range-picker v-else-if="column.key === 'range'" v-model:value="record.range" size="small" format="MM-DD" :placeholder="['放假开始', '结束']" style="width:100%" />
+              <div v-else-if="column.key === 'makeup'" class="makeup-cell">
+                <span v-if="!record.makeup.length" class="muted">无补班</span>
+                <span v-for="(m, idx) in record.makeup" :key="idx" class="makeup-item">
+                  <a-date-picker v-model:value="record.makeup[idx]" size="small" format="MM-DD" placeholder="补班日" style="width:104px" />
+                  <a-button type="text" size="small" danger class="makeup-del" @click="delMakeup(record, idx)">×</a-button>
+                </span>
+                <a-button type="link" size="small" @click="addMakeup(record)"><template #icon><PlusOutlined /></template>补班日</a-button>
+              </div>
+              <a-switch v-else-if="column.key === 'count'" v-model:checked="record.count" size="small" checked-children="计时" un-checked-children="休息" />
+              <a-button v-else-if="column.key === 'op'" type="link" size="small" danger @click="delHoliday(record.id)">删除</a-button>
             </template>
           </a-table>
 
-          <div class="sec-h mt2">挂起 / 停表规则</div>
-          <a-table :columns="suspendCols" :data-source="suspendRows" row-key="reason" :pagination="false" size="middle">
+          <div class="sec-h mt2">挂起 / 停表规则
+            <span class="hd-actions">
+              <a-button size="small" type="primary" @click="addSuspend"><template #icon><PlusOutlined /></template>新增挂起规则</a-button>
+            </span>
+          </div>
+          <a-table :columns="suspendCols" :data-source="suspendRows" row-key="id" :pagination="false" size="middle">
             <template #bodyCell="{ column, record }">
-              <a-switch v-if="column.key === 'pause'" v-model:checked="record.pause" size="small" checked-children="暂停" un-checked-children="计时" />
+              <a-select v-if="column.key === 'reason'" v-model:value="record.reason" :options="suspendSceneOpts" size="small" placeholder="选择挂起场景" style="width:100%" />
+              <a-switch v-else-if="column.key === 'pause'" v-model:checked="record.pause" size="small" checked-children="暂停" un-checked-children="计时" />
+              <a-input v-else-if="column.key === 'maxDuration'" v-model:value="record.maxDuration" size="small" placeholder="如 72 小时" />
+              <a-input v-else-if="column.key === 'autoResume'" v-model:value="record.autoResume" size="small" placeholder="恢复条件，如 客户回复后自动恢复" />
               <a-switch v-else-if="column.key === 'needAudit'" v-model:checked="record.needAudit" size="small" />
-              <span v-else-if="column.key === 'autoResume'" class="muted">{{ record.autoResume }}</span>
-              <a-button v-else-if="column.key === 'op'" type="link" size="small" danger @click="delSuspend(record.reason)">删除</a-button>
+              <a-button v-else-if="column.key === 'op'" type="link" size="small" danger @click="delSuspend(record.id)">删除</a-button>
             </template>
           </a-table>
-          <a-button type="dashed" block class="mt" @click="addSuspend"><template #icon><PlusOutlined /></template>添加挂起原因</a-button>
 
           <div class="sec-h mt2">整单解决 · 服务方式动态调整（选填）
             <a-switch v-model:checked="svcAdjust" size="small" style="margin-left:8px" />
+            <span v-if="svcAdjust" class="hd-actions">
+              <a-button size="small" type="primary" @click="addSvcRow"><template #icon><PlusOutlined /></template>新增服务方式</a-button>
+              <a-button size="small" @click="recalcSvc">按 P1 重算 P0/P2/P3</a-button>
+            </span>
           </div>
           <template v-if="svcAdjust">
-            <div style="text-align:right;margin-bottom:8px"><a-button size="small" @click="recalcSvc">按 P1 重算 P0/P2/P3</a-button></div>
             <table class="svc-matrix">
-              <thead><tr><th>服务类型</th><th>服务方式</th><th v-for="pk in PRI_KEYS" :key="pk">{{ pk }}</th></tr></thead>
+              <thead><tr><th style="width:160px">服务类型</th><th style="width:200px">服务方式</th><th v-for="pk in PRI_KEYS" :key="pk">{{ pk }}</th><th style="width:64px">操作</th></tr></thead>
               <tbody>
-                <template v-for="g in svcGroups" :key="g.serviceType">
-                  <tr v-for="(row, idx) in g.rows" :key="row.serviceMethod">
-                    <td v-if="idx === 0" class="rowh" :rowspan="g.rows.length">{{ g.serviceType }}</td>
-                    <td class="mcell">{{ row.serviceMethod }}</td>
-                    <td v-for="pk in PRI_KEYS" :key="pk"><a-input-number v-model:value="row.limits[pk]" :min="1" size="small" style="width:56px" /> <span class="uh">h</span></td>
-                  </tr>
-                </template>
+                <tr v-for="row in svcSolve" :key="row.id">
+                  <td><a-select v-model:value="row.serviceType" :options="svcTypeOpts" size="small" style="width:150px" @change="onSvcTypeChange(row)" /></td>
+                  <td><a-select v-model:value="row.serviceMethod" :options="svcMethodOpts(row.serviceType)" size="small" style="width:190px" placeholder="选择服务方式" /></td>
+                  <td v-for="pk in PRI_KEYS" :key="pk"><a-input-number v-model:value="row.limits[pk]" :min="1" size="small" style="width:56px" /> <span class="uh">h</span></td>
+                  <td><a-button type="link" size="small" danger @click="delSvcRow(row.id)">删除</a-button></td>
+                </tr>
+                <tr v-if="!svcSolve.length"><td :colspan="PRI_KEYS.length + 3" class="svc-empty">暂无服务方式，点「新增服务方式」添加</td></tr>
               </tbody>
             </table>
           </template>
+          <div v-else class="svc-off-hint">关闭时整单解决时限按策略的优先级配置执行；开启后可对各服务方式细化到 P0–P3。</div>
       </div>
     </div>
 
@@ -346,13 +466,13 @@ function save() { message.success('已保存并生效'); }
     <div v-else-if="activeKey === 'sla-escalate'" class="admin-page">
       <AdminPageHeader
         title="预警与升级"
-        subtitle="预警与升级 = 按 SLA 时钟配置临期判定、临期前提醒、临期预警与超时升级；升级动作在 SLA 引擎内闭环，与规则引擎升级路由区分。"
+        subtitle="预警与升级 = 按 SLA 时效配置临期判定、临期前提醒、临期预警与超时升级；升级动作在 SLA 引擎内闭环，与规则引擎升级路由区分。"
       />
 
       <div class="content-card content-card--alert">
           <div class="alert-layout">
             <aside class="clock-nav">
-              <a-input v-model:value="clockSearch" size="small" placeholder="搜索时钟" allow-clear class="clock-search" />
+              <a-input v-model:value="clockSearch" size="small" placeholder="搜索时效" allow-clear class="clock-search" />
               <div v-for="grp in clockGroups" :key="grp.group" class="clock-nav-group">
                 <div class="clock-nav-label">{{ grp.group }}</div>
                 <div
@@ -374,90 +494,169 @@ function save() { message.success('已保存并生效'); }
 
             <div class="alert-main">
               <div class="alert-main-h">
-                <span>{{ selectedDim.label }}</span>
-                <a-button type="primary" @click="save">保存</a-button>
+                <div class="alert-title-wrap">
+                  <span class="alert-group-tag">{{ selectedDim.group }}</span>
+                  <h3 class="alert-title">{{ selectedDim.label }}</h3>
+                  <span class="alert-status" :class="currentClock.enabled ? 'on' : 'off'">
+                    {{ currentClock.enabled ? '预警已启用' : '仅计时' }}
+                  </span>
+                </div>
+                <a-button type="primary" @click="save">保存配置</a-button>
               </div>
 
               <template v-if="currentClock.enabled">
-              <div class="step-block">
-                <div class="step-head"><span class="step-title">临期判定</span></div>
-                <a-radio-group v-model:value="currentClock.dueJudge.mode" class="due-group">
-                  <div class="due-row">
-                    <a-radio value="percent">到期百分比</a-radio>
-                    <template v-if="currentClock.dueJudge.mode === 'percent'">
-                      剩余 ≤ <a-input-number v-model:value="currentClock.dueJudge.value" :min="1" :max="99" size="small" style="width:72px" /> %
-                    </template>
+              <div class="alert-steps">
+                <!-- 临期界定 -->
+                <section class="step-card step-card--compact">
+                  <div class="due-judge-bar">
+                    <span class="due-judge-label">临期界定</span>
+                    <a-radio-group v-model:value="currentClock.dueJudge.mode" size="small" class="due-radio-group">
+                      <a-radio value="percent">到期百分比</a-radio>
+                      <a-radio value="countdown">到期倒计时</a-radio>
+                    </a-radio-group>
+                    <div v-if="currentClock.dueJudge.mode === 'percent'" class="due-params">
+                      <span class="due-param-text">剩余 ≤</span>
+                      <a-input-number
+                        v-model:value="currentClock.dueJudge.value"
+                        :min="1"
+                        :max="99"
+                        size="small"
+                        class="due-param-input"
+                      />
+                      <span class="due-param-text">%</span>
+                    </div>
+                    <div v-else class="due-params">
+                      <span class="due-param-text">剩余 ≤</span>
+                      <a-input-number
+                        v-model:value="currentClock.dueJudge.value"
+                        :min="1"
+                        size="small"
+                        class="due-param-input"
+                      />
+                      <a-select
+                        v-model:value="currentClock.dueJudge.unit"
+                        size="small"
+                        class="due-param-unit"
+                        :options="COUNT_UNIT_OPTS.map((u) => ({ value: u, label: u }))"
+                      />
+                    </div>
                   </div>
-                  <div class="due-row">
-                    <a-radio value="countdown">到期倒计时</a-radio>
-                    <template v-if="currentClock.dueJudge.mode === 'countdown'">
-                      剩余 ≤ <a-input-number v-model:value="currentClock.dueJudge.value" :min="1" size="small" style="width:72px" />
-                      <a-select v-model:value="currentClock.dueJudge.unit" size="small" style="width:80px" :options="COUNT_UNIT_OPTS.map((u) => ({ value: u, label: u }))" />
-                    </template>
+                </section>
+
+                <!-- 临期前提醒 -->
+                <section class="step-card">
+                  <div class="step-card-head">
+                    <div class="step-head-text">
+                      <span class="step-title">临期前提醒</span>
+                      <span class="step-desc">在到期前按时间节点逐级通知，可配置多条</span>
+                    </div>
+                    <div class="step-card-actions">
+                      <a-button
+                        v-if="currentClock.preAlertEnabled"
+                        type="link"
+                        size="small"
+                        class="step-action"
+                        @click="addPreAlert"
+                      >
+                        <template #icon><PlusOutlined /></template>添加提醒
+                      </a-button>
+                      <a-switch v-model:checked="currentClock.preAlertEnabled" size="small" class="step-switch" />
+                    </div>
                   </div>
-                </a-radio-group>
-              </div>
+                  <div v-if="currentClock.preAlertEnabled" class="step-card-body step-card-body--flush">
+                    <SlaPreAlertList
+                      v-model:items="currentClock.preAlerts"
+                      :target-opts="targetOpts"
+                      :channel-opts="channelOpts"
+                      :template-opts="preTemplateOpts"
+                      @remove="delPreAlert"
+                    />
+                  </div>
+                  <div v-else class="step-card-body step-card-body--muted">
+                    已关闭临期前提醒，到期前不发送通知
+                  </div>
+                </section>
 
-              <div class="step-block">
-                <div class="step-head step-head--toolbar">
-                  <span class="step-title">临期前提醒</span>
-                  <a-button type="link" size="small" @click="addPreAlert"><template #icon><PlusOutlined /></template>添加</a-button>
-                </div>
-                <table class="alert-matrix">
-                  <thead>
-                    <tr>
-                      <th style="width:140px">临期前</th>
-                      <th style="width:160px">通知对象</th>
-                      <th style="width:200px">通知方式</th>
-                      <th>消息模板</th>
-                      <th style="width:56px" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="row in currentClock.preAlerts" :key="row.id">
-                      <td class="pre-minutes-cell">
-                        <span>前</span>
-                        <a-input-number v-model:value="row.minutesBefore" :min="1" size="small" class="pre-minutes-input" />
-                        <span>分钟</span>
-                      </td>
-                      <td><a-select v-model:value="row.targets" mode="multiple" size="small" style="width:100%" :options="targetOpts" /></td>
-                      <td><a-select v-model:value="row.channels" mode="multiple" size="small" style="width:100%" :options="channelOpts" /></td>
-                      <td><a-select v-model:value="row.template" size="small" style="width:100%" :options="templateOpts" /></td>
-                      <td><a-button type="link" size="small" danger @click="delPreAlert(row.id)"><template #icon><DeleteOutlined /></template></a-button></td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+                <!-- 临期预警 -->
+                <section class="step-card">
+                  <div class="step-card-head">
+                    <div class="step-head-text">
+                      <span class="step-title">临期预警</span>
+                      <span class="step-desc">到达临期判定时立即通知，可配置多条</span>
+                    </div>
+                    <div class="step-card-actions">
+                      <a-button
+                        v-if="currentClock.dueAlertEnabled"
+                        type="link"
+                        size="small"
+                        class="step-action"
+                        @click="addDueAlert"
+                      >
+                        <template #icon><PlusOutlined /></template>添加预警
+                      </a-button>
+                      <a-switch v-model:checked="currentClock.dueAlertEnabled" size="small" class="step-switch" />
+                    </div>
+                  </div>
+                  <div v-if="currentClock.dueAlertEnabled" class="step-card-body step-card-body--flush">
+                    <SlaNotifyRuleList
+                      v-model:items="currentClock.dueAlerts"
+                      tag-prefix="预警"
+                      summary="临期时通知"
+                      tone="warn"
+                      :target-opts="targetOpts"
+                      :channel-opts="channelOpts"
+                      :template-opts="dueTemplateOpts"
+                      @remove="delDueAlert"
+                    />
+                  </div>
+                  <div v-else class="step-card-body step-card-body--muted">
+                    已关闭临期预警，到达临期判定时不发送通知
+                  </div>
+                </section>
 
-              <div class="step-block">
-                <div class="step-head"><span class="step-title">临期预警</span></div>
-                <div class="notify-row">
-                  <span class="nr-label">通知对象</span>
-                  <a-select v-model:value="currentClock.dueAlert.targets" mode="multiple" size="small" style="width:180px" :options="targetOpts" />
-                  <span class="nr-label">通知方式</span>
-                  <a-select v-model:value="currentClock.dueAlert.channels" mode="multiple" size="small" style="width:220px" :options="channelOpts" />
-                  <span class="nr-label">消息模板</span>
-                  <a-select v-model:value="currentClock.dueAlert.template" size="small" style="flex:1;min-width:180px" :options="templateOpts" />
-                </div>
-              </div>
-
-              <div class="step-block step-block--timeout">
-                <div class="step-head">
-                  <span class="step-title">超时升级</span>
-                  <a-switch v-model:checked="currentClock.timeoutEnabled" size="small" style="margin-left:8px" />
-                </div>
-                <div v-if="currentClock.timeoutEnabled" class="notify-row">
-                  <span class="nr-label">通知对象</span>
-                  <a-select v-model:value="currentClock.timeoutAlert.targets" mode="multiple" size="small" style="width:180px" :options="targetOpts" />
-                  <span class="nr-label">通知方式</span>
-                  <a-select v-model:value="currentClock.timeoutAlert.channels" mode="multiple" size="small" style="width:220px" :options="channelOpts" />
-                  <span class="nr-label">消息模板</span>
-                  <a-select v-model:value="currentClock.timeoutAlert.template" size="small" style="flex:1;min-width:180px" :options="timeoutTemplateOpts" />
-                </div>
+                <!-- 超时升级 -->
+                <section class="step-card step-card--timeout">
+                  <div class="step-card-head">
+                    <div class="step-head-text">
+                      <span class="step-title">超时升级</span>
+                      <span class="step-desc">超时后通知上级并触发升级动作，可配置多条</span>
+                    </div>
+                    <div class="step-card-actions">
+                      <a-button
+                        v-if="currentClock.timeoutEnabled"
+                        type="link"
+                        size="small"
+                        class="step-action"
+                        @click="addTimeoutAlert"
+                      >
+                        <template #icon><PlusOutlined /></template>添加升级
+                      </a-button>
+                      <a-switch v-model:checked="currentClock.timeoutEnabled" size="small" class="step-switch" />
+                    </div>
+                  </div>
+                  <div v-if="currentClock.timeoutEnabled" class="step-card-body step-card-body--flush">
+                    <SlaNotifyRuleList
+                      v-model:items="currentClock.timeoutAlerts"
+                      tag-prefix="升级"
+                      summary="超时通知"
+                      tone="danger"
+                      :target-opts="targetOpts"
+                      :channel-opts="channelOpts"
+                      :template-opts="timeoutTemplateOpts"
+                      @remove="delTimeoutAlert"
+                    />
+                  </div>
+                  <div v-else class="step-card-body step-card-body--muted">
+                    已关闭超时升级，超时后仅标记 SLA 违约，不发送通知
+                  </div>
+                </section>
               </div>
               </template>
               <div v-else class="alert-empty">
-                <span class="alert-empty-text">未启用预警策略，该时钟仅计时</span>
+                <div class="alert-empty-icon">⏱</div>
+                <p class="alert-empty-title">未启用预警策略</p>
+                <p class="alert-empty-text">该时效仅参与 SLA 计时，不触发临期提醒与超时升级</p>
+                <a-button size="small" type="primary" ghost @click="alertConfigs[selectedClockKey].enabled = true">启用预警</a-button>
               </div>
             </div>
           </div>
@@ -470,9 +669,9 @@ function save() { message.success('已保存并生效'); }
 .sla-page { display: flex; flex-direction: column; min-height: 100%; }
 .admin-page { display: flex; flex-direction: column; gap: 16px; padding: 16px 24px; }
 .content-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px 24px; }
-.content-card--alert { padding: 16px 20px 20px; }
-.card-toolbar { display: flex; justify-content: flex-end; margin-bottom: 16px; }
+.content-card--alert { padding: 0; overflow: hidden; }
 .admin-page :deep(.admin-page-header) { margin-bottom: 0; }
+.svc-empty { text-align: center; color: #9ca3af; padding: 14px; }
 .svc-matrix { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
 .svc-matrix th, .svc-matrix td { border: 1px solid #e5e7eb; padding: 6px 10px; font-size: 13px; text-align: center; }
 .svc-matrix th { background: #f9fafb; color: #6b7280; font-weight: 600; }
@@ -480,10 +679,16 @@ function save() { message.success('已保存并生效'); }
 .svc-matrix .mcell { text-align: left; color: #374151; }
 .svc-matrix .uh { color: #9ca3af; font-size: 12px; }
 .sec-h { font-size: 13px; font-weight: 600; color: #111827; margin-bottom: 12px; padding-left: 10px; border-left: 3px solid #1a6fff; line-height: 1.4; display: flex; align-items: center; }
+.cal-h { gap: 8px; flex-wrap: wrap; }
+.cal-724 { margin-left: auto; display: flex; align-items: center; gap: 6px; font-weight: 400; }
+.makeup-cell { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.makeup-item { display: inline-flex; align-items: center; }
+.makeup-del { padding: 0 4px; }
 .sec-h.mt2 { margin-top: 24px; }
 .intro { font-size: 12px; color: #6b7280; background: #f9fafb; border: 1px solid #f0f0f0; border-radius: 6px; padding: 8px 12px; margin-bottom: 14px; line-height: 1.6; }
 .mb { margin-bottom: 14px; } .mt { margin-top: 14px; }
 .muted { color: #9ca3af; }
+.svc-off-hint { color: #9ca3af; font-size: 12px; line-height: 1.6; }
 .tbl-disabled { opacity: 0.5; }
 .cal-time-th { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; }
 .cal-time-th :deep(.ant-btn) { font-weight: 400; }
@@ -502,43 +707,105 @@ function save() { message.success('已保存并生效'); }
 .time-sel { width: 76px !important; flex: none; }
 .time-slots :deep(.ant-select-selector) { padding: 0 6px !important; }
 .content-card--alert .alert-layout { border: none; border-radius: 0; }
-.alert-layout { display: flex; gap: 0; min-height: 520px; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
+.alert-layout { display: flex; gap: 0; min-height: 560px; }
 .clock-nav {
-  width: 176px; flex: none; background: #f9fafb; border-right: 1px solid #e5e7eb;
-  padding: 10px 0; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; max-height: 72vh;
+  width: 200px; flex: none; background: #f8fafc; border-right: 1px solid #e5e7eb;
+  padding: 12px 0; display: flex; flex-direction: column; gap: 4px; overflow-y: auto; max-height: 72vh;
 }
-.clock-search { margin: 0 8px 6px; width: calc(100% - 16px); }
-.clock-nav-group { margin-bottom: 2px; }
-.clock-nav-label { font-size: 10px; font-weight: 600; color: #9ca3af; padding: 4px 8px 2px; letter-spacing: 0.02em; }
+.clock-search { margin: 0 10px 8px; width: calc(100% - 20px); }
+.clock-nav-group { margin-bottom: 4px; }
+.clock-nav-label { font-size: 11px; font-weight: 600; color: #9ca3af; padding: 6px 12px 4px; letter-spacing: 0.04em; text-transform: uppercase; }
 .clock-nav-item {
-  display: flex; align-items: center; gap: 6px; width: 100%; padding: 5px 6px 5px 8px; font-size: 12px; color: #374151;
-  border-left: 2px solid transparent; cursor: pointer;
+  display: flex; align-items: center; gap: 8px; margin: 0 8px; padding: 7px 10px; font-size: 13px; color: #374151;
+  border-radius: 6px; cursor: pointer; transition: background 0.15s, color 0.15s;
 }
 .clock-nav-item.off { color: #9ca3af; }
-.clock-nav-item:hover { background: #f3f4f6; }
-.clock-nav-item.on { background: #eff6ff; color: #1a6fff; border-left-color: #1a6fff; }
+.clock-nav-item:hover { background: #f1f5f9; }
+.clock-nav-item.on { background: #eff6ff; color: #1a6fff; box-shadow: inset 0 0 0 1px #bfdbfe; }
 .clock-nav-item.on .clock-nav-text { font-weight: 600; }
 .clock-nav-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.clock-nav-item :deep(.ant-switch) { flex: none; transform: scale(0.85); transform-origin: center right; }
-.alert-main { flex: 1; padding: 16px 20px; overflow-y: auto; }
-.alert-main-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px; font-weight: 600; color: #111827; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid #f0f0f0; }
-.alert-empty { display: flex; align-items: center; justify-content: center; min-height: 320px; }
-.alert-empty-text { font-size: 13px; color: #9ca3af; }
-.step-block { margin-bottom: 24px; }
-.step-block--timeout { margin-bottom: 0; }
-.step-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-.step-head--toolbar { justify-content: space-between; }
-.step-title { font-size: 13px; font-weight: 600; color: #111827; }
-.due-group { display: flex; flex-direction: column; gap: 12px; }
-.due-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #4b5563; flex-wrap: wrap; }
-.alert-matrix { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
-.alert-matrix th { background: #f3f4f6; color: #6b7280; font-size: 12px; font-weight: 600; text-align: left; padding: 8px 10px; border: 1px solid #e5e7eb; }
-.alert-matrix td { padding: 8px 10px; border: 1px solid #e5e7eb; font-size: 13px; color: #374151; vertical-align: middle; }
-.pre-minutes-cell { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
-.pre-minutes-input { width: 56px !important; flex: none; }
-.pre-minutes-cell :deep(.ant-input-number) { width: 56px; }
-.notify-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; }
-.nr-label { color: #6b7280; white-space: nowrap; font-size: 12px; }
+.clock-nav-item :deep(.ant-switch) { flex: none; transform: scale(0.88); transform-origin: center right; }
+
+.alert-main { flex: 1; padding: 20px 24px 24px; overflow-y: auto; background: #fafbfc; }
+.alert-main-h {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid #e5e7eb;
+}
+.alert-title-wrap { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.alert-group-tag {
+  font-size: 11px; font-weight: 600; color: #1a6fff; background: #eff6ff;
+  border: 1px solid #bfdbfe; border-radius: 4px; padding: 2px 8px; line-height: 1.4;
+}
+.alert-title { margin: 0; font-size: 16px; font-weight: 700; color: #111827; line-height: 1.3; }
+.alert-status {
+  font-size: 12px; font-weight: 500; padding: 2px 10px; border-radius: 999px; line-height: 1.5;
+}
+.alert-status.on { color: #059669; background: #ecfdf5; border: 1px solid #a7f3d0; }
+.alert-status.off { color: #9ca3af; background: #f3f4f6; border: 1px solid #e5e7eb; }
+
+.alert-steps { display: flex; flex-direction: column; gap: 14px; }
+.step-card {
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04); overflow: hidden;
+}
+.step-card--compact { box-shadow: none; }
+.step-card--timeout { border-color: #fde68a; }
+
+.due-judge-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 16px;
+  flex-wrap: wrap;
+}
+.due-judge-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+  flex: none;
+  white-space: nowrap;
+}
+.due-radio-group :deep(.ant-radio-wrapper) { font-size: 13px; margin-inline-end: 12px; }
+.due-params {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.due-param-text { font-size: 13px; color: #6b7280; }
+.due-param-input { width: 64px !important; }
+.due-param-unit { width: 72px !important; }
+
+.step-card-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  padding: 14px 16px 0;
+}
+.step-card-actions {
+  display: flex; align-items: center; gap: 4px; flex: none; margin-top: 1px;
+}
+.step-head-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.step-title { font-size: 14px; font-weight: 600; color: #111827; line-height: 1.4; }
+.step-desc { font-size: 12px; color: #9ca3af; line-height: 1.5; }
+.step-action { flex: none; font-weight: 500; padding: 0 4px; }
+.step-switch { flex: none; }
+.step-card-body { padding: 14px 16px 16px; }
+.step-card-body--flush { padding-top: 12px; }
+.step-card-body--muted {
+  padding: 0 16px 14px; font-size: 12px; color: #9ca3af; line-height: 1.6;
+}
+
+.alert-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-height: 360px; gap: 6px; text-align: center; padding: 40px 24px;
+  background: #fff; border: 1px dashed #e5e7eb; border-radius: 10px;
+}
+.alert-empty-icon { font-size: 36px; line-height: 1; margin-bottom: 4px; opacity: 0.5; }
+.alert-empty-title { margin: 0; font-size: 15px; font-weight: 600; color: #374151; }
+.alert-empty-text { margin: 0 0 12px; font-size: 13px; color: #9ca3af; max-width: 320px; line-height: 1.6; }
+
+@media (max-width: 960px) {
+  .due-judge-bar { gap: 10px; }
+  .due-params { width: 100%; padding-left: 0; }
+}
 .hd-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; font-weight: 600; }
 </style>

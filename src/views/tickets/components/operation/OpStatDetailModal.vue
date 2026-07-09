@@ -1,12 +1,14 @@
 <script setup lang="ts">
+import { computed, ref, watch } from 'vue';
 import { Modal as AModal } from 'ant-design-vue';
 import { RightOutlined } from '@ant-design/icons-vue';
+import AppPagination from '@/components/AppPagination.vue';
 import type { InsightDetailTable } from '@/views/tickets/types/operation';
 
-defineProps<{
+const props = defineProps<{
   open: boolean;
   table: InsightDetailTable | null;
-  /** 底部「查看完整记录」入口文案；不传则不显示 */
+  /** 底部「查看完整记录」入口文案；不传则不显示（联系明细不传） */
   viewAllLabel?: string;
 }>();
 
@@ -15,6 +17,29 @@ const emit = defineEmits<{
   openTicket: [no: string];
   viewAll: [];
 }>();
+
+const pageCurrent = ref(1);
+const pageSize = ref(10);
+
+watch(
+  () => [props.open, props.table] as const,
+  () => {
+    pageCurrent.value = 1;
+  },
+);
+
+const totalRows = computed(() => props.table?.rows.length ?? 0);
+
+const pagedRows = computed(() => {
+  const rows = props.table?.rows ?? [];
+  const start = (pageCurrent.value - 1) * pageSize.value;
+  return rows.slice(start, start + pageSize.value);
+});
+
+function onPageChange(page: number, size: number) {
+  pageCurrent.value = page;
+  pageSize.value = size;
+}
 </script>
 
 <template>
@@ -34,7 +59,7 @@ const emit = defineEmits<{
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(row, ri) in table.rows" :key="ri">
+            <tr v-for="(row, ri) in pagedRows" :key="ri">
               <td v-for="(cell, ci) in row.cells" :key="ci">
                 <a
                   v-if="ci === 0 && row.ticketNo"
@@ -47,6 +72,16 @@ const emit = defineEmits<{
           </tbody>
         </table>
       </div>
+
+      <AppPagination
+        v-if="totalRows > 0"
+        :total="totalRows"
+        :current="pageCurrent"
+        :page-size="pageSize"
+        @change="onPageChange"
+        @update:current="pageCurrent = $event"
+        @update:page-size="pageSize = $event"
+      />
 
       <div v-if="viewAllLabel" class="modal-foot">
         <a class="view-all" @click="emit('viewAll')">

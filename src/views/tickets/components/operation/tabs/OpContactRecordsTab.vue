@@ -7,6 +7,8 @@ import {
   PhoneOutlined,
   MessageOutlined,
   MailOutlined,
+  CommentOutlined,
+  ExportOutlined,
 } from '@ant-design/icons-vue';
 import { message } from 'ant-design-vue';
 import type { ContactRecord } from '@/views/tickets/types/operationTabs';
@@ -14,11 +16,13 @@ import type { ContactRecord } from '@/views/tickets/types/operationTabs';
 defineProps<{ records: ContactRecord[] }>();
 
 const expandedAsr = reactive<Record<string, boolean>>({});
+const expandedNote = reactive<Record<string, boolean>>({});
 
 const TITLE_ICON = {
   call: PhoneOutlined,
   sms: MessageOutlined,
   email: MailOutlined,
+  im: CommentOutlined,
 } as const;
 
 function play() {
@@ -29,9 +33,19 @@ function toggleAsr(id: string) {
   expandedAsr[id] = !expandedAsr[id];
 }
 
+function toggleNote(id: string) {
+  expandedNote[id] = !expandedNote[id];
+}
+
+function jumpFirstline() {
+  message.info('前往一线工作台查看 IM 记录');
+}
+
 function metaLabel(r: ContactRecord) {
   const prefix = r.metaPrefix ?? '操作人';
-  return `${prefix}: ${r.operator} | ${r.when}`;
+  let s = `${prefix}: ${r.operator} | ${r.when}`;
+  if (r.im) s += ` | 会话 ${r.im.sessionDuration} · ${r.im.messageCount} 条`;
+  return s;
 }
 </script>
 
@@ -46,10 +60,25 @@ function metaLabel(r: ContactRecord) {
         <div class="title-left">
           <component :is="TITLE_ICON[r.kind]" class="kind-icon" />
           <span class="title-text">{{ r.title }}</span>
+          <span
+            v-if="r.channel"
+            class="tag"
+            :class="r.channel === '热线' ? 'tag-hotline' : 'tag-im'"
+          >{{ r.channel }}</span>
+          <span
+            class="tag"
+            :class="r.source === '一线' ? 'tag-source' : 'tag-source-self'"
+          >{{ r.source === '一线' ? '一线' : '二线' }}</span>
         </div>
         <span class="card-meta">{{ metaLabel(r) }}</span>
       </div>
-      <div class="summary">{{ r.summary }}</div>
+      <div v-if="r.kind === 'im'" class="summary summary-im">
+        <span class="summary-text">{{ r.summary }}</span>
+        <button class="im-detail" type="button" @click="jumpFirstline">
+          查看详情<ExportOutlined />
+        </button>
+      </div>
+      <div v-else class="summary">{{ r.summary }}</div>
 
       <!-- 通话：录音 + 转写 -->
       <template v-if="r.kind === 'call' && r.recording">
@@ -80,6 +109,18 @@ function metaLabel(r: ContactRecord) {
                 <span class="speaker">{{ line.speaker }}:</span> {{ line.text }}
               </div>
             </div>
+          </div>
+
+          <!-- 一线关联热线：小结（可展开），替代二线的文本转写 -->
+          <div v-if="r.note" class="note-box">
+            <div class="note-head">
+              <span class="sub-label">一线小结</span>
+              <span class="note-toggle" @click="toggleNote(r.id)">
+                {{ expandedNote[r.id] ? '收起' : '展开' }}
+                <component :is="expandedNote[r.id] ? UpOutlined : DownOutlined" class="asr-chevron" />
+              </span>
+            </div>
+            <div class="note-text" :class="{ clamp: !expandedNote[r.id] }">{{ r.note }}</div>
           </div>
         </div>
       </template>
@@ -242,6 +283,83 @@ function metaLabel(r: ContactRecord) {
 }
 .asr-line { font-size: 12px; color: #374151; line-height: 1.5; }
 .speaker { font-weight: 600; color: #6b7280; }
+
+/* 一线关联标签：渠道 + 来源 */
+.tag {
+  flex: none;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  padding: 0 6px;
+  border-radius: 4px;
+}
+.tag-hotline { color: #059669; background: #ecfdf5; border: 1px solid #a7f3d0; }
+.tag-im { color: #7c3aed; background: #f5f3ff; border: 1px solid #ddd6fe; }
+.tag-source { color: #6b7280; background: #f3f4f6; border: 1px solid #e5e7eb; }
+.tag-source-self { color: #2563eb; background: #eff6ff; border: 1px solid #bfdbfe; }
+
+/* 一线小结（关联热线卡片） */
+.note-box {
+  background: #f9fafb;
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+.note-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 20px;
+}
+.note-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #9ca3af;
+  cursor: pointer;
+  flex: none;
+  line-height: 20px;
+}
+.note-text { font-size: 12px; color: #374151; line-height: 1.5; margin-top: 6px; }
+.note-text.clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* IM 记录：摘要（首条消息）右侧「查看详情」入口 */
+.summary-im {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.summary-text {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.im-detail {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: transparent;
+  color: #7c3aed;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
+}
+.im-detail:hover { color: #6d28d9; }
+.im-detail :deep(.anticon) { font-size: 11px; }
 
 .content-box {
   background: #f9fafb;

@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { message } from 'ant-design-vue';
 import {
-  CoffeeOutlined, CustomerServiceOutlined, DownOutlined,
+  CoffeeOutlined, CustomerServiceOutlined, DownOutlined, PhoneFilled,
 } from '@ant-design/icons-vue';
 import CallSessionBar from '@/components/cti/CallSessionBar.vue';
 import CtiAuthIcon from '@/components/cti/CtiAuthIcon.vue';
+import DialPad from '@/components/cti/DialPad.vue';
 import { useCtiStore, type BreakReason, type ReadyMode, READY_MODE_LABELS } from '@/stores/cti';
 
 const READY_MENU: { key: ReadyMode; label: string }[] = [
@@ -26,6 +27,20 @@ const cti = useCtiStore();
 const readyActive = computed(() => cti.workStatus === 'ready');
 const breakActive = computed(() => cti.workStatus === 'break');
 const disabled = computed(() => cti.workButtonsDisabled);
+
+// 拨号盘：二席处理工单时，客户要求拨打其他号码 → 调出拨号盘外呼
+const dialPadOpen = ref(false);
+const callDisabled = computed(() => cti.inCall || cti.workStatus === 'break');
+
+function onDial(phone: string) {
+  const ok = cti.startCall({ ticketId: '', phone, contactLabel: phone });
+  if (ok) {
+    dialPadOpen.value = false;
+    message.success(`正在呼叫 ${phone}`);
+  } else {
+    message.warning('当前状态无法外呼（通话中或小休）');
+  }
+}
 
 const dropdownTone = computed(() => {
   if (cti.workStatus === 'busy') return 'busy';
@@ -142,6 +157,28 @@ function onMenuClick({ key }: { key: string | number }) {
           <span class="cti-work-btn__icon"><CtiAuthIcon kind="sign-out" :size="16" /></span>
           <span class="cti-work-btn__label">签出</span>
         </button>
+
+        <a-popover
+          v-model:open="dialPadOpen"
+          trigger="click"
+          placement="bottomRight"
+          :overlay-inner-style="{ padding: '0' }"
+          :disabled="callDisabled"
+        >
+          <template #content>
+            <DialPad @call="onDial" />
+          </template>
+          <button
+            class="cti-work-btn cti-work-btn--call"
+            type="button"
+            :class="{ 'is-disabled': callDisabled, 'is-active': dialPadOpen }"
+            :disabled="callDisabled"
+            title="拨号盘 · 外呼"
+          >
+            <span class="cti-work-btn__icon"><PhoneFilled /></span>
+            <span class="cti-work-btn__label">呼叫</span>
+          </button>
+        </a-popover>
       </div>
 
       <CallSessionBar v-if="cti.inCall" class="call-anchor" variant="anchor" />
@@ -221,6 +258,12 @@ function onMenuClick({ key }: { key: string | number }) {
 }
 .cti-work-btn--out { background: #f1f5f9; color: #64748b; }
 .cti-work-btn--out:not(:disabled):not(.is-disabled):hover { background: #e2e8f0; }
+
+/* 呼叫（拨号盘）：实心绿动作按钮，区别于浅底状态钮 */
+.cti-work-btn--call { background: #16a34a; color: #fff; box-shadow: 0 1px 2px rgba(22, 163, 74, 0.3); }
+.cti-work-btn--call:not(:disabled):not(.is-disabled):hover { background: #15803d; filter: none; }
+.cti-work-btn--call.is-active { background: #15803d; }
+.cti-work-btn--call .cti-work-btn__icon :deep(.anticon) { font-size: 15px; }
 
 .status-dd {
   display: inline-flex; align-items: center; justify-content: space-between; gap: 8px;

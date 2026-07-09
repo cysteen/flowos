@@ -27,11 +27,11 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
     detail: {
       demand: '咨询学习机 T20 如何连接家庭 WiFi 并登录账号，希望获得操作指引。',
       insight: {
-        inboundCount: 2, historyCount: 5, complaintCount: 0, sameTypeCount: 4, recent30Count: 6,
+        contactCount: 2, historyCount: 5, complaintCount: 0, sameTypeCount: 4, recent30Count: 6,
         dunningCount: 0, supplementCount: 1, relatedCount: 2,
       },
       aiInsight: {
-        customerBrief: '咨询为主、无投诉，进线频次中等',
+        customerBrief: '咨询为主、无投诉，联系频次中等',
         ticketBrief: 'WiFi登录咨询，远程指导中',
         suggestion: '推送指引后快速结案',
       },
@@ -105,7 +105,7 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
     detail: {
       demand: '咨询开放平台企业版扩容与商务合作，存在采购意向，需商务跟进报价。',
       insight: {
-        inboundCount: 1, historyCount: 3, complaintCount: 0, sameTypeCount: 2, recent30Count: 3,
+        contactCount: 1, historyCount: 3, complaintCount: 0, sameTypeCount: 2, recent30Count: 3,
         dunningCount: 0, supplementCount: 0, relatedCount: 1,
       },
       aiInsight: {
@@ -185,7 +185,7 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
     detail: {
       demand: '建议智能门锁增加临时密码分享功能，便于访客临时使用。',
       insight: {
-        inboundCount: 1, historyCount: 2, complaintCount: 0, sameTypeCount: 1, recent30Count: 2,
+        contactCount: 1, historyCount: 2, complaintCount: 0, sameTypeCount: 1, recent30Count: 2,
         dunningCount: 0, supplementCount: 0, relatedCount: 1,
       },
       aiInsight: {

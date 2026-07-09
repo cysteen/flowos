@@ -1,28 +1,58 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, reactive, ref } from 'vue';
-import { useRouter } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
 import {
   PlusOutlined, SearchOutlined, ReloadOutlined, DeleteOutlined, ThunderboltOutlined,
-  ArrowLeftOutlined, HolderOutlined,
+  ArrowLeftOutlined, HolderOutlined, QuestionCircleOutlined,
 } from '@ant-design/icons-vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
-import { stdPagination, toneOf } from '@/config/adminUi';
+import { stdPagination } from '@/config/adminUi';
 import {
   SERVICE_TYPE_OPTIONS,
   SERVICE_TYPE_TO_METHODS,
 } from '@/views/tickets/types/operation';
+import { slaCalendars } from '@/config/slaCalendars';
 
-const router = useRouter();
+const kpiTipOverlayStyle = {
+  maxWidth: '320px',
+  color: '#713f12',
+  fontSize: '12px',
+  lineHeight: '1.65',
+  padding: '10px 12px',
+  boxShadow: '0 6px 16px rgba(180, 130, 20, 0.12)',
+  border: '1px solid #fde68a',
+};
 
 // 轻量达成概览（检验层单一口径：双层均达标 + 分项）；完整看板在运营看板/数据总览。
-const slaKpis = [
-  { label: '双层均达标率', value: '91.8%', tone: 'ok' },
-  { label: '响应达标率', value: '97.8%', tone: 'normal' },
-  { label: '解决达标率', value: '93.5%', tone: 'normal' },
-  { label: '本月超时单', value: '38', tone: 'warn' },
+// 统计范围：默认近 30 天，支持切换预设或自定义；四项指标统一随所选范围联动，避免时间窗口径不一致。
+const KPI_RANGE_OPTS = [
+  { value: '7', label: '近 7 天' },
+  { value: '30', label: '近 30 天' },
+  { value: '90', label: '近 90 天' },
+  { value: 'custom', label: '自定义' },
 ];
-function goFullDashboard() { router.push('/admin/overview'); }
+const kpiRange = ref('30');
+const kpiCustom = ref();
+// 各统计范围下的达成数据（实际由后端按所选范围统计返回）
+const KPI_DATA: Record<string, [string, string, string, string]> = {
+  '7': ['92.5%', '98.1%', '93.9%', '9'],
+  '30': ['91.8%', '97.8%', '93.5%', '38'],
+  '90': ['90.6%', '97.2%', '92.4%', '121'],
+  custom: ['91.2%', '97.5%', '93.1%', '52'],
+};
+const KPI_DEFS = [
+  { label: '双层均达标率', tone: 'ok',
+    tip: '所选统计范围内，命中 SLA 策略并完成计时的工单中，响应与解决「双双」都在时效内的占比 = 双达标单数 / 统计单数 ×100%。最严口径：单层达标不算，两层都达标才计入，是达成检验的总口径。' },
+  { label: '响应达标率', tone: 'normal',
+    tip: '所选统计范围内，响应在 SLA 时效内完成的占比 = 响应达标数 / 统计数 ×100%。分项指标，用于定位失分是否出在响应环节。' },
+  { label: '解决达标率', tone: 'normal',
+    tip: '所选统计范围内，解决在 SLA 时效内完成的占比 = 解决达标数 / 统计数 ×100%。分项指标；通常低于响应达标率，是主要失分项。' },
+  { label: '超时单', tone: 'warn',
+    tip: '所选统计范围内，响应或解决「任一」超出 SLA 时效的工单绝对数（去重工单）。反向绝对量，反映失约总量；点「查看完整达成看板」可下钻明细。' },
+];
+const slaKpis = computed(() =>
+  KPI_DEFS.map((d, i) => ({ ...d, value: (KPI_DATA[kpiRange.value] ?? KPI_DATA['30'])[i] })),
+);
 
 // SLA 策略（PRD-55，终版单页范式）：列表(拖拽排序) + 单页六分区编辑 + 匹配测试。
 // 设计依据见 PRD/SLA交互改版设计-终版框线图(单页范式).md。
@@ -37,9 +67,9 @@ interface MatrixRow {
 interface EscRule { id: number; dim: '响应' | '解决'; cond: string; escalationRef: string }
 /** ④ 临期规则：独立一等字段（对标 QuickService） */
 interface DueSoon { mode: 'countdown' | 'percent' | 'none'; value: number; unit: Unit }
-/** 节点时效：每个流程节点的 响应 + 处理 两钟，各自走不同日历 */
+/** 节点时效：每个流程节点的 响应 + 处理 两类时效，各自走不同日历 */
 interface NodeSla { id: number; node: string; respLimit: number | null; respUnit: Unit; respCal: string; procLimit: number | null; procUnit: Unit; procCal: string }
-/** 整单时效承诺哪些钟（按需勾选） */
+/** 整单时效承诺哪些时效（按需勾选） */
 interface CommitClocks { resp: boolean; solve: boolean }
 /** 整单解决 · 服务方式 × 优先级（P1=处理标准基准，P0/P2/P3 按系数推算） */
 type PriKey = 'P0' | 'P1' | 'P2' | 'P3';
@@ -136,9 +166,10 @@ function defNodeSla(): NodeSla[] {
 const CAL_SHORT: Record<string, string> = {
   '标准工作日历(9:00-18:00)': '工作日历', '7×24 自然时间': '7×24', '售后工作日历': '售后日历',
 };
-const calSelOpts = CAL_OPTS.map((c) => ({ value: c, label: CAL_SHORT[c] ?? c }));
+/** 日历选项与计时规则页共享单一真源（slaCalendars）；新增/改名日历即时反映到策略下拉 */
+const calSelOpts = computed(() => slaCalendars.map((c) => ({ value: c.name, label: CAL_SHORT[c.name] ?? c.name })));
 /** 表单区日历选项（完整名称，便于配置时识别） */
-const calFormOpts = CAL_OPTS.map((c) => ({ value: c, label: c }));
+const calFormOpts = computed(() => slaCalendars.map((c) => ({ value: c.name, label: c.name })));
 
 /** 各工单类型流程节点（节点时效「节点」下拉；默认四类 + 按类型扩展） */
 const NODE_TYPE_GROUPS = [
@@ -277,14 +308,15 @@ const filtered = computed(() => policies.value.filter((p) => {
 const canReorder = computed(() => !applied.name && applied.type === SCOPE_ALL && applied.status === SCOPE_ALL);
 
 const columns = [
-  { title: '策略名称', dataIndex: 'name', key: 'name', width: 210 },
+  { title: '策略名称', dataIndex: 'name', key: 'name', width: 200 },
+  { title: '优先级', key: 'priority', width: 72, align: 'center' as const },
   { title: '适用范围', key: 'scope', width: 180, ellipsis: true },
   { title: '优先级覆盖', key: 'cover', width: 140 },
   { title: '达标率', key: 'rate', width: 100, sorter: (a: Policy, b: Policy) => a.rate - b.rate },
   { title: '工作日历(响/解)', key: 'calendar', width: 170 },
-  { title: '状态', dataIndex: 'status', key: 'status', width: 80 },
+  { title: '状态', dataIndex: 'status', key: 'status', width: 88 },
   { title: '更新时间', dataIndex: 'updatedAt', key: 'updatedAt', width: 150 },
-  { title: '操作', key: 'action', width: 230 },
+  { title: '操作', key: 'action', width: 180 },
 ];
 function scopeText(p: Policy): string {
   const productLabel = isScopeAll(p.products) ? '全部业务类型' : p.products.join('/');
@@ -343,13 +375,13 @@ const form = reactive<Policy>(blankPolicy());
 function blankPolicy(): Policy {
   return {
     no: '', name: '', types: [SCOPE_ALL], channels: [SCOPE_ALL], levels: [SCOPE_ALL], products: [SCOPE_ALL],
-    calendar: CAL_OPTS[0], priority: 50, status: '启用', updatedAt: '',
+    calendar: CAL_OPTS[0], priority: 50, status: '停用', updatedAt: '',
     matrix: defMatrix(), dueSoon: { mode: 'countdown', value: 30, unit: '分钟' },
     escalations: [], pauseStates: ['已挂起·待客户'], remark: '', rate: 0,
     clockStart: '工单创建', clockEnd: '工单结案', pauseEnabled: true,
     commitClocks: { resp: true, solve: true }, nodeSla: defNodeSla(),
     respCalendar: '标准工作日历(9:00-18:00)', solveCalendar: '7×24 自然时间',
-    solveByServiceMethod: true, serviceMethodSolve: defServiceMethodSolve(),
+    solveByServiceMethod: false, serviceMethodSolve: defServiceMethodSolve(),
   };
 }
 
@@ -407,7 +439,7 @@ function openEdit(p: Policy) {
   if (!copy.types.length) copy.types = [SCOPE_ALL];
   Object.assign(form, blankPolicy(), copy); // blankPolicy 补齐承诺新字段(老策略可能缺)
   if (!form.serviceMethodSolve?.length) form.serviceMethodSolve = defServiceMethodSolve();
-  if (form.solveByServiceMethod == null) form.solveByServiceMethod = true;
+  if (form.solveByServiceMethod == null) form.solveByServiceMethod = false;
   enterEdit();
 }
 function enterEdit() {
@@ -458,13 +490,18 @@ function save() {
     const clone = JSON.parse(JSON.stringify(form)) as Policy;
     if (idx >= 0) policies.value.splice(idx, 0, clone); else policies.value.push(clone);
     reassignPriority();
-    message.success('已创建，新工单即刻参与计时');
+    message.success('已创建（停用态），启用后即参与新工单计时');
   }
   backToList();
 }
-function toggle(p: Policy) {
-  const next = p.status === '启用' ? '停用' : '启用';
-  Modal.confirm({ title: '状态变更', content: `确定${next}「${p.name}」？`, onOk: () => { p.status = next; message.success(`已${next}`); } });
+function onListStatusChange(p: Policy, enabled: boolean) {
+  const next = enabled ? '启用' : '停用';
+  if (p.status === next) return;
+  Modal.confirm({
+    title: '状态变更',
+    content: `确定${next}「${p.name}」？`,
+    onOk: () => { p.status = next; message.success(`已${next}`); },
+  });
 }
 function copyPolicy(p: Policy) {
   const idx = policies.value.findIndex((x) => x.isDefault);
@@ -566,9 +603,26 @@ function fmtClock(v: number | null, u: Unit): string { return v == null ? '不�
       <div class="kpi-band">
         <div v-for="k in slaKpis" :key="k.label" class="kb-item" :class="k.tone">
           <div class="kb-val">{{ k.value }}</div>
-          <div class="kb-label">{{ k.label }}</div>
+          <div class="kb-label">
+            {{ k.label }}
+            <a-tooltip
+              :title="k.tip"
+              placement="top"
+              :mouse-enter-delay="0.1"
+              color="#fffbeb"
+              :overlay-inner-style="kpiTipOverlayStyle"
+            >
+              <QuestionCircleOutlined class="kb-tip-ic" />
+            </a-tooltip>
+          </div>
         </div>
-        <a class="kb-more" @click="goFullDashboard">查看完整达成看板 →</a>
+        <div class="kb-range">
+          <span class="kb-range-label">统计范围</span>
+          <div class="kb-range-control">
+            <a-select v-model:value="kpiRange" size="small" :options="KPI_RANGE_OPTS" style="width: 96px" />
+            <a-range-picker v-if="kpiRange === 'custom'" v-model:value="kpiCustom" size="small" style="width: 220px" />
+          </div>
+        </div>
       </div>
 
       <div class="filter-card">
@@ -589,10 +643,16 @@ function fmtClock(v: number | null, u: Unit): string { return v == null ? '不�
           :custom-row="(rowProps as any)"
         >
           <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'name'">
-              <HolderOutlined v-if="canReorder && !(record as Policy).isDefault" class="drag-h" />
-              <span class="cell-link" @click="openEdit(record as Policy)">{{ (record as Policy).name }}</span>
-              <a-tag v-if="(record as Policy).isDefault" color="default" style="margin-left:6px">兜底</a-tag>
+            <template v-if="column.key === 'priority'">
+              <span v-if="(record as Policy).isDefault" class="pri-rank pri-rank--last">末位</span>
+              <span v-else class="pri-rank">{{ (record as Policy).priority }}</span>
+            </template>
+            <template v-else-if="column.key === 'name'">
+              <span class="name-cell">
+                <HolderOutlined v-if="canReorder && !(record as Policy).isDefault" class="drag-h" />
+                <span class="cell-link" @click="openEdit(record as Policy)">{{ (record as Policy).name }}</span>
+                <a-tag v-if="(record as Policy).isDefault" color="default" style="margin-left:6px">兜底</a-tag>
+              </span>
             </template>
             <span v-else-if="column.key === 'scope'" class="scope-cell" :title="scopeText(record as Policy)">{{ scopeText(record as Policy) }}</span>
             <span v-else-if="column.key === 'calendar'" class="scope-cell">{{ calText(record as Policy) }}</span>
@@ -602,12 +662,16 @@ function fmtClock(v: number | null, u: Unit): string { return v == null ? '不�
             <span v-else-if="column.key === 'rate'" class="rate" :class="(record as Policy).rate >= 95 ? 'ok' : (record as Policy).rate >= 85 ? 'warn' : 'bad'">
               {{ (record as Policy).rate ? (record as Policy).rate + '%' : '—' }}
             </span>
-            <template v-else-if="column.key === 'status'">
-              <a-tag :color="toneOf((record as Policy).status)">{{ (record as Policy).status }}</a-tag>
-            </template>
+            <a-switch
+              v-else-if="column.key === 'status'"
+              size="small"
+              :checked="(record as Policy).status === '启用'"
+              checked-children="启用"
+              un-checked-children="停用"
+              @change="(checked: boolean) => onListStatusChange(record as Policy, checked)"
+            />
             <template v-else-if="column.key === 'action'">
               <a-button type="link" size="small" @click="openEdit(record as Policy)">编辑</a-button>
-              <a-button type="link" size="small" @click="toggle(record as Policy)">{{ (record as Policy).status === '启用' ? '停用' : '启用' }}</a-button>
               <a-button type="link" size="small" @click="copyPolicy(record as Policy)">复制</a-button>
               <a-button type="link" size="small" danger @click="del(record as Policy)">删除</a-button>
             </template>
@@ -646,15 +710,26 @@ function fmtClock(v: number | null, u: Unit): string { return v == null ? '不�
               <div class="kv-grid kv-grid-3">
                 <div class="kv-row">
                   <span class="kv-label required">策略名称</span>
-                  <a-input v-model:value="form.name" class="kv-control" placeholder="如 投诉-VIP 加严" />
+                  <a-input v-model:value="form.name" class="kv-control" size="small" placeholder="如 投诉-VIP 加严" />
                 </div>
                 <div class="kv-row">
                   <span class="kv-label">生效优先级</span>
-                  <a-input-number v-model:value="form.priority" class="kv-control" :min="1" :disabled="form.isDefault" />
+                  <span class="kv-control kv-readonly">
+                    {{ form.isDefault ? '末位（兜底）' : editing ? `第 ${form.priority} 位` : '保存后置于队尾' }}
+                    <a-tooltip
+                      title="生效优先级由列表位置唯一决定（顺序即优先级，首条命中即止）。如需调整，请在策略列表拖拽排序，不在此手填。"
+                      placement="top"
+                      :mouse-enter-delay="0.1"
+                      color="#ffffff"
+                      :overlay-inner-style="kpiTipOverlayStyle"
+                    >
+                      <QuestionCircleOutlined class="kv-tip-ic" />
+                    </a-tooltip>
+                  </span>
                 </div>
                 <div class="kv-row">
                   <span class="kv-label">状态</span>
-                  <a-radio-group v-model:value="form.status" class="kv-control">
+                  <a-radio-group v-model:value="form.status" class="kv-control" size="small">
                     <a-radio value="启用">启用</a-radio>
                     <a-radio value="停用">停用</a-radio>
                   </a-radio-group>
@@ -662,7 +737,7 @@ function fmtClock(v: number | null, u: Unit): string { return v == null ? '不�
               </div>
               <div class="kv-row">
                 <span class="kv-label">备注</span>
-                <a-textarea v-model:value="form.remark" class="kv-control" :rows="1" :auto-size="{ minRows: 1, maxRows: 3 }" />
+                <a-textarea v-model:value="form.remark" class="kv-control" size="small" :rows="1" :auto-size="{ minRows: 1, maxRows: 3 }" />
               </div>
             </div>
           </section>
@@ -673,22 +748,22 @@ function fmtClock(v: number | null, u: Unit): string { return v == null ? '不�
             <div class="kv-form kv-grid-2">
               <div class="kv-row">
                 <span class="kv-label">业务类型</span>
-                <a-select v-model:value="form.products" class="kv-control" mode="multiple" placeholder="选择业务类型，或选「全部」"
+                <a-select v-model:value="form.products" class="kv-control" size="small" mode="multiple" placeholder="选择业务类型，或选「全部」"
                   :options="[SCOPE_ALL, ...PRODUCT_OPTS].map((o) => ({ value: o, label: o }))" @change="onProductsChange" />
               </div>
               <div class="kv-row">
                 <span class="kv-label required">工单类型</span>
-                <a-select v-model:value="form.types" class="kv-control" mode="multiple" placeholder="选择工单类型，或选「全部」"
+                <a-select v-model:value="form.types" class="kv-control" size="small" mode="multiple" placeholder="选择工单类型，或选「全部」"
                   :options="[SCOPE_ALL, ...TYPE_OPTS].map((o) => ({ value: o, label: o }))" @change="onTypesChange" />
               </div>
               <div class="kv-row">
                 <span class="kv-label">工单来源</span>
-                <a-select v-model:value="form.channels" class="kv-control" mode="multiple" placeholder="选择工单来源，或选「全部」"
+                <a-select v-model:value="form.channels" class="kv-control" size="small" mode="multiple" placeholder="选择工单来源，或选「全部」"
                   :options="[SCOPE_ALL, ...CHANNEL_OPTS].map((o) => ({ value: o, label: o }))" @change="onChannelsChange" />
               </div>
               <div class="kv-row">
                 <span class="kv-label">客户类型</span>
-                <a-select v-model:value="form.levels" class="kv-control" mode="multiple" placeholder="选择客户类型，或选「全部」"
+                <a-select v-model:value="form.levels" class="kv-control" size="small" mode="multiple" placeholder="选择客户类型，或选「全部」"
                   :options="[SCOPE_ALL, ...LEVEL_OPTS].map((o) => ({ value: o, label: o }))" @change="onLevelsChange" />
               </div>
             </div>
@@ -766,7 +841,7 @@ function fmtClock(v: number | null, u: Unit): string { return v == null ? '不�
               <span class="block-h-sub">每个流程节点的响应 + 处理时效，各自关联计时日历</span>
               <a-button type="link" size="small" class="sub-add" @click="addNode"><template #icon><PlusOutlined /></template>添加节点</a-button>
             </div>
-            <a-table :columns="nodeCols" :data-source="form.nodeSla" row-key="id" :pagination="false" size="middle">
+            <a-table :columns="nodeCols" :data-source="form.nodeSla" row-key="id" :pagination="false" size="small" class="node-sla-table">
               <template #bodyCell="{ column, record }">
                 <a-select v-if="column.key === 'node'" v-model:value="record.node" size="small" style="width:170px" :options="nodeNameOpts" show-search option-filter-prop="label" placeholder="选择节点" />
                 <template v-else-if="column.key === 'resp'">
@@ -786,10 +861,6 @@ function fmtClock(v: number | null, u: Unit): string { return v == null ? '不�
         </div>
       </div>
 
-      <div class="ed-footer">
-        <a-button @click="backToList">取消</a-button>
-        <a-button type="primary" @click="save">保存策略</a-button>
-      </div>
     </div>
 
     <!-- 匹配测试 -->
@@ -865,13 +936,26 @@ function fmtClock(v: number | null, u: Unit): string { return v == null ? '不�
 .sla-page { display: flex; flex-direction: column; min-height: 100%; }
 .admin-page { display: flex; flex-direction: column; gap: 16px; padding: 16px 24px; }
 .admin-page :deep(.admin-page-header) { margin-bottom: 0; }
-.kpi-band { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.kpi-band { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
 .kb-item { flex: 1; min-width: 130px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 16px; }
 .kb-val { font-size: 22px; font-weight: 700; color: #111827; }
 .kb-item.ok .kb-val { color: #10b981; }
 .kb-item.warn .kb-val { color: #ef4444; }
-.kb-label { font-size: 12px; color: #9ca3af; margin-top: 2px; }
-.kb-more { flex: none; font-size: 13px; color: #1a6fff; cursor: pointer; white-space: nowrap; align-self: center; }
+.kb-label { font-size: 12px; color: #9ca3af; margin-top: 2px; display: flex; align-items: center; gap: 4px; }
+.kb-tip-ic { color: #1a6fff; font-size: 13px; cursor: help; opacity: 0.75; }
+.kb-tip-ic:hover { opacity: 1; }
+.kb-range {
+  flex: none;
+  margin-left: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  align-self: flex-end;
+  padding-bottom: 2px;
+}
+.kb-range-label { font-size: 12px; color: #6b7280; line-height: 1.2; }
+.kb-range-control { display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
 .filter-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .filters { display: flex; gap: 16px; flex-wrap: wrap; }
 .fi { display: flex; align-items: center; gap: 8px; }
@@ -879,7 +963,10 @@ function fmtClock(v: number | null, u: Unit): string { return v == null ? '不�
 .fa { display: flex; gap: 8px; }
 .table-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
 .cell-link { color: #1a6fff; cursor: pointer; }
-.drag-h { color: #c0c4cc; margin-right: 6px; cursor: grab; }
+.drag-h { color: #c0c4cc; cursor: grab; flex: none; }
+.name-cell { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.pri-rank { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 6px; background: #eef4ff; color: #1a6fff; font-weight: 600; font-size: 13px; }
+.pri-rank--last { background: #f3f4f6; color: #9ca3af; font-weight: 500; }
 .scope-cell { font-size: 12px; color: #4b5563; }
 .rate { font-size: 13px; font-weight: 700; }
 .rate.ok { color: #10b981; } .rate.warn { color: #f59e0b; } .rate.bad { color: #ef4444; }
@@ -897,62 +984,78 @@ function fmtClock(v: number | null, u: Unit): string { return v == null ? '不�
 .anchor-item { padding: 8px 12px; font-size: 13px; color: #6b7280; border-radius: 6px; cursor: pointer; border-left: 2px solid transparent; }
 .anchor-item:hover { background: #f3f4f6; }
 .anchor-item.active { color: #1a6fff; background: #eff6ff; border-left-color: #1a6fff; font-weight: 600; }
-.form-area { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.form-area { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; font-size: 13px; color: #374151; line-height: 1.5; }
+.form-area :deep(.ant-input),
+.form-area :deep(.ant-input-number-input),
+.form-area :deep(.ant-select-selector),
+.form-area :deep(.ant-input-affix-wrapper),
+.form-area :deep(.ant-picker-input > input) {
+  font-size: 13px !important;
+}
+.form-area :deep(.ant-checkbox-wrapper),
+.form-area :deep(.ant-radio-wrapper) {
+  font-size: 13px;
+  color: #374151;
+}
 .sec { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px 20px; scroll-margin-top: 80px; }
 .sec-h { font-size: 13px; font-weight: 600; color: #111827; margin-bottom: 14px; padding-left: 10px; border-left: 3px solid #1a6fff; line-height: 1.4; }
-.sec-sub { font-size: 12px; font-weight: normal; color: #9ca3af; margin-left: 8px; }
+.sec-sub { font-size: 12px; font-weight: 400; color: #9ca3af; margin-left: 8px; }
 .kv-form { display: flex; flex-direction: column; gap: 10px; }
 .kv-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 20px; }
 .kv-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 16px; }
 .kv-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.kv-label { flex: none; font-size: 12px; color: #6b7280; white-space: nowrap; }
+.kv-label { flex: none; width: 72px; text-align: right; font-size: 12px; color: #6b7280; line-height: 1.4; }
 .kv-label.required::before { content: '* '; color: #ff4d4f; }
 .kv-control { flex: 1; min-width: 0; }
 .kv-control :deep(.ant-input-number) { width: 100%; }
+.kv-readonly { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #374151; }
+.kv-tip-ic { color: #1a6fff; font-size: 13px; cursor: help; opacity: 0.75; }
+.kv-tip-ic:hover { opacity: 1; }
 @media (max-width: 900px) {
   .kv-grid-2, .kv-grid-3 { grid-template-columns: 1fr; }
 }
-.matrix { width: 100%; border-collapse: collapse; }
+.matrix { width: 100%; border-collapse: collapse; font-size: 13px; }
 .matrix th { background: #f3f4f6; color: #6b7280; font-size: 12px; font-weight: 600; text-align: left; padding: 8px 10px; border: 1px solid #e5e7eb; }
-.matrix td { padding: 8px 10px; border: 1px solid #e5e7eb; }
-.matrix td.lv { font-weight: 600; color: #374151; width: 110px; }
+.matrix td { padding: 8px 10px; border: 1px solid #e5e7eb; color: #374151; }
+.matrix td.lv { font-weight: 500; color: #374151; width: 110px; }
 .sm-matrix td.type-cell { vertical-align: top; background: #fafafa; min-width: 100px; }
-.sm-matrix td.method-cell { font-size: 12px; color: #4b5563; min-width: 160px; }
-.unit-tag { font-size: 11px; color: #9ca3af; margin-left: 2px; }
+.sm-matrix td.method-cell { color: #4b5563; min-width: 160px; }
+.unit-tag { font-size: 12px; color: #9ca3af; margin-left: 2px; }
 .tip-info { color: #1e40af; background: #eff6ff; border-color: #bfdbfe; }
 .th-opt { font-weight: normal; color: #9ca3af; margin-left: 2px; }
 .block-h {
-  font-size: 12px; font-weight: 600; color: #374151;
+  font-size: 13px; font-weight: 600; color: #374151;
   margin: 14px 0 10px; padding-left: 8px;
   border-left: 2px solid #93c5fd;
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   line-height: 1.4;
 }
 .block-h--mt { margin-top: 22px; }
-.block-h-title { font-weight: 600; color: #374151; }
-.block-h-sub { font-size: 12px; font-weight: normal; color: #9ca3af; }
+.block-h-title { font-weight: 600; color: inherit; }
+.block-h-sub { font-size: 12px; font-weight: 400; color: #9ca3af; }
 .block-h .sub-add { margin-left: auto; }
 .sub-h { font-size: 13px; font-weight: 600; color: #374151; margin: 4px 0 10px; display: flex; align-items: center; gap: 10px; }
-.sub-h.sm { font-size: 12px; font-weight: 600; color: #4b5563; margin-top: 12px; }
+.sub-h.sm { font-size: 13px; font-weight: 600; color: #374151; margin-top: 12px; }
 .sub-h.sm.mt { margin-top: 16px; }
 .sub-h.mt { margin-top: 20px; }
 .solve-sm-head { flex-wrap: wrap; }
 .sub-h .sub-add { margin-left: auto; }
-.clock-toggles { display: flex; gap: 20px; margin-bottom: 12px; }
+.clock-toggles { display: flex; gap: 20px; margin-bottom: 12px; font-size: 13px; }
 .commit-matrix-row { display: grid; grid-template-columns: 1fr; gap: 16px; margin-top: 4px; }
 .commit-matrix-row--dual { grid-template-columns: 1fr 1fr; }
 .commit-matrix-col { min-width: 0; }
 .commit-matrix-col .sub-h.sm { margin-top: 0; }
 .commit-col-head { justify-content: space-between; flex-wrap: wrap; }
-.matrix-panel-title { font-size: 12px; font-weight: 600; color: #374151; }
-.commit-cal-pick { display: inline-flex; align-items: center; gap: 8px; font-weight: normal; margin-left: auto; }
+.matrix-panel-title { font-size: 13px; font-weight: 600; color: #374151; }
+.commit-cal-pick { display: inline-flex; align-items: center; gap: 8px; font-weight: normal; margin-left: auto; font-size: 13px; }
 .commit-cal-label { font-size: 12px; color: #6b7280; white-space: nowrap; }
+.node-sla-table :deep(.ant-table-thead > tr > th) { font-size: 12px; }
+.node-sla-table :deep(.ant-table-tbody > tr > td) { font-size: 13px; }
 @media (max-width: 1100px) {
   .commit-matrix-row--dual { grid-template-columns: 1fr; }
 }
 .matrix .cal-row td { background: #fafafa; }
-.ed-footer { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: 8px; padding: 12px 24px; background: #fff; border-top: 1px solid #e5e7eb; z-index: 5; }
-.hint { font-size: 11px; color: #9ca3af; margin-top: 4px; }
+.hint { font-size: 12px; color: #9ca3af; margin-top: 4px; }
 .test-modal { display: flex; flex-direction: column; gap: 16px; }
 .test-section-title { font-size: 12px; font-weight: 600; color: #6b7280; margin-bottom: 10px; }
 .test-form-grid {

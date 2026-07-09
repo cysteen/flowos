@@ -313,7 +313,7 @@ export const MINE_CHIPS: ChipMeta[] = [
 export const DONE_CHIPS: ChipMeta[] = [
   { key: 'all', label: '全部' },
   { key: 'myUpgrade', label: '已升级' },
-  { key: 'transfer', label: '转办' },
+  { key: 'transfer', label: '调剂' },
   { key: 'delegate', label: '委派' },
   { key: 'closed', label: '已关闭' },
   { key: 'forceClose', label: '强结' },
@@ -439,7 +439,7 @@ export function doneRowActions(): { label: string; primary?: boolean }[] {
 /** 我的任务 · 行内动作（PRD-02 v1.2：转办 / 退回） */
 export function mineRowActions(): { label: string; primary?: boolean }[] {
   return [
-    { label: '转办', primary: true },
+    { label: '调剂', primary: true },
     { label: '退回' },
   ];
 }
@@ -449,9 +449,9 @@ export function rowActions(t: Ticket): { label: string; primary?: boolean }[] {
   if (t.tab === 'pool') return poolRowActions();
   switch (t.nodeStatus) {
     case '待受理':
-      return [{ label: '受理', primary: true }, { label: '转办' }];
+      return [{ label: '受理', primary: true }, { label: '调剂' }];
     case '处理中·一线':
-      return [{ label: '处理', primary: true }, { label: '转办' }, { label: '挂起' }];
+      return [{ label: '处理', primary: true }, { label: '调剂' }, { label: '挂起' }];
     case '已升级·二线':
       return [{ label: '处理', primary: true }, { label: '退回' }];
     case '已挂起·待客户':

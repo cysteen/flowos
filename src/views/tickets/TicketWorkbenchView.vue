@@ -58,7 +58,7 @@ const opReturnCount = computed(() => {
   return Math.max(...opTargetTickets.value.map((t) => t.returnCount ?? 0));
 });
 
-function openOpDialog(action: '转办' | '退回', tickets: Ticket[]) {
+function openOpDialog(action: '调剂' | '退回', tickets: Ticket[]) {
   if (!tickets.length) {
     message.info(`请先选择要${action}的工单`);
     return;
@@ -79,7 +79,7 @@ function onOpDialogConfirm(payload: Record<string, unknown>) {
   const tickets = opTargetTickets.value;
   const type = payload.type as string;
 
-  if (type === '转办') {
+  if (type === '调剂') {
     const { target } = payload.data as TransferPayload;
     const name = target.split(' ')[0];
     for (const t of tickets) {
@@ -87,7 +87,7 @@ function onOpDialogConfirm(payload: Record<string, unknown>) {
       t.myTransferAction = true;
     }
     const label = tickets.length === 1 ? tickets[0].no : `${tickets.length} 单`;
-    message.success(tickets.length === 1 ? `已转办至 ${name}` : `已对 ${label} 转办至 ${name}`);
+    message.success(tickets.length === 1 ? `已调剂至 ${name}` : `已对 ${label} 调剂至 ${name}`);
   } else if (type === '退回') {
     const { targetNode } = payload.data as ReturnPayload;
     for (const t of tickets) {
@@ -108,7 +108,7 @@ function onOpDialogConfirm(payload: Record<string, unknown>) {
 }
 
 const batchActions = computed(() =>
-  wb.isPoolTab.value ? ['领取'] : wb.isMineTab.value ? ['转办', '退回'] : [],
+  wb.isPoolTab.value ? ['领取'] : wb.isMineTab.value ? ['调剂', '退回'] : [],
 );
 const showBatchToolbar = computed(() => wb.isMineTab.value || wb.isPoolTab.value);
 
@@ -141,7 +141,7 @@ function onAction(label: string, t: Ticket) {
     }
     return;
   }
-  if (label === '转办' || label === '退回') {
+  if (label === '调剂' || label === '退回') {
     openOpDialog(label, [t]);
     return;
   }
@@ -178,7 +178,7 @@ function onBatch(action: string) {
     wb.clearSelection();
     return;
   }
-  if (action === '转办' || action === '退回') {
+  if (action === '调剂' || action === '退回') {
     const tickets = [...wb.selectedIds.value]
       .map((id) => wb.ticketById(id))
       .filter((t): t is Ticket => !!t);
