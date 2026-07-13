@@ -566,8 +566,14 @@ function doImport() {
     <div class="left">
       <div class="panel-head">
         <span class="p-title">产品树</span>
+        <a-input-search
+          v-model:value="treeSearch"
+          class="tree-search"
+          placeholder="搜索..."
+          allow-clear
+          size="small"
+        />
       </div>
-      <a-input-search v-model:value="treeSearch" class="tree-search" placeholder="搜索产品树..." allow-clear size="small" />
       <a-tree
         v-model:expanded-keys="expandedKeys"
         v-model:selected-keys="selectedKeys"
@@ -879,9 +885,10 @@ function doImport() {
   flex-direction: column;
   min-height: 0;
 }
-.panel-head { display: flex; align-items: center; justify-content: space-between; }
-.p-title { font-size: 14px; font-weight: 600; color: #111827; }
-.tree-search { margin: 12px 0 4px; }
+.panel-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex: none; }
+.p-title { font-size: 14px; font-weight: 600; color: #111827; flex: none; white-space: nowrap; }
+.tree-search { flex: 1; min-width: 0; }
+.tree-search :deep(.ant-input) { font-size: 12px; }
 .prod-tree { flex: 1; overflow: auto; font-size: 13px; }
 .node { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; }
 .node-name {

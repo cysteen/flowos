@@ -20,6 +20,9 @@ const feedbackNo = computed(() => {
   return push?.meta?.replace('反馈单号 ', '') ?? '—';
 });
 
+/** 扭转记录按时间倒序展示（最新在上，与催单/联系记录一致） */
+const orderedRecords = computed(() => [...props.records].reverse());
+
 /** 是否可二次激活：飞书已回传处理结果（closed）后开放 */
 const canActivate = computed(() => props.syncState === 'closed');
 
@@ -67,7 +70,7 @@ function onActivate() {
 
     <!-- 扭转记录时间线 -->
     <div class="fs-timeline">
-      <div v-for="rec in records" :key="rec.id" class="fs-item">
+      <div v-for="rec in orderedRecords" :key="rec.id" class="fs-item">
         <div class="fs-item-rail">
           <span class="fs-item-dot" :style="{ background: KIND_META[rec.kind].color }">
             <component :is="KIND_META[rec.kind].icon" />
