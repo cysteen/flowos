@@ -109,6 +109,7 @@ export const ADMIN_GROUPS: AdminNavGroup[] = [
       { key: 'channels', label: '渠道管理', prd: 'PRD-53', v1Ref: 'A/A8-tenant-admin.html#channels' },
       { key: 'customers', label: '客户管理', prd: 'PRD-87' },
       { key: 'products', label: '产品管理', prd: 'PRD-85' },
+      { key: 'problem-tags', label: '问题分类', prd: 'PRD-85' },
     ],
   },
   {
