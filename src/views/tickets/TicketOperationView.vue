@@ -20,6 +20,7 @@ import OpActionBar from './components/OpActionBar.vue';
 // 建单弹窗仅在「转单/重开」时用，按需异步加载，不阻塞操作页首屏
 const CreateTicketModal = defineAsyncComponent(() => import('./components/CreateTicketModal.vue'));
 import { useTicketOperation } from './composables/useTicketOperation';
+import { FEISHU_ESCALATE_CHANNEL } from './composables/opActions';
 import { useProcessForm } from './composables/useProcessForm';
 import { useOperationTabs } from './composables/useOperationTabs';
 import { useTicketLiveNotify } from './composables/useTicketLiveNotify';
@@ -203,8 +204,32 @@ function onTicketCreated(ticket: Ticket, processAfter?: boolean) {
   if (processAfter) router.push(`/tickets/${ticket.no}`);
 }
 
+/** 消费者BG工单开放飞书项目升级通道 */
+const feishuEligible = computed(() => d.value.productBg === '消费者BG');
+/** 飞书推送要素摘要（升级弹窗展示） */
+const feishuPushLines = computed(() => [
+  `工单标题：${d.value.title}`,
+  `优先级：${d.value.priority} · 来源产品：${d.value.product.name}`,
+  `客户：${d.value.customer.name} · 建单人：${d.value.builderShort}`,
+]);
+
+function isFeishuEscalate(payload: Record<string, unknown>): boolean {
+  if (payload.type !== '升级') return false;
+  const data = payload.data as { channel?: string } | undefined;
+  return data?.channel === FEISHU_ESCALATE_CHANNEL;
+}
+
 function onAction(payload: Record<string, unknown>) {
+  const toFeishu = isFeishuEscalate(payload);
   dispatch(payload);
+  if (toFeishu) {
+    processTabsRef.value?.switchTab('feishu');
+  }
+}
+
+/** 飞书项目 Tab 内「激活反馈单」 */
+function onFeishuActivate(reason: string) {
+  dispatch({ type: '激活飞书', data: { reason } });
 }
 
 function toast(name: string) {
@@ -463,6 +488,7 @@ function updateTabData(next: OperationTabData) {
           @open-child-create="openChildCreate"
           @open-reopen-create="openReopenCreate"
           @mark-read="onMarkRecordRead"
+          @feishu-activate="onFeishuActivate"
         />
       </div>
 
@@ -482,10 +508,14 @@ function updateTabData(next: OperationTabData) {
       :suspend-info="suspendInfo"
       :draft-saved-at="draftSavedAt"
       :return-count="d.returnCount ?? 0"
+      :feishu-eligible="feishuEligible"
+      :feishu-sync="d.feishuSync"
+      :feishu-push-lines="feishuPushLines"
       @action="onAction"
       @cancel="cancelModalOpen = true"
       @withdraw="confirmWithdraw"
       @transfer-ticket="openChildCreate"
+      @dunning="dunningModalOpen = true"
     />
 
     <CreateTicketModal

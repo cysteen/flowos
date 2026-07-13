@@ -92,6 +92,8 @@ export interface Ticket {
   resolveTimeRemark?: string;
   /** 产品分类（筛选） */
   productCategory?: string;
+  /** 所属 BG（消费者BG 门控飞书项目集成通道） */
+  productBg?: string;
   /** 客户身份标签，如记者/老师/校长/自媒体 */
   customerTags?: CustomerTag[];
   product: string;

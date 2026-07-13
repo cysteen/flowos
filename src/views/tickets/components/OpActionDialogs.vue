@@ -13,7 +13,7 @@ import {
   SUSPEND_REASONS, ESCALATE_CHANNELS, ESCALATE_GROUPS, ESCALATE_MEMBERS,
   FEISHU_SPACES, AFTERSALE_GROUPS, CLOSE_RESULTS, ARCHIVE_REASONS,
   RESUME_REASONS, RETURN_REASONS, RETURN_TARGET_NODES, MAX_RETURN_COUNT,
-  DELEGATE_GROUPS,
+  DELEGATE_GROUPS, FEISHU_ESCALATE_CHANNEL,
 } from '../composables/opActions';
 
 const props = defineProps<{
@@ -22,6 +22,10 @@ const props = defineProps<{
   ticketNo: string;
   suspendInfo: SuspendInfo | null;
   returnCount: number;
+  /** 消费者BG工单：升级通道开放「飞书项目·产研反馈单」 */
+  feishuEligible?: boolean;
+  /** 飞书项目推送要素摘要（标题/优先级/产品/客户等） */
+  feishuPushLines?: string[];
 }>();
 
 const emit = defineEmits<{
@@ -47,6 +51,21 @@ const resume = reactive({ reason: '', detail: '' });
 const returnForm = reactive({ reason: '', targetNode: RETURN_TARGET_NODES[0], note: '' });
 
 const escalateToTech = computed(() => escalate.channel.includes('技术支持'));
+const escalateToFeishu = computed(() => escalate.channel === FEISHU_ESCALATE_CHANNEL);
+
+/** 飞书推送要素兜底文案（父组件未传 feishuPushLines 时用） */
+const DEFAULT_FEISHU_LINES = [
+  '工单标题、问题描述',
+  '优先级、来源产品',
+  '客户信息、创建人 / 创建时间',
+];
+
+/** 升级通道选项：消费者BG工单把「飞书项目」置顶为首要通道 */
+const escalateChannelOptions = computed(() => {
+  const base = [...ESCALATE_CHANNELS];
+  const list = props.feishuEligible ? [FEISHU_ESCALATE_CHANNEL, ...base] : base;
+  return list.map((c) => ({ value: c, label: c }));
+});
 
 const ESCALATE_CHANNEL_GROUPS: Record<string, string[]> = {
   '二线技术支持组（推荐）': [...ESCALATE_GROUPS],
@@ -60,7 +79,8 @@ const escalateGroupOptions = computed(() => {
   return groups.map((g) => ({ value: g, label: g }));
 });
 
-const showEscalateGroup = computed(() => escalateGroupOptions.value.length > 0);
+// 飞书项目通道无子组别，隐藏组别/人员选择
+const showEscalateGroup = computed(() => !escalateToFeishu.value && escalateGroupOptions.value.length > 0);
 
 const delegateTargetOptions = computed(() => {
   const list = delegate.mode === 'person' ? DELEGATE_TARGETS : DELEGATE_GROUPS;
@@ -104,18 +124,24 @@ const DLG_CONFIG: Partial<Record<OpActionType, DlgConfig>> = {
   归档工单: { title: '归档工单', icon: InboxOutlined, tone: 'warn', width: 480, okTone: 'danger', okText: '确认归档' },
 };
 
-const cfg = computed<DlgConfig>(
-  () => (props.action && DLG_CONFIG[props.action]) || {
-    title: props.action ?? '', icon: undefined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认',
-  },
-);
+const cfg = computed<DlgConfig>(() => {
+  const base = (props.action && DLG_CONFIG[props.action]) || {
+    title: props.action ?? '', icon: undefined, tone: 'primary' as const, width: 480, okTone: 'primary' as const, okText: '确认',
+  };
+  // 升级 + 飞书项目通道：标题与主按钮切换为「升级到飞书项目」语义
+  if (props.action === '升级' && escalateToFeishu.value) {
+    return { ...base, title: '升级到飞书项目', okText: '确认升级飞书项目' };
+  }
+  return base;
+});
 
 function resetForms() {
   transfer.scope = 'same'; transfer.target = TRANSFER_TARGETS[0]; transfer.reason = '';
   delegate.mode = 'person'; delegate.target = DELEGATE_TARGETS[0]; delegate.reason = '';
   forceClose.reason = ''; forceClose.approver = APPROVERS[0]; forceClose.detail = '';
   suspend.reason = ''; suspend.detail = ''; suspend.resumeAt = '';
-  escalate.channel = ESCALATE_CHANNELS[0]; escalate.group = ESCALATE_GROUPS[0];
+  escalate.channel = props.feishuEligible ? FEISHU_ESCALATE_CHANNEL : ESCALATE_CHANNELS[0];
+  escalate.group = ESCALATE_GROUPS[0];
   escalate.member = ESCALATE_MEMBERS[0]; escalate.detail = ''; escalate.syncContext = true;
   syncFeishu.space = FEISHU_SPACES[0]; syncFeishu.message = '';
   aftersale.mode = 'callback'; aftersale.group = AFTERSALE_GROUPS[0]; aftersale.detail = '';
@@ -284,7 +310,7 @@ function onOk() {
           <a-select
             v-model:value="escalate.channel"
             style="width:100%"
-            :options="ESCALATE_CHANNELS.map((c) => ({ value: c, label: c }))"
+            :options="escalateChannelOptions"
           />
         </div>
         <div v-if="showEscalateGroup" class="op-field">
@@ -296,18 +322,42 @@ function onOk() {
           />
         </div>
       </div>
-      <template v-if="escalateToTech">
+
+      <!-- 飞书项目通道：OpenAPI 推送上下文 -->
+      <template v-if="escalateToFeishu">
+        <div class="fs-push-card">
+          <div class="fs-push-head">
+            <span class="fs-push-badge">OpenAPI 推送</span>
+            <span class="fs-push-title">将把工单信息推送至飞书项目，建「客户反馈单」</span>
+          </div>
+          <ul class="fs-push-list">
+            <li v-for="(line, i) in (feishuPushLines && feishuPushLines.length ? feishuPushLines : DEFAULT_FEISHU_LINES)" :key="i">
+              {{ line }}
+            </li>
+          </ul>
+          <div class="fs-push-foot">仅推送不变的建单要素；附件 / 履历 / 关联单由飞书项目按凭据实时回查。</div>
+        </div>
         <div class="op-field">
-          <div class="op-label">目标人员</div>
-          <a-select v-model:value="escalate.member" style="width:100%"
-            :options="ESCALATE_MEMBERS.map((m) => ({ value: m, label: m }))" />
+          <div class="op-label">升级说明</div>
+          <a-textarea v-model:value="escalate.detail" :rows="2" placeholder="补充给产研的说明，如复现步骤、影响范围…" />
         </div>
       </template>
-      <div class="op-field">
-        <div class="op-label">升级说明</div>
-        <a-textarea v-model:value="escalate.detail" :rows="2" placeholder="请填写升级说明..." />
-      </div>
-      <a-checkbox v-model:checked="escalate.syncContext">同步工单上下文至目标系统</a-checkbox>
+
+      <!-- 其他通道：保持原升级表单 -->
+      <template v-else>
+        <template v-if="escalateToTech">
+          <div class="op-field">
+            <div class="op-label">目标人员</div>
+            <a-select v-model:value="escalate.member" style="width:100%"
+              :options="ESCALATE_MEMBERS.map((m) => ({ value: m, label: m }))" />
+          </div>
+        </template>
+        <div class="op-field">
+          <div class="op-label">升级说明</div>
+          <a-textarea v-model:value="escalate.detail" :rows="2" placeholder="请填写升级说明..." />
+        </div>
+        <a-checkbox v-model:checked="escalate.syncContext">同步工单上下文至目标系统</a-checkbox>
+      </template>
     </div>
 
     <!-- 同步飞书 -->

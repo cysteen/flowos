@@ -139,4 +139,19 @@ function onCancel() {
 /* 精简确认（取消/撤回 等无表单场景） */
 .op-confirm { font-size: 13px; color: #374151; line-height: 1.65; }
 .op-confirm-strong { color: #111827; font-weight: 600; }
+
+/* 升级 · 飞书项目 OpenAPI 推送卡片 */
+.fs-push-card {
+  background: #f5f7ff; border: 1px solid #c7d2fe; border-radius: 8px;
+  padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;
+}
+.fs-push-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fs-push-badge {
+  font-size: 11px; font-weight: 700; color: #fff; background: #4f46e5;
+  border-radius: 4px; padding: 1px 8px; flex: none;
+}
+.fs-push-title { font-size: 12px; font-weight: 600; color: #3730a3; }
+.fs-push-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; }
+.fs-push-list li { font-size: 12px; color: #4338ca; line-height: 1.5; }
+.fs-push-foot { font-size: 11px; color: #6366f1; line-height: 1.5; }
 </style>

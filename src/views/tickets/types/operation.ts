@@ -125,6 +125,7 @@ export type SectionKey =
 
 export const PROCESS_TABS = [
   { key: 'process', label: '工单处理' },
+  { key: 'feishu', label: '飞书项目' },
   { key: 'tech', label: '技术支持处理' },
   { key: 'risk', label: '风险监控' },
   { key: 'history', label: '处理履历' },
@@ -145,9 +146,11 @@ const TAB_TYPE_RESTRICTION: Partial<Record<ProcessTabKey, string[]>> = {
   // 调研记录：四类型均保留（拍板 2026-06-20），不设类型限制
 };
 
-/** 按工单类型过滤可见处理 Tab（商机/建议精简，仅保留通用 Tab）。 */
-export function visibleProcessTabs(ticketType: string) {
+/** 按工单类型过滤可见处理 Tab（商机/建议精简，仅保留通用 Tab）。
+ *  飞书项目 Tab：仅在已升级到飞书项目（feishuActive）时出现。 */
+export function visibleProcessTabs(ticketType: string, opts?: { feishuActive?: boolean }) {
   return PROCESS_TABS.filter((t) => {
+    if (t.key === 'feishu') return !!opts?.feishuActive;
     const allow = TAB_TYPE_RESTRICTION[t.key];
     return !allow || allow.includes(ticketType);
   });

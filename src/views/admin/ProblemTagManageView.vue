@@ -494,58 +494,60 @@ function onExport() {
 }
 
 const importOpen = ref(false);
-const importPreview = ref<ProblemTagRow[]>([]);
+/** 解析结果：仅展示统计数字，不展示逐行预览（量大时预览不可读） */
+interface ImportResult { fileName: string; total: number; dup: number; invalid: number; rows: ProblemTagRow[]; }
+const importResult = ref<ImportResult | null>(null);
+const importCount = computed(() => importResult.value?.rows.length ?? 0);
 
-function openImport() { importPreview.value = []; importOpen.value = true; }
+function openImport() { importResult.value = null; importOpen.value = true; }
 
 function onImportFile(e: Event) {
-  const f = (e.target as HTMLInputElement).files?.[0];
+  const input = e.target as HTMLInputElement;
+  const f = input.files?.[0];
   if (!f) return;
   const reader = new FileReader();
   reader.onload = () => {
     const text = String(reader.result ?? '');
-    const rows = text.split(/\r?\n/).slice(1).filter((l) => l.trim());
-    importPreview.value = rows.map((line, i) => {
-      const [productName, tagL1, tagL2, tagL3, team, aftersale, status] = line.split(',').map((s) => s.trim());
+    const lines = text.split(/\r?\n/).slice(1).filter((l) => l.trim());
+    const teamSet = new Set(TEAMS);
+    const existing = new Set(allRows.value.map((r) => `${r.productName}|${r.tagL1}|${r.tagL2}|${r.tagL3}`));
+    const seen = new Set<string>();
+    let dup = 0;
+    let invalid = 0;
+    const rows: ProblemTagRow[] = [];
+    for (const line of lines) {
+      const [productName, tagL1, tagL2, tagL3, team, aftersale, status] = line.split(',').map((s) => (s ?? '').trim());
       const prod = listProductNodes().find((p) => p.title === productName);
-      const meta = prod ? productMetaByKey(prod.key) : { bizType: '智能硬件', prodCat: '其他' };
-      return {
-        key: `import-${i}`,
-        productKey: prod?.key ?? `unknown-${i}`,
-        productName: productName || '未知产品',
-        bizType: meta.bizType,
-        prodCat: meta.prodCat,
-        tagL1: tagL1 || '录音',
-        tagL2: tagL2 || '功能介绍',
-        tagL3: tagL3 || '如何降噪',
-        team: team || '工单-处理',
-        aftersale: (aftersale === '是' ? '是' : '否') as '是' | '否',
+      const validAfter = aftersale === '是' || aftersale === '否';
+      // 无效：产品未匹配 / 三级路径有空 / 处理组不在枚举 / 是否售后取值非法
+      if (!prod || !tagL1 || !tagL2 || !tagL3 || !teamSet.has(team) || !validAfter) { invalid++; continue; }
+      const sig = `${productName}|${tagL1}|${tagL2}|${tagL3}`;
+      // 重复：与存量已有 或 批内已出现
+      if (existing.has(sig) || seen.has(sig)) { dup++; continue; }
+      seen.add(sig);
+      const meta = productMetaByKey(prod.key);
+      rows.push({
+        key: `import-${rows.length}`,
+        productKey: prod.key,
+        productName, bizType: meta.bizType, prodCat: meta.prodCat,
+        tagL1, tagL2, tagL3, team,
+        aftersale: aftersale as '是' | '否',
         status: (status === '停用' ? '停用' : '启用') as '启用' | '停用',
-      };
-    });
-    message.success(`已解析「${f.name}」，识别 ${importPreview.value.length} 条`);
+      });
+    }
+    importResult.value = { fileName: f.name, total: lines.length, dup, invalid, rows };
+    input.value = ''; // 允许重新选择同一文件
   };
   reader.readAsText(f, 'utf-8');
 }
 
 function doImport() {
-  if (!importPreview.value.length) { message.warning('请先选择并解析 Excel/CSV 文件'); return; }
-  let added = 0;
-  for (const row of importPreview.value) {
-    const dup = allRows.value.some((r) =>
-      r.productName === row.productName
-      && r.tagL1 === row.tagL1 && r.tagL2 === row.tagL2 && r.tagL3 === row.tagL3,
-    );
-    if (!dup) {
-      allRows.value.unshift({ ...row, key: String(rowSeq++) });
-      added++;
-    }
-  }
+  const res = importResult.value;
+  if (!res || !res.rows.length) { message.warning('没有可导入的记录'); return; }
+  for (const row of res.rows) allRows.value.unshift({ ...row, key: String(rowSeq++) });
   importOpen.value = false;
-  message.success(`导入完成：新增 ${added} 条，跳过重复 ${importPreview.value.length - added} 条`);
+  message.success(`导入完成：新增 ${res.rows.length} 条，重复跳过 ${res.dup} 条，无效跳过 ${res.invalid} 条`);
 }
-
-const importTableCols = cols.filter((c) => c.key !== 'op' && c.key !== 'status');
 </script>
 
 <template>
@@ -801,15 +803,24 @@ const importTableCols = cols.filter((c) => c.key !== 'op' && c.key !== 'status')
       </a-form>
     </a-modal>
 
-    <a-modal v-model:open="importOpen" title="导入问题分类" :width="560" ok-text="开始导入" cancel-text="取消" @ok="doImport">
+    <a-modal
+      v-model:open="importOpen"
+      title="导入问题分类"
+      :width="560"
+      :ok-text="importResult ? `确认导入 ${importCount} 条` : '开始导入'"
+      :ok-button-props="{ disabled: importCount === 0 }"
+      cancel-text="取消"
+      @ok="doImport"
+    >
       <div class="import-panel">
         <label class="dropzone">
           <InboxOutlined class="dz-ic" />
-          <div class="dz-main">点击选择 Excel / CSV 文件</div>
+          <div class="dz-main">
+            <template v-if="importResult">{{ importResult.fileName }}</template>
+            <template v-else>点击选择 Excel / CSV 文件</template>
+          </div>
           <div class="dz-sub">
-            <template v-if="importPreview.length">
-              已识别 {{ importPreview.length }} 条，确认后点击「开始导入」
-            </template>
+            <template v-if="importResult">点击可重新选择文件</template>
             <template v-else>
               拖拽或点击上传 ·
               <a class="dz-dl" @click.stop.prevent="downloadTemplate">
@@ -820,21 +831,34 @@ const importTableCols = cols.filter((c) => c.key !== 'op' && c.key !== 'status')
           <input type="file" accept=".xlsx,.xls,.csv" hidden @change="onImportFile" />
         </label>
 
-        <ul class="import-tips">
+        <ul v-if="!importResult" class="import-tips">
           <li>支持 xlsx / xls / csv，首行须为表头（同模板）</li>
           <li>产品名称需与产品树一致，重复分类自动跳过</li>
         </ul>
+
+        <div v-else class="import-result">
+          <div class="ir-title">解析完成</div>
+          <div class="ir-grid">
+            <div class="ir-cell">
+              <span class="ir-num">{{ importResult.total }}</span>
+              <span class="ir-label">共解析</span>
+            </div>
+            <div class="ir-cell">
+              <span class="ir-num dup">{{ importResult.dup }}</span>
+              <span class="ir-label">重复跳过</span>
+            </div>
+            <div class="ir-cell">
+              <span class="ir-num invalid">{{ importResult.invalid }}</span>
+              <span class="ir-label">无效跳过</span>
+            </div>
+            <div class="ir-cell">
+              <span class="ir-num ok">{{ importCount }}</span>
+              <span class="ir-label">可导入</span>
+            </div>
+          </div>
+          <div class="ir-hint">仅导入「可导入」条目；重复（已存在）与无效（产品未匹配 / 字段缺失）自动跳过。</div>
+        </div>
       </div>
-      <a-table
-        v-if="importPreview.length"
-        class="import-preview"
-        :columns="importTableCols"
-        :data-source="importPreview"
-        row-key="key"
-        size="small"
-        :pagination="false"
-        :scroll="{ y: 200 }"
-      />
     </a-modal>
   </div>
 </template>
@@ -1034,5 +1058,22 @@ const importTableCols = cols.filter((c) => c.key !== 'op' && c.key !== 'status')
   color: #1a6fff; font-weight: 600; cursor: pointer;
 }
 .dz-dl:hover { text-decoration: underline; }
-.import-preview { margin-top: 4px; }
+
+/* 解析结果统计（不展示逐行预览） */
+.import-result {
+  border: 1px solid #eef0f2; border-radius: 10px; padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.ir-title { font-size: 13px; font-weight: 600; color: #111827; }
+.ir-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.ir-cell {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 12px 8px; border-radius: 8px; background: #f9fafb;
+}
+.ir-num { font-size: 24px; font-weight: 700; color: #374151; line-height: 1; }
+.ir-num.dup { color: #d97706; }
+.ir-num.invalid { color: #dc2626; }
+.ir-num.ok { color: #16a34a; }
+.ir-label { font-size: 12px; color: #6b7280; }
+.ir-hint { font-size: 12px; color: #9ca3af; line-height: 1.6; }
 </style>

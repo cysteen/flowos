@@ -5,6 +5,21 @@ import type { Ticket } from '@/views/tickets/types/ticket';
 
 const BASE_TICKETS: Ticket[] = [
   // ---- 我的工单 (mine) 8 ----
+  // 飞书项目集成演示单：消费者BG · 翻译机，用于演示「升级到飞书项目」全链路
+  {
+    id: 't-feishu', no: 'LCMN-20260713-90001', type: '咨询', channel: '在线客服',
+    title: '翻译机离线翻译结果异常，疑似模型问题', smartMarks: ['升级'],
+    customer: '陈翻译', vip: false, product: '讯飞翻译机 T10',
+    productBg: '消费者BG',
+    nodeStatus: '处理中·一线', nodeStep: 3, nodeTotal: 5, priority: 'P1',
+    slaText: '03:20:00', slaSub: '充足', slaState: 'ok', slaMinutes: 200,
+    assignee: '王坐席', tab: 'mine',
+    customerPhone: '13500001234', sn: 'SN-T10-260713', productCategory: '消费电子',
+    businessType: '翻译机',
+    problemDesc: '用户反馈离线中英互译在长句场景下漏译、语序错乱，在线翻译正常，疑似离线模型缺陷，需产研确认。',
+    createdAt: '2026-07-13 09:10', updatedAt: '2026-07-13 10:05',
+    responded: true, upgradedByMe: false,
+  },
   {
     id: 't1', no: 'LCMN-20260610-73026', type: '投诉', channel: '在线客服',
     title: '无线音乐播放跳过歌曲异常', smartMarks: ['升级', '情绪'],

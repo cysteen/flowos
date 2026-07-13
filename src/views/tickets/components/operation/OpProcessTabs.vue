@@ -11,6 +11,7 @@ const OpNotifyRecordsTab = defineAsyncComponent(() => import('./tabs/OpNotifyRec
 const OpSurveyRecordsTab = defineAsyncComponent(() => import('./tabs/OpSurveyRecordsTab.vue'));
 const OpAttachmentHistoryTab = defineAsyncComponent(() => import('./tabs/OpAttachmentHistoryTab.vue'));
 const OpCustomerHistoryTab = defineAsyncComponent(() => import('./tabs/OpCustomerHistoryTab.vue'));
+const OpFeishuTab = defineAsyncComponent(() => import('./tabs/OpFeishuTab.vue'));
 import { visibleProcessTabs, type ProcessTabKey } from '@/views/tickets/types/operation';
 import type { ProcessFormDraft, SectionKey } from '@/views/tickets/types/operation';
 import type { OperationTabData } from '@/views/tickets/types/operationTabs';
@@ -33,10 +34,14 @@ const emit = defineEmits<{
   openChildCreate: [];
   openReopenCreate: [];
   'mark-read': [id: string];
+  'feishu-activate': [reason: string];
 }>();
 
 const activeTab = ref<ProcessTabKey>('process');
-const visibleTabs = computed(() => visibleProcessTabs(props.detail.type));
+const feishuActive = computed(() => !!props.detail.feishuSync && props.detail.feishuSync !== 'none');
+const visibleTabs = computed(() =>
+  visibleProcessTabs(props.detail.type, { feishuActive: feishuActive.value }),
+);
 
 /** 工单类型变化后，若当前 Tab 已被该类型隐藏，回退到「工单处理」。 */
 watch(visibleTabs, (tabs) => {
@@ -80,6 +85,13 @@ defineExpose({ switchTab });
         @toggle-section="emit('toggleSection', $event)"
         @select-chip="emit('selectChip', $event)"
         @update:form="emit('update:form', $event)"
+      />
+
+      <OpFeishuTab
+        v-else-if="activeTab === 'feishu'"
+        :records="detail.feishuRecords ?? []"
+        :sync-state="detail.feishuSync"
+        @activate="emit('feishu-activate', $event)"
       />
 
       <OpTechProcessTab

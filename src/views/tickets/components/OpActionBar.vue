@@ -5,7 +5,7 @@ import {
   ArrowRightOutlined, VerticalAlignBottomOutlined, PauseCircleOutlined,
   PlayCircleOutlined, RiseOutlined, UndoOutlined, StopOutlined,
   ToolOutlined, CheckCircleOutlined, SaveOutlined, SwapOutlined,
-  RollbackOutlined, TeamOutlined,
+  RollbackOutlined, TeamOutlined, BellOutlined,
 } from '@ant-design/icons-vue';
 import OpActionDialogs from './OpActionDialogs.vue';
 import OpForwardModal from './operation/OpForwardModal.vue';
@@ -22,6 +22,12 @@ const props = defineProps<{
   suspendInfo: SuspendInfo | null;
   returnCount?: number;
   draftSavedAt?: string | null;
+  /** 消费者BG工单：升级通道开放飞书项目 */
+  feishuEligible?: boolean;
+  /** 飞书协同子状态：非 none 时「升级」按钮切为「催单」 */
+  feishuSync?: string;
+  /** 飞书推送要素摘要（传给升级弹窗） */
+  feishuPushLines?: string[];
 }>();
 
 const emit = defineEmits<{
@@ -29,6 +35,7 @@ const emit = defineEmits<{
   cancel: [];
   withdraw: [];
   transferTicket: [];
+  dunning: [];
 }>();
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -36,8 +43,11 @@ const ICONS: Record<string, any> = {
   ArrowRightOutlined, VerticalAlignBottomOutlined, PauseCircleOutlined,
   PlayCircleOutlined, RiseOutlined, UndoOutlined, StopOutlined,
   ToolOutlined, CheckCircleOutlined, SaveOutlined, SwapOutlined,
-  RollbackOutlined, TeamOutlined,
+  RollbackOutlined, TeamOutlined, BellOutlined,
 };
+
+/** 已升级到飞书项目：底栏「升级」按钮切为「催单」 */
+const feishuActive = computed(() => !!props.feishuSync && props.feishuSync !== 'none');
 
 const DIALOG_ACTIONS: OpActionType[] = [
   '调剂', '委派', '强结', '挂起', '恢复', '退回', '升级', '同步飞书', '转售后',
@@ -62,7 +72,7 @@ const actions = computed(() =>
 const actionMap = computed(() => new Map(actions.value.map((a) => [a.key, a])));
 
 interface BarItem {
-  key: OpActionType | '转单';
+  key: OpActionType | '转单' | '催单';
   label: string;
   icon: string;
   danger?: boolean;
@@ -103,6 +113,11 @@ const barActions = computed<BarItem[]>(() => {
       );
       continue;
     }
+    // 已升级到飞书项目：升级按钮切为催单
+    if (key === '升级' && feishuActive.value) {
+      items.push({ key: '催单', label: '催单', icon: 'BellOutlined' });
+      continue;
+    }
     items.push({ key: def.key, label: def.label, icon: def.icon, danger: def.danger });
   }
   return items;
@@ -112,10 +127,14 @@ function saveDraft() {
   emit('action', { type: '保存草稿' });
 }
 
-function run(action: OpActionType | '转单') {
+function run(action: OpActionType | '转单' | '催单') {
   if (isTerminal.value) return;
   if (action === '转单') {
     emit('transferTicket');
+    return;
+  }
+  if (action === '催单') {
+    emit('dunning');
     return;
   }
   if (action === '取消工单') return emit('cancel');
@@ -201,6 +220,8 @@ function onForwardConfirm(data: { ticketTitle: string; resolved: boolean }) {
       :ticket-no="ticketNo"
       :suspend-info="suspendInfo"
       :return-count="returnCount ?? 0"
+      :feishu-eligible="feishuEligible"
+      :feishu-push-lines="feishuPushLines"
       @confirm="onDialogConfirm"
     />
 

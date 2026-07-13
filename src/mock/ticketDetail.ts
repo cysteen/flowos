@@ -113,6 +113,31 @@ export interface TicketDetailMeta {
   aiSummary: string;
   /** 客户全景下方 AI 洞察 */
   aiInsight: AiTicketInsight;
+  /** 所属 BG（消费者BG 门控飞书项目集成通道） */
+  productBg?: string;
+  /** 飞书项目协同子状态：none 未同步 / synced 已推送 / feedback 已回传 / closed 已关单 */
+  feishuSync?: FeishuSyncState;
+  /** 飞书项目扭转记录（传过去 / 飞书反馈处理进度 / 同步处理结果 / 激活） */
+  feishuRecords?: FeishuRecord[];
+}
+
+/** 飞书项目协同子状态 */
+export type FeishuSyncState = 'none' | 'synced' | 'feedback' | 'closed';
+
+/** 飞书项目扭转记录一条 */
+export interface FeishuRecord {
+  id: string;
+  /** push=传过去 / feedback=飞书反馈处理进度 / result=同步处理结果 / activate=二线激活 / dunning=催单 */
+  kind: 'push' | 'feedback' | 'result' | 'activate' | 'dunning';
+  title: string;
+  content: string;
+  /** 操作方名称 */
+  who: string;
+  /** 记录来源侧：上游=工单系统 / 飞书项目=产研侧 */
+  side: '上游' | '飞书项目';
+  when: string;
+  /** 反馈单号 / 负责人 / 状态等元信息 */
+  meta?: string;
 }
 
 export const TICKET_DETAIL: TicketDetailMeta = {
@@ -310,6 +335,9 @@ export const TICKET_DETAIL: TicketDetailMeta = {
     suggestion: '今日闭环并回访，防外投',
     riskTag: '外投风险',
   },
+  productBg: undefined,
+  feishuSync: 'none',
+  feishuRecords: [],
 };
 
 export const TIMELINE: TimelineEntry[] = [

@@ -1,5 +1,8 @@
 import type { TlRole, TimelineEntry } from '@/views/tickets/types/ticketDetail';
-import type { TicketDetailMeta } from '@/mock/ticketDetail';
+import type { TicketDetailMeta, FeishuRecord } from '@/mock/ticketDetail';
+
+/** 升级通道 · 飞书项目（消费者BG专属，走 OpenAPI 推送产研反馈单） */
+export const FEISHU_ESCALATE_CHANNEL = '飞书项目 · 产研反馈单';
 
 // 工单处理态状态机（轻量）：
 // 待受理 → 处理中 →（已升级 / 已挂起 / 待审核）→ 待回访 → 已结案 → 已关闭
@@ -26,6 +29,7 @@ export type OpActionType =
   | '保存草稿' | '标记已解决'
   | '调剂' | '委派' | '下送' | '撤回' | '强结'
   | '挂起' | '恢复' | '退回' | '升级' | '同步飞书' | '转售后'
+  | '激活飞书'
   | '关闭工单' | '归档工单' | '取消工单';
 
 export interface TransferPayload { scope: 'same' | 'cross'; target: string; reason: string; }
@@ -34,6 +38,7 @@ export interface ForwardPayload { ticketTitle: string; resolved: boolean; review
 export interface ForceClosePayload { reason: string; approver: string; detail: string; }
 export interface SuspendPayload { reason: string; detail: string; resumeAt: string; }
 export interface EscalatePayload { channel: string; group: string; member: string; detail: string; syncContext: boolean; }
+export interface FeishuActivatePayload { reason: string; }
 export interface SyncFeishuPayload { space: string; message: string; }
 export interface AftersalePayload { mode: 'close' | 'callback'; group: string; detail: string; }
 export interface ResolvePayload { solution: string; createCallback: boolean; }
@@ -55,6 +60,7 @@ export type OpActionPayload =
   | { type: '挂起'; data: SuspendPayload }
   | { type: '升级'; data: EscalatePayload }
   | { type: '同步飞书'; data: SyncFeishuPayload }
+  | { type: '激活飞书'; data: FeishuActivatePayload }
   | { type: '转售后'; data: AftersalePayload }
   | { type: '标记已解决'; data: ResolvePayload }
   | { type: '撤回' }
@@ -111,6 +117,49 @@ export function mapUserRole(roleKey: string): TlRole {
 
 export function nextTimelineId(list: TimelineEntry[]): string {
   return `e${list.length + 1}-${Date.now()}`;
+}
+
+/** 生成飞书项目模拟反馈单号 */
+function feishuFeedbackNo(): string {
+  return `FS-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}${String(new Date().getDate()).padStart(2, '0')}-${String(Math.floor(Date.now() % 9000) + 1000)}`;
+}
+
+/** 升级到飞书项目：推送建单要素并生成初始扭转记录序列（传过去 → 反馈进度 → 处理结果） */
+function buildFeishuSeedRecords(detail: TicketDetailMeta, operator: string, feedbackNo: string): FeishuRecord[] {
+  const now = nowWhen();
+  const owner = '何霄煜（飞书项目·技术支持）';
+  return [
+    {
+      id: `fs-push-${Date.now()}`,
+      kind: 'push',
+      title: '传过去 · 工单信息已推送飞书项目',
+      content: `经 OpenAPI 推送建单要素至飞书项目，已建客户反馈单。推送内容：标题「${detail.title}」、优先级 ${detail.priority}、来源产品「${detail.product.name}」、客户「${detail.customer.name}」。`,
+      who: operator,
+      side: '上游',
+      when: now,
+      meta: `反馈单号 ${feedbackNo}`,
+    },
+    {
+      id: `fs-feedback-${Date.now() + 1}`,
+      kind: 'feedback',
+      title: '飞书反馈处理进度',
+      content: '飞书项目已受理反馈单，初步定性：疑似离线翻译模型缺陷，已排期复现。原因分析进行中，预计 3 个工作日内明确原因。',
+      who: owner,
+      side: '飞书项目',
+      when: now,
+      meta: `当前负责人 何霄煜 · 状态 处理中`,
+    },
+    {
+      id: `fs-result-${Date.now() + 2}`,
+      kind: 'result',
+      title: '同步处理结果',
+      content: '飞书项目回传处理结果：离线模型已修复并通过验收，将于下个固件版本随包发布，建议引导用户升级后验证。',
+      who: owner,
+      side: '飞书项目',
+      when: now,
+      meta: `处理结论 已解决 · 待用户验证`,
+    },
+  ];
 }
 
 export function pushEntry(
@@ -215,6 +264,19 @@ export function applyOpAction(
 
     case '升级': {
       const { channel, group, member, detail: note } = payload.data;
+      // 飞书项目通道：走 OpenAPI 推送，建立协同关系并生成扭转记录
+      if (channel === FEISHU_ESCALATE_CHANNEL) {
+        const feedbackNo = feishuFeedbackNo();
+        detail.feishuSync = 'closed';
+        detail.feishuRecords = buildFeishuSeedRecords(detail, operator, feedbackNo);
+        detail.status = '已升级·产研';
+        pushEntry(timeline, {
+          category: 'node', action: 'escalate', who: operator, role: operatorRole,
+          how: '升级 · 飞书项目',
+          what: `升级至飞书项目，OpenAPI 推送建单要素，建客户反馈单 ${feedbackNo}${note ? `。说明：${note}` : ''}`,
+        });
+        return { opState, suspendInfo, message: `已升级至飞书项目 · 反馈单 ${feedbackNo}` };
+      }
       detail.status = '已升级·二线';
       const toTech = channel.includes('技术支持');
       const dest = toTech && group ? `${channel} · ${group}${member ? ` · ${member.split(' ')[0]}` : ''}` : channel;
@@ -233,6 +295,29 @@ export function applyOpAction(
         internal: true,
       });
       return { opState, suspendInfo, message: `已同步至 ${space}` };
+    }
+
+    case '激活飞书': {
+      const { reason } = payload.data;
+      detail.feishuSync = 'synced';
+      const rec: FeishuRecord = {
+        id: `fs-activate-${Date.now()}`,
+        kind: 'activate',
+        title: '二次激活 · 已重新激活飞书反馈单',
+        content: `处理结果不符合客户预期，二线工单坐席一键激活飞书项目反馈单，回推产研继续处理。原因：${reason || '结果需进一步确认'}`,
+        who: operator,
+        side: '上游',
+        when: nowWhen(),
+        meta: '状态 已激活 · 待产研响应',
+      };
+      detail.feishuRecords = [...(detail.feishuRecords ?? []), rec];
+      pushEntry(timeline, {
+        category: 'node', action: 'escalate', who: operator, role: operatorRole,
+        how: '激活飞书反馈单',
+        what: `二次激活飞书项目反馈单，回推产研继续处理。${reason ? `原因：${reason}` : ''}`,
+        internal: true,
+      });
+      return { opState, suspendInfo, message: '已激活飞书反馈单，回推产研' };
     }
 
     case '转售后': {

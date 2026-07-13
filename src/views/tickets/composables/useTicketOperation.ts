@@ -36,6 +36,9 @@ export function useTicketOperation() {
       base.priority = t.priority;
       base.customer.name = t.customer;
       base.product.name = t.product;
+      base.productBg = t.productBg;
+      base.feishuSync = 'none';
+      base.feishuRecords = [];
       base.productIssue = ticketProductIssue(t);
       if (t.problemDesc?.trim()) {
         base.demand = t.problemDesc.trim();
