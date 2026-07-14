@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
 import {
   PlusOutlined, ReloadOutlined, SearchOutlined,
@@ -13,6 +14,8 @@ import {
   collectProductKeysUnder, filterProductTree, listProductNodes,
   productTitleByKey, productMetaByKey, type ProductTreeNode,
 } from '@/mock/productTree';
+
+const router = useRouter();
 
 const KIND_LABEL: Record<ProductTreeNode['kind'], string> = {
   BGBU: 'BGBU', 业务线: '业务线', 产品线: '产品线', 产品分类: '分类', 产品: '产品',
@@ -262,6 +265,13 @@ function tagPath(row: ProblemTagRow) {
 // —— 新增 / 编辑 ——
 const formOpen = ref(false);
 const editingKey = ref<string | null>(null);
+
+/** 业务类型 / 产品分类 / 产品名称只读引用产品树；搜不到时引导去产品管理新增 */
+function goProductManage() {
+  formOpen.value = false;
+  router.push({ name: 'admin-products' });
+}
+
 const tagL1List = ref([...TAG_L1]);
 const tagL2Map = ref<Record<string, string[]>>({ ...TAG_L2_MAP });
 const tagL3Map = ref<Record<string, string[]>>({ ...TAG_L3_MAP });
@@ -716,7 +726,7 @@ function doImport() {
 
     <a-modal
       v-model:open="formOpen"
-      :title="editingKey ? '修改问题分类' : '新增'"
+      :title="editingKey ? '修改问题分类' : '新增问题分类'"
       :width="520"
       :ok-text="editingKey ? '确定' : '确定'"
       cancel-text="取消"
@@ -733,32 +743,58 @@ function doImport() {
         <a-form-item label="业务类型" required>
           <a-select
             v-model:value="form.bizType"
-            placeholder="请选择或输入"
+            placeholder="请选择"
             show-search
             allow-clear
             :options="toOpts(BIZ_TYPES)"
             :disabled="!!editingKey"
-          />
+          >
+            <template #notFoundContent>
+              <div class="prod-nf">
+                <div>未找到匹配的业务类型</div>
+                <a class="prod-nf-link" @click.prevent="goProductManage">前往产品管理新增</a>
+              </div>
+            </template>
+          </a-select>
         </a-form-item>
         <a-form-item label="产品分类" required>
           <a-select
             v-model:value="form.prodCat"
-            placeholder="请选择或输入"
+            placeholder="请选择"
             show-search
             allow-clear
             :options="formProdCatOpts"
             :disabled="!form.bizType || !!editingKey"
-          />
+          >
+            <template #notFoundContent>
+              <div class="prod-nf">
+                <div>未找到匹配的产品分类</div>
+                <a class="prod-nf-link" @click.prevent="goProductManage">前往产品管理新增</a>
+              </div>
+            </template>
+          </a-select>
         </a-form-item>
         <a-form-item label="产品名称" required>
           <a-select
             v-model:value="form.productKey"
-            placeholder="请选择或输入"
+            placeholder="请选择"
             show-search
             allow-clear
             :options="formProductOpts"
             :disabled="!form.prodCat || !!editingKey"
-          />
+          >
+            <template #notFoundContent>
+              <div class="prod-nf">
+                <div>未找到匹配的产品名称</div>
+                <a class="prod-nf-link" @click.prevent="goProductManage">前往产品管理新增</a>
+              </div>
+            </template>
+          </a-select>
+          <div v-if="!editingKey" class="prod-hint">
+            找不到产品？请到
+            <a class="prod-hint-link" @click.prevent="goProductManage">产品管理</a>
+            新增后再回来选择
+          </div>
         </a-form-item>
 
         <a-form-item label="一级分类" required>
@@ -1045,6 +1081,16 @@ function doImport() {
 .tag-form :deep(.ant-select),
 .tag-form :deep(.ant-input),
 .tag-form :deep(.ant-input-affix-wrapper) { width: 100%; }
+.prod-hint {
+  margin-top: 6px; font-size: 12px; color: #9ca3af; line-height: 1.4;
+}
+.prod-hint-link { color: #1a6fff; cursor: pointer; }
+.prod-hint-link:hover { text-decoration: underline; }
+.prod-nf {
+  padding: 8px 4px; text-align: center; font-size: 12px; color: #9ca3af; line-height: 1.6;
+}
+.prod-nf-link { color: #1a6fff; cursor: pointer; }
+.prod-nf-link:hover { text-decoration: underline; }
 .cat-input-full { width: 100%; }
 .import-panel { display: flex; flex-direction: column; gap: 10px; }
 .import-tips {
