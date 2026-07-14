@@ -32,6 +32,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   activate: [reason: string];
   retry: [];
+  dunning: [];
 }>();
 
 const activateOpen = ref(false);
@@ -93,8 +94,16 @@ const updatedAt = computed(() => {
   return orderedRecords.value[0]?.when || props.createdAt || '—';
 });
 
-/** 飞书已结案后可二次激活 */
-const canActivate = computed(() => props.syncState === 'closed');
+/** 已关联产研反馈（synced/feedback/closed）→ 催单、二次激活两按钮均常驻展示 */
+const isAssociated = computed(() =>
+  props.syncState === 'synced' || props.syncState === 'feedback' || props.syncState === 'closed',
+);
+/** 催单：处理中/已反馈（未结案）可点；已结案置灰不可催 */
+const dunningEnabled = computed(() =>
+  props.syncState === 'synced' || props.syncState === 'feedback',
+);
+/** 二次激活：仅已结案可点；未结案置灰 */
+const activateEnabled = computed(() => props.syncState === 'closed');
 
 const KIND_META: Record<FeishuRecord['kind'], { icon: unknown; color: string; tag: string }> = {
   push: { icon: SendOutlined, color: '#2563eb', tag: '建关联' },
@@ -106,6 +115,7 @@ const KIND_META: Record<FeishuRecord['kind'], { icon: unknown; color: string; ta
 };
 
 function onActivate() {
+  if (!activateEnabled.value) return;
   activateReason.value = FEISHU_ACTIVATE_REASONS[0];
   activateNote.value = '';
   activateOpen.value = true;
@@ -130,6 +140,11 @@ function confirmActivate() {
 
 function onRetry() {
   emit('retry');
+}
+
+function onDunning() {
+  if (!dunningEnabled.value) return;
+  emit('dunning');
 }
 </script>
 
@@ -161,16 +176,24 @@ function onRetry() {
             <span v-if="productName" class="fs-sheet-product">{{ productName }}</span>
           </div>
         </div>
-        <div class="fs-sheet-actions">
-          <a-button
-            v-if="canActivate"
-            type="primary"
-            class="fs-activate-btn"
+        <div v-if="isAssociated" class="fs-sheet-actions">
+          <button
+            type="button"
+            class="action-btn"
+            :disabled="!dunningEnabled"
+            :title="dunningEnabled ? '' : '已结案，无需催单'"
+            @click="onDunning"
+          >催单</button>
+          <button
+            type="button"
+            class="action-btn"
+            :disabled="!activateEnabled"
+            :title="activateEnabled ? '' : '产研反馈结案后方可二次激活'"
             @click="onActivate"
-          >
-            <template #icon><ThunderboltOutlined /></template>
-            二次激活
-          </a-button>
+          >二次激活</button>
+          <span class="fs-status" :class="`tone-${statusMeta.tone}`">{{ statusMeta.label }}</span>
+        </div>
+        <div v-else class="fs-sheet-actions">
           <span class="fs-status" :class="`tone-${statusMeta.tone}`">{{ statusMeta.label }}</span>
         </div>
       </header>
@@ -347,10 +370,40 @@ function onRetry() {
 .fs-status.tone-done { color: #047857; background: #d1fae5; }      /* 已结案 · 绿 */
 .fs-status.tone-danger { color: #b91c1c; background: #fee2e2; }    /* 关联失败 · 红 */
 
-.fs-activate-btn {
-  height: 32px;
-  padding-inline: 14px;
+/* 对齐工单头「催单」对齐键按钮（OpHeader.action-btn） */
+.action-btn {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
   font-weight: 600;
+  line-height: 1;
+  color: #1a6fff;
+  background: #fff;
+  border: 1.5px solid #93c5fd;
+  border-radius: 6px;
+  cursor: pointer;
+  flex: none;
+  font-family: inherit;
+  white-space: nowrap;
+  appearance: none;
+  box-shadow: 0 1px 2px rgba(26, 111, 255, 0.1);
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.action-btn:hover:not(:disabled) {
+  background: #eff6ff;
+  border-color: #1a6fff;
+  box-shadow: 0 2px 8px rgba(26, 111, 255, 0.18);
+}
+.action-btn:disabled {
+  color: #b6bcc6;
+  background: #f5f6f8;
+  border-color: #e5e7eb;
+  box-shadow: none;
+  cursor: not-allowed;
 }
 
 .fs-sheet-meta {

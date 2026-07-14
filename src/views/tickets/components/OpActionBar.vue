@@ -5,7 +5,7 @@ import {
   ArrowRightOutlined, VerticalAlignBottomOutlined, PauseCircleOutlined,
   PlayCircleOutlined, RiseOutlined, UndoOutlined, StopOutlined,
   ToolOutlined, CheckCircleOutlined, SaveOutlined, SwapOutlined,
-  RollbackOutlined, TeamOutlined, BellOutlined,
+  RollbackOutlined, TeamOutlined,
 } from '@ant-design/icons-vue';
 import OpActionDialogs from './OpActionDialogs.vue';
 import OpForwardModal from './operation/OpForwardModal.vue';
@@ -24,7 +24,7 @@ const props = defineProps<{
   draftSavedAt?: string | null;
   /** 消费者BG工单：升级通道开放飞书项目 */
   feishuEligible?: boolean;
-  /** 飞书协同子状态：非 none 时「升级」按钮切为「催单」 */
+  /** 飞书协同子状态：已关联（synced/feedback/closed）时底栏「升级」置灰 */
   feishuSync?: string;
 }>();
 
@@ -33,7 +33,6 @@ const emit = defineEmits<{
   cancel: [];
   withdraw: [];
   transferTicket: [];
-  dunning: [];
 }>();
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -41,12 +40,14 @@ const ICONS: Record<string, any> = {
   ArrowRightOutlined, VerticalAlignBottomOutlined, PauseCircleOutlined,
   PlayCircleOutlined, RiseOutlined, UndoOutlined, StopOutlined,
   ToolOutlined, CheckCircleOutlined, SaveOutlined, SwapOutlined,
-  RollbackOutlined, TeamOutlined, BellOutlined,
+  RollbackOutlined, TeamOutlined,
 };
 
-/** 仅「已在飞书建好单 / 飞书已回进展」时底栏升级切催单；结案、关联失败仍为升级 */
-const feishuShowDunning = computed(
-  () => props.feishuSync === 'synced' || props.feishuSync === 'feedback',
+/** 已成功关联产研反馈：底栏升级置灰，催单/二次激活改在「产研反馈」Tab */
+const feishuEscalateBlocked = computed(() =>
+  props.feishuSync === 'synced'
+  || props.feishuSync === 'feedback'
+  || props.feishuSync === 'closed',
 );
 
 const DIALOG_ACTIONS: OpActionType[] = [
@@ -72,11 +73,11 @@ const actions = computed(() =>
 const actionMap = computed(() => new Map(actions.value.map((a) => [a.key, a])));
 
 interface BarItem {
-  key: OpActionType | '转单' | '催单';
+  key: OpActionType | '转单';
   label: string;
   icon: string;
   danger?: boolean;
-  /** 禁止操作示意（如无上一流转可撤回） */
+  /** 禁止操作示意（如无上一流转可撤回 / 已升级飞书） */
   forbidden?: boolean;
   forbiddenTip?: string;
 }
@@ -113,9 +114,15 @@ const barActions = computed<BarItem[]>(() => {
       );
       continue;
     }
-    // 飞书已建关联且未结案：升级按钮切为催单
-    if (key === '升级' && feishuShowDunning.value) {
-      items.push({ key: '催单', label: '催单', icon: 'BellOutlined' });
+    // 已升级飞书项目：升级置灰（催单/二次激活在「产研反馈」Tab）
+    if (key === '升级' && feishuEscalateBlocked.value) {
+      items.push({
+        key: def.key,
+        label: def.label,
+        icon: def.icon,
+        forbidden: true,
+        forbiddenTip: '已升级产研反馈，请在「产研反馈」Tab 催单或二次激活',
+      });
       continue;
     }
     items.push({ key: def.key, label: def.label, icon: def.icon, danger: def.danger });
@@ -127,14 +134,10 @@ function saveDraft() {
   emit('action', { type: '保存草稿' });
 }
 
-function run(action: OpActionType | '转单' | '催单') {
+function run(action: OpActionType | '转单') {
   if (isTerminal.value) return;
   if (action === '转单') {
     emit('transferTicket');
-    return;
-  }
-  if (action === '催单') {
-    emit('dunning');
     return;
   }
   if (action === '取消工单') return emit('cancel');
@@ -144,6 +147,10 @@ function run(action: OpActionType | '转单' | '催单') {
       return;
     }
     return emit('withdraw');
+  }
+  if (action === '升级' && feishuEscalateBlocked.value) {
+    message.warning('已升级产研反馈，请在「产研反馈」Tab 催单或二次激活');
+    return;
   }
   if (action === '挂起' && isSuspended.value) return;
   if (action === '恢复' && !isSuspended.value) {

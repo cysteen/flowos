@@ -555,6 +555,7 @@ watch(
           @mark-read="onMarkRecordRead"
           @feishu-activate="onFeishuActivate"
           @feishu-retry="onFeishuRetry"
+          @dunning="dunningModalOpen = true"
         />
       </div>
 
@@ -581,7 +582,6 @@ watch(
       @cancel="cancelModalOpen = true"
       @withdraw="confirmWithdraw"
       @transfer-ticket="openChildCreate"
-      @dunning="dunningModalOpen = true"
     />
 
     <CreateTicketModal

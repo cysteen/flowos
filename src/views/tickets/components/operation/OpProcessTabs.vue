@@ -39,6 +39,7 @@ const emit = defineEmits<{
   'mark-read': [id: string];
   'feishu-activate': [reason: string];
   'feishu-retry': [];
+  dunning: [];
 }>();
 
 const activeTab = ref<ProcessTabKey>('process');
@@ -107,6 +108,7 @@ defineExpose({ switchTab });
         :created-at="detail.createdAt"
         @activate="emit('feishu-activate', $event)"
         @retry="emit('feishu-retry')"
+        @dunning="emit('dunning')"
       />
 
       <OpTechProcessTab

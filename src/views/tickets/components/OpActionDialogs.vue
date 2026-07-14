@@ -13,7 +13,7 @@ import {
   SUSPEND_REASONS, ESCALATE_CHANNELS, ESCALATE_GROUPS, ESCALATE_MEMBERS,
   FEISHU_SPACES, AFTERSALE_GROUPS, CLOSE_RESULTS, ARCHIVE_REASONS,
   RESUME_REASONS, RETURN_REASONS, RETURN_TARGET_NODES, MAX_RETURN_COUNT,
-  DELEGATE_GROUPS, FEISHU_ESCALATE_CHANNEL,
+  DELEGATE_GROUPS, FEISHU_ESCALATE_CHANNEL, FEISHU_FEEDBACK_CATEGORIES,
 } from '../composables/opActions';
 
 const props = defineProps<{
@@ -37,7 +37,14 @@ const transfer = reactive({ scope: 'same' as 'same' | 'cross', target: TRANSFER_
 const delegate = reactive({ mode: 'person' as 'person' | 'group', target: DELEGATE_TARGETS[0], reason: '' });
 const forceClose = reactive({ reason: '', approver: APPROVERS[0], detail: '' });
 const suspend = reactive({ reason: '', detail: '', resumeAt: '' });
-const escalate = reactive({ channel: ESCALATE_CHANNELS[0], group: ESCALATE_GROUPS[0], member: ESCALATE_MEMBERS[0], detail: '', syncContext: true });
+const escalate = reactive({
+  channel: ESCALATE_CHANNELS[0],
+  group: ESCALATE_GROUPS[0],
+  member: ESCALATE_MEMBERS[0],
+  detail: '',
+  syncContext: true,
+  feedbackCategory: undefined as string | undefined,
+});
 const syncFeishu = reactive({ space: FEISHU_SPACES[0], message: '' });
 const aftersale = reactive({ mode: 'callback' as 'close' | 'callback', group: AFTERSALE_GROUPS[0], detail: '' });
 const resolve = reactive({ solution: '', createCallback: true });
@@ -142,7 +149,10 @@ function resetForms() {
   const canFeishuEscalate = props.feishuEligible && props.feishuSync !== 'closed';
   escalate.channel = canFeishuEscalate ? FEISHU_ESCALATE_CHANNEL : ESCALATE_CHANNELS[0];
   escalate.group = ESCALATE_GROUPS[0];
-  escalate.member = ESCALATE_MEMBERS[0]; escalate.detail = ''; escalate.syncContext = true;
+  escalate.member = ESCALATE_MEMBERS[0];
+  escalate.detail = '';
+  escalate.syncContext = true;
+  escalate.feedbackCategory = undefined;
   syncFeishu.space = FEISHU_SPACES[0]; syncFeishu.message = '';
   aftersale.mode = 'callback'; aftersale.group = AFTERSALE_GROUPS[0]; aftersale.detail = '';
   resolve.solution = ''; resolve.createCallback = true;
@@ -168,6 +178,12 @@ function validate(): boolean {
       return true;
     case '挂起':
       if (!suspend.reason) { message.warning('请选择挂起场景'); return false; }
+      return true;
+    case '升级':
+      if (escalateToFeishu.value && !escalate.feedbackCategory) {
+        message.warning('请选择问题反馈分类');
+        return false;
+      }
       return true;
     case '同步飞书':
       if (!syncFeishu.message.trim()) { message.warning('请填写同步内容'); return false; }
@@ -313,7 +329,16 @@ function onOk() {
             :options="escalateChannelOptions"
           />
         </div>
-        <div v-if="showEscalateGroup" class="op-field">
+        <div v-if="escalateToFeishu" class="op-field">
+          <div class="op-label req">问题反馈分类</div>
+          <a-select
+            v-model:value="escalate.feedbackCategory"
+            placeholder="请选择问题反馈分类"
+            style="width:100%"
+            :options="FEISHU_FEEDBACK_CATEGORIES.map((c) => ({ value: c, label: c }))"
+          />
+        </div>
+        <div v-else-if="showEscalateGroup" class="op-field">
           <div class="op-label req">目标组别</div>
           <a-select
             v-model:value="escalate.group"
@@ -323,7 +348,7 @@ function onOk() {
         </div>
       </div>
 
-      <!-- 飞书项目通道：一句说明即可，字段明细不必在弹窗再铺一遍 -->
+      <!-- 飞书项目通道：一句说明 + 升级说明；其余建单要素后台自动带入 -->
       <template v-if="escalateToFeishu">
         <div class="op-tip op-tip-info">确认后将在飞书项目创建「客户反馈单」，并自动带入本单标题、产品、优先级等。</div>
         <div class="op-field">

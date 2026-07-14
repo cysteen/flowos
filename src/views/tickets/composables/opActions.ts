@@ -37,7 +37,15 @@ export interface DelegatePayload { mode: 'person' | 'group'; target: string; rea
 export interface ForwardPayload { ticketTitle: string; resolved: boolean; reviewer?: string; conclusion?: string; }
 export interface ForceClosePayload { reason: string; approver: string; detail: string; }
 export interface SuspendPayload { reason: string; detail: string; resumeAt: string; }
-export interface EscalatePayload { channel: string; group: string; member: string; detail: string; syncContext: boolean; }
+export interface EscalatePayload {
+  channel: string;
+  group: string;
+  member: string;
+  detail: string;
+  syncContext: boolean;
+  /** 飞书项目通道必选：问题反馈分类 */
+  feedbackCategory?: string;
+}
 export interface FeishuActivatePayload { reason: string; }
 /** 处理登记（保存并登记）：坐席本次处理内容摘要，写入处理履历 */
 export interface ProcessLogData { summary: string; attachment?: string; }
@@ -95,6 +103,8 @@ export const SUSPEND_REASONS = ['等待客户反馈', '等待产研修复', '等
 export const ESCALATE_CHANNELS = ['二线技术支持组（推荐）', 'RDM 产研系统', 'TPD 技术问题单'];
 export const ESCALATE_GROUPS = ['硬件技术支持组', '软件技术支持组', '账号与权益组'];
 export const ESCALATE_MEMBERS = ['陈伟 (硬件, 负载 45%)', '林涛 (软件, 负载 60%)', '赵敏 (账号, 负载 38%)'];
+/** 升级到飞书项目 · 问题反馈分类（对齐飞书客户反馈单） */
+export const FEISHU_FEEDBACK_CATEGORIES = ['软件问题', '硬件问题', '效果问题', '其他问题'];
 export const FEISHU_SPACES = ['飞书项目 · 售后协同', '飞书群 · 二线技术支持', '飞书群 · 产品反馈'];
 export const AFTERSALE_GROUPS = ['售后维修组', '退换货处理组', '上门服务组'];
 export const CLOSE_RESULTS = ['已解决', '未解决-客户放弃', '未解决-无法复现', '重复工单', '无效工单'];
@@ -265,7 +275,7 @@ export function applyOpAction(
     }
 
     case '升级': {
-      const { channel, group, member, detail: note } = payload.data;
+      const { channel, group, member, detail: note, feedbackCategory } = payload.data;
       // 飞书项目通道：建关联 + 演示预反馈/关单时间线（原型默认落到 closed 以便点二次激活）
       if (channel === FEISHU_ESCALATE_CHANNEL) {
         const feedbackNo = feishuFeedbackNo();
@@ -274,10 +284,11 @@ export function applyOpAction(
         detail.feishuFailReason = undefined;
         detail.feishuRecords = buildFeishuSeedRecords(detail, operator, feedbackNo);
         detail.status = '已升级·产研';
+        const catPart = feedbackCategory ? `，问题反馈分类：${feedbackCategory}` : '';
         pushEntry(timeline, {
           category: 'node', action: 'escalate', who: operator, role: operatorRole,
           how: '升级 · 产研反馈',
-          what: `升级至产研反馈，建客户反馈单 ${feedbackNo}${note ? `。说明：${note}` : ''}`,
+          what: `升级至产研反馈，建客户反馈单 ${feedbackNo}${catPart}${note ? `。说明：${note}` : ''}`,
         });
         return { opState, suspendInfo, message: `已升级至产研反馈 · 反馈单 ${feedbackNo}` };
       }
