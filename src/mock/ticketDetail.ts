@@ -117,18 +117,18 @@ export interface TicketDetailMeta {
   productBg?: string;
   /** 飞书关联进度：none 还没转过 / failed 转飞书失败 / synced 已建好单 / feedback 已回进展 / closed 已结案 */
   feishuSync?: FeishuSyncState;
-  /** 飞书反馈单号（关联成功后） */
+  /** 产研反馈单号（关联成功后） */
   feishuFeedbackNo?: string;
   /** 关联失败原因（failed 时） */
   feishuFailReason?: string;
-  /** 飞书反馈 Tab 时间线（建关联 / 关联失败 / 预反馈 / 关单 / 二次激活） */
+  /** 「产研反馈」Tab 时间线（建关联 / 关联失败 / 预反馈 / 关单 / 二次激活） */
   feishuRecords?: FeishuRecord[];
 }
 
 /** 飞书关联进度（与 PRD §3.2 feishuSync 一致） */
 export type FeishuSyncState = 'none' | 'failed' | 'synced' | 'feedback' | 'closed';
 
-/** 飞书反馈 Tab 时间线一条 */
+/** 「产研反馈」Tab 时间线一条 */
 export interface FeishuRecord {
   id: string;
   /** push=建关联 / fail=关联失败 / feedback=预反馈 / result=关单 / activate=二次激活 / dunning=可选催单提醒 */
@@ -137,8 +137,8 @@ export interface FeishuRecord {
   content: string;
   /** 操作方名称 */
   who: string;
-  /** 记录来源侧：客服工单 / 飞书反馈 */
-  side: '客服工单' | '飞书反馈';
+  /** 记录来源侧：客服工单 / 产研侧 */
+  side: '客服工单' | '产研侧';
   when: string;
   /** 反馈单号 / 负责人 / 状态等元信息 */
   meta?: string;

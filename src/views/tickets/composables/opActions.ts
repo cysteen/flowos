@@ -132,7 +132,7 @@ function buildFeishuSeedRecords(detail: TicketDetailMeta, operator: string, feed
     {
       id: `fs-push-${Date.now()}`,
       kind: 'push',
-      title: '已在飞书创建客户反馈单',
+      title: '已创建产研反馈单',
       content: `已带入本单标题「${detail.title}」、优先级 ${detail.priority}、产品「${detail.product.name}」等建单信息，并挂上反馈单号。`,
       who: operator,
       side: '客服工单',
@@ -145,17 +145,17 @@ function buildFeishuSeedRecords(detail: TicketDetailMeta, operator: string, feed
       title: '产研已回处理进展',
       content: '已受理反馈单。初步定性：疑似离线翻译模型缺陷，已排期复现。原因分析进行中，计划 3 个工作日内明确原因。',
       who: owner,
-      side: '飞书反馈',
+      side: '产研侧',
       when: now,
       meta: '原因分析进行中 · 计划解决日期待定',
     },
     {
       id: `fs-result-${Date.now() + 2}`,
       kind: 'result',
-      title: '飞书反馈已结案',
+      title: '产研反馈已结案',
       content: '离线模型已修复并通过验收，将于下个固件版本随包发布，建议引导用户升级后验证。',
       who: owner,
-      side: '飞书反馈',
+      side: '产研侧',
       when: now,
       meta: '处理结论 已解决 · 待用户验证',
     },
@@ -274,10 +274,10 @@ export function applyOpAction(
         detail.status = '已升级·产研';
         pushEntry(timeline, {
           category: 'node', action: 'escalate', who: operator, role: operatorRole,
-          how: '升级 · 飞书反馈',
-          what: `升级至飞书反馈，建客户反馈单 ${feedbackNo}${note ? `。说明：${note}` : ''}`,
+          how: '升级 · 产研反馈',
+          what: `升级至产研反馈，建客户反馈单 ${feedbackNo}${note ? `。说明：${note}` : ''}`,
         });
-        return { opState, suspendInfo, message: `已升级至飞书反馈 · 反馈单 ${feedbackNo}` };
+        return { opState, suspendInfo, message: `已升级至产研反馈 · 反馈单 ${feedbackNo}` };
       }
       detail.status = '已升级·二线';
       const toTech = channel.includes('技术支持');
@@ -305,7 +305,7 @@ export function applyOpAction(
       const rec: FeishuRecord = {
         id: `fs-activate-${Date.now()}`,
         kind: 'activate',
-        title: '二次激活 · 已重新打开飞书反馈单',
+        title: '二次激活 · 已重新打开产研反馈单',
         content: `二线坐席二次激活，请产研继续处理。激活原因：${reason || '用户反馈未解决'}`,
         who: operator,
         side: '客服工单',
@@ -315,11 +315,11 @@ export function applyOpAction(
       detail.feishuRecords = [...(detail.feishuRecords ?? []), rec];
       pushEntry(timeline, {
         category: 'node', action: 'escalate', who: operator, role: operatorRole,
-        how: '二次激活飞书反馈',
-        what: `二次激活飞书反馈单，回推产研继续处理。${reason ? `原因：${reason}` : ''}`,
+        how: '二次激活产研反馈',
+        what: `二次激活产研反馈单，回推产研继续处理。${reason ? `原因：${reason}` : ''}`,
         internal: true,
       });
-      return { opState, suspendInfo, message: '已二次激活飞书反馈单' };
+      return { opState, suspendInfo, message: '已二次激活产研反馈单' };
     }
 
     case '转售后': {

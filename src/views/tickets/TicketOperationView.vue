@@ -20,11 +20,13 @@ import OpActionBar from './components/OpActionBar.vue';
 // 建单弹窗仅在「转单/重开」时用，按需异步加载，不阻塞操作页首屏
 const CreateTicketModal = defineAsyncComponent(() => import('./components/CreateTicketModal.vue'));
 import { useTicketOperation } from './composables/useTicketOperation';
-import { FEISHU_ESCALATE_CHANNEL } from './composables/opActions';
+import { FEISHU_ESCALATE_CHANNEL, mapUserRole } from './composables/opActions';
 import { useProcessForm } from './composables/useProcessForm';
 import { useOperationTabs } from './composables/useOperationTabs';
 import { useTicketLiveNotify } from './composables/useTicketLiveNotify';
 import { formatTicketRecordWho, MOCK_FIRST_LINE_AGENTS } from './utils/ticketRecordWho';
+import { mergeDraftIntoLatestHandling } from './utils/ticketOverview';
+import { TICKETS } from '@/mock/tickets';
 import { buildChildTicketPrefill, buildReopenTicketPrefill } from './composables/childTicketPrefill';
 import type { CreateTicketPrefill, Ticket } from './types/ticket';
 import type { ProcessFormDraft, InsightAction, InsightModalKey } from './types/operation';
@@ -222,12 +224,12 @@ function onAction(payload: Record<string, unknown>) {
   }
 }
 
-/** 飞书反馈 Tab · 二次激活 */
+/** 产研反馈 Tab · 二次激活 */
 function onFeishuActivate(reason: string) {
   dispatch({ type: '激活飞书', data: { reason } });
 }
 
-/** 飞书反馈 Tab · 关联失败后重新发起升级 */
+/** 产研反馈 Tab · 关联失败后重新发起升级 */
 function onFeishuRetry() {
   actionBarRef.value?.openEscalate();
 }
@@ -397,10 +399,29 @@ function onSupplementSubmit(payload: { supplementType: string; content: string; 
 }
 
 function onDunningSubmit(payload: { content: string; attachments: string[] }) {
-  onIncomingTicketEvent('urge', payload.content, formatTicketRecordWho(user.name, user.roleKey), { notify: false });
+  const who = formatTicketRecordWho(user.name, user.roleKey);
+  onIncomingTicketEvent('urge', payload.content, who, { notify: false });
   const record = tabData.value.dunningRecords[0];
   if (record && payload.attachments.length) {
     record.attachments = payload.attachments;
+  }
+  // 已关联产研反馈：与「关联/补充/催单」同步写一条到产研反馈时间线
+  const sync = d.value.feishuSync;
+  if (sync && sync !== 'none' && sync !== 'failed') {
+    const when = record?.when ?? formatNow();
+    d.value.feishuRecords = [
+      ...(d.value.feishuRecords ?? []),
+      {
+        id: `fs-dunning-${Date.now()}`,
+        kind: 'dunning',
+        title: '催单 · 请产研尽快跟进',
+        content: payload.content || '坐席发起催单',
+        who,
+        side: '客服工单',
+        when,
+        meta: '催单',
+      },
+    ];
   }
   processTabsRef.value?.switchTab('related');
   message.success('催单信息已提交');
@@ -444,6 +465,32 @@ function updateForm(next: ProcessFormDraft) {
 function updateTabData(next: OperationTabData) {
   tabData.value = next;
 }
+
+/** 处理表单 / 技术支持「处理结果」→ 速览带「最新处理」及时回写 */
+function syncLatestHandlingFromDrafts() {
+  d.value.latestHandling = mergeDraftIntoLatestHandling(d.value.latestHandling, {
+    processResult: form.value.processResult,
+    techProcessResult: tabData.value.techDraft.processResult,
+    processWho: user.name || '当前坐席',
+    processRole: mapUserRole(user.roleKey),
+    techWho: '技术支持',
+  });
+  // 同步列表行预览文案
+  const listTicket = TICKETS.find((t) => t.no === d.value.no);
+  if (listTicket) {
+    listTicket.latestHandling = d.value.latestHandling[0]?.text ?? '';
+  }
+}
+
+watch(
+  [
+    () => form.value.processResult,
+    () => tabData.value.techDraft.processResult,
+    () => d.value.no,
+  ],
+  () => syncLatestHandlingFromDrafts(),
+  { immediate: true },
+);
 </script>
 
 <template>

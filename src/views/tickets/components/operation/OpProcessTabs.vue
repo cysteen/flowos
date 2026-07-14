@@ -39,7 +39,7 @@ const emit = defineEmits<{
 }>();
 
 const activeTab = ref<ProcessTabKey>('process');
-/** synced / feedback / closed / failed 时展示「飞书反馈」Tab */
+/** synced / feedback / closed / failed 时展示「产研反馈」Tab */
 const feishuActive = computed(() => {
   const s = props.detail.feishuSync;
   return !!s && s !== 'none';

@@ -61,6 +61,8 @@ export interface LatestHandlingItem {
   role: string;
   when: string;
   text: string;
+  /** 运行态来源：处理表单 / 技术支持表单回写，用于 upsert，不污染历史记录 */
+  source?: 'process' | 'tech';
 }
 
 /** 统计宫格点击后的下钻动作：弹窗看明细 或 跳对应处理 Tab */
@@ -125,7 +127,7 @@ export type SectionKey =
 
 export const PROCESS_TABS = [
   { key: 'process', label: '工单处理' },
-  { key: 'feishu', label: '飞书反馈' },
+  { key: 'feishu', label: '产研反馈' },
   { key: 'tech', label: '技术支持处理' },
   { key: 'risk', label: '风险监控' },
   { key: 'history', label: '处理履历' },
@@ -147,7 +149,7 @@ const TAB_TYPE_RESTRICTION: Partial<Record<ProcessTabKey, string[]>> = {
 };
 
 /** 按工单类型过滤可见处理 Tab（商机/建议精简，仅保留通用 Tab）。
- *  「飞书反馈」Tab：关联中 / 关联失败 / 已回进展 / 已结案时出现。 */
+ *  「产研反馈」Tab：关联中 / 关联失败 / 已回进展 / 已结案时出现。 */
 export function visibleProcessTabs(ticketType: string, opts?: { feishuActive?: boolean }) {
   return PROCESS_TABS.filter((t) => {
     if (t.key === 'feishu') return !!opts?.feishuActive;

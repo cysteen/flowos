@@ -174,7 +174,7 @@ function onForwardConfirm(data: { ticketTitle: string; resolved: boolean }) {
   emit('action', { type: '下送', data });
 }
 
-/** 飞书反馈 Tab「重新发起」：打开升级弹窗 */
+/** 产研反馈 Tab「重新发起」：打开升级弹窗 */
 function openEscalate() {
   if (isTerminal.value) return;
   dialogAction.value = '升级';
