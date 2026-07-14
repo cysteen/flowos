@@ -26,8 +26,6 @@ const props = defineProps<{
   feishuEligible?: boolean;
   /** 飞书协同子状态：非 none 时「升级」按钮切为「催单」 */
   feishuSync?: string;
-  /** 飞书推送要素摘要（传给升级弹窗） */
-  feishuPushLines?: string[];
 }>();
 
 const emit = defineEmits<{
@@ -46,8 +44,10 @@ const ICONS: Record<string, any> = {
   RollbackOutlined, TeamOutlined, BellOutlined,
 };
 
-/** 已升级到飞书项目：底栏「升级」按钮切为「催单」 */
-const feishuActive = computed(() => !!props.feishuSync && props.feishuSync !== 'none');
+/** 仅「已在飞书建好单 / 飞书已回进展」时底栏升级切催单；结案、关联失败仍为升级 */
+const feishuShowDunning = computed(
+  () => props.feishuSync === 'synced' || props.feishuSync === 'feedback',
+);
 
 const DIALOG_ACTIONS: OpActionType[] = [
   '调剂', '委派', '强结', '挂起', '恢复', '退回', '升级', '同步飞书', '转售后',
@@ -113,8 +113,8 @@ const barActions = computed<BarItem[]>(() => {
       );
       continue;
     }
-    // 已升级到飞书项目：升级按钮切为催单
-    if (key === '升级' && feishuActive.value) {
+    // 飞书已建关联且未结案：升级按钮切为催单
+    if (key === '升级' && feishuShowDunning.value) {
       items.push({ key: '催单', label: '催单', icon: 'BellOutlined' });
       continue;
     }
@@ -173,6 +173,15 @@ function onDialogConfirm(payload: Record<string, unknown>) {
 function onForwardConfirm(data: { ticketTitle: string; resolved: boolean }) {
   emit('action', { type: '下送', data });
 }
+
+/** 飞书反馈 Tab「重新发起」：打开升级弹窗 */
+function openEscalate() {
+  if (isTerminal.value) return;
+  dialogAction.value = '升级';
+  dialogOpen.value = true;
+}
+
+defineExpose({ openEscalate });
 </script>
 
 <template>
@@ -221,7 +230,7 @@ function onForwardConfirm(data: { ticketTitle: string; resolved: boolean }) {
       :suspend-info="suspendInfo"
       :return-count="returnCount ?? 0"
       :feishu-eligible="feishuEligible"
-      :feishu-push-lines="feishuPushLines"
+      :feishu-sync="feishuSync"
       @confirm="onDialogConfirm"
     />
 

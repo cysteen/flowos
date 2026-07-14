@@ -24,8 +24,8 @@ const props = defineProps<{
   returnCount: number;
   /** 消费者BG工单：升级通道开放「飞书项目·产研反馈单」 */
   feishuEligible?: boolean;
-  /** 飞书项目推送要素摘要（标题/优先级/产品/客户等） */
-  feishuPushLines?: string[];
+  /** 飞书关联进度：closed 时「升级到飞书」置灰不可再转 */
+  feishuSync?: string;
 }>();
 
 const emit = defineEmits<{
@@ -53,18 +53,16 @@ const returnForm = reactive({ reason: '', targetNode: RETURN_TARGET_NODES[0], no
 const escalateToTech = computed(() => escalate.channel.includes('技术支持'));
 const escalateToFeishu = computed(() => escalate.channel === FEISHU_ESCALATE_CHANNEL);
 
-/** 飞书推送要素兜底文案（父组件未传 feishuPushLines 时用） */
-const DEFAULT_FEISHU_LINES = [
-  '工单标题、问题描述',
-  '优先级、来源产品',
-  '客户信息、创建人 / 创建时间',
-];
-
-/** 升级通道选项：消费者BG工单把「飞书项目」置顶为首要通道 */
+/** 升级通道选项：消费者BG工单把「飞书项目」置顶；飞书已结案时该通道禁用 */
 const escalateChannelOptions = computed(() => {
   const base = [...ESCALATE_CHANNELS];
   const list = props.feishuEligible ? [FEISHU_ESCALATE_CHANNEL, ...base] : base;
-  return list.map((c) => ({ value: c, label: c }));
+  const feishuClosed = props.feishuSync === 'closed';
+  return list.map((c) => ({
+    value: c,
+    label: c,
+    disabled: c === FEISHU_ESCALATE_CHANNEL && feishuClosed,
+  }));
 });
 
 const ESCALATE_CHANNEL_GROUPS: Record<string, string[]> = {
@@ -140,7 +138,9 @@ function resetForms() {
   delegate.mode = 'person'; delegate.target = DELEGATE_TARGETS[0]; delegate.reason = '';
   forceClose.reason = ''; forceClose.approver = APPROVERS[0]; forceClose.detail = '';
   suspend.reason = ''; suspend.detail = ''; suspend.resumeAt = '';
-  escalate.channel = props.feishuEligible ? FEISHU_ESCALATE_CHANNEL : ESCALATE_CHANNELS[0];
+  // 飞书已结案：不可再选飞书通道，默认落到其他升级通道
+  const canFeishuEscalate = props.feishuEligible && props.feishuSync !== 'closed';
+  escalate.channel = canFeishuEscalate ? FEISHU_ESCALATE_CHANNEL : ESCALATE_CHANNELS[0];
   escalate.group = ESCALATE_GROUPS[0];
   escalate.member = ESCALATE_MEMBERS[0]; escalate.detail = ''; escalate.syncContext = true;
   syncFeishu.space = FEISHU_SPACES[0]; syncFeishu.message = '';
@@ -323,20 +323,9 @@ function onOk() {
         </div>
       </div>
 
-      <!-- 飞书项目通道：OpenAPI 推送上下文 -->
+      <!-- 飞书项目通道：一句说明即可，字段明细不必在弹窗再铺一遍 -->
       <template v-if="escalateToFeishu">
-        <div class="fs-push-card">
-          <div class="fs-push-head">
-            <span class="fs-push-badge">OpenAPI 推送</span>
-            <span class="fs-push-title">将把工单信息推送至飞书项目，建「客户反馈单」</span>
-          </div>
-          <ul class="fs-push-list">
-            <li v-for="(line, i) in (feishuPushLines && feishuPushLines.length ? feishuPushLines : DEFAULT_FEISHU_LINES)" :key="i">
-              {{ line }}
-            </li>
-          </ul>
-          <div class="fs-push-foot">仅推送不变的建单要素；附件 / 履历 / 关联单由飞书项目按凭据实时回查。</div>
-        </div>
+        <div class="op-tip op-tip-info">确认后将在飞书项目创建「客户反馈单」，并自动带入本单标题、产品、优先级等。</div>
         <div class="op-field">
           <div class="op-label">升级说明</div>
           <a-textarea v-model:value="escalate.detail" :rows="2" placeholder="补充给产研的说明，如复现步骤、影响范围…" />

@@ -115,26 +115,30 @@ export interface TicketDetailMeta {
   aiInsight: AiTicketInsight;
   /** 所属 BG（消费者BG 门控飞书项目集成通道） */
   productBg?: string;
-  /** 飞书项目协同子状态：none 未同步 / synced 已推送 / feedback 已回传 / closed 已关单 */
+  /** 飞书关联进度：none 还没转过 / failed 转飞书失败 / synced 已建好单 / feedback 已回进展 / closed 已结案 */
   feishuSync?: FeishuSyncState;
-  /** 飞书项目扭转记录（传过去 / 飞书反馈处理进度 / 同步处理结果 / 激活） */
+  /** 飞书反馈单号（关联成功后） */
+  feishuFeedbackNo?: string;
+  /** 关联失败原因（failed 时） */
+  feishuFailReason?: string;
+  /** 飞书反馈 Tab 时间线（建关联 / 关联失败 / 预反馈 / 关单 / 二次激活） */
   feishuRecords?: FeishuRecord[];
 }
 
-/** 飞书项目协同子状态 */
-export type FeishuSyncState = 'none' | 'synced' | 'feedback' | 'closed';
+/** 飞书关联进度（与 PRD §3.2 feishuSync 一致） */
+export type FeishuSyncState = 'none' | 'failed' | 'synced' | 'feedback' | 'closed';
 
-/** 飞书项目扭转记录一条 */
+/** 飞书反馈 Tab 时间线一条 */
 export interface FeishuRecord {
   id: string;
-  /** push=传过去 / feedback=飞书反馈处理进度 / result=同步处理结果 / activate=二线激活 / dunning=催单 */
-  kind: 'push' | 'feedback' | 'result' | 'activate' | 'dunning';
+  /** push=建关联 / fail=关联失败 / feedback=预反馈 / result=关单 / activate=二次激活 / dunning=可选催单提醒 */
+  kind: 'push' | 'fail' | 'feedback' | 'result' | 'activate' | 'dunning';
   title: string;
   content: string;
   /** 操作方名称 */
   who: string;
-  /** 记录来源侧：上游=工单系统 / 飞书项目=产研侧 */
-  side: '上游' | '飞书项目';
+  /** 记录来源侧：客服工单 / 飞书反馈 */
+  side: '客服工单' | '飞书反馈';
   when: string;
   /** 反馈单号 / 负责人 / 状态等元信息 */
   meta?: string;

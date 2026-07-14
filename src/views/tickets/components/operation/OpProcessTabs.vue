@@ -35,10 +35,15 @@ const emit = defineEmits<{
   openReopenCreate: [];
   'mark-read': [id: string];
   'feishu-activate': [reason: string];
+  'feishu-retry': [];
 }>();
 
 const activeTab = ref<ProcessTabKey>('process');
-const feishuActive = computed(() => !!props.detail.feishuSync && props.detail.feishuSync !== 'none');
+/** synced / feedback / closed / failed 时展示「飞书反馈」Tab */
+const feishuActive = computed(() => {
+  const s = props.detail.feishuSync;
+  return !!s && s !== 'none';
+});
 const visibleTabs = computed(() =>
   visibleProcessTabs(props.detail.type, { feishuActive: feishuActive.value }),
 );
@@ -91,7 +96,14 @@ defineExpose({ switchTab });
         v-else-if="activeTab === 'feishu'"
         :records="detail.feishuRecords ?? []"
         :sync-state="detail.feishuSync"
+        :feedback-name="detail.title"
+        :priority="detail.priority"
+        :product-name="detail.product.name"
+        :feedback-no="detail.feishuFeedbackNo"
+        :fail-reason="detail.feishuFailReason"
+        :created-at="detail.createdAt"
         @activate="emit('feishu-activate', $event)"
+        @retry="emit('feishu-retry')"
       />
 
       <OpTechProcessTab

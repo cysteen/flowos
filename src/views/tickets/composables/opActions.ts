@@ -124,40 +124,40 @@ function feishuFeedbackNo(): string {
   return `FS-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}${String(new Date().getDate()).padStart(2, '0')}-${String(Math.floor(Date.now() % 9000) + 1000)}`;
 }
 
-/** 升级到飞书项目：推送建单要素并生成初始扭转记录序列（传过去 → 反馈进度 → 处理结果） */
+/** 升级到飞书：演示完整协同时间线（建关联 → 预反馈 → 关单） */
 function buildFeishuSeedRecords(detail: TicketDetailMeta, operator: string, feedbackNo: string): FeishuRecord[] {
   const now = nowWhen();
-  const owner = '何霄煜（飞书项目·技术支持）';
+  const owner = '何霄煜（飞书·技术支持）';
   return [
     {
       id: `fs-push-${Date.now()}`,
       kind: 'push',
-      title: '传过去 · 工单信息已推送飞书项目',
-      content: `经 OpenAPI 推送建单要素至飞书项目，已建客户反馈单。推送内容：标题「${detail.title}」、优先级 ${detail.priority}、来源产品「${detail.product.name}」、客户「${detail.customer.name}」。`,
+      title: '已在飞书创建客户反馈单',
+      content: `已带入本单标题「${detail.title}」、优先级 ${detail.priority}、产品「${detail.product.name}」等建单信息，并挂上反馈单号。`,
       who: operator,
-      side: '上游',
+      side: '客服工单',
       when: now,
       meta: `反馈单号 ${feedbackNo}`,
     },
     {
       id: `fs-feedback-${Date.now() + 1}`,
       kind: 'feedback',
-      title: '飞书反馈处理进度',
-      content: '飞书项目已受理反馈单，初步定性：疑似离线翻译模型缺陷，已排期复现。原因分析进行中，预计 3 个工作日内明确原因。',
+      title: '产研已回处理进展',
+      content: '已受理反馈单。初步定性：疑似离线翻译模型缺陷，已排期复现。原因分析进行中，计划 3 个工作日内明确原因。',
       who: owner,
-      side: '飞书项目',
+      side: '飞书反馈',
       when: now,
-      meta: `当前负责人 何霄煜 · 状态 处理中`,
+      meta: '原因分析进行中 · 计划解决日期待定',
     },
     {
       id: `fs-result-${Date.now() + 2}`,
       kind: 'result',
-      title: '同步处理结果',
-      content: '飞书项目回传处理结果：离线模型已修复并通过验收，将于下个固件版本随包发布，建议引导用户升级后验证。',
+      title: '飞书反馈已结案',
+      content: '离线模型已修复并通过验收，将于下个固件版本随包发布，建议引导用户升级后验证。',
       who: owner,
-      side: '飞书项目',
+      side: '飞书反馈',
       when: now,
-      meta: `处理结论 已解决 · 待用户验证`,
+      meta: '处理结论 已解决 · 待用户验证',
     },
   ];
 }
@@ -264,18 +264,20 @@ export function applyOpAction(
 
     case '升级': {
       const { channel, group, member, detail: note } = payload.data;
-      // 飞书项目通道：走 OpenAPI 推送，建立协同关系并生成扭转记录
+      // 飞书项目通道：建关联 + 演示预反馈/关单时间线（原型默认落到 closed 以便点二次激活）
       if (channel === FEISHU_ESCALATE_CHANNEL) {
         const feedbackNo = feishuFeedbackNo();
         detail.feishuSync = 'closed';
+        detail.feishuFeedbackNo = feedbackNo;
+        detail.feishuFailReason = undefined;
         detail.feishuRecords = buildFeishuSeedRecords(detail, operator, feedbackNo);
         detail.status = '已升级·产研';
         pushEntry(timeline, {
           category: 'node', action: 'escalate', who: operator, role: operatorRole,
-          how: '升级 · 飞书项目',
-          what: `升级至飞书项目，OpenAPI 推送建单要素，建客户反馈单 ${feedbackNo}${note ? `。说明：${note}` : ''}`,
+          how: '升级 · 飞书反馈',
+          what: `升级至飞书反馈，建客户反馈单 ${feedbackNo}${note ? `。说明：${note}` : ''}`,
         });
-        return { opState, suspendInfo, message: `已升级至飞书项目 · 反馈单 ${feedbackNo}` };
+        return { opState, suspendInfo, message: `已升级至飞书反馈 · 反馈单 ${feedbackNo}` };
       }
       detail.status = '已升级·二线';
       const toTech = channel.includes('技术支持');
@@ -303,21 +305,21 @@ export function applyOpAction(
       const rec: FeishuRecord = {
         id: `fs-activate-${Date.now()}`,
         kind: 'activate',
-        title: '二次激活 · 已重新激活飞书反馈单',
-        content: `处理结果不符合客户预期，二线工单坐席一键激活飞书项目反馈单，回推产研继续处理。原因：${reason || '结果需进一步确认'}`,
+        title: '二次激活 · 已重新打开飞书反馈单',
+        content: `二线坐席二次激活，请产研继续处理。激活原因：${reason || '用户反馈未解决'}`,
         who: operator,
-        side: '上游',
+        side: '客服工单',
         when: nowWhen(),
-        meta: '状态 已激活 · 待产研响应',
+        meta: `激活原因 ${reason?.split('：')[0] || '用户反馈未解决'}`,
       };
       detail.feishuRecords = [...(detail.feishuRecords ?? []), rec];
       pushEntry(timeline, {
         category: 'node', action: 'escalate', who: operator, role: operatorRole,
-        how: '激活飞书反馈单',
-        what: `二次激活飞书项目反馈单，回推产研继续处理。${reason ? `原因：${reason}` : ''}`,
+        how: '二次激活飞书反馈',
+        what: `二次激活飞书反馈单，回推产研继续处理。${reason ? `原因：${reason}` : ''}`,
         internal: true,
       });
-      return { opState, suspendInfo, message: '已激活飞书反馈单，回推产研' };
+      return { opState, suspendInfo, message: '已二次激活飞书反馈单' };
     }
 
     case '转售后': {

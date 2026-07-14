@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { CalendarOutlined, DownOutlined } from '@ant-design/icons-vue';
+import { CalendarOutlined, CloseOutlined, DownOutlined } from '@ant-design/icons-vue';
 import type { ChipMeta, ChipKey } from '@/views/tickets/types/ticket';
+import { isSavedFilterChipKey } from '@/views/tickets/types/savedFilters';
 
 defineProps<{
   activeChip: ChipKey | string;
@@ -11,6 +12,7 @@ defineProps<{
 
 const emit = defineEmits<{
   chip: [key: ChipKey | string];
+  removeChip: [key: string];
 }>();
 
 function chipStyle(_key: string, active: boolean, tone?: 'warn' | 'danger') {
@@ -25,6 +27,11 @@ function chipTextColor(_key: string, active: boolean, tone?: 'warn' | 'danger') 
   if (tone === 'danger') return '#DC2626';
   return '#6B7280';
 }
+
+function onRemove(e: MouseEvent, key: string) {
+  e.stopPropagation();
+  emit('removeChip', key);
+}
 </script>
 
 <template>
@@ -34,6 +41,7 @@ function chipTextColor(_key: string, active: boolean, tone?: 'warn' | 'danger') 
         v-for="chip in chips"
         :key="chip.key"
         class="chip"
+        :class="{ 'chip--custom': isSavedFilterChipKey(chip.key) }"
         :style="chipStyle(chip.key, chip.key === activeChip, chip.tone)"
         @click="emit('chip', chip.key)"
       >
@@ -50,6 +58,16 @@ function chipTextColor(_key: string, active: boolean, tone?: 'warn' | 'danger') 
           :style="{ color: chip.key === activeChip ? '#1A6FFF' : chip.tone === 'warn' ? '#D97706' : chip.tone === 'danger' ? '#DC2626' : '#9CA3AF' }"
           >{{ chipCounts[chip.key] }}</span
         >
+        <button
+          v-if="isSavedFilterChipKey(chip.key)"
+          type="button"
+          class="chip-remove"
+          title="删除此筛选"
+          aria-label="删除此筛选"
+          @click="onRemove($event, chip.key)"
+        >
+          <CloseOutlined />
+        </button>
       </div>
     </div>
 
@@ -98,6 +116,10 @@ function chipTextColor(_key: string, active: boolean, tone?: 'warn' | 'danger') 
   cursor: pointer;
   flex: none;
   white-space: nowrap;
+  position: relative;
+}
+.chip--custom {
+  padding-right: 8px;
 }
 .chip-label {
   font-size: 13px;
@@ -105,6 +127,32 @@ function chipTextColor(_key: string, active: boolean, tone?: 'warn' | 'danger') 
 .chip-count {
   font-size: 12px;
   font-weight: 600;
+}
+.chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 0;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #9CA3AF;
+  font-size: 10px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
+  flex: none;
+}
+.chip--custom:hover .chip-remove,
+.chip--custom:focus-within .chip-remove {
+  opacity: 1;
+}
+.chip-remove:hover {
+  color: #DC2626;
+  background: rgba(220, 38, 38, 0.08);
 }
 .right {
   display: flex;

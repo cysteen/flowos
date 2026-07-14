@@ -53,6 +53,14 @@ export function useSavedFilters() {
     return item;
   }
 
+  function removeSavedFilter(idOrChipKey: string): SavedFilter | undefined {
+    const id = idOrChipKey.startsWith('sf:') ? idOrChipKey.slice(3) : idOrChipKey;
+    const target = savedFilters.value.find((f) => f.id === id);
+    if (!target) return undefined;
+    savedFilters.value = savedFilters.value.filter((f) => f.id !== id);
+    return target;
+  }
+
   const totalCount = computed(() => savedFilters.value.length);
 
   return {
@@ -61,6 +69,7 @@ export function useSavedFilters() {
     chipsForTab,
     findByChipKey,
     addSavedFilter,
+    removeSavedFilter,
     totalCount,
   };
 }

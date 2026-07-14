@@ -305,6 +305,17 @@ export function useTicketWorkbench() {
     current.value = 1;
     return item;
   }
+  /** 删除用户自定义（保存筛选）chip；若当前选中则回退到「全部」并清除结构化查询 */
+  function removeSavedFilterChip(chipKey: string) {
+    if (!isSavedFilterChipKey(chipKey)) return null;
+    const removed = savedFilters.removeSavedFilter(chipKey);
+    if (!removed) return null;
+    if (activeChip.value === chipKey) {
+      activeChip.value = 'all';
+      clearStructuredForActiveTab();
+    }
+    return removed;
+  }
   function applyMineQuery() {
     current.value = 1;
   }
@@ -373,7 +384,7 @@ export function useTicketWorkbench() {
     tabRows, filtered, sorted, paged, total, tabCounts, chipCounts, drafts,
     selectedCount, allPageSelected, aiSuggestions, aiSummary, showAiBar,
     isDraftView, showAppointmentColumn, isMineTab, isDoneTab, isPoolTab, usesStructuredFilter,
-    setTab, setChip, setMineQuery, setDoneQuery, setStructuredQuery, saveCurrentFilter, applyMineQuery, applyStructuredQuery, setMineSortRule, setSearch, toggleSelect, toggleSelectAllOnPage, clearSelection,
+    setTab, setChip, setMineQuery, setDoneQuery, setStructuredQuery, saveCurrentFilter, removeSavedFilterChip, applyMineQuery, applyStructuredQuery, setMineSortRule, setSearch, toggleSelect, toggleSelectAllOnPage, clearSelection,
     setPage, addTicket, claimTicket, claimTickets, dismissAiSuggestion, ticketById,
     removeDraft: (id: string) => draftStore.remove(id),
   };

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { message } from 'ant-design-vue';
+import { message, Modal } from 'ant-design-vue';
 import { useUserStore } from '@/stores/user';
 import AppPagination from '@/components/AppPagination.vue';
 import TicketTabs from './components/TicketTabs.vue';
@@ -227,6 +227,22 @@ function onChipSelect(chip: string) {
   wb.setChip(chip, applyOptionalVisible);
 }
 
+function onRemoveSavedChip(chipKey: string) {
+  const sf = wb.activeChips.value.find((c) => c.key === chipKey);
+  const name = sf?.label ?? '该筛选';
+  Modal.confirm({
+    title: '删除筛选器',
+    content: `确定删除「${name}」？删除后不可恢复。`,
+    okText: '删除',
+    okType: 'danger',
+    cancelText: '取消',
+    onOk() {
+      const removed = wb.removeSavedFilterChip(chipKey);
+      if (removed) message.success(`已删除筛选器「${removed.name}」`);
+    },
+  });
+}
+
 function onRequestSaveFilter() {
   if (!hasMineQuery(wb.structuredQuery.value)) {
     message.warning('请先设置筛选条件后再保存');
@@ -273,6 +289,7 @@ function onConfirmSaveFilter(name: string) {
         :chips="wb.activeChips.value"
         :show-time-filter="!wb.usesStructuredFilter.value"
         @chip="onChipSelect"
+        @remove-chip="onRemoveSavedChip"
       />
 
       <!-- ④ 列表控制区：筛选面板向上展开 + 工具行 -->

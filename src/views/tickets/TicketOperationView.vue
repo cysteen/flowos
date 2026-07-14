@@ -55,6 +55,7 @@ const pageActive = ref(false);
 
 const ticketNo = computed(() => (route.params.ticketNo as string) || d.value.no);
 const processTabsRef = ref<InstanceType<typeof OpProcessTabs> | null>(null);
+const actionBarRef = ref<{ openEscalate: () => void } | null>(null);
 
 const tabsStore = useWorkspaceTabsStore();
 const cti = useCtiStore();
@@ -206,12 +207,6 @@ function onTicketCreated(ticket: Ticket, processAfter?: boolean) {
 
 /** 消费者BG工单开放飞书项目升级通道 */
 const feishuEligible = computed(() => d.value.productBg === '消费者BG');
-/** 飞书推送要素摘要（升级弹窗展示） */
-const feishuPushLines = computed(() => [
-  `工单标题：${d.value.title}`,
-  `优先级：${d.value.priority} · 来源产品：${d.value.product.name}`,
-  `客户：${d.value.customer.name} · 建单人：${d.value.builderShort}`,
-]);
 
 function isFeishuEscalate(payload: Record<string, unknown>): boolean {
   if (payload.type !== '升级') return false;
@@ -227,9 +222,14 @@ function onAction(payload: Record<string, unknown>) {
   }
 }
 
-/** 飞书项目 Tab 内「激活反馈单」 */
+/** 飞书反馈 Tab · 二次激活 */
 function onFeishuActivate(reason: string) {
   dispatch({ type: '激活飞书', data: { reason } });
+}
+
+/** 飞书反馈 Tab · 关联失败后重新发起升级 */
+function onFeishuRetry() {
+  actionBarRef.value?.openEscalate();
 }
 
 function toast(name: string) {
@@ -489,6 +489,7 @@ function updateTabData(next: OperationTabData) {
           @open-reopen-create="openReopenCreate"
           @mark-read="onMarkRecordRead"
           @feishu-activate="onFeishuActivate"
+          @feishu-retry="onFeishuRetry"
         />
       </div>
 
@@ -500,6 +501,7 @@ function updateTabData(next: OperationTabData) {
     </div>
 
     <OpActionBar
+      ref="actionBarRef"
       :ticket-no="ticketNo"
       :ticket-title="d.title"
       :ticket-type="d.type"
@@ -510,7 +512,6 @@ function updateTabData(next: OperationTabData) {
       :return-count="d.returnCount ?? 0"
       :feishu-eligible="feishuEligible"
       :feishu-sync="d.feishuSync"
-      :feishu-push-lines="feishuPushLines"
       @action="onAction"
       @cancel="cancelModalOpen = true"
       @withdraw="confirmWithdraw"
