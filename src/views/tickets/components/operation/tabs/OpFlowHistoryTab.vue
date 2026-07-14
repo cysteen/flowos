@@ -1,12 +1,17 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import type { FlowHistoryNode } from '@/views/tickets/types/operationTabs';
+import { computed, ref } from 'vue';
+import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 import OpFlowChartModal from '../OpFlowChartModal.vue';
+import OpTimeline from '../../OpTimeline.vue';
 
-defineProps<{
+// 处理履历 = 完整事件时间线（全量事件流，实时随操作追加）
+const props = defineProps<{
   currentNode: string;
-  nodes: FlowHistoryNode[];
+  entries: TimelineEntry[];
 }>();
+
+// 按时间倒序展示：最新事件在上
+const orderedEntries = computed(() => [...props.entries].reverse());
 
 const flowChartOpen = ref(false);
 function viewFlow() {
@@ -18,29 +23,15 @@ function viewFlow() {
   <div class="flow-history">
     <div class="current-bar">
       <div class="current-label">
-        <span class="current-prefix">当前节点:</span>
+        <span class="current-prefix">当前状态:</span>
         <strong class="current-value">{{ currentNode }}</strong>
       </div>
       <button type="button" class="flow-link" @click="viewFlow">查看流程图</button>
     </div>
 
-    <div class="timeline-panel">
-      <div class="timeline">
-        <div v-for="(node, i) in nodes" :key="node.id" class="node-row">
-          <div class="rail">
-            <span class="dot" :class="{ active: node.active }" />
-            <span v-if="i < nodes.length - 1" class="line" />
-          </div>
-          <div class="node-main" :class="{ 'is-last': i === nodes.length - 1 }">
-            <div class="node-head">
-              <span class="node-title" :class="{ active: node.active }">{{ node.title }}</span>
-              <span class="node-meta">操作人: {{ node.operator }} | {{ node.when }}</span>
-            </div>
-            <div class="node-desc">{{ node.desc }}</div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <!-- 完整事件时间线：全流程关键事件（建单/流转/对客沟通/催办/解决/好评），时间倒序 -->
+    <OpTimeline :entries="orderedEntries" />
+
     <OpFlowChartModal v-model:open="flowChartOpen" :current-node="currentNode" />
   </div>
 </template>
@@ -99,95 +90,5 @@ function viewFlow() {
 
 .flow-link:hover {
   text-decoration: underline;
-}
-
-.timeline-panel {
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  background: #fff;
-  padding: 10px 12px;
-}
-
-.timeline {
-  display: flex;
-  flex-direction: column;
-}
-
-.node-row {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-}
-
-.rail {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 10px;
-  flex: none;
-  gap: 8px;
-}
-
-.dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 5px;
-  background: #1a6fff;
-  flex: none;
-}
-
-.dot.active {
-  box-shadow: 0 0 0 3px rgba(26, 111, 255, 0.2);
-}
-
-.line {
-  width: 2px;
-  height: 36px;
-  background: #e5e7eb;
-  flex: none;
-}
-
-.node-main {
-  flex: 1;
-  min-width: 0;
-  padding-bottom: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.node-main.is-last {
-  padding-bottom: 0;
-}
-
-.node-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.node-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #111827;
-  flex: none;
-}
-
-.node-title.active {
-  color: #1a6fff;
-}
-
-.node-meta {
-  font-size: 11px;
-  color: #9ca3af;
-  flex: none;
-}
-
-.node-desc {
-  font-size: 12px;
-  color: #6b7280;
-  line-height: 1.55;
 }
 </style>

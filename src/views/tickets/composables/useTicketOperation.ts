@@ -70,7 +70,17 @@ export function useTicketOperation() {
     if (payload.type === '保存草稿') {
       const now = new Date();
       draftSavedAt.value = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
-      message.success('已保存，可稍后继续处理');
+      // 保存并登记：若已填写处理内容，追加一条「处理登记」进处理履历
+      if (payload.process?.summary) {
+        pushEntry(timeline.value, {
+          category: 'handle', action: 'handle', who: operator, role,
+          how: '工单处理', what: payload.process.summary,
+          attachment: payload.process.attachment,
+        });
+        message.success('已保存并登记处理进展');
+      } else {
+        message.success('已保存，可稍后继续处理');
+      }
       return;
     }
 

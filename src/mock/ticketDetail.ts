@@ -362,7 +362,7 @@ export const TIMELINE: TimelineEntry[] = [
   },
   {
     id: 'e4', category: 'node', action: 'escalate', who: '李一线', role: '一线坐席',
-    how: '升级二线', when: '今天 10:05',
+    how: '升级', when: '今天 10:05',
     what: '升级至二线 · 处理人 王坐席（原因：需固件层排查）。',
   },
   {
@@ -392,12 +392,23 @@ export const TIMELINE: TimelineEntry[] = [
   {
     id: 'e9', category: 'node', action: 'hold', who: '王坐席', role: '二线坐席',
     how: '挂起', when: '今天 11:05',
-    what: '等待备件到货，挂起工单，预计明日恢复处理。',
+    what: '已升级技术支持排查，挂起工单等待技术结论后恢复处理。',
   },
   {
     id: 'e10', category: 'node', action: 'transfer', who: '陈班组长', role: '班组长',
     how: '班组转派', when: '今天 14:20',
-    what: '备件已到货，改派至 李二线 加速处理。',
+    what: '原处理人王二线今日休假，改派至李二线继续跟进。',
+  },
+  {
+    id: 'eh1', category: 'handle', action: 'handle', who: '王坐席', role: '二线坐席',
+    how: '工单处理', when: '今天 15:10',
+    what: '问题原因：固件 v2.4 在线歌单调度模块缺陷；处理结果：远程降级至 v2.3.1 并清理歌单缓存，复测 30 分钟未再复现。',
+    attachment: '固件升级日志.txt',
+  },
+  {
+    id: 'eh2', category: 'handle', action: 'handle', who: '李二线', role: '二线坐席',
+    how: '工单处理', when: '今天 15:48',
+    what: '服务类型：软件问题/其他；服务方式：处理人直接解决；结论：已解决—技术方案解决，待客户回访确认。',
   },
   {
     id: 'e11', category: 'resolved', action: 'resolved', who: '王坐席', role: '二线坐席',

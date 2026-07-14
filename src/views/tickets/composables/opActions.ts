@@ -39,6 +39,8 @@ export interface ForceClosePayload { reason: string; approver: string; detail: s
 export interface SuspendPayload { reason: string; detail: string; resumeAt: string; }
 export interface EscalatePayload { channel: string; group: string; member: string; detail: string; syncContext: boolean; }
 export interface FeishuActivatePayload { reason: string; }
+/** 处理登记（保存并登记）：坐席本次处理内容摘要，写入处理履历 */
+export interface ProcessLogData { summary: string; attachment?: string; }
 export interface SyncFeishuPayload { space: string; message: string; }
 export interface AftersalePayload { mode: 'close' | 'callback'; group: string; detail: string; }
 export interface ResolvePayload { solution: string; createCallback: boolean; }
@@ -52,7 +54,7 @@ export interface ResumePayload { reason: string; detail: string; }
 export interface ReturnPayload { reason: string; targetNode: string; note: string; }
 
 export type OpActionPayload =
-  | { type: '保存草稿' }
+  | { type: '保存草稿'; process?: ProcessLogData }
   | { type: '调剂'; data: TransferPayload }
   | { type: '委派'; data: DelegatePayload }
   | { type: '下送'; data: ForwardPayload }

@@ -16,6 +16,7 @@ import { visibleProcessTabs, type ProcessTabKey } from '@/views/tickets/types/op
 import type { ProcessFormDraft, SectionKey } from '@/views/tickets/types/operation';
 import type { OperationTabData } from '@/views/tickets/types/operationTabs';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
+import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 
 const props = defineProps<{
   detail: TicketDetailMeta;
@@ -24,6 +25,8 @@ const props = defineProps<{
   expandedSections: Record<SectionKey, boolean>;
   activeChip: import('@/views/tickets/types/operation').SupplementChip;
   filledSupplementCount: number;
+  /** 完整事件时间线（处理履历 Tab 展示） */
+  timeline: TimelineEntry[];
 }>();
 
 const emit = defineEmits<{
@@ -120,8 +123,8 @@ defineExpose({ switchTab });
 
       <OpFlowHistoryTab
         v-else-if="activeTab === 'history'"
-        :current-node="tabData.currentFlowNode"
-        :nodes="tabData.flowHistory"
+        :current-node="detail.status"
+        :entries="timeline"
       />
 
       <OpRelatedTab

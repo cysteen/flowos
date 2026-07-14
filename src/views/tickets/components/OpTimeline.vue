@@ -1,54 +1,78 @@
 <script setup lang="ts">
+import { computed, ref } from 'vue';
 import {
-  PlusCircleOutlined, UserSwitchOutlined, VerticalAlignTopOutlined,
+  FileAddOutlined, SolutionOutlined, RiseOutlined, FormOutlined,
   PauseCircleOutlined, SwapOutlined, PhoneOutlined, MessageOutlined,
-  PaperClipOutlined, RollbackOutlined, BellOutlined, CheckCircleOutlined,
-  StarFilled, PlayCircleOutlined, DownloadOutlined, ThunderboltOutlined,
-  HistoryOutlined,
+  PaperClipOutlined, SnippetsOutlined, CommentOutlined, BellOutlined,
+  CheckCircleOutlined, StarFilled, PlayCircleOutlined, DownloadOutlined,
+  ThunderboltOutlined, HistoryOutlined,
 } from '@ant-design/icons-vue';
 import {
   CATEGORY_META, ROLE_BADGE, softBg,
-  type TlAction, type TimelineEntry,
+  type TlAction, type TlCategory, type TimelineEntry,
 } from '@/views/tickets/types/ticketDetail';
 
-defineProps<{ entries: TimelineEntry[] }>();
+const props = defineProps<{ entries: TimelineEntry[] }>();
 
+// 图标取「一眼能认」的语义，与 how 徽章文案呼应
 const ICON: Record<TlAction, unknown> = {
-  create: PlusCircleOutlined,
-  accept: UserSwitchOutlined,
-  escalate: VerticalAlignTopOutlined,
-  hold: PauseCircleOutlined,
-  transfer: SwapOutlined,
-  phone: PhoneOutlined,
-  sms: MessageOutlined,
-  supplement: PaperClipOutlined,
-  reply: RollbackOutlined,
-  dunning: BellOutlined,
-  resolved: CheckCircleOutlined,
-  praise: StarFilled,
+  create: FileAddOutlined,      // 建单
+  accept: SolutionOutlined,     // 受理/办理
+  escalate: RiseOutlined,       // 升级（与底栏升级按钮一致）
+  handle: FormOutlined,         // 处理登记（坐席填写处理结果/结论）
+  hold: PauseCircleOutlined,    // 挂起
+  transfer: SwapOutlined,       // 流转/调剂
+  phone: PhoneOutlined,         // 电话
+  sms: MessageOutlined,         // 短信
+  supplement: SnippetsOutlined, // 补充材料
+  reply: CommentOutlined,       // 回复
+  dunning: BellOutlined,        // 催办
+  resolved: CheckCircleOutlined,// 已解决
+  praise: StarFilled,           // 好评
 };
-const LEGEND = Object.values(CATEGORY_META);
+const LEGEND = (Object.entries(CATEGORY_META) as [TlCategory, (typeof CATEGORY_META)[TlCategory]][])
+  .map(([key, meta]) => ({ key, ...meta }));
+
+const activeCategory = ref<TlCategory | null>(null);
+
+function toggleFilter(key: TlCategory) {
+  activeCategory.value = activeCategory.value === key ? null : key;
+}
+
+const filteredEntries = computed(() => {
+  if (!activeCategory.value) return props.entries;
+  return props.entries.filter((e) => e.category === activeCategory.value);
+});
 </script>
 
 <template>
   <div class="timeline-card">
-    <!-- 标题 -->
+    <!-- 标题 + 图例筛选 -->
     <div class="tl-header">
       <span class="tl-title"><HistoryOutlined :style="{ fontSize: '15px' }" />工单动态</span>
-      <span class="tl-sub">全流程关键事件 · 状态 + 动作合一（建单 / 对客沟通 / 催办 / 解决 / 好评）</span>
+      <div class="legend">
+        <button
+          v-for="l in LEGEND"
+          :key="l.key"
+          type="button"
+          class="legend-item"
+          :class="{ active: activeCategory === l.key, dimmed: activeCategory && activeCategory !== l.key }"
+          :title="activeCategory === l.key ? '点击取消筛选' : `仅看${l.label}`"
+          @click="toggleFilter(l.key)"
+        >
+          <span class="legend-dot" :style="{ background: l.color }"></span>{{ l.label }}
+        </button>
+      </div>
     </div>
 
     <div class="tl-body">
-      <div class="legend">
-        <span class="legend-label">图例</span>
-        <span v-for="l in LEGEND" :key="l.label" class="legend-item">
-          <span class="legend-dot" :style="{ background: l.color }"></span>{{ l.label }}
-        </span>
+      <div v-if="!filteredEntries.length" class="empty-hint">
+        暂无「{{ activeCategory ? CATEGORY_META[activeCategory].label : '' }}」类履历
+        <button type="button" class="clear-filter" @click="activeCategory = null">查看全部</button>
       </div>
-
       <!-- 条目 -->
       <div
-        v-for="e in entries"
+        v-for="e in filteredEntries"
         :key="e.id"
         class="entry"
         :style="{ background: CATEGORY_META[e.category].bg, borderLeftColor: CATEGORY_META[e.category].color }"
@@ -109,13 +133,12 @@ const LEGEND = Object.values(CATEGORY_META);
 }
 .tl-header {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
+  align-items: center;
+  gap: 14px;
   padding: 12px 14px;
   border-bottom: 1px solid #eff0f2;
 }
-.tl-title { font-size: 14px; font-weight: 700; color: #111827; display: flex; align-items: center; gap: 6px; }
-.tl-sub { font-size: 11px; color: #9ca3af; }
+.tl-title { font-size: 14px; font-weight: 700; color: #111827; display: flex; align-items: center; gap: 6px; flex: none; }
 
 .tl-body { display: flex; flex-direction: column; gap: 16px; padding: 16px; }
 
@@ -123,15 +146,63 @@ const LEGEND = Object.values(CATEGORY_META);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 14px;
-  padding: 8px 12px;
-  background: #fafafa;
-  border: 1px solid #eef0f2;
-  border-radius: 8px;
+  gap: 6px;
 }
-.legend-label { font-size: 11px; font-weight: 700; color: #6b7280; }
-.legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #6b7280; }
-.legend-dot { width: 8px; height: 8px; border-radius: 4px; }
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: #4b5563;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  padding: 3px 10px;
+  cursor: pointer;
+  user-select: none;
+  line-height: 1.4;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s, color 0.15s, box-shadow 0.15s;
+}
+.legend-item:hover {
+  background: #fff;
+  border-color: #cbd5e1;
+  color: #111827;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+.legend-item:active {
+  background: #f3f4f6;
+  box-shadow: none;
+}
+.legend-item.active {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+  font-weight: 600;
+  box-shadow: none;
+}
+.legend-item.dimmed {
+  opacity: 0.45;
+  background: transparent;
+}
+.legend-dot { width: 8px; height: 8px; border-radius: 4px; flex: none; }
+
+.empty-hint {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #9ca3af;
+  padding: 12px 4px;
+}
+.clear-filter {
+  font-size: 12px;
+  color: #2563eb;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+.clear-filter:hover { text-decoration: underline; }
 
 .entry {
   display: flex;

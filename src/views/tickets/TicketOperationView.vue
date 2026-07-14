@@ -216,7 +216,24 @@ function isFeishuEscalate(payload: Record<string, unknown>): boolean {
   return data?.channel === FEISHU_ESCALATE_CHANNEL;
 }
 
+/** 保存并登记：从工单处理表单提炼一条处理登记摘要（无内容则不登记） */
+function buildProcessLog(): { summary: string; attachment?: string } | undefined {
+  const f = form.value;
+  const parts: string[] = [];
+  if (f.processResult?.trim()) parts.push(`处理结果：${f.processResult.trim()}`);
+  if (f.problemCause?.trim()) parts.push(`问题原因：${f.problemCause.trim()}`);
+  if (f.conclusion?.trim()) parts.push(`结论：${f.conclusion}`);
+  if (f.serviceType?.trim()) parts.push(`服务类型：${f.serviceType}`);
+  if (!parts.length) return undefined;
+  const attachment = [...(f.processResultAttachments ?? []), ...(f.problemCauseAttachments ?? [])][0];
+  return { summary: parts.join('；'), attachment };
+}
+
 function onAction(payload: Record<string, unknown>) {
+  if (payload.type === '保存草稿') {
+    dispatch({ type: '保存草稿', process: buildProcessLog() });
+    return;
+  }
   const toFeishu = isFeishuEscalate(payload);
   dispatch(payload);
   if (toFeishu) {
@@ -525,6 +542,7 @@ watch(
           :detail="d"
           :tab-data="tabData"
           :form="form"
+          :timeline="timeline"
           :expanded-sections="expandedSections"
           :active-chip="activeChip"
           :filled-supplement-count="filledSupplementCount"

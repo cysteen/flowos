@@ -2,10 +2,11 @@
 // 角色徽章另用一套色（PRD-03 §7 F4）。
 
 /** 时间线条目语义类别（决定卡片色条/底色） */
-export type TlCategory = 'node' | 'comm' | 'customer' | 'dunning' | 'resolved' | 'praise';
+export type TlCategory = 'node' | 'handle' | 'comm' | 'customer' | 'dunning' | 'resolved' | 'praise';
 /** 条目动作（决定图标 + How 徽章文案） */
 export type TlAction =
   | 'create' | 'accept' | 'escalate' | 'hold' | 'transfer'
+  | 'handle'
   | 'phone' | 'sms'
   | 'supplement' | 'reply'
   | 'dunning'
@@ -44,6 +45,7 @@ export interface TimelineEntry {
 /** 6 类语义色（PRD-03 §7 F4）：色条 + 浅底 + 图例标签 */
 export const CATEGORY_META: Record<TlCategory, { color: string; bg: string; label: string }> = {
   node: { color: '#7C3AED', bg: '#F5F3FF', label: '流转节点' },
+  handle: { color: '#0D9488', bg: '#F0FDFA', label: '工单处理' },
   comm: { color: '#06B6D4', bg: '#ECFEFF', label: '对客沟通' },
   customer: { color: '#2563EB', bg: '#EFF6FF', label: '客户输入' },
   dunning: { color: '#EF4444', bg: '#FEF2F2', label: '催办预警' },
