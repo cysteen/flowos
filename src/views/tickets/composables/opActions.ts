@@ -1,4 +1,4 @@
-import type { TlRole, TimelineEntry } from '@/views/tickets/types/ticketDetail';
+import type { TlRole, TimelineEntry, TimelineFieldChange } from '@/views/tickets/types/ticketDetail';
 import type { TicketDetailMeta, FeishuRecord } from '@/mock/ticketDetail';
 
 /** 升级通道 · 飞书项目（消费者BG专属，走 OpenAPI 推送产研反馈单） */
@@ -47,8 +47,8 @@ export interface EscalatePayload {
   feedbackCategory?: string;
 }
 export interface FeishuActivatePayload { reason: string; }
-/** 处理登记（保存并登记）：坐席本次处理内容摘要，写入处理履历 */
-export interface ProcessLogData { summary: string; attachment?: string; }
+/** 处理登记（保存并登记）：坐席本次处理内容摘要 + 字段级变更，写入处理履历 */
+export interface ProcessLogData { summary: string; attachment?: string; changes?: TimelineFieldChange[]; }
 export interface SyncFeishuPayload { space: string; message: string; }
 export interface AftersalePayload { mode: 'close' | 'callback'; group: string; detail: string; }
 export interface ResolvePayload { solution: string; createCallback: boolean; }

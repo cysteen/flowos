@@ -65,17 +65,16 @@ const serviceMethodOptions = computed(() => {
   const methods = SERVICE_TYPE_TO_METHODS[props.form.serviceType] ?? [];
   return methods.map((v) => ({ label: v, value: v }));
 });
-// 补充处理 chip：投诉=投诉分类/风险/预约/建单规范；咨询/建议/商机=预约/建单规范（参照投诉，四类型统一）
+// 补充处理 chip：投诉=投诉分类/风险/建单规范；咨询/建议/商机=建单规范。
+// 预约已迁出为独立「预约」Tab（处理履历之后），不再作为补充处理 chip。
 const supplementChips = computed<{ key: SupplementChip; label: string }[]>(() =>
   isComplaint.value
     ? [
         { key: 'complaint', label: '投诉分类' },
         { key: 'risk', label: '风险' },
-        { key: 'appointment', label: '预约' },
         { key: 'quality', label: '建单规范' },
       ]
     : [
-        { key: 'appointment', label: '预约' },
         { key: 'quality', label: '建单规范' },
       ],
 );

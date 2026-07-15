@@ -76,6 +76,7 @@ export function useTicketOperation() {
           category: 'handle', action: 'handle', who: operator, role,
           how: '工单处理', what: payload.process.summary,
           attachment: payload.process.attachment,
+          changes: payload.process.changes,
         });
         message.success('已保存并登记处理进展');
       } else {

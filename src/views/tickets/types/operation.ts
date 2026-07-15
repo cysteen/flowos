@@ -76,6 +76,10 @@ export interface AppointmentRecord {
   scheduledAt: string;
   /** 已完成（已与客户电话沟通） */
   done?: boolean;
+  /** 预约人（入口前移后，需记录发起预约的坐席/人员） */
+  booker?: string;
+  /** 预约需求（本次预约要做什么：上门维修 / 回访确认 …） */
+  demand?: string;
 }
 
 export interface ProcessFormDraft {
@@ -131,6 +135,7 @@ export const PROCESS_TABS = [
   { key: 'tech', label: '技术支持处理' },
   { key: 'risk', label: '风险监控' },
   { key: 'history', label: '处理履历' },
+  { key: 'appointment', label: '预约' },
   { key: 'related', label: '关联/补充/催单' },
   { key: 'contact', label: '联系记录' },
   { key: 'notify', label: '通知记录' },

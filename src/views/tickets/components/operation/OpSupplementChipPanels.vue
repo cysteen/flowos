@@ -2,7 +2,6 @@
 import { computed } from 'vue';
 import OpTextareaAttach from './shared/OpTextareaAttach.vue';
 import OpQualityStandardFields from './OpQualityStandardFields.vue';
-import OpAppointmentRecords from './OpAppointmentRecords.vue';
 import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue';
 import type { ProcessFormDraft, SupplementChip } from '@/views/tickets/types/operation';
 import { RISK_LEVEL_OPTIONS, QUALITY_ISSUE_L2_MAP, QUALITY_ISSUE_L2_TO_L1 } from '@/views/tickets/types/operation';
@@ -147,14 +146,6 @@ function onComplaintCat2Change(v: string | number | undefined) {
         />
       </template>
     </div>
-  </div>
-
-  <!-- 预约 -->
-  <div v-else-if="activeChip === 'appointment'" class="chip-panel panel-neutral">
-    <OpAppointmentRecords
-      :records="form.appointmentRecords"
-      @update:records="(v) => update({ appointmentRecords: v, appointmentNeeded: v.length > 0 })"
-    />
   </div>
 
   <!-- 建单是否规范 -->

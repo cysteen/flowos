@@ -104,6 +104,17 @@ const filteredEntries = computed(() => {
 
           <div class="what">{{ e.what }}</div>
 
+          <!-- 工单处理字段变更（handle 事件）：补充/修改 明细 -->
+          <div v-if="e.changes?.length" class="chg-list">
+            <div v-for="(c, ci) in e.changes" :key="ci" class="chg-row">
+              <span class="chg-kind" :class="c.kind === '补充' ? 'chg-add' : 'chg-mod'">{{ c.kind }}</span>
+              <span class="chg-field">{{ c.field }}</span>
+              <span class="chg-val">
+                <template v-if="c.kind === '修改' && c.from"><span class="chg-from">{{ c.from }}</span><span class="chg-arrow">→</span></template>{{ c.to }}
+              </span>
+            </div>
+          </div>
+
           <!-- 关联单卡片（relate 事件）：对齐关联单卡片字段，可点跳转 -->
           <div
             v-if="e.relatedTicket"
@@ -275,6 +286,20 @@ const filteredEntries = computed(() => {
 }
 .when { margin-left: auto; font-size: 11px; color: #9ca3af; }
 .what { font-size: 13px; color: #374151; line-height: 1.6; }
+
+/* 工单处理字段变更明细 */
+.chg-list {
+  display: flex; flex-direction: column; gap: 4px;
+  background: #f0fdfa; border: 1px solid #ccfbf1; border-radius: 6px; padding: 8px 10px;
+}
+.chg-row { display: flex; align-items: baseline; gap: 8px; font-size: 12px; line-height: 1.5; }
+.chg-kind { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 3px; flex: none; }
+.chg-add { color: #0d9488; background: #ccfbf1; }
+.chg-mod { color: #b45309; background: #fef3c7; }
+.chg-field { font-weight: 600; color: #374151; flex: none; }
+.chg-val { color: #6b7280; min-width: 0; }
+.chg-from { color: #9ca3af; text-decoration: line-through; }
+.chg-arrow { margin: 0 5px; color: #9ca3af; }
 
 /* 关联单卡片（relate 事件内联） */
 .rel-mini {

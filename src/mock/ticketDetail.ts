@@ -402,13 +402,22 @@ export const TIMELINE: TimelineEntry[] = [
   {
     id: 'eh1', category: 'handle', action: 'handle', who: '王坐席', role: '二线坐席',
     how: '工单处理', when: '今天 15:10',
-    what: '问题原因：固件 v2.4 在线歌单调度模块缺陷；处理结果：远程降级至 v2.3.1 并清理歌单缓存，复测 30 分钟未再复现。',
+    what: '登记处理进展（补充 2 项）',
     attachment: '固件升级日志.txt',
+    changes: [
+      { field: '问题原因', kind: '补充', to: '固件 v2.4 在线歌单调度模块缺陷' },
+      { field: '处理结果', kind: '补充', to: '远程降级至 v2.3.1 并清理歌单缓存，复测 30 分钟未再复现' },
+    ],
   },
   {
     id: 'eh2', category: 'handle', action: 'handle', who: '李二线', role: '二线坐席',
     how: '工单处理', when: '今天 15:48',
-    what: '服务类型：软件问题/其他；服务方式：处理人直接解决；结论：已解决—技术方案解决，待客户回访确认。',
+    what: '登记服务与结论（补充 2 项，修改 1 项）',
+    changes: [
+      { field: '服务类型', kind: '补充', to: '软件问题/其他' },
+      { field: '服务方式', kind: '补充', to: '处理人直接解决' },
+      { field: '问题解决结论', kind: '修改', from: '已解决：服务方案解决', to: '已解决：技术方案解决' },
+    ],
   },
   {
     id: 'er1', category: 'relate', action: 'relate', who: '王坐席', role: '二线坐席',
@@ -462,8 +471,16 @@ export const DEFAULT_PROCESS_DRAFT = {
   riskLevel: '',
   riskDescription: '客户多次催单，存在升级外投风险，需班组长关注。',
   riskDescriptionAttachments: [] as string[],
-  appointmentNeeded: false,
-  appointmentRecords: [] as AppointmentRecord[],
+  appointmentNeeded: true,
+  appointmentRecords: [
+    {
+      id: 'appt-demo-1',
+      scheduledAt: '2026-07-16 14:00:00',
+      done: false,
+      booker: '王坐席',
+      demand: '上门更换主板并现场验证跳歌是否复现',
+    },
+  ] as AppointmentRecord[],
   qualityIsStandard: true,
   qualityIssueCat1: '',
   qualityIssueCat2: '',

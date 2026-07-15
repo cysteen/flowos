@@ -43,6 +43,19 @@ export interface TimelineEntry {
   stars?: number;
   /** 关联单（relate 事件）：派生的关联工单卡片信息，时间线内联展示 */
   relatedTicket?: RelatedTicketBrief;
+  /** 工单处理（handle 事件）：本次提交的字段级变更（补充/修改） */
+  changes?: TimelineFieldChange[];
+}
+
+/** 工单处理字段变更：补充=从空到有；修改=值变更（含旧→新） */
+export interface TimelineFieldChange {
+  /** 字段名，如「问题原因」「问题解决结论」 */
+  field: string;
+  kind: '补充' | '修改';
+  /** 修改前值（kind=修改 时有） */
+  from?: string;
+  /** 当前值 */
+  to: string;
 }
 
 /** 履历「关联单」事件挂载的关联工单摘要（对齐关联单卡片 rel-card 字段） */

@@ -7,6 +7,8 @@ const DATE_TIME_FORMAT = 'YYYY-MM-DD HH:mm:ss';
 
 const props = defineProps<{
   records: AppointmentRecord[];
+  /** 新增预约时默认预约人（当前坐席） */
+  defaultBooker?: string;
 }>();
 
 const emit = defineEmits<{
@@ -14,7 +16,14 @@ const emit = defineEmits<{
 }>();
 
 function newRecord(): AppointmentRecord {
-  return { id: `appt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, scheduledAt: '', done: false };
+  return {
+    id: `appt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    scheduledAt: '', done: false, booker: props.defaultBooker ?? '', demand: '',
+  };
+}
+
+function updateField(index: number, patch: Partial<AppointmentRecord>) {
+  commit(props.records.map((r, i) => (i === index ? { ...r, ...patch } : r)));
 }
 
 /** 单一出口：仅 emit records，needed（是否需要预约）由父级在同一次 patch 内派生，避免两次独立 patch 互相覆盖 */
@@ -61,7 +70,10 @@ function markDone(index: number) {
         class="record-row"
         :class="{ done: record.done }"
       >
-        <label class="field-label-sm">预约时间 {{ index + 1 }}</label>
+        <span class="record-idx">预约{{ index + 1 }}</span>
+        <span class="booker-chip" title="预约人为当前登录坐席">
+          预约人：{{ record.booker || defaultBooker || '当前坐席' }}
+        </span>
         <a-date-picker
           class="record-picker"
           :value="toDayjs(record.scheduledAt)"
@@ -69,27 +81,20 @@ function markDone(index: number) {
           show-time
           :show-time="{ format: 'HH:mm:ss' }"
           :format="DATE_TIME_FORMAT"
-          placeholder="请选择预约时间"
+          placeholder="预约时间"
           @update:value="(v) => updateRecordTime(index, v)"
         />
+        <a-input
+          class="demand-input"
+          :value="record.demand"
+          :disabled="record.done"
+          placeholder="预约需求，如：上门更换主板 / 电话回访确认满意度"
+          @update:value="(v: string) => updateField(index, { demand: v })"
+        />
         <div class="record-actions">
-          <span v-if="record.done" class="record-done-tag">
-            <CheckOutlined /> 已沟通
-          </span>
-          <button
-            v-else
-            type="button"
-            class="record-done-btn"
-            @click="markDone(index)"
-          >
-            标记已沟通
-          </button>
-          <button
-            type="button"
-            class="remove-btn"
-            title="删除该预约"
-            @click="removeRecord(index)"
-          >
+          <span v-if="record.done" class="record-done-tag"><CheckOutlined /> 已沟通</span>
+          <button v-else type="button" class="record-done-btn" @click="markDone(index)">标记已沟通</button>
+          <button type="button" class="remove-btn" title="删除该预约" @click="removeRecord(index)">
             <DeleteOutlined />
           </button>
         </div>
@@ -120,26 +125,22 @@ function markDone(index: number) {
   display: flex;
   align-items: center;
   gap: 8px;
+  padding: 8px 10px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
   min-width: 0;
 }
-.field-label-sm {
-  flex: none;
-  width: 72px;
-  font-size: 11px;
-  font-weight: 500;
-  color: #6b7280;
-  white-space: nowrap;
+.record-row.done { background: #f9fafb; }
+.record-idx { flex: none; font-size: 12px; font-weight: 600; color: #374151; }
+.booker-chip {
+  flex: none; font-size: 12px; color: #4b5563;
+  background: #f3f4f6; border-radius: 4px; padding: 3px 8px; white-space: nowrap;
 }
-.record-picker {
-  flex: 1;
-  min-width: 0;
-}
-.record-picker :deep(.ant-picker) {
-  width: 100%;
-}
-.record-row.done .field-label-sm {
-  color: #9ca3af;
-}
+.record-picker { flex: none; width: 200px; }
+.record-picker :deep(.ant-picker) { width: 100%; }
+.demand-input { flex: 1; min-width: 0; }
+.record-row.done .booker-chip { color: #9ca3af; }
 .record-actions {
   flex: none;
   display: inline-flex;

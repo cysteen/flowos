@@ -216,22 +216,59 @@ function isFeishuEscalate(payload: Record<string, unknown>): boolean {
   return data?.channel === FEISHU_ESCALATE_CHANNEL;
 }
 
-/** 保存并登记：从工单处理表单提炼一条处理登记摘要（无内容则不登记） */
-function buildProcessLog(): { summary: string; attachment?: string } | undefined {
+// 工单处理 Tab 参与变更登记的字段（键 + 展示名）
+const PROCESS_FIELDS: { key: keyof ProcessFormDraft; label: string }[] = [
+  { key: 'problemCause', label: '问题原因' },
+  { key: 'processResult', label: '处理结果' },
+  { key: 'serviceType', label: '服务类型' },
+  { key: 'serviceMethod', label: '服务方式' },
+  { key: 'conclusion', label: '问题解决结论' },
+];
+
+/** 处理表单快照（含各字段值 + 附件数），作为变更 diff 的基线 */
+function snapshotProcess(): Record<string, string> {
   const f = form.value;
-  const parts: string[] = [];
-  if (f.processResult?.trim()) parts.push(`处理结果：${f.processResult.trim()}`);
-  if (f.problemCause?.trim()) parts.push(`问题原因：${f.problemCause.trim()}`);
-  if (f.conclusion?.trim()) parts.push(`结论：${f.conclusion}`);
-  if (f.serviceType?.trim()) parts.push(`服务类型：${f.serviceType}`);
-  if (!parts.length) return undefined;
-  const attachment = [...(f.processResultAttachments ?? []), ...(f.problemCauseAttachments ?? [])][0];
-  return { summary: parts.join('；'), attachment };
+  const snap: Record<string, string> = {};
+  for (const { key } of PROCESS_FIELDS) snap[key] = String(f[key] ?? '').trim();
+  snap.__att = String([...(f.processResultAttachments ?? []), ...(f.problemCauseAttachments ?? [])].length);
+  return snap;
+}
+
+let processBaseline: Record<string, string> = snapshotProcess();
+// 切工单/类型（表单重建）后重置基线
+watch(ticketNo, () => { processBaseline = snapshotProcess(); });
+
+/** 保存并登记：对处理字段做前后 diff，产出「补充/修改」变更（无变更则不登记） */
+function buildProcessLog() {
+  const f = form.value;
+  const changes: import('./types/ticketDetail').TimelineFieldChange[] = [];
+  for (const { key, label } of PROCESS_FIELDS) {
+    const before = (processBaseline[key] ?? '').trim();
+    const after = String(f[key] ?? '').trim();
+    if (before === after || !after) continue;
+    changes.push(before ? { field: label, kind: '修改', from: before, to: after } : { field: label, kind: '补充', to: after });
+  }
+  const attArr = [...(f.processResultAttachments ?? []), ...(f.problemCauseAttachments ?? [])];
+  const attAdded = attArr.length - Number(processBaseline.__att ?? '0');
+  if (attAdded > 0) changes.push({ field: '附件', kind: '补充', to: `新增 ${attAdded} 个（${attArr[attArr.length - 1]}）` });
+  if (!changes.length) return undefined;
+  const add = changes.filter((c) => c.kind === '补充').length;
+  const mod = changes.filter((c) => c.kind === '修改').length;
+  const seg: string[] = [];
+  if (add) seg.push(`补充 ${add} 项`);
+  if (mod) seg.push(`修改 ${mod} 项`);
+  return {
+    summary: `登记处理进展（${seg.join('，')}）`,
+    attachment: attAdded > 0 ? attArr[attArr.length - 1] : undefined,
+    changes,
+  };
 }
 
 function onAction(payload: Record<string, unknown>) {
   if (payload.type === '保存草稿') {
-    dispatch({ type: '保存草稿', process: buildProcessLog() });
+    const log = buildProcessLog();
+    dispatch({ type: '保存草稿', process: log });
+    if (log) processBaseline = snapshotProcess(); // 登记后更新基线，下次 diff 以此为准
     return;
   }
   const toFeishu = isFeishuEscalate(payload);

@@ -12,6 +12,8 @@ const OpSurveyRecordsTab = defineAsyncComponent(() => import('./tabs/OpSurveyRec
 const OpAttachmentHistoryTab = defineAsyncComponent(() => import('./tabs/OpAttachmentHistoryTab.vue'));
 const OpCustomerHistoryTab = defineAsyncComponent(() => import('./tabs/OpCustomerHistoryTab.vue'));
 const OpFeishuTab = defineAsyncComponent(() => import('./tabs/OpFeishuTab.vue'));
+const OpAppointmentTab = defineAsyncComponent(() => import('./tabs/OpAppointmentTab.vue'));
+import { useUserStore } from '@/stores/user';
 import { visibleProcessTabs, type ProcessTabKey } from '@/views/tickets/types/operation';
 import type { ProcessFormDraft, SectionKey } from '@/views/tickets/types/operation';
 import type { OperationTabData } from '@/views/tickets/types/operationTabs';
@@ -42,6 +44,7 @@ const emit = defineEmits<{
   dunning: [];
 }>();
 
+const user = useUserStore();
 const activeTab = ref<ProcessTabKey>('process');
 /** synced / feedback / closed / failed 时展示「产研反馈」Tab */
 const feishuActive = computed(() => {
@@ -127,6 +130,13 @@ defineExpose({ switchTab });
         v-else-if="activeTab === 'history'"
         :current-node="detail.status"
         :entries="timeline"
+      />
+
+      <OpAppointmentTab
+        v-else-if="activeTab === 'appointment'"
+        :records="form.appointmentRecords"
+        :default-booker="user.name || '当前坐席'"
+        @update:records="emit('update:form', { ...form, appointmentRecords: $event, appointmentNeeded: $event.length > 0 })"
       />
 
       <OpRelatedTab
