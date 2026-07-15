@@ -411,6 +411,28 @@ export const TIMELINE: TimelineEntry[] = [
     what: '服务类型：软件问题/其他；服务方式：处理人直接解决；结论：已解决—技术方案解决，待客户回访确认。',
   },
   {
+    id: 'er1', category: 'relate', action: 'relate', who: '王坐席', role: '二线坐席',
+    how: '升级投诉', when: '今天 16:02',
+    what: '客户对处理结果不满、要求追责，升级为投诉，已生成关联投诉单并双向关联。',
+    relatedTicket: {
+      no: 'LCMN-20260610-73090', title: '音箱跳歌问题处理不满·要求追责',
+      type: '投诉', typeColor: '#EF4444',
+      status: '待受理', statusColor: '#F59E0B',
+      builder: '王坐席', createdAt: '今天 16:02',
+    },
+  },
+  {
+    id: 'er2', category: 'relate', action: 'relate', who: '王坐席', role: '二线坐席',
+    how: '升级售后', when: '今天 16:12',
+    what: '需寄修硬件，升级售后，已生成关联售后单并双向关联，售后进度回流本单。',
+    relatedTicket: {
+      no: 'AS-20260610-002', title: '智能音箱 X1 寄修·主板检测',
+      type: '售后', typeColor: '#EA580C',
+      status: '处理中', statusColor: '#1A6FFF',
+      builder: '王坐席', createdAt: '今天 16:12',
+    },
+  },
+  {
     id: 'e11', category: 'resolved', action: 'resolved', who: '王坐席', role: '二线坐席',
     how: '标记已解决', when: '今天 16:30',
     what: '更换固件版本并远程验证，跳歌问题已解决（附解决方案）。',

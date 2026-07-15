@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { message } from 'ant-design-vue';
 import {
   FileAddOutlined, SolutionOutlined, RiseOutlined, FormOutlined,
+  ApartmentOutlined, LinkOutlined,
   PauseCircleOutlined, SwapOutlined, PhoneOutlined, MessageOutlined,
   PaperClipOutlined, SnippetsOutlined, CommentOutlined, BellOutlined,
   CheckCircleOutlined, StarFilled, PlayCircleOutlined, DownloadOutlined,
@@ -9,8 +11,12 @@ import {
 } from '@ant-design/icons-vue';
 import {
   CATEGORY_META, ROLE_BADGE, softBg,
-  type TlAction, type TlCategory, type TimelineEntry,
+  type TlAction, type TlCategory, type TimelineEntry, type RelatedTicketBrief,
 } from '@/views/tickets/types/ticketDetail';
+
+function openRelated(t: RelatedTicketBrief) {
+  message.info(`打开关联单 ${t.no}`);
+}
 
 const props = defineProps<{ entries: TimelineEntry[] }>();
 
@@ -19,6 +25,7 @@ const ICON: Record<TlAction, unknown> = {
   create: FileAddOutlined,      // 建单
   accept: SolutionOutlined,     // 受理/办理
   escalate: RiseOutlined,       // 升级（与底栏升级按钮一致）
+  relate: ApartmentOutlined,    // 关联单（升级投诉/升级售后派生关联工单）
   handle: FormOutlined,         // 处理登记（坐席填写处理结果/结论）
   hold: PauseCircleOutlined,    // 挂起
   transfer: SwapOutlined,       // 流转/调剂
@@ -96,6 +103,34 @@ const filteredEntries = computed(() => {
           </div>
 
           <div class="what">{{ e.what }}</div>
+
+          <!-- 关联单卡片（relate 事件）：对齐关联单卡片字段，可点跳转 -->
+          <div
+            v-if="e.relatedTicket"
+            class="rel-mini"
+            :title="`打开 ${e.relatedTicket.no}`"
+            @click="openRelated(e.relatedTicket)"
+          >
+            <div class="rel-mini-top">
+              <span
+                class="rel-mini-status"
+                :style="{ color: e.relatedTicket.statusColor || '#6b7280', background: softBg(e.relatedTicket.statusColor || '#6b7280') }"
+              >{{ e.relatedTicket.status }}</span>
+              <span class="rel-mini-title">{{ e.relatedTicket.title }}</span>
+              <span class="rel-mini-open"><LinkOutlined /></span>
+            </div>
+            <div class="rel-mini-meta">
+              <span class="rel-mini-no">{{ e.relatedTicket.no }}</span>
+              <span class="rel-mini-sep">·</span>
+              <span
+                class="rel-mini-type"
+                :style="{ color: e.relatedTicket.typeColor || '#6b7280', background: softBg(e.relatedTicket.typeColor || '#6b7280') }"
+              >{{ e.relatedTicket.type }}</span>
+              <span class="rel-mini-sep">·</span>
+              <span class="rel-mini-builder">{{ e.relatedTicket.builder }}</span>
+              <span v-if="e.relatedTicket.createdAt" class="rel-mini-time">{{ e.relatedTicket.createdAt }}</span>
+            </div>
+          </div>
 
           <!-- 客户补充附件 -->
           <div v-if="e.attachment" class="attach">
@@ -240,6 +275,25 @@ const filteredEntries = computed(() => {
 }
 .when { margin-left: auto; font-size: 11px; color: #9ca3af; }
 .what { font-size: 13px; color: #374151; line-height: 1.6; }
+
+/* 关联单卡片（relate 事件内联） */
+.rel-mini {
+  align-self: stretch;
+  background: #fff; border: 1px solid #e0e7ff; border-radius: 6px;
+  padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; cursor: pointer;
+  transition: border-color .15s, box-shadow .15s;
+}
+.rel-mini:hover { border-color: #a5b4fc; box-shadow: 0 1px 6px rgba(79, 70, 229, 0.12); }
+.rel-mini-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.rel-mini-status { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 4px; flex: none; }
+.rel-mini-title { font-size: 13px; font-weight: 600; color: #111827; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rel-mini-open { margin-left: auto; color: #4f46e5; font-size: 12px; flex: none; }
+.rel-mini-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.rel-mini-no { font-size: 12px; color: #4f46e5; font-weight: 600; }
+.rel-mini-type { font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 3px; flex: none; }
+.rel-mini-builder { font-size: 11px; color: #6b7280; }
+.rel-mini-sep { color: #d1d5db; }
+.rel-mini-time { margin-left: auto; font-size: 11px; color: #9ca3af; }
 
 .attach {
   display: inline-flex;

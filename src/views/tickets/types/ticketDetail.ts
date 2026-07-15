@@ -2,10 +2,11 @@
 // 角色徽章另用一套色（PRD-03 §7 F4）。
 
 /** 时间线条目语义类别（决定卡片色条/底色） */
-export type TlCategory = 'node' | 'handle' | 'comm' | 'customer' | 'dunning' | 'resolved' | 'praise';
+export type TlCategory = 'node' | 'relate' | 'handle' | 'comm' | 'customer' | 'dunning' | 'resolved' | 'praise';
 /** 条目动作（决定图标 + How 徽章文案） */
 export type TlAction =
   | 'create' | 'accept' | 'escalate' | 'hold' | 'transfer'
+  | 'relate'
   | 'handle'
   | 'phone' | 'sms'
   | 'supplement' | 'reply'
@@ -40,11 +41,28 @@ export interface TimelineEntry {
   dunningTimes?: number;
   /** 好评星级 */
   stars?: number;
+  /** 关联单（relate 事件）：派生的关联工单卡片信息，时间线内联展示 */
+  relatedTicket?: RelatedTicketBrief;
+}
+
+/** 履历「关联单」事件挂载的关联工单摘要（对齐关联单卡片 rel-card 字段） */
+export interface RelatedTicketBrief {
+  no: string;
+  title: string;
+  /** 工单类型：投诉 / 售后 / 咨询 … */
+  type: string;
+  typeColor?: string;
+  /** 当前状态：待受理 / 处理中 … */
+  status: string;
+  statusColor?: string;
+  builder?: string;
+  createdAt?: string;
 }
 
 /** 6 类语义色（PRD-03 §7 F4）：色条 + 浅底 + 图例标签 */
 export const CATEGORY_META: Record<TlCategory, { color: string; bg: string; label: string }> = {
   node: { color: '#7C3AED', bg: '#F5F3FF', label: '流转节点' },
+  relate: { color: '#4F46E5', bg: '#EEF2FF', label: '关联单' },
   handle: { color: '#0D9488', bg: '#F0FDFA', label: '工单处理' },
   comm: { color: '#06B6D4', bg: '#ECFEFF', label: '对客沟通' },
   customer: { color: '#2563EB', bg: '#EFF6FF', label: '客户输入' },

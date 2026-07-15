@@ -207,8 +207,8 @@ function onTicketCreated(ticket: Ticket, processAfter?: boolean) {
   if (processAfter) router.push(`/tickets/${ticket.no}`);
 }
 
-/** 消费者BG工单开放飞书项目升级通道 */
-const feishuEligible = computed(() => d.value.productBg === '消费者BG');
+/** 升级到飞书项目入口：所有工单均开放（不再限消费者BG） */
+const feishuEligible = computed(() => true);
 
 function isFeishuEscalate(payload: Record<string, unknown>): boolean {
   if (payload.type !== '升级') return false;
