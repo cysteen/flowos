@@ -810,11 +810,11 @@ function doImport() {
         <div class="list-toolbar">
           <div class="toolbar-row">
             <div class="fi">
-              <span class="fl">业务类型</span>
+              <span class="fl">事业部</span>
               <a-select v-model:value="draftFilter.bizType" class="tb-ctl sel-w" size="small" allow-clear placeholder="全部" :options="toOpts(BIZ_TYPES)" />
             </div>
             <div class="fi">
-              <span class="fl">产品分类</span>
+              <span class="fl">产品线</span>
               <a-select v-model:value="draftFilter.prodCat" class="tb-ctl sel-w" size="small" allow-clear placeholder="全部" :options="toOpts(PROD_CATS)" />
             </div>
             <div class="fi-group">
@@ -967,7 +967,7 @@ function doImport() {
         :label-col="formLabelCol"
         :wrapper-col="formWrapperCol"
       >
-        <a-form-item label="业务类型" required>
+        <a-form-item label="事业部" required>
           <a-select
             v-model:value="form.bizType"
             placeholder="请选择"
@@ -978,13 +978,13 @@ function doImport() {
           >
             <template #notFoundContent>
               <div class="prod-nf">
-                <div>未找到匹配的业务类型</div>
+                <div>未找到匹配的事业部</div>
                 <a class="prod-nf-link" @click.prevent="goProductManage">前往产品管理新增</a>
               </div>
             </template>
           </a-select>
         </a-form-item>
-        <a-form-item label="产品分类" required>
+        <a-form-item label="产品线" required>
           <a-select
             v-model:value="form.prodCat"
             placeholder="请选择"
@@ -995,7 +995,7 @@ function doImport() {
           >
             <template #notFoundContent>
               <div class="prod-nf">
-                <div>未找到匹配的产品分类</div>
+                <div>未找到匹配的产品线</div>
                 <a class="prod-nf-link" @click.prevent="goProductManage">前往产品管理新增</a>
               </div>
             </template>

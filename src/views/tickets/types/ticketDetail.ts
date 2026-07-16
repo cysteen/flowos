@@ -2,7 +2,7 @@
 // 角色徽章另用一套色（PRD-03 §7 F4）。
 
 /** 时间线条目语义类别（决定卡片色条/底色） */
-export type TlCategory = 'node' | 'relate' | 'handle' | 'comm' | 'customer' | 'dunning' | 'resolved' | 'praise';
+export type TlCategory = 'node' | 'relate' | 'handle' | 'comm' | 'customer' | 'dunning' | 'praise';
 /** 条目动作（决定图标 + How 徽章文案） */
 export type TlAction =
   | 'create' | 'accept' | 'escalate' | 'hold' | 'transfer'
@@ -80,7 +80,6 @@ export const CATEGORY_META: Record<TlCategory, { color: string; bg: string; labe
   comm: { color: '#06B6D4', bg: '#ECFEFF', label: '对客沟通' },
   customer: { color: '#2563EB', bg: '#EFF6FF', label: '客户输入' },
   dunning: { color: '#EF4444', bg: '#FEF2F2', label: '催办预警' },
-  resolved: { color: '#10B981', bg: '#ECFDF5', label: '已解决' },
   praise: { color: '#F59E0B', bg: '#FFFBEB', label: '客户评价' },
 };
 

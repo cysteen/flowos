@@ -253,7 +253,7 @@ export function applyOpAction(
       detail.status = '已结案';
       terminateClocks(detail);
       pushEntry(timeline, {
-        category: 'resolved', action: 'resolved', who: operator, role: operatorRole,
+        category: 'node', action: 'resolved', who: operator, role: operatorRole,
         how: '强结 · 审批通过', what: `【强制结案】原因：${reason}；审批：${approver}。${note ? `说明：${note}` : ''}（绕过满意度回访）`,
       });
       return { opState: 'settled', suspendInfo, message: '强结审批通过，工单已结案' };
@@ -340,7 +340,7 @@ export function applyOpAction(
       if (mode === 'close') {
         detail.status = '已关闭';
         pushEntry(timeline, {
-          category: 'resolved', action: 'resolved', who: operator, role: operatorRole,
+          category: 'node', action: 'resolved', who: operator, role: operatorRole,
           how: '转售后 · 关闭模式', what: `转 ${group} 承接，客服工单结束（已关闭）。${note ? `说明：${note}` : ''}`,
         });
         return { opState: 'closed', suspendInfo, message: `已转 ${group}，客服工单关闭` };
@@ -357,7 +357,7 @@ export function applyOpAction(
       const { solution } = payload.data;
       detail.status = '待回访';
       pushEntry(timeline, {
-        category: 'resolved', action: 'resolved', who: operator, role: operatorRole,
+        category: 'node', action: 'resolved', who: operator, role: operatorRole,
         how: '标记已解决', what: solution,
       });
       return { opState: 'resolved', suspendInfo, message: '已标记为已解决，进入待回访确认' };
@@ -420,7 +420,7 @@ export function applyOpAction(
       detail.status = target === 'closed' ? '已关闭' : '待回访';
       if (target === 'closed') terminateClocks(detail);
       pushEntry(timeline, {
-        category: 'resolved', action: 'resolved', who: operator, role: operatorRole,
+        category: 'node', action: 'resolved', who: operator, role: operatorRole,
         how: target === 'closed' ? '关闭工单' : '标记已解决',
         what: `处理结果：${result}。${solution}`,
       });

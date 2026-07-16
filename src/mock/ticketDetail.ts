@@ -442,7 +442,7 @@ export const TIMELINE: TimelineEntry[] = [
     },
   },
   {
-    id: 'e11', category: 'resolved', action: 'resolved', who: '王坐席', role: '二线坐席',
+    id: 'e11', category: 'node', action: 'resolved', who: '王坐席', role: '二线坐席',
     how: '标记已解决', when: '今天 16:30',
     what: '更换固件版本并远程验证，跳歌问题已解决（附解决方案）。',
   },
