@@ -291,10 +291,10 @@ export const TICKET_DETAIL: TicketDetailMeta = {
   },
   complaint: {
     complaintType: '服务投诉',
-    platform: '黑猫投诉',
+    platform: '市场监管12315平台',
     complaintNo: 'HM20260618001',
     tags: ['产品质量', '功能缺陷'],
-    priorFeedback: '是',
+    priorFeedback: '是-400',
     serviceReview: '需要回溯',
   },
   childTickets: [
@@ -474,8 +474,10 @@ export const DEFAULT_PROCESS_DRAFT = {
   complaintCat1: '产品质量',
   complaintCat2: '功能缺陷',
   complaintCat3: '播放异常',
+  complaintMark: '有效投诉',
   complaintNote: '客户要求 48h 内书面回复，此处修正分类与备注',
   complaintNoteAttachments: [] as string[],
+  riskFlag: '无风险',
   riskHasRisk: false,
   riskLevel: '',
   riskDescription: '客户多次催单，存在升级外投风险，需班组长关注。',

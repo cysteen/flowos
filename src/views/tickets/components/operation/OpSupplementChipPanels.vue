@@ -1,10 +1,17 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, watch } from 'vue';
 import OpTextareaAttach from './shared/OpTextareaAttach.vue';
 import OpQualityStandardFields from './OpQualityStandardFields.vue';
 import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue';
-import type { ProcessFormDraft, SupplementChip } from '@/views/tickets/types/operation';
-import { RISK_LEVEL_OPTIONS, QUALITY_ISSUE_L2_MAP, QUALITY_ISSUE_L2_TO_L1 } from '@/views/tickets/types/operation';
+import type { ProcessFormDraft, RiskFlag, SupplementChip } from '@/views/tickets/types/operation';
+import {
+  RISK_FLAG_OPTIONS,
+  RISK_LEVEL_OPTIONS,
+  QUALITY_ISSUE_L2_MAP,
+  QUALITY_ISSUE_L2_TO_L1,
+  complaintMarkOptions,
+  COMPLAINT_MARK_REGULATOR_OPTIONS,
+} from '@/views/tickets/types/operation';
 import {
   COMPLAINT_L1_OPTIONS,
   COMPLAINT_L2_MAP,
@@ -14,11 +21,16 @@ import {
 const props = defineProps<{
   activeChip: SupplementChip;
   form: ProcessFormDraft;
+  /** 建单投诉平台，用于控制「有责/无责」类标记显隐 */
+  complaintPlatform?: string;
 }>();
 
 const emit = defineEmits<{ 'update:form': [form: ProcessFormDraft] }>();
 
 const riskLevelOptions = RISK_LEVEL_OPTIONS.map((v) => ({ label: v, value: v }));
+const complaintMarkOpts = computed(() =>
+  complaintMarkOptions(props.complaintPlatform).map((v) => ({ label: v, value: v })),
+);
 const complaintL1Options = COMPLAINT_L1_OPTIONS.map((v) => ({ label: v, value: v }));
 const complaintL2Options = computed(() =>
   (COMPLAINT_L2_MAP[props.form.complaintCat1] ?? []).map((v) => ({ label: v, value: v })),
@@ -31,8 +43,26 @@ function update(partial: Partial<ProcessFormDraft>) {
   emit('update:form', { ...props.form, ...partial });
 }
 
-function onRiskChange(hasRisk: boolean) {
+function onComplaintMarkChange(v: string | number | undefined) {
+  update({ complaintMark: String(v ?? '') });
+}
+
+watch(
+  () => props.complaintPlatform,
+  () => {
+    const mark = props.form.complaintMark;
+    if (!mark) return;
+    const allowed = complaintMarkOptions(props.complaintPlatform);
+    if (!allowed.includes(mark) && (COMPLAINT_MARK_REGULATOR_OPTIONS as readonly string[]).includes(mark)) {
+      update({ complaintMark: '' });
+    }
+  },
+);
+
+function onRiskFlagChange(flag: RiskFlag) {
+  const hasRisk = flag === '有风险';
   update({
+    riskFlag: flag,
     riskHasRisk: hasRisk,
     riskLevel: hasRisk ? props.form.riskLevel : '',
     riskDescription: hasRisk ? props.form.riskDescription : '',
@@ -77,7 +107,17 @@ function onComplaintCat2Change(v: string | number | undefined) {
       <span class="sub-title">投诉分类 · 确认/修正</span>
       <span class="sub-hint">侧栏为建单摘要，此处可编辑</span>
     </div>
-    <div class="cat-grid">
+    <div class="cat-grid cat-grid-4">
+      <div class="field">
+        <label class="field-label-sm">投诉标记</label>
+        <FormSelect
+          class="cat-select"
+          :value="form.complaintMark || undefined"
+          :options="complaintMarkOpts"
+          placeholder="请选择"
+          @update:value="onComplaintMarkChange"
+        />
+      </div>
       <div class="field">
         <label class="field-label-sm">分类一</label>
         <FormSelect
@@ -128,14 +168,13 @@ function onComplaintCat2Change(v: string | number | undefined) {
     <div class="field inline-row risk-row">
       <label>是否有风险</label>
       <a-radio-group
-        :value="form.riskHasRisk"
+        :value="form.riskFlag || '无风险'"
         class="radio-row"
-        @update:value="(v: boolean) => onRiskChange(v)"
+        @update:value="(v: RiskFlag) => onRiskFlagChange(v)"
       >
-        <a-radio :value="false">无风险</a-radio>
-        <a-radio :value="true">有风险</a-radio>
+        <a-radio v-for="opt in RISK_FLAG_OPTIONS" :key="opt" :value="opt">{{ opt }}</a-radio>
       </a-radio-group>
-      <template v-if="form.riskHasRisk">
+      <template v-if="form.riskFlag === '有风险'">
         <label class="field-label-sm risk-level-label">风险等级</label>
         <FormSelect
           class="risk-level-select"
@@ -181,6 +220,7 @@ function onComplaintCat2Change(v: string | number | undefined) {
 .inline-row .field-label-sm { flex: none; white-space: nowrap; }
 .flex1 { flex: 1; min-width: 0; }
 .cat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.cat-grid-4 { grid-template-columns: repeat(4, 1fr); }
 .cat-select { width: 100%; }
 .cat-select :deep(.ant-select-selector) {
   height: 32px;
@@ -192,7 +232,10 @@ function onComplaintCat2Change(v: string | number | undefined) {
   font-size: 12px;
   line-height: 30px;
 }
-@media (max-width: 720px) { .cat-grid { grid-template-columns: 1fr; } }
+@media (max-width: 720px) {
+  .cat-grid,
+  .cat-grid-4 { grid-template-columns: 1fr; }
+}
 
 .panel-neutral,
 .panel-quality {

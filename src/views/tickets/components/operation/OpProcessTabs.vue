@@ -94,6 +94,7 @@ defineExpose({ switchTab });
         :active-chip="activeChip"
         :filled-supplement-count="filledSupplementCount"
         :show-external="detail.isExternalAppeal"
+        :complaint-platform="detail.complaint?.platform"
         @toggle-section="emit('toggleSection', $event)"
         @select-chip="emit('selectChip', $event)"
         @update:form="emit('update:form', $event)"

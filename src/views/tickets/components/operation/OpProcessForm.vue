@@ -26,6 +26,8 @@ const props = defineProps<{
   activeChip: SupplementChip;
   filledSupplementCount: number;
   showExternal: boolean;
+  /** 投诉平台（控制投诉标记扩展选项） */
+  complaintPlatform?: string;
 }>();
 
 const emit = defineEmits<{
@@ -89,8 +91,8 @@ const effectiveChip = computed<SupplementChip>(() =>
 function isChipFilled(key: SupplementChip): boolean {
   const f = props.form;
   switch (key) {
-    case 'complaint': return !!(f.complaintCat1 && f.complaintNote);
-    case 'risk': return f.riskHasRisk && !!f.riskLevel;
+    case 'complaint': return !!(f.complaintMark && f.complaintCat1 && f.complaintNote);
+    case 'risk': return f.riskFlag === '有风险' ? !!f.riskLevel : !!f.riskFlag;
     case 'appointment': return f.appointmentNeeded && f.appointmentRecords.some((r) => r.scheduledAt);
     case 'quality': return !f.qualityIsStandard && !!f.qualityIssueCat1 && !!f.qualityIssueCat2;
     default: return false;
@@ -263,6 +265,7 @@ function chipActiveClass(key: SupplementChip): string {
       <OpSupplementChipPanels
         :active-chip="effectiveChip"
         :form="form"
+        :complaint-platform="complaintPlatform"
         @update:form="emit('update:form', $event)"
       />
     </OpCollapsibleSection>

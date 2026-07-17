@@ -96,8 +96,12 @@ export interface ProcessFormDraft {
   complaintCat1: string;
   complaintCat2: string;
   complaintCat3: string;
+  /** 投诉标记（有效/无效/未证实/暂缓；市场监管平台另含有责/无责等） */
+  complaintMark: string;
   complaintNote: string;
   complaintNoteAttachments: string[];
+  riskFlag: string;
+  /** @deprecated 兼容旧逻辑；以 riskFlag === '有风险' 为准 */
   riskHasRisk: boolean;
   riskLevel: string;
   riskDescription: string;
@@ -244,7 +248,47 @@ export const LEAD_STAGE_OPTIONS: { label: string; value: ProcessFormDraft['leadS
   { label: '转销售渠道处理', value: 'toSales' },
 ];
 
-/** 风险等级 */
+/** 投诉标记 · 常驻选项 */
+export const COMPLAINT_MARK_BASE_OPTIONS = [
+  '有效投诉',
+  '无效投诉',
+  '未证实投诉',
+  '暂缓判定',
+] as const;
+
+/** 投诉标记 · 仅市场监管 12345/12315 平台可见 */
+export const COMPLAINT_MARK_REGULATOR_OPTIONS = [
+  '有责投诉',
+  '无责投诉',
+  '无责可改善投诉',
+] as const;
+
+/** 可展示「有责/无责」类投诉标记的平台 */
+export const REGULATOR_COMPLAINT_PLATFORMS = [
+  '市场监管12345平台',
+  '市场监管12315平台',
+] as const;
+
+export function isRegulatorComplaintPlatform(platform?: string): boolean {
+  if (!platform) return false;
+  return (REGULATOR_COMPLAINT_PLATFORMS as readonly string[]).includes(platform)
+    || platform === '12345'
+    || platform === '12315';
+}
+
+export function complaintMarkOptions(platform?: string): string[] {
+  const base = [...COMPLAINT_MARK_BASE_OPTIONS];
+  if (isRegulatorComplaintPlatform(platform)) {
+    return [...base, ...COMPLAINT_MARK_REGULATOR_OPTIONS];
+  }
+  return base;
+}
+
+/** 风险标记（投诉 · 风险管理）：有风险才需选风险等级；顺序由轻到重 */
+export const RISK_FLAG_OPTIONS = ['无风险', '疑似风险', '有风险'] as const;
+export type RiskFlag = (typeof RISK_FLAG_OPTIONS)[number];
+
+/** 风险等级（仅「有风险」可选） */
 export const RISK_LEVEL_OPTIONS = ['低风险', '中风险', '高风险'] as const;
 
 /** 客户全景宫格：与当前工单类型对齐的统计标签（投诉/建议/商机/咨询 → ××单） */

@@ -21,7 +21,7 @@ import {
   COMPLAINT_TYPE_OPTIONS,
   COMPLAINT_PLATFORM_OPTIONS,
   BUSINESS_LINE_OPTIONS,
-  YES_NO_OPTIONS,
+  PRIOR_FEEDBACK_OPTIONS,
   SERVICE_REVIEW_OPTIONS,
   COMPLAINT_L1_OPTIONS,
   COMPLAINT_L2_MAP,
@@ -470,11 +470,11 @@ watch(
               />
             </div>
             <div class="inline-field">
-              <label class="inline-label xl"><span class="req">*</span>前期是否反馈</label>
+              <label class="inline-label xl"><span class="req">*</span>前提反馈</label>
               <FormSelect
                 v-model:value="form.priorFeedback"
                 class="inline-control field-control"
-                :options="YES_NO_OPTIONS.map((v) => ({ value: v, label: v }))"
+                :options="PRIOR_FEEDBACK_OPTIONS.map((v) => ({ value: v, label: v }))"
               />
             </div>
             <div class="inline-field">

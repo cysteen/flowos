@@ -126,9 +126,13 @@ function update(partial: Partial<RiskMonitorDraft>) {
             class="form-select"
             placeholder="请选择"
             allow-clear
-            @update:value="(v: string) => update({ riskFlag: v ?? '' })"
+            @update:value="(v: string) => update({
+              riskFlag: v ?? '',
+              ...(v !== '有风险' ? { riskLevel: '' } : {}),
+            })"
           >
             <a-select-option value="无风险">无风险</a-select-option>
+            <a-select-option value="疑似风险">疑似风险</a-select-option>
             <a-select-option value="有风险">有风险</a-select-option>
           </a-select>
         </div>
@@ -139,6 +143,7 @@ function update(partial: Partial<RiskMonitorDraft>) {
             class="form-select"
             placeholder="请选择"
             allow-clear
+            :disabled="draft.riskFlag !== '有风险'"
             @update:value="(v: string) => update({ riskLevel: v ?? '' })"
           >
             <a-select-option value="低">低</a-select-option>

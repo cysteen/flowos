@@ -17,8 +17,8 @@ function buildDraft(type: string): ProcessFormDraft {
 // 预约已迁出为独立 Tab，不再计入「补充处理」已填项
 function countFilledSupplements(form: ProcessFormDraft): number {
   let n = 0;
-  if (form.complaintCat1 && form.complaintNote) n += 1;
-  if (form.riskHasRisk && form.riskLevel) n += 1;
+  if (form.complaintMark && form.complaintCat1 && form.complaintNote) n += 1;
+  if (form.riskFlag === '有风险' ? !!form.riskLevel : !!form.riskFlag) n += 1;
   if (!form.qualityIsStandard && form.qualityIssueCat1 && form.qualityIssueCat2) n += 1;
   return n;
 }

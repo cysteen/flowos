@@ -109,9 +109,23 @@ export const PRIORITY_OPTIONS: { value: Priority; label: string }[] = [
 export const EXPECT_TIMES = ['今日 18:00', '今日 20:00', '明日 12:00', '3 个工作日内'];
 
 export const COMPLAINT_TYPE_OPTIONS = ['服务投诉', '产品质量', '物流问题', '其他'];
-export const COMPLAINT_PLATFORM_OPTIONS = ['12315', '黑猫投诉', '微博', '其他平台'];
+export const COMPLAINT_PLATFORM_OPTIONS = [
+  '市场监管12345平台',
+  '市场监管12315平台',
+  '黑猫投诉',
+  '微博',
+  '其他平台',
+];
 export const BUSINESS_LINE_OPTIONS = ['学习机业务线', '翻录业务线', '智学网业务线'];
 export const YES_NO_OPTIONS = ['是', '否'];
+/** 投诉专属 · 前提反馈 */
+export const PRIOR_FEEDBACK_OPTIONS = [
+  '是-400',
+  '是-线上店铺',
+  '是-线下店铺',
+  '是-业务渠道',
+  '否',
+] as const;
 export const SERVICE_REVIEW_OPTIONS = ['需要回溯', '无需回溯'];
 export const COMPLAINT_L1_OPTIONS = ['产品质量', '服务态度', '物流问题'];
 export const COMPLAINT_L2_MAP: Record<string, string[]> = {
