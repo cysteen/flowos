@@ -242,14 +242,14 @@ const BASE_TICKETS: Ticket[] = [
     assignee: '陈坐席', tab: 'pool', mentionUnread: false,
   },
 
-  // ---- 待审核 (review) 3 ----
+  // ---- 待审核 (review) 3：挂起送审 / 强结送审 / 关单送审 各 1 ----
   {
     id: 't18', no: 'LCMN-20260609-65010', type: '咨询', channel: '电话',
     title: '已更换主板，待审核结单', smartMarks: [],
     customer: '田野', vip: false, customerTags: ['校长'], product: '空气净化器 P3',
     nodeStatus: '待审核', nodeStep: 5, nodeTotal: 5, priority: 'P2',
     slaText: '03:00:00', slaSub: '充足', slaState: 'ok', slaMinutes: 180,
-    assignee: '王坐席', tab: 'review',
+    assignee: '王坐席', tab: 'review', reviewReason: '关单送审',
   },
   {
     id: 't19', no: 'LCMN-20260609-65236', type: '咨询', channel: '小程序',
@@ -257,7 +257,7 @@ const BASE_TICKETS: Ticket[] = [
     customer: '范冰', vip: false, product: '企业版',
     nodeStatus: '待审核', nodeStep: 4, nodeTotal: 4, priority: 'P3',
     slaText: '09:00:00', slaSub: '充足', slaState: 'ok', slaMinutes: 540,
-    assignee: '陈坐席', tab: 'review',
+    assignee: '陈坐席', tab: 'review', reviewReason: '挂起送审',
   },
   {
     id: 't20', no: 'LCMN-20260609-65500', type: '投诉', channel: 'APP',
@@ -265,7 +265,7 @@ const BASE_TICKETS: Ticket[] = [
     customer: '苏洋', vip: true, customerTags: ['自媒体'], product: '蓝牙耳机 Air',
     nodeStatus: '待审核', nodeStep: 4, nodeTotal: 4, priority: 'P1',
     slaText: '00:48:00', slaSub: '距超时', slaState: 'soon', slaMinutes: 48,
-    assignee: '王坐席', tab: 'review',
+    assignee: '王坐席', tab: 'review', reviewReason: '强结送审',
   },
 
   // ---- 已归档 (archived) 6 ----

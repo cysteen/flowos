@@ -193,13 +193,10 @@ export function useTicketWorkbench() {
         ).length;
       }
     }
-    if (activeTab.value === 'review') {
-      map.draft = draftStore.drafts.length;
-    }
     return map;
   });
 
-  /** 草稿列表（草稿 chip 选中时由工作台渲染） */
+  /** 草稿列表（新建工单弹窗仍可保存草稿；待审核 Tab 已不再展示草稿 chip） */
   const drafts = computed(() => draftStore.drafts);
 
   const selectedCount = computed(() => selectedIds.value.size);

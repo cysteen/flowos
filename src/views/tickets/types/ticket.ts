@@ -34,19 +34,20 @@ export type DoneChipKey =
 /** @我的工单 Tab 子筛选（PRD-02 v1.2 §7⑥） */
 export type MentionChipKey = 'all' | 'unread';
 
-/** 其它主 Tab 暂用旧版 chips（待审核等） */
-export type LegacyChipKey =
+/** 待审核 Tab 子筛选：按送审原因 */
+export type ReviewChipKey =
   | 'all'
-  | 'pending'
-  | 'processing'
-  | 'held'
-  | 'review'
-  | 'delegate'
-  | 'soon'
-  | 'overdue'
-  | 'draft';
+  | 'suspendReview'
+  | 'forceCloseReview'
+  | 'closeReview';
 
-export type ChipKey = MineChipKey | DoneChipKey | MentionChipKey | LegacyChipKey;
+/** @deprecated 兼容旧引用；待审核请用 ReviewChipKey */
+export type LegacyChipKey = ReviewChipKey;
+
+export type ChipKey = MineChipKey | DoneChipKey | MentionChipKey | ReviewChipKey;
+
+/** 待审核 · 送审原因 */
+export type ReviewReason = '挂起送审' | '强结送审' | '关单送审';
 
 /** 原型当前登录坐席对应的处理人姓名（与 mock 工单 assignee 对齐） */
 export const WORKBENCH_HANDLER = '王坐席';
@@ -156,6 +157,8 @@ export interface Ticket {
   groupNames?: string[];
   /** @/抄送 未知晓 */
   mentionUnread?: boolean;
+  /** 待审核 · 送审原因（挂起送审 / 强结送审 / 关单送审） */
+  reviewReason?: ReviewReason;
   tab: TabKey;
   /** 工单列表：是否已归档 */
   archived?: boolean;
@@ -327,21 +330,19 @@ export const MENTION_CHIPS: ChipMeta[] = [
   { key: 'unread', label: '未知晓' },
 ];
 
-/** 其它 Tab 沿用 v1.1 chips */
-export const LEGACY_CHIPS: ChipMeta[] = [
+/** 待审核 · 子筛选 chips（按送审原因） */
+export const REVIEW_CHIPS: ChipMeta[] = [
   { key: 'all', label: '全部' },
-  { key: 'pending', label: '待受理' },
-  { key: 'processing', label: '处理中' },
-  { key: 'held', label: '已挂起' },
-  { key: 'review', label: '待审核' },
-  { key: 'delegate', label: '委派' },
-  { key: 'soon', label: '临期', tone: 'warn' },
-  { key: 'overdue', label: '已超时', tone: 'danger' },
-  { key: 'draft', label: '草稿' },
+  { key: 'suspendReview', label: '挂起送审' },
+  { key: 'forceCloseReview', label: '强结送审' },
+  { key: 'closeReview', label: '关单送审' },
 ];
 
+/** @deprecated 使用 REVIEW_CHIPS / chipsForTab */
+export const LEGACY_CHIPS = REVIEW_CHIPS;
+
 /** @deprecated 使用 chipsForTab */
-export const CHIPS = LEGACY_CHIPS;
+export const CHIPS = REVIEW_CHIPS;
 
 /** 本组工单池 · 用户分组（原型 Mock，对齐 BPM 用户分组） */
 export interface PoolGroupMeta {
@@ -382,7 +383,8 @@ export function chipsForTab(tab: TabKey): ChipMeta[] {
   if (tab === 'done') return DONE_CHIPS;
   if (tab === 'pool') return [];
   if (tab === 'cc') return MENTION_CHIPS;
-  return LEGACY_CHIPS;
+  if (tab === 'review') return REVIEW_CHIPS;
+  return REVIEW_CHIPS;
 }
 
 /** 我的任务数据域：当前处理人=我 且未归档 */
@@ -529,6 +531,22 @@ export function matchMentionChip(t: Ticket, chip: MentionChipKey): boolean {
   }
 }
 
+/** 待审核 chip 是否命中 */
+export function matchReviewChip(t: Ticket, chip: ReviewChipKey): boolean {
+  switch (chip) {
+    case 'all':
+      return true;
+    case 'suspendReview':
+      return t.reviewReason === '挂起送审';
+    case 'forceCloseReview':
+      return t.reviewReason === '强结送审';
+    case 'closeReview':
+      return t.reviewReason === '关单送审';
+    default:
+      return true;
+  }
+}
+
 /** chip 是否命中某工单（与 Tab 叠加） */
 export function matchChip(t: Ticket, chip: ChipKey, tab: TabKey = 'mine'): boolean {
   if (tab === 'mine') {
@@ -540,28 +558,8 @@ export function matchChip(t: Ticket, chip: ChipKey, tab: TabKey = 'mine'): boole
   if (tab === 'cc') {
     return matchMentionChip(t, chip as MentionChipKey);
   }
-  switch (chip) {
-    case 'all':
-      return true;
-    case 'pending':
-      return t.nodeStatus === '待受理';
-    case 'processing':
-      return t.nodeStatus === '处理中·一线' || t.nodeStatus === '已升级·二线';
-    case 'held':
-      return t.nodeStatus === '已挂起·待客户';
-    case 'review':
-      return t.nodeStatus === '待审核';
-    case 'delegate':
-      return t.nodeStatus === '已升级·二线';
-    case 'soon':
-      return t.slaState === 'soon';
-    case 'overdue':
-      return t.slaState === 'overdue';
-    case 'draft':
-      return false;
-    case 'unread':
-      return false;
-    default:
-      return true;
+  if (tab === 'review') {
+    return matchReviewChip(t, chip as ReviewChipKey);
   }
+  return matchReviewChip(t, chip as ReviewChipKey);
 }
