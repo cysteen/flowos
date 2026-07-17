@@ -24,7 +24,7 @@ export const TICKET_COLUMN_DEFS: TicketColumnDef[] = [
   { key: 'sla', label: 'SLA 时效' },
   { key: 'assignee', label: '处理人' },
   // 新建工单 · 工单基础
-  { key: 'businessType', label: '业务类型', defaultVisible: false },
+  { key: 'businessType', label: '业务分类', defaultVisible: false },
   { key: 'ticketType', label: '工单类型', defaultVisible: false },
   { key: 'ticketSource', label: '工单来源', defaultVisible: false },
   // 新建工单 · 产品问题

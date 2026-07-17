@@ -208,7 +208,7 @@ watch(
       <CreateTicketPartCard title="工单基础">
         <div class="row-3 basic-row">
           <div class="inline-field basic-field">
-            <label class="inline-label base"><span class="req">*</span>业务类型</label>
+            <label class="inline-label base"><span class="req">*</span>业务分类</label>
             <FormSelect
               v-model:value="form.businessType"
               class="inline-control field-control"

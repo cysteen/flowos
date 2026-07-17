@@ -44,7 +44,7 @@ export const MINE_FILTER_FIELD_DEFS: MineFilterFieldDef[] = [
   { key: 'assignee', label: '处理人', fixed: true },
   // 以下对应列设置中可选项，默认隐藏，经「+ 筛选」加入筛选条
   { key: 'customer', label: '客户' },
-  { key: 'businessType', label: '业务类型' },
+  { key: 'businessType', label: '业务分类' },
   { key: 'ticketType', label: '工单类型' },
   { key: 'ticketSource', label: '工单来源' },
   { key: 'problemL1', label: '问题一类' },

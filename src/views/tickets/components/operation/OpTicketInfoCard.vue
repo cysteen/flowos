@@ -12,7 +12,7 @@ defineProps<{ detail: TicketDetailMeta }>();
     <!-- 工单属性 -->
     <div class="kv"><span class="k">工单来源</span><span class="v">{{ detail.source }}</span></div>
     <div class="meta-row">
-      <div class="kv"><span class="k">业务类型</span><span class="v">{{ detail.businessType }}</span></div>
+      <div class="kv"><span class="k">业务分类</span><span class="v">{{ detail.businessType }}</span></div>
       <div class="kv"><span class="k">业务线</span><span class="v">{{ detail.businessLine }}</span></div>
     </div>
 

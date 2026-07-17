@@ -81,7 +81,7 @@ export interface Ticket {
   customerPhone?: string;
   /** 设备 SN（筛选） */
   sn?: string;
-  /** 业务类型（新建工单 · 工单基础） */
+  /** 业务分类（新建工单 · 工单基础） */
   businessType?: string;
   /** 工单来源（与 channel 互补，列表列展示） */
   ticketSource?: string;
