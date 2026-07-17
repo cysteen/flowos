@@ -168,6 +168,14 @@ export function useTicketWorkbench() {
     return [...builtin, ...savedFilters.chipsForTab(sfTab)];
   });
 
+  /** 与列表一致：chip 计数也叠加当前 Tab 的结构化筛选（含已办默认 30 天窗） */
+  function matchActiveStructuredQuery(t: Ticket): boolean {
+    if (activeTab.value === 'mine') return matchMineQuery(t, mineQuery.value);
+    if (activeTab.value === 'done') return matchMineQuery(t, doneQuery.value);
+    if (activeTab.value === 'pool') return matchMineQuery(t, poolQuery.value);
+    return true;
+  }
+
   // 当前 Tab 下各 chip 计数
   const chipCounts = computed<Record<string, number>>(() => {
     const map: Record<string, number> = {};
@@ -180,8 +188,8 @@ export function useTicketWorkbench() {
           map[chip.key] = 0;
         }
       } else {
-        map[chip.key] = tabRows.value.filter((t) =>
-          matchChip(t, chip.key as ChipKey, activeTab.value),
+        map[chip.key] = tabRows.value.filter(
+          (t) => matchChip(t, chip.key as ChipKey, activeTab.value) && matchActiveStructuredQuery(t),
         ).length;
       }
     }
