@@ -97,8 +97,8 @@ const emptyFilter = () => ({
 const draftFilter = reactive(emptyFilter());
 const appliedFilter = reactive(emptyFilter());
 
-const BIZ_TYPES = ['智能硬件', 'AI服务'];
-const PROD_CATS = ['录音笔系列', '翻译机系列', '智能服务'];
+const BIZ_TYPES = ['消费者BG', '金融科技事业部'];
+const PROD_CATS = ['录音笔产品线', '翻译机产品线', '智能客服产品线'];
 const TAG_L1 = ['云空间', '我的文件', '相机', '网络', '账号/密码', '整机/设备', '语音翻译', '会议/会话翻译', '屏幕', '记录导出', '售后', '蓝牙', '设置/系统'];
 const TAG_L2_MAP: Record<string, string[]> = {
   '云空间': ['操作指导', '功能介绍', '软件问题'],
@@ -145,6 +145,35 @@ const prodNameSelectOpts = computed(() =>
 );
 const toOpts = (items: string[]) => items.map((v) => ({ value: v, label: v }));
 
+/** 弹窗「所属产品」：五级产品树（仅叶子「产品」可选），支持逐级下钻 + 任意节点搜索 */
+interface ProductTreeSelectNode {
+  key: string; value: string; title: string; selectable: boolean;
+  children?: ProductTreeSelectNode[];
+}
+function toSelectableTree(nodes: ProductTreeNode[]): ProductTreeSelectNode[] {
+  return nodes.map((n) => ({
+    key: n.key,
+    value: n.key,
+    title: n.title,
+    selectable: n.kind === '产品',
+    children: n.children?.length ? toSelectableTree(n.children) : undefined,
+  }));
+}
+const productTreeSelectData = computed(() => toSelectableTree(PRODUCT_TREE_DATA));
+
+/** 产品 key → 从根到叶的完整路径（事业部/业务线/产品线/产品分类/产品），用于选中后回显前面各级节点 */
+const PRODUCT_PATH: Record<string, string[]> = {};
+(function buildProductPaths(nodes: ProductTreeNode[], anc: string[]) {
+  for (const n of nodes) {
+    const cur = [...anc, n.title];
+    if (n.kind === '产品') PRODUCT_PATH[n.key] = cur;
+    if (n.children?.length) buildProductPaths(n.children, cur);
+  }
+})(PRODUCT_TREE_DATA, []);
+function productPath(key?: string): string[] {
+  return key ? (PRODUCT_PATH[key] ?? []) : [];
+}
+
 /** 选产品名称时回填业务类型 / 产品分类，保证三者与主数据一致 */
 watch(
   () => draftFilter.prodName,
@@ -158,35 +187,35 @@ watch(
 );
 
 const allRows = ref<ProblemTagRow[]>([
-  { key: '1', productKey: 'p-h1', productName: '讯飞录音笔H1', bizType: '智能硬件', prodCat: '录音笔系列', tagL1: '云空间', tagL2: '操作指导', tagL3: '如何领取/升级云空间', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '2', productKey: 'p-h1', productName: '讯飞录音笔H1', bizType: '智能硬件', prodCat: '录音笔系列', tagL1: '云空间', tagL2: '功能介绍', tagL3: '云空间存储大小咨询', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '3', productKey: 'p-h1', productName: '讯飞录音笔H1', bizType: '智能硬件', prodCat: '录音笔系列', tagL1: '我的文件', tagL2: '功能介绍', tagL3: '文件名称是否支持添加符号', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '4', productKey: 'p-h1', productName: '讯飞录音笔H1', bizType: '智能硬件', prodCat: '录音笔系列', tagL1: '我的文件', tagL2: '软件问题', tagL3: '邮件分享失败', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '5', productKey: 'p-h1', productName: '讯飞录音笔H1', bizType: '智能硬件', prodCat: '录音笔系列', tagL1: '相机', tagL2: '功能介绍', tagL3: '视频是否支持实时字幕', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '6', productKey: 'p-h1', productName: '讯飞录音笔H1', bizType: '智能硬件', prodCat: '录音笔系列', tagL1: '网络', tagL2: '功能介绍', tagL3: '是否支持修改IP地址', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '7', productKey: 'p-h1', productName: '讯飞录音笔H1', bizType: '智能硬件', prodCat: '录音笔系列', tagL1: '账号/密码', tagL2: '操作指导', tagL3: '如何退出/切换账号', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '8', productKey: 'p-h2', productName: '讯飞录音笔H2', bizType: '智能硬件', prodCat: '录音笔系列', tagL1: '云空间', tagL2: '操作指导', tagL3: '如何上传/查看/编辑/下载/删除文件', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '9', productKey: 'p-h2', productName: '讯飞录音笔H2', bizType: '智能硬件', prodCat: '录音笔系列', tagL1: '云空间', tagL2: '软件问题', tagL3: '无法领取云空间', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '10', productKey: 'p-h2', productName: '讯飞录音笔H2', bizType: '智能硬件', prodCat: '录音笔系列', tagL1: '我的文件', tagL2: '功能介绍', tagL3: '文件已上传云空间是否支持直接转写', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '11', productKey: 'p-h2', productName: '讯飞录音笔H2', bizType: '智能硬件', prodCat: '录音笔系列', tagL1: '我的文件', tagL2: '软件问题', tagL3: '文件日期/时间显示异常', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '12', productKey: 'p-h2', productName: '讯飞录音笔H2', bizType: '智能硬件', prodCat: '录音笔系列', tagL1: '云空间', tagL2: '功能介绍', tagL3: '导出格式咨询', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '13', productKey: 'p-h2', productName: '讯飞录音笔H2', bizType: '智能硬件', prodCat: '录音笔系列', tagL1: '整机/设备', tagL2: '功能介绍', tagL3: '录音笔IP地址咨询', team: '工单-处理', aftersale: '否', status: '停用' },
-  { key: '14', productKey: 'p1', productName: '三防翻译机', bizType: '智能硬件', prodCat: '翻译机系列', tagL1: '语音翻译', tagL2: '操作指导', tagL3: '如何切换男声女声', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '15', productKey: 'p1', productName: '三防翻译机', bizType: '智能硬件', prodCat: '翻译机系列', tagL1: '语音翻译', tagL2: '软件问题', tagL3: '翻译结果没有语音播报', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '16', productKey: 'p1', productName: '三防翻译机', bizType: '智能硬件', prodCat: '翻译机系列', tagL1: '会议/会话翻译', tagL2: '软件问题', tagL3: '翻译延迟/卡顿/反应慢', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '17', productKey: 'p1', productName: '三防翻译机', bizType: '智能硬件', prodCat: '翻译机系列', tagL1: '屏幕', tagL2: '功能异常', tagL3: '显示内容异常(图标/乱码/字体/方向等)', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '18', productKey: 'p1', productName: '三防翻译机', bizType: '智能硬件', prodCat: '翻译机系列', tagL1: '记录导出', tagL2: '操作指导', tagL3: '如何导出翻译记录', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '19', productKey: 'p1', productName: '三防翻译机', bizType: '智能硬件', prodCat: '翻译机系列', tagL1: '售后', tagL2: '服务申请', tagL3: '维修请求', team: '工单-售后', aftersale: '是', status: '启用' },
-  { key: '20', productKey: 'p1', productName: '三防翻译机', bizType: '智能硬件', prodCat: '翻译机系列', tagL1: '售后', tagL2: '政策咨询', tagL3: '退换货政策', team: '工单-售后', aftersale: '是', status: '启用' },
-  { key: '21', productKey: 'p2', productName: '汉维翻译机', bizType: '智能硬件', prodCat: '翻译机系列', tagL1: '会议/会话翻译', tagL2: '软件问题', tagL3: '翻译失败(服务准备中,请稍等)', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '22', productKey: 'p2', productName: '汉维翻译机', bizType: '智能硬件', prodCat: '翻译机系列', tagL1: '会议/会话翻译', tagL2: '软件问题', tagL3: '无法切换翻译识别模式', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '23', productKey: 'p2', productName: '汉维翻译机', bizType: '智能硬件', prodCat: '翻译机系列', tagL1: '语音翻译', tagL2: '软件问题', tagL3: '翻译结果没有语音播报', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '24', productKey: 'p2', productName: '汉维翻译机', bizType: '智能硬件', prodCat: '翻译机系列', tagL1: '蓝牙', tagL2: '操作指导', tagL3: '如何断开连接', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '25', productKey: 'p2', productName: '汉维翻译机', bizType: '智能硬件', prodCat: '翻译机系列', tagL1: '整机/设备', tagL2: '信息咨询', tagL3: '设备丢失', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '26', productKey: 'p2', productName: '汉维翻译机', bizType: '智能硬件', prodCat: '翻译机系列', tagL1: '售后', tagL2: '问题反馈', tagL3: '设备维修后故障仍存在', team: '工单-售后', aftersale: '是', status: '停用' },
-  { key: '27', productKey: 'p3', productName: '讯飞智能质检系统V1.0', bizType: 'AI服务', prodCat: '智能服务', tagL1: '账号/密码', tagL2: '操作指导', tagL3: '如何退出/切换账号', team: '工单-二线', aftersale: '否', status: '启用' },
-  { key: '28', productKey: 'p3', productName: '讯飞智能质检系统V1.0', bizType: 'AI服务', prodCat: '智能服务', tagL1: '网络', tagL2: '功能介绍', tagL3: '是否支持修改IP地址', team: '工单-二线', aftersale: '否', status: '启用' },
-  { key: '29', productKey: 'p3', productName: '讯飞智能质检系统V1.0', bizType: 'AI服务', prodCat: '智能服务', tagL1: '设置/系统', tagL2: '软件问题', tagL3: '加载失败/打不开/闪退', team: '工单-二线', aftersale: '否', status: '启用' },
+  { key: '1', productKey: 'p-h1', productName: '讯飞录音笔H1', bizType: '消费者BG', prodCat: '录音笔产品线', tagL1: '云空间', tagL2: '操作指导', tagL3: '如何领取/升级云空间', team: '工单-处理', aftersale: '否', status: '启用' },
+  { key: '2', productKey: 'p-h1', productName: '讯飞录音笔H1', bizType: '消费者BG', prodCat: '录音笔产品线', tagL1: '云空间', tagL2: '功能介绍', tagL3: '云空间存储大小咨询', team: '工单-处理', aftersale: '否', status: '启用' },
+  { key: '3', productKey: 'p-h1', productName: '讯飞录音笔H1', bizType: '消费者BG', prodCat: '录音笔产品线', tagL1: '我的文件', tagL2: '功能介绍', tagL3: '文件名称是否支持添加符号', team: '工单-处理', aftersale: '否', status: '启用' },
+  { key: '4', productKey: 'p-h1', productName: '讯飞录音笔H1', bizType: '消费者BG', prodCat: '录音笔产品线', tagL1: '我的文件', tagL2: '软件问题', tagL3: '邮件分享失败', team: '工单-处理', aftersale: '否', status: '启用' },
+  { key: '5', productKey: 'p-h1', productName: '讯飞录音笔H1', bizType: '消费者BG', prodCat: '录音笔产品线', tagL1: '相机', tagL2: '功能介绍', tagL3: '视频是否支持实时字幕', team: '工单-处理', aftersale: '否', status: '启用' },
+  { key: '6', productKey: 'p-h1', productName: '讯飞录音笔H1', bizType: '消费者BG', prodCat: '录音笔产品线', tagL1: '网络', tagL2: '功能介绍', tagL3: '是否支持修改IP地址', team: '工单-处理', aftersale: '否', status: '启用' },
+  { key: '7', productKey: 'p-h1', productName: '讯飞录音笔H1', bizType: '消费者BG', prodCat: '录音笔产品线', tagL1: '账号/密码', tagL2: '操作指导', tagL3: '如何退出/切换账号', team: '工单-处理', aftersale: '否', status: '启用' },
+  { key: '8', productKey: 'p-h2', productName: '讯飞录音笔H2', bizType: '消费者BG', prodCat: '录音笔产品线', tagL1: '云空间', tagL2: '操作指导', tagL3: '如何上传/查看/编辑/下载/删除文件', team: '工单-处理', aftersale: '否', status: '启用' },
+  { key: '9', productKey: 'p-h2', productName: '讯飞录音笔H2', bizType: '消费者BG', prodCat: '录音笔产品线', tagL1: '云空间', tagL2: '软件问题', tagL3: '无法领取云空间', team: '工单-处理', aftersale: '否', status: '启用' },
+  { key: '10', productKey: 'p-h2', productName: '讯飞录音笔H2', bizType: '消费者BG', prodCat: '录音笔产品线', tagL1: '我的文件', tagL2: '功能介绍', tagL3: '文件已上传云空间是否支持直接转写', team: '工单-处理', aftersale: '否', status: '启用' },
+  { key: '11', productKey: 'p-h2', productName: '讯飞录音笔H2', bizType: '消费者BG', prodCat: '录音笔产品线', tagL1: '我的文件', tagL2: '软件问题', tagL3: '文件日期/时间显示异常', team: '工单-处理', aftersale: '否', status: '启用' },
+  { key: '12', productKey: 'p-h2', productName: '讯飞录音笔H2', bizType: '消费者BG', prodCat: '录音笔产品线', tagL1: '云空间', tagL2: '功能介绍', tagL3: '导出格式咨询', team: '工单-处理', aftersale: '否', status: '启用' },
+  { key: '13', productKey: 'p-h2', productName: '讯飞录音笔H2', bizType: '消费者BG', prodCat: '录音笔产品线', tagL1: '整机/设备', tagL2: '功能介绍', tagL3: '录音笔IP地址咨询', team: '工单-处理', aftersale: '否', status: '停用' },
+  { key: '14', productKey: 'p1', productName: '三防翻译机', bizType: '消费者BG', prodCat: '翻译机产品线', tagL1: '语音翻译', tagL2: '操作指导', tagL3: '如何切换男声女声', team: '工单-处理', aftersale: '否', status: '启用' },
+  { key: '15', productKey: 'p1', productName: '三防翻译机', bizType: '消费者BG', prodCat: '翻译机产品线', tagL1: '语音翻译', tagL2: '软件问题', tagL3: '翻译结果没有语音播报', team: '工单-处理', aftersale: '否', status: '启用' },
+  { key: '16', productKey: 'p1', productName: '三防翻译机', bizType: '消费者BG', prodCat: '翻译机产品线', tagL1: '会议/会话翻译', tagL2: '软件问题', tagL3: '翻译延迟/卡顿/反应慢', team: '工单-处理', aftersale: '否', status: '启用' },
+  { key: '17', productKey: 'p1', productName: '三防翻译机', bizType: '消费者BG', prodCat: '翻译机产品线', tagL1: '屏幕', tagL2: '功能异常', tagL3: '显示内容异常(图标/乱码/字体/方向等)', team: '工单-处理', aftersale: '否', status: '启用' },
+  { key: '18', productKey: 'p1', productName: '三防翻译机', bizType: '消费者BG', prodCat: '翻译机产品线', tagL1: '记录导出', tagL2: '操作指导', tagL3: '如何导出翻译记录', team: '工单-处理', aftersale: '否', status: '启用' },
+  { key: '19', productKey: 'p1', productName: '三防翻译机', bizType: '消费者BG', prodCat: '翻译机产品线', tagL1: '售后', tagL2: '服务申请', tagL3: '维修请求', team: '工单-售后', aftersale: '是', status: '启用' },
+  { key: '20', productKey: 'p1', productName: '三防翻译机', bizType: '消费者BG', prodCat: '翻译机产品线', tagL1: '售后', tagL2: '政策咨询', tagL3: '退换货政策', team: '工单-售后', aftersale: '是', status: '启用' },
+  { key: '21', productKey: 'p2', productName: '汉维翻译机', bizType: '消费者BG', prodCat: '翻译机产品线', tagL1: '会议/会话翻译', tagL2: '软件问题', tagL3: '翻译失败(服务准备中,请稍等)', team: '工单-处理', aftersale: '否', status: '启用' },
+  { key: '22', productKey: 'p2', productName: '汉维翻译机', bizType: '消费者BG', prodCat: '翻译机产品线', tagL1: '会议/会话翻译', tagL2: '软件问题', tagL3: '无法切换翻译识别模式', team: '工单-处理', aftersale: '否', status: '启用' },
+  { key: '23', productKey: 'p2', productName: '汉维翻译机', bizType: '消费者BG', prodCat: '翻译机产品线', tagL1: '语音翻译', tagL2: '软件问题', tagL3: '翻译结果没有语音播报', team: '工单-处理', aftersale: '否', status: '启用' },
+  { key: '24', productKey: 'p2', productName: '汉维翻译机', bizType: '消费者BG', prodCat: '翻译机产品线', tagL1: '蓝牙', tagL2: '操作指导', tagL3: '如何断开连接', team: '工单-处理', aftersale: '否', status: '启用' },
+  { key: '25', productKey: 'p2', productName: '汉维翻译机', bizType: '消费者BG', prodCat: '翻译机产品线', tagL1: '整机/设备', tagL2: '信息咨询', tagL3: '设备丢失', team: '工单-处理', aftersale: '否', status: '启用' },
+  { key: '26', productKey: 'p2', productName: '汉维翻译机', bizType: '消费者BG', prodCat: '翻译机产品线', tagL1: '售后', tagL2: '问题反馈', tagL3: '设备维修后故障仍存在', team: '工单-售后', aftersale: '是', status: '停用' },
+  { key: '27', productKey: 'p3', productName: '讯飞智能质检系统V1.0', bizType: '金融科技事业部', prodCat: '智能客服产品线', tagL1: '账号/密码', tagL2: '操作指导', tagL3: '如何退出/切换账号', team: '工单-二线', aftersale: '否', status: '启用' },
+  { key: '28', productKey: 'p3', productName: '讯飞智能质检系统V1.0', bizType: '金融科技事业部', prodCat: '智能客服产品线', tagL1: '网络', tagL2: '功能介绍', tagL3: '是否支持修改IP地址', team: '工单-二线', aftersale: '否', status: '启用' },
+  { key: '29', productKey: 'p3', productName: '讯飞智能质检系统V1.0', bizType: '金融科技事业部', prodCat: '智能客服产品线', tagL1: '设置/系统', tagL2: '软件问题', tagL3: '加载失败/打不开/闪退', team: '工单-二线', aftersale: '否', status: '启用' },
 ]);
 let rowSeq = allRows.value.length + 1;
 
@@ -409,27 +438,6 @@ const form = reactive({
   status: '启用' as '启用' | '停用',
 });
 
-const formProdCatOpts = computed(() => {
-  const cats = new Set<string>();
-  for (const p of listProductNodes()) {
-    const meta = productMetaByKey(p.key);
-    if (form.bizType && meta.bizType !== form.bizType) continue;
-    cats.add(meta.prodCat);
-  }
-  return [...cats].map((v) => ({ value: v, label: v }));
-});
-
-const formProductOpts = computed(() =>
-  listProductNodes()
-    .filter((p) => {
-      const meta = productMetaByKey(p.key);
-      if (form.bizType && meta.bizType !== form.bizType) return false;
-      if (form.prodCat && meta.prodCat !== form.prodCat) return false;
-      return true;
-    })
-    .map((p) => ({ value: p.key, label: p.title })),
-);
-
 function mergeTagOpts(known: string[], fromRows: string[]) {
   return [...new Set([...known, ...fromRows])].map((v) => ({ value: v }));
 }
@@ -459,15 +467,7 @@ const formTagL3Opts = computed(() => {
   return mergeTagOpts(tagL3Map.value[form.tagL2] ?? [], fromRows);
 });
 
-watch(() => form.bizType, () => {
-  if (editingKey.value) return;
-  form.prodCat = undefined;
-  form.productKey = undefined;
-});
-watch(() => form.prodCat, () => {
-  if (editingKey.value) return;
-  form.productKey = undefined;
-});
+/** 选定产品（树叶）→ 派生事业部/产品线，供提交与展示 */
 watch(() => form.productKey, (key) => {
   if (!key || editingKey.value) return;
   const meta = productMetaByKey(key);
@@ -967,60 +967,41 @@ function doImport() {
         :label-col="formLabelCol"
         :wrapper-col="formWrapperCol"
       >
-        <a-form-item label="事业部" required>
-          <a-select
-            v-model:value="form.bizType"
-            placeholder="请选择"
-            show-search
-            allow-clear
-            :options="toOpts(BIZ_TYPES)"
-            :disabled="!!editingKey"
-          >
-            <template #notFoundContent>
-              <div class="prod-nf">
-                <div>未找到匹配的事业部</div>
-                <a class="prod-nf-link" @click.prevent="goProductManage">前往产品管理新增</a>
-              </div>
-            </template>
-          </a-select>
-        </a-form-item>
-        <a-form-item label="产品线" required>
-          <a-select
-            v-model:value="form.prodCat"
-            placeholder="请选择"
-            show-search
-            allow-clear
-            :options="formProdCatOpts"
-            :disabled="!form.bizType || !!editingKey"
-          >
-            <template #notFoundContent>
-              <div class="prod-nf">
-                <div>未找到匹配的产品线</div>
-                <a class="prod-nf-link" @click.prevent="goProductManage">前往产品管理新增</a>
-              </div>
-            </template>
-          </a-select>
-        </a-form-item>
-        <a-form-item label="产品名称" required>
-          <a-select
-            v-model:value="form.productKey"
-            placeholder="请选择"
-            show-search
-            allow-clear
-            :options="formProductOpts"
-            :disabled="!form.prodCat || !!editingKey"
-          >
-            <template #notFoundContent>
-              <div class="prod-nf">
-                <div>未找到匹配的产品名称</div>
-                <a class="prod-nf-link" @click.prevent="goProductManage">前往产品管理新增</a>
-              </div>
-            </template>
-          </a-select>
-          <div v-if="!editingKey" class="prod-hint">
-            找不到产品？请到
-            <a class="prod-hint-link" @click.prevent="goProductManage">产品管理</a>
-            新增后再回来选择
+        <a-form-item label="所属产品" required class="form-item-product">
+          <div class="prod-field">
+            <a-tree-select
+              v-model:value="form.productKey"
+              show-search
+              allow-clear
+              tree-line
+              :tree-data="productTreeSelectData"
+              :field-names="{ children: 'children', label: 'title', value: 'key' }"
+              tree-node-filter-prop="title"
+              :dropdown-style="{ maxHeight: '360px', overflow: 'auto' }"
+              :disabled="!!editingKey"
+              placeholder="搜索或逐级选择产品（可按事业部 / 业务线 / 产品线 / 分类 / 产品名 任意节点搜索）"
+            >
+              <template #notFoundContent>
+                <div class="prod-nf">
+                  <div>未找到匹配的产品</div>
+                  <a class="prod-nf-link" @click.prevent="goProductManage">前往产品管理新增</a>
+                </div>
+              </template>
+            </a-tree-select>
+            <div v-if="form.productKey && productPath(form.productKey).length" class="prod-path">
+              <span
+                v-for="(seg, i) in productPath(form.productKey)"
+                :key="i"
+                class="prod-path-seg"
+              >
+                <span v-if="i > 0" class="prod-path-sep">/</span>{{ seg }}
+              </span>
+            </div>
+            <div v-else-if="!editingKey" class="prod-hint">
+              找不到产品？请到
+              <a class="prod-hint-link" @click.prevent="goProductManage">产品管理</a>
+              新增后再回来选择
+            </div>
           </div>
         </a-form-item>
 
@@ -1348,6 +1329,15 @@ function doImport() {
 .tag-form :deep(.ant-select),
 .tag-form :deep(.ant-input),
 .tag-form :deep(.ant-input-affix-wrapper) { width: 100%; }
+/* 所属产品：控件含路径副文案，标签与选择框顶部对齐，避免垂直居中错位 */
+.tag-form :deep(.form-item-product .ant-form-item-row) { align-items: flex-start; }
+.tag-form :deep(.form-item-product .ant-form-item-label) { padding-top: 0; }
+.tag-form :deep(.form-item-product .ant-form-item-label > label) {
+  height: 32px; line-height: 32px;
+}
+.tag-form :deep(.form-item-product .ant-form-item-control-input) { min-height: 32px; }
+.prod-field { width: 100%; min-width: 0; }
+.prod-field :deep(.ant-select) { width: 100%; }
 .prod-hint {
   margin-top: 6px; font-size: 12px; color: #9ca3af; line-height: 1.4;
 }
@@ -1358,6 +1348,14 @@ function doImport() {
 }
 .prod-nf-link { color: #1a6fff; cursor: pointer; }
 .prod-nf-link:hover { text-decoration: underline; }
+/* 选中产品后回显完整路径（前面各级节点） */
+.prod-path {
+  margin-top: 6px; font-size: 12px; color: #64748b; line-height: 1.5;
+  display: flex; flex-wrap: wrap; align-items: center;
+}
+.prod-path-seg { display: inline-flex; align-items: center; }
+.prod-path-seg:last-child { color: #1a6fff; font-weight: 600; }
+.prod-path-sep { color: #cbd5e1; margin: 0 6px; }
 .cat-input-full { width: 100%; }
 .batch-team-hint { margin: 0 0 12px; color: #6b7280; font-size: 13px; line-height: 1.5; }
 .import-panel { display: flex; flex-direction: column; gap: 10px; }

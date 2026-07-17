@@ -1,4 +1,4 @@
-/** 产品树 mock：BGBU → 业务线 → 产品线 → 产品分类 → 产品（与产品管理页共用） */
+/** 产品树 mock：BGBU → 业务线 → 产品线 → 产品分类 → 产品（五级，与产品管理页共用） */
 export interface ProductTreeNode {
   key: string;
   title: string;
@@ -13,54 +13,67 @@ export const PRODUCT_TREE_DATA: ProductTreeNode[] = [
     key: 'bg-consumer', title: '消费者BG', kind: 'BGBU',
     children: [
       {
-        key: 'yx-ai', title: 'AI录音笔', kind: '业务线',
-        children: [
-          { key: 'p-h1', title: '讯飞录音笔H1', kind: '产品' },
-          { key: 'p-h2', title: '讯飞录音笔H2', kind: '产品' },
-        ],
-      },
-    ],
-  },
-  { key: 'bg0', title: '测试 222BG', kind: 'BGBU' },
-  {
-    key: 'bg1', title: '金融科技事业部', kind: 'BGBU', a: 7, b: 0,
-    children: [
-      {
-        key: 'yx1', title: '测试业务线111', kind: '业务线', a: 1, b: 0,
-        children: [{ key: 'px0', title: '文件', kind: '产品线' }],
-      },
-      {
-        key: 'yx2', title: '智慧运营业务部', kind: '业务线', a: 2, b: 1,
+        key: 'yx-hw', title: '智能硬件业务线', kind: '业务线',
         children: [
           {
-            key: 'px1', title: '智能客服产品线', kind: '产品线', a: 0, b: 2,
+            key: 'px-rec', title: '录音笔产品线', kind: '产品线',
             children: [
               {
-                key: 'fl1', title: '翻译机系列', kind: '产品分类', a: 0, b: 2,
+                key: 'fl-rec', title: '录音笔系列', kind: '产品分类',
+                children: [
+                  { key: 'p-h1', title: '讯飞录音笔H1', kind: '产品' },
+                  { key: 'p-h2', title: '讯飞录音笔H2', kind: '产品' },
+                ],
+              },
+            ],
+          },
+          {
+            key: 'px-trans', title: '翻译机产品线', kind: '产品线',
+            children: [
+              {
+                key: 'fl-trans', title: '翻译机系列', kind: '产品分类',
                 children: [
                   { key: 'p1', title: '三防翻译机', kind: '产品' },
                   { key: 'p2', title: '汉维翻译机', kind: '产品' },
                 ],
               },
-              {
-                key: 'fl2', title: '智能服务', kind: '产品分类', a: 0, b: 1,
-                children: [{ key: 'p3', title: '讯飞智能质检系统V1.0', kind: '产品' }],
-              },
             ],
           },
-          { key: 'px2', title: '智能中台产品线', kind: '产品线' },
         ],
       },
     ],
   },
-  { key: 'px9', title: '智慧运营业务部', kind: '产品线', a: 2, b: 0 },
+  {
+    key: 'bg-fin', title: '金融科技事业部', kind: 'BGBU',
+    children: [
+      {
+        key: 'yx-ops', title: '智慧运营业务线', kind: '业务线',
+        children: [
+          {
+            key: 'px-cs', title: '智能客服产品线', kind: '产品线',
+            children: [
+              {
+                key: 'fl-qc', title: '智能质检系列', kind: '产品分类',
+                children: [
+                  { key: 'p3', title: '讯飞智能质检系统V1.0', kind: '产品' },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  },
 ];
 
 export const PRODUCT_TREE_KIND_COLOR: Record<ProductTreeNode['kind'], string> = {
   BGBU: 'blue', 业务线: 'green', 产品线: 'orange', 产品分类: 'red', 产品: 'default',
 };
 
-export const PRODUCT_TREE_DEFAULT_EXPANDED = ['bg-consumer', 'yx-ai', 'bg1', 'yx1', 'yx2', 'px1', 'fl1', 'fl2'];
+export const PRODUCT_TREE_DEFAULT_EXPANDED = [
+  'bg-consumer', 'yx-hw', 'px-rec', 'fl-rec', 'px-trans', 'fl-trans',
+  'bg-fin', 'yx-ops', 'px-cs', 'fl-qc',
+];
 
 function walk(nodes: ProductTreeNode[], fn: (n: ProductTreeNode) => void) {
   for (const n of nodes) {
@@ -112,12 +125,25 @@ export function filterProductTree(nodes: ProductTreeNode[], keyword: string): Pr
   return recur(nodes);
 }
 
-/** 产品 key → 业务类型 / 产品分类（mock 映射） */
+/** 产品 key → 从根到叶的祖先链（含自身） */
+export function productAncestors(key: string): ProductTreeNode[] {
+  const path: ProductTreeNode[] = [];
+  function dfs(nodes: ProductTreeNode[], trail: ProductTreeNode[]): boolean {
+    for (const n of nodes) {
+      const t = [...trail, n];
+      if (n.key === key) { path.push(...t); return true; }
+      if (n.children?.length && dfs(n.children, t)) return true;
+    }
+    return false;
+  }
+  dfs(PRODUCT_TREE_DATA, []);
+  return path;
+}
+
+/** 产品 key → 事业部（BGBU 层）/ 产品线（产品线层），按树路径派生 */
 export function productMetaByKey(key: string): { bizType: string; prodCat: string } {
-  const node = findProductTreeNode(key);
-  if (!node) return { bizType: '智能硬件', prodCat: '其他' };
-  if (key === 'p-h1' || key === 'p-h2') return { bizType: '智能硬件', prodCat: '录音笔系列' };
-  if (key === 'p1' || key === 'p2') return { bizType: '智能硬件', prodCat: '翻译机系列' };
-  if (key === 'p3') return { bizType: 'AI服务', prodCat: '智能服务' };
-  return { bizType: '软件服务', prodCat: node.title };
+  const path = productAncestors(key);
+  const bg = path.find((n) => n.kind === 'BGBU');
+  const line = path.find((n) => n.kind === '产品线');
+  return { bizType: bg?.title ?? '消费者BG', prodCat: line?.title ?? '其他' };
 }

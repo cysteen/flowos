@@ -94,6 +94,7 @@ const updatedAt = computed(() => {
   return orderedRecords.value[0]?.when || props.createdAt || '—';
 });
 
+
 /** 已关联产研反馈（synced/feedback/closed）→ 催单、二次激活两按钮均常驻展示 */
 const isAssociated = computed(() =>
   props.syncState === 'synced' || props.syncState === 'feedback' || props.syncState === 'closed',
@@ -244,6 +245,17 @@ function onDunning() {
             <span class="fs-item-side" :class="{ downstream: rec.side === '产研侧' }">{{ rec.side }}</span>
           </div>
           <div class="fs-item-content">{{ rec.content }}</div>
+          <!-- 预反馈 / 关单节点内联「问题原因 / 处理结果」——用户最关注的要点 -->
+          <div v-if="rec.cause || rec.result" class="fs-item-fields">
+            <div v-if="rec.cause" class="fs-field">
+              <span class="fs-field-label label-cause">问题原因</span>
+              <span class="fs-field-text">{{ rec.cause }}</span>
+            </div>
+            <div v-if="rec.result" class="fs-field">
+              <span class="fs-field-label label-result">处理结果</span>
+              <span class="fs-field-text">{{ rec.result }}</span>
+            </div>
+          </div>
           <div class="fs-item-meta">
             <span>{{ rec.who }}</span>
             <span v-if="rec.meta" class="fs-item-metabadge">{{ rec.meta }}</span>
@@ -454,6 +466,19 @@ function onDunning() {
   .fs-sheet-actions { align-items: flex-start; flex-direction: row; flex-wrap: wrap; }
   .fs-meta-sep { margin: 0 8px; }
 }
+
+/* 时间线节点内联「问题原因 / 处理结果」——轻量，不另起卡片 */
+.fs-item-fields {
+  margin-top: 6px; display: flex; flex-direction: column; gap: 6px;
+}
+.fs-field { display: flex; gap: 8px; align-items: flex-start; }
+.fs-field-label {
+  flex: none; font-size: 11px; font-weight: 700; border-radius: 4px;
+  padding: 1px 7px; line-height: 18px;
+}
+.label-cause { color: #b45309; background: #fef3c7; }
+.label-result { color: #047857; background: #d1fae5; }
+.fs-field-text { font-size: 13px; color: #334155; line-height: 1.6; }
 
 .fs-empty {
   padding: 28px 16px; text-align: center; font-size: 13px; color: #94a3b8;

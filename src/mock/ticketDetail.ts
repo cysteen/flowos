@@ -142,6 +142,15 @@ export interface FeishuRecord {
   when: string;
   /** 反馈单号 / 负责人 / 状态等元信息 */
   meta?: string;
+  /** 结构化结论字段（用于信息板「产研结论」摘要卡，避免关键信息散落在 content 文本里） */
+  /** 问题原因（预反馈/关单回传） */
+  cause?: string;
+  /** 处理结果 / 解决方案 */
+  result?: string;
+  /** 处理结论（如 已解决 · 待用户验证） */
+  conclusion?: string;
+  /** 计划解决日期 */
+  planDate?: string;
 }
 
 export const TICKET_DETAIL: TicketDetailMeta = {
