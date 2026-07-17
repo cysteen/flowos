@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue';
 import { message } from 'ant-design-vue';
+import dayjs, { type Dayjs } from 'dayjs';
 import {
   SwapOutlined, TeamOutlined, StopOutlined, PauseCircleOutlined,
   PlayCircleOutlined, RiseOutlined, SyncOutlined, ToolOutlined,
@@ -15,6 +16,8 @@ import {
   RESUME_REASONS, RETURN_REASONS, RETURN_TARGET_NODES, MAX_RETURN_COUNT,
   DELEGATE_GROUPS, FEISHU_ESCALATE_CHANNEL, FEISHU_FEEDBACK_CATEGORIES,
 } from '../composables/opActions';
+
+const RESUME_AT_FORMAT = 'YYYY-MM-DD HH:mm';
 
 const props = defineProps<{
   open: boolean;
@@ -37,6 +40,20 @@ const transfer = reactive({ scope: 'same' as 'same' | 'cross', target: TRANSFER_
 const delegate = reactive({ mode: 'person' as 'person' | 'group', target: DELEGATE_TARGETS[0], reason: '' });
 const forceClose = reactive({ reason: '', approver: APPROVERS[0], detail: '' });
 const suspend = reactive({ reason: '', detail: '', resumeAt: '' });
+
+function resumeAtDayjs(value?: string): Dayjs | undefined {
+  if (!value) return undefined;
+  const parsed = dayjs(value, RESUME_AT_FORMAT);
+  return parsed.isValid() ? parsed : undefined;
+}
+
+function onResumeAtChange(v: Dayjs | string | null) {
+  if (!v) {
+    suspend.resumeAt = '';
+    return;
+  }
+  suspend.resumeAt = dayjs.isDayjs(v) ? v.format(RESUME_AT_FORMAT) : String(v);
+}
 const escalate = reactive({
   channel: ESCALATE_CHANNELS[0],
   group: ESCALATE_GROUPS[0],
@@ -313,7 +330,15 @@ function onOk() {
       </div>
       <div class="op-field">
         <div class="op-label">预计恢复时间</div>
-        <a-input v-model:value="suspend.resumeAt" placeholder="如：明日 10:00" />
+        <a-date-picker
+          :value="resumeAtDayjs(suspend.resumeAt)"
+          show-time
+          :show-time="{ format: 'HH:mm' }"
+          :format="RESUME_AT_FORMAT"
+          placeholder="请选择预计恢复时间"
+          style="width: 100%"
+          @update:value="onResumeAtChange"
+        />
       </div>
       <div class="op-tip op-tip-info">挂起后 SLA 暂停计时 | 本工单已挂起 0 次（最多 2 次）</div>
     </div>
