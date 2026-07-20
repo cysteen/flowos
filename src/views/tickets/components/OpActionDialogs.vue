@@ -481,15 +481,9 @@ function onOk() {
           :options="RETURN_REASONS.map((r) => ({ value: r, label: r }))" />
       </div>
       <div class="op-field">
-        <div class="op-label">退回目标节点</div>
-        <a-select v-model:value="returnForm.targetNode" style="width:100%"
-          :options="RETURN_TARGET_NODES.map((n) => ({ value: n, label: n }))" />
-      </div>
-      <div class="op-field">
         <div class="op-label">补充说明</div>
         <a-textarea v-model:value="returnForm.note" :rows="2" placeholder="请说明退回原因..." />
       </div>
-      <div class="op-tip op-tip-warn">本工单已退回 <strong>{{ returnCount }}</strong> 次（最多 {{ MAX_RETURN_COUNT }} 次）</div>
     </div>
 
     <!-- 关闭工单 -->
