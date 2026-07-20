@@ -2,8 +2,10 @@
 import { PlusOutlined, DeleteOutlined, CheckOutlined } from '@ant-design/icons-vue';
 import dayjs, { type Dayjs } from 'dayjs';
 import type { AppointmentRecord } from '@/views/tickets/types/operation';
+import { APPOINTMENT_DEMAND_OPTIONS } from '@/views/tickets/types/operation';
 
 const DATE_TIME_FORMAT = 'YYYY-MM-DD HH:mm:ss';
+const demandOptions = APPOINTMENT_DEMAND_OPTIONS.map((v) => ({ value: v, label: v }));
 
 const props = defineProps<{
   records: AppointmentRecord[];
@@ -18,7 +20,10 @@ const emit = defineEmits<{
 function newRecord(): AppointmentRecord {
   return {
     id: `appt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    scheduledAt: '', done: false, booker: props.defaultBooker ?? '', demand: '',
+    scheduledAt: '',
+    done: false,
+    booker: props.defaultBooker ?? '',
+    demand: undefined,
   };
 }
 
@@ -84,12 +89,14 @@ function markDone(index: number) {
           placeholder="预约时间"
           @update:value="(v) => updateRecordTime(index, v)"
         />
-        <a-input
-          class="demand-input"
-          :value="record.demand"
+        <a-select
+          class="demand-select"
+          :value="record.demand || undefined"
           :disabled="record.done"
-          placeholder="预约需求，如：上门更换主板 / 电话回访确认满意度"
-          @update:value="(v: string) => updateField(index, { demand: v })"
+          :options="demandOptions"
+          placeholder="预约需求"
+          allow-clear
+          @update:value="(v: string) => updateField(index, { demand: v ?? '' })"
         />
         <div class="record-actions">
           <span v-if="record.done" class="record-done-tag"><CheckOutlined /> 已沟通</span>
@@ -139,7 +146,11 @@ function markDone(index: number) {
 }
 .record-picker { flex: none; width: 200px; }
 .record-picker :deep(.ant-picker) { width: 100%; }
-.demand-input { flex: 1; min-width: 0; }
+.demand-select { flex: 1; min-width: 140px; }
+.demand-select :deep(.ant-select-selector) {
+  height: 32px !important;
+  min-height: 32px !important;
+}
 .record-row.done .booker-chip { color: #9ca3af; }
 .record-actions {
   flex: none;

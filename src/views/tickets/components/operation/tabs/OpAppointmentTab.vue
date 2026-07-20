@@ -16,7 +16,7 @@ const emit = defineEmits<{ 'update:records': [v: AppointmentRecord[]] }>();
   <div class="appt-tab">
     <div class="appt-head">
       <span class="appt-title"><CalendarOutlined />预约（上门 / 回访）</span>
-      <span class="appt-hint">谁发起、约什么时间、要做什么——预约人与预约需求均需填写</span>
+      <span class="appt-hint">谁发起、约什么时间、要做什么——预约人与预约需求（下拉选择）均需填写</span>
     </div>
     <OpAppointmentRecords
       :records="records"

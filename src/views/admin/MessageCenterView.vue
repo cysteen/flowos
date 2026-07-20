@@ -9,6 +9,7 @@ const channel = ref('sms');
 const smsSub = ref('channel');
 const mailSub = ref('account');
 const inSub = ref('template');
+const imSub = ref('app');
 
 /* 短信 */
 const smsChannels = ref([
@@ -51,6 +52,24 @@ const inTpls = ref([
 const inLogs = ref([
   { time: '2026-06-19 10:22', to: '李强', tpl: '工单指派', read: true },
   { time: '2026-06-19 10:05', to: '王芳', tpl: '审批提醒', read: false },
+]);
+
+/* IM 即时消息（企业 IM 机器人/应用推送：i讯飞 / 企业微信 / 飞书） */
+const imApps = ref([
+  { id: 1, name: 'i讯飞机器人', imType: 'i讯飞', robot: 'https://im.iflytek.com/robot/wo-notify', status: true },
+  { id: 2, name: '企业微信-客服群', imType: '企业微信', robot: 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=****', status: true },
+  { id: 3, name: '飞书-二线协同', imType: '飞书', robot: 'https://open.feishu.cn/open-apis/bot/v2/hook/****', status: false },
+]);
+const imTpls = ref([
+  { id: 1, code: 'IM_WO_ASSIGN', name: '工单派发提醒', content: '【工单派发】${no} 已分派给你，请及时处理', status: '已审核' },
+  { id: 2, code: 'IM_SLA_ALERT', name: 'SLA 临期预警', content: '【SLA 预警】工单${no} 剩余 ${remain}，即将超时', status: '已审核' },
+  { id: 3, code: 'IM_ESCALATE', name: '升级通知', content: '【升级】工单${no} 已升级至 ${target}，请关注', status: '待审核' },
+]);
+interface ImLog { time: string; to: string; tpl: string; result: string; app?: string; content?: string; failReason?: string; }
+const imLogs = ref<ImLog[]>([
+  { time: '2026-06-19 10:24', to: '李强（二线处理组）', tpl: '工单派发提醒', result: '成功', app: 'i讯飞机器人', content: '【工单派发】WO-001 已分派给你，请及时处理' },
+  { time: '2026-06-19 10:02', to: '客服值班群', tpl: 'SLA 临期预警', result: '成功', app: '企业微信-客服群', content: '【SLA 预警】工单WO-002 剩余 15 分钟，即将超时' },
+  { time: '2026-06-19 09:35', to: '王芳（技术支持）', tpl: '升级通知', result: '失败', app: '飞书-二线协同', content: '【升级】工单WO-003 已升级至 二线技术支持组，请关注', failReason: '机器人未启用' },
 ]);
 
 /* 公告 */
@@ -160,15 +179,29 @@ function delInTpl(record: { id: number; name: string }) {
   confirmDel('删除站内信模板', `确认删除「${record.name}」？`, () => delRow(inTpls, record.id));
 }
 
+function delImApp(record: { id: number; name: string }) {
+  confirmDel('删除 IM 应用', `确认删除「${record.name}」？删除后走该应用的 IM 通知将无法送达。`, () => delRow(imApps, record.id));
+}
+function testImApp(record: { name: string; status: boolean }) {
+  if (!record.status) { message.warning('应用已停用，请先启用后再测试'); return; }
+  imLogs.value.unshift({ time: nowStr(), to: '管理员', tpl: '连通性测试', result: '成功', app: record.name, content: `${record.name} 连通性测试消息` });
+  message.success(`测试消息已通过「${record.name}」发送，请在发送记录中核对`);
+}
+function delImTpl(record: { id: number; name: string }) {
+  confirmDel('删除 IM 模板', `确认删除「${record.name}」？删除后凡调用该编码的业务将发送失败。`, () => delRow(imTpls, record.id));
+}
+
 // —— 统一的「新增/编辑」弹窗（schema 驱动，覆盖各子页实体）——
 interface FieldSpec { k: string; l: string; req?: boolean; type?: 'text' | 'textarea'; }
-type EntityKey = 'smsChannel' | 'smsTpl' | 'mailAccount' | 'mailTpl' | 'inTpl' | 'notice';
+type EntityKey = 'smsChannel' | 'smsTpl' | 'mailAccount' | 'mailTpl' | 'inTpl' | 'imApp' | 'imTpl' | 'notice';
 const SCHEMAS: Record<EntityKey, { title: string; fields: FieldSpec[]; target: any; create: (f: any) => any }> = {
   smsChannel: { title: '短信渠道', fields: [{ k: 'name', l: '渠道名称', req: true }, { k: 'sign', l: '短信签名', req: true }, { k: 'daily', l: '日配额' }], target: smsChannels, create: (f) => ({ id: Date.now(), name: f.name, sign: f.sign, daily: f.daily || '0', used: 0, status: true }) },
   smsTpl: { title: '短信模板', fields: [{ k: 'code', l: '模板编码', req: true }, { k: 'name', l: '模板名称', req: true }, { k: 'content', l: '模板内容', req: true, type: 'textarea' }], target: smsTpls, create: (f) => ({ id: Date.now(), channelId: smsChannels.value.find((c) => c.status)?.id ?? smsChannels.value[0]?.id, code: f.code, name: f.name, content: f.content, status: '待审核' }) },
   mailAccount: { title: '邮件账号', fields: [{ k: 'name', l: '账号名', req: true }, { k: 'addr', l: '邮箱地址', req: true }, { k: 'smtp', l: 'SMTP' }], target: mailAccounts, create: (f) => ({ id: Date.now(), name: f.name, addr: f.addr, smtp: f.smtp || '', status: true }) },
   mailTpl: { title: '邮件模板', fields: [{ k: 'code', l: '模板编码', req: true }, { k: 'name', l: '模板名称', req: true }, { k: 'subject', l: '邮件主题', req: true }], target: mailTpls, create: (f) => ({ id: Date.now(), code: f.code, name: f.name, subject: f.subject, status: '待审核' }) },
   inTpl: { title: '站内信模板', fields: [{ k: 'code', l: '模板编码', req: true }, { k: 'name', l: '模板名称', req: true }, { k: 'content', l: '内容', req: true, type: 'textarea' }], target: inTpls, create: (f) => ({ id: Date.now(), code: f.code, name: f.name, content: f.content, status: '已审核' }) },
+  imApp: { title: 'IM 应用', fields: [{ k: 'name', l: '应用名称', req: true }, { k: 'imType', l: 'IM 类型', req: true }, { k: 'robot', l: '机器人 Webhook' }], target: imApps, create: (f) => ({ id: Date.now(), name: f.name, imType: f.imType, robot: f.robot || '', status: true }) },
+  imTpl: { title: 'IM 模板', fields: [{ k: 'code', l: '模板编码', req: true }, { k: 'name', l: '模板名称', req: true }, { k: 'content', l: '消息内容', req: true, type: 'textarea' }], target: imTpls, create: (f) => ({ id: Date.now(), code: f.code, name: f.name, content: f.content, status: '待审核' }) },
   notice: { title: '通知公告', fields: [{ k: 'title', l: '公告标题', req: true }, { k: 'scope', l: '发布范围' }], target: notices, create: (f) => ({ id: Date.now(), title: f.title, scope: f.scope || '全员', publish: '2026-06-21', status: '已发布', top: false }) },
 };
 const modalOpen = ref(false);
@@ -298,6 +331,46 @@ function saveModal() {
         <template v-else>
           <a-table :columns="[{title:'时间',dataIndex:'time',width:160},{title:'接收人',dataIndex:'to',width:140},{title:'模板',dataIndex:'tpl'},{title:'已读',dataIndex:'read',key:'read',width:90}]" :data-source="inLogs" row-key="time" :pagination="stdPagination()" size="middle">
             <template #bodyCell="{ column, record }"><a-tag v-if="column.key === 'read'" :color="record.read ? 'green' : 'orange'">{{ record.read ? '已读' : '未读' }}</a-tag></template>
+          </a-table>
+        </template>
+      </a-tab-pane>
+
+      <!-- IM 即时消息 -->
+      <a-tab-pane key="im" tab="IM 消息">
+        <a-segmented v-model:value="imSub" :options="[{value:'app',label:'应用'},{value:'template',label:'模板'},{value:'log',label:'发送记录'}]" style="margin-bottom: 16px" />
+        <template v-if="imSub === 'app'">
+          <div class="bar"><span class="tip">企业 IM 机器人/应用（i讯飞 / 企业微信 / 飞书）推送配置</span><a-button type="primary" @click="openCreate('imApp')"><template #icon><PlusOutlined /></template>新增应用</a-button></div>
+          <a-table :columns="[{title:'应用名称',dataIndex:'name',width:180},{title:'IM 类型',dataIndex:'imType',key:'imType',width:120},{title:'机器人 Webhook',dataIndex:'robot'},{title:'启用',dataIndex:'status',key:'status',width:80},{title:'操作',key:'op',width:180}]" :data-source="imApps" row-key="id" :pagination="stdPagination()" size="middle">
+            <template #bodyCell="{ column, record }">
+              <a-tag v-if="column.key === 'imType'" color="blue">{{ record.imType }}</a-tag>
+              <a-switch v-else-if="column.key === 'status'" v-model:checked="record.status" size="small" />
+              <template v-else-if="column.key === 'op'">
+                <a-button type="link" size="small" @click="openEdit('imApp', record)">编辑</a-button>
+                <a-button type="link" size="small" @click="testImApp(record)">测试</a-button>
+                <a-button type="link" size="small" danger @click="delImApp(record)">删除</a-button>
+              </template>
+            </template>
+          </a-table>
+        </template>
+        <template v-else-if="imSub === 'template'">
+          <div class="bar"><span class="tip">IM 通知模板（工单派发、SLA 预警、升级通知等）</span><a-button type="primary" @click="openCreate('imTpl')"><template #icon><PlusOutlined /></template>新增模板</a-button></div>
+          <a-table :columns="[{title:'模板编码',dataIndex:'code',key:'code',width:170},{title:'名称',dataIndex:'name',width:140},{title:'消息内容',dataIndex:'content'},{title:'状态',dataIndex:'status',key:'status',width:90},{title:'操作',key:'op',width:120}]" :data-source="imTpls" row-key="id" :pagination="stdPagination()" size="middle">
+            <template #bodyCell="{ column, record }">
+              <span v-if="column.key === 'code'">{{ record.code }}</span>
+              <a-tag v-else-if="column.key === 'status'" :color="AUDIT_TONE[record.status]">{{ record.status }}</a-tag>
+              <template v-else-if="column.key === 'op'">
+                <a-button type="link" size="small" @click="openEdit('imTpl', record)">编辑</a-button>
+                <a-button type="link" size="small" danger @click="delImTpl(record)">删除</a-button>
+              </template>
+            </template>
+          </a-table>
+        </template>
+        <template v-else>
+          <div class="bar"><span class="tip">只读发送流水；失败记录含失败原因</span></div>
+          <a-table :columns="[{title:'时间',dataIndex:'time',width:160},{title:'接收人/群',dataIndex:'to',width:180},{title:'模板',dataIndex:'tpl'},{title:'应用',dataIndex:'app',width:150},{title:'结果',dataIndex:'result',key:'result',width:90}]" :data-source="imLogs" row-key="time" :pagination="stdPagination()" size="middle">
+            <template #bodyCell="{ column, record }">
+              <a-tag v-if="column.key === 'result'" :color="RESULT_TONE[record.result]">{{ record.result }}</a-tag>
+            </template>
           </a-table>
         </template>
       </a-tab-pane>

@@ -194,7 +194,7 @@ function validate(): boolean {
       if (!delegate.target) { message.warning(delegate.mode === 'person' ? '请选择协助办理人' : '请选择协助办理组'); return false; }
       return true;
     case '挂起':
-      if (!suspend.reason) { message.warning('请选择挂起场景'); return false; }
+      if (!suspend.reason) { message.warning('请选择挂起原因'); return false; }
       return true;
     case '升级':
       if (escalateToFeishu.value && !escalate.feedbackCategory) {
@@ -320,7 +320,7 @@ function onOk() {
     <!-- 挂起 -->
     <div v-else-if="action === '挂起'" class="op-form">
       <div class="op-field">
-        <div class="op-label req">挂起场景</div>
+        <div class="op-label req">挂起原因</div>
         <a-select v-model:value="suspend.reason" placeholder="请选择..." style="width:100%"
           :options="SUSPEND_REASONS.map((r) => ({ value: r, label: r }))" />
       </div>
@@ -340,7 +340,6 @@ function onOk() {
           @update:value="onResumeAtChange"
         />
       </div>
-      <div class="op-tip op-tip-info">挂起后 SLA 暂停计时 | 本工单已挂起 0 次（最多 2 次）</div>
     </div>
 
     <!-- 升级 -->
@@ -457,7 +456,7 @@ function onOk() {
     <div v-else-if="action === '恢复'" class="op-form">
       <div v-if="suspendInfo" class="op-box op-box-warn">
         <div class="op-box-title">当前挂起信息</div>
-        <div class="op-kv-row"><span>挂起场景</span><span>{{ suspendInfo.reason }}</span></div>
+        <div class="op-kv-row"><span>挂起原因</span><span>{{ suspendInfo.reason }}</span></div>
         <div class="op-kv-row"><span>挂起时间</span><span>{{ suspendInfo.at }}</span></div>
         <div class="op-kv-row"><span>预计恢复</span><span>{{ suspendInfo.resumeAt || '—' }}</span></div>
         <div class="op-kv-row"><span>操作人</span><span>{{ suspendInfo.operator }}</span></div>

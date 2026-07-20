@@ -489,7 +489,7 @@ export const DEFAULT_PROCESS_DRAFT = {
       scheduledAt: '2026-07-16 14:00:00',
       done: false,
       booker: '王坐席',
-      demand: '上门更换主板并现场验证跳歌是否复现',
+      demand: '预约联系用户',
     },
   ] as AppointmentRecord[],
   qualityIsStandard: true,

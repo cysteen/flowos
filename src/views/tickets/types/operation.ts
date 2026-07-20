@@ -78,9 +78,15 @@ export interface AppointmentRecord {
   done?: boolean;
   /** 预约人（入口前移后，需记录发起预约的坐席/人员） */
   booker?: string;
-  /** 预约需求（本次预约要做什么：上门维修 / 回访确认 …） */
+  /** 预约需求（枚举：预约联系用户 / 联系后端确认） */
   demand?: string;
 }
+
+/** 预约需求枚举 */
+export const APPOINTMENT_DEMAND_OPTIONS = [
+  '预约联系用户',
+  '联系后端确认',
+] as const;
 
 export interface ProcessFormDraft {
   problemCause: string;

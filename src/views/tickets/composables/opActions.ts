@@ -99,7 +99,14 @@ export const DELEGATE_GROUPS = [
 export const REVIEWERS = ['班组长 · 王经理', '质检审核 · 李审核', '上级主管 · 张总监'];
 export const FORCE_CLOSE_REASONS = ['客户失联', '客户主动放弃', '诉求超出处理能力', '重复/无效工单'];
 export const APPROVERS = ['班组长 · 王经理', '客服主管 · 张总监'];
-export const SUSPEND_REASONS = ['等待客户反馈', '等待产研修复', '等待退费到账', '等待售后寄回', '等待备件'];
+export const SUSPEND_REASONS = [
+  '故障',
+  '资源错误',
+  '资源缺失/更新',
+  '不可抗力因素',
+  '外部投诉/举报',
+  '其他',
+];
 export const ESCALATE_CHANNELS = ['二线技术支持组（推荐）', 'RDM 产研系统', 'TPD 技术问题单'];
 export const ESCALATE_GROUPS = ['硬件技术支持组', '软件技术支持组', '账号与权益组'];
 export const ESCALATE_MEMBERS = ['陈伟 (硬件, 负载 45%)', '林涛 (软件, 负载 60%)', '赵敏 (账号, 负载 38%)'];

@@ -60,11 +60,11 @@ function onSubmit() {
   >
     <div class="op-form">
       <div class="op-field">
-        <div class="op-label req">补充类型</div>
+        <div class="op-label req">补充分类</div>
         <ASelect
           v-model:value="supplementType"
           :options="typeOptions"
-          placeholder="请选择补充类型"
+          placeholder="请选择补充分类"
           style="width:100%"
           allow-clear
         />

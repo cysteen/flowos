@@ -78,12 +78,11 @@ export const CANCEL_REASON_OPTIONS = [
   '其他',
 ] as const;
 
-/** 坐席新建补充时的类型枚举 */
+/** 坐席新建补充时的分类枚举 */
 export const SUPPLEMENT_TYPE_OPTIONS = [
-  '问题描述补充',
-  '材料附件补充',
-  '客户反馈',
-  '处理进展',
+  '修改信息',
+  '补充信息',
+  '取消服务',
   '其他',
 ] as const;
 
