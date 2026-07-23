@@ -3,7 +3,6 @@ import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
 import { useUserStore } from '@/stores/user';
-import AppPagination from '@/components/AppPagination.vue';
 import TicketTabs from './components/TicketTabs.vue';
 import AiSuggestionBar from './components/AiSuggestionBar.vue';
 import AiSuggestionDrawer from './components/AiSuggestionDrawer.vue';
@@ -364,18 +363,12 @@ function onConfirmSaveFilter(name: string) {
             @click-no="onClickNo"
             @click-customer="onClickCustomer"
           />
+          <!-- 无分页：全量快照展示（PRD §8.2②），仅保留总数/已选统计 -->
           <div class="pager">
             <div class="pager-left">
               <span class="pager-total">共 {{ wb.total.value }} 条</span>
               <span v-if="wb.isMineTab.value || wb.isPoolTab.value" class="pager-selected">已选 {{ wb.selectedCount.value }} 项</span>
             </div>
-            <AppPagination
-              :total="wb.total.value"
-              :current="wb.current.value"
-              :page-size="wb.pageSize.value"
-              :show-total="false"
-              @change="wb.setPage"
-            />
           </div>
         </template>
       </div>

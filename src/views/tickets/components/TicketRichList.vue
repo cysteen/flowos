@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { CheckOutlined } from '@ant-design/icons-vue';
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import {
   columnLabel,
   TICKET_COLUMN_DEFS,
@@ -108,6 +108,15 @@ function slaFirstLine(t: Ticket): { text: string; color: string } {
   return { text: slaShort(t.slaText), color: SLA_COLOR[t.slaState] };
 }
 
+// 无分页全量列表：数据集变化（切 Tab / 筛选 / 重算快照）时滚回顶部
+const scrollEl = ref<HTMLElement | null>(null);
+watch(
+  () => props.rows,
+  () => {
+    if (scrollEl.value) scrollEl.value.scrollTop = 0;
+  },
+);
+
 const emit = defineEmits<{
   toggle: [id: string];
   toggleAll: [];
@@ -173,7 +182,7 @@ const gridTemplateColumns = computed(() => {
 
 <template>
   <div class="rich-list">
-    <div class="rich-list-scroll">
+    <div ref="scrollEl" class="rich-list-scroll">
       <div v-if="rows.length === 0" class="empty">该筛选下暂无工单</div>
 
       <div v-else class="table-grid" :style="{ gridTemplateColumns }">

@@ -74,9 +74,6 @@ export function useTicketWorkbench() {
   const aiBarVisible = ref(true);
   const dismissedAiIds = ref<Set<string>>(new Set());
 
-  const current = ref(1);
-  const pageSize = ref(10);
-
   const poolGroups = POOL_GROUPS;
 
   // 当前 Tab 数据域
@@ -144,11 +141,8 @@ export function useTicketWorkbench() {
 
   const total = computed(() => sorted.value.length);
 
-  // 分页
-  const paged = computed(() => {
-    const start = (current.value - 1) * pageSize.value;
-    return sorted.value.slice(start, start + pageSize.value);
-  });
+  // 无分页：全量拉取一次性展示（快照计算，PRD §8.2②）；条件变化由响应式全量重算
+  const paged = sorted;
 
   // 各 Tab 计数
   const tabCounts = computed<Record<TabKey, number>>(() => {
@@ -254,7 +248,6 @@ export function useTicketWorkbench() {
     if (activeTab.value === tab) return;
     activeTab.value = tab;
     activeChip.value = 'all';
-    current.value = 1;
     selectedIds.value = new Set();
     // 切 Tab 视为干净入口：清掉各 Tab 残留的结构化查询（与 setSearch('') 重置一致），
     // 避免保存筛选遗留条件在「全部」chip 下静默窄化列表
@@ -265,7 +258,6 @@ export function useTicketWorkbench() {
   function setChip(chip: ChipKey | string, onApplyOptionalVisible?: (v: Record<string, boolean>) => void) {
     const prevChip = activeChip.value;
     activeChip.value = chip;
-    current.value = 1;
     const sfId = parseSavedFilterChipKey(chip);
     if (sfId) {
       const sf = savedFilters.findByChipKey(chip);
@@ -283,17 +275,14 @@ export function useTicketWorkbench() {
   }
   function setMineQuery(q: MineQueryFilter) {
     mineQuery.value = q;
-    current.value = 1;
   }
   function setDoneQuery(q: MineQueryFilter) {
     doneQuery.value = q;
-    current.value = 1;
   }
   function setStructuredQueryInternal(q: MineQueryFilter) {
     if (activeTab.value === 'done') doneQuery.value = q;
     else if (activeTab.value === 'pool') poolQuery.value = q;
     else mineQuery.value = q;
-    current.value = 1;
   }
   function setStructuredQuery(q: MineQueryFilter) {
     if (isSavedFilterChipKey(activeChip.value)) {
@@ -313,7 +302,6 @@ export function useTicketWorkbench() {
     if (item.optionalVisible && onApplyOptionalVisible) {
       onApplyOptionalVisible(item.optionalVisible);
     }
-    current.value = 1;
     return item;
   }
   /** 删除用户自定义（保存筛选）chip；若当前选中则回退到「全部」并清除结构化查询 */
@@ -327,19 +315,14 @@ export function useTicketWorkbench() {
     }
     return removed;
   }
-  function applyMineQuery() {
-    current.value = 1;
-  }
-  function applyStructuredQuery() {
-    current.value = 1;
-  }
+  // 无分页：查询应用后由响应式全量重算（快照重排），无需翻页复位
+  function applyMineQuery() {}
+  function applyStructuredQuery() {}
   function setMineSortRule(rule: MineSortRule) {
     mineSortRule.value = rule;
-    current.value = 1;
   }
   function setSearch(v: string) {
     searchText.value = v;
-    current.value = 1;
   }
   function toggleSelect(id: string) {
     const next = new Set(selectedIds.value);
@@ -354,10 +337,6 @@ export function useTicketWorkbench() {
   }
   function clearSelection() {
     selectedIds.value = new Set();
-  }
-  function setPage(page: number, size: number) {
-    current.value = page;
-    pageSize.value = size;
   }
   function addTicket(t: Ticket) {
     all.value = [t, ...all.value];
@@ -391,12 +370,11 @@ export function useTicketWorkbench() {
   return {
     all, activeTab, activeChip, activeChips, poolGroups,
     searchText, mineQuery, doneQuery, poolQuery, structuredQuery, mineSortRule, selectedIds, aiBarVisible,
-    current, pageSize,
     tabRows, filtered, sorted, paged, total, tabCounts, chipCounts, drafts,
     selectedCount, allPageSelected, aiSuggestions, aiSummary, showAiBar,
     isDraftView, showAppointmentColumn, isMineTab, isDoneTab, isPoolTab, usesStructuredFilter,
     setTab, setChip, setMineQuery, setDoneQuery, setStructuredQuery, saveCurrentFilter, removeSavedFilterChip, applyMineQuery, applyStructuredQuery, setMineSortRule, setSearch, toggleSelect, toggleSelectAllOnPage, clearSelection,
-    setPage, addTicket, claimTicket, claimTickets, dismissAiSuggestion, ticketById,
+    addTicket, claimTicket, claimTickets, dismissAiSuggestion, ticketById,
     removeDraft: (id: string) => draftStore.remove(id),
   };
 }
