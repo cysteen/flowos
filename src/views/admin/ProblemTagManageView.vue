@@ -567,72 +567,41 @@ function onListStatusChange(row: ProblemTagRow, checked: boolean) {
   message.success(checked ? '已启用' : '已停用');
 }
 
-// —— 删除：支持按一级 / 二级 / 三级范围删除（范围限当前产品）——
-type DelScope = 'L3' | 'L2' | 'L1';
+// —— 删除：仅删除三级（叶子）分类；父级被删空时自动级联上收 ——
 const delOpen = ref(false);
 const delTarget = ref<ProblemTagRow | null>(null);
-const delScope = ref<DelScope>('L3');
-
-function rowsInDelScope(row: ProblemTagRow, scope: DelScope) {
-  return allRows.value.filter((r) => {
-    if (r.productKey !== row.productKey) return false;
-    if (scope === 'L3') return r.key === row.key;
-    if (scope === 'L2') return r.tagL1 === row.tagL1 && r.tagL2 === row.tagL2;
-    return r.tagL1 === row.tagL1;
-  });
-}
-
-const delScopeCounts = computed(() => {
-  const row = delTarget.value;
-  if (!row) return { L3: 0, L2: 0, L1: 0 };
-  return {
-    L3: 1,
-    L2: rowsInDelScope(row, 'L2').length,
-    L1: rowsInDelScope(row, 'L1').length,
-  };
-});
 
 /**
- * 级联上收：叶子删光后其父级分类自动一并移除。
- * 返回当前范围删除后会被删空、随之自动移除的父级分类名单（供弹窗提示与成功提示）。
+ * 级联上收：该三级删除后，同产品下其二级 / 一级若已无剩余分类，将自动一并删除。
+ * 返回将被删空移除的父级分类名单（供弹窗预告与成功提示）。
  */
 const delCascade = computed(() => {
   const row = delTarget.value;
   if (!row) return [];
-  const l2Left = rowsInDelScope(row, 'L2').length;
-  const l1Left = rowsInDelScope(row, 'L1').length;
+  const sib = allRows.value.filter((r) => r.productKey === row.productKey);
+  const l2Left = sib.filter((r) => r.tagL1 === row.tagL1 && r.tagL2 === row.tagL2).length;
+  const l1Left = sib.filter((r) => r.tagL1 === row.tagL1).length;
   const out: string[] = [];
-  if (delScope.value === 'L3') {
-    if (l2Left === 1) out.push(`二级分类「${row.tagL1} / ${row.tagL2}」`);
-    if (l1Left === 1) out.push(`一级分类「${row.tagL1}」`);
-  } else if (delScope.value === 'L2') {
-    if (l1Left === l2Left) out.push(`一级分类「${row.tagL1}」`);
-  }
+  if (l2Left === 1) out.push(`二级分类「${row.tagL1} / ${row.tagL2}」`);
+  if (l1Left === 1) out.push(`一级分类「${row.tagL1}」`);
   return out;
 });
 
 function delRow(row: ProblemTagRow) {
   delTarget.value = row;
-  delScope.value = 'L3';
   delOpen.value = true;
 }
 
 function confirmDelete() {
   const row = delTarget.value;
   if (!row) return;
-  const scope = delScope.value;
   const cascade = [...delCascade.value];
-  const targets = new Set(rowsInDelScope(row, scope).map((r) => r.key));
-  allRows.value = allRows.value.filter((r) => !targets.has(r.key));
-  checkedRowKeys.value = checkedRowKeys.value.filter((k) => !targets.has(k));
+  const i = allRows.value.findIndex((r) => r.key === row.key);
+  if (i >= 0) allRows.value.splice(i, 1);
+  checkedRowKeys.value = checkedRowKeys.value.filter((k) => k !== row.key);
   delOpen.value = false;
-  const scopeText = scope === 'L3'
-    ? `三级分类「${row.tagL3}」`
-    : scope === 'L2'
-      ? `二级分类「${row.tagL1} / ${row.tagL2}」及其下分类`
-      : `一级分类「${row.tagL1}」及其下分类`;
-  const cascadeText = cascade.length ? `；${cascade.join('、')}已删空，自动一并移除` : '';
-  message.success(`已删除${scopeText}，共 ${targets.size} 条${cascadeText}`);
+  const cascadeText = cascade.length ? `；${cascade.join('、')}已无剩余分类，自动一并删除` : '';
+  message.success(`已删除三级分类「${row.tagL3}」${cascadeText}`);
 }
 
 function downloadCsv(filename: string, header: string, lines: string[]) {
@@ -1138,26 +1107,12 @@ function doImport() {
       @ok="confirmDelete"
     >
       <template v-if="delTarget">
-        <p class="del-hint">
-          删除范围仅限「{{ delTarget.productName }}」下的分类；下级删光的上级分类将自动一并移除，不留空分类。删除后新建工单不可再选，历史工单归类保留。
-        </p>
-        <a-radio-group v-model:value="delScope" class="del-scope">
-          <a-radio value="L3" class="del-scope-item">
-            <span class="del-scope-main">仅删除三级分类「{{ delTarget.tagL3 }}」</span>
-            <span class="del-cnt">{{ delScopeCounts.L3 }} 条</span>
-          </a-radio>
-          <a-radio value="L2" class="del-scope-item">
-            <span class="del-scope-main">删除二级分类「{{ delTarget.tagL1 }} / {{ delTarget.tagL2 }}」及其下全部三级分类</span>
-            <span class="del-cnt">{{ delScopeCounts.L2 }} 条</span>
-          </a-radio>
-          <a-radio value="L1" class="del-scope-item">
-            <span class="del-scope-main">删除一级分类「{{ delTarget.tagL1 }}」及其下全部二、三级分类</span>
-            <span class="del-cnt">{{ delScopeCounts.L1 }} 条</span>
-          </a-radio>
-        </a-radio-group>
+        <p class="del-confirm">确定删除三级分类「{{ delTarget.tagL3 }}」？</p>
+        <div class="del-path">{{ delTarget.productName }} · {{ tagPath(delTarget) }}</div>
+        <p class="del-hint">删除后新建工单不可再选，历史工单归类保留。</p>
         <div v-if="delCascade.length" class="del-cascade">
           <span class="del-cascade-tag">自动上收</span>
-          <span class="del-cascade-text">删除后 {{ delCascade.join('、') }} 下将无剩余分类，随本次删除自动一并移除。</span>
+          <span class="del-cascade-text">该三级删除后，{{ delCascade.join('、') }} 下将无剩余分类，系统将自动一并删除，不保留空分类。</span>
         </div>
       </template>
     </a-modal>
@@ -1444,24 +1399,13 @@ function doImport() {
 .prod-path-sep { color: #cbd5e1; margin: 0 6px; }
 .cat-input-full { width: 100%; }
 .batch-team-hint { margin: 0 0 12px; color: #6b7280; font-size: 13px; line-height: 1.5; }
-.del-hint { margin: 0 0 12px; color: #6b7280; font-size: 13px; line-height: 1.6; }
-.del-scope { display: flex; flex-direction: column; gap: 10px; width: 100%; }
-.del-scope :deep(.del-scope-item) {
-  display: flex; align-items: flex-start; margin-right: 0;
-  padding: 8px 10px; border: 1px solid #eef0f2; border-radius: 8px;
+.del-confirm { margin: 0 0 8px; font-size: 14px; font-weight: 600; color: #111827; line-height: 1.5; }
+.del-path {
+  margin: 0 0 8px; padding: 6px 10px; border-radius: 6px;
+  background: #f9fafb; border: 1px solid #eef0f2;
+  font-size: 12px; color: #6b7280; line-height: 1.5;
 }
-.del-scope :deep(.del-scope-item.ant-radio-wrapper-checked) {
-  border-color: #fecaca; background: #fef7f7;
-}
-.del-scope :deep(.del-scope-item > span:last-child) {
-  flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px;
-}
-.del-scope-main { flex: 1; min-width: 0; font-size: 13px; color: #374151; line-height: 1.5; }
-.del-cnt {
-  flex: none; min-width: 34px; padding: 0 8px; height: 20px; border-radius: 10px;
-  font-size: 12px; font-weight: 600; line-height: 20px; text-align: center;
-  color: #dc2626; background: #fef2f2;
-}
+.del-hint { margin: 0; color: #9ca3af; font-size: 12px; line-height: 1.6; }
 .del-cascade {
   display: flex; align-items: flex-start; gap: 8px;
   margin-top: 12px; padding: 8px 10px; border-radius: 8px;
