@@ -65,7 +65,7 @@ export type NodeStatus =
   | '已升级·二线'
   | '已挂起·待客户'
   | '待审核';
-/** SLA 倒计时态：充足/临期/超时/已停表(挂起) */
+/** SLA 倒计时态：充足/临期/超时/暂停(挂起冻结) */
 export type SlaState = 'ok' | 'soon' | 'overdue' | 'paused';
 
 export interface Ticket {
@@ -106,7 +106,7 @@ export interface Ticket {
   nodeStep: number;
   nodeTotal: number;
   priority: Priority;
-  /** 倒计时文本，如 "00:42:10" 或 "已停表" */
+  /** 倒计时文本，如 "00:42:10" 或 "已暂停" */
   slaText: string;
   /** 下标，如 "距超时" / "挂起中" / "已超时" / "充足" */
   slaSub: string;

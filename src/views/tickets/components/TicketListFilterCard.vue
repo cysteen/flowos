@@ -18,7 +18,7 @@ const SLA_OPTIONS = [
   { value: 'ok', label: '正常' },
   { value: 'soon', label: '临期' },
   { value: 'overdue', label: '超时' },
-  { value: 'paused', label: '已停表' },
+  { value: 'paused', label: '挂起中' },
 ];
 const CHANNEL_OPTIONS = ['在线客服', '电话', '邮件', '小程序', 'APP'];
 const ASSIGNEE_OPTIONS = ['王坐席', '陈坐席', '林坐席', '周二线', 'pool'];

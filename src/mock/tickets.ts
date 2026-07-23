@@ -47,7 +47,7 @@ const BASE_TICKETS: Ticket[] = [
     title: '等待客户补充材料', smartMarks: [],
     customer: '李铭', vip: false, product: '企业版',
     nodeStatus: '已挂起·待客户', nodeStep: 2, nodeTotal: 5, priority: 'P1',
-    slaText: '已停表', slaSub: '挂起中', slaState: 'paused', slaMinutes: 9999,
+    slaText: '已暂停', slaSub: '挂起中', slaState: 'paused', slaMinutes: 9999,
     assignee: '王坐席', tab: 'mine',
     customerPhone: '13600001111', productCategory: '企业服务',
     createdAt: '2026-06-09 15:20', updatedAt: '2026-06-10 10:00',

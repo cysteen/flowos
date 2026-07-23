@@ -210,9 +210,16 @@ export function statusLabel(state: TicketOpState): string {
   return map[state];
 }
 
-/** 计时终止（结案/关闭/取消）：所有活跃钟置「停表」，永久停止、不可重启 */
-function terminateClocks(detail: TicketDetailMeta): void {
+/**
+ * 计时终止（结案/关闭/取消）：所有活跃钟置「停表」，永久停止、不可重启。
+ * 停表结果三分（PRD §8.1）：voidStop=true → 中止(灰，取消等)；
+ * 否则按剩余判 达标(≥0·绿✓)/未达标(<0·红)。已停表钟保留原结果。
+ */
+function terminateClocks(detail: TicketDetailMeta, voidStop = false): void {
   detail.slaClocks.forEach((c) => {
+    if (c.phase !== 'stopped') {
+      c.stopOutcome = voidStop ? 'void' : c.remainSec >= 0 ? 'met' : 'breached';
+    }
     c.phase = 'stopped';
     c.reviewSubmitAtMs = undefined; // 终态：清理待审核标记
   });
@@ -477,7 +484,7 @@ export function applyOpAction(
 
     case '取消工单': {
       detail.status = '已取消';
-      terminateClocks(detail);
+      terminateClocks(detail, true); // 业务中止：停表结果=中止(灰)，不计达标/未达标
       pushEntry(timeline, {
         category: 'node', action: 'transfer', who: operator, role: operatorRole,
         how: '取消工单', what: payload.reason || '工单已取消。',

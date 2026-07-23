@@ -82,10 +82,10 @@ function colClass(key: string): string {
 }
 
 // ---- SLA 列：两行文本「解决：超/剩」「首响：超/剩」（PRD §8.2）----
-/** 倒计时短文案：'03:20:00'→'剩 03:20'；'已超 01:12'→'超 01:12'；'已停表' 原样 */
+/** 倒计时短文案：'03:20:00'→'剩 03:20'；'已超 01:12'→'超 01:12'；'已暂停' 等非倒计时文案原样 */
 function slaShort(text: string): string {
   if (text.startsWith('已超')) return text.replace('已超', '超');
-  if (text === '已停表') return text;
+  if (!/\d/.test(text)) return text;
   return `剩 ${text.replace(/^(\d{2}:\d{2}):\d{2}$/, '$1')}`;
 }
 function isResponded(t: Ticket): boolean {

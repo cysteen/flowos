@@ -61,6 +61,12 @@ export interface SlaClock {
    * （**审批/调研时间计入 SLA**，不因走审核而免除这段耗时）。
    */
   reviewSubmitAtMs?: number;
+  /**
+   * 停表结果（仅 phase=stopped）：met=达标(时限内完成·绿✓) /
+   * breached=未达标(超时后终止·红) / void=中止(取消等·灰)。
+   * 缺省时按剩余秒推断（≥0 达标、<0 未达标）。
+   */
+  stopOutcome?: 'met' | 'breached' | 'void';
 }
 
 export interface TicketDetailMeta {

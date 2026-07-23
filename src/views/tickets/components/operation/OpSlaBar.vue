@@ -107,12 +107,15 @@ function buildDial(c: SlaClock, i: number): Dial {
   else if (rem <= c.warnSec) vis = 'warn';
   else vis = 'normal';
 
-  // 首响钟停表且剩余非负 = 时限内达标（绿）；区别于终态停表（灰）——与工作台列表「首响：已达标」一致
-  const met = c.kind === 'first' && vis === 'stopped' && rem >= 0;
+  // 终态停表按结果三分（对齐 Zendesk Achieved/Breached、Jira Met/Breached，PRD §8.1）：
+  // met=达标(时限内完成·绿✓) / breached=未达标(超时后终止·红) / void=中止(取消等·灰)
+  const outcome =
+    vis === 'stopped' ? c.stopOutcome ?? (rem >= 0 ? 'met' : 'breached') : null;
 
   let remainText: string;
-  if (met) remainText = '已达标';
-  else if (vis === 'stopped') remainText = '已停表';
+  if (outcome === 'met') remainText = '已达标';
+  else if (outcome === 'breached') remainText = '未达标';
+  else if (outcome === 'void') remainText = '已停表';
   else if (vis === 'paused') remainText = fmtShort(rem, rem < 0); // 暂停显示冻结剩余，暂停态由表盘徽标标识
   else remainText = fmtShort(rem, vis === 'over');
 
@@ -120,18 +123,25 @@ function buildDial(c: SlaClock, i: number): Dial {
   const sweep = (pct / 100) * 360;
 
   let title: string;
-  if (met) title = `${c.label}：已达标（时限内完成首次响应，计时停表）`;
+  if (outcome === 'met') title = `${c.label}：已达标（时限内完成，计时停表）`;
+  else if (outcome === 'breached') title = `${c.label}：未达标（超 ${fmtLong(rem)} 后终止，计时停表）`;
+  else if (outcome === 'void') title = `${c.label}：已停表（业务中止，计时终止）`;
   else if (vis === 'paused') title = `${c.label}：SLA 已暂停（挂起，剩 ${fmtLong(rem)}，可恢复续算）`;
-  else if (vis === 'stopped') title = `${c.label}：SLA 已停表（计时终止，不可重启）`;
   else if (vis === 'over') title = `${c.label}：截止 ${c.dueBy}，已超时 ${fmtLong(rem)}`;
   else if (vis === 'warn') title = `${c.label}：截止 ${c.dueBy}，临期，距超时剩 ${fmtLong(rem)}`;
   else title = `${c.label}：截止 ${c.dueBy}，距超时剩 ${fmtLong(rem)}`;
 
+  const outcomeColor =
+    outcome === 'met' ? COLORS.normal : outcome === 'breached' ? COLORS.over : null;
+
   return {
     clock: c,
     vis,
-    color: met ? COLORS.normal : COLORS[vis],
-    stroke: met ? DIAL_STROKE.normal : DIAL_STROKE[vis],
+    color: outcomeColor ?? COLORS[vis],
+    stroke:
+      outcome === 'met' ? DIAL_STROKE.normal
+      : outcome === 'breached' ? DIAL_STROKE.over
+      : DIAL_STROKE[vis],
     remainText,
     pct,
     sweep,

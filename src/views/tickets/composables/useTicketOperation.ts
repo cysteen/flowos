@@ -26,7 +26,7 @@ function parseHms(text: string): number | null {
   return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3] ?? 0);
 }
 
-/** 列表摘要剩余秒（'已超 HH:MM' → 负值；'已停表'/'—' → null） */
+/** 列表摘要剩余秒（'已超 HH:MM' → 负值；'已暂停'/'—' → null） */
 function summaryRemainSec(t: Ticket): number | null {
   if (t.slaText.startsWith('已超')) {
     const s = parseHms(t.slaText.replace('已超', ''));
@@ -76,9 +76,11 @@ function buildSlaClocks(t: Ticket): SlaClock[] {
   const summary = summaryRemainSec(t);
 
   if (t.slaText === '—') {
-    // 已关闭：双钟停表（首响 rem≥0 → 达标态）
+    // 已关闭：双钟达标停表（绿✓）
     solve.phase = 'stopped';
+    solve.stopOutcome = 'met';
     first.phase = 'stopped';
+    first.stopOutcome = 'met';
     first.remainSec = 300;
   } else if (t.slaState === 'paused') {
     // 挂起：解决钟冻结（剩余保留、可恢复续算）；首响已达标停表
@@ -86,11 +88,13 @@ function buildSlaClocks(t: Ticket): SlaClock[] {
     solve.remainSec = 2 * 3600;
     solve.totalSec = 8 * 3600;
     first.phase = 'stopped';
+    first.stopOutcome = 'met';
     first.remainSec = 300;
   } else if (responded) {
     // 已首响：扁平摘要即解决钟
     if (summary != null) tuneClock(solve, summary, t.slaState);
     first.phase = 'stopped';
+    first.stopOutcome = 'met';
     first.remainSec = 300;
   } else {
     // 未首响：扁平摘要即首响钟（最急钟）；解决钟走独立字段

@@ -69,7 +69,7 @@ const slaStates: { value: '' | SlaState; label: string }[] = [
   { value: 'overdue', label: '已超时' },
   { value: 'soon', label: '临期' },
   { value: 'ok', label: '充足' },
-  { value: 'paused', label: '已停表' },
+  { value: 'paused', label: '挂起中' },
 ];
 
 const productNameOptions = computed(() =>
