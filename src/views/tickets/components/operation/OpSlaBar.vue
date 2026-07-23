@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { reactive, computed, watch, onMounted, onUnmounted } from 'vue';
 import {
   AimOutlined,
   MessageOutlined,
@@ -271,15 +271,6 @@ const relationData = computed<{ rows: RelationRow[]; nowLeft: number }>(() => {
   return { rows, nowLeft };
 });
 
-// 「查看全部时效」弹窗：全部钟（含节点/回访）明细
-const allOpen = ref(false);
-const allDials = computed<Dial[]>(() => {
-  const ws = wholeStartMs();
-  return props.detail.slaClocks
-    .map((c, i) => ({ c, i }))
-    .sort((a, b) => KIND_ORDER[a.c.kind] - KIND_ORDER[b.c.kind])
-    .map(({ c, i }) => buildDial(c, i, ws));
-});
 </script>
 
 <template>
@@ -356,29 +347,9 @@ const allDials = computed<Dial[]>(() => {
             </div>
             <span class="pop-row-val" :style="{ color: r.color }">{{ r.value }}</span>
           </div>
-          <span class="pop-foot" @click="allOpen = true">点击查看全部时效 →</span>
         </div>
       </div>
     </div>
-
-    <!-- 全部时效弹窗 -->
-    <a-modal v-model:open="allOpen" title="全部时效" :footer="null" :width="480">
-      <div class="all-list">
-        <div v-for="d in allDials" :key="d.clock.label" class="all-row">
-          <div class="all-row-l">
-            <component :is="KIND_ICON[d.clock.kind]" :style="{ color: d.color, fontSize: '14px' }" />
-            <div class="all-row-meta">
-              <span class="all-name">{{ d.clock.label }}</span>
-              <span class="all-range">起算 {{ d.startText }} → 截止 {{ d.clock.dueBy }}</span>
-            </div>
-          </div>
-          <div class="all-row-r">
-            <span class="all-remain" :style="{ color: d.color }">{{ d.bigText }}</span>
-            <span class="pop-badge" :style="{ color: d.color, background: `${d.color}1F` }">{{ d.stateLabel }}</span>
-          </div>
-        </div>
-      </div>
-    </a-modal>
   </div>
 </template>
 
@@ -519,63 +490,6 @@ const allDials = computed<Dial[]>(() => {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-}
-.pop-foot {
-  font-size: 10px;
-  font-weight: 600;
-  color: #2563eb;
-  cursor: pointer;
-}
-.pop-foot:hover {
-  text-decoration: underline;
-}
-
-/* ---- 全部时效弹窗 ---- */
-.all-list {
-  display: flex;
-  flex-direction: column;
-}
-.all-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 4px;
-}
-.all-row + .all-row {
-  border-top: 1px solid #f1f2f4;
-}
-.all-row-l {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-.all-row-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.all-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: #374151;
-}
-.all-range {
-  font-size: 11px;
-  color: #9ca3af;
-}
-.all-row-r {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: none;
-}
-.all-remain {
-  font-size: 14px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
 }
 .dial {
   position: relative;
