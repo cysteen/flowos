@@ -91,16 +91,21 @@ function slaShort(text: string): string {
 function isResponded(t: Ticket): boolean {
   return t.responded ?? t.nodeStatus !== '待受理';
 }
-/** 解决行：已首响后扁平摘要即解决钟；未首响时解决钟走独立字段（摘要为首响钟） */
+const BREACHED_LINE = { text: '未达标', color: SLA_COLOR.overdue };
+const MET_LINE = { text: '已达标', color: SLA_COLOR.ok };
+
+/** 解决行状态全枚举：剩(正常绿/临期橙)/超(红·在计)/已暂停(灰·挂起)/已达标(绿·正常关闭)/未达标(红·超时后关闭) */
 function slaResolveLine(t: Ticket): { text: string; color: string } {
+  if (t.slaText === '—') return t.solveBreached ? BREACHED_LINE : MET_LINE; // 已关闭：终态按结果
   if (!isResponded(t) && t.resolveSlaText) {
     return { text: slaShort(t.resolveSlaText), color: SLA_COLOR[t.resolveSlaState ?? 'ok'] };
   }
   return { text: slaShort(t.slaText), color: SLA_COLOR[t.slaState] };
 }
-/** 首响行：已首响＝达标停表；未首响时摘要（最急钟）即首响钟 */
+/** 首响行状态全枚举：剩(正常绿/临期橙)/超(红·未响仍在计)/已暂停(灰·挂起且未响)/已达标(绿)/未达标(红·超时后才响) */
 function slaFirstLine(t: Ticket): { text: string; color: string } {
-  if (isResponded(t)) return { text: '已达标', color: SLA_COLOR.ok };
+  if (isResponded(t)) return t.firstRespBreached ? BREACHED_LINE : MET_LINE;
+  if (t.slaState === 'paused') return { text: '已暂停', color: SLA_COLOR.paused };
   return { text: slaShort(t.slaText), color: SLA_COLOR[t.slaState] };
 }
 
@@ -325,11 +330,8 @@ const gridTemplateColumns = computed(() => {
         </div>
 
         <div v-else-if="colKey === 'sla'" class="col-sla cell-sla">
-          <span v-if="t.slaText === '—'" class="sla-closed">—</span>
-          <template v-else>
-            <span class="sla-line" :style="{ color: slaResolveLine(t).color }">解决：{{ slaResolveLine(t).text }}</span>
-            <span class="sla-line" :style="{ color: slaFirstLine(t).color }">首响：{{ slaFirstLine(t).text }}</span>
-          </template>
+          <span class="sla-line" :style="{ color: slaResolveLine(t).color }">解决：{{ slaResolveLine(t).text }}</span>
+          <span class="sla-line" :style="{ color: slaFirstLine(t).color }">首响：{{ slaFirstLine(t).text }}</span>
         </div>
 
         <div v-else-if="colKey === 'assignee'" class="col-assignee cell-assignee">
@@ -634,7 +636,6 @@ const gridTemplateColumns = computed(() => {
 /* SLA */
 .cell-sla { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
 .sla-line { font-size: 12px; font-weight: 600; line-height: 18px; white-space: nowrap; }
-.sla-closed { font-size: 12px; color: #9ca3af; }
 
 .cell-appointment { display: flex; align-items: center; }
 .appt-pill {

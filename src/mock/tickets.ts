@@ -108,7 +108,7 @@ const BASE_TICKETS: Ticket[] = [
     assignee: '王坐席', tab: 'mine',
     customerPhone: '13566667777', sn: 'SN-X1-20260188', productCategory: '智能硬件',
     createdAt: '2026-06-10 10:20', updatedAt: '2026-06-10 15:50',
-    responded: true, dunningUnread: true, hasDunning: true,
+    responded: true, firstRespBreached: true, dunningUnread: true, hasDunning: true,
   },
 
   // ---- 已办 (done) 6 ----
@@ -170,6 +170,7 @@ const BASE_TICKETS: Ticket[] = [
     customer: '谢婷', vip: true, customerTags: ['老师'], product: '会员服务',
     nodeStatus: '处理中·一线', nodeStep: 5, nodeTotal: 5, priority: 'P1',
     slaText: '—', slaSub: '已关闭', slaState: 'ok', slaMinutes: 9999,
+    solveBreached: true,
     assignee: '林坐席', tab: 'done', handledByMe: true,
     myTransferAction: true, myCloseAction: true,
     customerPhone: '18655556666', productCategory: '会员权益',
@@ -191,7 +192,7 @@ const BASE_TICKETS: Ticket[] = [
     title: '扫地机器人充电故障', smartMarks: [],
     customer: '罗成', vip: false, customerTags: ['校长'], product: '扫地机器人 R2',
     nodeStatus: '待受理', nodeStep: 1, nodeTotal: 5, priority: 'P1',
-    slaText: '00:50:00', slaSub: '距超时', slaState: 'soon', slaMinutes: 50,
+    slaText: '已超 00:15', slaSub: '已超时', slaState: 'overdue', slaMinutes: -15,
     resolveSlaText: '04:00:00', resolveSlaState: 'ok',
     assignee: null, tab: 'pool', groupId: 'line2', hasDunning: true,
   },

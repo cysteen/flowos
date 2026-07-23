@@ -121,6 +121,10 @@ export interface Ticket {
   resolveSlaText?: string;
   /** 未首响时：解决钟状态 */
   resolveSlaState?: SlaState;
+  /** 首响超时后才完成 → 首响终态「未达标」（红）；缺省＝时限内达标（绿） */
+  firstRespBreached?: boolean;
+  /** 仅已关闭单：解决超时后才关闭 → 解决终态「未达标」（红）；缺省＝达标（绿） */
+  solveBreached?: boolean;
   /** 是否存在预约记录 */
   hasAppointment?: boolean;
   /** 预约倒计时文案 */

@@ -75,27 +75,33 @@ function buildSlaClocks(t: Ticket): SlaClock[] {
   };
   const summary = summaryRemainSec(t);
 
-  if (t.slaText === '—') {
-    // 已关闭：双钟达标停表（绿✓）
-    solve.phase = 'stopped';
-    solve.stopOutcome = 'met';
+  // 首响终态：达标（绿）或超时后才响的未达标（红）
+  const stopFirst = () => {
     first.phase = 'stopped';
-    first.stopOutcome = 'met';
-    first.remainSec = 300;
+    first.stopOutcome = t.firstRespBreached ? 'breached' : 'met';
+    first.remainSec = t.firstRespBreached ? -300 : 300;
+  };
+
+  if (t.slaText === '—') {
+    // 已关闭：双钟终态，按结果亮色（达标绿 / 未达标红）
+    solve.phase = 'stopped';
+    solve.stopOutcome = t.solveBreached ? 'breached' : 'met';
+    if (t.solveBreached) solve.remainSec = -1800;
+    stopFirst();
   } else if (t.slaState === 'paused') {
-    // 挂起：解决钟冻结（剩余保留、可恢复续算）；首响已达标停表
+    // 挂起：在走的钟冻结（剩余保留、可恢复续算）
     solve.phase = 'paused';
     solve.remainSec = 2 * 3600;
     solve.totalSec = 8 * 3600;
-    first.phase = 'stopped';
-    first.stopOutcome = 'met';
-    first.remainSec = 300;
+    if (responded) stopFirst();
+    else {
+      first.phase = 'paused'; // 挂起且未首响：首响钟同样冻结
+      first.remainSec = 10 * 60;
+    }
   } else if (responded) {
     // 已首响：扁平摘要即解决钟
     if (summary != null) tuneClock(solve, summary, t.slaState);
-    first.phase = 'stopped';
-    first.stopOutcome = 'met';
-    first.remainSec = 300;
+    stopFirst();
   } else {
     // 未首响：扁平摘要即首响钟（最急钟）；解决钟走独立字段
     if (summary != null) tuneClock(first, summary, t.slaState);
