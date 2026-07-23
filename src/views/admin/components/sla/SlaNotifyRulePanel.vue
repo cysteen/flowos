@@ -15,7 +15,8 @@ const props = withDefaults(
 );
 
 const targets = defineModel<string[]>('targets', { required: true });
-const channels = defineModel<string[]>('channels', { required: true });
+/** 通知方式仅单选 */
+const channel = defineModel<string>('channel', { required: true });
 const template = defineModel<string>('template', { required: true });
 
 const maxTagCount = computed(() =>
@@ -79,15 +80,12 @@ function maxTagPlaceholder(omitted: unknown[]) {
         <span>通知方式</span>
       </div>
       <a-select
-        v-model:value="channels"
-        mode="multiple"
+        v-model:value="channel"
         size="small"
-        :max-tag-count="maxTagCount"
-        :tag-render="tagRender"
-        :max-tag-placeholder="maxTagPlaceholder"
         placeholder="选择渠道"
         :options="channelOpts"
-        class="npf-control"
+        class="npf-control npf-control--single"
+        allow-clear
       />
     </div>
     <div class="notify-panel-field notify-panel-field--template">

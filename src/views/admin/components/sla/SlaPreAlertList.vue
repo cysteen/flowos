@@ -6,7 +6,8 @@ export interface PreAlertRow {
   id: number;
   minutesBefore: number;
   targets: string[];
-  channels: string[];
+  /** 通知方式（单选） */
+  channel: string;
   template: string;
 }
 
@@ -42,7 +43,6 @@ const emit = defineEmits<{ remove: [id: number] }>();
           size="small"
           danger
           class="pac-del"
-          :disabled="items.length <= 1"
           @click="emit('remove', row.id)"
         >
           <template #icon><DeleteOutlined /></template>
@@ -53,7 +53,7 @@ const emit = defineEmits<{ remove: [id: number] }>();
       <div class="pac-body">
         <SlaNotifyRulePanel
           v-model:targets="row.targets"
-          v-model:channels="row.channels"
+          v-model:channel="row.channel"
           v-model:template="row.template"
           layout="rows"
           :target-opts="targetOpts"
@@ -126,8 +126,7 @@ const emit = defineEmits<{ remove: [id: number] }>();
   opacity: 0.65;
   font-size: 12px;
 }
-.pac-del:hover:not(:disabled) { opacity: 1; }
-.pac-del:disabled { opacity: 0.25; cursor: not-allowed; }
+.pac-del:hover { opacity: 1; }
 
 .pac-body { padding: 14px; min-width: 0; }
 .pac-body :deep(.notify-panel) {

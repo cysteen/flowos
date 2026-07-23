@@ -44,14 +44,14 @@ interface PreAlertRow {
   id: number;
   minutesBefore: number;
   targets: string[];
-  channels: string[];
+  channel: string;
   template: string;
 }
 
 interface NotifyRuleRow {
   id: number;
   targets: string[];
-  channels: string[];
+  channel: string;
   template: string;
   /** 超时后第 N 分钟提醒一次（0=刚超时；非周期） */
   minutesAfter?: number;
@@ -76,8 +76,8 @@ interface ClockDim {
   node?: string;
 }
 
-const CHANNELS = ['系统弹窗', 'i讯飞', '站内信', '短信', '邮件'];
-const TARGETS = ['处理人', '班组长', '技术顾问', '客服主管'];
+const CHANNELS = ['i讯飞', '短信', '邮件'];
+const TARGETS = ['处理人', '班组长'];
 const COUNT_UNIT_OPTS: DueCountUnit[] = ['分钟', '小时'];
 const NODE_CLOCK_NAMES = ['工单处理', '技术支持'] as const;
 
@@ -111,16 +111,16 @@ function defClockConfig(dim: ClockDim): ClockAlertConfig {
     dueJudge: { mode: 'percent', value: 25, unit: '分钟' },
     preAlertEnabled: true,
     preAlerts: [
-      { id: 1, minutesBefore: 20, targets: ['处理人', '班组长'], channels: ['系统弹窗', 'i讯飞'], template: preTpl },
-      { id: 2, minutesBefore: 10, targets: ['处理人', '班组长'], channels: ['系统弹窗', 'i讯飞'], template: preTpl },
+      { id: 1, minutesBefore: 20, targets: ['处理人', '班组长'], channel: 'i讯飞', template: preTpl },
+      { id: 2, minutesBefore: 10, targets: ['处理人', '班组长'], channel: 'i讯飞', template: preTpl },
     ],
     dueAlertEnabled: true,
     dueAlerts: [
-      { id: 1, targets: ['处理人', '班组长'], channels: ['系统弹窗', 'i讯飞'], template: dueTpl },
+      { id: 1, targets: ['处理人', '班组长'], channel: 'i讯飞', template: dueTpl },
     ],
     timeoutEnabled: true,
     timeoutAlerts: [
-      { id: 1, targets: ['班组长'], channels: ['系统弹窗', 'i讯飞', '短信'], template: timeoutTpl(dim), minutesAfter: 0 },
+      { id: 1, targets: ['班组长'], channel: '短信', template: timeoutTpl(dim), minutesAfter: 0 },
     ],
   };
 }
@@ -155,7 +155,7 @@ function addPreAlert() {
     id: Date.now(),
     minutesBefore: 5,
     targets: ['处理人', '班组长'],
-    channels: ['系统弹窗'],
+    channel: 'i讯飞',
     template: currentTemplates.value[0],
   });
 }
@@ -170,7 +170,7 @@ function addDueAlert() {
   cfg.dueAlerts.push({
     id: Date.now(),
     targets: ['处理人', '班组长'],
-    channels: ['系统弹窗'],
+    channel: 'i讯飞',
     template: dueTpl,
   });
 }
@@ -185,7 +185,7 @@ function addTimeoutAlert() {
   cfg.timeoutAlerts.push({
     id: Date.now(),
     targets: ['班组长'],
-    channels: ['系统弹窗', 'i讯飞'],
+    channel: 'i讯飞',
     template: tpl,
     minutesAfter: 30,
   });
@@ -573,12 +573,14 @@ function save() { message.success('已保存并生效'); }
                   </div>
                   <div v-if="currentClock.preAlertEnabled" class="step-card-body step-card-body--flush">
                     <SlaPreAlertList
+                      v-if="currentClock.preAlerts.length"
                       v-model:items="currentClock.preAlerts"
                       :target-opts="targetOpts"
                       :channel-opts="channelOpts"
                       :template-opts="preTemplateOpts"
                       @remove="delPreAlert"
                     />
+                    <div v-else class="step-card-body step-card-body--muted">暂无提醒，点「添加提醒」新增</div>
                   </div>
                   <div v-else class="step-card-body step-card-body--muted">
                     已关闭临期前提醒，到期前不发送通知
@@ -607,6 +609,7 @@ function save() { message.success('已保存并生效'); }
                   </div>
                   <div v-if="currentClock.dueAlertEnabled" class="step-card-body step-card-body--flush">
                     <SlaNotifyRuleList
+                      v-if="currentClock.dueAlerts.length"
                       v-model:items="currentClock.dueAlerts"
                       tag-prefix="预警"
                       summary="临期时通知"
@@ -616,6 +619,7 @@ function save() { message.success('已保存并生效'); }
                       :template-opts="dueTemplateOpts"
                       @remove="delDueAlert"
                     />
+                    <div v-else class="step-card-body step-card-body--muted">暂无预警，点「添加预警」新增</div>
                   </div>
                   <div v-else class="step-card-body step-card-body--muted">
                     已关闭临期预警，到达临期判定时不发送通知
@@ -644,6 +648,7 @@ function save() { message.success('已保存并生效'); }
                   </div>
                   <div v-if="currentClock.timeoutEnabled" class="step-card-body step-card-body--flush">
                     <SlaNotifyRuleList
+                      v-if="currentClock.timeoutAlerts.length"
                       v-model:items="currentClock.timeoutAlerts"
                       tag-prefix="升级"
                       summary="超时通知"
@@ -654,6 +659,7 @@ function save() { message.success('已保存并生效'); }
                       :template-opts="timeoutTemplateOpts"
                       @remove="delTimeoutAlert"
                     />
+                    <div v-else class="step-card-body step-card-body--muted">暂无升级规则，点「添加升级」新增</div>
                   </div>
                   <div v-else class="step-card-body step-card-body--muted">
                     已关闭超时升级，超时后仅标记 SLA 违约，不发送通知

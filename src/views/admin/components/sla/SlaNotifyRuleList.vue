@@ -5,7 +5,8 @@ import SlaNotifyRulePanel from './SlaNotifyRulePanel.vue';
 export interface NotifyRuleRow {
   id: number;
   targets: string[];
-  channels: string[];
+  /** 通知方式（单选） */
+  channel: string;
   template: string;
   /** 超时后第 N 分钟提醒一次（仅超时升级；0=刚超时即提醒；与临期前「到期前 N 分钟」同构，非周期） */
   minutesAfter?: number;
@@ -57,7 +58,6 @@ const emit = defineEmits<{ remove: [id: number] }>();
           size="small"
           danger
           class="nrc-del"
-          :disabled="items.length <= 1"
           @click="emit('remove', row.id)"
         >
           <template #icon><DeleteOutlined /></template>
@@ -68,7 +68,7 @@ const emit = defineEmits<{ remove: [id: number] }>();
       <div class="nrc-body">
         <SlaNotifyRulePanel
           v-model:targets="row.targets"
-          v-model:channels="row.channels"
+          v-model:channel="row.channel"
           v-model:template="row.template"
           layout="rows"
           :target-opts="targetOpts"
@@ -170,8 +170,7 @@ const emit = defineEmits<{ remove: [id: number] }>();
   opacity: 0.65;
   font-size: 12px;
 }
-.nrc-del:hover:not(:disabled) { opacity: 1; }
-.nrc-del:disabled { opacity: 0.25; cursor: not-allowed; }
+.nrc-del:hover { opacity: 1; }
 
 .nrc-body { padding: 14px; min-width: 0; }
 

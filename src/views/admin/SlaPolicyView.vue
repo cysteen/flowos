@@ -528,8 +528,24 @@ function save() {
   form.updatedAt = '2026-06-29 18:00';
   if (editing.value) {
     if (editing.value.isDefault) {
-      // 兜底：仅更新承诺内容，位置恒置底、不移动
-      Object.assign(editing.value, JSON.parse(JSON.stringify(form)), { isDefault: true, priority: 99 });
+      // 兜底：仅允许改 SLA 承诺；基本信息与适用范围强制沿用原值
+      const locked = editing.value;
+      Object.assign(
+        editing.value,
+        JSON.parse(JSON.stringify(form)),
+        {
+          isDefault: true,
+          priority: 99,
+          status: '启用',
+          name: locked.name,
+          remark: locked.remark,
+          types: [...locked.types],
+          channels: [...locked.channels],
+          levels: [...locked.levels],
+          products: [...locked.products],
+          templates: [...(locked.templates ?? [SCOPE_ALL])],
+        },
+      );
     } else {
       // 非兜底：更新内容 + 移动到指定生效优先级位置
       const target = Math.max(1, Math.min(form.priority || 1, nonDefaultCount()));
@@ -1135,6 +1151,8 @@ function fmtClock(v: number | null, u: Unit): string { return v == null ? '不�
   color: #374151;
 }
 .sec { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px 20px; scroll-margin-top: 80px; }
+.sec--locked { background: #fafafa; border-color: #e5e7eb; }
+.sec--locked .kv-form { opacity: 0.92; }
 .sec-h { font-size: 13px; font-weight: 600; color: #111827; margin-bottom: 14px; padding-left: 10px; border-left: 3px solid #1a6fff; line-height: 1.4; }
 .sec-sub { font-size: 12px; font-weight: 400; color: #9ca3af; margin-left: 8px; }
 .kv-form { display: flex; flex-direction: column; gap: 10px; }
