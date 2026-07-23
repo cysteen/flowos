@@ -2,7 +2,7 @@ import { ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
 import { TICKET_DETAIL, TIMELINE } from '@/mock/ticketDetail';
-import type { TicketDetailMeta, ChildTicket } from '@/mock/ticketDetail';
+import type { TicketDetailMeta, ChildTicket, SlaClock } from '@/mock/ticketDetail';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 import type { Ticket, Channel, TicketType, Priority } from '@/views/tickets/types/ticket';
 import { TICKETS } from '@/mock/tickets';
@@ -17,11 +17,99 @@ import {
   type OpActionPayload, type SuspendInfo, type TicketOpState,
 } from './opActions';
 
+// ---- 列表行 SLA 摘要 → 操作页时钟（保证工作台 ↔ 操作页状态一致，PRD §8.1/§8.2）----
+
+/** 解析 'HH:MM:SS' / 'HH:MM' 为秒；解析失败返回 null */
+function parseHms(text: string): number | null {
+  const m = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(text.trim());
+  if (!m) return null;
+  return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3] ?? 0);
+}
+
+/** 列表摘要剩余秒（'已超 HH:MM' → 负值；'已停表'/'—' → null） */
+function summaryRemainSec(t: Ticket): number | null {
+  if (t.slaText.startsWith('已超')) {
+    const s = parseHms(t.slaText.replace('已超', ''));
+    return s == null ? null : -s;
+  }
+  return parseHms(t.slaText);
+}
+
+/** 按剩余秒 + 列表状态调校 total/warn，使表盘视觉态（正常/临期/超时）与列表一致 */
+function tuneClock(c: SlaClock, rem: number, state: Ticket['slaState']): void {
+  c.remainSec = rem;
+  if (state === 'soon') {
+    c.warnSec = Math.max(rem + 60, 900);
+    c.totalSec = Math.max(rem * 3, 3600);
+  } else if (state === 'overdue') {
+    c.warnSec = 900;
+    c.totalSec = Math.max(-rem * 2, 3600);
+  } else {
+    c.warnSec = Math.max(300, Math.min(1800, Math.floor(rem / 4)));
+    c.totalSec = Math.max(rem * 2, 3600);
+  }
+}
+
+/** 由剩余秒推算绝对截止文案（今日 HH:MM / M/D HH:MM） */
+function dueByText(remSec: number): string {
+  const d = new Date(Date.now() + remSec * 1000);
+  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const sameDay = d.toDateString() === new Date().toDateString();
+  return sameDay ? `今日 ${hm}` : `${d.getMonth() + 1}/${d.getDate()} ${hm}`;
+}
+
+/**
+ * 由列表行 SLA 字段构建操作页双钟：
+ * 已首响 → 摘要即解决钟、首响钟达标停表；未首响 → 摘要即首响钟（最急）、解决钟走独立字段；
+ * 挂起 → 解决钟冻结；已关闭 → 双钟停表。
+ */
+function buildSlaClocks(t: Ticket): SlaClock[] {
+  const responded = t.responded ?? t.nodeStatus !== '待受理';
+  const solve: SlaClock = {
+    label: '整单解决', kind: 'whole', phase: 'running',
+    remainSec: 4 * 3600, totalSec: 8 * 3600, warnSec: 1800, dueBy: '',
+  };
+  const first: SlaClock = {
+    label: '整单首响', kind: 'first', phase: 'running',
+    remainSec: 12 * 60, totalSec: 1800, warnSec: 900, dueBy: '',
+  };
+  const summary = summaryRemainSec(t);
+
+  if (t.slaText === '—') {
+    // 已关闭：双钟停表（首响 rem≥0 → 达标态）
+    solve.phase = 'stopped';
+    first.phase = 'stopped';
+    first.remainSec = 300;
+  } else if (t.slaState === 'paused') {
+    // 挂起：解决钟冻结（剩余保留、可恢复续算）；首响已达标停表
+    solve.phase = 'paused';
+    solve.remainSec = 2 * 3600;
+    solve.totalSec = 8 * 3600;
+    first.phase = 'stopped';
+    first.remainSec = 300;
+  } else if (responded) {
+    // 已首响：扁平摘要即解决钟
+    if (summary != null) tuneClock(solve, summary, t.slaState);
+    first.phase = 'stopped';
+    first.remainSec = 300;
+  } else {
+    // 未首响：扁平摘要即首响钟（最急钟）；解决钟走独立字段
+    if (summary != null) tuneClock(first, summary, t.slaState);
+    const rs = t.resolveSlaText ? parseHms(t.resolveSlaText) : null;
+    if (rs != null) tuneClock(solve, rs, t.resolveSlaState ?? 'ok');
+  }
+  solve.dueBy = dueByText(solve.remainSec);
+  first.dueBy = dueByText(first.remainSec);
+  return [solve, first];
+}
+
 export function useTicketOperation() {
   const user = useUserStore();
   const route = useRoute();
   const detail = ref<TicketDetailMeta>(JSON.parse(JSON.stringify(TICKET_DETAIL)));
   const timeline = ref<TimelineEntry[]>([...TIMELINE]);
+  const opState = ref<TicketOpState>('processing');
+  const suspendInfo = ref<SuspendInfo | null>(null);
 
   /** 按列表点击的工单号解析对应工单，覆盖样例 detail 的头部与类型，
    *  使处理页（Tab① 表单结构）随工单类型而变。匹配不到则回退样例。 */
@@ -40,6 +128,14 @@ export function useTicketOperation() {
       base.feishuSync = 'none';
       base.feishuRecords = [];
       base.productIssue = ticketProductIssue(t);
+      base.slaClocks = buildSlaClocks(t); // 时钟与列表行 SLA 摘要一致
+      if (t.slaState === 'paused') {
+        base.status = '已挂起';
+        opState.value = 'suspended';
+      } else {
+        opState.value = 'processing';
+      }
+      suspendInfo.value = null;
       if (t.problemDesc?.trim()) {
         base.demand = t.problemDesc.trim();
       }
@@ -58,8 +154,6 @@ export function useTicketOperation() {
     (no) => { if (no) loadDetail(no); },
     { immediate: true },
   );
-  const opState = ref<TicketOpState>('processing');
-  const suspendInfo = ref<SuspendInfo | null>(null);
   const draftSavedAt = ref<string | null>(null);
 
   function dispatch(raw: Record<string, unknown>) {

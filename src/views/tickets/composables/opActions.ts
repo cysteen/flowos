@@ -310,9 +310,9 @@ export function applyOpAction(
     case '挂起': {
       const { reason, detail: note, resumeAt } = payload.data;
       detail.status = '已挂起';
-      // 暂停：计时冻结，剩余秒保留，恢复后可续算
+      // 暂停：仅冻结在走的钟（剩余秒保留，恢复后续算）；已停表钟（首响达标等）为终态不动
       detail.slaClocks.forEach((c) => {
-        c.phase = 'paused';
+        if (c.phase === 'running') c.phase = 'paused';
       });
       const info: SuspendInfo = { reason, detail: note, resumeAt, operator, at: nowWhen() };
       pushEntry(timeline, {
@@ -425,27 +425,10 @@ export function applyOpAction(
     case '恢复': {
       const { reason, detail: note } = payload.data;
       detail.status = '处理中';
-      detail.slaClocks = [
-        {
-          label: '整单解决',
-          kind: 'whole',
-          phase: 'running',
-          remainSec: 8100, // 02:15:00
-          totalSec: 17280,
-          warnSec: 1800,
-          dueBy: '今日 16:40',
-          nodePctOnWhole: 71,
-        },
-        {
-          label: '整单首响',
-          kind: 'first',
-          phase: 'running',
-          remainSec: 6300, // 01:45:00
-          totalSec: 7200,
-          warnSec: 900,
-          dueBy: '今日 15:20',
-        },
-      ];
+      // 解冻续走：挂起冻结的钟按保留的剩余续算；停表钟为终态不动
+      detail.slaClocks.forEach((c) => {
+        if (c.phase === 'paused') c.phase = 'running';
+      });
       pushEntry(timeline, {
         category: 'node', action: 'accept', who: operator, role: operatorRole,
         how: '恢复处理', what: `挂起结束，恢复处理。原因：${reason}${note ? `；${note}` : ''}`,

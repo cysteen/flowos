@@ -107,8 +107,12 @@ function buildDial(c: SlaClock, i: number): Dial {
   else if (rem <= c.warnSec) vis = 'warn';
   else vis = 'normal';
 
+  // 首响钟停表且剩余非负 = 时限内达标（绿）；区别于终态停表（灰）——与工作台列表「首响：已达标」一致
+  const met = c.kind === 'first' && vis === 'stopped' && rem >= 0;
+
   let remainText: string;
-  if (vis === 'stopped') remainText = '已停表';
+  if (met) remainText = '已达标';
+  else if (vis === 'stopped') remainText = '已停表';
   else if (vis === 'paused') remainText = fmtShort(rem, rem < 0); // 暂停显示冻结剩余，暂停态由表盘徽标标识
   else remainText = fmtShort(rem, vis === 'over');
 
@@ -116,7 +120,8 @@ function buildDial(c: SlaClock, i: number): Dial {
   const sweep = (pct / 100) * 360;
 
   let title: string;
-  if (vis === 'paused') title = `${c.label}：SLA 已暂停（挂起，剩 ${fmtLong(rem)}，可恢复续算）`;
+  if (met) title = `${c.label}：已达标（时限内完成首次响应，计时停表）`;
+  else if (vis === 'paused') title = `${c.label}：SLA 已暂停（挂起，剩 ${fmtLong(rem)}，可恢复续算）`;
   else if (vis === 'stopped') title = `${c.label}：SLA 已停表（计时终止，不可重启）`;
   else if (vis === 'over') title = `${c.label}：截止 ${c.dueBy}，已超时 ${fmtLong(rem)}`;
   else if (vis === 'warn') title = `${c.label}：截止 ${c.dueBy}，临期，距超时剩 ${fmtLong(rem)}`;
@@ -125,8 +130,8 @@ function buildDial(c: SlaClock, i: number): Dial {
   return {
     clock: c,
     vis,
-    color: COLORS[vis],
-    stroke: DIAL_STROKE[vis],
+    color: met ? COLORS.normal : COLORS[vis],
+    stroke: met ? DIAL_STROKE.normal : DIAL_STROKE[vis],
     remainText,
     pct,
     sweep,
