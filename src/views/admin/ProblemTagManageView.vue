@@ -592,6 +592,25 @@ const delScopeCounts = computed(() => {
   };
 });
 
+/**
+ * 级联上收：叶子删光后其父级分类自动一并移除。
+ * 返回当前范围删除后会被删空、随之自动移除的父级分类名单（供弹窗提示与成功提示）。
+ */
+const delCascade = computed(() => {
+  const row = delTarget.value;
+  if (!row) return [];
+  const l2Left = rowsInDelScope(row, 'L2').length;
+  const l1Left = rowsInDelScope(row, 'L1').length;
+  const out: string[] = [];
+  if (delScope.value === 'L3') {
+    if (l2Left === 1) out.push(`二级分类「${row.tagL1} / ${row.tagL2}」`);
+    if (l1Left === 1) out.push(`一级分类「${row.tagL1}」`);
+  } else if (delScope.value === 'L2') {
+    if (l1Left === l2Left) out.push(`一级分类「${row.tagL1}」`);
+  }
+  return out;
+});
+
 function delRow(row: ProblemTagRow) {
   delTarget.value = row;
   delScope.value = 'L3';
@@ -602,6 +621,7 @@ function confirmDelete() {
   const row = delTarget.value;
   if (!row) return;
   const scope = delScope.value;
+  const cascade = [...delCascade.value];
   const targets = new Set(rowsInDelScope(row, scope).map((r) => r.key));
   allRows.value = allRows.value.filter((r) => !targets.has(r.key));
   checkedRowKeys.value = checkedRowKeys.value.filter((k) => !targets.has(k));
@@ -611,7 +631,8 @@ function confirmDelete() {
     : scope === 'L2'
       ? `二级分类「${row.tagL1} / ${row.tagL2}」及其下分类`
       : `一级分类「${row.tagL1}」及其下分类`;
-  message.success(`已删除${scopeText}，共 ${targets.size} 条`);
+  const cascadeText = cascade.length ? `；${cascade.join('、')}已删空，自动一并移除` : '';
+  message.success(`已删除${scopeText}，共 ${targets.size} 条${cascadeText}`);
 }
 
 function downloadCsv(filename: string, header: string, lines: string[]) {
@@ -1118,7 +1139,7 @@ function doImport() {
     >
       <template v-if="delTarget">
         <p class="del-hint">
-          删除范围仅限「{{ delTarget.productName }}」下的分类；删除后新建工单不可再选，历史工单归类保留。
+          删除范围仅限「{{ delTarget.productName }}」下的分类；下级删光的上级分类将自动一并移除，不留空分类。删除后新建工单不可再选，历史工单归类保留。
         </p>
         <a-radio-group v-model:value="delScope" class="del-scope">
           <a-radio value="L3" class="del-scope-item">
@@ -1134,6 +1155,10 @@ function doImport() {
             <span class="del-cnt">{{ delScopeCounts.L1 }} 条</span>
           </a-radio>
         </a-radio-group>
+        <div v-if="delCascade.length" class="del-cascade">
+          <span class="del-cascade-tag">自动上收</span>
+          <span class="del-cascade-text">删除后 {{ delCascade.join('、') }} 下将无剩余分类，随本次删除自动一并移除。</span>
+        </div>
       </template>
     </a-modal>
 
@@ -1437,6 +1462,17 @@ function doImport() {
   font-size: 12px; font-weight: 600; line-height: 20px; text-align: center;
   color: #dc2626; background: #fef2f2;
 }
+.del-cascade {
+  display: flex; align-items: flex-start; gap: 8px;
+  margin-top: 12px; padding: 8px 10px; border-radius: 8px;
+  background: #fffbeb; border: 1px solid #fde68a;
+}
+.del-cascade-tag {
+  flex: none; padding: 0 6px; height: 20px; border-radius: 4px;
+  font-size: 12px; font-weight: 600; line-height: 20px;
+  color: #b45309; background: #fef3c7;
+}
+.del-cascade-text { font-size: 12px; color: #92400e; line-height: 1.6; }
 .import-panel { display: flex; flex-direction: column; gap: 10px; }
 .import-tips {
   margin: 0; padding: 8px 12px 8px 28px; border-radius: 8px;
