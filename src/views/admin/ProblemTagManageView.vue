@@ -587,15 +587,6 @@ const delCascade = computed(() => {
   return out;
 });
 
-/** 提醒文案（大白话）：说清"这是最后一条、上级会一起删掉" */
-const delCascadeText = computed(() => {
-  const row = delTarget.value;
-  const c = delCascade.value;
-  if (!row || !c.length) return '';
-  const parents = c.map((n) => `「${n}」`).join('和');
-  return `「${c[0]}」下就这一条了，删掉后上级分类${parents}也会一起删掉。`;
-});
-
 function delRow(row: ProblemTagRow) {
   delTarget.value = row;
   delOpen.value = true;
@@ -1118,12 +1109,11 @@ function doImport() {
       @ok="confirmDelete"
     >
       <template v-if="delTarget">
-        <p class="del-confirm">确定删除「{{ delTarget.tagL3 }}」？</p>
-        <div class="del-path">所属：{{ delTarget.productName }} · {{ delTarget.tagL1 }} / {{ delTarget.tagL2 }}</div>
+        <div class="del-path">{{ delTarget.productName }} · {{ tagPath(delTarget) }}</div>
         <p class="del-hint">删掉后新建工单选不到这条分类；已归类的历史工单不受影响。</p>
-        <div v-if="delCascadeText" class="del-cascade">
+        <div class="del-cascade">
           <span class="del-cascade-tag">注意</span>
-          <span class="del-cascade-text">{{ delCascadeText }}</span>
+          <span class="del-cascade-text">删掉后，如果上级分类下没有其他分类了，上级分类也会一起删掉。</span>
         </div>
       </template>
     </a-modal>
@@ -1410,11 +1400,10 @@ function doImport() {
 .prod-path-sep { color: #cbd5e1; margin: 0 6px; }
 .cat-input-full { width: 100%; }
 .batch-team-hint { margin: 0 0 12px; color: #6b7280; font-size: 13px; line-height: 1.5; }
-.del-confirm { margin: 0 0 8px; font-size: 14px; font-weight: 600; color: #111827; line-height: 1.5; }
 .del-path {
-  margin: 0 0 8px; padding: 6px 10px; border-radius: 6px;
+  margin: 0 0 8px; padding: 8px 10px; border-radius: 6px;
   background: #f9fafb; border: 1px solid #eef0f2;
-  font-size: 12px; color: #6b7280; line-height: 1.5;
+  font-size: 13px; color: #374151; font-weight: 500; line-height: 1.5;
 }
 .del-hint { margin: 0; color: #9ca3af; font-size: 12px; line-height: 1.6; }
 .del-cascade {
