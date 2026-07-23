@@ -214,7 +214,41 @@ export function statusLabel(state: TicketOpState): string {
 function terminateClocks(detail: TicketDetailMeta): void {
   detail.slaClocks.forEach((c) => {
     c.phase = 'stopped';
+    c.reviewSubmitAtMs = undefined; // 终态：清理待审核标记
   });
+}
+
+/**
+ * 提交审核/调研（下送）：冻结解决钟显示并记录提交时刻。
+ * 通过→后续 terminateClocks 停表达标；驳回/退回→ reopenSolveOnReject 扣减审核时长后续走。
+ * 首响钟若已达标(stopped)不动；仍在走(running)的解决钟才冻结。
+ */
+function freezeSolveForReview(detail: TicketDetailMeta): void {
+  detail.slaClocks.forEach((c) => {
+    if (c.kind === 'whole' && c.phase === 'running') {
+      c.reviewSubmitAtMs = Date.now(); // 提交时刻，供驳回时计入等待时长
+      c.phase = 'paused'; // 冻结显示（乐观：待审核结果）
+    }
+  });
+}
+
+/**
+ * 审核/调研驳回（退回/撤回）：解决钟续走，并把「已过审核时长」计入 SLA
+ * ——即剩余按提交到此刻的耗时扣减（remainSec -= 审核经过秒），再置 running。
+ * 审批/调研时间计入 SLA，不因走审核而免除这段耗时。
+ */
+function reopenSolveOnReject(detail: TicketDetailMeta): boolean {
+  let reopened = false;
+  detail.slaClocks.forEach((c) => {
+    if (c.kind === 'whole' && c.reviewSubmitAtMs != null) {
+      const elapsedSec = Math.max(0, Math.floor((Date.now() - c.reviewSubmitAtMs) / 1000));
+      c.remainSec -= elapsedSec; // 审核等待时长计入（可为负=已超时）
+      c.reviewSubmitAtMs = undefined;
+      c.phase = 'running'; // 重新计时
+      reopened = true;
+    }
+  });
+  return reopened;
 }
 
 export function applyOpAction(
@@ -253,10 +287,11 @@ export function applyOpAction(
     case '下送': {
       const { ticketTitle, resolved } = payload.data;
       detail.status = '待审核';
+      freezeSolveForReview(detail); // 提交即冻结解决钟、记录提交快照（通过→停表 / 驳回→回拨续走）
       pushEntry(timeline, {
         category: 'node', action: 'transfer', who: operator, role: operatorRole,
         how: '下送审核',
-        what: `工单「${ticketTitle}」下送审核，是否已解决：${resolved ? '是' : '否'}`,
+        what: `工单「${ticketTitle}」下送审核，是否已解决：${resolved ? '是' : '否'}。解决 SLA 已冻结（待审核，通过即停表、驳回则计入审核时长后续走）`,
       });
       return { opState: 'review', suspendInfo, message: '已下送审核，工单进入待审核' };
     }
@@ -376,13 +411,16 @@ export function applyOpAction(
       return { opState: 'resolved', suspendInfo, message: '已标记为已解决，进入待回访确认' };
     }
 
-    case '撤回':
+    case '撤回': {
+      const reopened = reopenSolveOnReject(detail); // 撤回下送→解决钟按已过审核时长计入后续走
       pushEntry(timeline, {
         category: 'node', action: 'transfer', who: operator, role: operatorRole,
-        how: '撤回', what: '撤回上一流转操作，工单回到操作前的状态和处理人。',
+        how: '撤回',
+        what: `撤回上一流转操作，工单回到操作前的状态和处理人。${reopened ? '解决 SLA 已续走（审核等待时长计入）。' : ''}`,
         internal: true,
       });
       return { opState, suspendInfo, message: '已撤回上一操作' };
+    }
 
     case '恢复': {
       const { reason, detail: note } = payload.data;
@@ -420,10 +458,11 @@ export function applyOpAction(
       const count = (detail.returnCount ?? 0) + 1;
       detail.returnCount = count;
       detail.status = targetNode === '受理' ? '待受理' : '待分派';
+      const reopened = reopenSolveOnReject(detail); // 审核驳回/退回→解决钟续走，审核等待时长计入 SLA
       pushEntry(timeline, {
         category: 'node', action: 'transfer', who: operator, role: operatorRole,
         how: '退回',
-        what: `退回至「${targetNode}」节点。原因：${reason}${note ? `；说明：${note}` : ''}（第 ${count} 次退回）`,
+        what: `退回至「${targetNode}」节点。原因：${reason}${note ? `；说明：${note}` : ''}（第 ${count} 次退回）${reopened ? '。解决 SLA 已续走，审核等待时长计入' : ''}`,
       });
       return { opState: 'processing', suspendInfo, message: `已退回至${targetNode}节点` };
     }

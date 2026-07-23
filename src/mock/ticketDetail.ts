@@ -55,6 +55,12 @@ export interface SlaClock {
   dueBy: string;
   /** 节点截止在整单时间轴上的位置占比（0-100），仅 kind=whole 时用于嵌套 tick */
   nodePctOnWhole?: number;
+  /**
+   * 提交审核/调研的时刻（毫秒，仅解决钟）。下送提交时记录并冻结显示；
+   * 审核通过→停表达标；审核驳回/退回→按「已过审核时长」扣减剩余后续走
+   * （**审批/调研时间计入 SLA**，不因走审核而免除这段耗时）。
+   */
+  reviewSubmitAtMs?: number;
 }
 
 export interface TicketDetailMeta {
