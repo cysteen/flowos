@@ -601,7 +601,7 @@ function confirmDelete() {
   checkedRowKeys.value = checkedRowKeys.value.filter((k) => k !== row.key);
   delOpen.value = false;
   const cascadeText = cascade.length
-    ? `，上级分类${cascade.map((n) => `「${n}」`).join('和')}已一起删除`
+    ? `，父级分类${cascade.map((n) => `「${n}」`).join('和')}已一并删除`
     : '';
   message.success(`已删除「${row.tagL3}」${cascadeText}`);
 }
@@ -1113,7 +1113,7 @@ function doImport() {
         <p class="del-hint">删掉后新建工单选不到这条分类；已归类的历史工单不受影响。</p>
         <div class="del-cascade">
           <span class="del-cascade-tag">注意</span>
-          <span class="del-cascade-text">删掉后，如果上级分类下没有其他分类了，上级分类也会一起删掉。</span>
+          <span class="del-cascade-text">如果父级分类没有子级分类了，父级分类也会一并删除。</span>
         </div>
       </template>
     </a-modal>
