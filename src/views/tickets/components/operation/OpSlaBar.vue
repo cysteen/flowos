@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import { reactive, computed, watch, onMounted, onUnmounted } from 'vue';
+import { reactive, ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import {
+  AimOutlined,
+  MessageOutlined,
+  PhoneOutlined,
+  ToolOutlined,
+} from '@ant-design/icons-vue';
 import type { TicketDetailMeta, SlaClock } from '@/mock/ticketDetail';
 
 const props = defineProps<{ detail: TicketDetailMeta }>();
@@ -78,17 +84,70 @@ function dialLabel(c: SlaClock): string {
   return c.label.slice(0, 2);
 }
 
+type StopOutcome = 'met' | 'breached' | 'void' | null;
+
 interface Dial {
   clock: SlaClock;
   vis: Vis;
+  outcome: StopOutcome;
   color: string;
   stroke: string;
   remainText: string;
   pct: number;
   sweep: number;
   dialText: string;
-  title: string;
+  stateLabel: string;
+  bigText: string;
+  startText: string;
 }
+
+/** 钟状态归一：在走(正常/临期/超时)/暂停/终态三分(达标/未达标/中止)，色随态 */
+function clockState(c: SlaClock, rem: number): { vis: Vis; outcome: StopOutcome; color: string } {
+  let vis: Vis;
+  if (c.phase === 'stopped') vis = 'stopped';
+  else if (c.phase === 'paused') vis = 'paused';
+  else if (rem < 0) vis = 'over';
+  else if (rem <= c.warnSec) vis = 'warn';
+  else vis = 'normal';
+  // 终态停表按结果三分（对齐 Zendesk Achieved/Breached、Jira Met/Breached，PRD §8.1）
+  const outcome: StopOutcome =
+    vis === 'stopped' ? c.stopOutcome ?? (rem >= 0 ? 'met' : 'breached') : null;
+  const color =
+    outcome === 'met' ? COLORS.normal : outcome === 'breached' ? COLORS.over : COLORS[vis];
+  return { vis, outcome, color };
+}
+
+function stateLabelOf(vis: Vis, outcome: StopOutcome): string {
+  if (outcome === 'met') return '已达标';
+  if (outcome === 'breached') return '未达标';
+  if (outcome === 'void') return '已停表';
+  if (vis === 'paused') return '已暂停';
+  if (vis === 'over') return '超时';
+  if (vis === 'warn') return '临期';
+  return '正常';
+}
+
+/** 绝对时刻文案：今日 HH:MM / M/D HH:MM */
+function whenText(ms: number): string {
+  const d = new Date(ms);
+  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return d.toDateString() === new Date().toDateString()
+    ? `今日 ${hm}`
+    : `${d.getMonth() + 1}/${d.getDate()} ${hm}`;
+}
+
+const KIND_ICON: Record<SlaClock['kind'], unknown> = {
+  whole: AimOutlined,
+  first: MessageOutlined,
+  node: ToolOutlined,
+  callback: PhoneOutlined,
+};
+const KIND_NAME: Record<SlaClock['kind'], string> = {
+  whole: '整单',
+  first: '首响',
+  node: '节点',
+  callback: '回访',
+};
 
 /** 展示顺序：首响在前、整单解决在后（op-header 固定只展示这两类整单时效） */
 const KIND_ORDER: Record<SlaClock['kind'], number> = {
@@ -100,17 +159,7 @@ const KIND_ORDER: Record<SlaClock['kind'], number> = {
 
 function buildDial(c: SlaClock, i: number): Dial {
   const rem = liveRemain[i] ?? c.remainSec;
-  let vis: Vis;
-  if (c.phase === 'stopped') vis = 'stopped';
-  else if (c.phase === 'paused') vis = 'paused';
-  else if (rem < 0) vis = 'over';
-  else if (rem <= c.warnSec) vis = 'warn';
-  else vis = 'normal';
-
-  // 终态停表按结果三分（对齐 Zendesk Achieved/Breached、Jira Met/Breached，PRD §8.1）：
-  // met=达标(时限内完成·绿✓) / breached=未达标(超时后终止·红) / void=中止(取消等·灰)
-  const outcome =
-    vis === 'stopped' ? c.stopOutcome ?? (rem >= 0 ? 'met' : 'breached') : null;
+  const { vis, outcome, color } = clockState(c, rem);
 
   let remainText: string;
   if (outcome === 'met') remainText = '已达标';
@@ -122,22 +171,19 @@ function buildDial(c: SlaClock, i: number): Dial {
   const pct = clamp(((c.totalSec - rem) / c.totalSec) * 100);
   const sweep = (pct / 100) * 360;
 
-  let title: string;
-  if (outcome === 'met') title = `${c.label}：已达标（时限内完成，计时停表）`;
-  else if (outcome === 'breached') title = `${c.label}：未达标（超 ${fmtLong(rem)} 后终止，计时停表）`;
-  else if (outcome === 'void') title = `${c.label}：已停表（业务中止，计时终止）`;
-  else if (vis === 'paused') title = `${c.label}：SLA 已暂停（挂起，剩 ${fmtLong(rem)}，可恢复续算）`;
-  else if (vis === 'over') title = `${c.label}：截止 ${c.dueBy}，已超时 ${fmtLong(rem)}`;
-  else if (vis === 'warn') title = `${c.label}：截止 ${c.dueBy}，临期，距超时剩 ${fmtLong(rem)}`;
-  else title = `${c.label}：截止 ${c.dueBy}，距超时剩 ${fmtLong(rem)}`;
-
-  const outcomeColor =
-    outcome === 'met' ? COLORS.normal : outcome === 'breached' ? COLORS.over : null;
+  // hover 浮层：大号剩/超（终态显示结果文案）+ 起算→截止
+  const bigText =
+    outcome === 'met' ? '已达标'
+    : outcome === 'breached' ? '未达标'
+    : outcome === 'void' ? '已停表'
+    : `${rem < 0 ? '超' : '剩'} ${fmtLong(rem)}`;
+  const startText = whenText(Date.now() - (c.totalSec - rem) * 1000);
 
   return {
     clock: c,
     vis,
-    color: outcomeColor ?? COLORS[vis],
+    outcome,
+    color,
     stroke:
       outcome === 'met' ? DIAL_STROKE.normal
       : outcome === 'breached' ? DIAL_STROKE.over
@@ -146,7 +192,9 @@ function buildDial(c: SlaClock, i: number): Dial {
     pct,
     sweep,
     dialText: dialLabel(c),
-    title,
+    stateLabel: stateLabelOf(vis, outcome),
+    bigText,
+    startText,
   };
 }
 
@@ -158,18 +206,73 @@ const dials = computed<Dial[]>(() =>
     .sort((a, b) => KIND_ORDER[a.c.kind] - KIND_ORDER[b.c.kind])
     .map(({ c, i }) => buildDial(c, i)),
 );
+
+// ---- hover 浮层「时效关系」迷你时间轴（.pen meHhu）：各钟窗口段映射到整单时间轴，共享"现在"刻度 ----
+const AXIS_W = 176;
+
+interface RelationRow {
+  key: string;
+  name: string;
+  icon: unknown;
+  color: string;
+  segLeft: number;
+  segWidth: number;
+  value: string;
+}
+
+const relationData = computed<{ rows: RelationRow[]; nowLeft: number }>(() => {
+  const items = props.detail.slaClocks.map((c, i) => ({ c, rem: liveRemain[i] ?? c.remainSec }));
+  const whole = items.find((x) => x.c.kind === 'whole') ?? items[0];
+  if (!whole) return { rows: [], nowLeft: 0 };
+  const span = Math.max(whole.c.totalSec, 1);
+  const wholeElapsed = whole.c.totalSec - whole.rem;
+  // 关系图行序：整单 → 首响 → 节点 → 回访（.pen meHhu）
+  const RELATION_ORDER: Record<SlaClock['kind'], number> = { whole: 0, first: 1, node: 2, callback: 3 };
+  const rows = items
+    .slice()
+    .sort((a, b) => RELATION_ORDER[a.c.kind] - RELATION_ORDER[b.c.kind])
+    .map(({ c, rem }) => {
+      const { outcome, color } = clockState(c, rem);
+      // 该钟窗口（起算→截止）映射到整单时间轴；整单/首响均起算于建单（锚左端），节点按已走时长回推
+      const startRel =
+        c.kind === 'whole' || c.kind === 'first' ? 0 : wholeElapsed - (c.totalSec - rem);
+      const left = Math.max(0, Math.min(AXIS_W - 8, (startRel / span) * AXIS_W));
+      const width = Math.max(8, Math.min(AXIS_W - left, (c.totalSec / span) * AXIS_W));
+      const value =
+        outcome === 'met' ? '✔达标'
+        : outcome === 'breached' ? '未达标'
+        : outcome === 'void' ? '已停表'
+        : fmtShort(rem, rem < 0);
+      return {
+        key: c.label,
+        name: KIND_NAME[c.kind],
+        icon: KIND_ICON[c.kind],
+        color,
+        segLeft: left,
+        segWidth: width,
+        value,
+      };
+    });
+  const nowLeft = Math.max(0, Math.min(AXIS_W - 2, (wholeElapsed / span) * AXIS_W));
+  return { rows, nowLeft };
+});
+
+// 「查看全部时效」弹窗：全部钟（含节点/回访）明细
+const allOpen = ref(false);
+const allDials = computed<Dial[]>(() =>
+  props.detail.slaClocks
+    .map((c, i) => ({ c, i }))
+    .sort((a, b) => KIND_ORDER[a.c.kind] - KIND_ORDER[b.c.kind])
+    .map(({ c, i }) => buildDial(c, i)),
+);
 </script>
 
 <template>
-  <div
-    class="sla-bar"
-    title="首响在前、整单解决在后；绿=正常 / 橙=临期 / 红=超时 / 灰=暂停；表盘外环=已消耗比例"
-  >
+  <div class="sla-bar">
     <div
       v-for="d in dials"
       :key="d.clock.label"
       class="sla-item"
-      :title="d.title"
     >
       <div class="dial" :style="{ '--dial-stroke': d.stroke }">
         <svg class="dial-svg" viewBox="0 0 36 36" aria-hidden="true">
@@ -211,7 +314,56 @@ const dials = computed<Dial[]>(() =>
         </span>
       </div>
       <span class="sla-time" :style="{ color: d.color }">{{ d.remainText }}</span>
+
+      <!-- hover 浮层（.pen meHhu）：钟详情 + 时效关系迷你时间轴 -->
+      <div class="sla-pop">
+        <div class="pop-card">
+          <div class="pop-head">
+            <div class="pop-head-l">
+              <component :is="KIND_ICON[d.clock.kind]" :style="{ color: d.color, fontSize: '14px' }" />
+              <span class="pop-name">{{ d.clock.label }}</span>
+            </div>
+            <span class="pop-badge" :style="{ color: d.color, background: `${d.color}1F` }">{{ d.stateLabel }}</span>
+          </div>
+          <div class="pop-big" :style="{ color: d.color }">{{ d.bigText }}</div>
+          <div class="pop-range">起算 {{ d.startText }}&ensp;→&ensp;截止 {{ d.clock.dueBy }}</div>
+          <div class="pop-divider" />
+          <div class="pop-rel-label">时效关系（节点 ⊂ 整单）</div>
+          <div v-for="r in relationData.rows" :key="r.key" class="pop-row">
+            <div class="pop-row-label">
+              <component :is="r.icon" :style="{ color: r.color, fontSize: '11px' }" />
+              <span>{{ r.name }}</span>
+            </div>
+            <div class="pop-axis">
+              <div class="axis-track" />
+              <div class="axis-seg" :style="{ left: `${r.segLeft}px`, width: `${r.segWidth}px`, background: r.color }" />
+              <div class="axis-now" :style="{ left: `${relationData.nowLeft}px` }" />
+            </div>
+            <span class="pop-row-val" :style="{ color: r.color }">{{ r.value }}</span>
+          </div>
+          <span class="pop-foot" @click="allOpen = true">点击查看全部时效 →</span>
+        </div>
+      </div>
     </div>
+
+    <!-- 全部时效弹窗 -->
+    <a-modal v-model:open="allOpen" title="全部时效" :footer="null" :width="480">
+      <div class="all-list">
+        <div v-for="d in allDials" :key="d.clock.label" class="all-row">
+          <div class="all-row-l">
+            <component :is="KIND_ICON[d.clock.kind]" :style="{ color: d.color, fontSize: '14px' }" />
+            <div class="all-row-meta">
+              <span class="all-name">{{ d.clock.label }}</span>
+              <span class="all-range">起算 {{ d.startText }} → 截止 {{ d.clock.dueBy }}</span>
+            </div>
+          </div>
+          <div class="all-row-r">
+            <span class="all-remain" :style="{ color: d.color }">{{ d.bigText }}</span>
+            <span class="pop-badge" :style="{ color: d.color, background: `${d.color}1F` }">{{ d.stateLabel }}</span>
+          </div>
+        </div>
+      </div>
+    </a-modal>
   </div>
 </template>
 
@@ -226,11 +378,189 @@ const dials = computed<Dial[]>(() =>
   box-sizing: border-box;
 }
 .sla-item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
   cursor: default;
+}
+
+/* ---- hover 浮层（.pen meHhu） ---- */
+.sla-pop {
+  position: absolute;
+  top: 100%;
+  right: -12px;
+  padding-top: 10px; /* 悬停桥接区，避免移向浮层时 hover 断开 */
+  display: none;
+  z-index: 80;
+}
+.sla-item:hover .sla-pop {
+  display: block;
+}
+.pop-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 320px;
+  padding: 14px;
+  box-sizing: border-box;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  box-shadow: 0 6px 18px -4px rgba(15, 23, 42, 0.15);
+  cursor: default;
+}
+.pop-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.pop-head-l {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pop-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #374151;
+}
+.pop-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.pop-big {
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.pop-range {
+  font-size: 11px;
+  color: #6b7280;
+}
+.pop-divider {
+  height: 1px;
+  background: #eef0f2;
+}
+.pop-rel-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: #9ca3af;
+}
+.pop-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pop-row-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 58px;
+  flex: none;
+  font-size: 10px;
+  font-weight: 600;
+  color: #6b7280;
+}
+.pop-axis {
+  position: relative;
+  width: 176px;
+  height: 16px;
+  flex: none;
+}
+.axis-track {
+  position: absolute;
+  top: 6px;
+  left: 0;
+  width: 176px;
+  height: 4px;
+  border-radius: 2px;
+  background: #edf0f2;
+}
+.axis-seg {
+  position: absolute;
+  top: 5px;
+  height: 6px;
+  border-radius: 3px;
+}
+.axis-now {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 16px;
+  border-radius: 1px;
+  background: #94a3b8;
+}
+.pop-row-val {
+  width: 52px;
+  flex: none;
+  text-align: right;
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pop-foot {
+  font-size: 10px;
+  font-weight: 600;
+  color: #2563eb;
+  cursor: pointer;
+}
+.pop-foot:hover {
+  text-decoration: underline;
+}
+
+/* ---- 全部时效弹窗 ---- */
+.all-list {
+  display: flex;
+  flex-direction: column;
+}
+.all-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 4px;
+}
+.all-row + .all-row {
+  border-top: 1px solid #f1f2f4;
+}
+.all-row-l {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.all-row-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.all-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+}
+.all-range {
+  font-size: 11px;
+  color: #9ca3af;
+}
+.all-row-r {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+.all-remain {
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 .dial {
   position: relative;
