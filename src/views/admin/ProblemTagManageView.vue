@@ -567,20 +567,51 @@ function onListStatusChange(row: ProblemTagRow, checked: boolean) {
   message.success(checked ? '已启用' : '已停用');
 }
 
-function delRow(row: ProblemTagRow) {
-  Modal.confirm({
-    title: '删除问题分类',
-    content: `确定删除「${row.productName} · ${tagPath(row)}」？删除后新建工单不可再选。`,
-    okText: '确认删除',
-    okType: 'danger',
-    cancelText: '取消',
-    onOk: () => {
-      const i = allRows.value.findIndex((r) => r.key === row.key);
-      if (i >= 0) allRows.value.splice(i, 1);
-      checkedRowKeys.value = checkedRowKeys.value.filter((k) => k !== row.key);
-      message.success('已删除');
-    },
+// —— 删除：支持按一级 / 二级 / 三级范围删除（范围限当前产品）——
+type DelScope = 'L3' | 'L2' | 'L1';
+const delOpen = ref(false);
+const delTarget = ref<ProblemTagRow | null>(null);
+const delScope = ref<DelScope>('L3');
+
+function rowsInDelScope(row: ProblemTagRow, scope: DelScope) {
+  return allRows.value.filter((r) => {
+    if (r.productKey !== row.productKey) return false;
+    if (scope === 'L3') return r.key === row.key;
+    if (scope === 'L2') return r.tagL1 === row.tagL1 && r.tagL2 === row.tagL2;
+    return r.tagL1 === row.tagL1;
   });
+}
+
+const delScopeCounts = computed(() => {
+  const row = delTarget.value;
+  if (!row) return { L3: 0, L2: 0, L1: 0 };
+  return {
+    L3: 1,
+    L2: rowsInDelScope(row, 'L2').length,
+    L1: rowsInDelScope(row, 'L1').length,
+  };
+});
+
+function delRow(row: ProblemTagRow) {
+  delTarget.value = row;
+  delScope.value = 'L3';
+  delOpen.value = true;
+}
+
+function confirmDelete() {
+  const row = delTarget.value;
+  if (!row) return;
+  const scope = delScope.value;
+  const targets = new Set(rowsInDelScope(row, scope).map((r) => r.key));
+  allRows.value = allRows.value.filter((r) => !targets.has(r.key));
+  checkedRowKeys.value = checkedRowKeys.value.filter((k) => !targets.has(k));
+  delOpen.value = false;
+  const scopeText = scope === 'L3'
+    ? `三级分类「${row.tagL3}」`
+    : scope === 'L2'
+      ? `二级分类「${row.tagL1} / ${row.tagL2}」及其下分类`
+      : `一级分类「${row.tagL1}」及其下分类`;
+  message.success(`已删除${scopeText}，共 ${targets.size} 条`);
 }
 
 function downloadCsv(filename: string, header: string, lines: string[]) {
@@ -1077,6 +1108,36 @@ function doImport() {
     </a-modal>
 
     <a-modal
+      v-model:open="delOpen"
+      title="删除问题分类"
+      :width="480"
+      ok-text="确认删除"
+      :ok-button-props="{ danger: true }"
+      cancel-text="取消"
+      @ok="confirmDelete"
+    >
+      <template v-if="delTarget">
+        <p class="del-hint">
+          删除范围仅限「{{ delTarget.productName }}」下的分类；删除后新建工单不可再选，历史工单归类保留。
+        </p>
+        <a-radio-group v-model:value="delScope" class="del-scope">
+          <a-radio value="L3" class="del-scope-item">
+            <span class="del-scope-main">仅删除三级分类「{{ delTarget.tagL3 }}」</span>
+            <span class="del-cnt">{{ delScopeCounts.L3 }} 条</span>
+          </a-radio>
+          <a-radio value="L2" class="del-scope-item">
+            <span class="del-scope-main">删除二级分类「{{ delTarget.tagL1 }} / {{ delTarget.tagL2 }}」及其下全部三级分类</span>
+            <span class="del-cnt">{{ delScopeCounts.L2 }} 条</span>
+          </a-radio>
+          <a-radio value="L1" class="del-scope-item">
+            <span class="del-scope-main">删除一级分类「{{ delTarget.tagL1 }}」及其下全部二、三级分类</span>
+            <span class="del-cnt">{{ delScopeCounts.L1 }} 条</span>
+          </a-radio>
+        </a-radio-group>
+      </template>
+    </a-modal>
+
+    <a-modal
       v-model:open="importOpen"
       title="导入问题分类"
       :width="560"
@@ -1358,6 +1419,24 @@ function doImport() {
 .prod-path-sep { color: #cbd5e1; margin: 0 6px; }
 .cat-input-full { width: 100%; }
 .batch-team-hint { margin: 0 0 12px; color: #6b7280; font-size: 13px; line-height: 1.5; }
+.del-hint { margin: 0 0 12px; color: #6b7280; font-size: 13px; line-height: 1.6; }
+.del-scope { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+.del-scope :deep(.del-scope-item) {
+  display: flex; align-items: flex-start; margin-right: 0;
+  padding: 8px 10px; border: 1px solid #eef0f2; border-radius: 8px;
+}
+.del-scope :deep(.del-scope-item.ant-radio-wrapper-checked) {
+  border-color: #fecaca; background: #fef7f7;
+}
+.del-scope :deep(.del-scope-item > span:last-child) {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px;
+}
+.del-scope-main { flex: 1; min-width: 0; font-size: 13px; color: #374151; line-height: 1.5; }
+.del-cnt {
+  flex: none; min-width: 34px; padding: 0 8px; height: 20px; border-radius: 10px;
+  font-size: 12px; font-weight: 600; line-height: 20px; text-align: center;
+  color: #dc2626; background: #fef2f2;
+}
 .import-panel { display: flex; flex-direction: column; gap: 10px; }
 .import-tips {
   margin: 0; padding: 8px 12px 8px 28px; border-radius: 8px;
