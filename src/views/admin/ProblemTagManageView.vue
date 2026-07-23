@@ -572,19 +572,28 @@ const delOpen = ref(false);
 const delTarget = ref<ProblemTagRow | null>(null);
 
 /**
- * 级联上收：该三级删除后，同产品下其二级 / 一级若已无剩余分类，将自动一并删除。
- * 返回将被删空移除的父级分类名单（供弹窗预告与成功提示）。
+ * 连带删除的上级：该条删掉后，同产品下二级 / 一级若不再有分类，会一起删掉。
+ * 返回会被连带删掉的上级名称列表（依序：二级、一级），供弹窗提醒与成功提示。
  */
 const delCascade = computed(() => {
   const row = delTarget.value;
   if (!row) return [];
   const sib = allRows.value.filter((r) => r.productKey === row.productKey);
-  const l2Left = sib.filter((r) => r.tagL1 === row.tagL1 && r.tagL2 === row.tagL2).length;
-  const l1Left = sib.filter((r) => r.tagL1 === row.tagL1).length;
+  const l2Last = sib.filter((r) => r.tagL1 === row.tagL1 && r.tagL2 === row.tagL2).length === 1;
+  const l1Last = sib.filter((r) => r.tagL1 === row.tagL1).length === 1;
   const out: string[] = [];
-  if (l2Left === 1) out.push(`二级分类「${row.tagL1} / ${row.tagL2}」`);
-  if (l1Left === 1) out.push(`一级分类「${row.tagL1}」`);
+  if (l2Last) out.push(row.tagL2);
+  if (l1Last) out.push(row.tagL1);
   return out;
+});
+
+/** 提醒文案（大白话）：说清"这是最后一条、上级会一起删掉" */
+const delCascadeText = computed(() => {
+  const row = delTarget.value;
+  const c = delCascade.value;
+  if (!row || !c.length) return '';
+  const parents = c.map((n) => `「${n}」`).join('和');
+  return `「${c[0]}」下就这一条了，删掉后上级分类${parents}也会一起删掉。`;
 });
 
 function delRow(row: ProblemTagRow) {
@@ -600,8 +609,10 @@ function confirmDelete() {
   if (i >= 0) allRows.value.splice(i, 1);
   checkedRowKeys.value = checkedRowKeys.value.filter((k) => k !== row.key);
   delOpen.value = false;
-  const cascadeText = cascade.length ? `；${cascade.join('、')}已无剩余分类，自动一并删除` : '';
-  message.success(`已删除三级分类「${row.tagL3}」${cascadeText}`);
+  const cascadeText = cascade.length
+    ? `，上级分类${cascade.map((n) => `「${n}」`).join('和')}已一起删除`
+    : '';
+  message.success(`已删除「${row.tagL3}」${cascadeText}`);
 }
 
 function downloadCsv(filename: string, header: string, lines: string[]) {
@@ -1107,12 +1118,12 @@ function doImport() {
       @ok="confirmDelete"
     >
       <template v-if="delTarget">
-        <p class="del-confirm">确定删除三级分类「{{ delTarget.tagL3 }}」？</p>
-        <div class="del-path">{{ delTarget.productName }} · {{ tagPath(delTarget) }}</div>
-        <p class="del-hint">删除后新建工单不可再选，历史工单归类保留。</p>
-        <div v-if="delCascade.length" class="del-cascade">
-          <span class="del-cascade-tag">自动上收</span>
-          <span class="del-cascade-text">该三级删除后，{{ delCascade.join('、') }} 下将无剩余分类，系统将自动一并删除，不保留空分类。</span>
+        <p class="del-confirm">确定删除「{{ delTarget.tagL3 }}」？</p>
+        <div class="del-path">所属：{{ delTarget.productName }} · {{ delTarget.tagL1 }} / {{ delTarget.tagL2 }}</div>
+        <p class="del-hint">删掉后新建工单选不到这条分类；已归类的历史工单不受影响。</p>
+        <div v-if="delCascadeText" class="del-cascade">
+          <span class="del-cascade-tag">注意</span>
+          <span class="del-cascade-text">{{ delCascadeText }}</span>
         </div>
       </template>
     </a-modal>
