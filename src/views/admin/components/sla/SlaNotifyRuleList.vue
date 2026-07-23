@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { BellOutlined, DeleteOutlined } from '@ant-design/icons-vue';
+import { ClockCircleOutlined, DeleteOutlined } from '@ant-design/icons-vue';
 import SlaNotifyRulePanel from './SlaNotifyRulePanel.vue';
 
 export interface NotifyRuleRow {
@@ -7,6 +7,8 @@ export interface NotifyRuleRow {
   targets: string[];
   channels: string[];
   template: string;
+  /** 超时后第 N 分钟提醒一次（仅超时升级；0=刚超时即提醒；与临期前「到期前 N 分钟」同构，非周期） */
+  minutesAfter?: number;
 }
 
 withDefaults(
@@ -20,8 +22,10 @@ withDefaults(
     summary?: string;
     /** 标签与图标配色：warn 黄 / danger 红 */
     tone?: 'default' | 'warn' | 'danger';
+    /** 顶栏展示「超时后 N 分钟」时点控件（超时升级卡片开启） */
+    showAfterOffset?: boolean;
   }>(),
-  { tagPrefix: '规则', tone: 'default' },
+  { tagPrefix: '规则', tone: 'default', showAfterOffset: false },
 );
 
 const items = defineModel<NotifyRuleRow[]>('items', { required: true });
@@ -34,8 +38,18 @@ const emit = defineEmits<{ remove: [id: number] }>();
     <article v-for="(row, idx) in items" :key="row.id" class="notify-rule-card" :class="`notify-rule-card--${tone}`">
       <header class="nrc-header">
         <span class="nrc-tag" :class="`nrc-tag--${tone}`">{{ tagPrefix }} {{ idx + 1 }}</span>
-        <div v-if="summary" class="nrc-summary">
-          <BellOutlined class="nrc-summary-icon" :class="`nrc-summary-icon--${tone}`" />
+        <div v-if="showAfterOffset" class="nrc-time">
+          <ClockCircleOutlined class="nrc-time-icon" :class="`nrc-time-icon--${tone}`" />
+          <span class="nrc-time-text">超时后</span>
+          <a-input-number
+            v-model:value="row.minutesAfter"
+            :min="0"
+            size="small"
+            class="nrc-minutes"
+          />
+          <span class="nrc-time-text">分钟</span>
+        </div>
+        <div v-else-if="summary" class="nrc-summary">
           <span>{{ summary }}</span>
         </div>
         <a-button
@@ -133,9 +147,23 @@ const emit = defineEmits<{ remove: [id: number] }>();
   font-size: 13px;
   color: #4b5563;
 }
-.nrc-summary-icon { font-size: 14px; color: #1a6fff; flex: none; }
-.nrc-summary-icon--warn { color: #d97706; }
-.nrc-summary-icon--danger { color: #ef4444; }
+.nrc-time {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.nrc-time-icon { font-size: 14px; color: #1a6fff; flex: none; }
+.nrc-time-icon--warn { color: #d97706; }
+.nrc-time-icon--danger { color: #ef4444; }
+.nrc-time-text { font-size: 13px; color: #4b5563; flex: none; }
+.nrc-minutes { width: 64px !important; flex: none; }
+.nrc-minutes :deep(.ant-input-number-input) {
+  text-align: center;
+  font-weight: 600;
+  color: #ef4444;
+}
 .nrc-del {
   flex: none;
   margin-left: auto;

@@ -17,6 +17,8 @@ const activeKey = computed(() => adminNavActiveKey(route.path));
 
 // 平台固定「双层 SLA（整单 + 节点并行）」，不提供计时模式开关（伪动作，已移除）。
 // 节点级时限 = 轻量 OLA（P1），在 SLA 策略内配，不在此页。
+/** 本期不做挂起/停表配置与运行逻辑；置 false 隐藏「挂起 / 停表规则」区块 */
+const ENABLE_SUSPEND_RULES = false;
 
 // —— 挂起规则（参考 V1 A3#suspend：最长挂起防永久挂起 + 自动恢复条件 + 挂起审批）——
 let suspendSeq = 0;
@@ -51,6 +53,8 @@ interface NotifyRuleRow {
   targets: string[];
   channels: string[];
   template: string;
+  /** 超时后第 N 分钟提醒一次（0=刚超时；非周期） */
+  minutesAfter?: number;
 }
 
 interface ClockAlertConfig {
@@ -75,7 +79,7 @@ interface ClockDim {
 const CHANNELS = ['系统弹窗', 'i讯飞', '站内信', '短信', '邮件'];
 const TARGETS = ['处理人', '班组长', '技术顾问', '客服主管'];
 const COUNT_UNIT_OPTS: DueCountUnit[] = ['分钟', '小时'];
-const NODE_CLOCK_NAMES = ['处理', '技术', '审核', '回访'] as const;
+const NODE_CLOCK_NAMES = ['工单处理', '技术支持'] as const;
 
 const CLOCK_DIMS: ClockDim[] = [
   { key: 'global:resp', group: '整单', label: '整单响应', kind: 'resp' },
@@ -116,7 +120,7 @@ function defClockConfig(dim: ClockDim): ClockAlertConfig {
     ],
     timeoutEnabled: true,
     timeoutAlerts: [
-      { id: 1, targets: ['班组长'], channels: ['系统弹窗', 'i讯飞', '短信'], template: timeoutTpl(dim) },
+      { id: 1, targets: ['班组长'], channels: ['系统弹窗', 'i讯飞', '短信'], template: timeoutTpl(dim), minutesAfter: 0 },
     ],
   };
 }
@@ -183,6 +187,7 @@ function addTimeoutAlert() {
     targets: ['班组长'],
     channels: ['系统弹窗', 'i讯飞'],
     template: tpl,
+    minutesAfter: 30,
   });
 }
 function delTimeoutAlert(id: number) {
@@ -352,7 +357,7 @@ function save() { message.success('已保存并生效'); }
     <div v-if="activeKey === 'sla-timing'" class="admin-page">
       <AdminPageHeader
         title="计时规则"
-        subtitle="计时规则 = 工作日历与停表底座：定义工作时段、节假日/调休及挂起是否暂停计时，供全部 SLA 策略共用。"
+        subtitle="计时规则 = 工作日历底座：定义工作时段、节假日/调休，供全部 SLA 策略共用。（挂起/停表本期不做）"
       >
         <template #actions>
           <a-button type="primary" @click="save">保存</a-button>
@@ -421,21 +426,24 @@ function save() { message.success('已保存并生效'); }
             </template>
           </a-table>
 
-          <div class="sec-h mt2">挂起 / 停表规则
-            <span class="hd-actions">
-              <a-button size="small" type="primary" @click="addSuspend"><template #icon><PlusOutlined /></template>新增挂起规则</a-button>
-            </span>
-          </div>
-          <a-table :columns="suspendCols" :data-source="suspendRows" row-key="id" :pagination="false" size="middle">
-            <template #bodyCell="{ column, record }">
-              <a-select v-if="column.key === 'reason'" v-model:value="record.reason" :options="suspendSceneOpts" size="small" placeholder="选择挂起场景" style="width:100%" />
-              <a-switch v-else-if="column.key === 'pause'" v-model:checked="record.pause" size="small" checked-children="暂停" un-checked-children="计时" />
-              <a-input v-else-if="column.key === 'maxDuration'" v-model:value="record.maxDuration" size="small" placeholder="如 72 小时" />
-              <a-input v-else-if="column.key === 'autoResume'" v-model:value="record.autoResume" size="small" placeholder="恢复条件，如 客户回复后自动恢复" />
-              <a-switch v-else-if="column.key === 'needAudit'" v-model:checked="record.needAudit" size="small" />
-              <a-button v-else-if="column.key === 'op'" type="link" size="small" danger @click="delSuspend(record.id)">删除</a-button>
-            </template>
-          </a-table>
+          <!-- 本期不做挂起/停表逻辑，区块隐藏；恢复时打开 ENABLE_SUSPEND_RULES -->
+          <template v-if="ENABLE_SUSPEND_RULES">
+            <div class="sec-h mt2">挂起 / 停表规则
+              <span class="hd-actions">
+                <a-button size="small" type="primary" @click="addSuspend"><template #icon><PlusOutlined /></template>新增挂起规则</a-button>
+              </span>
+            </div>
+            <a-table :columns="suspendCols" :data-source="suspendRows" row-key="id" :pagination="false" size="middle">
+              <template #bodyCell="{ column, record }">
+                <a-select v-if="column.key === 'reason'" v-model:value="record.reason" :options="suspendSceneOpts" size="small" placeholder="选择挂起场景" style="width:100%" />
+                <a-switch v-else-if="column.key === 'pause'" v-model:checked="record.pause" size="small" checked-children="暂停" un-checked-children="计时" />
+                <a-input v-else-if="column.key === 'maxDuration'" v-model:value="record.maxDuration" size="small" placeholder="如 72 小时" />
+                <a-input v-else-if="column.key === 'autoResume'" v-model:value="record.autoResume" size="small" placeholder="恢复条件，如 客户回复后自动恢复" />
+                <a-switch v-else-if="column.key === 'needAudit'" v-model:checked="record.needAudit" size="small" />
+                <a-button v-else-if="column.key === 'op'" type="link" size="small" danger @click="delSuspend(record.id)">删除</a-button>
+              </template>
+            </a-table>
+          </template>
 
           <div class="sec-h mt2">整单解决 · 服务方式动态调整（选填）
             <a-switch v-model:checked="svcAdjust" size="small" style="margin-left:8px" />
@@ -619,7 +627,7 @@ function save() { message.success('已保存并生效'); }
                   <div class="step-card-head">
                     <div class="step-head-text">
                       <span class="step-title">超时升级</span>
-                      <span class="step-desc">超时后通知上级并触发升级动作，可配置多条</span>
+                      <span class="step-desc">超时后按「超时后 N 分钟」一次性通知，可配置多条（与临期前同构，非周期催办）</span>
                     </div>
                     <div class="step-card-actions">
                       <a-button
@@ -640,6 +648,7 @@ function save() { message.success('已保存并生效'); }
                       tag-prefix="升级"
                       summary="超时通知"
                       tone="danger"
+                      :show-after-offset="true"
                       :target-opts="targetOpts"
                       :channel-opts="channelOpts"
                       :template-opts="timeoutTemplateOpts"

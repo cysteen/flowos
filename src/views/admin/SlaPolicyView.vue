@@ -123,6 +123,7 @@ function recalcServiceMethodFromP1(rows: ServiceMethodSolveRow[]) {
 interface Policy {
   no: string; name: string;
   types: string[]; channels: string[]; levels: string[]; products: string[];
+  templates?: string[]; // 工单模板：由「业务类型 × 工单类型」路由命中的模板；[SCOPE_ALL]=全部
   calendar: string; priority: number; status: '启用' | '停用'; updatedAt: string;
   matrix: MatrixRow[]; dueSoon: DueSoon; escalations: EscRule[];
   pauseStates: string[]; remark: string;
@@ -141,13 +142,31 @@ const TYPE_OPTS = ['投诉', '咨询', '建议', '商机', '报修', '退费', '
 const CHANNEL_OPTS = ['在线客服', '电话', '邮件', '小程序', 'APP'];
 const LEVEL_OPTS = ['校长', '教师', '自媒体', '大V博主', '律师', '记者'];
 const PRODUCT_OPTS = ['学习机', '翻译机', '录音笔', '办公本', '智能硬件', 'AI服务', '通用'];
+
+// 工单模板目录：每个模板归属一个「业务类型 × 工单类型」，由分类路由维护（此处为管理端可选用的模板集）。
+// product '通用' = 跨业务类型通用模板，任一业务类型选择下均可命中。
+const TEMPLATE_CATALOG: { name: string; type: string; product: string }[] = [
+  { name: '投诉·通用受理模板', type: '投诉', product: '通用' },
+  { name: '投诉·学习机质量投诉模板', type: '投诉', product: '学习机' },
+  { name: '投诉·AI服务体验投诉模板', type: '投诉', product: 'AI服务' },
+  { name: '咨询·产品使用咨询模板', type: '咨询', product: '通用' },
+  { name: '咨询·AI服务功能咨询模板', type: '咨询', product: 'AI服务' },
+  { name: '报修·智能硬件报修模板', type: '报修', product: '智能硬件' },
+  { name: '报修·学习机报修模板', type: '报修', product: '学习机' },
+  { name: '退费·退费申请模板', type: '退费', product: '通用' },
+  { name: '退换·退换货受理模板', type: '退换', product: '通用' },
+  { name: '技术故障·录音笔故障模板', type: '技术故障', product: '录音笔' },
+  { name: '技术故障·AI服务故障模板', type: '技术故障', product: 'AI服务' },
+  { name: '建议·产品改进建议模板', type: '建议', product: '通用' },
+  { name: '商机·商机登记模板', type: '商机', product: '商机' },
+];
 const SCOPE_ALL = '全部';
 const CAL_OPTS = ['标准工作日历(9:00-18:00)', '7×24 自然时间', '售后工作日历'];
 const UNIT_OPTS: Unit[] = ['分钟', '小时', '自然日'];
 const WORK_CAL = '标准工作日历(9:00-18:00)';
 
-/** 平台标准节点类型（节点时效默认四类） */
-const NODE_SLA_TYPES = ['处理', '技术', '审核', '回访'] as const;
+/** 节点时效可选节点（仅两类） */
+const NODE_SLA_TYPES = ['工单处理', '技术支持'] as const;
 
 /** 节点时效预埋（各流程节点独立配置） */
 function defNodeSla(): NodeSla[] {
@@ -156,10 +175,8 @@ function defNodeSla(): NodeSla[] {
     id: base + i, node, respLimit, respUnit, respCal: WORK_CAL, procLimit, procUnit, procCal: WORK_CAL,
   });
   return [
-    mk(1, '处理', 4, '小时', 30, '分钟'),
-    mk(2, '技术', 4, '小时', 1, '小时'),
-    mk(3, '审核', 2, '小时', 1, '小时'),
-    mk(4, '回访', 24, '小时', 2, '小时'),
+    mk(1, '工单处理', 4, '小时', 30, '分钟'),
+    mk(2, '技术支持', 4, '小时', 1, '小时'),
   ];
 }
 /** 日历短名（列表/紧凑选择器用） */
@@ -171,20 +188,8 @@ const calSelOpts = computed(() => slaCalendars.map((c) => ({ value: c.name, labe
 /** 表单区日历选项（完整名称，便于配置时识别） */
 const calFormOpts = computed(() => slaCalendars.map((c) => ({ value: c.name, label: c.name })));
 
-/** 各工单类型流程节点（节点时效「节点」下拉；默认四类 + 按类型扩展） */
-const NODE_TYPE_GROUPS = [
-  { label: '平台节点', options: [...NODE_SLA_TYPES] },
-  { label: '通用流转', options: ['建单', '处理', '技术', '转办/委派', '升级二线', '审核', '解决', '回访', '结案/关闭'] },
-  { label: '投诉', options: ['一线处理', '升级技支', '服务处理'] },
-  { label: '咨询', options: ['解答'] },
-  { label: '建议', options: ['记录/转交'] },
-  { label: '商机', options: ['商机跟进', '转销售'] },
-  { label: '售后·寄修', options: ['派单至网点', '取件', '网点检测', '维修处理', '寄回', '网点完成'] },
-  { label: '售后·退费', options: ['退费审批', '财务退款'] },
-  { label: '售后·退换', options: ['退换审核', '换货发货'] },
-  { label: '技术故障', options: ['一线诊断', '研发处理(飞书/TPD/RDM/磐石)', '验证'] },
-];
-const nodeNameOpts = NODE_TYPE_GROUPS.map((g) => ({ label: g.label, options: g.options.map((o) => ({ value: o, label: o })) }));
+/** 节点时效「节点」下拉：仅支持工单处理、技术支持 */
+const nodeNameOpts = NODE_SLA_TYPES.map((o) => ({ value: o, label: o }));
 
 /** 未选或含「全部」= 匹配全部 */
 function isScopeAll(values: string[]): boolean {
@@ -200,10 +205,29 @@ function normalizeScopeSelect(values: string[]): string[] {
   if (values.length === 1) return [SCOPE_ALL];
   return values[values.length - 1] === SCOPE_ALL ? [SCOPE_ALL] : values.filter((v) => v !== SCOPE_ALL);
 }
-function onTypesChange(values: string[]) { form.types = normalizeScopeSelect(values); }
+function onTypesChange(values: string[]) { form.types = normalizeScopeSelect(values); pruneTemplates(); }
 function onChannelsChange(values: string[]) { form.channels = normalizeScopeSelect(values); }
 function onLevelsChange(values: string[]) { form.levels = normalizeScopeSelect(values); }
-function onProductsChange(values: string[]) { form.products = normalizeScopeSelect(values); }
+function onProductsChange(values: string[]) { form.products = normalizeScopeSelect(values); pruneTemplates(); }
+function onTemplatesChange(values: string[]) { form.templates = normalizeScopeSelect(values); }
+
+// 按当前「业务类型 × 工单类型」路由命中的工单模板：类型/业务任一为「全部」即放开该维度；product='通用'的模板跨业务命中。
+const routedTemplates = computed(() => {
+  const typeAll = isScopeAll(form.types);
+  const prodAll = isScopeAll(form.products);
+  return TEMPLATE_CATALOG.filter((t) => {
+    const typeHit = typeAll || form.types.includes(t.type);
+    const prodHit = prodAll || t.product === '通用' || form.products.includes(t.product);
+    return typeHit && prodHit;
+  }).map((t) => t.name);
+});
+// 路由变化后，剔除已不在命中范围内的已选模板（保留「全部」）。
+function pruneTemplates() {
+  const sel = form.templates ?? [];
+  if (!sel.length || isScopeAll(sel)) return;
+  const valid = routedTemplates.value;
+  form.templates = sel.filter((v) => valid.includes(v));
+}
 
 function defMatrix(): MatrixRow[] {
   return [
@@ -283,11 +307,19 @@ const policies = ref<Policy[]>([
   },
   {
     no: 'SLA008', name: 'AI服务-技术故障', types: ['技术故障'], channels: [SCOPE_ALL], levels: [SCOPE_ALL], products: ['AI服务'],
-    calendar: '7×24 自然时间', priority: 8, status: '停用', updatedAt: '2026-06-05 15:00',
+    calendar: '7×24 自然时间', priority: 0, status: '停用', updatedAt: '2026-06-05 15:00',
     matrix: matrixWith({ 'P1 高': { resp: [1, '小时'], solve: [12, '小时'] } }),
     dueSoon: { mode: 'percent', value: 90, unit: '小时' },
     escalations: [{ id: 1, dim: '解决', cond: '已超时', escalationRef: 'EC02' }],
     pauseStates: ['已挂起·待客户'], remark: 'AI 服务故障', rate: 89.4,
+  },
+  {
+    no: 'SLA000', name: '默认兜底策略', types: [SCOPE_ALL], channels: [SCOPE_ALL], levels: [SCOPE_ALL], products: [SCOPE_ALL],
+    calendar: '标准工作日历(9:00-18:00)', priority: 99, status: '启用', updatedAt: '2026-06-01 09:00',
+    matrix: defMatrix(),
+    dueSoon: { mode: 'percent', value: 80, unit: '分钟' },
+    escalations: [], pauseStates: ['已挂起·待客户'], remark: '未命中任何自定义策略的工单兜底；始终启用、不可停用/删除/拖动', rate: 92.1,
+    isDefault: true,
   },
 ]);
 
@@ -312,7 +344,6 @@ const columns = [
   { title: '优先级', key: 'priority', width: 72, align: 'center' as const },
   { title: '适用范围', key: 'scope', width: 180, ellipsis: true },
   { title: '优先级覆盖', key: 'cover', width: 140 },
-  { title: '达标率', key: 'rate', width: 100, sorter: (a: Policy, b: Policy) => a.rate - b.rate },
   { title: '工作日历(响/解)', key: 'calendar', width: 170 },
   { title: '状态', dataIndex: 'status', key: 'status', width: 88 },
   { title: '更新时间', dataIndex: 'updatedAt', key: 'updatedAt', width: 150 },
@@ -354,12 +385,19 @@ function onDrop(targetIdx: number) {
   message.success('已调整生效优先级');
 }
 function reassignPriority() {
-  policies.value.forEach((p, i) => { p.priority = p.isDefault ? 99 : i + 1; });
+  // 生效优先级只归「启用」策略：停用策略不参与匹配、不占序号（priority=0）；
+  // 内置兜底恒置底(99)。启用策略按列表顺序连续重排 1..N。
+  let rank = 0;
+  policies.value.forEach((p) => {
+    if (p.isDefault) { p.priority = 99; return; }
+    if (p.status === '启用') { p.priority = ++rank; }
+    else { p.priority = 0; }
+  });
 }
 /** a-table 行属性：拖拽排序（默认策略锁定不可拖） */
 function rowProps(record: Policy, index: number): Record<string, unknown> {
   return {
-    draggable: canReorder.value && !record.isDefault,
+    draggable: canReorder.value && !record.isDefault && record.status === '启用',
     class: dragIdx.value === index ? 'row-dragging' : '',
     onDragstart: () => { dragIdx.value = index; },
     onDragover: (e: DragEvent) => e.preventDefault(),
@@ -375,6 +413,7 @@ const form = reactive<Policy>(blankPolicy());
 function blankPolicy(): Policy {
   return {
     no: '', name: '', types: [SCOPE_ALL], channels: [SCOPE_ALL], levels: [SCOPE_ALL], products: [SCOPE_ALL],
+    templates: [SCOPE_ALL],
     calendar: CAL_OPTS[0], priority: 50, status: '停用', updatedAt: '',
     matrix: defMatrix(), dueSoon: { mode: 'countdown', value: 30, unit: '分钟' },
     escalations: [], pauseStates: ['已挂起·待客户'], remark: '', rate: 0,
@@ -425,9 +464,16 @@ function setupObserver() {
 }
 onBeforeUnmount(() => observer?.disconnect());
 
+/** 非兜底策略数（生效优先级可指定范围的上界） */
+function nonDefaultCount() {
+  return policies.value.filter((p) => !p.isDefault).length;
+}
+
 function openNew() {
   editing.value = null;
   Object.assign(form, blankPolicy());
+  form.priority = nonDefaultCount() + 1; // 默认队尾，可在编辑器改指定位置
+  form.status = '停用'; // 新建默认停用，需手动启用后才参与匹配
   enterEdit();
 }
 function openEdit(p: Policy) {
@@ -454,7 +500,7 @@ function backToList() {
 
 function addNode() {
   (form.nodeSla ??= []).push({
-    id: Date.now(), node: '处理', respLimit: 30, respUnit: '分钟', respCal: WORK_CAL,
+    id: Date.now(), node: '工单处理', respLimit: 30, respUnit: '分钟', respCal: WORK_CAL,
     procLimit: 4, procUnit: '小时', procCal: WORK_CAL,
   });
 }
@@ -481,14 +527,25 @@ function save() {
   if (!matrixValid()) { message.warning('时限矩阵不合法：响应须>0，解决须 ≥ 响应'); scrollToSection('commit'); return; }
   form.updatedAt = '2026-06-29 18:00';
   if (editing.value) {
-    Object.assign(editing.value, JSON.parse(JSON.stringify(form)));
+    if (editing.value.isDefault) {
+      // 兜底：仅更新承诺内容，位置恒置底、不移动
+      Object.assign(editing.value, JSON.parse(JSON.stringify(form)), { isDefault: true, priority: 99 });
+    } else {
+      // 非兜底：更新内容 + 移动到指定生效优先级位置
+      const target = Math.max(1, Math.min(form.priority || 1, nonDefaultCount()));
+      const cur = policies.value.indexOf(editing.value);
+      const data = JSON.parse(JSON.stringify(form)) as Policy;
+      if (cur >= 0) policies.value.splice(cur, 1);
+      policies.value.splice(target - 1, 0, data);
+    }
+    reassignPriority();
     message.success('已保存');
   } else {
     form.no = `SLA${String(policies.value.length + 1).padStart(3, '0')}`;
-    // 新策略插入到默认策略之前（默认恒置底）
-    const idx = policies.value.findIndex((p) => p.isDefault);
+    // 新策略插入到指定生效优先级位置（默认队尾；兜底恒置底、不受影响）
+    const target = Math.max(1, Math.min(form.priority || nonDefaultCount() + 1, nonDefaultCount() + 1));
     const clone = JSON.parse(JSON.stringify(form)) as Policy;
-    if (idx >= 0) policies.value.splice(idx, 0, clone); else policies.value.push(clone);
+    policies.value.splice(target - 1, 0, clone);
     reassignPriority();
     message.success('已创建（停用态），启用后即参与新工单计时');
   }
@@ -497,13 +554,26 @@ function save() {
 function onListStatusChange(p: Policy, enabled: boolean) {
   const next = enabled ? '启用' : '停用';
   if (p.status === next) return;
+  if (p.isDefault && next === '停用') {
+    message.warning('默认兜底策略须始终启用，不可停用');
+    p.status = '启用';
+    return;
+  }
   Modal.confirm({
     title: '状态变更',
     content: `确定${next}「${p.name}」？`,
-    onOk: () => { p.status = next; message.success(`已${next}`); },
+    onOk: () => {
+      p.status = next;
+      reassignPriority(); // 停用→释放序号、其余启用策略重排；启用→接续到队尾序号
+      message.success(`已${next}`);
+    },
   });
 }
 function copyPolicy(p: Policy) {
+  if (p.isDefault) {
+    message.warning('内置兜底策略不可复制，以保证唯一性');
+    return;
+  }
   const idx = policies.value.findIndex((x) => x.isDefault);
   const clone: Policy = {
     ...JSON.parse(JSON.stringify(p)),
@@ -515,6 +585,7 @@ function copyPolicy(p: Policy) {
   message.success('已复制为新策略（停用态）');
 }
 function del(p: Policy) {
+  if (p.isDefault) { message.warning('默认兜底策略不可删除'); return; }
   Modal.confirm({
     title: '确认删除', okText: '删除', okType: 'danger', cancelText: '取消',
     content: `删除策略「${p.name}」后，命中该范围的工单将改走默认策略或失去 SLA 约束。建议优先停用。`,
@@ -645,13 +716,14 @@ function fmtClock(v: number | null, u: Unit): string { return v == null ? '不�
           <template #bodyCell="{ column, record }">
             <template v-if="column.key === 'priority'">
               <span v-if="(record as Policy).isDefault" class="pri-rank pri-rank--last">末位</span>
+              <span v-else-if="(record as Policy).status !== '启用'" class="pri-rank pri-rank--none" title="已停用，不参与匹配、不占生效优先级">—</span>
               <span v-else class="pri-rank">{{ (record as Policy).priority }}</span>
             </template>
             <template v-else-if="column.key === 'name'">
               <span class="name-cell">
-                <HolderOutlined v-if="canReorder && !(record as Policy).isDefault" class="drag-h" />
+                <HolderOutlined v-if="canReorder && !(record as Policy).isDefault && (record as Policy).status === '启用'" class="drag-h" />
                 <span class="cell-link" @click="openEdit(record as Policy)">{{ (record as Policy).name }}</span>
-                <a-tag v-if="(record as Policy).isDefault" color="default" style="margin-left:6px">兜底</a-tag>
+                <a-tag v-if="(record as Policy).isDefault" color="gold" style="margin-left:6px;font-weight:600">内置</a-tag>
               </span>
             </template>
             <span v-else-if="column.key === 'scope'" class="scope-cell" :title="scopeText(record as Policy)">{{ scopeText(record as Policy) }}</span>
@@ -659,21 +731,24 @@ function fmtClock(v: number | null, u: Unit): string { return v == null ? '不�
             <span v-else-if="column.key === 'cover'">
               <a-tag v-for="m in (record as Policy).matrix" :key="m.level" color="blue" style="margin:1px">{{ m.level.split(' ')[0] }}</a-tag>
             </span>
-            <span v-else-if="column.key === 'rate'" class="rate" :class="(record as Policy).rate >= 95 ? 'ok' : (record as Policy).rate >= 85 ? 'warn' : 'bad'">
-              {{ (record as Policy).rate ? (record as Policy).rate + '%' : '—' }}
-            </span>
             <a-switch
               v-else-if="column.key === 'status'"
               size="small"
               :checked="(record as Policy).status === '启用'"
+              :disabled="(record as Policy).isDefault"
               checked-children="启用"
               un-checked-children="停用"
               @change="(checked: boolean) => onListStatusChange(record as Policy, checked)"
             />
             <template v-else-if="column.key === 'action'">
               <a-button type="link" size="small" @click="openEdit(record as Policy)">编辑</a-button>
-              <a-button type="link" size="small" @click="copyPolicy(record as Policy)">复制</a-button>
-              <a-button type="link" size="small" danger @click="del(record as Policy)">删除</a-button>
+              <a-button
+                v-if="!(record as Policy).isDefault"
+                type="link"
+                size="small"
+                @click="copyPolicy(record as Policy)"
+              >复制</a-button>
+              <a-button v-if="!(record as Policy).isDefault" type="link" size="small" danger @click="del(record as Policy)">删除</a-button>
             </template>
           </template>
         </a-table>
@@ -704,20 +779,38 @@ function fmtClock(v: number | null, u: Unit): string { return v == null ? '不�
         <!-- 右表单 -->
         <div class="form-area">
           <!-- ① 基本信息 -->
-          <section id="sec-basic" class="sec">
-            <div class="sec-h">① 基本信息</div>
+          <section id="sec-basic" class="sec" :class="{ 'sec--locked': form.isDefault }">
+            <div class="sec-h">
+              ① 基本信息
+              <span v-if="form.isDefault" class="sec-sub">内置策略：基本信息只读，仅可改 SLA 承诺</span>
+            </div>
             <div class="kv-form">
               <div class="kv-grid kv-grid-3">
                 <div class="kv-row">
                   <span class="kv-label required">策略名称</span>
-                  <a-input v-model:value="form.name" class="kv-control" size="small" placeholder="如 投诉-VIP 加严" />
+                  <a-input
+                    v-model:value="form.name"
+                    class="kv-control"
+                    size="small"
+                    placeholder="如 投诉-VIP 加严"
+                    :disabled="form.isDefault"
+                  />
                 </div>
                 <div class="kv-row">
                   <span class="kv-label">生效优先级</span>
-                  <span class="kv-control kv-readonly">
-                    {{ form.isDefault ? '末位（兜底）' : editing ? `第 ${form.priority} 位` : '保存后置于队尾' }}
+                  <span v-if="form.isDefault" class="kv-control kv-readonly">末位（内置·恒置底）</span>
+                  <span v-else class="kv-control" style="display:flex;align-items:center;gap:6px">
+                    第
+                    <a-input-number
+                      v-model:value="form.priority"
+                      :min="1"
+                      :max="editing ? nonDefaultCount() : nonDefaultCount() + 1"
+                      size="small"
+                      style="width:72px"
+                    />
+                    位
                     <a-tooltip
-                      title="生效优先级由列表位置唯一决定（顺序即优先级，首条命中即止）。如需调整，请在策略列表拖拽排序，不在此手填。"
+                      title="序号越小越先命中；保存后插入到该位置、其余顺移。生效优先级=命中先后顺序（首条命中即止）。可在此直接指定序号，也可回列表拖拽微调。内置兜底策略恒置底、不占用序号。"
                       placement="top"
                       :mouse-enter-delay="0.1"
                       color="#ffffff"
@@ -728,42 +821,87 @@ function fmtClock(v: number | null, u: Unit): string { return v == null ? '不�
                   </span>
                 </div>
                 <div class="kv-row">
-                  <span class="kv-label">状态</span>
-                  <a-radio-group v-model:value="form.status" class="kv-control" size="small">
-                    <a-radio value="启用">启用</a-radio>
+                  <span class="kv-label">
+                    状态
+                    <a-tooltip
+                      v-if="!form.isDefault"
+                      title="新建默认停用，需手动启用后才参与新工单匹配，避免误配即刻影响生产。"
+                      placement="top"
+                      :mouse-enter-delay="0.1"
+                      color="#ffffff"
+                      :overlay-inner-style="kpiTipOverlayStyle"
+                    >
+                      <QuestionCircleOutlined class="kv-tip-ic" />
+                    </a-tooltip>
+                    <a-tooltip
+                      v-else
+                      title="内置兜底策略始终启用、不可停用，以保证未命中其他策略的工单仍有 SLA 约束。"
+                      placement="top"
+                      :mouse-enter-delay="0.1"
+                      color="#ffffff"
+                      :overlay-inner-style="kpiTipOverlayStyle"
+                    >
+                      <QuestionCircleOutlined class="kv-tip-ic" />
+                    </a-tooltip>
+                  </span>
+                  <span v-if="form.isDefault" class="kv-control kv-readonly">启用（内置·不可停用）</span>
+                  <a-radio-group v-else v-model:value="form.status" class="kv-control" size="small">
                     <a-radio value="停用">停用</a-radio>
+                    <a-radio value="启用">启用</a-radio>
                   </a-radio-group>
                 </div>
               </div>
               <div class="kv-row">
                 <span class="kv-label">备注</span>
-                <a-textarea v-model:value="form.remark" class="kv-control" size="small" :rows="1" :auto-size="{ minRows: 1, maxRows: 3 }" />
+                <a-textarea
+                  v-model:value="form.remark"
+                  class="kv-control"
+                  size="small"
+                  :rows="1"
+                  :auto-size="{ minRows: 1, maxRows: 3 }"
+                  :disabled="form.isDefault"
+                />
               </div>
             </div>
           </section>
 
           <!-- ② 适用范围 -->
-          <section id="sec-scope" class="sec">
-            <div class="sec-h">② 适用范围 <span class="sec-sub">工单同时满足以下条件才命中本策略</span></div>
-            <div class="kv-form kv-grid-2">
-              <div class="kv-row">
-                <span class="kv-label">业务类型</span>
-                <a-select v-model:value="form.products" class="kv-control" size="small" mode="multiple" placeholder="选择业务类型，或选「全部」"
-                  :options="[SCOPE_ALL, ...PRODUCT_OPTS].map((o) => ({ value: o, label: o }))" @change="onProductsChange" />
+          <section id="sec-scope" class="sec" :class="{ 'sec--locked': form.isDefault }">
+            <div class="sec-h">
+              ② 适用范围
+              <span class="sec-sub">{{ form.isDefault ? '内置策略：适用范围固定为全部、只读' : '工单同时满足以下条件才命中本策略' }}</span>
+            </div>
+            <div class="kv-form">
+              <div class="kv-grid kv-grid-4">
+                <div class="kv-row">
+                  <span class="kv-label">业务类型</span>
+                  <a-select v-model:value="form.products" class="kv-control" size="small" mode="multiple" placeholder="全部"
+                    :disabled="form.isDefault"
+                    :options="[SCOPE_ALL, ...PRODUCT_OPTS].map((o) => ({ value: o, label: o }))" @change="onProductsChange" />
+                </div>
+                <div class="kv-row">
+                  <span class="kv-label required">工单类型</span>
+                  <a-select v-model:value="form.types" class="kv-control" size="small" mode="multiple" placeholder="全部"
+                    :disabled="form.isDefault"
+                    :options="[SCOPE_ALL, ...TYPE_OPTS].map((o) => ({ value: o, label: o }))" @change="onTypesChange" />
+                </div>
+                <div class="kv-row">
+                  <span class="kv-label">工单来源</span>
+                  <a-select v-model:value="form.channels" class="kv-control" size="small" mode="multiple" placeholder="全部"
+                    :disabled="form.isDefault"
+                    :options="[SCOPE_ALL, ...CHANNEL_OPTS].map((o) => ({ value: o, label: o }))" @change="onChannelsChange" />
+                </div>
+                <div class="kv-row">
+                  <span class="kv-label">工单模板</span>
+                  <a-select v-model:value="form.templates" class="kv-control" size="small" mode="multiple" placeholder="全部"
+                    :disabled="form.isDefault"
+                    :options="[SCOPE_ALL, ...routedTemplates].map((o) => ({ value: o, label: o }))" @change="onTemplatesChange" />
+                </div>
               </div>
-              <div class="kv-row">
-                <span class="kv-label required">工单类型</span>
-                <a-select v-model:value="form.types" class="kv-control" size="small" mode="multiple" placeholder="选择工单类型，或选「全部」"
-                  :options="[SCOPE_ALL, ...TYPE_OPTS].map((o) => ({ value: o, label: o }))" @change="onTypesChange" />
-              </div>
-              <div class="kv-row">
-                <span class="kv-label">工单来源</span>
-                <a-select v-model:value="form.channels" class="kv-control" size="small" mode="multiple" placeholder="选择工单来源，或选「全部」"
-                  :options="[SCOPE_ALL, ...CHANNEL_OPTS].map((o) => ({ value: o, label: o }))" @change="onChannelsChange" />
-              </div>
-              <div class="kv-row">
+              <div class="kv-row kv-row-template">
                 <span class="kv-label">客户类型</span>
-                <a-select v-model:value="form.levels" class="kv-control" size="small" mode="multiple" placeholder="选择客户类型，或选「全部」"
+                <a-select v-model:value="form.levels" class="kv-control" size="small" mode="multiple" placeholder="全部"
+                  :disabled="form.isDefault"
                   :options="[SCOPE_ALL, ...LEVEL_OPTS].map((o) => ({ value: o, label: o }))" @change="onLevelsChange" />
               </div>
             </div>
@@ -838,7 +976,7 @@ function fmtClock(v: number | null, u: Unit): string { return v == null ? '不�
             <!-- 节点时效 -->
             <div class="block-h block-h--mt">
               <span class="block-h-title">节点时效</span>
-              <span class="block-h-sub">每个流程节点的响应 + 处理时效，各自关联计时日历</span>
+              <span class="block-h-sub">仅支持「工单处理」「技术支持」；各节点的响应 + 处理时效，各自关联计时日历</span>
               <a-button type="link" size="small" class="sub-add" @click="addNode"><template #icon><PlusOutlined /></template>添加节点</a-button>
             </div>
             <a-table :columns="nodeCols" :data-source="form.nodeSla" row-key="id" :pagination="false" size="small" class="node-sla-table">
@@ -967,9 +1105,8 @@ function fmtClock(v: number | null, u: Unit): string { return v == null ? '不�
 .name-cell { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .pri-rank { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 6px; background: #eef4ff; color: #1a6fff; font-weight: 600; font-size: 13px; }
 .pri-rank--last { background: #f3f4f6; color: #9ca3af; font-weight: 500; }
+.pri-rank--none { background: transparent; color: #c0c4cc; font-weight: 500; }
 .scope-cell { font-size: 12px; color: #4b5563; }
-.rate { font-size: 13px; font-weight: 700; }
-.rate.ok { color: #10b981; } .rate.warn { color: #f59e0b; } .rate.bad { color: #ef4444; }
 :deep(.row-dragging) { opacity: 0.5; }
 :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; font-weight: 600; }
 
@@ -1002,8 +1139,11 @@ function fmtClock(v: number | null, u: Unit): string { return v == null ? '不�
 .sec-sub { font-size: 12px; font-weight: 400; color: #9ca3af; margin-left: 8px; }
 .kv-form { display: flex; flex-direction: column; gap: 10px; }
 .kv-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 20px; }
+.kv-row-full { grid-column: 1 / -1; }
 .kv-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 16px; }
-.kv-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.kv-grid-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 12px; max-width: 960px; }
+.kv-row-template { max-width: 480px; }
+.kv-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .kv-label { flex: none; width: 72px; text-align: right; font-size: 12px; color: #6b7280; line-height: 1.4; }
 .kv-label.required::before { content: '* '; color: #ff4d4f; }
 .kv-control { flex: 1; min-width: 0; }
@@ -1011,8 +1151,12 @@ function fmtClock(v: number | null, u: Unit): string { return v == null ? '不�
 .kv-readonly { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #374151; }
 .kv-tip-ic { color: #1a6fff; font-size: 13px; cursor: help; opacity: 0.75; }
 .kv-tip-ic:hover { opacity: 1; }
+@media (max-width: 1100px) {
+  .kv-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: none; }
+}
 @media (max-width: 900px) {
-  .kv-grid-2, .kv-grid-3 { grid-template-columns: 1fr; }
+  .kv-grid-2, .kv-grid-3, .kv-grid-4 { grid-template-columns: 1fr; max-width: none; }
+  .kv-row-template { max-width: none; }
 }
 .matrix { width: 100%; border-collapse: collapse; font-size: 13px; }
 .matrix th { background: #f3f4f6; color: #6b7280; font-size: 12px; font-weight: 600; text-align: left; padding: 8px 10px; border: 1px solid #e5e7eb; }
