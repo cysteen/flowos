@@ -172,11 +172,11 @@ export const TICKET_DETAIL: TicketDetailMeta = {
       nodePctOnWhole: 71,
     },
     {
-      label: '节点·处理',
-      kind: 'node',
+      label: '整单首响',
+      kind: 'first',
       phase: 'running',
-      remainSec: 750, // 00:12:30
-      totalSec: 3600, // 节点处理时限 1h
+      remainSec: 733, // 00:12:13
+      totalSec: 1800, // 整单首响时限 30min
       warnSec: 900, // 剩 ≤15min 临期
       dueBy: '今日 14:30',
     },

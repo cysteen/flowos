@@ -399,8 +399,8 @@ export function applyOpAction(
           nodePctOnWhole: 71,
         },
         {
-          label: '节点·处理',
-          kind: 'node',
+          label: '整单首响',
+          kind: 'first',
           phase: 'running',
           remainSec: 6300, // 01:45:00
           totalSec: 7200,

@@ -90,10 +90,10 @@ interface Dial {
   title: string;
 }
 
-/** 展示顺序：整单解决固定在前，其余按 kind 稳定排序 */
+/** 展示顺序：首响在前、整单解决在后（op-header 固定只展示这两类整单时效） */
 const KIND_ORDER: Record<SlaClock['kind'], number> = {
-  whole: 0,
-  first: 1,
+  first: 0,
+  whole: 1,
   node: 2,
   callback: 3,
 };
@@ -138,6 +138,8 @@ function buildDial(c: SlaClock, i: number): Dial {
 const dials = computed<Dial[]>(() =>
   props.detail.slaClocks
     .map((c, i) => ({ c, i }))
+    // op-header 固定只展示「整单首响 + 整单解决」两类整单时效；节点/回访时效不在头部展示
+    .filter(({ c }) => c.kind === 'first' || c.kind === 'whole')
     .sort((a, b) => KIND_ORDER[a.c.kind] - KIND_ORDER[b.c.kind])
     .map(({ c, i }) => buildDial(c, i)),
 );
@@ -146,7 +148,7 @@ const dials = computed<Dial[]>(() =>
 <template>
   <div
     class="sla-bar"
-    title="整单解决在前；绿=正常 / 橙=临期 / 红=超时 / 灰=暂停；表盘外环=已消耗比例"
+    title="首响在前、整单解决在后；绿=正常 / 橙=临期 / 红=超时 / 灰=暂停；表盘外环=已消耗比例"
   >
     <div
       v-for="d in dials"
