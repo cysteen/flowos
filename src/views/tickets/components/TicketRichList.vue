@@ -15,7 +15,6 @@ import {
   rowActions,
   resolveTicketGroupNames,
   SLA_COLOR,
-  softBg,
   type Ticket,
 } from '@/views/tickets/types/ticket';
 import { ticketLatestHandlingPreview } from '@/views/tickets/utils/ticketOverview';
@@ -80,6 +79,29 @@ function plainCellText(t: Ticket, key: string): string {
 
 function colClass(key: string): string {
   return `col-${key.replace(/([A-Z])/g, '-$1').toLowerCase()}`;
+}
+
+// ---- SLA 列：两行文本「解决：超/剩」「首响：超/剩」（PRD §8.2）----
+/** 倒计时短文案：'03:20:00'→'剩 03:20'；'已超 01:12'→'超 01:12'；'已停表' 原样 */
+function slaShort(text: string): string {
+  if (text.startsWith('已超')) return text.replace('已超', '超');
+  if (text === '已停表') return text;
+  return `剩 ${text.replace(/^(\d{2}:\d{2}):\d{2}$/, '$1')}`;
+}
+function isResponded(t: Ticket): boolean {
+  return t.responded ?? t.nodeStatus !== '待受理';
+}
+/** 解决行：已首响后扁平摘要即解决钟；未首响时解决钟走独立字段（摘要为首响钟） */
+function slaResolveLine(t: Ticket): { text: string; color: string } {
+  if (!isResponded(t) && t.resolveSlaText) {
+    return { text: slaShort(t.resolveSlaText), color: SLA_COLOR[t.resolveSlaState ?? 'ok'] };
+  }
+  return { text: slaShort(t.slaText), color: SLA_COLOR[t.slaState] };
+}
+/** 首响行：已首响＝达标停表；未首响时摘要（最急钟）即首响钟 */
+function slaFirstLine(t: Ticket): { text: string; color: string } {
+  if (isResponded(t)) return { text: '已达标', color: SLA_COLOR.ok };
+  return { text: slaShort(t.slaText), color: SLA_COLOR[t.slaState] };
 }
 
 const emit = defineEmits<{
@@ -303,11 +325,11 @@ const gridTemplateColumns = computed(() => {
         </div>
 
         <div v-else-if="colKey === 'sla'" class="col-sla cell-sla">
-          <span
-            class="sla-pill"
-            :style="{ color: SLA_COLOR[t.slaState], background: softBg(SLA_COLOR[t.slaState]) }"
-          >{{ t.slaText }}</span>
-          <span class="sla-sub">{{ t.slaSub }}</span>
+          <span v-if="t.slaText === '—'" class="sla-closed">—</span>
+          <template v-else>
+            <span class="sla-line" :style="{ color: slaResolveLine(t).color }">解决：{{ slaResolveLine(t).text }}</span>
+            <span class="sla-line" :style="{ color: slaFirstLine(t).color }">首响：{{ slaFirstLine(t).text }}</span>
+          </template>
         </div>
 
         <div v-else-if="colKey === 'assignee'" class="col-assignee cell-assignee">
@@ -610,9 +632,9 @@ const gridTemplateColumns = computed(() => {
 .prio-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
 
 /* SLA */
-.cell-sla { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
-.sla-pill { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; }
-.sla-sub { font-size: 11px; color: #9ca3af; }
+.cell-sla { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+.sla-line { font-size: 12px; font-weight: 600; line-height: 18px; white-space: nowrap; }
+.sla-closed { font-size: 12px; color: #9ca3af; }
 
 .cell-appointment { display: flex; align-items: center; }
 .appt-pill {

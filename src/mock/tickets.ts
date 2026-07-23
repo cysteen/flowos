@@ -81,6 +81,7 @@ const BASE_TICKETS: Ticket[] = [
     customer: '周杰', vip: false, product: '智能门锁 L1',
     nodeStatus: '待受理', nodeStep: 1, nodeTotal: 4, priority: 'P2',
     slaText: '04:10:00', slaSub: '充足', slaState: 'ok', slaMinutes: 250,
+    resolveSlaText: '08:00:00', resolveSlaState: 'ok',
     assignee: '王坐席', tab: 'mine',
     customerPhone: '13344445555', sn: 'SN-L1-33001', productCategory: '智能硬件',
     createdAt: '2026-06-10 13:00', updatedAt: '2026-06-10 13:00',
@@ -128,6 +129,7 @@ const BASE_TICKETS: Ticket[] = [
     customer: '陈静', vip: false, customerTags: ['老师'], product: '企业版',
     nodeStatus: '待受理', nodeStep: 1, nodeTotal: 4, priority: 'P3',
     slaText: '08:00:00', slaSub: '充足', slaState: 'ok', slaMinutes: 480,
+    resolveSlaText: '16:00:00', resolveSlaState: 'ok',
     assignee: '林坐席', tab: 'done', handledByMe: true, myDelegateAction: true,
     customerPhone: '13622223333', productCategory: '企业服务',
     createdAt: '2026-07-12 10:15', updatedAt: '2026-07-14 16:40',
@@ -181,6 +183,7 @@ const BASE_TICKETS: Ticket[] = [
     customer: '何苗', vip: false, product: '智能音箱 X1',
     nodeStatus: '待受理', nodeStep: 1, nodeTotal: 5, priority: 'P2',
     slaText: '02:00:00', slaSub: '距超时', slaState: 'ok', slaMinutes: 120,
+    resolveSlaText: '06:00:00', resolveSlaState: 'ok',
     assignee: null, tab: 'pool', groupId: 'line1', hasSupplement: true,
   },
   {
@@ -189,6 +192,7 @@ const BASE_TICKETS: Ticket[] = [
     customer: '罗成', vip: false, customerTags: ['校长'], product: '扫地机器人 R2',
     nodeStatus: '待受理', nodeStep: 1, nodeTotal: 5, priority: 'P1',
     slaText: '00:50:00', slaSub: '距超时', slaState: 'soon', slaMinutes: 50,
+    resolveSlaText: '04:00:00', resolveSlaState: 'ok',
     assignee: null, tab: 'pool', groupId: 'line2', hasDunning: true,
   },
   {
@@ -197,6 +201,7 @@ const BASE_TICKETS: Ticket[] = [
     customer: '袁媛', vip: true, customerTags: ['老师'], product: '会员服务',
     nodeStatus: '待受理', nodeStep: 1, nodeTotal: 4, priority: 'P3',
     slaText: '05:30:00', slaSub: '充足', slaState: 'ok', slaMinutes: 330,
+    resolveSlaText: '12:00:00', resolveSlaState: 'ok',
     assignee: null, tab: 'pool', groupId: 'line1',
   },
   {
@@ -205,6 +210,7 @@ const BASE_TICKETS: Ticket[] = [
     customer: '唐磊', vip: false, product: '学习机 T20',
     nodeStatus: '待受理', nodeStep: 1, nodeTotal: 5, priority: 'P0',
     slaText: '00:28:00', slaSub: '距超时', slaState: 'soon', slaMinutes: 28,
+    resolveSlaText: '02:30:00', resolveSlaState: 'ok',
     assignee: null, tab: 'pool', groupId: 'hardware', hasDunning: true, hasSupplement: true,
   },
   {
@@ -213,6 +219,7 @@ const BASE_TICKETS: Ticket[] = [
     customer: '沈悦', vip: true, customerTags: ['自媒体'], product: '开放平台',
     nodeStatus: '待受理', nodeStep: 1, nodeTotal: 5, priority: 'P1',
     slaText: '01:20:00', slaSub: '距超时', slaState: 'ok', slaMinutes: 80,
+    resolveSlaText: '06:00:00', resolveSlaState: 'ok',
     assignee: null, tab: 'pool', groupId: 'line2',
   },
 

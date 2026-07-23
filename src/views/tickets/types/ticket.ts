@@ -117,6 +117,10 @@ export interface Ticket {
   slaMinutes: number;
   /** 是否已做过首次响应 */
   responded?: boolean;
+  /** 未首响时：解决钟剩余文本（此时 slaText/slaState 为首响钟＝最急钟摘要）；已首响后解决钟即 slaText */
+  resolveSlaText?: string;
+  /** 未首响时：解决钟状态 */
+  resolveSlaState?: SlaState;
   /** 是否存在预约记录 */
   hasAppointment?: boolean;
   /** 预约倒计时文案 */
