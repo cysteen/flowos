@@ -7,6 +7,7 @@ import {
 } from '@/views/tickets/composables/useTicketColumns';
 import {
   doneRowActions,
+  isFirstResponded,
   isMentionUnread,
   mentionRowActions,
   mineRowActions,
@@ -88,9 +89,7 @@ function slaShort(text: string): string {
   if (!/\d/.test(text)) return text;
   return `剩 ${text.replace(/^(\d{2}:\d{2}):\d{2}$/, '$1')}`;
 }
-function isResponded(t: Ticket): boolean {
-  return t.responded ?? t.nodeStatus !== '待受理';
-}
+const isResponded = isFirstResponded; // 共享口径（types/ticket.ts）
 const BREACHED_LINE = { text: '未达标', color: SLA_COLOR.overdue };
 const MET_LINE = { text: '已达标', color: SLA_COLOR.ok };
 

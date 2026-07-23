@@ -244,6 +244,42 @@ export const SLA_COLOR: Record<SlaState, string> = {
   paused: '#6B7280',
 };
 
+// ---- SLA 两钟归约（PRD §8.2）----
+
+/** 是否已完成首次响应（未显式标注时按节点推断：待受理=未响） */
+export function isFirstResponded(t: Ticket): boolean {
+  return t.responded ?? t.nodeStatus !== '待受理';
+}
+
+/** 'HH:MM:SS' / 'HH:MM' → 分钟；非倒计时文本 → null */
+function slaTextToMinutes(text: string): number | null {
+  const m = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(text.trim());
+  if (!m) return null;
+  return Number(m[1]) * 60 + Number(m[2]) + Number(m[3] ?? 0) / 60;
+}
+
+const SLA_STATE_RANK: Record<SlaState, number> = { overdue: 0, soon: 1, ok: 2, paused: 3 };
+
+/**
+ * SLA 排序键（PRD §8.2②）：每单两只对客钟（整单解决 + 整单首响）**归约取最急**——
+ * 终态钟（达标/未达标/已关闭）不参与；挂起单计时冻结、组置底；已关闭单无活跃钟、排最后。
+ * group：0 已超时 / 1 临期 / 2 正常 / 3 挂起 / 4 已关闭；minutes：组内距超时分钟升序。
+ */
+export function slaSortKey(t: Ticket): { group: number; minutes: number } {
+  if (t.slaText === '—') return { group: 4, minutes: Number.MAX_SAFE_INTEGER }; // 已关闭：无活跃钟
+  if (t.slaState === 'paused') return { group: 3, minutes: Number.MAX_SAFE_INTEGER }; // 挂起：冻结置底
+  // 活跃钟集合：扁平摘要（已响=解决钟 / 未响=首响钟）+ 未响时的解决钟独立字段
+  const clocks: { state: SlaState; minutes: number }[] = [
+    { state: t.slaState, minutes: t.slaMinutes },
+  ];
+  if (!isFirstResponded(t) && t.resolveSlaText) {
+    const m = slaTextToMinutes(t.resolveSlaText);
+    if (m != null) clocks.push({ state: t.resolveSlaState ?? 'ok', minutes: m });
+  }
+  clocks.sort((a, b) => SLA_STATE_RANK[a.state] - SLA_STATE_RANK[b.state] || a.minutes - b.minutes);
+  return { group: SLA_STATE_RANK[clocks[0].state], minutes: clocks[0].minutes };
+}
+
 /** 12% 透明背景（.pen 用 1F = 约 12%） */
 export function softBg(hex: string): string {
   return `${hex}1F`;

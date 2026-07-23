@@ -4,6 +4,7 @@ import { message, Modal } from 'ant-design-vue';
 import { TICKET_DETAIL, TIMELINE } from '@/mock/ticketDetail';
 import type { TicketDetailMeta, ChildTicket, SlaClock } from '@/mock/ticketDetail';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
+import { isFirstResponded } from '@/views/tickets/types/ticket';
 import type { Ticket, Channel, TicketType, Priority } from '@/views/tickets/types/ticket';
 import { TICKETS } from '@/mock/tickets';
 import { TYPE_SAMPLES } from '@/mock/ticketTypeSamples';
@@ -69,7 +70,7 @@ function dueByText(remSec: number): string {
  * 挂起 → 解决钟冻结；已关闭 → 双钟停表。
  */
 function buildSlaClocks(t: Ticket): SlaClock[] {
-  const responded = t.responded ?? t.nodeStatus !== '待受理';
+  const responded = isFirstResponded(t);
   const solve: SlaClock = {
     label: '整单解决', kind: 'whole', phase: 'running',
     remainSec: 4 * 3600, totalSec: 8 * 3600, warnSec: 1800, dueBy: '',

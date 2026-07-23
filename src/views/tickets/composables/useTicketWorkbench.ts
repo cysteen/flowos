@@ -26,25 +26,31 @@ import {
   inMineTaskScope,
   isWorkbenchSearchTab,
   POOL_GROUPS,
+  slaSortKey,
   WORKBENCH_HANDLER,
   type ChipKey,
   type Priority,
-  type SlaState,
   type TabKey,
   type Ticket,
 } from '@/views/tickets/types/ticket';
 
 const PRIORITY_RANK: Record<Priority, number> = { P0: 0, P1: 1, P2: 2, P3: 3 };
-const SLA_GROUP_RANK: Record<SlaState, number> = { overdue: 0, soon: 1, ok: 2, paused: 3 };
 
 const VISIBLE_POOL_GROUPS = POOL_GROUPS.map((g) => g.id);
 
-/** SLA 紧急度排序（PRD-02 §9）：已超时 > 距超时升序 > 优先级 P0→P3 */
+/**
+ * SLA 紧急度排序（PRD §8.2②）：①状态组（两钟归约最急：超时>临期>正常>挂起>关闭）
+ * ②组内距超时升序 ③优先级 P0→P3 ④创建时间早建在前。
+ * 排序作用于筛选后的全量结果集，分页仅为展示切片（跨页全局有序）。
+ */
 function slaUrgencyCompare(a: Ticket, b: Ticket): number {
-  const g = SLA_GROUP_RANK[a.slaState] - SLA_GROUP_RANK[b.slaState];
-  if (g !== 0) return g;
-  if (a.slaMinutes !== b.slaMinutes) return a.slaMinutes - b.slaMinutes;
-  return PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority];
+  const ka = slaSortKey(a);
+  const kb = slaSortKey(b);
+  if (ka.group !== kb.group) return ka.group - kb.group;
+  if (ka.minutes !== kb.minutes) return ka.minutes - kb.minutes;
+  const p = PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority];
+  if (p !== 0) return p;
+  return (a.createdAt ?? '9999').localeCompare(b.createdAt ?? '9999');
 }
 
 function savedFilterTab(tab: TabKey): SavedFilterTab | null {
