@@ -157,7 +157,7 @@ const KIND_ORDER: Record<SlaClock['kind'], number> = {
   callback: 3,
 };
 
-function buildDial(c: SlaClock, i: number): Dial {
+function buildDial(c: SlaClock, i: number, wholeStartMs?: number): Dial {
   const rem = liveRemain[i] ?? c.remainSec;
   const { vis, outcome, color } = clockState(c, rem);
 
@@ -177,7 +177,12 @@ function buildDial(c: SlaClock, i: number): Dial {
     : outcome === 'breached' ? '未达标'
     : outcome === 'void' ? '已停表'
     : `${rem < 0 ? '超' : '剩'} ${fmtLong(rem)}`;
-  const startText = whenText(Date.now() - (c.totalSec - rem) * 1000);
+  // 整单/首响均起算于建单：优先用整单钟起点，避免停表钟按冻结剩余回推产生漂移
+  const startText = whenText(
+    c.kind === 'first' || c.kind === 'whole'
+      ? wholeStartMs ?? Date.now() - (c.totalSec - rem) * 1000
+      : Date.now() - (c.totalSec - rem) * 1000,
+  );
 
   return {
     clock: c,
@@ -198,14 +203,23 @@ function buildDial(c: SlaClock, i: number): Dial {
   };
 }
 
-const dials = computed<Dial[]>(() =>
-  props.detail.slaClocks
+/** 整单钟起算时刻（ms）：首响/整单共用（同起算于建单） */
+function wholeStartMs(): number | undefined {
+  const i = props.detail.slaClocks.findIndex((c) => c.kind === 'whole');
+  if (i < 0) return undefined;
+  const c = props.detail.slaClocks[i];
+  return Date.now() - (c.totalSec - (liveRemain[i] ?? c.remainSec)) * 1000;
+}
+
+const dials = computed<Dial[]>(() => {
+  const ws = wholeStartMs();
+  return props.detail.slaClocks
     .map((c, i) => ({ c, i }))
     // op-header 固定只展示「整单首响 + 整单解决」两类整单时效；节点/回访时效不在头部展示
     .filter(({ c }) => c.kind === 'first' || c.kind === 'whole')
     .sort((a, b) => KIND_ORDER[a.c.kind] - KIND_ORDER[b.c.kind])
-    .map(({ c, i }) => buildDial(c, i)),
-);
+    .map(({ c, i }) => buildDial(c, i, ws));
+});
 
 // ---- hover 浮层「时效关系」迷你时间轴（.pen meHhu）：各钟窗口段映射到整单时间轴，共享"现在"刻度 ----
 const AXIS_W = 176;
@@ -259,12 +273,13 @@ const relationData = computed<{ rows: RelationRow[]; nowLeft: number }>(() => {
 
 // 「查看全部时效」弹窗：全部钟（含节点/回访）明细
 const allOpen = ref(false);
-const allDials = computed<Dial[]>(() =>
-  props.detail.slaClocks
+const allDials = computed<Dial[]>(() => {
+  const ws = wholeStartMs();
+  return props.detail.slaClocks
     .map((c, i) => ({ c, i }))
     .sort((a, b) => KIND_ORDER[a.c.kind] - KIND_ORDER[b.c.kind])
-    .map(({ c, i }) => buildDial(c, i)),
-);
+    .map(({ c, i }) => buildDial(c, i, ws));
+});
 </script>
 
 <template>

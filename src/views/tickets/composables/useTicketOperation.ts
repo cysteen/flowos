@@ -50,12 +50,17 @@ function tuneClock(c: SlaClock, rem: number, state: Ticket['slaState']): void {
   }
 }
 
-/** 由剩余秒推算绝对截止文案（今日 HH:MM / M/D HH:MM） */
-function dueByText(remSec: number): string {
-  const d = new Date(Date.now() + remSec * 1000);
+/** 绝对时刻文案（今日 HH:MM / M/D HH:MM） */
+function whenAt(ms: number): string {
+  const d = new Date(ms);
   const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   const sameDay = d.toDateString() === new Date().toDateString();
   return sameDay ? `今日 ${hm}` : `${d.getMonth() + 1}/${d.getDate()} ${hm}`;
+}
+
+/** 由剩余秒推算绝对截止文案 */
+function dueByText(remSec: number): string {
+  return whenAt(Date.now() + remSec * 1000);
 }
 
 /**
@@ -109,7 +114,10 @@ function buildSlaClocks(t: Ticket): SlaClock[] {
     if (rs != null) tuneClock(solve, rs, t.resolveSlaState ?? 'ok');
   }
   solve.dueBy = dueByText(solve.remainSec);
-  first.dueBy = dueByText(first.remainSec);
+  // 首响与整单同起算于建单：截止 = 整单起算 + 首响时限（停表钟不能按冻结剩余推截止）
+  const wholeStart = Date.now() - (solve.totalSec - solve.remainSec) * 1000;
+  first.dueBy =
+    first.phase === 'running' ? dueByText(first.remainSec) : whenAt(wholeStart + first.totalSec * 1000);
   return [solve, first];
 }
 
