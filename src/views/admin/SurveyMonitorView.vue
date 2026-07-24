@@ -8,6 +8,7 @@ import {
 } from '@ant-design/icons-vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { stdPagination } from '@/config/adminUi';
+import dayjs, { type Dayjs } from 'dayjs';
 
 type TaskStatus = '待发送' | '静默缓存' | '已投放' | '待反馈' | '已反馈' | '无法触达' | '投放失败' | '已超时';
 type FeedResult = '已解决' | '未解决无方案' | '未解决有方案' | '超时无反馈' | '';
@@ -27,46 +28,100 @@ interface Row {
 }
 
 const router = useRouter();
-const range = ref<'today' | 'week'>('today');
 
 /** 工单号 → 工单处理（详情）页 */
 function goTicket(ticketNo: string) {
   router.push({ name: 'ticket-operation', params: { ticketNo } });
 }
 
-/** 概览漏斗（当前范围快照） */
-const funnel = computed(() => {
-  const base = range.value === 'today'
-    ? { 待发送: 128, 已投放: 3412, 待反馈: 891, 已反馈: 2401, 无法触达: 47 }
-    : { 待发送: 96, 已投放: 22140, 待反馈: 640, 已反馈: 18902, 无法触达: 312 };
-  return base;
+// —— 时间范围：今日 / 7日 / 30日 快捷 + 自定义区间 ——
+type RangeKey = 'today' | '7d' | '30d' | 'custom';
+const rangeKey = ref<RangeKey>('today');
+const customRange = ref<[Dayjs, Dayjs] | null>(null);
+
+/** RangePicker 内置快捷预设 */
+const rangePresets = [
+  { label: '今日', value: [dayjs().startOf('day'), dayjs().endOf('day')] as [Dayjs, Dayjs] },
+  { label: '近 7 日', value: [dayjs().subtract(6, 'day').startOf('day'), dayjs().endOf('day')] as [Dayjs, Dayjs] },
+  { label: '近 30 日', value: [dayjs().subtract(29, 'day').startOf('day'), dayjs().endOf('day')] as [Dayjs, Dayjs] },
+];
+
+function onRangeKey(k: RangeKey) {
+  rangeKey.value = k;
+  if (k !== 'custom') customRange.value = null;
+}
+function onCustomChange(v: [Dayjs, Dayjs] | null) {
+  customRange.value = v;
+  if (v) rangeKey.value = 'custom';
+}
+
+/** 自定义区间跨越天数（用于估算规模档：短→今日级，中→7日级，长→30日级） */
+const scaleKey = computed<'today' | '7d' | '30d'>(() => {
+  if (rangeKey.value === 'today') return 'today';
+  if (rangeKey.value === '7d') return '7d';
+  if (rangeKey.value === '30d') return '30d';
+  const r = customRange.value;
+  if (!r) return '7d';
+  const days = r[1].diff(r[0], 'day') + 1;
+  if (days <= 1) return 'today';
+  if (days <= 10) return '7d';
+  return '30d';
 });
 
-/** 反馈结果分布 */
-const dist = computed(() => (range.value === 'today'
-  ? [
-      { label: '已解决', pct: 68, tone: 'ok' },
-      { label: '未解决无方案', pct: 15, tone: 'warn' },
-      { label: '未解决有方案（退回重处理）', pct: 12, tone: 'back' },
-      { label: '超时无反馈', pct: 5, tone: 'mute' },
-    ]
-  : [
-      { label: '已解决', pct: 71, tone: 'ok' },
-      { label: '未解决无方案', pct: 14, tone: 'warn' },
-      { label: '未解决有方案（退回重处理）', pct: 10, tone: 'back' },
-      { label: '超时无反馈', pct: 5, tone: 'mute' },
-    ]));
+const rangeLabel = computed(() => {
+  if (rangeKey.value === 'custom' && customRange.value) {
+    return `${customRange.value[0].format('MM-DD')} ~ ${customRange.value[1].format('MM-DD')}`;
+  }
+  return { today: '今日', '7d': '近 7 日', '30d': '近 30 日' }[scaleKey.value];
+});
 
-const alerts = computed(() => (range.value === 'today'
-  ? [
-      { key: 'fail', text: '投放失败 12 条', filter: '投放失败' },
-      { key: 'silent', text: '静默积压 128 条', filter: '静默缓存' },
-      { key: '5xx', text: '讯飞接口 5xx 近 1h：3 次', filter: '' },
-    ]
-  : [
-      { key: 'fail', text: '投放失败 34 条', filter: '投放失败' },
-      { key: 'silent', text: '静默积压 96 条', filter: '静默缓存' },
-    ]));
+/** 概览漏斗（当前范围快照） */
+const FUNNEL_DATA: Record<'today' | '7d' | '30d', Record<string, number>> = {
+  today: { 待发送: 128, 已投放: 3412, 待反馈: 891, 已反馈: 2401, 无法触达: 47 },
+  '7d': { 待发送: 96, 已投放: 22140, 待反馈: 640, 已反馈: 18902, 无法触达: 312 },
+  '30d': { 待发送: 74, 已投放: 91580, 待反馈: 520, 已反馈: 82040, 无法触达: 1286 },
+};
+const funnel = computed(() => FUNNEL_DATA[scaleKey.value]);
+
+/** 反馈结果分布 */
+const DIST_DATA: Record<'today' | '7d' | '30d', { label: string; pct: number; tone: string }[]> = {
+  today: [
+    { label: '已解决', pct: 68, tone: 'ok' },
+    { label: '未解决无方案', pct: 15, tone: 'warn' },
+    { label: '未解决有方案（退回重处理）', pct: 12, tone: 'back' },
+    { label: '超时无反馈', pct: 5, tone: 'mute' },
+  ],
+  '7d': [
+    { label: '已解决', pct: 71, tone: 'ok' },
+    { label: '未解决无方案', pct: 14, tone: 'warn' },
+    { label: '未解决有方案（退回重处理）', pct: 10, tone: 'back' },
+    { label: '超时无反馈', pct: 5, tone: 'mute' },
+  ],
+  '30d': [
+    { label: '已解决', pct: 73, tone: 'ok' },
+    { label: '未解决无方案', pct: 13, tone: 'warn' },
+    { label: '未解决有方案（退回重处理）', pct: 9, tone: 'back' },
+    { label: '超时无反馈', pct: 5, tone: 'mute' },
+  ],
+};
+const dist = computed(() => DIST_DATA[scaleKey.value]);
+
+const ALERT_DATA: Record<'today' | '7d' | '30d', { key: string; text: string; filter: string }[]> = {
+  today: [
+    { key: 'fail', text: '投放失败 12 条', filter: '投放失败' },
+    { key: 'silent', text: '静默积压 128 条', filter: '静默缓存' },
+    { key: '5xx', text: '讯飞接口 5xx 近 1h：3 次', filter: '' },
+  ],
+  '7d': [
+    { key: 'fail', text: '投放失败 34 条', filter: '投放失败' },
+    { key: 'silent', text: '静默积压 96 条', filter: '静默缓存' },
+  ],
+  '30d': [
+    { key: 'fail', text: '投放失败 146 条', filter: '投放失败' },
+    { key: 'silent', text: '静默积压 74 条', filter: '静默缓存' },
+  ],
+};
+const alerts = computed(() => ALERT_DATA[scaleKey.value]);
 
 const STATUS_TONE: Record<TaskStatus, string> = {
   待发送: 'mute', 静默缓存: 'mute', 已投放: 'blue', 待反馈: 'warn',
@@ -147,8 +202,8 @@ function toHuman(r: Row) {
 function onManualCallback(r: Row) {
   message.success(`已为 ${r.ticketNo} 生成人工回访待办`);
 }
-function onExport() { message.success(`已导出 ${displayRows.value.length} 条明细`); }
-function onRefresh() { message.success('已按当前时刻重新拉取快照'); }
+function onExport() { message.success(`已导出「${rangeLabel.value}」${displayRows.value.length} 条明细`); }
+function onRefresh() { message.success(`已按当前时刻重新拉取「${rangeLabel.value}」快照`); }
 function onReset() { Object.assign(filter, { ticketNo: '', flow: undefined, times: undefined, status: undefined, result: undefined }); }
 </script>
 
@@ -159,10 +214,21 @@ function onReset() { Object.assign(filter, { ticketNo: '', flow: undefined, time
       subtitle="按拉取时刻快照展示任务漏斗与异常告警；下钻任务明细核对触达与反馈、排查对接。"
     >
       <template #actions>
-        <a-radio-group v-model:value="range" button-style="solid" size="small">
+        <a-radio-group :value="rangeKey" button-style="solid" size="small" @change="(e: any) => onRangeKey(e.target.value)">
           <a-radio-button value="today">今日</a-radio-button>
-          <a-radio-button value="week">近 7 日</a-radio-button>
+          <a-radio-button value="7d">7 日</a-radio-button>
+          <a-radio-button value="30d">30 日</a-radio-button>
+          <a-radio-button value="custom">自定义</a-radio-button>
         </a-radio-group>
+        <a-range-picker
+          v-if="rangeKey === 'custom'"
+          :value="customRange"
+          :presets="rangePresets"
+          size="small"
+          format="MM-DD"
+          class="range-pick"
+          @change="(v: any) => onCustomChange(v)"
+        />
         <a-button @click="onRefresh"><template #icon><ReloadOutlined /></template>刷新</a-button>
         <a-button @click="onExport"><template #icon><DownloadOutlined /></template>导出</a-button>
       </template>
@@ -323,6 +389,7 @@ function onReset() { Object.assign(filter, { ticketNo: '', flow: undefined, time
 .f-input { width: 150px; }
 .f-sel { width: 118px; }
 .f-sel-sm { width: 100px; }
+.range-pick { width: 220px; }
 
 .detail-card :deep(.ant-table-thead > tr > th) { background: #fff; color: #6b7280; font-size: 12px; font-weight: 600; }
 .detail-card :deep(.ant-table-tbody > tr > td) { font-size: 13px; color: #374151; }
