@@ -180,7 +180,7 @@ function saveCallbackKey() { callbackKeyEditing.value = false; message.success('
               <a-checkbox-group v-model:value="cur.list.afterProdCat" :options="PROD_CAT_OPTS" />
             </div>
             <div class="chk-row">
-              <span class="chk-label">业务类型</span>
+              <span class="chk-label">业务分类</span>
               <a-checkbox-group v-model:value="cur.list.afterBizType" :options="BIZ_TYPE_OPTS" />
             </div>
             <div class="chk-row">
