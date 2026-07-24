@@ -40,7 +40,7 @@ interface Strategy {
 const TICKET_TYPE_OPTS = [...CREATE_TICKET_TYPES];                         // 投诉/建议/商机/咨询
 const CALL_NATURE_OPTS = ['业务骚扰', '纯骚扰'];                            // 小结·话务性质（骚扰定性）
 const PROD_CAT_OPTS = [...PRODUCT_CATEGORIES, '综合类问题'];                // 产品分类
-const BIZ_TYPE_OPTS = ['消费者BG', '教育BG', '开放平台'];                    // 业务线
+const BIZ_TYPE_OPTS = ['教育', '听见', '法院', '医疗', '其他', '智能硬件', '无线音乐', '开放平台']; // 业务分类
 const SOURCE_OPTS = [...TICKET_SOURCE_OPTIONS, '学习渠道'];                 // 工单来源
 const TAG_OPTS = ['二次下送'];                                             // 工单标记
 
