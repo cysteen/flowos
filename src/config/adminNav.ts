@@ -3,7 +3,7 @@ import {
   DashboardOutlined, TeamOutlined, AppstoreOutlined, FieldTimeOutlined,
   FileTextOutlined, BranchesOutlined, DatabaseOutlined, ApiOutlined,
   SafetyCertificateOutlined, BankOutlined, SettingOutlined, CheckCircleOutlined,
-  GoldOutlined, ThunderboltOutlined, DeploymentUnitOutlined,
+  GoldOutlined, ThunderboltOutlined, DeploymentUnitOutlined, SolutionOutlined,
 } from '@ant-design/icons-vue';
 
 import type { AdminScope } from '@/config/roles';
@@ -110,6 +110,13 @@ export const ADMIN_GROUPS: AdminNavGroup[] = [
       { key: 'customers', label: '客户管理', prd: 'PRD-87' },
       { key: 'products', label: '产品管理', prd: 'PRD-85' },
       { key: 'problem-tags', label: '问题分类', prd: 'PRD-85' },
+    ],
+  },
+  {
+    key: 'survey', label: '调研回访', icon: SolutionOutlined, scope: 'ops',
+    items: [
+      { key: 'survey-config', label: '调研回访配置', prd: 'PRD-810' },
+      { key: 'survey-monitor', label: '调研回访监控', prd: 'PRD-810' },
     ],
   },
   {

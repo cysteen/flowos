@@ -39,6 +39,8 @@ function adminViewFor(key: string) {
   if (key === 'customers') return () => import('@/views/admin/CustomerManageView.vue');
   if (key === 'products') return () => import('@/views/admin/ProductManageView.vue');
   if (key === 'problem-tags') return () => import('@/views/admin/ProblemTagManageView.vue');
+  if (key === 'survey-config') return () => import('@/views/admin/SurveyConfigView.vue');
+  if (key === 'survey-monitor') return () => import('@/views/admin/SurveyMonitorView.vue');
   if (DISPATCH_KEYS.has(key)) return () => import('@/views/admin/DispatchConfigView.vue');
   if (key === 'users') return () => import('@/views/admin/UserManageView.vue');
   if (key === 'orgs') return () => import('@/views/admin/OrgManageView.vue');

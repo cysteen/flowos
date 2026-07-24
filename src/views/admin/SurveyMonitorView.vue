@@ -1,0 +1,336 @@
+<script setup lang="ts">
+import { ref, reactive, computed } from 'vue';
+import { message } from 'ant-design-vue';
+import {
+  ReloadOutlined, DownloadOutlined, SearchOutlined,
+  WarningOutlined, PhoneOutlined,
+} from '@ant-design/icons-vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import { stdPagination } from '@/config/adminUi';
+
+type TaskStatus = '待发送' | '静默缓存' | '已投放' | '待反馈' | '已反馈' | '无法触达' | '投放失败' | '已超时';
+type FeedResult = '已解决' | '未解决无方案' | '未解决有方案' | '超时无反馈' | '';
+type Flow = '普通' | '结案后调研' | '免调研';
+
+interface Row {
+  key: string;
+  ticketNo: string;
+  title: string;
+  bizType: '售后' | '非售后';
+  flow: Flow;
+  times: 1 | 2;
+  mobile: string;
+  status: TaskStatus;
+  result: FeedResult;
+  deliverAt: string;
+  feedbackAt: string;
+}
+
+const range = ref<'today' | 'week'>('today');
+
+/** 概览漏斗（当前范围快照） */
+const funnel = computed(() => {
+  const base = range.value === 'today'
+    ? { 待发送: 128, 已投放: 3412, 待反馈: 891, 已反馈: 2401, 无法触达: 47 }
+    : { 待发送: 96, 已投放: 22140, 待反馈: 640, 已反馈: 18902, 无法触达: 312 };
+  return base;
+});
+
+/** 反馈结果分布 */
+const dist = computed(() => (range.value === 'today'
+  ? [
+      { label: '已解决', pct: 68, tone: 'ok' },
+      { label: '未解决无方案', pct: 15, tone: 'warn' },
+      { label: '未解决有方案（退回重处理）', pct: 12, tone: 'back' },
+      { label: '超时无反馈', pct: 5, tone: 'mute' },
+    ]
+  : [
+      { label: '已解决', pct: 71, tone: 'ok' },
+      { label: '未解决无方案', pct: 14, tone: 'warn' },
+      { label: '未解决有方案（退回重处理）', pct: 10, tone: 'back' },
+      { label: '超时无反馈', pct: 5, tone: 'mute' },
+    ]));
+
+const alerts = computed(() => (range.value === 'today'
+  ? [
+      { key: 'fail', text: '投放失败 12 条', filter: '投放失败' },
+      { key: 'silent', text: '静默积压 128 条', filter: '静默缓存' },
+      { key: '5xx', text: '讯飞接口 5xx 近 1h：3 次', filter: '' },
+    ]
+  : [
+      { key: 'fail', text: '投放失败 34 条', filter: '投放失败' },
+      { key: 'silent', text: '静默积压 96 条', filter: '静默缓存' },
+    ]));
+
+const STATUS_TONE: Record<TaskStatus, string> = {
+  待发送: 'mute', 静默缓存: 'mute', 已投放: 'blue', 待反馈: 'warn',
+  已反馈: 'green', 无法触达: 'red', 投放失败: 'red', 已超时: 'mute',
+};
+const RESULT_TONE: Record<FeedResult, string> = {
+  已解决: 'green', 未解决无方案: 'warn', 未解决有方案: 'back', 超时无反馈: 'mute', '': 'mute',
+};
+
+const allRows = ref<Row[]>([
+  { key: '1', ticketNo: 'TK20260724001', title: '录音笔电池续航异常', bizType: '售后', flow: '普通', times: 1, mobile: '138****2043', status: '已反馈', result: '未解决有方案', deliverAt: '07-24 08:12', feedbackAt: '07-24 10:30' },
+  { key: '2', ticketNo: 'TK20260724002', title: '翻译机屏幕显示乱码', bizType: '售后', flow: '普通', times: 1, mobile: '(全部无效)', status: '无法触达', result: '', deliverAt: '—', feedbackAt: '—' },
+  { key: '3', ticketNo: 'TK20260724003', title: '充电器无法识别', bizType: '售后', flow: '结案后调研', times: 1, mobile: '139****7781', status: '待反馈', result: '', deliverAt: '07-24 08:15', feedbackAt: '—' },
+  { key: '4', ticketNo: 'TK20260724004', title: '云空间无法领取', bizType: '非售后', flow: '普通', times: 1, mobile: '137****5520', status: '已反馈', result: '已解决', deliverAt: '07-24 08:10', feedbackAt: '07-24 09:02' },
+  { key: '5', ticketNo: 'TK20260724005', title: '会议翻译延迟卡顿', bizType: '售后', flow: '普通', times: 1, mobile: '135****9087', status: '已超时', result: '超时无反馈', deliverAt: '07-23 08:20', feedbackAt: '—' },
+  { key: '6', ticketNo: 'TK20260724006', title: '维修请求进度咨询', bizType: '售后', flow: '普通', times: 1, mobile: '136****3311', status: '投放失败', result: '', deliverAt: '—', feedbackAt: '—' },
+  { key: '7', ticketNo: 'TK20260724007', title: '设备丢失补办咨询', bizType: '非售后', flow: '普通', times: 1, mobile: '138****1120', status: '已反馈', result: '未解决无方案', deliverAt: '07-24 08:11', feedbackAt: '07-24 11:45' },
+  { key: '8', ticketNo: 'TK20260722015', title: '录音笔使用回访', bizType: '售后', flow: '普通', times: 2, mobile: '139****6654', status: '待反馈', result: '', deliverAt: '07-24 08:14', feedbackAt: '—' },
+  { key: '9', ticketNo: 'TK20260724008', title: '蓝牙无法断开连接', bizType: '售后', flow: '普通', times: 1, mobile: '137****4402', status: '静默缓存', result: '', deliverAt: '待次日08:00', feedbackAt: '—' },
+  { key: '10', ticketNo: 'TK20260724009', title: '开放平台接口咨询', bizType: '非售后', flow: '结案后调研', times: 1, mobile: '135****8890', status: '已反馈', result: '已解决', deliverAt: '07-24 08:16', feedbackAt: '07-24 12:20' },
+]);
+
+const filter = reactive({
+  ticketNo: '', bizType: undefined as string | undefined, flow: undefined as string | undefined,
+  times: undefined as number | undefined, status: undefined as string | undefined, result: undefined as string | undefined,
+});
+
+const displayRows = computed(() => allRows.value.filter((r) => {
+  if (filter.ticketNo && !r.ticketNo.includes(filter.ticketNo.trim())) return false;
+  if (filter.bizType && r.bizType !== filter.bizType) return false;
+  if (filter.flow && r.flow !== filter.flow) return false;
+  if (filter.times && r.times !== filter.times) return false;
+  if (filter.status && r.status !== filter.status) return false;
+  if (filter.result && r.result !== filter.result) return false;
+  return true;
+}));
+
+const cols = [
+  { title: '工单编号', dataIndex: 'ticketNo', key: 'ticketNo', width: 150 },
+  { title: '标题', dataIndex: 'title', key: 'title', width: 180 },
+  { title: '类型', dataIndex: 'bizType', key: 'bizType', width: 76 },
+  { title: '分流', dataIndex: 'flow', key: 'flow', width: 100 },
+  { title: '批次', dataIndex: 'times', key: 'times', width: 60 },
+  { title: '触达号码', dataIndex: 'mobile', key: 'mobile', width: 120 },
+  { title: '任务状态', dataIndex: 'status', key: 'status', width: 100 },
+  { title: '反馈结果', dataIndex: 'result', key: 'result', width: 130 },
+  { title: '投放时间', dataIndex: 'deliverAt', key: 'deliverAt', width: 110 },
+  { title: '反馈时间', dataIndex: 'feedbackAt', key: 'feedbackAt', width: 110 },
+  { title: '操作', key: 'op', width: 130, fixed: 'right' as const },
+];
+
+const pagination = computed(() => stdPagination({ pageSize: 20, total: displayRows.value.length }));
+
+function applyAlert(f: string) {
+  if (!f) { message.info('接口 5xx 为对接层告警，请查看讯飞投放平台日志'); return; }
+  filter.status = f;
+  message.success(`已按「${f}」过滤明细`);
+}
+
+// 详情抽屉
+const detailOpen = ref(false);
+const detailRow = ref<Row | null>(null);
+function openDetail(r: Row) { detailRow.value = r; detailOpen.value = true; }
+
+function toHuman(r: Row) {
+  return {
+    deliver: `POST /api/kdxf/open/deliver/t1\n{\n  "ticket_id": "${r.ticketNo}",\n  "ticket_title": "${r.title}",\n  "mobile": "${r.mobile}",\n  "times": ${r.times},\n  "type": ${r.bizType === '售后' ? 1 : 2},\n  "sign": "6efd0bcc2f4cddff…"\n}`,
+    callback: r.result
+      ? `{\n  "ticket_id": "${r.ticketNo}",\n  "record_id": "cc308744606c",\n  "times": ${r.times},\n  "result": "${r.result}",\n  "time": "${r.feedbackAt}"\n}`
+      : '（尚无反馈回调）',
+  };
+}
+
+function onManualCallback(r: Row) {
+  message.success(`已为 ${r.ticketNo} 生成人工回访待办`);
+}
+function onExport() { message.success(`已导出 ${displayRows.value.length} 条明细`); }
+function onRefresh() { message.success('已按当前时刻重新拉取快照'); }
+function onReset() { Object.assign(filter, { ticketNo: '', bizType: undefined, flow: undefined, times: undefined, status: undefined, result: undefined }); }
+</script>
+
+<template>
+  <div class="survey-monitor">
+    <AdminPageHeader
+      title="调研回访监控"
+      subtitle="按拉取时刻快照展示任务漏斗与异常告警；下钻任务明细核对触达与反馈、排查对接。"
+    >
+      <template #actions>
+        <a-radio-group v-model:value="range" button-style="solid" size="small">
+          <a-radio-button value="today">今日</a-radio-button>
+          <a-radio-button value="week">近 7 日</a-radio-button>
+        </a-radio-group>
+        <a-button @click="onRefresh"><template #icon><ReloadOutlined /></template>刷新</a-button>
+        <a-button @click="onExport"><template #icon><DownloadOutlined /></template>导出</a-button>
+      </template>
+    </AdminPageHeader>
+
+    <!-- 上段：概览 -->
+    <div class="funnel-row">
+      <div v-for="(v, k) in funnel" :key="k" class="funnel-card" :class="`fc-${STATUS_TONE[k as TaskStatus]}`">
+        <span class="fc-num">{{ v.toLocaleString() }}</span>
+        <span class="fc-label">{{ k }}</span>
+      </div>
+    </div>
+
+    <div class="mid-row">
+      <div class="dist-card">
+        <div class="card-title">反馈结果分布</div>
+        <div v-for="d in dist" :key="d.label" class="dist-line">
+          <span class="dl-label">{{ d.label }}</span>
+          <div class="dl-bar"><div class="dl-fill" :class="`bar-${d.tone}`" :style="{ width: `${d.pct}%` }" /></div>
+          <span class="dl-pct">{{ d.pct }}%</span>
+        </div>
+      </div>
+      <div class="alert-card">
+        <div class="card-title"><WarningOutlined /> 异常告警</div>
+        <div v-if="alerts.length" class="alert-list">
+          <div v-for="a in alerts" :key="a.key" class="alert-line">
+            <span class="al-dot" />
+            <span class="al-text">{{ a.text }}</span>
+            <a class="al-link" @click="applyAlert(a.filter)">查看</a>
+          </div>
+        </div>
+        <div v-else class="alert-empty">当前范围无异常</div>
+      </div>
+    </div>
+
+    <!-- 下段：明细 -->
+    <div class="detail-card">
+      <div class="filter-bar">
+        <a-input v-model:value="filter.ticketNo" placeholder="工单编号" allow-clear class="f-input" size="small" />
+        <a-select v-model:value="filter.bizType" placeholder="类型" allow-clear size="small" class="f-sel" :options="[{ value: '售后' }, { value: '非售后' }]" />
+        <a-select v-model:value="filter.flow" placeholder="分流" allow-clear size="small" class="f-sel" :options="[{ value: '普通' }, { value: '结案后调研' }, { value: '免调研' }]" />
+        <a-select v-model:value="filter.times" placeholder="批次" allow-clear size="small" class="f-sel-sm" :options="[{ value: 1, label: '1（首次）' }, { value: 2, label: '2（二次）' }]" />
+        <a-select v-model:value="filter.status" placeholder="任务状态" allow-clear size="small" class="f-sel" :options="['待发送','静默缓存','已投放','待反馈','已反馈','无法触达','投放失败','已超时'].map((v) => ({ value: v }))" />
+        <a-select v-model:value="filter.result" placeholder="反馈结果" allow-clear size="small" class="f-sel" :options="['已解决','未解决无方案','未解决有方案','超时无反馈'].map((v) => ({ value: v }))" />
+        <a-button size="small" @click="onReset"><template #icon><ReloadOutlined /></template>重置</a-button>
+      </div>
+
+      <a-table
+        :columns="cols"
+        :data-source="displayRows"
+        row-key="key"
+        :pagination="pagination"
+        size="middle"
+        :scroll="{ x: 1280 }"
+      >
+        <template #bodyCell="{ column, record }">
+          <a v-if="column.key === 'ticketNo'" class="cell-link" @click="openDetail(record as Row)">{{ (record as Row).ticketNo }}</a>
+          <span v-else-if="column.key === 'times'">{{ (record as Row).times === 2 ? '二次' : '首次' }}</span>
+          <span v-else-if="column.key === 'status'" class="tag" :class="`t-${STATUS_TONE[(record as Row).status]}`">{{ (record as Row).status }}</span>
+          <span v-else-if="column.key === 'result'">
+            <span v-if="(record as Row).result" class="tag" :class="`t-${RESULT_TONE[(record as Row).result]}`">{{ (record as Row).result }}</span>
+            <span v-else class="muted">—</span>
+          </span>
+          <span v-else-if="column.key === 'mobile'" :class="{ 'invalid-num': (record as Row).mobile.includes('无效') }">{{ (record as Row).mobile }}</span>
+          <div v-else-if="column.key === 'op'" class="row-ops">
+            <a-button type="link" size="small" @click="openDetail(record as Row)">详情</a-button>
+            <a-button
+              v-if="(record as Row).status === '无法触达' || (record as Row).status === '投放失败'"
+              type="link" size="small" @click="onManualCallback(record as Row)"
+            ><template #icon><PhoneOutlined /></template>转人工</a-button>
+          </div>
+        </template>
+      </a-table>
+    </div>
+
+    <!-- 详情抽屉 -->
+    <a-drawer v-model:open="detailOpen" title="调研任务详情" :width="520" placement="right">
+      <template v-if="detailRow">
+        <a-descriptions :column="1" size="small" bordered class="d-desc">
+          <a-descriptions-item label="工单编号">{{ detailRow.ticketNo }}</a-descriptions-item>
+          <a-descriptions-item label="标题">{{ detailRow.title }}</a-descriptions-item>
+          <a-descriptions-item label="类型 / 分流">{{ detailRow.bizType }} · {{ detailRow.flow }}</a-descriptions-item>
+          <a-descriptions-item label="批次">{{ detailRow.times === 2 ? '二次调研（times=2）' : '首次（times=1）' }}</a-descriptions-item>
+          <a-descriptions-item label="触达号码">{{ detailRow.mobile }}</a-descriptions-item>
+          <a-descriptions-item label="任务状态"><span class="tag" :class="`t-${STATUS_TONE[detailRow.status]}`">{{ detailRow.status }}</span></a-descriptions-item>
+          <a-descriptions-item label="反馈结果">{{ detailRow.result || '—' }}</a-descriptions-item>
+          <a-descriptions-item label="投放 / 反馈时间">{{ detailRow.deliverAt }} / {{ detailRow.feedbackAt }}</a-descriptions-item>
+        </a-descriptions>
+
+        <div class="d-block">
+          <div class="d-block-title">投放报文</div>
+          <pre class="d-pre">{{ toHuman(detailRow).deliver }}</pre>
+        </div>
+        <div class="d-block">
+          <div class="d-block-title">反馈回调报文</div>
+          <pre class="d-pre">{{ toHuman(detailRow).callback }}</pre>
+        </div>
+        <a class="d-log-link">查看工单处理履历 →</a>
+      </template>
+    </a-drawer>
+  </div>
+</template>
+
+<style scoped>
+.survey-monitor { padding: 16px 20px; }
+
+.funnel-row { display: flex; gap: 12px; margin-bottom: 14px; }
+.funnel-card {
+  flex: 1; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+  padding: 16px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start;
+  border-left: 3px solid #d1d5db;
+}
+.fc-num { font-size: 26px; font-weight: 700; color: #111827; line-height: 1; font-variant-numeric: tabular-nums; }
+.fc-label { font-size: 13px; color: #6b7280; }
+.fc-mute { border-left-color: #9ca3af; }
+.fc-blue { border-left-color: #1a6fff; }
+.fc-warn { border-left-color: #d97706; }
+.fc-green { border-left-color: #16a34a; }
+.fc-red { border-left-color: #dc2626; }
+.fc-red .fc-num { color: #dc2626; }
+
+.mid-row { display: flex; gap: 12px; margin-bottom: 14px; }
+.dist-card { flex: 1.6; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px 18px; }
+.alert-card { flex: 1; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px 18px; }
+.card-title { font-size: 14px; font-weight: 600; color: #111827; margin-bottom: 14px; display: flex; align-items: center; gap: 6px; }
+.card-title :deep(.anticon) { color: #d97706; }
+
+.dist-line { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.dist-line:last-child { margin-bottom: 0; }
+.dl-label { font-size: 12px; color: #6b7280; width: 180px; flex: none; }
+.dl-bar { flex: 1; height: 8px; background: #f1f2f4; border-radius: 4px; overflow: hidden; }
+.dl-fill { height: 100%; border-radius: 4px; }
+.bar-ok { background: #16a34a; }
+.bar-warn { background: #d97706; }
+.bar-back { background: #7c3aed; }
+.bar-mute { background: #9ca3af; }
+.dl-pct { font-size: 12px; color: #374151; width: 36px; text-align: right; font-variant-numeric: tabular-nums; }
+
+.alert-list { display: flex; flex-direction: column; gap: 12px; }
+.alert-line { display: flex; align-items: center; gap: 8px; }
+.al-dot { width: 8px; height: 8px; border-radius: 50%; background: #dc2626; flex: none; }
+.al-text { flex: 1; font-size: 13px; color: #374151; }
+.al-link { font-size: 12px; color: #1a6fff; cursor: pointer; }
+.al-link:hover { text-decoration: underline; }
+.alert-empty { font-size: 13px; color: #9ca3af; padding: 8px 0; }
+
+.detail-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; }
+.filter-bar { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid #f0f2f5; flex-wrap: wrap; }
+.f-input { width: 150px; }
+.f-sel { width: 118px; }
+.f-sel-sm { width: 100px; }
+
+.detail-card :deep(.ant-table-thead > tr > th) { background: #fff; color: #6b7280; font-size: 12px; font-weight: 600; }
+.detail-card :deep(.ant-table-tbody > tr > td) { font-size: 13px; color: #374151; }
+.cell-link { color: #1a6fff; }
+.cell-link:hover { text-decoration: underline; }
+.muted { color: #cbd5e1; }
+.invalid-num { color: #dc2626; }
+.row-ops { display: inline-flex; align-items: center; }
+.row-ops :deep(.ant-btn-link) { padding: 0 6px; }
+
+.tag { display: inline-block; padding: 1px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; }
+.t-mute { color: #6b7280; background: #f3f4f6; }
+.t-blue { color: #1a6fff; background: #eff6ff; }
+.t-warn { color: #d97706; background: #fffbeb; }
+.t-green { color: #16a34a; background: #f0fdf4; }
+.t-red { color: #dc2626; background: #fef2f2; }
+.t-back { color: #7c3aed; background: #f5f3ff; }
+
+.d-desc { margin-bottom: 16px; }
+.d-desc :deep(.ant-descriptions-item-label) { width: 120px; color: #6b7280; }
+.d-block { margin-bottom: 14px; }
+.d-block-title { font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px; }
+.d-pre {
+  margin: 0; padding: 10px 12px; background: #f9fafb; border: 1px solid #eef0f2; border-radius: 8px;
+  font-size: 12px; color: #4b5563; line-height: 1.6; white-space: pre-wrap; word-break: break-all;
+  font-family: 'Consolas', monospace;
+}
+.d-log-link { color: #1a6fff; font-size: 13px; cursor: pointer; }
+.d-log-link:hover { text-decoration: underline; }
+</style>
