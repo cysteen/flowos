@@ -6,6 +6,8 @@ import {
   EditOutlined, FilterOutlined, SendOutlined, RedoOutlined, PhoneOutlined,
 } from '@ant-design/icons-vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import { CREATE_TICKET_TYPES, TICKET_SOURCE_OPTIONS } from '@/views/tickets/types/createTicket';
+import { PRODUCT_CATEGORIES } from '@/views/tickets/types/mineQuery';
 import dayjs, { type Dayjs } from 'dayjs';
 
 /** 本期仅非售后（type=2）；结案调研流程即《非售后工单短信调研回访流程》 */
@@ -31,25 +33,26 @@ interface Strategy {
   fatigueDays: number;
 }
 
-// 不发（免调研）可选枚举
-const NO_TYPES = ['投诉'];
-const NO_NATURES = ['业务骚扰', '纯骚扰'];
-// 结案后调研可选枚举（各取自对应工单字段）
-const AFTER_TYPES = ['商机'];
-const AFTER_PROD_CATS = ['综合类问题'];
-const AFTER_BIZ_TYPES = ['开放平台'];
-const AFTER_SOURCES = ['学习渠道'];
-const AFTER_TAGS = ['二次下送'];
+/**
+ * 各字段可选枚举取自项目已有枚举（工单类型/工单来源/产品分类）+ 业务补充值。
+ * 勾选=纳入该分流判定；默认勾选业务规则命中的值。
+ */
+const TICKET_TYPE_OPTS = [...CREATE_TICKET_TYPES];                         // 投诉/建议/商机/咨询
+const CALL_NATURE_OPTS = ['业务骚扰', '纯骚扰'];                            // 小结·话务性质（骚扰定性）
+const PROD_CAT_OPTS = [...PRODUCT_CATEGORIES, '综合类问题'];                // 产品分类
+const BIZ_TYPE_OPTS = ['消费者BG', '教育BG', '开放平台'];                    // 业务线
+const SOURCE_OPTS = [...TICKET_SOURCE_OPTIONS, '学习渠道'];                 // 工单来源
+const TAG_OPTS = ['二次下送'];                                             // 工单标记
 
 const cur = reactive<Strategy>({
   list: {
-    noType: [...NO_TYPES],
-    noNature: [...NO_NATURES],
-    afterType: [...AFTER_TYPES],
-    afterProdCat: [...AFTER_PROD_CATS],
-    afterBizType: [...AFTER_BIZ_TYPES],
-    afterSource: [...AFTER_SOURCES],
-    afterTag: [...AFTER_TAGS],
+    noType: ['投诉'],
+    noNature: ['业务骚扰', '纯骚扰'],
+    afterType: ['商机'],
+    afterProdCat: ['综合类问题'],
+    afterBizType: ['开放平台'],
+    afterSource: ['学习渠道'],
+    afterTag: ['二次下送'],
   },
   sendStart: '08:00',
   sendEnd: '22:00',
@@ -59,6 +62,14 @@ const cur = reactive<Strategy>({
   fatigueEnabled: false,
   fatigueDays: 30,
 });
+
+/** 工单类型在「不发」与「结案后调研」两处共用同一枚举，互斥：一处勾选另一处禁选 */
+function typeDisabledInAfter(v: string): boolean {
+  return cur.list.noType.includes(v);
+}
+function typeDisabledInNo(v: string): boolean {
+  return cur.list.afterType.includes(v);
+}
 
 const NUMBER_PRIORITY = '用户最终联系号码 > 电话3 > 电话2 > 联系电话';
 
@@ -142,11 +153,13 @@ function saveCallbackKey() { callbackKeyEditing.value = false; message.success('
             <div class="sb-title"><span class="dot dot-exempt" />不发（免调研）<span class="sb-hint">命中即不发短信、记原因</span></div>
             <div class="chk-row">
               <span class="chk-label">工单类型</span>
-              <a-checkbox-group v-model:value="cur.list.noType" :options="NO_TYPES" />
+              <a-checkbox-group v-model:value="cur.list.noType">
+                <a-checkbox v-for="v in TICKET_TYPE_OPTS" :key="v" :value="v" :disabled="typeDisabledInNo(v)">{{ v }}</a-checkbox>
+              </a-checkbox-group>
             </div>
             <div class="chk-row">
               <span class="chk-label">话务性质<br /><small>(工单小结)</small></span>
-              <a-checkbox-group v-model:value="cur.list.noNature" :options="NO_NATURES" />
+              <a-checkbox-group v-model:value="cur.list.noNature" :options="CALL_NATURE_OPTS" />
             </div>
             <div class="chk-row">
               <span class="chk-label">客户黑名单</span>
@@ -158,28 +171,30 @@ function saveCallbackKey() { callbackKeyEditing.value = false; message.success('
             <div class="sb-title"><span class="dot dot-after" />结案后调研<span class="sb-hint">先结案、补发短信，反馈不回流</span></div>
             <div class="chk-row">
               <span class="chk-label">工单类型</span>
-              <a-checkbox-group v-model:value="cur.list.afterType" :options="AFTER_TYPES" />
+              <a-checkbox-group v-model:value="cur.list.afterType">
+                <a-checkbox v-for="v in TICKET_TYPE_OPTS" :key="v" :value="v" :disabled="typeDisabledInAfter(v)">{{ v }}</a-checkbox>
+              </a-checkbox-group>
             </div>
             <div class="chk-row">
               <span class="chk-label">产品分类</span>
-              <a-checkbox-group v-model:value="cur.list.afterProdCat" :options="AFTER_PROD_CATS" />
+              <a-checkbox-group v-model:value="cur.list.afterProdCat" :options="PROD_CAT_OPTS" />
             </div>
             <div class="chk-row">
               <span class="chk-label">业务类型</span>
-              <a-checkbox-group v-model:value="cur.list.afterBizType" :options="AFTER_BIZ_TYPES" />
+              <a-checkbox-group v-model:value="cur.list.afterBizType" :options="BIZ_TYPE_OPTS" />
             </div>
             <div class="chk-row">
               <span class="chk-label">工单来源</span>
-              <a-checkbox-group v-model:value="cur.list.afterSource" :options="AFTER_SOURCES" />
+              <a-checkbox-group v-model:value="cur.list.afterSource" :options="SOURCE_OPTS" />
             </div>
             <div class="chk-row">
               <span class="chk-label">工单标记</span>
-              <a-checkbox-group v-model:value="cur.list.afterTag" :options="AFTER_TAGS" />
+              <a-checkbox-group v-model:value="cur.list.afterTag" :options="TAG_OPTS" />
             </div>
           </div>
 
           <div class="sub-block normal">
-            <div class="sb-title"><span class="dot dot-normal" />普通工单<span class="sb-hint">以上均未命中 → 发短信 → 24h 反馈窗 → 反馈驱动结案/打回</span></div>
+            <div class="sb-title"><span class="dot dot-normal" />调研后结案（普通工单）<span class="sb-hint">以上均未命中 → 发短信 → 24h 反馈窗 → 反馈驱动结案/打回</span></div>
           </div>
         </section>
 

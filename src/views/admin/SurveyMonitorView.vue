@@ -13,7 +13,7 @@ import dayjs, { type Dayjs } from 'dayjs';
 type TaskStatus = '待发送' | '静默缓存' | '已投放' | '待反馈' | '已反馈' | '无法触达' | '投放失败' | '已超时';
 type Resolved = '解决' | '未解决' | '超时无反馈' | '';
 type UnresolvedReason = '没有解决方案' | '解决方案没有用' | '解决方案太复杂' | '没有人联系解决' | '';
-type Flow = '普通' | '结案后调研' | '免调研';
+type Flow = '调研后结案' | '结案后调研' | '免调研';
 
 interface Row {
   key: string;
@@ -157,15 +157,15 @@ function scoreTone(s: number | null): string {
 }
 
 const allRows = ref<Row[]>([
-  { key: '1', ticketNo: 'TK20260724001', title: '云空间无法领取', flow: '普通', times: 1, mobile: '138****2043', status: '已反馈', resolved: '未解决', unresolvedReason: '解决方案没有用', score: 2, submitAt: '07-23 21:30', deliverAt: '07-24 08:12', feedbackAt: '07-24 10:30' },
-  { key: '2', ticketNo: 'TK20260724002', title: '翻译机屏幕显示乱码', flow: '普通', times: 1, mobile: '(全部无效)', status: '无法触达', resolved: '', unresolvedReason: '', score: null, submitAt: '07-24 09:05', deliverAt: '—', feedbackAt: '—' },
+  { key: '1', ticketNo: 'TK20260724001', title: '云空间无法领取', flow: '调研后结案', times: 1, mobile: '138****2043', status: '已反馈', resolved: '未解决', unresolvedReason: '解决方案没有用', score: 2, submitAt: '07-23 21:30', deliverAt: '07-24 08:12', feedbackAt: '07-24 10:30' },
+  { key: '2', ticketNo: 'TK20260724002', title: '翻译机屏幕显示乱码', flow: '调研后结案', times: 1, mobile: '(全部无效)', status: '无法触达', resolved: '', unresolvedReason: '', score: null, submitAt: '07-24 09:05', deliverAt: '—', feedbackAt: '—' },
   { key: '3', ticketNo: 'TK20260724003', title: '商机咨询转介绍', flow: '结案后调研', times: 1, mobile: '139****7781', status: '待反馈', resolved: '', unresolvedReason: '', score: null, submitAt: '07-24 08:15', deliverAt: '07-24 08:15', feedbackAt: '—' },
-  { key: '4', ticketNo: 'TK20260724004', title: '文件已上传能否直接转写', flow: '普通', times: 1, mobile: '137****5520', status: '已反馈', resolved: '解决', unresolvedReason: '', score: 5, submitAt: '07-24 08:10', deliverAt: '07-24 08:10', feedbackAt: '07-24 09:02' },
-  { key: '5', ticketNo: 'TK20260724005', title: '会议翻译延迟卡顿', flow: '普通', times: 1, mobile: '135****9087', status: '已超时', resolved: '超时无反馈', unresolvedReason: '', score: null, submitAt: '07-23 08:20', deliverAt: '07-23 08:20', feedbackAt: '—' },
-  { key: '6', ticketNo: 'TK20260724006', title: '导出格式咨询', flow: '普通', times: 1, mobile: '136****3311', status: '投放失败', resolved: '', unresolvedReason: '', score: null, submitAt: '07-24 10:12', deliverAt: '—', feedbackAt: '—' },
-  { key: '7', ticketNo: 'TK20260724007', title: '设备丢失补办咨询', flow: '普通', times: 1, mobile: '138****1120', status: '已反馈', resolved: '未解决', unresolvedReason: '没有解决方案', score: 3, submitAt: '07-24 08:11', deliverAt: '07-24 08:11', feedbackAt: '07-24 11:45' },
-  { key: '8', ticketNo: 'TK20260722015', title: '录音笔使用回访', flow: '普通', times: 2, mobile: '139****6654', status: '待反馈', resolved: '', unresolvedReason: '', score: null, submitAt: '07-24 08:00', deliverAt: '07-24 08:14', feedbackAt: '—' },
-  { key: '9', ticketNo: 'TK20260724008', title: '蓝牙无法断开连接', flow: '普通', times: 1, mobile: '137****4402', status: '静默缓存', resolved: '', unresolvedReason: '', score: null, submitAt: '07-23 22:40', deliverAt: '待次日08:00', feedbackAt: '—' },
+  { key: '4', ticketNo: 'TK20260724004', title: '文件已上传能否直接转写', flow: '调研后结案', times: 1, mobile: '137****5520', status: '已反馈', resolved: '解决', unresolvedReason: '', score: 5, submitAt: '07-24 08:10', deliverAt: '07-24 08:10', feedbackAt: '07-24 09:02' },
+  { key: '5', ticketNo: 'TK20260724005', title: '会议翻译延迟卡顿', flow: '调研后结案', times: 1, mobile: '135****9087', status: '已超时', resolved: '超时无反馈', unresolvedReason: '', score: null, submitAt: '07-23 08:20', deliverAt: '07-23 08:20', feedbackAt: '—' },
+  { key: '6', ticketNo: 'TK20260724006', title: '导出格式咨询', flow: '调研后结案', times: 1, mobile: '136****3311', status: '投放失败', resolved: '', unresolvedReason: '', score: null, submitAt: '07-24 10:12', deliverAt: '—', feedbackAt: '—' },
+  { key: '7', ticketNo: 'TK20260724007', title: '设备丢失补办咨询', flow: '调研后结案', times: 1, mobile: '138****1120', status: '已反馈', resolved: '未解决', unresolvedReason: '没有解决方案', score: 3, submitAt: '07-24 08:11', deliverAt: '07-24 08:11', feedbackAt: '07-24 11:45' },
+  { key: '8', ticketNo: 'TK20260722015', title: '录音笔使用回访', flow: '调研后结案', times: 2, mobile: '139****6654', status: '待反馈', resolved: '', unresolvedReason: '', score: null, submitAt: '07-24 08:00', deliverAt: '07-24 08:14', feedbackAt: '—' },
+  { key: '9', ticketNo: 'TK20260724008', title: '蓝牙无法断开连接', flow: '调研后结案', times: 1, mobile: '137****4402', status: '静默缓存', resolved: '', unresolvedReason: '', score: null, submitAt: '07-23 22:40', deliverAt: '待次日08:00', feedbackAt: '—' },
   { key: '10', ticketNo: 'TK20260724009', title: '开放平台接口咨询', flow: '结案后调研', times: 1, mobile: '135****8890', status: '已反馈', resolved: '解决', unresolvedReason: '', score: 4, submitAt: '07-24 08:16', deliverAt: '07-24 08:16', feedbackAt: '07-24 12:20' },
 ]);
 
@@ -188,7 +188,7 @@ const displayRows = computed(() => allRows.value.filter((r) => {
 const cols = [
   { title: '工单编号', dataIndex: 'ticketNo', key: 'ticketNo', width: 150 },
   { title: '标题', dataIndex: 'title', key: 'title', width: 190 },
-  { title: '分流', dataIndex: 'flow', key: 'flow', width: 96 },
+  { title: '调研方式', dataIndex: 'flow', key: 'flow', width: 108 },
   { title: '批次', dataIndex: 'times', key: 'times', width: 60 },
   { title: '触达号码', dataIndex: 'mobile', key: 'mobile', width: 116 },
   { title: '任务状态', dataIndex: 'status', key: 'status', width: 96 },
@@ -305,7 +305,7 @@ function onReset() { Object.assign(filter, { ticketNo: '', flow: undefined, time
     <div class="detail-card">
       <div class="filter-bar">
         <a-input v-model:value="filter.ticketNo" placeholder="工单编号" allow-clear class="f-input" size="small" />
-        <a-select v-model:value="filter.flow" placeholder="分流" allow-clear size="small" class="f-sel" :options="[{ value: '普通' }, { value: '结案后调研' }, { value: '免调研' }]" />
+        <a-select v-model:value="filter.flow" placeholder="调研方式" allow-clear size="small" class="f-sel" :options="[{ value: '调研后结案' }, { value: '结案后调研' }]" />
         <a-select v-model:value="filter.times" placeholder="批次" allow-clear size="small" class="f-sel-sm" :options="[{ value: 1, label: '1（首次）' }, { value: 2, label: '2（二次）' }]" />
         <a-select v-model:value="filter.status" placeholder="任务状态" allow-clear size="small" class="f-sel" :options="['待发送','静默缓存','已投放','待反馈','已反馈','无法触达','投放失败','已超时'].map((v) => ({ value: v }))" />
         <a-select v-model:value="filter.resolved" placeholder="是否解决" allow-clear size="small" class="f-sel-sm" :options="['解决','未解决','超时无反馈'].map((v) => ({ value: v }))" />
