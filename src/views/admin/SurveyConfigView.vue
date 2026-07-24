@@ -10,11 +10,14 @@ import dayjs, { type Dayjs } from 'dayjs';
 
 /** 本期仅非售后（type=2）；结案调研流程即《非售后工单短信调研回访流程》 */
 interface FlowList {
-  /** 免调研结案：结单方式 + 工单标记 */
-  exemptClose: string[];
-  exemptTag: string[];
-  /** 结案后调研：渠道业务 + 工单标记 */
-  afterChannel: string[];
+  /** 不发（免调研）：工单类型 + 小结·话务性质（客户黑名单为客户档案属性、只读引用） */
+  noType: string[];
+  noNature: string[];
+  /** 结案后调研：工单类型 + 产品分类 + 业务类型 + 工单来源 + 标记 */
+  afterType: string[];
+  afterProdCat: string[];
+  afterBizType: string[];
+  afterSource: string[];
   afterTag: string[];
 }
 interface Strategy {
@@ -28,16 +31,24 @@ interface Strategy {
   fatigueDays: number;
 }
 
-const CLOSE_WAYS = ['关闭', '取消', '强制结单'];
-const EXEMPT_TAGS = ['投诉', '黑名单', '骚扰'];
-const AFTER_CHANNELS = ['商机', '开放平台', '学习机渠道', '综合问题'];
-const AFTER_TAGS = ['免回访', '二次下送'];
+// 不发（免调研）可选枚举
+const NO_TYPES = ['投诉'];
+const NO_NATURES = ['业务骚扰', '纯骚扰'];
+// 结案后调研可选枚举（各取自对应工单字段）
+const AFTER_TYPES = ['商机'];
+const AFTER_PROD_CATS = ['综合类问题'];
+const AFTER_BIZ_TYPES = ['开放平台'];
+const AFTER_SOURCES = ['学习渠道'];
+const AFTER_TAGS = ['二次下送'];
 
 const cur = reactive<Strategy>({
   list: {
-    exemptClose: [...CLOSE_WAYS],
-    exemptTag: [...EXEMPT_TAGS],
-    afterChannel: [...AFTER_CHANNELS],
+    noType: [...NO_TYPES],
+    noNature: [...NO_NATURES],
+    afterType: [...AFTER_TYPES],
+    afterProdCat: [...AFTER_PROD_CATS],
+    afterBizType: [...AFTER_BIZ_TYPES],
+    afterSource: [...AFTER_SOURCES],
     afterTag: [...AFTER_TAGS],
   },
   sendStart: '08:00',
@@ -61,13 +72,6 @@ const conn = reactive({
 const signKeyEditing = ref(false);
 const callbackKeyEditing = ref(false);
 
-/** 结案后调研名单里、若某枚举已勾进免调研 → 该项在结案后调研区置灰（互斥） */
-function afterChannelDisabled(v: string): boolean {
-  return cur.list.exemptClose.includes(v) || cur.list.exemptTag.includes(v);
-}
-function afterTagDisabled(v: string): boolean {
-  return cur.list.exemptTag.includes(v);
-}
 
 function hmToDayjs(hm: string): Dayjs {
   const [h, m] = hm.split(':').map(Number);
@@ -88,9 +92,6 @@ const timeEnd = computed<Dayjs>({
 
 function validate(): string | null {
   const s = cur;
-  // 互斥：同一标记不可既免调研又结案后调研
-  const dup = s.list.afterTag.filter((t) => s.list.exemptTag.includes(t));
-  if (dup.length) return `标记「${dup.join('、')}」不能同时在免调研与结案后调研名单`;
   if (hmToMinutes(s.sendStart) >= hmToMinutes(s.sendEnd)) return '发送窗口起始须早于结束';
   if (s.feedbackHours < 1) return '反馈窗口至少 1 小时';
   if (s.secondEnabled && s.secondDays < 1) return '二次调研天数须为正整数';
@@ -129,50 +130,56 @@ function saveCallbackKey() { callbackKeyEditing.value = false; message.success('
     <div class="cfg-cols">
       <!-- 配置区（本期仅非售后 type=2） -->
       <div class="cfg-body">
-        <!-- 分流名单 -->
+        <!-- 分流名单（调研服务侧判定；结束方式判断属工单结案逻辑，不在此） -->
         <section class="cfg-card">
           <div class="cc-head"><FilterOutlined /><span>分流名单</span></div>
-          <div class="cc-note">结案时按下列名单判定：免调研 &gt; 结案后调研 &gt; 普通工单（命中即停）。</div>
+          <div class="cc-note">
+            调研服务侧按工单字段判定：不发 &gt; 结案后调研 &gt; 普通工单（命中即停）。
+            结束方式（转售后/关闭/强结/取消/建单即关）属<strong>工单结案逻辑</strong>、不在此配置。
+          </div>
 
           <div class="sub-block exempt">
-            <div class="sb-title"><span class="dot dot-exempt" />免调研结案<span class="sb-hint">命中即结案、不发短信</span></div>
+            <div class="sb-title"><span class="dot dot-exempt" />不发（免调研）<span class="sb-hint">命中即不发短信、记原因</span></div>
             <div class="chk-row">
-              <span class="chk-label">结单方式</span>
-              <a-checkbox-group v-model:value="cur.list.exemptClose" :options="CLOSE_WAYS" />
+              <span class="chk-label">工单类型</span>
+              <a-checkbox-group v-model:value="cur.list.noType" :options="NO_TYPES" />
             </div>
             <div class="chk-row">
-              <span class="chk-label">工单标记</span>
-              <a-checkbox-group v-model:value="cur.list.exemptTag" :options="EXEMPT_TAGS" />
+              <span class="chk-label">话务性质<br /><small>(工单小结)</small></span>
+              <a-checkbox-group v-model:value="cur.list.noNature" :options="NO_NATURES" />
+            </div>
+            <div class="chk-row">
+              <span class="chk-label">客户黑名单</span>
+              <span class="ro-inline">当前手机号对应<strong>客户在黑名单</strong>即不发 · 取自客户档案（客户级），不在此维护</span>
             </div>
           </div>
 
           <div class="sub-block after">
             <div class="sb-title"><span class="dot dot-after" />结案后调研<span class="sb-hint">先结案、补发短信，反馈不回流</span></div>
             <div class="chk-row">
-              <span class="chk-label">渠道 / 业务</span>
-              <a-checkbox-group v-model:value="cur.list.afterChannel">
-                <a-checkbox
-                  v-for="v in AFTER_CHANNELS" :key="v" :value="v"
-                  :disabled="afterChannelDisabled(v)"
-                >{{ v }}</a-checkbox>
-              </a-checkbox-group>
+              <span class="chk-label">工单类型</span>
+              <a-checkbox-group v-model:value="cur.list.afterType" :options="AFTER_TYPES" />
+            </div>
+            <div class="chk-row">
+              <span class="chk-label">产品分类</span>
+              <a-checkbox-group v-model:value="cur.list.afterProdCat" :options="AFTER_PROD_CATS" />
+            </div>
+            <div class="chk-row">
+              <span class="chk-label">业务类型</span>
+              <a-checkbox-group v-model:value="cur.list.afterBizType" :options="AFTER_BIZ_TYPES" />
+            </div>
+            <div class="chk-row">
+              <span class="chk-label">工单来源</span>
+              <a-checkbox-group v-model:value="cur.list.afterSource" :options="AFTER_SOURCES" />
             </div>
             <div class="chk-row">
               <span class="chk-label">工单标记</span>
-              <a-checkbox-group v-model:value="cur.list.afterTag">
-                <a-checkbox
-                  v-for="v in AFTER_TAGS" :key="v" :value="v"
-                  :disabled="afterTagDisabled(v)"
-                >
-                  {{ v }}
-                  <span v-if="afterTagDisabled(v)" class="mutex-hint">已在免调研名单</span>
-                </a-checkbox>
-              </a-checkbox-group>
+              <a-checkbox-group v-model:value="cur.list.afterTag" :options="AFTER_TAGS" />
             </div>
           </div>
 
           <div class="sub-block normal">
-            <div class="sb-title"><span class="dot dot-normal" />普通工单<span class="sb-hint">以上均未命中 → 发短信 → 24h 反馈窗 → 反馈驱动结案/退回</span></div>
+            <div class="sb-title"><span class="dot dot-normal" />普通工单<span class="sb-hint">以上均未命中 → 发短信 → 24h 反馈窗 → 反馈驱动结案/打回</span></div>
           </div>
         </section>
 
@@ -297,8 +304,10 @@ function saveCallbackKey() { callbackKeyEditing.value = false; message.success('
 .sb-hint { font-size: 11px; font-weight: 400; color: #9ca3af; }
 .chk-row { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 8px; }
 .chk-row:last-child { margin-bottom: 0; }
-.chk-label { font-size: 12px; color: #6b7280; width: 68px; flex: none; padding-top: 2px; }
-.mutex-hint { font-size: 11px; color: #dc2626; margin-left: 4px; }
+.chk-label { font-size: 12px; color: #6b7280; width: 80px; flex: none; padding-top: 2px; line-height: 1.4; }
+.chk-label small { font-size: 10px; color: #b0b6bf; }
+.ro-inline { font-size: 12px; color: #9ca3af; line-height: 1.6; padding-top: 2px; }
+.ro-inline strong { color: #6b7280; }
 
 .form-line { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
 .form-line:last-child { margin-bottom: 0; }
