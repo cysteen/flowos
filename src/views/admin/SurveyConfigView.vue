@@ -8,9 +8,7 @@ import {
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import dayjs, { type Dayjs } from 'dayjs';
 
-/** 售后 / 非售后各一套策略；对接参数全局共用 */
-type BizType = 'aftersale' | 'normal';
-
+/** 本期仅非售后（type=2）；结案调研流程即《非售后工单短信调研回访流程》 */
 interface FlowList {
   /** 免调研结案：结单方式 + 工单标记 */
   exemptClose: string[];
@@ -35,31 +33,21 @@ const EXEMPT_TAGS = ['投诉', '黑名单', '骚扰'];
 const AFTER_CHANNELS = ['商机', '开放平台', '学习机渠道', '综合问题'];
 const AFTER_TAGS = ['免回访', '二次下送'];
 
-function defaultStrategy(): Strategy {
-  return {
-    list: {
-      exemptClose: [...CLOSE_WAYS],
-      exemptTag: [...EXEMPT_TAGS],
-      afterChannel: [...AFTER_CHANNELS],
-      afterTag: [...AFTER_TAGS],
-    },
-    sendStart: '08:00',
-    sendEnd: '22:00',
-    feedbackHours: 24,
-    secondEnabled: true,
-    secondDays: 7,
-    fatigueEnabled: false,
-    fatigueDays: 30,
-  };
-}
-
-const strategies = reactive<Record<BizType, Strategy>>({
-  aftersale: defaultStrategy(),
-  normal: defaultStrategy(),
+const cur = reactive<Strategy>({
+  list: {
+    exemptClose: [...CLOSE_WAYS],
+    exemptTag: [...EXEMPT_TAGS],
+    afterChannel: [...AFTER_CHANNELS],
+    afterTag: [...AFTER_TAGS],
+  },
+  sendStart: '08:00',
+  sendEnd: '22:00',
+  feedbackHours: 24,
+  secondEnabled: true,
+  secondDays: 7,
+  fatigueEnabled: false,
+  fatigueDays: 30,
 });
-
-const activeBiz = ref<BizType>('aftersale');
-const cur = computed(() => strategies[activeBiz.value]);
 
 const NUMBER_PRIORITY = '用户最终联系号码 > 电话3 > 电话2 > 联系电话';
 
@@ -75,10 +63,10 @@ const callbackKeyEditing = ref(false);
 
 /** 结案后调研名单里、若某枚举已勾进免调研 → 该项在结案后调研区置灰（互斥） */
 function afterChannelDisabled(v: string): boolean {
-  return cur.value.list.exemptClose.includes(v) || cur.value.list.exemptTag.includes(v);
+  return cur.list.exemptClose.includes(v) || cur.list.exemptTag.includes(v);
 }
 function afterTagDisabled(v: string): boolean {
-  return cur.value.list.exemptTag.includes(v);
+  return cur.list.exemptTag.includes(v);
 }
 
 function hmToDayjs(hm: string): Dayjs {
@@ -90,16 +78,16 @@ function hmToMinutes(hm: string): number {
   return h * 60 + m;
 }
 const timeStart = computed<Dayjs>({
-  get: () => hmToDayjs(cur.value.sendStart),
-  set: (d) => { if (d) cur.value.sendStart = d.format('HH:mm'); },
+  get: () => hmToDayjs(cur.sendStart),
+  set: (d) => { if (d) cur.sendStart = d.format('HH:mm'); },
 });
 const timeEnd = computed<Dayjs>({
-  get: () => hmToDayjs(cur.value.sendEnd),
-  set: (d) => { if (d) cur.value.sendEnd = d.format('HH:mm'); },
+  get: () => hmToDayjs(cur.sendEnd),
+  set: (d) => { if (d) cur.sendEnd = d.format('HH:mm'); },
 });
 
 function validate(): string | null {
-  const s = cur.value;
+  const s = cur;
   // 互斥：同一标记不可既免调研又结案后调研
   const dup = s.list.afterTag.filter((t) => s.list.exemptTag.includes(t));
   if (dup.length) return `标记「${dup.join('、')}」不能同时在免调研与结案后调研名单`;
@@ -112,7 +100,7 @@ function validate(): string | null {
 function onSave() {
   const err = validate();
   if (err) { message.error(err); return; }
-  message.success(`已保存${activeBiz.value === 'aftersale' ? '售后' : '非售后'}策略与对接参数`);
+  message.success('已保存调研回访策略与对接参数');
 }
 
 function onTestConn() {
@@ -130,7 +118,7 @@ function saveCallbackKey() { callbackKeyEditing.value = false; message.success('
   <div class="survey-config">
     <AdminPageHeader
       title="调研回访配置"
-      subtitle="按售后 / 非售后维护分流名单、发送与反馈窗口、二次调研与触达治理；讯飞投放对接参数全局共用。"
+      subtitle="维护非售后工单结案调研的分流名单、发送与反馈窗口、二次调研与触达治理；讯飞投放对接参数与回调验签配置。"
     >
       <template #actions>
         <a-button @click="onTestConn"><template #icon><ApiOutlined /></template>测试连通</a-button>
@@ -139,25 +127,7 @@ function saveCallbackKey() { callbackKeyEditing.value = false; message.success('
     </AdminPageHeader>
 
     <div class="cfg-cols">
-      <!-- 左：策略分型 -->
-      <div class="biz-tabs">
-        <div
-          class="biz-tab" :class="{ active: activeBiz === 'aftersale' }"
-          @click="activeBiz = 'aftersale'"
-        >
-          <span class="bt-name">售后</span>
-          <span class="bt-sub">type=1 · 本期重点</span>
-        </div>
-        <div
-          class="biz-tab" :class="{ active: activeBiz === 'normal' }"
-          @click="activeBiz = 'normal'"
-        >
-          <span class="bt-name">非售后</span>
-          <span class="bt-sub">type=2</span>
-        </div>
-      </div>
-
-      <!-- 右：配置区 -->
+      <!-- 配置区（本期仅非售后 type=2） -->
       <div class="cfg-body">
         <!-- 分流名单 -->
         <section class="cfg-card">
@@ -260,7 +230,7 @@ function saveCallbackKey() { callbackKeyEditing.value = false; message.success('
 
         <!-- 对接参数（全局） -->
         <section class="cfg-card global">
-          <div class="cc-head"><ApiOutlined /><span>讯飞投放对接参数</span><span class="global-badge">全局共用</span></div>
+          <div class="cc-head"><ApiOutlined /><span>讯飞投放对接参数</span></div>
           <div class="form-line">
             <span class="fl-label">环境</span>
             <a-radio-group v-model:value="conn.env" button-style="solid" size="small">
@@ -304,22 +274,7 @@ function saveCallbackKey() { callbackKeyEditing.value = false; message.success('
 <style scoped>
 .survey-config { padding: 16px 20px; }
 .cfg-cols { display: flex; gap: 16px; align-items: flex-start; }
-
-.biz-tabs {
-  width: 160px; flex: none; display: flex; flex-direction: column; gap: 8px;
-  position: sticky; top: 16px;
-}
-.biz-tab {
-  padding: 12px 14px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff;
-  cursor: pointer; display: flex; flex-direction: column; gap: 3px; transition: all .15s;
-}
-.biz-tab:hover { border-color: #bfdbfe; }
-.biz-tab.active { border-color: #1a6fff; background: #f5f9ff; box-shadow: 0 0 0 2px rgb(26 111 255 / 8%); }
-.bt-name { font-size: 14px; font-weight: 600; color: #111827; }
-.biz-tab.active .bt-name { color: #1a6fff; }
-.bt-sub { font-size: 11px; color: #9ca3af; }
-
-.cfg-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.cfg-body { flex: 1; min-width: 0; max-width: 920px; display: flex; flex-direction: column; gap: 14px; }
 .cfg-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px 18px; }
 .cfg-card.global { background: #fbfcfe; }
 .cc-head {
@@ -327,10 +282,6 @@ function saveCallbackKey() { callbackKeyEditing.value = false; message.success('
   margin-bottom: 12px;
 }
 .cc-head :deep(.anticon) { color: #1a6fff; }
-.global-badge {
-  margin-left: 8px; padding: 0 8px; height: 20px; line-height: 20px; border-radius: 10px;
-  font-size: 11px; font-weight: 500; color: #7c3aed; background: #f5f3ff;
-}
 .cc-note { font-size: 12px; color: #9ca3af; margin-bottom: 14px; line-height: 1.6; }
 
 .sub-block { padding: 12px 14px; border-radius: 8px; margin-bottom: 10px; }

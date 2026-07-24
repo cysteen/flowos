@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, computed } from 'vue';
+import { useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 import {
   ReloadOutlined, DownloadOutlined, SearchOutlined,
@@ -16,7 +17,6 @@ interface Row {
   key: string;
   ticketNo: string;
   title: string;
-  bizType: '售后' | '非售后';
   flow: Flow;
   times: 1 | 2;
   mobile: string;
@@ -26,7 +26,13 @@ interface Row {
   feedbackAt: string;
 }
 
+const router = useRouter();
 const range = ref<'today' | 'week'>('today');
+
+/** 工单号 → 工单处理（详情）页 */
+function goTicket(ticketNo: string) {
+  router.push({ name: 'ticket-operation', params: { ticketNo } });
+}
 
 /** 概览漏斗（当前范围快照） */
 const funnel = computed(() => {
@@ -71,26 +77,25 @@ const RESULT_TONE: Record<FeedResult, string> = {
 };
 
 const allRows = ref<Row[]>([
-  { key: '1', ticketNo: 'TK20260724001', title: '录音笔电池续航异常', bizType: '售后', flow: '普通', times: 1, mobile: '138****2043', status: '已反馈', result: '未解决有方案', deliverAt: '07-24 08:12', feedbackAt: '07-24 10:30' },
-  { key: '2', ticketNo: 'TK20260724002', title: '翻译机屏幕显示乱码', bizType: '售后', flow: '普通', times: 1, mobile: '(全部无效)', status: '无法触达', result: '', deliverAt: '—', feedbackAt: '—' },
-  { key: '3', ticketNo: 'TK20260724003', title: '充电器无法识别', bizType: '售后', flow: '结案后调研', times: 1, mobile: '139****7781', status: '待反馈', result: '', deliverAt: '07-24 08:15', feedbackAt: '—' },
-  { key: '4', ticketNo: 'TK20260724004', title: '云空间无法领取', bizType: '非售后', flow: '普通', times: 1, mobile: '137****5520', status: '已反馈', result: '已解决', deliverAt: '07-24 08:10', feedbackAt: '07-24 09:02' },
-  { key: '5', ticketNo: 'TK20260724005', title: '会议翻译延迟卡顿', bizType: '售后', flow: '普通', times: 1, mobile: '135****9087', status: '已超时', result: '超时无反馈', deliverAt: '07-23 08:20', feedbackAt: '—' },
-  { key: '6', ticketNo: 'TK20260724006', title: '维修请求进度咨询', bizType: '售后', flow: '普通', times: 1, mobile: '136****3311', status: '投放失败', result: '', deliverAt: '—', feedbackAt: '—' },
-  { key: '7', ticketNo: 'TK20260724007', title: '设备丢失补办咨询', bizType: '非售后', flow: '普通', times: 1, mobile: '138****1120', status: '已反馈', result: '未解决无方案', deliverAt: '07-24 08:11', feedbackAt: '07-24 11:45' },
-  { key: '8', ticketNo: 'TK20260722015', title: '录音笔使用回访', bizType: '售后', flow: '普通', times: 2, mobile: '139****6654', status: '待反馈', result: '', deliverAt: '07-24 08:14', feedbackAt: '—' },
-  { key: '9', ticketNo: 'TK20260724008', title: '蓝牙无法断开连接', bizType: '售后', flow: '普通', times: 1, mobile: '137****4402', status: '静默缓存', result: '', deliverAt: '待次日08:00', feedbackAt: '—' },
-  { key: '10', ticketNo: 'TK20260724009', title: '开放平台接口咨询', bizType: '非售后', flow: '结案后调研', times: 1, mobile: '135****8890', status: '已反馈', result: '已解决', deliverAt: '07-24 08:16', feedbackAt: '07-24 12:20' },
+  { key: '1', ticketNo: 'TK20260724001', title: '云空间无法领取', flow: '普通', times: 1, mobile: '138****2043', status: '已反馈', result: '未解决有方案', deliverAt: '07-24 08:12', feedbackAt: '07-24 10:30' },
+  { key: '2', ticketNo: 'TK20260724002', title: '翻译机屏幕显示乱码', flow: '普通', times: 1, mobile: '(全部无效)', status: '无法触达', result: '', deliverAt: '—', feedbackAt: '—' },
+  { key: '3', ticketNo: 'TK20260724003', title: '商机咨询转介绍', flow: '结案后调研', times: 1, mobile: '139****7781', status: '待反馈', result: '', deliverAt: '07-24 08:15', feedbackAt: '—' },
+  { key: '4', ticketNo: 'TK20260724004', title: '文件已上传能否直接转写', flow: '普通', times: 1, mobile: '137****5520', status: '已反馈', result: '已解决', deliverAt: '07-24 08:10', feedbackAt: '07-24 09:02' },
+  { key: '5', ticketNo: 'TK20260724005', title: '会议翻译延迟卡顿', flow: '普通', times: 1, mobile: '135****9087', status: '已超时', result: '超时无反馈', deliverAt: '07-23 08:20', feedbackAt: '—' },
+  { key: '6', ticketNo: 'TK20260724006', title: '导出格式咨询', flow: '普通', times: 1, mobile: '136****3311', status: '投放失败', result: '', deliverAt: '—', feedbackAt: '—' },
+  { key: '7', ticketNo: 'TK20260724007', title: '设备丢失补办咨询', flow: '普通', times: 1, mobile: '138****1120', status: '已反馈', result: '未解决无方案', deliverAt: '07-24 08:11', feedbackAt: '07-24 11:45' },
+  { key: '8', ticketNo: 'TK20260722015', title: '录音笔使用回访', flow: '普通', times: 2, mobile: '139****6654', status: '待反馈', result: '', deliverAt: '07-24 08:14', feedbackAt: '—' },
+  { key: '9', ticketNo: 'TK20260724008', title: '蓝牙无法断开连接', flow: '普通', times: 1, mobile: '137****4402', status: '静默缓存', result: '', deliverAt: '待次日08:00', feedbackAt: '—' },
+  { key: '10', ticketNo: 'TK20260724009', title: '开放平台接口咨询', flow: '结案后调研', times: 1, mobile: '135****8890', status: '已反馈', result: '已解决', deliverAt: '07-24 08:16', feedbackAt: '07-24 12:20' },
 ]);
 
 const filter = reactive({
-  ticketNo: '', bizType: undefined as string | undefined, flow: undefined as string | undefined,
+  ticketNo: '', flow: undefined as string | undefined,
   times: undefined as number | undefined, status: undefined as string | undefined, result: undefined as string | undefined,
 });
 
 const displayRows = computed(() => allRows.value.filter((r) => {
   if (filter.ticketNo && !r.ticketNo.includes(filter.ticketNo.trim())) return false;
-  if (filter.bizType && r.bizType !== filter.bizType) return false;
   if (filter.flow && r.flow !== filter.flow) return false;
   if (filter.times && r.times !== filter.times) return false;
   if (filter.status && r.status !== filter.status) return false;
@@ -100,8 +105,7 @@ const displayRows = computed(() => allRows.value.filter((r) => {
 
 const cols = [
   { title: '工单编号', dataIndex: 'ticketNo', key: 'ticketNo', width: 150 },
-  { title: '标题', dataIndex: 'title', key: 'title', width: 180 },
-  { title: '类型', dataIndex: 'bizType', key: 'bizType', width: 76 },
+  { title: '标题', dataIndex: 'title', key: 'title', width: 200 },
   { title: '分流', dataIndex: 'flow', key: 'flow', width: 100 },
   { title: '批次', dataIndex: 'times', key: 'times', width: 60 },
   { title: '触达号码', dataIndex: 'mobile', key: 'mobile', width: 120 },
@@ -113,6 +117,12 @@ const cols = [
 ];
 
 const pagination = computed(() => stdPagination({ pageSize: 20, total: displayRows.value.length }));
+
+/** 概览卡 ↔ 明细列表联动：点卡片按该状态过滤，再点取消 */
+function toggleStatus(k: string) {
+  filter.status = filter.status === k ? undefined : k;
+  if (filter.status) message.success(`已按「${k}」过滤明细`);
+}
 
 function applyAlert(f: string) {
   if (!f) { message.info('接口 5xx 为对接层告警，请查看讯飞投放平台日志'); return; }
@@ -127,7 +137,7 @@ function openDetail(r: Row) { detailRow.value = r; detailOpen.value = true; }
 
 function toHuman(r: Row) {
   return {
-    deliver: `POST /api/kdxf/open/deliver/t1\n{\n  "ticket_id": "${r.ticketNo}",\n  "ticket_title": "${r.title}",\n  "mobile": "${r.mobile}",\n  "times": ${r.times},\n  "type": ${r.bizType === '售后' ? 1 : 2},\n  "sign": "6efd0bcc2f4cddff…"\n}`,
+    deliver: `POST /api/kdxf/open/deliver/t1\n{\n  "ticket_id": "${r.ticketNo}",\n  "ticket_title": "${r.title}",\n  "mobile": "${r.mobile}",\n  "times": ${r.times},\n  "type": 2,\n  "sign": "6efd0bcc2f4cddff…"\n}`,
     callback: r.result
       ? `{\n  "ticket_id": "${r.ticketNo}",\n  "record_id": "cc308744606c",\n  "times": ${r.times},\n  "result": "${r.result}",\n  "time": "${r.feedbackAt}"\n}`
       : '（尚无反馈回调）',
@@ -139,7 +149,7 @@ function onManualCallback(r: Row) {
 }
 function onExport() { message.success(`已导出 ${displayRows.value.length} 条明细`); }
 function onRefresh() { message.success('已按当前时刻重新拉取快照'); }
-function onReset() { Object.assign(filter, { ticketNo: '', bizType: undefined, flow: undefined, times: undefined, status: undefined, result: undefined }); }
+function onReset() { Object.assign(filter, { ticketNo: '', flow: undefined, times: undefined, status: undefined, result: undefined }); }
 </script>
 
 <template>
@@ -160,9 +170,13 @@ function onReset() { Object.assign(filter, { ticketNo: '', bizType: undefined, f
 
     <!-- 上段：概览 -->
     <div class="funnel-row">
-      <div v-for="(v, k) in funnel" :key="k" class="funnel-card" :class="`fc-${STATUS_TONE[k as TaskStatus]}`">
+      <div
+        v-for="(v, k) in funnel" :key="k"
+        class="funnel-card" :class="[`fc-${STATUS_TONE[k as TaskStatus]}`, { 'is-active': filter.status === k }]"
+        @click="toggleStatus(k as string)"
+      >
         <span class="fc-num">{{ v.toLocaleString() }}</span>
-        <span class="fc-label">{{ k }}</span>
+        <span class="fc-label">{{ k }}<span v-if="filter.status === k" class="fc-on">筛选中</span></span>
       </div>
     </div>
 
@@ -192,7 +206,6 @@ function onReset() { Object.assign(filter, { ticketNo: '', bizType: undefined, f
     <div class="detail-card">
       <div class="filter-bar">
         <a-input v-model:value="filter.ticketNo" placeholder="工单编号" allow-clear class="f-input" size="small" />
-        <a-select v-model:value="filter.bizType" placeholder="类型" allow-clear size="small" class="f-sel" :options="[{ value: '售后' }, { value: '非售后' }]" />
         <a-select v-model:value="filter.flow" placeholder="分流" allow-clear size="small" class="f-sel" :options="[{ value: '普通' }, { value: '结案后调研' }, { value: '免调研' }]" />
         <a-select v-model:value="filter.times" placeholder="批次" allow-clear size="small" class="f-sel-sm" :options="[{ value: 1, label: '1（首次）' }, { value: 2, label: '2（二次）' }]" />
         <a-select v-model:value="filter.status" placeholder="任务状态" allow-clear size="small" class="f-sel" :options="['待发送','静默缓存','已投放','待反馈','已反馈','无法触达','投放失败','已超时'].map((v) => ({ value: v }))" />
@@ -206,10 +219,10 @@ function onReset() { Object.assign(filter, { ticketNo: '', bizType: undefined, f
         row-key="key"
         :pagination="pagination"
         size="middle"
-        :scroll="{ x: 1280 }"
+        :scroll="{ x: 1180 }"
       >
         <template #bodyCell="{ column, record }">
-          <a v-if="column.key === 'ticketNo'" class="cell-link" @click="openDetail(record as Row)">{{ (record as Row).ticketNo }}</a>
+          <a v-if="column.key === 'ticketNo'" class="cell-link" @click="goTicket((record as Row).ticketNo)">{{ (record as Row).ticketNo }}</a>
           <span v-else-if="column.key === 'times'">{{ (record as Row).times === 2 ? '二次' : '首次' }}</span>
           <span v-else-if="column.key === 'status'" class="tag" :class="`t-${STATUS_TONE[(record as Row).status]}`">{{ (record as Row).status }}</span>
           <span v-else-if="column.key === 'result'">
@@ -232,9 +245,9 @@ function onReset() { Object.assign(filter, { ticketNo: '', bizType: undefined, f
     <a-drawer v-model:open="detailOpen" title="调研任务详情" :width="520" placement="right">
       <template v-if="detailRow">
         <a-descriptions :column="1" size="small" bordered class="d-desc">
-          <a-descriptions-item label="工单编号">{{ detailRow.ticketNo }}</a-descriptions-item>
+          <a-descriptions-item label="工单编号"><a class="cell-link" @click="goTicket(detailRow.ticketNo)">{{ detailRow.ticketNo }}</a></a-descriptions-item>
           <a-descriptions-item label="标题">{{ detailRow.title }}</a-descriptions-item>
-          <a-descriptions-item label="类型 / 分流">{{ detailRow.bizType }} · {{ detailRow.flow }}</a-descriptions-item>
+          <a-descriptions-item label="分流">{{ detailRow.flow }}</a-descriptions-item>
           <a-descriptions-item label="批次">{{ detailRow.times === 2 ? '二次调研（times=2）' : '首次（times=1）' }}</a-descriptions-item>
           <a-descriptions-item label="触达号码">{{ detailRow.mobile }}</a-descriptions-item>
           <a-descriptions-item label="任务状态"><span class="tag" :class="`t-${STATUS_TONE[detailRow.status]}`">{{ detailRow.status }}</span></a-descriptions-item>
@@ -250,7 +263,7 @@ function onReset() { Object.assign(filter, { ticketNo: '', bizType: undefined, f
           <div class="d-block-title">反馈回调报文</div>
           <pre class="d-pre">{{ toHuman(detailRow).callback }}</pre>
         </div>
-        <a class="d-log-link">查看工单处理履历 →</a>
+        <a class="d-log-link" @click="goTicket(detailRow.ticketNo)">查看工单处理履历 →</a>
       </template>
     </a-drawer>
   </div>
@@ -263,10 +276,16 @@ function onReset() { Object.assign(filter, { ticketNo: '', bizType: undefined, f
 .funnel-card {
   flex: 1; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
   padding: 16px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start;
-  border-left: 3px solid #d1d5db;
+  border-left: 3px solid #d1d5db; cursor: pointer; transition: all .15s;
 }
+.funnel-card:hover { box-shadow: 0 2px 8px rgb(0 0 0 / 8%); transform: translateY(-1px); }
+.funnel-card.is-active { border-color: #1a6fff; box-shadow: 0 0 0 2px rgb(26 111 255 / 12%); }
 .fc-num { font-size: 26px; font-weight: 700; color: #111827; line-height: 1; font-variant-numeric: tabular-nums; }
-.fc-label { font-size: 13px; color: #6b7280; }
+.fc-label { font-size: 13px; color: #6b7280; display: inline-flex; align-items: center; gap: 6px; }
+.fc-on {
+  font-size: 10px; color: #1a6fff; background: #eff6ff; border-radius: 8px;
+  padding: 0 6px; height: 16px; line-height: 16px;
+}
 .fc-mute { border-left-color: #9ca3af; }
 .fc-blue { border-left-color: #1a6fff; }
 .fc-warn { border-left-color: #d97706; }
