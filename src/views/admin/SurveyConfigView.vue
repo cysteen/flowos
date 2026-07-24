@@ -6,7 +6,7 @@ import {
   EditOutlined, FilterOutlined, SendOutlined, RedoOutlined, PhoneOutlined,
 } from '@ant-design/icons-vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
-import { CREATE_TICKET_TYPES, TICKET_SOURCE_OPTIONS } from '@/views/tickets/types/createTicket';
+import { CREATE_TICKET_TYPES } from '@/views/tickets/types/createTicket';
 import { PRODUCT_CATEGORIES } from '@/views/tickets/types/mineQuery';
 import dayjs, { type Dayjs } from 'dayjs';
 
@@ -37,21 +37,21 @@ interface Strategy {
  * 各字段可选枚举取自项目已有枚举（工单类型/工单来源/产品分类）+ 业务补充值。
  * 勾选=纳入该分流判定；默认勾选业务规则命中的值。
  */
-const TICKET_TYPE_OPTS = [...CREATE_TICKET_TYPES];                         // 投诉/建议/商机/咨询
-const CALL_NATURE_OPTS = ['业务骚扰', '纯骚扰'];                            // 小结·话务性质（骚扰定性）
+const TICKET_TYPE_OPTS = [...CREATE_TICKET_TYPES, '表扬'];                  // 投诉/建议/商机/咨询/表扬
+const CALL_NATURE_OPTS = ['无', '无声通话', '非我司产品', '重复来电 - 不同问题', '重复来电 - 同一问题', '骚扰用户 - 纯骚扰', '骚扰用户 - 业务骚扰']; // 小结·话务性质
 const PROD_CAT_OPTS = [...PRODUCT_CATEGORIES, '综合类问题'];                // 产品分类
 const BIZ_TYPE_OPTS = ['教育', '听见', '法院', '医疗', '其他', '智能硬件', '无线音乐', '开放平台']; // 业务分类
-const SOURCE_OPTS = [...TICKET_SOURCE_OPTIONS, '学习渠道'];                 // 工单来源
+const SOURCE_OPTS = ['热线电话', 'IM在线', '内投', '外投', '客户服务小程序', '学习机渠道']; // 工单来源
 const TAG_OPTS = ['二次下送'];                                             // 工单标记
 
 const cur = reactive<Strategy>({
   list: {
     noType: ['投诉'],
-    noNature: ['业务骚扰', '纯骚扰'],
+    noNature: ['骚扰用户 - 纯骚扰', '骚扰用户 - 业务骚扰'],
     afterType: ['商机'],
     afterProdCat: ['综合类问题'],
     afterBizType: ['开放平台'],
-    afterSource: ['学习渠道'],
+    afterSource: ['学习机渠道'],
     afterTag: ['二次下送'],
   },
   sendStart: '08:00',
