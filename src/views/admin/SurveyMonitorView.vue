@@ -164,7 +164,7 @@ const allRows = ref<Row[]>([
   { key: '5', ticketNo: 'TK20260724005', title: '会议翻译延迟卡顿', flow: '调研后结案', times: 1, mobile: '135****9087', status: '已超时', resolved: '超时无反馈', unresolvedReason: '', score: null, submitAt: '07-23 08:20', deliverAt: '07-23 08:20', feedbackAt: '—' },
   { key: '6', ticketNo: 'TK20260724006', title: '导出格式咨询', flow: '调研后结案', times: 1, mobile: '136****3311', status: '投放失败', resolved: '', unresolvedReason: '', score: null, submitAt: '07-24 10:12', deliverAt: '—', feedbackAt: '—' },
   { key: '7', ticketNo: 'TK20260724007', title: '设备丢失补办咨询', flow: '调研后结案', times: 1, mobile: '138****1120', status: '已反馈', resolved: '未解决', unresolvedReason: '没有解决方案', score: 3, submitAt: '07-24 08:11', deliverAt: '07-24 08:11', feedbackAt: '07-24 11:45' },
-  { key: '8', ticketNo: 'TK20260722015', title: '录音笔使用回访', flow: '调研后结案', times: 2, mobile: '139****6654', status: '待反馈', resolved: '', unresolvedReason: '', score: null, submitAt: '07-24 08:00', deliverAt: '07-24 08:14', feedbackAt: '—' },
+  { key: '8', ticketNo: 'TK20260722015', title: '企业接口扩容(二次下送)', flow: '结案后调研', times: 2, mobile: '139****6654', status: '待反馈', resolved: '', unresolvedReason: '', score: null, submitAt: '07-24 08:00', deliverAt: '07-24 08:14', feedbackAt: '—' },
   { key: '9', ticketNo: 'TK20260724008', title: '蓝牙无法断开连接', flow: '调研后结案', times: 1, mobile: '137****4402', status: '静默缓存', resolved: '', unresolvedReason: '', score: null, submitAt: '07-23 22:40', deliverAt: '待次日08:00', feedbackAt: '—' },
   { key: '10', ticketNo: 'TK20260724009', title: '开放平台接口咨询', flow: '结案后调研', times: 1, mobile: '135****8890', status: '已反馈', resolved: '解决', unresolvedReason: '', score: 4, submitAt: '07-24 08:16', deliverAt: '07-24 08:16', feedbackAt: '07-24 12:20' },
 ]);
@@ -356,7 +356,7 @@ function onReset() { Object.assign(filter, { ticketNo: '', flow: undefined, time
           <a-descriptions-item label="工单编号"><a class="cell-link" @click="goTicket(detailRow.ticketNo)">{{ detailRow.ticketNo }}</a></a-descriptions-item>
           <a-descriptions-item label="标题">{{ detailRow.title }}</a-descriptions-item>
           <a-descriptions-item label="分流">{{ detailRow.flow }}</a-descriptions-item>
-          <a-descriptions-item label="批次">{{ detailRow.times === 2 ? '二次调研（times=2）' : '首次（times=1）' }}</a-descriptions-item>
+          <a-descriptions-item label="投放批次">{{ detailRow.times === 2 ? '批次 2（二次下送工单）' : '批次 1（首次）' }}</a-descriptions-item>
           <a-descriptions-item label="触达号码">{{ detailRow.mobile }}</a-descriptions-item>
           <a-descriptions-item label="任务状态"><span class="tag" :class="`t-${STATUS_TONE[detailRow.status]}`">{{ detailRow.status }}</span></a-descriptions-item>
           <a-descriptions-item label="是否解决">{{ detailRow.resolved || '—' }}</a-descriptions-item>

@@ -3,7 +3,7 @@ import { reactive, ref, computed } from 'vue';
 import { message } from 'ant-design-vue';
 import {
   SaveOutlined, ApiOutlined, CheckCircleOutlined,
-  EditOutlined, FilterOutlined, SendOutlined, RedoOutlined, PhoneOutlined,
+  EditOutlined, FilterOutlined, SendOutlined, PhoneOutlined,
 } from '@ant-design/icons-vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { CREATE_TICKET_TYPES } from '@/views/tickets/types/createTicket';
@@ -27,10 +27,6 @@ interface Strategy {
   sendStart: string; // 'HH:mm'
   sendEnd: string;
   feedbackHours: number;
-  secondEnabled: boolean;
-  secondDays: number;
-  fatigueEnabled: boolean;
-  fatigueDays: number;
 }
 
 /**
@@ -57,10 +53,6 @@ const cur = reactive<Strategy>({
   sendStart: '08:00',
   sendEnd: '22:00',
   feedbackHours: 24,
-  secondEnabled: true,
-  secondDays: 7,
-  fatigueEnabled: false,
-  fatigueDays: 30,
 });
 
 /** 工单类型在「不发」与「结案后调研」两处共用同一枚举，互斥：一处勾选另一处禁选 */
@@ -105,7 +97,6 @@ function validate(): string | null {
   const s = cur;
   if (hmToMinutes(s.sendStart) >= hmToMinutes(s.sendEnd)) return '发送窗口起始须早于结束';
   if (s.feedbackHours < 1) return '反馈窗口至少 1 小时';
-  if (s.secondEnabled && s.secondDays < 1) return '二次调研天数须为正整数';
   return null;
 }
 
@@ -130,7 +121,7 @@ function saveCallbackKey() { callbackKeyEditing.value = false; message.success('
   <div class="survey-config">
     <AdminPageHeader
       title="调研回访配置"
-      subtitle="维护非售后工单结案调研的分流名单、发送与反馈窗口、二次调研与触达治理；讯飞投放对接参数与回调验签配置。"
+      subtitle="维护非售后工单结案调研的分流名单、发送与反馈窗口、号码策略；讯飞投放对接参数与回调验签配置。"
     >
       <template #actions>
         <a-button @click="onTestConn"><template #icon><ApiOutlined /></template>测试连通</a-button>
@@ -217,36 +208,16 @@ function saveCallbackKey() { callbackKeyEditing.value = false; message.success('
           <div class="warn-line"><EditOutlined /> 时段 / 窗口修改仅对新任务生效，不影响已生成任务。</div>
         </section>
 
-        <!-- 二次调研 -->
+        <!-- 号码策略 -->
         <section class="cfg-card">
-          <div class="cc-head"><RedoOutlined /><span>二次调研（times=2）</span></div>
-          <div class="form-line">
-            <span class="fl-label">启用</span>
-            <a-switch v-model:checked="cur.secondEnabled" checked-children="开" un-checked-children="关" />
-            <template v-if="cur.secondEnabled">
-              <span class="fl-sep">结案后</span>
-              <a-input-number v-model:value="cur.secondDays" :min="1" :max="90" class="num" />
-              <span class="fl-unit">天发起</span>
-            </template>
-            <span class="fl-tip">二次调研纯数据收集，不改变工单状态</span>
-          </div>
-        </section>
-
-        <!-- 触达治理 -->
-        <section class="cfg-card">
-          <div class="cc-head"><PhoneOutlined /><span>触达治理</span></div>
-          <div class="form-line">
-            <span class="fl-label">频控</span>
-            <a-switch v-model:checked="cur.fatigueEnabled" checked-children="开" un-checked-children="关" />
-            <template v-if="cur.fatigueEnabled">
-              <span class="fl-sep">同手机号</span>
-              <a-input-number v-model:value="cur.fatigueDays" :min="1" :max="365" class="num" />
-              <span class="fl-unit">天最多 1 次</span>
-            </template>
-          </div>
+          <div class="cc-head"><PhoneOutlined /><span>号码策略</span></div>
           <div class="form-line">
             <span class="fl-label">号码优先级</span>
             <span class="ro-value">{{ NUMBER_PRIORITY }}</span>
+          </div>
+          <div class="form-line">
+            <span class="fl-label" />
+            <span class="fl-tip">按序取首个有效号码投放；全部无效 → 标记「无法触达」。</span>
           </div>
         </section>
 
