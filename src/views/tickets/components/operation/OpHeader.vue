@@ -64,7 +64,13 @@ function priorityHex(p: string): string {
     <div class="oh-right">
       <OpSlaBar :detail="detail" />
       <div class="oh-actions">
-        <button type="button" class="action-btn" @click="emit('action', '新建关联')">新建关联</button>
+        <button
+          v-if="detail.type === '投诉'"
+          type="button"
+          class="action-btn"
+          @click="emit('action', '关联售后')"
+        >关联售后</button>
+        <button v-else type="button" class="action-btn" @click="emit('action', '升级投诉')">升级投诉</button>
         <button type="button" class="action-btn" @click="emit('action', '新建补充')">新建补充</button>
         <button type="button" class="action-btn" @click="emit('action', '催单')">催单</button>
         <button type="button" class="action-btn action-btn--danger" @click="emit('action', '取消工单')">取消工单</button>

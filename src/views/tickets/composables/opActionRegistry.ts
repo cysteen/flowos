@@ -21,7 +21,6 @@ export interface ActionDef {
 
 const ALL: TicketType[] = ['投诉', '咨询', '建议', '商机'];
 const NO_LEAD: TicketType[] = ['投诉', '咨询', '建议']; // 商机不支持
-const COMPLAINT_CONSULT: TicketType[] = ['投诉', '咨询']; // 仅投诉/咨询
 
 export const ACTION_DEFS: ActionDef[] = [
   // —— 主操作区（高频流转）——
@@ -35,7 +34,8 @@ export const ACTION_DEFS: ActionDef[] = [
   { key: '撤回', label: '撤回', icon: 'UndoOutlined', group: 'more', types: ALL },
   { key: '强结', label: '强结', icon: 'StopOutlined', group: 'more', types: ALL, danger: true },
   { key: '同步飞书', label: '同步飞书', icon: 'ShareAltOutlined', group: 'more', types: NO_LEAD },
-  { key: '转售后', label: '转售后', icon: 'ToolOutlined', group: 'more', types: COMPLAINT_CONSULT, needsAftersale: true },
+  // 转售后仅非诉（咨询）：投诉走工单头「关联售后」入口（建关联单独立跑，不关闭）
+  { key: '转售后', label: '转售后', icon: 'ToolOutlined', group: 'more', types: ['咨询'], needsAftersale: true },
   // —— 更多 · 管理类（不属于 9 子流程）——
   { key: '关闭工单', label: '关闭工单', icon: 'CheckCircleOutlined', group: 'manage', types: ALL },
   { key: '归档工单', label: '归档工单', icon: 'InboxOutlined', group: 'manage', types: ALL },

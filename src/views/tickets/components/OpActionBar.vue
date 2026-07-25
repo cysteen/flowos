@@ -190,7 +190,14 @@ function openEscalate() {
   dialogOpen.value = true;
 }
 
-defineExpose({ openEscalate });
+/** 投诉单「关联售后」入口：打开售后建单弹窗（复用转售后动作，投诉分支=建关联单独立跑） */
+function openAftersale() {
+  if (isTerminal.value) return;
+  dialogAction.value = '转售后';
+  dialogOpen.value = true;
+}
+
+defineExpose({ openEscalate, openAftersale });
 </script>
 
 <template>

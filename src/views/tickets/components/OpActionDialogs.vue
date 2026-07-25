@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, watch } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import { message } from 'ant-design-vue';
 import dayjs, { type Dayjs } from 'dayjs';
 import {
@@ -8,6 +8,7 @@ import {
   CheckCircleOutlined, CloseCircleOutlined, InboxOutlined, RollbackOutlined,
 } from '@ant-design/icons-vue';
 import OpActionModal from './operation/OpActionModal.vue';
+import AftersaleCreateForm from './operation/AftersaleCreateForm.vue';
 import type { SuspendInfo, OpActionType, AftersaleContext } from '../composables/opActions';
 import {
   TRANSFER_TARGETS, DELEGATE_TARGETS, REVIEWERS, FORCE_CLOSE_REASONS, APPROVERS,
@@ -70,6 +71,7 @@ const aftersale = reactive({ serviceType: AFTERSALE_SERVICE_TYPES[0], serviceMet
 const asCtx = computed(() => props.aftersaleContext);
 const asIsComplaint = computed(() => !!asCtx.value?.isComplaint);
 const asExisting = computed(() => asCtx.value?.existing);
+const aftersaleFormRef = ref<{ getPayload: () => { serviceType: string; serviceMethod: string; detail: string } } | null>(null);
 const resolve = reactive({ solution: '', createCallback: true });
 const close = reactive({
   target: 'resolved' as 'resolved' | 'closed',
@@ -144,7 +146,7 @@ const DLG_CONFIG: Partial<Record<OpActionType, DlgConfig>> = {
   挂起: { title: '挂起工单', icon: PauseCircleOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认挂起' },
   升级: { title: '升级工单', icon: RiseOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认升级' },
   同步飞书: { title: '同步飞书协同', icon: SyncOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认同步' },
-  转售后: { title: '转售后处理', icon: ToolOutlined, tone: 'primary', width: 520, okTone: 'primary', okText: '确认转售后' },
+  转售后: { title: '转售后处理', icon: ToolOutlined, tone: 'primary', width: 640, okTone: 'primary', okText: '确认转售后' },
   标记已解决: { title: '标记已解决', icon: CheckCircleOutlined, tone: 'success', width: 520, okTone: 'success', okText: '确认标记' },
   恢复: { title: '恢复工单', icon: PlayCircleOutlined, tone: 'success', width: 560, okTone: 'success', okText: '确认恢复' },
   退回: { title: '退回工单', icon: RollbackOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认退回' },
@@ -241,7 +243,14 @@ function onOk() {
     case '挂起': emit('confirm', { type: '挂起', data: { ...suspend } }); break;
     case '升级': emit('confirm', { type: '升级', data: { ...escalate } }); break;
     case '同步飞书': emit('confirm', { type: '同步飞书', data: { ...syncFeishu } }); break;
-    case '转售后': emit('confirm', { type: '转售后', data: { ...aftersale } }); break;
+    case '转售后': {
+      // 激活分支无表单，取上下文服务类型；新建分支读内嵌售后建单页表单
+      const data = asExisting.value
+        ? { serviceType: asExisting.value.serviceType, serviceMethod: aftersale.serviceMethod, detail: aftersale.detail }
+        : aftersaleFormRef.value?.getPayload() ?? { ...aftersale };
+      emit('confirm', { type: '转售后', data });
+      break;
+    }
     case '标记已解决': emit('confirm', { type: '标记已解决', data: { ...resolve } }); break;
     case '恢复': emit('confirm', { type: '恢复', data: { ...resume } }); break;
     case '退回': emit('confirm', { type: '退回', data: { ...returnForm } }); break;
@@ -419,46 +428,12 @@ function onOk() {
 
     <!-- 转售后 -->
     <div v-else-if="action === '转售后'" class="op-form">
-      <!-- 分流提示：投诉=建关联单独立跑 / 非诉=转出即关 -->
-      <div class="op-tip" :class="asIsComplaint ? 'op-tip-warn' : 'op-tip-ok'">
-        <template v-if="asIsComplaint">
-          <b>投诉工单</b>：建关联售后单，<b>投诉单独立继续跟进</b>（不关闭），售后结果回传参考。
-        </template>
-        <template v-else>
-          <b>非投诉工单</b>：转出后原客服单标记「已转售后」<b>并关闭</b>，进「已办」。
-        </template>
-      </div>
-
-      <!-- 已有关联售后单 → 激活；无 → 建单预填 -->
+      <!-- 已有关联售后单 → 激活；无 → 内嵌售后建单页（复刻，预填） -->
       <div v-if="asExisting" class="op-box op-box-warn">
         <div class="op-box-title">已有关联售后单</div>
         <div class="op-box-line">单号 {{ asExisting.no }} · {{ asExisting.serviceType }}——确认后将<b>激活</b>该售后单至待接单，不重复建单。</div>
       </div>
-      <template v-else>
-        <div class="op-box">
-          <div class="op-box-title">将带入售后建单页（预填，只读）</div>
-          <div class="op-prefill">
-            <div><span>客户</span>{{ asCtx?.customerName }} · {{ asCtx?.customerPhone || '—' }}</div>
-            <div><span>地址</span>{{ asCtx?.region }} {{ asCtx?.address }}</div>
-            <div><span>产品</span>{{ asCtx?.productCategory }} / {{ asCtx?.productName }}<template v-if="asCtx?.sn"> · SN {{ asCtx?.sn }}</template></div>
-          </div>
-          <div class="op-prefill-note">地址 / SN 带不出时售后页可留空补填（转单放宽必填）。</div>
-        </div>
-        <div class="op-field-row">
-          <div class="op-field">
-            <div class="op-label req">售后服务类型</div>
-            <a-select v-model:value="aftersale.serviceType" :options="AFTERSALE_SERVICE_TYPES.map((v) => ({ value: v, label: v }))" style="width:100%" />
-          </div>
-          <div class="op-field">
-            <div class="op-label req">售后服务方式</div>
-            <a-select v-model:value="aftersale.serviceMethod" :options="AFTERSALE_SERVICE_METHODS.map((v) => ({ value: v, label: v }))" style="width:100%" />
-          </div>
-        </div>
-      </template>
-      <div class="op-field">
-        <div class="op-label">转出说明</div>
-        <a-textarea v-model:value="aftersale.detail" :rows="2" placeholder="请填写转售后说明..." />
-      </div>
+      <AftersaleCreateForm v-else ref="aftersaleFormRef" :context="aftersaleContext" />
     </div>
 
     <!-- 标记已解决 -->

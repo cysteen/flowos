@@ -57,7 +57,7 @@ const pageActive = ref(false);
 
 const ticketNo = computed(() => (route.params.ticketNo as string) || d.value.no);
 const processTabsRef = ref<InstanceType<typeof OpProcessTabs> | null>(null);
-const actionBarRef = ref<{ openEscalate: () => void } | null>(null);
+const actionBarRef = ref<{ openEscalate: () => void; openAftersale: () => void } | null>(null);
 
 const tabsStore = useWorkspaceTabsStore();
 const cti = useCtiStore();
@@ -532,8 +532,11 @@ function onCancelSubmit(payload: { reason: string; remark: string }) {
 
 function onHeaderAction(name: string) {
   switch (name) {
-    case '新建关联':
+    case '升级投诉': // 非诉工单：升级投诉，建 B 投诉单（730 迭代，详见《【730】升级投诉 PRD》）
       openChildCreate();
+      break;
+    case '关联售后': // 投诉工单：打开售后建单弹窗
+      actionBarRef.value?.openAftersale();
       break;
     case '新建补充':
       supplementModalOpen.value = true;
