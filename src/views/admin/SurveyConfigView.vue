@@ -3,7 +3,7 @@ import { reactive, ref, computed } from 'vue';
 import { message } from 'ant-design-vue';
 import {
   SaveOutlined, ApiOutlined, CheckCircleOutlined,
-  EditOutlined, FilterOutlined, SendOutlined, PhoneOutlined,
+  EditOutlined, FilterOutlined, SendOutlined,
 } from '@ant-design/icons-vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { CREATE_TICKET_TYPES } from '@/views/tickets/types/createTicket';
@@ -63,7 +63,6 @@ function typeDisabledInNo(v: string): boolean {
   return cur.list.afterType.includes(v);
 }
 
-const NUMBER_PRIORITY = '用户最终联系号码 > 电话3 > 电话2 > 联系电话';
 
 // —— 对接参数（全局） ——
 const conn = reactive({
@@ -121,7 +120,7 @@ function saveCallbackKey() { callbackKeyEditing.value = false; message.success('
   <div class="survey-config">
     <AdminPageHeader
       title="调研回访配置"
-      subtitle="维护非售后工单结案调研的分流名单、发送与反馈窗口、号码策略；讯飞投放对接参数与回调验签配置。"
+      subtitle="维护非售后工单结案调研的分流名单、发送与反馈窗口；讯飞投放对接参数与回调验签配置。"
     >
       <template #actions>
         <a-button @click="onTestConn"><template #icon><ApiOutlined /></template>测试连通</a-button>
@@ -206,19 +205,6 @@ function saveCallbackKey() { callbackKeyEditing.value = false; message.success('
             <span class="fl-tip">从投放成功起算；普通工单无反馈自动结案</span>
           </div>
           <div class="warn-line"><EditOutlined /> 时段 / 窗口修改仅对新任务生效，不影响已生成任务。</div>
-        </section>
-
-        <!-- 号码策略 -->
-        <section class="cfg-card">
-          <div class="cc-head"><PhoneOutlined /><span>号码策略</span></div>
-          <div class="form-line">
-            <span class="fl-label">号码优先级</span>
-            <span class="ro-value">{{ NUMBER_PRIORITY }}</span>
-          </div>
-          <div class="form-line">
-            <span class="fl-label" />
-            <span class="fl-tip">按序取首个有效号码投放；全部无效 → 标记「无法触达」。</span>
-          </div>
         </section>
 
         <!-- 对接参数（全局） -->
@@ -306,7 +292,6 @@ function saveCallbackKey() { callbackKeyEditing.value = false; message.success('
 .url-input { max-width: 420px; }
 .key-input { width: 240px; }
 .key-mask { font-size: 13px; color: #6b7280; letter-spacing: 2px; font-family: monospace; }
-.ro-value { font-size: 13px; color: #4b5563; }
 .warn-line {
   display: flex; align-items: center; gap: 6px; margin-top: 4px;
   font-size: 12px; color: #b45309; background: #fffbeb; border: 1px solid #fde68a;

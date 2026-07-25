@@ -185,6 +185,13 @@ const displayRows = computed(() => allRows.value.filter((r) => {
   return true;
 }));
 
+// 行勾选（用于导出所选）
+const checkedKeys = ref<string[]>([]);
+const rowSelection = computed(() => ({
+  selectedRowKeys: checkedKeys.value,
+  onChange: (keys: (string | number)[]) => { checkedKeys.value = keys as string[]; },
+}));
+
 const cols = [
   { title: '工单编号', dataIndex: 'ticketNo', key: 'ticketNo', width: 150 },
   { title: '标题', dataIndex: 'title', key: 'title', width: 190 },
@@ -232,8 +239,11 @@ function toHuman(r: Row) {
 function onManualCallback(r: Row) {
   message.success(`已为 ${r.ticketNo} 生成人工回访待办`);
 }
-function onExport() { message.success(`已导出「${rangeLabel.value}」${displayRows.value.length} 条明细`); }
-function onRefresh() { message.success(`已按当前时刻重新拉取「${rangeLabel.value}」快照`); }
+function onExport() {
+  const n = checkedKeys.value.length || displayRows.value.length;
+  const scope = checkedKeys.value.length ? '所选' : '全部';
+  message.success(`已导出「${rangeLabel.value}」${scope} ${n} 条明细`);
+}
 function onReset() { Object.assign(filter, { ticketNo: '', flow: undefined, times: undefined, status: undefined, resolved: undefined, reason: undefined }); }
 </script>
 
@@ -259,8 +269,6 @@ function onReset() { Object.assign(filter, { ticketNo: '', flow: undefined, time
           class="range-pick"
           @change="(v: any) => onCustomChange(v)"
         />
-        <a-button @click="onRefresh"><template #icon><ReloadOutlined /></template>刷新</a-button>
-        <a-button @click="onExport"><template #icon><DownloadOutlined /></template>导出</a-button>
       </template>
     </AdminPageHeader>
 
@@ -311,12 +319,18 @@ function onReset() { Object.assign(filter, { ticketNo: '', flow: undefined, time
         <a-select v-model:value="filter.resolved" placeholder="是否解决" allow-clear size="small" class="f-sel-sm" :options="['解决','未解决','超时无反馈'].map((v) => ({ value: v }))" />
         <a-select v-model:value="filter.reason" placeholder="未解决分类" allow-clear size="small" class="f-sel" :options="['没有解决方案','解决方案没有用','解决方案太复杂','没有人联系解决'].map((v) => ({ value: v }))" />
         <a-button size="small" @click="onReset"><template #icon><ReloadOutlined /></template>重置</a-button>
+        <span class="fb-spacer" />
+        <span v-if="checkedKeys.length" class="fb-selinfo">已选 {{ checkedKeys.length }} 条</span>
+        <a-button size="small" type="primary" ghost @click="onExport">
+          <template #icon><DownloadOutlined /></template>{{ checkedKeys.length ? `导出所选（${checkedKeys.length}）` : '导出全部' }}
+        </a-button>
       </div>
 
       <a-table
         :columns="cols"
         :data-source="displayRows"
         row-key="key"
+        :row-selection="rowSelection"
         :pagination="pagination"
         size="middle"
         :scroll="{ x: 1560 }"
@@ -434,6 +448,8 @@ function onReset() { Object.assign(filter, { ticketNo: '', flow: undefined, time
 
 .detail-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; }
 .filter-bar { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid #f0f2f5; flex-wrap: wrap; }
+.fb-spacer { flex: 1 1 auto; }
+.fb-selinfo { font-size: 12px; color: #1a6fff; white-space: nowrap; }
 .f-input { width: 150px; }
 .f-sel { width: 118px; }
 .f-sel-sm { width: 100px; }
