@@ -19,8 +19,12 @@ const emit = defineEmits<{
 
 const expanded = ref({ related: true, supplement: true, dunning: true });
 
-function toast(name: string) {
-  message.info(`「${name}」`);
+function openRelated(t: RelatedTicketCard) {
+  if (t.source === '售后' || t.externalLink) {
+    message.info(`跳转售后系统查看 ${t.no}`);
+  } else {
+    message.info(`打开 ${t.no}`);
+  }
 }
 
 function typeBg(t: RelatedTicketCard) {
@@ -50,10 +54,12 @@ function processEntries(t: RelatedTicketCard) {
           v-for="t in relatedTickets"
           :key="t.no"
           class="rel-card"
-          @click="toast('打开 ' + t.no)"
+          :class="{ 'rel-card--external': t.source === '售后' }"
+          @click="openRelated(t)"
         >
           <div class="rel-top">
             <div class="rel-title-row">
+              <span v-if="t.source === '售后'" class="src-badge">售后</span>
               <span
                 class="status-tag"
                 :style="{ color: t.statusColor, background: t.statusColor + '18' }"
@@ -63,7 +69,7 @@ function processEntries(t: RelatedTicketCard) {
             <span class="rel-time">{{ t.createdAtFull ?? t.createdAt }}</span>
           </div>
           <div class="rel-meta">
-            <span class="rel-no">{{ t.no }}</span>
+            <span class="rel-no">{{ t.no }}<template v-if="t.externalLink"> ↗</template></span>
             <span class="sep">·</span>
             <span class="type-tag" :style="{ color: t.typeColor, background: typeBg(t) }">{{ t.type }}</span>
             <span class="sep">·</span>
@@ -131,6 +137,8 @@ function processEntries(t: RelatedTicketCard) {
 .rel-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .rel-title-row { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
 .status-tag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; flex: none; }
+.src-badge { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; flex: none; color: #0e7490; background: #cffafe; }
+.rel-card--external { border-style: dashed; }
 .rel-title { font-size: 13px; font-weight: 600; color: #111827; min-width: 0; }
 .rel-time { font-size: 11px; color: #9ca3af; flex: none; white-space: nowrap; }
 

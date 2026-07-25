@@ -55,6 +55,10 @@ export interface RelatedTicketCard {
   processRecords?: ProcessInfoEntry[];
   /** @deprecated 使用 processRecords */
   processInfo?: string;
+  /** 卡片来源系统；默认客服（本系统），售后=外部单、点击深链跳转不站内打开 */
+  source?: '客服' | '售后';
+  /** 售后单等外部单：点击深链跳对方系统（附件也走跳转，不内嵌，D6） */
+  externalLink?: boolean;
 }
 
 export interface SimpleRecord {

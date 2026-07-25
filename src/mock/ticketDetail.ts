@@ -135,6 +135,24 @@ export interface TicketDetailMeta {
   feishuFailReason?: string;
   /** 「产研反馈」Tab 时间线（建关联 / 关联失败 / 预反馈 / 关单 / 二次激活） */
   feishuRecords?: FeishuRecord[];
+  /** 1:1 活跃关联售后单（转售后/关联售后后回传，客服侧松耦合展示，详情走深链） */
+  linkedAftersale?: LinkedAftersale;
+}
+
+/** 关联售后单（松耦合：少量字段进卡片，完整详情走深链跳转，D6） */
+export interface LinkedAftersale {
+  /** 售后工单号（=关联ID） */
+  no: string;
+  /** 售后状态（待接单/处理中/已完成…） */
+  status: string;
+  /** 售后服务类型（维修/投诉/咨询/安装/展示样机拆装） */
+  serviceType: string;
+  /** 售后服务方式（上门/寄修/送修/沟通调解） */
+  serviceMethod?: string;
+  /** 创建时间 */
+  createdAt: string;
+  /** 是否投诉工单转出（投诉=独立跑、原单不关；非诉=原单已转售后并关闭） */
+  fromComplaint?: boolean;
 }
 
 /** 飞书关联进度（与 PRD §3.2 feishuSync 一致） */

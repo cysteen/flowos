@@ -210,6 +210,21 @@ function onTicketCreated(ticket: Ticket, processAfter?: boolean) {
 /** 升级到飞书项目入口：所有工单均开放（不再限消费者BG） */
 const feishuEligible = computed(() => true);
 
+/** 转售后上下文：投诉分流 + 客户/产品预填 + 已有关联售后单（激活优先） */
+const aftersaleContext = computed(() => ({
+  isComplaint: d.value.type === '投诉',
+  customerName: d.value.customer.name,
+  customerPhone: d.value.customer.contacts.find((c) => c.type === 'phone')?.value ?? '',
+  region: d.value.customer.region,
+  address: d.value.customer.address,
+  productCategory: d.value.product.category,
+  productName: d.value.product.name,
+  sn: d.value.product.sn,
+  existing: d.value.linkedAftersale
+    ? { no: d.value.linkedAftersale.no, serviceType: d.value.linkedAftersale.serviceType }
+    : undefined,
+}));
+
 function isFeishuEscalate(payload: Record<string, unknown>): boolean {
   if (payload.type !== '升级') return false;
   const data = payload.data as { channel?: string } | undefined;
@@ -276,6 +291,32 @@ function onAction(payload: Record<string, unknown>) {
   if (toFeishu) {
     processTabsRef.value?.switchTab('feishu');
   }
+  if (payload.type === '转售后') syncAftersaleRelatedCard();
+}
+
+/** 转售后后：把 1:1 关联售后单同步进「关联单」列表（售后来源卡片，点击深链跳转） */
+function syncAftersaleRelatedCard() {
+  const la = d.value.linkedAftersale;
+  if (!la) return;
+  const cards = tabData.value.relatedTickets;
+  const existed = cards.find((c) => c.no === la.no);
+  const card = {
+    no: la.no,
+    title: `${la.serviceType} · ${d.value.product.name}`,
+    status: la.status,
+    statusColor: '#1a6fff',
+    type: la.serviceType,
+    typeColor: '#0EA5A4',
+    createdAt: la.createdAt,
+    createdAtFull: la.createdAt,
+    builder: '售后系统',
+    demand: d.value.demand,
+    source: '售后' as const,
+    externalLink: true,
+  };
+  if (existed) Object.assign(existed, card);
+  else cards.unshift(card);
+  processTabsRef.value?.switchTab('related');
 }
 
 /** 产研反馈 Tab · 二次激活 */
@@ -615,6 +656,7 @@ watch(
       :return-count="d.returnCount ?? 0"
       :feishu-eligible="feishuEligible"
       :feishu-sync="d.feishuSync"
+      :aftersale-context="aftersaleContext"
       @action="onAction"
       @cancel="cancelModalOpen = true"
       @withdraw="confirmWithdraw"

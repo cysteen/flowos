@@ -102,6 +102,8 @@ export interface Ticket {
   problemDesc?: string;
   /** 最新处理结果（列表行速览） */
   latestHandling?: string;
+  /** 关联售后单号（非诉转售后/建售后单后，已办行可见、可跳转） */
+  linkedAftersaleNo?: string;
   nodeStatus: NodeStatus;
   nodeStep: number;
   nodeTotal: number;

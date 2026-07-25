@@ -1,5 +1,5 @@
 import type { TlRole, TimelineEntry, TimelineFieldChange } from '@/views/tickets/types/ticketDetail';
-import type { TicketDetailMeta, FeishuRecord } from '@/mock/ticketDetail';
+import type { TicketDetailMeta, FeishuRecord, LinkedAftersale } from '@/mock/ticketDetail';
 
 /** 升级通道 · 飞书项目（消费者BG专属，走 OpenAPI 推送产研反馈单） */
 export const FEISHU_ESCALATE_CHANNEL = '飞书项目 · 产研反馈单';
@@ -50,7 +50,29 @@ export interface FeishuActivatePayload { reason: string; }
 /** 处理登记（保存并登记）：坐席本次处理内容摘要 + 字段级变更，写入处理履历 */
 export interface ProcessLogData { summary: string; attachment?: string; changes?: TimelineFieldChange[]; }
 export interface SyncFeishuPayload { space: string; message: string; }
-export interface AftersalePayload { mode: 'close' | 'callback'; group: string; detail: string; }
+export interface AftersalePayload {
+  /** 售后服务类型（坐席在售后建单页选） */
+  serviceType: string;
+  /** 售后服务方式 */
+  serviceMethod: string;
+  /** 转出说明 */
+  detail: string;
+}
+
+/** 转售后弹窗上下文：投诉分流 + 预填字段 + 已有关联售后单（激活优先） */
+export interface AftersaleContext {
+  /** 投诉工单：建关联单、投诉单独立跑；非诉：原单标记已转售后并关闭 */
+  isComplaint: boolean;
+  customerName: string;
+  customerPhone?: string;
+  region: string;
+  address: string;
+  productCategory: string;
+  productName: string;
+  sn?: string;
+  /** 已有 1:1 活跃关联售后单 → 走激活，不再建单 */
+  existing?: { no: string; serviceType: string };
+}
 export interface ResolvePayload { solution: string; createCallback: boolean; }
 export interface ClosePayload {
   target: 'resolved' | 'closed';
@@ -114,6 +136,9 @@ export const ESCALATE_MEMBERS = ['陈伟 (硬件, 负载 45%)', '林涛 (软件,
 export const FEISHU_FEEDBACK_CATEGORIES = ['软件问题', '硬件问题', '效果问题', '其他问题'];
 export const FEISHU_SPACES = ['飞书项目 · 售后协同', '飞书群 · 二线技术支持', '飞书群 · 产品反馈'];
 export const AFTERSALE_GROUPS = ['售后维修组', '退换货处理组', '上门服务组'];
+/** 售后服务类型 / 方式（数据字典，与售后建单页对齐，表1/表5） */
+export const AFTERSALE_SERVICE_TYPES = ['维修', '投诉', '咨询', '安装', '展示样机拆装'];
+export const AFTERSALE_SERVICE_METHODS = ['上门', '送修', '寄修', '沟通调解'];
 export const CLOSE_RESULTS = ['已解决', '未解决-客户放弃', '未解决-无法复现', '重复工单', '无效工单'];
 export const ROOT_CAUSES = ['产品缺陷', '使用不当', '配置问题', '第三方问题', '需求变更'];
 export const ARCHIVE_REASONS = ['已关闭超30天自动归档', '手动归档-已完结', '手动归档-合规要求'];
@@ -141,6 +166,19 @@ export function nextTimelineId(list: TimelineEntry[]): string {
 /** 生成飞书项目模拟反馈单号 */
 function feishuFeedbackNo(): string {
   return `FS-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}${String(new Date().getDate()).padStart(2, '0')}-${String(Math.floor(Date.now() % 9000) + 1000)}`;
+}
+
+/** 生成模拟售后工单号（售后系统回传，AS = After-Sales） */
+function aftersaleNo(): string {
+  const d = new Date();
+  return `AS-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-${String(Math.floor(Date.now() % 90000) + 10000)}`;
+}
+
+/** 完整时间戳（关联卡片展示） */
+function nowFull(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
 /** 升级到飞书：演示完整协同时间线（建关联 → 预反馈 → 关单） */
@@ -391,21 +429,44 @@ export function applyOpAction(
     }
 
     case '转售后': {
-      const { mode, group, detail: note } = payload.data;
-      if (mode === 'close') {
-        detail.status = '已关闭';
+      // 按 D1 分流：投诉=建关联单、投诉单独立跑（原单不关）；非诉=原单标记已转售后并关闭。
+      // D2 激活优先：已有 1:1 活跃关联售后单则激活，无则新建（回传 mock 售后单号）。
+      const { serviceType, serviceMethod, detail: note } = payload.data;
+      const isComplaint = detail.type === '投诉';
+      const existing = detail.linkedAftersale;
+
+      if (existing) {
+        existing.status = '待接单'; // 激活到手动派单/待接单
+        existing.fromComplaint = isComplaint;
         pushEntry(timeline, {
-          category: 'node', action: 'resolved', who: operator, role: operatorRole,
-          how: '转售后 · 关闭模式', what: `转 ${group} 承接，客服工单结束（已关闭）。${note ? `说明：${note}` : ''}`,
+          category: 'node', action: 'transfer', who: operator, role: operatorRole,
+          how: '转售后 · 激活关联售后单',
+          what: `已有关联售后单 ${existing.no}，激活至待接单。${note ? `说明：${note}` : ''}`,
         });
-        return { opState: 'closed', suspendInfo, message: `已转 ${group}，客服工单关闭` };
+      } else {
+        detail.linkedAftersale = {
+          no: aftersaleNo(),
+          status: '待接单',
+          serviceType,
+          serviceMethod,
+          createdAt: nowFull(),
+          fromComplaint: isComplaint,
+        };
+        pushEntry(timeline, {
+          category: 'node', action: 'transfer', who: operator, role: operatorRole,
+          how: '转售后 · 建关联售后单',
+          what: `新建售后单 ${detail.linkedAftersale.no}（${serviceType}·${serviceMethod}），与本单建立关联。${note ? `说明：${note}` : ''}`,
+        });
       }
-      detail.status = '已升级·待回流';
-      pushEntry(timeline, {
-        category: 'node', action: 'escalate', who: operator, role: operatorRole,
-        how: '转售后 · 等回流', what: `转 ${group} 处理，等待结果回流后继续闭环。${note ? `说明：${note}` : ''}`,
-      });
-      return { opState, suspendInfo, message: `已转 ${group}，等待回流` };
+
+      const asNo = detail.linkedAftersale!.no;
+      if (isComplaint) {
+        // 投诉：建关联单，投诉单独立继续跑（不关闭）
+        return { opState, suspendInfo, message: `已建关联售后单 ${asNo}，投诉单继续跟进` };
+      }
+      // 非诉：原单标记"已转售后"并关闭
+      detail.status = '已转售后';
+      return { opState: 'closed', suspendInfo, message: `已转售后 ${asNo}，客服工单关闭` };
     }
 
     case '标记已解决': {

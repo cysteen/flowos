@@ -9,7 +9,7 @@ import {
 } from '@ant-design/icons-vue';
 import OpActionDialogs from './OpActionDialogs.vue';
 import OpForwardModal from './operation/OpForwardModal.vue';
-import type { SuspendInfo, OpActionType, TicketOpState } from '../composables/opActions';
+import type { SuspendInfo, OpActionType, TicketOpState, AftersaleContext } from '../composables/opActions';
 import { availableActions } from '../composables/opActionRegistry';
 import { MAX_RETURN_COUNT } from '../composables/opActions';
 
@@ -26,6 +26,8 @@ const props = defineProps<{
   feishuEligible?: boolean;
   /** 飞书协同子状态：已关联（synced/feedback/closed）时底栏「升级」置灰 */
   feishuSync?: string;
+  /** 转售后上下文（投诉分流 + 预填 + 已有关联售后单） */
+  aftersaleContext?: AftersaleContext;
 }>();
 
 const emit = defineEmits<{
@@ -238,6 +240,7 @@ defineExpose({ openEscalate });
       :return-count="returnCount ?? 0"
       :feishu-eligible="feishuEligible"
       :feishu-sync="feishuSync"
+      :aftersale-context="aftersaleContext"
       @confirm="onDialogConfirm"
     />
 

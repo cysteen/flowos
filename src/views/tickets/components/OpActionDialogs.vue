@@ -8,11 +8,11 @@ import {
   CheckCircleOutlined, CloseCircleOutlined, InboxOutlined, RollbackOutlined,
 } from '@ant-design/icons-vue';
 import OpActionModal from './operation/OpActionModal.vue';
-import type { SuspendInfo, OpActionType } from '../composables/opActions';
+import type { SuspendInfo, OpActionType, AftersaleContext } from '../composables/opActions';
 import {
   TRANSFER_TARGETS, DELEGATE_TARGETS, REVIEWERS, FORCE_CLOSE_REASONS, APPROVERS,
   SUSPEND_REASONS, ESCALATE_CHANNELS, ESCALATE_GROUPS, ESCALATE_MEMBERS,
-  FEISHU_SPACES, AFTERSALE_GROUPS, CLOSE_RESULTS, ARCHIVE_REASONS,
+  FEISHU_SPACES, AFTERSALE_SERVICE_TYPES, AFTERSALE_SERVICE_METHODS, CLOSE_RESULTS, ARCHIVE_REASONS,
   RESUME_REASONS, RETURN_REASONS, RETURN_TARGET_NODES, MAX_RETURN_COUNT,
   DELEGATE_GROUPS, FEISHU_ESCALATE_CHANNEL, FEISHU_FEEDBACK_CATEGORIES,
 } from '../composables/opActions';
@@ -29,6 +29,8 @@ const props = defineProps<{
   feishuEligible?: boolean;
   /** 飞书关联进度：closed 时「升级到飞书」置灰不可再转 */
   feishuSync?: string;
+  /** 转售后上下文（投诉分流 + 预填 + 已有关联售后单） */
+  aftersaleContext?: AftersaleContext;
 }>();
 
 const emit = defineEmits<{
@@ -63,7 +65,11 @@ const escalate = reactive({
   feedbackCategory: undefined as string | undefined,
 });
 const syncFeishu = reactive({ space: FEISHU_SPACES[0], message: '' });
-const aftersale = reactive({ mode: 'callback' as 'close' | 'callback', group: AFTERSALE_GROUPS[0], detail: '' });
+const aftersale = reactive({ serviceType: AFTERSALE_SERVICE_TYPES[0], serviceMethod: AFTERSALE_SERVICE_METHODS[0], detail: '' });
+/** 转售后上下文 & 分流判断 */
+const asCtx = computed(() => props.aftersaleContext);
+const asIsComplaint = computed(() => !!asCtx.value?.isComplaint);
+const asExisting = computed(() => asCtx.value?.existing);
 const resolve = reactive({ solution: '', createCallback: true });
 const close = reactive({
   target: 'resolved' as 'resolved' | 'closed',
@@ -138,7 +144,7 @@ const DLG_CONFIG: Partial<Record<OpActionType, DlgConfig>> = {
   挂起: { title: '挂起工单', icon: PauseCircleOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认挂起' },
   升级: { title: '升级工单', icon: RiseOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认升级' },
   同步飞书: { title: '同步飞书协同', icon: SyncOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认同步' },
-  转售后: { title: '转售后处理', icon: ToolOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认转售后' },
+  转售后: { title: '转售后处理', icon: ToolOutlined, tone: 'primary', width: 520, okTone: 'primary', okText: '确认转售后' },
   标记已解决: { title: '标记已解决', icon: CheckCircleOutlined, tone: 'success', width: 520, okTone: 'success', okText: '确认标记' },
   恢复: { title: '恢复工单', icon: PlayCircleOutlined, tone: 'success', width: 560, okTone: 'success', okText: '确认恢复' },
   退回: { title: '退回工单', icon: RollbackOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认退回' },
@@ -171,7 +177,7 @@ function resetForms() {
   escalate.syncContext = true;
   escalate.feedbackCategory = undefined;
   syncFeishu.space = FEISHU_SPACES[0]; syncFeishu.message = '';
-  aftersale.mode = 'callback'; aftersale.group = AFTERSALE_GROUPS[0]; aftersale.detail = '';
+  aftersale.serviceType = AFTERSALE_SERVICE_TYPES[0]; aftersale.serviceMethod = AFTERSALE_SERVICE_METHODS[0]; aftersale.detail = '';
   resolve.solution = ''; resolve.createCallback = true;
   close.target = 'resolved'; close.result = ''; close.solution = '';
   archive.reason = ARCHIVE_REASONS[1]; archive.retention = '3y';
@@ -413,29 +419,42 @@ function onOk() {
 
     <!-- 转售后 -->
     <div v-else-if="action === '转售后'" class="op-form">
-      <div class="op-field">
-        <div class="op-label req">转出模式</div>
-        <a-radio-group v-model:value="aftersale.mode" class="op-radio-cards">
-          <label class="op-radio-card" :class="{ on: aftersale.mode === 'callback' }">
-            <a-radio value="callback" />
-            <div>
-              <div class="op-rc-title">等回流模式</div>
-              <div class="op-rc-sub">售后处理完成后结果回流，客服侧恢复处理继续面向客户闭环</div>
-            </div>
-          </label>
-          <label class="op-radio-card" :class="{ on: aftersale.mode === 'close' }">
-            <a-radio value="close" />
-            <div>
-              <div class="op-rc-title">关闭模式</div>
-              <div class="op-rc-sub">客服工单进入终态（已关闭），后续由售后工单独立承接</div>
-            </div>
-          </label>
-        </a-radio-group>
+      <!-- 分流提示：投诉=建关联单独立跑 / 非诉=转出即关 -->
+      <div class="op-tip" :class="asIsComplaint ? 'op-tip-warn' : 'op-tip-ok'">
+        <template v-if="asIsComplaint">
+          <b>投诉工单</b>：建关联售后单，<b>投诉单独立继续跟进</b>（不关闭），售后结果回传参考。
+        </template>
+        <template v-else>
+          <b>非投诉工单</b>：转出后原客服单标记「已转售后」<b>并关闭</b>，进「已办」。
+        </template>
       </div>
-      <div class="op-field">
-        <div class="op-label req">售后处理组</div>
-        <a-select v-model:value="aftersale.group" :options="AFTERSALE_GROUPS.map((g) => ({ value: g, label: g }))" style="width:100%" />
+
+      <!-- 已有关联售后单 → 激活；无 → 建单预填 -->
+      <div v-if="asExisting" class="op-box op-box-warn">
+        <div class="op-box-title">已有关联售后单</div>
+        <div class="op-box-line">单号 {{ asExisting.no }} · {{ asExisting.serviceType }}——确认后将<b>激活</b>该售后单至待接单，不重复建单。</div>
       </div>
+      <template v-else>
+        <div class="op-box">
+          <div class="op-box-title">将带入售后建单页（预填，只读）</div>
+          <div class="op-prefill">
+            <div><span>客户</span>{{ asCtx?.customerName }} · {{ asCtx?.customerPhone || '—' }}</div>
+            <div><span>地址</span>{{ asCtx?.region }} {{ asCtx?.address }}</div>
+            <div><span>产品</span>{{ asCtx?.productCategory }} / {{ asCtx?.productName }}<template v-if="asCtx?.sn"> · SN {{ asCtx?.sn }}</template></div>
+          </div>
+          <div class="op-prefill-note">地址 / SN 带不出时售后页可留空补填（转单放宽必填）。</div>
+        </div>
+        <div class="op-field-row">
+          <div class="op-field">
+            <div class="op-label req">售后服务类型</div>
+            <a-select v-model:value="aftersale.serviceType" :options="AFTERSALE_SERVICE_TYPES.map((v) => ({ value: v, label: v }))" style="width:100%" />
+          </div>
+          <div class="op-field">
+            <div class="op-label req">售后服务方式</div>
+            <a-select v-model:value="aftersale.serviceMethod" :options="AFTERSALE_SERVICE_METHODS.map((v) => ({ value: v, label: v }))" style="width:100%" />
+          </div>
+        </div>
+      </template>
       <div class="op-field">
         <div class="op-label">转出说明</div>
         <a-textarea v-model:value="aftersale.detail" :rows="2" placeholder="请填写转售后说明..." />

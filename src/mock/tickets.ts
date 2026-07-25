@@ -176,6 +176,18 @@ const BASE_TICKETS: Ticket[] = [
     customerPhone: '18655556666', productCategory: '会员权益',
     createdAt: '2026-07-05 13:00', updatedAt: '2026-07-08 18:30',
   },
+  // 非诉转售后 → 原单标记「已转售后」并关闭，进「已办」，行内可见关联售后单号（可跳转）
+  {
+    id: 't32', no: 'LCMN-20260716-73140', type: '咨询', channel: '电话',
+    title: '扫地机器人滚刷卡死需上门维修', smartMarks: [],
+    customer: '雷军', vip: false, product: '扫地机器人 R2',
+    nodeStatus: '处理中·一线', nodeStep: 5, nodeTotal: 5, priority: 'P2',
+    slaText: '—', slaSub: '已转售后', slaState: 'ok', slaMinutes: 9999,
+    assignee: '陈坐席', tab: 'done', handledByMe: true, myTransferAction: true,
+    linkedAftersaleNo: 'AS-20260716-38025',
+    customerPhone: '13100002200', sn: 'SN-R2-77120', productCategory: '智能硬件',
+    createdAt: '2026-07-16 10:20', updatedAt: '2026-07-16 15:05',
+  },
 
   // ---- 本组工单池 (pool) 5 ----
   {
@@ -359,6 +371,7 @@ const TICKET_BRIEFS: Record<string, { problemDesc: string; latestHandling: strin
   t25: { problemDesc: '预约上门安装智能门锁', latestHandling: '已上门安装完成，功能正常' },
   t27: { problemDesc: '路由器固件升级后无法联网', latestHandling: '已指导回退固件，待客户验证' },
   t28: { problemDesc: '被重复扣费，要求退还', latestHandling: '已确认重复扣费，已发起退款' },
+  t32: { problemDesc: '扫地机器人滚刷卡死、异响，需上门维修', latestHandling: '非诉转售后，已建关联售后单 AS-20260716-38025（上门维修），客服单已关闭' },
   t29: { problemDesc: '屏幕出现花屏，需返厂检测', latestHandling: '待受理，尚未安排' },
   t30: { problemDesc: '客户 API 鉴权失败，无法调用', latestHandling: '待受理，尚未安排' },
   t31: { problemDesc: '同事 @ 请求协助确认退款政策', latestHandling: '待确认退款政策口径' },

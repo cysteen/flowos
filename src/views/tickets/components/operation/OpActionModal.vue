@@ -115,6 +115,10 @@ function onCancel() {
 }
 .op-box-warn { background: #fffbeb; border-color: #fde68a; }
 .op-box-title { font-weight: 600; color: #b45309; margin-bottom: 4px; }
+.op-box-line { color: #6b7280; line-height: 1.6; }
+.op-prefill { display: flex; flex-direction: column; gap: 4px; color: #374151; line-height: 1.6; }
+.op-prefill > div > span { display: inline-block; width: 40px; color: #9ca3af; }
+.op-prefill-note { color: #9ca3af; margin-top: 4px; }
 .op-kv-row { display: flex; justify-content: space-between; gap: 12px; color: #6b7280; }
 .op-kv-row span:last-child { color: #374151; font-weight: 500; }
 .op-mono { font-family: ui-monospace, monospace; }
