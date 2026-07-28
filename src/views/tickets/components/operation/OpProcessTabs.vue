@@ -39,6 +39,7 @@ const emit = defineEmits<{
   openChildCreate: [];
   openReopenCreate: [];
   'mark-read': [id: string];
+  'open-aftersale': [no: string];
   'feishu-activate': [reason: string];
   'feishu-retry': [];
   dunning: [];
@@ -146,6 +147,7 @@ defineExpose({ switchTab });
         :supplement-records="tabData.supplementRecords"
         :dunning-records="tabData.dunningRecords"
         @mark-read="emit('mark-read', $event)"
+        @open-aftersale="emit('open-aftersale', $event)"
       />
 
       <OpContactRecordsTab

@@ -343,7 +343,6 @@ const columns = [
   { title: '策略名称', dataIndex: 'name', key: 'name', width: 200 },
   { title: '优先级', key: 'priority', width: 72, align: 'center' as const },
   { title: '适用范围', key: 'scope', width: 180, ellipsis: true },
-  { title: '优先级覆盖', key: 'cover', width: 140 },
   { title: '工作日历(响/解)', key: 'calendar', width: 170 },
   { title: '状态', dataIndex: 'status', key: 'status', width: 88 },
   { title: '更新时间', dataIndex: 'updatedAt', key: 'updatedAt', width: 150 },
@@ -744,9 +743,6 @@ function fmtClock(v: number | null, u: Unit): string { return v == null ? '不�
             </template>
             <span v-else-if="column.key === 'scope'" class="scope-cell" :title="scopeText(record as Policy)">{{ scopeText(record as Policy) }}</span>
             <span v-else-if="column.key === 'calendar'" class="scope-cell">{{ calText(record as Policy) }}</span>
-            <span v-else-if="column.key === 'cover'">
-              <a-tag v-for="m in (record as Policy).matrix" :key="m.level" color="blue" style="margin:1px">{{ m.level.split(' ')[0] }}</a-tag>
-            </span>
             <a-switch
               v-else-if="column.key === 'status'"
               size="small"

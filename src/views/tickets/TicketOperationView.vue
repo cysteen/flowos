@@ -20,7 +20,7 @@ import OpActionBar from './components/OpActionBar.vue';
 // 建单弹窗仅在「转单/重开」时用，按需异步加载，不阻塞操作页首屏
 const CreateTicketModal = defineAsyncComponent(() => import('./components/CreateTicketModal.vue'));
 import { useTicketOperation } from './composables/useTicketOperation';
-import { FEISHU_ESCALATE_CHANNEL, mapUserRole } from './composables/opActions';
+import { FEISHU_ESCALATE_CHANNEL, mapUserRole, isAftersaleSettled } from './composables/opActions';
 import { useProcessForm } from './composables/useProcessForm';
 import { useOperationTabs } from './composables/useOperationTabs';
 import { useTicketLiveNotify } from './composables/useTicketLiveNotify';
@@ -210,7 +210,7 @@ function onTicketCreated(ticket: Ticket, processAfter?: boolean) {
 /** 升级到飞书项目入口：所有工单均开放（不再限消费者BG） */
 const feishuEligible = computed(() => true);
 
-/** 转售后上下文：投诉分流 + 客户/产品预填 + 已有关联售后单（激活优先） */
+/** 转售后上下文：投诉分流 + 客户/产品预填 + 已有关联售后单（有关联则封口，按是否结案给不同提示） */
 const aftersaleContext = computed(() => ({
   isComplaint: d.value.type === '投诉',
   customerName: d.value.customer.name,
@@ -221,7 +221,12 @@ const aftersaleContext = computed(() => ({
   productName: d.value.product.name,
   sn: d.value.product.sn,
   existing: d.value.linkedAftersale
-    ? { no: d.value.linkedAftersale.no, serviceType: d.value.linkedAftersale.serviceType }
+    ? {
+        no: d.value.linkedAftersale.no,
+        serviceType: d.value.linkedAftersale.serviceType,
+        status: d.value.linkedAftersale.status,
+        settled: isAftersaleSettled(d.value.linkedAftersale.status),
+      }
     : undefined,
 }));
 

@@ -90,6 +90,19 @@ const isSuspended = computed(() => props.opState === 'suspended');
 const isTransferred = computed(() => props.opState === 'transferred');
 const TRANSFERRED_LOCK_TIP = '工单已转出至售后，等待售后处理结果';
 
+/**
+ * 已有 1:1 关联售后单 → 「转售后」封口，不再建第二张单（D2 改写，激活动作取消）。
+ * 未结案：去关联单 Tab 点售后卡片跳售后系统补充/催单；已结案：只能线下联系售后。
+ */
+const linkedAftersale = computed(() => props.aftersaleContext?.existing);
+const aftersaleBlockedTip = computed(() => {
+  const as = linkedAftersale.value;
+  if (!as) return null;
+  return as.settled
+    ? `关联售后单 ${as.no} 已结案，如需继续处理请线下联系售后`
+    : `已有在跑的售后单 ${as.no}，请在「关联单」Tab 点开跟进`;
+});
+
 /** 委派中：单子交给协办人先处理，处理完回到本节点，期间锁定流转与终结类动作 */
 const isDelegating = computed(() => !!props.delegateTargets);
 /**
@@ -183,6 +196,17 @@ const barActions = computed<BarItem[]>(() => {
           ? { key: '恢复', label: '解除挂起', icon: 'PlayCircleOutlined' }
           : { key: '挂起', label: '申请挂起', icon: def.icon },
       );
+      continue;
+    }
+    // 已有关联售后单：转售后置灰，按是否结案给不同去处
+    if (key === '转售后' && aftersaleBlockedTip.value) {
+      items.push({
+        key: def.key,
+        label: def.label,
+        icon: def.icon,
+        forbidden: true,
+        forbiddenTip: aftersaleBlockedTip.value,
+      });
       continue;
     }
     // 已升级飞书项目：升级置灰（催单/二次激活在「产研反馈」Tab）
@@ -287,9 +311,16 @@ function openEscalate() {
   dialogOpen.value = true;
 }
 
-/** 投诉单「关联售后」入口：打开售后建单弹窗（复用转售后动作，投诉分支=建关联单独立跑） */
+/**
+ * 投诉单「关联售后」入口：打开售后建单弹窗（复用转售后动作，投诉分支=建关联单独立跑）。
+ * 已有 1:1 关联时不弹窗——未结案去关联单 Tab 跟进、已结案线下联系售后（D2 改写）。
+ */
 function openAftersale() {
   if (isTerminal.value || isTransferred.value) return;
+  if (aftersaleBlockedTip.value) {
+    message.info(aftersaleBlockedTip.value);
+    return;
+  }
   dialogAction.value = '转售后';
   dialogOpen.value = true;
 }

@@ -105,7 +105,6 @@ const aftersale = reactive({ serviceType: AFTERSALE_SERVICE_TYPES[0], serviceMet
 /** 转售后上下文 & 分流判断 */
 const asCtx = computed(() => props.aftersaleContext);
 const asIsComplaint = computed(() => !!asCtx.value?.isComplaint);
-const asExisting = computed(() => asCtx.value?.existing);
 const aftersaleFormRef = ref<{ getPayload: () => { serviceType: string; serviceMethod: string; detail: string } } | null>(null);
 const resolve = reactive({ solution: '', createCallback: true });
 const close = reactive({ reason: '', approvalGroup: APPROVAL_GROUPS[0], note: '' });
@@ -367,10 +366,8 @@ function onOk() {
     case '升级': emit('confirm', { type: '升级', data: { ...escalate } }); break;
     case '同步飞书': emit('confirm', { type: '同步飞书', data: { ...syncFeishu } }); break;
     case '转售后': {
-      // 激活分支无表单，取上下文服务类型；新建分支读内嵌售后建单页表单
-      const data = asExisting.value
-        ? { serviceType: asExisting.value.serviceType, serviceMethod: aftersale.serviceMethod, detail: aftersale.detail }
-        : aftersaleFormRef.value?.getPayload() ?? { ...aftersale };
+      // 只有新建分支：已有 1:1 关联时入口已置灰（D2 改写，激活分支取消）
+      const data = aftersaleFormRef.value?.getPayload() ?? { ...aftersale };
       emit('confirm', { type: '转售后', data });
       break;
     }
@@ -648,12 +645,8 @@ function onOk() {
 
     <!-- 转售后 -->
     <div v-else-if="action === '转售后'" class="op-form">
-      <!-- 已有关联售后单 → 激活；无 → 内嵌售后建单页（复刻，预填） -->
-      <div v-if="asExisting" class="op-box op-box-warn">
-        <div class="op-box-title">已有关联售后单</div>
-        <div class="op-box-line">单号 {{ asExisting.no }} · {{ asExisting.serviceType }}——确认后将<b>激活</b>该售后单至待接单，不重复建单。</div>
-      </div>
-      <AftersaleCreateForm v-else ref="aftersaleFormRef" :context="aftersaleContext" />
+      <!-- 已有 1:1 关联时按钮已置灰、走不到本弹窗，故只保留新建形态（内嵌售后建单页复刻，预填） -->
+      <AftersaleCreateForm ref="aftersaleFormRef" :context="aftersaleContext" />
     </div>
 
     <!-- 标记已解决 -->

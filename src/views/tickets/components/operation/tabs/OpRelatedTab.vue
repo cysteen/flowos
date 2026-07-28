@@ -15,13 +15,16 @@ defineProps<{
 
 const emit = defineEmits<{
   'mark-read': [id: string];
+  /** 售后关联单 → 打开售后工单详情（深链落点） */
+  'open-aftersale': [no: string];
 }>();
 
 const expanded = ref({ related: true, supplement: true, dunning: true });
 
 function openRelated(t: RelatedTicketCard) {
   if (t.source === '售后' || t.externalLink) {
-    message.info(`跳转售后系统查看 ${t.no}`);
+    // 售后单：打开售后工单详情（补充/催单在售后系统内操作）
+    emit('open-aftersale', t.no);
   } else {
     message.info(`打开 ${t.no}`);
   }

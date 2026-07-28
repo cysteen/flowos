@@ -83,7 +83,18 @@ export interface AftersalePayload {
   detail: string;
 }
 
-/** 转售后弹窗上下文：投诉分流 + 预填字段 + 已有关联售后单（激活优先） */
+/**
+ * 售后单终态集合——判"是否结案"的唯一依据。
+ * 结案与否决定坐席还能不能在线推进：未结案可跳售后系统补充/催单，已结案只能线下联系售后。
+ * ⚠️ 该集合需与售后侧的状态枚举对齐（PRD §待讨论 5）。
+ */
+const AFTERSALE_SETTLED_STATUS = ['已完成', '已关闭', '已取消'];
+
+export function isAftersaleSettled(status: string): boolean {
+  return AFTERSALE_SETTLED_STATUS.includes(status);
+}
+
+/** 转售后弹窗上下文：投诉分流 + 预填字段 + 已有关联售后单（有关联则封口，不再建单） */
 export interface AftersaleContext {
   /** 投诉工单：建关联单、投诉单独立跑（状态不变）；非诉：原单进「已转出」等待售后终态 */
   isComplaint: boolean;
@@ -94,8 +105,11 @@ export interface AftersaleContext {
   productCategory: string;
   productName: string;
   sn?: string;
-  /** 已有 1:1 活跃关联售后单 → 走激活，不再建单 */
-  existing?: { no: string; serviceType: string };
+  /**
+   * 已有 1:1 关联售后单 → 入口封口、不再建单（D2 改写，激活动作取消）。
+   * `settled` 决定提示与出路：false=引导去关联单 Tab 跳售后跟进；true=只能线下联系售后。
+   */
+  existing?: { no: string; serviceType: string; status: string; settled: boolean };
 }
 export interface ResolvePayload { solution: string; createCallback: boolean; }
 /** 关闭工单 = 异常结案，须审核通过后才真正关闭 */
@@ -539,36 +553,26 @@ export function applyOpAction(
 
     case '转售后': {
       // 按 D1 分流：投诉=建关联单、投诉单独立跑（状态不变）；非诉=原单进「已转出」等待态（D11，不关闭）。
-      // D2 激活优先：已有 1:1 活跃关联售后单则激活，无则新建（回传 mock 售后单号）。
+      // D2 改写：已有 1:1 关联时按钮就该置灰、走不到这里——售后系统没有「激活」动作，
+      // 未结案去关联单 Tab 跳售后跟进、已结案只能线下联系售后，两者都不再建第二张单。
       const { serviceType, serviceMethod, detail: note } = payload.data;
       const isComplaint = detail.type === '投诉';
-      const existing = detail.linkedAftersale;
 
-      if (existing) {
-        existing.status = '待接单'; // 激活到手动派单/待接单
-        existing.fromComplaint = isComplaint;
-        pushEntry(timeline, {
-          category: 'node', action: 'transfer', who: operator, role: operatorRole,
-          how: '转售后 · 激活关联售后单',
-          what: `已有关联售后单 ${existing.no}，激活至待接单。${note ? `说明：${note}` : ''}`,
-        });
-      } else {
-        detail.linkedAftersale = {
-          no: aftersaleNo(),
-          status: '待接单',
-          serviceType,
-          serviceMethod,
-          createdAt: nowFull(),
-          fromComplaint: isComplaint,
-        };
-        pushEntry(timeline, {
-          category: 'node', action: 'transfer', who: operator, role: operatorRole,
-          how: '转售后 · 建关联售后单',
-          what: `新建售后单 ${detail.linkedAftersale.no}（${serviceType}·${serviceMethod}），与本单建立关联。${note ? `说明：${note}` : ''}`,
-        });
-      }
+      detail.linkedAftersale = {
+        no: aftersaleNo(),
+        status: '待接单',
+        serviceType,
+        serviceMethod,
+        createdAt: nowFull(),
+        fromComplaint: isComplaint,
+      };
+      pushEntry(timeline, {
+        category: 'node', action: 'transfer', who: operator, role: operatorRole,
+        how: '转售后 · 建关联售后单',
+        what: `新建售后单 ${detail.linkedAftersale.no}（${serviceType}·${serviceMethod}），与本单建立关联。${note ? `说明：${note}` : ''}`,
+      });
 
-      const asNo = detail.linkedAftersale!.no;
+      const asNo = detail.linkedAftersale.no;
       if (isComplaint) {
         // 投诉：建关联单，投诉单独立继续跑（状态不变，不进「已转出」）
         return { opState, suspendInfo, message: `已建关联售后单 ${asNo}，投诉单继续跟进` };
