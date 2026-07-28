@@ -155,6 +155,19 @@ export function useTicketOperation() {
         opState.value = 'processing';
       }
       suspendInfo.value = null;
+      // 已转出：非诉转售后后原单不关闭，留在「我的任务」等售后终态回传（D11）
+      if (t.linkedAftersaleNo && t.tab !== 'done') {
+        base.linkedAftersale = {
+          no: t.linkedAftersaleNo,
+          status: '处理中',
+          serviceType: '寄修检测',
+          serviceMethod: '寄修',
+          createdAt: t.updatedAt ?? t.createdAt ?? '',
+          fromComplaint: t.type === '投诉',
+        };
+        base.status = '已转出';
+        opState.value = 'transferred';
+      }
       if (t.problemDesc?.trim()) {
         base.demand = t.problemDesc.trim();
       }

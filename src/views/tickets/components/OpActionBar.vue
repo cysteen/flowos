@@ -148,7 +148,8 @@ const barActions = computed<BarItem[]>(() => {
         icon: def?.icon ?? 'SwapOutlined',
         danger: def?.danger,
         forbidden: true,
-        forbiddenTip: TRANSFERRED_LOCK_TIP,
+        // 「转售后」单独指路到关联单 Tab，其余统一说明冻结原因
+        forbiddenTip: (key === '转售后' && aftersaleBlockedTip.value) || TRANSFERRED_LOCK_TIP,
       });
       continue;
     }

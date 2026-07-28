@@ -251,7 +251,7 @@ function nowFull(): string {
 /** 升级到飞书：演示完整协同时间线（建关联 → 预反馈 → 关单） */
 function buildFeishuSeedRecords(detail: TicketDetailMeta, operator: string, feedbackNo: string): FeishuRecord[] {
   const now = nowWhen();
-  const owner = '何霄煜（飞书·技术支持）';
+  const owner = '张三（技术支持）';
   return [
     {
       id: `fs-push-${Date.now()}`,

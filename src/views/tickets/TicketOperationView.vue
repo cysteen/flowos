@@ -15,6 +15,7 @@ import OpSmsModal from './components/operation/OpSmsModal.vue';
 import OpEmailModal from './components/operation/OpEmailModal.vue';
 import TicketEventToastStack from './components/operation/TicketEventToastStack.vue';
 import OpProcessTabs from './components/operation/OpProcessTabs.vue';
+import OpAftersaleDetailModal from './components/operation/OpAftersaleDetailModal.vue';
 import OpSidePanel from './components/operation/OpSidePanel.vue';
 import OpActionBar from './components/OpActionBar.vue';
 // 建单弹窗仅在「转单/重开」时用，按需异步加载，不阻塞操作页首屏
@@ -210,6 +211,9 @@ function onTicketCreated(ticket: Ticket, processAfter?: boolean) {
 /** 升级到飞书项目入口：所有工单均开放（不再限消费者BG） */
 const feishuEligible = computed(() => true);
 
+/** 售后工单详情（只读）：从关联单 Tab 的售后卡片点开，深链跳转前先看进展 */
+const aftersaleDetailOpen = ref(false);
+
 /** 转售后上下文：投诉分流 + 客户/产品预填 + 已有关联售后单（有关联则封口，按是否结案给不同提示） */
 const aftersaleContext = computed(() => ({
   isComplaint: d.value.type === '投诉',
@@ -299,8 +303,12 @@ function onAction(payload: Record<string, unknown>) {
   if (payload.type === '转售后') syncAftersaleRelatedCard();
 }
 
-/** 转售后后：把 1:1 关联售后单同步进「关联单」列表（售后来源卡片，点击深链跳转） */
-function syncAftersaleRelatedCard() {
+/**
+ * 把 1:1 关联售后单同步进「关联单」列表（售后来源卡片，点击打开售后工单详情）。
+ * 转售后后调用，工单本身就带关联单（如「已转出」态）时于载入后调用。
+ * @param focus 是否切到关联单 Tab——转售后是动作反馈要切，载入时不抢用户视线
+ */
+function syncAftersaleRelatedCard(focus = true) {
   const la = d.value.linkedAftersale;
   if (!la) return;
   const cards = tabData.value.relatedTickets;
@@ -321,8 +329,16 @@ function syncAftersaleRelatedCard() {
   };
   if (existed) Object.assign(existed, card);
   else cards.unshift(card);
-  processTabsRef.value?.switchTab('related');
+  if (focus) processTabsRef.value?.switchTab('related');
 }
+
+// 工单本身带关联售后单（「已转出」态）：载入即把售后卡片挂进关联单列表，
+// 否则坐席在冻结的底栏之外找不到那张在跑的售后单。
+watch(
+  () => d.value.linkedAftersale?.no,
+  (no) => { if (no) syncAftersaleRelatedCard(false); },
+  { immediate: true },
+);
 
 /** 产研反馈 Tab · 二次激活 */
 function onFeishuActivate(reason: string) {
@@ -639,6 +655,7 @@ watch(
           @open-child-create="openChildCreate"
           @open-reopen-create="openReopenCreate"
           @mark-read="onMarkRecordRead"
+          @open-aftersale="aftersaleDetailOpen = true"
           @feishu-activate="onFeishuActivate"
           @feishu-retry="onFeishuRetry"
           @dunning="dunningModalOpen = true"
@@ -720,6 +737,20 @@ watch(
       :email="emailTo"
       :ctx="notifyCtx"
       @submit="onEmailSubmit"
+    />
+
+    <OpAftersaleDetailModal
+      v-model:open="aftersaleDetailOpen"
+      :aftersale="d.linkedAftersale ?? null"
+      :ticket-no="d.no"
+      :customer-name="d.customer.name"
+      :customer-phone="d.customer.contacts.find((c) => c.type === 'phone')?.value ?? ''"
+      :region="d.customer.region"
+      :address="d.customer.address"
+      :product-category="d.product.category"
+      :product-name="d.product.name"
+      :sn="d.product.sn"
+      :demand="d.demand"
     />
   </div>
 </template>

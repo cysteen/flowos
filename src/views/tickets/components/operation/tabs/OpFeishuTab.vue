@@ -59,6 +59,16 @@ const cardOwner = computed(() => {
   return hit.who.replace(/（.*?）/, '') || hit.who;
 });
 
+/** 时间线人员展示：产研侧统一为「张三（技术支持）」 */
+function displayWho(who: string) {
+  return who
+    .replace(/何霄煜（飞书·技术支持）/g, '张三（技术支持）')
+    .replace(/何霄煜（技术支持）/g, '张三（技术支持）');
+}
+
+/** 处理人字段：标签=角色名，值为人员 */
+const handler = { label: '技术支持', name: '张三' } as const;
+
 /** 扭转记录按时间倒序（最新在上） */
 const orderedRecords = computed(() => [...props.records].reverse());
 
@@ -211,6 +221,11 @@ function onDunning() {
         </span>
         <span class="fs-meta-sep" aria-hidden="true" />
         <span class="fs-meta-pair">
+          <span class="fs-meta-label">{{ handler.label }}</span>
+          <span class="fs-meta-value">{{ handler.name }}</span>
+        </span>
+        <span class="fs-meta-sep" aria-hidden="true" />
+        <span class="fs-meta-pair">
           <span class="fs-meta-label">创建</span>
           <span class="fs-meta-value">{{ createdAt || '—' }}</span>
         </span>
@@ -257,7 +272,7 @@ function onDunning() {
             </div>
           </div>
           <div class="fs-item-meta">
-            <span>{{ rec.who }}</span>
+            <span>{{ displayWho(rec.who) }}</span>
             <span v-if="rec.meta" class="fs-item-metabadge">{{ rec.meta }}</span>
             <span class="fs-item-when">{{ rec.when }}</span>
           </div>
