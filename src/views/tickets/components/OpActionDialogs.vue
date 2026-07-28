@@ -5,17 +5,20 @@ import dayjs, { type Dayjs } from 'dayjs';
 import {
   SwapOutlined, TeamOutlined, StopOutlined, PauseCircleOutlined,
   PlayCircleOutlined, RiseOutlined, SyncOutlined, ToolOutlined,
-  CheckCircleOutlined, CloseCircleOutlined, InboxOutlined, RollbackOutlined,
+  CheckCircleOutlined, CloseCircleOutlined, InboxOutlined, RollbackOutlined, CloseOutlined, PlusOutlined,
 } from '@ant-design/icons-vue';
+import { useUserStore } from '@/stores/user';
 import OpActionModal from './operation/OpActionModal.vue';
 import AftersaleCreateForm from './operation/AftersaleCreateForm.vue';
 import type { SuspendInfo, OpActionType, AftersaleContext } from '../composables/opActions';
 import {
-  TRANSFER_TARGETS, DELEGATE_TARGETS, REVIEWERS, FORCE_CLOSE_REASONS, APPROVERS,
+  TRANSFER_TARGETS_SAME, TRANSFER_TARGET_GROUPS, CROSS_GROUP_TRANSFER_ROLES,
+  DELEGATE_TARGETS, REVIEWERS, FORCE_CLOSE_REASONS, APPROVERS,
   SUSPEND_REASONS, ESCALATE_CHANNELS, ESCALATE_GROUPS, ESCALATE_MEMBERS,
-  FEISHU_SPACES, AFTERSALE_SERVICE_TYPES, AFTERSALE_SERVICE_METHODS, CLOSE_RESULTS, ARCHIVE_REASONS,
-  RESUME_REASONS, RETURN_REASONS, RETURN_TARGET_NODES, MAX_RETURN_COUNT,
+  FEISHU_SPACES, AFTERSALE_SERVICE_TYPES, AFTERSALE_SERVICE_METHODS, CLOSE_REASONS, ARCHIVE_REASONS,
+  RESUME_REASONS, RETURN_REASONS, MAX_RETURN_COUNT,
   DELEGATE_GROUPS, FEISHU_ESCALATE_CHANNEL, FEISHU_FEEDBACK_CATEGORIES,
+  APPROVAL_GROUPS,
 } from '../composables/opActions';
 
 const RESUME_AT_FORMAT = 'YYYY-MM-DD HH:mm';
@@ -32,6 +35,9 @@ const props = defineProps<{
   feishuSync?: string;
   /** 转售后上下文（投诉分流 + 预填 + 已有关联售后单） */
   aftersaleContext?: AftersaleContext;
+  /** 处理表单现值：挂起申请需校验服务类型/服务方式，弹窗内带出并可补齐 */
+  serviceType?: string;
+  serviceMethod?: string;
 }>();
 
 const emit = defineEmits<{
@@ -39,10 +45,40 @@ const emit = defineEmits<{
   confirm: [payload: Record<string, unknown>];
 }>();
 
-const transfer = reactive({ scope: 'same' as 'same' | 'cross', target: TRANSFER_TARGETS[0], reason: '' });
-const delegate = reactive({ mode: 'person' as 'person' | 'group', target: DELEGATE_TARGETS[0], reason: '' });
+const user = useUserStore();
+const transfer = reactive({ scope: 'same' as 'same' | 'cross', target: TRANSFER_TARGETS_SAME[0], reason: '' });
+
+/** 跨组调剂权限：处理人仅同组，班组长/运营及以上可跨组 */
+const canCrossGroup = computed(() => CROSS_GROUP_TRANSFER_ROLES.includes(user.roleKey));
+
+const transferToGroup = computed(() => transfer.scope === 'cross');
+
+/** 同组内→选人；跨组→选组（不指定组内的人） */
+const transferTargetOptions = computed(() =>
+  (transferToGroup.value ? TRANSFER_TARGET_GROUPS : TRANSFER_TARGETS_SAME)
+    .map((t) => ({ value: t, label: t })),
+);
+
+/** 切换范围后重置为新候选首项，避免残留上一范围的目标 */
+watch(() => transfer.scope, (scope) => {
+  transfer.target = scope === 'same' ? TRANSFER_TARGETS_SAME[0] : TRANSFER_TARGET_GROUPS[0];
+});
+let delegateTaskSeq = 0;
+function createDelegateTask(name = '', task = '') {
+  delegateTaskSeq += 1;
+  return { id: `dt-${delegateTaskSeq}`, name, task };
+}
+const delegate = reactive({
+  mode: 'person' as 'person' | 'group',
+  /** 委派到人：逐条添加的任务行 */
+  tasks: [createDelegateTask()] as { id: string; name: string; task: string }[],
+  /** 委派到组：单组 */
+  group: DELEGATE_GROUPS[0],
+  /** 委派到组：整体任务说明 */
+  reason: '',
+});
 const forceClose = reactive({ reason: '', approver: APPROVERS[0], detail: '' });
-const suspend = reactive({ reason: '', detail: '', resumeAt: '' });
+const suspend = reactive({ reason: '', detail: '', resumeAt: '', approvalGroup: APPROVAL_GROUPS[0] });
 
 function resumeAtDayjs(value?: string): Dayjs | undefined {
   if (!value) return undefined;
@@ -62,8 +98,7 @@ const escalate = reactive({
   group: ESCALATE_GROUPS[0],
   member: ESCALATE_MEMBERS[0],
   detail: '',
-  syncContext: true,
-  feedbackCategory: undefined as string | undefined,
+  feedbackCategory: FEISHU_FEEDBACK_CATEGORIES[0] as string | undefined,
 });
 const syncFeishu = reactive({ space: FEISHU_SPACES[0], message: '' });
 const aftersale = reactive({ serviceType: AFTERSALE_SERVICE_TYPES[0], serviceMethod: AFTERSALE_SERVICE_METHODS[0], detail: '' });
@@ -73,17 +108,19 @@ const asIsComplaint = computed(() => !!asCtx.value?.isComplaint);
 const asExisting = computed(() => asCtx.value?.existing);
 const aftersaleFormRef = ref<{ getPayload: () => { serviceType: string; serviceMethod: string; detail: string } } | null>(null);
 const resolve = reactive({ solution: '', createCallback: true });
-const close = reactive({
-  target: 'resolved' as 'resolved' | 'closed',
-  result: '',
-  solution: '',
-});
+const close = reactive({ reason: '', approvalGroup: APPROVAL_GROUPS[0], note: '' });
 const archive = reactive({ reason: ARCHIVE_REASONS[1], retention: '3y' });
 const resume = reactive({ reason: '', detail: '' });
-const returnForm = reactive({ reason: '', targetNode: RETURN_TARGET_NODES[0], note: '' });
+const returnForm = reactive({ reason: '', note: '' });
 
 const escalateToTech = computed(() => escalate.channel.includes('技术支持'));
 const escalateToFeishu = computed(() => escalate.channel === FEISHU_ESCALATE_CHANNEL);
+
+function filterMemberOption(input: string, option?: { label?: string; value?: string }) {
+  const q = input.trim().toLowerCase();
+  const text = String(option?.label ?? option?.value ?? '');
+  return text.toLowerCase().includes(q);
+}
 
 /** 升级通道选项：消费者BG工单把「飞书项目」置顶；飞书已结案时该通道禁用 */
 const escalateChannelOptions = computed(() => {
@@ -112,13 +149,54 @@ const escalateGroupOptions = computed(() => {
 // 飞书项目通道无子组别，隐藏组别/人员选择
 const showEscalateGroup = computed(() => !escalateToFeishu.value && escalateGroupOptions.value.length > 0);
 
-const delegateTargetOptions = computed(() => {
-  const list = delegate.mode === 'person' ? DELEGATE_TARGETS : DELEGATE_GROUPS;
-  return list.map((t) => ({ value: t, label: t }));
+const delegateGroupOptions = computed(() =>
+  DELEGATE_GROUPS.map((t) => ({ value: t, label: t })),
+);
+
+/** 同一人不可被多条任务重复选中 */
+function delegatePersonOptionsFor(rowId: string) {
+  const taken = new Set(
+    delegate.tasks.filter((t) => t.id !== rowId && t.name).map((t) => t.name),
+  );
+  return DELEGATE_TARGETS.map((t) => ({
+    value: t,
+    label: t,
+    disabled: taken.has(t),
+  }));
+}
+
+function addDelegateTask() {
+  delegate.tasks.push(createDelegateTask());
+}
+
+function removeDelegateTask(id: string) {
+  if (delegate.tasks.length <= 1) {
+    delegate.tasks.splice(0, 1, createDelegateTask());
+    return;
+  }
+  const idx = delegate.tasks.findIndex((t) => t.id === id);
+  if (idx >= 0) delegate.tasks.splice(idx, 1);
+}
+
+function resetDelegateTasks() {
+  delegate.tasks.splice(0, delegate.tasks.length, createDelegateTask());
+}
+
+const delegateOkDisabled = computed(() => {
+  if (props.action !== '委派') return false;
+  if (delegate.mode === 'person') {
+    return delegate.tasks.some((t) => !t.name || !t.task.trim());
+  }
+  return !delegate.group || !delegate.reason.trim();
 });
 
 watch(() => delegate.mode, (mode) => {
-  delegate.target = mode === 'person' ? DELEGATE_TARGETS[0] : DELEGATE_GROUPS[0];
+  if (mode === 'person') {
+    resetDelegateTasks();
+    delegate.reason = '';
+  } else if (!delegate.group) {
+    delegate.group = DELEGATE_GROUPS[0];
+  }
 });
 
 watch(() => escalate.channel, (ch) => {
@@ -140,17 +218,17 @@ interface DlgConfig {
 
 const DLG_CONFIG: Partial<Record<OpActionType, DlgConfig>> = {
   调剂: { title: '调剂工单', icon: SwapOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认调剂' },
-  委派: { title: '委派工单', icon: TeamOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认委派' },
+  委派: { title: '委派工单', icon: TeamOutlined, tone: 'primary', width: 560, okTone: 'primary', okText: '确认委派' },
   下送: { title: '下送审核', icon: StopOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认下送' },
-  强结: { title: '强制结案（强结）', icon: StopOutlined, tone: 'warn', width: 480, okTone: 'danger', okText: '提交强结审批' },
-  挂起: { title: '挂起工单', icon: PauseCircleOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认挂起' },
+  强结: { title: '强结', icon: StopOutlined, tone: 'warn', width: 480, okTone: 'danger', okText: '提交强结审批' },
+  挂起: { title: '挂起工单', icon: PauseCircleOutlined, tone: 'warn', width: 520, okTone: 'primary', okText: '提交挂起申请' },
   升级: { title: '升级工单', icon: RiseOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认升级' },
   同步飞书: { title: '同步飞书协同', icon: SyncOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认同步' },
   转售后: { title: '转售后处理', icon: ToolOutlined, tone: 'primary', width: 640, okTone: 'primary', okText: '确认转售后' },
   标记已解决: { title: '标记已解决', icon: CheckCircleOutlined, tone: 'success', width: 520, okTone: 'success', okText: '确认标记' },
-  恢复: { title: '恢复工单', icon: PlayCircleOutlined, tone: 'success', width: 560, okTone: 'success', okText: '确认恢复' },
+  恢复: { title: '解除挂起', icon: PlayCircleOutlined, tone: 'success', width: 560, okTone: 'success', okText: '确认解除' },
   退回: { title: '退回工单', icon: RollbackOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认退回' },
-  关闭工单: { title: '关闭工单', icon: CloseCircleOutlined, tone: 'warn', width: 560, okTone: 'primary', okText: '确认关闭' },
+  关闭工单: { title: '关闭工单', icon: CloseCircleOutlined, tone: 'warn', width: 520, okTone: 'primary', okText: '提交关闭审核' },
   归档工单: { title: '归档工单', icon: InboxOutlined, tone: 'warn', width: 480, okTone: 'danger', okText: '确认归档' },
 };
 
@@ -166,25 +244,28 @@ const cfg = computed<DlgConfig>(() => {
 });
 
 function resetForms() {
-  transfer.scope = 'same'; transfer.target = TRANSFER_TARGETS[0]; transfer.reason = '';
-  delegate.mode = 'person'; delegate.target = DELEGATE_TARGETS[0]; delegate.reason = '';
+  transfer.scope = 'same'; transfer.target = TRANSFER_TARGETS_SAME[0]; transfer.reason = '';
+  delegate.mode = 'person';
+  resetDelegateTasks();
+  delegate.group = DELEGATE_GROUPS[0];
+  delegate.reason = '';
   forceClose.reason = ''; forceClose.approver = APPROVERS[0]; forceClose.detail = '';
   suspend.reason = ''; suspend.detail = ''; suspend.resumeAt = '';
+  suspend.approvalGroup = APPROVAL_GROUPS[0];
   // 飞书已结案：不可再选飞书通道，默认落到其他升级通道
   const canFeishuEscalate = props.feishuEligible && props.feishuSync !== 'closed';
   escalate.channel = canFeishuEscalate ? FEISHU_ESCALATE_CHANNEL : ESCALATE_CHANNELS[0];
   escalate.group = ESCALATE_GROUPS[0];
   escalate.member = ESCALATE_MEMBERS[0];
   escalate.detail = '';
-  escalate.syncContext = true;
-  escalate.feedbackCategory = undefined;
+  escalate.feedbackCategory = FEISHU_FEEDBACK_CATEGORIES[0];
   syncFeishu.space = FEISHU_SPACES[0]; syncFeishu.message = '';
   aftersale.serviceType = AFTERSALE_SERVICE_TYPES[0]; aftersale.serviceMethod = AFTERSALE_SERVICE_METHODS[0]; aftersale.detail = '';
   resolve.solution = ''; resolve.createCallback = true;
-  close.target = 'resolved'; close.result = ''; close.solution = '';
+  close.reason = ''; close.approvalGroup = APPROVAL_GROUPS[0]; close.note = '';
   archive.reason = ARCHIVE_REASONS[1]; archive.retention = '3y';
   resume.reason = ''; resume.detail = '';
-  returnForm.reason = ''; returnForm.targetNode = RETURN_TARGET_NODES[0]; returnForm.note = '';
+  returnForm.reason = ''; returnForm.note = '';
 }
 
 watch(() => props.open, (v) => { if (v) resetForms(); });
@@ -195,14 +276,37 @@ function closeModal() {
 
 function validate(): boolean {
   switch (props.action) {
+    case '调剂':
+      if (transfer.scope === 'cross' && !canCrossGroup.value) {
+        message.warning('仅班组长 / 运营管理员可跨组调剂');
+        return false;
+      }
+      if (!transfer.target) {
+        message.warning(transferToGroup.value ? '请选择目标处理组' : '请选择目标处理人');
+        return false;
+      }
+      return true;
     case '强结':
       if (!forceClose.reason) { message.warning('请选择强结原因'); return false; }
       return true;
     case '委派':
-      if (!delegate.target) { message.warning(delegate.mode === 'person' ? '请选择协助办理人' : '请选择协助办理组'); return false; }
+      if (delegate.mode === 'person') {
+        if (delegate.tasks.some((t) => !t.name)) { message.warning('请为每条委派任务选择协助办理人'); return false; }
+        if (delegate.tasks.some((t) => !t.task.trim())) {
+          message.warning('请为每条委派任务填写任务说明');
+          return false;
+        }
+      } else {
+        if (!delegate.group) { message.warning('请选择协助办理组'); return false; }
+        if (!delegate.reason.trim()) { message.warning('请填写任务说明'); return false; }
+      }
       return true;
     case '挂起':
       if (!suspend.reason) { message.warning('请选择挂起原因'); return false; }
+      if (!suspend.approvalGroup) { message.warning('请选择审批组'); return false; }
+      // 校验处理表单的服务类型/服务方式：挂起停表、恢复后按「服务方式×优先级」矩阵续算，缺值则算不出续走时长
+      if (!props.serviceType) { message.warning('请先在处理表单填写「服务类型」后再申请挂起'); return false; }
+      if (!props.serviceMethod) { message.warning('请先在处理表单填写「服务方式」后再申请挂起'); return false; }
       return true;
     case '升级':
       if (escalateToFeishu.value && !escalate.feedbackCategory) {
@@ -217,7 +321,7 @@ function validate(): boolean {
       if (!resolve.solution.trim()) { message.warning('请填写解决方案摘要'); return false; }
       return true;
     case '恢复':
-      if (!resume.reason) { message.warning('请选择恢复原因'); return false; }
+      if (!resume.reason) { message.warning('请选择解除原因'); return false; }
       return true;
     case '退回':
       if (props.returnCount >= MAX_RETURN_COUNT) {
@@ -227,8 +331,8 @@ function validate(): boolean {
       if (!returnForm.reason) { message.warning('请选择退回原因'); return false; }
       return true;
     case '关闭工单':
-      if (!close.result) { message.warning('请选择处理结果'); return false; }
-      if (!close.solution.trim()) { message.warning('请填写解决方案摘要'); return false; }
+      if (!close.reason) { message.warning('请选择关闭原因'); return false; }
+      if (!close.approvalGroup) { message.warning('请选择审核组'); return false; }
       return true;
   }
   return true;
@@ -238,9 +342,28 @@ function onOk() {
   if (!validate()) return;
   switch (props.action) {
     case '调剂': emit('confirm', { type: '调剂', data: { ...transfer } }); break;
-    case '委派': emit('confirm', { type: '委派', data: { ...delegate } }); break;
+    case '委派': {
+      const data = delegate.mode === 'person'
+        ? {
+            mode: 'person' as const,
+            target: delegate.tasks.map((t) => t.name).join('、'),
+            reason: '',
+            assignees: delegate.tasks.map((t) => ({ name: t.name, task: t.task.trim() })),
+          }
+        : {
+            mode: 'group' as const,
+            target: delegate.group,
+            reason: delegate.reason.trim(),
+          };
+      emit('confirm', { type: '委派', data });
+      break;
+    }
     case '强结': emit('confirm', { type: '强结', data: { ...forceClose } }); break;
-    case '挂起': emit('confirm', { type: '挂起', data: { ...suspend } }); break;
+    // 服务类型/方式取处理表单现值（弹窗不重复放字段，仅在提交时校验其非空）
+    case '挂起': emit('confirm', {
+      type: '挂起',
+      data: { ...suspend, serviceType: props.serviceType ?? '', serviceMethod: props.serviceMethod ?? '' },
+    }); break;
     case '升级': emit('confirm', { type: '升级', data: { ...escalate } }); break;
     case '同步飞书': emit('confirm', { type: '同步飞书', data: { ...syncFeishu } }); break;
     case '转售后': {
@@ -270,6 +393,7 @@ function onOk() {
     :width="cfg.width"
     :ok-text="cfg.okText"
     :ok-tone="cfg.okTone"
+    :ok-disabled="delegateOkDisabled"
     @update:open="emit('update:open', $event)"
     @ok="onOk"
     @cancel="closeModal"
@@ -277,21 +401,35 @@ function onOk() {
     <!-- 调剂 -->
     <div v-if="action === '调剂'" class="op-form">
       <div class="op-field">
-        <div class="op-label">调剂范围</div>
+        <div class="op-label req">调剂范围</div>
         <a-radio-group v-model:value="transfer.scope">
-          <a-radio value="same">同组内</a-radio>
-          <a-radio value="cross">跨组</a-radio>
+          <a-radio value="same">同组内（调剂到人）</a-radio>
+          <a-radio
+            value="cross"
+            :disabled="!canCrossGroup"
+            :title="canCrossGroup ? undefined : '仅班组长 / 运营管理员可跨组调剂'"
+          >跨组（调剂到组）</a-radio>
         </a-radio-group>
+        <div v-if="!canCrossGroup" class="op-hint">仅班组长 / 运营管理员可跨组调剂</div>
       </div>
       <div class="op-field">
-        <div class="op-label">目标处理人</div>
-        <a-select v-model:value="transfer.target" :options="TRANSFER_TARGETS.map((t) => ({ value: t, label: t }))" style="width:100%" />
+        <div class="op-label req">{{ transferToGroup ? '目标处理组' : '目标处理人' }}</div>
+        <a-select
+          v-model:value="transfer.target"
+          show-search
+          :filter-option="filterMemberOption"
+          :placeholder="transferToGroup ? '请选择目标处理组' : '请选择目标处理人'"
+          style="width:100%"
+          :options="transferTargetOptions"
+        />
+        <div v-if="transferToGroup" class="op-hint">
+          跨组调剂到组，不指定组内具体处理人；工单转入该组工单池，由组内领取。
+        </div>
       </div>
       <div class="op-field">
         <div class="op-label">调剂原因</div>
         <a-textarea v-model:value="transfer.reason" :rows="2" placeholder="请输入调剂原因..." />
       </div>
-      <div class="op-tip op-tip-info">调剂变更当前处理人，工单状态仍为「处理中」；48 小时未响应将自动回滚。</div>
     </div>
 
     <!-- 委派 -->
@@ -303,20 +441,75 @@ function onOk() {
           <a-radio value="group">委派到组</a-radio>
         </a-radio-group>
       </div>
-      <div class="op-field">
-        <div class="op-label req">{{ delegate.mode === 'person' ? '协助办理人' : '协助办理组' }}</div>
-        <a-select v-model:value="delegate.target" :options="delegateTargetOptions" style="width:100%" />
-      </div>
-      <div class="op-field">
-        <div class="op-label">委派说明</div>
-        <a-textarea v-model:value="delegate.reason" :rows="2" placeholder="请说明需协助的内容..." />
-      </div>
-      <div class="op-tip op-tip-info">委派 ≠ 调剂：主责仍在您名下；协办人/组处理完成后，工单回到您处继续处理。</div>
+
+      <template v-if="delegate.mode === 'person'">
+        <div class="op-field">
+          <div class="op-delegate-head">
+            <div class="op-label req">委派任务（每人一条，任务说明独立填写）</div>
+            <button type="button" class="op-delegate-add" @click="addDelegateTask">
+              <PlusOutlined /> 添加委派任务
+            </button>
+          </div>
+          <div class="op-delegate-list">
+            <div
+              v-for="(item, idx) in delegate.tasks"
+              :key="item.id"
+              class="op-delegate-card"
+            >
+              <div class="op-delegate-row">
+                <span class="op-delegate-idx">{{ idx + 1 }}</span>
+                <a-select
+                  v-model:value="item.name"
+                  :show-search="true"
+                  option-filter-prop="label"
+                  :filter-option="filterMemberOption"
+                  placeholder="选择协助办理人"
+                  class="op-delegate-person"
+                  :options="delegatePersonOptionsFor(item.id)"
+                  allow-clear
+                />
+                <a-textarea
+                  v-model:value="item.task"
+                  class="op-delegate-task"
+                  :auto-size="{ minRows: 1, maxRows: 3 }"
+                  placeholder="该人的任务说明…"
+                />
+                <button
+                  v-if="delegate.tasks.length > 1"
+                  type="button"
+                  class="op-delegate-remove"
+                  title="移除该条"
+                  @click="removeDelegateTask(item.id)"
+                >
+                  <CloseOutlined />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <template v-else>
+        <div class="op-field">
+          <div class="op-label req">协助办理组</div>
+          <a-select
+            v-model:value="delegate.group"
+            :show-search="true"
+            option-filter-prop="label"
+            :filter-option="filterMemberOption"
+            style="width:100%"
+            :options="delegateGroupOptions"
+          />
+        </div>
+        <div class="op-field">
+          <div class="op-label req">任务说明</div>
+          <a-textarea v-model:value="delegate.reason" :rows="2" placeholder="请说明需协助的内容..." />
+        </div>
+      </template>
     </div>
 
     <!-- 强结 -->
     <div v-else-if="action === '强结'" class="op-form">
-      <div class="op-tip op-tip-warn">非正常结案路径：处理中任意阶段可发起，提交后走单级审批，审批通过直接进入「已结案」，绕过满意度回访。</div>
       <div class="op-field">
         <div class="op-label req">强结原因</div>
         <a-select v-model:value="forceClose.reason" placeholder="请选择..." style="width:100%"
@@ -324,7 +517,14 @@ function onOk() {
       </div>
       <div class="op-field">
         <div class="op-label req">审批人</div>
-        <a-select v-model:value="forceClose.approver" :options="APPROVERS.map((r) => ({ value: r, label: r }))" style="width:100%" />
+        <a-select
+          v-model:value="forceClose.approver"
+          :show-search="true"
+          option-filter-prop="label"
+          :filter-option="filterMemberOption"
+          style="width:100%"
+          :options="APPROVERS.map((r) => ({ value: r, label: r }))"
+        />
       </div>
       <div class="op-field">
         <div class="op-label">补充说明</div>
@@ -339,21 +539,34 @@ function onOk() {
         <a-select v-model:value="suspend.reason" placeholder="请选择..." style="width:100%"
           :options="SUSPEND_REASONS.map((r) => ({ value: r, label: r }))" />
       </div>
+      <div class="op-field-row">
+        <div class="op-field">
+          <div class="op-label req">审批组</div>
+          <a-select
+            v-model:value="suspend.approvalGroup"
+            :show-search="true"
+            option-filter-prop="label"
+            :filter-option="filterMemberOption"
+            style="width:100%"
+            :options="APPROVAL_GROUPS.map((g) => ({ value: g, label: g }))"
+          />
+        </div>
+        <div class="op-field">
+          <div class="op-label">预计恢复时间</div>
+          <a-date-picker
+            :value="resumeAtDayjs(suspend.resumeAt)"
+            show-time
+            :show-time="{ format: 'HH:mm' }"
+            :format="RESUME_AT_FORMAT"
+            placeholder="请选择预计恢复时间"
+            style="width: 100%"
+            @update:value="onResumeAtChange"
+          />
+        </div>
+      </div>
       <div class="op-field">
         <div class="op-label">详细说明</div>
         <a-textarea v-model:value="suspend.detail" :rows="2" placeholder="请补充说明..." />
-      </div>
-      <div class="op-field">
-        <div class="op-label">预计恢复时间</div>
-        <a-date-picker
-          :value="resumeAtDayjs(suspend.resumeAt)"
-          show-time
-          :show-time="{ format: 'HH:mm' }"
-          :format="RESUME_AT_FORMAT"
-          placeholder="请选择预计恢复时间"
-          style="width: 100%"
-          @update:value="onResumeAtChange"
-        />
       </div>
     </div>
 
@@ -381,6 +594,9 @@ function onOk() {
           <div class="op-label req">目标组别</div>
           <a-select
             v-model:value="escalate.group"
+            :show-search="true"
+            option-filter-prop="label"
+            :filter-option="filterMemberOption"
             style="width:100%"
             :options="escalateGroupOptions"
           />
@@ -401,15 +617,19 @@ function onOk() {
         <template v-if="escalateToTech">
           <div class="op-field">
             <div class="op-label">目标人员</div>
-            <a-select v-model:value="escalate.member" style="width:100%"
-              :options="ESCALATE_MEMBERS.map((m) => ({ value: m, label: m }))" />
+            <a-select
+              v-model:value="escalate.member"
+              show-search
+              :filter-option="filterMemberOption"
+              style="width:100%"
+              :options="ESCALATE_MEMBERS.map((m) => ({ value: m, label: m }))"
+            />
           </div>
         </template>
         <div class="op-field">
           <div class="op-label">升级说明</div>
           <a-textarea v-model:value="escalate.detail" :rows="2" placeholder="请填写升级说明..." />
         </div>
-        <a-checkbox v-model:checked="escalate.syncContext">同步工单上下文至目标系统</a-checkbox>
       </template>
     </div>
 
@@ -456,15 +676,15 @@ function onOk() {
         <div class="op-kv-row"><span>操作人</span><span>{{ suspendInfo.operator }}</span></div>
       </div>
       <div class="op-field">
-        <div class="op-label req">恢复原因</div>
+        <div class="op-label req">解除原因</div>
         <a-select v-model:value="resume.reason" placeholder="请选择..." style="width:100%"
           :options="RESUME_REASONS.map((r) => ({ value: r, label: r }))" />
       </div>
       <div class="op-field">
         <div class="op-label">详细说明</div>
-        <a-textarea v-model:value="resume.detail" :rows="2" placeholder="请描述恢复原因和后续处理计划..." />
+        <a-textarea v-model:value="resume.detail" :rows="2" placeholder="请描述解除原因和后续处理计划..." />
       </div>
-      <div class="op-tip op-tip-ok">恢复后 SLA 继续计时</div>
+      <div class="op-tip op-tip-ok">解除挂起后 SLA 按剩余续走</div>
     </div>
 
     <!-- 退回 -->
@@ -483,32 +703,25 @@ function onOk() {
     <!-- 关闭工单 -->
     <div v-else-if="action === '关闭工单'" class="op-form">
       <div class="op-field">
-        <div class="op-label req">状态落点</div>
-        <a-radio-group v-model:value="close.target" class="op-radio-cards op-radio-cards--row">
-          <label class="op-radio-card" :class="{ on: close.target === 'resolved' }">
-            <a-radio value="resolved" />
-            <div>
-              <div class="op-rc-title">标记为已解决（待回访）</div>
-              <div class="op-rc-sub">问题已处理完成，仍需回访确认或等待客户回评</div>
-            </div>
-          </label>
-          <label class="op-radio-card" :class="{ on: close.target === 'closed' }">
-            <a-radio value="closed" />
-            <div>
-              <div class="op-rc-title">直接关闭（Closed）</div>
-              <div class="op-rc-sub">已完成回访确认，或无需回访的标准结案场景</div>
-            </div>
-          </label>
-        </a-radio-group>
+        <div class="op-label req">关闭原因</div>
+        <a-select
+          v-model:value="close.reason"
+          placeholder="请选择关闭原因"
+          style="width:100%"
+          :options="CLOSE_REASONS.map((r) => ({ value: r, label: r }))"
+        />
       </div>
       <div class="op-field">
-        <div class="op-label req">处理结果</div>
-        <a-select v-model:value="close.result" placeholder="请选择..." style="width:100%"
-          :options="CLOSE_RESULTS.map((r) => ({ value: r, label: r }))" />
+        <div class="op-label req">审核组</div>
+        <a-select
+          v-model:value="close.approvalGroup"
+          style="width:100%"
+          :options="APPROVAL_GROUPS.map((g) => ({ value: g, label: g }))"
+        />
       </div>
       <div class="op-field">
-        <div class="op-label req">解决方案摘要</div>
-        <a-textarea v-model:value="close.solution" :rows="3" placeholder="请填写最终解决方案（必填）..." />
+        <div class="op-label">备注</div>
+        <a-textarea v-model:value="close.note" :rows="3" placeholder="请补充关闭说明，供审核人判断..." />
       </div>
     </div>
 

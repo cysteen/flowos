@@ -12,7 +12,7 @@ import dayjs, { type Dayjs } from 'dayjs';
 
 type TaskStatus = '待发送' | '静默缓存' | '已投放' | '待反馈' | '已反馈' | '无法触达' | '投放失败' | '已超时';
 type Resolved = '解决' | '未解决' | '超时无反馈' | '';
-type UnresolvedReason = '没有解决方案' | '解决方案没有用' | '解决方案太复杂' | '没有人联系解决' | '';
+type UnresolvedReason = '没有解决方案' | '解决方案没有用' | '解决方案太复杂' | '没有人联系解决';
 type Flow = '调研后结案' | '结案后调研' | '免调研';
 
 interface Row {
@@ -24,8 +24,9 @@ interface Row {
   mobile: string;
   status: TaskStatus;
   resolved: Resolved;             // 是否解决
-  unresolvedReason: UnresolvedReason; // 未解决分类（未解决时）
+  unresolvedReasons: UnresolvedReason[]; // 未解决分类（可多选）
   score: number | null;           // 满意度分数
+  satisfactionReasons?: string[]; // 满意度评价时勾选的原因标签
   submitAt: string;   // 调研提交时间：工单结案生成调研任务的时刻
   deliverAt: string;  // 调研投放时间：短信实际下发时刻
   feedbackAt: string; // 反馈时间：客户提交问卷时刻
@@ -146,7 +147,6 @@ const RESOLVED_TONE: Record<Resolved, string> = {
 };
 /** 未解决分类颜色：没有解决方案=结案(灰橙)，其余=打回(紫) */
 function reasonTone(r: UnresolvedReason): string {
-  if (!r) return 'mute';
   return r === '没有解决方案' ? 'warn' : 'back';
 }
 function scoreTone(s: number | null): string {
@@ -156,17 +156,29 @@ function scoreTone(s: number | null): string {
   return 'red';
 }
 
+const SATISFACTION_LABELS: Record<number, string> = {
+  1: '非常不满意',
+  2: '不满意',
+  3: '一般',
+  4: '满意',
+  5: '非常满意',
+};
+
+function satisfactionLabel(score: number | null): string {
+  return score == null ? '—' : (SATISFACTION_LABELS[score] ?? '—');
+}
+
 const allRows = ref<Row[]>([
-  { key: '1', ticketNo: 'TK20260724001', title: '云空间无法领取', flow: '调研后结案', times: 1, mobile: '138****2043', status: '已反馈', resolved: '未解决', unresolvedReason: '解决方案没有用', score: 2, submitAt: '07-23 21:30', deliverAt: '07-24 08:12', feedbackAt: '07-24 10:30' },
-  { key: '2', ticketNo: 'TK20260724002', title: '翻译机屏幕显示乱码', flow: '调研后结案', times: 1, mobile: '(全部无效)', status: '无法触达', resolved: '', unresolvedReason: '', score: null, submitAt: '07-24 09:05', deliverAt: '—', feedbackAt: '—' },
-  { key: '3', ticketNo: 'TK20260724003', title: '商机咨询转介绍', flow: '结案后调研', times: 1, mobile: '139****7781', status: '待反馈', resolved: '', unresolvedReason: '', score: null, submitAt: '07-24 08:15', deliverAt: '07-24 08:15', feedbackAt: '—' },
-  { key: '4', ticketNo: 'TK20260724004', title: '文件已上传能否直接转写', flow: '调研后结案', times: 1, mobile: '137****5520', status: '已反馈', resolved: '解决', unresolvedReason: '', score: 5, submitAt: '07-24 08:10', deliverAt: '07-24 08:10', feedbackAt: '07-24 09:02' },
-  { key: '5', ticketNo: 'TK20260724005', title: '会议翻译延迟卡顿', flow: '调研后结案', times: 1, mobile: '135****9087', status: '已超时', resolved: '超时无反馈', unresolvedReason: '', score: null, submitAt: '07-23 08:20', deliverAt: '07-23 08:20', feedbackAt: '—' },
-  { key: '6', ticketNo: 'TK20260724006', title: '导出格式咨询', flow: '调研后结案', times: 1, mobile: '136****3311', status: '投放失败', resolved: '', unresolvedReason: '', score: null, submitAt: '07-24 10:12', deliverAt: '—', feedbackAt: '—' },
-  { key: '7', ticketNo: 'TK20260724007', title: '设备丢失补办咨询', flow: '调研后结案', times: 1, mobile: '138****1120', status: '已反馈', resolved: '未解决', unresolvedReason: '没有解决方案', score: 3, submitAt: '07-24 08:11', deliverAt: '07-24 08:11', feedbackAt: '07-24 11:45' },
-  { key: '8', ticketNo: 'TK20260722015', title: '企业接口扩容(二次下送)', flow: '结案后调研', times: 2, mobile: '139****6654', status: '待反馈', resolved: '', unresolvedReason: '', score: null, submitAt: '07-24 08:00', deliverAt: '07-24 08:14', feedbackAt: '—' },
-  { key: '9', ticketNo: 'TK20260724008', title: '蓝牙无法断开连接', flow: '调研后结案', times: 1, mobile: '137****4402', status: '静默缓存', resolved: '', unresolvedReason: '', score: null, submitAt: '07-23 22:40', deliverAt: '待次日08:00', feedbackAt: '—' },
-  { key: '10', ticketNo: 'TK20260724009', title: '开放平台接口咨询', flow: '结案后调研', times: 1, mobile: '135****8890', status: '已反馈', resolved: '解决', unresolvedReason: '', score: 4, submitAt: '07-24 08:16', deliverAt: '07-24 08:16', feedbackAt: '07-24 12:20' },
+  { key: '1', ticketNo: 'TK20260724001', title: '云空间无法领取', flow: '调研后结案', times: 1, mobile: '138****2043', status: '已反馈', resolved: '未解决', unresolvedReasons: ['没有解决方案', '解决方案没有用', '解决方案太复杂', '没有人联系解决'], score: 2, satisfactionReasons: ['问题未得到解决', '业务流程/政策不好', '产品质量差', '产品功能未达预期', '对人员服务不满'], submitAt: '07-23 21:30', deliverAt: '07-24 08:12', feedbackAt: '07-24 10:30' },
+  { key: '2', ticketNo: 'TK20260724002', title: '翻译机屏幕显示乱码', flow: '调研后结案', times: 1, mobile: '(全部无效)', status: '无法触达', resolved: '', unresolvedReasons: [], score: null, submitAt: '07-24 09:05', deliverAt: '—', feedbackAt: '—' },
+  { key: '3', ticketNo: 'TK20260724003', title: '商机咨询转介绍', flow: '结案后调研', times: 1, mobile: '139****7781', status: '待反馈', resolved: '', unresolvedReasons: [], score: null, submitAt: '07-24 08:15', deliverAt: '07-24 08:15', feedbackAt: '—' },
+  { key: '4', ticketNo: 'TK20260724004', title: '文件已上传能否直接转写', flow: '调研后结案', times: 1, mobile: '137****5520', status: '已反馈', resolved: '解决', unresolvedReasons: [], score: 5, submitAt: '07-24 08:10', deliverAt: '07-24 08:10', feedbackAt: '07-24 09:02' },
+  { key: '5', ticketNo: 'TK20260724005', title: '会议翻译延迟卡顿', flow: '调研后结案', times: 1, mobile: '135****9087', status: '已超时', resolved: '超时无反馈', unresolvedReasons: [], score: null, submitAt: '07-23 08:20', deliverAt: '07-23 08:20', feedbackAt: '—' },
+  { key: '6', ticketNo: 'TK20260724006', title: '导出格式咨询', flow: '调研后结案', times: 1, mobile: '136****3311', status: '投放失败', resolved: '', unresolvedReasons: [], score: null, submitAt: '07-24 10:12', deliverAt: '—', feedbackAt: '—' },
+  { key: '7', ticketNo: 'TK20260724007', title: '设备丢失补办咨询', flow: '调研后结案', times: 1, mobile: '138****1120', status: '已反馈', resolved: '未解决', unresolvedReasons: ['没有解决方案'], score: 3, submitAt: '07-24 08:11', deliverAt: '07-24 08:11', feedbackAt: '07-24 11:45' },
+  { key: '8', ticketNo: 'TK20260722015', title: '企业接口扩容(二次下送)', flow: '结案后调研', times: 2, mobile: '139****6654', status: '待反馈', resolved: '', unresolvedReasons: [], score: null, submitAt: '07-24 08:00', deliverAt: '07-24 08:14', feedbackAt: '—' },
+  { key: '9', ticketNo: 'TK20260724008', title: '蓝牙无法断开连接', flow: '调研后结案', times: 1, mobile: '137****4402', status: '静默缓存', resolved: '', unresolvedReasons: [], score: null, submitAt: '07-23 22:40', deliverAt: '待次日08:00', feedbackAt: '—' },
+  { key: '10', ticketNo: 'TK20260724009', title: '开放平台接口咨询', flow: '结案后调研', times: 1, mobile: '135****8890', status: '已反馈', resolved: '解决', unresolvedReasons: [], score: 4, submitAt: '07-24 08:16', deliverAt: '07-24 08:16', feedbackAt: '07-24 12:20' },
 ]);
 
 const filter = reactive({
@@ -181,7 +193,7 @@ const displayRows = computed(() => allRows.value.filter((r) => {
   if (filter.times && r.times !== filter.times) return false;
   if (filter.status && r.status !== filter.status) return false;
   if (filter.resolved && r.resolved !== filter.resolved) return false;
-  if (filter.reason && r.unresolvedReason !== filter.reason) return false;
+  if (filter.reason && !r.unresolvedReasons.includes(filter.reason as UnresolvedReason)) return false;
   return true;
 }));
 
@@ -200,7 +212,6 @@ const cols = [
   { title: '触达号码', dataIndex: 'mobile', key: 'mobile', width: 116 },
   { title: '任务状态', dataIndex: 'status', key: 'status', width: 96 },
   { title: '是否解决', dataIndex: 'resolved', key: 'resolved', width: 92 },
-  { title: '未解决分类', dataIndex: 'unresolvedReason', key: 'unresolvedReason', width: 130 },
   { title: '满意度', dataIndex: 'score', key: 'score', width: 76 },
   { title: '调研提交时间', dataIndex: 'submitAt', key: 'submitAt', width: 120 },
   { title: '调研投放时间', dataIndex: 'deliverAt', key: 'deliverAt', width: 120 },
@@ -231,7 +242,7 @@ function toHuman(r: Row) {
   return {
     deliver: `POST /api/kdxf/open/deliver/t1\n{\n  "ticket_id": "${r.ticketNo}",\n  "ticket_title": "${r.title}",\n  "mobile": "${r.mobile}",\n  "times": ${r.times},\n  "type": 2,\n  "sign": "6efd0bcc2f4cddff…"\n}`,
     callback: r.resolved
-      ? `{\n  "ticket_id": "${r.ticketNo}",\n  "record_id": "cc308744606c",\n  "times": ${r.times},\n  "resolved": "${r.resolved}",\n  "unresolved_reason": "${r.unresolvedReason || ''}",\n  "score": ${r.score ?? 'null'},\n  "time": "${r.feedbackAt}"\n}`
+      ? `{\n  "ticket_id": "${r.ticketNo}",\n  "record_id": "cc308744606c",\n  "times": ${r.times},\n  "resolved": "${r.resolved}",\n  "unresolved_reasons": ${JSON.stringify(r.unresolvedReasons)},\n  "score": ${r.score ?? 'null'},\n  "satisfaction_option": "${satisfactionLabel(r.score)}",\n  "satisfaction_reasons": ${JSON.stringify(r.satisfactionReasons ?? [])},\n  "time": "${r.feedbackAt}"\n}`
       : '（尚无反馈回调）',
   };
 }
@@ -250,7 +261,7 @@ function onReset() { Object.assign(filter, { ticketNo: '', flow: undefined, time
 <template>
   <div class="survey-monitor">
     <AdminPageHeader
-      title="调研回访监控"
+      title="调研监控"
       subtitle="按拉取时刻快照展示任务漏斗与异常告警；下钻任务明细核对触达与反馈、排查对接。"
     >
       <template #actions>
@@ -333,7 +344,7 @@ function onReset() { Object.assign(filter, { ticketNo: '', flow: undefined, time
         :row-selection="rowSelection"
         :pagination="pagination"
         size="middle"
-        :scroll="{ x: 1560 }"
+        :scroll="{ x: 1430 }"
       >
         <template #bodyCell="{ column, record }">
           <a v-if="column.key === 'ticketNo'" class="cell-link" @click="goTicket((record as Row).ticketNo)">{{ (record as Row).ticketNo }}</a>
@@ -341,10 +352,6 @@ function onReset() { Object.assign(filter, { ticketNo: '', flow: undefined, time
           <span v-else-if="column.key === 'status'" class="tag" :class="`t-${STATUS_TONE[(record as Row).status]}`">{{ (record as Row).status }}</span>
           <span v-else-if="column.key === 'resolved'">
             <span v-if="(record as Row).resolved" class="tag" :class="`t-${RESOLVED_TONE[(record as Row).resolved]}`">{{ (record as Row).resolved }}</span>
-            <span v-else class="muted">—</span>
-          </span>
-          <span v-else-if="column.key === 'unresolvedReason'">
-            <span v-if="(record as Row).unresolvedReason" class="tag" :class="`t-${reasonTone((record as Row).unresolvedReason)}`">{{ (record as Row).unresolvedReason }}</span>
             <span v-else class="muted">—</span>
           </span>
           <span v-else-if="column.key === 'score'">
@@ -374,8 +381,25 @@ function onReset() { Object.assign(filter, { ticketNo: '', flow: undefined, time
           <a-descriptions-item label="触达号码">{{ detailRow.mobile }}</a-descriptions-item>
           <a-descriptions-item label="任务状态"><span class="tag" :class="`t-${STATUS_TONE[detailRow.status]}`">{{ detailRow.status }}</span></a-descriptions-item>
           <a-descriptions-item label="是否解决">{{ detailRow.resolved || '—' }}</a-descriptions-item>
-          <a-descriptions-item label="未解决分类">{{ detailRow.unresolvedReason || '—' }}</a-descriptions-item>
+          <a-descriptions-item label="未解决分类">
+            <div v-if="detailRow.unresolvedReasons.length" class="survey-reason-tags">
+              <span
+                v-for="reason in detailRow.unresolvedReasons"
+                :key="reason"
+                class="tag"
+                :class="`t-${reasonTone(reason)}`"
+              >{{ reason }}</span>
+            </div>
+            <span v-else>—</span>
+          </a-descriptions-item>
           <a-descriptions-item label="满意度分数">{{ detailRow.score != null ? `${detailRow.score} 分` : '—' }}</a-descriptions-item>
+          <a-descriptions-item label="满意度选项">{{ satisfactionLabel(detailRow.score) }}</a-descriptions-item>
+          <a-descriptions-item label="评价标签">
+            <div v-if="detailRow.satisfactionReasons?.length" class="survey-reason-tags">
+              <span v-for="reason in detailRow.satisfactionReasons" :key="reason" class="survey-reason-tag">{{ reason }}</span>
+            </div>
+            <span v-else>—</span>
+          </a-descriptions-item>
           <a-descriptions-item label="调研提交时间">{{ detailRow.submitAt }}</a-descriptions-item>
           <a-descriptions-item label="调研投放时间">{{ detailRow.deliverAt }}</a-descriptions-item>
           <a-descriptions-item label="反馈时间">{{ detailRow.feedbackAt }}</a-descriptions-item>
@@ -474,6 +498,18 @@ function onReset() { Object.assign(filter, { ticketNo: '', flow: undefined, time
 
 .d-desc { margin-bottom: 16px; }
 .d-desc :deep(.ant-descriptions-item-label) { width: 120px; color: #6b7280; }
+.survey-reason-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.survey-reason-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  background: #f9fafb;
+  color: #4b5563;
+  font-size: 12px;
+  line-height: 20px;
+}
 .d-block { margin-bottom: 14px; }
 .d-block-title { font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px; }
 .d-pre {

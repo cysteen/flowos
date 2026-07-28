@@ -103,6 +103,28 @@ function onCancel() {
 .op-field-row > .op-field { flex: 1; min-width: 0; }
 .op-label { font-size: 13px; color: #374151; font-weight: 500; }
 .op-label.req::before { content: '* '; color: #ef4444; }
+.op-field-h {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+.op-field-h > .op-label {
+  flex: none;
+  width: 84px;
+  text-align: right;
+  white-space: nowrap;
+}
+.op-field-h > .ant-select,
+.op-field-h > .ant-input,
+.op-field-h > textarea.ant-input {
+  flex: 1;
+  min-width: 0;
+}
+.op-field-h-top { align-items: flex-start; }
+.op-field-h-top > .op-label { padding-top: 6px; }
+
+/** 字段下方的轻量说明（如权限受限提示），不占提示条的视觉权重 */
+.op-hint { font-size: 12px; color: #9ca3af; line-height: 1.5; }
 
 .op-tip { font-size: 12px; padding: 10px 12px; border-radius: 8px; line-height: 1.5; }
 .op-tip-info { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
@@ -143,5 +165,47 @@ function onCancel() {
 /* 精简确认（取消/撤回 等无表单场景） */
 .op-confirm { font-size: 13px; color: #374151; line-height: 1.65; }
 .op-confirm-strong { color: #111827; font-weight: 600; }
+
+.op-delegate-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.op-delegate-head > .op-label { margin: 0; }
+.op-delegate-list {
+  display: flex; flex-direction: column; gap: 6px;
+}
+/* 单条一行：序号 + 协助办理人 + 任务说明 + 移除 */
+.op-delegate-card {
+  padding: 8px 10px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px;
+}
+.op-delegate-row { display: flex; align-items: center; gap: 8px; }
+.op-delegate-idx {
+  flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: #e5e7eb; color: #6b7280; font-size: 11px; font-weight: 600;
+}
+.op-delegate-person { flex: 0 0 140px; width: 140px; min-width: 0; }
+.op-delegate-task {
+  flex: 1;
+  min-width: 0;
+  margin: 0 !important;
+}
+.op-delegate-remove {
+  flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border: none; background: transparent;
+  color: #9ca3af; cursor: pointer; border-radius: 4px; padding: 0; font-size: 12px;
+}
+.op-delegate-remove:hover { color: #ef4444; background: #fef2f2; }
+.op-delegate-add {
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  flex: none; height: 26px; padding: 0 10px;
+  border: 1px dashed #d1d5db; border-radius: 6px;
+  background: #fff; color: #1a6fff; font-size: 12px; font-weight: 500; cursor: pointer;
+}
+.op-delegate-add:hover { border-color: #1a6fff; background: #eff6ff; }
 
 </style>

@@ -5,15 +5,15 @@ export type CreateFormTicketType = '投诉' | '建议' | '商机' | '咨询';
 
 export type BusinessType = '学习机' | '翻录' | '智学网';
 
-/** 工单来源枚举（对齐 PRD-04 / 渠道管理） */
-export type TicketSource = '400呼入' | '在线客服' | '邮件' | '小程序' | 'APP';
+/** 工单来源枚举（对齐 PRD 调研回访 / 渠道管理） */
+export type TicketSource = '热线电话' | 'IM在线' | '内投' | '外投' | '客户服务小程序';
 
 export const TICKET_SOURCE_OPTIONS: TicketSource[] = [
-  '400呼入',
-  '在线客服',
-  '邮件',
-  '小程序',
-  'APP',
+  '热线电话',
+  'IM在线',
+  '内投',
+  '外投',
+  '客户服务小程序',
 ];
 
 export interface CustomerContactEntry {
@@ -49,7 +49,7 @@ export interface ReporterInfo {
 export interface CreateTicketFormState {
   businessType: BusinessType;
   ticketType: CreateFormTicketType;
-  /** 工单来源，默认 400 呼入 */
+  /** 工单来源，默认热线电话 */
   ticketSource: TicketSource;
   customerQuery: string;
   customer: CustomerInfo | null;
@@ -169,8 +169,11 @@ export function mapFormTypeToTicketType(t: CreateFormTicketType): TicketType {
 
 /** 预填渠道 → 工单来源 */
 export function mapChannelToSource(channel?: Channel): TicketSource {
-  if (!channel || channel === '电话') return '400呼入';
-  return channel;
+  if (!channel || channel === '电话') return '热线电话';
+  if (channel === '在线客服') return 'IM在线';
+  if (channel === '小程序' || channel === 'APP') return '客户服务小程序';
+  if (channel === '邮件') return '外投';
+  return '热线电话';
 }
 
 export function buildAutoTitle(

@@ -28,21 +28,44 @@ export interface SuspendInfo {
 export type OpActionType =
   | '保存草稿' | '标记已解决'
   | '调剂' | '委派' | '下送' | '撤回' | '强结'
-  | '挂起' | '恢复' | '退回' | '升级' | '同步飞书' | '转售后'
+  | '挂起' | '恢复' | '退回' | '升级' | '同步飞书' | '转售后' | '撤销委派'
   | '激活飞书'
   | '关闭工单' | '归档工单' | '取消工单';
 
 export interface TransferPayload { scope: 'same' | 'cross'; target: string; reason: string; }
-export interface DelegatePayload { mode: 'person' | 'group'; target: string; reason: string; }
-export interface ForwardPayload { ticketTitle: string; resolved: boolean; reviewer?: string; conclusion?: string; }
+/** 委派到人：逐人任务说明 */
+export interface DelegateAssigneeTask { name: string; task: string; }
+export interface DelegatePayload {
+  mode: 'person' | 'group';
+  /** 到人：多人姓名用顿号拼接；到组：组名 */
+  target: string;
+  /** 到组：整体任务说明；到人时可空（以 assignees 为准） */
+  reason: string;
+  /** 到人时：多人 + 逐人任务说明 */
+  assignees?: DelegateAssigneeTask[];
+}
+/**
+ * 下送 = 送到下一个节点，落点取决于当前所在节点：
+ * 普通处理节点 → 标记已解决·正常结案（待回访）；委派节点 → 回到委派节点（不结案）。
+ */
+export interface ForwardPayload { ticketTitle: string; backToDelegator?: boolean; }
 export interface ForceClosePayload { reason: string; approver: string; detail: string; }
-export interface SuspendPayload { reason: string; detail: string; resumeAt: string; }
+export interface SuspendPayload {
+  reason: string;
+  detail: string;
+  resumeAt: string;
+  /** 服务类型（恢复后按「服务方式×优先级」矩阵续算解决时限，故挂起前必须有值） */
+  serviceType: string;
+  /** 服务方式（同上） */
+  serviceMethod: string;
+  /** 审批组：挂起停表须经审批，由该组接单审批 */
+  approvalGroup: string;
+}
 export interface EscalatePayload {
   channel: string;
   group: string;
   member: string;
   detail: string;
-  syncContext: boolean;
   /** 飞书项目通道必选：问题反馈分类 */
   feedbackCategory?: string;
 }
@@ -74,19 +97,25 @@ export interface AftersaleContext {
   existing?: { no: string; serviceType: string };
 }
 export interface ResolvePayload { solution: string; createCallback: boolean; }
+/** 关闭工单 = 异常结案，须审核通过后才真正关闭 */
 export interface ClosePayload {
-  target: 'resolved' | 'closed';
-  result: string;
-  solution: string;
+  /** 关闭原因（为什么关，区别于「处理结果」） */
+  reason: string;
+  /** 审核组：由该组接单审批 */
+  approvalGroup: string;
+  /** 备注，供审核人判断 */
+  note: string;
 }
 export interface ArchivePayload { reason: string; retention: string; }
 export interface ResumePayload { reason: string; detail: string; }
-export interface ReturnPayload { reason: string; targetNode: string; note: string; }
+/** 退回：技术支持把升级过来的工单退回给工单处理人（唯一方向，无目标节点可选） */
+export interface ReturnPayload { reason: string; note: string; }
 
 export type OpActionPayload =
   | { type: '保存草稿'; process?: ProcessLogData }
   | { type: '调剂'; data: TransferPayload }
   | { type: '委派'; data: DelegatePayload }
+  | { type: '撤销委派' }
   | { type: '下送'; data: ForwardPayload }
   | { type: '强结'; data: ForceClosePayload }
   | { type: '挂起'; data: SuspendPayload }
@@ -102,15 +131,24 @@ export type OpActionPayload =
   | { type: '归档工单'; data: ArchivePayload }
   | { type: '取消工单'; reason: string };
 
-export const TRANSFER_TARGETS = [
-  '赵六 (学习机处理组, 负载 53%)',
-  '王八 (学习机处理组, 负载 40%)',
-  '周九 (大客户专属组, 负载 93%)',
+/** 调剂候选 · 同组内：目标是「人」，从本组成员中选 */
+export const TRANSFER_TARGETS_SAME = [
+  '赵六',
+  '王八',
 ];
+/** 调剂候选 · 跨组：目标是「组」，不指定组内具体的人，转入后由该组领取 */
+export const TRANSFER_TARGET_GROUPS = [
+  '大客户专属组',
+  '二线技术支持组',
+  '售后服务组',
+  '退费处理组',
+];
+/** 可跨组调剂的角色：班组长、运营管理员等管理角色；二线处理人仅限同组内 */
+export const CROSS_GROUP_TRANSFER_ROLES = ['team-leader', 'ops-admin', 'system-admin', 'tenant-admin'];
 export const DELEGATE_TARGETS = [
-  '钱七 (技术售前, 协助方案)',
-  '孙十 (质检组, 协助调研)',
-  '李四 (产品反馈组, 协助整理)',
+  '钱七',
+  '孙十',
+  '李四',
 ];
 export const DELEGATE_GROUPS = [
   '技术售前组',
@@ -121,6 +159,12 @@ export const DELEGATE_GROUPS = [
 export const REVIEWERS = ['班组长 · 王经理', '质检审核 · 李审核', '上级主管 · 张总监'];
 export const FORCE_CLOSE_REASONS = ['客户失联', '客户主动放弃', '诉求超出处理能力', '重复/无效工单'];
 export const APPROVERS = ['班组长 · 王经理', '客服主管 · 张总监'];
+/** 审批组（挂起 / 关闭工单 / 强结 共用）：提交时选定，由该组接单审批 */
+export const APPROVAL_GROUPS = [
+  '班组长审批组',
+  '质检审批组',
+  '运营审批组',
+];
 export const SUSPEND_REASONS = [
   '故障',
   '资源错误',
@@ -131,7 +175,7 @@ export const SUSPEND_REASONS = [
 ];
 export const ESCALATE_CHANNELS = ['二线技术支持组（推荐）', 'RDM 产研系统', 'TPD 技术问题单'];
 export const ESCALATE_GROUPS = ['硬件技术支持组', '软件技术支持组', '账号与权益组'];
-export const ESCALATE_MEMBERS = ['陈伟 (硬件, 负载 45%)', '林涛 (软件, 负载 60%)', '赵敏 (账号, 负载 38%)'];
+export const ESCALATE_MEMBERS = ['陈伟', '林涛', '赵敏'];
 /** 升级到飞书项目 · 问题反馈分类（对齐飞书客户反馈单） */
 export const FEISHU_FEEDBACK_CATEGORIES = ['软件问题', '硬件问题', '效果问题', '其他问题'];
 export const FEISHU_SPACES = ['飞书项目 · 售后协同', '飞书群 · 二线技术支持', '飞书群 · 产品反馈'];
@@ -140,11 +184,19 @@ export const AFTERSALE_GROUPS = ['售后维修组', '退换货处理组', '上�
 export const AFTERSALE_SERVICE_TYPES = ['维修', '投诉', '咨询', '安装', '展示样机拆装'];
 export const AFTERSALE_SERVICE_METHODS = ['上门', '送修', '寄修', '沟通调解'];
 export const CLOSE_RESULTS = ['已解决', '未解决-客户放弃', '未解决-无法复现', '重复工单', '无效工单'];
+/** 关闭原因（「为什么关」，与偏"处理结果"的 CLOSE_RESULTS 语义不同，不要混用） */
+export const CLOSE_REASONS = [
+  '客户放弃处理',
+  '问题无法复现',
+  '重复工单',
+  '无效工单',
+  '超出服务范围',
+  '其他',
+];
 export const ROOT_CAUSES = ['产品缺陷', '使用不当', '配置问题', '第三方问题', '需求变更'];
 export const ARCHIVE_REASONS = ['已关闭超30天自动归档', '手动归档-已完结', '手动归档-合规要求'];
 export const RESUME_REASONS = ['客户已反馈', '问题已解决', '备件已到货', '产研已修复', '退费已到账', '其他'];
 export const RETURN_REASONS = ['信息不全', '分类错误', '不属于本组', '需补充调查'];
-export const RETURN_TARGET_NODES = ['受理', '分派'];
 export const MAX_RETURN_COUNT = 3;
 
 export function nowWhen(): string {
@@ -310,35 +362,89 @@ export function applyOpAction(
       return { opState, suspendInfo, message: '已保存，可稍后继续处理' };
 
     case '调剂': {
-      const { target, reason } = payload.data;
+      // 同组内=调剂到人（直接换处理人）；跨组=调剂到组（转入目标组工单池，由组内领取，不指定人）
+      const { scope, target, reason } = payload.data;
+      const isCross = scope === 'cross';
+      if (isCross) {
+        detail.status = '待分派';
+        pushEntry(timeline, {
+          category: 'node', action: 'transfer', who: operator, role: operatorRole,
+          how: '跨组调剂',
+          what: `跨组调剂至「${target}」（转入该组工单池待领取，不指定处理人；SLA 不停钟）。原因：${reason || '—'}`,
+        });
+        return { opState, suspendInfo, message: `已跨组调剂至 ${target}` };
+      }
       pushEntry(timeline, {
         category: 'node', action: 'transfer', who: operator, role: operatorRole,
-        how: '调剂', what: `调剂至 ${target.split(' ')[0]}（处理人变更，状态仍为处理中）。原因：${reason || '—'}`,
+        how: '调剂',
+        what: `同组内调剂至 ${target}（处理人变更，状态仍为处理中；SLA 不停钟）。原因：${reason || '—'}`,
       });
-      return { opState, suspendInfo, message: `已调剂至 ${target.split(' ')[0]}` };
+      return { opState, suspendInfo, message: `已同组内调剂至 ${target}` };
     }
 
     case '委派': {
-      const { mode, target, reason } = payload.data;
-      const dest = mode === 'person' ? target.split(' ')[0] : target;
+      const { mode, target, reason, assignees } = payload.data;
+      if (mode === 'person' && assignees?.length) {
+        const dest = assignees.map((a) => a.name).join('、');
+        const taskLines = assignees.map((a) => `${a.name}：${a.task}`).join('；');
+        detail.delegateInfo = { mode: 'person', targets: dest, operator, at: nowWhen() };
+        pushEntry(timeline, {
+          category: 'node', action: 'transfer', who: operator, role: operatorRole,
+          how: '委派',
+          what: `委派至 ${dest} 协办办理（主责不变，工单进入委派中，`
+            + `下送/委派/调剂/关闭工单/强结 暂锁定）。任务：${taskLines}`,
+        });
+        return { opState, suspendInfo, message: `已委派至 ${dest} 协办` };
+      }
+      const dest = target;
+      detail.delegateInfo = { mode: 'group', targets: dest, operator, at: nowWhen() };
       pushEntry(timeline, {
         category: 'node', action: 'transfer', who: operator, role: operatorRole,
         how: '委派',
-        what: `委派${mode === 'person' ? '至' : '至组'} ${dest} 协办办理（主责不变，完成后回到当前处理人）。${reason ? `说明：${reason}` : ''}`,
+        what: `委派至组 ${dest} 协办办理（主责不变，工单进入委派中，`
+          + `下送/委派/调剂/关闭工单/强结 暂锁定）。${reason ? `任务说明：${reason}` : ''}`,
       });
-      return { opState, suspendInfo, message: `已委派${mode === 'person' ? '' : '至组'} ${dest} 协办` };
+      return { opState, suspendInfo, message: `已委派至组 ${dest} 协办` };
+    }
+
+    case '撤销委派': {
+      // 委派锁住了几乎所有流转动作，必须留撤销口：协办未响应时可单方面撤销，立即解锁
+      const targets = detail.delegateInfo?.targets ?? '';
+      detail.delegateInfo = null;
+      pushEntry(timeline, {
+        category: 'node', action: 'transfer', who: operator, role: operatorRole,
+        how: '撤销委派',
+        what: `撤销对 ${targets} 的委派，工单回到本节点，已解锁流转与结案动作。`,
+        internal: true,
+      });
+      return { opState, suspendInfo, message: '已撤销委派，工单回到本节点' };
     }
 
     case '下送': {
-      const { ticketTitle, resolved } = payload.data;
-      detail.status = '待审核';
-      freezeSolveForReview(detail); // 提交即冻结解决钟、记录提交快照（通过→停表 / 驳回→回拨续走）
+      // 下送 = 标记已解决 = 正常结案，直接进待回访、不经审核（审核只服务关闭/强结等异常结案）。
+      // 停整单解决钟结算，回访时限起算；后续回访满意/超时 → 已结案（正常关闭）。
+      const { ticketTitle, backToDelegator } = payload.data;
+      // 委派节点下送：协办完成、回送委派节点，不结案、不停钟
+      if (backToDelegator) {
+        const targets = detail.delegateInfo?.targets ?? '';
+        detail.delegateInfo = null;
+        pushEntry(timeline, {
+          category: 'node', action: 'transfer', who: operator, role: operatorRole,
+          how: '下送 · 回到委派节点',
+          what: `${targets ? `${targets} ` : ''}协办完成，工单「${ticketTitle}」送回委派节点，`
+            + `已解锁流转与结案动作。SLA 未受影响，继续计时。`,
+        });
+        return { opState, suspendInfo, message: '协办已完成，工单回到委派节点' };
+      }
+      detail.status = '待回访';
+      terminateClocks(detail);
       pushEntry(timeline, {
-        category: 'node', action: 'transfer', who: operator, role: operatorRole,
-        how: '下送审核',
-        what: `工单「${ticketTitle}」下送审核，是否已解决：${resolved ? '是' : '否'}。解决 SLA 已冻结（待审核，通过即停表、驳回则计入审核时长后续走）`,
+        category: 'node', action: 'resolved', who: operator, role: operatorRole,
+        how: '下送 · 标记已解决',
+        what: `工单「${ticketTitle}」处理完毕并标记已解决。`
+          + `整单解决 SLA 已停表结算，回访时限起算；回访满意或超时未评价即结案。`,
       });
-      return { opState: 'review', suspendInfo, message: '已下送审核，工单进入待审核' };
+      return { opState: 'resolved', suspendInfo, message: '已下送，工单进入待回访' };
     }
 
     case '强结': {
@@ -353,18 +459,19 @@ export function applyOpAction(
     }
 
     case '挂起': {
-      const { reason, detail: note, resumeAt } = payload.data;
-      detail.status = '已挂起';
-      // 暂停：仅冻结在走的钟（剩余秒保留，恢复后续算）；已停表钟（首响达标等）为终态不动
-      detail.slaClocks.forEach((c) => {
-        if (c.phase === 'running') c.phase = 'paused';
-      });
-      const info: SuspendInfo = { reason, detail: note, resumeAt, operator, at: nowWhen() };
+      // 挂起会停表，须经审批：提交只进「待审核」，SLA 照常走（避免提个申请就先把表停了）；
+      // 审批通过后才置「已挂起」并冻结在走的钟。
+      const { reason, detail: note, resumeAt, serviceType, serviceMethod, approvalGroup } = payload.data;
+      detail.status = '待审核';
+      const group = approvalGroup.replace(/（.*?）$/, '');
       pushEntry(timeline, {
         category: 'node', action: 'hold', who: operator, role: operatorRole,
-        how: '挂起 · SLA停表', what: `${reason}${note ? `：${note}` : ''}${resumeAt ? `，预计 ${resumeAt} 恢复` : ''}`,
+        how: '提交挂起申请',
+        what: `挂起原因：${reason}${note ? `；${note}` : ''}${resumeAt ? `，预计 ${resumeAt} 恢复` : ''}。`
+          + `服务类型/方式：${serviceType} · ${serviceMethod}。已提交 ${group} 审批，`
+          + `审批通过后工单挂起、SLA 停表；审批期间 SLA 继续计时。`,
       });
-      return { opState: 'suspended', suspendInfo: info, message: '工单已挂起，SLA 暂停计时' };
+      return { opState: 'review', suspendInfo: null, message: `挂起申请已提交，等待${group}审批` };
     }
 
     case '升级': {
@@ -499,39 +606,42 @@ export function applyOpAction(
       });
       pushEntry(timeline, {
         category: 'node', action: 'accept', who: operator, role: operatorRole,
-        how: '恢复处理', what: `挂起结束，恢复处理。原因：${reason}${note ? `；${note}` : ''}`,
+        how: '解除挂起', what: `解除挂起，恢复处理，SLA 按剩余续走。原因：${reason}${note ? `；${note}` : ''}`,
       });
-      return { opState: 'processing', suspendInfo: null, message: '工单已恢复，SLA 继续计时' };
+      return { opState: 'processing', suspendInfo: null, message: '已解除挂起，SLA 继续计时' };
     }
 
     case '退回': {
-      const { reason, targetNode, note } = payload.data;
+      // 退回只有一个方向：技术支持 → 工单处理人。无目标节点可选，工单回到处理中。
+      const { reason, note } = payload.data;
       const count = (detail.returnCount ?? 0) + 1;
       detail.returnCount = count;
-      detail.status = targetNode === '受理' ? '待受理' : '待分派';
-      const reopened = reopenSolveOnReject(detail); // 审核驳回/退回→解决钟续走，审核等待时长计入 SLA
+      detail.status = '处理中';
+      const reopened = reopenSolveOnReject(detail); // 退回→解决钟续走，技术支持处理期间的时长计入 SLA
       pushEntry(timeline, {
         category: 'node', action: 'transfer', who: operator, role: operatorRole,
         how: '退回',
-        what: `退回至「${targetNode}」节点。原因：${reason}${note ? `；说明：${note}` : ''}（第 ${count} 次退回）${reopened ? '。解决 SLA 已续走，审核等待时长计入' : ''}`,
+        what: `技术支持退回给工单处理人。原因：${reason}${note ? `；说明：${note}` : ''}`
+          + `（第 ${count} 次退回）${reopened ? '。解决 SLA 已续走，技术支持处理时长计入' : ''}`,
       });
-      return { opState: 'processing', suspendInfo, message: `已退回至${targetNode}节点` };
+      return { opState: 'processing', suspendInfo, message: '已退回给工单处理人' };
     }
 
     case '关闭工单': {
-      const { target, result, solution } = payload.data;
-      detail.status = target === 'closed' ? '已关闭' : '待回访';
-      if (target === 'closed') terminateClocks(detail);
+      // 关闭工单 = 异常结案，须审核：提交只进「待审核」，解决钟冻结并记录提交时刻；
+      // 审核通过 → 已关闭（停表结算，非正常关闭）；退回 → 解决钟按审核等待时长回拨续走。
+      const { reason, approvalGroup, note } = payload.data;
+      detail.status = '待审核';
+      freezeSolveForReview(detail);
+      const group = approvalGroup.replace(/（.*?）$/, '');
       pushEntry(timeline, {
-        category: 'node', action: 'resolved', who: operator, role: operatorRole,
-        how: target === 'closed' ? '关闭工单' : '标记已解决',
-        what: `处理结果：${result}。${solution}`,
+        category: 'node', action: 'transfer', who: operator, role: operatorRole,
+        how: '提交关闭审核',
+        what: `关闭原因：${reason}${note ? `；${note}` : ''}。已提交 ${group} 审核，`
+          + `通过后工单关闭（非正常关闭，关单后不支持补充/催单）；退回则回到本人继续处理。`
+          + `解决 SLA 已冻结，退回时审核等待时长计入。`,
       });
-      return {
-        opState: target === 'closed' ? 'closed' : 'resolved',
-        suspendInfo,
-        message: target === 'closed' ? '工单已关闭' : '已标记为已解决',
-      };
+      return { opState: 'review', suspendInfo, message: `关闭申请已提交，等待${group}审核` };
     }
 
     case '归档工单': {

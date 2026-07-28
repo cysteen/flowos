@@ -165,7 +165,7 @@ defineExpose({
       </div>
     </template>
 
-    <div class="as-field">
+    <div class="as-field as-field-stack">
       <div class="as-label">转出说明</div>
       <a-textarea v-model:value="form.detail" :rows="2" placeholder="请填写转售后说明..." />
     </div>
@@ -185,6 +185,19 @@ defineExpose({
 .as-field > .ant-select,
 .as-field > .as-region,
 .as-field > .as-upload { flex: 1; min-width: 0; }
+.as-field-stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+.as-field-stack > .as-label {
+  width: auto;
+  text-align: left;
+}
+.as-field-stack > .ant-input,
+.as-field-stack > textarea.ant-input {
+  width: 100%;
+}
 .as-region { display: flex; gap: 6px; }
 .as-upload {
   display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px;

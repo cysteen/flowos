@@ -16,7 +16,7 @@ function defaultForm(): CreateTicketFormState {
   return {
     businessType: '翻录',
     ticketType: '投诉',
-    ticketSource: '400呼入',
+    ticketSource: '热线电话',
     customerQuery: '',
     customer: { ...MOCK_CUSTOMER },
     showReporter: false,
@@ -50,7 +50,6 @@ function defaultForm(): CreateTicketFormState {
 export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | undefined) {
   const form = reactive<CreateTicketFormState>(defaultForm());
   const snVerified = ref(true);
-  const aiAdopted = ref(false);
   const assignAdopted = ref(false);
   const submitting = ref(false);
   const customerModalOpen = ref(false);
@@ -87,16 +86,10 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
 
   const showTypePart = computed(() => form.ticketType !== '商机');
   const typePartSubtitle = computed(() => `「${form.ticketType}」工单专属字段`);
-  const showAiBar = computed(() => form.description.trim().length > 0);
   const customerAddressRequired = computed(() => form.ticketType === '商机');
   const problemTimeRequired = computed(
     () => form.ticketType === '投诉' || form.ticketType === '咨询',
   );
-
-  const aiSummary = computed(() => {
-    const urgency = form.priority === 'P0' || form.priority === 'P1' ? '高' : '中';
-    return `AI 已识别：类型=${form.ticketType} · 紧急度 ${urgency} · 关键词 跳歌/在线歌单/重启无效`;
-  });
 
   function syncTitle() {
     if (form.titleManual) return;
@@ -107,7 +100,6 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     Object.assign(form, defaultForm());
     syncTitle();
     snVerified.value = true;
-    aiAdopted.value = false;
     assignAdopted.value = false;
     customerModalOpen.value = false;
     editingCustomer.value = false;
@@ -268,7 +260,6 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   watch(
     () => form.ticketType,
     () => {
-      aiAdopted.value = false;
       if (form.ticketType === '商机' && form.customer && !form.customer.region) {
         form.customer.region = '';
         form.customer.address = '';
@@ -289,7 +280,6 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   return {
     form,
     snVerified,
-    aiAdopted,
     assignAdopted,
     submitting,
     customerModalOpen,
@@ -301,9 +291,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     productNameOptions,
     showTypePart,
     typePartSubtitle,
-    showAiBar,
     customerAddressRequired,
-    aiSummary,
     reset,
     applyPrefill,
     onTitleInput,

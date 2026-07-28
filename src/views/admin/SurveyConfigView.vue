@@ -102,7 +102,7 @@ function validate(): string | null {
 function onSave() {
   const err = validate();
   if (err) { message.error(err); return; }
-  message.success('已保存调研回访策略与对接参数');
+  message.success('已保存调研策略与对接参数');
 }
 
 function onTestConn() {
@@ -119,7 +119,7 @@ function saveCallbackKey() { callbackKeyEditing.value = false; message.success('
 <template>
   <div class="survey-config">
     <AdminPageHeader
-      title="调研回访配置"
+      title="调研配置"
       subtitle="维护非售后工单结案调研的分流名单、发送与反馈窗口；讯飞投放对接参数与回调验签配置。"
     >
       <template #actions>
@@ -184,7 +184,8 @@ function saveCallbackKey() { callbackKeyEditing.value = false; message.success('
           </div>
 
           <div class="sub-block normal">
-            <div class="sb-title"><span class="dot dot-normal" />调研后结案（普通工单）<span class="sb-hint">以上均未命中 → 发短信 → 24h 反馈窗 → 反馈驱动结案/打回</span></div>
+            <!-- 反馈窗时长随「反馈窗口」配置联动，不写死 -->
+            <div class="sb-title"><span class="dot dot-normal" />调研后结案（普通工单）<span class="sb-hint">以上均未命中 → 发短信 → {{ cur.feedbackHours }}h 反馈窗 → 反馈驱动结案/打回</span></div>
           </div>
         </section>
 

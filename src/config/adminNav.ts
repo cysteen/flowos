@@ -115,8 +115,8 @@ export const ADMIN_GROUPS: AdminNavGroup[] = [
   {
     key: 'survey', label: '调研回访', icon: SolutionOutlined, scope: 'ops',
     items: [
-      { key: 'survey-config', label: '调研回访配置', prd: 'PRD-810' },
-      { key: 'survey-monitor', label: '调研回访监控', prd: 'PRD-810' },
+      { key: 'survey-config', label: '调研配置', prd: 'PRD-810' },
+      { key: 'survey-monitor', label: '调研监控', prd: 'PRD-810' },
     ],
   },
   {

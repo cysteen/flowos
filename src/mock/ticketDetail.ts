@@ -137,6 +137,20 @@ export interface TicketDetailMeta {
   feishuRecords?: FeishuRecord[];
   /** 1:1 活跃关联售后单（转售后/关联售后后回传，客服侧松耦合展示，详情走深链） */
   linkedAftersale?: LinkedAftersale;
+  /**
+   * 委派中：把单子交给他人先处理、处理完回到本节点。
+   * 期间锁定「下送/委派/调剂/关闭工单/强结」等流转与终结类动作，协办完成或撤销后解锁。
+   */
+  delegateInfo?: DelegateInfo | null;
+}
+
+/** 委派中信息（协办完成或撤销委派后清空） */
+export interface DelegateInfo {
+  mode: 'person' | 'group';
+  /** 协办人姓名（多人顿号拼接）或协办组名 */
+  targets: string;
+  operator: string;
+  at: string;
 }
 
 /** 关联售后单（松耦合：少量字段进卡片，完整详情走深链跳转，D6） */
@@ -460,7 +474,7 @@ export const TIMELINE: TimelineEntry[] = [
   },
   {
     id: 'er1', category: 'relate', action: 'relate', who: '王坐席', role: '二线坐席',
-    how: '升级投诉', when: '今天 16:02',
+    how: '关联投诉', when: '今天 16:02',
     what: '客户对处理结果不满、要求追责，升级为投诉，已生成关联投诉单并双向关联。',
     relatedTicket: {
       no: 'LCMN-20260610-73090', title: '音箱跳歌问题处理不满·要求追责',

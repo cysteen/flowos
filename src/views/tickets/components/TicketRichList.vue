@@ -49,7 +49,7 @@ const orderedCols = computed(() => {
 
 function ticketSourceLabel(t: Ticket): string {
   if (t.ticketSource) return t.ticketSource;
-  if (t.channel === '电话') return '400呼入';
+  if (t.channel === '电话') return '热线电话';
   return t.channel;
 }
 

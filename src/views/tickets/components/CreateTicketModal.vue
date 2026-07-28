@@ -3,7 +3,6 @@ import { computed, ref, watch } from 'vue';
 import { message } from 'ant-design-vue';
 import { useTicketDraftStore } from '@/stores/ticketDrafts';
 import {
-  ThunderboltOutlined,
   SearchOutlined,
   PlusOutlined,
   CloseOutlined,
@@ -51,7 +50,6 @@ const emit = defineEmits<{
 
 const {
   form,
-  aiAdopted,
   submitting,
   customerModalOpen,
   editingCustomer,
@@ -62,9 +60,7 @@ const {
   productNameOptions,
   showTypePart,
   typePartSubtitle,
-  showAiBar,
   customerAddressRequired,
-  aiSummary,
   reset,
   applyPrefill,
   onTitleInput,
@@ -84,10 +80,14 @@ const {
 const isChildMode = computed(() => props.prefill?.mode === 'child');
 const isReopenMode = computed(() => props.prefill?.mode === 'reopen');
 const modalTitle = computed(() => {
-  if (isChildMode.value) return '新建子单';
+  if (isChildMode.value) return '转单';
   if (isReopenMode.value) return '重新建单';
   return '新建工单';
 });
+const parentMetaLabel = computed(() => (isReopenMode.value ? 'Reopen 原单' : '关联主单'));
+const showParentInTitle = computed(
+  () => (isChildMode.value || isReopenMode.value) && !!props.prefill?.parentNo,
+);
 
 const complaintL2Options = computed(
   () => COMPLAINT_L2_MAP[form.complaintL1] ?? [],
@@ -185,25 +185,19 @@ watch(
     <div class="modal-header">
       <div class="modal-title-row">
         <span class="modal-title">{{ modalTitle }}</span>
-        <span class="smart-tag">
-          <ThunderboltOutlined :style="{ fontSize: '12px' }" />
-          智能填单
-        </span>
+        <template v-if="showParentInTitle">
+          <span class="title-sep">·</span>
+          <span class="title-parent" :class="{ reopen: isReopenMode }">
+            <span class="tp-label">{{ parentMetaLabel }}</span>
+            <span class="tp-no">{{ prefill?.parentNo }}</span>
+            <span v-if="prefill?.parentTitle" class="tp-title">{{ prefill.parentTitle }}</span>
+          </span>
+        </template>
       </div>
       <CloseOutlined class="modal-close" @click="onCancel" />
     </div>
 
     <div class="modal-body">
-      <div
-        v-if="(isChildMode || isReopenMode) && prefill?.parentNo"
-        class="parent-banner"
-        :class="{ reopen: isReopenMode }"
-      >
-        <span class="pb-label">{{ isReopenMode ? 'Reopen 原单' : '关联主单' }}</span>
-        <span class="pb-no">{{ prefill.parentNo }}</span>
-        <span class="pb-title">{{ prefill.parentTitle }}</span>
-      </div>
-
       <!-- ① 工单基础：三字段单行三列（对齐 .pen yTou1 / m8cXVW） -->
       <CreateTicketPartCard title="工单基础">
         <div class="row-3 basic-row">
@@ -411,18 +405,6 @@ watch(
               placeholder="请备注用户期望的解决时间，如：今天下班前"
             />
           </div>
-          <div v-if="showAiBar" class="ai-bar">
-            <ThunderboltOutlined :style="{ color: '#7C3AED', fontSize: '13px', flex: 'none' }" />
-            <span class="ai-text">{{ aiSummary }}</span>
-            <button
-              type="button"
-              class="ai-adopt"
-              :class="{ adopted: aiAdopted }"
-              @click="aiAdopted = true"
-            >
-              {{ aiAdopted ? '已采纳' : '采纳' }}
-            </button>
-          </div>
         </div>
         </div>
       </CreateTicketPartCard>
@@ -565,10 +547,9 @@ watch(
     </div>
 
     <div class="modal-footer">
-      <div class="footer-hint">
+      <div v-if="!isChildMode" class="footer-hint">
         <WarningOutlined :style="{ color: '#F59E0B', fontSize: '13px' }" />
-        <span v-if="isChildMode">子单将自动关联主单，主单在所有子单完成前保持挂起</span>
-        <span v-else-if="isReopenMode">新建工单将自动建立 Reopen 关联，原单状态不变</span>
+        <span v-if="isReopenMode">新建工单将自动建立 Reopen 关联，原单状态不变</span>
         <span v-else>检测到疑似重复工单 1 张，请确认</span>
       </div>
       <div class="footer-btns">
@@ -613,24 +594,40 @@ watch(
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+  flex: 1;
+  padding-right: 12px;
 }
 .modal-title {
+  flex: none;
   font-size: 16px;
   font-weight: 600;
   color: #111827;
 }
-.smart-tag {
+.title-sep {
+  flex: none;
+  color: #d1d5db;
+  font-size: 14px;
+}
+.title-parent {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #7c3aed;
-  background: #f5f3ff;
-  border: 1px solid #ddd6fe;
-  border-radius: 4px;
-  padding: 2px 8px;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+  color: #6b7280;
 }
+.tp-label { flex: none; color: #6d28d9; font-weight: 600; }
+.tp-no { flex: none; color: #7c3aed; font-weight: 600; }
+.tp-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #4b5563;
+}
+.title-parent.reopen .tp-label { color: #dc2626; }
+.title-parent.reopen .tp-no { color: #ef4444; }
 .modal-close {
   font-size: 16px;
   color: #909399;
@@ -641,28 +638,10 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 20px 24px;
+  padding: 12px 24px 20px;
   max-height: calc(100vh - 200px);
   overflow-y: auto;
 }
-
-.parent-banner {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding: 10px 14px;
-  background: #f5f3ff;
-  border: 1px solid #ddd6fe;
-  border-radius: 8px;
-  font-size: 12px;
-}
-.pb-label { color: #6d28d9; font-weight: 600; }
-.pb-no { font-family: ui-monospace, monospace; color: #7c3aed; font-weight: 600; }
-.pb-title { color: #4b5563; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.parent-banner.reopen { background: #fef2f2; border-color: #fecaca; }
-.parent-banner.reopen .pb-label { color: #dc2626; }
-.parent-banner.reopen .pb-no { color: #ef4444; }
 
 .inline-field {
   display: flex;
@@ -955,34 +934,6 @@ watch(
   font-size: 12px;
 }
 
-.ai-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  background: #f5f3ff;
-  border: 1px solid #ddd6fe;
-  border-radius: 6px;
-}
-.ai-text {
-  flex: 1;
-  font-size: 12px;
-  color: #6d28d9;
-  line-height: 1.4;
-}
-.ai-adopt {
-  flex: none;
-  font-size: 11px;
-  font-weight: 600;
-  color: #fff;
-  background: #7c3aed;
-  border: none;
-  border-radius: 4px;
-  padding: 3px 10px;
-  cursor: pointer;
-}
-.ai-adopt.adopted { background: #a78bfa; }
-
 .modal-footer {
   display: flex;
   align-items: center;
@@ -1003,6 +954,7 @@ watch(
   align-items: center;
   gap: 10px;
   flex: none;
+  margin-left: auto;
 }
 .btn-ghost {
   font-size: 13px;

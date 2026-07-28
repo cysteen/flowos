@@ -532,7 +532,7 @@ function onCancelSubmit(payload: { reason: string; remark: string }) {
 
 function onHeaderAction(name: string) {
   switch (name) {
-    case '升级投诉': // 非诉工单：升级投诉，建 B 投诉单（730 迭代，详见《【730】升级投诉 PRD》）
+    case '关联投诉': // 非诉工单：关联投诉，关原单建 B 投诉单（详见《【815】关联投诉 PRD》）
       openChildCreate();
       break;
     case '关联售后': // 投诉工单：打开售后建单弹窗
@@ -660,6 +660,12 @@ watch(
       :feishu-eligible="feishuEligible"
       :feishu-sync="d.feishuSync"
       :aftersale-context="aftersaleContext"
+      :service-type="form.serviceType"
+      :service-method="form.serviceMethod"
+      :problem-cause="form.problemCause"
+      :process-result="form.processResult"
+      :delegate-targets="d.delegateInfo?.targets"
+      :at-tech-support="d.status.includes('已升级·二线')"
       @action="onAction"
       @cancel="cancelModalOpen = true"
       @withdraw="confirmWithdraw"

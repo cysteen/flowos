@@ -25,7 +25,7 @@ const ICON: Record<TlAction, unknown> = {
   create: FileAddOutlined,      // 建单
   accept: SolutionOutlined,     // 受理/办理
   escalate: RiseOutlined,       // 升级（与底栏升级按钮一致）
-  relate: ApartmentOutlined,    // 关联单（升级投诉/升级售后派生关联工单）
+  relate: ApartmentOutlined,    // 关联单（关联投诉/关联售后派生关联工单）
   handle: FormOutlined,         // 处理登记（坐席填写处理结果/结论）
   hold: PauseCircleOutlined,    // 挂起
   transfer: SwapOutlined,       // 流转/调剂

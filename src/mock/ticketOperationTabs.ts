@@ -169,7 +169,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
     {
       id: 'c11',
       kind: 'call',
-      title: '升级投诉',
+      title: '关联投诉',
       emoji: '📞',
       operator: '张晓芸',
       when: '2026-06-18 09:00:12',
@@ -177,7 +177,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       channel: '热线',
       summary: '呼叫号码: 138****8000 | 状态: 接通 | 时长: 04:12',
       recording: { progress: '01:10 / 04:12', progressPercent: 28 },
-      note: '客户对多次未解决表示强烈不满，要求升级投诉；一线关闭原咨询单、建投诉 B 单并同步本次通话。',
+      note: '客户对多次未解决表示强烈不满，要求升级为投诉；一线关闭原咨询单、建投诉 B 单并同步本次通话。',
     },
     {
       id: 'c5',

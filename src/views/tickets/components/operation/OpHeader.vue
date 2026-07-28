@@ -10,6 +10,10 @@ const props = defineProps<{
   ticketNo: string;
 }>();
 
+/** 委派中：关联投诉/关联售后/取消工单 同属转出或终结类，一并锁定 */
+const delegateLocked = computed(() => !!props.detail.delegateInfo);
+const DELEGATE_LOCK_TIP = '工单委派中，协办完成后可操作';
+
 const metaTitle = computed(
   () =>
     `建单人：${props.detail.builderShort}，建单时间：${props.detail.createdAtFull}，期望解决：${props.detail.expectedResolve}，单号：${props.ticketNo}`,
@@ -68,12 +72,27 @@ function priorityHex(p: string): string {
           v-if="detail.type === '投诉'"
           type="button"
           class="action-btn"
+          :disabled="delegateLocked"
+          :title="delegateLocked ? DELEGATE_LOCK_TIP : undefined"
           @click="emit('action', '关联售后')"
         >关联售后</button>
-        <button v-else type="button" class="action-btn" @click="emit('action', '升级投诉')">升级投诉</button>
+        <button
+          v-else
+          type="button"
+          class="action-btn"
+          :disabled="delegateLocked"
+          :title="delegateLocked ? DELEGATE_LOCK_TIP : undefined"
+          @click="emit('action', '关联投诉')"
+        >关联投诉</button>
         <button type="button" class="action-btn" @click="emit('action', '新建补充')">新建补充</button>
         <button type="button" class="action-btn" @click="emit('action', '催单')">催单</button>
-        <button type="button" class="action-btn action-btn--danger" @click="emit('action', '取消工单')">取消工单</button>
+        <button
+          type="button"
+          class="action-btn action-btn--danger"
+          :disabled="delegateLocked"
+          :title="delegateLocked ? DELEGATE_LOCK_TIP : undefined"
+          @click="emit('action', '取消工单')"
+        >取消工单</button>
       </div>
     </div>
   </div>
@@ -146,7 +165,15 @@ function priorityHex(p: string): string {
   box-shadow: 0 1px 2px rgba(26, 111, 255, 0.1);
   transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
-.action-btn:hover {
+.action-btn:disabled {
+  color: #9ca3af;
+  background: #f9fafb;
+  border-color: #e5e7eb;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.action-btn:not(:disabled):hover {
   background: #eff6ff;
   border-color: #1a6fff;
   box-shadow: 0 2px 8px rgba(26, 111, 255, 0.18);
@@ -157,7 +184,7 @@ function priorityHex(p: string): string {
   border-color: #fecaca;
   box-shadow: 0 1px 2px rgba(220, 38, 38, 0.1);
 }
-.action-btn--danger:hover {
+.action-btn--danger:not(:disabled):hover {
   color: #b91c1c;
   background: #fee2e2;
   border-color: #f87171;

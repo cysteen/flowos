@@ -437,5 +437,5 @@ export const TICKETS: Ticket[] = BASE_TICKETS.map((t) => ({
   ...(TICKET_BRIEFS[t.id] ?? {}),
   ...(TICKET_FORM_FIELDS[t.id] ?? {}),
   ...(TICKET_GROUP_NAMES[t.id] ? { groupNames: TICKET_GROUP_NAMES[t.id] } : {}),
-  ticketSource: t.channel === '电话' ? '400呼入' : t.channel,
+  ticketSource: t.channel === '电话' ? '热线电话' : t.channel,
 }));
