@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { message } from 'ant-design-vue';
+import { ExportOutlined } from '@ant-design/icons-vue';
+import { aftersaleDeepLink } from '@/views/tickets/composables/opActions';
 import type { CustomerHistoryData, CustomerHistoryFilter, CustomerHistoryTicket } from '@/views/tickets/types/operationTabs';
 
 const props = defineProps<{ data: CustomerHistoryData }>();
@@ -35,8 +37,18 @@ function statusStyle(t: CustomerHistoryTicket) {
   return { color: '#10b981', background: '#10b98118' };
 }
 
-function openTicket(no: string) {
-  message.info(`打开工单 ${no}`);
+/** channel='售后' 即来源标记（D10 复用现有字段，零新增） */
+function isAftersale(t: CustomerHistoryTicket) {
+  return t.channel === '售后';
+}
+
+/** 售后历史单点单号 → 深链跳售后系统；客服单站内打开 */
+function openTicket(t: CustomerHistoryTicket) {
+  if (isAftersale(t)) {
+    window.open(aftersaleDeepLink(t.no), '_blank', 'noopener');
+    return;
+  }
+  message.info(`打开工单 ${t.no}`);
 }
 </script>
 
@@ -66,9 +78,11 @@ function openTicket(no: string) {
         v-for="t in filteredTickets"
         :key="t.id"
         class="history-card"
+        :class="{ 'history-card--aftersale': isAftersale(t) }"
       >
         <div class="card-top">
           <div class="title-row">
+            <span v-if="isAftersale(t)" class="src-badge">售后</span>
             <span class="status-tag" :style="statusStyle(t)">{{ t.status }}</span>
             <h3 class="card-title">{{ t.title }}</h3>
           </div>
@@ -76,7 +90,9 @@ function openTicket(no: string) {
         </div>
 
         <div class="meta-row">
-          <button type="button" class="ticket-no" @click="openTicket(t.no)">{{ t.no }}</button>
+          <button type="button" class="ticket-no" @click="openTicket(t)">
+            {{ t.no }}<ExportOutlined v-if="isAftersale(t)" class="no-ext" />
+          </button>
           <span class="sep" aria-hidden="true">·</span>
           <span class="type-tag" :style="{ color: t.typeColor, background: t.typeBgColor }">{{ t.type }}</span>
           <span class="sep" aria-hidden="true">·</span>
@@ -156,6 +172,21 @@ function openTicket(no: string) {
   flex-direction: column;
   gap: 8px;
 }
+
+/* 售后来源：虚线外框，与关联单 Tab 的售后卡片同一视觉语言 */
+.history-card--aftersale { border-style: dashed; }
+
+.src-badge {
+  flex: none;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #0e7490;
+  background: #cffafe;
+}
+
+.no-ext { margin-left: 3px; font-size: 10px; }
 
 .card-top {
   display: flex;

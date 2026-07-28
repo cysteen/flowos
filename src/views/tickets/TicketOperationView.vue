@@ -325,10 +325,43 @@ function syncAftersaleRelatedCard(focus = true) {
   };
   if (existed) Object.assign(existed, card);
   else cards.unshift(card);
+  syncAftersaleHistoryRow();
   if (focus) processTabsRef.value?.switchTab('related');
 }
 
-// 工单本身带关联售后单（「已转出」态）：载入即把售后卡片挂进关联单列表，
+/**
+ * 把 1:1 关联售后单同步进「客户历史工单」列表（D10）。
+ * 售后单是该客户名下的一段独立服务处理，**独立成行计入总数、不去重**；
+ * channel='售后' 即来源标记，现有筛选（处理中/已关闭/投诉）自动覆盖。
+ */
+function syncAftersaleHistoryRow() {
+  const la = d.value.linkedAftersale;
+  if (!la) return;
+  const hist = tabData.value.customerHistory;
+  if (hist.tickets.some((t) => t.no === la.no)) return;
+  const processing = !isAftersaleSettled(la.status);
+  hist.tickets.unshift({
+    id: `h-${la.no}`,
+    no: la.no,
+    title: `${la.serviceType} · ${d.value.product.name}`,
+    status: la.status,
+    statusColor: processing ? '#1A6FFF' : '#10B981',
+    type: la.serviceType,
+    typeColor: '#0EA5A4',
+    typeBgColor: '#0EA5A41F',
+    channel: '售后',
+    date: la.createdAt.slice(0, 10),
+    summary: d.value.demand,
+    isProcessing: processing,
+    isClosed: !processing,
+    isComplaint: false,
+  });
+  hist.totalCount += 1;
+  if (processing) hist.processingCount += 1;
+  else hist.closedCount += 1;
+}
+
+// 工单本身带关联售后单（「已转出」态）：载入即把售后单挂进关联单列表与客户历史，
 // 否则坐席在冻结的底栏之外找不到那张在跑的售后单。
 watch(
   () => d.value.linkedAftersale?.no,

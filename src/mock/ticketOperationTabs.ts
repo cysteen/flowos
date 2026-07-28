@@ -389,11 +389,28 @@ export const OPERATION_TAB_DATA: OperationTabData = {
   ],
   customerHistory: {
     customerName: '张小凡',
-    totalCount: 12,
-    processingCount: 2,
+    totalCount: 13,
+    processingCount: 3,
     closedCount: 10,
     complaintCount: 1,
     tickets: [
+      // 售后历史单：来自售后接口，以 channel='售后' 作来源标记与客服单混排、独立计入总数（D10）
+      {
+        id: 'h0',
+        no: 'AS-20260620-31877',
+        title: '维修 · 智能音箱 X1',
+        status: '已完成',
+        statusColor: '#10B981',
+        type: '维修',
+        typeColor: '#0EA5A4',
+        typeBgColor: '#0EA5A41F',
+        channel: '售后',
+        date: '2026-06-20',
+        summary: '音箱底噪明显，网点上门更换功放模块后复测正常，客户签字确认。',
+        isProcessing: false,
+        isClosed: true,
+        isComplaint: false,
+      },
       {
         id: 'h1',
         no: 'IFLYKF2026052010450088',
