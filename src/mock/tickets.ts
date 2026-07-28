@@ -1,10 +1,10 @@
 import type { Ticket } from '@/views/tickets/types/ticket';
 
 // 工单 Mock 数据（对齐 PRD-02 §9 字段与分布；样例文案参考 .pen SJpgc）。
-// 分布：我的任务 7 / 已办 6 / 本组工单池 5 / @我的工单 3 / 待审核 3 = 24（活跃）+ 归档。
+// 分布：我的任务 8 / 已办 6 / 本组工单池 5 / @我的工单 3 / 待审核 3 = 25（活跃）+ 归档。
 
 const BASE_TICKETS: Ticket[] = [
-  // ---- 我的工单 (mine) 8 ----
+  // ---- 我的工单 (mine) 9 ----
   // 飞书项目集成演示单：消费者BG · 翻译机，用于演示「升级到飞书项目」全链路
   {
     id: 't-feishu', no: 'LCMN-20260713-90001', type: '咨询', channel: '在线客服',
@@ -110,6 +110,20 @@ const BASE_TICKETS: Ticket[] = [
     createdAt: '2026-06-10 10:20', updatedAt: '2026-06-10 15:50',
     responded: true, firstRespBreached: true, dunningUnread: true, hasDunning: true,
   },
+  // 非诉转售后后的「已转出」等待态：原单不关闭、留在我的任务、SLA 停表，
+  // 等售后回传终态（已关闭 → 原单关闭进已办；转回客服 → 回处理中续跑）
+  {
+    id: 't33', no: 'LCMN-20260722-76350', type: '咨询', channel: '电话',
+    title: '录音笔无法充电，需寄修检测', smartMarks: [],
+    customer: '孙倩', vip: false, product: '智能录音笔 SR302',
+    nodeStatus: '已转出·售后', nodeStep: 4, nodeTotal: 5, priority: 'P2',
+    slaText: '—', slaSub: '已转出·停表', slaState: 'ok', slaMinutes: 9999,
+    assignee: '王坐席', tab: 'mine',
+    linkedAftersaleNo: 'AS-20260722-38104',
+    customerPhone: '13977778888', sn: 'SN-SR302-40915', productCategory: '智能硬件',
+    createdAt: '2026-07-22 09:40', updatedAt: '2026-07-22 11:15',
+    responded: true,
+  },
 
   // ---- 已办 (done) 6 ----
   // 更新时间需落在「已办」默认 30 天窗内（相对当前原型日 2026-07-17）
@@ -176,13 +190,13 @@ const BASE_TICKETS: Ticket[] = [
     customerPhone: '18655556666', productCategory: '会员权益',
     createdAt: '2026-07-05 13:00', updatedAt: '2026-07-08 18:30',
   },
-  // 非诉转售后 → 原单标记「已转售后」并关闭，进「已办」，行内可见关联售后单号（可跳转）
+  // 非诉转售后 → 售后回传「已关闭」→ 原单随之关闭，进「已办」，行内可见关联售后单号（可跳转）
   {
     id: 't32', no: 'LCMN-20260716-73140', type: '咨询', channel: '电话',
     title: '扫地机器人滚刷卡死需上门维修', smartMarks: [],
     customer: '雷军', vip: false, product: '扫地机器人 R2',
     nodeStatus: '处理中·一线', nodeStep: 5, nodeTotal: 5, priority: 'P2',
-    slaText: '—', slaSub: '已转售后', slaState: 'ok', slaMinutes: 9999,
+    slaText: '—', slaSub: '售后已完成', slaState: 'ok', slaMinutes: 9999,
     assignee: '陈坐席', tab: 'done', handledByMe: true, myTransferAction: true,
     linkedAftersaleNo: 'AS-20260716-38025',
     customerPhone: '13100002200', sn: 'SN-R2-77120', productCategory: '智能硬件',
@@ -371,7 +385,8 @@ const TICKET_BRIEFS: Record<string, { problemDesc: string; latestHandling: strin
   t25: { problemDesc: '预约上门安装智能门锁', latestHandling: '已上门安装完成，功能正常' },
   t27: { problemDesc: '路由器固件升级后无法联网', latestHandling: '已指导回退固件，待客户验证' },
   t28: { problemDesc: '被重复扣费，要求退还', latestHandling: '已确认重复扣费，已发起退款' },
-  t32: { problemDesc: '扫地机器人滚刷卡死、异响，需上门维修', latestHandling: '非诉转售后，已建关联售后单 AS-20260716-38025（上门维修），客服单已关闭' },
+  t32: { problemDesc: '扫地机器人滚刷卡死、异响，需上门维修', latestHandling: '非诉转售后，关联售后单 AS-20260716-38025（上门维修）已完成并回传关闭，客服单随之关闭' },
+  t33: { problemDesc: '录音笔充电无反应，指示灯不亮，需寄修检测', latestHandling: '已转售后寄修，关联售后单 AS-20260722-38104（寄修检测）· 售后状态：处理中，等待售后处理结果' },
   t29: { problemDesc: '屏幕出现花屏，需返厂检测', latestHandling: '待受理，尚未安排' },
   t30: { problemDesc: '客户 API 鉴权失败，无法调用', latestHandling: '待受理，尚未安排' },
   t31: { problemDesc: '同事 @ 请求协助确认退款政策', latestHandling: '待确认退款政策口径' },

@@ -165,7 +165,11 @@ export interface LinkedAftersale {
   serviceMethod?: string;
   /** 创建时间 */
   createdAt: string;
-  /** 是否投诉工单转出（投诉=独立跑、原单不关；非诉=原单已转售后并关闭） */
+  /**
+   * 是否投诉工单转出。两条分支都不关原单，差别在客服侧还能不能动：
+   * 投诉=状态不变、照常处理、与售后分别结案（该售后单禁止转非售后，D12）；
+   * 非诉=原单进「已转出」冻结，等售后回传终态（D11）。
+   */
   fromComplaint?: boolean;
 }
 

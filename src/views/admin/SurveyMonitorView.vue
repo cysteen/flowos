@@ -10,7 +10,7 @@ import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { stdPagination } from '@/config/adminUi';
 import dayjs, { type Dayjs } from 'dayjs';
 
-type TaskStatus = '待发送' | '静默缓存' | '已投放' | '待反馈' | '已反馈' | '无法触达' | '投放失败' | '已超时';
+type TaskStatus = '待发送' | '静默缓存' | '已投放' | '待反馈' | '已反馈' | '无法触达' | '投放失败' | '已超时' | '免调研';
 type Resolved = '解决' | '未解决' | '超时无反馈' | '';
 type UnresolvedReason = '没有解决方案' | '解决方案没有用' | '解决方案太复杂' | '没有人联系解决';
 type Flow = '调研后结案' | '结案后调研' | '免调研';
@@ -23,6 +23,7 @@ interface Row {
   times: 1 | 2;
   mobile: string;
   status: TaskStatus;
+  exemptReason?: string;          // 免调研原因（flow=免调研 时记录，不发短信、工单直接结案）
   resolved: Resolved;             // 是否解决
   unresolvedReasons: UnresolvedReason[]; // 未解决分类（可多选）
   score: number | null;           // 满意度分数
@@ -82,9 +83,9 @@ const rangeLabel = computed(() => {
 
 /** 概览漏斗（当前范围快照） */
 const FUNNEL_DATA: Record<'today' | '7d' | '30d', Record<string, number>> = {
-  today: { 待发送: 128, 已投放: 3412, 待反馈: 891, 已反馈: 2401, 无法触达: 47 },
-  '7d': { 待发送: 96, 已投放: 22140, 待反馈: 640, 已反馈: 18902, 无法触达: 312 },
-  '30d': { 待发送: 74, 已投放: 91580, 待反馈: 520, 已反馈: 82040, 无法触达: 1286 },
+  today: { 待发送: 128, 已投放: 3412, 待反馈: 891, 已反馈: 2401, 无法触达: 47, 免调研: 236 },
+  '7d': { 待发送: 96, 已投放: 22140, 待反馈: 640, 已反馈: 18902, 无法触达: 312, 免调研: 1584 },
+  '30d': { 待发送: 74, 已投放: 91580, 待反馈: 520, 已反馈: 82040, 无法触达: 1286, 免调研: 6702 },
 };
 const funnel = computed(() => FUNNEL_DATA[scaleKey.value]);
 
@@ -141,6 +142,7 @@ const alerts = computed(() => ALERT_DATA[scaleKey.value]);
 const STATUS_TONE: Record<TaskStatus, string> = {
   待发送: 'mute', 静默缓存: 'mute', 已投放: 'blue', 待反馈: 'warn',
   已反馈: 'green', 无法触达: 'red', 投放失败: 'red', 已超时: 'mute',
+  免调研: 'mute',
 };
 const RESOLVED_TONE: Record<Resolved, string> = {
   解决: 'green', 未解决: 'back', 超时无反馈: 'mute', '': 'mute',
@@ -179,6 +181,9 @@ const allRows = ref<Row[]>([
   { key: '8', ticketNo: 'TK20260722015', title: '企业接口扩容(二次下送)', flow: '结案后调研', times: 2, mobile: '139****6654', status: '待反馈', resolved: '', unresolvedReasons: [], score: null, submitAt: '07-24 08:00', deliverAt: '07-24 08:14', feedbackAt: '—' },
   { key: '9', ticketNo: 'TK20260724008', title: '蓝牙无法断开连接', flow: '调研后结案', times: 1, mobile: '137****4402', status: '静默缓存', resolved: '', unresolvedReasons: [], score: null, submitAt: '07-23 22:40', deliverAt: '待次日08:00', feedbackAt: '—' },
   { key: '10', ticketNo: 'TK20260724009', title: '开放平台接口咨询', flow: '结案后调研', times: 1, mobile: '135****8890', status: '已反馈', resolved: '解决', unresolvedReasons: [], score: 4, submitAt: '07-24 08:16', deliverAt: '07-24 08:16', feedbackAt: '07-24 12:20' },
+  { key: '11', ticketNo: 'TK20260724010', title: '录音笔售后处理态度投诉', flow: '免调研', times: 1, mobile: '—', status: '免调研', exemptReason: '工单类型=投诉', resolved: '', unresolvedReasons: [], score: null, submitAt: '07-24 09:41', deliverAt: '—', feedbackAt: '—' },
+  { key: '12', ticketNo: 'TK20260724011', title: '重复来电无实际诉求', flow: '免调研', times: 1, mobile: '—', status: '免调研', exemptReason: '话务性质=骚扰用户-业务骚扰', resolved: '', unresolvedReasons: [], score: null, submitAt: '07-24 10:05', deliverAt: '—', feedbackAt: '—' },
+  { key: '13', ticketNo: 'TK20260724012', title: '智慧屏投屏异常', flow: '免调研', times: 1, mobile: '—', status: '免调研', exemptReason: '客户黑名单', resolved: '', unresolvedReasons: [], score: null, submitAt: '07-24 11:22', deliverAt: '—', feedbackAt: '—' },
 ]);
 
 const filter = reactive({
@@ -240,7 +245,9 @@ function openDetail(r: Row) { detailRow.value = r; detailOpen.value = true; }
 
 function toHuman(r: Row) {
   return {
-    deliver: `POST /api/kdxf/open/deliver/t1\n{\n  "ticket_id": "${r.ticketNo}",\n  "ticket_title": "${r.title}",\n  "mobile": "${r.mobile}",\n  "times": ${r.times},\n  "type": 2,\n  "sign": "6efd0bcc2f4cddff…"\n}`,
+    deliver: r.flow === '免调研'
+      ? `（免调研，未调用投放接口）\n免调研原因：${r.exemptReason ?? '—'}`
+      : `POST /api/kdxf/open/deliver/t1\n{\n  "ticket_id": "${r.ticketNo}",\n  "ticket_title": "${r.title}",\n  "mobile": "${r.mobile}",\n  "times": ${r.times},\n  "type": 2,\n  "sign": "6efd0bcc2f4cddff…"\n}`,
     callback: r.resolved
       ? `{\n  "ticket_id": "${r.ticketNo}",\n  "record_id": "cc308744606c",\n  "times": ${r.times},\n  "resolved": "${r.resolved}",\n  "unresolved_reasons": ${JSON.stringify(r.unresolvedReasons)},\n  "score": ${r.score ?? 'null'},\n  "satisfaction_option": "${satisfactionLabel(r.score)}",\n  "satisfaction_reasons": ${JSON.stringify(r.satisfactionReasons ?? [])},\n  "time": "${r.feedbackAt}"\n}`
       : '（尚无反馈回调）',
@@ -324,9 +331,9 @@ function onReset() { Object.assign(filter, { ticketNo: '', flow: undefined, time
     <div class="detail-card">
       <div class="filter-bar">
         <a-input v-model:value="filter.ticketNo" placeholder="工单编号" allow-clear class="f-input" size="small" />
-        <a-select v-model:value="filter.flow" placeholder="调研方式" allow-clear size="small" class="f-sel" :options="[{ value: '调研后结案' }, { value: '结案后调研' }]" />
+        <a-select v-model:value="filter.flow" placeholder="调研方式" allow-clear size="small" class="f-sel" :options="[{ value: '调研后结案' }, { value: '结案后调研' }, { value: '免调研' }]" />
         <a-select v-model:value="filter.times" placeholder="批次" allow-clear size="small" class="f-sel-sm" :options="[{ value: 1, label: '1（首次）' }, { value: 2, label: '2（二次）' }]" />
-        <a-select v-model:value="filter.status" placeholder="任务状态" allow-clear size="small" class="f-sel" :options="['待发送','静默缓存','已投放','待反馈','已反馈','无法触达','投放失败','已超时'].map((v) => ({ value: v }))" />
+        <a-select v-model:value="filter.status" placeholder="任务状态" allow-clear size="small" class="f-sel" :options="['待发送','静默缓存','已投放','待反馈','已反馈','无法触达','投放失败','已超时','免调研'].map((v) => ({ value: v }))" />
         <a-select v-model:value="filter.resolved" placeholder="是否解决" allow-clear size="small" class="f-sel-sm" :options="['解决','未解决','超时无反馈'].map((v) => ({ value: v }))" />
         <a-select v-model:value="filter.reason" placeholder="未解决分类" allow-clear size="small" class="f-sel" :options="['没有解决方案','解决方案没有用','解决方案太复杂','没有人联系解决'].map((v) => ({ value: v }))" />
         <a-button size="small" @click="onReset"><template #icon><ReloadOutlined /></template>重置</a-button>
@@ -380,6 +387,7 @@ function onReset() { Object.assign(filter, { ticketNo: '', flow: undefined, time
           <a-descriptions-item label="投放批次">{{ detailRow.times === 2 ? '批次 2（二次下送工单）' : '批次 1（首次）' }}</a-descriptions-item>
           <a-descriptions-item label="触达号码">{{ detailRow.mobile }}</a-descriptions-item>
           <a-descriptions-item label="任务状态"><span class="tag" :class="`t-${STATUS_TONE[detailRow.status]}`">{{ detailRow.status }}</span></a-descriptions-item>
+          <a-descriptions-item v-if="detailRow.exemptReason" label="免调研原因">{{ detailRow.exemptReason }}</a-descriptions-item>
           <a-descriptions-item label="是否解决">{{ detailRow.resolved || '—' }}</a-descriptions-item>
           <a-descriptions-item label="未解决分类">
             <div v-if="detailRow.unresolvedReasons.length" class="survey-reason-tags">

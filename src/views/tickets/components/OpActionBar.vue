@@ -82,6 +82,13 @@ const forwardModalOpen = ref(false);
 
 const isTerminal = computed(() => ['closed', 'archived', 'cancelled', 'settled'].includes(props.opState));
 const isSuspended = computed(() => props.opState === 'suspended');
+/**
+ * 已转出：非诉转售后后的等待态。单子在售后手上，客服侧无可作为——
+ * 底栏流转类动作全部锁定（含再次转售后：1:1 关联已占用），只留「保存」与「联系客户」。
+ * 出态只由售后回传驱动，没有任何按钮能主动离开该态。
+ */
+const isTransferred = computed(() => props.opState === 'transferred');
+const TRANSFERRED_LOCK_TIP = '工单已转出至售后，等待售后处理结果';
 
 /** 委派中：单子交给协办人先处理，处理完回到本节点，期间锁定流转与终结类动作 */
 const isDelegating = computed(() => !!props.delegateTargets);
@@ -117,6 +124,21 @@ const withdrawBlocked = computed(
 const barActions = computed<BarItem[]>(() => {
   const items: BarItem[] = [];
   for (const key of BAR_ORDER) {
+    // 已转出：整条底栏锁定（无逃生口——回来只能等售后转回）
+    if (isTransferred.value) {
+      const def = key === '转单' ? null : actionMap.value.get(key);
+      if (key !== '转单' && !def) continue;
+      if (key === '退回' && !props.atTechSupport) continue;
+      items.push({
+        key,
+        label: key === '挂起' ? '申请挂起' : (def?.label ?? '转单'),
+        icon: def?.icon ?? 'SwapOutlined',
+        danger: def?.danger,
+        forbidden: true,
+        forbiddenTip: TRANSFERRED_LOCK_TIP,
+      });
+      continue;
+    }
     // 委派中：锁定流转与终结类动作，置灰并说明原因
     if (isDelegating.value && DELEGATE_LOCKED.includes(key)) {
       const locked = key === '转单' ? null : actionMap.value.get(key);
@@ -184,7 +206,7 @@ function saveDraft() {
 }
 
 function run(action: OpActionType | '转单') {
-  if (isTerminal.value) return;
+  if (isTerminal.value || isTransferred.value) return;
   if (action === '转单') {
     emit('transferTicket');
     return;
@@ -260,14 +282,14 @@ function onForwardConfirm(data: { ticketTitle: string }) {
 
 /** 产研反馈 Tab「重新发起」：打开升级弹窗 */
 function openEscalate() {
-  if (isTerminal.value) return;
+  if (isTerminal.value || isTransferred.value) return;
   dialogAction.value = '升级';
   dialogOpen.value = true;
 }
 
 /** 投诉单「关联售后」入口：打开售后建单弹窗（复用转售后动作，投诉分支=建关联单独立跑） */
 function openAftersale() {
-  if (isTerminal.value) return;
+  if (isTerminal.value || isTransferred.value) return;
   dialogAction.value = '转售后';
   dialogOpen.value = true;
 }

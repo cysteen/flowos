@@ -12,6 +12,7 @@ export type TicketOpState =
   | 'review'      // 待审核（下送后）
   | 'resolved'    // 待回访（标记已解决后）
   | 'settled'     // 已结案（强结/正常结案后）
+  | 'transferred' // 已转出（非诉转售后后的等待态：原单不关闭、客服侧冻结，等售后回传终态）
   | 'closed'      // 已关闭
   | 'archived'    // 已归档
   | 'cancelled';  // 已取消
@@ -84,7 +85,7 @@ export interface AftersalePayload {
 
 /** 转售后弹窗上下文：投诉分流 + 预填字段 + 已有关联售后单（激活优先） */
 export interface AftersaleContext {
-  /** 投诉工单：建关联单、投诉单独立跑；非诉：原单标记已转售后并关闭 */
+  /** 投诉工单：建关联单、投诉单独立跑（状态不变）；非诉：原单进「已转出」等待售后终态 */
   isComplaint: boolean;
   customerName: string;
   customerPhone?: string;
@@ -293,6 +294,7 @@ export function statusLabel(state: TicketOpState): string {
     review: '待审核',
     resolved: '待回访',
     settled: '已结案',
+    transferred: '已转出',
     closed: '已关闭',
     archived: '已归档',
     cancelled: '已取消',
@@ -536,7 +538,7 @@ export function applyOpAction(
     }
 
     case '转售后': {
-      // 按 D1 分流：投诉=建关联单、投诉单独立跑（原单不关）；非诉=原单标记已转售后并关闭。
+      // 按 D1 分流：投诉=建关联单、投诉单独立跑（状态不变）；非诉=原单进「已转出」等待态（D11，不关闭）。
       // D2 激活优先：已有 1:1 活跃关联售后单则激活，无则新建（回传 mock 售后单号）。
       const { serviceType, serviceMethod, detail: note } = payload.data;
       const isComplaint = detail.type === '投诉';
@@ -568,12 +570,17 @@ export function applyOpAction(
 
       const asNo = detail.linkedAftersale!.no;
       if (isComplaint) {
-        // 投诉：建关联单，投诉单独立继续跑（不关闭）
+        // 投诉：建关联单，投诉单独立继续跑（状态不变，不进「已转出」）
         return { opState, suspendInfo, message: `已建关联售后单 ${asNo}，投诉单继续跟进` };
       }
-      // 非诉：原单标记"已转售后"并关闭
-      detail.status = '已转售后';
-      return { opState: 'closed', suspendInfo, message: `已转售后 ${asNo}，客服工单关闭` };
+      // 非诉：原单进「已转出」等待态——不关闭、客服侧冻结，出态只由售后回传驱动
+      // （售后已关闭 → 已关闭进已办；售后转回客服 → 回处理中续跑原流程）
+      detail.status = '已转出';
+      return {
+        opState: 'transferred',
+        suspendInfo,
+        message: `已转售后 ${asNo}，工单转入「已转出」，等待售后处理结果`,
+      };
     }
 
     case '标记已解决': {

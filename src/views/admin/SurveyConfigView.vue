@@ -133,14 +133,14 @@ function saveCallbackKey() { callbackKeyEditing.value = false; message.success('
       <div class="cfg-body">
         <!-- 分流名单（调研服务侧判定；结束方式判断属工单结案逻辑，不在此） -->
         <section class="cfg-card">
-          <div class="cc-head"><FilterOutlined /><span>分流名单</span></div>
+          <div class="cc-head"><FilterOutlined /><span>调研方式配置</span></div>
           <div class="cc-note">
-            调研服务侧按工单字段判定：不发 &gt; 结案后调研 &gt; 普通工单（命中即停）。
-            结束方式（转售后/关闭/强结/取消/建单即关）属<strong>工单结案逻辑</strong>、不在此配置。
+            仅<strong>正常解决结案</strong>的工单进入调研（转售后 / 关闭 / 强结 / 取消不调用）；进入后按下列顺序判定，命中即停。
           </div>
 
           <div class="sub-block exempt">
-            <div class="sb-title"><span class="dot dot-exempt" />不发（免调研）<span class="sb-hint">命中即不发短信、记原因</span></div>
+            <div class="sb-title"><span class="dot dot-exempt" />不发（免调研）</div>
+            <div class="sb-desc">建调研任务并记免调研原因，但不发短信，工单直接结案。三个维度任一命中即免调研（维度间、取值间均为「或」）。</div>
             <div class="chk-row">
               <span class="chk-label">工单类型</span>
               <a-checkbox-group v-model:value="cur.list.noType">
@@ -158,7 +158,8 @@ function saveCallbackKey() { callbackKeyEditing.value = false; message.success('
           </div>
 
           <div class="sub-block after">
-            <div class="sb-title"><span class="dot dot-after" />结案后调研<span class="sb-hint">先结案、补发短信，反馈不回流</span></div>
+            <div class="sb-title"><span class="dot dot-after" />结案后调研</div>
+            <div class="sb-desc">先结案、后补发短信；反馈只记录。五个维度任一命中即入本分流（维度间、取值间均为「或」）。</div>
             <div class="chk-row">
               <span class="chk-label">工单类型</span>
               <a-checkbox-group v-model:value="cur.list.afterType">
@@ -185,7 +186,8 @@ function saveCallbackKey() { callbackKeyEditing.value = false; message.success('
 
           <div class="sub-block normal">
             <!-- 反馈窗时长随「反馈窗口」配置联动，不写死 -->
-            <div class="sb-title"><span class="dot dot-normal" />调研后结案（普通工单）<span class="sb-hint">以上均未命中 → 发短信 → {{ cur.feedbackHours }}h 反馈窗 → 反馈驱动结案/打回</span></div>
+            <div class="sb-title"><span class="dot dot-normal" />调研后结案（普通工单）<span class="sb-hint">以上均未命中，无需配置</span></div>
+            <div class="sb-desc">停待回访 → 发短信 → 开反馈窗。已解决 / 没有解决方案 / 无反馈 → 结案；方案没用、太复杂、没人联系 → 打回重分配。</div>
           </div>
         </section>
 
@@ -268,13 +270,19 @@ function saveCallbackKey() { callbackKeyEditing.value = false; message.success('
 .sub-block.exempt { background: #fef7f7; border: 1px solid #fde8e8; }
 .sub-block.after { background: #fffbeb; border: 1px solid #fdefc7; }
 .sub-block.normal { background: #f0f9f4; border: 1px solid #d7f0e0; margin-bottom: 0; }
-.sb-title { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 10px; }
-.sub-block.normal .sb-title { margin-bottom: 0; }
+.sb-title { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px; }
+.sub-block.normal .sb-desc { margin-bottom: 0; }
 .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .dot-exempt { background: #dc2626; }
 .dot-after { background: #d97706; }
 .dot-normal { background: #16a34a; }
 .sb-hint { font-size: 11px; font-weight: 400; color: #9ca3af; }
+.sb-desc {
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1.55;
+  margin-bottom: 10px;
+}
 .chk-row { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 8px; }
 .chk-row:last-child { margin-bottom: 0; }
 .chk-label { font-size: 12px; color: #6b7280; width: 80px; flex: none; padding-top: 2px; line-height: 1.4; }
