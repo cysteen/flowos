@@ -15,7 +15,6 @@ import OpSmsModal from './components/operation/OpSmsModal.vue';
 import OpEmailModal from './components/operation/OpEmailModal.vue';
 import TicketEventToastStack from './components/operation/TicketEventToastStack.vue';
 import OpProcessTabs from './components/operation/OpProcessTabs.vue';
-import OpAftersaleDetailModal from './components/operation/OpAftersaleDetailModal.vue';
 import OpSidePanel from './components/operation/OpSidePanel.vue';
 import OpActionBar from './components/OpActionBar.vue';
 // 建单弹窗仅在「转单/重开」时用，按需异步加载，不阻塞操作页首屏
@@ -210,9 +209,6 @@ function onTicketCreated(ticket: Ticket, processAfter?: boolean) {
 
 /** 升级到飞书项目入口：所有工单均开放（不再限消费者BG） */
 const feishuEligible = computed(() => true);
-
-/** 售后工单详情（只读）：从关联单 Tab 的售后卡片点开，深链跳转前先看进展 */
-const aftersaleDetailOpen = ref(false);
 
 /** 转售后上下文：投诉分流 + 客户/产品预填 + 已有关联售后单（有关联则封口，按是否结案给不同提示） */
 const aftersaleContext = computed(() => ({
@@ -655,7 +651,6 @@ watch(
           @open-child-create="openChildCreate"
           @open-reopen-create="openReopenCreate"
           @mark-read="onMarkRecordRead"
-          @open-aftersale="aftersaleDetailOpen = true"
           @feishu-activate="onFeishuActivate"
           @feishu-retry="onFeishuRetry"
           @dunning="dunningModalOpen = true"
@@ -739,19 +734,6 @@ watch(
       @submit="onEmailSubmit"
     />
 
-    <OpAftersaleDetailModal
-      v-model:open="aftersaleDetailOpen"
-      :aftersale="d.linkedAftersale ?? null"
-      :ticket-no="d.no"
-      :customer-name="d.customer.name"
-      :customer-phone="d.customer.contacts.find((c) => c.type === 'phone')?.value ?? ''"
-      :region="d.customer.region"
-      :address="d.customer.address"
-      :product-category="d.product.category"
-      :product-name="d.product.name"
-      :sn="d.product.sn"
-      :demand="d.demand"
-    />
   </div>
 </template>
 

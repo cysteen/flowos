@@ -57,7 +57,7 @@ export interface RelatedTicketCard {
   processInfo?: string;
   /** 卡片来源系统；默认客服（本系统），售后=外部单、点击深链跳转不站内打开 */
   source?: '客服' | '售后';
-  /** 售后单等外部单：点击深链跳对方系统（附件也走跳转，不内嵌，D6） */
+  /** 售后单等外部单：客服侧只读，跳转入口在「转售后 / 关联售后」的悬浮卡片上（附件也走跳转，不内嵌，D6） */
   externalLink?: boolean;
 }
 

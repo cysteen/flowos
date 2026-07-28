@@ -94,6 +94,16 @@ export function isAftersaleSettled(status: string): boolean {
   return AFTERSALE_SETTLED_STATUS.includes(status);
 }
 
+/**
+ * 售后系统深链前缀。关联ID（售后工单号）拼进 URL 即得该单详情页地址，
+ * 展示在关联单卡片上供坐席点击跳转；完整 URL 规范与鉴权待与售后侧对齐（PRD §待讨论 3）。
+ */
+export const AFTERSALE_DEEPLINK_BASE = 'https://aftersale.iflytek.com/ticket/detail';
+
+export function aftersaleDeepLink(no: string): string {
+  return `${AFTERSALE_DEEPLINK_BASE}?no=${no}`;
+}
+
 /** 转售后弹窗上下文：投诉分流 + 预填字段 + 已有关联售后单（有关联则封口，不再建单） */
 export interface AftersaleContext {
   /** 投诉工单：建关联单、投诉单独立跑（状态不变）；非诉：原单进「已转出」等待售后终态 */

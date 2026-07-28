@@ -8,6 +8,7 @@ import {
   RollbackOutlined, TeamOutlined,
 } from '@ant-design/icons-vue';
 import OpActionDialogs from './OpActionDialogs.vue';
+import OpAftersaleLinkCard from './operation/OpAftersaleLinkCard.vue';
 import OpForwardModal from './operation/OpForwardModal.vue';
 import type { SuspendInfo, OpActionType, TicketOpState, AftersaleContext } from '../composables/opActions';
 import { availableActions } from '../composables/opActionRegistry';
@@ -343,29 +344,49 @@ defineExpose({ openEscalate, openAftersale });
         <span v-if="draftSavedAt" class="save-hint">已保存 {{ draftSavedAt }}</span>
       </button>
 
-      <button
+      <!--
+        「转售后」在已有关联售后单时不可点，改为 hover 出售后单卡片：
+        状态一眼可见，工单地址可点直接跳售后系统操作（其余按钮无卡片，trigger 置空）
+      -->
+      <a-popover
         v-for="a in barActions"
         :key="a.key"
-        type="button"
-        class="ab-item"
-        :class="{
-          danger: a.danger,
-          resume: a.key === '恢复',
-          forbidden: a.forbidden,
-        }"
-        :disabled="isTerminal || a.forbidden"
-        :title="a.forbidden ? a.forbiddenTip : undefined"
-        @click="run(a.key)"
+        :trigger="a.key === '转售后' && linkedAftersale ? 'hover' : []"
+        placement="top"
       >
-        <span v-if="a.forbidden" class="forbidden-mark" aria-hidden="true">
-          <svg viewBox="0 0 100 100" preserveAspectRatio="none">
-            <line x1="4" y1="4" x2="96" y2="96" />
-            <line x1="96" y1="4" x2="4" y2="96" />
-          </svg>
+        <template #content>
+          <OpAftersaleLinkCard
+            v-if="linkedAftersale"
+            :no="linkedAftersale.no"
+            :status="linkedAftersale.status"
+            :service-type="linkedAftersale.serviceType"
+            :settled="linkedAftersale.settled"
+          />
+        </template>
+        <span class="ab-slot">
+          <button
+            type="button"
+            class="ab-item"
+            :class="{
+              danger: a.danger,
+              resume: a.key === '恢复',
+              forbidden: a.forbidden,
+            }"
+            :disabled="isTerminal || a.forbidden"
+            :title="a.forbidden && a.key !== '转售后' ? a.forbiddenTip : undefined"
+            @click="run(a.key)"
+          >
+            <span v-if="a.forbidden" class="forbidden-mark" aria-hidden="true">
+              <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+                <line x1="4" y1="4" x2="96" y2="96" />
+                <line x1="96" y1="4" x2="4" y2="96" />
+              </svg>
+            </span>
+            <component :is="ICONS[a.icon]" />
+            <span>{{ a.label }}</span>
+          </button>
         </span>
-        <component :is="ICONS[a.icon]" />
-        <span>{{ a.label }}</span>
-      </button>
+      </a-popover>
     </div>
 
     <OpActionDialogs
@@ -423,6 +444,9 @@ defineExpose({ openEscalate, openAftersale });
   border-radius: 12px;
   box-shadow: 0 2px 12px rgba(15, 23, 42, 0.08);
 }
+
+/* popover 需要一个能接鼠标事件的宿主——disabled 按钮本身不触发 hover */
+.ab-slot { display: inline-flex; }
 
 .ab-item {
   display: inline-flex;

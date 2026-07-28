@@ -4,6 +4,8 @@ import { CopyOutlined, FlagOutlined } from '@ant-design/icons-vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import { PRIORITY_COLOR, softBg, type Priority } from '@/views/tickets/types/ticket';
 import OpSlaBar from './OpSlaBar.vue';
+import OpAftersaleLinkCard from './OpAftersaleLinkCard.vue';
+import { isAftersaleSettled } from '../../composables/opActions';
 
 const props = defineProps<{
   detail: TicketDetailMeta;
@@ -13,6 +15,13 @@ const props = defineProps<{
 /** 委派中：关联投诉/关联售后/取消工单 同属转出或终结类，一并锁定 */
 const delegateLocked = computed(() => !!props.detail.delegateInfo);
 const DELEGATE_LOCK_TIP = '工单委派中，协办完成后可操作';
+
+/** 已有 1:1 关联售后单 → 「关联售后」封口，hover 出卡片跳售后系统（D2 改写） */
+const linkedAftersale = computed(() => {
+  const la = props.detail.linkedAftersale;
+  if (!la) return null;
+  return { ...la, settled: isAftersaleSettled(la.status) };
+});
 
 const metaTitle = computed(
   () =>
@@ -68,14 +77,34 @@ function priorityHex(p: string): string {
     <div class="oh-right">
       <OpSlaBar :detail="detail" />
       <div class="oh-actions">
-        <button
+        <!--
+          已有 1:1 关联售后单时「关联售后」置灰（不建第二张单），
+          改为 hover 出售后单卡片：状态可见、工单地址可点跳售后系统操作
+        -->
+        <a-popover
           v-if="detail.type === '投诉'"
-          type="button"
-          class="action-btn"
-          :disabled="delegateLocked"
-          :title="delegateLocked ? DELEGATE_LOCK_TIP : undefined"
-          @click="emit('action', '关联售后')"
-        >关联售后</button>
+          :trigger="linkedAftersale ? 'hover' : []"
+          placement="bottomRight"
+        >
+          <template #content>
+            <OpAftersaleLinkCard
+              v-if="linkedAftersale"
+              :no="linkedAftersale.no"
+              :status="linkedAftersale.status"
+              :service-type="linkedAftersale.serviceType"
+              :settled="linkedAftersale.settled"
+            />
+          </template>
+          <span class="btn-slot">
+            <button
+              type="button"
+              class="action-btn"
+              :disabled="delegateLocked || !!linkedAftersale"
+              :title="delegateLocked ? DELEGATE_LOCK_TIP : undefined"
+              @click="emit('action', '关联售后')"
+            >关联售后</button>
+          </span>
+        </a-popover>
         <button
           v-else
           type="button"
@@ -172,6 +201,8 @@ function priorityHex(p: string): string {
   box-shadow: none;
   cursor: not-allowed;
 }
+/* popover 需要一个能接鼠标事件的宿主——disabled 按钮本身不触发 hover */
+.btn-slot { display: inline-flex; }
 
 .action-btn:not(:disabled):hover {
   background: #eff6ff;

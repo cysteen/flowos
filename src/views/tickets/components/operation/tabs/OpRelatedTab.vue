@@ -15,19 +15,14 @@ defineProps<{
 
 const emit = defineEmits<{
   'mark-read': [id: string];
-  /** 售后关联单 → 打开售后工单详情（深链落点） */
-  'open-aftersale': [no: string];
 }>();
 
 const expanded = ref({ related: true, supplement: true, dunning: true });
 
 function openRelated(t: RelatedTicketCard) {
-  if (t.source === '售后' || t.externalLink) {
-    // 售后单：打开售后工单详情（补充/催单在售后系统内操作）
-    emit('open-aftersale', t.no);
-  } else {
-    message.info(`打开 ${t.no}`);
-  }
+  // 售后单在客服侧只读，跳转入口在底栏「转售后」的悬浮卡片上，卡片本身不响应
+  if (t.source === '售后' || t.externalLink) return;
+  message.info(`打开 ${t.no}`);
 }
 
 function typeBg(t: RelatedTicketCard) {
@@ -72,7 +67,7 @@ function processEntries(t: RelatedTicketCard) {
             <span class="rel-time">{{ t.createdAtFull ?? t.createdAt }}</span>
           </div>
           <div class="rel-meta">
-            <span class="rel-no">{{ t.no }}<template v-if="t.externalLink"> ↗</template></span>
+            <span class="rel-no">{{ t.no }}</span>
             <span class="sep">·</span>
             <span class="type-tag" :style="{ color: t.typeColor, background: typeBg(t) }">{{ t.type }}</span>
             <span class="sep">·</span>
@@ -141,7 +136,8 @@ function processEntries(t: RelatedTicketCard) {
 .rel-title-row { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
 .status-tag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; flex: none; }
 .src-badge { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; flex: none; color: #0e7490; background: #cffafe; }
-.rel-card--external { border-style: dashed; }
+/* 售后单在客服侧只读：整卡不可点，仅工单地址可点跳售后系统 */
+.rel-card--external { border-style: dashed; cursor: default; }
 .rel-title { font-size: 13px; font-weight: 600; color: #111827; min-width: 0; }
 .rel-time { font-size: 11px; color: #9ca3af; flex: none; white-space: nowrap; }
 
