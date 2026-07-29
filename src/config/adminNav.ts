@@ -4,6 +4,7 @@ import {
   FileTextOutlined, BranchesOutlined, DatabaseOutlined, ApiOutlined,
   SafetyCertificateOutlined, BankOutlined, SettingOutlined, CheckCircleOutlined,
   GoldOutlined, ThunderboltOutlined, DeploymentUnitOutlined, SolutionOutlined,
+  NotificationOutlined,
 } from '@ant-design/icons-vue';
 
 import type { AdminScope } from '@/config/roles';
@@ -117,6 +118,13 @@ export const ADMIN_GROUPS: AdminNavGroup[] = [
     items: [
       { key: 'survey-config', label: '调研配置', prd: 'PRD-810' },
       { key: 'survey-monitor', label: '调研监控', prd: 'PRD-810' },
+    ],
+  },
+  {
+    key: 'notify', label: '消息通知', icon: NotificationOutlined, scope: 'ops',
+    items: [
+      { key: 'notify-rules', label: '通知规则', prd: 'PRD-815' },
+      { key: 'notify-policy', label: '对客发送策略', prd: 'PRD-815' },
     ],
   },
   {
