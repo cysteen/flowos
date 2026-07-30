@@ -6,13 +6,13 @@ export type CreateFormTicketType = '投诉' | '建议' | '商机' | '咨询';
 export type BusinessType = '学习机' | '翻录' | '智学网';
 
 /** 工单来源枚举（对齐 PRD 调研回访 / 渠道管理） */
-export type TicketSource = '热线电话' | 'IM在线' | '内投' | '外投' | '客户服务小程序';
+export type TicketSource = '热线电话' | 'IM在线' | '内投渠道' | '外投渠道' | '客户服务小程序';
 
 export const TICKET_SOURCE_OPTIONS: TicketSource[] = [
   '热线电话',
   'IM在线',
-  '内投',
-  '外投',
+  '内投渠道',
+  '外投渠道',
   '客户服务小程序',
 ];
 
@@ -112,13 +112,26 @@ export const COMPLAINT_TYPE_OPTIONS = ['服务投诉', '产品质量', '物流�
 export const COMPLAINT_PLATFORM_OPTIONS = [
   '市场监管12345平台',
   '市场监管12315平台',
-  '黑猫投诉',
-  '微博',
-  '其他平台',
+  '12315-消费者ODR平台',
+  '地方监管局',
+  '全国消协智慧315平台',
+  '工信部互联网投诉平台',
+  '舆情-公关监测',
+  '安徽省消费者权益保护委员会',
+  '黑猫消费者服务平台',
+  '其他',
 ];
+
+/** 外投投诉平台（工单来源属外投时选用；命中则处理页展示外投分支字段） */
+export const EXTERNAL_COMPLAINT_PLATFORMS = COMPLAINT_PLATFORM_OPTIONS;
+
+export function isExternalComplaintPlatform(platform?: string): boolean {
+  if (!platform) return false;
+  return (EXTERNAL_COMPLAINT_PLATFORMS as readonly string[]).includes(platform);
+}
 export const BUSINESS_LINE_OPTIONS = ['学习机业务线', '翻录业务线', '智学网业务线'];
 export const YES_NO_OPTIONS = ['是', '否'];
-/** 投诉专属 · 前提反馈 */
+/** 投诉专属 · 前期反馈 */
 export const PRIOR_FEEDBACK_OPTIONS = [
   '是-400',
   '是-线上店铺',
@@ -172,7 +185,7 @@ export function mapChannelToSource(channel?: Channel): TicketSource {
   if (!channel || channel === '电话') return '热线电话';
   if (channel === '在线客服') return 'IM在线';
   if (channel === '小程序' || channel === 'APP') return '客户服务小程序';
-  if (channel === '邮件') return '外投';
+  if (channel === '邮件') return '外投渠道';
   return '热线电话';
 }
 

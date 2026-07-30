@@ -1,7 +1,7 @@
 // 工单工作台类型与配色映射。配色值全部取自 iFLY-FlowOS-坐席视角.pen 画板 SJpgc 实测，
 // 业务规则对齐 PRD-02。
 
-import type { CreateFormTicketType } from '@/views/tickets/types/createTicket';
+import type { BusinessType, CreateFormTicketType, TicketSource } from '@/views/tickets/types/createTicket';
 
 export type TabKey = 'mine' | 'done' | 'pool' | 'cc' | 'review';
 /** 工单列表（全量库）视图 Tab */
@@ -180,9 +180,12 @@ export interface Ticket {
 
 /** 新建工单弹窗预填（子单 / reopen 场景从原单继承客户/产品/渠道等） */
 export interface CreateTicketPrefill {
-  mode?: 'normal' | 'child' | 'reopen';
+  /** escalate = 升级投诉升级建单（关原单 + 建更高阶投诉新单，《【815】关联投诉 PRD》） */
+  mode?: 'normal' | 'child' | 'reopen' | 'escalate';
   parentNo?: string;
   parentTitle?: string;
+  /** mode=escalate：目标投诉类型（人员投诉/业务投诉/外投） */
+  escalateTarget?: string;
   customerName?: string;
   customerPhone?: string;
   vip?: boolean;
@@ -195,6 +198,18 @@ export interface CreateTicketPrefill {
   formTicketType?: CreateFormTicketType;
   priority?: Priority;
   complaintType?: string;
+  /** 投诉平台（目标=外投时带入） */
+  complaintPlatform?: string;
+  /** 外部投诉编号（目标=外投时带入） */
+  complaintNo?: string;
+  /** 工单来源（不传则由渠道映射推导） */
+  ticketSource?: TicketSource;
+  businessType?: BusinessType | string;
+  businessLine?: string;
+  /** 问题分类三级（仅当能落在现有问题树上时才带入） */
+  problemL1?: string;
+  problemL2?: string;
+  problemL3?: string;
   desc?: string;
   expectTime?: string;
 }

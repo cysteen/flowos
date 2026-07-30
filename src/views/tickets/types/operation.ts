@@ -97,6 +97,8 @@ export interface ProcessFormDraft {
   serviceType: string;
   /** 问题解决结论（独立枚举，不随服务类型/方式级联） */
   conclusion: string;
+  /** 解决方案（结论=已解决：服务方案解决 时必选） */
+  serviceSolution: string;
   /** @deprecated 历史字段，新结论枚举不再使用 */
   concessionPlan: string;
   complaintCat1: string;
@@ -106,6 +108,10 @@ export interface ProcessFormDraft {
   complaintMark: string;
   complaintNote: string;
   complaintNoteAttachments: string[];
+  /** 外投分支 · 平台回复结果（自定义） */
+  platformReplyResult: string;
+  /** 外投分支 · 平台和解 */
+  platformReconcile: '' | '是' | '否';
   riskFlag: string;
   /** @deprecated 兼容旧逻辑；以 riskFlag === '有风险' 为准 */
   riskHasRisk: boolean;
@@ -173,7 +179,7 @@ export function visibleProcessTabs(ticketType: string, opts?: { feishuActive?: b
   });
 }
 
-export type SupplementChip = 'complaint' | 'risk' | 'appointment' | 'quality';
+export type SupplementChip = 'complaint' | 'risk' | 'appointment' | 'quality' | 'external';
 
 /** 建单不规范 · 不规范原因（一级） */
 export const QUALITY_ISSUE_L1_OPTIONS = [
@@ -243,6 +249,23 @@ export const RESOLUTION_CONCLUSION_OPTIONS = [
   '转销售渠道处理',
   '转售后网点处理',
   '需求待评估（仅学习机使用）',
+] as const;
+
+/** 触发「解决方案」枚举的结论 */
+export const SERVICE_SOLUTION_CONCLUSION = '已解决：服务方案解决';
+
+/** 解决方案（服务方案解决时） */
+export const SERVICE_SOLUTION_OPTIONS = [
+  '代金券',
+  '优惠券',
+  '积分补偿',
+  '赠品',
+  '部分退款',
+  '全额退款',
+  '会员延期',
+  '换货/换新',
+  '维修减免',
+  '其他',
 ] as const;
 
 /** 商机解决结论 */

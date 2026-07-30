@@ -6,15 +6,27 @@ import { PRIORITY_COLOR, softBg, type Priority } from '@/views/tickets/types/tic
 import OpSlaBar from './OpSlaBar.vue';
 import OpAftersaleLinkCard from './OpAftersaleLinkCard.vue';
 import { isAftersaleSettled } from '../../composables/opActions';
+import { buildEscalateVerdict } from '../../composables/complaintEscalation';
 
 const props = defineProps<{
   detail: TicketDetailMeta;
   ticketNo: string;
 }>();
 
-/** 委派中：关联投诉/关联售后/取消工单 同属转出或终结类，一并锁定 */
+/** 委派中：升级投诉/关联售后/取消工单 同属转出或终结类，一并锁定 */
 const delegateLocked = computed(() => !!props.detail.delegateInfo);
 const DELEGATE_LOCK_TIP = '工单委派中，协办完成后可操作';
+
+/**
+ * 升级投诉入口：全类型展示，可用性按投诉阶层判定（《【815】关联投诉 PRD》§3.2/§4.2）——
+ * 非投诉、低阶投诉（人员/业务）可升级；外投为终态，入口置灰并引导走「新建补充」。
+ */
+const escalateVerdict = computed(() => buildEscalateVerdict(props.detail));
+const escalateDisabled = computed(() => delegateLocked.value || !escalateVerdict.value.entryEnabled);
+const escalateTip = computed(() => {
+  if (delegateLocked.value) return DELEGATE_LOCK_TIP;
+  return escalateVerdict.value.entryTip;
+});
 
 /** 已有 1:1 关联售后单 → 「关联售后」封口，hover 出卡片跳售后系统（D2 改写） */
 const linkedAftersale = computed(() => {
@@ -78,6 +90,17 @@ function priorityHex(p: string): string {
       <OpSlaBar :detail="detail" />
       <div class="oh-actions">
         <!--
+          升级投诉：原单升级为更高阶投诉（关原单 + 同步信息建新单 + 双向关联）。
+          外投为投诉终态，入口置灰并提示改走「新建补充」
+        -->
+        <button
+          type="button"
+          class="action-btn"
+          :disabled="escalateDisabled"
+          :title="escalateTip"
+          @click="emit('action', '升级投诉')"
+        >升级投诉</button>
+        <!--
           已有 1:1 关联售后单时「关联售后」置灰（不建第二张单），
           改为 hover 出售后单卡片：状态可见、工单地址可点跳售后系统操作
         -->
@@ -105,14 +128,6 @@ function priorityHex(p: string): string {
             >关联售后</button>
           </span>
         </a-popover>
-        <button
-          v-else
-          type="button"
-          class="action-btn"
-          :disabled="delegateLocked"
-          :title="delegateLocked ? DELEGATE_LOCK_TIP : undefined"
-          @click="emit('action', '关联投诉')"
-        >关联投诉</button>
         <button type="button" class="action-btn" @click="emit('action', '新建补充')">新建补充</button>
         <button type="button" class="action-btn" @click="emit('action', '催单')">催单</button>
         <button

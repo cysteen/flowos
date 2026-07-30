@@ -57,25 +57,29 @@ function onCat1Change(v: string | number | undefined) {
       </a-radio-group>
     </div>
     <div v-if="!isStandard" class="quality-cascade">
-      <div class="field cascade-field">
-        <label class="field-label-sm">不规范原因</label>
+      <div class="field cascade-field" :class="{ 'is-missing': !issueCat1 }">
+        <label class="field-label-sm"><span class="req">*</span>不规范原因</label>
         <FormSelect
           class="quality-select"
+          :class="{ 'ctrl-missing': !issueCat1 }"
           :value="issueCat1 || undefined"
           :options="l1Options"
-          placeholder="请选择"
+          placeholder="请选择（必填）"
           @update:value="onCat1Change"
         />
+        <p v-if="!issueCat1" class="field-err">请选择不规范原因</p>
       </div>
-      <div class="field cascade-field">
-        <label class="field-label-sm">不规范分类</label>
+      <div class="field cascade-field" :class="{ 'is-missing': !issueCat2 }">
+        <label class="field-label-sm"><span class="req">*</span>不规范分类</label>
         <FormSelect
           class="quality-select"
+          :class="{ 'ctrl-missing': !issueCat2 }"
           :value="issueCat2 || undefined"
           :options="l2Options"
-          placeholder="请选择"
+          placeholder="请选择（必填）"
           @update:value="(v) => emit('update:issueCat2', String(v ?? ''))"
         />
+        <p v-if="!issueCat2" class="field-err">请选择不规范分类</p>
       </div>
     </div>
   </div>
@@ -101,6 +105,26 @@ function onCat1Change(v: string | number | undefined) {
   font-size: 11px;
   font-weight: 500;
   color: #6b7280;
+}
+.req {
+  color: #dc2626;
+  margin-right: 3px;
+  font-weight: 800;
+  font-size: 13px;
+}
+.field-err {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #dc2626;
+  line-height: 1.3;
+}
+.field.is-missing label,
+.field.is-missing .field-label-sm { color: #b91c1c; }
+.ctrl-missing :deep(.ant-select-selector) {
+  border-color: #f87171 !important;
+  background: #fff1f2 !important;
+  box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.15);
 }
 .inline-row {
   flex-direction: row;

@@ -4,6 +4,7 @@ import type { CreateTicketPrefill, Ticket } from '@/views/tickets/types/ticket';
 import {
   type CreateTicketFormState,
   type CustomerInfo,
+  BUSINESS_TYPES,
   MOCK_CUSTOMER,
   PROBLEM_TREE,
   PRODUCT_NAMES,
@@ -115,7 +116,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   function applyPrefill(p: CreateTicketPrefill) {
     reset();
     form.ticketType = p.formTicketType ?? (p.mode === 'child' ? '咨询' : '投诉');
-    form.ticketSource = mapChannelToSource(p.channel);
+    form.ticketSource = p.ticketSource ?? mapChannelToSource(p.channel);
     form.customerQuery = p.customerName
       ? `${p.customerName}${p.customerPhone ? ` · ${p.customerPhone}` : ''}`
       : '';
@@ -134,6 +135,19 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     form.description = p.desc ?? '';
     form.priority = p.priority ?? 'P1';
     form.expectTime = p.expectTime ?? '今日 18:00';
+    // 升级投诉等场景：原单信息一次性同步（只覆盖有值项，其余留默认由坐席补全）
+    if (p.businessType && (BUSINESS_TYPES as string[]).includes(p.businessType)) {
+      form.businessType = p.businessType as CreateTicketFormState['businessType'];
+    }
+    if (p.businessLine) form.businessLine = p.businessLine;
+    if (p.problemL1) {
+      form.problemL1 = p.problemL1;
+      form.problemL2 = p.problemL2 ?? Object.keys(PROBLEM_TREE[p.problemL1] ?? {})[0] ?? '';
+      form.problemL3 = p.problemL3 ?? PROBLEM_TREE[p.problemL1]?.[form.problemL2]?.[0] ?? '';
+    }
+    if (p.complaintType) form.complaintType = p.complaintType;
+    if (p.complaintPlatform) form.complaintPlatform = p.complaintPlatform;
+    if (p.complaintNo) form.complaintNo = p.complaintNo;
   }
 
   function onTitleInput() {

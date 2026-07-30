@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import {
-  FileTextOutlined, CheckCircleOutlined, AppstoreOutlined, SoundOutlined,
+  FileTextOutlined, CheckCircleOutlined, AppstoreOutlined,
   CheckOutlined,
 } from '@ant-design/icons-vue';
 import OpCollapsibleSection from './OpCollapsibleSection.vue';
@@ -13,10 +13,13 @@ import type {
 } from '@/views/tickets/types/operation';
 import {
   RESOLUTION_CONCLUSION_OPTIONS,
+  SERVICE_SOLUTION_CONCLUSION,
+  SERVICE_SOLUTION_OPTIONS,
   SERVICE_TYPE_OPTIONS,
   SERVICE_TYPE_TO_METHODS,
   LEAD_STAGE_OPTIONS,
 } from '@/views/tickets/types/operation';
+import { isExternalComplaintPlatform } from '@/views/tickets/types/createTicket';
 
 const props = defineProps<{
   form: ProcessFormDraft;
@@ -26,7 +29,7 @@ const props = defineProps<{
   activeChip: SupplementChip;
   filledSupplementCount: number;
   showExternal: boolean;
-  /** 投诉平台（控制投诉标记扩展选项） */
+  /** 投诉平台（控制投诉标记扩展选项 / 外投分支显隐） */
   complaintPlatform?: string;
 }>();
 
@@ -40,13 +43,22 @@ const isComplaint = computed(() => props.ticketType === '投诉');
 const isConsult = computed(() => props.ticketType === '咨询');
 const isSuggest = computed(() => props.ticketType === '建议');
 const isLead = computed(() => props.ticketType === '商机');
+/** 外投：来源标记或投诉平台命中外投渠道列表 */
+const isExternal = computed(() =>
+  props.showExternal || isExternalComplaintPlatform(props.complaintPlatform),
+);
 
 function patch(part: Partial<ProcessFormDraft>) {
   emit('update:form', { ...props.form, ...part });
 }
 
 function onConclusionChange(v: string) {
-  patch({ conclusion: v ?? '' });
+  const next = v ?? '';
+  patch({
+    conclusion: next,
+    // 切离「服务方案解决」时清空解决方案
+    serviceSolution: next === SERVICE_SOLUTION_CONCLUSION ? props.form.serviceSolution : '',
+  });
 }
 
 function onServiceTypeChange(type: string) {
@@ -62,24 +74,27 @@ function onServiceMethodChange(method: string) {
 }
 
 const conclusionOptions = RESOLUTION_CONCLUSION_OPTIONS.map((v) => ({ label: v, value: v }));
+const serviceSolutionOptions = SERVICE_SOLUTION_OPTIONS.map((v) => ({ label: v, value: v }));
 const serviceTypeOptions = SERVICE_TYPE_OPTIONS.map((v) => ({ label: v, value: v }));
+const showServiceSolution = computed(
+  () => props.form.conclusion === SERVICE_SOLUTION_CONCLUSION,
+);
 const serviceMethodOptions = computed(() => {
   const methods = SERVICE_TYPE_TO_METHODS[props.form.serviceType] ?? [];
   return methods.map((v) => ({ label: v, value: v }));
 });
 // 补充处理 chip：投诉=投诉分类/风险/建单规范；咨询/建议/商机=建单规范。
 // 预约已迁出为独立「预约」Tab（处理履历之后），不再作为补充处理 chip。
-const supplementChips = computed<{ key: SupplementChip; label: string }[]>(() =>
-  isComplaint.value
-    ? [
-        { key: 'complaint', label: '投诉分类' },
-        { key: 'risk', label: '风险' },
-        { key: 'quality', label: '建单规范' },
-      ]
-    : [
-        { key: 'quality', label: '建单规范' },
-      ],
-);
+const supplementChips = computed<{ key: SupplementChip; label: string }[]>(() => {
+  if (!isComplaint.value) return [{ key: 'quality', label: '建单规范' }];
+  const chips: { key: SupplementChip; label: string }[] = [
+    { key: 'complaint', label: '投诉分类' },
+    { key: 'risk', label: '风险' },
+    { key: 'quality', label: '建单规范' },
+  ];
+  if (isExternal.value) chips.splice(1, 0, { key: 'external', label: '外投' });
+  return chips;
+});
 
 /** activeChip 不在当前类型 chip 集合时（如全局默认 complaint 用于咨询）兜底到首个 chip */
 const effectiveChip = computed<SupplementChip>(() =>
@@ -91,18 +106,37 @@ const effectiveChip = computed<SupplementChip>(() =>
 function isChipFilled(key: SupplementChip): boolean {
   const f = props.form;
   switch (key) {
-    case 'complaint': return !!(f.complaintMark && f.complaintCat1 && f.complaintNote);
-    case 'risk': return f.riskFlag === '有风险' ? !!f.riskLevel : !!f.riskFlag;
+    case 'complaint': return !!(f.complaintMark && f.complaintCat1 && f.complaintNote.trim());
+    case 'external': return !!(f.platformReplyResult.trim() && f.platformReconcile);
+    case 'risk': {
+      if (f.riskFlag === '有风险') return !!(f.riskLevel && f.riskDescription.trim());
+      if (f.riskFlag === '疑似风险') return !!f.riskDescription.trim();
+      return true;
+    }
     case 'appointment': return f.appointmentNeeded && f.appointmentRecords.some((r) => r.scheduledAt);
-    case 'quality': return !f.qualityIsStandard && !!f.qualityIssueCat1 && !!f.qualityIssueCat2;
+    case 'quality': return f.qualityIsStandard || !!(f.qualityIssueCat1 && f.qualityIssueCat2);
     default: return false;
   }
 }
+
+/** 可见 chip 中必填未齐的数量（用于标题强提示） */
+const incompleteChipCount = computed(
+  () => supplementChips.value.filter((c) => !isChipFilled(c.key)).length,
+);
+const supplementBadge = computed(() =>
+  incompleteChipCount.value > 0
+    ? `待填 ${incompleteChipCount.value} 项`
+    : '已填齐',
+);
+const supplementBadgeVariant = computed(() =>
+  (incompleteChipCount.value > 0 ? 'required' : 'count') as 'required' | 'count',
+);
 
 function chipActiveClass(key: SupplementChip): string {
   if (effectiveChip.value !== key) return '';
   const map: Record<SupplementChip, string> = {
     complaint: 'active',
+    external: 'active-external',
     risk: 'active-risk',
     appointment: 'active-appointment',
     quality: 'active-quality',
@@ -178,6 +212,18 @@ function chipActiveClass(key: SupplementChip): string {
           />
         </div>
       </div>
+      <div v-if="showServiceSolution" class="field-row field-row--service field-row--solution">
+        <div class="field inline">
+          <label><span class="req">*</span>解决方案</label>
+          <FormSelect
+            :value="form.serviceSolution"
+            :options="serviceSolutionOptions"
+            placeholder="请选择解决方案"
+            style="width: 100%"
+            @update:value="(v) => patch({ serviceSolution: String(v ?? '') })"
+          />
+        </div>
+      </div>
     </OpCollapsibleSection>
 
     <!-- ===== 建议：服务与结论(是否采纳) ===== -->
@@ -240,8 +286,8 @@ function chipActiveClass(key: SupplementChip): string {
     <OpCollapsibleSection
       title="补充处理"
       :icon="AppstoreOutlined"
-      :badge="`已填 ${filledSupplementCount} 项`"
-      badge-variant="count"
+      :badge="supplementBadge"
+      :badge-variant="supplementBadgeVariant"
       split-head
       :expanded="expandedSections.supplement"
       @toggle="emit('toggleSection', 'supplement')"
@@ -252,51 +298,34 @@ function chipActiveClass(key: SupplementChip): string {
             v-for="c in supplementChips"
             :key="c.key"
             class="chip"
-            :class="[chipActiveClass(c.key), { filled: isChipFilled(c.key) }]"
+            :class="[
+              chipActiveClass(c.key),
+              {
+                filled: isChipFilled(c.key),
+                'need-fill': !isChipFilled(c.key),
+              },
+            ]"
             @click.stop="emit('selectChip', c.key)"
           >
-            <span v-if="c.key === 'complaint' && effectiveChip === 'complaint'" class="chip-dot" />
+            <span v-if="!isChipFilled(c.key)" class="chip-need-dot" />
             {{ c.label }}
-            <CheckOutlined v-if="isChipFilled(c.key)" class="chip-check" />
+            <span v-if="!isChipFilled(c.key)" class="chip-need-tag">待填</span>
+            <CheckOutlined v-else class="chip-check" />
           </button>
         </div>
       </template>
+
+      <div v-if="incompleteChipCount > 0" class="supp-req-banner">
+        红色「待填」标签为必填项未齐，请补全后再结案
+      </div>
 
       <OpSupplementChipPanels
         :active-chip="effectiveChip"
         :form="form"
         :complaint-platform="complaintPlatform"
+        :show-external="isExternal"
         @update:form="emit('update:form', $event)"
       />
-    </OpCollapsibleSection>
-
-    <!-- ===== 投诉：外投处理 ===== -->
-    <OpCollapsibleSection
-      v-if="isComplaint && showExternal"
-      title="外投处理"
-      :icon="SoundOutlined"
-      badge="来源=外投时显示"
-      badge-variant="warn"
-      :expanded="expandedSections.external"
-      @toggle="emit('toggleSection', 'external')"
-    >
-      <div class="section-subhead">
-        <span class="sub-title">平台回复与和解</span>
-        <span class="sub-hint">来源=外投时显示</span>
-      </div>
-      <div class="field-row">
-        <div class="field inline">
-          <label>平台回复结果</label>
-          <div class="select-like">已回复客户 <span class="sel-arrow">▾</span></div>
-        </div>
-        <div class="field inline">
-          <label>平台和解</label>
-          <a-radio-group value="yes">
-            <a-radio value="yes">是</a-radio>
-            <a-radio value="no">否</a-radio>
-          </a-radio-group>
-        </div>
-      </div>
     </OpCollapsibleSection>
   </div>
 </template>
@@ -311,9 +340,12 @@ function chipActiveClass(key: SupplementChip): string {
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field.inline { flex: 1; min-width: 0; }
 .field label { font-size: 12px; font-weight: 600; color: #374151; }
+.field label .req { color: #ef4444; margin-right: 2px; }
 .field-row { display: flex; gap: 8px; }
 .field-row .field.inline { flex: 1 1 0; min-width: 0; }
 .field-row--service { align-items: flex-start; }
+.field-row--solution { margin-top: 8px; }
+.field-row--solution .field.inline { flex: 0 1 33.333%; max-width: 33.333%; }
 .field-row :deep(.ant-select-selector) {
   height: 32px;
   min-height: 32px;
@@ -349,8 +381,42 @@ function chipActiveClass(key: SupplementChip): string {
   border: 1px solid #e5e7eb; background: #f9fafb; color: #6b7280; cursor: pointer;
   white-space: nowrap; flex: none;
 }
+.chip.need-fill {
+  border-color: #fca5a5;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-weight: 600;
+  border-width: 1.5px;
+}
+.chip.need-fill.active,
+.chip.need-fill.active-external,
+.chip.need-fill.active-risk,
+.chip.need-fill.active-appointment,
+.chip.need-fill.active-quality {
+  border-color: #ef4444;
+  background: #fee2e2;
+  color: #991b1b;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.18);
+}
+.chip-need-dot {
+  width: 6px; height: 6px; border-radius: 3px; background: #ef4444; flex: none;
+}
+.chip-need-tag {
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 3px;
+  color: #fff;
+  background: #ef4444;
+  flex: none;
+}
 .chip.active {
   border-color: #1a6fff; background: #eff6ff; color: #1a6fff;
+  font-weight: 600; border-width: 1.5px;
+}
+.chip.active-external {
+  border-color: #f59e0b; background: #fffbeb; color: #b45309;
   font-weight: 600; border-width: 1.5px;
 }
 .chip.active-risk {
@@ -366,5 +432,15 @@ function chipActiveClass(key: SupplementChip): string {
   font-weight: 600; border-width: 1.5px;
 }
 .chip-dot { width: 6px; height: 6px; border-radius: 3px; background: #f59e0b; flex: none; }
-.chip-check { font-size: 11px; flex: none; }
+.chip-check { font-size: 11px; flex: none; color: #10b981; }
+.supp-req-banner {
+  margin: -2px 0 2px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #991b1b;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+}
 </style>

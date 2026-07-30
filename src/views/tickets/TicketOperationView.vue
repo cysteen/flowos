@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onActivated, onBeforeUnmount, onDeactivated, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { message } from 'ant-design-vue';
+import { message, Modal } from 'ant-design-vue';
 import { useWorkspaceTabsStore, resolveTicketTabTitle } from '@/stores/workspaceTabs';
 import { useCtiStore } from '@/stores/cti';
 import { useUserStore } from '@/stores/user';
@@ -11,6 +11,7 @@ import OpStatDetailModal from './components/operation/OpStatDetailModal.vue';
 import OpSupplementModal from './components/operation/OpSupplementModal.vue';
 import OpDunningModal from './components/operation/OpDunningModal.vue';
 import OpCancelModal from './components/operation/OpCancelModal.vue';
+import OpEscalateComplaintModal from './components/operation/OpEscalateComplaintModal.vue';
 import OpSmsModal from './components/operation/OpSmsModal.vue';
 import OpEmailModal from './components/operation/OpEmailModal.vue';
 import TicketEventToastStack from './components/operation/TicketEventToastStack.vue';
@@ -28,6 +29,7 @@ import { formatTicketRecordWho, MOCK_FIRST_LINE_AGENTS } from './utils/ticketRec
 import { mergeDraftIntoLatestHandling } from './utils/ticketOverview';
 import { TICKETS } from '@/mock/tickets';
 import { buildChildTicketPrefill, buildReopenTicketPrefill } from './composables/childTicketPrefill';
+import { buildEscalatePrefill, isTicketTerminated, type EscalateInput } from './composables/complaintEscalation';
 import type { CreateTicketPrefill, Ticket } from './types/ticket';
 import type { ProcessFormDraft, InsightAction, InsightModalKey } from './types/operation';
 import type { ProcessTabKey } from './types/operation';
@@ -38,7 +40,7 @@ const route = useRoute();
 const router = useRouter();
 const {
   detail: d, timeline, opState, suspendInfo, draftSavedAt,
-  dispatch, confirmWithdraw, addChildTicket, addReopenTicket,
+  dispatch, confirmWithdraw, addChildTicket, addReopenTicket, addEscalatedComplaint,
 } = useTicketOperation();
 const {
   form, activeChip, expandedSections, filledSupplementCount,
@@ -201,10 +203,55 @@ function openReopenCreate() {
   createOpen.value = true;
 }
 
+// —— 升级投诉：判定弹窗 → 建投诉新单 → 关原单 + 双向关联（《【815】关联投诉 PRD》）——
+const escalateModalOpen = ref(false);
+const escalateInput = ref<EscalateInput | null>(null);
+
+function onEscalateSubmit(payload: EscalateInput) {
+  escalateInput.value = payload;
+  createPrefill.value = buildEscalatePrefill(d.value, payload);
+  createOpen.value = true;
+}
+
 function onTicketCreated(ticket: Ticket, processAfter?: boolean) {
   if (createPrefill.value?.mode === 'child') addChildTicket(ticket);
   else if (createPrefill.value?.mode === 'reopen') addReopenTicket(ticket);
+  else if (createPrefill.value?.mode === 'escalate' && escalateInput.value) {
+    const { target, note } = escalateInput.value;
+    addEscalatedComplaint(ticket, target, note);
+    syncEscalatedRelatedCard(ticket, target);
+    dispatch({ type: '升级投诉', data: { target, newNo: ticket.no, note } });
+    escalateInput.value = null;
+    if (!processAfter) processTabsRef.value?.switchTab('related');
+  }
   if (processAfter) router.push(`/tickets/${ticket.no}`);
+}
+
+/** 升级生成的新投诉单同步进「关联单」列表（客服侧本系统单，可站内打开） */
+function syncEscalatedRelatedCard(ticket: Ticket, target: string) {
+  const cards = tabData.value.relatedTickets;
+  if (cards.some((c) => c.no === ticket.no)) return;
+  cards.unshift({
+    no: ticket.no,
+    title: ticket.title,
+    status: '待受理',
+    statusColor: '#F59E0B',
+    type: target,
+    typeColor: '#EF4444',
+    createdAt: nowFullText(),
+    createdAtFull: nowFullText(),
+    builder: user.name || '当前坐席',
+    demand: d.value.demand,
+    processRecords: [
+      { who: user.name || '当前坐席', when: nowFullText(), content: `由原单 ${d.value.no} 升级投诉生成` },
+    ],
+  });
+}
+
+function nowFullText(): string {
+  const dt = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())} ${p(dt.getHours())}:${p(dt.getMinutes())}`;
 }
 
 /** 升级到飞书项目入口：所有工单均开放（不再限消费者BG） */
@@ -243,6 +290,7 @@ const PROCESS_FIELDS: { key: keyof ProcessFormDraft; label: string }[] = [
   { key: 'serviceType', label: '服务类型' },
   { key: 'serviceMethod', label: '服务方式' },
   { key: 'conclusion', label: '问题解决结论' },
+  { key: 'serviceSolution', label: '解决方案' },
 ];
 
 /** 处理表单快照（含各字段值 + 附件数），作为变更 diff 的基线 */
@@ -580,18 +628,37 @@ function onCancelSubmit(payload: { reason: string; remark: string }) {
   dispatch({ type: '取消工单', reason: formatCancelReason(payload.reason, payload.remark) });
 }
 
+/**
+ * 原单已终态（含升级投诉后的关闭）时，补充/催单不能直接落在原单上——
+ * 按《【815】关联投诉 PRD》§5.2：基于原单建新单（新单号）+ 新单关联原单，再在新单上补充/催单。
+ * @returns true = 已接管本次点击（走建新单），调用方不再打开原单弹窗
+ */
+function confirmCarryOnNewTicket(kind: '补充' | '催单'): boolean {
+  if (!isTicketTerminated(d.value.status)) return false;
+  Modal.confirm({
+    title: `原单已${d.value.status}，无法直接${kind}`,
+    content: `将基于原单 ${d.value.no} 新建工单（新单号）并关联原单，${kind}信息落在新单上。是否继续？`,
+    okText: '基于原单建新单',
+    cancelText: '取消',
+    onOk: () => openReopenCreate(),
+  });
+  return true;
+}
+
 function onHeaderAction(name: string) {
   switch (name) {
-    case '关联投诉': // 非诉工单：关联投诉，关原单建 B 投诉单（详见《【815】关联投诉 PRD》）
-      openChildCreate();
+    case '升级投诉': // 原单升级为更高阶投诉：先判定阶层/目标，再关原单建新单（《【815】关联投诉 PRD》）
+      escalateModalOpen.value = true;
       break;
     case '关联售后': // 投诉工单：打开售后建单弹窗
       actionBarRef.value?.openAftersale();
       break;
     case '新建补充':
+      if (confirmCarryOnNewTicket('补充')) return;
       supplementModalOpen.value = true;
       break;
     case '催单':
+      if (confirmCarryOnNewTicket('催单')) return;
       dunningModalOpen.value = true;
       break;
     case '取消工单':
@@ -751,6 +818,12 @@ watch(
     <OpCancelModal
       v-model:open="cancelModalOpen"
       @submit="onCancelSubmit"
+    />
+
+    <OpEscalateComplaintModal
+      v-model:open="escalateModalOpen"
+      :detail="d"
+      @submit="onEscalateSubmit"
     />
 
     <OpSmsModal

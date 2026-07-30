@@ -60,7 +60,7 @@ defineProps<{ detail: TicketDetailMeta }>();
         </div>
       </div>
       <div class="meta-row">
-        <div class="kv"><span class="k">前提反馈</span><span class="v">{{ detail.complaint.priorFeedback }}</span></div>
+        <div class="kv"><span class="k">前期反馈</span><span class="v">{{ detail.complaint.priorFeedback }}</span></div>
         <div class="kv"><span class="k">服务回溯</span><span class="v">{{ detail.complaint.serviceReview }}</span></div>
       </div>
     </template>

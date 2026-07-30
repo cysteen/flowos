@@ -14,7 +14,7 @@ import {
   ticketProductIssue,
 } from '@/views/tickets/utils/ticketOverview';
 import {
-  applyOpAction, mapUserRole, pushEntry,
+  applyOpAction, mapUserRole, nowWhen, pushEntry,
   type OpActionPayload, type SuspendInfo, type TicketOpState,
 } from './opActions';
 
@@ -254,6 +254,42 @@ export function useTicketOperation() {
     });
   }
 
+  /**
+   * 升级投诉：把升级生成的新投诉单登记为关联单 + 写「关联单」履历（PRD §4.3/§5.1）。
+   * 原单的关闭与状态流转走 dispatch({ type: '升级投诉' })。
+   */
+  function addEscalatedComplaint(ticket: Ticket, target: string, note: string) {
+    const operator = user.name;
+    const role = mapUserRole(user.roleKey);
+    const now = new Date();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    detail.value.linkedRecords.unshift({
+      no: ticket.no,
+      title: ticket.title,
+      tag: '升级投诉',
+      meta: `${month}-${day} ${operator} 升级为${target}`,
+    });
+    pushEntry(timeline.value, {
+      category: 'relate',
+      action: 'relate',
+      who: operator,
+      role,
+      how: '升级投诉',
+      what: `原单升级为${target}，已生成新投诉单并双向关联。升级原因：${note}`,
+      relatedTicket: {
+        no: ticket.no,
+        title: ticket.title,
+        type: '投诉',
+        typeColor: '#EF4444',
+        status: '待受理',
+        statusColor: '#F59E0B',
+        builder: operator,
+        createdAt: nowWhen(),
+      },
+    });
+  }
+
   function addReopenTicket(ticket: Ticket) {
     const operator = user.name;
     const role = mapUserRole(user.roleKey);
@@ -278,6 +314,6 @@ export function useTicketOperation() {
 
   return {
     detail, timeline, opState, suspendInfo, draftSavedAt,
-    dispatch, confirmWithdraw, addChildTicket, addReopenTicket,
+    dispatch, confirmWithdraw, addChildTicket, addReopenTicket, addEscalatedComplaint,
   };
 }

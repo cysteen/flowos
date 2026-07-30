@@ -23,6 +23,8 @@ const props = defineProps<{
   form: ProcessFormDraft;
   /** 建单投诉平台，用于控制「有责/无责」类标记显隐 */
   complaintPlatform?: string;
+  /** 是否展示外投分支字段 */
+  showExternal?: boolean;
 }>();
 
 const emit = defineEmits<{ 'update:form': [form: ProcessFormDraft] }>();
@@ -60,13 +62,14 @@ watch(
 );
 
 function onRiskFlagChange(flag: RiskFlag) {
+  const needsDesc = flag === '有风险' || flag === '疑似风险';
   const hasRisk = flag === '有风险';
   update({
     riskFlag: flag,
     riskHasRisk: hasRisk,
     riskLevel: hasRisk ? props.form.riskLevel : '',
-    riskDescription: hasRisk ? props.form.riskDescription : '',
-    riskDescriptionAttachments: hasRisk ? props.form.riskDescriptionAttachments : [],
+    riskDescription: needsDesc ? props.form.riskDescription : '',
+    riskDescriptionAttachments: needsDesc ? props.form.riskDescriptionAttachments : [],
   });
 }
 
@@ -98,35 +101,49 @@ function onQualityCat2Change(v: string | number | undefined) {
 function onComplaintCat2Change(v: string | number | undefined) {
   update({ complaintCat2: String(v ?? ''), complaintCat3: '' });
 }
+
+const missComplaintMark = computed(() => !props.form.complaintMark);
+const missComplaintCat1 = computed(() => !props.form.complaintCat1);
+const missComplaintNote = computed(() => !props.form.complaintNote.trim());
+const missPlatformReply = computed(() => !props.form.platformReplyResult.trim());
+const missPlatformReconcile = computed(() => !props.form.platformReconcile);
+const missRiskLevel = computed(
+  () => props.form.riskFlag === '有风险' && !props.form.riskLevel,
+);
+const missRiskDesc = computed(
+  () =>
+    (props.form.riskFlag === '疑似风险' || props.form.riskFlag === '有风险')
+    && !props.form.riskDescription.trim(),
+);
 </script>
 
 <template>
   <!-- 投诉分类 -->
   <div v-if="activeChip === 'complaint'" class="chip-panel">
-    <div class="section-subhead">
-      <span class="sub-title">投诉分类 · 确认/修正</span>
-      <span class="sub-hint">侧栏为建单摘要，此处可编辑</span>
-    </div>
     <div class="cat-grid cat-grid-4">
-      <div class="field">
-        <label class="field-label-sm">投诉标记</label>
+      <div class="field" :class="{ 'is-missing': missComplaintMark }">
+        <label class="field-label-sm"><span class="req">*</span>投诉标记</label>
         <FormSelect
           class="cat-select"
+          :class="{ 'ctrl-missing': missComplaintMark }"
           :value="form.complaintMark || undefined"
           :options="complaintMarkOpts"
-          placeholder="请选择"
+          placeholder="请选择（必填）"
           @update:value="onComplaintMarkChange"
         />
+        <p v-if="missComplaintMark" class="field-err">请选择投诉标记</p>
       </div>
-      <div class="field">
-        <label class="field-label-sm">分类一</label>
+      <div class="field" :class="{ 'is-missing': missComplaintCat1 }">
+        <label class="field-label-sm"><span class="req">*</span>分类一</label>
         <FormSelect
           class="cat-select"
+          :class="{ 'ctrl-missing': missComplaintCat1 }"
           :value="form.complaintCat1 || undefined"
           :options="complaintL1Options"
-          placeholder="请选择"
+          placeholder="请选择（必填）"
           @update:value="onComplaintCat1Change"
         />
+        <p v-if="missComplaintCat1" class="field-err">请选择分类一</p>
       </div>
       <div class="field">
         <label class="field-label-sm">分类二</label>
@@ -151,15 +168,46 @@ function onComplaintCat2Change(v: string | number | undefined) {
         />
       </div>
     </div>
-    <div class="field">
-      <label>投诉备注</label>
+    <div class="field" :class="{ 'is-missing': missComplaintNote }">
+      <label><span class="req">*</span>投诉备注</label>
       <OpTextareaAttach
+        class="attach-ctrl"
+        :class="{ 'ctrl-missing': missComplaintNote }"
         :model-value="form.complaintNote"
         :attachments="form.complaintNoteAttachments"
         :min-input-height="40"
         @update:model-value="(v) => update({ complaintNote: v })"
         @update:attachments="(v) => update({ complaintNoteAttachments: v })"
       />
+      <p v-if="missComplaintNote" class="field-err">请填写投诉备注</p>
+    </div>
+  </div>
+
+  <!-- 外投分支：仅外投投诉平台显示 -->
+  <div v-else-if="activeChip === 'external' && showExternal" class="chip-panel panel-external">
+    <div class="field" :class="{ 'is-missing': missPlatformReply }">
+      <label><span class="req">*</span>平台回复结果（自定义）</label>
+      <a-textarea
+        :value="form.platformReplyResult"
+        :rows="3"
+        :status="missPlatformReply ? 'error' : undefined"
+        placeholder="填写对外投平台的回复结果（必填）"
+        @update:value="(v: string) => update({ platformReplyResult: v ?? '' })"
+      />
+      <p v-if="missPlatformReply" class="field-err">请填写平台回复结果</p>
+    </div>
+    <div class="field inline-row" :class="{ 'is-missing': missPlatformReconcile }">
+      <label><span class="req">*</span>平台和解</label>
+      <a-radio-group
+        :value="form.platformReconcile || undefined"
+        class="radio-row"
+        :class="{ 'radio-missing': missPlatformReconcile }"
+        @update:value="(v: '是' | '否') => update({ platformReconcile: v })"
+      >
+        <a-radio value="是">是</a-radio>
+        <a-radio value="否">否</a-radio>
+      </a-radio-group>
+      <p v-if="missPlatformReconcile" class="field-err inline-err">请选择是否和解</p>
     </div>
   </div>
 
@@ -175,15 +223,32 @@ function onComplaintCat2Change(v: string | number | undefined) {
         <a-radio v-for="opt in RISK_FLAG_OPTIONS" :key="opt" :value="opt">{{ opt }}</a-radio>
       </a-radio-group>
       <template v-if="form.riskFlag === '有风险'">
-        <label class="field-label-sm risk-level-label">风险等级</label>
+        <label class="field-label-sm risk-level-label"><span class="req">*</span>风险等级</label>
         <FormSelect
           class="risk-level-select"
+          :class="{ 'ctrl-missing': missRiskLevel }"
           :value="form.riskLevel || undefined"
           :options="riskLevelOptions"
-          placeholder="请选择"
+          placeholder="请选择（必填）"
           @update:value="(v) => update({ riskLevel: String(v ?? '') })"
         />
       </template>
+    </div>
+    <p v-if="missRiskLevel" class="field-err">请选择风险等级</p>
+    <div
+      v-if="form.riskFlag === '疑似风险' || form.riskFlag === '有风险'"
+      class="field"
+      :class="{ 'is-missing': missRiskDesc }"
+    >
+      <label><span class="req">*</span>风险描述</label>
+      <a-textarea
+        :value="form.riskDescription"
+        :rows="3"
+        :status="missRiskDesc ? 'error' : undefined"
+        placeholder="描述风险点、影响范围与建议处置…（必填）"
+        @update:value="(v: string) => update({ riskDescription: v ?? '' })"
+      />
+      <p v-if="missRiskDesc" class="field-err">请填写风险描述</p>
     </div>
   </div>
 
@@ -206,11 +271,6 @@ function onComplaintCat2Change(v: string | number | undefined) {
 
 <style scoped>
 .chip-panel { display: flex; flex-direction: column; gap: 12px; }
-.section-subhead {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-}
-.sub-title { font-size: 12px; font-weight: 600; color: #111827; }
-.sub-hint { font-size: 11px; color: #9ca3af; }
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field label { font-size: 12px; font-weight: 600; color: #374151; }
 .field-label-sm { font-size: 11px; font-weight: 500; color: #6b7280; }
@@ -237,8 +297,37 @@ function onComplaintCat2Change(v: string | number | undefined) {
   .cat-grid-4 { grid-template-columns: 1fr; }
 }
 
+.req {
+  color: #dc2626;
+  margin-right: 3px;
+  font-weight: 800;
+  font-size: 13px;
+}
+.field-err {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #dc2626;
+  line-height: 1.3;
+}
+.field-err.inline-err { margin-left: 0; }
+.field.is-missing label { color: #b91c1c; }
+.ctrl-missing :deep(.ant-select-selector),
+.attach-ctrl.ctrl-missing :deep(textarea),
+.attach-ctrl.ctrl-missing :deep(.ant-input) {
+  border-color: #f87171 !important;
+  background: #fff1f2 !important;
+  box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.15);
+}
+.radio-missing {
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px dashed #f87171;
+  background: #fff1f2;
+}
 .panel-neutral,
-.panel-quality {
+.panel-quality,
+.panel-external {
   background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px;
 }
 .panel-head { display: flex; flex-direction: column; gap: 2px; }

@@ -11,7 +11,7 @@ const cats = ref<Cat[]>([
   { key: 'customer', name: '客户信息', count: 6 },
   { key: 'product', name: '产品信息', count: 5 },
   { key: 'problem', name: '问题描述', count: 4 },
-  { key: 'process', name: '处理过程', count: 7 },
+  { key: 'process', name: '处理过程', count: 8 },
   { key: 'complaint', name: '投诉专属', count: 5 },
 ]);
 const selected = ref('process');
@@ -23,7 +23,8 @@ const fieldMap: Record<string, Field[]> = reactive({
     { key: 'process_result', name: '处理结果', type: '多行文本', constraint: '结案前必填', refs: 4, status: '启用' },
     { key: 'build_standard', name: '建单是否规范', type: '单选', constraint: '是/否', refs: 4, status: '启用' },
     { key: 'service_method', name: '服务方式', type: '下拉', constraint: '关键词搜索', refs: 1, status: '启用' },
-    { key: 'conclusion', name: '解决结论', type: '单选', constraint: '已解决/退让/未解决', refs: 1, status: '启用' },
+    { key: 'conclusion', name: '解决结论', type: '单选', constraint: '已解决/未解决…', refs: 1, status: '启用' },
+    { key: 'service_solution', name: '解决方案', type: '下拉', constraint: '结论=服务方案解决时', refs: 1, status: '启用' },
     { key: 'attachments', name: '处理附件', type: '附件', constraint: '≤10个', refs: 2, status: '启用' },
     { key: 'remark', name: '内部备注', type: '多行文本', constraint: '', refs: 0, status: '停用' },
   ],
@@ -40,7 +41,7 @@ const fieldMap: Record<string, Field[]> = reactive({
     { key: 'complaint_l1', name: '投诉分类一级', type: '下拉', constraint: '', refs: 1, status: '启用' },
     { key: 'complaint_l2', name: '投诉分类二级', type: '下拉', constraint: '联动一级', refs: 1, status: '启用' },
     { key: 'platform', name: '投诉平台', type: '下拉', constraint: '12315/黑猫…', refs: 1, status: '启用' },
-    { key: 'external', name: '外投处理', type: '复合', constraint: '来源=外投时', refs: 1, status: '启用' },
+    { key: 'external', name: '外投处理', type: '复合', constraint: '来源=外投渠道时', refs: 1, status: '启用' },
   ],
   product: [
     { key: 'prod_cat', name: '产品分类', type: '级联', constraint: '', refs: 5, status: '启用' },

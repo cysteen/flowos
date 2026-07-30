@@ -12,8 +12,11 @@
 //     短信要运营商报备、IM 模板带审核状态，都必须集中管理。
 //   · 编辑器通道（邮件 / 站内信）—— 无模板库，正文直接写在规则里（邮件另有主题）。
 //
-// 边界：SLA 的临期 / 超时 / 超时升级通知【不在本模块】，由 SLA 引擎自带的
-// 「SLA 管理 · 预警与升级」配置（口径见交叉对照表 D1）。本模块不订阅 sla.* 事件。
+// 边界：
+//   · SLA 的临期 / 超时 / 超时升级通知【不在本模块】，由 SLA 引擎自带的
+//     「SLA 管理 · 预警与升级」配置（D1/D20）。本模块不订阅 sla.* 事件。
+//   · 短信签名【不在本模块】：签名随「消息中心 · 短信渠道」携带，本模块不做
+//     业务线 → 渠道的映射配置（D21）。
 //
 // 模型：事件目录（代码维护，发版新增）+ 通知规则（纯配置，业务自助）
 //   业务新增消息场景时：事件已存在 → 新建一条规则，零代码；事件不存在 → 只补一行埋点。
@@ -47,7 +50,7 @@ export interface EventField {
 /** 工单类型（含表扬，表扬不建单但用于抑制判定） */
 export const DICT_TICKET_TYPE = ['投诉', '建议', '商机', '咨询', '表扬'] as const;
 /** 工单来源 */
-export const DICT_SOURCE = ['热线电话', 'IM在线', '内投', '外投', '客户服务小程序', '学习机渠道'] as const;
+export const DICT_SOURCE = ['热线电话', 'IM在线', '内投渠道', '外投渠道', '客户服务小程序', '学习机渠道'] as const;
 /** 业务分类 */
 export const DICT_BIZ_TYPE = ['教育', '听见', '法院', '医疗', '其他', '智能硬件', '无线音乐', '开放平台'] as const;
 /** 取消原因（同 views/tickets/types/operationTabs.ts · CANCEL_REASON_OPTIONS） */
@@ -283,7 +286,7 @@ export const NOTIFY_RULES: NotifyRule[] = [
     conditions: [], recipients: [{ type: 'assignee' }], channels: ['IM'], templates: { IM: 'IM_WO_DISPATCH' }, contents: {}, enabled: true },
   { id: 'R02', name: '建单受理通知', event: 'ticket.created', audience: 'external',
     conditions: [
-      { field: 'source', op: 'nin', value: ['内投', '外投', '客户服务小程序'] },
+      { field: 'source', op: 'nin', value: ['内投渠道', '外投渠道', '客户服务小程序'] },
       { field: 'bizType', op: 'ne', value: ['无线音乐'] },
       { field: 'ticketType', op: 'ne', value: ['表扬'] },
     ],
@@ -327,12 +330,6 @@ export const NOTIFY_RULES: NotifyRule[] = [
   /* ---------- 终局 ---------- */
   { id: 'R12', name: '取消工单提醒', event: 'ticket.cancel', audience: 'internal',
     conditions: [], recipients: [{ type: 'assignee' }], channels: ['IM'], templates: { IM: 'IM_WO_CANCEL' }, contents: {}, enabled: true },
-  { id: 'R13', name: '建议单感谢短信', event: 'ticket.forward', audience: 'external',
-    conditions: [
-      { field: 'ticketType', op: 'eq', value: ['建议'] },
-      { field: 'isSuggestion', op: 'eq', value: ['是'] },
-    ],
-    recipients: [{ type: 'customer' }], channels: ['短信'], templates: { 短信: 'SMS_SUGGEST_THANKS' }, contents: {}, enabled: true },
 
   /* ---------- 定时 ---------- */
   { id: 'R14', name: '挂起即将到期提醒', event: 'timer.holdExpiring', audience: 'internal',
@@ -380,7 +377,6 @@ export const RULE_TEMPLATES: Record<string, RuleTemplate[]> = {
   ],
   短信: [
     { code: 'SMS_WO_ACCEPTED', name: '建单受理通知', content: '尊敬的用户您好，您反馈的问题已收到，工单号为 ${ticketNo}，我们已安排专人跟进处理。处理进度会通过短信或 0551 开头的电话同步给您，烦请保持手机畅通，耐心等待。感谢您的信任与支持' },
-    { code: 'SMS_SUGGEST_THANKS', name: '建议单感谢短信', content: '尊敬用户您好，您提出的建议对我们不断改进非常重要，很感谢您对我们的关注，祝您生活愉快！' },
   ],
 };
 
@@ -405,10 +401,10 @@ export const SAMPLE_TICKETS: SampleTicket[] = [
     },
   },
   {
-    id: 'S2', label: 'IFLYKF20260728002 · 内投来源 · 投诉单',
+    id: 'S2', label: 'IFLYKF20260728002 · 内投渠道 · 投诉单',
     data: {
       ticketNo: 'IFLYKF20260728002', title: '售后响应慢', ticketType: '投诉',
-      source: '内投', bizType: '教育', customerName: '刘先生', customerPhone: '139****8821',
+      source: '内投渠道', bizType: '教育', customerName: '刘先生', customerPhone: '139****8821',
       assigneeId: '陈静（投诉专席）', creatorId: '张敏（一线客服）',
       responseDueTime: '2026-07-28 15:00',
       returnFrom: '调研',
@@ -453,7 +449,7 @@ export interface EvalLog {
 export const EVAL_LOGS: EvalLog[] = [
   { time: '2026-07-28 14:22:10', ticketNo: 'IFLYKF20260728001', ruleId: 'R01', ruleName: '建单派发通知', recipient: '李强（二线处理组）', channel: 'IM', result: '已发送' },
   { time: '2026-07-28 14:22:10', ticketNo: 'IFLYKF20260728001', ruleId: 'R02', ruleName: '建单受理通知', recipient: '138****2046', channel: '短信', result: '已发送' },
-  { time: '2026-07-28 14:18:44', ticketNo: 'IFLYKF20260728002', ruleId: 'R02', ruleName: '建单受理通知', recipient: '139****8821', channel: '短信', result: '已跳过', skipReason: '不满足触发条件：工单来源「内投」属于排除项' },
+  { time: '2026-07-28 14:18:44', ticketNo: 'IFLYKF20260728002', ruleId: 'R02', ruleName: '建单受理通知', recipient: '139****8821', channel: '短信', result: '已跳过', skipReason: '不满足触发条件：工单来源「内投渠道」属于排除项' },
   { time: '2026-07-28 14:18:44', ticketNo: 'IFLYKF20260728002', ruleId: 'R01', ruleName: '建单派发通知', recipient: '陈静（投诉专席）', channel: 'IM', result: '已发送' },
   { time: '2026-07-28 13:55:02', ticketNo: 'IFLYKF20260728003', ruleId: 'R02', ruleName: '建单受理通知', recipient: '137****5510', channel: '短信', result: '已跳过', skipReason: '不满足触发条件：业务分类「无线音乐」属于排除项' },
   { time: '2026-07-28 11:40:31', ticketNo: 'IFLYKF20260727088', ruleId: 'R10', ruleName: '审核提醒', recipient: '—', channel: 'IM', result: '已跳过', skipReason: '收件人解析为空：该审批单未配置审核组' },
@@ -463,20 +459,6 @@ export const EVAL_LOGS: EvalLog[] = [
   { time: '2026-07-28 08:00:12', ticketNo: 'IFLYKF20260710009', ruleId: 'R14', ruleName: '挂起即将到期提醒', recipient: '—', channel: '邮件', result: '已跳过', skipReason: '规则已停用' },
 ];
 
-/* ============================ 签名路由 ============================ */
-
-export interface SignRoute {
-  id: number;
-  bizLine: string;
-  channelName: string;
-  sign: string;
-  isDefault: boolean;
-}
-
-export const SIGN_ROUTES: SignRoute[] = [
-  { id: 1, bizLine: '默认（未匹配业务线）', channelName: '消息中心 · 客服', sign: '【科大讯飞】', isDefault: true },
-  { id: 2, bizLine: '壹师壹生', channelName: '消息中心 · 壹师壹生', sign: '【合肥窗启】', isDefault: false },
-];
 
 /* ============================ 工具函数 ============================ */
 

@@ -478,8 +478,8 @@ export const TIMELINE: TimelineEntry[] = [
   },
   {
     id: 'er1', category: 'relate', action: 'relate', who: '王坐席', role: '二线坐席',
-    how: '关联投诉', when: '今天 16:02',
-    what: '客户对处理结果不满、要求追责，升级为投诉，已生成关联投诉单并双向关联。',
+    how: '升级投诉', when: '今天 16:02',
+    what: '客户对处理结果不满、要求追责，升级为投诉，已生成新投诉单并双向关联。',
     relatedTicket: {
       no: 'LCMN-20260610-73090', title: '音箱跳歌问题处理不满·要求追责',
       type: '投诉', typeColor: '#EF4444',
@@ -518,6 +518,7 @@ export const DEFAULT_PROCESS_DRAFT = {
   serviceMethod: '处理人直接解决',
   serviceType: '软件问题/其他',
   conclusion: '已解决：技术方案解决',
+  serviceSolution: '',
   concessionPlan: '',
   complaintCat1: '产品质量',
   complaintCat2: '功能缺陷',
@@ -525,6 +526,8 @@ export const DEFAULT_PROCESS_DRAFT = {
   complaintMark: '有效投诉',
   complaintNote: '客户要求 48h 内书面回复，此处修正分类与备注',
   complaintNoteAttachments: [] as string[],
+  platformReplyResult: '',
+  platformReconcile: '' as const,
   riskFlag: '无风险',
   riskHasRisk: false,
   riskLevel: '',

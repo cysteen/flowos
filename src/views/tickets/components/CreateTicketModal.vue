@@ -79,14 +79,21 @@ const {
 
 const isChildMode = computed(() => props.prefill?.mode === 'child');
 const isReopenMode = computed(() => props.prefill?.mode === 'reopen');
+/** 升级投诉：原单升级建更高阶投诉新单（提交后关原单 + 双向关联） */
+const isEscalateMode = computed(() => props.prefill?.mode === 'escalate');
 const modalTitle = computed(() => {
   if (isChildMode.value) return '转单';
   if (isReopenMode.value) return '重新建单';
+  if (isEscalateMode.value) return `升级投诉 · 新建${props.prefill?.escalateTarget ?? '投诉'}单`;
   return '新建工单';
 });
-const parentMetaLabel = computed(() => (isReopenMode.value ? 'Reopen 原单' : '关联主单'));
+const parentMetaLabel = computed(() => {
+  if (isReopenMode.value) return 'Reopen 原单';
+  if (isEscalateMode.value) return '升级自原单';
+  return '关联主单';
+});
 const showParentInTitle = computed(
-  () => (isChildMode.value || isReopenMode.value) && !!props.prefill?.parentNo,
+  () => (isChildMode.value || isReopenMode.value || isEscalateMode.value) && !!props.prefill?.parentNo,
 );
 
 const complaintL2Options = computed(
@@ -106,6 +113,9 @@ function onCreate(processAfter = false) {
   let msg = `工单 ${ticket.no} 已创建${processAfter ? '，进入处理页' : ''}`;
   if (isChildMode.value) msg = `子工单 ${ticket.no} 已创建${processAfter ? '，进入处理页' : ''}`;
   else if (isReopenMode.value) msg = `Reopen 工单 ${ticket.no} 已创建${processAfter ? '，进入处理页' : ''}`;
+  else if (isEscalateMode.value) {
+    msg = `${props.prefill?.escalateTarget ?? '投诉'}单 ${ticket.no} 已创建，原单已关闭并双向关联`;
+  }
   message.success(msg);
   // 由草稿提交 → 从草稿箱移除
   if (activeDraftId.value) { draftStore.remove(activeDraftId.value); activeDraftId.value = null; }
@@ -187,7 +197,7 @@ watch(
         <span class="modal-title">{{ modalTitle }}</span>
         <template v-if="showParentInTitle">
           <span class="title-sep">·</span>
-          <span class="title-parent" :class="{ reopen: isReopenMode }">
+          <span class="title-parent" :class="{ reopen: isReopenMode, escalate: isEscalateMode }">
             <span class="tp-label">{{ parentMetaLabel }}</span>
             <span class="tp-no">{{ prefill?.parentNo }}</span>
             <span v-if="prefill?.parentTitle" class="tp-title">{{ prefill.parentTitle }}</span>
@@ -452,7 +462,7 @@ watch(
               />
             </div>
             <div class="inline-field">
-              <label class="inline-label xl"><span class="req">*</span>前提反馈</label>
+              <label class="inline-label xl"><span class="req">*</span>前期反馈</label>
               <FormSelect
                 v-model:value="form.priorFeedback"
                 class="inline-control field-control"
@@ -628,6 +638,8 @@ watch(
 }
 .title-parent.reopen .tp-label { color: #dc2626; }
 .title-parent.reopen .tp-no { color: #ef4444; }
+.title-parent.escalate .tp-label { color: #b45309; }
+.title-parent.escalate .tp-no { color: #ea580c; }
 .modal-close {
   font-size: 16px;
   color: #909399;

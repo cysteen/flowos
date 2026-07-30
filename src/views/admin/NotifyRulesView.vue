@@ -13,7 +13,7 @@ import { message, Modal } from 'ant-design-vue';
 import { useRouter } from 'vue-router';
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, ExperimentOutlined,
-  InfoCircleOutlined, UserOutlined, ApartmentOutlined, PushpinOutlined,
+  UserOutlined, ApartmentOutlined, PushpinOutlined,
   CheckCircleFilled, CloseCircleFilled, ArrowRightOutlined, QuestionCircleOutlined,
   DownOutlined, UpOutlined,
 } from '@ant-design/icons-vue';
@@ -98,12 +98,11 @@ const eventGroups = computed(() =>
 /* ---------------- 规则编辑 ---------------- */
 const editOpen = ref(false);
 const editingId = ref<string | null>(null);
-/** 各通道正文/预览是否展开；模板通道默认收起，编辑器通道默认展开 */
+/** 各通道正文/预览是否展开；默认收起，避免弹窗内容被裁切、首屏过长 */
 const chExpanded = reactive<Record<string, boolean>>({});
 function resetChannelExpand(channels: NotifyChannel[]) {
   Object.keys(chExpanded).forEach((k) => delete chExpanded[k]);
-  // 模板通道也默认展开——只读不等于不给看，短信/IM 的正文必须一眼可见
-  channels.forEach((ch) => { chExpanded[ch] = true; });
+  channels.forEach((ch) => { chExpanded[ch] = false; });
 }
 function toggleChannel(ch: NotifyChannel) {
   chExpanded[ch] = !chExpanded[ch];
@@ -267,7 +266,7 @@ function onChannelChange(next: NotifyChannel[]) {
   next.forEach((ch) => {
     const isNew = !(ch in chExpanded);
     initChannel(ch);
-    if (isNew) chExpanded[ch] = true;
+    if (isNew) chExpanded[ch] = false;
   });
   Object.keys(form.templates).forEach((ch) => {
     if (!next.includes(ch as NotifyChannel)) delete form.templates[ch];
@@ -303,11 +302,6 @@ function illegalVarsOf(ch: NotifyChannel): string[] {
   return used.filter((v) => !keys.has(v));
 }
 /** 跳去消息中心改模板 */
-/** SLA 的临期/超时/升级通知归 SLA 引擎，本模块只指路 */
-function gotoSla() {
-  router.push({ name: 'admin-sla-escalate' })
-    .catch(() => message.info('请从左侧「SLA 管理 · 预警与升级」进入'));
-}
 function gotoMessageCenter() {
   router.push({ name: 'admin-message-center' })
     .catch(() => message.info('请从左侧「集成对接 · 消息中心」进入'));
@@ -481,7 +475,7 @@ function renderTpl(ch: NotifyChannel) {
     <div class="panel">
       <AdminPageHeader
         title="通知规则"
-        subtitle="订阅哪个事件、满足什么条件、通知谁、用哪个模板——工单消息的唯一发送出口"
+        subtitle="配置工单消息：订什么事件、发给谁、走哪条通道"
       >
         <template #actions>
           <a-button v-if="tab === 'rules'" type="primary" @click="openCreate">
@@ -495,35 +489,41 @@ function renderTpl(ch: NotifyChannel) {
         <div class="st"><span class="st-n on">{{ stat.on }}</span><span class="st-l">已启用</span></div>
         <div class="st"><span class="st-n">{{ stat.event }}</span><span class="st-l">可订阅事件</span></div>
         <div class="st"><span class="st-n">{{ stat.used }}</span><span class="st-l">已被订阅</span></div>
-        <div class="st-tip">
-          <InfoCircleOutlined />
-          规则互相独立、无执行顺序，命中几条发几条。投递与发送日志由「消息中心」的渠道保证；
-          <b>SLA 临期 / 超时 / 超时升级的通知不在本页</b>，在「SLA 管理 · 预警与升级」配置。
-          <a-button type="link" size="small" class="st-goto" @click="gotoSla">前往<ArrowRightOutlined /></a-button>
-        </div>
       </div>
 
       <div class="bar">
         <a-segmented
           v-model:value="tab"
-          :options="[{ value: 'rules', label: `通知规则（${stat.rule}）` }, { value: 'events', label: `事件目录（${stat.event}）` }]"
+          :options="[
+            { value: 'rules', label: `通知规则（${stat.rule}）` },
+            { value: 'events', label: `事件目录（${stat.event}）` },
+          ]"
         />
+        <a-tooltip v-if="tab === 'events'" title="事件目录由代码维护，新增事件需发版；已有事件加通知只需新建规则。">
+          <QuestionCircleOutlined class="bar-help" />
+        </a-tooltip>
       </div>
 
       <!-- ========== 规则列表 ========== -->
       <template v-if="tab === 'rules'">
         <div class="filter-row">
-          <a-select v-model:value="fEvent" style="width: 260px" allow-clear placeholder="按订阅事件筛选" :options="eventFilterOptions" />
-          <a-radio-group v-model:value="fAudience" button-style="solid">
+          <a-select
+            v-model:value="fEvent"
+            style="width: 240px"
+            allow-clear
+            placeholder="订阅事件"
+            :options="eventFilterOptions"
+          />
+          <a-radio-group v-model:value="fAudience" button-style="solid" size="small">
             <a-radio-button value="all">全部</a-radio-button>
             <a-radio-button value="internal">对内</a-radio-button>
             <a-radio-button value="external">对客</a-radio-button>
           </a-radio-group>
-          <a-radio-group v-model:value="fChannel" button-style="solid">
+          <a-radio-group v-model:value="fChannel" button-style="solid" size="small">
             <a-radio-button value="all">全通道</a-radio-button>
             <a-radio-button v-for="c in CHANNELS" :key="c" :value="c">{{ c }}</a-radio-button>
           </a-radio-group>
-          <a-button class="fr-reset" @click="resetFilter">重置</a-button>
+          <a-button type="link" class="fr-reset" @click="resetFilter">重置</a-button>
         </div>
 
         <a-table
@@ -590,23 +590,16 @@ function renderTpl(ch: NotifyChannel) {
 
       <!-- ========== 事件目录 ========== -->
       <template v-else>
-        <div class="ev-note">
-          <InfoCircleOutlined />
-          事件目录由代码维护，是规则能订阅的全部时刻。<b>新增事件需发版</b>；已有事件上加通知，新建规则即可、无需改代码。
-          <b>不含 SLA 事件</b>——临期 / 超时 / 超时升级由 SLA 引擎自行计时并通知。
-        </div>
-
         <div v-for="g in eventGroups" :key="g.source" class="ev-group">
           <div class="eg-head">
             <a-tag :color="g.meta.color">{{ g.meta.label }}</a-tag>
-            <span class="eg-desc">{{ g.meta.desc }}</span>
-            <span class="eg-count">{{ g.items.length }} 个事件</span>
+            <span class="eg-count">{{ g.items.length }}</span>
           </div>
           <a-table
             :columns="[
-              { title: '事件', dataIndex: 'name', key: 'name', width: 210 },
-              { title: '动作枚举码', dataIndex: 'actionCode', key: 'actionCode', width: 190 },
-              { title: '负载字段（模板变量 / 收件人来源）', dataIndex: 'payload', key: 'payload' },
+              { title: '事件', dataIndex: 'name', key: 'name', width: 240 },
+              { title: '动作码', dataIndex: 'actionCode', key: 'actionCode', width: 160 },
+              { title: '负载字段', dataIndex: 'payload', key: 'payload' },
               { title: '已挂规则', key: 'used', width: 90 },
             ]"
             :data-source="g.items"
@@ -616,13 +609,20 @@ function renderTpl(ch: NotifyChannel) {
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'name'">
-                <div class="r-ev">{{ record.name }}</div>
-                <div class="r-code">{{ record.code }}</div>
+                <div class="r-ev">
+                  <span>{{ record.name }}</span>
+                  <span class="r-code">{{ record.code }}</span>
+                </div>
               </template>
               <template v-else-if="column.key === 'actionCode'">
-                <span v-if="record.actionCode" class="act">{{ record.actionCode }}</span>
-                <span v-else class="no-act">无对应动作码</span>
-                <div v-if="record.remark" class="ev-remark">{{ record.remark }}</div>
+                <a-tooltip v-if="record.remark" :title="record.remark">
+                  <span v-if="record.actionCode" class="act">{{ record.actionCode }}</span>
+                  <span v-else class="no-act">—</span>
+                </a-tooltip>
+                <template v-else>
+                  <span v-if="record.actionCode" class="act">{{ record.actionCode }}</span>
+                  <span v-else class="no-act">—</span>
+                </template>
               </template>
               <template v-else-if="column.key === 'payload'">
                 <a-tooltip
@@ -649,7 +649,11 @@ function renderTpl(ch: NotifyChannel) {
     <a-modal
       v-model:open="editOpen"
       :title="editingId ? `编辑通知规则 · ${form.name}` : '新建通知规则'"
-      :width="780" :ok-text="editingId ? '保存' : '创建'" cancel-text="取消" @ok="saveRule"
+      :width="780"
+      :ok-text="editingId ? '保存' : '创建'"
+      cancel-text="取消"
+      :body-style="{ paddingTop: '12px', paddingBottom: '8px' }"
+      @ok="saveRule"
     >
       <div class="edit-body">
         <!-- ① 基础信息 -->
@@ -680,10 +684,14 @@ function renderTpl(ch: NotifyChannel) {
                 </a-radio-group>
               </div>
             </div>
-            <div v-if="curEvent?.source === 'timer'" class="fm-row">
+            <div v-if="curEvent?.source === 'timer'" class="fm-row fm-row--top">
               <span class="fm-k">执行规则</span>
               <div class="fm-v">
-                <a-input v-model:value="form.timerRule" placeholder="如：每日 08:00 扫描，提前 24h" />
+                <a-textarea
+                  v-model:value="form.timerRule"
+                  :rows="2"
+                  placeholder="如：每日 08:00 扫描，提前 24h"
+                />
               </div>
             </div>
           </div>
@@ -790,8 +798,9 @@ function renderTpl(ch: NotifyChannel) {
                 <span class="ch-title">{{ isTemplateChannel(ch) ? '消息模板' : '消息内容' }}</span>
                 <a-tag v-if="isTemplateChannel(ch)" color="default" class="mini">只读</a-tag>
                 <a-tag v-else color="cyan" class="mini">规则内编辑</a-tag>
+                <span class="ch-spacer" />
                 <a-button
-                  v-if="isTemplateChannel(ch)" type="link" size="small" class="ch-goto"
+                  v-if="isTemplateChannel(ch)" type="link" size="small"
                   @click.stop="gotoMessageCenter"
                 >
                   消息中心<ArrowRightOutlined />
@@ -948,7 +957,7 @@ function renderTpl(ch: NotifyChannel) {
   border-bottom: 1px solid #f0f1f3;
 }
 
-/* ---- 概览指标条（§4b 例外：标签小 + 数字大） ---- */
+/* ---- 概览指标条 ---- */
 .stat-bar {
   display: flex; align-items: center; gap: 32px;
   background: #f9fafb; border: 1px solid #f0f1f3; border-radius: 8px;
@@ -958,18 +967,18 @@ function renderTpl(ch: NotifyChannel) {
 .st-n { font-size: 20px; font-weight: 600; color: #111827; line-height: 1.3; letter-spacing: -0.02em; }
 .st-n.on { color: #10b981; }
 .st-l { font-size: 12px; color: #9ca3af; }
-.st-tip {
-  margin-left: auto; display: flex; align-items: flex-start; gap: 6px;
-  font-size: 12px; color: #9ca3af; max-width: 470px; line-height: 1.6;
-}
-.st-tip :deep(.anticon) { color: #1a6fff; flex: none; margin-top: 3px; }
-.st-tip b { color: #6b7280; }
-.st-goto { padding: 0; height: auto; font-size: 12px; }
 
-/* ---- §4 筛选条：左筛选 + 右操作，gap 12 ---- */
-.bar { margin-bottom: 16px; }
+/* ---- 筛选条 / Tab ---- */
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.bar-help { color: #9ca3af; font-size: 14px; cursor: help; }
+.bar-help:hover { color: #1a6fff; }
 .filter-row { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
-.fr-reset { margin-left: auto; }
+.fr-reset { margin-left: auto; padding: 0; }
 
 /* ---- §3 表格 ---- */
 :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; font-weight: 600; }
@@ -1007,23 +1016,14 @@ function renderTpl(ch: NotifyChannel) {
 .tpl-code { color: #6b7280; letter-spacing: 0.2px; }
 
 /* ---- 事件目录 ---- */
-.ev-note {
-  display: flex; align-items: center; gap: 8px; font-size: 12px; color: #6b7280;
-  background: #f9fafb; border: 1px solid #f0f1f3; border-radius: 8px; padding: 10px 12px; margin-bottom: 16px;
-}
-.ev-note :deep(.anticon) { color: #1a6fff; }
-.ev-note b { color: #374151; }
 .ev-group { margin-bottom: 20px; }
 .ev-group:last-child { margin-bottom: 0; }
 .eg-head {
   display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
-  padding-left: 10px; border-left: 3px solid #1a6fff;
 }
-.eg-desc { font-size: 12px; color: #9ca3af; }
 .eg-count { margin-left: auto; font-size: 12px; color: #9ca3af; }
 .act { font-size: 12px; color: #1a6fff; }
-.no-act { font-size: 12px; color: #f59e0b; }
-.ev-remark { font-size: 12px; color: #9ca3af; line-height: 1.6; margin-top: 3px; }
+.no-act { font-size: 12px; color: #9ca3af; }
 .pl.enum { border-style: dashed; }
 .pl { font-size: 11px; line-height: 18px; padding: 0 6px; margin: 0 4px 4px 0; }
 .pl.rcp { background: #eff6ff; border-color: #c7dbff; color: #1a6fff; }
@@ -1031,111 +1031,206 @@ function renderTpl(ch: NotifyChannel) {
 
 /* ---- 编辑弹窗：三区块 ---- */
 .edit-body, .test-body {
-  display: flex; flex-direction: column; gap: 14px;
-  max-height: 68vh; overflow-y: auto; padding-right: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 0 2px 12px 0;
 }
 .sec {
   border: 1px solid #e8eaed;
   border-radius: 10px;
   background: #fff;
-  overflow: hidden;
+  overflow: visible;
 }
 .sec-head {
-  display: flex; align-items: center; gap: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 10px 14px;
-  font-size: 13px; font-weight: 600; color: #111827;
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
   background: #f8fafc;
   border-bottom: 1px solid #eef0f3;
+  border-radius: 10px 10px 0 0;
 }
 .sec-help { color: #9ca3af; font-size: 13px; cursor: help; }
 .sec-help:hover { color: #1a6fff; }
-.sec-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+.sec-body {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
 
-.fm-row { display: flex; gap: 12px; align-items: flex-start; }
-.fm-k { width: 72px; flex: none; font-size: 13px; color: #6b7280; padding-top: 5px; }
+.fm-row { display: flex; gap: 12px; align-items: center; }
+.fm-row--top { align-items: flex-start; }
+.fm-k {
+  width: 72px;
+  flex: none;
+  font-size: 13px;
+  color: #6b7280;
+  line-height: 32px;
+}
+.fm-row--top .fm-k { line-height: 22px; padding-top: 5px; }
 .fm-v { flex: 1; min-width: 0; }
 .fm-tip { font-size: 12px; color: #9ca3af; margin-top: 5px; line-height: 1.6; }
-.fm-inline { display: flex; align-items: center; gap: 10px; }
+.fm-inline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+}
 .fm-grow { flex: 1; min-width: 0; }
-.fm-k2 { flex: none; font-size: 13px; color: #6b7280; }
+.fm-k2 { flex: none; font-size: 13px; color: #6b7280; white-space: nowrap; }
 
 .sub-blk + .sub-blk {
   padding-top: 12px;
   border-top: 1px dashed #eef0f3;
 }
 .sub-head {
-  display: flex; align-items: center; gap: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 8px;
-  font-size: 13px; font-weight: 600; color: #374151;
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
 }
 .sub-head .ant-btn { margin-left: auto; }
 .blk-empty { font-size: 12px; color: #9ca3af; padding: 2px 0 4px; }
 
-.cond-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.cond-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
 .cond-row:last-child { margin-bottom: 0; }
-/* 条件行尾的字段类型徽标，帮运营理解为什么取值是下拉还是输入 */
 .cond-type { flex: none; font-size: 11px; line-height: 18px; padding: 0 5px; color: #9ca3af; }
 .c-and { width: 20px; flex: none; font-size: 12px; color: #10b981; font-weight: 600; }
 .c-and.ph { visibility: hidden; }
 
 .rcp-extra {
-  display: flex; align-items: center; gap: 8px;
-  margin-top: 8px; padding: 8px 10px;
-  background: #f8fafc; border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: #f8fafc;
+  border-radius: 6px;
 }
 .rcp-extra-name { flex: none; font-size: 12px; font-weight: 600; color: #374151; min-width: 72px; }
 .rcp-desc { font-size: 12px; color: #9ca3af; flex: 1; min-width: 0; }
 
 .ch-card {
-  border: 1px solid #eef0f3;
+  border: 1px solid #e8eaed;
   border-radius: 8px;
-  padding: 10px 12px 12px;
+  padding: 12px 14px 14px;
   background: #fafbfc;
 }
 .ch-head {
-  display: flex; align-items: center; gap: 8px;
-  cursor: pointer; user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  min-height: 28px;
 }
 .ch-title { font-size: 13px; font-weight: 600; color: #111827; }
-.ch-goto { margin-left: auto; }
+.ch-spacer { flex: 1; min-width: 8px; }
 .ch-toggle {
-  display: inline-flex; align-items: center; gap: 4px;
-  border: none; background: transparent; cursor: pointer;
-  font-size: 12px; color: #6b7280; padding: 0 2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  color: #6b7280;
+  padding: 0 2px;
   font-family: inherit;
+  white-space: nowrap;
 }
-.ch-head:not(:has(.ch-goto)) .ch-toggle { margin-left: auto; }
 .ch-toggle:hover { color: #1a6fff; }
 .ch-summary {
-  margin-top: 8px; font-size: 12px; color: #9ca3af;
-  line-height: 1.5; padding: 0 2px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: #9ca3af;
+  line-height: 1.5;
+  padding: 0 2px;
 }
 .muted-line { margin-top: 6px; }
 
 .tb-pre {
-  margin: 8px 0 0; padding: 10px 12px; background: #fff; border: 1px solid #eef0f3; border-radius: 6px;
-  font-size: 12px; color: #6b7280; line-height: 1.75; white-space: pre-wrap;
-  font-family: inherit; max-height: 140px; overflow-y: auto;
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid #eef0f3;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  font-family: inherit;
+  max-height: 140px;
+  overflow-y: auto;
 }
 .tpl-empty {
-  padding: 14px; border: 1px dashed #e5e7eb; border-radius: 8px;
-  font-size: 12px; color: #b0b6bf; text-align: center;
+  padding: 14px;
+  border: 1px dashed #e5e7eb;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #b0b6bf;
+  text-align: center;
 }
 .tb-field { display: flex; gap: 10px; align-items: flex-start; margin-top: 10px; }
 .tb-label { width: 40px; flex: none; font-size: 12px; color: #6b7280; padding-top: 7px; }
 .tb-input, .tb-textarea {
-  flex: 1; min-width: 0; padding: 6px 10px; font-size: 13px; line-height: 1.7;
-  color: #111827; background: #fff; border: 1px solid #d9d9d9; border-radius: 6px;
-  font-family: inherit; outline: none; transition: border-color .2s;
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #111827;
+  background: #fff;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color .2s;
 }
-.tb-textarea { resize: vertical; }
-.tb-input:focus, .tb-textarea:focus { border-color: #1a6fff; box-shadow: 0 0 0 2px rgba(26, 111, 255, .1); }
-.tb-insert { display: flex; gap: 10px; align-items: flex-start; margin-top: 10px; }
-.tb-vars { flex: 1; display: flex; flex-wrap: wrap; gap: 6px; padding-top: 3px; }
+.tb-textarea { resize: vertical; min-height: 88px; }
+.tb-input:focus, .tb-textarea:focus {
+  border-color: #1a6fff;
+  box-shadow: 0 0 0 2px rgba(26, 111, 255, .1);
+}
+.tb-insert {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-top: 10px;
+  padding-bottom: 2px;
+}
+.tb-vars {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 3px;
+}
 .tb-hint { font-size: 12px; color: #9ca3af; line-height: 1.6; }
 .tb-err {
-  margin-top: 8px; padding: 7px 10px; border-radius: 6px;
-  background: #fef2f2; border: 1px solid #fecaca; color: #ef4444; font-size: 12px;
+  margin-top: 8px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #ef4444;
+  font-size: 12px;
 }
 
 /* 测试弹窗沿用旧分区 */

@@ -29,7 +29,7 @@ export interface SuspendInfo {
 export type OpActionType =
   | '保存草稿' | '标记已解决'
   | '调剂' | '委派' | '下送' | '撤回' | '强结'
-  | '挂起' | '恢复' | '退回' | '升级' | '同步飞书' | '转售后' | '撤销委派'
+  | '挂起' | '恢复' | '退回' | '升级' | '同步飞书' | '转售后' | '升级投诉' | '撤销委派'
   | '激活飞书'
   | '关闭工单' | '归档工单' | '取消工单';
 
@@ -71,6 +71,18 @@ export interface EscalatePayload {
   feedbackCategory?: string;
 }
 export interface FeishuActivatePayload { reason: string; }
+/**
+ * 升级投诉（文档名「关联投诉」）：原单升级为更高阶投诉新单后，关闭原单。
+ * 目标类型/同步/关联规则见《【815】关联投诉 PRD》，判定逻辑在 composables/complaintEscalation.ts。
+ */
+export interface EscalateComplaintPayload {
+  /** 目标投诉类型：人员投诉 / 业务投诉 / 外投 */
+  target: string;
+  /** 新投诉单单号 */
+  newNo: string;
+  /** 升级原因 */
+  note: string;
+}
 /** 处理登记（保存并登记）：坐席本次处理内容摘要 + 字段级变更，写入处理履历 */
 export interface ProcessLogData { summary: string; attachment?: string; changes?: TimelineFieldChange[]; }
 export interface SyncFeishuPayload { space: string; message: string; }
@@ -148,6 +160,7 @@ export type OpActionPayload =
   | { type: '同步飞书'; data: SyncFeishuPayload }
   | { type: '激活飞书'; data: FeishuActivatePayload }
   | { type: '转售后'; data: AftersalePayload }
+  | { type: '升级投诉'; data: EscalateComplaintPayload }
   | { type: '标记已解决'; data: ResolvePayload }
   | { type: '撤回' }
   | { type: '恢复'; data: ResumePayload }
@@ -594,6 +607,30 @@ export function applyOpAction(
         opState: 'transferred',
         suspendInfo,
         message: `已转售后 ${asNo}，工单转入「已转出」，等待售后处理结果`,
+      };
+    }
+
+    case '升级投诉': {
+      // 升级成功 = 关原单 + 建新投诉单 + 双向关联（PRD §4.3.1/§4.3.2）。
+      // 原单已是终态（已关闭/取消/归档/结案）则跳过关闭步骤，只留关联（PRD §4.3.1）。
+      const { target, newNo, note } = payload.data;
+      const alreadyEnded = /已关闭|已取消|已归档|已结案/.test(detail.status);
+      if (!alreadyEnded) {
+        detail.status = '已关闭';
+        terminateClocks(detail, true); // 因升级而终止：停表结果=中止(灰)，不计达标/未达标
+      }
+      pushEntry(timeline, {
+        category: 'node', action: 'transfer', who: operator, role: operatorRole,
+        how: '升级投诉 · 关闭原单',
+        what: alreadyEnded
+          ? `原单已是「${detail.status}」，跳过关闭步骤；已升级为${target}单 ${newNo}并保留双向关联。升级原因：${note}`
+          : `诉求升级为${target}，已生成新投诉单 ${newNo}并双向关联，原单关闭（SLA 停表·中止）。`
+            + `升级原因：${note}。关单后不支持补充/催单，后续跟进转至新单。`,
+      });
+      return {
+        opState: alreadyEnded ? opState : 'closed',
+        suspendInfo: null,
+        message: alreadyEnded ? `已关联${target}单 ${newNo}` : `已升级为${target}单 ${newNo}，原单已关闭`,
       };
     }
 
