@@ -86,6 +86,9 @@ function buildSlaClocks(t: Ticket): SlaClock[] {
     first.phase = 'stopped';
     first.stopOutcome = t.firstRespBreached ? 'breached' : 'met';
     first.remainSec = t.firstRespBreached ? -300 : 300;
+    first.closedAt = whenAt(
+      Date.now() - Math.max(0, first.totalSec - first.remainSec) * 1000,
+    );
   };
 
   if (t.slaText === '—') {

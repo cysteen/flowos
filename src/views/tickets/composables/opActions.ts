@@ -339,18 +339,45 @@ export function statusLabel(state: TicketOpState): string {
   return map[state];
 }
 
+function nowCloseTime(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `今天 ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
 /**
- * 计时终止（结案/关闭/取消）：所有活跃钟置「停表」，永久停止、不可重启。
- * 停表结果三分（PRD §8.1）：voidStop=true → 中止(灰，取消等)；
- * 否则按剩余判 达标(≥0·绿✓)/未达标(<0·红)。已停表钟保留原结果。
+ * 计时终止（结案/关闭/取消）：关闭所有活跃钟。
+ * 首响与整单分别新增一条独立关钟履历。
  */
-function terminateClocks(detail: TicketDetailMeta, voidStop = false): void {
+function terminateClocks(
+  detail: TicketDetailMeta,
+  timeline: TimelineEntry[],
+  voidStop = false,
+): void {
+  const closedAt = nowCloseTime();
+  const closedTargets: Array<{ clock: '首响' | '整单'; closedAt: string }> = [];
   detail.slaClocks.forEach((c) => {
     if (c.phase !== 'stopped') {
       c.stopOutcome = voidStop ? 'void' : c.remainSec >= 0 ? 'met' : 'breached';
+      c.closedAt = closedAt;
+      if (c.kind === 'first') closedTargets.push({ clock: '首响', closedAt });
+      if (c.kind === 'whole') closedTargets.push({ clock: '整单', closedAt });
     }
     c.phase = 'stopped';
     c.reviewSubmitAtMs = undefined; // 终态：清理待审核标记
+  });
+
+  closedTargets.forEach(({ clock, closedAt: targetClosedAt }) => {
+    pushEntry(timeline, {
+      category: 'sla',
+      action: 'slaClose',
+      who: '系统',
+      role: '系统',
+      how: `${clock}时钟关闭`,
+      what: '',
+      when: targetClosedAt,
+      slaClose: { clock, closedAt: targetClosedAt },
+    });
   });
 }
 
@@ -476,7 +503,7 @@ export function applyOpAction(
         return { opState, suspendInfo, message: '协办已完成，工单回到委派节点' };
       }
       detail.status = '待回访';
-      terminateClocks(detail);
+      terminateClocks(detail, timeline);
       pushEntry(timeline, {
         category: 'node', action: 'resolved', who: operator, role: operatorRole,
         how: '下送 · 标记已解决',
@@ -489,7 +516,7 @@ export function applyOpAction(
     case '强结': {
       const { reason, approver, detail: note } = payload.data;
       detail.status = '已结案';
-      terminateClocks(detail);
+      terminateClocks(detail, timeline);
       pushEntry(timeline, {
         category: 'node', action: 'resolved', who: operator, role: operatorRole,
         how: '强结 · 审批通过', what: `【强制结案】原因：${reason}；审批：${approver}。${note ? `说明：${note}` : ''}（绕过满意度回访）`,
@@ -617,7 +644,7 @@ export function applyOpAction(
       const alreadyEnded = /已关闭|已取消|已归档|已结案/.test(detail.status);
       if (!alreadyEnded) {
         detail.status = '已关闭';
-        terminateClocks(detail, true); // 因升级而终止：停表结果=中止(灰)，不计达标/未达标
+        terminateClocks(detail, timeline, true); // 因升级而终止：停表结果=中止(灰)，不计达标/未达标
       }
       pushEntry(timeline, {
         category: 'node', action: 'transfer', who: operator, role: operatorRole,
@@ -713,7 +740,7 @@ export function applyOpAction(
 
     case '取消工单': {
       detail.status = '已取消';
-      terminateClocks(detail, true); // 业务中止：停表结果=中止(灰)，不计达标/未达标
+      terminateClocks(detail, timeline, true); // 业务中止：停表结果=中止(灰)，不计达标/未达标
       pushEntry(timeline, {
         category: 'node', action: 'transfer', who: operator, role: operatorRole,
         how: '取消工单', what: payload.reason || '工单已取消。',

@@ -7,7 +7,7 @@ import {
   PauseCircleOutlined, SwapOutlined, PhoneOutlined, MessageOutlined,
   PaperClipOutlined, SnippetsOutlined, CommentOutlined, BellOutlined,
   CheckCircleOutlined, StarFilled, PlayCircleOutlined, DownloadOutlined,
-  ThunderboltOutlined, HistoryOutlined,
+  ThunderboltOutlined, HistoryOutlined, ClockCircleOutlined,
 } from '@ant-design/icons-vue';
 import {
   CATEGORY_META, ROLE_BADGE, softBg,
@@ -27,6 +27,7 @@ const ICON: Record<TlAction, unknown> = {
   escalate: RiseOutlined,       // 升级（与底栏升级按钮一致）
   relate: ApartmentOutlined,    // 关联单（升级投诉/关联售后派生关联工单）
   handle: FormOutlined,         // 处理登记（坐席填写处理结果/结论）
+  slaClose: ClockCircleOutlined,// SLA 关钟
   hold: PauseCircleOutlined,    // 挂起
   transfer: SwapOutlined,       // 流转/调剂
   phone: PhoneOutlined,         // 电话
@@ -82,6 +83,7 @@ const filteredEntries = computed(() => {
         v-for="e in filteredEntries"
         :key="e.id"
         class="entry"
+        :class="{ 'entry-sla': e.category === 'sla' }"
         :style="{ background: CATEGORY_META[e.category].bg, borderLeftColor: CATEGORY_META[e.category].color }"
       >
         <div
@@ -91,7 +93,16 @@ const filteredEntries = computed(() => {
           <component :is="ICON[e.action]" />
         </div>
 
-        <div class="entry-main">
+        <!-- SLA 时效：单行紧凑展示，去掉系统/角色/说明等冗余 -->
+        <div v-if="e.category === 'sla' && e.slaClose" class="entry-main entry-main--sla">
+          <span
+            class="how-badge"
+            :style="{ color: CATEGORY_META.sla.color, background: softBg(CATEGORY_META.sla.color) }"
+          >{{ e.how }}</span>
+          <span class="sla-close-time">{{ e.slaClose.closedAt }}</span>
+        </div>
+
+        <div v-else class="entry-main">
           <div class="entry-top">
             <span class="who">{{ e.who }}</span>
             <span class="role-badge" :style="{ color: ROLE_BADGE[e.role], background: softBg(ROLE_BADGE[e.role]) }">{{ e.role }}</span>
@@ -102,7 +113,7 @@ const filteredEntries = computed(() => {
             <span class="when">{{ e.when }}</span>
           </div>
 
-          <div class="what">{{ e.what }}</div>
+          <div v-if="e.what" class="what">{{ e.what }}</div>
 
           <!-- 工单处理字段变更（handle 事件）：补充/修改 明细 -->
           <div v-if="e.changes?.length" class="chg-list">
@@ -257,6 +268,11 @@ const filteredEntries = computed(() => {
   border-left: 3px solid;
   border-radius: 8px;
 }
+.entry-sla {
+  align-items: center;
+  padding: 6px 12px;
+  min-height: 36px;
+}
 .entry-avatar {
   width: 30px;
   height: 30px;
@@ -267,7 +283,18 @@ const filteredEntries = computed(() => {
   justify-content: center;
   font-size: 14px;
 }
+.entry-sla .entry-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 12px;
+  font-size: 12px;
+}
 .entry-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.entry-main--sla {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
 .entry-top { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .who { font-size: 13px; font-weight: 600; color: #111827; }
 .role-badge, .how-badge {
@@ -286,6 +313,15 @@ const filteredEntries = computed(() => {
 }
 .when { margin-left: auto; font-size: 11px; color: #9ca3af; }
 .what { font-size: 13px; color: #374151; line-height: 1.6; }
+
+/* SLA 关钟：单行时间 */
+.sla-close-time {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  font-variant-numeric: tabular-nums;
+}
 
 /* 工单处理字段变更明细 */
 .chg-list {

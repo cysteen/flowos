@@ -53,6 +53,8 @@ export interface SlaClock {
   warnSec: number;
   /** 绝对截止时刻（展示用），如 今日 14:30 */
   dueBy: string;
+  /** 实际关钟时间，供处理履历展示 */
+  closedAt?: string;
   /** 节点截止在整单时间轴上的位置占比（0-100），仅 kind=whole 时用于嵌套 tick */
   nodePctOnWhole?: number;
   /**
@@ -129,6 +131,12 @@ export interface TicketDetailMeta {
   productBg?: string;
   /** 一线视角演示单：隐藏底部流转操作栏（下送/升级/调剂/委派/挂起/关闭/强结属二线权限） */
   frontlineDemo?: boolean;
+  /**
+   * 本单正从属跟跑于哪张单（升级后原单不关、跟着新单跑的场景）。
+   * 有值＝已在从属跟跑，**不可再发起升级投诉**（PRD §4.2.1 门禁②）。
+   * 「跟跑 vs 关闭原单」本身仍待拍板，字段先留出判据位。
+   */
+  followingNo?: string;
   /** 飞书关联进度：none 还没转过 / failed 转飞书失败 / synced 已建好单 / feedback 已回进展 / closed 已结案 */
   feishuSync?: FeishuSyncState;
   /** 产研反馈单号（关联成功后） */
@@ -417,6 +425,12 @@ export const TIMELINE: TimelineEntry[] = [
     what: '一线接单受理，登记问题详情（见上方工单信息）。',
   },
   {
+    id: 'esla-first', category: 'sla', action: 'slaClose', who: '系统', role: '系统',
+    how: '首响时钟关闭', when: '今天 09:12:00',
+    what: '',
+    slaClose: { clock: '首响', closedAt: '今天 09:12:00' },
+  },
+  {
     id: 'e3', category: 'customer', action: 'supplement', who: '张小凡', role: '客户',
     how: '客户补充', when: '今天 09:50', attachment: '故障录屏.mp4',
     what: '补充故障录屏与具体歌单链接，方便定位。',
@@ -506,6 +520,12 @@ export const TIMELINE: TimelineEntry[] = [
     id: 'e11', category: 'node', action: 'resolved', who: '王坐席', role: '二线坐席',
     how: '标记已解决', when: '今天 16:30',
     what: '更换固件版本并远程验证，跳歌问题已解决（附解决方案）。',
+  },
+  {
+    id: 'esla-whole', category: 'sla', action: 'slaClose', who: '系统', role: '系统',
+    how: '整单时钟关闭', when: '今天 16:30:00',
+    what: '',
+    slaClose: { clock: '整单', closedAt: '今天 16:30:00' },
   },
   {
     id: 'e12', category: 'praise', action: 'praise', who: '张小凡', role: '客户',

@@ -2,12 +2,13 @@
 // 角色徽章另用一套色（PRD-03 §7 F4）。
 
 /** 时间线条目语义类别（决定卡片色条/底色） */
-export type TlCategory = 'node' | 'relate' | 'handle' | 'comm' | 'customer' | 'dunning' | 'praise';
+export type TlCategory = 'node' | 'relate' | 'handle' | 'comm' | 'customer' | 'dunning' | 'sla' | 'praise';
 /** 条目动作（决定图标 + How 徽章文案） */
 export type TlAction =
   | 'create' | 'accept' | 'escalate' | 'hold' | 'transfer'
   | 'relate'
   | 'handle'
+  | 'slaClose'
   | 'phone' | 'sms'
   | 'supplement' | 'reply'
   | 'dunning'
@@ -45,6 +46,11 @@ export interface TimelineEntry {
   relatedTicket?: RelatedTicketBrief;
   /** 工单处理（handle 事件）：本次提交的字段级变更（补充/修改） */
   changes?: TimelineFieldChange[];
+  /** SLA 单个时钟关闭记录 */
+  slaClose?: {
+    clock: '首响' | '整单';
+    closedAt: string;
+  };
 }
 
 /** 工单处理字段变更：补充=从空到有；修改=值变更（含旧→新） */
@@ -72,7 +78,7 @@ export interface RelatedTicketBrief {
   createdAt?: string;
 }
 
-/** 6 类语义色（PRD-03 §7 F4）：色条 + 浅底 + 图例标签 */
+/** 语义色：色条 + 浅底 + 图例标签（催办预警后为 SLA 时效） */
 export const CATEGORY_META: Record<TlCategory, { color: string; bg: string; label: string }> = {
   node: { color: '#7C3AED', bg: '#F5F3FF', label: '流转节点' },
   relate: { color: '#4F46E5', bg: '#EEF2FF', label: '关联单' },
@@ -80,6 +86,7 @@ export const CATEGORY_META: Record<TlCategory, { color: string; bg: string; labe
   comm: { color: '#06B6D4', bg: '#ECFEFF', label: '对客沟通' },
   customer: { color: '#2563EB', bg: '#EFF6FF', label: '客户输入' },
   dunning: { color: '#EF4444', bg: '#FEF2F2', label: '催办预警' },
+  sla: { color: '#64748B', bg: '#F1F5F9', label: 'SLA时效' },
   praise: { color: '#F59E0B', bg: '#FFFBEB', label: '客户评价' },
 };
 

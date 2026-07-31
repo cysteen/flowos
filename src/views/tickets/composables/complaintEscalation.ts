@@ -79,11 +79,38 @@ export function complaintTierLabel(detail: TicketDetailMeta): string {
   return nature ? `投诉 · ${nature}` : '投诉';
 }
 
+/**
+ * 门禁②：原单是否已有活跃关联 / 从属关系。
+ * 关联位是 **1:1** ——已关联售后单、已关联其他客服单、或已在从属跟跑，都不可再升级，
+ * 即**一张单只能升一次**（PRD §4.2.1）。
+ */
+function resolveLinkBlock(detail: TicketDetailMeta): string | null {
+  if (detail.linkedAftersale) return '本单已关联售后单，关联位已占用，不可升级；如需补充请用「新建补充」';
+  if (detail.linkedRecords?.some((r) => r.tag === '升级投诉')) {
+    return '本单已升级过并关联投诉单（1:1），不可再次升级；如需补充请用「新建补充」';
+  }
+  if (detail.followingNo) return `本单正跟随 ${detail.followingNo} 流转，不可再发起升级；如需补充请用「新建补充」`;
+  return null;
+}
+
 /** 按阶层 × 发起人角色算出可做的升级动作与入口可用性 */
 export function buildEscalateVerdict(detail: TicketDetailMeta): EscalateVerdict {
   const tier = resolveComplaintTier(detail);
   const tierLabel = complaintTierLabel(detail);
   const frontline = isFrontlineActor(detail);
+
+  // 门禁②：关联位已占用 → 一票否决，先于阶层与角色判定
+  const linkBlock = resolveLinkBlock(detail);
+  if (linkBlock) {
+    return {
+      tier,
+      tierLabel,
+      kind: null,
+      entryEnabled: false,
+      entryTip: linkBlock,
+      headline: linkBlock,
+    };
+  }
 
   // 外投：终态，谁都不能再升
   if (tier === 'external') {
