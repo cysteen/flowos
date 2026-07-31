@@ -12,8 +12,6 @@ defineProps<{
     address: string;
   };
 }>();
-
-const emit = defineEmits<{ contact: [type: 'call' | 'sms' | 'email', value: string] }>();
 </script>
 
 <template>
@@ -32,7 +30,7 @@ const emit = defineEmits<{ contact: [type: 'call' | 'sms' | 'email', value: stri
     </div>
     <div class="kv kv-contacts">
       <span class="k">联系方式</span>
-      <OpContactRows :contacts="customer.contacts" @contact="(t, v) => emit('contact', t, v)" />
+      <OpContactRows :contacts="customer.contacts" />
     </div>
     <div class="kv">
       <span class="k">省市区</span>

@@ -4,20 +4,26 @@ import { Select as ASelect, Input as AInput } from 'ant-design-vue';
 import { ArrowUpOutlined, DownOutlined, UpOutlined } from '@ant-design/icons-vue';
 import OpActionModal from './OpActionModal.vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
-import { EXTERNAL_COMPLAINT_PLATFORMS } from '@/views/tickets/types/createTicket';
+import {
+  COMPLAINT_L1_OPTIONS,
+  COMPLAINT_L2_MAP,
+  EXTERNAL_COMPLAINT_PLATFORMS,
+  PRIOR_FEEDBACK_OPTIONS,
+  SERVICE_REVIEW_OPTIONS,
+  resolveComplaintNature,
+} from '@/views/tickets/types/createTicket';
 import {
   buildEscalateSyncFields,
   buildEscalateVerdict,
   buildTierSteps,
   isTicketTerminated,
   type EscalateInput,
-  type EscalateTarget,
 } from '@/views/tickets/composables/complaintEscalation';
 
 /**
- * 升级投诉弹窗（《【815】关联投诉 PRD》§4.2/§4.3）：
- * 查原单阶层 → 给目标候选（同阶/终态置灰）→ 预览同步信息 → 填升级原因，
- * 确认后进建单页生成新投诉单；提交建单即「关原单 + 双向关联」。
+ * 升级投诉弹窗（《【815】关联投诉 PRD》§4）。两条分支，字段量不同：
+ * - **非投诉 → 投诉**：选投诉一类/二类（性质自动判定）+ 升级原因 → 跳建单页补齐整块投诉字段；
+ * - **投诉 → 外投**：只补外投增量字段（平台/编号/前期反馈/服务回溯）+ 升级原因 → 弹窗内直接建单。
  */
 const props = defineProps<{
   open: boolean;
@@ -29,67 +35,83 @@ const emit = defineEmits<{
   submit: [payload: EscalateInput];
 }>();
 
-const target = ref<EscalateTarget | null>(null);
-const note = ref('');
-const platform = ref<string | undefined>(undefined);
-const externalNo = ref('');
-const syncOpen = ref(false);
-
 const verdict = computed(() => buildEscalateVerdict(props.detail));
 const tierSteps = computed(() => buildTierSteps(props.detail));
 const syncFields = computed(() => buildEscalateSyncFields(props.detail));
 const originClosed = computed(() => isTicketTerminated(props.detail.status));
-const isExternalTarget = computed(() => target.value === '外投');
+const isExternal = computed(() => verdict.value.kind === 'toExternal');
 
-/** 可选目标优先展示；同阶不可选折叠为一行说明，避免三张大卡抢视线 */
-const allowedCandidates = computed(() => verdict.value.candidates.filter((c) => c.allowed));
-const blockedHint = computed(() => {
-  const blocked = verdict.value.candidates.filter((c) => !c.allowed);
-  if (!blocked.length) return '';
-  if (verdict.value.tier === 'low') return '人员投诉 / 业务投诉为同阶，不可升级，仅可补充';
-  if (verdict.value.tier === 'external') return '外投为终态，全部目标仅可补充';
-  return '';
-});
+// —— 分支一：非投诉 → 投诉 ——
+const cat1 = ref<string | undefined>(undefined);
+const cat2 = ref<string | undefined>(undefined);
+const nature = computed(() => resolveComplaintNature(cat2.value));
+const cat1Options = COMPLAINT_L1_OPTIONS.map((v) => ({ value: v, label: v }));
+const cat2Options = computed(() =>
+  (COMPLAINT_L2_MAP[cat1.value ?? ''] ?? []).map((v) => ({ value: v, label: v })),
+);
 
+// —— 分支二：投诉 → 外投（增量字段）——
+const platform = ref<string | undefined>(undefined);
+const complaintNo = ref('');
+const priorFeedback = ref<string | undefined>(undefined);
+const serviceReview = ref<string | undefined>(undefined);
 const platformOptions = EXTERNAL_COMPLAINT_PLATFORMS.map((v) => ({ value: v, label: v }));
+const priorFeedbackOptions = PRIOR_FEEDBACK_OPTIONS.map((v) => ({ value: v, label: v }));
+const serviceReviewOptions = SERVICE_REVIEW_OPTIONS.map((v) => ({ value: v, label: v }));
+
+const note = ref('');
+const syncOpen = ref(false);
 
 watch(
   () => props.open,
   (v) => {
     if (!v) return;
-    const allowed = verdict.value.candidates.filter((c) => c.allowed);
-    target.value = allowed.length === 1 ? allowed[0].target : null;
+    cat1.value = undefined;
+    cat2.value = undefined;
+    platform.value = props.detail.complaint.platform || undefined;
+    complaintNo.value = '';
+    priorFeedback.value = props.detail.complaint.priorFeedback || undefined;
+    serviceReview.value = props.detail.complaint.serviceReview || undefined;
     note.value = '';
-    platform.value = undefined;
-    externalNo.value = '';
     syncOpen.value = false;
   },
 );
 
+/** 一类换了就清二类 */
+watch(cat1, () => { cat2.value = undefined; });
+
 const canSubmit = computed(() => {
-  if (!verdict.value.entryEnabled) return false;
-  if (!target.value) return false;
-  if (!note.value.trim()) return false;
-  if (isExternalTarget.value && !platform.value) return false;
-  return true;
+  if (!verdict.value.entryEnabled || !note.value.trim()) return false;
+  if (isExternal.value) return !!platform.value && !!complaintNo.value.trim();
+  return !!cat1.value && !!cat2.value;
 });
 
-function pick(t: EscalateTarget) {
-  target.value = t;
-}
+const okText = computed(() => (isExternal.value ? '确认升级为外投' : '下一步 · 建投诉新单'));
 
 function close() {
   emit('update:open', false);
 }
 
 function onSubmit() {
-  if (!canSubmit.value || !target.value) return;
-  emit('submit', {
-    target: target.value,
-    note: note.value.trim(),
-    platform: isExternalTarget.value ? platform.value : undefined,
-    externalNo: isExternalTarget.value ? externalNo.value.trim() : undefined,
-  });
+  if (!canSubmit.value) return;
+  if (isExternal.value) {
+    emit('submit', {
+      kind: 'toExternal',
+      platform: platform.value ?? '',
+      complaintNo: complaintNo.value.trim(),
+      priorFeedback: priorFeedback.value ?? '',
+      serviceReview: serviceReview.value ?? '',
+      note: note.value.trim(),
+    });
+  } else {
+    emit('submit', {
+      kind: 'toComplaint',
+      cat1: cat1.value ?? '',
+      cat2: cat2.value ?? '',
+      nature: nature.value,
+      note: note.value.trim(),
+    });
+  }
   close();
 }
 </script>
@@ -101,14 +123,14 @@ function onSubmit() {
     :icon="ArrowUpOutlined"
     tone="warn"
     :width="520"
-    ok-text="下一步 · 建投诉新单"
+    :ok-text="okText"
     :ok-disabled="!canSubmit"
     @update:open="emit('update:open', $event)"
     @ok="onSubmit"
     @cancel="close"
   >
     <div class="op-form esc-form">
-      <!-- 阶层：一行阶梯，当前 / 可升标注即可 -->
+      <!-- 升阶路径：非投诉 → 投诉 → 外投，当前/可升一眼可见 -->
       <div class="esc-stage" aria-label="投诉升阶路径">
         <template v-for="(s, i) in tierSteps" :key="s.key">
           <span v-if="i" class="esc-arrow">→</span>
@@ -128,34 +150,43 @@ function onSubmit() {
         <span>{{ verdict.tierLabel }}</span>
       </div>
 
-      <!-- 升级目标：只列可选；同阶说明一行带过 -->
-      <div class="op-field">
-        <div class="op-label req">升级目标</div>
-        <div v-if="allowedCandidates.length" class="op-radio-cards">
-          <label
-            v-for="c in allowedCandidates"
-            :key="c.target"
-            class="op-radio-card esc-card"
-            :class="{ on: target === c.target }"
-            @click="pick(c.target)"
-          >
-            <a-radio :checked="target === c.target" />
-            <div class="esc-body">
-              <div class="esc-head">
-                <span class="op-rc-title">{{ c.target }}</span>
-                <span v-if="c.recommended" class="esc-badge">推荐</span>
-              </div>
-              <div class="op-rc-sub">{{ c.desc }}</div>
-            </div>
-          </label>
-        </div>
-        <div v-if="blockedHint" class="esc-blocked">{{ blockedHint }}</div>
-      </div>
-
-      <template v-if="isExternalTarget">
+      <!-- 分支一：非投诉 → 投诉，选分类、性质自动判定 -->
+      <template v-if="!isExternal">
         <div class="op-field-row">
           <div class="op-field">
-            <div class="op-label req">外投平台</div>
+            <div class="op-label req">投诉一类</div>
+            <ASelect
+              v-model:value="cat1"
+              :options="cat1Options"
+              placeholder="请选择"
+              style="width:100%"
+            />
+          </div>
+          <div class="op-field">
+            <div class="op-label req">投诉二类</div>
+            <ASelect
+              v-model:value="cat2"
+              :options="cat2Options"
+              :disabled="!cat1"
+              placeholder="请选择"
+              style="width:100%"
+            />
+          </div>
+        </div>
+        <div class="op-field">
+          <div class="op-label">投诉性质</div>
+          <div class="esc-derived" :class="{ empty: !nature }">
+            {{ nature || '选择投诉二类后自动判定' }}
+          </div>
+          <div class="op-hint">性质由投诉二类推导，不单独选；其余投诉专属字段在下一步建单页补齐。</div>
+        </div>
+      </template>
+
+      <!-- 分支二：投诉 → 外投，只补增量字段 -->
+      <template v-else>
+        <div class="op-field-row">
+          <div class="op-field">
+            <div class="op-label req">投诉平台</div>
             <ASelect
               v-model:value="platform"
               :options="platformOptions"
@@ -165,10 +196,33 @@ function onSubmit() {
             />
           </div>
           <div class="op-field">
-            <div class="op-label">外部编号</div>
-            <AInput v-model:value="externalNo" placeholder="平台工单号，可后补" />
+            <div class="op-label req">投诉编号</div>
+            <AInput v-model:value="complaintNo" placeholder="外部平台工单号" />
           </div>
         </div>
+        <div class="op-field-row">
+          <div class="op-field">
+            <div class="op-label">前期反馈</div>
+            <ASelect
+              v-model:value="priorFeedback"
+              :options="priorFeedbackOptions"
+              placeholder="请选择"
+              style="width:100%"
+              allow-clear
+            />
+          </div>
+          <div class="op-field">
+            <div class="op-label">服务回溯</div>
+            <ASelect
+              v-model:value="serviceReview"
+              :options="serviceReviewOptions"
+              placeholder="请选择"
+              style="width:100%"
+              allow-clear
+            />
+          </div>
+        </div>
+        <div class="op-hint">工单来源将置为「外投渠道」；投诉分类与其余信息从原单同步，无需重录。</div>
       </template>
 
       <div class="op-field">
@@ -193,7 +247,7 @@ function onSubmit() {
             <span class="esc-sync-k">{{ row.label }}</span>
             <span class="esc-sync-v">{{ row.value }}</span>
           </div>
-          <div class="op-hint">建单页可再调整</div>
+          <div class="op-hint">{{ isExternal ? '直接带入外投新单' : '建单页可再调整' }}</div>
         </div>
       </div>
 
@@ -201,8 +255,11 @@ function onSubmit() {
         <template v-if="originClosed">
           原单已是「{{ detail.status }}」，将直接建新单并双向关联。
         </template>
+        <template v-else-if="isExternal">
+          确认后：关闭原单 → 建外投新单（来源=外投渠道）→ 双向关联。
+        </template>
         <template v-else>
-          确认后：关闭原单 → 建投诉新单 → 双向关联。
+          确认后：进建单页补齐投诉字段 → 提交即关闭原单、建投诉新单并双向关联。
         </template>
       </div>
     </div>
@@ -248,9 +305,7 @@ function onSubmit() {
 }
 .esc-pill--go { color: #1a6fff; background: #eff6ff; }
 .esc-step.is-passed .esc-step-label { color: #9ca3af; font-weight: 500; }
-.esc-step.is-current {
-  background: #fffbeb;
-}
+.esc-step.is-current { background: #fffbeb; }
 .esc-step.is-current .esc-step-label { color: #b45309; }
 .esc-step.is-target .esc-step-label { color: #1a6fff; }
 .esc-step.is-blocked .esc-step-label { color: #d1d5db; font-weight: 500; }
@@ -266,25 +321,14 @@ function onSubmit() {
 }
 .esc-dot { color: #d1d5db; margin: 0 4px; }
 
-.esc-card { align-items: flex-start; }
-.esc-body { min-width: 0; }
-.esc-head { display: flex; align-items: center; gap: 6px; }
-.esc-badge {
-  flex: none;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 18px;
-  padding: 0 6px;
-  border-radius: 4px;
-  color: #059669;
-  background: #ecfdf5;
+/* 推导值（投诉性质）只读框 */
+.esc-derived {
+  display: flex; align-items: center;
+  height: 32px; padding: 0 11px;
+  font-size: 13px; color: #374151; font-weight: 600;
+  background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px;
 }
-.esc-blocked {
-  margin-top: 8px;
-  font-size: 12px;
-  color: #9ca3af;
-  line-height: 1.5;
-}
+.esc-derived.empty { color: #b0b4bb; font-weight: 400; }
 
 .esc-sync-wrap { border-top: 1px dashed #eef0f3; padding-top: 4px; }
 .esc-sync-toggle {

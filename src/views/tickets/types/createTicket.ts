@@ -108,7 +108,8 @@ export const PRIORITY_OPTIONS: { value: Priority; label: string }[] = [
 
 export const EXPECT_TIMES = ['今日 18:00', '今日 20:00', '明日 12:00', '3 个工作日内'];
 
-export const COMPLAINT_TYPE_OPTIONS = ['服务投诉', '产品质量', '物流问题', '其他'];
+// 原「投诉类型」枚举（服务投诉/产品质量/物流问题/其他）已废弃：
+// 该字段改为「投诉性质」，由投诉二类推导（见 resolveComplaintNature），不再单独选。
 export const COMPLAINT_PLATFORM_OPTIONS = [
   '市场监管12345平台',
   '市场监管12315平台',
@@ -140,21 +141,73 @@ export const PRIOR_FEEDBACK_OPTIONS = [
   '否',
 ] as const;
 export const SERVICE_REVIEW_OPTIONS = ['需要回溯', '无需回溯'];
-export const COMPLAINT_L1_OPTIONS = ['产品质量', '服务态度', '物流问题'];
+/**
+ * 投诉性质：**由投诉二类推导，不单独选**（业务方 0730 口径）。
+ * 「人员投诉 / 业务投诉」是投诉的性质分类，不是升阶层级——外投才是升阶（来源=外投渠道）。
+ */
+export type ComplaintNature = '业务投诉' | '服务投诉' | '人员投诉';
+
+/** 投诉一类（业务方 0730 给定分类树） */
+export const COMPLAINT_L1_OPTIONS = [
+  '产品功能/性能投诉',
+  '产品质量投诉',
+  '服务质量投诉',
+  '流程规则投诉',
+];
+
+/** 投诉一类 → 投诉二类 */
 export const COMPLAINT_L2_MAP: Record<string, string[]> = {
-  产品质量: ['功能缺陷', '外观瑕疵', '配件缺失'],
-  服务态度: ['响应慢', '态度差'],
-  物流问题: ['延迟', '破损'],
+  '产品功能/性能投诉': [
+    '产品操作过于复杂',
+    '产品新版功能比老版本差',
+    '产品性能未达到顾客预期',
+    '对产品原装配置不满',
+  ],
+  产品质量投诉: [
+    '安全事故',
+    '产品质量故障',
+    '开箱损（新品拆封有问题）',
+    '老旧产品无售后政策不认可',
+    '质量事故',
+  ],
+  服务质量投诉: [
+    '承诺未兑现',
+    '对人员服务态度不满',
+    '服务不及时',
+    '虚假结单',
+    '一次服务不到位',
+  ],
+  流程规则投诉: [
+    '对规定的联系方式不认可',
+    '对规定的联系时效不认可',
+    '对老旧产品现有售后政策不认可',
+    '其他业务规则不认可',
+    '售后网点覆盖率低',
+    '售后维修方式不认可',
+    '售后维修费用 / 运费不认可',
+    '退换货政策不认可',
+    '需要顾客自行联系 / 处理不认可',
+    '宣传 / 介绍与实际不符',
+  ],
 };
-export const COMPLAINT_L3_MAP: Record<string, string[]> = {
-  功能缺陷: ['播放异常', '无法开机', '卡顿死机'],
-  外观瑕疵: ['划痕', '色差', '变形'],
-  配件缺失: ['充电器缺失', '数据线缺失', '包装盒缺失'],
-  响应慢: ['等待超时', '无人接听', '反复转接'],
-  态度差: ['用语不当', '推诿扯皮', '服务意识差'],
-  延迟: ['超时未送达', '物流停滞', '错发漏发'],
-  破损: ['外包装破损', '商品破损', '内件损坏'],
+
+/**
+ * 投诉二类 → 投诉性质。
+ * 除「服务质量投诉」下的 5 项分别落 服务/人员 外，其余一律业务投诉。
+ */
+export const COMPLAINT_NATURE_MAP: Record<string, ComplaintNature> = {
+  承诺未兑现: '服务投诉',
+  对人员服务态度不满: '人员投诉',
+  服务不及时: '服务投诉',
+  虚假结单: '服务投诉',
+  一次服务不到位: '服务投诉',
 };
+
+/** 按投诉二类推导投诉性质；未命中特例即业务投诉，无二类时返回空 */
+export function resolveComplaintNature(complaintL2?: string): ComplaintNature | '' {
+  if (!complaintL2) return '';
+  return COMPLAINT_NATURE_MAP[complaintL2] ?? '业务投诉';
+}
 export const SUGGEST_L1_OPTIONS = ['产品体验', '功能优化', '服务流程'];
 export const SUGGEST_L2_MAP: Record<string, string[]> = {
   产品体验: ['功能建议', '交互优化'],

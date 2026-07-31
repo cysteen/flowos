@@ -3,7 +3,6 @@ import { computed, defineAsyncComponent, onActivated, onBeforeUnmount, onDeactiv
 import { useRoute, useRouter } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
 import { useWorkspaceTabsStore, resolveTicketTabTitle } from '@/stores/workspaceTabs';
-import { useCtiStore } from '@/stores/cti';
 import { useUserStore } from '@/stores/user';
 import OpHeader from './components/operation/OpHeader.vue';
 import OpOverviewBand from './components/operation/OpOverviewBand.vue';
@@ -12,8 +11,6 @@ import OpSupplementModal from './components/operation/OpSupplementModal.vue';
 import OpDunningModal from './components/operation/OpDunningModal.vue';
 import OpCancelModal from './components/operation/OpCancelModal.vue';
 import OpEscalateComplaintModal from './components/operation/OpEscalateComplaintModal.vue';
-import OpSmsModal from './components/operation/OpSmsModal.vue';
-import OpEmailModal from './components/operation/OpEmailModal.vue';
 import TicketEventToastStack from './components/operation/TicketEventToastStack.vue';
 import OpProcessTabs from './components/operation/OpProcessTabs.vue';
 import OpSidePanel from './components/operation/OpSidePanel.vue';
@@ -62,25 +59,12 @@ const processTabsRef = ref<InstanceType<typeof OpProcessTabs> | null>(null);
 const actionBarRef = ref<{ openEscalate: () => void; openAftersale: () => void } | null>(null);
 
 const tabsStore = useWorkspaceTabsStore();
-const cti = useCtiStore();
 const user = useUserStore();
 
 const overviewExpanded = ref(false);
 const supplementModalOpen = ref(false);
 const dunningModalOpen = ref(false);
 const cancelModalOpen = ref(false);
-
-// 联系客户：短信 / 邮件弹窗（统一走 OpActionModal 风格）
-const smsModalOpen = ref(false);
-const smsPhone = ref('');
-const emailModalOpen = ref(false);
-const emailTo = ref('');
-const notifyCtx = computed(() => ({
-  no: ticketNo.value,
-  name: d.value.customer.name || '',
-  product: d.value.product.name || '',
-  agent: user.name || '当前坐席',
-}));
 
 /** 工单操作页加载后，用标题同步 Tab（避免仅显示工单号） */
 watch(
@@ -94,71 +78,6 @@ watch(
 
 const createOpen = ref(false);
 const createPrefill = ref<CreateTicketPrefill | null>(null);
-
-function onContact(type: 'call' | 'sms' | 'email', value: string) {
-  if (type === 'call') {
-    if (cti.workStatus === 'offline') {
-      message.warning('请先签入上班');
-      return;
-    }
-    if (cti.workStatus === 'break') {
-      message.warning('请先切换为就绪');
-      return;
-    }
-    if (cti.callSession) {
-      message.warning('当前有进行中的外呼');
-      return;
-    }
-    const isAgent = d.value.agent?.contacts?.some((c) => c.value === value);
-    const role = isAgent ? '代办人' : '客户';
-    const name = isAgent ? (d.value.agent?.name ?? '') : (d.value.customer.name || '');
-    cti.startCall({
-      ticketId: ticketNo.value,
-      phone: value,
-      contactLabel: name ? `${role}·${name}` : role,
-    });
-    return;
-  }
-  if (type === 'sms') {
-    smsPhone.value = value;
-    smsModalOpen.value = true;
-    return;
-  }
-  // email
-  emailTo.value = value;
-  emailModalOpen.value = true;
-}
-
-function onSmsSubmit(payload: { phone: string; templateName: string; content: string }) {
-  tabData.value.contactRecords.unshift({
-    id: `c-${Date.now()}`,
-    kind: 'sms',
-    title: '短信发送',
-    emoji: '💬',
-    operator: user.name || '当前坐席',
-    when: formatNow(),
-    metaPrefix: '发送人',
-    summary: `接收号码: ${payload.phone} | 状态: 发送成功 | 模板: ${payload.templateName}`,
-    smsContent: payload.content,
-  });
-  processTabsRef.value?.switchTab('contact');
-  message.success(`短信已发送至 ${payload.phone}`);
-}
-
-function onEmailSubmit(payload: { to: string; subject: string }) {
-  tabData.value.contactRecords.unshift({
-    id: `c-${Date.now()}`,
-    kind: 'email',
-    title: '邮件发送',
-    emoji: '📧',
-    operator: user.name || '当前坐席',
-    when: formatNow(),
-    metaPrefix: '发送人',
-    summary: `收件邮箱: ${payload.to} | 状态: 发送成功 | 主题: ${payload.subject}`,
-  });
-  processTabsRef.value?.switchTab('contact');
-  message.success(`邮件「${payload.subject}」已发送至 ${payload.to}`);
-}
 
 // —— 顶部速览带：统计宫格双层下钻 ——
 const statModalKey = ref<InsightModalKey | null>(null);
@@ -207,22 +126,78 @@ function openReopenCreate() {
 const escalateModalOpen = ref(false);
 const escalateInput = ref<EscalateInput | null>(null);
 
+/**
+ * 升级投诉两条分支（PRD §4.3）：
+ * - 非投诉 → 投诉：投诉专属字段多，带预填**跳建单页**补齐，提交建单时才关原单；
+ * - 投诉 → 外投：只补增量字段，**弹窗内直接建外投新单**，不跳建单页。
+ */
 function onEscalateSubmit(payload: EscalateInput) {
   escalateInput.value = payload;
-  createPrefill.value = buildEscalatePrefill(d.value, payload);
-  createOpen.value = true;
+  if (payload.kind === 'toComplaint') {
+    createPrefill.value = buildEscalatePrefill(d.value, payload);
+    createOpen.value = true;
+    return;
+  }
+  finishEscalate(buildExternalTicket(payload), '外投');
+}
+
+/** 由原单 + 外投增量字段合成外投新单（不经建单页，字段全部来自原单同步 + 弹窗补录） */
+function buildExternalTicket(input: Extract<EscalateInput, { kind: 'toExternal' }>): Ticket {
+  const src = TICKETS.find((t) => t.no === d.value.no);
+  const now = new Date();
+  const seq = String(now.getTime()).slice(-5);
+  return {
+    id: `esc-${now.getTime()}`,
+    no: `LCMN-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${seq}`,
+    type: '投诉',
+    channel: (src?.channel ?? '电话'),
+    title: `外投·${d.value.title}`,
+    smartMarks: ['升级'],
+    customer: d.value.customer.name,
+    vip: d.value.customer.types.some((t) => t.includes('VIP')),
+    product: d.value.product.name,
+    nodeStatus: '待受理',
+    nodeStep: 1,
+    nodeTotal: 5,
+    priority: src?.priority ?? 'P0',
+    slaText: '00:15:00',
+    slaSub: '距超时',
+    slaState: 'soon',
+    slaMinutes: 15,
+    assignee: user.name || '张三',
+    tab: 'mine',
+    customerPhone: d.value.customer.contacts.find((c) => c.type === 'phone')?.value,
+    productCategory: d.value.product.category,
+    problemDesc: [
+      `【升级投诉·原单 ${d.value.no}】投诉 → 外投`,
+      `外投平台：${input.platform}｜投诉编号：${input.complaintNo}`,
+      input.priorFeedback ? `前期反馈：${input.priorFeedback}` : '',
+      input.serviceReview ? `服务回溯：${input.serviceReview}` : '',
+      `升级原因：${input.note}`,
+      '',
+      d.value.demand,
+    ].filter(Boolean).join('\n'),
+    createdAt: nowFullText(),
+    updatedAt: nowFullText(),
+  };
+}
+
+/** 升级落库：登记关联单 + 写关联履历 + 关原单（两条分支共用） */
+function finishEscalate(ticket: Ticket, targetLabel: string, processAfter?: boolean) {
+  const note = escalateInput.value?.note ?? '';
+  addEscalatedComplaint(ticket, targetLabel, note);
+  syncEscalatedRelatedCard(ticket, targetLabel);
+  dispatch({ type: '升级投诉', data: { target: targetLabel, newNo: ticket.no, note } });
+  escalateInput.value = null;
+  if (!processAfter) processTabsRef.value?.switchTab('related');
 }
 
 function onTicketCreated(ticket: Ticket, processAfter?: boolean) {
   if (createPrefill.value?.mode === 'child') addChildTicket(ticket);
   else if (createPrefill.value?.mode === 'reopen') addReopenTicket(ticket);
   else if (createPrefill.value?.mode === 'escalate' && escalateInput.value) {
-    const { target, note } = escalateInput.value;
-    addEscalatedComplaint(ticket, target, note);
-    syncEscalatedRelatedCard(ticket, target);
-    dispatch({ type: '升级投诉', data: { target, newNo: ticket.no, note } });
-    escalateInput.value = null;
-    if (!processAfter) processTabsRef.value?.switchTab('related');
+    const input = escalateInput.value;
+    finishEscalate(ticket, input.kind === 'toExternal' ? '外投' : input.nature, processAfter);
   }
   if (processAfter) router.push(`/tickets/${ticket.no}`);
 }
@@ -744,6 +719,7 @@ watch(
           :expanded-sections="expandedSections"
           :active-chip="activeChip"
           :filled-supplement-count="filledSupplementCount"
+          :readonly="d.frontlineDemo"
           @toggle-section="toggleSection"
           @select-chip="selectChip"
           @update:form="updateForm"
@@ -759,13 +735,17 @@ watch(
 
       <OpSidePanel
         :detail="d"
-        @contact="onContact"
         @action="toast"
       />
     </div>
 
+    <!--
+      一线视角演示单：隐藏底部流转操作栏（下送/升级/调剂/委派/挂起/关闭/强结属二线权限）。
+      组件本身仍挂载——头部「关联售后」等动作复用它内部的弹窗。
+    -->
     <OpActionBar
       ref="actionBarRef"
+      :hide-bar="d.frontlineDemo"
       :ticket-no="ticketNo"
       :ticket-title="d.title"
       :ticket-type="d.type"
@@ -824,20 +804,6 @@ watch(
       v-model:open="escalateModalOpen"
       :detail="d"
       @submit="onEscalateSubmit"
-    />
-
-    <OpSmsModal
-      v-model:open="smsModalOpen"
-      :phone="smsPhone"
-      :ctx="notifyCtx"
-      @submit="onSmsSubmit"
-    />
-
-    <OpEmailModal
-      v-model:open="emailModalOpen"
-      :email="emailTo"
-      :ctx="notifyCtx"
-      @submit="onEmailSubmit"
     />
 
   </div>

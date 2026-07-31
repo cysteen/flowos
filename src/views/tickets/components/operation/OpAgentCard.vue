@@ -3,7 +3,6 @@ import OpContactRows from './OpContactRows.vue';
 import type { AgentInfo } from '@/views/tickets/types/operation';
 
 defineProps<{ agent: AgentInfo }>();
-const emit = defineEmits<{ contact: [type: 'call' | 'sms' | 'email', value: string] }>();
 </script>
 
 <template>
@@ -15,7 +14,7 @@ const emit = defineEmits<{ contact: [type: 'call' | 'sms' | 'email', value: stri
     </div>
     <div class="kv kv-contacts">
       <span class="k">联系方式</span>
-      <OpContactRows :contacts="agent.contacts" @contact="(t, v) => emit('contact', t, v)" />
+      <OpContactRows :contacts="agent.contacts" />
     </div>
     <div class="kv">
       <span class="k">关系</span>

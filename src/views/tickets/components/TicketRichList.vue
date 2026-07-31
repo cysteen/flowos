@@ -233,6 +233,8 @@ const gridTemplateColumns = computed(() => {
           <span class="channel">{{ t.channel }}</span>
           <span class="sep">·</span>
           <span class="ticket-no" @click="emit('clickNo', t)">{{ t.no }}</span>
+          <!-- 一线视角演示单：处理页隐藏二线流转操作栏 -->
+          <span v-if="t.frontlineDemo" class="frontline-tag">一线演示专用</span>
         </div>
       </div>
 
@@ -516,6 +518,12 @@ const gridTemplateColumns = computed(() => {
 .sep { font-size: 12px; color: #d1d5db; flex: none; }
 .ticket-no { font-size: 12px; font-weight: 500; color: #1a6fff; cursor: pointer; flex: none; }
 .ticket-no:hover { text-decoration: underline; }
+.frontline-tag {
+  flex: none;
+  font-size: 11px; font-weight: 600; line-height: 16px;
+  padding: 0 6px; border-radius: 4px;
+  color: #7c3aed; background: #f5f3ff; border: 1px solid #ddd6fe;
+}
 
 /* 工单摘要列：标签 + 内容单行展示 */
 .cell-summary { display: flex; align-items: center; min-width: 0; }

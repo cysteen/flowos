@@ -176,6 +176,11 @@ export interface Ticket {
   updatedAt?: string;
   /** 创建时间（排序） */
   createdAt?: string;
+  /**
+   * 一线视角演示单：列表行打「一线演示专用」标，处理页隐藏底部流转操作栏
+   * （下送/升级/调剂/委派/挂起/关闭/强结等属二线权限，一线打开只读办理内容）。
+   */
+  frontlineDemo?: boolean;
 }
 
 /** 新建工单弹窗预填（子单 / reopen 场景从原单继承客户/产品/渠道等） */
@@ -197,7 +202,12 @@ export interface CreateTicketPrefill {
   /** 新建弹窗表单工单类型（投诉/建议/商机/咨询） */
   formTicketType?: CreateFormTicketType;
   priority?: Priority;
+  /** 投诉性质（业务/服务/人员投诉）——由投诉二类推导，只读带入 */
   complaintType?: string;
+  /** 投诉一类 */
+  complaintL1?: string;
+  /** 投诉二类 */
+  complaintL2?: string;
   /** 投诉平台（目标=外投时带入） */
   complaintPlatform?: string;
   /** 外部投诉编号（目标=外投时带入） */

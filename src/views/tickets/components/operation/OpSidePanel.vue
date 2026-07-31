@@ -8,15 +8,14 @@ import type { TicketDetailMeta } from '@/mock/ticketDetail';
 defineProps<{ detail: TicketDetailMeta }>();
 
 const emit = defineEmits<{
-  contact: [type: 'call' | 'sms' | 'email', value: string];
   action: [name: string];
 }>();
 </script>
 
 <template>
   <div class="op-side">
-    <OpCustomerCard :customer="detail.customer" @contact="(t, v) => emit('contact', t, v)" />
-    <OpAgentCard v-if="detail.agent" :agent="detail.agent" @contact="(t, v) => emit('contact', t, v)" />
+    <OpCustomerCard :customer="detail.customer" />
+    <OpAgentCard v-if="detail.agent" :agent="detail.agent" />
     <OpTicketInfoCard :detail="detail" />
     <OpAiAssistant
       :similar-ticket="detail.similarTicket"

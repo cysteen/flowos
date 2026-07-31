@@ -12,6 +12,11 @@ export interface AgentInfo {
 }
 
 export interface ComplaintInfo {
+  /** 投诉一类 */
+  cat1: string;
+  /** 投诉二类（投诉性质由此推导） */
+  cat2: string;
+  /** 投诉性质：业务投诉 / 服务投诉 / 人员投诉，由 cat2 推导，不单独选 */
   complaintType: string;
   platform: string;
   complaintNo: string;
@@ -101,9 +106,10 @@ export interface ProcessFormDraft {
   serviceSolution: string;
   /** @deprecated 历史字段，新结论枚举不再使用 */
   concessionPlan: string;
+  /** 投诉一类 */
   complaintCat1: string;
+  /** 投诉二类（投诉性质由此推导，见 resolveComplaintNature；分类树只有两级） */
   complaintCat2: string;
-  complaintCat3: string;
   /** 投诉标记（有效/无效/未证实/暂缓；市场监管平台另含有责/无责等） */
   complaintMark: string;
   complaintNote: string;

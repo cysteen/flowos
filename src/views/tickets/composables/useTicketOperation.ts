@@ -144,6 +144,7 @@ export function useTicketOperation() {
       base.customer.name = t.customer;
       base.product.name = t.product;
       base.productBg = t.productBg;
+      base.frontlineDemo = t.frontlineDemo; // 一线演示单：处理页隐藏二线流转操作栏
       base.feishuSync = 'none';
       base.feishuRecords = [];
       base.productIssue = ticketProductIssue(t);

@@ -40,7 +40,7 @@ const BASE_TICKETS: Ticket[] = [
     assignee: '王坐席', tab: 'mine',
     customerPhone: '13912345678', sn: 'SN-R2-882910', productCategory: '智能硬件',
     createdAt: '2026-06-10 07:45', updatedAt: '2026-06-10 16:02',
-    responded: true, hasDunning: true,
+    responded: true, hasDunning: true, frontlineDemo: true,
   },
   {
     id: 't3', no: 'LCMN-20260610-74836', type: '咨询', channel: '小程序',

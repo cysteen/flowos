@@ -1,66 +1,45 @@
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import type { CreateTicketPrefill, Channel, Priority } from '@/views/tickets/types/ticket';
-import { PROBLEM_TREE } from '@/views/tickets/types/createTicket';
+import { PROBLEM_TREE, resolveComplaintNature } from '@/views/tickets/types/createTicket';
 
 /**
- * 升级投诉（文档名「关联投诉」）判定逻辑 —— 《【815】关联投诉 PRD》§3.2 升级规则矩阵。
+ * 升级投诉（文档名「关联投诉」）判定逻辑 —— 《【815】关联投诉 PRD》§3 升级规则。
  *
- * 投诉阶层（单向升阶）：非投诉（咨询/商机/建议）→ 人员投诉 / 业务投诉（同阶）→ 外投（终态）。
- * 同阶之间（人员 ↔ 业务）不升级、外投不再升级，两种情形都只允许「补充」。
+ * **升阶只有两跳**（0730 定稿）：`非投诉（咨询/商机/建议） → 投诉 → 外投`。
+ * - 「人员投诉 / 服务投诉 / 业务投诉」是**投诉性质**，由**投诉二类推导**（见 resolveComplaintNature），
+ *   同层并列、不构成升阶——所以性质变化属于「改投诉分类」，不走升级投诉。
+ * - 「外投」不是投诉分类，是**工单来源=外投渠道**；外投只能由**二线坐席**发起。
  */
 
 /** 原单所处阶层 */
-export type ComplaintTier = 'none' | 'low' | 'external';
+export type ComplaintTier = 'none' | 'complaint' | 'external';
 
-/** 可选的目标投诉类型 */
-export type EscalateTarget = '人员投诉' | '业务投诉' | '外投';
+/** 升级动作种类 */
+export type EscalateKind =
+  /** 非投诉 → 投诉：跨类型，需补整块投诉字段，走建单页 */
+  | 'toComplaint'
+  /** 投诉 → 外投：只补外投增量字段，弹窗内完成 */
+  | 'toExternal';
 
-export const ESCALATE_TARGETS: EscalateTarget[] = ['人员投诉', '业务投诉', '外投'];
-
-/** 目标类型说明（弹窗候选卡片副标题） */
-const TARGET_DESC: Record<EscalateTarget, string> = {
-  人员投诉: '投诉对象为坐席/服务人员：服务态度、答复不当、承诺未兑现',
-  业务投诉: '投诉对象为产品或业务：质量、功能、物流、费用、流程',
-  外投: '客户已向外部平台（12315 / 消协 / 工信部等）投诉，最高阶且不可再升级',
-};
-
-/** 目标类型 → 新投诉单的「投诉分类」（建单表单 COMPLAINT_TYPE_OPTIONS） */
-const TARGET_COMPLAINT_TYPE: Record<EscalateTarget, string> = {
-  人员投诉: '服务投诉',
-  业务投诉: '产品质量',
-  外投: '服务投诉',
-};
-
-/** 命中即判为「人员投诉」倾向的问题/投诉分类关键词 */
-const PERSON_COMPLAINT_HINT = /服务态度|态度|响应慢|推诿|答复|承诺|坐席|人员/;
-
-export interface EscalateCandidate {
-  target: EscalateTarget;
-  /** 是否可选（false = 该目标只允许补充，不允许升级） */
-  allowed: boolean;
-  /** 据业务类型 / 问题分类推荐的起步目标 */
-  recommended: boolean;
-  desc: string;
-  /** 不可选原因（allowed=false 时展示） */
-  reason?: string;
-}
+/** 一线不可外投 / 投诉单不可升级的提示（业务方 0730 定稿文案） */
+const FRONTLINE_COMPLAINT_TIP = '当前投诉单，不可升级';
+const EXTERNAL_TERMINAL_TIP = '原单已是外投（投诉最高阶），不可再升级；如需补充请用「新建补充」';
 
 export interface EscalateVerdict {
   tier: ComplaintTier;
-  /** 原单阶层展示名：非投诉 / 人员投诉 / 业务投诉 / 外投 */
+  /** 原单阶层展示名 */
   tierLabel: string;
-  /** upgrade=存在可升级目标；supplement=仅补充（外投终态） */
-  branch: 'upgrade' | 'supplement';
+  /** 可做的升级动作；null = 不可升级 */
+  kind: EscalateKind | null;
   /** 头部入口是否可点 */
   entryEnabled: boolean;
   /** 入口置灰时的悬浮说明 */
   entryTip?: string;
   /** 弹窗顶部判定文案 */
   headline: string;
-  candidates: EscalateCandidate[];
 }
 
-/** 原单是否已是终态（已关闭/已取消/已归档）——升级时跳过关闭步骤（PRD §4.3.1） */
+/** 原单是否已是终态（已关闭/已取消/已归档/已结案）——升级时跳过关闭步骤（PRD §4.3.1） */
 export function isTicketTerminated(status: string): boolean {
   return /已关闭|已取消|已归档|已结案/.test(status);
 }
@@ -68,24 +47,27 @@ export function isTicketTerminated(status: string): boolean {
 /**
  * 原单阶层判定。
  * 外投以「外投标记 / 工单来源=外投渠道」为准——投诉平台字段只驱动处理表单的外投分支字段，
- * 不单独决定阶层（判定来源待与业务侧对齐，见 PRD §备注·待讨论 4/5）。
+ * 不单独决定阶层。
  */
 export function resolveComplaintTier(detail: TicketDetailMeta): ComplaintTier {
   if (detail.type !== '投诉') return 'none';
   if (detail.isExternalAppeal || detail.source === '外投渠道' || detail.source === '外投') return 'external';
-  return 'low';
+  return 'complaint';
 }
 
-/** 低阶投诉细分：投诉分类/标记偏服务人员 → 人员投诉，其余 → 业务投诉 */
-export function resolveLowTierType(detail: TicketDetailMeta): EscalateTarget {
-  const text = [detail.complaint.complaintType, ...(detail.complaint.tags ?? [])].join(' ');
-  return PERSON_COMPLAINT_HINT.test(text) ? '人员投诉' : '业务投诉';
+/** 原单的投诉性质（由投诉二类推导；无分类时回落到已存的性质字段） */
+export function complaintNatureOf(detail: TicketDetailMeta): string {
+  return resolveComplaintNature(detail.complaint.cat2) || detail.complaint.complaintType || '';
 }
 
-/** 非投诉原单的推荐起步目标：问题分类偏人员/服务 → 人员投诉，其余 → 业务投诉 */
-function recommendTarget(detail: TicketDetailMeta): EscalateTarget {
-  const text = [detail.productIssue, ...(detail.product.issueTags ?? []), detail.demand].join(' ');
-  return PERSON_COMPLAINT_HINT.test(text) ? '人员投诉' : '业务投诉';
+/**
+ * 发起人是不是一线坐席。
+ * 一线**不能外投**，且**投诉单一律不可升级**（唯一去处是外投）。
+ * 当前角色体系里没有一线角色（ROLES 里 agent-cs/agent-as 都是二线），
+ * 故以「一线视角」标记作为判据；后续接入真实一线角色时在此处或上。
+ */
+function isFrontlineActor(detail: TicketDetailMeta): boolean {
+  return !!detail.frontlineDemo;
 }
 
 /** 原单阶层展示名 */
@@ -93,65 +75,49 @@ export function complaintTierLabel(detail: TicketDetailMeta): string {
   const tier = resolveComplaintTier(detail);
   if (tier === 'none') return `${detail.type}（非投诉）`;
   if (tier === 'external') return '外投（外部投诉）';
-  return resolveLowTierType(detail);
+  const nature = complaintNatureOf(detail);
+  return nature ? `投诉 · ${nature}` : '投诉';
 }
 
-/** 按 PRD §3.2 矩阵算出入口可用性、三分支与目标候选 */
+/** 按阶层 × 发起人角色算出可做的升级动作与入口可用性 */
 export function buildEscalateVerdict(detail: TicketDetailMeta): EscalateVerdict {
   const tier = resolveComplaintTier(detail);
   const tierLabel = complaintTierLabel(detail);
+  const frontline = isFrontlineActor(detail);
 
-  // 外投：终态，禁止升级，仅补充
+  // 外投：终态，谁都不能再升
   if (tier === 'external') {
     return {
       tier,
       tierLabel,
-      branch: 'supplement',
+      kind: null,
       entryEnabled: false,
-      entryTip: '原单已是外投（投诉最高阶），不可再升级；如需补充请用「新建补充」',
+      entryTip: frontline ? FRONTLINE_COMPLAINT_TIP : EXTERNAL_TERMINAL_TIP,
       headline: '外投为投诉最高阶，不支持再升级，仅可补充信息。',
-      candidates: ESCALATE_TARGETS.map((target) => ({
-        target,
-        allowed: false,
-        recommended: false,
-        desc: TARGET_DESC[target],
-        reason: '外投为投诉终态，禁止升级',
-      })),
     };
   }
 
-  // 低阶投诉（人员/业务）：同阶不升，只能升外投
-  if (tier === 'low') {
+  // 投诉单：唯一去处是外投（二线专属）；性质变化属于改投诉分类，不走升级
+  if (tier === 'complaint') {
     return {
       tier,
       tierLabel,
-      branch: 'upgrade',
-      entryEnabled: true,
-      headline: `本单为「${tierLabel}」，同阶（人员投诉 ↔ 业务投诉）不支持升级，仅可升级为「外投」。`,
-      candidates: ESCALATE_TARGETS.map((target) => ({
-        target,
-        allowed: target === '外投',
-        recommended: target === '外投',
-        desc: TARGET_DESC[target],
-        reason: target === '外投' ? undefined : '与原单同阶，仅可补充信息',
-      })),
+      kind: frontline ? null : 'toExternal',
+      entryEnabled: !frontline,
+      entryTip: frontline ? FRONTLINE_COMPLAINT_TIP : undefined,
+      headline: '本单已是投诉单，可升级为「外投」——关闭原单、建外投新单并双向关联。'
+        + '（如只是投诉性质变化，请在处理页改投诉分类，不走升级）',
     };
   }
 
-  // 非投诉（咨询/商机/建议）：三类目标均可升
-  const rec = recommendTarget(detail);
+  // 非投诉：升为投诉单，投诉性质由所选投诉分类推导
   return {
     tier,
     tierLabel,
-    branch: 'upgrade',
+    kind: 'toComplaint',
     entryEnabled: true,
-    headline: `本单为「${detail.type}」（非投诉），可升级为 人员投诉 / 业务投诉 / 外投，请选择升级目标。`,
-    candidates: ESCALATE_TARGETS.map((target) => ({
-      target,
-      allowed: true,
-      recommended: target === rec,
-      desc: TARGET_DESC[target],
-    })),
+    headline: `本单为「${detail.type}」（非投诉），可升级为投诉单——选投诉分类，投诉性质自动判定。`
+      + (frontline ? '外投须由二线坐席发起，一线不可直接外投。' : ''),
   };
 }
 
@@ -159,44 +125,29 @@ export function buildEscalateVerdict(detail: TicketDetailMeta): EscalateVerdict 
 export interface TierStep {
   key: ComplaintTier;
   label: string;
-  sub: string;
-  /** passed 已越过 / current 当前所处 / target 可升级至 / blocked 不可升（同阶或终态） */
+  /** passed 已越过 / current 当前所处 / target 可升级至 / blocked 不可升 */
   state: 'passed' | 'current' | 'target' | 'blocked';
 }
 
-const TIER_ORDER: ComplaintTier[] = ['none', 'low', 'external'];
+const TIER_ORDER: ComplaintTier[] = ['none', 'complaint', 'external'];
+const TIER_LABEL: Record<ComplaintTier, string> = {
+  none: '非投诉',
+  complaint: '投诉',
+  external: '外投',
+};
 
 export function buildTierSteps(detail: TicketDetailMeta): TierStep[] {
-  const tier = resolveComplaintTier(detail);
-  const curIdx = TIER_ORDER.indexOf(tier);
-  const allowed = new Set(
-    buildEscalateVerdict(detail).candidates.filter((c) => c.allowed).map((c) => c.target),
-  );
+  const verdict = buildEscalateVerdict(detail);
+  const curIdx = TIER_ORDER.indexOf(verdict.tier);
+  const targetTier: ComplaintTier | null =
+    verdict.kind === 'toComplaint' ? 'complaint' : verdict.kind === 'toExternal' ? 'external' : null;
 
   return TIER_ORDER.map((key, idx) => {
     let state: TierStep['state'];
     if (idx < curIdx) state = 'passed';
     else if (idx === curIdx) state = 'current';
-    else if (key === 'external') state = allowed.has('外投') ? 'target' : 'blocked';
-    else state = allowed.has('人员投诉') || allowed.has('业务投诉') ? 'target' : 'blocked';
-
-    if (key === 'none') {
-      return {
-        key,
-        label: '非投诉',
-        sub: state === 'current' ? detail.type : '咨询 / 商机 / 建议',
-        state,
-      };
-    }
-    if (key === 'low') {
-      return {
-        key,
-        label: '人员 / 业务投诉',
-        sub: state === 'current' ? resolveLowTierType(detail) : '同阶不互升',
-        state,
-      };
-    }
-    return { key, label: '外投', sub: '外部投诉 · 终态', state };
+    else state = key === targetTier ? 'target' : 'blocked';
+    return { key, label: TIER_LABEL[key], state };
   });
 }
 
@@ -217,6 +168,15 @@ export function buildEscalateSyncFields(detail: TicketDetailMeta): SyncFieldRow[
     { label: '优先级', value: detail.priority },
     { label: '客户诉求', value: detail.demand },
   ];
+  // 投诉 → 外投：原单已有的投诉分类/性质一并带走，坐席只补外投增量字段
+  const nature = complaintNatureOf(detail);
+  if (detail.complaint.cat1 || nature) {
+    rows.push({
+      label: '投诉分类',
+      value: [detail.complaint.cat1, detail.complaint.cat2].filter(Boolean).join(' / ')
+        + (nature ? `（${nature}）` : ''),
+    });
+  }
   const latest = detail.latestHandling?.[0]?.text;
   if (latest) rows.push({ label: '处理摘要', value: latest });
   if (detail.attachments.length) {
@@ -249,31 +209,59 @@ function mapProblemPath(detail: TicketDetailMeta): { l1?: string; l2?: string; l
   return { l1, l2, l3 };
 }
 
-export interface EscalateInput {
-  target: EscalateTarget;
-  /** 升级原因 / 补充说明（必填） */
+/** 非投诉 → 投诉：坐席在弹窗里选投诉分类，性质由二类推导 */
+export interface EscalateToComplaintInput {
+  kind: 'toComplaint';
+  /** 投诉一类 */
+  cat1: string;
+  /** 投诉二类 */
+  cat2: string;
+  /** 由 cat2 推导的投诉性质（业务/服务/人员投诉） */
+  nature: string;
+  /** 升级原因（必填） */
   note: string;
-  /** 目标=外投时的外部投诉平台 */
-  platform?: string;
-  /** 目标=外投时的外部投诉编号 */
-  externalNo?: string;
 }
 
-/** 升级投诉 → 新投诉单建单预填（原单信息一次性同步，PRD §5.1） */
+/** 投诉 → 外投：只补外投增量字段（0730 定稿清单） */
+export interface EscalateToExternalInput {
+  kind: 'toExternal';
+  /** 投诉平台（必填） */
+  platform: string;
+  /** 投诉编号（必填，外部平台工单号） */
+  complaintNo: string;
+  /** 前期反馈 */
+  priorFeedback: string;
+  /** 服务回溯 */
+  serviceReview: string;
+  /** 升级原因（必填） */
+  note: string;
+}
+
+export type EscalateInput = EscalateToComplaintInput | EscalateToExternalInput;
+
+/** 升级后新单的展示名（履历/消息/建单页标题用） */
+export function escalateTargetLabel(input: EscalateInput): string {
+  return input.kind === 'toExternal' ? '外投' : input.nature || '投诉';
+}
+
+/**
+ * 非投诉 → 投诉：新投诉单建单预填。
+ * 跨类型升级要补的投诉专属字段多（投诉分类/编号/前期反馈/服务回溯/问题发生时间…），
+ * 故带着预填跳建单页，由坐席在完整表单里补齐（PRD §4.3.1）。
+ */
 export function buildEscalatePrefill(
   detail: TicketDetailMeta,
-  input: EscalateInput,
+  input: EscalateToComplaintInput,
 ): CreateTicketPrefill {
   const phone = detail.customer.contacts.find((c) => c.type === 'phone')?.value ?? '';
   const problem = mapProblemPath(detail);
-  const isExternal = input.target === '外投';
   const demandShort = detail.demand.length > 120 ? `${detail.demand.slice(0, 120)}…` : detail.demand;
 
   return {
     mode: 'escalate',
     parentNo: detail.no,
     parentTitle: detail.title,
-    escalateTarget: input.target,
+    escalateTarget: input.nature,
     customerName: detail.customer.name,
     customerPhone: phone,
     vip: detail.customer.types.some((t) => t.includes('VIP')),
@@ -282,10 +270,9 @@ export function buildEscalatePrefill(
     channel: CHANNEL_MAP[detail.channel] ?? '在线客服',
     formTicketType: '投诉',
     priority: mapPriority(detail.priority),
-    complaintType: TARGET_COMPLAINT_TYPE[input.target],
-    complaintPlatform: isExternal ? input.platform : undefined,
-    complaintNo: isExternal ? input.externalNo : undefined,
-    ticketSource: isExternal ? '外投渠道' : undefined,
+    complaintType: input.nature,
+    complaintL1: input.cat1,
+    complaintL2: input.cat2,
     businessType: detail.businessType,
     businessLine: detail.businessLine,
     problemL1: problem.l1,
@@ -294,7 +281,8 @@ export function buildEscalatePrefill(
     expectTime: detail.expectedResolve,
     desc: [
       `【升级投诉·原单 ${detail.no}】`,
-      `原单类型：${complaintTierLabel(detail)} → 目标：${input.target}`,
+      `原单类型：${detail.type}（非投诉） → 投诉（${input.nature}）`,
+      `投诉分类：${input.cat1} / ${input.cat2}`,
       `升级原因：${input.note}`,
       '',
       `原客户诉求：${demandShort}`,

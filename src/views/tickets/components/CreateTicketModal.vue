@@ -17,7 +17,6 @@ import {
   PRODUCT_CATEGORIES,
   PRIORITY_OPTIONS,
   TICKET_SOURCE_OPTIONS,
-  COMPLAINT_TYPE_OPTIONS,
   COMPLAINT_PLATFORM_OPTIONS,
   BUSINESS_LINE_OPTIONS,
   PRIOR_FEEDBACK_OPTIONS,
@@ -427,13 +426,12 @@ watch(
       >
         <template v-if="form.ticketType === '投诉'">
           <div class="row-3">
+            <!-- 投诉性质由投诉二类推导，只读带出（0730 口径），坐席只填投诉一类/二类 -->
             <div class="inline-field">
-              <label class="inline-label md"><span class="req">*</span>投诉类型</label>
-              <FormSelect
-                v-model:value="form.complaintType"
-                class="inline-control field-control"
-                :options="COMPLAINT_TYPE_OPTIONS.map((v) => ({ value: v, label: v }))"
-              />
+              <label class="inline-label md">投诉性质</label>
+              <div class="inline-control field-control derived-box" :class="{ empty: !form.complaintType }">
+                {{ form.complaintType || '选择投诉二类后自动判定' }}
+              </div>
             </div>
             <div class="inline-field">
               <label class="inline-label md">投诉平台</label>
@@ -715,6 +713,14 @@ watch(
   min-height: 32px !important;
 }
 .inline-control { flex: 1; min-width: 0; }
+/* 推导值只读框（投诉性质）：与下拉同高，弱一档 */
+.derived-box {
+  display: flex; align-items: center;
+  min-height: 32px; padding: 0 11px;
+  font-size: 13px; color: #303133; font-weight: 500;
+  background: #f7f8fa; border: 1px solid #dcdfe6; border-radius: 4px;
+}
+.derived-box.empty { color: #b0b4bb; font-weight: 400; }
 .req { color: #f56c6c; margin-right: 2px; }
 
 .row-2 {

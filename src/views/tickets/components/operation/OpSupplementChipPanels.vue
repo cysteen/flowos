@@ -15,7 +15,7 @@ import {
 import {
   COMPLAINT_L1_OPTIONS,
   COMPLAINT_L2_MAP,
-  COMPLAINT_L3_MAP,
+  resolveComplaintNature,
 } from '@/views/tickets/types/createTicket';
 
 const props = defineProps<{
@@ -37,9 +37,8 @@ const complaintL1Options = COMPLAINT_L1_OPTIONS.map((v) => ({ label: v, value: v
 const complaintL2Options = computed(() =>
   (COMPLAINT_L2_MAP[props.form.complaintCat1] ?? []).map((v) => ({ label: v, value: v })),
 );
-const complaintL3Options = computed(() =>
-  (COMPLAINT_L3_MAP[props.form.complaintCat2] ?? []).map((v) => ({ label: v, value: v })),
-);
+/** 投诉性质：由分类二推导展示，坐席不单独选 */
+const complaintNature = computed(() => resolveComplaintNature(props.form.complaintCat2));
 
 function update(partial: Partial<ProcessFormDraft>) {
   emit('update:form', { ...props.form, ...partial });
@@ -74,7 +73,7 @@ function onRiskFlagChange(flag: RiskFlag) {
 }
 
 function onComplaintCat1Change(v: string | number | undefined) {
-  update({ complaintCat1: String(v ?? ''), complaintCat2: '', complaintCat3: '' });
+  update({ complaintCat1: String(v ?? ''), complaintCat2: '' });
 }
 
 function onQualityCat1Change(v: string | number | undefined) {
@@ -99,7 +98,7 @@ function onQualityCat2Change(v: string | number | undefined) {
 }
 
 function onComplaintCat2Change(v: string | number | undefined) {
-  update({ complaintCat2: String(v ?? ''), complaintCat3: '' });
+  update({ complaintCat2: String(v ?? '') });
 }
 
 const missComplaintMark = computed(() => !props.form.complaintMark);
@@ -156,16 +155,12 @@ const missRiskDesc = computed(
           @update:value="onComplaintCat2Change"
         />
       </div>
+      <!-- 投诉性质由分类二推导，不单独选（0730 业务口径） -->
       <div class="field">
-        <label class="field-label-sm">分类三</label>
-        <FormSelect
-          class="cat-select"
-          :value="form.complaintCat3 || undefined"
-          :options="complaintL3Options"
-          :disabled="!form.complaintCat2"
-          placeholder="请选择"
-          @update:value="(v) => update({ complaintCat3: String(v ?? '') })"
-        />
+        <label class="field-label-sm">投诉性质</label>
+        <div class="nature-box" :class="{ empty: !complaintNature }">
+          {{ complaintNature || '选择分类二后自动判定' }}
+        </div>
       </div>
     </div>
     <div class="field" :class="{ 'is-missing': missComplaintNote }">
@@ -282,6 +277,14 @@ const missRiskDesc = computed(
 .cat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .cat-grid-4 { grid-template-columns: repeat(4, 1fr); }
 .cat-select { width: 100%; }
+/* 投诉性质：推导值，只读呈现（与下拉同高，视觉上弱一档） */
+.nature-box {
+  display: flex; align-items: center;
+  height: 32px; padding: 0 11px;
+  font-size: 12px; color: #374151; font-weight: 600;
+  background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px;
+}
+.nature-box.empty { color: #b0b4bb; font-weight: 400; }
 .cat-select :deep(.ant-select-selector) {
   height: 32px;
   min-height: 32px;

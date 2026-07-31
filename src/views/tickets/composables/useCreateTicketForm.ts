@@ -11,6 +11,7 @@ import {
   buildAutoTitle,
   mapChannelToSource,
   mapFormTypeToTicketType,
+  resolveComplaintNature,
 } from '@/views/tickets/types/createTicket';
 
 function defaultForm(): CreateTicketFormState {
@@ -40,8 +41,8 @@ function defaultForm(): CreateTicketFormState {
     complaintNo: '',
     priorFeedback: '是-400',
     serviceReview: '需要回溯',
-    complaintL1: '产品质量',
-    complaintL2: '功能缺陷',
+    complaintL1: '产品质量投诉',
+    complaintL2: '产品质量故障',
     problemTime: '',
     suggestL1: '产品体验',
     suggestL2: '功能建议',
@@ -145,7 +146,10 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       form.problemL2 = p.problemL2 ?? Object.keys(PROBLEM_TREE[p.problemL1] ?? {})[0] ?? '';
       form.problemL3 = p.problemL3 ?? PROBLEM_TREE[p.problemL1]?.[form.problemL2]?.[0] ?? '';
     }
-    if (p.complaintType) form.complaintType = p.complaintType;
+    if (p.complaintL1) form.complaintL1 = p.complaintL1;
+    if (p.complaintL2) form.complaintL2 = p.complaintL2;
+    // 投诉性质由二类推导，预填的性质只作兜底
+    form.complaintType = resolveComplaintNature(form.complaintL2) || p.complaintType || form.complaintType;
     if (p.complaintPlatform) form.complaintPlatform = p.complaintPlatform;
     if (p.complaintNo) form.complaintNo = p.complaintNo;
   }
@@ -289,6 +293,13 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   watch(
     () => form.productCategory,
     () => onProductCategoryChange(),
+  );
+
+  // 投诉性质 = 投诉二类推导（0730 口径）：坐席只选分类，性质只读跟随
+  watch(
+    () => form.complaintL2,
+    () => { form.complaintType = resolveComplaintNature(form.complaintL2); },
+    { immediate: true },
   );
 
   return {

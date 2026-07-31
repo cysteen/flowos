@@ -127,6 +127,8 @@ export interface TicketDetailMeta {
   aiInsight: AiTicketInsight;
   /** 所属 BG（消费者BG 门控飞书项目集成通道） */
   productBg?: string;
+  /** 一线视角演示单：隐藏底部流转操作栏（下送/升级/调剂/委派/挂起/关闭/强结属二线权限） */
+  frontlineDemo?: boolean;
   /** 飞书关联进度：none 还没转过 / failed 转飞书失败 / synced 已建好单 / feedback 已回进展 / closed 已结案 */
   feishuSync?: FeishuSyncState;
   /** 产研反馈单号（关联成功后） */
@@ -338,10 +340,12 @@ export const TICKET_DETAIL: TicketDetailMeta = {
     afterSaleEnabled: true,
   },
   complaint: {
-    complaintType: '服务投诉',
+    cat1: '产品质量投诉',
+    cat2: '产品质量故障',
+    complaintType: '业务投诉', // 性质由 cat2 推导
     platform: '市场监管12315平台',
     complaintNo: 'HM20260618001',
-    tags: ['产品质量', '功能缺陷'],
+    tags: ['产品质量投诉', '产品质量故障'],
     priorFeedback: '是-400',
     serviceReview: '需要回溯',
   },
@@ -520,9 +524,8 @@ export const DEFAULT_PROCESS_DRAFT = {
   conclusion: '已解决：技术方案解决',
   serviceSolution: '',
   concessionPlan: '',
-  complaintCat1: '产品质量',
-  complaintCat2: '功能缺陷',
-  complaintCat3: '播放异常',
+  complaintCat1: '产品质量投诉',
+  complaintCat2: '产品质量故障',
   complaintMark: '有效投诉',
   complaintNote: '客户要求 48h 内书面回复，此处修正分类与备注',
   complaintNoteAttachments: [] as string[],

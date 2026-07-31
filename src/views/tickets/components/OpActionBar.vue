@@ -43,6 +43,11 @@ const props = defineProps<{
    * （当前角色体系无「技术支持」角色，先以"已升级至技术支持"作为持单判据）
    */
   atTechSupport?: boolean;
+  /**
+   * 隐藏底部操作栏本体（一线视角）：只藏可见的按钮条，组件仍挂载，
+   * 头部按钮触发的弹窗（如「关联售后」）照常可用。
+   */
+  hideBar?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -331,7 +336,7 @@ defineExpose({ openEscalate, openAftersale });
 </script>
 
 <template>
-  <div class="op-actionbar" :class="{ disabled: isTerminal }">
+  <div v-if="!hideBar" class="op-actionbar" :class="{ disabled: isTerminal }">
     <div class="bottom-actions">
       <button
         type="button"
@@ -388,30 +393,31 @@ defineExpose({ openEscalate, openAftersale });
         </span>
       </a-popover>
     </div>
-
-    <OpActionDialogs
-      v-model:open="dialogOpen"
-      :action="dialogAction"
-      :ticket-no="ticketNo"
-      :suspend-info="suspendInfo"
-      :return-count="returnCount ?? 0"
-      :feishu-eligible="feishuEligible"
-      :feishu-sync="feishuSync"
-      :aftersale-context="aftersaleContext"
-      :service-type="serviceType"
-      :service-method="serviceMethod"
-      @confirm="onDialogConfirm"
-    />
-
-    <OpForwardModal
-      v-model:open="forwardModalOpen"
-      :ticket-no="ticketNo"
-      :ticket-title="ticketTitle"
-      :back-to-delegator="isDelegating"
-      :delegate-targets="delegateTargets"
-      @confirm="onForwardConfirm"
-    />
   </div>
+
+  <!-- 弹窗挂在操作栏之外：隐藏操作栏（一线视角）时，头部按钮触发的弹窗仍可用 -->
+  <OpActionDialogs
+    v-model:open="dialogOpen"
+    :action="dialogAction"
+    :ticket-no="ticketNo"
+    :suspend-info="suspendInfo"
+    :return-count="returnCount ?? 0"
+    :feishu-eligible="feishuEligible"
+    :feishu-sync="feishuSync"
+    :aftersale-context="aftersaleContext"
+    :service-type="serviceType"
+    :service-method="serviceMethod"
+    @confirm="onDialogConfirm"
+  />
+
+  <OpForwardModal
+    v-model:open="forwardModalOpen"
+    :ticket-no="ticketNo"
+    :ticket-title="ticketTitle"
+    :back-to-delegator="isDelegating"
+    :delegate-targets="delegateTargets"
+    @confirm="onForwardConfirm"
+  />
 </template>
 
 <style scoped>

@@ -46,7 +46,8 @@ defineProps<{ detail: TicketDetailMeta }>();
       <div class="divider" />
       <div class="sub-title">投诉信息</div>
       <div class="meta-row">
-        <div class="kv"><span class="k">投诉类型</span><span class="v">{{ detail.complaint.complaintType }}</span></div>
+        <!-- 投诉性质由投诉二类推导（0730 口径），不再是独立可选的「投诉类型」 -->
+        <div class="kv"><span class="k">投诉性质</span><span class="v">{{ detail.complaint.complaintType }}</span></div>
         <div class="kv"><span class="k">投诉平台</span><span class="v">{{ detail.complaint.platform }}</span></div>
       </div>
       <div class="kv"><span class="k">投诉编号</span><span class="v">{{ detail.complaint.complaintNo }}</span></div>
