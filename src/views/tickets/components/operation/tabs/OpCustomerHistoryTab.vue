@@ -1,11 +1,25 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { message } from 'ant-design-vue';
-import { ExportOutlined } from '@ant-design/icons-vue';
+import { useRoute, useRouter } from 'vue-router';
+import { ExportOutlined, ArrowRightOutlined } from '@ant-design/icons-vue';
 import { aftersaleDeepLink } from '@/views/tickets/composables/opActions';
+import { TICKETS } from '@/mock/tickets';
 import type { CustomerHistoryData, CustomerHistoryFilter, CustomerHistoryTicket } from '@/views/tickets/types/operationTabs';
 
 const props = defineProps<{ data: CustomerHistoryData }>();
+
+const route = useRoute();
+const router = useRouter();
+
+/** 本 Tab 只列该客户的工单卡片；完整履历（联系记录/售后/满意度/风险）在客户全景页 */
+const currentPhone = computed(
+  () => TICKETS.find((t) => t.no === String(route.params.ticketNo ?? ''))?.customerPhone ?? '',
+);
+
+function openInsight() {
+  router.push({ path: '/customer-insight', query: { q: currentPhone.value || props.data.customerName } });
+}
 
 const activeFilter = ref<CustomerHistoryFilter>('all');
 
@@ -55,7 +69,10 @@ function openTicket(t: CustomerHistoryTicket) {
 <template>
   <div class="customer-history-tab">
     <div class="summary-bar">
-      当前客户：{{ data.customerName }} · 历史工单 {{ data.totalCount }} 单 · 投诉 {{ data.complaintCount }} 单
+      <span>当前客户：{{ data.customerName }} · 历史工单 {{ data.totalCount }} 单 · 投诉 {{ data.complaintCount }} 单</span>
+      <button type="button" class="insight-link" @click="openInsight">
+        查看客户全景<ArrowRightOutlined class="link-ic" />
+      </button>
     </div>
 
     <div class="filter-row" role="tablist">
@@ -116,6 +133,10 @@ function openTicket(t: CustomerHistoryTicket) {
 }
 
 .summary-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   background: #f9fafb;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
@@ -125,6 +146,24 @@ function openTicket(t: CustomerHistoryTicket) {
   color: #374151;
   line-height: 20px;
 }
+
+.insight-link {
+  flex: none;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1a6fff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.insight-link:hover { text-decoration: underline; }
+.link-ic { font-size: 10px; }
 
 .filter-row {
   display: flex;

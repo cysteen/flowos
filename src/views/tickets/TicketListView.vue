@@ -18,6 +18,11 @@ function openOperation(t: Ticket) {
   router.push(`/tickets/${t.no}`);
 }
 
+/** 客户名 → 客户全景（手机号优先，缺失时按姓名查） */
+function openCustomerInsight(t: Ticket) {
+  router.push({ path: '/customer-insight', query: { q: t.customerPhone || t.customer } });
+}
+
 function onAction(label: string, t: Ticket) {
   if (['处理', '详情', '审核', '受理', '恢复'].includes(label)) {
     openOperation(t);
@@ -76,7 +81,7 @@ function onCreated(t: Ticket) {
         @toggle-all="list.toggleSelectAllOnPage"
         @action="onAction"
         @click-no="openOperation"
-        @click-customer="(t) => message.info(`查看客户「${t.customer}」`)"
+        @click-customer="openCustomerInsight"
       />
       <div class="pager">
         <div class="pager-left">

@@ -112,6 +112,12 @@ const routes: RouteRecordRaw[] = [
         meta: { menu: 'tickets', title: '工单处理' },
       },
       {
+        path: 'customer-insight',
+        name: 'customer-insight',
+        component: () => import('@/views/customer/CustomerInsightView.vue'),
+        meta: { menu: 'tickets', title: '客户查询', breadcrumb: '客户查询 · 客户全景' },
+      },
+      {
         path: 'aftersale',
         name: 'aftersale',
         component: AftersaleWorkbenchView,

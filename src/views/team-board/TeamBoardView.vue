@@ -1,38 +1,32 @@
 <script setup lang="ts">
 /**
- * 班组长看板 —— 按《需求梳理/815/看板评审稿/班组长看板-实现规格.md》重写
+ * 班组长看板
  *
- * 结构：
- *   ① 概览条 h72：6 指标格 + 主分隔 + 待办处理区
- *   ② 主体：左 明细卡（三维度 Tab）｜右 趋势卡 + 负载分布卡
+ * 结构（对齐个人门户）：
+ *   ⓪ 问候卡 greeting-card —— 提要 + 班组切换
+ *   ① 存量 · 待清理 —— 全宽 2 KPI 卡；「去指派」嵌在未分派卡内；区头次级待办
+ *   ② 今日指标 —— 全宽 6 KPI 卡（数量 3 | 率值 3）；流转事件默认折叠
+ *   ③ 主体 —— 左组员明细｜右趋势 + 负载
  *
  * 关键裁决：
- *   X1 点格本体 = 选中并驱动趋势图；格内 hover 的 chevron = 打开下钻抽屉
- *   X2 禁用 #F5F9FF —— 选中一律 #EFF6FF，hover 一律 #F9FAFB
- *   X3 实心主按钮按「区」分配：概览条区仅「去指派」一个
- *   X5 抽屉打开时右列降透明 + 禁用（不做位移）
- *   X6 「未分派」格＝数量视角（驱动趋势）；「去指派」按钮＝动作视角
+ *   X3 实心主按钮仅未分派卡内「去指派」一个（全页唯一）
+ *   X5 抽屉打开时右列降透明 + 禁用
+ *   X6 未分派卡＝数量 + 卡内「去指派」动作（同数一体，不另开入口）
+ *   X7 仅「今日指标」数量卡可聚焦趋势线；积压卡 → 优先级抽屉
+ *   刷新：存量区徽章「约 60s」，非「实时」推送
  */
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 import {
-  InboxOutlined,
-  DatabaseOutlined,
-  LoginOutlined,
-  SendOutlined,
-  BellOutlined,
-  RollbackOutlined,
+  SwapOutlined,
   RightOutlined,
   LineChartOutlined,
   CaretUpOutlined,
   CaretDownOutlined,
-  SwapOutlined,
   SettingOutlined,
   ExportOutlined,
   UserAddOutlined,
-  ClockCircleOutlined,
-  AuditOutlined,
   CheckCircleFilled,
   MinusCircleOutlined,
 } from '@ant-design/icons-vue';
@@ -49,10 +43,8 @@ import SuperviseModal, {
   type SuperviseSubmitPayload,
 } from './components/SuperviseModal.vue';
 import {
-  BOARD_METRICS,
-  BOARD_TODOS,
-  TEAM_MEMBERS,
-  PRIORITY_BUCKETS,
+  LEADER_TEAMS,
+  getTeamBoardSnapshot,
   URGE_DRILL,
   RETURN_DRILL,
   TRANSFER_DRILL,
@@ -61,48 +53,143 @@ import {
   PROBLEM_TOP10,
   type MemberRow,
 } from '@/mock/teamBoard';
+import { useUserStore } from '@/stores/user';
 
 const router = useRouter();
+const user = useUserStore();
 
-/* ========================= ① 概览条 ========================= */
+/* ========================= ⓪ 班组切换（组长可管多组） ========================= */
+const teamId = ref(LEADER_TEAMS[0].value);
+const teamOptions = LEADER_TEAMS.map((t) => ({ value: t.value, label: `${t.label}（${t.size}人）` }));
+const board = computed(() => getTeamBoardSnapshot(teamId.value));
+const currentTeam = computed(() => LEADER_TEAMS.find((t) => t.value === teamId.value) ?? LEADER_TEAMS[0]);
 
-const ICONS: Record<string, unknown> = {
-  InboxOutlined,
-  DatabaseOutlined,
-  LoginOutlined,
-  SendOutlined,
-  BellOutlined,
-  RollbackOutlined,
-};
-
-/** 默认选中「班组积压」—— 班组长首要关注量 */
-const selectedKey = ref('backlog');
+/** 问候标题：与个人门户同语汇 */
+const greeting = computed(() => {
+  const h = new Date().getHours();
+  const period = h < 12 ? '早上好' : h < 18 ? '下午好' : '晚上好';
+  return `${period}，${user.name}`;
+});
 
 /**
- * X6 + 数据缺口处理：
- * 「未分派」在 mock 里标了 drill='people'，但未生成对应下钻数据集
- * （未分派工单本就没有处理人，「下钻到人」语义上也不成立）。
- * 故本页把它的 chevron 直接指向指派弹窗 —— 数量看格、动作看弹窗，与 X6 一致。
+ * 提要数字一律从看板快照派生，禁止写死（对齐个人门户 §4.3）。
  */
-function drillOf(key: string): DrillType | 'assign' | null {
-  if (key === 'unassigned') return 'assign';
-  const m = BOARD_METRICS.find((x) => x.key === key);
-  return (m?.drill as DrillType) ?? null;
+function stockVal(key: string) {
+  return board.value.stock.find((s) => s.key === key)?.value ?? '—';
+}
+function metricVal(key: string) {
+  return board.value.metrics.find((m) => m.key === key)?.value ?? '—';
 }
 
-function selectMetric(key: string) {
-  selectedKey.value = key;
+const summaryParts = computed(() => {
+  const unassigned = stockVal('unassigned');
+  const backlog = stockVal('backlog');
+  const inbound = metricVal('inbound');
+  const closed = metricVal('closed');
+  const assignN = board.value.todos[0]?.count ?? 0;
+  const heavy = Number(unassigned) >= 5 || Number(backlog) >= 40;
+  return [
+    { text: '当前「', tone: 'plain' as const },
+    { text: currentTeam.value.label, tone: 'gain' as const },
+    { text: '」有 ', tone: 'plain' as const },
+    { text: `${unassigned} 单未分派`, tone: 'risk' as const },
+    { text: '、积压 ', tone: 'plain' as const },
+    { text: `${backlog}`, tone: 'risk' as const },
+    { text: '；今日进线 ', tone: 'plain' as const },
+    { text: `${inbound}`, tone: 'gain' as const },
+    { text: '、结案 ', tone: 'plain' as const },
+    { text: `${closed}`, tone: heavy ? ('plain' as const) : ('gain' as const) },
+    {
+      text: heavy
+        ? `，建议优先去指派 ${assignN} 单。`
+        : '，节奏平稳，关注质量与时效即可。',
+      tone: 'plain' as const,
+    },
+  ];
+});
+
+/* ========================= ① 指标分组 ========================= */
+
+/** X7：有真实时间序列的三个数量指标，只有它们可以聚焦趋势线 */
+type SeriesKey = 'inbound' | 'forward' | 'closed';
+const SERIES_KEYS: SeriesKey[] = ['inbound', 'forward', 'closed'];
+const isSeries = (k: string): k is SeriesKey => (SERIES_KEYS as string[]).includes(k);
+
+/** R1b：数量与率值分组展示，中间加分隔，避免「6 个数一排」读不出层次 */
+const COUNT_METRICS = computed(() => board.value.metrics.filter((m) => isSeries(m.key)));
+const RATE_METRICS = computed(() => board.value.metrics.filter((m) => !isSeries(m.key)));
+
+/** 默认不聚焦：三线等权，先给全局印象；点某卡再聚焦 */
+const focusKey = ref<SeriesKey | null>(null);
+
+/** 流转事件默认折叠，避免与今日主指标抢视线 */
+const flowOpen = ref(false);
+
+const secondaryTodos = computed(() => board.value.todos.slice(1));
+const flowTotal = computed(() =>
+  board.value.flowEvents.reduce((n, f) => n + (Number.parseInt(String(f.value), 10) || 0), 0),
+);
+
+function toggleFocus(key: string) {
+  if (!isSeries(key)) return;
+  focusKey.value = focusKey.value === key ? null : key;
 }
 
 /* ========================= ② 下钻抽屉 ========================= */
 
 const drawerOpen = ref(false);
+const drawerKey = ref<string>('');
 const drawerType = ref<DrillType | null>(null);
 const drawerTitle = ref('');
 const drawerSubtitle = ref('');
 const drawerTotal = ref(0);
 const drawerUnread = ref<number | undefined>(undefined);
 const drawerFooter = ref('');
+
+/**
+ * 「未分派」标了 drill='people'，但未分派工单本就没有处理人，
+ * 「下钻到人」语义上不成立 —— 故直接指向指派弹窗（与 X6 一致：数量看格、动作看弹窗）。
+ */
+type DrillTarget = DrillType | 'assign' | null;
+function drillOf(key: string): DrillTarget {
+  if (key === 'unassigned') return 'assign';
+  const m = [...board.value.stock, ...board.value.metrics, ...board.value.flowEvents].find((x) => x.key === key);
+  return (m?.drill as DrillType) ?? null;
+}
+
+function drawerConf(key: string) {
+  const n = (k: string) => Number.parseInt(String(
+    [...board.value.stock, ...board.value.flowEvents].find((x) => x.key === k)?.value ?? '0',
+  ), 10) || 0;
+  const map: Record<string, { title: string; subtitle: string; total: number; unread?: number; footer: string }> = {
+    backlog: {
+      title: '班组积压 · 优先级分布',
+      subtitle: `${currentTeam.value.label} · 未结且未停表 · B1 八状态口径`,
+      total: n('backlog'),
+      footer: `在工单工作台查看这 ${n('backlog')} 单 →`,
+    },
+    urge: {
+      title: '催单 · 补充单 · 按人员',
+      subtitle: '组内催单与补充单，可查看未读分布',
+      total: n('urge'),
+      unread: 12,
+      footer: `在工单工作台查看这 ${n('urge')} 单 →`,
+    },
+    returned: {
+      title: '退回 · 按人员',
+      subtitle: '仅技术支持退回（决策 D16）',
+      total: n('returned'),
+      footer: `在工单工作台查看这 ${n('returned')} 单 →`,
+    },
+    transferIn: {
+      title: '今日转入 · 按来源',
+      subtitle: '其他客服组 / 跨组调剂 / 售后回传',
+      total: n('transferIn'),
+      footer: `在工单工作台查看这 ${n('transferIn')} 单 →`,
+    },
+  };
+  return map[key];
+}
 
 function openDrill(key: string, e?: MouseEvent) {
   e?.stopPropagation();
@@ -112,29 +199,19 @@ function openDrill(key: string, e?: MouseEvent) {
     openAssign();
     return;
   }
+  const c = drawerConf(key);
+  if (!c) return;
+  drawerKey.value = key;
   drawerType.value = d;
-  drawerUnread.value = undefined;
-  if (key === 'backlog') {
-    drawerTitle.value = '班组积压 · 优先级分布';
-    drawerSubtitle.value = '未结且未停表 · B1 八状态口径';
-    drawerTotal.value = 63;
-    drawerFooter.value = '在工单工作台查看这 63 单 →';
-  } else if (key === 'urge') {
-    drawerTitle.value = '催单 · 补充单 · 按人员';
-    drawerSubtitle.value = '组内催单与补充单，可查看未读分布';
-    drawerTotal.value = 34;
-    drawerUnread.value = 12;
-    drawerFooter.value = '在工单工作台查看这 34 单 →';
-  } else if (key === 'returnTransfer') {
-    drawerTitle.value = '今日转入 · 按来源';
-    drawerSubtitle.value = '其他客服组 / 跨组调剂 / 售后回传';
-    drawerTotal.value = 5;
-    drawerFooter.value = '在工单工作台查看这 5 单 →';
-  }
+  drawerTitle.value = c.title;
+  drawerSubtitle.value = c.subtitle;
+  drawerTotal.value = c.total;
+  drawerUnread.value = c.unread;
+  drawerFooter.value = c.footer;
   drawerOpen.value = true;
 }
 
-const drawerPeople = computed(() => (drawerTitle.value.startsWith('催单') ? URGE_DRILL : RETURN_DRILL));
+const drawerPeople = computed(() => (drawerKey.value === 'urge' ? URGE_DRILL : RETURN_DRILL));
 
 function onGoList(p: DrillGoListPayload) {
   router.push({ path: p.path, query: p.query });
@@ -142,7 +219,7 @@ function onGoList(p: DrillGoListPayload) {
 
 /* ========================= ③ 指派 / 督办 ========================= */
 
-/** 待指派工单（8 单，与大盘「未分派 8」一致） */
+/** 待指派工单（8 单，与存量区「累计未分派 8」一致） */
 const ASSIGN_TICKETS: AssignTicket[] = [
   { id: 'a1', no: 'LCMN-20260803-10021', customer: '莫某', type: '投诉', priority: 'P0', slaLeftMin: 26, createdAt: '08-03 09:12' },
   { id: 'a2', no: 'LCMN-20260803-10034', customer: '陈某', type: '咨询', priority: 'P2', slaLeftMin: 132, createdAt: '08-03 09:40' },
@@ -199,6 +276,66 @@ function onTodoClick(key: string) {
   else router.push({ path: '/approval' }); // A4：看板只跳审批中心，不实现审批
 }
 
+/** 存量卡：读屏与 title，避免「标签+数字」粘成一串 */
+function stockClickHint(key: string) {
+  if (key === 'unassigned') return ''; // 卡内已有「去指派」按钮，不再叠角标
+  return board.value.stock.find((x) => x.key === key)?.clickHint
+    ?? (key === 'backlog' ? '优先级分布' : '');
+}
+
+function stockTitle(s: { key: string; label: string; clickHint?: string }) {
+  if (s.key === 'unassigned') {
+    return `${s.label}：点击卡片或「去指派」进入指派`;
+  }
+  if (s.key === 'backlog') {
+    return `${s.label}：点击查看${s.clickHint ?? '优先级分布'}`;
+  }
+  return s.label;
+}
+
+function stockAria(s: {
+  key: string;
+  label: string;
+  value: string;
+  delta?: string;
+  deltaHint?: string;
+  sub?: string;
+  balance?: { opening: number; inbound: number; closed: number };
+  clickHint?: string;
+}) {
+  const parts = [`${s.label} ${s.value}`];
+  if (s.delta && s.delta !== '0') {
+    parts.push(`${s.deltaHint ?? '环比'} ${s.delta}`);
+  }
+  if (s.balance) {
+    parts.push(
+      `守恒 期初 ${s.balance.opening} 加进线 ${s.balance.inbound} 减结案 ${s.balance.closed}`,
+    );
+  } else if (s.sub) {
+    parts.push(s.sub);
+  }
+  if (s.key === 'unassigned') {
+    parts.push('可点「去指派」或卡片进入指派');
+  } else {
+    const hint = stockClickHint(s.key);
+    if (hint) parts.push(`点击${hint}`);
+  }
+  return parts.join('，');
+}
+
+function todoTitle(key: string) {
+  if (key === 'assign') {
+    return '进入指派（数量与本卡「累计未分派」一致）';
+  }
+  if (key === 'supervise') {
+    return '原型可演示；平台 WoAction / 消息事件枚举待补齐后正式生效';
+  }
+  if (key === 'approve') {
+    return '跳转审批中心（看板内不审批）';
+  }
+  return '';
+}
+
 /* ========================= ④ 明细卡 ========================= */
 
 type Tab = 'perf' | 'load' | 'problem';
@@ -217,11 +354,12 @@ const COLS: { key: SortKey; label: string; w: string; num: boolean; firstDir: 'a
   { key: 'online', label: '状态', w: '78px', num: false, firstDir: 'asc' },
   { key: 'forwardToday', label: '下送', w: '64px', num: true, firstDir: 'desc' },
   { key: 'avgHandle', label: '均处理', w: '76px', num: true, firstDir: 'desc' },
-  { key: 'overdue', label: '超时', w: '62px', num: true, firstDir: 'desc' },
-  { key: 'followRate', label: '跟进率', w: '76px', num: true, firstDir: 'asc' },
-  { key: 'csat', label: '满意度', w: '72px', num: true, firstDir: 'asc' },
-  { key: 'resolveRate', label: '解决率', w: '76px', num: true, firstDir: 'asc' },
-  { key: 'reviewRate', label: '参评率', w: '76px', num: true, firstDir: 'asc' },
+  /* 列宽须容得下「表头文字 + 12px 排序图标」，否则表头会竖排折行（超时/满意度都踩过） */
+  { key: 'overdue', label: '超时', w: '70px', num: true, firstDir: 'desc' },
+  { key: 'followRate', label: '跟进率', w: '82px', num: true, firstDir: 'asc' },
+  { key: 'csat', label: '满意度', w: '82px', num: true, firstDir: 'asc' },
+  { key: 'resolveRate', label: '解决率', w: '82px', num: true, firstDir: 'asc' },
+  { key: 'reviewRate', label: '参评率', w: '82px', num: true, firstDir: 'asc' },
 ];
 const gridCols = COLS.map((c) => c.w).join(' ');
 
@@ -250,7 +388,7 @@ const loadFilter = ref<LoadLevel | null>(null);
 const levelOf = (m: MemberRow): LoadLevel => (m.loadLevel as LoadLevel) ?? loadLevelOf(m.workload);
 
 const sortedMembers = computed(() => {
-  let rows = [...TEAM_MEMBERS];
+  let rows = [...board.value.members];
   if (loadFilter.value) rows = rows.filter((r) => levelOf(r) === loadFilter.value);
   if (!sortKey.value || !sortDir.value) return rows.sort(defaultCompare);
   const k = sortKey.value;
@@ -291,29 +429,57 @@ function sortTip(c: (typeof COLS)[number]) {
 /* ========================= ⑤ 趋势卡 ========================= */
 
 const gran = ref<'hour' | 'day'>('day');
-const trafficPoints = computed(() => (gran.value === 'hour' ? TRAFFIC_HOURLY : TRAFFIC_DAILY));
+const trafficPoints = computed(() => {
+  const base = gran.value === 'hour' ? TRAFFIC_HOURLY : TRAFFIC_DAILY;
+  const s = board.value.trafficScale;
+  if (s === 1) return base;
+  return base.map((p) => ({
+    t: p.t,
+    inbound: Math.round(p.inbound * s),
+    forward: Math.round(p.forward * s),
+    closed: Math.round(p.closed * s),
+  }));
+});
 
-const TREND_TITLE: Record<string, string> = {
-  unassigned: '未分派',
-  backlog: '班组积压',
-  inbound: '进线量',
-  forward: '下送量',
-  urge: '催单 · 补充单',
-  returnTransfer: '退回 · 转入',
-};
+/**
+ * 结案画虚线：稳态下结案与进线几乎重合（这正是「收支平衡」的表现），
+ * 两条实线叠在一起会互相遮蔽，读者分不清是一条还是两条。
+ */
+const SERIES: { key: SeriesKey; label: string; color: string; dash?: string }[] = [
+  { key: 'inbound', label: '进线', color: '#1A6FFF' },
+  { key: 'forward', label: '下送', color: '#10B981' },
+  { key: 'closed', label: '结案', color: '#8B5CF6', dash: '5 3' },
+];
+
+const trendTitle = computed(() => {
+  const s = SERIES.find((x) => x.key === focusKey.value);
+  return s ? `${s.label}趋势` : '进线 · 下送 · 结案';
+});
 
 const W = 400;
 const H = 150;
+
+/** 三线共用同一 Y 轴刻度，否则线之间的高低差没有可比性 */
+const yMax = computed(() =>
+  Math.max(1, ...trafficPoints.value.flatMap((p) => [p.inbound, p.forward, p.closed])),
+);
+
 function toPath(vals: number[]) {
   if (!vals.length) return '';
-  const max = Math.max(...vals, 1);
   const step = vals.length > 1 ? W / (vals.length - 1) : W;
   return vals
-    .map((v, i) => `${i === 0 ? 'M' : 'L'}${(i * step).toFixed(1)},${(H - (v / max) * (H - 12)).toFixed(1)}`)
+    .map((v, i) => `${i === 0 ? 'M' : 'L'}${(i * step).toFixed(1)},${(H - (v / yMax.value) * (H - 12)).toFixed(1)}`)
     .join(' ');
 }
-const pathInbound = computed(() => toPath(trafficPoints.value.map((p) => p.inbound)));
-const pathForward = computed(() => toPath(trafficPoints.value.map((p) => p.forward)));
+
+const paths = computed(() =>
+  SERIES.map((s) => ({
+    ...s,
+    d: toPath(trafficPoints.value.map((p) => p[s.key])),
+    dim: !!focusKey.value && focusKey.value !== s.key,
+  })),
+);
+
 const axisLabels = computed(() => {
   const ps = trafficPoints.value;
   const idx = [0, Math.floor(ps.length / 4), Math.floor(ps.length / 2), Math.floor((ps.length * 3) / 4), ps.length - 1];
@@ -324,7 +490,7 @@ const axisLabels = computed(() => {
 
 const loadDist = computed(() => {
   const g: Record<LoadLevel, number> = { 空闲: 0, 适中: 0, 满载: 0 };
-  TEAM_MEMBERS.forEach((m) => {
+  board.value.members.forEach((m) => {
     g[levelOf(m)] += 1;
   });
   return [
@@ -339,73 +505,224 @@ function toggleLoadFilter(l: LoadLevel) {
 }
 
 function onExport() {
-  message.info('导出班组绩效报表');
+  message.info(`导出「${currentTeam.value.label}」绩效报表`);
 }
+
+watch(teamId, () => {
+  focusKey.value = null;
+  flowOpen.value = false;
+  loadFilter.value = null;
+  drawerOpen.value = false;
+  sortKey.value = null;
+  sortDir.value = null;
+});
 </script>
 
 <template>
   <div class="tb">
-    <!-- ① 概览条 -->
-    <div class="ov">
-      <div class="ov-metrics">
-        <template v-for="(m, i) in BOARD_METRICS" :key="m.key">
-          <div
-            v-if="i > 0"
-            class="ov-sep"
-            :class="{ hide: selectedKey === m.key || selectedKey === BOARD_METRICS[i - 1].key }"
-          />
-          <div
-            class="ov-cell"
-            :class="{ on: selectedKey === m.key }"
-            tabindex="0"
-            @click="selectMetric(m.key)"
-            @keydown.enter.prevent="selectMetric(m.key)"
-            @keydown.space.prevent="selectMetric(m.key)"
-          >
-            <div class="ov-icon" :style="{ background: m.iconBg, color: m.iconColor }">
-              <component :is="ICONS[m.iconName]" :style="{ fontSize: '15px' }" />
-            </div>
-            <div class="ov-txt">
-              <div class="ov-label">
-                {{ m.label }}
-                <LineChartOutlined v-if="selectedKey === m.key" class="ov-sel-ic" />
-              </div>
-              <div class="ov-val" :title="m.key === 'returnTransfer' ? '退回 3 单 · 今日转入 5 单' : ''">
-                <!-- 一格两指标：中缀 · 弱两档，防止「3 · 5」被读成 3.5 -->
-                <template v-if="m.value.includes(' · ')">
-                  <span class="ov-num" :style="{ color: m.valueColor || '#111827' }">{{ m.value.split(' · ')[0] }}</span>
-                  <span class="ov-mid">·</span>
-                  <span class="ov-num" :style="{ color: m.valueColor || '#111827' }">{{ m.value.split(' · ')[1] }}</span>
-                </template>
-                <span v-else class="ov-num" :style="{ color: m.valueColor || '#111827' }">{{ m.value }}</span>
-                <!-- 第 6 格的 sub 与值重复，只走 tooltip 不占位 -->
-                <span v-if="m.sub && m.key !== 'returnTransfer'" class="ov-sub" :class="{ warn: m.key === 'urge' }">{{ m.sub }}</span>
-                <span v-else-if="m.delta" class="ov-delta" :class="m.deltaTone">{{ m.delta }}</span>
-              </div>
-            </div>
-            <RightOutlined v-if="drillOf(m.key)" class="ov-drill" @click="openDrill(m.key, $event)" />
-          </div>
-        </template>
+    <!-- ⓪ 问候卡：布局对齐个人门户 greeting-card；右侧为班组切换 + 去指派 -->
+    <div class="greeting-card">
+      <div class="greeting-text">
+        <div class="greeting-title">
+          {{ greeting }}
+          <span class="greeting-wave" aria-hidden="true">👋</span>
+        </div>
+        <div class="greeting-sub">
+          <template v-for="(p, i) in summaryParts" :key="i">
+            <span v-if="p.tone === 'plain'">{{ p.text }}</span>
+            <span v-else class="summary-chip" :class="p.tone">{{ p.text }}</span>
+          </template>
+        </div>
       </div>
-
-      <div class="ov-divider" />
-
-      <div class="ov-todo">
-        <span class="ov-todo-label">待办处理</span>
-        <button class="btn-primary" @click="onTodoClick('assign')">
-          <UserAddOutlined />
-          去指派 {{ BOARD_TODOS[0].count }}
-        </button>
-        <button v-for="t in BOARD_TODOS.slice(1)" :key="t.key" class="chip" @click="onTodoClick(t.key)">
-          <ClockCircleOutlined v-if="t.key === 'supervise'" class="chip-ic" />
-          <AuditOutlined v-else class="chip-ic" />
-          <span class="chip-n">{{ t.label }}</span>
-          <span class="chip-c">{{ t.count }}</span>
-        </button>
+      <div class="greeting-aside">
+        <div class="section-filters">
+          <div class="filter-item">
+            <span class="filter-label">班组</span>
+            <a-select
+              v-model:value="teamId"
+              size="small"
+              :options="teamOptions"
+              class="team-select"
+              :dropdown-match-select-width="false"
+            />
+          </div>
+          <span class="filter-meta">管辖 {{ LEADER_TEAMS.length }} 组</span>
+        </div>
       </div>
     </div>
 
-    <!-- ② 主体 -->
+    <!-- ① 存量区：对齐个人门户 overview-section；区头右侧放行动（同问候区 CTA） -->
+    <section class="overview-section ov" aria-labelledby="ov-title">
+      <div class="section-head">
+        <div class="section-head-main">
+          <h2 id="ov-title" class="section-title">存量 · 待清理</h2>
+          <p class="section-sub">
+            <span class="ov-team">{{ currentTeam.label }}</span>
+            <span class="ov-dot" aria-hidden="true">·</span>
+            <span>先清未分派，再清积压</span>
+          </p>
+        </div>
+        <div class="section-head-aside">
+          <div class="ov-actions" role="group" aria-label="次级待办">
+            <button
+              v-for="t in secondaryTodos"
+              :key="t.key"
+              type="button"
+              class="sec-chip"
+              :class="{ 'is-proto': t.key === 'supervise' }"
+              :title="todoTitle(t.key)"
+              :aria-label="`${t.label} ${t.count}${t.unit}`"
+              @click="onTodoClick(t.key)"
+            >
+              {{ t.label }} <em>{{ t.count }}</em>
+              <span v-if="t.key === 'supervise'" class="proto-tag" aria-hidden="true">原型</span>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="kpi-strip stock-strip" role="list" aria-label="存量指标">
+        <div
+          v-for="s in board.stock"
+          :key="s.key"
+          role="listitem"
+          class="kpi-card"
+          :class="{
+            drillable: !!drillOf(s.key),
+            'tone-risk': s.deltaTone === 'bad',
+            'has-cta': s.key === 'unassigned',
+          }"
+          :style="{ '--kpi-accent': s.valueColor || s.iconColor || '#94a3b8' }"
+          tabindex="0"
+          :title="stockTitle(s)"
+          :aria-label="stockAria(s)"
+          @click="openDrill(s.key)"
+          @keydown.enter.prevent="openDrill(s.key)"
+          @keydown.space.prevent="openDrill(s.key)"
+        >
+          <div class="kpi-body">
+            <div class="kpi-label">
+              <span class="kpi-label-text">{{ s.label }}</span>
+              <span v-if="stockClickHint(s.key)" class="kpi-hint" aria-hidden="true">
+                {{ stockClickHint(s.key) }}
+                <RightOutlined />
+              </span>
+            </div>
+            <div class="kpi-value-row">
+              <span class="kpi-value" :style="{ color: s.valueColor || '#111827' }">{{ s.value }}</span>
+              <span
+                v-if="s.delta"
+                class="kpi-delta"
+                :class="[s.deltaTone, { emph: s.key === 'backlog' && s.deltaTone === 'bad' }]"
+                :title="s.deltaHint || undefined"
+              >
+                <template v-if="s.key === 'backlog' && s.deltaHint">{{ s.deltaHint }} {{ s.delta }}</template>
+                <template v-else>{{ s.delta }}</template>
+              </span>
+            </div>
+            <div v-if="s.balance" class="kpi-eq" aria-hidden="true">
+              <span>期初 {{ s.balance.opening }}</span>
+              <span class="op">＋</span>
+              <span>进线 {{ s.balance.inbound }}</span>
+              <span class="op">−</span>
+              <span>结案 {{ s.balance.closed }}</span>
+            </div>
+            <div v-else-if="s.sub" class="kpi-sub">{{ s.sub }}</div>
+          </div>
+          <button
+            v-if="s.key === 'unassigned'"
+            type="button"
+            class="btn-primary btn-in-card"
+            :title="todoTitle('assign')"
+            :aria-label="`去指派 ${s.value} 单`"
+            @click.stop="onTodoClick('assign')"
+          >
+            <UserAddOutlined />
+            去指派 {{ s.value }}
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ② 今日指标：同 overview-section；6 卡全宽等分（数量 | 率值），流转折叠 -->
+    <section class="overview-section today" aria-labelledby="today-title">
+      <div class="section-head">
+        <div class="section-head-main">
+          <h2 id="today-title" class="section-title">今日指标</h2>
+          <p class="section-sub">承接 → 产出 → 终结 · 右侧质量与时效 · 点数量卡聚焦趋势</p>
+        </div>
+        <span class="snapshot-badge soft">准实时</span>
+      </div>
+
+      <div class="kpi-strip today-strip" role="list" aria-label="今日指标">
+        <div
+          v-for="m in COUNT_METRICS"
+          :key="m.key"
+          role="listitem"
+          class="kpi-card interactive"
+          :class="{ on: focusKey === m.key, 'tone-gain': m.deltaTone === 'good', 'tone-risk': m.deltaTone === 'bad' && m.key === 'closed' }"
+          :style="{ '--kpi-accent': m.valueColor || m.iconColor || '#1A6FFF' }"
+          tabindex="0"
+          :title="`点击在趋势图中聚焦「${m.label}」`"
+          :aria-label="`${m.label} ${m.value}${m.delta ? '，' + m.delta : ''}，${m.sub || ''}，点击聚焦趋势`"
+          @click="toggleFocus(m.key)"
+          @keydown.enter.prevent="toggleFocus(m.key)"
+          @keydown.space.prevent="toggleFocus(m.key)"
+        >
+          <div class="kpi-body">
+            <div class="kpi-label">
+              <span class="kpi-label-text">{{ m.label }}</span>
+              <LineChartOutlined v-if="focusKey === m.key" class="kpi-sel" />
+            </div>
+            <div class="kpi-value-row">
+              <span class="kpi-value" :style="{ color: m.valueColor || '#0f172a' }">{{ m.value }}</span>
+              <span v-if="m.delta" class="kpi-delta" :class="m.deltaTone">{{ m.delta }}</span>
+            </div>
+            <div class="kpi-sub">{{ m.sub }}</div>
+          </div>
+        </div>
+
+        <div class="kpi-strip-sep" role="separator" aria-hidden="true" />
+
+        <div
+          v-for="m in RATE_METRICS"
+          :key="m.key"
+          role="listitem"
+          class="kpi-card static"
+          :style="{ '--kpi-accent': m.valueColor || m.iconColor || '#94a3b8' }"
+          :title="m.sub"
+          :aria-label="`${m.label} ${m.value}${m.delta ? '，' + m.delta : ''}，${m.sub || ''}`"
+        >
+          <div class="kpi-body">
+            <div class="kpi-label">
+              <span class="kpi-label-text">{{ m.label }}</span>
+            </div>
+            <div class="kpi-value-row">
+              <span class="kpi-value" :style="{ color: m.valueColor || '#0f172a' }">{{ m.value }}</span>
+              <span v-if="m.delta" class="kpi-delta" :class="m.deltaTone">{{ m.delta }}</span>
+            </div>
+            <div class="kpi-sub">{{ m.sub }}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flow-wrap">
+        <button type="button" class="flow-toggle" @click="flowOpen = !flowOpen">
+          <span>流转事件</span>
+          <span class="flow-n">{{ flowTotal }}</span>
+          <CaretDownOutlined class="flow-caret" :class="{ open: flowOpen }" />
+        </button>
+        <div v-if="flowOpen" class="flowbar">
+          <button v-for="f in board.flowEvents" :key="f.key" class="fb-item" @click="openDrill(f.key, $event)">
+            <span class="fb-l">{{ f.label }}</span>
+            <span class="fb-v" :style="{ color: f.iconColor }">{{ f.value }}</span>
+            <span v-if="f.sub" class="fb-s">{{ f.sub }}</span>
+            <RightOutlined class="fb-go" />
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ③ 主体 -->
     <div class="body">
       <div class="card detail">
         <div class="card-hd">
@@ -516,7 +833,7 @@ function onExport() {
 
         <div class="card-ft">
           <span v-if="tab === 'perf'">
-            默认排序：超时降序 → 跟进率升序 → 下送降序 · 任意字段可升降序 · 组内共 {{ TEAM_MEMBERS.length }} 人
+            默认排序：超时降序 → 跟进率升序 → 下送降序 · 任意字段可升降序 · 组内共 {{ board.members.length }} 人
           </span>
           <span v-else-if="tab === 'load'">
             负载阈值：空闲 ≤5 / 适中 6–12 / 满载 &gt;12（暂定，待业务确认）· 点右侧分布卡可筛选
@@ -532,11 +849,11 @@ function onExport() {
         <div class="card trend">
           <div class="trend-hd">
             <div class="trend-hd-main">
-              <div class="trend-title">{{ TREND_TITLE[selectedKey] }}</div>
+              <div class="trend-title">{{ trendTitle }}</div>
               <div class="trend-sub">
                 {{ gran === 'hour' ? '当日时段' : '近 30 天' }}
                 <span class="trend-dot">·</span>
-                点上方指标格切换
+                {{ focusKey ? '再次点该卡取消聚焦' : '点上方数量卡可聚焦单线' }}
               </div>
             </div>
             <div class="hd-r">
@@ -547,22 +864,40 @@ function onExport() {
               <span class="badge soft">离线 T+1</span>
             </div>
           </div>
+          <!-- 结论先行：图上能看出的事，用一句话替读者说完 -->
           <div class="concl">
             <span class="concl-mark" />
-            <span>近 7 天进线 &gt; 下送，积压 +12，建议增派人手</span>
+            <span>{{ board.conclusion }}</span>
           </div>
           <div class="legend">
-            <span><i style="background: #1a6fff" />进线量</span>
-            <span><i style="background: #10b981" />下送量</span>
+            <span v-for="s in paths" :key="s.key" :class="{ dim: s.dim }">
+              <!-- 图例条也要跟着虚实变化，否则图上是虚线、图例是实线，对不上 -->
+              <i
+                :style="s.dash
+                  ? { background: `repeating-linear-gradient(90deg, ${s.color} 0 4px, transparent 4px 7px)` }
+                  : { background: s.color }"
+              />{{ s.label }}
+            </span>
           </div>
           <div class="chart-wrap">
             <svg class="chart" :viewBox="`0 0 ${W} ${H}`" preserveAspectRatio="none">
               <line v-for="y in [0.25, 0.5, 0.75]" :key="y" x1="0" :y1="H * y" :x2="W" :y2="H * y" stroke="#EEF2F7" stroke-width="1" />
-              <path :d="pathInbound" fill="none" stroke="#1A6FFF" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
-              <path :d="pathForward" fill="none" stroke="#10B981" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
+              <path
+                v-for="s in paths"
+                :key="s.key"
+                :d="s.d"
+                fill="none"
+                :stroke="s.color"
+                :stroke-width="s.dim ? 1.5 : 2"
+                :stroke-dasharray="s.dash"
+                :opacity="s.dim ? 0.22 : 1"
+                stroke-linejoin="round"
+                stroke-linecap="round"
+              />
             </svg>
           </div>
           <div class="axis"><span v-for="(a, i) in axisLabels" :key="i">{{ a }}</span></div>
+          <div class="trend-ft">期初积压 {{ board.openingBacklog }} ＋ 进线 − 结案 ＝ 当前积压，进线线与结案线之间的面积即积压增量</div>
         </div>
 
         <div class="card load">
@@ -597,7 +932,7 @@ function onExport() {
       :subtitle="drawerSubtitle"
       :total="drawerTotal"
       :total-unread="drawerUnread"
-      :buckets="PRIORITY_BUCKETS"
+      :buckets="board.priorityBuckets"
       :people="drawerPeople"
       :sources="TRANSFER_DRILL"
       :footer-text="drawerFooter"
@@ -609,7 +944,7 @@ function onExport() {
       ref="assignRef"
       v-model:open="assignOpen"
       :preselected-ids="assignPreselect"
-      :candidates="TEAM_MEMBERS"
+      :candidates="board.members"
       :tickets="ASSIGN_TICKETS"
       :can-cross-team="true"
       @submit="onAssignSubmit"
@@ -624,89 +959,480 @@ function onExport() {
 </template>
 
 <style scoped>
+/* 页壳对齐个人门户 home-overview */
 .tb {
-  display: flex; flex-direction: column; gap: 14px;
-  padding: 20px 24px 24px; min-height: 100%; width: 100%; min-width: 0;
-  background: #f5f7fa;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+  min-height: 100%;
+  width: 100%;
+  min-width: 0;
+  background:
+    radial-gradient(ellipse 80% 40% at 0% 0%, rgba(26, 111, 255, 0.08), transparent 55%),
+    radial-gradient(ellipse 60% 30% at 100% 8%, rgba(16, 185, 129, 0.05), transparent 50%),
+    #f3f6fb;
+}
+/* 问候卡：对齐个人门户 greeting-card */
+.greeting-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px 24px;
+  gap: 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(26, 111, 255, 0.18);
+  background:
+    linear-gradient(135deg, #eff6ff 0%, #f8fbff 48%, #ecfdf5 100%);
+  box-shadow: 0 4px 16px rgba(26, 111, 255, 0.08);
+}
+.greeting-text { min-width: 0; flex: 1; }
+.greeting-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+.greeting-wave {
+  display: inline-block;
+  transform-origin: 70% 70%;
+  animation: wave-hi 1.6s ease-in-out 1;
+}
+@keyframes wave-hi {
+  0%, 100% { transform: rotate(0deg); }
+  20% { transform: rotate(14deg); }
+  40% { transform: rotate(-8deg); }
+  60% { transform: rotate(10deg); }
+  80% { transform: rotate(-4deg); }
+}
+.greeting-sub {
+  margin-top: 10px;
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.65;
+}
+.summary-chip {
+  display: inline;
+  font-weight: 700;
+  padding: 1px 0;
+}
+.summary-chip.risk { color: #c2410c; }
+.summary-chip.gain { color: #047857; }
+.greeting-aside {
+  display: flex;
+  align-items: center;
+  flex: none;
+}
+/* 与个人门户「我的效能」section-filters 同语汇 */
+.section-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid #eef2f7;
+  border-radius: 10px;
+}
+.filter-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.filter-label {
+  flex: none;
+  font-size: 12px;
+  font-weight: 500;
+  color: #9ca3af;
+  line-height: 1;
+}
+.filter-meta {
+  font-size: 11px;
+  color: #94a3b8;
+  font-weight: 500;
+  padding-left: 4px;
+  border-left: 1px solid #e5e7eb;
+  line-height: 1;
+}
+.team-select {
+  width: 148px;
+}
+.team-select :deep(.ant-select-selector) {
+  border-radius: 8px !important;
+  border-color: #e5e7eb !important;
+  background: #fff !important;
+  height: 28px !important;
+  padding-inline: 10px !important;
+  align-items: center;
+}
+.team-select :deep(.ant-select-selection-item),
+.team-select :deep(.ant-select-selection-placeholder) {
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  color: #374151 !important;
+  line-height: 26px !important;
+}
+.team-select :deep(.ant-select-arrow) {
+  font-size: 10px;
+  color: #9ca3af;
 }
 
-/* ① 概览条 —— 指标贴左，待办贴右 */
-.ov {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  min-height: 68px; background: #fff; border: 0.8px solid #e5e6eb;
-  border-radius: 12px; padding: 8px 16px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
-}
-.ov-metrics { display: flex; align-items: center; flex: 1; min-width: 0; overflow-x: auto; }
-.ov-sep { width: 1px; height: 28px; background: #eef2f7; flex: none; }
-.ov-sep.hide { opacity: 0; }
-.ov-cell {
-  position: relative; display: flex; align-items: center; gap: 10px;
-  flex: none; height: 52px; padding: 6px 14px; border-radius: 8px;
-  cursor: pointer; transition: background 120ms ease; outline: none;
-}
-.ov-cell:hover { background: #f8fafc; }
-.ov-cell:hover .ov-label { color: #374151; }
-.ov-cell:hover .ov-drill { opacity: 1; }
-.ov-cell:focus-visible { box-shadow: 0 0 0 2px #1a6fff; }
-.ov-cell.on { background: #eff6ff; }
-.ov-cell.on .ov-label { color: #1a6fff; font-weight: 600; }
-.ov-icon {
-  width: 32px; height: 32px; border-radius: 8px;
-  display: flex; align-items: center; justify-content: center; flex: none;
-}
-.ov-txt { min-width: 0; }
-.ov-label {
-  display: flex; align-items: center; gap: 4px; height: 16px;
-  font-size: 12px; font-weight: 500; color: #64748b; white-space: nowrap;
-}
-.ov-sel-ic { font-size: 11px; color: #1a6fff; }
-.ov-val { display: flex; align-items: baseline; gap: 5px; height: 26px; white-space: nowrap; }
-.ov-num {
-  font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums;
-  line-height: 26px; white-space: nowrap; color: #0f172a;
-}
-.ov-mid { font-size: 14px; color: #d1d5db; line-height: 26px; }
-.ov-delta { font-size: 11px; font-weight: 600; }
-.ov-delta.good { color: #10b981; }
-.ov-delta.bad { color: #ef4444; }
-.ov-delta.neutral { color: #94a3b8; }
-.ov-sub {
-  font-size: 10px; font-weight: 600; color: #64748b; background: #f1f5f9;
-  border-radius: 4px; padding: 2px 6px; white-space: nowrap;
-}
-.ov-sub.warn { color: #ef4444; background: #fef2f2; }
-.ov-drill {
-  position: absolute; right: 4px; font-size: 11px; color: #94a3b8;
-  opacity: 0; transition: opacity 120ms;
-}
-.ov-drill:hover { color: #1a6fff; }
-.ov-divider { width: 1px; height: 28px; background: #e2e8f0; margin: 0 8px 0 4px; flex: none; }
-.ov-todo { display: flex; align-items: center; gap: 8px; flex: none; }
-.ov-todo-label { font-size: 12px; font-weight: 500; color: #94a3b8; }
-.btn-primary {
-  display: flex; align-items: center; gap: 5px; height: 30px; padding: 0 12px;
-  background: #1a6fff; color: #fff; font-size: 12px; font-weight: 600;
-  border: none; border-radius: 6px; cursor: pointer;
-}
-.btn-primary:hover { background: #0f4fcc; }
-.chip {
-  display: flex; align-items: center; gap: 5px; height: 30px; padding: 0 10px;
-  background: #fff; border: 1px solid #e5e7eb; border-radius: 999px; cursor: pointer;
-}
-.chip:hover { border-color: #cbd5e1; background: #f8fafc; }
-.chip-ic { font-size: 11px; color: #d97706; }
-.chip-n { font-size: 12px; font-weight: 500; color: #64748b; }
-.chip-c { font-size: 12px; font-weight: 700; color: #d97706; }
-
-/* ② 主体 */
-.body { display: flex; gap: 14px; flex: 1; min-height: 0; align-items: stretch; }
-/* 卡片视觉基线：与个人门户 .card 统一（圆角 12 / 0.8px #E5E6EB / 0 1px 4px rgba(0,0,0,.06)） */
+/* 卡片基线：与个人门户 overview-section / card 对齐 */
 .card {
-  background: #fff; border: 0.8px solid #e5e6eb; border-radius: 12px;
-  display: flex; flex-direction: column; min-height: 0;
+  background: #fff;
+  border: 0.8px solid #e5e6eb;
+  border-radius: 16px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
 }
+
+/* ============ 共享：overview-section（对齐个人门户今日概览） ============ */
+.overview-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  background: #fff;
+  border: 0.8px solid #e5e6eb;
+  border-radius: 16px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+.section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.section-head-main { min-width: 0; }
+.section-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1.3;
+}
+.section-sub {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: #9ca3af;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.section-head-aside {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  flex: none;
+}
+.ov-team { color: #64748b; font-weight: 500; }
+.ov-dot { color: #d1d5db; }
+.snapshot-badge {
+  flex: none;
+  font-size: 11px;
+  font-weight: 700;
+  color: #1a6fff;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  padding: 3px 10px;
+  line-height: 1.2;
+  cursor: help;
+}
+.snapshot-badge.soft {
+  color: #94a3b8;
+  background: #f8fafc;
+  border-color: #eef2f7;
+  cursor: default;
+}
+
+/* KPI 条：个人门户同款 */
+.kpi-strip {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.stock-strip {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.today-strip {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) 1px repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+}
+.kpi-strip-sep {
+  width: 1px;
+  background: #eef2f7;
+  align-self: stretch;
+  margin: 4px 0;
+}
+.kpi-card {
+  position: relative;
+  min-height: 72px;
+  padding: 10px 10px 10px 12px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  overflow: hidden;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+.kpi-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--kpi-accent, #94a3b8);
+  border-radius: 10px 0 0 10px;
+}
+.kpi-card.tone-risk {
+  background: linear-gradient(180deg, #fffaf5 0%, #fff 70%);
+}
+.kpi-card.tone-gain {
+  background: linear-gradient(180deg, #f0fdf4 0%, #fff 70%);
+}
+.kpi-card.drillable,
+.kpi-card.interactive {
+  cursor: pointer;
+}
+.kpi-card.has-cta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-right: 12px;
+}
+.kpi-card.has-cta .kpi-body {
+  flex: 1;
+  min-width: 0;
+}
+.kpi-card.drillable:hover,
+.kpi-card.interactive:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.07);
+  transform: translateY(-1px);
+}
+.kpi-card.interactive.on {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+.kpi-card.interactive.on .kpi-label-text {
+  color: #1a6fff;
+  font-weight: 600;
+}
+.kpi-card.static { cursor: default; }
+.kpi-card:focus-visible { box-shadow: 0 0 0 2px #1a6fff; }
+.kpi-body { min-width: 0; }
+.kpi-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 6px;
+  min-width: 0;
+}
+.kpi-label-text {
+  font-size: 12px;
+  color: #9ca3af;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kpi-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  font-weight: 500;
+  color: #94a3b8;
+  white-space: nowrap;
+  flex: none;
+}
+.kpi-card.drillable:hover .kpi-hint { color: #1a6fff; }
+.kpi-sel { font-size: 11px; color: #1a6fff; flex: none; }
+.kpi-value-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+}
+.kpi-value {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.kpi-card.tone-risk .kpi-value { font-weight: 800; }
+.kpi-delta { font-size: 11px; font-weight: 600; }
+.kpi-delta.emph { font-size: 12px; font-weight: 700; }
+.kpi-delta.good { color: #10b981; }
+.kpi-delta.bad { color: #ef4444; }
+.kpi-delta.neutral { color: #94a3b8; }
+.kpi-sub {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #94a3b8;
+  line-height: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kpi-eq {
+  margin-top: 5px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: #cbd5e1;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+}
+.kpi-eq .op {
+  color: #e2e8f0;
+  margin: 0 1px;
+}
+
+/* 存量区头行动：对齐个人门户问候区右侧 CTA */
+.ov-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 32px;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(180deg, #3b82f6 0%, #1a6fff 100%);
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(26, 111, 255, 0.28);
+  transition: transform 0.15s, box-shadow 0.15s, filter 0.15s;
+}
+.btn-primary:hover {
+  filter: brightness(1.04);
+  box-shadow: 0 6px 16px rgba(26, 111, 255, 0.34);
+  transform: translateY(-1px);
+}
+.btn-in-card {
+  flex: none;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 8px;
+}
+@media (max-width: 860px) {
+  .greeting-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .greeting-aside {
+    align-items: stretch;
+  }
+  .kpi-card.has-cta {
+    flex-wrap: wrap;
+  }
+}
+.sec-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  background: #fff;
+  font-size: 12px;
+  color: #64748b;
+  cursor: pointer;
+  font-family: inherit;
+}
+.sec-chip em {
+  font-style: normal;
+  font-weight: 700;
+  color: #d97706;
+}
+.sec-chip.is-proto { color: #94a3b8; }
+.sec-chip:hover {
+  border-color: #bfdbfe;
+  color: #1a6fff;
+}
+.proto-tag {
+  font-size: 9px;
+  font-weight: 600;
+  color: #94a3b8;
+  background: #f1f5f9;
+  border-radius: 3px;
+  padding: 1px 4px;
+  line-height: 1.2;
+}
+
+@media (max-width: 960px) {
+  .today-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .kpi-strip-sep { display: none; }
+}
+@media (max-width: 640px) {
+  .stock-strip,
+  .today-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .section-head-aside {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+/* 流转事件 —— 默认折叠 */
+.flow-wrap {
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 1px dashed #eef2f7;
+}
+.flow-toggle {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: none; background: none; padding: 2px 0;
+  font-size: 12px; color: #94a3b8; cursor: pointer; font-family: inherit;
+}
+.flow-toggle:hover { color: #64748b; }
+.flow-n {
+  font-size: 11px; font-weight: 700; color: #64748b;
+  background: #f1f5f9; border-radius: 8px; padding: 0 6px; line-height: 16px;
+}
+.flow-caret { font-size: 10px; transition: transform 150ms; }
+.flow-caret.open { transform: rotate(180deg); }
+.flowbar {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  margin-top: 6px;
+}
+.fb-item {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 8px; background: transparent; border: 1px solid transparent;
+  border-radius: 6px; cursor: pointer;
+}
+.fb-item:hover { background: #f9fafb; border-color: #eef2f7; }
+.fb-item:hover .fb-go { opacity: 1; }
+.fb-l { font-size: 12px; color: #64748b; }
+.fb-v { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.fb-s { font-size: 11px; color: #b6bec9; }
+.fb-go { font-size: 10px; color: #cbd5e1; opacity: 0; transition: opacity 120ms; }
+
+/* ============ ③ 主体 ============ */
+.body { display: flex; gap: 12px; flex: 1; min-height: 0; align-items: stretch; }
+.card { display: flex; flex-direction: column; min-height: 0; }
 .detail { flex: 1; min-width: 0; overflow: hidden; }
 .rightcol {
   width: 380px; flex: none; display: flex; flex-direction: column; gap: 12px;
@@ -747,6 +1473,7 @@ function onExport() {
 .th {
   display: flex; align-items: center; gap: 4px; padding: 10px 12px;
   font-size: 12px; font-weight: 600; color: #64748b; cursor: pointer; transition: background 100ms;
+  white-space: nowrap;
 }
 .th.num { justify-content: flex-end; }
 .th:hover { background: #eef2f7; color: #334155; }
@@ -755,7 +1482,7 @@ function onExport() {
 .s-ic.rot { transform: rotate(90deg); }
 .s-ic.on { color: #1a6fff; }
 .trow { border-bottom: 1px solid #f1f5f9; }
-.trow:hover { background: #f8fafc; }
+.trow:hover { background: #f9fafb; }
 .td { display: flex; align-items: center; gap: 5px; padding: 11px 12px; font-size: 12px; color: #334155; }
 .td.num { justify-content: flex-end; font-variant-numeric: tabular-nums; }
 .td.colon { background: #f8fafc; }
@@ -776,7 +1503,7 @@ function onExport() {
 }
 
 /* 趋势卡 —— 不再无限拉高，图表固定高度 */
-.trend { flex: none; padding: 14px 16px 14px; }
+.trend { flex: none; padding: 14px 16px 12px; }
 .trend-hd {
   display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
 }
@@ -801,7 +1528,9 @@ function onExport() {
 .legend span {
   display: flex; align-items: center; gap: 6px;
   font-size: 11px; font-weight: 500; color: #64748b;
+  transition: opacity 120ms;
 }
+.legend span.dim { opacity: 0.35; }
 .legend i { width: 12px; height: 3px; border-radius: 2px; }
 .chart-wrap {
   margin-top: 8px; height: 168px;
@@ -813,6 +1542,7 @@ function onExport() {
   display: flex; justify-content: space-between;
   margin-top: 6px; font-size: 11px; color: #94a3b8;
 }
+.trend-ft { margin-top: 8px; font-size: 11px; color: #b6bec9; line-height: 1.45; }
 .seg { display: flex; background: #f1f5f9; border-radius: 6px; padding: 2px; gap: 2px; }
 .seg-i {
   padding: 3px 10px; font-size: 12px; color: #64748b; border-radius: 4px; cursor: pointer;
@@ -844,4 +1574,10 @@ function onExport() {
 .ld-l { font-size: 11px; color: #64748b; margin-top: 4px; line-height: 1.35; }
 .ld-l b { font-weight: 600; color: #334155; }
 .ld-ft { margin-top: 10px; font-size: 11px; color: #94a3b8; line-height: 1.4; }
+
+/* 窄屏：率值组换到第二行，两组仍各自成组 */
+@media (max-width: 1440px) {
+  .today-row { flex-direction: column; }
+  .grp-sep { width: auto; height: 1px; margin: 2px 0; }
+}
 </style>
