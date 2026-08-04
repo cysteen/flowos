@@ -84,7 +84,6 @@ const emit = defineEmits<{
   'update:open': [v: boolean];
   'go-list': [payload: DrillGoListPayload];
   assign: [row: PeopleDrillRow];
-  supervise: [row: PeopleDrillRow];
   retry: [];
 }>();
 
@@ -506,12 +505,9 @@ function goFooter(layer: Layer) {
   emit('go-list', { type: t, scope: 'footer', path: '/tickets/list', query });
 }
 
-/** 行内按钮作用于「人」不作用于某张单，抽屉内用 OpActionModal 完成（§2.5 唯一例外） */
+/** 行内按钮作用于「人」不作用于某张单；督办不支持，仅保留指派 */
 function onAssign(r: PeopleDrillRow) {
   emit('assign', r);
-}
-function onSupervise(r: PeopleDrillRow) {
-  emit('supervise', r);
 }
 
 const topLayer = computed(() => layers.value[layers.value.length - 1]);
@@ -717,7 +713,6 @@ const footerLabel = computed(() => {
                       </template>
                     </div>
                     <div class="pp-ops" @click.stop>
-                      <button type="button" class="pp-txtbtn" @click="onSupervise(r)">督办</button>
                       <button
                         type="button"
                         :class="solidRowId(l) === r.id ? 'pp-solidbtn' : 'pp-txtbtn'"

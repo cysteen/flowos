@@ -17,6 +17,11 @@
  * 3. 负载档阈值**暂定**：空闲 ≤5 ／ 适中 6–12 ／ 满载 >12（未经业务确认，后续应做成可配置）。
  * 4. 语义色只用《看板设计-竞品调研与设计范式》§六 R4 五色：
  *    #EF4444 超标 / #F59E0B 预警 / #10B981 达标 / #1A6FFF 交互与选中 / #9CA3AF 中性无数据。
+ * 5. **逐人指标口径与个人门户【815】PRD 严格一致**（2026-08-04 同步，详见 MemberRow 各字段注释）：
+ *    · 平均处理时长 起点＝分派给该坐席的时刻（P-4），非「首次进入处理中」
+ *    · 解决率 取系统口径（P-3）：走到「已解决」÷ 下送满 24h 的单，非客户问卷口径
+ *    · 超时工单 ＝ 区间内**发生过**超时的单数，与「此刻仍超时」是两个数
+ *    同名指标两处必须同值，否则坐席门户与班组表会打架。
  *
  * ── 数值自洽关系（评审可逐条核对）──
  * ★ 守恒式（体系的地基）：积压 63 ＝ 期初 17 ＋ 进线 142 − 结案 96
@@ -137,35 +142,59 @@ export interface BoardMetric {
 
 /** 模块 5 · 调度待办 */
 export interface BoardTodo {
-  key: 'assign' | 'supervise' | 'approve';
+  /** 督办不支持（平台无动作枚举），仅保留指派 / 审批 */
+  key: 'assign' | 'approve';
   label: string;
   count: number;
   unit: string;
   tone: 'danger' | 'warn';
 }
 
-/** 模块 2 负载 + 模块 3 效能排行（同一份人员数据，两个模块取不同列） */
+/**
+ * 模块 2 负载 + 模块 3 效能排行（同一份人员数据，两个模块取不同列）
+ *
+ * ⚠️ 逐人列的口径**必须与个人门户【815】PRD 完全一致** —— 同名指标同值，
+ * 否则坐席在自己门户上看到的数，和班组长在这张表上看到的对不上。
+ * 下列口径已按 815 v1.8 同步（2026-08-04）。
+ */
 export interface MemberRow {
   id: string;
   name: string;
   online: '在线' | '小休' | '离线';
-  /** 当前在办工单数 */
+  /** 当前在办工单数（时点值） */
   workload: number;
   /** 负载档，阈值暂定 ≤5 空闲 / 6–12 适中 / >12 满载 */
   loadLevel: '空闲' | '适中' | '满载';
-  /** 今日下送量 */
+  /** 今日下送量。同一张单当天多次下送只算 1 次 */
   forwardToday: number;
-  /** 平均处理时长 */
+  /**
+   * 平均处理时长
+   * 【815 P-4 定稿】起点＝**分派给该坐席的时刻**（不是"首次进入处理中"），
+   * 终点＝下送时刻，扣除停表时长；样本＝区间内完成下送的单。
+   * 起点前移意味着**坐席自己的响应等待也计入**，"接了单不动手"会被暴露。
+   */
   avgHandle: string;
-  /** 超时工单 */
+  /**
+   * 超时工单
+   * 口径＝**区间内发生过**超时的单数（对应 815 的 C3），同一单多次触发只算 1 次。
+   * 与"此刻仍超时"是两个数，不要混用。
+   */
   overdue: number;
-  /** 24 小时联络率 */
+  /**
+   * 24 小时联络率
+   * ＝ 分派后 24h 内产生过有效联络的单 ÷ 分派给该坐席且**分派已满 24h** 的单。
+   * 有效联络＝通话接通 / 短信已发出 / 企微·公众号消息已送达。
+   */
   followRate: string;
-  /** 服务满意度（5 分制） */
+  /** 服务满意度（5 分制），客户有效评价的平均分 */
   csat: string;
-  /** 解决率 */
+  /**
+   * 解决率
+   * 【815 P-3 定稿】取**系统口径**：走到「已解决」的单 ÷ 该坐席下送且**下送已满 24h** 的单。
+   * 不取客户问卷回答（那是另一个口径，本期不用）。
+   */
   resolveRate: string;
-  /** 参评率 */
+  /** 参评率 ＝ 收到有效评价 ÷ 已发出调研且发出已满 24h 的单 */
   reviewRate: string;
 }
 
@@ -436,7 +465,6 @@ export const BOARD_FLOW_EVENTS: BoardMetric[] = [
  * ----------------------------------------------------------------------- */
 export const BOARD_TODOS: BoardTodo[] = [
   { key: 'assign', label: '待指派', count: 8, unit: '单', tone: 'danger' },
-  { key: 'supervise', label: '待督办', count: 5, unit: '单', tone: 'warn' },
   { key: 'approve', label: '待审批', count: 3, unit: '条', tone: 'warn' },
 ];
 
@@ -445,20 +473,30 @@ export const BOARD_TODOS: BoardTodo[] = [
  * workload 合计 = 55 ＝ 积压 63 − 未分派 8
  * forwardToday 合计 = 118 ＝ 今日下送 118
  * 负载档：空闲 ≤5（7 人）/ 适中 6–12（4 人）/ 满载 >12（1 人）
+ *
+ * ── avgHandle 口径同步（2026-08-04，815 P-4）──
+ * 起点由「首次进入处理中」前移到「**分派给该坐席的时刻**」，即把坐席自己的
+ * 响应等待也算进去，因此**每个人的值都要相应变大**。增量按响应速度分档：
+ *   在线且表现好（王倩/刘婷/徐璐）+0.2~0.3h  ← 接单即处理
+ *   在线常规（张敏/陈曦/吴悦/李昊） +0.4~0.5h
+ *   小休（赵磊/郑楠）              +0.7h
+ *   满载（孙杰）                   +1.1h      ← 手上压着 13 单，新单排队久
+ *   离线（周航/马超）              +1.2~1.4h  ← 不在岗，等待最长
+ * 这正是该口径变更想暴露的差异：**"接了单不动手"不再被隐藏**。
  * ----------------------------------------------------------------------- */
 export const TEAM_MEMBERS: MemberRow[] = [
-  { id: 'm1',  name: '张敏', online: '在线', workload: 8,  loadLevel: '适中', forwardToday: 14, avgHandle: '2.6h', overdue: 2, followRate: '96.4%', csat: '4.8', resolveRate: '94.2%', reviewRate: '88.0%' },
-  { id: 'm2',  name: '李昊', online: '在线', workload: 9,  loadLevel: '适中', forwardToday: 15, avgHandle: '3.1h', overdue: 4, followRate: '92.8%', csat: '4.5', resolveRate: '90.6%', reviewRate: '84.3%' },
-  { id: 'm3',  name: '王倩', online: '在线', workload: 6,  loadLevel: '适中', forwardToday: 12, avgHandle: '2.2h', overdue: 1, followRate: '97.6%', csat: '4.9', resolveRate: '96.1%', reviewRate: '91.2%' },
-  { id: 'm4',  name: '赵磊', online: '小休', workload: 1,  loadLevel: '空闲', forwardToday: 6,  avgHandle: '3.8h', overdue: 0, followRate: '90.0%', csat: '4.3', resolveRate: '88.5%', reviewRate: '80.4%' },
-  { id: 'm5',  name: '陈曦', online: '在线', workload: 7,  loadLevel: '适中', forwardToday: 13, avgHandle: '2.9h', overdue: 3, followRate: '93.5%', csat: '4.6', resolveRate: '91.8%', reviewRate: '85.7%' },
-  { id: 'm6',  name: '刘婷', online: '在线', workload: 3,  loadLevel: '空闲', forwardToday: 10, avgHandle: '2.4h', overdue: 0, followRate: '98.0%', csat: '4.9', resolveRate: '95.4%', reviewRate: '90.6%' },
-  { id: 'm7',  name: '周航', online: '离线', workload: 1,  loadLevel: '空闲', forwardToday: 3,  avgHandle: '4.6h', overdue: 1, followRate: '84.2%', csat: '4.1', resolveRate: '82.7%', reviewRate: '80.8%' },
-  { id: 'm8',  name: '吴悦', online: '在线', workload: 4,  loadLevel: '空闲', forwardToday: 11, avgHandle: '2.7h', overdue: 2, followRate: '95.1%', csat: '4.7', resolveRate: '93.0%', reviewRate: '87.5%' },
-  { id: 'm9',  name: '郑楠', online: '小休', workload: 1,  loadLevel: '空闲', forwardToday: 7,  avgHandle: '3.5h', overdue: 3, followRate: '88.6%', csat: '4.2', resolveRate: '86.3%', reviewRate: '82.1%' },
-  { id: 'm10', name: '孙杰', online: '在线', workload: 13, loadLevel: '满载', forwardToday: 16, avgHandle: '4.2h', overdue: 5, followRate: '86.9%', csat: '4.0', resolveRate: '84.9%', reviewRate: '81.5%' },
-  { id: 'm11', name: '徐璐', online: '在线', workload: 2,  loadLevel: '空闲', forwardToday: 9,  avgHandle: '2.5h', overdue: 1, followRate: '94.7%', csat: '4.6', resolveRate: '92.4%', reviewRate: '86.9%' },
-  { id: 'm12', name: '马超', online: '离线', workload: 0,  loadLevel: '空闲', forwardToday: 2,  avgHandle: '5.0h', overdue: 0, followRate: '81.3%', csat: '4.0', resolveRate: '80.5%', reviewRate: '80.0%' },
+  { id: 'm1',  name: '张敏', online: '在线', workload: 8,  loadLevel: '适中', forwardToday: 14, avgHandle: '3.0h', overdue: 2, followRate: '96.4%', csat: '4.8', resolveRate: '94.2%', reviewRate: '88.0%' },
+  { id: 'm2',  name: '李昊', online: '在线', workload: 9,  loadLevel: '适中', forwardToday: 15, avgHandle: '3.6h', overdue: 4, followRate: '92.8%', csat: '4.5', resolveRate: '90.6%', reviewRate: '84.3%' },
+  { id: 'm3',  name: '王倩', online: '在线', workload: 6,  loadLevel: '适中', forwardToday: 12, avgHandle: '2.4h', overdue: 1, followRate: '97.6%', csat: '4.9', resolveRate: '96.1%', reviewRate: '91.2%' },
+  { id: 'm4',  name: '赵磊', online: '小休', workload: 1,  loadLevel: '空闲', forwardToday: 6,  avgHandle: '4.5h', overdue: 0, followRate: '90.0%', csat: '4.3', resolveRate: '88.5%', reviewRate: '80.4%' },
+  { id: 'm5',  name: '陈曦', online: '在线', workload: 7,  loadLevel: '适中', forwardToday: 13, avgHandle: '3.4h', overdue: 3, followRate: '93.5%', csat: '4.6', resolveRate: '91.8%', reviewRate: '85.7%' },
+  { id: 'm6',  name: '刘婷', online: '在线', workload: 3,  loadLevel: '空闲', forwardToday: 10, avgHandle: '2.7h', overdue: 0, followRate: '98.0%', csat: '4.9', resolveRate: '95.4%', reviewRate: '90.6%' },
+  { id: 'm7',  name: '周航', online: '离线', workload: 1,  loadLevel: '空闲', forwardToday: 3,  avgHandle: '5.8h', overdue: 1, followRate: '84.2%', csat: '4.1', resolveRate: '82.7%', reviewRate: '80.8%' },
+  { id: 'm8',  name: '吴悦', online: '在线', workload: 4,  loadLevel: '空闲', forwardToday: 11, avgHandle: '3.1h', overdue: 2, followRate: '95.1%', csat: '4.7', resolveRate: '93.0%', reviewRate: '87.5%' },
+  { id: 'm9',  name: '郑楠', online: '小休', workload: 1,  loadLevel: '空闲', forwardToday: 7,  avgHandle: '4.2h', overdue: 3, followRate: '88.6%', csat: '4.2', resolveRate: '86.3%', reviewRate: '82.1%' },
+  { id: 'm10', name: '孙杰', online: '在线', workload: 13, loadLevel: '满载', forwardToday: 16, avgHandle: '5.3h', overdue: 5, followRate: '86.9%', csat: '4.0', resolveRate: '84.9%', reviewRate: '81.5%' },
+  { id: 'm11', name: '徐璐', online: '在线', workload: 2,  loadLevel: '空闲', forwardToday: 9,  avgHandle: '2.8h', overdue: 1, followRate: '94.7%', csat: '4.6', resolveRate: '92.4%', reviewRate: '86.9%' },
+  { id: 'm12', name: '马超', online: '离线', workload: 0,  loadLevel: '空闲', forwardToday: 2,  avgHandle: '6.4h', overdue: 0, followRate: '81.3%', csat: '4.0', resolveRate: '80.5%', reviewRate: '80.0%' },
 ];
 
 /* -------------------------------------------------------------------------
@@ -703,7 +741,6 @@ export function getTeamBoardSnapshot(teamId: string): TeamBoardSnapshot {
       ],
       todos: [
         { key: 'assign', label: '待指派', count: unassigned, unit: '单', tone: 'danger' },
-        { key: 'supervise', label: '待督办', count: 3, unit: '单', tone: 'warn' },
         { key: 'approve', label: '待审批', count: 2, unit: '条', tone: 'warn' },
       ],
       members: scaleMembers(0.78, 10),
@@ -756,7 +793,6 @@ export function getTeamBoardSnapshot(teamId: string): TeamBoardSnapshot {
       ],
       todos: [
         { key: 'assign', label: '待指派', count: unassigned, unit: '单', tone: 'danger' },
-        { key: 'supervise', label: '待督办', count: 2, unit: '单', tone: 'warn' },
         { key: 'approve', label: '待审批', count: 1, unit: '条', tone: 'warn' },
       ],
       members: scaleMembers(0.55, 8),

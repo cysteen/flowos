@@ -28,6 +28,7 @@ import {
   SUPERIOR_CHAIN, EVENT_SOURCE_META, COND_OP_LABEL,
   eventOf, recipientTypeOf, availableRecipients, recipientLabel, condLabel, templateVars, varsIn,
   RECIPIENT_KIND_LABEL, BASE_FIELD_KEYS,
+  FIXED_ASSIGN_OPTIONS, filterFixedAssignOption,
   isTemplateChannel, opsForType, optionsForField,
   type NotifyRule, type NotifyChannel, type RuleCondition, type RuleRecipient,
   type CondOp,
@@ -976,9 +977,16 @@ function renderTpl(ch: NotifyChannel) {
                   v-if="needLevel(r.type)" v-model:value="r.level"
                   :min="1" :max="5" style="width: 140px" addon-before="上溯" addon-after="级"
                 />
-                <a-input
-                  v-if="isFixed(r.type)" v-model:value="r.fixedValue"
-                  style="flex: 1" placeholder="指定人员或岗位"
+                <a-select
+                  v-if="isFixed(r.type)"
+                  v-model:value="r.fixedValue"
+                  show-search
+                  allow-clear
+                  :options="FIXED_ASSIGN_OPTIONS"
+                  :filter-option="filterFixedAssignOption"
+                  option-filter-prop="label"
+                  style="flex: 1; min-width: 220px"
+                  placeholder="搜索用户或角色"
                 />
                 <span class="rcp-desc">{{ recipientTypeOf(r.type)?.desc }}</span>
               </div>

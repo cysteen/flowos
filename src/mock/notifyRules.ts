@@ -245,7 +245,7 @@ export const RECIPIENT_TYPES: RecipientType[] = [
   { code: 'leader', name: '班组长', kind: 'relation', desc: '处理人所属班组的组长' },
   // 能力保留：SLA 超时升级已移交 SLA 引擎，但强结、催单抄送等场景仍可能上溯层级
   { code: 'superior', name: '上级', kind: 'relation', hasLevel: true, desc: '沿组织树上溯 N 级（1=班组长 2=主管 3=二级部门经理）' },
-  { code: 'fixed', name: '指定人员 / 岗位', kind: 'fixed', desc: '固定指派，兜底用' },
+  { code: 'fixed', name: '指定人员 / 角色', kind: 'fixed', desc: '固定指派，兜底用；可搜索用户或角色' },
 ];
 
 /** 收件人三种形态的显示名（对齐 PRD §3.4 的分组表） */
@@ -254,6 +254,67 @@ export const RECIPIENT_KIND_LABEL: Record<RecipientType['kind'], string> = {
   relation: '关系函数',
   fixed: '固定指派',
 };
+
+/** 固定指派候选：用户 + 角色（供规则编辑「指定人员 / 角色」搜索下拉） */
+export interface FixedAssignOption {
+  value: string;
+  label: string;
+  /** 参与搜索的附加文本（账号、部门等） */
+  keywords: string;
+  kind: 'user' | 'role';
+}
+
+export const FIXED_ASSIGN_USERS: FixedAssignOption[] = [
+  { value: '用户·王芳', label: '王芳', keywords: 'wangfang 一线客服部 班组长', kind: 'user' },
+  { value: '用户·李强', label: '李强', keywords: 'liqiang 二线处理部 高级客服', kind: 'user' },
+  { value: '用户·陈静', label: '陈静', keywords: 'chenjing 一线客服部 客服专员', kind: 'user' },
+  { value: '用户·赵敏', label: '赵敏', keywords: 'zhaomin 售后服务部 售后工程师', kind: 'user' },
+  { value: '用户·吴婷', label: '吴婷', keywords: 'wuting 一线客服部 实习坐席', kind: 'user' },
+  { value: '用户·张敏', label: '张敏', keywords: 'zhangmin 受理一组 二线坐席', kind: 'user' },
+  { value: '用户·李昊', label: '李昊', keywords: 'lihao 受理一组 二线坐席', kind: 'user' },
+  { value: '用户·孙杰', label: '孙杰', keywords: 'sunjie 受理一组 二线坐席', kind: 'user' },
+  { value: '用户·周运营', label: '周运营', keywords: 'zhouyunying 运营管理员', kind: 'user' },
+];
+
+export const FIXED_ASSIGN_ROLES: FixedAssignOption[] = [
+  { value: '角色·客服班组长', label: '客服班组长', keywords: '班组长 leader', kind: 'role' },
+  { value: '角色·客服·二线坐席', label: '客服·二线坐席', keywords: '二线坐席 agent', kind: 'role' },
+  { value: '角色·售后·二线坐席', label: '售后·二线坐席', keywords: '售后 agent', kind: 'role' },
+  { value: '角色·运营管理员', label: '运营管理员', keywords: '运营 ops', kind: 'role' },
+  { value: '角色·租户管理员', label: '租户管理员', keywords: '租户 admin', kind: 'role' },
+  { value: '角色·质检专员', label: '质检专员', keywords: '质检 qa', kind: 'role' },
+  { value: '角色·售后回访专员', label: '售后回访专员', keywords: '回访', kind: 'role' },
+];
+
+export const FIXED_ASSIGN_OPTIONS = [
+  {
+    label: '用户',
+    options: FIXED_ASSIGN_USERS.map((u) => ({
+      value: u.value,
+      label: u.label,
+      title: u.keywords,
+    })),
+  },
+  {
+    label: '角色',
+    options: FIXED_ASSIGN_ROLES.map((r) => ({
+      value: r.value,
+      label: r.label,
+      title: r.keywords,
+    })),
+  },
+];
+
+/** 固定指派下拉：按关键词搜 label / value / keywords */
+export function filterFixedAssignOption(
+  input: string,
+  option?: { label?: string; value?: string; title?: string },
+): boolean {
+  const q = input.trim().toLowerCase();
+  if (!q) return true;
+  const hay = `${option?.label ?? ''} ${option?.value ?? ''} ${option?.title ?? ''}`.toLowerCase();
+  return hay.includes(q);
+}
 
 /* ============================ 通知规则 ============================ */
 

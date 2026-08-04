@@ -4,8 +4,8 @@
  *
  * 结构（对齐个人门户）：
  *   ⓪ 问候卡 greeting-card —— 提要 + 班组切换
- *   ① 存量 · 待清理 —— 全宽 2 KPI 卡；「去指派」嵌在未分派卡内；区头次级待办
- *   ② 今日指标 —— 全宽 6 KPI 卡（数量 3 | 率值 3）；流转事件默认折叠
+ *   ① 存量 · 待清理 —— 全宽 2 KPI 卡；「去指派」嵌在未分派卡内；区头「待审批」
+ *   ② 今日指标 —— 全宽 6 KPI 卡（数量 3 | 率值 3）；区脚常驻流转事件 3 项
  *   ③ 主体 —— 左组员明细｜右趋势 + 负载
  *
  * 关键裁决：
@@ -13,7 +13,7 @@
  *   X5 抽屉打开时右列降透明 + 禁用
  *   X6 未分派卡＝数量 + 卡内「去指派」动作（同数一体，不另开入口）
  *   X7 仅「今日指标」数量卡可聚焦趋势线；积压卡 → 优先级抽屉
- *   刷新：存量区徽章「约 60s」，非「实时」推送
+ *   督办：不支持（平台无 WoAction / 消息事件），入口已移除
  */
 import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
@@ -38,10 +38,6 @@ import AssignModal, {
   type AssignSubmitPayload,
   type LoadLevel,
 } from './components/AssignModal.vue';
-import SuperviseModal, {
-  type SuperviseTicket,
-  type SuperviseSubmitPayload,
-} from './components/SuperviseModal.vue';
 import {
   LEADER_TEAMS,
   getTeamBoardSnapshot,
@@ -122,8 +118,8 @@ const RATE_METRICS = computed(() => board.value.metrics.filter((m) => !isSeries(
 /** 默认不聚焦：三线等权，先给全局印象；点某卡再聚焦 */
 const focusKey = ref<SeriesKey | null>(null);
 
-/** 流转事件默认折叠，避免与今日主指标抢视线 */
-const flowOpen = ref(false);
+/** 需求模块1 第 5/6/7 条，**默认展开**：折叠会导致需求方在稿子上找不到 */
+const flowOpen = ref(true);
 
 const secondaryTodos = computed(() => board.value.todos.slice(1));
 const flowTotal = computed(() =>
@@ -217,7 +213,7 @@ function onGoList(p: DrillGoListPayload) {
   router.push({ path: p.path, query: p.query });
 }
 
-/* ========================= ③ 指派 / 督办 ========================= */
+/* ========================= ③ 指派 ========================= */
 
 /** 待指派工单（8 单，与存量区「累计未分派 8」一致） */
 const ASSIGN_TICKETS: AssignTicket[] = [
@@ -231,20 +227,9 @@ const ASSIGN_TICKETS: AssignTicket[] = [
   { id: 'a8', no: 'LCMN-20260803-10093', customer: '吴某', type: '投诉', priority: 'P0', slaLeftMin: 12, createdAt: '08-03 11:20' },
 ];
 
-/** 待督办工单（5 单，与「待督办 5」一致；s4 命中 24h 去重，用于验证置灰） */
-const SUPERVISE_TICKETS: SuperviseTicket[] = [
-  { id: 's1', no: 'LCMN-20260802-90114', customer: '莫某', assignee: '孙杰', assigneeId: 'm10', priority: 'P0', slaLeftMin: -32 },
-  { id: 's2', no: 'LCMN-20260802-90127', customer: '陈某', assignee: '李昊', assigneeId: 'm2', priority: 'P1', slaLeftMin: 18 },
-  { id: 's3', no: 'LCMN-20260803-90140', customer: '李某', assignee: '陈曦', assigneeId: 'm5', priority: 'P1', slaLeftMin: 47 },
-  { id: 's4', no: 'LCMN-20260803-90156', customer: '王某', assignee: '郑楠', assigneeId: 'm9', priority: 'P2', slaLeftMin: 92, supervisedText: '2h 前 · 张经理', supervisedHoursAgo: 2 },
-  { id: 's5', no: 'LCMN-20260803-90168', customer: '赵某', assignee: '孙杰', assigneeId: 'm10', priority: 'P1', slaLeftMin: 110 },
-];
-
 const assignOpen = ref(false);
-const superviseOpen = ref(false);
 const assignPreselect = ref<string[]>([]);
 const assignRef = ref<InstanceType<typeof AssignModal> | null>(null);
-const superviseRef = ref<InstanceType<typeof SuperviseModal> | null>(null);
 
 function openAssign(preselect: string[] = []) {
   assignPreselect.value = preselect;
@@ -261,18 +246,8 @@ function onAssignSubmit(p: AssignSubmitPayload) {
   }, 600);
 }
 
-function onSuperviseSubmit(p: SuperviseSubmitPayload) {
-  superviseRef.value?.setSubmitting(true);
-  window.setTimeout(() => {
-    superviseRef.value?.setSubmitting(false);
-    superviseOpen.value = false;
-    message.success(`已督办 ${p.ticketIds.length} 张工单，通知已发送`);
-  }, 600);
-}
-
 function onTodoClick(key: string) {
   if (key === 'assign') openAssign();
-  else if (key === 'supervise') superviseOpen.value = true;
   else router.push({ path: '/approval' }); // A4：看板只跳审批中心，不实现审批
 }
 
@@ -326,9 +301,6 @@ function stockAria(s: {
 function todoTitle(key: string) {
   if (key === 'assign') {
     return '进入指派（数量与本卡「累计未分派」一致）';
-  }
-  if (key === 'supervise') {
-    return '原型可演示；平台 WoAction / 消息事件枚举待补齐后正式生效';
   }
   if (key === 'approve') {
     return '跳转审批中心（看板内不审批）';
@@ -569,13 +541,11 @@ watch(teamId, () => {
               :key="t.key"
               type="button"
               class="sec-chip"
-              :class="{ 'is-proto': t.key === 'supervise' }"
               :title="todoTitle(t.key)"
               :aria-label="`${t.label} ${t.count}${t.unit}`"
               @click="onTodoClick(t.key)"
             >
               {{ t.label }} <em>{{ t.count }}</em>
-              <span v-if="t.key === 'supervise'" class="proto-tag" aria-hidden="true">原型</span>
             </button>
           </div>
         </div>
@@ -705,6 +675,11 @@ watch(teamId, () => {
         </div>
       </div>
 
+      <!--
+        流转事件（需求模块1 第 5/6/7 条：催单·补充 / 退回 / 转入）
+        ⚠️ 曾默认折叠，导致需求方在稿子上找不到这三项 —— 已改为**默认展开**。
+        视觉上仍弱于主指标（小字号、无大数字），但不再需要点开才能看见。
+      -->
       <div class="flow-wrap">
         <button type="button" class="flow-toggle" @click="flowOpen = !flowOpen">
           <span>流转事件</span>
@@ -938,7 +913,6 @@ watch(teamId, () => {
       :footer-text="drawerFooter"
       @go-list="onGoList"
       @assign="(r) => openAssign([r.id])"
-      @supervise="() => (superviseOpen = true)"
     />
     <AssignModal
       ref="assignRef"
@@ -948,12 +922,6 @@ watch(teamId, () => {
       :tickets="ASSIGN_TICKETS"
       :can-cross-team="true"
       @submit="onAssignSubmit"
-    />
-    <SuperviseModal
-      ref="superviseRef"
-      v-model:open="superviseOpen"
-      :tickets="SUPERVISE_TICKETS"
-      @submit="onSuperviseSubmit"
     />
   </div>
 </template>
@@ -1364,19 +1332,9 @@ watch(teamId, () => {
   font-weight: 700;
   color: #d97706;
 }
-.sec-chip.is-proto { color: #94a3b8; }
 .sec-chip:hover {
   border-color: #bfdbfe;
   color: #1a6fff;
-}
-.proto-tag {
-  font-size: 9px;
-  font-weight: 600;
-  color: #94a3b8;
-  background: #f1f5f9;
-  border-radius: 3px;
-  padding: 1px 4px;
-  line-height: 1.2;
 }
 
 @media (max-width: 960px) {
