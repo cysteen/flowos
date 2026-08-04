@@ -12,7 +12,7 @@ import { ref, reactive, computed, watch, nextTick } from 'vue';
 import { message, Modal } from 'ant-design-vue';
 import { useRouter } from 'vue-router';
 import {
-  PlusOutlined, EditOutlined, DeleteOutlined, ExperimentOutlined,
+  PlusOutlined, DeleteOutlined,
   UserOutlined, ApartmentOutlined, PushpinOutlined,
   CheckCircleFilled, CloseCircleFilled, ArrowRightOutlined, QuestionCircleOutlined,
   DownOutlined, UpOutlined, SearchOutlined, ReloadOutlined,
@@ -753,7 +753,7 @@ function renderTpl(ch: NotifyChannel) {
               { title: '收件人', dataIndex: 'recipients', key: 'recipients', width: 210 },
               { title: '通道 / 模板', dataIndex: 'channels', key: 'channels' },
               { title: '启用', dataIndex: 'enabled', key: 'enabled', width: 68 },
-              { title: '操作', key: 'op', width: 178 },
+              { title: '操作', key: 'op', width: 148, align: 'right' as const },
             ]"
             :data-source="rows"
             row-key="id"
@@ -799,9 +799,11 @@ function renderTpl(ch: NotifyChannel) {
               </template>
 
               <template v-else-if="column.key === 'op'">
-                <a-button type="link" size="small" @click="openEdit(record as NotifyRule)"><template #icon><EditOutlined /></template>编辑</a-button>
-                <a-button type="link" size="small" @click="openTest(record as NotifyRule)"><template #icon><ExperimentOutlined /></template>测试</a-button>
-                <a-button type="link" size="small" danger @click="delRule(record as NotifyRule)"><template #icon><DeleteOutlined /></template></a-button>
+                <div class="op-btns">
+                  <a-button type="link" size="small" @click="openEdit(record as NotifyRule)">编辑</a-button>
+                  <a-button type="link" size="small" @click="openTest(record as NotifyRule)">测试</a-button>
+                  <a-button type="link" size="small" danger @click="delRule(record as NotifyRule)">删除</a-button>
+                </div>
               </template>
             </template>
           </a-table>
@@ -1490,6 +1492,16 @@ function renderTpl(ch: NotifyChannel) {
 
 /* ---- §3 表格 ---- */
 :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; font-weight: 600; }
+.op-btns {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  gap: 0;
+}
+.op-btns :deep(.ant-btn-link) {
+  padding-inline: 6px;
+}
 
 .r-name {
   display: flex;
