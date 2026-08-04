@@ -641,9 +641,11 @@ export function applyOpAction(
       // 升级成功 = 关原单 + 建新投诉单 + 双向关联（PRD §4.3.1/§4.3.2）。
       // 原单已是终态（已关闭/取消/归档/结案）则跳过关闭步骤，只留关联（PRD §4.3.1）。
       const { target, newNo, note } = payload.data;
-      const alreadyEnded = /已关闭|已取消|已归档|已结案/.test(detail.status);
+      const alreadyEnded = /已关闭|已取消|已归档|已结案|已转单/.test(detail.status);
       if (!alreadyEnded) {
-        detail.status = '已关闭';
+        // 因派生新单而终止：状态用「已转单」而非「已关闭」——
+        // 让坐席一眼分清"这单是正常关的"还是"业务已经转到别的单上了"（PRD §5.6.3）
+        detail.status = '已转单';
         terminateClocks(detail, timeline, true); // 因升级而终止：停表结果=中止(灰)，不计达标/未达标
       }
       pushEntry(timeline, {
@@ -652,12 +654,12 @@ export function applyOpAction(
         what: alreadyEnded
           ? `原单已是「${detail.status}」，跳过关闭步骤；已升级为${target}单 ${newNo}并保留双向关联。升级原因：${note}`
           : `诉求升级为${target}，已生成新投诉单 ${newNo}并双向关联，原单关闭（SLA 停表·中止）。`
-            + `升级原因：${note}。关单后不支持补充/催单，后续跟进转至新单。`,
+            + `升级原因：${note}。本单转为「已转单」并锁定只读，后续补充/催单请在新单处理。`,
       });
       return {
         opState: alreadyEnded ? opState : 'closed',
         suspendInfo: null,
-        message: alreadyEnded ? `已关联${target}单 ${newNo}` : `已升级为${target}单 ${newNo}，原单已关闭`,
+        message: alreadyEnded ? `已关联${target}单 ${newNo}` : `已升级为${target}单 ${newNo}，原单转为「已转单」`,
       };
     }
 

@@ -11,6 +11,7 @@ import OpSupplementModal from './components/operation/OpSupplementModal.vue';
 import OpDunningModal from './components/operation/OpDunningModal.vue';
 import OpCancelModal from './components/operation/OpCancelModal.vue';
 import OpEscalateComplaintModal from './components/operation/OpEscalateComplaintModal.vue';
+import OpSupersededBanner from './components/operation/OpSupersededBanner.vue';
 import TicketEventToastStack from './components/operation/TicketEventToastStack.vue';
 import OpProcessTabs from './components/operation/OpProcessTabs.vue';
 import OpSidePanel from './components/operation/OpSidePanel.vue';
@@ -26,7 +27,11 @@ import { formatTicketRecordWho, MOCK_FIRST_LINE_AGENTS } from './utils/ticketRec
 import { mergeDraftIntoLatestHandling } from './utils/ticketOverview';
 import { TICKETS } from '@/mock/tickets';
 import { buildChildTicketPrefill, buildReopenTicketPrefill } from './composables/childTicketPrefill';
-import { buildEscalatePrefill, isTicketTerminated, type EscalateInput } from './composables/complaintEscalation';
+import {
+  buildEscalatePrefill, buildEscalateVerdict, buildEscalatedTicket, escalateTargetLabel,
+  isTicketTerminated, resolveEscalateOutcome, summarizeEscalateInput, type EscalateInput,
+} from './composables/complaintEscalation';
+import { resolveSupersededBy, type TicketRelation } from './composables/ticketRelations';
 import type { CreateTicketPrefill, Ticket } from './types/ticket';
 import type { ProcessFormDraft, InsightAction, InsightModalKey } from './types/operation';
 import type { ProcessTabKey } from './types/operation';
@@ -104,7 +109,8 @@ function onOverviewSelect(action: InsightAction) {
   }
 }
 function onStatViewAll() {
-  if (!statModalKey.value) return;
+  // contact 无「查看完整记录」跳转，其余三类才有对应 Tab
+  if (!statModalKey.value || statModalKey.value === 'contact') return;
   processTabsRef.value?.switchTab(STAT_VIEW_ALL[statModalKey.value].tab);
   statModalKey.value = null;
 }
@@ -122,69 +128,80 @@ function openReopenCreate() {
   createOpen.value = true;
 }
 
+/**
+ * 被接管：本单已因升级而关闭，业务已转到新单。
+ * 按 Zendesk 合并口径**整页锁只读**——底部操作栏不出、Tab 只读、头部动作禁用，
+ * 只留横幅上的「打开新单」。不这么做，催单/补充/再投诉就可能落在这张作废的旧单上。
+ */
+const supersededBy = computed(() => resolveSupersededBy(d.value));
+/**
+ * 只读态（**整页冻结**）：一线视角 或 **已转单**（业务转到新单）。
+ * 注意"正常关闭"不在此列——已关闭单仍保留头部动作（升级投诉 / 关联售后 / 新建补充 / 催单），
+ * 补充/催单走 §5.2「建新单承接」。
+ */
+const pageReadonly = computed(() => !!d.value.frontlineDemo || !!supersededBy.value);
+
+/**
+ * 底部流转操作栏隐藏：只读态，**或原单已是终态**——
+ * 已关闭/已取消/已归档/已转单的单不该再出现 下送/升级/调剂/委派/挂起/关闭/强结。
+ */
+const hideActionBar = computed(() => pageReadonly.value || isTicketTerminated(d.value.status));
+
+/** 关系跳转：售后单是外部系统走深链，客服单站内打开 */
+function openRelation(rel: TicketRelation) {
+  if (rel.href) { window.open(rel.href, '_blank'); return; }
+  router.push(`/tickets/${rel.no}`);
+}
+
 // —— 升级投诉：判定弹窗 → 建投诉新单 → 关原单 + 双向关联（《【815】关联投诉 PRD》）——
 const escalateModalOpen = ref(false);
 const escalateInput = ref<EscalateInput | null>(null);
 
 /**
- * 升级投诉两条分支（PRD §4.3）：
- * - 非投诉 → 投诉：投诉专属字段多，带预填**跳建单页**补齐，提交建单时才关原单；
- * - 投诉 → 外投：只补增量字段，**弹窗内直接建外投新单**，不跳建单页。
+ * 升级投诉入口分流（PRD §4.2，判据＝**是否跨工单类型**）：
+ * - 非投诉 → 投诉：跨类型，实质是建一张投诉单 → **打开新建投诉单页面**，已知字段预填；
+ * - 原单已是投诉：不跨类型 → **小弹窗**补录，落法由【工单来源】决定。
  */
-function onEscalateSubmit(payload: EscalateInput) {
-  escalateInput.value = payload;
-  if (payload.kind === 'toComplaint') {
-    createPrefill.value = buildEscalatePrefill(d.value, payload);
+function openEscalate() {
+  if (buildEscalateVerdict(d.value).kind === 'toComplaint') {
+    createPrefill.value = buildEscalatePrefill(d.value);
     createOpen.value = true;
     return;
   }
-  finishEscalate(buildExternalTicket(payload), '外投');
+  escalateModalOpen.value = true;
 }
 
-/** 由原单 + 外投增量字段合成外投新单（不经建单页，字段全部来自原单同步 + 弹窗补录） */
-function buildExternalTicket(input: Extract<EscalateInput, { kind: 'toExternal' }>): Ticket {
+/** 分支 B 提交：外投渠道→建外投关联单并关原单；其余来源→落为补充写在原单上 */
+function onEscalateSubmit(payload: EscalateInput) {
+  escalateInput.value = payload;
+  if (resolveEscalateOutcome(payload) === 'supplement') {
+    finishEscalateAsSupplement(payload);
+    return;
+  }
   const src = TICKETS.find((t) => t.no === d.value.no);
-  const now = new Date();
-  const seq = String(now.getTime()).slice(-5);
-  return {
-    id: `esc-${now.getTime()}`,
-    no: `LCMN-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${seq}`,
-    type: '投诉',
-    channel: (src?.channel ?? '电话'),
-    title: `外投·${d.value.title}`,
-    smartMarks: ['升级'],
-    customer: d.value.customer.name,
-    vip: d.value.customer.types.some((t) => t.includes('VIP')),
-    product: d.value.product.name,
-    nodeStatus: '待受理',
-    nodeStep: 1,
-    nodeTotal: 5,
-    priority: src?.priority ?? 'P0',
-    slaText: '00:15:00',
-    slaSub: '距超时',
-    slaState: 'soon',
-    slaMinutes: 15,
-    assignee: user.name || '张三',
-    tab: 'mine',
-    customerPhone: d.value.customer.contacts.find((c) => c.type === 'phone')?.value,
-    productCategory: d.value.product.category,
-    problemDesc: [
-      `【升级投诉·原单 ${d.value.no}】投诉 → 外投`,
-      `外投平台：${input.platform}｜投诉编号：${input.complaintNo}`,
-      input.priorFeedback ? `前期反馈：${input.priorFeedback}` : '',
-      input.serviceReview ? `服务回溯：${input.serviceReview}` : '',
-      `升级原因：${input.note}`,
-      '',
-      d.value.demand,
-    ].filter(Boolean).join('\n'),
-    createdAt: nowFullText(),
-    updatedAt: nowFullText(),
-  };
+  const ticket = buildEscalatedTicket(d.value, payload, {
+    operator: user.name,
+    channel: src?.channel,
+    priority: src?.priority,
+  });
+  finishEscalate(ticket, escalateTargetLabel(payload));
+}
+
+/** 落补充：原单加一条补充记录 + 写履历，**不建新单、不关单** */
+function finishEscalateAsSupplement(payload: EscalateInput) {
+  const content = summarizeEscalateInput(payload).join('\n');
+  onIncomingTicketEvent('supplement', content, formatTicketRecordWho(user.name, user.roleKey), {
+    supplementType: '投诉补充',
+    notify: false,
+  });
+  escalateInput.value = null;
+  processTabsRef.value?.switchTab('related');
+  message.success('已作为补充信息写入原单，未产生新单');
 }
 
 /** 升级落库：登记关联单 + 写关联履历 + 关原单（两条分支共用） */
 function finishEscalate(ticket: Ticket, targetLabel: string, processAfter?: boolean) {
-  const note = escalateInput.value?.note ?? '';
+  const note = escalateInput.value?.note ?? ticket.problemDesc ?? '';
   addEscalatedComplaint(ticket, targetLabel, note);
   syncEscalatedRelatedCard(ticket, targetLabel);
   dispatch({ type: '升级投诉', data: { target: targetLabel, newNo: ticket.no, note } });
@@ -195,10 +212,8 @@ function finishEscalate(ticket: Ticket, targetLabel: string, processAfter?: bool
 function onTicketCreated(ticket: Ticket, processAfter?: boolean) {
   if (createPrefill.value?.mode === 'child') addChildTicket(ticket);
   else if (createPrefill.value?.mode === 'reopen') addReopenTicket(ticket);
-  else if (createPrefill.value?.mode === 'escalate' && escalateInput.value) {
-    const input = escalateInput.value;
-    finishEscalate(ticket, input.kind === 'toExternal' ? '外投' : input.nature, processAfter);
-  }
+  // 分支 A：建单页提交即完成升级——关原单 + 双向关联 + 写履历
+  else if (createPrefill.value?.mode === 'escalate') finishEscalate(ticket, '投诉', processAfter);
   if (processAfter) router.push(`/tickets/${ticket.no}`);
 }
 
@@ -610,6 +625,18 @@ function onCancelSubmit(payload: { reason: string; remark: string }) {
  */
 function confirmCarryOnNewTicket(kind: '补充' | '催单'): boolean {
   if (!isTicketTerminated(d.value.status)) return false;
+  // 因**升级**而关闭 → 业务在新单上，引导过去，不再建第三张单（Zendesk 合并口径）
+  if (supersededBy.value) {
+    const target = supersededBy.value;
+    Modal.confirm({
+      title: `本单已升级为 ${target.no}`,
+      content: `${kind}信息应落在新单上，避免落到已作废的旧单。是否前往新单？`,
+      okText: '前往新单',
+      cancelText: '取消',
+      onOk: () => openRelation(target),
+    });
+    return true;
+  }
   Modal.confirm({
     title: `原单已${d.value.status}，无法直接${kind}`,
     content: `将基于原单 ${d.value.no} 新建工单（新单号）并关联原单，${kind}信息落在新单上。是否继续？`,
@@ -622,8 +649,8 @@ function confirmCarryOnNewTicket(kind: '补充' | '催单'): boolean {
 
 function onHeaderAction(name: string) {
   switch (name) {
-    case '升级投诉': // 原单升级为更高阶投诉：先判定阶层/目标，再关原单建新单（《【815】关联投诉 PRD》）
-      escalateModalOpen.value = true;
+    case '升级投诉': // 非投诉→建单页；投诉单→小弹窗（《【815】关联投诉 PRD》§4.2）
+      openEscalate();
       break;
     case '关联售后': // 投诉工单：打开售后建单弹窗
       actionBarRef.value?.openAftersale();
@@ -688,8 +715,18 @@ watch(
     <OpHeader
       :detail="d"
       :ticket-no="ticketNo"
+      :readonly="pageReadonly"
       @copy-no="copyNo"
       @action="onHeaderAction"
+      @open-relation="openRelation"
+    />
+
+    <!-- 被接管：整页只读 + 直达新单（Zendesk 合并口径） -->
+    <OpSupersededBanner
+      v-if="supersededBy"
+      :by="supersededBy"
+      :status="d.status"
+      @open="openRelation(supersededBy)"
     />
 
     <!-- 顶部通栏速览带：客户诉求 | 客户全景宫格 | 最新处理（关注信息一屏） -->
@@ -719,7 +756,7 @@ watch(
           :expanded-sections="expandedSections"
           :active-chip="activeChip"
           :filled-supplement-count="filledSupplementCount"
-          :readonly="d.frontlineDemo"
+          :readonly="pageReadonly"
           @toggle-section="toggleSection"
           @select-chip="selectChip"
           @update:form="updateForm"
@@ -745,7 +782,7 @@ watch(
     -->
     <OpActionBar
       ref="actionBarRef"
-      :hide-bar="d.frontlineDemo"
+      :hide-bar="hideActionBar"
       :ticket-no="ticketNo"
       :ticket-title="d.title"
       :ticket-type="d.type"

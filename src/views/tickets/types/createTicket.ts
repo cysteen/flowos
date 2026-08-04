@@ -1,3 +1,4 @@
+import { PRIORITY_LABEL } from '@/views/tickets/types/ticket';
 import type { Channel, Priority, TicketType } from '@/views/tickets/types/ticket';
 
 /** 新建弹窗工单类型（对齐 .pen V6xQCz 等画板） */
@@ -6,7 +7,10 @@ export type CreateFormTicketType = '投诉' | '建议' | '商机' | '咨询';
 export type BusinessType = '学习机' | '翻录' | '智学网';
 
 /** 工单来源枚举（对齐 PRD 调研回访 / 渠道管理） */
-export type TicketSource = '热线电话' | 'IM在线' | '内投渠道' | '外投渠道' | '客户服务小程序';
+export type TicketSource =
+  | '热线电话' | 'IM在线' | '内投渠道' | '外投渠道' | '客户服务小程序'
+  /** 售后侧转入客服的工单（多为售后转咨询）——**不支持升级投诉**（0801 定为门禁①判据） */
+  | '售后转入';
 
 export const TICKET_SOURCE_OPTIONS: TicketSource[] = [
   '热线电话',
@@ -14,7 +18,11 @@ export const TICKET_SOURCE_OPTIONS: TicketSource[] = [
   '内投渠道',
   '外投渠道',
   '客户服务小程序',
+  '售后转入',
 ];
+
+/** 售后转入判据：来源为该值即视为售后转入工单（PRD §4.3.3 门禁①） */
+export const AFTERSALE_INBOUND_SOURCE: TicketSource = '售后转入';
 
 export interface CustomerContactEntry {
   type: '手机' | '固话' | '邮箱';
@@ -70,13 +78,18 @@ export interface CreateTicketFormState {
   expectTime: string;
   /** 投诉专属 */
   complaintType: string;
-  complaintPlatform: string;
+  /**
+   * 投诉平台 + 投诉编号：**成对多组**——一个平台对应一个编号，多渠道投诉就加多组
+   * （与升级投诉弹窗同一套结构，见 composables/complaintEscalation.ts ComplaintPlatformPick）。
+   */
+  complaintPlatforms: { platform: string; customPlatform?: string; complaintNo: string }[];
   businessLine: string;
-  complaintNo: string;
   priorFeedback: string;
   serviceReview: string;
   complaintL1: string;
   complaintL2: string;
+  /** 投诉接收时间（非必填，日期时间） */
+  complaintReceiveTime: string;
   problemTime: string;
   /** 建议专属 */
   suggestL1: string;
@@ -99,17 +112,20 @@ export const PROBLEM_TREE: Record<string, Record<string, string[]>> = {
   账号问题: { 登录: ['验证码失败', '密码错误'], 权益: ['会员失效', '订单未同步'] },
 };
 
-export const PRIORITY_OPTIONS: { value: Priority; label: string }[] = [
-  { value: 'P0', label: 'P0（VIP + 紧急）' },
-  { value: 'P1', label: 'P1（紧急）' },
-  { value: 'P2', label: 'P2（普通）' },
-  { value: 'P3', label: 'P3（低）' },
-];
+export const PRIORITY_OPTIONS: { value: Priority; label: string }[] =
+  (['P0', 'P1', 'P2', 'P3'] as Priority[]).map((v) => ({
+    value: v,
+    label: `${v}（${PRIORITY_LABEL[v]}）`,
+  }));
 
 export const EXPECT_TIMES = ['今日 18:00', '今日 20:00', '明日 12:00', '3 个工作日内'];
 
-// 原「投诉类型」枚举（服务投诉/产品质量/物流问题/其他）已废弃：
-// 该字段改为「投诉性质」，由投诉二类推导（见 resolveComplaintNature），不再单独选。
+/**
+ * 「投诉类型」枚举。0803 恢复为**可选字段**——它只在
+ * **工单类型=投诉 且 工单来源=内投渠道/外投渠道** 时出现（见 §3.2 字段门控）。
+ * ⚠️ 取值清单沿用改版前的旧枚举，**待业务确认**是否需要换成对外口径的另一套。
+ */
+export const COMPLAINT_TYPE_OPTIONS = ['服务投诉', '产品质量', '物流问题', '其他'];
 export const COMPLAINT_PLATFORM_OPTIONS = [
   '市场监管12345平台',
   '市场监管12315平台',
@@ -125,6 +141,26 @@ export const COMPLAINT_PLATFORM_OPTIONS = [
 
 /** 外投投诉平台（工单来源属外投时选用；命中则处理页展示外投分支字段） */
 export const EXTERNAL_COMPLAINT_PLATFORMS = COMPLAINT_PLATFORM_OPTIONS;
+
+/** 内投渠道的投诉平台（业务方 0801 给定） */
+export const INTERNAL_COMPLAINT_PLATFORMS = [
+  '公司/分公司「前台」',
+  '公司官网「监督举报」',
+  '其他',
+];
+
+/** 选「其他」时需手动填写平台名称 */
+export const CUSTOM_PLATFORM_OPTION = '其他';
+
+/**
+ * 按工单来源给出可选投诉平台：
+ * 外投渠道 → 外部平台字典；内投渠道 → 内部渠道字典；其余来源无平台可选。
+ */
+export function complaintPlatformsBySource(source?: string): string[] {
+  if (source === '外投渠道') return EXTERNAL_COMPLAINT_PLATFORMS;
+  if (source === '内投渠道') return INTERNAL_COMPLAINT_PLATFORMS;
+  return [];
+}
 
 export function isExternalComplaintPlatform(platform?: string): boolean {
   if (!platform) return false;

@@ -12,16 +12,22 @@ export interface AgentInfo {
 }
 
 export interface ComplaintInfo {
-  /** 投诉一类 */
-  cat1: string;
-  /** 投诉二类（投诉性质由此推导） */
-  cat2: string;
-  /** 投诉性质：业务投诉 / 服务投诉 / 人员投诉，由 cat2 推导，不单独选 */
+  /**
+   * 投诉分类：**成对多组**——一类+二类为一组，一次投诉可命中多个问题（与升级弹窗同结构）。
+   * 投诉性质由各组的二类分别推导，展示时去重。
+   */
+  categories: { cat1: string; cat2: string }[];
+  /**
+   * 投诉类型：建单页**独立可选**字段（服务投诉/产品质量/物流问题/其他），0803 起不再由二类推导。
+   * 推导出来的「投诉性质」只做只读展示，不落在本字段上。
+   */
   complaintType: string;
-  platform: string;
-  complaintNo: string;
-  tags: string[];
+  /** 投诉平台 + 投诉编号：**成对多组**——一个平台对应一个编号（与建单页同结构） */
+  platforms: { platform: string; customPlatform?: string; complaintNo: string }[];
+  /** 投诉接收时间（非必填） */
+  receivedAt: string;
   priorFeedback: string;
+  /** 服务回溯：自由文本，篇幅可能较长 */
   serviceReview: string;
 }
 
@@ -114,10 +120,16 @@ export interface ProcessFormDraft {
   complaintMark: string;
   complaintNote: string;
   complaintNoteAttachments: string[];
-  /** 外投分支 · 平台回复结果（自定义） */
-  platformReplyResult: string;
-  /** 外投分支 · 平台和解 */
-  platformReconcile: '' | '是' | '否';
+  /**
+   * 外投分支 · 各投诉平台的跟进结果（与建单 platforms 一一对应）。
+   * 每个平台各自填写回复结果 + 是否和解——多平台不能共用一组字段。
+   */
+  platformFollowups: {
+    platform: string;
+    complaintNo?: string;
+    replyResult: string;
+    reconcile: '' | '是' | '否';
+  }[];
   riskFlag: string;
   /** @deprecated 兼容旧逻辑；以 riskFlag === '有风险' 为准 */
   riskHasRisk: boolean;

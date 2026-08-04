@@ -181,16 +181,21 @@ export interface Ticket {
    * （下送/升级/调剂/委派/挂起/关闭/强结等属二线权限，一线打开只读办理内容）。
    */
   frontlineDemo?: boolean;
+  /** 本单由哪张单升级而来（升级投诉派生的新单带此值，供「↑升级自」关系回溯） */
+  escalatedFromNo?: string;
+  /**
+   * 本单**已升级为**该单——原单因升级而关闭，业务转到新单。
+   * 处理页据此判定「被接管」：整页只读 + 接管横幅（PRD §5.6.3）。
+   */
+  escalatedToNo?: string;
 }
 
 /** 新建工单弹窗预填（子单 / reopen 场景从原单继承客户/产品/渠道等） */
 export interface CreateTicketPrefill {
-  /** escalate = 升级投诉升级建单（关原单 + 建更高阶投诉新单，《【815】关联投诉 PRD》） */
+  /** escalate = 升级投诉·非投诉→投诉（走建单页，已知字段预填；提交即关原单 + 双向关联） */
   mode?: 'normal' | 'child' | 'reopen' | 'escalate';
   parentNo?: string;
   parentTitle?: string;
-  /** mode=escalate：目标投诉类型（人员投诉/业务投诉/外投） */
-  escalateTarget?: string;
   customerName?: string;
   customerPhone?: string;
   vip?: boolean;
@@ -247,6 +252,17 @@ export const CUSTOMER_TAG_COLOR: Record<CustomerTag, string> = {
   老师: '#2563EB',
   校长: '#D97706',
   自媒体: '#9333EA',
+};
+
+/**
+ * 优先级的**业务口径标签**（0803 业务确认）：P0 紧急 / P1 重要 / P2 普通加急 / P3 普通。
+ * 单一真源——建单页下拉、班组看板下钻、规则引擎枚举都从这里取，避免各写一份再漂。
+ */
+export const PRIORITY_LABEL: Record<Priority, string> = {
+  P0: '紧急',
+  P1: '重要',
+  P2: '普通加急',
+  P3: '普通',
 };
 
 export const PRIORITY_COLOR: Record<Priority, string> = {

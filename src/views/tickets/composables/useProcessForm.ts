@@ -18,7 +18,10 @@ function buildDraft(type: string): ProcessFormDraft {
 function countFilledSupplements(form: ProcessFormDraft): number {
   let n = 0;
   if (form.complaintMark && form.complaintCat1 && form.complaintNote) n += 1;
-  if (form.platformReplyResult.trim() && form.platformReconcile) n += 1;
+  if (
+    form.platformFollowups.length > 0
+    && form.platformFollowups.every((r) => r.replyResult.trim() && r.reconcile)
+  ) n += 1;
   if (form.riskFlag === '有风险') {
     if (form.riskLevel && form.riskDescription.trim()) n += 1;
   } else if (form.riskFlag === '疑似风险') {

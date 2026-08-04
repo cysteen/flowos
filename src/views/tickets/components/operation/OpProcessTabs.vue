@@ -14,7 +14,11 @@ const OpCustomerHistoryTab = defineAsyncComponent(() => import('./tabs/OpCustome
 const OpFeishuTab = defineAsyncComponent(() => import('./tabs/OpFeishuTab.vue'));
 const OpAppointmentTab = defineAsyncComponent(() => import('./tabs/OpAppointmentTab.vue'));
 import { useUserStore } from '@/stores/user';
-import { visibleProcessTabs, type ProcessTabKey } from '@/views/tickets/types/operation';
+import {
+  isRegulatorComplaintPlatform,
+  visibleProcessTabs,
+  type ProcessTabKey,
+} from '@/views/tickets/types/operation';
 import type { ProcessFormDraft, SectionKey } from '@/views/tickets/types/operation';
 import type { OperationTabData } from '@/views/tickets/types/operationTabs';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
@@ -61,6 +65,17 @@ const visibleTabs = computed(() =>
   visibleProcessTabs(props.detail.type, { feishuActive: feishuActive.value }),
 );
 
+/**
+ * 驱动「投诉标记扩展选项 / 外投分支」的平台。
+ * 建单页投诉平台是成对多组，此处取**首个监管平台**——任一平台是监管平台就该放出有责/无责标记；
+ * 都不是则回落到第一组，仅用于外投分支判定。
+ */
+const drivingComplaintPlatform = computed(() => {
+  const picks = props.detail.complaint?.platforms ?? [];
+  const names = picks.map((p) => p.platform).filter(Boolean);
+  return names.find((n) => isRegulatorComplaintPlatform(n)) ?? names[0];
+});
+
 /** 工单类型变化后，若当前 Tab 已被该类型隐藏，回退到「工单处理」。 */
 watch(visibleTabs, (tabs) => {
   if (!tabs.some((t) => t.key === activeTab.value)) activeTab.value = 'process';
@@ -105,7 +120,8 @@ defineExpose({ switchTab });
         :active-chip="activeChip"
         :filled-supplement-count="filledSupplementCount"
         :show-external="detail.isExternalAppeal"
-        :complaint-platform="detail.complaint?.platform"
+        :complaint-platform="drivingComplaintPlatform"
+        :complaint-platforms="detail.complaint?.platforms ?? []"
         @toggle-section="emit('toggleSection', $event)"
         @select-chip="emit('selectChip', $event)"
         @update:form="emit('update:form', $event)"

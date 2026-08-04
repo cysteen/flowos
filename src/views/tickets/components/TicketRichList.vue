@@ -235,6 +235,9 @@ const gridTemplateColumns = computed(() => {
           <span class="ticket-no" @click="emit('clickNo', t)">{{ t.no }}</span>
           <!-- 一线视角演示单：处理页隐藏二线流转操作栏 -->
           <span v-if="t.frontlineDemo" class="frontline-tag">一线演示专用</span>
+          <!-- 关联关系：已转单（业务已转到新单，页面冻结）/ 升级自（本单是派生出来的） -->
+          <span v-if="t.escalatedToNo" class="rel-tag rel-tag--to">已转单 → {{ t.escalatedToNo }}</span>
+          <span v-else-if="t.escalatedFromNo" class="rel-tag rel-tag--from">升级自 {{ t.escalatedFromNo }}</span>
         </div>
       </div>
 
@@ -518,6 +521,13 @@ const gridTemplateColumns = computed(() => {
 .sep { font-size: 12px; color: #d1d5db; flex: none; }
 .ticket-no { font-size: 12px; font-weight: 500; color: #1a6fff; cursor: pointer; flex: none; }
 .ticket-no:hover { text-decoration: underline; }
+.rel-tag {
+  flex: none;
+  font-size: 11px; font-weight: 600; line-height: 16px;
+  padding: 0 6px; border-radius: 4px;
+}
+.rel-tag--to { color: #7c3aed; background: #f5f3ff; border: 1px solid #ddd6fe; }
+.rel-tag--from { color: #4f46e5; background: #eef2ff; border: 1px solid #e0e7ff; }
 .frontline-tag {
   flex: none;
   font-size: 11px; font-weight: 600; line-height: 16px;

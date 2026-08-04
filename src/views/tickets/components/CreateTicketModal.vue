@@ -7,7 +7,6 @@ import {
   PlusOutlined,
   CloseOutlined,
   WarningOutlined,
-  RightOutlined,
   UserAddOutlined,
 } from '@ant-design/icons-vue';
 import type { Ticket, CreateTicketPrefill } from '@/views/tickets/types/ticket';
@@ -17,12 +16,14 @@ import {
   PRODUCT_CATEGORIES,
   PRIORITY_OPTIONS,
   TICKET_SOURCE_OPTIONS,
-  COMPLAINT_PLATFORM_OPTIONS,
+  COMPLAINT_TYPE_OPTIONS,
   BUSINESS_LINE_OPTIONS,
+  complaintPlatformsBySource,
   PRIOR_FEEDBACK_OPTIONS,
   SERVICE_REVIEW_OPTIONS,
   COMPLAINT_L1_OPTIONS,
   COMPLAINT_L2_MAP,
+  CUSTOM_PLATFORM_OPTION,
   SUGGEST_L1_OPTIONS,
   SUGGEST_L2_MAP,
   formatCustomerSubline,
@@ -60,6 +61,7 @@ const {
   showTypePart,
   typePartSubtitle,
   customerAddressRequired,
+  showChannelComplaintFields,
   reset,
   applyPrefill,
   onTitleInput,
@@ -78,12 +80,12 @@ const {
 
 const isChildMode = computed(() => props.prefill?.mode === 'child');
 const isReopenMode = computed(() => props.prefill?.mode === 'reopen');
-/** 升级投诉：原单升级建更高阶投诉新单（提交后关原单 + 双向关联） */
+/** 升级投诉 · 非投诉→投诉：本页即"新建投诉单"，已知字段预填，提交即关原单 + 双向关联 */
 const isEscalateMode = computed(() => props.prefill?.mode === 'escalate');
 const modalTitle = computed(() => {
   if (isChildMode.value) return '转单';
   if (isReopenMode.value) return '重新建单';
-  if (isEscalateMode.value) return `升级投诉 · 新建${props.prefill?.escalateTarget ?? '投诉'}单`;
+  if (isEscalateMode.value) return '升级投诉 · 新建投诉单';
   return '新建工单';
 });
 const parentMetaLabel = computed(() => {
@@ -97,6 +99,34 @@ const showParentInTitle = computed(
 
 const complaintL2Options = computed(
   () => COMPLAINT_L2_MAP[form.complaintL1] ?? [],
+);
+
+/** 投诉平台字典随来源切换：外投渠道=外部平台，内投渠道=公司前台/官网监督举报/其他 */
+const complaintPlatformOptions = computed(
+  () => complaintPlatformsBySource(form.ticketSource).map((v) => ({ value: v, label: v })),
+);
+
+/** 平台与编号成对：一个平台对应一个编号，多渠道投诉就加多组 */
+function addComplaintPlatform() {
+  form.complaintPlatforms.push({ platform: '', complaintNo: '' });
+}
+function removeComplaintPlatform(i: number) {
+  form.complaintPlatforms.splice(i, 1);
+  if (!form.complaintPlatforms.length) addComplaintPlatform();
+}
+/**
+ * 来源切换 → 平台字典跟着变，**只清掉在新字典里不存在的平台**。
+ * 不能无条件重置：applyPrefill 是"先设来源、后设平台"，watcher 异步触发会把预填的平台/编号冲掉。
+ */
+watch(
+  () => form.ticketSource,
+  () => {
+    const allowed = complaintPlatformsBySource(form.ticketSource);
+    const stillValid = form.complaintPlatforms.every(
+      (r) => !r.platform || allowed.includes(r.platform),
+    );
+    if (!stillValid) form.complaintPlatforms = [{ platform: '', complaintNo: '' }];
+  },
 );
 const suggestL2Options = computed(() => SUGGEST_L2_MAP[form.suggestL1] ?? []);
 
@@ -112,9 +142,7 @@ function onCreate(processAfter = false) {
   let msg = `工单 ${ticket.no} 已创建${processAfter ? '，进入处理页' : ''}`;
   if (isChildMode.value) msg = `子工单 ${ticket.no} 已创建${processAfter ? '，进入处理页' : ''}`;
   else if (isReopenMode.value) msg = `Reopen 工单 ${ticket.no} 已创建${processAfter ? '，进入处理页' : ''}`;
-  else if (isEscalateMode.value) {
-    msg = `${props.prefill?.escalateTarget ?? '投诉'}单 ${ticket.no} 已创建，原单已关闭并双向关联`;
-  }
+  else if (isEscalateMode.value) msg = `投诉单 ${ticket.no} 已创建，原单已关闭并双向关联`;
   message.success(msg);
   // 由草稿提交 → 从草稿箱移除
   if (activeDraftId.value) { draftStore.remove(activeDraftId.value); activeDraftId.value = null; }
@@ -308,10 +336,9 @@ watch(
       <!-- ③ 产品问题（对齐 .pen BaY72 / OKN77） -->
       <CreateTicketPartCard title="产品问题">
         <div class="product-body">
-        <div class="product-top-row">
-          <div class="product-cascade">
-            <div class="inline-field flex1">
-              <label class="inline-label sm"><span class="req">*</span>产品分类</label>
+          <div class="row-3">
+            <div class="inline-field">
+              <label class="inline-label xl"><span class="req">*</span>产品分类</label>
               <FormSelect
                 v-model:value="form.productCategory"
                 class="inline-control field-control"
@@ -321,9 +348,8 @@ watch(
                 @change="onProductCategoryChange"
               />
             </div>
-            <RightOutlined class="cascade-arrow" />
-            <div class="inline-field flex1">
-              <label class="inline-label sm"><span class="req">*</span>产品名称</label>
+            <div class="inline-field">
+              <label class="inline-label xl"><span class="req">*</span>产品名称</label>
               <FormSelect
                 :key="form.productCategory"
                 v-model:value="form.productName"
@@ -336,85 +362,91 @@ watch(
                 @change="onProductNameChange"
               />
             </div>
+            <div class="inline-field">
+              <label class="inline-label xl">设备SN</label>
+              <a-input
+                v-model:value="form.deviceSn"
+                class="inline-control field-control"
+                size="middle"
+                placeholder="请输入设备SN"
+              />
+            </div>
           </div>
-          <div class="inline-field product-sn-field">
-            <label class="inline-label xs">设备SN</label>
-            <a-input
-              v-model:value="form.deviceSn"
-              class="inline-control field-control"
-              size="middle"
-              placeholder="请输入设备SN"
-            />
-          </div>
-        </div>
 
-        <div class="problem-cascade">
-          <div class="inline-field flex1">
-            <label class="inline-label sm"><span class="req">*</span>问题一类</label>
-            <FormSelect
-              v-model:value="form.problemL1"
-              class="inline-control field-control"
-              size="middle"
-              :status="errors.problemL1 ? 'error' : ''"
-              :options="problemL1Options.map((v) => ({ value: v, label: v }))"
-              @change="onProblemL1Change"
-            />
+          <div class="row-3">
+            <div class="inline-field">
+              <label class="inline-label xl"><span class="req">*</span>问题一类</label>
+              <FormSelect
+                v-model:value="form.problemL1"
+                class="inline-control field-control"
+                size="middle"
+                :status="errors.problemL1 ? 'error' : ''"
+                :options="problemL1Options.map((v) => ({ value: v, label: v }))"
+                @change="onProblemL1Change"
+              />
+            </div>
+            <div class="inline-field">
+              <label class="inline-label xl"><span class="req">*</span>问题二类</label>
+              <FormSelect
+                v-model:value="form.problemL2"
+                class="inline-control field-control"
+                size="middle"
+                :status="errors.problemL2 ? 'error' : ''"
+                :options="problemL2Options.map((v) => ({ value: v, label: v }))"
+                @change="onProblemL2Change"
+              />
+            </div>
+            <div class="inline-field">
+              <label class="inline-label xl"><span class="req">*</span>问题三类</label>
+              <FormSelect
+                v-model:value="form.problemL3"
+                class="inline-control field-control"
+                size="middle"
+                :status="errors.problemL3 ? 'error' : ''"
+                :options="problemL3Options.map((v) => ({ value: v, label: v }))"
+              />
+            </div>
           </div>
-          <RightOutlined class="cascade-arrow" />
-          <div class="inline-field flex1">
-            <label class="inline-label sm"><span class="req">*</span>问题二类</label>
-            <FormSelect
-              v-model:value="form.problemL2"
-              class="inline-control field-control"
-              size="middle"
-              :status="errors.problemL2 ? 'error' : ''"
-              :options="problemL2Options.map((v) => ({ value: v, label: v }))"
-              @change="onProblemL2Change"
-            />
-          </div>
-          <RightOutlined class="cascade-arrow" />
-          <div class="inline-field flex1">
-            <label class="inline-label sm"><span class="req">*</span>问题三类</label>
-            <FormSelect
-              v-model:value="form.problemL3"
-              class="inline-control field-control"
-              size="middle"
-              :status="errors.problemL3 ? 'error' : ''"
-              :options="problemL3Options.map((v) => ({ value: v, label: v }))"
-            />
-          </div>
-        </div>
 
-        <div class="inline-field priority-row">
-          <label class="inline-label priority"><span class="req">*</span>优先级</label>
-          <FormSelect
-            v-model:value="form.priority"
-            class="inline-control field-control"
-            size="middle"
-            :options="PRIORITY_OPTIONS.map((p) => ({ value: p.value, label: p.label }))"
-          />
-        </div>
-
-        <div class="desc-block">
-          <div class="desc-label-row">
-            <span class="req">*</span>
-            <span>问题描述</span>
+          <div class="row-3">
+            <div class="inline-field">
+              <label class="inline-label xl"><span class="req">*</span>优先级</label>
+              <FormSelect
+                v-model:value="form.priority"
+                class="inline-control field-control"
+                size="middle"
+                :options="PRIORITY_OPTIONS.map((p) => ({ value: p.value, label: p.label }))"
+              />
+            </div>
+            <div class="inline-field">
+              <label class="inline-label xl">问题发生时间</label>
+              <a-input
+                v-model:value="form.problemTime"
+                class="inline-control field-control"
+                placeholder="请选择问题发生时间"
+              />
+            </div>
+            <div class="inline-field">
+              <label class="inline-label xl">解决时间备注</label>
+              <a-input
+                v-model:value="form.resolveTimeRemark"
+                class="inline-control field-control"
+                placeholder="如：今天下班前"
+              />
+            </div>
           </div>
-          <a-textarea
-            v-model:value="form.description"
-            :rows="3"
-            :status="errors.description ? 'error' : ''"
-            class="desc-area"
-          />
-          <div class="inline-field resolve-remark-row">
-            <label class="inline-label remark">解决时间备注</label>
-            <a-input
-              v-model:value="form.resolveTimeRemark"
+
+          <!-- 问题描述篇幅长，整行收尾 -->
+          <div class="inline-field desc-field">
+            <label class="inline-label xl"><span class="req">*</span>问题描述</label>
+            <a-textarea
+              v-model:value="form.description"
               class="inline-control field-control"
-              placeholder="请备注用户期望的解决时间，如：今天下班前"
+              :status="errors.description ? 'error' : ''"
+              :auto-size="{ minRows: 3, maxRows: 8 }"
+              placeholder="请描述客户反馈的问题与诉求"
             />
           </div>
-        </div>
         </div>
       </CreateTicketPartCard>
 
@@ -425,57 +457,89 @@ watch(
         :body-gap="10"
       >
         <template v-if="form.ticketType === '投诉'">
-          <div class="row-3">
-            <!-- 投诉性质由投诉二类推导，只读带出（0730 口径），坐席只填投诉一类/二类 -->
-            <div class="inline-field">
-              <label class="inline-label md">投诉性质</label>
-              <div class="inline-control field-control derived-box" :class="{ empty: !form.complaintType }">
-                {{ form.complaintType || '选择投诉二类后自动判定' }}
+          <!--
+            来源门控（0803）：仅 工单来源=内投渠道 / 外投渠道 时展示投诉渠道台账字段；
+            其余来源（热线/IM/小程序）的投诉单不涉及渠道台账，整段不出。
+          -->
+          <template v-if="showChannelComplaintFields">
+            <!-- 投诉平台 + 投诉编号：成对多组，标签与控件同一行 -->
+            <div class="cp-group">
+              <div
+                v-for="(row, i) in form.complaintPlatforms"
+                :key="`cp-${i}`"
+                class="cp-row"
+              >
+                <label v-if="i === 0" class="inline-label xl">投诉平台/编号</label>
+                <span v-else class="inline-label xl cp-label-spacer" aria-hidden="true" />
+                <FormSelect
+                  v-model:value="row.platform"
+                  class="field-control cp-cell"
+                  :options="complaintPlatformOptions"
+                  placeholder="投诉平台"
+                />
+                <a-input
+                  v-if="row.platform === CUSTOM_PLATFORM_OPTION"
+                  v-model:value="row.customPlatform"
+                  class="field-control cp-cell"
+                  placeholder="填写平台名称"
+                />
+                <a-input
+                  v-model:value="row.complaintNo"
+                  class="field-control cp-cell"
+                  placeholder="投诉编号，可留空"
+                />
+                <button
+                  type="button"
+                  class="cp-del"
+                  title="移除该组"
+                  :disabled="form.complaintPlatforms.length === 1 && !row.platform"
+                  @click="removeComplaintPlatform(i)"
+                >
+                  <CloseOutlined />
+                </button>
+                <!-- 首行放「添加平台」；后续行用等宽占位，保证平台/编号列对齐 -->
+                <button
+                  v-if="i === 0"
+                  type="button"
+                  class="cp-add"
+                  @click="addComplaintPlatform"
+                >
+                  <PlusOutlined />添加平台
+                </button>
+                <span v-else class="cp-add-spacer" aria-hidden="true" />
               </div>
             </div>
-            <div class="inline-field">
-              <label class="inline-label md">投诉平台</label>
-              <FormSelect
-                v-model:value="form.complaintPlatform"
-                class="inline-control field-control"
-                :options="COMPLAINT_PLATFORM_OPTIONS.map((v) => ({ value: v, label: v }))"
-              />
+
+            <div class="row-3">
+              <div class="inline-field">
+                <label class="inline-label xl"><span class="req">*</span>投诉类型</label>
+                <FormSelect
+                  v-model:value="form.complaintType"
+                  class="inline-control field-control"
+                  :status="errors.complaintType ? 'error' : ''"
+                  :options="COMPLAINT_TYPE_OPTIONS.map((v) => ({ value: v, label: v }))"
+                />
+              </div>
+              <div class="inline-field">
+                <label class="inline-label xl"><span class="req">*</span>归属业务线</label>
+                <FormSelect
+                  v-model:value="form.businessLine"
+                  class="inline-control field-control"
+                  :options="BUSINESS_LINE_OPTIONS.map((v) => ({ value: v, label: v }))"
+                />
+              </div>
+              <div class="inline-field">
+                <label class="inline-label xl"><span class="req">*</span>前期是否反馈</label>
+                <FormSelect
+                  v-model:value="form.priorFeedback"
+                  class="inline-control field-control"
+                  :options="PRIOR_FEEDBACK_OPTIONS.map((v) => ({ value: v, label: v }))"
+                />
+              </div>
             </div>
-            <div class="inline-field">
-              <label class="inline-label lg"><span class="req">*</span>归属业务线</label>
-              <FormSelect
-                v-model:value="form.businessLine"
-                class="inline-control field-control"
-                :options="BUSINESS_LINE_OPTIONS.map((v) => ({ value: v, label: v }))"
-              />
-            </div>
-          </div>
-          <div class="row-3">
-            <div class="inline-field">
-              <label class="inline-label md"><span class="req">*</span>投诉编号</label>
-              <a-input
-                v-model:value="form.complaintNo"
-                placeholder="外部平台单号"
-                class="inline-control field-control"
-              />
-            </div>
-            <div class="inline-field">
-              <label class="inline-label xl"><span class="req">*</span>前期反馈</label>
-              <FormSelect
-                v-model:value="form.priorFeedback"
-                class="inline-control field-control"
-                :options="PRIOR_FEEDBACK_OPTIONS.map((v) => ({ value: v, label: v }))"
-              />
-            </div>
-            <div class="inline-field">
-              <label class="inline-label md"><span class="req">*</span>服务回溯</label>
-              <FormSelect
-                v-model:value="form.serviceReview"
-                class="inline-control field-control"
-                :options="SERVICE_REVIEW_OPTIONS.map((v) => ({ value: v, label: v }))"
-              />
-            </div>
-          </div>
+          </template>
+
+          <!-- 不受门控：所有投诉单都要填（投诉接收时间非必填） -->
           <div class="row-3">
             <div class="inline-field">
               <label class="inline-label xl"><span class="req">*</span>投诉一类</label>
@@ -494,14 +558,27 @@ watch(
               />
             </div>
             <div class="inline-field">
-              <label class="inline-label xl"><span class="req">*</span>问题发生时间</label>
-              <a-input
-                v-model:value="form.problemTime"
+              <label class="inline-label xl">投诉接收时间</label>
+              <a-date-picker
+                v-model:value="form.complaintReceiveTime"
                 class="inline-control field-control"
-                :status="errors.problemTime ? 'error' : ''"
-                placeholder="请选择问题发生时间"
+                :show-time="{ format: 'HH:mm' }"
+                format="YYYY-MM-DD HH:mm"
+                value-format="YYYY-MM-DD HH:mm"
+                placeholder="请选择接收时间"
               />
             </div>
+          </div>
+
+          <!-- 服务回溯是自由文本、篇幅长，独占整行收尾 -->
+          <div v-if="showChannelComplaintFields" class="inline-field review-field">
+            <label class="inline-label xl">服务回溯</label>
+            <a-textarea
+              v-model:value="form.serviceReview"
+              placeholder="手动填写回溯说明"
+              class="inline-control field-control"
+              :auto-size="{ minRows: 2, maxRows: 6 }"
+            />
           </div>
         </template>
 
@@ -523,18 +600,6 @@ watch(
                 :options="suggestL2Options.map((v) => ({ value: v, label: v }))"
               />
             </div>
-          </div>
-        </template>
-
-        <template v-else-if="form.ticketType === '咨询'">
-          <div class="inline-field">
-            <label class="inline-label xl"><span class="req">*</span>问题发生时间</label>
-            <a-input
-              v-model:value="form.problemTime"
-              class="inline-control field-control"
-              :status="errors.problemTime ? 'error' : ''"
-              placeholder="请选择问题发生时间"
-            />
           </div>
         </template>
       </CreateTicketPartCard>
@@ -656,7 +721,7 @@ watch(
 .inline-field {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
 }
 .inline-field.flex1 { flex: 1; }
@@ -666,22 +731,17 @@ watch(
   font-size: 12px;
   font-weight: 500;
   color: #374151;
-  text-align: left;
+  text-align: right;
+  white-space: nowrap;
+  line-height: 32px;
 }
-.inline-label.sm { width: 60px; font-size: 12px; }
-.inline-label.xs { width: 48px; font-size: 12px; }
-.inline-label.md { width: 72px; font-size: 12px; }
-.inline-label.lg { width: 84px; font-size: 12px; }
-.inline-label.xl { width: 96px; font-size: 12px; }
+.inline-label.xl { width: 84px; font-size: 12px; }
 .inline-label.title-label { width: 72px; font-size: 12px; }
-.inline-label.priority {
-  width: 64px;
-  font-size: 13px;
-}
 .inline-label.base {
   width: 76px;
   font-size: 13px;
 }
+.inline-label .req { margin-right: 1px; }
 .field-control :deep(.ant-select-selector),
 .field-control.ant-input {
   min-height: 32px;
@@ -689,8 +749,9 @@ watch(
 .field-control :deep(.ant-select-selector) {
   align-items: center;
 }
-.priority-row {
+.inline-field :deep(.ant-picker.field-control) {
   width: 100%;
+  min-height: 32px;
 }
 .basic-row {
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -713,14 +774,6 @@ watch(
   min-height: 32px !important;
 }
 .inline-control { flex: 1; min-width: 0; }
-/* 推导值只读框（投诉性质）：与下拉同高，弱一档 */
-.derived-box {
-  display: flex; align-items: center;
-  min-height: 32px; padding: 0 11px;
-  font-size: 13px; color: #303133; font-weight: 500;
-  background: #f7f8fa; border: 1px solid #dcdfe6; border-radius: 4px;
-}
-.derived-box.empty { color: #b0b4bb; font-weight: 400; }
 .req { color: #f56c6c; margin-right: 2px; }
 
 .row-2 {
@@ -728,10 +781,52 @@ watch(
   grid-template-columns: repeat(2, 1fr);
   gap: 14px;
 }
+/* 投诉平台/编号 成对多组：标签 + 平台 + 编号 同一行 */
+.cp-group { display: flex; flex-direction: column; gap: 8px; }
+.cp-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.cp-label-spacer { visibility: hidden; }
+.cp-cell { flex: 1; min-width: 0; }
+.cp-add {
+  flex: none;
+  box-sizing: border-box;
+  width: 86px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  height: 32px; padding: 0;
+  border: 1px dashed #dcdfe6; border-radius: 4px;
+  background: #fff; color: #1a6fff; font-size: 12px; cursor: pointer; font-family: inherit;
+  white-space: nowrap;
+}
+.cp-add:hover { border-color: #1a6fff; background: #f5f9ff; }
+/* 与 .cp-add 同宽，保证多组行平台/编号列对齐 */
+.cp-add-spacer {
+  flex: none;
+  box-sizing: border-box;
+  width: 86px;
+  height: 32px;
+}
+.cp-del {
+  flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; padding: 0;
+  border: none; border-radius: 4px; background: transparent;
+  color: #b0b4bb; cursor: pointer; font-size: 11px;
+}
+.cp-del:hover:not(:disabled) { color: #f56c6c; background: #fef2f2; }
+.cp-del:disabled { color: #e4e7ed; cursor: not-allowed; }
+
 .row-3 {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 14px;
+}
+/* 服务回溯：整行长文本，标签与首行对齐 */
+.review-field { align-items: flex-start; }
+.review-field .inline-label { line-height: 32px; }
+.review-field :deep(textarea.ant-input) {
+  min-height: 32px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  resize: none;
 }
 .row-bottom { align-items: end; }
 
@@ -739,23 +834,6 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-.product-top-row {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  min-width: 0;
-}
-.product-cascade {
-  flex: 2;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.product-sn-field {
-  flex: 1;
-  min-width: 0;
 }
 .customer-body {
   display: flex;
@@ -894,62 +972,14 @@ watch(
   flex: none;
 }
 
-.problem-cascade {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.cascade-arrow {
-  flex: none;
-  font-size: 12px;
-  color: #d1d5db;
-  margin-top: 2px;
-}
-
-.sn-wrap {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-.sn-badge {
-  font-size: 11px;
-  font-weight: 600;
-  color: #059669;
-  background: #ecfdf5;
-  border-radius: 3px;
-  padding: 1px 6px;
-  flex: none;
-  white-space: nowrap;
-}
-
-.desc-block {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.desc-label-row {
-  display: flex;
-  align-items: center;
-  gap: 3px;
+/* 问题描述：整行长文本，标签与首行对齐 */
+.desc-field { align-items: flex-start; }
+.desc-field .inline-label { line-height: 32px; }
+.desc-field :deep(textarea.ant-input) {
   font-size: 13px;
-  font-weight: 500;
-  color: #374151;
-}
-.desc-area {
-  font-size: 13px;
-  min-height: 70px;
-}
-.resolve-remark-row {
-  width: 100%;
-}
-.resolve-remark-row .inline-control {
-  flex: 1;
-}
-.inline-label.remark {
-  width: 84px;
-  font-size: 12px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  resize: none;
 }
 
 .modal-footer {
@@ -999,18 +1029,8 @@ watch(
 @media (max-width: 768px) {
   .row-3,
   .row-2,
-  .reporter-row,
-  .product-top-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .problem-cascade,
-  .product-cascade {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .cascade-arrow {
-    display: none;
+  .reporter-row {
+    grid-template-columns: 1fr;
   }
 }
 </style>

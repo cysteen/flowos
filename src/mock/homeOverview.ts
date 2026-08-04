@@ -55,18 +55,29 @@ export interface HomeKpi {
   label: string;
   value: string;
   valueColor: string;
+  /** 右侧图标底色（浅色） */
+  iconBg: string;
+  /** 图标名，对应 HomeOverviewView 内 icon map */
+  icon: 'file' | 'sync' | 'pause' | 'send' | 'clock' | 'alert' | 'phone';
   delta?: string;
   deltaColor?: string;
   suffix?: string;
 }
 
+/**
+ * 区A · 今日概览
+ *
+ * 一区一种语义：**只放数量**，率值一律归「我的绩效」区（规范 R1b）。
+ * 含：待处理 / 处理中 / 挂起 / 今日下送 / 临期 / 超时 / 当日通话。
+ */
 export const HOME_KPIS: HomeKpi[] = [
-  { key: 'todo', label: '我的待办', value: '6', valueColor: '#1A6FFF', delta: '+2', deltaColor: '#EF4444' },
-  { key: 'processing', label: '处理中', value: '9', valueColor: '#06B6D4' },
-  { key: 'resolved-today', label: '今日已解决', value: '14', valueColor: '#10B981', delta: '+5', deltaColor: '#10B981' },
-  { key: 'sla', label: '我的 SLA 达成', value: '96.8%', valueColor: '#10B981', delta: '+1.2%', deltaColor: '#10B981' },
-  { key: 'risk', label: '临期 / 超时', value: '2', valueColor: '#F59E0B', delta: '-1', deltaColor: '#10B981' },
-  { key: 'week', label: '本周已解决', value: '67', valueColor: '#111827', suffix: '团队第 2' },
+  { key: 'todo', label: '待处理工单', value: '6', valueColor: '#F97316', iconBg: '#FFF7ED', icon: 'file', delta: '+2', deltaColor: '#EF4444' },
+  { key: 'processing', label: '处理中', value: '9', valueColor: '#0D9488', iconBg: '#F0FDFA', icon: 'sync' },
+  { key: 'suspended', label: '挂起', value: '3', valueColor: '#8B5CF6', iconBg: '#F5F3FF', icon: 'pause' },
+  { key: 'resolved-today', label: '今日下送', value: '14', valueColor: '#10B981', iconBg: '#ECFDF5', icon: 'send', delta: '+5', deltaColor: '#10B981' },
+  { key: 'soon', label: '临期', value: '1', valueColor: '#F59E0B', iconBg: '#FFFBEB', icon: 'clock', delta: '-1', deltaColor: '#10B981' },
+  { key: 'overdue', label: '超时', value: '1', valueColor: '#EF4444', iconBg: '#FEF2F2', icon: 'alert' },
+  { key: 'call-duration', label: '当日通话', value: '2h46m', valueColor: '#1A6FFF', iconBg: '#EFF6FF', icon: 'phone' },
 ];
 
 export const HOME_TYPE_DIST = [
@@ -89,6 +100,131 @@ export const HOME_EFFICIENCY: HomeEfficiencyRow[] = [
   { label: '一次解决率', value: '86%', badge: '↑ 优于', badgeType: 'good' },
   { label: '满意度', value: '4.7 / 5', badge: '↑ 优于', badgeType: 'good' },
 ];
+
+export type HomeMetricDrillKey = 'survey-pending' | 'follow-missed' | 'bad-review';
+
+export interface HomePerformanceMetric {
+  label: string;
+  value: string;
+  tone?: 'primary' | 'success' | 'warning' | 'danger' | 'neutral';
+}
+
+/** 个人绩效卡：一张卡对应一个组内排名口径，可包含多个关联指标。 */
+export interface HomePerformanceCard {
+  key: string;
+  title: string;
+  metrics: HomePerformanceMetric[];
+  rank: number;
+  teamSize: number;
+  rankLabel?: string;
+  drill?: HomeMetricDrillKey;
+  drillLabel?: string;
+}
+
+export interface HomeMetricDrillTable {
+  title: string;
+  columns: string[];
+  rows: { cells: string[]; ticketNo?: string }[];
+}
+
+/**
+ * 区B · 我的绩效（2026-08-03 重组）
+ *
+ * 原为 7 张卡、行数 1/1/5/3/1/1/2 —— 严重参差，高度拉齐后短卡全是空白，
+ * 这是「杂乱」的根因（参考页每区内卡片行数严格一致，连次要指标区也是 9 行）。
+ *
+ * 改为按**指标族**归组：4 张卡 × **严格 3 个指标行**，一行排满、无空格、无参差。
+ * 需求模块3 的 7 项一个不少，只是换了归组方式：
+ *   效率 ← 平均处理时长(1) + 当日下送量(2)
+ *   时效 ← 超时工单数 + 响应/解决及时率(3)
+ *   质量 ← 服务满意度 / 解决率(7) + 参评率(5)
+ *   触达 ← 24小时联络率(6) + 外呼接通率 / 通时利用率(4)
+ * 「当日通话时长」是数量，已移到区A。
+ *
+ * ⚠️ 各卡 metrics 必须恒为 3 条 —— 增删指标时要同步调整分组，不要破坏等长。
+ */
+export const HOME_PERFORMANCE: HomePerformanceCard[] = [
+  {
+    key: 'efficiency',
+    title: '效率',
+    metrics: [
+      { label: '平均处理时长', value: '3.2 小时', tone: 'primary' },
+      { label: '当日下送量', value: '14 单', tone: 'success' },
+      { label: '较组均', value: '-0.4 小时', tone: 'success' },
+    ],
+    rank: 3,
+    teamSize: 12,
+  },
+  {
+    key: 'sla',
+    title: '时效',
+    metrics: [
+      { label: '响应及时率', value: '97.2%', tone: 'success' },
+      { label: '解决及时率', value: '94.6%', tone: 'success' },
+      { label: '超时工单', value: '3 单', tone: 'danger' },
+    ],
+    rank: 4,
+    teamSize: 12,
+    rankLabel: '及时率排名',
+  },
+  {
+    key: 'quality',
+    title: '质量',
+    metrics: [
+      { label: '服务满意度', value: '4.7 / 5', tone: 'success' },
+      { label: '解决率', value: '86.0%', tone: 'success' },
+      { label: '参评率', value: '82.0%', tone: 'warning' },
+    ],
+    rank: 2,
+    teamSize: 12,
+    drill: 'bad-review',
+    drillLabel: '查看差评工单',
+  },
+  {
+    key: 'reach',
+    title: '触达',
+    metrics: [
+      { label: '24小时联络率', value: '91.7%', tone: 'success' },
+      { label: '外呼接通率', value: '68.0%', tone: 'warning' },
+      { label: '通时利用率', value: '76.3%', tone: 'success' },
+    ],
+    rank: 3,
+    teamSize: 12,
+    drill: 'follow-missed',
+    drillLabel: '查看未跟进',
+  },
+];
+
+export const HOME_METRIC_DRILLS: Record<HomeMetricDrillKey, HomeMetricDrillTable> = {
+  'survey-pending': {
+    title: '24H 内已发调研短信待评价明细',
+    columns: ['工单编号', '客户', '手机号', '短信发送时间', '等待时长', '工单类型'],
+    rows: [
+      { ticketNo: 'LCMN-20260803-10231', cells: ['LCMN-20260803-10231', '王女士', '138****6621', '08-03 18:20', '2小时05分', '咨询'] },
+      { ticketNo: 'LCMN-20260803-09872', cells: ['LCMN-20260803-09872', '赵先生', '186****3018', '08-03 16:42', '3小时43分', '投诉'] },
+      { ticketNo: 'LCMN-20260803-08316', cells: ['LCMN-20260803-08316', '刘女士', '139****5270', '08-03 14:10', '6小时15分', '建议'] },
+      { ticketNo: 'LCMN-20260803-07105', cells: ['LCMN-20260803-07105', '陈先生', '177****1946', '08-03 11:35', '8小时50分', '咨询'] },
+    ],
+  },
+  'follow-missed': {
+    title: '24H 未跟进工单明细',
+    columns: ['工单编号', '工单标题', '工单类型', '当前节点', '最近跟进时间', '未跟进时长'],
+    rows: [
+      { ticketNo: 'LCMN-20260802-66120', cells: ['LCMN-20260802-66120', '学习机无法连接 WiFi', '咨询', '处理中', '08-02 16:30', '28小时15分'] },
+      { ticketNo: 'LCMN-20260802-59218', cells: ['LCMN-20260802-59218', '承诺回访未兑现', '投诉', '处理中', '08-02 14:08', '30小时37分'] },
+      { ticketNo: 'LCMN-20260802-44109', cells: ['LCMN-20260802-44109', '建议增加错题导出', '建议', '待处理', '08-02 09:42', '35小时03分'] },
+    ],
+  },
+  'bad-review': {
+    title: '差评工单明细',
+    columns: ['工单编号', '客户', '评分', '差评标签', '评价时间', '处理人'],
+    rows: [
+      { ticketNo: 'LCMN-20260803-03361', cells: ['LCMN-20260803-03361', '周女士', '1 分', '响应慢、未解决', '08-03 17:05', '张三'] },
+      { ticketNo: 'LCMN-20260802-91826', cells: ['LCMN-20260802-91826', '孙先生', '2 分', '重复沟通', '08-03 10:22', '张三'] },
+      { ticketNo: 'LCMN-20260802-73048', cells: ['LCMN-20260802-73048', '吴女士', '2 分', '承诺未兑现', '08-02 19:46', '张三'] },
+    ],
+  },
+};
 
 export interface HomeTodoItem {
   dot: string;

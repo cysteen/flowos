@@ -137,6 +137,8 @@ export interface TicketDetailMeta {
    * 「跟跑 vs 关闭原单」本身仍待拍板，字段先留出判据位。
    */
   followingNo?: string;
+  /** 本单由哪张单升级而来（「↑升级自」方向，供关系呈现回溯来源） */
+  escalatedFromNo?: string;
   /** 飞书关联进度：none 还没转过 / failed 转飞书失败 / synced 已建好单 / feedback 已回进展 / closed 已结案 */
   feishuSync?: FeishuSyncState;
   /** 产研反馈单号（关联成功后） */
@@ -348,14 +350,18 @@ export const TICKET_DETAIL: TicketDetailMeta = {
     afterSaleEnabled: true,
   },
   complaint: {
-    cat1: '产品质量投诉',
-    cat2: '产品质量故障',
-    complaintType: '业务投诉', // 性质由 cat2 推导
-    platform: '市场监管12315平台',
-    complaintNo: 'HM20260618001',
-    tags: ['产品质量投诉', '产品质量故障'],
+    categories: [
+      { cat1: '产品质量投诉', cat2: '产品质量故障' },
+      { cat1: '服务质量投诉', cat2: '对人员服务态度不满' },
+    ],
+    complaintType: '产品质量', // 独立字段；性质由 categories 各组二类分别推导
+    platforms: [
+      { platform: '市场监管12315平台', complaintNo: 'HM20260618001' },
+      { platform: '黑猫消费者服务平台', complaintNo: '' },
+    ],
+    receivedAt: '2026-06-18 15:02',
     priorFeedback: '是-400',
-    serviceReview: '需要回溯',
+    serviceReview: '2026-06-15 客户已致电 400 反馈同一问题，坐席承诺 48h 内回复，实际未按期回访。',
   },
   childTickets: [
     {
@@ -549,8 +555,12 @@ export const DEFAULT_PROCESS_DRAFT = {
   complaintMark: '有效投诉',
   complaintNote: '客户要求 48h 内书面回复，此处修正分类与备注',
   complaintNoteAttachments: [] as string[],
-  platformReplyResult: '',
-  platformReconcile: '' as const,
+  platformFollowups: [] as {
+    platform: string;
+    complaintNo?: string;
+    replyResult: string;
+    reconcile: '' | '是' | '否';
+  }[],
   riskFlag: '无风险',
   riskHasRisk: false,
   riskLevel: '',

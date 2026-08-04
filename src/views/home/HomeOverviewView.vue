@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, type Component } from 'vue';
 import { useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 import {
@@ -12,31 +12,64 @@ import {
   BookOutlined,
   SwapOutlined,
   LineChartOutlined,
+  FileTextOutlined,
+  SyncOutlined,
+  PauseCircleOutlined,
+  SendOutlined,
+  ClockCircleOutlined,
+  ExclamationCircleOutlined,
+  PhoneOutlined,
 } from '@ant-design/icons-vue';
 import { useUserStore } from '@/stores/user';
 import CreateTicketModal from '@/views/tickets/components/CreateTicketModal.vue';
 import OpAiAssistant from '@/views/tickets/components/operation/OpAiAssistant.vue';
+import OpStatDetailModal from '@/views/tickets/components/operation/OpStatDetailModal.vue';
+import HomePerformancePanel from '@/views/home/components/HomePerformancePanel.vue';
 
 /** 个人门户通用知识推荐（无工单上下文） */
 const HOME_AI_KNOWLEDGE = ['工单处理操作指引', '常见问题与话术库', 'SLA 与升级规则说明'];
+// HOME_EFFICIENCY / HOME_TYPE_DIST 已随「效率对比卡」「类型分布卡」一并移除引用；
+// mock 中的定义暂留，待确认无其它引用后再清理。
 import {
-  HOME_EFFICIENCY,
   HOME_KPIS,
   HOME_NOTICE,
   HOME_NOTICES,
+  HOME_METRIC_DRILLS,
+  HOME_PERFORMANCE,
   HOME_QUICK_LINKS,
   HOME_TODOS,
   HOME_TREND_DONE,
   HOME_TREND_FOLLOW,
   HOME_TREND_LABELS,
-  HOME_TYPE_DIST,
+  type HomeKpi,
+  type HomeMetricDrillKey,
   type HomeNotice,
 } from '@/mock/homeOverview';
 
+const KPI_ICON_MAP: Record<HomeKpi['icon'], Component> = {
+  file: FileTextOutlined,
+  sync: SyncOutlined,
+  pause: PauseCircleOutlined,
+  send: SendOutlined,
+  clock: ClockCircleOutlined,
+  alert: ExclamationCircleOutlined,
+  phone: PhoneOutlined,
+};
+
+function kpiIcon(name: HomeKpi['icon']) {
+  return KPI_ICON_MAP[name];
+}
+
 const router = useRouter();
 const user = useUserStore();
-const noticeVisible = ref(true);
+/** 本期不覆盖公告能力，默认隐藏 */
+const noticeVisible = ref(false);
 const createOpen = ref(false);
+const drillOpen = ref(false);
+const activeDrillKey = ref<HomeMetricDrillKey | null>(null);
+const activeDrillTable = computed(() =>
+  activeDrillKey.value ? HOME_METRIC_DRILLS[activeDrillKey.value] : null,
+);
 
 // 公告列表抽屉
 const noticeListOpen = ref(false);
@@ -101,6 +134,16 @@ function onQuick(key: string) {
 function onTodo(no: string) {
   router.push(`/tickets/${no}`);
 }
+
+function openMetricDrill(key: HomeMetricDrillKey) {
+  activeDrillKey.value = key;
+  drillOpen.value = true;
+}
+
+function openDrillTicket(no: string) {
+  drillOpen.value = false;
+  router.push({ name: 'ticket-operation', params: { ticketNo: no } });
+}
 </script>
 
 <template>
@@ -127,11 +170,25 @@ function onTodo(no: string) {
       <button class="btn-primary" @click="createOpen = true">新建工单</button>
     </div>
 
-    <!-- ③ 总览条 -->
-    <div class="card kpi-strip">
-      <template v-for="(kpi, idx) in HOME_KPIS" :key="kpi.key">
-        <div v-if="idx > 0" class="kpi-divider" />
-        <div class="kpi-cell" @click="onKpiClick(kpi.label)">
+    <!--
+      ③ 今日概览：只放**数量**（R1b）。与下方「我的效能」（只放率值）成对，
+      读者一眼能分清「上面是量、下面是率」。区标题是这层语义的显性化。
+    -->
+    <section class="overview-section">
+      <div class="section-head">
+        <div>
+          <div class="section-title">今日概览</div>
+          <div class="section-sub">当日数量口径 · 点卡片查看对应工单</div>
+        </div>
+      </div>
+      <div class="kpi-strip">
+        <div
+          v-for="kpi in HOME_KPIS"
+          :key="kpi.key"
+          class="kpi-card"
+          @click="onKpiClick(kpi.label)"
+        >
+        <div class="kpi-body">
           <div class="kpi-label">{{ kpi.label }}</div>
           <div class="kpi-value-row">
             <span class="kpi-value" :style="{ color: kpi.valueColor }">{{ kpi.value }}</span>
@@ -139,21 +196,36 @@ function onTodo(no: string) {
             <span v-if="kpi.suffix" class="kpi-suffix">{{ kpi.suffix }}</span>
           </div>
         </div>
-      </template>
-    </div>
+          <div class="kpi-icon" :style="{ background: kpi.iconBg, color: kpi.valueColor }">
+            <component :is="kpiIcon(kpi.icon)" />
+          </div>
+        </div>
+      </div>
+    </section>
 
-    <!-- ④ 分析区 -->
+    <!-- ④ 我的效能：4 组指标族（每卡恒 3 行）+ 组内位置 + 明细下钻 -->
+    <HomePerformancePanel :cards="HOME_PERFORMANCE" @drill="openMetricDrill" />
+
+    <!--
+      ⑤ 趋势区
+      原「分析区」有三张卡，已删两张：
+        · 「我的效率·较团队均值」—— 4 项里 3 项与「我的效能」区是同一个数（平均解决时长/
+          一次解决率/满意度），纯重复；余下「平均首响」需求模块3 未要求（只要求响应及时率）。
+        · 「我的工单类型分布」—— 需求模块3 七项中无此项，是 01 老页面遗留；改造方案已定
+          并入绩效表维度 Tab「按工单类型」。
+      保留趋势卡并独占整行：30 天折线拉宽后才读得出走势。
+    -->
     <div class="analysis-row">
-      <!-- 趋势折线 -->
       <div class="card analysis-card trend-card">
         <div class="card-head">
           <div>
             <div class="card-title">我的处理趋势（最近 30 天）</div>
-            <div class="card-sub">我跟进的 vs 我完成的</div>
+            <!-- 口径修正：坐席产生不了「已解决」，其动作是「下送」→ 进调研中 -->
+            <div class="card-sub">我跟进的 vs 我下送的</div>
           </div>
           <div class="legend">
             <span class="legend-item"><i class="dot blue" />我跟进的</span>
-            <span class="legend-item"><i class="dot green" />我完成的</span>
+            <span class="legend-item"><i class="dot green" />我下送的</span>
           </div>
         </div>
         <div class="chart-wrap">
@@ -186,34 +258,10 @@ function onTodo(no: string) {
         </div>
       </div>
 
-      <!-- 类型分布 -->
-      <div class="card analysis-card type-card">
-        <div class="card-title">我的工单类型分布</div>
-        <div class="type-list">
-          <div v-for="t in HOME_TYPE_DIST" :key="t.label" class="type-row">
-            <span class="type-name">{{ t.label }}</span>
-            <div class="type-bar-track">
-              <div class="type-bar-fill" :style="{ width: `${t.pct}%`, background: t.color }" />
-            </div>
-            <span class="type-pct">{{ t.pct }}%</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- 效率对比 -->
-      <div class="card analysis-card eff-card">
-        <div class="card-title">我的效率 · 较团队均值</div>
-        <div v-for="(row, i) in HOME_EFFICIENCY" :key="row.label" class="eff-row" :class="{ last: i === HOME_EFFICIENCY.length - 1 }">
-          <span class="eff-label">{{ row.label }}</span>
-          <div class="eff-right">
-            <span class="eff-value">{{ row.value }}</span>
-            <span class="eff-badge" :class="row.badgeType">{{ row.badge }}</span>
-          </div>
-        </div>
-      </div>
+      <!-- 「我的工单类型分布」「我的效率·较团队均值」已删，理由见上方注释 -->
     </div>
 
-    <!-- ⑤ 底部行 -->
+    <!-- ⑥ 底部行 -->
     <div class="bottom-row">
       <div class="card todo-card">
         <div class="card-head">
@@ -256,6 +304,13 @@ function onTodo(no: string) {
     </div>
 
     <CreateTicketModal v-model:open="createOpen" @created="message.success('工单已创建')" />
+
+    <OpStatDetailModal
+      v-model:open="drillOpen"
+      :table="activeDrillTable"
+      :width="920"
+      @open-ticket="openDrillTicket"
+    />
 
     <!-- 公告列表抽屉 -->
     <a-drawer
@@ -321,10 +376,18 @@ function onTodo(no: string) {
   background: #f9fafb;
 }
 
+/**
+ * 卡片视觉基线（2026-08-03 调整）
+ * 参考页实测：圆角 12 / 边框 0.8px #E5E6EB / 阴影 0 1px 4px rgba(0,0,0,.06)
+ * 原为 圆角 10 / 1px #E5E7EB / 无阴影 —— 全靠边框分层，观感偏平硬。
+ * ⚠️ 与《iFLY-FlowOS-设计风格规范》§4.4「圆角 6/8、阴影可选」不一致，
+ *    属本页有意分支，待规范 v3 统一后回收。
+ */
 .card {
   background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
+  border: 0.8px solid #e5e6eb;
+  border-radius: 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
 }
 
 /* 公告条 */
@@ -334,8 +397,8 @@ function onTodo(no: string) {
   gap: 10px;
   padding: 10px 16px;
   background: #eff6ff;
-  border: 1px solid #bfdbfe;
-  border-radius: 10px;
+  border: 0.8px solid #bfdbfe;
+  border-radius: 12px;
 }
 .notice-icon {
   font-size: 18px;
@@ -412,28 +475,69 @@ function onTodo(no: string) {
   background: #0f4fcc;
 }
 
-/* KPI 总览 */
+/* KPI 总览：独立色卡（参考截图） */
+/* 「今日概览」区：与「我的效能」同为「大卡套小卡」两层结构，形成量/率对仗 */
+.overview-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  background: #fff;
+  border: 0.8px solid #e5e6eb;
+  border-radius: 16px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+.overview-section .section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+.overview-section .section-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #111827;
+}
+.overview-section .section-sub {
+  margin-top: 2px;
+  font-size: 11px;
+  color: #9ca3af;
+}
+
 .kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 12px;
+}
+.kpi-card {
   display: flex;
   align-items: center;
-  padding: 14px 8px;
-}
-.kpi-divider {
-  width: 1px;
-  height: 30px;
-  background: #e5e7eb;
-  flex: none;
-}
-.kpi-cell {
-  flex: 1;
-  min-width: 0;
-  padding: 0 16px;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 84px;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.kpi-card:hover {
+  border-color: #d1d5db;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+}
+.kpi-body {
+  min-width: 0;
+  flex: 1;
 }
 .kpi-label {
-  font-size: 12px;
-  color: #6b7280;
-  margin-bottom: 4px;
+  font-size: 13px;
+  color: #9ca3af;
+  margin-bottom: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .kpi-value-row {
   display: flex;
@@ -441,24 +545,46 @@ function onTodo(no: string) {
   gap: 6px;
 }
 .kpi-value {
-  font-size: 21px;
+  font-size: 28px;
   font-weight: 700;
   line-height: 1;
+  letter-spacing: -0.02em;
 }
 .kpi-delta {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
 }
 .kpi-suffix {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: #9ca3af;
 }
+.kpi-icon {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+}
+@media (max-width: 1280px) {
+  .kpi-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 720px) {
+  .kpi-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 
 /* 分析区 */
+/* 删掉类型分布卡与效率对比卡后，趋势卡独占整行——30 天折线拉宽才读得出走势 */
 .analysis-row {
   display: grid;
-  grid-template-columns: 1fr 330px 300px;
+  grid-template-columns: 1fr;
   gap: 16px;
   min-height: 217px;
 }

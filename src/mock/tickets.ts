@@ -190,6 +190,50 @@ const BASE_TICKETS: Ticket[] = [
     customerPhone: '18655556666', productCategory: '会员权益',
     createdAt: '2026-07-05 13:00', updatedAt: '2026-07-08 18:30',
   },
+  // ── 已关闭 · 两种关闭原因对照（PRD §5.6.4）────────────────────────────
+  // ① 正常关闭：**无派生子单**（有父关联：本单是别的单升级来的）。
+  //    再来诉求 → 补充/催单走「基于原单建新单承接」（§5.2，同 Zendesk follow-up）。
+  {
+    id: 't40', no: 'LCMN-20260709-60110', type: '投诉', channel: '电话',
+    title: '学习机屏幕漏光已现场更换', smartMarks: [],
+    customer: '周敏', vip: false, product: '学习机 T20',
+    nodeStatus: '处理中·一线', nodeStep: 5, nodeTotal: 5, priority: 'P2',
+    slaText: '—', slaSub: '已关闭', slaState: 'ok', slaMinutes: 9999,
+    assignee: '王坐席', tab: 'done', handledByMe: true, myCloseAction: true,
+    customerPhone: '13500002222', sn: 'SN-T20-77301', productCategory: '学习硬件',
+    problemDesc: '屏幕左下角漏光，已现场更换屏幕总成并复检通过，客户确认满意。',
+    escalatedFromNo: 'LCMN-20260707-59021', // 父关联：由咨询单升级而来
+    createdAt: '2026-07-07 10:20', updatedAt: '2026-07-09 16:45',
+  },
+  // ② 因升级而关闭：**有派生子单**（已升级为外投单）→ 处理页整页只读 + 接管横幅，
+  //    补充/催单点击后引导前往新单，不再建第三张单。
+  {
+    id: 't41', no: 'LCMN-20260711-61550', type: '投诉', channel: '在线客服',
+    title: '维修超期未解决客户要求赔偿', smartMarks: ['升级'],
+    customer: '吴强', vip: true, product: '智能音箱 X1',
+    nodeStatus: '处理中·一线', nodeStep: 5, nodeTotal: 5, priority: 'P0',
+    slaText: '—', slaSub: '已转单·停表', slaState: 'ok', slaMinutes: 9999,
+    solveBreached: true,
+    assignee: '王坐席', tab: 'done', handledByMe: true, myUpgradeAction: true,
+    customerPhone: '13700003333', sn: 'SN-X1-55208', productCategory: '智能硬件',
+    problemDesc: '维修超期 15 天未解决，客户要求赔偿并已向 12315 投诉。',
+    escalatedToNo: 'LCMN-20260711-61551', // 已升级为外投单 → 本单被接管
+    createdAt: '2026-07-08 09:10', updatedAt: '2026-07-11 14:25',
+  },
+  // 升级派生出的外投新单（上面 t41 的去向，可从关系芯片/横幅跳到这里）
+  {
+    id: 't42', no: 'LCMN-20260711-61551', type: '投诉', channel: '在线客服',
+    title: '外投·维修超期未解决客户要求赔偿', smartMarks: ['升级'],
+    customer: '吴强', vip: true, product: '智能音箱 X1',
+    ticketSource: '外投渠道',
+    nodeStatus: '已升级·二线', nodeStep: 3, nodeTotal: 5, priority: 'P0',
+    slaText: '01:12:00', slaSub: '距超时', slaState: 'soon', slaMinutes: 72,
+    assignee: '王坐席', tab: 'mine', responded: true,
+    customerPhone: '13700003333', sn: 'SN-X1-55208', productCategory: '智能硬件',
+    problemDesc: '【升级投诉·原单 LCMN-20260711-61550】投诉 → 外投｜投诉平台：市场监管12315平台（编号 HM20260711008）｜客户要求赔偿并已向监管平台投诉。',
+    escalatedFromNo: 'LCMN-20260711-61550',
+    createdAt: '2026-07-11 14:25', updatedAt: '2026-07-11 15:02',
+  },
   // 非诉转售后 → 售后回传「已关闭」→ 原单随之关闭，进「已办」，行内可见关联售后单号（可跳转）
   {
     id: 't32', no: 'LCMN-20260716-73140', type: '咨询', channel: '电话',

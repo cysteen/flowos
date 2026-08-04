@@ -23,6 +23,8 @@ const props = defineProps<{
   form: ProcessFormDraft;
   /** 建单投诉平台，用于控制「有责/无责」类标记显隐 */
   complaintPlatform?: string;
+  /** 建单投诉平台列表（外投跟进按平台分行） */
+  complaintPlatforms?: { platform: string; customPlatform?: string; complaintNo: string }[];
   /** 是否展示外投分支字段 */
   showExternal?: boolean;
 }>();
@@ -40,8 +42,54 @@ const complaintL2Options = computed(() =>
 /** 投诉性质：由分类二推导展示，坐席不单独选 */
 const complaintNature = computed(() => resolveComplaintNature(props.form.complaintCat2));
 
+function platformKey(p: { platform: string; complaintNo?: string }) {
+  return `${p.platform}::${p.complaintNo ?? ''}`;
+}
+
+/** 外投跟进行：与建单 platforms 对齐，保留已填内容 */
+const followupRows = computed(() => {
+  const plats = (props.complaintPlatforms ?? []).filter((p) => p.platform);
+  const prev = new Map(
+    (props.form.platformFollowups ?? []).map((f) => [platformKey(f), f]),
+  );
+  if (!plats.length) return props.form.platformFollowups ?? [];
+  return plats.map((p) => {
+    const old = prev.get(platformKey(p));
+    return {
+      platform: p.platform,
+      complaintNo: p.complaintNo,
+      replyResult: old?.replyResult ?? '',
+      reconcile: old?.reconcile ?? ('' as const),
+    };
+  });
+});
+
+watch(
+  () => (props.complaintPlatforms ?? []).map((p) => platformKey(p)).join('|'),
+  () => {
+    const next = followupRows.value;
+    const cur = props.form.platformFollowups ?? [];
+    const same =
+      next.length === cur.length
+      && next.every((r, i) =>
+        r.platform === cur[i]?.platform
+        && (r.complaintNo ?? '') === (cur[i]?.complaintNo ?? ''),
+      );
+    if (!same) update({ platformFollowups: next });
+  },
+  { immediate: true },
+);
+
 function update(partial: Partial<ProcessFormDraft>) {
   emit('update:form', { ...props.form, ...partial });
+}
+
+function patchFollowup(
+  index: number,
+  partial: Partial<ProcessFormDraft['platformFollowups'][number]>,
+) {
+  const rows = followupRows.value.map((r, i) => (i === index ? { ...r, ...partial } : r));
+  update({ platformFollowups: rows });
 }
 
 function onComplaintMarkChange(v: string | number | undefined) {
@@ -104,8 +152,6 @@ function onComplaintCat2Change(v: string | number | undefined) {
 const missComplaintMark = computed(() => !props.form.complaintMark);
 const missComplaintCat1 = computed(() => !props.form.complaintCat1);
 const missComplaintNote = computed(() => !props.form.complaintNote.trim());
-const missPlatformReply = computed(() => !props.form.platformReplyResult.trim());
-const missPlatformReconcile = computed(() => !props.form.platformReconcile);
 const missRiskLevel = computed(
   () => props.form.riskFlag === '有风险' && !props.form.riskLevel,
 );
@@ -178,31 +224,39 @@ const missRiskDesc = computed(
     </div>
   </div>
 
-  <!-- 外投分支：仅外投投诉平台显示 -->
-  <div v-else-if="activeChip === 'external' && showExternal" class="chip-panel panel-external">
-    <div class="field" :class="{ 'is-missing': missPlatformReply }">
-      <label><span class="req">*</span>平台回复结果（自定义）</label>
-      <a-textarea
-        :value="form.platformReplyResult"
-        :rows="3"
-        :status="missPlatformReply ? 'error' : undefined"
-        placeholder="填写对外投平台的回复结果（必填）"
-        @update:value="(v: string) => update({ platformReplyResult: v ?? '' })"
-      />
-      <p v-if="missPlatformReply" class="field-err">请填写平台回复结果</p>
-    </div>
-    <div class="field inline-row" :class="{ 'is-missing': missPlatformReconcile }">
-      <label><span class="req">*</span>平台和解</label>
-      <a-radio-group
-        :value="form.platformReconcile || undefined"
-        class="radio-row"
-        :class="{ 'radio-missing': missPlatformReconcile }"
-        @update:value="(v: '是' | '否') => update({ platformReconcile: v })"
-      >
-        <a-radio value="是">是</a-radio>
-        <a-radio value="否">否</a-radio>
-      </a-radio-group>
-      <p v-if="missPlatformReconcile" class="field-err inline-err">请选择是否和解</p>
+  <!-- 外投分支：按投诉平台分行，每平台各自回复结果 + 是否和解 -->
+  <div v-else-if="activeChip === 'external' && showExternal" class="chip-panel">
+    <div v-if="!followupRows.length" class="ext-empty">暂无投诉平台，请先在工单信息中登记</div>
+    <div
+      v-for="(row, i) in followupRows"
+      :key="`${row.platform}-${row.complaintNo ?? ''}-${i}`"
+      class="ext-row"
+    >
+      <div class="ext-head">
+        <span class="ext-platform">{{ row.platform }}</span>
+        <span v-if="row.complaintNo" class="ext-no">{{ row.complaintNo }}</span>
+      </div>
+      <div class="ext-fields">
+        <div class="field flex1">
+          <label class="field-label-sm"><span class="req">*</span>回复结果</label>
+          <a-input
+            :value="row.replyResult"
+            placeholder="填写对该平台的回复结果"
+            @update:value="(v: string) => patchFollowup(i, { replyResult: v ?? '' })"
+          />
+        </div>
+        <div class="field ext-reconcile">
+          <label class="field-label-sm"><span class="req">*</span>是否和解</label>
+          <a-radio-group
+            :value="row.reconcile || undefined"
+            class="radio-row"
+            @update:value="(v: '是' | '否') => patchFollowup(i, { reconcile: v })"
+          >
+            <a-radio value="是">是</a-radio>
+            <a-radio value="否">否</a-radio>
+          </a-radio-group>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -301,16 +355,14 @@ const missRiskDesc = computed(
 }
 
 .req {
-  color: #dc2626;
-  margin-right: 3px;
-  font-weight: 800;
-  font-size: 13px;
+  color: #ef4444;
+  margin-right: 2px;
+  font-weight: 600;
 }
 .field-err {
   margin: 0;
   font-size: 11px;
-  font-weight: 600;
-  color: #dc2626;
+  color: #ef4444;
   line-height: 1.3;
 }
 .field-err.inline-err { margin-left: 0; }
@@ -318,19 +370,15 @@ const missRiskDesc = computed(
 .ctrl-missing :deep(.ant-select-selector),
 .attach-ctrl.ctrl-missing :deep(textarea),
 .attach-ctrl.ctrl-missing :deep(.ant-input) {
-  border-color: #f87171 !important;
-  background: #fff1f2 !important;
-  box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.15);
+  border-color: #fca5a5 !important;
 }
 .radio-missing {
-  padding: 4px 8px;
-  border-radius: 6px;
-  border: 1px dashed #f87171;
-  background: #fff1f2;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px dashed #fca5a5;
 }
 .panel-neutral,
-.panel-quality,
-.panel-external {
+.panel-quality {
   background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px;
 }
 .panel-head { display: flex; flex-direction: column; gap: 2px; }
@@ -345,6 +393,53 @@ const missRiskDesc = computed(
 .chip-panel :deep(.ant-radio-wrapper) {
   white-space: nowrap;
 }
+
+/* 外投：按平台分行，风格对齐表单其它字段 */
+.ext-empty {
+  font-size: 12px;
+  color: #9ca3af;
+  padding: 8px 0;
+}
+.ext-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+.ext-row:first-child { padding-top: 0; }
+.ext-row:last-child { border-bottom: none; padding-bottom: 0; }
+.ext-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.ext-platform {
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+}
+.ext-no {
+  font-size: 11px;
+  color: #9ca3af;
+  font-family: Consolas, 'SF Mono', monospace;
+}
+.ext-fields {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  min-width: 0;
+}
+.ext-reconcile {
+  flex: none;
+  min-width: 140px;
+}
+.ext-fields :deep(.ant-input) {
+  height: 32px;
+  font-size: 12px;
+}
+
 .risk-row {
   flex-wrap: wrap;
   align-items: center;

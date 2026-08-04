@@ -11,7 +11,6 @@ import {
   buildAutoTitle,
   mapChannelToSource,
   mapFormTypeToTicketType,
-  resolveComplaintNature,
 } from '@/views/tickets/types/createTicket';
 
 function defaultForm(): CreateTicketFormState {
@@ -36,13 +35,13 @@ function defaultForm(): CreateTicketFormState {
     titleManual: false,
     expectTime: '今日 18:00',
     complaintType: '服务投诉',
-    complaintPlatform: '市场监管12315平台',
+    complaintPlatforms: [{ platform: '', complaintNo: '' }],
     businessLine: '学习机业务线',
-    complaintNo: '',
     priorFeedback: '是-400',
-    serviceReview: '需要回溯',
+    serviceReview: '',
     complaintL1: '产品质量投诉',
     complaintL2: '产品质量故障',
+    complaintReceiveTime: '',
     problemTime: '',
     suggestL1: '产品体验',
     suggestL2: '功能建议',
@@ -71,6 +70,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     title: false,
     customerAddress: false,
     problemTime: false,
+    complaintType: false,
   });
 
   const problemL1Options = computed(() => Object.keys(PROBLEM_TREE));
@@ -86,11 +86,23 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     () => PRODUCT_NAMES[form.productCategory] ?? [],
   );
 
-  const showTypePart = computed(() => form.ticketType !== '商机');
+  const showTypePart = computed(
+    () => form.ticketType === '投诉' || form.ticketType === '建议',
+  );
   const typePartSubtitle = computed(() => `「${form.ticketType}」工单专属字段`);
   const customerAddressRequired = computed(() => form.ticketType === '商机');
-  const problemTimeRequired = computed(
-    () => form.ticketType === '投诉' || form.ticketType === '咨询',
+  /**
+   * 投诉专属字段的**来源门控**（0803）：
+   * 投诉平台 / 投诉编号 / 投诉类型 / 归属业务线 / 前期是否反馈 / 服务回溯
+   * 仅当 **工单类型=投诉 且 工单来源=内投渠道 或 外投渠道** 时出现——
+   * 热线、IM、小程序等来源的投诉单不涉及投诉渠道台账，这些字段不该占版面。
+   * 投诉一类/二类不受门控（必填）；问题发生时间已上移至产品区（优先级右侧，非必填）。
+   * 校验与显隐共用本判据，避免隐藏字段被判必填而卡住提交。
+   */
+  const showChannelComplaintFields = computed(
+    () =>
+      form.ticketType === '投诉' &&
+      (form.ticketSource === '内投渠道' || form.ticketSource === '外投渠道'),
   );
 
   function syncTitle() {
@@ -148,10 +160,14 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     }
     if (p.complaintL1) form.complaintL1 = p.complaintL1;
     if (p.complaintL2) form.complaintL2 = p.complaintL2;
-    // 投诉性质由二类推导，预填的性质只作兜底
-    form.complaintType = resolveComplaintNature(form.complaintL2) || p.complaintType || form.complaintType;
-    if (p.complaintPlatform) form.complaintPlatform = p.complaintPlatform;
-    if (p.complaintNo) form.complaintNo = p.complaintNo;
+    if (p.complaintType) form.complaintType = p.complaintType;
+    // 预填的平台/编号落到第一组
+    if (p.complaintPlatform || p.complaintNo) {
+      form.complaintPlatforms = [{
+        platform: p.complaintPlatform ?? '',
+        complaintNo: p.complaintNo ?? '',
+      }];
+    }
   }
 
   function onTitleInput() {
@@ -228,17 +244,16 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     errors.customerAddress =
       customerAddressRequired.value &&
       (!form.customer?.region?.trim() || !form.customer?.address?.trim());
-    errors.problemTime =
-      problemTimeRequired.value && !form.problemTime.trim();
+    errors.problemTime = false;
+    errors.complaintType =
+      showChannelComplaintFields.value && !form.complaintType;
 
     const hasError = Object.values(errors).some(Boolean);
     if (hasError) {
       message.error(
         customerAddressRequired.value && errors.customerAddress
           ? '商机工单需填写客户省市区地址'
-          : problemTimeRequired.value && errors.problemTime
-            ? '请填写问题发生时间'
-            : '请填写必填项',
+          : '请填写必填项',
       );
       return false;
     }
@@ -295,12 +310,6 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     () => onProductCategoryChange(),
   );
 
-  // 投诉性质 = 投诉二类推导（0730 口径）：坐席只选分类，性质只读跟随
-  watch(
-    () => form.complaintL2,
-    () => { form.complaintType = resolveComplaintNature(form.complaintL2); },
-    { immediate: true },
-  );
 
   return {
     form,
@@ -317,6 +326,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     showTypePart,
     typePartSubtitle,
     customerAddressRequired,
+    showChannelComplaintFields,
     reset,
     applyPrefill,
     onTitleInput,

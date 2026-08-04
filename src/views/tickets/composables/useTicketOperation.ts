@@ -148,6 +148,34 @@ export function useTicketOperation() {
       base.product.name = t.product;
       base.productBg = t.productBg;
       base.frontlineDemo = t.frontlineDemo; // 一线演示单：处理页隐藏二线流转操作栏
+      base.escalatedFromNo = t.escalatedFromNo; // 升级派生单：回溯「升级自」来源
+      /*
+       * 关联关系**按列表行重建，不继承样例工单**。
+       * 之前直接沿用 TICKET_DETAIL 的 childTickets/linkedRecords，导致随便点开一张单
+       * 都显示「关联 3」——而关联位是 1:1，一张单最多一个父单 + 一个子单。
+       */
+      base.childTickets = [];
+      base.linkedRecords = [];
+      base.linkedAftersale = undefined;
+      // 已关闭单（列表 SLA 摘要为「—」）：详情状态同步为「已关闭」，
+      // 否则处理页仍显示「处理中」，补充/催单的承接分流（§5.2）判不出来
+      if (t.slaText === '—' && !t.escalatedToNo) {
+        base.status = '已关闭';
+        opState.value = 'closed';
+      }
+      // 因升级而关闭：状态置「已转单」+ 只留指向新单的关联 → 处理页整页只读 + 接管横幅
+      if (t.escalatedToNo) {
+        base.childTickets = [];
+        base.linkedRecords = [{
+          no: t.escalatedToNo,
+          title: `外投·${t.title}`,
+          tag: '升级投诉',
+          meta: `${(t.updatedAt ?? '').slice(5, 10)} ${t.assignee ?? ''} 升级`,
+        }];
+        base.linkedAftersale = undefined;
+        base.status = '已转单';
+        opState.value = 'closed';
+      }
       base.feishuSync = 'none';
       base.feishuRecords = [];
       base.productIssue = ticketProductIssue(t);

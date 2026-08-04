@@ -31,6 +31,8 @@ const props = defineProps<{
   showExternal: boolean;
   /** 投诉平台（控制投诉标记扩展选项 / 外投分支显隐） */
   complaintPlatform?: string;
+  /** 建单投诉平台列表（外投跟进按平台分行） */
+  complaintPlatforms?: { platform: string; customPlatform?: string; complaintNo: string }[];
 }>();
 
 const emit = defineEmits<{
@@ -43,9 +45,11 @@ const isComplaint = computed(() => props.ticketType === '投诉');
 const isConsult = computed(() => props.ticketType === '咨询');
 const isSuggest = computed(() => props.ticketType === '建议');
 const isLead = computed(() => props.ticketType === '商机');
-/** 外投：来源标记或投诉平台命中外投渠道列表 */
+/** 外投：来源标记，或任一投诉平台命中外投渠道列表 */
 const isExternal = computed(() =>
-  props.showExternal || isExternalComplaintPlatform(props.complaintPlatform),
+  props.showExternal
+  || isExternalComplaintPlatform(props.complaintPlatform)
+  || (props.complaintPlatforms ?? []).some((p) => isExternalComplaintPlatform(p.platform)),
 );
 
 function patch(part: Partial<ProcessFormDraft>) {
@@ -107,7 +111,13 @@ function isChipFilled(key: SupplementChip): boolean {
   const f = props.form;
   switch (key) {
     case 'complaint': return !!(f.complaintMark && f.complaintCat1 && f.complaintNote.trim());
-    case 'external': return !!(f.platformReplyResult.trim() && f.platformReconcile);
+    case 'external': {
+      const rows = f.platformFollowups;
+      const plats = (props.complaintPlatforms ?? []).filter((p) => p.platform);
+      if (!plats.length) return rows.length > 0 && rows.every((r) => r.replyResult.trim() && r.reconcile);
+      return plats.length === rows.length
+        && rows.every((r) => r.replyResult.trim() && r.reconcile);
+    }
     case 'risk': {
       if (f.riskFlag === '有风险') return !!(f.riskLevel && f.riskDescription.trim());
       if (f.riskFlag === '疑似风险') return !!f.riskDescription.trim();
@@ -129,7 +139,7 @@ const supplementBadge = computed(() =>
     : '已填齐',
 );
 const supplementBadgeVariant = computed(() =>
-  (incompleteChipCount.value > 0 ? 'required' : 'count') as 'required' | 'count',
+  (incompleteChipCount.value > 0 ? 'warn' : 'count') as 'warn' | 'count',
 );
 
 function chipActiveClass(key: SupplementChip): string {
@@ -315,14 +325,15 @@ function chipActiveClass(key: SupplementChip): string {
         </div>
       </template>
 
-      <div v-if="incompleteChipCount > 0" class="supp-req-banner">
-        红色「待填」标签为必填项未齐，请补全后再结案
+      <div v-if="incompleteChipCount > 0" class="supp-hint">
+        还有 {{ incompleteChipCount }} 项待完善
       </div>
 
       <OpSupplementChipPanels
         :active-chip="effectiveChip"
         :form="form"
         :complaint-platform="complaintPlatform"
+        :complaint-platforms="complaintPlatforms"
         :show-external="isExternal"
         @update:form="emit('update:form', $event)"
       />
@@ -382,65 +393,58 @@ function chipActiveClass(key: SupplementChip): string {
   white-space: nowrap; flex: none;
 }
 .chip.need-fill {
-  border-color: #fca5a5;
-  background: #fef2f2;
-  color: #b91c1c;
-  font-weight: 600;
-  border-width: 1.5px;
+  border-color: #e5e7eb;
+  background: #fff;
+  color: #6b7280;
+  font-weight: 500;
 }
 .chip.need-fill.active,
 .chip.need-fill.active-external,
 .chip.need-fill.active-risk,
 .chip.need-fill.active-appointment,
 .chip.need-fill.active-quality {
-  border-color: #ef4444;
-  background: #fee2e2;
-  color: #991b1b;
-  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.18);
+  /* 选中态交给 .active*，不再叠加大红描边 */
+  box-shadow: none;
 }
 .chip-need-dot {
-  width: 6px; height: 6px; border-radius: 3px; background: #ef4444; flex: none;
+  width: 5px; height: 5px; border-radius: 50%; background: #f59e0b; flex: none;
 }
 .chip-need-tag {
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1;
   padding: 2px 5px;
   border-radius: 3px;
-  color: #fff;
-  background: #ef4444;
+  color: #b45309;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
   flex: none;
 }
 .chip.active {
   border-color: #1a6fff; background: #eff6ff; color: #1a6fff;
-  font-weight: 600; border-width: 1.5px;
+  font-weight: 600;
 }
 .chip.active-external {
-  border-color: #f59e0b; background: #fffbeb; color: #b45309;
-  font-weight: 600; border-width: 1.5px;
+  border-color: #1a6fff; background: #eff6ff; color: #1a6fff;
+  font-weight: 600;
 }
 .chip.active-risk {
-  border-color: #ef4444; background: #fef2f2; color: #dc2626;
-  font-weight: 600; border-width: 1.5px;
+  border-color: #1a6fff; background: #eff6ff; color: #1a6fff;
+  font-weight: 600;
 }
 .chip.active-appointment {
   border-color: #1a6fff; background: #eff6ff; color: #1a6fff;
-  font-weight: 600; border-width: 1.5px;
+  font-weight: 600;
 }
 .chip.active-quality {
-  border-color: #f59e0b; background: #fffbeb; color: #b45309;
-  font-weight: 600; border-width: 1.5px;
+  border-color: #1a6fff; background: #eff6ff; color: #1a6fff;
+  font-weight: 600;
 }
 .chip-dot { width: 6px; height: 6px; border-radius: 3px; background: #f59e0b; flex: none; }
 .chip-check { font-size: 11px; flex: none; color: #10b981; }
-.supp-req-banner {
+.supp-hint {
   margin: -2px 0 2px;
-  padding: 6px 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #991b1b;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  font-size: 11px;
+  color: #9ca3af;
 }
 </style>

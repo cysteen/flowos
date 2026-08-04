@@ -144,6 +144,10 @@ const prodNameSelectOpts = computed(() =>
     .map((p) => ({ value: p.label, label: p.label })),
 );
 const toOpts = (items: string[]) => items.map((v) => ({ value: v, label: v }));
+const filterByLabel = (input: string, option?: { label?: string }) =>
+  String(option?.label ?? '').includes(input);
+const filterByValue = (input: string, option?: { value?: string }) =>
+  String(option?.value ?? '').includes(input);
 
 /** 弹窗「所属产品」：五级产品树（仅叶子「产品」可选），支持逐级下钻 + 任意节点搜索 */
 interface ProductTreeSelectNode {
@@ -850,7 +854,7 @@ function doImport() {
                   show-search
                   allow-clear
                   placeholder="全部"
-                  :filter-option="(input: string, opt: { label?: string }) => (opt?.label ?? '').includes(input)"
+                  :filter-option="filterByLabel"
                   :options="prodNameSelectOpts"
                 />
               </div>
@@ -882,7 +886,7 @@ function doImport() {
                   show-search
                   placeholder="一级分类"
                   :options="filterTagL1Opts"
-                  :filter-option="(input: string, opt: { label?: string }) => (opt?.label ?? '').includes(input)"
+                  :filter-option="filterByLabel"
                 />
                 <a-select
                   v-model:value="draftFilter.tagL2"
@@ -892,7 +896,7 @@ function doImport() {
                   show-search
                   placeholder="二级分类"
                   :options="filterTagL2Opts"
-                  :filter-option="(input: string, opt: { label?: string }) => (opt?.label ?? '').includes(input)"
+                  :filter-option="filterByLabel"
                 />
               </template>
               <div class="wb-toolbar__search">
@@ -1034,7 +1038,7 @@ function doImport() {
             class="cat-input-full"
             placeholder="搜索已有或输入新分类"
             :options="formTagL1Opts"
-            :filter-option="(input: string, opt: { value?: string }) => (opt?.value ?? '').includes(input)"
+            :filter-option="filterByValue"
           />
         </a-form-item>
         <a-form-item label="二级分类" required>
@@ -1044,7 +1048,7 @@ function doImport() {
             placeholder="搜索已有或输入新分类"
             :options="formTagL2Opts"
             :disabled="!form.tagL1.trim()"
-            :filter-option="(input: string, opt: { value?: string }) => (opt?.value ?? '').includes(input)"
+            :filter-option="filterByValue"
           />
         </a-form-item>
         <a-form-item label="三级分类" required>
@@ -1054,7 +1058,7 @@ function doImport() {
             placeholder="搜索已有或输入新分类"
             :options="formTagL3Opts"
             :disabled="!form.tagL2.trim()"
-            :filter-option="(input: string, opt: { value?: string }) => (opt?.value ?? '').includes(input)"
+            :filter-option="filterByValue"
           />
         </a-form-item>
 

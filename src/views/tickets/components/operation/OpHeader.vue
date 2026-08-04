@@ -6,12 +6,24 @@ import { PRIORITY_COLOR, softBg, type Priority } from '@/views/tickets/types/tic
 import OpSlaBar from './OpSlaBar.vue';
 import OpAftersaleLinkCard from './OpAftersaleLinkCard.vue';
 import { isAftersaleSettled } from '../../composables/opActions';
-import { buildEscalateVerdict } from '../../composables/complaintEscalation';
+import { buildEscalateVerdict, isTicketTerminated } from '../../composables/complaintEscalation';
+import { buildTicketRelations, type TicketRelation } from '../../composables/ticketRelations';
+import OpRelationList from './OpRelationList.vue';
 
 const props = defineProps<{
   detail: TicketDetailMeta;
   ticketNo: string;
+  /** 只读态（本单已被新单接管 / 一线视角）：头部动作全部禁用，只留查看与关系跳转 */
+  readonly?: boolean;
 }>();
+
+const READONLY_TIP = '本单已被新单接管并锁定，请在新单上处理';
+
+/**
+ * 终态（已关闭/已取消/已归档/已转单）：**不再展示「取消工单」**——
+ * 取消是对"在跑的单"的终止动作，对已经终止的单没有意义（PRD §5.6.3 ②）。
+ */
+const isTerminal = computed(() => isTicketTerminated(props.detail.status));
 
 /** 委派中：升级投诉/关联售后/取消工单 同属转出或终结类，一并锁定 */
 const delegateLocked = computed(() => !!props.detail.delegateInfo);
@@ -22,8 +34,9 @@ const DELEGATE_LOCK_TIP = '工单委派中，协办完成后可操作';
  * 非投诉、低阶投诉（人员/业务）可升级；外投为终态，入口置灰并引导走「新建补充」。
  */
 const escalateVerdict = computed(() => buildEscalateVerdict(props.detail));
-const escalateDisabled = computed(() => delegateLocked.value || !escalateVerdict.value.entryEnabled);
+const escalateDisabled = computed(() => props.readonly || delegateLocked.value || !escalateVerdict.value.entryEnabled);
 const escalateTip = computed(() => {
+  if (props.readonly) return READONLY_TIP;
   if (delegateLocked.value) return DELEGATE_LOCK_TIP;
   return escalateVerdict.value.entryTip;
 });
@@ -43,10 +56,19 @@ const metaTitle = computed(
 const emit = defineEmits<{
   copyNo: [];
   action: [name: string];
+  openRelation: [rel: TicketRelation];
 }>();
+
+/**
+ * 关联关系芯片：贴在单号右边——坐席确认"我在哪张单"时视线本来就在那儿。
+ * 无关联则整枚不出现，不占位。详细清单同时常驻右栏（Freshdesk 口径）。
+ */
+const relations = computed(() => buildTicketRelations(props.detail));
 
 /** 状态 → 语义色（对齐 STATUS_TONE：进行中=橙、完成=绿、中性=灰、异常=红） */
 function statusHex(s: string): string {
+  // 已转单/已转出＝业务转到别的单上（非正常关闭），用紫与"已关闭灰"区分开
+  if (/已转单|已转出/.test(s)) return '#7C3AED';
   if (/已解决|已完成|已结案|已结单|完成/.test(s)) return '#10B981';
   if (/挂起|已关闭|撤销|取消|终止/.test(s)) return '#6B7280';
   if (/升级/.test(s)) return '#A855F7';
@@ -84,6 +106,16 @@ function priorityHex(p: string): string {
           <span class="meta-k">单号</span>：{{ ticketNo }}
         </span>
         <CopyOutlined class="copy" @click="emit('copyNo')" />
+        <!-- 关联关系芯片：带类型与方向，点开直达对方单 -->
+        <a-popover v-if="relations.length" placement="bottomLeft" trigger="hover">
+          <template #content>
+            <div class="rel-pop">
+              <div class="rel-pop-title">关联关系</div>
+              <OpRelationList :relations="relations" compact @open="emit('openRelation', $event)" />
+            </div>
+          </template>
+          <span class="rel-chip">⧉ 关联 {{ relations.length }}</span>
+        </a-popover>
       </div>
     </div>
     <div class="oh-right">
@@ -122,19 +154,32 @@ function priorityHex(p: string): string {
             <button
               type="button"
               class="action-btn"
-              :disabled="delegateLocked || !!linkedAftersale"
-              :title="delegateLocked ? DELEGATE_LOCK_TIP : undefined"
+              :disabled="readonly || delegateLocked || !!linkedAftersale"
+              :title="readonly ? READONLY_TIP : (delegateLocked ? DELEGATE_LOCK_TIP : undefined)"
               @click="emit('action', '关联售后')"
             >关联售后</button>
           </span>
         </a-popover>
-        <button type="button" class="action-btn" @click="emit('action', '新建补充')">新建补充</button>
-        <button type="button" class="action-btn" @click="emit('action', '催单')">催单</button>
         <button
           type="button"
+          class="action-btn"
+          :disabled="readonly"
+          :title="readonly ? READONLY_TIP : undefined"
+          @click="emit('action', '新建补充')"
+        >新建补充</button>
+        <button
+          type="button"
+          class="action-btn"
+          :disabled="readonly"
+          :title="readonly ? READONLY_TIP : undefined"
+          @click="emit('action', '催单')"
+        >催单</button>
+        <button
+          v-if="!isTerminal"
+          type="button"
           class="action-btn action-btn--danger"
-          :disabled="delegateLocked"
-          :title="delegateLocked ? DELEGATE_LOCK_TIP : undefined"
+          :disabled="readonly || delegateLocked"
+          :title="readonly ? READONLY_TIP : (delegateLocked ? DELEGATE_LOCK_TIP : undefined)"
           @click="emit('action', '取消工单')"
         >取消工单</button>
       </div>
@@ -183,6 +228,13 @@ function priorityHex(p: string): string {
   color: #d1d5db;
 }
 .copy { cursor: pointer; font-size: 13px; flex: none; }
+.rel-chip {
+  flex: none; cursor: pointer;
+  font-size: 11px; font-weight: 600; line-height: 18px;
+  padding: 0 7px; border-radius: 4px;
+  color: #4f46e5; background: #eef2ff; border: 1px solid #e0e7ff;
+}
+.rel-chip:hover { background: #e0e7ff; }
 .copy:hover { color: #6b7280; }
 
 .oh-right { display: flex; align-items: center; gap: 12px; flex: none; }
