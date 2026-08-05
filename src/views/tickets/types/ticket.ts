@@ -141,6 +141,12 @@ export interface Ticket {
   dunningUnread?: boolean;
   /** 历史存在退回动作 */
   hasReturnAction?: boolean;
+  /**
+   * 调研回访中客户对**人员服务**的打分（1–5）。
+   * 1–3 计为「服务不满意」（班组看板今日指标区同名卡的口径，2026-08-05 业务定）；
+   * 未评价 / 未发调研为 undefined。
+   */
+  serviceScore?: 1 | 2 | 3 | 4 | 5;
   /** 累计退回次数（上限 3 次） */
   returnCount?: number;
   /** 我申请挂起且挂起生效 */

@@ -19,7 +19,7 @@
  *       **全部失效** —— 它们描述的是在办池，与新口径不是同一个池子。
  * 2. 优先级保留两套枚举：sysKey（系统现有 P0–P3）+ reqLabel（业务口径）。
  *    **映射 0803 业务确认**：P0=紧急 / P1=重要 / P2=普通加急 / P3=普通（单一真源见 types/ticket.ts PRIORITY_LABEL）。
- * 3. 负载档阈值**暂定**：空闲 ≤5 ／ 适中 6–12 ／ 满载 >12（未经业务确认，后续应做成可配置）。
+ * 3. 负载档阈值【2026-08-05 业务定】：**空闲 <15 ／ 适中 15–30 ／ 满载 >30**（后续应做成租户可配）。
  * 4. 语义色只用《看板设计-竞品调研与设计范式》§六 R4 五色：
  *    #EF4444 超标 / #F59E0B 预警 / #10B981 达标 / #1A6FFF 交互与选中 / #9CA3AF 中性无数据。
  * 5. **逐人指标口径与个人门户【815】PRD 严格一致**（2026-08-04 同步，详见 MemberRow 各字段注释）：
@@ -32,9 +32,9 @@
  * - PRIORITY_BUCKETS 合计 3+5+4+2 = 14 ＝ 班组积压 14（超解决时效的未结单）
  * - TEAM_MEMBERS.workload 合计 = 55 ＝ 在办总量（**不再与积压挂钩**，新口径下两者是不同池子）
  * - TEAM_MEMBERS.forwardToday 合计 = 118 ＝ 今日下送 118
- * - URGE_DRILL 合计 21（已读 14 / 未读 7）＝ 催单卡；SUPPLEMENT_DRILL 合计 13（已读 8 / 未读 5）＝ 补充单卡
+ * - URGE_DRILL 合计 21（已读 14 / 未读 7）＝ 催单卡（**本周**未结案工单被催次数）；SUPPLEMENT_DRILL 合计 13（已读 8 / 未读 5）＝ 补充单卡
  *   → 两者相加 34 / 未读 12 ＝ 拆分前的合并口径，总量守恒
- * - RETURN_DRILL 合计 3 ＝ 退回；TRANSFER_DRILL 三组 2+2+1 = 5 ＝ 转入
+ * - RETURN_DRILL 两来源 2+1 = 3 ＝ 退回；TRANSFER_DRILL 三组 2+2+1 = 5 ＝ 转入
  * - SUSPEND_DRILL 合计 3 ＝ 挂起；TRANSFERRED_OUT_DRILL 合计 2 ＝ 已转出；DELEGATED_DRILL 合计 4 ＝ 委派中
  * - TRAFFIC_HOURLY 合计 = (142, 118, 96) ＝ 今日进线 / 下送 / 结案
  * - TRAFFIC_DAILY 末点 8/3 = (142, 118, 96)；前一日 8/2 = (97, 92, 103)
@@ -43,8 +43,8 @@
  * - BOARD_TODOS 待指派 8 ＝ 关注区未分派 8
  * - PROBLEM_TOP10 count 合计 = 112，ratio ＝ count ÷ 142（今日进线）× 100，ratio 合计 78.8
  *
- * ⚠️ **积压 14 与「SLA 超期率」的分子 9 不是同一个数**：
- *    · 超期率分子 9 ＝ **今日进线**中已超期的（当日流量，分母 142）
+ * ⚠️ **积压 14 与「首响/解决超时率」的分子不是同一个数**：
+ *    · 超时率分子 ＝ **今天新增**中已超期的（当日流量，分母 142）
  *    · 积压 14 ＝ **此刻仍超时未处理完**的（跨天存量，含前几天遗留）
  *    两者都对，讲的是不同的事，界面上不要互相校验。
  */
@@ -217,7 +217,7 @@ export interface MemberRow {
   online: '在线' | '小休' | '离线';
   /** 当前在办工单数（时点值） */
   workload: number;
-  /** 负载档，阈值暂定 ≤5 空闲 / 6–12 适中 / >12 满载 */
+  /** 负载档，阈值 <15 空闲 / 15–30 适中 / >30 满载（2026-08-05 业务定） */
   loadLevel: '空闲' | '适中' | '满载';
   /** 今日下送量。同一张单当天多次下送只算 1 次 */
   forwardToday: number;
@@ -289,7 +289,8 @@ export interface PeopleDrillRow {
 
 /** 转单来源下钻 */
 export interface SourceDrillGroup {
-  source: '其他客服组' | '跨组调剂' | '售后回传';
+  /** 转入的三来源 + 退回的两来源（2026-08-05 退回口径扩大后新增） */
+  source: '其他客服组' | '跨组调剂' | '售后回传' | '技术支持退回' | '回访退回';
   count: number;
   items: { no: string; title: string; from: string }[];
 }
@@ -314,8 +315,13 @@ export interface TrafficPoint {
 /** 模块 4 · 高频问题 TOP10 */
 export interface ProblemRow {
   rank: number;
-  /** 二级问题分类 */
-  category: string;
+  /**
+   * 问题分类**三级**，与《问题分类管理》的 tagL1 / tagL2 / tagL3 同源同名
+   * （2026-08-05 业务定，原为二级）。界面按目录层级展示 `一类 / 二类 / 三类`。
+   */
+  tagL1: string;
+  tagL2: string;
+  tagL3: string;
   count: number;
   /** 占比，百分数数值（如 18.3 表示 18.3%） */
   ratio: number;
@@ -417,7 +423,7 @@ export const BOARD_BACKLOG: BoardMetric = {
  * 数值自洽：
  * · 未分派 8 ＝ BOARD_TODOS 待指派 8
  * · 催单 21次（未处理 7）/ 补充 13次（未处理 5）/ 预约 11次（未沟通 6）
- * · 退回 3 ＝ RETURN_DRILL；转入 5 ＝ TRANSFER_DRILL；预约 11 ＝ APPOINTMENT_EVENTS
+ * · 退回 3 ＝ RETURN_DRILL（技支 2 + 回访 1）；转入 5 ＝ TRANSFER_DRILL；预约 11 ＝ APPOINTMENT_EVENTS
  * · 挂起 3 / 已转出 2 / 委派中 4 与各自 *_DRILL 合计一致
  */
 export const BOARD_FOCUS: BoardMetric[] = [
@@ -493,7 +499,8 @@ export const BOARD_FOCUS: BoardMetric[] = [
     group: 'stuck',
     label: '退回',
     value: '3',
-    sub: '技术支持退回',
+    /** 2026-08-05 口径扩大（推翻 D16）：技术支持退回 + 回访退回（810 侧名为「打回」） */
+    sub: '技支退回 + 回访退回',
     delta: '-1',
     deltaTone: 'good',
     clickHint: '查看工单',
@@ -519,13 +526,19 @@ export const BOARD_FOCUS: BoardMetric[] = [
   },
   /* ── ③ 今日事件：催单 / 补充 / 预约 —— 展示全量 + 未完成 ── */
   {
+    /**
+     * 2026-08-05 业务定：统计窗口由**当日**改为**本周**，且只数
+     * **本组未结案**工单上的催单（已结案工单上的催单不计）。
+     * ⚠️ 同组另三项（补充单 / 预约 / 待审批）仍是当日 / 时点口径，
+     *    本项是本区唯一的「本周」指标，卡上须标明窗口。
+     */
     key: 'urge',
     group: 'interrupted',
     label: '催单',
     value: '21',
     pending: 7,
     pendingLabel: '未处理',
-    sub: '21次，未处理 7',
+    sub: '本周 21 次，未处理 7',
     clickHint: '事件明细',
     iconName: 'BellOutlined',
     iconColor: '#94a3b8',
@@ -572,17 +585,17 @@ export const FOCUS_GROUPS: { key: FocusGroup; title: string; hint: string }[] = 
 /**
  * 区② 今日指标 —— 6 卡，覆盖 承接 / 效率 / SLA / 质量 四轴，点卡片切换下方趋势图。
  *
- * 组级率值（24h完结率 / SLA超期率 / 满意度）放核心区而非明细区，不违反 R1b：
+ * 组级率值（24h完结率 / 首响·解决超时 / 满意度）放核心区而非明细区，不违反 R1b：
  * R1b 约束的是「同一主体的数量与率值不要混」；此处核心区是**组级汇总**、
  * 明细区是**逐人**，两个主体。班组长必须能一眼看到组的整体表现。
  */
 export const BOARD_METRICS: BoardMetric[] = [
   {
     key: 'inbound',
-    label: '今日进线',
+    label: '今日新增',
     value: '142',
-    /** 137 自建 + 5 转入 = 142，转入数与 TRANSFER_DRILL 三组合计一致 */
-    sub: '自建 137 · 转入 5',
+    /** 137 创建 + 5 转入 = 142，转入数与 TRANSFER_DRILL 三组合计一致 */
+    sub: '创建 137 转入5',
     delta: '+45',
     deltaTone: 'neutral',
     iconName: 'LoginOutlined',
@@ -594,7 +607,8 @@ export const BOARD_METRICS: BoardMetric[] = [
     key: 'forward',
     label: '今日下送',
     value: '118',
-    sub: '坐席作业完成',
+    /** 2026-08-05 口径扩大：下送 + 关闭工单 + 强结，工单维度去重 */
+    sub: '下送 / 关闭 / 强结',
     delta: '+26',
     deltaTone: 'good',
     iconName: 'SendOutlined',
@@ -602,30 +616,59 @@ export const BOARD_METRICS: BoardMetric[] = [
     iconBg: '#10B9811A',
     drill: null,
   },
+  /**
+   * 2026-08-05 业务定：「今日结案」换成「今日升级」。
+   * 结案是全流程终点、多半发生在几天后，对班组长当天的调度没有指导意义；
+   * 升级是**当天就要盯**的动作 —— 升上去的单说明本组处理不了，量一大就是能力缺口信号。
+   */
   {
-    key: 'closed',
-    label: '今日结案',
-    value: '96',
-    sub: '工单终态关闭',
-    delta: '-7',
+    key: 'escalated',
+    label: '今日升级',
+    value: '23',
+    sub: '技术支持 / 飞书',
+    delta: '+6',
     deltaTone: 'bad',
-    iconName: 'CheckCircleOutlined',
-    iconColor: '#10B981',
-    iconBg: '#10B9811A',
+    iconName: 'ArrowUpOutlined',
+    iconColor: '#F59E0B',
+    iconBg: '#F59E0B1A',
     drill: null,
   },
   /**
-   * ⚠️ 分母是**昨日**进线队列，不是今日。
-   * 今日进线的 24h 窗口尚未闭合，实时计算会系统性偏低（早上必然接近 0），
-   * 是看板最常见的假告警来源。竞品同样以「已闭合队列」为口径。
-   * 70 / 97 = 72.2%；97 即 TRAFFIC_DAILY 8/2 的 inbound。
+   * 2026-08-05 新增。与主盯行的「退回」卡**同源同值**（同一个数在两处出现，
+   * 按 §10 规则「口径唯一」必须相等）：主盯行回答"有哪些单要盯"，
+   * 本卡回答"今天发生了多少次回流"。
    */
   {
-    key: 'close-rate-24h',
-    label: '24h 完结率',
-    value: '72.2%',
-    sub: '昨日 97 单 · 70 单达成',
-    delta: '-4.3%',
+    key: 'returnedToday',
+    label: '今日退回',
+    value: '3',
+    sub: '技术支持 / 回访',
+    delta: '-1',
+    deltaTone: 'good',
+    iconName: 'RollbackOutlined',
+    iconColor: '#94a3b8',
+    iconBg: '#94a3b81A',
+    drill: null,
+  },
+  /**
+   * 2026-08-05 业务定：「24h 完结率」换成「24 小时联络率」。
+   * 分子＝24 小时内发生过 **保存 / 打电话 / 发邮件 / 发短信** 任一动作的工单。
+   *
+   * ⚠️ 分母沿用**窗口闭合**原则（看板通用规则「没走完的不算率」）：只取
+   * **进线已满 24 小时**的单，即昨日进线队列 97 单。今日进线的 24h 窗口尚未走完，
+   * 实时计算会系统性偏低（早上必然接近 0），是看板最常见的假告警来源。
+   * ⚠️ 分母口径业务未明确，此处为按看板既有规则的推定，待确认。
+   * 89 / 97 = 91.8%。
+   *
+   * ⚠️ 与组员表「跟进率」**同名不同义**：那一列只数**对客有效联络**（通话接通 /
+   * 短信已发出 / 消息已送达），本卡还含**保存**这种纯系统动作。两处不可互校。
+   */
+  {
+    key: 'contact-rate-24h',
+    label: '24 小时联络率',
+    value: '91.8%',
+    sub: '昨日 97 单 · 89 单已联络',
+    delta: '-1.4%',
     deltaTone: 'bad',
     iconName: 'FieldTimeOutlined',
     iconColor: '#F59E0B',
@@ -634,11 +677,24 @@ export const BOARD_METRICS: BoardMetric[] = [
     drill: null,
   },
   {
-    key: 'sla-overdue-rate',
-    label: 'SLA 超期率',
-    value: '6.3%',
-    sub: '超期 9 / 142 · 平均超 2.4h',
-    delta: '+1.1%',
+    key: 'first-response-overdue',
+    label: '首响超时',
+    value: '2.1%',
+    sub: '首响超 3 / 142 · 平均超 0.8h',
+    delta: '+0.4%',
+    deltaTone: 'bad',
+    iconName: 'ClockCircleOutlined',
+    iconColor: '#F59E0B',
+    iconBg: '#F59E0B1A',
+    valueColor: '#F59E0B',
+    drill: null,
+  },
+  {
+    key: 'resolution-overdue',
+    label: '解决超时',
+    value: '4.2%',
+    sub: '解决超 6 / 142 · 平均超 2.4h',
+    delta: '+0.7%',
     deltaTone: 'bad',
     iconName: 'ExclamationCircleOutlined',
     iconColor: '#EF4444',
@@ -647,19 +703,24 @@ export const BOARD_METRICS: BoardMetric[] = [
     drill: null,
   },
   /**
-   * 一卡一数：原「4.6 · 3.2%」把两个不同量纲塞进一格，读者要先分辨哪个是分、
-   * 哪个是率，还容易被中缀点读成小数。不满意率降到 sub 行，主数只留满意度。
+   * 2026-08-05 业务定：「满意度」（5 分制均分）换成「服务不满意」（**单量**）。
+   * 口径：今天收到的调研结果中，**人员服务分数为 1 / 2 / 3 分**的工单数
+   * （4 / 5 分计为满意）。按**评价提交时间**归今天。
+   *
+   * ⚠️ 本卡是**数量**不是率值，与本组另两张（联络率 / 超期率）量纲不同，
+   * 破坏了「量率分区」（规则 R1b）。已知会业务，见 PRD §12.2。
    */
   {
-    key: 'csat',
-    label: '满意度',
-    value: '4.6',
-    sub: '不满意 3.2% · 参评率 74%',
-    delta: '-0.1',
+    key: 'service-bad',
+    label: '服务不满意',
+    value: '5',
+    sub: '服务分 1–3 分 · 占今日已评 6.8%',
+    delta: '+2',
     deltaTone: 'bad',
-    iconName: 'SmileOutlined',
-    iconColor: '#F59E0B',
-    iconBg: '#F59E0B1A',
+    iconName: 'FrownOutlined',
+    iconColor: '#EF4444',
+    iconBg: '#EF44441A',
+    valueColor: '#EF4444',
     drill: null,
   },
 ];
@@ -736,9 +797,9 @@ export const APPROVAL_PENDING_DRILL: ApprovalDrillRow[] = [
 
 /* -------------------------------------------------------------------------
  * 模块 2 负载 + 模块 3 效能排行 · 班组 12 人
- * workload 合计 = 55 ＝ 积压 63 − 未分派 8
+ * workload 合计 = 164（2026-08-05 随新阈值重标定，不再与积压挂钩）
  * forwardToday 合计 = 118 ＝ 今日下送 118
- * 负载档：空闲 ≤5（7 人）/ 适中 6–12（4 人）/ 满载 >12（1 人）
+ * 负载档：空闲 <15（7 人）/ 适中 15–30（4 人）/ 满载 >30（1 人）
  *
  * ── avgHandle 口径同步（2026-08-04，815 P-4）──
  * 起点由「首次进入处理中」前移到「**分派给该坐席的时刻**」，即把坐席自己的
@@ -746,23 +807,23 @@ export const APPROVAL_PENDING_DRILL: ApprovalDrillRow[] = [
  *   在线且表现好（王倩/刘婷/徐璐）+0.2~0.3h  ← 接单即处理
  *   在线常规（张敏/陈曦/吴悦/李昊） +0.4~0.5h
  *   小休（赵磊/郑楠）              +0.7h
- *   满载（孙杰）                   +1.1h      ← 手上压着 13 单，新单排队久
+ *   满载（孙杰）                   +1.1h      ← 手上压着 34 单，新单排队久
  *   离线（周航/马超）              +1.2~1.4h  ← 不在岗，等待最长
  * 这正是该口径变更想暴露的差异：**"接了单不动手"不再被隐藏**。
  * ----------------------------------------------------------------------- */
 export const TEAM_MEMBERS: MemberRow[] = [
-  { id: 'm1',  name: '张敏', online: '在线', workload: 8,  loadLevel: '适中', forwardToday: 14, avgHandle: '3.0h', overdue: 2, followRate: '96.4%', csat: '4.8', resolveRate: '94.2%', reviewRate: '88.0%' },
-  { id: 'm2',  name: '李昊', online: '在线', workload: 9,  loadLevel: '适中', forwardToday: 15, avgHandle: '3.6h', overdue: 4, followRate: '92.8%', csat: '4.5', resolveRate: '90.6%', reviewRate: '84.3%' },
-  { id: 'm3',  name: '王倩', online: '在线', workload: 6,  loadLevel: '适中', forwardToday: 12, avgHandle: '2.4h', overdue: 1, followRate: '97.6%', csat: '4.9', resolveRate: '96.1%', reviewRate: '91.2%' },
-  { id: 'm4',  name: '赵磊', online: '小休', workload: 1,  loadLevel: '空闲', forwardToday: 6,  avgHandle: '4.5h', overdue: 0, followRate: '90.0%', csat: '4.3', resolveRate: '88.5%', reviewRate: '80.4%' },
-  { id: 'm5',  name: '陈曦', online: '在线', workload: 7,  loadLevel: '适中', forwardToday: 13, avgHandle: '3.4h', overdue: 3, followRate: '93.5%', csat: '4.6', resolveRate: '91.8%', reviewRate: '85.7%' },
-  { id: 'm6',  name: '刘婷', online: '在线', workload: 3,  loadLevel: '空闲', forwardToday: 10, avgHandle: '2.7h', overdue: 0, followRate: '98.0%', csat: '4.9', resolveRate: '95.4%', reviewRate: '90.6%' },
-  { id: 'm7',  name: '周航', online: '离线', workload: 1,  loadLevel: '空闲', forwardToday: 3,  avgHandle: '5.8h', overdue: 1, followRate: '84.2%', csat: '4.1', resolveRate: '82.7%', reviewRate: '80.8%' },
-  { id: 'm8',  name: '吴悦', online: '在线', workload: 4,  loadLevel: '空闲', forwardToday: 11, avgHandle: '3.1h', overdue: 2, followRate: '95.1%', csat: '4.7', resolveRate: '93.0%', reviewRate: '87.5%' },
-  { id: 'm9',  name: '郑楠', online: '小休', workload: 1,  loadLevel: '空闲', forwardToday: 7,  avgHandle: '4.2h', overdue: 3, followRate: '88.6%', csat: '4.2', resolveRate: '86.3%', reviewRate: '82.1%' },
-  { id: 'm10', name: '孙杰', online: '在线', workload: 13, loadLevel: '满载', forwardToday: 16, avgHandle: '5.3h', overdue: 5, followRate: '86.9%', csat: '4.0', resolveRate: '84.9%', reviewRate: '81.5%' },
-  { id: 'm11', name: '徐璐', online: '在线', workload: 2,  loadLevel: '空闲', forwardToday: 9,  avgHandle: '2.8h', overdue: 1, followRate: '94.7%', csat: '4.6', resolveRate: '92.4%', reviewRate: '86.9%' },
-  { id: 'm12', name: '马超', online: '离线', workload: 0,  loadLevel: '空闲', forwardToday: 2,  avgHandle: '6.4h', overdue: 0, followRate: '81.3%', csat: '4.0', resolveRate: '80.5%', reviewRate: '80.0%' },
+  { id: 'm1',  name: '张敏', online: '在线', workload: 21,  loadLevel: '适中', forwardToday: 14, avgHandle: '3.0h', overdue: 2, followRate: '96.4%', csat: '4.8', resolveRate: '94.2%', reviewRate: '88.0%' },
+  { id: 'm2',  name: '李昊', online: '在线', workload: 24,  loadLevel: '适中', forwardToday: 15, avgHandle: '3.6h', overdue: 4, followRate: '92.8%', csat: '4.5', resolveRate: '90.6%', reviewRate: '84.3%' },
+  { id: 'm3',  name: '王倩', online: '在线', workload: 17,  loadLevel: '适中', forwardToday: 12, avgHandle: '2.4h', overdue: 1, followRate: '97.6%', csat: '4.9', resolveRate: '96.1%', reviewRate: '91.2%' },
+  { id: 'm4',  name: '赵磊', online: '小休', workload: 6,  loadLevel: '空闲', forwardToday: 6,  avgHandle: '4.5h', overdue: 0, followRate: '90.0%', csat: '4.3', resolveRate: '88.5%', reviewRate: '80.4%' },
+  { id: 'm5',  name: '陈曦', online: '在线', workload: 19,  loadLevel: '适中', forwardToday: 13, avgHandle: '3.4h', overdue: 3, followRate: '93.5%', csat: '4.6', resolveRate: '91.8%', reviewRate: '85.7%' },
+  { id: 'm6',  name: '刘婷', online: '在线', workload: 11,  loadLevel: '空闲', forwardToday: 10, avgHandle: '2.7h', overdue: 0, followRate: '98.0%', csat: '4.9', resolveRate: '95.4%', reviewRate: '90.6%' },
+  { id: 'm7',  name: '周航', online: '离线', workload: 4,  loadLevel: '空闲', forwardToday: 3,  avgHandle: '5.8h', overdue: 1, followRate: '84.2%', csat: '4.1', resolveRate: '82.7%', reviewRate: '80.8%' },
+  { id: 'm8',  name: '吴悦', online: '在线', workload: 13,  loadLevel: '空闲', forwardToday: 11, avgHandle: '3.1h', overdue: 2, followRate: '95.1%', csat: '4.7', resolveRate: '93.0%', reviewRate: '87.5%' },
+  { id: 'm9',  name: '郑楠', online: '小休', workload: 5,  loadLevel: '空闲', forwardToday: 7,  avgHandle: '4.2h', overdue: 3, followRate: '88.6%', csat: '4.2', resolveRate: '86.3%', reviewRate: '82.1%' },
+  { id: 'm10', name: '孙杰', online: '在线', workload: 34, loadLevel: '满载', forwardToday: 16, avgHandle: '5.3h', overdue: 5, followRate: '86.9%', csat: '4.0', resolveRate: '84.9%', reviewRate: '81.5%' },
+  { id: 'm11', name: '徐璐', online: '在线', workload: 8,  loadLevel: '空闲', forwardToday: 9,  avgHandle: '2.8h', overdue: 1, followRate: '94.7%', csat: '4.6', resolveRate: '92.4%', reviewRate: '86.9%' },
+  { id: 'm12', name: '马超', online: '离线', workload: 2,  loadLevel: '空闲', forwardToday: 2,  avgHandle: '6.4h', overdue: 0, followRate: '81.3%', csat: '4.0', resolveRate: '80.5%', reviewRate: '80.0%' },
 ];
 
 /* -------------------------------------------------------------------------
@@ -880,11 +941,32 @@ export const APPOINTMENT_DRILL: PeopleDrillRow[] = [
 ];
 
 /* -------------------------------------------------------------------------
- * 退回工单下钻 · 按人员（合计 3）
+ * 退回工单下钻 · 按**来源**（2 + 1 = 3）
+ *
+ * 2026-08-05 业务定：「退回」含两条回流路径，**推翻决策 D16「仅有技术支持退回」**——
+ *   ① 技术支持退回：动作矩阵 B11，技术支持专属动作
+ *   ② 回访退回：调研回访中客户答「未解决 · 方案没用 / 太复杂 / 没人联系」触发重新分配。
+ *      ⚠️ 该动作在《【815】调研回访 PRD》§7.2 里的**正式名称是「打回」**，
+ *      按字面搜「退回」会漏掉它。
+ * 两者 SLA 解决钟均续走、不停表，故与积压口径不冲突。
+ * 因为有了两个来源，下钻由「按人员」改为「按来源」，与转入卡同构。
  * ----------------------------------------------------------------------- */
-export const RETURN_DRILL: PeopleDrillRow[] = [
-  { id: 'm10', name: '孙杰', online: '在线', count: 2 },
-  { id: 'm9',  name: '郑楠', online: '小休', count: 1 },
+export const RETURN_DRILL: SourceDrillGroup[] = [
+  {
+    source: '技术支持退回',
+    count: 2,
+    items: [
+      { no: 'GD20260804012', title: '语音识别准确率异常，非技术缺陷', from: '技术支持组 · 周工' },
+      { no: 'GD20260804031', title: '接口报错系客户端配置问题', from: '技术支持组 · 周工' },
+    ],
+  },
+  {
+    source: '回访退回',
+    count: 1,
+    items: [
+      { no: 'GD20260803055', title: '客户回访答「解决方案没有用」，重新分配', from: '调研回访 · 自动打回' },
+    ],
+  },
 ];
 
 /* -------------------------------------------------------------------------
@@ -983,7 +1065,7 @@ export const TRAFFIC_HOURLY: TrafficPoint[] = [
  * 【为什么 closed 大部分天数 > inbound】前 29 天是**稳态**：结案在消化存量，
  * 逐日盈亏互抵，Σ(inbound − closed) = +7 —— 正是积压从 7/5 的 10 涨到 8/2 收盘的 17。
  * 若像早期版本那样让 closed 恒低于 inbound 26%，30 天后积压会累到上千，体系立刻不成立。
- * 8/3（今日）是唯一的积压日：进线 142（+45）、结案 96（−7），单日 +46 → 积压 63。
+ * 8/3（今日）是唯一的积压日：进线 142（+45）、升级 23（+6），单日 +46 → 积压 63。
  * 末点与今日指标卡逐一对齐：142 / 118 / 96。
  * ----------------------------------------------------------------------- */
 export const TRAFFIC_DAILY: TrafficPoint[] = [
@@ -1024,16 +1106,16 @@ export const TRAFFIC_DAILY: TrafficPoint[] = [
  * count 合计 112；ratio ＝ count ÷ 142（今日进线）× 100，ratio 合计 78.8
  * ----------------------------------------------------------------------- */
 export const PROBLEM_TOP10: ProblemRow[] = [
-  { rank: 1,  category: '物流配送-延迟未送达',   count: 26, ratio: 18.3, mom: '+12%', solved: false },
-  { rank: 2,  category: '售后维修-上门超时',     count: 19, ratio: 13.4, mom: '+8%',  solved: false },
-  { rank: 3,  category: '订单交易-支付失败',     count: 15, ratio: 10.6, mom: '-4%',  solved: true },
-  { rank: 4,  category: '商品质量-功能异常',     count: 12, ratio: 8.5,  mom: '+5%',  solved: false },
-  { rank: 5,  category: '退换货-退款未到账',     count: 10, ratio: 7.0,  mom: '-9%',  solved: true },
-  { rank: 6,  category: '账号安全-登录异常',     count: 9,  ratio: 6.3,  mom: '+2%',  solved: true },
-  { rank: 7,  category: '物流配送-货物破损',     count: 7,  ratio: 4.9,  mom: '+15%', solved: false },
-  { rank: 8,  category: '售后维修-配件缺货',     count: 6,  ratio: 4.2,  mom: '+3%',  solved: false },
-  { rank: 9,  category: '订单交易-优惠券不可用', count: 5,  ratio: 3.5,  mom: '-6%',  solved: true },
-  { rank: 10, category: '商品质量-外观瑕疵',     count: 3,  ratio: 2.1,  mom: '-11%', solved: true },
+  { rank: 1,  tagL1: '云空间', tagL2: '操作指导', tagL3: '如何领取/升级云空间',   count: 26, ratio: 18.3, mom: '+12%', solved: false },
+  { rank: 2,  tagL1: '我的文件', tagL2: '软件问题', tagL3: '邮件分享失败',         count: 19, ratio: 13.4, mom: '+8%',  solved: false },
+  { rank: 3,  tagL1: '录音转写', tagL2: '功能异常', tagL3: '转写结果缺字漏句',     count: 15, ratio: 10.6, mom: '-4%',  solved: true },
+  { rank: 4,  tagL1: '硬件故障', tagL2: '开机异常', tagL3: '按键无响应无法开机',   count: 12, ratio: 8.5,  mom: '+5%',  solved: false },
+  { rank: 5,  tagL1: '售后服务', tagL2: '维修进度', tagL3: '寄修后长时间未回寄',   count: 10, ratio: 7.0,  mom: '-9%',  solved: true },
+  { rank: 6,  tagL1: '账号安全', tagL2: '登录异常', tagL3: '验证码收不到',         count: 9,  ratio: 6.3,  mom: '+2%',  solved: true },
+  { rank: 7,  tagL1: '云空间', tagL2: '功能介绍', tagL3: '云空间存储大小咨询',     count: 7,  ratio: 4.9,  mom: '+15%', solved: false },
+  { rank: 8,  tagL1: '售后服务', tagL2: '配件供应', tagL3: '配件缺货等待周期长',   count: 6,  ratio: 4.2,  mom: '+3%',  solved: false },
+  { rank: 9,  tagL1: '订单交易', tagL2: '优惠权益', tagL3: '优惠券不可用',         count: 5,  ratio: 3.5,  mom: '-6%',  solved: true },
+  { rank: 10, tagL1: '硬件故障', tagL2: '外观问题', tagL3: '开箱即有划痕',         count: 3,  ratio: 2.1,  mom: '-11%', solved: true },
 ];
 
 /* -------------------------------------------------------------------------
@@ -1083,7 +1165,7 @@ function focusOf(key: string, patch: Partial<BoardMetric>): BoardMetric {
 function scaleMembers(scale: number, take: number): MemberRow[] {
   return TEAM_MEMBERS.slice(0, take).map((m, i) => {
     const workload = Math.max(0, Math.round(m.workload * scale));
-    const loadLevel: MemberRow['loadLevel'] = workload > 12 ? '满载' : workload >= 6 ? '适中' : '空闲';
+    const loadLevel: MemberRow['loadLevel'] = workload > 30 ? '满载' : workload >= 15 ? '适中' : '空闲';
     return {
       ...m,
       id: `${m.id}-${take}`,
@@ -1119,17 +1201,19 @@ export function getTeamBoardSnapshot(teamId: string): TeamBoardSnapshot {
         focusOf('transferredOut', { value: '1', sub: '已转出 12h · 等售后回传', delta: '0', deltaTone: 'neutral' }),
         focusOf('returned', { value: '2', delta: '0', deltaTone: 'neutral' }),
         focusOf('transferIn', { value: '5', delta: '+1' }),
-        focusOf('urge', { value: '13', pending: 4, pendingLabel: '未处理', sub: '13次，未处理 4' }),
+        focusOf('urge', { value: '13', pending: 4, pendingLabel: '未处理', sub: '本周 13 次，未处理 4' }),
         focusOf('supplement', { value: '8', pending: 3, pendingLabel: '未处理', sub: '8次，未处理 3' }),
         focusOf('appointment', { value: '7', pending: 4, pendingLabel: '未沟通', sub: '7次，未沟通 4' }),
       ],
       metrics: [
-        patchMetric(BOARD_METRICS[0], { value: String(inbound), sub: '自建 93 · 转入 5', delta: '+18' }),
-        patchMetric(BOARD_METRICS[1], { value: '86', sub: '坐席作业完成', delta: '+11' }),
-        patchMetric(BOARD_METRICS[2], { value: String(closed), sub: '工单终态关闭', delta: '-3' }),
-        patchMetric(BOARD_METRICS[3], { value: '78.4%', sub: '昨日 74 单 · 58 单达成', delta: '+1.2%', deltaTone: 'good' }),
-        patchMetric(BOARD_METRICS[4], { value: '4.8%', sub: '超期 5 / 98 · 平均超 1.6h', delta: '-0.4%', deltaTone: 'good' }),
-        patchMetric(BOARD_METRICS[5], { value: '4.7', sub: '不满意 2.1% · 参评率 71%', delta: '+0.1', deltaTone: 'good' }),
+        patchMetric(BOARD_METRICS[0], { value: String(inbound), sub: '创建 93 转入5', delta: '+18' }),
+        patchMetric(BOARD_METRICS[1], { value: '86', sub: '下送 / 关闭 / 强结', delta: '+11' }),
+        patchMetric(BOARD_METRICS[2], { value: '14', sub: '技术支持 / 飞书', delta: '+3', deltaTone: 'bad' }),
+        patchMetric(BOARD_METRICS[3], { value: '2', sub: '技术支持 / 回访', delta: '0', deltaTone: 'neutral' }),
+        patchMetric(BOARD_METRICS[4], { value: '93.2%', sub: '昨日 74 单 · 69 单已联络', delta: '+0.8%', deltaTone: 'good' }),
+        patchMetric(BOARD_METRICS[5], { value: '2.0%', sub: '首响超 2 / 98 · 平均超 0.6h', delta: '-0.2%', deltaTone: 'good' }),
+        patchMetric(BOARD_METRICS[6], { value: '3.1%', sub: '解决超 3 / 98 · 平均超 1.6h', delta: '-0.2%', deltaTone: 'good' }),
+        patchMetric(BOARD_METRICS[7], { value: '4.7', sub: '不满意 2.1% · 参评率 71%', delta: '+0.1', deltaTone: 'good' }),
       ],
       todos: [
         { key: 'assign', label: '待指派', count: unassigned, unit: '单', tone: 'danger' },
@@ -1144,7 +1228,7 @@ export function getTeamBoardSnapshot(teamId: string): TeamBoardSnapshot {
         { sysKey: 'P3', reqLabel: '普通', count: 1, color: '#9CA3AF' },
       ],
       trafficScale: 0.7,
-      conclusion: `今日进线 ${inbound}（+18）、结案 ${closed}（−3），超时未结 ${backlog} 单，本组压力低于一组`,
+      conclusion: `今日进线 ${inbound}（+18）、升级 14（+3），超时未结 ${backlog} 单，本组压力低于一组`,
     };
   }
 
@@ -1166,17 +1250,19 @@ export function getTeamBoardSnapshot(teamId: string): TeamBoardSnapshot {
         focusOf('transferredOut', { value: '1', sub: '已转出 1d 2h · 回传受理组', delta: '0', deltaTone: 'neutral' }),
         focusOf('returned', { value: '1', delta: '0', deltaTone: 'neutral' }),
         focusOf('transferIn', { value: '3', delta: '+1' }),
-        focusOf('urge', { value: '7', pending: 2, pendingLabel: '未处理', sub: '7次，未处理 2' }),
+        focusOf('urge', { value: '7', pending: 2, pendingLabel: '未处理', sub: '本周 7 次，未处理 2' }),
         focusOf('supplement', { value: '4', pending: 1, pendingLabel: '未处理', sub: '4次，未处理 1' }),
         focusOf('appointment', { value: '5', pending: 3, pendingLabel: '未沟通', sub: '5次，未沟通 3' }),
       ],
       metrics: [
-        patchMetric(BOARD_METRICS[0], { value: String(inbound), sub: '自建 61 · 转入 3', delta: '+9' }),
-        patchMetric(BOARD_METRICS[1], { value: '52', label: '今日完工', sub: '上门/返修完成', delta: '+6' }),
-        patchMetric(BOARD_METRICS[2], { value: String(closed), sub: '售后单终态关闭', delta: '+2', deltaTone: 'good' }),
-        patchMetric(BOARD_METRICS[3], { value: '81.0%', sub: '昨日 42 单 · 34 单达成', delta: '+2.1%', deltaTone: 'good' }),
-        patchMetric(BOARD_METRICS[4], { value: '5.1%', sub: '超期 3 / 64 · 平均超 3.1h', delta: '+0.3%' }),
-        patchMetric(BOARD_METRICS[5], { value: '4.5', sub: '不满意 2.8% · 参评率 68%', delta: '-0.1' }),
+        patchMetric(BOARD_METRICS[0], { value: String(inbound), sub: '创建 61 转入3', delta: '+9' }),
+        patchMetric(BOARD_METRICS[1], { value: '52', label: '今日完工', sub: '下送 / 关闭 / 强结', delta: '+6' }),
+        patchMetric(BOARD_METRICS[2], { value: '8', sub: '技术支持 / 飞书', delta: '+2', deltaTone: 'bad' }),
+        patchMetric(BOARD_METRICS[3], { value: '1', sub: '技术支持 / 回访', delta: '0', deltaTone: 'neutral' }),
+        patchMetric(BOARD_METRICS[4], { value: '88.1%', sub: '昨日 42 单 · 37 单已联络', delta: '+1.5%', deltaTone: 'good' }),
+        patchMetric(BOARD_METRICS[5], { value: '1.6%', sub: '首响超 1 / 64 · 平均超 0.5h', delta: '0', deltaTone: 'neutral' }),
+        patchMetric(BOARD_METRICS[6], { value: '3.1%', sub: '解决超 2 / 64 · 平均超 3.1h', delta: '+0.3%', deltaTone: 'bad' }),
+        patchMetric(BOARD_METRICS[7], { value: '4.5', sub: '不满意 2.8% · 参评率 68%', delta: '-0.1' }),
       ],
       todos: [
         { key: 'assign', label: '待指派', count: unassigned, unit: '单', tone: 'danger' },
@@ -1191,7 +1277,7 @@ export function getTeamBoardSnapshot(teamId: string): TeamBoardSnapshot {
         { sysKey: 'P3', reqLabel: '普通', count: 1, color: '#9CA3AF' },
       ],
       trafficScale: 0.45,
-      conclusion: `今日进线 ${inbound}、结案 ${closed}，超时未结 ${backlog} 单；上门资源偏紧，建议优先消化 P0/P1`,
+      conclusion: `今日进线 ${inbound}、升级 8（+2），超时未结 ${backlog} 单；上门资源偏紧，建议优先消化 P0/P1`,
     };
   }
 
@@ -1206,6 +1292,6 @@ export function getTeamBoardSnapshot(teamId: string): TeamBoardSnapshot {
     members: TEAM_MEMBERS,
     priorityBuckets: PRIORITY_BUCKETS,
     trafficScale: 1,
-    conclusion: '今日进线 142（+45）、结案 96（−7）；超时未结 14 单（+3），建议优先清 P0/P1',
+    conclusion: '今日进线 142（+45）、升级 23（+6）；超时未结 14 单（+3），建议优先清 P0/P1',
   };
 }

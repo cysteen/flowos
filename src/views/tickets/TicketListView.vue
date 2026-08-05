@@ -21,9 +21,23 @@ const route = useRoute();
 const list = useTicketList();
 const createOpen = ref(false);
 
-/** 看板 / 监控 / 搜索等入口：把 URL 参数落到筛选条件（工具页，无「我的/本组」视图 Tab） */
+/**
+ * 看板 / 监控 / 搜索等入口：把 URL 参数落到筛选条件（工具页，无「我的/本组」视图 Tab）
+ *
+ * ⚠️ 提示只能有一条。本页被 KeepAlive 缓存，`onMounted` 与 `watch` 都会调到这里；
+ * 从看板连点几张卡时又会连续导航。所以做两件事：
+ *   ① 用 `appliedSig` 去重 —— 同一份 query 只应用一次；
+ *   ② message 带固定 key —— 新提示**替换**旧的，而不是往下堆。
+ */
+const DRILL_MSG_KEY = 'ticket-list-drill';
+let appliedSig = '';
+
 function applyRouteQuery() {
   const q = route.query;
+  const sig = JSON.stringify([q._from, q.status, q.priority, q.assignee, q.kw, q._label]);
+  if (sig === appliedSig) return;
+  appliedSig = sig;
+
   const hasBoard = typeof q._from === 'string' && q._from.startsWith('board.');
   const hasOpsFlow = typeof q._from === 'string' && q._from.startsWith('ops.flow.');
 
@@ -49,13 +63,13 @@ function applyRouteQuery() {
 
   if (hasBoard || hasOpsFlow) {
     const label = typeof q._label === 'string' ? q._label : hasOpsFlow ? '运营监控' : '看板';
-    message.info(`已按「${label}」筛选工单列表`, 2.5);
+    message.info({ content: `已按「${label}」筛选工单列表`, key: DRILL_MSG_KEY, duration: 2.5 });
   }
 }
 
 onMounted(applyRouteQuery);
 watch(
-  () => [route.query._from, route.query.status, route.query.priority, route.query.assignee, route.query.kw],
+  () => [route.query._from, route.query.status, route.query.priority, route.query.assignee, route.query.kw, route.query._label],
   () => applyRouteQuery(),
 );
 

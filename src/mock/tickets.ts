@@ -6,7 +6,7 @@ import type { Ticket } from '@/views/tickets/types/ticket';
 const BASE_TICKETS: Ticket[] = [
   // ---- 我的工单 (mine) 9 ----
   // 飞书项目集成演示单：消费者BG · 翻译机，用于演示「升级到飞书项目」全链路
-  {
+  { serviceScore: 5,
     id: 't-feishu', no: 'LCMN-20260713-90001', type: '咨询', channel: '在线客服',
     title: '翻译机离线翻译结果异常，疑似模型问题', smartMarks: ['升级'],
     customer: '陈翻译', vip: false, product: '讯飞翻译机 T10',
@@ -20,7 +20,7 @@ const BASE_TICKETS: Ticket[] = [
     createdAt: '2026-07-13 09:10', updatedAt: '2026-07-13 10:05',
     responded: true, upgradedByMe: false,
   },
-  {
+  { serviceScore: 2,
     id: 't1', no: 'LCMN-20260610-73026', type: '投诉', channel: '在线客服',
     title: '无线音乐播放跳过歌曲异常', smartMarks: ['升级', '情绪'],
     customer: '张小凡', vip: true, customerTags: ['记者'], product: '智能音箱 X1',
@@ -31,7 +31,7 @@ const BASE_TICKETS: Ticket[] = [
     createdAt: '2026-06-10 08:12', updatedAt: '2026-06-10 14:30',
     responded: true, upgradedByMe: true, hasDunning: true,
   },
-  {
+  { serviceScore: 5,
     id: 't2', no: 'LCMN-20260610-73118', type: '咨询', channel: '电话',
     title: '设备无法开机，指示灯不亮', smartMarks: ['升级'],
     customer: '李大海', vip: false, product: '扫地机器人 R2',
@@ -53,7 +53,7 @@ const BASE_TICKETS: Ticket[] = [
     createdAt: '2026-06-09 15:20', updatedAt: '2026-06-10 10:00',
     responded: true, suspendedByMe: true, hasSupplement: true,
   },
-  {
+  { serviceScore: 1,
     id: 't4', no: 'LCMN-20260610-75002', type: '商机', channel: '邮件',
     title: 'API 调用返回 429 限流', smartMarks: ['相似', '知识'],
     customer: '赵敏', vip: true, customerTags: ['校长'], product: '开放平台',
@@ -64,7 +64,7 @@ const BASE_TICKETS: Ticket[] = [
     createdAt: '2026-06-10 09:00', updatedAt: '2026-06-10 13:15',
     responded: true, upgradedByMe: true, hasDelegateHistory: true, hasReturnAction: true,
   },
-  {
+  { serviceScore: 5,
     id: 't5', no: 'LCMN-20260610-75240', type: '投诉', channel: 'APP',
     title: '收到商品与描述不符，申请退货', smartMarks: ['情绪'],
     customer: '孙莉', vip: false, customerTags: ['自媒体'], product: '蓝牙耳机 Air',
@@ -88,7 +88,7 @@ const BASE_TICKETS: Ticket[] = [
     createdAt: '2026-08-04 09:20', updatedAt: '2026-08-04 10:05',
     responded: true,
   },
-  {
+  { serviceScore: 3,
     id: 't5b', no: 'LCMN-20260804-81002', type: '投诉', channel: '在线客服',
     title: '跨组调剂·二组转入待跟进', smartMarks: ['情绪'],
     customer: '冯磊', vip: false, product: '智能音箱 X1',
@@ -114,7 +114,7 @@ const BASE_TICKETS: Ticket[] = [
     responded: false,
     hasAppointment: true, appointmentText: '02:15:00',
   },
-  {
+  { serviceScore: 5,
     id: 't7', no: 'LCMN-20260610-75744', type: '咨询', channel: '在线客服',
     title: '会员续费优惠如何领取', smartMarks: ['知识'],
     customer: '吴芳', vip: true, customerTags: ['老师'], product: '会员服务',
@@ -153,7 +153,7 @@ const BASE_TICKETS: Ticket[] = [
 
   // ---- 已办 (done) 6 ----
   // 更新时间需落在「已办」默认 30 天窗内（相对当前原型日 2026-07-17）
-  {
+  { serviceScore: 2,
     id: 't9', no: 'LCMN-20260715-72015', type: '咨询', channel: '电话',
     title: '空气净化器滤芯指示灯常亮', smartMarks: [],
     customer: '冯涛', vip: false, product: '空气净化器 P3',
@@ -174,7 +174,7 @@ const BASE_TICKETS: Ticket[] = [
     customerPhone: '13622223333', productCategory: '企业服务',
     createdAt: '2026-07-12 10:15', updatedAt: '2026-07-14 16:40',
   },
-  {
+  { serviceScore: 5,
     id: 't11', no: 'LCMN-20260716-72645', type: '商机', channel: '邮件',
     title: 'Webhook 推送偶发丢失', smartMarks: ['相似'],
     customer: '韩雪', vip: true, customerTags: ['自媒体'], product: '开放平台',
@@ -219,7 +219,7 @@ const BASE_TICKETS: Ticket[] = [
   // ── 已关闭 · 两种关闭原因对照（PRD §5.6.4）────────────────────────────
   // ① 正常关闭：**无派生子单**（有父关联：本单是别的单升级来的）。
   //    再来诉求 → 补充/催单走「基于原单建新单承接」（§5.2，同 Zendesk follow-up）。
-  {
+  { serviceScore: 3,
     id: 't40', no: 'LCMN-20260709-60110', type: '投诉', channel: '电话',
     title: '学习机屏幕漏光已现场更换', smartMarks: [],
     customer: '周敏', vip: false, product: '学习机 T20',
@@ -247,7 +247,7 @@ const BASE_TICKETS: Ticket[] = [
     createdAt: '2026-07-08 09:10', updatedAt: '2026-07-11 14:25',
   },
   // 升级派生出的外投新单（上面 t41 的去向，可从关系芯片/横幅跳到这里）
-  {
+  { serviceScore: 5,
     id: 't42', no: 'LCMN-20260711-61551', type: '投诉', channel: '在线客服',
     title: '外投·维修超期未解决客户要求赔偿', smartMarks: ['升级'],
     customer: '吴强', vip: true, product: '智能音箱 X1',

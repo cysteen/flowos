@@ -46,6 +46,7 @@ import {
   APPOINTMENT_EVENTS,
   APPROVAL_PENDING_DRILL,
   RETURN_DRILL,
+  type SourceDrillGroup,
   SUSPEND_DRILL,
   TRANSFERRED_OUT_DRILL,
   DELEGATED_DRILL,
@@ -91,7 +92,7 @@ const summaryParts = computed(() => {
   const unassigned = stockVal('unassigned');
   const backlog = stockVal('backlog');
   const inbound = metricVal('inbound');
-  const closed = metricVal('closed');
+  const escalated = metricVal('escalated');
   const assignN = board.value.todos[0]?.count ?? 0;
   /** 阈值随积压口径同步下调：新口径只数超时未结单，量级由几十降到十几 */
   const heavy = Number(unassigned) >= 5 || Number(backlog) >= 10;
@@ -102,10 +103,10 @@ const summaryParts = computed(() => {
     { text: `${unassigned} 单未分派`, tone: 'risk' as const },
     { text: '、超时未结 ', tone: 'plain' as const },
     { text: `${backlog}`, tone: 'risk' as const },
-    { text: '；今日进线 ', tone: 'plain' as const },
+    { text: '；今日新增 ', tone: 'plain' as const },
     { text: `${inbound}`, tone: 'gain' as const },
-    { text: '、结案 ', tone: 'plain' as const },
-    { text: `${closed}`, tone: heavy ? ('plain' as const) : ('gain' as const) },
+    { text: '、升级 ', tone: 'plain' as const },
+    { text: `${escalated}`, tone: 'risk' as const },
     {
       text: heavy
         ? `，建议优先去指派 ${assignN} 单。`
@@ -117,14 +118,21 @@ const summaryParts = computed(() => {
 
 /* ========================= ① 指标分组 ========================= */
 
-/** X7：有真实时间序列的三个数量指标，只有它们可以聚焦趋势线 */
+/**
+ * X7：只有**有真实时间序列**的指标才能聚焦趋势线。
+ * ⚠️ 'closed' 仍是趋势图的第三条线，但 2026-08-05 起它不再有对应卡片
+ * （「今日结案」已换成「今日升级」），所以卡片里可聚焦的只剩进线与下送。
+ */
 type SeriesKey = 'inbound' | 'forward' | 'closed';
 const SERIES_KEYS: SeriesKey[] = ['inbound', 'forward', 'closed'];
 const isSeries = (k: string): k is SeriesKey => (SERIES_KEYS as string[]).includes(k);
 
-/** R1b：数量与率值分组展示，中间加分隔，避免「6 个数一排」读不出层次 */
-const COUNT_METRICS = computed(() => board.value.metrics.filter((m) => isSeries(m.key)));
-const RATE_METRICS = computed(() => board.value.metrics.filter((m) => !isSeries(m.key)));
+/** 数量组的四张卡（顺序即展示顺序）；其余归率值组 */
+const COUNT_KEYS = ['inbound', 'forward', 'escalated', 'returnedToday'];
+
+/** R1b：数量与率值分组展示，中间加分隔，避免「一排数字」读不出层次 */
+const COUNT_METRICS = computed(() => board.value.metrics.filter((m) => COUNT_KEYS.includes(m.key)));
+const RATE_METRICS = computed(() => board.value.metrics.filter((m) => !COUNT_KEYS.includes(m.key)));
 
 /** 默认不聚焦：三线等权，先给全局印象；点某卡再聚焦 */
 const focusKey = ref<SeriesKey | null>(null);
@@ -182,6 +190,13 @@ const LIST_DRILL_KEYS = new Set([
   'transferredOut',
   'returned',
   'transferIn',
+  // 今日指标区（2026-08-05 起同样直达列表）
+  'escalated',
+  'returnedToday',
+  'contact-rate-24h',
+  'first-response-overdue',
+  'resolution-overdue',
+  'service-bad',
 ]);
 
 /** 列表 status 与看板指标的映射（TicketListView 识别同名 status） */
@@ -191,7 +206,29 @@ const LIST_STATUS_OF: Record<string, string> = {
   transferredOut: 'transferred',
   returned: 'returned',
   transferIn: 'transferIn',
+  escalated: 'escalated',
+  returnedToday: 'returned',
+  /** 率值卡点进去看的是**分子的反面**——没联络上的那批，才是要动手的 */
+  'contact-rate-24h': 'contactMissed',
+  'first-response-overdue': 'firstResponseOverdue',
+  'resolution-overdue': 'resolutionOverdue',
+  'service-bad': 'serviceBad',
 };
+
+/**
+ * 今日指标卡的点击：有时间序列的聚焦趋势线，其余的直达工单列表。
+ * 率值卡点进去看的是**分子的反面**（如联络率 → 未联络的那批），才有行动价值。
+ */
+function onMetricClick(key: string) {
+  if (isSeries(key)) { toggleFocus(key); return; }
+  if (LIST_DRILL_KEYS.has(key)) goBoardTicketList(key);
+}
+
+function metricCardTitle(m: { key: string; label: string; sub?: string }) {
+  if (isSeries(m.key)) return `点击在趋势图中聚焦「${m.label}」`;
+  if (LIST_DRILL_KEYS.has(m.key)) return `点击查看「${m.label}」对应的工单列表`;
+  return m.sub ?? '';
+}
 
 function drillOf(key: string): DrillTarget {
   if (key === 'unassigned') return null;
@@ -203,7 +240,7 @@ function drillOf(key: string): DrillTarget {
 function goBoardTicketList(key: string) {
   const status = LIST_STATUS_OF[key];
   if (!status) return;
-  const label = board.value.focus.find((f) => f.key === key)?.label ?? key;
+  const label = [...board.value.focus, ...board.value.metrics].find((f) => f.key === key)?.label ?? key;
   router.push({
     path: '/tickets/list',
     query: {
@@ -218,7 +255,6 @@ function goBoardTicketList(key: string) {
 
 /** 人员下钻（挂起等）；催单·补充·预约改走事件明细 */
 const PEOPLE_SOURCE: Record<string, PeopleDrillRow[]> = {
-  returned: RETURN_DRILL,
   suspended: SUSPEND_DRILL,
   transferredOut: TRANSFERRED_OUT_DRILL,
   delegated: DELEGATED_DRILL,
@@ -268,8 +304,8 @@ function drawerConf(key: string) {
       footer: `在工单工作台查看相关工单 →`,
     },
     returned: {
-      title: '退回 · 按人员',
-      subtitle: '仅技术支持退回（决策 D16）',
+      title: '退回 · 按来源',
+      subtitle: '技术支持退回 / 回访退回（810 侧名为「打回」）',
       total: n('returned'),
       footer: `在工单工作台查看这 ${n('returned')} 单 →`,
     },
@@ -322,6 +358,13 @@ function openDrill(key: string, e?: MouseEvent) {
 }
 
 const drawerPeople = computed(() => PEOPLE_SOURCE[drawerKey.value] ?? []);
+
+/** 来源分组下钻：退回（技支 / 回访两来源）与转入（三来源）共用同一种抽屉 */
+const SOURCE_DRILLS: Record<string, SourceDrillGroup[]> = {
+  returned: RETURN_DRILL,
+  transferIn: TRANSFER_DRILL,
+};
+const drawerSources = computed(() => SOURCE_DRILLS[drawerKey.value] ?? []);
 const drawerEvents = computed(() => EVENT_SOURCE[drawerKey.value] ?? []);
 
 function onGoList(p: DrillGoListPayload) {
@@ -454,19 +497,22 @@ const COLS: {
   num: boolean;
   firstDir: 'asc' | 'desc';
   tipKey?: string;
+  groupStart?: boolean;
 }[] = [
-  { key: 'name', label: '组员', w: '72px', num: false, firstDir: 'asc' },
-  { key: 'online', label: '状态', w: '68px', num: false, firstDir: 'asc', tipKey: 'member.online' },
-  { key: 'workload', label: '在办负载', w: 'minmax(128px, 1.2fr)', num: false, firstDir: 'desc', tipKey: 'member.workload' },
-  { key: 'forwardToday', label: '下送', w: 'minmax(56px, 0.7fr)', num: true, firstDir: 'desc', tipKey: 'member.forwardToday' },
-  { key: 'avgHandle', label: '均处理', w: 'minmax(64px, 0.8fr)', num: true, firstDir: 'desc', tipKey: 'member.avgHandle' },
-  { key: 'overdue', label: '超时', w: 'minmax(56px, 0.7fr)', num: true, firstDir: 'desc', tipKey: 'member.overdue' },
-  { key: 'followRate', label: '跟进率', w: 'minmax(68px, 0.8fr)', num: true, firstDir: 'asc', tipKey: 'member.followRate' },
-  { key: 'csat', label: '满意度', w: 'minmax(68px, 0.8fr)', num: true, firstDir: 'asc', tipKey: 'member.csat' },
-  { key: 'resolveRate', label: '解决率', w: 'minmax(68px, 0.8fr)', num: true, firstDir: 'asc', tipKey: 'member.resolveRate' },
-  { key: 'reviewRate', label: '参评率', w: 'minmax(68px, 0.8fr)', num: true, firstDir: 'asc', tipKey: 'member.reviewRate' },
+  { key: 'name', label: '组员', w: 'minmax(132px, 1.05fr)', num: false, firstDir: 'asc' },
+  { key: 'workload', label: '在办负载', w: 'minmax(132px, 1.1fr)', num: false, firstDir: 'desc', tipKey: 'member.workload', groupStart: true },
+  { key: 'forwardToday', label: '下送', w: 'minmax(60px, 0.75fr)', num: true, firstDir: 'desc', tipKey: 'member.forwardToday', groupStart: true },
+  { key: 'avgHandle', label: '平均通话时长', w: 'minmax(100px, 1fr)', num: true, firstDir: 'desc', tipKey: 'member.avgHandle' },
+  { key: 'overdue', label: '超时', w: 'minmax(56px, 0.7fr)', num: true, firstDir: 'desc', tipKey: 'member.overdue', groupStart: true },
+  { key: 'followRate', label: '跟进率', w: 'minmax(72px, 0.85fr)', num: true, firstDir: 'asc', tipKey: 'member.followRate' },
+  { key: 'csat', label: '满意度', w: 'minmax(72px, 0.85fr)', num: true, firstDir: 'asc', tipKey: 'member.csat' },
+  { key: 'reviewRate', label: '参评率', w: 'minmax(72px, 0.85fr)', num: true, firstDir: 'asc', tipKey: 'member.reviewRate' },
 ];
-const gridCols = [...COLS.map((c) => c.w), '56px'].join(' ');
+/** 2026-08-05：移除行内「操作（指派）」列，指派统一走未分派卡的「去指派」 */
+const gridCols = COLS.map((c) => c.w).join(' ');
+
+/** 问题 TOP10 列宽 */
+const probGridCols = '48px minmax(220px, 1.65fr) minmax(68px, 0.75fr) minmax(148px, 1.15fr) minmax(76px, 0.8fr) minmax(108px, 0.95fr) minmax(92px, 0.85fr)';
 
 const sortKey = ref<SortKey | null>(null);
 const sortDir = ref<SortDir>(null);
@@ -532,6 +578,15 @@ function sortTip(c: (typeof COLS)[number]) {
   return c.firstDir === 'desc' ? `点击按${c.label}从高到低` : `点击按${c.label}从低到高`;
 }
 
+function colActive(key: SortKey) {
+  const c = COLS.find((x) => x.key === key);
+  return c ? colState(c) : { active: false, dir: null as SortDir };
+}
+
+function memberInitial(name: string) {
+  return name.charAt(0);
+}
+
 /* ========================= ⑤ 趋势卡 ========================= */
 
 const gran = ref<'hour' | 'day'>('day');
@@ -552,14 +607,14 @@ const trafficPoints = computed(() => {
  * 两条实线叠在一起会互相遮蔽，读者分不清是一条还是两条。
  */
 const SERIES: { key: SeriesKey; label: string; color: string; dash?: string }[] = [
-  { key: 'inbound', label: '进线', color: '#1A6FFF' },
+  { key: 'inbound', label: '新增', color: '#1A6FFF' },
   { key: 'forward', label: '下送', color: '#10B981' },
   { key: 'closed', label: '结案', color: '#8B5CF6', dash: '5 3' },
 ];
 
 const trendTitle = computed(() => {
   const s = SERIES.find((x) => x.key === focusKey.value);
-  return s ? `${s.label}趋势` : '进线 · 下送 · 结案';
+  return s ? `${s.label}趋势` : '新增 · 下送 · 结案';
 });
 
 const W = 400;
@@ -607,9 +662,9 @@ const loadDist = computed(() => {
     g[levelOf(m)] += 1;
   });
   return [
-    { level: '空闲' as LoadLevel, count: g.空闲, hint: '≤5 单' },
-    { level: '适中' as LoadLevel, count: g.适中, hint: '6–12 单' },
-    { level: '满载' as LoadLevel, count: g.满载, hint: '>12 单' },
+    { level: '空闲' as LoadLevel, count: g.空闲, hint: '<15 单' },
+    { level: '适中' as LoadLevel, count: g.适中, hint: '15–30 单' },
+    { level: '满载' as LoadLevel, count: g.满载, hint: '>30 单' },
   ];
 });
 
@@ -832,25 +887,31 @@ watch(teamId, () => {
     <section class="overview-section today" aria-labelledby="today-title">
       <div class="section-head">
         <div class="section-head-main">
-          <h2 id="today-title" class="section-title">今日指标</h2>
-          <p class="section-sub">承接 → 产出 → 终结 · 右侧质量与时效 · 点数量卡聚焦趋势</p>
+          <h2 id="today-title" class="section-title">关键指标</h2>
+          <p class="section-sub">承接 → 产出 → 升级/退回 · 右侧质量与时效 · 点进线/下送卡聚焦趋势</p>
         </div>
       </div>
 
-      <div class="kpi-strip today-strip" role="list" aria-label="今日指标">
+      <div class="kpi-strip today-strip" role="list" aria-label="关键指标">
         <div
           v-for="m in COUNT_METRICS"
           :key="m.key"
           role="listitem"
-          class="kpi-card interactive"
-          :class="{ on: focusKey === m.key, 'tone-gain': m.deltaTone === 'good', 'tone-risk': m.deltaTone === 'bad' && m.key === 'closed' }"
+          class="kpi-card"
+          :class="{
+            interactive: isSeries(m.key) || LIST_DRILL_KEYS.has(m.key),
+            static: !isSeries(m.key) && !LIST_DRILL_KEYS.has(m.key),
+            on: focusKey === m.key,
+            'tone-gain': m.deltaTone === 'good',
+            'tone-risk': m.deltaTone === 'bad',
+          }"
           :style="{ '--kpi-accent': m.valueColor || m.iconColor || '#1A6FFF' }"
-          tabindex="0"
-          :title="`点击在趋势图中聚焦「${m.label}」`"
-          :aria-label="`${m.label} ${m.value}${m.delta ? '，' + m.delta : ''}，${m.sub || ''}，点击聚焦趋势`"
-          @click="toggleFocus(m.key)"
-          @keydown.enter.prevent="toggleFocus(m.key)"
-          @keydown.space.prevent="toggleFocus(m.key)"
+          :tabindex="isSeries(m.key) || LIST_DRILL_KEYS.has(m.key) ? 0 : -1"
+          :title="metricCardTitle(m)"
+          :aria-label="`${m.label} ${m.value}${m.delta ? '，' + m.delta : ''}，${m.sub || ''}`"
+          @click="onMetricClick(m.key)"
+          @keydown.enter.prevent="onMetricClick(m.key)"
+          @keydown.space.prevent="onMetricClick(m.key)"
         >
           <div class="kpi-body">
             <div class="kpi-label">
@@ -874,10 +935,15 @@ watch(teamId, () => {
           v-for="m in RATE_METRICS"
           :key="m.key"
           role="listitem"
-          class="kpi-card static"
+          class="kpi-card"
+          :class="{ interactive: LIST_DRILL_KEYS.has(m.key), static: !LIST_DRILL_KEYS.has(m.key) }"
           :style="{ '--kpi-accent': m.valueColor || m.iconColor || '#94a3b8' }"
-          :title="m.sub"
+          :tabindex="LIST_DRILL_KEYS.has(m.key) ? 0 : -1"
+          :title="metricCardTitle(m)"
           :aria-label="`${m.label} ${m.value}${m.delta ? '，' + m.delta : ''}，${m.sub || ''}`"
+          @click="onMetricClick(m.key)"
+          @keydown.enter.prevent="onMetricClick(m.key)"
+          @keydown.space.prevent="onMetricClick(m.key)"
         >
           <div class="kpi-body">
             <div class="kpi-label">
@@ -915,7 +981,6 @@ watch(teamId, () => {
               <div class="seg-i" :class="{ on: gran === 'hour' }" @click="gran = 'hour'">时</div>
               <div class="seg-i" :class="{ on: gran === 'day' }" @click="gran = 'day'">日</div>
             </div>
-            <span class="badge soft">离线 T+1</span>
           </div>
         </div>
         <div class="legend">
@@ -982,8 +1047,14 @@ watch(teamId, () => {
     <div class="body">
       <div class="card detail">
         <div class="card-hd">
-          <div class="hd-l">
-            <span class="hd-title">组员明细</span>
+          <div class="hd-main">
+            <h3 class="hd-title">组员明细</h3>
+            <p v-if="tab === 'members' && loadFilter" class="hd-hint">
+              负载筛选：<strong>{{ loadFilter }}</strong>
+              <button type="button" class="hd-hint-clear" @click="loadFilter = null">清除</button>
+            </p>
+          </div>
+          <div class="hd-actions">
             <div class="tabs">
               <div v-for="t in TABS" :key="t[0]" class="tab" :class="{ on: tab === t[0] }" @click="tab = t[0]">
                 {{ t[1] }}
@@ -993,24 +1064,18 @@ watch(teamId, () => {
                 />
               </div>
             </div>
-          </div>
-          <!--
-            「设置指标」（列显隐配置）已于 2026-08-04 移除：需求未提出，且做成配置
-            需要个人偏好存储 + 必留列兜底，成本与收益不匹配。先看真实使用再评估。
-          -->
-          <div class="hd-r">
             <button class="btn-ghost" @click="onExport"><ExportOutlined /> 导出</button>
           </div>
         </div>
 
         <!-- 组员：效能 + 负载合并 -->
-        <div v-if="tab === 'members'" class="tbl">
-          <div class="thead" :style="{ gridTemplateColumns: gridCols }">
+        <div v-if="tab === 'members'" class="tbl members-tbl detail-tbl">
+          <div class="thead members-grid" :style="{ gridTemplateColumns: gridCols }">
             <div
               v-for="c in COLS"
               :key="c.key"
               class="th"
-              :class="{ active: colState(c).active, num: c.num }"
+              :class="{ active: colState(c).active, num: c.num, 'group-start': c.groupStart }"
               :title="sortTip(c)"
               @click="toggleSort(c)"
             >
@@ -1025,70 +1090,105 @@ watch(teamId, () => {
               <CaretDownOutlined v-else-if="colState(c).dir === 'desc'" class="s-ic on" />
               <SwapOutlined v-else class="s-ic rot" />
             </div>
-            <div class="th th-static">操作</div>
           </div>
-          <div v-for="r in sortedMembers" :key="r.id" class="trow" :style="{ gridTemplateColumns: gridCols }">
-            <div class="td" :class="{ colon: colState(COLS[0]).active }">{{ r.name }}</div>
-            <div class="td" :class="{ colon: colState(COLS[1]).active }">
-              <i class="dot" :style="{ background: ONLINE_COLOR[r.online] }" />{{ r.online }}
+          <div
+            v-for="r in sortedMembers"
+            :key="r.id"
+            class="trow members-grid"
+            :class="{ 'row-warn': r.overdue > 2 }"
+            :style="{ gridTemplateColumns: gridCols }"
+          >
+            <div class="td td-name" :class="{ colon: colActive('name').active }">
+              <span class="m-avatar">{{ memberInitial(r.name) }}</span>
+              <span class="m-name">{{ r.name }}</span>
             </div>
-            <div class="td td-load" :class="{ colon: colState(COLS[2]).active }">
-              <span class="ld-n">{{ r.workload }}</span>
-              <div class="lbar">
-                <i :style="{ width: Math.min(100, (r.workload / 16) * 100) + '%', background: LOAD_STYLE[levelOf(r)].color }" />
+            <div class="td td-load group-start" :class="{ colon: colActive('workload').active }">
+              <div class="load-cell">
+                <div class="load-top">
+                  <span class="ld-n">{{ r.workload }}</span>
+                  <span class="ltag" :style="{ color: LOAD_STYLE[levelOf(r)].color, background: LOAD_STYLE[levelOf(r)].bg }">
+                    {{ levelOf(r) }}
+                  </span>
+                </div>
+                <div class="lbar">
+                  <i :style="{ width: Math.min(100, (r.workload / 40) * 100) + '%', background: LOAD_STYLE[levelOf(r)].color }" />
+                </div>
               </div>
-              <span class="ltag" :style="{ color: LOAD_STYLE[levelOf(r)].color, background: LOAD_STYLE[levelOf(r)].bg }">
-                {{ levelOf(r) }}
-              </span>
             </div>
-            <div class="td num" :class="{ colon: colState(COLS[3]).active }">{{ r.forwardToday }}</div>
-            <div class="td num" :class="{ colon: colState(COLS[4]).active }">{{ r.avgHandle }}</div>
-            <div class="td num" :class="[{ colon: colState(COLS[5]).active }, r.overdue > 2 ? 'danger' : '']">{{ r.overdue }}</div>
-            <div class="td num" :class="{ colon: colState(COLS[6]).active }">{{ r.followRate }}</div>
-            <div class="td num" :class="{ colon: colState(COLS[7]).active }">{{ r.csat }}</div>
-            <div class="td num" :class="{ colon: colState(COLS[8]).active }">{{ r.resolveRate }}</div>
-            <div class="td num" :class="{ colon: colState(COLS[9]).active }">{{ r.reviewRate }}</div>
-            <div class="td"><a class="link" @click.stop="openAssign([r.id])">指派</a></div>
+            <div class="td num group-start" :class="{ colon: colActive('forwardToday').active }">{{ r.forwardToday }}</div>
+            <div class="td num" :class="{ colon: colActive('avgHandle').active }">{{ r.avgHandle }}</div>
+            <div class="td num group-start" :class="[{ colon: colActive('overdue').active }, r.overdue > 2 ? 'danger' : '']">{{ r.overdue }}</div>
+            <div class="td num" :class="{ colon: colActive('followRate').active }">{{ r.followRate }}</div>
+            <div class="td num" :class="{ colon: colActive('csat').active }">{{ r.csat }}</div>
+            <div class="td num" :class="{ colon: colActive('reviewRate').active }">{{ r.reviewRate }}</div>
           </div>
         </div>
 
         <!-- 问题 TOP10 -->
-        <div v-else class="tbl">
-          <div class="thead prob-grid">
+        <div v-else class="tbl prob-tbl detail-tbl">
+          <div class="thead prob-grid" :style="{ gridTemplateColumns: probGridCols }">
             <div class="th th-static">#</div>
-            <div class="th th-static">问题分类（二级）<MetricTipIcon v-if="boardTip('problemTop10')" :tip="boardTip('problemTop10')!" /></div>
-            <div class="th th-static num">工单量<MetricTipIcon v-if="boardTip('top10.count')" :tip="boardTip('top10.count')!" /></div>
+            <div class="th th-static group-start">问题分类（三级）<MetricTipIcon v-if="boardTip('problemTop10')" :tip="boardTip('problemTop10')!" /></div>
+            <div class="th th-static num group-start">工单量<MetricTipIcon v-if="boardTip('top10.count')" :tip="boardTip('top10.count')!" /></div>
             <div class="th th-static">占比<MetricTipIcon v-if="boardTip('top10.ratio')" :tip="boardTip('top10.ratio')!" /></div>
             <div class="th th-static num">环比<MetricTipIcon v-if="boardTip('top10.delta')" :tip="boardTip('top10.delta')!" /></div>
-            <div class="th th-static">已沉淀方案<MetricTipIcon v-if="boardTip('top10.solution')" :tip="boardTip('top10.solution')!" /></div>
+            <div class="th th-static group-start">已沉淀方案<MetricTipIcon v-if="boardTip('top10.solution')" :tip="boardTip('top10.solution')!" /></div>
             <div class="th th-static">操作</div>
           </div>
-          <div v-for="p in PROBLEM_TOP10" :key="p.rank" class="trow prob-grid">
-            <div class="td num">{{ p.rank }}</div>
-            <div class="td">{{ p.category }}</div>
-            <div class="td num">{{ p.count }}</div>
-            <div class="td">
-              <div class="pbar"><i :style="{ width: Math.min(100, p.ratio * 4) + '%' }" /></div>
-              <span class="pnum">{{ p.ratio.toFixed(1) }}%</span>
+          <div
+            v-for="p in PROBLEM_TOP10"
+            :key="p.rank"
+            class="trow prob-grid"
+            :class="{ 'row-pending': !p.solved && p.rank <= 3 }"
+            :style="{ gridTemplateColumns: probGridCols }"
+          >
+            <div class="td td-rank">
+              <span class="rank-badge" :class="{ top: p.rank <= 3 }">{{ p.rank }}</span>
+            </div>
+            <div class="td pt-path-cell group-start">
+              <div class="pt-main" :title="`${p.tagL1} / ${p.tagL2} / ${p.tagL3}`">{{ p.tagL3 }}</div>
+              <div class="pt-sub">{{ p.tagL1 }} / {{ p.tagL2 }}</div>
+            </div>
+            <div class="td num td-count group-start">
+              <span class="count-val">{{ p.count }}</span>
+            </div>
+            <div class="td td-ratio">
+              <div class="ratio-cell">
+                <div class="ratio-top">
+                  <span class="pnum">{{ p.ratio.toFixed(1) }}%</span>
+                </div>
+                <div class="pbar">
+                  <i :style="{ width: Math.min(100, p.ratio * 4) + '%' }" />
+                </div>
+              </div>
             </div>
             <div class="td num" :class="p.mom.startsWith('+') ? 'danger' : 'good'">{{ p.mom }}</div>
-            <div class="td">
-              <CheckCircleFilled v-if="p.solved" style="color: #10b981" />
-              <MinusCircleOutlined v-else style="color: #9ca3af" />
-              <span class="solved-t">{{ p.solved ? '已沉淀' : '待沉淀' }}</span>
+            <div class="td td-solved group-start">
+              <span class="solved-pill" :class="p.solved ? 'ok' : 'pending'">
+                <CheckCircleFilled v-if="p.solved" />
+                <MinusCircleOutlined v-else />
+                {{ p.solved ? '已沉淀' : '待沉淀' }}
+              </span>
             </div>
-            <div class="td">
-              <a class="link" @click="router.push({ path: '/tickets/list', query: { category: p.category } })">查看工单</a>
+            <div class="td td-action">
+              <button
+                type="button"
+                class="prob-link-btn"
+                @click="router.push({ path: '/tickets/list', query: { tagL1: p.tagL1, tagL2: p.tagL2, tagL3: p.tagL3 } })"
+              >
+                查看工单
+                <RightOutlined />
+              </button>
             </div>
           </div>
         </div>
 
         <div class="card-ft">
           <span v-if="tab === 'members'">
-            默认：超时↓ → 跟进率↑ → 下送↓ · 负载阈值 空闲≤5 / 适中6–12 / 满载&gt;12 · 点上方分布卡可筛选 · 共 {{ board.members.length }} 人
+            默认：超时↓ → 跟进率↑ → 下送↓ · 负载阈值 空闲&lt;15 / 适中15–30 / 满载&gt;30 · 点上方分布卡可筛选 · 共 {{ board.members.length }} 人
           </span>
           <span v-else>
-            分类粒度＝二级（按哪级聚合待业务确认）·「已沉淀方案」用于追踪一线前置解答的落实情况
+            按三级分类聚合 ·「已沉淀方案」用于追踪一线前置解答的落实情况 · 共 {{ PROBLEM_TOP10.length }} 项
           </span>
         </div>
       </div>
@@ -1104,7 +1204,7 @@ watch(teamId, () => {
       :buckets="board.priorityBuckets"
       :people="drawerPeople"
       :events="drawerEvents"
-      :sources="TRANSFER_DRILL"
+      :sources="drawerSources"
       :footer-text="drawerFooter"
       @go-list="onGoList"
       @assign="(r) => openAssign([r.id])"
@@ -1327,7 +1427,6 @@ watch(teamId, () => {
 .focus-primary {
   grid-template-columns: repeat(7, minmax(0, 1fr));
 }
-.focus-primary .kpi-value { font-size: 22px; }
 .focus-events {
   display: flex;
   align-items: center;
@@ -1408,8 +1507,13 @@ watch(teamId, () => {
   }
 }
 .today-strip {
-  grid-template-columns: repeat(3, minmax(0, 1fr)) 1px repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr)) 1px repeat(4, minmax(0, 1fr));
   align-items: stretch;
+}
+.kpi-label-main :deep(.ant-tooltip) {
+  display: inline-flex;
+  flex: none;
+  line-height: 1;
 }
 .kpi-strip-sep {
   width: 1px;
@@ -1621,7 +1725,7 @@ watch(teamId, () => {
 }
 @media (max-width: 960px) {
   .today-strip {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
   .kpi-strip-sep { display: none; }
 }
@@ -1689,18 +1793,49 @@ watch(teamId, () => {
 .detail { flex: 1; min-width: 0; overflow: hidden; }
 
 .card-hd {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 16px; border-bottom: 1px solid #eef2f7;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid #eef2f7;
 }
+.hd-main { min-width: 0; }
+.hd-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.hd-hint {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: #64748b;
+  line-height: 1.4;
+}
+.hd-hint strong { color: #1a6fff; font-weight: 600; }
+.hd-hint-clear {
+  margin-left: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: #1a6fff;
+  cursor: pointer;
+  font-family: inherit;
+}
+.hd-hint-clear:hover { text-decoration: underline; }
 .hd-l { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .hd-r { display: flex; align-items: center; gap: 8px; flex: none; }
 .hd-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 14px;
-  font-weight: 600;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
   color: #0f172a;
+  line-height: 1.3;
 }
 .tabs { display: flex; background: #f1f5f9; border-radius: 7px; padding: 2px; gap: 2px; }
 .tab {
@@ -1725,9 +1860,23 @@ watch(teamId, () => {
 /* 表格 */
 .tbl { flex: 1; overflow: auto; min-height: 0; }
 .thead, .trow { display: grid; align-items: center; }
-.prob-grid {
-  grid-template-columns: 40px minmax(160px, 1.4fr) 76px minmax(120px, 1fr) 72px 96px 84px;
+.pt-path { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.pt-l1, .pt-l2 { color: #94a3b8; white-space: nowrap; }
+.pt-sep { color: #cbd5e1; flex: none; }
+.pt-l3 { color: #334155; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prob-grid { /* grid columns set inline */ }
+.detail-tbl .th.group-start,
+.detail-tbl .td.group-start {
+  border-left: 1px solid #eef2f7;
 }
+.detail-tbl .thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f8fafc;
+}
+.detail-tbl .td { padding: 10px 12px; }
+.detail-tbl .th { padding: 8px 12px; }
 .thead { position: sticky; top: 0; z-index: 1; background: #f8fafc; }
 .th {
   display: flex; align-items: center; gap: 4px; padding: 10px 12px;
@@ -1746,6 +1895,207 @@ watch(teamId, () => {
 .th.th-static { cursor: default; }
 .th.th-static:hover { background: transparent; color: #64748b; }
 .td-load { gap: 6px; min-width: 0; }
+.members-tbl .td-name {
+  gap: 8px;
+  padding-left: 16px;
+  padding-right: 24px;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: inherit;
+}
+.members-tbl .thead .th:first-child {
+  padding-left: 16px;
+  padding-right: 24px;
+}
+.members-tbl .td-load {
+  padding-left: 20px;
+}
+.members-tbl .thead .th:nth-child(2) {
+  padding-left: 20px;
+}
+.m-avatar {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: #1a6fff;
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
+}
+.m-name {
+  font-weight: 600;
+  color: #111827;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.load-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+}
+.load-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.members-tbl .lbar {
+  flex: none;
+  width: 100%;
+  max-width: none;
+  height: 5px;
+}
+.members-tbl .trow.row-warn {
+  background: linear-gradient(90deg, rgba(254, 242, 242, 0.55) 0%, transparent 42%);
+}
+.members-tbl .trow:hover .td-name {
+  background: #f9fafb;
+}
+.members-tbl .trow.row-warn:hover .td-name {
+  background: #fef2f2;
+}
+.members-tbl .trow:hover { background: #f9fafb; }
+.members-tbl .trow.row-warn:hover {
+  background: linear-gradient(90deg, rgba(254, 242, 242, 0.75) 0%, #f9fafb 42%);
+}
+
+/* 问题 TOP10 */
+.prob-tbl .td-rank {
+  justify-content: center;
+  padding-left: 16px;
+}
+.rank-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #64748b;
+  background: #f1f5f9;
+}
+.rank-badge.top {
+  color: #1a6fff;
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
+}
+.pt-path-cell {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+}
+.pt-main {
+  width: 100%;
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pt-sub {
+  width: 100%;
+  font-size: 11px;
+  color: #94a3b8;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.count-val {
+  font-size: 14px;
+  font-weight: 700;
+  color: #111827;
+  font-variant-numeric: tabular-nums;
+}
+.ratio-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+}
+.ratio-top {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+.prob-tbl .pbar {
+  flex: none;
+  width: 100%;
+  max-width: none;
+  height: 5px;
+}
+.prob-tbl .pnum {
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+}
+.solved-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.solved-pill.ok {
+  color: #047857;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+}
+.solved-pill.pending {
+  color: #b45309;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+}
+.prob-link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid #dbeafe;
+  border-radius: 6px;
+  background: #fff;
+  color: #1a6fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+.prob-link-btn:hover {
+  background: #eff6ff;
+  border-color: #93c5fd;
+}
+.prob-tbl .trow.row-pending {
+  background: linear-gradient(90deg, rgba(255, 251, 235, 0.65) 0%, transparent 38%);
+}
+.prob-tbl .trow:hover { background: #f9fafb; }
+.prob-tbl .trow.row-pending:hover {
+  background: linear-gradient(90deg, rgba(255, 251, 235, 0.85) 0%, #f9fafb 38%);
+}
+
 .ld-n {
   flex: none;
   min-width: 18px;

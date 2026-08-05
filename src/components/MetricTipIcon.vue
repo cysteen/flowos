@@ -34,7 +34,9 @@ const overlayStyle = {
       <!-- 一句话：这个数是什么 -->
       <p class="kt-define">{{ tip.define }}</p>
     </template>
-    <QuestionCircleOutlined class="kpi-tip-ic" @click.stop />
+    <span class="kpi-tip-wrap" @click.stop>
+      <QuestionCircleOutlined class="kpi-tip-ic" />
+    </span>
   </a-tooltip>
 </template>
 
@@ -44,6 +46,12 @@ const overlayStyle = {
   font-size: 12px;
   color: #713f12;
   line-height: 1.5;
+}
+.kpi-tip-wrap {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  line-height: 1;
 }
 .kpi-tip-ic {
   flex-shrink: 0;

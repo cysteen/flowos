@@ -1,6 +1,7 @@
 import { computed, reactive, ref } from 'vue';
 import { TICKETS } from '@/mock/tickets';
 import {
+  isFirstResponded,
   type SlaState,
   type Ticket,
   type TicketType,
@@ -42,6 +43,23 @@ function matchFilters(t: Ticket, f: ListFilters): boolean {
       if (!t.hasReturnAction) return false;
     } else if (f.status === 'transferIn') {
       if (t.ticketSource !== '售后转入' && t.ticketSource !== '跨组调剂') return false;
+    /* ── 班组看板「今日指标」区下钻（2026-08-05）── */
+    } else if (f.status === 'escalated') {
+      // 今日升级：升级到技术支持 / 飞书
+      if (t.nodeStatus !== '已升级·二线' && !t.smartMarks?.includes('升级')) return false;
+    } else if (f.status === 'firstResponseOverdue') {
+      // 首响超时：首响钟已超时（未首响时 slaState 即首响钟）
+      if (isFirstResponded(t) || t.slaState !== 'overdue') return false;
+    } else if (f.status === 'resolutionOverdue') {
+      // 解决超时：解决钟已超时。已首响后 slaState 即解决钟；未首响时看 resolveSlaState
+      const resolveState = isFirstResponded(t) ? t.slaState : t.resolveSlaState;
+      if (resolveState !== 'overdue') return false;
+    } else if (f.status === 'contactMissed') {
+      // 24 小时未联络：进线满 24h 但至今没有过联络动作
+      if (isFirstResponded(t)) return false;
+    } else if (f.status === 'serviceBad') {
+      // 服务不满意：调研中人员服务分 1–3 分（4–5 分为满意，未评价不计）
+      if (t.serviceScore == null || t.serviceScore > 3) return false;
     } else {
       const map: Record<string, string[]> = {
         pending: ['待受理'],

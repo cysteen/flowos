@@ -19,7 +19,7 @@ export type { KpiTip };
 export const OPS_METRIC_TIPS: Record<string, KpiTip> = {
   /* ── 工单流量（§4） ── */
   inbound: { define: '今天新进入本范围的单' },
-  forward: { define: '今天推给下一环节的单' },
+  forward: { define: '今天处置掉的单' },
   backlog: { define: '已经超解决时效、还没处理完的单' },
   io: { define: '今天进得比出得多还是少' },
   longestWait: { define: '超时最久的那单等了多久' },

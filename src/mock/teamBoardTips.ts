@@ -22,13 +22,13 @@ export type { KpiTip };
 export const BOARD_METRIC_TIPS: Record<string, KpiTip> = {
   /* ── 重点关注 · 主盯 ── */
   backlog: {
-    define: '已经超解决时效、还没处理完的单',
+    define: '本组解决超时的单',
   },
   unassigned: {
-    define: '进了本组、还没落到人头上的单',
+    define: '本组待受理的单',
   },
   delegated: {
-    define: '主责还在本组、正等协办回填的单',
+    define: '本组已委派的单',
   },
   suspended: {
     define: '正在等外部反馈的单',
@@ -37,7 +37,7 @@ export const BOARD_METRIC_TIPS: Record<string, KpiTip> = {
     define: '已转出本组、等对方回传的单',
   },
   returned: {
-    define: '今天被技术支持退回的单',
+    define: '今天回流到本组、要重新处理的单',
   },
   transferIn: {
     define: '今天从别处调剂进本组的单',
@@ -45,7 +45,7 @@ export const BOARD_METRIC_TIPS: Record<string, KpiTip> = {
 
   /* ── 关注事件 ── */
   urge: {
-    define: '今天收到的催单次数',
+    define: '本周本组未结案工单被催的次数',
   },
   supplement: {
     define: '今天收到的补充单次数',
@@ -59,21 +59,27 @@ export const BOARD_METRIC_TIPS: Record<string, KpiTip> = {
     define: '今天新进入本组的单',
   },
   forward: {
-    define: '本组今天推给下一环节的单',
+    define: '本组今天下送、关闭或强结的单',
   },
-  closed: {
-    define: '本组今天走到终态关闭的单',
+  escalated: {
+    define: '本组今天升级出去的单',
+  },
+  returnedToday: {
+    define: '今天回流到本组、要重新处理的单',
   },
 
   /* ── 今日指标 · 率值 ── */
-  'close-rate-24h': {
-    define: '进来的单里，多少比例 24 小时内完结',
+  'contact-rate-24h': {
+    define: '进来满 24 小时的单里，多少比例联络过',
   },
-  'sla-overdue-rate': {
-    define: '今天进来的单里，多少比例踩了 SLA',
+  'first-response-overdue': {
+    define: '今天新增里，多少比例首响超时',
   },
-  csat: {
-    define: '客户给本组打分的平均值，5 分制',
+  'resolution-overdue': {
+    define: '今天新增里，多少比例解决超时',
+  },
+  'service-bad': {
+    define: '今天客户给服务打 1-3 分的单数',
   },
 
   /* ── 负载分布 ── */
@@ -86,7 +92,7 @@ export const BOARD_METRIC_TIPS: Record<string, KpiTip> = {
     define: '该坐席此刻手上在办的单',
   },
   'member.forwardToday': {
-    define: '该坐席今天推给下一环节的单',
+    define: '该坐席今天处置掉的单',
   },
   'member.avgHandle': {
     define: '从派给他到他下送，平均花多久',
@@ -112,13 +118,13 @@ export const BOARD_METRIC_TIPS: Record<string, KpiTip> = {
 
   /* ── 问题 TOP10（逐列） ── */
   problemTop10: {
-    define: '今天工单量最高的 10 个二级问题分类',
+    define: '今天工单量最高的 10 个三级问题分类',
   },
   'top10.count': {
     define: '该分类今天的工单张数',
   },
   'top10.ratio': {
-    define: '该分类占今日进线的比例',
+    define: '该分类占今天新增的比例',
   },
   'top10.delta': {
     define: '与昨天同一分类的量对比',

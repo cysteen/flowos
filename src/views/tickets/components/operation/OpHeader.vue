@@ -9,12 +9,15 @@ import { isAftersaleSettled } from '../../composables/opActions';
 import { buildEscalateVerdict, isTicketTerminated } from '../../composables/complaintEscalation';
 import { buildTicketRelations, type TicketRelation } from '../../composables/ticketRelations';
 import OpRelationList from './OpRelationList.vue';
+import OpSupersededBanner from './OpSupersededBanner.vue';
 
 const props = defineProps<{
   detail: TicketDetailMeta;
   ticketNo: string;
   /** 只读态（本单已被新单接管 / 一线视角）：头部动作全部禁用，只留查看与关系跳转 */
   readonly?: boolean;
+  /** 已转单：业务转至新单，表头收束为只读提示 + 前往新单 */
+  supersededBy?: TicketRelation | null;
 }>();
 
 const READONLY_TIP = '本单已被新单接管并锁定，请在新单上处理';
@@ -57,7 +60,10 @@ const emit = defineEmits<{
   copyNo: [];
   action: [name: string];
   openRelation: [rel: TicketRelation];
+  openSuperseded: [];
 }>();
+
+const isSuperseded = computed(() => !!props.supersededBy);
 
 /**
  * 关联关系芯片：贴在单号右边——坐席确认"我在哪张单"时视线本来就在那儿。
@@ -86,19 +92,29 @@ function priorityHex(p: string): string {
 </script>
 
 <template>
-  <div class="op-header">
-    <div class="oh-left">
-      <div class="title-row">
-        <span class="badge" :style="tagStyle(statusHex(detail.status))">
-          <span class="badge-dot" :style="{ background: statusHex(detail.status) }" />{{ detail.status }}
-        </span>
-        <span class="badge badge-neutral">{{ detail.type }}</span>
-        <span class="badge" :style="tagStyle(priorityHex(detail.priority))">
-          <FlagOutlined />{{ detail.priority }}
-        </span>
-        <span class="oh-title">{{ detail.title }}</span>
-      </div>
-      <div class="meta-row" :title="metaTitle">
+  <div class="op-header" :class="{ 'is-superseded': isSuperseded }">
+    <div class="oh-left" :class="{ 'oh-left--stamped': isSuperseded }">
+      <span
+        v-if="isSuperseded"
+        class="status-stamp"
+        aria-label="已转单"
+      >已转单</span>
+      <div class="oh-left-body">
+        <div class="title-row">
+          <span
+            v-if="!isSuperseded"
+            class="badge"
+            :style="tagStyle(statusHex(detail.status))"
+          >
+            <span class="badge-dot" :style="{ background: statusHex(detail.status) }" />{{ detail.status }}
+          </span>
+          <span class="badge badge-neutral">{{ detail.type }}</span>
+          <span class="badge" :style="tagStyle(priorityHex(detail.priority))">
+            <FlagOutlined />{{ detail.priority }}
+          </span>
+          <span class="oh-title">{{ detail.title }}</span>
+        </div>
+        <div class="meta-row" :title="metaTitle">
         <span class="meta-text">
           <span class="meta-k">建单人</span>：{{ detail.builderShort }}<span class="meta-sep">，</span>
           <span class="meta-k">建单时间</span>：{{ detail.createdAtFull }}<span class="meta-sep">，</span>
@@ -106,7 +122,6 @@ function priorityHex(p: string): string {
           <span class="meta-k">单号</span>：{{ ticketNo }}
         </span>
         <CopyOutlined class="copy" @click="emit('copyNo')" />
-        <!-- 关联关系芯片：带类型与方向，点开直达对方单 -->
         <a-popover v-if="relations.length" placement="bottomLeft" trigger="hover">
           <template #content>
             <div class="rel-pop">
@@ -116,11 +131,17 @@ function priorityHex(p: string): string {
           </template>
           <span class="rel-chip">⧉ 关联 {{ relations.length }}</span>
         </a-popover>
+        </div>
       </div>
     </div>
     <div class="oh-right">
       <OpSlaBar :detail="detail" />
-      <div class="oh-actions">
+      <OpSupersededBanner
+        v-if="supersededBy"
+        :by="supersededBy"
+        @open="emit('openSuperseded')"
+      />
+      <div v-else class="oh-actions">
         <!--
           升级投诉：原单升级为更高阶投诉（关原单 + 同步信息建新单 + 双向关联）。
           外投为投诉终态，入口置灰并提示改走「新建补充」
@@ -192,8 +213,40 @@ function priorityHex(p: string): string {
   display: flex; align-items: center; justify-content: space-between;
   background: #fff; padding: 8px 20px; border-bottom: 1px solid #e5e7eb;
 }
-.oh-left { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.title-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.op-header.is-superseded {
+  background: linear-gradient(180deg, #fffbeb 0%, #fff 72%);
+  border-bottom-color: #fde68a;
+}
+.op-header.is-superseded .oh-title {
+  color: #374151;
+}
+.oh-left {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.oh-left--stamped {
+  min-height: 44px;
+  padding-left: 2px;
+}
+.oh-left-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  min-height: 24px;
+  min-width: 0;
+}
+.op-header.is-superseded .title-row {
+  flex-wrap: nowrap;
+}
 .badge {
   display: inline-flex; align-items: center; gap: 4px;
   font-size: 12px; font-weight: 600;
@@ -203,7 +256,41 @@ function priorityHex(p: string): string {
 .badge-dot {
   width: 6px; height: 6px; border-radius: 50%;
 }
-.oh-title { font-size: 14px; font-weight: 700; color: #111827; line-height: 1.3; }
+/* 已转单：圆形戳章，叠盖在第一行标题 + 第二行 meta 上方 */
+.status-stamp {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border: 2px double #7c3aed;
+  border-radius: 50%;
+  color: #7c3aed;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1.05;
+  text-align: center;
+  transform: translateY(-50%) rotate(-12deg);
+  background: rgba(255, 251, 235, 0.82);
+  box-shadow: 0 1px 6px rgba(124, 58, 237, 0.18);
+  user-select: none;
+  pointer-events: none;
+}
+.oh-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1.3;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .meta-row {
   display: flex;
   align-items: center;

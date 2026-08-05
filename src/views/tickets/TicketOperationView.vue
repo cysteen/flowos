@@ -14,7 +14,6 @@ import OpCancelModal from './components/operation/OpCancelModal.vue';
 import OpEscalateComplaintModal from './components/operation/OpEscalateComplaintModal.vue';
 import OpSmsModal from './components/operation/OpSmsModal.vue';
 import OpEmailModal from './components/operation/OpEmailModal.vue';
-import OpSupersededBanner from './components/operation/OpSupersededBanner.vue';
 import TicketEventToastStack from './components/operation/TicketEventToastStack.vue';
 import OpProcessTabs from './components/operation/OpProcessTabs.vue';
 import OpSidePanel from './components/operation/OpSidePanel.vue';
@@ -798,17 +797,11 @@ watch(
       :detail="d"
       :ticket-no="ticketNo"
       :readonly="pageReadonly"
+      :superseded-by="supersededBy"
       @copy-no="copyNo"
       @action="onHeaderAction"
       @open-relation="openRelation"
-    />
-
-    <!-- 被接管：整页只读 + 直达新单（Zendesk 合并口径） -->
-    <OpSupersededBanner
-      v-if="supersededBy"
-      :by="supersededBy"
-      :status="d.status"
-      @open="openRelation(supersededBy)"
+      @open-superseded="supersededBy && openRelation(supersededBy)"
     />
 
     <!-- 顶部通栏速览带：客户诉求 | 客户全景宫格 | 最新处理（关注信息一屏） -->

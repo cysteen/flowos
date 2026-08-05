@@ -22,10 +22,11 @@ export type TicketPriority = 'P0' | 'P1' | 'P2' | 'P3';
 export type LoadLevel = '空闲' | '适中' | '满载';
 
 /**
- * X4：负载三档阈值，全局唯一口径 —— 空闲 ≤5 / 适中 6–12 / 满载 >12。
- * ⚠️ 阈值本身待业务确认（风险 R6），后续应做成租户可配；改这里即可全站生效。
+ * X4：负载三档阈值，全局唯一口径 —— **空闲 <15 / 适中 15–30 / 满载 >30**
+ * （2026-08-05 业务定，原为 ≤5 / 6–12 / >12）。
+ * ⚠️ 后续应做成租户可配；改这里即可全站生效。
  */
-export const LOAD_THRESHOLD = { idle: 5, normal: 12 } as const;
+export const LOAD_THRESHOLD = { idle: 14, normal: 30 } as const;
 
 export function loadLevelOf(workload: number): LoadLevel {
   if (workload <= LOAD_THRESHOLD.idle) return '空闲';

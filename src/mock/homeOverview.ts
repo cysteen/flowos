@@ -131,7 +131,7 @@ export const HOME_KPIS: HomeKpi[] = [
     valueColor: '#10B981',
     tone: 'gain',
     tip: {
-      define: '我今天推给下一环节的单',
+      define: '我今天处置掉的单',
     },
     delta: '+5',
     deltaColor: '#10B981',
@@ -223,13 +223,13 @@ export interface HomeMetricDrillTable {
  */
 export const HOME_PERF_TIPS: Record<string, KpiTip> = {
   B1: {
-    define: '从派给我到我下送，平均花多久',
+    define: '我呼出接通的电话，平均每通多久',
   },
   B2: {
-    define: '这段时间我推给下一环节的单',
+    define: '这段时间我处置掉的单',
   },
   B3: {
-    define: '我的处理时长比组均快多少 / 慢多少',
+    define: '我的通话时长比组均长多少 / 短多少',
   },
   C1: {
     define: '我首响过的单里，多少比例踩在时限内',
@@ -262,7 +262,7 @@ export const HOME_PERF_TIPS: Record<string, KpiTip> = {
 
 /** 指标名 → 编号。下送量与较组均随区间/班组变名，另在 homePerfTip 里兜 */
 const PERF_TIP_BY_LABEL: Record<string, string> = {
-  平均处理时长: 'B1',
+  平均通话时长: 'B1',
   响应及时率: 'C1',
   解决及时率: 'C2',
   超时工单: 'C3',
@@ -293,7 +293,7 @@ export function homePerfTip(label: string): KpiTip | undefined {
  *
  * 改为按**指标族**归组：4 张卡 × **严格 3 个指标行**，一行排满、无空格、无参差。
  * 需求模块3 的 7 项一个不少，只是换了归组方式：
- *   效率 ← 平均处理时长(1) + 当日下送量(2)
+ *   效率 ← 平均通话时长(1) + 当日下送量(2)
  *   时效 ← 超时工单数 + 响应/解决及时率(3)
  *   质量 ← 服务满意度 / 解决率(7) + 参评率(5)
  *   触达 ← 24小时联络率(6) + 外呼接通率 / 通时利用率(4)
@@ -306,7 +306,7 @@ export const HOME_PERFORMANCE: HomePerformanceCard[] = [
     key: 'efficiency',
     title: '效率',
     metrics: [
-      { label: '平均处理时长', value: '3.2 小时', tone: 'primary' },
+      { label: '平均通话时长', value: '3.2 小时', tone: 'primary' },
       { label: '当日下送量', value: '14 单', tone: 'success' },
       { label: '较组均', value: '-0.4 小时', tone: 'success' },
     ],
@@ -539,7 +539,7 @@ export function getHomePerformanceByRange(
       key: 'efficiency',
       title: '效率',
       metrics: [
-        { label: '平均处理时长', value: '3.5 小时', tone: 'primary' },
+        { label: '平均通话时长', value: '3.5 小时', tone: 'primary' },
         { label: '区间下送量', value: '62 单', tone: 'success' },
         { label: '较组均', value: '-0.2 小时', tone: 'success' },
       ],
@@ -593,7 +593,7 @@ export function getHomePerformanceByRange(
       key: 'efficiency',
       title: '效率',
       metrics: [
-        { label: '平均处理时长', value: '3.4 小时', tone: 'primary' },
+        { label: '平均通话时长', value: '3.4 小时', tone: 'primary' },
         { label: '区间下送量', value: '248 单', tone: 'success' },
         { label: '较组均', value: '-0.3 小时', tone: 'success' },
       ],
@@ -660,7 +660,7 @@ export interface HomeRankBoard {
 }
 
 const RANK_METRIC_LABEL: Record<string, string> = {
-  efficiency: '平均处理时长',
+  efficiency: '平均通话时长',
   sla: '响应及时率',
   quality: '服务满意度',
   reach: '24小时联络率',
