@@ -13,6 +13,7 @@ import {
   CheckOutlined,
 } from '@ant-design/icons-vue';
 import AgentCtiBar from './AgentCtiBar.vue';
+import GlobalSearch from './GlobalSearch.vue';
 import { useUserStore } from '@/stores/user';
 import { useTenantStore } from '@/stores/tenant';
 import { useAdminTabsStore } from '@/stores/adminTabs';
@@ -163,6 +164,9 @@ function switchTenant(tenantId: string) {
 
       <!-- 二线坐席 软电话(CTI) 状态条（替代原面包屑） -->
       <AgentCtiBar />
+
+      <!-- 全局搜索：工单号 / 手机号 / 客户名 / 关键词 自动分流，避免"该去哪个页面查"的犹豫 -->
+      <GlobalSearch />
 
       <!-- 工具图标 -->
       <div class="tools">

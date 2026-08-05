@@ -12,6 +12,11 @@ const STATUS_OPTIONS = [
   { value: 'processing', label: '处理中' },
   { value: 'held', label: '已挂起' },
   { value: 'review', label: '待审核' },
+  /* 班组长看板下钻带入 */
+  { value: 'delegated', label: '已委派' },
+  { value: 'transferred', label: '已转出' },
+  { value: 'returned', label: '被退回' },
+  { value: 'transferIn', label: '转入' },
 ];
 const PRIORITY_OPTIONS = ['P0', 'P1', 'P2', 'P3'];
 const SLA_OPTIONS = [

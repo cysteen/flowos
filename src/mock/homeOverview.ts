@@ -1,4 +1,4 @@
-/** 首页·工作概览 Mock（对齐 .pen vzMJ3 / PRD-01） */
+﻿/** 首页·工作概览 Mock（对齐 .pen vzMJ3 / PRD-01） */
 
 export interface HomeNotice {
   id: number;
@@ -51,25 +51,31 @@ export const HOME_NOTICE = {
 };
 
 /**
- * 「?」口径提示：字段与【815】个人门户 PRD §5.3「指标明细」表的七列一一对应
- * （定义 / 统计方式 / 计入范围 / 排除项 / 更新频率 / 环比口径 / 下钻去向）。
- * 表里写什么这里就展示什么——口径只有这一份，避免页面与文档漂移。
+ * 「?」口径提示
+ *
+ * ⚠️ **不要照搬 PRD 的口径表**。PRD 要完备（研发测试逐条核对），提示要一眼看懂，
+ * 两者受众不同。曾经把 PRD 的七列直接搬成七行，结果是一个 226×251 的窄长条，
+ * 其中「更新频率」（卡上已有徽标）、「下钻去向」（点一下就知道）、「环比口径」
+ * （卡上颜色已表达）、「统计方式」（对使用者无行动含义）四行纯属噪声。
+ *
+ * 写作约定：
+ * · **最多三行**：是什么 / 算什么不算什么 / 特别提醒（可选）
+ * · 纯文本渲染，**不要写 Markdown** —— 星号会原样显示
+ * · define 用口语、不超过 20 字；scope 一行说完边界
+ * · note 只在"不看会出错"时才写；每多一行都在稀释前两行
+ * · 完整口径以 PRD 为准，此处不承担完备性
  */
 export interface KpiTip {
-  /** 一句话定义 */
+  /** 第一行：这个数是什么。口语，不超过 20 字，不用术语 */
   define: string;
-  /** 统计方式：时点值（状态一变就变） / 累计值（当天算进来就固定） */
-  method: string;
-  /** 计入范围 */
-  include: string;
-  /** 排除项 */
-  exclude?: string;
-  /** 更新频率 */
-  refresh: string;
-  /** 环比口径；不展示环比时写明 */
-  compare: string;
-  /** 下钻去向；卡片不可点时须写明原因（PRD A7） */
-  drill: string;
+  /** 第二行：算什么、不算什么，一行说完 */
+  scope: string;
+  /**
+   * 第三行（可选）：只在有"不看会出错"的信息时才写。
+   * 典型三类：与另一指标易混、反直觉的边界、为什么点不进去。
+   * 没有就别写 —— 每多一行都在稀释前两行。
+   */
+  note?: string;
 }
 
 export interface HomeKpi {
@@ -101,13 +107,9 @@ export const HOME_KPIS: HomeKpi[] = [
     valueColor: '#F97316',
     tone: 'risk',
     tip: {
-      define: '派给我、但我还一眼都没看过的工单数',
-      method: '时点值 —— 状态一变数就变，推进到「处理中」后这里 −1',
-      include: '处理人是我，状态为「待受理」或「待处理」；被退回的单状态回落「待处理」，重新计入',
-      exclude: '已进入「处理中」的单（见「处理中」卡）',
-      refresh: '实时 60s',
-      compare: '与昨天同一时刻对比，上升红、下降绿',
-      drill: '点卡片 → 工单工作台「我的 + 待受理/待处理」',
+      define: '派给我、还没开始动的单',
+      scope: '只算「待受理 / 待处理」，一进「处理中」就不算',
+      note: '被退回的单会回落「待处理」，重新计入',
     },
     delta: '+2',
     deltaColor: '#EF4444',
@@ -119,13 +121,8 @@ export const HOME_KPIS: HomeKpi[] = [
     valueColor: '#0D9488',
     tone: 'neutral',
     tip: {
-      define: '我正在推进的工单数',
-      method: '时点值',
-      include: '处理人是我，状态为「处理中」',
-      exclude: '「待受理 / 待处理」（见「待处理工单」卡）、「已挂起」（见「挂起」卡）',
-      refresh: '实时 60s',
-      compare: '不展示环比',
-      drill: '点卡片 → 工单工作台「我的 + 处理中」',
+      define: '我正在推进的单',
+      scope: '只算状态为「处理中」的，挂起的不算',
     },
   },
   {
@@ -135,13 +132,9 @@ export const HOME_KPIS: HomeKpi[] = [
     valueColor: '#8B5CF6',
     tone: 'neutral',
     tip: {
-      define: '我名下正在等外部反馈、SLA 已停表的工单数',
-      method: '时点值',
-      include: '处理人是我，状态为「已挂起」',
-      exclude: '已转出的单（已不在我手上）',
-      refresh: '实时 60s',
-      compare: '不展示环比',
-      drill: '点卡片 → 工单工作台「我的 + 已挂起」',
+      define: '我名下在等外部反馈的单',
+      scope: '只算状态为「已挂起」的，已转出的不算',
+      note: 'SLA 已停表，不算超时，但责任还在我',
     },
   },
   {
@@ -151,13 +144,9 @@ export const HOME_KPIS: HomeKpi[] = [
     valueColor: '#10B981',
     tone: 'gain',
     tip: {
-      define: '我今天完成作业、推给下一环节的工单数',
-      method: '累计值 —— 今天算进来就固定，该单后续被退回、重开都不影响',
-      include: '由我执行下送的单，按下送动作发生时间归入今天（不是工单创建时间）；同一张单当天多次下送只算 1 次',
-      exclude: '他人下送的单；今天之前下送的单',
-      refresh: '准实时 5min',
-      compare: '与昨天同一时刻的累计值对比（不是昨天全天）',
-      drill: '点卡片 → 工单工作台「我今天下送的」',
+      define: '我今天推给下一环节的单',
+      scope: '按下送时间算今天，同一单只算 1 次',
+      note: '算过就固定，后续被退回、重开都不再减',
     },
     delta: '+5',
     deltaColor: '#10B981',
@@ -169,13 +158,9 @@ export const HOME_KPIS: HomeKpi[] = [
     valueColor: '#F59E0B',
     tone: 'risk',
     tip: {
-      define: '快要超时、还来得及救的单',
-      method: '时点值',
-      include: '我名下未结、SLA 未停表，且被 SLA 判为「临期」。提前多久算临期由 SLA 按工单类型 / 优先级规定，门户不设默认值、不自行判定',
-      exclude: '已挂起、已转出（SLA 已停表）；已超时的单（归「超时」卡）',
-      refresh: '实时 60s',
-      compare: '与昨天同一时刻对比，下降为好（绿）',
-      drill: '点卡片 → 工单工作台「我的 + 临期」',
+      define: '快超时、还来得及救的单',
+      scope: '挂起、已转出、已超时的都不算',
+      note: '提前多久算临期，由 SLA 按类型和优先级规定',
     },
     delta: '-1',
     deltaColor: '#10B981',
@@ -187,13 +172,9 @@ export const HOME_KPIS: HomeKpi[] = [
     valueColor: '#EF4444',
     tone: 'risk',
     tip: {
-      define: '已经超时、还没救回来的单',
-      method: '时点值 —— 补救完成即减少',
-      include: '我名下未结、SLA 未停表，且被 SLA 判为「超时」',
-      exclude: '已挂起、已转出；已补救完成的单（这些仍计入「我的绩效 · 超时工单」）',
-      refresh: '实时 60s',
-      compare: '不展示环比；数值恒为红色，大于 0 就红，降到 0 才消失',
-      drill: '点卡片 → 工单工作台「我的 + 超时」',
+      define: '已超时、还没救回来的单',
+      scope: '挂起、已转出的不算；处理完就减少',
+      note: '和效能区「超时工单」不是一个数：那个是区间内发生过的，这里是现在还欠着的',
     },
   },
   {
@@ -204,12 +185,8 @@ export const HOME_KPIS: HomeKpi[] = [
     tone: 'neutral',
     tip: {
       define: '我今天在电话上花的总时长',
-      method: '累计值；满 1 小时显示「2h46m」，不满显示「46m」，为零显示「0m」',
-      include: '接通之后的通话时长，呼入呼出合并；按通话开始时间归入今天，跨零点的通话整段算在开始那天',
-      exclude: '振铃、排队、保持中未接通的时段',
-      refresh: '准实时 5min',
-      compare: '不展示环比',
-      drill: '本卡不可点 —— 电话记录不带工单号，无法下钻到对应工单',
+      scope: '只算接通后的时长，呼入呼出合并；振铃、排队不算',
+      note: '本卡不可点 —— 电话记录不带工单号，落不到工单列表',
     },
   },
 ];
@@ -259,6 +236,97 @@ export interface HomeMetricDrillTable {
   title: string;
   columns: string[];
   rows: { cells: string[]; ticketNo?: string }[];
+}
+
+/**
+ * 效能区 12 项的「?」口径提示；key ＝【815】PRD §5.4 的指标编号。
+ * 写作约定同 HOME_KPIS.tip：最多三行，纯文本。
+ */
+export const HOME_PERF_TIPS: Record<string, KpiTip> = {
+  B1: {
+    define: '从派给我到我下送，平均花多久',
+    scope: '扣除停表时段；没下送的单不进样本',
+    note: '起点是分派时刻，所以我响应慢也会拉高这个数',
+  },
+  B2: {
+    define: '这段时间我推给下一环节的单',
+    scope: '同一单多次下送只算 1 次',
+    note: '选「今天」时，必须等于上方概览的「今日下送」',
+  },
+  B3: {
+    define: '我的处理时长比组均快多少 / 慢多少',
+    scope: '组均是全组的单合起来算的，不是每人平均再平均',
+    note: '负数是好事（比组均快），显示绿色',
+  },
+  C1: {
+    define: '我首响过的单里，多少比例踩在时限内',
+    scope: '还没首响的单不进分母；停表时段已扣除',
+    note: '达标多少分钟由 SLA 按类型和优先级规定',
+  },
+  C2: {
+    define: '我解决掉的单里，多少比例踩在时限内',
+    scope: '只算走到「已解决」的单，停表时段已扣除',
+  },
+  C3: {
+    define: '这段时间一共爆过几单超时',
+    scope: '同一单多次触发只算 1 次',
+    note: '补救完也不会减 —— 和上方概览「超时」不是一个数',
+  },
+  D1: {
+    define: '客户给我打分的平均值，5 分制',
+    scope: '系统作废、重复提交、测试单都不算',
+    note: '参评率太低时这个分不可信，看旁边的参评率',
+  },
+  D2: {
+    define: '我下送的单里，多少比例走到了「已解决」',
+    scope: '下送不满 24h 的单不进分母',
+    note: '取系统状态，不是客户问卷里说的"解决了没"',
+  },
+  D3: {
+    define: '发出的调研里，多少比例客户真的评了',
+    scope: '发出不满 24h 的调研不进分母',
+    note: '分母不是下送量：部分工单按规则本就不发调研',
+  },
+  E1: {
+    define: '派给我满 24 小时的单里，多少比例联络过',
+    scope: '接通、短信已发出、消息已送达才算；未接来电不算',
+    note: '分派不满 24h 的单不进分母',
+  },
+  E2: {
+    define: '我打出去的电话，多少比例接通了',
+    scope: '只算我发起的外呼，客户打进来的不算',
+    note: '同一号码重拨按次计，不去重',
+  },
+  E3: {
+    define: '我在线的时间里，多少比例真的在通话',
+    scope: '分母扣除「小休」「离线」时段',
+    note: '分子就是上方概览的「当日通话」，两处必须一致',
+  },
+};
+
+/** 指标名 → 编号。下送量与较组均随区间/班组变名，另在 homePerfTip 里兜 */
+const PERF_TIP_BY_LABEL: Record<string, string> = {
+  平均处理时长: 'B1',
+  响应及时率: 'C1',
+  解决及时率: 'C2',
+  超时工单: 'C3',
+  服务满意度: 'D1',
+  解决率: 'D2',
+  参评率: 'D3',
+  '24小时联络率': 'E1',
+  外呼接通率: 'E2',
+  通时利用率: 'E3',
+};
+
+/**
+ * 按效能区指标名取「?」提示。
+ * 「当日/区间下送量」随区间变名、「较受理一均」随所选班组变名，
+ * 所以不能只靠全等匹配。
+ */
+export function homePerfTip(label: string): KpiTip | undefined {
+  if (label.endsWith('下送量')) return HOME_PERF_TIPS.B2;
+  if (label.startsWith('较') && label.endsWith('均')) return HOME_PERF_TIPS.B3;
+  return HOME_PERF_TIPS[PERF_TIP_BY_LABEL[label]];
 }
 
 /**

@@ -3,9 +3,11 @@ import { computed, ref, watch } from 'vue';
 import dayjs, { type Dayjs } from 'dayjs';
 import { RightOutlined, TrophyOutlined } from '@ant-design/icons-vue';
 import { useUserStore } from '@/stores/user';
+import MetricTipIcon from '@/components/MetricTipIcon.vue';
 import {
   getHomePerformanceByRange,
   getHomePerformanceRankBoard,
+  homePerfTip,
   HOME_PERF_RANGE_OPTS,
   HOME_PERF_TEAMS,
   type HomeMetricDrillKey,
@@ -150,7 +152,10 @@ function onDrill(card: HomePerformanceCard, e: Event) {
 
         <div class="metric-list">
           <div v-for="metric in card.metrics" :key="metric.label" class="metric-row">
-            <span class="metric-label">{{ metric.label }}</span>
+            <span class="metric-label">
+              {{ metric.label }}
+              <MetricTipIcon v-if="homePerfTip(metric.label)" :tip="homePerfTip(metric.label)!" />
+            </span>
             <span class="metric-value" :class="metric.tone || 'neutral'">{{ metric.value }}</span>
           </div>
         </div>
@@ -432,6 +437,9 @@ function onDrill(card: HomePerformanceCard, e: Event) {
 }
 .metric-label {
   min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 11px;
   color: #6b7280;
 }

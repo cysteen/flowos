@@ -27,13 +27,6 @@ export const TICKET_COLUMN_DEFS: TicketColumnDef[] = [
   { key: 'businessType', label: '业务分类', defaultVisible: false },
   { key: 'ticketType', label: '工单类型', defaultVisible: false },
   { key: 'ticketSource', label: '工单来源', defaultVisible: false },
-  // 新建工单 · 产品问题
-  { key: 'productCategory', label: '产品分类', defaultVisible: false },
-  { key: 'deviceSn', label: '设备 SN', defaultVisible: false },
-  { key: 'problemL1', label: '问题一类', defaultVisible: false },
-  { key: 'problemL2', label: '问题二类', defaultVisible: false },
-  { key: 'problemL3', label: '问题三类', defaultVisible: false },
-  { key: 'resolveTimeRemark', label: '解决时间备注', defaultVisible: false },
 ];
 
 const ALL_KEYS = TICKET_COLUMN_DEFS.map((c) => c.key);

@@ -1,8 +1,6 @@
 import { computed, reactive, ref } from 'vue';
 import { TICKETS } from '@/mock/tickets';
 import {
-  inListView,
-  type ListViewKey,
   type SlaState,
   type Ticket,
   type TicketType,
@@ -34,14 +32,26 @@ function matchFilters(t: Ticket, f: ListFilters): boolean {
   if (f.assignee && f.assignee !== 'pool' && t.assignee !== f.assignee) return false;
   if (f.slaStatus && f.slaStatus !== 'all' && t.slaState !== f.slaStatus) return false;
   if (f.status && f.status !== 'all') {
-    const map: Record<string, string[]> = {
-      pending: ['待受理'],
-      processing: ['处理中·一线', '已升级·二线'],
-      held: ['已挂起·待客户'],
-      review: ['待审核'],
-    };
-    const allowed = map[f.status];
-    if (allowed && !allowed.includes(t.nodeStatus)) return false;
+    /** 看板下钻：按业务态筛选（不全是 nodeStatus 枚举） */
+    if (f.status === 'delegated') {
+      if (!(t.hasDelegateHistory || t.myDelegateAction)) return false;
+    } else if (f.status === 'transferred') {
+      // 已转出·售后（停表等待）或已挂关联售后单的原单
+      if (!String(t.nodeStatus).includes('已转出') && !t.linkedAftersaleNo) return false;
+    } else if (f.status === 'returned') {
+      if (!t.hasReturnAction) return false;
+    } else if (f.status === 'transferIn') {
+      if (t.ticketSource !== '售后转入' && t.ticketSource !== '跨组调剂') return false;
+    } else {
+      const map: Record<string, string[]> = {
+        pending: ['待受理'],
+        processing: ['处理中·一线', '已升级·二线'],
+        held: ['已挂起·待客户'],
+        review: ['待审核'],
+      };
+      const allowed = map[f.status];
+      if (allowed && !allowed.includes(t.nodeStatus)) return false;
+    }
   }
   return true;
 }
@@ -56,7 +66,6 @@ function byUpdatedDesc(a: Ticket, b: Ticket): number {
 export function useTicketList() {
   const all = ref<Ticket[]>([...TICKETS]);
 
-  const activeView = ref<ListViewKey>('all');
   const selectedIds = ref<Set<string>>(new Set());
   const current = ref(1);
   const pageSize = ref(10);
@@ -73,9 +82,10 @@ export function useTicketList() {
     dateRange: '',
   });
 
-  const viewRows = computed(() => all.value.filter((t) => inListView(t, activeView.value)));
+  /** 全量库默认不含已归档；归档态通过后续筛选扩展 */
+  const baseRows = computed(() => all.value.filter((t) => !t.archived));
 
-  const filtered = computed(() => viewRows.value.filter((t) => matchFilters(t, filters)));
+  const filtered = computed(() => baseRows.value.filter((t) => matchFilters(t, filters)));
 
   const sorted = computed(() => [...filtered.value].sort(byUpdatedDesc));
 
@@ -86,22 +96,10 @@ export function useTicketList() {
     return sorted.value.slice(start, start + pageSize.value);
   });
 
-  const viewCounts = computed<Record<ListViewKey, number>>(() => {
-    const keys: ListViewKey[] = ['all', 'mine', 'team', 'pool', 'archived'];
-    const map = {} as Record<ListViewKey, number>;
-    for (const k of keys) map[k] = all.value.filter((t) => inListView(t, k)).length;
-    return map;
-  });
-
   const selectedCount = computed(() => selectedIds.value.size);
   const allPageSelected = computed(
     () => paged.value.length > 0 && paged.value.every((t) => selectedIds.value.has(t.id)),
   );
-
-  function setView(view: ListViewKey) {
-    activeView.value = view;
-    current.value = 1;
-  }
 
   function applyFilters() {
     current.value = 1;
@@ -148,20 +146,16 @@ export function useTicketList() {
 
   return {
     all,
-    activeView,
     filters,
     selectedIds,
     current,
     pageSize,
-    viewRows,
     filtered,
     sorted,
     paged,
     total,
-    viewCounts,
     selectedCount,
     allPageSelected,
-    setView,
     applyFilters,
     resetFilters,
     toggleSelect,

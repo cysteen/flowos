@@ -115,6 +115,10 @@ export const ACCOUNT_TENANT_MEMBERSHIPS: Record<string, TenantMembership[]> = {
     { tenantId: 't2', roles: ['team-leader'], defaultRole: 'team-leader' },
     { tenantId: 't4', roles: ['team-leader'], defaultRole: 'team-leader' },
   ],
+  // 郑监控：运营监控岗，只在主租户值班
+  '18066668888': [
+    { tenantId: 't1', roles: ['ops-monitor'], defaultRole: 'ops-monitor' },
+  ],
   // 周运营：运营管理员，多租户
   '18756826666': [
     { tenantId: 't1', roles: ['ops-admin'], defaultRole: 'ops-admin' },

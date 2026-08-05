@@ -46,9 +46,14 @@ import {
   type HomeTrendRangeKey,
 } from '@/mock/homeOverview';
 
-/** KPI「?」提示浮层样式（与规则引擎统计卡一致） */
+/**
+ * KPI「?」提示浮层样式（与规则引擎统计卡一致）
+ * ⚠️ 外层必须一并放宽：antd 的 .ant-tooltip 默认 max-width 250px，
+ * 只设 inner 的 maxWidth 不生效，三行文案会被挤成五六行。
+ */
+const kpiTipOverlayWrapStyle = { maxWidth: '340px' };
 const kpiTipOverlayStyle = {
-  maxWidth: '360px',
+  maxWidth: '340px',
   color: '#713f12',
   fontSize: '12px',
   lineHeight: '1.6',
@@ -327,19 +332,15 @@ function openDrillTicket(no: string) {
                 placement="top"
                 :mouse-enter-delay="0.1"
                 color="#fffbeb"
+                :overlay-style="kpiTipOverlayWrapStyle"
                 :overlay-inner-style="kpiTipOverlayStyle"
               >
                 <template #title>
+                  <!-- 最多三行：是什么 / 算什么不算什么 / 特别提醒 -->
                   <div class="kpi-tip">
                     <p class="kt-define">{{ kpi.tip.define }}</p>
-                    <dl class="kt-list">
-                      <div><dt>统计方式</dt><dd>{{ kpi.tip.method }}</dd></div>
-                      <div><dt>计入</dt><dd>{{ kpi.tip.include }}</dd></div>
-                      <div v-if="kpi.tip.exclude"><dt>排除</dt><dd>{{ kpi.tip.exclude }}</dd></div>
-                      <div><dt>更新</dt><dd>{{ kpi.tip.refresh }}</dd></div>
-                      <div><dt>环比</dt><dd>{{ kpi.tip.compare }}</dd></div>
-                      <div><dt>下钻</dt><dd>{{ kpi.tip.drill }}</dd></div>
-                    </dl>
+                    <p class="kt-scope">{{ kpi.tip.scope }}</p>
+                    <p v-if="kpi.tip.note" class="kt-note">{{ kpi.tip.note }}</p>
                   </div>
                 </template>
                 <QuestionCircleOutlined class="kpi-tip-ic" @click.stop />
@@ -781,8 +782,8 @@ function openDrillTicket(no: string) {
   transform: none;
 }
 
-/* 「?」口径提示：一句定义 + 逐项口径，字段对齐 PRD §5.3 指标明细表 */
-.kpi-tip { display: flex; flex-direction: column; gap: 6px; }
+/* 「?」口径提示：最多三行 —— 是什么 / 算什么不算什么 / 特别提醒 */
+.kpi-tip { display: flex; flex-direction: column; gap: 5px; }
 .kt-define {
   margin: 0;
   font-size: 12px;
@@ -790,20 +791,8 @@ function openDrillTicket(no: string) {
   color: #713f12;
   line-height: 1.5;
 }
-.kt-list { margin: 0; display: flex; flex-direction: column; gap: 3px; }
-.kt-list > div { display: flex; gap: 6px; align-items: baseline; }
-.kt-list dt {
-  flex: none;
-  width: 48px;
+.kt-scope {
   margin: 0;
-  font-size: 11px;
-  font-weight: 600;
-  color: #b45309;
-}
-.kt-list dd {
-  margin: 0;
-  flex: 1;
-  min-width: 0;
   font-size: 11px;
   color: #78350f;
   line-height: 1.55;
@@ -845,6 +834,16 @@ function openDrillTicket(no: string) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.kt-note {
+  margin: 2px 0 0;
+  padding: 5px 8px;
+  border-radius: 5px;
+  background: #fef3c7;
+  border-left: 2px solid #d97706;
+  font-size: 11px;
+  color: #78350f;
+  line-height: 1.55;
 }
 .kpi-tip-ic {
   flex-shrink: 0;

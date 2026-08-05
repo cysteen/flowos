@@ -1,15 +1,11 @@
 <script setup lang="ts">
 import { PlusOutlined, DownloadOutlined, SettingOutlined } from '@ant-design/icons-vue';
-import { LIST_VIEWS, type ListViewKey } from '@/views/tickets/types/ticket';
 
 defineProps<{
-  activeView: ListViewKey;
-  viewCounts: Record<ListViewKey, number>;
   selectedCount: number;
 }>();
 
 const emit = defineEmits<{
-  'update:view': [view: ListViewKey];
   create: [];
   batch: [];
   export: [];
@@ -19,18 +15,6 @@ const emit = defineEmits<{
 
 <template>
   <div class="tool-row">
-    <div class="view-tabs">
-      <div
-        v-for="v in LIST_VIEWS"
-        :key="v.key"
-        class="view-tab"
-        :class="{ active: activeView === v.key }"
-        @click="emit('update:view', v.key)"
-      >
-        <span>{{ v.label }}</span>
-        <span class="count">{{ viewCounts[v.key] }}</span>
-      </div>
-    </div>
     <div class="tool-actions">
       <button type="button" class="btn-primary" @click="emit('create')">
         <PlusOutlined />
@@ -61,38 +45,9 @@ const emit = defineEmits<{
 .tool-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 16px;
   flex-wrap: wrap;
-}
-.view-tabs {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-.view-tab {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  border-radius: 6px;
-  font-size: 13px;
-  color: #6b7280;
-  cursor: pointer;
-}
-.view-tab.active {
-  background: #eff6ff;
-  color: #1a6fff;
-  font-weight: 600;
-}
-.count {
-  font-size: 12px;
-  color: #9ca3af;
-  font-weight: 500;
-}
-.view-tab.active .count {
-  color: #1a6fff;
 }
 .tool-actions {
   display: flex;

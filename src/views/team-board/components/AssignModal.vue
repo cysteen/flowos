@@ -88,7 +88,6 @@ import {
   CheckCircleFilled,
   CloseCircleFilled,
   DownOutlined,
-  InfoCircleOutlined,
   UserAddOutlined,
 } from '@ant-design/icons-vue';
 import OpActionModal from '@/views/tickets/components/operation/OpActionModal.vue';
@@ -491,12 +490,6 @@ defineExpose({ setSubmitting, applyResults, reset });
         <template v-else>成功 {{ successCount }} 张，失败 {{ failedIds.length }} 张</template>
       </div>
 
-      <!-- 批量提示（入口① 或选中 > 1） -->
-      <div v-else-if="selectedCount > 1" class="op-tip op-tip-info asg-tip">
-        <InfoCircleOutlined class="asg-tip-icon" />
-        <span>批量指派将逐单写入工单履历，并按下方设置通知目标坐席。</span>
-      </div>
-
       <!-- ============ 工单选择区 ============ -->
       <div class="op-field">
         <div class="asg-tools">
@@ -709,8 +702,6 @@ defineExpose({ setSubmitting, applyResults, reset });
 
 .asg-sub { font-size: 11px; color: #9ca3af; line-height: 1.4; margin-top: -2px; }
 
-.asg-tip { display: flex; align-items: flex-start; gap: 8px; }
-.asg-tip-icon { font-size: 14px; line-height: 18px; flex: none; }
 /* 全部失败：danger 底（规格 §3.3） */
 .asg-tip-danger { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
 

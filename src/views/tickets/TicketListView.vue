@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { onMounted, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 import AppPagination from '@/components/AppPagination.vue';
 import TicketListFilterCard from './components/TicketListFilterCard.vue';
@@ -8,11 +8,56 @@ import TicketListToolRow from './components/TicketListToolRow.vue';
 import TicketRichList from './components/TicketRichList.vue';
 import CreateTicketModal from './components/CreateTicketModal.vue';
 import { useTicketList } from './composables/useTicketList';
-import type { Ticket } from './types/ticket';
+import { TICKET_COLUMN_DEFS } from './composables/useTicketColumns';
+import { type Ticket } from './types/ticket';
+
+/** 工具列表默认列：不含产品分类/问题分类等扩展字段 */
+const LIST_VISIBLE_COLUMNS = Object.fromEntries(
+  TICKET_COLUMN_DEFS.map((c) => [c.key, c.defaultVisible !== false]),
+);
 
 const router = useRouter();
+const route = useRoute();
 const list = useTicketList();
 const createOpen = ref(false);
+
+/** 看板 / 监控 / 搜索等入口：把 URL 参数落到筛选条件（工具页，无「我的/本组」视图 Tab） */
+function applyRouteQuery() {
+  const q = route.query;
+  const hasBoard = typeof q._from === 'string' && q._from.startsWith('board.');
+  const hasOpsFlow = typeof q._from === 'string' && q._from.startsWith('ops.flow.');
+
+  if (typeof q.kw === 'string' && q.kw) {
+    list.filters.keyword = q.kw;
+    list.applyFilters();
+    return;
+  }
+
+  if (!hasBoard && !hasOpsFlow && q.status == null && q.priority == null && q.assignee == null) return;
+
+  if (typeof q.status === 'string' && q.status) {
+    list.filters.status = q.status;
+  }
+  if (typeof q.priority === 'string' && q.priority) {
+    list.filters.priority = q.priority;
+  }
+  if (typeof q.assignee === 'string' && q.assignee) {
+    list.filters.assignee = q.assignee;
+  }
+
+  list.applyFilters();
+
+  if (hasBoard || hasOpsFlow) {
+    const label = typeof q._label === 'string' ? q._label : hasOpsFlow ? '运营监控' : '看板';
+    message.info(`已按「${label}」筛选工单列表`, 2.5);
+  }
+}
+
+onMounted(applyRouteQuery);
+watch(
+  () => [route.query._from, route.query.status, route.query.priority, route.query.assignee, route.query.kw],
+  () => applyRouteQuery(),
+);
 
 function openOperation(t: Ticket) {
   router.push(`/tickets/${t.no}`);
@@ -49,7 +94,6 @@ function onBatch() {
 
 function onCreated(t: Ticket) {
   list.addTicket(t);
-  list.setView('mine');
 }
 </script>
 
@@ -62,10 +106,7 @@ function onCreated(t: Ticket) {
     />
 
     <TicketListToolRow
-      :active-view="list.activeView.value"
-      :view-counts="list.viewCounts.value"
       :selected-count="list.selectedCount.value"
-      @update:view="list.setView"
       @create="createOpen = true"
       @batch="onBatch"
       @export="message.info('导出当前筛选结果')"
@@ -77,11 +118,13 @@ function onCreated(t: Ticket) {
         :rows="list.paged.value"
         :selected-ids="list.selectedIds.value"
         :all-page-selected="list.allPageSelected.value"
+        :visible-columns="LIST_VISIBLE_COLUMNS"
         @toggle="list.toggleSelect"
         @toggle-all="list.toggleSelectAllOnPage"
         @action="onAction"
         @click-no="openOperation"
         @click-customer="openCustomerInsight"
+        @open="openOperation"
       />
       <div class="pager">
         <div class="pager-left">

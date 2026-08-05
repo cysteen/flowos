@@ -19,8 +19,6 @@ const tenantInfo = computed(() => tenant.currentProfile ?? TENANT_INFO);
 // 按当前管理角色（租户/运营）显示对应模块网格
 const moduleCards = computed(() => moduleCardsFor(user.role.adminScope));
 const trendMax = computed(() => Math.max(...TREND.flatMap((d) => [d.created, d.resolved])));
-const seatPct = computed(() => Math.round((tenantInfo.value.seatUsed / tenantInfo.value.seatTotal) * 100));
-const storagePct = computed(() => Math.round((tenantInfo.value.storageUsed / tenantInfo.value.storageTotal) * 100));
 
 const TODO_COLOR: Record<string, string> = { warn: '#F59E0B', danger: '#EF4444', info: '#1A6FFF' };
 const HEALTH_COLOR: Record<string, string> = { 正常: '#10B981', 降级: '#F59E0B', 异常: '#EF4444' };
@@ -35,27 +33,14 @@ function goPath(path: string) {
 
 <template>
   <div class="overview">
-    <!-- ① 租户信息条 -->
+    <!-- ① 租户信息条（不含套餐 / 配额 / 有效期） -->
     <div class="tenant-bar">
       <div class="tb-left">
         <div class="tb-logo"><img v-if="brand.logoUrl" :src="brand.logoUrl" alt="企业 Logo" class="tb-logo-img" /><span v-else>iF</span></div>
         <div class="tb-info">
           <div class="tb-name-row">
             <span class="tb-name">{{ tenantInfo.name }}</span>
-            <span class="tb-plan">{{ tenantInfo.plan }}</span>
-            <span class="tb-status">● {{ tenantInfo.status }}</span>
           </div>
-          <div class="tb-sub">有效期至 {{ tenantInfo.expiry }}</div>
-        </div>
-      </div>
-      <div class="tb-usage">
-        <div class="usage">
-          <div class="usage-top"><span>坐席配额</span><span>{{ tenantInfo.seatUsed }}/{{ tenantInfo.seatTotal }}</span></div>
-          <div class="usage-track"><div class="usage-fill" :style="{ width: seatPct + '%' }"></div></div>
-        </div>
-        <div class="usage">
-          <div class="usage-top"><span>存储用量</span><span>{{ tenantInfo.storageUsed }}G/{{ tenantInfo.storageTotal }}G</span></div>
-          <div class="usage-track"><div class="usage-fill" :style="{ width: storagePct + '%' }"></div></div>
         </div>
       </div>
     </div>
@@ -156,25 +141,22 @@ function goPath(path: string) {
 .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .card-title { font-size: 14px; font-weight: 700; color: #111827; }
 
-/* 租户条 */
+/* 租户条：仅名+状态，收成细条 */
 .tenant-bar {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center;
   background: linear-gradient(90deg, #1a6fff, #3b82f6);
-  border-radius: 12px; padding: 18px 24px; color: #fff;
+  border-radius: 8px; padding: 8px 14px; color: #fff;
 }
-.tb-left { display: flex; align-items: center; gap: 14px; }
-.tb-logo { width: 44px; height: 44px; border-radius: 10px; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; overflow: hidden; }
+.tb-left { display: flex; align-items: center; gap: 10px; }
+.tb-logo {
+  width: 28px; height: 28px; border-radius: 6px;
+  background: rgba(255,255,255,0.2);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 11px; overflow: hidden; flex: none;
+}
 .tb-logo-img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.tb-name-row { display: flex; align-items: center; gap: 10px; }
-.tb-name { font-size: 17px; font-weight: 700; }
-.tb-plan { font-size: 11px; background: #fde68a; color: #92400e; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
-.tb-status { font-size: 12px; color: #bbf7d0; }
-.tb-sub { font-size: 12px; color: rgba(255,255,255,0.8); margin-top: 4px; }
-.tb-usage { display: flex; align-items: center; gap: 20px; }
-.usage { width: 150px; }
-.usage-top { display: flex; justify-content: space-between; font-size: 12px; color: rgba(255,255,255,0.9); margin-bottom: 4px; }
-.usage-track { height: 5px; background: rgba(255,255,255,0.25); border-radius: 3px; overflow: hidden; }
-.usage-fill { height: 100%; background: #fff; }
+.tb-name-row { display: flex; align-items: center; }
+.tb-name { font-size: 14px; font-weight: 600; line-height: 1.2; }
 
 /* KPI */
 .kpi-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
@@ -231,9 +213,5 @@ function goPath(path: string) {
   .module-grid { grid-template-columns: repeat(2, 1fr); }
   .cols { flex-direction: column; }
   .col-side { width: 100%; }
-}
-@media (max-width: 900px) {
-  .tenant-bar { flex-direction: column; align-items: flex-start; gap: 16px; }
-  .tb-usage { flex-wrap: wrap; width: 100%; }
 }
 </style>

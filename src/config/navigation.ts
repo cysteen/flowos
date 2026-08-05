@@ -4,6 +4,7 @@ import {
   CustomerServiceOutlined,
   ToolOutlined,
   DashboardOutlined,
+  FundProjectionScreenOutlined,
   AuditOutlined,
 } from '@ant-design/icons-vue';
 
@@ -23,6 +24,7 @@ export const NAV_ITEMS: NavItem[] = [
   { key: 'tickets', label: '工单工作台', path: '/tickets', icon: CustomerServiceOutlined }, // headset
   { key: 'aftersale', label: '售后工作台', path: '/aftersale', icon: ToolOutlined }, // wrench
   { key: 'team-board', label: '班组看板', path: '/team-board', icon: DashboardOutlined }, // gauge
+  { key: 'ops-monitor', label: '运营监控', path: '/ops-monitor', icon: FundProjectionScreenOutlined }, // monitor
   { key: 'approval', label: '审批中心', path: '/approval', icon: AuditOutlined }, // clipboard-check
 ];
 

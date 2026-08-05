@@ -10,7 +10,9 @@ export type BusinessType = '学习机' | '翻录' | '智学网';
 export type TicketSource =
   | '热线电话' | 'IM在线' | '内投渠道' | '外投渠道' | '客户服务小程序'
   /** 售后侧转入客服的工单（多为售后转咨询）——**不支持升级投诉**（0801 定为门禁①判据） */
-  | '售后转入';
+  | '售后转入'
+  /** 其他客服组调剂转入（班组长看板「转入」口径之一） */
+  | '跨组调剂';
 
 export const TICKET_SOURCE_OPTIONS: TicketSource[] = [
   '热线电话',
@@ -19,6 +21,7 @@ export const TICKET_SOURCE_OPTIONS: TicketSource[] = [
   '外投渠道',
   '客户服务小程序',
   '售后转入',
+  '跨组调剂',
 ];
 
 /** 售后转入判据：来源为该值即视为售后转入工单（PRD §4.3.3 门禁①） */

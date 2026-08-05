@@ -61,18 +61,6 @@ function plainCellText(t: Ticket, key: string): string {
       return t.type;
     case 'ticketSource':
       return ticketSourceLabel(t);
-    case 'productCategory':
-      return t.productCategory ?? '—';
-    case 'deviceSn':
-      return t.sn ?? '—';
-    case 'problemL1':
-      return t.problemL1 ?? '—';
-    case 'problemL2':
-      return t.problemL2 ?? '—';
-    case 'problemL3':
-      return t.problemL3 ?? '—';
-    case 'resolveTimeRemark':
-      return t.resolveTimeRemark ?? '—';
     default:
       return '—';
   }
@@ -154,12 +142,6 @@ const COL_WIDTH: Record<string, string> = {
   businessType: '88px',
   ticketType: '88px',
   ticketSource: '88px',
-  productCategory: '88px',
-  deviceSn: '120px',
-  problemL1: '88px',
-  problemL2: '88px',
-  problemL3: '88px',
-  resolveTimeRemark: '120px',
 };
 
 const gridTemplateColumns = computed(() => {
@@ -453,13 +435,7 @@ const gridTemplateColumns = computed(() => {
 .col-action { min-width: 0; overflow: hidden; }
 .col-business-type,
 .col-ticket-type,
-.col-ticket-source,
-.col-product-category,
-.col-device-sn,
-.col-problem-l1,
-.col-problem-l2,
-.col-problem-l3,
-.col-resolve-time-remark { min-width: 0; overflow: hidden; }
+.col-ticket-source { min-width: 0; overflow: hidden; }
 .cell-plain { display: flex; align-items: center; min-width: 0; overflow: hidden; }
 .plain-text {
   font-size: 12px;

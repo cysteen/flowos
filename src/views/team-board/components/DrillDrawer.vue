@@ -4,8 +4,8 @@
  * 实现依据：《班组长看板-实现规格》§零 交叉裁决 X2/X3/X5 + §二 下钻抽屉 2.1–2.5
  */
 
-/** 下钻型别：priority=型1 分布型；people=型2 人员型；source=型2 变体·来源型 */
-export type DrillType = 'priority' | 'people' | 'source';
+/** 下钻型别：priority=型1；people=型2；source=来源；events=催单/补充/预约事件明细 */
+export type DrillType = 'priority' | 'people' | 'source' | 'events';
 
 /** go-list 出口载荷。抽屉内一律离开看板去 02，不做二次下钻（§2.4 / §2.5） */
 export interface DrillGoListPayload {
@@ -38,7 +38,7 @@ import {
  * 类型来自 mock 数据源（该文件由他人维护，本组件只读不改）。
  * eslint-disable-next-line @typescript-eslint/consistent-type-imports -- 仅取类型，避免运行时耦合
  */
-import type { PriorityBucket, PeopleDrillRow, SourceDrillGroup } from '@/mock/teamBoard';
+import type { PriorityBucket, PeopleDrillRow, SourceDrillGroup, EventDrillRow } from '@/mock/teamBoard';
 
 /* ==========================================================================
  * lucide → @ant-design/icons-vue 图标映射（规格用 lucide 语义名，工程只有 antd 图标）
@@ -64,6 +64,8 @@ interface Props {
   buckets?: PriorityBucket[];
   people?: PeopleDrillRow[];
   sources?: SourceDrillGroup[];
+  /** 催单 / 补充 / 预约事件明细 */
+  events?: EventDrillRow[];
   loading?: boolean;
   error?: boolean;
   footerText?: string;
@@ -75,6 +77,7 @@ const props = withDefaults(defineProps<Props>(), {
   buckets: () => [],
   people: () => [],
   sources: () => [],
+  events: () => [],
   loading: false,
   error: false,
   footerText: '',
@@ -100,6 +103,7 @@ interface Snap {
   buckets: PriorityBucket[];
   people: PeopleDrillRow[];
   sources: SourceDrillGroup[];
+  events: EventDrillRow[];
   loading: boolean;
   error: boolean;
   footerText: string;
@@ -125,6 +129,7 @@ function readSnap(): Snap {
     buckets: props.buckets ?? [],
     people: props.people ?? [],
     sources: props.sources ?? [],
+    events: props.events ?? [],
     loading: props.loading,
     error: props.error,
     footerText: props.footerText,
@@ -217,6 +222,7 @@ watch(
     props.buckets,
     props.people,
     props.sources,
+    props.events,
     props.loading,
     props.error,
     props.footerText,
@@ -316,6 +322,22 @@ function sumMismatch(layer: Layer): boolean {
 type PeopleFilter = 'all' | 'unread';
 const peopleFilter = ref<PeopleFilter>('all');
 
+/** 人员型历史文案；预约已改走 events，此处仅兜底 */
+const isAppointment = computed(() => props.title.includes('预约'));
+const doneLabel = computed(() => (isAppointment.value ? '已沟通' : '已读'));
+const pendingLabel = computed(() => (isAppointment.value ? '未沟通' : '未读'));
+
+/** 事件明细：预约用「已沟通/未沟通」，催单/补充用「已读/未读」 */
+function isApptEvent(r: EventDrillRow) {
+  return r.action === '预约';
+}
+function eventDoneLabel(layer: Layer) {
+  return layer.snap.events.some(isApptEvent) ? '已沟通' : '已读';
+}
+function eventPendingLabel(layer: Layer) {
+  return layer.snap.events.some(isApptEvent) ? '未沟通' : '未读';
+}
+
 /** 切 type / 重开抽屉时筛选态复位（筛选是本地态，不跨下钻继承） */
 watch(
   () => [props.open, props.type],
@@ -324,8 +346,22 @@ watch(
   },
 );
 
-/** 未读 desc → 总量 desc → 姓名拼音 asc */
+/**
+ * 排序分两种，按数据自适应：
+ * · 带 stayMinutes（挂起 / 已转出 / 委派中）→ **停留时长 desc**，最久的最先捞
+ *   —— 这类各行 count 多为 1，按 count 排等于没排，副标题的"按时长排序"会变空头承诺
+ * · 其余（催单 / 补充 / 退回）→ 未读 desc → 总量 desc → 姓名 asc
+ */
 function sortPeople(rows: PeopleDrillRow[]): PeopleDrillRow[] {
+  const byStay = rows.some((r) => r.stayMinutes !== undefined);
+  if (byStay) {
+    return [...rows].sort(
+      (a, b) =>
+        (b.stayMinutes ?? 0) - (a.stayMinutes ?? 0) ||
+        b.count - a.count ||
+        a.name.localeCompare(b.name, 'zh'),
+    );
+  }
   return [...rows].sort(
     (a, b) =>
       (b.unread ?? 0) - (a.unread ?? 0) ||
@@ -366,7 +402,25 @@ function unreadPeopleCount(layer: Layer): number {
 
 /** 催单场景才有未读维度；退回场景无 unread，则不出筛选 chip 组（否则「未读 0」是噪声） */
 function showChips(layer: Layer): boolean {
-  return layer.snap.type === 'people' && layer.snap.totalUnread !== undefined;
+  return (layer.snap.type === 'people' || layer.snap.type === 'events')
+    && layer.snap.totalUnread !== undefined;
+}
+
+type EventFilter = 'all' | 'unread';
+const eventFilter = ref<EventFilter>('all');
+watch(
+  () => [props.open, props.type],
+  () => { eventFilter.value = 'all'; },
+);
+
+function displayEvents(layer: Layer): EventDrillRow[] {
+  const rows = [...layer.snap.events].sort((a, b) => Number(a.read) - Number(b.read));
+  if (eventFilter.value === 'unread') return rows.filter((r) => !r.read);
+  return rows;
+}
+
+function unreadEventCount(layer: Layer): number {
+  return layer.snap.events.filter((r) => !r.read).length;
 }
 
 const ONLINE_COLOR: Record<string, string> = {
@@ -405,6 +459,7 @@ function rowCount(layer: Layer): number {
   if (layer.snap.type === 'priority') return layer.snap.buckets.length;
   if (layer.snap.type === 'people') return layer.snap.people.length;
   if (layer.snap.type === 'source') return layer.snap.sources.length;
+  if (layer.snap.type === 'events') return layer.snap.events.length;
   return 0;
 }
 
@@ -420,7 +475,9 @@ function isEmpty(layer: Layer): boolean {
 
 /** 型2 且总量为 0 = 正向空态（「保持住」），其余为无数据态（必须带原因行） */
 function isPositiveEmpty(layer: Layer): boolean {
-  return isEmpty(layer) && layer.snap.type === 'people' && layer.snap.total === 0;
+  return isEmpty(layer)
+    && (layer.snap.type === 'people' || layer.snap.type === 'events')
+    && layer.snap.total === 0;
 }
 
 /**
@@ -437,9 +494,17 @@ function caption(layer: Layer): string {
   const s = layer.snap;
   if (s.type === 'priority') return `共 ${s.total} 单 · 按优先级分档`;
   if (s.type === 'people') {
+    if (s.totalUnread !== undefined) {
+      return isAppointment.value
+        ? `共 ${s.total} 单 · 其中 ${s.totalUnread} 条未完成`
+        : `共 ${s.total} 单 · 其中 ${s.totalUnread} 条未读`;
+    }
+    return `共 ${s.total} 单 · 按处理人归集`;
+  }
+  if (s.type === 'events') {
     return s.totalUnread !== undefined
-      ? `共 ${s.total} 单 · 其中 ${s.totalUnread} 条未读`
-      : `共 ${s.total} 单 · 按处理人归集`;
+      ? `共 ${s.total} 次 · 其中 ${s.totalUnread} 条未读`
+      : `共 ${s.total} 次事件`;
   }
   return `共 ${s.total} 单 · 按来源归集`;
 }
@@ -495,13 +560,26 @@ function goSource(layer: Layer, g: SourceDrillGroup) {
   });
 }
 
+function goEvent(r: EventDrillRow) {
+  emit('go-list', {
+    type: 'events',
+    scope: 'row',
+    key: r.ticketNo,
+    label: r.ticketNo,
+    path: `/tickets/${r.ticketNo}`,
+    query: { _from: 'board.events' },
+  });
+}
+
 function goFooter(layer: Layer) {
   const t = layer.snap.type;
   if (!t) return;
   const query: Record<string, string> =
     t === 'priority'
       ? { ...BASE_QUERY, status: 'BACKLOG', _from: 'board.backlog' }
-      : { ...BASE_QUERY, _from: t === 'people' ? 'board.people' : 'board.source' };
+      : t === 'events'
+        ? { ...BASE_QUERY, _from: 'board.events' }
+        : { ...BASE_QUERY, _from: t === 'people' ? 'board.people' : 'board.source' };
   emit('go-list', { type: t, scope: 'footer', path: '/tickets/list', query });
 }
 
@@ -604,7 +682,7 @@ const footerLabel = computed(() => {
                   <div class="dd-total-line">
                     <span class="dd-total-num">{{ l.snap.total }}</span>
                     <span v-if="l.snap.totalUnread !== undefined" class="dd-total-unread">
-                      未读 {{ l.snap.totalUnread }}
+                      {{ pendingLabel }} {{ l.snap.totalUnread }}
                     </span>
                   </div>
                   <div class="dd-total-cap">{{ caption(l) }}</div>
@@ -675,7 +753,7 @@ const footerLabel = computed(() => {
                       :class="{ on: peopleFilter === 'unread' }"
                       @click="peopleFilter = 'unread'"
                     >
-                      未读 {{ unreadPeopleCount(l) }}
+                      {{ pendingLabel }} {{ unreadPeopleCount(l) }}
                     </button>
                   </div>
 
@@ -705,22 +783,118 @@ const footerLabel = computed(() => {
                         {{ r.online }}
                       </div>
                     </div>
+                    <!--
+                      三种副信息按数据源自适应：
+                      · 催单/补充单 → 已读 · 未读；预约 → 已履约 · 未完成
+                      · 挂起/已转出/委派中 → note 给停留时长（光看数字判断不出哪个该捞回来）
+                      · 退回 → 只有总数
+                    -->
                     <div class="pp-count">
                       <span class="pp-count-total">{{ r.count }}</span>
-                      <template v-if="(r.unread ?? 0) > 0">
+                      <template v-if="r.read !== undefined || r.unread !== undefined">
                         <span class="pp-count-sep">·</span>
-                        <span class="pp-count-unread">未读 {{ r.unread }}</span>
+                        <span v-if="r.read !== undefined" class="pp-count-read">{{ doneLabel }} {{ r.read }}</span>
+                        <span v-if="(r.unread ?? 0) > 0" class="pp-count-unread">{{ pendingLabel }} {{ r.unread }}</span>
                       </template>
+                      <span v-if="r.note" class="pp-count-note">{{ r.note }}</span>
                     </div>
+                    <!--
+                      行内动作按数据自适应：
+                      带 stayMinutes 的三类（挂起 / 已转出 / 委派中）**不给「指派」** ——
+                      挂起在等客户、已转出已不在本组、委派中主责人明确（指派会转移主责，
+                      与委派"只加协办"的语义冲突）。这三类只给「查看」，跳筛好的工单列表。
+                    -->
                     <div class="pp-ops" @click.stop>
                       <button
+                        v-if="r.stayMinutes === undefined"
                         type="button"
                         :class="solidRowId(l) === r.id ? 'pp-solidbtn' : 'pp-txtbtn'"
                         @click="onAssign(r)"
                       >
                         指派
                       </button>
+                      <button v-else type="button" class="pp-txtbtn" @click="goPerson(l, r)">
+                        查看
+                      </button>
                     </div>
+                  </div>
+                </template>
+
+                <!-- ════ 催单 / 补充 / 预约 · 事件明细 ════ -->
+                <template v-else-if="l.snap.type === 'events'">
+                  <div v-if="showChips(l)" class="pp-chips">
+                    <button
+                      type="button"
+                      class="pp-chip"
+                      :class="{ on: eventFilter === 'all' }"
+                      @click="eventFilter = 'all'"
+                    >
+                      全部 {{ l.snap.events.length }}
+                    </button>
+                    <button
+                      type="button"
+                      class="pp-chip"
+                      :class="{ on: eventFilter === 'unread' }"
+                      @click="eventFilter = 'unread'"
+                    >
+                      {{ eventPendingLabel(l) }} {{ unreadEventCount(l) }}
+                    </button>
+                  </div>
+
+                  <!--
+                    统一行布局（与待审批抽屉一致）：
+                    ① 工单号 ············· 时间 · 状态
+                    ② 标题 ····················· →
+                    ③ 类型 + 人员关系
+                    ④ 内容（可选）
+                  -->
+                  <div
+                    v-for="r in displayEvents(l)"
+                    :key="r.id"
+                    class="ev-item"
+                    :class="{ 'is-read': r.read }"
+                    role="button"
+                    tabindex="0"
+                    @click="goEvent(r)"
+                    @keydown.enter.prevent="goEvent(r)"
+                    @keydown.space.prevent="goEvent(r)"
+                  >
+                    <div class="ev-r1">
+                      <span class="ev-no" title="工单号">{{ r.ticketNo }}</span>
+                      <span class="ev-when">{{ r.when }}</span>
+                      <span class="ev-status-slot">
+                        <template v-if="isApptEvent(r)">
+                          <span v-if="r.read" class="ev-read-tag">已沟通</span>
+                          <span v-else class="ev-unread-tag">未沟通</span>
+                        </template>
+                        <template v-else>
+                          <span v-if="r.read" class="ev-read-tag">{{ eventDoneLabel(l) }}</span>
+                          <span v-else class="ev-unread-tag">{{ eventPendingLabel(l) }}</span>
+                        </template>
+                      </span>
+                    </div>
+                    <div class="ev-r2">
+                      <span class="ev-title">{{ r.ticketTitle }}</span>
+                      <RightOutlined class="ev-arrow" />
+                    </div>
+                    <div class="ev-r3">
+                      <span
+                        v-if="r.category"
+                        class="ev-cat"
+                        :class="isApptEvent(r) ? 'tone-appt' : 'tone-sup'"
+                      >{{ r.category }}</span>
+                      <template v-if="isApptEvent(r)">
+                        <span class="ev-people">预约人 <b>{{ r.actor }}</b></span>
+                      </template>
+                      <template v-else>
+                        <span class="ev-people">
+                          <b>{{ r.actor }}</b><template v-if="r.actorRole">({{ r.actorRole }})</template>
+                          <span class="ev-action">{{ r.action === '补充给' ? '给' : r.action }}</span>
+                          <b v-if="r.target" class="ev-target">{{ r.target }}</b>
+                        </span>
+                      </template>
+                    </div>
+                    <div v-if="r.content" class="ev-r4">{{ r.content }}</div>
                   </div>
                 </template>
 
@@ -772,8 +946,8 @@ const footerLabel = computed(() => {
           </div>
         </div>
 
-        <!-- Footer h56 · 次按钮满宽 -->
-        <div class="dd-foot">
+        <!-- Footer：催单/补充事件明细可点行进工单，不再重复出口 -->
+        <div v-if="topLayer?.snap.type !== 'events'" class="dd-foot">
           <button
             type="button"
             class="dd-footbtn"
@@ -796,7 +970,7 @@ const footerLabel = computed(() => {
   position: fixed;
   top: 0;
   right: 0;
-  z-index: 900; /* 低于 a-modal(1000)：抽屉内指派/督办弹窗必须压在其上 */
+  z-index: 900; /* 低于 a-modal(1000)：抽屉内指派弹窗必须压在其上 */
   display: flex;
   flex-direction: column;
   width: 480px;
@@ -1185,8 +1359,10 @@ const footerLabel = computed(() => {
   display: flex;
   align-items: baseline;
   justify-content: flex-end;
-  gap: 4px;
-  width: 88px;
+  flex-wrap: wrap;
+  gap: 2px 4px;
+  /* 加宽以容纳「已读 x 未读 y」与停留时长文案 */
+  width: 168px;
   font-variant-numeric: tabular-nums;
 }
 .pp-count-total {
@@ -1198,11 +1374,131 @@ const footerLabel = computed(() => {
   font-size: 11px;
   color: #d1d5db;
 }
+/* 已读是中性信息（看过了），未读才是行动信号（还没人看）—— 故已读走灰、未读走橙 */
+.pp-count-read {
+  font-size: 12px;
+  color: #9ca3af;
+}
 .pp-count-unread {
   font-size: 13px;
   font-weight: 600;
   color: #f59e0b;
 }
+/* 挂起/已转出/委派中的停留时长；换行独占一行，长文案不挤压数字 */
+.pp-count-note {
+  flex-basis: 100%;
+  text-align: right;
+  font-size: 11px;
+  color: #9ca3af;
+  line-height: 1.4;
+}
+
+/* 催单 / 补充事件明细 */
+.ev-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  margin-bottom: 8px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 120ms, box-shadow 120ms;
+}
+.ev-item:hover {
+  border-color: #bfdbfe;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+}
+.ev-item.is-read { background: #fafafa; }
+.ev-item.is-read .ev-r4 { color: #9ca3af; }
+/* ① 工单号 ············· 时间 · 状态 */
+.ev-r1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.ev-no {
+  flex: none;
+  font-size: 12px;
+  font-weight: 700;
+  color: #1a6fff;
+  font-variant-numeric: tabular-nums;
+}
+.ev-when {
+  margin-left: auto;
+  flex: none;
+  font-size: 12px;
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+}
+.ev-status-slot { flex: none; }
+.ev-read-tag { font-size: 11px; color: #16a34a; }
+.ev-unread-tag {
+  font-size: 11px; font-weight: 600; color: #b45309;
+  background: #fff7ed; border-radius: 3px; padding: 1px 6px;
+}
+/* ② 标题 → */
+.ev-r2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.ev-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ev-arrow { flex: none; font-size: 10px; color: #cbd5e1; }
+/* ③ 类型 + 人员 */
+.ev-r3 {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+  color: #64748b;
+  min-width: 0;
+}
+.ev-cat {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 3px;
+  padding: 1px 6px;
+}
+.ev-cat.tone-sup {
+  color: #b45309;
+  background: #fffbeb;
+}
+.ev-cat.tone-appt {
+  color: #1a6fff;
+  background: #eff6ff;
+}
+.ev-people {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+.ev-people b { font-weight: 600; color: #334155; }
+.ev-action { color: #94a3b8; }
+.ev-target { font-weight: 600; color: #1a6fff; }
+/* ④ 内容 */
+.ev-r4 {
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.5;
+}
+
 .pp-ops {
   display: flex;
   align-items: center;

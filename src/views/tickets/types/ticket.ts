@@ -351,6 +351,7 @@ export interface ListViewMeta {
   key: ListViewKey;
   label: string;
 }
+/** 工作台多视图（我的/本组/工单池等）；全量工单列表页不使用，仅筛选器查询 */
 export const LIST_VIEWS: ListViewMeta[] = [
   { key: 'all', label: '全部' },
   { key: 'mine', label: '我的' },

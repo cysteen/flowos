@@ -9,9 +9,14 @@
  *      TEAM_MEMBERS / PRIORITY_BUCKETS / *_DRILL / TRAFFIC_* / PROBLEM_TOP10。
  *
  * ── 数据口径 ──
- * 1. 积压【决策 B1 · 8 状态】依《915工单看板-改造方案(商讨稿)》§0.6 状态元数据表 + §5.5 白名单：
- *    待受理 / 待处理 / 处理中 / 调研中 / 申请挂起中 / 申请关闭中 / 申请强结中 …「计积压」共 8 个状态。
- *    口径 ＝ 未结且未停表（已解决 / 已挂起 / 已转出 / 各终态 均不计）。
+ * 1. **积压【2026-08-04 业务重新定义，推翻改造方案 B1】**
+ *    新口径 ＝ **此刻未结、SLA 未停表、且已超过「解决时效」的工单**。
+ *      · 只按**解决时效**判，**不含首响超时**
+ *      · **时点值**：补救完成即减少，不是"今日发生过超时"
+ *      · **挂起 / 已转出不计**（SLA 已停表，且已在关注区「SLA 已停表」组单独露出）
+ *    旧口径（作废）＝ 未结且未停表的 8 个状态，即所有在办单。
+ *    ⚠️ 连带：守恒式 `积压 = 期初 + 进线 − 结案` 与 `workload 合计 = 积压 − 未分派`
+ *       **全部失效** —— 它们描述的是在办池，与新口径不是同一个池子。
  * 2. 优先级保留两套枚举：sysKey（系统现有 P0–P3）+ reqLabel（业务口径）。
  *    **映射 0803 业务确认**：P0=紧急 / P1=重要 / P2=普通加急 / P3=普通（单一真源见 types/ticket.ts PRIORITY_LABEL）。
  * 3. 负载档阈值**暂定**：空闲 ≤5 ／ 适中 6–12 ／ 满载 >12（未经业务确认，后续应做成可配置）。
@@ -24,19 +29,24 @@
  *    同名指标两处必须同值，否则坐席门户与班组表会打架。
  *
  * ── 数值自洽关系（评审可逐条核对）──
- * ★ 守恒式（体系的地基）：积压 63 ＝ 期初 17 ＋ 进线 142 − 结案 96
- * - PRIORITY_BUCKETS 合计 6+14+19+24 = 63 ＝ 班组积压 63
- * - TEAM_MEMBERS.workload 合计 = 55 ＝ 积压 63 − 未分派 8（未分派尚未落到人头）
+ * - PRIORITY_BUCKETS 合计 3+5+4+2 = 14 ＝ 班组积压 14（超解决时效的未结单）
+ * - TEAM_MEMBERS.workload 合计 = 55 ＝ 在办总量（**不再与积压挂钩**，新口径下两者是不同池子）
  * - TEAM_MEMBERS.forwardToday 合计 = 118 ＝ 今日下送 118
- * - URGE_DRILL count 合计 = 34 ＝ 催单·补充 34；unread 合计 = 12 ＝ sub「未读 12」
- * - RETURN_DRILL 合计 = 3 ＝ 退回 3；TRANSFER_DRILL 三组 2+2+1 = 5 ＝ 今日转入 5
+ * - URGE_DRILL 合计 21（已读 14 / 未读 7）＝ 催单卡；SUPPLEMENT_DRILL 合计 13（已读 8 / 未读 5）＝ 补充单卡
+ *   → 两者相加 34 / 未读 12 ＝ 拆分前的合并口径，总量守恒
+ * - RETURN_DRILL 合计 3 ＝ 退回；TRANSFER_DRILL 三组 2+2+1 = 5 ＝ 转入
+ * - SUSPEND_DRILL 合计 3 ＝ 挂起；TRANSFERRED_OUT_DRILL 合计 2 ＝ 已转出；DELEGATED_DRILL 合计 4 ＝ 委派中
  * - TRAFFIC_HOURLY 合计 = (142, 118, 96) ＝ 今日进线 / 下送 / 结案
  * - TRAFFIC_DAILY 末点 8/3 = (142, 118, 96)；前一日 8/2 = (97, 92, 103)
- *   → 卡片 delta：进线 +45 / 下送 +26 / 结案 −7；积压 delta +46 ＝ 63 − 17
- * - TRAFFIC_DAILY 前 29 天 Σ(inbound − closed) = +7 ＝ 积压由 10 涨到 8/2 收盘的 17
+ *   → 卡片 delta：进线 +45 / 下送 +26 / 结案 −7
  * - 24h 完结率分母 97 ＝ TRAFFIC_DAILY 8/2 的 inbound（用已闭合队列，见该卡注释）
- * - BOARD_TODOS 待指派 8 ＝ 存量区未分派 8
+ * - BOARD_TODOS 待指派 8 ＝ 关注区未分派 8
  * - PROBLEM_TOP10 count 合计 = 112，ratio ＝ count ÷ 142（今日进线）× 100，ratio 合计 78.8
+ *
+ * ⚠️ **积压 14 与「SLA 超期率」的分子 9 不是同一个数**：
+ *    · 超期率分子 9 ＝ **今日进线**中已超期的（当日流量，分母 142）
+ *    · 积压 14 ＝ **此刻仍超时未处理完**的（跨天存量，含前几天遗留）
+ *    两者都对，讲的是不同的事，界面上不要互相校验。
  */
 
 /* ==========================================================================
@@ -116,13 +126,25 @@ export const AS_MEMBERS: TeamMemberRow[] = [
  * 【新】915 班组长看板
  * ========================================================================== */
 
+/** 关注区分组：与积压的关系决定归到哪一组，见 BOARD_FOCUS 注释 */
+export type FocusGroup = 'stuck' | 'paused' | 'interrupted';
+
 /** 模块 1 · 大盘指标卡 */
 export interface BoardMetric {
   key: string;
+  /** 仅关注区使用：归到哪一组 */
+  group?: FocusGroup;
   label: string;
   value: string;
   /** 附加数，如「未读 12」「3 · 5」的说明 */
   sub?: string;
+  /**
+   * 未完成数（今日事件行展示：全量 value + 未完成 pending）。
+   * 催单/补充＝未读；预约＝尚未沟通（对齐办理页「标记已沟通」）。
+   */
+  pending?: number;
+  /** 未完成数旁注，默认「未完成」 */
+  pendingLabel?: string;
   delta?: string;
   deltaTone?: 'good' | 'bad' | 'neutral';
   /** 环比语义（title / 读屏）；缺省按指标自拟 */
@@ -136,8 +158,40 @@ export interface BoardMetric {
   iconColor: string;
   iconBg: string;
   valueColor?: string;
-  /** 下钻类型；null = 不可下钻 */
-  drill?: 'priority' | 'people' | 'source' | null;
+  /** 下钻类型；null = 不可下钻；events = 催单/补充事件明细 */
+  drill?: 'priority' | 'people' | 'source' | 'events' | null;
+}
+
+/**
+ * 催单 / 补充 / 预约事件明细
+ * · 催单：谁 · 何时 · 催了谁 · 哪张单（read＝已读）
+ * · 补充：谁 · 何时 · 补给谁 · 哪张单 · category（read＝已读）
+ * · 预约：预约人 · 预约时间 · 预约需求 · 哪张单（read＝已沟通；对齐 OpAppointmentRecords）
+ */
+export interface EventDrillRow {
+  id: string;
+  /** 发起人 / 预约人 */
+  actor: string;
+  /** 发起人侧角色旁注，如「一线」「客户」；预约一般不填 */
+  actorRole?: string;
+  /** 动作：催了 / 补充给 / 预约 */
+  action: '催了' | '补充给' | '预约';
+  /** 目标处理人（预约无此维度，可空） */
+  target?: string;
+  when: string;
+  ticketNo: string;
+  ticketTitle: string;
+  content: string;
+  /**
+   * 催单/补充＝已读；预约＝已沟通（办理页「标记已沟通」）。
+   */
+  read: boolean;
+  /**
+   * 补充：修改信息 / 补充信息 / 取消服务 / 其他。
+   * 预约：预约联系用户 / 联系后端确认（APPOINTMENT_DEMAND_OPTIONS）。
+   * 催单无类型，勿填。
+   */
+  category?: string;
 }
 
 /** 模块 5 · 调度待办 */
@@ -214,8 +268,23 @@ export interface PeopleDrillRow {
   name: string;
   online: '在线' | '小休' | '离线';
   count: number;
-  /** 未读数，仅催单·补充下钻使用 */
+  /** 未读数，仅催单 / 补充单下钻使用 */
   unread?: number;
+  /**
+   * 已读数，仅催单 / 补充单下钻使用。已读 + 未读 = count。
+   * 业务要求两个数都要看得见：未读＝还没人看，已读＝看了但可能没动。
+   */
+  read?: number;
+  /**
+   * 停留时长说明，挂起 / 已转出 / 委派中下钻使用（如「最久 4d 2h」）。
+   * 这三类 SLA 已停表或在等外部，**光给个数字看不出哪个该捞回来**，必须给时长。
+   */
+  note?: string;
+  /**
+   * 停留时长的可排序值（分钟）。有 note 的下钻必须给，否则"按时长排序"这句
+   * 副标题就是空头承诺 —— 各行 count 都是 1 时，按 count 排等于没排。
+   */
+  stayMinutes?: number;
 }
 
 /** 转单来源下钻 */
@@ -281,43 +350,223 @@ export interface ProblemRow {
  * ⚠️ 改动任一数值时必须同步维持该等式，否则体系即失效。
  * ======================================================================= */
 
-/** 期初积压（昨日结存）。仅用于守恒式与界面注释，不单独成卡。 */
+/**
+ * @deprecated 2026-08-04：积压口径改为「超解决时效的未结单」后，守恒式失效，
+ * 期初积压不再有用武之地。保留常量仅为兼容尚未清理的引用。
+ */
 export const BOARD_OPENING_BACKLOG = 17;
 
-/** 区① 存量 —— 「欠了多少债」。独立成区，对应竞品的「服务品质区」。 */
-export const BOARD_STOCK: BoardMetric[] = [
+/* -------------------------------------------------------------------------
+ * 区① 重点关注 · 需要盯的工单（2026-08-04 业务确认改版）
+ *
+ * 【定位】班组长真正要盯的不是"在办总量"（正常流转的单也在里面），而是
+ * **已经欠债的**（积压＝超解决时效）和**卡住 / 异常的**（下面三组）。
+ * 在办总量不再上卡，逐人在办数在「组员负载」Tab 里看。
+ *
+ * 【三组的划分依据 —— 关键是说清"与积压什么关系"】
+ * 若把 8 项平铺在积压下面，读者一定会去做加减（8+4+3+2 和 14 什么关系？）。
+ * 故按"与积压的关系"分组，把关系写进组标题：
+ *
+ *   ① SLA 计时中 · 无人推进：未分派、委派中
+ *      —— SLA 还在走，**其中已超时的那部分已计入积压**，未超时的不计
+ *      —— 与积压是**部分重叠**，不是子集也不是互斥，组标题不能写"其中"
+ *      —— 「委派中」按动作矩阵不是主状态，是叠加在「处理中」上的**子状态**，
+ *         统计时须按子状态过滤
+ *   ② SLA 已停表：挂起、已转出
+ *      —— 停表 ⇒ **一律不计积压**（业务确认：这两类已在本组单独露出，不重复计）
+ *      —— 恰恰因为没有时间压力提醒，这两类最容易被彻底遗忘，必须单列
+ *   ③ 今日被打断（事件，另一维度）：催单、补充、退回、转入
+ *      —— 累计值，与积压不构成加减关系
+ * ----------------------------------------------------------------------- */
+
+/**
+ * 关注区锚点：班组积压
+ *
+ * ⚠️ 口径于 2026-08-04 由业务重新定义，**推翻改造方案 B1**：
+ *   旧：未结且未停表的 8 个状态（＝所有在办单，63）
+ *   新：**此刻未结、SLA 未停表、且已超过「解决时效」的单**（14）
+ *
+ * 三条边界（业务逐条确认）：
+ *   · 超时按 **解决时效** 判，**不含首响超时** —— 首响超了但整单没到期的不算
+ *   · 取 **此刻仍超时且未处理完** 的时点值 —— 补救完成即减少，不是"今日发生过超时"
+ *   · **挂起 / 已转出不计** —— SLA 已停表，且这两类已在「已停表」组单独露出，不重复计
+ *
+ * 连带失效（勿再引用）：
+ *   ✗ 守恒式 `积压 = 期初 + 进线 − 结案` —— 那是**在办池**的恒等式，超时单不满足
+ *   ✗ `workload 合计 = 积压 − 未分派` —— workload 数的是在办单，与新口径不是同一个池子
+ */
+export const BOARD_BACKLOG: BoardMetric = {
+  key: 'backlog',
+  label: '班组积压',
+  value: '14',
+  sub: '超解决时效 · 仍未处理完',
+  delta: '+3',
+  deltaTone: 'bad',
+  deltaHint: '较昨日同刻',
+  clickHint: '优先级分布',
+  iconName: 'DatabaseOutlined',
+  iconColor: '#EF4444',
+  iconBg: '#EF44441A',
+  valueColor: '#EF4444',
+  drill: 'priority',
+};
+
+/**
+ * 关注区：主盯（卡住/停表 + 退回/转入）+ 今日事件（催单/补充/预约）。
+ *
+ * 数值自洽：
+ * · 未分派 8 ＝ BOARD_TODOS 待指派 8
+ * · 催单 21次（未处理 7）/ 补充 13次（未处理 5）/ 预约 11次（未沟通 6）
+ * · 退回 3 ＝ RETURN_DRILL；转入 5 ＝ TRANSFER_DRILL；预约 11 ＝ APPOINTMENT_EVENTS
+ * · 挂起 3 / 已转出 2 / 委派中 4 与各自 *_DRILL 合计一致
+ */
+export const BOARD_FOCUS: BoardMetric[] = [
+  /* ── ① 其中卡住的（计入积压） ── */
   {
     key: 'unassigned',
-    label: '累计未分派',
+    group: 'stuck',
+    label: '未分派',
     value: '8',
     sub: '最久等待 2h14m',
     delta: '+2',
     deltaTone: 'bad',
     deltaHint: '较上一快照',
-    /** 动作入口嵌在卡内「去指派」按钮，不再用角标 */
+    /** 动作入口嵌在卡内「去指派」按钮，不用角标 */
     clickHint: undefined,
     iconName: 'InboxOutlined',
-    iconColor: '#F59E0B',
+    iconColor: '#d97706',
     iconBg: '#F59E0B1A',
-    valueColor: '#F59E0B',
-    /** 语义上无处理人；点击走指派弹窗（见 TeamBoardView.drillOf） */
-    drill: 'people',
+    valueColor: '#d97706',
+    /** 不下钻；动作只走卡内「去指派」按钮 */
+    drill: null,
   },
   {
-    key: 'backlog',
-    label: '班组积压',
-    value: '63',
-    delta: '+46',
+    key: 'delegated',
+    group: 'stuck',
+    label: '已委派',
+    value: '4',
+    sub: '最久 1d 6h',
+    delta: '+1',
     deltaTone: 'bad',
-    deltaHint: '较昨日结存',
-    clickHint: '优先级分布',
-    balance: { opening: 17, inbound: 142, closed: 96 },
-    iconName: 'DatabaseOutlined',
-    iconColor: '#EF4444',
-    iconBg: '#EF44441A',
-    valueColor: '#EF4444',
-    drill: 'priority',
+    deltaHint: '较上一快照',
+    clickHint: '查看工单',
+    iconName: 'UsergroupAddOutlined',
+    iconColor: '#94a3b8',
+    iconBg: '#94a3b81A',
+    /** 直达列表（scope=team + status），不再走人维度抽屉 */
+    drill: null,
   },
+  /* ── ② 已停表 · 不计积压 ── */
+  {
+    key: 'suspended',
+    group: 'paused',
+    label: '挂起',
+    value: '3',
+    sub: '最久 4d 2h',
+    delta: '0',
+    deltaTone: 'neutral',
+    deltaHint: '较上一快照',
+    clickHint: '查看工单',
+    iconName: 'PauseCircleOutlined',
+    iconColor: '#94a3b8',
+    iconBg: '#94a3b81A',
+    drill: null,
+  },
+  {
+    key: 'transferredOut',
+    group: 'paused',
+    label: '已转出',
+    value: '2',
+    sub: '最久 2d 8h',
+    delta: '+1',
+    deltaTone: 'bad',
+    deltaHint: '较上一快照',
+    clickHint: '查看工单',
+    iconName: 'ExportOutlined',
+    iconColor: '#94a3b8',
+    iconBg: '#94a3b81A',
+    drill: null,
+  },
+  /* ── 退回 / 转入：升入主盯行（与已转出并列），不再挤在事件条 ── */
+  {
+    key: 'returned',
+    group: 'stuck',
+    label: '退回',
+    value: '3',
+    sub: '技术支持退回',
+    delta: '-1',
+    deltaTone: 'good',
+    clickHint: '查看工单',
+    iconName: 'RollbackOutlined',
+    iconColor: '#94a3b8',
+    iconBg: '#94a3b81A',
+    drill: null,
+  },
+  {
+    key: 'transferIn',
+    group: 'stuck',
+    label: '转入',
+    value: '5',
+    sub: '跨组 / 售后回传',
+    delta: '+2',
+    deltaTone: 'bad',
+    deltaHint: '较上一快照',
+    clickHint: '查看工单',
+    iconName: 'SwapOutlined',
+    iconColor: '#94a3b8',
+    iconBg: '#94a3b81A',
+    drill: null,
+  },
+  /* ── ③ 今日事件：催单 / 补充 / 预约 —— 展示全量 + 未完成 ── */
+  {
+    key: 'urge',
+    group: 'interrupted',
+    label: '催单',
+    value: '21',
+    pending: 7,
+    pendingLabel: '未处理',
+    sub: '21次，未处理 7',
+    clickHint: '事件明细',
+    iconName: 'BellOutlined',
+    iconColor: '#94a3b8',
+    iconBg: '#94a3b81A',
+    drill: 'events',
+  },
+  {
+    key: 'supplement',
+    group: 'interrupted',
+    label: '补充单',
+    value: '13',
+    pending: 5,
+    pendingLabel: '未处理',
+    sub: '13次，未处理 5',
+    clickHint: '事件明细',
+    iconName: 'FileAddOutlined',
+    iconColor: '#94a3b8',
+    iconBg: '#94a3b81A',
+    drill: 'events',
+  },
+  {
+    key: 'appointment',
+    group: 'interrupted',
+    label: '预约',
+    value: '11',
+    pending: 6,
+    pendingLabel: '未沟通',
+    sub: '11次，未沟通 6',
+    clickHint: '事件明细',
+    iconName: 'CalendarOutlined',
+    iconColor: '#94a3b8',
+    iconBg: '#94a3b81A',
+    drill: 'events',
+  },
+];
+
+/** 关注区三组的标题与说明；标题必须说清"与积压什么关系"，否则读者会去做加减 */
+export const FOCUS_GROUPS: { key: FocusGroup; title: string; hint: string }[] = [
+  { key: 'stuck', title: 'SLA 计时中 · 无人推进', hint: '超时的部分已计入积压' },
+  { key: 'paused', title: 'SLA 已停表', hint: '一律不计积压 · 最容易被遗忘' },
+  { key: 'interrupted', title: '今日被打断', hint: '事件计数 · 与积压不构成加减' },
 ];
 
 /**
@@ -421,44 +670,11 @@ export const BOARD_METRICS: BoardMetric[] = [
  * 它们是孤立事件计数，不在班组长的主决策链上（判据：不触发决策的指标不占大盘）。
  * 需求模块1 第 5/6/7 条由此兼容 —— 内容不丢，只是不占核心位。
  */
-export const BOARD_FLOW_EVENTS: BoardMetric[] = [
-  {
-    key: 'urge',
-    label: '催单 · 补充单',
-    value: '34',
-    sub: '未读 12',
-    delta: '+4',
-    deltaTone: 'bad',
-    iconName: 'BellOutlined',
-    iconColor: '#EF4444',
-    iconBg: '#EF44441A',
-    drill: 'people',
-  },
-  {
-    key: 'returned',
-    label: '退回',
-    value: '3',
-    sub: '仅技术支持退回（D16）',
-    delta: '-1',
-    deltaTone: 'good',
-    iconName: 'RollbackOutlined',
-    iconColor: '#F59E0B',
-    iconBg: '#F59E0B1A',
-    drill: 'people',
-  },
-  {
-    key: 'transferIn',
-    label: '今日转入',
-    value: '5',
-    sub: '其他组 / 跨组调剂 / 售后回传',
-    delta: '+2',
-    deltaTone: 'neutral',
-    iconName: 'SwapOutlined',
-    iconColor: '#6B7280',
-    iconBg: '#9CA3AF1A',
-    drill: 'source',
-  },
-];
+/**
+ * @deprecated 2026-08-04：流转事件已并入「重点关注」区（BOARD_FOCUS，group='interrupted'），
+ * 且催单/补充已拆分为两项。保留空数组仅为兼容尚未迁移的引用，确认无引用后删除。
+ */
+export const BOARD_FLOW_EVENTS: BoardMetric[] = [];
 
 /* -------------------------------------------------------------------------
  * 模块 5 · 调度待办（待指派 8 ＝ 大盘未分派 8）
@@ -466,6 +682,56 @@ export const BOARD_FLOW_EVENTS: BoardMetric[] = [
 export const BOARD_TODOS: BoardTodo[] = [
   { key: 'assign', label: '待指派', count: 8, unit: '单', tone: 'danger' },
   { key: 'approve', label: '待审批', count: 3, unit: '条', tone: 'warn' },
+];
+
+/** 待审批下钻行 · 字段对齐审批中心；工单号/标题与 tickets · 看板事件同源 */
+export interface ApprovalDrillRow {
+  /** 申请单号 */
+  id: string;
+  /** 关联工单号（LCMN-…） */
+  ticketNo: string;
+  /** 关联工单标题 */
+  ticketTitle: string;
+  type: string;
+  /** 申请人＝组内坐席 */
+  applicant: string;
+  approver: string;
+  status: '审批中' | '已通过' | '已驳回' | '已撤回';
+  submit: string;
+}
+
+/** 合计 3 ＝ BOARD_TODOS.approve.count；工单取自本组在办/积压相关单 */
+export const APPROVAL_PENDING_DRILL: ApprovalDrillRow[] = [
+  {
+    id: 'APR-2026-101',
+    ticketNo: 'LCMN-20260803-10093',
+    ticketTitle: '维修超期未解决',
+    type: '工单强结审批',
+    applicant: '周航',
+    approver: '周运营',
+    status: '审批中',
+    submit: '今天 11:02',
+  },
+  {
+    id: 'APR-2026-102',
+    ticketNo: 'LCMN-20260803-10058',
+    ticketTitle: '投诉服务态度',
+    type: '工单挂起审批',
+    applicant: '孙杰',
+    approver: '周运营',
+    status: '审批中',
+    submit: '今天 10:35',
+  },
+  {
+    id: 'APR-2026-103',
+    ticketNo: 'LCMN-20260804-10021',
+    ticketTitle: '电源故障反复重启',
+    type: '工单强结审批',
+    applicant: '李昊',
+    approver: '周运营',
+    status: '审批中',
+    submit: '今天 10:20',
+  },
 ];
 
 /* -------------------------------------------------------------------------
@@ -503,25 +769,114 @@ export const TEAM_MEMBERS: MemberRow[] = [
  * 积压下钻 · 优先级分布（合计 6+14+19+24 = 63 ＝ 班组积压）
  * sysKey ↔ reqLabel 映射已确认（0803）
  * ----------------------------------------------------------------------- */
+/**
+ * 合计 3+5+4+2 = 14 ＝ 班组积压 14（超解决时效的未结单）。
+ * 分布**高优先级占比高**是必然的：P0/P1 的解决时效短，更容易踩线。
+ * 若某天 P3 占比反超，说明低优先级单被长期晾着，是另一种问题信号。
+ */
 export const PRIORITY_BUCKETS: PriorityBucket[] = [
-  { sysKey: 'P0', reqLabel: '紧急', count: 6,  color: '#EF4444' },
-  { sysKey: 'P1', reqLabel: '重要', count: 14, color: '#F59E0B' },
-  { sysKey: 'P2', reqLabel: '普通加急', count: 19, color: '#1A6FFF' },
-  { sysKey: 'P3', reqLabel: '普通', count: 24, color: '#9CA3AF' },
+  { sysKey: 'P0', reqLabel: '紧急', count: 3, color: '#EF4444' },
+  { sysKey: 'P1', reqLabel: '重要', count: 5, color: '#F59E0B' },
+  { sysKey: 'P2', reqLabel: '普通加急', count: 4, color: '#1A6FFF' },
+  { sysKey: 'P3', reqLabel: '普通', count: 2, color: '#9CA3AF' },
 ];
 
 /* -------------------------------------------------------------------------
- * 催单·补充单下钻 · 按人员（count 合计 34、unread 合计 12）
+ * 催单事件明细（合计 21，未读 7）· 谁 · 何时 · 催了谁 · 哪张单
  * ----------------------------------------------------------------------- */
+/** 催单无「类型」字段（与办理页催单弹窗一致），只展示谁·何时·催了谁·哪张单 */
+export const URGE_EVENTS: EventDrillRow[] = [
+  { id: 'u1', actor: '张晓芸', actorRole: '一线', action: '催了', target: '孙杰', when: '今天 19:27', ticketNo: 'LCMN-20260804-10021', ticketTitle: '电源故障反复重启', content: '要求今日内安排上门处理', read: false },
+  { id: 'u2', actor: '客户·陈某', actorRole: '客户', action: '催了', target: '李昊', when: '今天 18:52', ticketNo: 'LCMN-20260804-10034', ticketTitle: '设备无法联网', content: '已等两天，请尽快给方案', read: false },
+  { id: 'u3', actor: '李一线', actorRole: '一线', action: '催了', target: '张敏', when: '今天 17:40', ticketNo: 'LCMN-20260803-10058', ticketTitle: '投诉服务态度', content: '客户情绪升级，请二线优先跟进', read: false },
+  { id: 'u4', actor: '客户·王某', actorRole: '客户', action: '催了', target: '郑楠', when: '今天 16:18', ticketNo: 'LCMN-20260803-10071', ticketTitle: '退换货进度查询', content: '第三次催单，要求今日回电', read: false },
+  { id: 'u5', actor: '周一线', actorRole: '一线', action: '催了', target: '王倩', when: '今天 15:05', ticketNo: 'LCMN-20260803-10085', ticketTitle: '发票未开具', content: '财务节点卡住，请协助推进', read: false },
+  { id: 'u6', actor: '客户·赵某', actorRole: '客户', action: '催了', target: '周航', when: '今天 14:22', ticketNo: 'LCMN-20260803-10093', ticketTitle: '维修超期未解决', content: '已向监管平台投诉意向', read: false },
+  { id: 'u7', actor: '张晓芸', actorRole: '一线', action: '催了', target: '孙杰', when: '今天 13:10', ticketNo: 'LCMN-20260802-09910', ticketTitle: '配件缺货承诺到货', content: '客户称承诺今日到货未兑现', read: false },
+  { id: 'u8', actor: '客户·孙某', actorRole: '客户', action: '催了', target: '李昊', when: '今天 12:40', ticketNo: 'LCMN-20260802-09880', ticketTitle: '软件激活失败', content: '影响上课，请加急', read: true },
+  { id: 'u9', actor: '陈一线', actorRole: '一线', action: '催了', target: '陈曦', when: '今天 11:55', ticketNo: 'LCMN-20260802-09855', ticketTitle: '账号权限异常', content: '已与客户约定 16:00 前回电', read: true },
+  { id: 'u10', actor: '客户·周某', actorRole: '客户', action: '催了', target: '张敏', when: '今天 11:20', ticketNo: 'LCMN-20260801-09720', ticketTitle: '物流丢件理赔', content: '请同步理赔进度', read: true },
+  { id: 'u11', actor: '李一线', actorRole: '一线', action: '催了', target: '郑楠', when: '今天 10:48', ticketNo: 'LCMN-20260801-09690', ticketTitle: '固件升级失败', content: '一线无法闭环，请技术支持接手', read: true },
+  { id: 'u12', actor: '客户·吴某', actorRole: '客户', action: '催了', target: '吴悦', when: '今天 10:05', ticketNo: 'LCMN-20260731-09510', ticketTitle: '预约改期未确认', content: '请确认明日上门时段', read: true },
+  { id: 'u13', actor: '王一线', actorRole: '一线', action: '催了', target: '陈曦', when: '今天 09:40', ticketNo: 'LCMN-20260731-09480', ticketTitle: '批量设备离线', content: '学校侧催进度', read: true },
+  { id: 'u14', actor: '客户·郑某', actorRole: '客户', action: '催了', target: '孙杰', when: '今天 09:12', ticketNo: 'LCMN-20260730-09330', ticketTitle: '耗材发错型号', content: '请今日内给出换货方案', read: true },
+  { id: 'u15', actor: '张晓芸', actorRole: '一线', action: '催了', target: '李昊', when: '今天 08:55', ticketNo: 'LCMN-20260730-09301', ticketTitle: '服务评价申诉', content: '客户要求改判', read: true },
+  { id: 'u16', actor: '客户·冯某', actorRole: '客户', action: '催了', target: '张敏', when: '昨天 20:18', ticketNo: 'LCMN-20260729-09150', ticketTitle: '续费未到账', content: '请财务侧核实', read: true },
+  { id: 'u17', actor: '陈一线', actorRole: '一线', action: '催了', target: '郑楠', when: '昨天 18:40', ticketNo: 'LCMN-20260729-09120', ticketTitle: '安装指导未闭环', content: '客户晚间再次来电', read: true },
+  { id: 'u18', actor: '客户·何某', actorRole: '客户', action: '催了', target: '吴悦', when: '昨天 16:05', ticketNo: 'LCMN-20260728-09010', ticketTitle: '质保鉴定进度', content: '请更新鉴定结果', read: true },
+  { id: 'u19', actor: '李一线', actorRole: '一线', action: '催了', target: '王倩', when: '昨天 14:30', ticketNo: 'LCMN-20260728-08980', ticketTitle: '数据迁移咨询', content: '约定今日回复未兑现', read: true },
+  { id: 'u20', actor: '客户·蒋某', actorRole: '客户', action: '催了', target: '陈曦', when: '昨天 11:15', ticketNo: 'LCMN-20260727-08840', ticketTitle: '套餐降级失败', content: '请优先处理', read: true },
+  { id: 'u21', actor: '周一线', actorRole: '一线', action: '催了', target: '孙杰', when: '昨天 09:50', ticketNo: 'LCMN-20260727-08810', ticketTitle: '硬件异响排查', content: '请安排复测', read: true },
+];
+
+/** @deprecated 人员聚合口径保留，事件明细见 URGE_EVENTS */
 export const URGE_DRILL: PeopleDrillRow[] = [
-  { id: 'm10', name: '孙杰', online: '在线', count: 6, unread: 2 },
-  { id: 'm2',  name: '李昊', online: '在线', count: 5, unread: 2 },
-  { id: 'm5',  name: '陈曦', online: '在线', count: 5, unread: 1 },
-  { id: 'm1',  name: '张敏', online: '在线', count: 4, unread: 2 },
-  { id: 'm9',  name: '郑楠', online: '小休', count: 4, unread: 1 },
-  { id: 'm8',  name: '吴悦', online: '在线', count: 4, unread: 2 },
-  { id: 'm3',  name: '王倩', online: '在线', count: 3, unread: 1 },
-  { id: 'm7',  name: '周航', online: '离线', count: 3, unread: 1 },
+  { id: 'm10', name: '孙杰', online: '在线', count: 4, read: 2, unread: 2 },
+  { id: 'm2',  name: '李昊', online: '在线', count: 3, read: 2, unread: 1 },
+  { id: 'm5',  name: '陈曦', online: '在线', count: 3, read: 3, unread: 0 },
+  { id: 'm1',  name: '张敏', online: '在线', count: 3, read: 2, unread: 1 },
+  { id: 'm9',  name: '郑楠', online: '小休', count: 3, read: 2, unread: 1 },
+  { id: 'm8',  name: '吴悦', online: '在线', count: 2, read: 2, unread: 0 },
+  { id: 'm3',  name: '王倩', online: '在线', count: 2, read: 1, unread: 1 },
+  { id: 'm7',  name: '周航', online: '离线', count: 1, read: 0, unread: 1 },
+];
+
+/* -------------------------------------------------------------------------
+ * 补充事件明细（合计 13，未读 5）· 谁 · 何时 · 补给谁 · 哪张单
+ * ----------------------------------------------------------------------- */
+/** 补充类型：修改信息 / 补充信息 / 取消服务 / 其他（与弹窗选项一致） */
+export const SUPPLEMENT_EVENTS: EventDrillRow[] = [
+  { id: 's1', actor: '张晓芸', actorRole: '一线', action: '补充给', target: '孙杰', when: '今天 19:27', ticketNo: 'LCMN-20260804-10021', ticketTitle: '电源故障反复重启', content: '客户补充：已尝试更换电源线，问题依旧', read: false, category: '补充信息' },
+  { id: 's2', actor: '客户·陈某', actorRole: '客户', action: '补充给', target: '李昊', when: '今天 18:10', ticketNo: 'LCMN-20260804-10034', ticketTitle: '设备无法联网', content: '补充路由器型号与固件版本截图', read: false, category: '补充信息' },
+  { id: 's3', actor: '李一线', actorRole: '一线', action: '补充给', target: '孙杰', when: '今天 16:45', ticketNo: 'LCMN-20260803-10058', ticketTitle: '投诉服务态度', content: '更正联系人手机号与上门地址', read: false, category: '修改信息' },
+  { id: 's4', actor: '客户·王某', actorRole: '客户', action: '补充给', target: '吴悦', when: '今天 15:20', ticketNo: 'LCMN-20260803-10071', ticketTitle: '退换货进度查询', content: '客户申请取消本次上门服务', read: false, category: '取消服务' },
+  { id: 's5', actor: '周一线', actorRole: '一线', action: '补充给', target: '周航', when: '今天 14:05', ticketNo: 'LCMN-20260803-10093', ticketTitle: '维修超期未解决', content: '补充上门工程师联系方式', read: false, category: '其他' },
+  { id: 's6', actor: '客户·赵某', actorRole: '客户', action: '补充给', target: '李昊', when: '今天 12:30', ticketNo: 'LCMN-20260802-09880', ticketTitle: '软件激活失败', content: '补充激活码与错误码', read: true, category: '补充信息' },
+  { id: 's7', actor: '陈一线', actorRole: '一线', action: '补充给', target: '陈曦', when: '今天 11:15', ticketNo: 'LCMN-20260802-09855', ticketTitle: '账号权限异常', content: '修改组织管理员姓名与邮箱', read: true, category: '修改信息' },
+  { id: 's8', actor: '客户·孙某', actorRole: '客户', action: '补充给', target: '张敏', when: '今天 10:40', ticketNo: 'LCMN-20260801-09720', ticketTitle: '物流丢件理赔', content: '补充购买凭证 PDF', read: true, category: '补充信息' },
+  { id: 's9', actor: '李一线', actorRole: '一线', action: '补充给', target: '陈曦', when: '今天 09:50', ticketNo: 'LCMN-20260731-09480', ticketTitle: '批量设备离线', content: '客户取消批量巡检服务', read: true, category: '取消服务' },
+  { id: 's10', actor: '客户·吴某', actorRole: '客户', action: '补充给', target: '吴悦', when: '昨天 19:20', ticketNo: 'LCMN-20260731-09510', ticketTitle: '预约改期未确认', content: '修改预约上门时段', read: true, category: '修改信息' },
+  { id: 's11', actor: '王一线', actorRole: '一线', action: '补充给', target: '张敏', when: '昨天 16:10', ticketNo: 'LCMN-20260730-09301', ticketTitle: '服务评价申诉', content: '补充评价截图及其他说明', read: true, category: '其他' },
+  { id: 's12', actor: '客户·郑某', actorRole: '客户', action: '补充给', target: '周航', when: '昨天 14:00', ticketNo: 'LCMN-20260729-09150', ticketTitle: '续费未到账', content: '补充支付流水号', read: true, category: '补充信息' },
+  { id: 's13', actor: '张晓芸', actorRole: '一线', action: '补充给', target: '孙杰', when: '昨天 11:30', ticketNo: 'LCMN-20260728-09010', ticketTitle: '质保鉴定进度', content: '修改收件地址与联系人', read: true, category: '修改信息' },
+];
+
+/** @deprecated 人员聚合口径保留，事件明细见 SUPPLEMENT_EVENTS */
+export const SUPPLEMENT_DRILL: PeopleDrillRow[] = [
+  { id: 'm10', name: '孙杰', online: '在线', count: 3, read: 1, unread: 2 },
+  { id: 'm2',  name: '李昊', online: '在线', count: 2, read: 1, unread: 1 },
+  { id: 'm5',  name: '陈曦', online: '在线', count: 2, read: 2, unread: 0 },
+  { id: 'm1',  name: '张敏', online: '在线', count: 2, read: 2, unread: 0 },
+  { id: 'm8',  name: '吴悦', online: '在线', count: 2, read: 1, unread: 1 },
+  { id: 'm7',  name: '周航', online: '离线', count: 2, read: 1, unread: 1 },
+];
+
+/* -------------------------------------------------------------------------
+ * 预约事件明细（合计 11，未沟通 6 / 已沟通 5）
+ * 字段对齐办理页预约 Tab：预约人 · 预约时间 · 预约需求 · 已沟通
+ * ----------------------------------------------------------------------- */
+export const APPOINTMENT_EVENTS: EventDrillRow[] = [
+  { id: 'a1', actor: '孙杰', action: '预约', when: '今天 19:00', ticketNo: 'LCMN-20260804-10021', ticketTitle: '电源故障反复重启', content: '', read: false, category: '预约联系用户' },
+  { id: 'a2', actor: '李昊', action: '预约', when: '今天 17:30', ticketNo: 'LCMN-20260804-10034', ticketTitle: '设备无法联网', content: '', read: false, category: '联系后端确认' },
+  { id: 'a3', actor: '孙杰', action: '预约', when: '今天 16:00', ticketNo: 'LCMN-20260803-10058', ticketTitle: '投诉服务态度', content: '', read: false, category: '预约联系用户' },
+  { id: 'a4', actor: '张敏', action: '预约', when: '今天 15:00', ticketNo: 'LCMN-20260803-10071', ticketTitle: '退换货进度查询', content: '', read: false, category: '预约联系用户' },
+  { id: 'a5', actor: '周航', action: '预约', when: '今天 14:00', ticketNo: 'LCMN-20260803-10093', ticketTitle: '维修超期未解决', content: '', read: false, category: '联系后端确认' },
+  { id: 'a6', actor: '李昊', action: '预约', when: '明天 10:00', ticketNo: 'LCMN-20260802-09880', ticketTitle: '软件激活失败', content: '', read: false, category: '预约联系用户' },
+  { id: 'a7', actor: '陈曦', action: '预约', when: '今天 11:00', ticketNo: 'LCMN-20260802-09855', ticketTitle: '账号权限异常', content: '', read: true, category: '联系后端确认' },
+  { id: 'a8', actor: '陈曦', action: '预约', when: '昨天 16:30', ticketNo: 'LCMN-20260801-09720', ticketTitle: '物流丢件理赔', content: '', read: true, category: '预约联系用户' },
+  { id: 'a9', actor: '吴悦', action: '预约', when: '昨天 14:00', ticketNo: 'LCMN-20260731-09510', ticketTitle: '预约改期未确认', content: '', read: true, category: '预约联系用户' },
+  { id: 'a10', actor: '张敏', action: '预约', when: '昨天 11:00', ticketNo: 'LCMN-20260730-09301', ticketTitle: '服务评价申诉', content: '', read: true, category: '联系后端确认' },
+  { id: 'a11', actor: '孙杰', action: '预约', when: '前天 15:30', ticketNo: 'LCMN-20260728-09010', ticketTitle: '质保鉴定进度', content: '', read: true, category: '预约联系用户' },
+];
+
+/** @deprecated 人员聚合口径保留，事件明细见 APPOINTMENT_EVENTS */
+export const APPOINTMENT_DRILL: PeopleDrillRow[] = [
+  { id: 'm10', name: '孙杰', online: '在线', count: 3, read: 1, unread: 2 },
+  { id: 'm2',  name: '李昊', online: '在线', count: 2, read: 0, unread: 2 },
+  { id: 'm5',  name: '陈曦', online: '在线', count: 2, read: 2, unread: 0 },
+  { id: 'm1',  name: '张敏', online: '在线', count: 2, read: 1, unread: 1 },
+  { id: 'm8',  name: '吴悦', online: '在线', count: 1, read: 1, unread: 0 },
+  { id: 'm7',  name: '周航', online: '离线', count: 1, read: 0, unread: 1 },
 ];
 
 /* -------------------------------------------------------------------------
@@ -530,6 +885,35 @@ export const URGE_DRILL: PeopleDrillRow[] = [
 export const RETURN_DRILL: PeopleDrillRow[] = [
   { id: 'm10', name: '孙杰', online: '在线', count: 2 },
   { id: 'm9',  name: '郑楠', online: '小休', count: 1 },
+];
+
+/* -------------------------------------------------------------------------
+ * 挂起下钻 · 按处理人（合计 3）· SLA 已停表
+ * note 给「已挂多久」——没有时间压力提醒，光看数字判断不出哪个该捞回来
+ * ----------------------------------------------------------------------- */
+export const SUSPEND_DRILL: PeopleDrillRow[] = [
+  { id: 'm10', name: '孙杰', online: '在线', count: 1, note: '已挂 4d 2h · 等客户回材料', stayMinutes: 5880 },
+  { id: 'm4',  name: '赵磊', online: '小休', count: 1, note: '已挂 2d 6h · 等客户确认', stayMinutes: 3240 },
+  { id: 'm3',  name: '王倩', online: '在线', count: 1, note: '已挂 18h · 等客户回材料', stayMinutes: 1080 },
+];
+
+/* -------------------------------------------------------------------------
+ * 已转出下钻 · 按原处理人（合计 2）· SLA 已停表，等售后回传
+ * ----------------------------------------------------------------------- */
+export const TRANSFERRED_OUT_DRILL: PeopleDrillRow[] = [
+  { id: 'm2', name: '李昊', online: '在线', count: 1, note: '已转出 2d 8h · 售后一组', stayMinutes: 3360 },
+  { id: 'm8', name: '吴悦', online: '在线', count: 1, note: '已转出 6h · 售后二组', stayMinutes: 360 },
+];
+
+/* -------------------------------------------------------------------------
+ * 委派中下钻 · 按主责人（合计 4）
+ * 「委派中」是叠加在「处理中」上的子状态：主责人仍是本人，只是在等协办回填。
+ * 故按**主责人**归集，不是按协办人。
+ * ----------------------------------------------------------------------- */
+export const DELEGATED_DRILL: PeopleDrillRow[] = [
+  { id: 'm10', name: '孙杰', online: '在线', count: 2, note: '最久 1d 6h · 协办：技术支持组', stayMinutes: 1800 },
+  { id: 'm5',  name: '陈曦', online: '在线', count: 1, note: '10h · 协办：王工', stayMinutes: 600 },
+  { id: 'm1',  name: '张敏', online: '在线', count: 1, note: '4h · 协办：售后一组', stayMinutes: 240 },
 ];
 
 /* -------------------------------------------------------------------------
@@ -672,9 +1056,11 @@ export const LEADER_TEAMS: LeaderTeam[] = [
 export interface TeamBoardSnapshot {
   teamId: string;
   openingBacklog: number;
-  stock: BoardMetric[];
+  /** 关注区锚点：积压总量（守恒式挂在这张卡上） */
+  backlog: BoardMetric;
+  /** 关注区 8 项，按 group 分三组渲染 */
+  focus: BoardMetric[];
   metrics: BoardMetric[];
-  flowEvents: BoardMetric[];
   todos: BoardTodo[];
   members: MemberRow[];
   priorityBuckets: PriorityBucket[];
@@ -684,6 +1070,13 @@ export interface TeamBoardSnapshot {
 }
 
 function patchMetric(base: BoardMetric, patch: Partial<BoardMetric>): BoardMetric {
+  return { ...base, ...patch };
+}
+
+/** 按 key 从 BOARD_FOCUS 取基准卡再打补丁，保证各组顺序与字段不漂移 */
+function focusOf(key: string, patch: Partial<BoardMetric>): BoardMetric {
+  const base = BOARD_FOCUS.find((f) => f.key === key);
+  if (!base) throw new Error(`BOARD_FOCUS 缺少 ${key}`);
   return { ...base, ...patch };
 }
 
@@ -709,22 +1102,26 @@ function scaleMembers(scale: number, take: number): MemberRow[] {
 /** 按班组取看板快照；默认受理一组＝现网基准数据 */
 export function getTeamBoardSnapshot(teamId: string): TeamBoardSnapshot {
   if (teamId === 'cs-2') {
-    // 守恒：12 + 98 − 88 = 22
     const opening = 12;
     const inbound = 98;
     const closed = 88;
-    const backlog = opening + inbound - closed;
+    /** 积压＝超解决时效的未结单（非在办总量）。本组量小、压力低于一组 */
+    const backlog = 6;
     const unassigned = 5;
     return {
       teamId,
       openingBacklog: opening,
-      stock: [
-        patchMetric(BOARD_STOCK[0], { value: String(unassigned), sub: '最久等待 1h08m', delta: '+1' }),
-        patchMetric(BOARD_STOCK[1], {
-          value: String(backlog),
-          balance: { opening, inbound, closed },
-          delta: `+${backlog - opening}`,
-        }),
+      backlog: patchMetric(BOARD_BACKLOG, { value: String(backlog), delta: '0', deltaTone: 'neutral' }),
+      focus: [
+        focusOf('unassigned', { value: String(unassigned), sub: '最久等待 1h08m', delta: '+1' }),
+        focusOf('delegated', { value: '2', sub: '最久 8h · 等协办回填', delta: '0', deltaTone: 'neutral' }),
+        focusOf('suspended', { value: '2', sub: '最久 1d 4h · 等客户', delta: '0', deltaTone: 'neutral' }),
+        focusOf('transferredOut', { value: '1', sub: '已转出 12h · 等售后回传', delta: '0', deltaTone: 'neutral' }),
+        focusOf('returned', { value: '2', delta: '0', deltaTone: 'neutral' }),
+        focusOf('transferIn', { value: '5', delta: '+1' }),
+        focusOf('urge', { value: '13', pending: 4, pendingLabel: '未处理', sub: '13次，未处理 4' }),
+        focusOf('supplement', { value: '8', pending: 3, pendingLabel: '未处理', sub: '8次，未处理 3' }),
+        focusOf('appointment', { value: '7', pending: 4, pendingLabel: '未沟通', sub: '7次，未沟通 4' }),
       ],
       metrics: [
         patchMetric(BOARD_METRICS[0], { value: String(inbound), sub: '自建 93 · 转入 5', delta: '+18' }),
@@ -734,49 +1131,44 @@ export function getTeamBoardSnapshot(teamId: string): TeamBoardSnapshot {
         patchMetric(BOARD_METRICS[4], { value: '4.8%', sub: '超期 5 / 98 · 平均超 1.6h', delta: '-0.4%', deltaTone: 'good' }),
         patchMetric(BOARD_METRICS[5], { value: '4.7', sub: '不满意 2.1% · 参评率 71%', delta: '+0.1', deltaTone: 'good' }),
       ],
-      flowEvents: [
-        patchMetric(BOARD_FLOW_EVENTS[0], { value: '21', sub: '未读 7', delta: '+2' }),
-        patchMetric(BOARD_FLOW_EVENTS[1], { value: '2', delta: '0', deltaTone: 'neutral' }),
-        patchMetric(BOARD_FLOW_EVENTS[2], { value: '5', delta: '+1' }),
-      ],
       todos: [
         { key: 'assign', label: '待指派', count: unassigned, unit: '单', tone: 'danger' },
         { key: 'approve', label: '待审批', count: 2, unit: '条', tone: 'warn' },
       ],
       members: scaleMembers(0.78, 10),
+      /** 合计 1+2+2+1 = 6 ＝ 本组积压 6 */
       priorityBuckets: [
-        { sysKey: 'P0', reqLabel: '紧急', count: 2, color: '#EF4444' },
-        { sysKey: 'P1', reqLabel: '重要', count: 5, color: '#F59E0B' },
-        { sysKey: 'P2', reqLabel: '普通加急', count: 7, color: '#1A6FFF' },
-        { sysKey: 'P3', reqLabel: '普通', count: 8, color: '#9CA3AF' },
+        { sysKey: 'P0', reqLabel: '紧急', count: 1, color: '#EF4444' },
+        { sysKey: 'P1', reqLabel: '重要', count: 2, color: '#F59E0B' },
+        { sysKey: 'P2', reqLabel: '普通加急', count: 2, color: '#1A6FFF' },
+        { sysKey: 'P3', reqLabel: '普通', count: 1, color: '#9CA3AF' },
       ],
       trafficScale: 0.7,
-      conclusion: `今日进线 ${inbound}（+18）、结案 ${closed}（−3），单日新增积压 ${backlog - opening}，本组压力低于一组`,
+      conclusion: `今日进线 ${inbound}（+18）、结案 ${closed}（−3），超时未结 ${backlog} 单，本组压力低于一组`,
     };
   }
 
   if (teamId === 'as-1') {
-    // 守恒：9 + 64 − 58 = 15
     const opening = 9;
     const inbound = 64;
     const closed = 58;
-    const backlog = opening + inbound - closed;
+    /** 售后解决时效长，但上门排期难，超时集中在等配件的单上 */
+    const backlog = 5;
     const unassigned = 3;
     return {
       teamId,
       openingBacklog: opening,
-      stock: [
-        patchMetric(BOARD_STOCK[0], {
-          value: String(unassigned),
-          sub: '最久等待 46m',
-          delta: '0',
-          deltaTone: 'neutral',
-        }),
-        patchMetric(BOARD_STOCK[1], {
-          value: String(backlog),
-          balance: { opening, inbound, closed },
-          delta: `+${backlog - opening}`,
-        }),
+      backlog: patchMetric(BOARD_BACKLOG, { value: String(backlog), delta: '+1' }),
+      focus: [
+        focusOf('unassigned', { value: String(unassigned), sub: '最久等待 46m', delta: '0', deltaTone: 'neutral' }),
+        focusOf('delegated', { value: '1', sub: '6h · 等协办回填', delta: '0', deltaTone: 'neutral' }),
+        focusOf('suspended', { value: '4', sub: '最久 6d 3h · 等配件到货', delta: '+2' }),
+        focusOf('transferredOut', { value: '1', sub: '已转出 1d 2h · 回传受理组', delta: '0', deltaTone: 'neutral' }),
+        focusOf('returned', { value: '1', delta: '0', deltaTone: 'neutral' }),
+        focusOf('transferIn', { value: '3', delta: '+1' }),
+        focusOf('urge', { value: '7', pending: 2, pendingLabel: '未处理', sub: '7次，未处理 2' }),
+        focusOf('supplement', { value: '4', pending: 1, pendingLabel: '未处理', sub: '4次，未处理 1' }),
+        focusOf('appointment', { value: '5', pending: 3, pendingLabel: '未沟通', sub: '5次，未沟通 3' }),
       ],
       metrics: [
         patchMetric(BOARD_METRICS[0], { value: String(inbound), sub: '自建 61 · 转入 3', delta: '+9' }),
@@ -786,24 +1178,20 @@ export function getTeamBoardSnapshot(teamId: string): TeamBoardSnapshot {
         patchMetric(BOARD_METRICS[4], { value: '5.1%', sub: '超期 3 / 64 · 平均超 3.1h', delta: '+0.3%' }),
         patchMetric(BOARD_METRICS[5], { value: '4.5', sub: '不满意 2.8% · 参评率 68%', delta: '-0.1' }),
       ],
-      flowEvents: [
-        patchMetric(BOARD_FLOW_EVENTS[0], { value: '11', sub: '未读 4', delta: '+1' }),
-        patchMetric(BOARD_FLOW_EVENTS[1], { value: '1', delta: '0', deltaTone: 'neutral' }),
-        patchMetric(BOARD_FLOW_EVENTS[2], { value: '3', delta: '+1' }),
-      ],
       todos: [
         { key: 'assign', label: '待指派', count: unassigned, unit: '单', tone: 'danger' },
         { key: 'approve', label: '待审批', count: 1, unit: '条', tone: 'warn' },
       ],
       members: scaleMembers(0.55, 8),
+      /** 合计 1+2+1+1 = 5 ＝ 本组积压 5 */
       priorityBuckets: [
         { sysKey: 'P0', reqLabel: '紧急', count: 1, color: '#EF4444' },
-        { sysKey: 'P1', reqLabel: '重要', count: 3, color: '#F59E0B' },
-        { sysKey: 'P2', reqLabel: '普通加急', count: 5, color: '#1A6FFF' },
-        { sysKey: 'P3', reqLabel: '普通', count: 6, color: '#9CA3AF' },
+        { sysKey: 'P1', reqLabel: '重要', count: 2, color: '#F59E0B' },
+        { sysKey: 'P2', reqLabel: '普通加急', count: 1, color: '#1A6FFF' },
+        { sysKey: 'P3', reqLabel: '普通', count: 1, color: '#9CA3AF' },
       ],
       trafficScale: 0.45,
-      conclusion: `今日进线 ${inbound}、结案 ${closed}，积压 ${backlog}；上门资源偏紧，建议优先消化 P0/P1`,
+      conclusion: `今日进线 ${inbound}、结案 ${closed}，超时未结 ${backlog} 单；上门资源偏紧，建议优先消化 P0/P1`,
     };
   }
 
@@ -811,13 +1199,13 @@ export function getTeamBoardSnapshot(teamId: string): TeamBoardSnapshot {
   return {
     teamId: 'cs-1',
     openingBacklog: BOARD_OPENING_BACKLOG,
-    stock: BOARD_STOCK,
+    backlog: BOARD_BACKLOG,
+    focus: BOARD_FOCUS,
     metrics: BOARD_METRICS,
-    flowEvents: BOARD_FLOW_EVENTS,
     todos: BOARD_TODOS,
     members: TEAM_MEMBERS,
     priorityBuckets: PRIORITY_BUCKETS,
     trafficScale: 1,
-    conclusion: '今日进线 142（+45）、结案 96（−7），单日新增积压 46，建议增派人手并优先清 P0/P1',
+    conclusion: '今日进线 142（+45）、结案 96（−7）；超时未结 14 单（+3），建议优先清 P0/P1',
   };
 }

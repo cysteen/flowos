@@ -26,9 +26,17 @@ import {
 } from '@/mock/customerInsight';
 import { aftersaleDeepLink } from '@/views/tickets/composables/opActions';
 import { CUSTOMER_TAG_COLOR } from '@/views/tickets/types/ticket';
+import { useUserStore } from '@/stores/user';
+
+/**
+ * embedded：作为组件嵌在别的页面里（运营监控 · 溯源查询 Tab）。
+ * 此时不改写地址栏——否则会把宿主页面踢出自己的路由。
+ */
+const props = defineProps<{ embedded?: boolean }>();
 
 const route = useRoute();
 const router = useRouter();
+const user = useUserStore();
 
 const keyword = ref('');
 const insight = ref<CustomerInsight | null>(null);
@@ -278,6 +286,7 @@ function runSearch(raw = keyword.value) {
 }
 
 function syncQuery(q: string) {
+  if (props.embedded) return;
   if (route.query.q !== q) router.replace({ path: '/customer-insight', query: { q } });
 }
 
@@ -285,6 +294,17 @@ function pickCandidate(c: CustomerCandidate) {
   keyword.value = c.phone;
   loadPhone(c.phone);
   syncQuery(c.phone);
+}
+
+/** 监控岗等只读角色菜单里没有工单列表，不出这个入口 */
+const canOpenList = computed(() => user.canAccess('tickets'));
+
+/**
+ * 客户全景 → 工单列表：本页按"人"读履历，列表按"单"做筛选/批量/导出，
+ * 两者用途不同不合并，但必须能一键互跳。
+ */
+function openInTicketList() {
+  router.push({ path: '/tickets/list', query: { kw: insight.value?.profile.name ?? keyword.value } });
 }
 
 function openTicket(t: CustomerTicketRow) {
@@ -316,6 +336,7 @@ function scoreColor(score: number) {
 }
 
 onMounted(() => {
+  if (props.embedded) return;
   const q = (route.query.q as string) || (route.query.phone as string) || '';
   if (q) {
     keyword.value = q;
@@ -324,6 +345,7 @@ onMounted(() => {
 });
 
 watch(() => route.query.q, (q) => {
+  if (props.embedded) return;
   if (typeof q === 'string' && q && q !== keyword.value) {
     keyword.value = q;
     runSearch(q);
@@ -646,6 +668,10 @@ watch(() => route.query.q, (q) => {
                 @click="productFilter = ''"
               >
                 {{ productFilter }} ×
+              </button>
+              <!-- 本页按"人"读履历；要按条件筛这批单、批量操作或导出，回工单列表 -->
+              <button v-if="canOpenList" type="button" class="to-list" @click="openInTicketList">
+                在工单列表中查看<ExportOutlined class="tl-ic" />
               </button>
             </div>
             <div class="hist-list">
@@ -1170,7 +1196,25 @@ watch(() => route.query.q, (q) => {
   padding: 12px 14px 16px;
 }
 
-.chip-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.chip-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; align-items: center; }
+.to-list {
+  margin-left: auto;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  border-radius: 4px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b7280;
+  cursor: pointer;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.to-list:hover { border-color: #1a6fff; color: #1a6fff; }
+.tl-ic { font-size: 10px; }
 .chip {
   padding: 3px 10px; border-radius: 4px; border: none;
   background: #f3f4f6; color: #6b7280;

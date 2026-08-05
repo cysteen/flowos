@@ -135,11 +135,13 @@ function openReopenCreate() {
  */
 const supersededBy = computed(() => resolveSupersededBy(d.value));
 /**
- * 只读态（**整页冻结**）：一线视角 或 **已转单**（业务转到新单）。
+ * 只读态（**整页冻结**）：一线视角 / **已转单**（业务转到新单）/ **只读角色**（运营监控岗）。
  * 注意"正常关闭"不在此列——已关闭单仍保留头部动作（升级投诉 / 关联售后 / 新建补充 / 催单），
  * 补充/催单走 §5.2「建新单承接」。
  */
-const pageReadonly = computed(() => !!d.value.frontlineDemo || !!supersededBy.value);
+const pageReadonly = computed(
+  () => !!d.value.frontlineDemo || !!supersededBy.value || !!user.role.readonlyTickets,
+);
 
 /**
  * 底部流转操作栏隐藏：只读态，**或原单已是终态**——

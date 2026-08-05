@@ -4,6 +4,7 @@ export type RoleKey =
   | 'agent-cs'
   | 'agent-as'
   | 'team-leader'
+  | 'ops-monitor'
   | 'system-admin'
   | 'ops-admin'
   | 'tenant-admin';
@@ -23,6 +24,8 @@ export interface RoleDef {
   hasAdminEntry: boolean;
   /** 管理后台数据范围（仅 hasAdminEntry=true 时有效） */
   adminScope?: AdminScope;
+  /** 工单只读：可查看任何工单，但不出任何流转/编辑操作（运营监控岗） */
+  readonlyTickets?: boolean;
 }
 
 export const ROLES: Record<RoleKey, RoleDef> = {
@@ -47,10 +50,23 @@ export const ROLES: Record<RoleKey, RoleDef> = {
     hiddenTabs: ['cc'],
     hasAdminEntry: false,
   },
+  /**
+   * 运营监控岗（915）：只盯全中心实时态，不办单。
+   * 菜单只有「运营监控」——给它工单工作台反而会诱导它去处理工单，与只读定位冲突；
+   * 需要看某张单时从大盘下钻进工单详情（只读态）。
+   */
+  'ops-monitor': {
+    key: 'ops-monitor',
+    name: '运营监控岗',
+    menus: ['ops-monitor'],
+    hiddenTabs: ['review', 'cc'],
+    hasAdminEntry: false,
+    readonlyTickets: true,
+  },
   'system-admin': {
     key: 'system-admin',
     name: '系统管理员',
-    menus: ['home', 'tickets', 'aftersale', 'team-board', 'approval'],
+    menus: ['home', 'tickets', 'aftersale', 'team-board', 'ops-monitor', 'approval'],
     hiddenTabs: ['cc'],
     hasAdminEntry: true,
     adminScope: 'platform',
@@ -58,7 +74,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
   'ops-admin': {
     key: 'ops-admin',
     name: '运营管理员',
-    menus: ['home', 'tickets', 'aftersale', 'team-board', 'approval'],
+    menus: ['home', 'tickets', 'aftersale', 'team-board', 'ops-monitor', 'approval'],
     hiddenTabs: ['cc'],
     hasAdminEntry: true,
     adminScope: 'ops',
@@ -66,7 +82,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
   'tenant-admin': {
     key: 'tenant-admin',
     name: '租户管理员',
-    menus: ['home', 'tickets', 'aftersale', 'team-board', 'approval'],
+    menus: ['home', 'tickets', 'aftersale', 'team-board', 'ops-monitor', 'approval'],
     hiddenTabs: ['cc'],
     hasAdminEntry: true,
     adminScope: 'tenant',
@@ -81,6 +97,7 @@ export const ROLE_OPTION_GROUPS = [
       { label: ROLES['agent-cs'].name, value: 'agent-cs' as RoleKey },
       { label: ROLES['agent-as'].name, value: 'agent-as' as RoleKey },
       { label: ROLES['team-leader'].name, value: 'team-leader' as RoleKey },
+      { label: ROLES['ops-monitor'].name, value: 'ops-monitor' as RoleKey },
     ],
   },
   {
