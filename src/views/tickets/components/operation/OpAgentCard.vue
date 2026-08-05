@@ -2,7 +2,8 @@
 import OpContactRows from './OpContactRows.vue';
 import type { AgentInfo } from '@/views/tickets/types/operation';
 
-defineProps<{ agent: AgentInfo }>();
+defineProps<{ agent: AgentInfo; showContactActions?: boolean }>();
+const emit = defineEmits<{ contact: [type: 'call' | 'sms' | 'email', value: string] }>();
 </script>
 
 <template>
@@ -14,7 +15,11 @@ defineProps<{ agent: AgentInfo }>();
     </div>
     <div class="kv kv-contacts">
       <span class="k">联系方式</span>
-      <OpContactRows :contacts="agent.contacts" />
+      <OpContactRows
+        :contacts="agent.contacts"
+        :show-actions="showContactActions"
+        @contact="(t, v) => emit('contact', t, v)"
+      />
     </div>
     <div class="kv">
       <span class="k">关系</span>

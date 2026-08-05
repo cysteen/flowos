@@ -6,18 +6,32 @@ import OpRelationCard from './OpRelationCard.vue';
 import OpAiAssistant from './OpAiAssistant.vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 
-defineProps<{ detail: TicketDetailMeta }>();
+import { computed } from 'vue';
+
+const props = defineProps<{ detail: TicketDetailMeta }>();
 
 const emit = defineEmits<{
   action: [name: string];
+  contact: [type: 'call' | 'sms' | 'email', value: string];
   openRelation: [rel: import('@/views/tickets/composables/ticketRelations').TicketRelation];
 }>();
+
+const showContactActions = computed(() => !props.detail.frontlineDemo);
 </script>
 
 <template>
   <div class="op-side">
-    <OpCustomerCard :customer="detail.customer" />
-    <OpAgentCard v-if="detail.agent" :agent="detail.agent" />
+    <OpCustomerCard
+      :customer="detail.customer"
+      :show-contact-actions="showContactActions"
+      @contact="(t, v) => emit('contact', t, v)"
+    />
+    <OpAgentCard
+      v-if="detail.agent"
+      :agent="detail.agent"
+      :show-contact-actions="showContactActions"
+      @contact="(t, v) => emit('contact', t, v)"
+    />
     <OpTicketInfoCard :detail="detail" />
     <OpRelationCard :detail="detail" @open="emit('openRelation', $event)" />
     <OpAiAssistant

@@ -3,6 +3,7 @@ import { computed, defineAsyncComponent, onActivated, onBeforeUnmount, onDeactiv
 import { useRoute, useRouter } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
 import { useWorkspaceTabsStore, resolveTicketTabTitle } from '@/stores/workspaceTabs';
+import { useCtiStore } from '@/stores/cti';
 import { useUserStore } from '@/stores/user';
 import OpHeader from './components/operation/OpHeader.vue';
 import OpOverviewBand from './components/operation/OpOverviewBand.vue';
@@ -11,6 +12,8 @@ import OpSupplementModal from './components/operation/OpSupplementModal.vue';
 import OpDunningModal from './components/operation/OpDunningModal.vue';
 import OpCancelModal from './components/operation/OpCancelModal.vue';
 import OpEscalateComplaintModal from './components/operation/OpEscalateComplaintModal.vue';
+import OpSmsModal from './components/operation/OpSmsModal.vue';
+import OpEmailModal from './components/operation/OpEmailModal.vue';
 import OpSupersededBanner from './components/operation/OpSupersededBanner.vue';
 import TicketEventToastStack from './components/operation/TicketEventToastStack.vue';
 import OpProcessTabs from './components/operation/OpProcessTabs.vue';
@@ -64,12 +67,25 @@ const processTabsRef = ref<InstanceType<typeof OpProcessTabs> | null>(null);
 const actionBarRef = ref<{ openEscalate: () => void; openAftersale: () => void } | null>(null);
 
 const tabsStore = useWorkspaceTabsStore();
+const cti = useCtiStore();
 const user = useUserStore();
 
 const overviewExpanded = ref(false);
 const supplementModalOpen = ref(false);
 const dunningModalOpen = ref(false);
 const cancelModalOpen = ref(false);
+
+// 联系客户：短信 / 邮件弹窗
+const smsModalOpen = ref(false);
+const smsPhone = ref('');
+const emailModalOpen = ref(false);
+const emailTo = ref('');
+const notifyCtx = computed(() => ({
+  no: ticketNo.value,
+  name: d.value.customer.name || '',
+  product: d.value.product.name || '',
+  agent: user.name || '当前坐席',
+}));
 
 /** 工单操作页加载后，用标题同步 Tab（避免仅显示工单号） */
 watch(
@@ -83,6 +99,70 @@ watch(
 
 const createOpen = ref(false);
 const createPrefill = ref<CreateTicketPrefill | null>(null);
+
+function onContact(type: 'call' | 'sms' | 'email', value: string) {
+  if (type === 'call') {
+    if (cti.workStatus === 'offline') {
+      message.warning('请先签入上班');
+      return;
+    }
+    if (cti.workStatus === 'break') {
+      message.warning('请先切换为就绪');
+      return;
+    }
+    if (cti.callSession) {
+      message.warning('当前有进行中的外呼');
+      return;
+    }
+    const isAgent = d.value.agent?.contacts?.some((c) => c.value === value);
+    const role = isAgent ? '代办人' : '客户';
+    const name = isAgent ? (d.value.agent?.name ?? '') : (d.value.customer.name || '');
+    cti.startCall({
+      ticketId: ticketNo.value,
+      phone: value,
+      contactLabel: name ? `${role}·${name}` : role,
+    });
+    return;
+  }
+  if (type === 'sms') {
+    smsPhone.value = value;
+    smsModalOpen.value = true;
+    return;
+  }
+  emailTo.value = value;
+  emailModalOpen.value = true;
+}
+
+function onSmsSubmit(payload: { phone: string; templateName: string; content: string }) {
+  tabData.value.contactRecords.unshift({
+    id: `c-${Date.now()}`,
+    kind: 'sms',
+    title: '短信发送',
+    emoji: '💬',
+    operator: user.name || '当前坐席',
+    when: formatNow(),
+    metaPrefix: '发送人',
+    summary: `接收号码: ${payload.phone} | 状态: 发送成功 | 模板: ${payload.templateName}`,
+    smsContent: payload.content,
+  });
+  processTabsRef.value?.switchTab('contact');
+  message.success(`短信已发送至 ${payload.phone}`);
+}
+
+function onEmailSubmit(payload: { to: string; subject: string }) {
+  tabData.value.contactRecords.unshift({
+    id: `c-${Date.now()}`,
+    kind: 'email',
+    title: '邮件发送',
+    emoji: '📧',
+    operator: user.name || '当前坐席',
+    when: formatNow(),
+    metaPrefix: '发送人',
+    summary: `收件邮箱: ${payload.to} | 状态: 发送成功 | 主题: ${payload.subject}`,
+  });
+  processTabsRef.value?.switchTab('contact');
+  message.success(`邮件「${payload.subject}」已发送至 ${payload.to}`);
+}
 
 // —— 顶部速览带：统计宫格双层下钻 ——
 const statModalKey = ref<InsightModalKey | null>(null);
@@ -774,6 +854,7 @@ watch(
 
       <OpSidePanel
         :detail="d"
+        @contact="onContact"
         @action="toast"
       />
     </div>
@@ -843,6 +924,20 @@ watch(
       v-model:open="escalateModalOpen"
       :detail="d"
       @submit="onEscalateSubmit"
+    />
+
+    <OpSmsModal
+      v-model:open="smsModalOpen"
+      :phone="smsPhone"
+      :ctx="notifyCtx"
+      @submit="onSmsSubmit"
+    />
+
+    <OpEmailModal
+      v-model:open="emailModalOpen"
+      :email="emailTo"
+      :ctx="notifyCtx"
+      @submit="onEmailSubmit"
     />
 
   </div>
