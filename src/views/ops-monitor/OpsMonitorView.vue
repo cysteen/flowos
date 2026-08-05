@@ -20,6 +20,8 @@ import {
   FallOutlined,
 } from '@ant-design/icons-vue';
 import CustomerInsightView from '@/views/customer/CustomerInsightView.vue';
+import MetricTipIcon from '@/components/MetricTipIcon.vue';
+import { opsTip } from '@/mock/opsMonitorTips';
 import { useUserStore } from '@/stores/user';
 import {
   OPS_GROUPS,
@@ -668,7 +670,7 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
               「积压」已统一为超时未处理完（见第三张卡），两者差一个数量级。
             -->
             <p class="dash-formula">
-              今日 {{ snap.opening }} ＋ {{ snap.inbound }} − {{ snap.forward }} ＝ 在办存量 {{ snap.backlog.toLocaleString() }}
+              今日 {{ snap.opening }} ＋ {{ snap.inbound }} − {{ snap.forward }} ＝ 在办存量 {{ snap.backlog.toLocaleString() }}<MetricTipIcon :tip="opsTip('workingStock')!" />
               <span class="note-sep">|</span>
               本月 {{ snap.monthOpening }} ＋ {{ snap.monthInbound.toLocaleString() }} − {{ snap.monthForward.toLocaleString() }} ＝ {{ snap.backlog.toLocaleString() }}
             </p>
@@ -682,7 +684,7 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
             @click="toggleMetric('inbound')"
             @keydown.enter.prevent="toggleMetric('inbound')"
           >
-            <div class="mt-label">新增工单</div>
+            <div class="mt-label">新增工单<MetricTipIcon :tip="opsTip('inbound')!" /></div>
             <div class="mt-value-row">
               <span class="mt-value">{{ snap.inbound.toLocaleString() }}</span>
               <span class="mt-unit">当日</span>
@@ -697,7 +699,7 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
             @click="toggleMetric('forward')"
             @keydown.enter.prevent="toggleMetric('forward')"
           >
-            <div class="mt-label">下送工单</div>
+            <div class="mt-label">下送工单<MetricTipIcon :tip="opsTip('forward')!" /></div>
             <div class="mt-value-row">
               <span class="mt-value">{{ snap.forward.toLocaleString() }}</span>
               <span class="mt-unit">当日</span>
@@ -717,7 +719,7 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
               与《【915】班组长看板》同口径同名（2026-08-05 业务定）。
               在办存量 755 在上方守恒式里给，两者差一个数量级，不可互校。
             -->
-            <div class="mt-label">积压</div>
+            <div class="mt-label">积压<MetricTipIcon :tip="opsTip('backlog')!" /></div>
             <div class="mt-value-row">
               <span class="mt-value" :class="{ danger: snap.alerting }">{{ snap.overdueTotal.toLocaleString() }}</span>
               <span class="mt-unit">此刻</span>
@@ -736,7 +738,7 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
             @click="toggleMetric('io')"
             @keydown.enter.prevent="toggleMetric('io')"
           >
-            <div class="mt-label">进出比</div>
+            <div class="mt-label">进出比<MetricTipIcon :tip="opsTip('io')!" /></div>
             <div class="mt-value-row">
               <span class="mt-value" :class="{ warn: snap.ioRatio > 1 }">{{ snap.ioRatio }}</span>
               <span class="mt-unit">进÷出</span>
@@ -744,7 +746,7 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
             <div class="mt-sub mt-sub-em">
               {{ snap.ioRatio > 1 ? '进大于出，积压在涨' : '出大于进，正在消化' }}
             </div>
-            <div class="mt-foot">最久等待 {{ snap.longestWaitText }}</div>
+            <div class="mt-foot">最久等待 {{ snap.longestWaitText }}<MetricTipIcon :tip="opsTip('longestWait')!" /></div>
           </div>
         </div>
 
@@ -907,7 +909,7 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
 
         <section class="panel dash-panel now-sla">
           <div class="dash-head compact">
-            <h2 class="dash-title">时效分层</h2>
+            <h2 class="dash-title">时效分层<MetricTipIcon :tip="opsTip('soon')!" /></h2>
             <span class="dash-hint">班组 × 分桶热力 · 点击格子查清单</span>
           </div>
           <div class="sla-heatmap-wrap">
@@ -920,9 +922,9 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
             <div class="sla-heatmap" role="grid">
               <div class="sh-row sh-head" role="row">
                 <div class="sh-corner" role="columnheader">班组</div>
-                <div class="sh-group-label soon" :style="{ gridColumn: `span ${SOON_WINDOWS.length}` }">还没超时 · 距 SLA 截止</div>
+                <div class="sh-group-label soon" :style="{ gridColumn: `span ${SOON_WINDOWS.length}` }">还没超时 · 距 SLA 截止<MetricTipIcon :tip="opsTip('soon')!" /></div>
                 <div class="sh-split" aria-hidden="true" />
-                <div class="sh-group-label overdue" :style="{ gridColumn: `span ${OVERDUE_BUCKETS.length}` }">已经超时</div>
+                <div class="sh-group-label overdue" :style="{ gridColumn: `span ${OVERDUE_BUCKETS.length}` }">已经超时<MetricTipIcon :tip="opsTip('overdueGt72')!" /></div>
               </div>
               <div class="sh-row sh-subhead" role="row">
                 <div class="sh-corner" />
@@ -1067,8 +1069,8 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
       <section id="risk-word-section" class="panel dash-panel">
         <div class="dash-head compact">
           <h2 class="dash-title">
-            风险词命中
-            <span v-if="untagged.length" class="head-badge">{{ untagged.length }} 待打标</span>
+            风险词命中<MetricTipIcon :tip="opsTip('riskHits')!" />
+            <span v-if="untagged.length" class="head-badge">{{ untagged.length }} 待打标<MetricTipIcon :tip="opsTip('riskUntagged')!" /></span>
           </h2>
           <span class="dash-hint">
             命中即推送责任人 ·
@@ -1113,7 +1115,7 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
       <!-- ⑥ 流量走势（模块 1.4：日 / 周 / 月 / 年） -->
       <section class="panel dash-panel">
         <div class="dash-head">
-          <h2 class="dash-title">流量走势</h2>
+          <h2 class="dash-title">流量走势<MetricTipIcon :tip="opsTip('trendStock')!" /></h2>
           <div class="grain-row">
             <span v-if="peaks.peak" class="peak-note">
               高峰 {{ peaks.peak.t }}（{{ peaks.peak.inbound.toLocaleString() }}）·

@@ -336,12 +336,8 @@ function openDrillTicket(no: string) {
                 :overlay-inner-style="kpiTipOverlayStyle"
               >
                 <template #title>
-                  <!-- 最多三行：是什么 / 算什么不算什么 / 特别提醒 -->
-                  <div class="kpi-tip">
-                    <p class="kt-define">{{ kpi.tip.define }}</p>
-                    <p class="kt-scope">{{ kpi.tip.scope }}</p>
-                    <p v-if="kpi.tip.note" class="kt-note">{{ kpi.tip.note }}</p>
-                  </div>
+                  <!-- 一句话：这个数是什么 -->
+                  <p class="kt-define">{{ kpi.tip.define }}</p>
                 </template>
                 <QuestionCircleOutlined class="kpi-tip-ic" @click.stop />
               </a-tooltip>
@@ -782,20 +778,12 @@ function openDrillTicket(no: string) {
   transform: none;
 }
 
-/* 「?」口径提示：最多三行 —— 是什么 / 算什么不算什么 / 特别提醒 */
-.kpi-tip { display: flex; flex-direction: column; gap: 5px; }
+/* 「?」口径提示：只有一句话 —— 这个数是什么 */
 .kt-define {
   margin: 0;
   font-size: 12px;
-  font-weight: 700;
   color: #713f12;
   line-height: 1.5;
-}
-.kt-scope {
-  margin: 0;
-  font-size: 11px;
-  color: #78350f;
-  line-height: 1.55;
 }
 .kpi-card.tone-risk {
   background: linear-gradient(180deg, #fffaf5 0%, #fff 70%);
@@ -834,16 +822,6 @@ function openDrillTicket(no: string) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.kt-note {
-  margin: 2px 0 0;
-  padding: 5px 8px;
-  border-radius: 5px;
-  background: #fef3c7;
-  border-left: 2px solid #d97706;
-  font-size: 11px;
-  color: #78350f;
-  line-height: 1.55;
 }
 .kpi-tip-ic {
   flex-shrink: 0;

@@ -140,28 +140,6 @@ const focusEvents = computed(() =>
   board.value.focus.filter((f) => f.group === 'interrupted'),
 );
 
-/**
- * 主盯行微标签 —— 回答「这张卡与积压什么关系」
- *
- * 7 张卡排一行、没有分组标题，读者一定会去做加减（8+4+3+2 和积压 14 什么关系？）。
- * 三种关系必须在卡上标出来，否则整行会被误读为积压的拆解：
- *   · 计时中：SLA 还在走，**其中已超时的那部分已计入积压**，未超时的不计（部分重叠）
- *   · 停表：SLA 已停，**一律不计积压**（在积压之外）
- *   · 今日：事件累计值，**与积压不构成加减**（另一个维度）
- */
-type FocusTagKind = 'running' | 'paused' | 'event';
-const FOCUS_TAGS: Record<string, { kind: FocusTagKind; text: string; tip: string }> = {
-  unassigned: { kind: 'running', text: '计时中', tip: 'SLA 仍在计时；其中已超解决时效的那部分已计入积压' },
-  delegated: { kind: 'running', text: '计时中', tip: '委派中主状态仍是「处理中」，SLA 继续走；已超时的部分已计入积压' },
-  suspended: { kind: 'paused', text: '停表', tip: 'SLA 已停表，一律不计入积压 —— 但仍是本组责任' },
-  transferredOut: { kind: 'paused', text: '停表', tip: 'SLA 已停表，一律不计入积压 —— 等对方回传' },
-  returned: { kind: 'event', text: '今日', tip: '今日累计事件数，与积压不构成加减关系' },
-  transferIn: { kind: 'event', text: '今日', tip: '今日累计事件数，与积压不构成加减关系' },
-};
-function focusTag(key: string) {
-  return FOCUS_TAGS[key];
-}
-
 /** 关注区收色：红=积压主数，橙=未分派/待办，其余统一灰条+墨色 */
 const ACCENT_BACKLOG = '#dc2626';
 const ACCENT_ACTION = '#d97706';
@@ -768,17 +746,6 @@ watch(teamId, () => {
             <div class="kpi-label">
               <span class="kpi-label-main">
                 <span class="kpi-label-text">{{ f.label }}</span>
-                <!--
-                  微标签：说清这张卡**与积压什么关系**。
-                  7 张卡排一行、又没有分组标题时，班组长必然去做加减
-                  （8+4+3+2 和 14 什么关系？）。三种语义各一色，hover 出完整解释。
-                -->
-                <span
-                  v-if="focusTag(f.key)"
-                  class="kpi-tag"
-                  :class="`tag-${focusTag(f.key)!.kind}`"
-                  :title="focusTag(f.key)!.tip"
-                >{{ focusTag(f.key)!.text }}</span>
                 <MetricTipIcon v-if="boardTip(f.key)" :tip="boardTip(f.key)!" />
               </span>
               <span
@@ -1089,11 +1056,11 @@ watch(teamId, () => {
         <div v-else class="tbl">
           <div class="thead prob-grid">
             <div class="th th-static">#</div>
-            <div class="th th-static">问题分类（二级）</div>
-            <div class="th th-static num">工单量</div>
-            <div class="th th-static">占比</div>
-            <div class="th th-static num">环比</div>
-            <div class="th th-static">已沉淀方案</div>
+            <div class="th th-static">问题分类（二级）<MetricTipIcon v-if="boardTip('problemTop10')" :tip="boardTip('problemTop10')!" /></div>
+            <div class="th th-static num">工单量<MetricTipIcon v-if="boardTip('top10.count')" :tip="boardTip('top10.count')!" /></div>
+            <div class="th th-static">占比<MetricTipIcon v-if="boardTip('top10.ratio')" :tip="boardTip('top10.ratio')!" /></div>
+            <div class="th th-static num">环比<MetricTipIcon v-if="boardTip('top10.delta')" :tip="boardTip('top10.delta')!" /></div>
+            <div class="th th-static">已沉淀方案<MetricTipIcon v-if="boardTip('top10.solution')" :tip="boardTip('top10.solution')!" /></div>
             <div class="th th-static">操作</div>
           </div>
           <div v-for="p in PROBLEM_TOP10" :key="p.rank" class="trow prob-grid">
@@ -1545,22 +1512,6 @@ watch(teamId, () => {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* 主盯行微标签：标明该卡与积压的关系，三种语义三种色 */
-.kpi-tag {
-  flex: none;
-  font-size: 10px;
-  line-height: 14px;
-  padding: 0 5px;
-  border-radius: 3px;
-  white-space: nowrap;
-  cursor: help;
-}
-/* 计时中 —— SLA 在走，超时的部分已计入积压 */
-.kpi-tag.tag-running { color: #1d4ed8; background: #eff6ff; }
-/* 停表 —— 一律不计积压 */
-.kpi-tag.tag-paused { color: #6b7280; background: #f3f4f6; }
-/* 今日 —— 事件累计值，与积压不构成加减 */
-.kpi-tag.tag-event { color: #b45309; background: #fffbeb; }
 .kpi-hint {
   display: inline-flex;
   align-items: center;
