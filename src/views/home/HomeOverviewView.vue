@@ -553,11 +553,12 @@ function openDrillTicket(no: string) {
 .home-overview {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 24px;
+  gap: 12px;
+  padding: 16px 20px;
   min-height: 100%;
   width: 100%;
   min-width: 0;
+  /* 密度 token：见《iFLY-FlowOS-设计风格规范》§4.9 */
   /* 微氛围：顶部浅蓝晕，避免整页死灰白 */
   background:
     radial-gradient(ellipse 80% 40% at 0% 0%, rgba(26, 111, 255, 0.08), transparent 55%),
@@ -566,11 +567,10 @@ function openDrillTicket(no: string) {
 }
 
 /**
- * 卡片视觉基线（2026-08-03 调整）
+ * 卡片视觉基线（2026-08-03 调整，2026-08-06 与 §4.9 对齐）
  * 参考页实测：圆角 12 / 边框 0.8px #E5E6EB / 阴影 0 1px 4px rgba(0,0,0,.06)
  * 原为 圆角 10 / 1px #E5E7EB / 无阴影 —— 全靠边框分层，观感偏平硬。
- * ⚠️ 与《iFLY-FlowOS-设计风格规范》§4.4「圆角 6/8、阴影可选」不一致，
- *    属本页有意分支，待规范 v3 统一后回收。
+ * ⚠️ 与 §4.4 通用卡片「圆角 6/8」不一致，属工作台看板分支（§4.9）。
  */
 .card {
   background: #fff;
@@ -583,8 +583,8 @@ function openDrillTicket(no: string) {
 .notice-bar {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 16px;
+  gap: 8px;
+  padding: 8px 12px;
   background: #eff6ff;
   border: 0.8px solid #bfdbfe;
   border-radius: 12px;
@@ -636,16 +636,16 @@ function openDrillTicket(no: string) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 22px 24px;
-  gap: 16px;
-  border-radius: 16px;
+  padding: 14px 18px;
+  gap: 12px;
+  border-radius: 14px;
   border: 1px solid rgba(26, 111, 255, 0.18);
   background:
     linear-gradient(135deg, #eff6ff 0%, #f8fbff 48%, #ecfdf5 100%);
   box-shadow: 0 4px 16px rgba(26, 111, 255, 0.08);
 }
 .greeting-title {
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 800;
   color: #0f172a;
   letter-spacing: -0.02em;
@@ -664,10 +664,10 @@ function openDrillTicket(no: string) {
   80% { transform: rotate(-4deg); }
 }
 .greeting-sub {
-  margin-top: 10px;
-  font-size: 13px;
+  margin-top: 6px;
+  font-size: 12px;
   color: #64748b;
-  line-height: 1.65;
+  line-height: 1.55;
 }
 .summary-chip {
   display: inline;
@@ -682,13 +682,13 @@ function openDrillTicket(no: string) {
 }
 .btn-primary {
   flex: none;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   color: #fff;
   background: linear-gradient(180deg, #3b82f6 0%, #1a6fff 100%);
   border: none;
-  border-radius: 10px;
-  padding: 12px 20px;
+  border-radius: 8px;
+  padding: 9px 16px;
   cursor: pointer;
   box-shadow: 0 4px 12px rgba(26, 111, 255, 0.28);
   transition: transform 0.15s, box-shadow 0.15s, filter 0.15s;
@@ -703,11 +703,11 @@ function openDrillTicket(no: string) {
 .overview-section {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 14px 16px;
+  gap: 8px;
+  padding: 10px 12px;
   background: #fff;
   border: 0.8px solid #e5e6eb;
-  border-radius: 16px;
+  border-radius: 14px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
 }
 .overview-section .section-head {
@@ -717,7 +717,7 @@ function openDrillTicket(no: string) {
   gap: 16px;
 }
 .overview-section .section-title {
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 700;
   color: #111827;
 }
@@ -741,12 +741,12 @@ function openDrillTicket(no: string) {
 .kpi-strip {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 .kpi-card {
   position: relative;
-  min-height: 72px;
-  padding: 10px 10px 10px 12px;
+  min-height: 58px;
+  padding: 8px 8px 8px 10px;
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 10px;
@@ -799,7 +799,7 @@ function openDrillTicket(no: string) {
   width: 4px;
 }
 .kpi-card.tone-gain .kpi-value {
-  font-size: 26px;
+  font-size: 22px;
 }
 .kpi-card.tone-risk .kpi-value,
 .kpi-card.tone-overdue .kpi-value {
@@ -812,9 +812,9 @@ function openDrillTicket(no: string) {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 12px;
+  font-size: 11px;
   color: #9ca3af;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   min-width: 0;
 }
 .kpi-label-text {
@@ -841,7 +841,7 @@ function openDrillTicket(no: string) {
   gap: 6px;
 }
 .kpi-value {
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 700;
   line-height: 1;
   letter-spacing: -0.02em;
@@ -872,31 +872,30 @@ function openDrillTicket(no: string) {
 .analysis-row {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 16px;
-  min-height: 217px;
+  gap: 12px;
 }
 .analysis-card {
-  padding: 16px 18px;
+  padding: 10px 12px 8px;
   display: flex;
   flex-direction: column;
   min-width: 0;
-  border-radius: 16px;
+  border-radius: 14px;
 }
 .card-head {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
   flex-wrap: wrap;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 .card-title {
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 700;
   color: #111827;
 }
 .card-sub {
-  font-size: 12px;
+  font-size: 11px;
   color: #9ca3af;
   margin-top: 2px;
 }
@@ -905,7 +904,7 @@ function openDrillTicket(no: string) {
 }
 .legend {
   display: flex;
-  gap: 14px;
+  gap: 10px;
   flex: none;
 }
 /* 与效能区筛选条同语汇，避免控件被图例挤没 */
@@ -974,14 +973,14 @@ function openDrillTicket(no: string) {
 .legend-item {
   display: flex;
   align-items: center;
-  gap: 5px;
-  font-size: 12px;
+  gap: 4px;
+  font-size: 10px;
   color: #6b7280;
 }
 .dot {
   display: inline-block;
-  width: 14px;
-  height: 3px;
+  width: 10px;
+  height: 2px;
   border-radius: 2px;
 }
 .dot.blue {
@@ -991,19 +990,19 @@ function openDrillTicket(no: string) {
   background: #10b981;
 }
 .chart-wrap {
-  flex: 1;
-  min-height: 108px;
+  flex: none;
+  height: 120px;
 }
 .trend-svg {
   width: 100%;
-  height: 108px;
+  height: 120px;
   display: block;
 }
 .chart-labels {
   display: flex;
   justify-content: space-between;
   padding: 0 4px;
-  font-size: 11px;
+  font-size: 10px;
   color: #9ca3af;
   margin-top: 4px;
 }
@@ -1088,17 +1087,16 @@ function openDrillTicket(no: string) {
 /* 底部行 */
 .bottom-row {
   display: grid;
-  grid-template-columns: 1fr 340px;
-  gap: 16px;
-  min-height: 300px;
+  grid-template-columns: 1fr minmax(220px, 280px);
+  gap: 12px;
 }
 .todo-card,
 .quick-card {
-  padding: 16px 18px;
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
   min-width: 0;
-  border-radius: 16px;
+  border-radius: 14px;
 }
 .todo-head-left {
   display: flex;
@@ -1129,8 +1127,8 @@ function openDrillTicket(no: string) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 10px 8px;
+  gap: 10px;
+  padding: 8px 6px;
   margin: 0 -4px;
   border-bottom: 1px solid #f3f4f6;
   border-radius: 8px;
@@ -1206,8 +1204,8 @@ function openDrillTicket(no: string) {
   display: grid;
   grid-template-columns: 1fr 1fr;
   grid-template-rows: repeat(3, 1fr);
-  gap: 10px;
-  margin-top: 12px;
+  gap: 8px;
+  margin-top: 8px;
   flex: 1;
 }
 .quick-tile {
@@ -1215,12 +1213,12 @@ function openDrillTicket(no: string) {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
   background: #f8fafc;
   border: 1px solid #eef2f7;
-  border-radius: 10px;
+  border-radius: 8px;
   cursor: pointer;
-  padding: 8px;
+  padding: 6px;
   transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
 }
 .quick-tile:hover {

@@ -618,7 +618,7 @@ const trendTitle = computed(() => {
 });
 
 const W = 400;
-const H = 150;
+const H = 120;
 
 /** 三线共用同一 Y 轴刻度，否则线之间的高低差没有可比性 */
 const yMax = computed(() =>
@@ -649,13 +649,7 @@ const axisLabels = computed(() => {
 
 /* ========================= ⑥ 负载分布卡 ========================= */
 
-/** 看板负载卡专用色 —— 中性底 + 细顶边区分，避免整卡高饱和 */
-const LOAD_BOARD_STYLE: Record<LoadLevel, { bg: string; border: string }> = {
-  空闲: { bg: '#fafafa', border: '#e2e8f0' },
-  适中: { bg: '#fafafa', border: '#cbd5e1' },
-  满载: { bg: '#fafafa', border: '#fca5a5' },
-};
-
+/** 负载分布卡与组员表 `LOAD_STYLE` 同色（AssignModal 导出） */
 const loadDist = computed(() => {
   const g: Record<LoadLevel, number> = { 空闲: 0, 适中: 0, 满载: 0 };
   board.value.members.forEach((m) => {
@@ -969,11 +963,22 @@ watch(teamId, () => {
       <div class="card trend">
         <div class="trend-hd">
           <div class="trend-hd-main">
-            <div class="trend-title">{{ trendTitle }}</div>
+            <div class="trend-title-row">
+              <div class="trend-title">{{ trendTitle }}</div>
+              <div class="legend legend-inline">
+                <span v-for="s in paths" :key="s.key" :class="{ dim: s.dim }">
+                  <i
+                    :style="s.dash
+                      ? { background: `repeating-linear-gradient(90deg, ${s.color} 0 4px, transparent 4px 7px)` }
+                      : { background: s.color }"
+                  />{{ s.label }}
+                </span>
+              </div>
+            </div>
             <div class="trend-sub">
               {{ gran === 'hour' ? '当日时段' : '近 30 天' }}
               <span class="trend-dot">·</span>
-              {{ focusKey ? '再次点该卡取消聚焦' : '点上方数量卡可聚焦单线' }}
+              {{ focusKey ? '再点取消聚焦' : '点上方卡聚焦单线' }}
             </div>
           </div>
           <div class="hd-r">
@@ -982,15 +987,6 @@ watch(teamId, () => {
               <div class="seg-i" :class="{ on: gran === 'day' }" @click="gran = 'day'">日</div>
             </div>
           </div>
-        </div>
-        <div class="legend">
-          <span v-for="s in paths" :key="s.key" :class="{ dim: s.dim }">
-            <i
-              :style="s.dash
-                ? { background: `repeating-linear-gradient(90deg, ${s.color} 0 4px, transparent 4px 7px)` }
-                : { background: s.color }"
-            />{{ s.label }}
-          </span>
         </div>
         <div class="chart-wrap">
           <svg class="chart" :viewBox="`0 0 ${W} ${H}`" preserveAspectRatio="none">
@@ -1014,7 +1010,7 @@ watch(teamId, () => {
           原文案讲的是"进线−结案＝积压增量"，那是**在办池**的关系。
           积压口径改为「超解决时效的未结单」后该等式不成立，故改为描述图本身。
         -->
-        <div class="trend-ft">进线线高于结案线的天数，在办量在累积；持续累积会推高超时风险</div>
+        <div class="trend-ft">进线持续高于结案 → 在办累积，推高超时风险</div>
       </div>
 
       <div class="card load">
@@ -1030,16 +1026,19 @@ watch(teamId, () => {
             :key="d.level"
             class="ld-cell"
             :class="[`ld-${d.level}`, { on: loadFilter === d.level }]"
-            :style="{ '--ld-bg': LOAD_BOARD_STYLE[d.level].bg, '--ld-border': LOAD_BOARD_STYLE[d.level].border }"
+            :style="{ '--ld-bg': LOAD_STYLE[d.level].bg, '--ld-accent': LOAD_STYLE[d.level].color }"
             @click="toggleLoadFilter(d.level)"
           >
             <div class="ld-v">
               {{ d.count }}<span class="ld-u">人</span>
             </div>
-            <div class="ld-l"><b>{{ d.level }}</b> {{ d.hint }}</div>
+            <div class="ld-l">
+              <span class="ld-level" :style="{ color: LOAD_STYLE[d.level].color }">{{ d.level }}</span>
+              <span class="ld-hint">{{ d.hint }}</span>
+            </div>
           </div>
         </div>
-        <div class="ld-ft">{{ loadFilter ? `已筛选「${loadFilter}」，再点取消` : '点某档可筛选下方组员表' }}</div>
+        <div class="ld-ft">{{ loadFilter ? `已筛「${loadFilter}」· 再点取消` : '点档筛选组员表' }}</div>
       </div>
     </div>
 
@@ -1227,12 +1226,12 @@ watch(teamId, () => {
 </template>
 
 <style scoped>
-/* 页壳对齐个人门户 home-overview */
+/* 页壳对齐个人门户 home-overview —— 密度 token 见《设计风格规范》§4.9 */
 .tb {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 24px;
+  gap: 12px;
+  padding: 16px 20px;
   min-height: 100%;
   width: 100%;
   min-width: 0;
@@ -1246,9 +1245,9 @@ watch(teamId, () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 22px 24px;
-  gap: 16px;
-  border-radius: 16px;
+  padding: 14px 18px;
+  gap: 12px;
+  border-radius: 14px;
   border: 1px solid rgba(26, 111, 255, 0.18);
   background:
     linear-gradient(135deg, #eff6ff 0%, #f8fbff 48%, #ecfdf5 100%);
@@ -1256,7 +1255,7 @@ watch(teamId, () => {
 }
 .greeting-text { min-width: 0; flex: 1; }
 .greeting-title {
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 800;
   color: #0f172a;
   letter-spacing: -0.02em;
@@ -1275,10 +1274,10 @@ watch(teamId, () => {
   80% { transform: rotate(-4deg); }
 }
 .greeting-sub {
-  margin-top: 10px;
-  font-size: 13px;
+  margin-top: 6px;
+  font-size: 12px;
   color: #64748b;
-  line-height: 1.65;
+  line-height: 1.55;
 }
 .summary-chip {
   display: inline;
@@ -1299,7 +1298,7 @@ watch(teamId, () => {
   flex-wrap: wrap;
   gap: 10px 12px;
   padding: 6px 10px;
-  background: rgba(255, 255, 255, 0.72);
+  background: #f8fafc;
   border: 1px solid #eef2f7;
   border-radius: 10px;
 }
@@ -1350,7 +1349,7 @@ watch(teamId, () => {
 .card {
   background: #fff;
   border: 0.8px solid #e5e6eb;
-  border-radius: 16px;
+  border-radius: 12px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
 }
 
@@ -1358,24 +1357,24 @@ watch(teamId, () => {
 .overview-section {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 14px 16px;
+  gap: 8px;
+  padding: 10px 12px;
   background: #fff;
   border: 0.8px solid #e5e6eb;
-  border-radius: 16px;
+  border-radius: 14px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
 }
 .section-head {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
   flex-wrap: wrap;
 }
 .section-head-main { min-width: 0; }
 .section-title {
   margin: 0;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 700;
   color: #111827;
   line-height: 1.3;
@@ -1420,7 +1419,7 @@ watch(teamId, () => {
 /* KPI 条：个人门户同款 */
 .kpi-strip {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
 }
 /* ── 关注区：一行主盯 + 一行事件 ── */
@@ -1431,11 +1430,11 @@ watch(teamId, () => {
   display: flex;
   align-items: center;
   min-width: 0;
-  margin-top: 2px;
+  margin-top: 0;
   padding: 8px 10px;
   background: #f8fafc;
   border: 1px dashed #e2e8f0;
-  border-radius: 10px;
+  border-radius: 8px;
 }
 .fe-strip {
   display: grid;
@@ -1448,11 +1447,11 @@ watch(teamId, () => {
   display: inline-flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
   min-width: 0;
-  height: 36px;
-  padding: 0 14px 0 12px;
+  height: 32px;
+  padding: 0 12px 0 10px;
   border: none;
   border-radius: 999px;
   background: #fff;
@@ -1523,8 +1522,8 @@ watch(teamId, () => {
 }
 .kpi-card {
   position: relative;
-  min-height: 72px;
-  padding: 10px 10px 10px 12px;
+  min-height: 58px;
+  padding: 8px 8px 8px 10px;
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 10px;
@@ -1598,8 +1597,8 @@ watch(teamId, () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
-  margin-bottom: 6px;
+  gap: 4px;
+  margin-bottom: 4px;
   min-width: 0;
 }
 .kpi-label-main {
@@ -1609,7 +1608,7 @@ watch(teamId, () => {
   min-width: 0;
 }
 .kpi-label-text {
-  font-size: 12px;
+  font-size: 11px;
   color: #9ca3af;
   min-width: 0;
   white-space: nowrap;
@@ -1634,7 +1633,7 @@ watch(teamId, () => {
   white-space: nowrap;
 }
 .kpi-value {
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 700;
   line-height: 1;
   letter-spacing: -0.02em;
@@ -1646,7 +1645,7 @@ watch(teamId, () => {
 .kpi-delta.bad { color: #ef4444; }
 .kpi-delta.neutral { color: #94a3b8; }
 .kpi-remind {
-  margin-top: 5px;
+  margin-top: 3px;
   font-size: 11px;
   font-weight: 500;
   line-height: 15px;
@@ -1658,7 +1657,7 @@ watch(teamId, () => {
 .kpi-remind.bad { color: #b45309; }
 .kpi-remind.good { color: #059669; }
 .kpi-sub {
-  margin-top: 4px;
+  margin-top: 2px;
   font-size: 11px;
   color: #94a3b8;
   line-height: 15px;
@@ -1713,6 +1712,13 @@ watch(teamId, () => {
   border-color: #93c5fd;
   box-shadow: none;
   transform: none;
+}
+@media (max-height: 900px) {
+  .tb {
+    gap: 10px;
+    padding: 14px 18px;
+  }
+  .chart-wrap { height: 108px; }
 }
 @media (max-width: 860px) {
   .greeting-card {
@@ -1777,8 +1783,8 @@ watch(teamId, () => {
 /* ============ ②′ 趋势 + 负载（今日指标下方并列） ============ */
 .today-aux {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 300px);
+  gap: 10px;
   align-items: stretch;
   transition: opacity 180ms ease;
 }
@@ -2143,80 +2149,127 @@ watch(teamId, () => {
   font-size: 11px; color: #94a3b8; line-height: 1.5;
 }
 
-/* 趋势卡 —— 图表固定高度 */
-.trend { min-width: 0; padding: 14px 16px 12px; }
+/* 趋势卡 —— 与个人门户 analysis-card 同密度（§4.9） */
+.trend { min-width: 0; padding: 10px 12px; }
 .trend-hd {
-  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
 }
-.trend-hd-main { min-width: 0; }
-.trend-title { font-size: 14px; font-weight: 600; color: #0f172a; line-height: 1.3; }
+.trend-hd-main { min-width: 0; flex: 1; }
+.trend-title-row {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.trend-title { font-size: 13px; font-weight: 700; color: #0f172a; line-height: 1.3; white-space: nowrap; }
 .trend-sub {
-  margin-top: 3px; font-size: 12px; color: #94a3b8; line-height: 1.3;
+  margin-top: 2px; font-size: 11px; color: #94a3b8; line-height: 1.35;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .trend-dot { margin: 0 4px; color: #cbd5e1; }
-.legend { display: flex; gap: 14px; margin-top: 12px; }
+.legend { display: flex; gap: 10px; }
+.legend-inline { margin-top: 0; }
 .legend span {
-  display: flex; align-items: center; gap: 6px;
+  display: flex; align-items: center; gap: 4px;
   font-size: 11px; font-weight: 500; color: #64748b;
   transition: opacity 120ms;
 }
 .legend span.dim { opacity: 0.35; }
 .legend i { width: 12px; height: 3px; border-radius: 2px; }
 .chart-wrap {
-  margin-top: 8px; height: 168px;
+  margin-top: 8px; height: 120px;
   background: linear-gradient(180deg, #f8fafc 0%, #fff 100%);
-  border: 1px solid #eef2f7; border-radius: 8px; padding: 10px 8px 4px;
+  border: 1px solid #eef2f7; border-radius: 8px; padding: 8px 8px 4px;
 }
 .chart { width: 100%; height: 100%; display: block; }
 .axis {
   display: flex; justify-content: space-between;
   margin-top: 6px; font-size: 11px; color: #94a3b8;
 }
-.trend-ft { margin-top: 8px; font-size: 11px; color: #b6bec9; line-height: 1.45; }
+.trend-ft { margin-top: 6px; font-size: 11px; color: #b6bec9; line-height: 1.4; }
 .seg { display: flex; background: #f1f5f9; border-radius: 6px; padding: 2px; gap: 2px; }
 .seg-i {
   padding: 3px 10px; font-size: 12px; color: #64748b; border-radius: 4px; cursor: pointer;
 }
 .seg-i.on { background: #fff; color: #1a6fff; font-weight: 600; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06); }
 
-/* 负载卡 —— 与趋势并排，内部档位纵向铺开更易读 */
+/* 负载卡 —— 三档纵排，字号对齐 §4.9 */
 .load {
   min-width: 0;
-  padding: 14px 16px 12px;
+  padding: 10px 12px 8px;
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 .load-hd {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  flex: none;
 }
+.load-hd .hd-title { font-size: 13px; font-weight: 700; }
 .ld-row {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-top: 12px;
+  gap: 6px;
+  margin-top: 6px;
   flex: 1;
+  min-height: 0;
 }
 .ld-cell {
-  flex: 1; background: var(--ld-bg, #fafafa); border: 1px solid #f1f5f9;
-  border-radius: 8px; padding: 10px 10px 9px; cursor: pointer;
-  border-top: 2px solid var(--ld-border, #e2e8f0);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  min-height: 34px;
+  background: var(--ld-bg, #fafafa);
+  border: 1px solid color-mix(in srgb, var(--ld-accent, #e2e8f0) 28%, #fff);
+  border-radius: 8px;
+  padding: 4px 10px;
+  cursor: pointer;
+  border-top: 2px solid var(--ld-accent, #e2e8f0);
   transition: border-color 120ms, box-shadow 120ms, background 120ms;
 }
-.ld-cell:hover { background: #f8fafc; box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04); }
+.ld-cell:hover {
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.06);
+  filter: brightness(0.98);
+}
 .ld-cell.on {
-  border-color: #cbd5e1; background: #f1f5f9;
-  box-shadow: inset 0 0 0 1px #e2e8f0;
+  box-shadow: inset 0 0 0 1px var(--ld-accent, #cbd5e1);
+  filter: brightness(0.96);
 }
 .ld-v {
-  font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums;
-  color: #111827; line-height: 1.2;
+  flex: none;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: #334155;
 }
-.ld-cell.ld-满载 .ld-v { color: #b91c1c; }
-.ld-u { font-size: 11px; font-weight: 400; color: #94a3b8; margin-left: 2px; }
-.ld-l { font-size: 11px; color: #64748b; margin-top: 4px; line-height: 1.35; }
-.ld-l b { font-weight: 600; color: #334155; }
-.ld-ft { margin-top: 10px; font-size: 11px; color: #94a3b8; line-height: 1.4; }
+.ld-u { font-size: 11px; font-weight: 400; color: #94a3b8; margin-left: 1px; }
+.ld-l {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.ld-level {
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 4px;
+  padding: 1px 6px;
+  flex: none;
+  line-height: 1.4;
+}
+.ld-hint {
+  font-size: 11px;
+  color: #64748b;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ld-ft { margin-top: 4px; font-size: 11px; color: #94a3b8; line-height: 1.35; flex: none; }
 
 /* 窄屏：率值组换到第二行，两组仍各自成组 */
 @media (max-width: 1440px) {

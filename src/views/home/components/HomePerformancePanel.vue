@@ -223,14 +223,15 @@ function onDrill(card: HomePerformanceCard, e: Event) {
 .performance-section {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 10px;
   width: 100%;
   min-width: 0;
-  padding: 18px;
+  padding: 12px;
   background: #fff;
   border: 0.8px solid #e5e6eb;
-  border-radius: 16px;
+  border-radius: 14px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  /* 密度 token：见《iFLY-FlowOS-设计风格规范》§4.9 */
 }
 .section-head {
   display: flex;
@@ -243,7 +244,7 @@ function onDrill(card: HomePerformanceCard, e: Event) {
   min-width: 0;
 }
 .section-title {
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 700;
   color: #111827;
 }
@@ -336,15 +337,15 @@ function onDrill(card: HomePerformanceCard, e: Event) {
 .performance-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  gap: 8px;
   width: 100%;
   min-width: 0;
 }
 .performance-card {
   position: relative;
   min-width: 0;
-  min-height: 146px;
-  padding: 14px;
+  min-height: 118px;
+  padding: 10px;
   display: flex;
   flex-direction: column;
   background: #fff;
@@ -395,7 +396,7 @@ function onDrill(card: HomePerformanceCard, e: Event) {
 }
 .metric-title {
   min-width: 0;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   color: #374151;
 }
@@ -424,10 +425,10 @@ function onDrill(card: HomePerformanceCard, e: Event) {
 }
 .metric-list {
   flex: 1;
-  margin-top: 12px;
+  margin-top: 8px;
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 5px;
 }
 .metric-row {
   display: flex;
@@ -445,7 +446,7 @@ function onDrill(card: HomePerformanceCard, e: Event) {
 }
 .metric-value {
   flex: none;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   color: #374151;
 }
@@ -454,8 +455,8 @@ function onDrill(card: HomePerformanceCard, e: Event) {
 .metric-value.warning { color: #d97706; }
 .metric-value.danger { color: #dc2626; }
 .metric-foot {
-  margin-top: 10px;
-  padding-top: 8px;
+  margin-top: 6px;
+  padding-top: 6px;
   display: flex;
   align-items: center;
   justify-content: space-between;
