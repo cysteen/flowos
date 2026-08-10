@@ -10,9 +10,11 @@ import {
 import OpActionDialogs from './OpActionDialogs.vue';
 import OpAftersaleLinkCard from './operation/OpAftersaleLinkCard.vue';
 import OpForwardModal from './operation/OpForwardModal.vue';
+import OpAftersaleActivateModal from './operation/OpAftersaleActivateModal.vue';
 import type { SuspendInfo, OpActionType, TicketOpState, AftersaleContext } from '../composables/opActions';
 import { availableActions } from '../composables/opActionRegistry';
 import { MAX_RETURN_COUNT } from '../composables/opActions';
+import { activateAftersaleTicket } from '@/api/aftersaleActivate';
 
 const props = defineProps<{
   ticketNo: string;
@@ -29,6 +31,8 @@ const props = defineProps<{
   feishuSync?: string;
   /** 转售后上下文（投诉分流 + 预填 + 已有关联售后单） */
   aftersaleContext?: AftersaleContext;
+  /** 售后转入工单：「转售后」改为激活来源售后单，不建第二张 */
+  aftersaleInbound?: boolean;
   /** 处理表单现值：挂起申请需校验服务类型/服务方式 */
   serviceType?: string;
   serviceMethod?: string;
@@ -101,9 +105,17 @@ const TRANSFERRED_LOCK_TIP = '工单已转出至售后，等待售后处理结�
  * 未结案：去关联单 Tab 点售后卡片跳售后系统补充/催单；已结案：只能线下联系售后。
  */
 const linkedAftersale = computed(() => props.aftersaleContext?.existing);
+/**
+ * 售后转入单是封口的例外：关联位虽被占着，但占它的正是转回来的那张售后单。
+ * 「转售后」在这里**照常点亮**，点下去按来源分流——售后转入走激活弹窗、其余走建单弹窗
+ * （见 api/aftersaleActivate.ts）。能不能激活由售后侧判，客服侧不预判、不置灰。
+ */
+const activatableAftersale = computed(() =>
+  (props.aftersaleInbound && linkedAftersale.value) || null,
+);
 const aftersaleBlockedTip = computed(() => {
   const as = linkedAftersale.value;
-  if (!as) return null;
+  if (!as || activatableAftersale.value) return null;
   return as.settled
     ? `关联售后单 ${as.no} 已结案，如需继续处理请线下联系售后`
     : `已有在跑的售后单 ${as.no}，请在「关联单」Tab 点开跟进`;
@@ -297,10 +309,39 @@ function run(action: OpActionType | '转单') {
     forwardModalOpen.value = true;
     return;
   }
+  // 售后转入单：转售后 = 激活来源售后单，走确认弹窗，不进建单表单
+  if (action === '转售后' && activatableAftersale.value) {
+    activateOpen.value = true;
+    return;
+  }
   if (DIALOG_ACTIONS.includes(action)) {
     dialogAction.value = action;
     dialogOpen.value = true;
   }
+}
+
+/* ---------------- 转售后 · 激活来源售后单（售后转入单） ---------------- */
+
+const activateOpen = ref(false);
+const activateLoading = ref(false);
+
+async function onActivateConfirm() {
+  const as = activatableAftersale.value;
+  if (!as || activateLoading.value) return;
+  activateLoading.value = true;
+  const res = await activateAftersaleTicket({ no: as.no, ticketNo: props.ticketNo });
+  activateLoading.value = false;
+  // 激活成败都当场给结论：坐席点完就要知道要不要改走线下联系售后
+  if (!res.ok) {
+    message.error(`售后工单 ${as.no} 激活失败：${res.error ?? '售后侧未返回结果'}`);
+    return;
+  }
+  activateOpen.value = false;
+  // 成功提示由 applyOpAction 的返回消息统一弹，此处不重复
+  emit('action', {
+    type: '激活售后',
+    data: { no: as.no, title: as.title, status: res.status ?? '待接单' },
+  });
 }
 
 function onDialogConfirm(payload: Record<string, unknown>) {
@@ -324,6 +365,11 @@ function openEscalate() {
  */
 function openAftersale() {
   if (isTerminal.value || isTransferred.value) return;
+  // 售后转入的投诉单同理：走激活，不建第二张
+  if (activatableAftersale.value) {
+    activateOpen.value = true;
+    return;
+  }
   if (aftersaleBlockedTip.value) {
     message.info(aftersaleBlockedTip.value);
     return;
@@ -356,7 +402,7 @@ defineExpose({ openEscalate, openAftersale });
       <a-popover
         v-for="a in barActions"
         :key="a.key"
-        :trigger="a.key === '转售后' && linkedAftersale ? 'hover' : []"
+        :trigger="a.key === '转售后' && linkedAftersale && !activatableAftersale ? 'hover' : []"
         placement="top"
       >
         <template #content>
@@ -417,6 +463,15 @@ defineExpose({ openEscalate, openAftersale });
     :back-to-delegator="isDelegating"
     :delegate-targets="delegateTargets"
     @confirm="onForwardConfirm"
+  />
+
+  <OpAftersaleActivateModal
+    v-if="activatableAftersale"
+    v-model:open="activateOpen"
+    :no="activatableAftersale.no"
+    :title="activatableAftersale.title"
+    :loading="activateLoading"
+    @confirm="onActivateConfirm"
   />
 </template>
 

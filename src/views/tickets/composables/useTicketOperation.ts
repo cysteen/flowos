@@ -148,6 +148,8 @@ export function useTicketOperation() {
       base.product.name = t.product;
       base.productBg = t.productBg;
       base.frontlineDemo = t.frontlineDemo; // 一线演示单：处理页隐藏二线流转操作栏
+      // 工单来源：升级投诉门禁①、转售后的激活分支都按它判，之前没透到 detail 上，两处判据都落空
+      if (t.ticketSource) base.source = t.ticketSource;
       base.escalatedFromNo = t.escalatedFromNo; // 升级派生单：回溯「升级自」来源
       /*
        * 关联关系**按列表行重建，不继承样例工单**。
@@ -199,6 +201,18 @@ export function useTicketOperation() {
         };
         base.status = '已转出';
         opState.value = 'transferred';
+      }
+      // 售后转入：关联位仍指向来源售后单，但本单正常在跑，不进「已转出」
+      if (t.aftersaleOriginNo) {
+        base.linkedAftersale = {
+          no: t.aftersaleOriginNo,
+          title: t.aftersaleOriginTitle,
+          status: t.aftersaleOriginStatus ?? '已转回客服',
+          serviceType: '寄修检测',
+          serviceMethod: '寄修',
+          createdAt: t.createdAt ?? '',
+          fromComplaint: t.type === '投诉',
+        };
       }
       if (t.problemDesc?.trim()) {
         base.demand = t.problemDesc.trim();

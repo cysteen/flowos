@@ -21,7 +21,7 @@ import OpActionBar from './components/OpActionBar.vue';
 // 建单弹窗仅在「转单/重开」时用，按需异步加载，不阻塞操作页首屏
 const CreateTicketModal = defineAsyncComponent(() => import('./components/CreateTicketModal.vue'));
 import { useTicketOperation } from './composables/useTicketOperation';
-import { FEISHU_ESCALATE_CHANNEL, mapUserRole, isAftersaleSettled } from './composables/opActions';
+import { FEISHU_ESCALATE_CHANNEL, mapUserRole, isAftersaleSettled, isAftersaleInbound } from './composables/opActions';
 import { useProcessForm } from './composables/useProcessForm';
 import { useOperationTabs } from './composables/useOperationTabs';
 import { useTicketLiveNotify } from './composables/useTicketLiveNotify';
@@ -341,6 +341,7 @@ const aftersaleContext = computed(() => ({
   existing: d.value.linkedAftersale
     ? {
         no: d.value.linkedAftersale.no,
+        title: d.value.linkedAftersale.title,
         serviceType: d.value.linkedAftersale.serviceType,
         status: d.value.linkedAftersale.status,
         settled: isAftersaleSettled(d.value.linkedAftersale.status),
@@ -870,6 +871,7 @@ watch(
       :feishu-eligible="feishuEligible"
       :feishu-sync="d.feishuSync"
       :aftersale-context="aftersaleContext"
+      :aftersale-inbound="isAftersaleInbound(d)"
       :service-type="form.serviceType"
       :service-method="form.serviceMethod"
       :problem-cause="form.problemCause"

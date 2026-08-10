@@ -410,8 +410,8 @@ export const NOTIFY_RULES: NotifyRule[] = [
     templates: { IM: 'IM_WO_DELEGATE' },
     contents: {
       邮件: {
-        subject: '【工单委派通知】您有一条委派工单 ${ticketNo}',
-        body: '您好，工单 ${ticketNo} 已转派至您名下，任务说明：${delegateTask}，请尽快登录系统查看工单详情。',
+        subject: '【工单委派通知】您有一条委派工单',
+        body: '您好，有一条科大讯飞客服工单（${ticketNo}）已转派至您名下，请您尽快登录系统查看工单详情，并在规定时效内完成响应及处理。\n\n系统登陆地址：http://xfkf.iflytek.com/ngs/SSOVerifyLogin',
       },
     },
     enabled: true },
@@ -447,8 +447,8 @@ export const NOTIFY_RULES: NotifyRule[] = [
     recipients: [{ type: 'assignee' }], channels: ['邮件'], templates: {},
     contents: {
       邮件: {
-        subject: '【挂起即将到期通知】工单 ${ticketNo}',
-        body: '您好，工单 ${ticketNo} 挂起即将到期（剩余 ${daysLeft} 天），挂起时限截止：${holdUntil}，请尽快核实问题处理进展。',
+        subject: '【挂起即将到期通知】您有一条工单挂起即将到期',
+        body: '您好，您有一条工单：${ticketNo}，挂起即将到期，挂起时限截止：${holdUntil}。请尽快核实问题处理进展！\n系统登陆地址：http://xfkf.iflytek.com/ngs/SSOVerifyLogin',
       },
     },
     enabled: true },
@@ -469,8 +469,8 @@ export const NOTIFY_RULES: NotifyRule[] = [
     recipients: [{ type: 'assignee' }], channels: ['邮件'], templates: {},
     contents: {
       邮件: {
-        subject: '【挂起到期通知】工单 ${ticketNo}',
-        body: '您好，工单 ${ticketNo} 已到期自动解除挂起，挂起时限截止：${holdUntil}，请尽快核实问题处理进展。',
+        subject: '【挂起到期通知】您有一条挂起工单已到期',
+        body: '您好，您有一条工单：${ticketNo}已到期自动解除挂起，挂起时限截止：${holdUntil}。请尽快核实问题处理进展！\n\n系统登陆地址：http://xfkf.iflytek.com/ngs/SSOVerifyLogin',
       },
     },
     enabled: true },
@@ -480,6 +480,9 @@ export const NOTIFY_RULES: NotifyRule[] = [
     recipients: [{ type: 'assignee' }], channels: ['IM'], templates: { IM: 'IM_APPT_DUE' }, contents: {}, enabled: true },
 
 ];
+
+/** 客服系统统一登陆地址，各模板正文末尾引用 */
+const LOGIN_URL = 'http://xfkf.iflytek.com/ngs/SSOVerifyLogin';
 
 /* ============================ 模板库 ============================ */
 
@@ -497,52 +500,93 @@ export const RULE_TEMPLATES: Record<string, RuleTemplate[]> = {
     {
       code: 'IM_WO_DISPATCH', name: '工单派发提醒',
       subject: '【工单处理通知】您有一条工单待处理',
-      body: '您好，客服系统有1条待处理工单(${ticketNo}),工单标题为${title},请于(${responseDueTime})前响应客户，请尽快完成处理。\n\n系统登陆地址：http://xfkf.iflytek.com/ngs/SSOVerifyLogin',
-    },
-    {
-      code: 'IM_WO_DELEGATE', name: '工单委派通知',
-      subject: '【工单委派通知】您有一条委派工单',
-      body: '您好，工单 ${ticketNo} 已转派至您名下，任务说明：${delegateTask}，请尽快登录系统查看并在规定时效内完成处理。',
-    },
-    {
-      code: 'IM_WO_SUPPLEMENT', name: '工单补充通知',
-      subject: '【工单补充通知】客户补充了新信息',
-      body: '您好，工单 ${ticketNo}（${title}）新增一条补充信息（${supplementType}），请及时查阅并跟进。',
-    },
-    {
-      code: 'IM_WO_URGE', name: '工单催办通知',
-      subject: '【工单催办通知】客户催办',
-      body: '您好，工单 ${ticketNo}（${title}）客户已催办：${urgeContent}，请尽快处理并回复客户。',
-    },
-    {
-      code: 'IM_WO_RETURN', name: '退回工单通知',
-      subject: '【退回工单通知】您有一条工单被退回',
-      body: '您好，工单 ${ticketNo} 已从${returnFrom}退回，退回原因：${returnReason}，请您重新完成处理。',
-    },
-    {
-      code: 'IM_HOLD_REJECT', name: '拒绝挂起通知',
-      subject: '【拒绝挂起通知】您有一条挂起工单被拒绝',
-      body: '您好，工单 ${ticketNo} 挂起申请已被拒绝，原因：${rejectReason}，请您重新完成处理。',
-    },
-    {
-      code: 'IM_APPROVAL_PENDING', name: '待审核通知',
-      subject: '【待审核通知】您有一条工单待审核',
-      body: '您好，工单 ${ticketNo} 提交了${approvalType}审核，请您尽快完成审批。',
-    },
-    {
-      code: 'IM_COMMENT_MENTION', name: '工单 @ 通知',
-      subject: '【工单@通知】有人在评论区提到了您',
-      body: '您好，工单 ${ticketNo} 的评论区提到了您：${commentText}，请点击查看：${deepLink}',
+      body: `您好，客服系统有1条待处理工单(\${ticketNo}),工单标题为\${title},请于(\${responseDueTime})前响应客户，请尽快完成处理。\n\n系统登陆地址：${LOGIN_URL}`,
     },
     {
       code: 'IM_WO_CANCEL', name: '工单取消通知',
       subject: '【工单取消通知】您的待处理工单已被取消',
-      body: '您好，工单 ${ticketNo} 已被取消（${cancelReason}），工单已自动关闭，无需继续跟进处理。',
+      body: `您的待处理工单：\${ticketNo}已被取消，工单已自动关闭，无需继续跟进处理。\n系统登陆地址：${LOGIN_URL}`,
+    },
+    {
+      code: 'IM_SLA_RESPONSE_SOON', name: '响应即将超时提醒',
+      subject: '【响应即将超时通知】您有一条工单响应即将超时',
+      body: `您好，您有一条待处理工单：\${ticketNo}，响应即将超时（截止时间\${responseDueTime}），请您关注，并尽快完成首答响应。\n\n系统登陆地址：${LOGIN_URL}`,
+    },
+    {
+      code: 'IM_SLA_RESPONSE_OVERDUE', name: '响应超时提醒',
+      subject: '【响应超时通知】您有一条工单响应已超时',
+      body: `您好，您有一条待处理工单：\${ticketNo}，响应已超时，请您尽快处理。\n\n系统登陆地址：${LOGIN_URL}`,
+    },
+    {
+      code: 'IM_SLA_RESOLVE_SOON', name: '解决即将超时提醒',
+      subject: '【解决即将超时通知】您有一条工单即将超时',
+      body: `您好，您有一条处理中的工单：\${ticketNo}，解决即将超时（截止时间\${resolveDueTime}），请您关注，并尽快完成处理。\n\n系统登陆地址：${LOGIN_URL}`,
+    },
+    {
+      code: 'IM_SLA_RESOLVE_OVERDUE', name: '解决超时提醒',
+      subject: '【解决超时通知】您有一条工单已超时',
+      body: `您好，您有一条处理中的工单：\${ticketNo}，解决已超时，请您尽快处理。\n\n系统登陆地址：${LOGIN_URL}`,
+    },
+    {
+      code: 'IM_SLA_RESPONSE_ESCALATE', name: '响应超时升级通知',
+      subject: '【响应超时升级通知】',
+      body: `您好：工单编号\${ticketNo}，已超时预警\${warnCount}次，请您关注，可登陆${LOGIN_URL} 添加处理意见。`,
+    },
+    {
+      code: 'IM_SLA_RESOLVE_ESCALATE', name: '处理超时升级通知',
+      subject: '【处理超时升级通知】',
+      body: `您好：工单编号\${ticketNo}，已超时预警\${warnCount}次，请您关注，可登陆${LOGIN_URL} 添加处理意见。`,
+    },
+    {
+      code: 'IM_WO_RETURN', name: '退回工单通知',
+      subject: '【退回工单通知】您有一条工单被退回',
+      body: `您好，您有一条工单：\${ticketNo}，已被退回，请您重新完成处理。\n\n系统登陆地址：${LOGIN_URL}`,
+    },
+    {
+      code: 'IM_HOLD_REJECT', name: '拒绝挂起通知',
+      subject: '【拒绝挂起通知】您有一条挂起工单被拒绝',
+      body: `您好，您有一条工单：\${ticketNo}，挂起已被拒绝，请您重新完成处理。\n\n系统登陆地址：${LOGIN_URL}`,
+    },
+    {
+      code: 'IM_HOLD_DUE_SOON', name: '挂起即将到期提醒',
+      subject: '【挂起即将到期通知】您有一条工单挂起即将到期',
+      body: `您好，您有一条工单：\${ticketNo}，挂起即将到期，挂起时限截止：\${holdUntil}。请尽快核实问题处理进展！\n系统登陆地址：${LOGIN_URL}`,
+    },
+    {
+      code: 'IM_HOLD_EXPIRED', name: '挂起到期提醒',
+      subject: '【挂起到期通知】您有一条挂起工单已到期',
+      body: `您好，您有一条工单：\${ticketNo}已到期自动解除挂起，挂起时限截止：\${holdUntil}。请尽快核实问题处理进展！\n\n系统登陆地址：${LOGIN_URL}`,
+    },
+    {
+      code: 'IM_APPROVAL_PENDING', name: '待审核通知',
+      subject: '【待审核通知】您有一条工单待审核',
+      body: `您好，您有一条工单待审核：\${ticketNo}，请您尽快完成处理\n\n系统登陆地址：${LOGIN_URL}`,
+    },
+    {
+      code: 'IM_WO_DELEGATE', name: '工单委派通知',
+      subject: '【工单委派通知】您有一条委派工单',
+      body: `您好，有一条科大讯飞客服工单（\${ticketNo}）已转派至您名下，请您尽快登录系统查看工单详情，并在规定时效内完成响应及处理。\n\n系统登陆地址：${LOGIN_URL}`,
+    },
+    {
+      code: 'IM_COMMENT_MENTION', name: '工单 @ 通知',
+      subject: '【工单@通知】${mentionerId}在评论区提到了您',
+      body: '您好，${mentionerId}在工单：${ticketNo} 的评论区提到了您，请点击下方链接查看完整工单详情及评论区，及时回复或处理。\n\n链接地址：${deepLink}',
+    },
+    /* ---- 以下模板业务清单未单列，保留供对应规则使用 ---- */
+    {
+      code: 'IM_WO_SUPPLEMENT', name: '工单补充通知',
+      subject: '【工单补充通知】客户补充了新信息',
+      body: `您好，工单 \${ticketNo}（\${title}）新增一条补充信息（\${supplementType}），请及时查阅并跟进。\n\n系统登陆地址：${LOGIN_URL}`,
+    },
+    {
+      code: 'IM_WO_URGE', name: '工单催办通知',
+      subject: '【工单催办通知】客户催办',
+      body: `您好，工单 \${ticketNo}（\${title}）客户已催办：\${urgeContent}，请尽快处理并回复客户。\n\n系统登陆地址：${LOGIN_URL}`,
     },
     {
       code: 'IM_APPT_DUE', name: '预约到期提醒',
       subject: '【预约到期提醒】您有一条预约即将到期',
-      body: '您好，工单 ${ticketNo}（${title}）的预约时间为 ${apptTime}，请及时安排上门 / 回访。',
+      body: `您好，工单 \${ticketNo}（\${title}）的预约时间为 \${apptTime}，请及时安排上门 / 回访。\n\n系统登陆地址：${LOGIN_URL}`,
     },
     {
       code: 'IM_WO_GENERIC', name: '工单通用提醒',
@@ -586,6 +630,8 @@ export const TEST_PRESETS: TestPreset[] = [
       source: '热线电话', bizType: '智能硬件', productName: '扫地机器人R2', customerName: '孙权', customerPhone: '138****2046',
       assigneeId: '林坐席', creatorId: '张三',
       responseDueTime: '2026-07-28 16:30',
+      resolveDueTime: '2026-07-29 16:30',
+      warnCount: '2',
       returnFrom: '技术支持', returnReason: '需客户补充设备序列号',
       holdUntil: '2026-08-05', daysLeft: '2', heldDays: '12', apptTime: '2026-08-02 14:00', daysToAppt: '1',
       resumeType: '到期自动解挂', dispatchFrom: '建单',

@@ -169,6 +169,8 @@ export interface DelegateInfo {
 export interface LinkedAftersale {
   /** 售后工单号（=关联ID） */
   no: string;
+  /** 售后单标题。售后转入的原单要在激活确认弹窗里认人，只有单号认不出是哪一单 */
+  title?: string;
   /** 售后状态（待接单/处理中/已完成…） */
   status: string;
   /** 售后服务类型（维修/投诉/咨询/安装/展示样机拆装） */

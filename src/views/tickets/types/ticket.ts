@@ -104,6 +104,15 @@ export interface Ticket {
   latestHandling?: string;
   /** 关联售后单号（非诉转售后/建售后单后，已办行可见、可跳转） */
   linkedAftersaleNo?: string;
+  /**
+   * 售后转入的来源售后单（`ticketSource='售后转入'` 时有值）。
+   * 与 linkedAftersaleNo 分开存：那个表示"本单已转出去、在售后手上"，会把状态压成「已转出」；
+   * 这个表示"售后把球踢回客服"，本单正常在跑，1:1 关联位仍指向同一张售后单。
+   */
+  aftersaleOriginNo?: string;
+  aftersaleOriginTitle?: string;
+  /** 来源售后单当前状态（激活确认弹窗要展示） */
+  aftersaleOriginStatus?: string;
   nodeStatus: NodeStatus;
   nodeStep: number;
   nodeTotal: number;

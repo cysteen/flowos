@@ -81,9 +81,16 @@ const BASE_TICKETS: Ticket[] = [
     title: '售后回传·配件到货续办咨询', smartMarks: [],
     customer: '何敏', vip: false, product: '空气净化器 P2',
     ticketSource: '售后转入',
+    // 售后把单转回客服（AS_RETURNED）：1:1 关联位仍指向这张售后单，
+    // 客服侧再点「转售后」不是建第二张，而是把它重新激活
+    aftersaleOriginNo: 'AS-20260731-40217',
+    aftersaleOriginTitle: '空气净化器 P2 滤芯配件更换（寄修）',
+    aftersaleOriginStatus: '已转回客服',
     nodeStatus: '处理中·一线', nodeStep: 2, nodeTotal: 5, priority: 'P2',
     slaText: '05:40:00', slaSub: '充足', slaState: 'ok', slaMinutes: 340,
-    assignee: '陈坐席', tab: 'mine',
+    // 挂在 WORKBENCH_HANDLER 名下，「我的任务」首屏即可点开验激活分支；
+    // 看板「转入」下钻按 ticketSource 过滤，与处理人无关，不受影响
+    assignee: '王坐席', tab: 'mine',
     customerPhone: '13900008801', sn: 'SN-P2-88001', productCategory: '智能硬件',
     createdAt: '2026-08-04 09:20', updatedAt: '2026-08-04 10:05',
     responded: true,

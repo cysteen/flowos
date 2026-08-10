@@ -1,5 +1,6 @@
 import type { TlRole, TimelineEntry, TimelineFieldChange } from '@/views/tickets/types/ticketDetail';
 import type { TicketDetailMeta, FeishuRecord, LinkedAftersale } from '@/mock/ticketDetail';
+import { AFTERSALE_INBOUND_SOURCE } from '@/views/tickets/types/createTicket';
 
 /** 升级通道 · 飞书项目（消费者BG专属，走 OpenAPI 推送产研反馈单） */
 export const FEISHU_ESCALATE_CHANNEL = '飞书项目 · 产研反馈单';
@@ -30,7 +31,7 @@ export type OpActionType =
   | '保存草稿' | '标记已解决'
   | '调剂' | '委派' | '下送' | '撤回' | '强结'
   | '挂起' | '恢复' | '退回' | '升级' | '同步飞书' | '转售后' | '升级投诉' | '撤销委派'
-  | '激活飞书'
+  | '激活飞书' | '激活售后'
   | '关闭工单' | '归档工单' | '取消工单';
 
 export interface TransferPayload { scope: 'same' | 'cross'; target: string; reason: string; }
@@ -107,6 +108,15 @@ export function isAftersaleSettled(status: string): boolean {
 }
 
 /**
+ * 售后转入判据（同升级投诉门禁①，判据＝工单来源）。
+ * 这类单的「转售后」不建新单，改为激活来源售后单——1:1 关联位已被它占着，
+ * 再建一张就会产生一张与原售后单无法建联的孤单（同 D12 的理由）。
+ */
+export function isAftersaleInbound(detail: { source?: string }): boolean {
+  return detail.source === AFTERSALE_INBOUND_SOURCE;
+}
+
+/**
  * 售后系统深链前缀。关联ID（售后工单号）拼进 URL 即得该单详情页地址，
  * 展示在关联单卡片上供坐席点击跳转；完整 URL 规范与鉴权待与售后侧对齐（PRD §待讨论 3）。
  */
@@ -131,7 +141,16 @@ export interface AftersaleContext {
    * 已有 1:1 关联售后单 → 入口封口、不再建单（D2 改写，激活动作取消）。
    * `settled` 决定提示与出路：false=引导去关联单 Tab 跳售后跟进；true=只能线下联系售后。
    */
-  existing?: { no: string; serviceType: string; status: string; settled: boolean };
+  existing?: { no: string; title?: string; serviceType: string; status: string; settled: boolean };
+}
+/** 售后转入单再点「转售后」＝激活原关联售后单，不建第二张（见 api/aftersaleActivate.ts） */
+export interface AftersaleActivatePayload {
+  /** 被激活的售后工单号 */
+  no: string;
+  /** 售后单标题，写履历用 */
+  title?: string;
+  /** 激活后的售后状态，由售后接口回传 */
+  status: string;
 }
 export interface ResolvePayload { solution: string; createCallback: boolean; }
 /** 关闭工单 = 异常结案，须审核通过后才真正关闭 */
@@ -160,6 +179,7 @@ export type OpActionPayload =
   | { type: '同步飞书'; data: SyncFeishuPayload }
   | { type: '激活飞书'; data: FeishuActivatePayload }
   | { type: '转售后'; data: AftersalePayload }
+  | { type: '激活售后'; data: AftersaleActivatePayload }
   | { type: '升级投诉'; data: EscalateComplaintPayload }
   | { type: '标记已解决'; data: ResolvePayload }
   | { type: '撤回' }
@@ -635,6 +655,19 @@ export function applyOpAction(
         suspendInfo,
         message: `已转售后 ${asNo}，工单转入「已转出」，等待售后处理结果`,
       };
+    }
+
+    case '激活售后': {
+      // 售后转入单：关联位已被来源售后单占着，「转售后」走激活而非建第二张（同 D12 的理由）。
+      // 激活成功后本单不进「已转出」——球回到售后手上，但客服侧仍持单跟进回传结果。
+      const { no, title, status } = payload.data;
+      if (detail.linkedAftersale) detail.linkedAftersale.status = status;
+      pushEntry(timeline, {
+        category: 'node', action: 'transfer', who: operator, role: operatorRole,
+        how: '转售后 · 激活来源售后单',
+        what: `本单由售后转入，已激活来源售后单 ${no}${title ? `（${title}）` : ''}，售后状态更新为「${status}」。未新建售后单，1:1 关联不变。`,
+      });
+      return { opState, suspendInfo, message: `售后工单 ${no} 激活成功，已重回售后工单池` };
     }
 
     case '升级投诉': {
