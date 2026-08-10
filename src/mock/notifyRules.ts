@@ -108,6 +108,7 @@ const BASE: EventField[] = [
   { key: 'ticketType', label: '工单类型', type: 'enum', enumValues: DICT_TICKET_TYPE, desc: '投诉 / 建议 / 商机 / 咨询 / 表扬。常用作条件，把不同类型分流到不同规则' },
   { key: 'source', label: '工单来源', type: 'enum', enumValues: DICT_SOURCE, desc: '客户从哪个渠道来的。对客短信的抑制条件主要靠它' },
   { key: 'bizType', label: '业务分类', type: 'enum', enumValues: DICT_BIZ_TYPE, desc: '工单归属的业务线。常用作条件，按业务线区分通知策略' },
+  { key: 'productName', label: '产品名称', type: 'string', desc: '工单关联的产品型号，来自产品主数据。模板中常用于区分不同产品的通知文案' },
   { key: 'customerName', label: '客户名称', type: 'string', desc: '联系人姓名，用于对客短信的称呼' },
   { key: 'customerPhone', label: '客户手机号', type: 'phone', isRecipient: true, desc: '对客短信的收件号码。选「客户」类型收件人时取的就是它' },
   { key: 'assigneeId', label: '当前处理人', type: 'userId', isRecipient: true, desc: '工单当前归谁处理。选「处理人」类型收件人时取的就是它；工单在池中未分派时可能为空' },
@@ -482,25 +483,75 @@ export const NOTIFY_RULES: NotifyRule[] = [
 
 /* ============================ 模板库 ============================ */
 
-export interface RuleTemplate { code: string; name: string; content: string }
+export interface RuleTemplate {
+  code: string;
+  name: string;
+  /** IM 消息标题；短信通道无标题 */
+  subject?: string;
+  body: string;
+}
 
 /** 模板库只覆盖模板通道（IM / 短信）；邮件与站内信无模板，正文写在规则里 */
 export const RULE_TEMPLATES: Record<string, RuleTemplate[]> = {
   IM: [
-    { code: 'IM_WO_DISPATCH', name: '工单派发提醒', content: '【工单处理通知】您有一条工单待处理\n\n您好，客服系统有 1 条待处理工单（${ticketNo}），工单标题为「${title}」，请于 ${responseDueTime} 前响应客户，请尽快完成处理。' },
-    { code: 'IM_WO_DELEGATE', name: '工单委派通知', content: '【工单委派通知】您有一条委派工单\n\n您好，工单 ${ticketNo} 已转派至您名下，任务说明：${delegateTask}，请尽快登录系统查看并在规定时效内完成处理。' },
-    { code: 'IM_WO_SUPPLEMENT', name: '工单补充通知', content: '【工单补充通知】客户补充了新信息\n\n您好，工单 ${ticketNo}（${title}）新增一条补充信息（${supplementType}），请及时查阅并跟进。' },
-    { code: 'IM_WO_URGE', name: '工单催办通知', content: '【工单催办通知】客户催办\n\n您好，工单 ${ticketNo}（${title}）客户已催办：${urgeContent}，请尽快处理并回复客户。' },
-    { code: 'IM_WO_RETURN', name: '退回工单通知', content: '【退回工单通知】您有一条工单被退回\n\n您好，工单 ${ticketNo} 已从${returnFrom}退回，退回原因：${returnReason}，请您重新完成处理。' },
-    { code: 'IM_HOLD_REJECT', name: '拒绝挂起通知', content: '【拒绝挂起通知】您有一条挂起工单被拒绝\n\n您好，工单 ${ticketNo} 挂起申请已被拒绝，原因：${rejectReason}，请您重新完成处理。' },
-    { code: 'IM_APPROVAL_PENDING', name: '待审核通知', content: '【待审核通知】您有一条工单待审核\n\n您好，工单 ${ticketNo} 提交了${approvalType}审核，请您尽快完成审批。' },
-    { code: 'IM_COMMENT_MENTION', name: '工单 @ 通知', content: '【工单@通知】有人在评论区提到了您\n\n您好，工单 ${ticketNo} 的评论区提到了您：${commentText}，请点击查看：${deepLink}' },
-    { code: 'IM_WO_CANCEL', name: '工单取消通知', content: '【工单取消通知】您的待处理工单已被取消\n\n您好，工单 ${ticketNo} 已被取消（${cancelReason}），工单已自动关闭，无需继续跟进处理。' },
-    { code: 'IM_APPT_DUE', name: '预约到期提醒', content: '【预约到期提醒】您有一条预约即将到期\n\n您好，工单 ${ticketNo}（${title}）的预约时间为 ${apptTime}，请及时安排上门 / 回访。' },
-    { code: 'IM_WO_GENERIC', name: '工单通用提醒', content: '工单 ${ticketNo}（${title}）有新动态，请及时查看：${deepLink}' },
+    {
+      code: 'IM_WO_DISPATCH', name: '工单派发提醒',
+      subject: '【工单处理通知】您有一条工单待处理',
+      body: '您好，客服系统有1条待处理工单(${ticketNo}),工单标题为${title},请于(${responseDueTime})前响应客户，请尽快完成处理。\n\n系统登陆地址：http://xfkf.iflytek.com/ngs/SSOVerifyLogin',
+    },
+    {
+      code: 'IM_WO_DELEGATE', name: '工单委派通知',
+      subject: '【工单委派通知】您有一条委派工单',
+      body: '您好，工单 ${ticketNo} 已转派至您名下，任务说明：${delegateTask}，请尽快登录系统查看并在规定时效内完成处理。',
+    },
+    {
+      code: 'IM_WO_SUPPLEMENT', name: '工单补充通知',
+      subject: '【工单补充通知】客户补充了新信息',
+      body: '您好，工单 ${ticketNo}（${title}）新增一条补充信息（${supplementType}），请及时查阅并跟进。',
+    },
+    {
+      code: 'IM_WO_URGE', name: '工单催办通知',
+      subject: '【工单催办通知】客户催办',
+      body: '您好，工单 ${ticketNo}（${title}）客户已催办：${urgeContent}，请尽快处理并回复客户。',
+    },
+    {
+      code: 'IM_WO_RETURN', name: '退回工单通知',
+      subject: '【退回工单通知】您有一条工单被退回',
+      body: '您好，工单 ${ticketNo} 已从${returnFrom}退回，退回原因：${returnReason}，请您重新完成处理。',
+    },
+    {
+      code: 'IM_HOLD_REJECT', name: '拒绝挂起通知',
+      subject: '【拒绝挂起通知】您有一条挂起工单被拒绝',
+      body: '您好，工单 ${ticketNo} 挂起申请已被拒绝，原因：${rejectReason}，请您重新完成处理。',
+    },
+    {
+      code: 'IM_APPROVAL_PENDING', name: '待审核通知',
+      subject: '【待审核通知】您有一条工单待审核',
+      body: '您好，工单 ${ticketNo} 提交了${approvalType}审核，请您尽快完成审批。',
+    },
+    {
+      code: 'IM_COMMENT_MENTION', name: '工单 @ 通知',
+      subject: '【工单@通知】有人在评论区提到了您',
+      body: '您好，工单 ${ticketNo} 的评论区提到了您：${commentText}，请点击查看：${deepLink}',
+    },
+    {
+      code: 'IM_WO_CANCEL', name: '工单取消通知',
+      subject: '【工单取消通知】您的待处理工单已被取消',
+      body: '您好，工单 ${ticketNo} 已被取消（${cancelReason}），工单已自动关闭，无需继续跟进处理。',
+    },
+    {
+      code: 'IM_APPT_DUE', name: '预约到期提醒',
+      subject: '【预约到期提醒】您有一条预约即将到期',
+      body: '您好，工单 ${ticketNo}（${title}）的预约时间为 ${apptTime}，请及时安排上门 / 回访。',
+    },
+    {
+      code: 'IM_WO_GENERIC', name: '工单通用提醒',
+      subject: '【工单提醒】',
+      body: '工单 ${ticketNo}（${title}）有新动态，请及时查看：${deepLink}',
+    },
   ],
   短信: [
-    { code: 'SMS_WO_ACCEPTED', name: '建单受理通知', content: '尊敬的用户您好，您反馈的问题已收到，工单号为 ${ticketNo}，我们已安排专人跟进处理。处理进度会通过短信或 0551 开头的电话同步给您，烦请保持手机畅通，耐心等待。感谢您的信任与支持' },
+    { code: 'SMS_WO_ACCEPTED', name: '建单受理通知', body: '【科大讯飞】尊敬的用户您好，您反馈的${productName}问题已收到，工单号为 ${ticketNo}，我们已安排专人跟进处理。处理进度会通过短信或0551开头的电话同步给您，烦请保持手机畅通，耐心等待。感谢您的信任与支持' },
   ],
 };
 
@@ -532,7 +583,7 @@ export const TEST_PRESETS: TestPreset[] = [
     id: 'P1', label: '典型对内场景 · 热线来源 · 咨询单',
     data: {
       ticketNo: 'LCMN-20260728-90001', title: '扫地机器人无法开机', ticketType: '咨询',
-      source: '热线电话', bizType: '智能硬件', customerName: '孙权', customerPhone: '138****2046',
+      source: '热线电话', bizType: '智能硬件', productName: '扫地机器人R2', customerName: '孙权', customerPhone: '138****2046',
       assigneeId: '林坐席', creatorId: '张三',
       responseDueTime: '2026-07-28 16:30',
       returnFrom: '技术支持', returnReason: '需客户补充设备序列号',
@@ -558,7 +609,7 @@ export const TEST_PRESETS: TestPreset[] = [
     id: 'P2', label: '对客抑制场景 · 内投渠道 · 投诉单',
     data: {
       ticketNo: 'LCMN-20260728-90002', title: '投诉客服响应慢', ticketType: '投诉',
-      source: '内投渠道', bizType: '教育', customerName: '刘备', customerPhone: '139****8821',
+      source: '内投渠道', bizType: '教育', productName: '学习机 T20', customerName: '刘备', customerPhone: '139****8821',
       assigneeId: '陈坐席', creatorId: '张三',
       responseDueTime: '2026-07-28 15:00',
       dispatchFrom: '建单',
@@ -569,7 +620,7 @@ export const TEST_PRESETS: TestPreset[] = [
     id: 'P3', label: '对客抑制场景 · 无线音乐业务 · 建议单',
     data: {
       ticketNo: 'LCMN-20260728-90003', title: '希望增加歌单导入', ticketType: '建议',
-      source: '客户服务小程序', bizType: '无线音乐', customerName: '曹操', customerPhone: '137****5510',
+      source: '客户服务小程序', bizType: '无线音乐', productName: '讯飞智能耳机', customerName: '曹操', customerPhone: '137****5510',
       assigneeId: '王坐席', creatorId: '王组长', isSuggestion: '是',
       responseDueTime: '2026-07-29 10:00',
       dispatchFrom: '建单',
@@ -646,7 +697,12 @@ export function varsIn(...texts: (string | undefined)[]): string[] {
   return [...new Set((raw.match(/\$\{([a-zA-Z]+)\}/g) ?? []).map((v) => v.slice(2, -1)))];
 }
 /** 取模板正文中用到的全部变量名 */
-export const templateVars = (t: RuleTemplate) => varsIn(t.content);
+export const templateVars = (t: RuleTemplate) => varsIn(t.subject, t.body);
+
+/** 取当前选中的模板对象 */
+export function templateOf(ch: string, code: string): RuleTemplate | undefined {
+  return (RULE_TEMPLATES[ch] ?? []).find((t) => t.code === code);
+}
 
 /** 条件显示文本 */
 export function condLabel(c: RuleCondition, eventCode: string): string {

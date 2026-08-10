@@ -26,7 +26,7 @@ import { sendTestMessage } from '@/api/notifyTestSend';
 import {
   NOTIFY_EVENTS, RULE_TEMPLATES, TEST_PRESETS,
   SUPERIOR_CHAIN, EVENT_SOURCE_META, COND_OP_LABEL,
-  eventOf, recipientTypeOf, availableRecipients, recipientLabel, condLabel, templateVars, varsIn,
+  eventOf, recipientTypeOf, availableRecipients, recipientLabel, condLabel, templateVars, varsIn, templateOf,
   RECIPIENT_KIND_LABEL, BASE_FIELD_KEYS,
   FIXED_ASSIGN_OPTIONS, filterFixedAssignOption,
   isTemplateChannel, opsForType, optionsForField,
@@ -359,21 +359,36 @@ const orderedChannels = computed(() => CHANNELS.filter((c) => form.channels.incl
 function tplOptions(ch: NotifyChannel) {
   return (RULE_TEMPLATES[ch] ?? []).map((t) => ({ value: t.code, label: `${t.name}（${t.code}）` }));
 }
-/** 模板通道的正文（只读预览） */
-function tplPreview(ch: NotifyChannel) {
-  return (RULE_TEMPLATES[ch] ?? []).find((t) => t.code === form.templates[ch])?.content ?? '';
+function selectedTemplate(ch: NotifyChannel) {
+  const code = form.templates[ch];
+  return code ? templateOf(ch, code) : undefined;
+}
+/** 模板通道：标题（IM 有，短信无） */
+function tplSubject(ch: NotifyChannel) {
+  return selectedTemplate(ch)?.subject ?? '';
+}
+/** 模板通道：正文 */
+function tplBody(ch: NotifyChannel) {
+  return selectedTemplate(ch)?.body ?? '';
+}
+/** 模板通道：折叠摘要——IM 优先露标题 */
+function tplSummary(ch: NotifyChannel) {
+  const sub = tplSubject(ch);
+  const body = tplBody(ch);
+  if (sub) return sub;
+  return body.replace(/\s+/g, ' ').slice(0, 48) + (body.length > 48 ? '…' : '');
 }
 /** 该模板被多少条规则引用——说明为什么不能在规则里改 */
 function tplRefCount(ch: NotifyChannel) {
   return rules.value.filter((r) => r.templates[ch] === form.templates[ch]).length;
 }
-/** 邮件才有独立主题行 */
-const hasSubject = (ch: NotifyChannel) => ch === '邮件';
+/** 邮件 / IM 有独立标题行；短信只有正文 */
+const hasSubject = (ch: NotifyChannel) => ch === '邮件' || ch === 'IM';
 /** 某通道内容里用到、但当前事件属性没有的变量 */
 function illegalVarsOf(ch: NotifyChannel): string[] {
   const keys = new Set(eventVars.value.map((p) => p.key));
   const used = isTemplateChannel(ch)
-    ? varsIn(tplPreview(ch))
+    ? varsIn(tplSubject(ch), tplBody(ch))
     : varsIn(hasSubject(ch) ? form.contents[ch]?.subject : '', form.contents[ch]?.body);
   return used.filter((v) => !keys.has(v));
 }
@@ -512,8 +527,9 @@ const testFields = computed(() => {
     if (t?.kind === 'relation') need.add('assigneeId');
   });
   r.channels.forEach((ch) => {
-    const raw = isTemplateChannel(ch)
-      ? (RULE_TEMPLATES[ch]?.find((x) => x.code === r.templates[ch])?.content ?? '')
+    const tpl = isTemplateChannel(ch) ? templateOf(ch, r.templates[ch]) : undefined;
+    const raw = tpl
+      ? `${tpl.subject ?? ''} ${tpl.body}`
       : `${r.contents[ch]?.subject ?? ''} ${r.contents[ch]?.body ?? ''}`;
     varsIn(raw).forEach((v) => need.add(v));
   });
@@ -575,8 +591,8 @@ async function testSend(ch: NotifyChannel) {
       ruleId: testRule.value!.id,
       channel: ch,
       to: addr,
-      subject: isTemplateChannel(ch) ? undefined : testRule.value!.contents[ch]?.subject,
-      content: renderTpl(ch).map((s) => s.text).join(''),
+      subject: renderedSubject(ch),
+      content: renderedBody(ch),
       templateCode: isTemplateChannel(ch) ? testRule.value!.templates[ch] : undefined,
     });
     sendState[ch] = res.ok
@@ -656,23 +672,42 @@ const resolved = computed(() => {
 });
 const okRecipientCount = computed(() => resolved.value.filter((x) => x.ok).length);
 
-/** 渲染模板：未解析的变量高亮 */
-/** 逐通道渲染模板，未解析的变量标红 */
-function renderTpl(ch: NotifyChannel) {
-  let raw = '';
+/** 取规则/模板在某通道下的原始标题与正文 */
+function channelRaw(ch: NotifyChannel, rule = testRule.value): { subject?: string; body: string } {
+  if (!rule) return { body: '' };
   if (isTemplateChannel(ch)) {
-    raw = RULE_TEMPLATES[ch]?.find((x) => x.code === testRule.value!.templates[ch])?.content ?? '';
-  } else {
-    const c = testRule.value!.contents[ch];
-    raw = c ? `${c.subject ? '主题：' + c.subject + '\n\n' : ''}${c.body}` : '';
+    const t = templateOf(ch, rule.templates[ch]);
+    return { subject: t?.subject, body: t?.body ?? '' };
   }
-  const d = testData;
+  const c = rule.contents[ch];
+  return { subject: hasSubject(ch) ? c?.subject : undefined, body: c?.body ?? '' };
+}
+
+function renderSegments(raw: string, data: Record<string, string>) {
   return raw.split(/(\$\{[a-zA-Z]+\})/).map((seg) => {
     const m = seg.match(/^\$\{([a-zA-Z]+)\}$/);
     if (!m) return { text: seg, miss: false };
-    const v = d[m[1]];
+    const v = data[m[1]];
     return { text: v ?? seg, miss: v === undefined };
   });
+}
+
+/** 渲染模板：未解析的变量高亮 */
+/** 逐通道渲染模板，未解析的变量标红 */
+function renderTpl(ch: NotifyChannel) {
+  const { subject, body } = channelRaw(ch);
+  const parts = subject ? [...renderSegments(subject, testData), { text: '\n\n', miss: false }] : [];
+  return [...parts, ...renderSegments(body, testData)];
+}
+
+function renderedSubject(ch: NotifyChannel) {
+  const { subject } = channelRaw(ch);
+  return subject ? renderSegments(subject, testData).map((s) => s.text).join('') : undefined;
+}
+
+function renderedBody(ch: NotifyChannel) {
+  const { body } = channelRaw(ch);
+  return renderSegments(body, testData).map((s) => s.text).join('');
 }
 
 </script>
@@ -1040,15 +1075,21 @@ function renderTpl(ch: NotifyChannel) {
                   :options="tplOptions(ch)"
                 />
                 <template v-if="chExpanded[ch]">
-                  <pre class="tb-pre">{{ tplPreview(ch) || '（该模板无正文）' }}</pre>
+                  <div v-if="tplSubject(ch)" class="tb-field">
+                    <span class="tb-label">消息标题</span>
+                    <pre class="tb-pre tb-pre--title">{{ tplSubject(ch) }}</pre>
+                  </div>
+                  <div class="tb-field">
+                    <span class="tb-label">消息内容</span>
+                    <pre class="tb-pre">{{ tplBody(ch) || '（该模板无正文）' }}</pre>
+                  </div>
                   <div class="tb-hint muted-line">
                     模板在消息中心维护，本页只读；当前被 {{ tplRefCount(ch) }} 条规则引用
                     <template v-if="ch === '短信'">；需运营商报备后方可发送</template>
                   </div>
                 </template>
                 <div v-else class="ch-summary">
-                  {{ tplPreview(ch).replace(/\s+/g, ' ').slice(0, 48)
-                     + (tplPreview(ch).length > 48 ? '…' : '') }}
+                  {{ tplSummary(ch) }}
                 </div>
               </template>
 
@@ -1698,6 +1739,11 @@ function renderTpl(ch: NotifyChannel) {
   font-family: inherit;
   max-height: 140px;
   overflow-y: auto;
+}
+.tb-pre--title {
+  color: #111827;
+  font-weight: 600;
+  max-height: none;
 }
 .tpl-empty {
   padding: 14px;
