@@ -222,7 +222,7 @@ export interface CreateTicketPrefill {
   /** 新建弹窗表单工单类型（投诉/建议/商机/咨询） */
   formTicketType?: CreateFormTicketType;
   priority?: Priority;
-  /** 投诉性质（业务/服务/人员投诉）——由投诉二类推导，只读带入 */
+  /** 投诉类型（建单页独立可选） */
   complaintType?: string;
   /** 投诉一类 */
   complaintL1?: string;

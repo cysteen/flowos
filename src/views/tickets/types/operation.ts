@@ -12,15 +12,9 @@ export interface AgentInfo {
 }
 
 export interface ComplaintInfo {
-  /**
-   * 投诉分类：**成对多组**——一类+二类为一组，一次投诉可命中多个问题（与升级弹窗同结构）。
-   * 投诉性质由各组的二类分别推导，展示时去重。
-   */
+  /** 投诉分类：**成对多组**——一类+二类为一组，一次投诉可命中多个问题（与升级弹窗同结构）。 */
   categories: { cat1: string; cat2: string }[];
-  /**
-   * 投诉类型：建单页**独立可选**字段（服务投诉/产品质量/物流问题/其他），0803 起不再由二类推导。
-   * 推导出来的「投诉性质」只做只读展示，不落在本字段上。
-   */
+  /** 投诉类型：建单页独立可选字段（服务投诉/产品质量/物流问题/其他） */
   complaintType: string;
   /** 投诉平台 + 投诉编号：**成对多组**——一个平台对应一个编号（与建单页同结构） */
   platforms: { platform: string; customPlatform?: string; complaintNo: string }[];
@@ -114,15 +108,15 @@ export interface ProcessFormDraft {
   concessionPlan: string;
   /** 投诉一类 */
   complaintCat1: string;
-  /** 投诉二类（投诉性质由此推导，见 resolveComplaintNature；分类树只有两级） */
+  /** 投诉二类（分类树只有两级） */
   complaintCat2: string;
   /** 投诉标记（有效/无效/未证实/暂缓；市场监管平台另含有责/无责等） */
   complaintMark: string;
   complaintNote: string;
   complaintNoteAttachments: string[];
   /**
-   * 外投分支 · 各投诉平台的跟进结果（与建单 platforms 一一对应）。
-   * 每个平台各自填写回复结果 + 是否和解——多平台不能共用一组字段。
+   * 投诉渠道跟进 · 各平台的回复结果（与建单 platforms 一一对应）。
+   * 内投渠道（公司前台/官网监督举报等）与外投渠道（12315/黑猫等）均在此维护。
    */
   platformFollowups: {
     platform: string;
@@ -274,15 +268,11 @@ export const SERVICE_SOLUTION_CONCLUSION = '已解决：服务方案解决';
 
 /** 解决方案（服务方案解决时） */
 export const SERVICE_SOLUTION_OPTIONS = [
-  '代金券',
-  '优惠券',
-  '积分补偿',
-  '赠品',
-  '部分退款',
-  '全额退款',
-  '会员延期',
-  '换货/换新',
-  '维修减免',
+  '免费维修',
+  '折扣维修',
+  '礼品赠送',
+  '权益赠送',
+  '免费换新',
   '其他',
 ] as const;
 

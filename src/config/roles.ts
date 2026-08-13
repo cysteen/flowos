@@ -1,9 +1,13 @@
-// 角色定义（对齐 PRD-08 / login.html 账号体系）
-// 坐席 3 类 + 管理 3 类；废弃裸 `agent`。
+// 角色定义
+// 真源：《00-基线-工单状态与动作》§3 §4 + 《08-角色权限与导航模型》§2
+// 本文件只管「菜单可见性 + 数据范围开关」，动作级权限见基线 §4。
+// 一线坐席在系统外（iframe），无 RoleKey；质检员 / 抄送待定。
 export type RoleKey =
   | 'agent-cs'
   | 'agent-as'
+  | 'tech-support'
   | 'team-leader'
+  | 'complaint-handler'
   | 'ops-monitor'
   | 'system-admin'
   | 'ops-admin'
@@ -26,20 +30,39 @@ export interface RoleDef {
   adminScope?: AdminScope;
   /** 工单只读：可查看任何工单，但不出任何流转/编辑操作（运营监控岗） */
   readonlyTickets?: boolean;
+  /**
+   * 全中心只读，管控后可写（投诉处理角色）。
+   * 与 readonlyTickets 的区别：那个是永远只读；这个是**未管控只读**——
+   * 平时全中心的单只看得到、点不了处理动作，只能点「工单管控」；
+   * 管控那一刻工单归它，才解锁全部处理动作。别实现成"全中心可写"。
+   */
+  writableAfterTakeover?: boolean;
 }
 
 export const ROLES: Record<RoleKey, RoleDef> = {
   'agent-cs': {
     key: 'agent-cs',
-    name: '客服·二线坐席',
+    name: '客服·二线技术顾问',
     menus: ['home', 'tickets', 'approval'],
     hiddenTabs: ['review', 'cc'],
     hasAdminEntry: false,
   },
   'agent-as': {
     key: 'agent-as',
-    name: '售后·二线坐席',
+    name: '售后·二线技术顾问',
     menus: ['home', 'aftersale', 'approval'],
+    hiddenTabs: ['review', 'cc'],
+    hasAdminEntry: false,
+  },
+  /**
+   * 三线技术支持：处理升级来的技术问题，不该自己处理时退回。
+   * 按业务分组；升级时选到组不选到人，单子落该组池子由组员自领。
+   * 不参与结案与流转，故不给审批中心。
+   */
+  'tech-support': {
+    key: 'tech-support',
+    name: '三线技术支持',
+    menus: ['home', 'tickets'],
     hiddenTabs: ['review', 'cc'],
     hasAdminEntry: false,
   },
@@ -49,6 +72,19 @@ export const ROLES: Record<RoleKey, RoleDef> = {
     menus: ['home', 'tickets', 'team-board', 'approval'],
     hiddenTabs: ['cc'],
     hasAdminEntry: false,
+  },
+  /**
+   * 投诉处理角色（830）：盯投诉风险，有「工单管控」权限——把任意工单拿到自己名下处置。
+   * 全中心范围，未管控只读、管控后可写。给「运营监控」是为了看风险词命中区（可打标）。
+   * 规则引擎里的通知目标字符串「投诉风险组」指的是同一批人。
+   */
+  'complaint-handler': {
+    key: 'complaint-handler',
+    name: '投诉处理角色',
+    menus: ['home', 'tickets', 'ops-monitor', 'approval'],
+    hiddenTabs: ['cc'],
+    hasAdminEntry: false,
+    writableAfterTakeover: true,
   },
   /**
    * 运营监控岗（915）：只盯全中心实时态，不办单。
@@ -96,7 +132,9 @@ export const ROLE_OPTION_GROUPS = [
     options: [
       { label: ROLES['agent-cs'].name, value: 'agent-cs' as RoleKey },
       { label: ROLES['agent-as'].name, value: 'agent-as' as RoleKey },
+      { label: ROLES['tech-support'].name, value: 'tech-support' as RoleKey },
       { label: ROLES['team-leader'].name, value: 'team-leader' as RoleKey },
+      { label: ROLES['complaint-handler'].name, value: 'complaint-handler' as RoleKey },
       { label: ROLES['ops-monitor'].name, value: 'ops-monitor' as RoleKey },
     ],
   },

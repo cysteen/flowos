@@ -10,7 +10,6 @@ import {
   CUSTOM_PLATFORM_OPTION,
   TICKET_SOURCE_OPTIONS,
   complaintPlatformsBySource,
-  resolveComplaintNature,
 } from '@/views/tickets/types/createTicket';
 import {
   buildEscalateSyncFields,
@@ -61,16 +60,6 @@ const platformOptions = computed(() =>
 const showPlatform = computed(() => platformOptions.value.length > 0);
 /** 外投渠道＝关原单建外投单；其余＝落补充 */
 const isExternal = computed(() => source.value === '外投渠道');
-
-/** 多组分类去重后的性质（可能同时命中业务/服务/人员） */
-const natures = computed(() => {
-  const set = new Set<string>();
-  for (const c of categories.value) {
-    const n = resolveComplaintNature(c.cat2);
-    if (n) set.add(n);
-  }
-  return [...set];
-});
 
 watch(
   () => props.open,
@@ -208,13 +197,6 @@ function onSubmit() {
             ><CloseOutlined /></button>
           </div>
         </div>
-        <div class="esc-nature">
-          投诉性质：
-          <template v-if="natures.length">
-            <span v-for="n in natures" :key="n" class="esc-nature-tag">{{ n }}</span>
-          </template>
-          <span v-else class="esc-nature-empty">选择投诉二类后自动判定</span>
-        </div>
       </div>
 
       <!-- 投诉平台 + 编号：成对多组，仅内投/外投渠道有 -->
@@ -322,13 +304,6 @@ function onSubmit() {
 .esc-row-del:hover:not(:disabled) { color: #ef4444; background: #fef2f2; }
 .esc-row-del:disabled { color: #e5e7eb; cursor: not-allowed; }
 .esc-empty { font-size: 12px; color: #b0b4bb; padding: 4px 2px; }
-
-.esc-nature { font-size: 12px; color: #6b7280; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.esc-nature-tag {
-  font-size: 11px; font-weight: 600; line-height: 18px;
-  padding: 0 6px; border-radius: 4px; color: #b45309; background: #fff7ed;
-}
-.esc-nature-empty { color: #b0b4bb; }
 
 .esc-sync-wrap { border-top: 1px dashed #eef0f3; padding-top: 4px; }
 .esc-sync-toggle {

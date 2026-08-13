@@ -180,11 +180,6 @@ export const PRIOR_FEEDBACK_OPTIONS = [
   '否',
 ] as const;
 export const SERVICE_REVIEW_OPTIONS = ['需要回溯', '无需回溯'];
-/**
- * 投诉性质：**由投诉二类推导，不单独选**（业务方 0730 口径）。
- * 「人员投诉 / 业务投诉」是投诉的性质分类，不是升阶层级——外投才是升阶（来源=外投渠道）。
- */
-export type ComplaintNature = '业务投诉' | '服务投诉' | '人员投诉';
 
 /** 投诉一类（业务方 0730 给定分类树） */
 export const COMPLAINT_L1_OPTIONS = [
@@ -230,23 +225,6 @@ export const COMPLAINT_L2_MAP: Record<string, string[]> = {
   ],
 };
 
-/**
- * 投诉二类 → 投诉性质。
- * 除「服务质量投诉」下的 5 项分别落 服务/人员 外，其余一律业务投诉。
- */
-export const COMPLAINT_NATURE_MAP: Record<string, ComplaintNature> = {
-  承诺未兑现: '服务投诉',
-  对人员服务态度不满: '人员投诉',
-  服务不及时: '服务投诉',
-  虚假结单: '服务投诉',
-  一次服务不到位: '服务投诉',
-};
-
-/** 按投诉二类推导投诉性质；未命中特例即业务投诉，无二类时返回空 */
-export function resolveComplaintNature(complaintL2?: string): ComplaintNature | '' {
-  if (!complaintL2) return '';
-  return COMPLAINT_NATURE_MAP[complaintL2] ?? '业务投诉';
-}
 export const SUGGEST_L1_OPTIONS = ['产品体验', '功能优化', '服务流程'];
 export const SUGGEST_L2_MAP: Record<string, string[]> = {
   产品体验: ['功能建议', '交互优化'],

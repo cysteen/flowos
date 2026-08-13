@@ -1,13 +1,11 @@
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import type { Channel, CreateTicketPrefill, Priority, Ticket } from '@/views/tickets/types/ticket';
-import { AFTERSALE_INBOUND_SOURCE, CUSTOM_PLATFORM_OPTION, resolveComplaintNature } from '@/views/tickets/types/createTicket';
+import { AFTERSALE_INBOUND_SOURCE, CUSTOM_PLATFORM_OPTION } from '@/views/tickets/types/createTicket';
 
 /**
  * 升级投诉（文档名「关联投诉」）判定逻辑 —— 《【815】关联投诉 PRD》§3 升级规则。
  *
  * **升阶只有两跳**（0730 定稿）：`非投诉（咨询/商机/建议） → 投诉 → 外投`。
- * - 「人员投诉 / 服务投诉 / 业务投诉」是**投诉性质**，由**投诉二类推导**（见 resolveComplaintNature），
- *   同层并列、不构成升阶——所以性质变化属于「改投诉分类」，不走升级投诉。
  * - 「外投」不是投诉分类，是**工单来源=外投渠道**；外投只能由**二线坐席**发起。
  */
 
@@ -72,33 +70,12 @@ export function resolveComplaintTier(detail: TicketDetailMeta): ComplaintTier {
   return 'complaint';
 }
 
-/** 原单的投诉性质列表（各组二类分别推导后去重；多组时可能同时有业务/服务/人员） */
-export function complaintNaturesOf(detail: TicketDetailMeta): string[] {
-  return naturesOf(detail.complaint.categories ?? []);
-}
-
-/** 原单的主展示性质（取第一组；无分类时为空） */
-export function complaintNatureOf(detail: TicketDetailMeta): string {
-  return complaintNaturesOf(detail)[0] || '';
-}
-
-/**
- * 发起人是不是一线坐席。
- * 一线**不能外投**，且**投诉单一律不可升级**（唯一去处是外投）。
- * 当前角色体系里没有一线角色（ROLES 里 agent-cs/agent-as 都是二线），
- * 故以「一线视角」标记作为判据；后续接入真实一线角色时在此处或上。
- */
-function isFrontlineActor(detail: TicketDetailMeta): boolean {
-  return !!detail.frontlineDemo;
-}
-
 /** 原单阶层展示名 */
 export function complaintTierLabel(detail: TicketDetailMeta): string {
   const tier = resolveComplaintTier(detail);
   if (tier === 'none') return `${detail.type}（非投诉）`;
   if (tier === 'external') return '外投（外部投诉）';
-  const natures = complaintNaturesOf(detail);
-  return natures.length ? `投诉 · ${natures.join(' / ')}` : '投诉';
+  return '投诉';
 }
 
 /**
@@ -113,6 +90,16 @@ function resolveLinkBlock(detail: TicketDetailMeta): string | null {
   }
   if (detail.followingNo) return `本单正跟随 ${detail.followingNo} 流转，不可再发起升级；如需补充请用「新建补充」`;
   return null;
+}
+
+/**
+ * 发起人是不是一线坐席。
+ * 一线**不能外投**，且**投诉单一律不可升级**（唯一去处是外投）。
+ * 当前角色体系里没有一线角色（ROLES 里 agent-cs/agent-as 都是二线），
+ * 故以「一线视角」标记作为判据；后续接入真实一线角色时在此处或上。
+ */
+function isFrontlineActor(detail: TicketDetailMeta): boolean {
+  return !!detail.frontlineDemo;
 }
 
 /** 按阶层 × 发起人角色算出可做的升级动作与入口可用性 */
@@ -177,7 +164,7 @@ export function buildEscalateVerdict(detail: TicketDetailMeta): EscalateVerdict 
     };
   }
 
-  // 非投诉：升为投诉单，投诉性质由所选投诉分类推导
+  // 非投诉：升为投诉单
   return {
     tier,
     tierLabel,
@@ -204,14 +191,12 @@ export function buildEscalateSyncFields(detail: TicketDetailMeta): SyncFieldRow[
     { label: '优先级', value: detail.priority },
     { label: '客户诉求', value: detail.demand },
   ];
-  // 投诉 → 外投：原单已有的投诉分类/性质一并带走，坐席只补外投增量字段
+  // 投诉 → 外投：原单已有的投诉分类一并带走，坐席只补外投增量字段
   const cats = (detail.complaint.categories ?? []).filter((c) => c.cat1 && c.cat2);
   if (cats.length) {
     rows.push({
       label: '投诉分类',
-      value: cats
-        .map((c) => `${c.cat1} / ${c.cat2}（${resolveComplaintNature(c.cat2)}）`)
-        .join('；'),
+      value: cats.map((c) => `${c.cat1} / ${c.cat2}`).join('；'),
     });
   }
   const latest = detail.latestHandling?.[0]?.text;
@@ -283,26 +268,16 @@ export function resolveEscalateOutcome(input: EscalateOnComplaintInput): Escalat
   return input.source === '外投渠道' ? 'external' : 'supplement';
 }
 
-/** 多组分类去重后的投诉性质（可能同时命中业务/服务/人员） */
-export function naturesOf(categories: ComplaintCategoryPick[]): string[] {
-  const set = new Set<string>();
-  for (const c of categories) {
-    const n = resolveComplaintNature(c.cat2);
-    if (n) set.add(n);
-  }
-  return [...set];
-}
-
 /** 升级后新单的展示名（履历/关联卡片用） */
 export function escalateTargetLabel(input: EscalateInput): string {
-  return resolveEscalateOutcome(input) === 'external' ? '外投' : (naturesOf(input.categories)[0] || '投诉');
+  return resolveEscalateOutcome(input) === 'external' ? '外投' : '投诉';
 }
 
 /** 分类/平台的文本化（写进新单描述与履历） */
 export function summarizeEscalateInput(input: EscalateOnComplaintInput): string[] {
   const cats = input.categories
     .filter((c) => c.cat1 && c.cat2)
-    .map((c) => `${c.cat1} / ${c.cat2}（${resolveComplaintNature(c.cat2)}）`);
+    .map((c) => `${c.cat1} / ${c.cat2}`);
   const plats = input.platforms
     .filter((p) => p.platform)
     .map((p) => `${platformDisplay(p)}${p.complaintNo ? `（编号 ${p.complaintNo}）` : ''}`);

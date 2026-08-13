@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, watch } from 'vue';
 import {
   FileTextOutlined, CheckCircleOutlined, AppstoreOutlined,
   CheckOutlined,
@@ -19,7 +19,6 @@ import {
   SERVICE_TYPE_TO_METHODS,
   LEAD_STAGE_OPTIONS,
 } from '@/views/tickets/types/operation';
-import { isExternalComplaintPlatform } from '@/views/tickets/types/createTicket';
 
 const props = defineProps<{
   form: ProcessFormDraft;
@@ -29,10 +28,12 @@ const props = defineProps<{
   activeChip: SupplementChip;
   filledSupplementCount: number;
   showExternal: boolean;
-  /** 投诉平台（控制投诉标记扩展选项 / 外投分支显隐） */
+  /** 投诉平台（控制投诉标记扩展选项） */
   complaintPlatform?: string;
-  /** 建单投诉平台列表（外投跟进按平台分行） */
+  /** 建单投诉平台列表（投诉渠道跟进按平台分行，内投/外投均含） */
   complaintPlatforms?: { platform: string; customPlatform?: string; complaintNo: string }[];
+  /** 工单来源（内投/外投渠道时展示投诉渠道 chip） */
+  ticketSource?: string;
 }>();
 
 const emit = defineEmits<{
@@ -45,12 +46,13 @@ const isComplaint = computed(() => props.ticketType === '投诉');
 const isConsult = computed(() => props.ticketType === '咨询');
 const isSuggest = computed(() => props.ticketType === '建议');
 const isLead = computed(() => props.ticketType === '商机');
-/** 外投：来源标记，或任一投诉平台命中外投渠道列表 */
-const isExternal = computed(() =>
-  props.showExternal
-  || isExternalComplaintPlatform(props.complaintPlatform)
-  || (props.complaintPlatforms ?? []).some((p) => isExternalComplaintPlatform(p.platform)),
-);
+/** 投诉渠道 chip：建单登记了平台，或来源为内投/外投渠道（PRD：投诉渠道记录） */
+const showComplaintChannel = computed(() => {
+  if ((props.complaintPlatforms ?? []).some((p) => p.platform)) return true;
+  const src = props.ticketSource ?? '';
+  if (src === '内投渠道' || src === '外投渠道') return true;
+  return props.showExternal;
+});
 
 function patch(part: Partial<ProcessFormDraft>) {
   emit('update:form', { ...props.form, ...part });
@@ -83,6 +85,16 @@ const serviceTypeOptions = SERVICE_TYPE_OPTIONS.map((v) => ({ label: v, value: v
 const showServiceSolution = computed(
   () => props.form.conclusion === SERVICE_SOLUTION_CONCLUSION,
 );
+/** 旧枚举残留（如「代金券」）不在新清单内时清空，避免下拉显示脏值 */
+watch(
+  () => props.form.serviceSolution,
+  (v) => {
+    if (v && !(SERVICE_SOLUTION_OPTIONS as readonly string[]).includes(v)) {
+      patch({ serviceSolution: '' });
+    }
+  },
+  { immediate: true },
+);
 const serviceMethodOptions = computed(() => {
   const methods = SERVICE_TYPE_TO_METHODS[props.form.serviceType] ?? [];
   return methods.map((v) => ({ label: v, value: v }));
@@ -96,7 +108,7 @@ const supplementChips = computed<{ key: SupplementChip; label: string }[]>(() =>
     { key: 'risk', label: '风险' },
     { key: 'quality', label: '建单规范' },
   ];
-  if (isExternal.value) chips.splice(1, 0, { key: 'external', label: '外投' });
+  if (showComplaintChannel.value) chips.splice(1, 0, { key: 'external', label: '投诉渠道' });
   return chips;
 });
 
@@ -221,9 +233,7 @@ function chipActiveClass(key: SupplementChip): string {
             @update:value="(v) => onConclusionChange(String(v ?? ''))"
           />
         </div>
-      </div>
-      <div v-if="showServiceSolution" class="field-row field-row--service field-row--solution">
-        <div class="field inline">
+        <div v-if="showServiceSolution" class="field inline">
           <label><span class="req">*</span>解决方案</label>
           <FormSelect
             :value="form.serviceSolution"
@@ -334,7 +344,7 @@ function chipActiveClass(key: SupplementChip): string {
         :form="form"
         :complaint-platform="complaintPlatform"
         :complaint-platforms="complaintPlatforms"
-        :show-external="isExternal"
+        :show-external="showComplaintChannel"
         @update:form="emit('update:form', $event)"
       />
     </OpCollapsibleSection>
@@ -354,9 +364,8 @@ function chipActiveClass(key: SupplementChip): string {
 .field label .req { color: #ef4444; margin-right: 2px; }
 .field-row { display: flex; gap: 8px; }
 .field-row .field.inline { flex: 1 1 0; min-width: 0; }
-.field-row--service { align-items: flex-start; }
-.field-row--solution { margin-top: 8px; }
-.field-row--solution .field.inline { flex: 0 1 33.333%; max-width: 33.333%; }
+.field-row--service { align-items: flex-start; flex-wrap: nowrap; }
+.field-row--service .field.inline { flex: 1 1 0; min-width: 0; }
 .field-row :deep(.ant-select-selector) {
   height: 32px;
   min-height: 32px;

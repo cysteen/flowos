@@ -66,7 +66,7 @@ const visibleTabs = computed(() =>
 );
 
 /**
- * 驱动「投诉标记扩展选项 / 外投分支」的平台。
+ * 驱动「投诉标记扩展选项 / 投诉渠道跟进」的平台。
  * 建单页投诉平台是成对多组，此处取**首个监管平台**——任一平台是监管平台就该放出有责/无责标记；
  * 都不是则回落到第一组，仅用于外投分支判定。
  */
@@ -120,6 +120,7 @@ defineExpose({ switchTab });
         :active-chip="activeChip"
         :filled-supplement-count="filledSupplementCount"
         :show-external="detail.isExternalAppeal"
+        :ticket-source="detail.source"
         :complaint-platform="drivingComplaintPlatform"
         :complaint-platforms="detail.complaint?.platforms ?? []"
         @toggle-section="emit('toggleSection', $event)"

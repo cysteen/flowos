@@ -529,5 +529,8 @@ export const TICKETS: Ticket[] = BASE_TICKETS.map((t) => ({
   ...(TICKET_BRIEFS[t.id] ?? {}),
   ...(TICKET_FORM_FIELDS[t.id] ?? {}),
   ...(TICKET_GROUP_NAMES[t.id] ? { groupNames: TICKET_GROUP_NAMES[t.id] } : {}),
-  ticketSource: t.channel === '电话' ? '热线电话' : t.channel,
+  // 显式写了来源的（售后转入 / 跨组调剂）保留原值，只有没写的才按渠道推。
+  // 之前这里无条件覆盖，把「售后转入」冲成了「热线电话」——看板「转入」下钻筛不出单、
+  // 升级投诉门禁①与转售后的激活分支也都判不出来
+  ticketSource: t.ticketSource ?? (t.channel === '电话' ? '热线电话' : t.channel),
 }));
