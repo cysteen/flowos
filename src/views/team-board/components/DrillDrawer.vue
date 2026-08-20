@@ -512,7 +512,7 @@ function caption(layer: Layer): string {
 /* --------------------------------------------------------------------------
  * 出口：一律 go-list，不开第二层抽屉（§2.4 / §2.5）
  * ------------------------------------------------------------------------ */
-const BASE_QUERY: Record<string, string> = { scope: 'team' };
+const BASE_QUERY: Record<string, string> = { tab: 'tickets', scope: 'team' };
 
 function goBucket(layer: Layer, b: PriorityBucket) {
   emit('go-list', {
@@ -520,7 +520,7 @@ function goBucket(layer: Layer, b: PriorityBucket) {
     scope: 'row',
     key: b.sysKey,
     label: `${b.sysKey} ${b.reqLabel}`,
-    path: '/tickets/list',
+    path: '/query',
     query: {
       ...BASE_QUERY,
       status: 'BACKLOG',
@@ -536,7 +536,7 @@ function goPerson(layer: Layer, r: PeopleDrillRow) {
     scope: 'row',
     key: r.id,
     label: r.name,
-    path: '/tickets/list',
+    path: '/query',
     query: {
       ...BASE_QUERY,
       assignee: r.id,
@@ -551,7 +551,7 @@ function goSource(layer: Layer, g: SourceDrillGroup) {
     scope: 'row',
     key: g.source,
     label: g.source,
-    path: '/tickets/list',
+    path: '/query',
     query: {
       ...BASE_QUERY,
       source: g.source,
@@ -580,7 +580,7 @@ function goFooter(layer: Layer) {
       : t === 'events'
         ? { ...BASE_QUERY, _from: 'board.events' }
         : { ...BASE_QUERY, _from: t === 'people' ? 'board.people' : 'board.source' };
-  emit('go-list', { type: t, scope: 'footer', path: '/tickets/list', query });
+  emit('go-list', { type: t, scope: 'footer', path: '/query', query: { tab: 'tickets', ...query } });
 }
 
 /** 行内按钮作用于「人」不作用于某张单；督办不支持，仅保留指派 */

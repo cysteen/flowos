@@ -85,8 +85,8 @@ export const ROLE_GROUPS: RoleGroup[] = [
       { id: 'r-tenant-admin', name: '租户管理员', desc: '本租户人员、角色、权限、安全管理', category: '业务角色', permissions: perms('full') },
       { id: 'r-ops-admin', name: '运营管理员', desc: '工单流转全链路配置（类型/SLA/规则/模板…）', category: '业务角色', permissions: perms('leader') },
       { id: 'r-cs-leader', name: '客服班组长', desc: '本班组工单改派、审核与看板', category: '业务角色', permissions: perms('leader') },
-      { id: 'r-cs-agent', name: '客服·二线坐席', desc: '客服工单受理与处理', category: '业务角色', permissions: perms('agent') },
-      { id: 'r-as-agent', name: '售后·二线坐席', desc: '售后工单受理与处理', category: '业务角色', permissions: perms('agent') },
+      { id: 'r-cs-agent', name: '客服·二线技术顾问', desc: '客服工单受理与处理', category: '业务角色', permissions: perms('agent') },
+      { id: 'r-as-agent', name: '售后·二线技术顾问', desc: '售后工单受理与处理', category: '业务角色', permissions: perms('agent') },
     ],
   },
   {

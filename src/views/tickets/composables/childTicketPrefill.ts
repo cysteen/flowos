@@ -60,7 +60,12 @@ export function buildChildTicketPrefill(parent: TicketDetailMeta): CreateTicketP
 /** 从原单详情生成 reopen（重新建单）弹窗预填数据 */
 export function buildReopenTicketPrefill(parent: TicketDetailMeta): CreateTicketPrefill {
   const parentType = parent.type;
-  const formTicketType: CreateFormTicketType = parent.type;
+  /**
+   * 原单类型照搬到 reopen 弹窗。TicketDetailMeta.type 在 mock 里只声明成宽松 string，
+   * 而工单类型的真源是 TicketType（= CreateFormTicketType 的四类：投诉/建议/商机/咨询），
+   * 故按该口径收窄，运行时与原来的直接照搬一致。
+   */
+  const formTicketType = parent.type as CreateFormTicketType;
   const demandShort = parent.demand.length > 80 ? `${parent.demand.slice(0, 80)}…` : parent.demand;
 
   return {

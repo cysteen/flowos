@@ -26,13 +26,14 @@ const emit = defineEmits<{
         <span class="record-sep">·</span>
         <span class="record-when">{{ r.when }}</span>
         <span class="record-read-slot">
-          <span v-if="r.read" class="record-read-tag"><CheckOutlined /> 已读</span>
+          <span v-if="r.contacted" class="record-contact-tag">已联系</span>
+          <span v-if="r.read" class="record-read-tag"><CheckOutlined /> 已知晓</span>
           <button
             v-else
             type="button"
             class="record-read-btn"
             @click="emit('mark-read', r.id)"
-          >标记已读</button>
+          >已知晓</button>
         </span>
       </p>
 
@@ -83,12 +84,25 @@ const emit = defineEmits<{
   font-variant-numeric: tabular-nums;
 }
 
-/* 已读控件：靠右 */
+/* 已知晓 / 已联系：靠右并排 */
 .record-read-slot {
   margin-left: auto;
   flex: none;
   display: inline-flex;
   align-items: center;
+  gap: 6px;
+}
+.record-contact-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  height: 22px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #0369a1;
+  background: #e0f2fe;
+  white-space: nowrap;
 }
 .record-read-btn {
   padding: 1px 10px;

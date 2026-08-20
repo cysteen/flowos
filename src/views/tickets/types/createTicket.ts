@@ -169,6 +169,50 @@ export function isExternalComplaintPlatform(platform?: string): boolean {
   if (!platform) return false;
   return (EXTERNAL_COMPLAINT_PLATFORMS as readonly string[]).includes(platform);
 }
+
+export function isInternalComplaintPlatform(platform?: string): boolean {
+  if (!platform) return false;
+  return (INTERNAL_COMPLAINT_PLATFORMS as readonly string[]).includes(platform);
+}
+
+/** 归一化工单来源（detail.source 可能与枚举略有差异） */
+export function normalizeTicketSource(source?: string): string {
+  if (!source) return '';
+  if (source === '外投') return '外投渠道';
+  if (source === '内投') return '内投渠道';
+  return source;
+}
+
+/**
+ * 推断投诉渠道字典用来源（对齐处理页 OpProcessForm.showComplaintChannel）：
+ * ① 来源已是内投/外投；② 已有平台台账可反推；③ 外投标记。
+ */
+export function inferComplaintChannelSource(
+  ticketSource?: string,
+  platforms?: { platform?: string }[],
+  isExternalAppeal?: boolean,
+): '' | '内投渠道' | '外投渠道' {
+  const normalized = normalizeTicketSource(ticketSource);
+  if (normalized === '内投渠道' || normalized === '外投渠道') return normalized;
+
+  const plats = (platforms ?? []).map((p) => p.platform).filter(Boolean) as string[];
+  if (plats.some((p) => isExternalComplaintPlatform(p))) return '外投渠道';
+  if (plats.some((p) => isInternalComplaintPlatform(p))) return '内投渠道';
+  if (isExternalAppeal) return '外投渠道';
+  return '';
+}
+
+/** 是否应展示投诉平台补录区（与 OpProcessForm 投诉渠道 chip 同口径） */
+export function shouldShowComplaintChannelSupplement(
+  ticketSource?: string,
+  platforms?: { platform?: string }[],
+  isExternalAppeal?: boolean,
+): boolean {
+  if ((platforms ?? []).some((p) => p.platform)) return true;
+  const src = normalizeTicketSource(ticketSource);
+  if (src === '内投渠道' || src === '外投渠道') return true;
+  return !!isExternalAppeal;
+}
 export const BUSINESS_LINE_OPTIONS = ['学习机业务线', '翻录业务线', '智学网业务线'];
 export const YES_NO_OPTIONS = ['是', '否'];
 /** 投诉专属 · 前期反馈 */
@@ -181,49 +225,20 @@ export const PRIOR_FEEDBACK_OPTIONS = [
 ] as const;
 export const SERVICE_REVIEW_OPTIONS = ['需要回溯', '无需回溯'];
 
-/** 投诉一类（业务方 0730 给定分类树） */
-export const COMPLAINT_L1_OPTIONS = [
-  '产品功能/性能投诉',
-  '产品质量投诉',
-  '服务质量投诉',
-  '流程规则投诉',
-];
-
-/** 投诉一类 → 投诉二类 */
-export const COMPLAINT_L2_MAP: Record<string, string[]> = {
-  '产品功能/性能投诉': [
-    '产品操作过于复杂',
-    '产品新版功能比老版本差',
-    '产品性能未达到顾客预期',
-    '对产品原装配置不满',
-  ],
-  产品质量投诉: [
-    '安全事故',
-    '产品质量故障',
-    '开箱损（新品拆封有问题）',
-    '老旧产品无售后政策不认可',
-    '质量事故',
-  ],
-  服务质量投诉: [
-    '承诺未兑现',
-    '对人员服务态度不满',
-    '服务不及时',
-    '虚假结单',
-    '一次服务不到位',
-  ],
-  流程规则投诉: [
-    '对规定的联系方式不认可',
-    '对规定的联系时效不认可',
-    '对老旧产品现有售后政策不认可',
-    '其他业务规则不认可',
-    '售后网点覆盖率低',
-    '售后维修方式不认可',
-    '售后维修费用 / 运费不认可',
-    '退换货政策不认可',
-    '需要顾客自行联系 / 处理不认可',
-    '宣传 / 介绍与实际不符',
-  ],
-};
+/** 投诉分类树（两级 4×24，见 complaintCategoryTree.ts） */
+export {
+  COMPLAINT_L1_OPTIONS,
+  COMPLAINT_L2_MAP,
+  COMPLAINT_L3_MAP,
+  inferComplaintNature,
+  inferComplaintNatures,
+  inferComplaintKindFromL1,
+  inferOriginalComplaintKind,
+  getSupplementComplaintKind,
+  getBusinessComplaintL1Options,
+  SERVICE_COMPLAINT_L1,
+} from './complaintCategoryTree';
+export type { ComplaintNature, ComplaintKind } from './complaintCategoryTree';
 
 export const SUGGEST_L1_OPTIONS = ['产品体验', '功能优化', '服务流程'];
 export const SUGGEST_L2_MAP: Record<string, string[]> = {
@@ -268,10 +283,16 @@ export function buildAutoTitle(
   return parts.join(' · ');
 }
 
-/** a-select 选项按 label 模糊筛选 */
+/**
+ * a-select 选项按 label 模糊筛选。
+ *
+ * `option` 声明得**尽量宽**（`unknown` 字段 + 可选）：ant-design-vue 的 filterOption 会传
+ * `DefaultOptionType`，它的 label 不保证是 string（可以是 VNode）。参数是逆变位置，
+ * 这里写窄了整个函数就赋不进 filterOption（原先写 `label?: string` 正是这么报的 TS2769）。
+ */
 export function filterSelectOption(
   input: string,
-  option: { label?: string; value?: unknown },
+  option?: { label?: unknown; value?: unknown },
 ): boolean {
   const text = String(option?.label ?? option?.value ?? '');
   return text.toLowerCase().includes(input.trim().toLowerCase());

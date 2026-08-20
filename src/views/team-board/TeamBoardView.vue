@@ -242,8 +242,9 @@ function goBoardTicketList(key: string) {
   if (!status) return;
   const label = [...board.value.focus, ...board.value.metrics].find((f) => f.key === key)?.label ?? key;
   router.push({
-    path: '/tickets/list',
+    path: '/query',
     query: {
+      tab: 'tickets',
       scope: 'team',
       view: 'all',
       status,
@@ -1173,7 +1174,7 @@ watch(teamId, () => {
               <button
                 type="button"
                 class="prob-link-btn"
-                @click="router.push({ path: '/tickets/list', query: { tagL1: p.tagL1, tagL2: p.tagL2, tagL3: p.tagL3 } })"
+                @click="router.push({ path: '/query', query: { tab: 'tickets', tagL1: p.tagL1, tagL2: p.tagL2, tagL3: p.tagL3 } })"
               >
                 查看工单
                 <RightOutlined />

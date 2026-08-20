@@ -1,8 +1,10 @@
 // 角色定义
 // 真源：《00-基线-工单状态与动作》§3 §4 + 《08-角色权限与导航模型》§2
 // 本文件只管「菜单可见性 + 数据范围开关」，动作级权限见基线 §4。
-// 一线坐席在系统外（iframe），无 RoleKey；质检员 / 抄送待定。
+// 一线坐席在系统外（呼叫中心 iframe 嵌入），但**本系统内落 RoleKey**，理由见 'agent-l1' 处；
+// 质检员 / 抄送待定。
 export type RoleKey =
+  | 'agent-l1'
   | 'agent-cs'
   | 'agent-as'
   | 'tech-support'
@@ -37,20 +39,53 @@ export interface RoleDef {
    * 管控那一刻工单归它，才解锁全部处理动作。别实现成"全中心可写"。
    */
   writableAfterTakeover?: boolean;
+  /**
+   * 一线视角：底栏流转动作整条不出、处理表单区不可填，但**头部五枚照常可用**。
+   * 与 readonlyTickets 的区别：那个连头部也不出（纯看客）；一线是"能录客户诉求、不办单"。
+   *
+   * 判据必须挂在角色上。此前挂在工单的 frontlineDemo 字段上，
+   * 结果带该标记的单对**所有角色**都走一线分支，把 headerActionsByRole 与
+   * hideActionBar 两处门控整个短路（2026-08-19 修正）。
+   */
+  frontline?: boolean;
 }
 
 export const ROLES: Record<RoleKey, RoleDef> = {
+  /**
+   * 一线坐席（基线角色行序 ①）：接进线、建单、催单、取消，**不办单**。
+   *
+   * 它在业务上位于系统外（呼叫中心系统 iframe 嵌入本页），此处仍落 RoleKey——
+   * 因为交互稿要能真实切到这个视角做权限核对。原先是用工单上的 `frontlineDemo`
+   * 假字段模拟的，12 张 mock 单里 11 张带着它，于是「一线视角」对所有角色都为真。
+   *
+   * 权限范围以《用户角色与权限矩阵 · 运行工作区》① 列为准（36 行）：
+   * - 头部五枚全给：升级投诉 / 关联售后（限投诉单）/ 新建补充 / 催单 / 取消工单。
+   *   **不含签入**——签入连同外呼、短信、邮件已收口给二线技术顾问。
+   * - 底部流转区（下送/升级/调剂/委派/挂起/关闭/强结/退回）一概不给。
+   * - 处理表单区不可填、协同信息区 Tab 只读（仅「关联/补充/催单」可写）。
+   * - 数据范围「只看自己建的单」：⚠️ 列表项当前没有建单人字段（只有详情页的
+   *   builderShort），mock 层配不出来，故工作台只留「我的」页签、按处理人取数。
+   *   补上建单人字段后再收紧，别当成已实现。
+   */
+  'agent-l1': {
+    key: 'agent-l1',
+    name: '一线坐席',
+    menus: ['tickets'],
+    hiddenTabs: ['done', 'pool', 'poolPending', 'cc', 'review'],
+    hasAdminEntry: false,
+    frontline: true,
+  },
   'agent-cs': {
     key: 'agent-cs',
     name: '客服·二线技术顾问',
-    menus: ['home', 'tickets', 'approval'],
+    menus: ['home', 'tickets', 'query-center', 'approval'],
     hiddenTabs: ['review', 'cc'],
     hasAdminEntry: false,
   },
   'agent-as': {
     key: 'agent-as',
     name: '售后·二线技术顾问',
-    menus: ['home', 'aftersale', 'approval'],
+    menus: ['home', 'aftersale', 'query-center', 'approval'],
     hiddenTabs: ['review', 'cc'],
     hasAdminEntry: false,
   },
@@ -62,14 +97,14 @@ export const ROLES: Record<RoleKey, RoleDef> = {
   'tech-support': {
     key: 'tech-support',
     name: '三线技术支持',
-    menus: ['home', 'tickets'],
+    menus: ['home', 'tickets', 'query-center'],
     hiddenTabs: ['review', 'cc'],
     hasAdminEntry: false,
   },
   'team-leader': {
     key: 'team-leader',
     name: '班组长',
-    menus: ['home', 'tickets', 'team-board', 'approval'],
+    menus: ['home', 'tickets', 'query-center', 'team-board', 'approval'],
     hiddenTabs: ['cc'],
     hasAdminEntry: false,
   },
@@ -81,7 +116,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
   'complaint-handler': {
     key: 'complaint-handler',
     name: '投诉处理角色',
-    menus: ['home', 'tickets', 'ops-monitor', 'approval'],
+    menus: ['home', 'tickets', 'query-center', 'ops-monitor', 'approval'],
     hiddenTabs: ['cc'],
     hasAdminEntry: false,
     writableAfterTakeover: true,
@@ -102,7 +137,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
   'system-admin': {
     key: 'system-admin',
     name: '系统管理员',
-    menus: ['home', 'tickets', 'aftersale', 'team-board', 'ops-monitor', 'approval'],
+    menus: ['home', 'tickets', 'query-center', 'aftersale', 'team-board', 'ops-monitor', 'approval'],
     hiddenTabs: ['cc'],
     hasAdminEntry: true,
     adminScope: 'platform',
@@ -110,7 +145,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
   'ops-admin': {
     key: 'ops-admin',
     name: '运营管理员',
-    menus: ['home', 'tickets', 'aftersale', 'team-board', 'ops-monitor', 'approval'],
+    menus: ['home', 'tickets', 'query-center', 'aftersale', 'team-board', 'ops-monitor', 'approval'],
     hiddenTabs: ['cc'],
     hasAdminEntry: true,
     adminScope: 'ops',
@@ -118,7 +153,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
   'tenant-admin': {
     key: 'tenant-admin',
     name: '租户管理员',
-    menus: ['home', 'tickets', 'aftersale', 'team-board', 'ops-monitor', 'approval'],
+    menus: ['home', 'tickets', 'query-center', 'aftersale', 'team-board', 'ops-monitor', 'approval'],
     hiddenTabs: ['cc'],
     hasAdminEntry: true,
     adminScope: 'tenant',
@@ -130,6 +165,7 @@ export const ROLE_OPTION_GROUPS = [
   {
     label: '坐席',
     options: [
+      { label: ROLES['agent-l1'].name, value: 'agent-l1' as RoleKey },
       { label: ROLES['agent-cs'].name, value: 'agent-cs' as RoleKey },
       { label: ROLES['agent-as'].name, value: 'agent-as' as RoleKey },
       { label: ROLES['tech-support'].name, value: 'tech-support' as RoleKey },
@@ -147,6 +183,30 @@ export const ROLE_OPTION_GROUPS = [
     ],
   },
 ];
+
+/**
+ * 顶栏话务条（签入/签出 + 就绪态 + 小休 + 外呼拨号盘）对哪些角色显示。
+ *
+ * 「签入、外呼、发短信、发邮件」是**联系客户类**动作，已收口给二线技术顾问一侧。
+ * 不给：① 一线坐席（在系统外，用呼叫中心自己的话务条）、④ 三线技术支持
+ * （不接触客户，单在他手上时须抄送主责二线）、⑦ 运营监控岗（不办单）、⑧ 质检/抄送。
+ *
+ * ⑥ 投诉处理角色的规格是「未管控态置灰、管控后可用」——「工单管控」尚未落地，
+ * 故这里只管**是否显示**，置灰要等管控态判据补齐再加。
+ */
+export const CTI_BAR_ROLES: RoleKey[] = [
+  'agent-cs', 'agent-as', 'team-leader', 'complaint-handler',
+  'ops-admin', 'tenant-admin', 'system-admin',
+];
+
+/**
+ * 风险词命中区能打标的角色。
+ *
+ * 规格见《【915】运营监控大盘 PRD》§6.4「谁能打标」：**运营监控岗 ＋ 投诉处理角色**。
+ * 投诉处理角色要在这里，是因为它的职责就是盯投诉风险 —— 见本文件 complaint-handler 的定义；
+ * 词表本身的维护权归运营管理员，两者不是一回事（监控岗对词表只读）。
+ */
+export const RISK_TAG_ROLES: RoleKey[] = ['ops-monitor', 'complaint-handler'];
 
 export const ALL_ROLE_KEYS = Object.keys(ROLES) as RoleKey[];
 

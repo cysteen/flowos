@@ -277,7 +277,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       customer: name,
       vip: form.customer?.vip ?? false,
       product: form.productName,
-      nodeStatus: '待受理',
+      nodeStatus: '未认领',
       nodeStep: 1,
       nodeTotal: 5,
       priority: form.priority,

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { BellOutlined, MessageOutlined } from '@ant-design/icons-vue';
+import { BellOutlined, SnippetsOutlined } from '@ant-design/icons-vue';
 import type { TicketLiveToast } from '@/views/tickets/types/ticketLiveNotify';
 import { TICKET_EVENT_NOTIFY_THEME as T } from '@/views/tickets/styles/ticketEventNotifyTheme';
 
@@ -37,7 +37,7 @@ const visibleItems = computed(() => (props.embedded ? props.items.slice(0, 1) : 
         <!-- L1：类型标识 + 发生了什么 -->
         <header class="ticket-notify__head">
           <span class="ticket-notify__badge" aria-hidden="true">
-            <MessageOutlined v-if="item.type === 'supplement'" />
+            <SnippetsOutlined v-if="item.type === 'supplement'" />
             <BellOutlined v-else />
           </span>
           <h4 class="ticket-notify__title">{{ item.title }}</h4>
@@ -71,7 +71,7 @@ const visibleItems = computed(() => (props.embedded ? props.items.slice(0, 1) : 
             type="button"
             class="ticket-notify__read-btn"
             @click.stop="emit('mark-read', item)"
-          >标记已读</button>
+          >已知晓</button>
         </footer>
       </article>
     </div>

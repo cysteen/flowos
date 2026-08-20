@@ -962,7 +962,7 @@ function doImport() {
               :checked="(record as ProblemTagRow).status === '启用'"
               checked-children="启用"
               un-checked-children="停用"
-              @change="(checked: boolean) => onListStatusChange(record as ProblemTagRow, checked)"
+              @change="(checked) => onListStatusChange(record as ProblemTagRow, !!checked)"
             />
             <div v-else-if="column.key === 'op'" class="row-ops">
               <a-button type="link" size="small" @click="openEditRow(record as ProblemTagRow)">编辑</a-button>

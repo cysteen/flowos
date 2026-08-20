@@ -17,22 +17,29 @@ import {
 import {
   buildCustomerInsight,
   searchCustomers,
-  suggestedCustomers,
   detectQueryKind,
   QUERY_KIND_LABEL,
+  DEMO_SEARCH_HINTS,
   type CustomerCandidate,
   type CustomerInsight,
   type CustomerTicketRow,
 } from '@/mock/customerInsight';
+import {
+  loadCustomerSearchHistory,
+  recordCustomerSearch,
+  type CustomerSearchHistoryItem,
+} from '@/views/customer/customerSearchHistory';
 import { aftersaleDeepLink } from '@/views/tickets/composables/opActions';
 import { CUSTOMER_TAG_COLOR } from '@/views/tickets/types/ticket';
 import { useUserStore } from '@/stores/user';
+import { queryCenterLocation } from '@/views/query/queryCenterRoute';
 
 /**
  * embedded：作为组件嵌在别的页面里（运营监控 · 溯源查询 Tab）。
- * 此时不改写地址栏——否则会把宿主页面踢出自己的路由。
+ * shellMode：嵌在查询中心内，搜索条由壳层统一提供。
+ * 以上两种模式均不改写地址栏路由逻辑由宿主负责（embedded）或走 /query（shellMode）。
  */
-const props = defineProps<{ embedded?: boolean }>();
+const props = defineProps<{ embedded?: boolean; shellMode?: boolean }>();
 
 const route = useRoute();
 const router = useRouter();
@@ -45,7 +52,11 @@ const highlightNo = ref('');
 const searched = ref(false);
 const notFoundFor = ref('');
 
-const suggestions = suggestedCustomers(6);
+const recentHistory = ref<CustomerSearchHistoryItem[]>(loadCustomerSearchHistory());
+
+function refreshRecentHistory() {
+  recentHistory.value = loadCustomerSearchHistory();
+}
 
 const kindHint = computed(() => (keyword.value.trim() ? QUERY_KIND_LABEL[detectQueryKind(keyword.value)] : ''));
 
@@ -249,6 +260,12 @@ function loadPhone(phone: string, ticketNo = '') {
   candidates.value = [];
   notFoundFor.value = '';
   highlightNo.value = ticketNo;
+  recordCustomerSearch({
+    phone: data.profile.phone,
+    name: data.profile.name,
+    role: data.profile.role,
+  });
+  refreshRecentHistory();
   activeFilter.value = 'all';
   productFilter.value = '';
   activeTab.value = 'history';
@@ -287,7 +304,17 @@ function runSearch(raw = keyword.value) {
 
 function syncQuery(q: string) {
   if (props.embedded) return;
-  if (route.query.q !== q) router.replace({ path: '/customer-insight', query: { q } });
+  if (props.shellMode) {
+    if (route.query.q !== q) router.replace(queryCenterLocation('customer', { q }));
+    return;
+  }
+  if (route.query.q !== q) router.replace(queryCenterLocation('customer', { q }));
+}
+
+function pickHistory(item: CustomerSearchHistoryItem) {
+  keyword.value = item.phone;
+  loadPhone(item.phone);
+  syncQuery(item.phone);
 }
 
 function pickCandidate(c: CustomerCandidate) {
@@ -304,7 +331,8 @@ const canOpenList = computed(() => user.canAccess('tickets'));
  * 两者用途不同不合并，但必须能一键互跳。
  */
 function openInTicketList() {
-  router.push({ path: '/tickets/list', query: { kw: insight.value?.profile.name ?? keyword.value } });
+  const kw = insight.value?.profile.name ?? keyword.value;
+  router.push(queryCenterLocation('tickets', { kw, q: undefined }));
 }
 
 function openTicket(t: CustomerTicketRow) {
@@ -336,7 +364,8 @@ function scoreColor(score: number) {
 }
 
 onMounted(() => {
-  if (props.embedded) return;
+  refreshRecentHistory();
+  if (props.embedded || props.shellMode) return;
   const q = (route.query.q as string) || (route.query.phone as string) || '';
   if (q) {
     keyword.value = q;
@@ -345,18 +374,20 @@ onMounted(() => {
 });
 
 watch(() => route.query.q, (q) => {
-  if (props.embedded) return;
+  if (props.embedded || props.shellMode) return;
   if (typeof q === 'string' && q && q !== keyword.value) {
     keyword.value = q;
     runSearch(q);
   }
 });
+
+defineExpose({ runSearch });
 </script>
 
 <template>
-  <div class="customer-insight">
-    <!-- ① 查询条 -->
-    <div class="search-card">
+  <div class="customer-insight" :class="{ 'shell-mode': shellMode, embedded: embedded }">
+    <!-- ① 查询条（查询中心 / 运营监控嵌入时由壳层提供搜索） -->
+    <div v-if="!embedded && !shellMode" class="search-card">
       <div class="search-row">
         <div class="search-box">
           <SearchOutlined class="search-ic" />
@@ -373,27 +404,52 @@ watch(() => route.query.q, (q) => {
       <p class="search-tip">手机号 / 客户姓名 → 客户全景；工单号 → 工单信息与其报单客户</p>
     </div>
 
-    <!-- 空态：起步入口 -->
+    <!-- 空态：最近搜索记录 -->
     <div v-if="!searched" class="panel">
       <div class="ob-head">
-        <span class="ob-title"><i class="ob-bar bar-blue" />近期高频客户</span>
+        <span class="ob-title"><i class="ob-bar bar-blue" />最近搜索</span>
       </div>
-      <div class="sug-grid">
-        <button v-for="c in suggestions" :key="c.phone" type="button" class="sug-tile" @click="pickCandidate(c)">
+      <div v-if="recentHistory.length" class="sug-grid">
+        <button
+          v-for="item in recentHistory"
+          :key="item.phone"
+          type="button"
+          class="sug-tile"
+          @click="pickHistory(item)"
+        >
           <div class="sug-top">
-            <span class="sug-name">{{ c.name }}</span>
-            <span class="role-tag" :style="roleStyle(c.role)">{{ c.role }}</span>
+            <span class="sug-name">{{ item.name }}</span>
+            <span class="role-tag" :style="roleStyle(item.role)">{{ item.role }}</span>
           </div>
-          <div class="sug-phone">{{ c.phone }}</div>
-          <div class="sug-meta">{{ c.ticketCount }} 单 · 最近 {{ c.lastAt }}</div>
+          <div class="sug-phone">{{ item.phone }}</div>
+          <div class="sug-meta">搜索于 {{ item.searchedAt }}</div>
         </button>
+      </div>
+      <div v-else class="history-empty">
+        暂无搜索记录。请在上方输入手机号或客户姓名查询，成功打开的客户会出现在这里。
       </div>
     </div>
 
     <!-- 未命中 -->
     <div v-else-if="notFoundFor" class="panel none-panel">
       <div class="none-title">未找到与「{{ notFoundFor }}」匹配的客户</div>
-      <div class="none-sub">请确认手机号是否完整（11 位），或改用工单号、设备 SN、客户姓名重新查询。</div>
+      <div class="none-sub">
+        当前为演示数据，仅支持 Mock 库内已建档或有过工单的手机号/姓名/工单号/SN。
+        请确认手机号是否为完整 11 位且存在于库中。
+      </div>
+      <div class="demo-hints">
+        <span class="demo-hints-label">可试搜：</span>
+        <button
+          v-for="h in DEMO_SEARCH_HINTS"
+          :key="h.query"
+          type="button"
+          class="demo-hint-chip"
+          :title="h.tip"
+          @click="runSearch(h.query)"
+        >
+          {{ h.label }}<span class="demo-hint-q">{{ h.query }}</span>
+        </button>
+      </div>
     </div>
 
     <!-- 多候选 -->
@@ -671,7 +727,7 @@ watch(() => route.query.q, (q) => {
               </button>
               <!-- 本页按"人"读履历；要按条件筛这批单、批量操作或导出，回工单列表 -->
               <button v-if="canOpenList" type="button" class="to-list" @click="openInTicketList">
-                在工单列表中查看<ExportOutlined class="tl-ic" />
+                在查工单视图中查看<ExportOutlined class="tl-ic" />
               </button>
             </div>
             <div class="hist-list">
@@ -791,6 +847,13 @@ watch(() => route.query.q, (q) => {
   gap: 16px;
   padding: 12px 16px 24px;
 }
+.customer-insight.shell-mode,
+.customer-insight.embedded {
+  padding: 10px 12px 12px;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+}
 
 .panel {
   background: #fff;
@@ -886,10 +949,54 @@ watch(() => route.query.q, (q) => {
 .sug-name { font-size: 13px; font-weight: 600; color: #111827; }
 .sug-phone { font-size: 12px; color: #4b5563; font-variant-numeric: tabular-nums; }
 .sug-meta { font-size: 11px; color: #9ca3af; }
+.history-empty {
+  margin-top: 10px;
+  padding: 20px 12px;
+  font-size: 13px;
+  color: #9ca3af;
+  text-align: center;
+  line-height: 1.6;
+}
 
-.none-panel { display: flex; flex-direction: column; gap: 4px; padding: 20px; }
+.none-panel { display: flex; flex-direction: column; gap: 8px; padding: 20px; }
 .none-title { font-size: 14px; font-weight: 600; color: #374151; }
-.none-sub { font-size: 12px; color: #9ca3af; }
+.none-sub { font-size: 12px; color: #9ca3af; line-height: 1.6; }
+.demo-hints {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.demo-hints-label {
+  font-size: 12px;
+  color: #6b7280;
+  flex: none;
+}
+.demo-hint-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #f9fafb;
+  font-size: 12px;
+  color: #374151;
+  cursor: pointer;
+  font-family: inherit;
+}
+.demo-hint-chip:hover {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1a6fff;
+}
+.demo-hint-q {
+  font-size: 11px;
+  color: #9ca3af;
+  font-variant-numeric: tabular-nums;
+}
+.demo-hint-chip:hover .demo-hint-q { color: #60a5fa; }
 
 .cand-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 .cand-row {

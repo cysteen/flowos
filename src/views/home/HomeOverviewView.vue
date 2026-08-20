@@ -20,6 +20,7 @@ import CreateTicketModal from '@/views/tickets/components/CreateTicketModal.vue'
 import OpAiAssistant from '@/views/tickets/components/operation/OpAiAssistant.vue';
 import OpStatDetailModal from '@/views/tickets/components/operation/OpStatDetailModal.vue';
 import HomePerformancePanel from '@/views/home/components/HomePerformancePanel.vue';
+import { queryCenterLocation } from '@/views/query/queryCenterRoute';
 
 /** 个人门户通用知识推荐（无工单上下文） */
 const HOME_AI_KNOWLEDGE = ['工单处理操作指引', '常见问题与话术库', 'SLA 与升级规则说明'];
@@ -87,7 +88,8 @@ const SHOW_TREND = false;
 
 /** 趋势区时间：默认近 30 天；与效能区筛选互不影响 */
 const trendRangeKey = ref<HomeTrendRangeKey>('30d');
-const trendCustomRange = ref<[Dayjs, Dayjs] | null>(null);
+/** 空值用 undefined 而非 null：a-range-picker 的 value 只接受 [Dayjs, Dayjs] | undefined */
+const trendCustomRange = ref<[Dayjs, Dayjs] | undefined>(undefined);
 const trendPickerOpen = ref(false);
 
 const trendTitle = computed(() => {
@@ -245,10 +247,10 @@ function onQuick(key: string) {
     pool: () => router.push('/tickets'),
     mine: () => router.push('/tickets'),
     kb: () => message.info('打开知识库'),
-    customer: () => router.push('/customer-insight'),
+    customer: () => router.push(queryCenterLocation('customer')),
     report: () => {
       if (['team-leader', 'tenant-admin', 'ops-admin', 'system-admin'].includes(user.roleKey)) {
-        router.push('/tickets/list');
+        router.push(queryCenterLocation('tickets'));
       } else {
         message.info('打开统计报表');
       }

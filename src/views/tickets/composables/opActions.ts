@@ -5,8 +5,11 @@ import { AFTERSALE_INBOUND_SOURCE } from '@/views/tickets/types/createTicket';
 /** 升级通道 · 飞书项目（消费者BG专属，走 OpenAPI 推送产研反馈单） */
 export const FEISHU_ESCALATE_CHANNEL = '飞书项目 · 产研反馈单';
 
-// 工单处理态状态机（轻量）：
-// 待受理 → 处理中 →（已升级 / 已挂起 / 待审核）→ 待回访 → 已结案 → 已关闭
+// 操作页内部的轻量处理态枚举，**不是**工单状态机。
+// 工单状态的唯一真源是基线的 21 个状态（见 `types/ticket.ts` 的 BASELINE_STATUSES）。
+// 下面每个枚举后的中文只是它在 UI 上的近似呈现，其中「待审核 / 待回访 / 已关闭 / 已归档」
+// 四个不是基线状态名（基线对应的是四个审核态 / 调研中 / 具体终态 / 无此状态），
+// 落库与对外呈现一律取基线名，不要拿这里的中文当状态值用。
 export type TicketOpState =
   | 'processing'  // 处理中
   | 'suspended'   // 已挂起
@@ -201,8 +204,19 @@ export const TRANSFER_TARGET_GROUPS = [
   '售后服务组',
   '退费处理组',
 ];
-/** 可跨组调剂的角色：班组长、运营管理员等管理角色；二线处理人仅限同组内 */
-export const CROSS_GROUP_TRANSFER_ROLES = ['team-leader', 'ops-admin', 'system-admin', 'tenant-admin'];
+/**
+ * 可跨组调剂的角色：班组长、投诉处理角色、三类管理员；二线处理人仅限同组内。
+ *
+ * `complaint-handler` 必须在列：它的作用域是**全中心**，管控来的单常常不属于本组，
+ * 而基线把「释放管控」寄生在调剂上 —— 缺了跨组权限，它管控了别组的单就还不回去。
+ */
+export const CROSS_GROUP_TRANSFER_ROLES = [
+  'team-leader',
+  'complaint-handler',
+  'ops-admin',
+  'system-admin',
+  'tenant-admin',
+];
 export const DELEGATE_TARGETS = [
   '钱七',
   '孙十',
@@ -264,9 +278,9 @@ export function nowWhen(): string {
 
 export function mapUserRole(roleKey: string): TlRole {
   if (roleKey === 'team-leader') return '班组长';
-  if (roleKey === 'agent-cs') return '二线坐席';
-  if (roleKey === 'agent-as') return '二线坐席';
-  return '二线坐席';
+  if (roleKey === 'agent-cs') return '二线技术顾问';
+  if (roleKey === 'agent-as') return '二线技术顾问';
+  return '二线技术顾问';
 }
 
 export function nextTimelineId(list: TimelineEntry[]): string {
@@ -452,7 +466,7 @@ export function applyOpAction(
       const { scope, target, reason } = payload.data;
       const isCross = scope === 'cross';
       if (isCross) {
-        detail.status = '待分派';
+        detail.status = '未认领';
         pushEntry(timeline, {
           category: 'node', action: 'transfer', who: operator, role: operatorRole,
           how: '跨组调剂',
@@ -522,7 +536,7 @@ export function applyOpAction(
         });
         return { opState, suspendInfo, message: '协办已完成，工单回到委派节点' };
       }
-      detail.status = '待回访';
+      detail.status = '调研中';
       terminateClocks(detail, timeline);
       pushEntry(timeline, {
         category: 'node', action: 'resolved', who: operator, role: operatorRole,
@@ -535,7 +549,7 @@ export function applyOpAction(
 
     case '强结': {
       const { reason, approver, detail: note } = payload.data;
-      detail.status = '已结案';
+      detail.status = '已强结';
       terminateClocks(detail, timeline);
       pushEntry(timeline, {
         category: 'node', action: 'resolved', who: operator, role: operatorRole,
@@ -548,7 +562,7 @@ export function applyOpAction(
       // 挂起会停表，须经审批：提交只进「待审核」，SLA 照常走（避免提个申请就先把表停了）；
       // 审批通过后才置「已挂起」并冻结在走的钟。
       const { reason, detail: note, resumeAt, serviceType, serviceMethod, approvalGroup } = payload.data;
-      detail.status = '待审核';
+      detail.status = '申请挂起中';
       const group = approvalGroup.replace(/（.*?）$/, '');
       pushEntry(timeline, {
         category: 'node', action: 'hold', who: operator, role: operatorRole,
@@ -578,7 +592,7 @@ export function applyOpAction(
         });
         return { opState, suspendInfo, message: `已升级至产研反馈 · 反馈单 ${feedbackNo}` };
       }
-      detail.status = '已升级·二线';
+      detail.status = '已升级·三线技术支持';
       const toTech = channel.includes('技术支持');
       const dest = toTech && group ? `${channel} · ${group}${member ? ` · ${member.split(' ')[0]}` : ''}` : channel;
       pushEntry(timeline, {
@@ -605,7 +619,7 @@ export function applyOpAction(
         id: `fs-activate-${Date.now()}`,
         kind: 'activate',
         title: '二次激活 · 已重新打开产研反馈单',
-        content: `二线坐席二次激活，请产研继续处理。激活原因：${reason || '用户反馈未解决'}`,
+        content: `二线技术顾问二次激活，请产研继续处理。激活原因：${reason || '用户反馈未解决'}`,
         who: operator,
         side: '客服工单',
         when: nowWhen(),
@@ -672,9 +686,13 @@ export function applyOpAction(
 
     case '升级投诉': {
       // 升级成功 = 关原单 + 建新投诉单 + 双向关联（PRD §4.3.1/§4.3.2）。
-      // 原单已是终态（已关闭/取消/归档/结案）则跳过关闭步骤，只留关联（PRD §4.3.1）。
+      // 原单已是终态则跳过关闭步骤，只留关联（PRD §4.3.1）。
       const { target, newNo, note } = payload.data;
-      const alreadyEnded = /已关闭|已取消|已归档|已结案|已转单/.test(detail.status);
+      // 终态集合以基线为准，六个：已解决 / 非常规关闭 / 已强结 / 已转单 / 已取消 / 已结案。
+      // 与 `types/ticket.ts` 的 isTicketClosed() 同源，改一处要两处一起改。
+      // 别写「已关闭」「已归档」——前者只是终态分类伞不可落库，后者系统里不存在；
+      // 漏掉「已解决 / 非常规关闭 / 已强结」会让这三种终态的单在升级时被改写成「已转单」并二次停表。
+      const alreadyEnded = /已解决|非常规关闭|已强结|已转单|已取消|已结案/.test(detail.status);
       if (!alreadyEnded) {
         // 因派生新单而终止：状态用「已转单」而非「已关闭」——
         // 让坐席一眼分清"这单是正常关的"还是"业务已经转到别的单上了"（PRD §5.6.3）
@@ -698,7 +716,7 @@ export function applyOpAction(
 
     case '标记已解决': {
       const { solution } = payload.data;
-      detail.status = '待回访';
+      detail.status = '调研中';
       pushEntry(timeline, {
         category: 'node', action: 'resolved', who: operator, role: operatorRole,
         how: '标记已解决', what: solution,
@@ -751,7 +769,7 @@ export function applyOpAction(
       // 关闭工单 = 异常结案，须审核：提交只进「待审核」，解决钟冻结并记录提交时刻；
       // 审核通过 → 已关闭（停表结算，非正常关闭）；退回 → 解决钟按审核等待时长回拨续走。
       const { reason, approvalGroup, note } = payload.data;
-      detail.status = '待审核';
+      detail.status = '申请关闭中';
       freezeSolveForReview(detail);
       const group = approvalGroup.replace(/（.*?）$/, '');
       pushEntry(timeline, {
@@ -765,7 +783,7 @@ export function applyOpAction(
     }
 
     case '归档工单': {
-      detail.status = '已归档';
+      detail.status = '非常规关闭';
       pushEntry(timeline, {
         category: 'node', action: 'create', who: '系统', role: '系统',
         how: '归档', what: `工单已归档（${payload.data.reason}），仅支持只读查询。`,

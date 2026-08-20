@@ -17,7 +17,7 @@ const ORGS = ['全部机构', '一线客服部', '二线处理部', '售后服�
 
 const users = ref<User[]>([
   { id: 'U1001', name: '王芳', account: 'wangfang', org: '一线客服部', post: '班组长', roles: ['一线主管', '审批人'], phone: '138****0001', status: '正常', lastLogin: '2026-06-19 08:30' },
-  { id: 'U1002', name: '李强', account: 'liqiang', org: '二线处理部', post: '高级客服', roles: ['二线坐席'], phone: '139****0002', status: '正常', lastLogin: '2026-06-19 09:05' },
+  { id: 'U1002', name: '李强', account: 'liqiang', org: '二线处理部', post: '高级客服', roles: ['二线技术顾问'], phone: '139****0002', status: '正常', lastLogin: '2026-06-19 09:05' },
   { id: 'U1003', name: '陈静', account: 'chenjing', org: '一线客服部', post: '客服专员', roles: ['一线坐席'], phone: '137****0003', status: '正常', lastLogin: '2026-06-18 17:20' },
   { id: 'U1004', name: '赵敏', account: 'zhaomin', org: '售后服务部', post: '售后工程师', roles: ['售后坐席'], phone: '136****0004', status: '正常', lastLogin: '2026-06-19 10:12' },
   { id: 'U1005', name: '吴婷', account: 'wuting', org: '一线客服部', post: '实习坐席', roles: ['一线坐席'], phone: '135****0005', status: '锁定', lastLogin: '2026-06-10 14:00' },
@@ -110,7 +110,7 @@ function doImport() { if (!importN.value) { message.warning('请先选择 Excel/
         <a-form-item label="手机号"><a-input v-model:value="form.phone" /></a-form-item>
         <a-form-item label="所属机构"><a-select v-model:value="form.org" :options="ORGS.slice(1).map((v)=>({value:v,label:v}))" /></a-form-item>
         <a-form-item label="岗位"><a-select v-model:value="form.post" :options="['客服专员','高级客服','班组长','售后工程师','质检员'].map((v)=>({value:v,label:v}))" /></a-form-item>
-        <a-form-item label="角色"><a-select v-model:value="form.roles" mode="multiple" :options="['一线坐席','二线坐席','售后坐席','一线主管','审批人','质检员','运营管理员'].map((v)=>({value:v,label:v}))" /></a-form-item>
+        <a-form-item label="角色"><a-select v-model:value="form.roles" mode="multiple" :options="['一线坐席','二线技术顾问','售后坐席','一线主管','审批人','质检员','运营管理员'].map((v)=>({value:v,label:v}))" /></a-form-item>
       </a-form>
       <template #footer>
         <a-space><a-button @click="drawerOpen = false">取消</a-button><a-button type="primary" @click="saveUser">保存</a-button></a-space>

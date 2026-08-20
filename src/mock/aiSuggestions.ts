@@ -64,7 +64,8 @@ export function buildAiSuggestions(tickets: Ticket[]): AiSuggestion[] {
         match
           ? `匹配历史工单 ${match.no}（${match.summary}）`
           : '发现可复用的历史解决方案，建议参考套用',
-        match,
+        // extra 的字段名是 matchedNo / matchedSummary，match 上是 no / summary，要显式映射
+        match ? { matchedNo: match.no, matchedSummary: match.summary } : undefined,
       );
     }
     if (t.smartMarks.includes('情绪')) {

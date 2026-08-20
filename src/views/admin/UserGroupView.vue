@@ -34,8 +34,8 @@ const memberMap: Record<string, Member[]> = reactive({
   ],
   g2: [
     { id: 'u6', name: '李强', role: '班组长', ext: '8101', status: '在线', tickets: 2 },
-    { id: 'u7', name: '杨帆', role: '二线坐席', ext: '8112', status: '在线', tickets: 4 },
-    { id: 'u8', name: '林峰', role: '二线坐席', ext: '8113', status: '在线', tickets: 6 },
+    { id: 'u7', name: '杨帆', role: '二线技术顾问', ext: '8112', status: '在线', tickets: 4 },
+    { id: 'u8', name: '林峰', role: '二线技术顾问', ext: '8113', status: '在线', tickets: 6 },
   ],
   g3: [
     { id: 'u9', name: '赵敏', role: '班组长', ext: '8201', status: '在线', tickets: 1 },
@@ -60,7 +60,7 @@ const memCols = [
 const TYPE_OPTS = ['业务班组', '审批组', '虚拟组'];
 const SHIFT_OPTS = ['白班', '两班', '三班倒', '—'];
 const SKILL_OPTS = ['投诉', '咨询', '技术', '售后', '退换货', '商机', '审批', '质检'];
-const ROLE_OPTS = ['班组长', '一线坐席', '二线坐席', '售后坐席', '审批人', '质检员'];
+const ROLE_OPTS = ['班组长', '一线坐席', '二线技术顾问', '售后坐席', '审批人', '质检员'];
 
 function syncCount(key: string) { const g = groups.value.find((x) => x.key === key); if (g) g.count = (memberMap[key] ?? []).length; }
 

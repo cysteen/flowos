@@ -15,6 +15,7 @@ import {
 import {
   COMPLAINT_L1_OPTIONS,
   COMPLAINT_L2_MAP,
+  COMPLAINT_L3_MAP,
 } from '@/views/tickets/types/createTicket';
 
 const props = defineProps<{
@@ -37,6 +38,9 @@ const complaintMarkOpts = computed(() =>
 const complaintL1Options = COMPLAINT_L1_OPTIONS.map((v) => ({ label: v, value: v }));
 const complaintL2Options = computed(() =>
   (COMPLAINT_L2_MAP[props.form.complaintCat1] ?? []).map((v) => ({ label: v, value: v })),
+);
+const complaintL3Options = computed(() =>
+  (COMPLAINT_L3_MAP[props.form.complaintCat2] ?? []).map((v) => ({ label: v, value: v })),
 );
 function platformKey(p: { platform: string; complaintNo?: string }) {
   return `${p.platform}::${p.complaintNo ?? ''}`;
@@ -117,7 +121,7 @@ function onRiskFlagChange(flag: RiskFlag) {
 }
 
 function onComplaintCat1Change(v: string | number | undefined) {
-  update({ complaintCat1: String(v ?? ''), complaintCat2: '' });
+  update({ complaintCat1: String(v ?? ''), complaintCat2: '', complaintCat3: '' });
 }
 
 function onQualityCat1Change(v: string | number | undefined) {
@@ -142,11 +146,19 @@ function onQualityCat2Change(v: string | number | undefined) {
 }
 
 function onComplaintCat2Change(v: string | number | undefined) {
-  update({ complaintCat2: String(v ?? '') });
+  update({ complaintCat2: String(v ?? ''), complaintCat3: '' });
+}
+
+function onComplaintCat3Change(v: string | number | undefined) {
+  update({ complaintCat3: String(v ?? '') });
 }
 
 const missComplaintMark = computed(() => !props.form.complaintMark);
 const missComplaintCat1 = computed(() => !props.form.complaintCat1);
+const missComplaintCat2 = computed(() => !!props.form.complaintCat1 && !props.form.complaintCat2);
+const missComplaintCat3 = computed(
+  () => !!props.form.complaintCat2 && complaintL3Options.value.length > 0 && !props.form.complaintCat3,
+);
 const missComplaintNote = computed(() => !props.form.complaintNote.trim());
 const missRiskLevel = computed(
   () => props.form.riskFlag === '有风险' && !props.form.riskLevel,
@@ -161,21 +173,21 @@ const missRiskDesc = computed(
 <template>
   <!-- 投诉分类 -->
   <div v-if="activeChip === 'complaint'" class="chip-panel">
+    <div class="field" :class="{ 'is-missing': missComplaintMark }">
+      <label class="field-label-sm"><span class="req">*</span>投诉标记</label>
+      <FormSelect
+        class="cat-select"
+        :class="{ 'ctrl-missing': missComplaintMark }"
+        :value="form.complaintMark || undefined"
+        :options="complaintMarkOpts"
+        placeholder="请选择（必填）"
+        @update:value="onComplaintMarkChange"
+      />
+      <p v-if="missComplaintMark" class="field-err">请选择投诉标记</p>
+    </div>
     <div class="cat-grid">
-      <div class="field" :class="{ 'is-missing': missComplaintMark }">
-        <label class="field-label-sm"><span class="req">*</span>投诉标记</label>
-        <FormSelect
-          class="cat-select"
-          :class="{ 'ctrl-missing': missComplaintMark }"
-          :value="form.complaintMark || undefined"
-          :options="complaintMarkOpts"
-          placeholder="请选择（必填）"
-          @update:value="onComplaintMarkChange"
-        />
-        <p v-if="missComplaintMark" class="field-err">请选择投诉标记</p>
-      </div>
       <div class="field" :class="{ 'is-missing': missComplaintCat1 }">
-        <label class="field-label-sm"><span class="req">*</span>分类一</label>
+        <label class="field-label-sm"><span class="req">*</span>投诉分类一</label>
         <FormSelect
           class="cat-select"
           :class="{ 'ctrl-missing': missComplaintCat1 }"
@@ -184,18 +196,37 @@ const missRiskDesc = computed(
           placeholder="请选择（必填）"
           @update:value="onComplaintCat1Change"
         />
-        <p v-if="missComplaintCat1" class="field-err">请选择分类一</p>
+        <p v-if="missComplaintCat1" class="field-err">请选择投诉分类一</p>
       </div>
-      <div class="field">
-        <label class="field-label-sm">分类二</label>
+      <div class="field" :class="{ 'is-missing': missComplaintCat2 }">
+        <label class="field-label-sm"><span class="req">*</span>投诉分类二</label>
         <FormSelect
           class="cat-select"
+          :class="{ 'ctrl-missing': missComplaintCat2 }"
           :value="form.complaintCat2 || undefined"
           :options="complaintL2Options"
           :disabled="!form.complaintCat1"
-          placeholder="请选择"
+          placeholder="请选择（必填）"
           @update:value="onComplaintCat2Change"
         />
+        <p v-if="missComplaintCat2" class="field-err">请选择投诉分类二</p>
+      </div>
+      <div
+        v-if="complaintL3Options.length > 0"
+        class="field"
+        :class="{ 'is-missing': missComplaintCat3 }"
+      >
+        <label class="field-label-sm"><span class="req">*</span>投诉分类三</label>
+        <FormSelect
+          class="cat-select"
+          :class="{ 'ctrl-missing': missComplaintCat3 }"
+          :value="form.complaintCat3 || undefined"
+          :options="complaintL3Options"
+          :disabled="!form.complaintCat2"
+          placeholder="请选择（必填）"
+          @update:value="onComplaintCat3Change"
+        />
+        <p v-if="missComplaintCat3" class="field-err">请选择投诉分类三</p>
       </div>
     </div>
     <div class="field" :class="{ 'is-missing': missComplaintNote }">

@@ -15,8 +15,9 @@ const tabs = computed(() =>
   props.items.map((i) => ({ key: i.key, label: i.label })),
 );
 
-function onTabChange(key: string) {
-  const path = `/admin/${key}`;
+// a-tabs 的 change 事件回调参数是 Key（string | number），这里统一转成字符串拼路由
+function onTabChange(key: string | number) {
+  const path = `/admin/${String(key)}`;
   if (route.path !== path) router.push(path);
 }
 </script>

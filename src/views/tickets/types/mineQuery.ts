@@ -1,6 +1,7 @@
 import type { Priority, SlaState, Ticket, TicketType } from '@/views/tickets/types/ticket';
 import { resolveTicketGroupNames } from '@/views/tickets/types/ticket';
 import type { BusinessType, TicketSource } from '@/views/tickets/types/createTicket';
+import { prototypeDayEnd } from '@/config/prototypeDate';
 
 /** 结构化筛选 · 时间快捷选项 */
 export type MineTimePreset = '' | '7d' | '30d' | '90d' | 'custom';
@@ -157,8 +158,7 @@ function dayEnd(ymd: string): number {
 export function resolveMineTimeRange(q: MineQueryFilter): { from: number; to: number } | null {
   if (!q.timePreset) return null;
 
-  const now = new Date();
-  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+  const end = prototypeDayEnd();
 
   if (q.timePreset === 'custom') {
     if (!q.dateFrom && !q.dateTo) return null;

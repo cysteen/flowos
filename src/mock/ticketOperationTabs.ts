@@ -42,7 +42,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       title: '处理中',
       operator: '陈伟(技术支持)',
       when: '2026-06-17 16:20:18',
-      desc: '二线坐席处理中，待填写处理结果并标记解决结论',
+      desc: '二线技术顾问处理中，待填写处理结果并标记解决结论',
       active: true,
     },
   ],
@@ -100,6 +100,8 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       supplementType: '补充信息',
       content: '补充设备 SN 照片及相关检测材料',
       attachments: ['SN背面.jpg', '检测报告.pdf'],
+      read: true,
+      contacted: true,
     },
     {
       id: 's2',
@@ -108,6 +110,8 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       supplementType: '修改信息',
       content: '补充故障录屏与歌单链接',
       attachments: ['故障录屏.mp4', '语音留言.mp3', '歌单链接.txt'],
+      read: false,
+      contacted: false,
     },
   ],
   dunningRecords: [
@@ -117,6 +121,8 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       when: '今天 14:10',
       content: '客户二次来电催单，要求今日内反馈处理进度',
       attachments: ['催单通话录音.mp3'],
+      read: true,
+      contacted: true,
     },
     {
       id: 'd2',
@@ -124,6 +130,8 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       when: '今天 10:32',
       content: '客户来电催单：什么时候能解决？',
       attachments: ['催单短信截图.png'],
+      read: false,
+      contacted: false,
     },
   ],
   contactRecords: [

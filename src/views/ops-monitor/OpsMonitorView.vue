@@ -23,6 +23,7 @@ import CustomerInsightView from '@/views/customer/CustomerInsightView.vue';
 import MetricTipIcon from '@/components/MetricTipIcon.vue';
 import { opsTip } from '@/mock/opsMonitorTips';
 import { useUserStore } from '@/stores/user';
+import { RISK_TAG_ROLES } from '@/config/roles';
 import {
   OPS_GROUPS,
   getOpsScopeSelectGroups,
@@ -127,7 +128,8 @@ const slaHeatMax = computed(() => {
 });
 
 // ---- 模块 2.3 风险词命中 ----
-const localTags = ref<Record<string, RiskLevel>>({});
+/** 本地打标记录：等级之外还要存备注、打标人、打标时刻 —— 留痕要求见 saveTag 上方注释 */
+const localTags = ref<Record<string, { level: RiskLevel; note: string; by: string; at: string }>>({});
 const hits = computed(() => riskHitsOf(scope.value));
 const untagged = computed(() => untaggedHighRisks(scope.value).filter((h) => !localTags.value[h.id]));
 
@@ -136,13 +138,26 @@ const issues = computed(() =>
 );
 const criticalCount = computed(() => issues.value.filter((i) => i.level === 'critical').length);
 
-/** 打标：字段枚举待业务确认，先按风险分级 + 备注落地 */
+/**
+ * 打标：字段枚举待业务确认，先按风险分级 + 备注落地。
+ *
+ * **打标必须留痕**（PRD §6.4「留痕」行：记录打标人、打标时刻、备注，供事后复盘）。
+ * 早先这里只把等级存进 localTags，备注读进弹窗又丢掉、打标人与时刻根本不写 ——
+ * 于是"谁在什么时候基于什么判断打了这个标"事后查不出来，复盘无从下手。
+ */
 const tagOpen = ref(false);
 const tagTarget = ref<RiskHit | null>(null);
 const tagLevel = ref<RiskLevel>('高');
 const tagNote = ref('');
 
+/** 谁能打标：运营监控岗 ＋ 投诉处理角色（PRD §6.4），其余角色不出打标入口 */
+const canRiskTag = computed(() => RISK_TAG_ROLES.includes(user.roleKey));
+
 function openTag(h: RiskHit) {
+  if (!canRiskTag.value) {
+    message.warning('只有运营监控岗与投诉处理角色可以打标');
+    return;
+  }
   tagTarget.value = h;
   tagLevel.value = h.tagged ?? h.level;
   tagNote.value = h.taggedNote ?? '';
@@ -150,12 +165,32 @@ function openTag(h: RiskHit) {
 }
 function saveTag() {
   if (!tagTarget.value) return;
-  localTags.value = { ...localTags.value, [tagTarget.value.id]: tagLevel.value };
+  if (!canRiskTag.value) { message.warning('无打标权限'); return; }
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  localTags.value = {
+    ...localTags.value,
+    [tagTarget.value.id]: {
+      level: tagLevel.value,
+      note: tagNote.value.trim(),
+      by: user.current.name,
+      // 与 mock 里既有的 taggedAt 同格式：YYYY-MM-DD HH:mm
+      at: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+        + ` ${pad(now.getHours())}:${pad(now.getMinutes())}`,
+    },
+  };
   message.success(`已对 ${tagTarget.value.ticketNo} 打标「${tagLevel.value}风险」`);
   tagOpen.value = false;
 }
 function tagOf(h: RiskHit): RiskLevel | undefined {
-  return localTags.value[h.id] ?? h.tagged;
+  return localTags.value[h.id]?.level ?? h.tagged;
+}
+/** 事后复盘要看的三项：谁打的、什么时候打的、当时怎么判断的 */
+function tagTraceOf(h: RiskHit): { by: string; at: string; note: string } | undefined {
+  const local = localTags.value[h.id];
+  if (local) return { by: local.by, at: local.at, note: local.note };
+  if (h.tagged) return { by: h.taggedBy ?? '—', at: h.taggedAt ?? '—', note: h.taggedNote ?? '' };
+  return undefined;
 }
 
 const riskWordsOpen = ref(false);
@@ -438,8 +473,9 @@ function goFlowList(key: Exclude<MetricKey, 'io'>) {
   }
   const label = `${FLOW_LIST_TITLE[key]} · ${snap.value.scopeLabel}`;
   router.push({
-    path: '/tickets/list',
+    path: '/query',
     query: {
+      tab: 'tickets',
       scope: 'all',
       view: 'all',
       _from: `ops.flow.${key}`,
@@ -1100,12 +1136,24 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
               <td class="hit-when">{{ h.when.slice(11) }}</td>
               <td class="hit-sub">{{ h.receivers.join('、') }}</td>
               <td>
+                <!-- 已打标：等级徽标 + 留痕（谁、何时、当时怎么判断），供事后复盘 -->
                 <span
                   v-if="tagOf(h)"
                   class="tag-done"
                   :style="{ color: RISK_LEVEL_STYLE[tagOf(h)!].color, background: RISK_LEVEL_STYLE[tagOf(h)!].bg }"
+                  :title="tagTraceOf(h)
+                    ? `打标人：${tagTraceOf(h)!.by}\n打标时刻：${tagTraceOf(h)!.at}` +
+                      (tagTraceOf(h)!.note ? `\n处置备注：${tagTraceOf(h)!.note}` : '')
+                    : undefined"
                 >{{ tagOf(h) }}风险</span>
-                <button v-else type="button" class="row-btn" @click="openTag(h)">打标</button>
+                <!-- 未打标：只有运营监控岗与投诉处理角色出入口（PRD §6.4） -->
+                <button
+                  v-else-if="canRiskTag"
+                  type="button"
+                  class="row-btn"
+                  @click="openTag(h)"
+                >打标</button>
+                <span v-else class="hit-sub">—</span>
               </td>
             </tr>
           </tbody>

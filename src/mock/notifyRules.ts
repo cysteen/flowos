@@ -271,16 +271,16 @@ export const FIXED_ASSIGN_USERS: FixedAssignOption[] = [
   { value: '用户·陈静', label: '陈静', keywords: 'chenjing 一线客服部 客服专员', kind: 'user' },
   { value: '用户·赵敏', label: '赵敏', keywords: 'zhaomin 售后服务部 售后工程师', kind: 'user' },
   { value: '用户·吴婷', label: '吴婷', keywords: 'wuting 一线客服部 实习坐席', kind: 'user' },
-  { value: '用户·张敏', label: '张敏', keywords: 'zhangmin 受理一组 二线坐席', kind: 'user' },
-  { value: '用户·李昊', label: '李昊', keywords: 'lihao 受理一组 二线坐席', kind: 'user' },
-  { value: '用户·孙杰', label: '孙杰', keywords: 'sunjie 受理一组 二线坐席', kind: 'user' },
+  { value: '用户·张敏', label: '张敏', keywords: 'zhangmin 受理一组 二线技术顾问', kind: 'user' },
+  { value: '用户·李昊', label: '李昊', keywords: 'lihao 受理一组 二线技术顾问', kind: 'user' },
+  { value: '用户·孙杰', label: '孙杰', keywords: 'sunjie 受理一组 二线技术顾问', kind: 'user' },
   { value: '用户·周运营', label: '周运营', keywords: 'zhouyunying 运营管理员', kind: 'user' },
 ];
 
 export const FIXED_ASSIGN_ROLES: FixedAssignOption[] = [
   { value: '角色·客服班组长', label: '客服班组长', keywords: '班组长 leader', kind: 'role' },
-  { value: '角色·客服·二线坐席', label: '客服·二线坐席', keywords: '二线坐席 agent', kind: 'role' },
-  { value: '角色·售后·二线坐席', label: '售后·二线坐席', keywords: '售后 agent', kind: 'role' },
+  { value: '角色·客服·二线技术顾问', label: '客服·二线技术顾问', keywords: '二线技术顾问 agent', kind: 'role' },
+  { value: '角色·售后·二线技术顾问', label: '售后·二线技术顾问', keywords: '售后 agent', kind: 'role' },
   { value: '角色·运营管理员', label: '运营管理员', keywords: '运营 ops', kind: 'role' },
   { value: '角色·租户管理员', label: '租户管理员', keywords: '租户 admin', kind: 'role' },
   { value: '角色·质检专员', label: '质检专员', keywords: '质检 qa', kind: 'role' },

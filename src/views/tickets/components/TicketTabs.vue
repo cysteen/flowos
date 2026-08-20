@@ -10,6 +10,10 @@ const props = defineProps<{
 const emit = defineEmits<{ change: [tab: TabKey] }>();
 
 const visibleTabs = computed(() => TABS.filter((t) => !props.hiddenTabs.includes(t.key)));
+
+function badgeCount(key: TabKey): number {
+  return props.counts[key] ?? 0;
+}
 </script>
 
 <template>
@@ -29,7 +33,7 @@ const visibleTabs = computed(() => TABS.filter((t) => !props.hiddenTabs.includes
             ? { background: '#1A6FFF', color: '#FFFFFF' }
             : { background: '#F3F4F6', color: '#6B7280' }
         "
-        >{{ counts[tab.key] }}</span
+        >{{ badgeCount(tab.key) }}</span
       >
     </div>
   </div>

@@ -43,6 +43,7 @@ function onRemove(e: MouseEvent, key: string) {
         class="chip"
         :class="{ 'chip--custom': isSavedFilterChipKey(chip.key) }"
         :style="chipStyle(chip.key, chip.key === activeChip, chip.tone)"
+        :title="chip.title"
         @click="emit('chip', chip.key)"
       >
         <span

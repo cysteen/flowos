@@ -552,7 +552,6 @@ function onOk() {
           <div class="op-label">预计恢复时间</div>
           <a-date-picker
             :value="resumeAtDayjs(suspend.resumeAt)"
-            show-time
             :show-time="{ format: 'HH:mm' }"
             :format="RESUME_AT_FORMAT"
             placeholder="请选择预计恢复时间"

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useUserStore } from '@/stores/user';
 import { CopyOutlined, FlagOutlined } from '@ant-design/icons-vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
-import { PRIORITY_COLOR, softBg, type Priority } from '@/views/tickets/types/ticket';
+import { PRIORITY_COLOR, softBg, csEntryAvailability, type Priority, type TicketStatus } from '@/views/tickets/types/ticket';
 import OpSlaBar from './OpSlaBar.vue';
 import OpAftersaleLinkCard from './OpAftersaleLinkCard.vue';
 import { isAftersaleSettled } from '../../composables/opActions';
@@ -14,8 +15,32 @@ import OpSupersededBanner from './OpSupersededBanner.vue';
 const props = defineProps<{
   detail: TicketDetailMeta;
   ticketNo: string;
-  /** 只读态（本单已被新单接管 / 一线视角）：头部动作全部禁用，只留查看与关系跳转 */
+  /**
+   * **整页锁死**：本单已被新单接管（已转单）/ 只读角色（运营监控岗）。
+   * ⚠️ **一线视角不走这条** —— 一线视角锁的是**底栏的二线流转动作**，
+   * 头部这一排（升级投诉 / 关联售后 / 新建补充 / 催单 / 取消工单）**一线本来就有权限**：
+   * 升级投诉一线可升非投诉单、取消工单是一线专属、催补是一线主动作。
+   * 把一线视角接到 readonly 上会把整排按钮误置灰。
+   */
   readonly?: boolean;
+  /**
+   * 客户侧两枚（新建补充 / 催单）是否展示 —— 按角色给（PRD-830 §4.1）：
+   * 新建补充＝一线 + 二线；催单＝一线唯一；三线 / 班组长 / 投诉处理角色两枚都不展示。
+   * ⚠️ 它们**不跟着 readonly 置灰**：一线视角虽然锁流转，但这两枚正是一线的主动作。
+   * 真正会锁住它们的只有「已转单」（单已作废）与只读角色，见 customerEntryLocked。
+   */
+  canSupplement?: boolean;
+  canDunning?: boolean;
+  /**
+   * 同排另三枚的角色门控（基线「动作 × 角色」表）：
+   * - 升级投诉 / 关联售后：二线 · 班组长 · 投诉处理角色 · 管理员，一线也可
+   * - **取消工单：一线专属** —— 二线及以上整枚不展示
+   */
+  canEscalateComplaint?: boolean;
+  canLinkAftersale?: boolean;
+  canCancelTicket?: boolean;
+  /** 客户侧录入被锁：已转单 / 只读角色。一线视角**不**锁 */
+  customerEntryLocked?: boolean;
   /** 已转单：业务转至新单，表头收束为只读提示 + 前往新单 */
   supersededBy?: TicketRelation | null;
 }>();
@@ -36,13 +61,32 @@ const DELEGATE_LOCK_TIP = '工单委派中，协办完成后可操作';
  * 升级投诉入口：全类型展示，可用性按投诉阶层判定（《【815】关联投诉 PRD》§3.2/§4.2）——
  * 非投诉、低阶投诉（人员/业务）可升级；外投为终态，入口置灰并引导走「新建补充」。
  */
-const escalateVerdict = computed(() => buildEscalateVerdict(props.detail));
+// 同上：升级判定认发起人角色
+const user = useUserStore();
+const escalateVerdict = computed(() => buildEscalateVerdict(props.detail, user.roleKey));
+// 升级投诉的可用性：整页锁死 / 委派中 / 阶层判定（一线在非投诉单上可升，见 815 §3.3）
 const escalateDisabled = computed(() => props.readonly || delegateLocked.value || !escalateVerdict.value.entryEnabled);
 const escalateTip = computed(() => {
   if (props.readonly) return READONLY_TIP;
   if (delegateLocked.value) return DELEGATE_LOCK_TIP;
   return escalateVerdict.value.entryTip;
 });
+
+/**
+ * 已转出（转售后，客服侧完全冻结）：**催补两枚都不给**（PRD-830 §4.2 / §7.3、基线 ※6）。
+ * 引导改由「已转售后」芯片的 hover 提示承担 —— 单在售后手上，客服既推不动也答不了；
+ * 给了按钮就得回答"点了写在哪"，写原单没人看、建子单等于两边各处理一半。
+ */
+const isTransferredOut = computed(() => /已转出/.test(props.detail.status));
+
+/**
+ * 催补两枚的**状态门控**（PRD-830 §4.2）——与角色门控（canSupplement / canDunning）
+ * **同时生效**，任一不通过即不展示。
+ * 终态只留补充；草稿 / 已转出 / 已结案 / 已取消 两枚都不给。
+ */
+const csAvail = computed(() => csEntryAvailability(props.detail.status as TicketStatus));
+const showSupplement = computed(() => props.canSupplement && csAvail.value.supplement);
+const showDunning = computed(() => props.canDunning && csAvail.value.dunning);
 
 /** 已有 1:1 关联售后单 → 「关联售后」封口，hover 出卡片跳售后系统（D2 改写） */
 const linkedAftersale = computed(() => {
@@ -147,6 +191,7 @@ function priorityHex(p: string): string {
           外投为投诉终态，入口置灰并提示改走「新建补充」
         -->
         <button
+          v-if="canEscalateComplaint"
           type="button"
           class="action-btn"
           :disabled="escalateDisabled"
@@ -158,7 +203,7 @@ function priorityHex(p: string): string {
           改为 hover 出售后单卡片：状态可见、工单地址可点跳售后系统操作
         -->
         <a-popover
-          v-if="detail.type === '投诉'"
+          v-if="canLinkAftersale && detail.type === '投诉'"
           :trigger="linkedAftersale ? 'hover' : []"
           placement="bottomRight"
         >
@@ -181,22 +226,44 @@ function priorityHex(p: string): string {
             >关联售后</button>
           </span>
         </a-popover>
+        <!--
+          已转出：催补两枚**都不展示**，改挂一枚「已转售后」芯片，
+          hover 出售后单卡片（单号 + 状态 ｜ 服务类型 ｜「补充与催单请点开工单号，在售后系统中操作」），
+          点单号直接跳售后系统（一线有该权限）。PRD-830 §7.3
+        -->
+        <a-popover
+          v-if="isTransferredOut && linkedAftersale"
+          trigger="hover"
+          placement="bottomRight"
+        >
+          <template #content>
+            <OpAftersaleLinkCard
+              :no="linkedAftersale.no"
+              :status="linkedAftersale.status"
+              :service-type="linkedAftersale.serviceType"
+              :settled="linkedAftersale.settled"
+            />
+          </template>
+          <span class="as-chip">⇄ 已转售后 {{ linkedAftersale.no }}</span>
+        </a-popover>
         <button
+          v-if="showSupplement"
           type="button"
           class="action-btn"
-          :disabled="readonly"
-          :title="readonly ? READONLY_TIP : undefined"
+          :disabled="customerEntryLocked"
+          :title="customerEntryLocked ? READONLY_TIP : undefined"
           @click="emit('action', '新建补充')"
         >新建补充</button>
         <button
+          v-if="showDunning"
           type="button"
           class="action-btn"
-          :disabled="readonly"
-          :title="readonly ? READONLY_TIP : undefined"
+          :disabled="customerEntryLocked"
+          :title="customerEntryLocked ? READONLY_TIP : undefined"
           @click="emit('action', '催单')"
         >催单</button>
         <button
-          v-if="!isTerminal"
+          v-if="canCancelTicket && !isTerminal"
           type="button"
           class="action-btn action-btn--danger"
           :disabled="readonly || delegateLocked"
@@ -356,6 +423,14 @@ function priorityHex(p: string): string {
   cursor: not-allowed;
 }
 /* popover 需要一个能接鼠标事件的宿主——disabled 按钮本身不触发 hover */
+/* 已转售后芯片：替代催补两枚按钮的引导位（PRD-830 §7.3）。紫＝转到别处，与「已转单」同族 */
+.as-chip {
+  display: inline-flex; align-items: center; flex: none;
+  height: 28px; padding: 0 10px;
+  font-size: 12px; font-weight: 600; line-height: 28px;
+  color: #7c3aed; background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 4px;
+  cursor: default;
+}
 .btn-slot { display: inline-flex; }
 
 .action-btn:not(:disabled):hover {

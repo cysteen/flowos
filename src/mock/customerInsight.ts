@@ -449,8 +449,8 @@ function isClosedTicket(t: Ticket): boolean {
 
 function toneOf(t: Ticket): TicketTone {
   if (isClosedTicket(t)) return 'closed';
-  if (t.nodeStatus === '已挂起·待客户') return 'suspended';
-  if (t.nodeStatus === '待受理') return 'pending';
+  if (t.nodeStatus === '已挂起') return 'suspended';
+  if (t.nodeStatus === '未认领') return 'pending';
   return 'processing';
 }
 
@@ -713,6 +713,17 @@ export function suggestedCustomers(limit = 6): CustomerCandidate[] {
     .sort((a, b) => b.ticketCount - a.ticketCount || b.lastAt.localeCompare(a.lastAt))
     .slice(0, limit);
 }
+
+/** 交互稿可搜示例（Mock 库内真实数据） */
+export const DEMO_SEARCH_HINTS = [
+  { label: '张小凡', query: '13800138001', tip: '手机号 · 完整档案' },
+  { label: '赵敏', query: '13788889999', tip: '手机号 · 校长/企业客户' },
+  { label: '吴强', query: '13700003333', tip: '手机号 · 外投投诉史' },
+  { label: '李大海', query: '13912345678', tip: '手机号' },
+  { label: '陈翻译', query: '13500001234', tip: '手机号 · 飞书同步演示' },
+  { label: '工单号', query: 'LCMN-20260610-73026', tip: '张小凡的投诉单' },
+  { label: 'SN', query: 'SN-T10-260713', tip: '陈翻译 · 翻译机' },
+] as const;
 
 export const QUERY_KIND_LABEL: Record<QueryKind, string> = {
   phone: '手机号',

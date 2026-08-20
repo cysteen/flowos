@@ -6,21 +6,30 @@ import AppPagination from '@/components/AppPagination.vue';
 import TicketListFilterCard from './components/TicketListFilterCard.vue';
 import TicketListToolRow from './components/TicketListToolRow.vue';
 import TicketRichList from './components/TicketRichList.vue';
+import TicketColumnSettings from './components/TicketColumnSettings.vue';
 import CreateTicketModal from './components/CreateTicketModal.vue';
 import { useTicketList } from './composables/useTicketList';
-import { TICKET_COLUMN_DEFS } from './composables/useTicketColumns';
+import { useTicketColumns } from './composables/useTicketColumns';
+import {
+  QUERY_CENTER_COLUMN_DEFS,
+  QUERY_CENTER_FIXED_COLUMN_DEFS,
+} from '@/views/query/queryCenterListColumns';
+import { useQueryCenterColumns } from '@/views/query/useQueryCenterColumns';
 import { type Ticket } from './types/ticket';
+import { queryCenterLocation } from '@/views/query/queryCenterRoute';
 
-/** 工具列表默认列：不含产品分类/问题分类等扩展字段 */
-const LIST_VISIBLE_COLUMNS = Object.fromEntries(
-  TICKET_COLUMN_DEFS.map((c) => [c.key, c.defaultVisible !== false]),
-);
+const props = defineProps<{ embedded?: boolean; filtersExpanded?: boolean }>();
+const emit = defineEmits<{ 'open-customer': [q: string] }>();
 
 const router = useRouter();
 const route = useRoute();
+
+const qcColumns = useQueryCenterColumns();
+const wbColumns = useTicketColumns();
+const columnSettingsOpen = ref(false);
+
 const list = useTicketList();
 const createOpen = ref(false);
-
 /**
  * 看板 / 监控 / 搜索等入口：把 URL 参数落到筛选条件（工具页，无「我的/本组」视图 Tab）
  *
@@ -63,7 +72,7 @@ function applyRouteQuery() {
 
   if (hasBoard || hasOpsFlow) {
     const label = typeof q._label === 'string' ? q._label : hasOpsFlow ? '运营监控' : '看板';
-    message.info({ content: `已按「${label}」筛选工单列表`, key: DRILL_MSG_KEY, duration: 2.5 });
+    message.info({ content: `已按「${label}」筛选工单`, key: DRILL_MSG_KEY, duration: 2.5 });
   }
 }
 
@@ -77,9 +86,14 @@ function openOperation(t: Ticket) {
   router.push(`/tickets/${t.no}`);
 }
 
-/** 客户名 → 客户全景（手机号优先，缺失时按姓名查） */
+/** 客户名 → 查询中心 · 查客户 */
 function openCustomerInsight(t: Ticket) {
-  router.push({ path: '/customer-insight', query: { q: t.customerPhone || t.customer } });
+  const q = t.customerPhone || t.customer;
+  if (props.embedded) {
+    emit('open-customer', q);
+    return;
+  }
+  router.push(queryCenterLocation('customer', { q }));
 }
 
 function onAction(label: string, t: Ticket) {
@@ -94,11 +108,21 @@ function onAction(label: string, t: Ticket) {
 
 function onSearch() {
   list.applyFilters();
-  message.success('已查询');
+  if (!props.embedded) message.success('已查询');
 }
 
 function onReset() {
   list.resetFilters();
+  if (props.embedded) {
+    router.replace(queryCenterLocation('tickets', { kw: undefined, q: undefined }));
+  }
+}
+
+function onClearKeyword() {
+  if (props.embedded) {
+    router.replace(queryCenterLocation('tickets', { kw: undefined, q: undefined }));
+  }
+  list.applyFilters();
 }
 
 function onBatch() {
@@ -112,19 +136,60 @@ function onCreated(t: Ticket) {
 </script>
 
 <template>
-  <div class="ticket-list">
-    <TicketListFilterCard
-      :filters="list.filters"
-      @search="onSearch"
-      @reset="onReset"
-    />
+  <div class="ticket-list" :class="{ embedded: embedded }">
+    <div v-if="embedded" class="list-controls">
+      <TicketListFilterCard
+        v-show="filtersExpanded"
+        :filters="list.filters"
+        embedded
+        @search="onSearch"
+        @reset="onReset"
+        @clear-keyword="onClearKeyword"
+      />
+      <TicketListToolRow
+        :selected-count="list.selectedCount.value"
+        embedded
+        @create="createOpen = true"
+        @batch="onBatch"
+        @export="message.info('导出当前筛选结果')"
+        @columns="columnSettingsOpen = true"
+      />
+      <TicketColumnSettings
+        v-model:open="columnSettingsOpen"
+        :visible-columns="qcColumns.visibleColumns.value"
+        :column-order="qcColumns.columnOrder.value"
+        :column-defs="QUERY_CENTER_COLUMN_DEFS"
+        :fixed-column-defs="QUERY_CENTER_FIXED_COLUMN_DEFS"
+        :resolve-label="qcColumns.label"
+        footer-hint="工单/标题、操作为固定列"
+        @set-visible="qcColumns.setColumnVisible"
+        @reorder="qcColumns.reorderColumn"
+        @reset="qcColumns.resetColumns"
+      />
+    </div>
+    <template v-else>
+      <TicketListFilterCard
+        :filters="list.filters"
+        @search="onSearch"
+        @reset="onReset"
+      />
+      <TicketListToolRow
+        :selected-count="list.selectedCount.value"
+        @create="createOpen = true"
+        @batch="onBatch"
+        @export="message.info('导出当前筛选结果')"
+        @columns="columnSettingsOpen = true"
+      />
+    </template>
 
-    <TicketListToolRow
-      :selected-count="list.selectedCount.value"
-      @create="createOpen = true"
-      @batch="onBatch"
-      @export="message.info('导出当前筛选结果')"
-      @columns="message.info('列设置')"
+    <TicketColumnSettings
+      v-if="!embedded"
+      v-model:open="columnSettingsOpen"
+      :visible-columns="wbColumns.visibleColumns.value"
+      :column-order="wbColumns.columnOrder.value"
+      @set-visible="wbColumns.setColumnVisible"
+      @reorder="wbColumns.reorderColumn"
+      @reset="wbColumns.resetColumns"
     />
 
     <div class="table-card">
@@ -132,7 +197,10 @@ function onCreated(t: Ticket) {
         :rows="list.paged.value"
         :selected-ids="list.selectedIds.value"
         :all-page-selected="list.allPageSelected.value"
-        :visible-columns="LIST_VISIBLE_COLUMNS"
+        :visible-columns="embedded ? qcColumns.visibleColumns.value : wbColumns.visibleColumns.value"
+        :column-order="embedded ? qcColumns.columnOrder.value : wbColumns.columnOrder.value"
+        :column-label="embedded ? qcColumns.label : undefined"
+        :variant="embedded ? 'query' : 'default'"
         @toggle="list.toggleSelect"
         @toggle-all="list.toggleSelectAllOnPage"
         @action="onAction"
@@ -169,6 +237,22 @@ function onCreated(t: Ticket) {
   min-width: 0;
   padding: 20px;
 }
+.ticket-list.embedded {
+  height: 100%;
+  min-height: 0;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  background: transparent;
+  overflow: hidden;
+}
+.list-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  flex: none;
+}
 .table-card {
   background: #fff;
   border: 1px solid #e5e7eb;
@@ -178,6 +262,9 @@ function onCreated(t: Ticket) {
   flex-direction: column;
   flex: 1;
   min-height: 0;
+}
+.ticket-list.embedded .table-card {
+  border-radius: 8px;
 }
 .pager {
   display: flex;

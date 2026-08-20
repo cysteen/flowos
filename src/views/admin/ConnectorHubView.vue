@@ -50,7 +50,15 @@ const events = ref([
 ]);
 
 /* Webhook */
-const webhooks = ref([
+interface Webhook {
+  id: number;
+  name: string;
+  url: string;
+  event: string;
+  secret: string;
+  status: boolean;
+}
+const webhooks = ref<Webhook[]>([
   { id: 1, name: '飞书群通知', url: 'https://open.feishu.cn/webhook/xxx', event: 'ticket.escalated', secret: '已配置', status: true },
   { id: 2, name: 'ERP 回写', url: 'https://erp.internal/api/wo-callback', event: 'ticket.closed', secret: '已配置', status: true },
   { id: 3, name: '风控告警', url: 'https://risk.internal/alert', event: 'sla.breached', secret: '未配置', status: false },
@@ -148,8 +156,14 @@ function saveWh() {
   webhooks.value.push({ id: wSeq++, name: wf.name, url: wf.url, event: wf.event, secret: '未配置', status: false });
   message.success('Webhook 已新增'); whModalOpen.value = false;
 }
-function testWh(w: { name: string }) { message.loading('正在发送测试推送…', 1).then(() => message.success(`已推送至「${w.name}」，返回 200`)); }
-function delWh(w: { id: number; name: string }) {
+function testWh(row: Record<string, any>) {
+  // a-table 的 bodyCell 插槽给的是 Record<string, any>，这里收窄回本表的行类型
+  const w = row as Webhook;
+  message.loading('正在发送测试推送…', 1).then(() => message.success(`已推送至「${w.name}」，返回 200`));
+}
+function delWh(row: Record<string, any>) {
+  // 同上：bodyCell 插槽行数据收窄回 Webhook
+  const w = row as Webhook;
   Modal.confirm({
     title: '删除 Webhook', icon: null, content: `确定删除「${w.name}」？`,
     okText: '确认删除', okType: 'danger', cancelText: '取消',

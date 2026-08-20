@@ -13,6 +13,15 @@ const expanded = ref({ report: true, conclusion: true, risk: true });
 function update(partial: Partial<RiskMonitorDraft>) {
   emit('update:draft', { ...props.draft, ...partial });
 }
+
+/**
+ * a-select 的 update:value 按 antd 声明给出 SelectValue（含 LabeledValue / 数组）。
+ * 本页 select 全是单选、选项 value 均为字符串字面量，且未开 labelInValue，
+ * 故清空时归一为 ''、其余按字符串收窄，等价于原来的 `v ?? ''`。
+ */
+function selectedText(v: unknown): string {
+  return v == null ? '' : String(v);
+}
 </script>
 
 <template>
@@ -31,7 +40,7 @@ function update(partial: Partial<RiskMonitorDraft>) {
             class="form-select"
             placeholder="请选择"
             allow-clear
-            @update:value="(v: string) => update({ reportModule: v ?? '' })"
+            @update:value="(v) => update({ reportModule: selectedText(v) })"
           >
             <a-select-option value="在线音乐">在线音乐</a-select-option>
             <a-select-option value="固件升级">固件升级</a-select-option>
@@ -45,7 +54,7 @@ function update(partial: Partial<RiskMonitorDraft>) {
             class="form-select"
             placeholder="请选择"
             allow-clear
-            @update:value="(v: string) => update({ reportTarget: v ?? '' })"
+            @update:value="(v) => update({ reportTarget: selectedText(v) })"
           >
             <a-select-option value="产研-音箱组">产研-音箱组</a-select-option>
             <a-select-option value="质量部">质量部</a-select-option>
@@ -59,7 +68,7 @@ function update(partial: Partial<RiskMonitorDraft>) {
           class="form-select"
           placeholder="请选择"
           allow-clear
-          @update:value="(v: string) => update({ assistContent: v ?? '' })"
+          @update:value="(v) => update({ assistContent: selectedText(v) })"
         >
           <a-select-option value="根因分析">根因分析</a-select-option>
           <a-select-option value="批次追溯">批次追溯</a-select-option>
@@ -91,7 +100,7 @@ function update(partial: Partial<RiskMonitorDraft>) {
           class="form-select"
           placeholder="请选择"
           allow-clear
-          @update:value="(v: string) => update({ processConclusion: v ?? '' })"
+          @update:value="(v) => update({ processConclusion: selectedText(v) })"
         >
           <a-select-option value="已解决">已解决</a-select-option>
           <a-select-option value="待跟进">待跟进</a-select-option>
@@ -126,8 +135,8 @@ function update(partial: Partial<RiskMonitorDraft>) {
             class="form-select"
             placeholder="请选择"
             allow-clear
-            @update:value="(v: string) => update({
-              riskFlag: v ?? '',
+            @update:value="(v) => update({
+              riskFlag: String(v ?? ''),
               ...(v !== '有风险' ? { riskLevel: '' } : {}),
             })"
           >
@@ -144,7 +153,7 @@ function update(partial: Partial<RiskMonitorDraft>) {
             placeholder="请选择"
             allow-clear
             :disabled="draft.riskFlag !== '有风险'"
-            @update:value="(v: string) => update({ riskLevel: v ?? '' })"
+            @update:value="(v) => update({ riskLevel: String(v ?? '') })"
           >
             <a-select-option value="低">低</a-select-option>
             <a-select-option value="中">中</a-select-option>

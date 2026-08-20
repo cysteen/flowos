@@ -64,7 +64,10 @@ function openCreate() {
   applyPlanQuota('专业版');
   showTenantModal.value = true;
 }
-function openEdit(t: Tenant) {
+// 下列 row 入参来自 a-table 的 #bodyCell 插槽，其声明类型是 Record<string, any>，
+// 函数体内断言回 Tenant（data-source 就是本文件的 tenants: Tenant[]）。
+function openEdit(row: Record<string, any>) {
+  const t = row as Tenant;
   editing.value = t;
   Object.assign(form, { name: t.name, code: t.code, plan: t.plan, adminEmail: t.admin, adminPhone: t.adminPhone, adminLimit: t.adminLimit, orderLimit: t.quota.orderLimit, outboundLimit: t.quota.outboundLimit, storageLimit: t.quota.storageLimit });
   showTenantModal.value = true;
@@ -94,11 +97,13 @@ function saveTenant() {
   }
   showTenantModal.value = false;
 }
-function toggleStatus(t: Tenant) {
+function toggleStatus(row: Record<string, any>) {
+  const t = row as Tenant;
   t.status = t.status === 'active' ? 'suspended' : 'active';
   message.success(t.status === 'active' ? '租户已启用' : '租户已停用');
 }
-function delTenant(t: Tenant) {
+function delTenant(row: Record<string, any>) {
+  const t = row as Tenant;
   Modal.confirm({
     title: '确认删除', icon: null,
     content: `确定要删除租户「${t.name}」吗？此操作不可恢复。`,
@@ -109,12 +114,22 @@ function delTenant(t: Tenant) {
 
 // ---- 详情抽屉 ----
 const detail = ref<Tenant | null>(null);
+// 抽屉的 open 需要 boolean，而可见性由 detail 是否有值决定，这里做一层双向映射
+const detailOpen = computed({
+  get: () => detail.value !== null,
+  set: (v: boolean) => { if (!v) detail.value = null; },
+});
+function openDetail(row: Record<string, any>) {
+  // a-table 的 bodyCell 插槽给的是 Record<string, any>，这里收窄回 Tenant
+  detail.value = row as Tenant;
+}
 
 // ---- 推荐起步角色（原「模拟角色」重构）----
 const showRecommend = ref(false);
 const recTenant = ref<Tenant | null>(null);
 const recPicked = ref<Set<string>>(new Set());
-function openRecommend(t: Tenant) {
+function openRecommend(row: Record<string, any>) {
+  const t = row as Tenant;
   recTenant.value = t;
   recPicked.value = new Set(['agent', 'leader', 'ops']); // 默认推荐三件套
   showRecommend.value = true;
@@ -151,7 +166,8 @@ const simFilteredUsers = computed(() => {
   if (simRoleFilter.value) list = list.filter((u) => u.role === simRoleFilter.value);
   return list;
 });
-function openSimulate(t: Tenant) {
+function openSimulate(row: Record<string, any>) {
+  const t = row as Tenant;
   if (t.status !== 'active') return;
   simTenant.value = t; simActiveDept.value = 'dept1'; simUserSearch.value = ''; simRoleFilter.value = '';
   showSimulate.value = true;
@@ -163,7 +179,9 @@ const simUser = ref<SimUser | null>(null);
 const simDuration = ref('30');
 const simReasonType = ref('');
 const simReasonDetail = ref('');
-function selectSimUser(u: SimUser) {
+function selectSimUser(row: Record<string, any>) {
+  // 同上：模拟登录用户表的 bodyCell 行数据收窄回 SimUser
+  const u = row as SimUser;
   simUser.value = u; simReasonType.value = ''; simReasonDetail.value = ''; simDuration.value = '30';
   showSimulate.value = false; showSimConfirm.value = true;
 }
@@ -258,7 +276,7 @@ onBeforeUnmount(() => { if (simTimer) clearInterval(simTimer); });
           </template>
           <span v-else-if="column.key === 'createdAt'" class="muted">{{ record.createdAt }}</span>
           <template v-else-if="column.key === 'action'">
-            <a-button type="link" size="small" @click="detail = record">详情</a-button>
+            <a-button type="link" size="small" @click="openDetail(record)">详情</a-button>
             <a-button type="link" size="small" @click="openEdit(record)">编辑</a-button>
             <a-button type="link" size="small" :style="{ color: record.status === 'active' ? '#D97706' : '#059669' }" @click="toggleStatus(record)">{{ record.status === 'active' ? '停用' : '启用' }}</a-button>
             <a-button type="link" size="small" :disabled="record.status !== 'active'" style="color:#7C3AED" @click="openRecommend(record)">推荐角色</a-button>
@@ -277,7 +295,7 @@ onBeforeUnmount(() => { if (simTimer) clearInterval(simTimer); });
           <a-form-item label="租户编码" required><a-input v-model:value="form.code" placeholder="如 XFKJ" /></a-form-item>
         </div>
         <a-form-item label="所属套餐" required>
-          <a-select v-model:value="form.plan" :options="PLAN_OPTIONS.map((p) => ({ value: p.value, label: p.label }))" @change="applyPlanQuota" />
+          <a-select v-model:value="form.plan" :options="PLAN_OPTIONS.map((p) => ({ value: p.value, label: p.label }))" @change="(v) => applyPlanQuota(String(v))" />
           <div v-if="planMeta" class="plan-meta">{{ planMeta.seats }} · 工单 {{ planMeta.orders }} · 外呼 {{ planMeta.outbound }} · 存储 {{ planMeta.storage }}</div>
         </a-form-item>
         <div class="grid2">
@@ -298,7 +316,7 @@ onBeforeUnmount(() => { if (simTimer) clearInterval(simTimer); });
     </a-modal>
 
     <!-- 详情抽屉 -->
-    <a-drawer v-model:open="detail" :title="detail ? detail.name + ' · 租户详情' : ''" :width="560" placement="right" @close="detail = null">
+    <a-drawer v-model:open="detailOpen" :title="detail ? detail.name + ' · 租户详情' : ''" :width="560" placement="right" @close="detail = null">
       <template v-if="detail">
         <div class="d-section-title">基本信息</div>
         <a-descriptions :column="2" bordered size="small">

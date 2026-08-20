@@ -28,6 +28,7 @@ import { useTicketLiveNotify } from './composables/useTicketLiveNotify';
 import { formatTicketRecordWho, MOCK_FIRST_LINE_AGENTS } from './utils/ticketRecordWho';
 import { mergeDraftIntoLatestHandling } from './utils/ticketOverview';
 import { TICKETS } from '@/mock/tickets';
+import { pullbackOnCsEvent, headerActionsByRole, type TicketStatus } from './types/ticket';
 import { buildChildTicketPrefill, buildReopenTicketPrefill } from './composables/childTicketPrefill';
 import {
   buildEscalatePrefill, buildEscalateVerdict, buildEscalatedTicket, escalateTargetLabel,
@@ -37,6 +38,7 @@ import { resolveSupersededBy, type TicketRelation } from './composables/ticketRe
 import type { CreateTicketPrefill, Ticket } from './types/ticket';
 import type { ProcessFormDraft, InsightAction, InsightModalKey } from './types/operation';
 import type { ProcessTabKey } from './types/operation';
+import { COMPLAINT_SUPPLEMENT_TYPE } from './types/operationTabs';
 import type { OperationTabData } from './types/operationTabs';
 import type { TicketLiveEventType, TicketLiveToast } from './types/ticketLiveNotify';
 
@@ -50,7 +52,7 @@ const {
   form, activeChip, expandedSections, filledSupplementCount,
   toggleSection, selectChip,
 } = useProcessForm(() => d.value.type);
-const { tabData } = useOperationTabs(() => d.value.type);
+const { tabData } = useOperationTabs(() => d.value.type, () => d.value.no);
 const {
   toasts: liveToasts,
   push: pushLiveToast,
@@ -144,6 +146,7 @@ function onSmsSubmit(payload: { phone: string; templateName: string; content: st
     summary: `接收号码: ${payload.phone} | 状态: 发送成功 | 模板: ${payload.templateName}`,
     smsContent: payload.content,
   });
+  syncContactedAfterOutreach();
   processTabsRef.value?.switchTab('contact');
   message.success(`短信已发送至 ${payload.phone}`);
 }
@@ -159,6 +162,7 @@ function onEmailSubmit(payload: { to: string; subject: string }) {
     metaPrefix: '发送人',
     summary: `收件邮箱: ${payload.to} | 状态: 发送成功 | 主题: ${payload.subject}`,
   });
+  syncContactedAfterOutreach();
   processTabsRef.value?.switchTab('contact');
   message.success(`邮件「${payload.subject}」已发送至 ${payload.to}`);
 }
@@ -218,15 +222,71 @@ const supersededBy = computed(() => resolveSupersededBy(d.value));
  * 注意"正常关闭"不在此列——已关闭单仍保留头部动作（升级投诉 / 关联售后 / 新建补充 / 催单），
  * 补充/催单走 §5.2「建新单承接」。
  */
+/**
+ * **整页锁死**：已转单（业务已转到新单）/ 只读角色（运营监控岗）。
+ *
+ * ⚠️ **一线视角不在此列**（2026-08-18 修正）——它锁的是**底栏的二线流转动作**
+ * （下送/升级/调剂/委派/挂起/关闭/强结），由 hideActionBar 单独管。
+ * 头部那一排一线本来就有权限：**升级投诉**一线可升非投诉单、**取消工单**是一线专属、
+ * **新建补充 / 催单**是一线主动作。之前把一线视角接进来，导致整排按钮
+ * 在一线视角下全被置灰、提示还错成"本单已被新单接管"。
+ */
 const pageReadonly = computed(
-  () => !!d.value.frontlineDemo || !!supersededBy.value || !!user.role.readonlyTickets,
+  () => !!supersededBy.value || !!user.role.readonlyTickets,
 );
+
+/**
+ * 一线视角：底栏不出、Tab 只读，但**头部的客户侧两枚照常可用** ——
+ * 「新建补充」「催单」正是一线的主动作，跟着 pageReadonly 一起置灰是错的。
+ *
+ * 判据是**当前角色**，不是当前工单。此前读工单上的 `frontlineDemo` 字段，
+ * 而 12 张 mock 单里 11 张带着它 —— 于是任何角色打开这些单都被当成一线，
+ * 底栏整条不出、Tab 全只读，头部六枚也因走一线分支而四角色完全相同。
+ */
+const isFrontlineView = computed(() => !!user.role.frontline);
+
+/**
+ * 客户侧录入（新建补充 / 催单）什么时候被锁：
+ * 只有**已转单**（本单已作废、业务在新单上）与**只读角色**（运营监控岗）会锁。
+ * 一线视角**不锁** —— 它锁的是流转，不是客户诉求录入。
+ */
+const customerEntryLocked = computed(
+  () => !!supersededBy.value || !!user.role.readonlyTickets,
+);
+
+/**
+ * 客户侧两枚的角色可见性（PRD-830 §4.1，基线 §4 ※21a）：
+ * - 新建补充：**一线 + 二线**（二线自己也联系客户，客户在电话里补的东西他就地录入）
+ * - 催单：**一线唯一**（登记的是"客户来催"这个进线事件；二线是处理人，不必自己给自己记）
+ * - 三线 / 班组长 / 投诉处理角色 / 监控岗 / 管理员：两枚都不展示
+ */
+const headerRoleGate = computed(() => headerActionsByRole(user.roleKey));
+const canSupplement = computed(() => headerRoleGate.value.supplement);
+const canDunning = computed(() => headerRoleGate.value.dunning);
+const canEscalateComplaint = computed(() => headerRoleGate.value.escalateComplaint);
+const canLinkAftersale = computed(() => headerRoleGate.value.linkAftersale);
+const canCancelTicket = computed(() => headerRoleGate.value.cancelTicket);
 
 /**
  * 底部流转操作栏隐藏：只读态，**或原单已是终态**——
  * 已关闭/已取消/已归档/已转单的单不该再出现 下送/升级/调剂/委派/挂起/关闭/强结。
  */
-const hideActionBar = computed(() => pageReadonly.value || isTicketTerminated(d.value.status));
+/**
+ * 底栏（二线流转动作条）什么时候整条不出：
+ * ① **一线视角** —— 下送/升级/调剂/委派/挂起/关闭/强结属二线权限，一线不该看到；
+ * ② 整页锁死（已转单 / 只读角色）；
+ * ③ 原单已是终态 —— 已解决/已强结/已转单等不该再出现流转动作。
+ * ⚠️ 一线视角在这里显式列出，**不要**再合回 pageReadonly —— 头部那排按钮一线有权限。
+ */
+/**
+ * Tab 区（处理表单）只读：**一线视角**（F17：一线只看不填）+ 整页锁死。
+ * 与头部按钮分开 —— 头部那排一线有权限、Tab 区里的写操作没有。
+ */
+const tabsReadonly = computed(() => isFrontlineView.value || pageReadonly.value);
+
+const hideActionBar = computed(
+  () => isFrontlineView.value || pageReadonly.value || isTicketTerminated(d.value.status),
+);
 
 /** 关系跳转：售后单是外部系统走深链，客服单站内打开 */
 function openRelation(rel: TicketRelation) {
@@ -244,7 +304,7 @@ const escalateInput = ref<EscalateInput | null>(null);
  * - 原单已是投诉：不跨类型 → **小弹窗**补录，落法由【工单来源】决定。
  */
 function openEscalate() {
-  if (buildEscalateVerdict(d.value).kind === 'toComplaint') {
+  if (buildEscalateVerdict(d.value, user.roleKey).kind === 'toComplaint') {
     createPrefill.value = buildEscalatePrefill(d.value);
     createOpen.value = true;
     return;
@@ -268,11 +328,17 @@ function onEscalateSubmit(payload: EscalateInput) {
   finishEscalate(ticket, escalateTargetLabel(payload));
 }
 
-/** 落补充：原单加一条补充记录 + 写履历，**不建新单、不关单** */
+/**
+ * 落补充：原单加一条补充记录 + 写履历，**不建新单、不关单**。
+ *
+ * ⚠️ 2026-08-17 起「升级投诉」**不再兼做补充**——投诉信息补录统一走
+ * 「新建补充 → 补充投诉信息」（PRD-830 §5.2），分类名「投诉补充」已作废。
+ * 本函数仅为兼容尚未清理的旧调用保留；新链路不应再走到这里。
+ */
 function finishEscalateAsSupplement(payload: EscalateInput) {
   const content = summarizeEscalateInput(payload).join('\n');
   onIncomingTicketEvent('supplement', content, formatTicketRecordWho(user.name, user.roleKey), {
-    supplementType: '投诉补充',
+    supplementType: COMPLAINT_SUPPLEMENT_TYPE,
     notify: false,
   });
   escalateInput.value = null;
@@ -305,8 +371,8 @@ function syncEscalatedRelatedCard(ticket: Ticket, target: string) {
   cards.unshift({
     no: ticket.no,
     title: ticket.title,
-    status: '待受理',
-    statusColor: '#F59E0B',
+    status: '未认领',
+    statusColor: '#1A6FFF',
     type: target,
     typeColor: '#EF4444',
     createdAt: nowFullText(),
@@ -526,6 +592,7 @@ function onIncomingTicketEvent(
       when,
       content,
       read: false,
+      contacted: false,
     });
     d.value.insight.dunningCount += 1;
   } else {
@@ -536,6 +603,7 @@ function onIncomingTicketEvent(
       supplementType: options?.supplementType ?? '问题描述补充',
       content,
       read: false,
+      contacted: false,
     });
     d.value.insight.supplementCount += 1;
   }
@@ -545,15 +613,55 @@ function onIncomingTicketEvent(
   }
 }
 
-/** 标记催单/补充记录为已读，并同步统计宫格的「已读」计数 */
+/** 标记催单/补充为已知晓，并同步统计宫格计数 */
+function markRecordAcknowledged(rec: { read?: boolean }, isDunning: boolean) {
+  if (rec.read) return;
+  rec.read = true;
+  const ins = d.value.insight;
+  if (isDunning) ins.dunningReadCount = (ins.dunningReadCount ?? 0) + 1;
+  else ins.supplementReadCount = (ins.supplementReadCount ?? 0) + 1;
+}
+
+/**
+ * ※24 关闭 / 强结拦截（PRD-830 §10.2）：
+ * 工单发生过**客户侧催单 / 新建补充**后，须存在**该次催补之后的联系记录**才允许关闭或强结。
+ *
+ * 判据就是每条催补记录上的 `contacted` —— 它由 syncContactedAfterOutreach() 在坐席
+ * 对客联系（电话 / 短信 / 邮件）时自动置上，**没有手动入口**：手动等于把拦截条件
+ * 交给被拦的人自己解除，约束就不存在了。
+ *
+ * ⚠️ 只看客户侧两类记录。我方「补录处理记录」不进 supplementRecords，
+ * 因此不会置上这个拦截、也不会解除它。
+ * ⚠️ 「已知晓」（read）**不参与判断** —— 点开看过不算处理完。
+ */
+const pendingCsRecords = computed(() => [
+  ...tabData.value.dunningRecords.filter((r) => !r.contacted),
+  ...tabData.value.supplementRecords.filter((r) => !r.contacted),
+]);
+const closeBlockedByOutreach = computed(() => pendingCsRecords.value.length > 0);
+const CLOSE_BLOCK_TIP = '客户催单/补充后尚未联系客户，请先联系再关闭';
+
+/** 对客联系后自动置已联系，并连带已知晓（PRD §10.1） */
+function syncContactedAfterOutreach() {
+  for (const rec of tabData.value.dunningRecords) {
+    if (!rec.contacted) {
+      rec.contacted = true;
+      markRecordAcknowledged(rec, true);
+    }
+  }
+  for (const rec of tabData.value.supplementRecords) {
+    if (!rec.contacted) {
+      rec.contacted = true;
+      markRecordAcknowledged(rec, false);
+    }
+  }
+}
+
 function onMarkRecordRead(id: string) {
   const dRec = tabData.value.dunningRecords.find((r) => r.id === id);
   const rec = dRec ?? tabData.value.supplementRecords.find((r) => r.id === id);
   if (!rec || rec.read) return;
-  rec.read = true;
-  const ins = d.value.insight;
-  if (dRec) ins.dunningReadCount = (ins.dunningReadCount ?? 0) + 1;
-  else ins.supplementReadCount = (ins.supplementReadCount ?? 0) + 1;
+  markRecordAcknowledged(rec, !!dRec);
 }
 
 function onToastMarkRead(item: TicketLiveToast) {
@@ -650,7 +758,49 @@ onBeforeUnmount(() => {
   pauseLiveNotify();
 });
 
-function onSupplementSubmit(payload: { supplementType: string; content: string; attachments: string[] }) {
+/**
+ * 客户侧催补落单后的**共同副作用**（PRD-830 §7.2 拉回 + §9 计数标识）。
+ * 新建补充与催单都走这里 —— 两者副作用一致，差别只在记录去向与文案。
+ *
+ * 做三件事：
+ * 1. **拉回处理节点**：调研中→撤回本次下送 / 审核中4态→撤回本次申请 / 已挂起→解除挂起，
+ *    都回「处理中」，并写一条履历说明原因（不写的话坐席看不出状态为什么自己变了）。
+ *    已升级 / 已委派 / 已转出**不拉回**。
+ * 2. **置行内 Tag 与催补待回标记**：hasDunning / hasSupplement 供列表行标识；
+ *    contactedAfterUrge 复位为 false —— 新的一次催补必须重新联系一次才算回应。
+ * 3. **SLA 不动**：解决钟接着跑、不重置不回拨（反复催单不能刷新时效），故此处不碰 SLA。
+ */
+function applyCsEventSideEffects(kind: 'supplement' | 'urge') {
+  // ① 拉回
+  const pull = pullbackOnCsEvent(d.value.status as TicketStatus);
+  if (pull) {
+    const from = d.value.status;
+    d.value.status = pull.to;
+    timeline.value.unshift({
+      id: `tl-cs-${Date.now()}`,
+      kind: 'node',
+      title: pull.why,
+      who: '系统',
+      when: formatNow(),
+      what: `${pull.why}：${from} → ${pull.to}。SLA 解决钟接着跑，不重置。`,
+    } as never);
+  }
+  // ② 行内 Tag + 催补待回：新的一次催补 → 复位为「未联系」
+  const row = TICKETS.find((t) => t.no === d.value.no);
+  if (row) {
+    if (kind === 'urge') row.hasDunning = true;
+    else row.hasSupplement = true;
+    row.contactedAfterUrge = false;
+  }
+}
+
+function onSupplementSubmit(payload: {
+  supplementType: string;
+  content: string;
+  attachments: string[];
+  complaintCategories?: { cat1: string; cat2: string }[];
+  complaintChannels?: { platform: string; complaintNo: string; complaintContent: string }[];
+}) {
   onIncomingTicketEvent('supplement', payload.content, formatTicketRecordWho(user.name, user.roleKey), {
     supplementType: payload.supplementType,
     notify: false,
@@ -659,8 +809,34 @@ function onSupplementSubmit(payload: { supplementType: string; content: string; 
   if (record && payload.attachments.length) {
     record.attachments = payload.attachments;
   }
+
+  // 「补充投诉信息」的两项补录：投诉分类只追加一组，投诉渠道记录逐条追加。
+  // 都是**只追加、不覆盖**——原有记录一条不动（PRD-830 §5.3）。
+  if (payload.complaintCategories?.length) {
+    d.value.complaint.categories = [
+      ...d.value.complaint.categories,
+      ...payload.complaintCategories,
+    ];
+  }
+  if (payload.complaintChannels?.length) {
+    d.value.complaint.platforms = [
+      ...d.value.complaint.platforms,
+      ...payload.complaintChannels.map((c) => ({
+        platform: c.platform,
+        complaintNo: c.complaintNo,
+        complaintContent: c.complaintContent,
+        fromSupplement: true,
+      })),
+    ];
+  }
+
+  applyCsEventSideEffects('supplement');
   processTabsRef.value?.switchTab('related');
-  message.success('补充信息已提交');
+  message.success(
+    payload.complaintChannels?.length
+      ? `补充信息已提交，已追加 ${payload.complaintChannels.length} 条投诉渠道记录`
+      : '补充信息已提交',
+  );
 }
 
 function onDunningSubmit(payload: { content: string; attachments: string[] }) {
@@ -689,6 +865,7 @@ function onDunningSubmit(payload: { content: string; attachments: string[] }) {
     ];
   }
   processTabsRef.value?.switchTab('related');
+  applyCsEventSideEffects('urge');
   message.success('催单信息已提交');
 }
 
@@ -798,6 +975,12 @@ watch(
       :detail="d"
       :ticket-no="ticketNo"
       :readonly="pageReadonly"
+      :can-supplement="canSupplement"
+      :can-dunning="canDunning"
+      :can-escalate-complaint="canEscalateComplaint"
+      :can-link-aftersale="canLinkAftersale"
+      :can-cancel-ticket="canCancelTicket"
+      :customer-entry-locked="customerEntryLocked"
       :superseded-by="supersededBy"
       @copy-no="copyNo"
       @action="onHeaderAction"
@@ -832,7 +1015,7 @@ watch(
           :expanded-sections="expandedSections"
           :active-chip="activeChip"
           :filled-supplement-count="filledSupplementCount"
-          :readonly="pageReadonly"
+          :readonly="tabsReadonly"
           @toggle-section="toggleSection"
           @select-chip="selectChip"
           @update:form="updateForm"
@@ -877,7 +1060,9 @@ watch(
       :problem-cause="form.problemCause"
       :process-result="form.processResult"
       :delegate-targets="d.delegateInfo?.targets"
-      :at-tech-support="d.status.includes('已升级·二线')"
+      :at-tech-support="d.status.includes('已升级·三线技术支持')"
+      :close-blocked="closeBlockedByOutreach"
+      :close-blocked-tip="CLOSE_BLOCK_TIP"
       @action="onAction"
       @cancel="cancelModalOpen = true"
       @withdraw="confirmWithdraw"
@@ -902,6 +1087,12 @@ watch(
 
     <OpSupplementModal
       v-model:open="supplementModalOpen"
+      :ticket-type="d.type"
+      :complaint-type="d.complaint.complaintType"
+      :ticket-source="d.source"
+      :existing-platforms="d.complaint.platforms"
+      :existing-categories="d.complaint.categories"
+      :is-external-appeal="d.isExternalAppeal"
       @submit="onSupplementSubmit"
     />
 

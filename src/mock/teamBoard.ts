@@ -1213,7 +1213,9 @@ export function getTeamBoardSnapshot(teamId: string): TeamBoardSnapshot {
         patchMetric(BOARD_METRICS[4], { value: '93.2%', sub: '昨日 74 单 · 69 单已联络', delta: '+0.8%', deltaTone: 'good' }),
         patchMetric(BOARD_METRICS[5], { value: '2.0%', sub: '首响超 2 / 98 · 平均超 0.6h', delta: '-0.2%', deltaTone: 'good' }),
         patchMetric(BOARD_METRICS[6], { value: '3.1%', sub: '解决超 3 / 98 · 平均超 1.6h', delta: '-0.2%', deltaTone: 'good' }),
-        patchMetric(BOARD_METRICS[7], { value: '4.7', sub: '不满意 2.1% · 参评率 71%', delta: '+0.1', deltaTone: 'good' }),
+        // 「服务不满意」是**单量**不是 5 分制均分 —— 原先写 '4.7' 是被 2026-08-05 换掉的
+        // 旧满意度均分套在新标签下，切到本组就会显示「服务不满意 4.7」。
+        patchMetric(BOARD_METRICS[7], { value: '2', sub: '服务分 1–3 分 · 占今日已评 2.1%', delta: '-1', deltaTone: 'good' }),
       ],
       todos: [
         { key: 'assign', label: '待指派', count: unassigned, unit: '单', tone: 'danger' },
@@ -1262,7 +1264,8 @@ export function getTeamBoardSnapshot(teamId: string): TeamBoardSnapshot {
         patchMetric(BOARD_METRICS[4], { value: '88.1%', sub: '昨日 42 单 · 37 单已联络', delta: '+1.5%', deltaTone: 'good' }),
         patchMetric(BOARD_METRICS[5], { value: '1.6%', sub: '首响超 1 / 64 · 平均超 0.5h', delta: '0', deltaTone: 'neutral' }),
         patchMetric(BOARD_METRICS[6], { value: '3.1%', sub: '解决超 2 / 64 · 平均超 3.1h', delta: '+0.3%', deltaTone: 'bad' }),
-        patchMetric(BOARD_METRICS[7], { value: '4.5', sub: '不满意 2.8% · 参评率 68%', delta: '-0.1' }),
+        // 同上：单量，不是 5 分制均分。
+        patchMetric(BOARD_METRICS[7], { value: '2', sub: '服务分 1–3 分 · 占今日已评 2.8%', delta: '0', deltaTone: 'neutral' }),
       ],
       todos: [
         { key: 'assign', label: '待指派', count: unassigned, unit: '单', tone: 'danger' },

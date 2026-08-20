@@ -109,6 +109,7 @@ export const ADMIN_GROUPS: AdminNavGroup[] = [
       { key: 'channels', label: '渠道管理', prd: 'PRD-53', v1Ref: 'A/A8-tenant-admin.html#channels' },
       { key: 'customers', label: '客户管理', prd: 'PRD-87' },
       { key: 'products', label: '产品管理', prd: 'PRD-85' },
+      { key: 'product-rd-mapping', label: '产研产品关联', prd: 'PRD-86' },
       { key: 'problem-tags', label: '问题分类', prd: 'PRD-85' },
       // 815：原「消息通知」一级分组下只剩通知规则一页，独占分组不划算，并入业务管理
       { key: 'notify-rules', label: '通知管理', prd: 'PRD-815' },

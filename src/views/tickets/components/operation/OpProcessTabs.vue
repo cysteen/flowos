@@ -17,6 +17,7 @@ import { useUserStore } from '@/stores/user';
 import {
   isRegulatorComplaintPlatform,
   visibleProcessTabs,
+  deriveAppointmentNeeded,
   type ProcessTabKey,
 } from '@/views/tickets/types/operation';
 import type { ProcessFormDraft, SectionKey } from '@/views/tickets/types/operation';
@@ -35,7 +36,7 @@ const props = defineProps<{
   timeline: TimelineEntry[];
   /**
    * 只读（一线视角）：Tab 区不提供任何操作项——表单/下拉/上传全部禁用，
-   * 记录上的动作按钮（标记已读、标记已沟通、新增/删除预约、催单、二次激活、重新发起…）一律不出。
+   * 记录上的动作按钮（标记已读、标记已沟通、新增/取消预约、催单、二次激活、重新发起…）一律不出。
    * 查看/下载、Tab 切换、分组展开这类"读"的交互保留。
    */
   readonly?: boolean;
@@ -61,8 +62,10 @@ const feishuActive = computed(() => {
   const s = props.detail.feishuSync;
   return !!s && s !== 'none';
 });
+// 按工单类型 + 当前角色过滤：技术支持处理 / 风险监控 / 预约三个 Tab 有角色黑名单，
+// 判据表在 visibleProcessTabs 内（取自权限矩阵 #41–51 取值为「无」的 6 格）
 const visibleTabs = computed(() =>
-  visibleProcessTabs(props.detail.type, { feishuActive: feishuActive.value }),
+  visibleProcessTabs(props.detail.type, user.roleKey, { feishuActive: feishuActive.value }),
 );
 
 /**
@@ -165,7 +168,7 @@ defineExpose({ switchTab });
         v-else-if="activeTab === 'appointment'"
         :records="form.appointmentRecords"
         :default-booker="user.name || '当前坐席'"
-        @update:records="emit('update:form', { ...form, appointmentRecords: $event, appointmentNeeded: $event.length > 0 })"
+        @update:records="emit('update:form', { ...form, appointmentRecords: $event, appointmentNeeded: deriveAppointmentNeeded($event) })"
       />
 
       <OpRelatedTab
@@ -231,14 +234,16 @@ defineExpose({ switchTab });
 }
 
 /*
-  只读态（一线视角）：收掉 Tab 内的「写」按钮——标记已读 / 标记已沟通 / 新增·删除预约 /
+  只读态（一线视角）：收掉 Tab 内的「写」按钮——标记已读 / 标记已沟通 / 新增·取消预约 /
   附件添加·移除·上传 / 产研反馈的重新发起·催单·二次激活。
   「读」的交互（查看、下载、播放录音、跳转单号、筛选 chip、查看流程图、展开分组）保留。
   antd 表单控件由 a-config-provider component-disabled 统一禁用，不在此列。
 */
 .tab-content.is-readonly :deep(.record-read-btn),
 .tab-content.is-readonly :deep(.record-done-btn),
-.tab-content.is-readonly :deep(.remove-btn),
+.tab-content.is-readonly :deep(.record-save-btn),
+.tab-content.is-readonly :deep(.record-discard-btn),
+.tab-content.is-readonly :deep(.record-cancel-btn),
 .tab-content.is-readonly :deep(.add-btn),
 .tab-content.is-readonly :deep(.attach-trigger),
 .tab-content.is-readonly :deep(.attach-remove),

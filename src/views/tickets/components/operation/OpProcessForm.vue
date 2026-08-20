@@ -18,7 +18,10 @@ import {
   SERVICE_TYPE_OPTIONS,
   SERVICE_TYPE_TO_METHODS,
   LEAD_STAGE_OPTIONS,
+  deriveAppointmentNeeded,
+  isAppointmentFilled,
 } from '@/views/tickets/types/operation';
+import { COMPLAINT_L3_MAP } from '@/views/tickets/types/createTicket';
 
 const props = defineProps<{
   form: ProcessFormDraft;
@@ -56,6 +59,15 @@ const showComplaintChannel = computed(() => {
 
 function patch(part: Partial<ProcessFormDraft>) {
   emit('update:form', { ...props.form, ...part });
+}
+
+/**
+ * 商机解决结论：a-select 的 update:value 按 antd 声明给出 SelectValue（含 LabeledValue / 数组），
+ * 但该 select 的 options 固定为 LEAD_STAGE_OPTIONS（单选、未开 labelInValue），
+ * 取值只可能是 leadStage 的字面量之一，故收窄。
+ */
+function onLeadStageChange(v: unknown) {
+  patch({ leadStage: v as ProcessFormDraft['leadStage'] });
 }
 
 function onConclusionChange(v: string) {
@@ -119,10 +131,17 @@ const effectiveChip = computed<SupplementChip>(() =>
     : supplementChips.value[0].key,
 );
 
+function complaintCategoryFilled(f: ProcessFormDraft): boolean {
+  if (!f.complaintCat1 || !f.complaintCat2) return false;
+  const l3 = COMPLAINT_L3_MAP[f.complaintCat2] ?? [];
+  if (l3.length && !f.complaintCat3) return false;
+  return true;
+}
+
 function isChipFilled(key: SupplementChip): boolean {
   const f = props.form;
   switch (key) {
-    case 'complaint': return !!(f.complaintMark && f.complaintCat1 && f.complaintNote.trim());
+    case 'complaint': return !!(f.complaintMark && complaintCategoryFilled(f) && f.complaintNote.trim());
     case 'external': {
       const rows = f.platformFollowups;
       const plats = (props.complaintPlatforms ?? []).filter((p) => p.platform);
@@ -135,7 +154,7 @@ function isChipFilled(key: SupplementChip): boolean {
       if (f.riskFlag === '疑似风险') return !!f.riskDescription.trim();
       return true;
     }
-    case 'appointment': return f.appointmentNeeded && f.appointmentRecords.some((r) => r.scheduledAt);
+    case 'appointment': return deriveAppointmentNeeded(f.appointmentRecords) && isAppointmentFilled(f.appointmentRecords);
     case 'quality': return f.qualityIsStandard || !!(f.qualityIssueCat1 && f.qualityIssueCat2);
     default: return false;
   }
@@ -287,7 +306,7 @@ function chipActiveClass(key: SupplementChip): string {
               :options="LEAD_STAGE_OPTIONS"
               placeholder="请选择"
               style="width: 100%"
-              @update:value="(v: ProcessFormDraft['leadStage']) => patch({ leadStage: v })"
+              @update:value="onLeadStageChange"
             />
           </div>
           <div class="field inline">

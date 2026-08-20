@@ -119,8 +119,8 @@ const roles: ListConfig = {
   ],
   rows: [
     { no: 'R001', name: '租户管理员', type: '内置', roleKey: 'tenant-admin', sort: 1, status: '启用', remark: '本租户最高权限', createdAt: '2026-05-01 00:00' },
-    { no: 'R002', name: '客服·二线坐席', type: '内置', roleKey: 'agent-cs', sort: 2, status: '启用', remark: '客服工单处理', createdAt: '2026-05-01 00:00' },
-    { no: 'R003', name: '售后·二线坐席', type: '内置', roleKey: 'agent-as', sort: 3, status: '启用', remark: '售后工单处理', createdAt: '2026-05-01 00:00' },
+    { no: 'R002', name: '客服·二线技术顾问', type: '内置', roleKey: 'agent-cs', sort: 2, status: '启用', remark: '客服工单处理', createdAt: '2026-05-01 00:00' },
+    { no: 'R003', name: '售后·二线技术顾问', type: '内置', roleKey: 'agent-as', sort: 3, status: '启用', remark: '售后工单处理', createdAt: '2026-05-01 00:00' },
     { no: 'R004', name: '客服班组长', type: '内置', roleKey: 'team-leader-cs', sort: 4, status: '启用', remark: '本组改派/审核', createdAt: '2026-05-01 00:00' },
     { no: 'R005', name: '售后班组长', type: '内置', roleKey: 'team-leader-as', sort: 5, status: '启用', remark: '本组改派/审核', createdAt: '2026-05-01 00:00' },
     { no: 'R006', name: '售后回访专员', type: '自定义', roleKey: 'aftersale-revisit', sort: 6, status: '启用', remark: '满意度回访', createdAt: '2026-05-26 10:30' },

@@ -69,8 +69,10 @@ export interface SimpleRecord {
   supplementType?: string;
   content: string;
   attachments?: string[];
-  /** 坐席是否已读（催单/补充明细） */
+  /** 坐席是否已知晓（催单/补充明细，原 read） */
   read?: boolean;
+  /** 该次催补之后是否已有对客联系（系统自动，无手动入口） */
+  contacted?: boolean;
 }
 
 /** 取消工单原因枚举 */
@@ -82,7 +84,7 @@ export const CANCEL_REASON_OPTIONS = [
   '其他',
 ] as const;
 
-/** 坐席新建补充时的分类枚举 */
+/** 坐席新建补充时的分类枚举（全类型工单通用） */
 export const SUPPLEMENT_TYPE_OPTIONS = [
   '修改信息',
   '补充信息',
@@ -90,7 +92,33 @@ export const SUPPLEMENT_TYPE_OPTIONS = [
   '其他',
 ] as const;
 
-export type SupplementType = (typeof SUPPLEMENT_TYPE_OPTIONS)[number];
+/**
+ * 「补充投诉信息」——830 新增的第 5 项分类，**仅投诉单出现**（基线 §4 ※22）。
+ * 它是投诉补录字段（投诉一类/二类、投诉平台+编号+内容）的**唯一触发开关**：
+ * 选中才展开，切走则收起并清空已填。
+ * 刻意单列在 SUPPLEMENT_TYPE_OPTIONS 之外——非投诉单直接取不到这一项。
+ */
+export const COMPLAINT_SUPPLEMENT_TYPE = '补充投诉信息' as const;
+
+/** 投诉单下拉顺序：补充投诉信息排在「其他」之前 */
+export const COMPLAINT_TICKET_SUPPLEMENT_OPTIONS = [
+  '修改信息',
+  '补充信息',
+  '取消服务',
+  COMPLAINT_SUPPLEMENT_TYPE,
+  '其他',
+] as const;
+
+/** 全部补充分类（含仅投诉单可选的那一项），用于记录展示与计数口径 */
+export const ALL_SUPPLEMENT_TYPES = [
+  '修改信息',
+  '补充信息',
+  '取消服务',
+  COMPLAINT_SUPPLEMENT_TYPE,
+  '其他',
+] as const;
+
+export type SupplementType = (typeof ALL_SUPPLEMENT_TYPES)[number];
 
 export interface ContactRecord {
   id: string;

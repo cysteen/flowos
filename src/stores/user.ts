@@ -147,7 +147,14 @@ export const useUserStore = defineStore('user', () => {
     return true;
   }
 
-  /** 路由守卫：当前角色是否可访问某菜单 */
+  /**
+   * 路由守卫：当前角色是否可访问某菜单。
+   *
+   * ⚠️ **没标 `meta.menu` 的路由一律放行**，这是 fail-open ——
+   * 登录页、404 这类公开页靠它才进得去，所以不能简单反转成 fail-closed。
+   * 代价是：**新增业务路由若忘了标 `meta.menu`，等于对全部角色开放**。
+   * 加业务页时必须一并标 menu；要真正收紧，得先给公开路由建白名单再把默认改成拒绝。
+   */
   function canAccess(menu?: string): boolean {
     if (!menu) return true;
     return visibleMenus.value.includes(menu);

@@ -14,7 +14,7 @@ export type TlAction =
   | 'dunning'
   | 'resolved'
   | 'praise';
-export type TlRole = '客户' | '一线坐席' | '二线坐席' | '班组长' | '系统';
+export type TlRole = '客户' | '一线坐席' | '二线技术顾问' | '班组长' | '系统';
 
 export interface AsrLine {
   speaker: '客户' | '坐席';
@@ -94,7 +94,7 @@ export const CATEGORY_META: Record<TlCategory, { color: string; bg: string; labe
 export const ROLE_BADGE: Record<TlRole, string> = {
   客户: '#6B7280',
   一线坐席: '#2563EB',
-  二线坐席: '#7C3AED',
+  二线技术顾问: '#7C3AED',
   班组长: '#0D9488',
   系统: '#9CA3AF',
 };

@@ -2,15 +2,10 @@
 /**
  * 全局搜索（顶栏）
  *
- * 解决的问题：工单列表与客户全景各有一个搜索框，坐席想查东西时得先决定"去哪个页面"。
- * 两个页面**用途不同不该合并**（一个按单、可批量操作；一个按人、只读分析），
- * 但**入口应当只有一个** —— 这里按输入内容自动分流：
- *   工单号  → 工单详情（LCMN-… / AS-… / 4 位以上数字）
- *   手机号  → 客户全景（11 位 1[3-9]xxxxxxxxx）
- *   设备 SN → 客户全景（SN-…）
- *   客户名  → 命中客户则去全景，多个则给候选
- *   其它词  → 工单列表并带上关键词筛选
+ * 查询中心（方案 A）：侧栏单一入口 + 页内「查工单 / 查客户」双视图。
+ * 顶栏搜索按输入内容自动分流并带上 tab / q / kw 参数。
  */
+import { queryCenterLocation } from '@/views/query/queryCenterRoute';
 import { computed, nextTick, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { SearchOutlined, RightOutlined } from '@ant-design/icons-vue';
@@ -62,7 +57,7 @@ const suggestion = computed<Suggestion | null>(() => {
         phone: res.candidates[0].phone,
       };
     }
-    return { target: 'list', title: `在工单列表中搜索「${q}」`, hint: '未在当前工单库中找到该单号' };
+    return { target: 'list', title: `在查询中心搜索「${q}」`, hint: '未在当前工单库中找到该单号' };
   }
 
   if (kind === 'phone' || kind === 'sn') {
@@ -79,7 +74,7 @@ const suggestion = computed<Suggestion | null>(() => {
     if (res.candidates.length > 1) {
       return { target: 'candidates', title: `匹配到 ${res.candidates.length} 位客户`, hint: '选择一位打开全景', candidates: res.candidates };
     }
-    return { target: 'list', title: `在工单列表中搜索「${q}」`, hint: '未匹配到客户档案' };
+    return { target: 'list', title: `在查询中心搜索「${q}」`, hint: '未匹配到客户档案' };
   }
 
   // 姓名 / 关键词：先看是不是客户名，不是就当关键词交给工单列表
@@ -96,10 +91,10 @@ const suggestion = computed<Suggestion | null>(() => {
   if (res.candidates.length > 1) {
     return { target: 'candidates', title: `匹配到 ${res.candidates.length} 位客户`, hint: '选择一位打开全景', candidates: res.candidates };
   }
-  return { target: 'list', title: `在工单列表中搜索「${q}」`, hint: '按关键词检索工单标题与内容' };
+  return { target: 'list', title: `在查询中心搜索「${q}」`, hint: '按关键词检索工单标题与内容' };
 });
 
-/** 监控岗菜单里没有工单列表，关键词检索对它无意义 */
+/** 无工单 Tab 权限时，关键词检索不可用 */
 const canOpenList = computed(() => user.canAccess('tickets'));
 
 function go(s: Suggestion | null = suggestion.value) {
@@ -107,19 +102,19 @@ function go(s: Suggestion | null = suggestion.value) {
   if (s.target === 'ticket' && s.ticketNo) {
     router.push(`/tickets/${s.ticketNo}`);
   } else if (s.target === 'customer' && s.phone) {
-    router.push({ path: '/customer-insight', query: { q: s.phone } });
+    router.push(queryCenterLocation('customer', { q: s.phone }));
   } else if (s.target === 'candidates') {
-    router.push({ path: '/customer-insight', query: { q: keyword.value.trim() } });
+    router.push(queryCenterLocation('customer', { q: keyword.value.trim() }));
   } else if (canOpenList.value) {
-    router.push({ path: '/tickets/list', query: { kw: keyword.value.trim() } });
+    router.push(queryCenterLocation('tickets', { kw: keyword.value.trim() }));
   } else {
-    router.push({ path: '/customer-insight', query: { q: keyword.value.trim() } });
+    router.push(queryCenterLocation('customer', { q: keyword.value.trim() }));
   }
   close();
 }
 
 function pick(c: CustomerCandidate) {
-  router.push({ path: '/customer-insight', query: { q: c.phone } });
+  router.push(queryCenterLocation('customer', { q: c.phone }));
   close();
 }
 

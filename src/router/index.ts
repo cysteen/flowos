@@ -3,8 +3,8 @@ import WorkspaceShell from '@/layouts/WorkspaceShell.vue';
 import AdminShell from '@/layouts/AdminShell.vue';
 import HomeOverviewView from '@/views/home/HomeOverviewView.vue';
 import TicketWorkbenchView from '@/views/tickets/TicketWorkbenchView.vue';
-import TicketListView from '@/views/tickets/TicketListView.vue';
 import TicketOperationView from '@/views/tickets/TicketOperationView.vue';
+import QueryCenterView from '@/views/query/QueryCenterView.vue';
 import AftersaleWorkbenchView from '@/views/aftersale/AftersaleWorkbenchView.vue';
 import TeamBoardView from '@/views/team-board/TeamBoardView.vue';
 import ApprovalWorkspaceView from '@/views/approval/ApprovalWorkspaceView.vue';
@@ -38,6 +38,7 @@ function adminViewFor(key: string) {
   if (key === 'teams') return () => import('@/views/admin/UserGroupView.vue');
   if (key === 'customers') return () => import('@/views/admin/CustomerManageView.vue');
   if (key === 'products') return () => import('@/views/admin/ProductManageView.vue');
+  if (key === 'product-rd-mapping') return () => import('@/views/admin/ProductRdMappingView.vue');
   if (key === 'problem-tags') return () => import('@/views/admin/ProblemTagManageView.vue');
   if (key === 'survey-config') return () => import('@/views/admin/SurveyConfigView.vue');
   if (key === 'survey-monitor') return () => import('@/views/admin/SurveyMonitorView.vue');
@@ -100,10 +101,17 @@ const routes: RouteRecordRaw[] = [
         meta: { menu: 'tickets', title: '工单工作台' },
       },
       {
+        path: 'query',
+        name: 'query-center',
+        component: QueryCenterView,
+        meta: { menu: 'query-center', title: '查询中心', breadcrumb: '查询中心' },
+      },
+      {
         path: 'tickets/list',
-        name: 'ticket-list',
-        component: TicketListView,
-        meta: { menu: 'tickets', title: '工单列表', breadcrumb: '工单列表' },
+        redirect: (to) => ({
+          path: '/query',
+          query: { tab: 'tickets', ...to.query },
+        }),
       },
       {
         path: 'tickets/:ticketNo',
@@ -113,9 +121,10 @@ const routes: RouteRecordRaw[] = [
       },
       {
         path: 'customer-insight',
-        name: 'customer-insight',
-        component: () => import('@/views/customer/CustomerInsightView.vue'),
-        meta: { menu: 'tickets', title: '客户查询', breadcrumb: '客户查询 · 客户全景' },
+        redirect: (to) => ({
+          path: '/query',
+          query: { tab: 'customer', ...to.query },
+        }),
       },
       {
         path: 'aftersale',

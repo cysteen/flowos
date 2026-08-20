@@ -23,6 +23,7 @@ import {
   chipsForTab,
   inDoneScope,
   inGroupPoolScope,
+  inPoolPendingScope,
   inMineTaskScope,
   isWorkbenchSearchTab,
   POOL_GROUPS,
@@ -87,6 +88,10 @@ export function useTicketWorkbench() {
     if (activeTab.value === 'pool') {
       return all.value.filter((t) => inGroupPoolScope(t, VISIBLE_POOL_GROUPS));
     }
+    // 催补待回：本组未结单中有客户侧催补且未联系的（PRD-830 §9.3）
+    if (activeTab.value === 'poolPending') {
+      return all.value.filter((t) => inPoolPendingScope(t, VISIBLE_POOL_GROUPS));
+    }
     return all.value.filter((t) => t.tab === activeTab.value);
   });
 
@@ -107,7 +112,7 @@ export function useTicketWorkbench() {
         if (!matchMineQuery(t, mineQuery.value)) return false;
       } else if (activeTab.value === 'done') {
         if (!matchMineQuery(t, doneQuery.value)) return false;
-      } else if (activeTab.value === 'pool') {
+      } else if (activeTab.value === 'pool' || activeTab.value === 'poolPending') {
         if (!matchMineQuery(t, poolQuery.value)) return false;
       }
       if (kw) {
@@ -144,9 +149,9 @@ export function useTicketWorkbench() {
   // 无分页：全量拉取一次性展示（快照计算，PRD §8.2②）；条件变化由响应式全量重算
   const paged = sorted;
 
-  // 各 Tab 计数
+  // 各 Tab 计数（顶栏徽章）
   const tabCounts = computed<Record<TabKey, number>>(() => {
-    const map: Record<TabKey, number> = { mine: 0, done: 0, pool: 0, cc: 0, review: 0 };
+    const map: Record<TabKey, number> = { mine: 0, done: 0, pool: 0, poolPending: 0, cc: 0, review: 0 };
     for (const t of all.value) {
       if (t.tab === 'mine') {
         if (inMineTaskScope(t, WORKBENCH_HANDLER)) map.mine++;
@@ -154,9 +159,10 @@ export function useTicketWorkbench() {
         if (inDoneScope(t, WORKBENCH_HANDLER)) map.done++;
       } else if (t.tab === 'pool') {
         if (inGroupPoolScope(t, VISIBLE_POOL_GROUPS)) map.pool++;
-      } else {
+      } else if (t.tab !== 'poolPending') {
         map[t.tab]++;
       }
+      if (inPoolPendingScope(t, VISIBLE_POOL_GROUPS)) map.poolPending++;
     }
     return map;
   });
@@ -172,7 +178,9 @@ export function useTicketWorkbench() {
   function matchActiveStructuredQuery(t: Ticket): boolean {
     if (activeTab.value === 'mine') return matchMineQuery(t, mineQuery.value);
     if (activeTab.value === 'done') return matchMineQuery(t, doneQuery.value);
-    if (activeTab.value === 'pool') return matchMineQuery(t, poolQuery.value);
+    if (activeTab.value === 'pool' || activeTab.value === 'poolPending') {
+      return matchMineQuery(t, poolQuery.value);
+    }
     return true;
   }
 
@@ -194,6 +202,22 @@ export function useTicketWorkbench() {
       }
     }
     return map;
+  });
+
+  /** 顶栏 Tab 徽章：当前 Tab 与「全部」chip 对齐（含结构化筛选后的可见量） */
+  const headerTabCounts = computed<Record<TabKey, number>>(() => {
+    const counts = { ...tabCounts.value };
+    const allChip = chipCounts.value.all;
+    if (activeTab.value === 'poolPending' && typeof allChip === 'number') {
+      counts.poolPending = allChip;
+    } else if (activeTab.value === 'mine' && typeof allChip === 'number') {
+      counts.mine = allChip;
+    } else if (activeTab.value === 'done' && typeof allChip === 'number') {
+      counts.done = allChip;
+    } else if (activeTab.value === 'review' && typeof allChip === 'number') {
+      counts.review = allChip;
+    }
+    return counts;
   });
 
   /** 草稿列表（新建工单弹窗仍可保存草稿；待审核 Tab 已不再展示草稿 chip） */
@@ -232,7 +256,7 @@ export function useTicketWorkbench() {
   const usesStructuredFilter = computed(() => isWorkbenchSearchTab(activeTab.value));
   const structuredQuery = computed(() => {
     if (activeTab.value === 'done') return doneQuery.value;
-    if (activeTab.value === 'pool') return poolQuery.value;
+    if (activeTab.value === 'pool' || activeTab.value === 'poolPending') return poolQuery.value;
     return mineQuery.value;
   });
 
@@ -281,7 +305,7 @@ export function useTicketWorkbench() {
   }
   function setStructuredQueryInternal(q: MineQueryFilter) {
     if (activeTab.value === 'done') doneQuery.value = q;
-    else if (activeTab.value === 'pool') poolQuery.value = q;
+    else if (activeTab.value === 'pool' || activeTab.value === 'poolPending') poolQuery.value = q;
     else mineQuery.value = q;
   }
   function setStructuredQuery(q: MineQueryFilter) {
@@ -370,7 +394,7 @@ export function useTicketWorkbench() {
   return {
     all, activeTab, activeChip, activeChips, poolGroups,
     searchText, mineQuery, doneQuery, poolQuery, structuredQuery, mineSortRule, selectedIds, aiBarVisible,
-    tabRows, filtered, sorted, paged, total, tabCounts, chipCounts, drafts,
+    tabRows, filtered, sorted, paged, total, tabCounts, headerTabCounts, chipCounts, drafts,
     selectedCount, allPageSelected, aiSuggestions, aiSummary, showAiBar,
     isDraftView, showAppointmentColumn, isMineTab, isDoneTab, isPoolTab, usesStructuredFilter,
     setTab, setChip, setMineQuery, setDoneQuery, setStructuredQuery, saveCurrentFilter, removeSavedFilterChip, applyMineQuery, applyStructuredQuery, setMineSortRule, setSearch, toggleSelect, toggleSelectAllOnPage, clearSelection,

@@ -764,7 +764,8 @@ const escMatrix: Record<string, Record<string, string>> = {
 
 // —— 执行日志 ——
 type LogStatIcon = 'timer' | 'event' | 'coverage';
-const logStatCards: { label: string; value: string; delta: string; deltaColor: string; accent: string; iconBg: string; icon: LogStatIcon }[] = [
+// tip 是三张卡的口径浮层文案，模板用 card.tip 取 —— 类型注解漏了它，补上（三张卡都有，故必填）
+const logStatCards: { label: string; value: string; delta: string; deltaColor: string; accent: string; iconBg: string; icon: LogStatIcon; tip: string }[] = [
   { label: '定时任务今日执行', value: '1,248', delta: '较昨日 +8.2%', deltaColor: '#10b981', accent: '#1a6fff', iconBg: '#eff6ff', icon: 'timer',
     tip: '当日 00:00 至此刻，所有定时规则按各自频率轮询执行的总轮次数（每条定时规则每触发一轮计 1）。环比 = (今日同时段 − 昨日同时段) / 昨日同时段。衡量定时规则的整体负载。' },
   { label: '事件规则今日命中', value: '4,320', delta: '较昨日 +5.1%', deltaColor: '#10b981', accent: '#0ea5e9', iconBg: '#f0f9ff', icon: 'event',
@@ -921,7 +922,7 @@ const timerLogCols = [
               :checked="(record as Rule).status === '启用'"
               checked-children="启用"
               un-checked-children="停用"
-              @change="(checked: boolean) => onListStatusChange(record as Rule, checked)"
+              @change="(checked) => onListStatusChange(record as Rule, !!checked)"
             />
             <div v-else-if="column.key === 'op'" class="row-ops">
               <a-button type="link" size="small" @click="openEdit(record as Rule)">编辑</a-button>
@@ -1041,7 +1042,7 @@ const timerLogCols = [
                       :checked="form.status === '启用'"
                       checked-children="启用"
                       un-checked-children="停用"
-                      @change="setRuleStatus"
+                      @change="(checked) => setRuleStatus(!!checked)"
                     />
                   </div>
                 </div>
@@ -1130,15 +1131,15 @@ const timerLogCols = [
                 </a-radio-group>
               </div>
               <div v-for="c in form.conditions.leaves" :key="c.id" :class="['logic-row', { 'logic-row--expr': isExprOp(c.op) }]">
-                <a-select v-if="!isExprOp(c.op)" v-model:value="c.field" class="cell-field" :options="FIELD_OPTS.map((o) => ({ value: o, label: o }))" @change="(v: string) => onCondFieldChange(c, v)" />
+                <a-select v-if="!isExprOp(c.op)" v-model:value="c.field" class="cell-field" :options="FIELD_OPTS.map((o) => ({ value: o, label: o }))" @change="(v) => onCondFieldChange(c, String(v))" />
                 <a-select v-model:value="c.op" class="cell-op" :options="opOptsFor(c.field)" @change="() => onCondOpChange(c)" />
                 <a-input v-if="isExprOp(c.op)" v-model:value="c.value" class="cell-expr" placeholder="布尔表达式，如 daysBetween(创建时间, now()) > 7（点左侧内置函数插入）" />
                 <span v-else-if="isNullOp(c.op)" class="cell-val cell-val--none">无需填值</span>
                 <span v-else-if="fieldType(c.field) === '时长'" class="cell-val cell-dur">
-                  <a-input-number :value="durNum(c.value)" :min="0" @change="(v: number) => (c.value = joinDur(v, durUnit(c.value)))" class="dur-num" />
-                  <a-select :value="durUnit(c.value)" :options="DUR_UNITS" @change="(u: string) => (c.value = joinDur(durNum(c.value), u))" class="dur-unit" />
+                  <a-input-number :value="durNum(c.value)" :min="0" @change="(v) => (c.value = joinDur(Number(v), durUnit(c.value)))" class="dur-num" />
+                  <a-select :value="durUnit(c.value)" :options="DUR_UNITS" @change="(u) => (c.value = joinDur(durNum(c.value), String(u ?? '')))" class="dur-unit" />
                 </span>
-                <a-select v-else-if="FIELD_ENUM_VALUES[c.field] && isMultiOp(c.op)" mode="multiple" :value="toArr(c.value)" @change="(v: string[]) => (c.value = v.join(','))" class="cell-val" :options="fieldEnumOpts(c.field)" placeholder="选择一个或多个值" />
+                <a-select v-else-if="FIELD_ENUM_VALUES[c.field] && isMultiOp(c.op)" mode="multiple" :value="toArr(c.value)" @change="(v) => (c.value = (v as string[]).join(','))" class="cell-val" :options="fieldEnumOpts(c.field)" placeholder="选择一个或多个值" />
                 <a-select v-else-if="FIELD_ENUM_VALUES[c.field]" v-model:value="c.value" class="cell-val" :options="fieldEnumOpts(c.field)" placeholder="选择值" />
                 <a-input v-else v-model:value="c.value" class="cell-val" placeholder="值" />
                 <button type="button" class="cell-del" aria-label="删除条件" @click="delRootLeaf(c.id)"><DeleteOutlined /></button>
@@ -1152,15 +1153,15 @@ const timerLogCols = [
                   <a-button type="link" size="small" danger class="sub-del" @click="delGroup(g.id)">删除组</a-button>
                 </div>
                 <div v-for="c in g.leaves" :key="c.id" class="logic-row">
-                  <a-select v-if="!isExprOp(c.op)" v-model:value="c.field" class="cell-field" :options="FIELD_OPTS.map((o) => ({ value: o, label: o }))" @change="(v: string) => onCondFieldChange(c, v)" />
+                  <a-select v-if="!isExprOp(c.op)" v-model:value="c.field" class="cell-field" :options="FIELD_OPTS.map((o) => ({ value: o, label: o }))" @change="(v) => onCondFieldChange(c, String(v))" />
                   <a-select v-model:value="c.op" class="cell-op" :options="opOptsFor(c.field)" @change="() => onCondOpChange(c)" />
                   <a-input v-if="isExprOp(c.op)" v-model:value="c.value" class="cell-expr" placeholder="布尔表达式，如 count(问题一类, 1) >= 10（点左侧内置函数插入）" />
                   <span v-else-if="isNullOp(c.op)" class="cell-val cell-val--none">无需填值</span>
                   <span v-else-if="fieldType(c.field) === '时长'" class="cell-val cell-dur">
-                    <a-input-number :value="durNum(c.value)" :min="0" @change="(v: number) => (c.value = joinDur(v, durUnit(c.value)))" class="dur-num" />
-                    <a-select :value="durUnit(c.value)" :options="DUR_UNITS" @change="(u: string) => (c.value = joinDur(durNum(c.value), u))" class="dur-unit" />
+                    <a-input-number :value="durNum(c.value)" :min="0" @change="(v) => (c.value = joinDur(Number(v), durUnit(c.value)))" class="dur-num" />
+                    <a-select :value="durUnit(c.value)" :options="DUR_UNITS" @change="(u) => (c.value = joinDur(durNum(c.value), String(u ?? '')))" class="dur-unit" />
                   </span>
-                  <a-select v-else-if="FIELD_ENUM_VALUES[c.field] && isMultiOp(c.op)" mode="multiple" :value="toArr(c.value)" @change="(v: string[]) => (c.value = v.join(','))" class="cell-val" :options="fieldEnumOpts(c.field)" placeholder="选择一个或多个值" />
+                  <a-select v-else-if="FIELD_ENUM_VALUES[c.field] && isMultiOp(c.op)" mode="multiple" :value="toArr(c.value)" @change="(v) => (c.value = (v as string[]).join(','))" class="cell-val" :options="fieldEnumOpts(c.field)" placeholder="选择一个或多个值" />
                   <a-select v-else-if="FIELD_ENUM_VALUES[c.field]" v-model:value="c.value" class="cell-val" :options="fieldEnumOpts(c.field)" placeholder="选择值" />
                   <a-input v-else v-model:value="c.value" class="cell-val" placeholder="值" />
                   <button type="button" class="cell-del" aria-label="删除条件" @click="delGroupLeaf(g, c.id)"><DeleteOutlined /></button>

@@ -16,8 +16,19 @@ export interface ComplaintInfo {
   categories: { cat1: string; cat2: string }[];
   /** 投诉类型：建单页独立可选字段（服务投诉/产品质量/物流问题/其他） */
   complaintType: string;
-  /** 投诉平台 + 投诉编号：**成对多组**——一个平台对应一个编号（与建单页同结构） */
-  platforms: { platform: string; customPlatform?: string; complaintNo: string }[];
+  /**
+   * 投诉渠道记录：**一平台一组三项**——平台 + 投诉编号 + 投诉内容（830 由两项扩为三项）。
+   * 建单时填，也可由「新建补充 · 补充投诉信息」追加（只追加、不覆盖）。
+   */
+  platforms: {
+    platform: string;
+    customPlatform?: string;
+    complaintNo: string;
+    /** 该平台上的投诉内容（830 新增） */
+    complaintContent?: string;
+    /** 由补充追加进来的标记：明细里可标「补充追加」，便于区分建单时填的 */
+    fromSupplement?: boolean;
+  }[];
   /** 投诉接收时间（非必填） */
   receivedAt: string;
   priorFeedback: string;
@@ -81,10 +92,31 @@ export interface AppointmentRecord {
   scheduledAt: string;
   /** 已完成（已与客户电话沟通） */
   done?: boolean;
+  /** 已取消（保留记录、不再计入待回访） */
+  cancelled?: boolean;
   /** 预约人（入口前移后，需记录发起预约的坐席/人员） */
   booker?: string;
   /** 预约需求（枚举：预约联系用户 / 联系后端确认） */
   demand?: string;
+  /** 草稿态：点「添加预约」后未点「保留」 */
+  draft?: boolean;
+}
+
+/** 已保留（正式落盘）且未取消的预约 */
+export function isCommittedAppointment(r: AppointmentRecord): boolean {
+  return !r.draft && !r.cancelled;
+}
+
+/** 是否存在有效预约（已保留且未全部取消） */
+export function deriveAppointmentNeeded(records: AppointmentRecord[]): boolean {
+  return records.some(isCommittedAppointment);
+}
+
+/** 预约 chip / Tab 是否已填齐（有效预约均含时间与需求） */
+export function isAppointmentFilled(records: AppointmentRecord[]): boolean {
+  return records.some(
+    (r) => isCommittedAppointment(r) && !!r.scheduledAt?.trim() && !!r.demand?.trim(),
+  );
 }
 
 /** 预约需求枚举 */
@@ -106,10 +138,12 @@ export interface ProcessFormDraft {
   serviceSolution: string;
   /** @deprecated 历史字段，新结论枚举不再使用 */
   concessionPlan: string;
-  /** 投诉一类 */
+  /** 投诉分类一 */
   complaintCat1: string;
-  /** 投诉二类（分类树只有两级） */
+  /** 投诉分类二 */
   complaintCat2: string;
+  /** 投诉分类三 */
+  complaintCat3: string;
   /** 投诉标记（有效/无效/未证实/暂缓；市场监管平台另含有责/无责等） */
   complaintMark: string;
   complaintNote: string;
@@ -181,10 +215,48 @@ const TAB_TYPE_RESTRICTION: Partial<Record<ProcessTabKey, string[]>> = {
   // 调研记录：四类型均保留（拍板 2026-06-20），不设类型限制
 };
 
-/** 按工单类型过滤可见处理 Tab（商机/建议精简，仅保留通用 Tab）。
- *  「产研反馈」Tab：关联中 / 关联失败 / 已回进展 / 已结案时出现。 */
-export function visibleProcessTabs(ticketType: string, opts?: { feishuActive?: boolean }) {
+/**
+ * Tab × 角色：取值为「无」的格子 —— 该角色**整个 Tab 不渲染**。
+ *
+ * 取自《用户角色与权限矩阵 · 运行工作区》#41–51 的九列取值，通篇只有 6 格是「无」：
+ * - **技术支持处理**：② ③ 二线技术顾问（不接手技术侧处理）、⑥ 投诉处理角色、⑦ 运营监控岗
+ * - **风险监控**：① 一线坐席（该 Tab 不在它的页面上）
+ * - **预约**：① 一线坐席、④ 三线技术支持（预约是对客动作，三线不接触客户；
+ *   读权亦不给 —— 本 Tab 对三线无业务意义，暂行「无」，待裁决）
+ *
+ * 其余格子是「只读」或「可用 / 条件可用」，**Tab 都可见** —— 本表只管"看不看得到"，
+ * "能不能改"另由 tabsReadonly 管。
+ *
+ * **产研反馈**（`feishu`）在矩阵协同信息区没有单独一行，矩阵在 #41 的门控说明里给了口径：
+ * 「取值随行 56『同步飞书』」。该行的「无」是 ① 一线、④ 三线、⑦ 运营监控岗、⑧ 质检/抄送，
+ * 故按此落 deny（⑧ 尚无 RoleKey，落不到代码里）。
+ */
+const TAB_ROLE_DENY: Partial<Record<ProcessTabKey, string[]>> = {
+  feishu: ['agent-l1', 'tech-support', 'ops-monitor'],
+  tech: ['agent-cs', 'agent-as', 'complaint-handler', 'ops-monitor'],
+  risk: ['agent-l1'],
+  appointment: ['agent-l1', 'tech-support'],
+};
+
+/**
+ * 按工单类型 **+ 当前角色**过滤可见处理 Tab（商机/建议精简，仅保留通用 Tab）。
+ * 「产研反馈」Tab：关联中 / 关联失败 / 已回进展 / 已结案时出现。
+ *
+ * `roleKey` 是**必需参数**，故意不做可选 —— 可选的话调用方忘了传就等于全 Tab 放行，
+ * 而这个函数此前正是全文不读角色，11 个 Tab 对所有角色一视同仁（2026-08-20 补角色维度）。
+ *
+ * 「产研反馈」是第 12 个 Tab，矩阵协同信息区只单列了 11 行，它的取值随「同步飞书」行 —— 见
+ * TAB_ROLE_DENY 上方说明。**角色黑名单先判、feishuActive 后判**：反过来写的话 feishu 会在
+ * 角色检查之前就 return，deny 永远命不中。
+ */
+export function visibleProcessTabs(
+  ticketType: string,
+  roleKey: string,
+  opts?: { feishuActive?: boolean },
+) {
   return PROCESS_TABS.filter((t) => {
+    const deny = TAB_ROLE_DENY[t.key];
+    if (deny && deny.includes(roleKey)) return false;
     if (t.key === 'feishu') return !!opts?.feishuActive;
     const allow = TAB_TYPE_RESTRICTION[t.key];
     return !allow || allow.includes(ticketType);

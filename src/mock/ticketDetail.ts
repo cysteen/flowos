@@ -129,8 +129,6 @@ export interface TicketDetailMeta {
   aiInsight: AiTicketInsight;
   /** 所属 BG（消费者BG 门控飞书项目集成通道） */
   productBg?: string;
-  /** 一线视角演示单：隐藏底部流转操作栏（下送/升级/调剂/委派/挂起/关闭/强结属二线权限） */
-  frontlineDemo?: boolean;
   /**
    * 本单正从属跟跑于哪张单（升级后原单不关、跟着新单跑的场景）。
    * 有值＝已在从属跟跑，**不可再发起升级投诉**（PRD §4.2.1 门禁②）。
@@ -245,7 +243,7 @@ export const TICKET_DETAIL: TicketDetailMeta = {
   ],
   builder: '李一线（一线坐席）',
   builderShort: '李一线',
-  source: '在线客服',
+  source: '外投渠道',
   createdAt: '今天 09:10',
   createdAtFull: '2026-05-01 16:40',
   businessType: '学习机',
@@ -256,7 +254,7 @@ export const TICKET_DETAIL: TicketDetailMeta = {
   demand:
     '使用无线音箱播放在线音乐时，频繁出现自动跳过当前歌曲的情况，重启后仍复现，影响正常使用，要求尽快解决。',
   attachments: ['故障录屏.mp4', '设置截图.png'],
-  isExternalAppeal: false,
+  isExternalAppeal: true,
   insight: {
     contactCount: 12,
     historyCount: 12,
@@ -315,7 +313,7 @@ export const TICKET_DETAIL: TicketDetailMeta = {
   },
   latestHandling: [
     {
-      who: '王坐席', role: '二线坐席', when: '今天 16:30',
+      who: '王坐席', role: '二线技术顾问', when: '今天 16:30',
       text: '远程升级固件至 v2.3.1 并复测 30 分钟，跳歌问题未再复现，已电话告知客户处理结果与后续观察建议。',
     },
     {
@@ -354,9 +352,8 @@ export const TICKET_DETAIL: TicketDetailMeta = {
   complaint: {
     categories: [
       { cat1: '产品质量投诉', cat2: '产品质量故障' },
-      { cat1: '服务质量投诉', cat2: '对人员服务态度不满' },
     ],
-    complaintType: '产品质量', // 独立字段；性质由 categories 各组二类分别推导
+    complaintType: '产品质量',
     platforms: [
       { platform: '市场监管12315平台', complaintNo: 'HM20260618001' },
       { platform: '黑猫消费者服务平台', complaintNo: '' },
@@ -454,7 +451,7 @@ export const TIMELINE: TimelineEntry[] = [
     what: '什么时候能解决？已经影响使用两天了，很着急。',
   },
   {
-    id: 'e6', category: 'comm', action: 'phone', who: '王坐席', role: '二线坐席',
+    id: 'e6', category: 'comm', action: 'phone', who: '王坐席', role: '二线技术顾问',
     how: '电话外呼', when: '今天 10:40', recording: '03:25',
     what: '致电客户确认故障细节，记录复现步骤，承诺 2 小时内反馈。',
     asr: [
@@ -463,7 +460,7 @@ export const TIMELINE: TimelineEntry[] = [
     ],
   },
   {
-    id: 'e7', category: 'comm', action: 'sms', who: '王坐席', role: '二线坐席',
+    id: 'e7', category: 'comm', action: 'sms', who: '王坐席', role: '二线技术顾问',
     how: '二线短信', when: '今天 10:45',
     what: '【讯飞客服】您反馈的音箱跳歌问题已由二线跟进，预计今日 18:00 前反馈结果。',
   },
@@ -473,7 +470,7 @@ export const TIMELINE: TimelineEntry[] = [
     what: '收到，我在家，方便时给我来电即可。',
   },
   {
-    id: 'e9', category: 'node', action: 'hold', who: '王坐席', role: '二线坐席',
+    id: 'e9', category: 'node', action: 'hold', who: '王坐席', role: '二线技术顾问',
     how: '挂起', when: '今天 11:05',
     what: '已升级技术支持排查，挂起工单等待技术结论后恢复处理。',
   },
@@ -483,7 +480,7 @@ export const TIMELINE: TimelineEntry[] = [
     what: '原处理人王二线今日休假，改派至李二线继续跟进。',
   },
   {
-    id: 'eh1', category: 'handle', action: 'handle', who: '王坐席', role: '二线坐席',
+    id: 'eh1', category: 'handle', action: 'handle', who: '王坐席', role: '二线技术顾问',
     how: '工单处理', when: '今天 15:10',
     what: '登记处理进展（补充 2 项）',
     attachment: '固件升级日志.txt',
@@ -493,7 +490,7 @@ export const TIMELINE: TimelineEntry[] = [
     ],
   },
   {
-    id: 'eh2', category: 'handle', action: 'handle', who: '李二线', role: '二线坐席',
+    id: 'eh2', category: 'handle', action: 'handle', who: '李二线', role: '二线技术顾问',
     how: '工单处理', when: '今天 15:48',
     what: '登记服务与结论（补充 2 项，修改 1 项）',
     changes: [
@@ -503,18 +500,18 @@ export const TIMELINE: TimelineEntry[] = [
     ],
   },
   {
-    id: 'er1', category: 'relate', action: 'relate', who: '王坐席', role: '二线坐席',
+    id: 'er1', category: 'relate', action: 'relate', who: '王坐席', role: '二线技术顾问',
     how: '升级投诉', when: '今天 16:02',
     what: '客户对处理结果不满、要求追责，升级为投诉，已生成新投诉单并双向关联。',
     relatedTicket: {
       no: 'LCMN-20260610-73090', title: '音箱跳歌问题处理不满·要求追责',
       type: '投诉', typeColor: '#EF4444',
-      status: '待受理', statusColor: '#F59E0B',
+      status: '未认领', statusColor: '#1A6FFF',
       builder: '王坐席', createdAt: '今天 16:02',
     },
   },
   {
-    id: 'er2', category: 'relate', action: 'relate', who: '王坐席', role: '二线坐席',
+    id: 'er2', category: 'relate', action: 'relate', who: '王坐席', role: '二线技术顾问',
     how: '升级售后', when: '今天 16:12',
     what: '需寄修硬件，升级售后，已生成关联售后单并双向关联，售后进度回流本单。',
     relatedTicket: {
@@ -525,7 +522,7 @@ export const TIMELINE: TimelineEntry[] = [
     },
   },
   {
-    id: 'e11', category: 'node', action: 'resolved', who: '王坐席', role: '二线坐席',
+    id: 'e11', category: 'node', action: 'resolved', who: '王坐席', role: '二线技术顾问',
     how: '标记已解决', when: '今天 16:30',
     what: '更换固件版本并远程验证，跳歌问题已解决（附解决方案）。',
   },
@@ -554,6 +551,7 @@ export const DEFAULT_PROCESS_DRAFT = {
   concessionPlan: '',
   complaintCat1: '产品质量投诉',
   complaintCat2: '产品质量故障',
+  complaintCat3: '',
   complaintMark: '有效投诉',
   complaintNote: '客户要求 48h 内书面回复，此处修正分类与备注',
   complaintNoteAttachments: [] as string[],

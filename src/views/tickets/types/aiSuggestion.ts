@@ -40,8 +40,10 @@ export const AI_FILTER_CHIPS: { key: AiSuggestionFilter; label: string }[] = [
 export function isAiSuggestionScope(t: Ticket): boolean {
   if (t.tab !== 'mine' || t.archived) return false;
   return (
-    t.nodeStatus === '处理中·一线'
-    || t.nodeStatus === '已升级·二线'
-    || t.nodeStatus === '待受理'
+    t.nodeStatus === '处理中'
+    || t.nodeStatus === '已升级·三线技术支持'
+    || t.nodeStatus === '已升级·产研'
+    || t.nodeStatus === '未认领'
+    || t.nodeStatus === '待响应'
   );
 }

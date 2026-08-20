@@ -18,7 +18,7 @@ import { useUserStore } from '@/stores/user';
 import { useTenantStore } from '@/stores/tenant';
 import { useAdminTabsStore } from '@/stores/adminTabs';
 import { useWorkspaceTabsStore } from '@/stores/workspaceTabs';
-import { ROLE_OPTION_GROUPS, isRoleKey, ROLES } from '@/config/roles';
+import { ROLE_OPTION_GROUPS, isRoleKey, ROLES, CTI_BAR_ROLES } from '@/config/roles';
 import { firstMenuPath } from '@/config/navigation';
 import { DEFAULT_BRAND_LOGO_URL } from '@/constants/brand';
 
@@ -34,6 +34,12 @@ const logoUrl = DEFAULT_BRAND_LOGO_URL;
 
 // 头部只显示角色名；租户信息在下拉的「切换租户」里体现，避免重复
 const userSubtitle = computed(() => user.role.name);
+
+/**
+ * 话务条是否显示 —— 签入与外呼是联系客户类动作，收口给二线技术顾问一侧。
+ * 一线在系统外用呼叫中心自己的话务条；三线不接触客户；监控岗不办单。
+ */
+const showCtiBar = computed(() => CTI_BAR_ROLES.includes(user.roleKey));
 
 /** 当前租户内可切换的演示角色（过滤掉不属于本租户的项） */
 const roleOptionGroups = computed(() =>
@@ -162,73 +168,75 @@ function switchTenant(tenantId: string) {
         <MenuFoldOutlined v-else :style="{ fontSize: '18px', color: '#6B7280' }" />
       </div>
 
-      <!-- 二线坐席 软电话(CTI) 状态条（替代原面包屑） -->
-      <AgentCtiBar />
+      <!-- 二线技术顾问 软电话(CTI) 状态条（替代原面包屑）。签入与外呼收口给二线一侧，判据见 CTI_BAR_ROLES -->
+      <AgentCtiBar v-if="showCtiBar" />
 
-      <!-- 全局搜索：工单号 / 手机号 / 客户名 / 关键词 自动分流，避免"该去哪个页面查"的犹豫 -->
-      <GlobalSearch />
+      <div class="header-actions">
+        <!-- 全局搜索：工单号 / 手机号 / 客户名 / 关键词 自动分流，避免"该去哪个页面查"的犹豫 -->
+        <GlobalSearch />
 
-      <!-- 工具图标 -->
-      <div class="tools">
-        <div class="tool"><BellOutlined :style="{ fontSize: '16px', color: '#6B7280' }" /></div>
-        <div class="tool"><QuestionCircleOutlined :style="{ fontSize: '16px', color: '#6B7280' }" /></div>
-        <div
-          class="tool"
-          role="button"
-          tabindex="0"
-          :title="isFullscreen ? '退出全屏 (Esc)' : '全屏'"
-          :aria-label="isFullscreen ? '退出全屏' : '全屏'"
-          @click="toggleFullscreen"
-          @keydown.enter.prevent="toggleFullscreen"
-        >
-          <FullscreenExitOutlined v-if="isFullscreen" :style="toolIconStyle" />
-          <FullscreenOutlined v-else :style="toolIconStyle" />
+        <!-- 工具图标 -->
+        <div class="tools">
+          <div class="tool"><BellOutlined :style="{ fontSize: '16px', color: '#6B7280' }" /></div>
+          <div class="tool"><QuestionCircleOutlined :style="{ fontSize: '16px', color: '#6B7280' }" /></div>
+          <div
+            class="tool"
+            role="button"
+            tabindex="0"
+            :title="isFullscreen ? '退出全屏 (Esc)' : '全屏'"
+            :aria-label="isFullscreen ? '退出全屏' : '全屏'"
+            @click="toggleFullscreen"
+            @keydown.enter.prevent="toggleFullscreen"
+          >
+            <FullscreenExitOutlined v-if="isFullscreen" :style="toolIconStyle" />
+            <FullscreenOutlined v-else :style="toolIconStyle" />
+          </div>
         </div>
+
+        <!-- 用户区 -->
+        <a-dropdown placement="bottomRight">
+          <div class="user" :class="{ 'has-tenant-switch': tenant.showTenantSwitcher }">
+            <span class="user-av">{{ user.name.charAt(0) }}</span>
+            <div class="user-meta">
+              <div class="user-name">{{ user.name }}</div>
+              <div class="user-role" :title="userSubtitle">{{ userSubtitle }}</div>
+            </div>
+            <DownOutlined :style="{ fontSize: '14px', color: '#9CA3AF' }" />
+          </div>
+          <template #overlay>
+            <div class="user-dropdown-panel">
+              <a-menu class="user-dropdown-menu" @click="onMenuClick">
+                <a-menu-item key="profile">个人设置</a-menu-item>
+              <a-sub-menu v-if="tenant.showTenantSwitcher" key="tenant" title="切换租户">
+                <a-menu-item
+                  v-for="t in tenant.tenantList"
+                  :key="`tenant:${t.id}`"
+                  :disabled="!t.selectable"
+                >
+                  <span class="tenant-item">
+                    <span class="tenant-name">{{ t.name }}</span>
+                    <span v-if="!t.selectable" class="tenant-tag">{{ tenantStatusLabel(t.status) }}</span>
+                    <CheckOutlined v-else-if="t.id === tenant.currentTenantId" class="tenant-check" />
+                  </span>
+                </a-menu-item>
+              </a-sub-menu>
+              <a-sub-menu v-if="roleOptionGroups.length" key="role" title="切换演示角色">
+                <template v-for="group in roleOptionGroups" :key="group.label">
+                  <a-menu-item-group :title="group.label">
+                    <a-menu-item v-for="r in group.options" :key="r.value">
+                      {{ r.label }}
+                    </a-menu-item>
+                  </a-menu-item-group>
+                </template>
+              </a-sub-menu>
+              <a-menu-item v-if="user.hasAdminEntry" key="admin">管理后台</a-menu-item>
+              <a-menu-divider />
+              <a-menu-item key="logout">退出登录</a-menu-item>
+              </a-menu>
+            </div>
+          </template>
+        </a-dropdown>
       </div>
-
-      <!-- 用户区 -->
-      <a-dropdown placement="bottomRight">
-        <div class="user" :class="{ 'has-tenant-switch': tenant.showTenantSwitcher }">
-          <span class="user-av">{{ user.name.charAt(0) }}</span>
-          <div class="user-meta">
-            <div class="user-name">{{ user.name }}</div>
-            <div class="user-role" :title="userSubtitle">{{ userSubtitle }}</div>
-          </div>
-          <DownOutlined :style="{ fontSize: '14px', color: '#9CA3AF' }" />
-        </div>
-        <template #overlay>
-          <div class="user-dropdown-panel">
-            <a-menu class="user-dropdown-menu" @click="onMenuClick">
-              <a-menu-item key="profile">个人设置</a-menu-item>
-            <a-sub-menu v-if="tenant.showTenantSwitcher" key="tenant" title="切换租户">
-              <a-menu-item
-                v-for="t in tenant.tenantList"
-                :key="`tenant:${t.id}`"
-                :disabled="!t.selectable"
-              >
-                <span class="tenant-item">
-                  <span class="tenant-name">{{ t.name }}</span>
-                  <span v-if="!t.selectable" class="tenant-tag">{{ tenantStatusLabel(t.status) }}</span>
-                  <CheckOutlined v-else-if="t.id === tenant.currentTenantId" class="tenant-check" />
-                </span>
-              </a-menu-item>
-            </a-sub-menu>
-            <a-sub-menu v-if="roleOptionGroups.length" key="role" title="切换演示角色">
-              <template v-for="group in roleOptionGroups" :key="group.label">
-                <a-menu-item-group :title="group.label">
-                  <a-menu-item v-for="r in group.options" :key="r.value">
-                    {{ r.label }}
-                  </a-menu-item>
-                </a-menu-item-group>
-              </template>
-            </a-sub-menu>
-            <a-menu-item v-if="user.hasAdminEntry" key="admin">管理后台</a-menu-item>
-            <a-menu-divider />
-            <a-menu-item key="logout">退出登录</a-menu-item>
-            </a-menu>
-          </div>
-        </template>
-      </a-dropdown>
     </div>
   </header>
 </template>
@@ -295,6 +303,15 @@ function switchTenant(tenantId: string) {
 }
 .toggle:hover {
   background: #f3f4f6;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex: none;
+  min-width: 0;
 }
 
 .tools {

@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
 import { useUserStore } from '@/stores/user';
 import TicketTabs from './components/TicketTabs.vue';
+import { isPoolFamily } from '@/views/tickets/types/ticket';
 import AiSuggestionBar from './components/AiSuggestionBar.vue';
 import AiSuggestionDrawer from './components/AiSuggestionDrawer.vue';
 import type { AiSuggestion, AiSuggestionFilter } from './types/aiSuggestion';
@@ -26,6 +27,7 @@ import type { Ticket } from './types/ticket';
 const user = useUserStore();
 const router = useRouter();
 const wb = useTicketWorkbench();
+const headerTabCounts = wb.headerTabCounts;
 const { optionalVisible, applyOptionalVisible } = useMineQueryFields();
 const {
   visibleColumns,
@@ -88,17 +90,17 @@ function onOpDialogConfirm(payload: Record<string, unknown>) {
     const label = tickets.length === 1 ? tickets[0].no : `${tickets.length} 单`;
     message.success(tickets.length === 1 ? `已调剂至 ${name}` : `已对 ${label} 调剂至 ${name}`);
   } else if (type === '退回') {
-    const { targetNode } = payload.data as ReturnPayload;
     for (const t of tickets) {
       t.returnCount = (t.returnCount ?? 0) + 1;
       t.hasReturnAction = true;
-      t.nodeStatus = '待受理';
+      t.nodeStatus = '未认领';
     }
     const label = tickets.length === 1 ? tickets[0].no : `${tickets.length} 单`;
+    // 退回的目标节点由流程配置决定、前端拿不到（ReturnPayload 只有 reason / note）——
+    // 原先文案取 payload.data.targetNode，那个字段不存在，实际显示成"已退回至 undefined 节点"。
+    // 这里按代码的实际行为写：退回后 nodeStatus 置「未认领」，即回到工单池。
     message.success(
-      tickets.length === 1
-        ? `已退回至${targetNode}节点`
-        : `已对 ${label} 退回至${targetNode}节点`,
+      tickets.length === 1 ? '已退回，工单回到未认领' : `已对 ${label} 退回，工单回到未认领`,
     );
   }
 
@@ -106,10 +108,16 @@ function onOpDialogConfirm(payload: Record<string, unknown>) {
   opTargetTickets.value = [];
 }
 
+const isPoolFamilyTab = computed(() => isPoolFamily(wb.activeTab.value));
 const batchActions = computed(() =>
-  wb.isPoolTab.value ? ['领取'] : wb.isMineTab.value ? ['调剂', '退回'] : [],
+  isPoolFamilyTab.value ? ['领取'] : wb.isMineTab.value ? ['调剂', '退回'] : [],
 );
-const showBatchToolbar = computed(() => wb.isMineTab.value || wb.isPoolTab.value);
+const showBatchToolbar = computed(() => wb.isMineTab.value || isPoolFamilyTab.value);
+const structuredFilterVariant = computed<'done' | 'pool' | 'mine'>(() => {
+  if (wb.isDoneTab.value) return 'done';
+  if (isPoolFamilyTab.value) return 'pool';
+  return 'mine';
+});
 
 watch(
   () => wb.activeTab.value,
@@ -265,39 +273,32 @@ function onConfirmSaveFilter(name: string) {
     <div class="workbench-tabs">
       <TicketTabs
         :active="wb.activeTab.value"
-        :counts="wb.tabCounts.value"
+        :counts="headerTabCounts"
         :hidden-tabs="user.hiddenTabs"
         @change="wb.setTab"
       />
     </div>
 
     <div class="workbench-body">
-      <!-- ② AI 建议条（草稿视图下不展示） -->
-      <AiSuggestionBar
-        v-if="wb.showAiBar.value && !isDraftView"
-        :summary="wb.aiSummary.value"
-        @view="openAiDrawer"
-        @close="wb.aiBarVisible.value = false"
-      />
+      <!-- ② chips 筛选（催补待回等 Tab 有子筛选时展示） -->
+      <div v-if="!isDraftView && wb.activeChips.value.length" class="filter-row-unified">
+        <TicketFilterBar
+          :active-chip="wb.activeChip.value"
+          :chip-counts="wb.chipCounts.value"
+          :chips="wb.activeChips.value"
+          :show-time-filter="!wb.usesStructuredFilter.value"
+          @chip="onChipSelect"
+          @remove-chip="onRemoveSavedChip"
+        />
+      </div>
 
-      <!-- ③ chips 筛选行（独占一行，释放横向空间） -->
-      <TicketFilterBar
-        v-if="!isDraftView"
-        :active-chip="wb.activeChip.value"
-        :chip-counts="wb.chipCounts.value"
-        :chips="wb.activeChips.value"
-        :show-time-filter="!wb.usesStructuredFilter.value"
-        @chip="onChipSelect"
-        @remove-chip="onRemoveSavedChip"
-      />
-
-      <!-- ④ 列表控制区：筛选面板向上展开 + 工具行 -->
+      <!-- ③ 列表控制区：工具行固定在此（各 Tab 搜索栏对齐）；筛选面板向上展开 -->
       <div v-if="!isDraftView" class="list-controls">
         <TicketMineQueryBar
           v-if="wb.usesStructuredFilter.value && structuredFilterExpanded"
           :expanded="true"
           :model-value="wb.structuredQuery.value"
-          :variant="wb.isDoneTab.value ? 'done' : wb.isPoolTab.value ? 'pool' : 'mine'"
+          :variant="structuredFilterVariant"
           :pool-groups="wb.poolGroups"
           :optional-visible="optionalVisible"
           @update:model-value="wb.setStructuredQuery"
@@ -309,9 +310,7 @@ function onConfirmSaveFilter(name: string) {
         <TicketToolbar
           :selected-count="wb.selectedCount.value"
           :search="wb.searchText.value"
-          :search-placeholder="
-            wb.usesStructuredFilter.value ? '工单号 / 手机号' : '搜索工单号、手机号、SN、产品…'
-          "
+          search-placeholder="工单号 / 手机号"
           :show-create="!wb.isDoneTab.value"
           :show-batch="showBatchToolbar"
           :batch-actions="batchActions"
@@ -330,6 +329,14 @@ function onConfirmSaveFilter(name: string) {
           @reset-columns="resetColumns"
         />
       </div>
+
+      <!-- ④ AI 建议条（仅我的任务；置于工具行之下，避免顶挤搜索栏） -->
+      <AiSuggestionBar
+        v-if="wb.showAiBar.value && !isDraftView"
+        :summary="wb.aiSummary.value"
+        @view="openAiDrawer"
+        @close="wb.aiBarVisible.value = false"
+      />
 
       <!-- ⑤ 列表区：草稿视图 → 草稿列表；否则 → SLA 富列表 + 分页 -->
       <div class="table-card">
@@ -367,7 +374,7 @@ function onConfirmSaveFilter(name: string) {
           <div class="pager">
             <div class="pager-left">
               <span class="pager-total">共 {{ wb.total.value }} 条</span>
-              <span v-if="wb.isMineTab.value || wb.isPoolTab.value" class="pager-selected">已选 {{ wb.selectedCount.value }} 项</span>
+              <span v-if="wb.isMineTab.value || isPoolFamilyTab" class="pager-selected">已选 {{ wb.selectedCount.value }} 项</span>
             </div>
           </div>
         </template>
@@ -422,6 +429,18 @@ function onConfirmSaveFilter(name: string) {
   padding: 20px;
   flex: 1;
   min-height: 0;
+  min-width: 0;
+}
+.filter-row-unified {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+.filter-row-unified :deep(.filter-row) {
+  flex: 1;
   min-width: 0;
 }
 .list-controls {

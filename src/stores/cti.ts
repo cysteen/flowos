@@ -101,9 +101,10 @@ export const useCtiStore = defineStore('cti', {
       this.workStatusSince = 0;
       return true;
     },
-    setReady(mode: ReadyMode = this.readyMode) {
+    // mode 不写默认值 —— 默认参数里引用 this 会让 TS 推不出 this 类型（TS2683）
+    setReady(mode?: ReadyMode) {
       if (this.workButtonsDisabled) return;
-      this.readyMode = mode;
+      this.readyMode = mode ?? this.readyMode;
       this.touchWorkStatus('ready');
     },
     setReadyMode(mode: ReadyMode) {
@@ -116,9 +117,10 @@ export const useCtiStore = defineStore('cti', {
       if (this.workButtonsDisabled) return;
       this.touchWorkStatus('logged_in');
     },
-    setBreak(reason: BreakReason = this.breakReason) {
+    // 同上：默认值移到函数体内
+    setBreak(reason?: BreakReason) {
       if (this.workButtonsDisabled) return;
-      this.breakReason = reason;
+      this.breakReason = reason ?? this.breakReason;
       this.touchWorkStatus('break');
     },
     clearPhaseTimer() {

@@ -12,12 +12,14 @@ const inSub = ref('template');
 const imSub = ref('app');
 
 /* 短信 */
-const smsChannels = ref([
+interface SmsChannel { id: number; name: string; sign: string; daily: string; used: number; status: boolean; }
+const smsChannels = ref<SmsChannel[]>([
   { id: 1, name: '阿里云短信', sign: '【讯飞客服】', daily: '50000', used: 12340, status: true },
   { id: 2, name: '腾讯云短信', sign: '【讯飞售后】', daily: '20000', used: 3201, status: true },
   { id: 3, name: '备用通道', sign: '【讯飞】', daily: '10000', used: 0, status: false },
 ]);
-const smsTpls = ref([
+interface SmsTpl { id: number; channelId: number; code: string; name: string; content: string; status: string; }
+const smsTpls = ref<SmsTpl[]>([
   { id: 1, channelId: 1, code: 'SMS_WO_CREATE', name: '工单创建通知', content: '您的工单${no}已创建，我们将尽快处理', status: '已审核' },
   { id: 2, channelId: 1, code: 'SMS_WO_DONE', name: '工单结案通知', content: '您的工单${no}已处理完成，感谢您的耐心', status: '已审核' },
   { id: 3, channelId: 2, code: 'SMS_SLA_ALERT', name: '超时提醒', content: '工单${no}即将超时，请及时处理', status: '待审核' },
@@ -30,11 +32,13 @@ const smsLogs = ref<SmsLog[]>([
 ]);
 
 /* 邮件 */
-const mailAccounts = ref([
+interface MailAccount { id: number; name: string; addr: string; smtp: string; status: boolean; }
+const mailAccounts = ref<MailAccount[]>([
   { id: 1, name: '客服邮箱', addr: 'service@iflytek.com', smtp: 'smtp.iflytek.com:465', status: true },
   { id: 2, name: '售后邮箱', addr: 'aftersale@iflytek.com', smtp: 'smtp.iflytek.com:465', status: true },
 ]);
-const mailTpls = ref([
+interface MailTpl { id: number; code: string; name: string; subject: string; status: string; }
+const mailTpls = ref<MailTpl[]>([
   { id: 1, code: 'MAIL_WO_SUMMARY', name: '工单处理摘要', subject: '【工单${no}】处理结果', status: '已审核' },
   { id: 2, code: 'MAIL_SURVEY', name: '满意度调研', subject: '邀您评价本次服务', status: '已审核' },
 ]);
@@ -44,7 +48,8 @@ const mailLogs = ref([
 ]);
 
 /* 站内信 */
-const inTpls = ref([
+interface InTpl { id: number; code: string; name: string; content: string; status: string; }
+const inTpls = ref<InTpl[]>([
   { id: 1, code: 'IN_ASSIGN', name: '工单指派', content: '您有新工单${no}待处理', status: '已审核' },
   { id: 2, code: 'IN_MENTION', name: '@提及', content: '${user}在工单${no}中@了您', status: '已审核' },
   { id: 3, code: 'IN_APPROVAL', name: '审批提醒', content: '您有审批任务待处理', status: '已审核' },
@@ -55,12 +60,14 @@ const inLogs = ref([
 ]);
 
 /* IM 即时消息（企业 IM 机器人/应用推送：i讯飞 / 企业微信 / 飞书） */
-const imApps = ref([
+interface ImApp { id: number; name: string; imType: string; robot: string; status: boolean; }
+const imApps = ref<ImApp[]>([
   { id: 1, name: 'i讯飞机器人', imType: 'i讯飞', robot: 'https://im.iflytek.com/robot/wo-notify', status: true },
   { id: 2, name: '企业微信-客服群', imType: '企业微信', robot: 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=****', status: true },
   { id: 3, name: '飞书-二线协同', imType: '飞书', robot: 'https://open.feishu.cn/open-apis/bot/v2/hook/****', status: false },
 ]);
-const imTpls = ref([
+interface ImTpl { id: number; code: string; name: string; content: string; status: string; }
+const imTpls = ref<ImTpl[]>([
   { id: 1, code: 'IM_WO_ASSIGN', name: '工单派发提醒', content: '【工单派发】${no} 已分派给你，请及时处理', status: '已审核' },
   { id: 2, code: 'IM_SLA_ALERT', name: 'SLA 临期预警', content: '【SLA 预警】工单${no} 剩余 ${remain}，即将超时', status: '已审核' },
   { id: 3, code: 'IM_ESCALATE', name: '升级通知', content: '【升级】工单${no} 已升级至 ${target}，请关注', status: '待审核' },
@@ -96,11 +103,15 @@ function confirmDel(title: string, content: string, onOk: () => void) {
   Modal.confirm({ title, content, okText: '删除', okType: 'danger', cancelText: '取消', onOk });
 }
 
-function onChannelStatusChange(record: { name: string; status: boolean }) {
+// 以下 record 入参均来自 a-table 的 #bodyCell 插槽，其声明类型是 Record<string, any>，
+// 函数体内统一断言回本表实际的行类型（data-source 由本文件的 ref 提供，形状可控）。
+function onChannelStatusChange(row: Record<string, any>) {
+  const record = row as SmsChannel;
   message.success(`渠道「${record.name}」已${record.status ? '启用' : '停用'}`);
 }
 
-function delSmsChannel(record: { id: number; name: string }) {
+function delSmsChannel(row: Record<string, any>) {
+  const record = row as SmsChannel;
   const refs = smsTpls.value.filter((t) => t.channelId === record.id);
   if (refs.length) {
     Modal.warning({
@@ -112,7 +123,8 @@ function delSmsChannel(record: { id: number; name: string }) {
   confirmDel('删除短信渠道', `确认删除「${record.name}」？删除后不可恢复。`, () => delRow(smsChannels, record.id));
 }
 
-function testSmsChannel(record: { id: number; name: string; status: boolean }) {
+function testSmsChannel(row: Record<string, any>) {
+  const record = row as SmsChannel;
   if (!record.status) {
     message.warning('渠道已停用，请先启用后再测试');
     return;
@@ -128,11 +140,13 @@ function testSmsChannel(record: { id: number; name: string; status: boolean }) {
   message.success(`测试短信已通过「${record.name}」发送，请查收并在发送日志中核对`);
 }
 
-function delSmsTpl(record: { id: number; name: string }) {
+function delSmsTpl(row: Record<string, any>) {
+  const record = row as SmsTpl;
   confirmDel('删除短信模板', `确认删除模板「${record.name}」？删除后凡调用该编码的业务将发送失败。`, () => delRow(smsTpls, record.id));
 }
 
-function testSmsTpl(record: { name: string; content: string; status: string }) {
+function testSmsTpl(row: Record<string, any>) {
+  const record = row as SmsTpl;
   if (record.status !== '已审核') {
     message.warning('模板尚未审核通过，无法发送测试');
     return;
@@ -149,12 +163,14 @@ function testSmsTpl(record: { name: string; content: string; status: string }) {
 
 const logDetailOpen = ref(false);
 const logDetail = ref<SmsLog | null>(null);
-function openSmsLogDetail(record: SmsLog) {
+function openSmsLogDetail(row: Record<string, any>) {
+  const record = row as SmsLog;
   logDetail.value = record;
   logDetailOpen.value = true;
 }
 
-function resendSmsLog(record: SmsLog) {
+function resendSmsLog(row: Record<string, any>) {
+  const record = row as SmsLog;
   Modal.confirm({
     title: '重发短信',
     content: `确认向 ${record.phone} 重发「${record.tpl}」？将生成一条新的发送记录。`,
@@ -167,27 +183,33 @@ function resendSmsLog(record: SmsLog) {
   });
 }
 
-function delMailAccount(record: { id: number; name: string }) {
+function delMailAccount(row: Record<string, any>) {
+  const record = row as MailAccount;
   confirmDel('删除邮件账号', `确认删除「${record.name}」？`, () => delRow(mailAccounts, record.id));
 }
 
-function delMailTpl(record: { id: number; name: string }) {
+function delMailTpl(row: Record<string, any>) {
+  const record = row as MailTpl;
   confirmDel('删除邮件模板', `确认删除「${record.name}」？`, () => delRow(mailTpls, record.id));
 }
 
-function delInTpl(record: { id: number; name: string }) {
+function delInTpl(row: Record<string, any>) {
+  const record = row as InTpl;
   confirmDel('删除站内信模板', `确认删除「${record.name}」？`, () => delRow(inTpls, record.id));
 }
 
-function delImApp(record: { id: number; name: string }) {
+function delImApp(row: Record<string, any>) {
+  const record = row as ImApp;
   confirmDel('删除 IM 应用', `确认删除「${record.name}」？删除后走该应用的 IM 通知将无法送达。`, () => delRow(imApps, record.id));
 }
-function testImApp(record: { name: string; status: boolean }) {
+function testImApp(row: Record<string, any>) {
+  const record = row as ImApp;
   if (!record.status) { message.warning('应用已停用，请先启用后再测试'); return; }
   imLogs.value.unshift({ time: nowStr(), to: '管理员', tpl: '连通性测试', result: '成功', app: record.name, content: `${record.name} 连通性测试消息` });
   message.success(`测试消息已通过「${record.name}」发送，请在发送记录中核对`);
 }
-function delImTpl(record: { id: number; name: string }) {
+function delImTpl(row: Record<string, any>) {
+  const record = row as ImTpl;
   confirmDel('删除 IM 模板', `确认删除「${record.name}」？删除后凡调用该编码的业务将发送失败。`, () => delRow(imTpls, record.id));
 }
 

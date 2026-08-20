@@ -261,7 +261,7 @@ function toggleRow(t: AssignTicket, index: number, ev?: MouseEvent) {
 /** 工单号点击 → 新标签页开详情，**不关弹窗** */
 function openTicket(t: AssignTicket, ev: MouseEvent) {
   ev.stopPropagation();
-  window.open(`#/tickets/list?no=${encodeURIComponent(t.no)}`, '_blank');
+  window.open(`#/query?tab=tickets&no=${encodeURIComponent(t.no)}`, '_blank');
 }
 
 function fmtMin(m: number) {

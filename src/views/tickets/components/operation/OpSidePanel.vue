@@ -7,8 +7,10 @@ import OpAiAssistant from './OpAiAssistant.vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 
 import { computed } from 'vue';
+import { useUserStore } from '@/stores/user';
 
-const props = defineProps<{ detail: TicketDetailMeta }>();
+defineProps<{ detail: TicketDetailMeta }>();
+const user = useUserStore();
 
 const emit = defineEmits<{
   action: [name: string];
@@ -16,7 +18,12 @@ const emit = defineEmits<{
   openRelation: [rel: import('@/views/tickets/composables/ticketRelations').TicketRelation];
 }>();
 
-const showContactActions = computed(() => !props.detail.frontlineDemo);
+/**
+ * 客户联络动作（外呼 / 短信 / 邮件）收口给二线技术顾问及以上，一线不出。
+ * 判据是**当前角色**——此前读工单的 frontlineDemo 字段，
+ * 带该标记的单对所有角色都藏掉了联络动作。
+ */
+const showContactActions = computed(() => !user.role.frontline);
 </script>
 
 <template>

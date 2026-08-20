@@ -106,7 +106,7 @@ const memCols = [
 const TYPE_TONE: Record<string, string> = { 公司: 'red', 部门: 'blue', 班组: 'green' };
 
 const POST_OPTS = ['客服专员', '高级客服', '班组长', '售后工程师', '质检员'];
-const ROLE_OPTS = ['一线坐席', '二线坐席', '售后坐席', '一线主管', '审批人', '质检员'];
+const ROLE_OPTS = ['一线坐席', '二线技术顾问', '售后坐席', '一线主管', '审批人', '质检员'];
 
 // —— 成员 添加 / 转岗 / 移出（真实本地操作）——
 let memSeq = 5;

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, type CSSProperties } from 'vue';
+import type { ButtonProps } from 'ant-design-vue';
 
 type Tone = 'primary' | 'success' | 'warn' | 'danger';
 
@@ -37,8 +38,11 @@ const emit = defineEmits<{
   cancel: [];
 }>();
 
-const okButtonProps = computed(() => {
-  const base: Record<string, unknown> = { disabled: props.okDisabled };
+/** style 不在 antd 的 ButtonProps 声明内（行内样式走 HTML attrs），故单独并进来 */
+type OkButtonProps = ButtonProps & { style?: CSSProperties };
+
+const okButtonProps = computed<OkButtonProps>(() => {
+  const base: OkButtonProps = { disabled: props.okDisabled };
   if (props.okTone === 'danger') return { ...base, danger: true };
   if (props.okTone === 'success') {
     return { ...base, type: 'primary', style: { background: '#059669', borderColor: '#059669' } };

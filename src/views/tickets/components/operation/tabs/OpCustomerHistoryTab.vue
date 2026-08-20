@@ -6,6 +6,7 @@ import { ExportOutlined, ArrowRightOutlined } from '@ant-design/icons-vue';
 import { aftersaleDeepLink } from '@/views/tickets/composables/opActions';
 import { TICKETS } from '@/mock/tickets';
 import type { CustomerHistoryData, CustomerHistoryFilter, CustomerHistoryTicket } from '@/views/tickets/types/operationTabs';
+import { queryCenterLocation } from '@/views/query/queryCenterRoute';
 
 const props = defineProps<{ data: CustomerHistoryData }>();
 
@@ -18,7 +19,7 @@ const currentPhone = computed(
 );
 
 function openInsight() {
-  router.push({ path: '/customer-insight', query: { q: currentPhone.value || props.data.customerName } });
+  router.push(queryCenterLocation('customer', { q: currentPhone.value || props.data.customerName }));
 }
 
 const activeFilter = ref<CustomerHistoryFilter>('all');

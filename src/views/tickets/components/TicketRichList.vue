@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import { CheckOutlined } from '@ant-design/icons-vue';
-import { computed, ref, watch } from 'vue';
+import { computed, onUnmounted, ref, watch } from 'vue';
 import {
   columnLabel,
   TICKET_COLUMN_DEFS,
 } from '@/views/tickets/composables/useTicketColumns';
+import {
+  listCellText,
+  type FeishuSyncState,
+} from '@/views/tickets/utils/ticketListCells';
 import {
   doneRowActions,
   isFirstResponded,
@@ -16,7 +20,10 @@ import {
   rowActions,
   resolveTicketGroupNames,
   SLA_COLOR,
+  statusStyle,
   type Ticket,
+  isDunningTagPending,
+  isSupplementTagPending,
 } from '@/views/tickets/types/ticket';
 import { ticketLatestHandlingPreview } from '@/views/tickets/utils/ticketOverview';
 
@@ -24,21 +31,28 @@ const props = defineProps<{
   rows: Ticket[];
   selectedIds: Set<string>;
   allPageSelected: boolean;
-  variant?: 'mine' | 'done' | 'pool' | 'mention' | 'default';
+  variant?: 'mine' | 'done' | 'pool' | 'mention' | 'default' | 'query';
   showAppointmentColumn?: boolean;
   highlightMentionUnread?: boolean;
   /** 列设置：公共属性列显隐（不传=全显，向后兼容） */
   visibleColumns?: Record<string, boolean>;
   /** 列顺序（可配置列 key 列表） */
   columnOrder?: string[];
+  /** 自定义列标题（查询中心） */
+  columnLabel?: (key: string) => string;
 }>();
 
 const DEFAULT_ORDER = TICKET_COLUMN_DEFS.map((c) => c.key);
 
+function colLabel(key: string): string {
+  return props.columnLabel?.(key) ?? columnLabel(key);
+}
+
 /** 列是否显示（未配置或未含该列 → 默认显示） */
 function showCol(key: string) {
   if (key === 'assignee' && (props.variant === 'mine' || props.variant === 'pool')) return false;
-  if (key === 'groupNames' && props.variant !== 'pool') return false;
+  if (key === 'groupNames' && props.variant !== 'pool' && props.variant !== 'query') return false;
+  if (key === 'currentGroup' && props.variant !== 'query') return false;
   return !props.visibleColumns || props.visibleColumns[key] !== false;
 }
 
@@ -47,28 +61,44 @@ const orderedCols = computed(() => {
   return order.filter((key) => showCol(key));
 });
 
-function ticketSourceLabel(t: Ticket): string {
-  if (t.ticketSource) return t.ticketSource;
-  if (t.channel === '电话') return '热线电话';
-  return t.channel;
+function plainCellText(t: Ticket, key: string): string {
+  return listCellText(t, key);
 }
 
-function plainCellText(t: Ticket, key: string): string {
-  switch (key) {
-    case 'businessType':
-      return t.businessType ?? '—';
-    case 'ticketType':
-      return t.type;
-    case 'ticketSource':
-      return ticketSourceLabel(t);
-    default:
-      return '—';
-  }
+function feishuSyncClass(t: Ticket): string {
+  const s = (t.feishuSync ?? 'none') as FeishuSyncState;
+  return `feishu-${s}`;
 }
 
 function colClass(key: string): string {
   return `col-${key.replace(/([A-Z])/g, '-$1').toLowerCase()}`;
 }
+
+function dunningTagLabel(_t: Ticket): string {
+  return '催';
+}
+
+function supplementTagLabel(_t: Ticket): string {
+  return '补';
+}
+
+function dunningTagTip(t: Ticket): string {
+  return isDunningTagPending(t) ? '被催办 · 待联系回话' : '已催 · 已联系';
+}
+
+function supplementTagTip(t: Ticket): string {
+  return isSupplementTagPending(t) ? '新补充 · 待联系回话' : '已补 · 已联系';
+}
+
+/** 与 MetricTipIcon / 班组看板口径 Tooltip 统一：浅琥珀底 + 深棕字 */
+const csTagTipOverlayWrap = { maxWidth: '340px' };
+const csTagTipOverlayInner = {
+  maxWidth: '340px',
+  color: '#713f12',
+  fontSize: '12px',
+  lineHeight: '1.6',
+  padding: '10px 12px',
+};
 
 // ---- SLA 列：两行文本「解决：超/剩」「首响：超/剩」（PRD §8.2）----
 /** 倒计时短文案：'03:20:00'→'剩 03:20'；'已超 01:12'→'超 01:12'；'已暂停' 等非倒计时文案原样 */
@@ -127,43 +157,126 @@ const showActionColumn = computed(
 );
 const showSelectionColumn = computed(() => props.variant === 'mine' || props.variant === 'pool');
 
-/** 列宽（与下方样式一致，用于 grid 对齐表头与数据行） */
-const COL_WIDTH: Record<string, string> = {
-  priority: '58px',
-  summary: '280px',
-  customer: '108px',
-  groupNames: '108px',
-  product: '128px',
-  node: '130px',
-  sla: '118px',
-  appointment: '96px',
-  assignee: '100px',
-  action: '132px',
-  businessType: '88px',
-  ticketType: '88px',
-  ticketSource: '88px',
+/** 列宽默认值（px） */
+const DEFAULT_COL_WIDTH: Record<string, number> = {
+  title: 300,
+  summary: 220,
+  priority: 58,
+  customer: 100,
+  groupNames: 108,
+  currentGroup: 112,
+  product: 120,
+  node: 120,
+  nodeProgress: 56,
+  sla: 112,
+  appointment: 96,
+  appointmentTime: 96,
+  assignee: 88,
+  currentAssignee: 88,
+  action: 132,
+  businessType: 88,
+  ticketType: 72,
+  ticketSource: 88,
+  startDate: 96,
+  synced: 72,
+  feishuSync: 108,
+  lastHandler: 88,
+  lastHandledAt: 108,
+  upgradeCount: 72,
+  riskWeight: 72,
+  supplementPendingCount: 88,
+  supplementDoneCount: 88,
 };
+
+const MIN_COL_WIDTH: Record<string, number> = {
+  title: 200,
+  summary: 120,
+  priority: 48,
+  customer: 64,
+  groupNames: 72,
+  product: 72,
+  node: 72,
+  sla: 88,
+  appointment: 72,
+  appointmentTime: 72,
+  assignee: 64,
+  action: 96,
+};
+
+const DEFAULT_MIN_COL_WIDTH = 56;
+const COL_WIDTH_LS_KEY = 'flowos-ticket-column-widths';
+
+function loadColWidths(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(COL_WIDTH_LS_KEY);
+    if (!raw) return { ...DEFAULT_COL_WIDTH };
+    const parsed = JSON.parse(raw) as Record<string, number>;
+    return { ...DEFAULT_COL_WIDTH, ...parsed };
+  } catch {
+    return { ...DEFAULT_COL_WIDTH };
+  }
+}
+
+const colWidths = ref<Record<string, number>>(loadColWidths());
+const resizing = ref<{ key: string; startX: number; startW: number } | null>(null);
+
+function colWidthPx(key: string): string {
+  return `${colWidths.value[key] ?? DEFAULT_COL_WIDTH[key] ?? 88}px`;
+}
+
+function minColWidth(key: string): number {
+  return MIN_COL_WIDTH[key] ?? DEFAULT_MIN_COL_WIDTH;
+}
+
+function saveColWidths() {
+  localStorage.setItem(COL_WIDTH_LS_KEY, JSON.stringify(colWidths.value));
+}
+
+function onResizeMove(e: MouseEvent) {
+  if (!resizing.value) return;
+  const { key, startX, startW } = resizing.value;
+  const min = minColWidth(key);
+  const next = Math.max(min, Math.round(startW + (e.clientX - startX)));
+  colWidths.value = { ...colWidths.value, [key]: next };
+}
+
+function endResize() {
+  if (resizing.value) saveColWidths();
+  resizing.value = null;
+  document.removeEventListener('mousemove', onResizeMove);
+  document.removeEventListener('mouseup', endResize);
+  document.body.style.cursor = '';
+  document.body.style.userSelect = '';
+}
+
+function onResizeStart(e: MouseEvent, key: string) {
+  e.preventDefault();
+  e.stopPropagation();
+  const startW = colWidths.value[key] ?? DEFAULT_COL_WIDTH[key] ?? 88;
+  resizing.value = { key, startX: e.clientX, startW };
+  document.addEventListener('mousemove', onResizeMove);
+  document.addEventListener('mouseup', endResize);
+  document.body.style.cursor = 'col-resize';
+  document.body.style.userSelect = 'none';
+}
+
+onUnmounted(endResize);
 
 const gridTemplateColumns = computed(() => {
   const parts: string[] = [];
   if (showSelectionColumn.value) parts.push('16px');
-  // 工单/标题列略窄；工单摘要列略宽，两者按比例分摊剩余宽度
-  parts.push('minmax(200px, 1fr)');
+  parts.push(colWidthPx('title'));
   for (const key of orderedCols.value) {
-    if (key === 'summary') {
-      parts.push('minmax(260px, 1.5fr)');
-    } else {
-      parts.push(COL_WIDTH[key] ?? '88px');
-    }
+    parts.push(colWidthPx(key));
   }
-  if (props.showAppointmentColumn) parts.push(COL_WIDTH.appointment);
-  if (showActionColumn.value) parts.push(COL_WIDTH.action);
+  if (props.showAppointmentColumn) parts.push(colWidthPx('appointment'));
+  if (showActionColumn.value) parts.push(colWidthPx('action'));
   return parts.join(' ');
 });
 </script>
 
 <template>
-  <div class="rich-list">
+  <div class="rich-list" :class="{ 'rich-list--resizing': !!resizing }">
     <div ref="scrollEl" class="rich-list-scroll">
       <div v-if="rows.length === 0" class="empty">该筛选下暂无工单</div>
 
@@ -175,12 +288,40 @@ const gridTemplateColumns = computed(() => {
               <CheckOutlined v-if="allPageSelected" :style="{ color: '#fff', fontSize: '10px' }" />
             </div>
           </div>
-          <div class="col-title th th-cell">工单 / 标题</div>
+          <div class="col-title th th-cell th-cell--resizable">
+            <span class="th-label">工单 / 标题</span>
+            <span
+              class="col-resize-handle"
+              :class="{ 'is-active': resizing?.key === 'title' }"
+              @mousedown="onResizeStart($event, 'title')"
+            />
+          </div>
           <template v-for="colKey in orderedCols" :key="`th-${colKey}`">
-            <div :class="[colClass(colKey), 'th', 'th-cell']">{{ columnLabel(colKey) }}</div>
+            <div :class="[colClass(colKey), 'th', 'th-cell', 'th-cell--resizable']">
+              <span class="th-label">{{ colLabel(colKey) }}</span>
+              <span
+                class="col-resize-handle"
+                :class="{ 'is-active': resizing?.key === colKey }"
+                @mousedown="onResizeStart($event, colKey)"
+              />
+            </div>
           </template>
-          <div v-if="showAppointmentColumn" class="col-appointment th th-cell">预约倒计时</div>
-          <div v-if="showActionColumn" class="col-action th th-cell">操作</div>
+          <div v-if="showAppointmentColumn" class="col-appointment th th-cell th-cell--resizable">
+            <span class="th-label">预约倒计时</span>
+            <span
+              class="col-resize-handle"
+              :class="{ 'is-active': resizing?.key === 'appointment' }"
+              @mousedown="onResizeStart($event, 'appointment')"
+            />
+          </div>
+          <div v-if="showActionColumn" class="col-action th th-cell th-cell--resizable">
+            <span class="th-label">操作</span>
+            <span
+              class="col-resize-handle"
+              :class="{ 'is-active': resizing?.key === 'action' }"
+              @mousedown="onResizeStart($event, 'action')"
+            />
+          </div>
         </div>
 
         <!-- 数据行 -->
@@ -206,21 +347,73 @@ const gridTemplateColumns = computed(() => {
         :class="{ 'row-leading': !showSelectionColumn }"
         :style="!showSelectionColumn ? { borderLeftColor: PRIORITY_COLOR[t.priority] } : undefined"
       >
-        <div class="title-line1">
-          <span class="tag">{{ t.type }}</span>
-          <span class="title-text" :class="{ unread: highlightMentionUnread && isMentionUnread(t) }">{{ t.title }}</span>
-          <span v-if="highlightMentionUnread && isMentionUnread(t)" class="unread-tag">未读</span>
-        </div>
-        <div class="title-line2">
-          <span class="channel">{{ t.channel }}</span>
-          <span class="sep">·</span>
-          <span class="ticket-no" @click="emit('clickNo', t)">{{ t.no }}</span>
-          <!-- 一线视角演示单：处理页隐藏二线流转操作栏 -->
-          <span v-if="t.frontlineDemo" class="frontline-tag">一线演示专用</span>
-          <!-- 关联关系：已转单（业务已转到新单，页面冻结）/ 升级自（本单是派生出来的） -->
-          <span v-if="t.escalatedToNo" class="rel-tag rel-tag--to">已转单 → {{ t.escalatedToNo }}</span>
-          <span v-else-if="t.escalatedFromNo" class="rel-tag rel-tag--from">升级自 {{ t.escalatedFromNo }}</span>
-        </div>
+        <a-popover trigger="hover" placement="rightTop" :mouse-enter-delay="0.2">
+          <div class="title-cell-inner">
+            <div class="title-line1">
+              <a-tooltip
+                v-if="t.hasDunning"
+                :title="dunningTagTip(t)"
+                placement="top"
+                :mouse-enter-delay="0.15"
+                color="#fffbeb"
+                :overlay-style="csTagTipOverlayWrap"
+                :overlay-inner-style="csTagTipOverlayInner"
+              >
+                <span
+                  class="cs-tag"
+                  :class="isDunningTagPending(t) ? 'cs-tag--dunning-pending' : 'cs-tag--dunning-done'"
+                  @click.stop
+                >
+                  {{ dunningTagLabel(t) }}
+                </span>
+              </a-tooltip>
+              <a-tooltip
+                v-if="t.hasSupplement"
+                :title="supplementTagTip(t)"
+                placement="top"
+                :mouse-enter-delay="0.15"
+                color="#fffbeb"
+                :overlay-style="csTagTipOverlayWrap"
+                :overlay-inner-style="csTagTipOverlayInner"
+              >
+                <span
+                  class="cs-tag"
+                  :class="isSupplementTagPending(t) ? 'cs-tag--supplement-pending' : 'cs-tag--supplement-done'"
+                  @click.stop
+                >
+                  {{ supplementTagLabel(t) }}
+                </span>
+              </a-tooltip>
+              <span
+                class="status-tag"
+                :style="statusStyle(t.nodeStatus)"
+                :title="t.nodeStatus"
+              >{{ t.nodeStatus }}</span>
+              <span class="tag">{{ t.type }}</span>
+              <span class="title-text" :class="{ unread: highlightMentionUnread && isMentionUnread(t) }">{{ t.title }}</span>
+              <span v-if="highlightMentionUnread && isMentionUnread(t)" class="unread-tag">未读</span>
+            </div>
+            <div class="title-line2">
+              <span class="channel">{{ t.channel }}</span>
+              <span class="sep">·</span>
+              <span class="ticket-no" @click.stop="emit('clickNo', t)">{{ t.no }}</span>
+              <span v-if="t.escalatedToNo" class="rel-tag rel-tag--to">已转单 → {{ t.escalatedToNo }}</span>
+              <span v-else-if="t.escalatedFromNo" class="rel-tag rel-tag--from">升级自 {{ t.escalatedFromNo }}</span>
+            </div>
+          </div>
+          <template #content>
+            <div class="title-pop">
+              <div class="tp-head">
+                <span class="status-tag" :style="statusStyle(t.nodeStatus)">{{ t.nodeStatus }}</span>
+                <span class="tag">{{ t.type }}</span>
+              </div>
+              <div class="tp-title">{{ t.title }}</div>
+              <div class="tp-meta">{{ t.channel }} · {{ t.no }}</div>
+              <div v-if="t.escalatedToNo" class="tp-rel">已转单 → {{ t.escalatedToNo }}</div>
+              <div v-else-if="t.escalatedFromNo" class="tp-rel">升级自 {{ t.escalatedFromNo }}</div>
+            </div>
+          </template>
+        </a-popover>
       </div>
 
       <template v-for="colKey in orderedCols" :key="`${t.id}-${colKey}`">
@@ -321,7 +514,10 @@ const gridTemplateColumns = computed(() => {
         </div>
 
         <div v-else-if="colKey === 'node'" class="col-node cell-node">
-          <span class="node-badge">{{ t.nodeStatus }}</span>
+          <span
+            class="node-badge"
+            :style="statusStyle(t.nodeStatus)"
+          >{{ t.nodeStatus }}</span>
         </div>
 
         <div v-else-if="colKey === 'sla'" class="col-sla cell-sla">
@@ -329,9 +525,40 @@ const gridTemplateColumns = computed(() => {
           <span class="sla-line" :style="{ color: slaFirstLine(t).color }">首响：{{ slaFirstLine(t).text }}</span>
         </div>
 
-        <div v-else-if="colKey === 'assignee'" class="col-assignee cell-assignee">
+        <div v-else-if="colKey === 'assignee' || colKey === 'currentAssignee'" class="col-assignee cell-assignee">
           <span v-if="t.assignee" class="assignee-name">{{ t.assignee }}</span>
           <span v-else class="unassigned">— 待领</span>
+        </div>
+
+        <div v-else-if="colKey === 'currentGroup'" class="col-current-group cell-groups">
+          <span class="group-tag group-tag--single">{{ plainCellText(t, colKey) }}</span>
+        </div>
+
+        <div v-else-if="colKey === 'feishuSync'" class="col-feishu-sync cell-plain">
+          <span class="feishu-pill" :class="feishuSyncClass(t)">{{ plainCellText(t, colKey) }}</span>
+        </div>
+
+        <div v-else-if="colKey === 'synced'" class="col-synced cell-plain">
+          <span class="sync-pill" :class="{ yes: plainCellText(t, colKey) === '是' }">{{ plainCellText(t, colKey) }}</span>
+        </div>
+
+        <div v-else-if="colKey === 'nodeProgress'" class="col-node-progress cell-plain">
+          <span class="node-progress">{{ plainCellText(t, colKey) }}</span>
+        </div>
+
+        <div v-else-if="colKey === 'supplementPendingCount'" class="col-supplement-pending cell-plain">
+          <span class="count-pill count-pill--warn">{{ plainCellText(t, colKey) }}</span>
+        </div>
+
+        <div v-else-if="colKey === 'supplementDoneCount'" class="col-supplement-done cell-plain">
+          <span class="count-pill">{{ plainCellText(t, colKey) }}</span>
+        </div>
+
+        <div v-else-if="colKey === 'riskWeight'" class="col-risk-weight cell-plain">
+          <span
+            class="risk-pill"
+            :class="{ high: (t.riskWeight ?? 0) >= 80, mid: (t.riskWeight ?? 0) >= 50 && (t.riskWeight ?? 0) < 80 }"
+          >{{ plainCellText(t, colKey) }}</span>
         </div>
 
         <div v-else :class="[colClass(colKey), 'cell-plain']">
@@ -382,9 +609,8 @@ const gridTemplateColumns = computed(() => {
   display: grid;
   /* 不用 column-gap：列间空隙会在带背景的表头露出白缝。改用单元格右内边距撑开间距、表头背景连续 */
   column-gap: 0;
-  /* 宽度填满容器，工单/标题列(1fr)吸收剩余宽度；列多溢出时由外层 .rich-list-scroll 横向滚动 */
-  width: 100%;
-  min-width: max-content;
+  width: max-content;
+  min-width: 100%;
   padding: 0 16px;
   box-sizing: border-box;
 }
@@ -451,6 +677,102 @@ const gridTemplateColumns = computed(() => {
   font-weight: 600;
   color: #6b7280;
 }
+.th-cell--resizable {
+  position: relative;
+}
+.th-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-right: 4px;
+}
+.col-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 14px;
+  height: 100%;
+  transform: translateX(50%);
+  cursor: col-resize;
+  z-index: 2;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* 列分隔线 */
+.col-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  right: 6px;
+  width: 1px;
+  background: #e5e7eb;
+  border-radius: 1px;
+  transition: background 0.15s, width 0.15s, right 0.15s;
+}
+/* 圆角握把 + 2×3 六点阵 */
+.col-resize-handle::before {
+  content: '';
+  position: relative;
+  z-index: 1;
+  width: 10px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1px solid #e5e7eb;
+  background-color: #f8fafc;
+  background-image:
+    radial-gradient(circle at 3px 4px, #94a3b8 1px, transparent 1px),
+    radial-gradient(circle at 7px 4px, #94a3b8 1px, transparent 1px),
+    radial-gradient(circle at 3px 8px, #94a3b8 1px, transparent 1px),
+    radial-gradient(circle at 7px 8px, #94a3b8 1px, transparent 1px),
+    radial-gradient(circle at 3px 12px, #94a3b8 1px, transparent 1px),
+    radial-gradient(circle at 7px 12px, #94a3b8 1px, transparent 1px);
+  background-repeat: no-repeat;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  opacity: 0.92;
+  pointer-events: none;
+  transition:
+    opacity 0.15s,
+    border-color 0.15s,
+    background-color 0.15s,
+    box-shadow 0.15s,
+    background-image 0.15s;
+}
+.thead:hover .col-resize-handle::before {
+  opacity: 1;
+  border-color: #d1d5db;
+}
+.col-resize-handle:hover::before,
+.col-resize-handle.is-active::before {
+  opacity: 1;
+  border-color: #93c5fd;
+  background-color: #eff6ff;
+  background-image:
+    radial-gradient(circle at 3px 4px, #1a6fff 1px, transparent 1px),
+    radial-gradient(circle at 7px 4px, #1a6fff 1px, transparent 1px),
+    radial-gradient(circle at 3px 8px, #1a6fff 1px, transparent 1px),
+    radial-gradient(circle at 7px 8px, #1a6fff 1px, transparent 1px),
+    radial-gradient(circle at 3px 12px, #1a6fff 1px, transparent 1px),
+    radial-gradient(circle at 7px 12px, #1a6fff 1px, transparent 1px);
+  box-shadow: 0 0 0 1px rgba(26, 111, 255, 0.12), 0 1px 3px rgba(26, 111, 255, 0.12);
+}
+.col-resize-handle:hover::after,
+.col-resize-handle.is-active::after {
+  background: #1a6fff;
+  width: 2px;
+  right: 5px;
+}
+.rich-list--resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+.rich-list--resizing .rich-list-scroll {
+  cursor: col-resize;
+}
 
 .cb {
   width: 16px;
@@ -468,7 +790,18 @@ const gridTemplateColumns = computed(() => {
   border-color: #1a6fff;
 }
 
-/* 分类信息一律中性灰：类型/节点/客户标签 — PRD-02 §7⑨ */
+/* 状态标签：STATUS_COLOR_MAP（基线 §1）；类型标签中性灰 */
+.status-tag {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  max-width: 108px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .tag {
   font-size: 11px;
   font-weight: 600;
@@ -480,9 +813,30 @@ const gridTemplateColumns = computed(() => {
 }
 
 /* 工单/标题：第一行 类型+标题，第二行 来源+单号 */
-.cell-title { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
-.title-line1 { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.title-line2 { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.cell-title { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; max-width: 100%; }
+.cell-title > :deep(.ant-popover-open),
+.cell-title > :deep(span.ant-popover-open) {
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+.title-cell-inner { width: 100%; min-width: 0; cursor: default; }
+.title-line1 { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; overflow: hidden; }
+.title-line1 :deep(.ant-tooltip) { flex: none; line-height: 1; }
+.title-line2 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+.title-line2 .rel-tag {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
 .title-text {
   flex: 1;
   min-width: 0;
@@ -504,11 +858,39 @@ const gridTemplateColumns = computed(() => {
 }
 .rel-tag--to { color: #7c3aed; background: #f5f3ff; border: 1px solid #ddd6fe; }
 .rel-tag--from { color: #4f46e5; background: #eef2ff; border: 1px solid #e0e7ff; }
-.frontline-tag {
+/* 已催 / 已补：与 status-tag / rel-tag 同系；待回红框强调，已回降噪 */
+.cs-tag {
   flex: none;
-  font-size: 11px; font-weight: 600; line-height: 16px;
-  padding: 0 6px; border-radius: 4px;
-  color: #7c3aed; background: #f5f3ff; border: 1px solid #ddd6fe;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 14px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 2px;
+  border-radius: 3px;
+  white-space: nowrap;
+  cursor: default;
+  flex-shrink: 0;
+}
+.cs-tag--dunning-pending,
+.cs-tag--supplement-pending {
+  color: #dc2626;
+  background: #fee2e2;
+  border: 1px solid #ef4444;
+  font-weight: 700;
+}
+.cs-tag--dunning-done,
+.cs-tag--supplement-done {
+  color: #9ca3af;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  font-weight: 500;
+  padding: 0 2px;
+  min-width: 16px;
 }
 
 /* 工单摘要列：标签 + 内容单行展示 */
@@ -626,7 +1008,7 @@ const gridTemplateColumns = computed(() => {
 .cell-node { display: flex; align-items: center; }
 .node-badge {
   font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px;
-  color: #4b5563; background: #f3f4f6;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
 .prio {
@@ -651,6 +1033,66 @@ const gridTemplateColumns = computed(() => {
 .assignee-name { font-size: 12px; color: #374151; }
 .unassigned { font-size: 12px; color: #6b7280; }
 
+.group-tag--single {
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.feishu-pill {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.feishu-none { color: #9ca3af; background: #f3f4f6; }
+.feishu-failed { color: #b91c1c; background: #fef2f2; }
+.feishu-synced { color: #1d4ed8; background: #eff6ff; }
+.feishu-feedback { color: #b45309; background: #fffbeb; }
+.feishu-closed { color: #047857; background: #ecfdf5; }
+
+.sync-pill {
+  font-size: 12px;
+  color: #6b7280;
+}
+.sync-pill.yes { color: #047857; font-weight: 600; }
+
+.node-progress {
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  font-variant-numeric: tabular-nums;
+}
+
+.count-pill {
+  display: inline-flex;
+  min-width: 20px;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+}
+.count-pill--warn { color: #b45309; }
+
+.risk-pill {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  font-variant-numeric: tabular-nums;
+}
+.risk-pill.mid { color: #d97706; }
+.risk-pill.high { color: #dc2626; }
+
+.cell-plain .plain-text {
+  font-size: 12px;
+  color: #374151;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* 操作 */
 .cell-action { display: flex; align-items: center; gap: 12px; }
 .act { font-size: 13px; font-weight: 500; cursor: pointer; }
@@ -663,8 +1105,13 @@ const gridTemplateColumns = computed(() => {
 }
 </style>
 
-<!-- 工单摘要 hover 弹窗内容（teleport 到 body，需非 scoped） -->
+<!-- 工单标题 / 摘要 hover 弹窗（teleport 到 body，需非 scoped） -->
 <style>
+.title-pop { width: 320px; display: flex; flex-direction: column; gap: 6px; }
+.title-pop .tp-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.title-pop .tp-title { font-size: 13px; font-weight: 600; color: #111827; line-height: 1.5; word-break: break-word; }
+.title-pop .tp-meta { font-size: 12px; color: #6b7280; }
+.title-pop .tp-rel { font-size: 11px; font-weight: 600; color: #7c3aed; }
 .summary-pop { width: 320px; display: flex; flex-direction: column; gap: 8px; }
 .summary-pop .sp-title {
   font-size: 13px; font-weight: 600; color: #111827; line-height: 1.4;

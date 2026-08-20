@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { useUserStore } from '@/stores/user';
 import { Select as ASelect, Input as AInput } from 'ant-design-vue';
 import { ArrowUpOutlined, CloseOutlined, DownOutlined, PlusOutlined, UpOutlined } from '@ant-design/icons-vue';
 import OpActionModal from './OpActionModal.vue';
@@ -37,7 +38,9 @@ const emit = defineEmits<{
   submit: [payload: EscalateInput];
 }>();
 
-const verdict = computed(() => buildEscalateVerdict(props.detail));
+// 升级判定要看**发起人角色**（一线在投诉单上不可升级），故传当前 roleKey
+const user = useUserStore();
+const verdict = computed(() => buildEscalateVerdict(props.detail, user.roleKey));
 const syncFields = computed(() => buildEscalateSyncFields(props.detail));
 const originClosed = computed(() => isTicketTerminated(props.detail.status));
 

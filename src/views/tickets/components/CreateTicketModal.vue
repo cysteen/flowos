@@ -660,7 +660,7 @@ watch(
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 24px;
+  padding: 16px 20px 16px 14px;
   border-bottom: 1px solid #f0f0f0;
 }
 .modal-title-row {
@@ -713,9 +713,18 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 12px 24px 20px;
+  padding: 12px 20px 20px 14px;
   max-height: calc(100vh - 200px);
   overflow-y: auto;
+}
+
+.modal-body :deep(.part-card) {
+  padding-left: 10px;
+  padding-right: 12px;
+}
+.modal-body :deep(.part-card.compact) {
+  padding-left: 10px;
+  padding-right: 12px;
 }
 
 .inline-field {
@@ -727,18 +736,18 @@ watch(
 .inline-field.flex1 { flex: 1; }
 .inline-label {
   flex: none;
-  width: 76px;
+  width: 72px;
   font-size: 12px;
   font-weight: 500;
   color: #374151;
-  text-align: right;
+  text-align: left;
   white-space: nowrap;
   line-height: 32px;
 }
-.inline-label.xl { width: 84px; font-size: 12px; }
-.inline-label.title-label { width: 72px; font-size: 12px; }
+.inline-label.xl { width: 76px; font-size: 12px; }
+.inline-label.title-label { width: 68px; font-size: 12px; }
 .inline-label.base {
-  width: 76px;
+  width: 72px;
   font-size: 13px;
 }
 .inline-label .req { margin-right: 1px; }
@@ -987,7 +996,7 @@ watch(
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 24px;
+  padding: 14px 20px 14px 14px;
   border-top: 1px solid #f0f0f0;
 }
 .footer-hint {

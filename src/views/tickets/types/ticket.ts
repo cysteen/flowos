@@ -3,7 +3,12 @@
 
 import type { BusinessType, CreateFormTicketType, TicketSource } from '@/views/tickets/types/createTicket';
 
-export type TabKey = 'mine' | 'done' | 'pool' | 'cc' | 'review';
+/**
+ * 工作台主 Tab。
+ * - `pool`        = 本组 · 待领取
+ * - `poolPending` = 催补待回（独立主 Tab，紧挨「本组」；PRD-830 §9.3）
+ */
+export type TabKey = 'mine' | 'done' | 'pool' | 'poolPending' | 'cc' | 'review';
 /** 工单列表（全量库）视图 Tab */
 export type ListViewKey = 'all' | 'mine' | 'team' | 'pool' | 'archived';
 
@@ -34,17 +39,20 @@ export type DoneChipKey =
 /** @我的工单 Tab 子筛选（PRD-02 v1.2 §7⑥） */
 export type MentionChipKey = 'all' | 'unread';
 
-/** 待审核 Tab 子筛选：按送审原因 */
+/** 待审核 · 子筛选 chips（按送审原因） */
 export type ReviewChipKey =
   | 'all'
   | 'suspendReview'
   | 'forceCloseReview'
   | 'closeReview';
 
+/** 本组 · 催补待回 · 子筛选（PRD-830 §9.3） */
+export type PoolPendingChipKey = 'all' | 'dunning' | 'supplement';
+
 /** @deprecated 兼容旧引用；待审核请用 ReviewChipKey */
 export type LegacyChipKey = ReviewChipKey;
 
-export type ChipKey = MineChipKey | DoneChipKey | MentionChipKey | ReviewChipKey;
+export type ChipKey = MineChipKey | DoneChipKey | MentionChipKey | ReviewChipKey | PoolPendingChipKey;
 
 /** 待审核 · 送审原因 */
 export type ReviewReason = '挂起送审' | '强结送审' | '关单送审';
@@ -58,13 +66,91 @@ export type SmartMark = '升级' | '情绪' | '相似' | '知识';
 /** 客户身份标签（列表展示，替代 VIP） */
 export type CustomerTag = '记者' | '老师' | '校长' | '自媒体';
 export type Priority = 'P0' | 'P1' | 'P2' | 'P3';
-/** 当前节点状态（状态机） */
-export type NodeStatus =
-  | '待受理'
-  | '处理中·一线'
-  | '已升级·二线'
-  | '已挂起·待客户'
-  | '待审核';
+/**
+ * 工单状态（对齐《00-基线-工单状态与动作》§1，一律中文状态名）。
+ * 字段仍名 nodeStatus，类型即基线状态。
+ */
+export type TicketStatus =
+  | '草稿'
+  | '未认领'
+  | '待响应'
+  | '处理中'
+  | '调研中'
+  | '申请挂起中'
+  | '申请关闭中'
+  | '申请强结中'
+  | '业务动作审核中'
+  | '已挂起'
+  | '已升级·三线技术支持'
+  | '已升级·产研'
+  | '已委派'
+  | '已退回'
+  | '已转出'
+  | '已解决'
+  | '非常规关闭'
+  | '已强结'
+  | '已转单'
+  | '已取消'
+  | '已结案';
+
+/** @deprecated 沿用历史字段名，与 TicketStatus 同义 */
+export type NodeStatus = TicketStatus;
+
+/** 基线 §1 全部状态（筛选项 / 校验用） */
+export const BASELINE_STATUSES: TicketStatus[] = [
+  '草稿', '未认领', '待响应', '处理中', '调研中',
+  '申请挂起中', '申请关闭中', '申请强结中', '业务动作审核中',
+  '已挂起', '已升级·三线技术支持', '已升级·产研', '已委派', '已退回', '已转出',
+  '已解决', '非常规关闭', '已强结', '已转单', '已取消', '已结案',
+];
+
+export type StatusTone = 'primary' | 'success' | 'warning' | 'danger' | 'info';
+
+/** 列表状态标签配色（待处理 / 已完成 / 处理中 / 强结·取消 / 默认） */
+export const STATUS_COLOR_MAP: Record<StatusTone, { color: string; bg: string }> = {
+  primary: { color: '#1a6fff', bg: '#1a6fff18' },
+  success: { color: '#10b981', bg: '#10b98118' },
+  warning: { color: '#f59e0b', bg: '#f59e0b18' },
+  danger: { color: '#ef4444', bg: '#ef444418' },
+  info: { color: '#6b7280', bg: '#6b728018' },
+};
+
+const REVIEW_STATUSES: TicketStatus[] = [
+  '申请挂起中', '申请关闭中', '申请强结中', '业务动作审核中',
+];
+
+export function statusTone(status: TicketStatus): StatusTone {
+  switch (status) {
+    case '草稿':
+    case '未认领':
+    case '待响应':
+      return 'primary';
+    case '已解决':
+    case '非常规关闭':
+    case '已结案':
+      return 'success';
+    case '已强结':
+    case '已取消':
+      return 'danger';
+    case '已转单':
+      return 'info';
+    default:
+      return 'warning';
+  }
+}
+
+export function statusStyle(status: TicketStatus): { color: string; background: string } {
+  const { color, bg } = STATUS_COLOR_MAP[statusTone(status)];
+  return { color, background: bg };
+}
+
+export function isReviewStatus(status: TicketStatus): boolean {
+  return REVIEW_STATUSES.includes(status);
+}
+
+export function isEscalatedStatus(status: TicketStatus): boolean {
+  return status === '已升级·三线技术支持' || status === '已升级·产研';
+}
 /** SLA 倒计时态：充足/临期/超时/暂停(挂起冻结) */
 export type SlaState = 'ok' | 'soon' | 'overdue' | 'paused';
 
@@ -85,6 +171,11 @@ export interface Ticket {
   businessType?: string;
   /** 工单来源（与 channel 互补，列表列展示） */
   ticketSource?: string;
+  /**
+   * 投诉类型（仅投诉单有值，如 服务投诉 / 产品质量 / 物流问题 / 其他）。
+   * 830「补充与催单」用它判条件字段：**≠ 服务投诉**时，做「补充投诉信息」要补选投诉一类/二类。
+   */
+  complaintType?: string;
   /** 问题分类（新建工单 · 产品问题） */
   problemL1?: string;
   problemL2?: string;
@@ -93,6 +184,14 @@ export interface Ticket {
   resolveTimeRemark?: string;
   /** 产品分类（筛选） */
   productCategory?: string;
+  /** 产品线（五级产品体系 · 查询筛选） */
+  productLine?: string;
+  /**
+   * 业务线。列表筛选的三个维度之一（BG/BU · 业务线 · 产品线），
+   * ⚠️ **mock 数据尚未落这个值**，所以「按业务线筛选」目前筛不出任何单 —— 补 mock 后即生效。
+   * 早先这个字段只在 CreateTicketPrefill（建单预填）上有，筛选器却按 Ticket 取，属类型漏配。
+   */
+  businessLine?: string;
   /** 所属 BG（消费者BG 门控飞书项目集成通道） */
   productBg?: string;
   /** 客户身份标签，如记者/老师/校长/自媒体 */
@@ -164,6 +263,16 @@ export interface Ticket {
   hasDunning?: boolean;
   /** 存在补充记录（行标识「补」） */
   hasSupplement?: boolean;
+  /**
+   * 该次催补之后**已对客联系**（PRD-830 §10.1「已联系」判据）。
+   * 系统自动置位，无手动入口；缺省 undefined 视为**未联系**。
+   * 它决定「催补待回」是否出列、以及关闭 / 强结是否解锁 —— 与「已知晓」（未读）是两套判据。
+   */
+  contactedAfterUrge?: boolean;
+  /** 客户催单均已联系（false/undefined 且 hasDunning → 列表 Tag 待回强调态） */
+  dunningContacted?: boolean;
+  /** 客户补充均已联系（false/undefined 且 hasSupplement → 列表 Tag 待回强调态） */
+  supplementContacted?: boolean;
   /** 已办：我发起过升级（已转出） */
   myUpgradeAction?: boolean;
   /** 已办：我做过转办 */
@@ -191,11 +300,24 @@ export interface Ticket {
   updatedAt?: string;
   /** 创建时间（排序） */
   createdAt?: string;
-  /**
-   * 一线视角演示单：列表行打「一线演示专用」标，处理页隐藏底部流转操作栏
-   * （下送/升级/调剂/委派/挂起/关闭/强结等属二线权限，一线打开只读办理内容）。
-   */
-  frontlineDemo?: boolean;
+  /** 列表 · 是否已同步产研/飞书 */
+  synced?: boolean | '是' | '否';
+  /** 列表 · 产研/飞书同步状态 */
+  feishuSync?: 'none' | 'failed' | 'synced' | 'feedback' | 'closed';
+  /** 列表 · 上次处理人 */
+  lastHandler?: string;
+  /** 列表 · 上次处理时间 */
+  lastHandledAt?: string;
+  /** 列表 · 升级次数 */
+  upgradeCount?: number;
+  /** 列表 · 预约时间（展示用） */
+  appointmentAt?: string;
+  /** 列表 · 风险权重 0–100 */
+  riskWeight?: number;
+  /** 列表 · 补充信息未处理条数 */
+  supplementPendingCount?: number;
+  /** 列表 · 补充信息已处理条数 */
+  supplementDoneCount?: number;
   /** 本单由哪张单升级而来（升级投诉派生的新单带此值，供「↑升级自」关系回溯） */
   escalatedFromNo?: string;
   /**
@@ -244,10 +366,9 @@ export interface CreateTicketPrefill {
   expectTime?: string;
 }
 
-// ---- 配色映射（设计风格规范 §2.3 语义色）----
-// 工作台列表（TicketRichList）：仅用 PRIORITY_COLOR（色条/圆点）、SLA_COLOR；
-//   类型/节点/客户标签一律中性灰 — 见 PRD-02 §7⑨。
-// 操作页/详情/关联列表：TYPE_COLOR、NODE_STATUS_COLOR、CUSTOMER_TAG_COLOR 等仍可用。
+// ---- 配色映射 ----
+// 工作台列表：PRIORITY_COLOR、SLA_COLOR、STATUS_COLOR_MAP（状态标签）；
+//   类型/客户标签一律中性灰 — 见 PRD-02 §7⑨。
 export const TYPE_COLOR: Record<TicketType, string> = {
   投诉: '#EF4444',
   建议: '#10B981',
@@ -287,13 +408,6 @@ export const PRIORITY_COLOR: Record<Priority, string> = {
   P3: '#9CA3AF',
 };
 
-export const NODE_STATUS_COLOR: Record<NodeStatus, string> = {
-  待受理: '#F59E0B',
-  '处理中·一线': '#1A6FFF',
-  '已升级·二线': '#A855F7',
-  '已挂起·待客户': '#6B7280',
-  待审核: '#F59E0B',
-};
 
 export const SLA_COLOR: Record<SlaState, string> = {
   ok: '#10B981',
@@ -304,9 +418,9 @@ export const SLA_COLOR: Record<SlaState, string> = {
 
 // ---- SLA 两钟归约（PRD §8.2）----
 
-/** 是否已完成首次响应（未显式标注时按节点推断：待受理=未响） */
+/** 是否已完成首次响应（未显式标注时：未认领 / 待响应 = 未响） */
 export function isFirstResponded(t: Ticket): boolean {
-  return t.responded ?? t.nodeStatus !== '待受理';
+  return t.responded ?? (t.nodeStatus !== '未认领' && t.nodeStatus !== '待响应');
 }
 
 /** 'HH:MM:SS' / 'HH:MM' → 分钟；非倒计时文本 → null */
@@ -350,16 +464,32 @@ export interface TabMeta {
   /** 计数徽章激活前的语义色 */
   badge: string;
 }
+/**
+ * 主 Tab（PRD-02 + PRD-830）：我的任务 / 已办 / 工单池 / **催补待回** / 待审核
+ */
 export const TABS: TabMeta[] = [
   { key: 'mine', label: '我的任务', badge: '#1A6FFF' },
   { key: 'done', label: '已办', badge: '#9CA3AF' },
-  { key: 'pool', label: '本组工单池', badge: '#06B6D4' },
+  { key: 'pool', label: '工单池', badge: '#06B6D4' },
+  { key: 'poolPending', label: '催补待回', badge: '#6366F1' },
   { key: 'review', label: '待审核', badge: '#F59E0B' },
 ];
 
-/** 工作台主 Tab：支持快捷搜索 + 结构化筛选 */
+/** @deprecated 催补待回已升为主 Tab；保留常量供历史引用 */
+export const POOL_SUB_TABS: { key: TabKey; label: string }[] = [
+  { key: 'pool', label: '待领取' },
+];
+
+/** 本组列表域与催补待回列表域（批量领取 / 结构化筛选 variant 等共用 pool 口径） */
+export function isPoolFamily(tab: TabKey): boolean {
+  return tab === 'pool' || tab === 'poolPending';
+}
+
+/**
+ * 工作台主 Tab：支持快捷搜索 + 结构化筛选（与「待领取」同套工具栏）。
+ */
 export function isWorkbenchSearchTab(tab: TabKey): boolean {
-  return tab === 'mine' || tab === 'done' || tab === 'pool';
+  return tab === 'mine' || tab === 'done' || tab === 'pool' || tab === 'poolPending';
 }
 
 export interface ListViewMeta {
@@ -397,6 +527,8 @@ export interface ChipMeta {
   /** 内置 chip 或已保存筛选器 `sf:{id}` */
   key: ChipKey | string;
   label: string;
+  /** hover 说明（如催补待回子筛选的可重叠计数） */
+  title?: string;
   /** 临期/超时为 SLA 维度，唯一保留彩色（临期=warn 橙 / 超时=danger 红）；其余为状态分类，中性。见 PRD-02 §7⑨ */
   tone?: 'warn' | 'danger';
 }
@@ -441,6 +573,13 @@ export const REVIEW_CHIPS: ChipMeta[] = [
   { key: 'closeReview', label: '关单送审' },
 ];
 
+/** 本组 · 催补待回 · 子筛选（PRD-830 §9.3：同一张单两类都有则两处都计） */
+export const POOL_PENDING_CHIPS: ChipMeta[] = [
+  { key: 'all', label: '全部', title: '本组待联系回话的工单总数' },
+  { key: 'dunning', label: '被催办', title: '含仅被催办与「催+补兼有」；与「新补充」可重叠，故不与全部简单相加' },
+  { key: 'supplement', label: '新补充', title: '含仅新补充与「催+补兼有」；与「被催办」可重叠，故不与全部简单相加' },
+];
+
 /** @deprecated 使用 REVIEW_CHIPS / chipsForTab */
 export const LEGACY_CHIPS = REVIEW_CHIPS;
 
@@ -473,7 +612,7 @@ export function resolveTicketGroupNames(t: Ticket): string[] {
     };
     names.push(`${biz}${typeSuffix[t.type] ?? t.type}`);
   }
-  if (t.nodeStatus === '已升级·二线' || t.smartMarks?.includes('升级')) {
+  if (isEscalatedStatus(t.nodeStatus) || t.smartMarks?.includes('升级')) {
     if (!names.includes('技术支持')) names.push('技术支持');
   }
   return names;
@@ -485,9 +624,10 @@ export function chipsForTab(tab: TabKey): ChipMeta[] {
   if (tab === 'mine') return MINE_CHIPS;
   if (tab === 'done') return DONE_CHIPS;
   if (tab === 'pool') return [];
+  if (tab === 'poolPending') return POOL_PENDING_CHIPS;
   if (tab === 'cc') return MENTION_CHIPS;
   if (tab === 'review') return REVIEW_CHIPS;
-  return REVIEW_CHIPS;
+  return [];
 }
 
 /** 我的任务数据域：当前处理人=我 且未归档 */
@@ -495,11 +635,143 @@ export function inMineTaskScope(t: Ticket, handler = WORKBENCH_HANDLER): boolean
   return t.tab === 'mine' && t.assignee === handler && !t.archived;
 }
 
-/** 本组工单池数据域：待领取/未分配 且归属可见分组 */
+/**
+ * 「催补待回」父域（PRD-830 §9.3）：
+ *   本组可见 ∧ **未结案** ∧ 有**客户侧**催补 ∧ **未联系**
+ *
+ * 三条要点：
+ * 1. **只数客户侧** —— 我方「补录处理记录」不置 hasDunning / hasSupplement，进不来。
+ * 2. **出列判据是"已联系"，不是"已读"** —— 坐席点开看过不算，必须有该次催补之后的联系记录。
+ *    列表侧没有逐条记录，用 `dunningUnread / supplementUnread` 之外的
+ *    `contactedAfterUrge` 标记；缺省（undefined）视为**未联系**（更安全：宁可多留一行）。
+ * 3. **工单维度去重** —— 同一张单被催 3 次也只出 1 行（本函数按单判，天然去重）。
+ *
+ * ⚠️ 与「我的任务·被催办 / 新补充」chip 不是一套：那个是**我名下** + **知晓**判据。
+ */
+export function inPoolPendingScope(t: Ticket, visibleGroupIds?: string[]): boolean {
+  if (t.archived) return false;
+  if (isTicketClosed(t.nodeStatus)) return false;
+  if (!t.hasDunning && !t.hasSupplement) return false;
+  if (t.contactedAfterUrge) return false;
+  // 本组可见：本组池内的单（无处理人）与本组成员名下的单都算「本组」。
+  // **fail-closed**：给了可见分组就必须命中；没给（undefined / 空数组）也不放行 —— 数据范围
+  // 未配置时应当看不到，不是全看到。单缺 groupId 时同样不放行，与 inGroupPoolScope() 的
+  // 演示态兜底不同：那个 Tab 靠它显示 3 张缺组的 mock 单，这个 Tab 不依赖。
+  if (!visibleGroupIds?.length) return false;
+  if (!t.groupId || !visibleGroupIds.includes(t.groupId)) return false;
+  return true;
+}
+
+/** 终态判定（催补待回只收未结案的单） */
+export function isTicketClosed(status: TicketStatus): boolean {
+  return ['已解决', '非常规关闭', '已强结', '已转单', '已取消', '已结案'].includes(status);
+}
+
+/**
+ * 工单操作页**头部整排按钮**的角色门控 —— 取自基线「动作 × 角色 × 工单类型」表。
+ *
+ * 一次给全五枚，别一枚一枚判：之前只补了催补两枚，结果
+ * 「取消工单」在二线视角照样出现（它是**一线专属**）、「新建补充」又漏给了二线。
+ *
+ * 判据只认 `roleKey`。此前一线额外传一个 `isFrontline` 布尔，值取自工单上的
+ * `frontlineDemo` 假字段——那让带该标记的单对**所有角色**都走一线分支，
+ * 门控形同虚设。一线已有 RoleKey `agent-l1`，参数随之去掉（2026-08-19）。
+ */
+export function headerActionsByRole(roleKey: string): {
+  escalateComplaint: boolean;
+  linkAftersale: boolean;
+  supplement: boolean;
+  dunning: boolean;
+  cancelTicket: boolean;
+} {
+  if (roleKey === 'agent-l1') {
+    // 一线：五枚全给（升级投诉在投诉单上另按阶层置灰、关联售后仅投诉单出现）
+    return {
+      escalateComplaint: true,
+      linkAftersale: true,
+      supplement: true,
+      dunning: true,
+      cancelTicket: true,
+    };
+  }
+  const isSecondLine = roleKey === 'agent-cs' || roleKey === 'agent-as';
+  const isLeaderOrComplaint = roleKey === 'team-leader' || roleKey === 'complaint-handler';
+  const isAdmin = roleKey === 'ops-admin' || roleKey === 'tenant-admin' || roleKey === 'system-admin';
+  return {
+    // 升级投诉：二线 / 班组长 / 投诉处理角色 / 管理员
+    escalateComplaint: isSecondLine || isLeaderOrComplaint || isAdmin,
+    // 关联售后：同上（另按工单类型仅投诉单出现）
+    linkAftersale: isSecondLine || isLeaderOrComplaint || isAdmin,
+    // 新建补充：**只有一线与二线**
+    supplement: isSecondLine,
+    // 催单：**一线唯一**
+    dunning: false,
+    // 取消工单：**一线唯一**
+    cancelTicket: false,
+  };
+}
+
+/**
+ * 催补两枚按钮在该状态下的可用性（PRD-830 §4.2 全状态表的收口）。
+ * 角色门控与本函数**同时生效**，任一不通过即不展示。
+ *
+ * 三类：
+ * - 全给：非终态且非已转出（未认领 / 待响应 / 处理中 / 已退回 / 调研中 / 审核中4态 / 已挂起 / 已升级 / 已委派）
+ * - 只给补充：**4 个终态**（已解决 / 非常规关闭 / 已强结 / 已转单）—— 客户催的是已收口的事，没有承接对象
+ * - 都不给：**草稿**（只有新建相关操作）、**已转出**（客服侧冻结，去售后系统）、
+ *           **已结案**（建单即结案的一次性单，没有接着办的余地，※25）、**已取消**（业务中止）
+ */
+export function csEntryAvailability(status: TicketStatus): {
+  supplement: boolean;
+  dunning: boolean;
+} {
+  if (status === '草稿' || status === '已转出' || status === '已结案' || status === '已取消') {
+    return { supplement: false, dunning: false };
+  }
+  if (['已解决', '非常规关闭', '已强结', '已转单'].includes(status)) {
+    return { supplement: true, dunning: false };
+  }
+  return { supplement: true, dunning: true };
+}
+
+/**
+ * 收到客户催补时是否要**拉回处理节点**，以及拉回后落到哪（PRD-830 §7.2、基线 ※20）。
+ * 返回 null = 不拉回。
+ *
+ * 拉回 ＝ 系统替坐席执行一次「撤回」：客户补了新信息或催了单，原来那次下送 / 申请的
+ * 前提已经变了，不该继续跑。
+ * **已升级 / 已委派 / 已转出不拉回** —— 调研回访是系统服务、撤回没代价；三线是人、正在
+ * 查问题，拉回等于让人白干；已转出的单根本不在客服侧。
+ */
+export function pullbackOnCsEvent(status: TicketStatus): { to: TicketStatus; why: string } | null {
+  if (status === '调研中') return { to: '处理中', why: '因客户催补，自动撤回本次下送' };
+  if (['申请挂起中', '申请关闭中', '申请强结中', '业务动作审核中'].includes(status)) {
+    return { to: '处理中', why: '因客户催补，自动撤回本次申请' };
+  }
+  if (status === '已挂起') return { to: '处理中', why: '因客户催补，自动解除挂起' };
+  return null;
+}
+
+/**
+ * 本组工单池数据域：待领取/未分配 且归属可见分组。
+ *
+ * **数据范围一律 fail-closed**：没给可见分组就是看不到，不是全看到。
+ * 角色管理里新建角色默认无任何权限，这里放开等于"没配数据范围＝全租户可见"。
+ *
+ * ⚠️ 单缺 `groupId` 时仍返回 true，是**演示态的有意兜底**：mock 里有 3 张池内单
+ * （LCMN-20260609-66012 / 66248 / 66510）没有归属组，收紧会让它们从「本组 · 待领取」
+ * 静默消失。正确的修法在数据侧 —— 池内单必须有归属组才能被领取。接真实数据前
+ * 把这一行也改成 `return false`。
+ */
 export function inGroupPoolScope(t: Ticket, visibleGroupIds?: string[]): boolean {
   if (t.tab !== 'pool' || t.assignee !== null || t.archived) return false;
+  // ⚠️ **全库仅剩的一处 fail-open，只为演示态存在**：mock 里有 3 张没有 groupId 的池内单，
+  // 靠这一行才显示得出来。**真实环境必须把它改成 `return false`** ——
+  // 缺组的单落进任何人的组池视图都是越权，而池内单是"谁看得到谁就能领"。
+  // 姊妹函数 inPoolPendingScope() 已是 fail-closed，两者不一致是有意的，别照着这里改那边。
   if (!t.groupId) return true;
-  if (!visibleGroupIds || visibleGroupIds.length === 0) return true;
+  // 数据范围未配置（undefined / 空数组）时不放行 —— 没配范围应当看不到，不是全看到。
+  if (!visibleGroupIds || visibleGroupIds.length === 0) return false;
   return visibleGroupIds.includes(t.groupId);
 }
 
@@ -551,19 +823,25 @@ export function mineRowActions(): { label: string; primary?: boolean }[] {
   ];
 }
 
-/** 行内动作：按 当前节点状态 + Tab 推导（PRD-02 §7⑥） */
+/** 行内动作：按基线状态 + Tab 推导（PRD-02 §7⑥） */
 export function rowActions(t: Ticket): { label: string; primary?: boolean }[] {
   if (t.tab === 'pool') return poolRowActions();
   switch (t.nodeStatus) {
-    case '待受理':
+    case '未认领':
       return [{ label: '受理', primary: true }, { label: '调剂' }];
-    case '处理中·一线':
+    case '待响应':
+    case '处理中':
+    case '已退回':
       return [{ label: '处理', primary: true }, { label: '调剂' }, { label: '挂起' }];
-    case '已升级·二线':
+    case '已升级·三线技术支持':
+    case '已升级·产研':
       return [{ label: '处理', primary: true }, { label: '退回' }];
-    case '已挂起·待客户':
+    case '已挂起':
       return [{ label: '恢复', primary: true }, { label: '详情' }];
-    case '待审核':
+    case '申请挂起中':
+    case '申请关闭中':
+    case '申请强结中':
+    case '业务动作审核中':
       return [{ label: '审核', primary: true }, { label: '详情' }];
     default:
       return [{ label: '详情', primary: true }];
@@ -650,6 +928,20 @@ export function matchReviewChip(t: Ticket, chip: ReviewChipKey): boolean {
   }
 }
 
+/** 本组 · 催补待回 chip 是否命中（PRD-830 §9.3） */
+export function matchPoolPendingChip(t: Ticket, chip: PoolPendingChipKey): boolean {
+  switch (chip) {
+    case 'all':
+      return true;
+    case 'dunning':
+      return !!t.hasDunning;
+    case 'supplement':
+      return !!t.hasSupplement;
+    default:
+      return true;
+  }
+}
+
 /** chip 是否命中某工单（与 Tab 叠加） */
 export function matchChip(t: Ticket, chip: ChipKey, tab: TabKey = 'mine'): boolean {
   if (tab === 'mine') {
@@ -658,11 +950,24 @@ export function matchChip(t: Ticket, chip: ChipKey, tab: TabKey = 'mine'): boole
   if (tab === 'done') {
     return matchDoneChip(t, chip as DoneChipKey);
   }
+  if (tab === 'poolPending') {
+    return matchPoolPendingChip(t, chip as PoolPendingChipKey);
+  }
   if (tab === 'cc') {
     return matchMentionChip(t, chip as MentionChipKey);
   }
   if (tab === 'review') {
     return matchReviewChip(t, chip as ReviewChipKey);
   }
-  return matchReviewChip(t, chip as ReviewChipKey);
+  return true;
+}
+
+/** 列表「被催办」Tag 是否待回强调态（未联系） */
+export function isDunningTagPending(t: Ticket): boolean {
+  return !!t.hasDunning && t.dunningContacted !== true;
+}
+
+/** 列表「新补充」Tag 是否待回强调态（未联系） */
+export function isSupplementTagPending(t: Ticket): boolean {
+  return !!t.hasSupplement && t.supplementContacted !== true;
 }

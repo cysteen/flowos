@@ -2,6 +2,14 @@ import { computed, ref, watch } from 'vue';
 import type { ProcessFormDraft, SupplementChip, SectionKey } from '@/views/tickets/types/operation';
 import { DEFAULT_PROCESS_DRAFT } from '@/mock/ticketDetail';
 import { TYPE_SAMPLES } from '@/mock/ticketTypeSamples';
+import { COMPLAINT_L3_MAP } from '@/views/tickets/types/createTicket';
+
+function complaintCategoryFilled(f: ProcessFormDraft): boolean {
+  if (!f.complaintCat1 || !f.complaintCat2) return false;
+  const l3 = COMPLAINT_L3_MAP[f.complaintCat2] ?? [];
+  if (l3.length && !f.complaintCat3) return false;
+  return true;
+}
 
 /** 按工单类型构建 Tab① 处理表单预填（投诉用 base，咨询/商机/建议用类型样例覆盖）。 */
 function buildDraft(type: string): ProcessFormDraft {
@@ -17,7 +25,7 @@ function buildDraft(type: string): ProcessFormDraft {
 // 预约已迁出为独立 Tab，不再计入「补充处理」已填项
 function countFilledSupplements(form: ProcessFormDraft): number {
   let n = 0;
-  if (form.complaintMark && form.complaintCat1 && form.complaintNote) n += 1;
+  if (form.complaintMark && complaintCategoryFilled(form) && form.complaintNote) n += 1;
   if (
     form.platformFollowups.length > 0
     && form.platformFollowups.every((r) => r.replyResult.trim() && r.reconcile)

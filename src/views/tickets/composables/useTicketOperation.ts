@@ -13,6 +13,7 @@ import {
   ticketLatestHandlingItems,
   ticketProductIssue,
 } from '@/views/tickets/utils/ticketOverview';
+import { inferComplaintChannelSource } from '@/views/tickets/types/createTicket';
 import {
   applyOpAction, mapUserRole, nowWhen, pushEntry,
   type OpActionPayload, type SuspendInfo, type TicketOpState,
@@ -147,9 +148,32 @@ export function useTicketOperation() {
       base.customer.name = t.customer;
       base.product.name = t.product;
       base.productBg = t.productBg;
-      base.frontlineDemo = t.frontlineDemo; // 一线演示单：处理页隐藏二线流转操作栏
-      // 工单来源：升级投诉门禁①、转售后的激活分支都按它判，之前没透到 detail 上，两处判据都落空
+      // 工单来源：升级投诉门禁、补充弹窗投诉平台组、转售后分支都按它判
       if (t.ticketSource) base.source = t.ticketSource;
+      // 列表未带来源但已有外投/内投平台台账 → 反推来源，避免补充弹窗缺「平台/编号」区
+      const inferredSource = inferComplaintChannelSource(
+        base.source,
+        base.complaint.platforms,
+        base.isExternalAppeal,
+      );
+      if (inferredSource) {
+        base.source = inferredSource;
+        if (inferredSource === '外投渠道') base.isExternalAppeal = true;
+      }
+      if (t.complaintType) base.complaint.complaintType = t.complaintType;
+      // D3 外投演示单：投诉渠道记录 + 分类与 PRD 附录一致，便于验「补充投诉信息」全字段
+      if (t.no === 'LCMN-20260817-83002') {
+        base.complaint.categories = [
+          { cat1: '服务质量投诉', cat2: '对人员服务态度不满' },
+        ];
+        base.complaint.platforms = [
+          {
+            platform: '黑猫消费者服务平台',
+            complaintNo: 'HM20260817001',
+            complaintContent: '客户在黑猫投诉售后承诺未兑现，要求今日内书面回复',
+          },
+        ];
+      }
       base.escalatedFromNo = t.escalatedFromNo; // 升级派生单：回溯「升级自」来源
       /*
        * 关联关系**按列表行重建，不继承样例工单**。
@@ -285,9 +309,9 @@ export function useTicketOperation() {
       title: ticket.title,
       time: `${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${operator}`,
       typeTag: '子单',
-      statusTag: '待受理',
+      statusTag: '未认领',
       typeColor: '#A855F7',
-      statusColor: '#F59E0B',
+      statusColor: '#1A6FFF',
     };
     detail.value.childTickets.unshift(child);
     pushEntry(timeline.value, {
@@ -328,8 +352,8 @@ export function useTicketOperation() {
         title: ticket.title,
         type: '投诉',
         typeColor: '#EF4444',
-        status: '待受理',
-        statusColor: '#F59E0B',
+        status: '未认领',
+        statusColor: '#1A6FFF',
         builder: operator,
         createdAt: nowWhen(),
       },

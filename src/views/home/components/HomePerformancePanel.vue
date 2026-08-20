@@ -23,7 +23,8 @@ const emit = defineEmits<{
 const user = useUserStore();
 const teamId = ref(HOME_PERF_TEAMS[0].value);
 const rangeKey = ref<HomePerfRangeKey>('today');
-const customRange = ref<[Dayjs, Dayjs] | null>(null);
+/** 空值用 undefined 而非 null：a-range-picker 的 value 只接受 [Dayjs, Dayjs] | undefined */
+const customRange = ref<[Dayjs, Dayjs] | undefined>(undefined);
 const pickerOpen = ref(false);
 
 const rankOpen = ref(false);

@@ -258,7 +258,7 @@ const policies = ref<Policy[]>([
     escalations: [
       { id: 1, dim: '响应', cond: '剩余 ≤ 25%', escalationRef: 'EC01' },
       { id: 2, dim: '解决', cond: '已超时', escalationRef: 'EC02' },
-    ], pauseStates: ['已挂起·待客户'], remark: 'VIP 投诉走最严时限', rate: 96.2,
+    ], pauseStates: ['已挂起'], remark: 'VIP 投诉走最严时限', rate: 96.2,
   },
   {
     no: 'SLA002', name: 'VIP客户-高优先级', types: [SCOPE_ALL], channels: [SCOPE_ALL], levels: ['大V博主'], products: [SCOPE_ALL],
@@ -266,7 +266,7 @@ const policies = ref<Policy[]>([
     matrix: matrixWith({ 'P1 高': { resp: [1, '小时'], solve: [8, '小时'] } }),
     dueSoon: { mode: 'countdown', value: 1, unit: '小时' },
     escalations: [{ id: 1, dim: '响应', cond: '剩余 ≤ 25%', escalationRef: 'EC01' }],
-    pauseStates: ['已挂起·待客户'], remark: 'VIP 全类型高优先', rate: 93.8,
+    pauseStates: ['已挂起'], remark: 'VIP 全类型高优先', rate: 93.8,
   },
   {
     no: 'SLA003', name: '普通客户-紧急', types: ['投诉'], channels: [SCOPE_ALL], levels: ['教师'], products: [SCOPE_ALL],
@@ -274,7 +274,7 @@ const policies = ref<Policy[]>([
     matrix: matrixWith({ 'P0 紧急': { resp: [1, '小时'], solve: [8, '小时'] } }),
     dueSoon: { mode: 'percent', value: 80, unit: '分钟' },
     escalations: [{ id: 1, dim: '解决', cond: '已超时', escalationRef: 'EC02' }],
-    pauseStates: ['已挂起·待客户'], remark: '', rate: 91.5,
+    pauseStates: ['已挂起'], remark: '', rate: 91.5,
   },
   {
     no: 'SLA004', name: '退费工单-通用', types: ['退费'], channels: [SCOPE_ALL], levels: [SCOPE_ALL], products: [SCOPE_ALL],
@@ -289,7 +289,7 @@ const policies = ref<Policy[]>([
     calendar: '标准工作日历(9:00-18:00)', priority: 5, status: '启用', updatedAt: '2026-06-09 10:00',
     matrix: matrixWith({ 'P2 中': { resp: [4, '小时'], solve: [48, '小时'] } }),
     dueSoon: { mode: 'none', value: 0, unit: '小时' },
-    escalations: [], pauseStates: ['已挂起·待客户'], remark: '', rate: 95.1,
+    escalations: [], pauseStates: ['已挂起'], remark: '', rate: 95.1,
   },
   {
     no: 'SLA006', name: '智能硬件-售后', types: ['技术故障'], channels: [SCOPE_ALL], levels: [SCOPE_ALL], products: ['智能硬件'],
@@ -303,7 +303,7 @@ const policies = ref<Policy[]>([
     calendar: '标准工作日历(9:00-18:00)', priority: 7, status: '启用', updatedAt: '2026-06-07 09:00',
     matrix: matrixWith({ 'P3 低': { resp: [8, '小时'], solve: [72, '小时'] } }),
     dueSoon: { mode: 'none', value: 0, unit: '小时' },
-    escalations: [], pauseStates: ['已挂起·待客户'], remark: '', rate: 97.8,
+    escalations: [], pauseStates: ['已挂起'], remark: '', rate: 97.8,
   },
   {
     no: 'SLA008', name: 'AI服务-技术故障', types: ['技术故障'], channels: [SCOPE_ALL], levels: [SCOPE_ALL], products: ['AI服务'],
@@ -311,14 +311,14 @@ const policies = ref<Policy[]>([
     matrix: matrixWith({ 'P1 高': { resp: [1, '小时'], solve: [12, '小时'] } }),
     dueSoon: { mode: 'percent', value: 90, unit: '小时' },
     escalations: [{ id: 1, dim: '解决', cond: '已超时', escalationRef: 'EC02' }],
-    pauseStates: ['已挂起·待客户'], remark: 'AI 服务故障', rate: 89.4,
+    pauseStates: ['已挂起'], remark: 'AI 服务故障', rate: 89.4,
   },
   {
     no: 'SLA000', name: '默认兜底策略', types: [SCOPE_ALL], channels: [SCOPE_ALL], levels: [SCOPE_ALL], products: [SCOPE_ALL],
     calendar: '标准工作日历(9:00-18:00)', priority: 99, status: '启用', updatedAt: '2026-06-01 09:00',
     matrix: defMatrix(),
     dueSoon: { mode: 'percent', value: 80, unit: '分钟' },
-    escalations: [], pauseStates: ['已挂起·待客户'], remark: '未命中任何自定义策略的工单兜底；始终启用、不可停用/删除/拖动', rate: 92.1,
+    escalations: [], pauseStates: ['已挂起'], remark: '未命中任何自定义策略的工单兜底；始终启用、不可停用/删除/拖动', rate: 92.1,
     isDefault: true,
   },
 ]);
@@ -415,7 +415,7 @@ function blankPolicy(): Policy {
     templates: [SCOPE_ALL],
     calendar: CAL_OPTS[0], priority: 50, status: '停用', updatedAt: '',
     matrix: defMatrix(), dueSoon: { mode: 'countdown', value: 30, unit: '分钟' },
-    escalations: [], pauseStates: ['已挂起·待客户'], remark: '', rate: 0,
+    escalations: [], pauseStates: ['已挂起'], remark: '', rate: 0,
     clockStart: '工单创建', clockEnd: '工单结案', pauseEnabled: true,
     commitClocks: { resp: true, solve: true }, nodeSla: defNodeSla(),
     respCalendar: '标准工作日历(9:00-18:00)', solveCalendar: '7×24 自然时间',
@@ -750,7 +750,7 @@ function fmtClock(v: number | null, u: Unit): string { return v == null ? '不�
               :disabled="(record as Policy).isDefault"
               checked-children="启用"
               un-checked-children="停用"
-              @change="(checked: boolean) => onListStatusChange(record as Policy, checked)"
+              @change="(checked) => onListStatusChange(record as Policy, !!checked)"
             />
             <template v-else-if="column.key === 'action'">
               <a-button type="link" size="small" @click="openEdit(record as Policy)">编辑</a-button>
@@ -889,32 +889,32 @@ function fmtClock(v: number | null, u: Unit): string { return v == null ? '不�
                   <span class="kv-label">业务类型</span>
                   <a-select v-model:value="form.products" class="kv-control" size="small" mode="multiple" placeholder="全部"
                     :disabled="form.isDefault"
-                    :options="[SCOPE_ALL, ...PRODUCT_OPTS].map((o) => ({ value: o, label: o }))" @change="onProductsChange" />
+                    :options="[SCOPE_ALL, ...PRODUCT_OPTS].map((o) => ({ value: o, label: o }))" @change="(v) => onProductsChange(v as string[])" />
                 </div>
                 <div class="kv-row">
                   <span class="kv-label required">工单类型</span>
                   <a-select v-model:value="form.types" class="kv-control" size="small" mode="multiple" placeholder="全部"
                     :disabled="form.isDefault"
-                    :options="[SCOPE_ALL, ...TYPE_OPTS].map((o) => ({ value: o, label: o }))" @change="onTypesChange" />
+                    :options="[SCOPE_ALL, ...TYPE_OPTS].map((o) => ({ value: o, label: o }))" @change="(v) => onTypesChange(v as string[])" />
                 </div>
                 <div class="kv-row">
                   <span class="kv-label">工单来源</span>
                   <a-select v-model:value="form.channels" class="kv-control" size="small" mode="multiple" placeholder="全部"
                     :disabled="form.isDefault"
-                    :options="[SCOPE_ALL, ...CHANNEL_OPTS].map((o) => ({ value: o, label: o }))" @change="onChannelsChange" />
+                    :options="[SCOPE_ALL, ...CHANNEL_OPTS].map((o) => ({ value: o, label: o }))" @change="(v) => onChannelsChange(v as string[])" />
                 </div>
                 <div class="kv-row">
                   <span class="kv-label">工单模板</span>
                   <a-select v-model:value="form.templates" class="kv-control" size="small" mode="multiple" placeholder="全部"
                     :disabled="form.isDefault"
-                    :options="[SCOPE_ALL, ...routedTemplates].map((o) => ({ value: o, label: o }))" @change="onTemplatesChange" />
+                    :options="[SCOPE_ALL, ...routedTemplates].map((o) => ({ value: o, label: o }))" @change="(v) => onTemplatesChange(v as string[])" />
                 </div>
               </div>
               <div class="kv-row kv-row-template">
                 <span class="kv-label">客户类型</span>
                 <a-select v-model:value="form.levels" class="kv-control" size="small" mode="multiple" placeholder="全部"
                   :disabled="form.isDefault"
-                  :options="[SCOPE_ALL, ...LEVEL_OPTS].map((o) => ({ value: o, label: o }))" @change="onLevelsChange" />
+                  :options="[SCOPE_ALL, ...LEVEL_OPTS].map((o) => ({ value: o, label: o }))" @change="(v) => onLevelsChange(v as string[])" />
               </div>
             </div>
           </section>
@@ -976,7 +976,8 @@ function fmtClock(v: number | null, u: Unit): string { return v == null ? '不�
                     <tr v-for="m in form.matrix" :key="`${m.level}-solve`">
                       <td class="lv">{{ m.level }}</td>
                       <td>
-                        <a-input-number v-model:value="m.solveVal" :min="0" size="small" style="width:66px" placeholder="不设" />
+                        <a-input-number :value="m.solveVal ?? undefined" :min="0" size="small" style="width:66px" placeholder="不设"
+                          @update:value="(v) => (m.solveVal = v == null || v === '' ? null : Number(v))" />
                         <a-select v-model:value="m.solveUnit" size="small" style="width:76px;margin-left:4px" :options="UNIT_OPTS.map((u) => ({ value: u, label: u }))" />
                       </td>
                     </tr>

@@ -35,7 +35,9 @@ const columns = [
   { title: '操作', key: 'action', width: 140, align: 'center' as const },
 ];
 
-function openDetail(item: ApprovalItem) {
+function openDetail(row: Record<string, any>) {
+  // a-table 的 bodyCell 插槽给的是 Record<string, any>，这里收窄回本表的行类型
+  const item = row as ApprovalItem;
   current.value = item;
   comment.value = '';
   detailOpen.value = true;

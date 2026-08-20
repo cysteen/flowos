@@ -6,6 +6,7 @@ import {
   DashboardOutlined,
   FundProjectionScreenOutlined,
   AuditOutlined,
+  SearchOutlined,
 } from '@ant-design/icons-vue';
 
 // 运行工作区导航（WorkspaceShell），路径不含角色前缀（对齐 §2.3）。
@@ -22,6 +23,7 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { key: 'home', label: '个人门户', path: '/home', icon: HomeOutlined }, // house
   { key: 'tickets', label: '工单工作台', path: '/tickets', icon: CustomerServiceOutlined }, // headset
+  { key: 'query-center', label: '查询中心', path: '/query', icon: SearchOutlined },
   { key: 'aftersale', label: '售后工作台', path: '/aftersale', icon: ToolOutlined }, // wrench
   { key: 'team-board', label: '班组看板', path: '/team-board', icon: DashboardOutlined }, // gauge
   { key: 'ops-monitor', label: '运营监控', path: '/ops-monitor', icon: FundProjectionScreenOutlined }, // monitor

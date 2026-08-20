@@ -734,6 +734,6 @@ export const HOME_QUICK_LINKS = [
   { key: 'pool', label: '工单池领单', icon: 'inbox', color: '#06B6D4' },
   { key: 'mine', label: '我的工单', icon: 'list', color: '#1A6FFF' },
   { key: 'kb', label: '知识库', icon: 'book', color: '#10B981' },
-  { key: 'customer', label: '客户查询', icon: 'idcard', color: '#F59E0B' },
+  { key: 'customer', label: '查询中心', icon: 'idcard', color: '#F59E0B' },
   { key: 'report', label: '统计报表', icon: 'chart', color: '#A855F7' },
 ] as const;

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, computed } from 'vue';
+import { useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 import {
   PlusOutlined, EditOutlined, ReloadOutlined, SwapOutlined,
@@ -18,6 +19,8 @@ const KIND_LABEL: Record<ProductTreeNode['kind'], string> = {
 const KIND_CLASS: Record<ProductTreeNode['kind'], string> = {
   BGBU: 'kind-bg', 业务线: 'kind-biz', 产品线: 'kind-line', 产品分类: 'kind-cat', 产品: 'kind-prod',
 };
+
+const router = useRouter();
 
 const treeSearch = ref('');
 const visibleTree = computed(() => filterProductTree(PRODUCT_TREE_DATA, treeSearch.value));
@@ -68,12 +71,14 @@ const pagination = stdPagination({ pageSize: 20, total: 1796 });
 
 function onEdit(p: Product) { message.info(`编辑产品：${p.name}`); }
 function onCreate() { message.info('新建产品'); }
+function goRdMapping() { router.push('/admin/product-rd-mapping'); }
 </script>
 
 <template>
   <div class="product-manage">
     <AdminPageHeader title="产品管理" subtitle="按 BGBU/业务线/产品线/分类 维护五级产品体系；工单分类、路由与问题分类依此归属">
       <template #actions>
+        <a-button @click="goRdMapping">产研产品关联</a-button>
         <a-button type="primary" @click="onCreate"><template #icon><PlusOutlined /></template>新建产品</a-button>
       </template>
     </AdminPageHeader>

@@ -7,6 +7,7 @@ export interface MockUser {
 }
 
 export const MOCK_USERS: Record<RoleKey, MockUser> = {
+  'agent-l1': { name: '刘一线', roleKey: 'agent-l1' },
   'agent-cs': { name: '张三', roleKey: 'agent-cs' },
   'agent-as': { name: '李四', roleKey: 'agent-as' },
   'tech-support': { name: '陈技支', roleKey: 'tech-support' },

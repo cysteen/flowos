@@ -269,7 +269,7 @@ function onReset() { Object.assign(filter, { ticketNo: '', flow: undefined, time
   <div class="survey-monitor">
     <AdminPageHeader
       title="调研监控"
-      subtitle="按拉取时刻快照展示任务漏斗与异常告警；下钻任务明细核对触达与反馈、排查对接。"
+      subtitle="掌握调研投放与反馈进度，异常前置告警；从漏斗到明细核对触达与反馈，工单号直达处理。"
     >
       <template #actions>
         <a-radio-group :value="rangeKey" button-style="solid" size="small" @change="(e: any) => onRangeKey(e.target.value)">
@@ -280,12 +280,12 @@ function onReset() { Object.assign(filter, { ticketNo: '', flow: undefined, time
         </a-radio-group>
         <a-range-picker
           v-if="rangeKey === 'custom'"
-          :value="customRange"
+          :value="customRange ?? undefined"
           :presets="rangePresets"
           size="small"
           format="MM-DD"
           class="range-pick"
-          @change="(v: any) => onCustomChange(v)"
+          @change="(v) => onCustomChange(v as [Dayjs, Dayjs] | null)"
         />
       </template>
     </AdminPageHeader>

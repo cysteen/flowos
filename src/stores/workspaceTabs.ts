@@ -25,10 +25,11 @@ export function resolveTicketTabTitle(
 
 /** 工作区路由 → 页签标题 */
 export function resolveWorkspaceTabTitle(path: string, metaTitle?: string): string {
+  if (path === '/query' || path.startsWith('/query?')) return '查询中心';
   const ticketMatch = path.match(/^\/tickets\/([^/?#]+)\/?$/);
   if (ticketMatch) {
     const seg = ticketMatch[1];
-    if (seg === 'list') return '工单列表';
+    if (seg === 'list') return '查询中心';
     return resolveTicketTabTitle(seg);
   }
   const nav = NAV_ITEMS.find((n) => n.path === path);

@@ -7,14 +7,24 @@ import {
   columnLabel,
 } from '@/views/tickets/composables/useTicketColumns';
 
-const props = defineProps<{
-  open: boolean;
-  visibleColumns: Record<string, boolean>;
-  /** 持久化后的列顺序（key 列表）；面板须按此顺序渲染，否则拖拽索引与实际列表错位 */
-  columnOrder?: string[];
-  hideAssigneeColumn?: boolean;
-  hideGroupNamesColumn?: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    open: boolean;
+    visibleColumns: Record<string, boolean>;
+    /** 持久化后的列顺序（key 列表）；面板须按此顺序渲染，否则拖拽索引与实际列表错位 */
+    columnOrder?: string[];
+    hideAssigneeColumn?: boolean;
+    hideGroupNamesColumn?: boolean;
+    /** 自定义列定义（查询中心） */
+    columnDefs?: { key: string; label: string }[];
+    fixedColumnDefs?: { key: string; label: string }[];
+    resolveLabel?: (key: string) => string;
+    footerHint?: string;
+  }>(),
+  {
+    footerHint: '工单/标题、操作为固定列',
+  },
+);
 
 const emit = defineEmits<{
   'update:open': [v: boolean];
@@ -27,12 +37,20 @@ const search = ref('');
 const dragIndex = ref<number | null>(null);
 const overIndex = ref<number | null>(null);
 
+const activeColumnDefs = computed(() => props.columnDefs ?? TICKET_COLUMN_DEFS);
+const activeFixedDefs = computed(() => props.fixedColumnDefs ?? TICKET_FIXED_COLUMN_DEFS);
+
+function labelOf(key: string): string {
+  return props.resolveLabel?.(key) ?? columnLabel(key);
+}
+
 /** 可排序的列定义，按持久化顺序排列（缺省回退到声明顺序），保证拖拽索引与实际列表一致 */
 const orderedDefs = computed(() => {
+  const defs = activeColumnDefs.value;
   const order = props.columnOrder?.length
     ? props.columnOrder
-    : TICKET_COLUMN_DEFS.map((c) => c.key);
-  const known = new Map(TICKET_COLUMN_DEFS.map((c) => [c.key, c]));
+    : defs.map((c) => c.key);
+  const known = new Map(defs.map((c) => [c.key, c]));
   const result: { key: string; label: string }[] = [];
   const seen = new Set<string>();
   for (const key of order) {
@@ -42,8 +60,7 @@ const orderedDefs = computed(() => {
       seen.add(key);
     }
   }
-  // 持久化顺序里缺失的（新列）补到末尾
-  for (const def of TICKET_COLUMN_DEFS) {
+  for (const def of defs) {
     if (!seen.has(def.key)) result.push(def);
   }
   return result;
@@ -77,7 +94,7 @@ const hidden = computed(() => {
 
 const fixedDisplayed = computed(() => {
   const q = search.value.trim().toLowerCase();
-  return TICKET_FIXED_COLUMN_DEFS.filter((c) => !q || c.label.toLowerCase().includes(q));
+  return activeFixedDefs.value.filter((c) => !q || c.label.toLowerCase().includes(q));
 });
 
 function close() {
@@ -166,7 +183,7 @@ function onDragEnd() {
           @dragend="onDragEnd"
         >
           <HolderOutlined class="cs-drag" />
-          <span class="cs-label">{{ columnLabel(col.key) }}</span>
+          <span class="cs-label">{{ labelOf(col.key) }}</span>
           <a-switch
             size="small"
             :checked="true"
@@ -193,7 +210,7 @@ function onDragEnd() {
       </div>
 
       <div class="cs-foot">
-        <span class="cs-hint">工单/标题、操作为固定列</span>
+        <span class="cs-hint">{{ footerHint }}</span>
         <a class="cs-reset" @click="emit('reset')">重置默认</a>
       </div>
     </div>

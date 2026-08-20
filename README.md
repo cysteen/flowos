@@ -8,7 +8,7 @@
 
 - 运行工作区 Shell：顶栏（Logo / 折叠按钮 / 面包屑 / 全局搜索占位 / 通知帮助语言 / 用户区）+ 可折叠侧栏 + 内容区
 - Vue Router 功能路由（路径不含角色前缀）+ 角色守卫
-- 4 个角色全部配置菜单可见性（默认登录 `agent-cs` 客服·二线坐席），顶栏 Dev 下拉可切换验证
+- 4 个角色全部配置菜单可见性（默认登录 `agent-cs` 客服·二线技术顾问），顶栏 Dev 下拉可切换验证
 - 4 个导航占位页：首页 / 工单工作台 / 售后工作台 / 班组看板
 - 基础组件：PlaceholderPage、AppPagination、DeleteConfirm
 - GitHub Pages 部署配置（404.html + index.html SPA 路由恢复）

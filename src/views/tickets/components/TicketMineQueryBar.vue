@@ -20,6 +20,7 @@ import {
 } from '@/views/tickets/types/mineQuery';
 import { fieldsForVariant, type MineFilterFieldKey } from '@/views/tickets/types/mineQueryFields';
 import type { NodeStatus, PoolGroupMeta, Priority, SlaState } from '@/views/tickets/types/ticket';
+import { BASELINE_STATUSES } from '@/views/tickets/types/ticket';
 
 const RangePicker = DatePicker.RangePicker;
 
@@ -57,11 +58,7 @@ const priorities: { value: '' | Priority; label: string }[] = [
 
 const nodeStatuses: { value: '' | NodeStatus; label: string }[] = [
   { value: '', label: '请选择' },
-  { value: '待受理', label: '待受理' },
-  { value: '处理中·一线', label: '处理中·一线' },
-  { value: '已升级·二线', label: '已升级·二线' },
-  { value: '已挂起·待客户', label: '已挂起·待客户' },
-  { value: '待审核', label: '待审核' },
+  ...BASELINE_STATUSES.map((s) => ({ value: s, label: s })),
 ];
 
 const slaStates: { value: '' | SlaState; label: string }[] = [

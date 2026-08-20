@@ -63,7 +63,8 @@ const MODE_OPTS = ['系统派单', '组内抢单', '混合'];
 
 // ===================== ③ 工单池 =====================
 type PoolType = '常驻' | '临时';
-type PoolTheme = 'blue' | 'purple' | 'orange' | 'red';
+// 池主题色：含各池已使用的全部取值（green / cyan 由学习机售后池、投诉升级池使用）
+type PoolTheme = 'blue' | 'purple' | 'orange' | 'red' | 'green' | 'cyan';
 interface Pool {
   id: number; name: string; code: string; type: PoolType; period: string; condition: string;
   groups: string[]; agents: string[]; mode: string; timeout: string; status: boolean;
@@ -74,6 +75,8 @@ const POOL_THEMES: Record<PoolTheme, { bg: string; icon: string }> = {
   purple: { bg: '#ede9fe', icon: '#6d28d9' },
   orange: { bg: '#ffedd5', icon: '#c2410c' },
   red: { bg: '#fee2e2', icon: '#dc2626' },
+  green: { bg: '#dcfce7', icon: '#15803d' },
+  cyan: { bg: '#cffafe', icon: '#0e7490' },
 };
 const THEME_CYCLE: PoolTheme[] = ['blue', 'purple', 'orange', 'red'];
 // 工单池与「池积压监控」同源对齐：6 个池，在办量/处理人数与监控表一致（count=在办、handlers=处理人总数）
@@ -571,7 +574,11 @@ const backlogModalOpen = ref(false);
 const editingBacklogId = ref<number | null>(null);
 const bf = reactive({ when: '', action: '' });
 function openCreateBacklog() { editingBacklogId.value = null; Object.assign(bf, { when: '', action: '' }); backlogModalOpen.value = true; }
-function openEditBacklog(row: BacklogRule) { editingBacklogId.value = row.id; Object.assign(bf, { when: row.when, action: row.action }); backlogModalOpen.value = true; }
+function openEditBacklog(record: Record<string, any>) {
+  // a-table 的 bodyCell 插槽给的是 Record<string, any>，这里收窄回本表的行类型
+  const row = record as BacklogRule;
+  editingBacklogId.value = row.id; Object.assign(bf, { when: row.when, action: row.action }); backlogModalOpen.value = true;
+}
 function saveBacklog() {
   if (!bf.when.trim() || !bf.action.trim()) { message.error('触发条件与调节动作均为必填'); return; }
   if (editingBacklogId.value === null) {
@@ -584,7 +591,9 @@ function saveBacklog() {
   }
   backlogModalOpen.value = false;
 }
-function delBacklog(row: BacklogRule) {
+function delBacklog(record: Record<string, any>) {
+  // 同上：bodyCell 插槽行数据收窄回 BacklogRule
+  const row = record as BacklogRule;
   Modal.confirm({ title: '删除调节规则', content: `确认删除「${row.when}」这条积压调节规则？`, okText: '删除', okType: 'danger', cancelText: '取消', onOk: () => { backlogRules.value = backlogRules.value.filter((r) => r.id !== row.id); message.success('已删除'); } });
 }
 
@@ -602,7 +611,7 @@ const inpoolRows = [
   { name: '618 大促入池', cond: '标签 = 618大促反馈', pool: '618大促反馈池', priority: 'P1', status: true },
   { name: '学习机入池', cond: '产品线 = 学习机 且 类型 ∈ {故障, 退款}', pool: '学习机售后池', priority: 'P2', status: true },
   { name: '技术类入池', cond: '工单类型 = 系统问题', pool: '技术支持池', priority: 'P2', status: true },
-  { name: '投诉升级入池', cond: '投诉升级 / 二线坐席点击「升级」', pool: '投诉升级池', priority: 'P1', status: true },
+  { name: '投诉升级入池', cond: '投诉升级 / 二线技术顾问点击「升级」', pool: '投诉升级池', priority: 'P1', status: true },
   { name: '默认入池', cond: '其它全部', pool: '一线客服池', priority: '兜底', status: true },
 ];
 const PRIORITY_COLOR: Record<string, string> = { P0: 'red', P1: 'orange', P2: 'blue', 兜底: 'default' };

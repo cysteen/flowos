@@ -6,7 +6,7 @@ import { AFTERSALE_INBOUND_SOURCE, CUSTOM_PLATFORM_OPTION } from '@/views/ticket
  * 升级投诉（文档名「关联投诉」）判定逻辑 —— 《【815】关联投诉 PRD》§3 升级规则。
  *
  * **升阶只有两跳**（0730 定稿）：`非投诉（咨询/商机/建议） → 投诉 → 外投`。
- * - 「外投」不是投诉分类，是**工单来源=外投渠道**；外投只能由**二线坐席**发起。
+ * - 「外投」不是投诉分类，是**工单来源=外投渠道**；外投只能由**二线技术顾问**发起。
  */
 
 /** 原单所处阶层 */
@@ -32,7 +32,7 @@ const AFTERSALE_INBOUND_TIP = '售后转入工单，不支持升级投诉；如�
  * 挂起在停表、待审核在等审批结果——此时升级会让 SLA 与审批双双失效（原单关了、审批还在跑）。
  * 「已转出」也是冻结态，但它必然带活跃售后关联，已被门禁②拦下。
  */
-const FROZEN_STATUS = /已挂起|待审核/;
+const FROZEN_STATUS = /已挂起|申请(?:挂起|关闭|强结)中|业务动作审核中/;
 /** 只读/中止态：已归档仅支持只读查询，已取消是业务中止，都不该再派生新单 */
 const VOID_STATUS = /已归档|已取消/;
 const EXTERNAL_TERMINAL_TIP = '原单已是外投（投诉最高阶），不可再升级；如需补充请用「新建补充」';
@@ -56,7 +56,11 @@ export interface EscalateVerdict {
  * 含「已转单」：因派生新单而终止的状态（§5.6.3）。
  */
 export function isTicketTerminated(status: string): boolean {
-  return /已关闭|已取消|已归档|已结案|已转单/.test(status);
+  // 状态名对齐《00-基线-工单状态与动作》§1（2026-08-18 订正）：
+  // 基线的六个终态是 已解决 / 非常规关闭 / 已强结 / 已转单 / 已取消 / 已结案。
+  // 「已关闭」只是终态的分类伞、不可落库；「已归档」系统里根本没有这个状态。
+  // 两个旧名保留在正则里仅为兼容历史 mock，不应再新增使用。
+  return /已解决|非常规关闭|已强结|已转单|已取消|已结案|已关闭|已归档/.test(status);
 }
 
 /**
@@ -95,18 +99,19 @@ function resolveLinkBlock(detail: TicketDetailMeta): string | null {
 /**
  * 发起人是不是一线坐席。
  * 一线**不能外投**，且**投诉单一律不可升级**（唯一去处是外投）。
- * 当前角色体系里没有一线角色（ROLES 里 agent-cs/agent-as 都是二线），
- * 故以「一线视角」标记作为判据；后续接入真实一线角色时在此处或上。
+ *
+ * 判据是**发起人的角色**。此前读工单上的 `frontlineDemo` 假字段，
+ * 于是"谁在升级"变成了"这张单是哪张"——带标记的单被当成一线发起（2026-08-19 修正）。
  */
-function isFrontlineActor(detail: TicketDetailMeta): boolean {
-  return !!detail.frontlineDemo;
+function isFrontlineActor(roleKey: string): boolean {
+  return roleKey === 'agent-l1';
 }
 
 /** 按阶层 × 发起人角色算出可做的升级动作与入口可用性 */
-export function buildEscalateVerdict(detail: TicketDetailMeta): EscalateVerdict {
+export function buildEscalateVerdict(detail: TicketDetailMeta, roleKey: string): EscalateVerdict {
   const tier = resolveComplaintTier(detail);
   const tierLabel = complaintTierLabel(detail);
-  const frontline = isFrontlineActor(detail);
+  const frontline = isFrontlineActor(roleKey);
 
   // 门禁①：售后转入工单 → 一票否决（判据＝工单来源，0801 定）
   if (detail.source === AFTERSALE_INBOUND_SOURCE) {
@@ -311,7 +316,7 @@ export function buildEscalatedTicket(
     customer: detail.customer.name,
     vip: detail.customer.types.some((t) => t.includes('VIP')),
     product: detail.product.name,
-    nodeStatus: '待受理',
+    nodeStatus: '未认领',
     nodeStep: 1,
     nodeTotal: 5,
     priority: opts.priority ?? mapPriority(detail.priority),

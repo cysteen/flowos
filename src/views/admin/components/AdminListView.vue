@@ -38,7 +38,9 @@ const columns = computed(() => [
   ...props.config.columns.map((c) => ({ title: c.title, dataIndex: c.key, key: c.key, width: c.width })),
   { title: '操作', key: '__action', width: Math.max(130, props.config.rowActions.length * 60) },
 ]);
-const colKind = (key: string) => props.config.columns.find((c) => c.key === key)?.kind;
+// a-table 的 bodyCell 插槽给的 column.key 类型是 Key | undefined，这里放宽入参以直接接收
+const colKind = (key: string | number | undefined) =>
+  props.config.columns.find((c) => c.key === key)?.kind;
 
 // 选择 + 分页
 const selectedKeys = ref<(string | number)[]>([]);

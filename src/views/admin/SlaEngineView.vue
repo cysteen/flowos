@@ -323,8 +323,10 @@ function recalcSvc() { svcSolve.value.forEach((r) => { r.limits = svcSpread(r.li
 function importHolidays() { message.success(`已导入 ${holidayYear.value} 年国务院法定节假日与调休安排`); }
 function addHoliday() { holidays.value.push({ id: ++holidaySeq, name: '', range: null, makeup: [], count: false }); }
 function delHoliday(id: number) { holidays.value = holidays.value.filter((h) => h.id !== id); }
-function addMakeup(h: Holiday) { h.makeup.push(null); }
-function delMakeup(h: Holiday, idx: number) { h.makeup.splice(idx, 1); }
+// 下面两个入参来自节假日表 a-table 的 #bodyCell 插槽，其声明类型是 Record<string, any>，
+// 函数体内收窄回本表行类型 Holiday（data-source 即 holidays: Holiday[]）。
+function addMakeup(row: Record<string, any>) { (row as Holiday).makeup.push(null); }
+function delMakeup(row: Record<string, any>, idx: number) { (row as Holiday).makeup.splice(idx, 1); }
 
 // 配置短表列（spec §3：a-table size middle + :pagination=false）
 const suspendCols = [

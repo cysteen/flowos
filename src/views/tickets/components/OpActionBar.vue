@@ -48,6 +48,12 @@ const props = defineProps<{
    */
   atTechSupport?: boolean;
   /**
+   * ※24 拦截：被客户催补且**尚未联系客户**时为 true —— 「关闭工单」「强结」一起置灰。
+   * 判据在视图侧算（每条催补记录的 contacted），此处只管呈现。
+   */
+  closeBlocked?: boolean;
+  closeBlockedTip?: string;
+  /**
    * 隐藏底部操作栏本体（一线视角）：只藏可见的按钮条，组件仍挂载，
    * 头部按钮触发的弹窗（如「关联售后」）照常可用。
    */
@@ -127,6 +133,20 @@ const isDelegating = computed(() => !!props.delegateTargets);
  * 委派中锁定：一切"把单子转出去或终结掉"的动作。
  * 「下送」不锁——在委派节点，下送=送到下一节点=回到委派节点（协办完成回送）。
  */
+/**
+ * ※24 关闭 / 强结拦截（PRD-830 §10.2）：被催补且尚未联系客户时，两枚一起置灰。
+ * 与「委派中锁定」同一套 forbidden 机制，只是原因不同。
+ */
+const OUTREACH_LOCKED: OpActionType[] = ['关闭工单', '强结'];
+
+/**
+ * 命中即可断定 key 不是「转单」（OUTREACH_LOCKED 只收 OpActionType），
+ * 让后续 actionMap.get(key) 无需再判空转单分支。
+ */
+function isOutreachLocked(key: OpActionType | '转单'): key is OpActionType {
+  return (OUTREACH_LOCKED as (OpActionType | '转单')[]).includes(key);
+}
+
 const DELEGATE_LOCKED: (OpActionType | '转单')[] = [
   '调剂', '关闭工单', '强结', '升级', '转售后', '转单', '退回', '挂起',
 ];
@@ -182,6 +202,20 @@ const barActions = computed<BarItem[]>(() => {
         danger: locked?.danger,
         forbidden: true,
         forbiddenTip: DELEGATE_LOCK_TIP,
+      });
+      continue;
+    }
+    // ※24：被催补且未联系客户 → 关闭工单 / 强结 一起置灰（PRD-830 §10.2）
+    if (props.closeBlocked && isOutreachLocked(key)) {
+      const blocked = actionMap.value.get(key);
+      if (!blocked) continue;
+      items.push({
+        key,
+        label: blocked.label,
+        icon: blocked.icon,
+        danger: blocked.danger,
+        forbidden: true,
+        forbiddenTip: props.closeBlockedTip,
       });
       continue;
     }

@@ -3,6 +3,7 @@ import { PlusOutlined, DownloadOutlined, SettingOutlined } from '@ant-design/ico
 
 defineProps<{
   selectedCount: number;
+  embedded?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -14,7 +15,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div class="tool-row">
+  <div class="tool-row" :class="{ embedded }">
     <div class="tool-actions">
       <button type="button" class="btn-primary" @click="emit('create')">
         <PlusOutlined />
@@ -48,6 +49,17 @@ const emit = defineEmits<{
   justify-content: flex-end;
   gap: 16px;
   flex-wrap: wrap;
+}
+.tool-row.embedded {
+  gap: 8px;
+  justify-content: flex-end;
+}
+.tool-row.embedded .btn-primary,
+.tool-row.embedded .btn-batch,
+.tool-row.embedded .btn-ghost {
+  height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
 }
 .tool-actions {
   display: flex;

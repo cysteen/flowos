@@ -1,6 +1,6 @@
 import type { RoleKey } from '@/config/roles';
 
-/** 催单/补充记录录入人：一线或二线坐席，不展示为「客户」。 */
+/** 催单/补充记录录入人：一线或二线技术顾问，不展示为「客户」。 */
 export function formatTicketRecordWho(name: string, roleKey: RoleKey): string {
   if (/\((一线|二线)\)$/.test(name)) return name;
   const isSecondLine = roleKey === 'agent-cs' || roleKey === 'agent-as';
