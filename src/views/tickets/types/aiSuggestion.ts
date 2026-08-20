@@ -41,8 +41,8 @@ export function isAiSuggestionScope(t: Ticket): boolean {
   if (t.tab !== 'mine' || t.archived) return false;
   return (
     t.nodeStatus === '处理中'
-    || t.nodeStatus === '已升级·三线技术支持'
-    || t.nodeStatus === '已升级·产研'
+    // 基线只有一个「已升级」状态：三线与产研两类目标都落它，扫描范围不按升级目标区分
+    || t.nodeStatus === '已升级'
     || t.nodeStatus === '未认领'
     || t.nodeStatus === '待响应'
   );

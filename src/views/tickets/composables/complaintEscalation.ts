@@ -33,8 +33,8 @@ const AFTERSALE_INBOUND_TIP = '售后转入工单，不支持升级投诉；如�
  * 「已转出」也是冻结态，但它必然带活跃售后关联，已被门禁②拦下。
  */
 const FROZEN_STATUS = /已挂起|申请(?:挂起|关闭|强结)中|业务动作审核中/;
-/** 只读/中止态：已归档仅支持只读查询，已取消是业务中止，都不该再派生新单 */
-const VOID_STATUS = /已归档|已取消/;
+/** 中止态：已取消是业务中止，不该再派生新单（基线该行整行 🔒） */
+const VOID_STATUS = /已取消/;
 const EXTERNAL_TERMINAL_TIP = '原单已是外投（投诉最高阶），不可再升级；如需补充请用「新建补充」';
 
 export interface EscalateVerdict {
@@ -56,11 +56,12 @@ export interface EscalateVerdict {
  * 含「已转单」：因派生新单而终止的状态（§5.6.3）。
  */
 export function isTicketTerminated(status: string): boolean {
-  // 状态名对齐《00-基线-工单状态与动作》§1（2026-08-18 订正）：
+  // 状态名对齐《00-基线-工单状态与动作》§1：
   // 基线的六个终态是 已解决 / 非常规关闭 / 已强结 / 已转单 / 已取消 / 已结案。
-  // 「已关闭」只是终态的分类伞、不可落库；「已归档」系统里根本没有这个状态。
-  // 两个旧名保留在正则里仅为兼容历史 mock，不应再新增使用。
-  return /已解决|非常规关闭|已强结|已转单|已取消|已结案|已关闭|已归档/.test(status);
+  // 「已关闭」只是终态的分类伞、不可落库，留在正则里仅因处理页仍会把停表的历史 mock 单
+  // 置成这个字面值（见 composables/useTicketOperation.ts），**不应再新增使用**。
+  // 「已归档」系统里没有这个状态，已从正则移除。
+  return /已解决|非常规关闭|已强结|已转单|已取消|已结案|已关闭/.test(status);
 }
 
 /**

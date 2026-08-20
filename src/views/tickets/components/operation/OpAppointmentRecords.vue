@@ -12,6 +12,11 @@ const props = defineProps<{
   records: AppointmentRecord[];
   /** 新增预约时默认预约人（当前坐席） */
   defaultBooker?: string;
+  /**
+   * 只读：写动作（保留 / 放弃 / 标记已沟通 / 取消预约、时间与需求两个字段）全部不可用。
+   * 由调用方按「本 Tab 对当前角色是否只读」传入，判据见 tabWritableFor。
+   */
+  readonly?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -32,7 +37,7 @@ function displayLabel(record: AppointmentRecord, index: number): string {
 }
 
 function isFieldDisabled(record: AppointmentRecord): boolean {
-  return !!record.done || !!record.cancelled;
+  return !!props.readonly || !!record.done || !!record.cancelled;
 }
 
 function newRecord(): AppointmentRecord {
@@ -51,8 +56,12 @@ function updateField(index: number, patch: Partial<AppointmentRecord>) {
   commit(props.records.map((r, i) => (i === index ? { ...r, ...patch } : r)));
 }
 
-/** 单一出口：仅 emit records，needed（是否需要预约）由父级在同一次 patch 内派生，避免两次独立 patch 互相覆盖 */
+/**
+ * 单一出口：仅 emit records，needed（是否需要预约）由父级在同一次 patch 内派生，避免两次独立 patch 互相覆盖。
+ * 只读态在此**统一拦一道** —— 上游每个写动作都经过这里，比逐个函数加判断更不容易漏。
+ */
 function commit(records: AppointmentRecord[]) {
+  if (props.readonly) return;
   emit('update:records', records);
 }
 
@@ -156,7 +165,7 @@ defineExpose({ addRecord });
           @update:value="(v) => updateField(index, { demand: String(v ?? '') })"
         />
         <div class="record-actions">
-          <template v-if="isDraft(record)">
+          <template v-if="isDraft(record) && !readonly">
             <button
               type="button"
               class="record-save-btn"
@@ -172,7 +181,7 @@ defineExpose({ addRecord });
           <template v-else>
             <span v-if="record.done" class="record-done-tag"><CheckOutlined /> 已沟通</span>
             <span v-else-if="record.cancelled" class="record-cancel-tag"><CloseCircleOutlined /> 已取消</span>
-            <template v-else>
+            <template v-else-if="!readonly">
               <button type="button" class="record-done-btn" @click="markDone(index)">标记已沟通</button>
               <button type="button" class="record-cancel-btn" @click="confirmCancel(index)">
                 取消预约
@@ -183,6 +192,7 @@ defineExpose({ addRecord });
       </div>
     </div>
 
+    <p v-else-if="readonly" class="empty-hint">暂无预约</p>
     <p v-else class="empty-hint">暂无预约，如需上门 / 回访请点击「添加预约」</p>
   </div>
 </template>

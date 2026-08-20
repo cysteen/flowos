@@ -81,8 +81,7 @@ export type TicketStatus =
   | '申请强结中'
   | '业务动作审核中'
   | '已挂起'
-  | '已升级·三线技术支持'
-  | '已升级·产研'
+  | '已升级'
   | '已委派'
   | '已退回'
   | '已转出'
@@ -96,11 +95,22 @@ export type TicketStatus =
 /** @deprecated 沿用历史字段名，与 TicketStatus 同义 */
 export type NodeStatus = TicketStatus;
 
-/** 基线 §1 全部状态（筛选项 / 校验用） */
+/**
+ * 升级目标。基线《00-基线-工单状态与动作》§1「已升级」一行写明**两类升级目标都落同一个状态**，
+ * 行为差别在**处理人**，不在状态：
+ * - `三线技术支持` → 落该技术支持组池等人领取，**处理人转到三线**（基线「动作 × 角色」表「升级 · 三线技术支持」行）；
+ * - `产研` → 飞书项目 / TPD / RDM / 磐石属**服务节点**，**处理人仍是原二线**（同表「升级 · 产研」行）。
+ *
+ * 它同时决定催补通知发给谁（基线 ※ 催单/补充通知对象那一节：三线态通知三线并抄送二线，产研态只通知二线），
+ * 所以差别必须落在**独立字段**上，不能靠拆状态名来表达。
+ */
+export type EscalateTarget = '三线技术支持' | '产研';
+
+/** 基线 §1 全部状态（筛选项 / 校验用）：20 行 = 20 个可落库状态 */
 export const BASELINE_STATUSES: TicketStatus[] = [
   '草稿', '未认领', '待响应', '处理中', '调研中',
   '申请挂起中', '申请关闭中', '申请强结中', '业务动作审核中',
-  '已挂起', '已升级·三线技术支持', '已升级·产研', '已委派', '已退回', '已转出',
+  '已挂起', '已升级', '已委派', '已退回', '已转出',
   '已解决', '非常规关闭', '已强结', '已转单', '已取消', '已结案',
 ];
 
@@ -149,7 +159,7 @@ export function isReviewStatus(status: TicketStatus): boolean {
 }
 
 export function isEscalatedStatus(status: TicketStatus): boolean {
-  return status === '已升级·三线技术支持' || status === '已升级·产研';
+  return status === '已升级';
 }
 /** SLA 倒计时态：充足/临期/超时/暂停(挂起冻结) */
 export type SlaState = 'ok' | 'soon' | 'overdue' | 'paused';
@@ -213,6 +223,11 @@ export interface Ticket {
   /** 来源售后单当前状态（激活确认弹窗要展示） */
   aftersaleOriginStatus?: string;
   nodeStatus: NodeStatus;
+  /**
+   * 升级目标（仅 `nodeStatus === '已升级'` 时有值）。基线只有一个「已升级」状态，
+   * 三线技术支持与产研的差别（处理人转不转、催补通知发给谁）由本字段承担。
+   */
+  escalateTarget?: EscalateTarget;
   nodeStep: number;
   nodeTotal: number;
   priority: Priority;
@@ -452,6 +467,26 @@ export function slaSortKey(t: Ticket): { group: number; minutes: number } {
   return { group: SLA_STATE_RANK[clocks[0].state], minutes: clocks[0].minutes };
 }
 
+const SLA_PRIORITY_RANK: Record<Priority, number> = { P0: 0, P1: 1, P2: 2, P3: 3 };
+
+/**
+ * SLA 紧急度排序（PRD §8.2②）：①状态组（两钟归约最急：超时>临期>正常>挂起>关闭）
+ * ②组内距超时升序 ③优先级 P0→P3 ④创建时间早建在前。
+ * 排序作用于筛选后的全量结果集，分页仅为展示切片（跨页全局有序）。
+ *
+ * 放在类型层（而不是工作台 composable 私有）是为了让**个人门户的「待办 Top5」复用同一函数**：
+ * 口径规定门户不自建排序，那门户就不能存在第二份实现，否则两处会各自漂移。
+ */
+export function slaUrgencyCompare(a: Ticket, b: Ticket): number {
+  const ka = slaSortKey(a);
+  const kb = slaSortKey(b);
+  if (ka.group !== kb.group) return ka.group - kb.group;
+  if (ka.minutes !== kb.minutes) return ka.minutes - kb.minutes;
+  const p = SLA_PRIORITY_RANK[a.priority] - SLA_PRIORITY_RANK[b.priority];
+  if (p !== 0) return p;
+  return (a.createdAt ?? '9999').localeCompare(b.createdAt ?? '9999');
+}
+
 /** 12% 透明背景（.pen 用 1F = 约 12%） */
 export function softBg(hex: string): string {
   return `${hex}1F`;
@@ -466,6 +501,11 @@ export interface TabMeta {
 }
 /**
  * 主 Tab（PRD-02 + PRD-830）：我的任务 / 已办 / 工单池 / **催补待回** / 待审核
+ *
+ * ⚠️ 不含 `cc`（抄送我的）：抄送单已并入「我的任务」承接
+ * （setTab 收到 cc 会改判为 mine，inListView 的「我的」视图同时收 mine 与 cc）。
+ * `TabKey` 里保留 cc 供那几处历史分支使用，但它**不是一个 Tab**，
+ * 角色配置的 hiddenTabs 里不要再写它 —— 过滤的是这个数组，写了也过滤不到东西。
  */
 export const TABS: TabMeta[] = [
   { key: 'mine', label: '我的任务', badge: '#1A6FFF' },
@@ -833,8 +873,7 @@ export function rowActions(t: Ticket): { label: string; primary?: boolean }[] {
     case '处理中':
     case '已退回':
       return [{ label: '处理', primary: true }, { label: '调剂' }, { label: '挂起' }];
-    case '已升级·三线技术支持':
-    case '已升级·产研':
+    case '已升级':
       return [{ label: '处理', primary: true }, { label: '退回' }];
     case '已挂起':
       return [{ label: '恢复', primary: true }, { label: '详情' }];

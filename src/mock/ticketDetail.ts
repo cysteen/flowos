@@ -3,6 +3,7 @@ import type {
   InsightDetailTable, InsightModalKey, LatestHandlingItem,
 } from '@/views/tickets/types/operation';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
+import type { EscalateTarget } from '@/views/tickets/types/ticket';
 
 // 工单操作页 Mock（样例 = 设计稿 LCMN-20260610-73026 · P-工单处理 定稿）。
 
@@ -78,6 +79,12 @@ export interface TicketDetailMeta {
   channel: string;
   priority: string;
   status: string;
+  /**
+   * 升级目标（仅 status ＝「已升级」时有值）。基线只有一个「已升级」状态，
+   * 三线技术支持与产研的差别（处理人转不转、催补通知发给谁、能不能点「退回」）
+   * 由本字段承担，不靠拆状态名。
+   */
+  escalateTarget?: EscalateTarget;
   /** 累计退回次数（上限 3 次） */
   returnCount?: number;
   /** 当前活跃的 SLA 时效钟（按"最快到期"排序，最紧急置顶） */
@@ -116,7 +123,10 @@ export interface TicketDetailMeta {
     tags: string[];
     sn: string;
     issueTags: string[];
-    /** 产品是否开通售后能力（控制「转售后」操作显隐） */
+    /**
+     * 产品是否有售后服务。false ⇒「转售后」**置灰 + 提示**（基线 ※12，不是隐藏）。
+     * 取值由产品名判定，见 productHasAfterSaleService。
+     */
     afterSaleEnabled: boolean;
   };
   complaint: ComplaintInfo;
@@ -211,6 +221,21 @@ export interface FeishuRecord {
   conclusion?: string;
   /** 计划解决日期 */
   planDate?: string;
+}
+
+/**
+ * 无售后服务的产品：纯软件 / 平台 / 权益类，没有实物可修可寄，售后侧接不了单。
+ *
+ * 基线 ※12「转售后另有一条拦截：该产品必须有售后服务」需要有反例才验得到。
+ * 此前 product.afterSaleEnabled 在整份 mock 里恒为 true，那条拦截分支从未被触发，
+ * 等于没实现也看不出来。这三个产品名在工单数据源里都有咨询 / 商机单挂着
+ * （企业版 / 开放平台 / 会员服务），切到那些单即可看到「转售后」置灰并出提示。
+ */
+export const PRODUCTS_WITHOUT_AFTERSALE = ['企业版', '开放平台', '会员服务'];
+
+/** 产品有无售后服务（基线 ※12 的拦截判据，维度＝工单数据） */
+export function productHasAfterSaleService(productName?: string): boolean {
+  return !PRODUCTS_WITHOUT_AFTERSALE.includes((productName ?? '').trim());
 }
 
 export const TICKET_DETAIL: TicketDetailMeta = {

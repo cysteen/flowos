@@ -4,7 +4,7 @@
 import { reactive, computed, watch } from 'vue';
 import { PlusOutlined } from '@ant-design/icons-vue';
 import { AFTERSALE_SERVICE_TYPES, AFTERSALE_SERVICE_METHODS } from '../../composables/opActions';
-import type { AftersaleContext } from '../../composables/opActions';
+import type { AftersaleContext, AftersalePayload } from '../../composables/opActions';
 
 const props = defineProps<{ context?: AftersaleContext }>();
 
@@ -53,9 +53,50 @@ const isMail = computed(() => form.serviceMethod === '寄修');
 
 const opt = (arr: readonly string[]) => arr.map((v) => ({ value: v, label: v }));
 
-defineExpose({
-  getPayload: () => ({ serviceType: form.serviceType, serviceMethod: form.serviceMethod, detail: form.detail }),
-});
+/**
+ * 交出**整份表单**。此前只回传 serviceType / serviceMethod / detail 三项，
+ * 客户、省市区、详细地址、故障描述、产品分类、SN 等 20 余个字段在提交那一刻全部丢弃 ——
+ * 而转售后是在售后侧真建一张单，缺这些字段售后接到的是张空单（基线 §5.1「服务节点」）。
+ *
+ * 条件字段按服务方式取舍：上门方式不带取件 / 回寄，寄修方式不带上门预约，
+ * 避免把上一次切换留下的残值一并送出。
+ */
+function getPayload(): AftersalePayload {
+  const base = {
+    customerName: form.customerName,
+    customerPhone: form.customerPhone,
+    province: form.province,
+    city: form.city,
+    district: form.district,
+    address: form.address,
+    fault: form.fault,
+    productCategory: form.productCategory,
+    productName: form.productName,
+    serviceType: form.serviceType,
+    serviceMethod: form.serviceMethod,
+    brand: form.brand,
+    productAttr: form.productAttr,
+    sn: form.sn,
+    detail: form.detail,
+  };
+  if (isVisit.value) {
+    return { ...base, visitTime: form.visitTime, visitNote: form.visitNote };
+  }
+  if (isMail.value) {
+    return {
+      ...base,
+      pickName: form.pickName,
+      pickPhone: form.pickPhone,
+      pickAddress: form.pickAddress,
+      backName: form.backName,
+      backPhone: form.backPhone,
+      backAddress: form.backAddress,
+    };
+  }
+  return base;
+}
+
+defineExpose({ getPayload });
 </script>
 
 <template>

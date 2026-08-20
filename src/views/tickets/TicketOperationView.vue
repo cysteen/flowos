@@ -269,7 +269,8 @@ const canCancelTicket = computed(() => headerRoleGate.value.cancelTicket);
 
 /**
  * 底部流转操作栏隐藏：只读态，**或原单已是终态**——
- * 已关闭/已取消/已归档/已转单的单不该再出现 下送/升级/调剂/委派/挂起/关闭/强结。
+ * 基线 §1 的六个终态（已解决 / 非常规关闭 / 已强结 / 已转单 / 已取消 / 已结案）
+ * 不该再出现 下送/升级/调剂/委派/挂起/关闭/强结。
  */
 /**
  * 底栏（二线流转动作条）什么时候整条不出：
@@ -282,10 +283,28 @@ const canCancelTicket = computed(() => headerRoleGate.value.cancelTicket);
  * Tab 区（处理表单）只读：**一线视角**（F17：一线只看不填）+ 整页锁死。
  * 与头部按钮分开 —— 头部那排一线有权限、Tab 区里的写操作没有。
  */
-const tabsReadonly = computed(() => isFrontlineView.value || pageReadonly.value);
+/**
+ * Tab 区的**整区**只读：只保留与角色无关的锁 —— 已转单（本单作废、业务已在新单上）。
+ *
+ * 角色相关的只读**不在这里**判：一线视角与只读角色的差别已由 `tabWritableFor(tab, roleKey)`
+ * 逐 Tab 按权限矩阵 #46–56 的「只读 vs 可用」落全。混在一起会压掉矩阵明确给出的两格：
+ * ⑦ 运营监控岗虽整体只读，但矩阵写明「只读约束的是**工单内容**，打标不受此限」；
+ * ① 一线坐席在「关联/补充/催单」Tab 上是「可用」（唯一写动作「已知晓」）。
+ */
+const tabsReadonly = computed(() => !!supersededBy.value);
 
 const hideActionBar = computed(
   () => isFrontlineView.value || pageReadonly.value || isTicketTerminated(d.value.status),
+);
+
+/**
+ * 单子是否正在**三线技术支持**手上 —— 底栏「退回」是三线专属动作，只在这时出现。
+ *
+ * 判据是「已升级」＋**升级目标**两条，不是状态名：基线只有一个「已升级」状态，
+ * 三线与产研两类目标都落它，差别在处理人（三线转、产研不转），所以只能读 escalateTarget。
+ */
+const atTechSupport = computed(
+  () => d.value.status === '已升级' && d.value.escalateTarget === '三线技术支持',
 );
 
 /** 关系跳转：售后单是外部系统走深链，客服单站内打开 */
@@ -1060,7 +1079,7 @@ watch(
       :problem-cause="form.problemCause"
       :process-result="form.processResult"
       :delegate-targets="d.delegateInfo?.targets"
-      :at-tech-support="d.status.includes('已升级·三线技术支持')"
+      :at-tech-support="atTechSupport"
       :close-blocked="closeBlockedByOutreach"
       :close-blocked-tip="CLOSE_BLOCK_TIP"
       @action="onAction"

@@ -37,6 +37,13 @@ const props = defineProps<{
   complaintPlatforms?: { platform: string; customPlatform?: string; complaintNo: string }[];
   /** 工单来源（内投/外投渠道时展示投诉渠道 chip） */
   ticketSource?: string;
+  /**
+   * 「工单处理」**这个 Tab** 对当前角色只读（矩阵 #41：① ⑦ ⑧ 只读、⑥ 条件可用暂按不可写）。
+   *
+   * 只是 Tab 级一档，**不是**本区逐字段的角色判据 —— 矩阵 #35–40 给处理表单区六行分别列了
+   * 九列取值（例如「服务与结论」④ 三线不给、「建单规范 check」① ④ 不给），那套逐字段判据另议。
+   */
+  readonly?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -57,7 +64,9 @@ const showComplaintChannel = computed(() => {
   return props.showExternal;
 });
 
+/** 单一写出口：只读态在此统一拦一道，本区所有字段的回写都经过这里 */
 function patch(part: Partial<ProcessFormDraft>) {
+  if (props.readonly) return;
   emit('update:form', { ...props.form, ...part });
 }
 
@@ -202,6 +211,7 @@ function chipActiveClass(key: SupplementChip): string {
         :process-result="form.processResult"
         :problem-cause-attachments="form.problemCauseAttachments"
         :process-result-attachments="form.processResultAttachments"
+        :readonly="readonly"
         @update:problem-cause="(v) => patch({ problemCause: v })"
         @update:process-result="(v) => patch({ processResult: v })"
         @update:problem-cause-attachments="(v) => patch({ problemCauseAttachments: v })"
@@ -364,6 +374,7 @@ function chipActiveClass(key: SupplementChip): string {
         :complaint-platform="complaintPlatform"
         :complaint-platforms="complaintPlatforms"
         :show-external="showComplaintChannel"
+        :readonly="readonly"
         @update:form="emit('update:form', $event)"
       />
     </OpCollapsibleSection>

@@ -5,17 +5,17 @@ import dayjs, { type Dayjs } from 'dayjs';
 import {
   SwapOutlined, TeamOutlined, StopOutlined, PauseCircleOutlined,
   PlayCircleOutlined, RiseOutlined, SyncOutlined, ToolOutlined,
-  CheckCircleOutlined, CloseCircleOutlined, InboxOutlined, RollbackOutlined, CloseOutlined, PlusOutlined,
+  CheckCircleOutlined, CloseCircleOutlined, RollbackOutlined, CloseOutlined, PlusOutlined,
 } from '@ant-design/icons-vue';
 import { useUserStore } from '@/stores/user';
 import OpActionModal from './operation/OpActionModal.vue';
 import AftersaleCreateForm from './operation/AftersaleCreateForm.vue';
-import type { SuspendInfo, OpActionType, AftersaleContext } from '../composables/opActions';
+import type { SuspendInfo, OpActionType, AftersaleContext, AftersalePayload } from '../composables/opActions';
 import {
   TRANSFER_TARGETS_SAME, TRANSFER_TARGET_GROUPS, CROSS_GROUP_TRANSFER_ROLES,
   DELEGATE_TARGETS, REVIEWERS, FORCE_CLOSE_REASONS, APPROVERS,
   SUSPEND_REASONS, ESCALATE_CHANNELS, ESCALATE_GROUPS, ESCALATE_MEMBERS,
-  FEISHU_SPACES, AFTERSALE_SERVICE_TYPES, AFTERSALE_SERVICE_METHODS, CLOSE_REASONS, ARCHIVE_REASONS,
+  FEISHU_SPACES, CLOSE_REASONS,
   RESUME_REASONS, RETURN_REASONS, MAX_RETURN_COUNT,
   DELEGATE_GROUPS, FEISHU_ESCALATE_CHANNEL, FEISHU_FEEDBACK_CATEGORIES,
   APPROVAL_GROUPS,
@@ -101,14 +101,16 @@ const escalate = reactive({
   feedbackCategory: FEISHU_FEEDBACK_CATEGORIES[0] as string | undefined,
 });
 const syncFeishu = reactive({ space: FEISHU_SPACES[0], message: '' });
-const aftersale = reactive({ serviceType: AFTERSALE_SERVICE_TYPES[0], serviceMethod: AFTERSALE_SERVICE_METHODS[0], detail: '' });
 /** 转售后上下文 & 分流判断 */
 const asCtx = computed(() => props.aftersaleContext);
 const asIsComplaint = computed(() => !!asCtx.value?.isComplaint);
-const aftersaleFormRef = ref<{ getPayload: () => { serviceType: string; serviceMethod: string; detail: string } } | null>(null);
+/**
+ * 转售后没有弹窗内的本地表单副本 —— 字段全在内嵌的 AftersaleCreateForm 里，它是唯一来源。
+ * 原先这里另存了一份只有 3 个字段的 reactive 作兜底，结果是"兜底一旦生效就静默丢 20 个字段"。
+ */
+const aftersaleFormRef = ref<{ getPayload: () => AftersalePayload } | null>(null);
 const resolve = reactive({ solution: '', createCallback: true });
 const close = reactive({ reason: '', approvalGroup: APPROVAL_GROUPS[0], note: '' });
-const archive = reactive({ reason: ARCHIVE_REASONS[1], retention: '3y' });
 const resume = reactive({ reason: '', detail: '' });
 const returnForm = reactive({ reason: '', note: '' });
 
@@ -228,7 +230,6 @@ const DLG_CONFIG: Partial<Record<OpActionType, DlgConfig>> = {
   恢复: { title: '解除挂起', icon: PlayCircleOutlined, tone: 'success', width: 560, okTone: 'success', okText: '确认解除' },
   退回: { title: '退回工单', icon: RollbackOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认退回' },
   关闭工单: { title: '关闭工单', icon: CloseCircleOutlined, tone: 'warn', width: 520, okTone: 'primary', okText: '提交关闭审核' },
-  归档工单: { title: '归档工单', icon: InboxOutlined, tone: 'warn', width: 480, okTone: 'danger', okText: '确认归档' },
 };
 
 const cfg = computed<DlgConfig>(() => {
@@ -259,10 +260,8 @@ function resetForms() {
   escalate.detail = '';
   escalate.feedbackCategory = FEISHU_FEEDBACK_CATEGORIES[0];
   syncFeishu.space = FEISHU_SPACES[0]; syncFeishu.message = '';
-  aftersale.serviceType = AFTERSALE_SERVICE_TYPES[0]; aftersale.serviceMethod = AFTERSALE_SERVICE_METHODS[0]; aftersale.detail = '';
   resolve.solution = ''; resolve.createCallback = true;
   close.reason = ''; close.approvalGroup = APPROVAL_GROUPS[0]; close.note = '';
-  archive.reason = ARCHIVE_REASONS[1]; archive.retention = '3y';
   resume.reason = ''; resume.detail = '';
   returnForm.reason = ''; returnForm.note = '';
 }
@@ -367,7 +366,9 @@ function onOk() {
     case '同步飞书': emit('confirm', { type: '同步飞书', data: { ...syncFeishu } }); break;
     case '转售后': {
       // 只有新建分支：已有 1:1 关联时入口已置灰（D2 改写，激活分支取消）
-      const data = aftersaleFormRef.value?.getPayload() ?? { ...aftersale };
+      const data = aftersaleFormRef.value?.getPayload();
+      // 表单未挂载＝弹窗没真打开，此时"提交一张字段不全的售后单"比不提交更糟，直接不发
+      if (!data) break;
       emit('confirm', { type: '转售后', data });
       break;
     }
@@ -375,7 +376,6 @@ function onOk() {
     case '恢复': emit('confirm', { type: '恢复', data: { ...resume } }); break;
     case '退回': emit('confirm', { type: '退回', data: { ...returnForm } }); break;
     case '关闭工单': emit('confirm', { type: '关闭工单', data: { ...close } }); break;
-    case '归档工单': emit('confirm', { type: '归档工单', data: { ...archive } }); break;
   }
   closeModal();
 }
@@ -650,7 +650,7 @@ function onOk() {
 
     <!-- 标记已解决 -->
     <div v-else-if="action === '标记已解决'" class="op-form">
-      <div class="op-tip op-tip-ok">标记为 Resolved 后，工单进入「待回访确认」阶段，不等于最终关闭。</div>
+      <div class="op-tip op-tip-ok">标记已解决后，工单进入基线状态「调研中」（发调研回访、等客户反馈），不等于最终关闭。</div>
       <div class="op-field">
         <div class="op-label req">解决方案摘要</div>
         <a-textarea v-model:value="resolve.solution" :rows="3" placeholder="请填写本次处理结果与建议..." />
@@ -714,28 +714,6 @@ function onOk() {
       <div class="op-field">
         <div class="op-label">备注</div>
         <a-textarea v-model:value="close.note" :rows="3" placeholder="请补充关闭说明，供审核人判断..." />
-      </div>
-    </div>
-
-    <!-- 归档 -->
-    <div v-else-if="action === '归档工单'" class="op-form">
-      <div class="op-tip op-tip-warn">归档后工单将移至冷存储，仅支持只读查询，不可恢复</div>
-      <div class="op-field">
-        <div class="op-label">归档原因</div>
-        <a-select v-model:value="archive.reason" style="width:100%"
-          :options="ARCHIVE_REASONS.map((r) => ({ value: r, label: r }))" />
-      </div>
-      <div class="op-field">
-        <div class="op-label">数据保留策略</div>
-        <a-radio-group v-model:value="archive.retention">
-          <a-radio value="3y">保留 3 年</a-radio>
-          <a-radio value="5y">保留 5 年</a-radio>
-          <a-radio value="forever">永久保留</a-radio>
-        </a-radio-group>
-      </div>
-      <div class="op-box">
-        <div class="op-kv-row"><span>工单编号</span><span class="op-mono">{{ ticketNo }}</span></div>
-        <div class="op-kv-row"><span>关联附件</span><span>2 个文件 (256KB)</span></div>
       </div>
     </div>
   </OpActionModal>

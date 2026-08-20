@@ -11,6 +11,19 @@ import {
   CloseOutlined,
 } from '@ant-design/icons-vue';
 import { stdPagination } from '@/config/adminUi';
+import { useUserStore } from '@/stores/user';
+import { APPROVAL_ACTION_ROLES } from '@/config/roles';
+
+const user = useUserStore();
+/**
+ * 审批动作的角色门控（矩阵 #86「审批批准」/ #87「审批驳回」，取值同 #83 #84 两枚批量）：
+ * 只有 ⑤ 班组长 · ⑥ 投诉处理角色 · ⑨ 管理员 能批，② 二线·客服 / ③ 二线·售后 / ④ 三线 一律「无」。
+ *
+ * **进得来 ≠ 能批**：② ③ 的 `approval` 菜单是给它们看自己提交的申请、撤回自己发起的流转用的
+ * （矩阵 #88），此前本页零角色判断，于是二线一进来就能批别人的单。
+ * 门控只加在动作上，菜单配置不动。
+ */
+const canApprove = computed(() => APPROVAL_ACTION_ROLES.includes(user.roleKey));
 
 const NAV = [
   { key: 'mine', label: '我的申请', icon: FileTextOutlined, count: 3 },
@@ -85,13 +98,17 @@ function moveToDone(r: Req) {
   if (i >= 0) dataMap.todo.splice(i, 1);
   dataMap.done.unshift({ ...r });
 }
+/** 无审批资格时按钮已不渲染，此处再兜一道：门控只写在模板上，程序调用就绕过去了 */
+const NO_APPROVAL_TIP = '当前角色无审批权限';
 function approve(r: Req) {
+  if (!canApprove.value) return message.warning(NO_APPROVAL_TIP);
   r.status = '已通过';
   r.node = '已完成';
   moveToDone(r);
   message.success(`已通过 ${r.id}`);
 }
 function reject(r: Req) {
+  if (!canApprove.value) return message.warning(NO_APPROVAL_TIP);
   r.status = '已驳回';
   r.node = '已驳回';
   moveToDone(r);
@@ -168,7 +185,8 @@ function withdraw(r: Req) {
                 <a-button type="link" size="small" @click="viewDetail(record as Req)">
                   查看详情
                 </a-button>
-                <template v-if="active === 'todo'">
+                <!-- 无审批资格的角色（② ③ ④ 等）整两枚不展示，不是置灰：矩阵取值是「无」 -->
+                <template v-if="active === 'todo' && canApprove">
                   <a-button type="link" size="small" @click="approve(record as Req)">
                     <template #icon><CheckOutlined /></template>
                     通过

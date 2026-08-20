@@ -6,6 +6,8 @@ defineProps<{
   processResult: string;
   problemCauseAttachments: string[];
   processResultAttachments: string[];
+  /** 只读：两个正文框不可编辑、附件入口不出（原生 textarea 拦不住 antd 的 component-disabled） */
+  readonly?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -23,6 +25,7 @@ const emit = defineEmits<{
       <OpTextareaAttach
         :model-value="problemCause"
         :attachments="problemCauseAttachments"
+        :readonly="readonly"
         placeholder="描述问题原因…"
         @update:model-value="(v) => emit('update:problemCause', v)"
         @update:attachments="(v) => emit('update:problemCauseAttachments', v)"
@@ -34,6 +37,7 @@ const emit = defineEmits<{
       <OpTextareaAttach
         :model-value="processResult"
         :attachments="processResultAttachments"
+        :readonly="readonly"
         placeholder="描述处理结果…"
         @update:model-value="(v) => emit('update:processResult', v)"
         @update:attachments="(v) => emit('update:processResultAttachments', v)"

@@ -25,11 +25,14 @@ const emit = defineEmits<{ search: []; reset: []; 'clear-keyword': [] }>();
 
 const RangePicker = DatePicker.RangePicker;
 
-const rangePresets = [
-  { label: '最近一周', value: () => buildPresetRange(7) },
-  { label: '最近一个月', value: () => buildPresetRange(30) },
-  { label: '最近三个月', value: () => buildPresetRange(90) },
-];
+// 必须是 computed 而非模块级常量：ant-design-vue 的 presets 只接受**数组**（不对函数求值，
+// 那是已废弃的 ranges 才有的能力），写成 `value: () => …` 点了不生效；
+// 而写成模块级常量会在加载时求值，跨零点的长驻页面会漂一天。
+const rangePresets = computed(() => [
+  { label: '最近一周', value: buildPresetRange(7) },
+  { label: '最近一个月', value: buildPresetRange(30) },
+  { label: '最近三个月', value: buildPresetRange(90) },
+]);
 
 function buildPresetRange(days: number): [Dayjs, Dayjs] {
   const end = dayjs().endOf('day');

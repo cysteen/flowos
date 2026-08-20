@@ -6,7 +6,7 @@
 // 未建档客户按工单聚合出基础档案。
 
 import { TICKETS } from './tickets';
-import type { Ticket } from '@/views/tickets/types/ticket';
+import { isTicketClosed, type Ticket } from '@/views/tickets/types/ticket';
 
 /** 客户全景页时间基准（与工单 Mock 时间轴对齐） */
 export const INSIGHT_TODAY = '2026-08-04';
@@ -239,7 +239,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
   '13800138001': [
     {
       id: 'h-13800138001-1', no: 'LCMN-20260412-30188', title: '智能音箱连接家庭 WiFi 频繁掉线',
-      type: '投诉', priority: 'P1', statusText: '已关闭', tone: 'closed', channel: '电话',
+      type: '投诉', priority: 'P1', statusText: '已结案', tone: 'closed', channel: '电话',
       product: '智能音箱 X1', createdAt: '2026-04-12 10:22', closedAt: '2026-04-15 17:40',
       assignee: '林坐席', source: '客服', satisfaction: 3,
       conclusion: '指导重置网络模块后恢复，客户对处理时长不满，已致歉并赠送 3 个月会员。',
@@ -247,7 +247,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
     },
     {
       id: 'h-13800138001-2', no: 'LCMN-20260228-21044', title: '咨询音箱固件升级方式',
-      type: '咨询', priority: 'P3', statusText: '已关闭', tone: 'closed', channel: '在线客服',
+      type: '咨询', priority: 'P3', statusText: '已结案', tone: 'closed', channel: '在线客服',
       product: '智能音箱 X1', createdAt: '2026-02-28 14:05', closedAt: '2026-02-28 14:31',
       assignee: '陈坐席', source: '客服', satisfaction: 5,
       conclusion: '已引导至 APP 内一键升级，客户当场确认解决。',
@@ -255,7 +255,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
     },
     {
       id: 'h-13800138001-3', no: 'AS-20250922-11208', title: '智能门锁指纹模块返修',
-      type: '维修', priority: 'P2', statusText: '已关闭', tone: 'closed', channel: '售后',
+      type: '维修', priority: 'P2', statusText: '已完成', tone: 'closed', channel: '售后',
       product: '智能门锁 L1', createdAt: '2025-09-22 09:00', closedAt: '2025-10-08 16:00',
       assignee: '售后 · 华东仓', source: '售后',
       conclusion: '保内更换指纹模块，寄回客户并回访确认正常。',
@@ -265,7 +265,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
   '13788889999': [
     {
       id: 'h-13788889999-1', no: 'LCMN-20260520-41122', title: '开放平台批量导入接口报错 500',
-      type: '咨询', priority: 'P1', statusText: '已关闭', tone: 'closed', channel: '邮件',
+      type: '咨询', priority: 'P1', statusText: '已结案', tone: 'closed', channel: '邮件',
       product: '开放平台', createdAt: '2026-05-20 11:10', closedAt: '2026-05-21 10:05',
       assignee: '技术支持 · 周工', source: '客服', satisfaction: 5,
       conclusion: '定位为客户侧字段编码问题，提供修正样例后自测通过。',
@@ -273,7 +273,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
     },
     {
       id: 'h-13788889999-2', no: 'LCMN-20260118-18076', title: '续约方案与并发配额咨询',
-      type: '商机', priority: 'P2', statusText: '已关闭', tone: 'closed', channel: '电话',
+      type: '商机', priority: 'P2', statusText: '已结案', tone: 'closed', channel: '电话',
       product: '开放平台', createdAt: '2026-01-18 15:30', closedAt: '2026-01-19 09:50',
       assignee: '王坐席', source: '客服', satisfaction: 5,
       conclusion: '转销售跟进，已签 2026 年度续约（含并发扩容至 200 QPS）。',
@@ -281,7 +281,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
     },
     {
       id: 'h-13788889999-3', no: 'LCMN-20251106-09933', title: '账号权限变更申请',
-      type: '咨询', priority: 'P3', statusText: '已关闭', tone: 'closed', channel: '小程序',
+      type: '咨询', priority: 'P3', statusText: '已结案', tone: 'closed', channel: '小程序',
       product: '企业版', createdAt: '2025-11-06 09:12', closedAt: '2025-11-06 11:20',
       assignee: '林坐席', source: '客服', satisfaction: 4,
       conclusion: '已按授权函为 3 名管理员开通后台权限。',
@@ -291,7 +291,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
   '13700003333': [
     {
       id: 'h-13700003333-1', no: 'LCMN-20260605-52011', title: '智能音箱送修后功能未恢复',
-      type: '投诉', priority: 'P1', statusText: '已关闭', tone: 'closed', channel: '电话',
+      type: '投诉', priority: 'P1', statusText: '已结案', tone: 'closed', channel: '电话',
       product: '智能音箱 X1', createdAt: '2026-06-05 10:40', closedAt: '2026-06-21 18:10',
       assignee: '陈坐席', source: '客服', satisfaction: 2, breached: true,
       conclusion: '二次返修后功能恢复，处理周期 16 天超出承诺，客户明确表示不满。',
@@ -299,7 +299,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
     },
     {
       id: 'h-13700003333-2', no: 'AS-20260520-13390', title: '智能音箱主板返修（保外）',
-      type: '维修', priority: 'P2', statusText: '已关闭', tone: 'closed', channel: '售后',
+      type: '维修', priority: 'P2', statusText: '已完成', tone: 'closed', channel: '售后',
       product: '智能音箱 X1', createdAt: '2026-05-20 14:00', closedAt: '2026-06-04 15:30',
       assignee: '售后 · 西南仓', source: '售后',
       conclusion: '保外付费更换主板，收费 268 元，返机后客户反馈仍有异常。',
@@ -307,7 +307,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
     },
     {
       id: 'h-13700003333-3', no: 'LCMN-20260419-33507', title: '音箱无法唤醒',
-      type: '咨询', priority: 'P2', statusText: '已关闭', tone: 'closed', channel: '在线客服',
+      type: '咨询', priority: 'P2', statusText: '已结案', tone: 'closed', channel: '在线客服',
       product: '智能音箱 X1', createdAt: '2026-04-19 20:15', closedAt: '2026-04-20 09:40',
       assignee: '王坐席', source: '客服', satisfaction: 4,
       conclusion: '远程指导恢复出厂设置后可唤醒，建议观察一周。',
@@ -317,7 +317,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
   '13912345678': [
     {
       id: 'h-13912345678-1', no: 'LCMN-20260401-27714', title: '扫地机器人回充失败',
-      type: '咨询', priority: 'P2', statusText: '已关闭', tone: 'closed', channel: '在线客服',
+      type: '咨询', priority: 'P2', statusText: '已结案', tone: 'closed', channel: '在线客服',
       product: '扫地机器人 R2', createdAt: '2026-04-01 19:22', closedAt: '2026-04-02 10:15',
       assignee: '林坐席', source: '客服', satisfaction: 5,
       conclusion: '指导清洁充电极片并调整基站位置后恢复正常。',
@@ -325,7 +325,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
     },
     {
       id: 'h-13912345678-2', no: 'LCMN-20240712-08221', title: '空气净化器噪音偏大',
-      type: '投诉', priority: 'P2', statusText: '已关闭', tone: 'closed', channel: '电话',
+      type: '投诉', priority: 'P2', statusText: '已结案', tone: 'closed', channel: '电话',
       product: '空气净化器 P3', createdAt: '2024-07-12 08:50', closedAt: '2024-07-16 16:20',
       assignee: '陈坐席', source: '客服', satisfaction: 4,
       conclusion: '保内换机处理，客户接受。',
@@ -335,7 +335,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
   '15800002222': [
     {
       id: 'h-15800002222-1', no: 'LCMN-20260603-51880', title: '耳机单边无声',
-      type: '咨询', priority: 'P2', statusText: '已关闭', tone: 'closed', channel: 'APP',
+      type: '咨询', priority: 'P2', statusText: '已结案', tone: 'closed', channel: 'APP',
       product: '蓝牙耳机 Air', createdAt: '2026-06-03 21:04', closedAt: '2026-06-04 11:30',
       assignee: '王坐席', source: '客服', satisfaction: 3,
       conclusion: '判断为充电仓触点接触不良，已寄出新充电仓。',
@@ -345,7 +345,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
   '13500001234': [
     {
       id: 'h-13500001234-1', no: 'LCMN-20260626-56340', title: '翻译机离线包下载中断',
-      type: '咨询', priority: 'P2', statusText: '已关闭', tone: 'closed', channel: '在线客服',
+      type: '咨询', priority: 'P2', statusText: '已结案', tone: 'closed', channel: '在线客服',
       product: '讯飞翻译机 T10', createdAt: '2026-06-26 10:11', closedAt: '2026-06-26 15:22',
       assignee: '林坐席', source: '客服', satisfaction: 5,
       conclusion: '更换下载节点后完成离线包安装。',
@@ -353,7 +353,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
     },
     {
       id: 'h-13500001234-2', no: 'LCMN-20250308-04412', title: '批量采购发票与保修凭证',
-      type: '咨询', priority: 'P3', statusText: '已关闭', tone: 'closed', channel: '邮件',
+      type: '咨询', priority: 'P3', statusText: '已结案', tone: 'closed', channel: '邮件',
       product: '讯飞翻译机 T10', createdAt: '2025-03-08 09:30', closedAt: '2025-03-09 14:00',
       assignee: '陈坐席', source: '客服', satisfaction: 5,
       conclusion: '已补开增值税专用发票并寄送保修凭证。',
@@ -440,9 +440,63 @@ const SURVEYS: Record<string, CustomerSurveyRow[]> = {
   ],
 };
 
+/* -------------------------------------------------------------------------
+ * 履历完整性校验（构建期）
+ *
+ * 本页的工单号分两类，两类的**约束刚好相反**，所以必须分开管：
+ *   ① 在办 / 已办单：来自工单数据源，`live: true`，行内单号可点开办理页
+ *      → 单号必须在工单库里存在（这一类由工单库自己保证，本文件不手写）。
+ *   ② 历史单（ARCHIVE）：早于工单库时间窗，只存在于履历，`live: false`，
+ *      界面上以「已归档」标记呈现且**不可点开**（openTicket 对 !live 直接返回）。
+ *      → 单号必须**不在**工单库里：一旦重号，同一张单会在客户履历里出现两行。
+ *
+ * 联系记录 / 满意度 / 关联售后单只是**指向**某张单，故校验两件事：单号能落到某张单上，
+ * 且那张单属于**同一位客户** —— 挂到别人名下的记录，界面上看不出错，读的人却会当真。
+ * ----------------------------------------------------------------------- */
+
+const LIVE_TICKET_BY_NO = new Map(TICKETS.map((t) => [t.no, t]));
+
+Object.entries(ARCHIVE).forEach(([phone, rows]) => {
+  rows.forEach((r) => {
+    if (LIVE_TICKET_BY_NO.has(r.no)) {
+      throw new Error(
+        `[customerInsight] 历史单 ${r.no}（${phone}）与工单库重号，客户履历会出现两行同一张单`,
+      );
+    }
+  });
+});
+
+function assertTicketBelongsTo(phone: string, no: string, where: string): void {
+  const live = LIVE_TICKET_BY_NO.get(no);
+  if (live) {
+    if (live.customerPhone !== phone) {
+      throw new Error(
+        `[customerInsight] ${where} 引用的 ${no} 是 ${live.customerPhone ?? '未登记手机号'} 的单，不是 ${phone} 的`,
+      );
+    }
+    return;
+  }
+  if ((ARCHIVE[phone] ?? []).some((r) => r.no === no)) return;
+  throw new Error(`[customerInsight] ${where} 引用了既不在工单库、也不在本客户履历里的单号：${no}`);
+}
+
+Object.entries(CONTACTS).forEach(([phone, rows]) => {
+  rows.forEach((r) => {
+    if (r.ticketNo) assertTicketBelongsTo(phone, r.ticketNo, `联系记录 ${r.id}`);
+  });
+});
+Object.entries(SURVEYS).forEach(([phone, rows]) => {
+  rows.forEach((r) => assertTicketBelongsTo(phone, r.ticketNo, `满意度评价（${r.sentAt}）`));
+});
+Object.entries(AFTERSALES).forEach(([phone, rows]) => {
+  rows.forEach((r) => {
+    if (r.fromTicketNo) assertTicketBelongsTo(phone, r.fromTicketNo, `售后单 ${r.no} 的来源客服单`);
+  });
+});
+
 // ---- 工单库 → 客户履历行 ----
 
-/** 已关闭口径与工单库一致：SLA 钟为「—」即无活跃钟 */
+/** 终态口径与工单库一致：SLA 钟为「—」即无活跃钟 */
 function isClosedTicket(t: Ticket): boolean {
   return t.slaText === '—' || !!t.archived;
 }
@@ -454,10 +508,26 @@ function toneOf(t: Ticket): TicketTone {
   return 'processing';
 }
 
+/**
+ * 履历行的状态一律用**基线状态名**（工单的 nodeStatus 本身就是基线状态）。
+ *
+ * 此前这里写的是「已归档」与「已关闭」：
+ * · 「已归档」不是状态，是与状态正交的另一个维度（行尾已另有「已归档」标记），
+ *   拿它顶掉状态位，等于让归档单看不出自己是怎么结束的；
+ * · 「已关闭」只是终态的分类伞，不可落库，页面上不该出现。
+ *
+ * 少数已办单的 SLA 钟已停、nodeStatus 却还停在在办态（工单数据源的已知问题），
+ * 这里按它做过的关闭动作折算到基线终态，而不是把在办态照抄出来。
+ */
 function statusTextOf(t: Ticket): string {
-  if (t.archived) return '已归档';
-  if (t.slaText === '—') return t.slaSub || '已关闭';
-  return t.nodeStatus;
+  if (!isClosedTicket(t) || isTicketClosed(t.nodeStatus)) return t.nodeStatus;
+  if (t.escalatedToNo) return '已转单';
+  if (t.myForceCloseAction) return '已强结';
+  // 「关闭工单」审批通过后的终态是**非常规关闭**（基线 §1 该行「友好沟通后关闭」），
+  // 不是「已结案」——已结案专指"建单即结案、从未进流程"的一次性单，这些单都跑过流程。
+  // 与工单数据源里这几张单的 slaSub 取值口径一致。
+  if (t.myCloseAction) return '非常规关闭';
+  return '已结案';
 }
 
 function complaintPlatformOf(t: Ticket): string | undefined {
@@ -724,6 +794,13 @@ export const DEMO_SEARCH_HINTS = [
   { label: '工单号', query: 'LCMN-20260610-73026', tip: '张小凡的投诉单' },
   { label: 'SN', query: 'SN-T10-260713', tip: '陈翻译 · 翻译机' },
 ] as const;
+
+// 可搜示例必须真的搜得到 —— 演示第一步就落空态，比没有示例更糟
+DEMO_SEARCH_HINTS.forEach((h) => {
+  if (!searchCustomers(h.query).candidates.length) {
+    throw new Error(`[customerInsight] 可搜示例「${h.label}」查不到任何客户：${h.query}`);
+  }
+});
 
 export const QUERY_KIND_LABEL: Record<QueryKind, string> = {
   phone: '手机号',

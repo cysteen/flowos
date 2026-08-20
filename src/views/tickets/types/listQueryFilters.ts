@@ -185,7 +185,9 @@ function matchStatus(t: Ticket, status: string): boolean {
     return t.ticketSource === '售后转入' || t.ticketSource === '跨组调剂';
   }
   if (status === 'escalated') {
-    return t.nodeStatus === '已升级·三线技术支持' || !!t.smartMarks?.includes('升级');
+    // 基线只有一个「已升级」状态（三线技术支持 / 产研两类目标都落它，差别在处理人）。
+    // 本项筛的是"升级过的单"，与升级目标无关，故不按目标再分。
+    return t.nodeStatus === '已升级' || !!t.smartMarks?.includes('升级');
   }
   if (status === 'firstResponseOverdue') {
     return !isFirstResponded(t) && t.slaState === 'overdue';
@@ -199,7 +201,7 @@ function matchStatus(t: Ticket, status: string): boolean {
 
   const map: Record<string, string[]> = {
     pending: ['未认领', '待响应'],
-    processing: ['处理中', '已升级·三线技术支持', '已升级·产研', '已委派', '已退回', '调研中'],
+    processing: ['处理中', '已升级', '已委派', '已退回', '调研中'],
     held: ['已挂起'],
     review: ['申请挂起中', '申请关闭中', '申请强结中', '业务动作审核中'],
   };

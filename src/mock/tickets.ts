@@ -59,7 +59,7 @@ const BASE_TICKETS: Ticket[] = [
     id: 't4', no: 'LCMN-20260610-75002', type: '商机', channel: '邮件',
     title: 'API 调用返回 429 限流', smartMarks: ['相似', '知识'],
     customer: '赵敏', vip: true, customerTags: ['校长'], product: '开放平台',
-    nodeStatus: '已升级·三线技术支持', nodeStep: 4, nodeTotal: 5, priority: 'P1',
+    nodeStatus: '已升级', escalateTarget: '三线技术支持', nodeStep: 4, nodeTotal: 5, priority: 'P1',
     slaText: '01:48:30', slaSub: '距超时', slaState: 'soon', slaMinutes: 108,
     assignee: '王坐席', tab: 'mine',
     customerPhone: '13788889999', productCategory: '开放平台',
@@ -213,24 +213,25 @@ const BASE_TICKETS: Ticket[] = [
     createdAt: '2026-08-16 11:00', updatedAt: '2026-08-17 09:30',
     responded: true,
   },
-  // D5 已升级·三线技术支持：不拉回；通知**三线组员 + 抄送主责二线**。注意处理人已转到三线
+  // D5 已升级（升级目标＝三线技术支持）：不拉回；通知**三线组员 + 抄送主责二线**。注意处理人已转到三线
   {
     id: 'fd-d5', no: 'LCMN-20260817-83005', type: '投诉', channel: '电话',
     title: '学习机批量固件升级失败，已升三线', smartMarks: ['升级'],
     customer: '钟磊', vip: true, customerTags: ['老师'], product: '学习机 T20',
-    nodeStatus: '已升级·三线技术支持', nodeStep: 4, nodeTotal: 5, priority: 'P0',
+    nodeStatus: '已升级', escalateTarget: '三线技术支持', nodeStep: 4, nodeTotal: 5, priority: 'P0',
     slaText: '00:20:00', slaSub: '距超时', slaState: 'soon', slaMinutes: 20,
     assignee: '赵三线', tab: 'mine',
     customerPhone: '13711112222', sn: 'SN-T20-830131', productCategory: '智能硬件',
     createdAt: '2026-08-15 09:00', updatedAt: '2026-08-17 08:00',
     responded: true, upgradedByMe: true, hasDunning: true,
   },
-  // D6 已升级·产研：不拉回；**处理人未转移**，通知仍落二线。与 D5 成对
+  // D6 已升级（升级目标＝产研）：不拉回；**处理人未转移**，通知仍落二线。与 D5 成对，
+  // 两张单状态相同（基线只有一个「已升级」），差别只在 escalateTarget 与处理人
   {
     id: 'fd-d6', no: 'LCMN-20260817-83006', type: '咨询', channel: '在线客服',
     title: '离线翻译漏译，已提飞书项目待产研排查', smartMarks: ['升级'],
     customer: '孟凡', vip: false, product: '讯飞翻译机 T10', productBg: '消费者BG',
-    nodeStatus: '已升级·产研', nodeStep: 4, nodeTotal: 5, priority: 'P1',
+    nodeStatus: '已升级', escalateTarget: '产研', nodeStep: 4, nodeTotal: 5, priority: 'P1',
     slaText: '03:00:00', slaSub: '充足', slaState: 'ok', slaMinutes: 180,
     assignee: '王坐席', tab: 'mine',
     customerPhone: '13722223333', sn: 'SN-T10-830141', productCategory: '消费电子',
@@ -314,7 +315,7 @@ const BASE_TICKETS: Ticket[] = [
     id: 't11', no: 'LCMN-20260716-72645', type: '商机', channel: '邮件',
     title: 'Webhook 推送偶发丢失', smartMarks: ['相似'],
     customer: '韩雪', vip: true, customerTags: ['自媒体'], product: '开放平台',
-    nodeStatus: '已升级·三线技术支持', nodeStep: 4, nodeTotal: 5, priority: 'P1',
+    nodeStatus: '已升级', escalateTarget: '三线技术支持', nodeStep: 4, nodeTotal: 5, priority: 'P1',
     slaText: '00:35:00', slaSub: '距超时', slaState: 'soon', slaMinutes: 35,
     assignee: '陈坐席', tab: 'done', handledByMe: true, myUpgradeAction: true,
     customerPhone: '13588889999', productCategory: '开放平台',
@@ -330,12 +331,16 @@ const BASE_TICKETS: Ticket[] = [
     customerPhone: '15833334444', sn: 'SN-AIR-88201', productCategory: '智能硬件',
     createdAt: '2026-07-15 08:00', updatedAt: '2026-08-16 15:20',
   },
+  // ⬇ 以下几张停表单的 slaSub 一律写**基线 §1 的终态名**，不写「已关闭」——
+  //   「已关闭」只是终态的分类伞、不可落库（基线 §1 末条）。取值按该单自带的动作标记反推：
+  //   `myCloseAction`（关闭工单审批通过）→ 非常规关闭；`myForceCloseAction` → 已强结；
+  //   `escalatedToNo` → 已转单；nodeStatus 本身已是终态的（如已解决）直接取它。
   {
     id: 't27', no: 'LCMN-20260710-61020', type: '咨询', channel: '电话',
     title: '路由器固件升级后无法联网', smartMarks: [],
     customer: '钱进', vip: false, product: '路由器 R2',
     nodeStatus: '处理中', nodeStep: 5, nodeTotal: 5, priority: 'P2',
-    slaText: '—', slaSub: '已关闭', slaState: 'ok', slaMinutes: 9999,
+    slaText: '—', slaSub: '非常规关闭·停表', slaState: 'ok', slaMinutes: 9999,
     assignee: '陈坐席', tab: 'done', handledByMe: true, myCloseAction: true,
     customerPhone: '13944445555', sn: 'SN-R2-11002', productCategory: '智能硬件',
     createdAt: '2026-07-07 09:30', updatedAt: '2026-08-10 17:00',
@@ -345,7 +350,7 @@ const BASE_TICKETS: Ticket[] = [
     title: '重复扣费问题已协调处理', smartMarks: [],
     customer: '谢婷', vip: true, customerTags: ['老师'], product: '会员服务',
     nodeStatus: '处理中', nodeStep: 5, nodeTotal: 5, priority: 'P1',
-    slaText: '—', slaSub: '已关闭', slaState: 'ok', slaMinutes: 9999,
+    slaText: '—', slaSub: '非常规关闭·停表', slaState: 'ok', slaMinutes: 9999,
     solveBreached: true,
     assignee: '林坐席', tab: 'done', handledByMe: true,
     myTransferAction: true, myCloseAction: true,
@@ -360,7 +365,7 @@ const BASE_TICKETS: Ticket[] = [
     title: '学习机屏幕漏光已现场更换', smartMarks: [],
     customer: '周敏', vip: false, product: '学习机 T20',
     nodeStatus: '处理中', nodeStep: 5, nodeTotal: 5, priority: 'P2',
-    slaText: '—', slaSub: '已关闭', slaState: 'ok', slaMinutes: 9999,
+    slaText: '—', slaSub: '非常规关闭·停表', slaState: 'ok', slaMinutes: 9999,
     assignee: '王坐席', tab: 'done', handledByMe: true, myCloseAction: true,
     customerPhone: '13500002222', sn: 'SN-T20-77301', productCategory: '学习硬件',
     problemDesc: '屏幕左下角漏光，已现场更换屏幕总成并复检通过，客户确认满意。',
@@ -388,7 +393,7 @@ const BASE_TICKETS: Ticket[] = [
     title: '外投·维修超期未解决客户要求赔偿', smartMarks: ['升级'],
     customer: '吴强', vip: true, product: '智能音箱 X1',
     ticketSource: '外投渠道',
-    nodeStatus: '已升级·三线技术支持', nodeStep: 3, nodeTotal: 5, priority: 'P0',
+    nodeStatus: '已升级', escalateTarget: '三线技术支持', nodeStep: 3, nodeTotal: 5, priority: 'P0',
     slaText: '01:12:00', slaSub: '距超时', slaState: 'soon', slaMinutes: 72,
     assignee: '王坐席', tab: 'mine', responded: true,
     customerPhone: '13700003333', sn: 'SN-X1-55208', productCategory: '智能硬件',
@@ -470,7 +475,7 @@ const BASE_TICKETS: Ticket[] = [
     id: 't17', no: 'LCMN-20260609-66248', type: '投诉', channel: '在线客服',
     title: '账号被异常登录', smartMarks: ['升级'],
     customer: '曾琳', vip: false, product: '企业版',
-    nodeStatus: '已升级·三线技术支持', nodeStep: 4, nodeTotal: 5, priority: 'P0',
+    nodeStatus: '已升级', escalateTarget: '三线技术支持', nodeStep: 4, nodeTotal: 5, priority: 'P0',
     slaText: '01:05:00', slaSub: '距超时', slaState: 'soon', slaMinutes: 65,
     assignee: '林坐席', tab: 'pool', mentionUnread: true, hasDunning: true,
   },
@@ -515,7 +520,7 @@ const BASE_TICKETS: Ticket[] = [
     title: '账号注销流程咨询', smartMarks: [],
     customer: '钱伟', vip: false, product: '企业版',
     nodeStatus: '已解决', nodeStep: 5, nodeTotal: 5, priority: 'P3',
-    slaText: '—', slaSub: '已关闭', slaState: 'ok', slaMinutes: 9999,
+    slaText: '—', slaSub: '已解决·停表', slaState: 'ok', slaMinutes: 9999,
     assignee: '王坐席', tab: 'mine', archived: true, updatedAt: '2025-05-28 16:30',
   },
   {
@@ -523,7 +528,7 @@ const BASE_TICKETS: Ticket[] = [
     title: '路由器已更换并结单', smartMarks: [],
     customer: '孔明', vip: false, product: '路由器 R2',
     nodeStatus: '已解决', nodeStep: 5, nodeTotal: 5, priority: 'P2',
-    slaText: '—', slaSub: '已关闭', slaState: 'ok', slaMinutes: 9999,
+    slaText: '—', slaSub: '已解决·停表', slaState: 'ok', slaMinutes: 9999,
     assignee: '陈坐席', tab: 'done', archived: true, updatedAt: '2025-05-27 11:20',
     handledByMe: true, myTransferAction: true,
   },
@@ -532,7 +537,7 @@ const BASE_TICKETS: Ticket[] = [
     title: '物流延迟投诉已解决', smartMarks: ['情绪'],
     customer: '吕布', vip: true, customerTags: ['记者'], product: '智能音箱 X1',
     nodeStatus: '已解决', nodeStep: 5, nodeTotal: 5, priority: 'P1',
-    slaText: '—', slaSub: '已关闭', slaState: 'ok', slaMinutes: 9999,
+    slaText: '—', slaSub: '已解决·停表', slaState: 'ok', slaMinutes: 9999,
     assignee: '林坐席', tab: 'done', archived: true, updatedAt: '2025-05-26 09:45',
     handledByMe: true, myCloseAction: true,
   },
@@ -541,7 +546,7 @@ const BASE_TICKETS: Ticket[] = [
     title: '退货退款已完成', smartMarks: [],
     customer: '貂蝉', vip: false, product: '蓝牙耳机 Air',
     nodeStatus: '已解决', nodeStep: 5, nodeTotal: 5, priority: 'P2',
-    slaText: '—', slaSub: '已关闭', slaState: 'ok', slaMinutes: 9999,
+    slaText: '—', slaSub: '已解决·停表', slaState: 'ok', slaMinutes: 9999,
     assignee: '王坐席', tab: 'mine', archived: true, updatedAt: '2025-05-25 14:10',
   },
   {
@@ -549,7 +554,7 @@ const BASE_TICKETS: Ticket[] = [
     title: '智能门锁安装完成', smartMarks: [],
     customer: '刘备', vip: false, product: '智能门锁 L1',
     nodeStatus: '已解决', nodeStep: 5, nodeTotal: 5, priority: 'P2',
-    slaText: '—', slaSub: '已关闭', slaState: 'ok', slaMinutes: 9999,
+    slaText: '—', slaSub: '已解决·停表', slaState: 'ok', slaMinutes: 9999,
     assignee: '陈坐席', tab: 'done', archived: true, updatedAt: '2025-05-24 17:00',
     handledByMe: true, myDelegateAction: true,
   },
@@ -558,8 +563,104 @@ const BASE_TICKETS: Ticket[] = [
     title: 'API 鉴权问题已修复', smartMarks: ['知识'],
     customer: '孙权', vip: true, customerTags: ['自媒体'], product: '开放平台',
     nodeStatus: '已解决', nodeStep: 5, nodeTotal: 5, priority: 'P1',
-    slaText: '—', slaSub: '已关闭', slaState: 'ok', slaMinutes: 9999,
+    slaText: '—', slaSub: '已解决·停表', slaState: 'ok', slaMinutes: 9999,
     assignee: '林坐席', tab: 'mine', archived: true, updatedAt: '2025-05-23 10:30',
+  },
+
+  // ================================================================
+  // 运营监控大盘的超时样本单 —— 共 6 张。
+  //
+  // 【为什么必须落在工单数据源里】运营监控是**租户级**视角，风险清单里超时最久的单
+  // 天然不在本工作台的数据域内。清单原先自带一份手写单号，工单库里查不到，
+  // 点进去只能静默打到默认演示单 —— 每一行打开的都是同一张单。
+  //
+  // 【为什么不进本工作台的任何 Tab】这批单归属**其他班组**（硬件缺陷组 / 教育支持组 /
+  // 技术支持组 / 受理二组），处理人也不是本工作台的当前坐席，本工作台本就看不到它们：
+  //   · `tab='done'` + `handledByMe: false` → inDoneScope 排除，Tab 徽章也不计
+  //   · 无 groupId → 组池与「催补待回」两个域一律 fail-closed 排除
+  //   · 在查询中心（租户级）与运营监控风险清单里可查、可点开
+  //
+  // 【为什么都是超时态】它们的用途只有一个：给风险清单的「超时 >72h / 24–72h」两桶
+  // 提供真单。既有的在办单里没有一张挂着跨天的超时钟（最久的 t2 才超 1 小时多），
+  // 拿它们充数会让「已超 96 小时」的行点开后看到一个还剩几小时的钟。
+  // ================================================================
+  {
+    id: 'ops-1', no: 'LCMN-20260731-58012', type: '投诉', channel: '电话',
+    title: '智能音箱返修超期未回寄', smartMarks: ['情绪'],
+    customer: '吴强', vip: true, product: '智能音箱 X1',
+    nodeStatus: '处理中', nodeStep: 3, nodeTotal: 5, priority: 'P0',
+    slaText: '已超 96:12', slaSub: '已超时', slaState: 'overdue', slaMinutes: -5772,
+    assignee: '陈坐席', tab: 'done', handledByMe: false,
+    customerPhone: '13700003333', sn: 'SN-X1-55208', productCategory: '智能硬件',
+    problemDesc: '送修 12 天仍未回寄，客户多次催问未获明确回寄时间。',
+    latestHandling: '已催返修仓，等待物流回单，尚未给客户明确回寄时间。',
+    createdAt: '2026-07-27 09:15', updatedAt: '2026-07-31 10:40',
+    responded: true, solveBreached: true, hasDunning: true,
+  },
+  {
+    id: 'ops-2', no: 'LCMN-20260730-57744', type: '投诉', channel: '邮件',
+    title: '学习机批量激活失败未解决', smartMarks: ['升级'],
+    customer: '赵敏', vip: true, customerTags: ['校长'], product: '智学网校级版',
+    nodeStatus: '已升级', escalateTarget: '三线技术支持', nodeStep: 4, nodeTotal: 5, priority: 'P0',
+    slaText: '已超 88:40', slaSub: '已超时', slaState: 'overdue', slaMinutes: -5320,
+    assignee: '孙坐席', tab: 'done', handledByMe: false,
+    customerPhone: '13788889999', productCategory: '教育服务',
+    problemDesc: '校级批量激活 320 台学习机全部失败，开学在即。',
+    latestHandling: '已升三线定位授权服务，等待批量重发激活码。',
+    createdAt: '2026-07-26 08:30', updatedAt: '2026-07-30 09:20',
+    responded: true, solveBreached: true, upgradedByMe: true,
+  },
+  {
+    id: 'ops-3', no: 'LCMN-20260731-58190', type: '咨询', channel: '邮件',
+    title: '开放平台配额申请无人跟进', smartMarks: ['相似'],
+    customer: '韩雪', vip: true, customerTags: ['自媒体'], product: '开放平台',
+    nodeStatus: '处理中', nodeStep: 2, nodeTotal: 5, priority: 'P1',
+    slaText: '已超 79:05', slaSub: '已超时', slaState: 'overdue', slaMinutes: -4745,
+    assignee: '周工', tab: 'done', handledByMe: false,
+    customerPhone: '13588889999', productCategory: '开放平台',
+    problemDesc: '并发配额提升申请提交后三天无回复。',
+    latestHandling: '申请单已流转至平台侧，暂无排期反馈。',
+    createdAt: '2026-07-28 11:00', updatedAt: '2026-07-31 09:05',
+    responded: true, solveBreached: true,
+  },
+  {
+    id: 'ops-4', no: 'LCMN-20260802-59331', type: '投诉', channel: '电话',
+    title: '扫地机器人主刷电机异响', smartMarks: ['情绪'],
+    customer: '李大海', vip: false, product: '扫地机器人 R2',
+    nodeStatus: '处理中', nodeStep: 3, nodeTotal: 5, priority: 'P1',
+    slaText: '已超 52:18', slaSub: '已超时', slaState: 'overdue', slaMinutes: -3138,
+    assignee: '陈坐席', tab: 'done', handledByMe: false,
+    customerPhone: '13912345678', sn: 'SN-R2-882910', productCategory: '智能硬件',
+    problemDesc: '主刷电机运转时持续金属异响，清理滚刷无改善。',
+    latestHandling: '已判定需更换电机总成，配件在途未到货。',
+    createdAt: '2026-07-31 14:20', updatedAt: '2026-08-02 10:15',
+    responded: true, solveBreached: true,
+  },
+  {
+    id: 'ops-5', no: 'LCMN-20260802-59410', type: '咨询', channel: '邮件',
+    title: 'API 网关 502 间歇性报错', smartMarks: ['相似', '知识'],
+    customer: '赵敏', vip: true, customerTags: ['校长'], product: '开放平台',
+    nodeStatus: '已升级', escalateTarget: '三线技术支持', nodeStep: 4, nodeTotal: 5, priority: 'P0',
+    slaText: '已超 41:06', slaSub: '已超时', slaState: 'overdue', slaMinutes: -2466,
+    assignee: '周工', tab: 'done', handledByMe: false,
+    customerPhone: '13788889999', productCategory: '开放平台',
+    problemDesc: '网关间歇性返回 502，影响校端成绩同步任务。',
+    latestHandling: '已升三线抓包，怀疑上游连接池耗尽，待复现。',
+    createdAt: '2026-07-31 16:40', updatedAt: '2026-08-02 08:50',
+    responded: true, solveBreached: true, upgradedByMe: true,
+  },
+  {
+    id: 'ops-6', no: 'LCMN-20260802-59502', type: '咨询', channel: '小程序',
+    title: '发票重开申请未处理', smartMarks: [],
+    customer: '陈静', vip: false, customerTags: ['老师'], product: '企业版',
+    nodeStatus: '处理中', nodeStep: 2, nodeTotal: 5, priority: 'P2',
+    slaText: '已超 33:47', slaSub: '已超时', slaState: 'overdue', slaMinutes: -2027,
+    assignee: '林坐席', tab: 'done', handledByMe: false,
+    productCategory: '企业服务',
+    problemDesc: '抬头开错需作废重开，财务侧迟迟未回。',
+    latestHandling: '已提交财务作废申请，等待重开。',
+    createdAt: '2026-07-31 09:30', updatedAt: '2026-08-02 09:10',
+    responded: true, solveBreached: true,
   },
 ];
 

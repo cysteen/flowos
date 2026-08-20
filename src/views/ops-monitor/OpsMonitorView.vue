@@ -1,5 +1,7 @@
 <script setup lang="ts">
-// 运营监控大盘（租户级 · 915 P0）
+// 工单监控 —— 运营监控大盘的实时大盘 Tab
+// 风险监控已按 D7a 拆出独立立项，组件见 RiskMonitorView.vue；本页只保留
+// 「风险命中」两张指标卡 + 下钻入口，明细与打标全部在那边。
 //
 // 【设计逻辑：异常驱动，不是指标陈列】
 // 监控岗一个班次 8 小时盯屏，绝大多数时间是没事的。所以这一页的组织方式是——
@@ -19,7 +21,6 @@ import {
   RiseOutlined,
   FallOutlined,
 } from '@ant-design/icons-vue';
-import CustomerInsightView from '@/views/customer/CustomerInsightView.vue';
 import MetricTipIcon from '@/components/MetricTipIcon.vue';
 import { opsTip } from '@/mock/opsMonitorTips';
 import { useUserStore } from '@/stores/user';
@@ -52,7 +53,6 @@ import {
   QUALITY_METRICS,
   OVERALL_TIMELY,
   GROUP_SLA,
-  RISK_WORDS,
   RISK_LEVEL_STYLE,
   PIE_COLORS,
   MONTHLY_QUALITY,
@@ -67,23 +67,19 @@ import {
   type RiskLevel,
 } from '@/mock/opsReport';
 
+// 风险监控已拆到 RiskMonitorView.vue（D7a）；本组件只服务「工单监控」，
+// 'report' 是 915 P1 才开的运营报表 Tab（§12.3 X4），当前被 SHOW_REPORT_TAB 关着。
+const props = withDefaults(defineProps<{ board?: 'ticket' | 'report' }>(), { board: 'ticket' });
+
 const router = useRouter();
 const user = useUserStore();
 
-type TabKey = 'live' | 'report' | 'trace';
-const activeTab = ref<TabKey>('live');
-const TABS: { key: TabKey; label: string }[] = [
-  { key: 'live', label: '实时大盘' },
-  { key: 'report', label: '运营报表' },
-  { key: 'trace', label: '溯源查询' },
-];
-/** 915 P0 先隐藏运营报表 Tab，P1 再开 */
+/** 915 P0 先隐藏运营报表，P1 再开 */
 const SHOW_REPORT_TAB = false;
 /** 915 P0 隐藏「此刻状态」KPI 行（与流量卡重复） */
 const SHOW_KPI_PANEL = false;
 /** 915 P0 隐藏「分组诊断」 */
 const SHOW_DIAG_PANEL = false;
-const visibleTabs = TABS.filter((t) => SHOW_REPORT_TAB || t.key !== 'report');
 
 const scopeIds = ref<string[]>([]);
 const scope = computed<OpsScope>(() => (scopeIds.value.length ? scopeIds.value : 'all'));
@@ -193,7 +189,6 @@ function tagTraceOf(h: RiskHit): { by: string; at: string; note: string } | unde
   return undefined;
 }
 
-const riskWordsOpen = ref(false);
 
 /** 3.1 饼图：用 stroke-dasharray 画环形，半径 25 → 周长 ≈ 157 */
 const pieSegments = computed(() => {
@@ -561,6 +556,17 @@ function openTicket(no: string) {
   router.push(`/tickets/${no}`);
 }
 
+/**
+ * 下钻到风险监控（D7a）：把当前监控范围带过去，不让人到了新页面再选一遍。
+ * pending=true 时另预置「仅看待打标」。
+ */
+function goRiskMonitor(pending = false) {
+  const query: Record<string, string> = {};
+  if (scopeIds.value.length) query.scope = scopeIds.value.join(',');
+  if (pending) query.pending = '1';
+  router.push({ path: '/ops-monitor/risk', query });
+}
+
 // ---- 视觉映射 ----
 const VERDICT_STYLE: Record<GroupVerdict, { color: string; bg: string }> = {
   人力不足: { color: '#b91c1c', bg: '#fee2e2' },
@@ -599,24 +605,12 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
     <!-- 页头 -->
     <header class="monitor-header">
       <div class="head-left">
-        <h1 class="head-title">运营监控大盘</h1>
+        <h1 class="head-title">{{ props.board === 'ticket' ? '工单监控' : '运营报表' }}</h1>
         <span class="head-tag">只读</span>
-      </div>
-      <div class="tab-switch">
-        <button
-          v-for="t in visibleTabs"
-          :key="t.key"
-          type="button"
-          class="tab-btn"
-          :class="{ active: activeTab === t.key }"
-          @click="activeTab = t.key"
-        >
-          {{ t.label }}
-        </button>
       </div>
     </header>
 
-    <template v-if="activeTab === 'live'">
+    <template v-if="props.board === 'ticket'">
       <!-- 监控顶栏：范围 + 刷新（大盘工具条，非操作台） -->
       <div class="monitor-bar">
         <div class="monitor-bar-left">
@@ -701,10 +695,7 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
         <div class="dash-head">
           <div class="dash-head-main">
             <h2 class="dash-title">工单流量</h2>
-            <!--
-              等号右边写「在办存量」而不是「积压」：守恒式算出来的是未结未停表的全量，
-              「积压」已统一为超时未处理完（见第三张卡），两者差一个数量级。
-            -->
+            <p class="dash-formula dash-hint-inline">进出流量监控 · 点卡片展开渠道 / 产线 / 类型分布</p>
             <p class="dash-formula">
               今日 {{ snap.opening }} ＋ {{ snap.inbound }} − {{ snap.forward }} ＝ 在办存量 {{ snap.backlog.toLocaleString() }}<MetricTipIcon :tip="opsTip('workingStock')!" />
               <span class="note-sep">|</span>
@@ -888,279 +879,8 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
           </div>
         </div>
       </section>
-      <div class="dash-stack">
-        <section v-if="SHOW_KPI_PANEL" class="panel dash-panel">
-          <div class="dash-head compact">
-            <h2 class="dash-title">此刻状态</h2>
-            <span class="dash-hint">较昨日同刻 · 容量视角</span>
-          </div>
-          <div class="kpi-row">
-            <div class="kpi-cell">
-              <div class="kpi-label">当前积压</div>
-              <div class="kpi-value" :class="{ danger: snap.alerting }">{{ snap.backlog }}</div>
-              <div class="kpi-meta">
-                <span :class="snap.vsYesterday > 0 ? 'up' : 'down'">
-                  <component :is="snap.vsYesterday > 0 ? RiseOutlined : FallOutlined" />
-                  {{ snap.vsYesterday > 0 ? '+' : '' }}{{ snap.vsYesterday }}
-                  （{{ snap.vsYesterdayPct > 0 ? '+' : '' }}{{ Math.round(snap.vsYesterdayPct * 100) }}%）
-                </span>
-                昨同刻 {{ snap.yesterdayBacklog }}
-              </div>
-              <svg class="kpi-spark" viewBox="0 0 88 28" preserveAspectRatio="none">
-                <path :d="backlogSparkArea" :fill="snap.alerting ? 'rgba(239,68,68,0.12)' : 'rgba(71,85,105,0.12)'" />
-                <polyline :points="backlogSpark" fill="none" :stroke="snap.alerting ? '#ef4444' : '#475569'" stroke-width="1.5" />
-              </svg>
-            </div>
-            <div class="kpi-cell">
-              <div class="kpi-label">在岗二线</div>
-              <div class="kpi-value">{{ snap.headcount }}<span class="kpi-unit">人</span></div>
-              <div class="kpi-meta">人均在办 <b>{{ snap.perHead }}</b> · 已满 <b class="up">{{ snap.atCapacity }}</b> 人</div>
-            </div>
-            <div class="kpi-cell kpi-cell-gauge">
-              <div class="kpi-label">仍可接单</div>
-              <div class="kpi-gauge-wrap">
-                <svg class="kpi-gauge" viewBox="0 0 100 100">
-                  <circle cx="50" cy="50" r="42" fill="none" stroke="#e8ecf1" stroke-width="8" />
-                  <circle
-                    cx="50" cy="50" r="42" fill="none"
-                    :stroke="capGauge.color" stroke-width="8" stroke-linecap="round"
-                    :stroke-dasharray="capGauge.dash"
-                    transform="rotate(-90 50 50)"
-                  />
-                </svg>
-                <div class="kpi-gauge-center">
-                  <span class="kpi-value" :class="{ danger: snap.available === 0, warn: snap.available > 0 && snap.available <= 3 }">
-                    {{ snap.available }}
-                  </span>
-                  <span class="kpi-unit">人</span>
-                </div>
-              </div>
-              <div class="kpi-meta">
-                容量利用 <b :style="{ color: utilColor(snap.utilization) }">{{ Math.round(snap.utilization * 100) }}%</b>
-                （{{ snap.backlog }}/{{ snap.capacity }}）
-              </div>
-            </div>
-          </div>
-        </section>
 
-        <section class="panel dash-panel now-sla">
-          <div class="dash-head compact">
-            <h2 class="dash-title">时效分层<MetricTipIcon :tip="opsTip('soon')!" /></h2>
-            <span class="dash-hint">班组 × 分桶热力 · 点击格子查清单</span>
-          </div>
-          <div class="sla-heatmap-wrap">
-            <div class="sla-heat-legend">
-              <span class="shl-item"><i class="shl-swatch soon" />还没超时（累计）</span>
-              <span class="shl-sep">|</span>
-              <span class="shl-item"><i class="shl-swatch overdue" />已经超时（互斥）</span>
-              <span class="shl-scale">色越深单量越多</span>
-            </div>
-            <div class="sla-heatmap" role="grid">
-              <div class="sh-row sh-head" role="row">
-                <div class="sh-corner" role="columnheader">班组</div>
-                <div class="sh-group-label soon" :style="{ gridColumn: `span ${SOON_WINDOWS.length}` }">还没超时 · 距 SLA 截止<MetricTipIcon :tip="opsTip('soon')!" /></div>
-                <div class="sh-split" aria-hidden="true" />
-                <div class="sh-group-label overdue" :style="{ gridColumn: `span ${OVERDUE_BUCKETS.length}` }">已经超时<MetricTipIcon :tip="opsTip('overdueGt72')!" /></div>
-              </div>
-              <div class="sh-row sh-subhead" role="row">
-                <div class="sh-corner" />
-                <div
-                  v-for="w in SOON_WINDOWS"
-                  :key="'h-soon-' + w.key"
-                  class="sh-col-head soon"
-                  role="columnheader"
-                >{{ SOON_UI[w.key].time }}</div>
-                <div class="sh-split" aria-hidden="true" />
-                <div
-                  v-for="b in OVERDUE_BUCKETS"
-                  :key="'h-over-' + b.key"
-                  class="sh-col-head overdue"
-                  :class="{ danger: b.danger }"
-                  role="columnheader"
-                >{{ OVERDUE_UI[b.key].time }}</div>
-              </div>
-              <div
-                v-for="row in slaMatrix"
-                :key="row.id"
-                class="sh-row sh-body"
-                role="row"
-              >
-                <div class="sh-row-label" role="rowheader">{{ row.name }}</div>
-                <button
-                  v-for="w in SOON_WINDOWS"
-                  :key="row.id + '-s-' + w.key"
-                  type="button"
-                  class="sh-cell soon"
-                  :style="{
-                    background: slaHeatColor(row.soon[w.key], slaHeatMax, 'soon'),
-                    color: slaCellText(row.soon[w.key], slaHeatMax),
-                  }"
-                  :title="`${row.name} · ${SOON_UI[w.key].time} · ${row.soon[w.key]} 单`"
-                  @click="openSoonList(w.key, row.id, row.soon[w.key])"
-                >{{ row.soon[w.key] || '·' }}</button>
-                <div class="sh-split body" aria-hidden="true" />
-                <button
-                  v-for="b in OVERDUE_BUCKETS"
-                  :key="row.id + '-o-' + b.key"
-                  type="button"
-                  class="sh-cell overdue"
-                  :class="{ danger: b.danger }"
-                  :style="{
-                    background: slaHeatColor(row.overdue[b.key], slaHeatMax, 'overdue', b.danger),
-                    color: slaCellText(row.overdue[b.key], slaHeatMax),
-                  }"
-                  :title="`${row.name} · ${OVERDUE_UI[b.key].time} · ${row.overdue[b.key]} 单`"
-                  @click="openOverdueList(b.key, row.id, row.overdue[b.key])"
-                >{{ row.overdue[b.key] || '·' }}</button>
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
-
-      <!-- 分组诊断 · 横向对比 -->
-      <section v-if="SHOW_DIAG_PANEL" class="panel dash-panel">
-        <div class="dash-head compact">
-          <h2 class="dash-title">分组诊断</h2>
-          <span class="dash-hint">横向对比 · 点行切换监控范围</span>
-        </div>
-        <div class="diag-bars">
-          <div class="db-legend">
-            <span class="db-lg"><i class="db-dot bl" />积压</span>
-            <span class="db-lg"><i class="db-dot od" />超时</span>
-            <span class="db-lg"><i class="db-dot sv" />距超时 2h</span>
-            <span class="db-lg"><i class="db-dot ut" />容量利用</span>
-          </div>
-          <div
-            v-for="g in loads"
-            :key="g.id"
-            class="diag-bar-row"
-            :class="{ bad: g.verdict !== '正常' }"
-            @click="setScopeSingle(g.id)"
-          >
-            <div class="db-head">
-              <span class="db-name">{{ g.name }}</span>
-              <span
-                class="verdict"
-                :style="{ color: VERDICT_STYLE[g.verdict].color, background: VERDICT_STYLE[g.verdict].bg }"
-                :title="g.verdictWhy"
-              >{{ g.verdict }}</span>
-              <span class="db-meta">在岗 {{ g.headcount }} · 可接 <b :class="{ zero: g.available === 0 }">{{ g.available }}</b></span>
-              <div class="db-actions" @click.stop>
-                <span v-if="notified['hr-' + g.id]" class="row-done">已通知</span>
-                <button
-                  v-else-if="g.verdict !== '正常'"
-                  type="button"
-                  class="row-btn"
-                  @click="notify('hr-' + g.id, g.name + '组长')"
-                >通知组长</button>
-              </div>
-            </div>
-            <div class="db-chart">
-              <div class="db-bar-line">
-                <span class="db-bar-label">积压</span>
-                <div class="db-bar-track">
-                  <div class="db-bar-fill fill-bl" :style="{ width: barPct(g.backlog, diagBarMax) + '%' }" />
-                </div>
-                <span class="db-bar-val">{{ g.backlog }}</span>
-              </div>
-              <div class="db-bar-line">
-                <span class="db-bar-label">超时</span>
-                <div class="db-bar-track">
-                  <div class="db-bar-fill fill-od" :style="{ width: barPct(g.overdue, diagBarMax) + '%' }" />
-                  <div
-                    v-if="g.overdueSevere > 0"
-                    class="db-bar-mark"
-                    :style="{ left: barPct(g.overdueSevere, diagBarMax) + '%' }"
-                    title="其中 >72h"
-                  />
-                </div>
-                <span class="db-bar-val">{{ g.overdue }}<small v-if="g.overdueSevere">/{{ g.overdueSevere }}</small></span>
-              </div>
-              <div class="db-bar-line">
-                <span class="db-bar-label">2h内</span>
-                <div class="db-bar-track">
-                  <div class="db-bar-fill fill-sv" :style="{ width: barPct(g.soon2h, diagBarMax) + '%' }" />
-                </div>
-                <span class="db-bar-val">{{ g.soon2h }}</span>
-              </div>
-              <div class="db-bar-line">
-                <span class="db-bar-label">容量</span>
-                <div class="db-bar-track">
-                  <div
-                    class="db-bar-fill fill-ut"
-                    :style="{ width: Math.min(100, g.utilization * 100) + '%', background: utilColor(g.utilization) }"
-                  />
-                  <div class="db-bar-bench" style="left: 90%" title="预警线 90%" />
-                  <div class="db-bar-bench danger" style="left: 100%" title="满载 100%" />
-                </div>
-                <span class="db-bar-val" :style="{ color: utilColor(g.utilization) }">{{ Math.round(g.utilization * 100) }}%</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ⑤ 风险词命中（模块 2.3） -->
-      <section id="risk-word-section" class="panel dash-panel">
-        <div class="dash-head compact">
-          <h2 class="dash-title">
-            风险词命中<MetricTipIcon :tip="opsTip('riskHits')!" />
-            <span v-if="untagged.length" class="head-badge">{{ untagged.length }} 待打标<MetricTipIcon :tip="opsTip('riskUntagged')!" /></span>
-          </h2>
-          <span class="dash-hint">
-            命中即推送责任人 ·
-            <button type="button" class="link-btn" @click="riskWordsOpen = true">预警词表</button>
-          </span>
-        </div>
-        <div v-if="!hits.length" class="ob-empty">该范围近期没有风险词命中</div>
-        <table v-else class="hit-table">
-          <thead>
-            <tr><th>命中词</th><th>工单</th><th>命中内容</th><th>客户 / 班组</th><th>时间</th><th>已推送</th><th>打标</th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="h in hits" :key="h.id" :class="{ untagged: !tagOf(h) && h.level === '高' }">
-              <td>
-                <span class="risk-word" :style="{ color: RISK_LEVEL_STYLE[h.level].color, background: RISK_LEVEL_STYLE[h.level].bg }">
-                  {{ h.word }}
-                </span>
-              </td>
-              <td>
-                <button type="button" class="rt-no" @click="openTicket(h.ticketNo)">{{ h.ticketNo }}</button>
-                <div class="hit-title">{{ h.title }}</div>
-              </td>
-              <td class="hit-excerpt">
-                <span class="hit-pos">{{ h.position }}</span>「{{ h.excerpt }}」
-              </td>
-              <td>{{ h.customer }}<div class="hit-sub">{{ h.groupName }} · {{ h.assignee }}</div></td>
-              <td class="hit-when">{{ h.when.slice(11) }}</td>
-              <td class="hit-sub">{{ h.receivers.join('、') }}</td>
-              <td>
-                <!-- 已打标：等级徽标 + 留痕（谁、何时、当时怎么判断），供事后复盘 -->
-                <span
-                  v-if="tagOf(h)"
-                  class="tag-done"
-                  :style="{ color: RISK_LEVEL_STYLE[tagOf(h)!].color, background: RISK_LEVEL_STYLE[tagOf(h)!].bg }"
-                  :title="tagTraceOf(h)
-                    ? `打标人：${tagTraceOf(h)!.by}\n打标时刻：${tagTraceOf(h)!.at}` +
-                      (tagTraceOf(h)!.note ? `\n处置备注：${tagTraceOf(h)!.note}` : '')
-                    : undefined"
-                >{{ tagOf(h) }}风险</span>
-                <!-- 未打标：只有运营监控岗与投诉处理角色出入口（PRD §6.4） -->
-                <button
-                  v-else-if="canRiskTag"
-                  type="button"
-                  class="row-btn"
-                  @click="openTag(h)"
-                >打标</button>
-                <span v-else class="hit-sub">—</span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
-
-      <!-- ⑥ 流量走势（模块 1.4：日 / 周 / 月 / 年） -->
+      <!-- 流量走势（工单监控 · 进出趋势） -->
       <section class="panel dash-panel">
         <div class="dash-head">
           <h2 class="dash-title">流量走势<MetricTipIcon :tip="opsTip('trendStock')!" /></h2>
@@ -1257,10 +977,251 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
           </div>
         </div>
       </section>
+
+      <div class="dash-stack">
+        <section v-if="SHOW_KPI_PANEL" class="panel dash-panel">
+          <div class="dash-head compact">
+            <h2 class="dash-title">此刻状态</h2>
+            <span class="dash-hint">较昨日同刻 · 容量视角</span>
+          </div>
+          <div class="kpi-row">
+            <div class="kpi-cell">
+              <div class="kpi-label">当前积压</div>
+              <div class="kpi-value" :class="{ danger: snap.alerting }">{{ snap.backlog }}</div>
+              <div class="kpi-meta">
+                <span :class="snap.vsYesterday > 0 ? 'up' : 'down'">
+                  <component :is="snap.vsYesterday > 0 ? RiseOutlined : FallOutlined" />
+                  {{ snap.vsYesterday > 0 ? '+' : '' }}{{ snap.vsYesterday }}
+                  （{{ snap.vsYesterdayPct > 0 ? '+' : '' }}{{ Math.round(snap.vsYesterdayPct * 100) }}%）
+                </span>
+                昨同刻 {{ snap.yesterdayBacklog }}
+              </div>
+              <svg class="kpi-spark" viewBox="0 0 88 28" preserveAspectRatio="none">
+                <path :d="backlogSparkArea" :fill="snap.alerting ? 'rgba(239,68,68,0.12)' : 'rgba(71,85,105,0.12)'" />
+                <polyline :points="backlogSpark" fill="none" :stroke="snap.alerting ? '#ef4444' : '#475569'" stroke-width="1.5" />
+              </svg>
+            </div>
+            <div class="kpi-cell">
+              <div class="kpi-label">在岗二线</div>
+              <div class="kpi-value">{{ snap.headcount }}<span class="kpi-unit">人</span></div>
+              <div class="kpi-meta">人均在办 <b>{{ snap.perHead }}</b> · 已满 <b class="up">{{ snap.atCapacity }}</b> 人</div>
+            </div>
+            <div class="kpi-cell kpi-cell-gauge">
+              <div class="kpi-label">仍可接单</div>
+              <div class="kpi-gauge-wrap">
+                <svg class="kpi-gauge" viewBox="0 0 100 100">
+                  <circle cx="50" cy="50" r="42" fill="none" stroke="#e8ecf1" stroke-width="8" />
+                  <circle
+                    cx="50" cy="50" r="42" fill="none"
+                    :stroke="capGauge.color" stroke-width="8" stroke-linecap="round"
+                    :stroke-dasharray="capGauge.dash"
+                    transform="rotate(-90 50 50)"
+                  />
+                </svg>
+                <div class="kpi-gauge-center">
+                  <span class="kpi-value" :class="{ danger: snap.available === 0, warn: snap.available > 0 && snap.available <= 3 }">
+                    {{ snap.available }}
+                  </span>
+                  <span class="kpi-unit">人</span>
+                </div>
+              </div>
+              <div class="kpi-meta">
+                容量利用 <b :style="{ color: utilColor(snap.utilization) }">{{ Math.round(snap.utilization * 100) }}%</b>
+                （{{ snap.backlog }}/{{ snap.capacity }}）
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel dash-panel now-sla">
+          <div class="dash-head compact">
+            <h2 class="dash-title">即将超期监控<MetricTipIcon :tip="opsTip('soon')!" /></h2>
+            <span class="dash-hint">时效分层 · 班组 × 分桶热力 · 点击格子查清单</span>
+          </div>
+          <div class="sla-heatmap-wrap">
+            <div class="sla-heat-legend">
+              <span class="shl-item"><i class="shl-swatch soon" />还没超时（累计）</span>
+              <span class="shl-sep">|</span>
+              <span class="shl-item"><i class="shl-swatch overdue" />已经超时（互斥）</span>
+              <span class="shl-scale">色越深单量越多</span>
+            </div>
+            <div class="sla-heatmap" role="grid">
+              <div class="sh-row sh-head" role="row">
+                <div class="sh-corner" role="columnheader">班组</div>
+                <div class="sh-group-label soon" :style="{ gridColumn: `span ${SOON_WINDOWS.length}` }">还没超时 · 距 SLA 截止<MetricTipIcon :tip="opsTip('soon')!" /></div>
+                <div class="sh-split" aria-hidden="true" />
+                <div class="sh-group-label overdue" :style="{ gridColumn: `span ${OVERDUE_BUCKETS.length}` }">已经超时<MetricTipIcon :tip="opsTip('overdueGt72')!" /></div>
+              </div>
+              <div class="sh-row sh-subhead" role="row">
+                <div class="sh-corner" />
+                <div
+                  v-for="w in SOON_WINDOWS"
+                  :key="'h-soon-' + w.key"
+                  class="sh-col-head soon"
+                  role="columnheader"
+                >{{ SOON_UI[w.key].time }}</div>
+                <div class="sh-split" aria-hidden="true" />
+                <div
+                  v-for="b in OVERDUE_BUCKETS"
+                  :key="'h-over-' + b.key"
+                  class="sh-col-head overdue"
+                  :class="{ danger: b.danger }"
+                  role="columnheader"
+                >{{ OVERDUE_UI[b.key].time }}</div>
+              </div>
+              <div
+                v-for="row in slaMatrix"
+                :key="row.id"
+                class="sh-row sh-body"
+                role="row"
+              >
+                <div class="sh-row-label" role="rowheader">{{ row.name }}</div>
+                <button
+                  v-for="w in SOON_WINDOWS"
+                  :key="row.id + '-s-' + w.key"
+                  type="button"
+                  class="sh-cell soon"
+                  :style="{
+                    background: slaHeatColor(row.soon[w.key], slaHeatMax, 'soon'),
+                    color: slaCellText(row.soon[w.key], slaHeatMax),
+                  }"
+                  :title="`${row.name} · ${SOON_UI[w.key].time} · ${row.soon[w.key]} 单`"
+                  @click="openSoonList(w.key, row.id, row.soon[w.key])"
+                >{{ row.soon[w.key] || '·' }}</button>
+                <div class="sh-split body" aria-hidden="true" />
+                <button
+                  v-for="b in OVERDUE_BUCKETS"
+                  :key="row.id + '-o-' + b.key"
+                  type="button"
+                  class="sh-cell overdue"
+                  :class="{ danger: b.danger }"
+                  :style="{
+                    background: slaHeatColor(row.overdue[b.key], slaHeatMax, 'overdue', b.danger),
+                    color: slaCellText(row.overdue[b.key], slaHeatMax),
+                  }"
+                  :title="`${row.name} · ${OVERDUE_UI[b.key].time} · ${row.overdue[b.key]} 单`"
+                  @click="openOverdueList(b.key, row.id, row.overdue[b.key])"
+                >{{ row.overdue[b.key] || '·' }}</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!--
+        风险命中 —— 只留两张指标卡 + 下钻入口（D7a）
+        明细表、打标弹窗、预警词表抽屉已随模块四拆出，全部搬到「风险监控」页。
+        大盘其余模块都是只读指标，只有风险带写动作；写动作寄居在只读页里长不出闭环。
+      -->
+      <section class="panel dash-panel">
+        <div class="dash-head compact">
+          <h2 class="dash-title">风险命中<MetricTipIcon :tip="opsTip('riskHits')!" /></h2>
+          <button type="button" class="row-btn" @click="goRiskMonitor()">
+            进入风险监控<RightOutlined />
+          </button>
+        </div>
+        <div class="risk-brief">
+          <button type="button" class="rb-card" @click="goRiskMonitor()">
+            <span class="rb-label">命中条数</span>
+            <span class="rb-num">{{ hits.length }}</span>
+            <span class="rb-sub">近 24h · 实时 60s</span>
+          </button>
+          <button type="button" class="rb-card" :class="{ warn: untagged.length > 0 }" @click="goRiskMonitor(true)">
+            <span class="rb-label">待打标（高危）<MetricTipIcon :tip="opsTip('riskUntagged')!" /></span>
+            <span class="rb-num">{{ untagged.length }}</span>
+            <span class="rb-sub">未核实的高危命中</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- 分组诊断 · 横向对比 -->
+      <section v-if="SHOW_DIAG_PANEL" class="panel dash-panel">
+        <div class="dash-head compact">
+          <h2 class="dash-title">分组诊断</h2>
+          <span class="dash-hint">横向对比 · 点行切换监控范围</span>
+        </div>
+        <div class="diag-bars">
+          <div class="db-legend">
+            <span class="db-lg"><i class="db-dot bl" />积压</span>
+            <span class="db-lg"><i class="db-dot od" />超时</span>
+            <span class="db-lg"><i class="db-dot sv" />距超时 2h</span>
+            <span class="db-lg"><i class="db-dot ut" />容量利用</span>
+          </div>
+          <div
+            v-for="g in loads"
+            :key="g.id"
+            class="diag-bar-row"
+            :class="{ bad: g.verdict !== '正常' }"
+            @click="setScopeSingle(g.id)"
+          >
+            <div class="db-head">
+              <span class="db-name">{{ g.name }}</span>
+              <span
+                class="verdict"
+                :style="{ color: VERDICT_STYLE[g.verdict].color, background: VERDICT_STYLE[g.verdict].bg }"
+                :title="g.verdictWhy"
+              >{{ g.verdict }}</span>
+              <span class="db-meta">在岗 {{ g.headcount }} · 可接 <b :class="{ zero: g.available === 0 }">{{ g.available }}</b></span>
+              <div class="db-actions" @click.stop>
+                <span v-if="notified['hr-' + g.id]" class="row-done">已通知</span>
+                <button
+                  v-else-if="g.verdict !== '正常'"
+                  type="button"
+                  class="row-btn"
+                  @click="notify('hr-' + g.id, g.name + '组长')"
+                >通知组长</button>
+              </div>
+            </div>
+            <div class="db-chart">
+              <div class="db-bar-line">
+                <span class="db-bar-label">积压</span>
+                <div class="db-bar-track">
+                  <div class="db-bar-fill fill-bl" :style="{ width: barPct(g.backlog, diagBarMax) + '%' }" />
+                </div>
+                <span class="db-bar-val">{{ g.backlog }}</span>
+              </div>
+              <div class="db-bar-line">
+                <span class="db-bar-label">超时</span>
+                <div class="db-bar-track">
+                  <div class="db-bar-fill fill-od" :style="{ width: barPct(g.overdue, diagBarMax) + '%' }" />
+                  <div
+                    v-if="g.overdueSevere > 0"
+                    class="db-bar-mark"
+                    :style="{ left: barPct(g.overdueSevere, diagBarMax) + '%' }"
+                    title="其中 >72h"
+                  />
+                </div>
+                <span class="db-bar-val">{{ g.overdue }}<small v-if="g.overdueSevere">/{{ g.overdueSevere }}</small></span>
+              </div>
+              <div class="db-bar-line">
+                <span class="db-bar-label">2h内</span>
+                <div class="db-bar-track">
+                  <div class="db-bar-fill fill-sv" :style="{ width: barPct(g.soon2h, diagBarMax) + '%' }" />
+                </div>
+                <span class="db-bar-val">{{ g.soon2h }}</span>
+              </div>
+              <div class="db-bar-line">
+                <span class="db-bar-label">容量</span>
+                <div class="db-bar-track">
+                  <div
+                    class="db-bar-fill fill-ut"
+                    :style="{ width: Math.min(100, g.utilization * 100) + '%', background: utilColor(g.utilization) }"
+                  />
+                  <div class="db-bar-bench" style="left: 90%" title="预警线 90%" />
+                  <div class="db-bar-bench danger" style="left: 100%" title="满载 100%" />
+                </div>
+                <span class="db-bar-val" :style="{ color: utilColor(g.utilization) }">{{ Math.round(g.utilization * 100) }}%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
     </template>
 
+
     <!-- Tab② 运营报表（模块 3） -->
-    <template v-else-if="SHOW_REPORT_TAB && activeTab === 'report'">
+    <template v-else-if="SHOW_REPORT_TAB && props.board === 'report'">
       <div class="monitor-bar">
         <div class="monitor-bar-left">
           <span class="monitor-bar-label">监控范围</span>
@@ -1486,10 +1447,6 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
       </div>
     </template>
 
-    <div v-else class="trace-wrap">
-      <CustomerInsightView embedded />
-    </div>
-
     <!-- 风险工单清单 -->
     <a-drawer v-model:open="riskOpen" :title="riskTitle" width="720" placement="right">
       <div v-if="!riskRows.length" class="empty-inline">该范围下没有对应工单</div>
@@ -1569,32 +1526,6 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
       </div>
     </a-modal>
 
-    <!-- 预警词维护 -->
-    <a-drawer v-model:open="riskWordsOpen" title="风险预警词" width="680" placement="right">
-      <p class="drawer-note top">
-        命中即按词表推送指定人员。「近 7 天命中」是新增词条前的试跑依据——命中量过大的词上线即刷屏，应先收窄匹配范围。
-      </p>
-      <table class="word-table">
-        <thead>
-          <tr><th>预警词</th><th>分级</th><th>匹配范围</th><th>通知人</th><th>近 7 天命中</th><th>状态</th></tr>
-        </thead>
-        <tbody>
-          <tr v-for="w in RISK_WORDS" :key="w.id" :class="{ off: !w.enabled }">
-            <td class="wt-word">{{ w.word }}</td>
-            <td>
-              <span class="risk-word" :style="{ color: RISK_LEVEL_STYLE[w.level].color, background: RISK_LEVEL_STYLE[w.level].bg }">{{ w.level }}</span>
-            </td>
-            <td class="hit-sub">{{ w.scopes.join(' / ') }}</td>
-            <td class="hit-sub">{{ w.receivers.join('、') }}</td>
-            <td><span :class="{ 'hits-high': w.hits7d > 50 }">{{ w.hits7d }}</span></td>
-            <td>
-              <span class="wt-state" :class="w.enabled ? 'on' : 'off'">{{ w.enabled ? '启用' : '停用' }}</span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <p class="drawer-note">词表维护权归运营管理员，监控岗为只读。</p>
-    </a-drawer>
   </div>
 </template>
 
@@ -1666,13 +1597,20 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
   font-size: 10px; font-weight: 600; color: #64748b;
   background: #f1f5f9; border-radius: 3px; padding: 1px 6px;
 }
-.tab-switch { display: flex; gap: 4px; }
-.tab-btn {
-  border: 1px solid #e2e8f0; background: #fff; border-radius: 3px; padding: 4px 12px;
-  font-size: 12px; font-weight: 500; color: #64748b; cursor: pointer; font-family: inherit;
+.head-tag-complaint {
+  color: #c2410c;
+  background: #ffedd5;
 }
-.tab-btn.active { background: #334155; border-color: #334155; color: #fff; font-weight: 600; }
-.tab-btn:hover:not(.active) { background: #f8fafc; color: #334155; }
+.dash-hint-inline { margin-bottom: 2px; color: #94a3b8; }
+.risk-board-note {
+  margin: 0;
+  padding: 8px 16px 0;
+  font-size: 11px;
+  color: #64748b;
+  line-height: 1.5;
+}
+.word-table-inline { margin: 8px 16px 0; }
+.drawer-note.inline { margin: 8px 16px 12px; }
 
 /* 工具条 */
 .monitor-bar {
@@ -2056,6 +1994,20 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
   text-decoration: underline; text-underline-offset: 2px; white-space: nowrap;
 }
 .row-btn:hover { color: #334155; }
+
+/* 风险命中：只留两张卡 + 下钻（D7a） */
+.risk-brief { display: grid; grid-template-columns: repeat(2, minmax(0, 240px)); gap: 12px; }
+.rb-card {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 10px 14px; text-align: left; cursor: pointer;
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
+}
+.rb-card:hover { border-color: #94a3b8; }
+.rb-card.warn { border-color: #fca5a5; background: #fff7f7; }
+.rb-label { font-size: 12px; color: #64748b; display: inline-flex; align-items: center; gap: 3px; }
+.rb-num { font-size: 26px; font-weight: 600; color: #0f172a; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.rb-card.warn .rb-num { color: #b91c1c; }
+.rb-sub { font-size: 11px; color: #94a3b8; }
 .row-done { font-size: 11px; color: #10b981; font-weight: 600; }
 
 /* 表格 / 图表区 */
@@ -2275,7 +2227,6 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
 .drawer-note { margin-top: 12px; font-size: 11px; color: #9ca3af; }
 .empty-inline { font-size: 12px; color: #9ca3af; padding: 20px 0; text-align: center; }
 
-.trace-wrap { margin: -12px -16px -20px; }
 .bar-red { background: #dc2626; }
 .note-sep { color: #d1d5db; margin: 0 6px; }
 .dot { color: #d1d5db; margin: 0 3px; }

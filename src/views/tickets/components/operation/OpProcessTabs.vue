@@ -17,6 +17,7 @@ import { useUserStore } from '@/stores/user';
 import {
   isRegulatorComplaintPlatform,
   visibleProcessTabs,
+  tabWritableFor,
   deriveAppointmentNeeded,
   type ProcessTabKey,
 } from '@/views/tickets/types/operation';
@@ -35,9 +36,11 @@ const props = defineProps<{
   /** 完整事件时间线（处理履历 Tab 展示） */
   timeline: TimelineEntry[];
   /**
-   * 只读（一线视角）：Tab 区不提供任何操作项——表单/下拉/上传全部禁用，
+   * 整区只读（一线视角 / 只读角色）：Tab 区不提供任何操作项——表单/下拉/上传全部禁用，
    * 记录上的动作按钮（标记已读、标记已沟通、新增/取消预约、催单、二次激活、重新发起…）一律不出。
    * 查看/下载、Tab 切换、分组展开这类"读"的交互保留。
+   *
+   * 这是**整区一档**的开关，与逐 Tab 判据 tabWritableFor 取或 —— 它是更强的约束。
    */
   readonly?: boolean;
 }>();
@@ -79,6 +82,21 @@ const drivingComplaintPlatform = computed(() => {
   return names.find((n) => isRegulatorComplaintPlatform(n)) ?? names[0];
 });
 
+/**
+ * 当前 Tab 是否只读 = **整区开关**（一线视角 / 只读角色）**或** 该 Tab 对当前角色不可写。
+ *
+ * 判据表在 tabWritableFor 内（取自权限矩阵 #41–51 的「只读 vs 可用」，⑥ 的「条件可用」按不可写算）。
+ * 逐 Tab 算而不是整区一档 —— 例如「联系记录」对 ② 二线可写、对 ④ 三线只读，
+ * 两者在同一页面上必须有差别。
+ *
+ * 落地方式：这一个 boolean 同时驱动 a-config-provider（禁掉 Tab 内所有 antd 控件）与
+ * .is-readonly（收掉自定义写按钮），并作为 readonly prop 传给**自带原生写按钮**的子组件，
+ * 让它们的点击处理函数硬拦一道（不止是视觉隐藏）。
+ */
+const activeTabReadonly = computed(
+  () => !!props.readonly || !tabWritableFor(activeTab.value, user.roleKey),
+);
+
 /** 工单类型变化后，若当前 Tab 已被该类型隐藏，回退到「工单处理」。 */
 watch(visibleTabs, (tabs) => {
   if (!tabs.some((t) => t.key === activeTab.value)) activeTab.value = 'process';
@@ -110,11 +128,12 @@ defineExpose({ switchTab });
     </div>
 
     <!--
-      只读态（一线视角）：a-config-provider 统一禁用 Tab 内所有 antd 表单控件，
-      自定义的动作按钮由下方 .is-readonly 样式收掉（读的交互不受影响）。
+      只读态（整区开关 或 本 Tab 对当前角色不可写）：a-config-provider 统一禁用 Tab 内所有
+      antd 表单控件，自定义的动作按钮由下方 .is-readonly 样式收掉（读的交互不受影响）。
+      判据逐 Tab 算，见 activeTabReadonly。
     -->
-    <a-config-provider :component-disabled="!!readonly">
-    <div class="tab-content" :class="{ 'is-readonly': readonly }">
+    <a-config-provider :component-disabled="activeTabReadonly">
+    <div class="tab-content" :class="{ 'is-readonly': activeTabReadonly }">
       <OpProcessForm
         v-if="activeTab === 'process'"
         :form="form"
@@ -126,6 +145,7 @@ defineExpose({ switchTab });
         :ticket-source="detail.source"
         :complaint-platform="drivingComplaintPlatform"
         :complaint-platforms="detail.complaint?.platforms ?? []"
+        :readonly="activeTabReadonly"
         @toggle-section="emit('toggleSection', $event)"
         @select-chip="emit('selectChip', $event)"
         @update:form="emit('update:form', $event)"
@@ -141,6 +161,7 @@ defineExpose({ switchTab });
         :feedback-no="detail.feishuFeedbackNo"
         :fail-reason="detail.feishuFailReason"
         :created-at="detail.createdAt"
+        :readonly="activeTabReadonly"
         @activate="emit('feishu-activate', $event)"
         @retry="emit('feishu-retry')"
         @dunning="emit('dunning')"
@@ -149,12 +170,14 @@ defineExpose({ switchTab });
       <OpTechProcessTab
         v-else-if="activeTab === 'tech'"
         :draft="tabData.techDraft"
+        :readonly="activeTabReadonly"
         @update:draft="updateTabData({ ...tabData, techDraft: $event })"
       />
 
       <OpRiskMonitorTab
         v-else-if="activeTab === 'risk'"
         :draft="tabData.riskDraft"
+        :readonly="activeTabReadonly"
         @update:draft="updateTabData({ ...tabData, riskDraft: $event })"
       />
 
@@ -168,6 +191,7 @@ defineExpose({ switchTab });
         v-else-if="activeTab === 'appointment'"
         :records="form.appointmentRecords"
         :default-booker="user.name || '当前坐席'"
+        :readonly="activeTabReadonly"
         @update:records="emit('update:form', { ...form, appointmentRecords: $event, appointmentNeeded: deriveAppointmentNeeded($event) })"
       />
 
@@ -176,6 +200,7 @@ defineExpose({ switchTab });
         :related-tickets="tabData.relatedTickets"
         :supplement-records="tabData.supplementRecords"
         :dunning-records="tabData.dunningRecords"
+        :readonly="activeTabReadonly"
         @mark-read="emit('mark-read', $event)"
       />
 
@@ -197,6 +222,7 @@ defineExpose({ switchTab });
       <OpAttachmentHistoryTab
         v-else-if="activeTab === 'attachments'"
         :records="tabData.attachmentHistory"
+        :readonly="activeTabReadonly"
       />
 
       <OpCustomerHistoryTab
@@ -234,7 +260,8 @@ defineExpose({ switchTab });
 }
 
 /*
-  只读态（一线视角）：收掉 Tab 内的「写」按钮——标记已读 / 标记已沟通 / 新增·取消预约 /
+  只读态（整区开关 或 本 Tab 对当前角色只读）：收掉 Tab 内的「写」按钮——
+  标记已读 / 标记已沟通 / 新增·取消预约 /
   附件添加·移除·上传 / 产研反馈的重新发起·催单·二次激活。
   「读」的交互（查看、下载、播放录音、跳转单号、筛选 chip、查看流程图、展开分组）保留。
   antd 表单控件由 a-config-provider component-disabled 统一禁用，不在此列。

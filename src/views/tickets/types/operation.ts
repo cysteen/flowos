@@ -1,5 +1,7 @@
 /** 工单操作页 · 处理 Tab 与侧栏展示类型 */
 
+import type { RoleKey } from '@/config/roles';
+
 export interface ContactItem {
   type: 'phone' | 'email';
   value: string;
@@ -225,7 +227,7 @@ const TAB_TYPE_RESTRICTION: Partial<Record<ProcessTabKey, string[]>> = {
  *   读权亦不给 —— 本 Tab 对三线无业务意义，暂行「无」，待裁决）
  *
  * 其余格子是「只读」或「可用 / 条件可用」，**Tab 都可见** —— 本表只管"看不看得到"，
- * "能不能改"另由 tabsReadonly 管。
+ * "能不能改"由 tabWritableFor（逐 Tab 逐角色）与 tabsReadonly（整区一档）共同决定。
  *
  * **产研反馈**（`feishu`）在矩阵协同信息区没有单独一行，矩阵在 #41 的门控说明里给了口径：
  * 「取值随行 56『同步飞书』」。该行的「无」是 ① 一线、④ 三线、⑦ 运营监控岗、⑧ 质检/抄送，
@@ -261,6 +263,86 @@ export function visibleProcessTabs(
     const allow = TAB_TYPE_RESTRICTION[t.key];
     return !allow || allow.includes(ticketType);
   });
+}
+
+/**
+ * 矩阵「⑨ 管理员」一列对应的三个角色 —— 矩阵按业务把三者并成一列，代码里是三个 RoleKey。
+ * 下方判据表凡出现 ⑨ 的格子都展开成这三个。
+ */
+const MATRIX_ADMIN_ROLES: readonly RoleKey[] = ['system-admin', 'ops-admin', 'tenant-admin'];
+
+/**
+ * Tab × 角色：**该 Tab 内可写**的角色白名单（矩阵取值为「可用」的格子）。
+ *
+ * 取自《用户角色与权限矩阵 · 运行工作区》协同信息区 11 行（#41–51）的九列取值。
+ * 三档取值在这里的落法：
+ * - **可用** → 进白名单，Tab 内的写动作放出；
+ * - **只读** → 不进白名单，Tab 可见但写动作收掉；
+ * - **无** → 也不进白名单，且该 Tab 整个不渲染（另见 TAB_ROLE_DENY）；
+ * - **条件可用** → **按不可写处理**，理由见下方「⑥ 投诉处理角色」。
+ *
+ * 矩阵列 → RoleKey：① agent-l1、② agent-cs、③ agent-as、④ tech-support、⑤ team-leader、
+ * ⑥ complaint-handler、⑦ ops-monitor、⑨ MATRIX_ADMIN_ROLES。
+ * **⑧ 质检/抄送尚无 RoleKey**，落不到代码里（它在 11 行里全是「只读」，落进来也是空手）。
+ *
+ * ⚠️ **⑥ 投诉处理角色（complaint-handler）一律不进白名单**。矩阵在 #41 #45 #46 #47 给它
+ * 「条件可用」，条件是**已管控**（点过「工单管控」把单拿到自己名下）。但「工单管控」这个功能
+ * **全库未落地** —— `writableAfterTakeover` 只在角色定义里声明、零消费方，运行时拿不到"是否已管控"
+ * 这个状态，判不出条件成立与否。故此处按**不可写**处理（保守侧：宁可少给，不可未经管控就放开
+ * 全中心任意单的写权）。**待「工单管控」落地后**，把管控态接进 tabWritableFor 的入参，
+ * 这四个 Tab 对该角色在"已管控"时应转为可写。#43 风险监控给它的是无条件「可用」，已在表内。
+ *
+ * 全空数组的 5 个 Tab（history / notify / survey / attachments / customerHistory）对应矩阵
+ * #44 #48 #49 #50 #51 —— 九格全「只读」，纯读留痕、无写动作，含 ⑨ 管理员也不给写。
+ *
+ * `feishu`（产研反馈）不在协同信息区 11 行里，矩阵在 #41 门控说明中给了口径「取值随行 56
+ * 同步飞书」：该行 ② ③ ⑤ ⑨ 可用、⑥ 条件可用、① ④ ⑦ ⑧ 无，故白名单与预约同形。
+ *
+ * 用 `Record`（非 `Partial`）是故意的：新增 Tab 忘了给判据会直接编译不过，
+ * 不会静悄悄退化成"全角色可写"。
+ */
+const TAB_ROLE_WRITABLE: Record<ProcessTabKey, readonly RoleKey[]> = {
+  // #41 工单处理：① 只读 ② 可用 ③ 可用 ④ 可用 ⑤ 可用 ⑥ 条件可用 ⑦ 只读 ⑧ 只读 ⑨ 可用
+  process: ['agent-cs', 'agent-as', 'tech-support', 'team-leader', ...MATRIX_ADMIN_ROLES],
+  // 行 56 同步飞书：① 无 ② 可用 ③ 可用 ④ 无 ⑤ 可用 ⑥ 条件可用 ⑦ 无 ⑧ 无 ⑨ 可用
+  feishu: ['agent-cs', 'agent-as', 'team-leader', ...MATRIX_ADMIN_ROLES],
+  // #42 技术支持处理：① 只读 ② 无 ③ 无 ④ 可用 ⑤ 可用 ⑥ 无 ⑦ 无 ⑧ 只读 ⑨ 可用
+  tech: ['tech-support', 'team-leader', ...MATRIX_ADMIN_ROLES],
+  // #43 风险监控：① 无 ② 只读 ③ 只读 ④ 只读 ⑤ 只读 ⑥ 可用 ⑦ 可用 ⑧ 只读 ⑨ 可用
+  // 写动作＝风险词打标；矩阵原话「⑦『只读』约束的是工单内容，打标不受此限」，故 ⑦ 在表内可写。
+  risk: ['complaint-handler', 'ops-monitor', ...MATRIX_ADMIN_ROLES],
+  // #44 处理履历：九格全「只读」——完整事件时间线，纯读无写动作
+  history: [],
+  // #45 预约：① 无 ② 可用 ③ 可用 ④ 无 ⑤ 可用 ⑥ 条件可用 ⑦ 只读 ⑧ 只读 ⑨ 可用
+  // 写动作＝新增/保留/取消预约、标记已沟通，属对客动作
+  appointment: ['agent-cs', 'agent-as', 'team-leader', ...MATRIX_ADMIN_ROLES],
+  // #46 关联/补充/催单：① 可用 ② 可用 ③ 可用 ④ 可用 ⑤ 可用 ⑥ 条件可用 ⑦ 只读 ⑧ 只读 ⑨ 可用
+  // Tab 内唯一写动作是「已知晓（标记已读）」；催单/补充记录本身任何角色都不可改不可删
+  related: ['agent-l1', 'agent-cs', 'agent-as', 'tech-support', 'team-leader', ...MATRIX_ADMIN_ROLES],
+  // #47 联系记录：① 只读 ② 可用 ③ 可用 ④ 只读 ⑤ 可用 ⑥ 条件可用 ⑦ 只读 ⑧ 只读 ⑨ 可用
+  // 写动作＝「标记已沟通」，属联系客户类，④ 三线不接触客户故只读
+  contact: ['agent-cs', 'agent-as', 'team-leader', ...MATRIX_ADMIN_ROLES],
+  // #48 通知记录：九格全「只读」——系统发出的通知留痕
+  notify: [],
+  // #49 调研记录：九格全「只读」——回访调研结果留痕
+  survey: [],
+  // #50 附件历史：九格全「只读」——查看/下载保留，**上传入口在处理表单区**，不在本 Tab
+  attachments: [],
+  // #51 客户历史工单：九格全「只读」
+  customerHistory: [],
+};
+
+/**
+ * 当前角色在指定 Tab 内**能不能写**。
+ *
+ * 与 `visibleProcessTabs` 分工：那个管"看不看得到"（矩阵取值「无」的格子整个不渲染），
+ * 这个管"看得到之后能不能改"（矩阵「只读」vs「可用」）。
+ *
+ * 调用方仍须与整区开关取或/与：`tabsReadonly`（一线视角 / 只读角色整区禁用）是**更强的约束**，
+ * 命中时无论本函数返回什么都不可写。
+ */
+export function tabWritableFor(tabKey: ProcessTabKey, roleKey: RoleKey): boolean {
+  return TAB_ROLE_WRITABLE[tabKey].includes(roleKey);
 }
 
 export type SupplementChip = 'complaint' | 'risk' | 'appointment' | 'quality' | 'external';

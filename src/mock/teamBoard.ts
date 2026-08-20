@@ -49,6 +49,9 @@
  *    两者都对，讲的是不同的事，界面上不要互相校验。
  */
 
+import { TICKETS } from './tickets';
+import { isTicketClosed, type Ticket } from '@/views/tickets/types/ticket';
+
 /* ==========================================================================
  * 【旧】PRD-07 班组看板 —— TeamBoardView.vue 仍在引用，勿删
  * ========================================================================== */
@@ -737,6 +740,34 @@ export const BOARD_METRICS: BoardMetric[] = [
  */
 export const BOARD_FLOW_EVENTS: BoardMetric[] = [];
 
+/* =========================================================================
+ * 下钻明细的工单来源
+ *
+ * 看板的每一条下钻明细都能点开工单办理页，所以**单号必须是工单数据源里的真单**。
+ * 早先催单 / 补充 / 预约 / 待审批四张明细各自手写了一套单号，工单库里一个也查不到 ——
+ * 办理页找不到该单号就静默沿用默认演示单，于是每一行打开的都是同一张单，
+ * 地址栏显示的却是另一个号。
+ *
+ * 因此这里只声明「单号 + 该事件特有的度量」（谁 · 何时 · 内容 · 已读/已沟通 · 类型），
+ * 工单自身的属性（标题 / 处理人 / 客户）一律回工单数据源取。
+ * ======================================================================= */
+
+function ticketOf(no: string): Ticket {
+  const t = TICKETS.find((x) => x.no === no);
+  // 配错单号就在构建期炸掉，不要留到用户点进去才发现打不中真单
+  if (!t) throw new Error(`[teamBoard] 下钻明细引用了不存在的工单号：${no}`);
+  return t;
+}
+
+/** 催单 / 补充 / 预约都只发生在**未结案**的单上（催单卡口径即「本组未结案工单被催」） */
+function openTicketOf(no: string): Ticket {
+  const t = ticketOf(no);
+  if (isTicketClosed(t.nodeStatus)) {
+    throw new Error(`[teamBoard] ${no} 已是终态「${t.nodeStatus}」，不该出现在事件明细里`);
+  }
+  return t;
+}
+
 /* -------------------------------------------------------------------------
  * 模块 5 · 调度待办（待指派 8 ＝ 大盘未分派 8）
  * ----------------------------------------------------------------------- */
@@ -761,39 +792,49 @@ export interface ApprovalDrillRow {
   submit: string;
 }
 
-/** 合计 3 ＝ BOARD_TODOS.approve.count；工单取自本组在办/积压相关单 */
-export const APPROVAL_PENDING_DRILL: ApprovalDrillRow[] = [
-  {
-    id: 'APR-2026-101',
-    ticketNo: 'LCMN-20260803-10093',
-    ticketTitle: '维修超期未解决',
-    type: '工单强结审批',
-    applicant: '周航',
-    approver: '周运营',
-    status: '审批中',
-    submit: '今天 11:02',
-  },
-  {
-    id: 'APR-2026-102',
-    ticketNo: 'LCMN-20260803-10058',
-    ticketTitle: '投诉服务态度',
-    type: '工单挂起审批',
-    applicant: '孙杰',
-    approver: '周运营',
-    status: '审批中',
-    submit: '今天 10:35',
-  },
-  {
-    id: 'APR-2026-103',
-    ticketNo: 'LCMN-20260804-10021',
-    ticketTitle: '电源故障反复重启',
-    type: '工单强结审批',
-    applicant: '李昊',
-    approver: '周运营',
-    status: '审批中',
-    submit: '今天 10:20',
-  },
+/**
+ * 待审批工单在工单数据源里就是**送审态**的那三张（申请强结中 / 申请挂起中 / 申请关闭中），
+ * 不另手写一份：审批类型由送审态反推，标题与申请人回工单取。
+ * 合计 3 ＝ BOARD_TODOS.approve.count。
+ */
+const APPROVAL_TYPE_BY_STATUS: Record<string, string> = {
+  申请强结中: '工单强结审批',
+  申请挂起中: '工单挂起审批',
+  申请关闭中: '工单关闭审批',
+  业务动作审核中: '业务动作审批',
+};
+
+interface ApprovalSpec {
+  id: string;
+  no: string;
+  approver: string;
+  submit: string;
+}
+
+const APPROVAL_SPECS: ApprovalSpec[] = [
+  { id: 'APR-2026-101', no: 'LCMN-20260609-65500', approver: '周运营', submit: '今天 11:02' },
+  { id: 'APR-2026-102', no: 'LCMN-20260609-65236', approver: '周运营', submit: '今天 10:35' },
+  { id: 'APR-2026-103', no: 'LCMN-20260609-65010', approver: '周运营', submit: '今天 10:20' },
 ];
+
+export const APPROVAL_PENDING_DRILL: ApprovalDrillRow[] = APPROVAL_SPECS.map((s) => {
+  const t = ticketOf(s.no);
+  const type = APPROVAL_TYPE_BY_STATUS[t.nodeStatus];
+  if (!type) {
+    throw new Error(`[teamBoard] ${s.no} 当前状态「${t.nodeStatus}」不是送审态，不该出现在待审批里`);
+  }
+  return {
+    id: s.id,
+    ticketNo: t.no,
+    ticketTitle: t.title,
+    type,
+    // 申请人＝送审时该单的处理人
+    applicant: t.assignee ?? '未分派',
+    approver: s.approver,
+    status: '审批中',
+    submit: s.submit,
+  };
+});
 
 /* -------------------------------------------------------------------------
  * 模块 2 负载 + 模块 3 效能排行 · 班组 12 人
@@ -810,6 +851,11 @@ export const APPROVAL_PENDING_DRILL: ApprovalDrillRow[] = [
  *   满载（孙杰）                   +1.1h      ← 手上压着 34 单，新单排队久
  *   离线（周航/马超）              +1.2~1.4h  ← 不在岗，等待最长
  * 这正是该口径变更想暴露的差异：**"接了单不动手"不再被隐藏**。
+ *
+ * ⚠️ **本名册与工单数据源的处理人名册互不相交**：这里是 12 位组员（张敏 / 李昊 / …），
+ * 工单数据源里只有 王坐席 / 陈坐席 / 林坐席 / 赵三线 四位。凡是「某位组员的某张单」
+ * 这类跨两者的口径都对不上，逐人下钻只能停在人的层面，不能再往下点到单。
+ * 要打通得先让工单数据源按本名册落处理人 —— 那会牵动整个工作台，不在看板改动范围内。
  * ----------------------------------------------------------------------- */
 export const TEAM_MEMBERS: MemberRow[] = [
   { id: 'm1',  name: '张敏', online: '在线', workload: 21,  loadLevel: '适中', forwardToday: 14, avgHandle: '3.0h', overdue: 2, followRate: '96.4%', csat: '4.8', resolveRate: '94.2%', reviewRate: '88.0%' },
@@ -845,32 +891,100 @@ export const PRIORITY_BUCKETS: PriorityBucket[] = [
 /* -------------------------------------------------------------------------
  * 催单事件明细（合计 21，未读 7）· 谁 · 何时 · 催了谁 · 哪张单
  * ----------------------------------------------------------------------- */
-/** 催单无「类型」字段（与办理页催单弹窗一致），只展示谁·何时·催了谁·哪张单 */
-export const URGE_EVENTS: EventDrillRow[] = [
-  { id: 'u1', actor: '张晓芸', actorRole: '一线', action: '催了', target: '孙杰', when: '今天 19:27', ticketNo: 'LCMN-20260804-10021', ticketTitle: '电源故障反复重启', content: '要求今日内安排上门处理', read: false },
-  { id: 'u2', actor: '客户·陈某', actorRole: '客户', action: '催了', target: '李昊', when: '今天 18:52', ticketNo: 'LCMN-20260804-10034', ticketTitle: '设备无法联网', content: '已等两天，请尽快给方案', read: false },
-  { id: 'u3', actor: '李一线', actorRole: '一线', action: '催了', target: '张敏', when: '今天 17:40', ticketNo: 'LCMN-20260803-10058', ticketTitle: '投诉服务态度', content: '客户情绪升级，请二线优先跟进', read: false },
-  { id: 'u4', actor: '客户·王某', actorRole: '客户', action: '催了', target: '郑楠', when: '今天 16:18', ticketNo: 'LCMN-20260803-10071', ticketTitle: '退换货进度查询', content: '第三次催单，要求今日回电', read: false },
-  { id: 'u5', actor: '周一线', actorRole: '一线', action: '催了', target: '王倩', when: '今天 15:05', ticketNo: 'LCMN-20260803-10085', ticketTitle: '发票未开具', content: '财务节点卡住，请协助推进', read: false },
-  { id: 'u6', actor: '客户·赵某', actorRole: '客户', action: '催了', target: '周航', when: '今天 14:22', ticketNo: 'LCMN-20260803-10093', ticketTitle: '维修超期未解决', content: '已向监管平台投诉意向', read: false },
-  { id: 'u7', actor: '张晓芸', actorRole: '一线', action: '催了', target: '孙杰', when: '今天 13:10', ticketNo: 'LCMN-20260802-09910', ticketTitle: '配件缺货承诺到货', content: '客户称承诺今日到货未兑现', read: false },
-  { id: 'u8', actor: '客户·孙某', actorRole: '客户', action: '催了', target: '李昊', when: '今天 12:40', ticketNo: 'LCMN-20260802-09880', ticketTitle: '软件激活失败', content: '影响上课，请加急', read: true },
-  { id: 'u9', actor: '陈一线', actorRole: '一线', action: '催了', target: '陈曦', when: '今天 11:55', ticketNo: 'LCMN-20260802-09855', ticketTitle: '账号权限异常', content: '已与客户约定 16:00 前回电', read: true },
-  { id: 'u10', actor: '客户·周某', actorRole: '客户', action: '催了', target: '张敏', when: '今天 11:20', ticketNo: 'LCMN-20260801-09720', ticketTitle: '物流丢件理赔', content: '请同步理赔进度', read: true },
-  { id: 'u11', actor: '李一线', actorRole: '一线', action: '催了', target: '郑楠', when: '今天 10:48', ticketNo: 'LCMN-20260801-09690', ticketTitle: '固件升级失败', content: '一线无法闭环，请技术支持接手', read: true },
-  { id: 'u12', actor: '客户·吴某', actorRole: '客户', action: '催了', target: '吴悦', when: '今天 10:05', ticketNo: 'LCMN-20260731-09510', ticketTitle: '预约改期未确认', content: '请确认明日上门时段', read: true },
-  { id: 'u13', actor: '王一线', actorRole: '一线', action: '催了', target: '陈曦', when: '今天 09:40', ticketNo: 'LCMN-20260731-09480', ticketTitle: '批量设备离线', content: '学校侧催进度', read: true },
-  { id: 'u14', actor: '客户·郑某', actorRole: '客户', action: '催了', target: '孙杰', when: '今天 09:12', ticketNo: 'LCMN-20260730-09330', ticketTitle: '耗材发错型号', content: '请今日内给出换货方案', read: true },
-  { id: 'u15', actor: '张晓芸', actorRole: '一线', action: '催了', target: '李昊', when: '今天 08:55', ticketNo: 'LCMN-20260730-09301', ticketTitle: '服务评价申诉', content: '客户要求改判', read: true },
-  { id: 'u16', actor: '客户·冯某', actorRole: '客户', action: '催了', target: '张敏', when: '昨天 20:18', ticketNo: 'LCMN-20260729-09150', ticketTitle: '续费未到账', content: '请财务侧核实', read: true },
-  { id: 'u17', actor: '陈一线', actorRole: '一线', action: '催了', target: '郑楠', when: '昨天 18:40', ticketNo: 'LCMN-20260729-09120', ticketTitle: '安装指导未闭环', content: '客户晚间再次来电', read: true },
-  { id: 'u18', actor: '客户·何某', actorRole: '客户', action: '催了', target: '吴悦', when: '昨天 16:05', ticketNo: 'LCMN-20260728-09010', ticketTitle: '质保鉴定进度', content: '请更新鉴定结果', read: true },
-  { id: 'u19', actor: '李一线', actorRole: '一线', action: '催了', target: '王倩', when: '昨天 14:30', ticketNo: 'LCMN-20260728-08980', ticketTitle: '数据迁移咨询', content: '约定今日回复未兑现', read: true },
-  { id: 'u20', actor: '客户·蒋某', actorRole: '客户', action: '催了', target: '陈曦', when: '昨天 11:15', ticketNo: 'LCMN-20260727-08840', ticketTitle: '套餐降级失败', content: '请优先处理', read: true },
-  { id: 'u21', actor: '周一线', actorRole: '一线', action: '催了', target: '孙杰', when: '昨天 09:50', ticketNo: 'LCMN-20260727-08810', ticketTitle: '硬件异响排查', content: '请安排复测', read: true },
+/**
+ * 事件明细声明式 —— 只写事件本身，工单属性回工单数据源取。
+ *
+ * 【选单口径】
+ * · 一律取**未结案**的单；已挂起 / 已转出按 PRD-830 不出催补入口，故不选（补充例外见下）。
+ * · **未处理**的行取工单上真带待回催补标记的单（hasDunning / hasSupplement 且未联系），
+ *   点进去看得到未读角标；**已处理**的行取标记已清或本就没有标记的单 —— 否则
+ *   看板说「已处理」、办理页却挂着未读角标，两处对不上。
+ * · 未认领单也会被催被补（正是「未分派」卡要说的事），此时没有处理人可催，记「未分派」。
+ */
+interface EventSpec {
+  id: string;
+  /** 工单号，必须在工单数据源里真实存在 */
+  no: string;
+  /**
+   * 发起侧：
+   * · l1       一线坐席发起，actor 写姓名（不是工单属性，只属于这条事件）
+   * · customer 客户发起，actor 由工单上的客户姓名折算成「客户·X某」
+   * · handler  该单处理人自己发起（预约），actor 回工单取
+   */
+  side: 'l1' | 'customer' | 'handler';
+  /** side='l1' 时必填 */
+  actor?: string;
+  when: string;
+  content: string;
+  read: boolean;
+  category?: string;
+}
+
+function toEvent(action: EventDrillRow['action'], s: EventSpec): EventDrillRow {
+  const t = openTicketOf(s.no);
+  const handler = t.assignee ?? '未分派';
+  const actor =
+    s.side === 'l1'
+      ? s.actor ?? '一线'
+      : s.side === 'customer'
+        ? `客户·${t.customer.slice(0, 1)}某`
+        : handler;
+  return {
+    id: s.id,
+    actor,
+    actorRole: s.side === 'l1' ? '一线' : s.side === 'customer' ? '客户' : undefined,
+    action,
+    // 预约没有「催给谁 / 补给谁」这一维；催单与补充的目标就是该单当前处理人
+    target: s.side === 'handler' ? undefined : handler,
+    when: s.when,
+    ticketNo: t.no,
+    ticketTitle: t.title,
+    content: s.content,
+    read: s.read,
+    category: s.category,
+  };
+}
+
+/**
+ * 催单（合计 21，未处理 7）。
+ * 未处理 7 行对应工单库里**真挂着待回催单**的 7 张单（hasDunning 且未联系）；
+ * 已处理 14 行取本组其余在办单。
+ */
+const URGE_SPECS: EventSpec[] = [
+  // ── 未处理 7：工单上真挂着待回催单 ──
+  { id: 'u1', no: 'LCMN-20260817-83002', side: 'l1', actor: '张晓芸', when: '今天 19:27', content: '外投平台已二次跟帖，要求今日内给出赔付口径', read: false },
+  { id: 'u2', no: 'LCMN-20260610-73118', side: 'customer', when: '今天 18:52', content: '已等两天，请尽快安排上门检测', read: false },
+  { id: 'u3', no: 'LCMN-20260610-76010', side: 'l1', actor: '李一线', when: '今天 17:40', content: '首响已超时、客户情绪升级，请二线优先跟进', read: false },
+  { id: 'u4', no: 'LCMN-20260609-66248', side: 'customer', when: '今天 16:18', content: '第三次催单，要求今日回电确认账号安全', read: false },
+  { id: 'u5', no: 'LCMN-20260817-83005', side: 'l1', actor: '周一线', when: '今天 15:05', content: '学校侧催进度，请三线给出固件排查结论', read: false },
+  { id: 'u6', no: 'LCMN-20260817-83003', side: 'customer', when: '今天 14:22', content: '已表达向平台投诉意向，要求书面回复', read: false },
+  { id: 'u7', no: 'LCMN-20260610-78344', side: 'l1', actor: '张晓芸', when: '今天 13:10', content: '单子还在池里没人领，客户称已超承诺时间', read: false },
+  // ── 已处理 14：本组其余在办单 ──
+  { id: 'u8', no: 'LCMN-20260610-73026', side: 'customer', when: '今天 12:40', content: '影响日常使用，请加急', read: true },
+  { id: 'u9', no: 'LCMN-20260610-75002', side: 'l1', actor: '陈一线', when: '今天 11:55', content: '已与客户约定 16:00 前回电说明配额方案', read: true },
+  { id: 'u10', no: 'LCMN-20260610-75240', side: 'customer', when: '今天 11:20', content: '请同步退货审核进度', read: true },
+  { id: 'u11', no: 'LCMN-20260817-83004', side: 'l1', actor: '李一线', when: '今天 10:48', content: '一线无法闭环，请调研侧尽快给结论', read: true },
+  { id: 'u12', no: 'LCMN-20260610-75518', side: 'customer', when: '今天 10:05', content: '请确认明日上门时段', read: true },
+  { id: 'u13', no: 'LCMN-20260713-90001', side: 'l1', actor: '王一线', when: '今天 09:40', content: '学校侧催进度，已提产研待反馈', read: true },
+  { id: 'u14', no: 'LCMN-20260610-75744', side: 'customer', when: '今天 09:12', content: '请今日内给出优惠领取方式', read: true },
+  { id: 'u15', no: 'LCMN-20260711-61551', side: 'l1', actor: '张晓芸', when: '今天 08:55', content: '监管平台已受理，需当日反馈处理进展', read: true },
+  { id: 'u16', no: 'LCMN-20260817-83006', side: 'customer', when: '昨天 20:18', content: '请同步产研排查进度', read: true },
+  { id: 'u17', no: 'LCMN-20260817-83007', side: 'l1', actor: '陈一线', when: '昨天 18:40', content: '协办迟迟未回填，客户晚间再次来电', read: true },
+  { id: 'u18', no: 'LCMN-20260804-81001', side: 'customer', when: '昨天 16:05', content: '配件已到货，请更新续办安排', read: true },
+  { id: 'u19', no: 'LCMN-20260609-66012', side: 'l1', actor: '李一线', when: '昨天 14:30', content: '约定今日回复未兑现', read: true },
+  { id: 'u20', no: 'LCMN-20260609-66510', side: 'customer', when: '昨天 11:15', content: '请优先确认退款政策口径', read: true },
+  { id: 'u21', no: 'LCMN-20260715-72015', side: 'l1', actor: '周一线', when: '昨天 09:50', content: '请安排滤芯复测', read: true },
 ];
 
-/** @deprecated 人员聚合口径保留，事件明细见 URGE_EVENTS */
+/** 催单无「类型」字段（与办理页催单弹窗一致），只展示谁·何时·催了谁·哪张单 */
+export const URGE_EVENTS: EventDrillRow[] = URGE_SPECS.map((s) => toEvent('催了', s));
+
+/**
+ * @deprecated 人员聚合口径保留，事件明细见 URGE_EVENTS。
+ * ⚠️ 这里的逐人拆分与 URGE_EVENTS **无法互校**：事件明细的「催了谁」已改为回工单数据源取
+ * 处理人，而工单数据源的处理人只有 王坐席 / 陈坐席 / 林坐席 / 赵三线 四位，
+ * 与 TEAM_MEMBERS 的 12 位组员是两套互不相交的名册（见 TEAM_MEMBERS 注释）。
+ */
 export const URGE_DRILL: PeopleDrillRow[] = [
   { id: 'm10', name: '孙杰', online: '在线', count: 4, read: 2, unread: 2 },
   { id: 'm2',  name: '李昊', online: '在线', count: 3, read: 2, unread: 1 },
@@ -885,24 +999,34 @@ export const URGE_DRILL: PeopleDrillRow[] = [
 /* -------------------------------------------------------------------------
  * 补充事件明细（合计 13，未读 5）· 谁 · 何时 · 补给谁 · 哪张单
  * ----------------------------------------------------------------------- */
-/** 补充类型：修改信息 / 补充信息 / 取消服务 / 其他（与弹窗选项一致） */
-export const SUPPLEMENT_EVENTS: EventDrillRow[] = [
-  { id: 's1', actor: '张晓芸', actorRole: '一线', action: '补充给', target: '孙杰', when: '今天 19:27', ticketNo: 'LCMN-20260804-10021', ticketTitle: '电源故障反复重启', content: '客户补充：已尝试更换电源线，问题依旧', read: false, category: '补充信息' },
-  { id: 's2', actor: '客户·陈某', actorRole: '客户', action: '补充给', target: '李昊', when: '今天 18:10', ticketNo: 'LCMN-20260804-10034', ticketTitle: '设备无法联网', content: '补充路由器型号与固件版本截图', read: false, category: '补充信息' },
-  { id: 's3', actor: '李一线', actorRole: '一线', action: '补充给', target: '孙杰', when: '今天 16:45', ticketNo: 'LCMN-20260803-10058', ticketTitle: '投诉服务态度', content: '更正联系人手机号与上门地址', read: false, category: '修改信息' },
-  { id: 's4', actor: '客户·王某', actorRole: '客户', action: '补充给', target: '吴悦', when: '今天 15:20', ticketNo: 'LCMN-20260803-10071', ticketTitle: '退换货进度查询', content: '客户申请取消本次上门服务', read: false, category: '取消服务' },
-  { id: 's5', actor: '周一线', actorRole: '一线', action: '补充给', target: '周航', when: '今天 14:05', ticketNo: 'LCMN-20260803-10093', ticketTitle: '维修超期未解决', content: '补充上门工程师联系方式', read: false, category: '其他' },
-  { id: 's6', actor: '客户·赵某', actorRole: '客户', action: '补充给', target: '李昊', when: '今天 12:30', ticketNo: 'LCMN-20260802-09880', ticketTitle: '软件激活失败', content: '补充激活码与错误码', read: true, category: '补充信息' },
-  { id: 's7', actor: '陈一线', actorRole: '一线', action: '补充给', target: '陈曦', when: '今天 11:15', ticketNo: 'LCMN-20260802-09855', ticketTitle: '账号权限异常', content: '修改组织管理员姓名与邮箱', read: true, category: '修改信息' },
-  { id: 's8', actor: '客户·孙某', actorRole: '客户', action: '补充给', target: '张敏', when: '今天 10:40', ticketNo: 'LCMN-20260801-09720', ticketTitle: '物流丢件理赔', content: '补充购买凭证 PDF', read: true, category: '补充信息' },
-  { id: 's9', actor: '李一线', actorRole: '一线', action: '补充给', target: '陈曦', when: '今天 09:50', ticketNo: 'LCMN-20260731-09480', ticketTitle: '批量设备离线', content: '客户取消批量巡检服务', read: true, category: '取消服务' },
-  { id: 's10', actor: '客户·吴某', actorRole: '客户', action: '补充给', target: '吴悦', when: '昨天 19:20', ticketNo: 'LCMN-20260731-09510', ticketTitle: '预约改期未确认', content: '修改预约上门时段', read: true, category: '修改信息' },
-  { id: 's11', actor: '王一线', actorRole: '一线', action: '补充给', target: '张敏', when: '昨天 16:10', ticketNo: 'LCMN-20260730-09301', ticketTitle: '服务评价申诉', content: '补充评价截图及其他说明', read: true, category: '其他' },
-  { id: 's12', actor: '客户·郑某', actorRole: '客户', action: '补充给', target: '周航', when: '昨天 14:00', ticketNo: 'LCMN-20260729-09150', ticketTitle: '续费未到账', content: '补充支付流水号', read: true, category: '补充信息' },
-  { id: 's13', actor: '张晓芸', actorRole: '一线', action: '补充给', target: '孙杰', when: '昨天 11:30', ticketNo: 'LCMN-20260728-09010', ticketTitle: '质保鉴定进度', content: '修改收件地址与联系人', read: true, category: '修改信息' },
+/**
+ * 补充（合计 13，未处理 5）。
+ * 未处理 5 行对应工单库里**真挂着待回补充**的 5 张单（hasSupplement / supplementUnread 且未联系）；
+ * 其中「等待客户补充材料」那张本身是挂起态 —— 挂起原因就是等补充，客户回传材料
+ * 正是让它复活的那个动作，故这一类挂起单是允许上补充明细的。
+ */
+const SUPPLEMENT_SPECS: EventSpec[] = [
+  // ── 未处理 5：工单上真挂着待回补充 ──
+  { id: 's1', no: 'LCMN-20260817-83002', side: 'l1', actor: '张晓芸', when: '今天 19:27', content: '客户补充：外投平台工单编号与聊天记录截图', read: false, category: '补充信息' },
+  { id: 's2', no: 'LCMN-20260610-75240', side: 'customer', when: '今天 18:10', content: '补充商品实拍图与页面描述截图', read: false, category: '补充信息' },
+  { id: 's3', no: 'LCMN-20260610-74836', side: 'l1', actor: '李一线', when: '今天 16:45', content: '更正企业联系人手机号与开票信息', read: false, category: '修改信息' },
+  { id: 's4', no: 'LCMN-20260610-78120', side: 'customer', when: '今天 15:20', content: '客户申请取消本次上门服务', read: false, category: '取消服务' },
+  { id: 's5', no: 'LCMN-20260610-78810', side: 'l1', actor: '周一线', when: '今天 14:05', content: '补充返厂寄件人联系方式', read: false, category: '其他' },
+  // ── 已处理 8：补充标记已清或本无标记的在办单 ──
+  { id: 's6', no: 'LCMN-20260609-66012', side: 'customer', when: '今天 12:30', content: '补充导入模板与报错日志', read: true, category: '补充信息' },
+  { id: 's7', no: 'LCMN-20260610-75002', side: 'l1', actor: '陈一线', when: '今天 11:15', content: '修改组织管理员姓名与邮箱', read: true, category: '修改信息' },
+  { id: 's8', no: 'LCMN-20260610-73026', side: 'customer', when: '今天 10:40', content: '补充跳曲录屏与当前固件版本', read: true, category: '补充信息' },
+  { id: 's9', no: 'LCMN-20260610-75744', side: 'l1', actor: '李一线', when: '今天 09:50', content: '客户取消本次续费优惠申领', read: true, category: '取消服务' },
+  { id: 's10', no: 'LCMN-20260610-75518', side: 'customer', when: '昨天 19:20', content: '修改预约上门时段', read: true, category: '修改信息' },
+  { id: 's11', no: 'LCMN-20260715-72015', side: 'l1', actor: '王一线', when: '昨天 16:10', content: '补充滤芯更换凭证及其他说明', read: true, category: '其他' },
+  { id: 's12', no: 'LCMN-20260609-66510', side: 'customer', when: '昨天 14:00', content: '补充支付流水号', read: true, category: '补充信息' },
+  { id: 's13', no: 'LCMN-20260817-83004', side: 'l1', actor: '张晓芸', when: '昨天 11:30', content: '修改收件地址与联系人', read: true, category: '修改信息' },
 ];
 
-/** @deprecated 人员聚合口径保留，事件明细见 SUPPLEMENT_EVENTS */
+/** 补充类型：修改信息 / 补充信息 / 取消服务 / 其他（与弹窗选项一致） */
+export const SUPPLEMENT_EVENTS: EventDrillRow[] = SUPPLEMENT_SPECS.map((s) => toEvent('补充给', s));
+
+/** @deprecated 人员聚合口径保留，事件明细见 SUPPLEMENT_EVENTS；与明细不可互校，同 URGE_DRILL */
 export const SUPPLEMENT_DRILL: PeopleDrillRow[] = [
   { id: 'm10', name: '孙杰', online: '在线', count: 3, read: 1, unread: 2 },
   { id: 'm2',  name: '李昊', online: '在线', count: 2, read: 1, unread: 1 },
@@ -916,21 +1040,29 @@ export const SUPPLEMENT_DRILL: PeopleDrillRow[] = [
  * 预约事件明细（合计 11，未沟通 6 / 已沟通 5）
  * 字段对齐办理页预约 Tab：预约人 · 预约时间 · 预约需求 · 已沟通
  * ----------------------------------------------------------------------- */
-export const APPOINTMENT_EVENTS: EventDrillRow[] = [
-  { id: 'a1', actor: '孙杰', action: '预约', when: '今天 19:00', ticketNo: 'LCMN-20260804-10021', ticketTitle: '电源故障反复重启', content: '', read: false, category: '预约联系用户' },
-  { id: 'a2', actor: '李昊', action: '预约', when: '今天 17:30', ticketNo: 'LCMN-20260804-10034', ticketTitle: '设备无法联网', content: '', read: false, category: '联系后端确认' },
-  { id: 'a3', actor: '孙杰', action: '预约', when: '今天 16:00', ticketNo: 'LCMN-20260803-10058', ticketTitle: '投诉服务态度', content: '', read: false, category: '预约联系用户' },
-  { id: 'a4', actor: '张敏', action: '预约', when: '今天 15:00', ticketNo: 'LCMN-20260803-10071', ticketTitle: '退换货进度查询', content: '', read: false, category: '预约联系用户' },
-  { id: 'a5', actor: '周航', action: '预约', when: '今天 14:00', ticketNo: 'LCMN-20260803-10093', ticketTitle: '维修超期未解决', content: '', read: false, category: '联系后端确认' },
-  { id: 'a6', actor: '李昊', action: '预约', when: '明天 10:00', ticketNo: 'LCMN-20260802-09880', ticketTitle: '软件激活失败', content: '', read: false, category: '预约联系用户' },
-  { id: 'a7', actor: '陈曦', action: '预约', when: '今天 11:00', ticketNo: 'LCMN-20260802-09855', ticketTitle: '账号权限异常', content: '', read: true, category: '联系后端确认' },
-  { id: 'a8', actor: '陈曦', action: '预约', when: '昨天 16:30', ticketNo: 'LCMN-20260801-09720', ticketTitle: '物流丢件理赔', content: '', read: true, category: '预约联系用户' },
-  { id: 'a9', actor: '吴悦', action: '预约', when: '昨天 14:00', ticketNo: 'LCMN-20260731-09510', ticketTitle: '预约改期未确认', content: '', read: true, category: '预约联系用户' },
-  { id: 'a10', actor: '张敏', action: '预约', when: '昨天 11:00', ticketNo: 'LCMN-20260730-09301', ticketTitle: '服务评价申诉', content: '', read: true, category: '联系后端确认' },
-  { id: 'a11', actor: '孙杰', action: '预约', when: '前天 15:30', ticketNo: 'LCMN-20260728-09010', ticketTitle: '质保鉴定进度', content: '', read: true, category: '预约联系用户' },
+/**
+ * 预约（合计 11，未沟通 6）。预约人＝该单处理人，回工单取。
+ * 未沟通 6 行优先落在工单库里**真带预约钟 / 预约时间**的单上（预约钟还在跑就是尚未沟通）。
+ */
+const APPOINTMENT_SPECS: EventSpec[] = [
+  // ── 未沟通 6 ──
+  { id: 'a1', no: 'LCMN-20260610-75518', side: 'handler', when: '今天 19:00', content: '', read: false, category: '预约联系用户' },
+  { id: 'a2', no: 'LCMN-20260713-90001', side: 'handler', when: '今天 17:30', content: '', read: false, category: '联系后端确认' },
+  { id: 'a3', no: 'LCMN-20260610-75240', side: 'handler', when: '今天 16:00', content: '', read: false, category: '预约联系用户' },
+  { id: 'a4', no: 'LCMN-20260610-73118', side: 'handler', when: '今天 15:00', content: '', read: false, category: '预约联系用户' },
+  { id: 'a5', no: 'LCMN-20260817-83003', side: 'handler', when: '今天 14:00', content: '', read: false, category: '联系后端确认' },
+  { id: 'a6', no: 'LCMN-20260804-81001', side: 'handler', when: '明天 10:00', content: '', read: false, category: '预约联系用户' },
+  // ── 已沟通 5 ──
+  { id: 'a7', no: 'LCMN-20260610-73026', side: 'handler', when: '今天 11:00', content: '', read: true, category: '联系后端确认' },
+  { id: 'a8', no: 'LCMN-20260610-75744', side: 'handler', when: '昨天 16:30', content: '', read: true, category: '预约联系用户' },
+  { id: 'a9', no: 'LCMN-20260610-75002', side: 'handler', when: '昨天 14:00', content: '', read: true, category: '预约联系用户' },
+  { id: 'a10', no: 'LCMN-20260609-66012', side: 'handler', when: '昨天 11:00', content: '', read: true, category: '联系后端确认' },
+  { id: 'a11', no: 'LCMN-20260715-72015', side: 'handler', when: '前天 15:30', content: '', read: true, category: '预约联系用户' },
 ];
 
-/** @deprecated 人员聚合口径保留，事件明细见 APPOINTMENT_EVENTS */
+export const APPOINTMENT_EVENTS: EventDrillRow[] = APPOINTMENT_SPECS.map((s) => toEvent('预约', s));
+
+/** @deprecated 人员聚合口径保留，事件明细见 APPOINTMENT_EVENTS；与明细不可互校，同 URGE_DRILL */
 export const APPOINTMENT_DRILL: PeopleDrillRow[] = [
   { id: 'm10', name: '孙杰', online: '在线', count: 3, read: 1, unread: 2 },
   { id: 'm2',  name: '李昊', online: '在线', count: 2, read: 0, unread: 2 },

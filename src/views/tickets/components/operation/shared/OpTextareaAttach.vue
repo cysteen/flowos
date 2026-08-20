@@ -10,6 +10,14 @@ const props = withDefaults(defineProps<{
   minInputHeight?: number;
   shellBackground?: string;
   shellRadius?: number;
+  /**
+   * 只读：正文不可编辑、附件添加/移除入口不出。
+   *
+   * ⚠️ 这里用的是**原生 textarea**，`a-config-provider :component-disabled` 管不到它
+   * （那个只作用于 antd 组件）。协同信息区此前的只读态因此只收掉了按钮、正文仍可输入，
+   * 故必须显式接一个 readonly 下来。
+   */
+  readonly?: boolean;
 }>(), {
   minInputHeight: 52,
   shellBackground: '#fff',
@@ -31,10 +39,12 @@ function focusInput() {
 defineExpose({ focusInput });
 
 function openFilePicker() {
+  if (props.readonly) return;
   fileInput.value?.click();
 }
 
 function onFilesSelected(e: Event) {
+  if (props.readonly) return;
   const input = e.target as HTMLInputElement;
   const names = Array.from(input.files ?? []).map((f) => f.name);
   if (!names.length) return;
@@ -44,6 +54,7 @@ function onFilesSelected(e: Event) {
 }
 
 function removeFile(name: string) {
+  if (props.readonly) return;
   emit(
     'update:attachments',
     props.attachments.filter((f) => f !== name),
@@ -67,6 +78,7 @@ function removeFile(name: string) {
         :style="{ minHeight: `${minInputHeight}px` }"
         :value="modelValue"
         :placeholder="placeholder"
+        :readonly="readonly"
         @input="emit('update:modelValue', ($event.target as HTMLTextAreaElement).value)"
       />
       <div v-if="attachments.length" class="attach-chips">
@@ -81,12 +93,18 @@ function removeFile(name: string) {
             />
           </svg>
           <span class="attach-name">{{ f }}</span>
-          <button type="button" class="attach-remove" aria-label="移除附件" @click="removeFile(f)">
+          <button
+            v-if="!readonly"
+            type="button"
+            class="attach-remove"
+            aria-label="移除附件"
+            @click="removeFile(f)"
+          >
             <CloseOutlined />
           </button>
         </span>
       </div>
-      <div class="textarea-foot">
+      <div v-if="!readonly" class="textarea-foot">
         <button type="button" class="attach-trigger" @click="openFilePicker">
           <svg class="clip-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path

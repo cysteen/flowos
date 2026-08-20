@@ -11,6 +11,12 @@ defineProps<{
   relatedTickets: RelatedTicketCard[];
   supplementRecords: SimpleRecord[];
   dunningRecords: SimpleRecord[];
+  /**
+   * 本 Tab 对当前角色只读（矩阵 #46：⑦ ⑧ 只读、⑥ 条件可用暂按不可写，其余可用）。
+   * Tab 内**唯一写动作是「已知晓」**（标记已读）—— 只读态下该按钮不出。
+   * 关联单跳转、附件查看、分组展开这类读的交互不受影响。
+   */
+  readonly?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -105,6 +111,7 @@ function processEntries(t: RelatedTicketCard) {
       <OpSimpleRecordList
         :records="supplementRecords"
         show-supplement-type
+        :readonly="readonly"
         @mark-read="emit('mark-read', $event)"
       />
     </OpCollapsibleSection>
@@ -116,7 +123,11 @@ function processEntries(t: RelatedTicketCard) {
       :expanded="expanded.dunning"
       @toggle="expanded.dunning = !expanded.dunning"
     >
-      <OpSimpleRecordList :records="dunningRecords" @mark-read="emit('mark-read', $event)" />
+      <OpSimpleRecordList
+        :records="dunningRecords"
+        :readonly="readonly"
+        @mark-read="emit('mark-read', $event)"
+      />
     </OpCollapsibleSection>
   </div>
 </template>

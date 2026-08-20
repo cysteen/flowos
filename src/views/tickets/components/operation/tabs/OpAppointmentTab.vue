@@ -4,10 +4,15 @@ import { CalendarOutlined, PlusOutlined } from '@ant-design/icons-vue';
 import OpAppointmentRecords from '../OpAppointmentRecords.vue';
 import type { AppointmentRecord } from '@/views/tickets/types/operation';
 
-defineProps<{
+const props = defineProps<{
   records: AppointmentRecord[];
   /** 当前坐席，作为新增预约的默认预约人 */
   defaultBooker?: string;
+  /**
+   * 本 Tab 对当前角色只读（矩阵 #45：① ④ 无本 Tab、⑦ ⑧ 只读、⑥ 条件可用暂按不可写）。
+   * 新增/保留/取消预约、标记已沟通都是对客动作，只读态下入口不出、处理函数也硬拦。
+   */
+  readonly?: boolean;
 }>();
 
 const emit = defineEmits<{ 'update:records': [v: AppointmentRecord[]] }>();
@@ -15,6 +20,7 @@ const emit = defineEmits<{ 'update:records': [v: AppointmentRecord[]] }>();
 const recordsRef = ref<InstanceType<typeof OpAppointmentRecords> | null>(null);
 
 function addRecord() {
+  if (props.readonly) return;
   recordsRef.value?.addRecord();
 }
 </script>
@@ -24,9 +30,10 @@ function addRecord() {
     <div class="appt-head">
       <div class="appt-head-main">
         <span class="appt-title"><CalendarOutlined />预约回访</span>
-        <span class="appt-hint">填写预约时间与需求后点「保留」正式登记；已保留的可标记已沟通或取消</span>
+        <span v-if="readonly" class="appt-hint">当前角色仅可查看预约记录</span>
+        <span v-else class="appt-hint">填写预约时间与需求后点「保留」正式登记；已保留的可标记已沟通或取消</span>
       </div>
-      <button type="button" class="add-btn" @click="addRecord">
+      <button v-if="!readonly" type="button" class="add-btn" @click="addRecord">
         <PlusOutlined />
         添加预约
       </button>
@@ -35,6 +42,7 @@ function addRecord() {
       ref="recordsRef"
       :records="records"
       :default-booker="defaultBooker"
+      :readonly="readonly"
       @update:records="emit('update:records', $event)"
     />
   </div>

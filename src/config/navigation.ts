@@ -5,6 +5,7 @@ import {
   ToolOutlined,
   DashboardOutlined,
   FundProjectionScreenOutlined,
+  WarningOutlined,
   AuditOutlined,
   SearchOutlined,
 } from '@ant-design/icons-vue';
@@ -26,7 +27,8 @@ export const NAV_ITEMS: NavItem[] = [
   { key: 'query-center', label: '查询中心', path: '/query', icon: SearchOutlined },
   { key: 'aftersale', label: '售后工作台', path: '/aftersale', icon: ToolOutlined }, // wrench
   { key: 'team-board', label: '班组看板', path: '/team-board', icon: DashboardOutlined }, // gauge
-  { key: 'ops-monitor', label: '运营监控', path: '/ops-monitor', icon: FundProjectionScreenOutlined }, // monitor
+  { key: 'ops-ticket-monitor', label: '工单监控', path: '/ops-monitor/tickets', icon: FundProjectionScreenOutlined },
+  { key: 'ops-risk-monitor', label: '风险监控', path: '/ops-monitor/risk', icon: WarningOutlined },
   { key: 'approval', label: '审批中心', path: '/approval', icon: AuditOutlined }, // clipboard-check
 ];
 

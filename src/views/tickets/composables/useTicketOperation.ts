@@ -1,7 +1,7 @@
 import { ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
-import { TICKET_DETAIL, TIMELINE } from '@/mock/ticketDetail';
+import { TICKET_DETAIL, TIMELINE, productHasAfterSaleService } from '@/mock/ticketDetail';
 import type { TicketDetailMeta, ChildTicket, SlaClock } from '@/mock/ticketDetail';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 import { isFirstResponded } from '@/views/tickets/types/ticket';
@@ -139,6 +139,13 @@ export function useTicketOperation() {
   function loadDetail(no: string) {
     const base = JSON.parse(JSON.stringify(TICKET_DETAIL)) as TicketDetailMeta;
     const t = TICKETS.find((x) => x.no === no);
+    // 回退样例是**静默的**：页面照常渲染演示单，只有地址栏还留着那个查不到的号，
+    // 于是"多行点开是同一张单"这种配错很难被发现。开发态先把它喊出来。
+    // 不做用户可见提示：班组看板 / 运营监控 / 客户视图的下钻明细目前也有大量非真实单号，
+    // 弹提示会在那些页面刷屏 —— 要报错得先把那几份 mock 一起对齐真单。
+    if (!t && import.meta.env.DEV) {
+      console.warn(`[useTicketOperation] 工单号 ${no} 不在工单数据源中，已回退演示单`);
+    }
     if (t) {
       base.no = t.no;
       base.title = t.title;
@@ -147,6 +154,8 @@ export function useTicketOperation() {
       base.priority = t.priority;
       base.customer.name = t.customer;
       base.product.name = t.product;
+      // 产品有无售后服务 → 「转售后」置灰 + 提示（基线 ※12）。按产品名判，不再恒为 true
+      base.product.afterSaleEnabled = productHasAfterSaleService(t.product);
       base.productBg = t.productBg;
       // 工单来源：升级投诉门禁、补充弹窗投诉平台组、转售后分支都按它判
       if (t.ticketSource) base.source = t.ticketSource;
@@ -175,6 +184,9 @@ export function useTicketOperation() {
         ];
       }
       base.escalatedFromNo = t.escalatedFromNo; // 升级派生单：回溯「升级自」来源
+      // 升级目标（三线技术支持 / 产研）随列表行带入 —— 基线只有一个「已升级」状态，
+      // 「在不在三线手上」（决定「退回」出不出）只能靠这个字段判，判不出状态名来
+      base.escalateTarget = t.escalateTarget;
       /*
        * 关联关系**按列表行重建，不继承样例工单**。
        * 之前直接沿用 TICKET_DETAIL 的 childTickets/linkedRecords，导致随便点开一张单

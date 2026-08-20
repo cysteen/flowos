@@ -5,12 +5,21 @@ import OpCollapsibleSection from '../OpCollapsibleSection.vue';
 import OpTextareaAttach from '../shared/OpTextareaAttach.vue';
 import type { RiskMonitorDraft } from '@/views/tickets/types/operationTabs';
 
-const props = defineProps<{ draft: RiskMonitorDraft }>();
+const props = defineProps<{
+  draft: RiskMonitorDraft;
+  /**
+   * 本 Tab 对当前角色只读。矩阵 #43：⑥ ⑦ ⑨ 可用（**打标**是它们的职责）、
+   * ② ③ ④ ⑤ ⑧ 只读（处理人侧不打标）、① 无（整个 Tab 不渲染）。
+   */
+  readonly?: boolean;
+}>();
 const emit = defineEmits<{ 'update:draft': [draft: RiskMonitorDraft] }>();
 
 const expanded = ref({ report: true, conclusion: true, risk: true });
 
+/** 单一写出口：只读态在此统一拦一道，Tab 内所有字段的回写都经过这里 */
 function update(partial: Partial<RiskMonitorDraft>) {
+  if (props.readonly) return;
   emit('update:draft', { ...props.draft, ...partial });
 }
 
@@ -80,6 +89,7 @@ function selectedText(v: unknown): string {
           :model-value="draft.remark"
           :attachments="draft.remarkAttachments"
           :min-input-height="48"
+          :readonly="readonly"
           placeholder="补充报备背景、影响范围等说明…"
           @update:model-value="(v) => update({ remark: v })"
           @update:attachments="(v) => update({ remarkAttachments: v })"
@@ -113,6 +123,7 @@ function selectedText(v: unknown): string {
           :model-value="draft.processReply"
           :attachments="draft.processReplyAttachments"
           :min-input-height="48"
+          :readonly="readonly"
           placeholder="填写对坐席/客户的处理答复…"
           @update:model-value="(v) => update({ processReply: v })"
           @update:attachments="(v) => update({ processReplyAttachments: v })"
@@ -167,6 +178,7 @@ function selectedText(v: unknown): string {
           :model-value="draft.riskDesc"
           :attachments="draft.riskDescAttachments"
           :min-input-height="48"
+          :readonly="readonly"
           placeholder="描述风险点、影响范围与建议处置…"
           @update:model-value="(v) => update({ riskDesc: v })"
           @update:attachments="(v) => update({ riskDescAttachments: v })"

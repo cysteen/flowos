@@ -27,6 +27,8 @@ const props = defineProps<{
   complaintPlatforms?: { platform: string; customPlatform?: string; complaintNo: string }[];
   /** 是否展示投诉渠道 chip 面板 */
   showExternal?: boolean;
+  /** 只读：随「工单处理」Tab 的 Tab 级只读判据传下来（见 OpProcessForm.readonly） */
+  readonly?: boolean;
 }>();
 
 const emit = defineEmits<{ 'update:form': [form: ProcessFormDraft] }>();
@@ -80,7 +82,9 @@ watch(
   { immediate: true },
 );
 
+/** 单一写出口：只读态在此统一拦一道（patchFollowup 等也都汇到这里） */
 function update(partial: Partial<ProcessFormDraft>) {
+  if (props.readonly) return;
   emit('update:form', { ...props.form, ...partial });
 }
 
@@ -237,6 +241,7 @@ const missRiskDesc = computed(
         :model-value="form.complaintNote"
         :attachments="form.complaintNoteAttachments"
         :min-input-height="40"
+        :readonly="readonly"
         @update:model-value="(v) => update({ complaintNote: v })"
         @update:attachments="(v) => update({ complaintNoteAttachments: v })"
       />

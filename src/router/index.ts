@@ -134,9 +134,21 @@ const routes: RouteRecordRaw[] = [
       },
       {
         path: 'ops-monitor',
-        name: 'ops-monitor',
+        redirect: '/ops-monitor/tickets',
+      },
+      {
+        path: 'ops-monitor/tickets',
+        name: 'ops-ticket-monitor',
         component: () => import('@/views/ops-monitor/OpsMonitorView.vue'),
-        meta: { menu: 'ops-monitor', title: '运营监控', breadcrumb: '运营监控 · 实时大盘' },
+        props: { board: 'ticket' },
+        meta: { menu: 'ops-ticket-monitor', title: '工单监控', breadcrumb: '工单监控' },
+      },
+      {
+        path: 'ops-monitor/risk',
+        name: 'ops-risk-monitor',
+        // 风险监控已按 D7a 拆出独立立项，组件随之从 OpsMonitorView 独立
+        component: () => import('@/views/ops-monitor/RiskMonitorView.vue'),
+        meta: { menu: 'ops-risk-monitor', title: '风险监控', breadcrumb: '风险监控' },
       },
       {
         path: 'team-board',

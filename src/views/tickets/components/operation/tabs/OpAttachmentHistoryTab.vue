@@ -3,7 +3,15 @@ import { ref } from 'vue';
 import { message } from 'ant-design-vue';
 import type { AttachmentHistoryRecord } from '@/views/tickets/types/operationTabs';
 
-defineProps<{ records: AttachmentHistoryRecord[] }>();
+const props = defineProps<{
+  records: AttachmentHistoryRecord[];
+  /**
+   * 本 Tab 对当前角色只读。矩阵 #50「附件历史」**九格全「只读」**，原话是
+   * 「查看/下载保留，**上传入口在处理表单区**」—— 故这条「上传附件」栏在只读态整条不出，
+   * 上传走「工单处理」Tab 的处理表单区。查看/下载不受影响。
+   */
+  readonly?: boolean;
+}>();
 
 const fileInput = ref<HTMLInputElement | null>(null);
 
@@ -17,10 +25,12 @@ function fileIcon(name: string): string {
 }
 
 function openUpload() {
+  if (props.readonly) return;
   fileInput.value?.click();
 }
 
 function onFilesSelected(e: Event) {
+  if (props.readonly) return;
   const input = e.target as HTMLInputElement;
   const names = Array.from(input.files ?? []).map((f) => f.name);
   if (!names.length) return;
@@ -39,7 +49,7 @@ function onDownload(name: string) {
 
 <template>
   <div class="attach-tab">
-    <div class="upload-bar">
+    <div v-if="!readonly" class="upload-bar">
       <button type="button" class="upload-btn" @click="openUpload">
         <span class="upload-icon" aria-hidden="true">📎</span>
         上传附件

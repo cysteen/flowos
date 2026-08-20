@@ -27,6 +27,12 @@ const props = defineProps<{
   feedbackNo?: string;
   failReason?: string;
   createdAt?: string;
+  /**
+   * 本 Tab 对当前角色只读。「产研反馈」不在协同信息区 11 行里，矩阵在 #41 门控说明给的口径是
+   * 「取值随行 56『同步飞书』」—— 该行 ② ③ ⑤ ⑨ 可用、⑥ 条件可用（暂按不可写）、① ④ ⑦ ⑧ 无。
+   * 只读态下重新发起 / 催单 / 二次激活三个写入口不出，协同时间线照常可读。
+   */
+  readonly?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -126,7 +132,7 @@ const KIND_META: Record<FeishuRecord['kind'], { icon: unknown; color: string; ta
 };
 
 function onActivate() {
-  if (!activateEnabled.value) return;
+  if (props.readonly || !activateEnabled.value) return;
   activateReason.value = FEISHU_ACTIVATE_REASONS[0];
   activateNote.value = '';
   activateOpen.value = true;
@@ -150,11 +156,12 @@ function confirmActivate() {
 }
 
 function onRetry() {
+  if (props.readonly) return;
   emit('retry');
 }
 
 function onDunning() {
-  if (!dunningEnabled.value) return;
+  if (props.readonly || !dunningEnabled.value) return;
   emit('dunning');
 }
 </script>
@@ -170,7 +177,7 @@ function onDunning() {
           <div class="fs-fail-sub">{{ failReason || '未能拿到反馈单号，可重新发起升级' }}</div>
         </div>
       </div>
-      <button type="button" class="fs-retry" @click="onRetry">
+      <button v-if="!readonly" type="button" class="fs-retry" @click="onRetry">
         <ReloadOutlined />
         重新发起
       </button>
@@ -187,7 +194,7 @@ function onDunning() {
             <span v-if="productName" class="fs-sheet-product">{{ productName }}</span>
           </div>
         </div>
-        <div v-if="isAssociated" class="fs-sheet-actions">
+        <div v-if="isAssociated && !readonly" class="fs-sheet-actions">
           <button
             type="button"
             class="action-btn"

@@ -12,7 +12,7 @@ import OpAftersaleLinkCard from './operation/OpAftersaleLinkCard.vue';
 import OpForwardModal from './operation/OpForwardModal.vue';
 import OpAftersaleActivateModal from './operation/OpAftersaleActivateModal.vue';
 import type { SuspendInfo, OpActionType, TicketOpState, AftersaleContext } from '../composables/opActions';
-import { availableActions } from '../composables/opActionRegistry';
+import { availableActions, NO_AFTERSALE_TIP } from '../composables/opActionRegistry';
 import { MAX_RETURN_COUNT } from '../composables/opActions';
 import { activateAftersaleTicket } from '@/api/aftersaleActivate';
 
@@ -42,9 +42,10 @@ const props = defineProps<{
   /** 委派中：协办未完成前锁定流转/终结类动作 */
   delegateTargets?: string;
   /**
-   * 工单是否已升级至技术支持。
-   * 「退回」只有技术支持 → 工单处理人这一个方向，故仅在技术支持持单时展示。
-   * （当前角色体系无「技术支持」角色，先以"已升级至技术支持"作为持单判据）
+   * 工单是否正在**三线技术支持**手上。
+   * 「退回」只有三线技术支持 → 工单处理人这一个方向，故仅在三线持单时展示。
+   * 判据＝状态「已升级」＋ 升级目标＝三线技术支持（基线只有一个「已升级」状态，
+   * 产研那一类处理人仍是二线、不给「退回」），由视图侧算好传入。
    */
   atTechSupport?: boolean;
   /**
@@ -84,7 +85,7 @@ const feishuEscalateBlocked = computed(() =>
 
 const DIALOG_ACTIONS: OpActionType[] = [
   '调剂', '委派', '强结', '挂起', '恢复', '退回', '升级', '同步飞书', '转售后',
-  '标记已解决', '关闭工单', '归档工单',
+  '标记已解决', '关闭工单',
 ];
 
 /** 底栏展示顺序（对齐参考原型 bottom-actions + 强结） */
@@ -96,7 +97,7 @@ const dialogOpen = ref(false);
 const dialogAction = ref<OpActionType | null>(null);
 const forwardModalOpen = ref(false);
 
-const isTerminal = computed(() => ['closed', 'archived', 'cancelled', 'settled'].includes(props.opState));
+const isTerminal = computed(() => ['closed', 'cancelled', 'settled'].includes(props.opState));
 const isSuspended = computed(() => props.opState === 'suspended');
 /**
  * 已转出：非诉转售后后的等待态。单子在售后手上，客服侧无可作为——
@@ -152,9 +153,23 @@ const DELEGATE_LOCKED: (OpActionType | '转单')[] = [
 ];
 const DELEGATE_LOCK_TIP = '工单委派中，协办完成后可操作';
 
-const actions = computed(() =>
-  availableActions({ ticketType: props.ticketType, afterSaleEnabled: props.afterSaleEnabled }),
-);
+const actions = computed(() => availableActions({ ticketType: props.ticketType }));
+
+/**
+ * 产品无售后服务 → 「转售后」**置灰 + 提示**，不是隐藏（基线 ※12）。
+ * 该拦截维度是**工单数据**，不属于角色 / 状态 / 类型三维；隐藏会让坐席不知道为什么不能转，
+ * 只能反复找入口。原实现在 availableActions 里把动作整个滤掉了，现改为在此呈现。
+ */
+const noAftersaleProduct = computed(() => !props.afterSaleEnabled);
+
+/**
+ * 「转售后」何时用 hover 卡片代替原生 title：只有**已有关联售后单**这一种。
+ * 其余置灰原因（如产品无售后服务）没有卡片可弹，必须让 title 把提示带出来——
+ * 否则就成了"置灰但不说为什么"，与基线 ※12「置灰 + 提示」只做了一半。
+ */
+function showsAftersaleCard(key: OpActionType | '转单'): boolean {
+  return key === '转售后' && !!linkedAftersale.value && !activatableAftersale.value;
+}
 const actionMap = computed(() => new Map(actions.value.map((a) => [a.key, a])));
 
 interface BarItem {
@@ -167,9 +182,18 @@ interface BarItem {
   forbiddenTip?: string;
 }
 
-/** 当前工单是否允许撤回（原型默认不可撤回，用于展示禁用态） */
+/**
+ * 撤回 = 撤销**本次下送**或**本次申请**，只有两种场景成立（基线 §2 ※2）：
+ * 「调研中」撤销本次下送、「审核中」四态撤销本次申请（申请挂起 / 关闭 / 强结 / 业务动作审核中）。
+ * 基线状态 × 动作表里其余 13 个状态的「撤回」列一律 🔒。
+ *
+ * 本页轻量态映射：调研中 → `resolved`、审核中四态 → `review`。
+ *
+ * 原先这里写的是「终态才可撤回、非终态一律置灰」——判据方向与基线相反，
+ * 结果是唯一有意义的两个场景反而撤不了、而已结案的单却显示可撤。
+ */
 const withdrawBlocked = computed(
-  () => !['closed', 'archived', 'cancelled', 'settled'].includes(props.opState),
+  () => !['review', 'resolved'].includes(props.opState),
 );
 
 const barActions = computed<BarItem[]>(() => {
@@ -249,6 +273,17 @@ const barActions = computed<BarItem[]>(() => {
           ? { key: '恢复', label: '解除挂起', icon: 'PlayCircleOutlined' }
           : { key: '挂起', label: '申请挂起', icon: def.icon },
       );
+      continue;
+    }
+    // 产品无售后服务：转售后置灰 + 提示（基线 ※12，先于"已有关联单"判——它是更根本的不可转）
+    if (key === '转售后' && noAftersaleProduct.value) {
+      items.push({
+        key: def.key,
+        label: def.label,
+        icon: def.icon,
+        forbidden: true,
+        forbiddenTip: NO_AFTERSALE_TIP,
+      });
       continue;
     }
     // 已有关联售后单：转售后置灰，按是否结案给不同去处
@@ -341,6 +376,11 @@ function run(action: OpActionType | '转单') {
       return;
     }
     forwardModalOpen.value = true;
+    return;
+  }
+  // 产品无售后服务：按钮已置灰，键盘/程序调用兜底也给同一条提示（基线 ※12）
+  if (action === '转售后' && noAftersaleProduct.value) {
+    message.warning(NO_AFTERSALE_TIP);
     return;
   }
   // 售后转入单：转售后 = 激活来源售后单，走确认弹窗，不进建单表单
@@ -436,7 +476,7 @@ defineExpose({ openEscalate, openAftersale });
       <a-popover
         v-for="a in barActions"
         :key="a.key"
-        :trigger="a.key === '转售后' && linkedAftersale && !activatableAftersale ? 'hover' : []"
+        :trigger="showsAftersaleCard(a.key) ? 'hover' : []"
         placement="top"
       >
         <template #content>
@@ -458,7 +498,7 @@ defineExpose({ openEscalate, openAftersale });
               forbidden: a.forbidden,
             }"
             :disabled="isTerminal || a.forbidden"
-            :title="a.forbidden && a.key !== '转售后' ? a.forbiddenTip : undefined"
+            :title="a.forbidden && !showsAftersaleCard(a.key) ? a.forbiddenTip : undefined"
             @click="run(a.key)"
           >
             <span v-if="a.forbidden" class="forbidden-mark" aria-hidden="true">

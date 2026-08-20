@@ -93,9 +93,15 @@ function nowStr() {
   return new Date().toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-');
 }
 
-function delRow(arr: { value: { id: number }[] }, id: number) {
-  const i = arr.value.findIndex((x) => x.id === id);
-  if (i >= 0) arr.value.splice(i, 1);
+/**
+ * 删一行。**同时接受 ref 与裸数组** —— 脚本里调用传的是 ref，
+ * 而 `<script setup>` 的模板会**自动解包 ref**，模板里调用传进来的是裸数组。
+ * 原先只认 ref，模板那一处（通知公告的删除图标）运行时 `arr.value` 是 undefined，点了就抛 TypeError。
+ */
+function delRow(arr: { value: { id: number }[] } | { id: number }[], id: number) {
+  const list = Array.isArray(arr) ? arr : arr.value;
+  const i = list.findIndex((x) => x.id === id);
+  if (i >= 0) list.splice(i, 1);
   message.success('已删除');
 }
 

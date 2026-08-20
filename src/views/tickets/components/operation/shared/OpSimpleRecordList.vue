@@ -7,6 +7,8 @@ import type { SimpleRecord } from '@/views/tickets/types/operationTabs';
 defineProps<{
   records: SimpleRecord[];
   showSupplementType?: boolean;
+  /** 只读：唯一写动作「已知晓」（标记已读）不出；已知晓/已联系标签照常展示 */
+  readonly?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -29,7 +31,7 @@ const emit = defineEmits<{
           <span v-if="r.contacted" class="record-contact-tag">已联系</span>
           <span v-if="r.read" class="record-read-tag"><CheckOutlined /> 已知晓</span>
           <button
-            v-else
+            v-else-if="!readonly"
             type="button"
             class="record-read-btn"
             @click="emit('mark-read', r.id)"

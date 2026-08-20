@@ -48,8 +48,8 @@ const props = defineProps<{
 const READONLY_TIP = '本单已被新单接管并锁定，请在新单上处理';
 
 /**
- * 终态（已关闭/已取消/已归档/已转单）：**不再展示「取消工单」**——
- * 取消是对"在跑的单"的终止动作，对已经终止的单没有意义（PRD §5.6.3 ②）。
+ * 终态（基线 §1 六个：已解决 / 非常规关闭 / 已强结 / 已转单 / 已取消 / 已结案）：
+ * **不再展示「取消工单」**——取消是对"在跑的单"的终止动作，对已经终止的单没有意义（PRD §5.6.3 ②）。
  */
 const isTerminal = computed(() => isTicketTerminated(props.detail.status));
 

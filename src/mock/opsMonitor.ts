@@ -8,7 +8,8 @@
 // 任何筛选下卡面数字都由明细现算得出，物理上不可能与下钻对不上。
 // 渠道 / 产线 / 工单类型三个下钻维度按组内权重分配，并做尾差修正保证合计相等。
 
-import type { TicketType } from '@/views/tickets/types/ticket';
+import { TICKETS } from './tickets';
+import { isTicketClosed, type Ticket, type TicketType } from '@/views/tickets/types/ticket';
 
 /** 大盘基准时刻（与工单 Mock 时间轴对齐） */
 export const OPS_NOW = '2026-08-04 14:20';
@@ -752,30 +753,127 @@ export interface OpsRiskTicket {
   customer: string;
 }
 
-export const OPS_RISK_TICKETS: OpsRiskTicket[] = [
-  // 已超时 >72h
-  { no: 'LCMN-20260731-58012', title: '智能音箱返修超期未回寄', type: '投诉', priority: 'P0', groupId: 'hardware', groupName: '硬件缺陷组', assignee: '陈坐席', overdueText: '已超 96:12', bucket: 'gt72', customer: '吴强' },
-  { no: 'LCMN-20260730-57744', title: '学习机批量激活失败未解决', type: '投诉', priority: 'P0', groupId: 'edu', groupName: '教育支持组', assignee: '林坐席', overdueText: '已超 88:40', bucket: 'gt72', customer: '深圳实验学校' },
-  { no: 'LCMN-20260731-58190', title: '开放平台配额申请无人跟进', type: '咨询', priority: 'P1', groupId: 'tech', groupName: '技术支持组', assignee: '周工', overdueText: '已超 79:05', bucket: 'gt72', customer: '赵敏' },
-  { no: 'LCMN-20260730-57520', title: '翻译机固件回滚请求积压', type: '投诉', priority: 'P1', groupId: 'cs-1', groupName: '受理一组', assignee: '王坐席', overdueText: '已超 75:22', bucket: 'gt72', customer: '陈翻译' },
-  // 已超时 24–72h
-  { no: 'LCMN-20260802-59331', title: '扫地机器人主刷电机异响', type: '投诉', priority: 'P1', groupId: 'hardware', groupName: '硬件缺陷组', assignee: '陈坐席', overdueText: '已超 52:18', bucket: 'le72', customer: '李大海' },
-  { no: 'LCMN-20260802-59410', title: 'API 网关 502 间歇性报错', type: '咨询', priority: 'P0', groupId: 'tech', groupName: '技术支持组', assignee: '周工', overdueText: '已超 41:06', bucket: 'le72', customer: '赵敏' },
-  { no: 'LCMN-20260802-59502', title: '发票重开申请未处理', type: '咨询', priority: 'P2', groupId: 'cs-2', groupName: '受理二组', assignee: '林坐席', overdueText: '已超 33:47', bucket: 'le72', customer: '陈静' },
-  { no: 'LCMN-20260802-59588', title: '智学网成绩同步延迟', type: '投诉', priority: 'P1', groupId: 'edu', groupName: '教育支持组', assignee: '孙坐席', overdueText: '已超 28:12', bucket: 'le72', customer: '合肥八中' },
-  // 已超时 ≤24h
-  { no: 'LCMN-20260803-60155', title: '耳机充电仓无法配对', type: '投诉', priority: 'P1', groupId: 'cs-1', groupName: '受理一组', assignee: '王坐席', overdueText: '已超 18:33', bucket: 'le24', customer: '孙莉' },
-  { no: 'LCMN-20260803-60244', title: '门锁指纹录入失败', type: '咨询', priority: 'P2', groupId: 'hardware', groupName: '硬件缺陷组', assignee: '陈坐席', overdueText: '已超 11:20', bucket: 'le24', customer: '周杰' },
-  { no: 'LCMN-20260804-60890', title: '账号权限变更未生效', type: '咨询', priority: 'P2', groupId: 'cs-2', groupName: '受理二组', assignee: '林坐席', overdueText: '已超 06:45', bucket: 'le24', customer: '钱伟' },
-  { no: 'LCMN-20260804-60922', title: '企业版并发限流咨询', type: '商机', priority: 'P1', groupId: 'tech', groupName: '技术支持组', assignee: '周工', overdueText: '已超 03:10', bucket: 'le24', customer: '罗成' },
-  // 距超时
-  { no: 'LCMN-20260610-73026', title: '无线音乐播放跳过歌曲异常', type: '投诉', priority: 'P0', groupId: 'cs-1', groupName: '受理一组', assignee: '王坐席', remainText: '00:42:10', window: '1h', customer: '张小凡' },
-  { no: 'LCMN-20260711-61551', title: '外投·维修超期未解决客户要求赔偿', type: '投诉', priority: 'P0', groupId: 'hardware', groupName: '硬件缺陷组', assignee: '王坐席', remainText: '01:12:00', window: '2h', customer: '吴强' },
-  { no: 'LCMN-20260610-75002', title: 'API 调用返回 429 限流', type: '商机', priority: 'P1', groupId: 'tech', groupName: '技术支持组', assignee: '王坐席', remainText: '01:48:30', window: '2h', customer: '赵敏' },
-  { no: 'LCMN-20260713-90001', title: '翻译机离线翻译结果异常', type: '咨询', priority: 'P1', groupId: 'edu', groupName: '教育支持组', assignee: '王坐席', remainText: '03:20:00', window: '4h', customer: '陈翻译' },
-  { no: 'LCMN-20260610-75240', title: '收到商品与描述不符，申请退货', type: '投诉', priority: 'P2', groupId: 'cs-2', groupName: '受理二组', assignee: '王坐席', remainText: '06:20:00', window: '8h', customer: '孙莉' },
-  { no: 'LCMN-20260610-75518', title: '预约上门安装智能门锁', type: '建议', priority: 'P2', groupId: 'cs-1', groupName: '受理一组', assignee: '王坐席', remainText: '04:10:00', window: '8h', customer: '周杰' },
+/**
+ * 清单**只声明哪些单**，其余一律回工单数据源（mock/tickets.ts）现算：
+ * 标题 / 工单类型 / 优先级 / 处理人 / 客户来自工单本身，超时时长与距超时剩余取工单的
+ * SLA 钟，分桶与距超时窗口由钟面反算。
+ *
+ * 早先这里手写了全套字段，其中 12 个单号在工单库里根本查不到 —— 点开只能静默打到
+ * 默认演示单，一整列不同的单号打开的都是同一张单。改为派生后，配错单号在构建期就炸。
+ *
+ * 【只有班组仍手写，且必须手写】工单数据源没有「监控组织线」这一维：Ticket.groupId 是
+ * 工单池分组，只有 line1 / line2 / hardware 三个值，覆盖不了本页的 45 个监控班组。
+ * 故按**该单的业务归属**逐条指定，让「标题 · 班组」在一行里读得通
+ * （Webhook 丢包归技术支持组、屏幕花屏归硬件缺陷组、学习机激活归教育支持组）。
+ *
+ * ⚠️ 已知不自洽：同一位处理人会出现在多个班组里。工单数据源只有四位处理人
+ * （王坐席 / 陈坐席 / 林坐席 / 赵三线），撑不起 45 个班组的名册；真实系统里工单按业务
+ * 路由到组、坐席只属于一个组，两者对不上是 mock 规模问题，不是本页口径问题。
+ * 修它得先给工单数据源补齐分组与坐席名册，那会牵动整个工作台。
+ */
+function riskTicketOf(no: string): Ticket {
+  const t = TICKETS.find((x) => x.no === no);
+  // 配错单号就在构建期炸掉，不要留到监控岗点进去才发现打不中真单
+  if (!t) throw new Error(`[opsMonitor] 风险清单引用了不存在的工单号：${no}`);
+  if (isTicketClosed(t.nodeStatus)) {
+    throw new Error(`[opsMonitor] ${no} 已是终态「${t.nodeStatus}」，不该出现在风险清单里`);
+  }
+  if (t.slaText === '—' || t.slaState === 'paused') {
+    throw new Error(`[opsMonitor] ${no} 的 SLA 已停表（${t.slaSub}），既不超时也没有距超时可言`);
+  }
+  return t;
+}
+
+/** 「已超 96:12」→ 96 */
+function overdueHoursOf(text: string): number {
+  return Number(/已超\s*(\d+)/.exec(text)?.[1] ?? 0);
+}
+
+function bucketOf(hours: number): OverdueBucket {
+  if (hours > 72) return 'gt72';
+  if (hours > 24) return 'le72';
+  return 'le24';
+}
+
+/** 距超时窗口取**最小命中**的那一档（窗口本身是累进的） */
+function windowOf(minutes: number): SoonWindow {
+  if (minutes <= 60) return '1h';
+  if (minutes <= 120) return '2h';
+  if (minutes <= 240) return '4h';
+  if (minutes <= 480) return '8h';
+  return '24h';
+}
+
+/** 清单里唯一手写的两项：单号 + 该单归哪个监控班组 */
+interface RiskTicketSpec {
+  no: string;
+  groupId: string;
+}
+
+function toRiskTicket({ no, groupId }: RiskTicketSpec): OpsRiskTicket {
+  const t = riskTicketOf(no);
+  const group = OPS_GROUPS.find((g) => g.id === groupId);
+  if (!group) throw new Error(`[opsMonitor] ${no} 指定的监控班组 ${groupId} 不存在`);
+
+  const overdue = t.slaState === 'overdue';
+  return {
+    no: t.no,
+    title: t.title,
+    type: t.type,
+    priority: t.priority,
+    groupId: group.id,
+    groupName: group.name,
+    assignee: t.assignee ?? '待认领',
+    overdueText: overdue ? t.slaText : undefined,
+    bucket: overdue ? bucketOf(overdueHoursOf(t.slaText)) : undefined,
+    remainText: overdue ? undefined : t.slaText,
+    window: overdue ? undefined : windowOf(t.slaMinutes),
+    customer: t.customer,
+  };
+}
+
+/**
+ * 风险清单的取单口径：**未结案、SLA 未停表**的单。
+ * 分桶不写死，由各单自己的钟决定 —— 工单库改了时长，清单自动换桶。
+ */
+const RISK_TICKET_SPECS: RiskTicketSpec[] = [
+  // ── 已超时 >72h：跨天积压，全在其他班组（本工作台的数据域里没有这种单）──
+  { no: 'LCMN-20260731-58012', groupId: 'hardware' }, // 智能音箱返修超期未回寄
+  { no: 'LCMN-20260730-57744', groupId: 'edu' },      // 学习机批量激活失败
+  { no: 'LCMN-20260731-58190', groupId: 'tech' },     // 开放平台配额申请无人跟进
+  // ── 已超时 24–72h ──
+  { no: 'LCMN-20260802-59331', groupId: 'hardware' }, // 扫地机器人主刷电机异响
+  { no: 'LCMN-20260802-59410', groupId: 'tech' },     // API 网关 502
+  { no: 'LCMN-20260802-59502', groupId: 'cs-2' },     // 发票重开申请未处理
+  // ── 已超时 ≤24h ──
+  { no: 'LCMN-20260610-73118', groupId: 'cs-1' },     // 设备无法开机
+  { no: 'LCMN-20260716-72901', groupId: 'cs-2' },     // 退款迟迟未到账
+  { no: 'LCMN-20260610-78344', groupId: 'tech' },     // 扫地机器人充电故障（池内未认领）
+  // ── 距超时 ≤1h ──
+  { no: 'LCMN-20260610-73026', groupId: 'cs-1' },     // 无线音乐播放跳过歌曲
+  { no: 'LCMN-20260716-72645', groupId: 'tech' },     // Webhook 推送偶发丢失
+  { no: 'LCMN-20260817-83005', groupId: 'edu' },      // 学习机批量固件升级失败
+  { no: 'LCMN-20260610-78810', groupId: 'hardware' }, // 屏幕花屏需返厂检测
+  // ── 距超时 ≤2h ──
+  { no: 'LCMN-20260711-61551', groupId: 'hardware' }, // 外投·维修超期未解决
+  { no: 'LCMN-20260610-75002', groupId: 'tech' },     // API 调用返回 429 限流
+  { no: 'LCMN-20260609-66248', groupId: 'cs-2' },     // 账号被异常登录
+  { no: 'LCMN-20260610-78902', groupId: 'tech' },     // API 鉴权失败排查
+  // ── 距超时 ≤4h ──
+  { no: 'LCMN-20260713-90001', groupId: 'edu' },      // 翻译机离线翻译结果异常
+  { no: 'LCMN-20260715-72015', groupId: 'hardware' }, // 空气净化器滤芯指示灯常亮
+  { no: 'LCMN-20260804-81002', groupId: 'cs-2' },     // 跨组调剂·二组转入
+  // ── 距超时 ≤8h ──
+  { no: 'LCMN-20260610-75240', groupId: 'cs-1' },     // 收到商品与描述不符
+  { no: 'LCMN-20260610-75518', groupId: 'cs-1' },     // 预约上门安装智能门锁
+  { no: 'LCMN-20260609-66012', groupId: 'tech' },     // 批量导入用户报错
+  { no: 'LCMN-20260609-66510', groupId: 'cs-1' },     // 协助确认退款政策
+  { no: 'LCMN-20260610-78600', groupId: 'cs-1' },     // 七天无理由退货咨询
+  // ── 距超时 ≤24h ──
+  { no: 'LCMN-20260609-65236', groupId: 'cs-2' },     // 已答复绑定流程，待审核
 ];
+
+export const OPS_RISK_TICKETS: OpsRiskTicket[] = RISK_TICKET_SPECS.map(toRiskTicket);
 
 const WINDOW_ORDER: SoonWindow[] = ['1h', '2h', '4h', '8h', '24h'];
 

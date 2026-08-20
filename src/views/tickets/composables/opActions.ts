@@ -6,19 +6,18 @@ import { AFTERSALE_INBOUND_SOURCE } from '@/views/tickets/types/createTicket';
 export const FEISHU_ESCALATE_CHANNEL = '飞书项目 · 产研反馈单';
 
 // 操作页内部的轻量处理态枚举，**不是**工单状态机。
-// 工单状态的唯一真源是基线的 21 个状态（见 `types/ticket.ts` 的 BASELINE_STATUSES）。
-// 下面每个枚举后的中文只是它在 UI 上的近似呈现，其中「待审核 / 待回访 / 已关闭 / 已归档」
-// 四个不是基线状态名（基线对应的是四个审核态 / 调研中 / 具体终态 / 无此状态），
-// 落库与对外呈现一律取基线名，不要拿这里的中文当状态值用。
+// 工单状态的唯一真源是基线的 20 个状态（见 `types/ticket.ts` 的 BASELINE_STATUSES）。
+// 下面每个枚举后的中文只是它在 UI 上的近似呈现，其中「待审核 / 已关闭」两个不是基线状态名
+// （基线对应的是四个审核态 / 终态的分类伞），落库与对外呈现一律取基线名，
+// 不要拿这里的中文当状态值用。
 export type TicketOpState =
   | 'processing'  // 处理中
   | 'suspended'   // 已挂起
   | 'review'      // 待审核（下送后）
-  | 'resolved'    // 待回访（标记已解决后）
+  | 'resolved'    // 调研中（下送 / 标记已解决后）
   | 'settled'     // 已结案（强结/正常结案后）
   | 'transferred' // 已转出（非诉转售后后的等待态：原单不关闭、客服侧冻结，等售后回传终态）
   | 'closed'      // 已关闭
-  | 'archived'    // 已归档
   | 'cancelled';  // 已取消
 
 export interface SuspendInfo {
@@ -29,13 +28,22 @@ export interface SuspendInfo {
   at: string;
 }
 
-// 规范的 9 子流程操作 + 常驻（保存/标记已解决）+ 管理类（关闭/归档/取消）
+/*
+ * 规范的 9 子流程操作 + 常驻（保存/标记已解决）+ 管理类（关闭/取消）。
+ *
+ * ⚠️ 「**归档工单**」已移除（按基线核对）：基线「动作 × 状态」与「动作 × 角色」两张表里
+ * **没有这个动作**，操作页按钮对照表的底栏与头部两行也都没有它；关闭类动作只有「关闭」与
+ * 「强结」，且**两个都走审批**。原实现却让它一键直落终态「非常规关闭」，等于给关闭开了条
+ * 绕过审批的后门；它也从来没进过底栏展示顺序（BAR_ORDER），界面上点不到。
+ * 「归档」本身是**与状态正交的留存维度**（工单上的 archived 标记 + 工单列表「已归档」视图），
+ * 不是状态、也不需要工单页的按钮，那部分保留不动。
+ */
 export type OpActionType =
   | '保存草稿' | '标记已解决'
-  | '调剂' | '委派' | '下送' | '撤回' | '强结'
+  | '调剂' | '委派' | '下送' | '撤回' | '强结' | '转单'
   | '挂起' | '恢复' | '退回' | '升级' | '同步飞书' | '转售后' | '升级投诉' | '撤销委派'
   | '激活飞书' | '激活售后'
-  | '关闭工单' | '归档工单' | '取消工单';
+  | '关闭工单' | '取消工单';
 
 export interface TransferPayload { scope: 'same' | 'cross'; target: string; reason: string; }
 /** 委派到人：逐人任务说明 */
@@ -51,10 +59,27 @@ export interface DelegatePayload {
 }
 /**
  * 下送 = 送到下一个节点，落点取决于当前所在节点：
- * 普通处理节点 → 标记已解决·正常结案（待回访）；委派节点 → 回到委派节点（不结案）。
+ * 普通处理节点 → 标记已解决·正常结案（进「调研中」）；委派节点 → 回到委派节点（不结案）。
  */
 export interface ForwardPayload { ticketTitle: string; backToDelegator?: boolean; }
-export interface ForceClosePayload { reason: string; approver: string; detail: string; }
+/**
+ * 强结 = 走审批（基线「动作 × 角色」表：强结与关闭工单同属"走审批"的动作）。
+ * 字段与 ClosePayload 对齐：都是"选原因 + 选审批组 + 留说明"，由该组接单审批。
+ *
+ * 原先这里是 `approver`（单点审批人）而落库却直接进终态，等于表单在说审批、行为没审批；
+ * 现统一走 APPROVAL_GROUPS（该常量本来就注明「挂起 / 关闭工单 / 强结 共用」）。
+ */
+export interface ForceClosePayload { reason: string; approvalGroup: string; detail: string; }
+/**
+ * 转单 = **原单关闭、新单继续跑**（基线 §1「已转单」、§4「转单（原单关闭，新单跑）」※16）。
+ * 新单在建单弹窗里落库，本 payload 只带回新单标识，用于原单收口与写履历。
+ */
+export interface TransferTicketPayload {
+  /** 承接业务的新单单号 */
+  newNo: string;
+  /** 新单标题，写履历用 */
+  newTitle: string;
+}
 export interface SuspendPayload {
   reason: string;
   detail: string;
@@ -90,11 +115,45 @@ export interface EscalateComplaintPayload {
 /** 处理登记（保存并登记）：坐席本次处理内容摘要 + 字段级变更，写入处理履历 */
 export interface ProcessLogData { summary: string; attachment?: string; changes?: TimelineFieldChange[]; }
 export interface SyncFeishuPayload { space: string; message: string; }
+/**
+ * 转售后＝在售后侧**建一张真单**，所以建单页收的字段必须整体交出去，
+ * 不能只留服务类型 / 方式 / 说明三项 —— 客户、地址、故障描述、SN 丢了，售后侧接到的是张空单。
+ * 字段与 AftersaleCreateForm 的表单项一一对应。
+ */
 export interface AftersalePayload {
+  /* —— 客户信息 —— */
+  customerName: string;
+  customerPhone: string;
+  /** 省 / 市 / 区，建单页按三级下拉收，落库仍是三个字段 */
+  province: string;
+  city: string;
+  district: string;
+  address: string;
+  /** 故障描述（售后侧的必填项，与客服工单的问题描述不是同一个字段） */
+  fault: string;
+  /* —— 产品信息 —— */
+  productCategory: string;
+  productName: string;
   /** 售后服务类型（坐席在售后建单页选） */
   serviceType: string;
   /** 售后服务方式 */
   serviceMethod: string;
+  /** 品牌（按产品自动带出，只读） */
+  brand: string;
+  /** 产品属性（按产品自动带出，只读） */
+  productAttr: string;
+  /** 设备 SN */
+  sn: string;
+  /* —— 上门信息：仅服务方式＝上门时收 —— */
+  visitTime?: string;
+  visitNote?: string;
+  /* —— 取件 / 回寄信息：仅服务方式＝寄修时收 —— */
+  pickName?: string;
+  pickPhone?: string;
+  pickAddress?: string;
+  backName?: string;
+  backPhone?: string;
+  backAddress?: string;
   /** 转出说明 */
   detail: string;
 }
@@ -165,7 +224,6 @@ export interface ClosePayload {
   /** 备注，供审核人判断 */
   note: string;
 }
-export interface ArchivePayload { reason: string; retention: string; }
 export interface ResumePayload { reason: string; detail: string; }
 /** 退回：技术支持把升级过来的工单退回给工单处理人（唯一方向，无目标节点可选） */
 export interface ReturnPayload { reason: string; note: string; }
@@ -177,6 +235,7 @@ export type OpActionPayload =
   | { type: '撤销委派' }
   | { type: '下送'; data: ForwardPayload }
   | { type: '强结'; data: ForceClosePayload }
+  | { type: '转单'; data: TransferTicketPayload }
   | { type: '挂起'; data: SuspendPayload }
   | { type: '升级'; data: EscalatePayload }
   | { type: '同步飞书'; data: SyncFeishuPayload }
@@ -189,7 +248,6 @@ export type OpActionPayload =
   | { type: '恢复'; data: ResumePayload }
   | { type: '退回'; data: ReturnPayload }
   | { type: '关闭工单'; data: ClosePayload }
-  | { type: '归档工单'; data: ArchivePayload }
   | { type: '取消工单'; reason: string };
 
 /** 调剂候选 · 同组内：目标是「人」，从本组成员中选 */
@@ -266,7 +324,6 @@ export const CLOSE_REASONS = [
   '其他',
 ];
 export const ROOT_CAUSES = ['产品缺陷', '使用不当', '配置问题', '第三方问题', '需求变更'];
-export const ARCHIVE_REASONS = ['已关闭超30天自动归档', '手动归档-已完结', '手动归档-合规要求'];
 export const RESUME_REASONS = ['客户已反馈', '问题已解决', '备件已到货', '产研已修复', '退费已到账', '其他'];
 export const RETURN_REASONS = ['信息不全', '分类错误', '不属于本组', '需补充调查'];
 export const MAX_RETURN_COUNT = 3;
@@ -363,11 +420,10 @@ export function statusLabel(state: TicketOpState): string {
     processing: '处理中',
     suspended: '已挂起',
     review: '待审核',
-    resolved: '待回访',
+    resolved: '调研中',
     settled: '已结案',
     transferred: '已转出',
     closed: '已关闭',
-    archived: '已归档',
     cancelled: '已取消',
   };
   return map[state];
@@ -521,7 +577,7 @@ export function applyOpAction(
     }
 
     case '下送': {
-      // 下送 = 标记已解决 = 正常结案，直接进待回访、不经审核（审核只服务关闭/强结等异常结案）。
+      // 下送 = 标记已解决 = 正常结案，直接进「调研中」、不经审核（审核只服务关闭/强结等异常结案）。
       // 停整单解决钟结算，回访时限起算；后续回访满意/超时 → 已结案（正常关闭）。
       const { ticketTitle, backToDelegator } = payload.data;
       // 委派节点下送：协办完成、回送委派节点，不结案、不停钟
@@ -544,18 +600,61 @@ export function applyOpAction(
         what: `工单「${ticketTitle}」处理完毕并标记已解决。`
           + `整单解决 SLA 已停表结算，回访时限起算；回访满意或超时未评价即结案。`,
       });
-      return { opState: 'resolved', suspendInfo, message: '已下送，工单进入待回访' };
+      // 提示里用基线状态名「调研中」——「待回访」是废弃状态名（基线 §9 各 PRD 重对那一节）
+      return { opState: 'resolved', suspendInfo, message: '已下送，工单进入「调研中」' };
     }
 
     case '强结': {
-      const { reason, approver, detail: note } = payload.data;
-      detail.status = '已强结';
-      terminateClocks(detail, timeline);
+      /*
+       * 基线怎么规定的：强结**走审批**（§4「强结（走审批）」，与「关闭工单（走审批）」同类）。
+       *   点下去只是**提交申请** → 状态进「申请强结中」（§1 四个审核中状态之一）；
+       *   审批通过后才落终态「已强结」，审批在**审批中心**做，不在工单页（§2 表末注）。
+       * 原先实现成什么：点一下直接 `detail.status = '已强结'` + 停表结算，**跳过了整个审批环节**，
+       *   而履历文案却写「强结 · 审批通过」、提示写「强结审批通过」——文案说审批、行为没审批。
+       * 为什么这样改：与「关闭工单」完全同构（提交 → 审核中 → 冻结解决钟 → 等审批），
+       *   两个动作在基线里本来就是同一类；文案也跟着改成"已提交审批"，不再谎报通过。
+       * 连带效果：进「申请强结中」后 ※20 拉回（pullbackOnCsEvent）与 ※2「撤回」自动生效。
+       */
+      const { reason, approvalGroup, detail: note } = payload.data;
+      detail.status = '申请强结中';
+      freezeSolveForReview(detail);
+      const group = approvalGroup.replace(/（.*?）$/, '');
       pushEntry(timeline, {
-        category: 'node', action: 'resolved', who: operator, role: operatorRole,
-        how: '强结 · 审批通过', what: `【强制结案】原因：${reason}；审批：${approver}。${note ? `说明：${note}` : ''}（绕过满意度回访）`,
+        category: 'node', action: 'hold', who: operator, role: operatorRole,
+        how: '提交强结审批',
+        what: `强结原因：${reason}${note ? `；${note}` : ''}。已提交 ${group} 审批，`
+          + `审批通过后工单落「已强结」（绕过满意度回访）；驳回则回到本人继续处理。`
+          + `解决 SLA 已冻结，驳回时审批等待时长计入。`,
       });
-      return { opState: 'settled', suspendInfo, message: '强结审批通过，工单已结案' };
+      return { opState: 'review', suspendInfo, message: `强结申请已提交，等待${group}审批` };
+    }
+
+    case '转单': {
+      /*
+       * 基线怎么规定的：转单 ＝ **原单关闭、新单继续跑**（§1「已转单：原单关闭，新单继续跑」、
+       *   §4「转单（原单关闭，新单跑）」※16「转单 ≠ 转出去等回传」）。原单进**真终态**「已转单」，
+       *   与「升级 / 转售后」那种"原单还活着、等回传"的非终态明确区分。
+       * 原先实现成什么：点「转单」走的是**建子单**——把新单塞进 `childTickets`、履历写「创建子单」，
+       *   **原单状态一动不动**。于是原单和新单同时在跑，坐席会继续在已经交出去的原单上处理，
+       *   两边各办一半；同一诉求也就出现两条活着的处理链。
+       * 为什么这样改：改为"新单接管 + 原单落「已转单」终态 + 停表(中止)"，原单随即整页只读、
+       *   只留「前往新单」出口（与「升级投诉」的收口方式同构，见本文件 case '升级投诉'）。
+       * SLA：因业务转到新单而终止，停表结果记**中止**（不计达标/未达标）——原单没被解决也没被违约。
+       */
+      const { newNo, newTitle } = payload.data;
+      detail.status = '已转单';
+      terminateClocks(detail, timeline, true);
+      pushEntry(timeline, {
+        category: 'node', action: 'transfer', who: operator, role: operatorRole,
+        how: '转单 · 关闭原单',
+        what: `已转单至新单 ${newNo}「${newTitle}」并与本单关联，原单关闭（SLA 停表·中止）。`
+          + `本单转为「已转单」并锁定只读，后续处理与补充请在新单进行。`,
+      });
+      return {
+        opState: 'closed',
+        suspendInfo: null,
+        message: `已转单至新单 ${newNo}，原单转为「已转单」`,
+      };
     }
 
     case '挂起': {
@@ -575,6 +674,16 @@ export function applyOpAction(
     }
 
     case '升级': {
+      /*
+       * 基线怎么规定的：§1「已升级」是**一个**状态，**两类升级目标都落它**——
+       *   升级 · 三线技术支持 → 落该组池等人领、**处理人转到三线**；
+       *   升级 · 产研（飞书项目 / TPD / RDM / 磐石）→ 服务节点、**处理人仍是二线**。
+       *   区别在处理人与后续通知对象，**不在状态**。
+       * 原先实现成什么：两条分支各落一个状态值「已升级·三线技术支持」「已升级·产研」，
+       *   把一个基线状态拆成两个落库值，状态枚举因此多出一个、所有按状态判断的地方都要写两遍。
+       * 为什么这样改：状态统一落「已升级」，两类的差别改由 `escalateTarget` 这个独立字段表达
+       *   （类型见 `types/ticket.ts` 的 EscalateTarget），判"在不在三线手上"读字段、不读状态名。
+       */
       const { channel, group, member, detail: note, feedbackCategory } = payload.data;
       // 飞书项目通道：建关联 + 演示预反馈/关单时间线（原型默认落到 closed 以便点二次激活）
       if (channel === FEISHU_ESCALATE_CHANNEL) {
@@ -583,7 +692,8 @@ export function applyOpAction(
         detail.feishuFeedbackNo = feedbackNo;
         detail.feishuFailReason = undefined;
         detail.feishuRecords = buildFeishuSeedRecords(detail, operator, feedbackNo);
-        detail.status = '已升级·产研';
+        detail.status = '已升级';
+        detail.escalateTarget = '产研';
         const catPart = feedbackCategory ? `，问题反馈分类：${feedbackCategory}` : '';
         pushEntry(timeline, {
           category: 'node', action: 'escalate', who: operator, role: operatorRole,
@@ -592,8 +702,11 @@ export function applyOpAction(
         });
         return { opState, suspendInfo, message: `已升级至产研反馈 · 反馈单 ${feedbackNo}` };
       }
-      detail.status = '已升级·三线技术支持';
       const toTech = channel.includes('技术支持');
+      detail.status = '已升级';
+      // 升级目标：技术支持组 → 三线（处理人转到该组池、由组员领取）；
+      // RDM / TPD 等产研系统 → 产研（服务节点，处理人仍是原二线）
+      detail.escalateTarget = toTech ? '三线技术支持' : '产研';
       const dest = toTech && group ? `${channel} · ${group}${member ? ` · ${member.split(' ')[0]}` : ''}` : channel;
       pushEntry(timeline, {
         category: 'node', action: 'escalate', who: operator, role: operatorRole,
@@ -639,7 +752,10 @@ export function applyOpAction(
       // 按 D1 分流：投诉=建关联单、投诉单独立跑（状态不变）；非诉=原单进「已转出」等待态（D11，不关闭）。
       // D2 改写：已有 1:1 关联时按钮就该置灰、走不到这里——售后系统没有「激活」动作，
       // 未结案去关联单 Tab 跳售后跟进、已结案只能线下联系售后，两者都不再建第二张单。
-      const { serviceType, serviceMethod, detail: note } = payload.data;
+      const {
+        serviceType, serviceMethod, detail: note,
+        customerName, customerPhone, province, city, district, address, fault, sn,
+      } = payload.data;
       const isComplaint = detail.type === '投诉';
 
       detail.linkedAftersale = {
@@ -650,10 +766,20 @@ export function applyOpAction(
         createdAt: nowFull(),
         fromComplaint: isComplaint,
       };
+      // 履历要留下"交给售后的到底是什么"——建单页收的客户 / 地址 / 故障 / SN 都写进来。
+      // 这几项是售后能否接单的判据，只写服务类型与方式的话，履历看不出售后为什么退单。
+      const region = [province, city, district].filter(Boolean).join(' ');
+      const shipTo = [region, address].filter(Boolean).join(' ');
+      const asFacts = [
+        `客户 ${customerName}${customerPhone ? `（${customerPhone}）` : ''}`,
+        shipTo ? `地址 ${shipTo}` : '',
+        sn ? `SN ${sn}` : '',
+        fault ? `故障 ${fault}` : '',
+      ].filter(Boolean).join(' ｜ ');
       pushEntry(timeline, {
         category: 'node', action: 'transfer', who: operator, role: operatorRole,
         how: '转售后 · 建关联售后单',
-        what: `新建售后单 ${detail.linkedAftersale.no}（${serviceType}·${serviceMethod}），与本单建立关联。${note ? `说明：${note}` : ''}`,
+        what: `新建售后单 ${detail.linkedAftersale.no}（${serviceType}·${serviceMethod}），与本单建立关联。${asFacts}。${note ? `说明：${note}` : ''}`,
       });
 
       const asNo = detail.linkedAftersale.no;
@@ -721,7 +847,7 @@ export function applyOpAction(
         category: 'node', action: 'resolved', who: operator, role: operatorRole,
         how: '标记已解决', what: solution,
       });
-      return { opState: 'resolved', suspendInfo, message: '已标记为已解决，进入待回访确认' };
+      return { opState: 'resolved', suspendInfo, message: '已标记为已解决，工单进入「调研中」' };
     }
 
     case '撤回': {
@@ -780,15 +906,6 @@ export function applyOpAction(
           + `解决 SLA 已冻结，退回时审核等待时长计入。`,
       });
       return { opState: 'review', suspendInfo, message: `关闭申请已提交，等待${group}审核` };
-    }
-
-    case '归档工单': {
-      detail.status = '非常规关闭';
-      pushEntry(timeline, {
-        category: 'node', action: 'create', who: '系统', role: '系统',
-        how: '归档', what: `工单已归档（${payload.data.reason}），仅支持只读查询。`,
-      });
-      return { opState: 'archived', suspendInfo, message: '工单已归档' };
     }
 
     case '取消工单': {

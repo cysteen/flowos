@@ -1,5 +1,15 @@
 ﻿/** 首页·工作概览 Mock（对齐 .pen vzMJ3 / PRD-01） */
 
+import { TICKETS } from '@/mock/tickets';
+import {
+  isFirstResponded,
+  inMineTaskScope,
+  PRIORITY_COLOR,
+  slaUrgencyCompare,
+  TYPE_COLOR,
+  type Ticket,
+} from '@/views/tickets/types/ticket';
+
 export interface HomeNotice {
   id: number;
   tag: '系统维护' | '运营通知' | '制度更新';
@@ -353,34 +363,93 @@ export const HOME_PERFORMANCE: HomePerformanceCard[] = [
   },
 ];
 
+/**
+ * 下钻明细的工单必须是**工单数据源里真实存在的单**（@/mock/tickets）。
+ * 此前这几张表写的是独有编号，操作页按编号查不到就静默回退演示单 ——
+ * 表里 10 行点开全是同一张单，而地址栏显示的又是另一个号。
+ *
+ * 因此这里只声明「单号 + 该指标特有的时点/时长」，工单自身的属性
+ * （标题 / 类型 / 当前节点 / 客户 / 手机号 / 评分 / 处理人）一律回工单数据源取，
+ * 避免同一张单在门户和工单页显示两套内容。
+ */
+interface DrillRowSpec {
+  no: string;
+  /** 该指标特有的度量值，按各表 columns 顺序补在工单属性之后 */
+  metrics: string[];
+}
+
+function ticketOf(no: string): Ticket {
+  const t = TICKETS.find((x) => x.no === no);
+  // 配错单号就在构建期炸掉，不要留到用户点进去才发现打不中真单
+  if (!t) throw new Error(`[homeOverview] 下钻明细引用了不存在的工单号：${no}`);
+  return t;
+}
+
+/** 手机号脱敏：保留前 3 位与后 4 位 */
+function maskPhone(phone?: string): string {
+  if (!phone || phone.length < 7) return phone ?? '—';
+  return `${phone.slice(0, 3)}****${phone.slice(-4)}`;
+}
+
+/** 已发调研短信待评价：取已下送的单（参评率口径） */
+const SURVEY_PENDING_SPEC: DrillRowSpec[] = [
+  { no: 'LCMN-20260709-60110', metrics: ['08-03 18:20', '2小时05分'] },
+  { no: 'LCMN-20260710-61020', metrics: ['08-03 16:42', '3小时43分'] },
+  { no: 'LCMN-20260708-59880', metrics: ['08-03 14:10', '6小时15分'] },
+  { no: 'LCMN-20260716-73140', metrics: ['08-03 11:35', '8小时50分'] },
+];
+
+/**
+ * 24H 未跟进：取我名下在处理、最近更新最早的单。
+ * 「最近跟进时间 + 未跟进时长」是成对的度量快照，一起写死 ——
+ * 拿工单的 updatedAt 去配这个时长会自相矛盾（工单 mock 的时间轴比原型「今天」早得多）。
+ */
+const FOLLOW_MISSED_SPEC: DrillRowSpec[] = [
+  { no: 'LCMN-20260610-75744', metrics: ['08-02 16:30', '28小时15分'] },
+  { no: 'LCMN-20260610-75240', metrics: ['08-02 14:08', '30小时37分'] },
+  { no: 'LCMN-20260610-75518', metrics: ['08-02 09:42', '35小时03分'] },
+];
+
+/** 差评工单：取工单数据源里评分 ≤ 2 的单，评分不再另写一份 */
+const BAD_REVIEW_SPEC: (DrillRowSpec & { tag: string })[] = [
+  { no: 'LCMN-20260610-75002', tag: '响应慢、未解决', metrics: ['08-03 17:05'] },
+  { no: 'LCMN-20260610-73026', tag: '重复沟通', metrics: ['08-03 10:22'] },
+  { no: 'LCMN-20260817-83002', tag: '承诺未兑现', metrics: ['08-02 19:46'] },
+];
+
 export const HOME_METRIC_DRILLS: Record<HomeMetricDrillKey, HomeMetricDrillTable> = {
   'survey-pending': {
     title: '24H 内已发调研短信待评价明细',
     columns: ['工单编号', '客户', '手机号', '短信发送时间', '等待时长', '工单类型'],
-    rows: [
-      { ticketNo: 'LCMN-20260803-10231', cells: ['LCMN-20260803-10231', '王女士', '138****6621', '08-03 18:20', '2小时05分', '咨询'] },
-      { ticketNo: 'LCMN-20260803-09872', cells: ['LCMN-20260803-09872', '赵先生', '186****3018', '08-03 16:42', '3小时43分', '投诉'] },
-      { ticketNo: 'LCMN-20260803-08316', cells: ['LCMN-20260803-08316', '刘女士', '139****5270', '08-03 14:10', '6小时15分', '建议'] },
-      { ticketNo: 'LCMN-20260803-07105', cells: ['LCMN-20260803-07105', '陈先生', '177****1946', '08-03 11:35', '8小时50分', '咨询'] },
-    ],
+    rows: SURVEY_PENDING_SPEC.map(({ no, metrics }) => {
+      const t = ticketOf(no);
+      return {
+        ticketNo: t.no,
+        cells: [t.no, t.customer, maskPhone(t.customerPhone), ...metrics, t.type],
+      };
+    }),
   },
   'follow-missed': {
     title: '24H 未跟进工单明细',
     columns: ['工单编号', '工单标题', '工单类型', '当前节点', '最近跟进时间', '未跟进时长'],
-    rows: [
-      { ticketNo: 'LCMN-20260802-66120', cells: ['LCMN-20260802-66120', '学习机无法连接 WiFi', '咨询', '处理中', '08-02 16:30', '28小时15分'] },
-      { ticketNo: 'LCMN-20260802-59218', cells: ['LCMN-20260802-59218', '承诺回访未兑现', '投诉', '处理中', '08-02 14:08', '30小时37分'] },
-      { ticketNo: 'LCMN-20260802-44109', cells: ['LCMN-20260802-44109', '建议增加错题导出', '建议', '待处理', '08-02 09:42', '35小时03分'] },
-    ],
+    rows: FOLLOW_MISSED_SPEC.map(({ no, metrics }) => {
+      const t = ticketOf(no);
+      return {
+        ticketNo: t.no,
+        cells: [t.no, t.title, t.type, t.nodeStatus, ...metrics],
+      };
+    }),
   },
   'bad-review': {
     title: '差评工单明细',
     columns: ['工单编号', '客户', '评分', '差评标签', '评价时间', '处理人'],
-    rows: [
-      { ticketNo: 'LCMN-20260803-03361', cells: ['LCMN-20260803-03361', '周女士', '1 分', '响应慢、未解决', '08-03 17:05', '张三'] },
-      { ticketNo: 'LCMN-20260802-91826', cells: ['LCMN-20260802-91826', '孙先生', '2 分', '重复沟通', '08-03 10:22', '张三'] },
-      { ticketNo: 'LCMN-20260802-73048', cells: ['LCMN-20260802-73048', '吴女士', '2 分', '承诺未兑现', '08-02 19:46', '张三'] },
-    ],
+    rows: BAD_REVIEW_SPEC.map(({ no, tag, metrics }) => {
+      const t = ticketOf(no);
+      return {
+        ticketNo: t.no,
+        cells: [t.no, t.customer, `${t.serviceScore ?? '—'} 分`, tag, ...metrics, t.assignee ?? '—'],
+      };
+    }),
   },
 };
 
@@ -412,63 +481,52 @@ export const HOME_SLA_COLOR: Record<HomeTodoItem['slaVis'], string> = {
   breached: '#EF4444',
 };
 
-export const HOME_TODOS: HomeTodoItem[] = [
-  {
-    // 未首响 · 首响临期 → 展首响
-    dot: '#EF4444',
-    no: 'LCMN-20260610-73026',
-    title: '无线音乐播放跳过歌曲异常',
-    type: '投诉',
-    typeColor: '#EF4444',
-    slaKind: 'first',
-    slaVis: 'soon',
-    slaText: '剩 42m',
-  },
-  {
-    // 未首响 · 首响已超时仍在计 → 展首响
-    dot: '#F59E0B',
-    no: 'LCMN-20260610-82282',
-    title: '客服响应慢，要求升级处理',
-    type: '投诉',
-    typeColor: '#EF4444',
-    slaKind: 'first',
-    slaVis: 'overdue',
-    slaText: '超 1h 20m',
-  },
-  {
-    // 已首响 · 展整单解决（正常）
-    dot: '#EF4444',
-    no: 'LCMN-20260610-00320',
-    title: '设备无法开机，电源指示灯不亮',
-    type: '咨询',
-    typeColor: '#1A6FFF',
-    slaKind: 'whole',
-    slaVis: 'ok',
-    slaText: '剩 2h 15m',
-  },
-  {
-    // 已首响 · 展整单解决（充足）
-    dot: '#1A6FFF',
-    no: 'LCMN-20260609-60387',
-    title: '预约上门安装智能门锁',
-    type: '建议',
-    typeColor: '#10B981',
-    slaKind: 'whole',
-    slaVis: 'ok',
-    slaText: '剩 6h 40m',
-  },
-  {
-    // 已首响 · 展整单解决（临期）
-    dot: '#1A6FFF',
-    no: 'LCMN-20260609-55881',
-    title: '产品质量问题申请退货',
-    type: '投诉',
-    typeColor: '#EF4444',
-    slaKind: 'whole',
-    slaVis: 'soon',
-    slaText: '剩 4h 12m',
-  },
-];
+/** 待办 Top5 取几条 */
+const HOME_TODO_LIMIT = 5;
+
+/**
+ * 列表 SLA 摘要「00:42:10」/「已超 01:12」→ 门户短文案「剩 42m」/「超 1h 12m」。
+ * 终态与挂起没有在跑的钟，直接给结论词。
+ */
+function homeSlaText(t: Ticket): string {
+  if (t.slaText === '—') return t.solveBreached ? '未达标' : '已达标';
+  if (t.slaState === 'paused') return '已暂停';
+  const hms = /(\d{2}):(\d{2})/.exec(t.slaText);
+  if (!hms) return t.slaText;
+  const h = Number(hms[1]);
+  const m = Number(hms[2]);
+  const span = h > 0 ? `${h}h ${m}m` : `${m}m`;
+  return t.slaText.startsWith('已超') ? `超 ${span}` : `剩 ${span}`;
+}
+
+function homeSlaVis(t: Ticket): HomeTodoItem['slaVis'] {
+  if (t.slaText === '—') return t.solveBreached ? 'breached' : 'met';
+  return t.slaState;
+}
+
+/**
+ * 待办 Top5 —— **数据域与排序都取自工单工作台**，门户不自建口径：
+ * 域 = inMineTaskScope（「我的任务」Tab），序 = slaUrgencyCompare（该 Tab 默认的 SLA 紧急度）。
+ *
+ * 此前这里是一份硬编码数组：既没走上面那个比较函数（与"与工作台同源"的口径不符），
+ * 单号也大多不在工单数据源里（点进去只能打到演示单）。改为派生后两件事一起解决，
+ * 且工单 mock 增删时门户自动跟着走，不需要人工同步。
+ */
+export const HOME_TODOS: HomeTodoItem[] = TICKETS
+  .filter((t) => inMineTaskScope(t))
+  .sort(slaUrgencyCompare)
+  .slice(0, HOME_TODO_LIMIT)
+  .map((t) => ({
+    dot: PRIORITY_COLOR[t.priority],
+    no: t.no,
+    title: t.title,
+    type: t.type,
+    typeColor: TYPE_COLOR[t.type],
+    // 首响未关 → 展首响钟（最急）；首响已关 → 展整单解决钟
+    slaKind: isFirstResponded(t) ? 'whole' : 'first',
+    slaVis: homeSlaVis(t),
+    slaText: homeSlaText(t),
+  }));
 
 export const HOME_TREND_LABELS = ['5/15', '5/20', '5/25', '5/30', '6/4', '6/9', '6/14'];
 
