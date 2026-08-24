@@ -29,6 +29,7 @@ const emit = defineEmits<{
         <span class="record-when">{{ r.when }}</span>
         <span class="record-read-slot">
           <span v-if="r.contacted" class="record-contact-tag">已联系</span>
+          <span v-else-if="r.read" class="record-pending-contact">待联系</span>
           <span v-if="r.read" class="record-read-tag"><CheckOutlined /> 已知晓</span>
           <button
             v-else-if="!readonly"
@@ -104,6 +105,18 @@ const emit = defineEmits<{
   font-weight: 500;
   color: #0369a1;
   background: #e0f2fe;
+  white-space: nowrap;
+}
+.record-pending-contact {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  height: 22px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #b45309;
+  background: #fef3c7;
   white-space: nowrap;
 }
 .record-read-btn {

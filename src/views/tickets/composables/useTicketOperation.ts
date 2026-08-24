@@ -4,7 +4,9 @@ import { message, Modal } from 'ant-design-vue';
 import { TICKET_DETAIL, TIMELINE, productHasAfterSaleService } from '@/mock/ticketDetail';
 import type { TicketDetailMeta, ChildTicket, SlaClock } from '@/mock/ticketDetail';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
-import { isFirstResponded } from '@/views/tickets/types/ticket';
+import {
+  isFirstResponded, isTicketClosed, resolveStoppedClockStatus,
+} from '@/views/tickets/types/ticket';
 import type { Ticket, Channel, TicketType, Priority } from '@/views/tickets/types/ticket';
 import { TICKETS } from '@/mock/tickets';
 import { TYPE_SAMPLES } from '@/mock/ticketTypeSamples';
@@ -68,7 +70,7 @@ function dueByText(remSec: number): string {
 /**
  * 由列表行 SLA 字段构建操作页双钟：
  * 已首响 → 摘要即解决钟、首响钟达标停表；未首响 → 摘要即首响钟（最急）、解决钟走独立字段；
- * 挂起 → 解决钟冻结；已关闭 → 双钟停表。
+ * 挂起 → 解决钟冻结；终态 → 双钟停表。
  */
 function buildSlaClocks(t: Ticket): SlaClock[] {
   const responded = isFirstResponded(t);
@@ -93,7 +95,7 @@ function buildSlaClocks(t: Ticket): SlaClock[] {
   };
 
   if (t.slaText === '—') {
-    // 已关闭：双钟终态，按结果亮色（达标绿 / 未达标红）
+    // 终态：双钟停表，按结果亮色（达标绿 / 未达标红）
     solve.phase = 'stopped';
     solve.stopOutcome = t.solveBreached ? 'breached' : 'met';
     if (t.solveBreached) solve.remainSec = -1800;
@@ -159,6 +161,8 @@ export function useTicketOperation() {
       base.productBg = t.productBg;
       // 工单来源：升级投诉门禁、补充弹窗投诉平台组、转售后分支都按它判
       if (t.ticketSource) base.source = t.ticketSource;
+      // 结案方式随列表行带入：底栏动作集按它收窄（直接结案＝不下送、不升级、不挂起、不转派）
+      base.closureMode = t.closureMode;
       // 列表未带来源但已有外投/内投平台台账 → 反推来源，避免补充弹窗缺「平台/编号」区
       const inferredSource = inferComplaintChannelSource(
         base.source,
@@ -195,13 +199,21 @@ export function useTicketOperation() {
       base.childTickets = [];
       base.linkedRecords = [];
       base.linkedAftersale = undefined;
-      // 已关闭单（列表 SLA 摘要为「—」）：详情状态同步为「已关闭」，
-      // 否则处理页仍显示「处理中」，补充/催单的承接分流（§5.2）判不出来
+      /*
+       * 停表单（列表 SLA 摘要为「—」）：详情状态要同步成**终态子状态**，
+       * 否则处理页仍显示「处理中」，补充/催单的承接分流（§5.2）判不出来。
+       *
+       * ⚠️ 这里**不能一律写「已关闭」**。「已关闭」在基线 §1 里是一个具体子状态
+       * ——「友好沟通后关闭」，只对做过「关闭工单」的单成立；强结的单是「已强结」、
+       * 跑完流程正常收口的是「已解决」。按动作标记反推，见 resolveStoppedClockStatus。
+       */
       if (t.slaText === '—' && !t.escalatedToNo) {
-        base.status = '已关闭';
+        base.status = isTicketClosed(t.nodeStatus)
+          ? t.nodeStatus
+          : resolveStoppedClockStatus(t);
         opState.value = 'closed';
       }
-      // 因升级而关闭：状态置「已转单」+ 只留指向新单的关联 → 处理页整页只读 + 接管横幅
+      // 因升级投诉而关闭：状态置「已升级投诉」+ 只留指向新单的关联 → 处理页整页只读 + 接管横幅
       if (t.escalatedToNo) {
         base.childTickets = [];
         base.linkedRecords = [{
@@ -211,7 +223,8 @@ export function useTicketOperation() {
           meta: `${(t.updatedAt ?? '').slice(5, 10)} ${t.assignee ?? ''} 升级`,
         }];
         base.linkedAftersale = undefined;
-        base.status = '已转单';
+        // 基线 §1「已升级投诉」已独立成终态：原单迁「已转单」的旧做法作废
+        base.status = '已升级投诉';
         opState.value = 'closed';
       }
       base.feishuSync = 'none';

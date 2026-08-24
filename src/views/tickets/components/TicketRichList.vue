@@ -21,6 +21,9 @@ import {
   resolveTicketGroupNames,
   SLA_COLOR,
   statusStyle,
+  // 状态徽章文案取**页面展示名称**（基线 §1 第三列：列表状态列属"用户读到的文案"那一档）；
+  // 配色仍按 nodeStatus（落库子状态）算 —— 基线要求逻辑判断一律用子状态。
+  ticketStatusDisplayName,
   type Ticket,
   isDunningTagPending,
   isSupplementTagPending,
@@ -387,8 +390,8 @@ const gridTemplateColumns = computed(() => {
               <span
                 class="status-tag"
                 :style="statusStyle(t.nodeStatus)"
-                :title="t.nodeStatus"
-              >{{ t.nodeStatus }}</span>
+                :title="ticketStatusDisplayName(t)"
+              >{{ ticketStatusDisplayName(t) }}</span>
               <span class="tag">{{ t.type }}</span>
               <span class="title-text" :class="{ unread: highlightMentionUnread && isMentionUnread(t) }">{{ t.title }}</span>
               <span v-if="highlightMentionUnread && isMentionUnread(t)" class="unread-tag">未读</span>
@@ -404,7 +407,7 @@ const gridTemplateColumns = computed(() => {
           <template #content>
             <div class="title-pop">
               <div class="tp-head">
-                <span class="status-tag" :style="statusStyle(t.nodeStatus)">{{ t.nodeStatus }}</span>
+                <span class="status-tag" :style="statusStyle(t.nodeStatus)">{{ ticketStatusDisplayName(t) }}</span>
                 <span class="tag">{{ t.type }}</span>
               </div>
               <div class="tp-title">{{ t.title }}</div>
@@ -517,7 +520,7 @@ const gridTemplateColumns = computed(() => {
           <span
             class="node-badge"
             :style="statusStyle(t.nodeStatus)"
-          >{{ t.nodeStatus }}</span>
+          >{{ ticketStatusDisplayName(t) }}</span>
         </div>
 
         <div v-else-if="colKey === 'sla'" class="col-sla cell-sla">

@@ -3,7 +3,7 @@ import type {
   InsightDetailTable, InsightModalKey, LatestHandlingItem,
 } from '@/views/tickets/types/operation';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
-import type { EscalateTarget } from '@/views/tickets/types/ticket';
+import type { ClosureMode, EscalateTarget } from '@/views/tickets/types/ticket';
 
 // 工单操作页 Mock（样例 = 设计稿 LCMN-20260610-73026 · P-工单处理 定稿）。
 
@@ -85,6 +85,13 @@ export interface TicketDetailMeta {
    * 由本字段承担，不靠拆状态名。
    */
   escalateTarget?: EscalateTarget;
+  /**
+   * 结案方式（基线 §1「结案方式」小节）：建单时选定、此后不可改，与工单类型正交。
+   * 决定底栏动作集宽窄（直接结案＝不下送、不升级、不挂起、不转派），
+   * 也决定这张单走完流程后落「已解决」还是建单即落「已结案」。
+   * 缺省视为「正常流程」，见 resolveClosureMode。
+   */
+  closureMode?: ClosureMode;
   /** 累计退回次数（上限 3 次） */
   returnCount?: number;
   /** 当前活跃的 SLA 时效钟（按"最快到期"排序，最紧急置顶） */

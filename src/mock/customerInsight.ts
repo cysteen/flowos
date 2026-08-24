@@ -6,7 +6,13 @@
 // 未建档客户按工单聚合出基础档案。
 
 import { TICKETS } from './tickets';
-import { isTicketClosed, type Ticket } from '@/views/tickets/types/ticket';
+import {
+  isTicketClosed,
+  resolveStoppedClockStatus,
+  statusDisplayName,
+  ticketStatusDisplayName,
+  type Ticket,
+} from '@/views/tickets/types/ticket';
 
 /** 客户全景页时间基准（与工单 Mock 时间轴对齐） */
 export const INSIGHT_TODAY = '2026-08-04';
@@ -52,7 +58,7 @@ export interface CustomerTicketRow {
   createdAt: string;
   closedAt?: string;
   assignee: string;
-  /** 处理结论（已关闭单）或最新进展（在办单） */
+  /** 处理结论（终态单）或最新进展（在办单） */
   conclusion?: string;
   source: RecordSource;
   satisfaction?: number;
@@ -509,25 +515,22 @@ function toneOf(t: Ticket): TicketTone {
 }
 
 /**
- * 履历行的状态一律用**基线状态名**（工单的 nodeStatus 本身就是基线状态）。
+ * 履历行的状态取**页面展示名称**（基线 §1 第三列：履历属"用户读到的文案"那一档），
+ * 落库值仍是工单的 nodeStatus，两者由 ticketStatusDisplayName 收口、不各拼一份。
  *
- * 此前这里写的是「已归档」与「已关闭」：
- * · 「已归档」不是状态，是与状态正交的另一个维度（行尾已另有「已归档」标记），
- *   拿它顶掉状态位，等于让归档单看不出自己是怎么结束的；
- * · 「已关闭」只是终态的分类伞，不可落库，页面上不该出现。
+ * 「已归档」不写进状态位：它不是状态，是与状态正交的另一个维度（行尾已另有「已归档」标记），
+ * 拿它顶掉状态位等于让归档单看不出自己是怎么结束的。
  *
  * 少数已办单的 SLA 钟已停、nodeStatus 却还停在在办态（工单数据源的已知问题），
- * 这里按它做过的关闭动作折算到基线终态，而不是把在办态照抄出来。
+ * 这里按它做过的动作折算到基线终态子状态，而不是把在办态照抄出来。
  */
 function statusTextOf(t: Ticket): string {
-  if (!isClosedTicket(t) || isTicketClosed(t.nodeStatus)) return t.nodeStatus;
-  if (t.escalatedToNo) return '已转单';
-  if (t.myForceCloseAction) return '已强结';
-  // 「关闭工单」审批通过后的终态是**非常规关闭**（基线 §1 该行「友好沟通后关闭」），
-  // 不是「已结案」——已结案专指"建单即结案、从未进流程"的一次性单，这些单都跑过流程。
-  // 与工单数据源里这几张单的 slaSub 取值口径一致。
-  if (t.myCloseAction) return '非常规关闭';
-  return '已结案';
+  if (!isClosedTicket(t) || isTicketClosed(t.nodeStatus)) return ticketStatusDisplayName(t);
+  const status = resolveStoppedClockStatus(t);
+  return statusDisplayName(status, {
+    transferredToType: t.transferredToType,
+    externalAppeal: t.ticketSource === '外投渠道',
+  });
 }
 
 function complaintPlatformOf(t: Ticket): string | undefined {

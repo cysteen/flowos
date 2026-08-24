@@ -17,6 +17,8 @@ function defaultForm(): CreateTicketFormState {
   return {
     businessType: '翻录',
     ticketType: '投诉',
+    // 默认「正常流程」：多数单要进流程办理；直接结案是坐席当场答完才选的少数情形
+    closureMode: '正常流程',
     ticketSource: '热线电话',
     customerQuery: '',
     customer: { ...MOCK_CUSTOMER },
@@ -277,6 +279,8 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       customer: name,
       vip: form.customer?.vip ?? false,
       product: form.productName,
+      // 结案方式建单时选定、此后不可改（基线 §1「结案方式」小节），故只在这里落一次
+      closureMode: form.closureMode,
       nodeStatus: '未认领',
       nodeStep: 1,
       nodeTotal: 5,

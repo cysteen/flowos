@@ -148,7 +148,7 @@ const BASE_TICKETS: Ticket[] = [
     responded: true, firstRespBreached: true, dunningUnread: true, hasDunning: true,
   },
   // 非诉转售后后的「已转出」等待态：原单不关闭、留在我的任务、SLA 停表，
-  // 等售后回传终态（已关闭 → 原单关闭进已办；转回客服 → 回处理中续跑）
+  // 等售后回传终态（售后侧关单 → 原单收口进已办；转回客服 → 回处理中续跑）
   {
     id: 't33', no: 'LCMN-20260722-76350', type: '咨询', channel: '电话',
     title: '录音笔无法充电，需寄修检测', smartMarks: [],
@@ -173,7 +173,7 @@ const BASE_TICKETS: Ticket[] = [
   // ================================================================
 
   // D3 投诉·外投渠道·非服务投诉：选「补充投诉信息」→ 投诉一/二类 + 投诉平台组**全出现**
-  //    兼验：双 Tag（已催+已补）· 未读 · 关闭与强结双双置灰
+  //    兼验：双 Tag（已催+已补）· 未读 · 关闭与强结默认可点（※24 本期不做）
   { serviceScore: 2,
     id: 'fd-d2', no: 'LCMN-20260817-83002', type: '投诉', channel: '在线客服',
     title: '黑猫平台投诉：售后承诺未兑现', smartMarks: ['升级', '情绪'],
@@ -262,25 +262,30 @@ const BASE_TICKETS: Ticket[] = [
     createdAt: '2026-08-10 09:00', updatedAt: '2026-08-16 16:00',
     responded: true,
   },
-  // D9 已转单：已有子单 → 点补充**跳子单**；本单整页冻结 + 接管横幅
+  // D9 已升级投诉：已有子单 → 点补充**跳子单**；本单整页冻结 + 接管横幅。
+  //   原单落「已升级投诉」而非「已转单」——基线 §1 已把它独立成终态；
+  //   来源＝外投渠道，故展示名拼成「已升级外投」。
   {
     id: 'fd-d9', no: 'LCMN-20260817-83009', type: '投诉', channel: '电话',
     title: '已升级为外投单，本单被接管', smartMarks: ['升级'],
     customer: '施磊', vip: false, product: '学习机 T20',
-    nodeStatus: '已转单', nodeStep: 5, nodeTotal: 5, priority: 'P0',
-    slaText: '—', slaSub: '已转单·停表', slaState: 'ok', slaMinutes: 9999,
+    ticketSource: '外投渠道',
+    nodeStatus: '已升级投诉', nodeStep: 5, nodeTotal: 5, priority: 'P0',
+    slaText: '—', slaSub: '已升级投诉·停表', slaState: 'ok', slaMinutes: 9999,
     assignee: '王坐席', tab: 'mine',
     escalatedToNo: 'LCMN-20260817-83119',
     customerPhone: '13777778888', sn: 'SN-T20-830191', productCategory: '智能硬件',
     createdAt: '2026-08-13 09:00', updatedAt: '2026-08-16 11:30',
     responded: true,
   },
-  // D10 已结案：一次性单，催补**两枚都不给**（※25）。已取消行为相同，不另造单
+  // D10 已结案：一次性单，催补**两枚都不给**（基线「已结案不支持催补」一条）。已取消行为相同，不另造单。
+  //   结案方式＝**直接结案**（基线 §1「结案方式」小节）：建单即结案、从未进流程，
+  //   故动作集极简——不下送、不升级、不挂起、不转派。
   {
     id: 'fd-d10', no: 'LCMN-20260817-83010', type: '咨询', channel: '在线客服',
     title: '一次性解答完成，建单即结案', smartMarks: [],
     customer: '范萍', vip: false, product: '企业版',
-    nodeStatus: '已结案', nodeStep: 1, nodeTotal: 1, priority: 'P3',
+    nodeStatus: '已结案', closureMode: '直接结案', nodeStep: 1, nodeTotal: 1, priority: 'P3',
     slaText: '—', slaSub: '已结案', slaState: 'ok', slaMinutes: 9999,
     assignee: '王坐席', tab: 'mine',
     customerPhone: '13788889999', productCategory: '企业服务',
@@ -331,16 +336,16 @@ const BASE_TICKETS: Ticket[] = [
     customerPhone: '15833334444', sn: 'SN-AIR-88201', productCategory: '智能硬件',
     createdAt: '2026-07-15 08:00', updatedAt: '2026-08-16 15:20',
   },
-  // ⬇ 以下几张停表单的 slaSub 一律写**基线 §1 的终态名**，不写「已关闭」——
-  //   「已关闭」只是终态的分类伞、不可落库（基线 §1 末条）。取值按该单自带的动作标记反推：
-  //   `myCloseAction`（关闭工单审批通过）→ 非常规关闭；`myForceCloseAction` → 已强结；
-  //   `escalatedToNo` → 已转单；nodeStatus 本身已是终态的（如已解决）直接取它。
+  // ⬇ 以下几张停表单的 slaSub 一律写**基线 §1 的终态子状态名**。取值按该单自带的动作标记反推：
+  //   `myCloseAction`（关闭工单审批通过）→ **已关闭**（基线 §1 该行「友好沟通后关闭」）；
+  //   `myForceCloseAction` → 已强结；`escalatedToNo` → 已升级投诉；
+  //   nodeStatus 本身已是终态的（如已解决）直接取它。
   {
     id: 't27', no: 'LCMN-20260710-61020', type: '咨询', channel: '电话',
     title: '路由器固件升级后无法联网', smartMarks: [],
     customer: '钱进', vip: false, product: '路由器 R2',
     nodeStatus: '处理中', nodeStep: 5, nodeTotal: 5, priority: 'P2',
-    slaText: '—', slaSub: '非常规关闭·停表', slaState: 'ok', slaMinutes: 9999,
+    slaText: '—', slaSub: '已关闭·停表', slaState: 'ok', slaMinutes: 9999,
     assignee: '陈坐席', tab: 'done', handledByMe: true, myCloseAction: true,
     customerPhone: '13944445555', sn: 'SN-R2-11002', productCategory: '智能硬件',
     createdAt: '2026-07-07 09:30', updatedAt: '2026-08-10 17:00',
@@ -350,14 +355,14 @@ const BASE_TICKETS: Ticket[] = [
     title: '重复扣费问题已协调处理', smartMarks: [],
     customer: '谢婷', vip: true, customerTags: ['老师'], product: '会员服务',
     nodeStatus: '处理中', nodeStep: 5, nodeTotal: 5, priority: 'P1',
-    slaText: '—', slaSub: '非常规关闭·停表', slaState: 'ok', slaMinutes: 9999,
+    slaText: '—', slaSub: '已关闭·停表', slaState: 'ok', slaMinutes: 9999,
     solveBreached: true,
     assignee: '林坐席', tab: 'done', handledByMe: true,
     myTransferAction: true, myCloseAction: true,
     customerPhone: '18655556666', productCategory: '会员权益',
     createdAt: '2026-07-05 13:00', updatedAt: '2026-08-08 18:30',
   },
-  // ── 已关闭 · 两种关闭原因对照（PRD §5.6.4）────────────────────────────
+  // ── 关闭类终态 · 两种收口原因对照（PRD §5.6.4）────────────────────────────
   // ① 正常关闭：**无派生子单**（有父关联：本单是别的单升级来的）。
   //    再来诉求 → 补充/催单走「基于原单建新单承接」（§5.2，同 Zendesk follow-up）。
   { serviceScore: 3,
@@ -365,21 +370,23 @@ const BASE_TICKETS: Ticket[] = [
     title: '学习机屏幕漏光已现场更换', smartMarks: [],
     customer: '周敏', vip: false, product: '学习机 T20',
     nodeStatus: '处理中', nodeStep: 5, nodeTotal: 5, priority: 'P2',
-    slaText: '—', slaSub: '非常规关闭·停表', slaState: 'ok', slaMinutes: 9999,
+    slaText: '—', slaSub: '已关闭·停表', slaState: 'ok', slaMinutes: 9999,
     assignee: '王坐席', tab: 'done', handledByMe: true, myCloseAction: true,
     customerPhone: '13500002222', sn: 'SN-T20-77301', productCategory: '学习硬件',
     problemDesc: '屏幕左下角漏光，已现场更换屏幕总成并复检通过，客户确认满意。',
     escalatedFromNo: 'LCMN-20260707-59021', // 父关联：由咨询单升级而来
     createdAt: '2026-07-07 10:20', updatedAt: '2026-07-09 16:45',
   },
-  // ② 因升级而关闭：**有派生子单**（已升级为外投单）→ 处理页整页只读 + 接管横幅，
+  // ② 因升级投诉而关闭：**有派生子单**（已升级为外投单）→ 原单落「已升级投诉」，
+  //    处理页整页只读 + 接管横幅，
   //    补充/催单点击后引导前往新单，不再建第三张单。
   {
     id: 't41', no: 'LCMN-20260711-61550', type: '投诉', channel: '在线客服',
     title: '维修超期未解决客户要求赔偿', smartMarks: ['升级'],
     customer: '吴强', vip: true, product: '智能音箱 X1',
+    ticketSource: '外投渠道',
     nodeStatus: '处理中', nodeStep: 5, nodeTotal: 5, priority: 'P0',
-    slaText: '—', slaSub: '已转单·停表', slaState: 'ok', slaMinutes: 9999,
+    slaText: '—', slaSub: '已升级投诉·停表', slaState: 'ok', slaMinutes: 9999,
     solveBreached: true,
     assignee: '王坐席', tab: 'done', handledByMe: true, myUpgradeAction: true,
     customerPhone: '13700003333', sn: 'SN-X1-55208', productCategory: '智能硬件',
@@ -401,7 +408,7 @@ const BASE_TICKETS: Ticket[] = [
     escalatedFromNo: 'LCMN-20260711-61550',
     createdAt: '2026-07-11 14:25', updatedAt: '2026-07-11 15:02',
   },
-  // 非诉转售后 → 售后回传「已关闭」→ 原单随之关闭，进「已办」，行内可见关联售后单号（可跳转）
+  // 非诉转售后 → 售后侧关单回传 → 原单随之收口，进「已办」，行内可见关联售后单号（可跳转）
   {
     id: 't32', no: 'LCMN-20260716-73140', type: '咨询', channel: '电话',
     title: '扫地机器人滚刷卡死需上门维修', smartMarks: [],

@@ -53,15 +53,15 @@ export interface EscalateVerdict {
 
 /**
  * 原单是否已是终态——升级时跳过关闭步骤（PRD §4.3.1）。
- * 含「已转单」：因派生新单而终止的状态（§5.6.3）。
+ * 含「已转单」与「已升级投诉」：因派生新单而终止的两个状态（§5.6.3）。
  */
 export function isTicketTerminated(status: string): boolean {
-  // 状态名对齐《00-基线-工单状态与动作》§1：
-  // 基线的六个终态是 已解决 / 非常规关闭 / 已强结 / 已转单 / 已取消 / 已结案。
-  // 「已关闭」只是终态的分类伞、不可落库，留在正则里仅因处理页仍会把停表的历史 mock 单
-  // 置成这个字面值（见 composables/useTicketOperation.ts），**不应再新增使用**。
-  // 「已归档」系统里没有这个状态，已从正则移除。
-  return /已解决|非常规关闭|已强结|已转单|已取消|已结案|已关闭/.test(status);
+  // 子状态名对齐《00-基线-工单状态与动作》§1：状态分组为「终态」的七个子状态是
+  // 已升级投诉 / 已解决 / 已关闭 / 已强结 / 已转单 / 已取消 / 已结案。
+  // 「已关闭」是其中的一个具体子状态（友好沟通后关闭），不再是"终态分类伞"。
+  // 「已归档」系统里没有这个状态，不在正则内。
+  // 入参是自由文本（detail.status），所以按正则匹配而不是查 BASELINE_STATUSES。
+  return /已升级投诉|已解决|已关闭|已强结|已转单|已取消|已结案/.test(status);
 }
 
 /**
@@ -122,7 +122,7 @@ export function buildEscalateVerdict(detail: TicketDetailMeta, roleKey: string):
     };
   }
 
-  // 门禁③：冻结态 / 只读态 → 不可升级（已关闭不在此列——0801 定为不限时间可升，关单步骤跳过）
+  // 门禁③：冻结态 / 只读态 → 不可升级（终态不在此列——0801 定为不限时间可升，关单步骤跳过）
   if (FROZEN_STATUS.test(detail.status)) {
     const tip = `工单${detail.status}，恢复后可升级`;
     return { tier, tierLabel, kind: null, entryEnabled: false, entryTip: tip, headline: tip };

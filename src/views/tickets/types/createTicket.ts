@@ -1,5 +1,5 @@
-import { PRIORITY_LABEL } from '@/views/tickets/types/ticket';
-import type { Channel, Priority, TicketType } from '@/views/tickets/types/ticket';
+import { CLOSURE_MODES, PRIORITY_LABEL } from '@/views/tickets/types/ticket';
+import type { Channel, ClosureMode, Priority, TicketType } from '@/views/tickets/types/ticket';
 
 /** 新建弹窗工单类型（对齐 .pen V6xQCz 等画板） */
 export type CreateFormTicketType = '投诉' | '建议' | '商机' | '咨询';
@@ -60,6 +60,12 @@ export interface ReporterInfo {
 export interface CreateTicketFormState {
   businessType: BusinessType;
   ticketType: CreateFormTicketType;
+  /**
+   * 结案方式（基线 §1「结案方式」小节）：**建单时选定、此后不可改**，与工单类型正交。
+   * 正常流程＝进流程办理、走完调研回访后结案；直接结案＝一次性解答完、当场收口、从未进流程。
+   * 之所以在建单页给这一枚，是因为它此后没有第二个修改入口 —— 与工单类型同一口径。
+   */
+  closureMode: ClosureMode;
   /** 工单来源，默认热线电话 */
   ticketSource: TicketSource;
   customerQuery: string;
@@ -101,6 +107,17 @@ export interface CreateTicketFormState {
 
 export const BUSINESS_TYPES: BusinessType[] = ['学习机', '翻录', '智学网'];
 export const CREATE_TICKET_TYPES: CreateFormTicketType[] = ['投诉', '建议', '商机', '咨询'];
+
+/**
+ * 结案方式下拉项。取值与含义在基线 §1「结案方式」小节，这里只做展示补白，
+ * 不另立枚举 —— 枚举本体在 types/ticket.ts 的 CLOSURE_MODES。
+ */
+export const CLOSURE_MODE_OPTIONS: { value: ClosureMode; label: string }[] = CLOSURE_MODES.map(
+  (v) => ({
+    value: v,
+    label: v === '直接结案' ? '直接结案（当场收口，不进流程）' : '正常流程（走完调研回访）',
+  }),
+);
 
 export const PRODUCT_CATEGORIES = ['智能硬件', '学习硬件', '软件服务'];
 export const PRODUCT_NAMES: Record<string, string[]> = {

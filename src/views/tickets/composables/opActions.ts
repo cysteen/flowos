@@ -6,10 +6,11 @@ import { AFTERSALE_INBOUND_SOURCE } from '@/views/tickets/types/createTicket';
 export const FEISHU_ESCALATE_CHANNEL = '飞书项目 · 产研反馈单';
 
 // 操作页内部的轻量处理态枚举，**不是**工单状态机。
-// 工单状态的唯一真源是基线的 20 个状态（见 `types/ticket.ts` 的 BASELINE_STATUSES）。
-// 下面每个枚举后的中文只是它在 UI 上的近似呈现，其中「待审核 / 已关闭」两个不是基线状态名
-// （基线对应的是四个审核态 / 终态的分类伞），落库与对外呈现一律取基线名，
-// 不要拿这里的中文当状态值用。
+// 工单子状态的唯一真源是基线 §1 的 21 个子状态（见 `types/ticket.ts` 的 BASELINE_STATUSES）。
+// 下面每个枚举后的中文只是它在 UI 上的近似呈现，其中「待审核」不是基线子状态名
+// （基线对应的是四个审核态），落库与对外呈现一律取基线名，不要拿这里的中文当状态值用。
+// `closed` 一档对应的基线子状态是「已关闭」——它已是可落库子状态（基线 §1 该行
+// 「友好沟通后关闭」），但本枚举仍只是操作页的呈现态，粒度比子状态粗。
 export type TicketOpState =
   | 'processing'  // 处理中
   | 'suspended'   // 已挂起
@@ -33,7 +34,7 @@ export interface SuspendInfo {
  *
  * ⚠️ 「**归档工单**」已移除（按基线核对）：基线「动作 × 状态」与「动作 × 角色」两张表里
  * **没有这个动作**，操作页按钮对照表的底栏与头部两行也都没有它；关闭类动作只有「关闭」与
- * 「强结」，且**两个都走审批**。原实现却让它一键直落终态「非常规关闭」，等于给关闭开了条
+ * 「强结」，且**两个都走审批**。原实现却让它一键直落终态「已关闭」，等于给关闭开了条
  * 绕过审批的后门；它也从来没进过底栏展示顺序（BAR_ORDER），界面上点不到。
  * 「归档」本身是**与状态正交的留存维度**（工单上的 archived 标记 + 工单列表「已归档」视图），
  * 不是状态、也不需要工单页的按钮，那部分保留不动。
@@ -788,7 +789,7 @@ export function applyOpAction(
         return { opState, suspendInfo, message: `已建关联售后单 ${asNo}，投诉单继续跟进` };
       }
       // 非诉：原单进「已转出」等待态——不关闭、客服侧冻结，出态只由售后回传驱动
-      // （售后已关闭 → 已关闭进已办；售后转回客服 → 回处理中续跑原流程）
+      // （售后侧关单 → 原单收口进已办；售后转回客服 → 回处理中续跑原流程）
       detail.status = '已转出';
       return {
         opState: 'transferred',
@@ -814,15 +815,16 @@ export function applyOpAction(
       // 升级成功 = 关原单 + 建新投诉单 + 双向关联（PRD §4.3.1/§4.3.2）。
       // 原单已是终态则跳过关闭步骤，只留关联（PRD §4.3.1）。
       const { target, newNo, note } = payload.data;
-      // 终态集合以基线为准，六个：已解决 / 非常规关闭 / 已强结 / 已转单 / 已取消 / 已结案。
+      // 终态集合以基线 §1「状态」列取值为「终态」的七个子状态为准：
+      //   已升级投诉 / 已解决 / 已关闭 / 已强结 / 已转单 / 已取消 / 已结案。
       // 与 `types/ticket.ts` 的 isTicketClosed() 同源，改一处要两处一起改。
-      // 别写「已关闭」「已归档」——前者只是终态分类伞不可落库，后者系统里不存在；
-      // 漏掉「已解决 / 非常规关闭 / 已强结」会让这三种终态的单在升级时被改写成「已转单」并二次停表。
-      const alreadyEnded = /已解决|非常规关闭|已强结|已转单|已取消|已结案/.test(detail.status);
+      // 「已归档」不在其中——它不是状态，是与状态正交的留存维度；
+      // 漏掉「已解决 / 已关闭 / 已强结」会让这三种终态的单在升级时被二次改写并二次停表。
+      const alreadyEnded = /已升级投诉|已解决|已关闭|已强结|已转单|已取消|已结案/.test(detail.status);
       if (!alreadyEnded) {
-        // 因派生新单而终止：状态用「已转单」而非「已关闭」——
-        // 让坐席一眼分清"这单是正常关的"还是"业务已经转到别的单上了"（PRD §5.6.3）
-        detail.status = '已转单';
+        // 基线 §1「已升级投诉」已独立成终态（原单迁「已转单」的旧做法作废）：
+        // 落库只有这一个子状态，是否外投由投诉渠道字段决定、展示时拼名。
+        detail.status = '已升级投诉';
         terminateClocks(detail, timeline, true); // 因升级而终止：停表结果=中止(灰)，不计达标/未达标
       }
       pushEntry(timeline, {
@@ -831,12 +833,12 @@ export function applyOpAction(
         what: alreadyEnded
           ? `原单已是「${detail.status}」，跳过关闭步骤；已升级为${target}单 ${newNo}并保留双向关联。升级原因：${note}`
           : `诉求升级为${target}，已生成新投诉单 ${newNo}并双向关联，原单关闭（SLA 停表·中止）。`
-            + `升级原因：${note}。本单转为「已转单」并锁定只读，后续补充/催单请在新单处理。`,
+            + `升级原因：${note}。本单转为「${detail.status}」并锁定只读，后续补充/催单请在新单处理。`,
       });
       return {
         opState: alreadyEnded ? opState : 'closed',
         suspendInfo: null,
-        message: alreadyEnded ? `已关联${target}单 ${newNo}` : `已升级为${target}单 ${newNo}，原单转为「已转单」`,
+        message: alreadyEnded ? `已关联${target}单 ${newNo}` : `已升级为${target}单 ${newNo}，原单转为「${detail.status}」`,
       };
     }
 
@@ -892,8 +894,9 @@ export function applyOpAction(
     }
 
     case '关闭工单': {
-      // 关闭工单 = 异常结案，须审核：提交只进「待审核」，解决钟冻结并记录提交时刻；
-      // 审核通过 → 已关闭（停表结算，非正常关闭）；退回 → 解决钟按审核等待时长回拨续走。
+      // 关闭工单须审核：提交只进「申请关闭中」，解决钟冻结并记录提交时刻；
+      // 审核通过 → 落终态「已关闭」（基线 §1 该行「友好沟通后关闭」，停表结算）；
+      // 退回 → 解决钟按审核等待时长回拨续走。
       const { reason, approvalGroup, note } = payload.data;
       detail.status = '申请关闭中';
       freezeSolveForReview(detail);
@@ -902,7 +905,7 @@ export function applyOpAction(
         category: 'node', action: 'transfer', who: operator, role: operatorRole,
         how: '提交关闭审核',
         what: `关闭原因：${reason}${note ? `；${note}` : ''}。已提交 ${group} 审核，`
-          + `通过后工单关闭（非正常关闭，关单后不支持补充/催单）；退回则回到本人继续处理。`
+          + `通过后工单落「已关闭」（关单后不再支持催单，补充仍可落承接子单）；退回则回到本人继续处理。`
           + `解决 SLA 已冻结，退回时审核等待时长计入。`,
       });
       return { opState: 'review', suspendInfo, message: `关闭申请已提交，等待${group}审核` };

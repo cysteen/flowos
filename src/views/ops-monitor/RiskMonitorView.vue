@@ -18,7 +18,7 @@ import { ReloadOutlined, ArrowRightOutlined } from '@ant-design/icons-vue';
 import MetricTipIcon from '@/components/MetricTipIcon.vue';
 import { opsTip } from '@/mock/opsMonitorTips';
 import { useUserStore } from '@/stores/user';
-import { RISK_TAG_ROLES } from '@/config/roles';
+import { RISK_TAG_ROLES, RISK_WORD_MAINTAIN_ROLES } from '@/config/roles';
 import { OPS_GROUPS, getOpsScopeSelectGroups, type OpsScope } from '@/mock/opsMonitor';
 import {
   RISK_LEVEL_STYLE,
@@ -30,6 +30,7 @@ import {
   legacyRiskHitsOf,
   riskGradeOf,
   type RiskHit,
+  type RiskWord,
   type RiskLevel,
   type RiskImpact,
   type RiskSignal,
@@ -135,10 +136,8 @@ const diff = computed(() => {
   return {
     /** 后果严重度这一轨新召回的：纯词表一个词都不命中，根本不进视野 */
     recalled: all.filter((h) => h.legacyLevel === null),
-    /** 角色限定消掉的误报：话是坐席说的 */
-    falsePositive: all.filter((h) => h.speakerRole === '坐席' && h.legacyLevel !== null),
     /** 等级下调的：旧判高危，双轨交叉后不再是高危，不再挤占处置资源 */
-    downgraded: all.filter((h) => h.legacyLevel === '高' && riskGradeOf(h) !== '高' && h.speakerRole === '客户'),
+    downgraded: all.filter((h) => h.legacyLevel === '高' && riskGradeOf(h) !== '高'),
   };
 });
 
@@ -215,8 +214,64 @@ function openTicket(no: string) { router.push(`/tickets/${no}`); }
 const IMPACTS: RiskImpact[] = ['严重', '一般', '轻微'];
 const SIGNALS: RiskSignal[] = ['强', '中', '无'];
 
-// ---- 预警词管理（监控岗只读，维护权归运营管理员） ----
+// ---- 预警词管理（维护权归运营监控岗；投诉处理角色只读） ----
 const riskWordsOpen = ref(false);
+const canMaintainWords = computed(() => RISK_WORD_MAINTAIN_ROLES.includes(user.roleKey));
+/** 原型本地词表：可新建，刷新后回 mock 初始值 */
+const localWords = ref<RiskWord[]>([...RISK_WORDS]);
+
+const wordFormOpen = ref(false);
+const wordForm = ref({
+  word: '',
+  level: '中' as RiskLevel,
+  scopes: ['问题描述', '沟通记录'] as string[],
+  receivers: '',
+  enabled: false,
+});
+const SCOPE_OPTIONS = ['标题', '问题描述', '沟通记录', '催补记录'];
+
+function openWordForm() {
+  wordForm.value = {
+    word: '',
+    level: '中',
+    scopes: ['问题描述', '沟通记录'],
+    receivers: '',
+    enabled: false,
+  };
+  wordFormOpen.value = true;
+}
+function saveWord() {
+  const word = wordForm.value.word.trim();
+  if (!word) { message.warning('请填写预警词'); return; }
+  const receivers = wordForm.value.receivers.split(/[,，、]/).map((s) => s.trim()).filter(Boolean);
+  if (!receivers.length) { message.warning('请填写至少一位通知人'); return; }
+  if (!wordForm.value.scopes.length) { message.warning('请至少选一个匹配范围'); return; }
+  localWords.value = [
+    ...localWords.value,
+    {
+      id: `w-${Date.now()}`,
+      word,
+      level: wordForm.value.level,
+      speakerLimit: '不限',
+      scopes: [...wordForm.value.scopes],
+      receivers,
+      enabled: wordForm.value.enabled,
+      hits7d: 0,
+      hits7dRaw: 0, // 与 hits7d 同口径；当前无法区分发话角色
+      judged7d: 0,
+      valid7d: 0,
+    },
+  ];
+  message.success(wordForm.value.enabled ? `已新建并启用「${word}」` : `已新建「${word}」（默认停用，可先试跑看近 7 天命中）`);
+  wordFormOpen.value = false;
+}
+function toggleWordEnabled(w: RiskWord) {
+  if (!canMaintainWords.value) return;
+  localWords.value = localWords.value.map((item) =>
+    item.id === w.id ? { ...item, enabled: !item.enabled } : item,
+  );
+  message.success(w.enabled ? `已停用「${w.word}」` : `已启用「${w.word}」`);
+}
 /** 准确率分档：低于 30% 的规则基本在制造噪音，该收窄或停用 */
 function accTone(v: number): 'bad' | 'mid' | 'good' {
   if (v < 0.3) return 'bad';
@@ -227,40 +282,41 @@ function accTone(v: number): 'bad' | 'mid' | 'good' {
 
 <template>
   <div class="risk-monitor">
-    <header class="monitor-header">
-      <div class="head-left">
-        <h1 class="head-title">风险监控</h1>
-        <span class="head-tag head-tag-complaint">投诉</span>
-      </div>
-      <p class="head-flow">① 核实命中 → ② 按等级处置 → ③ 回填规则准确率</p>
-    </header>
-
-    <!-- 工具条：范围 + 刷新 -->
-    <div class="monitor-bar">
-      <div class="monitor-bar-left">
-        <span class="monitor-bar-label">监控范围</span>
-        <div class="monitor-scope-picker">
-          <button type="button" class="monitor-scope-all-btn" :class="{ active: isAllScope }" @click="setScopeAll">
-            全中心
-          </button>
-          <a-select
-            v-model:value="scopeIds" mode="multiple" show-search allow-clear size="small"
-            :options="scopeSelectGroups" :filter-option="filterScopeOption"
-            class="monitor-scope-select" :dropdown-match-select-width="false"
-            placeholder="筛选班组（可多选）" :max-tag-count="1" :max-tag-placeholder="scopeTagPlaceholder"
-          />
-          <span class="monitor-scope-meta">{{ isAllScope ? `共 ${OPS_GROUPS.length} 组` : `已选 ${scopeSelectedCount} 组` }}</span>
+    <!-- 页头：对齐个人门户 / 班组长看板 greeting-card -->
+    <div class="greeting-card">
+      <div class="greeting-text">
+        <div class="greeting-title">
+          风险监控
+          <span class="head-tag head-tag-complaint">投诉</span>
         </div>
+        <div class="greeting-sub">① 核实命中 → ② 按等级处置 → ③ 回填规则准确率</div>
       </div>
-      <div class="monitor-bar-right">
-        <span class="live-badge"><i class="live-dot" />实时 · 60s</span>
-        <span class="monitor-clock">{{ lastRefresh }}</span>
-        <button type="button" class="monitor-refresh" title="刷新" @click="refresh"><ReloadOutlined /></button>
+      <div class="greeting-aside">
+        <div class="section-filters">
+          <div class="filter-item">
+            <span class="filter-label">监控范围</span>
+            <div class="monitor-scope-picker">
+              <button type="button" class="monitor-scope-all-btn" :class="{ active: isAllScope }" @click="setScopeAll">
+                全中心
+              </button>
+              <a-select
+                v-model:value="scopeIds" mode="multiple" show-search allow-clear size="small"
+                :options="scopeSelectGroups" :filter-option="filterScopeOption"
+                class="monitor-scope-select" :dropdown-match-select-width="false"
+                placeholder="筛选班组（可多选）" :max-tag-count="1" :max-tag-placeholder="scopeTagPlaceholder"
+              />
+              <span class="monitor-scope-meta">{{ isAllScope ? `共 ${OPS_GROUPS.length} 组` : `已选 ${scopeSelectedCount} 组` }}</span>
+            </div>
+          </div>
+          <span class="live-badge"><i class="live-dot" />实时 · 60s</span>
+          <span class="monitor-clock">{{ lastRefresh }}</span>
+          <button type="button" class="monitor-refresh" title="刷新" @click="refresh"><ReloadOutlined /></button>
+        </div>
       </div>
     </div>
 
     <!-- 当前重点：待核实高危 -->
-    <section class="action-hero" :class="{ urgent: untaggedHigh.length > 0 }">
+    <section class="overview-section action-hero" :class="{ urgent: untaggedHigh.length > 0 }">
       <div class="ah-body">
         <span class="ah-kicker">当前重点</span>
         <div class="ah-main">
@@ -286,7 +342,7 @@ function accTone(v: number): 'bad' | 'mid' | 'good' {
     </section>
 
     <!-- 分级筛选 + 处置层级说明 -->
-    <div class="filter-row">
+    <section class="overview-section filter-row">
       <div class="grade-filters">
         <button type="button" class="gf-chip" :class="{ active: gradeFilter === 'all' }" @click="setGradeFilter('all')">
           全部<span class="gf-num">{{ rows.length }}</span>
@@ -317,7 +373,7 @@ function accTone(v: number): 'bad' | 'mid' | 'good' {
           {{ g }}危 → {{ DISPOSAL_BY_GRADE[g].who }}
         </span>
       </div>
-    </div>
+    </section>
 
     <!-- RULE_COMPARE_DEMO 开始：评审演示，弱化展示 -->
     <details class="demo-panel">
@@ -335,10 +391,6 @@ function accTone(v: number): 'bad' | 'mid' | 'good' {
               后果严重但客户未说狠话 —— 如
               <button type="button" class="cn-link" @click="openTicket(diff.recalled[0].ticketNo)">{{ diff.recalled[0].title }}</button>
             </li>
-            <li v-if="diff.falsePositive.length">
-              <b class="cn-fp">误 {{ diff.falsePositive.length }} 单</b>
-              话是坐席说的也照样命中
-            </li>
             <li v-if="diff.downgraded.length">
               <b class="cn-down">高估 {{ diff.downgraded.length }} 单</b>
               后果轻微但喊了外部渠道，仍被判高危
@@ -350,14 +402,16 @@ function accTone(v: number): 'bad' | 'mid' | 'good' {
     <!-- RULE_COMPARE_DEMO 结束 -->
 
     <!-- 统一命中清单 -->
-    <section class="panel dash-panel work-panel">
-      <div class="dash-head compact">
-        <h2 class="dash-title">
-          风险命中清单
-          <span class="list-count">{{ filteredRows.length }}</span>
-          <MetricTipIcon :tip="opsTip('riskHits')!" />
-        </h2>
-        <span class="dash-hint">当前筛选：{{ filterLabel }}</span>
+    <section class="overview-section work-panel">
+      <div class="section-head">
+        <div class="section-head-main">
+          <h2 class="section-title">
+            风险命中清单
+            <span class="list-count">{{ filteredRows.length }}</span>
+            <MetricTipIcon :tip="opsTip('riskHits')!" />
+          </h2>
+          <p class="section-sub">当前筛选：{{ filterLabel }}</p>
+        </div>
       </div>
 
       <div v-if="!filteredRows.length" class="ob-empty">
@@ -404,11 +458,9 @@ function accTone(v: number): 'bad' | 'mid' | 'good' {
               <button type="button" class="rt-no" @click="openTicket(h.ticketNo)">{{ h.ticketNo }}</button>
               <div class="hit-title">{{ h.title }}</div>
               <div v-if="!isLegacy && h.legacyLevel === null" class="hit-flag flag-new">仅关键词时召不回</div>
-              <div v-else-if="!isLegacy && h.speakerRole === '坐席'" class="hit-flag flag-fp">坐席发话 · 不计外部信号</div>
             </td>
             <td class="hit-excerpt">
               <span class="hit-pos">{{ h.position }}</span>
-              <span class="hit-speaker" :class="{ agent: h.speakerRole === '坐席' }">{{ h.speakerRole }}</span>
               「{{ h.excerpt }}」
             </td>
             <td>{{ h.customer }}<div class="hit-sub">{{ h.groupName }} · {{ h.assignee }}</div></td>
@@ -435,57 +487,110 @@ function accTone(v: number): 'bad' | 'mid' | 'good' {
     </section>
 
     <!-- 预警词：主流程外，折叠为入口 -->
-    <section class="panel dash-panel panel-secondary">
-      <div class="dash-head compact">
-        <h2 class="dash-title">预警词管理</h2>
-        <button type="button" class="row-btn" @click="riskWordsOpen = true">查看词表</button>
+    <section class="overview-section panel-secondary">
+      <div class="section-head">
+        <div class="section-head-main">
+          <h2 class="section-title">预警词管理</h2>
+        </div>
+        <button type="button" class="row-btn" @click="riskWordsOpen = true">
+          {{ canMaintainWords ? '管理词表' : '查看词表' }}
+        </button>
       </div>
       <p class="risk-board-note">
-        监控岗只读 · 维护权归运营管理员。词表 {{ RISK_WORDS.filter((w) => w.enabled).length }} 条启用，
-        近 7 天共命中 {{ RISK_WORDS.reduce((s, w) => s + w.hits7d, 0) }} 次。
+        <template v-if="canMaintainWords">
+          词表 {{ localWords.filter((w) => w.enabled).length }} 条启用，
+          近 7 天共命中 {{ localWords.reduce((s, w) => s + w.hits7d, 0) }} 次 · 新建词条默认停用，试跑后再启用。
+        </template>
+        <template v-else>
+          词表只读 · 维护权归运营监控岗。词表 {{ localWords.filter((w) => w.enabled).length }} 条启用，
+          近 7 天共命中 {{ localWords.reduce((s, w) => s + w.hits7d, 0) }} 次。
+        </template>
       </p>
     </section>
 
     <!-- 预警词维护抽屉 -->
     <a-drawer v-model:open="riskWordsOpen" title="风险预警词" width="760" placement="right">
+      <div v-if="canMaintainWords" class="drawer-toolbar">
+        <button type="button" class="row-btn row-btn-primary" @click="openWordForm">新建预警词</button>
+      </div>
       <p class="drawer-note top">
         命中即按词表推送指定人员。<b>近 7 天命中</b>是新增词条前的试跑依据——命中量过大的词上线即刷屏；
-        <b>准确率</b>是上线后的体检——准确率低说明这条规则捞进来的多半不是风险，应先收窄匹配范围或加角色限定，而不是等人肉发现。
+        <b>准确率</b>是上线后的体检——准确率低说明这条规则捞进来的多半不是风险，应先收窄匹配范围，而不是等人肉发现。
       </p>
       <table class="word-table">
         <thead>
           <tr>
-            <th>预警词</th><th>分级</th><th>角色限定</th><th>匹配范围</th>
+            <th>预警词</th><th>分级</th><th>匹配范围</th>
             <th>通知人</th><th>近 7 天命中</th><th>准确率</th><th>状态</th>
+            <th v-if="canMaintainWords" style="width: 64px">操作</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="w in RISK_WORDS" :key="w.id" :class="{ off: !w.enabled }">
+          <tr v-for="w in localWords" :key="w.id" :class="{ off: !w.enabled }">
             <td class="wt-word">{{ w.word }}</td>
             <td>
               <span class="risk-word" :style="{ color: RISK_LEVEL_STYLE[w.level].color, background: RISK_LEVEL_STYLE[w.level].bg }">{{ w.level }}</span>
-            </td>
-            <td>
-              <span class="speaker-limit" :class="{ any: w.speakerLimit === '不限' }">
-                {{ w.speakerLimit === '不限' ? '不限' : '仅' + w.speakerLimit }}
-              </span>
             </td>
             <td class="hit-sub">{{ w.scopes.join(' / ') }}</td>
             <td class="hit-sub">{{ w.receivers.join('、') }}</td>
             <td>
               <span :class="{ 'hits-high': w.hits7d > 50 }">{{ w.hits7d }}</span>
-              <span v-if="w.hits7dRaw > w.hits7d" class="hits-saved">↓{{ w.hits7dRaw - w.hits7d }}</span>
             </td>
             <td>
               <span v-if="accuracyOf(w) === null" class="hit-sub">—</span>
               <span v-else class="acc" :class="accTone(accuracyOf(w)!)">{{ Math.round(accuracyOf(w)! * 100) }}%</span>
             </td>
-            <td><span class="wt-state" :class="w.enabled ? 'on' : 'off'">{{ w.enabled ? '启用' : '停用' }}</span></td>
+            <td>
+              <span class="wt-state" :class="w.enabled ? 'on' : 'off'">{{ w.enabled ? '启用' : '停用' }}</span>
+            </td>
+            <td v-if="canMaintainWords">
+              <button type="button" class="row-btn" @click="toggleWordEnabled(w)">
+                {{ w.enabled ? '停用' : '启用' }}
+              </button>
+            </td>
           </tr>
         </tbody>
       </table>
-      <p class="drawer-note">词表维护权归运营管理员，监控岗为只读。</p>
+      <p class="drawer-note">
+        {{ canMaintainWords ? '词表由运营监控岗维护；新建默认停用，确认近 7 天命中量后再启用。' : '词表只读；维护请联系运营监控岗。' }}
+      </p>
     </a-drawer>
+
+    <!-- 新建预警词 -->
+    <a-modal
+      v-model:open="wordFormOpen"
+      title="新建预警词"
+      :width="520"
+      ok-text="保存"
+      cancel-text="取消"
+      @ok="saveWord"
+    >
+      <div class="word-form">
+        <div class="wf-row">
+          <span class="wf-label req">预警词</span>
+          <a-input v-model:value="wordForm.word" placeholder="如：曝光、12315" />
+        </div>
+        <div class="wf-row">
+          <span class="wf-label">分级</span>
+          <a-radio-group v-model:value="wordForm.level" button-style="solid">
+            <a-radio-button v-for="g in GRADES" :key="g" :value="g">{{ g }}</a-radio-button>
+          </a-radio-group>
+        </div>
+        <div class="wf-row">
+          <span class="wf-label req">匹配范围</span>
+          <a-checkbox-group v-model:value="wordForm.scopes" :options="SCOPE_OPTIONS" />
+        </div>
+        <div class="wf-row">
+          <span class="wf-label req">通知人</span>
+          <a-input v-model:value="wordForm.receivers" placeholder="多人用逗号分隔，如：李文萍、值班经理" />
+        </div>
+        <div class="wf-row">
+          <span class="wf-label">上线状态</span>
+          <a-switch v-model:checked="wordForm.enabled" checked-children="启用" un-checked-children="停用" />
+          <span class="wf-hint">建议先停用试跑，确认近 7 天命中量合理后再启用。</span>
+        </div>
+      </div>
+    </a-modal>
 
     <!-- 打标弹窗 -->
     <a-modal v-model:open="tagOpen" title="风险打标" :width="620" ok-text="保存" cancel-text="取消" @ok="saveTag">
@@ -496,7 +601,6 @@ function accTone(v: number): 'bad' | 'mid' | 'good' {
         </div>
         <div class="tf-excerpt">
           <span class="hit-pos">{{ tagTarget.position }}</span>
-          <span class="hit-speaker" :class="{ agent: tagTarget.speakerRole === '坐席' }">{{ tagTarget.speakerRole }}</span>
           「{{ tagTarget.excerpt }}」
         </div>
 
@@ -571,60 +675,120 @@ function accTone(v: number): 'bad' | 'mid' | 'good' {
 </template>
 
 <style scoped>
-.risk-monitor { padding: 0 0 32px; }
-
-/* 页头 —— 与工单监控同系 */
-.monitor-header {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
-  margin: 12px 16px 0; padding: 8px 12px;
-  background: #fff; border: 1px solid #d5dce6; border-radius: 4px;
+/* 页壳：对齐个人门户 / 班组长看板 §4.9 */
+.risk-monitor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 20px 24px;
+  min-height: 100%;
+  width: 100%;
+  min-width: 0;
+  background:
+    radial-gradient(ellipse 80% 40% at 0% 0%, rgba(26, 111, 255, 0.08), transparent 55%),
+    radial-gradient(ellipse 60% 30% at 100% 8%, rgba(16, 185, 129, 0.05), transparent 50%),
+    #f3f6fb;
 }
-.head-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.head-title { margin: 0; font-size: 15px; font-weight: 600; color: #0f172a; line-height: 1.3; }
-.head-tag { font-size: 10px; font-weight: 600; color: #64748b; background: #f1f5f9; border-radius: 3px; padding: 1px 6px; }
+
+.greeting-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  gap: 12px;
+  flex-wrap: wrap;
+  border-radius: 14px;
+  border: 1px solid rgba(26, 111, 255, 0.18);
+  background: linear-gradient(135deg, #eff6ff 0%, #f8fbff 48%, #ecfdf5 100%);
+  box-shadow: 0 4px 16px rgba(26, 111, 255, 0.08);
+}
+.greeting-text { min-width: 0; flex: 1; }
+.greeting-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.greeting-sub { margin-top: 6px; font-size: 12px; color: #64748b; line-height: 1.55; }
+.greeting-aside { display: flex; align-items: center; flex: none; }
+.head-tag { font-size: 10px; font-weight: 600; color: #6B7280; background: #F3F4F6; border-radius: 3px; padding: 1px 6px; }
 .head-tag-complaint { color: #6B7280; background: #F3F4F6; }
-.head-flow { margin: 0; font-size: 11px; color: #9CA3AF; white-space: nowrap; }
 
-/* 工具条 */
-.monitor-bar {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
-  margin: 12px 16px; padding: 8px 12px;
-  background: #fff; border: 1px solid #d5dce6; border-radius: 4px;
+.section-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  padding: 6px 10px;
+  background: #f8fafc;
+  border: 1px solid #eef2f7;
+  border-radius: 10px;
 }
-.monitor-bar-label { font-size: 11px; font-weight: 600; color: #64748b; margin-right: 8px; text-transform: uppercase; letter-spacing: 0.04em; }
-.monitor-bar-left, .monitor-bar-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.filter-item { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.filter-label { flex: none; font-size: 12px; font-weight: 500; color: #9ca3af; line-height: 1; }
+
 .monitor-scope-picker { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .monitor-scope-all-btn {
-  border: 1px solid #e2e8f0; background: #fff; color: #64748b; border-radius: 3px;
-  padding: 2px 10px; font-size: 12px; font-weight: 500; cursor: pointer; font-family: inherit; height: 24px;
+  border: 1px solid #e5e7eb; background: #fff; color: #64748b; border-radius: 8px;
+  padding: 2px 10px; font-size: 12px; font-weight: 500; cursor: pointer; font-family: inherit; height: 28px;
 }
-.monitor-scope-all-btn:hover { background: #f1f5f9; color: #334155; }
-.monitor-scope-all-btn.active { background: #334155; color: #fff; border-color: #334155; }
-.monitor-scope-select { min-width: 220px; max-width: 360px; flex: 1; }
-.monitor-scope-select :deep(.ant-select-selector) { border-radius: 3px !important; font-size: 12px; min-height: 24px !important; }
+.monitor-scope-all-btn:hover { background: #f9fafb; color: #374151; }
+.monitor-scope-all-btn.active { background: #1a6fff; color: #fff; border-color: #1a6fff; }
+.monitor-scope-select { min-width: 200px; max-width: 320px; }
+.monitor-scope-select :deep(.ant-select-selector) { border-radius: 8px !important; font-size: 12px; min-height: 28px !important; }
 .monitor-scope-meta { font-size: 11px; color: #94a3b8; white-space: nowrap; }
 .live-badge {
   display: inline-flex; align-items: center; gap: 5px;
-  font-size: 11px; font-weight: 600; color: #047857; background: #ecfdf5; border-radius: 3px; padding: 2px 8px;
+  font-size: 11px; font-weight: 600; color: #047857; background: #ecfdf5; border-radius: 999px; padding: 3px 10px;
 }
 .live-dot { width: 5px; height: 5px; border-radius: 50%; background: #10b981; animation: pulse 2s infinite; }
-@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 .monitor-clock { font-size: 12px; color: #64748b; font-variant-numeric: tabular-nums; font-weight: 500; }
 .monitor-refresh {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 28px; height: 28px; border: 1px solid #e2e8f0; background: #fff; border-radius: 3px;
+  width: 28px; height: 28px; border: 1px solid #e5e7eb; background: #fff; border-radius: 8px;
   color: #64748b; cursor: pointer; font-size: 12px;
 }
-.monitor-refresh:hover { background: #f8fafc; color: #334155; }
+.monitor-refresh:hover { background: #f9fafb; color: #374151; }
 
-/* 当前重点 —— 与大盘 rb-card.warn 同系，仅待核实时弱强调 */
-.action-hero {
-  display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
-  margin: 0 16px 12px; padding: 12px 14px;
-  background: #fff; border: 1px solid #E5E7EB; border-radius: 4px;
+/* 分区卡片：对齐 overview-section */
+.overview-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #fff;
+  border: 0.8px solid #e5e6eb;
+  border-radius: 14px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+.section-head {
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+}
+.section-head-main { min-width: 0; }
+.section-title {
+  margin: 0; font-size: 13px; font-weight: 700; color: #111827;
+  display: inline-flex; align-items: center; gap: 6px; line-height: 1.3;
+}
+.section-sub { margin: 2px 0 0; font-size: 11px; color: #9ca3af; }
+.list-count {
+  min-width: 20px; padding: 0 6px; border-radius: 8px; font-size: 11px; font-weight: 700;
+  background: #f3f4f6; color: #6b7280; font-variant-numeric: tabular-nums;
+}
+
+/* 当前重点 */
+.action-hero.overview-section {
+  flex-direction: row; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  padding: 12px 14px;
 }
 .action-hero.urgent {
   background: #fff7f7; border-color: #fca5a5;
+  box-shadow: 0 1px 4px rgba(239, 68, 68, 0.08);
   border-left: 3px solid #EF4444;
 }
 .ah-kicker { display: block; font-size: 10px; font-weight: 700; color: #9CA3AF; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 4px; }
@@ -641,11 +805,8 @@ function accTone(v: number): 'bad' | 'mid' | 'good' {
 .ah-btn.active { background: #1A6FFF; border-color: #1A6FFF; color: #fff; }
 
 /* 筛选行 */
-.filter-row {
-  margin: 0 16px 12px; padding: 10px 12px;
-  background: #fff; border: 1px solid #d5dce6; border-radius: 4px;
-}
-.grade-filters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.filter-row.overview-section { gap: 10px; }
+.grade-filters { display: flex; flex-wrap: wrap; gap: 6px; }
 .gf-chip {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 3px 10px; border: 1px solid #e2e8f0; border-radius: 3px;
@@ -666,8 +827,8 @@ function accTone(v: number): 'bad' | 'mid' | 'good' {
 
 /* RULE_COMPARE_DEMO */
 .demo-panel {
-  margin: 0 16px 12px; padding: 8px 12px;
-  background: #fafbfc; border: 1px dashed #cbd5e1; border-radius: 4px;
+  padding: 8px 12px;
+  background: #fafbfc; border: 1px dashed #cbd5e1; border-radius: 14px;
   font-size: 12px; color: #64748b;
 }
 .demo-panel summary { cursor: pointer; font-weight: 500; color: #475569; }
@@ -688,20 +849,9 @@ function accTone(v: number): 'bad' | 'mid' | 'good' {
 .cn-miss { color: #EF4444; } .cn-fp { color: #6B7280; } .cn-down { color: #F59E0B; }
 .cn-link { border: none; background: none; color: #1A6FFF; cursor: pointer; padding: 0; font-size: 12px; }
 
-/* 面板与表格 */
-.panel { margin: 0 16px 12px; background: #fff; border: 1px solid #d5dce6; border-radius: 4px; padding: 0; overflow: hidden; }
+/* 表格 */
 .panel-secondary { background: #fafbfc; }
-.dash-head {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
-  padding: 10px 16px; border-bottom: 1px solid #e8ecf1; background: #fafbfc;
-}
-.dash-title { margin: 0; font-size: 13px; font-weight: 600; color: #334155; display: inline-flex; align-items: center; gap: 6px; }
-.list-count {
-  min-width: 20px; padding: 0 6px; border-radius: 8px; font-size: 11px; font-weight: 700;
-  background: #e2e8f0; color: #475569; font-variant-numeric: tabular-nums;
-}
-.dash-hint { font-size: 11px; color: #94a3b8; }
-.ob-empty { padding: 32px 16px; text-align: center; color: #94a3b8; font-size: 13px; }
+.ob-empty { padding: 32px 8px; text-align: center; color: #94a3b8; font-size: 13px; }
 .work-panel .hit-table { margin: 0; }
 
 .hit-table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -721,8 +871,6 @@ function accTone(v: number): 'bad' | 'mid' | 'good' {
 .hit-sub { color: #94a3b8; font-size: 11px; }
 .hit-excerpt { color: #475569; line-height: 1.6; font-size: 12px; }
 .hit-pos { display: inline-block; padding: 0 5px; margin-right: 4px; border-radius: 3px; background: #F3F4F6; color: #6B7280; font-size: 11px; }
-.hit-speaker { display: inline-block; padding: 0 5px; margin-right: 4px; border-radius: 3px; background: #F3F4F6; color: #6B7280; font-size: 11px; }
-.hit-speaker.agent { background: #F3F4F6; color: #6B7280; }
 .hit-when { color: #64748b; font-variant-numeric: tabular-nums; font-size: 12px; }
 
 .track-row { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
@@ -761,7 +909,6 @@ function accTone(v: number): 'bad' | 'mid' | 'good' {
 .word-table tr.off { opacity: 0.55; }
 .wt-word { font-weight: 500; color: #0f172a; }
 .risk-word { padding: 1px 8px; border-radius: 10px; font-size: 12px; }
-.speaker-limit, .speaker-limit.any { padding: 0 7px; border-radius: 10px; font-size: 12px; background: #F3F4F6; color: #6B7280; }
 .hits-high { color: #EF4444; font-weight: 600; }
 .hits-saved { margin-left: 5px; font-size: 11px; color: #10B981; cursor: help; }
 .acc { padding: 0 7px; border-radius: 10px; font-size: 12px; cursor: help; font-variant-numeric: tabular-nums; }
@@ -773,6 +920,12 @@ function accTone(v: number): 'bad' | 'mid' | 'good' {
 .wt-state.off { background: #F3F4F6; color: #9CA3AF; }
 .drawer-note { font-size: 12px; color: #64748b; line-height: 1.7; margin: 12px 0 0; }
 .drawer-note.top { margin: 0 0 12px; }
+.drawer-toolbar { margin-bottom: 10px; }
+.word-form { display: flex; flex-direction: column; gap: 14px; }
+.wf-row { display: flex; flex-direction: column; gap: 6px; }
+.wf-label { font-size: 13px; font-weight: 500; color: #374151; }
+.wf-label.req::before { content: '* '; color: #ef4444; }
+.wf-hint { font-size: 12px; color: #9ca3af; line-height: 1.5; }
 
 /* 打标弹窗 */
 .tf-meta { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }

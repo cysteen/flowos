@@ -7,7 +7,8 @@
 // ⚠️ **只登记底栏的动作**。基线§2「本表与操作页按钮的对照」把动作分了三处，
 // 其中「**同步飞书**」与领取 / 指派 / 工单管控 / 联系客户同列在「**不在操作页**的动作」里，
 // 所以它**不该出现在本表**，也就不该出现在底栏（详见下方 note）。
-import type { TicketType } from '@/views/tickets/types/ticket';
+import { isDirectClosure } from '@/views/tickets/types/ticket';
+import type { ClosureMode, TicketType } from '@/views/tickets/types/ticket';
 import type { OpActionType } from './opActions';
 
 export interface ActionDef {
@@ -71,24 +72,47 @@ export const ACTION_DEFS: ActionDef[] = [
   /*
    * 「归档工单」**已移除**（按基线核对）：基线「动作 × 状态」「动作 × 角色」两张表都没有这个
    * 动作，§2 表末「本表与操作页按钮的对照」的底栏与头部两行也都没有它 —— 关闭类动作只有
-   * 「关闭」与「强结」，且两个都走审批。它原来一键直落终态「非常规关闭」，等于绕开审批；
+   * 「关闭」与「强结」，且两个都走审批。它原来一键直落终态「已关闭」，等于绕开审批；
    * 而且从未进过 BAR_ORDER，界面上根本点不到，属旧实现残留，故整条删除（含弹窗与落库分支）。
    * 「归档」是**与状态正交的留存维度**（工单 archived 标记 + 工单列表「已归档」视图），不在本表。
    */
   { key: '取消工单', label: '取消工单', icon: 'CloseOutlined', group: 'manage', types: ALL, danger: true },
 ];
 
+/**
+ * 「直接结案」单**不给**的底栏动作（基线 §1「结案方式」小节「动作集」一条：
+ * 不下送、不升级、不挂起、不转派）。
+ *
+ * - **不下送 / 不升级 / 不挂起**：字面照抄基线；
+ * - **不转派**：调剂（换处理人）、委派（等协办回填）、转单（原单关闭新单跑）、
+ *   转售后（原单冻结等回传）四枚都是"把单交出去"，一并归入；
+ * - **退回**：只有三线技术支持 → 处理人这一个方向，而直接结案的单从不升级、
+ *   永远到不了三线手上，入口本就不属于它（基线「置灰与不展示」判据表的"归属"一档）。
+ *
+ * 留下的是 撤回 / 关闭工单 / 强结 / 取消工单 —— 都是本人在本单上收口，不涉及流转。
+ */
+const DIRECT_CLOSURE_BLOCKED: OpActionType[] = [
+  '下送', '升级', '挂起', '调剂', '委派', '转单', '转售后', '退回',
+];
+
 export interface ActionCtx {
   ticketType: string;
+  /** 结案方式；缺省视为「正常流程」，见 resolveClosureMode */
+  closureMode?: ClosureMode;
 }
 
 /**
- * 按**工单类型**过滤可见操作。
- * 只做类型这一维——数据维的拦截（产品无售后服务、催补后未联系客户）一律走置灰 + 提示，
+ * 按**工单类型**与**结案方式**过滤可见操作 —— 两者正交，各拦各的。
+ * 数据维的拦截（产品无售后服务、催补后未联系客户）一律走置灰 + 提示，
  * 不在这里把动作过滤掉（基线 ※12 / ※24）。
  */
 export function availableActions(ctx: ActionCtx): ActionDef[] {
-  return ACTION_DEFS.filter((a) => a.types.includes(ctx.ticketType as TicketType));
+  const direct = isDirectClosure(ctx.closureMode);
+  return ACTION_DEFS.filter(
+    (a) =>
+      a.types.includes(ctx.ticketType as TicketType)
+      && !(direct && DIRECT_CLOSURE_BLOCKED.includes(a.key)),
+  );
 }
 
 /** 基线 ※12 规定的拦截提示原文 */

@@ -150,12 +150,10 @@ export interface RiskWord {
   hits7d: number;
 
   /**
-   * 角色限定：只认谁说的。
-   * 同一个「曝光」，客户说"我要曝光"是风险，坐席说"您可以曝光"是尽告知义务。
-   * 纯词表时代两者同样命中，是消不掉的误报——只能靠这一列消。
+   * 发话角色限定（一期不做）：沟通记录无法可靠区分客户/坐席，词表一律按关键字匹配。
    */
   speakerLimit: SpeakerRole | '不限';
-  /** 不加角色限定时的近 7 天命中数。与 hits7d 的差额＝角色限定消掉的误报量 */
+  /** 与 hits7d 同口径，保留字段兼容 */
   hits7dRaw: number;
   /** 近 7 天已被人工判定过的命中数（准确率的分母，不含还没核实的） */
   judged7d: number;
@@ -175,14 +173,12 @@ export function accuracyOf(w: RiskWord): number | null {
 }
 
 export const RISK_WORDS: RiskWord[] = [
-  { id: 'w1', word: '曝光', level: '高', speakerLimit: '客户', scopes: ['标题', '问题描述', '沟通记录'], receivers: ['李文萍', '值班经理'], enabled: true, hits7dRaw: 11, hits7d: 6, judged7d: 6, valid7d: 5 },
-  { id: 'w2', word: '媒体', level: '高', speakerLimit: '客户', scopes: ['标题', '问题描述', '沟通记录'], receivers: ['李文萍', '值班经理'], enabled: true, hits7dRaw: 7, hits7d: 4, judged7d: 4, valid7d: 3 },
-  { id: 'w3', word: '起诉', level: '高', speakerLimit: '客户', scopes: ['标题', '问题描述', '补充说明'], receivers: ['李文萍', '法务'], enabled: true, hits7dRaw: 2, hits7d: 2, judged7d: 2, valid7d: 2 },
-  // 12315 不限角色（坐席几乎不会主动提这个号），但准确率偏低——
-  // 因为「后果轻微却喊 12315」也被它捞进来，这正是双轨矩阵要降级的那一类。
+  { id: 'w1', word: '曝光', level: '高', speakerLimit: '不限', scopes: ['标题', '问题描述', '沟通记录'], receivers: ['李文萍', '值班经理'], enabled: true, hits7dRaw: 6, hits7d: 6, judged7d: 6, valid7d: 5 },
+  { id: 'w2', word: '媒体', level: '高', speakerLimit: '不限', scopes: ['标题', '问题描述', '沟通记录'], receivers: ['李文萍', '值班经理'], enabled: true, hits7dRaw: 4, hits7d: 4, judged7d: 4, valid7d: 3 },
+  { id: 'w3', word: '起诉', level: '高', speakerLimit: '不限', scopes: ['标题', '问题描述', '催补记录'], receivers: ['李文萍', '法务'], enabled: true, hits7dRaw: 2, hits7d: 2, judged7d: 2, valid7d: 2 },
   { id: 'w4', word: '12315', level: '高', speakerLimit: '不限', scopes: ['标题', '问题描述', '沟通记录'], receivers: ['值班经理', '投诉专员'], enabled: true, hits7dRaw: 5, hits7d: 5, judged7d: 5, valid7d: 3 },
-  { id: 'w5', word: '投诉到底', level: '中', speakerLimit: '客户', scopes: ['问题描述', '沟通记录'], receivers: ['值班经理'], enabled: true, hits7dRaw: 12, hits7d: 9, judged7d: 8, valid7d: 6 },
-  { id: 'w6', word: '退一赔三', level: '中', speakerLimit: '客户', scopes: ['问题描述', '沟通记录'], receivers: ['值班经理'], enabled: true, hits7dRaw: 3, hits7d: 3, judged7d: 3, valid7d: 3 },
+  { id: 'w5', word: '投诉到底', level: '中', speakerLimit: '不限', scopes: ['问题描述', '沟通记录'], receivers: ['值班经理'], enabled: true, hits7dRaw: 9, hits7d: 9, judged7d: 8, valid7d: 6 },
+  { id: 'w6', word: '退一赔三', level: '中', speakerLimit: '不限', scopes: ['问题描述', '沟通记录'], receivers: ['值班经理'], enabled: true, hits7dRaw: 3, hits7d: 3, judged7d: 3, valid7d: 3 },
   // 反面教材：通用词，7 天命中 142 次、准确率 8%，上线即刷屏，已停用。
   // 旧版只能靠人肉发现"这词怎么天天响"；有了准确率列，它自己就报警了。
   { id: 'w7', word: '孩子', level: '低', speakerLimit: '不限', scopes: ['问题描述'], receivers: ['教育支持组长'], enabled: false, hits7dRaw: 142, hits7d: 142, judged7d: 12, valid7d: 1 },
@@ -367,7 +363,7 @@ export const RISK_HITS: RiskHit[] = [
   },
   {
     id: 'h5', ticketNo: 'LCMN-20260731-58012', title: '智能音箱返修超期未回寄',
-    word: '起诉', level: '高', position: '补充说明',
+    word: '起诉', level: '高', position: '催补记录',
     excerpt: '再拖下去我就走法律途径起诉你们。',
     when: '2026-08-04 09:12', customer: '吴强',
     groupId: 'hardware', groupName: '硬件缺陷组', assignee: '陈坐席',

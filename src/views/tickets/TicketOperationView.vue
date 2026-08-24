@@ -3,7 +3,7 @@ import { computed, defineAsyncComponent, onActivated, onBeforeUnmount, onDeactiv
 import { useRoute, useRouter } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
 import { useWorkspaceTabsStore, resolveTicketTabTitle } from '@/stores/workspaceTabs';
-import { useCtiStore } from '@/stores/cti';
+import { useCtiStore, formatCallDuration } from '@/stores/cti';
 import { useUserStore } from '@/stores/user';
 import OpHeader from './components/operation/OpHeader.vue';
 import OpOverviewBand from './components/operation/OpOverviewBand.vue';
@@ -151,6 +151,29 @@ function onSmsSubmit(payload: { phone: string; templateName: string; content: st
   message.success(`短信已发送至 ${payload.phone}`);
 }
 
+/** 电话挂断后写入联系记录并解锁关闭（PRD-830 §10.1：对客联系自动置已联系） */
+watch(
+  () => cti.callSession,
+  (cur, prev) => {
+    if (!prev || cur || prev.ticketId !== ticketNo.value) return;
+    if (prev.status === 'dialing') return;
+    const duration = prev.connectedAt
+      ? formatCallDuration(Date.now() - prev.connectedAt)
+      : '00:00';
+    tabData.value.contactRecords.unshift({
+      id: `c-${Date.now()}`,
+      kind: 'call',
+      title: '外呼联系',
+      emoji: '📞',
+      operator: user.name || '当前坐席',
+      when: formatNow(),
+      summary: `呼叫号码: ${prev.phone} | 状态: 接通 | 时长: ${duration}`,
+    });
+    syncContactedAfterOutreach();
+    processTabsRef.value?.switchTab('contact');
+  },
+);
+
 function onEmailSubmit(payload: { to: string; subject: string }) {
   tabData.value.contactRecords.unshift({
     id: `c-${Date.now()}`,
@@ -269,8 +292,8 @@ const canCancelTicket = computed(() => headerRoleGate.value.cancelTicket);
 
 /**
  * 底部流转操作栏隐藏：只读态，**或原单已是终态**——
- * 基线 §1 的六个终态（已解决 / 非常规关闭 / 已强结 / 已转单 / 已取消 / 已结案）
- * 不该再出现 下送/升级/调剂/委派/挂起/关闭/强结。
+ * 基线 §1 状态分组为「终态」的七个子状态（已升级投诉 / 已解决 / 已关闭 / 已强结 /
+ * 已转单 / 已取消 / 已结案）不该再出现 下送/升级/调剂/委派/挂起/关闭/强结。
  */
 /**
  * 底栏（二线流转动作条）什么时候整条不出：
@@ -640,25 +663,6 @@ function markRecordAcknowledged(rec: { read?: boolean }, isDunning: boolean) {
   if (isDunning) ins.dunningReadCount = (ins.dunningReadCount ?? 0) + 1;
   else ins.supplementReadCount = (ins.supplementReadCount ?? 0) + 1;
 }
-
-/**
- * ※24 关闭 / 强结拦截（PRD-830 §10.2）：
- * 工单发生过**客户侧催单 / 新建补充**后，须存在**该次催补之后的联系记录**才允许关闭或强结。
- *
- * 判据就是每条催补记录上的 `contacted` —— 它由 syncContactedAfterOutreach() 在坐席
- * 对客联系（电话 / 短信 / 邮件）时自动置上，**没有手动入口**：手动等于把拦截条件
- * 交给被拦的人自己解除，约束就不存在了。
- *
- * ⚠️ 只看客户侧两类记录。我方「补录处理记录」不进 supplementRecords，
- * 因此不会置上这个拦截、也不会解除它。
- * ⚠️ 「已知晓」（read）**不参与判断** —— 点开看过不算处理完。
- */
-const pendingCsRecords = computed(() => [
-  ...tabData.value.dunningRecords.filter((r) => !r.contacted),
-  ...tabData.value.supplementRecords.filter((r) => !r.contacted),
-]);
-const closeBlockedByOutreach = computed(() => pendingCsRecords.value.length > 0);
-const CLOSE_BLOCK_TIP = '客户催单/补充后尚未联系客户，请先联系再关闭';
 
 /** 对客联系后自动置已联系，并连带已知晓（PRD §10.1） */
 function syncContactedAfterOutreach() {
@@ -1065,6 +1069,7 @@ watch(
       :ticket-no="ticketNo"
       :ticket-title="d.title"
       :ticket-type="d.type"
+      :closure-mode="d.closureMode"
       :after-sale-enabled="d.product.afterSaleEnabled"
       :op-state="opState"
       :suspend-info="suspendInfo"
@@ -1080,8 +1085,6 @@ watch(
       :process-result="form.processResult"
       :delegate-targets="d.delegateInfo?.targets"
       :at-tech-support="atTechSupport"
-      :close-blocked="closeBlockedByOutreach"
-      :close-blocked-tip="CLOSE_BLOCK_TIP"
       @action="onAction"
       @cancel="cancelModalOpen = true"
       @withdraw="confirmWithdraw"

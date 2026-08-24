@@ -3,7 +3,10 @@ import { computed } from 'vue';
 import { useUserStore } from '@/stores/user';
 import { CopyOutlined, FlagOutlined } from '@ant-design/icons-vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
-import { PRIORITY_COLOR, softBg, csEntryAvailability, type Priority, type TicketStatus } from '@/views/tickets/types/ticket';
+import {
+  PRIORITY_COLOR, softBg, csEntryAvailability, statusDisplayName,
+  type Priority, type TicketStatus,
+} from '@/views/tickets/types/ticket';
 import OpSlaBar from './OpSlaBar.vue';
 import OpAftersaleLinkCard from './OpAftersaleLinkCard.vue';
 import { isAftersaleSettled } from '../../composables/opActions';
@@ -48,7 +51,8 @@ const props = defineProps<{
 const READONLY_TIP = '本单已被新单接管并锁定，请在新单上处理';
 
 /**
- * 终态（基线 §1 六个：已解决 / 非常规关闭 / 已强结 / 已转单 / 已取消 / 已结案）：
+ * 终态（基线 §1 状态分组为「终态」的七个：已升级投诉 / 已解决 / 已关闭 / 已强结 /
+ * 已转单 / 已取消 / 已结案）：
  * **不再展示「取消工单」**——取消是对"在跑的单"的终止动作，对已经终止的单没有意义（PRD §5.6.3 ②）。
  */
 const isTerminal = computed(() => isTicketTerminated(props.detail.status));
@@ -115,10 +119,25 @@ const isSuperseded = computed(() => !!props.supersededBy);
  */
 const relations = computed(() => buildTicketRelations(props.detail));
 
-/** 状态 → 语义色（对齐 STATUS_TONE：进行中=橙、完成=绿、中性=灰、异常=红） */
+/**
+ * 状态徽章的**页面展示名称**（基线 §1 第三列：操作页头徽章属"用户读到的文案"那一档）。
+ * 落库值仍是 detail.status，配色与终态判定一律按落库值算，两列不混用。
+ * 「已升级投诉」是否展示成「已升级外投」由投诉渠道字段决定，故要把外投标记带进去。
+ */
+const statusText = computed(() =>
+  statusDisplayName(props.detail.status, {
+    externalAppeal: props.detail.isExternalAppeal || props.detail.source === '外投渠道',
+  }),
+);
+
+/**
+ * 落库子状态 → 语义色（对齐 STATUS_TONE：进行中=橙、完成=绿、中性=灰、异常=红）。
+ * ⚠️ 入参必须是**落库值**，不能传展示名 —— 「已转出」的展示名是「已转售后」，
+ * 拿展示名来匹配就落不进下面的紫色分支了。
+ */
 function statusHex(s: string): string {
-  // 已转单/已转出＝业务转到别的单上（非正常关闭），用紫与"已关闭灰"区分开
-  if (/已转单|已转出/.test(s)) return '#7C3AED';
+  // 已转单/已升级投诉/已转出＝业务转到别的单上，用紫与关闭类终态的灰区分开
+  if (/已转单|已升级投诉|已转出/.test(s)) return '#7C3AED';
   if (/已解决|已完成|已结案|已结单|完成/.test(s)) return '#10B981';
   if (/挂起|已关闭|撤销|取消|终止/.test(s)) return '#6B7280';
   if (/升级/.test(s)) return '#A855F7';
@@ -141,8 +160,8 @@ function priorityHex(p: string): string {
       <span
         v-if="isSuperseded"
         class="status-stamp"
-        aria-label="已转单"
-      >已转单</span>
+        :aria-label="statusText"
+      >{{ statusText }}</span>
       <div class="oh-left-body">
         <div class="title-row">
           <span
@@ -150,7 +169,7 @@ function priorityHex(p: string): string {
             class="badge"
             :style="tagStyle(statusHex(detail.status))"
           >
-            <span class="badge-dot" :style="{ background: statusHex(detail.status) }" />{{ detail.status }}
+            <span class="badge-dot" :style="{ background: statusHex(detail.status) }" />{{ statusText }}
           </span>
           <span class="badge badge-neutral">{{ detail.type }}</span>
           <span class="badge" :style="tagStyle(priorityHex(detail.priority))">
@@ -342,6 +361,9 @@ function priorityHex(p: string): string {
   letter-spacing: 0.02em;
   line-height: 1.05;
   text-align: center;
+  /* 戳章文案取状态展示名，字数不定（已转单 3 字 ~ 已升级外投 5 字）：留内边距并允许折行 */
+  padding: 0 4px;
+  word-break: break-all;
   transform: translateY(-50%) rotate(-12deg);
   background: rgba(255, 251, 235, 0.82);
   box-shadow: 0 1px 6px rgba(124, 58, 237, 0.18);

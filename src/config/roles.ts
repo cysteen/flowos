@@ -214,9 +214,12 @@ export const CTI_BAR_ROLES: RoleKey[] = [
  *
  * 规格见《【915】运营监控大盘 PRD》§6.4「谁能打标」：**运营监控岗 ＋ 投诉处理角色**。
  * 投诉处理角色要在这里，是因为它的职责就是盯投诉风险 —— 见本文件 complaint-handler 的定义；
- * 词表本身的维护权归运营管理员，两者不是一回事（监控岗对词表只读）。
+ * 词表维护与打标同属运营监控岗职责；投诉处理角色只打标、不维护词表（2026-08-24 定）。
  */
 export const RISK_TAG_ROLES: RoleKey[] = ['ops-monitor', 'complaint-handler'];
+
+/** 风险预警词表维护（新建 / 编辑 / 启停）——仅运营监控岗，无独立「运营管理员」承接本模块 */
+export const RISK_WORD_MAINTAIN_ROLES: RoleKey[] = ['ops-monitor'];
 
 /**
  * 有**审批资格**的角色 —— 审批中心里「审批批准 / 审批驳回 / 批量通过 / 批量驳回」四枚只对它们渲染。

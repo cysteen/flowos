@@ -602,55 +602,61 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
 
 <template>
   <div class="ops-monitor">
-    <!-- 页头 -->
-    <header class="monitor-header">
-      <div class="head-left">
-        <h1 class="head-title">{{ props.board === 'ticket' ? '工单监控' : '运营报表' }}</h1>
-        <span class="head-tag">只读</span>
+    <!-- 页头：对齐个人门户 / 班组长看板 greeting-card -->
+    <div class="greeting-card">
+      <div class="greeting-text">
+        <div class="greeting-title">
+          {{ props.board === 'ticket' ? '工单监控' : '运营报表' }}
+          <span class="head-tag">只读</span>
+        </div>
+        <div class="greeting-sub">
+          {{ props.board === 'ticket' ? '全中心体检表 · 只读查证 · 点指标下钻核实' : '对比口径：今日 vs 昨日同期 vs 上周同期' }}
+        </div>
       </div>
-    </header>
+      <div v-if="props.board === 'ticket' || props.board === 'report'" class="greeting-aside">
+        <div class="section-filters">
+          <div class="filter-item">
+            <span class="filter-label">监控范围</span>
+            <div class="monitor-scope-picker">
+              <button
+                type="button"
+                class="monitor-scope-all-btn"
+                :class="{ active: isAllScope }"
+                @click="setScopeAll"
+              >
+                全中心
+              </button>
+              <a-select
+                v-model:value="scopeIds"
+                mode="multiple"
+                show-search
+                allow-clear
+                size="small"
+                :options="scopeSelectGroups"
+                :filter-option="filterScopeOption"
+                class="monitor-scope-select"
+                :dropdown-match-select-width="false"
+                placeholder="筛选班组（可多选）"
+                :max-tag-count="1"
+                :max-tag-placeholder="scopeTagPlaceholder"
+              />
+              <span class="monitor-scope-meta">
+                {{ isAllScope ? `共 ${OPS_GROUPS.length} 组` : `已选 ${scopeSelectedCount} 组` }}
+              </span>
+            </div>
+          </div>
+          <template v-if="props.board === 'ticket'">
+            <span class="live-badge"><i class="live-dot" />实时 · 60s</span>
+            <span class="monitor-clock">{{ lastRefresh }}</span>
+            <button type="button" class="monitor-refresh" title="刷新" @click="refresh">
+              <ReloadOutlined />
+            </button>
+          </template>
+        </div>
+      </div>
+    </div>
 
     <template v-if="props.board === 'ticket'">
-      <!-- 监控顶栏：范围 + 刷新（大盘工具条，非操作台） -->
-      <div class="monitor-bar">
-        <div class="monitor-bar-left">
-          <span class="monitor-bar-label">监控范围</span>
-          <div class="monitor-scope-picker">
-            <button
-              type="button"
-              class="monitor-scope-all-btn"
-              :class="{ active: isAllScope }"
-              @click="setScopeAll"
-            >
-              全中心
-            </button>
-            <a-select
-              v-model:value="scopeIds"
-              mode="multiple"
-              show-search
-              allow-clear
-              size="small"
-              :options="scopeSelectGroups"
-              :filter-option="filterScopeOption"
-              class="monitor-scope-select"
-              :dropdown-match-select-width="false"
-              placeholder="筛选班组（可多选）"
-              :max-tag-count="1"
-              :max-tag-placeholder="scopeTagPlaceholder"
-            />
-            <span class="monitor-scope-meta">
-              {{ isAllScope ? `共 ${OPS_GROUPS.length} 组` : `已选 ${scopeSelectedCount} 组` }}
-            </span>
-          </div>
-        </div>
-        <div class="monitor-bar-right">
-          <span class="live-badge"><i class="live-dot" />实时 · 60s</span>
-          <span class="monitor-clock">{{ lastRefresh }}</span>
-          <button type="button" class="monitor-refresh" title="刷新" @click="refresh">
-            <ReloadOutlined />
-          </button>
-        </div>
-      </div>
 
       <!-- ① 值班状态：915 不做，P1 再开 -->
       <template v-if="SHOW_DUTY_PANEL">
@@ -691,12 +697,12 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
       </template>
 
       <!-- ② 流量指标带 -->
-      <section class="panel dash-panel">
-        <div class="dash-head">
-          <div class="dash-head-main">
-            <h2 class="dash-title">工单流量</h2>
-            <p class="dash-formula dash-hint-inline">进出流量监控 · 点卡片展开渠道 / 产线 / 类型分布</p>
-            <p class="dash-formula">
+      <section class="overview-section">
+        <div class="section-head">
+          <div class="section-head-main">
+            <h2 class="section-title">工单流量</h2>
+            <p class="section-sub">进出流量监控 · 点卡片展开渠道 / 产线 / 类型分布</p>
+            <p class="section-sub section-formula">
               今日 {{ snap.opening }} ＋ {{ snap.inbound }} − {{ snap.forward }} ＝ 在办存量 {{ snap.backlog.toLocaleString() }}<MetricTipIcon :tip="opsTip('workingStock')!" />
               <span class="note-sep">|</span>
               本月 {{ snap.monthOpening }} ＋ {{ snap.monthInbound.toLocaleString() }} − {{ snap.monthForward.toLocaleString() }} ＝ {{ snap.backlog.toLocaleString() }}
@@ -881,9 +887,9 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
       </section>
 
       <!-- 流量走势（工单监控 · 进出趋势） -->
-      <section class="panel dash-panel">
-        <div class="dash-head">
-          <h2 class="dash-title">流量走势<MetricTipIcon :tip="opsTip('trendStock')!" /></h2>
+      <section class="overview-section">
+        <div class="section-head">
+          <h2 class="section-title">流量走势<MetricTipIcon :tip="opsTip('trendStock')!" /></h2>
           <div class="grain-row">
             <span v-if="peaks.peak" class="peak-note">
               高峰 {{ peaks.peak.t }}（{{ peaks.peak.inbound.toLocaleString() }}）·
@@ -979,10 +985,10 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
       </section>
 
       <div class="dash-stack">
-        <section v-if="SHOW_KPI_PANEL" class="panel dash-panel">
-          <div class="dash-head compact">
-            <h2 class="dash-title">此刻状态</h2>
-            <span class="dash-hint">较昨日同刻 · 容量视角</span>
+        <section v-if="SHOW_KPI_PANEL" class="overview-section">
+          <div class="section-head">
+            <h2 class="section-title">此刻状态</h2>
+            <span class="section-sub">较昨日同刻 · 容量视角</span>
           </div>
           <div class="kpi-row">
             <div class="kpi-cell">
@@ -1033,10 +1039,10 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
           </div>
         </section>
 
-        <section class="panel dash-panel now-sla">
-          <div class="dash-head compact">
-            <h2 class="dash-title">即将超期监控<MetricTipIcon :tip="opsTip('soon')!" /></h2>
-            <span class="dash-hint">时效分层 · 班组 × 分桶热力 · 点击格子查清单</span>
+        <section class="overview-section now-sla">
+          <div class="section-head">
+            <h2 class="section-title">即将超期监控<MetricTipIcon :tip="opsTip('soon')!" /></h2>
+            <span class="section-sub">时效分层 · 班组 × 分桶热力 · 点击格子查清单</span>
           </div>
           <div class="sla-heatmap-wrap">
             <div class="sla-heat-legend">
@@ -1113,9 +1119,9 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
         明细表、打标弹窗、预警词表抽屉已随模块四拆出，全部搬到「风险监控」页。
         大盘其余模块都是只读指标，只有风险带写动作；写动作寄居在只读页里长不出闭环。
       -->
-      <section class="panel dash-panel">
-        <div class="dash-head compact">
-          <h2 class="dash-title">风险命中<MetricTipIcon :tip="opsTip('riskHits')!" /></h2>
+      <section class="overview-section">
+        <div class="section-head">
+          <h2 class="section-title">风险命中<MetricTipIcon :tip="opsTip('riskHits')!" /></h2>
           <button type="button" class="row-btn" @click="goRiskMonitor()">
             进入风险监控<RightOutlined />
           </button>
@@ -1135,10 +1141,10 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
       </section>
 
       <!-- 分组诊断 · 横向对比 -->
-      <section v-if="SHOW_DIAG_PANEL" class="panel dash-panel">
-        <div class="dash-head compact">
-          <h2 class="dash-title">分组诊断</h2>
-          <span class="dash-hint">横向对比 · 点行切换监控范围</span>
+      <section v-if="SHOW_DIAG_PANEL" class="overview-section">
+        <div class="section-head">
+          <h2 class="section-title">分组诊断</h2>
+          <span class="section-sub">横向对比 · 点行切换监控范围</span>
         </div>
         <div class="diag-bars">
           <div class="db-legend">
@@ -1222,44 +1228,11 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
 
     <!-- Tab② 运营报表（模块 3） -->
     <template v-else-if="SHOW_REPORT_TAB && props.board === 'report'">
-      <div class="monitor-bar">
-        <div class="monitor-bar-left">
-          <span class="monitor-bar-label">监控范围</span>
-          <div class="monitor-scope-picker">
-            <button
-              type="button"
-              class="monitor-scope-all-btn"
-              :class="{ active: isAllScope }"
-              @click="setScopeAll"
-            >
-              全中心
-            </button>
-            <a-select
-              v-model:value="scopeIds"
-              mode="multiple"
-              show-search
-              allow-clear
-              size="small"
-              :options="scopeSelectGroups"
-              :filter-option="filterScopeOption"
-              class="monitor-scope-select"
-              :dropdown-match-select-width="false"
-              placeholder="筛选班组（可多选）"
-              :max-tag-count="1"
-              :max-tag-placeholder="scopeTagPlaceholder"
-            />
-            <span class="monitor-scope-meta">
-              {{ isAllScope ? `共 ${OPS_GROUPS.length} 组` : `已选 ${scopeSelectedCount} 组` }}
-            </span>
-          </div>
-        </div>
-        <span class="report-note">对比口径：今日 vs 昨日同期 vs 上周同期</span>
-      </div>
 
       <!-- 质量走势（周 / 月可切换） -->
-      <section class="panel dash-panel">
-        <div class="dash-head compact">
-          <h2 class="dash-title">质量走势</h2>
+      <section class="overview-section">
+        <div class="section-head">
+          <h2 class="section-title">质量走势</h2>
           <div class="grain-row">
             <button
               type="button"
@@ -1309,10 +1282,10 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
       </section>
 
       <!-- 3.2 整体解决及时率 + 3.3 质量四率（含 3.4 同环比） -->
-      <section class="panel dash-panel">
-        <div class="dash-head compact">
-          <h2 class="dash-title">质量指标</h2>
-          <span class="dash-hint">低于健康线标黄；同环比向下标红</span>
+      <section class="overview-section">
+        <div class="section-head">
+          <h2 class="section-title">质量指标</h2>
+          <span class="section-sub">低于健康线标黄；同环比向下标红</span>
         </div>
         <div class="report-hero">
           <div class="gauge-panel">
@@ -1383,10 +1356,10 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
 
       <div class="report-row">
         <!-- 3.1 各业务线占比 -->
-        <section class="panel dash-panel">
-          <div class="dash-head compact">
-            <h2 class="dash-title">业务线工单占比</h2>
-            <span class="dash-hint">与实时大盘产线下钻同源</span>
+        <section class="overview-section">
+          <div class="section-head">
+            <h2 class="section-title">业务线工单占比</h2>
+            <span class="section-sub">与实时大盘产线下钻同源</span>
           </div>
           <div class="report-body">
             <div class="pie-wrap">
@@ -1420,10 +1393,10 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
         </section>
 
         <!-- 3.2 各班组时效达成率对比 -->
-        <section class="panel dash-panel">
-          <div class="dash-head compact">
-            <h2 class="dash-title">班组时效达成率</h2>
-            <span class="dash-hint">绿 ≥95 / 黄 85–95 / 红 &lt;85</span>
+        <section class="overview-section">
+          <div class="section-head">
+            <h2 class="section-title">班组时效达成率</h2>
+            <span class="section-sub">绿 ≥95 / 黄 85–95 / 红 &lt;85</span>
           </div>
           <div class="report-body">
             <div class="sla-list">
@@ -1530,50 +1503,100 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
 </template>
 
 <style scoped>
-/* ── 监控大盘：数据陈列优先，不做班组看板的「操作台」视觉 ── */
+/* 页壳：对齐个人门户 / 班组长看板 §4.9 */
 .ops-monitor {
   display: flex;
   flex-direction: column;
-  gap: 0;
-  padding: 0 0 24px;
-  background: #e8ecf1;
+  gap: 12px;
+  padding: 16px 20px 24px;
   min-height: 100%;
+  width: 100%;
+  min-width: 0;
+  background:
+    radial-gradient(ellipse 80% 40% at 0% 0%, rgba(26, 111, 255, 0.08), transparent 55%),
+    radial-gradient(ellipse 60% 30% at 100% 8%, rgba(16, 185, 129, 0.05), transparent 50%),
+    #f3f6fb;
 }
 
-.panel {
+.greeting-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  gap: 12px;
+  flex-wrap: wrap;
+  border-radius: 14px;
+  border: 1px solid rgba(26, 111, 255, 0.18);
+  background: linear-gradient(135deg, #eff6ff 0%, #f8fbff 48%, #ecfdf5 100%);
+  box-shadow: 0 4px 16px rgba(26, 111, 255, 0.08);
+}
+.greeting-text { min-width: 0; flex: 1; }
+.greeting-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.greeting-sub { margin-top: 6px; font-size: 12px; color: #64748b; line-height: 1.55; }
+.greeting-aside { display: flex; align-items: center; flex: none; }
+.head-tag {
+  font-size: 10px; font-weight: 600; color: #64748b;
+  background: #f1f5f9; border-radius: 3px; padding: 1px 6px;
+}
+
+.section-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  padding: 6px 10px;
+  background: #f8fafc;
+  border: 1px solid #eef2f7;
+  border-radius: 10px;
+}
+.filter-item { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.filter-label { flex: none; font-size: 12px; font-weight: 500; color: #9ca3af; line-height: 1; }
+
+.overview-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
   background: #fff;
-  border: 1px solid #d5dce6;
-  border-radius: 4px;
-  padding: 0;
-  box-shadow: none;
+  border: 0.8px solid #e5e6eb;
+  border-radius: 14px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
 }
-.dash-panel { margin: 0 16px 12px; }
-.dash-head {
-  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap;
-  padding: 12px 16px 10px;
-  border-bottom: 1px solid #e8ecf1;
-  background: #fafbfc;
+.section-head {
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap;
 }
-.dash-head.compact { align-items: center; padding: 10px 16px; }
-.dash-head-main { min-width: 0; }
-.dash-title {
-  margin: 0; font-size: 13px; font-weight: 600; color: #334155;
-  letter-spacing: 0.03em; text-transform: uppercase;
+.section-head.compact { align-items: center; }
+.section-head-main { min-width: 0; }
+.section-title {
+  margin: 0; font-size: 13px; font-weight: 700; color: #111827;
+  letter-spacing: 0; text-transform: none;
+  display: inline-flex; align-items: center; gap: 6px; line-height: 1.3;
 }
-.dash-formula {
-  margin: 4px 0 0; font-size: 11px; color: #64748b;
+.section-sub {
+  margin: 2px 0 0; font-size: 11px; color: #9ca3af;
   font-variant-numeric: tabular-nums; line-height: 1.45;
 }
-.dash-hint { font-size: 11px; color: #94a3b8; }
+.section-formula { margin-top: 4px; }
 .dash-dim {
   display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
 }
 .dash-dim-label { font-size: 11px; color: #94a3b8; margin-right: 4px; }
 .dash-dim-btn {
-  border: 1px solid #e2e8f0; background: #fff; color: #64748b; border-radius: 3px;
+  border: 1px solid #e2e8f0; background: #fff; color: #64748b; border-radius: 8px;
   padding: 2px 8px; font-size: 11px; font-weight: 500; cursor: pointer; font-family: inherit;
 }
-.dash-dim-btn.active { background: #334155; border-color: #334155; color: #fff; }
+.dash-dim-btn.active { background: #1a6fff; border-color: #1a6fff; color: #fff; }
 
 .ob-head {
   display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
@@ -1585,62 +1608,36 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
 .link-btn { border: none; background: none; padding: 0; color: #475569; font-size: 11px; cursor: pointer; font-family: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .ob-empty { padding: 16px; font-size: 12px; color: #94a3b8; text-align: center; }
 
-/* 顶栏：与 monitor-bar 同系，不做深色大屏顶 */
-.monitor-header {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
-  margin: 12px 16px 0; padding: 8px 12px;
-  background: #fff; border: 1px solid #d5dce6; border-radius: 4px;
-}
-.head-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.head-title { margin: 0; font-size: 15px; font-weight: 600; color: #0f172a; line-height: 1.3; }
-.head-tag {
-  font-size: 10px; font-weight: 600; color: #64748b;
-  background: #f1f5f9; border-radius: 3px; padding: 1px 6px;
-}
-.head-tag-complaint {
-  color: #c2410c;
-  background: #ffedd5;
-}
-.dash-hint-inline { margin-bottom: 2px; color: #94a3b8; }
 .risk-board-note {
   margin: 0;
-  padding: 8px 16px 0;
+  padding: 0 4px 4px;
   font-size: 11px;
   color: #64748b;
   line-height: 1.5;
 }
-.word-table-inline { margin: 8px 16px 0; }
-.drawer-note.inline { margin: 8px 16px 12px; }
+.word-table-inline { margin: 4px 0 0; }
+.drawer-note.inline { margin: 8px 0 0; }
 
-/* 工具条 */
-.monitor-bar {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
-  margin: 12px 16px; padding: 8px 12px;
-  background: #fff; border: 1px solid #d5dce6; border-radius: 4px;
-}
-.monitor-bar-label { font-size: 11px; font-weight: 600; color: #64748b; margin-right: 8px; text-transform: uppercase; letter-spacing: 0.04em; }
-.monitor-bar-left { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .monitor-scope-picker { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .monitor-scope-all-btn {
-  border: 1px solid #e2e8f0; background: #fff; color: #64748b; border-radius: 3px;
-  padding: 2px 10px; font-size: 12px; font-weight: 500; cursor: pointer; font-family: inherit; height: 24px;
+  border: 1px solid #e5e7eb; background: #fff; color: #64748b; border-radius: 8px;
+  padding: 2px 10px; font-size: 12px; font-weight: 500; cursor: pointer; font-family: inherit; height: 28px;
 }
-.monitor-scope-all-btn:hover { background: #f1f5f9; color: #334155; }
-.monitor-scope-all-btn.active { background: #334155; color: #fff; border-color: #334155; }
-.monitor-scope-select { min-width: 220px; max-width: 360px; flex: 1; }
-.monitor-scope-select :deep(.ant-select-selector) { border-radius: 3px !important; font-size: 12px; min-height: 24px !important; }
+.monitor-scope-all-btn:hover { background: #f9fafb; color: #374151; }
+.monitor-scope-all-btn.active { background: #1a6fff; color: #fff; border-color: #1a6fff; }
+.monitor-scope-select { min-width: 200px; max-width: 320px; }
+.monitor-scope-select :deep(.ant-select-selector) { border-radius: 8px !important; font-size: 12px; min-height: 28px !important; }
 .monitor-scope-meta { font-size: 11px; color: #94a3b8; white-space: nowrap; }
-.monitor-bar-right { display: flex; align-items: center; gap: 10px; margin-left: auto; }
 .monitor-clock { font-size: 12px; color: #64748b; font-variant-numeric: tabular-nums; font-weight: 500; }
 .monitor-refresh {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 28px; height: 28px; border: 1px solid #e2e8f0; background: #fff; border-radius: 3px;
+  width: 28px; height: 28px; border: 1px solid #e5e7eb; background: #fff; border-radius: 8px;
   color: #64748b; cursor: pointer; font-size: 12px;
 }
-.monitor-refresh:hover { background: #f8fafc; color: #334155; }
+.monitor-refresh:hover { background: #f9fafb; color: #374151; }
 .live-badge {
   display: inline-flex; align-items: center; gap: 5px;
-  font-size: 11px; font-weight: 600; color: #047857; background: #ecfdf5; border-radius: 3px; padding: 2px 8px;
+  font-size: 11px; font-weight: 600; color: #047857; background: #ecfdf5; border-radius: 999px; padding: 3px 10px;
 }
 .live-dot { width: 5px; height: 5px; border-radius: 50%; background: #10b981; animation: pulse 2s infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
@@ -1734,7 +1731,7 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
 .me-axis { margin-top: 6px; }
 
 /* 此刻 KPI 行 */
-.dash-stack { display: flex; flex-direction: column; gap: 0; }
+.dash-stack { display: flex; flex-direction: column; gap: 12px; }
 .kpi-row {
   display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1px; background: #e2e8f0; margin: 0;
@@ -2011,9 +2008,9 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
 .row-done { font-size: 11px; color: #10b981; font-weight: 600; }
 
 /* 表格 / 图表区 */
-.dash-panel .diag-table,
-.dash-panel .hit-table { margin: 0; }
-.dash-panel .ob-empty { padding: 20px 16px; }
+.overview-section .diag-table,
+.overview-section .hit-table { margin: 0; }
+.overview-section .ob-empty { padding: 20px 8px; }
 .chart-wrap { padding: 12px 16px 14px; }
 .chart-pro { background: linear-gradient(180deg, #fafbfc 0%, #fff 60%); }
 .chart-lg { width: 100%; height: 160px; display: block; }
@@ -2072,7 +2069,7 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
 @media (max-width: 640px) {
   .metric-strip { grid-template-columns: 1fr; }
   .quality-grid { grid-template-columns: 1fr; }
-  .dash-head { flex-direction: column; align-items: flex-start; }
+  .section-head { flex-direction: column; align-items: flex-start; }
 }
 
 /* Tab② 报表 */

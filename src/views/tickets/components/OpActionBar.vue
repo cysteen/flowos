@@ -13,6 +13,7 @@ import OpForwardModal from './operation/OpForwardModal.vue';
 import OpAftersaleActivateModal from './operation/OpAftersaleActivateModal.vue';
 import type { SuspendInfo, OpActionType, TicketOpState, AftersaleContext } from '../composables/opActions';
 import { availableActions, NO_AFTERSALE_TIP } from '../composables/opActionRegistry';
+import type { ClosureMode } from '@/views/tickets/types/ticket';
 import { MAX_RETURN_COUNT } from '../composables/opActions';
 import { activateAftersaleTicket } from '@/api/aftersaleActivate';
 
@@ -20,6 +21,12 @@ const props = defineProps<{
   ticketNo: string;
   ticketTitle: string;
   ticketType: string;
+  /**
+   * 结案方式（基线 §1「结案方式」小节），与工单类型正交。
+   * 「直接结案」的单动作集极简 —— 不下送、不升级、不挂起、不转派，见 availableActions。
+   * 缺省视为「正常流程」，不会误收窄历史单的动作集。
+   */
+  closureMode?: ClosureMode;
   afterSaleEnabled: boolean;
   opState: TicketOpState;
   suspendInfo: SuspendInfo | null;
@@ -48,12 +55,6 @@ const props = defineProps<{
    * 产研那一类处理人仍是二线、不给「退回」），由视图侧算好传入。
    */
   atTechSupport?: boolean;
-  /**
-   * ※24 拦截：被客户催补且**尚未联系客户**时为 true —— 「关闭工单」「强结」一起置灰。
-   * 判据在视图侧算（每条催补记录的 contacted），此处只管呈现。
-   */
-  closeBlocked?: boolean;
-  closeBlockedTip?: string;
   /**
    * 隐藏底部操作栏本体（一线视角）：只藏可见的按钮条，组件仍挂载，
    * 头部按钮触发的弹窗（如「关联售后」）照常可用。
@@ -134,26 +135,14 @@ const isDelegating = computed(() => !!props.delegateTargets);
  * 委派中锁定：一切"把单子转出去或终结掉"的动作。
  * 「下送」不锁——在委派节点，下送=送到下一节点=回到委派节点（协办完成回送）。
  */
-/**
- * ※24 关闭 / 强结拦截（PRD-830 §10.2）：被催补且尚未联系客户时，两枚一起置灰。
- * 与「委派中锁定」同一套 forbidden 机制，只是原因不同。
- */
-const OUTREACH_LOCKED: OpActionType[] = ['关闭工单', '强结'];
-
-/**
- * 命中即可断定 key 不是「转单」（OUTREACH_LOCKED 只收 OpActionType），
- * 让后续 actionMap.get(key) 无需再判空转单分支。
- */
-function isOutreachLocked(key: OpActionType | '转单'): key is OpActionType {
-  return (OUTREACH_LOCKED as (OpActionType | '转单')[]).includes(key);
-}
-
 const DELEGATE_LOCKED: (OpActionType | '转单')[] = [
   '调剂', '关闭工单', '强结', '升级', '转售后', '转单', '退回', '挂起',
 ];
 const DELEGATE_LOCK_TIP = '工单委派中，协办完成后可操作';
 
-const actions = computed(() => availableActions({ ticketType: props.ticketType }));
+const actions = computed(() =>
+  availableActions({ ticketType: props.ticketType, closureMode: props.closureMode }),
+);
 
 /**
  * 产品无售后服务 → 「转售后」**置灰 + 提示**，不是隐藏（基线 ※12）。
@@ -229,21 +218,11 @@ const barActions = computed<BarItem[]>(() => {
       });
       continue;
     }
-    // ※24：被催补且未联系客户 → 关闭工单 / 强结 一起置灰（PRD-830 §10.2）
-    if (props.closeBlocked && isOutreachLocked(key)) {
-      const blocked = actionMap.value.get(key);
-      if (!blocked) continue;
-      items.push({
-        key,
-        label: blocked.label,
-        icon: blocked.icon,
-        danger: blocked.danger,
-        forbidden: true,
-        forbiddenTip: props.closeBlockedTip,
-      });
-      continue;
-    }
     if (key === '转单') {
+      // 转单也登记在 ACTION_DEFS 里（类型 × 结案方式两维都由 availableActions 判），
+      // 只是它开的是建单弹窗、不走 OpActionDialogs，所以在这里单独 push，
+      // 而不是从 actionMap 取 def —— 但可见性仍得问 actionMap，否则被滤掉了也照样出来。
+      if (!actionMap.value.has('转单')) continue;
       items.push({ key: '转单', label: '转单', icon: 'SwapOutlined' });
       continue;
     }

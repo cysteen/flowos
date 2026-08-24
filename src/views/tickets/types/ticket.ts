@@ -67,8 +67,14 @@ export type SmartMark = '升级' | '情绪' | '相似' | '知识';
 export type CustomerTag = '记者' | '老师' | '校长' | '自媒体';
 export type Priority = 'P0' | 'P1' | 'P2' | 'P3';
 /**
- * 工单状态（对齐《00-基线-工单状态与动作》§1，一律中文状态名）。
- * 字段仍名 nodeStatus，类型即基线状态。
+ * 工单**子状态**（对齐《00-基线-工单状态与动作》§1，一律中文状态名）。
+ *
+ * 基线 §1「这张表怎么读」把状态分成两层：
+ * - **子状态**＝落库值，也是动作矩阵、权限判断的依据，一格一个、不可再拆；
+ * - **状态**＝粗粒度分组（初始 / 处理中 / 调研中 / 审核中 / 终态），只给看板、筛选、状态徽章用，见 STATUS_GROUP。
+ *
+ * **代码里做状态判断一律用子状态**，别拿分组去判动作可用性。
+ * 字段仍名 nodeStatus，类型即基线子状态。
  */
 export type TicketStatus =
   | '草稿'
@@ -82,11 +88,23 @@ export type TicketStatus =
   | '业务动作审核中'
   | '已挂起'
   | '已升级'
+  /**
+   * 升级投诉后**原单**落的终态。基线 §1 该行：落库只有这一个子状态，
+   * 是否外投由**投诉渠道字段**区分、展示时拼名（「已升级投诉」/「已升级外投」）。
+   * 原单迁「已转单」的旧做法随之作废，所以「已转单」的展示变体里不再含"已转投诉"。
+   * 动作集与「已转单」相同——两者语义一致：原单关闭、新单继续跑。
+   */
+  | '已升级投诉'
   | '已委派'
   | '已退回'
   | '已转出'
   | '已解决'
-  | '非常规关闭'
+  /**
+   * 友好沟通后关闭（基线 §1 该行）。
+   * 【注意】它是一个**具体的可落库子状态**，**不是**"全部关闭类终态"的分类伞——
+   * 别拿它去泛指已强结 / 已结案 / 已转单，那几个各有各的名字。
+   */
+  | '已关闭'
   | '已强结'
   | '已转单'
   | '已取消'
@@ -106,13 +124,121 @@ export type NodeStatus = TicketStatus;
  */
 export type EscalateTarget = '三线技术支持' | '产研';
 
-/** 基线 §1 全部状态（筛选项 / 校验用）：20 行 = 20 个可落库状态 */
+/** 基线 §1 全部子状态（筛选项 / 校验用）：21 行 = 21 个可落库子状态，顺序与基线 §1 表一致 */
 export const BASELINE_STATUSES: TicketStatus[] = [
   '草稿', '未认领', '待响应', '处理中', '调研中',
   '申请挂起中', '申请关闭中', '申请强结中', '业务动作审核中',
-  '已挂起', '已升级', '已委派', '已退回', '已转出',
-  '已解决', '非常规关闭', '已强结', '已转单', '已取消', '已结案',
+  '已挂起', '已升级', '已升级投诉', '已委派', '已退回', '已转出',
+  '已解决', '已关闭', '已强结', '已转单', '已取消', '已结案',
 ];
+
+/**
+ * 粗粒度**状态**分组（基线 §1 第二列）——只给看板、筛选、状态徽章用。
+ *
+ * 「处理中」既是状态也是子状态：状态＝处理中且子状态＝处理中，表示"就在处理、没有更具体的情况"；
+ * 已挂起 / 已升级 / 已委派 / 已退回 / 已转出 都是它的细分。
+ * 「调研中」独立成一个分组：单不在我方手上（在回访环节等客户反馈），SLA 口径与「处理中」不同、看板须能单独筛。
+ *
+ * ⚠️ **动作可用性、权限、拦截一律按子状态判**，不要拿本分组当判据。
+ */
+export type StatusGroup = '初始' | '处理中' | '调研中' | '审核中' | '终态';
+
+export const STATUS_GROUP: Record<TicketStatus, StatusGroup> = {
+  草稿: '初始',
+  未认领: '初始',
+  待响应: '初始',
+  处理中: '处理中',
+  调研中: '调研中',
+  申请挂起中: '审核中',
+  申请关闭中: '审核中',
+  申请强结中: '审核中',
+  业务动作审核中: '审核中',
+  已挂起: '处理中',
+  已升级: '处理中',
+  已升级投诉: '终态',
+  已委派: '处理中',
+  已退回: '处理中',
+  已转出: '处理中',
+  已解决: '终态',
+  已关闭: '终态',
+  已强结: '终态',
+  已转单: '终态',
+  已取消: '终态',
+  已结案: '终态',
+};
+
+/**
+ * 落库子状态 → **页面展示名称**（基线 §1 第三列）。
+ *
+ * 界面文案与落库值可以不同；**逻辑判断、动作矩阵、权限一律用子状态**，两列不得混用。
+ * 未列入本表的子状态，展示名与落库值相同。
+ *
+ * 两个展示名要看别的字段才定得下来，故不在本表里给死值，由 statusDisplayName() 拼：
+ * - 「已转单」随新单类型变（已转咨询 / 已转建议 / 已转商机）；
+ * - 「已升级投诉」由投诉渠道字段决定是「已升级投诉」还是「已升级外投」。
+ */
+export const STATUS_DISPLAY_NAME: Partial<Record<TicketStatus, string>> = {
+  未认领: '待领取',
+  已转出: '已转售后',
+  // 已解决与已结案**界面同名**（业务已确认无需在界面上区分）：坐席侧一律显示「已结案」，
+  // 两者的区别看「结案方式」这一维度（见 ClosureMode），不靠展示名反推。
+  已解决: '已结案',
+  已结案: '已结案',
+};
+
+/** 拼展示名时要看的两个字段（基线 §1「已转单」「已升级投诉」两行） */
+export interface StatusDisplayCtx {
+  /** 「已转单」派生出的新单类型：咨询 / 建议 / 商机 */
+  transferredToType?: TicketType;
+  /** 投诉渠道属外投：「已升级投诉」展示为「已升级外投」 */
+  externalAppeal?: boolean;
+}
+
+/**
+ * 取某个落库值的**页面展示名称**（基线 §1 第三列）。
+ *
+ * 入参放宽到 string：处理页的 detail.status 是自由文本，除基线子状态外还会出现
+ * 售后单状态等非基线字面值——那些原样返回，不硬套映射。
+ */
+export function statusDisplayName(status: string, ctx?: StatusDisplayCtx): string {
+  if (status === '已转单' && ctx?.transferredToType) return `已转${ctx.transferredToType}`;
+  if (status === '已升级投诉') return ctx?.externalAppeal ? '已升级外投' : '已升级投诉';
+  return STATUS_DISPLAY_NAME[status as TicketStatus] ?? status;
+}
+
+/**
+ * 列表行取状态展示名的收口：上下文两个字段都从工单上取，调用处不必自己拼。
+ * 「投诉渠道属外投」按工单来源判（与建单页、处理页的外投判据同源）。
+ */
+export function ticketStatusDisplayName(t: Ticket): string {
+  return statusDisplayName(t.nodeStatus, {
+    transferredToType: t.transferredToType,
+    externalAppeal: t.ticketSource === '外投渠道',
+  });
+}
+
+/**
+ * 结案方式（基线 §1「结案方式」小节）——**建单时选定、此后不可改**，与工单类型正交
+ * （工单类型仍是咨询 / 建议 / 投诉 / 商机四类不变）。
+ *
+ * - 正常流程：进流程办理，走完调研回访后结案 → 落「已解决」
+ * - 直接结案：一次性解答完、当场收口，从未进流程 → 落「已结案」；**不下送、不升级、不挂起、不转派**
+ *
+ * 统计口径与 SLA 都按本维度切，不靠状态反推——「已解决」与「已结案」界面同名，反推不出来。
+ */
+export type ClosureMode = '正常流程' | '直接结案';
+
+export const CLOSURE_MODES: ClosureMode[] = ['正常流程', '直接结案'];
+
+/** 缺省视为「正常流程」：历史单没有这个字段，按走过流程处理更安全（不会误收窄动作集） */
+export function resolveClosureMode(mode?: ClosureMode): ClosureMode {
+  return mode ?? '正常流程';
+}
+
+/** 直接结案单：动作集极简（基线「结案方式」小节「动作集」一条） */
+export function isDirectClosure(mode?: ClosureMode): boolean {
+  return resolveClosureMode(mode) === '直接结案';
+}
 
 export type StatusTone = 'primary' | 'success' | 'warning' | 'danger' | 'info';
 
@@ -129,20 +255,26 @@ const REVIEW_STATUSES: TicketStatus[] = [
   '申请挂起中', '申请关闭中', '申请强结中', '业务动作审核中',
 ];
 
+/**
+ * 状态徽章配色。非终态直接按**粗粒度分组**取色（基线 §1 第二列就是给状态徽章用的）；
+ * 终态内部再按子状态分：正常收口=绿、异常终止=红、业务转到别的单上=中性。
+ */
 export function statusTone(status: TicketStatus): StatusTone {
+  if (STATUS_GROUP[status] !== '终态') {
+    return STATUS_GROUP[status] === '初始' ? 'primary' : 'warning';
+  }
   switch (status) {
-    case '草稿':
-    case '未认领':
-    case '待响应':
-      return 'primary';
     case '已解决':
-    case '非常规关闭':
+    // 「已关闭」＝友好沟通后关闭，属正常收口，与已解决 / 已结案同族
+    case '已关闭':
     case '已结案':
       return 'success';
     case '已强结':
     case '已取消':
       return 'danger';
+    // 已转单 / 已升级投诉：原单关闭、业务转到新单上，既非正常收口也非异常终止
     case '已转单':
+    case '已升级投诉':
       return 'info';
     default:
       return 'warning';
@@ -224,10 +356,21 @@ export interface Ticket {
   aftersaleOriginStatus?: string;
   nodeStatus: NodeStatus;
   /**
+   * 结案方式（基线 §1「结案方式」小节）：建单时选定、此后不可改，与工单类型正交。
+   * 统计口径、SLA 计不计时、动作集宽窄都按它切，不靠状态反推。
+   * 缺省（历史单）视为「正常流程」，见 resolveClosureMode。
+   */
+  closureMode?: ClosureMode;
+  /**
    * 升级目标（仅 `nodeStatus === '已升级'` 时有值）。基线只有一个「已升级」状态，
    * 三线技术支持与产研的差别（处理人转不转、催补通知发给谁）由本字段承担。
    */
   escalateTarget?: EscalateTarget;
+  /**
+   * 「已转单」派生出的新单类型——基线 §1 该行的展示名随它变（已转咨询 / 已转建议 / 已转商机），
+   * 落库仍只有「已转单」一个子状态。取展示名见 ticketStatusDisplayName。
+   */
+  transferredToType?: TicketType;
   nodeStep: number;
   nodeTotal: number;
   priority: Priority;
@@ -248,7 +391,7 @@ export interface Ticket {
   resolveSlaState?: SlaState;
   /** 首响超时后才完成 → 首响终态「未达标」（红）；缺省＝时限内达标（绿） */
   firstRespBreached?: boolean;
-  /** 仅已关闭单：解决超时后才关闭 → 解决终态「未达标」（红）；缺省＝达标（绿） */
+  /** 仅**终态**单：解决超时后才收口 → 解决终态「未达标」（红）；缺省＝达标（绿） */
   solveBreached?: boolean;
   /** 是否存在预约记录 */
   hasAppointment?: boolean;
@@ -449,11 +592,11 @@ const SLA_STATE_RANK: Record<SlaState, number> = { overdue: 0, soon: 1, ok: 2, p
 
 /**
  * SLA 排序键（PRD §8.2②）：每单两只对客钟（整单解决 + 整单首响）**归约取最急**——
- * 终态钟（达标/未达标/已关闭）不参与；挂起单计时冻结、组置底；已关闭单无活跃钟、排最后。
- * group：0 已超时 / 1 临期 / 2 正常 / 3 挂起 / 4 已关闭；minutes：组内距超时分钟升序。
+ * 已停的钟（达标/未达标/中止）不参与；挂起单计时冻结、组置底；**终态**单无活跃钟、排最后。
+ * group：0 已超时 / 1 临期 / 2 正常 / 3 挂起 / 4 终态；minutes：组内距超时分钟升序。
  */
 export function slaSortKey(t: Ticket): { group: number; minutes: number } {
-  if (t.slaText === '—') return { group: 4, minutes: Number.MAX_SAFE_INTEGER }; // 已关闭：无活跃钟
+  if (t.slaText === '—') return { group: 4, minutes: Number.MAX_SAFE_INTEGER }; // 终态：无活跃钟
   if (t.slaState === 'paused') return { group: 3, minutes: Number.MAX_SAFE_INTEGER }; // 挂起：冻结置底
   // 活跃钟集合：扁平摘要（已响=解决钟 / 未响=首响钟）+ 未响时的解决钟独立字段
   const clocks: { state: SlaState; minutes: number }[] = [
@@ -595,6 +738,8 @@ export const DONE_CHIPS: ChipMeta[] = [
   { key: 'myUpgrade', label: '已升级' },
   { key: 'transfer', label: '调剂' },
   { key: 'delegate', label: '委派' },
+  // 判据是**我做过「关闭工单」这个动作**（myCloseAction），不是按状态筛；
+  // 该动作审批通过后落的子状态恰好同名（基线 §1「已关闭」＝友好沟通后关闭）。
   { key: 'closed', label: '已关闭' },
   { key: 'forceClose', label: '强结' },
 ];
@@ -702,9 +847,27 @@ export function inPoolPendingScope(t: Ticket, visibleGroupIds?: string[]): boole
   return true;
 }
 
-/** 终态判定（催补待回只收未结案的单） */
+/** 终态判定（催补待回只收未结案的单）。终态集＝基线 §1 里状态分组为「终态」的七个子状态 */
 export function isTicketClosed(status: TicketStatus): boolean {
-  return ['已解决', '非常规关闭', '已强结', '已转单', '已取消', '已结案'].includes(status);
+  return STATUS_GROUP[status] === '终态';
+}
+
+/**
+ * 钟已停、`nodeStatus` 却还停在在办态的单（工单数据源的已知问题），按它做过的动作
+ * 反推该落哪个**终态子状态**。判据顺序即业务优先级。
+ *
+ * 兜底给「已解决」而不是「已结案」——基线「结案方式」小节把「已结案」限定为
+ * 结案方式＝**直接结案**（建单即结案、从未进流程）的单；这里的单都跑过流程，属正常流程。
+ *
+ * 单一实现：处理页详情与客户洞察履历都用它，别各自反推一遍，否则两处会漂。
+ */
+export function resolveStoppedClockStatus(t: Ticket): TicketStatus {
+  // 因升级投诉而关闭：原单落「已升级投诉」（基线 §1 该行已独立成终态，不再迁「已转单」）
+  if (t.escalatedToNo) return '已升级投诉';
+  if (t.myForceCloseAction) return '已强结';
+  // 「关闭工单」审批通过 → 「已关闭」（基线 §1 该行「友好沟通后关闭」）
+  if (t.myCloseAction) return '已关闭';
+  return isDirectClosure(t.closureMode) ? '已结案' : '已解决';
 }
 
 /**
@@ -757,9 +920,11 @@ export function headerActionsByRole(roleKey: string): {
  *
  * 三类：
  * - 全给：非终态且非已转出（未认领 / 待响应 / 处理中 / 已退回 / 调研中 / 审核中4态 / 已挂起 / 已升级 / 已委派）
- * - 只给补充：**4 个终态**（已解决 / 非常规关闭 / 已强结 / 已转单）—— 客户催的是已收口的事，没有承接对象
+ * - 只给补充：**5 个终态**（已解决 / 已关闭 / 已强结 / 已转单 / 已升级投诉）—— 客户催的是已收口的事，
+ *   没有承接对象；已转单与已升级投诉的补充跳子单（基线 ※23）
  * - 都不给：**草稿**（只有新建相关操作）、**已转出**（客服侧冻结，去售后系统）、
- *           **已结案**（建单即结案的一次性单，没有接着办的余地，※25）、**已取消**（业务中止）
+ *           **已结案**（建单即结案的一次性单，没有接着办的余地，基线「已结案不支持催补」一条）、
+ *           **已取消**（业务中止）
  */
 export function csEntryAvailability(status: TicketStatus): {
   supplement: boolean;
@@ -768,7 +933,7 @@ export function csEntryAvailability(status: TicketStatus): {
   if (status === '草稿' || status === '已转出' || status === '已结案' || status === '已取消') {
     return { supplement: false, dunning: false };
   }
-  if (['已解决', '非常规关闭', '已强结', '已转单'].includes(status)) {
+  if (['已解决', '已关闭', '已强结', '已转单', '已升级投诉'].includes(status)) {
     return { supplement: true, dunning: false };
   }
   return { supplement: true, dunning: true };
