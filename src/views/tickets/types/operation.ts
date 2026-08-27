@@ -161,7 +161,7 @@ export interface ProcessFormDraft {
     platform: string;
     complaintNo?: string;
   }[];
-  /** 投诉渠道 · 回复结果（多平台共用一份） */
+  /** 投诉渠道 · 平台回复结果（多平台共用一份） */
   complaintChannelReply: string;
   /** 投诉渠道 · 是否和解（多平台共用一份） */
   complaintChannelReconcile: '' | '是' | '否';

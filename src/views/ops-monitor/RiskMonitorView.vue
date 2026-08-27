@@ -48,36 +48,38 @@ const user = useUserStore();
 
 // ---- 监控范围：固定全中心，页内不提供范围切换（筛查条内可另选班组） ----
 //
-// 【清单的两层选择】域（看哪一批）× 域内条件（这批里筛哪些），两层各归其位。
-// 域回答的是「看待核实的、已核实的、还是全部」，域内条件回答的是「这批里挑等级 / 挑核实结果」。
+// 【清单的两层选择】视图（看哪一批）× 视图内条件（这批里筛哪些），两层各归其位。
+// 视图回答的是「看待核实的、还是已核实的」，视图内条件回答的是「这批里挑等级 / 挑核实结果」。
 //
-// 【为什么域只剩三个，且与 KPI 一一对应】域一度是 待核实/确认是风险/误报，
-// 于是「切到已核实」这个动作只能从成效卡的两个按钮进——人站在清单这儿，
-// 四个等级 chip 里没有一个能切到已核实的记录，导航是断的；而 KPI 卡上写着「待核实 5」
-// 却点不进去。现在域＝ 全部 / 待核实 / 已核实，与「发现 / 待核实 / 已核实」三张 KPI 卡
-// 严格对齐（准确率是比率，没有对应集合，故它不可点），页签层就是 KPI 层。
+// 【为什么只有一个状态变量】这里一度并存两个：上方 KPI 卡驱动的「域」（全部/待核实/已核实）
+// 与清单卡头驱动的「页签」（实时监控/手动筛查/已核实），两者只做了部分同步。
+// 后果是页签标签与清单内容当场对不上——点 KPI「发现 19」把域切成全部、页签却停在实时监控，
+// 于是标签写着「实时监控 15」、表里躺着 19 行。**一块屏上同一件事只能有一个真源**，
+// 两套状态机不管同步得多勤，都会在某条路径上分叉；故合并成 listView 这一个。
 //
-// 【为什么核实结果从"域"降为"域内条件"】成立/误报和等级一样，都是**在已核实这批里再收窄**，
-// 与域不是一个层级。把它摆成域，会让人以为点「确认是风险」是和点「高危」平级的动作，
+// 【为什么取消「全部」域】业务已拍板。"待核实 + 已核实"混在一屏，人既不能照着它干活
+// （里面一半是干完的），也不能拿它交代成果（里面一半还没判）；而它偏偏又是等级 chip
+// 唯一需要变口径的场合——chip 底表得随域在"全部"与"待核实"之间跳。
+// 取消之后，chip 底表恒为待核实，数字不再有两个口径。
+//
+// 【为什么核实结果不是一个视图】成立/误报和等级一样，都是**在已核实这批里再收窄**，
+// 与视图不是一个层级。把它摆成视图，会让人以为点「确认是风险」是和点「高危」平级的动作，
 // 实则前者换了整批数据、后者只是筛。降到台账查询条里当一个筛选项后，
 // 层级关系就直白了：先选批（页签），再筛条件（chip / 查询条）。
-type ListDomain = 'all' | 'open' | 'judged';
-/** 清单主视图：实时监控 / 手动筛查 / 已核实 —— 与上方 KPI 同语义，但这里是操作入口 */
-type ListViewTab = 'realtime' | 'scan' | 'judged';
-// 域内的等级条件。待核实域与全部域共用它——两者的清单里都有各等级，收窄口径一致。
+/** 清单主视图：实时监控（待核实）/ 手动筛查 / 已核实 —— 页签与两张可点 KPI 卡同一个状态 */
+type ListView = 'realtime' | 'scan' | 'judged';
+// 视图内的等级条件，只在实时监控视图生效。
 // 🔴 原先另有一个 'pending'（高危待核），它与 '高' **筛出的是同一批数据**——
-// 待核实域本身已排除已打标的，「高危」在这个域里就是「高危待核」。
+// 实时监控视图本身已排除已核实的，「高危」在这里就是「高危待核」。
 // 那个 chip 是「打标即出队」改动前的遗留（当时"高危"含已核实的，两者才有别），
 // 2026-08-26 删除，红色告警态与深链 ?pending=1 一并并入 '高'。
 type GradeFilter = 'all' | RiskLevel;
-/** 域：全部 / 待核实 / 已核实，与三张可点 KPI 卡一一对应 */
-const listDomain = ref<ListDomain>('open');
-/** 清单区主 Tab：把标题、域页签、手动筛查按钮收成一层，避免三处导航各说各话 */
-const listViewTab = ref<ListViewTab>('realtime');
-/** 域内的等级选择。大盘点「待打标」卡下钻时预置为高危 */
+/** 清单唯一的视图状态：页签、KPI 卡、成效卡的核实结果按钮全读写它 */
+const listView = ref<ListView>('realtime');
+/** 视图内的等级选择。大盘点「待打标」卡下钻时预置为高危 */
 const gradeFilter = ref<GradeFilter>(route.query.pending === '1' ? '高' : 'all');
-/** 已核实域才需要台账查询条：只有这批记录会被事后点查 */
-const inLedger = computed(() => listDomain.value === 'judged');
+/** 已核实视图才需要台账查询条：只有这批记录会被事后点查 */
+const inLedger = computed(() => listView.value === 'judged');
 const scope = computed<OpsScope>(() => 'all');
 const scopeSelectGroups = getOpsScopeSelectGroups();
 function filterScopeOption(input: string, option: { label?: string }) {
@@ -155,7 +157,9 @@ function nowStamp(withSeconds = false): string {
 
 function normalizeScanRun(raw: Record<string, unknown>): ScanRun {
   if (raw.kind === 'realtime' || raw.kind === 'manual') {
-    return raw as ScanRun;
+    // 已是新结构，原样放行。Record<string, unknown> 与 ScanRun 在 TS 看来没有重叠，
+    // 这里的窄化依据是运行时的 kind 判断，故须经 unknown 中转。
+    return raw as unknown as ScanRun;
   }
   const at = String(raw.at ?? nowStamp());
   return {
@@ -192,7 +196,14 @@ function loadScanRuns(): ScanRun[] {
 
 const scanRuns = ref<ScanRun[]>(loadScanRuns());
 const pendingManualRunId = ref<string | null>(null);
-const lastRefresh = computed(() => scanRuns.value[0]?.endedAt ?? '—');
+/**
+ * 扫库记录按开始时刻倒序。数组本身只按写入顺序追加，种子里 8/26 那条排在 8/4 之后——
+ * 直接取首条会把一条旧执行当成"上次执行"，这个时刻是人判断"数据新不新"的唯一依据，不能错。
+ */
+const scanRunsDesc = computed(
+  () => [...scanRuns.value].sort((a, b) => b.startedAt.localeCompare(a.startedAt)),
+);
+const lastRefresh = computed(() => scanRunsDesc.value[0]?.endedAt ?? '—');
 
 function persistScanRuns() {
   try { localStorage.setItem(SCAN_RUN_LS_KEY, JSON.stringify(scanRuns.value.slice(0, 50))); } catch { /* ignore */ }
@@ -237,7 +248,7 @@ function scanRunResultText(r: ScanRun): string {
 //
 // 【为什么仍保留"确认并入"】筛查是对存量的一次性扫描，「孩子」那类词一扫上百条，
 // 直接入库会把待核实队列淹没且不可逆。故结果先以「待并入」态呈现在清单里，勾选后才落。
-const scanBarOpen = computed(() => listViewTab.value === 'scan');
+const scanBarOpen = computed(() => listView.value === 'scan');
 const scanning = ref(false);
 const scanResult = ref<ScanResultRow[] | null>(null);
 /** 结果里勾选要入库的行；重复项默认不勾 */
@@ -306,14 +317,16 @@ function onScanDateRangeChange(
 }
 
 
-function setListViewTab(tab: ListViewTab) {
-  listViewTab.value = tab;
-  if (tab === 'realtime') {
-    if (listDomain.value === 'judged') listDomain.value = 'open';
-    gradeFilter.value = 'all';
-  } else if (tab === 'judged') {
-    setDomain('judged');
-  }
+/**
+ * 切视图。页签、KPI 卡、成效卡的核实结果按钮**全部走这里**，
+ * 保证"换一批数据"这件事只有一套语义：
+ *   ① 进已核实视图时把查询条复位到默认 30 天窗口，视图内互切则保留已填条件；
+ *   ② 等级一律复位——带着"高危"进新视图大概率直接空列表，人会误以为没数据。
+ */
+function setListView(v: ListView) {
+  if (v === 'judged' && listView.value !== 'judged') resetLedgerFilter();
+  listView.value = v;
+  gradeFilter.value = 'all';
 }
 
 function doScan() {
@@ -321,7 +334,12 @@ function doScan() {
   const t0 = Date.now();
   const startedAt = nowStamp(true);
   try {
-    const rows = runManualScan(scanForm.value);
+    // 词表与判重底表都从页面当前状态传进去：扫的必须是人此刻在下拉里看到的那份词，
+    // 判重也必须认这一会话已经并入的行，否则同样条件再扫一次会把它们当新命中重报一遍。
+    const rows = runManualScan(scanForm.value, {
+      words: localWords.value,
+      adopted: scanAdopted.value,
+    });
     scanResult.value = rows;
     scanPicked.value = new Set(rows.filter((r) => !r.duplicated).map((r) => r.hit.id));
     const runId = `run-${Date.now()}`;
@@ -401,7 +419,13 @@ function adoptScan() {
     ));
     persistScanRuns();
   }
-  message.success(`已并入 ${picked.length} 条命中，可按等级处置`);
+  // 陈述实际入库条数而不是勾选条数：两者不等时（勾的已经在清单里）报勾选数就是句假话，
+  // 人会以为这批已经进队列了，回头在待核实里找不到又说不清哪儿丢的。
+  if (!fresh.length) {
+    message.info('所勾选的命中都已在清单中，本次没有新增');
+  } else {
+    message.success(`已并入 ${fresh.length} 条命中，可按等级处置`);
+  }
   exitScanResult();
 }
 
@@ -423,7 +447,7 @@ const scanSummary = computed(() => {
   const parts: string[] = [];
   parts.push(f.groupIds.length ? `${f.groupIds.length} 个班组` : '全中心');
   parts.push(`${f.from} 至 ${f.to}`);
-  parts.push(f.wordIds.length ? `${f.wordIds.length} 条词` : '全部启用词');
+  parts.push(f.wordIds.length ? `${f.wordIds.length} 条词` : '全部启用中的词');
   parts.push(f.matchScopes.length ? f.matchScopes.join('/') : '按词表范围');
   parts.push(f.nodeStatuses.length
     ? (f.nodeStatuses.length <= 3 ? f.nodeStatuses.join('/') : `${f.nodeStatuses.length} 个子状态`)
@@ -511,11 +535,11 @@ function onLedgerRangeChange(
 }
 
 /**
- * 已核实域的全部记录（未过筛选）——既是查询底表，也是下拉项的取值来源。
- * 底表含成立与误报两类：成立/误报是查询条里的一个筛选项，不再各占一个域。
+ * 已核实视图的全部记录（未过筛选）——既是查询底表，也是下拉项的取值来源。
+ * 底表含成立与误报两类：成立/误报是查询条里的一个筛选项，不再各占一个视图。
  */
 const ledgerBase = computed(() => {
-  if (listDomain.value !== 'judged') return [];
+  if (listView.value !== 'judged') return [];
   return rows.value.filter((h) => !!verdictOf(h));
 });
 
@@ -544,6 +568,8 @@ function applyLedgerFilter(list: RiskHit[]): RiskHit[] {
   return list.filter((h) => {
     if (f.verdict !== 'all' && verdictOf(h) !== f.verdict) return false;
     if (kw && !h.ticketNo.toLowerCase().includes(kw) && !h.customer.toLowerCase().includes(kw)) return false;
+    // 误报没有等级（gradeOf 返回 null），故选定任一具体等级时它一律不匹配。
+    // 让它落进某一档等于承认"误报也是风险，只是低一点"，与准确率的口径直接打架。
     if (f.level !== 'all' && gradeOf(h) !== f.level) return false;
     // 时间锚在**命中时刻**而非打标时刻：点查问的是"当时有没有发现"
     const day = h.when.slice(0, 10);
@@ -589,45 +615,42 @@ const filteredRows = computed(() => {
   if (inScanResult.value) {
     return (scanResult.value ?? []).map((r) => r.hit)
       .sort((a, b) => {
-        const d = GRADE_ORDER[gradeOf(a)] - GRADE_ORDER[gradeOf(b)];
+        const d = gradeRank(a) - gradeRank(b);
         return d !== 0 ? d : b.when.localeCompare(a.when);
       });
   }
   let list = rows.value;
   if (inLedger.value) {
-    // 已核实域：核实成立 / 误报的，出待办队列但**不删除**——
+    // 已核实视图：核实成立 / 误报的，出待办队列但**不删除**——
     // 它是这个岗位"发现了什么"的证据，也是复盘与准确率的依据。
-    // 域已定，核实结果与等级等条件只在域内收窄，不会把人拽去别的批次。
+    // 视图已定，核实结果与等级等条件只在视图内收窄，不会把人拽去别的批次。
     list = applyLedgerFilter(ledgerBase.value);
-  } else if (listDomain.value === 'all') {
-    // 全部域：待核实与已核实同框，供复盘与抽查——
-    // 「这段时间一共命中了什么」这个问题，只看待办或只看台账都答不全。
-    if (gradeFilter.value !== 'all') {
-      list = list.filter((h) => gradeOf(h) === gradeFilter.value);
-    }
   } else {
-    // 待核实域：已打标的出队，否则待核实归零了清单还是那么长，
+    // 实时监控视图：已核实的出队，否则待核实归零了清单还是那么长，
     // 监控岗每天打开看到的全是自己上周处理完的，很快就没人看了。
-    list = list.filter((h) => !tagOf(h));
+    list = list.filter((h) => !isJudged(h));
     if (gradeFilter.value !== 'all') {
       list = list.filter((h) => gradeOf(h) === gradeFilter.value);
     }
   }
   return [...list].sort((a, b) => {
-    const ga = gradeOf(a);
-    const gb = gradeOf(b);
-    if (GRADE_ORDER[ga] !== GRADE_ORDER[gb]) return GRADE_ORDER[ga] - GRADE_ORDER[gb];
-    if (ga === '高') {
-      const ua = tagOf(a) ? 1 : 0;
-      const ub = tagOf(b) ? 1 : 0;
+    const ra = gradeRank(a);
+    const rb = gradeRank(b);
+    if (ra !== rb) return ra - rb;
+    if (gradeOf(a) === '高') {
+      const ua = isJudged(a) ? 1 : 0;
+      const ub = isJudged(b) ? 1 : 0;
       if (ua !== ub) return ua - ub;
     }
-    return 0;
+    // 同级同状态时按命中时刻倒序：不给末位判据，排序就取决于数组的写入顺序，
+    // 同一份数据两次进来可能给出两个次序，翻页时行会跳。
+    return b.when.localeCompare(a.when);
   });
 });
 
 const hitPageCurrent = ref(1);
-const hitPageSize = ref(12);
+/** 与分页器的可选每页条数保持一致：给一个下拉里根本选不回来的值，人一改就回不去了 */
+const hitPageSize = ref(10);
 
 const pagedRows = computed(() => {
   const start = (hitPageCurrent.value - 1) * hitPageSize.value;
@@ -639,31 +662,29 @@ function setHitPage(page: number, size: number) {
   hitPageSize.value = size;
 }
 
-watch([listDomain, listViewTab, gradeFilter, ledgerFilter, scanResult, inScanResult, scope], () => {
+watch([listView, gradeFilter, ledgerFilter, scanResult, inScanResult, scope], () => {
   hitPageCurrent.value = 1;
 }, { deep: true });
 
-/** 域内选等级：只换域内条件，域不动——早先它会把人拽回待核实域，等于等级与域互斥 */
+/** 视图内选等级：只换视图内条件，视图不动——早先它会把人拽回待核实那批，等于等级与视图互斥 */
 function setGradeFilter(g: GradeFilter) {
   gradeFilter.value = g;
 }
 
 /**
- * 切域。所有入口（页签、KPI 卡、成效卡的核实结果按钮）都走这里，
- * 保证"换一批数据"这件事只有一套语义：
- *   ① 进已核实域时把查询条复位到默认 30 天窗口，域内互切则保留已填条件；
- *   ② 等级一律复位——带着"高危"进新域大概率直接空列表，人会误以为没数据。
+ * 列表展示等级。已核实的取核实结果，否则取词表预设。
+ * 判为**误报的返回 null**：误报是"规则捞错了"，不是"风险很低"——
+ * 回落到词表预设去冒充一个等级，界面上就会同时挂着「高风险」与「误报」两个互相打架的标签。
  */
-function setDomain(d: ListDomain) {
-  if (d === 'judged' && listDomain.value !== 'judged') resetLedgerFilter();
-  listDomain.value = d;
-  gradeFilter.value = 'all';
-  listViewTab.value = d === 'judged' ? 'judged' : 'realtime';
+function gradeOf(h: RiskHit): RiskLevel | null {
+  const e = latestEntryOf(h);
+  return e ? e.level : h.level;
 }
 
-/** 列表展示等级：已打标取打标结果，否则取词表预设 */
-function gradeOf(h: RiskHit): RiskLevel {
-  return tagOf(h) ?? h.level;
+/** 排序用的等级序位：没有等级的（误报）排在同批末尾，它不该混进风险的轻重排队里 */
+function gradeRank(h: RiskHit): number {
+  const g = gradeOf(h);
+  return g ? GRADE_ORDER[g] : 3;
 }
 
 /** 词表预设等级（打标前参考值） */
@@ -680,24 +701,30 @@ const GRADES: RiskLevel[] = ['高', '中', '低'];
 //   ① 待核实  ——系统命中，还没人判
 //   ② 确认是风险——核实成立，三级都算，风险监控到此交棒，处置在工单侧
 //   ③ 误报    ——核实不成立，是规则问题不是风险，**不进风险统计**
-// 注意这三种是**数据状态**，不等于清单的三个域：②③ 同属「已核实」这一批，
-// 在域内靠核实结果这个筛选项区分；把它们各摆一个域，正是早先层级错位的由来。
-const openHits = computed(() => rows.value.filter((h) => !tagOf(h)));
+// 注意这三种是**数据状态**，不等于清单的三个视图：②③ 同属「已核实」这一批，
+// 在视图内靠核实结果这个筛选项区分；把它们各摆一个视图，正是早先层级错位的由来。
+//
+// 「判过没有」一律看 isJudged，不看有没有等级：误报是判过的，但它没有等级，
+// 用 gradeOf 当判据会让所有误报重新掉回待核实队列里。
+const openHits = computed(() => rows.value.filter((h) => !isJudged(h)));
 const confirmedHits = computed(() => rows.value.filter((h) => verdictOf(h) === '成立'));
 const falseHits = computed(() => rows.value.filter((h) => verdictOf(h) === '误报'));
 
 /**
- * 等级 chip 的底表随域走：口径必须与人正在看的那批一致。
- * 恒按待核实计数的话，在全部域里点「高危 3」却出来 8 行，数字就成了假的。
+ * 等级 chip 的底表恒为待核实。chip 只在实时监控视图出现，那里看的就是待核实这一批——
+ * 「全部」域取消后底表不再有第二种口径，chip 上的数字与点进去的行数永远对得上。
  */
-const gradeBase = computed(() => (listDomain.value === 'all' ? rows.value : openHits.value));
-/** 等级分布：chip 上的数字现算，与当前域同口径 */
+const gradeBase = computed(() => openHits.value);
+/** 等级分布：chip 上的数字现算，与清单同口径 */
 const gradeCount = computed<Record<RiskLevel, number>>(() => ({
   高: gradeBase.value.filter((h) => gradeOf(h) === '高').length,
   中: gradeBase.value.filter((h) => gradeOf(h) === '中').length,
   低: gradeBase.value.filter((h) => gradeOf(h) === '低').length,
 }));
-/** 确认是风险的等级分布——成效条要回答"等级如何" */
+/**
+ * 确认是风险的等级分布——成效条要回答"等级如何"。
+ * 底表只含成立的，而成立必定带等级，故这里不会出现无等级的行，三档之和恒等于成立数。
+ */
 const confirmedByGrade = computed<Record<RiskLevel, number>>(() => ({
   高: confirmedHits.value.filter((h) => gradeOf(h) === '高').length,
   中: confirmedHits.value.filter((h) => gradeOf(h) === '中').length,
@@ -733,26 +760,41 @@ const effect = computed(() => {
 // "改过没有、从什么改成什么、为什么改"，复盘时链条是断的。
 // 第 1 条＝首次核实，之后每次修正各追加一条；末条即当前生效值。
 type TagEntry = {
-  level: RiskLevel;
+  /**
+   * 本次判定的风险等级。判为**误报时为 null**——PRD 口径是"误报没有等级"，
+   * 不是"等级为低"。弹窗里等级区在选误报时已置灰，值也必须跟着不落，
+   * 否则台账里躺着一条既是「高风险」又是「误报」的记录，事后没人说得清它到底算什么。
+   */
+  level: RiskLevel | null;
   verdict: HitVerdict;
   note: string;
   by: string;
+  /**
+   * 打标人当时的角色（基线 §3.1）。姓名回答"是谁"，角色回答"他有多少分量"——
+   * 客诉专员判的和投诉督导判的，复盘时的采信度与改判成本都不一样。
+   */
+  byRole: string;
   at: string;
-  /** 本次修正的理由。首次核实没有这一项 */
-  reason?: string;
+  /** 本次修正的理由。首次核实没有这一项。字段名与 PRD §6.3 一致 */
+  amendReason?: string;
 };
 /** 每条命中的核实历史，按时间正序 */
 const localTags = ref<Record<string, TagEntry[]>>({});
 const canRiskTag = computed(() => RISK_TAG_ROLES.includes(user.roleKey));
 
-/** 数据源里带来的首次核实，作为历史的第 1 条并回展示，否则修正记录会从半截开始 */
+/**
+ * 数据源里带来的首次核实，作为历史的第 1 条并回展示，否则修正记录会从半截开始。
+ * 判据是 verdict 而不是 tagged：误报本来就不该带等级，用等级当"判过没有"的判据，
+ * 会把已核实为误报的记录整批漏掉。
+ */
 function seedEntryOf(h: RiskHit): TagEntry | undefined {
-  if (!h.tagged || !h.verdict) return undefined;
+  if (!h.verdict) return undefined;
   return {
-    level: h.tagged,
+    level: h.verdict === '误报' ? null : (h.tagged ?? h.level),
     verdict: h.verdict,
     note: h.taggedNote ?? '',
     by: h.taggedBy ?? '—',
+    byRole: h.taggedByRole ?? '—',
     at: h.taggedAt ?? '—',
   };
 }
@@ -781,12 +823,20 @@ const tagReason = ref('');
 const tagAmend = ref(false);
 const tagHistory = computed(() => (tagTarget.value ? historyOf(tagTarget.value) : []));
 const tagCurrent = computed(() => (tagTarget.value ? latestEntryOf(tagTarget.value) : undefined));
+/**
+ * 本次真正会落库的等级。误报一律落 null——等级单选还留着上一次的选中态，
+ * 拿它当"改动了"的依据的话，把成立改判成误报后再点一次某个等级，
+ * 界面会认为又变了一次，历史里就多出一条什么都没改的修正。
+ */
+const tagLevelToSave = computed<RiskLevel | null>(
+  () => (tagVerdict.value === '误报' ? null : tagLevel.value),
+);
 /** 值没变就不该追加一条空修正，否则历史会被无意义的记录稀释 */
 const tagDirty = computed(() => {
   const cur = tagCurrent.value;
   if (!cur) return true;
   return tagVerdict.value !== cur.verdict
-    || tagLevel.value !== cur.level
+    || tagLevelToSave.value !== cur.level
     || tagNote.value.trim() !== cur.note;
 });
 const canSaveTag = computed(() => {
@@ -814,12 +864,13 @@ function saveTag() {
   if (tagAmend.value && !tagDirty.value) { message.warning('核实结果没有变化，无需修正'); return; }
   if (tagAmend.value && !tagReason.value.trim()) { message.warning('请填写修正原因'); return; }
   const entry: TagEntry = {
-    level: tagLevel.value,
+    level: tagLevelToSave.value,
     verdict: tagVerdict.value,
     note: tagNote.value.trim(),
     by: user.current.name,
+    byRole: user.role.name,
     at: nowStamp(),
-    ...(tagAmend.value ? { reason: tagReason.value.trim() } : {}),
+    ...(tagAmend.value ? { amendReason: tagReason.value.trim() } : {}),
   };
   // 追加而不覆盖
   localTags.value = {
@@ -831,19 +882,28 @@ function saveTag() {
       ? `已修正 ${target.ticketNo} 的核实结果为「${entry.verdict}」，本次修正已留痕`
       : entry.verdict === '误报'
         ? `已记为误报，将计入规则准确率`
-        : `已对 ${target.ticketNo} 打标「${entry.level}风险」`,
+        : `已对 ${target.ticketNo} 打标「${tagLevel.value}风险」`,
   );
   tagOpen.value = false;
+}
+/** 等级的人话说法：误报没有等级，说清"无等级"而不是留空，否则读不出这次改的是什么 */
+function levelText(l: RiskLevel | null): string {
+  return l ? `${l}危` : '无等级';
 }
 /** 两次核实之间实际改了什么——修正记录要能直接读出"从 X 改成 Y" */
 function entryDiffText(prev: TagEntry, next: TagEntry): string {
   const parts: string[] = [];
   if (prev.verdict !== next.verdict) parts.push(`判定 ${prev.verdict} → ${next.verdict}`);
-  if (prev.level !== next.level) parts.push(`等级 ${prev.level}危 → ${next.level}危`);
+  if (prev.level !== next.level) parts.push(`等级 ${levelText(prev.level)} → ${levelText(next.level)}`);
   if (prev.note !== next.note) parts.push(next.note ? '处置备注已更新' : '处置备注已清空');
   return parts.join(' · ');
 }
-function tagOf(h: RiskHit): RiskLevel | undefined {
+/** 这条判过没有。等级可以为空（误报），判定不会，故"判过没有"只认它 */
+function isJudged(h: RiskHit): boolean {
+  return !!latestEntryOf(h);
+}
+/** 现行核实结果里的等级；误报为 null，未核实为 undefined */
+function tagOf(h: RiskHit): RiskLevel | null | undefined {
   return latestEntryOf(h)?.level;
 }
 
@@ -855,7 +915,7 @@ function runRealtimeScan(triggerBy = '系统') {
   const endedAt = () => dayjs(t0 + Math.max(600, Date.now() - t0)).format('YYYY-MM-DD HH:mm:ss');
   try {
     const hits = wordOnlyRiskHitsOf(scope.value);
-    const open = hits.filter((h) => !tagOf(h)).length;
+    const open = hits.filter((h) => !isJudged(h)).length;
     appendScanRun({
       id: `run-rt-${Date.now()}`,
       kind: 'realtime',
@@ -892,15 +952,16 @@ onMounted(() => {
 function verdictOf(h: RiskHit): HitVerdict | undefined {
   return latestEntryOf(h)?.verdict;
 }
-function traceOf(h: RiskHit): { by: string; at: string; note: string } | undefined {
+function traceOf(h: RiskHit): { by: string; byRole: string; at: string; note: string } | undefined {
   const e = latestEntryOf(h);
-  return e ? { by: e.by, at: e.at, note: e.note } : undefined;
+  return e ? { by: e.by, byRole: e.byRole, at: e.at, note: e.note } : undefined;
 }
 /** 处置列徽标的悬停说明：现行核实结果的来源；改过就把次数标出来，指向修正记录 */
 function tagTraceTitle(h: RiskHit): string | undefined {
   const t = traceOf(h);
   if (!t) return undefined;
-  const lines = [`打标人：${t.by}`, `打标时刻：${t.at}`];
+  // 角色与姓名同行给出：光看姓名答不出"这条判定有多少分量"
+  const lines = [`打标人：${t.by}（${t.byRole}）`, `打标时刻：${t.at}`];
   if (t.note) lines.push(`处置备注：${t.note}`);
   const amended = historyOf(h).length - 1;
   if (amended > 0) lines.push(`已修正 ${amended} 次，明细见「修正」`);
@@ -927,10 +988,10 @@ function toggleBulkAll() {
 function clearBulk() { bulkPicked.value = new Set(); }
 
 const bulkCount = computed(() => bulkPicked.value.size);
-// 只有待核实域给批量选择：批量动作就一个「批量打标」，
-// 已核实域里条目都判完了没得可批，全部域是两批混着的，勾选后一半按钮点不动更糟。
+// 只有实时监控视图给批量选择：批量动作就一个「批量打标」，
+// 而已核实视图里条目都判完了，没得可批。
 const showHitSelection = computed(
-  () => !inScanResult.value && canRiskTag.value && listViewTab.value === 'realtime' && listDomain.value === 'open',
+  () => !inScanResult.value && canRiskTag.value && listView.value === 'realtime',
 );
 const batchMenuOpen = ref(false);
 
@@ -971,12 +1032,16 @@ function saveBulk() {
   const at = nowStamp();
   const next = { ...localTags.value };
   bulkTargets.value.forEach((h) => {
-    // 与单条同一套留痕：追加一条，不覆盖既有历史
+    // 与单条同一套留痕：追加一条，不覆盖既有历史；
+    // 误报同样不落等级——批量与单条必须是同一个口径，否则台账里会出现两种误报。
     next[h.id] = [...(next[h.id] ?? []), {
-      level: bulkLevel.value === '' ? presetGradeOf(h) : bulkLevel.value,
+      level: bulkVerdict.value === '误报'
+        ? null
+        : (bulkLevel.value === '' ? presetGradeOf(h) : bulkLevel.value),
       verdict: bulkVerdict.value!,
       note: bulkNote.value.trim(),
       by: user.current.name,
+      byRole: user.role.name,
       at,
     }];
   });
@@ -1000,10 +1065,12 @@ function hashOf(s: string): number {
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
   return h;
 }
+// 判为误报的不上雷达：雷达画的是"扫到了什么风险"，误报的结论恰恰是"这里没有风险"，
+// 让它继续亮着，等于把已经排除掉的东西留在屏幕上继续吓人。
 const radarBlips = computed(() =>
-  rows.value.slice(0, 14).map((h) => {
+  rows.value.filter((h) => gradeOf(h) !== null).slice(0, 14).map((h) => {
     const n = hashOf(h.id);
-    const g = gradeOf(h);
+    const g = gradeOf(h)!;
     const ring = g === '高' ? 0.3 : g === '中' ? 0.58 : 0.84;
     const angle = (n % 360) * (Math.PI / 180);
     const r = ring + ((n >> 9) % 12) / 100;
@@ -1019,7 +1086,7 @@ const radarBlips = computed(() =>
 );
 
 const untaggedHigh = computed(() =>
-  allHits.value.filter((h) => !tagOf(h) && presetGradeOf(h) === '高'),
+  allHits.value.filter((h) => !isJudged(h) && presetGradeOf(h) === '高'),
 );
 
 /**
@@ -1037,7 +1104,16 @@ const riskWordsOpen = ref(false);
 const canMaintainWords = computed(() => RISK_WORD_MAINTAIN_ROLES.includes(user.roleKey));
 /** 原型本地词表：可新建，刷新后回 mock 初始值 */
 const localWords = ref<RiskWord[]>([...RISK_WORDS]);
-const enabledWordCount = computed(() => localWords.value.filter((w) => w.enabled).length);
+const enabledWords = computed(() => localWords.value.filter((w) => w.enabled));
+const enabledWordCount = computed(() => enabledWords.value.length);
+/**
+ * 手动筛查的预警词下拉只列启用中的。停用是维护人给这条规则下的判决——
+ * 把停用词摆进选项里（哪怕标着「停用」），等于邀请人把当初停用它的理由重演一遍：
+ * 「孩子」一选就是上百条噪音，而筛查结果是要并入待核实队列的。
+ */
+const scanWordOptions = computed(
+  () => enabledWords.value.map((w) => ({ value: w.id, label: w.word })),
+);
 
 const wordFormOpen = ref(false);
 const wordForm = ref({
@@ -1099,7 +1175,7 @@ function saveWord() {
       valid7d: 0,
     },
   ];
-  message.success(wordForm.value.enabled ? `已新建并启用「${word}」` : `已新建「${word}」（默认停用，可先试跑看近 7 天命中）`);
+  message.success(wordForm.value.enabled ? `已新建并启用「${word}」` : `已新建「${word}」（停用中，启用后才纳入实时监控与手动筛查）`);
   wordFormOpen.value = false;
 }
 function toggleWordEnabled(w: RiskWord) {
@@ -1107,6 +1183,11 @@ function toggleWordEnabled(w: RiskWord) {
   localWords.value = localWords.value.map((item) =>
     item.id === w.id ? { ...item, enabled: !item.enabled } : item,
   );
+  // 刚停用的词若还留在筛查条件里，下拉已经不列它、条件却还带着它，
+  // 于是筛出来的结果与人看到的条件对不上。停用即从条件里摘掉。
+  if (w.enabled) {
+    scanForm.value.wordIds = scanForm.value.wordIds.filter((id) => id !== w.id);
+  }
   message.success(w.enabled ? `已停用「${w.word}」` : `已启用「${w.word}」`);
 }
 /**
@@ -1218,32 +1299,31 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
     <!-- ② 监控成效：待办清空后，这一组数是这个岗位这段时间的全部交代 -->
     <section class="overview-section effect-section">
       <!--
-        三张有对应集合的指标做成按钮：卡上写着「待核实 5」却点不进去，是把结论摆出来又不给去处。
-        它们与下方清单的域页签一一对应，点哪张就换哪一批，激活态两处联动。
-        核实结果是成效的落点，同时是「已核实」域内筛选项的快捷入口。
+        只有「待核实」「已核实」两张卡可点：它们各自背后是一批**能被打开来逐条看**的记录，
+        与下方清单的两个视图一一对应，点哪张就换哪一批，激活态两处联动。
+        「发现」与「准确率」保持不可点——「全部」域取消后前者已没有对应的清单可去，
+        后者是比率、背后本就没有一批记录；给它们一个点不出结果的手型，比不给更误导。
+        核实结果是成效的落点，同时是「已核实」视图内筛选项的快捷入口。
       -->
       <div class="effect-row">
         <h2 class="section-title effect-title" title="发现 → 核实 → 定论 · 准确率分母只算已核实，未核实的不拉低它">监控数据</h2>
 
         <div class="effect-metrics">
-          <button
-            type="button"
-            class="em-item"
-            :class="{ on: listViewTab === 'realtime' && listDomain === 'all' }"
+          <div
+            class="em-item em-static"
             :style="{ '--kpi-accent': '#1A6FFF' }"
-            title="预警词命中总数"
-            @click="setDomain('all')"
+            title="预警词命中总数 · 待核实与已核实之和"
           >
             <span class="em-label">发现</span>
             <span class="em-val">{{ effect.total }}</span>
-          </button>
+          </div>
           <button
             type="button"
             class="em-item"
-            :class="{ on: listViewTab === 'judged' }"
+            :class="{ on: listView === 'judged' }"
             :style="{ '--kpi-accent': '#10B981' }"
             title="已判定成立或误报"
-            @click="setDomain('judged')"
+            @click="setListView('judged')"
           >
             <span class="em-label">已核实</span>
             <span class="em-val">{{ effect.judged }}</span>
@@ -1265,10 +1345,10 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
           <button
             type="button"
             class="em-item"
-            :class="{ on: listViewTab === 'realtime' && listDomain === 'open' }"
+            :class="{ on: listView === 'realtime' }"
             :style="{ '--kpi-accent': untaggedHigh.length > 0 ? '#EF4444' : '#F59E0B' }"
             :title="`其中高危 ${untaggedHigh.length} 条`"
-            @click="setDomain('open')"
+            @click="setListView('realtime')"
           >
             <span class="em-label">待核实</span>
             <span
@@ -1284,8 +1364,8 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
           <button
             type="button"
             class="er-btn"
-            :class="{ active: listViewTab === 'judged' && ledgerFilter.verdict === '成立' }"
-            @click="setDomain('judged'); ledgerFilter.verdict = '成立'"
+            :class="{ active: listView === 'judged' && ledgerFilter.verdict === '成立' }"
+            @click="setListView('judged'); ledgerFilter.verdict = '成立'"
           >
             <span class="er-name">确认是风险</span>
             <span class="er-num danger">{{ confirmedHits.length }}</span>
@@ -1297,9 +1377,9 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
           <button
             type="button"
             class="er-btn"
-            :class="{ active: listViewTab === 'judged' && ledgerFilter.verdict === '误报' }"
+            :class="{ active: listView === 'judged' && ledgerFilter.verdict === '误报' }"
             title="不计入风险统计"
-            @click="setDomain('judged'); ledgerFilter.verdict = '误报'"
+            @click="setListView('judged'); ledgerFilter.verdict = '误报'"
           >
             <span class="er-name">误报</span>
             <span class="er-num muted">{{ falseHits.length }}</span>
@@ -1312,24 +1392,25 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
     <!-- 统一命中清单 -->
     <section class="overview-section work-panel">
       <!--
-        主 Tab 一层收拢三种视图：实时监控（待核实/全部）· 手动筛查 · 已核实。
-        原先标题 + 域页签 +「手动筛查」按钮三处并列，层级重复；收成 Tab 后各视图自带筛选条。
+        主 Tab 一层收拢三种视图：实时监控（待核实）· 手动筛查 · 已核实。
+        页签数字与清单内容同源：实时监控恒等于待核实数，已核实恒等于台账底表数——
+        标签写着一个数、表里躺着另一批，正是两套状态机并存时踩过的坑。
       -->
       <div class="list-panel-head">
         <div class="list-view-tabs">
           <button
             type="button"
             class="lvt-tab"
-            :class="{ on: listViewTab === 'realtime' }"
-            @click="setListViewTab('realtime')"
+            :class="{ on: listView === 'realtime' }"
+            @click="setListView('realtime')"
           >
             实时监控<span class="lvt-num" :class="{ bad: untaggedHigh.length > 0 }">{{ effect.open }}</span>
           </button>
           <button
             type="button"
             class="lvt-tab"
-            :class="{ on: listViewTab === 'scan' }"
-            @click="setListViewTab('scan')"
+            :class="{ on: listView === 'scan' }"
+            @click="setListView('scan')"
           >
             手动筛查
             <span v-if="inScanResult" class="lvt-num">{{ scanResult!.length }}</span>
@@ -1337,8 +1418,8 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
           <button
             type="button"
             class="lvt-tab"
-            :class="{ on: listViewTab === 'judged' }"
-            @click="setListViewTab('judged')"
+            :class="{ on: listView === 'judged' }"
+            @click="setListView('judged')"
           >
             已核实<span class="lvt-num">{{ effect.judged }}</span>
           </button>
@@ -1373,16 +1454,15 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
         </div>
       </div>
 
-      <!-- 实时监控 · 等级 chip（域由上方 KPI 切换） -->
-      <div v-if="listViewTab === 'realtime'" class="section-filters grade-filters">
+      <!-- 实时监控 · 等级 chip：底表恒为待核实，故第一枚恒是「全部待核」，不再有第二套口径 -->
+      <div v-if="listView === 'realtime'" class="section-filters grade-filters">
         <button
           type="button"
           class="gf-chip"
           :class="{ active: gradeFilter === 'all' }"
           @click="setGradeFilter('all')"
         >
-          <template v-if="listDomain === 'all'">全部<span class="gf-num">{{ rows.length }}</span></template>
-          <template v-else>全部待核<span class="gf-num">{{ openHits.length }}</span></template>
+          全部待核<span class="gf-num">{{ openHits.length }}</span>
         </button>
         <button
           v-for="g in GRADES"
@@ -1391,7 +1471,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
           class="gf-chip"
           :class="{
             active: gradeFilter === g,
-            warn: listDomain === 'open' && g === '高' && untaggedHigh.length > 0,
+            warn: g === '高' && untaggedHigh.length > 0,
           }"
           @click="setGradeFilter(g)"
         >
@@ -1400,7 +1480,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
       </div>
 
       <!-- 台账查询条：七维全部展开，右侧动作对齐手动筛查（查询 + 重置） -->
-      <div v-if="listViewTab === 'judged'" class="ledger-bar" @keyup.enter="applyLedgerQuery">
+      <div v-if="listView === 'judged'" class="ledger-bar" @keyup.enter="applyLedgerQuery">
         <div class="list-toolbar">
           <div class="tb-fields">
             <div class="fi">
@@ -1491,7 +1571,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
       </div>
 
       <!-- 筛选条：九维（班组 / 预警词 / 建单时间 / 工单状态 / 匹配范围 / 工单类型 / 业务类型 / 产品分类 / 产品名称） -->
-      <div v-if="listViewTab === 'scan'" class="scan-bar" @keyup.enter="doScan">
+      <div v-if="listView === 'scan'" class="scan-bar" @keyup.enter="doScan">
         <div class="list-toolbar">
           <div class="tb-fields">
             <div class="fi">
@@ -1509,8 +1589,8 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               <a-select
                 v-model:value="scanForm.wordIds" mode="multiple" allow-clear
                 size="small" class="tb-ctl"
-                :dropdown-match-select-width="false" placeholder="全部启用词" :max-tag-count="1"
-                :options="localWords.filter((w) => w.enabled).map((w) => ({ value: w.id, label: w.word }))"
+                :dropdown-match-select-width="false" placeholder="全部启用中的词" :max-tag-count="1"
+                :options="scanWordOptions"
               />
             </div>
             <div class="fi fi-date">
@@ -1622,14 +1702,11 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
         <template v-else-if="inLedger">
           当前只看 {{ ledgerRangeText }}，未找到匹配记录——扩大命中时间范围试试
         </template>
-        <template v-else-if="listDomain === 'all'">
-          {{ gradeFilter === 'all' ? '该范围近期没有任何风险命中' : `该范围近期没有${gradeFilter}危命中` }}
-        </template>
-        <template v-else>{{ gradeFilter === '高' ? '该范围下没有待核实的高危命中' : '该范围近期没有风险命中' }}</template>
+        <template v-else>{{ gradeFilter === 'all' ? '该范围近期没有待核实的风险命中' : `该范围下没有待核实的${gradeFilter}危命中` }}</template>
       </div>
 
 
-      <div v-if="filteredRows.length && !(listViewTab === 'scan' && !inScanResult)" class="hit-table-wrap">
+      <div v-if="filteredRows.length && !(listView === 'scan' && !inScanResult)" class="hit-table-wrap">
       <table class="hit-table">
         <thead>
           <tr>
@@ -1656,7 +1733,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
           <tr
             v-for="h in pagedRows" :key="h.id"
             :class="{
-              untagged: !inScanResult && !tagOf(h) && presetGradeOf(h) === '高',
+              untagged: !inScanResult && !isJudged(h) && presetGradeOf(h) === '高',
               'scan-dup': inScanResult && scanDupIds.has(h.id),
             }"
           >
@@ -1677,10 +1754,13 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               </div>
             </td>
             <td>
+              <!-- 误报没有等级，这一格就空着（—）；回落到词表预设去补一个，等于给已排除的东西重新贴上风险标 -->
               <span
+                v-if="gradeOf(h)"
                 class="grade-pill"
-                :style="{ color: RISK_LEVEL_STYLE[gradeOf(h)].color, background: RISK_LEVEL_STYLE[gradeOf(h)].bg }"
+                :style="{ color: RISK_LEVEL_STYLE[gradeOf(h)!].color, background: RISK_LEVEL_STYLE[gradeOf(h)!].bg }"
               >{{ gradeOf(h) }}</span>
+              <span v-else class="hit-sub" title="判为误报的命中不带风险等级">—</span>
             </td>
             <td>
               <div class="track-word">「{{ h.word }}」</div>
@@ -1706,13 +1786,20 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                 <span v-else-if="scanPicked.has(h.id)" class="state-chip sc-will">并入后待核实</span>
                 <span v-else class="state-chip sc-skip">不并入</span>
               </template>
-              <div v-else-if="tagOf(h)" class="cell-done">
+              <div v-else-if="isJudged(h)" class="cell-done">
+                <!-- 误报只出判定标，不出风险标：两个标同时挂着，读的人不知道该信哪一个 -->
                 <span
+                  v-if="tagOf(h)"
                   class="tag-done"
                   :style="{ color: RISK_LEVEL_STYLE[tagOf(h)!].color, background: RISK_LEVEL_STYLE[tagOf(h)!].bg }"
                   :title="tagTraceTitle(h)"
                 >{{ tagOf(h) }}风险</span>
-                <span v-if="verdictOf(h)" class="verdict-chip" :class="verdictOf(h) === '误报' ? 'vc-fp' : 'vc-ok'">{{ verdictOf(h) }}</span>
+                <span
+                  v-if="verdictOf(h)"
+                  class="verdict-chip"
+                  :class="verdictOf(h) === '误报' ? 'vc-fp' : 'vc-ok'"
+                  :title="tagTraceTitle(h)"
+                >{{ verdictOf(h) }}</span>
                 <button
                   v-if="tagOf(h) === '高' && verdictOf(h) === '成立'"
                   type="button" class="row-btn row-btn-primary" @click="goControl(h)"
@@ -1864,7 +1951,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
           <span class="op-label">上线状态</span>
           <div class="wf-enable-row">
             <a-switch v-model:checked="wordForm.enabled" checked-children="启用" un-checked-children="停用" />
-            <span class="op-hint">建议先停用，手动筛查试跑确认命中量后再启用</span>
+            <span class="op-hint wf-enable-hint">启用后纳入实时监控，增量工单自动命中，手动筛查也只跑启用中的词；停用即完全不参与筛查。建议新建先对照近 7 天命中量，确认不会刷屏后再启用。</span>
           </div>
         </div>
       </div>
@@ -1971,7 +2058,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="r in scanRuns" :key="r.id">
+          <tr v-for="r in scanRunsDesc" :key="r.id">
             <td>
               <span class="run-kind" :class="r.kind">{{ SCAN_KIND_LABEL[r.kind] }}</span>
             </td>
@@ -2028,12 +2115,13 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
           <div v-if="tagAmend && tagCurrent" class="tag-cur">
             <span class="tag-cur-k">现行结果</span>
             <span
+              v-if="tagCurrent.level"
               class="grade-pill-inline"
               :style="{ color: RISK_LEVEL_STYLE[tagCurrent.level].color, background: RISK_LEVEL_STYLE[tagCurrent.level].bg }"
             >{{ tagCurrent.level }}危</span>
             <span class="verdict-chip" :class="tagCurrent.verdict === '误报' ? 'vc-fp' : 'vc-ok'">{{ tagCurrent.verdict }}</span>
             <span class="tag-hit-sep">·</span>
-            <span>{{ tagCurrent.by }} 于 {{ tagCurrent.at }}</span>
+            <span>{{ tagCurrent.by }}（{{ tagCurrent.byRole }}）于 {{ tagCurrent.at }}</span>
           </div>
         </div>
 
@@ -2113,14 +2201,16 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
             <li v-for="(e, i) in tagHistory" :key="`${e.at}-${i}`" class="tt-item">
               <div class="tt-head">
                 <span class="tt-step">{{ i === 0 ? '首次核实' : `第 ${i} 次修正` }}</span>
+                <!-- 角色与姓名并列：复盘时"谁判的"要连着"他是什么岗"一起读才有分量 -->
                 <span class="tt-by">{{ e.by }}</span>
+                <span class="tt-role">{{ e.byRole }}</span>
                 <span class="tt-at">{{ e.at }}</span>
               </div>
               <div class="tt-change">
-                <template v-if="i === 0">判为 {{ e.verdict }} · {{ e.level }}危</template>
+                <template v-if="i === 0">判为 {{ e.verdict }}{{ e.level ? ` · ${e.level}危` : '' }}</template>
                 <template v-else>{{ entryDiffText(tagHistory[i - 1], e) }}</template>
               </div>
-              <div v-if="e.reason" class="tt-reason">原因：{{ e.reason }}</div>
+              <div v-if="e.amendReason" class="tt-reason">原因：{{ e.amendReason }}</div>
             </li>
           </ol>
         </div>
@@ -3007,6 +3097,8 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
   color: #9ca3af;
 }
 .tt-step { font-weight: 600; color: #6b7280; }
+/* 角色贴在姓名后面做弱强调：它是姓名的限定语，不该抢姓名的视线 */
+.tt-role { padding: 0 5px; border-radius: 8px; background: #f3f4f6; color: #6b7280; }
 .tt-at { font-variant-numeric: tabular-nums; }
 .tt-change { margin-top: 2px; font-size: 12px; color: #374151; line-height: 1.5; }
 .tt-reason { margin-top: 2px; font-size: 11px; color: #6b7280; line-height: 1.5; }
@@ -3042,7 +3134,8 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
 
 .cell-done { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
 .tag-done { padding: 1px 7px; border-radius: 3px; font-size: 11px; cursor: help; font-weight: 600; }
-.verdict-chip { padding: 0 5px; border-radius: 3px; font-size: 10px; }
+/* 误报行没有等级徽标，打标来源的悬停说明落在这枚判定标上，故它同样给 help 光标 */
+.verdict-chip { padding: 0 5px; border-radius: 3px; font-size: 10px; cursor: help; }
 .vc-ok { background: #10B98122; color: #10B981; }
 .vc-fp { background: #F3F4F6; color: #6B7280; }
 .row-btn {
@@ -3111,6 +3204,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
   min-width: 0;
 }
 .wf-enable-row .op-hint { flex: 1; min-width: 0; }
+.wf-enable-hint { line-height: 1.55; }
 .word-form :deep(.wf-scope-grid) {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

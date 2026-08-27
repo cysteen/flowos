@@ -696,7 +696,7 @@ function syncContactedAfterOutreach() {
     }
   }
   // 操作页内的记录置了还不够 —— 列表行的标记也要同步，否则列表 Tag 永远停在「待回」强调态、
-  // 「本组 · 催补待回」永远不出列、关闭拦截也永远不解锁（PRD-915 补充与催单 §9.2 / §10.1）。
+  // 「催补待回」永远不出列（PRD-915 补充与催单 §9.2 / §10.1）。
   const row = TICKETS.find((x) => x.no === d.value.no);
   if (row && (touchedDunning || touchedSupplement)) {
     row.contactedAfterUrge = true;
@@ -715,7 +715,7 @@ function onMarkRecordRead(id: string) {
 
 /**
  * 该侧记录全部已知晓时，把列表行的「未知晓」标记置掉 —— Tag 靠它转降噪灰。
- * 只影响 Tag：「催补待回」出列与关单解锁另认 contactedAfterUrge（§10.1）。
+ * 只影响 Tag：「催补待回」出列另认 contactedAfterUrge（§10.1）。
  */
 function syncUnreadToListRow() {
   const row = TICKETS.find((x) => x.no === d.value.no);

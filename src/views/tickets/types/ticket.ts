@@ -1210,7 +1210,7 @@ export function matchChip(t: Ticket, chip: ChipKey, tab: TabKey = 'mine'): boole
 /**
  * 列表「被催办」Tag 是否待回强调态。
  * **已知晓或已联系，任一即转降噪灰**（PRD-915 补充与催单 §9.2）——
- * 与「催补待回出列 / 关单解锁」不同，那两个**只认已联系**（§10.1）。
+ * 与「催补待回出列」不同，那个**只认已联系**（§10.1）。
  */
 export function isDunningTagPending(t: Ticket): boolean {
   return !!t.hasDunning && t.dunningContacted !== true && t.dunningUnread !== false;

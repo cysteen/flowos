@@ -25,7 +25,7 @@ export interface ActionDef {
    * ⚠️ 基线 ※12 明确这条拦截是**置灰 + 提示**，不是隐藏——它的拦截维度是**工单数据**，
    * 不属于角色 / 状态 / 类型三维，坐席看不见按钮就不知道为什么不能转。
    * 因此本标记**不参与 availableActions 的过滤**，只是把"要不要判这条"登记出来，
-   * 置灰与提示由 OpActionBar 呈现（同 ※24 关闭拦截的处理方式）。
+   * 置灰与提示由 OpActionBar 呈现。
    */
   needsAftersale?: boolean;
   danger?: boolean;
@@ -103,8 +103,7 @@ export interface ActionCtx {
 
 /**
  * 按**工单类型**与**结案方式**过滤可见操作 —— 两者正交，各拦各的。
- * 数据维的拦截（产品无售后服务、催补后未联系客户）一律走置灰 + 提示，
- * 不在这里把动作过滤掉（基线 ※12 / ※24）。
+ * 数据维的拦截（产品无售后服务）走置灰 + 提示，不在这里把动作过滤掉（基线 ※12）。
  */
 export function availableActions(ctx: ActionCtx): ActionDef[] {
   const direct = isDirectClosure(ctx.closureMode);

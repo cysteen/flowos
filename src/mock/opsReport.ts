@@ -303,6 +303,11 @@ export interface RiskHit {
   /** 监控岗打的标 */
   tagged?: RiskLevel;
   taggedBy?: string;
+  /**
+   * 打标人当时的角色（基线 §3.1）。事后复盘要问的是"谁判的、他有多少分量"——
+   * 客诉专员判的与投诉督导判的，在追责与改判上不是一回事，只留姓名答不出这一层。
+   */
+  taggedByRole?: string;
   taggedAt?: string;
   taggedNote?: string;
   /** 复核回填：这次命中成不成立。没有它，词表永远不会自己变好 */
@@ -343,7 +348,7 @@ export const RISK_HITS: RiskHit[] = [
     impact: '一般', impactSource: '流程规则投诉 · 售后维修方式不认可',
     signal: '强', signalSource: '命中「12315」',
     track: '外部信号', legacyLevel: '高',
-    tagged: '高', taggedBy: '郑监控', taggedAt: '2026-08-04 14:03', taggedNote: '已进入外投流程，转投诉专员专项跟进',
+    tagged: '高', taggedBy: '郑监控', taggedByRole: '投诉督导', taggedAt: '2026-08-04 14:03', taggedNote: '已进入外投流程，转投诉专员专项跟进',
     verdict: '成立',
   },
   {
@@ -428,7 +433,7 @@ export const RISK_HITS: RiskHit[] = [
     impact: '一般', impactSource: '流程规则投诉 · 售后维修方式不认可',
     signal: '强', signalSource: '命中「起诉」',
     track: '外部信号', legacyLevel: '高',
-    tagged: '高', taggedBy: '郑监控', taggedAt: '2026-08-04 09:20', taggedNote: '同一客户第二次命中高危词，已上报法务',
+    tagged: '高', taggedBy: '郑监控', taggedByRole: '投诉督导', taggedAt: '2026-08-04 09:20', taggedNote: '同一客户第二次命中高危词，已上报法务',
     verdict: '成立',
   },
   {
@@ -550,7 +555,7 @@ export const RISK_HITS: RiskHit[] = [
     impact: '一般', impactSource: '产品功能/性能投诉 · 产品性能未达到顾客预期',
     signal: '强', signalSource: '命中「起诉」',
     track: '外部信号', legacyLevel: '高',
-    tagged: '高', taggedBy: '郑监控', taggedAt: '2026-08-02 16:45', taggedNote: 'B 端客户，已同步大客户专员',
+    tagged: '高', taggedBy: '郑监控', taggedByRole: '投诉督导', taggedAt: '2026-08-02 16:45', taggedNote: 'B 端客户，已同步大客户专员',
     verdict: '成立',
   },
   {
@@ -564,7 +569,9 @@ export const RISK_HITS: RiskHit[] = [
     impact: '轻微', impactSource: '咨询类 · 无实质损失',
     signal: '中', signalSource: '命中「退一赔三」',
     track: '外部信号', legacyLevel: '中',
-    tagged: '中', taggedBy: '李文萍', taggedAt: '2026-08-02 14:20', taggedNote: '咨询单升级，判中危跟进',
+    // 判为误报的记录**不带等级**：误报是"规则捞错了"，不是"风险很低"。
+    // 给它留一个 tagged 会让界面同时出现「中风险」与「误报」两个互相打架的标签。
+    taggedBy: '李文萍', taggedByRole: '客诉专员', taggedAt: '2026-08-02 14:20', taggedNote: '咨询类诉求，客户只是打比方，未指向外部渠道',
     verdict: '误报',
   },
   {
@@ -879,15 +886,35 @@ function matchedTermIn(w: RiskWord, text: string): string | null {
   return term;
 }
 
+/** 手动筛查的外部依赖：词表与判重底表都由调用方给，函数自己不去猜"现在页面上是什么" */
+export interface ManualScanContext {
+  /**
+   * 参与本次筛查的词表。
+   * 必须由调用方传页面上那一份——模块级 RISK_WORDS 是初始快照，
+   * 用它扫的话，人刚新建的词条选中后一条都扫不出来，界面上看就是"筛查坏了"。
+   */
+  words?: RiskWord[];
+  /**
+   * 本会话已并入清单的命中。判重底表少了它，同样条件再扫一次，
+   * 已并入的行会被重新标成「新命中」并默认勾选，点并入后实际入库 0 条却报「已并入 N 条」——
+   * 一次假成功比扫不出来更伤人：它让人以为这批已经处理过了。
+   */
+  adopted?: RiskHit[];
+}
+
 /**
  * 执行一次手动筛查。**纯读、不落库**——结果先给人看，确认后才并入清单。
  * 匹配方式与实时链路一致（包含匹配），所以预览里看到的等级就是入库后的等级。
  */
-export function runManualScan(c: ScanCriteria): ScanResultRow[] {
-  const words = RISK_WORDS.filter(
+export function runManualScan(c: ScanCriteria, ctx: ManualScanContext = {}): ScanResultRow[] {
+  // 停用的词一律不参与筛查。停用是维护人给规则下的判决——「孩子」7 天命中 142 次、
+  // 准确率 8%，正因为噪音太大才被停掉；让它继续参与筛查等于把当初停用它的理由重演一遍。
+  const words = (ctx.words ?? RISK_WORDS).filter(
     (w) => w.enabled && (c.wordIds.length === 0 || c.wordIds.includes(w.id)),
   );
-  const existing = new Set(RISK_HITS.map((h) => `${h.ticketNo}|${h.word}`));
+  const existing = new Set(
+    [...RISK_HITS, ...(ctx.adopted ?? [])].map((h) => `${h.ticketNo}|${h.word}`),
+  );
   const out: ScanResultRow[] = [];
   /** 去重键＝工单号 + 规则 id：一条规则在同一张单上只产出一条命中 */
   const emitted = new Set<string>();
@@ -907,8 +934,14 @@ export function runManualScan(c: ScanCriteria): ScanResultRow[] {
     if (c.to && day > c.to) continue;
 
     for (const w of words) {
-      // 匹配范围：筛查条件选了就以它为准（本次临时收窄），没选则按词条自身配置
-      const fields = (c.matchScopes.length ? c.matchScopes : w.scopes) as ScanField[];
+      // 匹配范围：筛查条件选了就以它为准（本次临时收窄），没选则按词条自身配置。
+      //
+      // 🔴 一律按 SCAN_FIELDS 的规范顺序遍历，不用多选框里的勾选顺序。
+      // 命中位置取「第一个命中的字段」（PRD §5.4.2），这个"第一个"必须可预测——
+      // 按勾选顺序跑的话，先点沟通记录再点标题，同一份数据就会给出另一个命中位置，
+      // 复核的人拿着它去原文里定位会对不上账。
+      const picked = (c.matchScopes.length ? c.matchScopes : w.scopes) as ScanField[];
+      const fields = SCAN_FIELDS.filter((f) => picked.includes(f));
       const dedupKey = `${t.ticketNo}|${w.id}`;
       if (emitted.has(dedupKey)) continue;
       for (const f of fields) {

@@ -325,9 +325,9 @@ const peopleFilter = ref<PeopleFilter>('all');
 /** 人员型历史文案；预约已改走 events，此处仅兜底 */
 const isAppointment = computed(() => props.title.includes('预约'));
 const doneLabel = computed(() => (isAppointment.value ? '已沟通' : '已读'));
-const pendingLabel = computed(() => (isAppointment.value ? '未沟通' : '未读'));
+const pendingLabel = computed(() => (isAppointment.value ? '未沟通' : '未处理'));
 
-/** 事件明细：预约用「已沟通/未沟通」，催单/补充用「已联系/已知晓/未知晓」（§9.4） */
+/** 事件明细：预约用「已沟通/未沟通」，催单/补充用「已联系/已知晓/未处理」（§9.4） */
 function isApptEvent(r: EventDrillRow) {
   return r.action === '预约';
 }
@@ -394,18 +394,45 @@ function unreadPeopleCount(layer: Layer): number {
   return layer.snap.people.filter((r) => (r.unread ?? 0) > 0).length;
 }
 
-/** 催单场景才有未读维度；退回场景无 unread，则不出筛选 chip 组（否则「未读 0」是噪声） */
+/** 催单 / 补充：与看板卡片、抽屉 chip 同口径 */
+const CC_PENDING_LABEL = '未处理';
+
+function isApptEventLayer(layer: Layer): boolean {
+  return layer.snap.type === 'events' && layer.snap.events.some(isApptEvent);
+}
+
+function isCcEventLayer(layer: Layer): boolean {
+  return layer.snap.type === 'events' && layer.snap.events.length > 0 && !isApptEventLayer(layer);
+}
+
+function totalBadgeLabel(layer: Layer): string {
+  if (isApptEventLayer(layer)) return '未沟通';
+  if (isCcEventLayer(layer)) return CC_PENDING_LABEL;
+  return pendingLabel.value;
+}
+
+function totalBadgeCount(layer: Layer): number {
+  if (layer.snap.type === 'events') return eventCount(layer, 'unaware');
+  return layer.snap.totalUnread ?? 0;
+}
+
+function showTotalBadge(layer: Layer): boolean {
+  if (layer.snap.type === 'events') return layer.snap.events.length > 0;
+  return layer.snap.totalUnread !== undefined;
+}
+
+/** 催单 / 补充 / 预约事件明细才出 chip；人员型仅催单场景有未处理维度 */
 function showChips(layer: Layer): boolean {
-  return (layer.snap.type === 'people' || layer.snap.type === 'events')
-    && layer.snap.totalUnread !== undefined;
+  if (layer.snap.type === 'events') return layer.snap.events.length > 0;
+  return layer.snap.type === 'people' && layer.snap.totalUnread !== undefined;
 }
 
 /**
  * 事件明细四个维度（PRD-915 补充与催单 §9.5）：
- * 全部 ＝ 未知晓 + 已知晓 + 已联系。
+ * 全部 ＝ 未处理 + 已知晓 + 已联系。
  * 后三档**互斥可相加**：底层 read/contacted 两个布尔是包含关系（已联系 ⇒ 已知晓），
  * 但这里按「最靠后的那一档」归位 —— 已联系的只进「已联系」，不再计入「已知晓」。
- * 「已知晓」这一档实为**已知晓但未联系**；「未知晓」＝看板卡片「未处理」。
+ * 「已知晓」这一档实为**已知晓但未联系**；「未处理」＝看板卡片同名口径。
  */
 type EventFilter = 'all' | 'unaware' | 'acknowledged' | 'contacted';
 const eventFilter = ref<EventFilter>('all');
@@ -419,7 +446,7 @@ type FilterDef = { key: EventFilter; label: string; tip: string };
 /** 催单 / 补充：四个维度，后三档互斥、相加等于「全部」 */
 const CC_FILTERS: FilterDef[] = [
   { key: 'all', label: '全部', tip: '本窗口内的全部事件' },
-  { key: 'unaware', label: '未知晓', tip: '坐席还没看见 —— 即看板卡片的「未处理」' },
+  { key: 'unaware', label: CC_PENDING_LABEL, tip: '坐席尚未看见该次催补' },
   { key: 'acknowledged', label: '已知晓', tip: '看见了但还没回话（已回话的归下一档「已联系」）' },
   { key: 'contacted', label: '已联系', tip: '该次催补之后有对客联系记录' },
 ];
@@ -437,7 +464,7 @@ function isEventContacted(r: EventDrillRow): boolean {
   return r.contacted === true;
 }
 
-/** 归位：一条事件只落一档 —— 已联系 > 已知晓 > 未知晓 */
+/** 归位：一条事件只落一档 —— 已联系 > 已知晓 > 未处理 */
 function eventBucket(r: EventDrillRow): Exclude<EventFilter, 'all'> {
   if (isEventContacted(r)) return 'contacted';
   return r.read ? 'acknowledged' : 'unaware';
@@ -527,7 +554,7 @@ function caption(layer: Layer): string {
     if (s.totalUnread !== undefined) {
       return isAppointment.value
         ? `共 ${s.total} 单 · 其中 ${s.totalUnread} 条未完成`
-        : `共 ${s.total} 单 · 其中 ${s.totalUnread} 条未读`;
+        : `共 ${s.total} 单 · 其中 ${s.totalUnread} 条未处理`;
     }
     return `共 ${s.total} 单 · 按处理人归集`;
   }
@@ -537,7 +564,7 @@ function caption(layer: Layer): string {
       return `共 ${s.total} 次 · 其中 ${s.events.filter((e) => !e.read).length} 条未沟通`;
     }
     const n = (f: EventFilter) => s.events.filter((e) => eventBucket(e) === f).length;
-    return `共 ${s.total} 次 · 未知晓 ${n('unaware')}`
+    return `共 ${s.total} 次 · ${CC_PENDING_LABEL} ${n('unaware')}`
       + ` · 已知晓 ${n('acknowledged')} · 已联系 ${n('contacted')}`;
   }
   return `共 ${s.total} 单 · 按来源归集`;
@@ -697,7 +724,7 @@ const footerLabel = computed(() => {
               <div v-else-if="isPositiveEmpty(l)" class="dd-state">
                 <!-- lucide users -->
                 <TeamOutlined class="dd-state-icon" />
-                <div class="dd-state-title">本组暂无未读催单</div>
+                <div class="dd-state-title">本组暂无未处理催单</div>
                 <div class="dd-state-reason">保持住</div>
               </div>
 
@@ -715,8 +742,8 @@ const footerLabel = computed(() => {
                 <div class="dd-total" :class="{ flash: flash && !l.leaving }">
                   <div class="dd-total-line">
                     <span class="dd-total-num">{{ l.snap.total }}</span>
-                    <span v-if="l.snap.totalUnread !== undefined" class="dd-total-unread">
-                      {{ pendingLabel }} {{ l.snap.totalUnread }}
+                    <span v-if="showTotalBadge(l)" class="dd-total-unread">
+                      {{ totalBadgeLabel(l) }} {{ totalBadgeCount(l) }}
                     </span>
                   </div>
                   <div class="dd-total-cap">{{ caption(l) }}</div>
@@ -819,7 +846,7 @@ const footerLabel = computed(() => {
                     </div>
                     <!--
                       三种副信息按数据源自适应：
-                      · 催单/补充单 → 已读 · 未读；预约 → 已履约 · 未完成
+                      · 催单/补充单 → 已读 · 未处理；预约 → 已履约 · 未完成
                       · 挂起/已转出/委派中 → note 给停留时长（光看数字判断不出哪个该捞回来）
                       · 退回 → 只有总数
                     -->
@@ -903,7 +930,7 @@ const footerLabel = computed(() => {
                             class="ev-ack-tag"
                             title="坐席点过「已知晓」但还没回话；看板判据是已联系，故仍计入未处理"
                           >已知晓</span>
-                          <span v-else class="ev-unread-tag">未知晓</span>
+                          <span v-else class="ev-unread-tag">{{ CC_PENDING_LABEL }}</span>
                         </template>
                       </span>
                     </div>

@@ -291,11 +291,11 @@ const missRiskDesc = computed(
       <OpChannelTags :platforms="followupRows" />
       <div class="ext-followup-row">
         <div class="ext-followup-field">
-          <label class="field-label-sm"><span class="req">*</span>回复结果</label>
+          <label class="field-label-sm"><span class="req">*</span>平台回复结果</label>
           <a-input
             :value="form.complaintChannelReply"
             :status="missChannelReply ? 'warning' : undefined"
-            placeholder="填写回复结果"
+            placeholder="填写平台回复结果"
             @update:value="(v: string) => update({ complaintChannelReply: v ?? '' })"
           />
         </div>
@@ -311,7 +311,7 @@ const missRiskDesc = computed(
           </a-radio-group>
         </div>
       </div>
-      <p v-if="missChannelAny" class="ext-hint">请填写回复结果并选择是否和解</p>
+      <p v-if="missChannelAny" class="ext-hint">请填写平台回复结果并选择是否和解</p>
     </div>
   </div>
 
