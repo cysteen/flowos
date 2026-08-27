@@ -242,7 +242,7 @@ export const PRIOR_FEEDBACK_OPTIONS = [
 ] as const;
 export const SERVICE_REVIEW_OPTIONS = ['需要回溯', '无需回溯'];
 
-/** 投诉分类树（两级 4×24，见 complaintCategoryTree.ts） */
+/** 投诉分类树（三级，见 complaintCategoryTree.ts） */
 export {
   COMPLAINT_L1_OPTIONS,
   COMPLAINT_L2_MAP,
@@ -254,6 +254,10 @@ export {
   getSupplementComplaintKind,
   getBusinessComplaintL1Options,
   SERVICE_COMPLAINT_L1,
+  COMPLAINT_CAT3_NEEDS_COMPLAINED_ROLE,
+  COMPLAINED_ROLE_OPTIONS,
+  needsComplainedRole,
+  isComplaintCategoryComplete,
 } from './complaintCategoryTree';
 export type { ComplaintNature, ComplaintKind } from './complaintCategoryTree';
 
@@ -289,6 +293,38 @@ export function mapChannelToSource(channel?: Channel): TicketSource {
   if (channel === '小程序' || channel === 'APP') return '客户服务小程序';
   if (channel === '邮件') return '外投渠道';
   return '热线电话';
+}
+
+/** 列表/单元格解析工单来源（优先 ticketSource，缺省由接入渠道反推） */
+export function resolveTicketSourceForList(t: {
+  ticketSource?: string;
+  channel?: string;
+}): string {
+  const normalized = normalizeTicketSource(t.ticketSource);
+  if (normalized) return normalized;
+  if (t.channel) return mapChannelToSource(t.channel as Channel);
+  return '';
+}
+
+/** 工单来源枚举 → 列表/详情统一展示文案 */
+export function ticketSourceDisplayLabel(source?: string): string {
+  const src = normalizeTicketSource(source);
+  if (src === '外投渠道') return '外部反馈渠道';
+  if (src === '内投渠道') return '内部反馈渠道';
+  return src || '—';
+}
+
+/**
+ * 列表「工单/标题」第二行来源文案（反馈渠道口径，非接入 channel）。
+ * - 外投渠道 → 外部反馈渠道
+ * - 内投渠道 → 内部反馈渠道
+ * - 其余常规来源（热线/IM/小程序等）→ 展示来源枚举本身（内投类）
+ */
+export function ticketListSourceLabel(t: {
+  ticketSource?: string;
+  channel?: string;
+}): string {
+  return ticketSourceDisplayLabel(resolveTicketSourceForList(t));
 }
 
 export function buildAutoTitle(

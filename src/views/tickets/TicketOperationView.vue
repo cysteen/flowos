@@ -21,7 +21,7 @@ import OpActionBar from './components/OpActionBar.vue';
 // 建单弹窗仅在「转单/重开」时用，按需异步加载，不阻塞操作页首屏
 const CreateTicketModal = defineAsyncComponent(() => import('./components/CreateTicketModal.vue'));
 import { useTicketOperation } from './composables/useTicketOperation';
-import { FEISHU_ESCALATE_CHANNEL, mapUserRole, isAftersaleSettled, isAftersaleInbound } from './composables/opActions';
+import { FEISHU_ESCALATE_CHANNEL, mapUserRole, pushEntry, isAftersaleSettled, isAftersaleInbound } from './composables/opActions';
 import { useProcessForm } from './composables/useProcessForm';
 import { useOperationTabs } from './composables/useOperationTabs';
 import { useTicketLiveNotify } from './composables/useTicketLiveNotify';
@@ -151,7 +151,7 @@ function onSmsSubmit(payload: { phone: string; templateName: string; content: st
   message.success(`短信已发送至 ${payload.phone}`);
 }
 
-/** 电话挂断后写入联系记录并解锁关闭（PRD-830 §10.1：对客联系自动置已联系） */
+/** 电话挂断后写入联系记录并解锁关闭（PRD-915 补充与催单 §10.1：对客联系自动置已联系） */
 watch(
   () => cti.callSession,
   (cur, prev) => {
@@ -241,12 +241,13 @@ function openReopenCreate() {
  */
 const supersededBy = computed(() => resolveSupersededBy(d.value));
 /**
- * 只读态（**整页冻结**）：一线视角 / **已转单**（业务转到新单）/ **只读角色**（运营监控岗）。
- * 注意"正常关闭"不在此列——已关闭单仍保留头部动作（升级投诉 / 关联售后 / 新建补充 / 催单），
+ * 只读态（**整页冻结**）：一线视角 / **已转…**（业务转到新单）/ **只读角色**（工单运营）。
+ * 注意**关闭类终态不在此列**——已结案 / 已关闭 / 已强结的单仍保留头部动作
+ * （升级投诉 / 关联售后 / 新建补充；催单不给），
  * 补充/催单走 §5.2「建新单承接」。
  */
 /**
- * **整页锁死**：已转单（业务已转到新单）/ 只读角色（运营监控岗）。
+ * **整页锁死**：已转咨询 / 已转建议 / 已转商机（业务已转到新单）/ 只读角色（工单运营）。
  *
  * ⚠️ **一线视角不在此列**（2026-08-18 修正）——它锁的是**底栏的二线流转动作**
  * （下送/升级/调剂/委派/挂起/关闭/强结），由 hideActionBar 单独管。
@@ -270,7 +271,7 @@ const isFrontlineView = computed(() => !!user.role.frontline);
 
 /**
  * 客户侧录入（新建补充 / 催单）什么时候被锁：
- * 只有**已转单**（本单已作废、业务在新单上）与**只读角色**（运营监控岗）会锁。
+ * 只有**转单三态**（本单已作废、业务在新单上）与**只读角色**（工单运营）会锁。
  * 一线视角**不锁** —— 它锁的是流转，不是客户诉求录入。
  */
 const customerEntryLocked = computed(
@@ -278,10 +279,10 @@ const customerEntryLocked = computed(
 );
 
 /**
- * 客户侧两枚的角色可见性（PRD-830 §4.1，基线 §4 ※21a）：
+ * 客户侧两枚的角色可见性（PRD-915 补充与催单 §4.1，基线 §4 ※21a）：
  * - 新建补充：**一线 + 二线**（二线自己也联系客户，客户在电话里补的东西他就地录入）
  * - 催单：**一线唯一**（登记的是"客户来催"这个进线事件；二线是处理人，不必自己给自己记）
- * - 三线 / 班组长 / 投诉处理角色 / 监控岗 / 管理员：两枚都不展示
+ * - 新建补充：除工单运营 / 质检外都给（※21a 0826 放开）；催单：一线唯一
  */
 const headerRoleGate = computed(() => headerActionsByRole(user.roleKey));
 const canSupplement = computed(() => headerRoleGate.value.supplement);
@@ -292,14 +293,15 @@ const canCancelTicket = computed(() => headerRoleGate.value.cancelTicket);
 
 /**
  * 底部流转操作栏隐藏：只读态，**或原单已是终态**——
- * 基线 §1 状态分组为「终态」的七个子状态（已升级投诉 / 已解决 / 已关闭 / 已强结 /
- * 已转单 / 已取消 / 已结案）不该再出现 下送/升级/调剂/委派/挂起/关闭/强结。
+ * 基线 §1 状态分组为「终态」的十个子状态（已结案 / 已关闭 / 已强结 / 已升级投诉 /
+ * 已升级外投 / 已转咨询 / 已转建议 / 已转商机 / 已取消 / 直接结案）
+ * 不该再出现 下送/升级/调剂/委派/挂起/关闭/强结。
  */
 /**
  * 底栏（二线流转动作条）什么时候整条不出：
  * ① **一线视角** —— 下送/升级/调剂/委派/挂起/关闭/强结属二线权限，一线不该看到；
- * ② 整页锁死（已转单 / 只读角色）；
- * ③ 原单已是终态 —— 已解决/已强结/已转单等不该再出现流转动作。
+ * ② 整页锁死（转单三态 / 只读角色）；
+ * ③ 原单已是终态 —— 已结案/已强结/已转咨询等不该再出现流转动作。
  * ⚠️ 一线视角在这里显式列出，**不要**再合回 pageReadonly —— 头部那排按钮一线有权限。
  */
 /**
@@ -307,11 +309,11 @@ const canCancelTicket = computed(() => headerRoleGate.value.cancelTicket);
  * 与头部按钮分开 —— 头部那排一线有权限、Tab 区里的写操作没有。
  */
 /**
- * Tab 区的**整区**只读：只保留与角色无关的锁 —— 已转单（本单作废、业务已在新单上）。
+ * Tab 区的**整区**只读：只保留与角色无关的锁 —— 转单三态（本单作废、业务已在新单上）。
  *
  * 角色相关的只读**不在这里**判：一线视角与只读角色的差别已由 `tabWritableFor(tab, roleKey)`
  * 逐 Tab 按权限矩阵 #46–56 的「只读 vs 可用」落全。混在一起会压掉矩阵明确给出的两格：
- * ⑦ 运营监控岗虽整体只读，但矩阵写明「只读约束的是**工单内容**，打标不受此限」；
+ * ⑦ 工单运营虽整体只读，但矩阵写明「只读约束的是**工单内容**，打标不受此限」；
  * ① 一线坐席在「关联/补充/催单」Tab 上是「可用」（唯一写动作「已知晓」）。
  */
 const tabsReadonly = computed(() => !!supersededBy.value);
@@ -323,12 +325,10 @@ const hideActionBar = computed(
 /**
  * 单子是否正在**三线技术支持**手上 —— 底栏「退回」是三线专属动作，只在这时出现。
  *
- * 判据是「已升级」＋**升级目标**两条，不是状态名：基线只有一个「已升级」状态，
- * 三线与产研两类目标都落它，差别在处理人（三线转、产研不转），所以只能读 escalateTarget。
+ * 依据基线 §1（※14b）：升级两类目标各占一个子状态，产研态处理人仍是二线、不给「退回」，
+ * 故判据就是子状态本身，不再读 escalateTarget 字段。
  */
-const atTechSupport = computed(
-  () => d.value.status === '已升级' && d.value.escalateTarget === '三线技术支持',
-);
+const atTechSupport = computed(() => d.value.status === '已升级技术支持');
 
 /** 关系跳转：售后单是外部系统走深链，客服单站内打开 */
 function openRelation(rel: TicketRelation) {
@@ -374,7 +374,7 @@ function onEscalateSubmit(payload: EscalateInput) {
  * 落补充：原单加一条补充记录 + 写履历，**不建新单、不关单**。
  *
  * ⚠️ 2026-08-17 起「升级投诉」**不再兼做补充**——投诉信息补录统一走
- * 「新建补充 → 补充投诉信息」（PRD-830 §5.2），分类名「投诉补充」已作废。
+ * 「新建补充 → 补充投诉信息」（PRD-915 补充与催单 §5.2），分类名「投诉补充」已作废。
  * 本函数仅为兼容尚未清理的旧调用保留；新链路不应再走到这里。
  */
 function finishEscalateAsSupplement(payload: EscalateInput) {
@@ -650,6 +650,19 @@ function onIncomingTicketEvent(
     d.value.insight.supplementCount += 1;
   }
 
+  // 两处都要落记录（PRD-915 补充与催单 §5.4 / §6.2、《【720】工单处理履历》§6）：
+  // 「关联/补充/催单」Tab 记录（上面）**与**「处理履历」时间线条目（下面），缺一不可。
+  pushEntry(timeline.value, {
+    category: type === 'urge' ? 'dunning' : 'customer',
+    action: type === 'urge' ? 'dunning' : 'supplement',
+    who,
+    role: mapUserRole(user.roleKey),
+    how: type === 'urge' ? '客户催单' : '客户补充',
+    when,
+    what: content,
+    ...(type === 'urge' ? { dunningTimes: d.value.insight.dunningCount } : {}),
+  });
+
   if (options?.notify !== false && pageActive.value) {
     pushLiveToast(type, content, who, when, options?.supplementType, recordId);
   }
@@ -666,17 +679,29 @@ function markRecordAcknowledged(rec: { read?: boolean }, isDunning: boolean) {
 
 /** 对客联系后自动置已联系，并连带已知晓（PRD §10.1） */
 function syncContactedAfterOutreach() {
+  let touchedDunning = false;
+  let touchedSupplement = false;
   for (const rec of tabData.value.dunningRecords) {
     if (!rec.contacted) {
       rec.contacted = true;
       markRecordAcknowledged(rec, true);
+      touchedDunning = true;
     }
   }
   for (const rec of tabData.value.supplementRecords) {
     if (!rec.contacted) {
       rec.contacted = true;
       markRecordAcknowledged(rec, false);
+      touchedSupplement = true;
     }
+  }
+  // 操作页内的记录置了还不够 —— 列表行的标记也要同步，否则列表 Tag 永远停在「待回」强调态、
+  // 「本组 · 催补待回」永远不出列、关闭拦截也永远不解锁（PRD-915 补充与催单 §9.2 / §10.1）。
+  const row = TICKETS.find((x) => x.no === d.value.no);
+  if (row && (touchedDunning || touchedSupplement)) {
+    row.contactedAfterUrge = true;
+    if (touchedDunning) { row.dunningContacted = true; row.dunningUnread = false; }
+    if (touchedSupplement) { row.supplementContacted = true; row.supplementUnread = false; }
   }
 }
 
@@ -685,6 +710,18 @@ function onMarkRecordRead(id: string) {
   const rec = dRec ?? tabData.value.supplementRecords.find((r) => r.id === id);
   if (!rec || rec.read) return;
   markRecordAcknowledged(rec, !!dRec);
+  syncUnreadToListRow();
+}
+
+/**
+ * 该侧记录全部已知晓时，把列表行的「未知晓」标记置掉 —— Tag 靠它转降噪灰。
+ * 只影响 Tag：「催补待回」出列与关单解锁另认 contactedAfterUrge（§10.1）。
+ */
+function syncUnreadToListRow() {
+  const row = TICKETS.find((x) => x.no === d.value.no);
+  if (!row) return;
+  if (tabData.value.dunningRecords.every((r) => r.read)) row.dunningUnread = false;
+  if (tabData.value.supplementRecords.every((r) => r.read)) row.supplementUnread = false;
 }
 
 function onToastMarkRead(item: TicketLiveToast) {
@@ -782,13 +819,13 @@ onBeforeUnmount(() => {
 });
 
 /**
- * 客户侧催补落单后的**共同副作用**（PRD-830 §7.2 拉回 + §9 计数标识）。
+ * 客户侧催补落单后的**共同副作用**（PRD-915 补充与催单 §7.2 拉回 + §9 计数标识）。
  * 新建补充与催单都走这里 —— 两者副作用一致，差别只在记录去向与文案。
  *
  * 做三件事：
  * 1. **拉回处理节点**：调研中→撤回本次下送 / 审核中4态→撤回本次申请 / 已挂起→解除挂起，
  *    都回「处理中」，并写一条履历说明原因（不写的话坐席看不出状态为什么自己变了）。
- *    已升级 / 已委派 / 已转出**不拉回**。
+ *    两个已升级态 / 已委派 / 已转出**不拉回**。
  * 2. **置行内 Tag 与催补待回标记**：hasDunning / hasSupplement 供列表行标识；
  *    contactedAfterUrge 复位为 false —— 新的一次催补必须重新联系一次才算回应。
  * 3. **SLA 不动**：解决钟接着跑、不重置不回拨（反复催单不能刷新时效），故此处不碰 SLA。
@@ -799,20 +836,29 @@ function applyCsEventSideEffects(kind: 'supplement' | 'urge') {
   if (pull) {
     const from = d.value.status;
     d.value.status = pull.to;
-    timeline.value.unshift({
-      id: `tl-cs-${Date.now()}`,
-      kind: 'node',
-      title: pull.why,
+    pushEntry(timeline.value, {
+      category: 'node',
+      action: 'handle',
       who: '系统',
-      when: formatNow(),
+      role: '系统',
+      how: pull.why,
       what: `${pull.why}：${from} → ${pull.to}。SLA 解决钟接着跑，不重置。`,
-    } as never);
+    });
   }
   // ② 行内 Tag + 催补待回：新的一次催补 → 复位为「未联系」
   const row = TICKETS.find((t) => t.no === d.value.no);
   if (row) {
-    if (kind === 'urge') row.hasDunning = true;
-    else row.hasSupplement = true;
+    // 新的一次催补 → 该侧重新回到「待回」：hasXxx 置上、对应的"已联系"复位。
+    // 只复位这一侧 —— 另一侧若早已联系过，不该被这次事件拖回待回态。
+    if (kind === 'urge') {
+      row.hasDunning = true;
+      row.dunningContacted = false;
+      row.dunningUnread = true;
+    } else {
+      row.hasSupplement = true;
+      row.supplementContacted = false;
+      row.supplementUnread = true;
+    }
     row.contactedAfterUrge = false;
   }
 }
@@ -834,7 +880,7 @@ function onSupplementSubmit(payload: {
   }
 
   // 「补充投诉信息」的两项补录：投诉分类只追加一组，投诉渠道记录逐条追加。
-  // 都是**只追加、不覆盖**——原有记录一条不动（PRD-830 §5.3）。
+  // 都是**只追加、不覆盖**——原有记录一条不动（PRD-915 补充与催单 §5.3）。
   if (payload.complaintCategories?.length) {
     d.value.complaint.categories = [
       ...d.value.complaint.categories,

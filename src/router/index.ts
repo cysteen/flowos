@@ -273,7 +273,7 @@ router.beforeEach((to) => {
   }
   const menu = to.meta.menu;
   if (menu && !user.canAccess(menu)) {
-    // 只读监控角色（运营监控岗）菜单里没有工单工作台，但必须能从大盘**下钻单张工单**查证；
+    // 只读监控角色（工单运营）菜单里没有工单工作台，但必须能从大盘**下钻单张工单**查证；
     // 放行的只是详情页，且该页对此角色整页只读（见 TicketOperationView.pageReadonly）。
     const canDrillTicket = user.role.readonlyTickets && to.name === 'ticket-operation';
     if (!canDrillTicket) return firstMenuPath(user.visibleMenus);

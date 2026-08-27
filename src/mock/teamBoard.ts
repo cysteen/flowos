@@ -185,6 +185,8 @@ export interface EventDrillRow {
   ticketNo: string;
   ticketTitle: string;
   content: string;
+  /** 已联系（该次催补之后有对客联系记录）—— 已联系 ⇒ 已知晓 */
+  contacted?: boolean;
   /**
    * 催单/补充＝已读；预约＝已沟通（办理页「标记已沟通」）。
    */
@@ -780,7 +782,7 @@ export const BOARD_TODOS: BoardTodo[] = [
 export interface ApprovalDrillRow {
   /** 申请单号 */
   id: string;
-  /** 关联工单号（LCMN-…） */
+  /** 关联工单号（IFLYZX-YYYYMMDD-NNNNN，见 constants/ticketNo.ts） */
   ticketNo: string;
   /** 关联工单标题 */
   ticketTitle: string;
@@ -812,9 +814,9 @@ interface ApprovalSpec {
 }
 
 const APPROVAL_SPECS: ApprovalSpec[] = [
-  { id: 'APR-2026-101', no: 'LCMN-20260609-65500', approver: '周运营', submit: '今天 11:02' },
-  { id: 'APR-2026-102', no: 'LCMN-20260609-65236', approver: '周运营', submit: '今天 10:35' },
-  { id: 'APR-2026-103', no: 'LCMN-20260609-65010', approver: '周运营', submit: '今天 10:20' },
+  { id: 'APR-2026-101', no: 'IFLYTS-20260609-00003', approver: '周运营', submit: '今天 11:02' },
+  { id: 'APR-2026-102', no: 'IFLYZX-20260609-00002', approver: '周运营', submit: '今天 10:35' },
+  { id: 'APR-2026-103', no: 'IFLYZX-20260609-00001', approver: '周运营', submit: '今天 10:20' },
 ];
 
 export const APPROVAL_PENDING_DRILL: ApprovalDrillRow[] = APPROVAL_SPECS.map((s) => {
@@ -895,7 +897,7 @@ export const PRIORITY_BUCKETS: PriorityBucket[] = [
  * 事件明细声明式 —— 只写事件本身，工单属性回工单数据源取。
  *
  * 【选单口径】
- * · 一律取**未结案**的单；已挂起 / 已转出按 PRD-830 不出催补入口，故不选（补充例外见下）。
+ * · 一律取**未结案**的单；已挂起 / 已转出按 PRD-915 补充与催单 不出催补入口，故不选（补充例外见下）。
  * · **未处理**的行取工单上真带待回催补标记的单（hasDunning / hasSupplement 且未联系），
  *   点进去看得到未读角标；**已处理**的行取标记已清或本就没有标记的单 —— 否则
  *   看板说「已处理」、办理页却挂着未读角标，两处对不上。
@@ -916,7 +918,10 @@ interface EventSpec {
   actor?: string;
   when: string;
   content: string;
+  /** 已知晓（坐席点过「已知晓」，或被已联系连带置上） */
   read: boolean;
+  /** 已联系（该次催补之后有对客联系记录）—— 已联系 ⇒ 已知晓 */
+  contacted?: boolean;
   category?: string;
 }
 
@@ -941,39 +946,43 @@ function toEvent(action: EventDrillRow['action'], s: EventSpec): EventDrillRow {
     ticketTitle: t.title,
     content: s.content,
     read: s.read,
+    // 已联系 ⇒ 已知晓：没显式给 contacted 时，已读的默认视为已联系，未读的一定未联系
+    contacted: s.contacted ?? s.read,
     category: s.category,
   };
 }
 
 /**
- * 催单（合计 21，未处理 7）。
- * 未处理 7 行对应工单库里**真挂着待回催单**的 7 张单（hasDunning 且未联系）；
- * 已处理 14 行取本组其余在办单。
+ * 催单（合计 21）。抽屉三档**互斥可相加**（PRD-915 补充与催单 §9.5）：
+ * **未知晓 7 ＋ 已知晓 3（u8/u12/u16，看见了没回话）＋ 已联系 11 ＝ 21**。
+ * 看板卡片「未处理」＝**未知晓 7**，已知晓与已联系都算处理了。
+ * 未知晓 7 行对应工单库里**真挂着待回催单**的 7 张单（hasDunning 且未联系）。
+ * ⚠️ 关闭拦截与「催补待回」出列**不用这个判据**，那两处只认已联系（§10.1／§10.2）。
  */
 const URGE_SPECS: EventSpec[] = [
   // ── 未处理 7：工单上真挂着待回催单 ──
-  { id: 'u1', no: 'LCMN-20260817-83002', side: 'l1', actor: '张晓芸', when: '今天 19:27', content: '外投平台已二次跟帖，要求今日内给出赔付口径', read: false },
-  { id: 'u2', no: 'LCMN-20260610-73118', side: 'customer', when: '今天 18:52', content: '已等两天，请尽快安排上门检测', read: false },
-  { id: 'u3', no: 'LCMN-20260610-76010', side: 'l1', actor: '李一线', when: '今天 17:40', content: '首响已超时、客户情绪升级，请二线优先跟进', read: false },
-  { id: 'u4', no: 'LCMN-20260609-66248', side: 'customer', when: '今天 16:18', content: '第三次催单，要求今日回电确认账号安全', read: false },
-  { id: 'u5', no: 'LCMN-20260817-83005', side: 'l1', actor: '周一线', when: '今天 15:05', content: '学校侧催进度，请三线给出固件排查结论', read: false },
-  { id: 'u6', no: 'LCMN-20260817-83003', side: 'customer', when: '今天 14:22', content: '已表达向平台投诉意向，要求书面回复', read: false },
-  { id: 'u7', no: 'LCMN-20260610-78344', side: 'l1', actor: '张晓芸', when: '今天 13:10', content: '单子还在池里没人领，客户称已超承诺时间', read: false },
+  { id: 'u1', no: 'IFLYTS-20260817-00001', side: 'l1', actor: '张晓芸', when: '今天 19:27', content: '外投平台已二次跟帖，要求今日内给出赔付口径', read: false },
+  { id: 'u2', no: 'IFLYZX-20260610-00004', side: 'customer', when: '今天 18:52', content: '已等两天，请尽快安排上门检测', read: false },
+  { id: 'u3', no: 'IFLYTS-20260610-00010', side: 'l1', actor: '李一线', when: '今天 17:40', content: '首响已超时、客户情绪升级，请二线优先跟进', read: false },
+  { id: 'u4', no: 'IFLYTS-20260609-00005', side: 'customer', when: '今天 16:18', content: '第三次催单，要求今日回电确认账号安全', read: false },
+  { id: 'u5', no: 'IFLYTS-20260817-00004', side: 'l1', actor: '周一线', when: '今天 15:05', content: '学校侧催进度，请三线给出固件排查结论', read: false },
+  { id: 'u6', no: 'IFLYTS-20260817-00002', side: 'customer', when: '今天 14:22', content: '已表达向平台投诉意向，要求书面回复', read: false },
+  { id: 'u7', no: 'IFLYZX-20260610-00012', side: 'l1', actor: '张晓芸', when: '今天 13:10', content: '单子还在池里没人领，客户称已超承诺时间', read: false },
   // ── 已处理 14：本组其余在办单 ──
-  { id: 'u8', no: 'LCMN-20260610-73026', side: 'customer', when: '今天 12:40', content: '影响日常使用，请加急', read: true },
-  { id: 'u9', no: 'LCMN-20260610-75002', side: 'l1', actor: '陈一线', when: '今天 11:55', content: '已与客户约定 16:00 前回电说明配额方案', read: true },
-  { id: 'u10', no: 'LCMN-20260610-75240', side: 'customer', when: '今天 11:20', content: '请同步退货审核进度', read: true },
-  { id: 'u11', no: 'LCMN-20260817-83004', side: 'l1', actor: '李一线', when: '今天 10:48', content: '一线无法闭环，请调研侧尽快给结论', read: true },
-  { id: 'u12', no: 'LCMN-20260610-75518', side: 'customer', when: '今天 10:05', content: '请确认明日上门时段', read: true },
-  { id: 'u13', no: 'LCMN-20260713-90001', side: 'l1', actor: '王一线', when: '今天 09:40', content: '学校侧催进度，已提产研待反馈', read: true },
-  { id: 'u14', no: 'LCMN-20260610-75744', side: 'customer', when: '今天 09:12', content: '请今日内给出优惠领取方式', read: true },
-  { id: 'u15', no: 'LCMN-20260711-61551', side: 'l1', actor: '张晓芸', when: '今天 08:55', content: '监管平台已受理，需当日反馈处理进展', read: true },
-  { id: 'u16', no: 'LCMN-20260817-83006', side: 'customer', when: '昨天 20:18', content: '请同步产研排查进度', read: true },
-  { id: 'u17', no: 'LCMN-20260817-83007', side: 'l1', actor: '陈一线', when: '昨天 18:40', content: '协办迟迟未回填，客户晚间再次来电', read: true },
-  { id: 'u18', no: 'LCMN-20260804-81001', side: 'customer', when: '昨天 16:05', content: '配件已到货，请更新续办安排', read: true },
-  { id: 'u19', no: 'LCMN-20260609-66012', side: 'l1', actor: '李一线', when: '昨天 14:30', content: '约定今日回复未兑现', read: true },
-  { id: 'u20', no: 'LCMN-20260609-66510', side: 'customer', when: '昨天 11:15', content: '请优先确认退款政策口径', read: true },
-  { id: 'u21', no: 'LCMN-20260715-72015', side: 'l1', actor: '周一线', when: '昨天 09:50', content: '请安排滤芯复测', read: true },
+  { id: 'u8', no: 'IFLYTS-20260610-00002', side: 'customer', when: '今天 12:40', content: '影响日常使用，请加急', read: true , contacted: false },
+  { id: 'u9', no: 'IFLYSJ-20260610-00006', side: 'l1', actor: '陈一线', when: '今天 11:55', content: '已与客户约定 16:00 前回电说明配额方案', read: true },
+  { id: 'u10', no: 'IFLYTS-20260610-00007', side: 'customer', when: '今天 11:20', content: '请同步退货审核进度', read: true },
+  { id: 'u11', no: 'IFLYTS-20260817-00003', side: 'l1', actor: '李一线', when: '今天 10:48', content: '一线无法闭环，请调研侧尽快给结论', read: true },
+  { id: 'u12', no: 'IFLYJY-20260610-00008', side: 'customer', when: '今天 10:05', content: '请确认明日上门时段', read: true , contacted: false },
+  { id: 'u13', no: 'IFLYZX-20260713-00001', side: 'l1', actor: '王一线', when: '今天 09:40', content: '学校侧催进度，已提产研待反馈', read: true },
+  { id: 'u14', no: 'IFLYZX-20260610-00009', side: 'customer', when: '今天 09:12', content: '请今日内给出优惠领取方式', read: true },
+  { id: 'u15', no: 'IFLYTS-20260711-00002', side: 'l1', actor: '张晓芸', when: '今天 08:55', content: '监管平台已受理，需当日反馈处理进展', read: true },
+  { id: 'u16', no: 'IFLYZX-20260817-00005', side: 'customer', when: '昨天 20:18', content: '请同步产研排查进度', read: true , contacted: false },
+  { id: 'u17', no: 'IFLYZX-20260817-00006', side: 'l1', actor: '陈一线', when: '昨天 18:40', content: '协办迟迟未回填，客户晚间再次来电', read: true },
+  { id: 'u18', no: 'IFLYZX-20260804-00003', side: 'customer', when: '昨天 16:05', content: '配件已到货，请更新续办安排', read: true },
+  { id: 'u19', no: 'IFLYSJ-20260609-00004', side: 'l1', actor: '李一线', when: '昨天 14:30', content: '约定今日回复未兑现', read: true },
+  { id: 'u20', no: 'IFLYZX-20260609-00006', side: 'customer', when: '昨天 11:15', content: '请优先确认退款政策口径', read: true },
+  { id: 'u21', no: 'IFLYZX-20260715-00003', side: 'l1', actor: '周一线', when: '昨天 09:50', content: '请安排滤芯复测', read: true },
 ];
 
 /** 催单无「类型」字段（与办理页催单弹窗一致），只展示谁·何时·催了谁·哪张单 */
@@ -1006,21 +1015,21 @@ export const URGE_DRILL: PeopleDrillRow[] = [
  * 正是让它复活的那个动作，故这一类挂起单是允许上补充明细的。
  */
 const SUPPLEMENT_SPECS: EventSpec[] = [
-  // ── 未处理 5：工单上真挂着待回补充 ──
-  { id: 's1', no: 'LCMN-20260817-83002', side: 'l1', actor: '张晓芸', when: '今天 19:27', content: '客户补充：外投平台工单编号与聊天记录截图', read: false, category: '补充信息' },
-  { id: 's2', no: 'LCMN-20260610-75240', side: 'customer', when: '今天 18:10', content: '补充商品实拍图与页面描述截图', read: false, category: '补充信息' },
-  { id: 's3', no: 'LCMN-20260610-74836', side: 'l1', actor: '李一线', when: '今天 16:45', content: '更正企业联系人手机号与开票信息', read: false, category: '修改信息' },
-  { id: 's4', no: 'LCMN-20260610-78120', side: 'customer', when: '今天 15:20', content: '客户申请取消本次上门服务', read: false, category: '取消服务' },
-  { id: 's5', no: 'LCMN-20260610-78810', side: 'l1', actor: '周一线', when: '今天 14:05', content: '补充返厂寄件人联系方式', read: false, category: '其他' },
+  // ── 未知晓 5：工单上真挂着待回补充 ──（＝卡片「未处理 5」；s7/s10 是已知晓未联系，另成一档）
+  { id: 's1', no: 'IFLYTS-20260817-00001', side: 'l1', actor: '张晓芸', when: '今天 19:27', content: '客户补充：外投平台工单编号与聊天记录截图', read: false, category: '补充信息' },
+  { id: 's2', no: 'IFLYTS-20260610-00007', side: 'customer', when: '今天 18:10', content: '补充商品实拍图与页面描述截图', read: false, category: '补充信息' },
+  { id: 's3', no: 'IFLYZX-20260610-00005', side: 'l1', actor: '李一线', when: '今天 16:45', content: '更正企业联系人手机号与开票信息', read: false, category: '修改信息' },
+  { id: 's4', no: 'IFLYZX-20260610-00011', side: 'customer', when: '今天 15:20', content: '客户申请取消本次上门服务', read: false, category: '取消服务' },
+  { id: 's5', no: 'IFLYTS-20260610-00014', side: 'l1', actor: '周一线', when: '今天 14:05', content: '补充返厂寄件人联系方式', read: false, category: '其他' },
   // ── 已处理 8：补充标记已清或本无标记的在办单 ──
-  { id: 's6', no: 'LCMN-20260609-66012', side: 'customer', when: '今天 12:30', content: '补充导入模板与报错日志', read: true, category: '补充信息' },
-  { id: 's7', no: 'LCMN-20260610-75002', side: 'l1', actor: '陈一线', when: '今天 11:15', content: '修改组织管理员姓名与邮箱', read: true, category: '修改信息' },
-  { id: 's8', no: 'LCMN-20260610-73026', side: 'customer', when: '今天 10:40', content: '补充跳曲录屏与当前固件版本', read: true, category: '补充信息' },
-  { id: 's9', no: 'LCMN-20260610-75744', side: 'l1', actor: '李一线', when: '今天 09:50', content: '客户取消本次续费优惠申领', read: true, category: '取消服务' },
-  { id: 's10', no: 'LCMN-20260610-75518', side: 'customer', when: '昨天 19:20', content: '修改预约上门时段', read: true, category: '修改信息' },
-  { id: 's11', no: 'LCMN-20260715-72015', side: 'l1', actor: '王一线', when: '昨天 16:10', content: '补充滤芯更换凭证及其他说明', read: true, category: '其他' },
-  { id: 's12', no: 'LCMN-20260609-66510', side: 'customer', when: '昨天 14:00', content: '补充支付流水号', read: true, category: '补充信息' },
-  { id: 's13', no: 'LCMN-20260817-83004', side: 'l1', actor: '张晓芸', when: '昨天 11:30', content: '修改收件地址与联系人', read: true, category: '修改信息' },
+  { id: 's6', no: 'IFLYSJ-20260609-00004', side: 'customer', when: '今天 12:30', content: '补充导入模板与报错日志', read: true, category: '补充信息' },
+  { id: 's7', no: 'IFLYSJ-20260610-00006', side: 'l1', actor: '陈一线', when: '今天 11:15', content: '修改组织管理员姓名与邮箱', read: true, contacted: false, category: '修改信息' },
+  { id: 's8', no: 'IFLYTS-20260610-00002', side: 'customer', when: '今天 10:40', content: '补充跳曲录屏与当前固件版本', read: true, category: '补充信息' },
+  { id: 's9', no: 'IFLYZX-20260610-00009', side: 'l1', actor: '李一线', when: '今天 09:50', content: '客户取消本次续费优惠申领', read: true, category: '取消服务' },
+  { id: 's10', no: 'IFLYJY-20260610-00008', side: 'customer', when: '昨天 19:20', content: '修改预约上门时段', read: true, contacted: false, category: '修改信息' },
+  { id: 's11', no: 'IFLYZX-20260715-00003', side: 'l1', actor: '王一线', when: '昨天 16:10', content: '补充滤芯更换凭证及其他说明', read: true, category: '其他' },
+  { id: 's12', no: 'IFLYZX-20260609-00006', side: 'customer', when: '昨天 14:00', content: '补充支付流水号', read: true, category: '补充信息' },
+  { id: 's13', no: 'IFLYTS-20260817-00003', side: 'l1', actor: '张晓芸', when: '昨天 11:30', content: '修改收件地址与联系人', read: true, category: '修改信息' },
 ];
 
 /** 补充类型：修改信息 / 补充信息 / 取消服务 / 其他（与弹窗选项一致） */
@@ -1046,18 +1055,18 @@ export const SUPPLEMENT_DRILL: PeopleDrillRow[] = [
  */
 const APPOINTMENT_SPECS: EventSpec[] = [
   // ── 未沟通 6 ──
-  { id: 'a1', no: 'LCMN-20260610-75518', side: 'handler', when: '今天 19:00', content: '', read: false, category: '预约联系用户' },
-  { id: 'a2', no: 'LCMN-20260713-90001', side: 'handler', when: '今天 17:30', content: '', read: false, category: '联系后端确认' },
-  { id: 'a3', no: 'LCMN-20260610-75240', side: 'handler', when: '今天 16:00', content: '', read: false, category: '预约联系用户' },
-  { id: 'a4', no: 'LCMN-20260610-73118', side: 'handler', when: '今天 15:00', content: '', read: false, category: '预约联系用户' },
-  { id: 'a5', no: 'LCMN-20260817-83003', side: 'handler', when: '今天 14:00', content: '', read: false, category: '联系后端确认' },
-  { id: 'a6', no: 'LCMN-20260804-81001', side: 'handler', when: '明天 10:00', content: '', read: false, category: '预约联系用户' },
+  { id: 'a1', no: 'IFLYJY-20260610-00008', side: 'handler', when: '今天 19:00', content: '', read: false, category: '预约联系用户' },
+  { id: 'a2', no: 'IFLYZX-20260713-00001', side: 'handler', when: '今天 17:30', content: '', read: false, category: '联系后端确认' },
+  { id: 'a3', no: 'IFLYTS-20260610-00007', side: 'handler', when: '今天 16:00', content: '', read: false, category: '预约联系用户' },
+  { id: 'a4', no: 'IFLYZX-20260610-00004', side: 'handler', when: '今天 15:00', content: '', read: false, category: '预约联系用户' },
+  { id: 'a5', no: 'IFLYTS-20260817-00002', side: 'handler', when: '今天 14:00', content: '', read: false, category: '联系后端确认' },
+  { id: 'a6', no: 'IFLYZX-20260804-00003', side: 'handler', when: '明天 10:00', content: '', read: false, category: '预约联系用户' },
   // ── 已沟通 5 ──
-  { id: 'a7', no: 'LCMN-20260610-73026', side: 'handler', when: '今天 11:00', content: '', read: true, category: '联系后端确认' },
-  { id: 'a8', no: 'LCMN-20260610-75744', side: 'handler', when: '昨天 16:30', content: '', read: true, category: '预约联系用户' },
-  { id: 'a9', no: 'LCMN-20260610-75002', side: 'handler', when: '昨天 14:00', content: '', read: true, category: '预约联系用户' },
-  { id: 'a10', no: 'LCMN-20260609-66012', side: 'handler', when: '昨天 11:00', content: '', read: true, category: '联系后端确认' },
-  { id: 'a11', no: 'LCMN-20260715-72015', side: 'handler', when: '前天 15:30', content: '', read: true, category: '预约联系用户' },
+  { id: 'a7', no: 'IFLYTS-20260610-00002', side: 'handler', when: '今天 11:00', content: '', read: true, category: '联系后端确认' },
+  { id: 'a8', no: 'IFLYZX-20260610-00009', side: 'handler', when: '昨天 16:30', content: '', read: true, category: '预约联系用户' },
+  { id: 'a9', no: 'IFLYSJ-20260610-00006', side: 'handler', when: '昨天 14:00', content: '', read: true, category: '预约联系用户' },
+  { id: 'a10', no: 'IFLYSJ-20260609-00004', side: 'handler', when: '昨天 11:00', content: '', read: true, category: '联系后端确认' },
+  { id: 'a11', no: 'IFLYZX-20260715-00003', side: 'handler', when: '前天 15:30', content: '', read: true, category: '预约联系用户' },
 ];
 
 export const APPOINTMENT_EVENTS: EventDrillRow[] = APPOINTMENT_SPECS.map((s) => toEvent('预约', s));

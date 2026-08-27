@@ -838,39 +838,39 @@ function toRiskTicket({ no, groupId }: RiskTicketSpec): OpsRiskTicket {
  */
 const RISK_TICKET_SPECS: RiskTicketSpec[] = [
   // ── 已超时 >72h：跨天积压，全在其他班组（本工作台的数据域里没有这种单）──
-  { no: 'LCMN-20260731-58012', groupId: 'hardware' }, // 智能音箱返修超期未回寄
-  { no: 'LCMN-20260730-57744', groupId: 'edu' },      // 学习机批量激活失败
-  { no: 'LCMN-20260731-58190', groupId: 'tech' },     // 开放平台配额申请无人跟进
+  { no: 'IFLYTS-20260731-00001', groupId: 'hardware' }, // 智能音箱返修超期未回寄
+  { no: 'IFLYTS-20260730-00001', groupId: 'edu' },      // 学习机批量激活失败
+  { no: 'IFLYZX-20260731-00002', groupId: 'tech' },     // 开放平台配额申请无人跟进
   // ── 已超时 24–72h ──
-  { no: 'LCMN-20260802-59331', groupId: 'hardware' }, // 扫地机器人主刷电机异响
-  { no: 'LCMN-20260802-59410', groupId: 'tech' },     // API 网关 502
-  { no: 'LCMN-20260802-59502', groupId: 'cs-2' },     // 发票重开申请未处理
+  { no: 'IFLYTS-20260802-00001', groupId: 'hardware' }, // 扫地机器人主刷电机异响
+  { no: 'IFLYZX-20260802-00002', groupId: 'tech' },     // API 网关 502
+  { no: 'IFLYZX-20260802-00003', groupId: 'cs-2' },     // 发票重开申请未处理
   // ── 已超时 ≤24h ──
-  { no: 'LCMN-20260610-73118', groupId: 'cs-1' },     // 设备无法开机
-  { no: 'LCMN-20260716-72901', groupId: 'cs-2' },     // 退款迟迟未到账
-  { no: 'LCMN-20260610-78344', groupId: 'tech' },     // 扫地机器人充电故障（池内未认领）
+  { no: 'IFLYZX-20260610-00004', groupId: 'cs-1' },     // 设备无法开机
+  { no: 'IFLYTS-20260716-00002', groupId: 'cs-2' },     // 退款迟迟未到账
+  { no: 'IFLYZX-20260610-00012', groupId: 'tech' },     // 扫地机器人充电故障（池内未认领）
   // ── 距超时 ≤1h ──
-  { no: 'LCMN-20260610-73026', groupId: 'cs-1' },     // 无线音乐播放跳过歌曲
-  { no: 'LCMN-20260716-72645', groupId: 'tech' },     // Webhook 推送偶发丢失
-  { no: 'LCMN-20260817-83005', groupId: 'edu' },      // 学习机批量固件升级失败
-  { no: 'LCMN-20260610-78810', groupId: 'hardware' }, // 屏幕花屏需返厂检测
+  { no: 'IFLYTS-20260610-00002', groupId: 'cs-1' },     // 无线音乐播放跳过歌曲
+  { no: 'IFLYSJ-20260716-00001', groupId: 'tech' },     // Webhook 推送偶发丢失
+  { no: 'IFLYTS-20260817-00004', groupId: 'edu' },      // 学习机批量固件升级失败
+  { no: 'IFLYTS-20260610-00014', groupId: 'hardware' }, // 屏幕花屏需返厂检测
   // ── 距超时 ≤2h ──
-  { no: 'LCMN-20260711-61551', groupId: 'hardware' }, // 外投·维修超期未解决
-  { no: 'LCMN-20260610-75002', groupId: 'tech' },     // API 调用返回 429 限流
-  { no: 'LCMN-20260609-66248', groupId: 'cs-2' },     // 账号被异常登录
-  { no: 'LCMN-20260610-78902', groupId: 'tech' },     // API 鉴权失败排查
+  { no: 'IFLYTS-20260711-00002', groupId: 'hardware' }, // 外投·维修超期未解决
+  { no: 'IFLYSJ-20260610-00006', groupId: 'tech' },     // API 调用返回 429 限流
+  { no: 'IFLYTS-20260609-00005', groupId: 'cs-2' },     // 账号被异常登录
+  { no: 'IFLYZX-20260610-00015', groupId: 'tech' },     // API 鉴权失败排查
   // ── 距超时 ≤4h ──
-  { no: 'LCMN-20260713-90001', groupId: 'edu' },      // 翻译机离线翻译结果异常
-  { no: 'LCMN-20260715-72015', groupId: 'hardware' }, // 空气净化器滤芯指示灯常亮
-  { no: 'LCMN-20260804-81002', groupId: 'cs-2' },     // 跨组调剂·二组转入
+  { no: 'IFLYZX-20260713-00001', groupId: 'edu' },      // 翻译机离线翻译结果异常
+  { no: 'IFLYZX-20260715-00003', groupId: 'hardware' }, // 空气净化器滤芯指示灯常亮
+  { no: 'IFLYTS-20260804-00004', groupId: 'cs-2' },     // 跨组调剂·二组转入
   // ── 距超时 ≤8h ──
-  { no: 'LCMN-20260610-75240', groupId: 'cs-1' },     // 收到商品与描述不符
-  { no: 'LCMN-20260610-75518', groupId: 'cs-1' },     // 预约上门安装智能门锁
-  { no: 'LCMN-20260609-66012', groupId: 'tech' },     // 批量导入用户报错
-  { no: 'LCMN-20260609-66510', groupId: 'cs-1' },     // 协助确认退款政策
-  { no: 'LCMN-20260610-78600', groupId: 'cs-1' },     // 七天无理由退货咨询
+  { no: 'IFLYTS-20260610-00007', groupId: 'cs-1' },     // 收到商品与描述不符
+  { no: 'IFLYJY-20260610-00008', groupId: 'cs-1' },     // 预约上门安装智能门锁
+  { no: 'IFLYSJ-20260609-00004', groupId: 'tech' },     // 批量导入用户报错
+  { no: 'IFLYZX-20260609-00006', groupId: 'cs-1' },     // 协助确认退款政策
+  { no: 'IFLYTS-20260610-00013', groupId: 'cs-1' },     // 七天无理由退货咨询
   // ── 距超时 ≤24h ──
-  { no: 'LCMN-20260609-65236', groupId: 'cs-2' },     // 已答复绑定流程，待审核
+  { no: 'IFLYZX-20260609-00002', groupId: 'cs-2' },     // 已答复绑定流程，待审核
 ];
 
 export const OPS_RISK_TICKETS: OpsRiskTicket[] = RISK_TICKET_SPECS.map(toRiskTicket);

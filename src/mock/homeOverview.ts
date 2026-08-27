@@ -393,10 +393,10 @@ function maskPhone(phone?: string): string {
 
 /** 已发调研短信待评价：取已下送的单（参评率口径） */
 const SURVEY_PENDING_SPEC: DrillRowSpec[] = [
-  { no: 'LCMN-20260709-60110', metrics: ['08-03 18:20', '2小时05分'] },
-  { no: 'LCMN-20260710-61020', metrics: ['08-03 16:42', '3小时43分'] },
-  { no: 'LCMN-20260708-59880', metrics: ['08-03 14:10', '6小时15分'] },
-  { no: 'LCMN-20260716-73140', metrics: ['08-03 11:35', '8小时50分'] },
+  { no: 'IFLYTS-20260709-00001', metrics: ['08-03 18:20', '2小时05分'] },
+  { no: 'IFLYZX-20260710-00002', metrics: ['08-03 16:42', '3小时43分'] },
+  { no: 'IFLYTS-20260708-00002', metrics: ['08-03 14:10', '6小时15分'] },
+  { no: 'IFLYZX-20260716-00003', metrics: ['08-03 11:35', '8小时50分'] },
 ];
 
 /**
@@ -405,16 +405,16 @@ const SURVEY_PENDING_SPEC: DrillRowSpec[] = [
  * 拿工单的 updatedAt 去配这个时长会自相矛盾（工单 mock 的时间轴比原型「今天」早得多）。
  */
 const FOLLOW_MISSED_SPEC: DrillRowSpec[] = [
-  { no: 'LCMN-20260610-75744', metrics: ['08-02 16:30', '28小时15分'] },
-  { no: 'LCMN-20260610-75240', metrics: ['08-02 14:08', '30小时37分'] },
-  { no: 'LCMN-20260610-75518', metrics: ['08-02 09:42', '35小时03分'] },
+  { no: 'IFLYZX-20260610-00009', metrics: ['08-02 16:30', '28小时15分'] },
+  { no: 'IFLYTS-20260610-00007', metrics: ['08-02 14:08', '30小时37分'] },
+  { no: 'IFLYJY-20260610-00008', metrics: ['08-02 09:42', '35小时03分'] },
 ];
 
 /** 差评工单：取工单数据源里评分 ≤ 2 的单，评分不再另写一份 */
 const BAD_REVIEW_SPEC: (DrillRowSpec & { tag: string })[] = [
-  { no: 'LCMN-20260610-75002', tag: '响应慢、未解决', metrics: ['08-03 17:05'] },
-  { no: 'LCMN-20260610-73026', tag: '重复沟通', metrics: ['08-03 10:22'] },
-  { no: 'LCMN-20260817-83002', tag: '承诺未兑现', metrics: ['08-02 19:46'] },
+  { no: 'IFLYSJ-20260610-00006', tag: '响应慢、未解决', metrics: ['08-03 17:05'] },
+  { no: 'IFLYTS-20260610-00002', tag: '重复沟通', metrics: ['08-03 10:22'] },
+  { no: 'IFLYTS-20260817-00001', tag: '承诺未兑现', metrics: ['08-02 19:46'] },
 ];
 
 export const HOME_METRIC_DRILLS: Record<HomeMetricDrillKey, HomeMetricDrillTable> = {

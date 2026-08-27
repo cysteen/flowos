@@ -271,19 +271,24 @@ export const FIXED_ASSIGN_USERS: FixedAssignOption[] = [
   { value: '用户·陈静', label: '陈静', keywords: 'chenjing 一线客服部 客服专员', kind: 'user' },
   { value: '用户·赵敏', label: '赵敏', keywords: 'zhaomin 售后服务部 售后工程师', kind: 'user' },
   { value: '用户·吴婷', label: '吴婷', keywords: 'wuting 一线客服部 实习坐席', kind: 'user' },
-  { value: '用户·张敏', label: '张敏', keywords: 'zhangmin 受理一组 二线技术顾问', kind: 'user' },
-  { value: '用户·李昊', label: '李昊', keywords: 'lihao 受理一组 二线技术顾问', kind: 'user' },
-  { value: '用户·孙杰', label: '孙杰', keywords: 'sunjie 受理一组 二线技术顾问', kind: 'user' },
+  { value: '用户·张敏', label: '张敏', keywords: 'zhangmin 受理一组 二线专员', kind: 'user' },
+  { value: '用户·李昊', label: '李昊', keywords: 'lihao 受理一组 二线专员', kind: 'user' },
+  { value: '用户·孙杰', label: '孙杰', keywords: 'sunjie 受理一组 二线专员', kind: 'user' },
   { value: '用户·周运营', label: '周运营', keywords: 'zhouyunying 运营管理员', kind: 'user' },
 ];
 
 export const FIXED_ASSIGN_ROLES: FixedAssignOption[] = [
-  { value: '角色·客服班组长', label: '客服班组长', keywords: '班组长 leader', kind: 'role' },
-  { value: '角色·客服·二线技术顾问', label: '客服·二线技术顾问', keywords: '二线技术顾问 agent', kind: 'role' },
-  { value: '角色·售后·二线技术顾问', label: '售后·二线技术顾问', keywords: '售后 agent', kind: 'role' },
-  { value: '角色·运营管理员', label: '运营管理员', keywords: '运营 ops', kind: 'role' },
-  { value: '角色·租户管理员', label: '租户管理员', keywords: '租户 admin', kind: 'role' },
-  { value: '角色·质检专员', label: '质检专员', keywords: '质检 qa', kind: 'role' },
+  // 0830 九角色（基线 §3.0）。规则引擎里原先的通知目标「投诉风险组」＝ 客诉专员 + 投诉督导两个角色，
+  // 落笔按需要通知谁写具体角色名，别再写「投诉处理角色」。
+  { value: '角色·一线坐席', label: '一线坐席', keywords: '一线 l1 agent', kind: 'role' },
+  { value: '角色·二线专员', label: '二线专员', keywords: '二线专员 agent l2 客服 售后', kind: 'role' },
+  { value: '角色·技术支持', label: '技术支持', keywords: '技术支持 三线 tech', kind: 'role' },
+  { value: '角色·二线班组长', label: '二线班组长', keywords: '班组长 leader', kind: 'role' },
+  { value: '角色·客诉专员', label: '客诉专员', keywords: '投诉 客诉 complaint', kind: 'role' },
+  { value: '角色·投诉督导', label: '投诉督导', keywords: '投诉 督导 supervisor 审批', kind: 'role' },
+  { value: '角色·工单运营', label: '工单运营', keywords: '运营 监控 ops', kind: 'role' },
+  { value: '角色·质检', label: '质检', keywords: '质检 qa', kind: 'role' },
+  { value: '角色·管理员', label: '管理员', keywords: '管理员 admin 租户 运营 平台', kind: 'role' },
   { value: '角色·售后回访专员', label: '售后回访专员', keywords: '回访', kind: 'role' },
 ];
 
@@ -626,7 +631,7 @@ export const TEST_PRESETS: TestPreset[] = [
   {
     id: 'P1', label: '典型对内场景 · 热线来源 · 咨询单',
     data: {
-      ticketNo: 'LCMN-20260728-90001', title: '扫地机器人无法开机', ticketType: '咨询',
+      ticketNo: 'IFLYZX-20260728-00004', title: '扫地机器人无法开机', ticketType: '咨询',
       source: '热线电话', bizType: '智能硬件', productName: '扫地机器人R2', customerName: '孙权', customerPhone: '138****2046',
       assigneeId: '林坐席', creatorId: '张三',
       responseDueTime: '2026-07-28 16:30',
@@ -639,7 +644,7 @@ export const TEST_PRESETS: TestPreset[] = [
       prevAssigneeId: '张三',
       delegateeIds: '陈坐席', delegateTask: '协助排查主板供电',
       escalateTargetId: '王组长', aftersaleReceiverId: '李四',
-      newTicketNo: 'LCMN-20260728-90009', isSuggestion: '否',
+      newTicketNo: 'IFLYZX-20260728-00007', isSuggestion: '否',
       holdReason: '等待客户寄回设备', closeReason: '问题已解决',
       supplementType: '补充信息', supplementContent: '设备序列号 SN20250612XY',
       urgeContent: '客户表示已等待两天', urgeCount: '2',
@@ -654,7 +659,7 @@ export const TEST_PRESETS: TestPreset[] = [
   {
     id: 'P2', label: '对客抑制场景 · 内投渠道 · 投诉单',
     data: {
-      ticketNo: 'LCMN-20260728-90002', title: '投诉客服响应慢', ticketType: '投诉',
+      ticketNo: 'IFLYZX-20260728-00005', title: '投诉客服响应慢', ticketType: '投诉',
       source: '内投渠道', bizType: '教育', productName: '学习机 T20', customerName: '刘备', customerPhone: '139****8821',
       assigneeId: '陈坐席', creatorId: '张三',
       responseDueTime: '2026-07-28 15:00',
@@ -665,7 +670,7 @@ export const TEST_PRESETS: TestPreset[] = [
   {
     id: 'P3', label: '对客抑制场景 · 无线音乐业务 · 建议单',
     data: {
-      ticketNo: 'LCMN-20260728-90003', title: '希望增加歌单导入', ticketType: '建议',
+      ticketNo: 'IFLYZX-20260728-00006', title: '希望增加歌单导入', ticketType: '建议',
       source: '客户服务小程序', bizType: '无线音乐', productName: '讯飞智能耳机', customerName: '曹操', customerPhone: '137****5510',
       assigneeId: '王坐席', creatorId: '王组长', isSuggestion: '是',
       responseDueTime: '2026-07-29 10:00',
@@ -702,16 +707,16 @@ export interface EvalLog {
 }
 
 export const EVAL_LOGS: EvalLog[] = [
-  { time: '2026-07-28 14:22:10', ticketNo: 'IFLYKF20260728001', ruleId: 'R01', ruleName: '建单派发通知', recipient: '李强（二线处理组）', channel: 'IM', result: '已发送' },
-  { time: '2026-07-28 14:22:10', ticketNo: 'IFLYKF20260728001', ruleId: 'R02', ruleName: '建单受理通知', recipient: '138****2046', channel: '短信', result: '已发送' },
-  { time: '2026-07-28 14:18:44', ticketNo: 'IFLYKF20260728002', ruleId: 'R02', ruleName: '建单受理通知', recipient: '139****8821', channel: '短信', result: '已跳过', skipReason: '不满足触发条件：工单来源「内投渠道」属于排除项' },
-  { time: '2026-07-28 14:18:44', ticketNo: 'IFLYKF20260728002', ruleId: 'R01', ruleName: '建单派发通知', recipient: '陈静（投诉专席）', channel: 'IM', result: '已发送' },
-  { time: '2026-07-28 13:55:02', ticketNo: 'IFLYKF20260728003', ruleId: 'R02', ruleName: '建单受理通知', recipient: '137****5510', channel: '短信', result: '已跳过', skipReason: '不满足触发条件：业务分类「无线音乐」属于排除项' },
-  { time: '2026-07-28 11:40:31', ticketNo: 'IFLYKF20260727088', ruleId: 'R10', ruleName: '审核提醒', recipient: '—', channel: 'IM', result: '已跳过', skipReason: '收件人解析为空：该审批单未配置审核组' },
-  { time: '2026-07-28 10:12:07', ticketNo: 'IFLYKF20260727061', ruleId: 'R11', ruleName: '评论区 @ 提醒', recipient: '钱伟（技术支持）', channel: 'IM', result: '发送失败', skipReason: '渠道返回：该用户未完成 i讯飞账号映射' },
-  { time: '2026-07-28 09:30:55', ticketNo: 'IFLYKF20260727054', ruleId: 'R08', ruleName: '退回提醒（技术支持）', recipient: '—', channel: 'IM', result: '已跳过', skipReason: '不满足触发条件：退回来源环节为「调研」' },
-  { time: '2026-07-28 08:00:12', ticketNo: 'IFLYKF20260715022', ruleId: 'R14', ruleName: '挂起即将到期提醒', recipient: '周涛（产品支持组）', channel: '邮件', result: '已发送' },
-  { time: '2026-07-28 08:00:12', ticketNo: 'IFLYKF20260710009', ruleId: 'R14', ruleName: '挂起即将到期提醒', recipient: '—', channel: '邮件', result: '已跳过', skipReason: '规则已停用' },
+  { time: '2026-07-28 14:22:10', ticketNo: 'IFLYZX-20260728-00001', ruleId: 'R01', ruleName: '建单派发通知', recipient: '李强（二线处理组）', channel: 'IM', result: '已发送' },
+  { time: '2026-07-28 14:22:10', ticketNo: 'IFLYZX-20260728-00001', ruleId: 'R02', ruleName: '建单受理通知', recipient: '138****2046', channel: '短信', result: '已发送' },
+  { time: '2026-07-28 14:18:44', ticketNo: 'IFLYZX-20260728-00002', ruleId: 'R02', ruleName: '建单受理通知', recipient: '139****8821', channel: '短信', result: '已跳过', skipReason: '不满足触发条件：工单来源「内投渠道」属于排除项' },
+  { time: '2026-07-28 14:18:44', ticketNo: 'IFLYZX-20260728-00002', ruleId: 'R01', ruleName: '建单派发通知', recipient: '陈静（投诉专席）', channel: 'IM', result: '已发送' },
+  { time: '2026-07-28 13:55:02', ticketNo: 'IFLYZX-20260728-00003', ruleId: 'R02', ruleName: '建单受理通知', recipient: '137****5510', channel: '短信', result: '已跳过', skipReason: '不满足触发条件：业务分类「无线音乐」属于排除项' },
+  { time: '2026-07-28 11:40:31', ticketNo: 'IFLYZX-20260727-00003', ruleId: 'R10', ruleName: '审核提醒', recipient: '—', channel: 'IM', result: '已跳过', skipReason: '收件人解析为空：该审批单未配置审核组' },
+  { time: '2026-07-28 10:12:07', ticketNo: 'IFLYZX-20260727-00002', ruleId: 'R11', ruleName: '评论区 @ 提醒', recipient: '钱伟（技术支持）', channel: 'IM', result: '发送失败', skipReason: '渠道返回：该用户未完成 i讯飞账号映射' },
+  { time: '2026-07-28 09:30:55', ticketNo: 'IFLYZX-20260727-00001', ruleId: 'R08', ruleName: '退回提醒（技术支持）', recipient: '—', channel: 'IM', result: '已跳过', skipReason: '不满足触发条件：退回来源环节为「调研」' },
+  { time: '2026-07-28 08:00:12', ticketNo: 'IFLYZX-20260715-00001', ruleId: 'R14', ruleName: '挂起即将到期提醒', recipient: '周涛（产品支持组）', channel: '邮件', result: '已发送' },
+  { time: '2026-07-28 08:00:12', ticketNo: 'IFLYZX-20260710-00001', ruleId: 'R14', ruleName: '挂起即将到期提醒', recipient: '—', channel: '邮件', result: '已跳过', skipReason: '规则已停用' },
 ];
 
 

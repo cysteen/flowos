@@ -3,9 +3,9 @@ import type {
   InsightDetailTable, InsightModalKey, LatestHandlingItem,
 } from '@/views/tickets/types/operation';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
-import type { ClosureMode, EscalateTarget } from '@/views/tickets/types/ticket';
+import type { ClosureMode } from '@/views/tickets/types/ticket';
 
-// 工单操作页 Mock（样例 = 设计稿 LCMN-20260610-73026 · P-工单处理 定稿）。
+// 工单操作页 Mock（样例 = 设计稿 IFLYTS-20260610-00002 · P-工单处理 定稿）。
 
 export interface ChildTicket {
   no: string;
@@ -79,16 +79,12 @@ export interface TicketDetailMeta {
   channel: string;
   priority: string;
   status: string;
-  /**
-   * 升级目标（仅 status ＝「已升级」时有值）。基线只有一个「已升级」状态，
-   * 三线技术支持与产研的差别（处理人转不转、催补通知发给谁、能不能点「退回」）
-   * 由本字段承担，不靠拆状态名。
-   */
-  escalateTarget?: EscalateTarget;
+  // ⚠️ 依据基线 §1：升级目标已进状态（已升级技术支持 / 已升级产研），
+  // 原 escalateTarget 字段随之删除 —— 判"在不在三线手上"读 status，不读第二个字段。
   /**
    * 结案方式（基线 §1「结案方式」小节）：建单时选定、此后不可改，与工单类型正交。
    * 决定底栏动作集宽窄（直接结案＝不下送、不升级、不挂起、不转派），
-   * 也决定这张单走完流程后落「已解决」还是建单即落「已结案」。
+   * 也决定这张单走完流程后落「已结案」还是建单即落「直接结案」。
    * 缺省视为「正常流程」，见 resolveClosureMode。
    */
   closureMode?: ClosureMode;
@@ -246,7 +242,7 @@ export function productHasAfterSaleService(productName?: string): boolean {
 }
 
 export const TICKET_DETAIL: TicketDetailMeta = {
-  no: 'LCMN-20260610-73026',
+  no: 'IFLYTS-20260610-00002',
   title: '无线音乐播放跳过歌曲异常',
   type: '投诉',
   channel: '在线客服',
@@ -320,32 +316,32 @@ export const TICKET_DETAIL: TicketDetailMeta = {
       title: '历史工单',
       columns: ['工单编号', '工单类型', '创建时间', '工单状态', '当前节点'],
       rows: [
-        { cells: ['IFLYKF2026061809340156', '报修', '2026-06-17 10:15:32', '处理中', '技术支持处理'], ticketNo: 'IFLYKF2026061809340156' },
-        { cells: ['IFLYKF2026051200156', '报修', '2026-05-12 14:08:50', '已完成', '已结单'], ticketNo: 'IFLYKF2026051200156' },
-        { cells: ['IFLYKF2026042000321', '投诉', '2026-04-20 11:30:20', '已完成', '已结单'], ticketNo: 'IFLYKF2026042000321' },
-        { cells: ['IFLYKF2026030800089', '咨询', '2026-03-08 09:15:45', '已关闭', '已结单'], ticketNo: 'IFLYKF2026030800089' },
+        { cells: ['IFLYZX-20260618-00003', '报修', '2026-06-17 10:15:32', '处理中', '技术支持处理'], ticketNo: 'IFLYZX-20260618-00003' },
+        { cells: ['IFLYZX-20260512-00001', '报修', '2026-05-12 14:08:50', '已完成', '已结单'], ticketNo: 'IFLYZX-20260512-00001' },
+        { cells: ['IFLYZX-20260420-00001', '投诉', '2026-04-20 11:30:20', '已完成', '已结单'], ticketNo: 'IFLYZX-20260420-00001' },
+        { cells: ['IFLYZX-20260308-00001', '咨询', '2026-03-08 09:15:45', '已关闭', '已结单'], ticketNo: 'IFLYZX-20260308-00001' },
       ],
     },
     complaint: {
       title: '投诉单',
       columns: ['工单编号', '工单类型', '创建时间', '工单状态', '当前节点'],
       rows: [
-        { cells: ['IFLYKF2026042000321', '投诉', '2026-04-20 11:30:20', '已完成', '已结单'], ticketNo: 'IFLYKF2026042000321' },
+        { cells: ['IFLYZX-20260420-00001', '投诉', '2026-04-20 11:30:20', '已完成', '已结单'], ticketNo: 'IFLYZX-20260420-00001' },
       ],
     },
     recent30: {
       title: '近30天工单',
       columns: ['工单编号', '工单类型', '创建时间', '工单状态', '当前节点'],
       rows: [
-        { cells: ['IFLYKF2026061809340156', '报修', '2026-06-17 10:15:32', '处理中', '技术支持处理'], ticketNo: 'IFLYKF2026061809340156' },
-        { cells: ['IFLYKF2026061500210', '咨询', '2026-06-15 13:22:08', '已完成', '已结单'], ticketNo: 'IFLYKF2026061500210' },
-        { cells: ['IFLYKF2026060300098', '报修', '2026-06-03 16:40:55', '已完成', '已结单'], ticketNo: 'IFLYKF2026060300098' },
+        { cells: ['IFLYZX-20260618-00003', '报修', '2026-06-17 10:15:32', '处理中', '技术支持处理'], ticketNo: 'IFLYZX-20260618-00003' },
+        { cells: ['IFLYZX-20260615-00002', '咨询', '2026-06-15 13:22:08', '已完成', '已结单'], ticketNo: 'IFLYZX-20260615-00002' },
+        { cells: ['IFLYZX-20260603-00001', '报修', '2026-06-03 16:40:55', '已完成', '已结单'], ticketNo: 'IFLYZX-20260603-00001' },
       ],
     },
   },
   latestHandling: [
     {
-      who: '王坐席', role: '二线技术顾问', when: '今天 16:30',
+      who: '王坐席', role: '二线专员', when: '今天 16:30',
       text: '远程升级固件至 v2.3.1 并复测 30 分钟，跳歌问题未再复现，已电话告知客户处理结果与后续观察建议。',
     },
     {
@@ -383,7 +379,7 @@ export const TICKET_DETAIL: TicketDetailMeta = {
   },
   complaint: {
     categories: [
-      { cat1: '产品质量投诉', cat2: '产品质量故障' },
+      { cat1: '产品问题', cat2: '产品质量' },
     ],
     complaintType: '产品质量',
     platforms: [
@@ -396,7 +392,7 @@ export const TICKET_DETAIL: TicketDetailMeta = {
   },
   childTickets: [
     {
-      no: 'LCMN-20260610-70021',
+      no: 'IFLYZX-20260610-00001',
       title: '远程诊断-音箱跳歌',
       time: '06-10 李坐席',
       typeTag: '子单',
@@ -405,7 +401,7 @@ export const TICKET_DETAIL: TicketDetailMeta = {
       statusColor: '#1A6FFF',
     },
     {
-      no: 'LCMN-20260611-70022',
+      no: 'IFLYZX-20260611-00001',
       title: '上门服务-更换主板',
       time: '06-11 王坐席',
       typeTag: '子单',
@@ -414,7 +410,7 @@ export const TICKET_DETAIL: TicketDetailMeta = {
       statusColor: '#F59E0B',
     },
     {
-      no: 'LCMN-20260612-70023',
+      no: 'IFLYZX-20260612-00001',
       title: '备件申请-电源适配器',
       time: '06-12 张坐席',
       typeTag: '子单',
@@ -425,14 +421,14 @@ export const TICKET_DETAIL: TicketDetailMeta = {
   ],
   linkedRecords: [
     {
-      no: 'LCMN-20260601-60012',
+      no: 'IFLYZX-20260601-00002',
       title: 'X1 固件升级公告',
       tag: '关联',
       meta: '06-01 李坐席关联',
     },
   ],
   similarTicket: {
-    no: 'LCMN-20260605-55881',
+    no: 'IFLYZX-20260605-00003',
     title: '同型号音箱跳歌问题',
     similarity: '相似 92%·已解决',
     solution: '方案：固件降级至 v2.3.1 后恢复稳定',
@@ -483,7 +479,7 @@ export const TIMELINE: TimelineEntry[] = [
     what: '什么时候能解决？已经影响使用两天了，很着急。',
   },
   {
-    id: 'e6', category: 'comm', action: 'phone', who: '王坐席', role: '二线技术顾问',
+    id: 'e6', category: 'comm', action: 'phone', who: '王坐席', role: '二线专员',
     how: '电话外呼', when: '今天 10:40', recording: '03:25',
     what: '致电客户确认故障细节，记录复现步骤，承诺 2 小时内反馈。',
     asr: [
@@ -492,7 +488,7 @@ export const TIMELINE: TimelineEntry[] = [
     ],
   },
   {
-    id: 'e7', category: 'comm', action: 'sms', who: '王坐席', role: '二线技术顾问',
+    id: 'e7', category: 'comm', action: 'sms', who: '王坐席', role: '二线专员',
     how: '二线短信', when: '今天 10:45',
     what: '【讯飞客服】您反馈的音箱跳歌问题已由二线跟进，预计今日 18:00 前反馈结果。',
   },
@@ -502,17 +498,17 @@ export const TIMELINE: TimelineEntry[] = [
     what: '收到，我在家，方便时给我来电即可。',
   },
   {
-    id: 'e9', category: 'node', action: 'hold', who: '王坐席', role: '二线技术顾问',
+    id: 'e9', category: 'node', action: 'hold', who: '王坐席', role: '二线专员',
     how: '挂起', when: '今天 11:05',
     what: '已升级技术支持排查，挂起工单等待技术结论后恢复处理。',
   },
   {
-    id: 'e10', category: 'node', action: 'transfer', who: '陈班组长', role: '班组长',
+    id: 'e10', category: 'node', action: 'transfer', who: '陈班组长', role: '二线班组长',
     how: '班组转派', when: '今天 14:20',
     what: '原处理人王二线今日休假，改派至李二线继续跟进。',
   },
   {
-    id: 'eh1', category: 'handle', action: 'handle', who: '王坐席', role: '二线技术顾问',
+    id: 'eh1', category: 'handle', action: 'handle', who: '王坐席', role: '二线专员',
     how: '工单处理', when: '今天 15:10',
     what: '登记处理进展（补充 2 项）',
     attachment: '固件升级日志.txt',
@@ -522,7 +518,7 @@ export const TIMELINE: TimelineEntry[] = [
     ],
   },
   {
-    id: 'eh2', category: 'handle', action: 'handle', who: '李二线', role: '二线技术顾问',
+    id: 'eh2', category: 'handle', action: 'handle', who: '李二线', role: '二线专员',
     how: '工单处理', when: '今天 15:48',
     what: '登记服务与结论（补充 2 项，修改 1 项）',
     changes: [
@@ -532,18 +528,18 @@ export const TIMELINE: TimelineEntry[] = [
     ],
   },
   {
-    id: 'er1', category: 'relate', action: 'relate', who: '王坐席', role: '二线技术顾问',
+    id: 'er1', category: 'relate', action: 'relate', who: '王坐席', role: '二线专员',
     how: '升级投诉', when: '今天 16:02',
     what: '客户对处理结果不满、要求追责，升级为投诉，已生成新投诉单并双向关联。',
     relatedTicket: {
-      no: 'LCMN-20260610-73090', title: '音箱跳歌问题处理不满·要求追责',
+      no: 'IFLYTS-20260610-00003', title: '音箱跳歌问题处理不满·要求追责',
       type: '投诉', typeColor: '#EF4444',
       status: '未认领', statusColor: '#1A6FFF',
       builder: '王坐席', createdAt: '今天 16:02',
     },
   },
   {
-    id: 'er2', category: 'relate', action: 'relate', who: '王坐席', role: '二线技术顾问',
+    id: 'er2', category: 'relate', action: 'relate', who: '王坐席', role: '二线专员',
     how: '升级售后', when: '今天 16:12',
     what: '需寄修硬件，升级售后，已生成关联售后单并双向关联，售后进度回流本单。',
     relatedTicket: {
@@ -554,7 +550,7 @@ export const TIMELINE: TimelineEntry[] = [
     },
   },
   {
-    id: 'e11', category: 'node', action: 'resolved', who: '王坐席', role: '二线技术顾问',
+    id: 'e11', category: 'node', action: 'resolved', who: '王坐席', role: '二线专员',
     how: '标记已解决', when: '今天 16:30',
     what: '更换固件版本并远程验证，跳歌问题已解决（附解决方案）。',
   },
@@ -581,18 +577,20 @@ export const DEFAULT_PROCESS_DRAFT = {
   conclusion: '已解决：技术方案解决',
   serviceSolution: '',
   concessionPlan: '',
-  complaintCat1: '产品质量投诉',
-  complaintCat2: '产品质量故障',
-  complaintCat3: '',
+  complaintCat1: '产品问题',
+  complaintCat2: '产品质量',
+  complaintCat3: '质量事故（烧毁、烧焦等）',
+  complainedRole: [] as string[],
   complaintMark: '有效投诉',
+  backendPush: '',
   complaintNote: '客户要求 48h 内书面回复，此处修正分类与备注',
   complaintNoteAttachments: [] as string[],
   platformFollowups: [] as {
     platform: string;
     complaintNo?: string;
-    replyResult: string;
-    reconcile: '' | '是' | '否';
   }[],
+  complaintChannelReply: '',
+  complaintChannelReconcile: '' as '' | '是' | '否',
   riskFlag: '无风险',
   riskHasRisk: false,
   riskLevel: '',

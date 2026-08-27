@@ -137,7 +137,7 @@ function onSubmit() {
 <template>
   <OpActionModal
     :open="open"
-    title="升级投诉"
+    title="升级投诉 · 升级外投"
     :icon="ArrowUpOutlined"
     tone="warn"
     :width="560"

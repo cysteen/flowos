@@ -19,7 +19,7 @@ const props = defineProps<{
   detail: TicketDetailMeta;
   ticketNo: string;
   /**
-   * **整页锁死**：本单已被新单接管（已转单）/ 只读角色（运营监控岗）。
+   * **整页锁死**：本单已被新单接管（已转咨询 / 已转建议 / 已转商机）/ 只读角色（工单运营）。
    * ⚠️ **一线视角不走这条** —— 一线视角锁的是**底栏的二线流转动作**，
    * 头部这一排（升级投诉 / 关联售后 / 新建补充 / 催单 / 取消工单）**一线本来就有权限**：
    * 升级投诉一线可升非投诉单、取消工单是一线专属、催补是一线主动作。
@@ -27,32 +27,35 @@ const props = defineProps<{
    */
   readonly?: boolean;
   /**
-   * 客户侧两枚（新建补充 / 催单）是否展示 —— 按角色给（PRD-830 §4.1）：
-   * 新建补充＝一线 + 二线；催单＝一线唯一；三线 / 班组长 / 投诉处理角色两枚都不展示。
+   * 客户侧两枚（新建补充 / 催单）是否展示 —— 按角色给（PRD-915 补充与催单 §4.1）：
+   * 新建补充＝一线 + 二线专员 + 技术支持 + 二线班组长 + 客诉专员 + 投诉督导 + 管理员（※21a，0826 放开）；催单＝一线唯一；
+   * 二线班组长 / 客诉专员 / 投诉督导 / 工单运营 / 质检 两枚都不展示。
    * ⚠️ 它们**不跟着 readonly 置灰**：一线视角虽然锁流转，但这两枚正是一线的主动作。
-   * 真正会锁住它们的只有「已转单」（单已作废）与只读角色，见 customerEntryLocked。
+   * 真正会锁住它们的只有转单三态（单已作废）与只读角色，见 customerEntryLocked。
    */
   canSupplement?: boolean;
   canDunning?: boolean;
   /**
    * 同排另三枚的角色门控（基线「动作 × 角色」表）：
-   * - 升级投诉 / 关联售后：二线 · 班组长 · 投诉处理角色 · 管理员，一线也可
+   * - 升级投诉：一线 · 二线专员 · 技术支持 · 二线班组长 · 客诉专员 · 投诉督导 · 管理员
+   * - 关联售后：同上但**不给一线**（※12a，0826 收回——建不建售后单由二线判断）
+   *   （工单运营与质检不展示）
    * - **取消工单：一线专属** —— 二线及以上整枚不展示
    */
   canEscalateComplaint?: boolean;
   canLinkAftersale?: boolean;
   canCancelTicket?: boolean;
-  /** 客户侧录入被锁：已转单 / 只读角色。一线视角**不**锁 */
+  /** 客户侧录入被锁：转单三态 / 只读角色。一线视角**不**锁 */
   customerEntryLocked?: boolean;
-  /** 已转单：业务转至新单，表头收束为只读提示 + 前往新单 */
+  /** 转单三态：业务转至新单，表头收束为只读提示 + 前往新单 */
   supersededBy?: TicketRelation | null;
 }>();
 
 const READONLY_TIP = '本单已被新单接管并锁定，请在新单上处理';
 
 /**
- * 终态（基线 §1 状态分组为「终态」的七个：已升级投诉 / 已解决 / 已关闭 / 已强结 /
- * 已转单 / 已取消 / 已结案）：
+ * 终态（基线 §1 状态分组为「终态」的十个：已结案 / 已关闭 / 已强结 / 已升级投诉 /
+ * 已升级外投 / 已转咨询 / 已转建议 / 已转商机 / 已取消 / 直接结案）：
  * **不再展示「取消工单」**——取消是对"在跑的单"的终止动作，对已经终止的单没有意义（PRD §5.6.3 ②）。
  */
 const isTerminal = computed(() => isTicketTerminated(props.detail.status));
@@ -77,16 +80,16 @@ const escalateTip = computed(() => {
 });
 
 /**
- * 已转出（转售后，客服侧完全冻结）：**催补两枚都不给**（PRD-830 §4.2 / §7.3、基线 ※6）。
+ * 已转出（转售后，客服侧完全冻结）：**催补两枚都不给**（PRD-915 补充与催单 §4.2 / §7.3、基线 ※6）。
  * 引导改由「已转售后」芯片的 hover 提示承担 —— 单在售后手上，客服既推不动也答不了；
  * 给了按钮就得回答"点了写在哪"，写原单没人看、建子单等于两边各处理一半。
  */
 const isTransferredOut = computed(() => /已转出/.test(props.detail.status));
 
 /**
- * 催补两枚的**状态门控**（PRD-830 §4.2）——与角色门控（canSupplement / canDunning）
+ * 催补两枚的**状态门控**（PRD-915 补充与催单 §4.2）——与角色门控（canSupplement / canDunning）
  * **同时生效**，任一不通过即不展示。
- * 终态只留补充；草稿 / 已转出 / 已结案 / 已取消 两枚都不给。
+ * 终态只留补充；草稿 / 已转出 / 直接结案 / 已取消 两枚都不给。
  */
 const csAvail = computed(() => csEntryAvailability(props.detail.status as TicketStatus));
 const showSupplement = computed(() => props.canSupplement && csAvail.value.supplement);
@@ -122,13 +125,12 @@ const relations = computed(() => buildTicketRelations(props.detail));
 /**
  * 状态徽章的**页面展示名称**（基线 §1 第三列：操作页头徽章属"用户读到的文案"那一档）。
  * 落库值仍是 detail.status，配色与终态判定一律按落库值算，两列不混用。
- * 「已升级投诉」是否展示成「已升级外投」由投诉渠道字段决定，故要把外投标记带进去。
+ *
+ * 依据基线 §1「一跳一态、一去向一态」：展示名与子状态一一对应，**纯查表**——
+ * 此前这里靠上下文拼名，漏传 transferredToType 就渲染不出「已转咨询 / 已转建议 / 已转商机」，
+ * 拆细子状态后该缺陷不复存在。
  */
-const statusText = computed(() =>
-  statusDisplayName(props.detail.status, {
-    externalAppeal: props.detail.isExternalAppeal || props.detail.source === '外投渠道',
-  }),
-);
+const statusText = computed(() => statusDisplayName(props.detail.status));
 
 /**
  * 落库子状态 → 语义色（对齐 STATUS_TONE：进行中=橙、完成=绿、中性=灰、异常=红）。
@@ -136,10 +138,12 @@ const statusText = computed(() =>
  * 拿展示名来匹配就落不进下面的紫色分支了。
  */
 function statusHex(s: string): string {
-  // 已转单/已升级投诉/已转出＝业务转到别的单上，用紫与关闭类终态的灰区分开
-  if (/已转单|已升级投诉|已转出/.test(s)) return '#7C3AED';
-  if (/已解决|已完成|已结案|已结单|完成/.test(s)) return '#10B981';
-  if (/挂起|已关闭|撤销|取消|终止/.test(s)) return '#6B7280';
+  // 转单三态 / 升阶两态 / 已转出＝业务转到别的单上，用紫与关闭类终态的灰区分开
+  if (/已转咨询|已转建议|已转商机|已升级投诉|已升级外投|已转出/.test(s)) return '#7C3AED';
+  // 「已关闭」＝关闭工单审批通过，与已结案 / 直接结案同属正常收口，取绿——
+  // 与列表徽章的 statusTone() 保持同一判法，同一张单两处不能一绿一灰
+  if (/已完成|已结案|直接结案|已结单|已关闭|完成/.test(s)) return '#10B981';
+  if (/挂起|撤销|取消|终止/.test(s)) return '#6B7280';
   if (/升级/.test(s)) return '#A855F7';
   if (/逾期|超时|异常|驳回|失败/.test(s)) return '#EF4444';
   if (/处理中|受理|待|审核|进行/.test(s)) return '#F59E0B';
@@ -248,7 +252,7 @@ function priorityHex(p: string): string {
         <!--
           已转出：催补两枚**都不展示**，改挂一枚「已转售后」芯片，
           hover 出售后单卡片（单号 + 状态 ｜ 服务类型 ｜「补充与催单请点开工单号，在售后系统中操作」），
-          点单号直接跳售后系统（一线有该权限）。PRD-830 §7.3
+          点单号直接跳售后系统（一线有该权限）。PRD-915 补充与催单 §7.3
         -->
         <a-popover
           v-if="isTransferredOut && linkedAftersale"
@@ -342,7 +346,7 @@ function priorityHex(p: string): string {
 .badge-dot {
   width: 6px; height: 6px; border-radius: 50%;
 }
-/* 已转单：圆形戳章，叠盖在第一行标题 + 第二行 meta 上方 */
+/* 转单三态：圆形戳章，叠盖在第一行标题 + 第二行 meta 上方 */
 .status-stamp {
   position: absolute;
   left: 0;
@@ -361,7 +365,7 @@ function priorityHex(p: string): string {
   letter-spacing: 0.02em;
   line-height: 1.05;
   text-align: center;
-  /* 戳章文案取状态展示名，字数不定（已转单 3 字 ~ 已升级外投 5 字）：留内边距并允许折行 */
+  /* 戳章文案取状态展示名，字数不定（已取消 3 字 ~ 已升级技术支持 7 字）：留内边距并允许折行 */
   padding: 0 4px;
   word-break: break-all;
   transform: translateY(-50%) rotate(-12deg);
@@ -445,7 +449,7 @@ function priorityHex(p: string): string {
   cursor: not-allowed;
 }
 /* popover 需要一个能接鼠标事件的宿主——disabled 按钮本身不触发 hover */
-/* 已转售后芯片：替代催补两枚按钮的引导位（PRD-830 §7.3）。紫＝转到别处，与「已转单」同族 */
+/* 已转售后芯片：替代催补两枚按钮的引导位（PRD-915 补充与催单 §7.3）。紫＝转到别处，与转单三态同族 */
 .as-chip {
   display: inline-flex; align-items: center; flex: none;
   height: 28px; padding: 0 10px;

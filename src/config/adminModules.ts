@@ -119,12 +119,16 @@ const roles: ListConfig = {
   ],
   rows: [
     { no: 'R001', name: '租户管理员', type: '内置', roleKey: 'tenant-admin', sort: 1, status: '启用', remark: '本租户最高权限', createdAt: '2026-05-01 00:00' },
-    { no: 'R002', name: '客服·二线技术顾问', type: '内置', roleKey: 'agent-cs', sort: 2, status: '启用', remark: '客服工单处理', createdAt: '2026-05-01 00:00' },
-    { no: 'R003', name: '售后·二线技术顾问', type: '内置', roleKey: 'agent-as', sort: 3, status: '启用', remark: '售后工单处理', createdAt: '2026-05-01 00:00' },
-    { no: 'R004', name: '客服班组长', type: '内置', roleKey: 'team-leader-cs', sort: 4, status: '启用', remark: '本组改派/审核', createdAt: '2026-05-01 00:00' },
-    { no: 'R005', name: '售后班组长', type: '内置', roleKey: 'team-leader-as', sort: 5, status: '启用', remark: '本组改派/审核', createdAt: '2026-05-01 00:00' },
-    { no: 'R006', name: '售后回访专员', type: '自定义', roleKey: 'aftersale-revisit', sort: 6, status: '启用', remark: '满意度回访', createdAt: '2026-05-26 10:30' },
-    { no: 'R007', name: '质检专员', type: '自定义', roleKey: 'qa-inspector', sort: 7, status: '停用', remark: '会话/工单质检', createdAt: '2026-05-28 15:00' },
+    // 0830 角色口径（基线 §3.0）：客服 / 售后是二线专员的**分岗**，不再是两个角色，故只一行
+    { no: 'R002', name: '二线专员', type: '内置', roleKey: 'agent-l2', sort: 2, status: '启用', remark: '工单处理主力，分岗：客服 / 售后', createdAt: '2026-05-01 00:00' },
+    { no: 'R003', name: '技术支持', type: '内置', roleKey: 'tech-support', sort: 3, status: '启用', remark: '处理升级来的技术问题，不结案', createdAt: '2026-05-01 00:00' },
+    { no: 'R004', name: '二线班组长', type: '内置', roleKey: 'team-leader', sort: 4, status: '启用', remark: '派单/审批/盯时效', createdAt: '2026-05-01 00:00' },
+    { no: 'R005', name: '客诉专员', type: '内置', roleKey: 'complaint-handler', sort: 5, status: '启用', remark: '办投诉单 + 工单管控', createdAt: '2026-05-01 00:00' },
+    { no: 'R006', name: '投诉督导', type: '内置', roleKey: 'complaint-supervisor', sort: 6, status: '启用', remark: '审批 + 指派 + 盯投诉态势', createdAt: '2026-05-01 00:00' },
+    { no: 'R007', name: '工单运营', type: '内置', roleKey: 'ops-monitor', sort: 7, status: '启用', remark: '不办单，调剂/指派 + 看板 + 大盘', createdAt: '2026-05-01 00:00' },
+    { no: 'R008', name: '质检', type: '内置', roleKey: 'qa', sort: 8, status: '启用', remark: '全租户只读 + 查询中心', createdAt: '2026-05-01 00:00' },
+    { no: 'R009', name: '一线坐席', type: '内置', roleKey: 'agent-l1', sort: 9, status: '启用', remark: '接进线、建单、催单，不办单', createdAt: '2026-05-01 00:00' },
+    { no: 'R010', name: '售后回访专员', type: '自定义', roleKey: 'aftersale-revisit', sort: 10, status: '启用', remark: '满意度回访', createdAt: '2026-05-26 10:30' },
   ],
 };
 

@@ -249,7 +249,8 @@ function onQuick(key: string) {
     kb: () => message.info('打开知识库'),
     customer: () => router.push(queryCenterLocation('customer')),
     report: () => {
-      if (['team-leader', 'tenant-admin', 'ops-admin', 'system-admin'].includes(user.roleKey)) {
+      // 有班组看板 / 大盘视角的角色直接落查询中心；其余角色维持原提示（基线 §3.1 他人效能列）
+      if (['team-leader', 'complaint-supervisor', 'ops-monitor', 'tenant-admin', 'ops-admin', 'system-admin'].includes(user.roleKey)) {
         router.push(queryCenterLocation('tickets'));
       } else {
         message.info('打开统计报表');

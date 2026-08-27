@@ -327,15 +327,9 @@ const isAppointment = computed(() => props.title.includes('预约'));
 const doneLabel = computed(() => (isAppointment.value ? '已沟通' : '已读'));
 const pendingLabel = computed(() => (isAppointment.value ? '未沟通' : '未读'));
 
-/** 事件明细：预约用「已沟通/未沟通」，催单/补充用「已读/未读」 */
+/** 事件明细：预约用「已沟通/未沟通」，催单/补充用「已联系/已知晓/未知晓」（§9.4） */
 function isApptEvent(r: EventDrillRow) {
   return r.action === '预约';
-}
-function eventDoneLabel(layer: Layer) {
-  return layer.snap.events.some(isApptEvent) ? '已沟通' : '已读';
-}
-function eventPendingLabel(layer: Layer) {
-  return layer.snap.events.some(isApptEvent) ? '未沟通' : '未读';
 }
 
 /** 切 type / 重开抽屉时筛选态复位（筛选是本地态，不跨下钻继承） */
@@ -406,21 +400,57 @@ function showChips(layer: Layer): boolean {
     && layer.snap.totalUnread !== undefined;
 }
 
-type EventFilter = 'all' | 'unread';
+/**
+ * 事件明细四个维度（PRD-915 补充与催单 §9.5）：
+ * 全部 ＝ 未知晓 + 已知晓 + 已联系。
+ * 后三档**互斥可相加**：底层 read/contacted 两个布尔是包含关系（已联系 ⇒ 已知晓），
+ * 但这里按「最靠后的那一档」归位 —— 已联系的只进「已联系」，不再计入「已知晓」。
+ * 「已知晓」这一档实为**已知晓但未联系**；「未知晓」＝看板卡片「未处理」。
+ */
+type EventFilter = 'all' | 'unaware' | 'acknowledged' | 'contacted';
 const eventFilter = ref<EventFilter>('all');
 watch(
   () => [props.open, props.type],
   () => { eventFilter.value = 'all'; },
 );
 
-function displayEvents(layer: Layer): EventDrillRow[] {
-  const rows = [...layer.snap.events].sort((a, b) => Number(a.read) - Number(b.read));
-  if (eventFilter.value === 'unread') return rows.filter((r) => !r.read);
-  return rows;
+type FilterDef = { key: EventFilter; label: string; tip: string };
+
+/** 催单 / 补充：四个维度，后三档互斥、相加等于「全部」 */
+const CC_FILTERS: FilterDef[] = [
+  { key: 'all', label: '全部', tip: '本窗口内的全部事件' },
+  { key: 'unaware', label: '未知晓', tip: '坐席还没看见 —— 即看板卡片的「未处理」' },
+  { key: 'acknowledged', label: '已知晓', tip: '看见了但还没回话（已回话的归下一档「已联系」）' },
+  { key: 'contacted', label: '已联系', tip: '该次催补之后有对客联系记录' },
+];
+/** 预约只有"沟通与否"一个维度，不套「已知晓 / 已联系」那套词 */
+const APPT_FILTERS: FilterDef[] = [
+  { key: 'all', label: '全部', tip: '本窗口内的全部预约' },
+  { key: 'unaware', label: '未沟通', tip: '尚未标记已沟通' },
+];
+
+function eventFilters(layer: Layer): FilterDef[] {
+  return layer.snap.events.some(isApptEvent) ? APPT_FILTERS : CC_FILTERS;
 }
 
-function unreadEventCount(layer: Layer): number {
-  return layer.snap.events.filter((r) => !r.read).length;
+function isEventContacted(r: EventDrillRow): boolean {
+  return r.contacted === true;
+}
+
+/** 归位：一条事件只落一档 —— 已联系 > 已知晓 > 未知晓 */
+function eventBucket(r: EventDrillRow): Exclude<EventFilter, 'all'> {
+  if (isEventContacted(r)) return 'contacted';
+  return r.read ? 'acknowledged' : 'unaware';
+}
+
+function eventCount(layer: Layer, f: EventFilter): number {
+  const rows = layer.snap.events;
+  return f === 'all' ? rows.length : rows.filter((r) => eventBucket(r) === f).length;
+}
+
+function displayEvents(layer: Layer): EventDrillRow[] {
+  const rows = [...layer.snap.events].sort((a, b) => Number(a.read) - Number(b.read));
+  return eventFilter.value === 'all' ? rows : rows.filter((r) => eventBucket(r) === eventFilter.value);
 }
 
 const ONLINE_COLOR: Record<string, string> = {
@@ -502,9 +532,13 @@ function caption(layer: Layer): string {
     return `共 ${s.total} 单 · 按处理人归集`;
   }
   if (s.type === 'events') {
-    return s.totalUnread !== undefined
-      ? `共 ${s.total} 次 · 其中 ${s.totalUnread} 条未读`
-      : `共 ${s.total} 次事件`;
+    if (s.totalUnread === undefined) return `共 ${s.total} 次事件`;
+    if (s.events.some(isApptEvent)) {
+      return `共 ${s.total} 次 · 其中 ${s.events.filter((e) => !e.read).length} 条未沟通`;
+    }
+    const n = (f: EventFilter) => s.events.filter((e) => eventBucket(e) === f).length;
+    return `共 ${s.total} 次 · 未知晓 ${n('unaware')}`
+      + ` · 已知晓 ${n('acknowledged')} · 已联系 ${n('contacted')}`;
   }
   return `共 ${s.total} 单 · 按来源归集`;
 }
@@ -824,20 +858,15 @@ const footerLabel = computed(() => {
                 <template v-else-if="l.snap.type === 'events'">
                   <div v-if="showChips(l)" class="pp-chips">
                     <button
+                      v-for="f in eventFilters(l)"
+                      :key="f.key"
                       type="button"
                       class="pp-chip"
-                      :class="{ on: eventFilter === 'all' }"
-                      @click="eventFilter = 'all'"
+                      :class="{ on: eventFilter === f.key }"
+                      :title="f.tip"
+                      @click="eventFilter = f.key"
                     >
-                      全部 {{ l.snap.events.length }}
-                    </button>
-                    <button
-                      type="button"
-                      class="pp-chip"
-                      :class="{ on: eventFilter === 'unread' }"
-                      @click="eventFilter = 'unread'"
-                    >
-                      {{ eventPendingLabel(l) }} {{ unreadEventCount(l) }}
+                      {{ f.label }} {{ eventCount(l, f.key) }}
                     </button>
                   </div>
 
@@ -868,8 +897,13 @@ const footerLabel = computed(() => {
                           <span v-else class="ev-unread-tag">未沟通</span>
                         </template>
                         <template v-else>
-                          <span v-if="r.read" class="ev-read-tag">{{ eventDoneLabel(l) }}</span>
-                          <span v-else class="ev-unread-tag">{{ eventPendingLabel(l) }}</span>
+                          <span v-if="isEventContacted(r)" class="ev-read-tag">已联系</span>
+                          <span
+                            v-else-if="r.read"
+                            class="ev-ack-tag"
+                            title="坐席点过「已知晓」但还没回话；看板判据是已联系，故仍计入未处理"
+                          >已知晓</span>
+                          <span v-else class="ev-unread-tag">未知晓</span>
                         </template>
                       </span>
                     </div>
@@ -1435,6 +1469,10 @@ const footerLabel = computed(() => {
 }
 .ev-status-slot { flex: none; }
 .ev-read-tag { font-size: 11px; color: #16a34a; }
+.ev-ack-tag {
+  font-size: 11px; color: #2563eb;
+  background: #eff6ff; border-radius: 3px; padding: 1px 6px;
+}
 .ev-unread-tag {
   font-size: 11px; font-weight: 600; color: #b45309;
   background: #fff7ed; border-radius: 3px; padding: 1px 6px;

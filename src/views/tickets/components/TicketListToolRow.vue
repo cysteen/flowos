@@ -1,15 +1,21 @@
 <script setup lang="ts">
-import { PlusOutlined, DownloadOutlined, SettingOutlined } from '@ant-design/icons-vue';
+import { PlusOutlined, SettingOutlined } from '@ant-design/icons-vue';
 
-defineProps<{
-  selectedCount: number;
-  embedded?: boolean;
-}>();
+withDefaults(
+  defineProps<{
+    embedded?: boolean;
+    /**
+     * 「新建工单」是否渲染。
+     * 查询中心按 PRD-915 §3.4「页面内动作权限」逐角色显隐（工单运营 / 质检不出）；
+     * 工作台不传＝照常显示，两处是**两个权限点**，别互相反推。
+     */
+    canCreate?: boolean;
+  }>(),
+  { canCreate: true },
+);
 
 const emit = defineEmits<{
   create: [];
-  batch: [];
-  export: [];
   columns: [];
 }>();
 </script>
@@ -17,22 +23,9 @@ const emit = defineEmits<{
 <template>
   <div class="tool-row" :class="{ embedded }">
     <div class="tool-actions">
-      <button type="button" class="btn-primary" @click="emit('create')">
+      <button v-if="canCreate" type="button" class="btn-primary" @click="emit('create')">
         <PlusOutlined />
         新建工单
-      </button>
-      <button
-        type="button"
-        class="btn-batch"
-        :class="{ enabled: selectedCount > 0 }"
-        :disabled="selectedCount === 0"
-        @click="selectedCount > 0 && emit('batch')"
-      >
-        批量操作 ({{ selectedCount }})
-      </button>
-      <button type="button" class="btn-ghost" @click="emit('export')">
-        <DownloadOutlined />
-        导出
       </button>
       <button type="button" class="btn-ghost" @click="emit('columns')">
         <SettingOutlined />
@@ -55,7 +48,6 @@ const emit = defineEmits<{
   justify-content: flex-end;
 }
 .tool-row.embedded .btn-primary,
-.tool-row.embedded .btn-batch,
 .tool-row.embedded .btn-ghost {
   height: 32px;
   padding: 0 10px;
@@ -78,22 +70,6 @@ const emit = defineEmits<{
   background: #1a6fff;
   border: none;
   border-radius: 6px;
-  cursor: pointer;
-}
-.btn-batch {
-  height: 34px;
-  padding: 0 14px;
-  font-size: 13px;
-  color: #9ca3af;
-  background: #f9fafb;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  cursor: not-allowed;
-}
-.btn-batch.enabled {
-  color: #1a6fff;
-  background: #fff;
-  border-color: #1a6fff;
   cursor: pointer;
 }
 .btn-ghost {

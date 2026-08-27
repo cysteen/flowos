@@ -3,8 +3,8 @@ import type { AiSuggestion, AiSuggestionKind } from '@/views/tickets/types/aiSug
 import { isAiSuggestionScope } from '@/views/tickets/types/aiSuggestion';
 
 const SIMILAR_MATCH: Record<string, { no: string; summary: string }> = {
-  t4: { no: 'LCMN-20260520-42100', summary: '同产品 API 限流，调整配额后已解决' },
-  t11: { no: 'LCMN-20260518-38902', summary: 'Webhook 丢包，重试策略修复后结单' },
+  t4: { no: 'IFLYZX-20260520-00003', summary: '同产品 API 限流，调整配额后已解决' },
+  t11: { no: 'IFLYZX-20260518-00001', summary: 'Webhook 丢包，重试策略修复后结单' },
 };
 
 const EMOTION_REASON: Record<string, string> = {

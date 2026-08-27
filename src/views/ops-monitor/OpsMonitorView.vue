@@ -146,12 +146,19 @@ const tagTarget = ref<RiskHit | null>(null);
 const tagLevel = ref<RiskLevel>('高');
 const tagNote = ref('');
 
-/** 谁能打标：运营监控岗 ＋ 投诉处理角色（PRD §6.4），其余角色不出打标入口 */
+/** 谁能打标：客诉专员 ＋ 投诉督导（基线 §3.1，0830 改；工单运营已移出），其余角色不出打标入口 */
 const canRiskTag = computed(() => RISK_TAG_ROLES.includes(user.roleKey));
+
+/**
+ * 能不能进「风险监控」页。
+ * 0830 起**工单运营不给风险监控**（基线 §3.1），而大盘正是它的主页面 ——
+ * 不按菜单权限收下钻入口，它点了会被路由守卫弹回首个可见菜单，看着像页面坏了。
+ */
+const canRiskMonitor = computed(() => user.canAccess('ops-risk-monitor'));
 
 function openTag(h: RiskHit) {
   if (!canRiskTag.value) {
-    message.warning('只有运营监控岗与投诉处理角色可以打标');
+    message.warning('只有客诉专员与投诉督导可以打标');
     return;
   }
   tagTarget.value = h;
@@ -1119,7 +1126,7 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
         明细表、打标弹窗、预警词表抽屉已随模块四拆出，全部搬到「风险监控」页。
         大盘其余模块都是只读指标，只有风险带写动作；写动作寄居在只读页里长不出闭环。
       -->
-      <section class="overview-section">
+      <section v-if="canRiskMonitor" class="overview-section">
         <div class="section-head">
           <h2 class="section-title">风险命中<MetricTipIcon :tip="opsTip('riskHits')!" /></h2>
           <button type="button" class="row-btn" @click="goRiskMonitor()">

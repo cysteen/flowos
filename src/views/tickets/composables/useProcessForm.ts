@@ -2,13 +2,10 @@ import { computed, ref, watch } from 'vue';
 import type { ProcessFormDraft, SupplementChip, SectionKey } from '@/views/tickets/types/operation';
 import { DEFAULT_PROCESS_DRAFT } from '@/mock/ticketDetail';
 import { TYPE_SAMPLES } from '@/mock/ticketTypeSamples';
-import { COMPLAINT_L3_MAP } from '@/views/tickets/types/createTicket';
+import { isComplaintCategoryComplete } from '@/views/tickets/types/createTicket';
 
 function complaintCategoryFilled(f: ProcessFormDraft): boolean {
-  if (!f.complaintCat1 || !f.complaintCat2) return false;
-  const l3 = COMPLAINT_L3_MAP[f.complaintCat2] ?? [];
-  if (l3.length && !f.complaintCat3) return false;
-  return true;
+  return isComplaintCategoryComplete(f);
 }
 
 /** 按工单类型构建 Tab① 处理表单预填（投诉用 base，咨询/商机/建议用类型样例覆盖）。 */
@@ -28,7 +25,8 @@ function countFilledSupplements(form: ProcessFormDraft): number {
   if (form.complaintMark && complaintCategoryFilled(form) && form.complaintNote) n += 1;
   if (
     form.platformFollowups.length > 0
-    && form.platformFollowups.every((r) => r.replyResult.trim() && r.reconcile)
+    && form.complaintChannelReply.trim()
+    && form.complaintChannelReconcile
   ) n += 1;
   if (form.riskFlag === '有风险') {
     if (form.riskLevel && form.riskDescription.trim()) n += 1;

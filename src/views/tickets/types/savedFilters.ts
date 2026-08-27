@@ -1,6 +1,6 @@
 import type { MineQueryFilter } from '@/views/tickets/types/mineQuery';
 
-export type SavedFilterTab = 'mine' | 'done' | 'pool';
+export type SavedFilterTab = 'mine' | 'done' | 'pool' | 'query';
 
 export interface SavedFilter {
   id: string;

@@ -1,6 +1,7 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { message } from 'ant-design-vue';
 import type { CreateTicketPrefill, Ticket } from '@/views/tickets/types/ticket';
+import { makeTicketNo } from '@/constants/ticketNo';
 import {
   type CreateTicketFormState,
   type CustomerInfo,
@@ -41,8 +42,8 @@ function defaultForm(): CreateTicketFormState {
     businessLine: '学习机业务线',
     priorFeedback: '是-400',
     serviceReview: '',
-    complaintL1: '产品质量投诉',
-    complaintL2: '产品质量故障',
+    complaintL1: '产品问题',
+    complaintL2: '产品质量',
     complaintReceiveTime: '',
     problemTime: '',
     suggestL1: '产品体验',
@@ -262,9 +263,10 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     return true;
   }
 
+  /** 单号规则见 constants/ticketNo.ts —— 前缀跟着**建单时选的工单类型**走 */
   function genNo() {
-    const n = Math.floor(10000 + Math.random() * 89999);
-    return `LCMN-20260618-${n}`;
+    const n = Math.floor(1 + Math.random() * 99998);
+    return makeTicketNo(form.ticketType, n, new Date(2026, 5, 18));
   }
 
   function buildTicket(): Ticket {

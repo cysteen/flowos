@@ -611,7 +611,7 @@ const inpoolRows = [
   { name: '618 大促入池', cond: '标签 = 618大促反馈', pool: '618大促反馈池', priority: 'P1', status: true },
   { name: '学习机入池', cond: '产品线 = 学习机 且 类型 ∈ {故障, 退款}', pool: '学习机售后池', priority: 'P2', status: true },
   { name: '技术类入池', cond: '工单类型 = 系统问题', pool: '技术支持池', priority: 'P2', status: true },
-  { name: '投诉升级入池', cond: '投诉升级 / 二线技术顾问点击「升级」', pool: '投诉升级池', priority: 'P1', status: true },
+  { name: '投诉升级入池', cond: '投诉升级 / 二线专员点击「升级」', pool: '投诉升级池', priority: 'P1', status: true },
   { name: '默认入池', cond: '其它全部', pool: '一线客服池', priority: '兜底', status: true },
 ];
 const PRIORITY_COLOR: Record<string, string> = { P0: 'red', P1: 'orange', P2: 'blue', 兜底: 'default' };

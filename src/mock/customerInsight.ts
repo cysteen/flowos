@@ -244,7 +244,7 @@ type ArchiveTicket = Omit<CustomerTicketRow, 'live'>;
 const ARCHIVE: Record<string, ArchiveTicket[]> = {
   '13800138001': [
     {
-      id: 'h-13800138001-1', no: 'LCMN-20260412-30188', title: '智能音箱连接家庭 WiFi 频繁掉线',
+      id: 'h-13800138001-1', no: 'IFLYTS-20260412-00002', title: '智能音箱连接家庭 WiFi 频繁掉线',
       type: '投诉', priority: 'P1', statusText: '已结案', tone: 'closed', channel: '电话',
       product: '智能音箱 X1', createdAt: '2026-04-12 10:22', closedAt: '2026-04-15 17:40',
       assignee: '林坐席', source: '客服', satisfaction: 3,
@@ -252,7 +252,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
       isComplaint: true, isProcessing: false, isClosed: true,
     },
     {
-      id: 'h-13800138001-2', no: 'LCMN-20260228-21044', title: '咨询音箱固件升级方式',
+      id: 'h-13800138001-2', no: 'IFLYZX-20260228-00001', title: '咨询音箱固件升级方式',
       type: '咨询', priority: 'P3', statusText: '已结案', tone: 'closed', channel: '在线客服',
       product: '智能音箱 X1', createdAt: '2026-02-28 14:05', closedAt: '2026-02-28 14:31',
       assignee: '陈坐席', source: '客服', satisfaction: 5,
@@ -270,7 +270,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
   ],
   '13788889999': [
     {
-      id: 'h-13788889999-1', no: 'LCMN-20260520-41122', title: '开放平台批量导入接口报错 500',
+      id: 'h-13788889999-1', no: 'IFLYZX-20260520-00002', title: '开放平台批量导入接口报错 500',
       type: '咨询', priority: 'P1', statusText: '已结案', tone: 'closed', channel: '邮件',
       product: '开放平台', createdAt: '2026-05-20 11:10', closedAt: '2026-05-21 10:05',
       assignee: '技术支持 · 周工', source: '客服', satisfaction: 5,
@@ -278,7 +278,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
       isComplaint: false, isProcessing: false, isClosed: true,
     },
     {
-      id: 'h-13788889999-2', no: 'LCMN-20260118-18076', title: '续约方案与并发配额咨询',
+      id: 'h-13788889999-2', no: 'IFLYSJ-20260118-00001', title: '续约方案与并发配额咨询',
       type: '商机', priority: 'P2', statusText: '已结案', tone: 'closed', channel: '电话',
       product: '开放平台', createdAt: '2026-01-18 15:30', closedAt: '2026-01-19 09:50',
       assignee: '王坐席', source: '客服', satisfaction: 5,
@@ -286,7 +286,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
       isComplaint: false, isProcessing: false, isClosed: true,
     },
     {
-      id: 'h-13788889999-3', no: 'LCMN-20251106-09933', title: '账号权限变更申请',
+      id: 'h-13788889999-3', no: 'IFLYZX-20251106-00001', title: '账号权限变更申请',
       type: '咨询', priority: 'P3', statusText: '已结案', tone: 'closed', channel: '小程序',
       product: '企业版', createdAt: '2025-11-06 09:12', closedAt: '2025-11-06 11:20',
       assignee: '林坐席', source: '客服', satisfaction: 4,
@@ -296,7 +296,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
   ],
   '13700003333': [
     {
-      id: 'h-13700003333-1', no: 'LCMN-20260605-52011', title: '智能音箱送修后功能未恢复',
+      id: 'h-13700003333-1', no: 'IFLYTS-20260605-00002', title: '智能音箱送修后功能未恢复',
       type: '投诉', priority: 'P1', statusText: '已结案', tone: 'closed', channel: '电话',
       product: '智能音箱 X1', createdAt: '2026-06-05 10:40', closedAt: '2026-06-21 18:10',
       assignee: '陈坐席', source: '客服', satisfaction: 2, breached: true,
@@ -312,7 +312,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
       isComplaint: false, isProcessing: false, isClosed: true,
     },
     {
-      id: 'h-13700003333-3', no: 'LCMN-20260419-33507', title: '音箱无法唤醒',
+      id: 'h-13700003333-3', no: 'IFLYZX-20260419-00001', title: '音箱无法唤醒',
       type: '咨询', priority: 'P2', statusText: '已结案', tone: 'closed', channel: '在线客服',
       product: '智能音箱 X1', createdAt: '2026-04-19 20:15', closedAt: '2026-04-20 09:40',
       assignee: '王坐席', source: '客服', satisfaction: 4,
@@ -322,7 +322,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
   ],
   '13912345678': [
     {
-      id: 'h-13912345678-1', no: 'LCMN-20260401-27714', title: '扫地机器人回充失败',
+      id: 'h-13912345678-1', no: 'IFLYZX-20260401-00001', title: '扫地机器人回充失败',
       type: '咨询', priority: 'P2', statusText: '已结案', tone: 'closed', channel: '在线客服',
       product: '扫地机器人 R2', createdAt: '2026-04-01 19:22', closedAt: '2026-04-02 10:15',
       assignee: '林坐席', source: '客服', satisfaction: 5,
@@ -330,7 +330,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
       isComplaint: false, isProcessing: false, isClosed: true,
     },
     {
-      id: 'h-13912345678-2', no: 'LCMN-20240712-08221', title: '空气净化器噪音偏大',
+      id: 'h-13912345678-2', no: 'IFLYTS-20240712-00001', title: '空气净化器噪音偏大',
       type: '投诉', priority: 'P2', statusText: '已结案', tone: 'closed', channel: '电话',
       product: '空气净化器 P3', createdAt: '2024-07-12 08:50', closedAt: '2024-07-16 16:20',
       assignee: '陈坐席', source: '客服', satisfaction: 4,
@@ -340,7 +340,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
   ],
   '15800002222': [
     {
-      id: 'h-15800002222-1', no: 'LCMN-20260603-51880', title: '耳机单边无声',
+      id: 'h-15800002222-1', no: 'IFLYZX-20260603-00002', title: '耳机单边无声',
       type: '咨询', priority: 'P2', statusText: '已结案', tone: 'closed', channel: 'APP',
       product: '蓝牙耳机 Air', createdAt: '2026-06-03 21:04', closedAt: '2026-06-04 11:30',
       assignee: '王坐席', source: '客服', satisfaction: 3,
@@ -350,7 +350,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
   ],
   '13500001234': [
     {
-      id: 'h-13500001234-1', no: 'LCMN-20260626-56340', title: '翻译机离线包下载中断',
+      id: 'h-13500001234-1', no: 'IFLYZX-20260626-00001', title: '翻译机离线包下载中断',
       type: '咨询', priority: 'P2', statusText: '已结案', tone: 'closed', channel: '在线客服',
       product: '讯飞翻译机 T10', createdAt: '2026-06-26 10:11', closedAt: '2026-06-26 15:22',
       assignee: '林坐席', source: '客服', satisfaction: 5,
@@ -358,7 +358,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
       isComplaint: false, isProcessing: false, isClosed: true,
     },
     {
-      id: 'h-13500001234-2', no: 'LCMN-20250308-04412', title: '批量采购发票与保修凭证',
+      id: 'h-13500001234-2', no: 'IFLYZX-20250308-00001', title: '批量采购发票与保修凭证',
       type: '咨询', priority: 'P3', statusText: '已结案', tone: 'closed', channel: '邮件',
       product: '讯飞翻译机 T10', createdAt: '2025-03-08 09:30', closedAt: '2025-03-09 14:00',
       assignee: '陈坐席', source: '客服', satisfaction: 5,
@@ -372,30 +372,30 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
 
 const CONTACTS: Record<string, CustomerContactRow[]> = {
   '13800138001': [
-    { id: 'ct-1', kind: 'call', when: '2026-06-10 14:12', operator: '王坐席', meta: '通话 6 分 12 秒', summary: '客户情绪激动，强调本人为媒体从业者，要求当日给出明确答复，已承诺 24 小时内回电。', ticketNo: 'LCMN-20260610-73026' },
-    { id: 'ct-2', kind: 'im', when: '2026-06-10 09:30', operator: '一线 · 李坐席', meta: '在线会话 18 条', summary: '首次反馈播放跳曲问题，已采集日志并升级二线。', ticketNo: 'LCMN-20260610-73026' },
-    { id: 'ct-3', kind: 'call', when: '2026-04-15 17:20', operator: '林坐席', meta: '通话 4 分 40 秒', summary: '回访掉线问题处理结果，客户表示可用但对时长不满。', ticketNo: 'LCMN-20260412-30188' },
-    { id: 'ct-4', kind: 'sms', when: '2026-04-12 10:30', operator: '系统', meta: '受理通知', summary: '您反馈的问题已受理，工单号 LCMN-20260412-30188。', ticketNo: 'LCMN-20260412-30188' },
+    { id: 'ct-1', kind: 'call', when: '2026-06-10 14:12', operator: '王坐席', meta: '通话 6 分 12 秒', summary: '客户情绪激动，强调本人为媒体从业者，要求当日给出明确答复，已承诺 24 小时内回电。', ticketNo: 'IFLYTS-20260610-00002' },
+    { id: 'ct-2', kind: 'im', when: '2026-06-10 09:30', operator: '一线 · 李坐席', meta: '在线会话 18 条', summary: '首次反馈播放跳曲问题，已采集日志并升级二线。', ticketNo: 'IFLYTS-20260610-00002' },
+    { id: 'ct-3', kind: 'call', when: '2026-04-15 17:20', operator: '林坐席', meta: '通话 4 分 40 秒', summary: '回访掉线问题处理结果，客户表示可用但对时长不满。', ticketNo: 'IFLYTS-20260412-00002' },
+    { id: 'ct-4', kind: 'sms', when: '2026-04-12 10:30', operator: '系统', meta: '受理通知', summary: '您反馈的问题已受理，工单号 IFLYTS-20260412-00002。', ticketNo: 'IFLYTS-20260412-00002' },
   ],
   '13700003333': [
-    { id: 'ct-11', kind: 'call', when: '2026-07-11 14:05', operator: '王坐席', meta: '通话 11 分 03 秒', summary: '客户告知已向 12315 提交投诉，要求赔偿维修期间损失，本次通话未达成一致。', ticketNo: 'LCMN-20260711-61550' },
-    { id: 'ct-12', kind: 'call', when: '2026-06-21 16:40', operator: '陈坐席', meta: '通话 8 分 27 秒', summary: '告知二次返修完成，客户质疑同一故障重复发生，要求书面说明。', ticketNo: 'LCMN-20260605-52011' },
-    { id: 'ct-13', kind: 'im', when: '2026-06-05 10:45', operator: '一线 · 李坐席', meta: '在线会话 26 条', summary: '反馈送修后功能未恢复，已登记并转技术支持。', ticketNo: 'LCMN-20260605-52011' },
+    { id: 'ct-11', kind: 'call', when: '2026-07-11 14:05', operator: '王坐席', meta: '通话 11 分 03 秒', summary: '客户告知已向 12315 提交投诉，要求赔偿维修期间损失，本次通话未达成一致。', ticketNo: 'IFLYTS-20260711-00001' },
+    { id: 'ct-12', kind: 'call', when: '2026-06-21 16:40', operator: '陈坐席', meta: '通话 8 分 27 秒', summary: '告知二次返修完成，客户质疑同一故障重复发生，要求书面说明。', ticketNo: 'IFLYTS-20260605-00002' },
+    { id: 'ct-13', kind: 'im', when: '2026-06-05 10:45', operator: '一线 · 李坐席', meta: '在线会话 26 条', summary: '反馈送修后功能未恢复，已登记并转技术支持。', ticketNo: 'IFLYTS-20260605-00002' },
   ],
   '13788889999': [
-    { id: 'ct-21', kind: 'email', when: '2026-06-10 13:00', operator: '王坐席', meta: '发送人 王坐席', summary: '就 429 限流提供临时配额提升方案与重试指引，等待客户技术侧确认。', ticketNo: 'LCMN-20260610-75002' },
-    { id: 'ct-22', kind: 'call', when: '2026-01-19 09:30', operator: '王坐席', meta: '通话 15 分 08 秒', summary: '沟通续约方案，客户确认扩容需求并同意转销售。', ticketNo: 'LCMN-20260118-18076' },
+    { id: 'ct-21', kind: 'email', when: '2026-06-10 13:00', operator: '王坐席', meta: '发送人 王坐席', summary: '就 429 限流提供临时配额提升方案与重试指引，等待客户技术侧确认。', ticketNo: 'IFLYSJ-20260610-00006' },
+    { id: 'ct-22', kind: 'call', when: '2026-01-19 09:30', operator: '王坐席', meta: '通话 15 分 08 秒', summary: '沟通续约方案，客户确认扩容需求并同意转销售。', ticketNo: 'IFLYSJ-20260118-00001' },
   ],
   '13912345678': [
-    { id: 'ct-31', kind: 'call', when: '2026-06-10 16:00', operator: '王坐席', meta: '通话 3 分 51 秒', summary: '客户催问上门时间，已说明配件在途，承诺次日 12 点前反馈。', ticketNo: 'LCMN-20260610-73118' },
-    { id: 'ct-32', kind: 'call', when: '2026-04-02 10:05', operator: '林坐席', meta: '通话 5 分 20 秒', summary: '远程指导回充问题，客户当场验证成功。', ticketNo: 'LCMN-20260401-27714' },
+    { id: 'ct-31', kind: 'call', when: '2026-06-10 16:00', operator: '王坐席', meta: '通话 3 分 51 秒', summary: '客户催问上门时间，已说明配件在途，承诺次日 12 点前反馈。', ticketNo: 'IFLYZX-20260610-00004' },
+    { id: 'ct-32', kind: 'call', when: '2026-04-02 10:05', operator: '林坐席', meta: '通话 5 分 20 秒', summary: '远程指导回充问题，客户当场验证成功。', ticketNo: 'IFLYZX-20260401-00001' },
   ],
   '15800002222': [
-    { id: 'ct-41', kind: 'im', when: '2026-06-10 11:35', operator: '王坐席', meta: '在线会话 14 条', summary: '客户提出退货并提及会在社交平台反馈体验，已按自媒体标签上报班组长。', ticketNo: 'LCMN-20260610-75240' },
+    { id: 'ct-41', kind: 'im', when: '2026-06-10 11:35', operator: '王坐席', meta: '在线会话 14 条', summary: '客户提出退货并提及会在社交平台反馈体验，已按自媒体标签上报班组长。', ticketNo: 'IFLYTS-20260610-00007' },
   ],
   '13500001234': [
-    { id: 'ct-51', kind: 'im', when: '2026-07-13 09:20', operator: '一线 · 李坐席', meta: '在线会话 21 条', summary: '反馈离线长句漏译，已采集样本音频与日志，升级二线。', ticketNo: 'LCMN-20260713-90001' },
-    { id: 'ct-52', kind: 'call', when: '2026-06-26 15:10', operator: '林坐席', meta: '通话 4 分 05 秒', summary: '确认离线包安装完成，客户确认可用。', ticketNo: 'LCMN-20260626-56340' },
+    { id: 'ct-51', kind: 'im', when: '2026-07-13 09:20', operator: '一线 · 李坐席', meta: '在线会话 21 条', summary: '反馈离线长句漏译，已采集样本音频与日志，升级二线。', ticketNo: 'IFLYZX-20260713-00001' },
+    { id: 'ct-52', kind: 'call', when: '2026-06-26 15:10', operator: '林坐席', meta: '通话 4 分 05 秒', summary: '确认离线包安装完成，客户确认可用。', ticketNo: 'IFLYZX-20260626-00001' },
   ],
 };
 
@@ -406,14 +406,14 @@ const AFTERSALES: Record<string, CustomerAftersaleRow[]> = {
     { no: 'AS-20250922-11208', type: '返修', product: '智能门锁 L1', status: '已完成', createdAt: '2025-09-22', conclusion: '保内更换指纹模块' },
   ],
   '13700003333': [
-    { no: 'AS-20260712-14026', type: '返修', product: '智能音箱 X1', status: '处理中', createdAt: '2026-07-12', conclusion: '三次返修，已升级至品质部门排查批次问题', fromTicketNo: 'LCMN-20260711-61551' },
+    { no: 'AS-20260712-14026', type: '返修', product: '智能音箱 X1', status: '处理中', createdAt: '2026-07-12', conclusion: '三次返修，已升级至品质部门排查批次问题', fromTicketNo: 'IFLYTS-20260711-00002' },
     { no: 'AS-20260520-13390', type: '返修', product: '智能音箱 X1', status: '已完成', createdAt: '2026-05-20', conclusion: '保外付费更换主板（268 元）' },
   ],
   '15800002222': [
-    { no: 'AS-20260610-13905', type: '退货', product: '蓝牙耳机 Air', status: '待审核', createdAt: '2026-06-10', conclusion: '客户申请七天无理由退货，待仓库验机', fromTicketNo: 'LCMN-20260610-75240' },
+    { no: 'AS-20260610-13905', type: '退货', product: '蓝牙耳机 Air', status: '待审核', createdAt: '2026-06-10', conclusion: '客户申请七天无理由退货，待仓库验机', fromTicketNo: 'IFLYTS-20260610-00007' },
   ],
   '13912345678': [
-    { no: 'AS-20260610-13901', type: '上门', product: '扫地机器人 R2', status: '处理中', createdAt: '2026-06-10', conclusion: '主刷电机配件在途，预约上门待确认', fromTicketNo: 'LCMN-20260610-73118' },
+    { no: 'AS-20260610-13901', type: '上门', product: '扫地机器人 R2', status: '处理中', createdAt: '2026-06-10', conclusion: '主刷电机配件在途，预约上门待确认', fromTicketNo: 'IFLYZX-20260610-00004' },
   ],
 };
 
@@ -421,28 +421,28 @@ const AFTERSALES: Record<string, CustomerAftersaleRow[]> = {
 
 const SURVEYS: Record<string, CustomerSurveyRow[]> = {
   '13800138001': [
-    { ticketNo: 'LCMN-20260412-30188', sentAt: '2026-04-15 18:00', evaluated: true, score: 3, comment: '问题解决了，但来回折腾了三天。' },
-    { ticketNo: 'LCMN-20260228-21044', sentAt: '2026-02-28 15:00', evaluated: true, score: 5, comment: '响应很快。' },
+    { ticketNo: 'IFLYTS-20260412-00002', sentAt: '2026-04-15 18:00', evaluated: true, score: 3, comment: '问题解决了，但来回折腾了三天。' },
+    { ticketNo: 'IFLYZX-20260228-00001', sentAt: '2026-02-28 15:00', evaluated: true, score: 5, comment: '响应很快。' },
   ],
   '13700003333': [
-    { ticketNo: 'LCMN-20260605-52011', sentAt: '2026-06-21 18:30', evaluated: true, score: 2, comment: '同一个问题修了两次还没好。' },
-    { ticketNo: 'LCMN-20260419-33507', sentAt: '2026-04-20 10:00', evaluated: true, score: 4 },
-    { ticketNo: 'LCMN-20260711-61550', sentAt: '2026-07-11 15:00', evaluated: false },
+    { ticketNo: 'IFLYTS-20260605-00002', sentAt: '2026-06-21 18:30', evaluated: true, score: 2, comment: '同一个问题修了两次还没好。' },
+    { ticketNo: 'IFLYZX-20260419-00001', sentAt: '2026-04-20 10:00', evaluated: true, score: 4 },
+    { ticketNo: 'IFLYTS-20260711-00001', sentAt: '2026-07-11 15:00', evaluated: false },
   ],
   '13788889999': [
-    { ticketNo: 'LCMN-20260520-41122', sentAt: '2026-05-21 10:30', evaluated: true, score: 5, comment: '技术支持很专业。' },
-    { ticketNo: 'LCMN-20260118-18076', sentAt: '2026-01-19 10:20', evaluated: true, score: 5 },
+    { ticketNo: 'IFLYZX-20260520-00002', sentAt: '2026-05-21 10:30', evaluated: true, score: 5, comment: '技术支持很专业。' },
+    { ticketNo: 'IFLYSJ-20260118-00001', sentAt: '2026-01-19 10:20', evaluated: true, score: 5 },
   ],
   '13912345678': [
-    { ticketNo: 'LCMN-20260401-27714', sentAt: '2026-04-02 11:00', evaluated: true, score: 5 },
-    { ticketNo: 'LCMN-20240712-08221', sentAt: '2024-07-16 17:00', evaluated: true, score: 4 },
+    { ticketNo: 'IFLYZX-20260401-00001', sentAt: '2026-04-02 11:00', evaluated: true, score: 5 },
+    { ticketNo: 'IFLYTS-20240712-00001', sentAt: '2024-07-16 17:00', evaluated: true, score: 4 },
   ],
   '15800002222': [
-    { ticketNo: 'LCMN-20260603-51880', sentAt: '2026-06-04 12:00', evaluated: true, score: 3, comment: '寄新充电仓有点慢。' },
+    { ticketNo: 'IFLYZX-20260603-00002', sentAt: '2026-06-04 12:00', evaluated: true, score: 3, comment: '寄新充电仓有点慢。' },
   ],
   '13500001234': [
-    { ticketNo: 'LCMN-20260626-56340', sentAt: '2026-06-26 16:00', evaluated: true, score: 5 },
-    { ticketNo: 'LCMN-20250308-04412', sentAt: '2025-03-09 15:00', evaluated: true, score: 5 },
+    { ticketNo: 'IFLYZX-20260626-00001', sentAt: '2026-06-26 16:00', evaluated: true, score: 5 },
+    { ticketNo: 'IFLYZX-20250308-00001', sentAt: '2025-03-09 15:00', evaluated: true, score: 5 },
   ],
 };
 
@@ -526,11 +526,8 @@ function toneOf(t: Ticket): TicketTone {
  */
 function statusTextOf(t: Ticket): string {
   if (!isClosedTicket(t) || isTicketClosed(t.nodeStatus)) return ticketStatusDisplayName(t);
-  const status = resolveStoppedClockStatus(t);
-  return statusDisplayName(status, {
-    transferredToType: t.transferredToType,
-    externalAppeal: t.ticketSource === '外投渠道',
-  });
+  // 依据基线 §1：展示名与子状态一一对应，反推出终态子状态后直接查表即可
+  return statusDisplayName(resolveStoppedClockStatus(t));
 }
 
 function complaintPlatformOf(t: Ticket): string | undefined {
@@ -681,7 +678,7 @@ export interface CustomerCandidate {
   tags: string[];
   ticketCount: number;
   lastAt: string;
-  /** 命中原因，如「工单 LCMN-… 的报单人」 */
+  /** 命中原因，如「工单 IFLYZX-20260610-00007 的报单人」 */
   reason: string;
 }
 
@@ -696,7 +693,7 @@ export function detectQueryKind(raw: string): QueryKind {
   const q = raw.trim();
   if (/^1[3-9]\d{9}$/.test(q)) return 'phone';
   // 工单号全称、或 4 位以上纯数字（坐席常只报单号尾段）
-  if (/^(LCMN|AS)-/i.test(q) || /^\d{4,}$/.test(q)) return 'ticket';
+  if (/^IFLY/i.test(q) || /^\d{4,}$/.test(q)) return 'ticket';
   if (/^SN-/i.test(q)) return 'sn';
   return 'name';
 }
@@ -794,7 +791,7 @@ export const DEMO_SEARCH_HINTS = [
   { label: '吴强', query: '13700003333', tip: '手机号 · 外投投诉史' },
   { label: '李大海', query: '13912345678', tip: '手机号' },
   { label: '陈翻译', query: '13500001234', tip: '手机号 · 飞书同步演示' },
-  { label: '工单号', query: 'LCMN-20260610-73026', tip: '张小凡的投诉单' },
+  { label: '工单号', query: 'IFLYTS-20260610-00002', tip: '张小凡的投诉单' },
   { label: 'SN', query: 'SN-T10-260713', tip: '陈翻译 · 翻译机' },
 ] as const;
 

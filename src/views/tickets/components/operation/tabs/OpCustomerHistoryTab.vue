@@ -7,6 +7,7 @@ import { aftersaleDeepLink } from '@/views/tickets/composables/opActions';
 import { TICKETS } from '@/mock/tickets';
 import type { CustomerHistoryData, CustomerHistoryFilter, CustomerHistoryTicket } from '@/views/tickets/types/operationTabs';
 import { queryCenterLocation } from '@/views/query/queryCenterRoute';
+import { ticketListSourceLabel } from '@/views/tickets/types/createTicket';
 
 const props = defineProps<{ data: CustomerHistoryData }>();
 
@@ -114,7 +115,7 @@ function openTicket(t: CustomerHistoryTicket) {
           <span class="sep" aria-hidden="true">·</span>
           <span class="type-tag" :style="{ color: t.typeColor, background: t.typeBgColor }">{{ t.type }}</span>
           <span class="sep" aria-hidden="true">·</span>
-          <span class="channel">{{ t.channel }}</span>
+          <span class="channel">{{ ticketListSourceLabel(t) }}</span>
         </div>
 
         <p class="summary-text">{{ t.summary }}</p>

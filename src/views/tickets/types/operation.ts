@@ -146,20 +146,25 @@ export interface ProcessFormDraft {
   complaintCat2: string;
   /** 投诉分类三 */
   complaintCat3: string;
+  /** 被投诉角色（投诉分类三 = 服务态度差 时必填，可多选） */
+  complainedRole: string[];
   /** 投诉标记（有效/无效/未证实/暂缓；市场监管平台另含有责/无责等） */
   complaintMark: string;
+  /** 需后端推动（非必填） */
+  backendPush: string;
   complaintNote: string;
   complaintNoteAttachments: string[];
   /**
-   * 投诉渠道跟进 · 各平台的回复结果（与建单 platforms 一一对应）。
-   * 内投渠道（公司前台/官网监督举报等）与外投渠道（12315/黑猫等）均在此维护。
+   * 投诉渠道跟进 · 已登记平台列表（与建单 platforms 对齐，只读展示平台/编号）。
    */
   platformFollowups: {
     platform: string;
     complaintNo?: string;
-    replyResult: string;
-    reconcile: '' | '是' | '否';
   }[];
+  /** 投诉渠道 · 回复结果（多平台共用一份） */
+  complaintChannelReply: string;
+  /** 投诉渠道 · 是否和解（多平台共用一份） */
+  complaintChannelReconcile: '' | '是' | '否';
   riskFlag: string;
   /** @deprecated 兼容旧逻辑；以 riskFlag === '有风险' 为准 */
   riskHasRisk: boolean;
@@ -220,23 +225,24 @@ const TAB_TYPE_RESTRICTION: Partial<Record<ProcessTabKey, string[]>> = {
 /**
  * Tab × 角色：取值为「无」的格子 —— 该角色**整个 Tab 不渲染**。
  *
- * 取自《用户角色与权限矩阵 · 运行工作区》#41–51 的九列取值，通篇只有 6 格是「无」：
- * - **技术支持处理**：② ③ 二线技术顾问（不接手技术侧处理）、⑥ 投诉处理角色、⑦ 运营监控岗
- * - **风险监控**：① 一线坐席（该 Tab 不在它的页面上）
- * - **预约**：① 一线坐席、④ 三线技术支持（预约是对客动作，三线不接触客户；
- *   读权亦不给 —— 本 Tab 对三线无业务意义，暂行「无」，待裁决）
+ * 取自《用户角色与权限矩阵 · 运行工作区》#41–51 的九列取值（0830 角色口径，见基线 §3.0）：
+ * - **技术支持处理**：二线专员（不接手技术侧处理）、客诉专员、工单运营、质检
+ * - **风险监控**：一线坐席（该 Tab 不在它的页面上）、工单运营（0830 起风险监控整块不给它）
+ * - **预约**：一线坐席、技术支持（预约是对客动作；本 Tab 对技术支持无业务意义，暂行「无」）
  *
  * 其余格子是「只读」或「可用 / 条件可用」，**Tab 都可见** —— 本表只管"看不看得到"，
  * "能不能改"由 tabWritableFor（逐 Tab 逐角色）与 tabsReadonly（整区一档）共同决定。
  *
  * **产研反馈**（`feishu`）在矩阵协同信息区没有单独一行，矩阵在 #41 的门控说明里给了口径：
- * 「取值随行 56『同步飞书』」。该行的「无」是 ① 一线、④ 三线、⑦ 运营监控岗、⑧ 质检/抄送，
- * 故按此落 deny（⑧ 尚无 RoleKey，落不到代码里）。
+ * 「取值随行 56『同步飞书』」。该行的「无」是 一线坐席 / 技术支持 / 工单运营 / 质检。
+ *
+ * 🔴 0830 调整：`risk` 增加 `ops-monitor` —— 基线 §3.1「工单运营不给（风险词命中页）」，
+ * 它连风险监控菜单都撤了，工单页的风险 Tab 自然也不该出。
  */
 const TAB_ROLE_DENY: Partial<Record<ProcessTabKey, string[]>> = {
-  feishu: ['agent-l1', 'tech-support', 'ops-monitor'],
-  tech: ['agent-cs', 'agent-as', 'complaint-handler', 'ops-monitor'],
-  risk: ['agent-l1'],
+  feishu: ['agent-l1', 'tech-support', 'ops-monitor', 'qa'],
+  tech: ['agent-l2', 'complaint-handler', 'ops-monitor', 'qa'],
+  risk: ['agent-l1', 'ops-monitor'],
   appointment: ['agent-l1', 'tech-support'],
 };
 
@@ -266,8 +272,9 @@ export function visibleProcessTabs(
 }
 
 /**
- * 矩阵「⑨ 管理员」一列对应的三个角色 —— 矩阵按业务把三者并成一列，代码里是三个 RoleKey。
- * 下方判据表凡出现 ⑨ 的格子都展开成这三个。
+ * 矩阵「管理员」一列对应的三个角色 —— 前台只有一个「管理员」，代码里是三个 RoleKey
+ * （platform / tenant / ops 的差异只在管理后台内部生效，基线 §3.0 末行）。
+ * 下方判据表凡出现管理员的格子都展开成这三个。
  */
 const MATRIX_ADMIN_ROLES: readonly RoleKey[] = ['system-admin', 'ops-admin', 'tenant-admin'];
 
@@ -279,13 +286,15 @@ const MATRIX_ADMIN_ROLES: readonly RoleKey[] = ['system-admin', 'ops-admin', 'te
  * - **可用** → 进白名单，Tab 内的写动作放出；
  * - **只读** → 不进白名单，Tab 可见但写动作收掉；
  * - **无** → 也不进白名单，且该 Tab 整个不渲染（另见 TAB_ROLE_DENY）；
- * - **条件可用** → **按不可写处理**，理由见下方「⑥ 投诉处理角色」。
+ * - **条件可用** → **按不可写处理**，理由见下方「客诉专员」。
  *
- * 矩阵列 → RoleKey：① agent-l1、② agent-cs、③ agent-as、④ tech-support、⑤ team-leader、
- * ⑥ complaint-handler、⑦ ops-monitor、⑨ MATRIX_ADMIN_ROLES。
- * **⑧ 质检/抄送尚无 RoleKey**，落不到代码里（它在 11 行里全是「只读」，落进来也是空手）。
+ * 矩阵列 → RoleKey（0830 九角色）：一线坐席 agent-l1、二线专员 agent-l2、技术支持 tech-support、
+ * 二线班组长 team-leader、客诉专员 complaint-handler、工单运营 ops-monitor、
+ * 投诉督导 complaint-supervisor、质检 qa、管理员 MATRIX_ADMIN_ROLES。
+ * **质检在 11 行里全是「只读」**，故一格都不进白名单。
+ * **投诉督导按"办单角色"落**：基线 §3.1 给它「工单可写 · 管辖组」，协同区取值与二线班组长同形。
  *
- * ⚠️ **⑥ 投诉处理角色（complaint-handler）一律不进白名单**。矩阵在 #41 #45 #46 #47 给它
+ * ⚠️ **客诉专员（complaint-handler）一律不进白名单**。矩阵在 #41 #45 #46 #47 给它
  * 「条件可用」，条件是**已管控**（点过「工单管控」把单拿到自己名下）。但「工单管控」这个功能
  * **全库未落地** —— `writableAfterTakeover` 只在角色定义里声明、零消费方，运行时拿不到"是否已管控"
  * 这个状态，判不出条件成立与否。故此处按**不可写**处理（保守侧：宁可少给，不可未经管控就放开
@@ -303,25 +312,25 @@ const MATRIX_ADMIN_ROLES: readonly RoleKey[] = ['system-admin', 'ops-admin', 'te
  */
 const TAB_ROLE_WRITABLE: Record<ProcessTabKey, readonly RoleKey[]> = {
   // #41 工单处理：① 只读 ② 可用 ③ 可用 ④ 可用 ⑤ 可用 ⑥ 条件可用 ⑦ 只读 ⑧ 只读 ⑨ 可用
-  process: ['agent-cs', 'agent-as', 'tech-support', 'team-leader', ...MATRIX_ADMIN_ROLES],
+  process: ['agent-l2', 'tech-support', 'team-leader', 'complaint-supervisor', ...MATRIX_ADMIN_ROLES],
   // 行 56 同步飞书：① 无 ② 可用 ③ 可用 ④ 无 ⑤ 可用 ⑥ 条件可用 ⑦ 无 ⑧ 无 ⑨ 可用
-  feishu: ['agent-cs', 'agent-as', 'team-leader', ...MATRIX_ADMIN_ROLES],
+  feishu: ['agent-l2', 'team-leader', 'complaint-supervisor', ...MATRIX_ADMIN_ROLES],
   // #42 技术支持处理：① 只读 ② 无 ③ 无 ④ 可用 ⑤ 可用 ⑥ 无 ⑦ 无 ⑧ 只读 ⑨ 可用
-  tech: ['tech-support', 'team-leader', ...MATRIX_ADMIN_ROLES],
-  // #43 风险监控：① 无 ② 只读 ③ 只读 ④ 只读 ⑤ 只读 ⑥ 可用 ⑦ 可用 ⑧ 只读 ⑨ 可用
-  // 写动作＝风险词打标；矩阵原话「⑦『只读』约束的是工单内容，打标不受此限」，故 ⑦ 在表内可写。
-  risk: ['complaint-handler', 'ops-monitor', ...MATRIX_ADMIN_ROLES],
+  tech: ['tech-support', 'team-leader', 'complaint-supervisor', ...MATRIX_ADMIN_ROLES],
+  // #43 风险监控：写动作＝风险词打标。0830 起打标 ＝ **客诉专员 + 投诉督导**（基线 §3.1），
+  // **工单运营移出**（该行取值「无」，它连风险词命中页都看不到）。与 RISK_TAG_ROLES 同源。
+  risk: ['complaint-handler', 'complaint-supervisor', ...MATRIX_ADMIN_ROLES],
   // #44 处理履历：九格全「只读」——完整事件时间线，纯读无写动作
   history: [],
   // #45 预约：① 无 ② 可用 ③ 可用 ④ 无 ⑤ 可用 ⑥ 条件可用 ⑦ 只读 ⑧ 只读 ⑨ 可用
   // 写动作＝新增/保留/取消预约、标记已沟通，属对客动作
-  appointment: ['agent-cs', 'agent-as', 'team-leader', ...MATRIX_ADMIN_ROLES],
+  appointment: ['agent-l2', 'team-leader', 'complaint-supervisor', ...MATRIX_ADMIN_ROLES],
   // #46 关联/补充/催单：① 可用 ② 可用 ③ 可用 ④ 可用 ⑤ 可用 ⑥ 条件可用 ⑦ 只读 ⑧ 只读 ⑨ 可用
   // Tab 内唯一写动作是「已知晓（标记已读）」；催单/补充记录本身任何角色都不可改不可删
-  related: ['agent-l1', 'agent-cs', 'agent-as', 'tech-support', 'team-leader', ...MATRIX_ADMIN_ROLES],
+  related: ['agent-l1', 'agent-l2', 'tech-support', 'team-leader', 'complaint-supervisor', ...MATRIX_ADMIN_ROLES],
   // #47 联系记录：① 只读 ② 可用 ③ 可用 ④ 只读 ⑤ 可用 ⑥ 条件可用 ⑦ 只读 ⑧ 只读 ⑨ 可用
   // 写动作＝「标记已沟通」，属联系客户类，④ 三线不接触客户故只读
-  contact: ['agent-cs', 'agent-as', 'team-leader', ...MATRIX_ADMIN_ROLES],
+  contact: ['agent-l2', 'team-leader', 'complaint-supervisor', ...MATRIX_ADMIN_ROLES],
   // #48 通知记录：九格全「只读」——系统发出的通知留痕
   notify: [],
   // #49 调研记录：九格全「只读」——回访调研结果留痕
@@ -474,6 +483,15 @@ export function complaintMarkOptions(platform?: string): string[] {
   }
   return base;
 }
+
+/** 需后端推动（非必填） */
+export const BACKEND_PUSH_OPTIONS = [
+  '产品问题',
+  '业务规则问题',
+  '服务问题',
+  '销售宣传问题',
+  '其他',
+] as const;
 
 /** 风险标记（投诉 · 风险管理）：有风险才需选风险等级；顺序由轻到重 */
 export const RISK_FLAG_OPTIONS = ['无风险', '疑似风险', '有风险'] as const;

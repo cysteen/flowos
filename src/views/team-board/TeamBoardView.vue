@@ -376,14 +376,14 @@ function onGoList(p: DrillGoListPayload) {
 
 /** 待指派工单（8 单，与存量区「累计未分派 8」一致） */
 const ASSIGN_TICKETS: AssignTicket[] = [
-  { id: 'a1', no: 'LCMN-20260803-10021', customer: '莫某', type: '投诉', priority: 'P0', slaLeftMin: 26, createdAt: '08-03 09:12' },
-  { id: 'a2', no: 'LCMN-20260803-10034', customer: '陈某', type: '咨询', priority: 'P2', slaLeftMin: 132, createdAt: '08-03 09:40' },
-  { id: 'a3', no: 'LCMN-20260803-10047', customer: '李某', type: '报修', priority: 'P1', slaLeftMin: 74, createdAt: '08-03 10:05' },
-  { id: 'a4', no: 'LCMN-20260803-10058', customer: '王某', type: '投诉', priority: 'P1', slaLeftMin: -18, createdAt: '08-03 08:31' },
-  { id: 'a5', no: 'LCMN-20260803-10066', customer: '赵某', type: '建议', priority: 'P3', slaLeftMin: 320, createdAt: '08-03 10:22' },
-  { id: 'a6', no: 'LCMN-20260803-10071', customer: '孙某', type: '咨询', priority: 'P2', slaLeftMin: 188, createdAt: '08-03 10:48' },
-  { id: 'a7', no: 'LCMN-20260803-10085', customer: '周某', type: '退换', priority: 'P2', slaLeftMin: 95, createdAt: '08-03 11:03' },
-  { id: 'a8', no: 'LCMN-20260803-10093', customer: '吴某', type: '投诉', priority: 'P0', slaLeftMin: 12, createdAt: '08-03 11:20' },
+  { id: 'a1', no: 'IFLYTS-20260803-00001', customer: '莫某', type: '投诉', priority: 'P0', slaLeftMin: 26, createdAt: '08-03 09:12' },
+  { id: 'a2', no: 'IFLYTS-20260803-00002', customer: '陈某', type: '咨询', priority: 'P2', slaLeftMin: 132, createdAt: '08-03 09:40' },
+  { id: 'a3', no: 'IFLYTS-20260803-00003', customer: '李某', type: '报修', priority: 'P1', slaLeftMin: 74, createdAt: '08-03 10:05' },
+  { id: 'a4', no: 'IFLYTS-20260803-00004', customer: '王某', type: '投诉', priority: 'P1', slaLeftMin: -18, createdAt: '08-03 08:31' },
+  { id: 'a5', no: 'IFLYZX-20260803-00005', customer: '赵某', type: '建议', priority: 'P3', slaLeftMin: 320, createdAt: '08-03 10:22' },
+  { id: 'a6', no: 'IFLYZX-20260803-00006', customer: '孙某', type: '咨询', priority: 'P2', slaLeftMin: 188, createdAt: '08-03 10:48' },
+  { id: 'a7', no: 'IFLYTS-20260803-00007', customer: '周某', type: '退换', priority: 'P2', slaLeftMin: 95, createdAt: '08-03 11:03' },
+  { id: 'a8', no: 'IFLYJY-20260803-00008', customer: '吴某', type: '投诉', priority: 'P0', slaLeftMin: 12, createdAt: '08-03 11:20' },
 ];
 
 const assignOpen = ref(false);

@@ -84,16 +84,22 @@ export const ROLE_GROUPS: RoleGroup[] = [
     roles: [
       { id: 'r-tenant-admin', name: '租户管理员', desc: '本租户人员、角色、权限、安全管理', category: '业务角色', permissions: perms('full') },
       { id: 'r-ops-admin', name: '运营管理员', desc: '工单流转全链路配置（类型/SLA/规则/模板…）', category: '业务角色', permissions: perms('leader') },
-      { id: 'r-cs-leader', name: '客服班组长', desc: '本班组工单改派、审核与看板', category: '业务角色', permissions: perms('leader') },
-      { id: 'r-cs-agent', name: '客服·二线技术顾问', desc: '客服工单受理与处理', category: '业务角色', permissions: perms('agent') },
-      { id: 'r-as-agent', name: '售后·二线技术顾问', desc: '售后工单受理与处理', category: '业务角色', permissions: perms('agent') },
+      { id: 'r-team-leader', name: '二线班组长', desc: '本班组工单派单、审批与看板', category: '业务角色', permissions: perms('leader') },
+      // 0830：客服 / 售后是二线专员的**分岗**，不再是两个角色（基线 §3.0）
+      { id: 'r-agent-l2', name: '二线专员', desc: '工单受理与处理（分岗：客服 / 售后）', category: '业务角色', permissions: perms('agent') },
+      { id: 'r-tech-support', name: '技术支持', desc: '处理升级来的技术问题，不结案', category: '业务角色', permissions: perms('agent') },
+      { id: 'r-complaint-handler', name: '客诉专员', desc: '办投诉单 + 工单管控（未管控只读）', category: '业务角色', permissions: perms('agent') },
+      { id: 'r-complaint-supervisor', name: '投诉督导', desc: '审批 + 指派 + 盯班组与全中心投诉态势', category: '业务角色', permissions: perms('leader') },
+      { id: 'r-ops-monitor', name: '工单运营', desc: '不办单：调剂 / 指派 + 看板 + 大盘', category: '业务角色', permissions: perms('readonly') },
+      { id: 'r-qa-role', name: '质检', desc: '全租户只读 + 查询中心', category: '业务角色', permissions: perms('readonly') },
+      { id: 'r-agent-l1', name: '一线坐席', desc: '接进线、建单、催单，不办单', category: '业务角色', permissions: perms('agent') },
     ],
   },
   {
     name: '自定义', color: '#A855F7', expanded: true,
     roles: [
       { id: 'r-revisit', name: '售后回访专员', desc: '满意度回访与记录', category: '自定义', permissions: perms('readonly') },
-      { id: 'r-qa', name: '质检专员', desc: '会话与工单质检', category: '自定义', permissions: perms('readonly') },
+      { id: 'r-qa', name: '会话质检专员', desc: '会话质检（自定义角色，与内置「质检」不同）', category: '自定义', permissions: perms('readonly') },
     ],
   },
 ];

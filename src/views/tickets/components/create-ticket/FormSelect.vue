@@ -3,43 +3,42 @@ import { filterSelectOption } from '@/views/tickets/types/createTicket';
 
 defineOptions({ inheritAttrs: false });
 
-defineProps<{
-  value?: string | number | undefined;
+const props = defineProps<{
+  value?: string | number | string[] | undefined;
   options?: { value: string | number; label: string }[];
+  mode?: 'multiple' | 'tags';
 }>();
 
 const emit = defineEmits<{
-  'update:value': [v: string | number | undefined];
-  change: [v: string | number | undefined];
+  'update:value': [v: string | number | string[] | undefined];
+  change: [v: string | number | string[] | undefined];
 }>();
 
-/**
- * a-select 的 update:value / change 按 antd 声明给出 SelectValue
- * （RawValue | LabeledValue | 数组）。本组件是标量单选：props.value 只收 string | number，
- * options 的 value 也只有 string | number，且不开 labelInValue / mode="multiple"，
- * 所以运行时拿到的必然是标量，转发前收窄回标量。
- */
-function toScalar(v: unknown): string | number | undefined {
+function normalize(v: unknown): string | number | string[] | undefined {
+  if (props.mode === 'multiple' || props.mode === 'tags') {
+    return Array.isArray(v) ? v.map(String) : [];
+  }
   return v as string | number | undefined;
 }
 
 function onUpdateValue(v: unknown) {
-  emit('update:value', toScalar(v));
+  emit('update:value', normalize(v));
 }
 
 function onChange(v: unknown) {
-  emit('change', toScalar(v));
+  emit('change', normalize(v));
 }
 </script>
 
 <template>
   <a-select
+    v-bind="$attrs"
     :value="value"
     :options="options"
+    :mode="mode"
     show-search
     :filter-option="filterSelectOption"
     option-filter-prop="label"
-    v-bind="$attrs"
     @update:value="onUpdateValue"
     @change="onChange"
   />

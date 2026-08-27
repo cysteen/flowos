@@ -15,7 +15,10 @@ import {
   ticketLatestHandlingItems,
   ticketProductIssue,
 } from '@/views/tickets/utils/ticketOverview';
-import { inferComplaintChannelSource } from '@/views/tickets/types/createTicket';
+import {
+  inferComplaintChannelSource,
+  resolveTicketSourceForList,
+} from '@/views/tickets/types/createTicket';
 import {
   applyOpAction, mapUserRole, nowWhen, pushEntry,
   type OpActionPayload, type SuspendInfo, type TicketOpState,
@@ -159,8 +162,23 @@ export function useTicketOperation() {
       // 产品有无售后服务 → 「转售后」置灰 + 提示（基线 ※12）。按产品名判，不再恒为 true
       base.product.afterSaleEnabled = productHasAfterSaleService(t.product);
       base.productBg = t.productBg;
-      // 工单来源：升级投诉门禁、补充弹窗投诉平台组、转售后分支都按它判
-      if (t.ticketSource) base.source = t.ticketSource;
+      // 非样例工单：不继承 TICKET_DETAIL 的投诉台账/外投标记（否则任意单都会显示 12315 等样例字段）
+      if (t.no !== TICKET_DETAIL.no) {
+        base.complaint = {
+          categories: [],
+          complaintType: '',
+          platforms: [],
+          receivedAt: '',
+          priorFeedback: '',
+          serviceReview: '',
+        };
+        base.isExternalAppeal = false;
+        if (t.productCategory) base.product.category = t.productCategory;
+        if (t.sn) base.product.sn = t.sn;
+      }
+      // 工单来源：与列表同一解析口径（优先 ticketSource，缺省由接入渠道反推）
+      base.source = resolveTicketSourceForList(t);
+      base.isExternalAppeal = base.source === '外投渠道';
       // 结案方式随列表行带入：底栏动作集按它收窄（直接结案＝不下送、不升级、不挂起、不转派）
       base.closureMode = t.closureMode;
       // 列表未带来源但已有外投/内投平台台账 → 反推来源，避免补充弹窗缺「平台/编号」区
@@ -175,9 +193,9 @@ export function useTicketOperation() {
       }
       if (t.complaintType) base.complaint.complaintType = t.complaintType;
       // D3 外投演示单：投诉渠道记录 + 分类与 PRD 附录一致，便于验「补充投诉信息」全字段
-      if (t.no === 'LCMN-20260817-83002') {
+      if (t.no === 'IFLYTS-20260817-00001') {
         base.complaint.categories = [
-          { cat1: '服务质量投诉', cat2: '对人员服务态度不满' },
+          { cat1: '服务与运营问题', cat2: '服务质量' },
         ];
         base.complaint.platforms = [
           {
@@ -185,12 +203,21 @@ export function useTicketOperation() {
             complaintNo: 'HM20260817001',
             complaintContent: '客户在黑猫投诉售后承诺未兑现，要求今日内书面回复',
           },
+          {
+            platform: '市场监管12315平台',
+            complaintNo: 'AH12315-20260817088',
+            complaintContent: '同步向 12315 提交产品质量投诉，要求书面答复',
+          },
+          {
+            platform: '全国消协智慧315平台',
+            complaintNo: '',
+            complaintContent: '消协平台已登记，暂未下发编号',
+          },
         ];
       }
       base.escalatedFromNo = t.escalatedFromNo; // 升级派生单：回溯「升级自」来源
-      // 升级目标（三线技术支持 / 产研）随列表行带入 —— 基线只有一个「已升级」状态，
-      // 「在不在三线手上」（决定「退回」出不出）只能靠这个字段判，判不出状态名来
-      base.escalateTarget = t.escalateTarget;
+      // 依据基线 §1：升级目标已进状态（已升级技术支持 / 已升级产研），
+      // 「在不在三线手上」（决定「退回」出不出）直接读状态，不再另带 escalateTarget 字段
       /*
        * 关联关系**按列表行重建，不继承样例工单**。
        * 之前直接沿用 TICKET_DETAIL 的 childTickets/linkedRecords，导致随便点开一张单
@@ -204,8 +231,8 @@ export function useTicketOperation() {
        * 否则处理页仍显示「处理中」，补充/催单的承接分流（§5.2）判不出来。
        *
        * ⚠️ 这里**不能一律写「已关闭」**。「已关闭」在基线 §1 里是一个具体子状态
-       * ——「友好沟通后关闭」，只对做过「关闭工单」的单成立；强结的单是「已强结」、
-       * 跑完流程正常收口的是「已解决」。按动作标记反推，见 resolveStoppedClockStatus。
+       * ——关闭工单审批通过，只对做过「关闭工单」的单成立；强结的单是「已强结」、
+       * 跑完流程正常收口的是「已结案」。按动作标记反推，见 resolveStoppedClockStatus。
        */
       if (t.slaText === '—' && !t.escalatedToNo) {
         base.status = isTicketClosed(t.nodeStatus)
@@ -223,8 +250,8 @@ export function useTicketOperation() {
           meta: `${(t.updatedAt ?? '').slice(5, 10)} ${t.assignee ?? ''} 升级`,
         }];
         base.linkedAftersale = undefined;
-        // 基线 §1「已升级投诉」已独立成终态：原单迁「已转单」的旧做法作废
-        base.status = '已升级投诉';
+        // 依据基线 §1「一跳一态」：原单是外投单则是第二跳（已升级外投），否则是第一跳
+        base.status = t.ticketSource === '外投渠道' ? '已升级外投' : '已升级投诉';
         opState.value = 'closed';
       }
       base.feishuSync = 'none';

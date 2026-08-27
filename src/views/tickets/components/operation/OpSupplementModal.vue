@@ -16,7 +16,7 @@ import {
   shouldShowComplaintChannelSupplement,
 } from '@/views/tickets/types/createTicket';
 
-/** 一条投诉渠道记录：一平台一组三项（平台 + 编号 + 内容），PRD-830 §5.3 */
+/** 一条投诉渠道记录：一平台一组三项（平台 + 编号 + 内容），PRD-915 补充与催单 §5.3 */
 export interface ComplaintChannelRow {
   platform: string;
   /** 选「其他」时手填平台名 */
@@ -30,7 +30,7 @@ const props = withDefaults(
     open: boolean;
     /** 工单类型——仅「投诉」才出现「补充投诉信息」这一分类（基线 §4 ※22） */
     ticketType?: string;
-    /** 投诉类型（≠服务投诉 时要补选投诉一类/二类） */
+    /** 原单投诉性质（只读展示用；不再作为补选投诉一类/二类的门控） */
     complaintType?: string;
     /** 工单来源（内投渠道 / 外投渠道 时要追加投诉平台） */
     ticketSource?: string;
@@ -129,10 +129,14 @@ const existingCategoryRows = computed(() =>
   (props.existingCategories ?? []).filter((c) => c.cat1 && c.cat2),
 );
 
-/** 原单投诉类型 ≠ 服务投诉 时可补选投诉一级/二级（PRD-830 §5.1 ※3） */
+/**
+ * 选了「补充投诉信息」就可补选投诉一级/二级 —— **与原单是什么投诉性质无关**（PRD §5.1）。
+ * 补进来的分类推导出的性质可以与原单不同（业务↔服务、业务→人员），性质随二类自动变，
+ * 不关单不建新单（《【830】升级投诉》§5.6）。
+ * 唯一的限制是下面这条：原单已经同时含服务类与业务类时，没有"另一类"可补，只能补渠道。
+ */
 const canSupplementCategory = computed(() => {
   if (!showComplaintCategoryAppend.value) return false;
-  if (props.complaintType === '服务投诉') return false;
   if (existingCategoryRows.value.length && !inferOriginalComplaintKind(existingCategoryRows.value)) {
     return false;
   }
@@ -200,7 +204,7 @@ watch(
 );
 
 // 切换补充分类：从「补充投诉信息」切走时，投诉补录区收起并**清空已填**，
-// 避免把不属于本条补充的投诉信息带着提交（PRD-830 §5.1 元素说明 5）
+// 避免把不属于本条补充的投诉信息带着提交（PRD-915 补充与催单 §5.1 元素说明 5）
 watch(isComplaintSupplement, (on) => {
   if (!on) resetComplaintFields();
 });

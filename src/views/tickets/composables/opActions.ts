@@ -1,12 +1,15 @@
 import type { TlRole, TimelineEntry, TimelineFieldChange } from '@/views/tickets/types/ticketDetail';
 import type { TicketDetailMeta, FeishuRecord, LinkedAftersale } from '@/mock/ticketDetail';
+import type { RoleKey } from '@/config/roles';
 import { AFTERSALE_INBOUND_SOURCE } from '@/views/tickets/types/createTicket';
+// 终态判定单一实现：与头部按钮、只读锁同源，避免两处各写一份正则再漂
+import { isTicketTerminated } from './complaintEscalation';
 
 /** 升级通道 · 飞书项目（消费者BG专属，走 OpenAPI 推送产研反馈单） */
 export const FEISHU_ESCALATE_CHANNEL = '飞书项目 · 产研反馈单';
 
 // 操作页内部的轻量处理态枚举，**不是**工单状态机。
-// 工单子状态的唯一真源是基线 §1 的 21 个子状态（见 `types/ticket.ts` 的 BASELINE_STATUSES）。
+// 工单子状态的唯一真源是基线 §1 的 25 个子状态（见 `types/ticket.ts` 的 BASELINE_STATUSES）。
 // 下面每个枚举后的中文只是它在 UI 上的近似呈现，其中「待审核」不是基线子状态名
 // （基线对应的是四个审核态），落库与对外呈现一律取基线名，不要拿这里的中文当状态值用。
 // `closed` 一档对应的基线子状态是「已关闭」——它已是可落库子状态（基线 §1 该行
@@ -72,15 +75,23 @@ export interface ForwardPayload { ticketTitle: string; backToDelegator?: boolean
  */
 export interface ForceClosePayload { reason: string; approvalGroup: string; detail: string; }
 /**
- * 转单 = **原单关闭、新单继续跑**（基线 §1「已转单」、§4「转单（原单关闭，新单跑）」※16）。
+ * 转单 = **原单关闭、新单继续跑**（基线 §1 转单三态、§4「转单（原单关闭，新单跑）」※16）。
  * 新单在建单弹窗里落库，本 payload 只带回新单标识，用于原单收口与写履历。
+ *
+ * 依据基线 §1「一去向一态」：原单落哪个终态由**新单类型**决定
+ * （咨询→已转咨询 / 建议→已转建议 / 商机→已转商机），故 newType 必带。
  */
 export interface TransferTicketPayload {
   /** 承接业务的新单单号 */
   newNo: string;
   /** 新单标题，写履历用 */
   newTitle: string;
+  /** 新单类型 —— 决定原单落哪个「已转…」终态 */
+  newType: TransferDestType;
 }
+
+/** 转单去向：基线 §1 只有这三个（升级投诉走「升级投诉」动作，不走转单） */
+export type TransferDestType = '咨询' | '建议' | '商机';
 export interface SuspendPayload {
   reason: string;
   detail: string;
@@ -264,14 +275,17 @@ export const TRANSFER_TARGET_GROUPS = [
   '退费处理组',
 ];
 /**
- * 可跨组调剂的角色：班组长、投诉处理角色、三类管理员；二线处理人仅限同组内。
+ * 可跨组调剂的角色（基线 §4「调剂 · 跨组」行）：技术支持、二线班组长、客诉专员、投诉督导、管理员；
+ * 二线专员仅限同组内（它那一格是「不展示」）。
  *
  * `complaint-handler` 必须在列：它的作用域是**全中心**，管控来的单常常不属于本组，
- * 而基线把「释放管控」寄生在调剂上 —— 缺了跨组权限，它管控了别组的单就还不回去。
+ * 而基线把「释放管控」寄生在调剂上（※9）—— 缺了跨组权限，它管控了别组的单就还不回去。
  */
 export const CROSS_GROUP_TRANSFER_ROLES = [
+  'tech-support',
   'team-leader',
   'complaint-handler',
+  'complaint-supervisor',
   'ops-admin',
   'system-admin',
   'tenant-admin',
@@ -334,11 +348,30 @@ export function nowWhen(): string {
   return `今天 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
+/**
+ * RoleKey → 处理履历上的角色徽章文案（0830 九角色，基线 §3.0）。
+ *
+ * 🔴 原实现只认 `team-leader` / `agent-cs` / `agent-as` 三个 key，**其余一律返回「二线专员」**——
+ * 一线坐席、技术支持、客诉专员、管理员写的履历全被冒名成二线，履历的"谁做的"这一列失真。
+ * 现在九个角色逐个映射，管理员三个 key 合并成一个「管理员」（前台只有一个管理员角色）。
+ */
+const ROLE_TL_LABEL: Record<RoleKey, TlRole> = {
+  'agent-l1': '一线坐席',
+  'agent-l2': '二线专员',
+  'tech-support': '技术支持',
+  'team-leader': '二线班组长',
+  'complaint-handler': '客诉专员',
+  'complaint-supervisor': '投诉督导',
+  'ops-monitor': '工单运营',
+  'qa': '质检',
+  'system-admin': '管理员',
+  'ops-admin': '管理员',
+  'tenant-admin': '管理员',
+};
+
 export function mapUserRole(roleKey: string): TlRole {
-  if (roleKey === 'team-leader') return '班组长';
-  if (roleKey === 'agent-cs') return '二线技术顾问';
-  if (roleKey === 'agent-as') return '二线技术顾问';
-  return '二线技术顾问';
+  // 未知 key 兜底到二线专员：履历必须有个角色，且主力处理人就是它
+  return ROLE_TL_LABEL[roleKey as RoleKey] ?? '二线专员';
 }
 
 export function nextTimelineId(list: TimelineEntry[]): string {
@@ -632,29 +665,26 @@ export function applyOpAction(
 
     case '转单': {
       /*
-       * 基线怎么规定的：转单 ＝ **原单关闭、新单继续跑**（§1「已转单：原单关闭，新单继续跑」、
-       *   §4「转单（原单关闭，新单跑）」※16「转单 ≠ 转出去等回传」）。原单进**真终态**「已转单」，
+       * 基线怎么规定的：转单 ＝ **原单关闭、新单继续跑**（§1 已转咨询 / 已转建议 / 已转商机、
+       *   §4「转单（原单关闭，新单跑）」※16「转单 ≠ 转出去等回传」）。原单进**真终态**，
        *   与「升级 / 转售后」那种"原单还活着、等回传"的非终态明确区分。
-       * 原先实现成什么：点「转单」走的是**建子单**——把新单塞进 `childTickets`、履历写「创建子单」，
-       *   **原单状态一动不动**。于是原单和新单同时在跑，坐席会继续在已经交出去的原单上处理，
-       *   两边各办一半；同一诉求也就出现两条活着的处理链。
-       * 为什么这样改：改为"新单接管 + 原单落「已转单」终态 + 停表(中止)"，原单随即整页只读、
-       *   只留「前往新单」出口（与「升级投诉」的收口方式同构，见本文件 case '升级投诉'）。
+       * 依据基线 §1「一去向一态」：三个去向各占一个子状态，落库值直接由新单类型算出，
+       *   **不再落一个「已转单」再靠 transferredToType 拼展示名**——拼出来的名字进不了筛选器。
        * SLA：因业务转到新单而终止，停表结果记**中止**（不计达标/未达标）——原单没被解决也没被违约。
        */
-      const { newNo, newTitle } = payload.data;
-      detail.status = '已转单';
+      const { newNo, newTitle, newType } = payload.data;
+      detail.status = `已转${newType}`;
       terminateClocks(detail, timeline, true);
       pushEntry(timeline, {
         category: 'node', action: 'transfer', who: operator, role: operatorRole,
         how: '转单 · 关闭原单',
         what: `已转单至新单 ${newNo}「${newTitle}」并与本单关联，原单关闭（SLA 停表·中止）。`
-          + `本单转为「已转单」并锁定只读，后续处理与补充请在新单进行。`,
+          + `本单转为「${detail.status}」并锁定只读，后续处理与补充请在新单进行。`,
       });
       return {
         opState: 'closed',
         suspendInfo: null,
-        message: `已转单至新单 ${newNo}，原单转为「已转单」`,
+        message: `已转单至新单 ${newNo}，原单转为「${detail.status}」`,
       };
     }
 
@@ -676,14 +706,11 @@ export function applyOpAction(
 
     case '升级': {
       /*
-       * 基线怎么规定的：§1「已升级」是**一个**状态，**两类升级目标都落它**——
-       *   升级 · 三线技术支持 → 落该组池等人领、**处理人转到三线**；
-       *   升级 · 产研（飞书项目 / TPD / RDM / 磐石）→ 服务节点、**处理人仍是二线**。
-       *   区别在处理人与后续通知对象，**不在状态**。
-       * 原先实现成什么：两条分支各落一个状态值「已升级·三线技术支持」「已升级·产研」，
-       *   把一个基线状态拆成两个落库值，状态枚举因此多出一个、所有按状态判断的地方都要写两遍。
-       * 为什么这样改：状态统一落「已升级」，两类的差别改由 `escalateTarget` 这个独立字段表达
-       *   （类型见 `types/ticket.ts` 的 EscalateTarget），判"在不在三线手上"读字段、不读状态名。
+       * 依据基线 §1（v1.13 起）：升级**两类目标各占一个子状态**——
+       *   升级 · 三线技术支持 → 「已升级技术支持」，落该组池等人领、**处理人转到三线**（※14）；
+       *   升级 · 产研（飞书项目 / TPD / RDM / 磐石）→ 「已升级产研」，服务节点、**处理人仍是二线**（※14a）。
+       * 两者动作集只差「领取 / 指派」「退回」三格（※14b），判它们一律读状态，
+       * 不再另留 escalateTarget 字段——同一件事不留第二个真源。
        */
       const { channel, group, member, detail: note, feedbackCategory } = payload.data;
       // 飞书项目通道：建关联 + 演示预反馈/关单时间线（原型默认落到 closed 以便点二次激活）
@@ -693,8 +720,7 @@ export function applyOpAction(
         detail.feishuFeedbackNo = feedbackNo;
         detail.feishuFailReason = undefined;
         detail.feishuRecords = buildFeishuSeedRecords(detail, operator, feedbackNo);
-        detail.status = '已升级';
-        detail.escalateTarget = '产研';
+        detail.status = '已升级产研';
         const catPart = feedbackCategory ? `，问题反馈分类：${feedbackCategory}` : '';
         pushEntry(timeline, {
           category: 'node', action: 'escalate', who: operator, role: operatorRole,
@@ -704,10 +730,9 @@ export function applyOpAction(
         return { opState, suspendInfo, message: `已升级至产研反馈 · 反馈单 ${feedbackNo}` };
       }
       const toTech = channel.includes('技术支持');
-      detail.status = '已升级';
-      // 升级目标：技术支持组 → 三线（处理人转到该组池、由组员领取）；
-      // RDM / TPD 等产研系统 → 产研（服务节点，处理人仍是原二线）
-      detail.escalateTarget = toTech ? '三线技术支持' : '产研';
+      // 升级目标直接进状态：技术支持组 → 「已升级技术支持」（处理人转到该组池、由组员领取）；
+      // RDM / TPD 等产研系统 → 「已升级产研」（服务节点，处理人仍是原二线）
+      detail.status = toTech ? '已升级技术支持' : '已升级产研';
       const dest = toTech && group ? `${channel} · ${group}${member ? ` · ${member.split(' ')[0]}` : ''}` : channel;
       pushEntry(timeline, {
         category: 'node', action: 'escalate', who: operator, role: operatorRole,
@@ -733,7 +758,7 @@ export function applyOpAction(
         id: `fs-activate-${Date.now()}`,
         kind: 'activate',
         title: '二次激活 · 已重新打开产研反馈单',
-        content: `二线技术顾问二次激活，请产研继续处理。激活原因：${reason || '用户反馈未解决'}`,
+        content: `二线专员二次激活，请产研继续处理。激活原因：${reason || '用户反馈未解决'}`,
         who: operator,
         side: '客服工单',
         when: nowWhen(),
@@ -815,16 +840,16 @@ export function applyOpAction(
       // 升级成功 = 关原单 + 建新投诉单 + 双向关联（PRD §4.3.1/§4.3.2）。
       // 原单已是终态则跳过关闭步骤，只留关联（PRD §4.3.1）。
       const { target, newNo, note } = payload.data;
-      // 终态集合以基线 §1「状态」列取值为「终态」的七个子状态为准：
-      //   已升级投诉 / 已解决 / 已关闭 / 已强结 / 已转单 / 已取消 / 已结案。
-      // 与 `types/ticket.ts` 的 isTicketClosed() 同源，改一处要两处一起改。
+      // 终态集合以基线 §1「状态」列取值为「终态」的**十个**子状态为准，
+      // 与 `types/ticket.ts` 的 isTicketClosed()、complaintEscalation 的 isTicketTerminated() 同源。
       // 「已归档」不在其中——它不是状态，是与状态正交的留存维度；
-      // 漏掉「已解决 / 已关闭 / 已强结」会让这三种终态的单在升级时被二次改写并二次停表。
-      const alreadyEnded = /已升级投诉|已解决|已关闭|已强结|已转单|已取消|已结案/.test(detail.status);
+      // 漏掉「已结案 / 已关闭 / 已强结」会让这三种终态的单在升级时被二次改写并二次停表。
+      const alreadyEnded = isTicketTerminated(detail.status);
       if (!alreadyEnded) {
-        // 基线 §1「已升级投诉」已独立成终态（原单迁「已转单」的旧做法作废）：
-        // 落库只有这一个子状态，是否外投由投诉渠道字段决定、展示时拼名。
-        detail.status = '已升级投诉';
+        // 依据基线 §1「一跳一态」：升阶两跳各占一个子状态 ——
+        // 第一跳（非投诉→投诉）落「已升级投诉」，第二跳（内投→外投）落「已升级外投」。
+        // 外投平台（12315 / 黑猫等）仍挂投诉渠道字段，不拆状态。
+        detail.status = target === '外投' ? '已升级外投' : '已升级投诉';
         terminateClocks(detail, timeline, true); // 因升级而终止：停表结果=中止(灰)，不计达标/未达标
       }
       pushEntry(timeline, {

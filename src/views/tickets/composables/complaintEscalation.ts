@@ -1,4 +1,5 @@
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
+import { makeTicketNo } from '@/constants/ticketNo';
 import type { Channel, CreateTicketPrefill, Priority, Ticket } from '@/views/tickets/types/ticket';
 import { AFTERSALE_INBOUND_SOURCE, CUSTOM_PLATFORM_OPTION } from '@/views/tickets/types/createTicket';
 
@@ -6,7 +7,7 @@ import { AFTERSALE_INBOUND_SOURCE, CUSTOM_PLATFORM_OPTION } from '@/views/ticket
  * 升级投诉（文档名「关联投诉」）判定逻辑 —— 《【815】关联投诉 PRD》§3 升级规则。
  *
  * **升阶只有两跳**（0730 定稿）：`非投诉（咨询/商机/建议） → 投诉 → 外投`。
- * - 「外投」不是投诉分类，是**工单来源=外投渠道**；外投只能由**二线技术顾问**发起。
+ * - 「外投」不是投诉分类，是**工单来源=外投渠道**；外投只能由**二线专员**发起。
  */
 
 /** 原单所处阶层 */
@@ -51,17 +52,26 @@ export interface EscalateVerdict {
   headline: string;
 }
 
+/** 基线 §1 终态子状态（十个），供自由文本 status 判定用 */
+const TERMINATED_STATUSES: string[] = [
+  '已结案', '已关闭', '已强结',
+  '已升级投诉', '已升级外投',
+  '已转咨询', '已转建议', '已转商机',
+  '已取消', '直接结案',
+];
+
 /**
  * 原单是否已是终态——升级时跳过关闭步骤（PRD §4.3.1）。
- * 含「已转单」与「已升级投诉」：因派生新单而终止的两个状态（§5.6.3）。
+ * 含转单三态与升阶两态：因派生新单而终止的状态（§5.6.3）。
  */
 export function isTicketTerminated(status: string): boolean {
-  // 子状态名对齐《00-基线-工单状态与动作》§1：状态分组为「终态」的七个子状态是
-  // 已升级投诉 / 已解决 / 已关闭 / 已强结 / 已转单 / 已取消 / 已结案。
-  // 「已关闭」是其中的一个具体子状态（友好沟通后关闭），不再是"终态分类伞"。
-  // 「已归档」系统里没有这个状态，不在正则内。
-  // 入参是自由文本（detail.status），所以按正则匹配而不是查 BASELINE_STATUSES。
-  return /已升级投诉|已解决|已关闭|已强结|已转单|已取消|已结案/.test(status);
+  // 依据基线 §1：状态分组为「终态」的**十个**子状态是
+  // 已结案 / 已关闭 / 已强结 / 已升级投诉 / 已升级外投 /
+  // 已转咨询 / 已转建议 / 已转商机 / 已取消 / 直接结案。
+  // 「已关闭」是其中的一个具体子状态，不再是"终态分类伞"。
+  // 「已归档」系统里没有这个状态，不在集合内。
+  // 入参是自由文本（detail.status），故先按字面量集合判，命中不了再按落库子状态表判。
+  return TERMINATED_STATUSES.includes(status);
 }
 
 /**
@@ -305,11 +315,12 @@ export function buildEscalatedTicket(
   opts: { operator: string; channel?: Channel; priority?: Priority; now?: Date },
 ): Ticket {
   const now = opts.now ?? new Date();
-  const seq = String(now.getTime()).slice(-5);
+  // 升阶建的是**投诉单**，前缀随新类型走 IFLYTS（constants/ticketNo.ts）
+  const seq = Number(String(now.getTime()).slice(-5));
 
   return {
     id: `esc-${now.getTime()}`,
-    no: `LCMN-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${seq}`,
+    no: makeTicketNo('投诉', seq, now),
     type: '投诉',
     channel: opts.channel ?? CHANNEL_MAP[detail.channel] ?? '电话',
     title: `外投·${detail.title}`,

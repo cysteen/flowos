@@ -42,13 +42,13 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       title: '处理中',
       operator: '陈伟(技术支持)',
       when: '2026-06-17 16:20:18',
-      desc: '二线技术顾问处理中，待填写处理结果并标记解决结论',
+      desc: '二线专员处理中，待填写处理结果并标记解决结论',
       active: true,
     },
   ],
   relatedTickets: [
     {
-      no: 'IFLYKF2026061810020088',
+      no: 'IFLYZX-20260618-00002',
       title: '录音笔无法充电质量问题',
       status: '处理中',
       statusColor: '#1A6FFF',
@@ -70,7 +70,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       ],
     },
     {
-      no: 'IFLYKF2026061510010056',
+      no: 'IFLYZX-20260615-00001',
       title: '录音笔充电异常复现咨询',
       status: '已完成',
       statusColor: '#10B981',
@@ -290,7 +290,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       when: '2026-06-18 09:30:12',
       channel: '站内信 + i讯飞',
       status: '已读',
-      content: '工单已升级,请及时处理。工单号:IFLYKF2026061809340156',
+      content: '工单已升级,请及时处理。工单号:IFLYZX-20260618-00003',
     },
     {
       id: 'n2',
@@ -310,7 +310,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       when: '2026-06-18 08:15:20',
       channel: '站内信 + i讯飞',
       status: '已读',
-      content: '工单已转办至您名下,请及时跟进处理。工单号:IFLYKF2026061809340156',
+      content: '工单已转办至您名下,请及时跟进处理。工单号:IFLYZX-20260618-00003',
     },
     {
       id: 'n4',
@@ -320,7 +320,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       when: '2026-06-17 17:45:00',
       channel: '站内信 + 短信',
       status: '已读',
-      content: '客户已催单,请优先处理并尽快回访。工单号:IFLYKF2026061809340156',
+      content: '客户已催单,请优先处理并尽快回访。工单号:IFLYZX-20260618-00003',
     },
     {
       id: 'n5',
@@ -330,7 +330,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       when: '2026-06-17 09:10:30',
       channel: '短信 + 邮件',
       status: '已送达',
-      content: '您反馈的问题已受理,工单号:IFLYKF2026061809340156,我们将在2小时内与您联系。',
+      content: '您反馈的问题已受理,工单号:IFLYZX-20260618-00003,我们将在2小时内与您联系。',
     },
   ],
   surveyRecords: [
@@ -421,7 +421,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       },
       {
         id: 'h1',
-        no: 'IFLYKF2026052010450088',
+        no: 'IFLYZX-20260520-00001',
         title: '智能键盘 K710 蓝牙连接不稳定',
         status: '已关闭',
         statusColor: '#10B981',
@@ -437,7 +437,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       },
       {
         id: 'h2',
-        no: 'IFLYKF2026061810020088',
+        no: 'IFLYZX-20260618-00002',
         title: '录音笔无法充电质量问题',
         status: '处理中',
         statusColor: '#1A6FFF',
@@ -453,7 +453,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       },
       {
         id: 'h3',
-        no: 'IFLYKF2026041208300156',
+        no: 'IFLYZX-20260412-00001',
         title: '学习机 T20 在线播放跳歌',
         status: '已关闭',
         statusColor: '#10B981',

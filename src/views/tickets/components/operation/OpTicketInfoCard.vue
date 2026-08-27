@@ -2,7 +2,8 @@
 import { computed } from 'vue';
 import { RightOutlined } from '@ant-design/icons-vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
-import { platformDisplay } from '@/views/tickets/composables/complaintEscalation';
+import { ticketSourceDisplayLabel } from '@/views/tickets/types/createTicket';
+import OpChannelTags from './OpChannelTags.vue';
 
 const props = defineProps<{ detail: TicketDetailMeta }>();
 
@@ -21,7 +22,7 @@ const complaintPlatforms = computed(
     <div class="card-title">工单信息</div>
 
     <!-- 工单属性 -->
-    <div class="kv"><span class="k">工单来源</span><span class="v">{{ detail.source }}</span></div>
+    <div class="kv"><span class="k">工单来源</span><span class="v">{{ ticketSourceDisplayLabel(detail.source) }}</span></div>
     <div class="meta-row">
       <div class="kv"><span class="k">业务分类</span><span class="v">{{ detail.businessType }}</span></div>
       <div class="kv"><span class="k">业务线</span><span class="v">{{ detail.businessLine }}</span></div>
@@ -78,17 +79,7 @@ const complaintPlatforms = computed(
 
         <div v-if="complaintPlatforms.length" class="c-row">
           <span class="c-k">投诉平台</span>
-          <div class="c-list">
-            <div
-              v-for="(p, i) in complaintPlatforms"
-              :key="`plat-${i}`"
-              class="c-item inline"
-            >
-              <span class="c-main">{{ platformDisplay(p) }}</span>
-              <span v-if="p.complaintNo" class="c-sub mono">{{ p.complaintNo }}</span>
-              <span v-else class="c-sub muted">无编号</span>
-            </div>
-          </div>
+          <OpChannelTags :platforms="complaintPlatforms" />
         </div>
 
         <div v-if="detail.complaint.priorFeedback" class="c-row">
@@ -185,28 +176,12 @@ const complaintPlatforms = computed(
   background: #f9fafb;
   border-radius: 4px;
 }
-.c-item.inline {
-  flex-direction: row;
-  align-items: baseline;
-  gap: 8px;
-  flex-wrap: wrap;
-}
 .c-main {
   color: #374151;
   font-weight: 500;
   line-height: 18px;
   word-break: break-word;
 }
-.c-sub {
-  color: #6b7280;
-  font-size: 11px;
-  line-height: 16px;
-}
-.c-sub.mono {
-  font-family: Consolas, 'SF Mono', monospace;
-  letter-spacing: 0.02em;
-}
-.c-sub.muted { color: #c0c4cc; }
 .c-review {
   font-weight: 400;
   line-height: 1.6;

@@ -90,7 +90,7 @@ function delOrg(node: OrgNode) {
 // —— 组织人员 ——
 interface Member { id: string; name: string; post: string; role: string; ext: string; status: string; }
 const members = ref<Member[]>([
-  { id: 'u1', name: '陈静', post: '班组长', role: '一线主管', ext: '8012', status: '在职' },
+  { id: 'u1', name: '陈静', post: '班组长', role: '二线班组长', ext: '8012', status: '在职' },
   { id: 'u2', name: '黄勇', post: '客服专员', role: '一线坐席', ext: '8014', status: '在职' },
   { id: 'u3', name: '周敏', post: '客服专员', role: '一线坐席', ext: '8015', status: '在职' },
   { id: 'u4', name: '吴婷', post: '客服专员', role: '一线坐席', ext: '8016', status: '试用' },
@@ -105,8 +105,9 @@ const memCols = [
 ];
 const TYPE_TONE: Record<string, string> = { 公司: 'red', 部门: 'blue', 班组: 'green' };
 
-const POST_OPTS = ['客服专员', '高级客服', '班组长', '售后工程师', '质检员'];
-const ROLE_OPTS = ['一线坐席', '二线技术顾问', '售后坐席', '一线主管', '审批人', '质检员'];
+const POST_OPTS = ['客服专员', '高级客服', '班组长', '售后工程师', '质检'];
+// 角色下拉取 0830 九角色（基线 §3.0），与 config/roles.ts 的角色清单同口径
+const ROLE_OPTS = ['一线坐席', '二线专员', '技术支持', '二线班组长', '客诉专员', '投诉督导', '工单运营', '质检', '管理员'];
 
 // —— 成员 添加 / 转岗 / 移出（真实本地操作）——
 let memSeq = 5;

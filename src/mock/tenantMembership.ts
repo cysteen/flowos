@@ -96,18 +96,18 @@ export const TENANT_PROFILES: Record<string, TenantProfile> = {
 export const ACCOUNT_TENANT_MEMBERSHIPS: Record<string, TenantMembership[]> = {
   // 张三：多租户坐席/组长（含停用 t3 演示置灰）
   '13857985858': [
-    { tenantId: 't1', roles: ['agent-cs', 'team-leader'], defaultRole: 'agent-cs' },
-    { tenantId: 't2', roles: ['agent-cs'], defaultRole: 'agent-cs' },
-    { tenantId: 't4', roles: ['agent-cs', 'team-leader'], defaultRole: 'agent-cs' },
-    { tenantId: 't6', roles: ['agent-cs'], defaultRole: 'agent-cs' },
-    { tenantId: 't7', roles: ['agent-cs'], defaultRole: 'agent-cs' },
-    { tenantId: 't3', roles: ['agent-cs'], defaultRole: 'agent-cs' },
+    { tenantId: 't1', roles: ['agent-l2', 'team-leader'], defaultRole: 'agent-l2' },
+    { tenantId: 't2', roles: ['agent-l2'], defaultRole: 'agent-l2' },
+    { tenantId: 't4', roles: ['agent-l2', 'team-leader'], defaultRole: 'agent-l2' },
+    { tenantId: 't6', roles: ['agent-l2'], defaultRole: 'agent-l2' },
+    { tenantId: 't7', roles: ['agent-l2'], defaultRole: 'agent-l2' },
+    { tenantId: 't3', roles: ['agent-l2'], defaultRole: 'agent-l2' },
   ],
-  // 售后坐席：多租户
+  // 李四（二线专员 · 售后岗）：多租户。分岗是用户属性，角色仍是 agent-l2
   '13600001111': [
-    { tenantId: 't1', roles: ['agent-as'], defaultRole: 'agent-as' },
-    { tenantId: 't5', roles: ['agent-as'], defaultRole: 'agent-as' },
-    { tenantId: 't7', roles: ['agent-as'], defaultRole: 'agent-as' },
+    { tenantId: 't1', roles: ['agent-l2'], defaultRole: 'agent-l2' },
+    { tenantId: 't5', roles: ['agent-l2'], defaultRole: 'agent-l2' },
+    { tenantId: 't7', roles: ['agent-l2'], defaultRole: 'agent-l2' },
   ],
   // 班组长：多租户
   '18500003333': [
@@ -115,7 +115,7 @@ export const ACCOUNT_TENANT_MEMBERSHIPS: Record<string, TenantMembership[]> = {
     { tenantId: 't2', roles: ['team-leader'], defaultRole: 'team-leader' },
     { tenantId: 't4', roles: ['team-leader'], defaultRole: 'team-leader' },
   ],
-  // 郑监控：运营监控岗，只在主租户值班
+  // 郑运营：工单运营，只在主租户值班
   '18066668888': [
     { tenantId: 't1', roles: ['ops-monitor'], defaultRole: 'ops-monitor' },
   ],

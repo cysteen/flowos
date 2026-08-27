@@ -19,8 +19,8 @@ import {
   type MineTimePreset,
 } from '@/views/tickets/types/mineQuery';
 import { fieldsForVariant, type MineFilterFieldKey } from '@/views/tickets/types/mineQueryFields';
-import type { NodeStatus, PoolGroupMeta, Priority, SlaState } from '@/views/tickets/types/ticket';
-import { BASELINE_STATUSES } from '@/views/tickets/types/ticket';
+import type { NodeStatus, PoolGroupMeta, Priority } from '@/views/tickets/types/ticket';
+import { BASELINE_STATUSES, statusDisplayName } from '@/views/tickets/types/ticket';
 
 const RangePicker = DatePicker.RangePicker;
 
@@ -56,17 +56,11 @@ const priorities: { value: '' | Priority; label: string }[] = [
   { value: 'P3', label: 'P3' },
 ];
 
+// 依据基线 §1「用法」第 2 条：**筛选落库取子状态、页面呈现取展示名**，两列不混用。
+// value 落子状态（25 个），label 走 STATUS_DISPLAY_NAME（如「未认领」显示为「待领取」）。
 const nodeStatuses: { value: '' | NodeStatus; label: string }[] = [
   { value: '', label: '请选择' },
-  ...BASELINE_STATUSES.map((s) => ({ value: s, label: s })),
-];
-
-const slaStates: { value: '' | SlaState; label: string }[] = [
-  { value: '', label: '请选择' },
-  { value: 'overdue', label: '已超时' },
-  { value: 'soon', label: '临期' },
-  { value: 'ok', label: '充足' },
-  { value: 'paused', label: '挂起中' },
+  ...BASELINE_STATUSES.map((s) => ({ value: s, label: statusDisplayName(s) })),
 ];
 
 const productNameOptions = computed(() =>
@@ -400,28 +394,6 @@ function fieldLabel(key: MineFilterFieldKey): string {
             </select>
           </label>
 
-          <label v-else-if="f.key === 'resolveTimeRemark'" class="filter-item filter-item-wide">
-            <span class="fi-label">{{ fieldLabel('resolveTimeRemark') }}</span>
-            <input
-              class="fi-control fi-input"
-              placeholder="请输入"
-              :value="modelValue.resolveTimeRemark"
-              @input="patch('resolveTimeRemark', ($event.target as HTMLInputElement).value, false)"
-              @keyup.enter="onEnter"
-            />
-          </label>
-
-          <label v-else-if="f.key === 'slaState'" class="filter-item">
-            <span class="fi-label">{{ fieldLabel('slaState') }}</span>
-            <select
-              class="fi-control"
-              :value="modelValue.slaState"
-              @change="patch('slaState', ($event.target as HTMLSelectElement).value as MineQueryFilter['slaState'])"
-            >
-              <option v-for="s in slaStates" :key="s.value || 'all'" :value="s.value">{{ s.label }}</option>
-            </select>
-          </label>
-
           <label v-else-if="f.key === 'groupName'" class="filter-item">
             <span class="fi-label">{{ fieldLabel('groupName') }}</span>
             <input
@@ -461,25 +433,20 @@ function fieldLabel(key: MineFilterFieldKey): string {
 
 .query-filters {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
   width: 100%;
   min-width: 0;
 }
 
+/* 换行铺开，不横向滚动 —— 筛选项要一眼看全 */
 .filter-scroll {
   display: flex;
   flex: 1;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.filter-scroll::-webkit-scrollbar {
-  display: none;
 }
 
 .filter-item {

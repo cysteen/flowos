@@ -165,7 +165,14 @@ const FIELD_ENUM_VALUES: Record<string, string[]> = {
   业务类型: ['学习机', '翻译机', '录音笔', '智能办公本', '词典笔'],
   工单来源: ['400呼入', '在线客服', '邮件', 'APP', '微信', '小程序'],
   优先级: ['P0 紧急', 'P1 重要', 'P2 普通加急', 'P3 普通'],
-  状态: ['待受理', '处理中', '已挂起', '待回访', '已解决', '已关闭'],
+  // 状态＝基线 §1 的 25 个可落库子状态（顺序同 BASELINE_STATUSES）；条件判断一律用子状态，不用粗粒度分组
+  状态: [
+    '草稿', '未认领', '待响应', '处理中', '调研中',
+    '申请挂起中', '申请关闭中', '申请强结中', '业务动作审核中',
+    '已挂起', '已升级技术支持', '已升级产研', '已升级投诉', '已升级外投',
+    '已委派', '已退回', '已转出',
+    '已结案', '已关闭', '已强结', '已转咨询', '已转建议', '已转商机', '已取消', '直接结案',
+  ],
   产品分类: ['智能硬件', '软件服务', '教育产品'],
   产品名称: ['学习机', '翻译机', '录音笔', '智能办公本', '词典笔', '智能手表'],
   问题一类: ['硬件故障', '软件问题', '使用咨询', '售后服务'],
@@ -689,7 +696,7 @@ function del(r: Rule) {
 }
 
 // —— 规则测试 ——
-const sample = reactive<Record<string, string>>({ 业务类型: '翻录', 工单类型: '投诉', 工单来源: '400呼入', 产品名称: '学习机 T20', 状态: '待受理' });
+const sample = reactive<Record<string, string>>({ 业务类型: '翻录', 工单类型: '投诉', 工单来源: '400呼入', 产品名称: '学习机 T20', 状态: '未认领' });
 interface TestRow { no: string; name: string; priority: number; cur: boolean; matched: boolean; scene: string; policy: string }
 const testResult = ref<null | { rows: TestRow[]; curOutcome: string; curMatched: boolean }>(null);
 function evalLeaf(c: CondLeaf): boolean {

@@ -4,7 +4,7 @@ import { COMPLAINT_SUPPLEMENT_TYPE } from '@/views/tickets/types/operationTabs';
 /** 830 演示单 · 按工单号覆盖 Tab 数据（补充/催单记录等） */
 export const TICKET_DEMO_TAB_OVERRIDES: Record<string, Partial<OperationTabData>> = {
   // D3 · 外投渠道：验「补充投诉信息」+ 投诉平台组全链路
-  'LCMN-20260817-83002': {
+  'IFLYTS-20260817-00001': {
     supplementRecords: [
       {
         id: 's830-ext',

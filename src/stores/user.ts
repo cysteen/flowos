@@ -1,8 +1,8 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
-import { ROLES, type RoleDef, type RoleKey } from '@/config/roles';
+import { ROLES, type AgentPost, type RoleDef, type RoleKey } from '@/config/roles';
 import { findAccount } from '@/mock/loginAccounts';
-import { DEFAULT_ROLE, MOCK_USERS, type MockUser } from '@/mock/users';
+import { DEFAULT_ROLE, mockUserFor, type MockUser } from '@/mock/users';
 import { useTenantStore } from '@/stores/tenant';
 
 const SESSION_KEY = 'flowos_session';
@@ -10,6 +10,8 @@ const SESSION_KEY = 'flowos_session';
 interface AuthSession {
   account: string;
   roleKey: RoleKey;
+  /** 二线专员的分岗（客服 / 售后）。分岗是用户属性、不是角色，见基线 §3.0 */
+  post?: AgentPost;
   tenantId?: string;
   remember: boolean;
 }
@@ -53,7 +55,7 @@ function restoreTenantFromSession(session: AuthSession, tenantStore: ReturnType<
 }
 
 function userFromSession(session: AuthSession | null): MockUser {
-  if (!session) return MOCK_USERS[DEFAULT_ROLE];
+  if (!session) return mockUserFor(DEFAULT_ROLE, ROLES[DEFAULT_ROLE].post);
   const tenantStore = useTenantStore();
   restoreTenantFromSession(session, tenantStore);
 
@@ -64,7 +66,8 @@ function userFromSession(session: AuthSession | null): MockUser {
       roleKey = tenantStore.resolveRoleOnSwitch(tenantStore.currentTenantId) ?? roleKey;
     }
   }
-  return MOCK_USERS[roleKey] ?? MOCK_USERS[acc?.roleKey ?? DEFAULT_ROLE];
+  const post = session.post ?? acc?.post ?? ROLES[roleKey]?.post;
+  return mockUserFor(roleKey, post) ?? mockUserFor(acc?.roleKey ?? DEFAULT_ROLE, post);
 }
 
 // 当前登录用户 / 角色（Mock + 登录态）。
@@ -78,7 +81,21 @@ export const useUserStore = defineStore('user', () => {
   const name = computed(() => current.value.name);
   const roleKey = computed<RoleKey>(() => current.value.roleKey);
   const role = computed<RoleDef>(() => ROLES[current.value.roleKey]);
-  const visibleMenus = computed(() => role.value.menus);
+  /** 当前分岗（仅二线专员有意义）：用户属性优先，缺省回落到角色定义 */
+  const post = computed<AgentPost | undefined>(() => current.value.post ?? role.value.post);
+  /**
+   * 可见菜单 = 角色菜单 ∩ 分岗裁剪。
+   *
+   * 「售后工作台按分岗（客服 / 售后）出」（PRD-08 §2 注）：0830 起客服 / 售后不再是两个角色，
+   * 是二线专员的分岗属性，所以 `aftersale` 写在角色菜单里、由分岗做二次过滤 ——
+   * 别为了出这一项再拆一个 RoleKey 回去。其余角色不受分岗影响。
+   */
+  const visibleMenus = computed(() => {
+    if (role.value.key === 'agent-l2' && post.value !== 'as') {
+      return role.value.menus.filter((m) => m !== 'aftersale');
+    }
+    return role.value.menus;
+  });
   const hiddenTabs = computed(() => role.value.hiddenTabs);
   const hasAdminEntry = computed(() => role.value.hasAdminEntry);
   const isPlatformUser = computed(() => tenantStore.isPlatformUser);
@@ -89,6 +106,8 @@ export const useUserStore = defineStore('user', () => {
 
     let roleKey = preferredRoleKey;
     let tenantId: string | undefined;
+    // 分岗随账号走（一个人的分岗不会因为切租户而变）
+    const post = findAccount(acc)?.post ?? ROLES[preferredRoleKey]?.post;
 
     if (!tenantStore.isPlatformUser) {
       const tid = tenantStore.currentTenantId!;
@@ -101,15 +120,15 @@ export const useUserStore = defineStore('user', () => {
       tenantStore.rememberTenantContext(tid, roleKey);
     }
 
-    session.value = { account: acc, roleKey, tenantId, remember };
-    current.value = MOCK_USERS[roleKey];
+    session.value = { account: acc, roleKey, post, tenantId, remember };
+    current.value = mockUserFor(roleKey, post);
     writeSession(session.value);
   }
 
   /** 退出登录 */
   function logout() {
     session.value = null;
-    current.value = MOCK_USERS[DEFAULT_ROLE];
+    current.value = mockUserFor(DEFAULT_ROLE, ROLES[DEFAULT_ROLE].post);
     tenantStore.reset();
     writeSession(null);
   }
@@ -125,9 +144,10 @@ export const useUserStore = defineStore('user', () => {
     if (!roleKey) return null;
 
     tenantStore.rememberTenantContext(tenantId, roleKey);
-    current.value = MOCK_USERS[roleKey];
+    const post = session.value?.post ?? ROLES[roleKey]?.post;
+    current.value = mockUserFor(roleKey, post);
     if (session.value) {
-      session.value = { ...session.value, tenantId, roleKey };
+      session.value = { ...session.value, tenantId, roleKey, post };
       writeSession(session.value);
     }
     return roleKey;
@@ -138,10 +158,12 @@ export const useUserStore = defineStore('user', () => {
     if (!tenantStore.isPlatformUser && !tenantStore.isRoleAllowedInCurrentTenant(key)) {
       return false;
     }
-    current.value = MOCK_USERS[key];
+    // 切角色时分岗回落到该角色缺省（切到二线专员＝客服岗；售后岗视角用售后账号登录）
+    const post = ROLES[key].post;
+    current.value = mockUserFor(key, post);
     tenantStore.rememberRoleInCurrentTenant(key);
     if (session.value) {
-      session.value = { ...session.value, roleKey: key };
+      session.value = { ...session.value, roleKey: key, post };
       writeSession(session.value);
     }
     return true;
@@ -168,6 +190,7 @@ export const useUserStore = defineStore('user', () => {
     name,
     roleKey,
     role,
+    post,
     visibleMenus,
     hiddenTabs,
     hasAdminEntry,

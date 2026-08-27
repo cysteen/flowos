@@ -17,14 +17,35 @@ const types = ref<DictType[]>([
 const selected = ref<string>('workorder_status');
 
 const dataMap: Record<string, DictData[]> = reactive({
+  // 工单状态字典＝基线 §1 的 25 个可落库子状态，顺序与 BASELINE_STATUSES 一致；
+  // colorType 按基线第二列的粗粒度分组给：初始 warning / 处理中 primary / 调研中 info /
+  // 审核中 warning / 终态 success（被新单接管的五个终态用 default）。
   workorder_status: [
-    { code: 'D01', label: '待受理', value: 'PENDING', sort: 1, status: '启用', colorType: 'warning', remark: '' },
-    { code: 'D02', label: '处理中', value: 'PROCESSING', sort: 2, status: '启用', colorType: 'primary', remark: '' },
-    { code: 'D03', label: '已挂起', value: 'SUSPENDED', sort: 3, status: '启用', colorType: 'default', remark: 'SLA停表' },
-    { code: 'D04', label: '待审核', value: 'PENDING_REVIEW', sort: 4, status: '启用', colorType: 'warning', remark: '下送后' },
-    { code: 'D05', label: '待回访', value: 'PENDING_CALLBACK', sort: 5, status: '启用', colorType: 'info', remark: '标记已解决后' },
-    { code: 'D06', label: '已结案', value: 'SETTLED', sort: 6, status: '启用', colorType: 'success', remark: '强结/正常结案' },
-    { code: 'D07', label: '已关闭', value: 'CLOSED', sort: 7, status: '启用', colorType: 'success', remark: '' },
+    { code: 'D01', label: '草稿', value: 'DRAFT', sort: 1, status: '启用', colorType: 'warning', remark: '' },
+    { code: 'D02', label: '未认领', value: 'UNCLAIMED', sort: 2, status: '启用', colorType: 'warning', remark: '' },
+    { code: 'D03', label: '待响应', value: 'PENDING_RESPONSE', sort: 3, status: '启用', colorType: 'warning', remark: '' },
+    { code: 'D04', label: '处理中', value: 'PROCESSING', sort: 4, status: '启用', colorType: 'primary', remark: '' },
+    { code: 'D05', label: '调研中', value: 'SURVEYING', sort: 5, status: '启用', colorType: 'info', remark: '' },
+    { code: 'D06', label: '申请挂起中', value: 'SUSPEND_APPROVING', sort: 6, status: '启用', colorType: 'warning', remark: '' },
+    { code: 'D07', label: '申请关闭中', value: 'CLOSE_APPROVING', sort: 7, status: '启用', colorType: 'warning', remark: '' },
+    { code: 'D08', label: '申请强结中', value: 'FORCE_CLOSE_APPROVING', sort: 8, status: '启用', colorType: 'warning', remark: '' },
+    { code: 'D09', label: '业务动作审核中', value: 'BIZ_ACTION_APPROVING', sort: 9, status: '启用', colorType: 'warning', remark: '' },
+    { code: 'D10', label: '已挂起', value: 'SUSPENDED', sort: 10, status: '启用', colorType: 'primary', remark: 'SLA停表' },
+    { code: 'D11', label: '已升级技术支持', value: 'ESCALATED_TECH', sort: 11, status: '启用', colorType: 'primary', remark: '' },
+    { code: 'D12', label: '已升级产研', value: 'ESCALATED_RD', sort: 12, status: '启用', colorType: 'primary', remark: '' },
+    { code: 'D13', label: '已升级投诉', value: 'ESCALATED_COMPLAINT', sort: 13, status: '启用', colorType: 'default', remark: '' },
+    { code: 'D14', label: '已升级外投', value: 'ESCALATED_EXTERNAL', sort: 14, status: '启用', colorType: 'default', remark: '' },
+    { code: 'D15', label: '已委派', value: 'DELEGATED', sort: 15, status: '启用', colorType: 'primary', remark: '' },
+    { code: 'D16', label: '已退回', value: 'RETURNED', sort: 16, status: '启用', colorType: 'primary', remark: '' },
+    { code: 'D17', label: '已转出', value: 'TRANSFERRED_OUT', sort: 17, status: '启用', colorType: 'primary', remark: '' },
+    { code: 'D18', label: '已结案', value: 'SETTLED', sort: 18, status: '启用', colorType: 'success', remark: '' },
+    { code: 'D19', label: '已关闭', value: 'CLOSED', sort: 19, status: '启用', colorType: 'success', remark: '' },
+    { code: 'D20', label: '已强结', value: 'FORCE_CLOSED', sort: 20, status: '启用', colorType: 'success', remark: '' },
+    { code: 'D21', label: '已转咨询', value: 'TRANSFERRED_CONSULT', sort: 21, status: '启用', colorType: 'default', remark: '' },
+    { code: 'D22', label: '已转建议', value: 'TRANSFERRED_SUGGESTION', sort: 22, status: '启用', colorType: 'default', remark: '' },
+    { code: 'D23', label: '已转商机', value: 'TRANSFERRED_LEAD', sort: 23, status: '启用', colorType: 'default', remark: '' },
+    { code: 'D24', label: '已取消', value: 'CANCELLED', sort: 24, status: '启用', colorType: 'success', remark: '' },
+    { code: 'D25', label: '直接结案', value: 'DIRECT_SETTLED', sort: 25, status: '启用', colorType: 'success', remark: '' },
   ],
   priority: [
     { code: 'P0', label: 'P0 紧急', value: 'P0', sort: 1, status: '启用', colorType: 'danger', remark: 'VIP+紧急' },
@@ -42,9 +63,9 @@ const dataMap: Record<string, DictData[]> = reactive({
     { code: 'L2', label: '普通', value: 'normal', sort: 2, status: '启用', colorType: 'default', remark: '' },
   ],
   action_type: [
-    { code: 'A1', label: '下送', value: 'FORWARD', sort: 1, status: '启用', colorType: 'primary', remark: '→待审核' },
-    { code: 'A2', label: '强结', value: 'FORCE_CLOSE', sort: 2, status: '启用', colorType: 'danger', remark: '审批结案' },
-    { code: 'A3', label: '转售后', value: 'TO_AFTERSALE', sort: 3, status: '启用', colorType: 'warning', remark: '' },
+    { code: 'A1', label: '下送', value: 'FORWARD', sort: 1, status: '启用', colorType: 'primary', remark: '→调研中' },
+    { code: 'A2', label: '强结', value: 'FORCE_CLOSE', sort: 2, status: '启用', colorType: 'danger', remark: '申请强结中→审批通过→已强结' },
+    { code: 'A3', label: '转售后', value: 'TO_AFTERSALE', sort: 3, status: '启用', colorType: 'warning', remark: '→已转出（咨/建/商）' },
   ],
 });
 const datas = computed(() => dataMap[selected.value] ?? []);

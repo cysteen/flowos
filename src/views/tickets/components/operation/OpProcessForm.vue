@@ -21,7 +21,7 @@ import {
   deriveAppointmentNeeded,
   isAppointmentFilled,
 } from '@/views/tickets/types/operation';
-import { COMPLAINT_L3_MAP } from '@/views/tickets/types/createTicket';
+import { isComplaintCategoryComplete } from '@/views/tickets/types/createTicket';
 
 const props = defineProps<{
   form: ProcessFormDraft;
@@ -125,7 +125,7 @@ const serviceMethodOptions = computed(() => {
 const supplementChips = computed<{ key: SupplementChip; label: string }[]>(() => {
   if (!isComplaint.value) return [{ key: 'quality', label: '建单规范' }];
   const chips: { key: SupplementChip; label: string }[] = [
-    { key: 'complaint', label: '投诉分类' },
+    { key: 'complaint', label: '投诉定性' },
     { key: 'risk', label: '风险' },
     { key: 'quality', label: '建单规范' },
   ];
@@ -141,10 +141,7 @@ const effectiveChip = computed<SupplementChip>(() =>
 );
 
 function complaintCategoryFilled(f: ProcessFormDraft): boolean {
-  if (!f.complaintCat1 || !f.complaintCat2) return false;
-  const l3 = COMPLAINT_L3_MAP[f.complaintCat2] ?? [];
-  if (l3.length && !f.complaintCat3) return false;
-  return true;
+  return isComplaintCategoryComplete(f);
 }
 
 function isChipFilled(key: SupplementChip): boolean {
@@ -154,9 +151,9 @@ function isChipFilled(key: SupplementChip): boolean {
     case 'external': {
       const rows = f.platformFollowups;
       const plats = (props.complaintPlatforms ?? []).filter((p) => p.platform);
-      if (!plats.length) return rows.length > 0 && rows.every((r) => r.replyResult.trim() && r.reconcile);
-      return plats.length === rows.length
-        && rows.every((r) => r.replyResult.trim() && r.reconcile);
+      const hasReply = !!f.complaintChannelReply.trim() && !!f.complaintChannelReconcile;
+      if (!plats.length) return rows.length > 0 && hasReply;
+      return plats.length === rows.length && hasReply;
     }
     case 'risk': {
       if (f.riskFlag === '有风险') return !!(f.riskLevel && f.riskDescription.trim());
@@ -311,10 +308,10 @@ function chipActiveClass(key: SupplementChip): string {
         <div class="field-row">
           <div class="field inline">
             <label>商机解决结论</label>
-            <a-select
+            <FormSelect
               :value="form.leadStage"
               :options="LEAD_STAGE_OPTIONS"
-              placeholder="请选择"
+              placeholder="请选择或搜索"
               style="width: 100%"
               @update:value="onLeadStageChange"
             />

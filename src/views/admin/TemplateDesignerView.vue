@@ -72,7 +72,7 @@ interface FNode { id: string; label: string; kind: 'start' | 'task' | 'gateway' 
 const flow = ref<FNode[]>([
   { id: 'n1', label: '开始', kind: 'start', role: '系统' },
   { id: 'n2', label: '受理', kind: 'task', role: '一线坐席' },
-  { id: 'n3', label: '处理', kind: 'task', role: '二线技术顾问' },
+  { id: 'n3', label: '处理', kind: 'task', role: '二线专员' },
   { id: 'n4', label: '审核?', kind: 'gateway', role: '规则' },
   { id: 'n5', label: '结案', kind: 'end', role: '系统' },
 ]);

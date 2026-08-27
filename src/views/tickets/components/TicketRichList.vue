@@ -7,7 +7,6 @@ import {
 } from '@/views/tickets/composables/useTicketColumns';
 import {
   listCellText,
-  type FeishuSyncState,
 } from '@/views/tickets/utils/ticketListCells';
 import {
   doneRowActions,
@@ -29,21 +28,38 @@ import {
   isSupplementTagPending,
 } from '@/views/tickets/types/ticket';
 import { ticketLatestHandlingPreview } from '@/views/tickets/utils/ticketOverview';
+import { ticketListSourceLabel } from '@/views/tickets/types/createTicket';
 
-const props = defineProps<{
-  rows: Ticket[];
-  selectedIds: Set<string>;
-  allPageSelected: boolean;
-  variant?: 'mine' | 'done' | 'pool' | 'mention' | 'default' | 'query';
-  showAppointmentColumn?: boolean;
-  highlightMentionUnread?: boolean;
-  /** 列设置：公共属性列显隐（不传=全显，向后兼容） */
-  visibleColumns?: Record<string, boolean>;
-  /** 列顺序（可配置列 key 列表） */
-  columnOrder?: string[];
-  /** 自定义列标题（查询中心） */
-  columnLabel?: (key: string) => string;
-}>();
+const props = withDefaults(
+  defineProps<{
+    rows: Ticket[];
+    selectedIds?: Set<string>;
+    allPageSelected?: boolean;
+    variant?: 'mine' | 'done' | 'pool' | 'mention' | 'default' | 'query';
+    showAppointmentColumn?: boolean;
+    highlightMentionUnread?: boolean;
+    /** 列设置：公共属性列显隐（不传=全显，向后兼容） */
+    visibleColumns?: Record<string, boolean>;
+    /** 列顺序（可配置列 key 列表） */
+    columnOrder?: string[];
+    /** 自定义列标题（查询中心） */
+    columnLabel?: (key: string) => string;
+    /**
+     * 空态类型（PRD-915 §3.6 E8 / E9，C10）。**必须分两种**：
+     * - `search` 检索无结果 —— 「未找到匹配的工单」，引导换关键词；
+     * - `filter` 筛选无结果 —— 「当前筛选条件下没有工单」+「清空筛选」按钮；
+     * - `none` 数据域本身为空 —— 保持原通用文案。
+     * 原实现三种情况统一说「该筛选下暂无工单」，搜不到时也说"筛选"，
+     * 坐席会去清一个从没设过的筛选。
+     */
+    emptyKind?: 'none' | 'search' | 'filter';
+  }>(),
+  {
+    selectedIds: () => new Set<string>(),
+    allPageSelected: false,
+    emptyKind: 'none',
+  },
+);
 
 const DEFAULT_ORDER = TICKET_COLUMN_DEFS.map((c) => c.key);
 
@@ -66,11 +82,6 @@ const orderedCols = computed(() => {
 
 function plainCellText(t: Ticket, key: string): string {
   return listCellText(t, key);
-}
-
-function feishuSyncClass(t: Ticket): string {
-  const s = (t.feishuSync ?? 'none') as FeishuSyncState;
-  return `feishu-${s}`;
 }
 
 function colClass(key: string): string {
@@ -116,7 +127,7 @@ const MET_LINE = { text: '已达标', color: SLA_COLOR.ok };
 
 /** 解决行状态全枚举：剩(正常绿/临期橙)/超(红·在计)/已暂停(灰·挂起)/已达标(绿·正常关闭)/未达标(红·超时后关闭) */
 function slaResolveLine(t: Ticket): { text: string; color: string } {
-  if (t.slaText === '—') return t.solveBreached ? BREACHED_LINE : MET_LINE; // 已关闭：终态按结果
+  if (t.slaText === '—') return t.solveBreached ? BREACHED_LINE : MET_LINE; // 已停表：终态按结果
   if (!isResponded(t) && t.resolveSlaText) {
     return { text: slaShort(t.resolveSlaText), color: SLA_COLOR[t.resolveSlaState ?? 'ok'] };
   }
@@ -145,6 +156,8 @@ const emit = defineEmits<{
   clickNo: [ticket: Ticket];
   clickCustomer: [ticket: Ticket];
   open: [ticket: Ticket];
+  /** 空态「清空筛选」（E9） */
+  clearFilters: [];
 }>();
 
 function actionsFor(t: Ticket) {
@@ -156,7 +169,7 @@ function actionsFor(t: Ticket) {
 }
 
 const showActionColumn = computed(
-  () => props.variant !== 'done' && props.variant !== 'mention',
+  () => props.variant !== 'done' && props.variant !== 'mention' && props.variant !== 'query',
 );
 const showSelectionColumn = computed(() => props.variant === 'mine' || props.variant === 'pool');
 
@@ -170,25 +183,18 @@ const DEFAULT_COL_WIDTH: Record<string, number> = {
   currentGroup: 112,
   product: 120,
   node: 120,
-  nodeProgress: 56,
+  createdAt: 120,
+  updatedAt: 120,
   sla: 112,
   appointment: 96,
-  appointmentTime: 96,
   assignee: 88,
-  currentAssignee: 88,
   action: 132,
   businessType: 88,
   ticketType: 72,
   ticketSource: 88,
   startDate: 96,
-  synced: 72,
-  feishuSync: 108,
   lastHandler: 88,
   lastHandledAt: 108,
-  upgradeCount: 72,
-  riskWeight: 72,
-  supplementPendingCount: 88,
-  supplementDoneCount: 88,
 };
 
 const MIN_COL_WIDTH: Record<string, number> = {
@@ -201,7 +207,6 @@ const MIN_COL_WIDTH: Record<string, number> = {
   node: 72,
   sla: 88,
   appointment: 72,
-  appointmentTime: 72,
   assignee: 64,
   action: 96,
 };
@@ -281,7 +286,19 @@ const gridTemplateColumns = computed(() => {
 <template>
   <div class="rich-list" :class="{ 'rich-list--resizing': !!resizing }">
     <div ref="scrollEl" class="rich-list-scroll">
-      <div v-if="rows.length === 0" class="empty">该筛选下暂无工单</div>
+      <div v-if="rows.length === 0" class="empty">
+        <template v-if="emptyKind === 'search'">
+          <div class="empty-title">未找到匹配的工单</div>
+          <div class="empty-sub">换个关键词，或清空筛选条件后重试</div>
+        </template>
+        <template v-else-if="emptyKind === 'filter'">
+          <div class="empty-title">当前筛选条件下没有工单</div>
+          <button type="button" class="empty-act" @click="emit('clearFilters')">清空筛选</button>
+        </template>
+        <template v-else>
+          <div class="empty-title">暂无工单</div>
+        </template>
+      </div>
 
       <div v-else class="table-grid" :style="{ gridTemplateColumns }">
         <!-- 表头 -->
@@ -397,10 +414,10 @@ const gridTemplateColumns = computed(() => {
               <span v-if="highlightMentionUnread && isMentionUnread(t)" class="unread-tag">未读</span>
             </div>
             <div class="title-line2">
-              <span class="channel">{{ t.channel }}</span>
+              <span class="channel">{{ ticketListSourceLabel(t) }}</span>
               <span class="sep">·</span>
               <span class="ticket-no" @click.stop="emit('clickNo', t)">{{ t.no }}</span>
-              <span v-if="t.escalatedToNo" class="rel-tag rel-tag--to">已转单 → {{ t.escalatedToNo }}</span>
+              <span v-if="t.escalatedToNo" class="rel-tag rel-tag--to">已升级为 {{ t.escalatedToNo }}</span>
               <span v-else-if="t.escalatedFromNo" class="rel-tag rel-tag--from">升级自 {{ t.escalatedFromNo }}</span>
             </div>
           </div>
@@ -411,8 +428,8 @@ const gridTemplateColumns = computed(() => {
                 <span class="tag">{{ t.type }}</span>
               </div>
               <div class="tp-title">{{ t.title }}</div>
-              <div class="tp-meta">{{ t.channel }} · {{ t.no }}</div>
-              <div v-if="t.escalatedToNo" class="tp-rel">已转单 → {{ t.escalatedToNo }}</div>
+              <div class="tp-meta">{{ ticketListSourceLabel(t) }} · {{ t.no }}</div>
+              <div v-if="t.escalatedToNo" class="tp-rel">已升级为 {{ t.escalatedToNo }}</div>
               <div v-else-if="t.escalatedFromNo" class="tp-rel">升级自 {{ t.escalatedFromNo }}</div>
             </div>
           </template>
@@ -528,40 +545,13 @@ const gridTemplateColumns = computed(() => {
           <span class="sla-line" :style="{ color: slaFirstLine(t).color }">首响：{{ slaFirstLine(t).text }}</span>
         </div>
 
-        <div v-else-if="colKey === 'assignee' || colKey === 'currentAssignee'" class="col-assignee cell-assignee">
+        <div v-else-if="colKey === 'assignee'" class="col-assignee cell-assignee">
           <span v-if="t.assignee" class="assignee-name">{{ t.assignee }}</span>
           <span v-else class="unassigned">— 待领</span>
         </div>
 
         <div v-else-if="colKey === 'currentGroup'" class="col-current-group cell-groups">
           <span class="group-tag group-tag--single">{{ plainCellText(t, colKey) }}</span>
-        </div>
-
-        <div v-else-if="colKey === 'feishuSync'" class="col-feishu-sync cell-plain">
-          <span class="feishu-pill" :class="feishuSyncClass(t)">{{ plainCellText(t, colKey) }}</span>
-        </div>
-
-        <div v-else-if="colKey === 'synced'" class="col-synced cell-plain">
-          <span class="sync-pill" :class="{ yes: plainCellText(t, colKey) === '是' }">{{ plainCellText(t, colKey) }}</span>
-        </div>
-
-        <div v-else-if="colKey === 'nodeProgress'" class="col-node-progress cell-plain">
-          <span class="node-progress">{{ plainCellText(t, colKey) }}</span>
-        </div>
-
-        <div v-else-if="colKey === 'supplementPendingCount'" class="col-supplement-pending cell-plain">
-          <span class="count-pill count-pill--warn">{{ plainCellText(t, colKey) }}</span>
-        </div>
-
-        <div v-else-if="colKey === 'supplementDoneCount'" class="col-supplement-done cell-plain">
-          <span class="count-pill">{{ plainCellText(t, colKey) }}</span>
-        </div>
-
-        <div v-else-if="colKey === 'riskWeight'" class="col-risk-weight cell-plain">
-          <span
-            class="risk-pill"
-            :class="{ high: (t.riskWeight ?? 0) >= 80, mid: (t.riskWeight ?? 0) >= 50 && (t.riskWeight ?? 0) < 80 }"
-          >{{ plainCellText(t, colKey) }}</span>
         </div>
 
         <div v-else :class="[colClass(colKey), 'cell-plain']">
@@ -1106,6 +1096,21 @@ const gridTemplateColumns = computed(() => {
   color: #9ca3af;
   font-size: 13px;
 }
+.empty-title { font-size: 13px; color: #6b7280; }
+.empty-sub { margin-top: 6px; font-size: 12px; color: #9ca3af; }
+.empty-act {
+  margin-top: 12px;
+  height: 28px;
+  padding: 0 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  color: #374151;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.empty-act:hover { border-color: #1a6fff; color: #1a6fff; }
 </style>
 
 <!-- 工单标题 / 摘要 hover 弹窗（teleport 到 body，需非 scoped） -->

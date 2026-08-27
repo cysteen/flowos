@@ -4,6 +4,16 @@
 // 业务线占比直接复用大盘的产线下钻，保证同一个数字在两个 Tab 里不会有两个值。
 
 import { getOpsSnapshot, matchesScope, type DrillRow, type OpsScope } from './opsMonitor';
+import { TICKETS } from './tickets';
+import {
+  BUSINESS_TYPES,
+  PRODUCT_CATEGORIES,
+  PRODUCT_NAMES,
+} from '@/views/tickets/types/createTicket';
+import {
+  statusDisplayName,
+  type TicketStatus,
+} from '@/views/tickets/types/ticket';
 
 // ======================================================================
 // 模块 3 · 全维度运营拆解报表
@@ -135,7 +145,14 @@ export const RISK_LEVEL_STYLE: Record<RiskLevel, { color: string; bg: string }> 
 
 export interface RiskWord {
   id: string;
+  /** 主词：规则的显示名，也是统计口径——同义词命中一律记在它名下 */
   word: string;
+  /**
+   * 同义词（0..N）：与主词等价的表达，在**同一条规则内取或**。
+   * 拆成多条规则会让「找媒体曝光」这一句被各命中一遍——待核实队列占两个坑、
+   * 人重复核实，成效条的「发现」「确认是风险」也随之虚高。
+   */
+  synonyms: string[];
   level: RiskLevel;
   /** 匹配范围 */
   scopes: string[];
@@ -162,7 +179,8 @@ export interface RiskWord {
 }
 
 /**
- * 规则准确率 = 成立 ÷ 已判定。
+ * 规则准确率 = 成立 ÷ 已判定，按**规则**算而不是按词算。
+ * 展示合并（主词 + 同义词一条）而统计不合并会让两处口径分叉。
  * 分母用「已判定数」而不是「命中数」——新上线的词条还没人复核，
  * 用命中数当分母会让它准确率极低，产生假信号。
  * 判定数为 0 时返回 null，界面显示「—」，不显示 0%。
@@ -173,15 +191,16 @@ export function accuracyOf(w: RiskWord): number | null {
 }
 
 export const RISK_WORDS: RiskWord[] = [
-  { id: 'w1', word: '曝光', level: '高', speakerLimit: '不限', scopes: ['标题', '问题描述', '沟通记录'], receivers: ['李文萍', '值班经理'], enabled: true, hits7dRaw: 6, hits7d: 6, judged7d: 6, valid7d: 5 },
-  { id: 'w2', word: '媒体', level: '高', speakerLimit: '不限', scopes: ['标题', '问题描述', '沟通记录'], receivers: ['李文萍', '值班经理'], enabled: true, hits7dRaw: 4, hits7d: 4, judged7d: 4, valid7d: 3 },
-  { id: 'w3', word: '起诉', level: '高', speakerLimit: '不限', scopes: ['标题', '问题描述', '催补记录'], receivers: ['李文萍', '法务'], enabled: true, hits7dRaw: 2, hits7d: 2, judged7d: 2, valid7d: 2 },
-  { id: 'w4', word: '12315', level: '高', speakerLimit: '不限', scopes: ['标题', '问题描述', '沟通记录'], receivers: ['值班经理', '投诉专员'], enabled: true, hits7dRaw: 5, hits7d: 5, judged7d: 5, valid7d: 3 },
-  { id: 'w5', word: '投诉到底', level: '中', speakerLimit: '不限', scopes: ['问题描述', '沟通记录'], receivers: ['值班经理'], enabled: true, hits7dRaw: 9, hits7d: 9, judged7d: 8, valid7d: 6 },
-  { id: 'w6', word: '退一赔三', level: '中', speakerLimit: '不限', scopes: ['问题描述', '沟通记录'], receivers: ['值班经理'], enabled: true, hits7dRaw: 3, hits7d: 3, judged7d: 3, valid7d: 3 },
+  // 「媒体」原为独立词条（7 天 4 次、判定 4 / 成立 3），现并为「曝光」的同义词，
+  // 计数一并归到主词名下：6+4=10 命中、6+4=10 判定、5+3=8 成立。
+  { id: 'w1', word: '曝光', synonyms: ['媒体'], level: '高', speakerLimit: '不限', scopes: ['标题', '问题描述', '沟通记录'], receivers: ['李文萍', '值班经理'], enabled: true, hits7dRaw: 10, hits7d: 10, judged7d: 10, valid7d: 8 },
+  { id: 'w3', word: '起诉', synonyms: [], level: '高', speakerLimit: '不限', scopes: ['标题', '问题描述', '催补记录', '处理结果'], receivers: ['李文萍', '法务'], enabled: true, hits7dRaw: 2, hits7d: 2, judged7d: 2, valid7d: 2 },
+  { id: 'w4', word: '12315', synonyms: [], level: '高', speakerLimit: '不限', scopes: ['标题', '问题描述', '沟通记录', '处理结果'], receivers: ['值班经理', '投诉专员'], enabled: true, hits7dRaw: 5, hits7d: 5, judged7d: 5, valid7d: 3 },
+  { id: 'w5', word: '投诉到底', synonyms: [], level: '中', speakerLimit: '不限', scopes: ['问题描述', '沟通记录', '处理结果'], receivers: ['值班经理'], enabled: true, hits7dRaw: 9, hits7d: 9, judged7d: 8, valid7d: 6 },
+  { id: 'w6', word: '退一赔三', synonyms: [], level: '中', speakerLimit: '不限', scopes: ['问题描述', '沟通记录', '问题原因'], receivers: ['值班经理'], enabled: true, hits7dRaw: 3, hits7d: 3, judged7d: 3, valid7d: 3 },
   // 反面教材：通用词，7 天命中 142 次、准确率 8%，上线即刷屏，已停用。
   // 旧版只能靠人肉发现"这词怎么天天响"；有了准确率列，它自己就报警了。
-  { id: 'w7', word: '孩子', level: '低', speakerLimit: '不限', scopes: ['问题描述'], receivers: ['教育支持组长'], enabled: false, hits7dRaw: 142, hits7d: 142, judged7d: 12, valid7d: 1 },
+  { id: 'w7', word: '孩子', synonyms: [], level: '低', speakerLimit: '不限', scopes: ['问题描述'], receivers: ['教育支持组长'], enabled: false, hits7dRaw: 142, hits7d: 142, judged7d: 12, valid7d: 1 },
 ];
 
 // ---------------------------------------------------------------------
@@ -220,7 +239,7 @@ export function gradeOf(impact: RiskImpact, signal: RiskSignal): RiskLevel {
 
 /** 分级即定处置层级 —— 等级不是颜色，是"该找谁"。系统不自动指派，只指路 */
 export const DISPOSAL_BY_GRADE: Record<RiskLevel, { who: string; hint: string }> = {
-  高: { who: '投诉处理角色', hint: '建议工单管控介入' },
+  高: { who: '客诉专员', hint: '建议工单管控介入' },
   中: { who: '班组长', hint: '由班组长跟进处理' },
   低: { who: '当前处理人', hint: '按常规流程处理即可' },
 };
@@ -229,8 +248,21 @@ export interface RiskHit {
   id: string;
   ticketNo: string;
   title: string;
+  /** 命中规则的主词。统计、去重、准确率都按它算 */
   word: string;
-  /** @deprecated 旧的纯词表等级。保留仅供「新旧对比」演示，正式口径一律用 gradeOf() */
+  /**
+   * 原文里实际命中的那个表达（主词或它的某个同义词）。
+   * 与主词不同时界面要标出来，否则复核的人在原文里找不到主词、对不上账。
+   */
+  matchedWord: string;
+  /**
+   * 词表预设等级：规则命中时带出来的机器建议值，一期定级的实际落点。
+   * 核实前列表按它显示，打标弹窗拿它当默认值；人工打标后由判定值覆盖
+   * （口径 `gradeOf = 打标结果 ?? level`），所以它不是"初值就作废"，而是没人判时的对外口径。
+   *
+   * 与 riskGradeOf()（双轨矩阵算出的等级）是同一把刻度的两个来源，不是新旧关系：
+   * 矩阵是目标态，需要「投诉二类 → 后果严重度」映射表落地后才成立，一期不参与定级。
+   */
   level: RiskLevel;
   /** 命中位置 */
   position: string;
@@ -244,8 +276,12 @@ export interface RiskHit {
   receivers: string[];
 
   // ---- 双轨字段 ----
-  /** 谁说的。坐席说的一律不构成外部风险信号 */
-  speakerRole: SpeakerRole;
+  /**
+   * 谁说的。**一期不做、字段预留**（需求分析表 B-6）——
+   * 沟通记录与催补记录无法可靠区分发话人（无 ASR 话者分离、无结构化发话人标记），
+   * 故词表不设「角色限定」、命中列表也不展示。待话者识别能力具备后再启用。
+   */
+  speakerRole?: SpeakerRole;
   /** 后果严重度 */
   impact: RiskImpact;
   /** 后果严重度的依据（投诉二类），让分级可追溯 */
@@ -254,7 +290,12 @@ export interface RiskHit {
   signal: RiskSignal;
   /** 外部信号的依据：命中了什么 */
   signalSource: string;
-  /** 命中来自哪一轨：纯词表时代只有「外部信号」这一轨 */
+  /**
+   * 这条命中**从哪一轨进来的**——溯源信息，不参与定级。
+   * 一期只跑词表轨（轨二缺「投诉二类 → 后果严重度」映射表未启用），
+   * 因此一期能被人看到的命中一律是「外部信号」；标成「双轨」会让人误以为轨二已经在跑。
+   * 三个取值都保留：轨二上线后「后果严重度」「双轨」才会真正产生。
+   */
   track: '外部信号' | '后果严重度' | '双轨';
   /** 旧规则（纯词表）下的等级；`null` 表示旧规则根本召不回这条 */
   legacyLevel: RiskLevel | null;
@@ -266,24 +307,34 @@ export interface RiskHit {
   taggedNote?: string;
   /** 复核回填：这次命中成不成立。没有它，词表永远不会自己变好 */
   verdict?: HitVerdict;
+
+  /**
+   * 风险是否兑现——命中之后该单最终有没有真升成投诉 / 外投。
+   * **一期留字段不回填，二期接 `ticket.escalateComplaint` 事件自动回标**（2026-08-25 拍板）。
+   *
+   * 为什么必须留这个口：准确率只能证明「规则没误报」，证明不了「监控有价值」。
+   * 只有把命中与后续是否真的爆掉对上，才算得出预警对了多少、漏了多少——
+   * 这是评估整套风险监控成效的唯一依据。与 D6 风险事件同属"事后看效果"，一并二期做。
+   */
+  realized?: '已兑现' | '未兑现';
 }
 
 export const RISK_HITS: RiskHit[] = [
   {
-    id: 'h1', ticketNo: 'LCMN-20260610-73026', title: '无线音乐播放跳过歌曲异常',
-    word: '曝光', level: '高', position: '沟通记录',
+    id: 'h1', ticketNo: 'IFLYTS-20260610-00002', title: '无线音乐播放跳过歌曲异常',
+    word: '曝光', matchedWord: '媒体', level: '高', position: '沟通记录',
     excerpt: '再不解决我就找媒体曝光，我本身就是干这行的。',
     when: '2026-08-04 14:21', customer: '张小凡',
     groupId: 'cs-1', groupName: '受理一组', assignee: '王坐席',
     receivers: ['李文萍', '值班经理'],
     speakerRole: '客户',
     impact: '一般', impactSource: '产品功能/性能投诉 · 产品性能未达到顾客预期',
-    signal: '强', signalSource: '命中「曝光」「媒体」',
-    track: '双轨', legacyLevel: '高',
+    signal: '强', signalSource: '命中「曝光」（同义词「媒体」）',
+    track: '外部信号', legacyLevel: '高',
   },
   {
-    id: 'h2', ticketNo: 'LCMN-20260711-61551', title: '外投·维修超期未解决客户要求赔偿',
-    word: '12315', level: '高', position: '问题描述',
+    id: 'h2', ticketNo: 'IFLYTS-20260711-00002', title: '外投·维修超期未解决客户要求赔偿',
+    word: '12315', matchedWord: '12315', level: '高', position: '问题描述',
     excerpt: '客户要求赔偿并已向 12315 平台提交投诉。',
     when: '2026-08-04 13:58', customer: '吴强',
     groupId: 'hardware', groupName: '硬件缺陷组', assignee: '王坐席',
@@ -291,15 +342,15 @@ export const RISK_HITS: RiskHit[] = [
     speakerRole: '客户',
     impact: '一般', impactSource: '流程规则投诉 · 售后维修方式不认可',
     signal: '强', signalSource: '命中「12315」',
-    track: '双轨', legacyLevel: '高',
+    track: '外部信号', legacyLevel: '高',
     tagged: '高', taggedBy: '郑监控', taggedAt: '2026-08-04 14:03', taggedNote: '已进入外投流程，转投诉专员专项跟进',
     verdict: '成立',
   },
   {
     // 🔴 双轨的第一个反例：安全事故，客户全程平静、一个风险词都不说。
     // 纯词表下这条根本不出现在监控视野里 —— legacyLevel = null 就是这个意思。
-    id: 'h6', ticketNo: 'LCMN-20260804-74120', title: '学习机充电时机身发烫、电池鼓包',
-    word: '—', level: '低', position: '问题描述',
+    id: 'h6', ticketNo: 'IFLYZX-20260804-00002', title: '学习机充电时机身发烫、电池鼓包',
+    word: '—', matchedWord: '—', level: '低', position: '问题描述',
     excerpt: '孩子用的时候发现后盖鼓起来了，摸着烫手，我先停用了，麻烦帮忙看看怎么处理。',
     when: '2026-08-04 14:06', customer: '周敏',
     groupId: 'edu', groupName: '教育支持组', assignee: '孙坐席',
@@ -310,8 +361,8 @@ export const RISK_HITS: RiskHit[] = [
     track: '后果严重度', legacyLevel: null,
   },
   {
-    id: 'h3', ticketNo: 'LCMN-20260803-60155', title: '耳机充电仓无法配对',
-    word: '退一赔三', level: '中', position: '沟通记录',
+    id: 'h3', ticketNo: 'IFLYZX-20260803-00009', title: '耳机充电仓无法配对',
+    word: '退一赔三', matchedWord: '退一赔三', level: '中', position: '沟通记录',
     excerpt: '不给我退一赔三我就不接受这个方案。',
     when: '2026-08-04 13:30', customer: '孙莉',
     groupId: 'cs-1', groupName: '受理一组', assignee: '王坐席',
@@ -319,13 +370,13 @@ export const RISK_HITS: RiskHit[] = [
     speakerRole: '客户',
     impact: '一般', impactSource: '产品质量投诉 · 产品质量故障',
     signal: '中', signalSource: '命中「退一赔三」',
-    track: '双轨', legacyLevel: '中',
+    track: '外部信号', legacyLevel: '中',
   },
   {
     // 🔴 双轨的第二个反例：流程规则类诉求，客户喊了 12315。
     // 纯词表下判高危、与真高危同级挤占资源；双轨下降为中危。
-    id: 'h8', ticketNo: 'LCMN-20260804-73991', title: '账号密码找回需本人到店办理，客户不认可',
-    word: '12315', level: '高', position: '沟通记录',
+    id: 'h8', ticketNo: 'IFLYZX-20260804-00001', title: '账号密码找回需本人到店办理，客户不认可',
+    word: '12315', matchedWord: '12315', level: '高', position: '沟通记录',
     excerpt: '这规定太离谱了，你们不改我就打 12315。',
     when: '2026-08-04 12:35', customer: '李海',
     groupId: 'cs-1', groupName: '受理一组', assignee: '赵坐席',
@@ -333,11 +384,11 @@ export const RISK_HITS: RiskHit[] = [
     speakerRole: '客户',
     impact: '轻微', impactSource: '流程规则投诉 · 对规定的联系方式不认可',
     signal: '强', signalSource: '命中「12315」',
-    track: '双轨', legacyLevel: '高',
+    track: '外部信号', legacyLevel: '高',
   },
   {
-    id: 'h4', ticketNo: 'LCMN-20260802-59588', title: '智学网成绩同步延迟',
-    word: '投诉到底', level: '中', position: '问题描述',
+    id: 'h4', ticketNo: 'IFLYZX-20260802-00004', title: '智学网成绩同步延迟',
+    word: '投诉到底', matchedWord: '投诉到底', level: '中', position: '问题描述',
     excerpt: '影响全校期末成绩录入，这次一定要投诉到底。',
     when: '2026-08-04 11:47', customer: '合肥八中',
     groupId: 'edu', groupName: '教育支持组', assignee: '孙坐席',
@@ -345,25 +396,30 @@ export const RISK_HITS: RiskHit[] = [
     speakerRole: '客户',
     impact: '一般', impactSource: '产品功能/性能投诉 · 产品性能未达到顾客预期',
     signal: '中', signalSource: '命中「投诉到底」',
-    track: '双轨', legacyLevel: '中',
+    track: '外部信号', legacyLevel: '中',
   },
   {
     // 🔴 角色维度的价值：这句"曝光"是坐席说的。
     // 纯词表照样命中并判高危（误报）；加了角色限定后不再进入视野。
-    id: 'h7', ticketNo: 'LCMN-20260801-59104', title: '智能办公本笔迹延迟咨询',
-    word: '曝光', level: '高', position: '沟通记录',
+    id: 'h7', ticketNo: 'IFLYZX-20260801-00001', title: '智能办公本笔迹延迟咨询',
+    word: '曝光', matchedWord: '媒体', level: '高', position: '沟通记录',
     excerpt: '（坐席）如果对处理结果不满意，您也可以向媒体曝光或向监管部门反映，这是您的权利。',
     when: '2026-08-04 10:52', customer: '钱伟',
     groupId: 'cs-1', groupName: '受理一组', assignee: '王坐席',
     receivers: ['李文萍', '值班经理'],
     speakerRole: '坐席',
     impact: '轻微', impactSource: '咨询类 · 无实质损失',
-    signal: '无', signalSource: '发话人为坐席，不构成外部风险信号',
-    track: '后果严重度', legacyLevel: '高',
+    // 🔴 2026-08-26 按 B-6 订正：原先这条把 signal 压到「无」，依据是"发话人为坐席"——
+    // 但**角色限定一期不做**（沟通记录无法可靠区分谁说的），那个依据一期并不生效。
+    // 数据不该偷偷保留一个功能上不存在的效果，否则评审时会以为一期已能识别坐席发话。
+    // 现按一期真实行为：词表命中「媒体」即判信号强，与其他「曝光」命中同等对待。
+    // 代价是"坐席说的曝光也被当风险"这个误报演示消失——但那本来就是一期的真实行为。
+    signal: '强', signalSource: '命中「曝光」（同义词「媒体」）',
+    track: '外部信号', legacyLevel: '高',
   },
   {
-    id: 'h5', ticketNo: 'LCMN-20260731-58012', title: '智能音箱返修超期未回寄',
-    word: '起诉', level: '高', position: '催补记录',
+    id: 'h5', ticketNo: 'IFLYTS-20260731-00001', title: '智能音箱返修超期未回寄',
+    word: '起诉', matchedWord: '起诉', level: '高', position: '催补记录',
     excerpt: '再拖下去我就走法律途径起诉你们。',
     when: '2026-08-04 09:12', customer: '吴强',
     groupId: 'hardware', groupName: '硬件缺陷组', assignee: '陈坐席',
@@ -371,9 +427,157 @@ export const RISK_HITS: RiskHit[] = [
     speakerRole: '客户',
     impact: '一般', impactSource: '流程规则投诉 · 售后维修方式不认可',
     signal: '强', signalSource: '命中「起诉」',
-    track: '双轨', legacyLevel: '高',
+    track: '外部信号', legacyLevel: '高',
     tagged: '高', taggedBy: '郑监控', taggedAt: '2026-08-04 09:20', taggedNote: '同一客户第二次命中高危词，已上报法务',
     verdict: '成立',
+  },
+  {
+    id: 'h9', ticketNo: 'IFLYZX-20260729-00001', title: '学习机屏幕自燃，孩子手部灼伤',
+    word: '曝光', matchedWord: '曝光', level: '高', position: '问题描述',
+    excerpt: '孩子受伤了你们还拖，我明天就联系媒体曝光这件事。',
+    when: '2026-08-04 08:55', customer: '郭欣',
+    groupId: 'edu', groupName: '教育支持组', assignee: '孙坐席',
+    receivers: ['值班经理', '投诉专员'],
+    speakerRole: '客户',
+    impact: '严重', impactSource: '产品质量投诉 · 安全事故',
+    signal: '强', signalSource: '命中「曝光」',
+    track: '外部信号', legacyLevel: '高',
+  },
+  {
+    id: 'h10', ticketNo: 'IFLYZX-20260726-00001', title: '翻译机固件升级后变砖',
+    word: '曝光', matchedWord: '媒体', level: '高', position: '沟通记录',
+    excerpt: '你们再拖，我就把聊天记录发到黑猫投诉上去曝光。',
+    when: '2026-08-04 08:30', customer: '马涛',
+    groupId: 'cs-2', groupName: '受理二组', assignee: '李坐席',
+    receivers: ['李文萍', '值班经理'],
+    speakerRole: '客户',
+    impact: '一般', impactSource: '产品质量投诉 · 产品质量故障',
+    signal: '强', signalSource: '命中「曝光」（同义词「媒体」）',
+    track: '外部信号', legacyLevel: '高',
+  },
+  {
+    id: 'h11', ticketNo: 'IFLYZX-20260722-00001', title: '会议系统录音丢失，客户要求赔偿',
+    word: '起诉', matchedWord: '起诉', level: '高', position: '问题描述',
+    excerpt: '重要会议录音全没了，造成的损失你们赔得起吗，我准备起诉。',
+    when: '2026-08-03 17:42', customer: '安徽某院',
+    groupId: 'tech-1', groupName: '技术支持组', assignee: '周坐席',
+    receivers: ['李文萍', '法务'],
+    speakerRole: '客户',
+    impact: '一般', impactSource: '产品功能/性能投诉 · 产品性能未达到顾客预期',
+    signal: '强', signalSource: '命中「起诉」',
+    track: '外部信号', legacyLevel: '高',
+  },
+  {
+    id: 'h12', ticketNo: 'IFLYZX-20260712-00001', title: '智能鼠标保修期认定争议',
+    word: '12315', matchedWord: '12315', level: '高', position: '沟通记录',
+    excerpt: '按你们这规矩我只能去消协了，12315 我也一起报。',
+    when: '2026-08-03 16:18', customer: '田军',
+    groupId: 'cs-2', groupName: '受理二组', assignee: '李坐席',
+    receivers: ['值班经理', '投诉专员'],
+    speakerRole: '客户',
+    impact: '轻微', impactSource: '流程规则投诉 · 退换货政策不认可',
+    signal: '强', signalSource: '命中「12315」',
+    track: '外部信号', legacyLevel: '高',
+  },
+  {
+    id: 'h13', ticketNo: 'IFLYZX-20260705-00001', title: '开放平台接口调用超额计费申诉',
+    word: '投诉到底', matchedWord: '投诉到底', level: '中', position: '催补记录',
+    excerpt: '客户第三次催，说再没结果就投诉到底。',
+    when: '2026-08-03 15:05', customer: '某科技公司',
+    groupId: 'tech-1', groupName: '技术支持组', assignee: '周坐席',
+    receivers: ['值班经理'],
+    speakerRole: '客户',
+    impact: '一般', impactSource: '流程规则投诉 · 其他业务规则不认可',
+    signal: '中', signalSource: '命中「投诉到底」',
+    track: '外部信号', legacyLevel: '中',
+  },
+  {
+    id: 'h14', ticketNo: 'IFLYZX-20260708-00001', title: '录音笔电池膨胀顶开外壳',
+    word: '退一赔三', matchedWord: '退一赔三', level: '中', position: '沟通记录',
+    excerpt: '电池都鼓成这样了，必须退一赔三，不然我不接受。',
+    when: '2026-08-03 14:22', customer: '沈杰',
+    groupId: 'hardware', groupName: '硬件缺陷组', assignee: '陈坐席',
+    receivers: ['值班经理'],
+    speakerRole: '客户',
+    impact: '严重', impactSource: '产品质量投诉 · 安全事故',
+    signal: '中', signalSource: '命中「退一赔三」',
+    track: '外部信号', legacyLevel: '中',
+  },
+  {
+    id: 'h15', ticketNo: 'IFLYZX-20260805-00003', title: '办公本触控笔断触频繁',
+    word: '12315', matchedWord: '12315', level: '高', position: '沟通记录',
+    excerpt: '修了两次还这样，我再给你们三天，不然直接 12315。',
+    when: '2026-08-03 11:36', customer: '韩雪',
+    groupId: 'cs-1', groupName: '受理一组', assignee: '赵坐席',
+    receivers: ['值班经理', '投诉专员'],
+    speakerRole: '客户',
+    impact: '一般', impactSource: '产品质量投诉 · 产品质量故障',
+    signal: '强', signalSource: '命中「12315」',
+    track: '外部信号', legacyLevel: '高',
+  },
+  {
+    id: 'h16', ticketNo: 'IFLYZX-20260805-00004', title: '智学网账号被误封无法登录',
+    word: '投诉到底', matchedWord: '投诉到底', level: '中', position: '问题描述',
+    excerpt: '期末关键节点账号被封，这次一定要投诉到底。',
+    when: '2026-08-03 10:48', customer: '芜湖某校',
+    groupId: 'edu', groupName: '教育支持组', assignee: '孙坐席',
+    receivers: ['值班经理'],
+    speakerRole: '客户',
+    impact: '一般', impactSource: '产品功能/性能投诉 · 产品性能未达到顾客预期',
+    signal: '中', signalSource: '命中「投诉到底」',
+    track: '外部信号', legacyLevel: '中',
+  },
+  {
+    id: 'h17', ticketNo: 'IFLYTS-20260805-00001', title: '扫地机器人回充失败撞墙',
+    word: '曝光', matchedWord: '媒体', level: '高', position: '催补记录',
+    excerpt: '新品就这质量？再不处理我就找媒体曝光你们。',
+    when: '2026-08-03 09:15', customer: '刘洋',
+    groupId: 'hardware', groupName: '硬件缺陷组', assignee: '陈坐席',
+    receivers: ['李文萍', '值班经理'],
+    speakerRole: '客户',
+    impact: '一般', impactSource: '产品质量投诉 · 产品质量故障',
+    signal: '强', signalSource: '命中「曝光」（同义词「媒体」）',
+    track: '外部信号', legacyLevel: '高',
+  },
+  {
+    id: 'h18', ticketNo: 'IFLYZX-20260718-00001', title: '医疗语音录入识别率低',
+    word: '起诉', matchedWord: '起诉', level: '高', position: '沟通记录',
+    excerpt: '影响出诊效率，若本周无方案我们将起诉索赔。',
+    when: '2026-08-02 16:30', customer: '合肥某医院',
+    groupId: 'tech-1', groupName: '技术支持组', assignee: '周坐席',
+    receivers: ['李文萍', '法务'],
+    speakerRole: '客户',
+    impact: '一般', impactSource: '产品功能/性能投诉 · 产品性能未达到顾客预期',
+    signal: '强', signalSource: '命中「起诉」',
+    track: '外部信号', legacyLevel: '高',
+    tagged: '高', taggedBy: '郑监控', taggedAt: '2026-08-02 16:45', taggedNote: 'B 端客户，已同步大客户专员',
+    verdict: '成立',
+  },
+  {
+    id: 'h19', ticketNo: 'IFLYZX-20260715-00002', title: '学习机护眼模式咨询',
+    word: '退一赔三', matchedWord: '退一赔三', level: '中', position: '沟通记录',
+    excerpt: '屏幕刺眼说护眼，这不欺诈吗，退一赔三。',
+    when: '2026-08-02 14:08', customer: '徐岚',
+    groupId: 'edu', groupName: '教育支持组', assignee: '孙坐席',
+    receivers: ['值班经理'],
+    speakerRole: '客户',
+    impact: '轻微', impactSource: '咨询类 · 无实质损失',
+    signal: '中', signalSource: '命中「退一赔三」',
+    track: '外部信号', legacyLevel: '中',
+    tagged: '中', taggedBy: '李文萍', taggedAt: '2026-08-02 14:20', taggedNote: '咨询单升级，判中危跟进',
+    verdict: '误报',
+  },
+  {
+    id: 'h20', ticketNo: 'IFLYTS-20260804-00003', title: '耳机右耳无声，换货两次仍故障',
+    word: '12315', matchedWord: '12315', level: '高', position: '问题描述',
+    excerpt: '换货两次还是坏的，我已经向 12315 提交了材料。',
+    when: '2026-08-02 11:22', customer: '陈静',
+    groupId: 'cs-1', groupName: '受理一组', assignee: '王坐席',
+    receivers: ['值班经理', '投诉专员'],
+    speakerRole: '客户',
+    impact: '一般', impactSource: '产品质量投诉 · 产品质量故障',
+    signal: '强', signalSource: '命中「12315」',
+    track: '外部信号', legacyLevel: '高',
   },
 ];
 
@@ -397,7 +601,342 @@ export function legacyRiskHitsOf(scope: OpsScope): RiskHit[] {
   return riskHitsOf(scope).filter((h) => h.legacyLevel !== null);
 }
 
-/** 未打标的高危命中——按双轨等级判，不再用词表预设等级 */
+/** 未打标且词表预设为高的命中（一期：仅预警词命中，等级由打标人填） */
 export function untaggedHighRisks(scope: OpsScope): RiskHit[] {
-  return riskHitsOf(scope).filter((h) => riskGradeOf(h) === '高' && !h.tagged);
+  return wordOnlyRiskHitsOf(scope).filter((h) => h.level === '高' && !h.tagged);
+}
+
+/** 一期仅展示预警词命中的记录：legacyLevel=null 即非词表召回，属尚未启用的后果严重度轨 */
+export function wordOnlyRiskHitsOf(scope: OpsScope): RiskHit[] {
+  return riskHitsOf(scope).filter((h) => h.legacyLevel !== null);
+}
+
+// ======================================================================
+// 手动批量筛查
+//
+// 【为什么需要】实时命中是增量、被动的——只对新写入的文本跑规则。于是两件事做不了：
+//   ① 新增一条风险词，存量工单里早就写着这个词的**追溯不回来**；
+//   ② 想专项排查"某组近 30 天有没有人提过 12315"，没有入口。
+// 手动筛查补的就是这两条：选范围 + 选词 → 对**存量工单**跑一遍 → 出结果。
+//
+// 【对标】阿里云智能对话分析：规则创建 → 任务配置 → 选择待检数据集 → 执行质检 → 结果复核。
+// 词表那列「近 7 天命中」本质就是这类扫描的产物，只是现在人点不动。
+//
+// 【口径】扫出来的命中走**同一套双轨定级与打标闭环**，不另立一套——
+// 刚收口完"五套风险互不相通"，筛查若自带结果与定级就是第六套。
+// ======================================================================
+
+/** 可检字段。与词表「匹配范围」、处理表单字段逐字对应 */
+export type ScanField = '标题' | '问题描述' | '沟通记录' | '催补记录' | '问题原因' | '处理结果';
+export const SCAN_FIELDS: ScanField[] = ['标题', '问题描述', '沟通记录', '问题原因', '处理结果', '催补记录'];
+
+/**
+ * 手动筛查·工单状态筛选项（对齐基线 §1 全部子状态，值为**页面展示名称**）。
+ * 落库值与展示名不一致的行（待领取、挂起审核中等）按第三列展示。
+ */
+export const SCAN_NODE_STATUS_OPTIONS: { value: string; label: string }[] = [
+  { value: '草稿', label: '草稿' },
+  { value: '待领取', label: '待领取' },
+  { value: '待响应', label: '待响应' },
+  { value: '处理中', label: '处理中' },
+  { value: '调研中', label: '调研中' },
+  { value: '挂起审核中', label: '挂起审核中' },
+  { value: '关闭审核中', label: '关闭审核中' },
+  { value: '强结审核中', label: '强结审核中' },
+  { value: '业务审核中', label: '业务审核中' },
+  { value: '已挂起', label: '已挂起' },
+  { value: '已升级技术支持', label: '已升级技术支持' },
+  { value: '已升级产研', label: '已升级产研' },
+  { value: '已升级投诉', label: '已升级投诉' },
+  { value: '已升级外投', label: '已升级外投' },
+  { value: '已委派', label: '已委派' },
+  { value: '已退回', label: '已退回' },
+  { value: '已转售后', label: '已转售后' },
+  { value: '已结案', label: '已结案' },
+  { value: '已关闭', label: '已关闭' },
+  { value: '已强结', label: '已强结' },
+  { value: '已转咨询', label: '已转咨询' },
+  { value: '已转建议', label: '已转建议' },
+  { value: '已转商机', label: '已转商机' },
+  { value: '已取消', label: '已取消' },
+  { value: '直接结案', label: '直接结案' },
+];
+
+/** 终态展示名集合——兼容旧版「在办 / 终态」粗筛迁移 */
+export const TERMINAL_SCAN_STATUS_VALUES = [
+  '已升级投诉', '已升级外投', '已结案', '已关闭', '已强结',
+  '已转咨询', '已转建议', '已转商机', '已取消', '直接结案',
+] as const;
+
+export const IN_PROGRESS_SCAN_STATUS_VALUES = SCAN_NODE_STATUS_OPTIONS
+  .map((o) => o.value)
+  .filter((v) => !(TERMINAL_SCAN_STATUS_VALUES as readonly string[]).includes(v));
+
+export interface ScannableTicketStatusCtx {
+  nodeStatus: TicketStatus;
+}
+
+/**
+ * 工单 → 筛查状态筛选项 value（与 SCAN_NODE_STATUS_OPTIONS 对齐）。
+ *
+ * 依据基线 §1「一跳一态、一去向一态」：25 个子状态与展示名一一对应，
+ * 本函数因此收成一次查表——升级目标 / 转单去向 / 外投与否 / 结案方式
+ * 都已经在子状态里，不必再取上下文字段来分支。
+ */
+export function scanStatusFilterKey(ctx: ScannableTicketStatusCtx): string {
+  return statusDisplayName(ctx.nodeStatus);
+}
+
+/** 待扫工单：可检文本 + 用于范围过滤的维度 */
+export interface ScannableTicket {
+  ticketNo: string;
+  title: string;
+  texts: Partial<Record<ScanField, string>>;
+  when: string;
+  customer: string;
+  groupId: string;
+  groupName: string;
+  assignee: string;
+  /** 落库子状态（基线 §1 的 25 个之一；升级目标 / 转单去向都已在状态里） */
+  nodeStatus: TicketStatus;
+  ticketType: '投诉' | '咨询' | '建议' | '商机';
+  businessType: string;
+  productCategory: string;
+  productName: string;
+  /** 后果严重度与依据：来自投诉一类/二类树，即双轨里的轨二 */
+  impact: RiskImpact;
+  impactSource: string;
+}
+
+type RawScannableTicket = Omit<ScannableTicket, 'nodeStatus' | 'businessType' | 'productCategory' | 'productName'> & {
+  nodeStatus?: TicketStatus;
+  /** @deprecated 仅 enrich 回退；与 TICKETS 对不上的样例单用 */
+  ticketState?: '在办' | '终态';
+};
+
+/** 存量筛查语料的产品维度（与新建工单弹窗字段对齐） */
+const SCAN_TICKET_DIMS: Record<string, Pick<ScannableTicket, 'businessType' | 'productCategory' | 'productName'>> = {
+  'IFLYTS-20260610-00002': { businessType: '翻录', productCategory: '智能硬件', productName: '智能音箱 X1' },
+  'IFLYTS-20260711-00002': { businessType: '翻录', productCategory: '智能硬件', productName: '智能音箱 X1' },
+  'IFLYZX-20260804-00002': { businessType: '学习机', productCategory: '学习硬件', productName: '学习机 T20' },
+  'IFLYZX-20260803-00009': { businessType: '翻录', productCategory: '智能硬件', productName: '扫地机器人 R2' },
+  'IFLYZX-20260804-00001': { businessType: '翻录', productCategory: '智能硬件', productName: '智能音箱 X1' },
+  'IFLYZX-20260802-00004': { businessType: '智学网', productCategory: '软件服务', productName: '智学网会员' },
+  'IFLYZX-20260801-00001': { businessType: '学习机', productCategory: '智能硬件', productName: '学习机 T20' },
+  'IFLYTS-20260731-00001': { businessType: '翻录', productCategory: '智能硬件', productName: '智能音箱 X1' },
+  'IFLYZX-20260729-00001': { businessType: '学习机', productCategory: '学习硬件', productName: '学习机 T20' },
+  'IFLYZX-20260726-00001': { businessType: '翻录', productCategory: '智能硬件', productName: '智能音箱 X1' },
+  'IFLYZX-20260722-00001': { businessType: '翻录', productCategory: '软件服务', productName: '讯飞听见' },
+  'IFLYZX-20260718-00001': { businessType: '智学网', productCategory: '软件服务', productName: '讯飞听见' },
+  'IFLYZX-20260715-00002': { businessType: '学习机', productCategory: '学习硬件', productName: '学习机 T20' },
+  'IFLYZX-20260712-00001': { businessType: '翻录', productCategory: '智能硬件', productName: '扫地机器人 R2' },
+  'IFLYZX-20260708-00001': { businessType: '翻录', productCategory: '智能硬件', productName: '智能音箱 X1' },
+  'IFLYZX-20260705-00001': { businessType: '翻录', productCategory: '软件服务', productName: '讯飞听见' },
+};
+
+function resolveScanTicketDims(raw: RawScannableTicket): Pick<ScannableTicket, 'businessType' | 'productCategory' | 'productName'> {
+  const found = TICKETS.find((x) => x.no === raw.ticketNo);
+  const preset = SCAN_TICKET_DIMS[raw.ticketNo];
+  if (found?.productCategory && found.product) {
+    return {
+      businessType: found.businessType ?? preset?.businessType ?? BUSINESS_TYPES[0],
+      productCategory: found.productCategory,
+      productName: found.product,
+    };
+  }
+  return preset ?? { businessType: BUSINESS_TYPES[0], productCategory: PRODUCT_CATEGORIES[0], productName: PRODUCT_NAMES[PRODUCT_CATEGORIES[0]][0] };
+}
+
+function enrichScannableTicket(raw: RawScannableTicket): ScannableTicket {
+  const dims = resolveScanTicketDims(raw);
+  const found = TICKETS.find((x) => x.no === raw.ticketNo);
+  if (found) {
+    const { ticketState: _drop, nodeStatus: _n, ...rest } = raw;
+    return { ...rest, ...dims, nodeStatus: found.nodeStatus };
+  }
+  const { ticketState, nodeStatus, ...rest } = raw;
+  // 回退口径：终态取「已结案」（正常流程走完），不取建单即结的「直接结案」
+  return {
+    ...rest,
+    ...dims,
+    nodeStatus: nodeStatus ?? (ticketState === '终态' ? '已结案' : '处理中'),
+  };
+}
+
+/**
+ * 存量工单语料。
+ * 前 8 条与 RISK_HITS 同单号，用来演示「已在清单中的不重复入库」；
+ * 其余是只有手动筛查才捞得回来的存量单（当时无此词条，或已进终态）。
+ */
+const RAW_SCANNABLE_TICKETS: RawScannableTicket[] = [
+  { ticketNo: 'IFLYTS-20260610-00002', title: '无线音乐播放跳过歌曲异常', texts: { 沟通记录: '再不解决我就找媒体曝光，我本身就是干这行的。' }, when: '2026-08-04 14:21', customer: '张小凡', groupId: 'cs-1', groupName: '受理一组', assignee: '王坐席', ticketState: '在办', ticketType: '投诉', impact: '一般', impactSource: '产品功能/性能投诉 · 产品性能未达到顾客预期' },
+  { ticketNo: 'IFLYTS-20260711-00002', title: '外投·维修超期未解决客户要求赔偿', texts: { 问题描述: '客户要求赔偿并已向 12315 平台提交投诉。' }, when: '2026-08-04 13:58', customer: '吴强', groupId: 'hardware', groupName: '硬件缺陷组', assignee: '王坐席', ticketState: '在办', ticketType: '投诉', impact: '一般', impactSource: '流程规则投诉 · 售后维修方式不认可' },
+  { ticketNo: 'IFLYZX-20260804-00002', title: '学习机充电时机身发烫、电池鼓包', texts: { 问题描述: '孩子用的时候发现后盖鼓起来了，摸着烫手，我先停用了，麻烦帮忙看看怎么处理。' }, when: '2026-08-04 14:06', customer: '周敏', groupId: 'edu', groupName: '教育支持组', assignee: '孙坐席', ticketState: '在办', ticketType: '投诉', impact: '严重', impactSource: '产品质量投诉 · 安全事故' },
+  { ticketNo: 'IFLYZX-20260803-00009', title: '耳机充电仓无法配对', texts: { 沟通记录: '不给我退一赔三我就不接受这个方案。' }, when: '2026-08-04 13:30', customer: '孙莉', groupId: 'cs-1', groupName: '受理一组', assignee: '王坐席', ticketState: '在办', ticketType: '投诉', impact: '一般', impactSource: '产品质量投诉 · 产品质量故障' },
+  { ticketNo: 'IFLYZX-20260804-00001', title: '账号密码找回需本人到店办理，客户不认可', texts: { 沟通记录: '这规定太离谱了，你们不改我就打 12315。' }, when: '2026-08-04 12:35', customer: '李海', groupId: 'cs-1', groupName: '受理一组', assignee: '赵坐席', ticketState: '在办', ticketType: '投诉', impact: '轻微', impactSource: '流程规则投诉 · 对规定的联系方式不认可' },
+  { ticketNo: 'IFLYZX-20260802-00004', title: '智学网成绩同步延迟', texts: { 问题描述: '影响全校期末成绩录入，这次一定要投诉到底。' }, when: '2026-08-04 11:47', customer: '合肥八中', groupId: 'edu', groupName: '教育支持组', assignee: '孙坐席', ticketState: '在办', ticketType: '投诉', impact: '一般', impactSource: '产品功能/性能投诉 · 产品性能未达到顾客预期' },
+  { ticketNo: 'IFLYZX-20260801-00001', title: '智能办公本笔迹延迟咨询', texts: { 沟通记录: '如果对处理结果不满意，您也可以向媒体曝光或向监管部门反映，这是您的权利。' }, when: '2026-08-04 10:52', customer: '钱伟', groupId: 'cs-1', groupName: '受理一组', assignee: '王坐席', ticketState: '在办', ticketType: '咨询', impact: '轻微', impactSource: '咨询类 · 无实质损失' },
+  { ticketNo: 'IFLYTS-20260731-00001', title: '智能音箱返修超期未回寄', texts: { 催补记录: '再拖下去我就走法律途径起诉你们。' }, when: '2026-08-04 09:12', customer: '吴强', groupId: 'hardware', groupName: '硬件缺陷组', assignee: '陈坐席', ticketState: '在办', ticketType: '投诉', impact: '一般', impactSource: '流程规则投诉 · 售后维修方式不认可' },
+
+  { ticketNo: 'IFLYZX-20260729-00001', title: '学习机屏幕自燃，孩子手部灼伤', texts: { 问题描述: '孩子在写作业时屏幕突然冒烟起火，手背烫伤了，已经去医院处理。我要求你们给个说法。', 催补记录: '客户追问处理进度，情绪激动。' }, when: '2026-07-29 16:40', customer: '郭欣', groupId: 'edu', groupName: '教育支持组', assignee: '孙坐席', ticketState: '在办', ticketType: '投诉', impact: '严重', impactSource: '产品质量投诉 · 安全事故' },
+  { ticketNo: 'IFLYZX-20260726-00001', title: '翻译机固件升级后变砖', texts: { 沟通记录: '你们再拖，我就把聊天记录发到黑猫投诉上去曝光。' }, when: '2026-07-26 10:15', customer: '马涛', groupId: 'cs-2', groupName: '受理二组', assignee: '李坐席', ticketState: '在办', ticketType: '投诉', impact: '一般', impactSource: '产品质量投诉 · 产品质量故障' },
+  { ticketNo: 'IFLYZX-20260722-00001', title: '会议系统录音丢失，客户要求赔偿', texts: { 问题描述: '重要会议录音全没了，造成的损失你们赔得起吗，我准备起诉。', 问题原因: '录音服务节点异常，文件未成功落盘', 处理结果: '已恢复部分文件，客户仍不接受，称若本周无进展将继续起诉索赔' }, when: '2026-07-22 09:28', customer: '安徽某院', groupId: 'tech-1', groupName: '技术支持组', assignee: '周坐席', ticketState: '终态', ticketType: '投诉', impact: '一般', impactSource: '产品功能/性能投诉 · 产品性能未达到顾客预期' },
+  { ticketNo: 'IFLYZX-20260718-00001', title: '医疗语音录入识别率低', texts: { 问题描述: '识别率太低影响出诊，孩子科室的病历全要重打。' }, when: '2026-07-18 15:02', customer: '合肥某医院', groupId: 'tech-1', groupName: '技术支持组', assignee: '周坐席', ticketState: '在办', ticketType: '投诉', impact: '一般', impactSource: '产品功能/性能投诉 · 产品性能未达到顾客预期' },
+  { ticketNo: 'IFLYZX-20260715-00002', title: '学习机护眼模式咨询', texts: { 问题描述: '想问下孩子长期用会不会伤眼睛，有没有护眼设置。' }, when: '2026-07-15 11:20', customer: '徐岚', groupId: 'edu', groupName: '教育支持组', assignee: '孙坐席', ticketState: '终态', ticketType: '咨询', impact: '轻微', impactSource: '咨询类 · 无实质损失' },
+  { ticketNo: 'IFLYZX-20260712-00001', title: '智能鼠标保修期认定争议', texts: { 沟通记录: '按你们这规矩我只能去消协了。' }, when: '2026-07-12 14:55', customer: '田军', groupId: 'cs-2', groupName: '受理二组', assignee: '李坐席', ticketState: '在办', ticketType: '投诉', impact: '轻微', impactSource: '流程规则投诉 · 退换货政策不认可' },
+  { ticketNo: 'IFLYZX-20260708-00001', title: '录音笔电池膨胀顶开外壳', texts: { 问题描述: '电池鼓起来把外壳顶开了，怕出事已经不敢用了。', 问题原因: '电芯老化膨胀，属产品质量缺陷', 处理结果: '已安排换新并上门取件，客户要求退一赔三，暂未达成一致' }, when: '2026-07-08 08:47', customer: '沈杰', groupId: 'hardware', groupName: '硬件缺陷组', assignee: '陈坐席', ticketState: '终态', ticketType: '投诉', impact: '严重', impactSource: '产品质量投诉 · 安全事故' },
+  { ticketNo: 'IFLYZX-20260705-00001', title: '开放平台接口调用超额计费申诉', texts: { 催补记录: '客户第三次催，说再没结果就投诉到底。' }, when: '2026-07-05 17:33', customer: '某科技公司', groupId: 'tech-1', groupName: '技术支持组', assignee: '周坐席', ticketState: '在办', ticketType: '投诉', impact: '一般', impactSource: '流程规则投诉 · 其他业务规则不认可' },
+];
+
+export const SCANNABLE_TICKETS: ScannableTicket[] = RAW_SCANNABLE_TICKETS.map(enrichScannableTicket);
+
+export const SCAN_TICKET_TYPES = ['投诉', '咨询', '建议', '商机'] as const;
+export const SCAN_BUSINESS_TYPES = BUSINESS_TYPES;
+export const SCAN_PRODUCT_CATEGORIES = PRODUCT_CATEGORIES;
+
+/** 筛查条件。空数组一律表示「不限」 */
+export interface ScanCriteria {
+  groupIds: string[];
+  /** 参与本次筛查的词条 id，空＝全部启用中的词 */
+  wordIds: string[];
+  /** 起止日期 `YYYY-MM-DD`，闭区间 */
+  from: string;
+  to: string;
+  /** 匹配范围，空＝按每条词自身配置的范围 */
+  matchScopes: ScanField[];
+  /** 工单子状态（页面展示名），空＝不限。对齐基线 §1 全部子状态 */
+  nodeStatuses: string[];
+  ticketTypes: string[];
+  businessTypes: string[];
+  productCategories: string[];
+  productNames: string[];
+}
+
+/** 手动筛查表单默认值（默认等价于旧版「在办」粗筛） */
+export function defaultScanCriteria(overrides?: Partial<ScanCriteria>): ScanCriteria {
+  return {
+    groupIds: [],
+    wordIds: [],
+    from: '2026-07-01',
+    to: '',
+    matchScopes: [],
+    nodeStatuses: [...IN_PROGRESS_SCAN_STATUS_VALUES],
+    ticketTypes: [],
+    businessTypes: [],
+    productCategories: [],
+    productNames: [],
+    ...overrides,
+  };
+}
+
+/** 兼容 localStorage 里旧版 ticketState / productLines 字段 */
+export function normalizeScanCriteria(raw: Partial<ScanCriteria> & { ticketState?: string; productLines?: string[] }): ScanCriteria {
+  const base = defaultScanCriteria();
+  let nodeStatuses = raw.nodeStatuses ?? base.nodeStatuses;
+  if (!raw.nodeStatuses?.length && raw.ticketState) {
+    if (raw.ticketState === '全部') nodeStatuses = [];
+    else if (raw.ticketState === '在办') nodeStatuses = [...IN_PROGRESS_SCAN_STATUS_VALUES];
+    else if (raw.ticketState === '终态') nodeStatuses = [...TERMINAL_SCAN_STATUS_VALUES];
+  }
+  return {
+    groupIds: raw.groupIds ?? base.groupIds,
+    wordIds: raw.wordIds ?? base.wordIds,
+    from: raw.from ?? base.from,
+    to: raw.to ?? base.to,
+    matchScopes: raw.matchScopes ?? base.matchScopes,
+    nodeStatuses,
+    ticketTypes: raw.ticketTypes ?? base.ticketTypes,
+    businessTypes: raw.businessTypes ?? base.businessTypes,
+    productCategories: raw.productCategories ?? base.productCategories,
+    productNames: raw.productNames ?? base.productNames,
+  };
+}
+
+export interface ScanResultRow {
+  hit: RiskHit;
+  /** 已在命中清单中——重复入库会把同一条记两遍，预览时单独标出并默认不勾选 */
+  duplicated: boolean;
+}
+
+/** 外部信号强度按命中词的词表分级推：高＝指名外部渠道，中＝有威胁未指名 */
+function signalOfWord(w: RiskWord): RiskSignal {
+  return w.level === '高' ? '强' : w.level === '中' ? '中' : '无';
+}
+
+/**
+ * 一条规则在一段文本里命中了哪个表达：主词与同义词在规则内取或。
+ * 取**原文中最先出现**的那个，而不是固定回主词——复核的人拿着它去原文里定位，
+ * 回一个原文中不存在的词等于没给依据。
+ */
+function matchedTermIn(w: RiskWord, text: string): string | null {
+  let term: string | null = null;
+  let at = -1;
+  for (const candidate of [w.word, ...w.synonyms]) {
+    const i = text.indexOf(candidate);
+    if (i < 0) continue;
+    if (at < 0 || i < at) { at = i; term = candidate; }
+  }
+  return term;
+}
+
+/**
+ * 执行一次手动筛查。**纯读、不落库**——结果先给人看，确认后才并入清单。
+ * 匹配方式与实时链路一致（包含匹配），所以预览里看到的等级就是入库后的等级。
+ */
+export function runManualScan(c: ScanCriteria): ScanResultRow[] {
+  const words = RISK_WORDS.filter(
+    (w) => w.enabled && (c.wordIds.length === 0 || c.wordIds.includes(w.id)),
+  );
+  const existing = new Set(RISK_HITS.map((h) => `${h.ticketNo}|${h.word}`));
+  const out: ScanResultRow[] = [];
+  /** 去重键＝工单号 + 规则 id：一条规则在同一张单上只产出一条命中 */
+  const emitted = new Set<string>();
+
+  for (const t of SCANNABLE_TICKETS) {
+    if (c.groupIds.length && !c.groupIds.includes(t.groupId)) continue;
+    if (c.nodeStatuses.length) {
+      const key = scanStatusFilterKey(t);
+      if (!c.nodeStatuses.includes(key)) continue;
+    }
+    if (c.ticketTypes.length && !c.ticketTypes.includes(t.ticketType)) continue;
+    if (c.businessTypes.length && !c.businessTypes.includes(t.businessType)) continue;
+    if (c.productCategories.length && !c.productCategories.includes(t.productCategory)) continue;
+    if (c.productNames.length && !c.productNames.includes(t.productName)) continue;
+    const day = t.when.slice(0, 10);
+    if (c.from && day < c.from) continue;
+    if (c.to && day > c.to) continue;
+
+    for (const w of words) {
+      // 匹配范围：筛查条件选了就以它为准（本次临时收窄），没选则按词条自身配置
+      const fields = (c.matchScopes.length ? c.matchScopes : w.scopes) as ScanField[];
+      const dedupKey = `${t.ticketNo}|${w.id}`;
+      if (emitted.has(dedupKey)) continue;
+      for (const f of fields) {
+        const text = f === '标题' ? t.title : t.texts[f];
+        if (!text) continue;
+        const term = matchedTermIn(w, text);
+        if (!term) continue;
+        emitted.add(dedupKey);
+        out.push({
+          duplicated: existing.has(`${t.ticketNo}|${w.word}`),
+          hit: {
+            id: `scan-${t.ticketNo}-${w.id}`,
+            ticketNo: t.ticketNo, title: t.title,
+            word: w.word, matchedWord: term, level: w.level,
+            position: f, excerpt: text,
+            when: t.when, customer: t.customer,
+            groupId: t.groupId, groupName: t.groupName, assignee: t.assignee,
+            receivers: w.receivers,
+            impact: t.impact, impactSource: t.impactSource,
+            signal: signalOfWord(w),
+            signalSource: term === w.word ? `命中「${w.word}」` : `命中「${w.word}」（同义词「${term}」）`,
+            // 手动筛查跑的是词表规则匹配，来源就是外部信号轨；后果严重度轨不参与本次产出
+            track: '外部信号', legacyLevel: w.level,
+          },
+        });
+        break; // 同一条规则在同一张单上只记一次，不按字段重复计数
+      }
+    }
+  }
+  return out.sort((a, b) => b.hit.when.localeCompare(a.hit.when));
 }

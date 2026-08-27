@@ -26,24 +26,24 @@ const sel = computed(() => groups.value.find((g) => g.key === selected.value)!);
 
 const memberMap: Record<string, Member[]> = reactive({
   g1: [
-    { id: 'u1', name: '王芳', role: '班组长', ext: '8001', status: '在线', tickets: 0 },
+    { id: 'u1', name: '王芳', role: '二线班组长', ext: '8001', status: '在线', tickets: 0 },
     { id: 'u2', name: '陈静', role: '一线坐席', ext: '8012', status: '在线', tickets: 5 },
     { id: 'u3', name: '刘洋', role: '一线坐席', ext: '8013', status: '小休', tickets: 3 },
     { id: 'u4', name: '黄勇', role: '一线坐席', ext: '8014', status: '在线', tickets: 7 },
     { id: 'u5', name: '周敏', role: '一线坐席', ext: '8015', status: '离线', tickets: 0 },
   ],
   g2: [
-    { id: 'u6', name: '李强', role: '班组长', ext: '8101', status: '在线', tickets: 2 },
-    { id: 'u7', name: '杨帆', role: '二线技术顾问', ext: '8112', status: '在线', tickets: 4 },
-    { id: 'u8', name: '林峰', role: '二线技术顾问', ext: '8113', status: '在线', tickets: 6 },
+    { id: 'u6', name: '李强', role: '二线班组长', ext: '8101', status: '在线', tickets: 2 },
+    { id: 'u7', name: '杨帆', role: '二线专员', ext: '8112', status: '在线', tickets: 4 },
+    { id: 'u8', name: '林峰', role: '二线专员', ext: '8113', status: '在线', tickets: 6 },
   ],
   g3: [
-    { id: 'u9', name: '赵敏', role: '班组长', ext: '8201', status: '在线', tickets: 1 },
-    { id: 'u10', name: '钱进', role: '售后坐席', ext: '8212', status: '小休', tickets: 3 },
+    { id: 'u9', name: '赵敏', role: '二线班组长', ext: '8201', status: '在线', tickets: 1 },
+    { id: 'u10', name: '钱进', role: '二线专员', ext: '8212', status: '小休', tickets: 3 },
   ],
-  g4: [{ id: 'u11', name: '孙磊', role: '班组长', ext: '8301', status: '在线', tickets: 2 }],
-  g5: [{ id: 'u12', name: '周琳', role: '审批人', ext: '8401', status: '在线', tickets: 0 }],
-  g6: [{ id: 'u13', name: '吴昊', role: '质检员', ext: '8501', status: '在线', tickets: 0 }],
+  g4: [{ id: 'u11', name: '孙磊', role: '二线班组长', ext: '8301', status: '在线', tickets: 2 }],
+  g5: [{ id: 'u12', name: '周琳', role: '投诉督导', ext: '8401', status: '在线', tickets: 0 }],
+  g6: [{ id: 'u13', name: '吴昊', role: '质检', ext: '8501', status: '在线', tickets: 0 }],
 });
 const members = computed(() => memberMap[selected.value] ?? []);
 
@@ -60,7 +60,8 @@ const memCols = [
 const TYPE_OPTS = ['业务班组', '审批组', '虚拟组'];
 const SHIFT_OPTS = ['白班', '两班', '三班倒', '—'];
 const SKILL_OPTS = ['投诉', '咨询', '技术', '售后', '退换货', '商机', '审批', '质检'];
-const ROLE_OPTS = ['班组长', '一线坐席', '二线技术顾问', '售后坐席', '审批人', '质检员'];
+// 角色下拉取 0830 九角色（基线 §3.0）
+const ROLE_OPTS = ['一线坐席', '二线专员', '技术支持', '二线班组长', '客诉专员', '投诉督导', '工单运营', '质检', '管理员'];
 
 function syncCount(key: string) { const g = groups.value.find((x) => x.key === key); if (g) g.count = (memberMap[key] ?? []).length; }
 

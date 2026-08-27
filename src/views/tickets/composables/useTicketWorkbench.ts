@@ -70,7 +70,7 @@ export function useTicketWorkbench() {
     if (activeTab.value === 'pool') {
       return all.value.filter((t) => inGroupPoolScope(t, VISIBLE_POOL_GROUPS));
     }
-    // 催补待回：本组未结单中有客户侧催补且未联系的（PRD-830 §9.3）
+    // 催补待回：本组未结单中有客户侧催补且未联系的（PRD-915 补充与催单 §9.3）
     if (activeTab.value === 'poolPending') {
       return all.value.filter((t) => inPoolPendingScope(t, VISIBLE_POOL_GROUPS));
     }

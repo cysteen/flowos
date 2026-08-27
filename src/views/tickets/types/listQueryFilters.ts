@@ -2,6 +2,7 @@ import { prototypeDayEnd } from '@/config/prototypeDate';
 import { BUSINESS_TYPES } from '@/views/tickets/types/createTicket';
 import { PRODUCT_NAMES_BY_CATEGORY } from '@/views/tickets/types/mineQuery';
 import {
+  isEscalatedStatus,
   isFirstResponded,
   resolveTicketGroupNames,
   type SlaState,
@@ -50,18 +51,6 @@ export const EMPTY_LIST_FILTERS = (): ListFilters => ({
   status: undefined,
   channel: undefined,
 });
-
-export const QUERY_STATUS_OPTIONS = [
-  { value: '', label: '请选择' },
-  { value: 'pending', label: '待受理' },
-  { value: 'processing', label: '处理中' },
-  { value: 'held', label: '已挂起' },
-  { value: 'review', label: '待审核' },
-  { value: 'delegated', label: '已委派' },
-  { value: 'transferred', label: '已转出' },
-  { value: 'returned', label: '被退回' },
-  { value: 'transferIn', label: '转入' },
-] as const;
 
 export const QUERY_PRIORITY_OPTIONS = [
   { value: '', label: '请选择' },
@@ -185,9 +174,9 @@ function matchStatus(t: Ticket, status: string): boolean {
     return t.ticketSource === '售后转入' || t.ticketSource === '跨组调剂';
   }
   if (status === 'escalated') {
-    // 基线只有一个「已升级」状态（三线技术支持 / 产研两类目标都落它，差别在处理人）。
-    // 本项筛的是"升级过的单"，与升级目标无关，故不按目标再分。
-    return t.nodeStatus === '已升级' || !!t.smartMarks?.includes('升级');
+    // 依据基线 §1：升级已拆成「已升级技术支持 / 已升级产研」两个子状态。
+    // 本项筛的是"升级过的单"，与升级目标无关，故两个子状态都收（isEscalatedStatus）。
+    return isEscalatedStatus(t.nodeStatus) || !!t.smartMarks?.includes('升级');
   }
   if (status === 'firstResponseOverdue') {
     return !isFirstResponded(t) && t.slaState === 'overdue';
@@ -199,9 +188,10 @@ function matchStatus(t: Ticket, status: string): boolean {
   if (status === 'contactMissed') return !isFirstResponded(t);
   if (status === 'serviceBad') return t.serviceScore != null && t.serviceScore <= 3;
 
+  // 依据基线 §1 第二列的粗粒度分组铺开子状态（升级两态、转出态各自单列）
   const map: Record<string, string[]> = {
     pending: ['未认领', '待响应'],
-    processing: ['处理中', '已升级', '已委派', '已退回', '调研中'],
+    processing: ['处理中', '已升级技术支持', '已升级产研', '已委派', '已退回', '调研中'],
     held: ['已挂起'],
     review: ['申请挂起中', '申请关闭中', '申请强结中', '业务动作审核中'],
   };

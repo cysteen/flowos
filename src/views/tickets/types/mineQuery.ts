@@ -1,4 +1,4 @@
-import type { Priority, SlaState, Ticket, TicketType } from '@/views/tickets/types/ticket';
+import type { Priority, Ticket, TicketType } from '@/views/tickets/types/ticket';
 import { resolveTicketGroupNames } from '@/views/tickets/types/ticket';
 import type { BusinessType, TicketSource } from '@/views/tickets/types/createTicket';
 import { prototypeDayEnd } from '@/config/prototypeDate';
@@ -40,8 +40,6 @@ export interface MineQueryFilter {
   problemL1: string;
   problemL2: string;
   problemL3: string;
-  resolveTimeRemark: string;
-  slaState: '' | SlaState;
   groupName: string;
 }
 
@@ -65,8 +63,6 @@ export const EMPTY_MINE_QUERY = (): MineQueryFilter => ({
   problemL1: '',
   problemL2: '',
   problemL3: '',
-  resolveTimeRemark: '',
-  slaState: '',
   groupName: '',
 });
 
@@ -205,10 +201,6 @@ export function matchMineQuery(t: Ticket, q: MineQueryFilter): boolean {
   if (q.problemL1 && t.problemL1 !== q.problemL1) return false;
   if (q.problemL2 && t.problemL2 !== q.problemL2) return false;
   if (q.problemL3 && t.problemL3 !== q.problemL3) return false;
-  if (q.resolveTimeRemark && !(t.resolveTimeRemark && includes(t.resolveTimeRemark, q.resolveTimeRemark))) {
-    return false;
-  }
-  if (q.slaState && t.slaState !== q.slaState) return false;
   if (q.groupName) {
     const names = resolveTicketGroupNames(t);
     if (!names.some((n) => includes(n, q.groupName))) return false;
@@ -244,8 +236,6 @@ export function hasMineQuery(q: MineQueryFilter): boolean {
     || q.problemL1
     || q.problemL2
     || q.problemL3
-    || q.resolveTimeRemark
-    || q.slaState
     || q.groupName
   );
 }

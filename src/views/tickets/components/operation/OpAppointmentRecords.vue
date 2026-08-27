@@ -4,6 +4,7 @@ import { Modal, message } from 'ant-design-vue';
 import dayjs, { type Dayjs } from 'dayjs';
 import type { AppointmentRecord } from '@/views/tickets/types/operation';
 import { APPOINTMENT_DEMAND_OPTIONS } from '@/views/tickets/types/operation';
+import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue';
 
 const DATE_TIME_FORMAT = 'YYYY-MM-DD HH:mm:ss';
 const demandOptions = APPOINTMENT_DEMAND_OPTIONS.map((v) => ({ value: v, label: v }));

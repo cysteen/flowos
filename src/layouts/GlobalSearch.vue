@@ -3,14 +3,25 @@
  * 全局搜索（顶栏）
  *
  * 查询中心（方案 A）：侧栏单一入口 + 页内「查工单 / 查客户」双视图。
- * 顶栏搜索按输入内容自动分流并带上 tab / q / kw 参数。
+ *
+ * 分流判定与页内搜索条**共用** `queryCenterSearch`（PRD-915 §3.2「顶栏与页内共用同一套」）。
+ * 🔴 C1 改向：手机号 / 设备 SN / 客户名**不再分流到查客户**，一律落查工单列表；
+ * 只有「工单号精确命中唯一一张」才直跳工单操作页（§3.2 落点列、§8 规则 3）。
+ * 原实现会把这三类送进查客户，坐席想看单却落到客户档案页，还得再点一次。
  */
 import { queryCenterLocation } from '@/views/query/queryCenterRoute';
+import {
+  EMPTY_QUERY_TIP,
+  normalizeQuery,
+  QUERY_PLACEHOLDER,
+  queryKindLabel,
+  resolveSearchTarget,
+  TRUNCATED_TIP,
+} from '@/views/query/queryCenterSearch';
 import { computed, nextTick, ref } from 'vue';
 import { useRouter } from 'vue-router';
+import { message } from 'ant-design-vue';
 import { SearchOutlined, RightOutlined } from '@ant-design/icons-vue';
-import { detectQueryKind, searchCustomers, QUERY_KIND_LABEL, type CustomerCandidate } from '@/mock/customerInsight';
-import { TICKETS } from '@/mock/tickets';
 import { useUserStore } from '@/stores/user';
 
 const router = useRouter();
@@ -20,101 +31,52 @@ const keyword = ref('');
 const focused = ref(false);
 const inputRef = ref<HTMLInputElement | null>(null);
 
-type Target = 'ticket' | 'customer' | 'list' | 'candidates';
+/**
+ * 无查询中心权限的角色**整个搜索框不展示**（PRD-915 §3.4：一线坐席「菜单与顶栏搜索框一并
+ * 不展示（不是置灰）」）。判据必须是 `query-center` —— 原来读的是 `tickets`，
+ * 而一线恰恰有 `tickets` 菜单，于是它反倒拿到了查询中心入口（C4）。
+ */
+const canSearch = computed(() => user.canAccess('query-center'));
 
-interface Suggestion {
-  target: Target;
-  /** 主行文案 */
-  title: string;
-  /** 说明这一步会去哪 */
-  hint: string;
-  ticketNo?: string;
-  phone?: string;
-  candidates?: CustomerCandidate[];
-}
+const kindLabel = computed(() => queryKindLabel(keyword.value));
 
-const kindLabel = computed(() => (keyword.value.trim() ? QUERY_KIND_LABEL[detectQueryKind(keyword.value)] : ''));
-
-/** 按输入内容推导落点；推导逻辑与客户全景页同源，避免两处判断不一致 */
-const suggestion = computed<Suggestion | null>(() => {
-  const q = keyword.value.trim();
-  if (!q) return null;
-  const kind = detectQueryKind(q);
-
-  if (kind === 'ticket') {
-    const key = q.toUpperCase();
-    const hit = TICKETS.find((t) => t.no.toUpperCase() === key || t.no.endsWith(key));
-    if (hit) {
-      return { target: 'ticket', title: `${hit.no}　${hit.title}`, hint: '打开工单详情', ticketNo: hit.no };
-    }
-    // 工单库里没有这张单：可能是历史单，交给客户全景按单号反查报单客户
-    const res = searchCustomers(q);
-    if (res.candidates.length === 1) {
-      return {
-        target: 'customer',
-        title: `${res.candidates[0].name}　${res.candidates[0].phone}`,
-        hint: `工单 ${q} 的报单客户 · 打开客户全景`,
-        phone: res.candidates[0].phone,
-      };
-    }
-    return { target: 'list', title: `在查询中心搜索「${q}」`, hint: '未在当前工单库中找到该单号' };
-  }
-
-  if (kind === 'phone' || kind === 'sn') {
-    const res = searchCustomers(q);
-    if (res.candidates.length === 1) {
-      const c = res.candidates[0];
-      return {
-        target: 'customer',
-        title: `${c.name}　${c.phone}`,
-        hint: `${c.role} · 累计 ${c.ticketCount} 单 · 打开客户全景`,
-        phone: c.phone,
-      };
-    }
-    if (res.candidates.length > 1) {
-      return { target: 'candidates', title: `匹配到 ${res.candidates.length} 位客户`, hint: '选择一位打开全景', candidates: res.candidates };
-    }
-    return { target: 'list', title: `在查询中心搜索「${q}」`, hint: '未匹配到客户档案' };
-  }
-
-  // 姓名 / 关键词：先看是不是客户名，不是就当关键词交给工单列表
-  const res = searchCustomers(q);
-  if (res.candidates.length === 1) {
-    const c = res.candidates[0];
+/** 按输入内容推导落点；与页内搜索条同源，避免两处判断不一致 */
+const suggestion = computed(() => {
+  const { text } = normalizeQuery(keyword.value);
+  if (!text) return null;
+  const target = resolveSearchTarget(text);
+  if (target.to === 'ticket') {
     return {
-      target: 'customer',
-      title: `${c.name}　${c.phone}`,
-      hint: `${c.role} · 累计 ${c.ticketCount} 单 · 打开客户全景`,
-      phone: c.phone,
+      to: 'ticket' as const,
+      ticketNo: target.ticketNo,
+      title: `${target.ticketNo}　${target.title}`,
+      hint: '打开工单详情',
     };
   }
-  if (res.candidates.length > 1) {
-    return { target: 'candidates', title: `匹配到 ${res.candidates.length} 位客户`, hint: '选择一位打开全景', candidates: res.candidates };
-  }
-  return { target: 'list', title: `在查询中心搜索「${q}」`, hint: '按关键词检索工单标题与内容' };
+  return {
+    to: 'list' as const,
+    title: `在查工单列表检索「${text}」`,
+    hint: target.hint ?? `按${kindLabel.value}检索全租户工单`,
+  };
 });
 
-/** 无工单 Tab 权限时，关键词检索不可用 */
-const canOpenList = computed(() => user.canAccess('tickets'));
-
-function go(s: Suggestion | null = suggestion.value) {
-  if (!s) return;
-  if (s.target === 'ticket' && s.ticketNo) {
-    router.push(`/tickets/${s.ticketNo}`);
-  } else if (s.target === 'customer' && s.phone) {
-    router.push(queryCenterLocation('customer', { q: s.phone }));
-  } else if (s.target === 'candidates') {
-    router.push(queryCenterLocation('customer', { q: keyword.value.trim() }));
-  } else if (canOpenList.value) {
-    router.push(queryCenterLocation('tickets', { kw: keyword.value.trim() }));
-  } else {
-    router.push(queryCenterLocation('customer', { q: keyword.value.trim() }));
+function go() {
+  const { text, truncated } = normalizeQuery(keyword.value);
+  // E1 空输入不发起检索
+  if (!text) {
+    message.info(EMPTY_QUERY_TIP);
+    inputRef.value?.focus();
+    return;
   }
-  close();
-}
+  if (truncated) message.warning(TRUNCATED_TIP);
 
-function pick(c: CustomerCandidate) {
-  router.push(queryCenterLocation('customer', { q: c.phone }));
+  const target = resolveSearchTarget(text);
+  if (target.to === 'ticket') {
+    router.push(`/tickets/${target.ticketNo}`);
+  } else {
+    if (target.hint) message.info(target.hint);
+    router.push(queryCenterLocation('tickets', { kw: text }));
+  }
   close();
 }
 
@@ -126,14 +88,14 @@ function close() {
 </script>
 
 <template>
-  <div class="gs" :class="{ open: focused && !!suggestion }">
+  <div v-if="canSearch" class="gs" :class="{ open: focused && !!suggestion }">
     <div class="gs-box">
       <SearchOutlined class="gs-ic" />
       <input
         ref="inputRef"
         v-model="keyword"
         class="gs-input"
-        placeholder="工单号 / 手机号 / 客户名 / 关键词"
+        :placeholder="QUERY_PLACEHOLDER"
         @focus="focused = true"
         @blur="focused = false"
         @keyup.enter="go()"
@@ -144,21 +106,7 @@ function close() {
 
     <!-- mousedown 而非 click：blur 会先触发，click 就丢了 -->
     <div v-if="focused && suggestion" class="gs-panel" @mousedown.prevent>
-      <template v-if="suggestion.target === 'candidates'">
-        <div class="gs-group">{{ suggestion.title }}</div>
-        <button
-          v-for="c in suggestion.candidates"
-          :key="c.phone"
-          type="button"
-          class="gs-row"
-          @click="pick(c)"
-        >
-          <div class="gs-main">{{ c.name }}<span class="gs-role">{{ c.role }}</span></div>
-          <div class="gs-hint">{{ c.phone }} · 累计 {{ c.ticketCount }} 单 · 最近 {{ c.lastAt }}</div>
-          <RightOutlined class="gs-arrow" />
-        </button>
-      </template>
-      <button v-else type="button" class="gs-row" @click="go()">
+      <button type="button" class="gs-row" @click="go()">
         <div class="gs-main">{{ suggestion.title }}</div>
         <div class="gs-hint">{{ suggestion.hint }}</div>
         <RightOutlined class="gs-arrow" />

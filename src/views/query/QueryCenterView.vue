@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
  * 查询中心（方案 A）
- * 统一检索入口 + 「查工单 / 查客户」双视图；顶栏 GlobalSearch 与本页搜索条共用分流逻辑。
+ * 统一检索入口 + 「查工单 / 查客户」双视图；顶栏 GlobalSearch 与本页搜索条共用分流逻辑
+ * （`views/query/queryCenterSearch.ts`，PRD-915 §3.2）。
  */
 import { computed, nextTick, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -9,13 +10,15 @@ import { message } from 'ant-design-vue';
 import { SearchOutlined, FilterOutlined } from '@ant-design/icons-vue';
 import TicketListView from '@/views/tickets/TicketListView.vue';
 import CustomerInsightView from '@/views/customer/CustomerInsightView.vue';
-import {
-  detectQueryKind,
-  searchCustomers,
-  QUERY_KIND_LABEL,
-} from '@/mock/customerInsight';
-import { TICKETS } from '@/mock/tickets';
 import { useUserStore } from '@/stores/user';
+import {
+  EMPTY_QUERY_TIP,
+  normalizeQuery,
+  QUERY_PLACEHOLDER,
+  queryKindLabel,
+  resolveSearchTarget,
+  TRUNCATED_TIP,
+} from './queryCenterSearch';
 import {
   queryCenterLocation,
   type QueryCenterTab,
@@ -27,21 +30,22 @@ const user = useUserStore();
 
 const keyword = ref('');
 const filtersExpanded = ref(false);
+const searchRef = ref<HTMLInputElement | null>(null);
 const customerRef = ref<InstanceType<typeof CustomerInsightView> | null>(null);
 
-const canTicketsTab = computed(() => user.canAccess('tickets'));
-const canCustomerTab = computed(() => user.canAccess('query-center'));
+/**
+ * 两个视图**同一个权限点**（PRD-915 §3.4：三行取值完全相同，「进得了查询中心，
+ * 两个视图就都进得了，不再逐视图分权」）。
+ *
+ * 🔴 C4 + C6 一起收口：原来是两个 computed —— `canTicketsTab` 读 `tickets`（于是**一线坐席**
+ * 有 tickets 菜单就拿到了查工单），`canCustomerTab` 读 `query-center` 却**算了没用**（查客户
+ * 页签无条件渲染）。现在合成一个、判据统一为 `query-center`，死代码随之消失。
+ */
+const canQueryCenter = computed(() => user.canAccess('query-center'));
 
-const activeTab = computed<QueryCenterTab>(() => {
-  const t = route.query.tab;
-  if (t === 'customer') return 'customer';
-  if (t === 'tickets' && canTicketsTab.value) return 'tickets';
-  return canTicketsTab.value ? 'tickets' : 'customer';
-});
+const activeTab = computed<QueryCenterTab>(() => (route.query.tab === 'customer' ? 'customer' : 'tickets'));
 
-const kindHint = computed(() =>
-  keyword.value.trim() ? QUERY_KIND_LABEL[detectQueryKind(keyword.value)] : '',
-);
+const kindHint = computed(() => queryKindLabel(keyword.value));
 
 function setTab(tab: QueryCenterTab, extra: Record<string, string | undefined> = {}) {
   router.replace(queryCenterLocation(tab, { ...route.query as Record<string, string>, tab, ...extra }));
@@ -52,64 +56,33 @@ function syncKeywordFromRoute() {
   if (q !== keyword.value) keyword.value = q;
 }
 
+/**
+ * 页内检索。落点判定与顶栏同源：
+ * 工单号精确命中唯一一张 → 直跳详情；**其余一律落查工单列表**（C1）。
+ * E1 空输入不发起检索、E2 超长截断、E5 / E6 单号未命中 / 命中多张的提示都在 resolveSearchTarget 里。
+ */
 async function runSearch(fromRoute = false) {
-  const q = keyword.value.trim();
-  if (!q) {
-    message.info('请输入工单号、手机号、客户姓名或关键词');
+  const { text, truncated } = normalizeQuery(keyword.value);
+  if (!text) {
+    message.info(EMPTY_QUERY_TIP);
+    searchRef.value?.focus();
     return;
   }
+  if (truncated) {
+    keyword.value = text;
+    message.warning(TRUNCATED_TIP);
+  }
 
-  const kind = detectQueryKind(q);
-
-  if (kind === 'ticket') {
-    const key = q.toUpperCase();
-    const hit = TICKETS.find((t) => t.no.toUpperCase() === key || t.no.endsWith(key));
-    if (hit) {
-      router.push(`/tickets/${hit.no}`);
-      return;
-    }
-    const res = searchCustomers(q);
-    if (res.candidates.length === 1) {
-      setTab('customer', { q: res.candidates[0].phone });
-      await nextTick();
-      customerRef.value?.runSearch(res.candidates[0].phone);
-      return;
-    }
-    if (canTicketsTab.value) {
-      setTab('tickets', { kw: q, q: undefined });
-    } else {
-      setTab('customer', { q });
-      await nextTick();
-      customerRef.value?.runSearch(q);
-    }
-    if (!fromRoute) message.info('未在当前工单库中找到该单号，已按关键词检索');
+  const target = resolveSearchTarget(text);
+  if (target.to === 'ticket') {
+    router.push(`/tickets/${target.ticketNo}`);
     return;
   }
-
-  if (kind === 'phone' || kind === 'sn') {
-    setTab('customer', { q });
-    await nextTick();
-    customerRef.value?.runSearch(q);
-    return;
-  }
-
-  const res = searchCustomers(q);
-  if (res.candidates.length >= 1) {
-    setTab('customer', { q });
-    await nextTick();
-    customerRef.value?.runSearch(q);
-    return;
-  }
-
-  if (canTicketsTab.value) {
-    setTab('tickets', { kw: q, q: undefined });
-  } else {
-    message.warning('未匹配到客户档案');
-  }
+  if (target.hint && !fromRoute) message.info(target.hint);
+  setTab('tickets', { kw: text, q: undefined });
 }
 
 function onTabClick(tab: QueryCenterTab) {
-  if (tab === 'tickets' && !canTicketsTab.value) return;
   if (tab === 'customer') filtersExpanded.value = false;
   setTab(tab);
 }
@@ -145,18 +118,19 @@ watch(
     <header class="qc-toolbar">
       <nav class="qc-tabs-inline" role="tablist" aria-label="查询视图">
         <button
-          v-if="canTicketsTab"
+          v-if="canQueryCenter"
           type="button"
           role="tab"
           class="qc-tab-pill"
           :class="{ active: activeTab === 'tickets' }"
           :aria-selected="activeTab === 'tickets'"
-          title="全量库 · 筛选 · 批量 · 导出"
+          title="全量库 · 筛选"
           @click="onTabClick('tickets')"
         >
           查工单
         </button>
         <button
+          v-if="canQueryCenter"
           type="button"
           role="tab"
           class="qc-tab-pill"
@@ -172,15 +146,16 @@ watch(
       <div class="qc-search">
         <SearchOutlined class="qc-search-ic" />
         <input
+          ref="searchRef"
           v-model="keyword"
           class="qc-search-input"
-          placeholder="工单号 / 手机号 / 客户姓名 / 关键词"
+          :placeholder="QUERY_PLACEHOLDER"
           @keyup.enter="runSearch()"
         />
         <span v-if="kindHint" class="qc-kind">{{ kindHint }}</span>
         <button type="button" class="qc-search-btn" @click="runSearch()">查询</button>
         <button
-          v-if="activeTab === 'tickets' && canTicketsTab"
+          v-if="activeTab === 'tickets'"
           type="button"
           class="qc-filter-btn"
           :class="{ active: filtersExpanded }"
@@ -196,7 +171,7 @@ watch(
 
     <div class="qc-body">
       <TicketListView
-        v-if="activeTab === 'tickets' && canTicketsTab"
+        v-if="activeTab === 'tickets'"
         embedded
         :filters-expanded="filtersExpanded"
         @open-customer="onListOpenCustomer"

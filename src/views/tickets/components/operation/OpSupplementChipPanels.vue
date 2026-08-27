@@ -2,6 +2,7 @@
 import { computed, watch } from 'vue';
 import OpTextareaAttach from './shared/OpTextareaAttach.vue';
 import OpQualityStandardFields from './OpQualityStandardFields.vue';
+import OpChannelTags from './OpChannelTags.vue';
 import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue';
 import type { ProcessFormDraft, RiskFlag, SupplementChip } from '@/views/tickets/types/operation';
 import {
@@ -11,11 +12,14 @@ import {
   QUALITY_ISSUE_L2_TO_L1,
   complaintMarkOptions,
   COMPLAINT_MARK_REGULATOR_OPTIONS,
+  BACKEND_PUSH_OPTIONS,
 } from '@/views/tickets/types/operation';
 import {
   COMPLAINT_L1_OPTIONS,
   COMPLAINT_L2_MAP,
   COMPLAINT_L3_MAP,
+  COMPLAINED_ROLE_OPTIONS,
+  needsComplainedRole,
 } from '@/views/tickets/types/createTicket';
 
 const props = defineProps<{
@@ -44,11 +48,14 @@ const complaintL2Options = computed(() =>
 const complaintL3Options = computed(() =>
   (COMPLAINT_L3_MAP[props.form.complaintCat2] ?? []).map((v) => ({ label: v, value: v })),
 );
+const complainedRoleOptions = COMPLAINED_ROLE_OPTIONS.map((v) => ({ label: v, value: v }));
+const backendPushOptions = BACKEND_PUSH_OPTIONS.map((v) => ({ label: v, value: v }));
+const showComplainedRole = computed(() => needsComplainedRole(props.form.complaintCat3));
 function platformKey(p: { platform: string; complaintNo?: string }) {
   return `${p.platform}::${p.complaintNo ?? ''}`;
 }
 
-/** 投诉渠道跟进行：与建单 platforms 对齐，保留已填内容 */
+/** 投诉渠道跟进行：与建单 platforms 对齐，仅展示平台/编号 */
 const followupRows = computed(() => {
   const plats = (props.complaintPlatforms ?? []).filter((p) => p.platform);
   const prev = new Map(
@@ -59,9 +66,7 @@ const followupRows = computed(() => {
     const old = prev.get(platformKey(p));
     return {
       platform: p.platform,
-      complaintNo: p.complaintNo,
-      replyResult: old?.replyResult ?? '',
-      reconcile: old?.reconcile ?? ('' as const),
+      complaintNo: p.complaintNo ?? old?.complaintNo,
     };
   });
 });
@@ -82,21 +87,17 @@ watch(
   { immediate: true },
 );
 
-/** 单一写出口：只读态在此统一拦一道（patchFollowup 等也都汇到这里） */
+const missChannelReply = computed(() => followupRows.value.length > 0 && !props.form.complaintChannelReply.trim());
+const missChannelReconcile = computed(() => followupRows.value.length > 0 && !props.form.complaintChannelReconcile);
+const missChannelAny = computed(() => missChannelReply.value || missChannelReconcile.value);
+
+/** 单一写出口：只读态在此统一拦一道 */
 function update(partial: Partial<ProcessFormDraft>) {
   if (props.readonly) return;
   emit('update:form', { ...props.form, ...partial });
 }
 
-function patchFollowup(
-  index: number,
-  partial: Partial<ProcessFormDraft['platformFollowups'][number]>,
-) {
-  const rows = followupRows.value.map((r, i) => (i === index ? { ...r, ...partial } : r));
-  update({ platformFollowups: rows });
-}
-
-function onComplaintMarkChange(v: string | number | undefined) {
+function onComplaintMarkChange(v: string | number | string[] | undefined) {
   update({ complaintMark: String(v ?? '') });
 }
 
@@ -124,11 +125,11 @@ function onRiskFlagChange(flag: RiskFlag) {
   });
 }
 
-function onComplaintCat1Change(v: string | number | undefined) {
-  update({ complaintCat1: String(v ?? ''), complaintCat2: '', complaintCat3: '' });
+function onComplaintCat1Change(v: string | number | string[] | undefined) {
+  update({ complaintCat1: String(v ?? ''), complaintCat2: '', complaintCat3: '', complainedRole: [] });
 }
 
-function onQualityCat1Change(v: string | number | undefined) {
+function onQualityCat1Change(v: string | number | string[] | undefined) {
   const cat1 = String(v ?? '');
   const allowed = cat1 ? (QUALITY_ISSUE_L2_MAP[cat1] ?? []) : null;
   const cat2 = props.form.qualityIssueCat2;
@@ -139,7 +140,7 @@ function onQualityCat1Change(v: string | number | undefined) {
   });
 }
 
-function onQualityCat2Change(v: string | number | undefined) {
+function onQualityCat2Change(v: string | number | string[] | undefined) {
   const cat2 = String(v ?? '');
   if (!cat2) {
     update({ qualityIssueCat2: '' });
@@ -149,19 +150,26 @@ function onQualityCat2Change(v: string | number | undefined) {
   update({ qualityIssueCat1: cat1, qualityIssueCat2: cat2 });
 }
 
-function onComplaintCat2Change(v: string | number | undefined) {
-  update({ complaintCat2: String(v ?? ''), complaintCat3: '' });
+function onComplaintCat2Change(v: string | number | string[] | undefined) {
+  update({ complaintCat2: String(v ?? ''), complaintCat3: '', complainedRole: [] });
 }
 
-function onComplaintCat3Change(v: string | number | undefined) {
-  update({ complaintCat3: String(v ?? '') });
+function onComplaintCat3Change(v: string | number | string[] | undefined) {
+  const cat3 = String(v ?? '');
+  update({
+    complaintCat3: cat3,
+    ...(needsComplainedRole(cat3) ? {} : { complainedRole: [] }),
+  });
 }
 
 const missComplaintMark = computed(() => !props.form.complaintMark);
 const missComplaintCat1 = computed(() => !props.form.complaintCat1);
 const missComplaintCat2 = computed(() => !!props.form.complaintCat1 && !props.form.complaintCat2);
 const missComplaintCat3 = computed(
-  () => !!props.form.complaintCat2 && complaintL3Options.value.length > 0 && !props.form.complaintCat3,
+  () => !!props.form.complaintCat2 && !props.form.complaintCat3,
+);
+const missComplainedRole = computed(
+  () => showComplainedRole.value && !props.form.complainedRole?.length,
 );
 const missComplaintNote = computed(() => !props.form.complaintNote.trim());
 const missRiskLevel = computed(
@@ -177,32 +185,45 @@ const missRiskDesc = computed(
 <template>
   <!-- 投诉分类 -->
   <div v-if="activeChip === 'complaint'" class="chip-panel">
-    <div class="field" :class="{ 'is-missing': missComplaintMark }">
-      <label class="field-label-sm"><span class="req">*</span>投诉标记</label>
-      <FormSelect
-        class="cat-select"
-        :class="{ 'ctrl-missing': missComplaintMark }"
-        :value="form.complaintMark || undefined"
-        :options="complaintMarkOpts"
-        placeholder="请选择（必填）"
-        @update:value="onComplaintMarkChange"
-      />
-      <p v-if="missComplaintMark" class="field-err">请选择投诉标记</p>
+    <div class="complaint-cat-row complaint-top-row">
+      <div class="cat-item" :class="{ 'is-missing': missComplaintMark }">
+        <label class="field-label-sm"><span class="req">*</span>投诉标记</label>
+        <FormSelect
+          class="cat-select"
+          :class="{ 'ctrl-missing': missComplaintMark }"
+          :value="form.complaintMark || undefined"
+          :options="complaintMarkOpts"
+          placeholder="请选择或搜索"
+          @update:value="onComplaintMarkChange"
+        />
+        <p v-if="missComplaintMark" class="field-err">请选择</p>
+      </div>
+      <div class="cat-item">
+        <label class="field-label-sm">需后端推动</label>
+        <FormSelect
+          class="cat-select"
+          :value="form.backendPush || undefined"
+          :options="backendPushOptions"
+          placeholder="请选择或搜索"
+          allow-clear
+          @update:value="(v) => update({ backendPush: String(v ?? '') })"
+        />
+      </div>
     </div>
-    <div class="cat-grid">
-      <div class="field" :class="{ 'is-missing': missComplaintCat1 }">
+    <div class="complaint-cat-row">
+      <div class="cat-item" :class="{ 'is-missing': missComplaintCat1 }">
         <label class="field-label-sm"><span class="req">*</span>投诉分类一</label>
         <FormSelect
           class="cat-select"
           :class="{ 'ctrl-missing': missComplaintCat1 }"
           :value="form.complaintCat1 || undefined"
           :options="complaintL1Options"
-          placeholder="请选择（必填）"
+          placeholder="请选择或搜索"
           @update:value="onComplaintCat1Change"
         />
-        <p v-if="missComplaintCat1" class="field-err">请选择投诉分类一</p>
+        <p v-if="missComplaintCat1" class="field-err">请选择</p>
       </div>
-      <div class="field" :class="{ 'is-missing': missComplaintCat2 }">
+      <div class="cat-item" :class="{ 'is-missing': missComplaintCat2 }">
         <label class="field-label-sm"><span class="req">*</span>投诉分类二</label>
         <FormSelect
           class="cat-select"
@@ -210,16 +231,12 @@ const missRiskDesc = computed(
           :value="form.complaintCat2 || undefined"
           :options="complaintL2Options"
           :disabled="!form.complaintCat1"
-          placeholder="请选择（必填）"
+          placeholder="请选择或搜索"
           @update:value="onComplaintCat2Change"
         />
-        <p v-if="missComplaintCat2" class="field-err">请选择投诉分类二</p>
+        <p v-if="missComplaintCat2" class="field-err">请选择</p>
       </div>
-      <div
-        v-if="complaintL3Options.length > 0"
-        class="field"
-        :class="{ 'is-missing': missComplaintCat3 }"
-      >
+      <div class="cat-item" :class="{ 'is-missing': missComplaintCat3 }">
         <label class="field-label-sm"><span class="req">*</span>投诉分类三</label>
         <FormSelect
           class="cat-select"
@@ -227,10 +244,28 @@ const missRiskDesc = computed(
           :value="form.complaintCat3 || undefined"
           :options="complaintL3Options"
           :disabled="!form.complaintCat2"
-          placeholder="请选择（必填）"
+          placeholder="请选择或搜索"
           @update:value="onComplaintCat3Change"
         />
-        <p v-if="missComplaintCat3" class="field-err">请选择投诉分类三</p>
+        <p v-if="missComplaintCat3" class="field-err">请选择</p>
+      </div>
+      <div
+        v-if="showComplainedRole"
+        class="cat-item"
+        :class="{ 'is-missing': missComplainedRole }"
+      >
+        <label class="field-label-sm"><span class="req">*</span>被投诉角色</label>
+        <FormSelect
+          mode="multiple"
+          class="cat-select complained-role-select"
+          :class="{ 'ctrl-missing': missComplainedRole }"
+          :value="form.complainedRole"
+          :options="complainedRoleOptions"
+          placeholder="请选择或搜索"
+          :max-tag-count="2"
+          @update:value="(v) => update({ complainedRole: Array.isArray(v) ? v : [] })"
+        />
+        <p v-if="missComplainedRole" class="field-err">请选择</p>
       </div>
     </div>
     <div class="field" :class="{ 'is-missing': missComplaintNote }">
@@ -249,46 +284,34 @@ const missRiskDesc = computed(
     </div>
   </div>
 
-  <!-- 投诉渠道：按平台分行登记回复结果与是否和解（内投/外投平台均在此） -->
-  <div v-else-if="activeChip === 'external' && showExternal" class="chip-panel ext-panel">
+  <!-- 投诉渠道：渠道标签 + 共用跟进（单块紧凑） -->
+  <div v-else-if="activeChip === 'external' && showExternal" class="chip-panel ext-panel panel-neutral">
     <div v-if="!followupRows.length" class="ext-empty">暂无投诉渠道，请先在工单信息中登记投诉平台</div>
-    <div v-else class="ext-table">
-      <div class="ext-thead">
-        <span class="ext-th ext-col-platform">投诉平台</span>
-        <span class="ext-th ext-col-no">投诉编号</span>
-        <span class="ext-th ext-col-reply"><span class="req">*</span>回复结果</span>
-        <span class="ext-th ext-col-reconcile"><span class="req">*</span>是否和解</span>
-      </div>
-      <div
-        v-for="(row, i) in followupRows"
-        :key="`${row.platform}-${row.complaintNo ?? ''}-${i}`"
-        class="ext-row"
-      >
-        <div class="ext-td ext-col-platform">
-          <span class="ext-platform" :title="row.platform">{{ row.platform }}</span>
-        </div>
-        <div class="ext-td ext-col-no">
-          <span v-if="row.complaintNo" class="ext-no">{{ row.complaintNo }}</span>
-          <span v-else class="ext-no-empty">—</span>
-        </div>
-        <div class="ext-td ext-col-reply">
+    <div v-else class="ext-compact">
+      <OpChannelTags :platforms="followupRows" />
+      <div class="ext-followup-row">
+        <div class="ext-followup-field">
+          <label class="field-label-sm"><span class="req">*</span>回复结果</label>
           <a-input
-            :value="row.replyResult"
+            :value="form.complaintChannelReply"
+            :status="missChannelReply ? 'warning' : undefined"
             placeholder="填写回复结果"
-            @update:value="(v: string) => patchFollowup(i, { replyResult: v ?? '' })"
+            @update:value="(v: string) => update({ complaintChannelReply: v ?? '' })"
           />
         </div>
-        <div class="ext-td ext-col-reconcile">
+        <div class="ext-followup-field ext-followup-reconcile">
+          <label class="field-label-sm"><span class="req">*</span>是否和解</label>
           <a-radio-group
-            :value="row.reconcile || undefined"
+            :value="form.complaintChannelReconcile || undefined"
             class="ext-radio"
-            @update:value="(v: '是' | '否') => patchFollowup(i, { reconcile: v })"
+            @update:value="(v: '是' | '否') => update({ complaintChannelReconcile: v })"
           >
             <a-radio value="是">是</a-radio>
             <a-radio value="否">否</a-radio>
           </a-radio-group>
         </div>
       </div>
+      <p v-if="missChannelAny" class="ext-hint">请填写回复结果并选择是否和解</p>
     </div>
   </div>
 
@@ -310,7 +333,7 @@ const missRiskDesc = computed(
           :class="{ 'ctrl-missing': missRiskLevel }"
           :value="form.riskLevel || undefined"
           :options="riskLevelOptions"
-          placeholder="请选择（必填）"
+          placeholder="请选择或搜索"
           @update:value="(v) => update({ riskLevel: String(v ?? '') })"
         />
       </template>
@@ -360,7 +383,27 @@ const missRiskDesc = computed(
 .inline-row { flex-direction: row; align-items: center; gap: 12px; }
 .inline-row .field-label-sm { flex: none; white-space: nowrap; }
 .flex1 { flex: 1; min-width: 0; }
-.cat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+/* 投诉标记行（2 列）+ 分类行（3～4 列） */
+.complaint-cat-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+.complaint-top-row .cat-item {
+  flex: 1 1 0;
+}
+.cat-item {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cat-item .field-label-sm {
+  white-space: nowrap;
+}
 .cat-select { width: 100%; }
 .cat-select :deep(.ant-select-selector) {
   height: 32px;
@@ -371,9 +414,38 @@ const missRiskDesc = computed(
 .cat-select :deep(.ant-select-selection-placeholder) {
   font-size: 12px;
   line-height: 30px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-@media (max-width: 720px) {
-  .cat-grid { grid-template-columns: 1fr; }
+@media (max-width: 960px) {
+  .complaint-cat-row {
+    flex-wrap: wrap;
+  }
+  .cat-item {
+    flex: 1 1 calc(50% - 5px);
+  }
+}
+.complained-role-select {
+  width: 100%;
+}
+.complained-role-select :deep(.ant-select-selector) {
+  min-height: 32px;
+  height: auto;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+.complained-role-select :deep(.ant-select-selection-item) {
+  font-size: 11px;
+  line-height: 20px;
+  height: 22px;
+  margin-top: 1px;
+  margin-bottom: 1px;
+  max-width: 100%;
+}
+.complained-role-select :deep(.ant-select-selection-placeholder) {
+  font-size: 12px;
+  line-height: 28px;
 }
 
 .req {
@@ -416,96 +488,58 @@ const missRiskDesc = computed(
   white-space: nowrap;
 }
 
-/* 投诉渠道：表格式多平台跟进 */
+/* 投诉渠道：单块紧凑 */
+.ext-panel.panel-neutral {
+  padding: 12px;
+}
 .ext-empty {
   font-size: 12px;
   color: #9ca3af;
-  padding: 8px 0;
 }
-.ext-table {
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  overflow: hidden;
-  background: #fff;
+.ext-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
-.ext-thead,
-.ext-row {
-  display: grid;
-  /* 平台列限宽，编号紧跟左侧，回复结果吃剩余空间 */
-  grid-template-columns: minmax(120px, 168px) 132px minmax(0, 1fr) 104px;
-  column-gap: 8px;
-  align-items: center;
-  padding: 0 10px;
+.ext-followup-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  gap: 10px;
 }
-.ext-thead {
-  min-height: 36px;
-  background: #f9fafb;
-  border-bottom: 1px solid #e5e7eb;
+.ext-followup-field {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
-.ext-th {
-  font-size: 11px;
-  font-weight: 600;
-  color: #6b7280;
-  white-space: nowrap;
+.ext-followup-reconcile {
+  flex: 0 0 132px;
 }
-.ext-row {
-  min-height: 48px;
-  border-bottom: 1px solid #f0f0f0;
-}
-.ext-row:last-child { border-bottom: none; }
-.ext-row:hover { background: #fafbfc; }
-.ext-td { min-width: 0; }
-.ext-platform {
-  display: block;
+.ext-followup-field :deep(.ant-input) {
+  height: 32px;
   font-size: 12px;
-  font-weight: 600;
-  color: #374151;
-  line-height: 1.35;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.ext-no {
-  font-size: 11px;
-  color: #374151;
-  font-family: Consolas, 'SF Mono', monospace;
-  word-break: break-all;
-}
-.ext-no-empty {
-  font-size: 12px;
-  color: #d1d5db;
 }
 .ext-radio {
   display: flex;
   align-items: center;
-  gap: 4px;
-  flex-wrap: nowrap;
+  gap: 8px;
+  min-height: 32px;
 }
-.ext-row :deep(.ant-input) {
-  height: 32px;
-  font-size: 12px;
+.ext-hint {
+  margin: 0;
+  font-size: 11px;
+  color: #b45309;
+  line-height: 1.4;
 }
-.ext-row :deep(.ant-radio-wrapper) {
-  margin-inline-end: 0;
-  font-size: 12px;
-}
-@media (max-width: 960px) {
-  .ext-thead { display: none; }
-  .ext-row {
-    grid-template-columns: 1fr;
-    gap: 8px;
-    padding: 10px 12px;
+@media (max-width: 720px) {
+  .ext-followup-row {
+    flex-direction: column;
   }
-  .ext-col-reply::before,
-  .ext-col-reconcile::before {
-    display: block;
-    font-size: 11px;
-    font-weight: 600;
-    color: #6b7280;
-    margin-bottom: 4px;
+  .ext-followup-reconcile {
+    flex: 1 1 auto;
   }
-  .ext-col-reply::before { content: '回复结果'; }
-  .ext-col-reconcile::before { content: '是否和解'; }
 }
 
 .risk-row {

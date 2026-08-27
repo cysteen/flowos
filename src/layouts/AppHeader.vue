@@ -36,7 +36,7 @@ const logoUrl = DEFAULT_BRAND_LOGO_URL;
 const userSubtitle = computed(() => user.role.name);
 
 /**
- * 话务条是否显示 —— 签入与外呼是联系客户类动作，收口给二线技术顾问一侧。
+ * 话务条是否显示 —— 签入与外呼是联系客户类动作，收口给二线专员一侧。
  * 一线在系统外用呼叫中心自己的话务条；三线不接触客户；监控岗不办单。
  */
 const showCtiBar = computed(() => CTI_BAR_ROLES.includes(user.roleKey));
@@ -168,7 +168,7 @@ function switchTenant(tenantId: string) {
         <MenuFoldOutlined v-else :style="{ fontSize: '18px', color: '#6B7280' }" />
       </div>
 
-      <!-- 二线技术顾问 软电话(CTI) 状态条（替代原面包屑）。签入与外呼收口给二线一侧，判据见 CTI_BAR_ROLES -->
+      <!-- 二线专员 软电话(CTI) 状态条（替代原面包屑）。签入与外呼收口给二线一侧，判据见 CTI_BAR_ROLES -->
       <AgentCtiBar v-if="showCtiBar" />
 
       <div class="header-actions">

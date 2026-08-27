@@ -5,7 +5,7 @@ import { DownOutlined, PlusOutlined, WarningFilled, UserOutlined } from '@ant-de
 import { ROLE_GROUPS, DATA_SCOPE_OPTIONS, type RoleDetail } from '@/mock/rolePermission';
 
 const groups = ref(ROLE_GROUPS.map((g) => ({ ...g, expanded: true })));
-const selected = ref<RoleDetail>(ROLE_GROUPS[1].roles[3]); // 默认客服·二线技术顾问
+const selected = ref<RoleDetail>(ROLE_GROUPS[1].roles[3]); // 默认二线专员
 const roleCount = ROLE_GROUPS.reduce((n, g) => n + g.roles.length, 0);
 
 const ACTION_COLS = [

@@ -95,7 +95,7 @@ const flow = ref<FlowNode[]>([
   { id: 'n1', label: '开始', kind: 'start', role: '系统' },
   { id: 'n2', label: '一线受理', kind: 'task', role: '一线坐席' },
   { id: 'n3', label: '判定升级?', kind: 'gateway', role: '规则' },
-  { id: 'n4', label: '二线处理', kind: 'task', role: '二线技术顾问' },
+  { id: 'n4', label: '二线处理', kind: 'task', role: '二线专员' },
   { id: 'n5', label: '班长审核', kind: 'task', role: '班组长' },
   { id: 'n6', label: '结案', kind: 'end', role: '系统' },
 ]);

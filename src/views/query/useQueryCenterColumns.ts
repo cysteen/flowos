@@ -30,6 +30,17 @@ function normalizeOrder(order: string[]): string[] {
   for (const key of ALL_KEYS) {
     if (!seen.has(key)) merged.push(key);
   }
+  // 新增列默认插在 SLA 前（仅首次缺列时迁移，不覆盖用户已调整的顺序）
+  const missingTimeCols = ['createdAt', 'updatedAt'].filter((k) => !order.includes(k));
+  if (missingTimeCols.length > 0) {
+    for (const key of ['createdAt', 'updatedAt']) {
+      const idx = merged.indexOf(key);
+      if (idx >= 0) merged.splice(idx, 1);
+    }
+    const slaIdx = merged.indexOf('sla');
+    const insertAt = slaIdx >= 0 ? slaIdx : merged.length;
+    merged.splice(insertAt, 0, 'createdAt', 'updatedAt');
+  }
   return merged;
 }
 

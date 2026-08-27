@@ -1,4 +1,4 @@
-import type { Ticket } from './ticket';
+import { isEscalatedStatus, type Ticket } from './ticket';
 
 export type AiSuggestionKind = 'upgrade' | 'similar' | 'emotion';
 export type AiSuggestionFilter = 'all' | AiSuggestionKind;
@@ -41,8 +41,8 @@ export function isAiSuggestionScope(t: Ticket): boolean {
   if (t.tab !== 'mine' || t.archived) return false;
   return (
     t.nodeStatus === '处理中'
-    // 基线只有一个「已升级」状态：三线与产研两类目标都落它，扫描范围不按升级目标区分
-    || t.nodeStatus === '已升级'
+    // 依据基线 §1：升级拆成「已升级技术支持 / 已升级产研」两个子状态，扫描范围两个都收
+    || isEscalatedStatus(t.nodeStatus)
     || t.nodeStatus === '未认领'
     || t.nodeStatus === '待响应'
   );

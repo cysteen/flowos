@@ -19,7 +19,7 @@ export const STATUS_TONE: Record<string, string> = {
   正常: 'green', 启用: 'green', 已发布: 'green', 在职: 'green', 活跃: 'green',
   成功: 'green', 已通过: 'green', 已批准: 'green', 已结案: 'green', 已完成: 'green', 在线: 'green',
   // 橙：进行中/待办/过渡
-  草稿: 'orange', 待审核: 'orange', 待审批: 'orange', 待回访: 'orange', 试用: 'orange',
+  草稿: 'orange', 待审核: 'orange', 待审批: 'orange', 试用: 'orange',
   小休: 'orange', 处理中: 'orange', 审批中: 'orange',
   // 蓝：信息/运行
   运行中: 'blue', 已挂起: 'orange',

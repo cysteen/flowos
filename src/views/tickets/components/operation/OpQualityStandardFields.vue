@@ -37,7 +37,7 @@ function onStandardChange(v: string) {
   emit('update:isStandard', standard);
 }
 
-function onCat1Change(v: string | number | undefined) {
+function onCat1Change(v: string | number | string[] | undefined) {
   emit('update:issueCat1', String(v ?? ''));
   // 子类清空由父级在 @update:issue-cat1 中一并处理，避免连续 emit 用旧 form 覆盖 cat1
 }
@@ -64,7 +64,7 @@ function onCat1Change(v: string | number | undefined) {
           :class="{ 'ctrl-missing': !issueCat1 }"
           :value="issueCat1 || undefined"
           :options="l1Options"
-          placeholder="请选择（必填）"
+          placeholder="请选择或搜索"
           @update:value="onCat1Change"
         />
         <p v-if="!issueCat1" class="field-err">请选择不规范原因</p>
@@ -76,7 +76,7 @@ function onCat1Change(v: string | number | undefined) {
           :class="{ 'ctrl-missing': !issueCat2 }"
           :value="issueCat2 || undefined"
           :options="l2Options"
-          placeholder="请选择（必填）"
+          placeholder="请选择或搜索"
           @update:value="(v) => emit('update:issueCat2', String(v ?? ''))"
         />
         <p v-if="!issueCat2" class="field-err">请选择不规范分类</p>

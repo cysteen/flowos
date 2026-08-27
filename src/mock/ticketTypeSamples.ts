@@ -57,7 +57,7 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
       ],
       relatedTickets: [
         {
-          no: 'IFLYKF2026060110030011', title: '学习机 T20 账号登录咨询', status: '已完成',
+          no: 'IFLYZX-20260601-00001', title: '学习机 T20 账号登录咨询', status: '已完成',
           statusColor: '#10B981', type: '咨询', typeColor: C.咨询, typeBgColor: bg(C.咨询),
           createdAt: '06-01 10:03', builder: '李一线', demand: '客户咨询多设备登录同一账号是否冲突',
           processRecords: [{ who: '王坐席', when: '06-01 10:20', content: '已说明账号多端登录策略并推送帮助文档' }],
@@ -85,7 +85,7 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
       ],
       notifyRecords: [
         { id: 'n1', kind: 'transfer', title: '转办通知', receiver: '王坐席(处理人)', when: '2026-06-17 09:05:45', channel: '站内信 + i讯飞', status: '已读', content: '咨询工单已转办至您名下，请及时跟进解答。' },
-        { id: 'n2', kind: 'accepted', title: '工单受理', receiver: '李大海(客户)', when: '2026-06-17 09:05:30', channel: '短信 + 邮件', status: '已送达', content: '您咨询的问题已受理，工单号:IFLYKF2026061709050110，我们将尽快为您解答。' },
+        { id: 'n2', kind: 'accepted', title: '工单受理', receiver: '李大海(客户)', when: '2026-06-17 09:05:30', channel: '短信 + 邮件', status: '已送达', content: '您咨询的问题已受理，工单号:IFLYZX-20260617-00001，我们将尽快为您解答。' },
       ],
       surveyRecords: [
         { id: 'v1', title: '满意度调研', sentAt: '2026-06-17 10:00:25', evaluated: true, linkLabel: '查看问卷', conclusion: '是否解决: 已解决 | 是否满意: 满意' },
@@ -95,8 +95,8 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
         tickets: [
           // 售后历史单：channel='售后' 作来源标记，与客服单混排、独立成行计入总数（D10）
           { id: 'h0', no: 'AS-20260605-30412', title: '维修 · 扫地机器人 R2', status: '已完成', statusColor: '#10B981', type: '维修', typeColor: '#0EA5A4', typeBgColor: '#0EA5A41F', channel: '售后', date: '2026-06-05', summary: '滚刷卡死异响，网点上门更换滚刷组件，复测正常。', isProcessing: false, isClosed: true, isComplaint: false },
-          { id: 'h1', no: 'IFLYKF2026060110030011', title: '学习机 T20 账号登录咨询', status: '已关闭', statusColor: '#10B981', type: '咨询', typeColor: C.咨询, typeBgColor: bg(C.咨询), channel: '400呼入', date: '2026-06-01', summary: '咨询多设备登录策略，已说明并推送文档。', isProcessing: false, isClosed: true, isComplaint: false },
-          { id: 'h2', no: 'IFLYKF2026061709050110', title: '设备无法连接 WiFi 咨询', status: '处理中', statusColor: '#1A6FFF', type: '咨询', typeColor: C.咨询, typeBgColor: bg(C.咨询), channel: '电话', date: '2026-06-17', summary: '咨询 WiFi 连接与账号登录，远程指导中。', isProcessing: true, isClosed: false, isComplaint: false },
+          { id: 'h1', no: 'IFLYZX-20260601-00001', title: '学习机 T20 账号登录咨询', status: '已关闭', statusColor: '#10B981', type: '咨询', typeColor: C.咨询, typeBgColor: bg(C.咨询), channel: '400呼入', date: '2026-06-01', summary: '咨询多设备登录策略，已说明并推送文档。', isProcessing: false, isClosed: true, isComplaint: false },
+          { id: 'h2', no: 'IFLYZX-20260617-00001', title: '设备无法连接 WiFi 咨询', status: '处理中', statusColor: '#1A6FFF', type: '咨询', typeColor: C.咨询, typeBgColor: bg(C.咨询), channel: '电话', date: '2026-06-17', summary: '咨询 WiFi 连接与账号登录，远程指导中。', isProcessing: true, isClosed: false, isComplaint: false },
         ],
       },
     },
@@ -134,7 +134,7 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
       ],
       relatedTickets: [
         {
-          no: 'IFLYKF2026060810050022', title: '开放平台企业版套餐咨询', status: '已完成',
+          no: 'IFLYSJ-20260608-00001', title: '开放平台企业版套餐咨询', status: '已完成',
           statusColor: '#10B981', type: '商机', typeColor: C.商机, typeBgColor: bg(C.商机),
           createdAt: '06-08 10:05', builder: '李一线', demand: '客户咨询企业版套餐与并发额度',
           processRecords: [{ who: '王坐席', when: '06-08 11:00', content: '已发送套餐对比与报价单，客户评估中' }],
@@ -167,7 +167,7 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
       ],
       notifyRecords: [
         { id: 'n1', kind: 'transfer', title: '转办通知', receiver: '王坐席(商务)', when: '2026-06-17 11:02:50', channel: '站内信 + i讯飞', status: '已读', content: '商机工单已转办至您名下，请及时商务跟进。' },
-        { id: 'n2', kind: 'accepted', title: '工单受理', receiver: '赵敏(客户)', when: '2026-06-17 11:02:30', channel: '邮件', status: '已送达', content: '您的商务咨询已受理，工单号:IFLYKF2026061711020422，商务将尽快与您联系。' },
+        { id: 'n2', kind: 'accepted', title: '工单受理', receiver: '赵敏(客户)', when: '2026-06-17 11:02:30', channel: '邮件', status: '已送达', content: '您的商务咨询已受理，工单号:IFLYSJ-20260617-00002，商务将尽快与您联系。' },
       ],
       surveyRecords: [
         { id: 'v1', title: '转化跟进调研', sentAt: '2026-06-17 16:40:10', evaluated: false, linkLabel: '查看问卷', conclusion: '采购意向: 高 | 是否转化: 待跟进' },
@@ -175,8 +175,8 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
       customerHistory: {
         customerName: '赵敏', totalCount: 3, processingCount: 1, closedCount: 2, complaintCount: 0,
         tickets: [
-          { id: 'h1', no: 'IFLYKF2026060810050022', title: '开放平台企业版套餐咨询', status: '已关闭', statusColor: '#10B981', type: '商机', typeColor: C.商机, typeBgColor: bg(C.商机), channel: '邮件', date: '2026-06-08', summary: '咨询企业版套餐与并发额度，已发送报价。', isProcessing: false, isClosed: true, isComplaint: false },
-          { id: 'h2', no: 'IFLYKF2026061711020422', title: 'API 调用返回 429 限流扩容', status: '处理中', statusColor: '#1A6FFF', type: '商机', typeColor: C.商机, typeBgColor: bg(C.商机), channel: '邮件', date: '2026-06-17', summary: '企业版扩容采购意向，商务报价跟进中。', isProcessing: true, isClosed: false, isComplaint: false },
+          { id: 'h1', no: 'IFLYSJ-20260608-00001', title: '开放平台企业版套餐咨询', status: '已关闭', statusColor: '#10B981', type: '商机', typeColor: C.商机, typeBgColor: bg(C.商机), channel: '邮件', date: '2026-06-08', summary: '咨询企业版套餐与并发额度，已发送报价。', isProcessing: false, isClosed: true, isComplaint: false },
+          { id: 'h2', no: 'IFLYSJ-20260617-00002', title: 'API 调用返回 429 限流扩容', status: '处理中', statusColor: '#1A6FFF', type: '商机', typeColor: C.商机, typeBgColor: bg(C.商机), channel: '邮件', date: '2026-06-17', summary: '企业版扩容采购意向，商务报价跟进中。', isProcessing: true, isClosed: false, isComplaint: false },
         ],
       },
     },
@@ -212,7 +212,7 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
       ],
       relatedTickets: [
         {
-          no: 'IFLYKF2026060510080033', title: '智能门锁 App 推送建议', status: '已完成',
+          no: 'IFLYJY-20260605-00001', title: '智能门锁 App 推送建议', status: '已完成',
           statusColor: '#10B981', type: '建议', typeColor: C.建议, typeBgColor: bg(C.建议),
           createdAt: '06-05 10:08', builder: '李一线', demand: '建议开锁记录支持 App 实时推送',
           processRecords: [{ who: '王坐席', when: '06-06 09:30', content: '已采纳并纳入下个版本迭代计划' }],
@@ -241,7 +241,7 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
       ],
       notifyRecords: [
         { id: 'n1', kind: 'transfer', title: '转办通知', receiver: '王坐席(产品反馈)', when: '2026-06-17 14:20:50', channel: '站内信 + i讯飞', status: '已读', content: '建议工单已转办至您名下，请记录并转产品评估。' },
-        { id: 'n2', kind: 'accepted', title: '工单受理', receiver: '周杰(客户)', when: '2026-06-17 14:20:30', channel: '短信 + 邮件', status: '已送达', content: '您的建议已受理，工单号:IFLYKF2026061714200522，感谢您的反馈。' },
+        { id: 'n2', kind: 'accepted', title: '工单受理', receiver: '周杰(客户)', when: '2026-06-17 14:20:30', channel: '短信 + 邮件', status: '已送达', content: '您的建议已受理，工单号:IFLYJY-20260617-00003，感谢您的反馈。' },
       ],
       surveyRecords: [
         { id: 'v1', title: '建议采纳调研', sentAt: '2026-06-17 14:30:10', evaluated: true, linkLabel: '查看问卷', conclusion: '是否采纳: 转需求 | 客户满意: 满意' },
@@ -249,8 +249,8 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
       customerHistory: {
         customerName: '周杰', totalCount: 2, processingCount: 1, closedCount: 1, complaintCount: 0,
         tickets: [
-          { id: 'h1', no: 'IFLYKF2026060510080033', title: '智能门锁 App 推送建议', status: '已关闭', statusColor: '#10B981', type: '建议', typeColor: C.建议, typeBgColor: bg(C.建议), channel: '400呼入', date: '2026-06-05', summary: '建议开锁记录支持 App 推送，已采纳进迭代。', isProcessing: false, isClosed: true, isComplaint: false },
-          { id: 'h2', no: 'IFLYKF2026061714200522', title: '预约上门安装智能门锁建议', status: '处理中', statusColor: '#1A6FFF', type: '建议', typeColor: C.建议, typeBgColor: bg(C.建议), channel: '电话', date: '2026-06-17', summary: '建议增加临时密码分享功能，转产品评估。', isProcessing: true, isClosed: false, isComplaint: false },
+          { id: 'h1', no: 'IFLYJY-20260605-00001', title: '智能门锁 App 推送建议', status: '已关闭', statusColor: '#10B981', type: '建议', typeColor: C.建议, typeBgColor: bg(C.建议), channel: '400呼入', date: '2026-06-05', summary: '建议开锁记录支持 App 推送，已采纳进迭代。', isProcessing: false, isClosed: true, isComplaint: false },
+          { id: 'h2', no: 'IFLYJY-20260617-00003', title: '预约上门安装智能门锁建议', status: '处理中', statusColor: '#1A6FFF', type: '建议', typeColor: C.建议, typeBgColor: bg(C.建议), channel: '电话', date: '2026-06-17', summary: '建议增加临时密码分享功能，转产品评估。', isProcessing: true, isClosed: false, isComplaint: false },
         ],
       },
     },

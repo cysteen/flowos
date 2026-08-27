@@ -17,8 +17,6 @@ export type MineFilterFieldKey =
   | 'problemL1'
   | 'problemL2'
   | 'problemL3'
-  | 'resolveTimeRemark'
-  | 'slaState'
   | 'groupName';
 
 export interface MineFilterFieldDef {
@@ -50,8 +48,6 @@ export const MINE_FILTER_FIELD_DEFS: MineFilterFieldDef[] = [
   { key: 'problemL1', label: '问题一类' },
   { key: 'problemL2', label: '问题二类' },
   { key: 'problemL3', label: '问题三类' },
-  { key: 'resolveTimeRemark', label: '解决时间备注' },
-  { key: 'slaState', label: 'SLA 时效' },
   { key: 'groupName', label: '分组名称', poolOnly: true },
 ];
 

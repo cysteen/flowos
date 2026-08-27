@@ -14,7 +14,23 @@ export type TlAction =
   | 'dunning'
   | 'resolved'
   | 'praise';
-export type TlRole = '客户' | '一线坐席' | '二线技术顾问' | '班组长' | '系统';
+/**
+ * 处理履历上的角色徽章文案。取 0830 正式角色名（基线 §3.0 新旧名对照）：
+ * 旧名「二线专员」→「二线专员」、「班组长」→「二线班组长」、「三线技术支持」→「技术支持」。
+ * 「客户」「系统」不是角色，是履历里的两类非人/非本系统主体，保留。
+ */
+export type TlRole =
+  | '客户'
+  | '一线坐席'
+  | '二线专员'
+  | '技术支持'
+  | '二线班组长'
+  | '客诉专员'
+  | '投诉督导'
+  | '工单运营'
+  | '质检'
+  | '管理员'
+  | '系统';
 
 export interface AsrLine {
   speaker: '客户' | '坐席';
@@ -71,7 +87,7 @@ export interface RelatedTicketBrief {
   /** 工单类型：投诉 / 售后 / 咨询 … */
   type: string;
   typeColor?: string;
-  /** 当前状态：待受理 / 处理中 … */
+  /** 当前状态：未认领 / 待响应 / 处理中 …（完整 25 个子状态见 TicketStatus） */
   status: string;
   statusColor?: string;
   builder?: string;
@@ -94,8 +110,14 @@ export const CATEGORY_META: Record<TlCategory, { color: string; bg: string; labe
 export const ROLE_BADGE: Record<TlRole, string> = {
   客户: '#6B7280',
   一线坐席: '#2563EB',
-  二线技术顾问: '#7C3AED',
-  班组长: '#0D9488',
+  二线专员: '#7C3AED',
+  技术支持: '#4F46E5',
+  二线班组长: '#0D9488',
+  客诉专员: '#DC2626',
+  投诉督导: '#B45309',
+  工单运营: '#0369A1',
+  质检: '#6D28D9',
+  管理员: '#374151',
   系统: '#9CA3AF',
 };
 
