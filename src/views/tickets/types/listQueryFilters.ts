@@ -171,7 +171,7 @@ function matchStatus(t: Ticket, status: string): boolean {
   }
   if (status === 'returned') return !!t.hasReturnAction;
   if (status === 'transferIn') {
-    return t.ticketSource === '售后转入' || t.ticketSource === '跨组调剂';
+    return t.ticketSource === '售后系统' || t.ticketSource === '售后转入' || t.ticketSource === '跨组调剂';
   }
   if (status === 'escalated') {
     // 依据基线 §1：升级已拆成「已升级技术支持 / 已升级产研」两个子状态。

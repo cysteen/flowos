@@ -14,6 +14,7 @@ import {
   statusDisplayName,
   type TicketStatus,
 } from '@/views/tickets/types/ticket';
+import type { RiskLevel } from '@/config/risk';
 
 // ======================================================================
 // 模块 3 · 全维度运营拆解报表
@@ -134,14 +135,10 @@ export const QUALITY_METRICS: QualityMetric[] = [
 // 模块 2.3 · 风险风险词
 // ======================================================================
 
-export type RiskLevel = '高' | '中' | '低';
-
-/** 平台语义色 §2.3：高=危险 / 中=警告 / 低=中性 */
-export const RISK_LEVEL_STYLE: Record<RiskLevel, { color: string; bg: string }> = {
-  高: { color: '#EF4444', bg: '#EF444422' },
-  中: { color: '#F59E0B', bg: '#F59E0B22' },
-  低: { color: '#6B7280', bg: '#F3F4F6' },
-};
+// 等级刻度与配色的定义已上移到 @/config/risk（工单侧要用同一把刻度，
+// 而工单类型层不该反过来依赖运营监控的 mock）。此处原样再导出，既有引用方不必改 import。
+export { RISK_LEVEL_STYLE, RISK_LEVELS, riskLevelText } from '@/config/risk';
+export type { RiskLevel } from '@/config/risk';
 
 export interface RiskWord {
   id: string;
@@ -407,7 +404,7 @@ export const RISK_HITS: RiskHit[] = [
     // 🔴 角色维度的价值：这句"曝光"是坐席说的。
     // 纯词表照样命中并判高危（误报）；加了角色限定后不再进入视野。
     id: 'h7', ticketNo: 'IFLYZX-20260801-00001', title: '智能办公本笔迹延迟咨询',
-    word: '曝光', matchedWord: '媒体', level: '高', position: '沟通记录',
+    word: '曝光', matchedWord: '曝光', level: '高', position: '沟通记录',
     excerpt: '（坐席）如果对处理结果不满意，您也可以向媒体曝光或向监管部门反映，这是您的权利。',
     when: '2026-08-04 10:52', customer: '钱伟',
     groupId: 'cs-1', groupName: '受理一组', assignee: '王坐席',
@@ -438,7 +435,7 @@ export const RISK_HITS: RiskHit[] = [
   },
   {
     id: 'h9', ticketNo: 'IFLYZX-20260729-00001', title: '学习机屏幕自燃，孩子手部灼伤',
-    word: '曝光', matchedWord: '曝光', level: '高', position: '问题描述',
+    word: '曝光', matchedWord: '媒体', level: '高', position: '问题描述',
     excerpt: '孩子受伤了你们还拖，我明天就联系媒体曝光这件事。',
     when: '2026-08-04 08:55', customer: '郭欣',
     groupId: 'edu', groupName: '教育支持组', assignee: '孙坐席',
@@ -450,14 +447,14 @@ export const RISK_HITS: RiskHit[] = [
   },
   {
     id: 'h10', ticketNo: 'IFLYZX-20260726-00001', title: '翻译机固件升级后变砖',
-    word: '曝光', matchedWord: '媒体', level: '高', position: '沟通记录',
+    word: '曝光', matchedWord: '曝光', level: '高', position: '沟通记录',
     excerpt: '你们再拖，我就把聊天记录发到黑猫投诉上去曝光。',
     when: '2026-08-04 08:30', customer: '马涛',
     groupId: 'cs-2', groupName: '受理二组', assignee: '李坐席',
     receivers: ['李文萍', '值班经理'],
     speakerRole: '客户',
     impact: '一般', impactSource: '产品质量投诉 · 产品质量故障',
-    signal: '强', signalSource: '命中「曝光」（同义词「媒体」）',
+    signal: '强', signalSource: '命中「曝光」',
     track: '外部信号', legacyLevel: '高',
   },
   {
@@ -837,7 +834,9 @@ function enrichScannableTicket(raw: RawScannableTicket): ScannableTicket {
  */
 const RAW_SCANNABLE_TICKETS: RawScannableTicket[] = [
   { ticketNo: 'IFLYTS-20260610-00002', title: '无线音乐播放跳过歌曲异常', texts: { 沟通记录: '再不解决我就找媒体曝光，我本身就是干这行的。' }, when: '2026-08-04 14:21', customer: '张小凡', groupId: 'cs-1', groupName: '受理一组', assignee: '王坐席', ticketState: '在办', ticketType: '投诉', impact: '一般', impactSource: '产品功能/性能投诉 · 产品性能未达到顾客预期' },
-  { ticketNo: 'IFLYTS-20260711-00002', title: '外投·维修超期未解决客户要求赔偿', texts: { 问题描述: '客户要求赔偿并已向 12315 平台提交投诉。' }, when: '2026-08-04 13:58', customer: '吴强', groupId: 'hardware', groupName: '硬件缺陷组', assignee: '王坐席', ticketState: '在办', ticketType: '投诉', impact: '一般', impactSource: '流程规则投诉 · 售后维修方式不认可' },
+  // 问题描述同样是整段陈述。这一条的命中词落在开头，向前取不满 40 字就取到句首为止，
+  // 于是只有尾部该出省略号——省略号说的是"这一侧还有没显示的内容"，不是装饰。
+  { ticketNo: 'IFLYTS-20260711-00002', title: '外投·维修超期未解决客户要求赔偿', texts: { 问题描述: '客户要求赔偿并已向 12315 平台提交投诉，称机器送修已超过承诺时限半个多月，期间多次致电均未获得明确进度答复，现要求按三包规定退换或折价赔偿，并希望有人当面说明后续处理方案。' }, when: '2026-08-04 13:58', customer: '吴强', groupId: 'hardware', groupName: '硬件缺陷组', assignee: '王坐席', ticketState: '在办', ticketType: '投诉', impact: '一般', impactSource: '流程规则投诉 · 售后维修方式不认可' },
   { ticketNo: 'IFLYZX-20260804-00002', title: '学习机充电时机身发烫、电池鼓包', texts: { 问题描述: '孩子用的时候发现后盖鼓起来了，摸着烫手，我先停用了，麻烦帮忙看看怎么处理。' }, when: '2026-08-04 14:06', customer: '周敏', groupId: 'edu', groupName: '教育支持组', assignee: '孙坐席', ticketState: '在办', ticketType: '投诉', impact: '严重', impactSource: '产品质量投诉 · 安全事故' },
   { ticketNo: 'IFLYZX-20260803-00009', title: '耳机充电仓无法配对', texts: { 沟通记录: '不给我退一赔三我就不接受这个方案。' }, when: '2026-08-04 13:30', customer: '孙莉', groupId: 'cs-1', groupName: '受理一组', assignee: '王坐席', ticketState: '在办', ticketType: '投诉', impact: '一般', impactSource: '产品质量投诉 · 产品质量故障' },
   { ticketNo: 'IFLYZX-20260804-00001', title: '账号密码找回需本人到店办理，客户不认可', texts: { 沟通记录: '这规定太离谱了，你们不改我就打 12315。' }, when: '2026-08-04 12:35', customer: '李海', groupId: 'cs-1', groupName: '受理一组', assignee: '赵坐席', ticketState: '在办', ticketType: '投诉', impact: '轻微', impactSource: '流程规则投诉 · 对规定的联系方式不认可' },
@@ -846,7 +845,9 @@ const RAW_SCANNABLE_TICKETS: RawScannableTicket[] = [
   { ticketNo: 'IFLYTS-20260731-00001', title: '智能音箱返修超期未回寄', texts: { 催补记录: '再拖下去我就走法律途径起诉你们。' }, when: '2026-08-04 09:12', customer: '吴强', groupId: 'hardware', groupName: '硬件缺陷组', assignee: '陈坐席', ticketState: '在办', ticketType: '投诉', impact: '一般', impactSource: '流程规则投诉 · 售后维修方式不认可' },
 
   { ticketNo: 'IFLYZX-20260729-00001', title: '学习机屏幕自燃，孩子手部灼伤', texts: { 问题描述: '孩子在写作业时屏幕突然冒烟起火，手背烫伤了，已经去医院处理。我要求你们给个说法。', 催补记录: '客户追问处理进度，情绪激动。' }, when: '2026-07-29 16:40', customer: '郭欣', groupId: 'edu', groupName: '教育支持组', assignee: '孙坐席', ticketState: '在办', ticketType: '投诉', impact: '严重', impactSource: '产品质量投诉 · 安全事故' },
-  { ticketNo: 'IFLYZX-20260726-00001', title: '翻译机固件升级后变砖', texts: { 沟通记录: '你们再拖，我就把聊天记录发到黑猫投诉上去曝光。' }, when: '2026-07-26 10:15', customer: '马涛', groupId: 'cs-2', groupName: '受理二组', assignee: '李坐席', ticketState: '在办', ticketType: '投诉', impact: '一般', impactSource: '产品质量投诉 · 产品质量故障' },
+  // 沟通记录按真实形态存**整段多轮对话**，不是一句话。命中片段的取窗与高亮正是冲着它来的：
+  // 扫库取的是整个字段，整段直出会撑爆行，人还得自己在里面找命中词在哪。
+  { ticketNo: 'IFLYZX-20260726-00001', title: '翻译机固件升级后变砖', texts: { 沟通记录: '客户来电反馈翻译机升级固件后完全无法开机，已按指引长按电源键三十秒仍无任何反应。坐席说明需寄回检测，客户表示上周才寄修过一次，来回折腾半个多月，这次不接受再等。客户情绪激动，称你们再拖，我就把聊天记录发到黑猫投诉上去曝光。坐席致歉并承诺当日安排加急检测，回电时间约在明日上午。' }, when: '2026-07-26 10:15', customer: '马涛', groupId: 'cs-2', groupName: '受理二组', assignee: '李坐席', ticketState: '在办', ticketType: '投诉', impact: '一般', impactSource: '产品质量投诉 · 产品质量故障' },
   { ticketNo: 'IFLYZX-20260722-00001', title: '会议系统录音丢失，客户要求赔偿', texts: { 问题描述: '重要会议录音全没了，造成的损失你们赔得起吗，我准备起诉。', 问题原因: '录音服务节点异常，文件未成功落盘', 处理结果: '已恢复部分文件，客户仍不接受，称若本周无进展将继续起诉索赔' }, when: '2026-07-22 09:28', customer: '安徽某院', groupId: 'tech-1', groupName: '技术支持组', assignee: '周坐席', ticketState: '终态', ticketType: '投诉', impact: '一般', impactSource: '产品功能/性能投诉 · 产品性能未达到顾客预期' },
   { ticketNo: 'IFLYZX-20260718-00001', title: '医疗语音录入识别率低', texts: { 问题描述: '识别率太低影响出诊，孩子科室的病历全要重打。' }, when: '2026-07-18 15:02', customer: '合肥某医院', groupId: 'tech-1', groupName: '技术支持组', assignee: '周坐席', ticketState: '在办', ticketType: '投诉', impact: '一般', impactSource: '产品功能/性能投诉 · 产品性能未达到顾客预期' },
   { ticketNo: 'IFLYZX-20260715-00002', title: '学习机护眼模式咨询', texts: { 问题描述: '想问下孩子长期用会不会伤眼睛，有没有护眼设置。' }, when: '2026-07-15 11:20', customer: '徐岚', groupId: 'edu', groupName: '教育支持组', assignee: '孙坐席', ticketState: '终态', ticketType: '咨询', impact: '轻微', impactSource: '咨询类 · 无实质损失' },

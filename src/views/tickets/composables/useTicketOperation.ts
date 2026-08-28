@@ -17,6 +17,7 @@ import {
 } from '@/views/tickets/utils/ticketOverview';
 import {
   inferComplaintChannelSource,
+  normalizeComplaintType,
   resolveTicketSourceForList,
 } from '@/views/tickets/types/createTicket';
 import {
@@ -191,7 +192,7 @@ export function useTicketOperation() {
         base.source = inferredSource;
         if (inferredSource === '外投渠道') base.isExternalAppeal = true;
       }
-      if (t.complaintType) base.complaint.complaintType = t.complaintType;
+      if (t.complaintType) base.complaint.complaintType = normalizeComplaintType(t.complaintType);
       // D3 外投演示单：投诉渠道记录 + 分类与 PRD 附录一致，便于验「补充投诉信息」全字段
       if (t.no === 'IFLYTS-20260817-00001') {
         base.complaint.categories = [

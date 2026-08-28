@@ -1,27 +1,60 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { ContainerOutlined, CheckCircleOutlined, WarningOutlined } from '@ant-design/icons-vue';
 import OpCollapsibleSection from '../OpCollapsibleSection.vue';
 import OpTextareaAttach from '../shared/OpTextareaAttach.vue';
+import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue';
 import type { RiskMonitorDraft } from '@/views/tickets/types/operationTabs';
+import {
+  RISK_FLAG_OPTIONS,
+  RISK_LEVEL_SELECT_OPTIONS,
+  type RiskFlag,
+  type RiskLevel,
+} from '@/views/tickets/types/operation';
 
 const props = defineProps<{
   draft: RiskMonitorDraft;
   /**
-   * 本 Tab 对当前角色只读。矩阵 #43：⑥ ⑦ ⑨ 可用（**打标**是它们的职责）、
-   * ② ③ ④ ⑤ ⑧ 只读（处理人侧不打标）、① 无（整个 Tab 不渲染）。
+   * 本 Tab 对当前角色只读。矩阵 #43 的 0830 口径，判据表在 operation.ts
+   * （TAB_ROLE_DENY.risk 管"看不看得到"、TAB_ROLE_WRITABLE.risk 管"能不能改"）：
+   * - **可用（打标是它们的职责）**：⑤ 客诉专员、⑦ 投诉督导、⑨ 管理员 —— 与 RISK_TAG_ROLES 同一批人；
+   * - **只读（处理人侧不打标）**：② 二线专员、③ 技术支持、④ 二线班组长、⑧ 质检；
+   * - **无（整个 Tab 不渲染）**：① 一线坐席、⑥ 工单运营 —— 0830 起风险监控整块不给工单运营，
+   *   它连风险词命中页都看不到，工单页的风险 Tab 自然也不该出。
    */
   readonly?: boolean;
 }>();
 const emit = defineEmits<{ 'update:draft': [draft: RiskMonitorDraft] }>();
 
 const expanded = ref({ report: true, conclusion: true, risk: true });
+// 等级选项不在模板里手写：与风险监控页、处理表单同一把刻度（存 高/中/低，显示 高危/中危/低危）
+const riskLevelOptions = RISK_LEVEL_SELECT_OPTIONS;
 
 /** 单一写出口：只读态在此统一拦一道，Tab 内所有字段的回写都经过这里 */
 function update(partial: Partial<RiskMonitorDraft>) {
   if (props.readonly) return;
   emit('update:draft', { ...props.draft, ...partial });
 }
+
+/** 与工单处理「是否有风险」面板同一套显隐：有风险才留等级，疑似/有风险才留描述 */
+function onRiskFlagChange(flag: RiskFlag) {
+  const needsDesc = flag === '有风险' || flag === '疑似风险';
+  update({
+    riskFlag: flag,
+    riskLevel: flag === '有风险' ? props.draft.riskLevel : '',
+    riskDesc: needsDesc ? props.draft.riskDesc : '',
+    riskDescAttachments: needsDesc ? props.draft.riskDescAttachments : [],
+  });
+}
+
+const missRiskLevel = computed(
+  () => props.draft.riskFlag === '有风险' && !props.draft.riskLevel,
+);
+const missRiskDesc = computed(
+  () =>
+    (props.draft.riskFlag === '疑似风险' || props.draft.riskFlag === '有风险')
+    && !props.draft.riskDesc.trim(),
+);
 
 /**
  * a-select 的 update:value 按 antd 声明给出 SelectValue（含 LabeledValue / 数组）。
@@ -30,6 +63,11 @@ function update(partial: Partial<RiskMonitorDraft>) {
  */
 function selectedText(v: unknown): string {
   return v == null ? '' : String(v);
+}
+
+/** 等级下拉的取值只可能是刻度里的三个字面量之一（单选、未开 labelInValue），故按 RiskLevel 收窄 */
+function onRiskLevelChange(v: unknown) {
+  update({ riskLevel: selectedText(v) as RiskLevel | '' });
 }
 </script>
 
@@ -138,51 +176,44 @@ function selectedText(v: unknown): string {
       :expanded="expanded.risk"
       @toggle="expanded.risk = !expanded.risk"
     >
-      <div class="field-row">
-        <div class="inline-field">
-          <label class="lbl lbl-72">风险标记</label>
-          <a-select
+      <div class="chip-panel panel-neutral">
+        <div class="field inline-row risk-row">
+          <label>是否有风险</label>
+          <a-radio-group
             :value="draft.riskFlag || undefined"
-            class="form-select"
-            placeholder="请选择"
-            allow-clear
-            @update:value="(v) => update({
-              riskFlag: String(v ?? ''),
-              ...(v !== '有风险' ? { riskLevel: '' } : {}),
-            })"
+            class="radio-row"
+            @update:value="(v: RiskFlag) => onRiskFlagChange(v)"
           >
-            <a-select-option value="无风险">无风险</a-select-option>
-            <a-select-option value="疑似风险">疑似风险</a-select-option>
-            <a-select-option value="有风险">有风险</a-select-option>
-          </a-select>
+            <a-radio v-for="opt in RISK_FLAG_OPTIONS" :key="opt" :value="opt">{{ opt }}</a-radio>
+          </a-radio-group>
+          <template v-if="draft.riskFlag === '有风险'">
+            <label class="field-label-sm risk-level-label"><span class="req">*</span>风险等级</label>
+            <FormSelect
+              class="risk-level-select"
+              :class="{ 'ctrl-missing': missRiskLevel }"
+              :value="draft.riskLevel || undefined"
+              :options="riskLevelOptions"
+              placeholder="请选择或搜索"
+              @update:value="onRiskLevelChange"
+            />
+          </template>
         </div>
-        <div class="inline-field">
-          <label class="lbl lbl-72">风险等级</label>
-          <a-select
-            :value="draft.riskLevel || undefined"
-            class="form-select"
-            placeholder="请选择"
-            allow-clear
-            :disabled="draft.riskFlag !== '有风险'"
-            @update:value="(v) => update({ riskLevel: String(v ?? '') })"
-          >
-            <a-select-option value="低">低</a-select-option>
-            <a-select-option value="中">中</a-select-option>
-            <a-select-option value="高">高</a-select-option>
-          </a-select>
+        <p v-if="missRiskLevel" class="field-err">请选择风险等级</p>
+        <div
+          v-if="draft.riskFlag === '疑似风险' || draft.riskFlag === '有风险'"
+          class="field"
+          :class="{ 'is-missing': missRiskDesc }"
+        >
+          <label><span class="req">*</span>风险描述</label>
+          <a-textarea
+            :value="draft.riskDesc"
+            :rows="3"
+            :status="missRiskDesc ? 'error' : undefined"
+            placeholder="描述风险点、影响范围与建议处置…（必填）"
+            @update:value="(v: string) => update({ riskDesc: v ?? '' })"
+          />
+          <p v-if="missRiskDesc" class="field-err">请填写风险描述</p>
         </div>
-      </div>
-      <div class="stack-field">
-        <label class="lbl">风险描述</label>
-        <OpTextareaAttach
-          :model-value="draft.riskDesc"
-          :attachments="draft.riskDescAttachments"
-          :min-input-height="48"
-          :readonly="readonly"
-          placeholder="描述风险点、影响范围与建议处置…"
-          @update:model-value="(v) => update({ riskDesc: v })"
-          @update:attachments="(v) => update({ riskDescAttachments: v })"
-        />
       </div>
     </OpCollapsibleSection>
   </div>
@@ -228,5 +259,54 @@ function selectedText(v: unknown): string {
 .form-select.ant-select-focused :deep(.ant-select-selector) {
   border-color: #e5e7eb !important;
   box-shadow: none !important;
+}
+
+.chip-panel { display: flex; flex-direction: column; gap: 12px; }
+.panel-neutral {
+  background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px;
+}
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field label { font-size: 12px; font-weight: 600; color: #374151; }
+.field-label-sm { font-size: 11px; font-weight: 500; color: #6b7280; }
+.inline-row { flex-direction: row; align-items: center; gap: 12px; }
+.radio-row { display: flex; gap: 14px; font-size: 12px; }
+.chip-panel :deep(.ant-radio-wrapper) { white-space: nowrap; }
+.req {
+  color: #ef4444;
+  margin-right: 2px;
+  font-weight: 600;
+}
+.field-err {
+  margin: 0;
+  font-size: 11px;
+  color: #ef4444;
+  line-height: 1.3;
+}
+.field.is-missing label { color: #b91c1c; }
+.ctrl-missing :deep(.ant-select-selector) {
+  border-color: #fca5a5 !important;
+}
+.risk-row {
+  flex-wrap: wrap;
+  align-items: center;
+}
+.risk-level-label {
+  margin-left: 4px;
+  flex: none;
+  white-space: nowrap;
+}
+.risk-level-select {
+  width: 140px;
+  flex: none;
+}
+.risk-level-select :deep(.ant-select-selector) {
+  height: 28px;
+  min-height: 28px;
+  font-size: 12px;
+}
+.risk-level-select :deep(.ant-select-selection-item),
+.risk-level-select :deep(.ant-select-selection-placeholder) {
+  font-size: 12px;
+  line-height: 26px;
 }
 </style>

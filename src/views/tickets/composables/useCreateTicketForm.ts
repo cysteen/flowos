@@ -12,15 +12,17 @@ import {
   buildAutoTitle,
   mapChannelToSource,
   mapFormTypeToTicketType,
+  normalizeComplaintType,
+  normalizeTicketSource,
 } from '@/views/tickets/types/createTicket';
 
 function defaultForm(): CreateTicketFormState {
   return {
-    businessType: '翻录',
+    businessType: '学习机',
     ticketType: '投诉',
     // 默认「正常流程」：多数单要进流程办理；直接结案是坐席当场答完才选的少数情形
     closureMode: '正常流程',
-    ticketSource: '热线电话',
+    ticketSource: '电话',
     customerQuery: '',
     customer: { ...MOCK_CUSTOMER },
     showReporter: false,
@@ -37,7 +39,7 @@ function defaultForm(): CreateTicketFormState {
     title: '',
     titleManual: false,
     expectTime: '今日 18:00',
-    complaintType: '服务投诉',
+    complaintType: '投诉',
     complaintPlatforms: [{ platform: '', complaintNo: '' }],
     businessLine: '学习机业务线',
     priorFeedback: '是-400',
@@ -132,7 +134,11 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   function applyPrefill(p: CreateTicketPrefill) {
     reset();
     form.ticketType = p.formTicketType ?? (p.mode === 'child' ? '咨询' : '投诉');
-    form.ticketSource = p.ticketSource ?? mapChannelToSource(p.channel);
+    form.ticketSource = (
+      p.ticketSource
+        ? normalizeTicketSource(p.ticketSource)
+        : mapChannelToSource(p.channel)
+    ) as CreateTicketFormState['ticketSource'];
     form.customerQuery = p.customerName
       ? `${p.customerName}${p.customerPhone ? ` · ${p.customerPhone}` : ''}`
       : '';
@@ -163,7 +169,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     }
     if (p.complaintL1) form.complaintL1 = p.complaintL1;
     if (p.complaintL2) form.complaintL2 = p.complaintL2;
-    if (p.complaintType) form.complaintType = p.complaintType;
+    if (p.complaintType) form.complaintType = normalizeComplaintType(p.complaintType);
     // 预填的平台/编号落到第一组
     if (p.complaintPlatform || p.complaintNo) {
       form.complaintPlatforms = [{

@@ -28,6 +28,7 @@ import { useTicketLiveNotify } from './composables/useTicketLiveNotify';
 import { formatTicketRecordWho, MOCK_FIRST_LINE_AGENTS } from './utils/ticketRecordWho';
 import { mergeDraftIntoLatestHandling } from './utils/ticketOverview';
 import { TICKETS } from '@/mock/tickets';
+import { useRiskTagStore } from '@/stores/riskTags';
 import { pullbackOnCsEvent, headerActionsByRole, type TicketStatus } from './types/ticket';
 import { buildChildTicketPrefill, buildReopenTicketPrefill } from './composables/childTicketPrefill';
 import {
@@ -94,6 +95,54 @@ watch(
   ([no, title, detailNo]) => {
     if (!no) return;
     tabsStore.updateTitle(`/tickets/${no}`, resolveTicketTabTitle(no, title, detailNo));
+  },
+  { immediate: true },
+);
+
+// ---- 风险监控打标 → 工单风险字段（回传） ----
+//
+// 【回传什么】只回传**工单级风险等级**（max(已核实且成立的命中等级)，只升不降），
+// 以及由核实结论**推导**出的「是否有风险」。
+// 「命中判定（成立/误报）」**不回传**：它判的是"这条规则这次命中得准不准"，喂的是规则准确率；
+// 写进工单会让坐席把「误报」读成"这单没风险"，而误报的真正结论是"规则捞错了"，
+// 这单危不危险监控根本没说。
+//
+// 【写入优先级】工单侧优先，监控只填空。判"空"的口径是**坐席从没碰过这个字段**（`''`），
+// 不是"界面上看着像无风险"——把明确选过的「无风险」也当成空，等于监控可以推翻坐席的判断；
+// 反过来把没碰过的空当成已填，监控就永远写不进去，这个功能等于没做。
+const riskTags = useRiskTagStore();
+const riskMonitorVerify = computed(() => riskTags.ticketVerificationOf(ticketNo.value));
+/**
+ * 回传上次写进表单的值。有它才分得清"这个『疑似风险』是坐席填的还是回传自己填的"——
+ * 只认空串的话，回传第一次填完就再也改不了自己写的那个值：
+ * 命中从「待核实」被核实成「成立」时，本该从疑似风险升到有风险，却被自己上一次的写入挡住。
+ */
+const riskWriteBack = ref<{ ticketNo: string; flag?: ProcessFormDraft['riskFlag']; level?: ProcessFormDraft['riskLevel'] }>({ ticketNo: '' });
+watch(
+  // 监听结论本身而不是只在挂载时跑一次：工作区里工单页与风险监控页是两个常驻页签，
+  // 在监控页打完标切回来，这一单的结论已经变了，只在挂载时读会停在旧结论上。
+  riskMonitorVerify,
+  (v) => {
+    if (!v) return;
+    const f = form.value;
+    const mem = riskWriteBack.value.ticketNo === v.ticketNo ? riskWriteBack.value : { ticketNo: v.ticketNo };
+    const patch: Partial<ProcessFormDraft> = {};
+    // 坐席没碰过（空串），或者字段里躺着的正是回传上次写的值 → 可写；坐席一改就撒手
+    if (v.flag && (f.riskFlag === '' || f.riskFlag === mem.flag)) patch.riskFlag = v.flag;
+    // 全部误报时 flag 为 null —— 保持工单原值不动，误报不是"这单没风险"
+    const nextFlag = patch.riskFlag ?? f.riskFlag;
+    // 等级只在「有风险」下才写：坐席已判成无风险 / 疑似风险时，等级字段在面板上根本不渲染，
+    // 往里塞一个值就成了谁也看不见、谁也改不掉的脏数据。监控的等级这时走只读提示行呈现。
+    if (v.grade && nextFlag === '有风险' && (!f.riskLevel || f.riskLevel === mem.level)) {
+      patch.riskLevel = v.grade;
+    }
+    riskWriteBack.value = {
+      ticketNo: v.ticketNo,
+      flag: patch.riskFlag ?? mem.flag,
+      level: patch.riskLevel ?? mem.level,
+    };
+    if (!Object.keys(patch).length) return;
+    form.value = { ...f, ...patch };
   },
   { immediate: true },
 );
@@ -999,10 +1048,6 @@ function onHeaderAction(name: string) {
   }
 }
 
-function copyNo() {
-  message.success('工单号已复制');
-}
-
 function updateForm(next: ProcessFormDraft) {
   form.value = next;
 }
@@ -1051,7 +1096,6 @@ watch(
       :can-cancel-ticket="canCancelTicket"
       :customer-entry-locked="customerEntryLocked"
       :superseded-by="supersededBy"
-      @copy-no="copyNo"
       @action="onHeaderAction"
       @open-relation="openRelation"
       @open-superseded="supersededBy && openRelation(supersededBy)"
@@ -1078,6 +1122,7 @@ watch(
         <OpProcessTabs
           ref="processTabsRef"
           :detail="d"
+          :ticket-no="ticketNo"
           :tab-data="tabData"
           :form="form"
           :timeline="timeline"

@@ -1,7 +1,7 @@
 import type { TlRole, TimelineEntry, TimelineFieldChange } from '@/views/tickets/types/ticketDetail';
 import type { TicketDetailMeta, FeishuRecord, LinkedAftersale } from '@/mock/ticketDetail';
 import type { RoleKey } from '@/config/roles';
-import { AFTERSALE_INBOUND_SOURCE } from '@/views/tickets/types/createTicket';
+import { AFTERSALE_INBOUND_SOURCE, normalizeTicketSource } from '@/views/tickets/types/createTicket';
 // 终态判定单一实现：与头部按钮、只读锁同源，避免两处各写一份正则再漂
 import { isTicketTerminated } from './complaintEscalation';
 
@@ -187,7 +187,7 @@ export function isAftersaleSettled(status: string): boolean {
  * 再建一张就会产生一张与原售后单无法建联的孤单（同 D12 的理由）。
  */
 export function isAftersaleInbound(detail: { source?: string }): boolean {
-  return detail.source === AFTERSALE_INBOUND_SOURCE;
+  return normalizeTicketSource(detail.source) === AFTERSALE_INBOUND_SOURCE;
 }
 
 /**

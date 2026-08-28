@@ -196,7 +196,7 @@ export function matchMineQuery(t: Ticket, q: MineQueryFilter): boolean {
   if (q.businessType && t.businessType !== q.businessType) return false;
   if (q.ticketType && t.type !== q.ticketType) return false;
   if (q.ticketSource) {
-    const src = t.ticketSource ?? (t.channel === '电话' ? '热线电话' : t.channel);
+    const src = t.ticketSource ?? (t.channel === '电话' ? '电话' : t.channel);
     if (src !== q.ticketSource) return false;
   }
   if (q.problemL1 && t.problemL1 !== q.problemL1) return false;

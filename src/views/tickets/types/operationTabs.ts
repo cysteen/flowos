@@ -1,5 +1,7 @@
 /** Tab②~⑧ 展示数据类型 */
 
+import type { RiskFlag, RiskLevel } from '@/views/tickets/types/operation';
+
 export interface TechProcessDraft {
   problemCause: string;
   processResult: string;
@@ -16,8 +18,10 @@ export interface RiskMonitorDraft {
   processConclusion: string;
   processReply: string;
   processReplyAttachments: string[];
-  riskFlag: string;
-  riskLevel: string;
+  /** 风险标记：与处理表单同一组取值（RISK_FLAG_OPTIONS），不再各写一份 */
+  riskFlag: RiskFlag | '';
+  /** 风险等级：与风险监控同一把刻度（存 高/中/低，界面显示 高危/中危/低危） */
+  riskLevel: RiskLevel | '';
   riskDesc: string;
   riskDescAttachments: string[];
 }

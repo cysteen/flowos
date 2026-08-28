@@ -35,20 +35,19 @@ export const MINE_FILTER_FIELD_DEFS: MineFilterFieldDef[] = [
   { key: 'phone', label: '手机号', fixed: true },
   { key: 'sn', label: '设备 SN', fixed: true },
   { key: 'priority', label: '优先级', fixed: true },
-  { key: 'productCategory', label: '产品分类', fixed: true },
-  { key: 'productName', label: '产品名称', fixed: true },
-  { key: 'timePreset', label: '创建时间', fixed: true },
-  { key: 'nodeStatus', label: '当前节点', fixed: true },
-  { key: 'assignee', label: '处理人', fixed: true },
-  // 以下对应列设置中可选项，默认隐藏，经「+ 筛选」加入筛选条
-  { key: 'customer', label: '客户' },
   { key: 'businessType', label: '业务分类' },
   { key: 'ticketType', label: '工单类型' },
+  { key: 'productCategory', label: '产品分类', fixed: true },
+  { key: 'productName', label: '产品名称', fixed: true },
+  { key: 'nodeStatus', label: '当前状态', fixed: true },
+  { key: 'assignee', label: '处理人', fixed: true },
+  { key: 'customer', label: '客户名称' },
   { key: 'ticketSource', label: '工单来源' },
   { key: 'problemL1', label: '问题一类' },
   { key: 'problemL2', label: '问题二类' },
   { key: 'problemL3', label: '问题三类' },
   { key: 'groupName', label: '分组名称', poolOnly: true },
+  { key: 'timePreset', label: '创建时间', fixed: true },
 ];
 
 const ALL_KEYS = MINE_FILTER_FIELD_DEFS.map((f) => f.key);

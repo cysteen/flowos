@@ -42,6 +42,8 @@ const props = defineProps<{
   }[];
   /** 工单来源（内投/外投渠道时展示投诉渠道 chip） */
   ticketSource?: string;
+  /** 当前工单号：风险 chip 面板据此回显风险监控侧对本单的核实结论 */
+  ticketNo?: string;
   /**
    * 「工单处理」**这个 Tab** 对当前角色只读（矩阵 #41：① ⑦ ⑧ 只读、⑥ 条件可用暂按不可写）。
    *
@@ -163,7 +165,8 @@ function isChipFilled(key: SupplementChip): boolean {
     case 'risk': {
       if (f.riskFlag === '有风险') return !!(f.riskLevel && f.riskDescription.trim());
       if (f.riskFlag === '疑似风险') return !!f.riskDescription.trim();
-      return true;
+      // 空 ＝ 还没判断过（面板上一个选项都不选中），与明确选「无风险」不是一回事
+      return !!f.riskFlag;
     }
     case 'appointment': return deriveAppointmentNeeded(f.appointmentRecords) && isAppointmentFilled(f.appointmentRecords);
     case 'quality': return f.qualityIsStandard || !!(f.qualityIssueCat1 && f.qualityIssueCat2);
@@ -377,6 +380,7 @@ function chipActiveClass(key: SupplementChip): string {
         :complaint-platforms="complaintPlatforms"
         :show-external="showComplaintChannel"
         :readonly="readonly"
+        :ticket-no="ticketNo"
         @update:form="emit('update:form', $event)"
       />
     </OpCollapsibleSection>

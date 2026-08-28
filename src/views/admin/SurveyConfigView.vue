@@ -6,7 +6,7 @@ import {
   EditOutlined, FilterOutlined, SendOutlined,
 } from '@ant-design/icons-vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
-import { CREATE_TICKET_TYPES } from '@/views/tickets/types/createTicket';
+import { BUSINESS_TYPES, CREATE_TICKET_TYPES, TICKET_SOURCE_OPTIONS } from '@/views/tickets/types/createTicket';
 import { PRODUCT_CATEGORIES } from '@/views/tickets/types/mineQuery';
 import dayjs, { type Dayjs } from 'dayjs';
 
@@ -36,8 +36,8 @@ interface Strategy {
 const TICKET_TYPE_OPTS = [...CREATE_TICKET_TYPES, '表扬'];                  // 投诉/建议/商机/咨询/表扬
 const CALL_NATURE_OPTS = ['无', '无声通话', '非我司产品', '重复来电 - 不同问题', '重复来电 - 同一问题', '骚扰用户 - 纯骚扰', '骚扰用户 - 业务骚扰']; // 小结·话务性质
 const PROD_CAT_OPTS = [...PRODUCT_CATEGORIES, '综合类问题'];                // 产品分类
-const BIZ_TYPE_OPTS = ['教育', '听见', '法院', '医疗', '其他', '智能硬件', '无线音乐', '开放平台']; // 业务分类
-const SOURCE_OPTS = ['热线电话', 'IM在线', '内投渠道', '外投渠道', '客户服务小程序', '学习机渠道']; // 工单来源
+const BIZ_TYPE_OPTS = [...BUSINESS_TYPES]; // 业务分类，与建单弹窗同源
+const SOURCE_OPTS = [...TICKET_SOURCE_OPTIONS]; // 工单来源，与建单弹窗同源
 const TAG_OPTS = ['二次下送'];                                             // 工单标记
 
 const cur = reactive<Strategy>({

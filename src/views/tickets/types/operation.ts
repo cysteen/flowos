@@ -1,6 +1,7 @@
 /** 工单操作页 · 处理 Tab 与侧栏展示类型 */
 
 import type { RoleKey } from '@/config/roles';
+import { RISK_LEVELS, RISK_LEVEL_SELECT_OPTIONS, type RiskLevel } from '@/config/risk';
 
 export interface ContactItem {
   type: 'phone' | 'email';
@@ -16,7 +17,7 @@ export interface AgentInfo {
 export interface ComplaintInfo {
   /** 投诉分类：**成对多组**——一类+二类为一组，一次投诉可命中多个问题（与升级弹窗同结构）。 */
   categories: { cat1: string; cat2: string }[];
-  /** 投诉类型：建单页独立可选字段（服务投诉/产品质量/物流问题/其他） */
+  /** 投诉类型：建单页独立可选字段（投诉/举报/信访件/督办件/监测线索/监管同步/其他） */
   complaintType: string;
   /**
    * 投诉渠道记录：**一平台一组三项**——平台 + 投诉编号 + 投诉内容（830 由两项扩为三项）。
@@ -167,10 +168,15 @@ export interface ProcessFormDraft {
   complaintChannelReply: string;
   /** 投诉渠道 · 是否和解（多平台共用一份） */
   complaintChannelReconcile: '' | '是' | '否';
-  riskFlag: string;
-  /** @deprecated 兼容旧逻辑；以 riskFlag === '有风险' 为准 */
-  riskHasRisk: boolean;
-  riskLevel: string;
+  /**
+   * 是否有风险。`''` ＝ **坐席从没碰过这个字段**，与明确选了「无风险」是两回事——
+   * 风险监控的核实结论只填空，不覆盖坐席已表过的态，判据就是这个空串。
+   * 面板上 `''` 一律不选中任何一项，不给它兜底显示成「无风险」：
+   * 显示成已选、存的却是空，人和代码会对同一个状态得出两种结论。
+   */
+  riskFlag: RiskFlag | '';
+  /** 风险等级。与风险监控同一把刻度（存 高/中/低，界面显示 高危/中危/低危） */
+  riskLevel: RiskLevel | '';
   riskDescription: string;
   riskDescriptionAttachments: string[];
   appointmentNeeded: boolean;
@@ -204,7 +210,7 @@ export const PROCESS_TABS = [
   { key: 'process', label: '工单处理' },
   { key: 'feishu', label: '产研反馈' },
   { key: 'tech', label: '技术支持处理' },
-  { key: 'risk', label: '风险监控' },
+  { key: 'risk', label: '风险报备' },
   { key: 'history', label: '处理履历' },
   { key: 'appointment', label: '预约' },
   { key: 'related', label: '关联/补充/催单' },
@@ -499,8 +505,17 @@ export const BACKEND_PUSH_OPTIONS = [
 export const RISK_FLAG_OPTIONS = ['无风险', '疑似风险', '有风险'] as const;
 export type RiskFlag = (typeof RISK_FLAG_OPTIONS)[number];
 
-/** 风险等级（仅「有风险」可选） */
-export const RISK_LEVEL_OPTIONS = ['低风险', '中风险', '高风险'] as const;
+/**
+ * 风险等级（仅「有风险」可选）。
+ * **不在这里另立一份字面量**：这把刻度与风险监控页、词表预设等级、PRD 的工单级等级
+ * 是同一把——各存各的（此前工单侧存的是「低风险/中风险/高风险」）会让监控判出来的
+ * 「高」在工单页对不上任何一个选项，回传就无从落地。取值与展示口一律走 @/config/risk。
+ */
+/** 存储值（高/中/低），由重到轻 */
+export const RISK_LEVEL_OPTIONS = RISK_LEVELS;
+/** 下拉/单选直接用这个：value 存 `高`，label 显示「高危」，各页面不要再自己拼 label */
+export { RISK_LEVEL_SELECT_OPTIONS };
+export type { RiskLevel };
 
 /** 客户全景宫格：与当前工单类型对齐的统计标签（投诉/建议/商机/咨询 → ××单） */
 const SAME_TYPE_STAT_LABEL: Record<string, string> = {

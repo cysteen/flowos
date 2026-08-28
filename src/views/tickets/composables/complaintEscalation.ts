@@ -1,7 +1,7 @@
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import { makeTicketNo } from '@/constants/ticketNo';
 import type { Channel, CreateTicketPrefill, Priority, Ticket } from '@/views/tickets/types/ticket';
-import { AFTERSALE_INBOUND_SOURCE, CUSTOM_PLATFORM_OPTION } from '@/views/tickets/types/createTicket';
+import { AFTERSALE_INBOUND_SOURCE, CUSTOM_PLATFORM_OPTION, normalizeTicketSource } from '@/views/tickets/types/createTicket';
 
 /**
  * 升级投诉（文档名「关联投诉」）判定逻辑 —— 《【815】关联投诉 PRD》§3 升级规则。
@@ -125,7 +125,7 @@ export function buildEscalateVerdict(detail: TicketDetailMeta, roleKey: string):
   const frontline = isFrontlineActor(roleKey);
 
   // 门禁①：售后转入工单 → 一票否决（判据＝工单来源，0801 定）
-  if (detail.source === AFTERSALE_INBOUND_SOURCE) {
+  if (normalizeTicketSource(detail.source) === AFTERSALE_INBOUND_SOURCE) {
     return {
       tier, tierLabel, kind: null, entryEnabled: false,
       entryTip: AFTERSALE_INBOUND_TIP, headline: AFTERSALE_INBOUND_TIP,

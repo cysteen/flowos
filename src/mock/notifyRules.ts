@@ -61,9 +61,20 @@ export interface EventField {
 /** 工单类型（含表扬，表扬不建单但用于抑制判定） */
 export const DICT_TICKET_TYPE = ['投诉', '建议', '商机', '咨询', '表扬'] as const;
 /** 工单来源 */
-export const DICT_SOURCE = ['热线电话', 'IM在线', '内投渠道', '外投渠道', '客户服务小程序', '学习机渠道'] as const;
+export const DICT_SOURCE = ['电话', 'IM', '内投渠道', '外投渠道', '客户服务小程序', '售后系统'] as const;
 /** 业务分类 */
-export const DICT_BIZ_TYPE = ['教育', '听见', '法院', '医疗', '其他', '智能硬件', '无线音乐', '开放平台'] as const;
+export const DICT_BIZ_TYPE = [
+  '无线音乐',
+  '智能硬件',
+  '教育',
+  '学习机',
+  '听见',
+  '合肥窗启',
+  '医疗',
+  '开放平台',
+  '政法',
+  '其他',
+] as const;
 /** 取消原因（同 views/tickets/types/operationTabs.ts · CANCEL_REASON_OPTIONS） */
 export const DICT_CANCEL_REASON = ['客户来电取消', '建单信息错误', '重复建单', '客户问题已自行解决', '其他'] as const;
 /** 补充分类（同 operationTabs.ts · SUPPLEMENT_TYPE_OPTIONS） */
@@ -632,7 +643,7 @@ export const TEST_PRESETS: TestPreset[] = [
     id: 'P1', label: '典型对内场景 · 热线来源 · 咨询单',
     data: {
       ticketNo: 'IFLYZX-20260728-00004', title: '扫地机器人无法开机', ticketType: '咨询',
-      source: '热线电话', bizType: '智能硬件', productName: '扫地机器人R2', customerName: '孙权', customerPhone: '138****2046',
+      source: '电话', bizType: '智能硬件', productName: '扫地机器人R2', customerName: '孙权', customerPhone: '138****2046',
       assigneeId: '林坐席', creatorId: '张三',
       responseDueTime: '2026-07-28 16:30',
       resolveDueTime: '2026-07-29 16:30',

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { message } from 'ant-design-vue';
 import { useUserStore } from '@/stores/user';
 import { CopyOutlined, FlagOutlined } from '@ant-design/icons-vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
@@ -108,11 +109,30 @@ const metaTitle = computed(
 );
 
 const emit = defineEmits<{
-  copyNo: [];
   action: [name: string];
   openRelation: [rel: TicketRelation];
   openSuperseded: [];
 }>();
+
+async function copyTicketNo() {
+  const text = props.ticketNo;
+  try {
+    if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable');
+    await navigator.clipboard.writeText(text);
+    message.success('工单号已复制');
+  } catch {
+    const el = document.createElement('textarea');
+    el.value = text;
+    el.setAttribute('readonly', '');
+    el.style.cssText = 'position:fixed;left:-9999px;top:0';
+    document.body.appendChild(el);
+    el.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(el);
+    if (ok) message.success('工单号已复制');
+    else message.info(text);
+  }
+}
 
 const isSuperseded = computed(() => !!props.supersededBy);
 
@@ -188,7 +208,15 @@ function priorityHex(p: string): string {
           <span class="meta-k">期望解决</span>：{{ detail.expectedResolve }}<span class="meta-sep">，</span>
           <span class="meta-k">单号</span>：{{ ticketNo }}
         </span>
-        <CopyOutlined class="copy" @click="emit('copyNo')" />
+        <button
+          type="button"
+          class="copy"
+          title="复制工单号"
+          aria-label="复制工单号"
+          @click.stop="copyTicketNo"
+        >
+          <CopyOutlined />
+        </button>
         <a-popover v-if="relations.length" placement="bottomLeft" trigger="hover">
           <template #content>
             <div class="rel-pop">
@@ -407,7 +435,23 @@ function priorityHex(p: string): string {
 .meta-sep {
   color: #d1d5db;
 }
-.copy { cursor: pointer; font-size: 13px; flex: none; }
+.copy {
+  cursor: pointer;
+  font-size: 13px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  line-height: 1;
+  border-radius: 4px;
+}
 .rel-chip {
   flex: none; cursor: pointer;
   font-size: 11px; font-weight: 600; line-height: 18px;

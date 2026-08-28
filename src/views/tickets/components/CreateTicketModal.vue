@@ -13,7 +13,6 @@ import type { Ticket, CreateTicketPrefill } from '@/views/tickets/types/ticket';
 import {
   BUSINESS_TYPES,
   CREATE_TICKET_TYPES,
-  CLOSURE_MODE_OPTIONS,
   PRODUCT_CATEGORIES,
   PRIORITY_OPTIONS,
   TICKET_SOURCE_OPTIONS,
@@ -266,20 +265,6 @@ watch(
               class="inline-control field-control"
               size="middle"
               :options="TICKET_SOURCE_OPTIONS.map((v) => ({ value: v, label: v }))"
-            />
-          </div>
-          <!--
-            结案方式：与工单类型**正交**的另一个维度（基线 §1「结案方式」小节）。
-            建单时选定、此后不可改 —— 这里是它唯一的录入口，别在处理页再开一个。
-            直接结案的单不下送、不升级、不挂起、不转派，动作集比商机单还窄。
-          -->
-          <div class="inline-field basic-field">
-            <label class="inline-label base"><span class="req">*</span>结案方式</label>
-            <FormSelect
-              v-model:value="form.closureMode"
-              class="inline-control field-control"
-              size="middle"
-              :options="CLOSURE_MODE_OPTIONS"
             />
           </div>
         </div>

@@ -24,7 +24,8 @@ import {
 import MetricTipIcon from '@/components/MetricTipIcon.vue';
 import { opsTip } from '@/mock/opsMonitorTips';
 import { useUserStore } from '@/stores/user';
-import { RISK_TAG_ROLES } from '@/config/roles';
+// 核实结论与风险监控页共用一份（打标即在两处生效），大盘只读不写
+import { useRiskTagStore } from '@/stores/riskTags';
 import {
   OPS_GROUPS,
   getOpsScopeSelectGroups,
@@ -53,9 +54,7 @@ import {
   QUALITY_METRICS,
   OVERALL_TIMELY,
   GROUP_SLA,
-  RISK_LEVEL_STYLE,
   PIE_COLORS,
-  MONTHLY_QUALITY,
   reportQualityTrend,
   type ReportGrain,
   QUALITY_TRENDS,
@@ -63,8 +62,6 @@ import {
   rateTone,
   riskHitsOf,
   untaggedHighRisks,
-  type RiskHit,
-  type RiskLevel,
 } from '@/mock/opsReport';
 
 // 风险监控已拆到 RiskMonitorView.vue（D7a）；本组件只服务「工单监控」，
@@ -73,6 +70,7 @@ const props = withDefaults(defineProps<{ board?: 'ticket' | 'report' }>(), { boa
 
 const router = useRouter();
 const user = useUserStore();
+const riskTags = useRiskTagStore();
 
 /** 915 P0 先隐藏运营报表，P1 再开 */
 const SHOW_REPORT_TAB = false;
@@ -124,10 +122,14 @@ const slaHeatMax = computed(() => {
 });
 
 // ---- 模块 2.3 风险词命中 ----
-/** 本地打标记录：等级之外还要存备注、打标人、打标时刻 —— 留痕要求见 saveTag 上方注释 */
-const localTags = ref<Record<string, { level: RiskLevel; note: string; by: string; at: string }>>({});
+// 大盘只留两个数：命中总数、未打标高危数（后者驱动告警条）。
+// 打标本身连同明细表、词表抽屉已随模块四整体搬到「风险监控」页，这里不再有写入口。
 const hits = computed(() => riskHitsOf(scope.value));
-const untagged = computed(() => untaggedHighRisks(scope.value).filter((h) => !localTags.value[h.id]));
+// 已被核实过的（含判为误报的）不再算「尚未打标」——核实结论存在 useRiskTagStore 里，
+// 与风险监控页同一份，故在监控页打完标切回大盘，这个数字会跟着降。
+const untagged = computed(
+  () => untaggedHighRisks(scope.value).filter((h) => !riskTags.isJudged(h)),
+);
 
 const issues = computed(() =>
   deriveIssues(scope.value, untagged.value.length, untagged.value[0]?.word ?? ''),
@@ -135,67 +137,11 @@ const issues = computed(() =>
 const criticalCount = computed(() => issues.value.filter((i) => i.level === 'critical').length);
 
 /**
- * 打标：字段枚举待业务确认，先按风险分级 + 备注落地。
- *
- * **打标必须留痕**（PRD §6.4「留痕」行：记录打标人、打标时刻、备注，供事后复盘）。
- * 早先这里只把等级存进 localTags，备注读进弹窗又丢掉、打标人与时刻根本不写 ——
- * 于是"谁在什么时候基于什么判断打了这个标"事后查不出来，复盘无从下手。
- */
-const tagOpen = ref(false);
-const tagTarget = ref<RiskHit | null>(null);
-const tagLevel = ref<RiskLevel>('高');
-const tagNote = ref('');
-
-/** 谁能打标：客诉专员 ＋ 投诉督导（基线 §3.1，0830 改；工单运营已移出），其余角色不出打标入口 */
-const canRiskTag = computed(() => RISK_TAG_ROLES.includes(user.roleKey));
-
-/**
  * 能不能进「风险监控」页。
  * 0830 起**工单运营不给风险监控**（基线 §3.1），而大盘正是它的主页面 ——
  * 不按菜单权限收下钻入口，它点了会被路由守卫弹回首个可见菜单，看着像页面坏了。
  */
 const canRiskMonitor = computed(() => user.canAccess('ops-risk-monitor'));
-
-function openTag(h: RiskHit) {
-  if (!canRiskTag.value) {
-    message.warning('只有客诉专员与投诉督导可以打标');
-    return;
-  }
-  tagTarget.value = h;
-  tagLevel.value = h.tagged ?? h.level;
-  tagNote.value = h.taggedNote ?? '';
-  tagOpen.value = true;
-}
-function saveTag() {
-  if (!tagTarget.value) return;
-  if (!canRiskTag.value) { message.warning('无打标权限'); return; }
-  const now = new Date();
-  const pad = (n: number) => String(n).padStart(2, '0');
-  localTags.value = {
-    ...localTags.value,
-    [tagTarget.value.id]: {
-      level: tagLevel.value,
-      note: tagNote.value.trim(),
-      by: user.current.name,
-      // 与 mock 里既有的 taggedAt 同格式：YYYY-MM-DD HH:mm
-      at: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
-        + ` ${pad(now.getHours())}:${pad(now.getMinutes())}`,
-    },
-  };
-  message.success(`已对 ${tagTarget.value.ticketNo} 打标「${tagLevel.value}风险」`);
-  tagOpen.value = false;
-}
-function tagOf(h: RiskHit): RiskLevel | undefined {
-  return localTags.value[h.id]?.level ?? h.tagged;
-}
-/** 事后复盘要看的三项：谁打的、什么时候打的、当时怎么判断的 */
-function tagTraceOf(h: RiskHit): { by: string; at: string; note: string } | undefined {
-  const local = localTags.value[h.id];
-  if (local) return { by: local.by, at: local.at, note: local.note };
-  if (h.tagged) return { by: h.taggedBy ?? '—', at: h.taggedAt ?? '—', note: h.taggedNote ?? '' };
-  return undefined;
-}
-
 
 /** 3.1 饼图：用 stroke-dasharray 画环形，半径 25 → 周长 ≈ 157 */
 const pieSegments = computed(() => {
@@ -549,7 +495,9 @@ function handleIssue(issue: OpsIssue) {
   if (issue.action === 'overdue-severe') return openOverdueList('gt72');
   if (issue.action === 'soon') return openSoonList('2h');
   if (issue.action === 'riskword') {
-    document.querySelector('#risk-word-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // 风险词明细已随模块四搬到「风险监控」页（D7a），本页不再有可滚动到的锚点，
+    // 只能把这类异常直接送到那边的待打标视图；没有菜单权限时不跳，避免被守卫弹回。
+    if (canRiskMonitor.value) goRiskMonitor(true);
     return;
   }
   if (issue.action === 'group' && issue.groupId) {
@@ -1479,33 +1427,6 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
       </div>
     </a-modal>
 
-    <!-- 打标（模块 2.3）：字段枚举待业务确认，先按风险分级 + 备注 -->
-    <a-modal v-model:open="tagOpen" :width="460" title="工单打标" ok-text="保存" cancel-text="取消" @ok="saveTag">
-      <div v-if="tagTarget" class="tag-form">
-        <div class="tf-row"><span class="tf-label">工单</span><b>{{ tagTarget.ticketNo }}</b></div>
-        <div class="tf-row"><span class="tf-label">命中</span>{{ tagTarget.word }} · {{ tagTarget.position }}</div>
-        <div class="tf-row"><span class="tf-label">原文</span><span class="tf-ex">「{{ tagTarget.excerpt }}」</span></div>
-        <div class="tf-row">
-          <span class="tf-label">风险等级</span>
-          <div class="tf-levels">
-            <button
-              v-for="lv in (['高', '中', '低'] as RiskLevel[])"
-              :key="lv"
-              type="button"
-              class="lv-chip"
-              :class="{ active: tagLevel === lv }"
-              :style="tagLevel === lv ? { color: RISK_LEVEL_STYLE[lv].color, background: RISK_LEVEL_STYLE[lv].bg } : {}"
-              @click="tagLevel = lv"
-            >{{ lv }}风险</button>
-          </div>
-        </div>
-        <div class="tf-row">
-          <span class="tf-label">处置备注</span>
-          <a-textarea v-model:value="tagNote" :rows="2" placeholder="记录核实结论与后续动作" />
-        </div>
-      </div>
-    </a-modal>
-
   </div>
 </template>
 
@@ -1583,7 +1504,6 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
 .section-head {
   display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap;
 }
-.section-head.compact { align-items: center; }
 .section-head-main { min-width: 0; }
 .section-title {
   margin: 0; font-size: 13px; font-weight: 700; color: #111827;
@@ -1595,35 +1515,6 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
   font-variant-numeric: tabular-nums; line-height: 1.45;
 }
 .section-formula { margin-top: 4px; }
-.dash-dim {
-  display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
-}
-.dash-dim-label { font-size: 11px; color: #94a3b8; margin-right: 4px; }
-.dash-dim-btn {
-  border: 1px solid #e2e8f0; background: #fff; color: #64748b; border-radius: 8px;
-  padding: 2px 8px; font-size: 11px; font-weight: 500; cursor: pointer; font-family: inherit;
-}
-.dash-dim-btn.active { background: #1a6fff; border-color: #1a6fff; color: #fff; }
-
-.ob-head {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
-  padding: 10px 16px; border-bottom: 1px solid #e8ecf1; background: #fafbfc;
-}
-.ob-title { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: #334155; }
-.ob-bar { display: none; }
-.ob-note { font-size: 11px; color: #94a3b8; font-variant-numeric: tabular-nums; }
-.link-btn { border: none; background: none; padding: 0; color: #475569; font-size: 11px; cursor: pointer; font-family: inherit; text-decoration: underline; text-underline-offset: 2px; }
-.ob-empty { padding: 16px; font-size: 12px; color: #94a3b8; text-align: center; }
-
-.risk-board-note {
-  margin: 0;
-  padding: 0 4px 4px;
-  font-size: 11px;
-  color: #64748b;
-  line-height: 1.5;
-}
-.word-table-inline { margin: 4px 0 0; }
-.drawer-note.inline { margin: 8px 0 0; }
 
 .monitor-scope-picker { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .monitor-scope-all-btn {
@@ -1859,9 +1750,6 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
 }
 .db-bar-val small { font-size: 10px; color: #dc2626; font-weight: 600; margin-left: 1px; }
 
-/* 时效分层（旧 ladder 保留兼容） */
-.now-sla .sla-ladder { padding: 12px 16px 14px; }
-
 /* ① 值班状态 */
 .duty-panel { border-radius: 8px; padding: 12px 14px; box-shadow: 0 2px 8px rgba(17, 24, 39, 0.07); }
 .duty-panel.alert { background: #fff; border: 1px solid #fecaca; border-top: 3px solid #dc2626; }
@@ -1905,93 +1793,8 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
 .ia-arrow { font-size: 10px; }
 .ia-done { font-size: 11px; font-weight: 600; color: #10b981; white-space: nowrap; }
 
-/* ② 此刻 —— 已迁移为 kpi-row */
-.sla-ladder { display: flex; flex-direction: column; gap: 0; }
-.sl-zone { min-width: 0; }
-.sl-zone-head {
-  display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 12px;
-  margin-bottom: 8px;
-}
-.sl-zone-tag {
-  flex: none; font-size: 11px; font-weight: 700; border-radius: 4px; padding: 2px 8px;
-}
-.sl-zone-tag.soon { color: #b45309; background: #fffbeb; }
-.sl-zone-tag.overdue { color: #dc2626; background: #fef2f2; }
-.sl-zone-desc { font-size: 11px; color: #94a3b8; line-height: 1.45; }
-.sl-zone-desc strong { font-weight: 600; color: #64748b; }
-.sl-track {
-  display: flex; align-items: stretch; gap: 0; min-width: 0;
-  border: 1px solid #e2e8f0; border-radius: 3px; overflow: hidden; background: #e2e8f0;
-}
-.sl-chev { display: none; }
-.sl-split {
-  display: flex; align-items: center; gap: 10px; margin: 12px 0 10px;
-}
-.sl-split-line { flex: 1; height: 1px; background: linear-gradient(90deg, #fde68a, #fecaca); }
-.sl-split-label {
-  flex: none; font-size: 10px; font-weight: 600; color: #94a3b8;
-  letter-spacing: 0.04em;
-}
-.sl-step {
-  flex: 1; min-width: 0;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 2px; min-height: 64px; padding: 8px 6px;
-  border: none; border-right: 1px solid #e2e8f0;
-  border-radius: 0; background: #fafbfc;
-  cursor: pointer; font-family: inherit;
-  transition: background 0.12s;
-}
-.sl-step:last-child { border-right: none; }
-.sl-step:hover { background: #f1f5f9; }
-.sl-step-sub { font-size: 10px; font-weight: 600; color: #94a3b8; line-height: 1.2; }
-.sl-step-time { font-size: 12px; font-weight: 600; color: #475569; line-height: 1.25; text-align: center; }
-.sl-step-row { display: flex; align-items: baseline; gap: 2px; margin-top: 2px; }
-.sl-step-n {
-  font-size: 22px; font-weight: 700; color: #111827;
-  font-variant-numeric: tabular-nums; line-height: 1;
-}
-.sl-step-unit { font-size: 11px; color: #94a3b8; font-weight: 500; }
-.sl-step.soon.hot { background: #fffbeb; border-color: #fde68a; }
-.sl-step.soon.hot .sl-step-n { color: #b45309; }
-.sl-step.soon:hover { border-color: #f59e0b; background: #fffbeb; }
-.sl-step.overdue.warn.hot { background: #fff7ed; border-color: #fed7aa; }
-.sl-step.overdue.warn.hot .sl-step-n { color: #ea580c; }
-.sl-step.overdue.danger.hot { background: #fef2f2; border-color: #fecaca; }
-.sl-step.overdue.danger.hot .sl-step-n { color: #dc2626; }
-.sl-step.overdue.warn:hover { border-color: #fb923c; }
-.sl-step.overdue.danger:hover { border-color: #f87171; }
-
-@media (max-width: 900px) {
-  .sl-track { flex-wrap: wrap; gap: 6px; }
-  .sl-chev { display: none; }
-  .sl-step { flex: 1 1 calc(33% - 6px); min-width: 88px; }
-  .sl-track:not(.sl-track-3) .sl-step { flex: 1 1 calc(50% - 6px); }
-}
-
-/* ③ 分组诊断 */
-.diag-table { width: 100%; border-collapse: collapse; }
-.diag-table th {
-  text-align: left; font-size: 11px; font-weight: 600; color: #64748b;
-  padding: 8px 12px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; white-space: nowrap;
-}
-.diag-table th.w-bar { width: 150px; }
-.diag-table td {
-  font-size: 12px; color: #334155; padding: 9px 12px; border-bottom: 1px solid #f1f5f9;
-  font-variant-numeric: tabular-nums;
-}
-.diag-table tbody tr { cursor: pointer; }
-.diag-table tbody tr:hover { background: #f8fafc; }
-.diag-table tbody tr.bad { background: #fffbeb; }
-.diag-table tbody tr.bad:hover { background: #fef3c7; }
-.dt-name { font-weight: 600; color: #111827; white-space: nowrap; }
+/* ③ 分组诊断结论徽标；.row-btn 是通用行内文字按钮，风险命中页头也用它 */
 .verdict { font-size: 11px; font-weight: 700; border-radius: 4px; padding: 2px 8px; white-space: nowrap; }
-.severe { color: #dc2626; font-weight: 700; }
-.bar-wrap { display: flex; align-items: center; gap: 8px; }
-.bar-track { flex: 1; height: 6px; background: #f3f4f6; border-radius: 3px; overflow: hidden; }
-.bar-fill { height: 100%; border-radius: 3px; }
-.bar-text { font-size: 11px; font-weight: 700; flex: none; }
-.avail { font-weight: 700; color: #10b981; }
-.avail.zero { color: #ef4444; }
 .row-btn {
   border: none; background: none; padding: 0;
   font-size: 11px; font-weight: 500; color: #64748b; cursor: pointer; font-family: inherit;
@@ -2014,10 +1817,7 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
 .rb-sub { font-size: 11px; color: #94a3b8; }
 .row-done { font-size: 11px; color: #10b981; font-weight: 600; }
 
-/* 表格 / 图表区 */
-.overview-section .diag-table,
-.overview-section .hit-table { margin: 0; }
-.overview-section .ob-empty { padding: 20px 8px; }
+/* 图表区 */
 .chart-wrap { padding: 12px 16px 14px; }
 .chart-pro { background: linear-gradient(180deg, #fafbfc 0%, #fff 60%); }
 .chart-lg { width: 100%; height: 160px; display: block; }
@@ -2045,25 +1845,6 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
 }
 .grain-chip.active { background: #334155; border-color: #334155; color: #fff; font-weight: 600; }
 
-/* ⑤ 风险词 */
-.hit-table { width: 100%; border-collapse: collapse; }
-.hit-table th {
-  text-align: left; font-size: 11px; font-weight: 600; color: #64748b;
-  padding: 8px 12px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; white-space: nowrap;
-}
-.hit-table td { font-size: 12px; color: #334155; padding: 9px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
-.hit-table tr.untagged { background: #fef2f2; }
-.risk-word { font-size: 11px; font-weight: 700; border-radius: 4px; padding: 2px 8px; white-space: nowrap; }
-.hit-title { font-size: 11px; color: #64748b; margin-top: 2px; max-width: 180px; }
-.hit-excerpt { max-width: 300px; color: #475569; line-height: 1.5; }
-.hit-pos {
-  font-size: 10px; color: #64748b; background: #f1f5f9;
-  border-radius: 3px; padding: 1px 5px; margin-right: 5px;
-}
-.hit-sub { font-size: 11px; color: #94a3b8; }
-.hit-when { font-variant-numeric: tabular-nums; white-space: nowrap; }
-.tag-done { font-size: 11px; font-weight: 700; border-radius: 4px; padding: 2px 8px; white-space: nowrap; }
-
 @media (max-width: 1100px) {
   .metric-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .me-dims-grid { grid-template-columns: 1fr; }
@@ -2080,7 +1861,6 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
 }
 
 /* Tab② 报表 */
-.report-note { margin-left: auto; font-size: 11px; color: #94a3b8; }
 .report-body { padding: 12px 16px 14px; }
 .report-hero {
   display: grid; grid-template-columns: 220px minmax(0, 1fr);
@@ -2138,7 +1918,6 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
 .q-cmp { font-size: 11px; color: #94a3b8; display: flex; align-items: center; flex-wrap: wrap; gap: 2px; }
 .q-cmp .up { color: #dc2626; }
 .q-cmp .down { color: #059669; }
-.q-health { font-size: 10px; color: #cbd5e1; margin-top: 4px; }
 
 .report-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: start; margin: 0 16px; }
 .pie-wrap { display: flex; align-items: center; gap: 20px; margin: 0; }
@@ -2174,43 +1953,7 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
 .si-delta.down { color: #059669; }
 .si-vol { flex: none; width: 52px; text-align: right; font-size: 11px; color: #9ca3af; }
 
-/* 抽屉 · 流量构成 */
-.drill-sub { margin: 0 0 12px; font-size: 12px; color: #94a3b8; line-height: 1.5; }
-.dim-row { display: flex; gap: 6px; margin-bottom: 14px; }
-.dim-chip {
-  border: none; background: #f3f4f6; color: #6b7280; border-radius: 4px;
-  padding: 4px 14px; font-size: 12px; font-weight: 500; cursor: pointer; font-family: inherit;
-}
-.dim-chip.active { background: #334155; border: 1px solid #334155; color: #fff; font-weight: 600; }
-.drill-table {
-  width: 100%; border-collapse: collapse; margin-top: 4px;
-}
-.drill-table th {
-  text-align: left; font-size: 11px; font-weight: 600; color: #9ca3af;
-  padding: 8px 10px; background: #f9fafb; border-bottom: 1px solid #eef2f7;
-}
-.drill-table td {
-  font-size: 13px; color: #374151; padding: 9px 10px;
-  border-bottom: 1px solid #f3f4f6; font-variant-numeric: tabular-nums;
-}
-.drill-table tfoot td {
-  font-size: 12px; font-weight: 600; color: #111827;
-  border-bottom: none; border-top: 1px solid #eef2f7; background: #fafbfc;
-}
-.drill-table .col-num { text-align: right; width: 88px; }
-.dr-name { font-weight: 500; }
-.dr-pct { color: #94a3b8; font-weight: 500; }
-.drill-foot {
-  margin-top: 16px; padding-top: 14px; border-top: 1px solid #f0f0f0;
-}
-.drill-go {
-  display: inline-flex; align-items: center; gap: 4px;
-  border: none; background: none; padding: 0;
-  font-size: 13px; font-weight: 600; color: #475569; cursor: pointer; font-family: inherit;
-}
-.drill-go:hover { text-decoration: underline; }
-.foot-note { margin: 0; }
-
+/* 抽屉 · 风险工单清单 */
 .risk-count { font-size: 12px; color: #6b7280; margin-bottom: 10px; }
 .risk-count b { color: #111827; font-size: 14px; }
 .risk-table { width: 100%; border-collapse: collapse; }
@@ -2231,13 +1974,8 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
 .drawer-note { margin-top: 12px; font-size: 11px; color: #9ca3af; }
 .empty-inline { font-size: 12px; color: #9ca3af; padding: 20px 0; text-align: center; }
 
-.bar-red { background: #dc2626; }
 .note-sep { color: #d1d5db; margin: 0 6px; }
 .dot { color: #d1d5db; margin: 0 3px; }
-.head-badge {
-  font-size: 11px; font-weight: 700; color: #b91c1c; background: #fee2e2;
-  border-radius: 4px; padding: 1px 7px; margin-left: 6px;
-}
 
 /* 弹窗告警 */
 .pop { display: flex; flex-direction: column; gap: 12px; }
@@ -2256,31 +1994,4 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
 .pop-o { font-size: 11px; color: #9ca3af; margin-top: 2px; }
 .pop-foot { display: flex; align-items: center; gap: 12px; }
 .pop-policy { flex: 1; font-size: 11px; color: #9ca3af; line-height: 1.5; }
-
-/* 打标弹窗 */
-.tag-form { display: flex; flex-direction: column; gap: 10px; }
-.tf-row { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: #374151; }
-.tf-label { flex: none; width: 62px; color: #9ca3af; padding-top: 2px; }
-.tf-ex { color: #4b5563; line-height: 1.5; }
-.tf-levels { display: flex; gap: 6px; }
-.lv-chip {
-  border: 1px solid #e5e7eb; background: #fff; color: #6b7280; border-radius: 4px;
-  padding: 3px 12px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit;
-}
-.lv-chip.active { border-color: currentColor; }
-
-/* 风险词表 */
-.word-table { width: 100%; border-collapse: collapse; }
-.word-table th {
-  text-align: left; font-size: 11px; font-weight: 600; color: #9ca3af;
-  padding: 7px 8px; background: #f9fafb; border-bottom: 1px solid #eef2f7;
-}
-.word-table td { font-size: 12px; color: #374151; padding: 8px; border-bottom: 1px solid #f3f4f6; }
-.word-table tr.off { opacity: 0.55; }
-.wt-word { font-weight: 600; color: #111827; }
-.wt-state { font-size: 11px; font-weight: 600; border-radius: 3px; padding: 1px 7px; }
-.wt-state.on { color: #047857; background: #d1fae5; }
-.wt-state.off { color: #6b7280; background: #f3f4f6; }
-.hits-high { color: #dc2626; font-weight: 700; }
-.drawer-note.top { margin: 0 0 12px; }
 </style>

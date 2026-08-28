@@ -28,6 +28,8 @@ function countFilledSupplements(form: ProcessFormDraft): number {
     && form.complaintChannelReply.trim()
     && form.complaintChannelReconcile
   ) n += 1;
+  // riskFlag 为空 ＝ 坐席还没碰过这个字段，不计入已填。
+  // 明确选了「无风险」才算填过——两者在界面上都不展开下级字段，但一个是判断、一个是没判断。
   if (form.riskFlag === '有风险') {
     if (form.riskLevel && form.riskDescription.trim()) n += 1;
   } else if (form.riskFlag === '疑似风险') {

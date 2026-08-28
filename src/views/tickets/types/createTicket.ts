@@ -1,34 +1,48 @@
-import { CLOSURE_MODES, PRIORITY_LABEL } from '@/views/tickets/types/ticket';
+import { PRIORITY_LABEL } from '@/views/tickets/types/ticket';
 import type { Channel, ClosureMode, Priority, TicketType } from '@/views/tickets/types/ticket';
 
 /** 新建弹窗工单类型（对齐 .pen V6xQCz 等画板） */
 export type CreateFormTicketType = '投诉' | '建议' | '商机' | '咨询';
 
-export type BusinessType = '学习机' | '翻录' | '智学网';
+export type BusinessType =
+  | '无线音乐'
+  | '智能硬件'
+  | '教育'
+  | '学习机'
+  | '听见'
+  | '合肥窗启'
+  | '医疗'
+  | '开放平台'
+  | '政法'
+  | '其他';
 
-/** 工单来源枚举（对齐 PRD 调研回访 / 渠道管理） */
+/** 工单来源枚举（建单下拉）。跨组调剂只会出现在系统写入的存量单上，不进建单选项。 */
 export type TicketSource =
-  | '热线电话' | 'IM在线' | '内投渠道' | '外投渠道' | '客户服务小程序'
+  | '电话'
+  | 'IM'
+  | '内投渠道'
+  | '外投渠道'
+  | '客户服务小程序'
   /** 售后侧转入客服的工单（多为售后转咨询）——**不支持升级投诉**（0801 定为门禁①判据） */
-  | '售后转入'
-  /** 其他客服组调剂转入（班组长看板「转入」口径之一） */
+  | '售后系统'
   | '跨组调剂';
 
 export const TICKET_SOURCE_OPTIONS: TicketSource[] = [
-  '热线电话',
-  'IM在线',
+  '电话',
+  'IM',
   '内投渠道',
   '外投渠道',
   '客户服务小程序',
-  '售后转入',
-  '跨组调剂',
+  '售后系统',
 ];
 
 /** 售后转入判据：来源为该值即视为售后转入工单（PRD §4.3.3 门禁①） */
-export const AFTERSALE_INBOUND_SOURCE: TicketSource = '售后转入';
+export const AFTERSALE_INBOUND_SOURCE: TicketSource = '售后系统';
+
+export type CustomerContactType = '来电号码' | '联系电话' | '邮箱' | '微信';
 
 export interface CustomerContactEntry {
-  type: '手机' | '固话' | '邮箱';
+  type: CustomerContactType;
   value: string;
 }
 
@@ -60,13 +74,9 @@ export interface ReporterInfo {
 export interface CreateTicketFormState {
   businessType: BusinessType;
   ticketType: CreateFormTicketType;
-  /**
-   * 结案方式（基线 §1「结案方式」小节）：**建单时选定、此后不可改**，与工单类型正交。
-   * 正常流程＝进流程办理、走完调研回访后结案；直接结案＝一次性解答完、当场收口、从未进流程。
-   * 之所以在建单页给这一枚，是因为它此后没有第二个修改入口 —— 与工单类型同一口径。
-   */
+  /** 内部默认「正常流程」；建单弹窗不再让坐席选结案方式 */
   closureMode: ClosureMode;
-  /** 工单来源，默认热线电话 */
+  /** 工单来源，默认电话 */
   ticketSource: TicketSource;
   customerQuery: string;
   customer: CustomerInfo | null;
@@ -105,19 +115,19 @@ export interface CreateTicketFormState {
   suggestL2: string;
 }
 
-export const BUSINESS_TYPES: BusinessType[] = ['学习机', '翻录', '智学网'];
+export const BUSINESS_TYPES: BusinessType[] = [
+  '无线音乐',
+  '智能硬件',
+  '教育',
+  '学习机',
+  '听见',
+  '合肥窗启',
+  '医疗',
+  '开放平台',
+  '政法',
+  '其他',
+];
 export const CREATE_TICKET_TYPES: CreateFormTicketType[] = ['投诉', '建议', '商机', '咨询'];
-
-/**
- * 结案方式下拉项。取值与含义在基线 §1「结案方式」小节，这里只做展示补白，
- * 不另立枚举 —— 枚举本体在 types/ticket.ts 的 CLOSURE_MODES。
- */
-export const CLOSURE_MODE_OPTIONS: { value: ClosureMode; label: string }[] = CLOSURE_MODES.map(
-  (v) => ({
-    value: v,
-    label: v === '直接结案' ? '直接结案（当场收口，不进流程）' : '正常流程（走完调研回访）',
-  }),
-);
 
 export const PRODUCT_CATEGORIES = ['智能硬件', '学习硬件', '软件服务'];
 export const PRODUCT_NAMES: Record<string, string[]> = {
@@ -140,12 +150,34 @@ export const PRIORITY_OPTIONS: { value: Priority; label: string }[] =
 
 export const EXPECT_TIMES = ['今日 18:00', '今日 20:00', '明日 12:00', '3 个工作日内'];
 
-/**
- * 「投诉类型」枚举。0803 恢复为**可选字段**——它只在
- * **工单类型=投诉 且 工单来源=内投渠道/外投渠道** 时出现（见 §3.2 字段门控）。
- * ⚠️ 取值清单沿用改版前的旧枚举，**待业务确认**是否需要换成对外口径的另一套。
- */
-export const COMPLAINT_TYPE_OPTIONS = ['服务投诉', '产品质量', '物流问题', '其他'];
+/** 「投诉类型」：仅工单类型=投诉 且 来源=内投/外投渠道时出现。 */
+export type ComplaintType =
+  | '投诉'
+  | '举报'
+  | '信访件'
+  | '督办件'
+  | '监测线索'
+  | '监管同步'
+  | '其他';
+
+export const COMPLAINT_TYPE_OPTIONS: ComplaintType[] = [
+  '投诉',
+  '举报',
+  '信访件',
+  '督办件',
+  '监测线索',
+  '监管同步',
+  '其他',
+];
+
+/** 存量别名 → 现行枚举（旧「服务投诉/产品质量/物流问题」均归入「投诉」） */
+export function normalizeComplaintType(raw?: string): string {
+  if (!raw) return '';
+  if (raw === '服务投诉' || raw === '产品质量' || raw === '产品投诉' || raw === '物流问题' || raw === '物流投诉') {
+    return '投诉';
+  }
+  return raw;
+}
 export const COMPLAINT_PLATFORM_OPTIONS = [
   '市场监管12345平台',
   '市场监管12315平台',
@@ -192,9 +224,12 @@ export function isInternalComplaintPlatform(platform?: string): boolean {
   return (INTERNAL_COMPLAINT_PLATFORMS as readonly string[]).includes(platform);
 }
 
-/** 归一化工单来源（detail.source 可能与枚举略有差异） */
+/** 归一化工单来源（存量别名 → 现行枚举） */
 export function normalizeTicketSource(source?: string): string {
   if (!source) return '';
+  if (source === '热线电话') return '电话';
+  if (source === 'IM在线') return 'IM';
+  if (source === '售后转入') return '售后系统';
   if (source === '外投') return '外投渠道';
   if (source === '内投') return '内投渠道';
   return source;
@@ -273,9 +308,9 @@ export const MOCK_CUSTOMER: CustomerInfo = {
   name: '张小凡',
   phone: '138 0013 8000',
   vip: true,
-  customerType: '个人客户',
-  customerTypes: ['个人客户'],
-  contacts: [{ type: '手机', value: '138 0013 8000' }],
+  customerType: '个人用户',
+  customerTypes: ['个人用户'],
+  contacts: [{ type: '来电号码', value: '138 0013 8000' }],
   gender: '男',
   region: '安徽省/合肥市/蜀山区',
   address: '望江西路666号',
@@ -288,11 +323,11 @@ export function mapFormTypeToTicketType(t: CreateFormTicketType): TicketType {
 
 /** 预填渠道 → 工单来源 */
 export function mapChannelToSource(channel?: Channel): TicketSource {
-  if (!channel || channel === '电话') return '热线电话';
-  if (channel === '在线客服') return 'IM在线';
+  if (!channel || channel === '电话') return '电话';
+  if (channel === '在线客服') return 'IM';
   if (channel === '小程序' || channel === 'APP') return '客户服务小程序';
   if (channel === '邮件') return '外投渠道';
-  return '热线电话';
+  return '电话';
 }
 
 /** 列表/单元格解析工单来源（优先 ticketSource，缺省由接入渠道反推） */

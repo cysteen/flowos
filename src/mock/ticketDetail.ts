@@ -1,6 +1,6 @@
 import type {
   AgentInfo, AiTicketInsight, AppointmentRecord, ComplaintInfo, ContactItem, InsightStats,
-  InsightDetailTable, InsightModalKey, LatestHandlingItem,
+  InsightDetailTable, InsightModalKey, LatestHandlingItem, ProcessFormDraft,
 } from '@/views/tickets/types/operation';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 import type { ClosureMode } from '@/views/tickets/types/ticket';
@@ -381,7 +381,7 @@ export const TICKET_DETAIL: TicketDetailMeta = {
     categories: [
       { cat1: '产品问题', cat2: '产品质量' },
     ],
-    complaintType: '产品质量',
+    complaintType: '投诉',
     platforms: [
       {
         platform: '市场监管12315平台',
@@ -599,9 +599,10 @@ export const DEFAULT_PROCESS_DRAFT = {
   }[],
   complaintChannelReply: '',
   complaintChannelReconcile: '' as '' | '是' | '否',
-  riskFlag: '无风险',
-  riskHasRisk: false,
-  riskLevel: '',
+  // 空串 ＝ 坐席还没碰过这个字段（不是"选了无风险"）。风险监控的核实结论只填空，
+  // 判据就是它；预填成「无风险」会让监控侧对每一张单都写不进去。
+  riskFlag: '' as ProcessFormDraft['riskFlag'],
+  riskLevel: '' as ProcessFormDraft['riskLevel'],
   riskDescription: '客户多次催单，存在升级外投风险，需班组长关注。',
   riskDescriptionAttachments: [] as string[],
   appointmentNeeded: true,

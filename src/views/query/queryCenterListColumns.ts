@@ -28,7 +28,7 @@ export const QUERY_CENTER_COLUMN_DEFS: TicketColumnDef[] = [
   { key: 'summary', label: '工单摘要' },
   { key: 'customer', label: '客户' },
   { key: 'product', label: '产品' },
-  { key: 'node', label: '当前节点' },
+  { key: 'node', label: '当前状态' },
   { key: 'createdAt', label: '创建时间' },
   { key: 'updatedAt', label: '更新时间' },
   { key: 'sla', label: 'SLA 时效' },

@@ -28,6 +28,11 @@ import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 
 const props = defineProps<{
   detail: TicketDetailMeta;
+  /**
+   * 当前工单号（取自路由，不取 detail.no）：工单号在数据源里查不到时 detail 会回退演示单，
+   * 那时 detail.no 已经不是人正在看的这张单，拿它去取风险监控结论会取到别人的。
+   */
+  ticketNo: string;
   tabData: OperationTabData;
   form: ProcessFormDraft;
   expandedSections: Record<SectionKey, boolean>;
@@ -145,6 +150,7 @@ defineExpose({ switchTab });
         :ticket-source="detail.source"
         :complaint-platform="drivingComplaintPlatform"
         :complaint-platforms="detail.complaint?.platforms ?? []"
+        :ticket-no="ticketNo"
         :readonly="activeTabReadonly"
         @toggle-section="emit('toggleSection', $event)"
         @select-chip="emit('selectChip', $event)"

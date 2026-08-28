@@ -4,10 +4,12 @@ import OpTextareaAttach from './shared/OpTextareaAttach.vue';
 import OpQualityStandardFields from './OpQualityStandardFields.vue';
 import OpChannelTable from './OpChannelTable.vue';
 import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue';
-import type { ProcessFormDraft, RiskFlag, SupplementChip } from '@/views/tickets/types/operation';
+import { useRiskTagStore } from '@/stores/riskTags';
+import { riskLevelText } from '@/config/risk';
+import type { ProcessFormDraft, RiskFlag, RiskLevel, SupplementChip } from '@/views/tickets/types/operation';
 import {
   RISK_FLAG_OPTIONS,
-  RISK_LEVEL_OPTIONS,
+  RISK_LEVEL_SELECT_OPTIONS,
   QUALITY_ISSUE_L2_MAP,
   QUALITY_ISSUE_L2_TO_L1,
   complaintMarkOptions,
@@ -38,11 +40,14 @@ const props = defineProps<{
   showExternal?: boolean;
   /** 只读：随「工单处理」Tab 的 Tab 级只读判据传下来（见 OpProcessForm.readonly） */
   readonly?: boolean;
+  /** 当前工单号：风险面板要据此取风险监控侧对本单的核实结论 */
+  ticketNo?: string;
 }>();
 
 const emit = defineEmits<{ 'update:form': [form: ProcessFormDraft] }>();
 
-const riskLevelOptions = RISK_LEVEL_OPTIONS.map((v) => ({ label: v, value: v }));
+const riskTags = useRiskTagStore();
+const riskLevelOptions = RISK_LEVEL_SELECT_OPTIONS;
 const complaintMarkOpts = computed(() =>
   complaintMarkOptions(props.complaintPlatform).map((v) => ({ label: v, value: v })),
 );
@@ -66,7 +71,11 @@ const followupRows = computed(() => {
   const prev = new Map(
     (props.form.platformFollowups ?? []).map((f) => [platformKey(f), f]),
   );
-  if (!plats.length) return props.form.platformFollowups ?? [];
+  // 建单没登记平台时沿用已填的跟进行。编号在草稿里是可选的（补充追加的行可能还没编号），
+  // 而渠道表按"有编号"渲染，故在这里补齐成空串，不把 undefined 漏到展示层。
+  if (!plats.length) {
+    return (props.form.platformFollowups ?? []).map((f) => ({ ...f, complaintNo: f.complaintNo ?? '' }));
+  }
   return plats.map((p) => {
     const old = prev.get(platformKey(p));
     return {
@@ -132,11 +141,14 @@ function onRiskFlagChange(flag: RiskFlag) {
   const hasRisk = flag === '有风险';
   update({
     riskFlag: flag,
-    riskHasRisk: hasRisk,
     riskLevel: hasRisk ? props.form.riskLevel : '',
     riskDescription: needsDesc ? props.form.riskDescription : '',
     riskDescriptionAttachments: needsDesc ? props.form.riskDescriptionAttachments : [],
   });
+}
+
+function onRiskLevelChange(v: string | number | string[] | undefined) {
+  update({ riskLevel: (v == null ? '' : String(v)) as RiskLevel | '' });
 }
 
 function onComplaintCat1Change(v: string | number | string[] | undefined) {
@@ -194,6 +206,58 @@ const missRiskDesc = computed(
     (props.form.riskFlag === '疑似风险' || props.form.riskFlag === '有风险')
     && !props.form.riskDescription.trim(),
 );
+
+// ---- 风险监控侧的现行结论（只读回显） ----
+// 【为什么必须回显】监控的核实结论只填空、不覆盖坐席已填的值（拍板口径）。
+// 于是"被挡住"是常态，而被挡住的那一次如果什么都不显示，坐席永远不知道
+// 监控已经把这单核实成高危——信息在写入这一步就消失了。故无论写没写进去都亮出来。
+// 它是**只读的一行字**：不进 form、不进必填校验、不参与 chip 角标。
+const riskMonitorVerify = computed(() =>
+  (props.ticketNo ? riskTags.ticketVerificationOf(props.ticketNo) : null),
+);
+
+/** 「风险监控核实：高危 · 成立 · 李文萍（客诉专员）· 2026-08-04 14:03」 */
+const riskMonitorLine = computed(() => {
+  const v = riskMonitorVerify.value;
+  if (!v) return '';
+  if (!v.latest) return `风险监控核实：本单 ${v.hitCount} 条命中待核实，尚无核实结论`;
+  const e = v.latest;
+  // 等级取**工单级**（max 棘轮），不取最后一条命中自己的等级：工单页关心的是这张单有多危险
+  return `风险监控核实：${riskLevelText(v.grade)} · ${e.verdict} · ${e.by}（${e.byRole}）· ${e.at}`;
+});
+
+/**
+ * 本单命中的构成。只在多条、且已经有人核实过时给——
+ * 一条时说"本单 1 条命中"是废话；全待核实时上一行已经把条数说完了，再列一遍还是同一个数。
+ */
+const riskMonitorBreakdown = computed(() => {
+  const v = riskMonitorVerify.value;
+  if (!v || v.hitCount <= 1 || !v.latest) return '';
+  const parts: string[] = [];
+  if (v.confirmedCount) parts.push(`成立 ${v.confirmedCount}`);
+  if (v.falseCount) parts.push(`误报 ${v.falseCount}`);
+  if (v.pendingCount) parts.push(`待核实 ${v.pendingCount}`);
+  return `本单 ${v.hitCount} 条命中：${parts.join(' · ')}`;
+});
+
+/**
+ * 坐席自己填过、监控没能覆盖时的差异说明。
+ * 【为什么不能省】两个值不一致却只显示监控那一行，读起来就像"本页显示的就是监控结论"，
+ * 而实际落在字段里的是坐席填的值——照着它做处置会做错。差在哪儿必须写出来。
+ */
+const riskMonitorDiff = computed(() => {
+  const v = riskMonitorVerify.value;
+  if (!v) return '';
+  const parts: string[] = [];
+  if (v.flag && props.form.riskFlag && props.form.riskFlag !== v.flag) {
+    parts.push(`「是否有风险」本页为「${props.form.riskFlag}」，监控结论为「${v.flag}」`);
+  }
+  if (v.grade && props.form.riskLevel && props.form.riskLevel !== v.grade) {
+    parts.push(`「风险等级」本页为「${riskLevelText(props.form.riskLevel)}」，监控工单级为「${riskLevelText(v.grade)}」`);
+  }
+  if (!parts.length) return '';
+  return `${parts.join('；')}。本页取值以坐席填写为准，监控结论不覆盖。`;
+});
 </script>
 
 <template>
@@ -338,7 +402,7 @@ const missRiskDesc = computed(
     <div class="field inline-row risk-row">
       <label>是否有风险</label>
       <a-radio-group
-        :value="form.riskFlag || '无风险'"
+        :value="form.riskFlag || undefined"
         class="radio-row"
         @update:value="(v: RiskFlag) => onRiskFlagChange(v)"
       >
@@ -352,11 +416,17 @@ const missRiskDesc = computed(
           :value="form.riskLevel || undefined"
           :options="riskLevelOptions"
           placeholder="请选择或搜索"
-          @update:value="(v) => update({ riskLevel: String(v ?? '') })"
+          @update:value="onRiskLevelChange"
         />
       </template>
     </div>
     <p v-if="missRiskLevel" class="field-err">请选择风险等级</p>
+    <!-- 风险监控侧的现行结论：只读回显，不参与必填校验 -->
+    <div v-if="riskMonitorLine" class="risk-monitor-note">
+      <p class="rm-line">{{ riskMonitorLine }}</p>
+      <p v-if="riskMonitorBreakdown" class="rm-sub">{{ riskMonitorBreakdown }}</p>
+      <p v-if="riskMonitorDiff" class="rm-diff">{{ riskMonitorDiff }}</p>
+    </div>
     <div
       v-if="form.riskFlag === '疑似风险' || form.riskFlag === '有风险'"
       class="field"
@@ -564,6 +634,20 @@ const missRiskDesc = computed(
   flex-wrap: wrap;
   align-items: center;
 }
+/* 风险监控核实回显：只读信息块，与可填字段拉开视觉层级 */
+.risk-monitor-note {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-left: 2px solid #cbd5e1;
+  background: #f1f5f9;
+  border-radius: 0 4px 4px 0;
+}
+.risk-monitor-note p { margin: 0; line-height: 1.5; }
+.rm-line { font-size: 11px; color: #475569; font-weight: 600; }
+.rm-sub { font-size: 11px; color: #64748b; }
+.rm-diff { font-size: 11px; color: #b45309; }
 .risk-level-label {
   margin-left: 4px;
 }

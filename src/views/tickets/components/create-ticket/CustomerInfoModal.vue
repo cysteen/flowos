@@ -1,18 +1,38 @@
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue';
 import { PlusOutlined } from '@ant-design/icons-vue';
-import type { CustomerInfo } from '@/views/tickets/types/createTicket';
+import type { CustomerContactType, CustomerInfo } from '@/views/tickets/types/createTicket';
 import FormSelect from './FormSelect.vue';
 
-type ContactType = '手机' | '固话' | '邮箱';
+type ContactType = CustomerContactType;
 
 interface ContactDraft {
   type: ContactType;
   value: string;
 }
 
-const CONTACT_TYPE_OPTIONS: ContactType[] = ['手机', '固话', '邮箱'];
-const CUSTOMER_TYPE_OPTIONS = ['个人客户', '企业客户', 'VIP客户', '渠道客户'];
+const CONTACT_TYPE_OPTIONS: ContactType[] = ['来电号码', '联系电话', '邮箱', '微信'];
+
+function normalizeContactType(raw?: string): ContactType {
+  if (raw === '固话') return '联系电话';
+  if (raw === '手机') return '来电号码';
+  if ((CONTACT_TYPE_OPTIONS as string[]).includes(raw ?? '')) return raw as ContactType;
+  return '来电号码';
+}
+
+function contactPlaceholder(type: ContactType): string {
+  if (type === '邮箱') return '请输入邮箱';
+  if (type === '微信') return '请输入微信号';
+  if (type === '联系电话') return '请输入联系电话';
+  return '请输入来电号码';
+}
+const CUSTOMER_TYPE_OPTIONS = ['个人用户', '家长', '学生', '经销商', '内部员工', '老师'];
+
+function normalizeCustomerType(raw?: string): string {
+  if (raw === '个人客户') return '个人用户';
+  if ((CUSTOMER_TYPE_OPTIONS as string[]).includes(raw ?? '')) return raw as string;
+  return raw ?? '';
+}
 const GENDER_OPTIONS = ['男', '女'];
 
 /** 省 / 市 / 区 级联数据（原型示例数据集，value=label 便于与字符串互转） */
@@ -77,7 +97,7 @@ const emit = defineEmits<{
 }>();
 
 function defaultContact(): ContactDraft {
-  return { type: '手机', value: '' };
+  return { type: '来电号码', value: '' };
 }
 
 function splitCustomerTypes(raw?: string): string[] {
@@ -88,12 +108,12 @@ function splitCustomerTypes(raw?: string): string[] {
 function contactsFromInitial(src: CustomerInfo | null | undefined): ContactDraft[] {
   if (src?.contacts?.length) {
     return src.contacts.map((c) => ({
-      type: (c.type as ContactType) || '手机',
+      type: normalizeContactType(c.type),
       value: c.value,
     }));
   }
   if (src?.phone?.trim()) {
-    return [{ type: '手机', value: src.phone }];
+    return [{ type: '来电号码', value: src.phone }];
   }
   return [defaultContact()];
 }
@@ -123,9 +143,10 @@ watch(
     if (!v) return;
     const src = props.editing && props.initial ? props.initial : null;
     draft.name = src?.name ?? '';
-    draft.customerTypes = src?.customerTypes?.length
+    draft.customerTypes = (src?.customerTypes?.length
       ? [...src.customerTypes]
-      : splitCustomerTypes(src?.customerType);
+      : splitCustomerTypes(src?.customerType)
+    ).map(normalizeCustomerType).filter(Boolean);
     draft.gender = src?.gender ?? '男';
     draft.contacts = contactsFromInitial(src);
     draft.region = src?.region ?? '';
@@ -145,7 +166,9 @@ function removeContact(index: number) {
 }
 
 function primaryPhone(): string {
-  const mobile = draft.contacts.find((c) => c.type === '手机' && c.value.trim());
+  const mobile = draft.contacts.find(
+    (c) => (c.type === '来电号码' || c.type === '联系电话') && c.value.trim(),
+  );
   if (mobile) return mobile.value.trim();
   const first = draft.contacts.find((c) => c.value.trim());
   return first?.value.trim() ?? '';
@@ -163,7 +186,7 @@ function onSave() {
     name: draft.name.trim() || '新客户',
     phone,
     vip: draft.vip,
-    customerType: customerTypes.join('、') || '个人客户',
+    customerType: customerTypes.join('、') || '个人用户',
     customerTypes,
     contacts: draft.contacts
       .filter((c) => c.value.trim())
@@ -247,7 +270,7 @@ function onSave() {
               <a-input
                 v-model:value="contact.value"
                 class="phone-input"
-                :placeholder="contact.type === '邮箱' ? '请输入邮箱' : contact.type === '固话' ? '请输入固话号码' : '请输入手机号'"
+                :placeholder="contactPlaceholder(contact.type)"
               />
               <button
                 v-if="index === draft.contacts.length - 1"
@@ -352,7 +375,7 @@ function onSave() {
 
 .contact-row {
   display: grid;
-  grid-template-columns: 100px minmax(0, 1fr);
+  grid-template-columns: 118px minmax(0, 1fr);
   gap: 10px;
   align-items: end;
 }
