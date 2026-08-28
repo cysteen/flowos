@@ -1,3 +1,4 @@
+import { matchesSearchText } from '@/views/query/queryCenterSearch';
 import type { Priority, Ticket, TicketType } from '@/views/tickets/types/ticket';
 import { resolveTicketGroupNames } from '@/views/tickets/types/ticket';
 import type { BusinessType, TicketSource } from '@/views/tickets/types/createTicket';
@@ -179,7 +180,7 @@ export function matchMineQuery(t: Ticket, q: MineQueryFilter): boolean {
   }
   if (q.phone) {
     const phone = t.customerPhone ?? '';
-    if (!includes(phone, q.phone) && !includes(t.customer, q.phone)) return false;
+    if (!matchesSearchText(phone, q.phone) && !includes(t.customer, q.phone)) return false;
   }
   if (q.sn && !(t.sn && includes(t.sn, q.sn))) return false;
   if (q.priority && t.priority !== q.priority) return false;

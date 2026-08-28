@@ -155,11 +155,13 @@ export interface ProcessFormDraft {
   complaintNote: string;
   complaintNoteAttachments: string[];
   /**
-   * 投诉渠道跟进 · 已登记平台列表（与建单 platforms 对齐，只读展示平台/编号）。
+   * 投诉渠道跟进 · 已登记平台列表（与建单 platforms 对齐；平台/编号只读，投诉内容可编辑）。
    */
   platformFollowups: {
     platform: string;
+    customPlatform?: string;
     complaintNo?: string;
+    complaintContent?: string;
   }[];
   /** 投诉渠道 · 平台回复结果（多平台共用一份） */
   complaintChannelReply: string;

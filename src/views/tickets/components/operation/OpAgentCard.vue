@@ -8,7 +8,7 @@ const emit = defineEmits<{ contact: [type: 'call' | 'sms' | 'email', value: stri
 
 <template>
   <div class="side-card">
-    <div class="card-title">代办人信息</div>
+    <div class="card-title">代报人</div>
     <div class="kv">
       <span class="k">名称</span>
       <span class="v">{{ agent.name }}</span>

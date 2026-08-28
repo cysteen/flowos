@@ -1,8 +1,8 @@
 <script setup lang="ts">
 // 风险监控 —— 从《【915】运营监控大盘》模块四拆出独立立项（D7a）
 //
-// 【一期范围】仅支持预警词命中；系统不做双轨交叉定级，打标时由人填风险等级 + 命中判定。
-//   ① 识别 —— 关键字（及后续语义算子）命中预警词即产生命中记录
+// 【一期范围】仅支持风险词命中；系统不做双轨交叉定级，打标时由人填风险等级 + 命中判定。
+//   ① 识别 —— 关键字（及后续语义算子）命中风险词即产生命中记录
 //   ② 打标 —— 核实「成立/误报」并标注高/中/低危（默认沿用词表预设，可改）
 //   ③ 下游 —— 高危且成立后给「去管控」入口（基线 ※27，人点、系统不自动管控）
 //   ④ 词表改进 —— 命中判定回填规则准确率
@@ -10,7 +10,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { DatePicker, message } from 'ant-design-vue';
 import dayjs, { type Dayjs } from 'dayjs';
-import { ReloadOutlined, ArrowRightOutlined, RightOutlined, SearchOutlined, SettingOutlined, HistoryOutlined, CheckOutlined, UnorderedListOutlined, DownOutlined, TagOutlined, TagsOutlined, EditOutlined } from '@ant-design/icons-vue';
+import { ReloadOutlined, ArrowRightOutlined, RightOutlined, SearchOutlined, SettingOutlined, HistoryOutlined, CheckOutlined, UnorderedListOutlined, DownOutlined, TagOutlined, TagsOutlined, EditOutlined, SaveOutlined, FilterOutlined } from '@ant-design/icons-vue';
 import MetricTipIcon from '@/components/MetricTipIcon.vue';
 import OpActionModal from '@/views/tickets/components/operation/OpActionModal.vue';
 import AppPagination from '@/components/AppPagination.vue';
@@ -325,11 +325,28 @@ function onScanDateRangeChange(
  */
 function setListView(v: ListView) {
   if (v === 'judged' && listView.value !== 'judged') resetLedgerFilter();
+  // 单工单焦点跨视图取数，切视图时若留着它，页签写着「已核实 5」而表里躺着别的一批
+  clearTicketFocus();
   listView.value = v;
   gradeFilter.value = 'all';
 }
 
 function doScan() {
+  /*
+   * 建单时间区间不允许无界（PRD §8.3.1 / §9 规则 42）。
+   *
+   * 【为什么单挑这一个维度拦】其余八维留空的含义是"不限"，扫出来无非多几条；
+   * 时间留空却是**对全库做一次扫描**——而这个功能的产出是"新命中"，
+   * 「孩子」那类通用词一扫上百条，一次失手就把待核实队列淹没，且并入之后收不回来。
+   *
+   * 【为什么日期控件已经不给清除、这里还要再拦一道】去掉清除按钮只挡住了鼠标那一条路：
+   * 条件还会被套用筛选器、被重置逻辑、被将来任何一处新入口整体灌进来。
+   * 守卫必须落在"执行"这个唯一出口上，而不是落在某一个控件上。
+   */
+  if (!scanForm.value.from || !scanForm.value.to) {
+    message.warning('请先选定建单时间区间的起止日期，筛查不支持不限时间');
+    return;
+  }
   scanning.value = true;
   const t0 = Date.now();
   const startedAt = nowStamp(true);
@@ -354,7 +371,9 @@ function doScan() {
       startedAt,
       endedAt,
       status: 'success',
-      filterName: undefined,
+      // 套用了哪个筛选器要记下来：事后翻扫库记录，「按什么扫的」靠它才答得出，
+      // 手工调过条件的执行则不记名（appliedFilterName 在条件被改动的那一刻就清掉了）。
+      filterName: appliedFilterName.value ?? undefined,
       criteriaText: scanSummary.value,
       total: rows.length,
       fresh: rows.filter((r) => !r.duplicated).length,
@@ -438,12 +457,14 @@ function exitScanResult() {
 
 function resetScanForm() {
   scanForm.value = defaultScanCriteria({ to: today() });
+  // 重置的是条件本身，套用关系跟着一起断：条件都换回默认了还挂着筛选器名，
+  // 这次执行会被记到那个筛选器名下，事后照名字复现不出同一批结果。
+  appliedFilterName.value = null;
   exitScanResult();
 }
 
-/** 本次筛查的条件摘要，供预览区回显——扫完看到数字得知道是按什么扫的 */
-const scanSummary = computed(() => {
-  const f = scanForm.value;
+/** 条件摘要（人话）——扫完看到数字得知道是按什么扫的，筛选器 chip 的悬停说明也用它 */
+function criteriaSummaryOf(f: ScanCriteria): string {
   const parts: string[] = [];
   parts.push(f.groupIds.length ? `${f.groupIds.length} 个班组` : '全中心');
   parts.push(`${f.from} 至 ${f.to}`);
@@ -457,7 +478,146 @@ const scanSummary = computed(() => {
   if (f.productCategories.length) parts.push(f.productCategories.join('/'));
   if (f.productNames.length) parts.push(f.productNames.join('/'));
   return parts.join(' · ');
+}
+const scanSummary = computed(() => criteriaSummaryOf(scanForm.value));
+
+// ---- 已保存筛选器（PRD §8.3.4） ----
+// 专项排查的常态是「每周照同样的条件跑一遍」。九个维度每次重填，慢是其次——
+// 漏勾的那一项不会报错，只会让这周扫出的条数与上周对不上，而人还以为是数据变了。
+// 条件存得下来，这次与上次才是同一把尺子。
+//
+// 【为什么点 chip 就直接执行，不是"先套用再点开始"】拆成两步，人每周都要多点一次；
+// 而套用与执行之间本来就没有需要再确认的东西——要改条件的人根本不会去点 chip。
+//
+// 【为什么同名覆盖而不是追加】筛选器是靠名字被认出来的。允许两条「教育线安全事故专项」，
+// 下次点的人无从判断哪条是调过的那一条，结果是两条都不敢用，等于一条都没存。
+//
+// 【为什么与工作台的「保存筛选器」各存各的】两者绑的条件结构完全不同——工作台绑工单查询条件，
+// 这里绑九个筛查维度。共用一份存储，套过来的条件在对面一项也对不上。
+interface SavedScanFilter {
+  id: string;
+  name: string;
+  criteria: ScanCriteria;
+}
+
+function cloneCriteria(c: ScanCriteria): ScanCriteria {
+  // 数组逐个复制：直接引用的话，存下来之后人再动一下多选框，
+  // 已保存的那条会跟着一起变——存的东西会被后来的操作偷偷改写，这是最难查的一类错。
+  return {
+    ...c,
+    groupIds: [...c.groupIds],
+    wordIds: [...c.wordIds],
+    matchScopes: [...c.matchScopes],
+    nodeStatuses: [...c.nodeStatuses],
+    ticketTypes: [...c.ticketTypes],
+    businessTypes: [...c.businessTypes],
+    productCategories: [...c.productCategories],
+    productNames: [...c.productNames],
+  };
+}
+
+/** 两套条件是不是同一把尺子。多选项比较前先排序：勾选先后不改变条件本身 */
+function sameCriteria(a: ScanCriteria, b: ScanCriteria): boolean {
+  const key = (c: ScanCriteria) => JSON.stringify([
+    c.from, c.to,
+    [...c.groupIds].sort(), [...c.wordIds].sort(), [...c.matchScopes].sort(),
+    [...c.nodeStatuses].sort(), [...c.ticketTypes].sort(), [...c.businessTypes].sort(),
+    [...c.productCategories].sort(), [...c.productNames].sort(),
+  ]);
+  return key(a) === key(b);
+}
+
+/**
+ * 起手就有的两条专项条件——扫库记录里「高危词专项」「教育产线近30天」两次执行正是按它们跑的。
+ * 记录里记着名字、条件却找不回来，那两次扫描就复现不了，而「按什么扫的」正是记录存在的理由。
+ */
+function seedSavedFilters(): SavedScanFilter[] {
+  return [
+    {
+      id: 'sf-high-words',
+      name: '高危词专项',
+      criteria: defaultScanCriteria({ to: today(), wordIds: ['w1', 'w3', 'w4'] }),
+    },
+    {
+      id: 'sf-edu-30d',
+      name: '教育产线近30天',
+      criteria: defaultScanCriteria({ from: today(-29), to: today(), groupIds: ['edu'] }),
+    },
+  ];
+}
+
+const savedFilters = ref<SavedScanFilter[]>(seedSavedFilters());
+/** 当前条件是套用哪条筛选器来的。扫库记录的「所用规则」记的就是它，手工调过即为空 */
+const appliedFilterName = ref<string | null>(null);
+
+// 条件一旦被人改动，套用关系当场作废。留着名字的话，本次执行会被记到那个筛选器名下，
+// 而它扫的其实是另一套条件——事后照名字复现，出来的是第三批结果。
+watch(scanForm, () => {
+  const name = appliedFilterName.value;
+  if (!name) return;
+  const f = savedFilters.value.find((x) => x.name === name);
+  if (!f || !sameCriteria(f.criteria, scanForm.value)) appliedFilterName.value = null;
+}, { deep: true });
+
+const filterSaveOpen = ref(false);
+const filterNameDraft = ref('');
+/** 命名与已有的撞上时先说清「会覆盖」，别让人保存完才发现旧的没了 */
+const filterNameTaken = computed(() => {
+  const name = filterNameDraft.value.trim();
+  return !!name && savedFilters.value.some((f) => f.name === name);
 });
+
+function openSaveFilter() {
+  // 存一条起止为空的条件，等于把一次全库扫描做成一键可复发的按钮——比手工失手更危险
+  if (!scanForm.value.from || !scanForm.value.to) {
+    message.warning('请先选定建单时间区间的起止日期，再保存筛选器');
+    return;
+  }
+  filterNameDraft.value = appliedFilterName.value ?? '';
+  filterSaveOpen.value = true;
+}
+
+function confirmSaveFilter() {
+  const name = filterNameDraft.value.trim();
+  if (!name) { message.warning('请为这条筛选器命名'); return; }
+  if (!scanForm.value.from || !scanForm.value.to) {
+    message.warning('请先选定建单时间区间的起止日期，再保存筛选器');
+    return;
+  }
+  const criteria = cloneCriteria(scanForm.value);
+  const idx = savedFilters.value.findIndex((f) => f.name === name);
+  if (idx >= 0) {
+    // 覆盖保留原 id：chip 的位置不动，人下次还在原地找得到它
+    const next = [...savedFilters.value];
+    next[idx] = { ...next[idx], criteria };
+    savedFilters.value = next;
+    message.success(`已用当前条件覆盖筛选器「${name}」`);
+  } else {
+    savedFilters.value = [...savedFilters.value, { id: `sf-${Date.now()}`, name, criteria }];
+    message.success(`已保存筛选器「${name}」，点它即按此条件筛查`);
+  }
+  appliedFilterName.value = name;
+  filterSaveOpen.value = false;
+}
+
+/** 套用即执行：条件整套灌回表单，随即跑一次 */
+function applySavedFilter(f: SavedScanFilter) {
+  if (scanning.value) return;
+  scanForm.value = cloneCriteria(f.criteria);
+  // 先落名字再执行：doScan 要拿它记进扫库记录
+  appliedFilterName.value = f.name;
+  doScan();
+}
+
+/**
+ * 删除。PRD 只写了「chip 上直接删」，但它是必需的：存了删不掉，chip 行会越积越长，
+ * 常用的那两条被埋在一堆一次性条件里，等于把这个功能自己用废。
+ */
+function removeSavedFilter(f: SavedScanFilter) {
+  savedFilters.value = savedFilters.value.filter((x) => x.id !== f.id);
+  if (appliedFilterName.value === f.name) appliedFilterName.value = null;
+  message.success(`已删除筛选器「${f.name}」`);
+}
 
 // ---- 命中列表 ----
 const allHits = computed(() => {
@@ -472,6 +632,87 @@ function isFromScan(h: RiskHit): boolean {
 }
 
 const GRADE_ORDER: Record<RiskLevel, number> = { 高: 0, 中: 1, 低: 2 };
+
+// ---- 同单互见（PRD §6.7 / 规则 26b） ----
+// 一行还是一条命中，**不按工单合并**：一条规则一条证据，各自独立核实、各自回填准确率。
+// 合并成一行会让其中一条永远拿不到结论，那条规则的准确率就永远算不出来。
+//
+// 🔴 但不合并 ≠ 互不相干。客户从「退一赔三」升级到「12315」是**措辞在爬坡**，
+// 比一个客户单次说 12315 严重得多——而这个判断只有把两条摆在一起才做得出来。
+// 核实第二条的人若看不到第一条判成了什么，他手上的信息就只有孤零零一句威胁，
+// 于是把一次升级当成一次寻常抱怨。故行内标「本单另有 N 条」、打标弹窗顶部列同单结论。
+const hitsByTicket = computed(() => {
+  const m = new Map<string, RiskHit[]>();
+  rows.value.forEach((h) => {
+    const list = m.get(h.ticketNo);
+    if (list) list.push(h);
+    else m.set(h.ticketNo, [h]);
+  });
+  // 同单内按命中时刻正序：爬坡是一条时间线，倒着读读不出"先说了什么、后说了什么"
+  m.forEach((list) => list.sort((a, b) => a.when.localeCompare(b.when)));
+  return m;
+});
+function ticketHitsOf(no: string): RiskHit[] {
+  return hitsByTicket.value.get(no) ?? [];
+}
+/** 同一张单上除本条外的其它命中，供打标弹窗对照 */
+function siblingsOf(h: RiskHit): RiskHit[] {
+  return ticketHitsOf(h.ticketNo).filter((x) => x.id !== h.id);
+}
+function siblingCountOf(h: RiskHit): number {
+  return Math.max(0, ticketHitsOf(h.ticketNo).length - 1);
+}
+
+/**
+ * 工单级风险等级 ＝ max(该单已核实且判定为「成立」的命中等级)（PRD §4.9 / 规则 13a）。
+ *
+ * 【为什么取 max 而不是最新一条】一张单先命中「12315」被判高危、随后命中一条低危规则，
+ * 按"最新一条"算这张单会在**没有任何人做出降级判断**的情况下自己变成低危——
+ * 等级降下来了，风险没有降。取 max 即棘轮：后到的低等级不覆盖已定的高等级。
+ * （改判是例外，也只是例外：那背后有一条明确的人工修正，等级跟着人的判断走，不是跟着到达顺序走。）
+ *
+ * 【为什么误报与未核实不参与】误报的结论恰恰是"这里没有风险"，让它抬高工单等级等于
+ * 把已排除的东西重新算进来；未核实的还没有人的判断，它另有自己的告警口径（待核实高危）。
+ *
+ * 【为什么不落库】纯派生。落成字段就要维护它与命中记录的一致性，而每一次核实、
+ * 每一次修正都会改它——多存一份就是多一处会对不上的地方。每次读取现算。
+ */
+function ticketGradeOf(ticketNo: string): RiskLevel | null {
+  let best: RiskLevel | null = null;
+  for (const h of ticketHitsOf(ticketNo)) {
+    if (verdictOf(h) !== '成立') continue;
+    const g = gradeOf(h);
+    if (!g) continue;
+    if (!best || GRADE_ORDER[g] < GRADE_ORDER[best]) best = g;
+  }
+  return best;
+}
+/**
+ * 行内要不要提示工单级等级。**只在工单级严格高于本条自己的等级时提示**——
+ * 同级时再写一遍"本单当前 X 危"，说的是同一件事，属纯噪音。
+ * 误报行没有等级：它自己不代表风险，但本单可能已被别的证据定成高危，这时更该提示。
+ */
+function ticketGradeHint(h: RiskHit): RiskLevel | null {
+  const tg = ticketGradeOf(h.ticketNo);
+  if (!tg) return null;
+  const own = gradeOf(h);
+  if (!own) return tg;
+  return GRADE_ORDER[tg] < GRADE_ORDER[own] ? tg : null;
+}
+
+/**
+ * 只看某一张单的全部命中。
+ * 【为什么它必须跨视图】同单两条命中常常一条已核实、一条还在待核——
+ * 这正是要对照的场合。焦点态若仍受视图约束，人点开「本单另有 N 条」只会看到其中一半，
+ * 而他想看的恰恰是另一半。故焦点一旦落下，视图与视图内条件全部让位。
+ */
+const ticketFocus = ref<string | null>(null);
+function focusTicket(no: string) {
+  ticketFocus.value = ticketFocus.value === no ? null : no;
+}
+function clearTicketFocus() {
+  ticketFocus.value = null;
+}
 
 // ---- 台账查询 ----
 // 台账（已核实的记录）最主要的用法是**事后点查**：客户几个月后捅到 12315，
@@ -620,6 +861,12 @@ const filteredRows = computed(() => {
       });
   }
   let list = rows.value;
+  if (ticketFocus.value) {
+    // 焦点态按命中时刻正序：这一屏读的是"这张单上先后发生了什么"，倒序会把爬坡读反
+    return rows.value
+      .filter((h) => h.ticketNo === ticketFocus.value)
+      .sort((a, b) => a.when.localeCompare(b.when));
+  }
   if (inLedger.value) {
     // 已核实视图：核实成立 / 误报的，出待办队列但**不删除**——
     // 它是这个岗位"发现了什么"的证据，也是复盘与准确率的依据。
@@ -662,12 +909,15 @@ function setHitPage(page: number, size: number) {
   hitPageSize.value = size;
 }
 
-watch([listView, gradeFilter, ledgerFilter, scanResult, inScanResult, scope], () => {
+watch([listView, gradeFilter, ledgerFilter, scanResult, inScanResult, scope, ticketFocus], () => {
   hitPageCurrent.value = 1;
 }, { deep: true });
 
 /** 视图内选等级：只换视图内条件，视图不动——早先它会把人拽回待核实那批，等于等级与视图互斥 */
 function setGradeFilter(g: GradeFilter) {
+  // 焦点是比等级更强的一层收窄，两者叠着会让 chip 上的数字与表里的行数对不上——
+  // 人点「高危 5」却只看到 1 行，说不清是筛没了还是数错了。选等级即退出焦点。
+  clearTicketFocus();
   gradeFilter.value = g;
 }
 
@@ -823,6 +1073,16 @@ const tagReason = ref('');
 const tagAmend = ref(false);
 const tagHistory = computed(() => (tagTarget.value ? historyOf(tagTarget.value) : []));
 const tagCurrent = computed(() => (tagTarget.value ? latestEntryOf(tagTarget.value) : undefined));
+/**
+ * 同单的其它命中及其结论——弹窗里位置最靠前的一块，排在「本次命中」这个必填项之上。
+ * 【为什么必须靠前】它不是佐证，是**做这次判断的前提**：本条是不是一次升级、
+ * 客户是第几次加码，答案全在别的命中里。摆到底部与修正记录并列，等于让人先下结论再看依据。
+ */
+const tagSiblings = computed(() => (tagTarget.value ? siblingsOf(tagTarget.value) : []));
+/** 本单当前风险等级——同一块区域一并给出，人不必自己把几条等级在心里取一次 max */
+const tagTicketGrade = computed(
+  () => (tagTarget.value ? ticketGradeOf(tagTarget.value.ticketNo) : null),
+);
 /**
  * 本次真正会落库的等级。误报一律落 null——等级单选还留着上一次的选中态，
  * 拿它当"改动了"的依据的话，把成立改判成误报后再点一次某个等级，
@@ -990,8 +1250,10 @@ function clearBulk() { bulkPicked.value = new Set(); }
 const bulkCount = computed(() => bulkPicked.value.size);
 // 只有实时监控视图给批量选择：批量动作就一个「批量打标」，
 // 而已核实视图里条目都判完了，没得可批。
+// 焦点态也不给：那一屏里已核实与待核实混在一起（本来就是要对照着看），
+// 勾中一条已核实的再走批量打标，等于绕过「修正原因」这道必填门追加一条无理由的改判。
 const showHitSelection = computed(
-  () => !inScanResult.value && canRiskTag.value && listView.value === 'realtime',
+  () => !inScanResult.value && !ticketFocus.value && canRiskTag.value && listView.value === 'realtime',
 );
 const batchMenuOpen = ref(false);
 
@@ -1093,13 +1355,17 @@ const untaggedHigh = computed(() =>
  * 「去管控」：只跳到工单、把入口送到人眼前，**不代替人做管控**。
  * 基线 ※27——分级决定"该找谁"，不代表系统自动指派；管控会把工单从原处理人
  * 名下拿走（在办量、解决率分母、超时数全变），这个代价必须由人承担判断。
+ *
+ * 【入口按工单级判，不按单条命中判】（PRD §6.5）管控管的是**工单**，不是某一条证据。
+ * 一张单只要有一条命中被核实为成立·高危，该单每一行都该有这个入口——
+ * 否则人正停在那条中危命中上，明明该管控却看不到路，还得先猜到"别处还有一条"。
  */
 function goControl(h: RiskHit) {
   router.push(`/tickets/${h.ticketNo}`);
 }
 function openTicket(no: string) { router.push(`/tickets/${no}`); }
 
-// ---- 预警词管理（维护权归投诉督导与管理员；客诉专员只打标、词表只读，基线 §3.1） ----
+// ---- 风险词管理（维护权归投诉督导与管理员；客诉专员只打标、词表只读，基线 §3.1） ----
 const riskWordsOpen = ref(false);
 const canMaintainWords = computed(() => RISK_WORD_MAINTAIN_ROLES.includes(user.roleKey));
 /** 原型本地词表：可新建，刷新后回 mock 初始值 */
@@ -1107,7 +1373,7 @@ const localWords = ref<RiskWord[]>([...RISK_WORDS]);
 const enabledWords = computed(() => localWords.value.filter((w) => w.enabled));
 const enabledWordCount = computed(() => enabledWords.value.length);
 /**
- * 手动筛查的预警词下拉只列启用中的。停用是维护人给这条规则下的判决——
+ * 手动筛查的风险词下拉只列启用中的。停用是维护人给这条规则下的判决——
  * 把停用词摆进选项里（哪怕标着「停用」），等于邀请人把当初停用它的理由重演一遍：
  * 「孩子」一选就是上百条噪音，而筛查结果是要并入待核实队列的。
  */
@@ -1266,7 +1532,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
         </div>
         <div class="greeting-text">
           <div class="greeting-title">风险监控</div>
-          <div class="greeting-sub">全中心 · 预警词实时命中 → 人工核实定级 → 成立后转交工单侧处置</div>
+          <div class="greeting-sub">全中心 · 风险词实时命中 → 人工核实定级 → 成立后转交工单侧处置</div>
         </div>
       </div>
       <div class="greeting-aside">
@@ -1312,7 +1578,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
           <div
             class="em-item em-static"
             :style="{ '--kpi-accent': '#1A6FFF' }"
-            title="预警词命中总数 · 待核实与已核实之和"
+            title="风险词命中总数 · 待核实与已核实之和"
           >
             <span class="em-label">发现</span>
             <span class="em-val">{{ effect.total }}</span>
@@ -1455,7 +1721,8 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
       </div>
 
       <!-- 实时监控 · 等级 chip：底表恒为待核实，故第一枚恒是「全部待核」，不再有第二套口径 -->
-      <div v-if="listView === 'realtime'" class="section-filters grade-filters">
+      <!-- 焦点态跨视图取数，等级 chip 此刻不作数；留着它会让人以为"高危 5"与表里的行数该对上 -->
+      <div v-if="listView === 'realtime' && !ticketFocus" class="section-filters grade-filters">
         <button
           type="button"
           class="gf-chip"
@@ -1480,7 +1747,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
       </div>
 
       <!-- 台账查询条：七维全部展开，右侧动作对齐手动筛查（查询 + 重置） -->
-      <div v-if="listView === 'judged'" class="ledger-bar" @keyup.enter="applyLedgerQuery">
+      <div v-if="listView === 'judged' && !ticketFocus" class="ledger-bar" @keyup.enter="applyLedgerQuery">
         <div class="list-toolbar">
           <div class="tb-fields">
             <div class="fi">
@@ -1541,7 +1808,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               />
             </div>
             <div class="fi">
-              <span class="fl">预警词</span>
+              <span class="fl">风险词</span>
               <a-select
                 v-model:value="ledgerFilter.words" mode="multiple" allow-clear
                 size="small" class="tb-ctl"
@@ -1570,7 +1837,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
         </div>
       </div>
 
-      <!-- 筛选条：九维（班组 / 预警词 / 建单时间 / 工单状态 / 匹配范围 / 工单类型 / 业务类型 / 产品分类 / 产品名称） -->
+      <!-- 筛选条：九维（班组 / 风险词 / 建单时间 / 工单状态 / 匹配范围 / 工单类型 / 业务类型 / 产品分类 / 产品名称） -->
       <div v-if="listView === 'scan'" class="scan-bar" @keyup.enter="doScan">
         <div class="list-toolbar">
           <div class="tb-fields">
@@ -1585,7 +1852,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               />
             </div>
             <div class="fi">
-              <span class="fl">预警词</span>
+              <span class="fl">风险词</span>
               <a-select
                 v-model:value="scanForm.wordIds" mode="multiple" allow-clear
                 size="small" class="tb-ctl"
@@ -1595,10 +1862,14 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
             </div>
             <div class="fi fi-date">
               <span class="fl">建单时间</span>
+              <!--
+                不给清除按钮：时间区间清空即"对全库扫一遍"，而扫库的产出是待并入的新命中，
+                一次范围失手就把待核实队列淹没且不可逆。这一维只允许换区间，不允许没有区间。
+              -->
               <RangePicker
                 :value="scanDateRange"
                 :presets="scanRangePresets"
-                allow-clear
+                :allow-clear="false"
                 size="small"
                 format="YYYY-MM-DD"
                 :placeholder="['开始日期', '结束日期']"
@@ -1669,7 +1940,46 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
             <button type="button" class="tb-btn" @click="resetScanForm">
               <ReloadOutlined /><span>重置</span>
             </button>
+            <button
+              type="button"
+              class="tb-btn"
+              title="把当前九个维度的取值整套存下来，下次点一下即按它筛查；同名覆盖"
+              @click="openSaveFilter"
+            >
+              <SaveOutlined /><span>保存筛选器</span>
+            </button>
           </div>
+        </div>
+        <!--
+          已保存筛选器：一枚 chip ＝ 一整套筛查条件，点即套用并立刻执行。
+          【为什么与等级 chip 长得不一样】两者的动作根本不同——等级 chip 是在同一批数据里收窄，
+          这里一点就换掉九个维度并重跑一次。形态相同会让人以为点错了也就是筛一下。
+        -->
+        <div v-if="savedFilters.length" class="saved-filters">
+          <span class="sf-label">已保存筛选器</span>
+          <span
+            v-for="f in savedFilters"
+            :key="f.id"
+            class="sf-chip"
+            :class="{ on: appliedFilterName === f.name }"
+          >
+            <button
+              type="button"
+              class="sf-apply"
+              :disabled="scanning"
+              :title="`点击立即按此条件筛查 —— ${criteriaSummaryOf(f.criteria)}`"
+              @click="applySavedFilter(f)"
+            >
+              <FilterOutlined class="sf-ic" />{{ f.name }}
+            </button>
+            <button
+              type="button"
+              class="sf-del"
+              :title="`删除筛选器「${f.name}」`"
+              @click.stop="removeSavedFilter(f)"
+            >×</button>
+          </span>
+          <span class="sf-hint">点一枚即按该条件重跑一次</span>
         </div>
       </div>
 
@@ -1691,6 +2001,29 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
           </button>
           <button type="button" class="link-btn" @click="exitScanResult">退出筛查</button>
         </div>
+      </div>
+
+      <!--
+        单工单焦点条：焦点跨视图取数，页签与等级 chip 此刻都不作数，
+        故必须有一条明说"现在只看这一张单"的横幅，并把退出的路摆在同一处。
+        没有它，人会以为清单被筛空了，反复点页签也回不来。
+      -->
+      <div v-if="ticketFocus && !inScanResult" class="focus-banner">
+        <div class="fb-stat">
+          只看 <b>{{ ticketFocus }}</b> 的 {{ filteredRows.length }} 条命中
+          <span class="fb-hint">按命中时刻正序，含已核实的</span>
+          <span v-if="ticketGradeOf(ticketFocus!)" class="fb-grade">
+            本单当前
+            <span
+              class="grade-pill-inline"
+              :style="{ color: RISK_LEVEL_STYLE[ticketGradeOf(ticketFocus!)!].color, background: RISK_LEVEL_STYLE[ticketGradeOf(ticketFocus!)!].bg }"
+            >{{ ticketGradeOf(ticketFocus!) }}危</span>
+          </span>
+          <span v-else class="fb-grade muted">本单尚无已核实成立的命中</span>
+        </div>
+        <button type="button" class="fb-exit" @click="clearTicketFocus">
+          退出<span class="fb-x">×</span>
+        </button>
       </div>
 
       <div v-if="!filteredRows.length" class="ob-empty">
@@ -1721,7 +2054,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               </div>
             </th>
             <th style="width: 52px">等级</th>
-            <th style="width: 120px">预警词</th>
+            <th style="width: 120px">风险词</th>
             <th style="width: 200px">工单</th>
             <th>命中内容</th>
             <th style="width: 118px">客户 / 班组</th>
@@ -1772,6 +2105,27 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               <button type="button" class="rt-no" @click="openTicket(h.ticketNo)">{{ h.ticketNo }}</button>
               <div class="hit-title">{{ h.title }}</div>
               <div v-if="isFromScan(h)" class="hit-flag flag-scan">来自手动筛查</div>
+              <!--
+                工单级的两条事实都落在工单列：同一列里读"这张单是什么、这张单现在几级、
+                这张单还有几条证据"，比把它们散到等级列与处置列更连贯。
+              -->
+              <div v-if="!inScanResult" class="ticket-facts">
+                <button
+                  v-if="siblingCountOf(h) > 0"
+                  type="button"
+                  class="hit-flag flag-sib"
+                  :class="{ on: ticketFocus === h.ticketNo }"
+                  title="同一张单被多条规则先后命中，点开对照着看"
+                  @click="focusTicket(h.ticketNo)"
+                >本单另有 {{ siblingCountOf(h) }} 条</button>
+                <!-- 只在工单级严格高于本条时出现：同级时重复展示是噪音 -->
+                <div
+                  v-if="ticketGradeHint(h)"
+                  class="ticket-grade-note"
+                  :style="{ color: RISK_LEVEL_STYLE[ticketGradeHint(h)!].color }"
+                  title="工单级风险等级 ＝ 该单已核实且成立的命中取最高，只升不降"
+                >本单当前 <b>{{ ticketGradeHint(h) }}</b> 危</div>
+              </div>
             </td>
             <td class="hit-excerpt">
               <span class="hit-pos">{{ h.position }}</span>
@@ -1786,37 +2140,53 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                 <span v-else-if="scanPicked.has(h.id)" class="state-chip sc-will">并入后待核实</span>
                 <span v-else class="state-chip sc-skip">不并入</span>
               </template>
-              <div v-else-if="isJudged(h)" class="cell-done">
-                <!-- 误报只出判定标，不出风险标：两个标同时挂着，读的人不知道该信哪一个 -->
-                <span
-                  v-if="tagOf(h)"
-                  class="tag-done"
-                  :style="{ color: RISK_LEVEL_STYLE[tagOf(h)!].color, background: RISK_LEVEL_STYLE[tagOf(h)!].bg }"
-                  :title="tagTraceTitle(h)"
-                >{{ tagOf(h) }}风险</span>
-                <span
-                  v-if="verdictOf(h)"
-                  class="verdict-chip"
-                  :class="verdictOf(h) === '误报' ? 'vc-fp' : 'vc-ok'"
-                  :title="tagTraceTitle(h)"
-                >{{ verdictOf(h) }}</span>
-                <button
-                  v-if="tagOf(h) === '高' && verdictOf(h) === '成立'"
-                  type="button" class="row-btn row-btn-primary" @click="goControl(h)"
-                >去管控<ArrowRightOutlined /></button>
-                <!--
-                  修正入口：绝大多数已核实的记录不需要再动，故用次按钮排在动作末位，
-                  但它必须存在——台账里翻出一条判错的，正是要改的时候。
-                -->
-                <button
-                  v-if="canRiskTag"
-                  type="button" class="row-btn row-btn-amend"
-                  :title="historyOf(h).length > 1 ? `已修正 ${historyOf(h).length - 1} 次，可继续修正` : '重新核实并修正本条结果'"
-                  @click="openTag(h)"
-                >修正</button>
+              <!--
+                「去管控」按**工单级**判（PRD §6.5），故它在已核实与待核实两支里都出现：
+                管控管的是工单，本条自己判成什么、判没判过都不改变"这张单已经是高危"这件事。
+              -->
+              <div v-else class="cell-done">
+                <template v-if="isJudged(h)">
+                  <!-- 误报只出判定标，不出风险标：两个标同时挂着，读的人不知道该信哪一个 -->
+                  <span
+                    v-if="tagOf(h)"
+                    class="tag-done"
+                    :style="{ color: RISK_LEVEL_STYLE[tagOf(h)!].color, background: RISK_LEVEL_STYLE[tagOf(h)!].bg }"
+                    :title="tagTraceTitle(h)"
+                  >{{ tagOf(h) }}风险</span>
+                  <span
+                    v-if="verdictOf(h)"
+                    class="verdict-chip"
+                    :class="verdictOf(h) === '误报' ? 'vc-fp' : 'vc-ok'"
+                    :title="tagTraceTitle(h)"
+                  >{{ verdictOf(h) }}</span>
+                  <button
+                    v-if="ticketGradeOf(h.ticketNo) === '高'"
+                    type="button" class="row-btn row-btn-primary"
+                    :title="`本单工单级风险等级为高（该单已核实成立的命中取最高），转交${DISPOSAL_BY_GRADE['高'].who}`"
+                    @click="goControl(h)"
+                  >去管控<ArrowRightOutlined /></button>
+                  <!--
+                    修正入口：绝大多数已核实的记录不需要再动，故用次按钮排在动作末位，
+                    但它必须存在——台账里翻出一条判错的，正是要改的时候。
+                  -->
+                  <button
+                    v-if="canRiskTag"
+                    type="button" class="row-btn row-btn-amend"
+                    :title="historyOf(h).length > 1 ? `已修正 ${historyOf(h).length - 1} 次，可继续修正` : '重新核实并修正本条结果'"
+                    @click="openTag(h)"
+                  >修正</button>
+                </template>
+                <template v-else>
+                  <button
+                    v-if="ticketGradeOf(h.ticketNo) === '高'"
+                    type="button" class="row-btn row-btn-primary"
+                    :title="`本单已有命中被核实为成立·高危，转交${DISPOSAL_BY_GRADE['高'].who}；本条仍需单独核实`"
+                    @click="goControl(h)"
+                  >去管控<ArrowRightOutlined /></button>
+                  <button v-if="canRiskTag" type="button" class="row-btn row-btn-tag" @click="openTag(h)">核实打标</button>
+                  <span v-else-if="ticketGradeOf(h.ticketNo) !== '高'" class="hit-sub">—</span>
+                </template>
               </div>
-              <button v-else-if="canRiskTag" type="button" class="row-btn row-btn-tag" @click="openTag(h)">核实打标</button>
-              <span v-else class="hit-sub">—</span>
             </td>
           </tr>
         </tbody>
@@ -1837,10 +2207,10 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
       </div>
     </section>
 
-    <!-- 预警词维护抽屉 -->
+    <!-- 风险词维护抽屉 -->
     <a-drawer v-model:open="riskWordsOpen" title="风险词管理" width="760" placement="right">
       <div v-if="canMaintainWords" class="drawer-toolbar">
-        <button type="button" class="row-btn row-btn-primary" @click="openWordForm">新建预警词</button>
+        <button type="button" class="row-btn row-btn-primary" @click="openWordForm">新建风险词</button>
       </div>
       <p class="drawer-note top">
         一条规则＝<b>一个主词 + N 个同义词</b>，命中任一即算命中，同一工单的同一段原文只记一条，统计一律归在主词名下。
@@ -1850,7 +2220,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
       <table class="word-table">
         <thead>
           <tr>
-            <th>预警词</th><th>分级</th><th>匹配范围</th>
+            <th>风险词</th><th>分级</th><th>匹配范围</th>
             <th>近 7 天命中</th>
             <!--
               列头标明「近 7 天」与「本规则」两个限定：页头监控成效那个准确率是**全局累计**
@@ -1898,10 +2268,10 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
       </p>
     </a-drawer>
 
-    <!-- 新建预警词 -->
+    <!-- 新建风险词 -->
     <a-modal
       v-model:open="wordFormOpen"
-      title="新建预警词"
+      title="新建风险词"
       :width="560"
       ok-text="保存"
       cancel-text="取消"
@@ -1953,6 +2323,34 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
             <a-switch v-model:checked="wordForm.enabled" checked-children="启用" un-checked-children="停用" />
             <span class="op-hint wf-enable-hint">启用后纳入实时监控，增量工单自动命中，手动筛查也只跑启用中的词；停用即完全不参与筛查。建议新建先对照近 7 天命中量，确认不会刷屏后再启用。</span>
           </div>
+        </div>
+      </div>
+    </a-modal>
+
+    <!-- 保存筛选器：存的是当前九个维度的整套取值，名字即日后认出它的唯一凭据 -->
+    <a-modal
+      v-model:open="filterSaveOpen"
+      title="保存筛选器"
+      :width="460"
+      ok-text="保存"
+      cancel-text="取消"
+      @ok="confirmSaveFilter"
+    >
+      <div class="op-form sf-form">
+        <div class="op-field op-field-h">
+          <span class="op-label req">名称</span>
+          <a-input
+            v-model:value="filterNameDraft"
+            placeholder="如：教育线安全事故专项"
+            @press-enter="confirmSaveFilter"
+          />
+        </div>
+        <p v-if="filterNameTaken" class="op-tip op-tip-info sf-tip">
+          已有同名筛选器，保存后<b>覆盖</b>它的条件，不会多出第二条同名。
+        </p>
+        <div class="sf-preview">
+          <div class="sf-preview-k">本次存下的条件</div>
+          <div class="sf-preview-v">{{ scanSummary }}</div>
         </div>
       </div>
     </a-modal>
@@ -2099,7 +2497,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
             「{{ tagTarget.excerpt }}」
           </div>
           <div class="tag-hit-meta">
-            <span>预警词 <strong>「{{ tagTarget.word }}」</strong></span>
+            <span>风险词 <strong>「{{ tagTarget.word }}」</strong></span>
             <template v-if="tagTarget.matchedWord && tagTarget.matchedWord !== tagTarget.word">
               <span class="tag-hit-sep">·</span>
               <span>命中「{{ tagTarget.matchedWord }}」</span>
@@ -2123,6 +2521,54 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
             <span class="tag-hit-sep">·</span>
             <span>{{ tagCurrent.by }}（{{ tagCurrent.byRole }}）于 {{ tagCurrent.at }}</span>
           </div>
+        </div>
+
+        <!--
+          同单其它命中及其结论（PRD §6.7 / 规则 26b）。
+          🔴 这一块是「同单互见」的全部价值所在：核实第二条的人必须看得到第一条判成了什么。
+          客户从「退一赔三」升级到「12315」是**措辞在爬坡**，比一个客户单次说 12315
+          严重得多——而这个判断只有把两条摆在一起才做得出来。故连原文片段一并列出，
+          光有规则名与结论看不出"话是怎么一步步说重的"。
+        -->
+        <div v-if="tagSiblings.length" class="tag-sib">
+          <div class="tag-sib-head">
+            <span class="tag-sib-title">本单其它命中</span>
+            <span class="tag-sib-n">{{ tagSiblings.length }} 条</span>
+            <span class="tag-sib-grade">
+              本单当前风险等级
+              <span
+                v-if="tagTicketGrade"
+                class="grade-pill-inline"
+                :style="{ color: RISK_LEVEL_STYLE[tagTicketGrade].color, background: RISK_LEVEL_STYLE[tagTicketGrade].bg }"
+                title="已核实且成立的命中取最高，只升不降；误报与未核实的不参与"
+              >{{ tagTicketGrade }}危</span>
+              <span v-else class="tag-sib-nograde" title="该单还没有任何一条命中被核实为成立">尚无</span>
+            </span>
+          </div>
+          <ol class="tag-sib-list">
+            <li v-for="s in tagSiblings" :key="s.id" class="tsb-item">
+              <div class="tsb-head">
+                <span class="tsb-word">「{{ s.word }}」</span>
+                <span class="tsb-at">{{ s.when }}</span>
+                <span v-if="!verdictOf(s)" class="tsb-open">待核实</span>
+                <template v-else>
+                  <span
+                    class="verdict-chip"
+                    :class="verdictOf(s) === '误报' ? 'vc-fp' : 'vc-ok'"
+                  >{{ verdictOf(s) }}</span>
+                  <span
+                    v-if="gradeOf(s)"
+                    class="grade-pill-inline"
+                    :style="{ color: RISK_LEVEL_STYLE[gradeOf(s)!].color, background: RISK_LEVEL_STYLE[gradeOf(s)!].bg }"
+                  >{{ gradeOf(s) }}危</span>
+                </template>
+              </div>
+              <div class="tsb-excerpt">
+                <span class="hit-pos">{{ s.position }}</span>
+                「{{ s.excerpt }}」
+              </div>
+            </li>
+          </ol>
         </div>
 
         <div class="op-field op-field-h tag-field-block">
@@ -2615,6 +3061,18 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
 .hit-flag { display: inline-block; margin-top: 4px; padding: 0 6px; border-radius: 3px; font-size: 10px; }
 .flag-scan { background: #EFF6FF; color: #1D4ED8; }
 
+/* 工单级事实：同单互见徽标 + 工单级等级提示，同处工单列 */
+.ticket-facts { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+/* 徽标可点，故给出按钮形态与主色描边——不可点的 flag-scan 保持纯色块，两者不能长得一样 */
+.flag-sib {
+  border: 1px solid #C7D2FE; background: #EEF2FF; color: #4338CA;
+  font-family: inherit; line-height: 16px; cursor: pointer;
+}
+.flag-sib:hover { border-color: #6366F1; background: #E0E7FF; }
+.flag-sib.on { border-color: #4338CA; background: #4338CA; color: #fff; }
+.ticket-grade-note { margin-top: 3px; font-size: 11px; }
+.ticket-grade-note b { font-weight: 700; }
+
 /* 手动筛查：就地筛选条，沿用工作台 query-filters 形态 */
 .scan-entry { display: inline-flex; align-items: center; gap: 4px; }
 .scan-entry.active { border-color: #1a6fff; color: #1a6fff; }
@@ -2656,6 +3114,80 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
 .scan-bar .list-toolbar :deep(.tb-range .ant-picker-input > input) {
   font-size: 11px;
 }
+
+/*
+ * 已保存筛选器 chip：胶囊 + 漏斗标 + 靛蓝一色，与等级 chip（方角、灰白底、蓝色实心激活）
+ * 一眼可分。两者点下去的后果不是一个量级：那边是筛，这边是换整套条件并重跑。
+ */
+.saved-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: #f8fafc;
+  border: 1px solid #eef2f7;
+  border-radius: 8px;
+}
+.sf-label { font-size: 11px; color: #9ca3af; flex: none; }
+.sf-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  border: 1px solid #c7d2fe;
+  border-radius: 999px;
+  background: #fff;
+  overflow: hidden;
+}
+.sf-chip:hover { border-color: #6366f1; }
+.sf-chip.on { border-color: #4338ca; background: #eef2ff; }
+.sf-apply {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 100%;
+  padding: 0 4px 0 10px;
+  border: none;
+  background: transparent;
+  color: #4338ca;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sf-chip.on .sf-apply { font-weight: 600; }
+.sf-apply:disabled { color: #a5b4fc; cursor: not-allowed; }
+.sf-ic { font-size: 11px; flex: none; }
+.sf-del {
+  height: 100%;
+  padding: 0 8px 0 4px;
+  border: none;
+  background: transparent;
+  color: #a5b4fc;
+  font-size: 13px;
+  line-height: 1;
+  font-family: inherit;
+  cursor: pointer;
+}
+.sf-del:hover { color: #ef4444; }
+.sf-hint { font-size: 11px; color: #cbd5e1; }
+
+/* 保存筛选器弹窗 */
+.sf-form .op-label { width: 3.5em; }
+.sf-tip { margin: 8px 0 0; }
+.sf-preview {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: #f8fafc;
+  border: 1px solid #eef2f7;
+  border-radius: 6px;
+}
+.sf-preview-k { font-size: 11px; color: #9ca3af; }
+.sf-preview-v { margin-top: 4px; font-size: 12px; color: #475569; line-height: 1.6; }
 .ledger-bar { margin: 2px 0 8px; }
 .ledger-bar .list-toolbar {
   gap: 6px 10px;
@@ -2849,6 +3381,25 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
 .sr-fresh { margin-left: 8px; padding: 0 7px; border-radius: 10px; font-size: 12px; background: #dcfce7; color: #15803d; }
 .sr-dup { margin-left: 6px; padding: 0 7px; border-radius: 10px; font-size: 12px; background: #f1f5f9; color: #64748b; }
 .sb-hint { margin-left: 10px; font-size: 12px; color: #94a3b8; }
+/* 单工单焦点条：与筛查结果条同形，靛蓝一色区分"这是收窄不是新数据" */
+.focus-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 8px 12px; margin-bottom: 10px;
+  background: #EEF2FF; border: 1px solid #C7D2FE; border-radius: 6px;
+}
+.fb-stat { font-size: 13px; color: #3730A3; }
+.fb-stat b { font-size: 14px; color: #312E81; font-variant-numeric: tabular-nums; }
+.fb-hint { margin-left: 10px; font-size: 12px; color: #818CF8; }
+.fb-grade { margin-left: 10px; font-size: 12px; color: #4338CA; }
+.fb-grade.muted { color: #818CF8; }
+.fb-exit {
+  display: inline-flex; align-items: center; gap: 4px; flex: none;
+  height: 26px; padding: 0 10px; border: 1px solid #C7D2FE; border-radius: 4px;
+  background: #fff; color: #4338CA; font-size: 12px; font-family: inherit; cursor: pointer;
+}
+.fb-exit:hover { border-color: #6366F1; background: #F5F3FF; }
+.fb-x { font-size: 13px; line-height: 1; }
+
 .sb-actions { display: inline-flex; align-items: center; gap: 12px; }
 .sb-all { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: #64748b; cursor: pointer; }
 .sb-picked { font-size: 12px; color: #64748b; }
@@ -3062,6 +3613,39 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
   color: #6b7280;
 }
 .tag-cur-k { color: #9ca3af; }
+
+/* 同单其它命中：靛蓝一色，与灰底的命中头、修正记录区分开——它讲的是别的命中，不是本条 */
+.tag-sib {
+  padding: 10px 12px;
+  background: #F5F7FF;
+  border: 1px solid #DDE3FF;
+  border-radius: 8px;
+}
+.tag-sib-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+}
+.tag-sib-title { font-weight: 600; color: #312E81; }
+.tag-sib-n { font-size: 11px; color: #6366F1; font-variant-numeric: tabular-nums; }
+.tag-sib-grade { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; color: #6b7280; }
+.tag-sib-nograde { color: #9ca3af; cursor: help; }
+.tag-sib-list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tsb-item { padding-left: 10px; border-left: 2px solid #C7D2FE; }
+.tsb-head { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.tsb-word { font-size: 12px; font-weight: 600; color: #374151; }
+.tsb-at { font-size: 11px; color: #9ca3af; font-variant-numeric: tabular-nums; }
+.tsb-open { padding: 0 6px; border-radius: 3px; font-size: 10px; background: #FEF3C7; color: #B45309; }
+.tsb-excerpt { margin-top: 3px; font-size: 12px; color: #6b7280; line-height: 1.55; }
 .tag-trace {
   padding: 10px 12px;
   background: #f9fafb;

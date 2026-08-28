@@ -8,7 +8,7 @@ import {
   WORKBENCH_HANDLER,
   type Ticket,
 } from '@/views/tickets/types/ticket';
-import { TOO_MANY_RESULTS } from '@/views/query/queryCenterSearch';
+import { matchesSearchText, TOO_MANY_RESULTS } from '@/views/query/queryCenterSearch';
 import {
   EMPTY_MINE_QUERY,
   matchMineQuery,
@@ -72,10 +72,10 @@ export function useTicketList(scope: TicketListScope = 'workbench') {
       if (extraFilter.value && !extraFilter.value(t)) return false;
       const kw = keyword.value.trim();
       if (kw) {
-        const q = kw.toLowerCase();
         // 检索键覆盖 §3.2 的四类：工单号 / 客户（名 + 手机号）/ 设备 SN / 关键词（标题、摘要）
-        const hay = `${t.no} ${t.title} ${t.customer} ${t.customerPhone ?? ''} ${t.sn ?? ''} ${t.problemDesc ?? ''}`.toLowerCase();
-        if (!hay.includes(q)) return false;
+        // 手机号允许带空格（操作页展示态「138 0013 8000」对库里的 13800138000）
+        const hay = `${t.no} ${t.title} ${t.customer} ${t.customerPhone ?? ''} ${t.sn ?? ''} ${t.problemDesc ?? ''}`;
+        if (!matchesSearchText(hay, kw)) return false;
       }
       return matchMineQuery(t, query.value);
     }),

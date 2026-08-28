@@ -1,4 +1,4 @@
-// 运营监控 · 模块 3（全维度运营拆解报表）与模块 2.3（风险预警词）数据源。
+// 运营监控 · 模块 3（全维度运营拆解报表）与模块 2.3（风险风险词）数据源。
 //
 // 与实时大盘（opsMonitor.ts）的分工：那边是"此刻要不要动手"，这边是"这一段时间表现如何、为什么"。
 // 业务线占比直接复用大盘的产线下钻，保证同一个数字在两个 Tab 里不会有两个值。
@@ -131,7 +131,7 @@ export const QUALITY_METRICS: QualityMetric[] = [
 ];
 
 // ======================================================================
-// 模块 2.3 · 风险预警词
+// 模块 2.3 · 风险风险词
 // ======================================================================
 
 export type RiskLevel = '高' | '中' | '低';
@@ -586,6 +586,66 @@ export const RISK_HITS: RiskHit[] = [
     signal: '强', signalSource: '命中「12315」',
     track: '外部信号', legacyLevel: '高',
   },
+
+  // ====================================================================
+  // 同一张单被多条规则先后命中
+  //
+  // 上面二十条各挂各的工单，于是「一张单先命中 A、后命中 B」这件事在数据里根本不存在——
+  // 而它恰恰是 §4.9 工单级等级取 max、§6.7 同单互见这两条口径唯一的用武之地：
+  // 没有同单多命中，工单级等级恒等于命中级等级，互见提示恒不出现，两条口径都无从验证。
+  // 下面三条按两组场景补齐，**不改动上面任何一条**。
+  // ====================================================================
+
+  {
+    // 【A 组 · 措辞爬坡】与 h15 同挂 IFLYZX-20260805-00003。
+    // 客户先要「退一赔三」（已核实成立·中危，本条），三小时后改口「直接 12315」（h15，仍待核实）。
+    // 两条各自成立、各自回填准确率，但风险是**连着读**才看得出来的：
+    // 单看 12315 是一次常见威胁，接在退一赔三后面则是措辞在爬坡，严重度不是一个量级。
+    // 本条把工单级等级先钉在「中」；等 h15 被核实成立·高，工单级按 max 升到「高」——
+    // 这就是「只升不降」在界面上唯一看得见的一次动作。
+    id: 'h21', ticketNo: 'IFLYZX-20260805-00003', title: '办公本触控笔断触频繁',
+    word: '退一赔三', matchedWord: '退一赔三', level: '中', position: '沟通记录',
+    excerpt: '笔换过一次还是断触，宣传写的防断触根本做不到，我要求退一赔三。',
+    when: '2026-08-03 10:12', customer: '韩雪',
+    groupId: 'cs-1', groupName: '受理一组', assignee: '赵坐席',
+    receivers: ['值班经理'],
+    speakerRole: '客户',
+    impact: '一般', impactSource: '产品质量投诉 · 产品质量故障',
+    signal: '中', signalSource: '命中「退一赔三」',
+    track: '外部信号', legacyLevel: '中',
+    tagged: '中', taggedBy: '李文萍', taggedByRole: '客诉专员', taggedAt: '2026-08-03 10:30', taggedNote: '客户诉求集中在换货与补偿，暂未指向外部渠道，交班组长跟进',
+    verdict: '成立',
+  },
+  {
+    // 【B 组 · 同单双待核 ①】与 h10、h23 同挂 IFLYZX-20260726-00001。
+    // 两条都还没人判，工单级等级因此为空（未核实不参与取 max）——
+    // 「本单另有 N 条」这个提示不能只在有人判过时才对，全待核才是这个岗位每天的常态。
+    id: 'h22', ticketNo: 'IFLYZX-20260726-00001', title: '翻译机固件升级后变砖',
+    word: '投诉到底', matchedWord: '投诉到底', level: '中', position: '沟通记录',
+    excerpt: '一台机器折腾我一个星期，这次我投诉到底。',
+    when: '2026-08-04 09:05', customer: '马涛',
+    groupId: 'cs-2', groupName: '受理二组', assignee: '李坐席',
+    receivers: ['值班经理'],
+    speakerRole: '客户',
+    impact: '一般', impactSource: '产品质量投诉 · 产品质量故障',
+    signal: '中', signalSource: '命中「投诉到底」',
+    track: '外部信号', legacyLevel: '中',
+  },
+  {
+    // 【B 组 · 同单双待核 ②】同上单第三条。三条命中分属三条规则、命中位置各不相同，
+    // 正是规则 19a「外层按规则全跑不中断」的产物：一句话踩两条规则就是两条独立证据，
+    // 合并成一行会让其中一条永远拿不到核实结论，那条规则的准确率也就永远算不出来。
+    id: 'h23', ticketNo: 'IFLYZX-20260726-00001', title: '翻译机固件升级后变砖',
+    word: '起诉', matchedWord: '起诉', level: '高', position: '催补记录',
+    excerpt: '客户再次催办，称已咨询律师，若本周不给方案就起诉。',
+    when: '2026-08-04 09:48', customer: '马涛',
+    groupId: 'cs-2', groupName: '受理二组', assignee: '李坐席',
+    receivers: ['李文萍', '法务'],
+    speakerRole: '客户',
+    impact: '一般', impactSource: '产品质量投诉 · 产品质量故障',
+    signal: '强', signalSource: '命中「起诉」',
+    track: '外部信号', legacyLevel: '高',
+  },
 ];
 
 /** 本单最终等级：双轨交叉，不看词表预设等级 */
@@ -608,12 +668,12 @@ export function legacyRiskHitsOf(scope: OpsScope): RiskHit[] {
   return riskHitsOf(scope).filter((h) => h.legacyLevel !== null);
 }
 
-/** 未打标且词表预设为高的命中（一期：仅预警词命中，等级由打标人填） */
+/** 未打标且词表预设为高的命中（一期：仅风险词命中，等级由打标人填） */
 export function untaggedHighRisks(scope: OpsScope): RiskHit[] {
   return wordOnlyRiskHitsOf(scope).filter((h) => h.level === '高' && !h.tagged);
 }
 
-/** 一期仅展示预警词命中的记录：legacyLevel=null 即非词表召回，属尚未启用的后果严重度轨 */
+/** 一期仅展示风险词命中的记录：legacyLevel=null 即非词表召回，属尚未启用的后果严重度轨 */
 export function wordOnlyRiskHitsOf(scope: OpsScope): RiskHit[] {
   return riskHitsOf(scope).filter((h) => h.legacyLevel !== null);
 }
@@ -819,13 +879,23 @@ export interface ScanCriteria {
   productNames: string[];
 }
 
+/** 今天（`YYYY-MM-DD`）——默认区间的右端点，取调用时刻而非模块加载时刻 */
+function todayStr(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 /** 手动筛查表单默认值（默认等价于旧版「在办」粗筛） */
 export function defaultScanCriteria(overrides?: Partial<ScanCriteria>): ScanCriteria {
   return {
     groupIds: [],
     wordIds: [],
     from: '2026-07-01',
-    to: '',
+    // 右端点给到今天，默认值本身就不是无界的（规则 42）。
+    // 留空的话，任何一处忘了补 to 都会静默变成一次全库扫描——而扫库的产出是"新命中"，
+    // 一次失手就把待核实队列灌满且不可逆，这个代价不该由"某处忘了传参"来触发。
+    to: todayStr(),
     matchScopes: [],
     nodeStatuses: [...IN_PROGRESS_SCAN_STATUS_VALUES],
     ticketTypes: [],

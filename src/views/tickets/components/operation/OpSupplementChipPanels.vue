@@ -2,7 +2,7 @@
 import { computed, watch } from 'vue';
 import OpTextareaAttach from './shared/OpTextareaAttach.vue';
 import OpQualityStandardFields from './OpQualityStandardFields.vue';
-import OpChannelTags from './OpChannelTags.vue';
+import OpChannelTable from './OpChannelTable.vue';
 import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue';
 import type { ProcessFormDraft, RiskFlag, SupplementChip } from '@/views/tickets/types/operation';
 import {
@@ -27,8 +27,13 @@ const props = defineProps<{
   form: ProcessFormDraft;
   /** 建单投诉平台，用于控制「有责/无责」类标记显隐 */
   complaintPlatform?: string;
-  /** 建单投诉平台列表（投诉渠道跟进按平台分行，内投/外投均含） */
-  complaintPlatforms?: { platform: string; customPlatform?: string; complaintNo: string }[];
+  /** 建单投诉平台列表（投诉渠道跟进：平台 + 编号 + 投诉内容） */
+  complaintPlatforms?: {
+    platform: string;
+    customPlatform?: string;
+    complaintNo: string;
+    complaintContent?: string;
+  }[];
   /** 是否展示投诉渠道 chip 面板 */
   showExternal?: boolean;
   /** 只读：随「工单处理」Tab 的 Tab 级只读判据传下来（见 OpProcessForm.readonly） */
@@ -55,7 +60,7 @@ function platformKey(p: { platform: string; complaintNo?: string }) {
   return `${p.platform}::${p.complaintNo ?? ''}`;
 }
 
-/** 投诉渠道跟进行：与建单 platforms 对齐，仅展示平台/编号 */
+/** 投诉渠道跟进行：与建单 platforms 对齐，展示平台 / 编号 / 投诉内容 */
 const followupRows = computed(() => {
   const plats = (props.complaintPlatforms ?? []).filter((p) => p.platform);
   const prev = new Map(
@@ -66,7 +71,9 @@ const followupRows = computed(() => {
     const old = prev.get(platformKey(p));
     return {
       platform: p.platform,
-      complaintNo: p.complaintNo ?? old?.complaintNo,
+      customPlatform: p.customPlatform ?? old?.customPlatform,
+      complaintNo: p.complaintNo ?? old?.complaintNo ?? '',
+      complaintContent: old?.complaintContent ?? p.complaintContent ?? '',
     };
   });
 });
@@ -95,6 +102,13 @@ const missChannelAny = computed(() => missChannelReply.value || missChannelRecon
 function update(partial: Partial<ProcessFormDraft>) {
   if (props.readonly) return;
   emit('update:form', { ...props.form, ...partial });
+}
+
+function updateChannelContent(index: number, value: string) {
+  const next = followupRows.value.map((row, i) =>
+    i === index ? { ...row, complaintContent: value } : row,
+  );
+  update({ platformFollowups: next });
 }
 
 function onComplaintMarkChange(v: string | number | string[] | undefined) {
@@ -288,7 +302,11 @@ const missRiskDesc = computed(
   <div v-else-if="activeChip === 'external' && showExternal" class="chip-panel ext-panel panel-neutral">
     <div v-if="!followupRows.length" class="ext-empty">暂无投诉渠道，请先在工单信息中登记投诉平台</div>
     <div v-else class="ext-compact">
-      <OpChannelTags :platforms="followupRows" />
+      <OpChannelTable
+        :rows="followupRows"
+        :readonly="readonly"
+        @update:content="updateChannelContent"
+      />
       <div class="ext-followup-row">
         <div class="ext-followup-field">
           <label class="field-label-sm"><span class="req">*</span>平台回复结果</label>

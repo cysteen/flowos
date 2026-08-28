@@ -29,7 +29,7 @@ const BASE_TICKETS: Ticket[] = [
     nodeStatus: '处理中', nodeStep: 3, nodeTotal: 5, priority: 'P0',
     slaText: '00:42:10', slaSub: '距超时', slaState: 'soon', slaMinutes: 42,
     assignee: '王坐席', tab: 'mine',
-    customerPhone: '13800138001', sn: 'SN-X1-20260301', productCategory: '智能硬件',
+    customerPhone: '13800138000', sn: 'SN-X1-20260301', productCategory: '智能硬件',
     createdAt: '2026-06-10 08:12', updatedAt: '2026-06-10 14:30',
     // 已联系：催补后坐席已回电 → 催补待回**不收**（PRD-915 补充与催单 §10.1）
     responded: true, upgradedByMe: true, hasDunning: true, dunningContacted: true, contactedAfterUrge: true,

@@ -34,7 +34,12 @@ const props = defineProps<{
   /** 投诉平台（控制投诉标记扩展选项） */
   complaintPlatform?: string;
   /** 建单投诉平台列表（投诉渠道跟进按平台分行，内投/外投均含） */
-  complaintPlatforms?: { platform: string; customPlatform?: string; complaintNo: string }[];
+  complaintPlatforms?: {
+    platform: string;
+    customPlatform?: string;
+    complaintNo: string;
+    complaintContent?: string;
+  }[];
   /** 工单来源（内投/外投渠道时展示投诉渠道 chip） */
   ticketSource?: string;
   /**

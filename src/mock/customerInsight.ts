@@ -155,9 +155,9 @@ export interface CustomerInsight {
 const PROFILES: CustomerProfile[] = [
   {
     id: 'C1001', name: '张小凡', role: '记者', tags: ['易投诉', '高价值'],
-    phone: '13800138001',
+    phone: '13800138000',
     contacts: [
-      { kind: '手机', value: '13800138001', primary: true },
+      { kind: '手机', value: '13800138000', primary: true },
       { kind: '邮箱', value: 'zhangxf@media-sh.com' },
       { kind: '座机', value: '021-6288-4102' },
     ],
@@ -242,9 +242,9 @@ const PROFILES: CustomerProfile[] = [
 type ArchiveTicket = Omit<CustomerTicketRow, 'live'>;
 
 const ARCHIVE: Record<string, ArchiveTicket[]> = {
-  '13800138001': [
+  '13800138000': [
     {
-      id: 'h-13800138001-1', no: 'IFLYTS-20260412-00002', title: '智能音箱连接家庭 WiFi 频繁掉线',
+      id: 'h-13800138000-1', no: 'IFLYTS-20260412-00002', title: '智能音箱连接家庭 WiFi 频繁掉线',
       type: '投诉', priority: 'P1', statusText: '已结案', tone: 'closed', channel: '电话',
       product: '智能音箱 X1', createdAt: '2026-04-12 10:22', closedAt: '2026-04-15 17:40',
       assignee: '林坐席', source: '客服', satisfaction: 3,
@@ -252,7 +252,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
       isComplaint: true, isProcessing: false, isClosed: true,
     },
     {
-      id: 'h-13800138001-2', no: 'IFLYZX-20260228-00001', title: '咨询音箱固件升级方式',
+      id: 'h-13800138000-2', no: 'IFLYZX-20260228-00001', title: '咨询音箱固件升级方式',
       type: '咨询', priority: 'P3', statusText: '已结案', tone: 'closed', channel: '在线客服',
       product: '智能音箱 X1', createdAt: '2026-02-28 14:05', closedAt: '2026-02-28 14:31',
       assignee: '陈坐席', source: '客服', satisfaction: 5,
@@ -260,7 +260,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
       isComplaint: false, isProcessing: false, isClosed: true,
     },
     {
-      id: 'h-13800138001-3', no: 'AS-20250922-11208', title: '智能门锁指纹模块返修',
+      id: 'h-13800138000-3', no: 'AS-20250922-11208', title: '智能门锁指纹模块返修',
       type: '维修', priority: 'P2', statusText: '已完成', tone: 'closed', channel: '售后',
       product: '智能门锁 L1', createdAt: '2025-09-22 09:00', closedAt: '2025-10-08 16:00',
       assignee: '售后 · 华东仓', source: '售后',
@@ -371,7 +371,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
 // ---- 联系记录 ----
 
 const CONTACTS: Record<string, CustomerContactRow[]> = {
-  '13800138001': [
+  '13800138000': [
     { id: 'ct-1', kind: 'call', when: '2026-06-10 14:12', operator: '王坐席', meta: '通话 6 分 12 秒', summary: '客户情绪激动，强调本人为媒体从业者，要求当日给出明确答复，已承诺 24 小时内回电。', ticketNo: 'IFLYTS-20260610-00002' },
     { id: 'ct-2', kind: 'im', when: '2026-06-10 09:30', operator: '一线 · 李坐席', meta: '在线会话 18 条', summary: '首次反馈播放跳曲问题，已采集日志并升级二线。', ticketNo: 'IFLYTS-20260610-00002' },
     { id: 'ct-3', kind: 'call', when: '2026-04-15 17:20', operator: '林坐席', meta: '通话 4 分 40 秒', summary: '回访掉线问题处理结果，客户表示可用但对时长不满。', ticketNo: 'IFLYTS-20260412-00002' },
@@ -402,7 +402,7 @@ const CONTACTS: Record<string, CustomerContactRow[]> = {
 // ---- 关联售后单 ----
 
 const AFTERSALES: Record<string, CustomerAftersaleRow[]> = {
-  '13800138001': [
+  '13800138000': [
     { no: 'AS-20250922-11208', type: '返修', product: '智能门锁 L1', status: '已完成', createdAt: '2025-09-22', conclusion: '保内更换指纹模块' },
   ],
   '13700003333': [
@@ -420,7 +420,7 @@ const AFTERSALES: Record<string, CustomerAftersaleRow[]> = {
 // ---- 满意度评价 ----
 
 const SURVEYS: Record<string, CustomerSurveyRow[]> = {
-  '13800138001': [
+  '13800138000': [
     { ticketNo: 'IFLYTS-20260412-00002', sentAt: '2026-04-15 18:00', evaluated: true, score: 3, comment: '问题解决了，但来回折腾了三天。' },
     { ticketNo: 'IFLYZX-20260228-00001', sentAt: '2026-02-28 15:00', evaluated: true, score: 5, comment: '响应很快。' },
   ],
@@ -691,9 +691,10 @@ export interface CustomerSearchResult {
 
 export function detectQueryKind(raw: string): QueryKind {
   const q = raw.trim();
-  if (/^1[3-9]\d{9}$/.test(q)) return 'phone';
+  const compact = q.replace(/[\s-]/g, '');
+  if (/^1[3-9]\d{9}$/.test(compact)) return 'phone';
   // 工单号全称、或 4 位以上纯数字（坐席常只报单号尾段）
-  if (/^IFLY/i.test(q) || /^\d{4,}$/.test(q)) return 'ticket';
+  if (/^IFLY/i.test(q) || /^\d{4,}$/.test(compact)) return 'ticket';
   if (/^SN-/i.test(q)) return 'sn';
   return 'name';
 }
@@ -738,7 +739,8 @@ export function searchCustomers(raw: string): CustomerSearchResult {
   const kind = detectQueryKind(q);
 
   if (kind === 'phone') {
-    const c = toCandidate(q, '手机号精确匹配');
+    const compact = q.replace(/[\s-]/g, '');
+    const c = toCandidate(compact, '手机号精确匹配');
     return { kind, candidates: c ? [c] : [] };
   }
 
@@ -786,7 +788,7 @@ export function suggestedCustomers(limit = 6): CustomerCandidate[] {
 
 /** 交互稿可搜示例（Mock 库内真实数据） */
 export const DEMO_SEARCH_HINTS = [
-  { label: '张小凡', query: '13800138001', tip: '手机号 · 完整档案' },
+  { label: '张小凡', query: '13800138000', tip: '手机号 · 完整档案' },
   { label: '赵敏', query: '13788889999', tip: '手机号 · 校长/企业客户' },
   { label: '吴强', query: '13700003333', tip: '手机号 · 外投投诉史' },
   { label: '李大海', query: '13912345678', tip: '手机号' },

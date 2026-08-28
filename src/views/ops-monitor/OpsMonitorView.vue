@@ -1123,7 +1123,7 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
 
       <!--
         风险命中 —— 只留两张指标卡 + 下钻入口（D7a）
-        明细表、打标弹窗、预警词表抽屉已随模块四拆出，全部搬到「风险监控」页。
+        明细表、打标弹窗、风险词表抽屉已随模块四拆出，全部搬到「风险监控」页。
         大盘其余模块都是只读指标，只有风险带写动作；写动作寄居在只读页里长不出闭环。
       -->
       <section v-if="canRiskMonitor" class="overview-section">
@@ -2269,7 +2269,7 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
 }
 .lv-chip.active { border-color: currentColor; }
 
-/* 预警词表 */
+/* 风险词表 */
 .word-table { width: 100%; border-collapse: collapse; }
 .word-table th {
   text-align: left; font-size: 11px; font-weight: 600; color: #9ca3af;

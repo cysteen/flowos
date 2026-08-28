@@ -362,7 +362,7 @@ export const TICKET_DETAIL: TicketDetailMeta = {
     address: '望江西路 666 号讯飞大厦 A 座',
   },
   agent: {
-    name: '张太太',
+    name: '区域代理',
     relation: '家属',
     contacts: [
       { type: 'phone', value: '139 1234 5678' },
@@ -383,8 +383,16 @@ export const TICKET_DETAIL: TicketDetailMeta = {
     ],
     complaintType: '产品质量',
     platforms: [
-      { platform: '市场监管12315平台', complaintNo: 'HM20260618001' },
-      { platform: '黑猫消费者服务平台', complaintNo: '' },
+      {
+        platform: '市场监管12315平台',
+        complaintNo: 'HM20260618001',
+        complaintContent: '客户反映产品存在质量问题，要求监管部门介入并书面答复处理结果。',
+      },
+      {
+        platform: '黑猫消费者服务平台',
+        complaintNo: '',
+        complaintContent: '在黑猫平台发起售后投诉，称承诺回访未兑现，要求今日内回复。',
+      },
     ],
     receivedAt: '2026-06-18 15:02',
     priorFeedback: '是-400',

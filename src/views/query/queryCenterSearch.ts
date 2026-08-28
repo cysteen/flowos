@@ -21,6 +21,24 @@ export const EMPTY_QUERY_TIP = '请输入工单号、手机号或客户';
 /** E2 截断提示 */
 export const TRUNCATED_TIP = `关键词过长，已截取前 ${MAX_QUERY_LEN} 字`;
 
+/**
+ * 去掉空白与横线，便于「138 0013 8000」对上库里的 13800138000、
+ * 「IFLYTS-20260610-00002」对上不带连字符的输入。
+ */
+export function compactSearchText(s: string): string {
+  return s.replace(/[\s-]/g, '').toLowerCase();
+}
+
+/** 字面包含，或压缩分隔符后再包含 */
+export function matchesSearchText(hay: string, needle: string): boolean {
+  const n = needle.trim().toLowerCase();
+  if (!n) return true;
+  const h = hay.toLowerCase();
+  if (h.includes(n)) return true;
+  const nc = compactSearchText(n);
+  return nc.length > 0 && compactSearchText(h).includes(nc);
+}
+
 export interface NormalizedQuery {
   /** 去空格 + 截断后的检索词 */
   text: string;
