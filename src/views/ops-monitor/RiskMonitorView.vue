@@ -26,7 +26,6 @@ import {
   RISK_LEVEL_STYLE,
   RISK_WORDS,
   DISPOSAL_BY_GRADE,
-  accuracyOf,
   wordOnlyRiskHitsOf,
   runManualScan,
   SCAN_FIELDS,
@@ -1637,63 +1636,6 @@ function toggleWordEnabled(w: RiskWord) {
   }
   message.success(w.enabled ? `已停用「${w.word}」` : `已启用「${w.word}」`);
 }
-/**
- * 词表准确率的实时口径。分子分母都来自 verdict，且一律取**最新一次**。
- * 页面上把一条改判了、词表这一列却还是旧数字，就成了同一件事两套账；
- * 故在近 7 天基数上按每条命中的「基线判定 → 当前判定」做增量修正，
- * 而不是让界面另算一套百分比。
- */
-const liveWordStats = computed<Record<string, { judged: number; valid: number }>>(() => {
-  const stats: Record<string, { judged: number; valid: number }> = {};
-  localWords.value.forEach((w) => { stats[w.id] = { judged: w.judged7d, valid: w.valid7d }; });
-  const idByWord = new Map(localWords.value.map((w) => [w.word, w.id]));
-  allHits.value.forEach((h) => {
-    const id = idByWord.get(h.word);
-    const s = id ? stats[id] : undefined;
-    if (!s) return;
-    // 基数里已经含了这条的原判定，先扣回去再按当前判定加上，避免重复计数
-    const seed = seedEntryOf(h);
-    if (seed) { s.judged -= 1; if (seed.verdict === '成立') s.valid -= 1; }
-    const now = verdictOf(h);
-    if (now) { s.judged += 1; if (now === '成立') s.valid += 1; }
-  });
-  Object.values(stats).forEach((s) => {
-    s.judged = Math.max(s.judged, 0);
-    s.valid = Math.max(0, Math.min(s.valid, s.judged));
-  });
-  return stats;
-});
-function wordStatsOf(w: RiskWord): { judged: number; valid: number } {
-  return liveWordStats.value[w.id] ?? { judged: w.judged7d, valid: w.valid7d };
-}
-/** 百分比仍由共享口径函数算，界面不自带第二套公式 */
-function wordAccuracyOf(w: RiskWord): number | null {
-  const s = wordStatsOf(w);
-  return accuracyOf({ ...w, judged7d: s.judged, valid7d: s.valid });
-}
-/**
- * 准确率的悬停说明（PRD §4.11 配套 2 —— 与留痕并列的另一条前置条件）。
- *
- * 【为什么改过的规则必须在这里多说一句】准确率按**规则**聚合，而编辑不重算历史——
- * 于是一条改过匹配范围或分级的规则，分母里同时躺着改前与改后的命中。
- * 不标出来，读这个数的人会把它当成某一版规则的成绩，而它其实哪一版的成绩都不是；
- * 更糟的是他会据此决定要不要再收窄一次，等于拿一个跨版本的数去调规则。
- */
-function wordAccuracyTitle(w: RiskWord): string {
-  const s = wordStatsOf(w);
-  const lines = [
-    `本规则近 7 天：成立 ${s.valid} ÷ 已判定 ${s.judged}。分母不含未核实的命中，判定取每条命中最新一次结果`,
-  ];
-  const at = lastEditAtOf(w.id);
-  if (at) {
-    lines.push(
-      `本规则于 ${at} 有过修改（共 ${logsOfWord(w.id).length} 次）：改动只对后续命中生效、历史命中不重算，`
-      + '故这个分母同时含改前与改后的命中，读数时须知它跨了两版规则。明细见「风险词」列的修改标记',
-    );
-  }
-  return lines.join('\n');
-}
-
 /** 准确率分档：低于 30% 的规则基本在制造噪音，该收窄或停用 */
 function accTone(v: number): 'bad' | 'mid' | 'good' {
   if (v < 0.3) return 'bad';
@@ -2434,9 +2376,9 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
             <td class="wt-word">
               {{ w.word }}
               <!--
-                改过的规则要在词表里看得见。它是准确率那一列悬浮说明的落点：
-                那边告诉人"这个分母跨了两版规则"，明细得在这里读得到，
-                否则人知道数不干净，却查不出到底改了什么。
+                改过的规则要在词表里看得见：编辑弹窗只说"历史命中不重算"，
+                改了几次、最近一次在什么时候，得在列表上直接读到——
+                否则人知道这条规则动过，却查不出动了什么。
               -->
               <div
                 v-if="logsOfWord(w.id).length"
@@ -2492,14 +2434,14 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
           主词是规则的显示名与统计口径，同义词命中也记在它名下；同一工单同一段原文只产生一条命中。
         </p>
         <!--
-          编辑态多一条提示，讲的是这次改动的作用边界与代价：
-          改动只往前生效，历史命中不重算，于是准确率的分母会跨两版规则——
-          这件事不在这里讲，人保存完就再也不会想起去核对那个百分比还能不能读。
+          编辑态多一条提示，讲的是这次改动的作用边界：改动只往前生效、历史命中不重算。
+          不在保存前讲清，人改完就默认"这条规则一直是现在这个样子"，
+          回头看历史命中时对不上号。
         -->
         <p v-if="isWordEditing" class="op-tip op-tip-warn wf-tip">
-          改动只对后续的实时识别与手动筛查生效，<b>历史命中一条不动</b>。
-          准确率按规则聚合且不重算历史，故改后分母会同时含改前与改后的命中——
-          本次修改会留痕，词表里的准确率也会标出「本规则有过修改」。
+          改动只对后续的实时识别与手动筛查生效，<b>历史命中一条不动</b>——
+          已经产生的命中仍记在改动前的规则名下，不会按新条件重算。
+          本次修改会留痕，可在「风险词」列下方查看改了几次、最近一次在什么时候。
         </p>
 
         <div class="wf-section">
@@ -2548,7 +2490,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
           <span class="op-label">上线状态</span>
           <div class="wf-enable-row">
             <a-switch v-model:checked="wordForm.enabled" checked-children="启用" un-checked-children="停用" />
-            <span class="op-hint wf-enable-hint">启用后纳入实时监控，增量工单自动命中，手动筛查也只跑启用中的词；停用即完全不参与筛查。建议新建先对照近 7 天命中量，确认不会刷屏后再启用。</span>
+            <span class="op-hint wf-enable-hint">启用后同时纳入自动识别与手动筛查：新写入的工单文本会实时命中，手动筛查留空时也会跑到它。停用即两边都不参与。建议新建时保持停用，先到手动筛查里单挑这条规则扫一遍存量，看清会扫出多少条再启用。</span>
           </div>
         </div>
       </div>
@@ -4008,6 +3950,12 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
 .drawer-toolbar { margin-bottom: 10px; }
 .word-form { gap: 16px; }
 .word-form .op-field-h > .op-label { width: 4.5em; }
+.word-form :deep(.ant-radio-group.ant-radio-group-small .ant-radio-button-wrapper) {
+  font-size: 12px;
+  height: 24px;
+  line-height: 22px;
+  padding-inline: 8px;
+}
 .wf-tip { margin: 0; }
 .wf-section {
   display: flex;
