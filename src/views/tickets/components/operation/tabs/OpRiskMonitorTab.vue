@@ -4,16 +4,27 @@ import { ContainerOutlined, CheckCircleOutlined, WarningOutlined } from '@ant-de
 import OpCollapsibleSection from '../OpCollapsibleSection.vue';
 import OpTextareaAttach from '../shared/OpTextareaAttach.vue';
 import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue';
+import { riskLevelText } from '@/config/risk';
+import type { TicketRiskVerification } from '@/stores/riskTags';
 import type { RiskMonitorDraft } from '@/views/tickets/types/operationTabs';
 import {
   RISK_FLAG_OPTIONS,
   RISK_LEVEL_SELECT_OPTIONS,
+  type ProcessFormDraft,
   type RiskFlag,
   type RiskLevel,
 } from '@/views/tickets/types/operation';
 
 const props = defineProps<{
   draft: RiskMonitorDraft;
+  /**
+   * 处理表单草稿。本 Tab 的「风险标记」区不自持数据，直接读写这一份里的
+   * riskFlag / riskLevel / riskDescription —— 与「补充处理 → 风险」面板同一个落点，
+   * 也是风险监控核实回传唯一写入的地方。由页面按 prop 下传，Tab 不直连全局状态。
+   */
+  form: ProcessFormDraft;
+  /** 风险监控侧对本单的现行结论，只读回显用；同样由页面下传 */
+  riskVerification?: TicketRiskVerification | null;
   /**
    * 本 Tab 对当前角色只读。矩阵 #43 的 0830 口径，判据表在 operation.ts
    * （TAB_ROLE_DENY.risk 管"看不看得到"、TAB_ROLE_WRITABLE.risk 管"能不能改"）：
@@ -24,37 +35,89 @@ const props = defineProps<{
    */
   readonly?: boolean;
 }>();
-const emit = defineEmits<{ 'update:draft': [draft: RiskMonitorDraft] }>();
+const emit = defineEmits<{
+  'update:draft': [draft: RiskMonitorDraft];
+  'update:form': [form: ProcessFormDraft];
+}>();
 
 const expanded = ref({ report: true, conclusion: true, risk: true });
 // 等级选项不在模板里手写：与风险监控页、处理表单同一把刻度（存 高/中/低，显示 高危/中危/低危）
 const riskLevelOptions = RISK_LEVEL_SELECT_OPTIONS;
 
-/** 单一写出口：只读态在此统一拦一道，Tab 内所有字段的回写都经过这里 */
+/** 单一写出口：只读态在此统一拦一道，Tab 本地字段的回写都经过这里 */
 function update(partial: Partial<RiskMonitorDraft>) {
   if (props.readonly) return;
   emit('update:draft', { ...props.draft, ...partial });
 }
 
+/**
+ * 风险标记三件套的写出口。走处理表单草稿，但只读判据与 update 完全一样——
+ * 字段换了个存放处不等于换了一套权限，本 Tab 只读时这里同样一步都不许写出去。
+ */
+function updateForm(partial: Partial<ProcessFormDraft>) {
+  if (props.readonly) return;
+  emit('update:form', { ...props.form, ...partial });
+}
+
 /** 与工单处理「是否有风险」面板同一套显隐：有风险才留等级，疑似/有风险才留描述 */
 function onRiskFlagChange(flag: RiskFlag) {
   const needsDesc = flag === '有风险' || flag === '疑似风险';
-  update({
+  updateForm({
     riskFlag: flag,
-    riskLevel: flag === '有风险' ? props.draft.riskLevel : '',
-    riskDesc: needsDesc ? props.draft.riskDesc : '',
-    riskDescAttachments: needsDesc ? props.draft.riskDescAttachments : [],
+    riskLevel: flag === '有风险' ? props.form.riskLevel : '',
+    riskDescription: needsDesc ? props.form.riskDescription : '',
+    riskDescriptionAttachments: needsDesc ? props.form.riskDescriptionAttachments : [],
   });
 }
 
 const missRiskLevel = computed(
-  () => props.draft.riskFlag === '有风险' && !props.draft.riskLevel,
+  () => props.form.riskFlag === '有风险' && !props.form.riskLevel,
 );
 const missRiskDesc = computed(
   () =>
-    (props.draft.riskFlag === '疑似风险' || props.draft.riskFlag === '有风险')
-    && !props.draft.riskDesc.trim(),
+    (props.form.riskFlag === '疑似风险' || props.form.riskFlag === '有风险')
+    && !props.form.riskDescription.trim(),
 );
+
+// ---- 风险监控侧的现行结论（只读回显） ----
+// 与「补充处理 → 风险」面板同一份数据、同一套文案：两处看的是同一个字段，
+// 那"监控已经把这单核实成什么"也必须两处都看得见，否则在本 Tab 上填风险的人
+// （客诉专员/投诉督导）反而是唯一看不到核实结论的人。
+/** 「风险监控核实：高危 · 成立 · 李文萍（客诉专员）· 2026-08-04 14:03」 */
+const riskMonitorLine = computed(() => {
+  const v = props.riskVerification;
+  if (!v) return '';
+  if (!v.latest) return `风险监控核实：本单 ${v.hitCount} 条命中待核实，尚无核实结论`;
+  const e = v.latest;
+  // 等级取**工单级**（max 棘轮），不取最后一条命中自己的等级：工单页关心的是这张单有多危险
+  return `风险监控核实：${riskLevelText(v.grade)} · ${e.verdict} · ${e.by}（${e.byRole}）· ${e.at}`;
+});
+
+/** 本单命中的构成。只在多条、且已经有人核实过时给——一条时说"本单 1 条命中"是废话 */
+const riskMonitorBreakdown = computed(() => {
+  const v = props.riskVerification;
+  if (!v || v.hitCount <= 1 || !v.latest) return '';
+  const parts: string[] = [];
+  if (v.confirmedCount) parts.push(`成立 ${v.confirmedCount}`);
+  if (v.falseCount) parts.push(`误报 ${v.falseCount}`);
+  if (v.pendingCount) parts.push(`待核实 ${v.pendingCount}`);
+  return `本单 ${v.hitCount} 条命中：${parts.join(' · ')}`;
+});
+
+/** 坐席自己填过、监控没能覆盖时的差异说明：不写出来会被读成"本页显示的就是监控结论" */
+const riskMonitorDiff = computed(() => {
+  const v = props.riskVerification;
+  if (!v) return '';
+  const parts: string[] = [];
+  if (v.flag && props.form.riskFlag && props.form.riskFlag !== v.flag) {
+    parts.push(`「是否有风险」本页为「${props.form.riskFlag}」，监控结论为「${v.flag}」`);
+  }
+  if (v.grade && props.form.riskLevel && props.form.riskLevel !== v.grade) {
+    parts.push(`「风险等级」本页为「${riskLevelText(props.form.riskLevel)}」，监控工单级为「${riskLevelText(v.grade)}」`);
+  }
+  if (!parts.length) return '';
+  return `${parts.join('；')}。本页取值以坐席填写为准，监控结论不覆盖。`;
+});
 
 /**
  * a-select 的 update:value 按 antd 声明给出 SelectValue（含 LabeledValue / 数组）。
@@ -67,7 +130,7 @@ function selectedText(v: unknown): string {
 
 /** 等级下拉的取值只可能是刻度里的三个字面量之一（单选、未开 labelInValue），故按 RiskLevel 收窄 */
 function onRiskLevelChange(v: unknown) {
-  update({ riskLevel: selectedText(v) as RiskLevel | '' });
+  updateForm({ riskLevel: selectedText(v) as RiskLevel | '' });
 }
 </script>
 
@@ -176,22 +239,23 @@ function onRiskLevelChange(v: unknown) {
       :expanded="expanded.risk"
       @toggle="expanded.risk = !expanded.risk"
     >
+      <!-- 取值来自处理表单草稿（form），与「补充处理 → 风险」面板是同一份数据 -->
       <div class="chip-panel panel-neutral">
         <div class="field inline-row risk-row">
           <label>是否有风险</label>
           <a-radio-group
-            :value="draft.riskFlag || undefined"
+            :value="form.riskFlag || undefined"
             class="radio-row"
             @update:value="(v: RiskFlag) => onRiskFlagChange(v)"
           >
             <a-radio v-for="opt in RISK_FLAG_OPTIONS" :key="opt" :value="opt">{{ opt }}</a-radio>
           </a-radio-group>
-          <template v-if="draft.riskFlag === '有风险'">
+          <template v-if="form.riskFlag === '有风险'">
             <label class="field-label-sm risk-level-label"><span class="req">*</span>风险等级</label>
             <FormSelect
               class="risk-level-select"
               :class="{ 'ctrl-missing': missRiskLevel }"
-              :value="draft.riskLevel || undefined"
+              :value="form.riskLevel || undefined"
               :options="riskLevelOptions"
               placeholder="请选择或搜索"
               @update:value="onRiskLevelChange"
@@ -199,18 +263,24 @@ function onRiskLevelChange(v: unknown) {
           </template>
         </div>
         <p v-if="missRiskLevel" class="field-err">请选择风险等级</p>
+        <!-- 风险监控侧的现行结论：只读回显，不参与必填校验 -->
+        <div v-if="riskMonitorLine" class="risk-monitor-note">
+          <p class="rm-line">{{ riskMonitorLine }}</p>
+          <p v-if="riskMonitorBreakdown" class="rm-sub">{{ riskMonitorBreakdown }}</p>
+          <p v-if="riskMonitorDiff" class="rm-diff">{{ riskMonitorDiff }}</p>
+        </div>
         <div
-          v-if="draft.riskFlag === '疑似风险' || draft.riskFlag === '有风险'"
+          v-if="form.riskFlag === '疑似风险' || form.riskFlag === '有风险'"
           class="field"
           :class="{ 'is-missing': missRiskDesc }"
         >
           <label><span class="req">*</span>风险描述</label>
           <a-textarea
-            :value="draft.riskDesc"
+            :value="form.riskDescription"
             :rows="3"
             :status="missRiskDesc ? 'error' : undefined"
             placeholder="描述风险点、影响范围与建议处置…（必填）"
-            @update:value="(v: string) => update({ riskDesc: v ?? '' })"
+            @update:value="(v: string) => updateForm({ riskDescription: v ?? '' })"
           />
           <p v-if="missRiskDesc" class="field-err">请填写风险描述</p>
         </div>
@@ -290,6 +360,20 @@ function onRiskLevelChange(v: unknown) {
   flex-wrap: wrap;
   align-items: center;
 }
+/* 风险监控核实回显：只读信息块，与可填字段拉开视觉层级 */
+.risk-monitor-note {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-left: 2px solid #cbd5e1;
+  background: #f1f5f9;
+  border-radius: 0 4px 4px 0;
+}
+.risk-monitor-note p { margin: 0; line-height: 1.5; }
+.rm-line { font-size: 11px; color: #475569; font-weight: 600; }
+.rm-sub { font-size: 11px; color: #64748b; }
+.rm-diff { font-size: 11px; color: #b45309; }
 .risk-level-label {
   margin-left: 4px;
   flex: none;

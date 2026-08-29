@@ -23,6 +23,7 @@ import {
 } from '@/views/tickets/types/operation';
 import type { ProcessFormDraft, SectionKey } from '@/views/tickets/types/operation';
 import type { OperationTabData } from '@/views/tickets/types/operationTabs';
+import type { TicketRiskVerification } from '@/stores/riskTags';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 
@@ -40,6 +41,11 @@ const props = defineProps<{
   filledSupplementCount: number;
   /** 完整事件时间线（处理履历 Tab 展示） */
   timeline: TimelineEntry[];
+  /**
+   * 风险监控侧对本单的现行结论。由页面算好下传，「风险报备」Tab 只做只读回显——
+   * 这样 Tab 不必自己去连全局状态，风险这一块的数据入口在页面上只有一处。
+   */
+  riskVerification?: TicketRiskVerification | null;
   /**
    * 整区只读（一线视角 / 只读角色）：Tab 区不提供任何操作项——表单/下拉/上传全部禁用，
    * 记录上的动作按钮（标记已读、标记已沟通、新增/取消预约、催单、二次激活、重新发起…）一律不出。
@@ -180,11 +186,15 @@ defineExpose({ switchTab });
         @update:draft="updateTabData({ ...tabData, techDraft: $event })"
       />
 
+      <!-- 风险标记三件套走 form（与「补充处理 → 风险」面板同一份），Tab 本地字段仍走 riskDraft -->
       <OpRiskMonitorTab
         v-else-if="activeTab === 'risk'"
         :draft="tabData.riskDraft"
+        :form="form"
+        :risk-verification="riskVerification"
         :readonly="activeTabReadonly"
         @update:draft="updateTabData({ ...tabData, riskDraft: $event })"
+        @update:form="emit('update:form', $event)"
       />
 
       <OpFlowHistoryTab

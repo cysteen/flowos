@@ -1,7 +1,5 @@
 /** Tab②~⑧ 展示数据类型 */
 
-import type { RiskFlag, RiskLevel } from '@/views/tickets/types/operation';
-
 export interface TechProcessDraft {
   problemCause: string;
   processResult: string;
@@ -9,6 +7,14 @@ export interface TechProcessDraft {
   processResultAttachments: string[];
 }
 
+/**
+ * 「风险报备」Tab 的本地字段。
+ *
+ * **风险标记三件套（是否有风险 / 风险等级 / 风险描述）不在这里**——它们只有一份，
+ * 存在 `ProcessFormDraft.riskFlag / riskLevel / riskDescription`（+ Attachments）里，
+ * 由本 Tab 与「补充处理 → 风险」面板共用。各存一份的话，同一张单在两个地方能填出两个
+ * 不同的风险结论；而风险监控页的核实回传只往 ProcessFormDraft 写，另一份永远收不到。
+ */
 export interface RiskMonitorDraft {
   reportModule: string;
   reportTarget: string;
@@ -18,12 +24,6 @@ export interface RiskMonitorDraft {
   processConclusion: string;
   processReply: string;
   processReplyAttachments: string[];
-  /** 风险标记：与处理表单同一组取值（RISK_FLAG_OPTIONS），不再各写一份 */
-  riskFlag: RiskFlag | '';
-  /** 风险等级：与风险监控同一把刻度（存 高/中/低，界面显示 高危/中危/低危） */
-  riskLevel: RiskLevel | '';
-  riskDesc: string;
-  riskDescAttachments: string[];
 }
 
 export interface FlowHistoryNode {

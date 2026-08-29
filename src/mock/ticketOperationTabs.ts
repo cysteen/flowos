@@ -17,10 +17,6 @@ export const OPERATION_TAB_DATA: OperationTabData = {
     processConclusion: '',
     processReply: '',
     processReplyAttachments: [],
-    riskFlag: '',
-    riskLevel: '',
-    riskDesc: '',
-    riskDescAttachments: [],
   },
   flowHistory: [
     {

@@ -983,11 +983,35 @@ export function runManualScan(c: ScanCriteria, ctx: ManualScanContext = {}): Sca
   const words = (ctx.words ?? RISK_WORDS).filter(
     (w) => w.enabled && (c.wordIds.length === 0 || c.wordIds.includes(w.id)),
   );
+  /**
+   * 判重键＝工单号 + **规则标识**（PRD §8.3 辨析三）。
+   *
+   * 【为什么三处必须是同一把键】本次扫描内去重（`emitted`）、与已有清单比对（`existing`）、
+   * 并入时的最后一道，用的必须是同一把。产出用一把、判重用另一把，会出现两种方向相反的错：
+   * 要么「结果里标着已在清单、清单里却找不到」——人既不能勾它也无从核对；
+   * 要么同一条命中被记两遍，而「发现」正是对外讲价值的依据，记两遍就虚高。
+   * 这里一度是 `emitted` 按规则 id、`existing` 按主词，两把键各走各的。
+   *
+   * 【为什么键里是「规则」不是「词」】同义词命中一律归主词名下，
+   * 一句话里同时出现主词与同义词只算一条（§4.3 口径 1）。
+   *
+   * 【命中记录上怎么拿到规则标识】`RiskHit` 存的是主词而非规则 id，故按主词反查规则。
+   * 反查之所以稳，是因为**主词是词表里唯一不可改的字段**（§4.11）——它一旦可改，
+   * 历史命中与这把键当场对不上号，那批命中在台账里失去归属。
+   * 反查不到的（如尚未启用的「后果严重度」轨那类不带主词的命中）按原值兜底：
+   * 它本就不属于任何一条词表规则，与任何规则 id 都撞不上。
+   */
+  const ruleKey = (ticketNo: string, ruleId: string) => `${ticketNo}|${ruleId}`;
+  // 反查表取**全量**词表而非本次筛查选中的那几条：停用词、未选中的词同样产生过历史命中，
+  // 少了它们，那些命中会退回按主词兜底，与新扫出来的同规则命中对不上。
+  const ruleIdByWord = new Map((ctx.words ?? RISK_WORDS).map((w) => [w.word, w.id]));
   const existing = new Set(
-    [...RISK_HITS, ...(ctx.adopted ?? [])].map((h) => `${h.ticketNo}|${h.word}`),
+    [...RISK_HITS, ...(ctx.adopted ?? [])].map(
+      (h) => ruleKey(h.ticketNo, ruleIdByWord.get(h.word) ?? h.word),
+    ),
   );
   const out: ScanResultRow[] = [];
-  /** 去重键＝工单号 + 规则 id：一条规则在同一张单上只产出一条命中 */
+  /** 本次扫描内的去重键，与 existing 同一把：一条规则在同一张单上只产出一条命中 */
   const emitted = new Set<string>();
 
   for (const t of SCANNABLE_TICKETS) {
@@ -1013,7 +1037,7 @@ export function runManualScan(c: ScanCriteria, ctx: ManualScanContext = {}): Sca
       // 复核的人拿着它去原文里定位会对不上账。
       const picked = (c.matchScopes.length ? c.matchScopes : w.scopes) as ScanField[];
       const fields = SCAN_FIELDS.filter((f) => picked.includes(f));
-      const dedupKey = `${t.ticketNo}|${w.id}`;
+      const dedupKey = ruleKey(t.ticketNo, w.id);
       if (emitted.has(dedupKey)) continue;
       for (const f of fields) {
         const text = f === '标题' ? t.title : t.texts[f];
@@ -1022,7 +1046,8 @@ export function runManualScan(c: ScanCriteria, ctx: ManualScanContext = {}): Sca
         if (!term) continue;
         emitted.add(dedupKey);
         out.push({
-          duplicated: existing.has(`${t.ticketNo}|${w.word}`),
+          // 与 emitted 同一个 dedupKey，不再另拼一把按主词的键
+          duplicated: existing.has(dedupKey),
           hit: {
             id: `scan-${t.ticketNo}-${w.id}`,
             ticketNo: t.ticketNo, title: t.title,

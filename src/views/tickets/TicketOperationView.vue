@@ -1125,6 +1125,7 @@ watch(
           :ticket-no="ticketNo"
           :tab-data="tabData"
           :form="form"
+          :risk-verification="riskMonitorVerify"
           :timeline="timeline"
           :expanded-sections="expandedSections"
           :active-chip="activeChip"

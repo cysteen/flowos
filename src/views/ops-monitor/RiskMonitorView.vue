@@ -10,7 +10,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { DatePicker, message } from 'ant-design-vue';
 import dayjs, { type Dayjs } from 'dayjs';
-import { ReloadOutlined, ArrowRightOutlined, RightOutlined, SearchOutlined, SettingOutlined, HistoryOutlined, CheckOutlined, UnorderedListOutlined, DownOutlined, TagOutlined, TagsOutlined, EditOutlined } from '@ant-design/icons-vue';
+import { ReloadOutlined, ArrowRightOutlined, RightOutlined, SearchOutlined, SettingOutlined, HistoryOutlined, CheckOutlined, UnorderedListOutlined, DownOutlined, TagOutlined, TagsOutlined, EditOutlined, SaveOutlined, FilterOutlined } from '@ant-design/icons-vue';
 import MetricTipIcon from '@/components/MetricTipIcon.vue';
 import OpActionModal from '@/views/tickets/components/operation/OpActionModal.vue';
 import AppPagination from '@/components/AppPagination.vue';
@@ -331,9 +331,19 @@ function onScanDateRangeChange(
  * 保证"换一批数据"这件事只有一套语义：
  *   ① 进已核实视图时把查询条复位到默认 30 天窗口，视图内互切则保留已填条件；
  *   ② 等级一律复位——带着"高危"进新视图大概率直接空列表，人会误以为没数据。
+ *   ③ 离开手动筛查时把**筛查结果态**清掉，见下。
  */
 function setListView(v: ListView) {
   if (v === 'judged' && listView.value !== 'judged') resetLedgerFilter();
+  // 离开手动筛查即退出筛查结果态。
+  // scanResult 是清单数据源的最高优先级分支（filteredRows 首行就判 inScanResult），
+  // 留着它的话，切到实时监控后表里躺的还是那批**尚未并入**的筛查行、
+  // 头上还挂着「结果尚未并入，勾选后确认」的横幅——页签写着实时监控，内容却是另一批数据，
+  // 而且刷新前一直如此。这与"两套状态机分叉"是同一类错，只是这次分叉在数据源上。
+  //
+  // 🔴 清的只是**尚未并入**的预览态。已点过「并入清单」的那些命中在 riskTags store 里，
+  // 它们已经是清单的一部分（scanAdopted），与筛查结果态是两回事，一条都不动。
+  if (v !== 'scan' && listView.value === 'scan') exitScanResult();
   // 单工单焦点跨视图取数，切视图时若留着它，页签写着「已核实 5」而表里躺着别的一批
   clearTicketFocus();
   listView.value = v;
@@ -375,7 +385,7 @@ function doScan() {
    * 「孩子」那类通用词一扫上百条，一次失手就把待核实队列淹没，且并入之后收不回来。
    *
    * 【为什么日期控件已经不给清除、这里还要再拦一道】去掉清除按钮只挡住了鼠标那一条路：
-   * 条件还会被重置逻辑、被将来任何一处新入口整体灌进来。
+   * 条件还会被套用筛选器、被重置逻辑、被将来任何一处新入口整体灌进来。
    * 守卫必须落在"执行"这个唯一出口上，而不是落在某一个控件上。
    */
   if (!scanForm.value.from || !scanForm.value.to) {
@@ -400,6 +410,9 @@ function doScan() {
       startedAt,
       endedAt,
       status: 'success',
+      // 套用了哪个筛选器要记下来：事后翻扫库记录，「按什么扫的」靠它才答得出，
+      // 手工调过条件的执行则不记名（appliedFilterName 在条件被改动的那一刻就清掉了）。
+      filterName: appliedFilterName.value ?? undefined,
       criteriaText: scanSummary.value,
       total: rows.length,
       fresh: rows.filter((r) => !r.duplicated).length,
@@ -483,9 +496,12 @@ function exitScanResult() {
 
 function resetScanForm() {
   scanForm.value = defaultScanCriteria({ to: today() });
+  // 重置的是条件本身，套用关系跟着一起断：条件都换回默认了还挂着筛选器名，
+  // 这次执行会被记到那个筛选器名下，事后照名字复现不出同一批结果。
+  appliedFilterName.value = null;
 }
 
-/** 条件摘要（人话）——扫完看到数字得知道是按什么扫的 */
+/** 条件摘要（人话）——扫完看到数字得知道是按什么扫的，筛选器 chip 的悬停说明也用它 */
 function criteriaSummaryOf(f: ScanCriteria): string {
   const parts: string[] = [];
   parts.push(f.groupIds.length ? `${f.groupIds.length} 个班组` : '全中心');
@@ -502,6 +518,144 @@ function criteriaSummaryOf(f: ScanCriteria): string {
   return parts.join(' · ');
 }
 const scanSummary = computed(() => criteriaSummaryOf(scanForm.value));
+
+// ---- 已保存筛选器（PRD §6.3.4） ----
+// 专项排查的常态是「每周照同样的条件跑一遍」。九个维度每次重填，慢是其次——
+// 漏勾的那一项不会报错，只会让这周扫出的条数与上周对不上，而人还以为是数据变了。
+// 条件存得下来，这次与上次才是同一把尺子。
+//
+// 【为什么点 chip 就直接执行，不是"先套用再点开始"】拆成两步，人每周都要多点一次；
+// 而套用与执行之间本来就没有需要再确认的东西——要改条件的人根本不会去点 chip。
+//
+// 【为什么同名覆盖而不是追加】筛选器是靠名字被认出来的。允许两条「教育线安全事故专项」，
+// 下次点的人无从判断哪条是调过的那一条，结果是两条都不敢用，等于一条都没存。
+//
+// 【为什么与工作台的「保存筛选器」各存各的】两者绑的条件结构完全不同——工作台绑工单查询条件，
+// 这里绑九个筛查维度。共用一份存储，套过来的条件在对面一项也对不上。
+interface SavedScanFilter {
+  id: string;
+  name: string;
+  criteria: ScanCriteria;
+}
+
+function cloneCriteria(c: ScanCriteria): ScanCriteria {
+  // 数组逐个复制：直接引用的话，存下来之后人再动一下多选框，
+  // 已保存的那条会跟着一起变——存的东西会被后来的操作偷偷改写，这是最难查的一类错。
+  return {
+    ...c,
+    groupIds: [...c.groupIds],
+    wordIds: [...c.wordIds],
+    matchScopes: [...c.matchScopes],
+    nodeStatuses: [...c.nodeStatuses],
+    ticketTypes: [...c.ticketTypes],
+    businessTypes: [...c.businessTypes],
+    productCategories: [...c.productCategories],
+    productNames: [...c.productNames],
+  };
+}
+
+/** 两套条件是不是同一把尺子。多选项比较前先排序：勾选先后不改变条件本身 */
+function sameCriteria(a: ScanCriteria, b: ScanCriteria): boolean {
+  const key = (c: ScanCriteria) => JSON.stringify([
+    c.from, c.to,
+    [...c.groupIds].sort(), [...c.wordIds].sort(), [...c.matchScopes].sort(),
+    [...c.nodeStatuses].sort(), [...c.ticketTypes].sort(), [...c.businessTypes].sort(),
+    [...c.productCategories].sort(), [...c.productNames].sort(),
+  ]);
+  return key(a) === key(b);
+}
+
+/**
+ * 起手就有的两条专项条件——扫库记录里「高危词专项」「教育产线近30天」两次执行正是按它们跑的。
+ * 记录里记着名字、条件却找不回来，那两次扫描就复现不了，而「按什么扫的」正是记录存在的理由。
+ */
+function seedSavedFilters(): SavedScanFilter[] {
+  return [
+    {
+      id: 'sf-high-words',
+      name: '高危词专项',
+      criteria: defaultScanCriteria({ to: today(), wordIds: ['w1', 'w3', 'w4'] }),
+    },
+    {
+      id: 'sf-edu-30d',
+      name: '教育产线近30天',
+      criteria: defaultScanCriteria({ from: today(-29), to: today(), groupIds: ['edu'] }),
+    },
+  ];
+}
+
+const savedFilters = ref<SavedScanFilter[]>(seedSavedFilters());
+/** 当前条件是套用哪条筛选器来的。扫库记录的「所用规则」记的就是它，手工调过即为空 */
+const appliedFilterName = ref<string | null>(null);
+
+// 条件一旦被人改动，套用关系当场作废。留着名字的话，本次执行会被记到那个筛选器名下，
+// 而它扫的其实是另一套条件——事后照名字复现，出来的是第三批结果。
+watch(scanForm, () => {
+  const name = appliedFilterName.value;
+  if (!name) return;
+  const f = savedFilters.value.find((x) => x.name === name);
+  if (!f || !sameCriteria(f.criteria, scanForm.value)) appliedFilterName.value = null;
+}, { deep: true });
+
+const filterSaveOpen = ref(false);
+const filterNameDraft = ref('');
+/** 命名与已有的撞上时先说清「会覆盖」，别让人保存完才发现旧的没了 */
+const filterNameTaken = computed(() => {
+  const name = filterNameDraft.value.trim();
+  return !!name && savedFilters.value.some((f) => f.name === name);
+});
+
+function openSaveFilter() {
+  // 存一条起止为空的条件，等于把一次全库扫描做成一键可复发的按钮——比手工失手更危险
+  if (!scanForm.value.from || !scanForm.value.to) {
+    message.warning('请先选定建单时间区间的起止日期，再保存筛选器');
+    return;
+  }
+  filterNameDraft.value = appliedFilterName.value ?? '';
+  filterSaveOpen.value = true;
+}
+
+function confirmSaveFilter() {
+  const name = filterNameDraft.value.trim();
+  if (!name) { message.warning('请为这条筛选器命名'); return; }
+  if (!scanForm.value.from || !scanForm.value.to) {
+    message.warning('请先选定建单时间区间的起止日期，再保存筛选器');
+    return;
+  }
+  const criteria = cloneCriteria(scanForm.value);
+  const idx = savedFilters.value.findIndex((f) => f.name === name);
+  if (idx >= 0) {
+    // 覆盖保留原 id：chip 的位置不动，人下次还在原地找得到它
+    const next = [...savedFilters.value];
+    next[idx] = { ...next[idx], criteria };
+    savedFilters.value = next;
+    message.success(`已用当前条件覆盖筛选器「${name}」`);
+  } else {
+    savedFilters.value = [...savedFilters.value, { id: `sf-${Date.now()}`, name, criteria }];
+    message.success(`已保存筛选器「${name}」，点它即按此条件筛查`);
+  }
+  appliedFilterName.value = name;
+  filterSaveOpen.value = false;
+}
+
+/** 套用即执行：条件整套灌回表单，随即跑一次 */
+function applySavedFilter(f: SavedScanFilter) {
+  if (scanning.value) return;
+  scanForm.value = cloneCriteria(f.criteria);
+  // 先落名字再执行：doScan 要拿它记进扫库记录
+  appliedFilterName.value = f.name;
+  doScan();
+}
+
+/**
+ * 删除。PRD 只写了「chip 上直接删」，但它是必需的：存了删不掉，chip 行会越积越长，
+ * 常用的那两条被埋在一堆一次性条件里，等于把这个功能自己用废。
+ */
+function removeSavedFilter(f: SavedScanFilter) {
+  savedFilters.value = savedFilters.value.filter((x) => x.id !== f.id);
+  if (appliedFilterName.value === f.name) appliedFilterName.value = null;
+  message.success(`已删除筛选器「${f.name}」`);
+}
 
 // ---- 命中列表 ----
 const allHits = computed(() => {
@@ -556,7 +710,7 @@ const excerptWindowCache = new Map<string, ExcerptWindow>();
 function excerptWindow(h: RiskHit): ExcerptWindow {
   const text = h.excerpt ?? '';
   const term = h.matchedWord ?? '';
-  const key = `${term} ${text}`;
+  const key = `${term}\u0000${text}`;
   const cached = excerptWindowCache.get(key);
   if (cached) return cached;
   // 命中词出现多次时以**第一次**为中心：客户把话说重是从第一次开始的，
@@ -1045,7 +1199,7 @@ function saveTag() {
     tagAmend.value
       ? `已修正 ${target.ticketNo} 的核实结果为「${entry.verdict}」，本次修正已留痕`
       : entry.verdict === '误报'
-        ? `已记为误报，将计入规则准确率`
+        ? `已记为误报`
         : `已对 ${target.ticketNo} 打标「${levelText(tagLevel.value)}」`,
   );
   tagOpen.value = false;
@@ -1211,7 +1365,7 @@ function saveBulk() {
   })));
   message.success(
     bulkVerdict.value === '误报'
-      ? `已将 ${bulkTargets.value.length} 条记为误报，计入规则准确率`
+      ? `已将 ${bulkTargets.value.length} 条记为误报`
       : `已批量打标 ${bulkTargets.value.length} 条`,
   );
   bulkOpen.value = false;
@@ -1294,6 +1448,80 @@ const SCOPE_OPTIONS = SCAN_FIELDS;
 /** 同义词输入框的暂存值：确认后才进 wordForm.synonyms，避免半截词被保存 */
 const synonymDraft = ref('');
 
+// ---- 词表编辑（PRD §4.11 · 备注 13a） ----
+// 新建与编辑复用同一个表单，只在两处分叉：标题，以及主词能不能改。
+//
+// 🔴 可改的只有**同义词 / 匹配范围 / 分级**三项。
+// 主词不在其中——它是统计口径与历史命中的归属键（命中记录只存主词、判重键按主词反查规则，
+// 见 runManualScan），改了它，那批历史命中在台账里当场失去归属，判重也对不上号。
+// 纠正主词的唯一路径是停用旧规则、另建一条。
+//
+// 启用/停用同样不在这个表单里：它与"规则内容"不是一回事，走词表列表末列那枚按钮，
+// 两处都能改一个字段，人改完不知道自己动的是哪一处。
+/** 正在编辑的词条 id；null ＝ 新建 */
+const editingWordId = ref<string | null>(null);
+const editingWord = computed(
+  () => localWords.value.find((w) => w.id === editingWordId.value) ?? null,
+);
+const isWordEditing = computed(() => !!editingWord.value);
+
+/**
+ * 编辑留痕（PRD §4.11 配套 1 —— **不做它就不要开放编辑**）。
+ *
+ * 【为什么必须有】准确率按规则聚合，而改动**不重算历史**：一条被改过匹配范围的规则，
+ * 分母里同时躺着改前与改后的命中，那个数读不出是哪一版规则的成绩。
+ * 没有留痕，事后既答不出"是谁在什么时候把它改宽的"，也无从判断这个百分比还能不能读。
+ *
+ * 【为什么存在组件内】与 localWords 同级别的内存态——原型里词表本身就是本地态，
+ * 留痕跟着词表走；词表刷新回初始值，留痕一并归零，两者不会各说各话。
+ */
+interface WordEditLog {
+  wordId: string;
+  at: string;
+  by: string;
+  byRole: string;
+  /** 逐字段的改前改后。只记真的变了的字段：没变的也入账，留痕会被噪音稀释 */
+  changes: { field: string; from: string; to: string }[];
+}
+const wordEditLogs = ref<WordEditLog[]>([]);
+function logsOfWord(id: string): WordEditLog[] {
+  return wordEditLogs.value.filter((l) => l.wordId === id);
+}
+/** 最近一次修改时刻——准确率悬浮里要标出来的那个「X」 */
+function lastEditAtOf(id: string): string | null {
+  const list = logsOfWord(id);
+  return list.length ? list[list.length - 1].at : null;
+}
+/** 留痕明细的悬停文案：改了哪个字段、从什么改成什么、谁改的、什么时候，四件事缺一不可 */
+function wordEditTitle(id: string): string {
+  return logsOfWord(id)
+    .map((l, i) => [
+      `第 ${i + 1} 次修改 · ${l.at} · ${l.by}（${l.byRole}）`,
+      ...l.changes.map((c) => `    ${c.field}：${c.from} → ${c.to}`),
+    ].join('\n'))
+    .join('\n');
+}
+
+/**
+ * 逐字段比对，产出留痕条目。
+ * 数组一律按**规范顺序**拼串再比：勾选先后不改变条件本身，
+ * 按勾选顺序比会把"先点沟通记录再点标题"记成一次改动，而它什么都没改。
+ */
+function diffWord(
+  prev: RiskWord,
+  next: Pick<RiskWord, 'synonyms' | 'level' | 'scopes'>,
+): WordEditLog['changes'] {
+  const changes: WordEditLog['changes'] = [];
+  const synPrev = prev.synonyms.join(' / ');
+  const synNext = next.synonyms.join(' / ');
+  if (synPrev !== synNext) changes.push({ field: '同义词', from: synPrev || '无', to: synNext || '无' });
+  if (prev.level !== next.level) changes.push({ field: '分级', from: `${prev.level}危`, to: `${next.level}危` });
+  const scopePrev = SCAN_FIELDS.filter((f) => prev.scopes.includes(f)).join(' / ');
+  const scopeNext = SCAN_FIELDS.filter((f) => next.scopes.includes(f)).join(' / ');
+  if (scopePrev !== scopeNext) changes.push({ field: '匹配范围', from: scopePrev, to: scopeNext });
+  return changes;
+}
+
 function addSynonym() {
   const raw = synonymDraft.value.trim();
   if (!raw) return;
@@ -1311,6 +1539,7 @@ function removeSynonym(i: number) {
 }
 
 function openWordForm() {
+  editingWordId.value = null;
   wordForm.value = {
     word: '',
     synonyms: [],
@@ -1321,10 +1550,61 @@ function openWordForm() {
   synonymDraft.value = '';
   wordFormOpen.value = true;
 }
+
+/** 编辑既有词条：整条灌回表单，主词只读 */
+function openWordEdit(w: RiskWord) {
+  if (!canMaintainWords.value) { message.warning('只有投诉督导与管理员可以维护词表'); return; }
+  editingWordId.value = w.id;
+  wordForm.value = {
+    word: w.word,
+    // 逐个复制而不是直接引用：直接引用的话，人在弹窗里加删同义词会当场写进词表，
+    // 点「取消」也收不回来——改动必须等到保存那一刻才落。
+    synonyms: [...w.synonyms],
+    level: w.level,
+    scopes: [...w.scopes],
+    enabled: w.enabled,
+  };
+  synonymDraft.value = '';
+  wordFormOpen.value = true;
+}
+
+function saveWordEdit(prev: RiskWord) {
+  const next = {
+    synonyms: wordForm.value.synonyms.filter((s) => s !== prev.word),
+    level: wordForm.value.level,
+    scopes: [...wordForm.value.scopes],
+  };
+  const changes = diffWord(prev, next);
+  // 什么都没改就不落一条空留痕：留痕是用来读"改成什么样了"的，
+  // 掺进一批没有改动的记录，真正那次改动就被埋在里面了。
+  if (!changes.length) { message.warning('同义词、匹配范围与分级都没有改动，无需保存'); return; }
+  localWords.value = localWords.value.map((item) => (
+    // 🔴 主词一律取原值，不取表单。表单那一格虽已置灰，但"界面挡住了"不等于"数据改不了"——
+    // 守卫要落在写入这唯一的出口上，而不是落在某一个控件上。
+    item.id === prev.id ? { ...item, ...next, word: prev.word } : item
+  ));
+  wordEditLogs.value = [...wordEditLogs.value, {
+    wordId: prev.id,
+    at: nowStamp(),
+    by: user.current.name,
+    byRole: user.role.name,
+    changes,
+  }];
+  // 把"历史命中不动"当场讲出来：人改完最想确认的就是这件事，
+  // 不说的话，改宽匹配范围之后他会等着旧工单被重新扫一遍，而那永远不会发生。
+  message.success(
+    `已保存「${prev.word}」的修改（${changes.map((c) => c.field).join(' / ')}）；`
+    + '只对后续的实时识别与手动筛查生效，历史命中一条不动',
+  );
+  wordFormOpen.value = false;
+}
+
 function saveWord() {
   const word = wordForm.value.word.trim();
   if (!word) { message.warning('请填写主词'); return; }
   if (!wordForm.value.scopes.length) { message.warning('请至少选一个匹配范围'); return; }
+  const editing = editingWord.value;
+  if (editing) { saveWordEdit(editing); return; }
   localWords.value = [
     ...localWords.value,
     {
@@ -1390,6 +1670,28 @@ function wordStatsOf(w: RiskWord): { judged: number; valid: number } {
 function wordAccuracyOf(w: RiskWord): number | null {
   const s = wordStatsOf(w);
   return accuracyOf({ ...w, judged7d: s.judged, valid7d: s.valid });
+}
+/**
+ * 准确率的悬停说明（PRD §4.11 配套 2 —— 与留痕并列的另一条前置条件）。
+ *
+ * 【为什么改过的规则必须在这里多说一句】准确率按**规则**聚合，而编辑不重算历史——
+ * 于是一条改过匹配范围或分级的规则，分母里同时躺着改前与改后的命中。
+ * 不标出来，读这个数的人会把它当成某一版规则的成绩，而它其实哪一版的成绩都不是；
+ * 更糟的是他会据此决定要不要再收窄一次，等于拿一个跨版本的数去调规则。
+ */
+function wordAccuracyTitle(w: RiskWord): string {
+  const s = wordStatsOf(w);
+  const lines = [
+    `本规则近 7 天：成立 ${s.valid} ÷ 已判定 ${s.judged}。分母不含未核实的命中，判定取每条命中最新一次结果`,
+  ];
+  const at = lastEditAtOf(w.id);
+  if (at) {
+    lines.push(
+      `本规则于 ${at} 有过修改（共 ${logsOfWord(w.id).length} 次）：改动只对后续命中生效、历史命中不重算，`
+      + '故这个分母同时含改前与改后的命中，读数时须知它跨了两版规则。明细见「风险词」列的修改标记',
+    );
+  }
+  return lines.join('\n');
 }
 
 /** 准确率分档：低于 30% 的规则基本在制造噪音，该收窄或停用 */
@@ -1841,7 +2143,46 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
             <button type="button" class="tb-btn" @click="resetScanForm">
               <ReloadOutlined /><span>重置</span>
             </button>
+            <button
+              type="button"
+              class="tb-btn"
+              title="把当前九个维度的取值整套存下来，下次点一下即按它筛查；同名覆盖"
+              @click="openSaveFilter"
+            >
+              <SaveOutlined /><span>保存筛选器</span>
+            </button>
           </div>
+        </div>
+        <!--
+          已保存筛选器：一枚 chip ＝ 一整套筛查条件，点即套用并立刻执行。
+          【为什么与等级 chip 长得不一样】两者的动作根本不同——等级 chip 是在同一批数据里收窄，
+          这里一点就换掉九个维度并重跑一次。形态相同会让人以为点错了也就是筛一下。
+        -->
+        <div v-if="savedFilters.length" class="saved-filters">
+          <span class="sf-label">已保存筛选器</span>
+          <span
+            v-for="f in savedFilters"
+            :key="f.id"
+            class="sf-chip"
+            :class="{ on: appliedFilterName === f.name }"
+          >
+            <button
+              type="button"
+              class="sf-apply"
+              :disabled="scanning"
+              :title="`点击立即按此条件筛查 —— ${criteriaSummaryOf(f.criteria)}`"
+              @click="applySavedFilter(f)"
+            >
+              <FilterOutlined class="sf-ic" />{{ f.name }}
+            </button>
+            <button
+              type="button"
+              class="sf-del"
+              :title="`删除筛选器「${f.name}」`"
+              @click.stop="removeSavedFilter(f)"
+            >×</button>
+          </span>
+          <span class="sf-hint">点一枚即按该条件重跑一次</span>
         </div>
       </div>
 
@@ -2015,7 +2356,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                     class="tag-done"
                     :style="{ color: RISK_LEVEL_STYLE[tagOf(h)!].color, background: RISK_LEVEL_STYLE[tagOf(h)!].bg }"
                     :title="tagTraceTitle(h)"
-                  >{{ tagOf(h) }}风险</span>
+                  >{{ levelText(tagOf(h) ?? null) }}</span>
                   <span
                     v-if="verdictOf(h)"
                     class="verdict-chip"
@@ -2071,54 +2412,56 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
     </section>
 
     <!-- 风险词维护抽屉 -->
-    <a-drawer v-model:open="riskWordsOpen" title="风险词管理" width="760" placement="right">
+    <a-drawer v-model:open="riskWordsOpen" title="风险词管理" width="600" placement="right">
       <div v-if="canMaintainWords" class="drawer-toolbar">
         <button type="button" class="row-btn row-btn-primary" @click="openWordForm">新建风险词</button>
       </div>
       <p class="drawer-note top">
         一条规则＝<b>一个主词 + N 个同义词</b>，命中任一即算命中，同一工单的同一段原文只记一条，统计一律归在主词名下。
-        <b>近 7 天命中</b>是新增词条前的试跑依据——命中量过大的词上线即刷屏；
-        <b>准确率</b>是上线后的体检——准确率低说明这条规则捞进来的多半不是风险，应先收窄匹配范围，而不是等人肉发现。
+        新建的规则默认停用。启用后同时纳入<b>自动识别</b>（新写入的工单文本实时命中）与<b>手动筛查</b>；
+        手动筛查时可逐条挑规则，留空即<b>全部启用中的规则</b>。
       </p>
       <table class="word-table">
         <thead>
           <tr>
             <th>风险词</th><th>分级</th><th>匹配范围</th>
-            <th>近 7 天命中</th>
-            <!--
-              列头标明「近 7 天」与「本规则」两个限定：页头监控成效那个准确率是**全局累计**
-              （确认是风险 ÷ 已核实），本列是**按规则 × 近 7 天**。两个数本来就该不同——
-              一个看整体判得准不准、一个看单条规则该不该收窄——问题只在于名字一模一样。
-            -->
-            <th>近 7 天准确率</th><th>状态</th>
-            <th v-if="canMaintainWords" style="width: 64px">操作</th>
+            <th>状态</th>
+            <th v-if="canMaintainWords" style="width: 116px">操作</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="w in localWords" :key="w.id" :class="{ off: !w.enabled }">
             <td class="wt-word">
               {{ w.word }}
-              <div v-if="w.synonyms.length" class="wt-syn">同义词 {{ w.synonyms.join(' / ') }}</div>
+              <!--
+                改过的规则要在词表里看得见。它是准确率那一列悬浮说明的落点：
+                那边告诉人"这个分母跨了两版规则"，明细得在这里读得到，
+                否则人知道数不干净，却查不出到底改了什么。
+              -->
+              <div
+                v-if="logsOfWord(w.id).length"
+                class="wt-edited"
+                :title="wordEditTitle(w.id)"
+              >已修改 {{ logsOfWord(w.id).length }} 次 · 最近 {{ lastEditAtOf(w.id) }}</div>
             </td>
             <td>
-              <span class="risk-word" :style="{ color: RISK_LEVEL_STYLE[w.level].color, background: RISK_LEVEL_STYLE[w.level].bg }">{{ w.level }}</span>
+              <span class="risk-word" :style="{ color: RISK_LEVEL_STYLE[w.level].color, background: RISK_LEVEL_STYLE[w.level].bg }">{{ riskLevelText(w.level) }}</span>
             </td>
             <td class="hit-sub">{{ w.scopes.join(' / ') }}</td>
             <td>
-              <span :class="{ 'hits-high': w.hits7d > 50 }">{{ w.hits7d }}</span>
-            </td>
-            <td>
-              <!-- 悬停给出分子分母原值，让人能当场核对这个百分比是怎么来的 -->
-              <span v-if="wordAccuracyOf(w) === null" class="hit-sub" title="本规则近 7 天还没有被人核实过的命中，无法计算">—</span>
-              <span
-                v-else class="acc" :class="accTone(wordAccuracyOf(w)!)"
-                :title="`本规则近 7 天：成立 ${wordStatsOf(w).valid} ÷ 已判定 ${wordStatsOf(w).judged}。分母不含未核实的命中，判定取每条命中最新一次结果`"
-              >{{ Math.round(wordAccuracyOf(w)! * 100) }}%</span>
-            </td>
-            <td>
               <span class="wt-state" :class="w.enabled ? 'on' : 'off'">{{ w.enabled ? '启用' : '停用' }}</span>
             </td>
-            <td v-if="canMaintainWords">
+            <td v-if="canMaintainWords" class="wt-ops">
+              <!--
+                编辑与启停并列：两者改的是同一条规则的两件事——
+                「编辑」改规则内容（同义词 / 匹配范围 / 分级），「停用」改它还跑不跑。
+                主词不在编辑范围内，说明在弹窗与表尾说明里给出。
+              -->
+              <button
+                type="button" class="row-btn"
+                title="改同义词 / 匹配范围 / 分级；主词不可改"
+                @click="openWordEdit(w)"
+              >编辑</button>
               <button type="button" class="row-btn" @click="toggleWordEnabled(w)">
                 {{ w.enabled ? '停用' : '启用' }}
               </button>
@@ -2126,15 +2469,19 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
           </tr>
         </tbody>
       </table>
-      <p class="drawer-note">
-        {{ canMaintainWords ? '词表由投诉督导与管理员维护；新建默认停用，确认近 7 天命中量后再启用。' : '词表只读；维护请联系投诉督导。' }}
+      <p v-if="canMaintainWords" class="drawer-note">
+        词表由投诉督导与管理员维护；新建默认停用，确认命中量合理后再启用。
+        编辑只改<b>同义词 / 匹配范围 / 分级</b>，且只对后续的实时识别与手动筛查生效，历史命中一条不动；
+        <b>主词不可改</b>——它是统计口径与历史命中的归属键，需要纠正主词请停用本条、另建一条。
+        规则不支持删除，停用即等效下线。
       </p>
+      <p v-else class="drawer-note">词表只读；维护请联系投诉督导。</p>
     </a-drawer>
 
-    <!-- 新建风险词 -->
+    <!-- 新建 / 编辑风险词：同一个表单两态，只在标题与主词能不能改上分叉 -->
     <a-modal
       v-model:open="wordFormOpen"
-      title="新建风险词"
+      :title="isWordEditing ? '编辑风险词' : '新建风险词'"
       :width="560"
       ok-text="保存"
       cancel-text="取消"
@@ -2144,13 +2491,30 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
         <p class="op-tip op-tip-info wf-tip">
           主词是规则的显示名与统计口径，同义词命中也记在它名下；同一工单同一段原文只产生一条命中。
         </p>
+        <!--
+          编辑态多一条提示，讲的是这次改动的作用边界与代价：
+          改动只往前生效，历史命中不重算，于是准确率的分母会跨两版规则——
+          这件事不在这里讲，人保存完就再也不会想起去核对那个百分比还能不能读。
+        -->
+        <p v-if="isWordEditing" class="op-tip op-tip-warn wf-tip">
+          改动只对后续的实时识别与手动筛查生效，<b>历史命中一条不动</b>。
+          准确率按规则聚合且不重算历史，故改后分母会同时含改前与改后的命中——
+          本次修改会留痕，词表里的准确率也会标出「本规则有过修改」。
+        </p>
 
         <div class="wf-section">
           <div class="wf-section-title">规则定义</div>
           <div class="op-field op-field-h">
             <span class="op-label req">主词</span>
-            <a-input v-model:value="wordForm.word" placeholder="如：曝光、12315" />
+            <a-input
+              v-model:value="wordForm.word"
+              :disabled="isWordEditing"
+              placeholder="如：曝光、12315"
+            />
           </div>
+          <p v-if="isWordEditing" class="op-hint wf-word-lock">
+            主词是统计口径与历史命中的归属键，不可修改；需要改主词请停用本条、另建一条。
+          </p>
           <div class="op-field op-field-h op-field-h-top">
             <span class="op-label">同义词</span>
             <div class="wf-syn-box">
@@ -2186,6 +2550,34 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
             <a-switch v-model:checked="wordForm.enabled" checked-children="启用" un-checked-children="停用" />
             <span class="op-hint wf-enable-hint">启用后纳入实时监控，增量工单自动命中，手动筛查也只跑启用中的词；停用即完全不参与筛查。建议新建先对照近 7 天命中量，确认不会刷屏后再启用。</span>
           </div>
+        </div>
+      </div>
+    </a-modal>
+
+    <!-- 保存筛选器：存的是当前九个维度的整套取值，名字即日后认出它的唯一凭据 -->
+    <a-modal
+      v-model:open="filterSaveOpen"
+      title="保存筛选器"
+      :width="460"
+      ok-text="保存"
+      cancel-text="取消"
+      @ok="confirmSaveFilter"
+    >
+      <div class="op-form sf-form">
+        <div class="op-field op-field-h">
+          <span class="op-label req">名称</span>
+          <a-input
+            v-model:value="filterNameDraft"
+            placeholder="如：教育线安全事故专项"
+            @press-enter="confirmSaveFilter"
+          />
+        </div>
+        <p v-if="filterNameTaken" class="op-tip op-tip-info sf-tip">
+          已有同名筛选器，保存后<b>覆盖</b>它的条件，不会多出第二条同名。
+        </p>
+        <div class="sf-preview">
+          <div class="sf-preview-k">本次存下的条件</div>
+          <div class="sf-preview-v">{{ scanSummary }}</div>
         </div>
       </div>
     </a-modal>
@@ -2974,6 +3366,80 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
   font-size: 11px;
 }
 
+/*
+ * 已保存筛选器 chip：胶囊 + 漏斗标 + 靛蓝一色，与等级 chip（方角、灰白底、蓝色实心激活）
+ * 一眼可分。两者点下去的后果不是一个量级：那边是筛，这边是换整套条件并重跑。
+ */
+.saved-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: #f8fafc;
+  border: 1px solid #eef2f7;
+  border-radius: 8px;
+}
+.sf-label { font-size: 11px; color: #9ca3af; flex: none; }
+.sf-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  border: 1px solid #c7d2fe;
+  border-radius: 999px;
+  background: #fff;
+  overflow: hidden;
+}
+.sf-chip:hover { border-color: #6366f1; }
+.sf-chip.on { border-color: #4338ca; background: #eef2ff; }
+.sf-apply {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 100%;
+  padding: 0 4px 0 10px;
+  border: none;
+  background: transparent;
+  color: #4338ca;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sf-chip.on .sf-apply { font-weight: 600; }
+.sf-apply:disabled { color: #a5b4fc; cursor: not-allowed; }
+.sf-ic { font-size: 11px; flex: none; }
+.sf-del {
+  height: 100%;
+  padding: 0 8px 0 4px;
+  border: none;
+  background: transparent;
+  color: #a5b4fc;
+  font-size: 13px;
+  line-height: 1;
+  font-family: inherit;
+  cursor: pointer;
+}
+.sf-del:hover { color: #ef4444; }
+.sf-hint { font-size: 11px; color: #cbd5e1; }
+
+/* 保存筛选器弹窗 */
+.sf-form .op-label { width: 3.5em; }
+.sf-tip { margin: 8px 0 0; }
+.sf-preview {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: #f8fafc;
+  border: 1px solid #eef2f7;
+  border-radius: 6px;
+}
+.sf-preview-k { font-size: 11px; color: #9ca3af; }
+.sf-preview-v { margin-top: 4px; font-size: 12px; color: #475569; line-height: 1.6; }
+
 .ledger-bar { margin: 2px 0 8px; }
 .ledger-bar .list-toolbar {
   gap: 6px 10px;
@@ -3527,7 +3993,6 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
 .word-table td { padding: 8px; border-bottom: 1px solid #f1f5f9; color: #374151; }
 .word-table tr.off { opacity: 0.55; }
 .wt-word { font-weight: 500; color: #0f172a; }
-.wt-syn { margin-top: 2px; font-size: 11px; font-weight: 400; color: #94a3b8; }
 .risk-word { padding: 1px 8px; border-radius: 10px; font-size: 12px; }
 .hits-high { color: #EF4444; font-weight: 600; }
 .hits-saved { margin-left: 5px; font-size: 11px; color: #10B981; cursor: help; }
