@@ -1465,52 +1465,20 @@ const editingWord = computed(
 const isWordEditing = computed(() => !!editingWord.value);
 
 /**
- * 编辑留痕（PRD §4.11 配套 1 —— **不做它就不要开放编辑**）。
- *
- * 【为什么必须有】准确率按规则聚合，而改动**不重算历史**：一条被改过匹配范围的规则，
- * 分母里同时躺着改前与改后的命中，那个数读不出是哪一版规则的成绩。
- * 没有留痕，事后既答不出"是谁在什么时候把它改宽的"，也无从判断这个百分比还能不能读。
- *
- * 【为什么存在组件内】与 localWords 同级别的内存态——原型里词表本身就是本地态，
- * 留痕跟着词表走；词表刷新回初始值，留痕一并归零，两者不会各说各话。
+ * 编辑保存时的字段 diff，用于「没改动则拦截」校验。
  */
-interface WordEditLog {
-  wordId: string;
-  at: string;
-  by: string;
-  byRole: string;
-  /** 逐字段的改前改后。只记真的变了的字段：没变的也入账，留痕会被噪音稀释 */
-  changes: { field: string; from: string; to: string }[];
-}
-const wordEditLogs = ref<WordEditLog[]>([]);
-function logsOfWord(id: string): WordEditLog[] {
-  return wordEditLogs.value.filter((l) => l.wordId === id);
-}
-/** 最近一次修改时刻——准确率悬浮里要标出来的那个「X」 */
-function lastEditAtOf(id: string): string | null {
-  const list = logsOfWord(id);
-  return list.length ? list[list.length - 1].at : null;
-}
-/** 留痕明细的悬停文案：改了哪个字段、从什么改成什么、谁改的、什么时候，四件事缺一不可 */
-function wordEditTitle(id: string): string {
-  return logsOfWord(id)
-    .map((l, i) => [
-      `第 ${i + 1} 次修改 · ${l.at} · ${l.by}（${l.byRole}）`,
-      ...l.changes.map((c) => `    ${c.field}：${c.from} → ${c.to}`),
-    ].join('\n'))
-    .join('\n');
-}
+type WordFieldChange = { field: string; from: string; to: string };
 
 /**
- * 逐字段比对，产出留痕条目。
+ * 逐字段比对，产出变更条目。
  * 数组一律按**规范顺序**拼串再比：勾选先后不改变条件本身，
  * 按勾选顺序比会把"先点沟通记录再点标题"记成一次改动，而它什么都没改。
  */
 function diffWord(
   prev: RiskWord,
   next: Pick<RiskWord, 'synonyms' | 'level' | 'scopes'>,
-): WordEditLog['changes'] {
-  const changes: WordEditLog['changes'] = [];
+): WordFieldChange[] {
+  const changes: WordFieldChange[] = [];
   const synPrev = prev.synonyms.join(' / ');
   const synNext = next.synonyms.join(' / ');
   if (synPrev !== synNext) changes.push({ field: '同义词', from: synPrev || '无', to: synNext || '无' });
@@ -1580,17 +1548,8 @@ function saveWordEdit(prev: RiskWord) {
   localWords.value = localWords.value.map((item) => (
     // 🔴 主词一律取原值，不取表单。表单那一格虽已置灰，但"界面挡住了"不等于"数据改不了"——
     // 守卫要落在写入这唯一的出口上，而不是落在某一个控件上。
-    item.id === prev.id ? { ...item, ...next, word: prev.word } : item
+    item.id === prev.id ? { ...item, ...next, word: prev.word, updatedAt: nowStamp() } : item
   ));
-  wordEditLogs.value = [...wordEditLogs.value, {
-    wordId: prev.id,
-    at: nowStamp(),
-    by: user.current.name,
-    byRole: user.role.name,
-    changes,
-  }];
-  // 把"历史命中不动"当场讲出来：人改完最想确认的就是这件事，
-  // 不说的话，改宽匹配范围之后他会等着旧工单被重新扫一遍，而那永远不会发生。
   message.success(
     `已保存「${prev.word}」的修改（${changes.map((c) => c.field).join(' / ')}）；`
     + '只对后续的实时识别与手动筛查生效，历史命中一条不动',
@@ -1619,6 +1578,7 @@ function saveWord() {
       hits7dRaw: 0, // 与 hits7d 同口径；当前无法区分发话角色
       judged7d: 0,
       valid7d: 0,
+      updatedAt: nowStamp(),
     },
   ];
   message.success(wordForm.value.enabled ? `已新建并启用「${word}」` : `已新建「${word}」（停用中，启用后才参与自动识别与手动筛查）`);
@@ -1627,7 +1587,7 @@ function saveWord() {
 function toggleWordEnabled(w: RiskWord) {
   if (!canMaintainWords.value) return;
   localWords.value = localWords.value.map((item) =>
-    item.id === w.id ? { ...item, enabled: !item.enabled } : item,
+    item.id === w.id ? { ...item, enabled: !item.enabled, updatedAt: nowStamp() } : item,
   );
   // 刚停用的词若还留在筛查条件里，下拉已经不列它、条件却还带着它，
   // 于是筛出来的结果与人看到的条件对不上。停用即从条件里摘掉。
@@ -2354,7 +2314,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
     </section>
 
     <!-- 风险词维护抽屉 -->
-    <a-drawer v-model:open="riskWordsOpen" title="风险词管理" width="600" placement="right">
+    <a-drawer v-model:open="riskWordsOpen" title="风险词管理" width="720" placement="right">
       <div v-if="canMaintainWords" class="drawer-toolbar">
         <button type="button" class="row-btn row-btn-primary" @click="openWordForm">新建风险词</button>
       </div>
@@ -2364,35 +2324,33 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
         手动筛查时可逐条挑规则，留空即<b>全部启用中的规则</b>。
       </p>
       <table class="word-table">
+        <colgroup>
+          <col class="wt-col-word" />
+          <col class="wt-col-grade" />
+          <col class="wt-col-scope" />
+          <col class="wt-col-state" />
+          <col class="wt-col-updated" />
+          <col v-if="canMaintainWords" class="wt-col-ops" />
+        </colgroup>
         <thead>
           <tr>
             <th>风险词</th><th>分级</th><th>匹配范围</th>
             <th>状态</th>
-            <th v-if="canMaintainWords" style="width: 116px">操作</th>
+            <th>更新时间</th>
+            <th v-if="canMaintainWords">操作</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="w in localWords" :key="w.id" :class="{ off: !w.enabled }">
-            <td class="wt-word">
-              {{ w.word }}
-              <!--
-                改过的规则要在词表里看得见：编辑弹窗只说"历史命中不重算"，
-                改了几次、最近一次在什么时候，得在列表上直接读到——
-                否则人知道这条规则动过，却查不出动了什么。
-              -->
-              <div
-                v-if="logsOfWord(w.id).length"
-                class="wt-edited"
-                :title="wordEditTitle(w.id)"
-              >已修改 {{ logsOfWord(w.id).length }} 次 · 最近 {{ lastEditAtOf(w.id) }}</div>
-            </td>
-            <td>
+            <td class="wt-word">{{ w.word }}</td>
+            <td class="wt-grade">
               <span class="risk-word" :style="{ color: RISK_LEVEL_STYLE[w.level].color, background: RISK_LEVEL_STYLE[w.level].bg }">{{ riskLevelText(w.level) }}</span>
             </td>
-            <td class="hit-sub">{{ w.scopes.join(' / ') }}</td>
-            <td>
+            <td class="wt-scope" :title="w.scopes.join(' / ')">{{ w.scopes.join(' / ') }}</td>
+            <td class="wt-state-cell">
               <span class="wt-state" :class="w.enabled ? 'on' : 'off'">{{ w.enabled ? '启用' : '停用' }}</span>
             </td>
+            <td class="wt-updated">{{ w.updatedAt ?? '—' }}</td>
             <td v-if="canMaintainWords" class="wt-ops">
               <!--
                 编辑与启停并列：两者改的是同一条规则的两件事——
@@ -2400,11 +2358,11 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                 主词不在编辑范围内，说明在弹窗与表尾说明里给出。
               -->
               <button
-                type="button" class="row-btn"
+                type="button" class="row-btn row-btn-primary"
                 title="改同义词 / 匹配范围 / 分级；主词不可改"
                 @click="openWordEdit(w)"
               >编辑</button>
-              <button type="button" class="row-btn" @click="toggleWordEnabled(w)">
+              <button type="button" class="row-btn row-btn-primary" @click="toggleWordEnabled(w)">
                 {{ w.enabled ? '停用' : '启用' }}
               </button>
             </td>
@@ -2432,16 +2390,6 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
       <div class="word-form op-form">
         <p class="op-tip op-tip-info wf-tip">
           主词是规则的显示名与统计口径，同义词命中也记在它名下；同一工单同一段原文只产生一条命中。
-        </p>
-        <!--
-          编辑态多一条提示，讲的是这次改动的作用边界：改动只往前生效、历史命中不重算。
-          不在保存前讲清，人改完就默认"这条规则一直是现在这个样子"，
-          回头看历史命中时对不上号。
-        -->
-        <p v-if="isWordEditing" class="op-tip op-tip-warn wf-tip">
-          改动只对后续的实时识别与手动筛查生效，<b>历史命中一条不动</b>——
-          已经产生的命中仍记在改动前的规则名下，不会按新条件重算。
-          本次修改会留痕，可在「风险词」列下方查看改了几次、最近一次在什么时候。
         </p>
 
         <div class="wf-section">
@@ -2488,10 +2436,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
 
         <div class="op-field op-field-h">
           <span class="op-label">上线状态</span>
-          <div class="wf-enable-row">
-            <a-switch v-model:checked="wordForm.enabled" checked-children="启用" un-checked-children="停用" />
-            <span class="op-hint wf-enable-hint">启用后同时纳入自动识别与手动筛查：新写入的工单文本会实时命中，手动筛查留空时也会跑到它。停用即两边都不参与。建议新建时保持停用，先到手动筛查里单挑这条规则扫一遍存量，看清会扫出多少条再启用。</span>
-          </div>
+          <a-switch v-model:checked="wordForm.enabled" checked-children="启用" un-checked-children="停用" />
         </div>
       </div>
     </a-modal>
@@ -3926,16 +3871,41 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
 .row-btn-amend { border-color: #E5E7EB; color: #6B7280; }
 .row-btn-amend:hover { border-color: #D1D5DB; color: #374151; }
 .row-btn-primary { border-color: #1A6FFF; color: #1A6FFF; display: inline-flex; align-items: center; gap: 3px; font-weight: 600; }
+.row-btn-primary:hover { background: #EFF6FF; }
 
-.word-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.word-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
 .word-table th {
   text-align: left; font-weight: 500; color: #64748b; font-size: 12px;
-  padding: 6px 8px; border-bottom: 1px solid #e2e8f0;
+  padding: 6px 6px; border-bottom: 1px solid #e2e8f0;
+  white-space: nowrap;
 }
-.word-table td { padding: 8px; border-bottom: 1px solid #f1f5f9; color: #374151; }
+.word-table td { padding: 6px 6px; border-bottom: 1px solid #f1f5f9; color: #374151; vertical-align: middle; }
+.wt-col-word { width: 60px; }
+.wt-col-grade { width: 48px; }
+.wt-col-state { width: 48px; }
+.wt-col-updated { width: 108px; }
+.wt-col-ops { width: 92px; }
 .word-table tr.off { opacity: 0.55; }
-.wt-word { font-weight: 500; color: #0f172a; }
-.risk-word { padding: 1px 8px; border-radius: 10px; font-size: 12px; }
+.wt-word { font-weight: 500; color: #0f172a; white-space: nowrap; }
+.wt-grade,
+.wt-state-cell,
+.wt-updated,
+.wt-ops { white-space: nowrap; }
+.wt-scope {
+  font-size: 11px;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.risk-word {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 12px;
+  white-space: nowrap;
+  line-height: 1.4;
+}
 .hits-high { color: #EF4444; font-weight: 600; }
 .hits-saved { margin-left: 5px; font-size: 11px; color: #10B981; cursor: help; }
 .acc { padding: 0 7px; border-radius: 10px; font-size: 12px; cursor: help; font-variant-numeric: tabular-nums; }
@@ -3945,6 +3915,13 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
 .wt-state { padding: 0 7px; border-radius: 10px; font-size: 12px; }
 .wt-state.on { background: #10B98122; color: #10B981; }
 .wt-state.off { background: #F3F4F6; color: #9CA3AF; }
+.wt-updated {
+  font-size: 12px;
+  color: #64748b;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.wt-ops { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .drawer-note { font-size: 12px; color: #64748b; line-height: 1.7; margin: 12px 0 0; }
 .drawer-note.top { margin: 0 0 12px; }
 .drawer-toolbar { margin-bottom: 10px; }
@@ -3979,15 +3956,6 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
   flex-direction: column;
   gap: 6px;
 }
-.wf-enable-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 1;
-  min-width: 0;
-}
-.wf-enable-row .op-hint { flex: 1; min-width: 0; }
-.wf-enable-hint { line-height: 1.55; }
 .word-form :deep(.wf-scope-grid) {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

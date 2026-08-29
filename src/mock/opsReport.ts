@@ -173,6 +173,8 @@ export interface RiskWord {
   judged7d: number;
   /** 其中判为「成立」的条数（准确率的分子） */
   valid7d: number;
+  /** 最近一次更新时刻（编辑 / 启停 / 新建） */
+  updatedAt?: string;
 }
 
 /**
@@ -190,15 +192,15 @@ export function accuracyOf(w: RiskWord): number | null {
 export const RISK_WORDS: RiskWord[] = [
   // 「媒体」原为独立词条（7 天 4 次、判定 4 / 成立 3），现并为「曝光」的同义词，
   // 计数一并归到主词名下：6+4=10 命中、6+4=10 判定、5+3=8 成立。
-  { id: 'w1', word: '曝光', synonyms: ['媒体', '新闻', '上电视', '黑猫投诉', '发帖曝光', '网上曝光'], level: '高', speakerLimit: '不限', scopes: ['标题', '问题描述', '沟通记录'], receivers: ['李文萍', '值班经理'], enabled: true, hits7dRaw: 10, hits7d: 10, judged7d: 10, valid7d: 8 },
-  { id: 'w3', word: '起诉', synonyms: ['法律途径', '法院', '律师', '打官司', '诉讼', '走法律'], level: '高', speakerLimit: '不限', scopes: ['标题', '问题描述', '催补记录', '处理结果'], receivers: ['李文萍', '法务'], enabled: true, hits7dRaw: 2, hits7d: 2, judged7d: 2, valid7d: 2 },
-  { id: 'w4', word: '12315', synonyms: ['消协', '315', '市场监管局', '消费者协会', '打315', '找消协'], level: '高', speakerLimit: '不限', scopes: ['标题', '问题描述', '沟通记录', '处理结果'], receivers: ['值班经理', '投诉专员'], enabled: true, hits7dRaw: 5, hits7d: 5, judged7d: 5, valid7d: 3 },
-  { id: 'w5', word: '投诉到底', synonyms: ['一直投诉', '天天投诉', '告到底', '投诉你们', '没完'], level: '中', speakerLimit: '不限', scopes: ['问题描述', '沟通记录', '处理结果'], receivers: ['值班经理'], enabled: true, hits7dRaw: 9, hits7d: 9, judged7d: 8, valid7d: 6 },
-  { id: 'w6', word: '退一赔三', synonyms: ['三倍赔偿', '假一赔三', '退一赔十', '按消法赔'], level: '中', speakerLimit: '不限', scopes: ['问题描述', '沟通记录', '问题原因'], receivers: ['值班经理'], enabled: true, hits7dRaw: 3, hits7d: 3, judged7d: 3, valid7d: 3 },
+  { id: 'w1', word: '曝光', synonyms: ['媒体', '新闻', '上电视', '黑猫投诉', '发帖曝光', '网上曝光'], level: '高', speakerLimit: '不限', scopes: ['标题', '问题描述', '沟通记录'], receivers: ['李文萍', '值班经理'], enabled: true, hits7dRaw: 10, hits7d: 10, judged7d: 10, valid7d: 8, updatedAt: '2026-08-28 16:20' },
+  { id: 'w3', word: '起诉', synonyms: ['法律途径', '法院', '律师', '打官司', '诉讼', '走法律'], level: '高', speakerLimit: '不限', scopes: ['标题', '问题描述', '催补记录', '处理结果'], receivers: ['李文萍', '法务'], enabled: true, hits7dRaw: 2, hits7d: 2, judged7d: 2, valid7d: 2, updatedAt: '2026-07-15 09:30' },
+  { id: 'w4', word: '12315', synonyms: ['消协', '315', '市场监管局', '消费者协会', '打315', '找消协'], level: '高', speakerLimit: '不限', scopes: ['标题', '问题描述', '沟通记录', '处理结果'], receivers: ['值班经理', '投诉专员'], enabled: true, hits7dRaw: 5, hits7d: 5, judged7d: 5, valid7d: 3, updatedAt: '2026-08-01 11:00' },
+  { id: 'w5', word: '投诉到底', synonyms: ['一直投诉', '天天投诉', '告到底', '投诉你们', '没完'], level: '中', speakerLimit: '不限', scopes: ['问题描述', '沟通记录', '处理结果'], receivers: ['值班经理'], enabled: true, hits7dRaw: 9, hits7d: 9, judged7d: 8, valid7d: 6, updatedAt: '2026-08-20 14:05' },
+  { id: 'w6', word: '退一赔三', synonyms: ['三倍赔偿', '假一赔三', '退一赔十', '按消法赔'], level: '中', speakerLimit: '不限', scopes: ['问题描述', '沟通记录', '问题原因'], receivers: ['值班经理'], enabled: true, hits7dRaw: 3, hits7d: 3, judged7d: 3, valid7d: 3, updatedAt: '2026-08-10 10:18' },
   // 反面教材：通用词，7 天命中 142 次、准确率 8%，上线即刷屏，已停用。
   // 同义词故意铺得较宽（青少年 / 祖国的花朵等），演示「一条规则 = 主词 + N 同义词」的覆盖感；
   // 也解释为什么这类泛化词一启用就刷屏——命中面太广，准确率自己报警。
-  { id: 'w7', word: '孩子', synonyms: ['青少年', '祖国的花朵', '小朋友', '未成年人', '学生', '娃'], level: '低', speakerLimit: '不限', scopes: ['问题描述'], receivers: ['教育支持组长'], enabled: false, hits7dRaw: 142, hits7d: 142, judged7d: 12, valid7d: 1 },
+  { id: 'w7', word: '孩子', synonyms: ['青少年', '祖国的花朵', '小朋友', '未成年人', '学生', '娃'], level: '低', speakerLimit: '不限', scopes: ['问题描述'], receivers: ['教育支持组长'], enabled: false, hits7dRaw: 142, hits7d: 142, judged7d: 12, valid7d: 1, updatedAt: '2026-08-25 09:40' },
 ];
 
 // ---------------------------------------------------------------------
