@@ -1621,7 +1621,7 @@ function saveWord() {
       valid7d: 0,
     },
   ];
-  message.success(wordForm.value.enabled ? `已新建并启用「${word}」` : `已新建「${word}」（停用中，启用后才纳入实时监控与手动筛查）`);
+  message.success(wordForm.value.enabled ? `已新建并启用「${word}」` : `已新建「${word}」（停用中，启用后才参与自动识别与手动筛查）`);
   wordFormOpen.value = false;
 }
 function toggleWordEnabled(w: RiskWord) {
