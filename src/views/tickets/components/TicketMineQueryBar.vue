@@ -3,6 +3,7 @@ import { computed, ref } from 'vue';
 import { DatePicker } from 'ant-design-vue';
 import dayjs, { type Dayjs } from 'dayjs';
 import TicketFilterFieldPicker from '@/views/tickets/components/TicketFilterFieldPicker.vue';
+import MineFilterSelect from '@/views/tickets/components/MineFilterSelect.vue';
 import {
   BUSINESS_TYPES,
   CREATE_TICKET_TYPES,
@@ -195,6 +196,31 @@ function onApplyOptionalVisible(next: Record<string, boolean>) {
 function fieldLabel(key: MineFilterFieldKey): string {
   return activeFields.value.find((f) => f.key === key)?.label ?? key;
 }
+
+function toStrOpts(items: readonly string[]): { value: string; label: string }[] {
+  return items.map((v) => ({ value: v, label: v }));
+}
+
+const poolGroupOptions = computed(() =>
+  props.poolGroups.map((g) => ({ value: g.id, label: g.label })),
+);
+
+const priorityOptions = computed(() =>
+  priorities.filter((p) => p.value).map((p) => ({ value: p.value, label: p.label })),
+);
+
+const nodeStatusOptions = computed(() =>
+  nodeStatuses.filter((s) => s.value).map((s) => ({ value: s.value, label: s.label })),
+);
+
+const businessTypeOptions = computed(() => toStrOpts(BUSINESS_TYPES));
+const ticketTypeOptions = computed(() => toStrOpts(CREATE_TICKET_TYPES));
+const ticketSourceOptions = computed(() => toStrOpts(TICKET_SOURCE_OPTIONS));
+const productCategoryOptions = computed(() => toStrOpts(PRODUCT_CATEGORIES));
+const productNameSelectOptions = computed(() => toStrOpts(productNameOptions.value));
+const problemL1SelectOptions = computed(() => toStrOpts(problemL1Options.value));
+const problemL2SelectOptions = computed(() => toStrOpts(problemL2Options.value));
+const problemL3SelectOptions = computed(() => toStrOpts(problemL3Options.value));
 </script>
 
 <template>
@@ -204,14 +230,11 @@ function fieldLabel(key: MineFilterFieldKey): string {
         <template v-for="f in activeFields" :key="f.key">
           <label v-if="f.key === 'poolGroup'" class="filter-item">
             <span class="fi-label">{{ fieldLabel('poolGroup') }}</span>
-            <select
-              class="fi-control"
-              :value="modelValue.poolGroup"
-              @change="patch('poolGroup', ($event.target as HTMLSelectElement).value)"
-            >
-              <option value="">请选择</option>
-              <option v-for="g in poolGroups" :key="g.id" :value="g.id">{{ g.label }}</option>
-            </select>
+            <MineFilterSelect
+              :model-value="modelValue.poolGroup"
+              :options="poolGroupOptions"
+              @update:model-value="patch('poolGroup', $event)"
+            />
           </label>
 
           <label v-else-if="f.key === 'phone'" class="filter-item">
@@ -238,38 +261,31 @@ function fieldLabel(key: MineFilterFieldKey): string {
 
           <label v-else-if="f.key === 'priority'" class="filter-item">
             <span class="fi-label">{{ fieldLabel('priority') }}</span>
-            <select
-              class="fi-control"
-              :value="modelValue.priority"
-              @change="patch('priority', ($event.target as HTMLSelectElement).value as MineQueryFilter['priority'])"
-            >
-              <option v-for="p in priorities" :key="p.value || 'all'" :value="p.value">{{ p.label }}</option>
-            </select>
+            <MineFilterSelect
+              :model-value="modelValue.priority"
+              :options="priorityOptions"
+              @update:model-value="patch('priority', $event as MineQueryFilter['priority'])"
+            />
           </label>
 
           <label v-else-if="f.key === 'productCategory'" class="filter-item">
             <span class="fi-label">{{ fieldLabel('productCategory') }}</span>
-            <select
-              class="fi-control"
-              :value="modelValue.productCategory"
-              @change="onCategoryChange(($event.target as HTMLSelectElement).value)"
-            >
-              <option value="">请选择</option>
-              <option v-for="c in PRODUCT_CATEGORIES" :key="c" :value="c">{{ c }}</option>
-            </select>
+            <MineFilterSelect
+              :model-value="modelValue.productCategory"
+              :options="productCategoryOptions"
+              @update:model-value="onCategoryChange($event)"
+            />
           </label>
 
           <label v-else-if="f.key === 'productName'" class="filter-item filter-item-wide">
             <span class="fi-label">{{ fieldLabel('productName') }}</span>
-            <select
+            <MineFilterSelect
               :key="modelValue.productCategory || 'all'"
-              class="fi-control"
-              :value="modelValue.productName"
-              @change="patch('productName', ($event.target as HTMLSelectElement).value)"
-            >
-              <option value="">请选择</option>
-              <option v-for="name in productNameOptions" :key="name" :value="name">{{ name }}</option>
-            </select>
+              wide
+              :model-value="modelValue.productName"
+              :options="productNameSelectOptions"
+              @update:model-value="patch('productName', $event)"
+            />
           </label>
 
           <label v-else-if="f.key === 'timePreset'" class="filter-item filter-item-date">
@@ -300,13 +316,11 @@ function fieldLabel(key: MineFilterFieldKey): string {
 
           <label v-else-if="f.key === 'nodeStatus'" class="filter-item">
             <span class="fi-label">{{ fieldLabel('nodeStatus') }}</span>
-            <select
-              class="fi-control"
-              :value="modelValue.nodeStatus"
-              @change="patch('nodeStatus', ($event.target as HTMLSelectElement).value)"
-            >
-              <option v-for="s in nodeStatuses" :key="s.value || 'all'" :value="s.value">{{ s.label }}</option>
-            </select>
+            <MineFilterSelect
+              :model-value="modelValue.nodeStatus"
+              :options="nodeStatusOptions"
+              @update:model-value="patch('nodeStatus', $event)"
+            />
           </label>
 
           <label v-else-if="f.key === 'assignee'" class="filter-item">
@@ -322,76 +336,58 @@ function fieldLabel(key: MineFilterFieldKey): string {
 
           <label v-else-if="f.key === 'businessType'" class="filter-item">
             <span class="fi-label">{{ fieldLabel('businessType') }}</span>
-            <select
-              class="fi-control"
-              :value="modelValue.businessType"
-              @change="patch('businessType', ($event.target as HTMLSelectElement).value)"
-            >
-              <option value="">请选择</option>
-              <option v-for="b in BUSINESS_TYPES" :key="b" :value="b">{{ b }}</option>
-            </select>
+            <MineFilterSelect
+              :model-value="modelValue.businessType"
+              :options="businessTypeOptions"
+              @update:model-value="patch('businessType', $event)"
+            />
           </label>
 
           <label v-else-if="f.key === 'ticketType'" class="filter-item">
             <span class="fi-label">{{ fieldLabel('ticketType') }}</span>
-            <select
-              class="fi-control"
-              :value="modelValue.ticketType"
-              @change="patch('ticketType', ($event.target as HTMLSelectElement).value as MineQueryFilter['ticketType'])"
-            >
-              <option value="">请选择</option>
-              <option v-for="t in CREATE_TICKET_TYPES" :key="t" :value="t">{{ t }}</option>
-            </select>
+            <MineFilterSelect
+              :model-value="modelValue.ticketType"
+              :options="ticketTypeOptions"
+              @update:model-value="patch('ticketType', $event as MineQueryFilter['ticketType'])"
+            />
           </label>
 
           <label v-else-if="f.key === 'ticketSource'" class="filter-item">
             <span class="fi-label">{{ fieldLabel('ticketSource') }}</span>
-            <select
-              class="fi-control"
-              :value="modelValue.ticketSource"
-              @change="patch('ticketSource', ($event.target as HTMLSelectElement).value as MineQueryFilter['ticketSource'])"
-            >
-              <option value="">请选择</option>
-              <option v-for="s in TICKET_SOURCE_OPTIONS" :key="s" :value="s">{{ s }}</option>
-            </select>
+            <MineFilterSelect
+              :model-value="modelValue.ticketSource"
+              :options="ticketSourceOptions"
+              @update:model-value="patch('ticketSource', $event as MineQueryFilter['ticketSource'])"
+            />
           </label>
 
           <label v-else-if="f.key === 'problemL1'" class="filter-item">
             <span class="fi-label">{{ fieldLabel('problemL1') }}</span>
-            <select
-              class="fi-control"
-              :value="modelValue.problemL1"
-              @change="onProblemL1Change(($event.target as HTMLSelectElement).value)"
-            >
-              <option value="">请选择</option>
-              <option v-for="v in problemL1Options" :key="v" :value="v">{{ v }}</option>
-            </select>
+            <MineFilterSelect
+              :model-value="modelValue.problemL1"
+              :options="problemL1SelectOptions"
+              @update:model-value="onProblemL1Change($event)"
+            />
           </label>
 
           <label v-else-if="f.key === 'problemL2'" class="filter-item">
             <span class="fi-label">{{ fieldLabel('problemL2') }}</span>
-            <select
-              class="fi-control"
-              :value="modelValue.problemL2"
+            <MineFilterSelect
+              :model-value="modelValue.problemL2"
+              :options="problemL2SelectOptions"
               :disabled="!modelValue.problemL1"
-              @change="onProblemL2Change(($event.target as HTMLSelectElement).value)"
-            >
-              <option value="">请选择</option>
-              <option v-for="v in problemL2Options" :key="v" :value="v">{{ v }}</option>
-            </select>
+              @update:model-value="onProblemL2Change($event)"
+            />
           </label>
 
           <label v-else-if="f.key === 'problemL3'" class="filter-item">
             <span class="fi-label">{{ fieldLabel('problemL3') }}</span>
-            <select
-              class="fi-control"
-              :value="modelValue.problemL3"
+            <MineFilterSelect
+              :model-value="modelValue.problemL3"
+              :options="problemL3SelectOptions"
               :disabled="!modelValue.problemL2"
-              @change="patch('problemL3', ($event.target as HTMLSelectElement).value)"
-            >
-              <option value="">请选择</option>
-              <option v-for="v in problemL3Options" :key="v" :value="v">{{ v }}</option>
-            </select>
+              @update:model-value="patch('problemL3', $event)"
+            />
           </label>
 
           <label v-else-if="f.key === 'groupName'" class="filter-item">
@@ -465,6 +461,11 @@ function fieldLabel(key: MineFilterFieldKey): string {
   min-width: 0;
 }
 
+.filter-item-wide :deep(.fi-select-wide) {
+  min-width: 120px;
+  max-width: 180px;
+}
+
 .filter-item-date {
   min-width: 0;
   flex-shrink: 0;
@@ -533,10 +534,6 @@ function fieldLabel(key: MineFilterFieldKey): string {
 
 .fi-input::placeholder {
   color: #9ca3af;
-}
-
-.filter-item-wide .fi-control {
-  max-width: 108px;
 }
 
 .filter-actions {

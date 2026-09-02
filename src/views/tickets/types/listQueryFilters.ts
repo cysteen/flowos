@@ -1,6 +1,6 @@
 import { prototypeDayEnd } from '@/config/prototypeDate';
 import { BUSINESS_TYPES } from '@/views/tickets/types/createTicket';
-import { PRODUCT_NAMES_BY_CATEGORY } from '@/views/tickets/types/mineQuery';
+import { allProductNames } from '@/views/tickets/types/mineQuery';
 import {
   isEscalatedStatus,
   isFirstResponded,
@@ -109,16 +109,7 @@ export const QUERY_GROUP_OPTIONS = [
   '智学网咨询',
 ] as const;
 
-const QUERY_PRODUCT_OPTIONS = [
-  ...new Set([
-    ...Object.values(PRODUCT_NAMES_BY_CATEGORY).flat(),
-    '讯飞翻译机 T10',
-    '讯飞录音笔 H1',
-    '讯飞录音笔 H2',
-  ]),
-].sort();
-
-export { QUERY_PRODUCT_OPTIONS };
+export const QUERY_PRODUCT_OPTIONS = allProductNames();
 
 function includes(hay: string, needle: string): boolean {
   return hay.toLowerCase().includes(needle.trim().toLowerCase());

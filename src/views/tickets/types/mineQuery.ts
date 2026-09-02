@@ -1,4 +1,5 @@
 import { matchesSearchText } from '@/views/query/queryCenterSearch';
+import { TICKETS } from '@/mock/tickets';
 import type { Priority, Ticket, TicketType } from '@/views/tickets/types/ticket';
 import { resolveTicketGroupNames } from '@/views/tickets/types/ticket';
 import type { BusinessType, TicketSource } from '@/views/tickets/types/createTicket';
@@ -73,33 +74,66 @@ export const DEFAULT_DONE_QUERY = (): MineQueryFilter => ({
   timePreset: '30d',
 });
 
-export const PRODUCT_CATEGORIES = [
-  '智能硬件',
-  '软件服务',
-  '会员权益',
-  '开放平台',
-  '企业服务',
-] as const;
-
-/** 产品分类 → 产品名称（与产品主数据 / 新建工单弹窗对齐） */
-export const PRODUCT_NAMES_BY_CATEGORY: Record<string, string[]> = {
-  智能硬件: [
-    '智能音箱 X1',
-    '扫地机器人 R2',
-    '蓝牙耳机 Air',
-    '智能门锁 L1',
-    '空气净化器 P3',
-    '学习机 T20',
-    '路由器 R2',
-  ],
+/** 工单 Mock 尚未覆盖、但筛选/建单需出现的补充产品 */
+const EXTRA_PRODUCTS_BY_CATEGORY: Record<string, string[]> = {
+  智能硬件: ['学习机 X3 Pro', '讯飞智能耳机'],
   软件服务: ['智学网会员', '讯飞听见'],
-  会员权益: ['会员服务'],
-  开放平台: ['开放平台'],
-  企业服务: ['企业版'],
+  消费电子: [],
+  学习硬件: ['学习机 X3 Pro'],
 };
 
+function buildProductCatalog(): {
+  categories: string[];
+  namesByCategory: Record<string, string[]>;
+} {
+  const byCategory = new Map<string, Set<string>>();
+
+  for (const t of TICKETS) {
+    const cat = (t.productCategory ?? '').trim() || '其他';
+    if (!byCategory.has(cat)) byCategory.set(cat, new Set());
+    if (t.product?.trim()) byCategory.get(cat)!.add(t.product.trim());
+  }
+
+  for (const [cat, extras] of Object.entries(EXTRA_PRODUCTS_BY_CATEGORY)) {
+    if (!byCategory.has(cat)) byCategory.set(cat, new Set());
+    for (const name of extras) byCategory.get(cat)!.add(name);
+  }
+
+  // 问题分类等产品主数据里常见、列表偶发出现的型号
+  const sharedExtras = ['讯飞录音笔 H1', '讯飞录音笔 H2', '三防翻译机', '汉维翻译机'];
+  for (const name of sharedExtras) {
+    if (!byCategory.has('智能硬件')) byCategory.set('智能硬件', new Set());
+    byCategory.get('智能硬件')!.add(name);
+  }
+
+  const sortZh = (a: string, b: string) => a.localeCompare(b, 'zh-CN');
+  const categories = [...byCategory.keys()].sort(sortZh);
+  const namesByCategory: Record<string, string[]> = {};
+  for (const cat of categories) {
+    namesByCategory[cat] = [...byCategory.get(cat)!].sort(sortZh);
+  }
+  return { categories, namesByCategory };
+}
+
+const PRODUCT_CATALOG = buildProductCatalog();
+
+/** 产品分类（与工单列表「产品」列 / productCategory 字段对齐） */
+export const PRODUCT_CATEGORIES = PRODUCT_CATALOG.categories;
+
+/** 产品分类 → 产品名称 */
+export const PRODUCT_NAMES_BY_CATEGORY = PRODUCT_CATALOG.namesByCategory;
+
+/** 全部可选产品名称（未选分类时筛选用） */
+export function allProductNames(): string[] {
+  const set = new Set<string>();
+  for (const names of Object.values(PRODUCT_NAMES_BY_CATEGORY)) {
+    for (const n of names) set.add(n);
+  }
+  return [...set].sort((a, b) => a.localeCompare(b, 'zh-CN'));
+}
+
 export function productNamesForCategory(category: string): string[] {
-  if (!category) return [];
+  if (!category) return allProductNames();
   return PRODUCT_NAMES_BY_CATEGORY[category] ?? [];
 }
 
