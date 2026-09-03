@@ -9,6 +9,11 @@ import {
   SearchOutlined,
 } from '@ant-design/icons-vue';
 import TicketColumnSettings from '@/views/tickets/components/TicketColumnSettings.vue';
+import {
+  TICKET_LIST_COLUMN_CATALOG,
+  TICKET_LIST_FIXED_COLUMN_DEFS,
+  ticketListColumnLabel,
+} from '@/views/tickets/composables/ticketListColumnCatalog';
 
 const props = withDefaults(
   defineProps<{
@@ -97,8 +102,9 @@ function pickBatch(action: string, selectedCount: number) {
         v-model:open="columnSettingsOpen"
         :visible-columns="visibleColumns ?? {}"
         :column-order="columnOrder"
-        :hide-assignee-column="hideAssigneeColumn"
-        :hide-group-names-column="hideGroupNamesColumn"
+        :column-defs="TICKET_LIST_COLUMN_CATALOG"
+        :fixed-column-defs="TICKET_LIST_FIXED_COLUMN_DEFS"
+        :resolve-label="ticketListColumnLabel"
         @set-visible="(key, visible) => emit('setColumnVisible', key, visible)"
         @reorder="(fromKey, toKey) => emit('reorderColumn', fromKey, toKey)"
         @reset="emit('resetColumns')"

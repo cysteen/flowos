@@ -1,47 +1,27 @@
 import { computed, ref, watch } from 'vue';
 import {
-  QUERY_CENTER_COLUMN_DEFS,
-  queryCenterColumnLabel,
-} from '@/views/query/queryCenterListColumns';
+  defaultTicketListColumnOrder,
+  defaultTicketListColumnVisible,
+  normalizeTicketListColumnOrder,
+  TICKET_LIST_COLUMN_KEYS,
+  TICKET_LIST_DEPRECATED_COLUMN_KEYS,
+} from '@/views/tickets/composables/ticketListColumnCatalog';
+import { queryCenterColumnLabel } from '@/views/query/queryCenterListColumns';
 import type { TicketColumnPersist } from '@/views/tickets/composables/useTicketColumns';
 
-const ALL_KEYS = QUERY_CENTER_COLUMN_DEFS.map((c) => c.key);
+const ALL_KEYS = TICKET_LIST_COLUMN_KEYS;
 const LS_KEY = 'flowos-query-center-columns';
 
 function defaultVisible(): Record<string, boolean> {
-  return Object.fromEntries(
-    QUERY_CENTER_COLUMN_DEFS.map((c) => [c.key, c.defaultVisible !== false]),
-  );
+  return defaultTicketListColumnVisible();
 }
 
 function defaultOrder(): string[] {
-  return [...ALL_KEYS];
+  return defaultTicketListColumnOrder();
 }
 
 function normalizeOrder(order: string[]): string[] {
-  const seen = new Set<string>();
-  const merged: string[] = [];
-  for (const key of order) {
-    if (ALL_KEYS.includes(key) && !seen.has(key)) {
-      merged.push(key);
-      seen.add(key);
-    }
-  }
-  for (const key of ALL_KEYS) {
-    if (!seen.has(key)) merged.push(key);
-  }
-  // 新增列默认插在 SLA 前（仅首次缺列时迁移，不覆盖用户已调整的顺序）
-  const missingTimeCols = ['createdAt', 'updatedAt'].filter((k) => !order.includes(k));
-  if (missingTimeCols.length > 0) {
-    for (const key of ['createdAt', 'updatedAt']) {
-      const idx = merged.indexOf(key);
-      if (idx >= 0) merged.splice(idx, 1);
-    }
-    const slaIdx = merged.indexOf('sla');
-    const insertAt = slaIdx >= 0 ? slaIdx : merged.length;
-    merged.splice(insertAt, 0, 'createdAt', 'updatedAt');
-  }
-  return merged;
+  return normalizeTicketListColumnOrder(order, ALL_KEYS);
 }
 
 function defaults(): TicketColumnPersist {
@@ -55,8 +35,10 @@ function load(): TicketColumnPersist {
     const parsed = JSON.parse(raw) as TicketColumnPersist | Record<string, boolean>;
     if (parsed && typeof parsed === 'object' && 'order' in parsed && 'visible' in parsed) {
       const p = parsed as TicketColumnPersist;
+      const visible = { ...defaultVisible(), ...p.visible };
+      for (const key of TICKET_LIST_DEPRECATED_COLUMN_KEYS) delete visible[key];
       return {
-        visible: { ...defaultVisible(), ...p.visible },
+        visible,
         order: normalizeOrder(p.order ?? defaultOrder()),
       };
     }

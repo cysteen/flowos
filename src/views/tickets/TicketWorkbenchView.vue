@@ -314,8 +314,6 @@ function onConfirmSaveFilter(name: string) {
           :show-create="!wb.isDoneTab.value"
           :show-batch="showBatchToolbar"
           :batch-actions="batchActions"
-          :hide-assignee-column="wb.isMineTab.value || wb.isPoolTab.value"
-          :hide-group-names-column="!wb.isPoolTab.value"
           :visible-columns="visibleColumns"
           :column-order="columnOrder"
           :show-filter-toggle="wb.usesStructuredFilter.value"

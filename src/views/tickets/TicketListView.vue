@@ -38,6 +38,12 @@ import {
 
 } from '@/views/query/queryCenterListColumns';
 
+import {
+  TICKET_LIST_COLUMN_CATALOG,
+  TICKET_LIST_FIXED_COLUMN_DEFS,
+  ticketListColumnLabel,
+} from '@/views/tickets/composables/ticketListColumnCatalog';
+
 import { useQueryCenterColumns } from '@/views/query/useQueryCenterColumns';
 
 import { hasMineQuery, type MineQueryFilter } from './types/mineQuery';
@@ -481,7 +487,7 @@ function onClearFilters() {
 
         :fixed-column-defs="QUERY_CENTER_FIXED_COLUMN_DEFS"
 
-        :resolve-label="qcColumns.label"
+        :resolve-label="ticketListColumnLabel"
 
         footer-hint="工单/标题为固定列（含工单类型）"
 
@@ -536,6 +542,14 @@ function onClearFilters() {
       :visible-columns="wbColumns.visibleColumns.value"
 
       :column-order="wbColumns.columnOrder.value"
+
+      :column-defs="TICKET_LIST_COLUMN_CATALOG"
+
+      :fixed-column-defs="TICKET_LIST_FIXED_COLUMN_DEFS"
+
+      :resolve-label="ticketListColumnLabel"
+
+      footer-hint="工单/标题、操作为固定列"
 
       @set-visible="wbColumns.setColumnVisible"
 

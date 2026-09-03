@@ -47,7 +47,7 @@ export type ReviewChipKey =
   | 'closeReview';
 
 /** 本组 · 催补待回 · 子筛选（PRD-915 补充与催单 §9.3） */
-export type PoolPendingChipKey = 'all' | 'dunning' | 'supplement';
+export type PoolPendingChipKey = 'all' | 'dunning' | 'supplement' | 'escalated';
 
 /** @deprecated 兼容旧引用；待审核请用 ReviewChipKey */
 export type LegacyChipKey = ReviewChipKey;
@@ -120,6 +120,14 @@ export type TicketStatus =
   | '直接结案';
 
 /** @deprecated 沿用历史字段名，与 TicketStatus 同义 */
+/** 流程节点（列表「当前节点 / 上一个节点」枚举） */
+export type FlowNode =
+  | '工单处理'
+  | '技术支持'
+  | '调研回访'
+  | '挂起审批'
+  | '强结审批';
+
 export type NodeStatus = TicketStatus;
 
 /** 基线 §1 全部子状态（筛选项 / 校验用）：25 行 = 25 个可落库子状态，顺序与基线 §1 表一致 */
@@ -408,7 +416,11 @@ export interface Ticket {
   hasAppointment?: boolean;
   /** 预约倒计时文案 */
   appointmentText?: string;
-  /** 我发起过升级且当前仍在我名下 */
+  /**
+   * 我发起过升级 —— 即**我是主责**。
+   * 不等于「仍在我名下」：升级到三线后处理人已转出（※14），但主责不转移（※19）。
+   * 催补待回的「已升级」chip 靠它扩域，见 inPoolPendingScope()。
+   */
   upgradedByMe?: boolean;
   /** 历史存在委派动作（含委派返回） */
   hasDelegateHistory?: boolean;
@@ -484,8 +496,12 @@ export interface Ticket {
   feishuSync?: 'none' | 'failed' | 'synced' | 'feedback' | 'closed';
   /** 列表 · 上次处理人 */
   lastHandler?: string;
-  /** 列表 · 上次处理时间 */
-  lastHandledAt?: string;
+  /** 列表 · 上次处理组 */
+  lastHandlerGroup?: string;
+  /** 列表 · 当前流程节点 */
+  flowNode?: FlowNode;
+  /** 列表 · 上一流程节点 */
+  prevFlowNode?: FlowNode;
   /** 列表 · 升级次数 */
   upgradeCount?: number;
   /** 列表 · 预约时间（展示用） */
@@ -778,6 +794,10 @@ export const POOL_PENDING_CHIPS: ChipMeta[] = [
   { key: 'all', label: '全部', title: '本组待联系回话的工单总数' },
   { key: 'dunning', label: '被催办', title: '含仅被催办与「催+补兼有」；与「新补充」可重叠，故不与全部简单相加' },
   { key: 'supplement', label: '新补充', title: '含仅新补充与「催+补兼有」；与「被催办」可重叠，故不与全部简单相加' },
+  // 0903 新增（PRD-915 §9.3.1）：按**状态**切的一片，与前两个按**催补类型**切的正交。
+  // 收「已升级技术支持」（单落三线组池、归属组已变，靠 inPoolPendingScope 扩域补进来）
+  // 与「已升级产研」（处理人仍是二线、本就在域内）—— 二者对二线的意义相同：单推不动，只能等上游回传。
+  { key: 'escalated', label: '已升级', title: '已升级技术支持 / 已升级产研：单不在我手上，但客户在催我。能回话、不能办单' },
 ];
 
 /** @deprecated 使用 REVIEW_CHIPS / chipsForTab */
@@ -858,8 +878,13 @@ export function inPoolPendingScope(t: Ticket, visibleGroupIds?: string[]): boole
   // **fail-closed**：给了可见分组就必须命中；没给（undefined / 空数组）也不放行 —— 数据范围
   // 未配置时应当看不到，不是全看到。单缺 groupId 时同样不放行，与 inGroupPoolScope() 的
   // 演示态兜底不同：那个 Tab 靠它显示 3 张缺组的 mock 单，这个 Tab 不依赖。
-  if (!visibleGroupIds?.length) return false;
-  if (!t.groupId || !visibleGroupIds.includes(t.groupId)) return false;
+  // 本组分支：**fail-closed** —— 没给可见分组、或单缺 groupId，一律不放行。
+  const inMyGroup = !!visibleGroupIds?.length && !!t.groupId && visibleGroupIds.includes(t.groupId);
+  // 0903 扩域（PRD-915 §9.3.1）：升级到三线后单落三线组池、归属组已变，本组分支取不到它；
+  // 但按基线 ※19「主责不转移」，催补会抄送主责二线 —— 收到通知却找不到单，就是这条要补的断点。
+  // 只补「已升级技术支持」：已升级产研的单处理人仍是二线（※14a），本组分支已经能取到。
+  const isMyEscalatedOut = !!t.upgradedByMe && t.nodeStatus === '已升级技术支持';
+  if (!inMyGroup && !isMyEscalatedOut) return false;
   return true;
 }
 
@@ -1181,6 +1206,9 @@ export function matchPoolPendingChip(t: Ticket, chip: PoolPendingChipKey): boole
       return !!t.hasDunning;
     case 'supplement':
       return !!t.hasSupplement;
+    case 'escalated':
+      // 已委派不收：主责仍在二线手上、协办只是回填；已转出不收：按 PRD §11-3 两枚入口都不给
+      return t.nodeStatus === '已升级技术支持' || t.nodeStatus === '已升级产研';
     default:
       return true;
   }

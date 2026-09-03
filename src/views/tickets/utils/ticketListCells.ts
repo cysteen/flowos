@@ -1,6 +1,6 @@
 import type { Ticket } from '@/views/tickets/types/ticket';
 import { resolveTicketGroupNames } from '@/views/tickets/types/ticket';
-import { ticketListSourceLabel } from '@/views/tickets/types/createTicket';
+import { resolveCurrentFlowNode, resolvePreviousFlowNode } from '@/views/tickets/utils/ticketFlowNodes';
 
 export function formatStartDate(t: Ticket): string {
   if (!t.createdAt) return '—';
@@ -21,7 +21,30 @@ export function inferListDateTimeFromNo(no: string): string {
 
 export function formatCurrentGroup(t: Ticket): string {
   const names = resolveTicketGroupNames(t);
-  return names[0] ?? '—';
+  if (!names.length) return '—';
+  if (names.length === 1) return names[0];
+  return `${names[0]} +${names.length - 1}`;
+}
+
+export interface HandlerGroupCell {
+  person: string;
+  group: string;
+}
+
+/** 当前处理人 + 当前处理组（两行展示） */
+export function formatCurrentHandlerGroup(t: Ticket): HandlerGroupCell {
+  return {
+    person: t.assignee ?? '— 待领',
+    group: formatCurrentGroup(t),
+  };
+}
+
+/** 上次处理人 + 上次处理组（两行展示） */
+export function formatLastHandlerGroup(t: Ticket): HandlerGroupCell {
+  return {
+    person: t.lastHandler ?? '—',
+    group: t.lastHandlerGroup ?? '—',
+  };
 }
 
 export function formatCount(n?: number): string {
@@ -32,24 +55,18 @@ export function formatCount(n?: number): string {
 /** 列表 plain 列文案 */
 export function listCellText(t: Ticket, key: string): string {
   switch (key) {
-    case 'businessType':
-      return t.businessType ?? '—';
-    case 'ticketType':
-      return t.type;
-    case 'ticketSource':
-      return ticketListSourceLabel(t);
     case 'startDate':
       return formatStartDate(t);
     case 'createdAt':
       return formatListDateTime(t.createdAt ?? inferListDateTimeFromNo(t.no));
     case 'updatedAt':
       return formatListDateTime(t.updatedAt ?? t.createdAt ?? inferListDateTimeFromNo(t.no));
-    case 'currentGroup':
-      return formatCurrentGroup(t);
     case 'lastHandler':
       return t.lastHandler ?? '—';
-    case 'lastHandledAt':
-      return t.lastHandledAt ?? '—';
+    case 'flowNode':
+      return resolveCurrentFlowNode(t);
+    case 'prevFlowNode':
+      return resolvePreviousFlowNode(t);
     default:
       return '—';
   }

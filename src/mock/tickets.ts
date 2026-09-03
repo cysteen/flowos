@@ -1,4 +1,5 @@
 import type { Ticket } from '@/views/tickets/types/ticket';
+import { resolveTicketGroupNames } from '@/views/tickets/types/ticket';
 import { mapChannelToSource } from '@/views/tickets/types/createTicket';
 
 // 工单 Mock 数据（对齐 PRD-02 §9 字段与分布；样例文案参考 .pen SJpgc）。
@@ -234,10 +235,12 @@ const BASE_TICKETS: Ticket[] = [
     customer: '孟凡', vip: false, product: '讯飞翻译机 T10', productBg: '消费者BG',
     nodeStatus: '已升级产研', nodeStep: 4, nodeTotal: 5, priority: 'P1',
     slaText: '03:00:00', slaSub: '充足', slaState: 'ok', slaMinutes: 180,
-    assignee: '王坐席', tab: 'mine',
+    assignee: '王坐席', tab: 'mine', groupId: 'line2',
     customerPhone: '13722223333', sn: 'SN-T10-830141', productCategory: '消费电子',
     createdAt: '2026-08-14 15:00', updatedAt: '2026-08-17 09:00',
-    responded: true, upgradedByMe: true,
+    // hasSupplement：演示「已升级」chip 的第二种来源 —— 已升级产研（处理人仍是二线，
+    // 本组分支就能取到），与 D5（已升级技术支持、靠扩域补进来）成对
+    responded: true, upgradedByMe: true, hasSupplement: true,
   },
   // D7 已委派：主责不转移，通知二线、**协办人收不到**
   {
@@ -785,7 +788,7 @@ const TICKET_LIST_EXTRAS: Record<
     synced: true,
     feishuSync: 'synced',
     lastHandler: '王坐席',
-    lastHandledAt: '2026-07-13 10:05',
+    lastHandlerGroup: '受理一组',
     upgradeCount: 1,
     appointmentAt: '2026-07-14 15:00',
     riskWeight: 62,
@@ -796,7 +799,7 @@ const TICKET_LIST_EXTRAS: Record<
     synced: true,
     feishuSync: 'feedback',
     lastHandler: '王坐席',
-    lastHandledAt: '2026-06-10 14:30',
+    lastHandlerGroup: '受理一组',
     upgradeCount: 2,
     riskWeight: 88,
     supplementPendingCount: 0,
@@ -806,7 +809,7 @@ const TICKET_LIST_EXTRAS: Record<
     synced: false,
     feishuSync: 'none',
     lastHandler: '李大海',
-    lastHandledAt: '2026-06-10 16:02',
+    lastHandlerGroup: '受理二组',
     upgradeCount: 0,
     riskWeight: 95,
     supplementPendingCount: 1,
@@ -816,12 +819,18 @@ const TICKET_LIST_EXTRAS: Record<
     synced: false,
     feishuSync: 'failed',
     lastHandler: '王坐席',
-    lastHandledAt: '2026-06-11 09:20',
+    lastHandlerGroup: '教育支持组',
     upgradeCount: 1,
     appointmentAt: '2026-06-12 10:00',
     riskWeight: 74,
     supplementPendingCount: 2,
     supplementDoneCount: 1,
+  },
+  'fd-d4': {
+    prevFlowNode: '技术支持',
+  },
+  'fd-d5': {
+    prevFlowNode: '工单处理',
   },
 };
 
@@ -835,7 +844,7 @@ function defaultListExtras(t: Ticket): Partial<Ticket> {
     feishuSync: 'none',
     synced: false,
     lastHandler: t.assignee ?? undefined,
-    lastHandledAt: t.updatedAt,
+    lastHandlerGroup: resolveTicketGroupNames(t)[0],
     upgradeCount,
     supplementPendingCount,
     supplementDoneCount,

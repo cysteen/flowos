@@ -3,9 +3,11 @@ import { CheckOutlined } from '@ant-design/icons-vue';
 import { computed, onUnmounted, ref, watch } from 'vue';
 import {
   columnLabel,
-  TICKET_COLUMN_DEFS,
 } from '@/views/tickets/composables/useTicketColumns';
+import { TICKET_LIST_COLUMN_KEYS } from '@/views/tickets/composables/ticketListColumnCatalog';
 import {
+  formatCurrentHandlerGroup,
+  formatLastHandlerGroup,
   listCellText,
 } from '@/views/tickets/utils/ticketListCells';
 import {
@@ -17,7 +19,6 @@ import {
   poolRowActions,
   PRIORITY_COLOR,
   rowActions,
-  resolveTicketGroupNames,
   SLA_COLOR,
   statusStyle,
   // 状态徽章文案取**页面展示名称**（基线 §1 第三列：列表状态列属"用户读到的文案"那一档）；
@@ -61,7 +62,7 @@ const props = withDefaults(
   },
 );
 
-const DEFAULT_ORDER = TICKET_COLUMN_DEFS.map((c) => c.key);
+const DEFAULT_ORDER = TICKET_LIST_COLUMN_KEYS;
 
 function colLabel(key: string): string {
   return props.columnLabel?.(key) ?? columnLabel(key);
@@ -69,9 +70,8 @@ function colLabel(key: string): string {
 
 /** 列是否显示（未配置或未含该列 → 默认显示） */
 function showCol(key: string) {
-  if (key === 'assignee' && (props.variant === 'mine' || props.variant === 'pool')) return false;
-  if (key === 'groupNames' && props.variant !== 'pool' && props.variant !== 'query') return false;
-  if (key === 'currentGroup' && props.variant !== 'query') return false;
+  if (key === 'assignee' && props.variant === 'mine') return false;
+  if (key === 'groupNames') return false;
   return !props.visibleColumns || props.visibleColumns[key] !== false;
 }
 
@@ -179,22 +179,18 @@ const DEFAULT_COL_WIDTH: Record<string, number> = {
   summary: 220,
   priority: 58,
   customer: 100,
-  groupNames: 108,
-  currentGroup: 112,
   product: 120,
   node: 120,
+  flowNode: 108,
+  prevFlowNode: 108,
   createdAt: 120,
   updatedAt: 120,
   sla: 112,
   appointment: 96,
-  assignee: 88,
+  assignee: 108,
   action: 132,
-  businessType: 88,
-  ticketType: 72,
-  ticketSource: 88,
   startDate: 96,
-  lastHandler: 88,
-  lastHandledAt: 108,
+  lastHandler: 108,
 };
 
 const MIN_COL_WIDTH: Record<string, number> = {
@@ -202,7 +198,6 @@ const MIN_COL_WIDTH: Record<string, number> = {
   summary: 120,
   priority: 48,
   customer: 64,
-  groupNames: 72,
   product: 72,
   node: 72,
   sla: 88,
@@ -492,43 +487,6 @@ const gridTemplateColumns = computed(() => {
           </div>
         </div>
 
-        <div v-else-if="colKey === 'groupNames'" class="col-group-names cell-groups">
-          <a-popover
-            v-if="resolveTicketGroupNames(t).length > 1"
-            trigger="hover"
-            placement="top"
-            :mouse-enter-delay="0.2"
-          >
-            <div class="group-stack">
-              <span
-                v-for="g in resolveTicketGroupNames(t).slice(0, 2)"
-                :key="g"
-                class="group-tag"
-              >{{ g }}</span>
-              <span v-if="resolveTicketGroupNames(t).length > 2" class="group-more">
-                +{{ resolveTicketGroupNames(t).length - 2 }}
-              </span>
-            </div>
-            <template #content>
-              <div class="group-pop">
-                <span
-                  v-for="g in resolveTicketGroupNames(t)"
-                  :key="g"
-                  class="group-tag"
-                >{{ g }}</span>
-              </div>
-            </template>
-          </a-popover>
-          <div v-else-if="resolveTicketGroupNames(t).length" class="group-stack">
-            <span
-              v-for="g in resolveTicketGroupNames(t)"
-              :key="g"
-              class="group-tag"
-            >{{ g }}</span>
-          </div>
-          <span v-else class="group-empty">—</span>
-        </div>
-
         <div v-else-if="colKey === 'product'" class="col-product cell-product">
           <span class="product-name" :title="t.product">{{ t.product }}</span>
         </div>
@@ -545,13 +503,17 @@ const gridTemplateColumns = computed(() => {
           <span class="sla-line" :style="{ color: slaFirstLine(t).color }">首响：{{ slaFirstLine(t).text }}</span>
         </div>
 
-        <div v-else-if="colKey === 'assignee'" class="col-assignee cell-assignee">
-          <span v-if="t.assignee" class="assignee-name">{{ t.assignee }}</span>
-          <span v-else class="unassigned">— 待领</span>
+        <div v-else-if="colKey === 'assignee'" class="col-assignee cell-handler-group">
+          <span
+            class="handler-line handler-line--person"
+            :class="{ 'handler-line--unassigned': !t.assignee }"
+          >{{ formatCurrentHandlerGroup(t).person }}</span>
+          <span class="handler-line handler-line--group">{{ formatCurrentHandlerGroup(t).group }}</span>
         </div>
 
-        <div v-else-if="colKey === 'currentGroup'" class="col-current-group cell-groups">
-          <span class="group-tag group-tag--single">{{ plainCellText(t, colKey) }}</span>
+        <div v-else-if="colKey === 'lastHandler'" class="col-last-handler cell-handler-group">
+          <span class="handler-line handler-line--person">{{ formatLastHandlerGroup(t).person }}</span>
+          <span class="handler-line handler-line--group">{{ formatLastHandlerGroup(t).group }}</span>
         </div>
 
         <div v-else :class="[colClass(colKey), 'cell-plain']">
@@ -652,9 +614,7 @@ const gridTemplateColumns = computed(() => {
 .col-appointment { min-width: 0; overflow: hidden; }
 .col-assignee { min-width: 0; overflow: hidden; }
 .col-action { min-width: 0; overflow: hidden; }
-.col-business-type,
-.col-ticket-type,
-.col-ticket-source { min-width: 0; overflow: hidden; }
+.col-start-date { min-width: 0; overflow: hidden; }
 .cell-plain { display: flex; align-items: center; min-width: 0; overflow: hidden; }
 .plain-text {
   font-size: 12px;
@@ -997,7 +957,7 @@ const gridTemplateColumns = computed(() => {
   white-space: nowrap;
 }
 
-/* 当前节点 */
+/* 当前状态 */
 .cell-node { display: flex; align-items: center; }
 .node-badge {
   font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px;
@@ -1021,7 +981,27 @@ const gridTemplateColumns = computed(() => {
 }
 .appt-empty { font-size: 12px; color: #d1d5db; }
 
-/* 处理人 */
+/* 处理人 / 处理组（两行） */
+.cell-handler-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  min-width: 0;
+  overflow: hidden;
+}
+.handler-line {
+  font-size: 12px;
+  line-height: 18px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.handler-line--person { font-weight: 600; color: #374151; }
+.handler-line--person.handler-line--unassigned { font-weight: 400; color: #6b7280; }
+.handler-line--group { color: #6b7280; }
+
 .cell-assignee { display: flex; align-items: center; }
 .assignee-name { font-size: 12px; color: #374151; }
 .unassigned { font-size: 12px; color: #6b7280; }

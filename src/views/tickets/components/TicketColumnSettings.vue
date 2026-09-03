@@ -66,9 +66,7 @@ const orderedDefs = computed(() => {
   return result;
 });
 
-function passesVariant(key: string): boolean {
-  if (props.hideAssigneeColumn && key === 'assignee') return false;
-  if (props.hideGroupNamesColumn && key === 'groupNames') return false;
+function passesVariant(_key: string): boolean {
   return true;
 }
 
