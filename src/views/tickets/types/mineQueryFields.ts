@@ -35,13 +35,13 @@ export const MINE_FILTER_FIELD_DEFS: MineFilterFieldDef[] = [
   { key: 'phone', label: '手机号', fixed: true },
   { key: 'sn', label: '设备 SN', fixed: true },
   { key: 'priority', label: '优先级', fixed: true },
-  { key: 'businessType', label: '业务分类' },
-  { key: 'ticketType', label: '工单类型' },
+  { key: 'businessType', label: '业务分类', defaultVisible: true },
+  { key: 'ticketType', label: '工单类型', defaultVisible: true },
   { key: 'productCategory', label: '产品分类', fixed: true },
   { key: 'productName', label: '产品名称', fixed: true },
   { key: 'nodeStatus', label: '当前状态', fixed: true },
   { key: 'assignee', label: '处理人', fixed: true },
-  { key: 'customer', label: '客户名称' },
+  { key: 'customer', label: '客户名称', defaultVisible: true },
   { key: 'ticketSource', label: '工单来源' },
   { key: 'problemL1', label: '问题一类' },
   { key: 'problemL2', label: '问题二类' },
@@ -51,7 +51,16 @@ export const MINE_FILTER_FIELD_DEFS: MineFilterFieldDef[] = [
 ];
 
 const ALL_KEYS = MINE_FILTER_FIELD_DEFS.map((f) => f.key);
-const LS_KEY = 'flowos-mine-query-fields';
+/**
+ * 可选筛选项的显隐记忆。
+ *
+ * **改默认值时必须同时进版本号**：这里存的是**全量记录**（每个可选项都带显式 true/false），
+ * 而 loadOptionalVisible 是 `{...默认, ...已存}` —— 已存的 false 会把新默认原样压回去。
+ * 不换 key 的话，只有从没打开过这个页面的浏览器才吃得到新默认，改了等于没改。
+ *
+ * v2（0903）：业务分类 / 工单类型 / 客户名称 改为默认展示。
+ */
+const LS_KEY = 'flowos-mine-query-fields.v2';
 
 function defaultOptionalVisible(): Record<string, boolean> {
   return Object.fromEntries(
