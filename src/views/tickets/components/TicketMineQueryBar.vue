@@ -539,16 +539,22 @@ const problemL3SelectOptions = computed(() => toStrOpts(problemL3Options.value))
 .filter-actions {
   display: inline-flex;
   align-items: center;
+  align-self: flex-start;
   gap: 12px;
+  height: 32px;
   flex: none;
   white-space: nowrap;
 }
 
 .link-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
   padding: 0;
   border: none;
   background: transparent;
   font-size: 13px;
+  line-height: 1;
   color: #1a6fff;
   cursor: pointer;
 }
