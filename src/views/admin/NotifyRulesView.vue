@@ -308,8 +308,10 @@ function onCondFieldChange(c: RuleCondition) {
   const ops = opsForField(f);
   if (!ops.includes(c.op)) c.op = ops[0];
   c.value = [];
-  if (f?.type === 'duration') c.unit = 'minute';
-  else delete c.unit;
+  if (f?.type === 'duration') {
+    c.op = 'lt';
+    c.unit = 'minute';
+  } else delete c.unit;
 }
 function condValuePlaceholder(key: string) {
   const f = fieldOf(key);
@@ -331,7 +333,7 @@ function onCondOpChange(c: RuleCondition) {
 function addCond() {
   const first = condFields(eventVars.value)[0];
   if (!first) return;
-  const cond: RuleCondition = { field: first.key, op: 'eq', value: [] };
+  const cond: RuleCondition = { field: first.key, op: first.type === 'duration' ? 'lt' : 'eq', value: [] };
   if (first.type === 'duration') cond.unit = 'minute';
   form.conditions.push(cond);
 }
@@ -652,12 +654,7 @@ function evalCond(c: RuleCondition) {
   if (actualRaw === undefined) pass = false;
   else if (isDuration) {
     if (Number.isNaN(actualMin) || Number.isNaN(rhsMin)) pass = false;
-    else if (c.op === 'eq') pass = actualMin === rhsMin;
-    else if (c.op === 'ne') pass = actualMin !== rhsMin;
-    else if (c.op === 'gt') pass = actualMin > rhsMin;
-    else if (c.op === 'gte') pass = actualMin >= rhsMin;
-    else if (c.op === 'lt') pass = actualMin < rhsMin;
-    else if (c.op === 'lte') pass = actualMin <= rhsMin;
+    else pass = actualMin < rhsMin;
   }
   else if (c.op === 'eq') pass = actualRaw === c.value[0];
   else if (c.op === 'ne') pass = actualRaw !== c.value[0];
@@ -1006,11 +1003,11 @@ function renderedBody(ch: NotifyChannel) {
               </div>
               <div v-if="!form.conditions.length" class="blk-empty">
                 {{ curEvent?.source === 'timer'
-                  ? '未加条件 —— 定扫事件每天都会命中该状态下的全部工单。临期提醒请用「距离预约时间 / 距离挂起截止时间 ≤ N」并选择单位（分钟/小时/天）；周期提醒用「已挂起天数 每隔 N」。预约时间、挂起截止日期仅作正文变量。'
+                  ? '未加条件 —— 定扫事件每天都会命中该状态下的全部工单。临期提醒请用「距离预约时间 / 距离挂起截止时间 小于 N」并选择单位（分钟/小时/天）；周期提醒用「已挂起天数 每隔 N」。预约时间、挂起截止日期仅作正文变量。'
                   : '事件发生即触发' }}
               </div>
               <p v-if="curEvent?.source === 'timer'" class="cond-hint">
-                如「距离预约时间 ≤ 10 分钟」：字段选距离预约时间，运算符选小于等于，数值填 10，单位选分钟。
+                如「距离预约时间 小于 10 分钟」：字段选距离预约时间，数值填 10，单位选分钟。
               </p>
               <div v-for="(c, i) in form.conditions" :key="i" class="cond-row">
                 <span v-if="i" class="c-and">且</span><span v-else class="c-and ph" />
@@ -1019,7 +1016,9 @@ function renderedBody(ch: NotifyChannel) {
                   :options="condFieldOptions"
                   @change="onCondFieldChange(c)"
                 />
+                <span v-if="isDurationField(c.field)" class="cond-op-fixed">小于</span>
                 <a-select
+                  v-else
                   v-model:value="c.op" style="width: 96px" :options="opOptions(c.field)"
                   @change="onCondOpChange(c)"
                 />
@@ -1759,6 +1758,21 @@ function renderedBody(ch: NotifyChannel) {
 
 .cond-number :deep(.ant-input-number-input) {
   width: 100%;
+}
+
+.cond-op-fixed {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+  color: #374151;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
 }
 .cond-type { flex: none; font-size: 11px; line-height: 18px; padding: 0 5px; color: #9ca3af; }
 .c-and { width: 20px; flex: none; font-size: 12px; color: #10b981; font-weight: 600; }

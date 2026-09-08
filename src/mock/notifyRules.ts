@@ -216,14 +216,14 @@ export const NOTIFY_EVENTS: NotifyEvent[] = [
   { code: 'hold.dailyCheck', name: '挂起定扫', source: 'timer',
     payload: [...BASE,
       { key: 'holdUntil', label: '挂起截止日期', type: 'datetime', templateOnly: true, desc: '挂起到什么时候。正文里展示截止点；临期条件请用「距离挂起截止时间」' },
-      { key: 'timeToHoldEnd', label: '距离挂起截止时间', type: 'duration', durationRef: 'holdUntil', desc: '距挂起截止还剩多久。配 ≤ + 数值 + 单位，如 ≤ 10 分钟、≤ 3 天' },
+      { key: 'timeToHoldEnd', label: '距离挂起截止时间', type: 'duration', durationRef: 'holdUntil', desc: '距挂起截止还剩多久。配「小于 + 数值 + 单位」，如小于 10 分钟、小于 3 天' },
       { key: 'heldDays', label: '已挂起天数', type: 'number', condUnit: '天', desc: '自挂起之日起算已过去几天。配「每隔 N」即可做周期提醒，如每 30 天催一次' },
     ],
     remark: '每日定扫仍处于挂起中的工单，各发一次。事件只给状态快照，发不发、隔多久发一次全部由规则条件决定。挂起到期当天工单已解挂、不在扫描范围内，故与「恢复」事件不重叠' },
   { code: 'appointment.dailyCheck', name: '预约定扫', source: 'timer',
     payload: [...BASE,
       { key: 'apptTime', label: '预约时间', type: 'datetime', templateOnly: true, desc: '与客户约定的上门 / 回访时间。正文里展示预约点；提前提醒请用「距离预约时间」' },
-      { key: 'timeToAppt', label: '距离预约时间', type: 'duration', durationRef: 'apptTime', desc: '距预约开始还剩多久。配 ≤ + 数值 + 单位，如 ≤ 10 分钟、≤ 1 天' },
+      { key: 'timeToAppt', label: '距离预约时间', type: 'duration', durationRef: 'apptTime', desc: '距预约开始还剩多久。配「小于 + 数值 + 单位」，如小于 10 分钟、小于 1 天' },
     ],
     remark: '每日定扫仍未完成的预约，各发一次；提前几天提醒由规则条件决定' },
 
@@ -411,8 +411,8 @@ export const COND_OP_LABEL: Record<CondOp, string> = {
 export function opsForType(t?: FieldType): CondOp[] {
   switch (t) {
     case 'boolean': return ['eq'];
-    case 'number':
-    case 'duration': return ['eq', 'ne', 'gt', 'gte', 'lt', 'lte'];
+    case 'number': return ['eq', 'ne', 'gt', 'gte', 'lt', 'lte'];
+    case 'duration': return ['lt'];
     case 'datetime': return ['eq', 'ne'];
     case 'enum':
     case 'userId':
@@ -450,7 +450,10 @@ export function normalizeCondition(c: RuleCondition, eventCode: string): RuleCon
     next.unit = c.unit ?? m.unit;
   }
   const f = eventOf(eventCode)?.payload.find((p) => p.key === next.field);
-  if (f?.type === 'duration' && !next.unit) next.unit = 'minute';
+  if (f?.type === 'duration') {
+    if (!next.unit) next.unit = 'minute';
+    next.op = 'lt';
+  }
   return next;
 }
 /** 可作触发条件的字段（排除 templateOnly 的时间点类变量） */
@@ -519,7 +522,7 @@ export const NOTIFY_RULES: NotifyRule[] = [
 
   /* ---------- 状态定扫 ---------- */
   { id: 'R14', name: '挂起临期提醒', event: 'hold.dailyCheck', audience: 'internal',
-    conditions: [{ field: 'timeToHoldEnd', op: 'lte', value: ['3'], unit: 'day' }],
+    conditions: [{ field: 'timeToHoldEnd', op: 'lt', value: ['3'], unit: 'day' }],
     recipients: [{ type: 'assignee' }], channels: ['邮件'], templates: {},
     contents: {
       邮件: {
@@ -552,7 +555,7 @@ export const NOTIFY_RULES: NotifyRule[] = [
     enabled: true },
   { id: 'R16', name: '预约到期提醒', event: 'appointment.dailyCheck', audience: 'internal',
     // 距预约 1 天当天命中一次
-    conditions: [{ field: 'timeToAppt', op: 'lte', value: ['1'], unit: 'day' }],
+    conditions: [{ field: 'timeToAppt', op: 'lt', value: ['1'], unit: 'day' }],
     recipients: [{ type: 'assignee' }], channels: ['IM'], templates: { IM: 'IM_APPT_DUE' }, contents: {}, enabled: true },
 
 ];
