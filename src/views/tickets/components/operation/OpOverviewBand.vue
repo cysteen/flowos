@@ -4,6 +4,7 @@ import OpStatGrid from './OpStatGrid.vue';
 import OpAiInsight from './OpAiInsight.vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import type { InsightAction } from '@/views/tickets/types/operation';
+import { resolveLatestHandlingAction } from '@/views/tickets/utils/ticketOverview';
 
 type OverviewCol = 'desc' | 'stat' | 'handle';
 
@@ -108,7 +109,7 @@ watch(expandedCol, (v) => emit('expand-change', v !== null), { immediate: true }
           <div v-for="(h, i) in detail.latestHandling" :key="i" class="handle-item">
             <div class="hi-meta">
               <span class="hi-who">{{ h.who }}</span>
-              <span class="hi-role">{{ h.role }}</span>
+              <span class="hi-action">{{ resolveLatestHandlingAction(h) }}</span>
               <span class="hi-when">{{ h.when }}</span>
             </div>
             <div class="hi-text">{{ h.text }}</div>
@@ -298,7 +299,7 @@ watch(expandedCol, (v) => emit('expand-change', v !== null), { immediate: true }
 }
 .hi-who { font-size: 12px; font-weight: 600; color: #111827; }
 .hi-label { font-size: 12px; font-weight: 600; color: #6b7280; }
-.hi-role { font-size: 11px; color: #6b7280; background: #f3f4f6; border-radius: 4px; padding: 0 6px; }
+.hi-action { font-size: 11px; color: #6b7280; background: #f3f4f6; border-radius: 4px; padding: 0 6px; white-space: nowrap; }
 .hi-when { font-size: 11px; color: #9ca3af; margin-left: auto; }
 .hi-text { font-size: 12px; color: #374151; line-height: 1.6; }
 .handle-item:first-child .hi-text {

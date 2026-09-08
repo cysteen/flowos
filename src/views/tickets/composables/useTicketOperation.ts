@@ -66,9 +66,9 @@ function whenAt(ms: number): string {
   return sameDay ? `今日 ${hm}` : `${d.getMonth() + 1}/${d.getDate()} ${hm}`;
 }
 
-/** 由剩余秒推算绝对截止文案 */
-function dueByText(remSec: number): string {
-  return whenAt(Date.now() + remSec * 1000);
+/** 由起算时刻 + 总时限推算绝对截止文案（固定承诺截止点） */
+function dueByFromStart(startMs: number, totalSec: number): string {
+  return whenAt(startMs + totalSec * 1000);
 }
 
 /**
@@ -89,13 +89,11 @@ function buildSlaClocks(t: Ticket): SlaClock[] {
   const summary = summaryRemainSec(t);
 
   // 首响终态：达标（绿）或超时后才响的未达标（红）
-  const stopFirst = () => {
+  const stopFirst = (wholeStart: number) => {
     first.phase = 'stopped';
     first.stopOutcome = t.firstRespBreached ? 'breached' : 'met';
     first.remainSec = t.firstRespBreached ? -300 : 300;
-    first.closedAt = whenAt(
-      Date.now() - Math.max(0, first.totalSec - first.remainSec) * 1000,
-    );
+    first.closedAt = whenAt(wholeStart + (first.totalSec - first.remainSec) * 1000);
   };
 
   if (t.slaText === '—') {
@@ -103,32 +101,31 @@ function buildSlaClocks(t: Ticket): SlaClock[] {
     solve.phase = 'stopped';
     solve.stopOutcome = t.solveBreached ? 'breached' : 'met';
     if (t.solveBreached) solve.remainSec = -1800;
-    stopFirst();
   } else if (t.slaState === 'paused') {
     // 挂起：在走的钟冻结（剩余保留、可恢复续算）
     solve.phase = 'paused';
     solve.remainSec = 2 * 3600;
     solve.totalSec = 8 * 3600;
-    if (responded) stopFirst();
-    else {
+    if (!responded) {
       first.phase = 'paused'; // 挂起且未首响：首响钟同样冻结
       first.remainSec = 10 * 60;
     }
   } else if (responded) {
     // 已首响：扁平摘要即解决钟
     if (summary != null) tuneClock(solve, summary, t.slaState);
-    stopFirst();
   } else {
     // 未首响：扁平摘要即首响钟（最急钟）；解决钟走独立字段
     if (summary != null) tuneClock(first, summary, t.slaState);
     const rs = t.resolveSlaText ? parseHms(t.resolveSlaText) : null;
     if (rs != null) tuneClock(solve, rs, t.resolveSlaState ?? 'ok');
   }
-  solve.dueBy = dueByText(solve.remainSec);
-  // 首响与整单同起算于建单：截止 = 整单起算 + 首响时限（停表钟不能按冻结剩余推截止）
   const wholeStart = Date.now() - (solve.totalSec - solve.remainSec) * 1000;
-  first.dueBy =
-    first.phase === 'running' ? dueByText(first.remainSec) : whenAt(wholeStart + first.totalSec * 1000);
+  if (responded || t.slaText === '—') stopFirst(wholeStart);
+  if (solve.phase === 'stopped') {
+    solve.closedAt = whenAt(wholeStart + (solve.totalSec - solve.remainSec) * 1000);
+  }
+  solve.dueBy = dueByFromStart(wholeStart, solve.totalSec);
+  first.dueBy = dueByFromStart(wholeStart, first.totalSec);
   return [solve, first];
 }
 

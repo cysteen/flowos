@@ -341,11 +341,11 @@ export const TICKET_DETAIL: TicketDetailMeta = {
   },
   latestHandling: [
     {
-      who: '王坐席', role: '二线专员', when: '今天 16:30',
+      who: '王坐席', role: '二线专员', action: '提交工单处理结果', when: '今天 16:30',
       text: '远程升级固件至 v2.3.1 并复测 30 分钟，跳歌问题未再复现，已电话告知客户处理结果与后续观察建议。',
     },
     {
-      who: '李一线', role: '一线坐席', when: '今天 10:05',
+      who: '李一线', role: '一线坐席', action: '登记工单', when: '今天 10:05',
       text: '登记问题详情与故障录屏，初判为固件层问题，升级二线（处理人 王坐席）加速排查。',
     },
   ],

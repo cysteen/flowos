@@ -148,7 +148,24 @@ export interface ContactRecord {
   im?: { sessionDuration: string; messageCount: number };
 }
 
-export type NotifyKind = 'upgrade' | 'timeout' | 'transfer' | 'dunning' | 'accepted';
+export type NotifyKind =
+  | 'upgrade'
+  | 'timeout'
+  | 'transfer'
+  | 'dunning'
+  | 'accepted'
+  | 'assign'
+  | 'delegate'
+  | 'supplement'
+  | 'urge'
+  | 'return'
+  | 'approval'
+  | 'mention'
+  | 'hold'
+  | 'risk'
+  | 'cancel'
+  | 'appointment'
+  | 'group';
 
 export interface NotifyRecord {
   id: string;

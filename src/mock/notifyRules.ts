@@ -42,7 +42,8 @@ export type EventSource = 'dispatch' | 'non-dispatch' | 'approval' | 'timer';
  */
 export type FieldType =
   | 'string' | 'number' | 'datetime' | 'boolean' | 'enum'
-  | 'userId' | 'userId[]' | 'phone';
+  | 'userId' | 'userId[]' | 'phone'
+  | 'duration';
 
 export interface EventField {
   key: string;
@@ -55,6 +56,12 @@ export interface EventField {
   isRecipient?: boolean;
   /** 这个变量是什么、什么时候用它。事件详情页逐字段展示，供运营写模板时对照 */
   desc?: string;
+  /** 仅作模板变量，不出现在触发条件下拉（如挂起截止日期、预约时间） */
+  templateOnly?: boolean;
+  /** 触发条件取值的单位提示（如「天」「分钟」） */
+  condUnit?: string;
+  /** duration 型：相对哪个时间点（模板变量 key，仅文档说明） */
+  durationRef?: string;
 }
 
 /* ---- 枚举字典：与项目既有字典同源，改一处即全局生效 ---- */
@@ -155,12 +162,12 @@ export const NOTIFY_EVENTS: NotifyEvent[] = [
     payload: [...BASE, { key: 'newTicketNo', label: '新建投诉单号', type: 'string', desc: '升级投诉后新建出来的投诉单号。原单会被关闭，正文给出新单号便于追踪' }],
     remark: '前端编排、不经 dispatch，通知需由前端在建单成功后显式触发' },
   { code: 'ticket.suspend', name: '挂起', source: 'dispatch', actionCode: 'SUSPEND(30)',
-    payload: [...BASE, { key: 'holdUntil', label: '挂起截止日期', type: 'datetime', desc: '挂起到什么时候，到期后系统自动解挂' }, { key: 'holdReason', label: '挂起原因', type: 'string', desc: '申请挂起时填写的理由，审批人据此判断是否同意' }] },
+    payload: [...BASE, { key: 'holdUntil', label: '挂起截止日期', type: 'datetime', templateOnly: true, desc: '挂起到什么时候，到期后系统自动解挂。写进正文展示用；临期提醒的条件请用「距挂起到期天数/分钟数」' }, { key: 'holdReason', label: '挂起原因', type: 'string', desc: '申请挂起时填写的理由，审批人据此判断是否同意' }] },
   { code: 'ticket.resume', name: '恢复（解除挂起）', source: 'dispatch', actionCode: 'RESUME(31)',
     payload: [...BASE,
       { key: 'operatorId', label: '操作人', type: 'userId', isRecipient: true, desc: '执行本次操作的人' },
       { key: 'resumeType', label: '解挂方式', type: 'enum', enumValues: DICT_RESUME_TYPE, desc: '到期自动解挂，还是有人手工解除。「挂起到期提醒」只发前者——后者是处理人自己的操作，无需再通知他' },
-      { key: 'holdUntil', label: '挂起截止日期', type: 'datetime', desc: '挂起到什么时候，到期后系统自动解挂' },
+      { key: 'holdUntil', label: '挂起截止日期', type: 'datetime', templateOnly: true, desc: '挂起到什么时候，到期后系统自动解挂。写进正文展示用' },
     ],
     remark: '含人工解挂与到期自动解挂两种，用「解挂方式」区分。⚠ 待研发确认：到期自动解挂是复用 RESUME(31) 跳过审批，还是另立系统事件' },
   { code: 'ticket.resolve', name: '标记已解决', source: 'dispatch', actionCode: 'RESOLVE(40)', payload: [...BASE] },
@@ -191,7 +198,7 @@ export const NOTIFY_EVENTS: NotifyEvent[] = [
   { code: 'ticket.dispatched', name: '工单分派', source: 'non-dispatch',
     payload: [...BASE,
       { key: 'dispatchFrom', label: '分派来源', type: 'enum', enumValues: DICT_DISPATCH_FROM, desc: '工单经由哪条路径分派到人。对客受理短信靠它筛出「建单」这一种，避免认领 / 转售后时重复给客户发短信' },
-      { key: 'responseDueTime', label: '首响截止时间', type: 'datetime', desc: '必须在此时间前首次响应客户。注意与「解决截止时间」是两个字段，派工提醒用的是首响，别写串' },
+      { key: 'responseDueTime', label: '首响截止时间', type: 'datetime', templateOnly: true, desc: '必须在此时间前首次响应客户。注意与「解决截止时间」是两个字段，派工提醒用的是首响，别写串' },
     ],
     remark: '工单定下处理人的时刻。建单后、认领后、转售后、售后转入四条路径都汇到这里：对内派工提醒一条规则通吃，对客受理短信用「分派来源=建单」筛出。⚠ 待研发确认：是由工单调度引擎统一发出，还是各动作各自埋点' },
   { code: 'ticket.supplement', name: '新建补充', source: 'non-dispatch',
@@ -203,20 +210,20 @@ export const NOTIFY_EVENTS: NotifyEvent[] = [
     payload: [...BASE, { key: 'mentionedIds', label: '被@人', type: 'userId[]', isRecipient: true, desc: '评论里被 @ 到的人，可多人。@ 提醒发给他们' }, { key: 'mentionerId', label: '@ 发起人', type: 'userId', isRecipient: true, desc: '发出这条 @ 的人。正文里点名是谁在找你，对方才好回应' }, { key: 'commentText', label: '评论内容', type: 'string', desc: '评论正文。写进提醒里对方才知道被 @ 了什么事' }],
     remark: '动作矩阵中无「评论」动作，需回补' },
   { code: 'appointment.created', name: '新增预约', source: 'non-dispatch',
-    payload: [...BASE, { key: 'apptTime', label: '预约时间', type: 'datetime', desc: '与客户约定的上门 / 回访时间。注意与「挂起截止日期」是两个字段，别写串' }, { key: 'apptType', label: '预约类型', type: 'enum', enumValues: DICT_APPT_TYPE, desc: '上门还是回访' }] },
+    payload: [...BASE, { key: 'apptTime', label: '预约时间', type: 'datetime', templateOnly: true, desc: '与客户约定的上门 / 回访时间。写进正文展示用；提前提醒的条件请用「距预约天数/分钟数」' }, { key: 'apptType', label: '预约类型', type: 'enum', enumValues: DICT_APPT_TYPE, desc: '上门还是回访' }] },
 
   /* ---- 定时事件 ---- */
   { code: 'hold.dailyCheck', name: '挂起定扫', source: 'timer',
     payload: [...BASE,
-      { key: 'holdUntil', label: '挂起截止日期', type: 'datetime', desc: '挂起到什么时候，到期后系统自动解挂' },
-      { key: 'daysLeft', label: '距挂起到期天数', type: 'number', desc: '还有几天到期，当天为 0。用 ≤ 做阈值即得到分档提醒，如 ≤3 天起每天提醒' },
-      { key: 'heldDays', label: '已挂起天数', type: 'number', desc: '自挂起之日起算已过去几天。配「每隔 N」即可做周期提醒，如每 30 天催一次' },
+      { key: 'holdUntil', label: '挂起截止日期', type: 'datetime', templateOnly: true, desc: '挂起到什么时候。正文里展示截止点；临期条件请用「距离挂起截止时间」' },
+      { key: 'timeToHoldEnd', label: '距离挂起截止时间', type: 'duration', durationRef: 'holdUntil', desc: '距挂起截止还剩多久。配 ≤ + 数值 + 单位，如 ≤ 10 分钟、≤ 3 天' },
+      { key: 'heldDays', label: '已挂起天数', type: 'number', condUnit: '天', desc: '自挂起之日起算已过去几天。配「每隔 N」即可做周期提醒，如每 30 天催一次' },
     ],
     remark: '每日定扫仍处于挂起中的工单，各发一次。事件只给状态快照，发不发、隔多久发一次全部由规则条件决定。挂起到期当天工单已解挂、不在扫描范围内，故与「恢复」事件不重叠' },
   { code: 'appointment.dailyCheck', name: '预约定扫', source: 'timer',
     payload: [...BASE,
-      { key: 'apptTime', label: '预约时间', type: 'datetime', desc: '与客户约定的上门 / 回访时间。注意与「挂起截止日期」是两个字段，别写串' },
-      { key: 'daysToAppt', label: '距预约天数', type: 'number', desc: '离预约时间还有几天。提前几天提醒由它决定，如 =1 表示只在前一天提醒' },
+      { key: 'apptTime', label: '预约时间', type: 'datetime', templateOnly: true, desc: '与客户约定的上门 / 回访时间。正文里展示预约点；提前提醒请用「距离预约时间」' },
+      { key: 'timeToAppt', label: '距离预约时间', type: 'duration', durationRef: 'apptTime', desc: '距预约开始还剩多久。配 ≤ + 数值 + 单位，如 ≤ 10 分钟、≤ 1 天' },
     ],
     remark: '每日定扫仍未完成的预约，各发一次；提前几天提醒由规则条件决定' },
 
@@ -344,10 +351,27 @@ export const EDITOR_CHANNELS: NotifyChannel[] = ['邮件', '站内信'];
 export const isTemplateChannel = (c: NotifyChannel) => TEMPLATE_CHANNELS.includes(c);
 export type CondOp = 'eq' | 'ne' | 'in' | 'nin' | 'gt' | 'gte' | 'lt' | 'lte' | 'every';
 
+/** 时长条件单位（距离预约/挂起截止等） */
+export type DurationUnit = 'minute' | 'hour' | 'day';
+
+export const DURATION_UNIT_OPTIONS: { value: DurationUnit; label: string }[] = [
+  { value: 'minute', label: '分钟' },
+  { value: 'hour', label: '小时' },
+  { value: 'day', label: '天' },
+];
+
+export const DURATION_UNIT_LABEL: Record<DurationUnit, string> = {
+  minute: '分钟',
+  hour: '小时',
+  day: '天',
+};
+
 export interface RuleCondition {
   field: string;
   op: CondOp;
   value: string[];
+  /** duration 型条件的单位 */
+  unit?: DurationUnit;
 }
 
 export interface RuleRecipient {
@@ -383,18 +407,55 @@ export const COND_OP_LABEL: Record<CondOp, string> = {
   every: '每隔',
 };
 
-/** 按字段类型收敛可用运算符：布尔只有等于；数值可比大小、可取周期；时间只比大小 */
+/** 按字段类型收敛可用运算符 */
 export function opsForType(t?: FieldType): CondOp[] {
   switch (t) {
     case 'boolean': return ['eq'];
-    case 'number': return ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'every'];
-    case 'datetime': return ['eq', 'ne', 'gt', 'gte', 'lt', 'lte'];
+    case 'number':
+    case 'duration': return ['eq', 'ne', 'gt', 'gte', 'lt', 'lte'];
+    case 'datetime': return ['eq', 'ne'];
     case 'enum':
     case 'userId':
     case 'userId[]':
     case 'phone':
     default: return ['eq', 'ne', 'in', 'nin'];
   }
+}
+/** number 型才支持「每隔」周期 */
+export function opsForField(f?: EventField): CondOp[] {
+  const base = opsForType(f?.type);
+  if (f?.type === 'number') return [...base, 'every'];
+  return base;
+}
+/** 时长阈值换算为分钟（运行时统一口径） */
+export function durationToMinutes(value: string, unit: DurationUnit = 'minute'): number {
+  const n = Number(value);
+  if (Number.isNaN(n)) return NaN;
+  if (unit === 'hour') return n * 60;
+  if (unit === 'day') return n * 24 * 60;
+  return n;
+}
+/** 旧字段迁移到 duration 统一模型 */
+export function normalizeCondition(c: RuleCondition, eventCode: string): RuleCondition {
+  const next: RuleCondition = { ...c, value: [...c.value], unit: c.unit };
+  const legacy: Record<string, { field: string; unit: DurationUnit }> = {
+    minutesToAppt: { field: 'timeToAppt', unit: 'minute' },
+    daysToAppt: { field: 'timeToAppt', unit: 'day' },
+    minutesLeft: { field: 'timeToHoldEnd', unit: 'minute' },
+    daysLeft: { field: 'timeToHoldEnd', unit: 'day' },
+  };
+  const m = legacy[c.field];
+  if (m) {
+    next.field = m.field;
+    next.unit = c.unit ?? m.unit;
+  }
+  const f = eventOf(eventCode)?.payload.find((p) => p.key === next.field);
+  if (f?.type === 'duration' && !next.unit) next.unit = 'minute';
+  return next;
+}
+/** 可作触发条件的字段（排除 templateOnly 的时间点类变量） */
+export function condFields(payload: EventField[]): EventField[] {
+  return payload.filter((f) => !f.templateOnly);
 }
 /** 该字段的取值是否应渲染成下拉（有固定取值域） */
 export function optionsForField(f?: EventField): string[] | null {
@@ -458,8 +519,7 @@ export const NOTIFY_RULES: NotifyRule[] = [
 
   /* ---------- 状态定扫 ---------- */
   { id: 'R14', name: '挂起临期提醒', event: 'hold.dailyCheck', audience: 'internal',
-    // 剩 3/2/1/0 天各命中一次 = 业务要的"每日提醒"
-    conditions: [{ field: 'daysLeft', op: 'lte', value: ['3'] }],
+    conditions: [{ field: 'timeToHoldEnd', op: 'lte', value: ['3'], unit: 'day' }],
     recipients: [{ type: 'assignee' }], channels: ['邮件'], templates: {},
     contents: {
       邮件: {
@@ -492,7 +552,7 @@ export const NOTIFY_RULES: NotifyRule[] = [
     enabled: true },
   { id: 'R16', name: '预约到期提醒', event: 'appointment.dailyCheck', audience: 'internal',
     // 距预约 1 天当天命中一次
-    conditions: [{ field: 'daysToAppt', op: 'eq', value: ['1'] }],
+    conditions: [{ field: 'timeToAppt', op: 'lte', value: ['1'], unit: 'day' }],
     recipients: [{ type: 'assignee' }], channels: ['IM'], templates: { IM: 'IM_APPT_DUE' }, contents: {}, enabled: true },
 
 ];
@@ -649,7 +709,7 @@ export const TEST_PRESETS: TestPreset[] = [
       resolveDueTime: '2026-07-29 16:30',
       warnCount: '2',
       returnFrom: '技术支持', returnReason: '需客户补充设备序列号',
-      holdUntil: '2026-08-05', daysLeft: '2', heldDays: '12', apptTime: '2026-08-02 14:00', daysToAppt: '1',
+      holdUntil: '2026-08-05', timeToHoldEnd: '2880', heldDays: '12', apptTime: '2026-08-02 14:00', timeToAppt: '10',
       resumeType: '到期自动解挂', dispatchFrom: '建单',
       operatorId: '张三', targetUserId: '王坐席', crossGroup: '否',
       prevAssigneeId: '张三',
@@ -769,5 +829,6 @@ export function templateOf(ch: string, code: string): RuleTemplate | undefined {
 /** 条件显示文本 */
 export function condLabel(c: RuleCondition, eventCode: string): string {
   const f = eventOf(eventCode)?.payload.find((p) => p.key === c.field);
-  return `${f?.label ?? c.field} ${COND_OP_LABEL[c.op]} ${c.value.join(' / ')}`;
+  const unit = c.unit ? ` ${DURATION_UNIT_LABEL[c.unit]}` : '';
+  return `${f?.label ?? c.field} ${COND_OP_LABEL[c.op]} ${c.value.join(' / ')}${unit}`;
 }

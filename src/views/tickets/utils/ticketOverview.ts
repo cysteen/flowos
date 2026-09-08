@@ -1,6 +1,23 @@
 import type { LatestHandlingItem } from '@/views/tickets/types/operation';
 import type { Ticket } from '@/views/tickets/types/ticket';
 
+/** 最新处理 · 动作文案（速览带与列表 hover 共用） */
+export const LATEST_HANDLING_ACTION = {
+  PROCESS: '提交工单处理结果',
+  TECH: '提交技术支持处理结果',
+  REGISTER: '登记工单',
+} as const;
+
+/** 展示用：优先 action，否则按 source / role 推断 */
+export function resolveLatestHandlingAction(h: LatestHandlingItem): string {
+  if (h.action?.trim()) return h.action.trim();
+  if (h.source === 'tech') return LATEST_HANDLING_ACTION.TECH;
+  if (h.source === 'process') return LATEST_HANDLING_ACTION.PROCESS;
+  if (h.role === '技术支持') return LATEST_HANDLING_ACTION.TECH;
+  if (h.role === '一线坐席') return LATEST_HANDLING_ACTION.REGISTER;
+  return LATEST_HANDLING_ACTION.PROCESS;
+}
+
 /** 列表与处理页速览带共用：产品&问题一行文案 */
 export function ticketProductIssue(t: Ticket): string {
   const parts = [t.productCategory, t.product].filter(Boolean);
@@ -31,7 +48,8 @@ export function ticketLatestHandlingItems(t: Ticket): LatestHandlingItem[] {
   if (!text) return [];
   return [{
     who: t.assignee ?? '处理人',
-    role: '一线坐席',
+    role: '二线专员',
+    action: LATEST_HANDLING_ACTION.PROCESS,
     when: formatOverviewWhen(t.updatedAt),
     text,
   }];
@@ -69,6 +87,7 @@ export function mergeDraftIntoLatestHandling(
     drafts.push({
       who: input.processWho,
       role: input.processRole,
+      action: LATEST_HANDLING_ACTION.PROCESS,
       when,
       text: processText,
       source: 'process',
@@ -80,6 +99,7 @@ export function mergeDraftIntoLatestHandling(
     drafts.push({
       who: input.techWho ?? '技术支持',
       role: '技术支持',
+      action: LATEST_HANDLING_ACTION.TECH,
       when,
       text: techText,
       source: 'tech',

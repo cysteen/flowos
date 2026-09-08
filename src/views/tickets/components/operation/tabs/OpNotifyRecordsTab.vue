@@ -1,7 +1,13 @@
 <script setup lang="ts">
+import { BellOutlined } from '@ant-design/icons-vue';
 import type { NotifyRecord } from '@/views/tickets/types/operationTabs';
 
 defineProps<{ records: NotifyRecord[] }>();
+
+/** 接收人只展示姓名/组名，去掉括号内的角色说明 */
+function displayReceiver(receiver: string) {
+  return receiver.replace(/\s*\([^)]*\)/g, '').trim();
+}
 </script>
 
 <template>
@@ -9,25 +15,13 @@ defineProps<{ records: NotifyRecord[] }>();
     <div v-for="r in records" :key="r.id" class="record-card">
       <div class="card-head">
         <div class="title-left">
-          <span class="icon-wrap" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M11 6a13 13 0 0 0 8.667 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-              <path d="M11 6V4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-              <path d="M11 6H4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-              <path d="M6 10v4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-              <path d="M6 10H4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-              <path d="M6 14h2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-              <path d="M18 8v8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-              <path d="M18 8h2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-              <path d="M18 16h2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-          </span>
+          <BellOutlined class="kind-icon" />
           <span class="title-text">{{ r.title }}</span>
         </div>
-        <span class="card-meta">接收人: {{ r.receiver }} | {{ r.when }}</span>
+        <span class="card-meta">接收人: {{ displayReceiver(r.receiver) }} | {{ r.when }}</span>
       </div>
       <div class="content-area">
-        <div class="meta-line">通知方式: {{ r.channel }} | 状态: {{ r.status }}</div>
+        <div class="meta-line">通知方式: {{ r.channel }}</div>
         <div class="content-box">{{ r.content }}</div>
       </div>
     </div>
@@ -73,21 +67,10 @@ defineProps<{ records: NotifyRecord[] }>();
   flex: 1;
 }
 
-.icon-wrap {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
+.kind-icon {
+  font-size: 14px;
   color: #6b7280;
-  line-height: 0;
-}
-
-.icon-wrap svg {
-  display: block;
-  width: 16px;
-  height: 16px;
+  flex: none;
 }
 
 .title-text {

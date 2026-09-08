@@ -28,7 +28,7 @@ import {
   isDunningTagPending,
   isSupplementTagPending,
 } from '@/views/tickets/types/ticket';
-import { ticketLatestHandlingPreview } from '@/views/tickets/utils/ticketOverview';
+import { ticketLatestHandlingPreview, resolveLatestHandlingAction } from '@/views/tickets/utils/ticketOverview';
 import { ticketListSourceLabel } from '@/views/tickets/types/createTicket';
 
 const props = withDefaults(
@@ -465,7 +465,7 @@ const gridTemplateColumns = computed(() => {
                     <span class="hi-label handle">最新处理</span>
                     <template v-if="ticketLatestHandlingPreview(t)">
                       <span class="hi-who">{{ ticketLatestHandlingPreview(t)!.who }}</span>
-                      <span class="hi-role">{{ ticketLatestHandlingPreview(t)!.role }}</span>
+                      <span class="hi-action">{{ resolveLatestHandlingAction(ticketLatestHandlingPreview(t)!) }}</span>
                       <span class="hi-when">{{ ticketLatestHandlingPreview(t)!.when }}</span>
                     </template>
                   </div>
@@ -1113,7 +1113,7 @@ const gridTemplateColumns = computed(() => {
 .summary-pop .hi-meta { display: flex; align-items: center; gap: 8px; }
 .summary-pop .hi-label { font-size: 12px; font-weight: 600; color: #6b7280; }
 .summary-pop .hi-who { font-size: 12px; font-weight: 600; color: #111827; }
-.summary-pop .hi-role { font-size: 11px; color: #6b7280; background: #f3f4f6; border-radius: 4px; padding: 0 6px; }
+.summary-pop .hi-action { font-size: 11px; color: #6b7280; background: #f3f4f6; border-radius: 4px; padding: 0 6px; }
 .summary-pop .hi-when { font-size: 11px; color: #9ca3af; margin-left: auto; }
 .summary-pop .hi-text { font-size: 12px; color: #374151; line-height: 1.6; word-break: break-word; }
 .group-pop {

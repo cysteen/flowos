@@ -99,6 +99,8 @@ interface Dial {
   stateLabel: string;
   bigText: string;
   startText: string;
+  /** 终止时刻：停表=实际关钟；在走/暂停=SLA 窗口右端（起算 + 时限） */
+  endText: string;
 }
 
 /** 钟状态归一：在走(正常/临期/超时)/暂停/终态三分(达标/未达标/中止)，色随态 */
@@ -171,18 +173,23 @@ function buildDial(c: SlaClock, i: number, wholeStartMs?: number): Dial {
   const pct = clamp(((c.totalSec - rem) / c.totalSec) * 100);
   const sweep = (pct / 100) * 360;
 
-  // hover 浮层：大号剩/超（终态显示结果文案）+ 起算→截止
+  // hover 浮层：大号剩/超（终态显示结果文案）+ 起算→终止
   const bigText =
     outcome === 'met' ? '已达标'
     : outcome === 'breached' ? '未达标'
     : outcome === 'void' ? '已停表'
     : `${rem < 0 ? '超' : '剩'} ${fmtLong(rem)}`;
   // 整单/首响均起算于建单：优先用整单钟起点，避免停表钟按冻结剩余回推产生漂移
-  const startText = whenText(
+  const startMs =
     c.kind === 'first' || c.kind === 'whole'
       ? wholeStartMs ?? Date.now() - (c.totalSec - rem) * 1000
-      : Date.now() - (c.totalSec - rem) * 1000,
-  );
+      : Date.now() - (c.totalSec - rem) * 1000;
+  const startText = whenText(startMs);
+  // 终止时间：已停表=实际关钟（closedAt 或起算+已走时长）；在走/暂停=SLA 窗口右端
+  const endText =
+    c.phase === 'stopped'
+      ? c.closedAt ?? whenText(startMs + (c.totalSec - rem) * 1000)
+      : whenText(startMs + c.totalSec * 1000);
 
   return {
     clock: c,
@@ -200,6 +207,7 @@ function buildDial(c: SlaClock, i: number, wholeStartMs?: number): Dial {
     stateLabel: stateLabelOf(vis, outcome),
     bigText,
     startText,
+    endText,
   };
 }
 
@@ -332,7 +340,7 @@ const relationData = computed<{ rows: RelationRow[]; nowLeft: number }>(() => {
             <span class="pop-badge" :style="{ color: d.color, background: `${d.color}1F` }">{{ d.stateLabel }}</span>
           </div>
           <div class="pop-big" :style="{ color: d.color }">{{ d.bigText }}</div>
-          <div class="pop-range">起算 {{ d.startText }}&ensp;→&ensp;截止 {{ d.clock.dueBy }}</div>
+          <div class="pop-range">起算 {{ d.startText }}&ensp;→&ensp;终止 {{ d.endText }}</div>
           <div class="pop-divider" />
           <div class="pop-rel-label">时效关系（节点 ⊂ 整单）</div>
           <div v-for="r in relationData.rows" :key="r.key" class="pop-row">

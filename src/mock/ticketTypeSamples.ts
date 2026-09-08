@@ -85,7 +85,9 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
       ],
       notifyRecords: [
         { id: 'n1', kind: 'transfer', title: '转办通知', receiver: '王坐席(处理人)', when: '2026-06-17 09:05:45', channel: '站内信 + i讯飞', status: '已读', content: '咨询工单已转办至您名下，请及时跟进解答。' },
-        { id: 'n2', kind: 'accepted', title: '工单受理', receiver: '李大海(客户)', when: '2026-06-17 09:05:30', channel: '短信 + 邮件', status: '已送达', content: '您咨询的问题已受理，工单号:IFLYZX-20260617-00001，我们将尽快为您解答。' },
+        { id: 'n2', kind: 'assign', title: '派工提醒', receiver: '王坐席(处理人)', when: '2026-06-17 09:05:30', channel: '站内信 + i讯飞', status: '已读', content: '您有一条新工单待处理,请于2小时内响应。工单号:IFLYZX-20260617-00001' },
+        { id: 'n3', kind: 'group', title: '班组通知', receiver: '咨询支持组', when: '2026-06-17 09:05:00', channel: '站内信 + i讯飞', status: '已读', content: '组内有一条待认领工单,请尽快认领处理。工单号:IFLYZX-20260617-00001' },
+        { id: 'n4', kind: 'supplement', title: '补充通知', receiver: '王坐席(处理人)', when: '2026-06-17 10:30:00', channel: '站内信 + i讯飞', status: '未读', content: '客户补充了新信息,请及时查阅。工单号:IFLYZX-20260617-00001' },
       ],
       surveyRecords: [
         { id: 'v1', title: '满意度调研', sentAt: '2026-06-17 10:00:25', evaluated: true, linkLabel: '查看问卷', conclusion: '是否解决: 已解决 | 是否满意: 满意' },

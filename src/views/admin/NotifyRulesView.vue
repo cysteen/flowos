@@ -29,7 +29,8 @@ import {
   eventOf, recipientTypeOf, availableRecipients, recipientLabel, condLabel, templateVars, varsIn, templateOf,
   RECIPIENT_KIND_LABEL, BASE_FIELD_KEYS,
   FIXED_ASSIGN_OPTIONS, filterFixedAssignOption,
-  isTemplateChannel, opsForType, optionsForField,
+  isTemplateChannel, opsForType, opsForField, optionsForField, condFields,
+  normalizeCondition, durationToMinutes, DURATION_UNIT_OPTIONS,
   type NotifyRule, type NotifyChannel, type RuleCondition, type RuleRecipient,
   type CondOp,
 } from '@/mock/notifyRules';
@@ -225,7 +226,7 @@ function openEdit(r: NotifyRule) {
   editingId.value = r.id;
   Object.assign(form, {
     name: r.name, event: r.event, audience: r.audience,
-    conditions: r.conditions.map((c) => ({ ...c, value: [...c.value] })),
+    conditions: r.conditions.map((c) => normalizeCondition({ ...c, value: [...c.value] }, r.event)),
     recipients: r.recipients.map((x) => ({ ...x })),
     channels: [...r.channels],
     templates: { ...r.templates },
@@ -242,6 +243,10 @@ function openEdit(r: NotifyRule) {
 const curEvent = computed(() => eventOf(form.event));
 /** 事件属性 = 模板可用变量 */
 const eventVars = computed(() => curEvent.value?.payload ?? []);
+/** 可作触发条件的字段（时间点类如预约时间/挂起截止仅作模板变量） */
+const condFieldOptions = computed(() =>
+  condFields(eventVars.value).map((p) => ({ value: p.key, label: p.label })),
+);
 /**
  * 收件人下拉按 PRD §3.4 的三种形态分组：字段引用 / 关系函数 / 固定指派。
  * 分组让运营看得出"处理人"是取事件属性、"上级"是沿组织树算出来的——
@@ -260,9 +265,10 @@ const recipientOptions = computed(() => {
 });
 
 function onEventChange() {
-  // 换事件后：清掉引用了新事件不存在字段的条件与收件人
+  // 换事件后：清掉引用了新事件不存在字段、或仅作模板变量的条件
   const keys = new Set(eventVars.value.map((p) => p.key));
-  form.conditions = form.conditions.filter((c) => keys.has(c.field));
+  const condKeys = new Set(condFields(eventVars.value).map((p) => p.key));
+  form.conditions = form.conditions.filter((c) => keys.has(c.field) && condKeys.has(c.field));
   const ok = new Set(availableRecipients(form.event).map((t) => t.code));
   form.recipients = form.recipients.filter((r) => ok.has(r.type));
   if (!form.recipients.length) form.recipients = [{ type: 'assignee' }];
@@ -280,7 +286,7 @@ function fieldOf(key: string) {
 }
 /** 该条件可用的运算符（布尔只有等于，数值/时间才有大于小于） */
 function opOptions(key: string) {
-  return opsForType(fieldOf(key)?.type).map((o) => ({ value: o, label: COND_OP_LABEL[o] }));
+  return opsForField(fieldOf(key)).map((o) => ({ value: o, label: COND_OP_LABEL[o] }));
 }
 /** 该条件的取值是否有固定取值域（枚举 / 布尔）→ 给下拉，杜绝手打错别字 */
 function valueOptions(key: string) {
@@ -290,15 +296,32 @@ function valueOptions(key: string) {
 const isSingleValue = (op: CondOp) => op !== 'in' && op !== 'nin';
 /** 字段类型的中文名，展示在条件行尾便于理解 */
 const TYPE_LABEL: Record<string, string> = {
-  string: '文本', number: '数值', datetime: '时间', boolean: '是否',
+  string: '文本', number: '数值', datetime: '时间', duration: '时长', boolean: '是否',
   enum: '枚举', userId: '人员', 'userId[]': '人员多值', phone: '手机号',
 };
 
+const isDurationField = (key: string) => fieldOf(key)?.type === 'duration';
+
 /** 换字段后：运算符与取值都要按新类型重置，否则会残留非法组合 */
 function onCondFieldChange(c: RuleCondition) {
-  const ops = opsForType(fieldOf(c.field)?.type);
+  const f = fieldOf(c.field);
+  const ops = opsForField(f);
   if (!ops.includes(c.op)) c.op = ops[0];
   c.value = [];
+  if (f?.type === 'duration') c.unit = 'minute';
+  else delete c.unit;
+}
+function condValuePlaceholder(key: string) {
+  const f = fieldOf(key);
+  if (f?.type === 'number' && f.condUnit) {
+    return `输入数值，如 10（${f.condUnit}）`;
+  }
+  if (f?.type === 'number') return '输入数值，回车确认';
+  if (f?.type === 'datetime') return '如 2026-07-29 18:00';
+  return '输入取值，回车添加';
+}
+function setCondNumberValue(c: RuleCondition, v: number | null) {
+  c.value = v != null && !Number.isNaN(v) ? [String(v)] : [];
 }
 /** 换运算符后：单值 ↔ 多值切换时裁剪取值 */
 function onCondOpChange(c: RuleCondition) {
@@ -306,8 +329,11 @@ function onCondOpChange(c: RuleCondition) {
 }
 
 function addCond() {
-  const first = eventVars.value[0];
-  if (first) form.conditions.push({ field: first.key, op: 'eq', value: [] });
+  const first = condFields(eventVars.value)[0];
+  if (!first) return;
+  const cond: RuleCondition = { field: first.key, op: 'eq', value: [] };
+  if (first.type === 'duration') cond.unit = 'minute';
+  form.conditions.push(cond);
 }
 function delCond(i: number) { form.conditions.splice(i, 1); }
 
@@ -449,7 +475,7 @@ function saveRule() {
   }
   const payload = {
     name: form.name.trim(), event: form.event, audience: form.audience,
-    conditions: form.conditions.map((c) => ({ ...c, value: [...c.value] })),
+    conditions: form.conditions.map((c) => normalizeCondition({ ...c, value: [...c.value] }, form.event)),
     recipients: form.recipients.map((x) => ({ ...x })),
     channels: [...form.channels],
     templates: Object.fromEntries(
@@ -614,23 +640,42 @@ function openTest(r: NotifyRule) {
 }
 
 function evalCond(c: RuleCondition) {
-  const actual = testData[c.field];
-  const num = Number(actual);
+  const f = fieldOf(c.field);
+  const actualRaw = testData[c.field];
+  const isDuration = f?.type === 'duration';
+  const actualMin = isDuration ? Number(actualRaw) : NaN;
+  const rhsMin = isDuration ? durationToMinutes(c.value[0] ?? '', c.unit ?? 'minute') : NaN;
+  const num = Number(actualRaw);
   const rhs = Number(c.value[0]);
   const numeric = !Number.isNaN(num) && !Number.isNaN(rhs);
   let pass = false;
-  if (actual === undefined) pass = false;
-  else if (c.op === 'eq') pass = actual === c.value[0];
-  else if (c.op === 'ne') pass = actual !== c.value[0];
-  else if (c.op === 'in') pass = c.value.includes(actual);
-  else if (c.op === 'nin') pass = !c.value.includes(actual);
-  else if (c.op === 'gt') pass = numeric ? num > rhs : String(actual) > c.value[0];
-  else if (c.op === 'gte') pass = numeric ? num >= rhs : String(actual) >= c.value[0];
-  else if (c.op === 'lt') pass = numeric ? num < rhs : String(actual) < c.value[0];
-  else if (c.op === 'lte') pass = numeric ? num <= rhs : String(actual) <= c.value[0];
-  // 每隔 N：值 > 0 且能被 N 整除。定扫提醒的周期性靠它表达，判断只依赖工单自身状态
+  if (actualRaw === undefined) pass = false;
+  else if (isDuration) {
+    if (Number.isNaN(actualMin) || Number.isNaN(rhsMin)) pass = false;
+    else if (c.op === 'eq') pass = actualMin === rhsMin;
+    else if (c.op === 'ne') pass = actualMin !== rhsMin;
+    else if (c.op === 'gt') pass = actualMin > rhsMin;
+    else if (c.op === 'gte') pass = actualMin >= rhsMin;
+    else if (c.op === 'lt') pass = actualMin < rhsMin;
+    else if (c.op === 'lte') pass = actualMin <= rhsMin;
+  }
+  else if (c.op === 'eq') pass = actualRaw === c.value[0];
+  else if (c.op === 'ne') pass = actualRaw !== c.value[0];
+  else if (c.op === 'in') pass = c.value.includes(actualRaw);
+  else if (c.op === 'nin') pass = !c.value.includes(actualRaw);
+  else if (c.op === 'gt') pass = numeric ? num > rhs : String(actualRaw) > c.value[0];
+  else if (c.op === 'gte') pass = numeric ? num >= rhs : String(actualRaw) >= c.value[0];
+  else if (c.op === 'lt') pass = numeric ? num < rhs : String(actualRaw) < c.value[0];
+  else if (c.op === 'lte') pass = numeric ? num <= rhs : String(actualRaw) <= c.value[0];
   else if (c.op === 'every') pass = numeric && rhs > 0 && num > 0 && num % rhs === 0;
-  return { actual: actual ?? '（未填写）', pass };
+
+  let actual: string;
+  if (isDuration) {
+    actual = Number.isNaN(actualMin) ? '（未填写）' : `${actualMin} 分钟`;
+  } else {
+    actual = actualRaw ?? '（未填写）';
+  }
+  return { actual, pass };
 }
 const condResults = computed(() =>
   (testRule.value?.conditions ?? []).map((c) => ({ c, ...evalCond(c) })),
@@ -961,18 +1006,21 @@ function renderedBody(ch: NotifyChannel) {
               </div>
               <div v-if="!form.conditions.length" class="blk-empty">
                 {{ curEvent?.source === 'timer'
-                  ? '未加条件 —— 定扫事件每天都会命中该状态下的全部工单，请用条件限定阈值（如 距挂起到期天数 ≤ 3）或周期（如 已挂起天数 每隔 30）'
+                  ? '未加条件 —— 定扫事件每天都会命中该状态下的全部工单。临期提醒请用「距离预约时间 / 距离挂起截止时间 ≤ N」并选择单位（分钟/小时/天）；周期提醒用「已挂起天数 每隔 N」。预约时间、挂起截止日期仅作正文变量。'
                   : '事件发生即触发' }}
               </div>
+              <p v-if="curEvent?.source === 'timer'" class="cond-hint">
+                如「距离预约时间 ≤ 10 分钟」：字段选距离预约时间，运算符选小于等于，数值填 10，单位选分钟。
+              </p>
               <div v-for="(c, i) in form.conditions" :key="i" class="cond-row">
                 <span v-if="i" class="c-and">且</span><span v-else class="c-and ph" />
                 <a-select
-                  v-model:value="c.field" style="width: 160px" show-search option-filter-prop="label"
-                  :options="eventVars.map((p) => ({ value: p.key, label: p.label }))"
+                  v-model:value="c.field" style="width: 148px" show-search option-filter-prop="label"
+                  :options="condFieldOptions"
                   @change="onCondFieldChange(c)"
                 />
                 <a-select
-                  v-model:value="c.op" style="width: 90px" :options="opOptions(c.field)"
+                  v-model:value="c.op" style="width: 96px" :options="opOptions(c.field)"
                   @change="onCondOpChange(c)"
                 />
                 <!-- 有固定取值域（枚举 / 是否）→ 下拉选，杜绝手打 -->
@@ -983,10 +1031,36 @@ function renderedBody(ch: NotifyChannel) {
                   :options="valueOptions(c.field)!"
                   placeholder="选择取值"
                 />
-                <!-- 自由文本 / 数值 / 时间 → 输入 -->
+                <!-- 时长阈值：数值 + 单位 -->
+                <template v-else-if="isDurationField(c.field) && isSingleValue(c.op)">
+                  <a-input-number
+                    :value="c.value[0] !== undefined && c.value[0] !== '' ? Number(c.value[0]) : undefined"
+                    style="flex: 1"
+                    class="cond-number"
+                    :min="0"
+                    placeholder="输入数值"
+                    @update:value="(v) => setCondNumberValue(c, v)"
+                  />
+                  <a-select
+                    v-model:value="c.unit"
+                    style="width: 72px"
+                    :options="DURATION_UNIT_OPTIONS"
+                  />
+                </template>
+                <!-- 普通数值阈值 -->
+                <a-input-number
+                  v-else-if="fieldOf(c.field)?.type === 'number' && isSingleValue(c.op)"
+                  :value="c.value[0] !== undefined && c.value[0] !== '' ? Number(c.value[0]) : undefined"
+                  style="flex: 1"
+                  class="cond-number"
+                  :min="0"
+                  :placeholder="condValuePlaceholder(c.field)"
+                  @update:value="(v) => setCondNumberValue(c, v)"
+                />
+                <!-- 自由文本 / 时间 → 输入 -->
                 <a-select
                   v-else v-model:value="c.value" mode="tags" style="flex: 1"
-                  :placeholder="fieldOf(c.field)?.type === 'datetime' ? '如 2026-07-29 18:00，回车添加' : '输入取值，回车添加'"
+                  :placeholder="condValuePlaceholder(c.field)"
                 />
                 <a-tag class="cond-type">{{ TYPE_LABEL[fieldOf(c.field)?.type ?? 'string'] }}</a-tag>
                 <a-button type="link" danger size="small" @click="delCond(i)">
@@ -1671,6 +1745,21 @@ function renderedBody(ch: NotifyChannel) {
   flex-wrap: wrap;
 }
 .cond-row:last-child { margin-bottom: 0; }
+
+.cond-hint {
+  margin: 0 0 8px;
+  font-size: 11px;
+  color: #9ca3af;
+  line-height: 1.5;
+}
+
+.cond-number {
+  width: 100%;
+}
+
+.cond-number :deep(.ant-input-number-input) {
+  width: 100%;
+}
 .cond-type { flex: none; font-size: 11px; line-height: 18px; padding: 0 5px; color: #9ca3af; }
 .c-and { width: 20px; flex: none; font-size: 12px; color: #10b981; font-weight: 600; }
 .c-and.ph { visibility: hidden; }

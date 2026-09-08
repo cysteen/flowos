@@ -77,9 +77,12 @@ export type InsightModalKey = 'contact' | 'history' | 'complaint' | 'recent30';
 /** 顶部「最新处理」聚合留言（多处理人，最新在前） */
 export interface LatestHandlingItem {
   who: string;
+  /** @deprecated 展示改用 action；保留供回写与兼容 */
   role: string;
   when: string;
   text: string;
+  /** 处理动作文案（如「提交工单处理结果」），优先于 role 展示 */
+  action?: string;
   /** 运行态来源：处理表单 / 技术支持表单回写，用于 upsert，不污染历史记录 */
   source?: 'process' | 'tech';
 }
