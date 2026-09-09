@@ -229,6 +229,33 @@ const SEED: RiskReport[] = [
     status: '评估中',
     assignee: '吴投诉',
   },
+  /*
+   * 「接管」样本。**必须有这一条**：SEED 里若只有「不升级」，接管那条分支
+   * （派生新单号、原单落终态、Tab 上的「已派生投诉工单」标）在页面上一次都跑不出来，
+   * 要看只能自己去评一条 —— 而演示与走查恰恰最需要它一开屏就在。
+   */
+  {
+    id: 'rr-006',
+    ticketNo: 'IFLYZX-20260610-00006',
+    source: '二线报备',
+    reason: '客户要求升级',
+    category: null,
+    desc: '客户连续两日致电，明确要求"给个说法否则去平台曝光"，并已在社交平台发帖。二线判断已超出常规咨询处理范围。',
+    attachments: ['客户发帖截图.png'],
+    by: '周敏',
+    byRole: '二线专员',
+    at: agoStamp(300),
+    status: '已评估',
+    assignee: '吴投诉',
+    assessment: {
+      decision: '接管',
+      advice: '客户已在公开平台发声，具备外投与舆情双重风险，转投诉流程由客诉专员跟进；原单沟通记录与附件已随新单继承。',
+      escalatedToNo: 'IFLYTS-20260909-00007',
+      by: '吴投诉',
+      byRole: '客诉专员',
+      at: agoStamp(280),
+    },
+  },
 ];
 
 export const useRiskReportStore = defineStore('riskReports', () => {
