@@ -1,8 +1,36 @@
 <script setup lang="ts">
+import { computed } from 'vue';
+import { useRoute } from 'vue-router';
 import { BellOutlined } from '@ant-design/icons-vue';
 import type { NotifyRecord } from '@/views/tickets/types/operationTabs';
+import { useNotifyLogStore } from '@/stores/notifyLog';
 
-defineProps<{ records: NotifyRecord[] }>();
+const props = defineProps<{ records: NotifyRecord[] }>();
+
+const route = useRoute();
+const notifyLog = useNotifyLogStore();
+
+/**
+ * 工单号从路由取，不从 props 要。
+ *
+ * 【为什么】本 Tab 的父组件传的是「按工单类型预置好的一份样本」，本来就不带单号；
+ * 为了一个只有本 Tab 用得上的字段去改父组件的 props 链，改动面比这行大得多。
+ * 同目录的客户历史 Tab 取客户手机号走的也是这条路。
+ */
+const ticketNo = computed(() => String(route.params.ticketNo ?? ''));
+
+/**
+ * 运行时通知（风险报备五个事件，O22）与预置通知**合并展示**。
+ *
+ * 【为什么运行时那批排在前面】它们是本次会话里刚刚发生的，时刻恒晚于预置样本；
+ * 而通知列表的一贯读法是最新在最上。运行时那批在 store 里已按时间倒序，
+ * 预置那批**原样保留、顺序不动** —— 它们各自成段，不做全局重排：
+ * 预置样本的时刻是写死的日期，跟当下时刻混排会把两批数据交错成一串读不出脉络的流水。
+ */
+const mergedRecords = computed<NotifyRecord[]>(() => [
+  ...notifyLog.recordsOf(ticketNo.value),
+  ...props.records,
+]);
 
 /** 接收人只展示姓名/组名，去掉括号内的角色说明 */
 function displayReceiver(receiver: string) {
@@ -12,7 +40,7 @@ function displayReceiver(receiver: string) {
 
 <template>
   <div class="notify-tab">
-    <div v-for="r in records" :key="r.id" class="record-card">
+    <div v-for="r in mergedRecords" :key="r.id" class="record-card">
       <div class="card-head">
         <div class="title-left">
           <BellOutlined class="kind-icon" />

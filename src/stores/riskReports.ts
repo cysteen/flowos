@@ -2,6 +2,7 @@ import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
 import { RISK_LEVELS, riskLevelText, type RiskLevel } from '@/config/risk';
 import type { RiskFlag } from '@/views/tickets/types/operation';
+import { useNotifyLogStore } from '@/stores/notifyLog';
 
 /**
  * 风险报备 · 跨页共享（《【930】风险报备 · 监控 · 管控 PRD》§4 / §5）。
@@ -393,6 +394,69 @@ export const useRiskReportStore = defineStore('riskReports', () => {
   const reports = ref<RiskReport[]>(SEED.map((r) => ({ ...r })));
   /** 自增序号只用来造 id，不参与任何业务判断 */
   const seq = ref(SEED.length);
+  /** 报备五个事件的通知落点（O22）。工单页「通知记录」Tab 从这里读运行时那批 */
+  const notifyLog = useNotifyLogStore();
+
+  /**
+   * 走字的"当前时刻"。等待时长 / 超时判定 / 超时计数**一律读它**，不直接读 `Date.now()`。
+   *
+   * 【为什么要有它】`Date.now()` 不是响应式的：屏幕上的「已等待 47 分钟」只在
+   * 切页签或别的数据变动触发重渲染时才更新，人盯着队列看，数字十几分钟不动，
+   * 看着就像功能坏了 —— 而「超时未评」正是本册的核心口径之一（§7 B2）。
+   *
+   * 【为什么是 60 秒】等待时长的**展示粒度就是分钟**：更密（如 1s）改的是同一个数字，
+   * 白白重算整张队列；更疏（如 5min）会出现"已经过了一分钟、屏上还是旧数"的空窗，
+   * 反倒坐实了"是不是卡住了"的怀疑。刻度多久跳一次，钟就多久走一格。
+   *
+   * 【为什么 interval 只建一次、也不清】store 是 Pinia 单例，setup 体在应用生命周期内
+   * 只跑一次，定时器随之只建一次 —— 放进 `waitedMinutes` 里就会每调一次建一个。
+   * 它也**不该用 `onUnmounted` 清**：store 不是组件，没有卸载时机；
+   * 这个钟与应用同生命周期，应用没了它自然一起没了。
+   */
+  const nowTick = ref(Date.now());
+  setInterval(() => {
+    nowTick.value = Date.now();
+  }, 60_000);
+
+  /* ---------------- 报备通知的收件人解析（O22 / O23） ---------------- */
+
+  /**
+   * 投诉督导。**按角色而不是按人**：分派职责挂在岗位上，谁在岗谁收，
+   * 不能写死某个人名 —— 他休假那天这条队列就没人管了。
+   */
+  const SUPERVISOR = '投诉督导';
+
+  /**
+   * 承办人 ＝ 报备单当前的评估人。**未分派时解析为空**，由 O23 的类型级规则跳过这一类。
+   * 这不是异常，是待分派态的常态。
+   */
+  function assigneeReceiver(r: RiskReport) {
+    return r.assignee ? `${r.assignee}(客诉专员)` : '';
+  }
+
+  /**
+   * 报备人。系统自动入队的四类来源（全量投诉 / VIP客户 / 紧急重要 / 关键词触发）
+   * 的 `by` 是「系统」——**没有人可通知**，解析为空、这一类跳过，
+   * 而不是给一个叫「系统」的收件人发一封没人看的信。
+   */
+  function reporterReceiver(r: RiskReport) {
+    return r.byRole === '系统' || r.by === '系统' ? '' : `${r.by}(${r.byRole})`;
+  }
+
+  /** 报备原因一行，通知正文里用来交代"为什么报"，省得收件人先点进单子才知道是什么事 */
+  function reasonLine(r: RiskReport) {
+    return r.category ? `${r.reason} · ${r.category}` : r.reason;
+  }
+
+  /**
+   * 把人填的自由文本（撤回原因 / 反馈意见）接进正文时补一个句号。
+   * 填的人有的带句号有的不带，不收这一道，正文里会出现「原因：已恢复 该条报备…」这种粘连句。
+   */
+  function asSentence(text: string) {
+    const t = text.trim();
+    if (!t) return '';
+    return /[。！？.!?]$/.test(t) ? t : `${t}。`;
+  }
 
   /** 本单的全部报备（含已撤回），时间倒序 —— 仅评估弹窗「本单另有」等场景用 */
   function reportsOf(ticketNo: string) {
@@ -471,11 +535,14 @@ export const useRiskReportStore = defineStore('riskReports', () => {
    * 🔴 **不从分派时刻起算**（N5，第二轮拍板里唯一没变的一条）：
    * 对报备人而言"我等了多久"与内部何时分派无关；**分派慢的压力应当落在督导身上**，
    * 从分派起算等于把这段空悬时间从账上抹掉。
+   *
+   * 读的是**走字的 `nowTick`** 而不是 `Date.now()`：后者不响应式，屏上的分钟数会停住
+   * （见 `nowTick` 处的说明）。`isOverdue` / `overdueCount` 经由本函数一并跟着走。
    */
   function waitedMinutes(at: string) {
     const t = new Date(at.replace(/-/g, '/')).getTime();
     if (Number.isNaN(t)) return 0;
-    return Math.max(0, Math.floor((Date.now() - t) / 60000));
+    return Math.max(0, Math.floor((nowTick.value - t) / 60000));
   }
 
   /** 是否超时未评：**在队**且等待时长 > 时限。不是 SLA，不走工作日历、不停表 */
@@ -543,7 +610,33 @@ export const useRiskReportStore = defineStore('riskReports', () => {
       category: input.reason === '风险场景' ? input.category : null,
     };
     reports.value.push(report);
+    // 报上来第一时间要惊动的是**投诉督导**：待分派这一段的责任人是他（分派归他做），
+    // 而这条队列卡的是投诉立项，静悄悄躺在队列里等人主动来看是不行的。
+    notifyLog.emit({
+      ticketNo: report.ticketNo,
+      event: 'risk.report.submitted',
+      kind: 'risk',
+      title: '风险报备待分派',
+      receivers: [SUPERVISOR],
+      content: `${report.ticketNo} 新增一条风险报备，报备原因：${reasonLine(report)}；报备人：${report.by}（${report.byRole}）。请及时分派客诉专员评估，评估时限 ${REPORT_ASSESS_LIMIT_MIN} 分钟（自报备提交时刻起算）。`,
+    });
     return report;
+  }
+
+  /**
+   * 分派 / 自取共用的一条通知：**告诉新承办人"这活儿归你了"**。
+   * 两个动作发同一条是有意的 —— 对承办人而言"督导指给我"与"我自己领的"
+   * 结果完全一样（单子进了我名下、时限照走），分两条文案只是让他多读一遍。
+   */
+  function notifyAssigned(r: RiskReport) {
+    notifyLog.emit({
+      ticketNo: r.ticketNo,
+      event: 'risk.report.assigned',
+      kind: 'risk',
+      title: '风险报备待评估',
+      receivers: [assigneeReceiver(r)],
+      content: `${r.ticketNo} 的风险报备已由您承办，报备原因：${reasonLine(r)}；报备人：${r.by}（${r.byRole}）；提交时刻：${r.at}。请在提交后 ${REPORT_ASSESS_LIMIT_MIN} 分钟内给出评估结论（不升级 / 接管）。`,
+    });
   }
 
   /**
@@ -565,6 +658,9 @@ export const useRiskReportStore = defineStore('riskReports', () => {
     if (!r || !isOpen(r)) return false;
     r.status = '评估中';
     r.assignee = assignee;
+    // 改派同样发：新承办人这一刻才知道单子到了自己手上。
+    // 原承办人不在收件人里 —— 本轮只做拍板的五个事件，「被改派走」是第六个，不自造
+    notifyAssigned(r);
     return true;
   }
 
@@ -582,6 +678,9 @@ export const useRiskReportStore = defineStore('riskReports', () => {
     if (!r || r.status !== '待分派') return false;
     r.status = '评估中';
     r.assignee = assignee;
+    // 自取的收件人是自己：留痕比"他自己知道"重要 —— 这条通知同时是
+    // 「这单何时、被谁接走」的凭据，工单页的通知记录里查得到
+    notifyAssigned(r);
     return true;
   }
 
@@ -595,6 +694,23 @@ export const useRiskReportStore = defineStore('riskReports', () => {
     if (!r || r.status !== '待分派') return;
     r.status = '已撤回';
     r.withdrawReason = reason;
+    /*
+     * 收件人配的是「投诉督导 + 承办人」两类，而**撤回只能发生在待分派态**，
+     * 那一刻 `assignee` **必然为空** —— 这正是 O23 类型级判据的现场：
+     * 按规则级（一类解析不到就整条不发）这条会被静默丢掉，督导那边队列里
+     * 少了一条却不知道去哪了。这里让「承办人」这一类落空、督导照收。
+     *
+     * 「承办人」这一类仍然要配上：分派后能否撤回是可能变的口径，
+     * 现在把它删掉，将来放开时又得回头补一遍收件人配置。
+     */
+    notifyLog.emit({
+      ticketNo: r.ticketNo,
+      event: 'risk.report.withdrawn',
+      kind: 'risk',
+      title: '风险报备已撤回',
+      receivers: [SUPERVISOR, assigneeReceiver(r)],
+      content: `${r.ticketNo} 的风险报备已由 ${r.by}（${r.byRole}）撤回，撤回原因：${asSentence(reason)}该条报备记录保留、不再进入待评估队列；如风险再现，本单可重新发起报备。`,
+    });
   }
 
   /**
@@ -606,7 +722,46 @@ export const useRiskReportStore = defineStore('riskReports', () => {
     if (!r || r.status !== '评估中') return;
     r.status = '已评估';
     r.assessment = assessment;
+    /*
+     * 结论发回**报备人** —— 他报上来之后就再没有别的出口知道结果：
+     * 「不升级」时他要按反馈意见继续办这张单，「接管」时他要知道单子已经不归他了。
+     *
+     * 系统自动入队的四类来源报备人是「系统」，这一类解析为空（O23）：
+     * 这时没有别的收件人类型，整条不发 —— 不是丢消息，是本来就没有人在等这个结论。
+     */
+    const takeOver = assessment.decision === '接管';
+    const tail = takeOver
+      ? `本单已由客诉专员接管，派生投诉工单 ${assessment.escalatedToNo ?? '待生成'}。接管说明：${asSentence(assessment.advice)}`
+      : `反馈意见：${asSentence(assessment.advice)}`;
+    notifyLog.emit({
+      ticketNo: r.ticketNo,
+      event: 'risk.report.assessed',
+      kind: 'risk',
+      title: takeOver ? '风险报备评估结论 · 接管' : '风险报备评估结论 · 不升级',
+      receivers: [reporterReceiver(r)],
+      content: `${r.ticketNo} 的风险报备已完成评估，结论：${assessment.decision}。${tail}评估人：${assessment.by}（${assessment.byRole}）· ${assessment.at}。`,
+    });
   }
+
+  /*
+   * ⚠️ **`risk.report.overdue`（超时未评）本轮没有落点**，是缺口不是遗漏。
+   *
+   * 另外四个事件都挂在某个人的动作上（提交 / 分派 / 自取 / 评估 / 撤回），
+   * 有函数就有埋点；**超时没有动作可挂** —— 它是钟走到了 `REPORT_ASSESS_LIMIT_MIN`
+   * 自己触发的，触发条件是"时间过去了"，不是"谁做了什么"。
+   *
+   * 要发它必须有一个**定时扫描**（对齐《【815】》事件目录里 `source: 'timer'` 的定扫事件）：
+   * 周期性扫在队报备、挑出 `isOverdue` 且尚未发过的，逐条发一次并记发送历史（免得每分钟重发）。
+   * 前端 `setInterval` 顶多做个演示，真链路在服务端，本轮不做。
+   *
+   * 🔴 **不要为它伪造一个调用点**：挂在"打开风险监控页时补发"之类的地方，
+   * 会让这条通知的发出时刻取决于**有没有人正好打开那个页面** ——
+   * 而它要盯的恰恰是"没有人在看的时候单子在队里烂掉"。宁可缺，不可假。
+   *
+   * 它的收件人配的是「承办人 + 投诉督导」，而超时最常发生在**待分派**态
+   * （压根没分派出去才拖到超时），承办人必然为空 —— 正是 O23 类型级那条规则
+   * 要保住的场景：督导必须收得到。落地时直接用上面 `withdraw` 同样的写法。
+   */
 
   /** 最新已评估结论的可读一行（工单页只读回显；二选一后无风险等级，展示决策 + 评估人 + 时刻） */
   function assessmentNoteOf(ticketNo: string): string {
