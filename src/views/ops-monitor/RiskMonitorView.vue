@@ -371,6 +371,29 @@ const REPORT_ASSIGN_ROLES: string[] = [
   'complaint-supervisor', 'system-admin', 'ops-admin', 'tenant-admin',
 ];
 const canAssign = computed(() => REPORT_ASSIGN_ROLES.includes(user.roleKey));
+
+/**
+ * 自取权 ＝ **客诉专员**（被分派的那一方，O18）。
+ *
+ * 【为什么与分派权分开列】分派是"派给别人"，自取是"领给自己"，两件事两批人：
+ * 督导有分派权但没有自取的必要（他不评），客诉专员反过来。
+ * 管理员两边都给，与本表其余动作的兜底口径一致。
+ */
+const REPORT_CLAIM_ROLES: string[] = [
+  'complaint-handler', 'system-admin', 'ops-admin', 'tenant-admin',
+];
+const canClaim = computed(() => REPORT_CLAIM_ROLES.includes(user.roleKey));
+
+/** 自取一条：转「评估中」并落在自己名下 */
+function doClaim(r: RiskReport) {
+  if (!canClaim.value) { message.warning('只有客诉专员可以自取重点工单'); return; }
+  if (!reportStore.claim(r.id, user.name)) {
+    // 唯一会落空的情形：别人刚刚把它分派 / 自取走了，本页还没重算
+    message.warning('这一条刚被分派走了，请刷新后再看');
+    return;
+  }
+  message.success(`已自取 ${r.ticketNo}，转「评估中」`);
+}
 /** 可被分派的客诉专员。与预置数据里的承办人同名，翻队列时看到的是同一批人 */
 const ASSIGN_CANDIDATES = ['吴投诉', '李文萍'];
 
@@ -382,10 +405,12 @@ const missAssignTo = computed(() => assignTried.value && !assignTo.value);
 
 function openAssign(rows: RiskReport[]) {
   if (!canAssign.value) { message.warning('只有投诉督导可以分派重点工单'); return; }
-  // **已分派的不可改派**（store 已拦）：改派是把活从人手里拿走，那是调剂不是分派。
-  // 批量入口有可能勾中被别人刚分派掉的行，故这里再滤一道并说清为什么少了几条。
-  const targets = rows.filter((r) => r.status === '待分派');
-  if (!targets.length) { message.warning('所选条目都已分派，已分派的不可改派'); return; }
+  // 🔴 **可改派**（O18 拍板）：待分派与评估中都能派。评估人请假 / 离职 / 手上堆太多时
+  // 这活儿必须能挪 —— 不许改派的话唯一出路是"等它评完"，而它正卡在不在岗的人手上，
+  // 且这条队列现在卡的是**投诉立项**（基线 ※8a），堵不起。
+  // 已评估 / 已撤回的滤掉：活已经干完或作废了。
+  const targets = rows.filter((r) => r.status === '待分派' || r.status === '评估中');
+  if (!targets.length) { message.warning('所选条目都已评估或已撤回，无法分派'); return; }
   if (targets.length < rows.length) {
     message.info(`其中 ${rows.length - targets.length} 条已被分派，本次只分派剩余 ${targets.length} 条`);
   }
@@ -425,9 +450,12 @@ function toggleReportAll() {
   else pagedReportRows.value.forEach((r) => next.add(r.id));
   reportPicked.value = next;
 }
-/** 只有「待分派」这一态给勾选：另两态没有可批量做的事，给了勾选框等于凭空多一个环节 */
+/**
+ * 「待分派」与「评估中」两态给勾选——前者批量分派，后者**批量改派**（O18 放开改派后连带）。
+ * 「已评估」不给：那一批没有任何可批量做的事，给了勾选框等于凭空多一个环节。
+ */
 const showReportSelection = computed(
-  () => listView.value === 'report' && reportView.value === 'unassigned' && canAssign.value,
+  () => listView.value === 'report' && reportView.value !== 'assessed' && canAssign.value,
 );
 const reportBatchMenuOpen = ref(false);
 function pickReportBatchAction(action: 'assign' | 'clear') {
@@ -2558,25 +2586,51 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                 :title="reportStore.isOverdue(r) ? `已超过 ${assessLimitText}评估时限（自提交时刻起算）` : `评估时限 ${assessLimitText}，自提交时刻起算`"
               >{{ waitedText(r.at) }}</td>
               <td>
-                <!-- 待分派：唯一的动作是分派。已分派的不可改派，故这一列在「评估中」里不再出现它 -->
+                <!--
+                  待分派 · **双轨**（O18）：督导「分派」给人，客诉专员「自取」自领。
+                  两条并存的理由：只留指派这一条时**督导就是单点**，他不在岗队列谁也动不了，
+                  而这条队列现在卡的是投诉立项（基线 ※8a）。与基线「领取 / 指派」同一副骨架（※15）。
+                -->
                 <template v-if="reportView === 'unassigned'">
                   <button
                     v-if="canAssign"
                     type="button" class="row-btn row-btn-tag"
+                    title="指派给某位客诉专员，转「评估中」"
                     @click="openAssign([r])"
                   >分派</button>
-                  <span v-else class="hit-sub" title="只有投诉督导可以分派重点工单">—</span>
+                  <button
+                    v-if="canClaim"
+                    type="button" class="row-btn row-btn-tag"
+                    title="自己领这一条，转「评估中」并落在你名下"
+                    @click="doClaim(r)"
+                  >自取</button>
+                  <span
+                    v-if="!canAssign && !canClaim"
+                    class="hit-sub"
+                    title="分派归投诉督导，自取归客诉专员"
+                  >—</span>
                 </template>
                 <!--
                   评估中：**按来源分流**（N7）。关键词触发的条目要的是 915 的「成立/误报 + 定级」，
                   故它的按钮是「核实」、点开的是同一个核实打标弹窗；其余四类来源走评估二选一。
                 -->
-                <button
-                  v-else
-                  type="button" class="row-btn row-btn-tag"
-                  :title="isKeywordRow(r) ? '核实这条风险词命中是否成立并定级' : '给出评估结论：不升级 / 接管'"
-                  @click="handleReportRow(r)"
-                >{{ isKeywordRow(r) ? '核实' : '评估' }}</button>
+                <template v-else>
+                  <button
+                    type="button" class="row-btn row-btn-tag"
+                    :title="isKeywordRow(r) ? '核实这条风险词命中是否成立并定级' : '给出评估结论：不升级 / 接管'"
+                    @click="handleReportRow(r)"
+                  >{{ isKeywordRow(r) ? '核实' : '评估' }}</button>
+                  <!--
+                    改派（O18）：评估人请假 / 离职 / 手上堆太多时这活儿必须能挪。
+                    不许改派的话唯一出路是"等它评完"，而它正卡在不在岗的人手上。
+                  -->
+                  <button
+                    v-if="canAssign"
+                    type="button" class="row-btn"
+                    :title="`当前承办人 ${r.assignee ?? '—'}，可改派给其他客诉专员`"
+                    @click="openAssign([r])"
+                  >改派</button>
+                </template>
               </td>
             </tr>
           </tbody>
@@ -3757,8 +3811,11 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
           </div>
           <div v-if="missAssignTo" class="assess-err">请选择一位客诉专员</div>
         </div>
-        <!-- 把"不可改派"提前讲清楚：分派之后这一列的按钮就没了，事后再问就晚了 -->
-        <div class="tag-form-foot">已分派的条目不可改派；确需换人，等它评完或由报备人撤回后重报</div>
+        <!-- 说清两件事：改派是允许的，以及"改派 ≠ 调剂"——两者动的不是同一个东西 -->
+        <div class="tag-form-foot">
+          已在「评估中」的条目<strong>可以改派</strong>，重选承办人即可，系统会通知新承办人。<br />
+          注意：改派动的是<strong>这条报备</strong>（谁去评）；换工单处理人请走「调剂」。
+        </div>
       </div>
     </OpActionModal>
   </div>

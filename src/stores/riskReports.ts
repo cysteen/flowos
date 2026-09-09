@@ -201,6 +201,25 @@ const SEED: RiskReport[] = [
     at: agoStamp(180),
     status: '待分派',
   },
+  /*
+   * 「关键词触发」样本。**必须有**：五类来源里只有它走**核实打标**那一套弹窗
+   * （其余四类走评估，O16），少了它，"按来源分流"这条最关键的分支在页面上一次都跑不出来。
+   * ⚠️ `ticketNo` 必须挑一张**确有风险词命中**的单（见 `mock/opsReport.ts` 的 RiskHit），
+   * 否则点「核实」会落到"本单找不到未核实的命中"那条兜底提示上。
+   */
+  {
+    id: 'rr-000',
+    ticketNo: 'IFLYZX-20260804-00001',
+    source: '关键词触发',
+    reason: '其他',
+    category: null,
+    desc: '沟通记录命中风险词，已自动纳入监控范围（无须报备）。',
+    attachments: [],
+    by: '系统',
+    byRole: '系统',
+    at: agoStamp(65),
+    status: '待分派',
+  },
   // —— 系统自动入队的三类来源：没有报备人填的那几个字段，故 reason 取兜底、category 为空 ——
   {
     id: 'rr-004',
@@ -416,14 +435,37 @@ export const useRiskReportStore = defineStore('riskReports', () => {
   }
 
   /**
-   * 分派（930 §5）：投诉督导把待分派的条目指给某个客诉专员，转「评估中」。
-   * 批量分派对每个 id 调一次即可，不另写一个批量函数——批量与单条的规则完全一样，
+   * 分派 / 改派（930 §5，O18）：把条目指给某个客诉专员，转「评估中」。
+   * 批量对每个 id 调一次即可，不另写批量函数——批量与单条规则完全一样，
    * 分两套实现迟早只改一处。
    *
-   * **已分派的不再改派**：改派等于把活从一个人手里拿走，那是调剂不是分派；
-   * 真要换人先让它评完或撤回。
+   * 🔴 **可改派**（O18 拍板）：已在「评估中」的也能重指给别人。
+   * 【为什么允许】评估人请假 / 离职 / 手上堆太多，这活儿必须能挪；
+   * 不允许改派的话唯一出路是"等它评完"，而它正卡在一个不在岗的人手上——
+   * 而这条队列现在卡的是**投诉立项**（※8a），堵不起。
+   * 【与「调剂」的分界】改派动的是**报备单**（谁去评），调剂动的是**工单**（谁来办），
+   * 两件事、两个词，不要混（基线 ※29）。
+   *
+   * **已评估 / 已撤回的不能再派** —— 活已经干完或作废了。
    */
   function assign(id: string, assignee: string) {
+    const r = reports.value.find((x) => x.id === id);
+    if (!r || !isOpen(r)) return false;
+    r.status = '评估中';
+    r.assignee = assignee;
+    return true;
+  }
+
+  /**
+   * 自取（O18）：客诉专员从待分派里自领一条，转「评估中」并落在自己名下。
+   *
+   * 【为什么要有它】只留"督导指派"这一条路时，**督导就是单点**——他不在岗，
+   * 队列谁也动不了，而堵住的是投诉立项（※8a）。自取与指派**双轨**，
+   * 与基线「领取 / 指派」是同一副骨架（※15）：领取＝自取无主的，指派＝派给指定的人。
+   *
+   * **只能自领待分派的**：已在别人名下的要换人走改派，不是自己伸手拿。
+   */
+  function claim(id: string, assignee: string) {
     const r = reports.value.find((x) => x.id === id);
     if (!r || r.status !== '待分派') return false;
     r.status = '评估中';
@@ -486,6 +528,7 @@ export const useRiskReportStore = defineStore('riskReports', () => {
     pendingCount,
     submit,
     assign,
+    claim,
     withdraw,
     assess,
     assessmentNoteOf,
