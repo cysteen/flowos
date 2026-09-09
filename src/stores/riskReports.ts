@@ -13,14 +13,35 @@ import type { RiskFlag } from '@/views/tickets/types/operation';
  *
  * 【局限】前端内存，整页刷新回到 mock 预置数据。SPA 内切页签 / 跳工单不受影响。
  *
- * 【边界】本 store **只管报备单自身**，外加一个供回传取值的读口（`ticketAssessmentOf`）。
+ * 【边界】本 store **只管报备单自身**，外加一个供工单页只读回显的读口（`assessmentNoteOf`）。
  * 真正往 ProcessFormDraft 的 riskFlag / riskLevel 里写的那一步不在这里 ——
  * 写入优先级要看工单表单当前值，那是工单操作页才有的上下文（930 §6.1 / 915 §7.3）。
  */
 
-/** 报备原因（PRD §4.4）。取「风险场景」时风险类型才必填 */
-export const REPORT_REASONS = ['建单错误', '客户要求升级', '风险场景', '已有投诉', '其他'] as const;
+/**
+ * 报备原因（PRD §4.4）。取「风险场景」时风险类型才必填。
+ *
+ * 🔴 **只有三项**：业务原文的下拉还有「建单错误」与「已有投诉」，**两项已删**（O11）——
+ * 评估结论是二选一「不升级 / 接管」，它答不了"这单类型建错了"和"这单跟哪张投诉单是一回事"。
+ * 留着就是两个**没有闭环的入口**：报上来，评估侧只能判"不升级"，而单子的类型还是错的。
+ * 建单错误由二线自改或找班组长；已有投诉关联由二线在客户全景页自行判断。
+ */
+export const REPORT_REASONS = ['客户要求升级', '风险场景', '其他'] as const;
 export type ReportReason = (typeof REPORT_REASONS)[number];
+
+/**
+ * 监控来源（930 §5，业务文档「监控维度」）。**五类合一个队列**，列表按此列筛选排序。
+ *
+ * 【为什么是一个队列而不是两个】业务原文要求"所有监控来源的工单统一归入待分派队列"——
+ * 风险组的工作面只该有一个"接下来要看什么"的清单，来源是它的一个属性，不是另一批数据。
+ *
+ * ⚠️ **两个分母仍然不能相加**：命中记录数 与 报备单数 是两回事（同一张单可以报三次），
+ * 合并的是"要处理的队列"，不是"统计口径"。
+ *
+ * 「系统自动判断（AI）」是业务文档自标的第六类、**规划中**，本轮不做，故不在枚举里。
+ */
+export const MONITOR_SOURCES = ['关键词触发', '全量投诉', '紧急重要', 'VIP客户', '二线报备'] as const;
+export type MonitorSource = (typeof MONITOR_SOURCES)[number];
 
 /**
  * 风险类型（PRD §4.5）。**只存在报备单上** —— 不写工单、不进风险等级体系、
@@ -34,16 +55,36 @@ export type RiskCategory = (typeof RISK_CATEGORIES)[number];
 export const ASSESS_DECISIONS = ['不升级', '接管'] as const;
 export type AssessDecision = (typeof ASSESS_DECISIONS)[number];
 
-/** 报备单两态（PRD §3.1）。「已撤回」不是第三态，是待评估的终止分支 */
-export type ReportStatus = '待评估' | '已评估' | '已撤回';
+/**
+ * 报备单三态（PRD §3.1，2026-09-09 第二轮拍板 N4）：**待分派 → 评估中 → 已评估**。
+ * 「已撤回」不是第四态，是**待分派的终止分支**（分派之后不能再撤）。
+ *
+ * 【为什么加「评估中」】做了分派就必须有它：分派把活指给了某个人，
+ * 这条记录从"谁都可以拿"变成"张三正在办"。少了这一态，队列上看不出
+ * 哪些已经有人在盯——而这正是分派要解决的问题本身。
+ *
+ * 【连带的口径变化】看板「待评估总数」＝ **待分派 + 评估中**（§7 B1），
+ * 不再等于单一状态的条数。
+ */
+export type ReportStatus = '待分派' | '评估中' | '已评估' | '已撤回';
 
 export interface ReportAssessment {
   decision: AssessDecision;
-  /** 风险等级（二选一决策下通常为空，保留字段兼容历史结构） */
-  level: RiskLevel | null;
-  /** 不升级 → 反馈意见；接管 → 接管说明 */
+  /**
+   * 不升级 → 反馈意见；接管 → 接管说明。两个决策各自的必填文本，
+   * 用词不同故不能共用一个「备注」——反馈意见是给报备人的处理建议，
+   * 接管说明是给新单承接人的交代。
+   */
   advice: string;
-  linkedTicketNo?: string;
+  /**
+   * 接管派生出的**新投诉单号**（仅决策＝「接管」时有值）。
+   *
+   * 【为什么这里存的是单号而不是风险等级】二选一之后**没有"确认有风险 + 定级"这一档**了，
+   * 评估不再产出等级、也不再往工单的风险字段回传。接管产出的是**一张新单**——
+   * 走的是《【830】》已有的第一跳派生（原单落终态「已升级投诉」、整页只读 + 接管横幅、
+   * 新单全量继承），**不新增动作、不新增状态**（基线 ※29）。
+   */
+  escalatedToNo?: string;
   by: string;
   byRole: string;
   at: string;
@@ -52,6 +93,13 @@ export interface ReportAssessment {
 export interface RiskReport {
   id: string;
   ticketNo: string;
+  /** 监控来源。二线报备之外的四类由系统自动入队，没有报备人填的那几个字段 */
+  source: MonitorSource;
+  /**
+   * 分派给谁（客诉专员姓名）。空 ＝ 待分派。
+   * 分派由投诉督导做，单条或批量（930 §5）。
+   */
+  assignee?: string;
   reason: ReportReason;
   /** 仅 reason ＝「风险场景」时有值（§9 规则 10） */
   category: RiskCategory | null;
@@ -67,26 +115,18 @@ export interface RiskReport {
   withdrawReason?: string;
 }
 
-/**
- * 一张工单在报备侧的现行评估结论（930 §6.1）。形状对齐 riskTags 的 `TicketRiskVerification`：
- * 工单页的回传逻辑两路各取一个这样的对象、走同一套判定，不为报备另写一条链路。
+/*
+ * ⚠️ **已删除 `TicketRiskAssessment` 及 `ticketAssessmentOf` / `ticketAssessmentNoteOf`**
+ * （2026-09-09 第二轮拍板 N1 的连带）。
  *
- * 【为什么 flag 不是可空的】本对象只在「确认有风险」存在时才被造出来（否则整个返回 null），
- * 其余三个决策一字不写工单，连"没风险"这个结论都不写 —— 判无风险是坐席的权，
- * 客诉专员评的是"这单要不要提前介入"，不是"这单最终有没有问题"。
+ * 它们是"评估结论按 915 §7.3 回传工单风险字段"那条链路的取值口。二选一之后
+ * **没有「确认有风险 + 定级」这一档了** —— 评估不再产出风险等级，那条回传链路失去前提：
+ * - 「不升级」→ 工单**一字不写**；
+ * - 「接管」→ 产出的是**一张新单**（走 830 已有的第一跳派生），不是往原单写字段。
+ *
+ * 保留一个空壳读口只会让调用方以为还有结论可回传。要看接管去向，读
+ * `ReportAssessment.escalatedToNo`。
  */
-export interface TicketRiskAssessment {
-  ticketNo: string;
-  /** 工单级风险等级 ＝ max(本单全部「确认有风险」评估的等级)，只升不降（915 §3.2） */
-  grade: RiskLevel | null;
-  /** 恒为「有风险」。留成字段而不是让调用方自己写死，是为了与另一路的取值口对称 */
-  flag: RiskFlag;
-  /** 最近一次「确认有风险」的评估，按**评估时刻**取 —— 只读提示行要说的是"最后一次谁怎么评的" */
-  latest: ReportAssessment;
-  /** 本单「确认有风险」的评估条数。一张单可以反复报备，故不是恒等于 1 */
-  confirmedCount: number;
-}
-
 /**
  * 报备评估时限（分钟）。**不是 SLA**：不接 SLA 引擎、不走工作日历、不适用停表规则
  * （§9 规则 13）。这一个值同时供两处读：《【815】》的催办规则触发条件，
@@ -110,22 +150,25 @@ function agoStamp(minutesAgo: number) {
 
 /** 预置数据：挂在几张**非投诉单**上 —— 风险报备只在咨询 / 建议 / 商机（§1.2a） */
 const SEED: RiskReport[] = [
+  // —— 二线报备（有报备原因 / 风险类型 / 场景描述 / 附件）——
   {
     id: 'rr-001',
     ticketNo: 'IFLYZX-20260610-00004',
+    source: '二线报备',
     reason: '风险场景',
     category: '监管风险',
     desc: '客户在第三通来电中反复提到"这事你们不给说法我就去有关部门反映"，情绪较激动，且提到已经拍了照片。本单是咨询单，暂未升级为投诉，拿不准要不要提前介入。',
     attachments: ['第三通通话录音片段.mp3'],
     by: '林晓东',
     byRole: '二线专员',
-    // 45 分钟前：未超时，用来演示"在队但还在时限内"这一态
+    // 45 分钟前：未超时，演示「待分派」这一态
     at: agoStamp(45),
-    status: '待评估',
+    status: '待分派',
   },
   {
     id: 'rr-002',
     ticketNo: 'IFLYZX-20260610-00005',
+    source: '二线报备',
     reason: '客户要求升级',
     category: null,
     desc: '客户明确说"叫你们领导来跟我讲"，当时判断是情绪话，先做了安抚。',
@@ -134,9 +177,9 @@ const SEED: RiskReport[] = [
     byRole: '二线专员',
     at: agoStamp(90),
     status: '已评估',
+    assignee: '李文萍',
     assessment: {
       decision: '不升级',
-      level: null,
       advice: '客户情绪可安抚，当前咨询单处理路径足够；建议当日内回电明确处理节点并在处理记录留痕。',
       by: '李文萍',
       byRole: '客诉专员',
@@ -146,16 +189,45 @@ const SEED: RiskReport[] = [
   },
   {
     id: 'rr-003',
-    ticketNo: 'IFLYZX-20260601-00001',
-    reason: '建单错误',
-    category: null,
-    desc: '一线把这张单建成了咨询单、优先级普通，但客户诉求实际是产品质量投诉，应为投诉单且加急。',
+    ticketNo: 'IFLYZX-20260610-00009',
+    source: '二线报备',
+    reason: '风险场景',
+    category: '群体性风险',
+    desc: '同一小区已有三位客户就同一批次设备反馈同类故障，客户之间互相认识并提到"要一起去反映"。',
     attachments: [],
     by: '周敏',
     byRole: '二线专员',
-    // 3 小时前：已过 2 小时时限，用来演示「超时未评」的标红与计数
+    // 3 小时前：已过 2 小时时限，演示「超时未评」的标红与计数
     at: agoStamp(180),
-    status: '待评估',
+    status: '待分派',
+  },
+  // —— 系统自动入队的三类来源：没有报备人填的那几个字段，故 reason 取兜底、category 为空 ——
+  {
+    id: 'rr-004',
+    ticketNo: 'IFLYZX-20260617-00001',
+    source: '全量投诉',
+    reason: '其他',
+    category: null,
+    desc: '投诉类工单自动纳入监控范围（无须报备）。',
+    attachments: [],
+    by: '系统',
+    byRole: '系统',
+    at: agoStamp(20),
+    status: '待分派',
+  },
+  {
+    id: 'rr-005',
+    ticketNo: 'IFLYZX-20260610-00005',
+    source: 'VIP客户',
+    reason: '其他',
+    category: null,
+    desc: 'VIP 客户工单自动纳入监控范围（无须报备）。',
+    attachments: [],
+    by: '系统',
+    byRole: '系统',
+    at: agoStamp(240),
+    status: '评估中',
+    assignee: '吴投诉',
   },
 ];
 
@@ -181,52 +253,80 @@ export const useRiskReportStore = defineStore('riskReports', () => {
    * 这个场景（§2.3 V1）的出口。返回单个对象而不是数组，类型本身就把"不会有两条"写死。
    */
   function pendingOf(ticketNo: string) {
-    return reports.value.find((r) => r.ticketNo === ticketNo && r.status === '待评估') ?? null;
+    return reports.value.find((r) => r.ticketNo === ticketNo && isOpen(r)) ?? null;
   }
 
-  /** 本单是否还能发起报备：只看在队，不看历史 */
+  /** 本单是否还能发起报备：只看在队（待分派 / 评估中），不看历史 */
   function canSubmitFor(ticketNo: string) {
     return !pendingOf(ticketNo);
   }
 
   /**
    * 本单的历史报备（已评估 + 已撤回），时间倒序。
-   * **不含待评估那条** —— 它在界面上单独占一块（在队提示条 + 只读卡），进列表会重复。
+   * **不含在队那条** —— 它在界面上单独占一块（在队提示条 + 只读卡），进列表会重复。
    */
   function historyOf(ticketNo: string) {
-    return reportsOf(ticketNo).filter((r) => r.status !== '待评估');
+    return reportsOf(ticketNo).filter((r) => !isOpen(r));
   }
 
   /**
    * 工单的「报备中」标记（§3.2）。**纯派生、不落库**：有没有这个标记，
-   * 完全等于"本单有没有一条待评估的报备"，人不直接操作它。
+   * 完全等于"本单有没有一条**在队**的报备"，人不直接操作它。
+   * 【为什么含「评估中」】对报备人而言"报上去了、还没有结论"是同一件事，
+   * 内部分派到谁与他无关；只认「待分派」的话，一分派横幅就没了，看着像结论已经出来了。
    */
   function isReporting(ticketNo: string) {
     return !!pendingOf(ticketNo);
   }
 
-  /** 全中心待评估队列，按**等待时长降序**＝提交时刻正序（§5.3 元素 ④） */
-  const pendingQueue = computed(() =>
-    reports.value.filter((r) => r.status === '待评估').sort((a, b) => a.at.localeCompare(b.at)),
+  /**
+   * **在队 ＝ 待分派 + 评估中**（N4）。这是"还没有结论"的全集，
+   * 看板 B1、同单在队门控、「报备中」标记三处共用它，不各判各的。
+   */
+  function isOpen(r: RiskReport) {
+    return r.status === '待分派' || r.status === '评估中';
+  }
+
+  /** 在队全集，按**等待时长降序**＝提交时刻正序（§5.3 元素 ④），等最久的在最上 */
+  const openQueue = computed(() =>
+    reports.value.filter(isOpen).slice().sort((a, b) => a.at.localeCompare(b.at)),
   );
+  /** 待分派：督导要分的就是这一批 */
+  const unassignedQueue = computed(() => openQueue.value.filter((r) => r.status === '待分派'));
+  /** 评估中：已有人认领、等结论 */
+  const assigningQueue = computed(() => openQueue.value.filter((r) => r.status === '评估中'));
 
-  /** B1 待评估报备数（§7）。已撤回的不进任何一个数 */
-  const pendingCount = computed(() => pendingQueue.value.length);
+  /** **B1 待评估总数 ＝ 待分派 + 评估中**（§7，N4 改口径）。已撤回的不进任何一个数 */
+  const openCount = computed(() => openQueue.value.length);
 
-  /** 等待时长（分钟）＝ 当前时刻 − **提交时刻**。不从任何"分派时刻"起算（不做分派） */
+  /**
+   * ⚠️ 兼容别名，指向同一个数。
+   * 【为什么保留】旧名 `pendingQueue` / `pendingCount` 在两个页面里有调用点；
+   * 直接改名会让漏改的地方**静默取到 undefined**（Pinia 不报错），
+   * 那比留一个别名危险得多。新代码一律用 `openQueue` / `openCount`。
+   */
+  const pendingQueue = openQueue;
+  const pendingCount = openCount;
+
+  /**
+   * 等待时长（分钟）＝ 当前时刻 − **报备提交时刻**。
+   * 🔴 **不从分派时刻起算**（N5，第二轮拍板里唯一没变的一条）：
+   * 对报备人而言"我等了多久"与内部何时分派无关；**分派慢的压力应当落在督导身上**，
+   * 从分派起算等于把这段空悬时间从账上抹掉。
+   */
   function waitedMinutes(at: string) {
     const t = new Date(at.replace(/-/g, '/')).getTime();
     if (Number.isNaN(t)) return 0;
     return Math.max(0, Math.floor((Date.now() - t) / 60000));
   }
 
-  /** 是否超时未评：等待时长 > 报备评估时限。**不是 SLA**，不走工作日历、不停表 */
+  /** 是否超时未评：**在队**且等待时长 > 时限。不是 SLA，不走工作日历、不停表 */
   function isOverdue(r: RiskReport) {
-    return r.status === '待评估' && waitedMinutes(r.at) > REPORT_ASSESS_LIMIT_MIN;
+    return isOpen(r) && waitedMinutes(r.at) > REPORT_ASSESS_LIMIT_MIN;
   }
 
-  /** B2 超时未评报备数（§7）。B1 ≥ B2 恒成立——超时的一定还在待评估里 */
-  const overdueCount = computed(() => pendingQueue.value.filter(isOverdue).length);
+  /** B2 超时未评数（§7）。B1 ≥ B2 恒成立——超时的一定还在队里 */
+  const overdueCount = computed(() => openQueue.value.filter(isOverdue).length);
 
   /** 已评估清单，评估时刻倒序 */
   const assessedList = computed(() =>
@@ -262,26 +362,7 @@ export const useRiskReportStore = defineStore('riskReports', () => {
     return base;
   });
 
-  /**
-   * 本单现行的评估结论 —— 回传工单风险字段时取的就是这一个对象。
-   * 二选一决策（不升级 / 接管）均不回写工单风险字段，返回 null。
-   */
-  function ticketAssessmentOf(_ticketNo: string): TicketRiskAssessment | null {
-    return null;
-  }
-
-  /**
-   * 只读提示行的那一行字（930 §6.1 步 5）：「风险评估结论：高危 · 李文萍（客诉专员）· 2026-09-06 10:41」。
-   * 【为什么文案在 store 里拼】被步 2 挡住时这行字是结论**唯一**的去处，两处各拼一遍
-   * 迟早写成两种说法；而拼它需要的全部素材都在本 store，放这里调用方一行取用。
-   */
-  function ticketAssessmentNoteOf(ticketNo: string): string {
-    const a = ticketAssessmentOf(ticketNo);
-    if (!a) return '';
-    // 等级取**工单级**（max 棘轮）而不是最后一次评估自己的等级：这行字答的是"这张单有多危险"
-    return `风险评估结论：${riskLevelText(a.grade)} · ${a.latest.by}（${a.latest.byRole}）· ${a.latest.at}`;
-  }
-
+  /** 二线报备提交，落「待分派」。系统自动入队的四类来源不走这里 */
   function submit(input: {
     ticketNo: string;
     reason: ReportReason;
@@ -296,7 +377,8 @@ export const useRiskReportStore = defineStore('riskReports', () => {
     seq.value += 1;
     const report: RiskReport = {
       id: `rr-${String(seq.value).padStart(3, '0')}`,
-      status: '待评估',
+      source: '二线报备',
+      status: '待分派',
       ...input,
       // 风险类型只在「风险场景」下成立：原因切走时前端已清空，这里再收一道，
       // 免得别处调用绕过表单直接塞进来一个不该有的值
@@ -306,20 +388,54 @@ export const useRiskReportStore = defineStore('riskReports', () => {
     return report;
   }
 
-  /** 撤回：仅待评估、仅本人（调用方判"本人"）。**不删除**，转「已撤回」并留原因（§4.8） */
+  /**
+   * 分派（930 §5）：投诉督导把待分派的条目指给某个客诉专员，转「评估中」。
+   * 批量分派对每个 id 调一次即可，不另写一个批量函数——批量与单条的规则完全一样，
+   * 分两套实现迟早只改一处。
+   *
+   * **已分派的不再改派**：改派等于把活从一个人手里拿走，那是调剂不是分派；
+   * 真要换人先让它评完或撤回。
+   */
+  function assign(id: string, assignee: string) {
+    const r = reports.value.find((x) => x.id === id);
+    if (!r || r.status !== '待分派') return false;
+    r.status = '评估中';
+    r.assignee = assignee;
+    return true;
+  }
+
+  /**
+   * 撤回：**仅待分派、仅本人**（调用方判"本人"）。**不删除**，转「已撤回」并留原因（§4.8）。
+   * 【为什么分派后不能撤】活已经指给人了，这时候抽走等于让评估人白读一遍；
+   * 分派之后要纠错，走"评完再报一次"。
+   */
   function withdraw(id: string, reason: string) {
     const r = reports.value.find((x) => x.id === id);
-    if (!r || r.status !== '待评估') return;
+    if (!r || r.status !== '待分派') return;
     r.status = '已撤回';
     r.withdrawReason = reason;
   }
 
-  /** 评估：一条报备单最多一条评估记录，**提交即固化不可改**（§9 规则 22） */
+  /**
+   * 评估：一条报备单最多一条评估记录，**提交即固化不可改**（§9 规则 22）。
+   * **必须先分派**——没人认领的条目谈不上"谁给的结论"。
+   */
   function assess(id: string, assessment: ReportAssessment) {
     const r = reports.value.find((x) => x.id === id);
-    if (!r || r.status !== '待评估') return;
+    if (!r || r.status !== '评估中') return;
     r.status = '已评估';
     r.assessment = assessment;
+  }
+
+  /** 最新已评估结论的可读一行（工单页只读回显；二选一后无风险等级，展示决策 + 评估人 + 时刻） */
+  function assessmentNoteOf(ticketNo: string): string {
+    const latest = reportsOf(ticketNo).find((r) => r.status === '已评估' && r.assessment);
+    if (!latest?.assessment) return '';
+    const a = latest.assessment;
+    if (a.decision === '接管' && a.escalatedToNo) {
+      return `风险评估：接管 → ${a.escalatedToNo} · ${a.by}（${a.byRole}）· ${a.at}`;
+    }
+    return `风险评估：${a.decision} · ${a.by}（${a.byRole}）· ${a.at}`;
   }
 
   return {
@@ -335,12 +451,16 @@ export const useRiskReportStore = defineStore('riskReports', () => {
     assessedTodayCount,
     decisionCounts,
     isReporting,
-    ticketAssessmentOf,
-    ticketAssessmentNoteOf,
+    openQueue,
+    unassignedQueue,
+    assigningQueue,
+    openCount,
     pendingQueue,
     pendingCount,
     submit,
+    assign,
     withdraw,
     assess,
+    assessmentNoteOf,
   };
 });
