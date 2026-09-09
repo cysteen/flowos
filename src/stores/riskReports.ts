@@ -553,6 +553,27 @@ export const useRiskReportStore = defineStore('riskReports', () => {
   /** B2 超时未评数（§7）。B1 ≥ B2 恒成立——超时的一定还在队里 */
   const overdueCount = computed(() => openQueue.value.filter(isOverdue).length);
 
+  /**
+   * 走评估的四类来源（O16）。五类里只有「关键词触发」走核实打标，不进「风险评估」的分母——
+   * 它的数已经在左栏「监控数据」里报过一次，两处相加会把同一条命中数成两条（§7 撞名）。
+   *
+   * ⚠️ 与页签角标的区别：角标取**队列条目总数**（五类），因为页签装的就是五类合一的队列；
+   * 页头「风险评估」行取**四类**，因为它报的是评估这件事的进度。两个数本就不相等，界面上不互校。
+   */
+  const goesToAssess = (r: RiskReport) => r.source !== '关键词触发';
+
+  /** B1 待评估总数（四类来源）＝ 待分派 + 评估中 */
+  const assessOpenCount = computed(() => openQueue.value.filter(goesToAssess).length);
+  /** B1 的两个分项，界面上紧挨着 B1 摆，读得出 `待分派 + 评估中 ≡ B1` */
+  const assessUnassignedCount = computed(
+    () => unassignedQueue.value.filter(goesToAssess).length,
+  );
+  const assessAssigningCount = computed(() => assigningQueue.value.filter(goesToAssess).length);
+  /** B2 超时未评（四类来源） */
+  const assessOverdueCount = computed(
+    () => openQueue.value.filter((r) => goesToAssess(r) && isOverdue(r)).length,
+  );
+
   /** 已评估清单，评估时刻倒序 */
   const assessedList = computed(() =>
     reports.value
@@ -568,9 +589,12 @@ export const useRiskReportStore = defineStore('riskReports', () => {
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
   }
 
-  /** B3 今日已评估报备数（§7）。按**评估时刻**落在今日算，不按报备时刻 */
+  /** B3 今日已评估报备数（§7）。按**评估时刻**落在今日算，不按报备时刻；分母同 B1，四类来源 */
   const assessedTodayCount = computed(
-    () => assessedList.value.filter((r) => (r.assessment?.at ?? '').startsWith(todayPrefix())).length,
+    () =>
+      assessedList.value.filter(
+        (r) => goesToAssess(r) && (r.assessment?.at ?? '').startsWith(todayPrefix()),
+      ).length,
   );
 
   /**
@@ -581,6 +605,7 @@ export const useRiskReportStore = defineStore('riskReports', () => {
     const base: Record<AssessDecision, number> = { 不升级: 0, 接管: 0 };
     const today = todayPrefix();
     for (const r of assessedList.value) {
+      if (!goesToAssess(r)) continue;
       if (!r.assessment || !r.assessment.at.startsWith(today)) continue;
       base[r.assessment.decision] += 1;
     }
@@ -796,6 +821,10 @@ export const useRiskReportStore = defineStore('riskReports', () => {
     waitedMinutes,
     isOverdue,
     overdueCount,
+    assessOpenCount,
+    assessUnassignedCount,
+    assessAssigningCount,
+    assessOverdueCount,
     assessedList,
     assessedTodayCount,
     decisionCounts,

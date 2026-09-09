@@ -2224,14 +2224,18 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
         </div>
 
         <!--
-          右栏 ＝ 重点工单（O13 定名）。五类监控来源合一个队列，故分母是**队列条目**，
-          与左栏的风险词命中数仍旧不可相加（§7 撞名）。
+          右栏 ＝ 风险评估（O16 定分母）。装的是**走评估的四类来源**的队列条目：
+          全量投诉 / 紧急重要 / VIP客户 / 二线报备。「关键词触发」走的是核实打标，
+          它的数已经在左栏「监控数据」里报过一次，并进来就成了同一条命中数两遍（§7 撞名）。
+
+          ⚠️ 与「重点工单」页签角标不是一个数：角标是队列条目总数（五类），这里是四类。
+          界面上不把两者相减、不互校。
         -->
         <div class="effect-pane effect-pane--report">
           <h2
             class="pane-title"
-            title="关键词触发 / 全量投诉 / 紧急重要 / VIP客户 / 二线报备 五类合一队 · 分母是队列条目，与左栏命中数不可相加"
-          >重点工单</h2>
+            title="全量投诉 / 紧急重要 / VIP客户 / 二线报备 四类走评估 · 「关键词触发」走核实打标，不进本行分母"
+          >风险评估</h2>
           <div class="dash-grid dash-grid-3">
             <!--
               B1 待评估总数 ＝ **待分派 + 评估中**（N4 改口径，不再等于单一状态的条数）。
@@ -2244,26 +2248,31 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               class="dm-cell"
               :class="{
                 on: listView === 'report' && reportView !== 'assessed' && !onlyOverdue,
-                hot: reportStore.overdueCount > 0,
+                hot: reportStore.assessOverdueCount > 0,
               }"
-              title="待分派 + 评估中"
+              title="待分派 + 评估中 · 走评估的四类来源"
               @click="setListView('report'); setReportView('unassigned'); onlyOverdue = false"
             >
               <span class="dm-k">待评估总数</span>
-              <span class="dm-val"><span class="dm-v">{{ reportStore.openCount }}</span></span>
+              <span class="dm-val">
+                <span class="dm-v">{{ reportStore.assessOpenCount }}</span>
+                <span class="dm-h">
+                  待分派 {{ reportStore.assessUnassignedCount }} · 评估中 {{ reportStore.assessAssigningCount }}
+                </span>
+              </span>
             </button>
             <button
               type="button"
               class="dm-cell"
               :class="{
                 on: listView === 'report' && reportView !== 'assessed' && onlyOverdue,
-                hot: reportStore.overdueCount > 0,
+                hot: reportStore.assessOverdueCount > 0,
               }"
               :title="`超过 ${assessLimitText} 仍无结论 · 从报备提交时刻起算、不从分派时刻 · 不是 SLA`"
               @click="setListView('report'); setReportView('unassigned'); onlyOverdue = true"
             >
               <span class="dm-k">超时未评</span>
-              <span class="dm-val"><span class="dm-v">{{ reportStore.overdueCount }}</span></span>
+              <span class="dm-val"><span class="dm-v">{{ reportStore.assessOverdueCount }}</span></span>
             </button>
             <button
               type="button"

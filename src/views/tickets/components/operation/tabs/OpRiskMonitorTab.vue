@@ -169,10 +169,13 @@ function formatShortAt(at: string) {
   return m ? `${m[1]} ${m[2]}` : at;
 }
 
-function waitMinutes(at: string) {
-  const t = new Date(at.replace(/-/g, '/')).getTime();
-  if (Number.isNaN(t)) return 0;
-  return Math.max(0, Math.floor((Date.now() - t) / 60000));
+/**
+ * 等待时长与头部横幅同源：都取 store 的 `waitedMinutes`（内含 60s 心跳）。
+ * 本地各算各的会让同一条报备在横幅与本页显示成两个数。
+ */
+function waitedText(at: string) {
+  const mins = reportStore.waitedMinutes(at);
+  return mins >= 60 ? `${Math.floor(mins / 60)} 小时 ${mins % 60} 分钟` : `${mins} 分钟`;
 }
 
 /**
@@ -292,7 +295,7 @@ function openEscalatedTicket(no: string) {
                 {{ pendingStateText }}
               </span>
               <span class="rr-sheet-time">提交于 {{ formatShortAt(pending.at) }}</span>
-              <span class="rr-sheet-wait">已等待 {{ waitMinutes(pending.at) }} 分钟</span>
+              <span class="rr-sheet-wait">已等待 {{ waitedText(pending.at) }}</span>
             </div>
             <div class="rr-sheet-meta">
               <span class="rr-meta-pair">
