@@ -3905,11 +3905,6 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
           </div>
           <div v-if="missAssignTo" class="assess-err">请选择一位客诉专员</div>
         </div>
-        <!-- 说清两件事：改派是允许的，以及"改派 ≠ 调剂"——两者动的不是同一个东西 -->
-        <div class="tag-form-foot">
-          已在「评估中」的条目<strong>可以改派</strong>，重选承办人即可，系统会通知新承办人。<br />
-          注意：改派动的是<strong>这条报备</strong>（谁去评）；换工单处理人请走「调剂」。
-        </div>
       </div>
     </OpActionModal>
   </div>

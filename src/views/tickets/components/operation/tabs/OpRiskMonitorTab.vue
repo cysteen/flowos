@@ -409,9 +409,8 @@ function openEscalatedTicket(no: string) {
           placeholder="说明为什么撤回这条报备…"
         />
         <p v-if="missWithdrawReason" class="field-err">请填写撤回原因</p>
-        <p class="report-tip">
-          撤回后本条转为「已撤回」并保留在报备记录里，不会删除；撤回后可重新发起报备。
-        </p>
+        <!-- 撤回是破坏性动作，"记录不删除"是下决心前必须知道的后果，故留一句 -->
+        <p class="report-tip">撤回后保留记录，可重新发起。</p>
       </div>
     </OpActionModal>
 
@@ -804,17 +803,13 @@ function openEscalatedTicket(no: string) {
   border-radius: 4px;
 }
 
+/* 辅助说明而非独立信息块，故走小字灰色，不做底色/边框 */
 .report-tip {
   margin: 0;
-  padding: 8px 10px;
   font-size: 11px;
-  line-height: 1.6;
-  color: #475569;
-  background: #f1f5f9;
-  border-left: 2px solid #cbd5e1;
-  border-radius: 0 4px 4px 0;
+  line-height: 1.5;
+  color: #9ca3af;
 }
-.report-tip strong { color: #334155; }
 
 /* ---- 评估结果（仅有结论时展示，进行中状态在上方报备卡片） ---- */
 .ra-sheet {
