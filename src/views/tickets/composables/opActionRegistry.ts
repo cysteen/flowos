@@ -33,6 +33,8 @@ export interface ActionDef {
 
 const ALL: TicketType[] = ['投诉', '咨询', '建议', '商机'];
 const NO_LEAD: TicketType[] = ['投诉', '咨询', '建议']; // 商机不支持
+/** 风险报备：咨 建 商（基线 §4「风险报备」行，与 risk Tab 类型集同源） */
+const RISK_REPORT_TYPES: TicketType[] = ['咨询', '建议', '商机'];
 /**
  * 转售后的类型集 = 咨 建 商（基线 §4 该行 + ※12a）。
  * ※12a 的口径是「投诉单走关联售后、**其余全部**走转售后」，两边合起来覆盖四类、不重不漏——
@@ -48,6 +50,7 @@ export const ACTION_DEFS: ActionDef[] = [
   { key: '挂起', label: '挂起', icon: 'PauseCircleOutlined', group: 'primary', types: NO_LEAD },
   { key: '退回', label: '退回', icon: 'RollbackOutlined', group: 'primary', types: NO_LEAD },
   { key: '升级', label: '升级', icon: 'RiseOutlined', group: 'primary', types: NO_LEAD },
+  { key: '风险报备', label: '风险报备', icon: 'WarningOutlined', group: 'more', types: RISK_REPORT_TYPES },
   // 转单：原单关闭、新单继续跑（基线 ※16）。全类型可用。
   // 它开的是**建单弹窗**（新单要有单号才谈得上"转"），不是 OpActionDialogs 里的表单弹窗，
   // 所以 OpActionBar 里单独走 emit('transferTicket')，见该文件 run()。

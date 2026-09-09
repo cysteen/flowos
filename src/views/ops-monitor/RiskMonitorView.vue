@@ -19,6 +19,15 @@ import { useUserStore } from '@/stores/user';
 // 核实历史与筛查并入的命中都放在 store 里：工单处理页要读同一份结论（打标回传），
 // 组件内的 ref 只在本页活着，跨页就断了。
 import { useRiskTagStore, type RiskTagEntry } from '@/stores/riskTags';
+// 风险报备的评估端（《【930】》§5）。报备单与命中记录**分母不同、两处不可相加**（§7 撞名），
+// 故各走各的 store，本页只是把两块工作面并在一屏。
+import {
+  useRiskReportStore,
+  ASSESS_DECISIONS,
+  REPORT_ASSESS_LIMIT_MIN,
+  type AssessDecision,
+  type RiskReport,
+} from '@/stores/riskReports';
 import { RISK_TAG_ROLES, RISK_WORD_MAINTAIN_ROLES } from '@/config/roles';
 import { riskLevelText } from '@/config/risk';
 import { getOpsScopeSelectGroups, type OpsScope } from '@/mock/opsMonitor';
@@ -71,7 +80,14 @@ const riskTags = useRiskTagStore();
 // 实则前者换了整批数据、后者只是筛。降到台账查询条里当一个筛选项后，
 // 层级关系就直白了：先选批（页签），再筛条件（chip / 查询条）。
 /** 清单主视图：实时监控（待核实）/ 手动筛查 / 已核实 —— 页签与两张可点 KPI 卡同一个状态 */
-type ListView = 'realtime' | 'scan' | 'judged';
+/**
+ * 第四个视图 `report` ＝ **风险报备的评估队列**（《【930】》§5）。
+ *
+ * 它与前三个的分母不同：前三个装的是**风险词命中记录**，它装的是**报备单**。
+ * 之所以仍并进同一个 `listView` 而不另起一个状态变量，是本文件开头那条教训的直接应用——
+ * **一块屏上同一件事只能有一个真源**；两套状态机并存时页签标签与表格内容当场对不上。
+ */
+type ListView = 'realtime' | 'scan' | 'judged' | 'report';
 // 视图内的等级条件，只在实时监控视图生效。
 // 🔴 原先另有一个 'pending'（高危待核），它与 '高' **筛出的是同一批数据**——
 // 实时监控视图本身已排除已核实的，「高危」在这里就是「高危待核」。
@@ -80,6 +96,165 @@ type ListView = 'realtime' | 'scan' | 'judged';
 type GradeFilter = 'all' | RiskLevel;
 /** 清单唯一的视图状态：页签、KPI 卡、成效卡的核实结果按钮全读写它 */
 const listView = ref<ListView>('realtime');
+
+// ==== 风险评估（《【930】》§5）====
+const reportStore = useRiskReportStore();
+/**
+ * 「风险评估」视图内的两态切换：待评估 / 已评估。
+ *
+ * **不做成第五个页签**：页签行已有四个，再加「已评估报备」会与旁边的「已核实」（命中）
+ * 两个名字挨着，必被读串；而它本就是"同一批报备的两个阶段"，属**视图内条件**
+ * 而非另一批数据 —— 与本文件开头「先选批（页签），再筛条件」的分层是同一条规矩。
+ */
+const reportView = ref<'pending' | 'assessed'>('pending');
+/** 待评估视图内的收窄：只看超时未评的（由「超时未评」卡下钻置上） */
+const onlyOverdue = ref(false);
+/** 已评估视图内的收窄：只看某一个决策（由「评估决策」四枚按钮下钻置上） */
+const decisionFilter = ref<AssessDecision | 'all'>('all');
+/** 时限文案取参数、不写死：它与《【815】》催办规则读同一个值（§9 规则 14） */
+const assessLimitText = computed(() =>
+  REPORT_ASSESS_LIMIT_MIN % 60 === 0
+    ? `${REPORT_ASSESS_LIMIT_MIN / 60} 小时`
+    : `${REPORT_ASSESS_LIMIT_MIN} 分钟`,
+);
+
+/** 待评估队列：等待时长降序 ＝ 提交时刻正序（§5.3 元素 ④），等最久的在最上 */
+const reportPendingRows = computed(() => {
+  const rows = reportStore.pendingQueue;
+  return onlyOverdue.value ? rows.filter((r) => reportStore.isOverdue(r)) : rows;
+});
+
+/**
+ * 已评估视图**默认只看今日**（业务拍板 2026-09-09）。
+ *
+ * 【为什么必须限今日】上方「评估决策」四枚卡按 **自然日** 算（PRD §7 B4 窗口＝自然日，
+ * 且 `B3 = B4 四档之和` 这条恒等式靠它成立）。若列表给全量，点「确认有风险 1」下钻，
+ * 卡是今日数、表是全量表，**同一块屏上两个数对不上** —— 与本文件开头那条
+ * 「标签写着一个数、表里躺着另一批」是同一个坑。要看历史，把这个开关关掉。
+ */
+const assessedTodayOnly = ref(true);
+function todayPrefix() {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/** 已评估列表：评估时刻倒序；今日开关与决策筛选都是视图内条件 */
+const reportAssessedRows = computed(() => {
+  let rows = reportStore.assessedList;
+  if (assessedTodayOnly.value) {
+    const today = todayPrefix();
+    rows = rows.filter((r) => (r.assessment?.at ?? '').startsWith(today));
+  }
+  if (decisionFilter.value !== 'all') {
+    rows = rows.filter((r) => r.assessment?.decision === decisionFilter.value);
+  }
+  return rows;
+});
+
+const reportRows = computed(() =>
+  reportView.value === 'pending' ? reportPendingRows.value : reportAssessedRows.value,
+);
+
+/** 切视图内两态时，把另一态的收窄条件一并摘掉——条件跟着批次走，不跨批残留 */
+function setReportView(v: 'pending' | 'assessed') {
+  if (v === reportView.value) return;
+  reportView.value = v;
+  if (v === 'pending') decisionFilter.value = 'all';
+  else onlyOverdue.value = false;
+}
+
+// ---- 评估弹窗（§5.4）----
+const assessOpen = ref(false);
+const assessTarget = ref<RiskReport | null>(null);
+const assessDecision = ref<AssessDecision | ''>('');
+const assessLevel = ref<RiskLevel | ''>('');
+const assessAdvice = ref('');
+const assessLinkedNo = ref('');
+const assessTried = ref(false);
+
+/** 等级只在「确认有风险」这一档有意义；其余三档不出现该字段 */
+const assessNeedsLevel = computed(() => assessDecision.value === '确认有风险');
+/** 目标投诉单号只在「关联已有投诉单」这一档必填 */
+const assessNeedsLink = computed(() => assessDecision.value === '关联已有投诉单');
+
+const missAssessDecision = computed(() => assessTried.value && !assessDecision.value);
+const missAssessLevel = computed(() => assessTried.value && assessNeedsLevel.value && !assessLevel.value);
+const missAssessAdvice = computed(() => assessTried.value && !assessAdvice.value.trim());
+/** 关联单号不得为空、且**不得指向本单**（自己关联自己没有意义） */
+const missAssessLink = computed(
+  () =>
+    assessTried.value
+    && assessNeedsLink.value
+    && (!assessLinkedNo.value.trim() || assessLinkedNo.value.trim() === assessTarget.value?.ticketNo),
+);
+const assessValid = computed(
+  () =>
+    !!assessDecision.value
+    && (!assessNeedsLevel.value || !!assessLevel.value)
+    && !!assessAdvice.value.trim()
+    && (!assessNeedsLink.value
+      || (!!assessLinkedNo.value.trim() && assessLinkedNo.value.trim() !== assessTarget.value?.ticketNo)),
+);
+
+/** 四个决策各自那句必填文本的标签——用词不同，不能共用一个「备注」 */
+const assessAdviceLabel = computed(() =>
+  assessDecision.value === '确认有风险' ? '处置建议' : '反馈意见',
+);
+const assessAdvicePlaceholder = computed(() => {
+  switch (assessDecision.value) {
+    case '确认有风险': return '写清接下来建议怎么办、多久内做完…';
+    case '无风险': return '告知报备人为什么判定无风险、可以怎么继续处理…';
+    case '退回一线改单': return '写清哪个字段错了、应该改成什么…';
+    case '关联已有投诉单': return '写清两张单是同一件事的判断依据…';
+    default: return '';
+  }
+});
+
+function openAssess(r: RiskReport) {
+  assessTarget.value = r;
+  assessDecision.value = '';
+  assessLevel.value = '';
+  assessAdvice.value = '';
+  assessLinkedNo.value = '';
+  assessTried.value = false;
+  assessOpen.value = true;
+}
+
+/** 「本单另有」——风险词命中那一半。报备只挂非投诉单、命中多在投诉单，一期常为 0 */
+const assessTargetHits = computed(() => {
+  const no = assessTarget.value?.ticketNo;
+  return no ? riskTags.ticketVerificationOf(no) : null;
+});
+/** 「本单另有」——历史报备那一半（已评估 + 已撤回，不含当前这条） */
+const assessTargetHistory = computed(() => {
+  const no = assessTarget.value?.ticketNo;
+  return no ? reportStore.historyOf(no) : [];
+});
+
+function confirmAssess() {
+  assessTried.value = true;
+  const target = assessTarget.value;
+  if (!target || !assessValid.value || !assessDecision.value) return;
+
+  reportStore.assess(target.id, {
+    decision: assessDecision.value,
+    // 等级只有「确认有风险」这一档落值；其余三档一律 null，不留半个残值
+    level: assessNeedsLevel.value ? (assessLevel.value as RiskLevel) : null,
+    advice: assessAdvice.value.trim(),
+    linkedTicketNo: assessNeedsLink.value ? assessLinkedNo.value.trim() : undefined,
+    by: user.name,
+    byRole: user.role.name,
+    at: nowStamp(),
+  });
+
+  assessOpen.value = false;
+  message.success(
+    assessDecision.value === '确认有风险'
+      ? `已提交结论：确认有风险 · ${riskLevelText(assessLevel.value as RiskLevel)}，结论已回传工单`
+      : `已提交结论：${assessDecision.value}`,
+  );
+}
 /** 视图内的等级选择。大盘点「待打标」卡下钻时预置为高危 */
 const gradeFilter = ref<GradeFilter>(route.query.pending === '1' ? '高' : 'all');
 /** 已核实视图才需要台账查询条：只有这批记录会被事后点查 */
@@ -1758,6 +1933,79 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
           </button>
         </div>
       </div>
+
+      <!--
+        风险报备 —— 与上一行**同一块卡区、同一副骨架**（业务拍板"融合一起"），
+        不在页签里另开一排卡：两排卡上下相邻却口径不同，必被读串。
+
+        🔴 两行的分母完全不同，故左侧组标题与卡文案都写全：
+        上行数的是**风险词命中记录**，本行数的是**报备单**，**两处不可相加**
+        （《【930】》§7 撞名一栏）。同一张工单报三次就是三条，与命中数无关。
+      -->
+      <div class="effect-row report-row">
+        <h2
+          class="section-title effect-title"
+          title="二线专员报上来的风险 · 客诉专员评估 · 分母是报备单条数，与上行的命中数不可相加"
+        >风险报备</h2>
+
+        <div class="effect-metrics">
+          <button
+            type="button"
+            class="em-item"
+            :class="{ on: listView === 'report' && reportView === 'pending' }"
+            :style="{ '--kpi-accent': reportStore.overdueCount > 0 ? '#EF4444' : '#F59E0B' }"
+            :title="`其中超时未评 ${reportStore.overdueCount} 条`"
+            @click="setListView('report'); reportView = 'pending'"
+          >
+            <span class="em-label">待评估报备</span>
+            <span class="em-val" :style="{ color: reportStore.overdueCount > 0 ? '#EF4444' : '#F59E0B' }">
+              {{ reportStore.pendingCount }}
+            </span>
+          </button>
+          <button
+            type="button"
+            class="em-item"
+            :class="{ on: listView === 'report' && reportView === 'pending' && onlyOverdue }"
+            :style="{ '--kpi-accent': reportStore.overdueCount > 0 ? '#EF4444' : '#9CA3AF' }"
+            :title="`提交后超过 ${assessLimitText}仍无人评估 · 不是 SLA，不走工作日历`"
+            @click="setListView('report'); reportView = 'pending'; onlyOverdue = true"
+          >
+            <span class="em-label">超时未评</span>
+            <span class="em-val" :class="{ bad: reportStore.overdueCount > 0 }">
+              {{ reportStore.overdueCount }}
+            </span>
+          </button>
+          <button
+            type="button"
+            class="em-item"
+            :class="{ on: listView === 'report' && reportView === 'assessed' }"
+            :style="{ '--kpi-accent': '#10B981' }"
+            title="按评估时刻落在今日算 · 自然日 00:00 起"
+            @click="setListView('report'); reportView = 'assessed'"
+          >
+            <span class="em-label">今日已评估</span>
+            <span class="em-val">{{ reportStore.assessedTodayCount }}</span>
+          </button>
+        </div>
+
+        <div class="effect-result">
+          <span class="er-label">评估决策</span>
+          <button
+            v-for="d in ASSESS_DECISIONS"
+            :key="d"
+            type="button"
+            class="er-btn"
+            :class="{ active: listView === 'report' && reportView === 'assessed' && decisionFilter === d }"
+            @click="setListView('report'); reportView = 'assessed'; decisionFilter = d"
+          >
+            <span class="er-name">{{ d }}</span>
+            <span class="er-num" :class="d === '确认有风险' ? 'danger' : 'muted'">
+              {{ reportStore.decisionCounts[d] }}
+            </span>
+            <RightOutlined class="er-go" />
+          </button>
+        </div>
+      </div>
     </section>
 
     <!-- 统一命中清单 -->
@@ -1793,6 +2041,18 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
             @click="setListView('judged')"
           >
             已核实<span class="lvt-num">{{ effect.judged }}</span>
+          </button>
+          <!--
+            风险评估：装报备单，不装命中记录。角标取待评估报备数，
+            与「实时监控」的待核实数**不是一回事、不可相加**（§7 撞名）。
+          -->
+          <button
+            type="button"
+            class="lvt-tab"
+            :class="{ on: listView === 'report' }"
+            @click="setListView('report')"
+          >
+            风险评估<span class="lvt-num" :class="{ bad: reportStore.overdueCount > 0 }">{{ reportStore.pendingCount }}</span>
           </button>
         </div>
         <div class="section-head-actions">

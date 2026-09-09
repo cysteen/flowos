@@ -1,8 +1,16 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { ContainerOutlined, CheckCircleOutlined, WarningOutlined } from '@ant-design/icons-vue';
+import { message } from 'ant-design-vue';
+import {
+  ContainerOutlined,
+  CheckCircleOutlined,
+  WarningOutlined,
+  ClockCircleOutlined,
+  CheckOutlined,
+  PaperClipOutlined,
+  UserOutlined,
+} from '@ant-design/icons-vue';
 import OpCollapsibleSection from '../OpCollapsibleSection.vue';
-import OpTextareaAttach from '../shared/OpTextareaAttach.vue';
 import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue';
 import { riskLevelText } from '@/config/risk';
 import type { TicketRiskVerification } from '@/stores/riskTags';
@@ -14,52 +22,70 @@ import {
   type RiskFlag,
   type RiskLevel,
 } from '@/views/tickets/types/operation';
+import {
+  useRiskReportStore,
+  type AssessDecision,
+  type ReportAssessment,
+  type RiskReport,
+} from '@/stores/riskReports';
+import OpActionModal from '../OpActionModal.vue';
+import { useUserStore } from '@/stores/user';
 
 const props = defineProps<{
+  ticketNo: string;
+  ticketTitle?: string;
   draft: RiskMonitorDraft;
-  /**
-   * 处理表单草稿。本 Tab 的「风险标记」区不自持数据，直接读写这一份里的
-   * riskFlag / riskLevel / riskDescription —— 与「补充处理 → 风险」面板同一个落点，
-   * 也是风险监控核实回传唯一写入的地方。由页面按 prop 下传，Tab 不直连全局状态。
-   */
   form: ProcessFormDraft;
-  /** 风险监控侧对本单的现行结论，只读回显用；同样由页面下传 */
   riskVerification?: TicketRiskVerification | null;
-  /**
-   * 本 Tab 对当前角色只读。矩阵 #43 的 0830 口径，判据表在 operation.ts
-   * （TAB_ROLE_DENY.risk 管"看不看得到"、TAB_ROLE_WRITABLE.risk 管"能不能改"）：
-   * - **可用（打标是它们的职责）**：⑤ 客诉专员、⑦ 投诉督导、⑨ 管理员 —— 与 RISK_TAG_ROLES 同一批人；
-   * - **只读（处理人侧不打标）**：② 二线专员、③ 技术支持、④ 二线班组长、⑧ 质检；
-   * - **无（整个 Tab 不渲染）**：① 一线坐席、⑥ 工单运营 —— 0830 起风险监控整块不给工单运营，
-   *   它连风险词命中页都看不到，工单页的风险 Tab 自然也不该出。
-   */
   readonly?: boolean;
 }>();
+
 const emit = defineEmits<{
-  'update:draft': [draft: RiskMonitorDraft];
   'update:form': [form: ProcessFormDraft];
 }>();
 
-const expanded = ref({ report: true, conclusion: true, risk: true });
-// 等级选项不在模板里手写：与风险监控页、处理表单同一把刻度（存 高/中/低，显示 高危/中危/低危）
+const user = useUserStore();
+const reportStore = useRiskReportStore();
+
+const expanded = ref({ report: true, assess: true, risk: true });
 const riskLevelOptions = RISK_LEVEL_SELECT_OPTIONS;
 
-/** 单一写出口：只读态在此统一拦一道，Tab 本地字段的回写都经过这里 */
-function update(partial: Partial<RiskMonitorDraft>) {
-  if (props.readonly) return;
-  emit('update:draft', { ...props.draft, ...partial });
+/** 在队的那一条（至多一条） */
+const pending = computed(() => reportStore.pendingOf(props.ticketNo));
+/** 历史条目：已评估 + 已撤回，时间倒序。在队那条单独占一块，不进这个列表 */
+const history = computed(() => reportStore.historyOf(props.ticketNo));
+// ---- 撤回（PRD §4.8）----
+// 提交即固化、不提供编辑；填错了只能撤回后重报。**仅待评估、仅本人**，
+// 且撤回后**不删除**，转「已撤回」并留原因 —— 它是"这个人当时报过什么"的证据。
+const withdrawOpen = ref(false);
+const withdrawReason = ref('');
+const withdrawTried = ref(false);
+const missWithdrawReason = computed(() => withdrawTried.value && !withdrawReason.value.trim());
+const canWithdraw = computed(
+  () => !props.readonly && !!pending.value && pending.value.by === user.name,
+);
+
+function openWithdraw() {
+  if (!canWithdraw.value) return;
+  withdrawReason.value = '';
+  withdrawTried.value = false;
+  withdrawOpen.value = true;
 }
 
-/**
- * 风险标记三件套的写出口。走处理表单草稿，但只读判据与 update 完全一样——
- * 字段换了个存放处不等于换了一套权限，本 Tab 只读时这里同样一步都不许写出去。
- */
+function confirmWithdraw() {
+  withdrawTried.value = true;
+  const target = pending.value;
+  if (!target || !withdrawReason.value.trim()) return;
+  reportStore.withdraw(target.id, withdrawReason.value.trim());
+  withdrawOpen.value = false;
+  message.success('已撤回本次报备，可重新发起');
+}
+
 function updateForm(partial: Partial<ProcessFormDraft>) {
   if (props.readonly) return;
   emit('update:form', { ...props.form, ...partial });
 }
 
-/** 与工单处理「是否有风险」面板同一套显隐：有风险才留等级，疑似/有风险才留描述 */
 function onRiskFlagChange(flag: RiskFlag) {
   const needsDesc = flag === '有风险' || flag === '疑似风险';
   updateForm({
@@ -79,21 +105,14 @@ const missRiskDesc = computed(
     && !props.form.riskDescription.trim(),
 );
 
-// ---- 风险监控侧的现行结论（只读回显） ----
-// 与「补充处理 → 风险」面板同一份数据、同一套文案：两处看的是同一个字段，
-// 那"监控已经把这单核实成什么"也必须两处都看得见，否则在本 Tab 上填风险的人
-// （客诉专员/投诉督导）反而是唯一看不到核实结论的人。
-/** 「风险监控核实：高危 · 成立 · 李文萍（客诉专员）· 2026-08-04 14:03」 */
 const riskMonitorLine = computed(() => {
   const v = props.riskVerification;
   if (!v) return '';
   if (!v.latest) return `风险监控核实：本单 ${v.hitCount} 条命中待核实，尚无核实结论`;
   const e = v.latest;
-  // 等级取**工单级**（max 棘轮），不取最后一条命中自己的等级：工单页关心的是这张单有多危险
   return `风险监控核实：${riskLevelText(v.grade)} · ${e.verdict} · ${e.by}（${e.byRole}）· ${e.at}`;
 });
 
-/** 本单命中的构成。只在多条、且已经有人核实过时给——一条时说"本单 1 条命中"是废话 */
 const riskMonitorBreakdown = computed(() => {
   const v = props.riskVerification;
   if (!v || v.hitCount <= 1 || !v.latest) return '';
@@ -104,7 +123,6 @@ const riskMonitorBreakdown = computed(() => {
   return `本单 ${v.hitCount} 条命中：${parts.join(' · ')}`;
 });
 
-/** 坐席自己填过、监控没能覆盖时的差异说明：不写出来会被读成"本页显示的就是监控结论" */
 const riskMonitorDiff = computed(() => {
   const v = props.riskVerification;
   if (!v) return '';
@@ -119,116 +137,270 @@ const riskMonitorDiff = computed(() => {
   return `${parts.join('；')}。本页取值以坐席填写为准，监控结论不覆盖。`;
 });
 
-/**
- * a-select 的 update:value 按 antd 声明给出 SelectValue（含 LabeledValue / 数组）。
- * 本页 select 全是单选、选项 value 均为字符串字面量，且未开 labelInValue，
- * 故清空时归一为 ''、其余按字符串收窄，等价于原来的 `v ?? ''`。
- */
 function selectedText(v: unknown): string {
   return v == null ? '' : String(v);
 }
 
-/** 等级下拉的取值只可能是刻度里的三个字面量之一（单选、未开 labelInValue），故按 RiskLevel 收窄 */
 function onRiskLevelChange(v: unknown) {
   updateForm({ riskLevel: selectedText(v) as RiskLevel | '' });
 }
+
+function formatShortAt(at: string) {
+  const m = at.match(/(\d{2}-\d{2})\s+(\d{2}:\d{2})/);
+  return m ? `${m[1]} ${m[2]}` : at;
+}
+
+function waitMinutes(at: string) {
+  const t = new Date(at.replace(/-/g, '/')).getTime();
+  if (Number.isNaN(t)) return 0;
+  return Math.max(0, Math.floor((Date.now() - t) / 60000));
+}
+
+function assessmentSummary(r: RiskReport) {
+  const a = r.assessment;
+  if (!a) return '';
+  const parts: string[] = [a.decision];
+  if (a.level) parts.push(riskLevelText(a.level));
+  return parts.join(' · ');
+}
+
+function assessmentDetail(r: RiskReport) {
+  const a = r.assessment;
+  if (!a) return '';
+  return `${a.by} ${formatShortAt(a.at)}｜${a.advice}`;
+}
+
+const reportSectionBadge = computed(() => {
+  if (pending.value) return '待评估';
+  if (history.value.length) return String(history.value.length);
+  return undefined;
+});
+
+const reportSectionBadgeVariant = computed(() =>
+  pending.value ? 'warn' as const : 'count' as const,
+);
+
+/** 本单最近一次已评估的报备（按评估时刻倒序） */
+const latestAssessed = computed(() =>
+  reportStore.reportsOf(props.ticketNo).find((r) => r.status === '已评估' && r.assessment) ?? null,
+);
+
+/** 仅有结论时出角标；进行中状态在上面的报备卡片展示 */
+const assessSectionBadge = computed(() => (latestAssessed.value ? '已评估' : undefined));
+
+function adviceLabel(decision: AssessDecision) {
+  return decision === '确认有风险' ? '处置建议' : '反馈意见';
+}
+
+function decisionTone(decision: AssessDecision) {
+  const map: Record<AssessDecision, string> = {
+    确认有风险: 'danger',
+    无风险: 'ok',
+    退回一线改单: 'warn',
+    关联已有投诉单: 'info',
+  };
+  return map[decision];
+}
+
+function formatAssessor(a: ReportAssessment) {
+  return a.byRole ? `${a.by}（${a.byRole}）` : a.by;
+}
+
 </script>
 
 <template>
   <div class="risk-tab">
     <OpCollapsibleSection
-      title="报备与协助"
+      title="风险报备"
       :icon="ContainerOutlined"
+      :badge="reportSectionBadge"
+      :badge-variant="reportSectionBadgeVariant"
       :expanded="expanded.report"
       @toggle="expanded.report = !expanded.report"
     >
-      <div class="field-row">
-        <div class="inline-field">
-          <label class="lbl lbl-108">报备所属功能模块</label>
-          <a-select
-            :value="draft.reportModule || undefined"
-            class="form-select"
-            placeholder="请选择"
-            allow-clear
-            @update:value="(v) => update({ reportModule: selectedText(v) })"
-          >
-            <a-select-option value="在线音乐">在线音乐</a-select-option>
-            <a-select-option value="固件升级">固件升级</a-select-option>
-            <a-select-option value="硬件质量">硬件质量</a-select-option>
-          </a-select>
+      <!-- 在队报备：卡片主体 + 元信息，发起入口在底栏弹窗 -->
+      <section v-if="pending" class="rr-sheet rr-sheet-pending" aria-label="当前待评估报备">
+        <header class="rr-sheet-head">
+          <div class="rr-sheet-brand">
+            <div class="rr-sheet-title-row">
+              <span class="rr-pill rr-pill-pending">
+                <ClockCircleOutlined />
+                待评估
+              </span>
+              <span class="rr-sheet-time">提交于 {{ formatShortAt(pending.at) }}</span>
+              <span class="rr-sheet-wait">已等待 {{ waitMinutes(pending.at) }} 分钟</span>
+            </div>
+            <div class="rr-sheet-meta">
+              <span class="rr-meta-pair">
+                <UserOutlined class="rr-meta-icon" />
+                <span class="rr-meta-label">报备人</span>
+                <span class="rr-meta-value">{{ pending.by }}</span>
+              </span>
+              <span class="rr-meta-sep" aria-hidden="true" />
+              <span class="rr-meta-pair">
+                <span class="rr-meta-label">原因</span>
+                <span class="rr-meta-value">{{ pending.reason }}</span>
+              </span>
+              <template v-if="pending.category">
+                <span class="rr-meta-sep" aria-hidden="true" />
+                <span class="rr-meta-pair">
+                  <span class="rr-meta-label">风险类型</span>
+                  <span class="rr-meta-value rr-meta-warn">{{ pending.category }}</span>
+                </span>
+              </template>
+            </div>
+          </div>
+          <button v-if="canWithdraw" type="button" class="rr-withdraw" @click="openWithdraw">
+            撤回
+          </button>
+        </header>
+
+        <div class="rr-sheet-body">
+          <blockquote class="rr-quote">{{ pending.desc }}</blockquote>
+          <ul v-if="pending.attachments.length" class="rr-files">
+            <li v-for="f in pending.attachments" :key="f" class="rr-file">
+              <PaperClipOutlined />
+              <span>{{ f }}</span>
+            </li>
+          </ul>
         </div>
-        <div class="inline-field">
-          <label class="lbl lbl-72">报备对象</label>
-          <a-select
-            :value="draft.reportTarget || undefined"
-            class="form-select"
-            placeholder="请选择"
-            allow-clear
-            @update:value="(v) => update({ reportTarget: selectedText(v) })"
-          >
-            <a-select-option value="产研-音箱组">产研-音箱组</a-select-option>
-            <a-select-option value="质量部">质量部</a-select-option>
-          </a-select>
+      </section>
+
+      <div v-if="!pending && !history.length" class="rr-empty">
+        <ContainerOutlined class="rr-empty-icon" />
+        <p class="rr-empty-title">暂无风险报备</p>
+        <p class="rr-empty-hint">请点击底部「风险报备」发起</p>
+      </div>
+
+      <!-- 历史报备：时间线样式，与在队卡片同屏可见 -->
+      <div v-if="history.length" class="rr-history" :class="{ 'has-pending': pending }">
+        <h4 class="rr-history-head">报备记录<span class="rr-history-count">{{ history.length }}</span></h4>
+        <div class="rr-timeline">
+          <article v-for="h in history" :key="h.id" class="rr-item">
+            <div class="rr-rail" aria-hidden="true">
+              <span
+                class="rr-dot"
+                :class="h.status === '已评估' ? 'dot-done' : 'dot-gray'"
+              />
+              <span class="rr-line" />
+            </div>
+            <div class="rr-item-body">
+              <header class="rr-item-head">
+                <span class="rr-item-time">{{ formatShortAt(h.at) }}</span>
+                <span class="rr-item-who">{{ h.by }}</span>
+                <span class="rr-tag-reason">{{ h.reason }}</span>
+                <span v-if="h.category" class="rr-tag-cat">{{ h.category }}</span>
+                <span
+                  class="rr-pill rr-pill-sm"
+                  :class="h.status === '已撤回' ? 'rr-pill-gray' : 'rr-pill-done'"
+                >
+                  {{ h.status }}
+                </span>
+              </header>
+              <p class="rr-item-desc">{{ h.desc }}</p>
+              <div v-if="h.attachments.length" class="rr-item-files">
+                <PaperClipOutlined />
+                <span>{{ h.attachments.join('、') }}</span>
+              </div>
+              <div v-if="h.status === '已评估'" class="rr-eval">
+                <CheckOutlined class="rr-eval-icon" />
+                <div class="rr-eval-body">
+                  <span class="rr-eval-sum">{{ assessmentSummary(h) }}</span>
+                  <span class="rr-eval-detail">{{ assessmentDetail(h) }}</span>
+                </div>
+              </div>
+              <p v-else-if="h.withdrawReason" class="rr-withdraw-note">
+                撤回原因：{{ h.withdrawReason }}
+              </p>
+            </div>
+          </article>
         </div>
-      </div>
-      <div class="inline-field">
-        <label class="lbl lbl-88">需协助内容</label>
-        <a-select
-          :value="draft.assistContent || undefined"
-          class="form-select"
-          placeholder="请选择"
-          allow-clear
-          @update:value="(v) => update({ assistContent: selectedText(v) })"
-        >
-          <a-select-option value="根因分析">根因分析</a-select-option>
-          <a-select-option value="批次追溯">批次追溯</a-select-option>
-        </a-select>
-      </div>
-      <div class="stack-field">
-        <label class="lbl">备注</label>
-        <OpTextareaAttach
-          :model-value="draft.remark"
-          :attachments="draft.remarkAttachments"
-          :min-input-height="48"
-          :readonly="readonly"
-          placeholder="补充报备背景、影响范围等说明…"
-          @update:model-value="(v) => update({ remark: v })"
-          @update:attachments="(v) => update({ remarkAttachments: v })"
-        />
       </div>
     </OpCollapsibleSection>
 
-    <OpCollapsibleSection
-      title="处理结论"
-      :icon="CheckCircleOutlined"
-      :expanded="expanded.conclusion"
-      @toggle="expanded.conclusion = !expanded.conclusion"
+    <!-- 撤回：必须填原因，撤回后记录仍在（转「已撤回」），不删除 -->
+    <OpActionModal
+      v-model:open="withdrawOpen"
+      title="撤回风险报备"
+      :icon="ContainerOutlined"
+      tone="warn"
+      :width="440"
+      ok-text="确认撤回"
+      ok-tone="danger"
+      @ok="confirmWithdraw"
     >
-      <div class="inline-field">
-        <label class="lbl lbl-72">处理结论</label>
-        <a-select
-          :value="draft.processConclusion || undefined"
-          class="form-select"
-          placeholder="请选择"
-          allow-clear
-          @update:value="(v) => update({ processConclusion: selectedText(v) })"
-        >
-          <a-select-option value="已解决">已解决</a-select-option>
-          <a-select-option value="待跟进">待跟进</a-select-option>
-          <a-select-option value="无法解决">无法解决</a-select-option>
-        </a-select>
-      </div>
       <div class="stack-field">
-        <label class="lbl">处理答复</label>
-        <OpTextareaAttach
-          :model-value="draft.processReply"
-          :attachments="draft.processReplyAttachments"
-          :min-input-height="48"
-          :readonly="readonly"
-          placeholder="填写对坐席/客户的处理答复…"
-          @update:model-value="(v) => update({ processReply: v })"
-          @update:attachments="(v) => update({ processReplyAttachments: v })"
+        <label class="lbl"><span class="req">*</span>撤回原因</label>
+        <a-textarea
+          v-model:value="withdrawReason"
+          :rows="3"
+          :status="missWithdrawReason ? 'error' : undefined"
+          placeholder="说明为什么撤回这条报备…"
         />
+        <p v-if="missWithdrawReason" class="field-err">请填写撤回原因</p>
+        <p class="report-tip">
+          撤回后本条转为「已撤回」并保留在报备记录里，不会删除；撤回后可重新发起报备。
+        </p>
+      </div>
+    </OpActionModal>
+
+    <OpCollapsibleSection
+      title="评估结果"
+      :icon="CheckCircleOutlined"
+      :badge="assessSectionBadge"
+      badge-variant="hint"
+      :expanded="expanded.assess"
+      @toggle="expanded.assess = !expanded.assess"
+    >
+      <section
+        v-if="latestAssessed?.assessment"
+        class="ra-sheet"
+        aria-label="评估记录"
+      >
+        <header class="ra-head">
+          <span
+            class="ra-decision"
+            :class="`tone-${decisionTone(latestAssessed.assessment.decision)}`"
+          >
+            {{ latestAssessed.assessment.decision }}
+          </span>
+          <span
+            v-if="latestAssessed.assessment.level"
+            class="ra-level"
+          >
+            {{ riskLevelText(latestAssessed.assessment.level) }}
+          </span>
+        </header>
+
+        <dl class="ra-kv">
+          <div class="ra-kv-row">
+            <dt>评估人</dt>
+            <dd>{{ formatAssessor(latestAssessed.assessment) }}</dd>
+          </div>
+          <div class="ra-kv-row">
+            <dt>评估时间</dt>
+            <dd>{{ latestAssessed.assessment.at }}</dd>
+          </div>
+          <div class="ra-kv-row">
+            <dt>评估决策</dt>
+            <dd>{{ latestAssessed.assessment.decision }}</dd>
+          </div>
+          <div
+            v-if="latestAssessed.assessment.decision === '关联已有投诉单' && latestAssessed.assessment.linkedTicketNo"
+            class="ra-kv-row"
+          >
+            <dt>关联投诉单</dt>
+            <dd class="ra-link">{{ latestAssessed.assessment.linkedTicketNo }}</dd>
+          </div>
+          <div class="ra-kv-row ra-kv-block">
+            <dt>{{ adviceLabel(latestAssessed.assessment.decision) }}</dt>
+            <dd class="ra-advice">{{ latestAssessed.assessment.advice }}</dd>
+          </div>
+        </dl>
+      </section>
+
+      <div v-else class="ra-empty">
+        尚无评估结论
       </div>
     </OpCollapsibleSection>
 
@@ -239,7 +411,6 @@ function onRiskLevelChange(v: unknown) {
       :expanded="expanded.risk"
       @toggle="expanded.risk = !expanded.risk"
     >
-      <!-- 取值来自处理表单草稿（form），与「补充处理 → 风险」面板是同一份数据 -->
       <div class="chip-panel panel-neutral">
         <div class="field inline-row risk-row">
           <label>是否有风险</label>
@@ -263,7 +434,6 @@ function onRiskLevelChange(v: unknown) {
           </template>
         </div>
         <p v-if="missRiskLevel" class="field-err">请选择风险等级</p>
-        <!-- 风险监控侧的现行结论：只读回显，不参与必填校验 -->
         <div v-if="riskMonitorLine" class="risk-monitor-note">
           <p class="rm-line">{{ riskMonitorLine }}</p>
           <p v-if="riskMonitorBreakdown" class="rm-sub">{{ riskMonitorBreakdown }}</p>
@@ -292,8 +462,347 @@ function onRiskLevelChange(v: unknown) {
 <style scoped>
 .risk-tab { display: flex; flex-direction: column; gap: 12px; width: 100%; }
 
-.field-row { display: flex; gap: 8px; align-items: center; }
-.field-row .inline-field { flex: 1 1 0; min-width: 0; }
+/* ---- 风险报备：在队卡片 ---- */
+.rr-sheet {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.rr-sheet-pending {
+  border-color: #fed7aa;
+  box-shadow: 0 1px 3px rgba(234, 88, 12, 0.06);
+}
+.rr-sheet-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: linear-gradient(180deg, #fff7ed 0%, #fff 100%);
+  border-bottom: 1px solid #ffedd5;
+}
+.rr-sheet-brand { min-width: 0; flex: 1; }
+.rr-sheet-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.rr-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.rr-pill-pending { color: #c2410c; background: #ffedd5; }
+.rr-pill-pending :deep(.anticon) { font-size: 12px; }
+.rr-pill-done { color: #047857; background: #d1fae5; }
+.rr-pill-gray { color: #6b7280; background: #f3f4f6; }
+.rr-pill-sm { font-size: 10px; padding: 2px 8px; font-weight: 600; }
+.rr-sheet-time { font-size: 13px; font-weight: 600; color: #9a3412; }
+.rr-sheet-wait { font-size: 12px; color: #ea580c; }
+.rr-sheet-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 0;
+  margin-top: 8px;
+}
+.rr-meta-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+.rr-meta-icon { color: #9ca3af; font-size: 12px; }
+.rr-meta-label { color: #9ca3af; }
+.rr-meta-value { color: #374151; font-weight: 600; }
+.rr-meta-warn { color: #c2410c; }
+.rr-meta-sep {
+  width: 1px;
+  height: 12px;
+  margin: 0 10px;
+  background: #e5e7eb;
+  flex: none;
+}
+.rr-withdraw {
+  flex: none;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  color: #9a3412;
+  background: #fff;
+  border: 1px solid #fdba74;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.rr-withdraw:hover { background: #fff1e6; border-color: #fb923c; }
+.rr-sheet-body { padding: 12px 14px 14px; }
+.rr-quote {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.65;
+  color: #1f2937;
+  background: #f8fafc;
+  border-left: 3px solid #fdba74;
+  border-radius: 0 6px 6px 0;
+}
+.rr-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.rr-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: #475569;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+}
+.rr-file :deep(.anticon) { color: #94a3b8; font-size: 11px; }
+
+/* ---- 空态 ---- */
+.rr-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 28px 16px;
+  text-align: center;
+  background: #fafafa;
+  border: 1px dashed #e5e7eb;
+  border-radius: 10px;
+}
+.rr-empty-icon { font-size: 28px; color: #d1d5db; margin-bottom: 8px; }
+.rr-empty-title { margin: 0; font-size: 13px; font-weight: 600; color: #6b7280; }
+.rr-empty-hint { margin: 4px 0 0; font-size: 12px; color: #9ca3af; }
+
+/* ---- 历史时间线 ---- */
+.rr-history { margin-top: 4px; }
+.rr-history.has-pending {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed #e5e7eb;
+}
+.rr-history-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+}
+.rr-history-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #1a6fff;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+}
+.rr-timeline { display: flex; flex-direction: column; gap: 0; }
+.rr-item { display: flex; gap: 10px; }
+.rr-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 16px;
+  flex: none;
+  padding-top: 4px;
+}
+.rr-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+.rr-dot.dot-done { background: #10b981; box-shadow: 0 0 0 3px #d1fae5; }
+.rr-dot.dot-gray { background: #d1d5db; box-shadow: 0 0 0 3px #f3f4f6; }
+.rr-line {
+  flex: 1;
+  width: 1px;
+  min-height: 12px;
+  margin: 4px 0;
+  background: #e5e7eb;
+}
+.rr-item:last-child .rr-line { display: none; }
+.rr-item-body {
+  flex: 1;
+  min-width: 0;
+  padding-bottom: 14px;
+}
+.rr-item-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.rr-item-time { font-size: 12px; font-weight: 700; color: #111827; }
+.rr-item-who { font-size: 12px; color: #6b7280; }
+.rr-tag-reason,
+.rr-tag-cat {
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 4px;
+}
+.rr-tag-reason { color: #475569; background: #f1f5f9; border: 1px solid #e2e8f0; }
+.rr-tag-cat { color: #c2410c; background: #fff7ed; border: 1px solid #fed7aa; }
+.rr-item-desc {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #4b5563;
+}
+.rr-item-files {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: #94a3b8;
+}
+.rr-item-files :deep(.anticon) { font-size: 11px; }
+.rr-eval {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 6px;
+}
+.rr-eval-icon { color: #059669; font-size: 13px; margin-top: 2px; flex: none; }
+.rr-eval-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rr-eval-sum { font-size: 12px; font-weight: 700; color: #047857; }
+.rr-eval-detail { font-size: 11px; line-height: 1.5; color: #4b5563; }
+.rr-withdraw-note {
+  margin: 8px 0 0;
+  padding: 6px 8px;
+  font-size: 11px;
+  color: #6b7280;
+  background: #f9fafb;
+  border-radius: 4px;
+}
+
+.report-tip {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #475569;
+  background: #f1f5f9;
+  border-left: 2px solid #cbd5e1;
+  border-radius: 0 4px 4px 0;
+}
+.report-tip strong { color: #334155; }
+
+/* ---- 评估结果（仅有结论时展示，进行中状态在上方报备卡片） ---- */
+.ra-sheet {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.ra-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 14px;
+  background: linear-gradient(180deg, #f8fafc 0%, #fff 100%);
+  border-bottom: 1px solid #f1f5f9;
+}
+.ra-decision {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 999px;
+}
+.ra-decision.tone-danger { color: #b91c1c; background: #fee2e2; }
+.ra-decision.tone-ok { color: #047857; background: #d1fae5; }
+.ra-decision.tone-warn { color: #b45309; background: #fef3c7; }
+.ra-decision.tone-info { color: #1d4ed8; background: #dbeafe; }
+.ra-level {
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #c2410c;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 4px;
+}
+.ra-kv {
+  margin: 0;
+  padding: 12px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ra-kv-row {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 8px 12px;
+  align-items: start;
+}
+.ra-kv-row dt {
+  margin: 0;
+  font-size: 12px;
+  color: #9ca3af;
+  font-weight: 500;
+  line-height: 1.6;
+}
+.ra-kv-row dd {
+  margin: 0;
+  font-size: 12px;
+  color: #111827;
+  font-weight: 500;
+  line-height: 1.6;
+  word-break: break-word;
+}
+.ra-kv-block { grid-template-columns: 1fr; gap: 4px; }
+.ra-kv-block dt { color: #374151; font-weight: 600; }
+.ra-advice {
+  padding: 8px 10px;
+  background: #f8fafc;
+  border-left: 2px solid #cbd5e1;
+  border-radius: 0 4px 4px 0;
+  font-weight: 400 !important;
+  color: #374151 !important;
+}
+.ra-link { color: #1a6fff !important; font-family: ui-monospace, monospace; }
+.ra-empty {
+  padding: 20px 14px;
+  text-align: center;
+  font-size: 12px;
+  color: #9ca3af;
+  background: #fafafa;
+  border: 1px dashed #e5e7eb;
+  border-radius: 8px;
+}
 
 .inline-field {
   display: flex; align-items: center; gap: 8px; width: 100%;
@@ -303,9 +812,7 @@ function onRiskLevelChange(v: unknown) {
 .lbl {
   flex: none; font-size: 12px; font-weight: 600; color: #374151;
 }
-.lbl-108 { width: 108px; }
 .lbl-72 { width: 72px; }
-.lbl-88 { width: 88px; }
 
 .form-select { flex: 1; min-width: 0; }
 .form-select :deep(.ant-select-selector) {
@@ -360,7 +867,6 @@ function onRiskLevelChange(v: unknown) {
   flex-wrap: wrap;
   align-items: center;
 }
-/* 风险监控核实回显：只读信息块，与可填字段拉开视觉层级 */
 .risk-monitor-note {
   display: flex;
   flex-direction: column;

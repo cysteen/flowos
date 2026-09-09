@@ -29,6 +29,8 @@ import { formatTicketRecordWho, MOCK_FIRST_LINE_AGENTS } from './utils/ticketRec
 import { mergeDraftIntoLatestHandling } from './utils/ticketOverview';
 import { TICKETS } from '@/mock/tickets';
 import { useRiskTagStore } from '@/stores/riskTags';
+import { useRiskReportStore, REPORT_ASSESS_LIMIT_MIN } from '@/stores/riskReports';
+import { tabWritableFor, visibleProcessTabs } from './types/operation';
 import { pullbackOnCsEvent, headerActionsByRole, type TicketStatus } from './types/ticket';
 import { buildChildTicketPrefill, buildReopenTicketPrefill } from './composables/childTicketPrefill';
 import {
@@ -111,7 +113,46 @@ watch(
 // 不是"界面上看着像无风险"——把明确选过的「无风险」也当成空，等于监控可以推翻坐席的判断；
 // 反过来把没碰过的空当成已填，监控就永远写不进去，这个功能等于没做。
 const riskTags = useRiskTagStore();
+const riskReports = useRiskReportStore();
 const riskMonitorVerify = computed(() => riskTags.ticketVerificationOf(ticketNo.value));
+
+/** 底栏「风险报备」：非投诉单 + 可写角色（二线/班组长/管理员） */
+const showRiskReport = computed(() => {
+  const feishuActive = !!d.value.feishuSync && d.value.feishuSync !== 'none';
+  const tabs = visibleProcessTabs(d.value.type, user.roleKey, { feishuActive });
+  return tabs.some((t) => t.key === 'risk') && tabWritableFor('risk', user.roleKey);
+});
+const riskReportPending = computed(() => !!riskReports.pendingOf(ticketNo.value));
+
+function onRiskReport(payload: {
+  reason: string;
+  category: string | null;
+  desc: string;
+  attachments: string[];
+}) {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const at = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  const created = riskReports.submit({
+    ticketNo: ticketNo.value,
+    reason: payload.reason as import('@/stores/riskReports').ReportReason,
+    category: payload.category as import('@/stores/riskReports').RiskCategory | null,
+    desc: payload.desc,
+    attachments: payload.attachments,
+    by: user.name || '当前用户',
+    byRole: user.role.name || '二线专员',
+    at,
+  });
+  if (!created) {
+    message.warning('本单已有报备待评估');
+    return;
+  }
+  const limitText = REPORT_ASSESS_LIMIT_MIN % 60 === 0
+    ? `${REPORT_ASSESS_LIMIT_MIN / 60} 小时`
+    : `${REPORT_ASSESS_LIMIT_MIN} 分钟`;
+  message.success(`已提交报备，客诉专员将在 ${limitText} 内给出结论`);
+  processTabsRef.value?.switchTab('risk');
+}
 /**
  * 回传上次写进表单的值。有它才分得清"这个『疑似风险』是坐席填的还是回传自己填的"——
  * 只认空串的话，回传第一次填完就再也改不了自己写的那个值：
@@ -1177,10 +1218,13 @@ watch(
       :process-result="form.processResult"
       :delegate-targets="d.delegateInfo?.targets"
       :at-tech-support="atTechSupport"
+      :show-risk-report="showRiskReport"
+      :risk-report-pending="riskReportPending"
       @action="onAction"
       @cancel="cancelModalOpen = true"
       @withdraw="confirmWithdraw"
       @transfer-ticket="openChildCreate"
+      @risk-report="onRiskReport"
     />
 
     <CreateTicketModal

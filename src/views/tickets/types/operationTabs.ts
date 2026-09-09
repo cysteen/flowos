@@ -16,15 +16,16 @@ export interface TechProcessDraft {
  * 不同的风险结论；而风险监控页的核实回传只往 ProcessFormDraft 写，另一份永远收不到。
  */
 export interface RiskMonitorDraft {
-  reportModule: string;
-  reportTarget: string;
-  assistContent: string;
-  remark: string;
-  remarkAttachments: string[];
   processConclusion: string;
   processReply: string;
   processReplyAttachments: string[];
 }
+/*
+ * ⚠️ 已删除的三个字段：reportModule / reportTarget / assistContent（+ remark / remarkAttachments）。
+ * 它们属于 8 月的「报备与协助」——**向产研 · 质量部求助**的旧链路，与风险无关。
+ * 本 Tab 2026-09-09 整块改造为「风险报备」（《【930】》§4.2 / D12），旧三字段作废，
+ * 报备单本身不进这个 draft，见 `stores/riskReports.ts`（它有两个消费方，必须跨页共享）。
+ */
 
 export interface FlowHistoryNode {
   id: string;

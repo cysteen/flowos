@@ -9,11 +9,6 @@ export const OPERATION_TAB_DATA: OperationTabData = {
     processResultAttachments: [],
   },
   riskDraft: {
-    reportModule: '',
-    reportTarget: '',
-    assistContent: '',
-    remark: '',
-    remarkAttachments: [],
     processConclusion: '',
     processReply: '',
     processReplyAttachments: [],

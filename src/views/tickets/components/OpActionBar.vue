@@ -5,9 +5,10 @@ import {
   ArrowRightOutlined, VerticalAlignBottomOutlined, PauseCircleOutlined,
   PlayCircleOutlined, RiseOutlined, UndoOutlined, StopOutlined,
   ToolOutlined, CheckCircleOutlined, SaveOutlined, SwapOutlined,
-  RollbackOutlined, TeamOutlined,
+  RollbackOutlined, TeamOutlined, WarningOutlined,
 } from '@ant-design/icons-vue';
 import OpActionDialogs from './OpActionDialogs.vue';
+import OpRiskReportModal from './operation/OpRiskReportModal.vue';
 import OpAftersaleLinkCard from './operation/OpAftersaleLinkCard.vue';
 import OpForwardModal from './operation/OpForwardModal.vue';
 import OpAftersaleActivateModal from './operation/OpAftersaleActivateModal.vue';
@@ -60,6 +61,10 @@ const props = defineProps<{
    * 头部按钮触发的弹窗（如「关联售后」）照常可用。
    */
   hideBar?: boolean;
+  /** 当前角色可发起风险报备（非投诉单 + 二线/班组长/管理员） */
+  showRiskReport?: boolean;
+  /** 本单已有待评估报备时置灰 */
+  riskReportPending?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -67,6 +72,12 @@ const emit = defineEmits<{
   cancel: [];
   withdraw: [];
   transferTicket: [];
+  riskReport: [payload: {
+    reason: string;
+    category: string | null;
+    desc: string;
+    attachments: string[];
+  }];
 }>();
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -74,7 +85,7 @@ const ICONS: Record<string, any> = {
   ArrowRightOutlined, VerticalAlignBottomOutlined, PauseCircleOutlined,
   PlayCircleOutlined, RiseOutlined, UndoOutlined, StopOutlined,
   ToolOutlined, CheckCircleOutlined, SaveOutlined, SwapOutlined,
-  RollbackOutlined, TeamOutlined,
+  RollbackOutlined, TeamOutlined, WarningOutlined,
 };
 
 /** 已成功关联产研反馈：底栏升级置灰，催单/二次激活改在「产研反馈」Tab */
@@ -91,12 +102,13 @@ const DIALOG_ACTIONS: OpActionType[] = [
 
 /** 底栏展示顺序（对齐参考原型 bottom-actions + 强结） */
 const BAR_ORDER: (OpActionType | '转单')[] = [
-  '下送', '升级', '转售后', '撤回', '调剂', '委派', '转单', '挂起', '退回', '关闭工单', '强结',
+  '下送', '升级', '风险报备', '转售后', '撤回', '调剂', '委派', '转单', '挂起', '退回', '关闭工单', '强结',
 ];
 
 const dialogOpen = ref(false);
 const dialogAction = ref<OpActionType | null>(null);
 const forwardModalOpen = ref(false);
+const riskReportOpen = ref(false);
 
 const isTerminal = computed(() => ['closed', 'cancelled', 'settled'].includes(props.opState));
 const isSuspended = computed(() => props.opState === 'suspended');
@@ -228,6 +240,17 @@ const barActions = computed<BarItem[]>(() => {
     }
     const def = actionMap.value.get(key);
     if (!def) continue;
+    if (key === '风险报备' && !props.showRiskReport) continue;
+    if (key === '风险报备' && props.riskReportPending) {
+      items.push({
+        key: def.key,
+        label: def.label,
+        icon: def.icon,
+        forbidden: true,
+        forbiddenTip: '本单已有报备待评估',
+      });
+      continue;
+    }
     // 退回=技术支持退回给工单处理人（唯一方向），仅技术支持持单时出现
     if (key === '退回' && !props.atTechSupport) continue;
     // 委派中：「委派」位切换为「撤销委派」——委派锁住了几乎所有动作，必须留逃生口
@@ -365,6 +388,15 @@ function run(action: OpActionType | '转单') {
   // 售后转入单：转售后 = 激活来源售后单，走确认弹窗，不进建单表单
   if (action === '转售后' && activatableAftersale.value) {
     activateOpen.value = true;
+    return;
+  }
+  if (action === '风险报备') {
+    if (!props.showRiskReport) return;
+    if (props.riskReportPending) {
+      message.warning('本单已有报备待评估');
+      return;
+    }
+    riskReportOpen.value = true;
     return;
   }
   if (DIALOG_ACTIONS.includes(action)) {
@@ -525,6 +557,13 @@ defineExpose({ openEscalate, openAftersale });
     :title="activatableAftersale.title"
     :loading="activateLoading"
     @confirm="onActivateConfirm"
+  />
+
+  <OpRiskReportModal
+    v-model:open="riskReportOpen"
+    :ticket-no="ticketNo"
+    :ticket-title="ticketTitle"
+    @submit="(p) => emit('riskReport', p)"
   />
 </template>
 

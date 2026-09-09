@@ -189,6 +189,8 @@ defineExpose({ switchTab });
       <!-- 风险标记三件套走 form（与「补充处理 → 风险」面板同一份），Tab 本地字段仍走 riskDraft -->
       <OpRiskMonitorTab
         v-else-if="activeTab === 'risk'"
+        :ticket-no="ticketNo"
+        :ticket-title="detail.title"
         :draft="tabData.riskDraft"
         :form="form"
         :risk-verification="riskVerification"
