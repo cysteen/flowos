@@ -334,6 +334,12 @@ function openEscalatedTicket(no: string) {
               <span>{{ f }}</span>
             </li>
           </ul>
+          <!--
+            报备不落子状态、SLA 不停钟（基线 ※29）。工单本身看不出任何变化，
+            这句是它在可见区的**唯一**落点：头部那行只挂 hover title，
+            两处都不写的话，处理人会以为报备期间单子冻住了、停下来等结论。
+          -->
+          <p class="rr-sla-note">评估期间本单照常处理，SLA 不停表</p>
         </div>
       </section>
 
@@ -651,6 +657,12 @@ function openEscalatedTicket(no: string) {
   background: #f8fafc;
   border-left: 3px solid #fdba74;
   border-radius: 0 6px 6px 0;
+}
+/* SLA 口径行：是背景信息不是要读的内容，压到最轻，不与场景描述抢 */
+.rr-sla-note {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: #9ca3af;
 }
 .rr-files {
   display: flex;

@@ -533,13 +533,18 @@ function isComplaintTicket(ticketNo: string) {
   return ticketNo.startsWith('IFLYTS-');
 }
 
-/** 选「接管」时的提示行，按当前这条的原单类型给出真实去向 */
+/**
+ * 选「接管」时的提示行，按当前这条的原单类型给出真实去向。
+ *
+ * 「此步不可撤销」并进这一行、**不另起一条常驻说明**：它只有在选中「接管」时才成立，
+ * 常驻的话选「不升级」也跟着显示，那时它是句噪音。
+ */
 const takeoverHint = computed(() => {
   const no = assessTarget.value?.ticketNo;
   if (no && isComplaintTicket(no)) {
-    return '本单已是投诉单，提交后由你在工单上执行「工单管控」接手，本单状态不变、不派生新单';
+    return '本单已是投诉单，提交后由你在工单上执行「工单管控」接手，本单状态不变、不派生新单。此步不可撤销';
   }
-  return '提交后原单落「已升级投诉」并派生一张投诉单，新单全量继承本单信息';
+  return '提交后原单落「已升级投诉」并派生一张投诉单，新单全量继承本单信息。此步不可撤销';
 });
 
 function confirmAssess() {
