@@ -7,6 +7,7 @@ import {
 import CallSessionBar from '@/components/cti/CallSessionBar.vue';
 import CtiAuthIcon from '@/components/cti/CtiAuthIcon.vue';
 import DialPad from '@/components/cti/DialPad.vue';
+import { useOutboundCall } from '@/composables/useOutboundCall';
 import { useCtiStore, type BreakReason, type ReadyMode, READY_MODE_LABELS } from '@/stores/cti';
 
 const READY_MENU: { key: ReadyMode; label: string }[] = [
@@ -23,6 +24,7 @@ const BREAK_MENU: { key: BreakReason; label: string }[] = [
 ];
 
 const cti = useCtiStore();
+const { requestOutboundCall } = useOutboundCall();
 
 const readyActive = computed(() => cti.workStatus === 'ready');
 const breakActive = computed(() => cti.workStatus === 'break');
@@ -32,14 +34,15 @@ const disabled = computed(() => cti.workButtonsDisabled);
 const dialPadOpen = ref(false);
 const callDisabled = computed(() => cti.inCall || cti.workStatus === 'break');
 
+function closeDialPad() {
+  dialPadOpen.value = false;
+}
+
 function onDial(phone: string) {
-  const ok = cti.startCall({ ticketId: '', phone, contactLabel: phone });
-  if (ok) {
-    dialPadOpen.value = false;
-    message.success(`正在呼叫 ${phone}`);
-  } else {
-    message.warning('当前状态无法外呼（通话中或小休）');
-  }
+  requestOutboundCall(
+    { phone, contactLabel: phone },
+    { onPickerOpen: closeDialPad, onSuccess: closeDialPad },
+  );
 }
 
 const dropdownTone = computed(() => {

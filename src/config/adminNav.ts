@@ -113,6 +113,8 @@ export const ADMIN_GROUPS: AdminNavGroup[] = [
       { key: 'problem-tags', label: '问题分类', prd: 'PRD-85' },
       // 815：原「消息通知」一级分组下只剩通知规则一页，独占分组不划算，并入业务管理
       { key: 'notify-rules', label: '通知管理', prd: 'PRD-815' },
+      // 915：外显号码从容联云同步，本页维护班组授权与备注
+      { key: 'outbound-numbers', label: '外显号码', prd: 'PRD-915' },
     ],
   },
   {

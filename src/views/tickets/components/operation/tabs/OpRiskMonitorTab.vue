@@ -207,15 +207,13 @@ const latestAssessed = computed(() =>
 const assessSectionBadge = computed(() => (latestAssessed.value ? '已评估' : undefined));
 
 function adviceLabel(decision: AssessDecision) {
-  return decision === '确认有风险' ? '处置建议' : '反馈意见';
+  return decision === '接管' ? '接管说明' : '反馈意见';
 }
 
 function decisionTone(decision: AssessDecision) {
   const map: Record<AssessDecision, string> = {
-    确认有风险: 'danger',
-    无风险: 'ok',
-    退回一线改单: 'warn',
-    关联已有投诉单: 'info',
+    不升级: 'ok',
+    接管: 'danger',
   };
   return map[decision];
 }
@@ -402,13 +400,6 @@ function formatAssessor(a: ReportAssessment) {
           <div class="ra-kv-row">
             <dt>评估决策</dt>
             <dd>{{ latestAssessed.assessment.decision }}</dd>
-          </div>
-          <div
-            v-if="latestAssessed.assessment.decision === '关联已有投诉单' && latestAssessed.assessment.linkedTicketNo"
-            class="ra-kv-row"
-          >
-            <dt>关联投诉单</dt>
-            <dd class="ra-link">{{ latestAssessed.assessment.linkedTicketNo }}</dd>
           </div>
           <div class="ra-kv-row ra-kv-block">
             <dt>{{ adviceLabel(latestAssessed.assessment.decision) }}</dt>

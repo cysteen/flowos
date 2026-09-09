@@ -30,8 +30,8 @@ export type ReportReason = (typeof REPORT_REASONS)[number];
 export const RISK_CATEGORIES = ['舆情风险', '监管风险', '群体性风险', '其他'] as const;
 export type RiskCategory = (typeof RISK_CATEGORIES)[number];
 
-/** 评估决策四选一（PRD §5.4）。四个**都不派生新单、不改处理人、不改工单子状态** */
-export const ASSESS_DECISIONS = ['确认有风险', '无风险', '退回一线改单', '关联已有投诉单'] as const;
+/** 评估决策二选一（业务文档）。原型按「不升级 / 接管」呈现 */
+export const ASSESS_DECISIONS = ['不升级', '接管'] as const;
 export type AssessDecision = (typeof ASSESS_DECISIONS)[number];
 
 /** 报备单两态（PRD §3.1）。「已撤回」不是第三态，是待评估的终止分支 */
@@ -39,11 +39,10 @@ export type ReportStatus = '待评估' | '已评估' | '已撤回';
 
 export interface ReportAssessment {
   decision: AssessDecision;
-  /** 仅决策＝「确认有风险」时有值 */
+  /** 风险等级（二选一决策下通常为空，保留字段兼容历史结构） */
   level: RiskLevel | null;
-  /** 处置建议 / 反馈意见，四个决策各自的必填文本 */
+  /** 不升级 → 反馈意见；接管 → 接管说明 */
   advice: string;
-  /** 仅决策＝「关联已有投诉单」时有值 */
   linkedTicketNo?: string;
   by: string;
   byRole: string;
@@ -136,9 +135,9 @@ const SEED: RiskReport[] = [
     at: agoStamp(90),
     status: '已评估',
     assessment: {
-      decision: '确认有风险',
-      level: '中',
-      advice: '当日内主动回电一次，明确给出处理时间点并在处理记录里留痕；两个工作日内未闭环再报一次。',
+      decision: '不升级',
+      level: null,
+      advice: '客户情绪可安抚，当前咨询单处理路径足够；建议当日内回电明确处理节点并在处理记录留痕。',
       by: '李文萍',
       byRole: '客诉专员',
       // 评估时刻落在今日：否则「今日已评估」与「已评估默认只看今日」两处恒为 0
@@ -251,12 +250,10 @@ export const useRiskReportStore = defineStore('riskReports', () => {
 
   /**
    * B4 评估决策分布（§7）。窗口＝自然日，与 B3 同一批，
-   * 故 `B3 = B4 四档之和` 这条恒等式天然成立（§7 恒等式）。
+   * 故 `B3 = B4 两档之和` 这条恒等式天然成立。
    */
   const decisionCounts = computed(() => {
-    const base: Record<AssessDecision, number> = {
-      确认有风险: 0, 无风险: 0, 退回一线改单: 0, 关联已有投诉单: 0,
-    };
+    const base: Record<AssessDecision, number> = { 不升级: 0, 接管: 0 };
     const today = todayPrefix();
     for (const r of assessedList.value) {
       if (!r.assessment || !r.assessment.at.startsWith(today)) continue;
@@ -266,35 +263,11 @@ export const useRiskReportStore = defineStore('riskReports', () => {
   });
 
   /**
-   * 本单现行的评估结论 —— 回传工单风险字段时取的就是这一个对象（930 §6.1 步 1）。
-   *
-   * 【为什么只认「确认有风险」】四个决策里只有它是"人判定这单有风险"。
-   * 「无风险」写不得：客诉专员评的是"要不要提前介入"，不是"这单最终没问题"，
-   * 把它写成工单的「无风险」等于替坐席下了结论；
-   * 「退回一线改单」「关联已有投诉单」答的都不是风险有无，与这组字段无关。
-   * 决策不是「确认有风险」→ 返回 null，调用方整条跳过，一个字都不写。
-   *
-   * 【为什么等级取 max 而不是最后一条】一张单可以反复报备（评估结论不可改，再报是唯一的纠错路径），
-   * 后一次评成「中」不该把前一次已经定下的「高」降回来 —— 等级降了，风险没有降（915 §3.2 只升不降）。
-   * 【为什么 latest 另按时刻取】等级要的是最重的那一档，提示行要的是最近的那一次，两个问题两种取法。
+   * 本单现行的评估结论 —— 回传工单风险字段时取的就是这一个对象。
+   * 二选一决策（不升级 / 接管）均不回写工单风险字段，返回 null。
    */
-  function ticketAssessmentOf(ticketNo: string): TicketRiskAssessment | null {
-    let grade: RiskLevel | null = null;
-    let latest: ReportAssessment | undefined;
-    let confirmedCount = 0;
-    for (const r of reports.value) {
-      if (r.ticketNo !== ticketNo || r.status !== '已评估') continue;
-      const a = r.assessment;
-      if (!a || a.decision !== '确认有风险') continue;
-      confirmedCount += 1;
-      // RISK_LEVELS 本身就是由重到轻排的，序位直接用下标取，不在这里再抄一份等级序
-      if (a.level && (!grade || RISK_LEVELS.indexOf(a.level) < RISK_LEVELS.indexOf(grade))) {
-        grade = a.level;
-      }
-      if (!latest || a.at.localeCompare(latest.at) > 0) latest = a;
-    }
-    if (!latest) return null;
-    return { ticketNo, grade, flag: '有风险', latest, confirmedCount };
+  function ticketAssessmentOf(_ticketNo: string): TicketRiskAssessment | null {
+    return null;
   }
 
   /**

@@ -12,6 +12,7 @@ export interface CallSession {
   ticketId: string;
   contactLabel: string;
   phone: string;
+  outboundNumber: string;
   status: CallStatus;
   startedAt: number;
   connectedAt: number | null;
@@ -139,9 +140,9 @@ export const useCtiStore = defineStore('cti', {
         }
       }, 2000);
     },
-    startCall(payload: { ticketId: string; phone: string; contactLabel: string }) {
-      const { ticketId, phone, contactLabel } = payload;
-      if (!phone) return false;
+    startCall(payload: { ticketId: string; phone: string; contactLabel: string; outboundNumber: string }) {
+      const { ticketId, phone, contactLabel, outboundNumber } = payload;
+      if (!phone || !outboundNumber) return false;
       if (this.workStatus === 'offline') return false;
       if (this.workStatus === 'break') return false;
       if (this.callSession) return false;
@@ -156,6 +157,7 @@ export const useCtiStore = defineStore('cti', {
         ticketId,
         contactLabel,
         phone,
+        outboundNumber,
         status: 'dialing',
         startedAt,
         connectedAt: null,

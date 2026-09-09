@@ -3,6 +3,7 @@ import { computed, defineAsyncComponent, onActivated, onBeforeUnmount, onDeactiv
 import { useRoute, useRouter } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
 import { useWorkspaceTabsStore, resolveTicketTabTitle } from '@/stores/workspaceTabs';
+import { useOutboundCall } from '@/composables/useOutboundCall';
 import { useCtiStore, formatCallDuration } from '@/stores/cti';
 import { useUserStore } from '@/stores/user';
 import OpHeader from './components/operation/OpHeader.vue';
@@ -74,6 +75,7 @@ const actionBarRef = ref<{ openEscalate: () => void; openAftersale: () => void }
 const tabsStore = useWorkspaceTabsStore();
 const cti = useCtiStore();
 const user = useUserStore();
+const { requestOutboundCall } = useOutboundCall();
 
 const overviewExpanded = ref(false);
 const supplementModalOpen = ref(false);
@@ -112,8 +114,7 @@ watch(
 // 【回传什么】只回传**工单级风险等级**与由结论**推导**出的「是否有风险」。
 // 「命中判定（成立/误报）」**不回传**：它判的是"这条规则这次命中得准不准"，喂的是规则准确率；
 // 写进工单会让坐席把「误报」读成"这单没风险"，而误报的真正结论是"规则捞错了"，
-// 这单危不危险监控根本没说。报备侧同理，**只有决策＝「确认有风险」才有话说**，
-// 其余三档（无风险 / 退回一线改单 / 关联已有投诉单）一字不写。
+// 这单危不危险监控根本没说。报备侧同理，**二选一决策（不升级 / 接管）不回写风险字段**。
 //
 // 【写入优先级】工单侧优先，两路都只填空。判"空"的口径是**坐席从没碰过这个字段**（`''`），
 // 不是"界面上看着像无风险"——把明确选过的「无风险」也当成空，等于系统可以推翻坐席的判断；
@@ -263,22 +264,10 @@ const createPrefill = ref<CreateTicketPrefill | null>(null);
 
 function onContact(type: 'call' | 'sms' | 'email', value: string) {
   if (type === 'call') {
-    if (cti.workStatus === 'offline') {
-      message.warning('请先签入上班');
-      return;
-    }
-    if (cti.workStatus === 'break') {
-      message.warning('请先切换为就绪');
-      return;
-    }
-    if (cti.callSession) {
-      message.warning('当前有进行中的外呼');
-      return;
-    }
     const isAgent = d.value.agent?.contacts?.some((c) => c.value === value);
     const role = isAgent ? '代办人' : '客户';
     const name = isAgent ? (d.value.agent?.name ?? '') : (d.value.customer.name || '');
-    cti.startCall({
+    requestOutboundCall({
       ticketId: ticketNo.value,
       phone: value,
       contactLabel: name ? `${role}·${name}` : role,

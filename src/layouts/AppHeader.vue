@@ -13,6 +13,7 @@ import {
   CheckOutlined,
 } from '@ant-design/icons-vue';
 import AgentCtiBar from './AgentCtiBar.vue';
+import OutboundNumberPickerModal from '@/components/cti/OutboundNumberPickerModal.vue';
 import GlobalSearch from './GlobalSearch.vue';
 import { useUserStore } from '@/stores/user';
 import { useTenantStore } from '@/stores/tenant';
@@ -239,6 +240,7 @@ function switchTenant(tenantId: string) {
       </div>
     </div>
   </header>
+  <OutboundNumberPickerModal v-if="showCtiBar" />
 </template>
 
 <style scoped>

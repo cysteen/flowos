@@ -128,7 +128,7 @@ const reportPendingRows = computed(() => {
  * 已评估视图**默认只看今日**（业务拍板 2026-09-09）。
  *
  * 【为什么必须限今日】上方「评估决策」四枚卡按 **自然日** 算（PRD §7 B4 窗口＝自然日，
- * 且 `B3 = B4 四档之和` 这条恒等式靠它成立）。若列表给全量，点「确认有风险 1」下钻，
+ * 且 `B3 = B4 两档之和` 这条恒等式靠它成立）。若列表给全量，点「接管 1」下钻，
  * 卡是今日数、表是全量表，**同一块屏上两个数对不上** —— 与本文件开头那条
  * 「标签写着一个数、表里躺着另一批」是同一个坑。要看历史，把这个开关关掉。
  */
@@ -203,45 +203,21 @@ function waitedText(at: string) {
 const assessOpen = ref(false);
 const assessTarget = ref<RiskReport | null>(null);
 const assessDecision = ref<AssessDecision | ''>('');
-const assessLevel = ref<RiskLevel | ''>('');
 const assessAdvice = ref('');
-const assessLinkedNo = ref('');
 const assessTried = ref(false);
 
-/** 等级只在「确认有风险」这一档有意义；其余三档不出现该字段 */
-const assessNeedsLevel = computed(() => assessDecision.value === '确认有风险');
-/** 目标投诉单号只在「关联已有投诉单」这一档必填 */
-const assessNeedsLink = computed(() => assessDecision.value === '关联已有投诉单');
-
 const missAssessDecision = computed(() => assessTried.value && !assessDecision.value);
-const missAssessLevel = computed(() => assessTried.value && assessNeedsLevel.value && !assessLevel.value);
 const missAssessAdvice = computed(() => assessTried.value && !assessAdvice.value.trim());
-/** 关联单号不得为空、且**不得指向本单**（自己关联自己没有意义） */
-const missAssessLink = computed(
-  () =>
-    assessTried.value
-    && assessNeedsLink.value
-    && (!assessLinkedNo.value.trim() || assessLinkedNo.value.trim() === assessTarget.value?.ticketNo),
-);
-const assessValid = computed(
-  () =>
-    !!assessDecision.value
-    && (!assessNeedsLevel.value || !!assessLevel.value)
-    && !!assessAdvice.value.trim()
-    && (!assessNeedsLink.value
-      || (!!assessLinkedNo.value.trim() && assessLinkedNo.value.trim() !== assessTarget.value?.ticketNo)),
-);
+const assessValid = computed(() => !!assessDecision.value && !!assessAdvice.value.trim());
 
-/** 四个决策各自那句必填文本的标签——用词不同，不能共用一个「备注」 */
+/** 二选一决策各自必填文本的标签 */
 const assessAdviceLabel = computed(() =>
-  assessDecision.value === '确认有风险' ? '处置建议' : '反馈意见',
+  assessDecision.value === '接管' ? '接管说明' : '反馈意见',
 );
 const assessAdvicePlaceholder = computed(() => {
   switch (assessDecision.value) {
-    case '确认有风险': return '写清接下来建议怎么办、多久内做完…';
-    case '无风险': return '告知报备人为什么判定无风险、可以怎么继续处理…';
-    case '退回一线改单': return '写清哪个字段错了、应该改成什么…';
-    case '关联已有投诉单': return '写清两张单是同一件事的判断依据…';
+    case '不升级': return '告知报备人为什么不升级、可以怎么继续处理…';
+    case '接管': return '写清接管理由与后续处置安排…';
     default: return '';
   }
 });
@@ -249,9 +225,7 @@ const assessAdvicePlaceholder = computed(() => {
 function openAssess(r: RiskReport) {
   assessTarget.value = r;
   assessDecision.value = '';
-  assessLevel.value = '';
   assessAdvice.value = '';
-  assessLinkedNo.value = '';
   assessTried.value = false;
   assessOpen.value = true;
 }
@@ -267,6 +241,17 @@ const assessTargetHistory = computed(() => {
   return no ? reportStore.historyOf(no) : [];
 });
 
+/** 原型：附件名为占位，点击触发浏览器下载 */
+function downloadReportAttachment(name: string) {
+  const blob = new Blob([`（原型演示）${name}\n`], { type: 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function confirmAssess() {
   assessTried.value = true;
   const target = assessTarget.value;
@@ -274,21 +259,15 @@ function confirmAssess() {
 
   reportStore.assess(target.id, {
     decision: assessDecision.value,
-    // 等级只有「确认有风险」这一档落值；其余三档一律 null，不留半个残值
-    level: assessNeedsLevel.value ? (assessLevel.value as RiskLevel) : null,
+    level: null,
     advice: assessAdvice.value.trim(),
-    linkedTicketNo: assessNeedsLink.value ? assessLinkedNo.value.trim() : undefined,
     by: user.name,
     byRole: user.role.name,
     at: nowStamp(),
   });
 
   assessOpen.value = false;
-  message.success(
-    assessDecision.value === '确认有风险'
-      ? `已提交结论：确认有风险 · ${riskLevelText(assessLevel.value as RiskLevel)}，结论已回传工单`
-      : `已提交结论：${assessDecision.value}`,
-  );
+  message.success(`已提交结论：${assessDecision.value}`);
 }
 /** 视图内的等级选择。大盘点「待打标」卡下钻时预置为高危 */
 const gradeFilter = ref<GradeFilter>(route.query.pending === '1' ? '高' : 'all');
@@ -1877,168 +1856,129 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
       </div>
     </div>
 
-    <!-- ② 监控成效：待办清空后，这一组数是这个岗位这段时间的全部交代 -->
+    <!-- ② 监控成效：左右两栏 —— 左监控命中、右风险报备（分母不同，不可相加） -->
     <section class="overview-section effect-section">
-      <!--
-        只有「待核实」「已核实」两张卡可点：它们各自背后是一批**能被打开来逐条看**的记录，
-        与下方清单的两个视图一一对应，点哪张就换哪一批，激活态两处联动。
-        「发现」与「准确率」保持不可点——「全部」域取消后前者已没有对应的清单可去，
-        后者是比率、背后本就没有一批记录；给它们一个点不出结果的手型，比不给更误导。
-        核实结果是成效的落点，同时是「已核实」视图内筛选项的快捷入口。
-      -->
-      <div class="effect-row">
-        <h2 class="section-title effect-title" title="发现 → 核实 → 定论 · 准确率分母只算已核实，未核实的不拉低它">监控数据</h2>
-
-        <div class="effect-metrics">
-          <div
-            class="em-item em-static"
-            :style="{ '--kpi-accent': '#1A6FFF' }"
-            title="风险词命中总数 · 待核实与已核实之和"
-          >
-            <span class="em-label">发现</span>
-            <span class="em-val">{{ effect.total }}</span>
+      <div class="effect-split">
+        <div class="effect-pane effect-pane--monitor">
+          <h2 class="pane-title" title="发现 → 核实 → 定论 · 分母是风险词命中记录">监控数据</h2>
+          <div class="dash-grid dash-grid-4">
+            <button
+              type="button"
+              class="dm-cell"
+              :class="{ on: listView === 'realtime', hot: untaggedHigh.length > 0 }"
+              :title="`其中高危 ${untaggedHigh.length} 条`"
+              @click="setListView('realtime')"
+            >
+              <span class="dm-k">待核实</span>
+              <span class="dm-val">
+                <span class="dm-v">{{ effect.open }}</span>
+                <span v-if="untaggedHigh.length" class="dm-h bad">高危 {{ untaggedHigh.length }}</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              class="dm-cell"
+              :class="{ on: listView === 'judged' }"
+              @click="setListView('judged')"
+            >
+              <span class="dm-k">已核实</span>
+              <span class="dm-val"><span class="dm-v">{{ effect.judged }}</span></span>
+            </button>
+            <div class="dm-cell dm-static" title="待核实与已核实之和">
+              <span class="dm-k">发现</span>
+              <span class="dm-val"><span class="dm-v">{{ effect.total }}</span></span>
+            </div>
+            <div class="dm-cell dm-static" title="确认是风险 ÷ 已核实">
+              <span class="dm-k">准确率</span>
+              <span class="dm-val">
+                <span
+                  v-if="effect.accuracy !== null"
+                  class="dm-v"
+                  :style="{ color: ACC_TONE_COLOR[accTone(effect.accuracy)] }"
+                >{{ Math.round(effect.accuracy * 100) }}%</span>
+                <span v-else class="dm-v muted">—</span>
+              </span>
+            </div>
           </div>
-          <button
-            type="button"
-            class="em-item"
-            :class="{ on: listView === 'judged' }"
-            :style="{ '--kpi-accent': '#10B981' }"
-            title="已判定成立或误报"
-            @click="setListView('judged')"
-          >
-            <span class="em-label">已核实</span>
-            <span class="em-val">{{ effect.judged }}</span>
-          </button>
-          <!-- 准确率是比率，背后没有一批可看的记录，故它保持不可点 -->
-          <div
-            class="em-item em-static"
-            :style="{ '--kpi-accent': effect.accuracy === null ? '#9CA3AF' : ACC_TONE_COLOR[accTone(effect.accuracy)] }"
-            title="确认是风险 ÷ 已核实 · 当前范围 · 累计"
-          >
-            <span class="em-label">准确率</span>
-            <span
-              v-if="effect.accuracy !== null"
-              class="em-val"
-              :style="{ color: ACC_TONE_COLOR[accTone(effect.accuracy)] }"
-            >{{ Math.round(effect.accuracy * 100) }}%</span>
-            <span v-else class="em-val muted" title="还没有核实过任何命中">—</span>
+          <div class="dash-links">
+            <span class="dash-links-k">核实结果</span>
+            <button
+              type="button"
+              class="dl-item"
+              :class="{ on: listView === 'judged' && ledgerFilter.verdict === '成立' }"
+              @click="setListView('judged'); ledgerFilter.verdict = '成立'"
+            >
+              确认是风险<b>{{ confirmedHits.length }}</b>
+              <small v-if="confirmedHits.length">高{{ confirmedByGrade['高'] }}·中{{ confirmedByGrade['中'] }}·低{{ confirmedByGrade['低'] }}</small>
+            </button>
+            <button
+              type="button"
+              class="dl-item"
+              :class="{ on: listView === 'judged' && ledgerFilter.verdict === '误报' }"
+              @click="setListView('judged'); ledgerFilter.verdict = '误报'"
+            >
+              误报<b>{{ falseHits.length }}</b>
+            </button>
           </div>
-          <button
-            type="button"
-            class="em-item"
-            :class="{ on: listView === 'realtime' }"
-            :style="{ '--kpi-accent': untaggedHigh.length > 0 ? '#EF4444' : '#F59E0B' }"
-            :title="`其中高危 ${untaggedHigh.length} 条`"
-            @click="setListView('realtime')"
-          >
-            <span class="em-label">待核实</span>
-            <span
-              class="em-val"
-              :style="{ color: untaggedHigh.length > 0 ? '#EF4444' : '#F59E0B' }"
-            >{{ effect.open }}</span>
-            <span class="em-hint" :class="{ bad: untaggedHigh.length > 0 }">高危 {{ untaggedHigh.length }}</span>
-          </button>
         </div>
 
-        <div class="effect-result">
-          <span class="er-label">核实结果</span>
-          <button
-            type="button"
-            class="er-btn"
-            :class="{ active: listView === 'judged' && ledgerFilter.verdict === '成立' }"
-            @click="setListView('judged'); ledgerFilter.verdict = '成立'"
-          >
-            <span class="er-name">确认是风险</span>
-            <span class="er-num danger">{{ confirmedHits.length }}</span>
-            <span v-if="confirmedHits.length" class="er-mix">
-              高 {{ confirmedByGrade['高'] }} · 中 {{ confirmedByGrade['中'] }} · 低 {{ confirmedByGrade['低'] }}
-            </span>
-            <RightOutlined class="er-go" />
-          </button>
-          <button
-            type="button"
-            class="er-btn"
-            :class="{ active: listView === 'judged' && ledgerFilter.verdict === '误报' }"
-            title="不计入风险统计"
-            @click="setListView('judged'); ledgerFilter.verdict = '误报'"
-          >
-            <span class="er-name">误报</span>
-            <span class="er-num muted">{{ falseHits.length }}</span>
-            <RightOutlined class="er-go" />
-          </button>
-        </div>
-      </div>
-
-      <!--
-        风险报备 —— 与上一行**同一块卡区、同一副骨架**（业务拍板"融合一起"），
-        不在页签里另开一排卡：两排卡上下相邻却口径不同，必被读串。
-
-        🔴 两行的分母完全不同，故左侧组标题与卡文案都写全：
-        上行数的是**风险词命中记录**，本行数的是**报备单**，**两处不可相加**
-        （《【930】》§7 撞名一栏）。同一张工单报三次就是三条，与命中数无关。
-      -->
-      <div class="effect-row report-row">
-        <h2
-          class="section-title effect-title"
-          title="二线专员报上来的风险 · 客诉专员评估 · 分母是报备单条数，与上行的命中数不可相加"
-        >风险报备</h2>
-
-        <div class="effect-metrics">
-          <button
-            type="button"
-            class="em-item"
-            :class="{ on: listView === 'report' && reportView === 'pending' }"
-            :style="{ '--kpi-accent': reportStore.overdueCount > 0 ? '#EF4444' : '#F59E0B' }"
-            :title="`其中超时未评 ${reportStore.overdueCount} 条`"
-            @click="setListView('report'); reportView = 'pending'"
-          >
-            <span class="em-label">待评估报备</span>
-            <span class="em-val" :style="{ color: reportStore.overdueCount > 0 ? '#EF4444' : '#F59E0B' }">
-              {{ reportStore.pendingCount }}
-            </span>
-          </button>
-          <button
-            type="button"
-            class="em-item"
-            :class="{ on: listView === 'report' && reportView === 'pending' && onlyOverdue }"
-            :style="{ '--kpi-accent': reportStore.overdueCount > 0 ? '#EF4444' : '#9CA3AF' }"
-            :title="`提交后超过 ${assessLimitText}仍无人评估 · 不是 SLA，不走工作日历`"
-            @click="setListView('report'); reportView = 'pending'; onlyOverdue = true"
-          >
-            <span class="em-label">超时未评</span>
-            <span class="em-val" :class="{ bad: reportStore.overdueCount > 0 }">
-              {{ reportStore.overdueCount }}
-            </span>
-          </button>
-          <button
-            type="button"
-            class="em-item"
-            :class="{ on: listView === 'report' && reportView === 'assessed' }"
-            :style="{ '--kpi-accent': '#10B981' }"
-            title="按评估时刻落在今日算 · 自然日 00:00 起"
-            @click="setListView('report'); reportView = 'assessed'"
-          >
-            <span class="em-label">今日已评估</span>
-            <span class="em-val">{{ reportStore.assessedTodayCount }}</span>
-          </button>
-        </div>
-
-        <div class="effect-result">
-          <span class="er-label">评估决策</span>
-          <button
-            v-for="d in ASSESS_DECISIONS"
-            :key="d"
-            type="button"
-            class="er-btn"
-            :class="{ active: listView === 'report' && reportView === 'assessed' && decisionFilter === d }"
-            @click="setListView('report'); reportView = 'assessed'; decisionFilter = d"
-          >
-            <span class="er-name">{{ d }}</span>
-            <span class="er-num" :class="d === '确认有风险' ? 'danger' : 'muted'">
-              {{ reportStore.decisionCounts[d] }}
-            </span>
-            <RightOutlined class="er-go" />
-          </button>
+        <div class="effect-pane effect-pane--report">
+          <h2
+            class="pane-title"
+            title="二线专员报备 · 客诉专员评估 · 分母是报备单，与左栏命中数不可相加"
+          >风险报备</h2>
+          <div class="dash-grid dash-grid-3">
+            <button
+              type="button"
+              class="dm-cell"
+              :class="{
+                on: listView === 'report' && reportView === 'pending' && !onlyOverdue,
+                hot: reportStore.overdueCount > 0,
+              }"
+              @click="setListView('report'); reportView = 'pending'; onlyOverdue = false"
+            >
+              <span class="dm-k">待评估报备</span>
+              <span class="dm-val"><span class="dm-v">{{ reportStore.pendingCount }}</span></span>
+            </button>
+            <button
+              type="button"
+              class="dm-cell"
+              :class="{
+                on: listView === 'report' && reportView === 'pending' && onlyOverdue,
+                hot: reportStore.overdueCount > 0,
+              }"
+              :title="`超过 ${assessLimitText} 仍无人评估 · 不是 SLA`"
+              @click="setListView('report'); reportView = 'pending'; onlyOverdue = true"
+            >
+              <span class="dm-k">超时未评</span>
+              <span class="dm-val"><span class="dm-v">{{ reportStore.overdueCount }}</span></span>
+            </button>
+            <button
+              type="button"
+              class="dm-cell"
+              :class="{ on: listView === 'report' && reportView === 'assessed' && decisionFilter === 'all' }"
+              @click="setListView('report'); reportView = 'assessed'; decisionFilter = 'all'"
+            >
+              <span class="dm-k">今日已评估</span>
+              <span class="dm-val"><span class="dm-v">{{ reportStore.assessedTodayCount }}</span></span>
+            </button>
+          </div>
+          <div class="dash-links">
+            <span class="dash-links-k">今日决策</span>
+            <button
+              v-for="d in ASSESS_DECISIONS"
+              :key="d"
+              type="button"
+              class="dl-item"
+              :class="{
+                on: listView === 'report' && reportView === 'assessed' && decisionFilter === d,
+                danger: d === '接管' && reportStore.decisionCounts[d] > 0,
+              }"
+              @click="setListView('report'); reportView = 'assessed'; decisionFilter = d"
+            >
+              {{ d }}<b>{{ reportStore.decisionCounts[d] }}</b>
+            </button>
+          </div>
         </div>
       </div>
     </section>
@@ -2279,16 +2219,12 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               <td>{{ r.assessment?.by }}<div class="hit-sub">{{ r.assessment?.byRole }}</div></td>
               <td class="hit-when">{{ r.assessment?.at }}</td>
               <td>
-                <span class="rr-dec" :class="{ risk: r.assessment?.decision === '确认有风险' }">
+                <span class="rr-dec" :class="{ risk: r.assessment?.decision === '接管' }">
                   {{ r.assessment?.decision }}
                 </span>
-                <!-- 关联单号是这一档决策的结论主体，不写出来这行就等于没说清关到了哪 -->
-                <div v-if="r.assessment?.linkedTicketNo" class="hit-sub">
-                  关联 {{ r.assessment.linkedTicketNo }}
-                </div>
               </td>
               <td>
-                <!-- 只有「确认有风险」这一档有等级，其余三档空着即正确，不回落任何预设 -->
+                <!-- 二选一决策通常无等级，空着即正确 -->
                 <span
                   v-if="r.assessment?.level"
                   class="grade-pill"
@@ -3257,122 +3193,120 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
       title="评估报备"
       :icon="EditOutlined"
       tone="primary"
-      :width="560"
+      :width="600"
       ok-text="提交结论"
       @update:open="assessOpen = $event"
       @ok="confirmAssess"
     >
       <div v-if="assessTarget" class="op-form assess-form">
-        <!-- ① 报备信息：只读。评估的人是**照着这段做判断**的，故排在最前、且一项不省 -->
-        <div class="assess-src">
-          <div class="asrc-top">
-            <button type="button" class="tag-ticket-no" @click="openTicket(assessTarget.ticketNo)">
-              {{ assessTarget.ticketNo }}
-            </button>
-            <span class="asrc-by">{{ assessTarget.by }}<span class="asrc-role">{{ assessTarget.byRole }}</span></span>
-            <span class="asrc-at">{{ assessTarget.at }}</span>
+        <!-- ① 报备信息：只读卡片，评估人照着这段下结论 -->
+        <section class="assess-block">
+          <h4 class="assess-block-title">报备信息</h4>
+          <div class="assess-src">
+            <div class="asrc-head">
+              <button type="button" class="tag-ticket-no asrc-ticket" @click="openTicket(assessTarget.ticketNo)">
+                {{ assessTarget.ticketNo }}
+              </button>
+              <div class="asrc-head-meta">
+                <span class="asrc-by">
+                  {{ assessTarget.by }}
+                  <em>{{ assessTarget.byRole }}</em>
+                </span>
+                <span class="asrc-at">{{ assessTarget.at }}</span>
+              </div>
+            </div>
+            <div class="asrc-fields">
+              <div class="asrc-row asrc-row-pair">
+                <div class="asrc-pair-item">
+                  <span class="asrc-k">报备原因</span>
+                  <span class="asrc-v">{{ assessTarget.reason }}</span>
+                </div>
+                <div class="asrc-pair-item">
+                  <span class="asrc-k">风险类型</span>
+                  <span class="asrc-v" :class="{ muted: !assessTarget.category }">{{ assessTarget.category ?? '—' }}</span>
+                </div>
+              </div>
+              <div class="asrc-row">
+                <span class="asrc-k">场景描述</span>
+                <span class="asrc-v asrc-desc-text">{{ assessTarget.desc }}</span>
+              </div>
+              <div class="asrc-row">
+                <span class="asrc-k">附件</span>
+                <span class="asrc-v asrc-attach-val">
+                  <template v-if="assessTarget.attachments.length">
+                    <button
+                      v-for="a in assessTarget.attachments"
+                      :key="a"
+                      type="button"
+                      class="asrc-file"
+                      :title="`下载 ${a}`"
+                      @click="downloadReportAttachment(a)"
+                    >
+                      {{ a }}
+                    </button>
+                  </template>
+                  <span v-else class="asrc-empty">—</span>
+                </span>
+              </div>
+            </div>
           </div>
-          <div class="asrc-meta">
-            <span class="asrc-k">报备原因</span>
-            <span class="asrc-v">{{ assessTarget.reason }}</span>
-            <!-- 风险类型只在「风险场景」下存在，无值时整项不出：出一个「—」等于宣称"这里本该有值" -->
-            <template v-if="assessTarget.category">
-              <span class="asrc-sep">·</span>
-              <span class="asrc-k">风险类型</span>
-              <span class="asrc-v">{{ assessTarget.category }}</span>
-            </template>
-          </div>
-          <div class="asrc-desc">{{ assessTarget.desc }}</div>
-          <div v-if="assessTarget.attachments.length" class="asrc-att">
-            <span class="asrc-k">附件</span>
-            <span v-for="a in assessTarget.attachments" :key="a" class="asrc-att-i">{{ a }}</span>
-          </div>
-        </div>
+        </section>
 
-        <!--
-          ② 「本单另有」——同单互见。两行**哪行为空就不渲染哪行，两行都空整块不出**：
-          写一句「本单无其它记录」等于每次都占一块地方说"没事"，读多了就不看了，
-          真有记录时反而被当成同一块噪音略过。
-        -->
-        <div v-if="assessTargetHits || assessTargetHistory.length" class="assess-also">
-          <div class="aa-head">本单另有</div>
-          <div v-if="assessTargetHits" class="aa-line">
-            风险词命中 <b>{{ assessTargetHits.hitCount }}</b> 条
-            <span class="aa-sep">·</span>
-            成立 {{ assessTargetHits.confirmedCount }} / 误报 {{ assessTargetHits.falseCount }} / 待核实 {{ assessTargetHits.pendingCount }}
+        <!-- ② 本单另有：佐证区，弱于报备信息与下方表单 -->
+        <section
+          v-if="assessTargetHits || assessTargetHistory.length"
+          class="assess-block assess-block-weak"
+        >
+          <h4 class="assess-block-title">本单另有</h4>
+          <div class="assess-also">
+            <div v-if="assessTargetHits" class="aa-row">
+              <span class="aa-k">风险词命中</span>
+              <span class="aa-v">
+                {{ assessTargetHits.hitCount }} 条
+                <span class="aa-sub">
+                  成立 {{ assessTargetHits.confirmedCount }} · 误报 {{ assessTargetHits.falseCount }} · 待核实 {{ assessTargetHits.pendingCount }}
+                </span>
+              </span>
+            </div>
+            <div v-if="assessTargetHistory.length" class="aa-row aa-row-stack">
+              <span class="aa-k">历史报备</span>
+              <ol class="aa-list">
+                <li v-for="h in assessTargetHistory" :key="h.id" class="aa-item">
+                  <span class="aa-at">{{ h.assessment?.at ?? h.at }}</span>
+                  <span class="aa-dec">{{ h.status === '已撤回' ? '已撤回' : h.assessment?.decision }}</span>
+                  <span
+                    v-if="h.assessment?.level"
+                    class="grade-pill-inline"
+                    :style="{ color: RISK_LEVEL_STYLE[h.assessment.level].color, background: RISK_LEVEL_STYLE[h.assessment.level].bg }"
+                  >{{ h.assessment.level }}危</span>
+                </li>
+              </ol>
+            </div>
           </div>
-          <div v-if="assessTargetHistory.length" class="aa-line">
-            历史报备 <b>{{ assessTargetHistory.length }}</b> 条
-            <!--
-              逐条列出而不是只给条数：同一张单第二次报上来，判的分量取决于
-              "上一次判成了什么、之后又发生了什么"，光有一个数看不出这层。
-            -->
-            <ol class="aa-list">
-              <li v-for="h in assessTargetHistory" :key="h.id" class="aa-item">
-                <span class="aa-at">{{ h.assessment?.at ?? h.at }}</span>
-                <span class="aa-sep">·</span>
-                <span class="aa-dec">{{ h.status === '已撤回' ? '已撤回' : h.assessment?.decision }}</span>
-                <span class="aa-sep">·</span>
-                <span
-                  v-if="h.assessment?.level"
-                  class="grade-pill-inline"
-                  :style="{ color: RISK_LEVEL_STYLE[h.assessment.level].color, background: RISK_LEVEL_STYLE[h.assessment.level].bg }"
-                >{{ h.assessment.level }}危</span>
-                <span v-else class="aa-nolevel">无等级</span>
-              </li>
-            </ol>
-          </div>
-        </div>
+        </section>
 
-        <!-- ③ 评估：决策选定后才决定后面出哪几项，故它排第一 -->
-        <div class="op-field op-field-h op-field-h-top assess-field">
-          <div class="op-label req">评估决策</div>
-          <div class="assess-ctl">
-            <a-radio-group v-model:value="assessDecision">
+        <!-- ③ 评估表单：二选一决策 + 必填说明 -->
+        <section class="assess-block assess-block-form">
+          <h4 class="assess-block-title">评估</h4>
+
+          <div class="op-field">
+            <div class="op-label req">评估决策</div>
+            <a-radio-group v-model:value="assessDecision" class="assess-dec-grid">
               <a-radio v-for="d in ASSESS_DECISIONS" :key="d" :value="d">{{ d }}</a-radio>
             </a-radio-group>
             <div v-if="missAssessDecision" class="assess-err">请先选择一个评估决策</div>
           </div>
-        </div>
 
-        <!-- 等级只在「确认有风险」这一档存在：其余三档下这个字段没有含义，故整项不出现 -->
-        <div v-if="assessNeedsLevel" class="op-field op-field-h assess-field">
-          <div class="op-label req">风险等级</div>
-          <div class="assess-ctl">
-            <a-select v-model:value="assessLevel" placeholder="请选择风险等级" class="assess-level-sel">
-              <a-select-option v-for="g in GRADES" :key="g" :value="g">{{ riskLevelText(g) }}</a-select-option>
-            </a-select>
-            <div v-if="missAssessLevel" class="assess-err">判为确认有风险时必须定级，结论要连等级一起回传工单</div>
-          </div>
-        </div>
-
-        <!-- 关联单号只在「关联已有投诉单」这一档必填；不得填本单，校验在 missAssessLink 里 -->
-        <div v-if="assessNeedsLink" class="op-field op-field-h assess-field">
-          <div class="op-label req">目标投诉单号</div>
-          <div class="assess-ctl">
-            <a-input v-model:value="assessLinkedNo" placeholder="填写与本单为同一件事的那张投诉工单号" />
-            <div v-if="missAssessLink" class="assess-err">请选择一张其他的投诉工单</div>
-          </div>
-        </div>
-
-        <!-- 四个决策各有各的说法，故 label 与 placeholder 都随决策走，不共用一个「备注」 -->
-        <div class="op-field op-field-h op-field-h-top assess-field">
-          <div class="op-label req">{{ assessAdviceLabel }}</div>
-          <div class="assess-ctl">
+          <div class="op-field">
+            <div class="op-label req">{{ assessAdviceLabel || '反馈意见' }}</div>
             <a-textarea
               v-model:value="assessAdvice"
               :rows="3"
-              :placeholder="assessAdvicePlaceholder"
+              :placeholder="assessAdvicePlaceholder || '请先选择评估决策'"
             />
-            <div v-if="missAssessAdvice" class="assess-err">
-              {{ assessAdviceLabel }}必填 —— 结论要回给报备人看，只有决策没有说法，他不知道下一步该怎么办
-            </div>
+            <div v-if="missAssessAdvice" class="assess-err">请填写{{ assessAdviceLabel || '反馈意见' }}</div>
           </div>
-        </div>
-
-        <div class="op-tip op-tip-warn assess-final">
-          结论<b>提交即固化，不可修改</b>；如判断有误，请由报备人重新报备一次。
-        </div>
+        </section>
       </div>
     </OpActionModal>
   </div>
@@ -3444,111 +3378,152 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
 }
 .head-tools { background: rgba(255, 255, 255, 0.72); border-color: rgba(255, 255, 255, 0.9); }
 
-/* ② 监控成效：标题 + 四项指标 + 核实结果收成一行 */
-.effect-section { padding: 8px 12px; }
-.effect-row {
-  display: flex;
-  align-items: center;
-  gap: 10px 14px;
-  min-width: 0;
-  flex-wrap: nowrap;
-}
-.effect-title {
-  flex: none;
-  margin: 0;
-  white-space: nowrap;
-}
-.effect-metrics {
-  display: flex;
-  align-items: stretch;
-  gap: 4px;
-  flex: 1;
-  min-width: 0;
-}
-.em-item {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
-  padding: 4px 10px 4px 10px;
-  border: 1px solid transparent;
-  border-left: 3px solid var(--kpi-accent, #9ca3af);
-  border-radius: 6px;
+/* ② 监控成效：双卡并排，左蓝右橙，紧凑 KPI + 文字链 */
+.effect-section {
+  padding: 0;
+  gap: 0;
   background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  white-space: nowrap;
+  border: none;
+  box-shadow: none;
 }
-.em-item:hover { background: #f9fafb; }
-.em-item.on {
-  border-color: var(--kpi-accent);
-  background: color-mix(in srgb, var(--kpi-accent) 6%, #fff);
-}
-.em-item.em-static { cursor: default; }
-.em-item.em-static:hover { background: transparent; }
-.em-label { font-size: 11px; color: #9ca3af; flex: none; }
-.em-val {
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 1.1;
-  letter-spacing: -0.02em;
-  color: #111827;
-  font-variant-numeric: tabular-nums;
-}
-.em-val.muted { color: #9ca3af; }
-.em-hint { font-size: 11px; color: #9ca3af; font-variant-numeric: tabular-nums; }
-.em-hint.bad { color: #EF4444; }
-
-/* 核实结果：成效的落点，同时是切到「已核实」两态的入口 */
-.effect-result {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex: none;
+.effect-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
   min-width: 0;
-  padding-left: 12px;
-  border-left: 1px solid #eef2f7;
+  align-items: stretch;
 }
-.er-label {
-  flex: none;
-  font-size: 11px;
-  font-weight: 500;
-  color: #9ca3af;
-  white-space: nowrap;
+@media (max-width: 900px) {
+  .effect-split { grid-template-columns: 1fr; gap: 8px; }
 }
-.er-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 8px 0 10px;
-  border: 1px solid #E5E7EB;
+.effect-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+  padding: 8px 10px 7px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+}
+.effect-pane--monitor {
+  background: linear-gradient(180deg, #f0f7ff 0%, #fafcff 100%);
+  border-color: #bfdbfe;
+  box-shadow: inset 3px 0 0 #1a6fff;
+}
+.effect-pane--report {
+  background: linear-gradient(180deg, #fffbeb 0%, #fffdf7 100%);
+  border-color: #fde68a;
+  box-shadow: inset 3px 0 0 #f59e0b;
+}
+.pane-title {
+  margin: 0 0 5px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1.2;
+}
+.effect-pane--monitor .pane-title { color: #1e40af; }
+.effect-pane--report .pane-title { color: #b45309; }
+.dash-grid {
+  display: grid;
+  gap: 1px;
+  background: rgba(148, 163, 184, 0.35);
   border-radius: 6px;
-  background: #fff;
+  overflow: hidden;
+  flex: none;
+}
+.dash-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.dash-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 1100px) {
+  .dash-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.dm-cell {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px 7px;
+  min-height: 38px;
+  background: rgba(255, 255, 255, 0.88);
+  border: none;
   cursor: pointer;
   font-family: inherit;
   text-align: left;
-  white-space: nowrap;
+  transition: background 0.12s;
 }
-.er-btn:hover { border-color: #1a6fff; background: #f8fbff; }
-.er-btn.active { border-color: #1a6fff; background: #EFF6FF; }
-.er-btn.active .er-name { color: #1a6fff; font-weight: 600; }
-.er-num {
-  flex: none;
-  font-size: 14px;
+.dm-val {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-height: 19px;
+}
+.dm-cell:hover { background: #fff; }
+.dm-cell.on { background: #f3f4f6; }
+.dm-cell.hot .dm-v { color: #dc2626; }
+.dm-cell.hot.on .dm-v { color: #111827; }
+.dm-static { cursor: default; }
+.dm-static:hover { background: rgba(255, 255, 255, 0.88); }
+.dm-k { font-size: 10px; font-weight: 500; color: #64748b; line-height: 1.2; }
+.dm-v {
+  font-size: 17px;
   font-weight: 700;
-  line-height: 1;
-  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: #0f172a;
   font-variant-numeric: tabular-nums;
 }
-.er-num.danger { color: #EF4444; }
-.er-num.muted { color: #9CA3AF; }
-.er-name { font-size: 12px; font-weight: 500; color: #374151; }
-.er-mix { font-size: 11px; color: #9ca3af; font-variant-numeric: tabular-nums; }
-.er-go { flex: none; font-size: 10px; color: #d1d5db; }
-.er-btn:hover .er-go, .er-btn.active .er-go { color: #1a6fff; }
+.dm-v.muted { font-size: 14px; color: #cbd5e1; }
+.dm-h { font-size: 9px; color: #94a3b8; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.dm-h.bad { color: #dc2626; font-weight: 600; }
+.dash-links {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  flex: 1;
+  margin-top: 5px;
+  padding-top: 5px;
+  min-height: 22px;
+  border-top: 1px dashed rgba(148, 163, 184, 0.35);
+}
+.dash-links-k {
+  flex: none;
+  font-size: 10px;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+.dl-item {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 2px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+  color: #64748b;
+  white-space: nowrap;
+}
+.dl-item:hover { color: #1a6fff; }
+.dl-item.on { color: #1a6fff; font-weight: 600; }
+.effect-pane--report .dl-item.on { color: #d97706; }
+.dl-item b {
+  font-weight: 700;
+  color: #111827;
+  margin-left: 1px;
+  font-variant-numeric: tabular-nums;
+}
+.dl-item.on b { color: #1a6fff; }
+.effect-pane--report .dl-item.on b { color: #d97706; }
+.dl-item.danger b { color: #dc2626; }
+.dl-item small {
+  font-size: 9px;
+  font-weight: 400;
+  color: #94a3b8;
+  margin-left: 1px;
+}
 
 /* 上次执行 + 扫库记录：§4.1 次按钮外形，记录条数用主色点出可点 */
 .run-entry {
@@ -4618,45 +4593,145 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
 .rr-dec { color: #374151; font-size: 12px; font-weight: 500; }
 .rr-dec.risk { color: #B91C1C; font-weight: 600; }
 
-/* 弹窗 ① 报备信息：只读块，用底色与下方可填区拉开，免得被当成表单的一部分去点 */
-.assess-form .op-field-h > .op-label { width: 6.5em; }
+/* ---- 评估报备弹窗 ---- */
+.assess-form { gap: 16px !important; }
+.assess-block { display: flex; flex-direction: column; gap: 8px; }
+.assess-block-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #374151;
+}
+.assess-block-form {
+  padding-top: 12px;
+  border-top: 1px solid #f1f5f9;
+}
+.assess-block-weak .assess-block-title { color: #6b7280; font-weight: 600; }
+
+/* ① 报备信息 */
 .assess-src {
-  display: flex; flex-direction: column; gap: 6px;
-  padding: 12px 14px; border: 1px solid #E5E7EB; border-radius: 8px; background: #F9FAFB;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
 }
-.asrc-top { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.asrc-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.asrc-ticket { font-size: 13px; }
+.asrc-head-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  text-align: right;
+}
 .asrc-by { font-size: 12px; color: #374151; font-weight: 600; }
-.asrc-role { margin-left: 4px; color: #9CA3AF; font-weight: 400; }
-.asrc-at { font-size: 12px; color: #94A3B8; font-variant-numeric: tabular-nums; }
-.asrc-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 12px; }
-.asrc-k { color: #9CA3AF; }
-.asrc-v { color: #374151; font-weight: 500; }
-.asrc-sep { color: #D1D5DB; }
-.asrc-desc { font-size: 12px; color: #475569; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
-.asrc-att { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 12px; }
-.asrc-att-i {
-  padding: 1px 8px; border-radius: 10px;
-  background: #EEF2FF; color: #4338CA; font-size: 11px;
+.asrc-by em { font-style: normal; margin-left: 4px; color: #9ca3af; font-weight: 400; }
+.asrc-at { font-size: 11px; color: #94a3b8; font-variant-numeric: tabular-nums; }
+.asrc-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+.asrc-row {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 8px;
+  align-items: start;
+  font-size: 12px;
+}
+.asrc-row-pair {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 20px;
+}
+.asrc-pair-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.asrc-k { color: #9ca3af; line-height: 1.6; flex: none; }
+.asrc-v { color: #374151; font-weight: 600; line-height: 1.65; }
+.asrc-v.muted { color: #cbd5e1; font-weight: 400; }
+.asrc-desc-text { font-weight: 400; white-space: pre-wrap; word-break: break-word; }
+.asrc-attach-val {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-weight: 400;
+}
+.asrc-empty { color: #cbd5e1; font-weight: 400; }
+.asrc-file {
+  padding: 3px 8px;
+  font-size: 11px;
+  color: #4338ca;
+  background: #eef2ff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1.4;
+  transition: background 0.15s, color 0.15s;
+}
+.asrc-file:hover {
+  color: #1d4ed8;
+  background: #dbeafe;
+  text-decoration: underline;
 }
 
-/* 弹窗 ② 本单另有：佐证不是填写项，故弱于报备信息、更弱于下方表单 */
+/* ② 本单另有 */
 .assess-also {
-  display: flex; flex-direction: column; gap: 6px;
-  padding: 10px 12px; border: 1px dashed #E2E8F0; border-radius: 8px; background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px dashed #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
 }
-.aa-head { font-size: 12px; font-weight: 600; color: #6B7280; }
-.aa-line { font-size: 12px; color: #475569; line-height: 1.7; }
-.aa-line b { color: #111827; font-variant-numeric: tabular-nums; }
-.aa-sep { margin: 0 6px; color: #D1D5DB; }
-.aa-list { margin: 4px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; }
-.aa-item { display: flex; align-items: center; flex-wrap: wrap; font-size: 12px; color: #475569; }
-.aa-at { color: #94A3B8; font-variant-numeric: tabular-nums; }
-.aa-dec { color: #374151; font-weight: 500; }
-.aa-nolevel { color: #94A3B8; }
+.aa-row { display: grid; grid-template-columns: 72px 1fr; gap: 8px; align-items: start; font-size: 12px; }
+.aa-row-stack { align-items: start; }
+.aa-k { color: #9ca3af; line-height: 1.6; }
+.aa-v { color: #374151; font-weight: 600; line-height: 1.6; }
+.aa-sub { display: block; margin-top: 2px; font-size: 11px; font-weight: 400; color: #64748b; }
+.aa-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.aa-item { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 11px; color: #475569; }
+.aa-at { color: #94a3b8; font-variant-numeric: tabular-nums; }
+.aa-dec { color: #374151; font-weight: 600; }
 
-/* 弹窗 ③ 评估：控件与错误提示同列，错误文字必须紧贴出错的那个控件 */
-.assess-ctl { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.assess-level-sel { width: 160px; }
-.assess-err { font-size: 12px; color: #EF4444; line-height: 1.5; }
-.assess-final { margin-top: 2px; }
+/* ③ 评估表单：决策 2×2 卡片 + 垂直字段 */
+.assess-dec-grid :deep(.ant-radio-group) {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  width: 100%;
+}
+.assess-dec-grid :deep(.ant-radio-wrapper) {
+  margin: 0 !important;
+  padding: 8px 10px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  line-height: 1.45;
+  font-size: 12px;
+  white-space: normal;
+  align-items: flex-start;
+  transition: border-color 0.15s, background 0.15s;
+}
+.assess-dec-grid :deep(.ant-radio-wrapper-checked) {
+  border-color: #1a6fff;
+  background: #eff6ff;
+}
+.assess-dec-grid :deep(.ant-radio) { margin-top: 2px; }
+.assess-err { margin-top: 4px; font-size: 11px; color: #ef4444; line-height: 1.4; }
 </style>
