@@ -518,17 +518,41 @@ function nextEscalatedNo(): string {
   return `${prefix}${String(maxUsed + 1).padStart(5, '0')}`;
 }
 
+/**
+ * 「接管」按**原单类型**分流（O20）：
+ * - **非投诉单** → 走《【830】》第一跳派生，产出一张新投诉单；
+ * - **投诉单** → 走基线 ※27「工单管控」，把这张单拿到客诉专员名下，**本单状态不变、不派生新单**。
+ *
+ * 投诉单那一路之所以不能派生：第二跳（内投→外投）的入口对来源＝热线 / IM / 小程序的
+ * 投诉单本就置灰，点不动；硬派生还会撞业务原文自己的「一单到底」与「不重复建单」。
+ */
+function isComplaintTicket(ticketNo: string) {
+  return ticketNo.startsWith('IFLYTS-');
+}
+
+/** 选「接管」时的提示行，按当前这条的原单类型给出真实去向 */
+const takeoverHint = computed(() => {
+  const no = assessTarget.value?.ticketNo;
+  if (no && isComplaintTicket(no)) {
+    return '本单已是投诉单，提交后由你在工单上执行「工单管控」接手，本单状态不变、不派生新单';
+  }
+  return '提交后原单落「已升级投诉」并派生一张投诉单，新单全量继承本单信息';
+});
+
 function confirmAssess() {
   assessTried.value = true;
   const target = assessTarget.value;
   if (!target || !assessValid.value || !assessDecision.value) return;
 
-  const escalatedToNo = assessDecision.value === '接管' ? nextEscalatedNo() : undefined;
+  const takeover = assessDecision.value === '接管';
+  const derive = takeover && !isComplaintTicket(target.ticketNo);
+  const escalatedToNo = derive ? nextEscalatedNo() : undefined;
+
   reportStore.assess(target.id, {
     decision: assessDecision.value,
     advice: assessAdvice.value.trim(),
-    // 只有「接管」这一档有派生单号；「不升级」写一个空字符串进去，
-    // 列表那格就会渲染出一个点不开的空单号，看着像单号丢了
+    // 只有派生这一路有新单号；不派生时不写这个字段，
+    // 否则列表那格会渲染出一个点不开的空单号
     ...(escalatedToNo ? { escalatedToNo } : {}),
     by: user.name,
     byRole: user.role.name,
@@ -536,9 +560,13 @@ function confirmAssess() {
   });
 
   assessOpen.value = false;
-  message.success(
-    escalatedToNo ? `已接管，已派生投诉单 ${escalatedToNo}` : '已提交结论：不升级',
-  );
+  if (escalatedToNo) {
+    message.success(`已接管，已派生投诉单 ${escalatedToNo}`);
+  } else if (takeover) {
+    message.success(`已接管 ${target.ticketNo}，请在工单上执行「工单管控」接手`);
+  } else {
+    message.success('已提交结论：不升级');
+  }
 }
 /** 视图内的等级选择。大盘点「待打标」卡下钻时预置为高危 */
 const gradeFilter = ref<GradeFilter>(route.query.pending === '1' ? '高' : 'all');
@@ -3755,8 +3783,9 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               <a-radio v-for="d in ASSESS_DECISIONS" :key="d" :value="d">{{ d }}</a-radio>
             </a-radio-group>
             <div v-if="missAssessDecision" class="assess-err">请先选择一个评估决策</div>
+            <!-- 接管的去向按原单类型分流（O20），提示行必须跟着分流，否则在投诉单上说的是错的 -->
             <div v-else-if="assessDecision === '接管'" class="tag-form-foot">
-              提交后原单落「已升级投诉」并派生一张投诉单，新单全量继承本单信息
+              {{ takeoverHint }}
             </div>
           </div>
 

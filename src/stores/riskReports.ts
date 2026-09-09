@@ -656,11 +656,24 @@ export const useRiskReportStore = defineStore('riskReports', () => {
   function assign(id: string, assignee: string) {
     const r = reports.value.find((x) => x.id === id);
     if (!r || !isOpen(r)) return false;
+    // 改派前先记住原承办人：赋值之后就取不到了
+    const prev = r.assignee;
     r.status = '评估中';
     r.assignee = assignee;
-    // 改派同样发：新承办人这一刻才知道单子到了自己手上。
-    // 原承办人不在收件人里 —— 本轮只做拍板的五个事件，「被改派走」是第六个，不自造
     notifyAssigned(r);
+    // 改派时另发一条给**原承办人**（业务 2026-09-09 拍板）：
+    // 他手上的活被抽走了，不告诉他，他会一直以为这条还等着自己评。
+    // 只在"确实换了人"时发 —— 重复指给同一个人不算改派。
+    if (prev && prev !== assignee) {
+      notifyLog.emit({
+        ticketNo: r.ticketNo,
+        event: 'risk.report.reassigned',
+        kind: 'risk',
+        title: '风险报备已改派',
+        receivers: [`${prev}(客诉专员)`],
+        content: `${r.ticketNo} 的风险报备已改派给 ${assignee}，无需您再评估。报备原因：${reasonLine(r)}。`,
+      });
+    }
     return true;
   }
 
