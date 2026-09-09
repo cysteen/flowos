@@ -30,6 +30,7 @@ import {
   type MonitorSource,
   type RiskReport,
 } from '@/stores/riskReports';
+import { useDerivedTicketStore } from '@/stores/derivedTickets';
 import { RISK_TAG_ROLES, RISK_WORD_MAINTAIN_ROLES } from '@/config/roles';
 import { riskLevelText } from '@/config/risk';
 import { getOpsScopeSelectGroups, type OpsScope } from '@/mock/opsMonitor';
@@ -117,6 +118,8 @@ const listView = ref<ListView>('realtime');
 //     直接落回上面那同一个打标弹窗，两处走的是同一份结论，不会各判一次）。
 // 备选是把 915 三个页签吞进一个"风险队列"，那等于拆掉 915（N7）；业务选了保留重复。
 const reportStore = useRiskReportStore();
+/** 接管派生的新投诉单落这里，工单页解析时兜在静态数据源之后 */
+const derivedTickets = useDerivedTicketStore();
 /**
  * 视图内三态（N4）：待分派 / 评估中 / 已评估。
  *
@@ -547,6 +550,20 @@ function confirmAssess() {
   const takeover = assessDecision.value === '接管';
   const derive = takeover && !isComplaintTicket(target.ticketNo);
   const escalatedToNo = derive ? nextEscalatedNo() : undefined;
+
+  /*
+   * 派生要**真的造出一张单**，不能只发一个号：队列与工单页都能点这个号，
+   * 只发号的话点开落的是静默回退的演示单——看到的是另一个客户的另一张投诉，
+   * 而 PRD 写的是「新单全量继承本单信息」。
+   */
+  if (escalatedToNo) {
+    derivedTickets.deriveComplaint({
+      fromNo: target.ticketNo,
+      no: escalatedToNo,
+      assignee: user.name,
+      reason: assessAdvice.value.trim(),
+    });
+  }
 
   reportStore.assess(target.id, {
     decision: assessDecision.value,
@@ -1684,6 +1701,21 @@ function saveTag() {
   };
   // 追加而不覆盖
   riskTags.appendEntry(target.id, entry);
+  /*
+   * 同步「重点工单」队列里那一条（PRD §5.2）：两个页签装的是同一条命中，
+   * 这边判完了，那边不能还挂在「评估中」。只在**首次打标**时转态；
+   * 修正走的是已核实那一侧，队列条目早已是「已评估」，不必也不该再动一次。
+   */
+  if (!tagAmend.value) {
+    reportStore.recordVerify(target.ticketNo, {
+      verdict: entry.verdict,
+      level: entry.level,
+      note: entry.note,
+      by: entry.by,
+      byRole: entry.byRole,
+      at: entry.at,
+    });
+  }
   message.success(
     tagAmend.value
       ? `已修正 ${target.ticketNo} 的核实结果为「${entry.verdict}」，本次修正已留痕`
@@ -2701,12 +2733,27 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               <td><span class="src-tag" :class="{ kw: isKeywordRow(r) }">{{ r.source }}</span></td>
               <td>{{ r.by }}<div class="hit-sub">{{ r.byRole }}</div></td>
               <td>{{ r.reason }}</td>
-              <td>{{ r.assessment?.by }}<div class="hit-sub">{{ r.assessment?.byRole }}</div></td>
-              <td class="hit-when">{{ r.assessment?.at }}</td>
+              <!--
+                两路结论各显各的（O16）：走评估的落 assessment（不升级 / 接管），
+                走核实打标的落 verify（成立 · 等级 / 误报）。把 verify 也塞进「评估决策」列
+                会让这一列同时装两种问题的答案，读表的人分不出哪条答的是"升不升"。
+              -->
               <td>
-                <span class="rr-dec" :class="{ risk: r.assessment?.decision === '接管' }">
-                  {{ r.assessment?.decision }}
+                {{ r.assessment?.by ?? r.verify?.by }}
+                <div class="hit-sub">{{ r.assessment?.byRole ?? r.verify?.byRole }}</div>
+              </td>
+              <td class="hit-when">{{ r.assessment?.at ?? r.verify?.at }}</td>
+              <td>
+                <span v-if="r.assessment" class="rr-dec" :class="{ risk: r.assessment.decision === '接管' }">
+                  {{ r.assessment.decision }}
                 </span>
+                <span
+                  v-else-if="r.verify"
+                  class="rr-dec"
+                  :class="{ risk: r.verify.verdict === '成立' }"
+                  :title="`关键词触发走 915 核实打标，结论是「成立 / 误报 + 定级」，不是评估二选一`"
+                >核实：{{ r.verify.verdict }}{{ r.verify.level ? ` · ${riskLevelText(r.verify.level)}` : '' }}</span>
+                <span v-else class="hit-sub">—</span>
               </td>
               <td>
                 <!--
@@ -2725,7 +2772,11 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                   class="src-tag"
                   title="原单已是投诉单，接管走基线 ※27「工单管控」：本单状态不变、不派生新单"
                 >工单管控</span>
-                <span v-else class="hit-sub" title="「不升级」不派生新单">—</span>
+                <span
+                  v-else
+                  class="hit-sub"
+                  :title="r.verify ? '核实打标不派生新单；成立后转交处置走「去管控」' : '「不升级」不派生新单'"
+                >—</span>
               </td>
               <!--
                 🔴 已评估行**没有任何操作**：评估结论提交即固化、不可修改（§9 规则 22）。

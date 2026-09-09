@@ -11,6 +11,7 @@ import type { Ticket, Channel, TicketType, Priority } from '@/views/tickets/type
 import { TICKETS } from '@/mock/tickets';
 import { TYPE_SAMPLES } from '@/mock/ticketTypeSamples';
 import { useUserStore } from '@/stores/user';
+import { useDerivedTicketStore } from '@/stores/derivedTickets';
 import {
   ticketLatestHandlingItems,
   ticketProductIssue,
@@ -132,6 +133,7 @@ function buildSlaClocks(t: Ticket): SlaClock[] {
 export function useTicketOperation() {
   const user = useUserStore();
   const route = useRoute();
+  const derivedTickets = useDerivedTicketStore();
   const detail = ref<TicketDetailMeta>(JSON.parse(JSON.stringify(TICKET_DETAIL)));
   const timeline = ref<TimelineEntry[]>([...TIMELINE]);
   const opState = ref<TicketOpState>('processing');
@@ -141,7 +143,9 @@ export function useTicketOperation() {
    *  使处理页（Tab① 表单结构）随工单类型而变。匹配不到则回退样例。 */
   function loadDetail(no: string) {
     const base = JSON.parse(JSON.stringify(TICKET_DETAIL)) as TicketDetailMeta;
-    const t = TICKETS.find((x) => x.no === no);
+    // 静态数据源优先；查不到再问运行时派生的那批（风险报备「接管」派生的新投诉单）。
+    // 两处不互相覆盖：派生单只补静态那批没有的号。
+    const t = TICKETS.find((x) => x.no === no) ?? derivedTickets.find(no);
     // 回退样例是**静默的**：页面照常渲染演示单，只有地址栏还留着那个查不到的号，
     // 于是"多行点开是同一张单"这种配错很难被发现。开发态先把它喊出来。
     // 不做用户可见提示：班组看板 / 运营监控 / 客户视图的下钻明细目前也有大量非真实单号，

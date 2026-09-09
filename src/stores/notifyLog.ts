@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import type { NotifyKind, NotifyRecord } from '@/views/tickets/types/operationTabs';
 
 /**
@@ -21,7 +21,9 @@ import type { NotifyKind, NotifyRecord } from '@/views/tickets/types/operationTa
  * 【本轮边界】只有风险报备五个事件走这条链路（O22：不改造全系统通知）。
  * 其余通知仍是静态样本。
  *
- * 【局限】前端内存，整页刷新即清空，只剩静态那批。SPA 内切页签 / 跳工单不受影响。
+ * 【持久化】与 `stores/riskReports.ts` 同一套写法落 localStorage。通知的收件人往往
+ * **不是发出这条通知的人**（报备人报完，通知落给投诉督导），要看到它就得换个角色登录；
+ * 纯内存态下换登录即清空，这条链在演示里永远走不到收件人那一端。
  */
 
 /** 运行时记录 ＝ `NotifyRecord` + 归档键 + 事件码。字段名与静态那批逐一对齐 */
@@ -58,6 +60,31 @@ export const useNotifyLogStore = defineStore('notifyLog', () => {
   const records = ref<RuntimeNotifyRecord[]>([]);
   /** 自增序号只用来造 id，不参与任何业务判断 */
   const seq = ref(0);
+
+  const LS_KEY = 'flowos-notify-log';
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) {
+      const saved = JSON.parse(raw) as { records: RuntimeNotifyRecord[]; seq: number };
+      if (Array.isArray(saved?.records)) {
+        records.value = saved.records;
+        seq.value = typeof saved.seq === 'number' ? saved.seq : saved.records.length;
+      }
+    }
+  } catch {
+    /* 解析失败就从空开始，只影响运行时那批，静态样本照常 */
+  }
+  watch(
+    [records, seq],
+    () => {
+      try {
+        localStorage.setItem(LS_KEY, JSON.stringify({ records: records.value, seq: seq.value }));
+      } catch {
+        /* 配额超限等忽略 */
+      }
+    },
+    { deep: true },
+  );
 
   /**
    * 发一条通知。返回落下的那条；一条都没发出去时返回 null。

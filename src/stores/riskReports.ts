@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { defineStore } from 'pinia';
 import { RISK_LEVELS, riskLevelText, type RiskLevel } from '@/config/risk';
 import type { RiskFlag } from '@/views/tickets/types/operation';
@@ -112,8 +112,28 @@ export interface RiskReport {
   at: string;
   status: ReportStatus;
   assessment?: ReportAssessment;
+  /**
+   * 来源＝「关键词触发」这一路的结论（O16）。它要的是 915 的「成立 / 误报 + 定级」，
+   * 不是评估的二选一，故**不占 `assessment`**：两个字段都存进 `assessment` 会让
+   * 「今日决策」的分母混进一批答的根本不是"升不升"的条目。
+   *
+   * 有它，这一路才能与评估那一路一样走到「已评估」——PRD §5.2 要求两个页签状态同步：
+   * 待分派 + 评估中 ≡ 待核实，已评估 ≡ 已核实。
+   */
+  verify?: ReportVerify;
   /** 仅 status ＝「已撤回」时有值 */
   withdrawReason?: string;
+}
+
+/** 「关键词触发」条目的核实结论。字段与 915 打标弹窗逐一对应 */
+export interface ReportVerify {
+  verdict: '成立' | '误报';
+  /** 误报没有等级 */
+  level: RiskLevel | null;
+  note: string;
+  by: string;
+  byRole: string;
+  at: string;
 }
 
 /*
@@ -389,6 +409,41 @@ export const useRiskReportStore = defineStore('riskReports', () => {
   const reports = ref<RiskReport[]>(SEED.map((r) => ({ ...r })));
   /** 自增序号只用来造 id，不参与任何业务判断 */
   const seq = ref(SEED.length);
+
+  /**
+   * 落 localStorage（与 `stores/ticketDrafts.ts` 同一套写法）。
+   *
+   * 本模块的闭环**天然跨角色**：二线专员报、投诉督导分派、客诉专员评、结论再回到二线看。
+   * 演示时这四步要换四次登录，纯内存态下每换一次前面做的全部归零——报完切过去队列是空的，
+   * 评完切回来结论不在。持久化之后这条链才走得完。
+   *
+   * 存的是**整份报备**（含结论），不是增量：报备量级只有几十条，整存整取比对账简单，
+   * 也不会出现"补丁漏打一处、两边各存一半"。
+   */
+  const LS_KEY = 'flowos-risk-reports';
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) {
+      const saved = JSON.parse(raw) as { reports: RiskReport[]; seq: number };
+      if (Array.isArray(saved?.reports) && saved.reports.length) {
+        reports.value = saved.reports;
+        seq.value = typeof saved.seq === 'number' ? saved.seq : saved.reports.length;
+      }
+    }
+  } catch {
+    /* 解析失败就用种子，不让一份坏缓存把页面打空 */
+  }
+  watch(
+    [reports, seq],
+    () => {
+      try {
+        localStorage.setItem(LS_KEY, JSON.stringify({ reports: reports.value, seq: seq.value }));
+      } catch {
+        /* 配额超限等忽略 */
+      }
+    },
+    { deep: true },
+  );
   /** 报备五个事件的通知落点（O22）。工单页「通知记录」Tab 从这里读运行时那批 */
   const notifyLog = useNotifyLogStore();
 
@@ -569,12 +624,22 @@ export const useRiskReportStore = defineStore('riskReports', () => {
     () => openQueue.value.filter((r) => goesToAssess(r) && isOverdue(r)).length,
   );
 
-  /** 已评估清单，评估时刻倒序 */
+  /** 结论时刻：走评估的取评估时刻，走核实打标的取核实时刻。两路共用一根时间轴排序 */
+  function concludedAt(r: RiskReport) {
+    return r.assessment?.at ?? r.verify?.at ?? '';
+  }
+
+  /**
+   * 已评估清单，结论时刻倒序。
+   * **两路都收**：走评估的有 `assessment`，走核实打标的有 `verify`（O16）。
+   * 只认 `assessment` 的话，关键词触发那一路打完标就卡在这张表外面，
+   * 页签上却已经转「已评估」——列表与状态自己打自己。
+   */
   const assessedList = computed(() =>
     reports.value
-      .filter((r) => r.status === '已评估' && r.assessment)
+      .filter((r) => r.status === '已评估' && (r.assessment || r.verify))
       .slice()
-      .sort((a, b) => (b.assessment?.at ?? '').localeCompare(a.assessment?.at ?? '')),
+      .sort((a, b) => concludedAt(b).localeCompare(concludedAt(a))),
   );
 
   /** 今天（自然日 00:00 起）。字符串前缀比对，避免再造一次时区换算 */
@@ -776,6 +841,25 @@ export const useRiskReportStore = defineStore('riskReports', () => {
     });
   }
 
+  /**
+   * 核实打标回写（O16 / PRD §5.2「两处状态同步」）。
+   *
+   * 来源＝「关键词触发」的条目在「实时监控」被打标之后，队列这一侧必须跟着转「已评估」：
+   * 两个页签装的是**同一条命中**，一边判完了另一边还挂在「评估中」，
+   * 督导看到的就是一条永远评不完的条目，而它其实早就有结论了。
+   *
+   * 结论落 `verify` 不落 `assessment`：它答的是"这次命中准不准"，不是"升不升级"。
+   */
+  function recordVerify(ticketNo: string, verify: ReportVerify) {
+    const r = reports.value.find(
+      (x) => x.ticketNo === ticketNo && x.source === '关键词触发' && isOpen(x),
+    );
+    if (!r) return false;
+    r.status = '已评估';
+    r.verify = verify;
+    return true;
+  }
+
   /*
    * ⚠️ **`risk.report.overdue`（超时未评）本轮没有落点**，是缺口不是遗漏。
    *
@@ -835,6 +919,7 @@ export const useRiskReportStore = defineStore('riskReports', () => {
     claim,
     withdraw,
     assess,
+    recordVerify,
     assessmentNoteOf,
   };
 });
