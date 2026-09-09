@@ -54,6 +54,16 @@ const props = defineProps<{
    * 这是**整区一档**的开关，与逐 Tab 判据 tabWritableFor 取或 —— 它是更强的约束。
    */
   readonly?: boolean;
+  /**
+   * Tab 上的状态圆点：{ [tab key]: 'warn' | 'danger' }。
+   *
+   * 【为什么是圆点而不是数字角标】这里要答的是"这个 Tab 里有件事没完"，不是"有几件"——
+   * 例如风险报备同一张单最多只允许一条在队，数字恒为 1，写出来没有信息量。
+   * 【为什么由页面下传】哪个 Tab 该亮、亮成什么色，判据在页面的业务态里（在队 / 超时），
+   * Tab 组件不去连状态，只负责画 —— 与 riskVerification 同一套分工。
+   * 【为什么可选】不传即一个圆点不出，既有调用方行为完全不变。
+   */
+  tabDots?: Partial<Record<ProcessTabKey, 'warn' | 'danger'>>;
 }>();
 
 const emit = defineEmits<{
@@ -131,10 +141,12 @@ defineExpose({ switchTab });
         v-for="t in visibleTabs"
         :key="t.key"
         class="tab-item"
-        :class="{ active: activeTab === t.key }"
+        :class="[{ active: activeTab === t.key }, tabDots?.[t.key] ? `dot-${tabDots[t.key]}` : '']"
         @click="switchTab(t.key)"
       >
         {{ t.label }}
+        <!-- 状态圆点：判据在页面侧，此处只画。未激活态另加文字色，让它在一排灰 Tab 里能被一眼找到 -->
+        <span v-if="tabDots?.[t.key]" class="tab-dot" aria-hidden="true"></span>
       </button>
     </div>
 
@@ -268,9 +280,34 @@ defineExpose({ switchTab });
   background: none; border: none; border-bottom: 2px solid transparent;
   cursor: pointer; white-space: nowrap; margin-bottom: -1px;
   font-family: inherit; line-height: 1.3;
+  display: inline-flex; align-items: center; gap: 5px;
 }
 .tab-item:hover { color: #374151; }
 .tab-item.active { color: #1a6fff; font-weight: 600; border-bottom-color: #1a6fff; }
+
+/*
+  Tab 状态圆点：橙＝有事在队，红＝已超时限。
+  圆点不用 currentColor —— 选中该 Tab 时文字转蓝，但"这件事还没完"这个事实没变，
+  圆点得继续按状态色说话，不能跟着变蓝。
+  未激活态连文字一起转色 + 加粗：一排 12px 灰 Tab 里，只靠一枚 6px 圆点找不着。
+*/
+.tab-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+.tab-item.dot-warn .tab-dot { background: #f97316; }
+.tab-item.dot-danger .tab-dot {
+  background: #dc2626;
+  /* 慢脉冲：只做透明度轻微起伏，2s 一轮 —— 要的是余光能察觉，不是抢注意力 */
+  animation: tab-dot-pulse 2s ease-in-out infinite;
+}
+.tab-item.dot-warn:not(.active) { color: #f97316; font-weight: 600; }
+.tab-item.dot-danger:not(.active) { color: #dc2626; font-weight: 600; }
+@keyframes tab-dot-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.86); }
+}
+/* 跟随系统「减少动态效果」设置：动效是提示不是信息，关掉后圆点仍在 */
+@media (prefers-reduced-motion: reduce) {
+  .tab-item.dot-danger .tab-dot { animation: none; }
+}
 .tab-content {
   padding: 12px 12px 16px; flex: 1 1 auto;
   display: flex; flex-direction: column; min-height: 0;

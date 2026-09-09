@@ -216,6 +216,16 @@ const riskReportBanner = computed(() => {
   };
 });
 /**
+ * 「风险报备」Tab 上的状态圆点。与横幅同源（都读 riskReportBanner），但承担的是提示重心：
+ * 横幅只说"有这么回事"，圆点指的是**这件事在哪儿看** —— 点进去就是报备本身。
+ * 无在队报备时给空对象而不是 undefined：Tab 侧只认"有没有这个 key"，空对象即一个点都不出。
+ */
+const processTabDots = computed<Partial<Record<ProcessTabKey, 'warn' | 'danger'>>>(() => {
+  const b = riskReportBanner.value;
+  if (!b) return {};
+  return { risk: b.overdue ? 'danger' : 'warn' };
+});
+/**
  * 回传上次写进表单的值。有它才分得清"这个『疑似风险』是坐席填的还是回传自己填的"——
  * 只认空串的话，回传第一次填完就再也改不了自己写的那个值：
  * 命中从「待核实」被核实成「成立」时，本该从疑似风险升到有风险，却被自己上一次的写入挡住。
@@ -1225,15 +1235,22 @@ watch(
       「报备中」横幅：报备不落子状态（※29），工单本身看不出任何变化，
       故必须在头部把"报上去了、还没有结论"这件事明说，否则会被当成没报成功而重复报。
       点「查看报备」直达「风险监控」Tab，横幅上不重复展示报备正文。
+
+      【为什么是一行细文本而不是色块】提示重心已移到「风险报备」Tab 上的状态圆点——
+      那里才是这件事的去处。横幅退为一行辅助信息：只交代"报上去了、等了多久"，
+      不再用整条橙底抢走页面的第一注意力（它并不比工单本身的处理更急）。
+      「评估期间本单照常处理，SLA 不停表」是一次性的口径说明，看第二遍就是噪音，
+      收进 title 里 —— 需要时 hover 可得，口径不丢。
     -->
     <div
       v-if="riskReportBanner"
       class="risk-report-banner"
       :class="{ overdue: riskReportBanner.overdue }"
+      title="评估期间本单照常处理，SLA 不停表"
     >
+      <span class="rrb-dot" aria-hidden="true"></span>
       <span class="rrb-text">{{ riskReportBanner.text }}</span>
       <span v-if="riskReportBanner.overdue" class="rrb-overdue">已超评估时限</span>
-      <span class="rrb-hint">评估期间本单照常处理，SLA 不停表</span>
       <button type="button" class="rrb-link" @click="processTabsRef?.switchTab('risk')">
         查看报备
       </button>
@@ -1268,6 +1285,7 @@ watch(
           :expanded-sections="expandedSections"
           :active-chip="activeChip"
           :filled-supplement-count="filledSupplementCount"
+          :tab-dots="processTabDots"
           :readonly="tabsReadonly"
           @toggle-section="toggleSection"
           @select-chip="selectChip"
@@ -1398,27 +1416,29 @@ watch(
   position: relative;
   z-index: 1;
 }
-/* 报备中横幅：橙＝在队等结论，红＝已过评估时限。沿用风险报备一路的橙色系 */
+/*
+  报备中横幅：一行细文本，不是色块 —— 无底色、无边框、无圆角，只用一枚 6px 圆点带状态色
+  （橙＝在队等结论，红＝已过评估时限），与「风险报备」Tab 上的圆点同一套色。
+  高度压到 22px 上下，让位给下方的速览带：那里才是坐席处理这张单要看的东西。
+*/
 .risk-report-banner {
   flex: none;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
-  margin: 10px 20px 0;
-  padding: 8px 12px;
+  gap: 8px;
+  margin: 6px 20px 0;
+  padding: 2px 12px;
   font-size: 12px;
-  color: #9a3412;
-  background: #fff7ed;
-  border: 1px solid #fed7aa;
-  border-radius: 6px;
 }
-.risk-report-banner.overdue {
-  color: #b91c1c;
-  background: #fef2f2;
-  border-color: #fecaca;
+.rrb-dot {
+  width: 6px; height: 6px; border-radius: 50%; flex: none;
+  background: #f97316;
 }
-.rrb-text { font-weight: 700; }
+.risk-report-banner.overdue .rrb-dot { background: #dc2626; }
+.rrb-text { font-weight: 600; color: #4b5563; }
+/* 超时是唯一需要"喊"一声的态：主文案转红，配合右侧红标签 */
+.risk-report-banner.overdue .rrb-text { color: #b91c1c; }
 .rrb-overdue {
   padding: 1px 6px;
   font-size: 11px;
@@ -1427,7 +1447,6 @@ watch(
   background: #fee2e2;
   border-radius: 4px;
 }
-.rrb-hint { color: #9ca3af; }
 .rrb-link {
   margin-left: auto;
   padding: 0;
