@@ -472,15 +472,22 @@ function downloadReportAttachment(name: string) {
  *
  * 【为什么序号现算而不另存计数器】计数器与数据分家之后，撤回一条或整页刷新，
  * 就会再派发一次已经用过的单号；从现有数据里数一遍，序号永远跟着数据走。
+ *
+ * 🔴 **取已用号里的最大值 +1，不是数条数 +1**。数条数只有在号段从 1 起连续时才对：
+ * 预置数据里已经存在 `IFLYTS-20260909-00007` 这一条，数条数会派出 00002，
+ * 再来一条又是 00002 —— 两张单同号，而单号恰恰是这条链路上唯一的追溯凭据。
  */
 function nextEscalatedNo(): string {
   const d = new Date();
   const p = (n: number) => String(n).padStart(2, '0');
   const prefix = `IFLYTS-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-`;
-  const used = reportStore.reports.filter(
-    (r) => r.assessment?.escalatedToNo?.startsWith(prefix),
-  ).length;
-  return `${prefix}${String(used + 1).padStart(5, '0')}`;
+  const maxUsed = reportStore.reports.reduce((max, r) => {
+    const no = r.assessment?.escalatedToNo;
+    if (!no?.startsWith(prefix)) return max;
+    const n = Number(no.slice(prefix.length));
+    return Number.isFinite(n) && n > max ? n : max;
+  }, 0);
+  return `${prefix}${String(maxUsed + 1).padStart(5, '0')}`;
 }
 
 function confirmAssess() {
