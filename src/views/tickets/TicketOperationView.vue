@@ -30,7 +30,8 @@ import { mergeDraftIntoLatestHandling } from './utils/ticketOverview';
 import { TICKETS } from '@/mock/tickets';
 import { useRiskTagStore } from '@/stores/riskTags';
 import { useRiskReportStore, REPORT_ASSESS_LIMIT_MIN } from '@/stores/riskReports';
-import { tabWritableFor, visibleProcessTabs } from './types/operation';
+import { RISK_FLAG_OPTIONS, tabWritableFor, visibleProcessTabs } from './types/operation';
+import { RISK_LEVELS } from '@/config/risk';
 import { pullbackOnCsEvent, headerActionsByRole, type TicketStatus } from './types/ticket';
 import { buildChildTicketPrefill, buildReopenTicketPrefill } from './composables/childTicketPrefill';
 import {
@@ -101,20 +102,64 @@ watch(
   { immediate: true },
 );
 
-// ---- 风险监控打标 → 工单风险字段（回传） ----
+// ---- 风险结论 → 工单风险字段（回传） ----
 //
-// 【回传什么】只回传**工单级风险等级**（max(已核实且成立的命中等级)，只升不降），
-// 以及由核实结论**推导**出的「是否有风险」。
+// 【两路结论，一条链路】风险词命中的核实（915 §7.3）与风险报备的评估（930 §6.1）
+// 是两拨人对同一张单下的两个结论，回传的却是同一组字段。故此处先把两路**合流**成一份结论，
+// 再走同一套写入判定——各写各的话，两个 watcher 会互相踩：后跑的那个把先跑的写进去的值
+// 当成"坐席填的"而撒手，或者反过来当成"我自己上次写的"而覆盖，行为取决于谁先跑。
+//
+// 【回传什么】只回传**工单级风险等级**与由结论**推导**出的「是否有风险」。
 // 「命中判定（成立/误报）」**不回传**：它判的是"这条规则这次命中得准不准"，喂的是规则准确率；
 // 写进工单会让坐席把「误报」读成"这单没风险"，而误报的真正结论是"规则捞错了"，
-// 这单危不危险监控根本没说。
+// 这单危不危险监控根本没说。报备侧同理，**只有决策＝「确认有风险」才有话说**，
+// 其余三档（无风险 / 退回一线改单 / 关联已有投诉单）一字不写。
 //
-// 【写入优先级】工单侧优先，监控只填空。判"空"的口径是**坐席从没碰过这个字段**（`''`），
-// 不是"界面上看着像无风险"——把明确选过的「无风险」也当成空，等于监控可以推翻坐席的判断；
-// 反过来把没碰过的空当成已填，监控就永远写不进去，这个功能等于没做。
+// 【写入优先级】工单侧优先，两路都只填空。判"空"的口径是**坐席从没碰过这个字段**（`''`），
+// 不是"界面上看着像无风险"——把明确选过的「无风险」也当成空，等于系统可以推翻坐席的判断；
+// 反过来把没碰过的空当成已填，回传就永远写不进去，这个功能等于没做。
 const riskTags = useRiskTagStore();
 const riskReports = useRiskReportStore();
 const riskMonitorVerify = computed(() => riskTags.ticketVerificationOf(ticketNo.value));
+const riskReportAssess = computed(() => riskReports.ticketAssessmentOf(ticketNo.value));
+
+/**
+ * 两把刻度统一成"数越大越重"，取 max 与判"回退没回退"共用同一把尺——
+ * 两处各写一套比大小，迟早出现"这边算升级、那边算降级"。
+ * 空值（本路没有结论 / 坐席没碰过）恒为 -1，低于任何一档实值。
+ */
+function flagRank(f: ProcessFormDraft['riskFlag'] | null | undefined): number {
+  return f ? RISK_FLAG_OPTIONS.indexOf(f) : -1;
+}
+/** RISK_LEVELS 由重到轻排，故取反后才是"越大越重" */
+function levelRank(l: ProcessFormDraft['riskLevel'] | null | undefined): number {
+  return l ? RISK_LEVELS.length - 1 - RISK_LEVELS.indexOf(l) : -1;
+}
+
+/**
+ * 合流后要写进工单的那一份结论：两路各出一个「是否有风险 / 工单级等级」，**各取其重**。
+ *
+ * 【为什么是取 max 而不是取最新的一路】915 §3.2 的只升不降是对整张工单说的，不是对某一路说的：
+ * 命中核实判成高危之后，报备评估给出中危，风险并没有因此变小——让后到的一路把已定的高等级
+ * 降下来，等于用"最后一个说话的人"覆盖"说得最重的那个人"。两路都进 max，谁也不覆盖谁（930 §6.1）。
+ */
+const riskConclusion = computed(() => {
+  const verify = riskMonitorVerify.value;
+  const assess = riskReportAssess.value;
+  // 两路都没话说 → 一个字段都不动，只读提示行也不渲染（915 §7.5.2 步 2）
+  if (!verify && !assess) return null;
+  const flags = [verify?.flag ?? null, assess?.flag ?? null];
+  const grades = [verify?.grade ?? null, assess?.grade ?? null];
+  return {
+    ticketNo: ticketNo.value,
+    flag: flags.reduce<ProcessFormDraft['riskFlag'] | null>(
+      (best, cur) => (flagRank(cur) > flagRank(best) ? cur : best), null,
+    ),
+    grade: grades.reduce<ProcessFormDraft['riskLevel'] | null>(
+      (best, cur) => (levelRank(cur) > levelRank(best) ? cur : best), null,
+    ),
+  };
+});
 
 /** 底栏「风险报备」：非投诉单 + 可写角色（二线/班组长/管理员） */
 const showRiskReport = computed(() => {
@@ -157,28 +202,53 @@ function onRiskReport(payload: {
  * 回传上次写进表单的值。有它才分得清"这个『疑似风险』是坐席填的还是回传自己填的"——
  * 只认空串的话，回传第一次填完就再也改不了自己写的那个值：
  * 命中从「待核实」被核实成「成立」时，本该从疑似风险升到有风险，却被自己上一次的写入挡住。
+ *
+ * 【为什么记的是值而不是一个"我写过"的布尔标记】标记只答"这个字段被系统碰过没有"，
+ * 答不了"现在躺在里面的还是不是我写的那个"：坐席把回传写的「疑似风险」改成「无风险」之后，
+ * 标记仍然是真，系统就会理直气壮地再覆盖一次坐席的判断。值比较自带这条边界——
+ * 坐席改成别的值即挡住，改回同一个值则系统仍可再写（915 §7.3.3 口径 3）。
+ * 【为什么两路共用一份记忆】记的是"这个字段现在的值是不是回传写的"，与哪一路写的无关；
+ * 分成两份就会出现"报备写的值被核实那一路当成坐席填的"这种自己挡自己的死结。
+ * 【局限】记忆随页签存活（前端内存态，页签关闭或整页刷新即丢），届时对自己上次写入的值
+ * 也不再覆盖；落地时须把「上次回传值」随工单持久化。
  */
 const riskWriteBack = ref<{ ticketNo: string; flag?: ProcessFormDraft['riskFlag']; level?: ProcessFormDraft['riskLevel'] }>({ ticketNo: '' });
 watch(
   // 监听结论本身而不是只在挂载时跑一次：工作区里工单页与风险监控页是两个常驻页签，
-  // 在监控页打完标切回来，这一单的结论已经变了，只在挂载时读会停在旧结论上。
-  riskMonitorVerify,
+  // 在监控页打完标 / 评完报备再切回来，这一单的结论已经变了，只在挂载时读会停在旧结论上。
+  riskConclusion,
   (v) => {
+    // 步 1 · 有没有结论要写：两路都没有 → 整条跳过
     if (!v) return;
     const f = form.value;
+    // 工单号变了记忆整块重置——记忆是按单持有的，串单就成了拿另一张单的值做判据
     const mem = riskWriteBack.value.ticketNo === v.ticketNo ? riskWriteBack.value : { ticketNo: v.ticketNo };
     const patch: Partial<ProcessFormDraft> = {};
-    // 坐席没碰过（空串），或者字段里躺着的正是回传上次写的值 → 可写；坐席一改就撒手
-    if (v.flag && (f.riskFlag === '' || f.riskFlag === mem.flag)) patch.riskFlag = v.flag;
-    // 全部误报时 flag 为 null —— 保持工单原值不动，误报不是"这单没风险"
+    // 步 2 · 工单侧优先：坐席没碰过（空串）才可写，坐席一改就撒手
+    // 步 3 · 唯一例外：字段里躺着的正是回传上次写的那个值（值比较）→ 可以覆盖自己
+    // 步 4 · 不回退：只在结论比当前值更重时才落笔；等值是空转，更轻则一律不写
+    //        （命中被修正成误报、后一次报备评得更轻，都会让合流结论掉档，掉了也不能把工单降回去）
+    if (v.flag && (f.riskFlag === '' || f.riskFlag === mem.flag) && flagRank(v.flag) > flagRank(f.riskFlag)) {
+      patch.riskFlag = v.flag;
+    }
+    // 两路都没推导出结论时 flag 为 null —— 保持工单原值不动，误报不是"这单没风险"
     const nextFlag = patch.riskFlag ?? f.riskFlag;
     // 等级只在「有风险」下才写：坐席已判成无风险 / 疑似风险时，等级字段在面板上根本不渲染，
-    // 往里塞一个值就成了谁也看不见、谁也改不掉的脏数据。监控的等级这时走只读提示行呈现。
-    if (v.grade && nextFlag === '有风险' && (!f.riskLevel || f.riskLevel === mem.level)) {
+    // 往里塞一个值就成了谁也看不见、谁也改不掉的脏数据。这时结论改走只读提示行呈现。
+    if (
+      v.grade && nextFlag === '有风险'
+      && (!f.riskLevel || f.riskLevel === mem.level)
+      && levelRank(v.grade) > levelRank(f.riskLevel)
+    ) {
       patch.riskLevel = v.grade;
     }
+    // 步 5 的只读提示行不在这里落笔：它是风险面板（补充处理 · 风险）上的一行只读文字，
+    // 由面板自己按单从 store 取（核实那一路取 riskTags.ticketVerificationOf，
+    // 报备这一路取 riskReports.ticketAssessmentNoteOf），不进 form、不参与必填校验。
+    // 写在这里就成了"表单里躺着一行不是字段的字"，它恰恰必须在被挡住时也照常显示。
     riskWriteBack.value = {
       ticketNo: v.ticketNo,
+      // 本次没写进去则沿用上一次的记忆：这一次被挡住，不代表上一次写的那个值也不是我写的
       flag: patch.riskFlag ?? mem.flag,
       level: patch.riskLevel ?? mem.level,
     };

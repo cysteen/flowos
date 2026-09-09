@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
-import type { RiskLevel } from '@/config/risk';
+import { RISK_LEVELS, riskLevelText, type RiskLevel } from '@/config/risk';
+import type { RiskFlag } from '@/views/tickets/types/operation';
 
 /**
  * 风险报备 · 跨页共享（《【930】风险报备 · 监控 · 管控 PRD》§4 / §5）。
@@ -12,8 +13,9 @@ import type { RiskLevel } from '@/config/risk';
  *
  * 【局限】前端内存，整页刷新回到 mock 预置数据。SPA 内切页签 / 跳工单不受影响。
  *
- * 【边界】本 store **只管报备单自身**。评估结论对工单风险字段的回传走 915 §7.3 的
- * 既有通道（ProcessFormDraft 的 riskFlag / riskLevel），不在这里写。
+ * 【边界】本 store **只管报备单自身**，外加一个供回传取值的读口（`ticketAssessmentOf`）。
+ * 真正往 ProcessFormDraft 的 riskFlag / riskLevel 里写的那一步不在这里 ——
+ * 写入优先级要看工单表单当前值，那是工单操作页才有的上下文（930 §6.1 / 915 §7.3）。
  */
 
 /** 报备原因（PRD §4.4）。取「风险场景」时风险类型才必填 */
@@ -67,11 +69,45 @@ export interface RiskReport {
 }
 
 /**
+ * 一张工单在报备侧的现行评估结论（930 §6.1）。形状对齐 riskTags 的 `TicketRiskVerification`：
+ * 工单页的回传逻辑两路各取一个这样的对象、走同一套判定，不为报备另写一条链路。
+ *
+ * 【为什么 flag 不是可空的】本对象只在「确认有风险」存在时才被造出来（否则整个返回 null），
+ * 其余三个决策一字不写工单，连"没风险"这个结论都不写 —— 判无风险是坐席的权，
+ * 客诉专员评的是"这单要不要提前介入"，不是"这单最终有没有问题"。
+ */
+export interface TicketRiskAssessment {
+  ticketNo: string;
+  /** 工单级风险等级 ＝ max(本单全部「确认有风险」评估的等级)，只升不降（915 §3.2） */
+  grade: RiskLevel | null;
+  /** 恒为「有风险」。留成字段而不是让调用方自己写死，是为了与另一路的取值口对称 */
+  flag: RiskFlag;
+  /** 最近一次「确认有风险」的评估，按**评估时刻**取 —— 只读提示行要说的是"最后一次谁怎么评的" */
+  latest: ReportAssessment;
+  /** 本单「确认有风险」的评估条数。一张单可以反复报备，故不是恒等于 1 */
+  confirmedCount: number;
+}
+
+/**
  * 报备评估时限（分钟）。**不是 SLA**：不接 SLA 引擎、不走工作日历、不适用停表规则
  * （§9 规则 13）。这一个值同时供两处读：《【815】》的催办规则触发条件，
  * 与风险评估页签「超时未评」卡的标红阈值（§9 规则 14）。
  */
 export const REPORT_ASSESS_LIMIT_MIN = 120;
+
+/**
+ * 预置数据的时刻一律**相对当前时间**生成，不写死日期。
+ *
+ * 【为什么】写死的话，① 换一天打开，「今日已评估」与「已评估默认只看今日」这两个
+ * 按自然日切的口径就恒为 0，看不到已评估的样子；② 更糟的是写死的时刻可能**晚于当前**，
+ * 等待时长被 `Math.max(0, …)` 夹成"已等待 0 分钟"，看着像功能坏了。
+ * 相对生成后，任何一天打开都是同一副样子。
+ */
+function agoStamp(minutesAgo: number) {
+  const d = new Date(Date.now() - minutesAgo * 60000);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
 
 /** 预置数据：挂在几张**非投诉单**上 —— 风险报备只在咨询 / 建议 / 商机（§1.2a） */
 const SEED: RiskReport[] = [
@@ -84,7 +120,8 @@ const SEED: RiskReport[] = [
     attachments: ['第三通通话录音片段.mp3'],
     by: '林晓东',
     byRole: '二线专员',
-    at: '2026-09-09 14:20',
+    // 45 分钟前：未超时，用来演示"在队但还在时限内"这一态
+    at: agoStamp(45),
     status: '待评估',
   },
   {
@@ -96,7 +133,7 @@ const SEED: RiskReport[] = [
     attachments: [],
     by: '林晓东',
     byRole: '二线专员',
-    at: '2026-09-06 10:02',
+    at: agoStamp(90),
     status: '已评估',
     assessment: {
       decision: '确认有风险',
@@ -104,7 +141,8 @@ const SEED: RiskReport[] = [
       advice: '当日内主动回电一次，明确给出处理时间点并在处理记录里留痕；两个工作日内未闭环再报一次。',
       by: '李文萍',
       byRole: '客诉专员',
-      at: '2026-09-06 10:41',
+      // 评估时刻落在今日：否则「今日已评估」与「已评估默认只看今日」两处恒为 0
+      at: agoStamp(50),
     },
   },
   {
@@ -116,7 +154,8 @@ const SEED: RiskReport[] = [
     attachments: [],
     by: '周敏',
     byRole: '二线专员',
-    at: '2026-09-09 11:05',
+    // 3 小时前：已过 2 小时时限，用来演示「超时未评」的标红与计数
+    at: agoStamp(180),
     status: '待评估',
   },
 ];
@@ -226,6 +265,50 @@ export const useRiskReportStore = defineStore('riskReports', () => {
     return base;
   });
 
+  /**
+   * 本单现行的评估结论 —— 回传工单风险字段时取的就是这一个对象（930 §6.1 步 1）。
+   *
+   * 【为什么只认「确认有风险」】四个决策里只有它是"人判定这单有风险"。
+   * 「无风险」写不得：客诉专员评的是"要不要提前介入"，不是"这单最终没问题"，
+   * 把它写成工单的「无风险」等于替坐席下了结论；
+   * 「退回一线改单」「关联已有投诉单」答的都不是风险有无，与这组字段无关。
+   * 决策不是「确认有风险」→ 返回 null，调用方整条跳过，一个字都不写。
+   *
+   * 【为什么等级取 max 而不是最后一条】一张单可以反复报备（评估结论不可改，再报是唯一的纠错路径），
+   * 后一次评成「中」不该把前一次已经定下的「高」降回来 —— 等级降了，风险没有降（915 §3.2 只升不降）。
+   * 【为什么 latest 另按时刻取】等级要的是最重的那一档，提示行要的是最近的那一次，两个问题两种取法。
+   */
+  function ticketAssessmentOf(ticketNo: string): TicketRiskAssessment | null {
+    let grade: RiskLevel | null = null;
+    let latest: ReportAssessment | undefined;
+    let confirmedCount = 0;
+    for (const r of reports.value) {
+      if (r.ticketNo !== ticketNo || r.status !== '已评估') continue;
+      const a = r.assessment;
+      if (!a || a.decision !== '确认有风险') continue;
+      confirmedCount += 1;
+      // RISK_LEVELS 本身就是由重到轻排的，序位直接用下标取，不在这里再抄一份等级序
+      if (a.level && (!grade || RISK_LEVELS.indexOf(a.level) < RISK_LEVELS.indexOf(grade))) {
+        grade = a.level;
+      }
+      if (!latest || a.at.localeCompare(latest.at) > 0) latest = a;
+    }
+    if (!latest) return null;
+    return { ticketNo, grade, flag: '有风险', latest, confirmedCount };
+  }
+
+  /**
+   * 只读提示行的那一行字（930 §6.1 步 5）：「风险评估结论：高危 · 李文萍（客诉专员）· 2026-09-06 10:41」。
+   * 【为什么文案在 store 里拼】被步 2 挡住时这行字是结论**唯一**的去处，两处各拼一遍
+   * 迟早写成两种说法；而拼它需要的全部素材都在本 store，放这里调用方一行取用。
+   */
+  function ticketAssessmentNoteOf(ticketNo: string): string {
+    const a = ticketAssessmentOf(ticketNo);
+    if (!a) return '';
+    // 等级取**工单级**（max 棘轮）而不是最后一次评估自己的等级：这行字答的是"这张单有多危险"
+    return `风险评估结论：${riskLevelText(a.grade)} · ${a.latest.by}（${a.latest.byRole}）· ${a.latest.at}`;
+  }
+
   function submit(input: {
     ticketNo: string;
     reason: ReportReason;
@@ -279,6 +362,8 @@ export const useRiskReportStore = defineStore('riskReports', () => {
     assessedTodayCount,
     decisionCounts,
     isReporting,
+    ticketAssessmentOf,
+    ticketAssessmentNoteOf,
     pendingQueue,
     pendingCount,
     submit,

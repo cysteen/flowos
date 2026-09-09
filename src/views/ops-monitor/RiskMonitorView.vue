@@ -164,6 +164,41 @@ function setReportView(v: 'pending' | 'assessed') {
   else onlyOverdue.value = false;
 }
 
+/**
+ * 报备队列自己的翻页状态，**不与命中清单的 hitPageCurrent 共用**。
+ * 两张表的行数各走各的（命中记录 vs 报备单），共用一个页码时
+ * 「在命中清单翻到第 3 页 → 切到风险评估」会看到一张空表，人只会以为队列清空了。
+ */
+const reportPageCurrent = ref(1);
+const reportPageSize = ref(10);
+
+const pagedReportRows = computed(() => {
+  const start = (reportPageCurrent.value - 1) * reportPageSize.value;
+  return reportRows.value.slice(start, start + reportPageSize.value);
+});
+
+function setReportPage(page: number, size: number) {
+  reportPageCurrent.value = page;
+  reportPageSize.value = size;
+}
+
+// 任一视图内条件变了，底表就换了一批，页码必须回到第一页——
+// 否则「第 3 页 → 摘掉超时收窄」会停在一张恰好没有行的页上。
+watch([reportView, onlyOverdue, decisionFilter, assessedTodayOnly], () => {
+  reportPageCurrent.value = 1;
+});
+
+/**
+ * 等待时长的口径文案：分钟 → 小时 → 天，逐级换单位。
+ * 全程写分钟的话，「1937 分钟」要人心算才知道是一天多，队列排序看的就是这一列。
+ */
+function waitedText(at: string) {
+  const m = reportStore.waitedMinutes(at);
+  if (m < 60) return `${m} 分钟`;
+  if (m < 60 * 24) return `${Math.floor(m / 60)} 小时`;
+  return `${Math.floor(m / (60 * 24))} 天`;
+}
+
 // ---- 评估弹窗（§5.4）----
 const assessOpen = ref(false);
 const assessTarget = ref<RiskReport | null>(null);
@@ -2111,6 +2146,180 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
         </button>
       </div>
 
+      <!--
+        风险评估 · 视图内两态切换 + 下钻收窄标。
+        沿用等级 chip 那一排的 DOM 与 class（.section-filters.grade-filters / .gf-chip）：
+        两处做的是同一件事——**在同一批数据里换一个条件**，长得不一样只会让人以为动作不同。
+
+        🔴 chip 上的数字取的是**该态过筛之后的行数**（reportPendingRows / reportAssessedRows），
+        不是 store 的原始总数。这样"chip 写着几、点进去表里就有几"恒成立——
+        本文件开头那条「标签写着一个数、表里躺着另一批」的坑，在这里同样能踩。
+        （切态时 setReportView 会把另一态的收窄条件摘掉，故非当前态的数字不受本态条件污染。）
+      -->
+      <div v-if="listView === 'report'" class="section-filters grade-filters report-filters">
+        <button
+          type="button"
+          class="gf-chip"
+          :class="{ active: reportView === 'pending', warn: reportView !== 'pending' && reportStore.overdueCount > 0 }"
+          @click="setReportView('pending')"
+        >
+          待评估<span class="gf-num">{{ reportPendingRows.length }}</span>
+        </button>
+        <button
+          type="button"
+          class="gf-chip"
+          :class="{ active: reportView === 'assessed' }"
+          @click="setReportView('assessed')"
+        >
+          已评估<span class="gf-num">{{ reportAssessedRows.length }}</span>
+        </button>
+
+        <!--
+          下钻收窄标：从上方 KPI 卡点进来的条件必须在清单旁边有一个**看得见、摘得掉**的落点。
+          没有它，人从「超时未评 2」点进来只看到 2 行，会当成队列只剩 2 条报备。
+        -->
+        <span v-if="reportView === 'pending' && onlyOverdue" class="nc-chip bad">
+          超时未评 {{ reportStore.overdueCount }}
+          <button type="button" class="nc-del" title="看全部待评估报备" @click="onlyOverdue = false">×</button>
+        </span>
+        <template v-if="reportView === 'assessed'">
+          <span v-if="decisionFilter !== 'all'" class="nc-chip">
+            决策：{{ decisionFilter }}
+            <button type="button" class="nc-del" title="看全部决策" @click="decisionFilter = 'all'">×</button>
+          </span>
+          <!--
+            「仅今日」默认就开着，故它也得摆出来——不摆的话，翻不到昨天的记录会被读成"昨天没人评估"。
+            摘掉它＝看全部历史，此时上方四枚决策卡（自然日口径）与表里的行数不再相等，是有意为之。
+          -->
+          <span v-if="assessedTodayOnly" class="nc-chip">
+            仅今日
+            <button type="button" class="nc-del" title="看全部历史评估记录" @click="assessedTodayOnly = false">×</button>
+          </span>
+        </template>
+      </div>
+
+      <!-- 风险评估 · 空态：把当前收窄条件讲出来，否则"筛空了"会被读成"没有了" -->
+      <div v-if="listView === 'report' && !reportRows.length" class="ob-empty">
+        <template v-if="reportView === 'pending'">
+          {{ onlyOverdue ? '当前没有超时未评的报备' : '暂无待评估报备' }}
+        </template>
+        <template v-else-if="assessedTodayOnly">
+          {{ decisionFilter === 'all' ? '今日尚无评估记录' : `今日尚无「${decisionFilter}」的评估记录` }}
+        </template>
+        <template v-else>没有符合当前条件的评估记录</template>
+      </div>
+
+      <!--
+        报备队列表。
+        **不做批量选择、不做分派/领取**（§9 规则 11）：报备走的是"谁打开谁评"，
+        给一列复选框会让人以为要先领再评，凭空多出一个并不存在的环节。
+      -->
+      <div v-if="listView === 'report' && reportRows.length" class="hit-table-wrap report-table-wrap">
+        <table v-if="reportView === 'pending'" class="hit-table report-table">
+          <thead>
+            <tr>
+              <th style="width: 190px">工单号</th>
+              <th style="width: 104px">报备人</th>
+              <th style="width: 92px">报备原因</th>
+              <th style="width: 92px">风险类型</th>
+              <th>场景描述</th>
+              <th style="width: 128px">提交时刻</th>
+              <th style="width: 84px">等待时长</th>
+              <th style="width: 76px">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="r in pagedReportRows" :key="r.id">
+              <td>
+                <button type="button" class="rt-no" @click="openTicket(r.ticketNo)">{{ r.ticketNo }}</button>
+              </td>
+              <td>{{ r.by }}<div class="hit-sub">{{ r.byRole }}</div></td>
+              <td>{{ r.reason }}</td>
+              <!-- 风险类型只在「风险场景」这一档有值，其余档位空着就是正确结果，不回填任何默认值 -->
+              <td>{{ r.category ?? '—' }}</td>
+              <!-- 单行截断，全文挂 title：队列是用来挑下一条评的，不是在这里读完再判 -->
+              <td class="rr-desc" :title="r.desc">{{ r.desc }}</td>
+              <td class="hit-when">{{ r.at }}</td>
+              <!--
+                🔴 超时**只标这一格，整行不变色**：队列长起来后满屏红底，
+                反而看不出到底哪几条超了——红色只有稀缺时才是警报。
+              -->
+              <td
+                class="hit-when rr-waited"
+                :class="{ over: reportStore.isOverdue(r) }"
+                :title="reportStore.isOverdue(r) ? `已超过 ${assessLimitText}评估时限` : `评估时限 ${assessLimitText}`"
+              >{{ waitedText(r.at) }}</td>
+              <td>
+                <button type="button" class="row-btn row-btn-tag" @click="openAssess(r)">评估</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <table v-else class="hit-table report-table">
+          <thead>
+            <tr>
+              <th style="width: 190px">工单号</th>
+              <th style="width: 104px">报备人</th>
+              <th style="width: 92px">报备原因</th>
+              <th style="width: 104px">评估人</th>
+              <th style="width: 128px">评估时刻</th>
+              <th style="width: 112px">评估决策</th>
+              <th style="width: 84px">风险等级</th>
+              <th style="width: 76px">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="r in pagedReportRows" :key="r.id">
+              <td>
+                <button type="button" class="rt-no" @click="openTicket(r.ticketNo)">{{ r.ticketNo }}</button>
+              </td>
+              <td>{{ r.by }}<div class="hit-sub">{{ r.byRole }}</div></td>
+              <td>{{ r.reason }}</td>
+              <td>{{ r.assessment?.by }}<div class="hit-sub">{{ r.assessment?.byRole }}</div></td>
+              <td class="hit-when">{{ r.assessment?.at }}</td>
+              <td>
+                <span class="rr-dec" :class="{ risk: r.assessment?.decision === '确认有风险' }">
+                  {{ r.assessment?.decision }}
+                </span>
+                <!-- 关联单号是这一档决策的结论主体，不写出来这行就等于没说清关到了哪 -->
+                <div v-if="r.assessment?.linkedTicketNo" class="hit-sub">
+                  关联 {{ r.assessment.linkedTicketNo }}
+                </div>
+              </td>
+              <td>
+                <!-- 只有「确认有风险」这一档有等级，其余三档空着即正确，不回落任何预设 -->
+                <span
+                  v-if="r.assessment?.level"
+                  class="grade-pill"
+                  :style="{ color: RISK_LEVEL_STYLE[r.assessment.level].color, background: RISK_LEVEL_STYLE[r.assessment.level].bg }"
+                >{{ r.assessment.level }}</span>
+                <span v-else class="hit-sub">—</span>
+              </td>
+              <!--
+                🔴 已评估行**没有任何操作**：评估结论提交即固化、不可修改（§9 规则 22）。
+                这里既不给「修正」也不给「重评」——要纠错走的是"再报一次"那条路，不是改旧结论。
+                沿用本页命中清单里"这一格没有可做的事"的写法（—），空白单元格会被当成渲染缺漏。
+              -->
+              <td><span class="hit-sub" title="评估结论提交即固化，不可修改；如需纠正请由报备人再报一次">—</span></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="pager">
+          <div class="pager-left">
+            <span class="pager-total">共 {{ reportRows.length }} 条</span>
+          </div>
+          <AppPagination
+            :total="reportRows.length"
+            :current="reportPageCurrent"
+            :page-size="reportPageSize"
+            :show-total="false"
+            @change="setReportPage"
+          />
+        </div>
+      </div>
+
       <!-- 台账查询条：七维全部展开，右侧动作对齐手动筛查（查询 + 重置） -->
       <div v-if="listView === 'judged' && !ticketFocus" class="ledger-bar" @keyup.enter="applyLedgerQuery">
         <div class="list-toolbar">
@@ -2391,7 +2600,8 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
         </button>
       </div>
 
-      <div v-if="!filteredRows.length" class="ob-empty">
+      <!-- 报备队列不走 filteredRows（那是命中记录），故这两块在 report 视图下一律不渲染 -->
+      <div v-if="listView !== 'report' && !filteredRows.length" class="ob-empty">
         <template v-if="inScanResult">该条件下没有扫到命中，可放宽时间区间或匹配范围</template>
         <!--
           台账空态必须把当前时间窗口讲出来。默认只看近 30 天，
@@ -2404,7 +2614,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
       </div>
 
 
-      <div v-if="filteredRows.length && !(listView === 'scan' && !inScanResult)" class="hit-table-wrap">
+      <div v-if="listView !== 'report' && filteredRows.length && !(listView === 'scan' && !inScanResult)" class="hit-table-wrap">
       <table class="hit-table">
         <thead>
           <tr>
@@ -3033,6 +3243,135 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               <div v-if="e.amendReason" class="tt-reason">原因：{{ e.amendReason }}</div>
             </li>
           </ol>
+        </div>
+      </div>
+    </OpActionModal>
+
+    <!--
+      评估报备（《【930】》§5.4）。
+      主按钮**不做 disabled**：报备信息一屏读完就要下结论，按钮灰着不说为什么，
+      人只能逐项试探哪里没填。故点了就校验、缺哪项在哪项下面出红字（missAssess* 一组）。
+    -->
+    <OpActionModal
+      :open="assessOpen"
+      title="评估报备"
+      :icon="EditOutlined"
+      tone="primary"
+      :width="560"
+      ok-text="提交结论"
+      @update:open="assessOpen = $event"
+      @ok="confirmAssess"
+    >
+      <div v-if="assessTarget" class="op-form assess-form">
+        <!-- ① 报备信息：只读。评估的人是**照着这段做判断**的，故排在最前、且一项不省 -->
+        <div class="assess-src">
+          <div class="asrc-top">
+            <button type="button" class="tag-ticket-no" @click="openTicket(assessTarget.ticketNo)">
+              {{ assessTarget.ticketNo }}
+            </button>
+            <span class="asrc-by">{{ assessTarget.by }}<span class="asrc-role">{{ assessTarget.byRole }}</span></span>
+            <span class="asrc-at">{{ assessTarget.at }}</span>
+          </div>
+          <div class="asrc-meta">
+            <span class="asrc-k">报备原因</span>
+            <span class="asrc-v">{{ assessTarget.reason }}</span>
+            <!-- 风险类型只在「风险场景」下存在，无值时整项不出：出一个「—」等于宣称"这里本该有值" -->
+            <template v-if="assessTarget.category">
+              <span class="asrc-sep">·</span>
+              <span class="asrc-k">风险类型</span>
+              <span class="asrc-v">{{ assessTarget.category }}</span>
+            </template>
+          </div>
+          <div class="asrc-desc">{{ assessTarget.desc }}</div>
+          <div v-if="assessTarget.attachments.length" class="asrc-att">
+            <span class="asrc-k">附件</span>
+            <span v-for="a in assessTarget.attachments" :key="a" class="asrc-att-i">{{ a }}</span>
+          </div>
+        </div>
+
+        <!--
+          ② 「本单另有」——同单互见。两行**哪行为空就不渲染哪行，两行都空整块不出**：
+          写一句「本单无其它记录」等于每次都占一块地方说"没事"，读多了就不看了，
+          真有记录时反而被当成同一块噪音略过。
+        -->
+        <div v-if="assessTargetHits || assessTargetHistory.length" class="assess-also">
+          <div class="aa-head">本单另有</div>
+          <div v-if="assessTargetHits" class="aa-line">
+            风险词命中 <b>{{ assessTargetHits.hitCount }}</b> 条
+            <span class="aa-sep">·</span>
+            成立 {{ assessTargetHits.confirmedCount }} / 误报 {{ assessTargetHits.falseCount }} / 待核实 {{ assessTargetHits.pendingCount }}
+          </div>
+          <div v-if="assessTargetHistory.length" class="aa-line">
+            历史报备 <b>{{ assessTargetHistory.length }}</b> 条
+            <!--
+              逐条列出而不是只给条数：同一张单第二次报上来，判的分量取决于
+              "上一次判成了什么、之后又发生了什么"，光有一个数看不出这层。
+            -->
+            <ol class="aa-list">
+              <li v-for="h in assessTargetHistory" :key="h.id" class="aa-item">
+                <span class="aa-at">{{ h.assessment?.at ?? h.at }}</span>
+                <span class="aa-sep">·</span>
+                <span class="aa-dec">{{ h.status === '已撤回' ? '已撤回' : h.assessment?.decision }}</span>
+                <span class="aa-sep">·</span>
+                <span
+                  v-if="h.assessment?.level"
+                  class="grade-pill-inline"
+                  :style="{ color: RISK_LEVEL_STYLE[h.assessment.level].color, background: RISK_LEVEL_STYLE[h.assessment.level].bg }"
+                >{{ h.assessment.level }}危</span>
+                <span v-else class="aa-nolevel">无等级</span>
+              </li>
+            </ol>
+          </div>
+        </div>
+
+        <!-- ③ 评估：决策选定后才决定后面出哪几项，故它排第一 -->
+        <div class="op-field op-field-h op-field-h-top assess-field">
+          <div class="op-label req">评估决策</div>
+          <div class="assess-ctl">
+            <a-radio-group v-model:value="assessDecision">
+              <a-radio v-for="d in ASSESS_DECISIONS" :key="d" :value="d">{{ d }}</a-radio>
+            </a-radio-group>
+            <div v-if="missAssessDecision" class="assess-err">请先选择一个评估决策</div>
+          </div>
+        </div>
+
+        <!-- 等级只在「确认有风险」这一档存在：其余三档下这个字段没有含义，故整项不出现 -->
+        <div v-if="assessNeedsLevel" class="op-field op-field-h assess-field">
+          <div class="op-label req">风险等级</div>
+          <div class="assess-ctl">
+            <a-select v-model:value="assessLevel" placeholder="请选择风险等级" class="assess-level-sel">
+              <a-select-option v-for="g in GRADES" :key="g" :value="g">{{ riskLevelText(g) }}</a-select-option>
+            </a-select>
+            <div v-if="missAssessLevel" class="assess-err">判为确认有风险时必须定级，结论要连等级一起回传工单</div>
+          </div>
+        </div>
+
+        <!-- 关联单号只在「关联已有投诉单」这一档必填；不得填本单，校验在 missAssessLink 里 -->
+        <div v-if="assessNeedsLink" class="op-field op-field-h assess-field">
+          <div class="op-label req">目标投诉单号</div>
+          <div class="assess-ctl">
+            <a-input v-model:value="assessLinkedNo" placeholder="填写与本单为同一件事的那张投诉工单号" />
+            <div v-if="missAssessLink" class="assess-err">请选择一张其他的投诉工单</div>
+          </div>
+        </div>
+
+        <!-- 四个决策各有各的说法，故 label 与 placeholder 都随决策走，不共用一个「备注」 -->
+        <div class="op-field op-field-h op-field-h-top assess-field">
+          <div class="op-label req">{{ assessAdviceLabel }}</div>
+          <div class="assess-ctl">
+            <a-textarea
+              v-model:value="assessAdvice"
+              :rows="3"
+              :placeholder="assessAdvicePlaceholder"
+            />
+            <div v-if="missAssessAdvice" class="assess-err">
+              {{ assessAdviceLabel }}必填 —— 结论要回给报备人看，只有决策没有说法，他不知道下一步该怎么办
+            </div>
+          </div>
+        </div>
+
+        <div class="op-tip op-tip-warn assess-final">
+          结论<b>提交即固化，不可修改</b>；如判断有误，请由报备人重新报备一次。
         </div>
       </div>
     </OpActionModal>
@@ -4242,4 +4581,82 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
   color: #94a3b8; font-size: 13px; cursor: pointer; font-family: inherit;
 }
 .wf-syn-del:hover { color: #ef4444; }
+
+/* ==== 风险评估（报备队列 + 评估弹窗）==== */
+
+/* 收窄标：等级 chip 那一排里混着的"当前生效条件"，故取同一个圆角与字号，
+   只在配色上与 chip 区分——chip 是可点的选择项，它是可摘的既成条件。 */
+.report-filters { align-items: center; }
+.nc-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 6px 3px 10px; border: 1px solid #BFDBFE; border-radius: 3px;
+  background: #EFF6FF; color: #1D4ED8; font-size: 12px; font-weight: 500;
+}
+.nc-chip.bad { border-color: #FECACA; background: #FEF2F2; color: #B91C1C; }
+.nc-del {
+  border: none; background: none; padding: 0 2px; line-height: 1;
+  color: inherit; opacity: 0.55; font-size: 13px; cursor: pointer; font-family: inherit;
+}
+.nc-del:hover { opacity: 1; }
+
+/*
+ * 报备表比命中表少一列长文本，min-width 相应放低，窄屏下不必无谓地出横滚。
+ * table-layout: fixed 是「场景描述单行截断」的前提——自动布局下长描述会把
+ * 这一列一路撑宽、把其余列挤扁，ellipsis 根本不会触发。
+ */
+.report-table-wrap .report-table { min-width: 880px; table-layout: fixed; }
+/* 场景描述单行截断：队列是用来挑下一条评的，全文在 title 与评估弹窗里 */
+.rr-desc {
+  color: #475569; font-size: 12px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* 定宽列里的工单号 / 人名不能被撑破，超出即省略，全值挂在 title 上 */
+.report-table td { overflow: hidden; text-overflow: ellipsis; }
+/* 🔴 超时只标这一格：整行铺红后，队列一长满屏都是红的，反而分辨不出哪几条超了 */
+.rr-waited { color: #64748b; font-weight: 500; }
+.rr-waited.over { color: #EF4444; font-weight: 700; }
+.rr-dec { color: #374151; font-size: 12px; font-weight: 500; }
+.rr-dec.risk { color: #B91C1C; font-weight: 600; }
+
+/* 弹窗 ① 报备信息：只读块，用底色与下方可填区拉开，免得被当成表单的一部分去点 */
+.assess-form .op-field-h > .op-label { width: 6.5em; }
+.assess-src {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 12px 14px; border: 1px solid #E5E7EB; border-radius: 8px; background: #F9FAFB;
+}
+.asrc-top { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.asrc-by { font-size: 12px; color: #374151; font-weight: 600; }
+.asrc-role { margin-left: 4px; color: #9CA3AF; font-weight: 400; }
+.asrc-at { font-size: 12px; color: #94A3B8; font-variant-numeric: tabular-nums; }
+.asrc-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 12px; }
+.asrc-k { color: #9CA3AF; }
+.asrc-v { color: #374151; font-weight: 500; }
+.asrc-sep { color: #D1D5DB; }
+.asrc-desc { font-size: 12px; color: #475569; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
+.asrc-att { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 12px; }
+.asrc-att-i {
+  padding: 1px 8px; border-radius: 10px;
+  background: #EEF2FF; color: #4338CA; font-size: 11px;
+}
+
+/* 弹窗 ② 本单另有：佐证不是填写项，故弱于报备信息、更弱于下方表单 */
+.assess-also {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 10px 12px; border: 1px dashed #E2E8F0; border-radius: 8px; background: #fff;
+}
+.aa-head { font-size: 12px; font-weight: 600; color: #6B7280; }
+.aa-line { font-size: 12px; color: #475569; line-height: 1.7; }
+.aa-line b { color: #111827; font-variant-numeric: tabular-nums; }
+.aa-sep { margin: 0 6px; color: #D1D5DB; }
+.aa-list { margin: 4px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; }
+.aa-item { display: flex; align-items: center; flex-wrap: wrap; font-size: 12px; color: #475569; }
+.aa-at { color: #94A3B8; font-variant-numeric: tabular-nums; }
+.aa-dec { color: #374151; font-weight: 500; }
+.aa-nolevel { color: #94A3B8; }
+
+/* 弹窗 ③ 评估：控件与错误提示同列，错误文字必须紧贴出错的那个控件 */
+.assess-ctl { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.assess-level-sel { width: 160px; }
+.assess-err { font-size: 12px; color: #EF4444; line-height: 1.5; }
+.assess-final { margin-top: 2px; }
 </style>

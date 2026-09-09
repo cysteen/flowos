@@ -105,6 +105,16 @@ const missRiskDesc = computed(
     && !props.form.riskDescription.trim(),
 );
 
+/**
+ * 「风险评估结论：高危 · 吴投诉（客诉专员）· 2026-09-09 13:28」
+ *
+ * 【为什么必须有这一行】回传是"工单侧优先、只填空"（930 §6.1 / 915 §7.3），
+ * 于是"被坐席已填的值挡住"是常态。被挡住的那一次若什么都不显示，
+ * 报备人永远不知道客诉专员已经把这单评成了高危 —— **信息在写入这一步就消失了**。
+ * 与上面那行（命中核实）是同一个理由的两路。
+ */
+const riskAssessLine = computed(() => reportStore.ticketAssessmentNoteOf(props.ticketNo));
+
 const riskMonitorLine = computed(() => {
   const v = props.riskVerification;
   if (!v) return '';
@@ -164,10 +174,18 @@ function assessmentSummary(r: RiskReport) {
   return parts.join(' · ');
 }
 
+/**
+ * 记录列表里的结论行**只给一行摘要**：谁、什么时候评的。
+ *
+ * 【为什么不带处置建议】完整结论（决策 / 等级 / 评估人 / 评估时间 / 处置建议）
+ * 由下方「评估结果」区块承担（业务拍板 2026-09-09）。两处都写全文的话，
+ * 同一条结论在一屏上出现两遍 —— 报备多轮之后两块内容还会分叉，
+ * 读的人不知道该信哪个。这里只答"这条评过没有、谁评的"，详情往下看。
+ */
 function assessmentDetail(r: RiskReport) {
   const a = r.assessment;
   if (!a) return '';
-  return `${a.by} ${formatShortAt(a.at)}｜${a.advice}`;
+  return `${a.by}（${a.byRole}）${formatShortAt(a.at)}`;
 }
 
 const reportSectionBadge = computed(() => {
@@ -434,9 +452,15 @@ function formatAssessor(a: ReportAssessment) {
           </template>
         </div>
         <p v-if="missRiskLevel" class="field-err">请选择风险等级</p>
-        <div v-if="riskMonitorLine" class="risk-monitor-note">
-          <p class="rm-line">{{ riskMonitorLine }}</p>
+        <!--
+          两路人判风险的现行结论：只读回显。整块显隐取**并集** ——
+          本 Tab 只在非投诉单出现，而风险词命中大多落在投诉单上，所以这里
+          常年只有报备评估那一行；若把显隐挂在命中那一行上，评估结论就永远不显示。
+        -->
+        <div v-if="riskMonitorLine || riskAssessLine" class="risk-monitor-note">
+          <p v-if="riskMonitorLine" class="rm-line">{{ riskMonitorLine }}</p>
           <p v-if="riskMonitorBreakdown" class="rm-sub">{{ riskMonitorBreakdown }}</p>
+          <p v-if="riskAssessLine" class="rm-line">{{ riskAssessLine }}</p>
           <p v-if="riskMonitorDiff" class="rm-diff">{{ riskMonitorDiff }}</p>
         </div>
         <div
