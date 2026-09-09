@@ -19,11 +19,18 @@ const LS_KEY = 'flowos-derived-tickets';
 export const useDerivedTicketStore = defineStore('derivedTickets', () => {
   const tickets = ref<Ticket[]>([]);
 
+  /**
+   * 保质期与 `stores/riskReports.ts` **必须一致**：每张派生单都是某条报备「接管」的产物。
+   * 报备过期回到种子、派生单却留着的话，工单库里会多出一批没有来路的投诉单。
+   */
+  const STALE_MS = 12 * 60 * 60 * 1000;
   try {
     const raw = localStorage.getItem(LS_KEY);
     if (raw) {
-      const saved = JSON.parse(raw) as Ticket[];
-      if (Array.isArray(saved)) tickets.value = saved;
+      const saved = JSON.parse(raw) as { tickets: Ticket[]; savedAt?: number };
+      const fresh = typeof saved?.savedAt === 'number' && Date.now() - saved.savedAt < STALE_MS;
+      if (fresh && Array.isArray(saved?.tickets)) tickets.value = saved.tickets;
+      else localStorage.removeItem(LS_KEY);
     }
   } catch {
     /* 坏缓存不至于让工单页打不开，从空开始即可 */
@@ -32,7 +39,10 @@ export const useDerivedTicketStore = defineStore('derivedTickets', () => {
     tickets,
     () => {
       try {
-        localStorage.setItem(LS_KEY, JSON.stringify(tickets.value));
+        localStorage.setItem(
+          LS_KEY,
+          JSON.stringify({ tickets: tickets.value, savedAt: Date.now() }),
+        );
       } catch {
         /* 配额超限等忽略 */
       }

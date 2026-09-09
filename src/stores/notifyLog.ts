@@ -61,14 +61,26 @@ export const useNotifyLogStore = defineStore('notifyLog', () => {
   /** 自增序号只用来造 id，不参与任何业务判断 */
   const seq = ref(0);
 
+  /**
+   * 保质期与 `stores/riskReports.ts` **必须一致**：这里的每条通知都是某条报备的产物。
+   * 报备过期回到种子、通知却留着的话，工单页会挂着一批指向已不存在的报备的通知。
+   */
   const LS_KEY = 'flowos-notify-log';
+  const STALE_MS = 12 * 60 * 60 * 1000;
   try {
     const raw = localStorage.getItem(LS_KEY);
     if (raw) {
-      const saved = JSON.parse(raw) as { records: RuntimeNotifyRecord[]; seq: number };
-      if (Array.isArray(saved?.records)) {
+      const saved = JSON.parse(raw) as {
+        records: RuntimeNotifyRecord[];
+        seq: number;
+        savedAt?: number;
+      };
+      const fresh = typeof saved?.savedAt === 'number' && Date.now() - saved.savedAt < STALE_MS;
+      if (fresh && Array.isArray(saved?.records)) {
         records.value = saved.records;
         seq.value = typeof saved.seq === 'number' ? saved.seq : saved.records.length;
+      } else {
+        localStorage.removeItem(LS_KEY);
       }
     }
   } catch {
@@ -78,7 +90,10 @@ export const useNotifyLogStore = defineStore('notifyLog', () => {
     [records, seq],
     () => {
       try {
-        localStorage.setItem(LS_KEY, JSON.stringify({ records: records.value, seq: seq.value }));
+        localStorage.setItem(
+          LS_KEY,
+          JSON.stringify({ records: records.value, seq: seq.value, savedAt: Date.now() }),
+        );
       } catch {
         /* 配额超限等忽略 */
       }

@@ -419,15 +419,26 @@ export const useRiskReportStore = defineStore('riskReports', () => {
    *
    * 存的是**整份报备**（含结论），不是增量：报备量级只有几十条，整存整取比对账简单，
    * 也不会出现"补丁漏打一处、两边各存一半"。
+   *
+   * 🔴 **缓存有保质期（`STALE_MS`）**：种子的提交时刻由 `agoStamp()` 按"打开页面那一刻"
+   * 倒推生成，落进 localStorage 之后就固化成绝对时刻。隔一夜再打开，这批种子的等待时长
+   * 会累积成十几个小时，**整队全部判超时**——满屏红，超时未评的数等于在队总数，
+   * 这个指标就再也演示不出"有的超时、有的没超"的差别了。
+   * 因此超过保质期直接丢弃缓存回到种子；保质期内（同一场演示）照常续用。
    */
   const LS_KEY = 'flowos-risk-reports';
+  const STALE_MS = 12 * 60 * 60 * 1000;
   try {
     const raw = localStorage.getItem(LS_KEY);
     if (raw) {
-      const saved = JSON.parse(raw) as { reports: RiskReport[]; seq: number };
-      if (Array.isArray(saved?.reports) && saved.reports.length) {
+      const saved = JSON.parse(raw) as { reports: RiskReport[]; seq: number; savedAt?: number };
+      const fresh = typeof saved?.savedAt === 'number' && Date.now() - saved.savedAt < STALE_MS;
+      if (fresh && Array.isArray(saved?.reports) && saved.reports.length) {
         reports.value = saved.reports;
         seq.value = typeof saved.seq === 'number' ? saved.seq : saved.reports.length;
+      } else {
+        // 过期或来自没有 savedAt 的旧版本：清掉，免得下次又读到同一份陈数据
+        localStorage.removeItem(LS_KEY);
       }
     }
   } catch {
@@ -437,7 +448,10 @@ export const useRiskReportStore = defineStore('riskReports', () => {
     [reports, seq],
     () => {
       try {
-        localStorage.setItem(LS_KEY, JSON.stringify({ reports: reports.value, seq: seq.value }));
+        localStorage.setItem(
+          LS_KEY,
+          JSON.stringify({ reports: reports.value, seq: seq.value, savedAt: Date.now() }),
+        );
       } catch {
         /* 配额超限等忽略 */
       }
