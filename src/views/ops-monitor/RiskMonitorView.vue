@@ -2710,9 +2710,9 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               </td>
               <td>
                 <!--
-                  接管产出的是**一张新单**（N2，走 830 已有的第一跳派生），不是往原单写等级——
-                  二选一之后没有"确认有风险 + 定级"这一档了，这一列取代了原先的「风险等级」。
-                  「不升级」没有派生单，空着即正确。
+                  接管按原单类型分流（O20）：非投诉单派生一张新投诉单，落在本列；
+                  投诉单走基线 ※27「工单管控」，本单状态不变、不派生新单，本列写「工单管控」而不是「—」。
+                  「不升级」两种都没有，才是「—」。
                 -->
                 <button
                   v-if="r.assessment?.escalatedToNo"
@@ -2720,6 +2720,11 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                   :title="`接管派生的投诉单 ${r.assessment.escalatedToNo}`"
                   @click="openTicket(r.assessment.escalatedToNo)"
                 >{{ r.assessment.escalatedToNo }}</button>
+                <span
+                  v-else-if="r.assessment?.decision === '接管'"
+                  class="src-tag"
+                  title="原单已是投诉单，接管走基线 ※27「工单管控」：本单状态不变、不派生新单"
+                >工单管控</span>
                 <span v-else class="hit-sub" title="「不升级」不派生新单">—</span>
               </td>
               <!--
