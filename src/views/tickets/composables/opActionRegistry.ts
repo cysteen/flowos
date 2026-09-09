@@ -49,6 +49,8 @@ export const ACTION_DEFS: ActionDef[] = [
   { key: '下送', label: '下送', icon: 'VerticalAlignBottomOutlined', group: 'primary', types: ALL },
   { key: '挂起', label: '挂起', icon: 'PauseCircleOutlined', group: 'primary', types: NO_LEAD },
   { key: '退回', label: '退回', icon: 'RollbackOutlined', group: 'primary', types: NO_LEAD },
+  // 底栏「升级」＝ 升三线技术支持 / 产研（※14 / ※14a），**与投诉无关**，
+  // 故基线 ※8a 收回二线第一跳升级投诉那一条不落在这里，落在头部「升级投诉」上（见文件末尾）
   { key: '升级', label: '升级', icon: 'RiseOutlined', group: 'primary', types: NO_LEAD },
   { key: '风险报备', label: '风险报备', icon: 'WarningOutlined', group: 'more', types: RISK_REPORT_TYPES },
   // 转单：原单关闭、新单继续跑（基线 ※16）。全类型可用。
@@ -119,3 +121,35 @@ export function availableActions(ctx: ActionCtx): ActionDef[] {
 
 /** 基线 ※12 规定的拦截提示原文 */
 export const NO_AFTERSALE_TIP = '该产品无售后服务，不可转售后';
+
+/**
+ * 基线 ※8a 的拦截提示原文（2026-09-09 业务第二轮拍板，《【930】》N3）。
+ * 拦下来必须同时给出**去哪儿**——收回的是自主发起权，不是这条路本身。
+ */
+export const ESCALATE_VIA_RISK_REPORT_TIP = '投诉场景请先发起风险报备，由客诉专员评估';
+
+/**
+ * 第一跳升级投诉被收回自主发起权的两个角色（基线 ※8a）。
+ *
+ * 【为什么只卡这两个】投诉量的入口在二线"拿不准就升成投诉"这一手上；
+ * 客诉专员 / 投诉督导 / 管理员本就是评估方与兜底方，卡他们等于把闸门自己也锁上。
+ * 一线不在此列——一线的升级投诉走 ※8（只能升非投诉单），不经风险报备。
+ */
+const ESCALATE_REPORT_FIRST_ROLES = ['agent-l2', 'team-leader'];
+
+/**
+ * 「升级投诉」是否被 ※8a 收回：**非投诉单 → 投诉单**这一跳，二线专员与二线班组长不再自主发起。
+ * 返回提示文案 ＝ 拦截；返回 null ＝ 放行。
+ *
+ * 【为什么判据是"当前不是投诉单"而不是"要升成投诉"】升阶只有两跳，
+ * 非投诉单上的升级必然是第一跳，投诉单上的必然是第二跳（内投→外投），
+ * 用工单类型判等价且不必等到弹窗里才知道目标阶层。**第二跳不受限**。
+ *
+ * 【为什么拦截而不是隐藏入口】隐藏＝坐席只看到按钮没了，不知道改走哪条路；
+ * 基线 ※8a 收回的是发起权、给的是替代入口，必须把「先发起风险报备」这句话说出来。
+ */
+export function escalateComplaintBlockTip(roleKey: string, ticketType: string): string | null {
+  if (!ESCALATE_REPORT_FIRST_ROLES.includes(roleKey)) return null;
+  if (ticketType === '投诉') return null;
+  return ESCALATE_VIA_RISK_REPORT_TIP;
+}

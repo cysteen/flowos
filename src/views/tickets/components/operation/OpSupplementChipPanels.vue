@@ -5,7 +5,6 @@ import OpQualityStandardFields from './OpQualityStandardFields.vue';
 import OpChannelTable from './OpChannelTable.vue';
 import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue';
 import { useRiskTagStore } from '@/stores/riskTags';
-import { useRiskReportStore } from '@/stores/riskReports';
 import { riskLevelText } from '@/config/risk';
 import type { ProcessFormDraft, RiskFlag, RiskLevel, SupplementChip } from '@/views/tickets/types/operation';
 import {
@@ -48,7 +47,6 @@ const props = defineProps<{
 const emit = defineEmits<{ 'update:form': [form: ProcessFormDraft] }>();
 
 const riskTags = useRiskTagStore();
-const riskReports = useRiskReportStore();
 const riskLevelOptions = RISK_LEVEL_SELECT_OPTIONS;
 const complaintMarkOpts = computed(() =>
   complaintMarkOptions(props.complaintPlatform).map((v) => ({ label: v, value: v })),
@@ -228,21 +226,18 @@ const riskMonitorLine = computed(() => {
   return `风险监控核实：${riskLevelText(v.grade)} · ${e.verdict} · ${e.by}（${e.byRole}）· ${e.at}`;
 });
 
-/**
- * 「风险评估结论：中危 · 李文萍（客诉专员）· 09-06 10:41」
+/*
+ * ⚠️ 这里曾有一行「风险评估结论：中危 · 李文萍（客诉专员）· 09-06 10:41」（riskAssessLine）。
+ * **已整条删除**（2026-09-09 业务第二轮拍板，《【930】》N1）：评估决策从四选一改回
+ * 二选一「不升级 / 接管」之后，**没有"确认有风险 + 定级"这一档了** ——
+ * 评估不再往工单的风险字段回传任何东西，「不升级」一字不写、「接管」产出的是一张新单。
+ * 这一行的前提（"结论被坐席已填的值挡住、必须另外亮出来"）随之消失，
+ * 留着只会让人以为风险面板上还有一路结论要读。报备与评估的全文回看在
+ * 工单操作页「风险监控」Tab · 风险报备 / 评估结果两个区块。
  *
- * 【为什么必须有这一行】它与上一行是**同一个理由的两路**：风险有两条人判的来路 ——
- * 风险词命中的**核实**（915）与二线报备的**评估**（930 §6.1）。两路的回传都是
- * "工单侧优先、只填空"，于是"被坐席已填的值挡住"都是常态；被挡住的那一次若什么都不显示，
- * 坐席永远不知道客诉专员已经把这单评成了高危 —— **信息在写入这一步就消失了**。
- *
- * 差异说明（riskMonitorDiff）只覆盖了核实那一路。这里不再另写一份差异文案：
- * 两路的等级都进同一个 max（915 §3.2 只升不降），页面上落的值只可能比结论更重，
- * 不会出现"结论是高危、页面是低危"那种需要专门解释的反差。
+ * 上面的 riskMonitorLine / 下面的 riskMonitorBreakdown / riskMonitorDiff 是**命中核实**那一路
+ * （915），与本次反转无关，一字不动。
  */
-const riskAssessLine = computed(() =>
-  (props.ticketNo ? riskReports.ticketAssessmentNoteOf(props.ticketNo) : ''),
-);
 
 /**
  * 本单命中的构成。只在多条、且已经有人核实过时给——
@@ -440,14 +435,13 @@ const riskMonitorDiff = computed(() => {
     </div>
     <p v-if="missRiskLevel" class="field-err">请选择风险等级</p>
     <!--
-      两路人判风险的现行结论：只读回显，不参与必填校验。
-      两路都是"只填空、不覆盖坐席已填"，被挡住时若不亮出来，信息就在写入那一步消失了。
-      整块的显隐取两路的**并集** —— 只有报备评估、没有命中核实时，这一块照样要出。
+      风险词命中的**核实结论**：只读回显，不参与必填校验。
+      回传是"只填空、不覆盖坐席已填"，被挡住时若不亮出来，信息就在写入那一步消失了。
+      （报备评估那一行已删，二选一之后评估不再回传风险字段，见 script 内说明。）
     -->
-    <div v-if="riskMonitorLine || riskAssessLine" class="risk-monitor-note">
-      <p v-if="riskMonitorLine" class="rm-line">{{ riskMonitorLine }}</p>
+    <div v-if="riskMonitorLine" class="risk-monitor-note">
+      <p class="rm-line">{{ riskMonitorLine }}</p>
       <p v-if="riskMonitorBreakdown" class="rm-sub">{{ riskMonitorBreakdown }}</p>
-      <p v-if="riskAssessLine" class="rm-line">{{ riskAssessLine }}</p>
       <p v-if="riskMonitorDiff" class="rm-diff">{{ riskMonitorDiff }}</p>
     </div>
     <div

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 import {
   ContainerOutlined,
@@ -46,6 +47,7 @@ const emit = defineEmits<{
 
 const user = useUserStore();
 const reportStore = useRiskReportStore();
+const router = useRouter();
 
 const expanded = ref({ report: true, assess: true, risk: true });
 const riskLevelOptions = RISK_LEVEL_SELECT_OPTIONS;
@@ -55,14 +57,21 @@ const pending = computed(() => reportStore.pendingOf(props.ticketNo));
 /** 历史条目：已评估 + 已撤回，时间倒序。在队那条单独占一块，不进这个列表 */
 const history = computed(() => reportStore.historyOf(props.ticketNo));
 // ---- 撤回（PRD §4.8）----
-// 提交即固化、不提供编辑；填错了只能撤回后重报。**仅待评估、仅本人**，
+// 提交即固化、不提供编辑；填错了只能撤回后重报。**仅待分派、仅本人**，
 // 且撤回后**不删除**，转「已撤回」并留原因 —— 它是"这个人当时报过什么"的证据。
+//
+// 🔴 **分派之后不给撤回按钮**（N4 三态）：活已经指给某个客诉专员了，这时候抽走
+// 等于让他白读一遍。store 的 withdraw() 也只认「待分派」，两处口径必须一致——
+// 按钮还在、点了却什么都没发生，比按钮消失更糟。分派后要纠错走"评完再报一次"。
 const withdrawOpen = ref(false);
 const withdrawReason = ref('');
 const withdrawTried = ref(false);
 const missWithdrawReason = computed(() => withdrawTried.value && !withdrawReason.value.trim());
 const canWithdraw = computed(
-  () => !props.readonly && !!pending.value && pending.value.by === user.name,
+  () => !props.readonly
+    && !!pending.value
+    && pending.value.status === '待分派'
+    && pending.value.by === user.name,
 );
 
 function openWithdraw() {
@@ -105,15 +114,15 @@ const missRiskDesc = computed(
     && !props.form.riskDescription.trim(),
 );
 
-/**
- * 「风险评估结论：高危 · 吴投诉（客诉专员）· 2026-09-09 13:28」
+/*
+ * ⚠️ 这里曾有一行只读的「风险评估结论：高危 · 吴投诉（客诉专员）· …」（riskAssessLine）。
+ * **已整条删除**（2026-09-09 业务第二轮拍板，《【930】》N1）：评估决策改回二选一
+ * 「不升级 / 接管」之后没有"确认有风险 + 定级"这一档，评估**不再回传工单风险字段** ——
+ * 没有"被坐席已填的值挡住"这回事了，也就没有必须另外亮一行的理由。
+ * 结论本身在本 Tab 的「评估结果」区块里全文可见，比一行摘要说得全。
  *
- * 【为什么必须有这一行】回传是"工单侧优先、只填空"（930 §6.1 / 915 §7.3），
- * 于是"被坐席已填的值挡住"是常态。被挡住的那一次若什么都不显示，
- * 报备人永远不知道客诉专员已经把这单评成了高危 —— **信息在写入这一步就消失了**。
- * 与上面那行（命中核实）是同一个理由的两路。
+ * 下面三个 riskMonitor* 是**命中核实**那一路（915），与本次反转无关，一字不动。
  */
-const riskAssessLine = computed(() => reportStore.ticketAssessmentNoteOf(props.ticketNo));
 
 const riskMonitorLine = computed(() => {
   const v = props.riskVerification;
@@ -166,18 +175,23 @@ function waitMinutes(at: string) {
   return Math.max(0, Math.floor((Date.now() - t) / 60000));
 }
 
+/**
+ * 记录行的结论摘要。**只有决策**（二选一）——原先还并了一个风险等级，
+ * 二选一之后评估不再定级（N1），那一段没有取值来源了。
+ * 「接管」额外带上派生的新投诉单号：这条记录的实际去向就在那张单上，
+ * 只写「接管」两个字，读的人还得再翻一次「评估结果」才知道去了哪。
+ */
 function assessmentSummary(r: RiskReport) {
   const a = r.assessment;
   if (!a) return '';
-  const parts: string[] = [a.decision];
-  if (a.level) parts.push(riskLevelText(a.level));
-  return parts.join(' · ');
+  if (a.decision === '接管' && a.escalatedToNo) return `接管 → ${a.escalatedToNo}`;
+  return a.decision;
 }
 
 /**
  * 记录列表里的结论行**只给一行摘要**：谁、什么时候评的。
  *
- * 【为什么不带处置建议】完整结论（决策 / 等级 / 评估人 / 评估时间 / 处置建议）
+ * 【为什么不带反馈意见 / 接管说明】完整结论（决策 / 评估人 / 评估时间 / 意见全文 / 接管去向）
  * 由下方「评估结果」区块承担（业务拍板 2026-09-09）。两处都写全文的话，
  * 同一条结论在一屏上出现两遍 —— 报备多轮之后两块内容还会分叉，
  * 读的人不知道该信哪个。这里只答"这条评过没有、谁评的"，详情往下看。
@@ -188,8 +202,21 @@ function assessmentDetail(r: RiskReport) {
   return `${a.by}（${a.byRole}）${formatShortAt(a.at)}`;
 }
 
+/**
+ * 在队那条的状态标。**分「待分派 / 评估中」两态显示**（N4）——
+ * 都笼统写「待评估」的话，报备人看不出"还没人接"与"李文萍正在看"的差别，
+ * 而这正是做分派要解决的事；催起来也不知道该催谁。
+ */
+const pendingStateText = computed(() => {
+  const p = pending.value;
+  if (!p) return '';
+  if (p.status === '评估中') return p.assignee ? `评估中 · ${p.assignee}` : '评估中';
+  return '待分派';
+});
+
 const reportSectionBadge = computed(() => {
-  if (pending.value) return '待评估';
+  // 角标跟着卡片上的状态标走，两处写同一个词
+  if (pending.value) return pending.value.status;
   if (history.value.length) return String(history.value.length);
   return undefined;
 });
@@ -205,6 +232,15 @@ const latestAssessed = computed(() =>
 
 /** 仅有结论时出角标；进行中状态在上面的报备卡片展示 */
 const assessSectionBadge = computed(() => (latestAssessed.value ? '已评估' : undefined));
+
+/**
+ * 「接管」派生出的新投诉单号。**只有接管才有值** —— 二选一之后评估的产出
+ * 要么是一句反馈意见（不升级），要么是一张新单（接管），没有第三种。
+ */
+const escalatedNo = computed(() => {
+  const a = latestAssessed.value?.assessment;
+  return a?.decision === '接管' ? (a.escalatedToNo ?? '') : '';
+});
 
 function adviceLabel(decision: AssessDecision) {
   return decision === '接管' ? '接管说明' : '反馈意见';
@@ -222,6 +258,15 @@ function formatAssessor(a: ReportAssessment) {
   return a.byRole ? `${a.by}（${a.byRole}）` : a.by;
 }
 
+/**
+ * 「接管」派生的新投诉单：站内打开。
+ * 【为什么必须可点】接管走的是《【830】》已有的第一跳派生——原单落终态、整页只读，
+ * 接下来的事全在新单上。只把单号当文字印出来，报备人还得自己去列表里搜一遍。
+ */
+function openEscalatedTicket(no: string) {
+  router.push(`/tickets/${no}`);
+}
+
 </script>
 
 <template>
@@ -235,13 +280,16 @@ function formatAssessor(a: ReportAssessment) {
       @toggle="expanded.report = !expanded.report"
     >
       <!-- 在队报备：卡片主体 + 元信息，发起入口在底栏弹窗 -->
-      <section v-if="pending" class="rr-sheet rr-sheet-pending" aria-label="当前待评估报备">
+      <section v-if="pending" class="rr-sheet rr-sheet-pending" aria-label="当前在队报备">
         <header class="rr-sheet-head">
           <div class="rr-sheet-brand">
             <div class="rr-sheet-title-row">
-              <span class="rr-pill rr-pill-pending">
+              <span
+                class="rr-pill"
+                :class="pending.status === '评估中' ? 'rr-pill-doing' : 'rr-pill-pending'"
+              >
                 <ClockCircleOutlined />
-                待评估
+                {{ pendingStateText }}
               </span>
               <span class="rr-sheet-time">提交于 {{ formatShortAt(pending.at) }}</span>
               <span class="rr-sheet-wait">已等待 {{ waitMinutes(pending.at) }} 分钟</span>
@@ -269,6 +317,10 @@ function formatAssessor(a: ReportAssessment) {
           <button v-if="canWithdraw" type="button" class="rr-withdraw" @click="openWithdraw">
             撤回
           </button>
+          <!-- 按钮消失得给个理由：不写这一句，报备人只会以为撤回入口自己丢了 -->
+          <span v-else-if="pending.status === '评估中'" class="rr-withdraw-locked">
+            已分派评估，不可撤回
+          </span>
         </header>
 
         <div class="rr-sheet-body">
@@ -373,6 +425,10 @@ function formatAssessor(a: ReportAssessment) {
         class="ra-sheet"
         aria-label="评估记录"
       >
+        <!--
+          结论二选一，**没有风险等级这一档**（N1）——原先并排的等级标已删。
+          「接管」的实际产出是一张新投诉单，故头部直接把去向摆出来。
+        -->
         <header class="ra-head">
           <span
             class="ra-decision"
@@ -380,12 +436,8 @@ function formatAssessor(a: ReportAssessment) {
           >
             {{ latestAssessed.assessment.decision }}
           </span>
-          <span
-            v-if="latestAssessed.assessment.level"
-            class="ra-level"
-          >
-            {{ riskLevelText(latestAssessed.assessment.level) }}
-          </span>
+          <!-- 有单号才敢说"已派生"：指不出是哪一张的时候，这句话等于没说 -->
+          <span v-if="escalatedNo" class="ra-derive">已派生投诉工单</span>
         </header>
 
         <dl class="ra-kv">
@@ -401,11 +453,31 @@ function formatAssessor(a: ReportAssessment) {
             <dt>评估决策</dt>
             <dd>{{ latestAssessed.assessment.decision }}</dd>
           </div>
+          <div v-if="escalatedNo" class="ra-kv-row">
+            <dt>新投诉单</dt>
+            <dd>
+              <a
+                class="ra-link"
+                href="javascript:void(0)"
+                @click="openEscalatedTicket(escalatedNo)"
+              >{{ escalatedNo }}</a>
+            </dd>
+          </div>
           <div class="ra-kv-row ra-kv-block">
             <dt>{{ adviceLabel(latestAssessed.assessment.decision) }}</dt>
             <dd class="ra-advice">{{ latestAssessed.assessment.advice }}</dd>
           </div>
         </dl>
+
+        <!-- 两个决策的后续走向完全不同，必须写清楚，否则「不升级」看着像"什么都没发生" -->
+        <p class="ra-foot">
+          <template v-if="latestAssessed.assessment.decision === '接管'">
+            本单已由客诉专员接管并升级为投诉工单，原单落「已升级投诉」；后续处理在新单上进行。
+          </template>
+          <template v-else>
+            本单不升级，仍由原处理人按反馈意见继续处理；如后续仍未闭环，可再次发起风险报备。
+          </template>
+        </p>
       </section>
 
       <div v-else class="ra-empty">
@@ -444,14 +516,12 @@ function formatAssessor(a: ReportAssessment) {
         </div>
         <p v-if="missRiskLevel" class="field-err">请选择风险等级</p>
         <!--
-          两路人判风险的现行结论：只读回显。整块显隐取**并集** ——
-          本 Tab 只在非投诉单出现，而风险词命中大多落在投诉单上，所以这里
-          常年只有报备评估那一行；若把显隐挂在命中那一行上，评估结论就永远不显示。
+          风险词命中的**核实结论**：只读回显，不进 form、不参与必填校验。
+          （报备评估那一行已删——二选一之后评估不回传风险字段，见 script 内说明。）
         -->
-        <div v-if="riskMonitorLine || riskAssessLine" class="risk-monitor-note">
-          <p v-if="riskMonitorLine" class="rm-line">{{ riskMonitorLine }}</p>
+        <div v-if="riskMonitorLine" class="risk-monitor-note">
+          <p class="rm-line">{{ riskMonitorLine }}</p>
           <p v-if="riskMonitorBreakdown" class="rm-sub">{{ riskMonitorBreakdown }}</p>
-          <p v-if="riskAssessLine" class="rm-line">{{ riskAssessLine }}</p>
           <p v-if="riskMonitorDiff" class="rm-diff">{{ riskMonitorDiff }}</p>
         </div>
         <div
@@ -515,7 +585,10 @@ function formatAssessor(a: ReportAssessment) {
   white-space: nowrap;
 }
 .rr-pill-pending { color: #c2410c; background: #ffedd5; }
-.rr-pill-pending :deep(.anticon) { font-size: 12px; }
+/* 评估中：已有人接手，用中性蓝与"还没人接"的橙区分开 */
+.rr-pill-doing { color: #1d4ed8; background: #dbeafe; }
+.rr-pill-pending :deep(.anticon),
+.rr-pill-doing :deep(.anticon) { font-size: 12px; }
 .rr-pill-done { color: #047857; background: #d1fae5; }
 .rr-pill-gray { color: #6b7280; background: #f3f4f6; }
 .rr-pill-sm { font-size: 10px; padding: 2px 8px; font-weight: 600; }
@@ -559,6 +632,13 @@ function formatAssessor(a: ReportAssessment) {
   transition: background 0.15s, border-color 0.15s;
 }
 .rr-withdraw:hover { background: #fff1e6; border-color: #fb923c; }
+.rr-withdraw-locked {
+  flex: none;
+  padding: 6px 0;
+  font-size: 11px;
+  color: #9ca3af;
+  white-space: nowrap;
+}
 .rr-sheet-body { padding: 12px 14px 14px; }
 .rr-quote {
   margin: 0;
@@ -761,7 +841,8 @@ function formatAssessor(a: ReportAssessment) {
 .ra-decision.tone-ok { color: #047857; background: #d1fae5; }
 .ra-decision.tone-warn { color: #b45309; background: #fef3c7; }
 .ra-decision.tone-info { color: #1d4ed8; background: #dbeafe; }
-.ra-level {
+/* 「接管」的去向标：沿用等级标原来的位置与配色，说的是"派生了新单"而不是"多危险" */
+.ra-derive {
   padding: 2px 8px;
   font-size: 11px;
   font-weight: 600;
@@ -809,6 +890,15 @@ function formatAssessor(a: ReportAssessment) {
   color: #374151 !important;
 }
 .ra-link { color: #1a6fff !important; font-family: ui-monospace, monospace; }
+.ra-link:hover { text-decoration: underline; }
+.ra-foot {
+  margin: 0;
+  padding: 8px 14px 12px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #6b7280;
+  border-top: 1px dashed #f1f5f9;
+}
 .ra-empty {
   padding: 20px 14px;
   text-align: center;

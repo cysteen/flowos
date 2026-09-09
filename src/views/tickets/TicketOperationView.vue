@@ -3,7 +3,6 @@ import { computed, defineAsyncComponent, onActivated, onBeforeUnmount, onDeactiv
 import { useRoute, useRouter } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
 import { useWorkspaceTabsStore, resolveTicketTabTitle } from '@/stores/workspaceTabs';
-import { useOutboundCall } from '@/composables/useOutboundCall';
 import { useCtiStore, formatCallDuration } from '@/stores/cti';
 import { useUserStore } from '@/stores/user';
 import OpHeader from './components/operation/OpHeader.vue';
@@ -39,6 +38,7 @@ import {
   buildEscalatePrefill, buildEscalateVerdict, buildEscalatedTicket, escalateTargetLabel,
   isTicketTerminated, resolveEscalateOutcome, summarizeEscalateInput, type EscalateInput,
 } from './composables/complaintEscalation';
+import { escalateComplaintBlockTip } from './composables/opActionRegistry';
 import { resolveSupersededBy, type TicketRelation } from './composables/ticketRelations';
 import type { CreateTicketPrefill, Ticket } from './types/ticket';
 import type { ProcessFormDraft, InsightAction, InsightModalKey } from './types/operation';
@@ -75,7 +75,6 @@ const actionBarRef = ref<{ openEscalate: () => void; openAftersale: () => void }
 const tabsStore = useWorkspaceTabsStore();
 const cti = useCtiStore();
 const user = useUserStore();
-const { requestOutboundCall } = useOutboundCall();
 
 const overviewExpanded = ref(false);
 const supplementModalOpen = ref(false);
@@ -104,30 +103,32 @@ watch(
   { immediate: true },
 );
 
-// ---- 风险结论 → 工单风险字段（回传） ----
+// ---- 风险监控核实结论 → 工单风险字段（回传） ----
 //
-// 【两路结论，一条链路】风险词命中的核实（915 §7.3）与风险报备的评估（930 §6.1）
-// 是两拨人对同一张单下的两个结论，回传的却是同一组字段。故此处先把两路**合流**成一份结论，
-// 再走同一套写入判定——各写各的话，两个 watcher 会互相踩：后跑的那个把先跑的写进去的值
-// 当成"坐席填的"而撒手，或者反过来当成"我自己上次写的"而覆盖，行为取决于谁先跑。
+// 🔴 **只有命中核实这一路**（915 §7.3）。风险报备的评估**不进这条链路** ——
+// 2026-09-09 业务第二轮拍板（《【930】》N1）把评估决策改回二选一「不升级 / 接管」，
+// 没有"确认有风险 + 定级"这一档了：「不升级」往工单一字不写，「接管」的产出是**一张新单**
+// （走《【830】》已有的第一跳派生），不是往原单的风险字段里落值。
+// 此前这里把两路结论合流成一份再统一写入，那份合流已随之整块拆掉。
 //
-// 【回传什么】只回传**工单级风险等级**与由结论**推导**出的「是否有风险」。
+// 【回传什么】只回传**工单级风险等级**与由核实结论**推导**出的「是否有风险」。
 // 「命中判定（成立/误报）」**不回传**：它判的是"这条规则这次命中得准不准"，喂的是规则准确率；
 // 写进工单会让坐席把「误报」读成"这单没风险"，而误报的真正结论是"规则捞错了"，
-// 这单危不危险监控根本没说。报备侧同理，**二选一决策（不升级 / 接管）不回写风险字段**。
+// 这单危不危险监控根本没说。
 //
-// 【写入优先级】工单侧优先，两路都只填空。判"空"的口径是**坐席从没碰过这个字段**（`''`），
+// 【写入优先级】工单侧优先，只填空。判"空"的口径是**坐席从没碰过这个字段**（`''`），
 // 不是"界面上看着像无风险"——把明确选过的「无风险」也当成空，等于系统可以推翻坐席的判断；
 // 反过来把没碰过的空当成已填，回传就永远写不进去，这个功能等于没做。
 const riskTags = useRiskTagStore();
 const riskReports = useRiskReportStore();
 const riskMonitorVerify = computed(() => riskTags.ticketVerificationOf(ticketNo.value));
-const riskReportAssess = computed(() => riskReports.ticketAssessmentOf(ticketNo.value));
 
 /**
- * 两把刻度统一成"数越大越重"，取 max 与判"回退没回退"共用同一把尺——
- * 两处各写一套比大小，迟早出现"这边算升级、那边算降级"。
- * 空值（本路没有结论 / 坐席没碰过）恒为 -1，低于任何一档实值。
+ * 两把刻度统一成"数越大越重"，**给防回退棘轮用**——
+ * 915 §7.6「已写进去的等级不会被降回来」：命中被修正成误报、工单级掉档时，
+ * 回传不能把工单上已经落定的高等级再降回去。两处各写一套比大小，
+ * 迟早出现"这边算升级、那边算降级"，故只留这一把尺。
+ * 空值（没有结论 / 坐席没碰过）恒为 -1，低于任何一档实值。
  */
 function flagRank(f: ProcessFormDraft['riskFlag'] | null | undefined): number {
   return f ? RISK_FLAG_OPTIONS.indexOf(f) : -1;
@@ -138,27 +139,16 @@ function levelRank(l: ProcessFormDraft['riskLevel'] | null | undefined): number 
 }
 
 /**
- * 合流后要写进工单的那一份结论：两路各出一个「是否有风险 / 工单级等级」，**各取其重**。
- *
- * 【为什么是取 max 而不是取最新的一路】915 §3.2 的只升不降是对整张工单说的，不是对某一路说的：
- * 命中核实判成高危之后，报备评估给出中危，风险并没有因此变小——让后到的一路把已定的高等级
- * 降下来，等于用"最后一个说话的人"覆盖"说得最重的那个人"。两路都进 max，谁也不覆盖谁（930 §6.1）。
+ * 要写进工单的那一份结论 —— **只有命中核实一路**（915）。
+ * 报备评估那一路已整块拆除（930 N1：二选一之后评估不再回传风险字段）。
  */
 const riskConclusion = computed(() => {
   const verify = riskMonitorVerify.value;
-  const assess = riskReportAssess.value;
-  // 两路都没话说 → 一个字段都不动，只读提示行也不渲染（915 §7.5.2 步 2）
-  if (!verify && !assess) return null;
-  const flags = [verify?.flag ?? null, assess?.flag ?? null];
-  const grades = [verify?.grade ?? null, assess?.grade ?? null];
+  if (!verify) return null;
   return {
     ticketNo: ticketNo.value,
-    flag: flags.reduce<ProcessFormDraft['riskFlag'] | null>(
-      (best, cur) => (flagRank(cur) > flagRank(best) ? cur : best), null,
-    ),
-    grade: grades.reduce<ProcessFormDraft['riskLevel'] | null>(
-      (best, cur) => (levelRank(cur) > levelRank(best) ? cur : best), null,
-    ),
+    flag: verify.flag ?? null,
+    grade: verify.grade ?? null,
   };
 });
 
@@ -199,6 +189,32 @@ function onRiskReport(payload: {
   message.success(`已提交报备，客诉专员将在 ${limitText} 内给出结论`);
   processTabsRef.value?.switchTab('risk');
 }
+
+/**
+ * 头部「报备中」横幅（基线 ※29 / 《【930】》D5）。
+ *
+ * 【为什么要有它】报备是**正交标记**、不落子状态：本单状态一格不动、SLA 不停钟、
+ * 处理人照常处理。正因为工单本身"看不出任何变化"，不挂一条横幅的话，
+ * 报备人切回这张单只会以为自己没报成功，于是重复报或直接打电话催。
+ *
+ * 【为什么按三态分开写】待分派＝**还没人接**，该催的是投诉督导（他负责分派）；
+ * 评估中＝活已经在某个客诉专员手上，该找的是这个人。一句笼统的「评估中」把这两件事
+ * 说成一件，等待时长再长也不知道该找谁。
+ */
+const riskReportBanner = computed(() => {
+  const r = riskReports.pendingOf(ticketNo.value);
+  if (!r) return null;
+  const mins = riskReports.waitedMinutes(r.at);
+  const waited = mins >= 60 ? `${Math.floor(mins / 60)} 小时 ${mins % 60} 分钟` : `${mins} 分钟`;
+  const head = r.status === '评估中'
+    ? `风险报备评估中 · ${r.assignee || '客诉专员'}`
+    : '风险报备待分派';
+  return {
+    text: `${head} · 已等待 ${waited}`,
+    // 超时只改配色与后半句，不改前半句：等待时长是同一个事实，超没超时是它的一个判定
+    overdue: riskReports.isOverdue(r),
+  };
+});
 /**
  * 回传上次写进表单的值。有它才分得清"这个『疑似风险』是坐席填的还是回传自己填的"——
  * 只认空串的话，回传第一次填完就再也改不了自己写的那个值：
@@ -208,18 +224,16 @@ function onRiskReport(payload: {
  * 答不了"现在躺在里面的还是不是我写的那个"：坐席把回传写的「疑似风险」改成「无风险」之后，
  * 标记仍然是真，系统就会理直气壮地再覆盖一次坐席的判断。值比较自带这条边界——
  * 坐席改成别的值即挡住，改回同一个值则系统仍可再写（915 §7.3.3 口径 3）。
- * 【为什么两路共用一份记忆】记的是"这个字段现在的值是不是回传写的"，与哪一路写的无关；
- * 分成两份就会出现"报备写的值被核实那一路当成坐席填的"这种自己挡自己的死结。
  * 【局限】记忆随页签存活（前端内存态，页签关闭或整页刷新即丢），届时对自己上次写入的值
  * 也不再覆盖；落地时须把「上次回传值」随工单持久化。
  */
 const riskWriteBack = ref<{ ticketNo: string; flag?: ProcessFormDraft['riskFlag']; level?: ProcessFormDraft['riskLevel'] }>({ ticketNo: '' });
 watch(
   // 监听结论本身而不是只在挂载时跑一次：工作区里工单页与风险监控页是两个常驻页签，
-  // 在监控页打完标 / 评完报备再切回来，这一单的结论已经变了，只在挂载时读会停在旧结论上。
+  // 在监控页打完标再切回来，这一单的核实结论已经变了，只在挂载时读会停在旧结论上。
   riskConclusion,
   (v) => {
-    // 步 1 · 有没有结论要写：两路都没有 → 整条跳过
+    // 步 1 · 有没有核实结论要写：没有 → 整条跳过
     if (!v) return;
     const f = form.value;
     // 工单号变了记忆整块重置——记忆是按单持有的，串单就成了拿另一张单的值做判据
@@ -227,12 +241,12 @@ watch(
     const patch: Partial<ProcessFormDraft> = {};
     // 步 2 · 工单侧优先：坐席没碰过（空串）才可写，坐席一改就撒手
     // 步 3 · 唯一例外：字段里躺着的正是回传上次写的那个值（值比较）→ 可以覆盖自己
-    // 步 4 · 不回退：只在结论比当前值更重时才落笔；等值是空转，更轻则一律不写
-    //        （命中被修正成误报、后一次报备评得更轻，都会让合流结论掉档，掉了也不能把工单降回去）
+    // 步 4 · 不回退（915 §7.6 棘轮）：只在结论比当前值更重时才落笔；等值是空转，更轻则一律不写
+    //        （一条命中被修正成误报会让工单级掉档，掉了也不能把已经写进工单的等级降回去）
     if (v.flag && (f.riskFlag === '' || f.riskFlag === mem.flag) && flagRank(v.flag) > flagRank(f.riskFlag)) {
       patch.riskFlag = v.flag;
     }
-    // 两路都没推导出结论时 flag 为 null —— 保持工单原值不动，误报不是"这单没风险"
+    // 核实没推导出结论时 flag 为 null —— 保持工单原值不动，误报不是"这单没风险"
     const nextFlag = patch.riskFlag ?? f.riskFlag;
     // 等级只在「有风险」下才写：坐席已判成无风险 / 疑似风险时，等级字段在面板上根本不渲染，
     // 往里塞一个值就成了谁也看不见、谁也改不掉的脏数据。这时结论改走只读提示行呈现。
@@ -244,9 +258,10 @@ watch(
       patch.riskLevel = v.grade;
     }
     // 步 5 的只读提示行不在这里落笔：它是风险面板（补充处理 · 风险）上的一行只读文字，
-    // 由面板自己按单从 store 取（核实那一路取 riskTags.ticketVerificationOf，
-    // 报备这一路取 riskReports.ticketAssessmentNoteOf），不进 form、不参与必填校验。
+    // 由面板自己按单从 store 取（riskTags.ticketVerificationOf），不进 form、不参与必填校验。
     // 写在这里就成了"表单里躺着一行不是字段的字"，它恰恰必须在被挡住时也照常显示。
+    // ⚠️ 报备评估**没有**对应的第二行了：二选一之后评估不回传风险字段（930 N1），
+    // 结论全文改在「风险监控」Tab · 评估结果区块呈现。
     riskWriteBack.value = {
       ticketNo: v.ticketNo,
       // 本次没写进去则沿用上一次的记忆：这一次被挡住，不代表上一次写的那个值也不是我写的
@@ -263,17 +278,6 @@ const createOpen = ref(false);
 const createPrefill = ref<CreateTicketPrefill | null>(null);
 
 function onContact(type: 'call' | 'sms' | 'email', value: string) {
-  if (type === 'call') {
-    const isAgent = d.value.agent?.contacts?.some((c) => c.value === value);
-    const role = isAgent ? '代办人' : '客户';
-    const name = isAgent ? (d.value.agent?.name ?? '') : (d.value.customer.name || '');
-    requestOutboundCall({
-      ticketId: ticketNo.value,
-      phone: value,
-      contactLabel: name ? `${role}·${name}` : role,
-    });
-    return;
-  }
   if (type === 'sms') {
     smsPhone.value = value;
     smsModalOpen.value = true;
@@ -437,6 +441,14 @@ const headerRoleGate = computed(() => headerActionsByRole(user.roleKey));
 const canSupplement = computed(() => headerRoleGate.value.supplement);
 const canDunning = computed(() => headerRoleGate.value.dunning);
 const canEscalateComplaint = computed(() => headerRoleGate.value.escalateComplaint);
+/**
+ * 基线 ※8a：**非投诉单 → 投诉单**这一跳，二线专员 / 二线班组长不再自主发起，
+ * 入口改为「风险报备」，由客诉专员评为「接管」时代为发起。
+ * 有值 ＝ 该拦，值就是提示原文；null ＝ 放行（第二跳内投→外投、客诉专员 / 投诉督导 / 管理员均放行）。
+ */
+const escalateReportFirstTip = computed(
+  () => escalateComplaintBlockTip(user.roleKey, d.value.type),
+);
 const canLinkAftersale = computed(() => headerRoleGate.value.linkAftersale);
 const canCancelTicket = computed(() => headerRoleGate.value.cancelTicket);
 
@@ -1127,6 +1139,14 @@ function confirmCarryOnNewTicket(kind: '补充' | '催单'): boolean {
 function onHeaderAction(name: string) {
   switch (name) {
     case '升级投诉': // 非投诉→建单页；投诉单→小弹窗（《【815】关联投诉 PRD》§4.2）
+      // 基线 ※8a：二线第一跳的自主发起权已收回，改走风险报备。
+      // 拦在这里而不是把按钮藏掉——藏掉只会让坐席以为入口没了，不知道该改走哪条路。
+      if (escalateReportFirstTip.value) {
+        message.warning(escalateReportFirstTip.value);
+        // 本单给了「风险报备」入口时顺手带到那个 Tab，少一次自己找
+        if (showRiskReport.value) processTabsRef.value?.switchTab('risk');
+        return;
+      }
       openEscalate();
       break;
     case '关联售后': // 投诉工单：打开售后建单弹窗
@@ -1201,6 +1221,24 @@ watch(
       @open-superseded="supersededBy && openRelation(supersededBy)"
     />
 
+    <!--
+      「报备中」横幅：报备不落子状态（※29），工单本身看不出任何变化，
+      故必须在头部把"报上去了、还没有结论"这件事明说，否则会被当成没报成功而重复报。
+      点「查看报备」直达「风险监控」Tab，横幅上不重复展示报备正文。
+    -->
+    <div
+      v-if="riskReportBanner"
+      class="risk-report-banner"
+      :class="{ overdue: riskReportBanner.overdue }"
+    >
+      <span class="rrb-text">{{ riskReportBanner.text }}</span>
+      <span v-if="riskReportBanner.overdue" class="rrb-overdue">已超评估时限</span>
+      <span class="rrb-hint">评估期间本单照常处理，SLA 不停表</span>
+      <button type="button" class="rrb-link" @click="processTabsRef?.switchTab('risk')">
+        查看报备
+      </button>
+    </div>
+
     <!-- 顶部通栏速览带：客户诉求 | 客户全景宫格 | 最新处理（关注信息一屏） -->
     <div class="op-overview-wrap" :class="{ elevated: overviewExpanded }">
       <OpOverviewBand :detail="d" @select="onOverviewSelect" @expand-change="overviewExpanded = $event">
@@ -1246,6 +1284,7 @@ watch(
 
       <OpSidePanel
         :detail="d"
+        :ticket-id="ticketNo"
         @contact="onContact"
         @action="toast"
       />
@@ -1359,6 +1398,47 @@ watch(
   position: relative;
   z-index: 1;
 }
+/* 报备中横幅：橙＝在队等结论，红＝已过评估时限。沿用风险报备一路的橙色系 */
+.risk-report-banner {
+  flex: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 10px 20px 0;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #9a3412;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 6px;
+}
+.risk-report-banner.overdue {
+  color: #b91c1c;
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+.rrb-text { font-weight: 700; }
+.rrb-overdue {
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #b91c1c;
+  background: #fee2e2;
+  border-radius: 4px;
+}
+.rrb-hint { color: #9ca3af; }
+.rrb-link {
+  margin-left: auto;
+  padding: 0;
+  font-size: 12px;
+  font-family: inherit;
+  color: #1a6fff;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.rrb-link:hover { text-decoration: underline; }
 .op-overview-wrap.elevated { z-index: 50; }
 .op-body {
   display: flex;
