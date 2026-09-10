@@ -40,6 +40,7 @@ import {
   isPoolLevel,
   isVerifyMonitorSource,
   normalizeDecision,
+  todayStamp,
   REPORT_ASSESS_LIMIT_MIN,
   type AssessDecision,
   type MonitorSource,
@@ -973,7 +974,7 @@ interface ScanRun {
 
 const SCAN_RUN_LS_KEY = 'flowos-risk-scan-runs';
 /** 种子版本：变更 buildDefaultScanRuns() 时递增，强制刷新演示数据 */
-const SCAN_RUN_SEED_VERSION = 3;
+const SCAN_RUN_SEED_VERSION = 4;
 const SCAN_RUN_VERSION_KEY = 'flowos-risk-scan-runs-v';
 
 /**
@@ -987,6 +988,14 @@ const SCAN_RUN_VERSION_KEY = 'flowos-risk-scan-runs-v';
  *
  * 【为什么今天那几条用"距现在多少分钟"而不是固定钟点】固定钟点（如今天 14:30）在
  * 早上打开页面时会落在**未来**，出现"下次执行已经执行过了"。按分钟回推则任何时候打开都成立。
+ *
+ * 🔴 **凡是被"按自然日切"的指标数到的那几条，一律不要用本函数，改用 `todayStamp`。**
+ * 本函数只保证"不写死日期"，**不保证落在今天**：「240 分钟前」在凌晨 00:26 就落到昨天。
+ * 页头「扫描批次」正是栽在这上面 —— 每天 00:00–06:00 归零，白天怎么看都是对的。
+ * 现在只剩**手动筛查那三条**还用它：没有任何按自然日切的指标数手动筛查，
+ * 它们凌晨落到昨天只影响扫库记录抽屉里的分日归组，不会让哪个数字掉档。
+ * ⚠️ run-seed-14 的 400 分钟**超过 `TODAY_SPAN_MIN`（360）**，本来也换不过去 ——
+ * 换了会被夹到零点上、与另两条的先后糊成一团。
  */
 function scanStamp(minutesAgo: number): string {
   const d = new Date(Date.now() - minutesAgo * 60_000);
@@ -1008,9 +1017,17 @@ function scanStampDaysAgo(days: number, hhmmss: string): string {
 function buildDefaultScanRuns(): ScanRun[] {
   return [
     // —— 实时监控 · 今天三轮（页头「扫描批次」数的就是这三条） ——
-    { id: 'run-seed-01', kind: 'realtime', triggerBy: '系统', startedAt: scanStamp(35), endedAt: scanStamp(34), status: 'success', hitCount: 19, openCount: 15 },
-    { id: 'run-seed-02', kind: 'realtime', triggerBy: '王坐席', startedAt: scanStamp(105), endedAt: scanStamp(104), status: 'success', hitCount: 19, openCount: 15 },
-    { id: 'run-seed-03', kind: 'realtime', triggerBy: '系统', startedAt: scanStamp(240), endedAt: scanStamp(239), status: 'success', hitCount: 17, openCount: 12 },
+    // 🔴 **这三条必须走 `todayStamp`，不能走 `scanStamp`**：页头「扫描批次」按自然日切，
+    // 而 `scanStamp` 只保证"不写死日期"、**不保证落在今天** —— 「240 分钟前」在凌晨 00:26
+    // 就落到昨天，三条全出今天的窗，卡上当场显示「扫描批次 0」。
+    // 实测：00:26 时是 0，把时钟推到 14:29 立刻变回 3 —— 每天只在 00:00–06:00 发作，
+    // 白天怎么看都是对的，故极难查。`todayStamp` 是 `agoStamp` 的不跨零点版本，
+    // 整批按同一系数压进"今天已过的那一段"（先后与相对间隔不变），
+    // 且今天已过满 6 小时后与 `agoStamp` 一字不差 —— 白天的演示形态零变化。
+    // ⚠️ 传进去的分钟数**不得超过 `TODAY_SPAN_MIN`（360）**，超过的会被夹到零点上、先后糊成一团。
+    { id: 'run-seed-01', kind: 'realtime', triggerBy: '系统', startedAt: todayStamp(35), endedAt: todayStamp(34), status: 'success', hitCount: 19, openCount: 15 },
+    { id: 'run-seed-02', kind: 'realtime', triggerBy: '王坐席', startedAt: todayStamp(105), endedAt: todayStamp(104), status: 'success', hitCount: 19, openCount: 15 },
+    { id: 'run-seed-03', kind: 'realtime', triggerBy: '系统', startedAt: todayStamp(240), endedAt: todayStamp(239), status: 'success', hitCount: 17, openCount: 12 },
     // —— 实时监控 · 前几天 ——
     { id: 'run-seed-04', kind: 'realtime', triggerBy: '系统', startedAt: scanStampDaysAgo(1, '14:00:00'), endedAt: scanStampDaysAgo(1, '14:00:06'), status: 'abnormal', errorMessage: '部分班组数据延迟，结果可能不完整', hitCount: 12, openCount: 8 },
     { id: 'run-seed-05', kind: 'realtime', triggerBy: '系统', startedAt: scanStampDaysAgo(1, '08:00:00'), endedAt: scanStampDaysAgo(1, '08:00:02'), status: 'failed', errorMessage: '实时扫描中断，请检查词表与连接' },
