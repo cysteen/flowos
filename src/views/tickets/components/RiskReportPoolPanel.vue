@@ -16,7 +16,9 @@ import { computed, ref } from 'vue';
 import { message, Modal } from 'ant-design-vue';
 import {
   EditOutlined,
+  PaperClipOutlined,
   SearchOutlined,
+  UserOutlined,
 } from '@ant-design/icons-vue';
 import TicketFilterBar from './TicketFilterBar.vue';
 import TicketTitleCell from './TicketTitleCell.vue';
@@ -46,6 +48,8 @@ const pool = useRiskPoolStore();
 const {
   ASSESS_DECISIONS,
   assessOpen,
+  // 评估弹窗里那块「报备信息」读的就是它（六项齐：报备人 / 提交时刻 / 报备原因 /
+  // 风险类型 / 场景描述 / 附件），不再让评估人隔着遮罩去池表上读场景描述
   assessTarget,
   assessDecision,
   assessAdvice,
@@ -223,8 +227,9 @@ type RowAction = { label: string; primary?: boolean };
  * - 别人承办 / 已收口 → 无动作，承办人与结论在列上看得到
  */
 function actionsOf(r: RiskReport): RowAction[] {
-  if (!canAct.value) return [];
+  // 待领取一律露出「领单」，与工单池同形；能不能点由 claim 里按角色拦截
   if (r.status === '待分派') return [{ label: '领单', primary: true }];
+  if (!canAct.value) return [];
   if (r.status === '评估中' && r.assignee === user.name) {
     return [{ label: '评估', primary: true }, { label: '释放' }];
   }
@@ -238,12 +243,30 @@ function onAction(label: string, r: RiskReport) {
 }
 
 function claim(r: RiskReport) {
+  if (!canAct.value) {
+    message.warning('报备单的领单与评估由客诉专员执行，请切换至客诉专员角色');
+    return;
+  }
   if (!pool.claim(r.id, user.name)) {
     message.warning('该报备已被他人领单');
     return;
   }
   message.success(`已领单 ${r.ticketNo}，请给出评估结论`);
   openAssess(r);
+}
+
+/**
+ * 报备附件的"下载"。**与风险监控页那个评估弹窗同一套做法**（原型内造一个同名占位文件）——
+ * 两处都是"评估人要看报备人交上来的证据"，做法不一致会让人以为其中一处坏了。
+ */
+function downloadReportAttachment(name: string) {
+  const blob = new Blob([`（原型演示）${name}\n`], { type: 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function release(r: RiskReport) {
@@ -415,7 +438,81 @@ function release(r: RiskReport) {
       @update:open="assessOpen = $event"
       @ok="confirmAssess"
     >
-      <div class="rrp-assess">
+      <!--
+        整块挂 `v-if="assessTarget"`：报备信息全部取自它，没有目标条目时连表单也无从提交
+        （`confirmAssess` 第一句就按它返回）。与风险监控页那个评估弹窗同一种写法。
+      -->
+      <div v-if="assessTarget" class="rrp-assess">
+        <!--
+          ① 报备信息（2026-09-11 补）。**照风险监控页那个评估弹窗的「报备信息」卡做**，
+          版式与类名一并沿用（`assess-sheet-*` / `assess-meta-*` / `assess-quote` / `assess-file*`），
+          不新造一套 —— 两条线的评估人是同一批客诉专员，同一件事读起来必须是同一种样子。
+
+          🔴 **必须有这一块**：原来这个弹窗只有「评估决策 + 反馈意见」两项，
+          报备人 / 提交时刻 / 报备原因 / 风险类型 / 场景描述 / 附件**六项一项都没有**。
+          评估人要读场景描述，只能去看被遮罩挡住的池表 —— 而结论恰恰是照着那段描述下的。
+
+          🔴 **本块不复制 A 线的「风险打标」与「本单另有」两段**：B 线的报备单不走打标那道门
+          （`RiskReport` 上没有 `tag`），而「本单另有」是 A 线合并池的口径；
+          照搬过来只会渲染出两块恒空的标题。
+        -->
+        <section class="assess-sheet" aria-label="报备信息">
+          <header class="assess-sheet-head">
+            <div class="assess-sheet-title-row">
+              <button
+                type="button"
+                class="assess-ticket-no"
+                @click="emit('openTicket', assessTarget.ticketNo)"
+              >{{ assessTarget.ticketNo }}</button>
+              <!-- ② 提交时刻：等待时长与评估时限都从这一刻起算，故摆在最显眼的一行 -->
+              <span class="assess-sheet-time">提交于 {{ assessTarget.at }}</span>
+            </div>
+            <div class="assess-sheet-meta">
+              <!-- ① 报备人 -->
+              <span class="assess-meta-pair">
+                <UserOutlined class="assess-meta-icon" />
+                <span class="assess-meta-label">报备人</span>
+                <span class="assess-meta-value">{{ assessTarget.by }}（{{ assessTarget.byRole }}）</span>
+              </span>
+              <span class="assess-meta-sep" aria-hidden="true" />
+              <!-- ③ 报备原因 -->
+              <span class="assess-meta-pair">
+                <span class="assess-meta-label">报备原因</span>
+                <span class="assess-meta-value">{{ assessTarget.reason }}</span>
+              </span>
+              <!--
+                ④ 风险类型：**只在原因＝「风险场景」时才有值**（§9 规则 10），
+                故整段 v-if 掉而不是显示一个「—」——那会让人以为报备人漏填了一格。
+              -->
+              <template v-if="assessTarget.category">
+                <span class="assess-meta-sep" aria-hidden="true" />
+                <span class="assess-meta-pair">
+                  <span class="assess-meta-label">风险类型</span>
+                  <span class="assess-meta-value assess-meta-warn">{{ assessTarget.category }}</span>
+                </span>
+              </template>
+            </div>
+          </header>
+
+          <div class="assess-sheet-body">
+            <!-- ⑤ 场景描述：这条报备的正文，结论就是照着它下的，故摆主体、不收进底栏 -->
+            <blockquote class="assess-quote">{{ assessTarget.desc || '—' }}</blockquote>
+            <!-- ⑥ 附件：报备人交上来的证据（录音片段 / 截图），没有时整段不出 -->
+            <ul v-if="assessTarget.attachments.length" class="assess-files">
+              <li v-for="a in assessTarget.attachments" :key="a" class="assess-file">
+                <PaperClipOutlined />
+                <button
+                  type="button"
+                  class="assess-file-btn"
+                  :title="`下载 ${a}`"
+                  @click="downloadReportAttachment(a)"
+                >{{ a }}</button>
+              </li>
+            </ul>
+          </div>
+        </section>
+
+        <!-- ② 评估表单：二选一决策 + 必填说明 -->
         <div class="af-field">
           <span class="af-label req">评估决策</span>
           <a-radio-group v-model:value="assessDecision" class="af-decisions">
@@ -737,6 +834,116 @@ function release(r: RiskReport) {
   flex-direction: column;
   gap: 10px;
 }
+
+/*
+ * 报备信息卡。**样式逐条对齐风险监控页那个评估弹窗的同名类**
+ * （`RiskMonitorView.vue` 的 .assess-sheet 一族）：两条线的评估人是同一批客诉专员，
+ * 同一件事在两处读起来必须是同一种样子。琥珀色边与浅橙渐变头是那张卡的既有识别色，
+ * 表示"这是别人交上来待你判的材料"，与下方白底的评估表单区分开。
+ */
+.assess-sheet {
+  background: #fff;
+  border: 1px solid #fed7aa;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(234, 88, 12, 0.06);
+}
+.assess-sheet-head {
+  padding: 12px 14px;
+  background: linear-gradient(180deg, #fff7ed 0%, #fff 100%);
+  border-bottom: 1px solid #ffedd5;
+}
+.assess-sheet-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.assess-ticket-no {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1a6fff;
+  cursor: pointer;
+  line-height: 1.4;
+}
+.assess-ticket-no:hover { text-decoration: underline; }
+.assess-sheet-time {
+  font-size: 12px;
+  font-weight: 600;
+  color: #9a3412;
+  font-variant-numeric: tabular-nums;
+}
+.assess-sheet-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 0;
+  margin-top: 8px;
+}
+.assess-meta-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+.assess-meta-icon { color: #9ca3af; font-size: 12px; }
+.assess-meta-label { color: #9ca3af; }
+.assess-meta-value { color: #374151; font-weight: 600; }
+.assess-meta-warn { color: #c2410c; }
+.assess-meta-sep {
+  width: 1px;
+  height: 12px;
+  margin: 0 10px;
+  background: #e5e7eb;
+  flex: none;
+}
+.assess-sheet-body { padding: 12px 14px 14px; }
+.assess-quote {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.65;
+  color: #1f2937;
+  background: #f8fafc;
+  border-left: 3px solid #fdba74;
+  border-radius: 0 6px 6px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.assess-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.assess-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: #475569;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+}
+.assess-file :deep(.anticon) { color: #94a3b8; font-size: 11px; }
+.assess-file-btn {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: #4338ca;
+  cursor: pointer;
+  line-height: 1.4;
+}
+.assess-file-btn:hover { color: #1d4ed8; text-decoration: underline; }
 .af-field {
   display: flex;
   align-items: center;
