@@ -17,9 +17,21 @@ import type { RiskFlag } from '@/views/tickets/types/operation';
  */
 
 export interface RiskTagEntry {
-  /** 本次判定的风险等级。判为**误报时为 null**——误报没有等级，不是等级为低 */
+  /**
+   * 本次判定的风险等级。**null 有两种读法，看这条历史挂在谁身上**：
+   *   · 挂在**命中**（key ＝ 命中 id）上 → 判为**误报**，误报没有等级，不是等级为低；
+   *   · 挂在 **A 线条目**（key ＝ 条目 id）上 → 打标结论是**无风险**（业务第三轮拍板的第四档）。
+   * 两者的判据不同，故各自的 `verdict` 取值也不同，见下。
+   */
   level: RiskLevel | null;
-  verdict: HitVerdict;
+  /**
+   * 命中核实的判定（成立 / 误报），答的是"**这次命中准不准**"，喂的是词表准确率。
+   *
+   * 🔴 **仅命中打标有；A 线漏斗打标为空**（业务第三轮拍板）。漏斗打标答的是
+   * "这条**有没有风险、多大**"（低 / 中 / 高 / 无风险），不判规则准不准 ——
+   * 硬填一个 `误报` 会把"人判定没风险"计进词表误报率，把准确率这个数直接做坏。
+   */
+  verdict?: HitVerdict;
   note: string;
   by: string;
   /** 打标人当时的角色：姓名回答"是谁"，角色回答"他有多少分量" */
@@ -89,7 +101,19 @@ export const useRiskTagStore = defineStore('riskTags', () => {
     };
   }
 
-  function historyOf(h: RiskHit): RiskTagEntry[] {
+  /**
+   * 打标历史（时间正序）。**两种 key 共用这一套机制**：
+   *   · 传 `RiskHit` → 命中的核实历史，数据源里带来的首次核实作为第 1 条并回；
+   *   · 传**字符串** → 按 key 直接取追加历史。A 线条目的漏斗打标历史走这一路，
+   *     key ＝ 条目 id（`stores/riskQueue.ts` 的 `recordTag`）。条目没有"数据源自带的首次核实"，
+   *     故没有并回那一步。
+   *
+   * 【为什么不给 A 线另造一套】留痕这件事两边一模一样：追加不覆盖、正序、末条即现行值。
+   * 抄第二份的下场是"修正历史要不要留在原地"这类口径改一处、另一处纹丝不动 ——
+   * 而这正是本轮把打标做成可二次修改时最容易漏的地方。
+   */
+  function historyOf(h: RiskHit | string): RiskTagEntry[] {
+    if (typeof h === 'string') return entries.value[h] ?? [];
     const seed = seedEntryOf(h);
     const appended = entries.value[h.id] ?? [];
     return seed ? [seed, ...appended] : appended;
@@ -99,7 +123,7 @@ export const useRiskTagStore = defineStore('riskTags', () => {
    * 当前生效的核实结果＝历史末条。等级、判定、准确率一律从这里取——
    * 准确率的分子分母都来自 verdict，取错版本整组数就失真，故只留这一个取值口。
    */
-  function latestEntryOf(h: RiskHit): RiskTagEntry | undefined {
+  function latestEntryOf(h: RiskHit | string): RiskTagEntry | undefined {
     const list = historyOf(h);
     return list.length ? list[list.length - 1] : undefined;
   }
@@ -113,7 +137,10 @@ export const useRiskTagStore = defineStore('riskTags', () => {
     return !!latestEntryOf(h);
   }
 
-  /** 追加一条核实记录（首次核实与修正同一个口，追加不覆盖） */
+  /**
+   * 追加一条打标记录（首次与二次修改同一个口，**追加不覆盖**）。
+   * `hitId` 是命中 id 或 A 线条目 id —— 两套 key 装在同一个 record 里，见 `historyOf`。
+   */
   function appendEntry(hitId: string, entry: RiskTagEntry) {
     entries.value = {
       ...entries.value,
@@ -173,6 +200,9 @@ export const useRiskTagStore = defineStore('riskTags', () => {
     for (const h of hits) {
       const e = latestEntryOf(h);
       if (!e) continue;
+      // 没有 verdict 的是 A 线漏斗打标（按条目 id 存），它不判"命中准不准"，
+      // 本函数数的是命中核实的成立 / 误报，故不收。正常取不到——命中与条目两套 key 不相交
+      if (!e.verdict) continue;
       if (e.verdict === '成立') confirmedCount += 1;
       else falseCount += 1;
       // 「最近一次核实」按打标时刻取，不按命中顺序：提示行要说的是"监控最后一次怎么判的"

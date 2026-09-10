@@ -1,7 +1,7 @@
 import { computed } from 'vue';
 import { defineStore } from 'pinia';
 import { useNotifyLogStore } from '@/stores/notifyLog';
-import { useRiskQueueStore } from '@/stores/riskQueue';
+import { useRiskQueueStore, type RiskTagInput } from '@/stores/riskQueue';
 import { useRiskReportStore, type ReportReason, type RiskCategory } from '@/stores/riskReports';
 import {
   RISK_SUPERVISOR,
@@ -9,7 +9,6 @@ import {
   assigneeReceiver,
   asSentence,
   isOpenStatus,
-  isVerifyMonitorSource,
   reasonLine,
   reporterReceiver,
   todayPrefix,
@@ -25,11 +24,14 @@ import {
  * 两条线合并之后的那一个工作面。
  *
  * 【它为什么存在】风险侧的数据已按业务第三轮拍板拆成两条互不交汇的线：
- *   · **A 线**（`stores/riskQueue.ts`）自动识别 → 实时监控 → 打标 → 风险工单池；
+ *   · **A 线**（`stores/riskQueue.ts`）自动识别 → 实时监控 → **打标** → 风险工单池；
  *   · **B 线**（`stores/riskReports.ts`）二线专员发起风险报备 → 报备池。
- * 但**页面还没拆**：风险监控页的「风险工单池」页签今天装的仍是**五类来源合一队**
+ * 但**页面还没拆**：风险监控页的「风险工单池」页签今天装的仍是两条线合一队
  * （N6：来源是条目的一个属性，不是另一批数据），分派 / 自取 / 评估三个动作两条线共用。
  * 本 store 就是那一层合并 —— 队列 computed、看板 B1~B4、以及分派 / 领取 / 评估三个动作。
+ *
+ * 🔴 **A 线那一半的取数已按漏斗收窄**：只收**打标为低 / 中 / 高**的条目（见 `items`）。
+ * 还在实时监控待打标的、以及打标判无风险的，都**不在池里**。
  *
  * 【为什么单开一个模块而不是塞进任一条线】把合并逻辑放进 A 线，A 线就得 import B 线；
  * 放进 B 线则反过来。而工单页的读口（`stores/riskReports.ts` 的 `pendingOf` 等）
@@ -53,13 +55,25 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
   const clock = useRiskClock();
 
   /**
-   * 池内全部条目 ＝ B 线报备单 + A 线自动入池条目。
+   * 池内全部条目 ＝ B 线报备单 + A 线**打标进池**的条目。
+   *
+   * 🔴 **A 线这一半的口径本轮收窄了**（业务第三轮拍板 · 漏斗）：接的不再是 `queue.entries`
+   * 那一整份，而是 `queue.pooledEntries` —— 只收打标为低 / 中 / 高的那批。
+   * 还在「实时监控中」（没打标）与「已标记无风险」（打标判无风险）的两批**不进池**，
+   * 它们在实时监控页签自己的两个视图里。
+   *
+   * 【为什么必须收窄】不收窄的话，池子装的是"系统怀疑有风险的"而不是"确实有风险的"，
+   * 池内条数答的就是"规则今天捞了多少条"，而不是"当前有多少风险单"——
+   * 而分派 / 评估这两个动作要处理的恰恰是后者。
+   *
+   * ⚠️ **B 线不收窄**：报备池是**独立终点、不回流**，报备单不走打标这道门，
+   * 它一提交就在自己的池子里（含已撤回的那条历史）。
    *
    * 🔴 **接的是两条线的原对象，不是副本**：分派 / 评估直接改这些对象的 `status`，
    * 改动要落回各自 store 的数组里才会被持久化、才会让另一个页面跟着变。
    * 拷贝一份的话，页面上点完"分派"什么都不会发生，而且不会报错。
    */
-  const items = computed<RiskPoolItem[]>(() => [...reportStore.reports, ...queue.entries]);
+  const items = computed<RiskPoolItem[]>(() => [...reportStore.reports, ...queue.pooledEntries]);
 
   /** 跨两条线按 id 找条目。号段两线唯一（见 `riskReports.ts` 的 `ID_SEQ_START`），不会撞 */
   function findById(id: string): RiskPoolItem | null {
@@ -109,18 +123,21 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
   const overdueCount = computed(() => openQueue.value.filter(isOverdue).length);
 
   /**
-   * 走评估的四类来源（O16）。五类里只有关键词那一路走核实打标，不进「风险评估」的分母——
-   * 它的数已经在左栏「监控数据」里报过一次，两处相加会把同一条命中数成两条（§7 撞名）。
+   * **池内条目一律走评估**（业务第三轮拍板的连带）。
    *
-   * ⚠️ 与页签角标的区别：角标取**队列条目总数**（五类），因为页签装的就是五类合一的队列；
-   * 页头「风险评估」行取**四类**，因为它报的是评估这件事的进度。两个数本就不相等，界面上不互校。
+   * 【为什么这一条从"按来源排除关键词那一路"改成了恒真】旧口径下五类来源合一队直接进池，
+   * 其中关键词那一路要的是核实打标（成立 / 误报 + 定级）而不是评估二选一，
+   * 故 B1~B4 把它排除在分母外，免得同一条命中在「监控数据」与「风险评估」两处各数一次。
    *
-   * ⚠️ **方案 C 之后本判据仍按来源排除整条关键词那一路**，包括核实**成立**后退回队列、
-   * 确实要走评估二选一的那些条目。B1~B4 因此仍不含这一路：口径没跟着流程一起改。
-   * 后果是「风险评估」四卡与「风险工单池」页签角标的差值会随成立条目变大——
-   * 两个数本就不相等、界面上也不互校，但差在哪里现在多了一种成因。
+   * 新口径下**打标已经是进池的前置门槛**：能出现在池子里的，无论哪一类来源，
+   * 都已经打过标、已经确认有风险，下一步只剩一个问题——**升不升级**。
+   * 再按来源排除一批，等于让一批确实要评估的条目不进「风险评估」的分母，
+   * 页头四卡会系统性报少。故判据消失，函数留着只为把这段理由钉在原地。
+   *
+   * ⚠️ 与实时监控那三个视图的区别仍在：三视图数的是**监控**（捞了多少、判了多少），
+   * 本行数的是**评估**（升不升级答了多少）。两个分母仍然不能相加。
    */
-  const goesToAssess = (r: RiskPoolItem) => !isVerifyMonitorSource(r.source);
+  const goesToAssess = (_r: RiskPoolItem) => true;
 
   /** B1 待评估总数（四类来源）＝ 待分派 + 评估中 */
   const assessOpenCount = computed(() => openQueue.value.filter(goesToAssess).length);
@@ -139,13 +156,12 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
 
   /**
    * 已评估清单，结论时刻倒序。
-   * **两路都收**：走评估的有 `assessment`，走核实打标的有 `verify`（O16）。
-   * 只认 `assessment` 的话，核实为误报的那一路打完标就卡在这张表外面，
-   * 页签上却已经转「已评估」——列表与状态自己打自己。
    *
-   * 🔴 **方案 C 之后走 `verify` 进这张表的只剩误报**：核实成立的退回「待分派」继续走评估，
-   * `status` 不是「已评估」，它在这张表上**要等到评估给出结论（不升级 / 接管）才出现**，
-   * 那时带的是 `assessment`。这不是漏收——成立的条目此刻确实还没有结论。
+   * 🔴 **漏斗改版之后这张表只剩 `assessment` 一路**：打标不再是"结掉一条条目"的方式，
+   * 它只决定进不进池。打标为无风险的条目落「已标记无风险」——那是**实时监控自己的视图**，
+   * 根本不在池里，故不会出现在这张表上。判据里的 `r.verify` 与 `concludedAt` 的 `verify` 分支
+   * 因此成了死路，留着是因为条目上那份 `verify` 仍是过渡期页面在读的只读投影
+   * （见 `riskQueue.ts` 的 `RiskQueueEntry.verify`），下一批页面改完一并删。
    */
   const assessedList = computed(() =>
     items.value
@@ -325,10 +341,34 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
     reportStore.withdraw(id, reason);
   }
 
-  /** 核实打标回写（A 线）。B 线来源恒为「二线报备」，本就不在这条路上 */
+  /**
+   * ⚠️ 旧入口，转 A 线的兼容适配器（成立/误报 → 低/中/高/无风险），见 `riskQueue.recordVerify`。
+   * B 线来源恒为「二线报备」、不走打标，本就不在这条路上。
+   */
   function recordVerify(ticketNo: string, verify: ReportVerify) {
     return queue.recordVerify(ticketNo, verify);
   }
+
+  /* ---- A 线打标与三视图的转发口（新入口，页面层下一批改到这里来） ---- */
+
+  /** 风险打标 · 状态机唯一入口。判据是低/中/高 还是 无风险，见 `riskQueue.recordTag` */
+  function recordTag(entryId: string, input: RiskTagInput) {
+    return queue.recordTag(entryId, input);
+  }
+  /** 按工单号打标（打标弹窗从命中侧点开，手上只有单号） */
+  function recordTagFor(ticketNo: string, input: RiskTagInput) {
+    return queue.recordTagFor(ticketNo, input);
+  }
+  /** 本条目的完整打标历史（含二次修改），时间正序 */
+  function tagHistoryOf(entryId: string) {
+    return queue.tagHistoryOf(entryId);
+  }
+  /** 实时监控 · 视图一：待打标 */
+  const monitoringEntries = computed(() => queue.monitoringEntries);
+  /** 实时监控 · 视图二：已入池（＝本池 A 线那一半） */
+  const pooledEntries = computed(() => queue.pooledEntries);
+  /** 实时监控 · 视图三：已标记无风险（不进池） */
+  const noRiskEntries = computed(() => queue.noRiskEntries);
 
   function reportsOf(ticketNo: string) {
     return reportStore.reportsOf(ticketNo);
@@ -382,6 +422,12 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
     submit,
     withdraw,
     recordVerify,
+    recordTag,
+    recordTagFor,
+    tagHistoryOf,
+    monitoringEntries,
+    pooledEntries,
+    noRiskEntries,
     reportsOf,
     pendingOf,
     historyOf,
