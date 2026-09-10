@@ -9,6 +9,33 @@ import type { BusinessType, CreateFormTicketType, TicketSource } from '@/views/t
  * - `poolPending` = 催补待回（独立主 Tab，紧挨「本组」；PRD-915 补充与催单 §9.3）
  */
 export type TabKey = 'mine' | 'done' | 'pool' | 'poolPending' | 'cc' | 'review';
+
+/** 风险报备池页签的键。单独给个常量，判据里少写一次裸字符串 */
+export const RISK_REPORT_TAB = 'riskReport';
+
+/**
+ * 工作台**页签栏**的键 ＝ 工单页签（`TabKey`）+ 风险报备池。
+ *
+ * 【为什么不并进 TabKey】`TabKey` 回答的是"**这张工单**归哪个页签"——它是 `Ticket.tab`
+ * 的类型，也是工作台按 Tab 取工单、按 Tab 计数那一整套的取数键。而风险报备池装的
+ * **不是工单，是报备单**（`stores/riskReports.ts` 的 `RiskReport`）：一条报备只带一个工单号，
+ * 工单本人仍好端端待在「我的任务」或本组池里，不会、也不该被挪进第六个工单数据域。
+ *
+ * 并进去会当场长出两个假命题：① `Ticket.tab = 'riskReport'` 变成合法赋值；
+ * ② 工作台按 `TabKey` 建的各 Tab 工单计数表会多出一格**永远为 0** 的计数
+ * （报备单不在工单数组里，那一格数不出任何东西）。
+ * 分成两个类型之后，"页签栏有几枚"与"工单能落在哪几枚上"各自回答各自的问题。
+ */
+export type WorkbenchTabKey = TabKey | typeof RISK_REPORT_TAB;
+
+/**
+ * 页签栏的键是不是一枚**工单页签** —— 是的才能喂给按 `TabKey` 取数的那一套。
+ * 类型谓词而不是布尔：调用处 `if (isTicketTab(k)) setTab(k)` 直接把 k 收窄成 TabKey。
+ */
+export function isTicketTab(key: WorkbenchTabKey): key is TabKey {
+  return key !== RISK_REPORT_TAB;
+}
+
 /** 工单列表（全量库）视图 Tab */
 export type ListViewKey = 'all' | 'mine' | 'team' | 'pool' | 'archived';
 
@@ -673,24 +700,30 @@ export function softBg(hex: string): string {
 
 // ---- Tab / Chip 元信息 ----
 export interface TabMeta {
-  key: TabKey;
+  key: WorkbenchTabKey;
   label: string;
   /** 计数徽章激活前的语义色 */
   badge: string;
 }
 /**
- * 主 Tab（PRD-02 + PRD-915 补充与催单）：我的任务 / 已办 / 工单池 / **催补待回** / 待审核
+ * 主 Tab（PRD-02 + PRD-915 补充与催单 + 【930】风险报备）：
+ * 我的任务 / 已办 / 工单池 / **催补待回** / **风险报备池** / 待审核
  *
  * ⚠️ 不含 `cc`（抄送我的）：抄送单已并入「我的任务」承接
  * （setTab 收到 cc 会改判为 mine，inListView 的「我的」视图同时收 mine 与 cc）。
  * `TabKey` 里保留 cc 供那几处历史分支使用，但它**不是一个 Tab**，
  * 角色配置的 hiddenTabs 里不要再写它 —— 过滤的是这个数组，写了也过滤不到东西。
+ *
+ * 「风险报备池」紧挨「催补待回」是有意的：两枚都是**本组共有、谁领谁办**的池子，
+ * 与前三枚"已经在我名下"的页签分属两段。它只对客诉专员与投诉督导渲染，
+ * 门控走 `config/roles.ts` 的 hiddenTabs，不在组件里判角色。
  */
 export const TABS: TabMeta[] = [
   { key: 'mine', label: '我的任务', badge: '#1A6FFF' },
   { key: 'done', label: '已办', badge: '#9CA3AF' },
   { key: 'pool', label: '工单池', badge: '#06B6D4' },
   { key: 'poolPending', label: '催补待回', badge: '#6366F1' },
+  { key: RISK_REPORT_TAB, label: '风险报备池', badge: '#F97316' },
   { key: 'review', label: '待审核', badge: '#F59E0B' },
 ];
 
@@ -950,6 +983,21 @@ export function headerActionsByRole(roleKey: string): {
     dunning: isL1,
     cancelTicket: isL1,
   };
+}
+
+/**
+ * 风险报备池里**能不能动手**（领取 / 评估 / 释放）—— 判据只认 `roleKey`，与 `headerActionsByRole` 同形。
+ *
+ * 取值只有 `complaint-handler` 一个。两条依据：
+ * ① 报备单的评估结论由**客诉专员**给出（《【930】》§5.4，评估二选一）；
+ * ② **投诉督导已去权**（业务第三轮拍板）：分派 / 改派 / 批量分派整套取消，两个池子只留自取，
+ *    督导对报备池是**只看数据**——页签给它（态势要看得到），动作一枚不给。
+ *
+ * ⚠️ 页签**看不看得见**不由本函数管，那是 `config/roles.ts` 的 hiddenTabs。
+ * 两件事分开：看得见而没有动作，正是督导要的那一档；混成一个判据就表达不了它。
+ */
+export function canClaimRiskReport(roleKey: string): boolean {
+  return roleKey === 'complaint-handler';
 }
 
 /**

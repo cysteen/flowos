@@ -1,0 +1,798 @@
+<script setup lang="ts">
+/**
+ * **风险报备池**（《【930】风险报备 · 监控 · 管控》B 线，业务第三轮拍板）——
+ * 工单工作台的一枚页签，装二线专员在**非投诉单**上发起的风险报备单。
+ *
+ * 【与风险监控页的分界】风险侧是两条互不交汇的线：
+ *   · A 线（自动识别 → 实时监控 → 打标 → 风险工单池）留在风险监控页；
+ *   · B 线（二线报备 → **本页** → 评估）挪到工作台，因为它是**一线办公面上的活**：
+ *     谁领谁办、办完出列，与「催补待回」同形，故紧挨着它摆。
+ * 本页**只读 B 线**（`stores/riskReports.ts` 的 `reports`），一条 A 线条目都不混进来。
+ *
+ * 🔴 **只有「领取」，没有分派**：分派 / 改派 / 批量分派整套已取消（第三轮拍板），
+ * 两个池子都只留自取。督导不再是队列的单点，谁有空谁领。
+ */
+import { computed, ref } from 'vue';
+import { message, Modal } from 'ant-design-vue';
+import {
+  EditOutlined,
+  PaperClipOutlined,
+  SearchOutlined,
+} from '@ant-design/icons-vue';
+import TicketFilterBar from './TicketFilterBar.vue';
+import OpActionModal from './operation/OpActionModal.vue';
+import { useUserStore } from '@/stores/user';
+import { useRiskReportStore, type RiskReport } from '@/stores/riskReports';
+// 领取走合并层的 `claim`：它一并落了「谁何时接走这条」的通知留痕，
+// 并置 `assessArrivalTicket`（工单详情页据此自动开评估弹窗）。
+// 直接改状态做不到这两件事，而留痕正是这条队列的凭据。
+import { useRiskPoolStore } from '@/stores/riskPool';
+import { useRiskReportAssess } from '@/composables/useRiskReportAssess';
+import type { ReportStatus } from '@/stores/riskShared';
+import { TICKETS } from '@/mock/tickets';
+import { canClaimRiskReport, type ChipMeta } from '@/views/tickets/types/ticket';
+
+const emit = defineEmits<{ openTicket: [ticketNo: string] }>();
+
+const user = useUserStore();
+const reportStore = useRiskReportStore();
+const pool = useRiskPoolStore();
+const {
+  ASSESS_DECISIONS,
+  assessOpen,
+  assessTarget,
+  assessDecision,
+  assessAdvice,
+  missAssessDecision,
+  missAssessAdvice,
+  assessAdviceLabel,
+  assessAdvicePlaceholder,
+  takeoverHint,
+  openAssess,
+  confirmAssess,
+} = useRiskReportAssess();
+
+/**
+ * 能不能动手。**投诉督导看得见、一枚动作没有**——它已去权，只看数据。
+ * 判据收在 types/ticket.ts，本组件不写 `if (role === …)`。
+ */
+const canAct = computed(() => canClaimRiskReport(user.roleKey));
+
+/* ---------------- 取数 ---------------- */
+
+/** 工单号 → 标题。报备单只带单号，标题得回工单库取一次 */
+const TICKET_TITLE = new Map(TICKETS.map((t) => [t.no, t.title]));
+function ticketTitle(no: string): string {
+  return TICKET_TITLE.get(no) ?? '—';
+}
+
+/** 在队 ＝ 待分派 + 评估中（还没有结论的全集） */
+function isOpen(r: RiskReport): boolean {
+  return r.status === '待分派' || r.status === '评估中';
+}
+
+/**
+ * 排序：**在队的一律在上**，组内按提交时刻正序（等最久的排最前，与评估时限同向）；
+ * 已收口的（已评估 / 已撤回）按提交时刻倒序垫底 —— 那是查证用的历史，最近的先看。
+ */
+const rows = computed(() =>
+  [...reportStore.reports].sort((a, b) => {
+    const ga = isOpen(a) ? 0 : 1;
+    const gb = isOpen(b) ? 0 : 1;
+    if (ga !== gb) return ga - gb;
+    return ga === 0 ? a.at.localeCompare(b.at) : b.at.localeCompare(a.at);
+  }),
+);
+
+const search = ref('');
+const activeChip = ref('all');
+
+/**
+ * 子筛选。「我承办」只对能动手的角色出 —— 督导领不了，那一格对它恒为 0，
+ * 摆着只会让人以为自己漏领了什么。
+ */
+const chips = computed<ChipMeta[]>(() => {
+  const list: ChipMeta[] = [
+    { key: 'all', label: '全部' },
+    { key: 'unclaimed', label: '待领取', title: '还没有人领的报备单，客诉专员可自取' },
+  ];
+  if (canAct.value) {
+    list.push({ key: 'mine', label: '我承办', title: '已落在我名下、等我给结论的报备单' });
+  }
+  list.push(
+    { key: 'assessing', label: '评估中', title: '已有客诉专员承办，等结论' },
+    { key: 'assessed', label: '已评估' },
+    { key: 'withdrawn', label: '已撤回', title: '报备人自行收回；记录保留，不再进队列' },
+  );
+  return list;
+});
+
+function matchChip(r: RiskReport, key: string): boolean {
+  switch (key) {
+    case 'unclaimed':
+      return r.status === '待分派';
+    case 'mine':
+      return r.status === '评估中' && r.assignee === user.name;
+    case 'assessing':
+      return r.status === '评估中';
+    case 'assessed':
+      return r.status === '已评估';
+    case 'withdrawn':
+      return r.status === '已撤回';
+    default:
+      return true;
+  }
+}
+
+function matchSearch(r: RiskReport): boolean {
+  const kw = search.value.trim().toLowerCase();
+  if (!kw) return true;
+  return `${r.ticketNo} ${ticketTitle(r.ticketNo)} ${r.by}`.toLowerCase().includes(kw);
+}
+
+const searched = computed(() => rows.value.filter(matchSearch));
+const list = computed(() => searched.value.filter((r) => matchChip(r, activeChip.value)));
+
+/** chip 计数与列表同口径：搜索已经生效的话，计数也跟着窄，否则两个数对不上 */
+const chipCounts = computed<Record<string, number>>(() => {
+  const map: Record<string, number> = {};
+  for (const c of chips.value) {
+    map[c.key] = searched.value.filter((r) => matchChip(r, c.key)).length;
+  }
+  return map;
+});
+
+const isFiltered = computed(() => activeChip.value !== 'all' || !!search.value.trim());
+
+function resetFilters() {
+  activeChip.value = 'all';
+  search.value = '';
+}
+
+/* ---------------- 单元格 ---------------- */
+
+/**
+ * 状态**展示名**。落库值「待分派」是分派时代留下的词，分派已取消，
+ * 池子里那一档现在的含义就是"还没人领"，故界面写「待领取」。
+ * ⚠️ 只换展示名，判据一律仍用落库值（与工单状态的两列口径一致）。
+ */
+const STATUS_TEXT: Record<string, string> = {
+  待分派: '待领取',
+  评估中: '评估中',
+  已评估: '已评估',
+  已撤回: '已撤回',
+};
+const STATUS_TONE: Record<string, string> = {
+  待分派: 'warn',
+  评估中: 'info',
+  已评估: 'ok',
+  已撤回: 'gray',
+};
+function statusText(s: ReportStatus): string {
+  return STATUS_TEXT[s] ?? s;
+}
+function statusTone(s: ReportStatus): string {
+  return STATUS_TONE[s] ?? 'gray';
+}
+
+/** 等待时长与工单页横幅同源（store 内含 60s 心跳），不本地各算一份 */
+function waitedText(r: RiskReport): string {
+  if (!isOpen(r)) return '—';
+  const mins = reportStore.waitedMinutes(r.at);
+  return mins >= 60 ? `${Math.floor(mins / 60)} 小时 ${mins % 60} 分` : `${mins} 分钟`;
+}
+function isOverdue(r: RiskReport): boolean {
+  return reportStore.isOverdue(r);
+}
+
+/**
+ * 场景描述超两行折叠。两行装得下多少字没有精确解，按 40 字近似 ——
+ * 判宽了顶多多出一枚点了没变化的「展开」，判窄了会把后半段藏死。
+ */
+const DESC_CLAMP_CHARS = 40;
+const expandedDesc = ref<Set<string>>(new Set());
+function toggleDesc(id: string) {
+  const next = new Set(expandedDesc.value);
+  next.has(id) ? next.delete(id) : next.add(id);
+  expandedDesc.value = next;
+}
+
+/* ---------------- 动作 ---------------- */
+
+type RowAction = { label: string; primary?: boolean };
+
+/**
+ * 行内动作。**没有分派 / 改派**（第三轮拍板取消），只有自取与它的回退：
+ * - 待领取 → 「领取」（谁领谁办）
+ * - 我承办 → 「评估」+「释放」（拿了办不了要能退回池子，否则等于把单子锁死在自己名下）
+ * - 别人承办 / 已收口 → 无动作，承办人与结论在列上看得到
+ */
+function actionsOf(r: RiskReport): RowAction[] {
+  if (!canAct.value) return [];
+  if (r.status === '待分派') return [{ label: '领取', primary: true }];
+  if (r.status === '评估中' && r.assignee === user.name) {
+    return [{ label: '评估', primary: true }, { label: '释放' }];
+  }
+  return [];
+}
+
+function onAction(label: string, r: RiskReport) {
+  if (label === '领取') return claim(r);
+  if (label === '评估') return openAssess(r);
+  if (label === '释放') return release(r);
+}
+
+function claim(r: RiskReport) {
+  if (!pool.claim(r.id, user.name)) {
+    message.warning('该报备已被他人领取');
+    return;
+  }
+  message.success(`已领取 ${r.ticketNo} 的风险报备，可直接给出评估结论`);
+}
+
+function release(r: RiskReport) {
+  Modal.confirm({
+    title: '释放报备',
+    content: `释放后，${r.ticketNo} 的这条报备退回报备池等其他客诉专员领取；等待时长从提交时刻起算、不会因此重置。`,
+    okText: '释放',
+    cancelText: '取消',
+    onOk() {
+      /*
+       * ⚠️ **直改状态**：`riskReports` / `riskPool` 都没有"退回池子"的动作
+       * （分派时代只需要改派，用不上释放）。这里改的是 store 里那一条原对象，
+       * 改动照常落 localStorage；缺的是与 `claim` 对称的那条留痕通知 ——
+       * 等 store 补上 `release(id, by)` 之后，本段换成调它。
+       */
+      const target = reportStore.findById(r.id);
+      if (!target || target.status !== '评估中' || target.assignee !== user.name) {
+        message.warning('该报备已不在你名下');
+        return;
+      }
+      target.status = '待分派';
+      target.assignee = undefined;
+      message.success(`已释放 ${target.ticketNo} 的风险报备，退回报备池`);
+    },
+  });
+}
+</script>
+
+<template>
+  <div class="rrp">
+    <!-- ① 子筛选：与其余页签同一条 chips 组件，样式与计数口径一并复用 -->
+    <div class="rrp-filter">
+      <TicketFilterBar
+        :active-chip="activeChip"
+        :chip-counts="chipCounts"
+        :chips="chips"
+        @chip="activeChip = String($event)"
+      />
+    </div>
+
+    <!-- ② 工具行：与工作台搜索框同形（工单号 / 工单标题 / 报备人） -->
+    <div class="rrp-toolbar">
+      <p v-if="!canAct" class="rrp-readonly">
+        本页为只读视角：报备单的领取与评估由客诉专员执行
+      </p>
+      <span v-else class="rrp-hint">谁领谁办 —— 报备单没有分派，领取后由你给出评估结论</span>
+      <div class="rrp-search">
+        <SearchOutlined :style="{ color: '#9CA3AF', fontSize: '14px' }" />
+        <input
+          v-model="search"
+          class="rrp-search-input"
+          placeholder="工单号 / 工单标题 / 报备人"
+        />
+      </div>
+    </div>
+
+    <!-- ③ 列表 -->
+    <div class="table-card">
+      <div class="rrp-list">
+        <div v-if="!list.length" class="empty">
+          <template v-if="isFiltered">
+            <div class="empty-title">当前筛选下没有报备单</div>
+            <div class="empty-sub">换个筛选项，或清空搜索词后再看</div>
+            <button type="button" class="empty-act" @click="resetFilters">查看全部</button>
+          </template>
+          <template v-else>
+            <div class="empty-title">报备池里还没有报备单</div>
+            <div class="empty-sub">
+              二线专员在咨询 / 建议 / 商机单上发起风险报备后会落到这里，等客诉专员领取评估
+            </div>
+          </template>
+        </div>
+
+        <div v-else class="rrp-grid">
+          <div class="thead">
+            <div class="th th-cell">工单号</div>
+            <div class="th th-cell">工单标题</div>
+            <div class="th th-cell">报备人</div>
+            <div class="th th-cell">报备原因</div>
+            <div class="th th-cell">风险类型</div>
+            <div class="th th-cell">场景描述</div>
+            <div class="th th-cell">附件</div>
+            <div class="th th-cell">提交时刻</div>
+            <div class="th th-cell">已等待</div>
+            <div class="th th-cell">承办人</div>
+            <div class="th th-cell">状态</div>
+            <div class="th th-cell">操作</div>
+          </div>
+
+          <div v-for="r in list" :key="r.id" class="row">
+            <div class="cell">
+              <span class="ticket-no" @click="emit('openTicket', r.ticketNo)">{{ r.ticketNo }}</span>
+            </div>
+            <div class="cell">
+              <span class="plain-text" :title="ticketTitle(r.ticketNo)">{{ ticketTitle(r.ticketNo) }}</span>
+            </div>
+            <div class="cell cell-col">
+              <span class="who">{{ r.by }}</span>
+              <span class="who-role">{{ r.byRole }}</span>
+            </div>
+            <div class="cell">
+              <span class="tag tag-reason">{{ r.reason }}</span>
+            </div>
+            <div class="cell">
+              <span v-if="r.category" class="tag tag-cat">{{ r.category }}</span>
+              <span v-else class="muted">—</span>
+            </div>
+            <div class="cell cell-col cell-desc">
+              <p class="desc" :class="{ 'is-clamp': !expandedDesc.has(r.id) }">{{ r.desc }}</p>
+              <button
+                v-if="r.desc.length > DESC_CLAMP_CHARS"
+                type="button"
+                class="desc-toggle"
+                @click="toggleDesc(r.id)"
+              >
+                {{ expandedDesc.has(r.id) ? '收起' : '展开' }}
+              </button>
+            </div>
+            <div class="cell">
+              <span
+                v-if="r.attachments.length"
+                class="files"
+                :title="r.attachments.join('、')"
+              >
+                <PaperClipOutlined />
+                <span class="files-text">{{ r.attachments.join('、') }}</span>
+              </span>
+              <span v-else class="muted">—</span>
+            </div>
+            <div class="cell">
+              <span class="plain-text">{{ r.at }}</span>
+            </div>
+            <div class="cell cell-col">
+              <span class="waited" :class="{ 'is-overdue': isOverdue(r) }">{{ waitedText(r) }}</span>
+              <!-- 超时的必须一眼看出来：这条队列卡的是投诉立项，压在池子里没人领是最坏的一档 -->
+              <span v-if="isOverdue(r)" class="overdue-tag">超时未评</span>
+            </div>
+            <div class="cell">
+              <span v-if="r.assignee" class="plain-text">{{ r.assignee }}</span>
+              <span v-else class="muted">未领取</span>
+            </div>
+            <div class="cell">
+              <span class="state" :class="`tone-${statusTone(r.status)}`">{{ statusText(r.status) }}</span>
+            </div>
+            <div class="cell cell-action">
+              <span
+                v-for="a in actionsOf(r)"
+                :key="a.label"
+                class="act"
+                :style="{ color: a.primary ? '#1A6FFF' : '#6B7280' }"
+                @click="onAction(a.label, r)"
+                >{{ a.label }}</span
+              >
+              <span v-if="!actionsOf(r).length" class="muted">—</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 无分页：与其余页签一致，全量快照展示，只报总数 -->
+      <div class="pager">
+        <span class="pager-total">共 {{ list.length }} 条</span>
+      </div>
+    </div>
+
+    <!-- 评估结论：与工单详情页「风险报备」Tab 同一个 composable，两处结论口径不会分叉 -->
+    <OpActionModal
+      :open="assessOpen"
+      :title="assessTarget ? `评估报备 · ${assessTarget.ticketNo}` : '评估报备'"
+      :icon="EditOutlined"
+      tone="primary"
+      :width="520"
+      ok-text="提交结论"
+      @update:open="assessOpen = $event"
+      @ok="confirmAssess"
+    >
+      <div class="rrp-assess">
+        <div class="af-field">
+          <span class="af-label req">评估决策</span>
+          <a-radio-group v-model:value="assessDecision" class="af-decisions">
+            <a-radio v-for="d in ASSESS_DECISIONS" :key="d" :value="d">{{ d }}</a-radio>
+          </a-radio-group>
+        </div>
+        <p v-if="missAssessDecision" class="af-err">请先选择一个评估决策</p>
+        <p v-else-if="assessDecision === '接管'" class="af-hint">{{ takeoverHint }}</p>
+
+        <div class="af-field af-field-block">
+          <span class="af-label req">{{ assessAdviceLabel }}</span>
+          <a-textarea
+            v-model:value="assessAdvice"
+            :rows="3"
+            :placeholder="assessAdvicePlaceholder"
+          />
+        </div>
+        <p v-if="missAssessAdvice" class="af-err">请填写{{ assessAdviceLabel }}</p>
+      </div>
+    </OpActionModal>
+  </div>
+</template>
+
+<style scoped>
+.rrp {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.rrp-filter {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+}
+.rrp-filter :deep(.filter-row) {
+  flex: 1;
+  min-width: 0;
+}
+.rrp-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+}
+.rrp-hint,
+.rrp-readonly {
+  margin: 0;
+  font-size: 12px;
+  color: #6b7280;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rrp-readonly {
+  padding: 6px 12px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+}
+.rrp-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 240px;
+  height: 36px;
+  padding: 0 10px;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  box-sizing: border-box;
+  flex: none;
+}
+.rrp-search:focus-within {
+  border-color: #1a6fff;
+  box-shadow: 0 0 0 2px rgb(26 111 255 / 10%);
+}
+.rrp-search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  font-size: 13px;
+  color: #374151;
+  background: transparent;
+  font-family: inherit;
+}
+.table-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.rrp-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.rrp-grid {
+  display: grid;
+  grid-template-columns:
+    150px minmax(160px, 1.2fr) 96px 96px 96px minmax(240px, 2fr)
+    140px 132px 108px 88px 88px 104px;
+  column-gap: 0;
+  width: max-content;
+  min-width: 100%;
+  padding: 0 16px;
+  box-sizing: border-box;
+}
+.thead,
+.row {
+  display: contents;
+}
+.th-cell {
+  display: flex;
+  align-items: center;
+  padding: 11px 12px 11px 0;
+  background: #fafafb;
+  border-bottom: 1px solid #e5e7eb;
+}
+.th {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  white-space: nowrap;
+}
+.row > .cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  padding: 13px 12px 13px 0;
+  border-bottom: 1px solid #f0f0f0;
+  background: #fff;
+}
+.row:hover > .cell {
+  background: #fafbff;
+}
+.cell-col {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.ticket-no {
+  font-size: 12px;
+  font-weight: 500;
+  color: #1a6fff;
+  cursor: pointer;
+  flex: none;
+}
+.ticket-no:hover {
+  text-decoration: underline;
+}
+.plain-text {
+  font-size: 12px;
+  color: #374151;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.muted {
+  font-size: 12px;
+  color: #9ca3af;
+}
+.who {
+  font-size: 12px;
+  color: #374151;
+  font-weight: 500;
+}
+.who-role {
+  font-size: 11px;
+  color: #9ca3af;
+}
+.tag {
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.tag-reason {
+  color: #475569;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+}
+.tag-cat {
+  color: #c2410c;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+}
+.cell-desc {
+  justify-content: center;
+}
+.desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #4b5563;
+  width: 100%;
+  word-break: break-word;
+}
+.desc.is-clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.desc-toggle {
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 11px;
+  color: #1a6fff;
+  cursor: pointer;
+}
+.files {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-size: 11px;
+  color: #475569;
+}
+.files :deep(.anticon) {
+  color: #94a3b8;
+  font-size: 11px;
+  flex: none;
+}
+.files-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.waited {
+  font-size: 12px;
+  color: #374151;
+  white-space: nowrap;
+}
+.waited.is-overdue {
+  color: #dc2626;
+  font-weight: 600;
+}
+.overdue-tag {
+  padding: 1px 5px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #dc2626;
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.state {
+  padding: 2px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.state.tone-warn {
+  color: #c2410c;
+  background: #ffedd5;
+}
+.state.tone-info {
+  color: #1d4ed8;
+  background: #dbeafe;
+}
+.state.tone-ok {
+  color: #047857;
+  background: #d1fae5;
+}
+.state.tone-gray {
+  color: #6b7280;
+  background: #f3f4f6;
+}
+.cell-action {
+  gap: 12px;
+}
+.act {
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.empty {
+  padding: 64px 0;
+  text-align: center;
+}
+.empty-title {
+  font-size: 13px;
+  color: #6b7280;
+}
+.empty-sub {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #9ca3af;
+}
+.empty-act {
+  margin-top: 12px;
+  height: 28px;
+  padding: 0 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  color: #374151;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.empty-act:hover {
+  border-color: #1a6fff;
+  color: #1a6fff;
+}
+.pager {
+  display: flex;
+  align-items: center;
+  padding: 12px 20px;
+  border-top: 1px solid #e5e7eb;
+  flex: none;
+}
+.pager-total {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+/* ---- 评估弹窗 ---- */
+.rrp-assess {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.af-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.af-field-block {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+.af-label {
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+}
+.af-label.req::before {
+  content: '*';
+  color: #ef4444;
+  margin-right: 2px;
+}
+.af-decisions {
+  display: inline-flex;
+  gap: 8px;
+}
+.af-decisions :deep(.ant-radio-wrapper) {
+  margin: 0 !important;
+  padding: 6px 12px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.af-decisions :deep(.ant-radio-wrapper-checked) {
+  border-color: #1a6fff;
+  background: #eff6ff;
+}
+.af-err {
+  margin: 0;
+  font-size: 11px;
+  color: #ef4444;
+}
+.af-hint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #6b7280;
+}
+</style>

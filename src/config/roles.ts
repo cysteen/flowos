@@ -48,8 +48,12 @@ export interface RoleDef {
   /**
    * 工单工作台中需隐藏的 Tab key。
    * 取值必须是 `TABS`（views/tickets/types/ticket.ts）里实际存在的 Tab：
-   * 我的任务 / 已办 / 工单池 / 催补待回 / 待审核。
+   * 我的任务 / 已办 / 工单池 / 催补待回 / **风险报备池** / 待审核。
    * 过滤是 `TABS.filter(t => !hiddenTabs.includes(t.key))` —— 写不存在的 key 等于没写。
+   *
+   * ⚠️ **默认是"给"**：不写就渲染。故新增页签时要在**每个不该看到它的角色**上补一行，
+   * 而不是在该看到它的角色上写点什么 —— `riskReport` 就是这么落的（只有客诉专员与
+   * 投诉督导没写它，其余七个角色逐个写上）。
    */
   hiddenTabs: string[];
   /** 是否显示「管理后台」入口（头像下拉） */
@@ -105,7 +109,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
     key: 'agent-l1',
     name: '一线坐席',
     menus: ['tickets'],
-    hiddenTabs: ['done', 'pool', 'poolPending', 'review'],
+    hiddenTabs: ['done', 'pool', 'poolPending', 'riskReport', 'review'],
     hasAdminEntry: false,
     frontline: true,
   },
@@ -120,7 +124,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
     key: 'agent-l2',
     name: '二线专员',
     menus: ['home', 'tickets', 'aftersale', 'query-center', 'approval'],
-    hiddenTabs: ['review'],
+    hiddenTabs: ['riskReport', 'review'],
     hasAdminEntry: false,
     post: 'cs',
   },
@@ -136,7 +140,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
     key: 'tech-support',
     name: '技术支持',
     menus: ['home', 'tickets', 'query-center', 'approval'],
-    hiddenTabs: ['review'],
+    hiddenTabs: ['riskReport', 'review'],
     hasAdminEntry: false,
   },
   /** ④ 二线班组长（原「班组长」，0830 改名）：派单、审批、盯时效、调人。管辖多组，一次一组。 */
@@ -144,7 +148,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
     key: 'team-leader',
     name: '二线班组长',
     menus: ['home', 'tickets', 'aftersale', 'query-center', 'team-board', 'approval'],
-    hiddenTabs: [],
+    hiddenTabs: ['riskReport'],
     hasAdminEntry: false,
   },
   /**
@@ -154,6 +158,9 @@ export const ROLES: Record<RoleKey, RoleDef> = {
    * ⚠️ **没有审批资格**（基线 §4 ※28：审批一行客诉专员＝不展示；管控与审批互斥，
    * 拿走工单与批准申请不给同一个人）。菜单里的 `approval` 是"看自己提的 / 撤回自己发起的"。
    * ⚠️ **不给班组看板与运营监控大盘**（PRD-08 §2 注：它办单、管控，不做管理视角）。
+   *
+   * 工作台六枚页签全给：其中「风险报备池」是它**唯一有动作**的那一枚
+   * （二线报上来的报备单，谁领谁评，见《【930】》§5.4）。
    */
   'complaint-handler': {
     key: 'complaint-handler',
@@ -182,7 +189,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
     key: 'ops-monitor',
     name: '工单运营',
     menus: ['query-center', 'team-board', 'ops-ticket-monitor'],
-    hiddenTabs: ['review'],
+    hiddenTabs: ['riskReport', 'review'],
     hasAdminEntry: false,
     readonlyTickets: true,
   },
@@ -193,6 +200,11 @@ export const ROLES: Record<RoleKey, RoleDef> = {
    * 办单 / 审批＝管辖组；看板与大盘＝全中心（基线 §3.1）。风险打标给（§3.1「风险词打标
    * ＝ 客诉专员 + 投诉督导」）。
    * 管理后台入口 🗣 待定（后台-0830 矩阵没有这一列，基线 §7 R13 E 组），本轮按**不给**落。
+   *
+   * 「风险报备池」页签**给它、但一枚动作都不给**（业务第三轮拍板取消分派 / 改派 / 批量分派，
+   * 两个池子只留自取）：它要盯的是报备量与积压态势，领取与评估归客诉专员。
+   * 动作侧的判据在 `views/tickets/types/ticket.ts` 的 `canClaimRiskReport` ——
+   * 与本处的"看得见"分开写，混成一个判据就表达不了"只看不动"这一档。
    */
   'complaint-supervisor': {
     key: 'complaint-supervisor',
@@ -215,7 +227,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
     key: 'qa',
     name: '质检',
     menus: ['query-center', 'approval'],
-    hiddenTabs: ['review'],
+    hiddenTabs: ['riskReport', 'review'],
     hasAdminEntry: false,
     readonlyTickets: true,
   },
@@ -225,7 +237,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
     name: '管理员',
     adminScopeLabel: '管理员 · 平台',
     menus: ['home', 'tickets', 'query-center', 'aftersale', 'team-board', 'ops-ticket-monitor', 'ops-risk-monitor', 'approval'],
-    hiddenTabs: [],
+    hiddenTabs: ['riskReport'],
     hasAdminEntry: true,
     adminScope: 'platform',
   },
@@ -234,7 +246,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
     name: '管理员',
     adminScopeLabel: '管理员 · 运营',
     menus: ['home', 'tickets', 'query-center', 'aftersale', 'team-board', 'ops-ticket-monitor', 'ops-risk-monitor', 'approval'],
-    hiddenTabs: [],
+    hiddenTabs: ['riskReport'],
     hasAdminEntry: true,
     adminScope: 'ops',
   },
@@ -243,7 +255,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
     name: '管理员',
     adminScopeLabel: '管理员 · 租户',
     menus: ['home', 'tickets', 'query-center', 'aftersale', 'team-board', 'ops-ticket-monitor', 'ops-risk-monitor', 'approval'],
-    hiddenTabs: [],
+    hiddenTabs: ['riskReport'],
     hasAdminEntry: true,
     adminScope: 'tenant',
   },

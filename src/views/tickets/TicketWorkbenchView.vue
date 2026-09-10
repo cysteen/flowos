@@ -4,7 +4,14 @@ import { useRouter } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
 import { useUserStore } from '@/stores/user';
 import TicketTabs from './components/TicketTabs.vue';
-import { isPoolFamily } from '@/views/tickets/types/ticket';
+import RiskReportPoolPanel from './components/RiskReportPoolPanel.vue';
+import {
+  isPoolFamily,
+  isTicketTab,
+  RISK_REPORT_TAB,
+  type WorkbenchTabKey,
+} from '@/views/tickets/types/ticket';
+import { useRiskReportStore } from '@/stores/riskReports';
 import AiSuggestionBar from './components/AiSuggestionBar.vue';
 import AiSuggestionDrawer from './components/AiSuggestionDrawer.vue';
 import type { AiSuggestion, AiSuggestionFilter } from './types/aiSuggestion';
@@ -28,6 +35,43 @@ const user = useUserStore();
 const router = useRouter();
 const wb = useTicketWorkbench();
 const headerTabCounts = wb.headerTabCounts;
+const riskReports = useRiskReportStore();
+
+/**
+ * 风险报备池页签。
+ *
+ * 【为什么它的选中态另存一个 ref，而不是并进 `wb.activeTab`】工作台那套取数
+ * （`tabRows` / `tabCounts` / 结构化筛选）整个是围绕**工单**建的，键是 `TabKey`；
+ * 报备池装的是**报备单**，喂不进去，也不该让 `TabKey` 多出一个工单永远落不到的值
+ * （见 types/ticket.ts 的 `WorkbenchTabKey`）。故页签栏的选中态在这里合成：
+ * 报备池开着就是它，否则跟着工单页签走。
+ */
+const riskReportTabActive = ref(false);
+const activeWorkbenchTab = computed<WorkbenchTabKey>(() =>
+  riskReportTabActive.value ? RISK_REPORT_TAB : wb.activeTab.value,
+);
+
+/**
+ * 报备池的徽章数 ＝ **在队**（待领取 + 评估中）条数。
+ * 不数已评估 / 已撤回：徽章要答的是"还有多少活等着人",那两档活已经完了。
+ */
+const riskReportOpenCount = computed(
+  () => riskReports.reports.filter((r) => r.status === '待分派' || r.status === '评估中').length,
+);
+const workbenchTabCounts = computed<Record<string, number>>(() => ({
+  ...headerTabCounts.value,
+  [RISK_REPORT_TAB]: riskReportOpenCount.value,
+}));
+
+function onTabChange(tab: WorkbenchTabKey) {
+  riskReportTabActive.value = tab === RISK_REPORT_TAB;
+  if (isTicketTab(tab)) wb.setTab(tab);
+}
+
+/** 报备池行内点工单号：与列表点单号同一个去处（工单操作页） */
+function openTicketByNo(no: string) {
+  router.push(`/tickets/${no}`);
+}
 const { optionalVisible, applyOptionalVisible } = useMineQueryFields();
 const {
   visibleColumns,
@@ -197,6 +241,9 @@ function onBatch(action: string) {
 }
 function onCreated(t: Ticket) {
   wb.addTicket(t);
+  // 建完单要能看见它，故一并退出报备池 —— 只调 setTab 的话页签栏还停在报备池上，
+  // 新单落进了「我的任务」却一眼看不到
+  riskReportTabActive.value = false;
   wb.setTab('mine');
 }
 
@@ -272,14 +319,19 @@ function onConfirmSaveFilter(name: string) {
     <!-- ① 多视图 Tab（全宽贴顶，对齐 .pen） -->
     <div class="workbench-tabs">
       <TicketTabs
-        :active="wb.activeTab.value"
-        :counts="headerTabCounts"
+        :active="activeWorkbenchTab"
+        :counts="workbenchTabCounts"
         :hidden-tabs="user.hiddenTabs"
-        @change="wb.setTab"
+        @change="onTabChange"
       />
     </div>
 
-    <div class="workbench-body">
+    <!-- 风险报备池：装的是报备单不是工单，故整块自成一页，不走下面那套工单列表 -->
+    <div v-if="riskReportTabActive" class="workbench-body">
+      <RiskReportPoolPanel @open-ticket="openTicketByNo" />
+    </div>
+
+    <div v-else class="workbench-body">
       <!-- ② chips 筛选（催补待回等 Tab 有子筛选时展示） -->
       <div v-if="!isDraftView && wb.activeChips.value.length" class="filter-row-unified">
         <TicketFilterBar
