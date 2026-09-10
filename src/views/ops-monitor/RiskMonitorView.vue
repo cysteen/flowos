@@ -292,8 +292,10 @@ const derivedTickets = useDerivedTicketStore();
  *   · 评估处置 ＝ **风险工单池**里的**池行**（A 线打标进池的条目 + B 线报备单）
  * 还有一处同屏撞名要盯住：页签「风险工单池」的角标数的是**池行**，
  * 本块「工单存量」数的是**工单**——两者同屏并列，但不是一回事，不可相加、不互校。
- * 「等级分布」尤其要盯：本块的高/中/低是**工单级风险等级**（由命中取最高派生），
- * 与左栏打标漏斗里的等级**不同源**——那边是人对条目打的标，这边是命中推出来的。
+ * 「等级分布」尤其要盯：本块的高/中/低是**工单级风险等级**
+ * （＝该单**已打标条目**与**已核实且成立的命中**跨条目取最高、同一条以最新结论为准派生），
+ * 与左栏打标漏斗里的等级**不是一个口径**——那边一条条目一个等级、数的是**条目**；
+ * 这边把一张单上的已打标条目与已核实成立的命中并起来取最高、数的是**工单**。
  * 两个数天生不等，界面上不相减、不互校，各自 title 写明分母。
  *
  * 【为什么取在办、不取全库】这三个数对应的正是 §5.1 里三类**自动入队**的监控来源，
@@ -1734,9 +1736,14 @@ function siblingCountOf(h: RiskHit): number {
 }
 
 /**
- * 工单级风险等级 ＝ max(该单已核实且判定为「成立」的命中等级)（PRD §4.9 / 规则 13a）。
- * 取 max（棘轮）、误报与未核实不参与、纯派生不落库——三条口径与实现都在
- * useRiskTagStore.ticketGradeOf，注释也在那里。
+ * 工单级风险等级 ＝ **两维口径，须一起读、不得混成一句**
+ * （《【915】风险监控 PRD》v0.9 §3.2 / §9 规则 13a、《【930】风险报备 · 监控 · 管控 PRD》v3.4 §5A.3）：
+ *   · **跨条目 / 跨命中取最高** ＝ max(该单已打标条目的等级, 该单已核实且成立的命中的等级)。
+ *     误报的、未核实的、打为「无风险」的、尚未打标的**都不参与**；一条都不参与时取**空**。
+ *   · **同一条条目 / 命中内以最新结论为准**：一条只占一格，改判**覆盖该格、可升可降**、须填原因；
+ *     改判为「无风险」**清空该格**。
+ * ⚠️ 第三句并存、管的是另一件事：**打标记录累积、不覆盖**（改判 N 次就有 N + 1 条记录）。
+ * 这几条口径与实现，连同"纯派生不落库"，都在 useRiskTagStore.ticketGradeOf，注释也在那里。
  *
  * 【为什么挪去 store】工单处理页要展示同一个等级（打标回传）。同一个口径写两遍，
  * 迟早会在某一次改动里只改一处，于是同一张单在两个页面上是两个等级。
@@ -3990,7 +3997,7 @@ const showGroupFilter = computed(() => listView.value === 'realtime' || listView
  * 名下拿走（在办量、解决率分母、超时数全变），这个代价必须由人承担判断。
  *
  * 【入口按工单级判，不按单条命中判】（PRD §6.5）管控管的是**工单**，不是某一条证据。
- * 一张单只要有一条命中被核实为成立·高危，该单每一行都该有这个入口——
+ * 一张单只要有一条条目被打为高危、或有一条命中被核实为成立·高危，该单每一行都该有这个入口——
  * 否则人正停在那条中危命中上，明明该管控却看不到路，还得先猜到"别处还有一条"。
  */
 function goControl(h: RiskHit) {
@@ -5757,7 +5764,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               :style="{ color: RISK_LEVEL_STYLE[ticketGradeOf(ticketFocus!)!].color, background: RISK_LEVEL_STYLE[ticketGradeOf(ticketFocus!)!].bg }"
             >{{ ticketGradeOf(ticketFocus!) }}危</span>
           </span>
-          <span v-else class="fb-grade muted">本单尚无已核实成立的命中</span>
+          <span v-else class="fb-grade muted">本单尚无已打标的条目，也没有已核实成立的命中</span>
         </div>
         <button type="button" class="fb-exit" @click="clearTicketFocus">
           退出<span class="fb-x">×</span>
@@ -5887,7 +5894,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                   <button
                     v-if="ticketGradeOf(h.ticketNo) === '高'"
                     type="button" class="row-btn row-btn-primary"
-                    :title="`本单工单级风险等级为高（该单已核实成立的命中取最高），转交${DISPOSAL_BY_GRADE['高'].who}`"
+                    :title="`本单工单级风险等级为高，转交${DISPOSAL_BY_GRADE['高'].who}`"
                     @click="goControl(h)"
                   >去管控<ArrowRightOutlined /></button>
                   <!--
@@ -5905,7 +5912,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                   <button
                     v-if="ticketGradeOf(h.ticketNo) === '高'"
                     type="button" class="row-btn row-btn-primary"
-                    :title="`本单已有命中被核实为成立·高危，转交${DISPOSAL_BY_GRADE['高'].who}；本条仍需单独核实`"
+                    :title="`本单已有条目或命中被定为高危，转交${DISPOSAL_BY_GRADE['高'].who}；本条仍需单独核实`"
                     @click="goControl(h)"
                   >去管控<ArrowRightOutlined /></button>
                   <button v-if="canRiskTag" type="button" class="row-btn row-btn-tag" @click="openTag(h)">核实打标</button>
@@ -6214,7 +6221,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                 :style="{ color: RISK_LEVEL_STYLE[ticketGradeOf(entryTagTarget.ticketNo)!].color, background: RISK_LEVEL_STYLE[ticketGradeOf(entryTagTarget.ticketNo)!].bg }"
                 title="已打标条目与已核实成立的命中取最高；误报与未核实的不参与；同一条改判以最新结论为准"
               >{{ ticketGradeOf(entryTagTarget.ticketNo) }}危</span>
-              <span v-else class="tag-sib-nograde" title="该单还没有任何一条命中被核实为成立">尚无</span>
+              <span v-else class="tag-sib-nograde" title="该单还没有任何一条条目被打标，也没有任何一条命中被核实为成立">尚无</span>
             </span>
           </div>
           <ol class="tag-sib-list">
@@ -6411,7 +6418,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                 :style="{ color: RISK_LEVEL_STYLE[tagTicketGrade].color, background: RISK_LEVEL_STYLE[tagTicketGrade].bg }"
                 title="已打标条目与已核实成立的命中取最高；误报与未核实的不参与；同一条改判以最新结论为准"
               >{{ tagTicketGrade }}危</span>
-              <span v-else class="tag-sib-nograde" title="该单还没有任何一条命中被核实为成立">尚无</span>
+              <span v-else class="tag-sib-nograde" title="该单还没有任何一条条目被打标，也没有任何一条命中被核实为成立">尚无</span>
             </span>
           </div>
           <ol class="tag-sib-list">
