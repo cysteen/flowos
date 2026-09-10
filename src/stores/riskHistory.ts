@@ -56,8 +56,17 @@ export interface RiskHistoryRecord {
   at: string;
   /** How 徽章文案 */
   how: string;
-  /** 正文：结论 + 备注 / 理由 */
+  /** 正文：只有结构化事实，自由文本不进（见 `renderRow`） */
   what: string;
+  /**
+   * 评估判「升级」时派生出的**新投诉单号**（《【720】》§5.1 富媒体第四样）。
+   *
+   * 【为什么要单独存一格、而不是让界面从 `what` 里抠】§5.1 要求这枚单号**可点跳**，
+   * 而正文是一整条字符串 —— 从里面用正则抠单号，等于把"行文长什么样"变成界面的隐性依赖，
+   * 改一次措辞就断一次跳转。单号本来就是结构化事实，就该以结构化的样子存下来。
+   * 只有 `kind: 'assess'` 且真的派生了新单时才有；其余四件与判「不升级」时为空。
+   */
+  derivedNo?: string;
 }
 
 /**
@@ -79,16 +88,19 @@ export type RiskHistoryInput =
     result: RiskTagResult;
     /** 改判时的旧值；首次打标没有这一项 */
     prev?: RiskTagResult | null;
-    /** 处置备注（打标必填） */
+    /**
+     * 处置备注（打标必填）。⚠️ **不进正文**（《【720】》§4.4 第 3 条）——
+     * 产出点照旧交上来，是因为它是这次打标的事实之一；渲不渲染由 `renderRow` 一处说了算。
+     */
     note?: string;
-    /** 修正原因（二次修改必填；PRD 口径词叫「改判理由」，界面词统一「修正原因」） */
+    /** 修正原因（二次修改必填；界面词统一「修正原因」）。⚠️ 同上，**不进正文** */
     amendReason?: string;
   }
   | {
     kind: 'assess';
     ticketNo: string; by: string; byRole: string; at: string;
     decision: AssessDecision;
-    /** 升级说明 / 反馈意见 */
+    /** 升级说明 / 反馈意见。⚠️ **不进正文**（《【720】》§4.4 第 3 条），留在评估记录里 */
     advice?: string;
     /** 只在判「升级」且**派生了新单**时有（投诉单那一路走工单管控、不派生，见 O20） */
     escalatedToNo?: string;
@@ -133,7 +145,11 @@ function gradeText(g: RiskLevel | null): string {
   return g ? riskLevelText(g) : '未定级';
 }
 
-/** 接自由文本时补一个句号，免得正文里出现「处置备注：已上报法务 修正原因：…」这种粘连句 */
+/**
+ * 接自由文本时补一个句号。**现在只剩协同处理的评估意见一处在用**
+ * —— 另外三段自由文本（处置备注 / 反馈意见 · 升级说明 / 修正原因）按《【720】》§4.4
+ * 第 3 条已不进履历，见 `renderRow` 的说明。
+ */
 function sentence(t?: string): string {
   const s = (t ?? '').trim();
   if (!s) return '';
@@ -148,6 +164,18 @@ function sentence(t?: string): string {
  * ⚠️ **模板里的〈谁〉不再写进正文**：PRD 那几条描述的是"一行履历"，而本系统的履历是
  * **卡片**——操作人与角色徽章已经在卡片头上了，正文再写一遍名字就成了「吴投诉 客诉专员
  * 吴投诉 标记风险等级…」。故正文从谓语起写，与既有的协同处理那一条保持一致。
+ *
+ * 🔴 **正文只写结构化事实，自由文本一律不搬**（《【720】》§4.4 第 3 条 / 验收 T7）：
+ * 报备的**场景描述**、评估的**反馈意见 / 升级说明**、打标的**处置备注 / 修正原因**
+ * 都留在各自的记录里（风险监控页点开原处即可看全），履历只留
+ * 「谁 · 什么角色 · 什么时刻 · 结论 · 等级旧→新 · 派生单号 · 建议事项」。
+ *
+ * 【为什么】履历是**时间线**，它答的是"发生了什么、谁做的、什么时候"；一屏要能扫完
+ * 十几条不同类别的事件。把三段随手写的多行自由文本全搬进来，第八类会变成一堵文字墙，
+ * 混排时反而把"这单被判成什么"这条真正要看的结论淹掉。细节点进原处看，不丢。
+ *
+ * ⚠️ **唯一的例外是③协同处理的评估意见**：《【720】》§4.4 明写它"本身就是协同处理的结论，
+ * 随卡片展示"，且它**没有第二个落点**——不写在这里就哪儿都看不到。故全文保留。
  */
 function renderRow(input: RiskHistoryInput): string {
   switch (input.kind) {
@@ -162,20 +190,19 @@ function renderRow(input: RiskHistoryInput): string {
       const amend = input.prev && input.prev !== input.result
         ? `（修正：${tagResultText(input.prev)} → ${tagResultText(input.result)}）`
         : '';
-      const head = `标记风险等级 · ${tagResultText(input.result)}${amend}`;
-      const tail = [
-        input.note ? `处置备注：${sentence(input.note)}` : '',
-        input.amendReason ? `修正原因：${sentence(input.amendReason)}` : '',
-      ].filter(Boolean).join('');
-      return tail ? `${head}。${tail}` : head;
+      // 「处置备注」「修正原因」不进正文（§4.4 第 3 条），它们留在打标记录里
+      return `标记风险等级 · ${tagResultText(input.result)}${amend}`;
     }
     case 'assess': {
       // 「〈评估人〉 完成风险评估 · 〈升级 / 不升级〉」；结论＝升级时另带新投诉单号
-      const derived = input.escalatedToNo ? `，派生投诉单 ${input.escalatedToNo}` : '';
-      const label = input.decision === '升级' ? '升级说明' : '反馈意见';
-      const tail = input.advice ? `${label}：${sentence(input.advice)}` : '';
-      const head = `完成风险评估 · ${input.decision}${derived}`;
-      return tail ? `${head}。${tail}` : head;
+      // 「升级说明 / 反馈意见」不进正文（§4.4 第 3 条），它们留在评估记录里
+      //
+      // ⚠️ **单号本身不写进这句话**：它由卡片上那枚**可点跳的 chip** 承载（§5.1 第四样，
+      // 见 `RiskHistoryRecord.derivedNo`）。正文再写一遍就成了「…派生投诉单 IFLYTS-…-00001」
+      // 紧跟着一枚写着同一串号的 chip —— 同一个 18 位单号在两行里各出现一次。
+      // 与既有的「关联单」那一类同一条口径：正文说发生了什么，卡片/chip 摆单号本身。
+      const derived = input.escalatedToNo ? '，已派生新投诉单' : '';
+      return `完成风险评估 · ${input.decision}${derived}`;
     }
     case 'collab': {
       // 「〈客诉专员〉 提交协同处理 · 〈建议事项，逗号分隔〉」，正文摘要挂评估意见全文
@@ -267,6 +294,8 @@ export const useRiskHistoryStore = defineStore('riskHistory', () => {
       at: input.at,
       how: RISK_HISTORY_META[input.kind].how,
       what: renderRow(input),
+      // 派生单号随记录固化：投影出去的履历条目靠它渲染那枚可点跳的 chip
+      ...(input.kind === 'assess' && input.escalatedToNo ? { derivedNo: input.escalatedToNo } : {}),
     };
     records.value.push(rec);
     return rec;

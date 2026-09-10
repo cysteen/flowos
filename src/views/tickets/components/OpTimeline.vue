@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 import {
   FileAddOutlined, SolutionOutlined, RiseOutlined, FormOutlined,
@@ -17,6 +18,22 @@ import {
 
 function openRelated(t: RelatedTicketBrief) {
   message.info(`打开关联单 ${t.no}`);
+}
+
+const router = useRouter();
+
+/**
+ * 第八类「风险结论」里那枚**可点跳的新投诉单号**（《【720】》§5.1 / 验收 T4）。
+ *
+ * 【为什么是 `router.push`】全仓打开一张单就是这一句（`TicketOperationView.openRelation`、
+ * `RiskMonitorView.openTicket`、工作台 / 查询中心 / 客户全景各处同）—— 工单页是常驻页签，
+ * 路由变了页签跟着定位，不另造一套跳法。
+ *
+ * 【为什么它必须可点】效果走查第六幕整幕在追问"从原单怎么走到新单"：
+ * 一个不可点的单号等于让人把号手抄下来再去搜一遍。
+ */
+function openDerived(no: string) {
+  router.push(`/tickets/${no}`);
 }
 
 const props = defineProps<{ entries: TimelineEntry[] }>();
@@ -137,6 +154,21 @@ const filteredEntries = computed(() => {
               </span>
             </div>
           </div>
+
+          <!--
+            风险结论（risk 事件）判「升级」派生出的新投诉单号：可点跳，样式对齐关联单卡片里
+            那一格单号（`rel-mini-no`），不内联整张卡（《【720】》§5.1）
+          -->
+          <button
+            v-if="e.riskDerivedNo"
+            type="button"
+            class="risk-derived"
+            :title="`打开新投诉单 ${e.riskDerivedNo}`"
+            @click="openDerived(e.riskDerivedNo)"
+          >
+            <LinkOutlined />
+            <span class="risk-derived-no">{{ e.riskDerivedNo }}</span>
+          </button>
 
           <!-- 关联单卡片（relate 事件）：对齐关联单卡片字段，可点跳转 -->
           <div
@@ -367,6 +399,26 @@ const filteredEntries = computed(() => {
 .rel-mini-builder { font-size: 11px; color: #6b7280; }
 .rel-mini-sep { color: #d1d5db; }
 .rel-mini-time { margin-left: auto; font-size: 11px; color: #9ca3af; }
+
+/*
+ * 风险结论派生出的新投诉单号（risk 事件）。走玫红一系 —— 与第八类的色条同源，
+ * 一眼看得出这枚 chip 属于风险结论那条卡片，而不是隔壁的关联单卡。
+ */
+.risk-derived {
+  align-self: flex-start;
+  display: inline-flex; align-items: center; gap: 5px;
+  margin: 0; padding: 3px 10px;
+  font-family: inherit; font-size: 12px; font-weight: 600; line-height: 1.5;
+  color: #db2777; background: #fdf2f8;
+  border: 1px solid #fbcfe8; border-radius: 999px;
+  cursor: pointer;
+  transition: background .15s, border-color .15s, box-shadow .15s;
+}
+.risk-derived:hover {
+  background: #fce7f3; border-color: #f9a8d4;
+  box-shadow: 0 1px 6px rgba(219, 39, 119, 0.14);
+}
+.risk-derived-no { letter-spacing: .2px; }
 
 .attach {
   display: inline-flex;

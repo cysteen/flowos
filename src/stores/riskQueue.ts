@@ -860,7 +860,7 @@ const TAG_TARGET_ORDER: QueueStatus[] = ['实时监控中', '待分派', '已标
 const AUTO_DESC: Record<QueueSource, string> = {
   实时监控: '沟通记录命中风险词，已自动纳入实时监控，待打标。',
   手动筛查: '手动批量筛查命中风险词，已自动纳入实时监控，待打标。',
-  投诉单: '投诉类工单且优先级为 P0 / P1，自动纳入实时监控，待打标。',
+  投诉单: '在办投诉类工单，自动纳入实时监控，待打标。',
   重要紧急: '优先级为 P0 / P1 的非投诉工单，自动纳入实时监控，待打标。',
 };
 
@@ -1197,8 +1197,18 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
    * | # | 来源 | 判据 |
    * |---|---|---|
    * | ① | 预警词命中 | 本单在命中台账里有记录 |
-   * | ② | 投诉单 | 在办 ∧ 类型 ＝ 投诉 ∧ 优先级 ∈ {P0, P1} |
+   * | ② | 投诉单 | 在办 ∧ 类型 ＝ 投诉（**不限优先级**） |
    * | ③ | 重要紧急 | 在办 ∧ 类型 ≠ 投诉 ∧ 优先级 ∈ {P0, P1} |
+   *
+   * 🔴 **②不判优先级**：左栏「投诉单」这一路已定稿为 **P0 / P1 / P2 / P3 四个子档**，
+   * 四档都要列，就不可能只把 P0 / P1 收进来 —— 收窄之后 P2 / P3 那两档必然是空的，
+   * 而它们眼下明明有 11 条在办投诉单。**投诉单本身就是风险信号**，优先级只决定它排多前，
+   * 不决定它进不进这一路（重要紧急那一路才是"以优先级立身"的，故③的 P0 / P1 照旧）。
+   *
+   * ⚠️ **必须与界面侧的 `RiskMonitorView.effectiveSourceOf` 逐条同源**。此前这两处分了家：
+   * 界面判「类型＝投诉」、入队判「类型＝投诉 ∧ P0/P1」，于是一张 P2 的投诉单
+   * **在列表里算「投诉单」这一档、却进不了队**（`ensureEntryFor` 判它"不在三类范围内"）。
+   * 派生单尤其吃这个亏：评估判升级派生出的新投诉单默认不是 P0/P1，派生完回不到左栏。
    *
    * 判不出来就返回 null，**不给兜底值**：兜一个「实时监控」出来，等于让任何一张单
    * 都能被现场造一条监控条目，实时监控的条数就再也答不了"规则今天捞了多少"这个问题。
@@ -1215,8 +1225,11 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
       ?? useDerivedTicketStore().find(ticketNo);
     if (!t) return null;
     if (isTicketClosed(t.nodeStatus as TicketStatus)) return null;
+    // ② 投诉单：全量在办投诉单，不看优先级（四个子档 P0~P3 都要收得住）
+    if (t.type === '投诉') return '投诉单';
+    // ③ 重要紧急：这一路以优先级立身，P0 / P1 的门照旧
     if (t.priority !== 'P0' && t.priority !== 'P1') return null;
-    return t.type === '投诉' ? '投诉单' : '重要紧急';
+    return '重要紧急';
   }
 
   /**
@@ -1233,7 +1246,7 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
     if (autoSourceFor(ticketNo)) return '';
     const known = TICKETS.some((t) => t.no === ticketNo) || !!useDerivedTicketStore().find(ticketNo);
     return known
-      ? '本单不在实时监控的三类自动识别范围内（无预警词命中，且不是在办的 P0 / P1 单），不能在工单页打标'
+      ? '本单不在实时监控的三类自动识别范围内（无预警词命中，既不是在办投诉单、也不是在办的 P0 / P1 单），不能在工单页打标'
       : '工单库里查不到本单，无法判断它属于哪一类监控来源';
   }
 

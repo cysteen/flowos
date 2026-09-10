@@ -443,6 +443,8 @@ function syncRiskTimeline() {
       when: r.at,
       what: r.what,
       riskRecordId: r.id,
+      // 判「升级」时派生出的新投诉单号 —— 履历上那枚可点跳的 chip（《【720】》§5.1）
+      ...(r.derivedNo ? { riskDerivedNo: r.derivedNo } : {}),
     });
   });
 }
