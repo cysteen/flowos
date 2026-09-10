@@ -9,8 +9,11 @@ import {
   asSentence,
   assigneeReceiver,
   isOpenStatus,
+  newestStampOf,
   reasonLine,
-  readRiskCache,
+  readDailyRiskCache,
+  todayPrefix,
+  todayStamp,
   useRiskClock,
   writeRiskCache,
   type ReportAssessment,
@@ -112,7 +115,21 @@ function reported(e: Omit<RiskReport, 'source'>): RiskReport {
  * `ReportAssessment.escalatedToNo`。
  */
 
-/** 预置数据：挂在几张**非投诉单**上 —— 风险报备只在咨询 / 建议 / 商机（§1.2a） */
+/**
+ * 这批种子的时刻**生成于哪一天**。模块加载时定一次，随缓存一并落盘 ——
+ * 隔夜之后读回来判作废、回到种子重建，见 `riskShared.readDailyRiskCache`。
+ */
+const SEED_DAY = todayPrefix();
+
+/**
+ * 预置数据：挂在几张**非投诉单**上 —— 风险报备只在咨询 / 建议 / 商机（§1.2a）。
+ *
+ * 【时刻字段用哪一个生成器】与 A 线（`stores/riskQueue.ts`）同一套分工：
+ *   · **提交时刻 `at`** 默认 `todayStamp`（不跨零点，页头「今日新增 · 报备」才有数），
+ *     **唯独 rr-003 用 `agoStamp`** —— 它是这条线唯一的超时样本，超时按真实分钟算。
+ *   · **评估时刻 `assessment.at`** 一律 `todayStamp`：它喂的是按自然日切的口径。
+ * 白天两者完全等价，差别只在凌晨那几个小时，见 `todayStamp` 的说明。
+ */
 const SEED: RiskReport[] = [
   reported({
     id: 'rr-001',
@@ -124,7 +141,7 @@ const SEED: RiskReport[] = [
     by: '林晓东',
     byRole: '二线专员',
     // 45 分钟前：未超时，演示「待分派」这一态
-    at: agoStamp(45),
+    at: todayStamp(45),
     status: '待分派',
   }),
   reported({
@@ -136,7 +153,7 @@ const SEED: RiskReport[] = [
     attachments: [],
     by: '林晓东',
     byRole: '二线专员',
-    at: agoStamp(90),
+    at: todayStamp(90),
     status: '已评估',
     assignee: '李文萍',
     assessment: {
@@ -145,7 +162,7 @@ const SEED: RiskReport[] = [
       by: '李文萍',
       byRole: '客诉专员',
       // 评估时刻落在今日：否则「今日已评估」与「已评估默认只看今日」两处恒为 0
-      at: agoStamp(50),
+      at: todayStamp(50),
     },
   }),
   reported({
@@ -174,7 +191,7 @@ const SEED: RiskReport[] = [
     attachments: [],
     by: '林晓东',
     byRole: '二线专员',
-    at: agoStamp(70),
+    at: todayStamp(70),
     status: '评估中',
     assignee: '吴投诉',
   }),
@@ -199,7 +216,7 @@ const SEED: RiskReport[] = [
     by: '林晓东',
     byRole: '二线专员',
     // 撤回前等了 2.5 小时。已撤回不进 B1/B2，故这个时长不会把「超时未评」算大
-    at: agoStamp(150),
+    at: todayStamp(150),
     status: '已撤回',
     withdrawReason: '开放平台已临时提额并当场恢复导入，客户明确表示不再对外说明；风险已解除，本条报备由报备人撤回。',
   }),
@@ -229,7 +246,7 @@ const SEED: RiskReport[] = [
     attachments: ['客户发帖截图.png'],
     by: '周敏',
     byRole: '二线专员',
-    at: agoStamp(300),
+    at: todayStamp(300),
     status: '已评估',
     assignee: '吴投诉',
     assessment: {
@@ -238,7 +255,7 @@ const SEED: RiskReport[] = [
       escalatedToNo: 'IFLYTS-20260709-00001',
       by: '吴投诉',
       byRole: '客诉专员',
-      at: agoStamp(280),
+      at: todayStamp(280),
     },
   }),
 ];
@@ -261,8 +278,23 @@ const LS_KEY = 'flowos-risk-reports';
  * v2 那份缓存里 `decision` 存的是已废的 `'接管'`，读进来是枚举外的值——
  * 界面上它既不匹配「升级」也不匹配「不升级」，那一格会空掉且不报错。
  * v4：B 线 SEED 补「评估中」样本（rr-010），否则状态列缺领单后的中间态。
+ * v5：缓存里多了 `seedDay`（这份数据的时刻生成于哪一天），读缓存改走 `readDailyRiskCache`
+ * ——**隔夜即作废**。v4 那份没有 `seedDay`，新判据一律判作废、本来也该丢；
+ * 同时提交 / 评估时刻改由 `todayStamp` 生成（值域没变、取值变了），见 `SEED` 上方。
  */
-const LS_VERSION = 4;
+const LS_VERSION = 5;
+
+/**
+ * 缓存"新不新"的判据：取**提交与评估时刻**里最新的那一个。
+ * 🔴 rr-003 那条故意留在昨天（超时样本），故不能拿"全部落在今天"当判据；
+ * 而其余几条由 `todayStamp` 生成，**写入那一刻必定落在今天**，
+ * 于是"最新的一条不是今天"⇔"这份缓存是隔夜的"。
+ */
+function newestReportStamp(saved: { reports: RiskReport[] }): string {
+  return newestStampOf(
+    (saved.reports ?? []).flatMap((r) => [r.at, r.assessment?.at]),
+  );
+}
 
 export const useRiskReportStore = defineStore('riskReports', () => {
   const reports = ref<RiskReport[]>(SEED.map((r) => ({ ...r })));
@@ -272,20 +304,30 @@ export const useRiskReportStore = defineStore('riskReports', () => {
   const assessArrivalTicket = ref<string | null>(null);
 
   /**
-   * 落 localStorage（保质期机制见 `riskShared.ts` 的 `readRiskCache`）。
+   * 落 localStorage（保质期与**隔夜作废**见 `riskShared.ts` 的 `readDailyRiskCache`）。
    *
    * 本模块的闭环**天然跨角色**：二线专员报、投诉督导分派、客诉专员评、结论再回到二线看。
    * 演示时这四步要换四次登录，纯内存态下每换一次前面做的全部归零——报完切过去队列是空的，
    * 评完切回来结论不在。持久化之后这条链才走得完。
    */
-  const cached = readRiskCache<{ reports: RiskReport[]; seq: number }>(LS_KEY, LS_VERSION);
+  const cached = readDailyRiskCache<{ reports: RiskReport[]; seq: number }>(
+    LS_KEY,
+    LS_VERSION,
+    newestReportStamp,
+  );
+  /**
+   * 这份数据的时刻**生成于哪一天**：续用缓存就沿用缓存里那一天，回到种子就是 `SEED_DAY`。
+   * 🔴 写回时原样带下去、**不取写入那一刻** —— 跨零点的那一次写入会把昨天的数据
+   * 盖成今天的戳，隔夜判据从此瞎掉（与 A 线同一处坑，两边写法保持一致）。
+   */
+  const seedDay = cached?.seedDay ?? SEED_DAY;
   if (cached && Array.isArray(cached.reports) && cached.reports.length) {
     reports.value = cached.reports;
     seq.value = typeof cached.seq === 'number' ? cached.seq : ID_SEQ_START;
   }
   watch(
     [reports, seq],
-    () => writeRiskCache(LS_KEY, LS_VERSION, { reports: reports.value, seq: seq.value }),
+    () => writeRiskCache(LS_KEY, LS_VERSION, { reports: reports.value, seq: seq.value, seedDay }),
     { deep: true },
   );
 

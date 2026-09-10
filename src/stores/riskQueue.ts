@@ -12,8 +12,11 @@ import {
   isPoolLevel,
   isPooledStatus,
   isQueueSource,
+  newestStampOf,
   normalizeMonitorSource,
-  readRiskCache,
+  readDailyRiskCache,
+  todayPrefix,
+  todayStamp,
   writeRiskCache,
   type QueueSource,
   type QueueStatus,
@@ -184,6 +187,22 @@ const SEED_TAGGERS = {
  * 某个组只有已判没有待判时，那一行读起来像"这个组已经清干净了"，而真相可能只是
  * 这个组一条待打标的种子都没有。故五个班组是**成对**铺的，一组一对，别只加一头。
  */
+/**
+ * 这批种子的时刻**生成于哪一天**。模块加载时定一次，随缓存一并落盘（见 `seedDay`）。
+ * 隔夜之后缓存里躺的就是昨天这个值，读回来当场判作废、回到种子重建。
+ */
+const SEED_DAY = todayPrefix();
+
+/**
+ * 【时刻字段用哪一个生成器】本批种子里两种都在用，**分工是硬的**：
+ *   · **进队时刻 `at`** —— 默认 `todayStamp`（保证落在今天，页头「今日新增」才有数），
+ *     **唯独三条「评估中」用 `agoStamp`**：它们是「超时未评 3」的全部来源，
+ *     超时按真实分钟算，压进今天就不超时了（逐条注释在那三条上）。
+ *   · **打标 / 核实 / 评估 / 协同时刻** —— 一律 `todayStamp`：这四个字段喂的全是
+ *     按自然日切的口径（今日打标、今日已结论、三枚决策 chip、「已结论·仅今日」），
+ *     落到昨天就是整排归零。
+ * 白天（今天已过 6 小时之后）两者完全等价，差别只在凌晨那几个小时，见 `todayStamp`。
+ */
 const SEED: RiskQueueEntry[] = [
   /* ==================================================================
    * 视图一：待打标（实时监控中）—— 10 条
@@ -207,7 +226,7 @@ const SEED: RiskQueueEntry[] = [
     ticketNo: 'IFLYTS-20260610-00002',
     source: '实时监控',
     desc: '沟通记录命中风险词，已自动纳入实时监控，待打标。',
-    at: agoStamp(65),
+    at: todayStamp(65),
     status: '实时监控中',
   }),
   /*
@@ -226,7 +245,7 @@ const SEED: RiskQueueEntry[] = [
     ticketNo: 'IFLYTS-20260610-00010',
     source: '实时监控',
     desc: '沟通记录命中风险词「曝光」，已自动纳入实时监控，待打标。',
-    at: agoStamp(88),
+    at: todayStamp(88),
     status: '实时监控中',
   }),
   /*
@@ -243,7 +262,7 @@ const SEED: RiskQueueEntry[] = [
     ticketNo: 'IFLYZX-20260715-00003',
     source: '实时监控',
     desc: '沟通与催补记录先后命中 3 条风险词，措辞逐级升级，已自动纳入实时监控，待打标。',
-    at: agoStamp(52),
+    at: todayStamp(52),
     status: '实时监控中',
   }),
   autoEntry({
@@ -251,7 +270,7 @@ const SEED: RiskQueueEntry[] = [
     ticketNo: 'IFLYZX-20260710-00002',
     source: '实时监控',
     desc: '沟通记录先后命中 2 条风险词，已自动纳入实时监控，待打标。',
-    at: agoStamp(145),
+    at: todayStamp(145),
     status: '实时监控中',
   }),
   autoEntry({
@@ -259,7 +278,7 @@ const SEED: RiskQueueEntry[] = [
     ticketNo: 'IFLYZX-20260802-00003',
     source: '实时监控',
     desc: '催补记录命中风险词「投诉到底」，已自动纳入实时监控，待打标。',
-    at: agoStamp(175),
+    at: todayStamp(175),
     status: '实时监控中',
   }),
   autoEntry({
@@ -267,7 +286,7 @@ const SEED: RiskQueueEntry[] = [
     ticketNo: 'IFLYZX-20260609-00006',
     source: '实时监控',
     desc: '沟通记录命中风险词「差评」，已自动纳入实时监控，待打标。',
-    at: agoStamp(30),
+    at: todayStamp(30),
     status: '实时监控中',
   }),
   autoEntry({
@@ -275,7 +294,7 @@ const SEED: RiskQueueEntry[] = [
     ticketNo: 'IFLYZX-20260804-00003',
     source: '实时监控',
     desc: '沟通记录命中风险词「差评」，已自动纳入实时监控，待打标。',
-    at: agoStamp(12),
+    at: todayStamp(12),
     status: '实时监控中',
   }),
   /*
@@ -291,7 +310,7 @@ const SEED: RiskQueueEntry[] = [
     ticketNo: 'IFLYTS-20260610-00007',
     source: '投诉单',
     desc: '投诉类工单自动纳入实时监控，待打标。',
-    at: agoStamp(20),
+    at: todayStamp(20),
     status: '实时监控中',
   }),
   /*
@@ -306,7 +325,7 @@ const SEED: RiskQueueEntry[] = [
     ticketNo: 'IFLYTS-20260610-00014',
     source: '投诉单',
     desc: '投诉类工单自动纳入实时监控，待打标。',
-    at: agoStamp(100),
+    at: todayStamp(100),
     status: '实时监控中',
   }),
   autoEntry({
@@ -314,7 +333,7 @@ const SEED: RiskQueueEntry[] = [
     ticketNo: 'IFLYZX-20260731-00002',
     source: '重要紧急',
     desc: 'P1 工单且已超解决时限 79 小时，客户为大客户集成方，已自动纳入实时监控，待打标。',
-    at: agoStamp(45),
+    at: todayStamp(45),
     status: '实时监控中',
   }),
 
@@ -346,20 +365,20 @@ const SEED: RiskQueueEntry[] = [
     ticketNo: 'IFLYTS-20260731-00001',
     source: '手动筛查',
     desc: '手动批量筛查命中风险词，已自动纳入实时监控。',
-    at: agoStamp(110),
+    at: todayStamp(110),
     status: '待分派',
     tag: {
       result: '高',
       note: '同一客户第二次命中高危词，已上报法务',
       ...SEED_TAGGERS.zheng,
-      at: agoStamp(95),
+      at: todayStamp(95),
     },
     verify: {
       verdict: '成立',
       level: '高',
       note: '同一客户第二次命中高危词，已上报法务',
       ...SEED_TAGGERS.zheng,
-      at: agoStamp(95),
+      at: todayStamp(95),
     },
   }),
   /*
@@ -375,20 +394,20 @@ const SEED: RiskQueueEntry[] = [
     ticketNo: 'IFLYZX-20260802-00002',
     source: '重要紧急',
     desc: 'P0 工单且已超解决时限，影响客户批量业务，已自动纳入实时监控。',
-    at: agoStamp(35),
+    at: todayStamp(35),
     status: '待分派',
     tag: {
       result: '高',
       note: 'P0 且已超解决时限 41 小时，影响校端成绩同步批量业务，判高危。',
       ...SEED_TAGGERS.zheng,
-      at: agoStamp(30),
+      at: todayStamp(30),
     },
     verify: {
       verdict: '成立',
       level: '高',
       note: 'P0 且已超解决时限 41 小时，影响校端成绩同步批量业务，判高危。',
       ...SEED_TAGGERS.zheng,
-      at: agoStamp(30),
+      at: todayStamp(30),
     },
   }),
   /*
@@ -400,20 +419,20 @@ const SEED: RiskQueueEntry[] = [
     ticketNo: 'IFLYTS-20260817-00002',
     source: '投诉单',
     desc: '投诉类工单自动纳入实时监控。客户投诉坐席沟通态度并要求书面答复。',
-    at: agoStamp(78),
+    at: todayStamp(78),
     status: '待分派',
     tag: {
       result: '中',
       note: '服务态度类投诉，客户要求书面答复但未提及外部渠道，判中危交班组长跟进。',
       ...SEED_TAGGERS.wu,
-      at: agoStamp(70),
+      at: todayStamp(70),
     },
     verify: {
       verdict: '成立',
       level: '中',
       note: '服务态度类投诉，客户要求书面答复但未提及外部渠道，判中危交班组长跟进。',
       ...SEED_TAGGERS.wu,
-      at: agoStamp(70),
+      at: todayStamp(70),
     },
   }),
   /*
@@ -429,20 +448,20 @@ const SEED: RiskQueueEntry[] = [
     ticketNo: 'IFLYZX-20260610-00012',
     source: '重要紧急',
     desc: 'P1 工单且长时间未认领，已自动纳入实时监控。',
-    at: agoStamp(55),
+    at: todayStamp(55),
     status: '待分派',
     tag: {
       result: '低',
       note: '单台设备充电故障，有现成换修方案，客户情绪平稳，按常规流程处理即可。',
       ...SEED_TAGGERS.qin,
-      at: agoStamp(48),
+      at: todayStamp(48),
     },
     verify: {
       verdict: '成立',
       level: '低',
       note: '单台设备充电故障，有现成换修方案，客户情绪平稳，按常规流程处理即可。',
       ...SEED_TAGGERS.qin,
-      at: agoStamp(48),
+      at: todayStamp(48),
     },
   }),
   autoEntry({
@@ -450,20 +469,20 @@ const SEED: RiskQueueEntry[] = [
     ticketNo: 'IFLYSJ-20260716-00001',
     source: '重要紧急',
     desc: 'P1 工单且已升级技术支持，已自动纳入实时监控。',
-    at: agoStamp(26),
+    at: todayStamp(26),
     status: '待分派',
     tag: {
       result: '低',
       note: '单客户集成偶发丢包，已给出重试与签名校验方案，无扩散面，判低危。',
       ...SEED_TAGGERS.zheng,
-      at: agoStamp(20),
+      at: todayStamp(20),
     },
     verify: {
       verdict: '成立',
       level: '低',
       note: '单客户集成偶发丢包，已给出重试与签名校验方案，无扩散面，判低危。',
       ...SEED_TAGGERS.zheng,
-      at: agoStamp(20),
+      at: todayStamp(20),
     },
   }),
 
@@ -481,6 +500,10 @@ const SEED: RiskQueueEntry[] = [
     ticketNo: 'IFLYTS-20260730-00001',
     source: '投诉单',
     desc: '投诉类工单自动纳入实时监控。校级批量激活 320 台全部失败，开学在即。',
+    // 🔴 **进队时刻走 `agoStamp` 而不是 `todayStamp`**：本条与下面两条「评估中」是
+    // 「超时未评 3」这个数的全部来源，超时判定按**真实分钟数**算（`useRiskClock`）。
+    // 压进"今天"之后凌晨打开时它只等了几分钟，那一档当场掉到 0；而超时未评**不按自然日切**，
+    // 时刻落在昨天完全正当 —— 一条昨晚进队、今早还没人评的条目，本来就该在这一档里。
     at: agoStamp(240),
     status: '评估中',
     assignee: '吴投诉',
@@ -488,14 +511,14 @@ const SEED: RiskQueueEntry[] = [
       result: '中',
       note: '批量影响面大但客户尚未提出对外诉求，判中危，先派人评估是否升级。',
       ...SEED_TAGGERS.wu,
-      at: agoStamp(225),
+      at: todayStamp(225),
     },
     verify: {
       verdict: '成立',
       level: '中',
       note: '批量影响面大但客户尚未提出对外诉求，判中危，先派人评估是否升级。',
       ...SEED_TAGGERS.wu,
-      at: agoStamp(225),
+      at: todayStamp(225),
     },
   }),
   autoEntry({
@@ -503,6 +526,7 @@ const SEED: RiskQueueEntry[] = [
     ticketNo: 'IFLYZX-20260713-00001',
     source: '重要紧急',
     desc: 'P1 工单，离线翻译疑似模型缺陷，影响面待确认，已自动纳入实时监控。',
+    // 超时未评三条之二，进队时刻同样走 `agoStamp`，理由见 rr-011
     at: agoStamp(205),
     status: '评估中',
     assignee: '吴投诉',
@@ -510,14 +534,14 @@ const SEED: RiskQueueEntry[] = [
       result: '中',
       note: '疑似模型缺陷、可能波及同批设备，影响面尚未查清，判中危先派人评估。',
       ...SEED_TAGGERS.zheng,
-      at: agoStamp(195),
+      at: todayStamp(195),
     },
     verify: {
       verdict: '成立',
       level: '中',
       note: '疑似模型缺陷、可能波及同批设备，影响面尚未查清，判中危先派人评估。',
       ...SEED_TAGGERS.zheng,
-      at: agoStamp(195),
+      at: todayStamp(195),
     },
   }),
   autoEntry({
@@ -525,6 +549,7 @@ const SEED: RiskQueueEntry[] = [
     ticketNo: 'IFLYTS-20260802-00001',
     source: '投诉单',
     desc: '投诉类工单自动纳入实时监控。主刷电机异响两次上门未解决，配件在途。',
+    // 超时未评三条之三，进队时刻同样走 `agoStamp`，理由见 rr-011
     at: agoStamp(165),
     status: '评估中',
     assignee: '吴投诉',
@@ -532,14 +557,14 @@ const SEED: RiskQueueEntry[] = [
       result: '高',
       note: '两次上门未解决且配件无到货时间，客户已明确表示不再接受等待，判高危。',
       ...SEED_TAGGERS.qin,
-      at: agoStamp(155),
+      at: todayStamp(155),
     },
     verify: {
       verdict: '成立',
       level: '高',
       note: '两次上门未解决且配件无到货时间，客户已明确表示不再接受等待，判高危。',
       ...SEED_TAGGERS.qin,
-      at: agoStamp(155),
+      at: todayStamp(155),
     },
   }),
 
@@ -561,21 +586,21 @@ const SEED: RiskQueueEntry[] = [
     ticketNo: 'IFLYTS-20260711-00001',
     source: '投诉单',
     desc: '投诉类工单自动纳入实时监控。客户维修超期未解决并已向监管平台反映。',
-    at: agoStamp(190),
+    at: todayStamp(190),
     status: '已评估',
     assignee: '吴投诉',
     tag: {
       result: '高',
       note: '客户已向监管平台正式登记，判高危。',
       ...SEED_TAGGERS.wu,
-      at: agoStamp(185),
+      at: todayStamp(185),
     },
     verify: {
       verdict: '成立',
       level: '高',
       note: '客户已向监管平台正式登记，判高危。',
       ...SEED_TAGGERS.wu,
-      at: agoStamp(185),
+      at: todayStamp(185),
     },
     assessment: {
       decision: '升级',
@@ -583,7 +608,7 @@ const SEED: RiskQueueEntry[] = [
       by: '吴投诉',
       byRole: '客诉专员',
       // 评估时刻落在今日：否则 B3「今日已评估」与 B4 决策分布数不到它
-      at: agoStamp(160),
+      at: todayStamp(160),
     },
   }),
   /*
@@ -599,28 +624,28 @@ const SEED: RiskQueueEntry[] = [
     ticketNo: 'IFLYZX-20260610-00015',
     source: '重要紧急',
     desc: 'P1 工单且长时间未认领，已自动纳入实时监控。',
-    at: agoStamp(260),
+    at: todayStamp(260),
     status: '已评估',
     assignee: '吴投诉',
     tag: {
       result: '低',
       note: '单客户鉴权配置问题，未影响线上业务，客户情绪平稳，判低危。',
       ...SEED_TAGGERS.zheng,
-      at: agoStamp(250),
+      at: todayStamp(250),
     },
     verify: {
       verdict: '成立',
       level: '低',
       note: '单客户鉴权配置问题，未影响线上业务，客户情绪平稳，判低危。',
       ...SEED_TAGGERS.zheng,
-      at: agoStamp(250),
+      at: todayStamp(250),
     },
     assessment: {
       decision: '不升级',
       advice: '属配置类问题，已给出密钥重置与调用示例，客户当场验证通过。无对外诉求，按常规工单流程结案即可，不必转投诉。',
       by: '吴投诉',
       byRole: '客诉专员',
-      at: agoStamp(170),
+      at: todayStamp(170),
     },
   }),
   autoEntry({
@@ -628,28 +653,28 @@ const SEED: RiskQueueEntry[] = [
     ticketNo: 'IFLYZX-20260817-00005',
     source: '重要紧急',
     desc: 'P1 工单且已升级产研，离线翻译漏译待排查，已自动纳入实时监控。',
-    at: agoStamp(330),
+    at: todayStamp(330),
     status: '已评估',
     assignee: '吴投诉',
     tag: {
       result: '中',
       note: '已提飞书项目待产研排期，客户可用在线翻译绕行，判中危。',
       ...SEED_TAGGERS.zheng,
-      at: agoStamp(320),
+      at: todayStamp(320),
     },
     verify: {
       verdict: '成立',
       level: '中',
       note: '已提飞书项目待产研排期，客户可用在线翻译绕行，判中危。',
       ...SEED_TAGGERS.zheng,
-      at: agoStamp(320),
+      at: todayStamp(320),
     },
     assessment: {
       decision: '不升级',
       advice: '产研已受理并给出排期，客户接受在线翻译作为过渡方案，暂无对外诉求。留在原处理链上按周同步进展即可，不必转投诉。',
       by: '吴投诉',
       byRole: '客诉专员',
-      at: agoStamp(120),
+      at: todayStamp(120),
     },
   }),
   /*
@@ -665,28 +690,28 @@ const SEED: RiskQueueEntry[] = [
     ticketNo: 'IFLYTS-20260817-00001',
     source: '投诉单',
     desc: '投诉类工单自动纳入实时监控。客户在黑猫平台发起投诉，称售后承诺未兑现。',
-    at: agoStamp(300),
+    at: todayStamp(300),
     status: '已评估',
     assignee: '吴投诉',
     tag: {
       result: '高',
       note: '客户已在第三方投诉平台公开发帖，且原承诺有据可查，判高危。',
       ...SEED_TAGGERS.wu,
-      at: agoStamp(290),
+      at: todayStamp(290),
     },
     verify: {
       verdict: '成立',
       level: '高',
       note: '客户已在第三方投诉平台公开发帖，且原承诺有据可查，判高危。',
       ...SEED_TAGGERS.wu,
-      at: agoStamp(290),
+      at: todayStamp(290),
     },
     coordination: {
       opinion: '原承诺的换新时限有工单记录可查，责任在我方。客户已在公开平台发帖，须在平台答复时限内给出书面方案，并同步公关口径。',
       advices: ['转交专员', '每日跟进'],
       by: '吴投诉',
       byRole: '客诉专员',
-      at: agoStamp(150),
+      at: todayStamp(150),
     },
   }),
 
@@ -715,13 +740,13 @@ const SEED: RiskQueueEntry[] = [
     ticketNo: 'IFLYTS-20260804-00004',
     source: '投诉单',
     desc: '投诉类工单自动纳入实时监控。',
-    at: agoStamp(150),
+    at: todayStamp(150),
     status: '已标记无风险',
     tag: {
       result: NO_RISK,
       note: '客户诉求为常规换货，已在受理当日给出方案并接受，无升级与扩散迹象，判无风险。',
       ...SEED_TAGGERS.wu,
-      at: agoStamp(140),
+      at: todayStamp(140),
     },
   }),
   autoEntry({
@@ -729,13 +754,13 @@ const SEED: RiskQueueEntry[] = [
     ticketNo: 'IFLYTS-20260708-00002',
     source: '投诉单',
     desc: '投诉类工单自动纳入实时监控。',
-    at: agoStamp(95),
+    at: todayStamp(95),
     status: '已标记无风险',
     tag: {
       result: NO_RISK,
       note: '重复扣费已核实并当日发起退款，客户确认接受，无对外诉求，判无风险。',
       ...SEED_TAGGERS.wu,
-      at: agoStamp(85),
+      at: todayStamp(85),
     },
   }),
   autoEntry({
@@ -743,13 +768,13 @@ const SEED: RiskQueueEntry[] = [
     ticketNo: 'IFLYZX-20260806-00002',
     source: '重要紧急',
     desc: 'P0 工单，学习机课本同步资源丢失，已自动纳入实时监控。',
-    at: agoStamp(70),
+    at: todayStamp(70),
     status: '已标记无风险',
     tag: {
       result: NO_RISK,
       note: '资源已在同一通电话内恢复并经客户验证，未产生实际学习影响，判无风险。',
       ...SEED_TAGGERS.zheng,
-      at: agoStamp(60),
+      at: todayStamp(60),
     },
   }),
   autoEntry({
@@ -757,13 +782,13 @@ const SEED: RiskQueueEntry[] = [
     ticketNo: 'IFLYTS-20260609-00005',
     source: '投诉单',
     desc: '投诉类工单自动纳入实时监控。账号异常登录，客户担心被盗。',
-    at: agoStamp(210),
+    at: todayStamp(210),
     status: '已标记无风险',
     tag: {
       result: NO_RISK,
       note: '经安全组核查为客户本人异地登录，已协助改密并开启二次验证，客户认可，判无风险。',
       ...SEED_TAGGERS.qin,
-      at: agoStamp(200),
+      at: todayStamp(200),
     },
   }),
 ];
@@ -789,6 +814,10 @@ const SEED: RiskQueueEntry[] = [
  *     三个打标人、各班组的待判条目一条都不会出现，而页面上那些档位会照旧显示 0。
  *     "改了种子却看不到变化"比档位本身为 0 更难查：数据在文件里明明写着。
  *     **凡是动到 `SEED` 的都要升号**，不只是动到字段的时候。
+ *   · v6 → v7：缓存里多了 `seedDay`（这份数据的时刻生成于哪一天），
+ *     且读缓存改走 `readDailyRiskCache` —— **隔夜即作废**。
+ *     v6 那份里没有 `seedDay`，新判据一律判它作废，本来也就该丢；升号只是把这件事说明白。
+ *     同时打标 / 评估 / 协同时刻改由 `todayStamp` 生成（值域没变、取值变了），见 `SEED` 上方。
  *   · v5 → v6：`rq-s02` / `rq-s03` 两条的 `desc` 改了（它们挂的单变成了一单多命中）。
  *     ⚠️ 顺带记一笔，免得下次照抄错理由：**这一版真正变多的是工单库**
  *     （`mock/tickets.ts` 补了三张 P1 投诉单）——而「待标记」那一半是**每次现算**的，
@@ -797,7 +826,19 @@ const SEED: RiskQueueEntry[] = [
  *     "缓存里的条目"和"刚变过的工单库"混着用 —— 但那是保险，不是机制。
  */
 const LS_KEY = 'flowos-risk-queue';
-const LS_VERSION = 6;
+const LS_VERSION = 7;
+
+/**
+ * 缓存"新不新"的判据：取**打标时刻**里最新的那一个。
+ *
+ * 🔴 **不取 `at`**：进队时刻里有三条是故意留在昨天的（超时未评那三条），
+ * 而凌晨打开时其余几条也可能整批落在昨天 —— 拿它判，正常的一份缓存会被误杀。
+ * 打标时刻由 `todayStamp` 生成，**在写入的那一刻必定落在今天**，
+ * 故"它不是今天"⇔"这份缓存是隔夜的"，判据与事实一一对应。
+ */
+function newestQueueStamp(saved: { entries: RiskQueueEntry[] }): string {
+  return newestStampOf((saved.entries ?? []).map((e) => e.tag?.at));
+}
 
 /**
  * 找"该给哪一条打标"时的挑选顺序。**越靠前越优先**。
@@ -838,7 +879,7 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
   const tags = useRiskTagStore();
 
   /**
-   * 落 localStorage（保质期机制见 `riskShared.ts` 的 `readRiskCache`）。
+   * 落 localStorage（保质期与**隔夜作废**见 `riskShared.ts` 的 `readDailyRiskCache`）。
    *
    * 本模块的闭环**天然跨角色**：系统自动识别、投诉督导打标 / 分派、客诉专员评。
    * 演示时这几步要换几次登录，纯内存态下每换一次前面做的全部归零。
@@ -846,7 +887,18 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
    * ⚠️ **打标历史不在这份缓存里**：它存在 `stores/riskTags.ts`（纯内存，刷新即回种子）。
    * 现行结论 `tag` 跟着条目持久化、历史不持久化，是有意的取舍——见 `RiskTagRecord` 的说明。
    */
-  const cached = readRiskCache<{ entries: RiskQueueEntry[] }>(LS_KEY, LS_VERSION);
+  const cached = readDailyRiskCache<{ entries: RiskQueueEntry[] }>(
+    LS_KEY,
+    LS_VERSION,
+    newestQueueStamp,
+  );
+  /**
+   * 当前这份数据的时刻**生成于哪一天**：续用缓存就沿用缓存里那一天，
+   * 回到种子就是 `SEED_DAY`。
+   * 🔴 **写回时原样带下去，不取"写入那一刻"**：一场跨零点的演示会在 00:03 触发一次写入，
+   * 那时若按写入时刻记，昨天生成的这份数据就被盖上今天的戳，隔夜判据从此瞎掉。
+   */
+  const seedDay = cached?.seedDay ?? SEED_DAY;
   if (cached && Array.isArray(cached.entries) && cached.entries.length) {
     entries.value = cached.entries
       .map((e) => ({ ...e, source: normalizeMonitorSource(e.source) }))
@@ -857,7 +909,7 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
   }
   watch(
     entries,
-    () => writeRiskCache(LS_KEY, LS_VERSION, { entries: entries.value }),
+    () => writeRiskCache(LS_KEY, LS_VERSION, { entries: entries.value, seedDay }),
     { deep: true },
   );
 
@@ -1144,6 +1196,8 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
       ticketNo,
       source,
       desc: AUTO_DESC[source],
+      // 现补的条目是"此刻"进的监控，走 `agoStamp(0)` ＝ 当前时刻本身，
+      // 不经 `todayStamp` 的压缩（它压的是种子里那段回溯，对 0 没有意义）
       at: agoStamp(0),
       status: '实时监控中',
     });

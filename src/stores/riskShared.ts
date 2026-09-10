@@ -479,6 +479,42 @@ export function todayPrefix(): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
+/**
+ * `todayStamp()` 允许回溯的最大跨度（分钟）。**种子里传给 `todayStamp` 的分钟数不得超过它** ——
+ * 超过的那几条会被下面的兜底一起夹到零点上，全批的先后就在那一档糊成一团。
+ * 现值 360（6 小时）覆盖本册两条线里最早的一条（A 线 `rq-s16` 的进队 330 分钟）。
+ */
+export const TODAY_SPAN_MIN = 360;
+
+/**
+ * 种子里"**今天之内**"的相对时刻 —— `agoStamp()` 的不跨零点版本。
+ *
+ * 【为什么必须有它】`agoStamp()` 只保证"不写死日期"，**不保证落在今天**：
+ * 种子里的评估时刻是「170 分钟前」，凌晨 00:18 打开页面时它落在**昨天 21:28**。
+ * 于是页头「今日已结论 / 今日打标」以及「已结论·仅今日」这一整排按自然日切的口径
+ * **在每天 00:00–06:00 这段里全部归零** —— 与写死日历日是同一个病，只是每天只发作几小时，
+ * 于是更难查：白天怎么看都是对的。
+ *
+ * 【怎么修的】整批**按同一个系数压进"今天已过的这一段"**，这与 `mock/opsReport.ts` 的
+ * `anchorHitDates()`（整批同量平移）是同一个思路的两种形态：
+ *   · 系数 `factor = min(1, 今天已过的分钟 / TODAY_SPAN_MIN)` 对**全批相同**，
+ *     故任意两条的先后与相对间隔全部保持原样，只是整条时间轴被等比压短；
+ *   · `factor` 在**今天已过满 6 小时之后恒为 1**，此时 `todayStamp ≡ agoStamp`，
+ *     一字不差 —— 本函数只在凌晨那几个小时里起作用，白天的演示形态完全不变。
+ *
+ * 🔴 **不要拿它生成"进队时刻"里那几条要演示超时的**：等待时长与超时判定按真实分钟数算
+ * （`useRiskClock`），压过之后凌晨那几条就不再超时，「超时未评」当场掉档。
+ * 进队时刻用 `agoStamp`、结论 / 打标时刻用 `todayStamp`，两者各管各的口径，见 A 线种子。
+ */
+export function todayStamp(minutesAgo: number, span = TODAY_SPAN_MIN): string {
+  const midnight = new Date();
+  midnight.setHours(0, 0, 0, 0);
+  const elapsed = (Date.now() - midnight.getTime()) / 60000;
+  const factor = Math.min(1, elapsed / span);
+  // 兜底夹一道：`minutesAgo` 万一超过 span，等比之后仍可能越过零点
+  return agoStamp(Math.min(minutesAgo * factor, elapsed));
+}
+
 /* ---------------- 通知收件人 / 文案的公共解析（O22 / O23） ---------------- */
 
 /**
@@ -555,6 +591,50 @@ export function readRiskCache<T extends object>(key: string, version: number): T
     /* 解析失败就用种子，不让一份坏缓存把页面打空 */
     return null;
   }
+}
+
+/**
+ * 一批时刻里**最新的那一个**。空串（没有值）一律当最早处理，不参与比较。
+ * 时刻格式统一为 `YYYY-MM-DD HH:mm`，故字典序即时间序。
+ */
+export function newestStampOf(stamps: (string | undefined)[]): string {
+  return stamps.reduce<string>((max, s) => (s && s > max ? s : max), '');
+}
+
+/**
+ * 读缓存 · **隔夜即作废**版。除版本与保质期外，再拦两道：
+ *
+ *   ① `seedDay` —— 这份数据里的时刻是**哪一天生成**的（写入方自己记，见下方两条线的 store）。
+ *   ② `newestOf(saved)` —— 缓存里**最新的一条**落不落在今天。
+ *
+ * 【为什么非加不可】种子的时刻由 `agoStamp` / `todayStamp` 按"打开页面那一刻"倒推，
+ * 一落进 localStorage 就固化成绝对时刻。隔一夜再打开，整份数据全部落到昨天，
+ * 「今日新增 / 今日打标 / 今日已结论」与「已结论·仅今日」当场归零 ——
+ * **与写死日历日是同一个病，只是晚一天发作**。原有的 12 小时保质期拦不住它：
+ * 昨晚 22:00 演示、今早 09:00 再开，只过了 11 小时，缓存判"新鲜"照常续用。
+ *
+ * 【为什么两道判据都要】
+ *   · 只判 `seedDay` 漏一种：跨零点的那一次写入会把昨天生成的数据标成今天
+ *     （23:58 打开、00:03 动了一下 → 写进去的 `seedDay` 若取写入时刻就成了今天）。
+ *     故 `seedDay` 由 store 记住"本份数据生成于哪一天"并原样带下去，**不随写入时刻走**；
+ *     这一道之外再看一眼数据本身，是双保险。
+ *   · 只判"最新一条是不是今天"漏另一种：两条线的 `at` 都可能整批落在昨天
+ *     （凌晨打开时进队时刻本就该在昨天），故 `newestOf` 由调用方决定取哪些字段 ——
+ *     取的是**保证落在今天的那一类**（`todayStamp` 生成的打标 / 结论时刻）。
+ *
+ * 判不过就整份丢弃、回到种子重建，而不是留着一份读数全为 0 的旧快照。
+ */
+export function readDailyRiskCache<T extends object>(
+  key: string,
+  version: number,
+  newestOf: (saved: T) => string,
+): (T & { seedDay?: string }) | null {
+  const saved = readRiskCache<T & { seedDay?: string }>(key, version);
+  if (!saved) return null;
+  const today = todayPrefix();
+  if (saved.seedDay === today && newestOf(saved).startsWith(today)) return saved;
+  try { localStorage.removeItem(key); } catch { /* ignore */ }
+  return null;
 }
 
 /** 写缓存。存的是**整份数据**而不是增量：量级只有几十条，整存整取比对账简单 */
