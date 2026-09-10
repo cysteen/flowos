@@ -263,7 +263,7 @@ const derivedTickets = useDerivedTicketStore();
  * 🔴 **它的分母是「工单」，另外两块都不是**，三块并排最容易被读成一路数：
  *   · 监控数据 ＝ **监控条目**（A 线，含每日新增与打标漏斗三段）
  *   · 工单存量 ＝ 工单系统里的**在办工单**          ← 本块
- *   · 风险评估 ＝ **风险工单池**里的**池行**（A 线打标进池的条目 + B 线报备单）
+ *   · 评估处置 ＝ **风险工单池**里的**池行**（A 线打标进池的条目 + B 线报备单）
  * 还有一处同屏撞名要盯住：页签「风险工单池」的角标数的是**池行**，
  * 本块「工单存量」数的是**工单**——两者同屏并列，但不是一回事，不可相加、不互校。
  * 「等级分布」尤其要盯：本块的高/中/低是**工单级风险等级**（由命中取最高派生），
@@ -483,7 +483,7 @@ const reportAssessedRows = computed(
   ),
 );
 
-/* ---- 页头右栏「风险评估」四卡：与左栏「待处置」同一个分母，一并收窄到 A 线 ---- */
+/* ---- 页头右栏「评估处置」四卡：与左栏「待处置」同一个分母，一并收窄到 A 线 ---- */
 //
 // 🔴 **不收窄的话这一屏当场自相矛盾**：卡上写「待评估总数 8」、左栏写「待领取 3 · 已领取 2」，
 // 点卡片落到的还是同一张表。同屏同一件事只能有一个数，这是本文件反复踩过的那个坑。
@@ -514,6 +514,24 @@ const alineConcludedTodayCount = computed(
  * 这一条是**哪一种收口**；null ＝ 只补过打标、还没给出结论。
  * 🔴 上面那个数与下面三枚**共用这一个判据**，恒等式因此是构造出来的、不是碰巧对上的：
  * 换两条独立的判断去数，迟早出现"卡上 4、三枚加起来 3"，而差的那一条谁也找不出来。
+ *
+ * 🔴 **只补过打标、还没给结论的池行（只有 `verify`、没有 `assessment` / `coordination`）
+ * 返回 null —— 它既不计入「今日已结论」，也不计入下面那三枚结论 chip。这是有意为之，不是漏了一种。**
+ *
+ * 【为什么】`verify` 是打标反向派生出来的只读投影（见 `stores/riskQueue.ts` 与 `needsVerify`），
+ * 它答的是"这条**成不成立**"，不是"这条**怎么收口**"。一条补完打标就停在那儿的行，
+ * 还等着人给升级 / 不升级 / 协同 —— 把它算成一种收口，等于说这条已经处理完了。
+ *
+ * 【为什么两处共用这一个判据】「今日已结论」（`alineConcludedTodayCount`）与三枚 chip
+ * （`alineDecisionCounts`）都拿 `decisionKindOf(r)` 非 null 当入选条件，于是
+ * **「今日已结论」≡ 升级 + 不升级 + 协同 由构造成立**，不是靠事后对账对出来的。
+ * 若哪天想把 verify-only 也数进「今日已结论」，改这一个函数不够——那会让卡上的数
+ * 比三枚之和多出那几条，而多出的那一条谁也找不出来在哪；要动就得同时给它一枚自己的 chip。
+ *
+ * ⚠️ 漏斗改版之后 verify-only 在今天的数据上是**死路**（打标只决定进不进池、不再结掉条目，
+ * 见 `stores/riskPool.ts` 的 `assessedList`）。真在数据上构造出来一条（旧缓存、或将来某条
+ * 新入口只写了 `verify`），它会**落进「已结论」那张表**——`assessedBase` 按 `concludedAtOf`
+ * 判，而那个函数兜到了 `verify.at`：表里看得见、两个数里不算数，是两件事，别当成不一致去"修"。
  */
 function decisionKindOf(r: RiskPoolItem): DecisionKey | null {
   if (r.assessment) return normalizeDecision(r.assessment.decision);
@@ -538,7 +556,14 @@ const alineDecisionCounts = computed(() => {
  */
 const reportGroupBase = computed(() => {
   if (reportView.value === 'all') {
-    return [...openBase('unassigned'), ...openBase('assigning'), ...assessedBase.value];
+    // 第三段接不接，判据与 `reportAllRows` 完全一样（开着「超时未评」时整段不接）——
+    // 两处必须同进同退：只改一处的话，表里躺着 3 行、下面「全部工作组 7 / 全部来源 7」，
+    // 那两排 chip 当场变成同屏的第二个数
+    return [
+      ...openBase('unassigned'),
+      ...openBase('assigning'),
+      ...(onlyOverdue.value ? [] : assessedBase.value),
+    ];
   }
   return reportView.value === 'assessed' ? assessedBase.value : openBase(reportView.value);
 });
@@ -558,11 +583,17 @@ function sourceCountInView(s: MonitorSource) {
  * 「按处置阶段」不限阶段时的那一张表 ＝ 三段**按时间序首尾相接**，不重排。
  * 🔴 顺序即时间序（待领取 → 已领取 → 已结论），这是这一维与另两维（等级 / 标记人）
  * 唯一不同的地方：另两维的取值之间没有先后，这一维有。混排成一坨会把它抹掉。
+ *
+ * 🔴 **开着「超时未评」时第三段整段不接**：超时未评的判据是"**在队**且钟走过了时限"
+ * （见 store 的 `isOverdue`），已结论的行按定义一条都不满足它。照接的话，从页头
+ * 「超时未评 3」点进来会看到 3 条超时 + 今日已结论的那几条，卡上写 3、表里躺着七八行 ——
+ * 正是本文件反复踩过的那个坑。摘掉之后行数 ≡ 卡上的数 ≡ 左栏那一行的数，三处同一个口径。
+ * （在队两段各自的 `openBase` 已经过了同一个 `onlyOverdue`，这里只管第三段。）
  */
 const reportAllRows = computed(() => [
   ...reportUnassignedRows.value,
   ...reportAssigningRows.value,
-  ...reportAssessedRows.value,
+  ...(onlyOverdue.value ? [] : reportAssessedRows.value),
 ]);
 
 /**
@@ -571,6 +602,11 @@ const reportAllRows = computed(() => [
  * 但「已结论」这一档带着「仅今日」这个默认收窄，历史上评过的那几条不在表里。
  * 行上的数必须等于表里的行数 —— 这条不变量优先于"三个轴的总数看起来一样齐"。
  * 两者不等时，摘掉「仅今日」收窄标即可对上。
+ *
+ * ⚠️ **开着「超时未评」时 Σ三档 会大于这一行的数**（此时这一行 ＝ 待领取 + 已领取，
+ * 而「已结论」那一档的数不受超时影响 —— 已结论的行按定义就不可能"超时未评"）。
+ * 这不是算错：三档各自的数仍然**逐档等于点进去表里的行数**（点「已结论」会先摘掉超时收窄，
+ * 见 setReportView），而"行上的数 ＝ 表里的行数"才是这一列的硬不变量。
  */
 const poolStageTotal = computed(() => reportAllRows.value.length);
 
@@ -589,8 +625,11 @@ function setReportView(v: ReportView) {
   if (v === reportView.value) return;
   const wasAssessed = reportView.value === 'assessed';
   reportView.value = v;
-  // 不限阶段这一档跨越三段，两个阶段专属的收窄在它身上都无从谈起：
-  // 留着的话，「按处置阶段」那一行写着 4、表里却只躺着超时的那 1 条
+  // 不限阶段这一档跨越三段，两个阶段专属的收窄默认都摘掉：
+  // 留着的话，「按处置阶段」那一行写着 4、表里却只躺着超时的那 1 条。
+  // ⚠️ 摘的是**默认**，不是"这一档不许有超时收窄"：页头「超时未评」那张卡正是落到
+  // 这一档 + 超时收窄上的，它在调用完本函数之后自己把 `onlyOverdue` 补回 true
+  // （彼时左栏那一行的数与表里的行数一起收到 3，仍然相等）。见那枚卡上的注释。
   if (v === 'all') {
     onlyOverdue.value = false;
     decisionFilter.value = 'all';
@@ -3323,6 +3362,10 @@ function setRail(key: RailKey) {
   // 已经停在它上面时再点一次就收起来 —— 与「按标记人」同一套手势
   if (key === 'pool:all') {
     poolAxisExpanded.value = !(railKey.value === 'pool:all' && poolAxisExpanded.value);
+    // 🔴 从**左栏**点这一行 ＝ 要看不限阶段的全量，故超时收窄在这里摘掉。
+    // 不能指望下面的 setReportView：已经停在这一档时（正是从页头「超时未评」点进来的那一刻）
+    // 它会早退，收窄留在原地，点下去就只是把下级收折了一下、表里还躺着那 3 条。
+    onlyOverdue.value = false;
   }
   setListView('report');
   setReportView(key.slice('pool:'.length) as ReportView);
@@ -3678,7 +3721,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
     </div>
 
     <!--
-      ② 页头大盘：三栏 —— 左监控条目（打标漏斗）、中工单存量、右风险评估。
+      ② 页头大盘：三栏 —— 左监控条目（打标漏斗）、中工单存量、右评估处置。
       三个分母（条目 / 工单 / 池行）两两不可相加，每个数的 title 各自写明自己数的是什么。
     -->
     <section class="overview-section effect-section">
@@ -3793,16 +3836,23 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
         </div>
 
         <!--
-          右栏 ＝ 风险评估。装的是**风险工单池里的池行**：A 线打标进池的条目 + B 线的二线报备。
+          右栏 ＝ 评估处置。装的是**风险工单池里的池行**：A 线打标进池的条目 + B 线的二线报备。
           🔴 本轮**不再按来源排除任何一路**：打标已经是进池的前置门槛，能进池的都已经确认有风险，
           下一步只剩"升不升级"一个问题。旧口径把「关键词触发」那一路排除在分母外，
           在漏斗模型下会让一批确实要评估的条目不进分母，这一栏系统性报少。
+
+          🔴 **块名由「风险评估」改成「评估处置」（只改块名，块内几枚 KPI 的文案与口径一个字没动）**。
+          【为什么改】「风险评估」这个词已经背了三个意思：工单底栏的**动作**形态、非投诉单的**结论流程**、
+          以及这里的**页头卡块名**。同一个词指三样东西，说"去看风险评估"没人知道说的是哪一处。
+          更硬的一条：它与「风险报备池」页签上那三枚（待评估总数 / 超时未评 / 今日已评估）**同屏撞名**，
+          两处只靠"分居两个页面"区分——一旦有人截图或转述，就分不出说的是哪一块的数。
+          故这一块改叫「评估处置」：它讲的本就是池行**从进池到收口**这一段处置，与底栏那个动作脱钩。
         -->
         <div class="effect-pane effect-pane--report">
           <h2
             class="pane-title"
             title="风险工单池里的池行 · 打标进池的监控条目 + 二线报备，全部走评估二选一（升级 / 不升级）"
-          >风险评估</h2>
+          >评估处置</h2>
           <div class="dash-grid dash-grid-3">
             <!--
               B1 待评估总数 ＝ **待领取 + 评估中**（N4 改口径，不再等于单一状态的条数）。
@@ -3828,6 +3878,16 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                 </span>
               </span>
             </button>
+            <!--
+              B2 超时未评 · 下钻落到「按处置阶段 · 不限阶段」＋「超时未评」这个收窄。
+              🔴 **不能落在「待领取」**：超时这件事横跨待领取与已领取两态，而超时的那几条
+              完全可能一条都不在待领取里（领了没结论照样在走钟）。落单一档时，卡上写着 3、
+              点进去是一张空表 —— 人只会以为这个数算错了，而不会想到"它们在隔壁那一档"。
+              故去向取 `all`（不限阶段），三段一起看，那几条一条不落地出现在同一张表里。
+              ⚠️ 两句调用**有先后**：`setReportView('all')` 自己会把两个阶段专属的收窄摘掉
+              （见 setReportView，那是给左栏点击用的），故 `onlyOverdue = true` 必须写在它后面补上。
+              顺序颠倒的话点下去就是"不限阶段的全表"，收窄当场丢掉。
+            -->
             <button
               type="button"
               class="dm-cell"
@@ -3836,7 +3896,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                 hot: alineOverdueCount > 0,
               }"
               :title="`超过 ${assessLimitText} 仍无结论 · 从进池时刻起算、不从领取时刻 · 不是 SLA`"
-              @click="setListView('report'); setReportView('unassigned'); onlyOverdue = true"
+              @click="setListView('report'); setReportView('all'); onlyOverdue = true"
             >
               <span class="dm-k">超时未评</span>
               <span class="dm-val"><span class="dm-v">{{ alineOverdueCount }}</span></span>
@@ -4301,7 +4361,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
       <div
         v-if="listView === 'report' && (onlyOverdue || sourceFilter !== 'all'
           || (reportView === 'assessed' && (assessedTodayOnly || decisionFilter !== 'all'))
-          || (reportView === 'all' && assessedTodayOnly))"
+          || (reportView === 'all' && !onlyOverdue && assessedTodayOnly))"
         class="section-filters grade-filters report-filters"
       >
         <!--
@@ -4309,9 +4369,12 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
           没有它，人从「超时未评 2」点进来只看到 2 行，会当成队列只剩 2 条。
           🔴 超时横跨待领取与已领取两态，故这里给的是**两态之和**，与左栏那两档上分开的条数
           相加恒等——不是同一个数写了两遍。
+          🔴 数取 `alineOverdueCount`、**不取 store 的 `overdueCount`**：后者两条线一起数，
+          而本页从头到尾只数 A 线（见 `isALine`）。拿它的话，页头卡写 3、这枚标写 4、表里躺着 3 行，
+          同一块屏上两个数——差的那一条是回自己家（工单工作台「风险报备池」）的二线报备。
         -->
         <span v-if="reportView !== 'assessed' && onlyOverdue" class="nc-chip bad">
-          超时未评 {{ reportStore.overdueCount }}
+          超时未评 {{ alineOverdueCount }}
           <button type="button" class="nc-del" title="看全部在队条目" @click="onlyOverdue = false">×</button>
         </span>
         <span v-if="sourceFilter !== 'all'" class="nc-chip">
@@ -4327,9 +4390,12 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
           摘掉它＝看全部历史，此时上方两枚决策卡（自然日口径）与表里的行数不再相等，是有意为之。
           🔴 不限阶段那一档也要摆：它把「已结论」整段并了进来，这个默认收窄照样在起作用，
           不说的话，左栏「按处置阶段」那一行的数与"池里到底有多少条"会被读成同一件事。
+          🔴 但不限阶段**同时开着「超时未评」**时不摆：那一刻「已结论」整段根本不在表里
+          （见 reportAllRows），再摆一枚"已结论仅今日"就是在说一个当前不起作用的条件，
+          摘掉它表里也一行不多——摆着只会让人以为摘了能多看到几条。
         -->
         <span
-          v-if="(reportView === 'assessed' || reportView === 'all') && assessedTodayOnly"
+          v-if="(reportView === 'assessed' || (reportView === 'all' && !onlyOverdue)) && assessedTodayOnly"
           class="nc-chip"
         >
           已结论仅今日
@@ -4370,9 +4436,11 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
         <template v-if="groupFilter !== 'all'">「{{ groupFilter }}」在这一档下没有池行 —— 点「全部工作组」看全部</template>
         <template v-else-if="reportView === 'all'">
           {{
-            sourceFilter !== 'all'
-              ? `「${sourceFilter}」当前没有进池的条目`
-              : '当前没有进池的条目 —— 打标为高 / 中 / 低才进池'
+            onlyOverdue
+              ? `当前没有超过 ${assessLimitText} 仍无结论的在队条目`
+              : sourceFilter !== 'all'
+                ? `「${sourceFilter}」当前没有进池的条目`
+                : '当前没有进池的条目 —— 打标为高 / 中 / 低才进池'
           }}
         </template>
         <template v-else-if="reportView !== 'assessed'">
@@ -5925,7 +5993,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
   box-shadow: none;
 }
 /*
- * 三栏：监控数据（命中记录）｜ 工单存量（在办工单）｜ 风险评估（队列条目）。
+ * 三栏：监控数据（命中记录）｜ 工单存量（在办工单）｜ 评估处置（队列条目）。
  * 左栏四个 KPI、右栏三个，中栏只有两个，故按 1.15 : 0.85 : 1 分宽，
  * 均分会让中栏空出一截、左栏的四格挤成两行。
  */
