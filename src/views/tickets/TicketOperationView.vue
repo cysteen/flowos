@@ -35,8 +35,9 @@ import { REPORT_ASSESS_LIMIT_MIN, isOpenStatus, isPooledStatus } from '@/stores/
 import { RISK_FLAG_OPTIONS } from './types/operation';
 import { poolStatusText } from './components/operation/OpRiskDecision';
 import { useRiskCollabStore } from '@/stores/riskCollab';
-import { useRiskHistoryStore, type RiskHistoryKind } from '@/stores/riskHistory';
+import { useRiskHistoryStore, type RiskHistoryKind, type RiskHistoryRecord } from '@/stores/riskHistory';
 import { useRiskPoolStore } from '@/stores/riskPool';
+import { useDerivedTicketStore } from '@/stores/derivedTickets';
 import { RISK_LEVELS, riskLevelText } from '@/config/risk';
 import type { TlAction, TlRole } from './types/ticketDetail';
 import { pullbackOnCsEvent, headerActionsByRole, type TicketStatus } from './types/ticket';
@@ -147,11 +148,17 @@ const riskCollab = useRiskCollabStore();
  */
 const riskHistory = useRiskHistoryStore();
 /**
- * 两条线的合并层。**本页不调它的任何动作**，实例化它只为触发一件事：
- * 它在初始化时把**种子里那批已有结论的条目**回填进第八类履历（`backfillSeedRiskHistory`）——
+ * 两条线的合并层。**本页不调它的任何动作**（只读它的 `items`，见 `escalateAdviceOf`），
+ * 实例化它还为触发一件事：它在初始化时把**种子里那批已有结论的条目**
+ * 回填进第八类履历（`backfillSeedRiskHistory`）——
  * 否则打开一张种子高危单，页头挂着「风险打标 高危」而履历里一条也没有。
  */
-useRiskPoolStore();
+const riskPool = useRiskPoolStore();
+/**
+ * 运行时派生出来的那批新投诉单。第 2 类「关联单」卡片要摆新单的标题与当前状态，
+ * 而现场升级刚派生出来的单**不在 `TICKETS` 里**（那是静态样本），只能问它。
+ */
+const derivedTickets = useDerivedTicketStore();
 const riskMonitorVerify = computed(() => riskTags.ticketVerificationOf(ticketNo.value));
 
 /**
@@ -430,9 +437,76 @@ const processTabDots = computed<Partial<Record<ProcessTabKey, 'warn' | 'danger'>
  * 【幂等】按记录 id 认（`riskRecordId`），投影多少次结果都一样；
  * 不再按"数已有几条"补差额 —— 五类混排之后那个判据会数错。
  */
+/**
+ * 这一跳的**升级说明**（评估弹窗里那段自由文本）。
+ *
+ * 【为什么要绕去池里取】第八类的记录**故意不存自由文本**（《【720】》§4.4 第 3 条：
+ * 升级说明留在评估记录里、不进风险结论正文）。但第 2 类「关联单」是另一类，
+ * 《【830】》既有口径的那句话里带着「升级原因：…」（见 `useTicketOperation.addEscalatedComplaint`）——
+ * 两类口径不同，故这里按单号 + 派生单号回池里认领那条评估记录，取它的 `advice`。
+ * 认不到就整段省掉那半句，**不编一个理由**。
+ */
+function escalateAdviceOf(ticketNo_: string, derivedNo: string): string {
+  return riskPool.items.find(
+    (i) => i.ticketNo === ticketNo_ && i.assessment?.escalatedToNo === derivedNo,
+  )?.assessment?.advice?.trim() ?? '';
+}
+
+/**
+ * 「升级」派生新投诉单那一跳的**第 2 类「关联单」履历**。
+ *
+ * 🔴 **这一条此前只有注释、没有代码**：`riskPool.assess` 里写着「照《【830】》既有口径另落一条」，
+ * 而全仓 `category: 'relate'` 的产出点只有 `useTicketOperation.addEscalatedComplaint` 一个 ——
+ * 它挂在工单页底栏的「升级投诉」按钮上，**风险评估这条路根本走不到它**。
+ * 于是现场评估判「升级」派生出的新单，第 8 类有可点跳的单号 chip、第 2 类一张卡都没有，
+ * 《【720】》验收 T4「新投诉单号两处一致且都可点跳」在**现场产生的升级上只有一处存在**。
+ * 种子单看不出来，是因为种子履历（`mock/ticketDetail.ts` 的 `er1` / `er2`）自带两张 relate 卡。
+ *
+ * 【为什么落在投影里而不是落在 `riskPool.assess` 里】履历（`timeline`）是**按工单现搭的内存态**，
+ * 而评估最常发生在风险监控页 —— 那一刻原单的工单页可能根本没打开，`assess` 里 push 进去的
+ * 那一条没有落点。第 8 类为此走的就是"落持久化记录 → 工单页投影"这条路，
+ * 关联单这一条**同源投影**才能保证两处的单号必然是同一个值（都取 `r.derivedNo`），
+ * 不会再出现一处有、一处没有。
+ *
+ * 【幂等】按 `${记录 id}-relate` 认，与第 8 类那一条各认各的，投影多少次结果都一样。
+ */
+function pushEscalationRelateEntry(r: RiskHistoryRecord, derivedNo: string) {
+  // 新单可能是静态样本里的（种子那批已评估条目），也可能是本次会话现场派生的
+  const t = TICKETS.find((x) => x.no === derivedNo) ?? derivedTickets.find(derivedNo);
+  const advice = escalateAdviceOf(r.ticketNo, derivedNo);
+  pushEntry(timeline.value, {
+    category: 'relate',
+    action: 'relate',
+    who: r.by,
+    role: toTlRole(r.byRole),
+    // How 徽章与 830 那一处同词：读的人分不出"谁点的按钮"，也不该被要求分得出
+    how: '升级投诉',
+    when: r.at,
+    what: `原单升级为投诉，已生成新投诉单并双向关联。${advice ? `升级原因：${advice}` : ''}`,
+    riskRecordId: `${r.id}-relate`,
+    relatedTicket: {
+      no: derivedNo,
+      // 派生单全量继承原单信息，故标题与原单同；解析不到时也只回落到原单标题，不编一个
+      title: t?.title ?? d.value.title,
+      type: '投诉',
+      typeColor: '#EF4444',
+      status: t?.nodeStatus ?? '未认领',
+      statusColor: '#1A6FFF',
+      builder: r.by,
+      createdAt: r.at,
+    },
+  });
+}
+
 function syncRiskTimeline() {
   const seen = new Set(timeline.value.map((e) => e.riskRecordId).filter(Boolean));
   riskHistory.recordsOf(ticketNo.value).forEach((r) => {
+    /*
+     * 一条记录最多投影出两条履历：第 8 类那一条恒有，第 2 类「关联单」只在
+     * **真派生了新单**时才有（见 `pushEscalationRelateEntry`）。两条**各认各的幂等键**，
+     * 不共用一个 —— 共用的话，先有其一的历史缓存会把另一条永久挡在门外。
+     */
+    if (r.derivedNo && !seen.has(`${r.id}-relate`)) pushEscalationRelateEntry(r, r.derivedNo);
     if (seen.has(r.id)) return;
     pushEntry(timeline.value, {
       category: 'risk',
