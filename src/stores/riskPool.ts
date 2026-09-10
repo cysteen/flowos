@@ -9,6 +9,7 @@ import {
   assigneeReceiver,
   asSentence,
   isOpenStatus,
+  normalizeDecision,
   reasonLine,
   reporterReceiver,
   todayPrefix,
@@ -27,8 +28,10 @@ import {
  *   · **A 线**（`stores/riskQueue.ts`）自动识别 → 实时监控 → **打标** → 风险工单池；
  *   · **B 线**（`stores/riskReports.ts`）二线专员发起风险报备 → 报备池。
  * 但**页面还没拆**：风险监控页的「风险工单池」页签今天装的仍是两条线合一队
- * （N6：来源是条目的一个属性，不是另一批数据），分派 / 自取 / 评估三个动作两条线共用。
- * 本 store 就是那一层合并 —— 队列 computed、看板 B1~B4、以及分派 / 领取 / 评估三个动作。
+ * （N6：来源是条目的一个属性，不是另一批数据），领取 / 评估两个动作两条线共用。
+ * 本 store 就是那一层合并 —— 队列 computed、看板 B1~B4、以及领取 / 评估这两个动作。
+ *
+ * 🔴 **没有分派 / 改派 / 批量分派**（业务第三轮拍板整套取消，见 `claim`）：池里只有「领取」。
  *
  * 🔴 **A 线那一半的取数已按漏斗收窄**：只收**打标为低 / 中 / 高**的条目（见 `items`）。
  * 还在实时监控待打标的、以及打标判无风险的，都**不在池里**。
@@ -94,9 +97,14 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
   const openQueue = computed(() =>
     items.value.filter(isOpen).slice().sort((a, b) => a.at.localeCompare(b.at)),
   );
-  /** 待分派：督导要分的就是这一批 */
+  /**
+   * 待领取：还没有人认领的那一批。
+   * ⚠️ 落库值仍是「待分派」——它是分派时代留下的词，分派已取消但状态枚举没跟着改
+   * （`ReportStatus` 是两条线共用的，B 线本轮不解冻）。**界面一律写「待领取」**，
+   * 那才是这一档现在的含义：谁有空谁领。
+   */
   const unassignedQueue = computed(() => openQueue.value.filter((r) => r.status === '待分派'));
-  /** 评估中：已有人认领、等结论 */
+  /** 评估中：已有人领走、等结论 */
   const assigningQueue = computed(() => openQueue.value.filter((r) => r.status === '评估中'));
 
   /** **B1 待评估总数 ＝ 待分派 + 评估中**（§7，N4 改口径）。已撤回的不进任何一个数 */
@@ -183,22 +191,30 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
    * 故 `B3 = B4 两档之和` 这条恒等式天然成立。
    */
   const decisionCounts = computed(() => {
-    const base: Record<AssessDecision, number> = { 不升级: 0, 接管: 0 };
+    const base: Record<AssessDecision, number> = { 升级: 0, 不升级: 0 };
     const today = todayPrefix();
     for (const r of assessedList.value) {
       if (!goesToAssess(r)) continue;
       if (!r.assessment || !r.assessment.at.startsWith(today)) continue;
-      base[r.assessment.decision] += 1;
+      // 归一化之后再落格：B 线的种子与它自己那份缓存里仍有旧词「接管」，
+      // 直接拿它当 key 会写出一个枚举外的第五格，两枚 chip 一枚也数不到它（见 `normalizeDecision`）
+      base[normalizeDecision(r.assessment.decision)] += 1;
     }
     return base;
   });
 
-  /* ---------------- 分派 / 领取 / 评估（两条线共用这三个动作） ---------------- */
+  /* ---------------- 领取 / 评估（两条线共用这两个动作） ---------------- */
 
   /**
-   * 分派 / 自取共用的一条通知：**告诉新承办人"这活儿归你了"**。
-   * 两个动作发同一条是有意的 —— 对承办人而言"督导指给我"与"我自己领的"
-   * 结果完全一样（单子进了我名下、时限照走），分两条文案只是让他多读一遍。
+   * 领取之后发给承办人的一条：**告诉他"这活儿归你了"**，同时留一份
+   * 「这单何时、被谁接走」的凭据（工单页的通知记录里查得到）。
+   *
+   * 🔴 **分派 / 改派 / 批量分派整套已取消**（业务第三轮拍板）：两个池子都只留「领取」。
+   * 【为什么取消】指派这条路让**督导变成队列的单点**——他不在岗，谁也动不了，
+   * 而这条队列卡的是投诉立项（基线 ※8a）。而且督导本轮已去权（只看数据、不出动作），
+   * 留着一个只有他能点的动作，等于把队列锁死在一个不再管这件事的人手上。
+   * 改成"谁有空谁领"之后，队列的吞吐不再取决于某一个人在不在。
+   * 【连带】`risk.report.reassigned`（已改派）这个事件随之没有落点——没有改派动作了。
    */
   function notifyAssigned(r: RiskPoolItem) {
     notifyLog.emit({
@@ -207,56 +223,16 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
       kind: 'risk',
       title: '风险报备待评估',
       receivers: [assigneeReceiver(r)],
-      content: `${r.ticketNo} 的风险报备已由您承办，报备原因：${reasonLine(r)}；报备人：${r.by}（${r.byRole}）；提交时刻：${r.at}。请在提交后 ${REPORT_ASSESS_LIMIT_MIN} 分钟内给出评估结论（不升级 / 接管）。`,
+      content: `${r.ticketNo} 的风险报备已由您承办，报备原因：${reasonLine(r)}；报备人：${r.by}（${r.byRole}）；提交时刻：${r.at}。请在提交后 ${REPORT_ASSESS_LIMIT_MIN} 分钟内给出评估结论（升级 / 不升级）。`,
     });
   }
 
   /**
-   * 分派 / 改派（930 §5，O18）：把条目指给某个客诉专员，转「评估中」。
-   * 批量对每个 id 调一次即可，不另写批量函数——批量与单条规则完全一样，
-   * 分两套实现迟早只改一处。
+   * **领取**（业务第三轮拍板后池内唯一的认领动作）：客诉专员从待领取里自领一条，
+   * 转「评估中」并落在自己名下。
    *
-   * 🔴 **可改派**（O18 拍板）：已在「评估中」的也能重指给别人。
-   * 【为什么允许】评估人请假 / 离职 / 手上堆太多，这活儿必须能挪；
-   * 不允许改派的话唯一出路是"等它评完"，而它正卡在一个不在岗的人手上——
-   * 而这条队列现在卡的是**投诉立项**（※8a），堵不起。
-   * 【与「调剂」的分界】改派动的是**池内条目**（谁去评），调剂动的是**工单**（谁来办），
-   * 两件事、两个词，不要混（基线 ※29）。
-   *
-   * **已评估 / 已撤回的不能再派** —— 活已经干完或作废了。
-   */
-  function assign(id: string, assignee: string) {
-    const r = findById(id);
-    if (!r || !isOpen(r)) return false;
-    // 改派前先记住原承办人：赋值之后就取不到了
-    const prev = r.assignee;
-    r.status = '评估中';
-    r.assignee = assignee;
-    notifyAssigned(r);
-    // 改派时另发一条给**原承办人**（业务 2026-09-09 拍板）：
-    // 他手上的活被抽走了，不告诉他，他会一直以为这条还等着自己评。
-    // 只在"确实换了人"时发 —— 重复指给同一个人不算改派。
-    if (prev && prev !== assignee) {
-      notifyLog.emit({
-        ticketNo: r.ticketNo,
-        event: 'risk.report.reassigned',
-        kind: 'risk',
-        title: '风险报备已改派',
-        receivers: [`${prev}(客诉专员)`],
-        content: `${r.ticketNo} 的风险报备已改派给 ${assignee}，无需您再评估。报备原因：${reasonLine(r)}。`,
-      });
-    }
-    return true;
-  }
-
-  /**
-   * 自取（O18）：客诉专员从待分派里自领一条，转「评估中」并落在自己名下。
-   *
-   * 【为什么要有它】只留"督导指派"这一条路时，**督导就是单点**——他不在岗，
-   * 队列谁也动不了，而堵住的是投诉立项（※8a）。自取与指派**双轨**，
-   * 与基线「领取 / 指派」是同一副骨架（※15）：领取＝自取无主的，指派＝派给指定的人。
-   *
-   * **只能自领待分派的**：已在别人名下的要换人走改派，不是自己伸手拿。
+   * **只能领还没人认领的那一批**：已在别人名下的不给伸手拿——那不是"领取"，
+   * 那是把别人手上正在办的活抽走，而分派 / 改派整套本轮已经取消。
    */
   function claim(id: string, assignee: string) {
     const r = findById(id);
@@ -264,15 +240,14 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
     r.status = '评估中';
     r.assignee = assignee;
     reportStore.assessArrivalTicket = r.ticketNo;
-    // 领取的收件人是自己：留痕比"他自己知道"重要 —— 这条通知同时是
-    // 「这单何时、被谁接走」的凭据，工单页的通知记录里查得到
+    // 领取的收件人是自己：留痕比"他自己知道"重要，见 notifyAssigned
     notifyAssigned(r);
     return true;
   }
 
   /**
    * 评估：一条条目最多一条评估记录，**提交即固化不可改**（§9 规则 22）。
-   * **必须先分派**——没人认领的条目谈不上"谁给的结论"。
+   * **必须先有人领**——没人认领的条目谈不上"谁给的结论"。
    */
   function assess(id: string, assessment: ReportAssessment) {
     const r = findById(id);
@@ -281,22 +256,23 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
     r.assessment = assessment;
     /*
      * 结论发回**报备人** —— 他报上来之后就再没有别的出口知道结果：
-     * 「不升级」时他要按反馈意见继续办这张单，「接管」时他要知道单子已经不归他了。
+     * 「不升级」时他要按反馈意见继续办这张单，「升级」时他要知道单子已经不归他了。
      *
      * A 线自动入池的条目报备人是「系统」，这一类解析为空（O23）：
      * 这时没有别的收件人类型，整条不发 —— 不是丢消息，是本来就没有人在等这个结论。
      */
-    const takeOver = assessment.decision === '接管';
-    const tail = takeOver
-      ? `本单已由客诉专员接管，派生投诉工单 ${assessment.escalatedToNo ?? '待生成'}。接管说明：${asSentence(assessment.advice)}`
+    const decision = normalizeDecision(assessment.decision);
+    const escalate = decision === '升级';
+    const tail = escalate
+      ? `本单已升级为投诉工单 ${assessment.escalatedToNo ?? '待生成'}，由客诉专员承接。升级说明：${asSentence(assessment.advice)}`
       : `反馈意见：${asSentence(assessment.advice)}`;
     notifyLog.emit({
       ticketNo: r.ticketNo,
       event: 'risk.report.assessed',
       kind: 'risk',
-      title: takeOver ? '风险报备评估结论 · 接管' : '风险报备评估结论 · 不升级',
+      title: escalate ? '风险报备评估结论 · 升级' : '风险报备评估结论 · 不升级',
       receivers: [reporterReceiver(r)],
-      content: `${r.ticketNo} 的风险报备已完成评估，结论：${assessment.decision}。${tail}评估人：${assessment.by}（${assessment.byRole}）· ${assessment.at}。`,
+      content: `${r.ticketNo} 的风险报备已完成评估，结论：${decision}。${tail}评估人：${assessment.by}（${assessment.byRole}）· ${assessment.at}。`,
     });
   }
 
@@ -355,6 +331,16 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
   function recordTag(entryId: string, input: RiskTagInput) {
     return queue.recordTag(entryId, input);
   }
+  /**
+   * 按 id 取 **A 线条目本体**（不是池行）。
+   * 【为什么不复用上面的 `findById`】那一个返回的是两条线的并集形状 `RiskPoolItem`，
+   * 上面**没有 `tag`** 的完整类型信息（`tag` 在并集里是可选字段，B 线恒空）。
+   * 打标弹窗要读现行结论、要判首次还是二次修改，拿到的必须是 A 线自己的模型；
+   * 池行喂进去的话，B 线的报备单也能被送进一个它根本不走的打标流程。
+   */
+  function queueEntryOf(entryId: string) {
+    return queue.findById(entryId);
+  }
   /** 按工单号打标（打标弹窗从命中侧点开，手上只有单号） */
   function recordTagFor(ticketNo: string, input: RiskTagInput) {
     return queue.recordTagFor(ticketNo, input);
@@ -395,7 +381,7 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
   return {
     /**
      * ⚠️ 别名：池内全部条目。`reports` 这个名字是拆分前留下的
-     * （「接管」派生新单号时要在两条线已用过的号里取最大值 +1，扫的就是这一份）。
+     * （「升级」派生新单号时要在两条线已用过的号里取最大值 +1，扫的就是这一份）。
      */
     reports: items,
     items,
@@ -416,7 +402,6 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
     decisionCounts,
     waitedMinutes,
     isOverdue,
-    assign,
     claim,
     assess,
     submit,
@@ -424,6 +409,7 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
     recordVerify,
     recordTag,
     recordTagFor,
+    queueEntryOf,
     tagHistoryOf,
     monitoringEntries,
     pooledEntries,

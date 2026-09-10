@@ -1,11 +1,16 @@
 <script setup lang="ts">
 // 风险监控 —— 从《【915】运营监控大盘》模块四拆出独立立项（D7a）
 //
-// 【一期范围】仅支持风险词命中；系统不做双轨交叉定级，打标时由人填风险等级 + 命中判定。
-//   ① 识别 —— 关键字（及后续语义算子）命中风险词即产生命中记录
-//   ② 打标 —— 核实「成立/误报」并标注高/中/低危（默认沿用词表预设，可改）
-//   ③ 下游 —— 高危且成立后给「去管控」入口（基线 ※27，人点、系统不自动管控）
-//   ④ 词表改进 —— 命中判定回填规则准确率
+// 【本页现在的主线：漏斗】（业务第三轮拍板）
+//   ① 识别 —— 三类自动识别（预警词命中 / 投诉单 / 重要紧急）产生**监控条目**
+//   ② 打标 —— 对条目四选一：高 / 中 / 低 / 无风险。**打标是入池门槛**
+//   ③ 分流 —— 低/中/高 进风险工单池等评估；无风险落「已标记无风险」，不进池
+//   ④ 评估 —— 池内条目二选一：升级 / 不升级（升级只指转投诉单，不含升三线）
+//   ⑤ 下游 —— 高危给「去管控」入口（基线 ※27，人点、系统不自动管控）
+//
+// 【命中记录这一层还在，但退到台账】风险词命中是**证据**不是工作项：一张单可以被三条词命中，
+// 而人要判的始终是"这张单有没有风险"。故日常工作面是条目（实时监控页签），
+// 命中记录留在「命中台账」页签供事后点查与核实，词表准确率仍由那里回填。
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { DatePicker, message } from 'ant-design-vue';
@@ -24,19 +29,26 @@ import { useRiskTagStore, type RiskTagEntry } from '@/stores/riskTags';
 // 池是两条线（A 线自动入池 / B 线二线报备）合并后的那一个工作面，故读的是合并层 riskPool；
 // 枚举与时限等两线共用的口径在 riskShared，两条线各自的模型在各自的 store 里。
 import { useRiskPoolStore, type RiskPoolItem } from '@/stores/riskPool';
+import type { RiskQueueEntry } from '@/stores/riskQueue';
 import {
   ASSESS_DECISIONS,
   MONITOR_SOURCES,
+  NO_RISK,
+  QUEUE_SOURCES,
+  RISK_TAG_RESULTS,
+  isPoolLevel,
   isVerifyMonitorSource,
+  normalizeDecision,
   REPORT_ASSESS_LIMIT_MIN,
   type AssessDecision,
   type MonitorSource,
+  type RiskTagResult,
 } from '@/stores/riskShared';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
 import { RISK_TAG_ROLES, RISK_WORD_MAINTAIN_ROLES } from '@/config/roles';
 import { RISK_LEVELS, riskLevelText } from '@/config/risk';
 import { TICKETS } from '@/mock/tickets';
-import { STATUS_GROUP, type Ticket } from '@/views/tickets/types/ticket';
+import { STATUS_GROUP, resolveTicketGroupNames, type Ticket } from '@/views/tickets/types/ticket';
 import { getOpsScopeSelectGroups, type OpsScope } from '@/mock/opsMonitor';
 import {
   RISK_LEVEL_STYLE,
@@ -69,44 +81,50 @@ const riskTags = useRiskTagStore();
 // ---- 监控范围：固定全中心，页内不提供范围切换（筛查条内可另选班组） ----
 //
 // 【清单的两层选择】视图（看哪一批）× 视图内条件（这批里筛哪些），两层各归其位。
-// 视图回答的是「看待核实的、还是已核实的」，视图内条件回答的是「这批里挑等级 / 挑核实结果」。
+// 先选批（页签），再筛条件（chip / 查询条）——本页四个页签、每个页签内部各自的 chip 行，
+// 从上到下就是这两层。
 //
-// 【为什么只有一个状态变量】这里一度并存两个：上方 KPI 卡驱动的「域」（全部/待核实/已核实）
-// 与清单卡头驱动的「页签」（实时监控/手动筛查/已核实），两者只做了部分同步。
-// 后果是页签标签与清单内容当场对不上——点 KPI「发现 19」把域切成全部、页签却停在实时监控，
-// 于是标签写着「实时监控 15」、表里躺着 19 行。**一块屏上同一件事只能有一个真源**，
-// 两套状态机不管同步得多勤，都会在某条路径上分叉；故合并成 listView 这一个。
-//
-// 【为什么取消「全部」域】业务已拍板。"待核实 + 已核实"混在一屏，人既不能照着它干活
-// （里面一半是干完的），也不能拿它交代成果（里面一半还没判）；而它偏偏又是等级 chip
-// 唯一需要变口径的场合——chip 底表得随域在"全部"与"待核实"之间跳。
-// 取消之后，chip 底表恒为待核实，数字不再有两个口径。
-//
-// 【为什么核实结果不是一个视图】成立/误报和等级一样，都是**在已核实这批里再收窄**，
-// 与视图不是一个层级。把它摆成视图，会让人以为点「确认是风险」是和点「高危」平级的动作，
-// 实则前者换了整批数据、后者只是筛。降到台账查询条里当一个筛选项后，
-// 层级关系就直白了：先选批（页签），再筛条件（chip / 查询条）。
-/** 清单主视图：实时监控（待核实）/ 手动筛查 / 已核实 —— 页签与两张可点 KPI 卡同一个状态 */
+// 【为什么只有一个状态变量】这里一度并存两个：上方 KPI 卡驱动的「域」与清单卡头驱动的「页签」，
+// 两者只做了部分同步。后果是页签标签与清单内容当场对不上——标签写着一个数、表里躺着另一批。
+// **一块屏上同一件事只能有一个真源**，两套状态机不管同步得多勤，都会在某条路径上分叉；
+// 故合并成 listView 这一个。本文件后面每一处"chip 上的数字取过筛后的行数"都是这条的推论。
 /**
- * 第四个视图 `report` ＝ **风险工单池**（《【930】》§5，2026-09-09 第二轮拍板 N6）。
+ * 四个页签，**三个分母**：
+ *   · `realtime` 实时监控 —— **监控条目**（A 线）。本轮从"命中维度"改成"条目维度"，见 `QueueView`；
+ *   · `scan`     手动筛查 —— 风险词命中记录（拿条件去扫存量，产出待并入的新命中）；
+ *   · `judged`   命中台账 —— 风险词命中记录（事后点查 + 核实打标，词表准确率由它回填）；
+ *   · `report`   风险工单池 —— **池行**（A 线打标进池的条目 + B 线报备单，N6 合一队）。
  *
- * 它与前三个的分母不同：前三个装的是**风险词命中记录**，它装的是**队列条目**
- * （五类监控来源合一队：关键词触发 / 全量投诉 / 紧急重要 / VIP客户 / 二线报备）。
- * 之所以仍并进同一个 `listView` 而不另起一个状态变量，是本文件开头那条教训的直接应用——
- * **一块屏上同一件事只能有一个真源**；两套状态机并存时页签标签与表格内容当场对不上。
+ * 🔴 **三个分母两两不可相加**：一张单可以被三条词命中、也可以既有条目又有报备。
+ * 每一处并排摆出的数字都在 title 里写明自己的分母，界面上不做互校、不相减。
  *
- * 【为什么变量名仍叫 report】改名要动本文件几十处引用，而并行还有两路在改别的文件；
+ * 【为什么变量名仍叫 report】改名要动本文件几十处引用，而并行还有别的路在改别的文件；
  * 名字与页签标题的偏差在这条注释里说清即可，静默漏改一处取到 undefined 的代价大得多。
  */
 type ListView = 'realtime' | 'scan' | 'judged' | 'report';
-// 视图内的等级条件，只在实时监控视图生效。
-// 🔴 原先另有一个 'pending'（高危待核），它与 '高' **筛出的是同一批数据**——
-// 实时监控视图本身已排除已核实的，「高危」在这里就是「高危待核」。
-// 那个 chip 是「打标即出队」改动前的遗留（当时"高危"含已核实的，两者才有别），
-// 2026-08-26 删除，红色告警态与深链 ?pending=1 一并并入 '高'。
-type GradeFilter = 'all' | RiskLevel;
-/** 清单唯一的视图状态：页签、KPI 卡、成效卡的核实结果按钮全读写它 */
+/** 清单唯一的视图状态：页签与可点 KPI 卡全读写它 */
 const listView = ref<ListView>('realtime');
+
+/**
+ * **实时监控页签的三视图**（业务第三轮拍板 · 漏斗）。装的是 A 线**条目**，不是命中记录。
+ *
+ * 🔴 **本轮从"命中维度"改成"条目维度"**。旧口径下这个页签切的是「待核实 / 已核实」的
+ * **风险词命中**，可人要判的从来不是"这条词捞得准不准"，而是"**这张单有没有风险**"——
+ * 一张单被三条词命中就要判三次，三次还可能判出三个不同的等级，池子里那一条到底算几级
+ * 就没人答得上来。改成条目维度之后，一条条目一个结论，漏斗的三段在页签里一一对应：
+ *
+ * ```
+ *   待打标（monitoring）──低/中/高──▶ 已入池（pooled）──▶ 风险工单池页签接着往下走
+ *                       └─无风险────▶ 已标记无风险（noRisk）
+ * ```
+ *
+ * 🔴 **「已标记无风险」不是回收站**：它是投诉督导核查**漏标误判**的唯一容器 ——
+ * 判错的那一条不会再出现在任何待办里，不给它一个看得见的去处，
+ * "有没有人把该管的判成了没风险"这个问题在整个系统里没有一处答得了。
+ * 故这一视图给「修正」入口、且默认与另两个视图平级摆在同一排，不折叠、不藏。
+ */
+type QueueView = 'monitoring' | 'pooled' | 'noRisk';
+const queueView = ref<QueueView>('monitoring');
 
 // ==== 风险工单池（《【930】》§5，2026-09-09 第二轮拍板 N4 / N6 / N7 / O13 / O14）====
 //
@@ -117,31 +135,29 @@ const listView = ref<ListView>('realtime');
 // **条目**，不是一批工单。
 //
 // 沿用 O13 的口径：915 §1.1 的风险定义**一字不动**（已经是投诉的叫事实、不叫风险）。
-// 可这个池子里躺着全量投诉、VIP 客户这类压根不满足"有概率演变为投诉"的条目——
+// 可这个池子里躺着投诉单、重要紧急这类压根不满足"有概率演变为投诉"的条目——
 // 池名说的是"风险侧要盯的一池单"，比 §1.1 那个风险定义宽。
 // 两个词各管各的，才不会在同一册里打架。
 //
-// ⚠️ **已知代价（业务已接受，O14）**：一条风险词命中会在「实时监控」与「风险工单池」
-// **两个页签里各出现一次**，同一条两处都能动——**这是有意为之**，不是漏改：
-//   · 实时监控 ＝ 核实打标（915 的能力，一字不改：成立/误报 + 定级 + 词表准确率回填）；
-//   · 风险工单池 ＝ 分派 + 按来源分流处理（来源为「关键词触发」的条目点「核实」，
-//     直接落回上面那同一个打标弹窗，两处走的是同一份结论，不会各判一次）。
-// 备选是把 915 三个页签吞进一个"风险队列"，那等于拆掉 915（N7）；业务选了保留重复。
+// 🔴 **O14 那条"同一条在两个页签各出现一次"的已知代价，本轮随漏斗消失了**：
+// 打标成了入池门槛之后，一条条目在同一时刻只可能落在**一个**视图里——
+// 还没打标的在实时监控·待打标，打完低/中/高的在实时监控·已入池（＝风险工单池里那一半），
+// 判无风险的在实时监控·已标记无风险。两个页签看的是同一条链的前后两段，不再是同一条的两份副本。
 const reportStore = useRiskPoolStore();
-/** 接管派生的新投诉单落这里，工单页解析时兜在静态数据源之后 */
+/** 「升级」派生的新投诉单落这里，工单页解析时兜在静态数据源之后 */
 const derivedTickets = useDerivedTicketStore();
 
 /*
  * ==== 工单存量（页头第二块）====
  *
  * 🔴 **它的分母是「工单」，另外两块都不是**，三块并排最容易被读成一路数：
- *   · 监控数据 ＝ 风险词**命中记录**
+ *   · 监控数据 ＝ **监控条目**（A 线，含每日新增与打标漏斗三段）
  *   · 工单存量 ＝ 工单系统里的**在办工单**          ← 本块
- *   · 风险评估 ＝ **风险工单池**里走评估的四类来源的**队列条目**
- * 还有一处同屏撞名要盯住：页签「风险工单池」的角标数的是**队列条目**，
+ *   · 风险评估 ＝ **风险工单池**里的**池行**（A 线打标进池的条目 + B 线报备单）
+ * 还有一处同屏撞名要盯住：页签「风险工单池」的角标数的是**池行**，
  * 本块「工单存量」数的是**工单**——两者同屏并列，但不是一回事，不可相加、不互校。
- * 尤其「等级分布」：监控数据那栏的「确认是风险 高3·中1·低0」数的是**命中**，
- * 本块的高/中/低数的是**工单**——一张单被三条词命中且都成立，那边计 3、这边计 1。
+ * 「等级分布」尤其要盯：本块的高/中/低是**工单级风险等级**（由命中取最高派生），
+ * 与左栏打标漏斗里的等级**不同源**——那边是人对条目打的标，这边是命中推出来的。
  * 两个数天生不等，界面上不相减、不互校，各自 title 写明分母。
  *
  * 【为什么取在办、不取全库】这三个数对应的正是 §5.1 里三类**自动入队**的监控来源，
@@ -184,20 +200,25 @@ const ticketGradeDist = computed(() => {
   };
 });
 /**
- * 视图内三态（N4）：待分派 / 评估中 / 已评估。
+ * 视图内三态（N4）：待领取 / 评估中 / 已评估。
  *
- * **不做成三个页签**：它们是同一批队列条目的三个阶段，属**视图内条件**而非另一批数据；
- * 摆成页签还会与旁边的「已核实」（命中，另一个分母）挨着被读串 —— 与本文件开头
+ * ⚠️ `unassigned` 这个键与落库值「待分派」都是**分派时代留下的词**。分派 / 改派 /
+ * 批量分派整套已随第三轮拍板取消，这一档现在的含义就是"**还没人领**"，故界面一律写
+ * 「待领取」。键与落库值不动：`ReportStatus` 是两条线共用的，B 线本轮不解冻，
+ * 为了换个词把跨线的状态枚举改掉，代价远大于在这里说清楚。
+ *
+ * **不做成三个页签**：它们是同一批池行的三个阶段，属**视图内条件**而非另一批数据；
+ * 摆成页签还会与旁边的「命中台账」（命中，另一个分母）挨着被读串 —— 与本文件开头
  * 「先选批（页签），再筛条件」的分层是同一条规矩。
  */
 type ReportView = 'unassigned' | 'assigning' | 'assessed';
 const reportView = ref<ReportView>('unassigned');
 
 /**
- * 监控来源筛选（N6：五类合一个队列，来源是条目的一个属性、不是另一批数据）。
+ * 监控来源筛选（N6：来源是池行的一个属性、不是另一批数据）。
  *
  * 【为什么跨三态保留】来源是条目的固有属性，不随阶段变。切态时清掉它，
- * 人在「待分派 · VIP客户」筛完切到「评估中」会看到全部来源，只会以为筛选失灵。
+ * 人在「待领取 · 投诉单」筛完切到「评估中」会看到全部来源，只会以为筛选失灵。
  * 反过来超时/决策那两个收窄是**阶段专属**的，切态时必须摘掉，见 setReportView。
  */
 const sourceFilter = ref<MonitorSource | 'all'>('all');
@@ -205,7 +226,7 @@ const sourceFilter = ref<MonitorSource | 'all'>('all');
 const sourceSort = ref<'none' | 'asc' | 'desc'>('none');
 /** 排序序位取枚举的声明次序，不按字面量排——中文按码点排出来的次序读不出任何业务含义 */
 const SOURCE_ORDER = new Map<MonitorSource, number>(MONITOR_SOURCES.map((s, i) => [s, i]));
-/** 待分派/评估中视图内的收窄：只看超时未评的（由「超时未评」卡下钻置上）。**横跨两个在队态** */
+/** 待领取/评估中视图内的收窄：只看超时未评的（由「超时未评」卡下钻置上）。**横跨两个在队态** */
 const onlyOverdue = ref(false);
 /** 已评估视图内的收窄：只看某一个决策（由「今日决策」两枚按钮下钻置上） */
 const decisionFilter = ref<AssessDecision | 'all'>('all');
@@ -243,11 +264,11 @@ function openBase(v: 'unassigned' | 'assigning') {
   return onlyOverdue.value ? rows.filter((r) => reportStore.isOverdue(r)) : rows;
 }
 
-/** 待分派：投诉督导要分的就是这一批 */
+/** 待领取：还没人领的那一批，客诉专员在这里自领 */
 const reportUnassignedRows = computed(
   () => sortBySource(bySource(openBase('unassigned')), (a, b) => a.at.localeCompare(b.at)),
 );
-/** 评估中：已分派给人、等结论 */
+/** 评估中：已被人领走、等结论 */
 const reportAssigningRows = computed(
   () => sortBySource(bySource(openBase('assigning')), (a, b) => a.at.localeCompare(b.at)),
 );
@@ -255,8 +276,8 @@ const reportAssigningRows = computed(
 /**
  * 已评估视图**默认只看今日**（业务拍板 2026-09-09）。
  *
- * 【为什么必须限今日】上方「评估决策」四枚卡按 **自然日** 算（PRD §7 B4 窗口＝自然日，
- * 且 `B3 = B4 两档之和` 这条恒等式靠它成立）。若列表给全量，点「接管 1」下钻，
+ * 【为什么必须限今日】上方「评估决策」两枚卡按 **自然日** 算（PRD §7 B4 窗口＝自然日，
+ * 且 `B3 = B4 两档之和` 这条恒等式靠它成立）。若列表给全量，点「升级 1」下钻，
  * 卡是今日数、表是全量表，**同一块屏上两个数对不上** —— 与本文件开头那条
  * 「标签写着一个数、表里躺着另一批」是同一个坑。要看历史，把这个开关关掉。
  */
@@ -275,7 +296,11 @@ const assessedBase = computed(() => {
     rows = rows.filter((r) => (r.assessment?.at ?? '').startsWith(today));
   }
   if (decisionFilter.value !== 'all') {
-    rows = rows.filter((r) => r.assessment?.decision === decisionFilter.value);
+    // 归一化后再比：B 线的种子与它自己那份缓存里仍有旧词「接管」，
+    // 直接比字面量的话，那一条在「升级」筛选下会凭空消失（见 riskShared.normalizeDecision）
+    rows = rows.filter(
+      (r) => r.assessment && normalizeDecision(r.assessment.decision) === decisionFilter.value,
+    );
   }
   return rows;
 });
@@ -292,8 +317,8 @@ const reportAssessedRows = computed(
 
 /**
  * 来源 chip 那一排的底表 ＝ 当前态在**除来源之外**的全部条件下的行。
- * 【为什么要把来源摘出去】让来源筛选影响自己那一排的数字，选中「VIP客户」之后
- * 其余四枚全变 0，人再也看不出该切到哪一枚——筛选器把自己筛没了。
+ * 【为什么要把来源摘出去】让来源筛选影响自己那一排的数字，选中「投诉单」之后
+ * 其余几枚全变 0，人再也看不出该切到哪一枚——筛选器把自己筛没了。
  */
 const reportSourceBase = computed(() => (
   reportView.value === 'assessed' ? assessedBase.value : openBase(reportView.value)
@@ -310,7 +335,7 @@ const reportRows = computed(() => {
 
 /**
  * 切视图内三态：把**阶段专属**的收窄条件摘掉，来源筛选保留（它是条目属性，跨阶段成立）。
- * 「超时未评」横跨待分派与评估中，故在这两态之间互切时不摘；进已评估才摘。
+ * 「超时未评」横跨待领取与评估中，故在这两态之间互切时不摘；进已评估才摘。
  */
 function setReportView(v: ReportView) {
   if (v === reportView.value) return;
@@ -318,8 +343,6 @@ function setReportView(v: ReportView) {
   reportView.value = v;
   if (v === 'assessed') onlyOverdue.value = false;
   else if (wasAssessed) decisionFilter.value = 'all';
-  // 勾选不能跨态残留：勾了三条待分派再切到评估中，批量分派会对一批看不见的行动手。
-  clearReportPick();
 }
 
 /**
@@ -370,20 +393,20 @@ const assessValid = computed(() => !!assessDecision.value && !!assessAdvice.valu
 
 /** 二选一决策各自必填文本的标签 */
 const assessAdviceLabel = computed(() =>
-  assessDecision.value === '接管' ? '接管说明' : '反馈意见',
+  assessDecision.value === '升级' ? '升级说明' : '反馈意见',
 );
 const assessAdvicePlaceholder = computed(() => {
   switch (assessDecision.value) {
     case '不升级': return '告知报备人为什么不升级、可以怎么继续处理…';
-    case '接管': return '写清接管理由与后续处置安排…';
+    case '升级': return '写清升级理由与后续处置安排…';
     default: return '';
   }
 });
 
 function openAssess(r: RiskPoolItem) {
-  // 没分派过的条目谈不上"谁给的结论"（store 的 assess 也会拦），
+  // 没人领过的条目谈不上"谁给的结论"（store 的 assess 也会拦），
   // 但拦在这里才说得出为什么——按钮本就只对「评估中」渲染，这道是兜底。
-  if (r.status !== '评估中') { message.warning('该条目还没有分派，请先分派给客诉专员再评估'); return; }
+  if (r.status !== '评估中') { message.warning('该条目还没有人领取，请先领取再评估'); return; }
   assessTarget.value = r;
   assessDecision.value = '';
   assessAdvice.value = '';
@@ -392,70 +415,67 @@ function openAssess(r: RiskPoolItem) {
 }
 
 /**
- * 按来源分流（N7：两套结论共存）。
- *
- * 「关键词触发」的条目是**风险词命中在队列里的投影**，它要的结论是 915 的
- * 「成立/误报 + 定级」，不是「不升级/接管」——报备侧的二选一答不了"这次命中准不准"，
- * 拿它去结掉一条命中，词表准确率就永远学不到东西。故这一路直接落回同一个打标弹窗，
- * **915 的能力一字不改**。其余四类来源走评估。
+ * 这一行是不是**预警词命中**捞进来的。
+ * 用处只剩一个：把命中原话摆出来（另两类来源没有原话可摆）。
+ * 🔴 **它已经不再决定这一行下一步做什么** —— 三类来源都要打标才进池，见 `needsVerify`。
  */
 function isKeywordRow(r: RiskPoolItem) {
   return isVerifyMonitorSource(r.source);
 }
 
 /**
- * 这一行下一步该做什么（方案 C）：**核实成立的关键词条目走评估，不再走核实**。
+ * 这一行下一步该做什么。**判据是有没有 `tag`，不是来源、也不是 `verify.verdict`**。
  *
- * 判据是 `verify.verdict === '成立'` 而不是来源：核实答完"这次命中准不准"之后，
- * 成立的条目退回队列要答的是"升不升级"，那是评估二选一的活。仍按来源出「核实」的话，
- * 点开的是同一个打标弹窗、里面那条命中已经判过，只会落到"已全部核实"的提示上——
- * 条目就永远卡在队列里，而这正是方案 C 要修的那条断链。
+ * 【为什么换判据】漏斗改版之后**打标已经是进池的前置门槛**：能出现在池子里的 A 线条目
+ * 必然带着一个低/中/高的 `tag`，B 线的报备单不走打标这道门。故本函数在今天的数据上
+ * **恒为 false**，池内一律出「评估」按钮。留着它不删，是因为"进了池还没打标"这件事
+ * 在数据上仍然构造得出来（旧缓存、或将来某条新入口漏了打标那一步），
+ * 那时这一行要能自己说出"缺的是打标"，而不是把人送进一个填不出结论的评估弹窗。
+ *
+ * 旧判据 `verify.verdict === '成立'` 已作废：`verify` 是由 `tag` 反向派生的只读投影
+ * （见 `stores/riskQueue.ts`），拿投影当判据等于绕一圈再问同一个问题。
  */
 function needsVerify(r: RiskPoolItem) {
-  return isKeywordRow(r) && r.verify?.verdict !== '成立';
+  return isKeywordRow(r) && !r.tag;
 }
 
-function openVerifyForReport(r: RiskPoolItem) {
-  const hits = allHits.value.filter((h) => h.ticketNo === r.ticketNo);
-  if (!hits.length) {
-    message.warning(`${r.ticketNo} 当前没有风险词命中记录，无法核实打标`);
+/**
+ * 池内那条罕见的"没打标却进了池"如何收场：把它送回**条目打标弹窗**四选一。
+ * 🔴 送回的是条目的打标，**不是命中核实** —— 入池门槛问的是"这张单有没有风险、多大"，
+ * 而命中核实问的是"这次命中准不准"，后者答不了前者（见 `riskShared.ReportVerify`）。
+ */
+function openTagForReport(r: RiskPoolItem) {
+  const entry = reportStore.queueEntryOf(r.id);
+  if (!entry) {
+    message.warning(`${r.ticketNo} 这一条不是自动识别的监控条目，不走风险打标`);
     return;
   }
-  const open = hits.filter((h) => !isJudged(h));
-  if (!open.length) {
-    message.info(`${r.ticketNo} 的风险词命中已全部核实，可在「已核实」页签查看或修正`);
-    return;
-  }
-  // 一张单可能被多条词先后命中：取**最早未核实**的那条，与队列"等最久的先办"同一口径
-  openTag([...open].sort((a, b) => a.when.localeCompare(b.when))[0]);
+  openEntryTag(entry);
 }
 
-/** 队列行的处理动作：来源 + 有没有核实成立，共同决定走哪一套结论 */
+/** 池行的处理动作：有 tag 的走评估，没有的先补打标 */
 function handleReportRow(r: RiskPoolItem) {
-  if (needsVerify(r)) openVerifyForReport(r);
+  if (needsVerify(r)) openTagForReport(r);
   else openAssess(r);
 }
 
-// ---- 分派（N4 / 930 §5）----
-/**
- * 分派权限 ＝ **投诉督导**（D6 里"风险组"的统筹侧）+ 管理员。
- *
- * 【为什么不复用 RISK_TAG_ROLES】那一组含客诉专员，而他正是被分派的人；
- * 让他自己给自己派活，等于把 D7「谁抢到谁评」换个说法又做了一遍，N4 要的恰恰是有人统筹。
- * 【为什么不复用 RISK_WORD_MAINTAIN_ROLES】取值眼下恰好相同纯属巧合，它答的是
- * "谁能改词表"；哪天词表权限收紧，分派会被顺手一起改坏。故本页单列一份。
- */
-const REPORT_ASSIGN_ROLES: string[] = [
-  'complaint-supervisor', 'system-admin', 'ops-admin', 'tenant-admin',
-];
-const canAssign = computed(() => REPORT_ASSIGN_ROLES.includes(user.roleKey));
+// ---- 领取（池内唯一的认领动作）----
+//
+// 🔴 **分派 / 改派 / 批量分派三个动作整套取消**（业务第三轮拍板），本页因此少了一个弹窗、
+// 一个批量菜单项与一列勾选框。
+// 【为什么取消】① 指派让**投诉督导变成队列的单点**——他不在岗，这条队列谁也动不了，
+// 而它卡的是投诉立项（基线 ※8a）；② 督导本轮已去权，只看数据、不出动作，
+// 留一个只有他点得动的动作等于把队列锁在一个不再管这件事的人手上。
+// 改成"谁有空谁领"之后，吞吐不再取决于某一个人在不在。
+// 【与工单工作台「风险报备池」同一副骨架】那一页（RiskReportPoolPanel）也只有领取，
+// 两个池子的动作集必须一致——同一条报备在两处能做的事不一样，人只会以为其中一处坏了。
 
 /**
- * 自取权 ＝ **客诉专员**（被分派的那一方，O18）。
+ * 领取权 ＝ **客诉专员**（评估这活儿本来就归他）+ 管理员兜底。
  *
- * 【为什么与分派权分开列】分派是"派给别人"，自取是"领给自己"，两件事两批人：
- * 督导有分派权但没有自取的必要（他不评），客诉专员反过来。
- * 管理员两边都给，与本表其余动作的兜底口径一致。
+ * 🔴 **投诉督导不在其中**：他在池子里**可见但不出动作**（本轮去权）。
+ * 【为什么仍让他看见】他要看的是"队列有没有堆起来、有没有超时未评"——那是督导的活；
+ * 而"这一条谁去评"已经不再经他手。看得见、点不动，正是这条口径在界面上的样子。
  */
 const REPORT_CLAIM_ROLES: string[] = [
   'complaint-handler', 'system-admin', 'ops-admin', 'tenant-admin',
@@ -466,86 +486,22 @@ const canClaim = computed(() => REPORT_CLAIM_ROLES.includes(user.roleKey));
 function doClaim(r: RiskPoolItem) {
   if (!canClaim.value) { message.warning('只有客诉专员可以领取风险工单池的单'); return; }
   if (!reportStore.claim(r.id, user.name)) {
-    // 唯一会落空的情形：别人刚刚把它分派 / 领取走了，本页还没重算
-    message.warning('这一条刚被分派走了，请刷新后再看');
+    // 唯一会落空的情形：别人刚刚把它领走了，本页还没重算
+    message.warning('这一条刚被别人领走了，请刷新后再看');
     return;
   }
   message.success(`已领取 ${r.ticketNo}，正在打开工单详情…`);
   router.push({ path: `/tickets/${r.ticketNo}`, query: { tab: 'risk' } });
 }
-/** 可被分派的客诉专员。与预置数据里的承办人同名，翻队列时看到的是同一批人 */
-const ASSIGN_CANDIDATES = ['吴投诉', '李文萍'];
 
-const assignOpen = ref(false);
-const assignTargets = ref<RiskPoolItem[]>([]);
-const assignTo = ref('');
-const assignTried = ref(false);
-const missAssignTo = computed(() => assignTried.value && !assignTo.value);
-
-function openAssign(rows: RiskPoolItem[]) {
-  if (!canAssign.value) { message.warning('只有投诉督导可以分派风险工单池的单'); return; }
-  // 🔴 **可改派**（O18 拍板）：待分派与评估中都能派。评估人请假 / 离职 / 手上堆太多时
-  // 这活儿必须能挪 —— 不许改派的话唯一出路是"等它评完"，而它正卡在不在岗的人手上，
-  // 且这条队列现在卡的是**投诉立项**（基线 ※8a），堵不起。
-  // 已评估 / 已撤回的滤掉：活已经干完或作废了。
-  const targets = rows.filter((r) => r.status === '待分派' || r.status === '评估中');
-  if (!targets.length) { message.warning('所选条目都已评估或已撤回，无法分派'); return; }
-  if (targets.length < rows.length) {
-    message.info(`其中 ${rows.length - targets.length} 条已被分派，本次只分派剩余 ${targets.length} 条`);
-  }
-  assignTargets.value = targets;
-  assignTo.value = '';
-  assignTried.value = false;
-  assignOpen.value = true;
-}
-
-function confirmAssign() {
-  assignTried.value = true;
-  // 主按钮不做 disabled：灰着不说为什么，人只能逐项试探。点了就校验、缺哪项在哪项下出红字。
-  if (!assignTo.value) return;
-  const done = assignTargets.value.filter((r) => reportStore.assign(r.id, assignTo.value)).length;
-  assignOpen.value = false;
-  clearReportPick();
-  if (!done) { message.warning('这些条目已不在待分派状态，本次没有改动'); return; }
-  // 报实际落下的条数而不是勾选数：两者不等时报勾选数就是句假话
-  message.success(`已分派 ${done} 条给 ${assignTo.value}，转「评估中」`);
-}
-
-// ---- 队列批量选择：沿用命中清单那一套（hit-cb 勾选格 + 页签行的「批量操作」下拉）----
-const reportPicked = ref<Set<string>>(new Set());
-function toggleReportPick(id: string) {
-  const s = new Set(reportPicked.value);
-  if (s.has(id)) s.delete(id); else s.add(id);
-  reportPicked.value = s;
-}
-function clearReportPick() { reportPicked.value = new Set(); }
-const reportPickCount = computed(() => reportPicked.value.size);
-const reportAllPicked = computed(
-  () => pagedReportRows.value.length > 0 && pagedReportRows.value.every((r) => reportPicked.value.has(r.id)),
-);
-function toggleReportAll() {
-  const next = new Set(reportPicked.value);
-  if (reportAllPicked.value) pagedReportRows.value.forEach((r) => next.delete(r.id));
-  else pagedReportRows.value.forEach((r) => next.add(r.id));
-  reportPicked.value = next;
-}
 /**
- * 「待分派」与「评估中」两态给勾选——前者批量分派，后者**批量改派**（O18 放开改派后连带）。
- * 「已评估」不给：那一批没有任何可批量做的事，给了勾选框等于凭空多一个环节。
+ * 这一条能不能由**当前登录的人**给结论。
+ * 【为什么按人而不只按角色】评估结论是提交即固化的（§9 规则 22），
+ * 落款写的是承办人的名字；不是承办人却能点开提交，等于替别人签了字。
+ * 督导看得见这一列，但这里恒为 false ——「可见但不出动作」就是靠它落地的。
  */
-const showReportSelection = computed(
-  () => listView.value === 'report' && reportView.value !== 'assessed' && canAssign.value,
-);
-const reportBatchMenuOpen = ref(false);
-function pickReportBatchAction(action: 'assign' | 'clear') {
-  if (action === 'assign') {
-    if (!reportPickCount.value) return;
-    reportBatchMenuOpen.value = false;
-    openAssign(reportRows.value.filter((r) => reportPicked.value.has(r.id)));
-    return;
-  }
-  if (reportPickCount.value) clearReportPick();
-  reportBatchMenuOpen.value = false;
+function canAssessRow(r: RiskPoolItem) {
+  return canClaim.value && r.status === '评估中' && r.assignee === user.name;
 }
 
 /** 「本单另有」——风险词命中那一半。报备只挂非投诉单、命中多在投诉单，一期常为 0 */
@@ -560,23 +516,22 @@ const assessTargetHistory = computed(() => {
 });
 
 /**
- * 核实成立后退回队列的这一条，它凭什么被判有风险 —— 取本单**判为成立**的那条命中。
+ * 打标进池的这一条，它凭什么被判有风险 —— 取本单最近的一条**风险词命中原话**。
  *
- * 【为什么要把原话捞出来】队列条目的 `desc` 只有一句"沟通记录命中风险词，已自动纳入监控"，
+ * 【为什么要把原话捞出来】条目的 `desc` 只有一句"沟通记录命中风险词，已自动纳入实时监控"，
  * 说不出客户到底讲了什么。客诉专员要决定升不升级，得先看见那句话本身；
- * 只给「成立 · 高危」这个结论，他等于在替别人的判断背书。
+ * 只给「高危」这个结论，他等于在替别人的判断背书。
  *
- * 多条成立时取**最近核实**的那条：弹窗里只摆得下一句，摆监控最后一次判成立的那句。
+ * 🔴 **不再要求命中"已核实成立"**：打标已经改成对**条目**四选一，命中的成立/误报
+ * 不再是入池判据（见 `riskShared.ReportVerify`）。仍按成立筛的话，一条刚打完高危、
+ * 但底下那几条命中还没人单独核实的条目，弹窗里这一块会整块消失——
+ * 而它恰恰是这条条目被送来评估的全部理由。
+ * 多条时取**命中时刻最近**的那条：弹窗里只摆得下一句，摆最新的那句。
  */
 const assessTargetVerifiedHit = computed(() => {
   const t = assessTarget.value;
-  if (!t?.verify || t.verify.verdict !== '成立') return null;
-  const hits = riskTags
-    .hitsOfTicket(t.ticketNo)
-    .filter((h) => riskTags.verdictOf(h) === '成立')
-    .sort((a, b) =>
-      (riskTags.latestEntryOf(a)?.at ?? '').localeCompare(riskTags.latestEntryOf(b)?.at ?? ''),
-    );
+  if (!t?.tag || !isKeywordRow(t)) return null;
+  const hits = riskTags.hitsOfTicket(t.ticketNo).slice().sort((a, b) => a.when.localeCompare(b.when));
   return hits.length ? hits[hits.length - 1] : null;
 });
 
@@ -592,7 +547,7 @@ function downloadReportAttachment(name: string) {
 }
 
 /**
- * 「接管」派生出的新投诉单号（N2）。
+ * 「升级」派生出的新投诉单号（N2）。
  *
  * 走的是《【830】》已有的第一跳派生——原单落终态「已升级投诉」、整页只读 + 接管横幅、
  * 新单全量继承，**不新增动作、不新增状态**（基线 ※29）。故这里只负责给出新单的单号，
@@ -619,7 +574,7 @@ function nextEscalatedNo(): string {
 }
 
 /**
- * 「接管」按**原单类型**分流（O20）：
+ * 「升级」按**原单类型**分流（O20）：
  * - **非投诉单** → 走《【830】》第一跳派生，产出一张新投诉单；
  * - **投诉单** → 走基线 ※27「工单管控」，把这张单拿到客诉专员名下，**本单状态不变、不派生新单**。
  *
@@ -631,12 +586,15 @@ function isComplaintTicket(ticketNo: string) {
 }
 
 /**
- * 选「接管」时的提示行，按当前这条的原单类型给出真实去向。
+ * 选「升级」时的提示行，按当前这条的原单类型给出真实去向。
  *
- * 「此步不可撤销」并进这一行、**不另起一条常驻说明**：它只有在选中「接管」时才成立，
+ * 🔴 「升级」只指**转投诉单**，**不含升三线** —— 升三线是工单侧的技术升级，
+ * 与风险侧升不升投诉是两条路，同一个词底下混着两件事，人点之前不知道会发生什么。
+ *
+ * 「此步不可撤销」并进这一行、**不另起一条常驻说明**：它只有在选中「升级」时才成立，
  * 常驻的话选「不升级」也跟着显示，那时它是句噪音。
  */
-const takeoverHint = computed(() => {
+const escalateHint = computed(() => {
   const no = assessTarget.value?.ticketNo;
   if (no && isComplaintTicket(no)) {
     return '本单已是投诉单，提交后由你在工单上执行「工单管控」接手，本单状态不变、不派生新单。此步不可撤销';
@@ -649,8 +607,8 @@ function confirmAssess() {
   const target = assessTarget.value;
   if (!target || !assessValid.value || !assessDecision.value) return;
 
-  const takeover = assessDecision.value === '接管';
-  const derive = takeover && !isComplaintTicket(target.ticketNo);
+  const escalate = assessDecision.value === '升级';
+  const derive = escalate && !isComplaintTicket(target.ticketNo);
   const escalatedToNo = derive ? nextEscalatedNo() : undefined;
 
   /*
@@ -680,16 +638,14 @@ function confirmAssess() {
 
   assessOpen.value = false;
   if (escalatedToNo) {
-    message.success(`已接管，已派生投诉单 ${escalatedToNo}`);
-  } else if (takeover) {
-    message.success(`已接管 ${target.ticketNo}，请在工单上执行「工单管控」接手`);
+    message.success(`已升级，已派生投诉单 ${escalatedToNo}`);
+  } else if (escalate) {
+    message.success(`已升级 ${target.ticketNo}，请在工单上执行「工单管控」接手`);
   } else {
     message.success('已提交结论：不升级');
   }
 }
-/** 视图内的等级选择。大盘点「待打标」卡下钻时预置为高危 */
-const gradeFilter = ref<GradeFilter>(route.query.pending === '1' ? '高' : 'all');
-/** 已核实视图才需要台账查询条：只有这批记录会被事后点查 */
+/** 命中台账才需要查询条：只有这批记录会被事后点查 */
 const inLedger = computed(() => listView.value === 'judged');
 const scope = computed<OpsScope>(() => 'all');
 const scopeSelectGroups = getOpsScopeSelectGroups();
@@ -933,11 +889,11 @@ function onScanDateRangeChange(
 
 
 /**
- * 切视图。页签、KPI 卡、成效卡的核实结果按钮**全部走这里**，
+ * 切页签。页签、KPI 卡、页头每一处可点的数字**全部走这里**，
  * 保证"换一批数据"这件事只有一套语义：
- *   ① 进已核实视图时把查询条复位到默认 30 天窗口，视图内互切则保留已填条件；
- *   ② 等级一律复位——带着"高危"进新视图大概率直接空列表，人会误以为没数据。
- *   ③ 离开手动筛查时把**筛查结果态**清掉，见下。
+ *   ① 进命中台账时把查询条复位到默认 30 天窗口，视图内互切则保留已填条件；
+ *   ② 离开手动筛查时把**筛查结果态**清掉，见下；
+ *   ③ 单工单焦点与条目勾选都不跨页签留存，见下。
  */
 function setListView(v: ListView) {
   if (v === 'judged' && listView.value !== 'judged') resetLedgerFilter();
@@ -950,12 +906,11 @@ function setListView(v: ListView) {
   // 🔴 清的只是**尚未并入**的预览态。已点过「并入清单」的那些命中在 riskTags store 里，
   // 它们已经是清单的一部分（scanAdopted），与筛查结果态是两回事，一条都不动。
   if (v !== 'scan' && listView.value === 'scan') exitScanResult();
-  // 单工单焦点跨视图取数，切视图时若留着它，页签写着「已核实 5」而表里躺着别的一批
+  // 单工单焦点跨视图取数，切视图时若留着它，页签写着一个数而表里躺着别的一批
   clearTicketFocus();
-  // 队列勾选同理：离开风险工单池再回来，「批量操作」上还挂着一个数，人不知道那几条是哪几条
-  if (v !== 'report' && listView.value === 'report') clearReportPick();
+  // 条目勾选同理：离开实时监控再回来，「批量操作」上还挂着一个数，人不知道那几条是哪几条
+  if (v !== 'realtime' && listView.value === 'realtime') clearBulk();
   listView.value = v;
-  gradeFilter.value = 'all';
   if (v === 'scan') applyScanLive();
 }
 
@@ -1421,9 +1376,15 @@ function clearTicketFocus() {
   ticketFocus.value = null;
 }
 
-// ---- 台账查询 ----
-// 台账（已核实的记录）最主要的用法是**事后点查**：客户几个月后捅到 12315，
+// ---- 命中台账查询 ----
+// 台账（全部风险词命中记录）最主要的用法是**事后点查**：客户几个月后捅到 12315，
 // 要当场答出"当时发现了吗、谁核实的、判成什么"。只能翻不能查，等于答不出来。
+//
+// 🔴 **本轮底表从"已核实的"放宽成"全部命中"**，页签也随之从「已核实」改名「命中台账」。
+// 【为什么必须放宽】日常工作面已经改成条目漏斗（实时监控页签），命中不再是待办；
+// 底表若仍只收已核实的，**待核实的命中在整页里就没有任何入口** ——
+// 没人能再核实它们，词表准确率（本页唯一的规则改进回路）会永久停在当前这个数上。
+// 放宽之后「待核实」降为查询条里的一个取值，与成立 / 误报同层，行内动作照旧给「核实打标」。
 //
 // 【与手动筛查的区别】手动筛查是拿条件去扫**存量工单**产生新命中（发现），
 // 这里是在**已有命中记录**里回溯（查证）。两者形态像、目标反，故各自独立一套条件，不复用。
@@ -1431,10 +1392,11 @@ interface LedgerFilter {
   /** 工单号或客户名，模糊匹配任一 */
   keyword: string;
   /**
-   * 核实结果。它与 level 同层——都是在「已核实」这批里再收窄，
+   * 核实结果。它与 level 同层——都是在这批命中里再收窄，
    * 故摆在查询条第一位，而不是像早先那样单独占一个域。
+   * `'open'` ＝ 还没有人核实过的那一批，见本段上方说明。
    */
-  verdict: 'all' | HitVerdict;
+  verdict: 'all' | 'open' | HitVerdict;
   level: 'all' | RiskLevel;
   from: string;
   to: string;
@@ -1443,8 +1405,16 @@ interface LedgerFilter {
   words: string[];
   taggers: string[];
 }
-/** 默认窗口 30 天：台账是只增不减的永久记录，全量默认会让点查一开始就淹在历史里 */
-const LEDGER_WINDOW_DAYS = 30;
+/**
+ * 默认窗口：台账是只增不减的永久记录，**不能默认全量**——点查一开始就淹在历史里。
+ *
+ * 🔴 **从 30 天放宽到 90 天**。原因不是"30 天太短"这种口味问题，而是本轮改名之后
+ * 页签角标取的是**命中总数**：命中记录的时刻分布若整段落在窗口外，
+ * 屏幕上就会出现「命中台账 22」配一张 0 行的表 —— 正是本文件从头反对的那种
+ * "标签写着一个数、表里躺着另一批"。角标与默认窗口必须能对得上，
+ * 90 天既盖得住现有记录，又仍然是个有边界的窗口（要看更早的把它改宽，空态里写着怎么改）。
+ */
+const LEDGER_WINDOW_DAYS = 90;
 function defaultLedgerFilter(): LedgerFilter {
   return {
     keyword: '',
@@ -1466,7 +1436,7 @@ const ledgerDateRange = computed((): [Dayjs, Dayjs] | undefined => {
 });
 const ledgerRangePresets = computed(() => [
   { label: '近 30 天', value: buildScanPresetRange(30) },
-  { label: '近 90 天', value: buildScanPresetRange(90) },
+  { label: '近 90 天', value: buildScanPresetRange(LEDGER_WINDOW_DAYS) },
   { label: '近一年', value: buildScanPresetRange(365) },
 ]);
 function onLedgerRangeChange(
@@ -1483,13 +1453,11 @@ function onLedgerRangeChange(
 }
 
 /**
- * 已核实视图的全部记录（未过筛选）——既是查询底表，也是下拉项的取值来源。
- * 底表含成立与误报两类：成立/误报是查询条里的一个筛选项，不再各占一个视图。
+ * 命中台账的全部记录（未过筛选）——既是查询底表，也是下拉项的取值来源。
+ * 🔴 **含待核实、成立、误报三类**：三者是查询条里的一个筛选项，不各占一个视图，
+ * 见本节开头「为什么必须放宽」。
  */
-const ledgerBase = computed(() => {
-  if (listView.value !== 'judged') return [];
-  return rows.value.filter((h) => !!verdictOf(h));
-});
+const ledgerBase = computed(() => (listView.value === 'judged' ? rows.value : []));
 
 /** 下拉项一律从台账记录本身派生：只列真出现过的值，选了必有结果 */
 function uniqOptions(pairs: Array<[string, string]>) {
@@ -1514,7 +1482,9 @@ function applyLedgerFilter(list: RiskHit[]): RiskHit[] {
   const f = ledgerFilter.value;
   const kw = f.keyword.trim().toLowerCase();
   return list.filter((h) => {
-    if (f.verdict !== 'all' && verdictOf(h) !== f.verdict) return false;
+    // 'open' ＝ 还没人核实过的：`verdictOf` 此时是 undefined，故不能与另两档共用一条比较
+    if (f.verdict === 'open' && verdictOf(h)) return false;
+    if (f.verdict !== 'all' && f.verdict !== 'open' && verdictOf(h) !== f.verdict) return false;
     if (kw && !h.ticketNo.toLowerCase().includes(kw) && !h.customer.toLowerCase().includes(kw)) return false;
     // 误报没有等级（gradeOf 返回 null），故选定任一具体等级时它一律不匹配。
     // 让它落进某一档等于承认"误报也是风险，只是低一点"，与准确率的口径直接打架。
@@ -1556,8 +1526,11 @@ function applyLedgerQuery() {
 }
 
 /**
- * 清单数据源。筛查结果与常规命中**共用同一张表**——
- * 列、排序、判定依据的呈现完全一致，只是筛查态多一列勾选。
+ * 命中清单的数据源。它只服务**两个页签**：手动筛查（结果态）与命中台账。
+ * 🔴 实时监控页签已改成条目维度，走的是 `queueRows`，与本 computed 无关 ——
+ * 两批数据分母不同（命中记录 vs 监控条目），共用一个数据源必然在某处把两者读串。
+ *
+ * 筛查结果与台账**共用同一张表**：列、排序、判定依据的呈现完全一致，只是筛查态多一列勾选。
  */
 const filteredRows = computed(() => {
   if (inScanResult.value) {
@@ -1567,26 +1540,14 @@ const filteredRows = computed(() => {
         return d !== 0 ? d : b.when.localeCompare(a.when);
       });
   }
-  let list = rows.value;
   if (ticketFocus.value) {
     // 焦点态按命中时刻正序：这一屏读的是"这张单上先后发生了什么"，倒序会把爬坡读反
     return rows.value
       .filter((h) => h.ticketNo === ticketFocus.value)
       .sort((a, b) => a.when.localeCompare(b.when));
   }
-  if (inLedger.value) {
-    // 已核实视图：核实成立 / 误报的，出待办队列但**不删除**——
-    // 它是这个岗位"发现了什么"的证据，也是复盘与准确率的依据。
-    // 视图已定，核实结果与等级等条件只在视图内收窄，不会把人拽去别的批次。
-    list = applyLedgerFilter(ledgerBase.value);
-  } else {
-    // 实时监控视图：已核实的出队，否则待核实归零了清单还是那么长，
-    // 监控岗每天打开看到的全是自己上周处理完的，很快就没人看了。
-    list = list.filter((h) => !isJudged(h));
-    if (gradeFilter.value !== 'all') {
-      list = list.filter((h) => gradeOf(h) === gradeFilter.value);
-    }
-  }
+  // 台账：待核实 / 成立 / 误报三类都在，核实结果与等级等条件只在查询条里收窄
+  const list = inLedger.value ? applyLedgerFilter(ledgerBase.value) : [];
   return [...list].sort((a, b) => {
     const ra = gradeRank(a);
     const rb = gradeRank(b);
@@ -1616,17 +1577,9 @@ function setHitPage(page: number, size: number) {
   hitPageSize.value = size;
 }
 
-watch([listView, gradeFilter, ledgerFilter, scanResult, inScanResult, scope, ticketFocus], () => {
+watch([listView, ledgerFilter, scanResult, inScanResult, scope, ticketFocus], () => {
   hitPageCurrent.value = 1;
 }, { deep: true });
-
-/** 视图内选等级：只换视图内条件，视图不动——早先它会把人拽回待核实那批，等于等级与视图互斥 */
-function setGradeFilter(g: GradeFilter) {
-  // 焦点是比等级更强的一层收窄，两者叠着会让 chip 上的数字与表里的行数对不上——
-  // 人点「高危 5」却只看到 1 行，说不清是筛没了还是数错了。选等级即退出焦点。
-  clearTicketFocus();
-  gradeFilter.value = g;
-}
 
 /**
  * 列表展示等级。已核实的取核实结果，否则取词表预设。
@@ -1658,26 +1611,15 @@ const GRADES: RiskLevel[] = ['高', '中', '低'];
 //   ① 待核实  ——系统命中，还没人判
 //   ② 确认是风险——核实成立，三级都算，风险监控到此交棒，处置在工单侧
 //   ③ 误报    ——核实不成立，是规则问题不是风险，**不进风险统计**
-// 注意这三种是**数据状态**，不等于清单的三个视图：②③ 同属「已核实」这一批，
-// 在视图内靠核实结果这个筛选项区分；把它们各摆一个视图，正是早先层级错位的由来。
+// 注意这三种是**数据状态**，不等于页签：三者同在「命中台账」这一批，
+// 在查询条里靠核实结果这个筛选项区分；把它们各摆一个视图，正是早先层级错位的由来。
 //
 // 「判过没有」一律看 isJudged，不看有没有等级：误报是判过的，但它没有等级，
-// 用 gradeOf 当判据会让所有误报重新掉回待核实队列里。
+// 用 gradeOf 当判据会让所有误报重新掉回待核实里。
 const openHits = computed(() => rows.value.filter((h) => !isJudged(h)));
 const confirmedHits = computed(() => rows.value.filter((h) => verdictOf(h) === '成立'));
 const falseHits = computed(() => rows.value.filter((h) => verdictOf(h) === '误报'));
 
-/**
- * 等级 chip 的底表恒为待核实。chip 只在实时监控视图出现，那里看的就是待核实这一批——
- * 「全部」域取消后底表不再有第二种口径，chip 上的数字与点进去的行数永远对得上。
- */
-const gradeBase = computed(() => openHits.value);
-/** 等级分布：chip 上的数字现算，与清单同口径 */
-const gradeCount = computed<Record<RiskLevel, number>>(() => ({
-  高: gradeBase.value.filter((h) => gradeOf(h) === '高').length,
-  中: gradeBase.value.filter((h) => gradeOf(h) === '中').length,
-  低: gradeBase.value.filter((h) => gradeOf(h) === '低').length,
-}));
 /**
  * 确认是风险的等级分布——成效条要回答"等级如何"。
  * 底表只含成立的，而成立必定带等级，故这里不会出现无等级的行，三档之和恒等于成立数。
@@ -1804,39 +1746,23 @@ function saveTag() {
   // 追加而不覆盖
   riskTags.appendEntry(target.id, entry);
   /*
-   * 同步「风险工单池」里那一条（PRD §5.2）：两个页签装的是同一条命中，
-   * 这边判完了，那边不能一动不动。只在**首次打标**时同步；
-   * 修正走的是已核实那一侧，队列条目的去向在首次打标那一刻就定了，不必也不该再动一次。
+   * 🔴 **不再回写监控条目**（业务第三轮拍板）。旧实现在这里调 `recordVerify`，
+   * 把命中的「成立 / 误报 + 等级」翻译成条目的打标结论，顺手改掉条目状态。
    *
-   * 🔴 去向按结论分流（方案 C，见 store 的 `recordVerify`）：
-   * 误报出池落「已评估」，成立**不出池**、退回「待分派」继续走评估。
-   */
-  let backToQueue = false;
-  if (!tagAmend.value) {
-    // 返回值要接住：这条命中的单可能压根没进过池（池子按来源建条目，不是每条命中都有），
-    // 那时没有条目可转，提示里就不能说"已转待分派"。
-    const synced = reportStore.recordVerify(target.ticketNo, {
-      verdict: entry.verdict,
-      level: entry.level,
-      note: entry.note,
-      by: entry.by,
-      byRole: entry.byRole,
-      at: entry.at,
-    });
-    backToQueue = synced && entry.verdict === '成立';
-  }
-  /*
-   * 成立时必须把"这条还没完"说出来：打标的人做完这一步会以为事儿结了，
-   * 而条目其实回到了待分派、还等着有人给评估结论。只说"打标成功"就是在报一个假的完成态。
+   * 【为什么必须断开】两者答的不是同一个问题：命中核实答"**这次命中准不准**"（词表的准确率），
+   * 条目打标答"**这张单有没有风险、多大**"（入池门槛）。一张单被三条词命中时，
+   * 让每一条核实都去改一次条目状态，那条条目会被来回搬进搬出池子，
+   * 而每次搬动的依据只是其中一条证据准不准 —— 池子里到底该不该有它，从此没人答得清。
+   *
+   * 断开之后：命中核实只回填词表准确率，条目进不进池**只由条目自己的四选一打标决定**
+   * （`openEntryTag` / `saveEntryTag` → `riskPool.recordTag`）。
    */
   message.success(
     tagAmend.value
       ? `已修正 ${target.ticketNo} 的核实结果为「${entry.verdict}」，本次修正已留痕`
       : entry.verdict === '误报'
-        ? `已记为误报`
-        : backToQueue
-          ? `已对 ${target.ticketNo} 打标「${levelText(tagLevel.value)}」，该条已转「待分派」等待评估`
-          : `已对 ${target.ticketNo} 打标「${levelText(tagLevel.value)}」`,
+        ? '已记为误报，本条不计入风险，只回填词表准确率'
+        : `已核实 ${target.ticketNo} 的这条命中为「成立 · ${levelText(tagLevel.value)}」；该单进不进风险工单池，仍以「实时监控」里的风险打标为准`,
   );
   tagOpen.value = false;
 }
@@ -1920,8 +1846,53 @@ function tagTraceTitle(h: RiskHit): string | undefined {
   return lines.join('\n');
 }
 
-// ---- 批量打标 ----
-// 等级默认保持各条词表预设，确需一致时再统一改。
+/* ==================== 实时监控 · 三视图（条目维度） ==================== */
+
+/** 三视图各自的行。取数**全部走 store 的三个 computed**，本页不另筛一遍——
+ *  各筛各的话，chip 上的数字与表里的行数迟早对不上（本文件反复踩过的那个坑）。 */
+const queueRows = computed<RiskQueueEntry[]>(() => {
+  if (queueView.value === 'monitoring') return reportStore.monitoringEntries;
+  if (queueView.value === 'pooled') return reportStore.pooledEntries;
+  return reportStore.noRiskEntries;
+});
+
+const queuePageCurrent = ref(1);
+const queuePageSize = ref(10);
+const pagedQueueRows = computed(() => {
+  const start = (queuePageCurrent.value - 1) * queuePageSize.value;
+  return queueRows.value.slice(start, start + queuePageSize.value);
+});
+function setQueuePage(page: number, size: number) {
+  queuePageCurrent.value = page;
+  queuePageSize.value = size;
+}
+
+/**
+ * 切三视图。**勾选不能跨视图残留**：在待打标里勾了三条再切到已入池，
+ * 批量打标会对一批看不见的行动手（而那一批已经有结论了）。
+ * 页码同理回到第一页——底表换了一批，停在第 3 页多半是一张空表。
+ */
+function setQueueView(v: QueueView) {
+  if (v === queueView.value) return;
+  queueView.value = v;
+  clearBulk();
+  queuePageCurrent.value = 1;
+}
+
+/** 这条条目上的**现行打标结论**；空 ＝ 还在待打标 */
+function tagResultOf(e: RiskQueueEntry): RiskTagResult | undefined {
+  return e.tag?.result;
+}
+/** 条目在池子里走到哪一步了。待打标 / 已标记无风险两态直接读状态本身 */
+function queueStatusText(e: RiskQueueEntry): string {
+  return e.status === '待分派' ? '待领取' : e.status;
+}
+
+/* ---- 条目批量打标：**只在待打标视图**（业务口径） ---- */
+// 【为什么另两个视图不给批量】它们装的都是**已经有结论**的条目，对这两批做的唯一一件事是
+// 「修正」——而修正必须逐条写清"为什么改"（`amendReason` 必填）。
+// 批量改判等于绕过那道必填门，一次给一批条目追加一条没有理由的改判，
+// 而「已标记无风险」这一视图存在的全部意义恰恰是**核查漏标误判**，它最不该被一键刷过去。
 const bulkPicked = ref<Set<string>>(new Set());
 function toggleBulkPick(id: string) {
   const s = new Set(bulkPicked.value);
@@ -1929,23 +1900,19 @@ function toggleBulkPick(id: string) {
   bulkPicked.value = s;
 }
 const bulkAllPicked = computed(
-  () => pagedRows.value.length > 0 && pagedRows.value.every((h) => bulkPicked.value.has(h.id)),
+  () => pagedQueueRows.value.length > 0 && pagedQueueRows.value.every((e) => bulkPicked.value.has(e.id)),
 );
 function toggleBulkAll() {
   const next = new Set(bulkPicked.value);
-  if (bulkAllPicked.value) pagedRows.value.forEach((h) => next.delete(h.id));
-  else pagedRows.value.forEach((h) => next.add(h.id));
+  if (bulkAllPicked.value) pagedQueueRows.value.forEach((e) => next.delete(e.id));
+  else pagedQueueRows.value.forEach((e) => next.add(e.id));
   bulkPicked.value = next;
 }
 function clearBulk() { bulkPicked.value = new Set(); }
 
 const bulkCount = computed(() => bulkPicked.value.size);
-// 只有实时监控视图给批量选择：批量动作就一个「批量打标」，
-// 而已核实视图里条目都判完了，没得可批。
-// 焦点态也不给：那一屏里已核实与待核实混在一起（本来就是要对照着看），
-// 勾中一条已核实的再走批量打标，等于绕过「修正原因」这道必填门追加一条无理由的改判。
-const showHitSelection = computed(
-  () => !inScanResult.value && !ticketFocus.value && canRiskTag.value && listView.value === 'realtime',
+const showQueueSelection = computed(
+  () => listView.value === 'realtime' && queueView.value === 'monitoring' && canRiskTag.value,
 );
 const batchMenuOpen = ref(false);
 
@@ -1961,51 +1928,141 @@ function pickBatchAction(action: 'tag' | 'clear') {
 }
 
 const bulkOpen = ref(false);
-const bulkVerdict = ref<HitVerdict | undefined>(undefined);
-/** '' ＝ 保持各条词表预设 */
-const bulkLevel = ref<RiskLevel | ''>('');
+/** 批量的结论与单条**同一个四选一**，不给"保持预设"这种只有批量才有的第五档 */
+const bulkResult = ref<RiskTagResult | ''>('');
 const bulkNote = ref('');
-const canSaveBulk = computed(() => canRiskTag.value && !!bulkVerdict.value);
-const bulkTargets = computed(() => filteredRows.value.filter((h) => bulkPicked.value.has(h.id)));
-/** 选中项里词表预设的等级分布 */
-const bulkGradeMix = computed(() => {
-  const m: Record<string, number> = {};
-  bulkTargets.value.forEach((h) => { const g = presetGradeOf(h); m[g] = (m[g] ?? 0) + 1; });
-  return Object.entries(m).map(([g, n]) => `${g}危 ${n}`).join(' · ');
+const canSaveBulk = computed(() => canRiskTag.value && !!bulkResult.value);
+const bulkTargets = computed(
+  () => reportStore.monitoringEntries.filter((e) => bulkPicked.value.has(e.id)),
+);
+/** 选中项的来源分布：一批里混着投诉单与预警词命中时，同一个结论未必都合适 */
+const bulkSourceMix = computed(() => {
+  const m = new Map<string, number>();
+  bulkTargets.value.forEach((e) => m.set(e.source, (m.get(e.source) ?? 0) + 1));
+  return [...m].map(([s, n]) => `${s} ${n}`).join(' · ');
 });
 
 function openBulk() {
   if (!canRiskTag.value) { message.warning('只有客诉专员与投诉督导可以打标'); return; }
-  bulkVerdict.value = undefined;
-  bulkLevel.value = '';
+  bulkResult.value = '';
   bulkNote.value = '';
   bulkOpen.value = true;
 }
 function saveBulk() {
-  if (!bulkVerdict.value) { message.warning('请先判定这批命中是否成立'); return; }
+  if (!bulkResult.value) { message.warning('请先给这批条目定一个打标结论'); return; }
+  const result = bulkResult.value;
   const at = nowStamp();
-  // 与单条同一套留痕：追加一条，不覆盖既有历史；
-  // 误报同样不落等级——批量与单条必须是同一个口径，否则台账里会出现两种误报。
-  riskTags.appendEntries(bulkTargets.value.map((h) => ({
-    hitId: h.id,
-    entry: {
-      level: bulkVerdict.value === '误报'
-        ? null
-        : (bulkLevel.value === '' ? presetGradeOf(h) : bulkLevel.value),
-      verdict: bulkVerdict.value!,
-      note: bulkNote.value.trim(),
-      by: user.current.name,
-      byRole: user.role.name,
-      at,
-    },
-  })));
+  const targets = bulkTargets.value;
+  // 与单条走**同一个入口**（recordTag），状态迁移与留痕都在 store 里那一处，
+  // 批量另写一套的话，"低/中/高进池、无风险不进池"这条门槛迟早只改一处
+  const done = targets.filter((e) => reportStore.recordTag(e.id, {
+    result,
+    note: bulkNote.value.trim(),
+    by: user.current.name,
+    byRole: user.role.name,
+    at,
+  })).length;
   message.success(
-    bulkVerdict.value === '误报'
-      ? `已将 ${bulkTargets.value.length} 条记为误报`
-      : `已批量打标 ${bulkTargets.value.length} 条`,
+    isPoolLevel(result)
+      ? `已对 ${done} 条打标「${riskLevelText(result)}」，已进风险工单池等待领取`
+      : `已将 ${done} 条标记为无风险，不进池；可在「已标记无风险」视图里复核`,
   );
   bulkOpen.value = false;
   clearBulk();
+}
+
+/* ---- 单条风险打标：四选一（高 / 中 / 低 / 无风险） ---- */
+//
+// 🔴 **它与「核实打标」不是一回事**，两个弹窗各答各的问题：
+//   · 本弹窗（条目）—— "**这张单有没有风险、多大**"。四选一，低/中/高进池、无风险不进池。
+//   · 命中打标弹窗（`openTag`）—— "**这次命中准不准**"。成立/误报 + 定级，只回填词表准确率。
+// 旧实现让后者顺手改前者的状态，于是一张单被三条词命中就会被搬进搬出池子三次，
+// 而每次搬动的依据只是其中一条证据准不准。两者断开之后，入池只由本弹窗决定。
+const entryTagOpen = ref(false);
+const entryTagTarget = ref<RiskQueueEntry | null>(null);
+const entryTagResult = ref<RiskTagResult | ''>('');
+const entryTagNote = ref('');
+/** 二次修改的理由。**首次打标没有这一项，改标必填**——只记改前改后而不记为什么，复盘时链条仍是断的 */
+const entryTagReason = ref('');
+/** 已经打过标的再打开就是修改：标题、按钮文案与必填项都随之不同 */
+const entryTagAmend = computed(() => !!entryTagTarget.value?.tag);
+/** 完整打标历史（含二次修改），时间正序。走 store 的 `tagHistoryOf`，与命中核实同一套留痕机制 */
+const entryTagHistory = computed(
+  () => (entryTagTarget.value ? reportStore.tagHistoryOf(entryTagTarget.value.id) : []),
+);
+/** 值没变就不该追加一条空修改，否则历史会被无意义的记录稀释 */
+const entryTagDirty = computed(() => {
+  const cur = entryTagTarget.value?.tag;
+  if (!cur) return true;
+  return entryTagResult.value !== cur.result || entryTagNote.value.trim() !== cur.note;
+});
+const canSaveEntryTag = computed(() => {
+  if (!canRiskTag.value || !entryTagResult.value) return false;
+  if (entryTagAmend.value) return entryTagDirty.value && !!entryTagReason.value.trim();
+  return true;
+});
+/**
+ * 打标时摆出来的**证据**：本单的风险词命中原话。
+ * 另两类来源（投诉单 / 重要紧急）没有原话可摆，整块 v-if 掉、不留空标题。
+ * 只取最近三条：这一屏是给人下判断的，不是把全部证据读完；要读全的点单号进工单。
+ */
+const entryTagHits = computed(() => {
+  const t = entryTagTarget.value;
+  if (!t) return [];
+  return riskTags.hitsOfTicket(t.ticketNo)
+    .slice()
+    .sort((a, b) => b.when.localeCompare(a.when))
+    .slice(0, 3);
+});
+
+function openEntryTag(e: RiskQueueEntry) {
+  if (!canRiskTag.value) { message.warning('只有客诉专员与投诉督导可以打标'); return; }
+  entryTagTarget.value = e;
+  // 修改态先把现行结论灌回来：改完才知道自己动了哪一项
+  entryTagResult.value = e.tag?.result ?? '';
+  entryTagNote.value = e.tag?.note ?? '';
+  entryTagReason.value = '';
+  entryTagOpen.value = true;
+}
+
+function saveEntryTag() {
+  const target = entryTagTarget.value;
+  if (!target) return;
+  if (!canRiskTag.value) { message.warning('无打标权限'); return; }
+  if (!entryTagResult.value) { message.warning('请先给出打标结论'); return; }
+  const amend = entryTagAmend.value;
+  if (amend && !entryTagDirty.value) { message.warning('打标结论没有变化，无需修改'); return; }
+  if (amend && !entryTagReason.value.trim()) { message.warning('请填写修正原因'); return; }
+  const prev = target.tag?.result;
+  const result = entryTagResult.value;
+  const ok = reportStore.recordTag(target.id, {
+    result,
+    note: entryTagNote.value.trim(),
+    by: user.current.name,
+    byRole: user.role.name,
+    at: nowStamp(),
+    ...(amend ? { amendReason: entryTagReason.value.trim() } : {}),
+  });
+  if (!ok) { message.warning('这条监控条目已不存在，请刷新后再看'); return; }
+  entryTagOpen.value = false;
+  /*
+   * 提示必须把**去向**说出来，不能只说"保存成功"：打标的人做完这一步会以为事儿结了，
+   * 而低/中/高的那一批其实刚进池、还等着有人领了给评估结论。
+   * 评估中 / 已评估的条目改标**不改变它在池子里的位置**（见 store 的 `recordTag`），
+   * 这一支要单独说清，否则人会以为自己刚把一条别人正在办的活拽走了。
+   */
+  const stuck = target.status === '评估中' || target.status === '已评估';
+  message.success(
+    stuck
+      ? `已把 ${target.ticketNo} 的风险等级改为「${result}」；该条已在评估中或已有结论，位置不变`
+      : isPoolLevel(result)
+        ? amend
+          ? `已把 ${target.ticketNo} 的打标由「${prev}」改为「${riskLevelText(result)}」，已在风险工单池`
+          : `已对 ${target.ticketNo} 打标「${riskLevelText(result)}」，已进风险工单池等待领取`
+        : amend
+          ? `已把 ${target.ticketNo} 改判为无风险，已撤出风险工单池`
+          : `已将 ${target.ticketNo} 标记为无风险，不进池；可在「已标记无风险」视图里复核`,
+  );
 }
 
 // ---- 监控雷达 ----
@@ -2041,6 +2098,69 @@ const radarBlips = computed(() =>
 const untaggedHigh = computed(() =>
   allHits.value.filter((h) => !isJudged(h) && presetGradeOf(h) === '高'),
 );
+
+/* ==================== 页头大盘 · 督导要的四组数 ==================== */
+//
+// 业务给的四组：**每日报备量 / 各处理组标记情况 / 未标记的工单分布 / 被标记为无风险的工单**。
+// 四组全部落在**监控条目**这个分母上，故整块并进页头左栏「监控数据」，
+// 不另起第四块卡区——四块并排会把每块压到读不出数字的宽度，而三块的骨架现成。
+//
+// 🔴 每一个数都从现有 store 现算，**不预置任何写死的统计数字**：写死的数会在打完一次标之后
+// 与列表当场对不上，而这一屏的全部用处就是让督导据以判断"今天该盯哪一批"。
+
+/** 今天（自然日）进风险侧的条目 —— **每日报备量**。A 线自动识别与 B 线二线报备分开报：
+ *  两者的来路完全不同（一个是系统捞的、一个是人报的），合成一个数就看不出今天是谁在动。 */
+const dailyIntake = computed(() => {
+  const today = todayPrefix();
+  const auto = reportStore.items.filter(
+    (r) => r.source !== '二线报备' && r.at.startsWith(today),
+  ).length;
+  const reported = reportStore.items.filter(
+    (r) => r.source === '二线报备' && r.at.startsWith(today),
+  ).length;
+  // A 线还在实时监控（没进池）的条目不在 `items` 里，要单独并进来——
+  // 「今天进来了多少」问的是入口，不是"今天有多少进了池"
+  const monitoring = reportStore.monitoringEntries.filter((e) => e.at.startsWith(today)).length;
+  const noRisk = reportStore.noRiskEntries.filter((e) => e.at.startsWith(today)).length;
+  return { auto: auto + monitoring + noRisk, reported, total: auto + monitoring + noRisk + reported };
+});
+
+/** **未标记的工单分布** —— 待打标条目按监控来源分档。哪一路捞进来的没人管，这一行答得出 */
+const untaggedBySource = computed(() => {
+  const base = reportStore.monitoringEntries;
+  return QUEUE_SOURCES.map((s) => ({ source: s, count: base.filter((e) => e.source === s).length }))
+    .filter((x) => x.count > 0);
+});
+
+/**
+ * **各处理组标记情况** —— 按工单所属处理组，看这一组的条目打没打标。
+ *
+ * 🔴 **组是从工单join 过来的，不是条目自己的字段**：监控条目上只有工单号。
+ * 故这里按 `mock/tickets.ts` 反查，取 `resolveTicketGroupNames` 的第一个名字
+ * （工单列表「分组名称」列用的就是它，两处同一个口径，不另造一套分组）。
+ * 查不到的落「未归组」——**不吞掉**：吞掉的话各组之和会小于总数，
+ * 督导照这一行决定先盯哪一组时，被吞的那几条永远没人管。
+ */
+const TICKET_BY_NO = new Map(TICKETS.map((t) => [t.no, t]));
+function groupNameOf(ticketNo: string): string {
+  const t = TICKET_BY_NO.get(ticketNo);
+  if (!t) return '未归组';
+  return resolveTicketGroupNames(t)[0] ?? '未归组';
+}
+const groupTagStats = computed(() => {
+  const m = new Map<string, { group: string; untagged: number; tagged: number; noRisk: number }>();
+  const bump = (ticketNo: string, key: 'untagged' | 'tagged' | 'noRisk') => {
+    const group = groupNameOf(ticketNo);
+    const row = m.get(group) ?? { group, untagged: 0, tagged: 0, noRisk: 0 };
+    row[key] += 1;
+    m.set(group, row);
+  };
+  reportStore.monitoringEntries.forEach((e) => bump(e.ticketNo, 'untagged'));
+  reportStore.pooledEntries.forEach((e) => bump(e.ticketNo, 'tagged'));
+  reportStore.noRiskEntries.forEach((e) => bump(e.ticketNo, 'noRisk'));
+  // 未打标多的排前面：这一行是给督导找"谁那边堆着没人判"用的
+  return [...m.values()].sort((a, b) => b.untagged - a.untagged || b.tagged - a.tagged);
+});
 
 /**
  * 「去管控」：只跳到工单、把入口送到人眼前，**不代替人做管控**。
@@ -2304,81 +2424,123 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
       </div>
     </div>
 
-    <!-- ② 监控成效：左右两栏 —— 左监控命中、右风险工单池（分母不同，不可相加） -->
+    <!--
+      ② 页头大盘：三栏 —— 左监控条目（打标漏斗）、中工单存量、右风险评估。
+      三个分母（条目 / 工单 / 池行）两两不可相加，每个数的 title 各自写明自己数的是什么。
+    -->
     <section class="overview-section effect-section">
       <div class="effect-split">
+        <!--
+          左栏 ＝ 监控数据（**条目维度**）。业务要督导看到的四组数全在这一栏里：
+            · 每日报备量        → 第一格「今日新增」，自动识别与二线报备分开报
+            · 未标记的工单分布  → 第二格「待打标」+ 下方「未打标分布」那一行（按监控来源）
+            · 被标记为无风险    → 第四格「已标记无风险」，可点进去核查漏标误判
+            · 各处理组标记情况  → 「各处理组」那一行（组名由工单号 join 工单库得到）
+          每一格都可点，落到实时监控页签对应的那个视图上——卡上写着几，点进去表里就有几。
+        -->
         <div class="effect-pane effect-pane--monitor">
-          <h2 class="pane-title" title="发现 → 核实 → 定论 · 分母是风险词命中记录">监控数据</h2>
+          <h2
+            class="pane-title"
+            title="自动识别 → 打标 → 入池 · 分母是**监控条目**，与中栏在办工单、右栏池行均不可相加"
+          >监控数据</h2>
           <div class="dash-grid dash-grid-4">
+            <div
+              class="dm-cell dm-static"
+              :title="`今日进入风险侧的条目：自动识别 ${dailyIntake.auto} 条 · 二线报备 ${dailyIntake.reported} 条。按自然日算，与下方三格的存量不是一个口径（那三格是当前状态，不限今日）`"
+            >
+              <span class="dm-k">今日新增</span>
+              <span class="dm-val">
+                <span class="dm-v">{{ dailyIntake.total }}</span>
+                <span class="dm-h">自动 {{ dailyIntake.auto }} · 报备 {{ dailyIntake.reported }}</span>
+              </span>
+            </div>
             <button
               type="button"
               class="dm-cell"
-              :class="{ on: listView === 'realtime', hot: untaggedHigh.length > 0 }"
-              :title="`其中高危 ${untaggedHigh.length} 条`"
-              @click="setListView('realtime')"
+              :class="{
+                on: listView === 'realtime' && queueView === 'monitoring',
+                hot: reportStore.monitoringEntries.length > 0,
+              }"
+              title="自动识别捞进来、还没有人打标的条目 —— 打标是入池门槛，这一批一天不判就一天进不了池"
+              @click="setListView('realtime'); setQueueView('monitoring')"
             >
-              <span class="dm-k">待核实</span>
-              <span class="dm-val">
-                <span class="dm-v">{{ effect.open }}</span>
-                <span v-if="untaggedHigh.length" class="dm-h bad">高危 {{ untaggedHigh.length }}</span>
-              </span>
+              <span class="dm-k">待打标</span>
+              <span class="dm-val"><span class="dm-v">{{ reportStore.monitoringEntries.length }}</span></span>
             </button>
             <button
               type="button"
               class="dm-cell"
-              :class="{ on: listView === 'judged' }"
-              @click="setListView('judged')"
+              :class="{ on: listView === 'realtime' && queueView === 'pooled' }"
+              title="打标为低 / 中 / 高、已进风险工单池的条目。它是右栏「风险评估」里 A 线那一半，两个数不相加"
+              @click="setListView('realtime'); setQueueView('pooled')"
             >
-              <span class="dm-k">已核实</span>
-              <span class="dm-val"><span class="dm-v">{{ effect.judged }}</span></span>
+              <span class="dm-k">已入池</span>
+              <span class="dm-val"><span class="dm-v">{{ reportStore.pooledEntries.length }}</span></span>
             </button>
-            <div class="dm-cell dm-static" title="待核实与已核实之和">
-              <span class="dm-k">发现</span>
-              <span class="dm-val"><span class="dm-v">{{ effect.total }}</span></span>
-            </div>
-            <div class="dm-cell dm-static" title="确认是风险 ÷ 已核实">
-              <span class="dm-k">准确率</span>
-              <span class="dm-val">
-                <span
-                  v-if="effect.accuracy !== null"
-                  class="dm-v"
-                  :style="{ color: ACC_TONE_COLOR[accTone(effect.accuracy)] }"
-                >{{ Math.round(effect.accuracy * 100) }}%</span>
-                <span v-else class="dm-v muted">—</span>
-              </span>
-            </div>
+            <button
+              type="button"
+              class="dm-cell"
+              :class="{ on: listView === 'realtime' && queueView === 'noRisk' }"
+              title="打标判为无风险、不进池的条目。这一批不是回收站 —— 它是核查漏标误判的唯一去处，点进去可逐条修正"
+              @click="setListView('realtime'); setQueueView('noRisk')"
+            >
+              <span class="dm-k">已标记无风险</span>
+              <span class="dm-val"><span class="dm-v">{{ reportStore.noRiskEntries.length }}</span></span>
+            </button>
           </div>
+          <!--
+            未标记的工单分布：按**监控来源**分档，只列有数的那几档。
+            🔴 分母恒为「待打标」那一格，故各档之和 ≡ 待打标数 —— 两处摆在同一屏上，读得出。
+          -->
           <div class="dash-links">
-            <span class="dash-links-k">核实结果</span>
+            <span
+              class="dash-links-k"
+              title="待打标条目按监控来源分档；各档之和等于上方「待打标」那一格"
+            >未打标分布</span>
             <button
+              v-for="s in untaggedBySource"
+              :key="s.source"
               type="button"
               class="dl-item"
-              :class="{ on: listView === 'judged' && ledgerFilter.verdict === '成立' }"
-              @click="setListView('judged'); ledgerFilter.verdict = '成立'"
+              :title="`${s.source} 捞进来、还没打标的 ${s.count} 条 —— 点击回到待打标视图`"
+              @click="setListView('realtime'); setQueueView('monitoring')"
             >
-              确认是风险<b>{{ confirmedHits.length }}</b>
-              <small v-if="confirmedHits.length">高{{ confirmedByGrade['高'] }}·中{{ confirmedByGrade['中'] }}·低{{ confirmedByGrade['低'] }}</small>
+              {{ s.source }}<b>{{ s.count }}</b>
             </button>
-            <button
-              type="button"
-              class="dl-item"
-              :class="{ on: listView === 'judged' && ledgerFilter.verdict === '误报' }"
-              @click="setListView('judged'); ledgerFilter.verdict = '误报'"
+            <span v-if="!untaggedBySource.length" class="dl-empty">当前没有待打标的条目</span>
+          </div>
+          <!--
+            各处理组标记情况。组名由**工单号反查工单库**得到，与工单列表「分组名称」列同一个口径。
+            ⚠️ 查不到工单的落「未归组」并照常列出，**不吞掉**：吞掉的话各组之和会小于总数，
+            督导照这一行分配注意力时，被吞的那几条永远没人认领。
+          -->
+          <div class="dash-links">
+            <span
+              class="dash-links-k"
+              title="按工单所属处理组看条目打没打标：待打标 / 已入池 / 无风险。组名由工单号反查工单库，与工单列表「分组名称」同一口径"
+            >各处理组</span>
+            <span
+              v-for="g in groupTagStats"
+              :key="g.group"
+              class="dl-item dl-static"
+              :title="`${g.group}：待打标 ${g.untagged} · 已入池 ${g.tagged} · 无风险 ${g.noRisk}`"
             >
-              误报<b>{{ falseHits.length }}</b>
-            </button>
+              {{ g.group }}<b>{{ g.untagged }}</b>
+              <small>已判 {{ g.tagged + g.noRisk }}</small>
+            </span>
+            <span v-if="!groupTagStats.length" class="dl-empty">当前没有监控条目</span>
           </div>
         </div>
 
         <!--
-          中栏 ＝ 工单存量。分母是**工单**，另外两栏一个是命中记录、一个是队列条目，
+          中栏 ＝ 工单存量。分母是**工单**，另外两栏一个是监控条目、一个是池行，
           三栏并排最容易被读成一路数，故每个数各自 title 写明分母，且**整栏不可点**：
           点出去必然落在另一个分母的清单上，数对不上比不能点更糟。
         -->
         <div class="effect-pane effect-pane--ticket">
           <h2
             class="pane-title"
-            title="工单系统里需要风险侧盯的存量 · 分母是在办工单，与左栏命中数、右栏队列条目均不可相加"
+            title="工单系统里需要风险侧盯的存量 · 分母是在办工单，与左栏监控条目、右栏池行均不可相加"
           >工单存量</h2>
           <div class="dash-grid dash-grid-2">
             <div class="dm-cell dm-static" title="在办的投诉类工单 · 对应监控来源「投诉单」">
@@ -2412,24 +2574,22 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
         </div>
 
         <!--
-          右栏 ＝ 风险评估（O16 定分母）。装的是**走评估的四类来源**的队列条目：
-          全量投诉 / 紧急重要 / VIP客户 / 二线报备。「关键词触发」走的是核实打标，
-          它的数已经在左栏「监控数据」里报过一次，并进来就成了同一条命中数两遍（§7 撞名）。
-
-          ⚠️ 与「风险工单池」页签角标不是一个数：角标是队列条目总数（五类），这里是四类。
-          界面上不把两者相减、不互校。
+          右栏 ＝ 风险评估。装的是**风险工单池里的池行**：A 线打标进池的条目 + B 线的二线报备。
+          🔴 本轮**不再按来源排除任何一路**：打标已经是进池的前置门槛，能进池的都已经确认有风险，
+          下一步只剩"升不升级"一个问题。旧口径把「关键词触发」那一路排除在分母外，
+          在漏斗模型下会让一批确实要评估的条目不进分母，这一栏系统性报少。
         -->
         <div class="effect-pane effect-pane--report">
           <h2
             class="pane-title"
-            title="投诉单 / 重要紧急 / VIP客户 / 二线报备 四类走评估 · 「实时监控 / 手动筛查」走核实打标，不进本行分母"
+            title="风险工单池里的池行 · 打标进池的监控条目 + 二线报备，全部走评估二选一（升级 / 不升级）"
           >风险评估</h2>
           <div class="dash-grid dash-grid-3">
             <!--
-              B1 待评估总数 ＝ **待分派 + 评估中**（N4 改口径，不再等于单一状态的条数）。
-              🔴 点它落在「待分派」，表里的行数会**少于卡上的数**——这不是本文件开头那条
+              B1 待评估总数 ＝ **待领取 + 评估中**（N4 改口径，不再等于单一状态的条数）。
+              🔴 点它落在「待领取」，表里的行数会**少于卡上的数**——这不是本文件开头那条
               「标签写着一个数、表里躺着另一批」：紧挨着的三枚 chip 就是它的分解，
-              待分派 + 评估中 恒等于这个数，两者摆在同一屏上，读得出来。
+              待领取 + 评估中 恒等于这个数，两者摆在同一屏上，读得出来。
             -->
             <button
               type="button"
@@ -2438,14 +2598,14 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                 on: listView === 'report' && reportView !== 'assessed' && !onlyOverdue,
                 hot: reportStore.assessOverdueCount > 0,
               }"
-              title="待分派 + 评估中 · 走评估的四类来源"
+              title="待领取 + 评估中 · 池内还没有结论的全集"
               @click="setListView('report'); setReportView('unassigned'); onlyOverdue = false"
             >
               <span class="dm-k">待评估总数</span>
               <span class="dm-val">
                 <span class="dm-v">{{ reportStore.assessOpenCount }}</span>
                 <span class="dm-h">
-                  待分派 {{ reportStore.assessUnassignedCount }} · 评估中 {{ reportStore.assessAssigningCount }}
+                  待领取 {{ reportStore.assessUnassignedCount }} · 评估中 {{ reportStore.assessAssigningCount }}
                 </span>
               </span>
             </button>
@@ -2456,7 +2616,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                 on: listView === 'report' && reportView !== 'assessed' && onlyOverdue,
                 hot: reportStore.assessOverdueCount > 0,
               }"
-              :title="`超过 ${assessLimitText} 仍无结论 · 从报备提交时刻起算、不从分派时刻 · 不是 SLA`"
+              :title="`超过 ${assessLimitText} 仍无结论 · 从进池时刻起算、不从领取时刻 · 不是 SLA`"
               @click="setListView('report'); setReportView('unassigned'); onlyOverdue = true"
             >
               <span class="dm-k">超时未评</span>
@@ -2473,8 +2633,8 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
             </button>
           </div>
           <!--
-            决策**二选一**（N1）：不升级 / 接管。原先的四选一（含退回改单、关联投诉单）
-            随 O11 一并作废——报上来的东西只回答"升不升"，答不了"这单类型建错了"。
+            决策**二选一**：升级 / 不升级。旧词「接管」整个作废（它同时背着三个意思，
+            见 riskShared 的 ASSESS_DECISIONS）；「升级」只指**转投诉单**，不含升三线。
             枚举来自 store 的 ASSESS_DECISIONS，故这里天然是两枚，不写死。
           -->
           <div class="dash-links">
@@ -2486,7 +2646,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               class="dl-item"
               :class="{
                 on: listView === 'report' && reportView === 'assessed' && decisionFilter === d,
-                danger: d === '接管' && reportStore.decisionCounts[d] > 0,
+                danger: d === '升级' && reportStore.decisionCounts[d] > 0,
               }"
               @click="setListView('report'); setReportView('assessed'); decisionFilter = d"
             >
@@ -2497,22 +2657,25 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
       </div>
     </section>
 
-    <!-- 统一命中清单 -->
+    <!-- 统一工作面：四个页签，三个分母 -->
     <section class="overview-section work-panel">
       <!--
-        主 Tab 一层收拢三种视图：实时监控（待核实）· 手动筛查 · 已核实。
-        页签数字与清单内容同源：实时监控恒等于待核实数，已核实恒等于台账底表数——
-        标签写着一个数、表里躺着另一批，正是两套状态机并存时踩过的坑。
+        页签数字与表内容同源，一处不例外：实时监控恒等于待打标数、命中台账恒等于台账底表数、
+        风险工单池恒等于在队数——标签写着一个数、表里躺着另一批，正是本文件反复踩过的坑。
       -->
       <div class="list-panel-head">
         <div class="list-view-tabs">
+          <!--
+            实时监控。角标取**待打标条目数**（不是命中数）：这个页签本轮已从命中维度
+            改成条目维度，人打开它要看的第一件事就是"还有几条没人判"。
+          -->
           <button
             type="button"
             class="lvt-tab"
             :class="{ on: listView === 'realtime' }"
             @click="setListView('realtime')"
           >
-            实时监控<span class="lvt-num" :class="{ bad: untaggedHigh.length > 0 }">{{ effect.open }}</span>
+            实时监控<span class="lvt-num" :class="{ bad: reportStore.monitoringEntries.length > 0 }">{{ reportStore.monitoringEntries.length }}</span>
           </button>
           <button
             type="button"
@@ -2523,22 +2686,24 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
             手动筛查
             <span v-if="inScanResult" class="lvt-num">{{ scanResult!.length }}</span>
           </button>
+          <!--
+            命中台账（原名「已核实」）。**本轮改名并放宽底表**：它现在装全部风险词命中，
+            待核实 / 成立 / 误报三类都在，靠查询条第一格收窄。
+            【为什么必须改名】底表放宽之后仍叫「已核实」，页签写着"已核实 19"、
+            表里却躺着一批还没人判的，这正是那条老坑本身。角标随之取命中总数。
+          -->
           <button
             type="button"
             class="lvt-tab"
             :class="{ on: listView === 'judged' }"
             @click="setListView('judged')"
           >
-            已核实<span class="lvt-num">{{ effect.judged }}</span>
+            命中台账<span class="lvt-num">{{ effect.total }}</span>
           </button>
           <!--
-            风险工单池（第三次定名：初名「风险评估」→ O13 改过一次 → 本轮与页头中栏拆名）：
-            装队列条目，不装命中记录。
-            角标取**在队总数**（待分派 + 评估中），与「实时监控」的待核实数
-            **不是一回事、不可相加**（§7 撞名）；也与页头中栏「工单存量」不是一个数——
-            那块数的是在办工单，这里数的是队列条目，同屏并列但两个分母。
-
-            ⚠️ 前三个页签的名字**一字未动**：它们是 915 的能力，本轮只加队列、不动识别与打标。
+            风险工单池：装池行，不装命中记录、也不装还没打标的条目。
+            角标取**在队总数**（待领取 + 评估中），与左边三个页签的角标
+            **两两不可相加**——三个分母，各数各的。
           -->
           <button
             type="button"
@@ -2551,7 +2716,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
         </div>
         <div class="section-head-actions">
           <a-dropdown
-            v-if="showHitSelection"
+            v-if="showQueueSelection"
             v-model:open="batchMenuOpen"
             trigger="click"
             placement="bottomRight"
@@ -2577,62 +2742,177 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
             </template>
           </a-dropdown>
           <!--
-            风险工单池 · 批量分派：与「批量打标」共用同一个入口形态（同一个 class、同一处位置），
-            两者做的是同一类事——对勾中的一批一次落一个动作。换个长相只会让人以为规则也不同。
+            🔴 **风险工单池那一枚「批量操作」已删**：它下面只有「批量分派」一个动作，
+            而分派 / 改派 / 批量分派整套已随第三轮拍板取消。留一个只剩「取消选择」的下拉，
+            等于在屏幕上留一个点开什么也做不了的入口。
           -->
-          <a-dropdown
-            v-if="showReportSelection"
-            v-model:open="reportBatchMenuOpen"
-            trigger="click"
-            placement="bottomRight"
-          >
-            <div
-              class="row-btn scan-entry hit-batch-btn"
-              :class="{ active: reportPickCount > 0 }"
-            >
-              <UnorderedListOutlined :style="{ fontSize: '12px' }" />
-              <span>批量操作</span>
-              <span v-if="reportPickCount > 0" class="hit-batch-badge">{{ reportPickCount }}</span>
-              <DownOutlined :style="{ color: '#9CA3AF', fontSize: '10px' }" />
-            </div>
-            <template #overlay>
-              <a-menu class="batch-menu">
-                <a-menu-item :disabled="reportPickCount <= 0" @click="pickReportBatchAction('assign')">
-                  批量分派
-                </a-menu-item>
-                <a-menu-item :disabled="reportPickCount <= 0" @click="pickReportBatchAction('clear')">
-                  取消选择
-                </a-menu-item>
-              </a-menu>
-            </template>
-          </a-dropdown>
         </div>
       </div>
 
-      <!-- 实时监控 · 等级 chip：底表恒为待核实，故第一枚恒是「全部待核」，不再有第二套口径 -->
-      <!-- 焦点态跨视图取数，等级 chip 此刻不作数；留着它会让人以为"高危 5"与表里的行数该对上 -->
-      <div v-if="listView === 'realtime' && !ticketFocus" class="section-filters grade-filters">
+      <!--
+        实时监控 · 三视图（条目维度）。沿用池那一排的 DOM 与 class（.gf-chip）：
+        两处做的是同一件事——**在同一条链上换一段来看**，长得不一样只会让人以为动作不同。
+        🔴 chip 上的数字取的就是该视图的行数，点进去表里有几就是几。
+      -->
+      <div v-if="listView === 'realtime'" class="section-filters grade-filters report-filters">
         <button
           type="button"
           class="gf-chip"
-          :class="{ active: gradeFilter === 'all' }"
-          @click="setGradeFilter('all')"
+          :class="{ active: queueView === 'monitoring', warn: queueView !== 'monitoring' && reportStore.monitoringEntries.length > 0 }"
+          title="自动识别捞进来、还没有人打标的条目。打标是入池门槛，这一批不判就进不了池"
+          @click="setQueueView('monitoring')"
         >
-          全部待核<span class="gf-num">{{ openHits.length }}</span>
+          待打标<span class="gf-num">{{ reportStore.monitoringEntries.length }}</span>
         </button>
         <button
-          v-for="g in GRADES"
-          :key="g"
           type="button"
           class="gf-chip"
-          :class="{
-            active: gradeFilter === g,
-            warn: g === '高' && untaggedHigh.length > 0,
-          }"
-          @click="setGradeFilter(g)"
+          :class="{ active: queueView === 'pooled' }"
+          title="打标为低 / 中 / 高、已进风险工单池的条目；池内的领取与评估在「风险工单池」页签"
+          @click="setQueueView('pooled')"
         >
-          <i class="gf-dot" :style="{ background: RISK_LEVEL_STYLE[g].color }" />{{ g }}危<span class="gf-num">{{ gradeCount[g] }}</span>
+          已入池<span class="gf-num">{{ reportStore.pooledEntries.length }}</span>
         </button>
+        <button
+          type="button"
+          class="gf-chip"
+          :class="{ active: queueView === 'noRisk' }"
+          title="打标判为无风险、不进池的条目。它不是回收站 —— 这里是核查漏标误判的唯一去处，可逐条修正"
+          @click="setQueueView('noRisk')"
+        >
+          已标记无风险<span class="gf-num">{{ reportStore.noRiskEntries.length }}</span>
+        </button>
+      </div>
+
+      <!-- 实时监控 · 空态：把当前视图讲出来，否则"这里没东西"会被读成"系统没在扫" -->
+      <div v-if="listView === 'realtime' && !queueRows.length" class="ob-empty">
+        <template v-if="queueView === 'monitoring'">当前没有待打标的监控条目 —— 自动识别捞到新条目会落在这里</template>
+        <template v-else-if="queueView === 'pooled'">当前没有已入池的条目 —— 打标为低 / 中 / 高的条目会落在这里</template>
+        <template v-else>当前没有被判为无风险的条目</template>
+      </div>
+
+      <!--
+        实时监控 · 条目表。三视图共用一张表：列大半相同，分成三张迟早只改一处；
+        差异（勾选列 / 打标结论列 / 状态列 / 操作列）就地 v-if 掉。
+      -->
+      <div v-if="listView === 'realtime' && queueRows.length" class="hit-table-wrap report-table-wrap">
+        <table class="hit-table report-table">
+          <thead>
+            <tr>
+              <th v-if="showQueueSelection" style="width: 36px">
+                <div class="hit-cb" :class="{ checked: bulkAllPicked }" @click="toggleBulkAll">
+                  <CheckOutlined v-if="bulkAllPicked" :style="{ color: '#fff', fontSize: '10px' }" />
+                </div>
+              </th>
+              <th style="width: 190px">工单号</th>
+              <th style="width: 100px">监控来源</th>
+              <th>场景描述</th>
+              <th v-if="queueView !== 'monitoring'" style="width: 88px">打标结论</th>
+              <th v-if="queueView !== 'monitoring'" style="width: 104px">打标人</th>
+              <th v-if="queueView !== 'monitoring'" style="width: 128px">打标时刻</th>
+              <th v-if="queueView === 'pooled'" style="width: 84px">池内状态</th>
+              <th v-if="queueView === 'monitoring'" style="width: 128px">进监控时刻</th>
+              <th v-if="queueView === 'monitoring'" style="width: 84px">等待时长</th>
+              <th style="width: 128px">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="e in pagedQueueRows" :key="e.id">
+              <td v-if="showQueueSelection">
+                <div
+                  class="hit-cb"
+                  :class="{ checked: bulkPicked.has(e.id) }"
+                  @click.stop="toggleBulkPick(e.id)"
+                >
+                  <CheckOutlined v-if="bulkPicked.has(e.id)" :style="{ color: '#fff', fontSize: '10px' }" />
+                </div>
+              </td>
+              <td>
+                <button type="button" class="rt-no" @click="openTicket(e.ticketNo)">{{ e.ticketNo }}</button>
+              </td>
+              <td><span class="src-tag" :class="{ kw: isVerifyMonitorSource(e.source) }">{{ e.source }}</span></td>
+              <!-- 单行截断，全文挂 title：这一屏是用来挑下一条判的，不是在这里读完再判 -->
+              <td class="rr-desc" :title="e.desc">{{ e.desc }}</td>
+              <td v-if="queueView !== 'monitoring'">
+                <!-- 无风险不是一档风险等级，故不套等级配色；套上去等于给已排除的东西重新贴风险标 -->
+                <span
+                  v-if="e.tag && isPoolLevel(e.tag.result)"
+                  class="grade-pill"
+                  :style="{ color: RISK_LEVEL_STYLE[e.tag.result].color, background: RISK_LEVEL_STYLE[e.tag.result].bg }"
+                >{{ riskLevelText(e.tag.result) }}</span>
+                <span v-else-if="e.tag" class="state-chip" :title="e.tag.note">{{ e.tag.result }}</span>
+                <span v-else class="hit-sub">—</span>
+              </td>
+              <td v-if="queueView !== 'monitoring'">
+                {{ e.tag?.by ?? '—' }}<div v-if="e.tag" class="hit-sub">{{ e.tag.byRole }}</div>
+              </td>
+              <td v-if="queueView !== 'monitoring'" class="hit-when">{{ e.tag?.at ?? '—' }}</td>
+              <td v-if="queueView === 'pooled'">
+                <span class="state-chip" :title="e.assignee ? `承办人 ${e.assignee}` : '还没有人领'">{{ queueStatusText(e) }}</span>
+              </td>
+              <td v-if="queueView === 'monitoring'" class="hit-when">{{ e.at }}</td>
+              <!--
+                🔴 等待时长恒从**进监控时刻**起算，不从打标时刻（N5）：
+                一条在实时监控里躺了两小时才被打标的，它一进池就是超时态。
+                这是 N5 的直接推论而不是缺陷——打标慢也是这条链在拖，钟不该因为换了个环节就重置。
+              -->
+              <td
+                v-if="queueView === 'monitoring'"
+                class="hit-when rr-waited"
+                :class="{ over: reportStore.isOverdue({ status: e.status, at: e.at }) }"
+                title="自进入实时监控起算。打标越慢，它进池时离评估时限就越近"
+              >{{ waitedText(e.at) }}</td>
+              <td>
+                <template v-if="queueView === 'monitoring'">
+                  <button
+                    v-if="canRiskTag"
+                    type="button" class="row-btn row-btn-tag"
+                    title="判定这张单有没有风险、多大：高 / 中 / 低进风险工单池，无风险不进池"
+                    @click="openEntryTag(e)"
+                  >核实打标</button>
+                  <span v-else class="hit-sub" title="打标归客诉专员与投诉督导">—</span>
+                </template>
+                <template v-else>
+                  <!--
+                    去管控只对**高危**出（基线 ※27）：管控会把工单从原处理人名下拿走，
+                    在办量、解决率分母、超时数全变，这个代价不该由一条低危条目触发。
+                  -->
+                  <button
+                    v-if="queueView === 'pooled' && e.tag?.result === '高'"
+                    type="button" class="row-btn row-btn-primary"
+                    :title="`本条打标为高危，转交${DISPOSAL_BY_GRADE['高'].who}`"
+                    @click="openTicket(e.ticketNo)"
+                  >去管控<ArrowRightOutlined /></button>
+                  <!--
+                    修正：判错的那一条不改就永远错着。「已标记无风险」这一视图存在的
+                    全部意义就是它 —— 漏标误判除了从这里翻出来改，没有第二条路。
+                  -->
+                  <button
+                    v-if="canRiskTag"
+                    type="button" class="row-btn row-btn-amend"
+                    :title="queueView === 'noRisk' ? '重新判定这条是否真的无风险；改判为低 / 中 / 高会补进风险工单池' : '重新判定风险等级；改判为无风险会把它撤出风险工单池'"
+                    @click="openEntryTag(e)"
+                  >修正</button>
+                  <span v-if="!canRiskTag" class="hit-sub" title="打标与修正归客诉专员与投诉督导">—</span>
+                </template>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="pager">
+          <div class="pager-left">
+            <span class="pager-total">共 {{ queueRows.length }} 条</span>
+            <span v-if="showQueueSelection && bulkCount > 0" class="pager-selected">已选 {{ bulkCount }} 项</span>
+          </div>
+          <AppPagination
+            :total="queueRows.length"
+            :current="queuePageCurrent"
+            :page-size="queuePageSize"
+            :show-total="false"
+            @change="setQueuePage"
+          />
+        </div>
       </div>
 
       <!--
@@ -2650,16 +2930,16 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
           type="button"
           class="gf-chip"
           :class="{ active: reportView === 'unassigned', warn: reportView !== 'unassigned' && reportStore.overdueCount > 0 }"
-          title="还没有指给客诉专员的条目"
+          title="还没有人领的条目 —— 谁有空谁领，池里没有分派"
           @click="setReportView('unassigned')"
         >
-          待分派<span class="gf-num">{{ reportUnassignedRows.length }}</span>
+          待领取<span class="gf-num">{{ reportUnassignedRows.length }}</span>
         </button>
         <button
           type="button"
           class="gf-chip"
           :class="{ active: reportView === 'assigning' }"
-          title="已指给客诉专员、还没有结论"
+          title="已被客诉专员领走、还没有结论"
           @click="setReportView('assigning')"
         >
           评估中<span class="gf-num">{{ reportAssigningRows.length }}</span>
@@ -2676,7 +2956,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
         <!--
           下钻收窄标：从上方 KPI 卡点进来的条件必须在清单旁边有一个**看得见、摘得掉**的落点。
           没有它，人从「超时未评 2」点进来只看到 2 行，会当成队列只剩 2 条。
-          🔴 超时横跨待分派与评估中两态，故这里给的是**两态之和**，与三枚 chip 上分开的条数
+          🔴 超时横跨待领取与评估中两态，故这里给的是**两态之和**，与三枚 chip 上分开的条数
           相加恒等——不是同一个数写了两遍。
         -->
         <span v-if="reportView !== 'assessed' && onlyOverdue" class="nc-chip bad">
@@ -2705,8 +2985,8 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
 
       <!--
         监控来源筛选（N6）。单独占一行而不与三态 chip 挤在一排：
-        两者是**不同的两层**——三态是这批条目走到哪一步，来源是它从哪儿进的队，
-        混成一排会让人以为"待分派"和"VIP客户"是可以二选一的同级选项。
+        两者是**不同的两层**——三态是这批池行走到哪一步，来源是它从哪儿进的池，
+        混成一排会让人以为"待领取"和"投诉单"是可以二选一的同级选项。
       -->
       <div v-if="listView === 'report'" class="section-filters grade-filters report-source-filters">
         <span class="rf-k">监控来源</span>
@@ -2735,10 +3015,10 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
         <template v-if="reportView !== 'assessed'">
           {{
             onlyOverdue
-              ? `当前没有超时未评的${reportView === 'unassigned' ? '待分派' : '评估中'}条目`
+              ? `当前没有超时未评的${reportView === 'unassigned' ? '待领取' : '评估中'}条目`
               : sourceFilter !== 'all'
-                ? `「${sourceFilter}」当前没有${reportView === 'unassigned' ? '待分派' : '评估中'}的条目`
-                : reportView === 'unassigned' ? '暂无待分派条目' : '暂无评估中条目'
+                ? `「${sourceFilter}」当前没有${reportView === 'unassigned' ? '待领取' : '评估中'}的条目`
+                : reportView === 'unassigned' ? '暂无待领取条目' : '暂无评估中条目'
           }}
         </template>
         <template v-else-if="assessedTodayOnly">
@@ -2748,20 +3028,16 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
       </div>
 
       <!--
-        风险工单池队列表。在队两态（待分派 / 评估中）共用一张表：它们的列几乎相同，
-        分成两张表迟早只改一处；差异只有勾选列与承办人列两处，就地 v-if 掉。
+        风险工单池队列表。在队两态（待领取 / 评估中）共用一张表：它们的列几乎相同，
+        分成两张表迟早只改一处；差异只有承办人一列，就地 v-if 掉。
+        🔴 **没有勾选列**：批量只服务于批量分派，而分派整套已取消。
       -->
       <div v-if="listView === 'report' && reportRows.length" class="hit-table-wrap report-table-wrap">
         <table v-if="reportView !== 'assessed'" class="hit-table report-table">
           <thead>
             <tr>
-              <th v-if="showReportSelection" style="width: 36px">
-                <div class="hit-cb" :class="{ checked: reportAllPicked }" @click="toggleReportAll">
-                  <CheckOutlined v-if="reportAllPicked" :style="{ color: '#fff', fontSize: '10px' }" />
-                </div>
-              </th>
               <th style="width: 190px">工单号</th>
-              <!-- 来源列可点排序：五类合一队之后，"先把同一类过一遍"是最常见的翻法 -->
+              <!-- 来源列可点排序：多类来源合一队之后，"先把同一类过一遍"是最常见的翻法 -->
               <th
                 style="width: 100px"
                 class="th-sortable"
@@ -2781,15 +3057,6 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
           </thead>
           <tbody>
             <tr v-for="r in pagedReportRows" :key="r.id">
-              <td v-if="showReportSelection">
-                <div
-                  class="hit-cb"
-                  :class="{ checked: reportPicked.has(r.id) }"
-                  @click.stop="toggleReportPick(r.id)"
-                >
-                  <CheckOutlined v-if="reportPicked.has(r.id)" :style="{ color: '#fff', fontSize: '10px' }" />
-                </div>
-              </td>
               <td>
                 <button type="button" class="rt-no" @click="openTicket(r.ticketNo)">{{ r.ticketNo }}</button>
               </td>
@@ -2805,7 +3072,8 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               <!--
                 🔴 超时**只标这一格，整行不变色**：队列长起来后满屏红底，
                 反而看不出到底哪几条超了——红色只有稀缺时才是警报。
-                等待时长恒从**提交时刻**起算、不从分派时刻（N5）：分派慢的压力该落在督导身上。
+                等待时长恒从**进池 / 提交时刻**起算、不从领取时刻（N5）：
+                没人领的那段空悬时间不能从账上抹掉。
               -->
               <td
                 class="hit-when rr-waited"
@@ -2814,17 +3082,10 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               >{{ waitedText(r.at) }}</td>
               <td>
                 <!--
-                  待分派 · **双轨**（O18）：督导「分派」给人，客诉专员「领取」自领。
-                  两条并存的理由：只留指派这一条时**督导就是单点**，他不在岗队列谁也动不了，
-                  而这条队列现在卡的是投诉立项（基线 ※8a）。与基线「领取 / 指派」同一副骨架（※15）。
+                  待领取 · **只有「领取」这一个动作**（分派 / 改派 / 批量分派整套已取消）。
+                  投诉督导在这一列**看得见、点不动**：他本轮已去权，只看数据。
                 -->
                 <template v-if="reportView === 'unassigned'">
-                  <button
-                    v-if="canAssign"
-                    type="button" class="row-btn row-btn-tag"
-                    title="指派给某位客诉专员，转「评估中」"
-                    @click="openAssign([r])"
-                  >分派</button>
                   <button
                     v-if="canClaim"
                     type="button" class="row-btn row-btn-tag"
@@ -2832,34 +3093,28 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                     @click="doClaim(r)"
                   >领取</button>
                   <span
-                    v-if="!canAssign && !canClaim"
+                    v-else
                     class="hit-sub"
-                    title="分派归投诉督导，领取归客诉专员"
+                    title="领取与评估归客诉专员；本视角只读"
                   >—</span>
                 </template>
                 <!--
-                  评估中：**按来源分流**（N7）。关键词触发**且尚未核实成立**的条目要的是
-                  915 的「成立/误报 + 定级」，故它的按钮是「核实」、点开的是同一个核实打标弹窗。
-                  🔴 核实**成立**之后这条退回队列继续走评估（方案 C），按钮随之变成「评估」——
-                  判据是 `needsVerify`，不是来源；仍按来源出「核实」会把它送回一个已经判完的弹窗。
-                  其余四类来源恒走评估二选一。
+                  评估中：给结论的只能是**这一条的承办人本人**（结论提交即固化，落款写的是他的名字）。
+                  🔴 罕见的"进了池却没打标"那一条走的是补打标，判据是有没有 `tag`、不是来源，
+                  见 `needsVerify` —— 漏斗下它恒为 false，池内一律出「评估」。
                 -->
                 <template v-else>
                   <button
+                    v-if="canAssessRow(r) || needsVerify(r)"
                     type="button" class="row-btn row-btn-tag"
-                    :title="needsVerify(r) ? '核实这条风险词命中是否成立并定级' : '给出评估结论：不升级 / 接管'"
+                    :title="needsVerify(r) ? '这一条还没有风险打标，先补一个结论' : '给出评估结论：升级 / 不升级'"
                     @click="handleReportRow(r)"
-                  >{{ needsVerify(r) ? '核实' : '评估' }}</button>
-                  <!--
-                    改派（O18）：评估人请假 / 离职 / 手上堆太多时这活儿必须能挪。
-                    不许改派的话唯一出路是"等它评完"，而它正卡在不在岗的人手上。
-                  -->
-                  <button
-                    v-if="canAssign"
-                    type="button" class="row-btn"
-                    :title="`当前承办人 ${r.assignee ?? '—'}，可改派给其他客诉专员`"
-                    @click="openAssign([r])"
-                  >改派</button>
+                  >{{ needsVerify(r) ? '补打标' : '评估' }}</button>
+                  <span
+                    v-else
+                    class="hit-sub"
+                    :title="`承办人 ${r.assignee ?? '—'} · 结论由承办人本人给出`"
+                  >—</span>
                 </template>
               </td>
             </tr>
@@ -2895,55 +3150,44 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               <td>{{ r.by }}<div class="hit-sub">{{ r.byRole }}</div></td>
               <td>{{ r.reason }}</td>
               <!--
-                两路结论各显各的（O16）：走评估的落 assessment（不升级 / 接管），
-                走核实打标的落 verify（成立 · 等级 / 误报）。把 verify 也塞进「评估决策」列
-                会让这一列同时装两种问题的答案，读表的人分不出哪条答的是"升不升"。
+                🔴 本表**只显示评估结论**（`assessment`）。旧实现在这几格里兜了一路 `verify`，
+                那是"核实成立就出池落已评估"时代的遗留；漏斗改版之后打标只决定进不进池、
+                不再结掉任何条目，能走到「已评估」的必然带着 assessment。
               -->
               <td>
-                {{ r.assessment?.by ?? r.verify?.by }}
-                <div class="hit-sub">{{ r.assessment?.byRole ?? r.verify?.byRole }}</div>
+                {{ r.assessment?.by ?? '—' }}
+                <div v-if="r.assessment" class="hit-sub">{{ r.assessment.byRole }}</div>
               </td>
-              <td class="hit-when">{{ r.assessment?.at ?? r.verify?.at }}</td>
+              <td class="hit-when">{{ r.assessment?.at ?? '—' }}</td>
               <td>
-                <span v-if="r.assessment" class="rr-dec" :class="{ risk: r.assessment.decision === '接管' }">
-                  {{ r.assessment.decision }}
-                </span>
-                <!--
-                  🔴 方案 C 之后走到这一格的 verify **只剩误报**：核实成立的条目不出池、
-                  退回待分派继续走评估，它要么还在队列里（不在本表），要么已经带着 assessment
-                  从上面那一支渲染。误报没有等级，故这里恒读作「核实：误报」。
-                  `risk` 这一档留着不删：修正核实结果那条路将来若也回写队列，成立会从这里过。
-                -->
+                <!-- 旧词「接管」归一成「升级」再显示：B 线的种子里仍有旧值，见 normalizeDecision -->
                 <span
-                  v-else-if="r.verify"
+                  v-if="r.assessment"
                   class="rr-dec"
-                  :class="{ risk: r.verify.verdict === '成立' }"
-                  :title="`实时监控 / 手动筛查走 915 核实打标，结论是「成立 / 误报 + 定级」，不是评估二选一；核实成立的条目会退回队列走评估，不落在本表`"
-                >核实：{{ r.verify.verdict }}{{ r.verify.level ? ` · ${riskLevelText(r.verify.level)}` : '' }}</span>
+                  :class="{ risk: normalizeDecision(r.assessment.decision) === '升级' }"
+                >
+                  {{ normalizeDecision(r.assessment.decision) }}
+                </span>
                 <span v-else class="hit-sub">—</span>
               </td>
               <td>
                 <!--
-                  接管按原单类型分流（O20）：非投诉单派生一张新投诉单，落在本列；
+                  升级按原单类型分流（O20）：非投诉单派生一张新投诉单，落在本列；
                   投诉单走基线 ※27「工单管控」，本单状态不变、不派生新单，本列写「工单管控」而不是「—」。
                   「不升级」两种都没有，才是「—」。
                 -->
                 <button
                   v-if="r.assessment?.escalatedToNo"
                   type="button" class="rt-no"
-                  :title="`接管派生的投诉单 ${r.assessment.escalatedToNo}`"
+                  :title="`升级派生的投诉单 ${r.assessment.escalatedToNo}`"
                   @click="openTicket(r.assessment.escalatedToNo)"
                 >{{ r.assessment.escalatedToNo }}</button>
                 <span
-                  v-else-if="r.assessment?.decision === '接管'"
+                  v-else-if="r.assessment && normalizeDecision(r.assessment.decision) === '升级'"
                   class="src-tag"
-                  title="原单已是投诉单，接管走基线 ※27「工单管控」：本单状态不变、不派生新单"
+                  title="原单已是投诉单，升级走基线 ※27「工单管控」：本单状态不变、不派生新单"
                 >工单管控</span>
-                <span
-                  v-else
-                  class="hit-sub"
-                  :title="r.verify ? '核实打标不派生新单；成立后转交处置走「去管控」' : '「不升级」不派生新单'"
-                >—</span>
+                <span v-else class="hit-sub" title="「不升级」不派生新单">—</span>
               </td>
               <!--
                 🔴 已评估行**没有任何操作**：评估结论提交即固化、不可修改（§9 规则 22）。
@@ -2958,7 +3202,6 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
         <div class="pager">
           <div class="pager-left">
             <span class="pager-total">共 {{ reportRows.length }} 条</span>
-            <span v-if="showReportSelection && reportPickCount > 0" class="pager-selected">已选 {{ reportPickCount }} 项</span>
           </div>
           <AppPagination
             :total="reportRows.length"
@@ -2970,18 +3213,47 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
         </div>
       </div>
 
+      <!--
+        命中台账 · 成效条。词表准确率是本页唯一的规则改进回路，它必须在这一屏里有个落点：
+        底表放宽成全部命中之后，「待核实」也成了台账的一档，这一条把三档与准确率一并交代。
+        沿用筛查结果条的 DOM 与 class（.scan-banner），两处做的都是"这批数据是什么成色"。
+      -->
+      <div v-if="listView === 'judged' && !ticketFocus" class="scan-banner">
+        <div class="sb-stat">
+          命中 <b>{{ effect.total }}</b> 条
+          <span class="sr-fresh">待核实 {{ effect.open }}</span>
+          <span class="sr-dup">已核实 {{ effect.judged }}</span>
+          <span class="sb-hint">
+            确认是风险 {{ confirmedHits.length }}（高{{ confirmedByGrade['高'] }}·中{{ confirmedByGrade['中'] }}·低{{ confirmedByGrade['低'] }}）
+            · 误报 {{ falseHits.length }}
+          </span>
+        </div>
+        <div class="sb-actions">
+          <span class="sb-picked" title="确认是风险 ÷ 已核实 · 还没核实的不进分母，它不该拉低准确率">
+            规则准确率
+            <b
+              v-if="effect.accuracy !== null"
+              :style="{ color: ACC_TONE_COLOR[accTone(effect.accuracy)] }"
+            >{{ Math.round(effect.accuracy * 100) }}%</b>
+            <b v-else>—</b>
+          </span>
+        </div>
+      </div>
+
       <!-- 台账查询条：七维全部展开，右侧动作对齐手动筛查（查询 + 重置） -->
       <div v-if="listView === 'judged' && !ticketFocus" class="ledger-bar" @keyup.enter="applyLedgerQuery">
         <div class="list-toolbar">
           <div class="tb-fields">
             <div class="fi">
               <span class="fl">核实结果</span>
+              <!-- 「待核实」与另两档同层：底表已含未核实的命中，核实打标就从这一档进 -->
               <a-select
                 v-model:value="ledgerFilter.verdict"
                 size="small" class="tb-ctl"
                 :dropdown-match-select-width="false"
                 :options="[
                   { value: 'all', label: '全部' },
+                  { value: 'open', label: '待核实' },
                   { value: '成立', label: '确认是风险' },
                   { value: '误报', label: '误报' },
                 ]"
@@ -3250,34 +3522,28 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
         </button>
       </div>
 
-      <!-- 风险工单池不走 filteredRows（那是命中记录），故这两块在 report 视图下一律不渲染 -->
-      <div v-if="listView !== 'report' && !filteredRows.length" class="ob-empty">
+      <!--
+        命中清单只服务**手动筛查（结果态）与命中台账**两个页签。
+        实时监控走的是上面那张条目表、风险工单池走池表，两者都不读 filteredRows ——
+        分母不同的数据共用一张表，迟早在某一列上把两者读串。
+      -->
+      <div v-if="(inLedger || inScanResult) && !filteredRows.length" class="ob-empty">
         <template v-if="inScanResult">该条件下没有扫到命中，可放宽时间区间或匹配范围</template>
         <!--
           台账空态必须把当前时间窗口讲出来。默认只看近 30 天，
           不说清楚的话，查三个月前的记录会被读成"当时没发现"——这是默认窗口唯一的风险。
         -->
-        <template v-else-if="inLedger">
+        <template v-else>
           当前只看 {{ ledgerRangeText }}，未找到匹配记录——扩大命中时间范围试试
         </template>
-        <template v-else>{{ gradeFilter === 'all' ? '该范围近期没有待核实的风险命中' : `该范围下没有待核实的${gradeFilter}危命中` }}</template>
       </div>
 
 
-      <div v-if="listView !== 'report' && filteredRows.length && !(listView === 'scan' && !inScanResult)" class="hit-table-wrap">
+      <div v-if="(inLedger || inScanResult) && filteredRows.length" class="hit-table-wrap">
       <table class="hit-table">
         <thead>
           <tr>
-            <th v-if="showHitSelection || inScanResult" style="width: 36px">
-              <div
-                v-if="showHitSelection"
-                class="hit-cb"
-                :class="{ checked: bulkAllPicked }"
-                @click="toggleBulkAll"
-              >
-                <CheckOutlined v-if="bulkAllPicked" :style="{ color: '#fff', fontSize: '10px' }" />
-              </div>
-            </th>
+            <th v-if="inScanResult" style="width: 36px"></th>
             <th style="width: 52px">等级</th>
             <th style="width: 120px">风险词</th>
             <th style="width: 200px">工单</th>
@@ -3295,21 +3561,12 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               'scan-dup': inScanResult && scanDupIds.has(h.id),
             }"
           >
-            <td v-if="showHitSelection || inScanResult">
+            <td v-if="inScanResult">
               <a-checkbox
-                v-if="inScanResult"
                 :checked="scanPicked.has(h.id)"
                 :disabled="scanDupIds.has(h.id)"
                 @change="toggleScanPick(h.id)"
               />
-              <div
-                v-else
-                class="hit-cb"
-                :class="{ checked: bulkPicked.has(h.id) }"
-                @click.stop="toggleBulkPick(h.id)"
-              >
-                <CheckOutlined v-if="bulkPicked.has(h.id)" :style="{ color: '#fff', fontSize: '10px' }" />
-              </div>
             </td>
             <td>
               <!-- 误报没有等级，这一格就空着（—）；回落到词表预设去补一个，等于给已排除的东西重新贴上风险标 -->
@@ -3420,7 +3677,6 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
       <div class="pager">
         <div class="pager-left">
           <span class="pager-total">共 {{ filteredRows.length }} 条</span>
-          <span v-if="showHitSelection && bulkCount > 0" class="pager-selected">已选 {{ bulkCount }} 项</span>
         </div>
         <AppPagination
           :total="filteredRows.length"
@@ -3589,10 +3845,14 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
       </div>
     </a-modal>
 
-    <!-- 批量打标 -->
+    <!--
+      批量风险打标（只对「待打标」这一批）。结论与单条**同一个四选一**，
+      不给"保持预设"这种只有批量才有的第五档 —— 批量与单条口径分家的话，
+      同一批条目走两条路会得到两种结论，而进不进池全看它。
+    -->
     <OpActionModal
       :open="bulkOpen"
-      title="批量打标"
+      title="批量风险打标"
       :icon="TagsOutlined"
       tone="primary"
       :width="480"
@@ -3605,69 +3865,193 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
         <div class="tag-hit-head tag-bulk-head">
           <div class="tag-bulk-summary">
             <span>已选 <strong>{{ bulkTargets.length }}</strong> 条</span>
-            <template v-if="bulkGradeMix">
+            <template v-if="bulkSourceMix">
               <span class="tag-hit-sep">·</span>
-              <span>词表预设 {{ bulkGradeMix }}</span>
+              <span>来源 {{ bulkSourceMix }}</span>
             </template>
           </div>
         </div>
 
         <div class="op-field op-field-h tag-field-block">
-          <div class="op-label req">本次命中</div>
-          <div class="op-radio-cards op-radio-cards--row tag-radio-compact tag-radio-fill">
+          <div class="op-label req">打标结论</div>
+          <div class="op-radio-cards op-radio-cards--row tag-radio-compact tag-radio-fill tag-radio-4">
             <div
+              v-for="r in RISK_TAG_RESULTS"
+              :key="r"
               class="op-radio-card"
-              :class="{ on: bulkVerdict === '成立' }"
-              @click="bulkVerdict = '成立'"
+              :class="{ on: bulkResult === r }"
+              :style="bulkResult === r && isPoolLevel(r) ? { borderColor: RISK_LEVEL_STYLE[r].color, background: `${RISK_LEVEL_STYLE[r].bg}33` } : {}"
+              @click="bulkResult = r"
             >
-              <div class="op-rc-title">均成立</div>
-            </div>
-            <div
-              class="op-radio-card"
-              :class="{ on: bulkVerdict === '误报' }"
-              @click="bulkVerdict = '误报'"
-            >
-              <div class="op-rc-title">均误报</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="op-field op-field-h tag-field-block">
-          <div class="op-label">风险等级</div>
-          <div
-            class="op-radio-cards op-radio-cards--row tag-radio-compact tag-radio-fill tag-radio-4"
-            :class="{ 'op-radio-disabled': bulkVerdict === '误报' }"
-          >
-            <div
-              class="op-radio-card"
-              :class="{ on: bulkLevel === '' }"
-              @click="bulkVerdict !== '误报' && (bulkLevel = '')"
-            >
-              <div class="op-rc-title">保持预设</div>
-            </div>
-            <div
-              v-for="g in GRADES"
-              :key="g"
-              class="op-radio-card"
-              :class="{ on: bulkLevel === g }"
-              :style="bulkLevel === g ? { borderColor: RISK_LEVEL_STYLE[g].color, background: `${RISK_LEVEL_STYLE[g].bg}33` } : {}"
-              @click="bulkVerdict !== '误报' && (bulkLevel = g)"
-            >
-              <div class="op-rc-title">{{ g }}危</div>
+              <div class="op-rc-title">{{ isPoolLevel(r) ? `${r}危` : r }}</div>
             </div>
           </div>
         </div>
         <div class="tag-form-foot">
           {{
-            bulkVerdict === '误报'
-              ? '误报无需定级'
-              : '默认保持词表预设；本批须同一结论，有分歧请分次打标'
+            bulkResult === NO_RISK
+              ? '标记为无风险的不进池，落「已标记无风险」视图，可在那里复核'
+              : '低 / 中 / 高一律进风险工单池等待领取；本批须同一结论，有分歧请分次打标'
           }}
         </div>
 
         <div class="op-field op-field-h op-field-h-top tag-field-note">
-          <div class="op-label">处置备注</div>
-          <a-textarea v-model:value="bulkNote" :rows="2" placeholder="核实结论与后续动作（可选）" />
+          <div class="op-label">打标备注</div>
+          <a-textarea v-model:value="bulkNote" :rows="2" placeholder="判断依据与后续动作（可选）" />
+        </div>
+      </div>
+    </OpActionModal>
+
+    <!--
+      单条风险打标：四选一（高 / 中 / 低 / 无风险）。首次打标与二次修改共用这一个弹窗，
+      只在标题、按钮文案、必填项与留痕区上分叉 —— 与命中打标弹窗同一副骨架。
+    -->
+    <OpActionModal
+      :open="entryTagOpen"
+      :title="entryTagAmend ? '修正风险打标' : '风险打标'"
+      :icon="entryTagAmend ? EditOutlined : TagOutlined"
+      tone="primary"
+      :width="480"
+      :ok-text="entryTagAmend ? '保存修改' : '保存'"
+      :ok-disabled="!canSaveEntryTag"
+      @update:open="entryTagOpen = $event"
+      @ok="saveEntryTag"
+    >
+      <div v-if="entryTagTarget" class="op-form tag-modal-form">
+        <div class="tag-hit-head">
+          <div class="tag-hit-top">
+            <button type="button" class="tag-ticket-no" @click="openTicket(entryTagTarget.ticketNo)">
+              {{ entryTagTarget.ticketNo }}
+            </button>
+            <span class="tag-hit-title">{{ entryTagTarget.desc }}</span>
+          </div>
+          <div class="tag-hit-meta">
+            <span>监控来源 <strong>{{ entryTagTarget.source }}</strong></span>
+            <span class="tag-hit-sep">·</span>
+            <span>进监控 {{ entryTagTarget.at }}</span>
+            <span class="tag-hit-sep">·</span>
+            <span>已等待 {{ waitedText(entryTagTarget.at) }}</span>
+          </div>
+          <!-- 修改态先把"现在是什么"摆明，否则改完不知道自己改动了哪一项 -->
+          <div v-if="entryTagAmend && entryTagTarget.tag" class="tag-cur">
+            <span class="tag-cur-k">现行结论</span>
+            <span
+              v-if="isPoolLevel(entryTagTarget.tag.result)"
+              class="grade-pill-inline"
+              :style="{ color: RISK_LEVEL_STYLE[entryTagTarget.tag.result].color, background: RISK_LEVEL_STYLE[entryTagTarget.tag.result].bg }"
+            >{{ entryTagTarget.tag.result }}危</span>
+            <span v-else class="state-chip">{{ entryTagTarget.tag.result }}</span>
+            <span class="tag-hit-sep">·</span>
+            <span>{{ entryTagTarget.tag.by }}（{{ entryTagTarget.tag.byRole }}）于 {{ entryTagTarget.tag.at }}</span>
+          </div>
+        </div>
+
+        <!--
+          证据：本单的风险词命中原话。**只有预警词那一路有**，另两类来源整块 v-if 掉、不留空标题。
+          🔴 它必须排在结论之上：条目的 desc 只有一句"命中风险词，已自动纳入实时监控"，
+          说不出客户到底讲了什么；把原话摆到底下，等于让人先下结论再看依据。
+        -->
+        <div v-if="entryTagHits.length" class="tag-sib">
+          <div class="tag-sib-head">
+            <span class="tag-sib-title">本单风险词命中</span>
+            <span class="tag-sib-n">{{ entryTagHits.length }} 条</span>
+            <span class="tag-sib-grade">
+              本单当前风险等级
+              <span
+                v-if="ticketGradeOf(entryTagTarget.ticketNo)"
+                class="grade-pill-inline"
+                :style="{ color: RISK_LEVEL_STYLE[ticketGradeOf(entryTagTarget.ticketNo)!].color, background: RISK_LEVEL_STYLE[ticketGradeOf(entryTagTarget.ticketNo)!].bg }"
+                title="已核实且成立的命中取最高，只升不降；误报与未核实的不参与"
+              >{{ ticketGradeOf(entryTagTarget.ticketNo) }}危</span>
+              <span v-else class="tag-sib-nograde" title="该单还没有任何一条命中被核实为成立">尚无</span>
+            </span>
+          </div>
+          <ol class="tag-sib-list">
+            <li v-for="s in entryTagHits" :key="s.id" class="tsb-item">
+              <div class="tsb-head">
+                <span class="tsb-word">「{{ s.word }}」</span>
+                <span class="tsb-at">{{ s.when }}</span>
+                <span v-if="!verdictOf(s)" class="tsb-open">待核实</span>
+                <span
+                  v-else
+                  class="verdict-chip"
+                  :class="verdictOf(s) === '误报' ? 'vc-fp' : 'vc-ok'"
+                >{{ verdictOf(s) }}</span>
+              </div>
+              <div class="tsb-excerpt" :title="s.excerpt">
+                <span class="hit-pos">{{ s.position }}</span>
+                <span class="excerpt-quote">「<template v-if="excerptWindow(s).headTruncated">…</template>{{ excerptWindow(s).before }}<mark v-if="excerptWindow(s).hit" class="excerpt-hit">{{ excerptWindow(s).hit }}</mark>{{ excerptWindow(s).after }}<template v-if="excerptWindow(s).tailTruncated">…</template>」</span>
+              </div>
+            </li>
+          </ol>
+        </div>
+
+        <!--
+          🔴 **四选一**：高 / 中 / 低 / 无风险。四个答案回答的是同一个问题——"这张单有没有风险、多大"。
+          拆成"有没有风险 + 等级"两个字段会立刻长出"无风险却带着等级""有风险却没等级"两种非法组合，
+          而这两种组合恰恰决定条目进不进池。
+        -->
+        <div class="op-field op-field-h tag-field-block">
+          <div class="op-label req">打标结论</div>
+          <div class="op-radio-cards op-radio-cards--row tag-radio-compact tag-radio-fill tag-radio-4">
+            <div
+              v-for="r in RISK_TAG_RESULTS"
+              :key="r"
+              class="op-radio-card"
+              :class="{ on: entryTagResult === r }"
+              :style="entryTagResult === r && isPoolLevel(r) ? { borderColor: RISK_LEVEL_STYLE[r].color, background: `${RISK_LEVEL_STYLE[r].bg}33` } : {}"
+              @click="entryTagResult = r"
+            >
+              <div class="op-rc-title">{{ isPoolLevel(r) ? `${r}危` : r }}</div>
+            </div>
+          </div>
+        </div>
+        <div class="tag-form-foot">
+          {{
+            entryTagResult === NO_RISK
+              ? '判为无风险的不进池，落「已标记无风险」视图 —— 那里是核查漏标误判的地方，不是回收站'
+              : entryTagResult
+                ? '低 / 中 / 高一律进风险工单池，等客诉专员领取后给出升级 / 不升级的结论'
+                : '先判这张单有没有风险、多大；低 / 中 / 高进池，无风险不进池'
+          }}
+        </div>
+
+        <!-- 二次修改必须答得出"为什么改"：只记改前改后，复盘时链条仍是断的 -->
+        <div v-if="entryTagAmend" class="op-field op-field-h op-field-h-top tag-field-note">
+          <div class="op-label req">修正原因</div>
+          <a-textarea
+            v-model:value="entryTagReason"
+            :rows="2"
+            placeholder="为什么改判，如：复听通话录音，客户已明确提出对外投诉"
+          />
+        </div>
+
+        <div class="op-field op-field-h op-field-h-top tag-field-note">
+          <div class="op-label">打标备注</div>
+          <a-textarea v-model:value="entryTagNote" :rows="2" placeholder="判断依据与后续动作（可选）" />
+        </div>
+
+        <div v-if="entryTagResult === '高'" class="op-tip op-tip-info tag-tip-compact">
+          保存后可在「已入池」视图点「去管控」转交{{ DISPOSAL_BY_GRADE['高'].who }}
+        </div>
+
+        <!-- 打标历史：它是佐证不是填写项，按信息层级排在最后。追加不覆盖，故爬坡读得出先后 -->
+        <div v-if="entryTagHistory.length" class="tag-trace">
+          <div class="tag-trace-head">
+            打标记录<span class="tag-trace-n">{{ entryTagHistory.length }} 条</span>
+          </div>
+          <ol class="tag-trace-list">
+            <li v-for="(e, i) in entryTagHistory" :key="`${e.at}-${i}`" class="tt-item">
+              <div class="tt-head">
+                <span class="tt-step">{{ i === 0 ? '首次打标' : `第 ${i} 次修正` }}</span>
+                <span class="tt-by">{{ e.by }}</span>
+                <span class="tt-role">{{ e.byRole }}</span>
+                <span class="tt-at">{{ e.at }}</span>
+              </div>
+              <div class="tt-change">{{ e.level ? `${e.level}危` : '无风险' }}</div>
+              <div v-if="e.amendReason" class="tt-reason">原因：{{ e.amendReason }}</div>
+            </li>
+          </ol>
         </div>
       </div>
     </OpActionModal>
@@ -3949,24 +4333,21 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
             <blockquote class="assess-quote">{{ assessTarget.desc }}</blockquote>
 
             <!--
-              核实结论（方案 C）。**只有核实成立后退回队列的关键词条目带 `verify`**，
-              其余四类来源没有这一块，故整块 v-if 掉、不留空标题。
-
-              🔴 为什么摆在主体而不是收进底栏「本单另有」：底栏是"顺带看看"，
-              而对这一条来说核实结论**就是它被送来评估的全部理由**——
-              它的 desc 只有一句"命中风险词，已自动纳入监控"，说不出客户讲了什么。
+              **风险打标结论**——它就是这条条目被送来评估的全部理由，故摆在主体、不收进底栏。
+              A 线的条目 desc 只有一句"命中风险词，已自动纳入实时监控"，说不出客户讲了什么；
               客诉专员要在知道"监控为什么判它有风险"的前提下决定升不升级。
+              B 线的报备单没有打标（它不走那道门），整块 v-if 掉、不留空标题。
               行式沿用底栏那套 assess-foot-*，两处读起来是同一种"键：值"。
             -->
-            <div v-if="assessTarget.verify" class="assess-verify">
+            <div v-if="assessTarget.tag" class="assess-verify">
               <div class="assess-foot-row">
-                <span class="assess-foot-k">核实结论</span>
+                <span class="assess-foot-k">风险打标</span>
                 <span class="assess-foot-v">
-                  <span class="rr-dec" :class="{ risk: assessTarget.verify.verdict === '成立' }">
-                    {{ assessTarget.verify.verdict }}<template v-if="assessTarget.verify.level"> · {{ riskLevelText(assessTarget.verify.level) }}</template>
+                  <span class="rr-dec" :class="{ risk: assessTarget.tag.result === '高' }">
+                    {{ isPoolLevel(assessTarget.tag.result) ? riskLevelText(assessTarget.tag.result) : assessTarget.tag.result }}
                   </span>
                   <span class="assess-foot-sub">
-                    {{ assessTarget.verify.by }}（{{ assessTarget.verify.byRole }}）· {{ assessTarget.verify.at }}
+                    {{ assessTarget.tag.by }}（{{ assessTarget.tag.byRole }}）· {{ assessTarget.tag.at }}
                   </span>
                 </span>
               </div>
@@ -3981,10 +4362,10 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                   </span>
                 </span>
               </div>
-              <!-- 核实时填的处置备注：核实人当时怎么想的，比结论本身更能帮下一个人接上 -->
-              <div v-if="assessTarget.verify.note" class="assess-foot-row">
-                <span class="assess-foot-k">核实备注</span>
-                <span class="assess-foot-v">{{ assessTarget.verify.note }}</span>
+              <!-- 打标时填的备注：打标人当时怎么想的，比结论本身更能帮下一个人接上 -->
+              <div v-if="assessTarget.tag.note" class="assess-foot-row">
+                <span class="assess-foot-k">打标备注</span>
+                <span class="assess-foot-v">{{ assessTarget.tag.note }}</span>
               </div>
             </div>
             <ul v-if="assessTarget.attachments.length" class="assess-files">
@@ -4021,7 +4402,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               <ol class="assess-foot-list">
                 <li v-for="h in assessTargetHistory" :key="h.id" class="assess-foot-item">
                   <span class="assess-foot-at">{{ h.assessment?.at ?? h.at }}</span>
-                  <span class="assess-foot-dec">{{ h.status === '已撤回' ? '已撤回' : h.assessment?.decision }}</span>
+                  <span class="assess-foot-dec">{{ h.status === '已撤回' ? '已撤回' : (h.assessment ? normalizeDecision(h.assessment.decision) : '—') }}</span>
                   <span v-if="h.assessment?.escalatedToNo" class="assess-foot-esc">→ {{ h.assessment.escalatedToNo }}</span>
                 </li>
               </ol>
@@ -4034,7 +4415,8 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
           <h4 class="assess-block-title">评估结论</h4>
 
           <!--
-            决策**二选一**（N1）：不升级 / 接管。
+            决策**二选一**：升级 / 不升级。「升级」只指**转投诉单**（走 830 第一跳派生），
+            **不含升三线**；旧词「接管」整个作废，见 riskShared 的 ASSESS_DECISIONS。
             🔴 这里既没有「风险等级」也没有「关联投诉单号」——
             二选一之后没有"确认有风险 + 定级"这一档，评估不再产出等级、不再往工单回传；
             而「关联已有投诉单」这一档随 O11 一并作废（报上来评估侧答不了它）。
@@ -4047,9 +4429,9 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               </a-radio-group>
             </div>
             <div v-if="missAssessDecision" class="assess-err assess-dec-foot">请先选择一个评估决策</div>
-            <!-- 接管的去向按原单类型分流（O20），提示行必须跟着分流，否则在投诉单上说的是错的 -->
-            <div v-else-if="assessDecision === '接管'" class="tag-form-foot assess-dec-foot">
-              {{ takeoverHint }}
+            <!-- 升级的去向按原单类型分流（O20），提示行必须跟着分流，否则在投诉单上说的是错的 -->
+            <div v-else-if="assessDecision === '升级'" class="tag-form-foot assess-dec-foot">
+              {{ escalateHint }}
             </div>
           </div>
 
@@ -4067,45 +4449,10 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
     </OpActionModal>
 
     <!--
-      分派（N4 / 930 §5）。单条与批量共用这一个弹窗：两者的规则完全一样，
-      分两套实现迟早只改一处。主按钮同样**不做 disabled**，点了就校验、缺项出红字。
+      🔴 **分派弹窗已删**（业务第三轮拍板取消分派 / 改派 / 批量分派整套）。
+      池内只剩「领取」，它不需要弹窗——领取的对象就是当前这一行、承办人就是当前登录的人，
+      没有任何一项要人填。为一个无参动作留一个确认弹窗，只是多一次点击。
     -->
-    <OpActionModal
-      :open="assignOpen"
-      title="分派风险工单"
-      :icon="UnorderedListOutlined"
-      tone="primary"
-      :width="460"
-      ok-text="确认分派"
-      @update:open="assignOpen = $event"
-      @ok="confirmAssign"
-    >
-      <div class="op-form tag-modal-form">
-        <div class="tag-hit-head tag-bulk-head">
-          <div class="tag-bulk-summary">
-            <span>已选 <strong>{{ assignTargets.length }}</strong> 条</span>
-            <span class="tag-hit-sep">·</span>
-            <span>分派后转「评估中」</span>
-          </div>
-        </div>
-
-        <div class="op-field op-field-h tag-field-block">
-          <div class="op-label req">承办人</div>
-          <div class="op-radio-cards op-radio-cards--row tag-radio-compact tag-radio-fill">
-            <div
-              v-for="p in ASSIGN_CANDIDATES"
-              :key="p"
-              class="op-radio-card"
-              :class="{ on: assignTo === p }"
-              @click="assignTo = p"
-            >
-              <div class="op-rc-title">{{ p }}</div>
-            </div>
-          </div>
-          <div v-if="missAssignTo" class="assess-err">请选择一位客诉专员</div>
-        </div>
-      </div>
-    </OpActionModal>
   </div>
 </template>
 
@@ -5378,7 +5725,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
 }
 .wf-syn-del:hover { color: #ef4444; }
 
-/* ==== 风险工单池（队列 + 分派 + 评估弹窗）==== */
+/* ==== 风险工单池（队列 + 领取 + 评估弹窗）==== */
 
 /* 收窄标：等级 chip 那一排里混着的"当前生效条件"，故取同一个圆角与字号，
    只在配色上与 chip 区分——chip 是可点的选择项，它是可摘的既成条件。 */

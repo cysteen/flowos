@@ -2,7 +2,7 @@ import { computed, ref } from 'vue';
 import { message } from 'ant-design-vue';
 import { useUserStore } from '@/stores/user';
 // 评估是两条线共用的动作（A 线自动入池条目与 B 线报备单都要评），故走合并层 riskPool：
-// 「接管」派生新单号时要在**两条线**已用过的号里取最大值 +1，只扫一条线会派出重号。
+// 「升级」派生新单号时要在**两条线**已用过的号里取最大值 +1，只扫一条线会派出重号。
 import { useRiskPoolStore } from '@/stores/riskPool';
 import {
   ASSESS_DECISIONS,
@@ -38,17 +38,22 @@ export function useRiskReportAssess() {
   const assessValid = computed(() => !!assessDecision.value && !!assessAdvice.value.trim());
 
   const assessAdviceLabel = computed(() =>
-    assessDecision.value === '接管' ? '接管说明' : '反馈意见',
+    assessDecision.value === '升级' ? '升级说明' : '反馈意见',
   );
   const assessAdvicePlaceholder = computed(() => {
     switch (assessDecision.value) {
       case '不升级': return '写清为什么不必升级、原单建议怎么处理…';
-      case '接管': return '写清接管理由与后续处置安排…';
+      case '升级': return '写清升级理由与后续处置安排…';
       default: return '请先选择评估决策';
     }
   });
 
-  const takeoverHint = computed(() => {
+  /**
+   * 选「升级」时的提示行，按当前这条的原单类型给出真实去向。
+   * 🔴 「升级」只指**转投诉单**（走《【830】》第一跳派生），**不含升三线**——
+   * 升三线是工单侧的技术升级，与风险侧升不升投诉是两条路，别在同一个词下混着说。
+   */
+  const escalateHint = computed(() => {
     const no = assessTarget.value?.ticketNo;
     if (no && isComplaintTicket(no)) {
       return '本单已是投诉单，提交后由你在工单上执行「工单管控」接手，本单状态不变、不派生新单。此步不可撤销';
@@ -83,7 +88,7 @@ export function useRiskReportAssess() {
 
   function openAssess(r: RiskPoolItem) {
     if (r.status !== '评估中') {
-      message.warning('该条目还没有分派，请先分派给客诉专员再评估');
+      message.warning('该条目还没有人领取，请先领取再评估');
       return;
     }
     assessTarget.value = r;
@@ -98,8 +103,8 @@ export function useRiskReportAssess() {
     const target = assessTarget.value;
     if (!target || !assessValid.value || !assessDecision.value) return;
 
-    const takeover = assessDecision.value === '接管';
-    const derive = takeover && !isComplaintTicket(target.ticketNo);
+    const escalate = assessDecision.value === '升级';
+    const derive = escalate && !isComplaintTicket(target.ticketNo);
     const escalatedToNo = derive ? nextEscalatedNo() : undefined;
 
     if (escalatedToNo) {
@@ -122,9 +127,9 @@ export function useRiskReportAssess() {
 
     assessOpen.value = false;
     if (escalatedToNo) {
-      message.success(`已接管，已派生投诉单 ${escalatedToNo}`);
-    } else if (takeover) {
-      message.success(`已接管 ${target.ticketNo}，请在工单上执行「工单管控」接手`);
+      message.success(`已升级，已派生投诉单 ${escalatedToNo}`);
+    } else if (escalate) {
+      message.success(`已升级 ${target.ticketNo}，请在工单上执行「工单管控」接手`);
     } else {
       message.success('已提交结论：不升级');
     }
@@ -140,7 +145,13 @@ export function useRiskReportAssess() {
     missAssessAdvice,
     assessAdviceLabel,
     assessAdvicePlaceholder,
-    takeoverHint,
+    escalateHint,
+    /**
+     * ⚠️ 兼容别名，指向同一个 computed。`RiskReportPoolPanel.vue`（工单工作台的报备池，
+     * 本轮不在本次改动范围内）仍按旧名解构；直接改名会让那里**静默取到 undefined**，
+     * 提示行整条消失而不报错。那一批改到新名之后删掉本行。
+     */
+    takeoverHint: escalateHint,
     openAssess,
     confirmAssess,
     canAssessReport,
