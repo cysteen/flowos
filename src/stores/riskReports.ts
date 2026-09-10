@@ -1,6 +1,7 @@
 import { ref, watch } from 'vue';
 import { defineStore } from 'pinia';
 import { useNotifyLogStore } from '@/stores/notifyLog';
+import { useRiskHistoryStore } from '@/stores/riskHistory';
 import { useRiskQueueStore } from '@/stores/riskQueue';
 import {
   RISK_SUPERVISOR,
@@ -335,6 +336,8 @@ export const useRiskReportStore = defineStore('riskReports', () => {
   const notifyLog = useNotifyLogStore();
   /** A 线。工单页的几个读口要把它在同一张单上的条目一并算进来，见下方各函数说明 */
   const queue = useRiskQueueStore();
+  /** 第八类履历（风险结论）的唯一落库口，见 `stores/riskHistory.ts`。本线出「报备提交」这一件 */
+  const history = useRiskHistoryStore();
   const clock = useRiskClock();
 
   function findById(id: string) {
@@ -454,6 +457,23 @@ export const useRiskReportStore = defineStore('riskReports', () => {
       category: input.reason === '风险场景' ? input.category : null,
     };
     reports.value.push(report);
+    /*
+     * 落《【720】》第八类履历 ①「报备提交」（《【930】》§6.3）：
+     * 「〈报备人〉 发起风险报备 · 〈报备原因〉〈风险类型〉」。
+     *
+     * ⚠️ **风险类型只在原因＝「风险场景」时存在**（§4.5 / 《【720】》§4.4 退化规则①），
+     * 这里直接交 `report.category` —— 上面那道收敛已经把非风险场景的类型清成 null 了。
+     * 🔴 **撤回报备不写履历**（《【720】》§6 采集「风险结论 ①」原话），故 `withdraw` 里没有对应调用。
+     */
+    history.recordRiskHistory({
+      kind: 'report',
+      ticketNo: report.ticketNo,
+      by: report.by,
+      byRole: report.byRole,
+      at: report.at,
+      reason: report.reason,
+      category: report.category,
+    });
     // 报上来第一时间要惊动的是**投诉督导**：待分派这一段的责任人是他（分派归他做），
     // 而这条队列卡的是投诉立项，静悄悄躺在队列里等人主动来看是不行的。
     notifyLog.emit({

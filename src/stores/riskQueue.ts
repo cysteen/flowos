@@ -1,6 +1,7 @@
 import { computed, ref, watch } from 'vue';
 import { defineStore } from 'pinia';
 import { useRiskTagStore, type RiskTagEntry } from '@/stores/riskTags';
+import { useRiskHistoryStore } from '@/stores/riskHistory';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
 import { TICKETS } from '@/mock/tickets';
 import { isTicketClosed } from '@/views/tickets/types/ticket';
@@ -877,6 +878,13 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
   const entries = ref<RiskQueueEntry[]>(SEED.map((e) => ({ ...e })));
   /** 打标历史走它，**不另造一套**：追加不覆盖、正序、末条即现行值，与命中核实同一套机制 */
   const tags = useRiskTagStore();
+  /**
+   * 第八类履历（风险结论）的**唯一落库口**，见 `stores/riskHistory.ts`。
+   * 打标那一件（以及它带来的工单级等级变更）在本模块产出，故写入方向定在这里 ——
+   * 两个打标入口（风险监控页的单条 / 批量、工单处理页的「风险打标」块）都收敛到
+   * `recordTag` 这一个状态机入口上，履历因此不可能只在其中一个入口落下。
+   */
+  const history = useRiskHistoryStore();
 
   /**
    * 落 localStorage（保质期与**隔夜作废**见 `riskShared.ts` 的 `readDailyRiskCache`）。
@@ -1067,6 +1075,20 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
     const e = findById(entryId);
     if (!e) return false;
 
+    /*
+     * 履历第八类要的两个"旧值"，**必须在覆盖之前取**：
+     *   · `prevResult` —— 本条目上一次的打标结论，改判那一行要写「〈旧值〉 → 〈新值〉」；
+     *   · `prevGrade`  —— 工单级风险等级，第 ⑤ 件「风险等级变更」的旧值。
+     * 取晚一步就都成了新值，改判在履历上会写成"由高危改判为高危"。
+     *
+     * 🔴 `prevGrade` 取的是 `ticketGradeOf` 而**不是** `tagGradeOf`：⑤ 记的是**工单级**等级
+     * （＝ max(已打标条目的等级, 已核实且成立的命中等级)）。只看打标那一半的话，
+     * 一张已被命中核实判为高危的单再打个中危标，工单级其实纹丝不动，履历却会多出一条
+     * "高危 → 中危" —— 而《【720】》§6 采集 ⑤ 的原话是「**值真的变了才写**」。
+     */
+    const prevResult = e.tag?.result ?? null;
+    const prevGrade = tags.ticketGradeOf(e.ticketNo);
+
     // 条目上已经带着一份种子结论、而历史还是空的：先把那一份补进历史再写新的，
     // 否则种子条目的第一次修正会把原结论冲掉，历史从半截开始（见 `tagSeedEntryOf`）
     if (e.tag && !tags.historyOf(e.id).length) {
@@ -1118,6 +1140,42 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
         e.status = '已标记无风险';
         delete e.assignee;
       }
+    }
+
+    /*
+     * 落《【720】》第八类履历（《【930】》§6.3）。**两件，不是一件**：
+     *   ② 打标本身 —— 「〈打标人〉 标记风险等级 · 〈四选一〉」，改判带「旧 → 新」＋改判理由；
+     *   ⑤ 工单级风险等级变更 —— 只在**值真的变了**时才落，来源写「核实结论回传」。
+     *
+     * 🔴 **两条都落、不合并**：②答"谁在这条条目上下了什么结论"，⑤答"这张单现在有多危险"。
+     * 一张单有多条条目时两者会分家（给第二条条目打个低危标，工单级仍是高危 —— ②有、⑤无），
+     * 合成一条就再也说不清是哪一种情形。
+     *
+     * ⚠️ **命中规则自动打标不走本函数**，故不会误落履历（《【720】》§4.4「本类只收人下的结论」）。
+     */
+    history.recordRiskHistory({
+      kind: 'tag',
+      ticketNo: e.ticketNo,
+      by: input.by,
+      byRole: input.byRole,
+      at: input.at,
+      result: input.result,
+      prev: prevResult,
+      note: input.note,
+      ...(input.amendReason ? { amendReason: input.amendReason } : {}),
+    });
+    const nextGrade = tags.ticketGradeOf(e.ticketNo);
+    if (nextGrade !== prevGrade) {
+      history.recordRiskHistory({
+        kind: 'grade',
+        ticketNo: e.ticketNo,
+        by: input.by,
+        byRole: input.byRole,
+        at: input.at,
+        from: prevGrade,
+        to: nextGrade,
+        source: '核实结论回传',
+      });
     }
     return true;
   }

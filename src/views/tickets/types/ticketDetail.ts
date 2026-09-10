@@ -27,7 +27,17 @@ export type TlAction =
   | 'dunning'
   | 'resolved'
   | 'praise'
-  | 'collab';
+  /**
+   * 第八类「风险结论」那五件的图标位（《【720】》§5.1 逐件指定，**共用 `risk` 色条**）：
+   * `riskReport` ＝ 报备提交（盾）、`riskAssess` ＝ 评估结论（盾+✓）、
+   * `collab` ＝ 协同处理（双人）、`riskTag` ＝ 打标（放大镜+✓）、
+   * `riskGrade` ＝ 风险等级变更（警示三角）。
+   *
+   * 🔴 **五件各占一枚、不合并成一个 `risk`**：色条已经把它们归到同一类了，
+   * 图标是质检点开这一类之后**区分五件**的唯一线索；合并之后一屏全是同一个图形，
+   * 而《【720】》§2.3 V12 要的正是"一屏看全报备、评估、协同、打标、等级变更"。
+   */
+  | 'collab' | 'riskReport' | 'riskAssess' | 'riskTag' | 'riskGrade';
 /**
  * 处理履历上的角色徽章文案。取 0830 正式角色名（基线 §3.0 新旧名对照）：
  * 旧名「二线专员」→「二线专员」、「班组长」→「二线班组长」、「三线技术支持」→「技术支持」。
@@ -76,6 +86,14 @@ export interface TimelineEntry {
   relatedTicket?: RelatedTicketBrief;
   /** 工单处理（handle 事件）：本次提交的字段级变更（补充/修改） */
   changes?: TimelineFieldChange[];
+  /**
+   * 第八类「风险结论」条目的**来源记录 id**（`stores/riskHistory.ts` 的 `RiskHistoryRecord.id`）。
+   *
+   * 【为什么要挂这一格】履历是按工单现搭的内存态、风险结论落在持久化的 store 里，
+   * 工单页每次要把后者**投影**进前者。投影必须幂等，而"已经投过没有"只能靠记录 id 认 ——
+   * 靠"数一数已有几条"在多类混排时会数错，靠文案比对则会被同一个人连做两次同样的动作骗过去。
+   */
+  riskRecordId?: string;
   /** SLA 单个时钟关闭记录 */
   slaClose?: {
     clock: '首响' | '整单';

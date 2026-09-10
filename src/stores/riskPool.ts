@@ -2,6 +2,7 @@ import { computed } from 'vue';
 import { defineStore } from 'pinia';
 import { useNotifyLogStore } from '@/stores/notifyLog';
 import { useRiskCollabStore, type RiskAdviceItem } from '@/stores/riskCollab';
+import { useRiskHistoryStore } from '@/stores/riskHistory';
 import { useRiskQueueStore, type RiskTagInput } from '@/stores/riskQueue';
 import { useRiskReportStore, type ReportReason, type RiskCategory } from '@/stores/riskReports';
 import {
@@ -10,6 +11,7 @@ import {
   assigneeReceiver,
   asSentence,
   isOpenStatus,
+  isPoolLevel,
   isPooledStatus,
   normalizeDecision,
   reasonLine,
@@ -68,6 +70,13 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
   const reportStore = useRiskReportStore();
   const collabStore = useRiskCollabStore();
   const notifyLog = useNotifyLogStore();
+  /**
+   * 第八类履历（风险结论）的唯一落库口，见 `stores/riskHistory.ts`。
+   * 本合并层出「评估结论」与「协同处理」两件 —— 这两个动作**两条线共用**，
+   * 而且各有两个页面入口（风险监控页 / 工单处理页底栏那一枚按钮），
+   * 写在这里就等于两个入口自动同口径，不会再出现"一个入口有履历、另一个没有"。
+   */
+  const history = useRiskHistoryStore();
   const clock = useRiskClock();
 
   /**
@@ -272,6 +281,25 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
     r.status = '已评估';
     r.assessment = assessment;
     /*
+     * 落《【720】》第八类履历 ②「评估结论」（《【930】》§6.3）：
+     * 「〈评估人〉 完成风险评估 · 〈升级 / 不升级〉」，结论＝升级时另带**派生出的新投诉单号**。
+     *
+     * ⚠️ 单号只在**真派生了新单**那一路有：投诉单那一路的「升级」走基线 ※27「工单管控」、
+     * 本单状态不变、不派生新单（O20），`escalatedToNo` 恒空，履历行也就不带单号。
+     * 🔴 升级投诉那一跳**自身**的履历（第 2 类「关联单」）照《【830】》既有口径另落一条，
+     * 两条并存（《【720】》§4.4「不记入本类的情形」①），本函数不管那一条。
+     */
+    history.recordRiskHistory({
+      kind: 'assess',
+      ticketNo: r.ticketNo,
+      by: assessment.by,
+      byRole: assessment.byRole,
+      at: assessment.at,
+      decision: normalizeDecision(assessment.decision),
+      advice: assessment.advice,
+      ...(assessment.escalatedToNo ? { escalatedToNo: assessment.escalatedToNo } : {}),
+    });
+    /*
      * 结论发回**报备人** —— 他报上来之后就再没有别的出口知道结果：
      * 「不升级」时他要按反馈意见继续办这张单，「升级」时他要知道单子已经不归他了。
      *
@@ -342,6 +370,26 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
       byRole: input.byRole,
       at: input.at,
     };
+    /*
+     * 落《【720】》第八类履历 ③「协同处理」（《【930】》§6.3）：
+     * 「〈客诉专员〉 提交协同处理 · 〈建议事项，逗号分隔〉」，正文摘要挂**评估意见全文**
+     * （§4.4「不搬正文」的唯一例外 —— 评估意见本身就是协同处理的结论）。
+     *
+     * 🔴 **每次协同各落一条**（§5C.1 次数行）：同一张投诉单可多次协同，第二次之后
+     * 条目已在「已评估」、状态不再变，但履历必须继续增长。
+     * 🔴 **本轮不发通知**：两个副作用 ＝ 落履历 + 挂建议标记（§5C.3 / 附录 A R65a），
+     * 工单「通知记录」Tab 连提两次仍应为零新增。
+     */
+    history.recordRiskHistory({
+      kind: 'collab',
+      ticketNo: r.ticketNo,
+      by: input.by,
+      byRole: input.byRole,
+      at: input.at,
+      advices: [...input.advices],
+      ...(input.otherAdvice ? { otherAdvice: input.otherAdvice } : {}),
+      opinion: input.opinion,
+    });
     if (isOpen(r)) {
       r.status = '已评估';
       if (!r.assignee) r.assignee = input.by;
@@ -368,6 +416,99 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
    * （压根没分派出去才拖到超时），承办人必然为空 —— 正是 O23 类型级那条规则
    * 要保住的场景：督导必须收得到。落地时直接用 `withdraw` 同样的写法。
    */
+
+  /* ---------------- 种子结论回填第八类履历 ---------------- */
+
+  /**
+   * **把预置数据里那批"已经有结论"的条目补进第八类履历**。
+   *
+   * 【为什么需要它】`recordRiskHistory` 挂在四个动作上，而种子里那 12 条已打标条目、
+   * 4 条已出评估结论 / 协同结论的条目、以及 B 线那几条已提交的报备，**从来没走过那四个动作**
+   * —— 它们是数据源直接给的。不回填的话，评审时随手点开一张种子高危单，
+   * 页头挂着「风险打标 高危 · 郑监控」，履历第八类却是「暂无」，看上去就是这条链又断了。
+   *
+   * 🔴 **id 固定、重复调用是无操作**（见 `riskHistory.backfill`）：本函数会被
+   * 每一次履历投影调到，且刷新后缓存里已经有那批记录，靠固定 id 认。
+   *
+   * ⚠️ **只回填得出结论的那几件，不造第五件的假账**：种子条目的「风险等级变更」按
+   * "从未定级 → 本条目打标等级"落一条 —— 种子里一张单至多一条 A 线条目，故它就是工单级等级。
+   * 真出现一单多条目时这一条会偏，但那只可能由**现场打标**产生，而现场打标走的是
+   * `recordTag` 里那段按 `ticketGradeOf` 前后比对的正路，不经过本函数。
+   */
+  function backfillSeedRiskHistory() {
+    for (const r of reportStore.reports) {
+      history.backfill({
+        kind: 'report',
+        ticketNo: r.ticketNo,
+        by: r.by,
+        byRole: r.byRole,
+        at: r.at,
+        reason: r.reason,
+        category: r.category,
+      }, `seed-report-${r.id}`);
+      if (r.assessment) {
+        history.backfill({
+          kind: 'assess',
+          ticketNo: r.ticketNo,
+          by: r.assessment.by,
+          byRole: r.assessment.byRole,
+          at: r.assessment.at,
+          decision: normalizeDecision(r.assessment.decision),
+          advice: r.assessment.advice,
+          ...(r.assessment.escalatedToNo ? { escalatedToNo: r.assessment.escalatedToNo } : {}),
+        }, `seed-assess-${r.id}`);
+      }
+    }
+    for (const e of queue.entries) {
+      if (e.tag) {
+        history.backfill({
+          kind: 'tag',
+          ticketNo: e.ticketNo,
+          by: e.tag.by,
+          byRole: e.tag.byRole,
+          at: e.tag.at,
+          result: e.tag.result,
+          note: e.tag.note,
+        }, `seed-tag-${e.id}`);
+        if (isPoolLevel(e.tag.result)) {
+          history.backfill({
+            kind: 'grade',
+            ticketNo: e.ticketNo,
+            by: e.tag.by,
+            byRole: e.tag.byRole,
+            at: e.tag.at,
+            from: null,
+            to: e.tag.result,
+            source: '核实结论回传',
+          }, `seed-grade-${e.id}`);
+        }
+      }
+      if (e.assessment) {
+        history.backfill({
+          kind: 'assess',
+          ticketNo: e.ticketNo,
+          by: e.assessment.by,
+          byRole: e.assessment.byRole,
+          at: e.assessment.at,
+          decision: normalizeDecision(e.assessment.decision),
+          advice: e.assessment.advice,
+          ...(e.assessment.escalatedToNo ? { escalatedToNo: e.assessment.escalatedToNo } : {}),
+        }, `seed-assess-${e.id}`);
+      }
+      if (e.coordination) {
+        history.backfill({
+          kind: 'collab',
+          ticketNo: e.ticketNo,
+          by: e.coordination.by,
+          byRole: e.coordination.byRole,
+          at: e.coordination.at,
+          advices: [...e.coordination.advices],
+          ...(e.coordination.otherAdvice ? { otherAdvice: e.coordination.otherAdvice } : {}),
+          opinion: e.coordination.opinion,
+        }, `seed-collab-${e.id}`);
+      }
+    }
+  }
 
   /* ---------------- 转交给两条线自己的动作与读口 ---------------- */
 
@@ -461,6 +602,19 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
     return reportStore.consumeAssessArrival(ticketNo);
   }
 
+  /*
+   * 🔴 **开屏灌一遍，且**只在本 store 初始化时灌这一次**。
+   *
+   * 【为什么不放在工单页的履历投影里】投影跑在"记录条数变了"的 watcher 上，
+   * 回填又会往里加记录 —— 回填放进去就是让一个 watcher 改自己监听的东西。
+   * 靠去重能收敛，但那是拿去重当刹车用；放在 store 初始化里，回填与投影
+   * 一个只写、一个只读，先后关系是确定的。
+   *
+   * 两个页面都要它：风险监控页与工单处理页都读本 store（评估 / 协同 / 打标转发口都在这里），
+   * 故任一页打开时这一遍必然跑过。
+   */
+  backfillSeedRiskHistory();
+
   return {
     /**
      * ⚠️ 别名：池内全部条目。`reports` 这个名字是拆分前留下的
@@ -488,6 +642,7 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
     claim,
     assess,
     coordinate,
+    backfillSeedRiskHistory,
     submit,
     withdraw,
     recordVerify,

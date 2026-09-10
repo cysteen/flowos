@@ -8,6 +8,7 @@ import {
   PaperClipOutlined, SnippetsOutlined, CommentOutlined, BellOutlined,
   CheckCircleOutlined, StarFilled, PlayCircleOutlined, DownloadOutlined,
   ThunderboltOutlined, HistoryOutlined, ClockCircleOutlined, TeamOutlined,
+  SafetyOutlined, SafetyCertificateOutlined, FileSearchOutlined, WarningOutlined,
 } from '@ant-design/icons-vue';
 import {
   CATEGORY_META, ROLE_BADGE, softBg,
@@ -37,7 +38,12 @@ const ICON: Record<TlAction, unknown> = {
   dunning: BellOutlined,        // 催办
   resolved: CheckCircleOutlined,// 已解决
   praise: StarFilled,           // 好评
-  collab: TeamOutlined,         // 协同处理（第八类「风险结论」，《【720】》§5.1 定的双人图标）
+  // ---- 第八类「风险结论」五件，共用 risk 色条、图标各不相同（《【720】》§5.1 逐件指定）----
+  riskReport: SafetyOutlined,           // 报备提交＝盾
+  riskAssess: SafetyCertificateOutlined,// 评估结论＝盾+✓
+  collab: TeamOutlined,                 // 协同处理＝双人
+  riskTag: FileSearchOutlined,          // 打标＝放大镜+✓
+  riskGrade: WarningOutlined,           // 风险等级变更＝警示三角
 };
 /**
  * 图例 ＝ `CATEGORY_META` 的键序，**八格**（《【720】》§5.2）。

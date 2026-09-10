@@ -35,7 +35,10 @@ import { REPORT_ASSESS_LIMIT_MIN, isOpenStatus, isPooledStatus } from '@/stores/
 import { RISK_FLAG_OPTIONS } from './types/operation';
 import { poolStatusText } from './components/operation/OpRiskDecision';
 import { useRiskCollabStore } from '@/stores/riskCollab';
+import { useRiskHistoryStore, type RiskHistoryKind } from '@/stores/riskHistory';
+import { useRiskPoolStore } from '@/stores/riskPool';
 import { RISK_LEVELS, riskLevelText } from '@/config/risk';
+import type { TlAction, TlRole } from './types/ticketDetail';
 import { pullbackOnCsEvent, headerActionsByRole, type TicketStatus } from './types/ticket';
 import { buildChildTicketPrefill, buildReopenTicketPrefill } from './composables/childTicketPrefill';
 import {
@@ -136,9 +139,49 @@ const riskTags = useRiskTagStore();
 const riskReports = useRiskReportStore();
 /** A 线（自动识别 → 实时监控 → 打标 → 风险工单池）。工单页要读它的打标结论与在池条目 */
 const riskQueue = useRiskQueueStore();
-/** 协同处理记录（建议标记 + 履历投影都从它来），见 `stores/riskCollab.ts` */
+/** 协同处理记录（工单头部的**建议标记**从它来），见 `stores/riskCollab.ts` */
 const riskCollab = useRiskCollabStore();
+/**
+ * 第八类「风险结论」履历的**唯一记录源**，见 `stores/riskHistory.ts`。
+ * 本页只**读它、投影成履历条目**；写入在四个产出点的 store 侧，本页一件也不落库。
+ */
+const riskHistory = useRiskHistoryStore();
+/**
+ * 两条线的合并层。**本页不调它的任何动作**，实例化它只为触发一件事：
+ * 它在初始化时把**种子里那批已有结论的条目**回填进第八类履历（`backfillSeedRiskHistory`）——
+ * 否则打开一张种子高危单，页头挂着「风险打标 高危」而履历里一条也没有。
+ */
+useRiskPoolStore();
 const riskMonitorVerify = computed(() => riskTags.ticketVerificationOf(ticketNo.value));
+
+/**
+ * 五件 → 履历图标位（《【720】》§5.1）。**共用 `risk` 色条、图标各不相同** ——
+ * 图例点开「风险结论」之后，靠它区分哪一条是报备、哪一条是打标。
+ */
+const RISK_TL_ACTION: Record<RiskHistoryKind, TlAction> = {
+  report: 'riskReport',
+  tag: 'riskTag',
+  assess: 'riskAssess',
+  collab: 'collab',
+  grade: 'riskGrade',
+};
+
+/** 履历角色徽章的取值集（`TlRole`）。落款角色名对得上就原样用 */
+const TL_ROLES: readonly TlRole[] = [
+  '客户', '一线坐席', '二线专员', '技术支持', '二线班组长',
+  '客诉专员', '投诉督导', '工单运营', '质检', '管理员', '系统',
+];
+/**
+ * 记录里的落款角色名 → 履历角色徽章。
+ *
+ * 🔴 **不再写死成「客诉专员」**：此前协同处理那一条投影把角色硬编码成 `mapUserRole('complaint-handler')`，
+ * 而两个池的兜底角色是**管理员**（基线 v1.24 ※29「客诉专员与管理员同权」）——
+ * 管理员做的协同处理会在履历上顶着「客诉专员」的徽章，那是记错了人。
+ * 对不上取值集时回落「系统」而不是猜一个角色：宁可说不清是谁，也不冒名。
+ */
+function toTlRole(byRole: string): TlRole {
+  return (TL_ROLES as string[]).includes(byRole) ? (byRole as TlRole) : '系统';
+}
 
 /**
  * 两把刻度统一成"数越大越重"，**给防回退棘轮用**——
@@ -257,15 +300,20 @@ const riskForbiddenTip = computed(() => {
     : '本单已有报备待评估，出结论后可再发起';
 });
 
+/** 风险侧统一的时刻格式（`YYYY-MM-DD HH:mm`），四个风险 store 与履历记录共用这一把 */
+function riskNowStamp(): string {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+}
+
 function onRiskReport(payload: {
   reason: string;
   category: string | null;
   desc: string;
   attachments: string[];
 }) {
-  const now = new Date();
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const at = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  const at = riskNowStamp();
   const created = riskReports.submit({
     ticketNo: ticketNo.value,
     reason: payload.reason as import('@/stores/riskReports').ReportReason,
@@ -365,41 +413,42 @@ const processTabDots = computed<Partial<Record<ProcessTabKey, 'warn' | 'danger'>
 });
 
 /**
- * 协同处理 → **工单处理履历**（副作用①）。
+ * 第八类「风险结论」的**五件 → 工单处理履历**（《【720】》§3.2 / §4.4，《【930】》§6.3）。
  *
- * 【为什么是"投影"而不是提交时直接 push】提交协同的人是**客诉专员**，而要读这条履历的是
- * 当前处理人 —— 两端是两次登录。履历（`timeline`）是按工单现搭的内存态，换一次登录就回到
- * 种子；协同记录落了 localStorage，故让履历**从记录投影**，换谁登录、刷新几次都补得回来。
+ * 【为什么是"投影"而不是提交时直接 push】五件里没有一件是"当前处理人自己做的"：
+ * 报备是二线报的、打标与评估与协同是客诉专员做的，而要读这几条履历的往往是**另一个人**
+ * —— 两端天然是两次登录。履历（`timeline`）是按工单现搭的**内存态**，换一次登录就回到种子；
+ * 风险结论落在 `stores/riskHistory.ts` 那份持久化记录里，故让履历**从记录投影**，
+ * 换谁登录、刷新几次都补得回来。
  *
- * 【幂等】按"本单协同记录条数 vs 履历里已有的协同条数"补差额，投影多少次结果都一样。
+ * 🔴 **这里只投影、不落库**。落库口全仓只有一个：`riskHistory.recordRiskHistory()`，
+ * 由四个产出点（`riskQueue.recordTag` / `riskReports.submit` / `riskPool.assess` /
+ * `riskPool.coordinate`）调用。此前这一段是"协同处理专用"的投影，于是第八类只收到了
+ * **五件里的一件**，另外四件一条都没有 —— 文档说收五件、代码只收一件。
+ * **不要在别处再写第二个 `category: 'risk'` 的 `pushEntry`**，散着写下次仍然会漏。
  *
- * 🔴 **落的是第八类 `risk`（风险结论）**（《【720】》§3.2 / §4.4 事件③，2026-09-10 收口）。
- * 此前它借 `handle`（工单处理）落 —— 那一类装的是**坐席在自己这张单上的办理留痕**，
- * 而协同处理是**另一个角色对这张单下的判断**。混在一类里，质检点「工单处理」会同时捞出
- * 坐席填的字段变更与客诉专员给的意见，而 §2.3 V12 要的恰恰是"点风险结论，一屏看全"。
- * 图标取 `collab`（双人，§5.1 为协同处理指定的那一枚）。
+ * 【幂等】按记录 id 认（`riskRecordId`），投影多少次结果都一样；
+ * 不再按"数已有几条"补差额 —— 五类混排之后那个判据会数错。
  */
-function syncCollabTimeline() {
-  const records = riskCollab.recordsOf(ticketNo.value).slice().reverse(); // 正序补，履历本身按时间正序存
-  const already = timeline.value.filter((e) => e.how === '协同处理').length;
-  records.slice(already).forEach((r) => {
-    const advice = r.advices.length
-      ? r.advices.map((a) => (a === '其他' && r.otherAdvice ? `其他（${r.otherAdvice}）` : a)).join('、')
-      : '未勾选建议事项';
+function syncRiskTimeline() {
+  const seen = new Set(timeline.value.map((e) => e.riskRecordId).filter(Boolean));
+  riskHistory.recordsOf(ticketNo.value).forEach((r) => {
+    if (seen.has(r.id)) return;
     pushEntry(timeline.value, {
       category: 'risk',
-      action: 'collab',
+      action: RISK_TL_ACTION[r.kind],
       who: r.by,
-      role: mapUserRole('complaint-handler'),
-      how: '协同处理',
+      role: toTlRole(r.byRole),
+      how: r.how,
       when: r.at,
-      what: `提交协同处理 · ${advice}。评估意见：${r.opinion}`,
+      what: r.what,
+      riskRecordId: r.id,
     });
   });
 }
 watch(
-  [ticketNo, () => riskCollab.countOf(ticketNo.value)],
-  () => syncCollabTimeline(),
+  [ticketNo, () => riskHistory.countOf(ticketNo.value)],
+  () => syncRiskTimeline(),
   { immediate: true },
 );
 /**
@@ -831,8 +880,50 @@ function snapshotProcess(): Record<string, string> {
 }
 
 let processBaseline: Record<string, string> = snapshotProcess();
+/**
+ * 「风险等级」字段的**独立基线**（不并进 `processBaseline`）。
+ *
+ * 【为什么单开一份】① 它**不进 `PROCESS_FIELDS`** —— 那张表是「工单处理」类履历的字段级 diff，
+ * 风险等级的去处是**第八类**，混进去会让同一次变更在两类里各记一遍；
+ * ② `processBaseline` 只在**产出了处理登记时**才刷新（`if (log)`），而只改了风险等级、
+ * 别的字段一字未动那一次拿不到 `log` —— 共用一份基线的话，此后每次保存都会重复落一条 ⑤。
+ */
+let riskLevelBaseline: ProcessFormDraft['riskLevel'] = form.value.riskLevel;
 // 切工单/类型（表单重建）后重置基线
-watch(ticketNo, () => { processBaseline = snapshotProcess(); });
+watch(ticketNo, () => {
+  processBaseline = snapshotProcess();
+  riskLevelBaseline = form.value.riskLevel;
+});
+
+/**
+ * 第八类 ⑤「风险等级变更」的**第二个上游 —— 坐席在工单侧填写**（《【720】》§4.4 ⑤：
+ * "核实结论回传，**或坐席在工单侧填写**"）。第一个上游（打标回传）落在
+ * `stores/riskQueue.ts` 的 `recordTag` 里，两条上游写的是同一种行文、只是 `source` 不同。
+ *
+ * 三道门，缺一条就会记出假账：
+ *   ① **值真的变了才写**（§6 采集 ⑤ 原话）—— 每次保存都写的话，这一类会被同一个值刷屏；
+ *   ② **被「工单侧优先」写进去的那一格不算坐席填的** —— 命中核实的回传会往这个字段落笔
+ *      （见 `riskWriteBack`），那一次的履历早已由打标那一侧以「核实结论回传」落过，
+ *      在这里再记一条「坐席在工单侧填写」就是**把系统写的字记到人头上**；
+ *   ③ **基线无论写不写都要推进** —— 否则被 ② 挡住的那次会在下一次保存时又被判成变更。
+ */
+function recordAgentRiskLevelChange() {
+  const cur = form.value.riskLevel;
+  const prev = riskLevelBaseline;
+  riskLevelBaseline = cur;
+  if (cur === prev) return;
+  if (cur && cur === riskWriteBack.value.level) return;
+  riskHistory.recordRiskHistory({
+    kind: 'grade',
+    ticketNo: ticketNo.value,
+    by: user.name || '当前用户',
+    byRole: user.role.name || '二线专员',
+    at: riskNowStamp(),
+    from: prev || null,
+    to: cur || null,
+    source: '坐席在工单侧填写',
+  });
+}
 
 /** 保存并登记：对处理字段做前后 diff，产出「补充/修改」变更（无变更则不登记） */
 function buildProcessLog() {
@@ -864,6 +955,8 @@ function onAction(payload: Record<string, unknown>) {
   if (payload.type === '保存草稿') {
     const log = buildProcessLog();
     dispatch({ type: '保存草稿', process: log });
+    // 风险等级落第八类、不落「工单处理」的字段 diff，故与 log 分开走，见 `recordAgentRiskLevelChange`
+    recordAgentRiskLevelChange();
     if (log) processBaseline = snapshotProcess(); // 登记后更新基线，下次 diff 以此为准
     return;
   }
