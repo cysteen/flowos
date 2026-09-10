@@ -6,9 +6,7 @@ import { useRiskHistoryStore } from '@/stores/riskHistory';
 import { useRiskQueueStore, type RiskTagInput } from '@/stores/riskQueue';
 import { useRiskReportStore, type ReportReason, type RiskCategory } from '@/stores/riskReports';
 import {
-  RISK_SUPERVISOR,
   REPORT_ASSESS_LIMIT_MIN,
-  assigneeReceiver,
   asSentence,
   isOpenStatus,
   isPoolLevel,
@@ -232,24 +230,32 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
   /* ---------------- 领取 / 评估（两条线共用这两个动作） ---------------- */
 
   /**
-   * 领取之后发给承办人的一条：**告诉他"这活儿归你了"**，同时留一份
+   * 领取之后发给**报备人**的一条：**告诉他"有人接走了、在办了"**，同时留一份
    * 「这单何时、被谁接走」的凭据（工单页的通知记录里查得到）。
    *
-   * 🔴 **分派 / 改派 / 批量分派整套已取消**（业务第三轮拍板）：两个池子都只留「领取」。
-   * 【为什么取消】指派这条路让**督导变成队列的单点**——他不在岗，谁也动不了，
-   * 而这条队列卡的是投诉立项（基线 ※8a）。而且督导本轮已去权（只看数据、不出动作），
-   * 留着一个只有他能点的动作，等于把队列锁死在一个不再管这件事的人手上。
-   * 改成"谁有空谁领"之后，队列的吞吐不再取决于某一个人在不在。
+   * 🔴 **收件人不是承办人自己**（2026-09-11 改）：领取是他**自己刚点下去的动作**，
+   * 屏幕上已经有一句 message、条目也立刻落到他名下 —— 再发一封告诉他"这活儿归你了"，
+   * 是在通知一个人他自己刚做过的事。真正在等消息的是**报备人**：他报上去之后
+   * 到出结论之前是一段空悬，"有没有人接"是这段里他唯一想知道的事。
+   * A 线自动入池的条目报备人是「系统」，这一类解析为空（O23），整条不发 ——
+   * 不是丢消息，是本来就没有人在等这条。
+   *
+   * 🔴 **事件码 `risk.report.claimed`，不是已废的 `risk.report.assigned`**：
+   * 分派 / 改派 / 批量分派整套已取消（业务第三轮拍板），两个池子都只留「领取」，
+   * `assigned` 这个码指的是一个不再存在的动作。
+   * 【为什么取消分派】指派这条路让**督导变成队列的单点**——他不在岗，谁也动不了，
+   * 而这条队列卡的是投诉立项（基线 ※8a）。改成"谁有空谁领"之后，
+   * 队列的吞吐不再取决于某一个人在不在。
    * 【连带】`risk.report.reassigned`（已改派）这个事件随之没有落点——没有改派动作了。
    */
-  function notifyAssigned(r: RiskPoolItem) {
+  function notifyClaimed(r: RiskPoolItem) {
     notifyLog.emit({
       ticketNo: r.ticketNo,
-      event: 'risk.report.assigned',
+      event: 'risk.report.claimed',
       kind: 'risk',
-      title: '风险报备待评估',
-      receivers: [assigneeReceiver(r)],
-      content: `${r.ticketNo} 的风险报备已由您承办，报备原因：${reasonLine(r)}；报备人：${r.by}（${r.byRole}）；提交时刻：${r.at}。请在提交后 ${REPORT_ASSESS_LIMIT_MIN} 分钟内给出评估结论（升级 / 不升级）。`,
+      title: '风险报备已领取',
+      receivers: [reporterReceiver(r)],
+      content: `${r.ticketNo} 的风险报备已由 ${r.assignee || '客诉专员'}（客诉专员）领取，正在评估中。报备原因：${reasonLine(r)}；提交时刻：${r.at}。评估时限 ${REPORT_ASSESS_LIMIT_MIN} 分钟（自报备提交时刻起算），出结论后会再通知你。`,
     });
   }
 
@@ -266,8 +272,8 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
     r.status = '评估中';
     r.assignee = assignee;
     reportStore.assessArrivalTicket = r.ticketNo;
-    // 领取的收件人是自己：留痕比"他自己知道"重要，见 notifyAssigned
-    notifyAssigned(r);
+    // 收件人是**报备人**（不是承办人自己），理由见 notifyClaimed
+    notifyClaimed(r);
     return true;
   }
 

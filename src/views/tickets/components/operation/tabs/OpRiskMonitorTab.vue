@@ -362,7 +362,7 @@ function openEscalatedTicket(no: string) {
  * | | 风险标记区（下方） | 风险打标（本块） |
  * |---|---|---|
  * | 存哪 | `ProcessFormDraft.riskFlag / riskLevel / riskDescription`，随「保存」落工单 | `stores/riskQueue.ts` 的条目，**提交即生效**，不等保存 |
- * | 谁填 | **处理人自述**（二线在办这张单时填的判断） | **打标人**（客诉专员 / 投诉督导），带打标人、角色、时刻、处置备注与改判历史 |
+ * | 谁填 | **处理人自述**（二线在办这张单时填的判断） | **打标人**（客诉专员 / 投诉督导），带打标人、角色、时刻、打标备注与改判历史 |
  * | 取值 | 是否有风险三档 + 风险等级两个字段 | **四选一**：低 / 中 / 高 / 无风险（一个枚举，非法组合从类型上就没有） |
  * | 作用 | 工单字段，供统计与回传比对（915 §7.3「工单侧优先」） | **进不进风险工单池的那道门**（《【930】》§5A.3） |
  * | 权限 | 二线在**非投诉单**上可写 | **非投诉单的处理人一律不能打**；投诉单由客诉专员在本页打 |
@@ -417,7 +417,13 @@ const tagTried = ref(false);
 /** 已有结论时这次就是**改判**，改判必须说清为什么（首次打标没有这一项） */
 const isAmend = computed(() => !!tagRecord.value);
 const missTagResult = computed(() => tagTried.value && !tagResult.value);
-const missTagNote = computed(() => tagTried.value && !tagNote.value.trim());
+/*
+ * 🔴 **打标备注是可选的，本页不再校验它**（2026-09-11 裁决，三入口统一为可选）。
+ * 监控页的单条打标与批量打标本来就没有这道校验，只有本页要求必填 ——
+ * 同一个动作在两个入口一个能提交、一个卡住，看着像本页坏了。
+ * 打标已经有必填的四选一等级，那才是这次动作的结论；高频动作不该再加一道自由文本门槛。
+ * ⚠️ **真正需要理由的是改判**：那里有独立的必填「修正原因」（`missTagAmend`），一格不动。
+ */
 const missTagAmend = computed(() => tagTried.value && isAmend.value && !tagAmendReason.value.trim());
 
 function openTag() {
@@ -449,7 +455,8 @@ function nowStamp(): string {
  */
 function confirmTag() {
   tagTried.value = true;
-  if (!tagResult.value || !tagNote.value.trim()) return;
+  // 备注可选（见 missTagAmend 上方那段）：只拦等级与改判理由这两项真必填的
+  if (!tagResult.value) return;
   if (isAmend.value && !tagAmendReason.value.trim()) return;
 
   const at = nowStamp();
@@ -753,8 +760,10 @@ const collabSectionBadge = computed(() =>
     </OpCollapsibleSection>
 
     <!--
-      风险打标（《【930】》§5A.3）。**读的人是处理人**：等级、打标人、打标时刻、处置备注
-      四项缺一不可 —— 少了打标人与时刻，这条结论就成了一句没有出处的判断，处理人无从追问。
+      风险打标（《【930】》§5A.3）。**读的人是处理人**：等级、打标人、打标时刻三项缺一不可
+      —— 少了打标人与时刻，这条结论就成了一句没有出处的判断，处理人无从追问。
+      打标备注**可选**（三入口统一，见 script 的 missTagAmend 上方），没填时整行不出，
+      不留一格空 dd 让人以为是漏加载。
       写的入口只对投诉单 + 客诉专员出（§3.1），非投诉单在这里恒为只读回显。
     -->
     <OpCollapsibleSection
@@ -793,8 +802,8 @@ const collabSectionBadge = computed(() =>
             <dt>打标时刻</dt>
             <dd>{{ tagRecord.at }}</dd>
           </div>
-          <div class="rt-kv-row rt-kv-block">
-            <dt>处置备注</dt>
+          <div v-if="tagRecord.note" class="rt-kv-row rt-kv-block">
+            <dt>打标备注</dt>
             <dd class="rt-note">{{ tagRecord.note }}</dd>
           </div>
           <!--
@@ -857,7 +866,7 @@ const collabSectionBadge = computed(() =>
       </div>
     </OpCollapsibleSection>
 
-    <!-- 打标弹窗：四选一 + 处置备注；已有结论时这次是改判，必须说清为什么 -->
+    <!-- 打标弹窗：四选一（必填）+ 打标备注（可选）；已有结论时这次是改判，必须说清为什么 -->
     <OpActionModal
       v-model:open="tagOpen"
       title="风险打标"
@@ -885,14 +894,12 @@ const collabSectionBadge = computed(() =>
             </p>
           </div>
           <div class="op-field">
-            <div class="op-label req">处置备注</div>
+            <div class="op-label">打标备注</div>
             <a-textarea
               v-model:value="tagNote"
               :rows="3"
-              :status="missTagNote ? 'error' : undefined"
-              placeholder="写清判成这一档的依据，以及要处理人注意什么…"
+              placeholder="判断依据与后续动作（可选）"
             />
-            <p v-if="missTagNote" class="field-err">请填写处置备注</p>
           </div>
           <div v-if="isAmend" class="op-field">
             <!-- 界面词与监控页两处打标弹窗统一为「修正原因」，理由见上方只读那一格的注释 -->

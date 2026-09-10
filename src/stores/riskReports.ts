@@ -4,7 +4,7 @@ import { useNotifyLogStore } from '@/stores/notifyLog';
 import { useRiskHistoryStore } from '@/stores/riskHistory';
 import { useRiskQueueStore } from '@/stores/riskQueue';
 import {
-  RISK_SUPERVISOR,
+  RISK_POOL_RECEIVERS,
   REPORT_ASSESS_LIMIT_MIN,
   agoStamp,
   asSentence,
@@ -474,15 +474,21 @@ export const useRiskReportStore = defineStore('riskReports', () => {
       reason: report.reason,
       category: report.category,
     });
-    // 报上来第一时间要惊动的是**投诉督导**：待分派这一段的责任人是他（分派归他做），
-    // 而这条队列卡的是投诉立项，静悄悄躺在队列里等人主动来看是不行的。
+    /*
+     * 报上来第一时间要惊动的是**能领这条的人 ＝ 客诉专员 + 管理员**（基线 v1.24：两池同权）。
+     * 这条队列卡的是投诉立项，静悄悄躺在池子里等人主动来看是不行的。
+     *
+     * 🔴 **收件人与文案都已去掉「分派」**（2026-09-11）：分派 / 改派 / 批量分派整套已取消，
+     * 池里只有自取。原文写的是「待分派…请及时分派客诉专员评估」——
+     * 收件人是一个已经不能分派的角色（投诉督导本轮已去权），动词指向一个不存在的动作。
+     */
     notifyLog.emit({
       ticketNo: report.ticketNo,
       event: 'risk.report.submitted',
       kind: 'risk',
-      title: '风险报备待分派',
-      receivers: [RISK_SUPERVISOR],
-      content: `${report.ticketNo} 新增一条风险报备，报备原因：${reasonLine(report)}；报备人：${report.by}（${report.byRole}）。请及时分派客诉专员评估，评估时限 ${REPORT_ASSESS_LIMIT_MIN} 分钟（自报备提交时刻起算）。`,
+      title: '风险报备待领取',
+      receivers: [...RISK_POOL_RECEIVERS],
+      content: `${report.ticketNo} 新增一条风险报备，报备原因：${reasonLine(report)}；报备人：${report.by}（${report.byRole}）。请及时在风险报备池领取并给出评估结论，评估时限 ${REPORT_ASSESS_LIMIT_MIN} 分钟（自报备提交时刻起算）。`,
     });
     return report;
   }
@@ -501,12 +507,12 @@ export const useRiskReportStore = defineStore('riskReports', () => {
     r.status = '已撤回';
     r.withdrawReason = reason;
     /*
-     * 收件人配的是「投诉督导 + 承办人」两类，而**撤回只能发生在待分派态**，
-     * 那一刻 `assignee` **必然为空** —— 这正是 O23 类型级判据的现场：
-     * 按规则级（一类解析不到就整条不发）这条会被静默丢掉，督导那边队列里
-     * 少了一条却不知道去哪了。这里让「承办人」这一类落空、督导照收。
+     * 收件人配的是「客诉专员 + 管理员 + 承办人」三类（前两类见 `RISK_POOL_RECEIVERS`：
+     * 基线 v1.24 两池同权），而**撤回只能发生在待领取态**，那一刻 `assignee` **必然为空**
+     * —— 这正是 O23 类型级判据的现场：按规则级（一类解析不到就整条不发）这条会被静默丢掉，
+     * 池子那边少了一条却不知道去哪了。这里让「承办人」这一类落空、池上两类照收。
      *
-     * 「承办人」这一类仍然要配上：分派后能否撤回是可能变的口径，
+     * 「承办人」这一类仍然要配上：领取后能否撤回是可能变的口径，
      * 现在把它删掉，将来放开时又得回头补一遍收件人配置。
      */
     notifyLog.emit({
@@ -514,7 +520,7 @@ export const useRiskReportStore = defineStore('riskReports', () => {
       event: 'risk.report.withdrawn',
       kind: 'risk',
       title: '风险报备已撤回',
-      receivers: [RISK_SUPERVISOR, assigneeReceiver(r)],
+      receivers: [...RISK_POOL_RECEIVERS, assigneeReceiver(r)],
       content: `${r.ticketNo} 的风险报备已由 ${r.by}（${r.byRole}）撤回，撤回原因：${asSentence(reason)}该条报备记录保留、不再进入待评估队列；如风险再现，本单可重新发起报备。`,
     });
   }

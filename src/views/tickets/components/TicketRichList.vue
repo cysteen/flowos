@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { CheckOutlined } from '@ant-design/icons-vue';
 import { computed, onUnmounted, ref, watch } from 'vue';
+import { RISK_LEVEL_STYLE, riskLevelText, type RiskLevel } from '@/config/risk';
+import { useUserStore } from '@/stores/user';
+import { useRiskCollabStore } from '@/stores/riskCollab';
+import { useRiskReportStore } from '@/stores/riskReports';
+import { useRiskTagStore } from '@/stores/riskTags';
 import {
   columnLabel,
 } from '@/views/tickets/composables/useTicketColumns';
@@ -16,6 +21,7 @@ import {
 import {
   doneRowActions,
   isMentionUnread,
+  isTicketClosed,
   mentionRowActions,
   mineRowActions,
   poolRowActions,
@@ -109,6 +115,59 @@ const props = withDefaults(
     selectable: undefined,
   },
 );
+
+/* ==================== 风险侧行内标（《【930】》§6.5 闭环表 / 附录 A R21） ====================
+ *
+ * 【为什么必须在列表行上】风险侧的三件事（打了标 / 报备中 / 挂着建议事项）此前**只在
+ * 工单处理页的页头**看得到 —— 而 §6.5 那张闭环表有五行的落点写的是"工单列表行内标"。
+ * 处理人一天里绝大多数时间停在列表上：列表不标，他就得逐张点开才知道哪张单被判了高危、
+ * 哪张正在报备、哪张挂着「转交专员」，于是所有"处理人会看到"的闭环判断都落了空。
+ *
+ * 【为什么落在标题格而不新开列】这三种标**只在少数行上成立**：开三列会让绝大多数行
+ * 多出三格空白，而工作台那一屏的列宽已经排满（默认合计 1370）。跟着标题走则是"有才出"，
+ * 与同格里的「催」「补」是同一种做法，视觉上也沿用它们那套 `.cs-tag`，不另造一套。
+ *
+ * 🔴 **一线坐席一律不出**（基线 §3.1，2026-09-10 拍板：一线的工单列表、详情与通知里
+ * 都不出现风险等级）。判据挂在**角色**上（`user.role.frontline`），不挂在工单上 ——
+ * 挂在工单上会让带标记的单对所有角色都走一线分支，那是本仓库栽过的坑（见 config/roles.ts）。
+ */
+
+const user = useUserStore();
+const riskTags = useRiskTagStore();
+const riskReports = useRiskReportStore();
+const riskCollab = useRiskCollabStore();
+
+/** 风险侧行内标整体出不出：一线不可见，二线处理人及以上可见 */
+const showRiskMarks = computed(() => !user.role.frontline);
+
+/**
+ * 工单级风险等级。口径整条走 `riskTags.ticketGradeOf`（§6.1：**跨条目取最高、
+ * 同一条改判以最新为准**），本组件不自己比大小 —— 列表与工单页要是各算一次，
+ * 同一张单会在两处显示两个等级。
+ */
+function riskGradeOf(t: Ticket): RiskLevel | null {
+  if (!showRiskMarks.value) return null;
+  return riskTags.ticketGradeOf(t.no);
+}
+
+/** 「报备中」＝ 本单有一条在队报备（待领取 / 评估中）。纯派生，见 `riskReports.isReporting` */
+function riskReportingOf(t: Ticket): boolean {
+  return showRiskMarks.value && riskReports.isReporting(t.no);
+}
+
+/**
+ * 「建议标记」＝ 历次协同处理勾选项的并集（转交专员 / 每日跟进 / 法务协同 / 其他）。
+ *
+ * 🔴 **工单进终态即不再渲染**（G10 / PRD §6.5 G3 写的唯一撤下时机）：标记的语义是
+ * "接下来要做的事"，终态单没有接下来。**只改渲染门控，不动数据** ——
+ * 协同记录一条不删，工单页「风险报备」Tab 的协同记录块照常查得到。
+ * 这与 `TicketOperationView.riskAdviceMarks` 的两道门控逐条一致，两处不会一处标一处不标。
+ */
+function riskAdviceMarksOf(t: Ticket): string[] {
+  if (!showRiskMarks.value) return [];
+  if (isTicketClosed(t.nodeStatus)) return [];
+  return riskCollab.marksOf(t.no);
+}
 
 const DEFAULT_ORDER = TICKET_LIST_COLUMN_KEYS;
 
@@ -399,7 +458,47 @@ const gridTemplateColumns = computed(() => {
           :ticket="t"
           :highlight-mention-unread="highlightMentionUnread"
           @click-no="emit('clickNo', $event)"
-        />
+        >
+          <!--
+            风险侧行内标（《【930】》§6.5 闭环表 / 附录 A R21）。判据与门控全在 script 的
+            三个函数里（含"一线不可见"与"终态不出建议标记"），此处只负责摆。
+            三种标都**有才出**：无标记的行一个节点都不渲染，行高一格不变。
+
+            🔴 **摆在标题行的行尾**（`line1-extra` 插槽），紧挨着同格里的「催」「补」——
+            挂在整个标题格右侧会把第二行的工单号挤出可视区，见那个插槽上的说明。
+          -->
+          <template #line1-extra>
+            <span
+              v-if="riskGradeOf(t) || riskReportingOf(t) || riskAdviceMarksOf(t).length"
+              class="risk-marks"
+            >
+              <!-- ① 风险等级：色板取 `config/risk.ts` 的 RISK_LEVEL_STYLE，全仓一把刻度 -->
+              <span
+                v-if="riskGradeOf(t)"
+                class="cs-tag risk-tag risk-tag--grade"
+                :style="{
+                  color: RISK_LEVEL_STYLE[riskGradeOf(t)!].color,
+                  background: RISK_LEVEL_STYLE[riskGradeOf(t)!].bg,
+                  borderColor: RISK_LEVEL_STYLE[riskGradeOf(t)!].color,
+                }"
+                :title="`风险打标 ${riskLevelText(riskGradeOf(t)!)} · 工单级取该单各条结论里最高的一档`"
+              >{{ riskLevelText(riskGradeOf(t)!) }}</span>
+              <!-- ② 报备中：本单有一条在队报备，等客诉专员领取评估 -->
+              <span
+                v-if="riskReportingOf(t)"
+                class="cs-tag risk-tag risk-tag--reporting"
+                title="本单有一条风险报备在队（待领取 / 评估中），出结论后自动撤下"
+              >报备中</span>
+              <!-- ③ 建议标记：历次协同处理勾选项的并集；工单进终态即不再显示 -->
+              <span
+                v-for="a in riskAdviceMarksOf(t)"
+                :key="`adv-${t.id}-${a}`"
+                class="cs-tag risk-tag risk-tag--advice"
+                :title="`客诉专员协同处理给出的建议事项：${a}`"
+              >{{ a }}</span>
+            </span>
+          </template>
+        </TicketTitleCell>
         <!--
           调用方挂在**工单号 / 标题这一格里**的行内小标（当前用于风险监控页的「兼：X」多路来源标）。
           🔴 **不做成附加列**：这类信息只在少数行上成立，开一列会让绝大多数行多出一格空白；
@@ -777,6 +876,51 @@ const gridTemplateColumns = computed(() => {
   color: #dc2626;
   background: #fef2f2;
   flex: none;
+}
+
+/*
+ * 风险侧行内标。**视觉整套沿用同格里「催」「补」那枚 `.cs-tag`**
+ * （TicketTitleCell.vue 的 .cs-tag：11px / 600 / 圆角 3 / 1px 描边 / 行高 14），
+ * 这里只多一条 `padding: 0 5px` —— 那两枚是单字方章，这三种是词。
+ * 🔴 不另造一套视觉：同一格里两种小标长得不一样，读的人会以为它们是两类东西。
+ */
+/*
+ * 摆在标题行行尾。`flex: none` ＝ **不缩**：要缩的是标题文字
+ * （`.title-text` 自带 flex:1 + 省略号），不是这几枚标 —— 缩到一半的标读不出是哪一档。
+ * 行内 `gap` 由 `.title-line1` 的 4px 给，这里只管标与标之间那 4px。
+ */
+.risk-marks {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.cs-tag.risk-tag {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 16px;
+  padding: 0 5px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 14px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  cursor: default;
+}
+/* 等级那一枚的三档配色由 RISK_LEVEL_STYLE 内联给（全仓一把刻度），此处不写死颜色 */
+.risk-tag--reporting {
+  color: #c2410c;
+  background: #fff7ed;
+  border-color: #fdba74;
+}
+.risk-tag--advice {
+  color: #4338ca;
+  background: #eef2ff;
+  border-color: #c7d2fe;
 }
 
 /* 客户 */

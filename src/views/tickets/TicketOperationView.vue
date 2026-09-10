@@ -401,10 +401,25 @@ const riskTagBanner = computed(() => {
   };
 });
 
-/** 工单上的「建议标记」（《【930】》§3.3）：历次协同处理勾选项的并集，人不直接摘 */
-const riskAdviceMarks = computed(
-  () => (user.role.frontline ? [] : riskCollab.marksOf(ticketNo.value)),
-);
+/**
+ * 工单上的「建议标记」（《【930】》§3.3）：历次协同处理勾选项的并集，人不直接摘。
+ *
+ * 【两道渲染门控】
+ *   · **一线不可见**（基线 §3.1）：一线的工单列表、详情与通知里都不出现风险侧的标记；
+ *   · 🔴 **工单进终态即不再渲染**（PRD §6.5 G3 写的唯一撤下时机，2026-09-11 补）。
+ *     标记的语义是"**接下来要做的事**"，而终态单没有接下来 —— 挂着「转交专员 / 每日跟进」
+ *     的已结案单，读的人分不出那是一件没做完的活还是一条历史留痕，
+ *     而这条标记本身**没有回执动作**（G3），谁也摘不掉它。
+ *
+ * 🔴 **只改渲染门控，不动数据**：`riskCollab` 里那几条协同记录一条不删 ——
+ * 建议事项是历次协同的痕迹，终态单的「风险报备」Tab 里协同记录块照常查得到，
+ * 撤下的只是页头这条常驻横幅。
+ */
+const riskAdviceMarks = computed(() => {
+  if (user.role.frontline) return [];
+  if (isTicketTerminated(d.value.status)) return [];
+  return riskCollab.marksOf(ticketNo.value);
+});
 
 /**
  * 「风险报备」Tab 上的状态圆点。三件事都往这一枚点上收 ——

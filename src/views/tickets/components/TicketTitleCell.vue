@@ -95,6 +95,20 @@ const csTagTipOverlayInner = {
             :class="{ unread: highlightMentionUnread && isMentionUnread(ticket) }"
           >{{ ticket.title }}</span>
           <span v-if="highlightMentionUnread && isMentionUnread(ticket)" class="unread-tag">未读</span>
+          <!--
+            调用方挂在**标题这一行行尾**的额外小标（当前用于工单列表的风险侧行内标：
+            风险等级 / 报备中 / 建议标记，见 `TicketRichList.vue`）。
+
+            🔴 **必须落在第一行、不能挂在整个标题格的右侧**：挂在格子右侧的话，它占的宽度是
+            **两行共有的**，于是第二行的工单号会被挤出可视区（`.title-line2` 是 overflow:hidden，
+            而 `.ticket-no` 是 flex:none 不缩），三枚标就足以把工单号截成「IFLYTS-2…」——
+            那是这一格唯一的点击入口。落在第一行则只和 `.title-text` 抢宽度，
+            而它自带 `flex:1; min-width:0` + 省略号，缩得优雅、且工单号一格不动。
+
+            不传插槽内容时本节点不渲染任何东西，行高与既有布局一字不变
+            （`RiskReportPoolPanel.vue` 那处调用不传，故完全不受影响）。
+          -->
+          <slot name="line1-extra" :ticket="ticket" />
         </div>
         <div class="title-line2">
           <span class="channel">{{ ticketListSourceLabel(ticket) }}</span>
