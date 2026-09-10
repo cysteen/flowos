@@ -19,7 +19,7 @@ import { useUserStore } from '@/stores/user';
 // 核实历史与筛查并入的命中都放在 store 里：工单处理页要读同一份结论（打标回传），
 // 组件内的 ref 只在本页活着，跨页就断了。
 import { useRiskTagStore, type RiskTagEntry } from '@/stores/riskTags';
-// 重点工单队列（《【930】》§5）。队列条目与风险词命中记录**分母不同、两处不可相加**（§7 撞名），
+// 风险工单池（《【930】》§5）。队列条目与风险词命中记录**分母不同、两处不可相加**（§7 撞名），
 // 故各走各的 store，本页只是把两块工作面并在一屏。
 import {
   useRiskReportStore,
@@ -86,7 +86,7 @@ const riskTags = useRiskTagStore();
 // 层级关系就直白了：先选批（页签），再筛条件（chip / 查询条）。
 /** 清单主视图：实时监控（待核实）/ 手动筛查 / 已核实 —— 页签与两张可点 KPI 卡同一个状态 */
 /**
- * 第四个视图 `report` ＝ **重点工单队列**（《【930】》§5，2026-09-09 第二轮拍板 N6）。
+ * 第四个视图 `report` ＝ **风险工单池**（《【930】》§5，2026-09-09 第二轮拍板 N6）。
  *
  * 它与前三个的分母不同：前三个装的是**风险词命中记录**，它装的是**队列条目**
  * （五类监控来源合一队：关键词触发 / 全量投诉 / 紧急重要 / VIP客户 / 二线报备）。
@@ -106,17 +106,23 @@ type GradeFilter = 'all' | RiskLevel;
 /** 清单唯一的视图状态：页签、KPI 卡、成效卡的核实结果按钮全读写它 */
 const listView = ref<ListView>('realtime');
 
-// ==== 重点工单（《【930】》§5，2026-09-09 第二轮拍板 N4 / N6 / N7 / O13 / O14）====
+// ==== 风险工单池（《【930】》§5，2026-09-09 第二轮拍板 N4 / N6 / N7 / O13 / O14）====
 //
-// 【为什么叫「重点工单」而不是"风险队列"】O13：915 §1.1 的风险定义**一字不动**
-// （已经是投诉的叫事实、不叫风险）。可这个队列里躺着全量投诉、VIP 客户这类
-// 压根不满足"有概率演变为投诉"的条目——它装的是"需要风险组看一眼的单"，比风险宽。
+// 【为什么叫「风险工单池」】本页曾有两处顶着同一个旧名——页签这一个，与页头卡区
+// 中间那块——**同名不同物**：那块的分母是在办工单，这里的分母是队列条目。
+// 同屏两个同名的数天生不等，人只会当成同一个数看错。业务拍板把名拆开：
+// 那块改叫「工单存量」，本页签叫「风险工单池」，"池"点明它装的是一批待认领 / 待评估的
+// **条目**，不是一批工单。
+//
+// 沿用 O13 的口径：915 §1.1 的风险定义**一字不动**（已经是投诉的叫事实、不叫风险）。
+// 可这个池子里躺着全量投诉、VIP 客户这类压根不满足"有概率演变为投诉"的条目——
+// 池名说的是"风险侧要盯的一池单"，比 §1.1 那个风险定义宽。
 // 两个词各管各的，才不会在同一册里打架。
 //
-// ⚠️ **已知代价（业务已接受，O14）**：一条风险词命中会在「实时监控」与「重点工单」
+// ⚠️ **已知代价（业务已接受，O14）**：一条风险词命中会在「实时监控」与「风险工单池」
 // **两个页签里各出现一次**，同一条两处都能动——**这是有意为之**，不是漏改：
 //   · 实时监控 ＝ 核实打标（915 的能力，一字不改：成立/误报 + 定级 + 词表准确率回填）；
-//   · 重点工单 ＝ 分派 + 按来源分流处理（来源为「关键词触发」的条目点「核实」，
+//   · 风险工单池 ＝ 分派 + 按来源分流处理（来源为「关键词触发」的条目点「核实」，
 //     直接落回上面那同一个打标弹窗，两处走的是同一份结论，不会各判一次）。
 // 备选是把 915 三个页签吞进一个"风险队列"，那等于拆掉 915（N7）；业务选了保留重复。
 const reportStore = useRiskReportStore();
@@ -124,12 +130,14 @@ const reportStore = useRiskReportStore();
 const derivedTickets = useDerivedTicketStore();
 
 /*
- * ==== 重点工单存量（页头第二块）====
+ * ==== 工单存量（页头第二块）====
  *
  * 🔴 **它的分母是「工单」，另外两块都不是**，三块并排最容易被读成一路数：
  *   · 监控数据 ＝ 风险词**命中记录**
- *   · 重点工单 ＝ 工单系统里的**工单**          ← 本块
- *   · 风险评估 ＝ 重点工单页签里的**队列条目**
+ *   · 工单存量 ＝ 工单系统里的**在办工单**          ← 本块
+ *   · 风险评估 ＝ **风险工单池**里走评估的四类来源的**队列条目**
+ * 还有一处同屏撞名要盯住：页签「风险工单池」的角标数的是**队列条目**，
+ * 本块「工单存量」数的是**工单**——两者同屏并列，但不是一回事，不可相加、不互校。
  * 尤其「等级分布」：监控数据那栏的「确认是风险 高3·中1·低0」数的是**命中**，
  * 本块的高/中/低数的是**工单**——一张单被三条词命中且都成立，那边计 3、这边计 1。
  * 两个数天生不等，界面上不相减、不互校，各自 title 写明分母。
@@ -313,9 +321,9 @@ function setReportView(v: ReportView) {
 }
 
 /**
- * 重点工单队列自己的翻页状态，**不与命中清单的 hitPageCurrent 共用**。
+ * 风险工单池自己的翻页状态，**不与命中清单的 hitPageCurrent 共用**。
  * 两张表的行数各走各的（命中记录 vs 报备单），共用一个页码时
- * 「在命中清单翻到第 3 页 → 切到重点工单」会看到一张空表，人只会以为队列清空了。
+ * 「在命中清单翻到第 3 页 → 切到风险工单池」会看到一张空表，人只会以为池子清空了。
  */
 const reportPageCurrent = ref(1);
 const reportPageSize = ref(10);
@@ -442,7 +450,7 @@ const canClaim = computed(() => REPORT_CLAIM_ROLES.includes(user.roleKey));
 
 /** 自取一条：转「评估中」并落在自己名下 */
 function doClaim(r: RiskReport) {
-  if (!canClaim.value) { message.warning('只有客诉专员可以自取重点工单'); return; }
+  if (!canClaim.value) { message.warning('只有客诉专员可以自取风险工单池的单'); return; }
   if (!reportStore.claim(r.id, user.name)) {
     // 唯一会落空的情形：别人刚刚把它分派 / 自取走了，本页还没重算
     message.warning('这一条刚被分派走了，请刷新后再看');
@@ -460,7 +468,7 @@ const assignTried = ref(false);
 const missAssignTo = computed(() => assignTried.value && !assignTo.value);
 
 function openAssign(rows: RiskReport[]) {
-  if (!canAssign.value) { message.warning('只有投诉督导可以分派重点工单'); return; }
+  if (!canAssign.value) { message.warning('只有投诉督导可以分派风险工单池的单'); return; }
   // 🔴 **可改派**（O18 拍板）：待分派与评估中都能派。评估人请假 / 离职 / 手上堆太多时
   // 这活儿必须能挪 —— 不许改派的话唯一出路是"等它评完"，而它正卡在不在岗的人手上，
   // 且这条队列现在卡的是**投诉立项**（基线 ※8a），堵不起。
@@ -908,7 +916,7 @@ function setListView(v: ListView) {
   if (v !== 'scan' && listView.value === 'scan') exitScanResult();
   // 单工单焦点跨视图取数，切视图时若留着它，页签写着「已核实 5」而表里躺着别的一批
   clearTicketFocus();
-  // 队列勾选同理：离开重点工单再回来，「批量操作」上还挂着一个数，人不知道那几条是哪几条
+  // 队列勾选同理：离开风险工单池再回来，「批量操作」上还挂着一个数，人不知道那几条是哪几条
   if (v !== 'report' && listView.value === 'report') clearReportPick();
   listView.value = v;
   gradeFilter.value = 'all';
@@ -1760,7 +1768,7 @@ function saveTag() {
   // 追加而不覆盖
   riskTags.appendEntry(target.id, entry);
   /*
-   * 同步「重点工单」队列里那一条（PRD §5.2）：两个页签装的是同一条命中，
+   * 同步「风险工单池」里那一条（PRD §5.2）：两个页签装的是同一条命中，
    * 这边判完了，那边不能还挂在「评估中」。只在**首次打标**时转态；
    * 修正走的是已核实那一侧，队列条目早已是「已评估」，不必也不该再动一次。
    */
@@ -2247,7 +2255,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
       </div>
     </div>
 
-    <!-- ② 监控成效：左右两栏 —— 左监控命中、右重点工单队列（分母不同，不可相加） -->
+    <!-- ② 监控成效：左右两栏 —— 左监控命中、右风险工单池（分母不同，不可相加） -->
     <section class="overview-section effect-section">
       <div class="effect-split">
         <div class="effect-pane effect-pane--monitor">
@@ -2314,7 +2322,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
         </div>
 
         <!--
-          中栏 ＝ 重点工单存量。分母是**工单**，另外两栏一个是命中记录、一个是队列条目，
+          中栏 ＝ 工单存量。分母是**工单**，另外两栏一个是命中记录、一个是队列条目，
           三栏并排最容易被读成一路数，故每个数各自 title 写明分母，且**整栏不可点**：
           点出去必然落在另一个分母的清单上，数对不上比不能点更糟。
         -->
@@ -2322,7 +2330,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
           <h2
             class="pane-title"
             title="工单系统里需要风险侧盯的存量 · 分母是在办工单，与左栏命中数、右栏队列条目均不可相加"
-          >重点工单</h2>
+          >工单存量</h2>
           <div class="dash-grid dash-grid-2">
             <div class="dm-cell dm-static" title="在办的投诉类工单 · 对应监控来源「全量投诉」">
               <span class="dm-k">投诉工单</span>
@@ -2359,7 +2367,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
           全量投诉 / 紧急重要 / VIP客户 / 二线报备。「关键词触发」走的是核实打标，
           它的数已经在左栏「监控数据」里报过一次，并进来就成了同一条命中数两遍（§7 撞名）。
 
-          ⚠️ 与「重点工单」页签角标不是一个数：角标是队列条目总数（五类），这里是四类。
+          ⚠️ 与「风险工单池」页签角标不是一个数：角标是队列条目总数（五类），这里是四类。
           界面上不把两者相减、不互校。
         -->
         <div class="effect-pane effect-pane--report">
@@ -2475,9 +2483,11 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
             已核实<span class="lvt-num">{{ effect.judged }}</span>
           </button>
           <!--
-            重点工单（O13 定名，原「风险评估」）：装队列条目，不装命中记录。
+            风险工单池（第三次定名：初名「风险评估」→ O13 改过一次 → 本轮与页头中栏拆名）：
+            装队列条目，不装命中记录。
             角标取**在队总数**（待分派 + 评估中），与「实时监控」的待核实数
-            **不是一回事、不可相加**（§7 撞名）。
+            **不是一回事、不可相加**（§7 撞名）；也与页头中栏「工单存量」不是一个数——
+            那块数的是在办工单，这里数的是队列条目，同屏并列但两个分母。
 
             ⚠️ 前三个页签的名字**一字未动**：它们是 915 的能力，本轮只加队列、不动识别与打标。
           -->
@@ -2487,7 +2497,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
             :class="{ on: listView === 'report' }"
             @click="setListView('report')"
           >
-            重点工单<span class="lvt-num" :class="{ bad: reportStore.overdueCount > 0 }">{{ reportStore.openCount }}</span>
+            风险工单池<span class="lvt-num" :class="{ bad: reportStore.overdueCount > 0 }">{{ reportStore.openCount }}</span>
           </button>
         </div>
         <div class="section-head-actions">
@@ -2518,7 +2528,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
             </template>
           </a-dropdown>
           <!--
-            重点工单 · 批量分派：与「批量打标」共用同一个入口形态（同一个 class、同一处位置），
+            风险工单池 · 批量分派：与「批量打标」共用同一个入口形态（同一个 class、同一处位置），
             两者做的是同一类事——对勾中的一批一次落一个动作。换个长相只会让人以为规则也不同。
           -->
           <a-dropdown
@@ -2577,7 +2587,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
       </div>
 
       <!--
-        重点工单 · 视图内三态切换（N4）+ 下钻收窄标。
+        风险工单池 · 视图内三态切换（N4）+ 下钻收窄标。
         沿用等级 chip 那一排的 DOM 与 class（.section-filters.grade-filters / .gf-chip）：
         两处做的是同一件事——**在同一批数据里换一个条件**，长得不一样只会让人以为动作不同。
 
@@ -2671,7 +2681,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
         </button>
       </div>
 
-      <!-- 重点工单 · 空态：把当前收窄条件讲出来，否则"筛空了"会被读成"没有了" -->
+      <!-- 风险工单池 · 空态：把当前收窄条件讲出来，否则"筛空了"会被读成"没有了" -->
       <div v-if="listView === 'report' && !reportRows.length" class="ob-empty">
         <template v-if="reportView !== 'assessed'">
           {{
@@ -2689,7 +2699,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
       </div>
 
       <!--
-        重点工单队列表。在队两态（待分派 / 评估中）共用一张表：它们的列几乎相同，
+        风险工单池队列表。在队两态（待分派 / 评估中）共用一张表：它们的列几乎相同，
         分成两张表迟早只改一处；差异只有勾选列与承办人列两处，就地 v-if 掉。
       -->
       <div v-if="listView === 'report' && reportRows.length" class="hit-table-wrap report-table-wrap">
@@ -3182,7 +3192,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
         </button>
       </div>
 
-      <!-- 重点工单队列不走 filteredRows（那是命中记录），故这两块在 report 视图下一律不渲染 -->
+      <!-- 风险工单池不走 filteredRows（那是命中记录），故这两块在 report 视图下一律不渲染 -->
       <div v-if="listView !== 'report' && !filteredRows.length" class="ob-empty">
         <template v-if="inScanResult">该条件下没有扫到命中，可放宽时间区间或匹配范围</template>
         <!--
@@ -3892,7 +3902,6 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                 </button>
               </li>
             </ul>
-            <p class="assess-sla-note">评估期间本单照常处理，SLA 不停表</p>
           </div>
 
           <!-- ② 本单另有：收在卡片底栏，弱于主体描述 -->
@@ -3924,7 +3933,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
 
         <!-- ③ 评估表单：二选一决策 + 必填说明 -->
         <section class="assess-block assess-block-form">
-          <h4 class="assess-block-title">填写评估结论</h4>
+          <h4 class="assess-block-title">评估结论</h4>
 
           <!--
             决策**二选一**（N1）：不升级 / 接管。
@@ -3965,7 +3974,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
     -->
     <OpActionModal
       :open="assignOpen"
-      title="分派重点工单"
+      title="分派风险工单"
       :icon="UnorderedListOutlined"
       tone="primary"
       :width="460"
@@ -4077,7 +4086,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
   box-shadow: none;
 }
 /*
- * 三栏：监控数据（命中记录）｜ 重点工单（工单）｜ 风险评估（队列条目）。
+ * 三栏：监控数据（命中记录）｜ 工单存量（在办工单）｜ 风险评估（队列条目）。
  * 左栏四个 KPI、右栏三个，中栏只有两个，故按 1.15 : 0.85 : 1 分宽，
  * 均分会让中栏空出一截、左栏的四格挤成两行。
  */
@@ -5271,7 +5280,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
 }
 .wf-syn-del:hover { color: #ef4444; }
 
-/* ==== 重点工单（队列 + 分派 + 评估弹窗）==== */
+/* ==== 风险工单池（队列 + 分派 + 评估弹窗）==== */
 
 /* 收窄标：等级 chip 那一排里混着的"当前生效条件"，故取同一个圆角与字号，
    只在配色上与 chip 区分——chip 是可点的选择项，它是可摘的既成条件。 */
@@ -5407,11 +5416,6 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
   white-space: pre-wrap;
   word-break: break-word;
 }
-.assess-sla-note {
-  margin: 8px 0 0;
-  font-size: 11px;
-  color: #9ca3af;
-}
 .assess-files {
   display: flex;
   flex-wrap: wrap;
@@ -5488,18 +5492,27 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
 .assess-foot-dec { color: #374151; font-weight: 600; }
 .assess-foot-esc { color: #64748b; font-variant-numeric: tabular-nums; }
 
-/* ③ 评估表单：标签与决策同一行 */
-.assess-dec-row { margin: 0; }
-.assess-dec-row > .op-label { width: 72px; }
-.assess-dec-inline {
-  flex: 1;
-  min-width: 0;
-}
-.assess-dec-inline :deep(.ant-radio-group) {
+/* ③ 评估表单：标签与决策同一行（须自带 display:flex，不能单靠 op-field-h） */
+.assess-dec-row {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+}
+.assess-dec-row > .op-label {
+  flex: none;
+  width: 72px;
+  text-align: right;
+  white-space: nowrap;
+}
+.assess-dec-inline {
+  display: inline-flex !important;
+  flex: 1;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 .assess-dec-inline :deep(.ant-radio-wrapper) {
   margin: 0 !important;
