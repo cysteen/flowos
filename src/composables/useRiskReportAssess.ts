@@ -6,7 +6,6 @@ import { useUserStore } from '@/stores/user';
 import { useRiskPoolStore } from '@/stores/riskPool';
 import {
   ASSESS_DECISIONS,
-  isVerifyMonitorSource,
   type AssessDecision,
   type RiskPoolItem,
 } from '@/stores/riskShared';
@@ -70,10 +69,16 @@ export function useRiskReportAssess() {
     return `${prefix}${String(maxUsed + 1).padStart(5, '0')}`;
   }
 
+  /**
+   * 能不能由这个人评这一条。
+   *
+   * 🔴 **不再按监控来源设门**（2026-09-10 第三轮拍板）：旧口径下预警词那一路走的是
+   * 「核实打标」、不走评估，故这里挡掉它；新口径把**打标提前成入池门槛**——
+   * 打标为低/中/高才进池，进了池就是"已确认有风险、等人评"，来源是哪一类不再影响它要不要评。
+   * 留着这道门会让手动筛查、投诉单、重要紧急三类打完标进池后，评估按钮永远出不来。
+   */
   function canAssessReport(r: RiskPoolItem, assigneeName: string) {
-    return r.status === '评估中'
-      && r.assignee === assigneeName
-      && !isVerifyMonitorSource(r.source);
+    return r.status === '评估中' && r.assignee === assigneeName;
   }
 
   function openAssess(r: RiskPoolItem) {
