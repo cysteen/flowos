@@ -130,30 +130,31 @@ type QueueView = 'monitoring' | 'pooled' | 'noRisk';
 const queueView = ref<QueueView>('monitoring');
 
 /**
- * 「待标记」这一档**两级展开**（业务第四轮补充口径）。
+ * 「未标记」这一段**两级展开**。
  *
  * ```
- *   全部待判                         ← 三路合计（默认档）
- *     实时监控   ▾ 高风险 / 中风险 / 低风险      ← 按**词表预设的识别风险等级**
- *     投诉单     ▾ P0 / P1 / P2 / P3           ← 按**工单优先级**
- *     重要紧急   ▾ P0 / P1                     ← 同上，这一路本就只有这两级
+ *   实时监控   ▾ 高风险 / 中风险 / 低风险      ← 按**词表预设的识别风险等级**
+ *   投诉单     ▾ P0 / P1 / P2 / P3           ← 按**工单优先级**
+ *   重要紧急   ▾ P0 / P1                     ← 同上，这一路本就只有这两级
  * ```
  *
- * 🔴 **第一级三片是同一维（监控来源）的三个值，两两互斥**。互斥这件事不是巧合而是要求：
- * 一条行只能算进一片，否则「实时监控 + 投诉单 + 重要紧急 ＝ 全部待判」这条恒等式当场失守，
+ * 🔴 **三路是同一维（监控来源）的三个值，两两互斥**。互斥这件事不是巧合而是要求：
+ * 一条行只能算进一路，否则「实时监控 + 投诉单 + 重要紧急 ＝ 页签上那个数」这条恒等式当场失守，
  * 而这一列的全部说服力就在于"点开的数加起来对得上"。归属由 `effectiveSourceOf` 一处判定。
  *
  * 🔴 **第二级的维度按各自的性质走，不强求统一**：命中那一路人排队看的是"机器觉得这句话多重"，
  * 工单那两路看的是"这张单本身多急"。硬拉成同一把尺，两边都会得到一列读不出业务含义的数。
  *
- * 【为什么 `all` 置顶而不是垫底】它是阶段全量、也是值班每天要清零的那个数，
- * 先看总量再看构成才是这一列自上而下的读法；三片是它的切面，故缩进一级挂在它下面。
+ * 【为什么没有一档"合计"】原先三路上面还压着一档「全部待判」装三路之和。删掉了：
+ * 那个数现在由**页签**承担，档位与页签各摆一遍就是同一个数写两处；
+ * 删掉之后这一段只剩两级缩进，与「已标记」段的层级语法齐平。
  *
  * 【为什么另开状态而不是塞进 `queueView`】`queueView` 分的是**打没打标**
- * （待标记 / 已入池 / 无风险），是漏斗的段；切片分的是**同一段里看哪一批**，是段内的维度。
+ * （未标记 / 已入池 / 无风险），是链上的段；切片分的是**同一段里看哪一路**，是段内的维度。
  */
-type UntaggedSlice = 'all' | 'kw' | 'complaint' | 'urgent';
-const untaggedSlice = ref<UntaggedSlice>('all');
+type UntaggedSlice = 'kw' | 'complaint' | 'urgent';
+/** 默认停在第一路「实时监控」—— 三路里只有它带命中原话，是唯一能就地判完的一路 */
+const untaggedSlice = ref<UntaggedSlice>('kw');
 /** 切片内的第二级收窄；空串 ＝ 不限子档（＝ 点的是切面行本身） */
 const untaggedSub = ref<string>('');
 /**
@@ -161,7 +162,7 @@ const untaggedSub = ref<string>('');
  * 而且子档为 0 也照常显示（见 `untaggedSubItems`）——结构稳定比省几行重要，
  * 档位时有时无，人会以为筛选坏了。
  */
-const untaggedOpen = ref<Record<Exclude<UntaggedSlice, 'all'>, boolean>>({
+const untaggedOpen = ref<Record<UntaggedSlice, boolean>>({
   kw: true,
   complaint: true,
   urgent: true,
@@ -2279,22 +2280,20 @@ function effectiveSourceOf(r: QueueRow): '实时监控' | '投诉单' | '重要�
 }
 
 /** 切片 ↔ 监控来源字面量。三片就是这一维的三个值，故映射一处写死、别处只引用它 */
-const SLICE_SOURCE: Record<Exclude<UntaggedSlice, 'all'>, NonNullable<QueueRow['source']>> = {
+const SLICE_SOURCE: Record<UntaggedSlice, NonNullable<QueueRow['source']>> = {
   kw: '实时监控',
   complaint: '投诉单',
   urgent: '重要紧急',
 };
 
 /**
- * 「待标记」的某一片（未过工作组筛选、未过子档）。
- * 四档**同出一个全集**，故超集关系是构造出来的、不是碰巧成立的：
- * 换几条独立的查询去取，各自的"未标记"判据迟早分叉，切面反而会比全量多。
+ * 「未标记」的某一路（未过工作组筛选、未过子档）。
+ * 三路**同出一个全集**（`untaggedUniverse`），故"三路之和 ＝ 页签上那个数"
+ * 是构造出来的、不是碰巧成立的：换三条独立的查询去取，各自的"未标记"判据迟早分叉。
  */
 function untaggedSliceRows(slice: UntaggedSlice): QueueRow[] {
-  const base = untaggedUniverse.value;
-  if (slice === 'all') return base;
   const src = SLICE_SOURCE[slice];
-  return base.filter((r) => effectiveSourceOf(r) === src);
+  return untaggedUniverse.value.filter((r) => effectiveSourceOf(r) === src);
 }
 
 /**
@@ -2314,7 +2313,7 @@ function untaggedSubOf(r: QueueRow, slice: UntaggedSlice): string | null {
 }
 
 /** 某一片下的子档清单（**为 0 也照常列出**，档位时有时无会被读成筛选坏了） */
-const UNTAGGED_SUB_KEYS: Record<Exclude<UntaggedSlice, 'all'>, string[]> = {
+const UNTAGGED_SUB_KEYS: Record<UntaggedSlice, string[]> = {
   kw: [...RISK_LEVELS],
   complaint: ['P0', 'P1', 'P2', 'P3'],
   // 这一路的判据本就是 P0 / P1，列出 P2 / P3 等于摆两个永远为 0 的档
@@ -3060,7 +3059,7 @@ function pooledLevelCount(lv: RiskLevel) {
  * 🔴 **子档为 0 也照常列出**：档位时有时无，人会以为筛选坏了。
  */
 function untaggedSliceItems(
-  slice: Exclude<UntaggedSlice, 'all'>,
+  slice: UntaggedSlice,
   label: string,
   title: string,
 ): RailItem[] {
@@ -3070,10 +3069,15 @@ function untaggedSliceItems(
     key: `untagged:${slice}` as RailKey,
     label,
     count: rows.length,
-    depth: 1,
+    // 🔴 **d0**：三路提到与「已标记」段那三个分类同一层之后，这一段也只剩两级缩进。
+    // 🔴 与「已标记」那三个 d0 **算法相反**：那边三个轴是同一批的三种看法、数天然相等、
+    // 不可相加；这边三路两两互斥、可以相加，之和 ＝ 页签上那个数。
+    // 同一套缩进语法承载相反的算法，故两边的 title 各写一句把算法钉死。
+    depth: 0,
     expandable: true,
     expanded: open,
-    title: `${title}。点它展开／收起下面的子档；行本身也可选 ＝ 这一路不限子档`,
+    title: `${title}。点它展开／收起下面的子档；行本身也可选 ＝ 这一路不限子档。`
+      + '🔴 三路（实时监控 / 投诉单 / 重要紧急）两两互斥，**之和 ＝ 页签上那个数**',
   };
   if (!open) return [head];
   return [
@@ -3082,40 +3086,32 @@ function untaggedSliceItems(
       key: `untagged:${slice}:${k}` as RailKey,
       label: untaggedSubLabel(slice, k),
       count: rows.filter((r) => untaggedSubOf(r, slice) === k).length,
-      depth: 2 as const,
+      depth: 1 as const,
       title: `「${label}」里${untaggedSubLabel(slice, k)}的那一档`,
     })),
   ];
 }
 
 const railGroups = computed<RailGroup[]>(() => {
-  const untaggedAll = inGroup(untaggedSliceRows('all')).length;
+  // 页签上那个数 ＝ 三路之和。三路同出 `untaggedUniverse`、两两互斥，故这里直接取全集的条数，
+  // 不去把三路加一遍：加出来的与它恒等，多写一处就多一处会分叉的口径
+  const untaggedAll = inGroup(untaggedUniverse.value).length;
   const pooledAll = inGroup(reportStore.pooledEntries).length;
   const noRiskAll = inGroup(reportStore.noRiskEntries).length;
   return [
     {
       stage: 'untagged',
       total: untaggedAll,
-      defaultKey: 'untagged:all',
+      defaultKey: 'untagged:kw',
       title: '未标记',
-      title2: '三路自动识别捞到、还没有人给过结论的工单 —— **此刻的存量**。分母是**工单**不是条目。'
-        + '🔴 下面三路按监控来源两两互斥，三路之和 ≡ 全部待判（恒等号，不是约等）。'
+      title2: '三路自动识别（实时监控 / 投诉单 / 重要紧急）捞到、还没有人给过结论的工单'
+        + ' —— **此刻的存量**。分母是**工单**不是条目。'
+        + '🔴 三路两两互斥，**三路之和 ＝ 这个数**（恒等号，不是约等）。'
+        + '🔴 **它不是"整本工单库里没人标过的单"**：未标记是每张单与生俱来的默认态，'
+        + '那样数出来的是全部在办单、永远清不零，真该判的那批反而被淹没。'
         + '🔴 这个数与「已标记」那个数**分属两批、不相减也不互校**：那边是历史累计打过标的，'
-        + '跑久了必然比这边大，那是正常状态不是漏损',
+        + '跑久了必然比这边大，那是正常状态、不是漏损',
       items: [
-        {
-          key: 'untagged:all',
-          label: '全部待判',
-          count: untaggedAll,
-          bad: untaggedAll > 0,
-          depth: 0,
-          title: '漏斗的入口：三路自动识别（实时监控 / 投诉单 / 重要紧急）捞到、'
-            + '既没被标过风险等级也没被标过无风险的在办工单，三路两两互斥，之和恒等于这个数。'
-            + '🔴 **它不是"整本工单库里没人标过的单"**：未标记是每张单与生俱来的默认态，'
-            + '那样数出来的是全部在办单、永远清不零，真该判的那批反而被淹没。'
-            + '🔴 三路规则都没捞到的单由右上角「手动筛查」兜底：拿条件去扫存量，'
-            + '扫出的命中并入清单后由自动识别把它带进这一档',
-        },
         ...untaggedSliceItems('kw', '实时监控',
           '预警词捞进来的那一路。下面按**词表预设的识别风险等级**分档 —— 机器认为最重的排最前，人从上往下判'),
         ...untaggedSliceItems('complaint', '投诉单',
@@ -3142,7 +3138,9 @@ const railGroups = computed<RailGroup[]>(() => {
           label: '全部有风险',
           count: pooledAll,
           depth: 0,
-          title: '高危 + 中危 + 低危 的合计，不含无风险 —— 无风险是漏斗的漏出口，算进来等于把已经排除掉的那批重新当成风险',
+          title: '按风险等级看这一段：高危 + 中危 + 低危 的合计，不含无风险'
+            + '（无风险是这条链的漏出口，算进来等于把已经排除掉的那批重新当成风险）。'
+            + '🔴 与「按标记人」「按处置阶段」是**同一批条目的三种看法，数天然相等、不可相加**',
         },
         ...RISK_LEVELS.map((lv) => ({
           key: `level:${lv}` as RailKey,
@@ -3166,7 +3164,8 @@ const railGroups = computed<RailGroup[]>(() => {
           expandable: true,
           expanded: taggerExpanded.value,
           title: '与「全部有风险」并列的**另一种分类**：同一批已标记条目换成按标记人看。'
-            + '点它展开／收起下面的标记人清单；分母与「全部有风险」同一个，只数高 / 中 / 低，不含无风险',
+            + '点它展开／收起下面的标记人清单；分母与「全部有风险」同一个，只数高 / 中 / 低，不含无风险。'
+            + '🔴 与另两个轴是**同一批条目的不同看法，数天然相等、不可相加**',
         },
         ...(taggerExpanded.value
           ? taggerChips.value.rows.map((t) => ({
@@ -3202,6 +3201,7 @@ const railGroups = computed<RailGroup[]>(() => {
           expanded: poolAxisExpanded.value,
           title: '与「全部有风险」并列的**第三种分类**：同一批已标记条目换成按池内处置阶段看，'
             + '三个取值是真时间序（待领取 → 已领取 → 已结论）。点它展开／收起下面三档；行本身也可选 ＝ 不限阶段。'
+            + '🔴 与另两个轴是**同一批条目的不同看法，数天然相等、不可相加**。'
             + '仅监控入池 —— 🔴 只数 A 线（打标进池的条目）：二线报备有自己的家 ——'
             + ' 工单工作台的「风险报备池」',
         },
@@ -3283,8 +3283,8 @@ function setRail(key: RailKey) {
     const [slice, sub] = key.slice('untagged:'.length).split(':');
     // 点切面行本身 ＝ 这一路不限子档，同时展开／收起它的下级；
     // 已经停在这一行上时再点一次就收起来（与「按标记人」同一套手势）
-    if (!sub && slice !== 'all') {
-      const s = slice as Exclude<UntaggedSlice, 'all'>;
+    if (!sub) {
+      const s = slice as UntaggedSlice;
       untaggedOpen.value = {
         ...untaggedOpen.value,
         [s]: !(railKey.value === key && untaggedOpen.value[s]),
@@ -3995,7 +3995,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                 type="button"
                 class="row-btn scan-entry"
                 :class="{ active: listView === 'scan' }"
-                title="旁路 · 拿条件去扫存量工单产出新命中；勾选并入清单后，由自动识别把它带进「待标记」。它不是漏斗上的一段，是往上游补货的手段"
+                title="旁路 · **三路自动识别的兜底**：实时监控 / 投诉单 / 重要紧急 都没捞到的单，靠它拿条件去扫存量捞出来；扫出的命中勾选并入清单后，由自动识别把它带进「未标记」。它不是链上的一段，是往上游补货的手段"
                 @click="setListView('scan')"
               >
                 <SearchOutlined :style="{ fontSize: '12px' }" />
@@ -4063,8 +4063,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
         <template v-if="groupFilter !== 'all'">「{{ groupFilter }}」在这一档下没有条目 —— 点「全部工作组」看全部</template>
         <template v-else-if="taggerFilter !== 'all'">「{{ taggerFilter }}」名下没有已标记的风险工单 —— 点左栏「按标记人」看全部</template>
         <template v-else-if="queueView === 'monitoring' && untaggedSub">这一档下没有未标记的工单 —— 点上一级看这一路的全部</template>
-        <template v-else-if="queueView === 'monitoring' && untaggedSlice !== 'all'">这一路没有待判的工单 —— 点「全部待判」看三路合计</template>
-        <template v-else-if="queueView === 'monitoring'">当前没有待判的工单 —— 三路自动识别捞到的都已经有人给过结论</template>
+        <template v-else-if="queueView === 'monitoring'">这一路没有待判的工单 —— 换一路看，或用右上角「手动筛查」去存量里捞</template>
         <template v-else-if="queueView === 'noRisk'">当前没有被判为无风险的条目</template>
         <template v-else-if="tagLevelText">当前没有打标为{{ tagLevelText }}的条目</template>
         <template v-else>当前没有已入池的条目 —— 打标为低 / 中 / 高的条目会落在这里</template>
@@ -4520,7 +4519,8 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               <th style="width: 104px">评估人</th>
               <th style="width: 128px">评估时刻</th>
               <th style="width: 92px">评估决策</th>
-              <th style="width: 176px">派生投诉单</th>
+              <!-- 158px 是量出来的：再宽 18px 这张九列表就会挤出横向滚动条 -->
+              <th style="width: 158px">派生投诉单</th>
               <th style="width: 76px">操作</th>
             </tr>
           </thead>
