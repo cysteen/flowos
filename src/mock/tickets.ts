@@ -769,6 +769,60 @@ const BASE_TICKETS: Ticket[] = [
     createdAt: '2026-08-05 14:10', updatedAt: '2026-08-06 08:50',
     responded: true, solveBreached: true,
   },
+
+  // ================================================================
+  // 风险监控「投诉单」那一路的 P1 语料 —— 共 3 张（rk-7 … rk-9）。
+  //
+  // 【为什么单独补 P1】那一档按工单优先级分 P0 / P1 / P2 / P3 四格，本轮有三张在办投诉单
+  // 被打标进池之后，P1 只剩两张，四格成了 P0 3 / **P1 2** / P2 2 / P3 1 —— **P1 比 P0 还少**。
+  // 真实的投诉盘子里「重要」一向明显多于「紧急」，倒挂的分布会让人照着一个假形状去排班：
+  // 看上去紧急的比重要的还多，最该先动的那一批反而显得没多少。补完为 P0 3 / P1 5 / P2 2 / P3 1。
+  //
+  // 【为什么不是把打标过的那几张退回来】那几张是「已标记」那一段的样本（等级 / 打标人 /
+  // 三态各自的分档全靠它们），退回去等于拆东墙补西墙。两段各要各的量，就各补各的单。
+  //
+  // 写法与上面 rk-1 … rk-6 同源（`tab: 'done'` + `handledByMe: false` + 无 `groupId`），
+  // 故工单工作台的六个页签一条都不多收，只在查询中心与运营监控里可查、可点开。
+  // ================================================================
+  {
+    id: 'rk-7', no: 'IFLYTS-20260806-00007', type: '投诉', channel: '电话',
+    title: '学习机以旧换新补贴未到账', smartMarks: ['情绪'],
+    customer: '徐岚', vip: false, product: '学习机 T20',
+    nodeStatus: '处理中', nodeStep: 3, nodeTotal: 5, priority: 'P1',
+    slaText: '已超 08:24', slaSub: '已超时', slaState: 'overdue', slaMinutes: -504,
+    assignee: '孙坐席', tab: 'done', handledByMe: false,
+    customerPhone: '13677778888', sn: 'SN-T20-903117', productCategory: '学习硬件',
+    problemDesc: '以旧换新补贴承诺 15 个工作日到账，已过 28 天仍未收到。',
+    latestHandling: '已向渠道核对补贴批次，暂未拿到明确到账时间。',
+    createdAt: '2026-08-05 10:20', updatedAt: '2026-08-06 09:15',
+    responded: true, solveBreached: true, hasDunning: true,
+  },
+  {
+    id: 'rk-8', no: 'IFLYTS-20260806-00008', type: '投诉', channel: '在线客服',
+    title: '翻译机换新后仍有杂音，要求退货', smartMarks: ['情绪'],
+    customer: '马涛', vip: false, product: '讯飞翻译机 T10',
+    nodeStatus: '待响应', nodeStep: 1, nodeTotal: 5, priority: 'P1',
+    slaText: '00:48:00', slaSub: '距超时', slaState: 'soon', slaMinutes: 48,
+    assignee: '李坐席', tab: 'done', handledByMe: false,
+    customerPhone: '13633334444', sn: 'SN-T10-771203', productCategory: '消费电子',
+    problemDesc: '换新机器录音仍有底噪，客户不再接受换货，要求全额退货。',
+    latestHandling: '暂无处理记录。',
+    createdAt: '2026-08-06 09:22', updatedAt: '2026-08-06 09:22',
+    responded: false,
+  },
+  {
+    id: 'rk-9', no: 'IFLYTS-20260806-00009', type: '投诉', channel: '电话',
+    title: '上门安装迟到三次，要求赔偿误工费', smartMarks: ['情绪'],
+    customer: '郭欣', vip: false, product: '智能音箱 X1',
+    nodeStatus: '处理中', nodeStep: 2, nodeTotal: 5, priority: 'P1',
+    slaText: '01:36:00', slaSub: '充足', slaState: 'ok', slaMinutes: 96,
+    assignee: '王坐席', tab: 'done', handledByMe: false,
+    customerPhone: '13744445555', sn: 'SN-X1-330925', productCategory: '智能硬件',
+    problemDesc: '三次预约上门均爽约，客户为此三次请假，要求赔偿误工费。',
+    latestHandling: '已致歉并改约本周六上午，赔偿口径待班组长确认。',
+    createdAt: '2026-08-06 08:15', updatedAt: '2026-08-06 10:30',
+    responded: true,
+  },
 ];
 
 /** 列表速览：问题描述 + 最新处理结果（按工单 id 合并，便于坐席快速扫读） */
@@ -890,6 +944,7 @@ const TICKET_GROUP_NAMES: Record<string, string[]> = {
   'fd-d9': ['受理一组'],
   'fd-d10': ['受理一组'],
   'rk-5': ['受理一组'],
+  'rk-9': ['受理一组'],
 
   // ---- 受理二组：跨组调剂转入、翻译机与账务类 ----
   't-feishu': ['受理二组'],
@@ -905,6 +960,7 @@ const TICKET_GROUP_NAMES: Record<string, string[]> = {
   'fd-d7': ['受理二组'],
   'ops-6': ['受理二组'],
   'rk-4': ['受理二组'],
+  'rk-8': ['受理二组'],
 
   // ---- 硬件缺陷组：返修、部件更换、硬件故障 ----
   t18: ['硬件缺陷组'],
@@ -926,6 +982,7 @@ const TICKET_GROUP_NAMES: Record<string, string[]> = {
   'rk-1': ['教育支持组'],
   'rk-2': ['教育支持组'],
   'rk-6': ['教育支持组'],
+  'rk-7': ['教育支持组'],
 
   // ---- 技术支持组：开放平台 / API / 账号安全 ----
   t3: ['技术支持组'],
