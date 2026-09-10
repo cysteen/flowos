@@ -25,6 +25,7 @@ import {
   useRiskReportStore,
   ASSESS_DECISIONS,
   MONITOR_SOURCES,
+  isVerifyMonitorSource,
   REPORT_ASSESS_LIMIT_MIN,
   type AssessDecision,
   type MonitorSource,
@@ -398,7 +399,7 @@ function openAssess(r: RiskReport) {
  * **915 的能力一字不改**。其余四类来源走评估。
  */
 function isKeywordRow(r: RiskReport) {
-  return r.source === '关键词触发';
+  return isVerifyMonitorSource(r.source);
 }
 
 /**
@@ -460,15 +461,16 @@ const REPORT_CLAIM_ROLES: string[] = [
 ];
 const canClaim = computed(() => REPORT_CLAIM_ROLES.includes(user.roleKey));
 
-/** 自取一条：转「评估中」并落在自己名下 */
+/** 领取一条：转「评估中」并落在自己名下，随后跳转工单详情做评估 */
 function doClaim(r: RiskReport) {
-  if (!canClaim.value) { message.warning('只有客诉专员可以自取风险工单池的单'); return; }
+  if (!canClaim.value) { message.warning('只有客诉专员可以领取风险工单池的单'); return; }
   if (!reportStore.claim(r.id, user.name)) {
-    // 唯一会落空的情形：别人刚刚把它分派 / 自取走了，本页还没重算
+    // 唯一会落空的情形：别人刚刚把它分派 / 领取走了，本页还没重算
     message.warning('这一条刚被分派走了，请刷新后再看');
     return;
   }
-  message.success(`已自取 ${r.ticketNo}，转「评估中」`);
+  message.success(`已领取 ${r.ticketNo}，正在打开工单详情…`);
+  router.push({ path: `/tickets/${r.ticketNo}`, query: { tab: 'risk' } });
 }
 /** 可被分派的客诉专员。与预置数据里的承办人同名，翻队列时看到的是同一批人 */
 const ASSIGN_CANDIDATES = ['吴投诉', '李文萍'];
@@ -2378,13 +2380,13 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
             title="工单系统里需要风险侧盯的存量 · 分母是在办工单，与左栏命中数、右栏队列条目均不可相加"
           >工单存量</h2>
           <div class="dash-grid dash-grid-2">
-            <div class="dm-cell dm-static" title="在办的投诉类工单 · 对应监控来源「全量投诉」">
+            <div class="dm-cell dm-static" title="在办的投诉类工单 · 对应监控来源「投诉单」">
               <span class="dm-k">投诉工单</span>
               <span class="dm-val"><span class="dm-v">{{ complaintTicketCount }}</span></span>
             </div>
             <div
               class="dm-cell dm-static"
-              title="在办且优先级为 P0 紧急 / P1 重要的工单 · 对应监控来源「紧急重要」"
+              title="在办且优先级为 P0 紧急 / P1 重要的工单 · 对应监控来源「重要紧急」"
             >
               <span class="dm-k">紧急 / 重要</span>
               <span class="dm-val"><span class="dm-v">{{ urgentTicketCount }}</span></span>
@@ -2419,7 +2421,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
         <div class="effect-pane effect-pane--report">
           <h2
             class="pane-title"
-            title="全量投诉 / 紧急重要 / VIP客户 / 二线报备 四类走评估 · 「关键词触发」走核实打标，不进本行分母"
+            title="投诉单 / 重要紧急 / VIP客户 / 二线报备 四类走评估 · 「实时监控 / 手动筛查」走核实打标，不进本行分母"
           >风险评估</h2>
           <div class="dash-grid dash-grid-3">
             <!--
@@ -2811,7 +2813,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               >{{ waitedText(r.at) }}</td>
               <td>
                 <!--
-                  待分派 · **双轨**（O18）：督导「分派」给人，客诉专员「自取」自领。
+                  待分派 · **双轨**（O18）：督导「分派」给人，客诉专员「领取」自领。
                   两条并存的理由：只留指派这一条时**督导就是单点**，他不在岗队列谁也动不了，
                   而这条队列现在卡的是投诉立项（基线 ※8a）。与基线「领取 / 指派」同一副骨架（※15）。
                 -->
@@ -2825,13 +2827,13 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                   <button
                     v-if="canClaim"
                     type="button" class="row-btn row-btn-tag"
-                    title="自己领这一条，转「评估中」并落在你名下"
+                    title="领取这一条，转「评估中」并打开工单详情做评估"
                     @click="doClaim(r)"
-                  >自取</button>
+                  >领取</button>
                   <span
                     v-if="!canAssign && !canClaim"
                     class="hit-sub"
-                    title="分派归投诉督导，自取归客诉专员"
+                    title="分派归投诉督导，领取归客诉专员"
                   >—</span>
                 </template>
                 <!--
@@ -2915,7 +2917,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                   v-else-if="r.verify"
                   class="rr-dec"
                   :class="{ risk: r.verify.verdict === '成立' }"
-                  :title="`关键词触发走 915 核实打标，结论是「成立 / 误报 + 定级」，不是评估二选一；核实成立的条目会退回队列走评估，不落在本表`"
+                  :title="`实时监控 / 手动筛查走 915 核实打标，结论是「成立 / 误报 + 定级」，不是评估二选一；核实成立的条目会退回队列走评估，不落在本表`"
                 >核实：{{ r.verify.verdict }}{{ r.verify.level ? ` · ${riskLevelText(r.verify.level)}` : '' }}</span>
                 <span v-else class="hit-sub">—</span>
               </td>

@@ -41,8 +41,22 @@ export type ReportReason = (typeof REPORT_REASONS)[number];
  *
  * 「系统自动判断（AI）」是业务文档自标的第六类、**规划中**，本轮不做，故不在枚举里。
  */
-export const MONITOR_SOURCES = ['关键词触发', '全量投诉', '紧急重要', 'VIP客户', '二线报备'] as const;
+export const MONITOR_SOURCES = ['实时监控', '手动筛查', '投诉单', '重要紧急', 'VIP客户', '二线报备'] as const;
 export type MonitorSource = (typeof MONITOR_SOURCES)[number];
+
+/** 走 915 核实打标的一路（原「关键词触发」，拆为实时 + 手动筛查两个来源展示） */
+export function isVerifyMonitorSource(source: MonitorSource): boolean {
+  return source === '实时监控' || source === '手动筛查';
+}
+
+const LEGACY_MONITOR_SOURCE: Record<string, MonitorSource> = {
+  关键词触发: '实时监控',
+  全量投诉: '投诉单',
+  紧急重要: '重要紧急',
+};
+function normalizeMonitorSource(source: string): MonitorSource {
+  return (LEGACY_MONITOR_SOURCE[source] ?? source) as MonitorSource;
+}
 
 /**
  * 风险类型（PRD §4.5）。**只存在报备单上** —— 不写工单、不进风险等级体系、
@@ -267,7 +281,7 @@ const SEED: RiskReport[] = [
     // `IFLYTS-20260731-00001` 曾写在这里，但它的命中 h5 是 `tagged: '高'`（已核实），正是②的反例。
     // 现取 h1『无线音乐播放跳过歌曲异常』：投诉单、真实存在、命中未核实。
     ticketNo: 'IFLYTS-20260610-00002',
-    source: '关键词触发',
+    source: '实时监控',
     reason: '其他',
     category: null,
     desc: '沟通记录命中风险词，已自动纳入监控范围（无须报备）。',
@@ -302,10 +316,10 @@ const SEED: RiskReport[] = [
   {
     id: 'rr-010',
     ticketNo: 'IFLYTS-20260731-00001',
-    source: '关键词触发',
+    source: '手动筛查',
     reason: '其他',
     category: null,
-    desc: '沟通记录命中风险词，已自动纳入监控范围（无须报备）。',
+    desc: '手动批量筛查命中风险词，已纳入监控范围（无须报备）。',
     attachments: [],
     by: '系统',
     byRole: '系统',
@@ -332,7 +346,7 @@ const SEED: RiskReport[] = [
   {
     id: 'rr-004',
     ticketNo: 'IFLYTS-20260610-00007',
-    source: '全量投诉',
+    source: '投诉单',
     reason: '其他',
     category: null,
     desc: '投诉类工单自动纳入监控范围（无须报备）。',
@@ -367,7 +381,7 @@ const SEED: RiskReport[] = [
   {
     id: 'rr-008',
     ticketNo: 'IFLYZX-20260802-00002',
-    source: '紧急重要',
+    source: '重要紧急',
     reason: '其他',
     category: null,
     desc: 'P0 工单且已超解决时限，影响客户批量业务，自动纳入监控范围（无须报备）。',
@@ -432,7 +446,7 @@ const SEED: RiskReport[] = [
   {
     id: 'rr-009',
     ticketNo: 'IFLYTS-20260711-00001',
-    source: '全量投诉',
+    source: '投诉单',
     reason: '其他',
     category: null,
     desc: '投诉类工单自动纳入监控范围（无须报备）。客户维修超期未解决并已向监管平台反映。',
@@ -457,6 +471,8 @@ export const useRiskReportStore = defineStore('riskReports', () => {
   const reports = ref<RiskReport[]>(SEED.map((r) => ({ ...r })));
   /** 自增序号只用来造 id，不参与任何业务判断 */
   const seq = ref(SEED.length);
+  /** 领取后跳转工单页时，由工单侧消费并打开评估弹窗 */
+  const assessArrivalTicket = ref<string | null>(null);
 
   /**
    * 落 localStorage（与 `stores/ticketDrafts.ts` 同一套写法）。
@@ -482,7 +498,10 @@ export const useRiskReportStore = defineStore('riskReports', () => {
       const saved = JSON.parse(raw) as { reports: RiskReport[]; seq: number; savedAt?: number };
       const fresh = typeof saved?.savedAt === 'number' && Date.now() - saved.savedAt < STALE_MS;
       if (fresh && Array.isArray(saved?.reports) && saved.reports.length) {
-        reports.value = saved.reports;
+        reports.value = saved.reports.map((r) => ({
+          ...r,
+          source: normalizeMonitorSource(r.source),
+        }));
         seq.value = typeof saved.seq === 'number' ? saved.seq : saved.reports.length;
       } else {
         // 过期或来自没有 savedAt 的旧版本：清掉，免得下次又读到同一份陈数据
@@ -682,7 +701,7 @@ export const useRiskReportStore = defineStore('riskReports', () => {
    * 后果是「风险评估」四卡与「风险工单池」页签角标的差值会随成立条目变大——
    * 两个数本就不相等、界面上也不互校，但差在哪里现在多了一种成因。
    */
-  const goesToAssess = (r: RiskReport) => r.source !== '关键词触发';
+  const goesToAssess = (r: RiskReport) => !isVerifyMonitorSource(r.source);
 
   /** B1 待评估总数（四类来源）＝ 待分派 + 评估中 */
   const assessOpenCount = computed(() => openQueue.value.filter(goesToAssess).length);
@@ -852,9 +871,17 @@ export const useRiskReportStore = defineStore('riskReports', () => {
     if (!r || r.status !== '待分派') return false;
     r.status = '评估中';
     r.assignee = assignee;
-    // 自取的收件人是自己：留痕比"他自己知道"重要 —— 这条通知同时是
+    assessArrivalTicket.value = r.ticketNo;
+    // 领取的收件人是自己：留痕比"他自己知道"重要 —— 这条通知同时是
     // 「这单何时、被谁接走」的凭据，工单页的通知记录里查得到
     notifyAssigned(r);
+    return true;
+  }
+
+  /** 工单详情页打开后消费一次，触发评估弹窗 */
+  function consumeAssessArrival(ticketNo: string) {
+    if (assessArrivalTicket.value !== ticketNo) return false;
+    assessArrivalTicket.value = null;
     return true;
   }
 
@@ -945,7 +972,7 @@ export const useRiskReportStore = defineStore('riskReports', () => {
    */
   function recordVerify(ticketNo: string, verify: ReportVerify) {
     const r = reports.value.find(
-      (x) => x.ticketNo === ticketNo && x.source === '关键词触发' && isOpen(x),
+      (x) => x.ticketNo === ticketNo && isVerifyMonitorSource(x.source) && isOpen(x),
     );
     if (!r) return false;
     r.verify = verify;
@@ -1015,6 +1042,7 @@ export const useRiskReportStore = defineStore('riskReports', () => {
     submit,
     assign,
     claim,
+    consumeAssessArrival,
     withdraw,
     assess,
     recordVerify,

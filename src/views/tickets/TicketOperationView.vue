@@ -103,6 +103,15 @@ watch(
   { immediate: true },
 );
 
+/** 风险监控页「领取」后带 tab=risk 跳转，直达风险监控 Tab */
+watch(
+  () => route.query.tab,
+  (tab) => {
+    if (tab === 'risk') processTabsRef.value?.switchTab('risk');
+  },
+  { immediate: true },
+);
+
 // ---- 风险监控核实结论 → 工单风险字段（回传） ----
 //
 // 🔴 **只有命中核实这一路**（915 §7.3）。风险报备的评估**不进这条链路** ——

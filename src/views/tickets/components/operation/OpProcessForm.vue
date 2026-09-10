@@ -133,7 +133,7 @@ const supplementChips = computed<{ key: SupplementChip; label: string }[]>(() =>
   if (!isComplaint.value) return [{ key: 'quality', label: '建单规范' }];
   const chips: { key: SupplementChip; label: string }[] = [
     { key: 'complaint', label: '投诉定性' },
-    { key: 'risk', label: '风险' },
+    { key: 'risk', label: '风险标记' },
     { key: 'quality', label: '建单规范' },
   ];
   if (showComplaintChannel.value) chips.splice(1, 0, { key: 'external', label: '投诉渠道' });
@@ -363,7 +363,7 @@ function chipActiveClass(key: SupplementChip): string {
           >
             <span v-if="!isChipFilled(c.key)" class="chip-need-dot" />
             {{ c.label }}
-            <span v-if="!isChipFilled(c.key)" class="chip-need-tag">待填</span>
+            <span v-if="!isChipFilled(c.key) && c.key !== 'risk'" class="chip-need-tag">待填</span>
             <CheckOutlined v-else class="chip-check" />
           </button>
         </div>

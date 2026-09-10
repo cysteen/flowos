@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 import {
@@ -10,7 +10,9 @@ import {
   CheckOutlined,
   PaperClipOutlined,
   UserOutlined,
+  EditOutlined,
 } from '@ant-design/icons-vue';
+import { useRiskReportAssess } from '@/composables/useRiskReportAssess';
 import OpCollapsibleSection from '../OpCollapsibleSection.vue';
 import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue';
 import { riskLevelText } from '@/config/risk';
@@ -48,6 +50,20 @@ const emit = defineEmits<{
 const user = useUserStore();
 const reportStore = useRiskReportStore();
 const router = useRouter();
+const {
+  ASSESS_DECISIONS,
+  assessOpen,
+  assessDecision,
+  assessAdvice,
+  missAssessDecision,
+  missAssessAdvice,
+  assessAdviceLabel,
+  assessAdvicePlaceholder,
+  takeoverHint,
+  openAssess,
+  confirmAssess,
+  canAssessReport,
+} = useRiskReportAssess();
 
 const expanded = ref({ report: true, assess: true, risk: true });
 const riskLevelOptions = RISK_LEVEL_SELECT_OPTIONS;
@@ -73,6 +89,25 @@ const canWithdraw = computed(
     && pending.value.status === '待分派'
     && pending.value.by === user.name,
 );
+
+/** 当前承办人可在工单详情页提交评估结论 */
+const canAssess = computed(
+  () => !props.readonly
+    && !!pending.value
+    && canAssessReport(pending.value, user.name),
+);
+
+function tryAssessArrival() {
+  if (!reportStore.consumeAssessArrival(props.ticketNo)) return;
+  const p = pending.value;
+  if (!p || !canAssessReport(p, user.name)) return;
+  expanded.value.report = true;
+  nextTick(() => openAssess(p));
+}
+
+watch(() => props.ticketNo, tryAssessArrival);
+watch(pending, tryAssessArrival);
+onMounted(tryAssessArrival);
 
 function openWithdraw() {
   if (!canWithdraw.value) return;
@@ -317,7 +352,10 @@ function openEscalatedTicket(no: string) {
               </template>
             </div>
           </div>
-          <button v-if="canWithdraw" type="button" class="rr-withdraw" @click="openWithdraw">
+          <button v-if="canAssess" type="button" class="rr-assess" @click="openAssess(pending)">
+            评估
+          </button>
+          <button v-else-if="canWithdraw" type="button" class="rr-withdraw" @click="openWithdraw">
             撤回
           </button>
           <!-- 按钮消失得给个理由：不写这一句，报备人只会以为撤回入口自己丢了 -->
@@ -417,6 +455,45 @@ function openEscalatedTicket(no: string) {
         <p v-if="missWithdrawReason" class="field-err">请填写撤回原因</p>
         <!-- 撤回是破坏性动作，"记录不删除"是下决心前必须知道的后果，故留一句 -->
         <p class="report-tip">撤回后保留记录，可重新发起。</p>
+      </div>
+    </OpActionModal>
+
+    <!-- 评估结论：领取后自动打开，或在队卡片点「评估」 -->
+    <OpActionModal
+      :open="assessOpen"
+      title="评估报备"
+      :icon="EditOutlined"
+      tone="primary"
+      :width="520"
+      ok-text="提交结论"
+      @update:open="assessOpen = $event"
+      @ok="confirmAssess"
+    >
+      <div class="op-form ticket-assess-form">
+        <section class="ticket-assess-block">
+          <h4 class="ticket-assess-title">评估结论</h4>
+          <div class="op-field ticket-assess-dec-field">
+            <div class="op-field-h ticket-assess-dec-row">
+              <div class="op-label req">评估决策</div>
+              <a-radio-group v-model:value="assessDecision" class="ticket-assess-dec-inline">
+                <a-radio v-for="d in ASSESS_DECISIONS" :key="d" :value="d">{{ d }}</a-radio>
+              </a-radio-group>
+            </div>
+            <div v-if="missAssessDecision" class="ticket-assess-err ticket-assess-foot">请先选择一个评估决策</div>
+            <div v-else-if="assessDecision === '接管'" class="op-hint ticket-assess-foot">
+              {{ takeoverHint }}
+            </div>
+          </div>
+          <div class="op-field">
+            <div class="op-label req">{{ assessAdviceLabel || '反馈意见' }}</div>
+            <a-textarea
+              v-model:value="assessAdvice"
+              :rows="3"
+              :placeholder="assessAdvicePlaceholder || '请先选择评估决策'"
+            />
+            <div v-if="missAssessAdvice" class="ticket-assess-err">请填写{{ assessAdviceLabel || '反馈意见' }}</div>
+          </div>
+        </section>
       </div>
     </OpActionModal>
 
@@ -626,6 +703,20 @@ function openEscalatedTicket(no: string) {
   background: #e5e7eb;
   flex: none;
 }
+.rr-assess {
+  flex: none;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  color: #1d4ed8;
+  background: #eff6ff;
+  border: 1px solid #93c5fd;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.rr-assess:hover { background: #dbeafe; border-color: #60a5fa; }
 .rr-withdraw {
   flex: none;
   padding: 6px 12px;
@@ -1013,5 +1104,67 @@ function openEscalatedTicket(no: string) {
 .risk-level-select :deep(.ant-select-selection-placeholder) {
   font-size: 12px;
   line-height: 26px;
+}
+
+/* ---- 评估结论弹窗（领取后自动打开） ---- */
+.ticket-assess-form { gap: 12px !important; }
+.ticket-assess-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+}
+.ticket-assess-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #111827;
+}
+.ticket-assess-dec-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+}
+.ticket-assess-dec-row > .op-label {
+  flex: none;
+  width: 72px;
+  text-align: right;
+  white-space: nowrap;
+}
+.ticket-assess-dec-inline {
+  display: inline-flex !important;
+  flex: 1;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.ticket-assess-dec-inline :deep(.ant-radio-wrapper) {
+  margin: 0 !important;
+  padding: 6px 12px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  line-height: 1.45;
+  font-size: 12px;
+  white-space: nowrap;
+  align-items: center;
+}
+.ticket-assess-dec-inline :deep(.ant-radio-wrapper-checked) {
+  border-color: #1a6fff;
+  background: #eff6ff;
+}
+.ticket-assess-dec-inline :deep(.ant-radio) { margin-top: 0; top: 0; }
+.ticket-assess-foot { margin-left: calc(72px + 10px); margin-top: 4px; }
+.ticket-assess-err {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #ef4444;
+  line-height: 1.4;
 }
 </style>
