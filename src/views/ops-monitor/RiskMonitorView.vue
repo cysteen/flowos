@@ -126,6 +126,35 @@ const listView = ref<ListView>('realtime');
 type QueueView = 'monitoring' | 'pooled' | 'noRisk';
 const queueView = ref<QueueView>('monitoring');
 
+/**
+ * 「已入池」这一档再按**现行打标等级**分档：高 / 中 / 低，`all` ＝ 全部有风险。
+ *
+ * 🔴 **「全部有风险」不含「无风险」**。无风险是漏斗的另一个出口（`queueView === 'noRisk'`），
+ * 把它并进来等于把已经排除掉的那一批重新算成风险，左栏那一列的合计当场答错
+ * "现在到底有多少条确实有风险"——而那正是这一列存在的理由。
+ * 判档读的是条目的现行 `tag.result`，**与池内状态无关**：池内三态是它进池之后的事，
+ * 一条评估中的高危条目仍然是高危。
+ */
+const tagLevelFilter = ref<RiskLevel | 'all'>('all');
+
+/**
+ * 工作组筛选（单选，横跨左栏每一档）。
+ *
+ * 🔴 **组不是条目自己的字段**：条目与池行上都只有工单号，组名由 `groupNameOf` 反查工单库，
+ * 与页头「各处理组」那一行、工单列表「分组名称」列同一个口径，本页不另造一套分组。
+ * 查不到工单的落「未归组」并照常成一档——吞掉的话各组之和会小于左栏的总数，
+ * 而人正是照这一行决定"先盯哪一组"，被吞掉的那几条就再也没人管。
+ */
+const groupFilter = ref<string>('all');
+/** 当前等级分档的人话说法；`all` 时为空串，空态与收窄标据此判断要不要出这一句 */
+const tagLevelText = computed(() => (
+  tagLevelFilter.value === 'all' ? '' : riskLevelText(tagLevelFilter.value)
+));
+function inGroup<T extends { ticketNo: string }>(rows: T[]): T[] {
+  if (groupFilter.value === 'all') return rows;
+  return rows.filter((r) => groupNameOf(r.ticketNo) === groupFilter.value);
+}
+
 // ==== 风险工单池（《【930】》§5，2026-09-09 第二轮拍板 N4 / N6 / N7 / O13 / O14）====
 //
 // 【为什么叫「风险工单池」】本页曾有两处顶着同一个旧名——页签这一个，与页头卡区
@@ -266,11 +295,11 @@ function openBase(v: 'unassigned' | 'assigning') {
 
 /** 待领取：还没人领的那一批，客诉专员在这里自领 */
 const reportUnassignedRows = computed(
-  () => sortBySource(bySource(openBase('unassigned')), (a, b) => a.at.localeCompare(b.at)),
+  () => sortBySource(bySource(inGroup(openBase('unassigned'))), (a, b) => a.at.localeCompare(b.at)),
 );
-/** 评估中：已被人领走、等结论 */
+/** 已领取：已被人领走、等结论 */
 const reportAssigningRows = computed(
-  () => sortBySource(bySource(openBase('assigning')), (a, b) => a.at.localeCompare(b.at)),
+  () => sortBySource(bySource(inGroup(openBase('assigning'))), (a, b) => a.at.localeCompare(b.at)),
 );
 
 /**
@@ -329,19 +358,26 @@ const reportAssessedRows = computed(
   // 已评估这批的默认次序是**评估时刻倒序**，与在队两态的"提交时刻正序"不是一回事，
   // 故 tie 单独给一份：套用队列那份会让刚评完的一条排到列表末尾去。
   () => sortBySource(
-    bySource(assessedBase.value),
+    bySource(inGroup(assessedBase.value)),
     (a, b) => concludedAtOf(b).localeCompare(concludedAtOf(a)),
   ),
 );
 
 /**
+ * 工作组 chip 那一排的底表 ＝ 当前态在**除工作组之外**的全部条件下的行。
+ * 摘出工作组的道理与下面摘出来源的完全一样，见 `reportSourceBase`。
+ */
+const reportGroupBase = computed(() => (
+  reportView.value === 'assessed' ? assessedBase.value : openBase(reportView.value)
+));
+
+/**
  * 来源 chip 那一排的底表 ＝ 当前态在**除来源之外**的全部条件下的行。
  * 【为什么要把来源摘出去】让来源筛选影响自己那一排的数字，选中「投诉单」之后
  * 其余几枚全变 0，人再也看不出该切到哪一枚——筛选器把自己筛没了。
+ * 工作组不摘：它是**另一层**筛选，选了组之后来源那一排本就该只数这个组里的条目。
  */
-const reportSourceBase = computed(() => (
-  reportView.value === 'assessed' ? assessedBase.value : openBase(reportView.value)
-));
+const reportSourceBase = computed(() => inGroup(reportGroupBase.value));
 function sourceCountInView(s: MonitorSource) {
   return reportSourceBase.value.filter((r) => r.source === s).length;
 }
@@ -384,7 +420,7 @@ function setReportPage(page: number, size: number) {
 
 // 任一视图内条件变了，底表就换了一批，页码必须回到第一页——
 // 否则「第 3 页 → 摘掉超时收窄」会停在一张恰好没有行的页上。
-watch([reportView, onlyOverdue, decisionFilter, assessedTodayOnly, sourceFilter, sourceSort], () => {
+watch([reportView, onlyOverdue, decisionFilter, assessedTodayOnly, sourceFilter, sourceSort, groupFilter], () => {
   reportPageCurrent.value = 1;
 });
 
@@ -603,23 +639,6 @@ function nextEscalatedNo(): string {
 function isComplaintTicket(ticketNo: string) {
   return ticketNo.startsWith('IFLYTS-');
 }
-
-/**
- * 选「升级」时的提示行，按当前这条的原单类型给出真实去向。
- *
- * 🔴 「升级」只指**转投诉单**，**不含升三线** —— 升三线是工单侧的技术升级，
- * 与风险侧升不升投诉是两条路，同一个词底下混着两件事，人点之前不知道会发生什么。
- *
- * 「此步不可撤销」并进这一行、**不另起一条常驻说明**：它只有在选中「升级」时才成立，
- * 常驻的话选「不升级」也跟着显示，那时它是句噪音。
- */
-const escalateHint = computed(() => {
-  const no = assessTarget.value?.ticketNo;
-  if (no && isComplaintTicket(no)) {
-    return '本单已是投诉单，提交后由你在工单上执行「工单管控」接手，本单状态不变、不派生新单。此步不可撤销';
-  }
-  return '提交后原单落「已升级投诉」并派生一张投诉单，新单全量继承本单信息。此步不可撤销';
-});
 
 function confirmAssess() {
   assessTried.value = true;
@@ -1869,11 +1888,20 @@ function tagTraceTitle(h: RiskHit): string | undefined {
 
 /** 三视图各自的行。取数**全部走 store 的三个 computed**，本页不另筛一遍——
  *  各筛各的话，chip 上的数字与表里的行数迟早对不上（本文件反复踩过的那个坑）。 */
-const queueRows = computed<RiskQueueEntry[]>(() => {
+/**
+ * 左栏选中的那一档，**未过工作组筛选**。工作组 chip 那一排的数字要靠它算 ——
+ * 让工作组筛选影响自己那一排的数字，选中一个组之后其余几枚全变 0，
+ * 人再也看不出该切到哪一组（与 `reportSourceBase` 是同一条道理）。
+ */
+const queueBase = computed<RiskQueueEntry[]>(() => {
   if (queueView.value === 'monitoring') return reportStore.monitoringEntries;
-  if (queueView.value === 'pooled') return reportStore.pooledEntries;
-  return reportStore.noRiskEntries;
+  if (queueView.value === 'noRisk') return reportStore.noRiskEntries;
+  const pooled = reportStore.pooledEntries;
+  return tagLevelFilter.value === 'all'
+    ? pooled
+    : pooled.filter((e) => e.tag?.result === tagLevelFilter.value);
 });
+const queueRows = computed<RiskQueueEntry[]>(() => inGroup(queueBase.value));
 
 const queuePageCurrent = ref(1);
 const queuePageSize = ref(10);
@@ -1898,13 +1926,32 @@ function setQueueView(v: QueueView) {
   queuePageCurrent.value = 1;
 }
 
+// 等级分档与工作组换了，底表就换了一批，页码必须回到第一页 ——
+// 否则「第 3 页 → 切到中风险」会停在一张恰好没有行的页上。
+watch([tagLevelFilter, groupFilter], () => {
+  queuePageCurrent.value = 1;
+});
+
 /** 这条条目上的**现行打标结论**；空 ＝ 还在待打标 */
 function tagResultOf(e: RiskQueueEntry): RiskTagResult | undefined {
   return e.tag?.result;
 }
-/** 条目在池子里走到哪一步了。待打标 / 已标记无风险两态直接读状态本身 */
+/**
+ * 条目在池子里走到哪一步了 —— **界面词，与左栏「待处置」那三档逐字一致**。
+ *
+ * 落库值是「待分派 / 评估中 / 已评估」：`待分派` 是分派时代留下的词（分派整套已取消，
+ * 这一档现在的含义就是"还没人领"）；`已评估` 收的其实是两路结论（评估 与 协同处理），
+ * 而协同处理不产出评估决策，故界面词取更准的「已结论」（与工单侧 OpRiskDecision 同一个词）。
+ * 🔴 同一个状态在左栏写一个词、在表里写另一个词，是这张页面最容易读串的一处，故收成这一个映射。
+ * 待打标 / 已标记无风险两态不在池里，直接读状态本身。
+ */
+const POOL_STATE_TEXT: Record<string, string> = {
+  待分派: '待领取',
+  评估中: '已领取',
+  已评估: '已结论',
+};
 function queueStatusText(e: RiskQueueEntry): string {
-  return e.status === '待分派' ? '待领取' : e.status;
+  return POOL_STATE_TEXT[e.status] ?? e.status;
 }
 
 /* ---- 条目批量打标：**只在待打标视图**（业务口径） ---- */
@@ -2179,6 +2226,199 @@ const groupTagStats = computed(() => {
   reportStore.noRiskEntries.forEach((e) => bump(e.ticketNo, 'noRisk'));
   // 未打标多的排前面：这一行是给督导找"谁那边堆着没人判"用的
   return [...m.values()].sort((a, b) => b.untagged - a.untagged || b.tagged - a.tagged);
+});
+
+/* ==================== 左栏漏斗导航（本页的主导航） ==================== */
+//
+// 【为什么从四枚平铺页签改成一列纵向】原先的「实时监控 ｜ 手动筛查 ｜ 命中台账 ｜ 风险工单池」
+// 是四枚并排的页签，而平铺页签这个形状**天生表达"四个平行的清单"**——
+// 可这四者根本不平行：实时监控是上游、风险工单池是它的下游，手动筛查是往上游补货的手段，
+// 命中台账则是词表准确率的旁路，压根不在这条链上。业务看完的原话是"看不懂这个漏斗和链路"，
+// 症结就在这里：形状说的是并列，数据说的是流向，人只能信形状。
+//
+// 改成一列纵向之后，从上到下就是链路本身：
+//
+// ```
+//   待标记 · 重点关注 ── 打标 ──▶ 已标记 · 高 / 中 / 低（＝全部有风险）──▶ 待处置 · 三态
+//                                └─ 无风险 ─▶ 不进池，留在「无风险」里供核查漏标
+// ```
+//
+// 上游、下游、分档、汇总全在一屏一列里，且三组的组标题（待标记 / 已标记 / 待处置）
+// 直接把"这条链分几段"写在了导航上。
+//
+// 🔴 **手动筛查与命中台账不在这一列里**：它们不是链上的一段。前者是"往重点关注里补货"的动作、
+// 后者是命中记录（另一个分母）的旁路台账，两者都退成右上角的次级入口。
+// 摆回这一列会重新犯"把不平行的东西摆成平行"这个错。
+type RailKey =
+  | 'monitoring'
+  | 'level:高' | 'level:中' | 'level:低' | 'level:all' | 'noRisk'
+  | 'pool:unassigned' | 'pool:assigning' | 'pool:assessed';
+
+interface RailItem {
+  key: RailKey;
+  label: string;
+  count: number;
+  /** 数字标红：这一档堆着没人管就是要被看见的 */
+  bad?: boolean;
+  /** 汇总项（「全部有风险」）：上方补一条细分隔线，读得出它是上面几档之和 */
+  sum?: boolean;
+  title: string;
+}
+interface RailGroup {
+  title: string;
+  /** 组标题的悬停说明：这一段在链路上是什么、分母是什么 */
+  title2: string;
+  items: RailItem[];
+}
+
+/** 池内某一等级的条目数（已过工作组筛选）。判档读现行 `tag.result`，与池内状态无关 */
+function pooledLevelCount(lv: RiskLevel) {
+  return inGroup(reportStore.pooledEntries.filter((e) => e.tag?.result === lv)).length;
+}
+
+const railGroups = computed<RailGroup[]>(() => [
+  {
+    title: '待标记',
+    title2: '三类自动识别捞进来、还没有人打标的条目。打标是入池门槛，这一批不判就进不了下一段',
+    items: [
+      {
+        key: 'monitoring',
+        label: '重点关注',
+        count: inGroup(reportStore.monitoringEntries).length,
+        bad: inGroup(reportStore.monitoringEntries).length > 0,
+        title: '漏斗的入口：预警词命中 / 投诉单 / 重要紧急三类自动识别进来的待打标条目，手动筛查补的货也并到这里',
+      },
+    ],
+  },
+  {
+    title: '已标记',
+    title2: '打过标的条目按现行结论分档。高 / 中 / 低进风险工单池，无风险不进池',
+    items: [
+      ...RISK_LEVELS.map((lv) => ({
+        key: `level:${lv}` as RailKey,
+        label: riskLevelText(lv),
+        count: pooledLevelCount(lv),
+        bad: lv === '高' && pooledLevelCount(lv) > 0,
+        title: `打标为${riskLevelText(lv)}、已进风险工单池的条目`,
+      })),
+      {
+        key: 'noRisk' as RailKey,
+        label: NO_RISK,
+        count: inGroup(reportStore.noRiskEntries).length,
+        title: '打标判为无风险、不进池的条目。它不是回收站 —— 这里是核查漏标误判的唯一去处，可逐条修正',
+      },
+      {
+        key: 'level:all' as RailKey,
+        label: '全部有风险',
+        count: inGroup(reportStore.pooledEntries).length,
+        sum: true,
+        title: '高危 + 中危 + 低危 的合计，不含无风险 —— 无风险是漏斗的另一个出口，算进来等于把已经排除掉的那批重新当成风险',
+      },
+    ],
+  },
+  {
+    title: '待处置',
+    title2: '风险工单池里的池行：A 线打标进池的条目 + B 线二线报备。分母与上面两组的条目不同，不可相加',
+    items: [
+      {
+        key: 'pool:unassigned',
+        label: '待领取',
+        count: reportUnassignedRows.value.length,
+        bad: reportStore.overdueCount > 0,
+        title: '还没有人领的池行 —— 谁有空谁领，池里没有分派',
+      },
+      {
+        key: 'pool:assigning',
+        label: '已领取',
+        count: reportAssigningRows.value.length,
+        title: '已被客诉专员领走、还没有结论的池行',
+      },
+      {
+        key: 'pool:assessed',
+        label: '已结论',
+        count: reportAssessedRows.value.length,
+        title: '已经收口的池行：走评估的给了升级 / 不升级，走协同处理的给了意见与建议',
+      },
+    ],
+  },
+]);
+
+/**
+ * 左栏当前选中的那一档。**它是派生值不是第二个状态**：真源仍是
+ * `listView` / `queueView` / `tagLevelFilter` / `reportView` 那几个，
+ * 页头 KPI 卡改的也是它们。左栏另存一份的话，"从卡片点进来"与"从左栏点进来"
+ * 会走出两条不同步的路，选中态与表里的数据当场分家。
+ *
+ * 手动筛查 / 命中台账两个旁路入口不在漏斗上，故返回 null —— 那时左栏**一档都不选中**，
+ * 这不是缺陷：人此刻看的确实不是链上的任何一段，硬点亮一档才是假话。
+ */
+const railKey = computed<RailKey | null>(() => {
+  if (listView.value === 'realtime') {
+    if (queueView.value === 'monitoring') return 'monitoring';
+    if (queueView.value === 'noRisk') return 'noRisk';
+    return tagLevelFilter.value === 'all' ? 'level:all' : (`level:${tagLevelFilter.value}` as RailKey);
+  }
+  if (listView.value === 'report') return `pool:${reportView.value}` as RailKey;
+  return null;
+});
+
+/** 点左栏：把真源那几个状态一次写齐，页面上每一个通往漏斗某一段的入口都走这里 */
+function setRail(key: RailKey) {
+  if (key === 'monitoring') {
+    setListView('realtime');
+    setQueueView('monitoring');
+    tagLevelFilter.value = 'all';
+    return;
+  }
+  if (key === 'noRisk') {
+    setListView('realtime');
+    setQueueView('noRisk');
+    tagLevelFilter.value = 'all';
+    return;
+  }
+  if (key.startsWith('level:')) {
+    setListView('realtime');
+    setQueueView('pooled');
+    tagLevelFilter.value = key.slice('level:'.length) as RiskLevel | 'all';
+    return;
+  }
+  setListView('report');
+  setReportView(key.slice('pool:'.length) as ReportView);
+}
+
+/**
+ * 工作组 chip 那一排：底表是**当前档在除工作组之外的全部条件下的行**，
+ * 故选中某一组之后其余几枚的数字不变，人还看得出该切到哪一组。
+ * 条数多的排前面；同数按组名排，免得同一份数据两次进来给出两个次序。
+ */
+const groupChips = computed(() => {
+  const base: { ticketNo: string }[] = listView.value === 'report'
+    ? reportGroupBase.value
+    : queueBase.value;
+  const m = new Map<string, number>();
+  base.forEach((r) => {
+    const g = groupNameOf(r.ticketNo);
+    m.set(g, (m.get(g) ?? 0) + 1);
+  });
+  return {
+    total: base.length,
+    rows: [...m].map(([group, count]) => ({ group, count }))
+      .sort((a, b) => b.count - a.count || a.group.localeCompare(b.group)),
+  };
+});
+
+/** 左栏这一列只在漏斗的两个视图上作数；旁路的两个入口自带各自的筛选条，不套工作组 */
+const showGroupFilter = computed(() => listView.value === 'realtime' || listView.value === 'report');
+
+/** 当前这一档的标题与一句话说明，摆在清单正上方——左栏点了哪一档，这里就复述哪一档 */
+const currentRail = computed(() => {
+  const key = railKey.value;
+  if (!key) return null;
+  for (const g of railGroups.value) {
+    const it = g.items.find((x) => x.key === key);
+    if (it) return { group: g.title, item: it };
+  }
+  return null;
 });
 
 /**
@@ -2617,14 +2857,14 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                 on: listView === 'report' && reportView !== 'assessed' && !onlyOverdue,
                 hot: reportStore.assessOverdueCount > 0,
               }"
-              title="待领取 + 评估中 · 池内还没有结论的全集"
+              title="待领取 + 已领取 · 池内还没有结论的全集"
               @click="setListView('report'); setReportView('unassigned'); onlyOverdue = false"
             >
               <span class="dm-k">待评估总数</span>
               <span class="dm-val">
                 <span class="dm-v">{{ reportStore.assessOpenCount }}</span>
                 <span class="dm-h">
-                  待领取 {{ reportStore.assessUnassignedCount }} · 评估中 {{ reportStore.assessAssigningCount }}
+                  待领取 {{ reportStore.assessUnassignedCount }} · 已领取 {{ reportStore.assessAssigningCount }}
                 </span>
               </span>
             </button>
@@ -2676,138 +2916,163 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
       </div>
     </section>
 
-    <!-- 统一工作面：四个页签，三个分母 -->
+    <!--
+      统一工作面：**左栏一列纵向漏斗 + 右侧清单**。
+      左栏是本页的主导航（上游 → 下游 → 分档 → 汇总，见 script 里 RailKey 那段的说明），
+      右上角两枚次级入口是不在链上的两件事（手动筛查 / 命中台账）。
+    -->
     <section class="overview-section work-panel">
-      <!--
-        页签数字与表内容同源，一处不例外：实时监控恒等于待打标数、命中台账恒等于台账底表数、
-        风险工单池恒等于在队数——标签写着一个数、表里躺着另一批，正是本文件反复踩过的坑。
-      -->
-      <div class="list-panel-head">
-        <div class="list-view-tabs">
-          <!--
-            实时监控。角标取**待打标条目数**（不是命中数）：这个页签本轮已从命中维度
-            改成条目维度，人打开它要看的第一件事就是"还有几条没人判"。
-          -->
-          <button
-            type="button"
-            class="lvt-tab"
-            :class="{ on: listView === 'realtime' }"
-            @click="setListView('realtime')"
-          >
-            实时监控<span class="lvt-num" :class="{ bad: reportStore.monitoringEntries.length > 0 }">{{ reportStore.monitoringEntries.length }}</span>
-          </button>
-          <button
-            type="button"
-            class="lvt-tab"
-            :class="{ on: listView === 'scan' }"
-            @click="setListView('scan')"
-          >
-            手动筛查
-            <span v-if="inScanResult" class="lvt-num">{{ scanResult!.length }}</span>
-          </button>
-          <!--
-            命中台账（原名「已核实」）。**本轮改名并放宽底表**：它现在装全部风险词命中，
-            待核实 / 成立 / 误报三类都在，靠查询条第一格收窄。
-            【为什么必须改名】底表放宽之后仍叫「已核实」，页签写着"已核实 19"、
-            表里却躺着一批还没人判的，这正是那条老坑本身。角标随之取命中总数。
-          -->
-          <button
-            type="button"
-            class="lvt-tab"
-            :class="{ on: listView === 'judged' }"
-            @click="setListView('judged')"
-          >
-            命中台账<span class="lvt-num">{{ effect.total }}</span>
-          </button>
-          <!--
-            风险工单池：装池行，不装命中记录、也不装还没打标的条目。
-            角标取**在队总数**（待领取 + 评估中），与左边三个页签的角标
-            **两两不可相加**——三个分母，各数各的。
-          -->
-          <button
-            type="button"
-            class="lvt-tab"
-            :class="{ on: listView === 'report' }"
-            @click="setListView('report')"
-          >
-            风险工单池<span class="lvt-num" :class="{ bad: reportStore.overdueCount > 0 }">{{ reportStore.openCount }}</span>
-          </button>
-        </div>
-        <div class="section-head-actions">
-          <a-dropdown
-            v-if="showQueueSelection"
-            v-model:open="batchMenuOpen"
-            trigger="click"
-            placement="bottomRight"
-          >
-            <div
-              class="row-btn scan-entry hit-batch-btn"
-              :class="{ active: bulkCount > 0 }"
-            >
-              <UnorderedListOutlined :style="{ fontSize: '12px' }" />
-              <span>批量操作</span>
-              <span v-if="bulkCount > 0" class="hit-batch-badge">{{ bulkCount }}</span>
-              <DownOutlined :style="{ color: '#9CA3AF', fontSize: '10px' }" />
-            </div>
-            <template #overlay>
-              <a-menu class="batch-menu">
-                <a-menu-item :disabled="bulkCount <= 0" @click="pickBatchAction('tag')">
-                  批量打标
-                </a-menu-item>
-                <a-menu-item :disabled="bulkCount <= 0" @click="pickBatchAction('clear')">
-                  取消选择
-                </a-menu-item>
-              </a-menu>
+      <div class="funnel-layout">
+        <!--
+          左栏。三组之间用组标题分段，每一档右侧的数字**就是点进去表里的行数**
+          （已过当前工作组筛选）——标签写着一个数、表里躺着另一批，正是本文件反复踩过的坑。
+          🔴 「全部有风险」＝ 高 + 中 + 低，**不含无风险**，故它上面单加一条细分隔线：
+          汇总项与分档项摆成一模一样，人会把无风险也读进这个合计里。
+        -->
+        <nav class="funnel-rail" aria-label="风险漏斗">
+          <div v-for="g in railGroups" :key="g.title" class="fr-group">
+            <div class="fr-group-t" :title="g.title2">{{ g.title }}</div>
+            <template v-for="it in g.items" :key="it.key">
+              <div v-if="it.sum" class="fr-sep" />
+              <button
+                type="button"
+                class="fr-item"
+                :class="{ on: railKey === it.key, sum: it.sum }"
+                :title="it.title"
+                @click="setRail(it.key)"
+              >
+                <span class="fr-label">{{ it.label }}</span>
+                <span class="fr-num" :class="{ bad: it.bad }">{{ it.count }}</span>
+              </button>
             </template>
-          </a-dropdown>
-          <!--
-            🔴 **风险工单池那一枚「批量操作」已删**：它下面只有「批量分派」一个动作，
-            而分派 / 改派 / 批量分派整套已随第三轮拍板取消。留一个只剩「取消选择」的下拉，
-            等于在屏幕上留一个点开什么也做不了的入口。
-          -->
-        </div>
-      </div>
+          </div>
+        </nav>
 
-      <!--
-        实时监控 · 三视图（条目维度）。沿用池那一排的 DOM 与 class（.gf-chip）：
-        两处做的是同一件事——**在同一条链上换一段来看**，长得不一样只会让人以为动作不同。
-        🔴 chip 上的数字取的就是该视图的行数，点进去表里有几就是几。
-      -->
-      <div v-if="listView === 'realtime'" class="section-filters grade-filters report-filters">
-        <button
-          type="button"
-          class="gf-chip"
-          :class="{ active: queueView === 'monitoring', warn: queueView !== 'monitoring' && reportStore.monitoringEntries.length > 0 }"
-          title="自动识别捞进来、还没有人打标的条目。打标是入池门槛，这一批不判就进不了池"
-          @click="setQueueView('monitoring')"
-        >
-          待打标<span class="gf-num">{{ reportStore.monitoringEntries.length }}</span>
-        </button>
-        <button
-          type="button"
-          class="gf-chip"
-          :class="{ active: queueView === 'pooled' }"
-          title="打标为低 / 中 / 高、已进风险工单池的条目；池内的领取与评估在「风险工单池」页签"
-          @click="setQueueView('pooled')"
-        >
-          已入池<span class="gf-num">{{ reportStore.pooledEntries.length }}</span>
-        </button>
-        <button
-          type="button"
-          class="gf-chip"
-          :class="{ active: queueView === 'noRisk' }"
-          title="打标判为无风险、不进池的条目。它不是回收站 —— 这里是核查漏标误判的唯一去处，可逐条修正"
-          @click="setQueueView('noRisk')"
-        >
-          已标记无风险<span class="gf-num">{{ reportStore.noRiskEntries.length }}</span>
-        </button>
-      </div>
+        <div class="funnel-main">
+          <div class="funnel-main-head">
+            <div class="fm-lead">
+              <h3 class="fm-title">
+                <template v-if="currentRail">{{ currentRail.group }} · {{ currentRail.item.label }}</template>
+                <template v-else-if="listView === 'scan'">手动筛查</template>
+                <template v-else>命中台账</template>
+              </h3>
+              <!--
+                旁路的两个入口必须在这里自报家门：它们与左栏那条链**分母不同**，
+                不说清楚的话，人从「重点关注 2」切到命中台账看到 22 条，只会以为漏斗漏了一批。
+              -->
+              <div v-if="listView === 'scan'" class="fm-sub">
+                旁路 · 拿条件去扫存量工单产出新命中；勾选并入清单后，由自动识别把它带进「重点关注」
+              </div>
+              <div v-else-if="listView === 'judged'" class="fm-sub">
+                旁路 · 分母是风险词命中记录（不是工单、也不是监控条目），供事后点查与核实，词表准确率由这里回填
+              </div>
+              <div v-else-if="currentRail" class="fm-sub">{{ currentRail.item.title }}</div>
+            </div>
+            <div class="section-head-actions">
+              <a-dropdown
+                v-if="showQueueSelection"
+                v-model:open="batchMenuOpen"
+                trigger="click"
+                placement="bottomRight"
+              >
+                <div
+                  class="row-btn scan-entry hit-batch-btn"
+                  :class="{ active: bulkCount > 0 }"
+                >
+                  <UnorderedListOutlined :style="{ fontSize: '12px' }" />
+                  <span>批量操作</span>
+                  <span v-if="bulkCount > 0" class="hit-batch-badge">{{ bulkCount }}</span>
+                  <DownOutlined :style="{ color: '#9CA3AF', fontSize: '10px' }" />
+                </div>
+                <template #overlay>
+                  <a-menu class="batch-menu">
+                    <a-menu-item :disabled="bulkCount <= 0" @click="pickBatchAction('tag')">
+                      批量打标
+                    </a-menu-item>
+                    <a-menu-item :disabled="bulkCount <= 0" @click="pickBatchAction('clear')">
+                      取消选择
+                    </a-menu-item>
+                  </a-menu>
+                </template>
+              </a-dropdown>
+              <!--
+                🔴 **风险工单池那一枚「批量操作」已删**：它下面只有「批量分派」一个动作，
+                而分派 / 改派 / 批量分派整套已随第三轮拍板取消。留一个只剩「取消选择」的下拉，
+                等于在屏幕上留一个点开什么也做不了的入口。
+              -->
+              <!--
+                手动筛查退成**动作按钮**：它不是一份平行的清单，而是"往重点关注里补货"的手段。
+                点开的仍是原来那套九维筛查条件面板，能力一格没动。
+              -->
+              <button
+                type="button"
+                class="row-btn scan-entry"
+                :class="{ active: listView === 'scan' }"
+                title="拿条件去扫存量工单，扫出的新命中勾选后并入清单"
+                @click="setListView('scan')"
+              >
+                <SearchOutlined :style="{ fontSize: '12px' }" />
+                <span>手动筛查</span>
+                <span v-if="inScanResult" class="hit-batch-badge">{{ scanResult!.length }}</span>
+              </button>
+              <!--
+                命中台账退成**次级入口**：它的分母是风险词命中记录，是词表准确率的旁路，
+                不在主链上。🔴 只挪入口，内容与能力一个字没动。
+              -->
+              <button
+                type="button"
+                class="row-btn scan-entry"
+                :class="{ active: listView === 'judged' }"
+                title="风险词命中记录的台账：待核实 / 成立 / 误报三类都在，词表准确率由它回填。分母是命中记录，与左栏条目不可相加"
+                @click="setListView('judged')"
+              >
+                <TagsOutlined :style="{ fontSize: '12px' }" />
+                <span>命中台账</span>
+                <span class="hit-batch-badge">{{ effect.total }}</span>
+              </button>
+            </div>
+          </div>
+
+          <!--
+            工作组筛选（单选）。它是**另一层**：左栏选的是"链上哪一段"，这一行选的是
+            "这一段里哪一个组的活"。故摆成单独一行、且横跨左栏每一档不清空 ——
+            组是工单的固有属性，不随条目走到哪一段而变；切档就清掉的话，
+            人在「重点关注 · 投诉风险组」筛完切到「高危」会看到全部组，只会以为筛选失灵。
+            🔴 各枚的数字取的是**除工作组之外**的全部条件下的行数（见 groupChips），
+            故选中一组之后其余几枚不归零，人还看得出该切到哪一组。
+          -->
+          <div v-if="showGroupFilter" class="section-filters grade-filters report-source-filters">
+            <span class="rf-k">工作组</span>
+            <button
+              type="button"
+              class="gf-chip"
+              :class="{ active: groupFilter === 'all' }"
+              title="不按工作组收窄"
+              @click="groupFilter = 'all'"
+            >
+              全部工作组<span class="gf-num">{{ groupChips.total }}</span>
+            </button>
+            <button
+              v-for="g in groupChips.rows"
+              :key="g.group"
+              type="button"
+              class="gf-chip"
+              :class="{ active: groupFilter === g.group }"
+              :title="g.group === '未归组' ? '工单库里查不到所属组的条目 —— 不吞掉，否则各组之和会小于左栏的总数' : `只看「${g.group}」的条目`"
+              @click="groupFilter = g.group"
+            >
+              {{ g.group }}<span class="gf-num">{{ g.count }}</span>
+            </button>
+          </div>
 
       <!-- 实时监控 · 空态：把当前视图讲出来，否则"这里没东西"会被读成"系统没在扫" -->
       <div v-if="listView === 'realtime' && !queueRows.length" class="ob-empty">
-        <template v-if="queueView === 'monitoring'">当前没有待打标的监控条目 —— 自动识别捞到新条目会落在这里</template>
-        <template v-else-if="queueView === 'pooled'">当前没有已入池的条目 —— 打标为低 / 中 / 高的条目会落在这里</template>
-        <template v-else>当前没有被判为无风险的条目</template>
+        <!-- 收窄条件必须在空态里复述，否则"筛空了"会被读成"没有了" -->
+        <template v-if="groupFilter !== 'all'">「{{ groupFilter }}」在这一档下没有条目 —— 点「全部工作组」看全部</template>
+        <template v-else-if="queueView === 'monitoring'">当前没有待打标的监控条目 —— 自动识别捞到新条目会落在这里</template>
+        <template v-else-if="queueView === 'noRisk'">当前没有被判为无风险的条目</template>
+        <template v-else-if="tagLevelText">当前没有打标为{{ tagLevelText }}的条目</template>
+        <template v-else>当前没有已入池的条目 —— 打标为低 / 中 / 高的条目会落在这里</template>
       </div>
 
       <!--
@@ -2935,47 +3200,20 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
       </div>
 
       <!--
-        风险工单池 · 视图内三态切换（N4）+ 下钻收窄标。
-        沿用等级 chip 那一排的 DOM 与 class（.section-filters.grade-filters / .gf-chip）：
-        两处做的是同一件事——**在同一批数据里换一个条件**，长得不一样只会让人以为动作不同。
-
-        🔴 chip 上的数字取的是**该态过筛之后的行数**，不是 store 的原始总数。
-        这样"chip 写着几、点进去表里就有几"恒成立——本文件开头那条
-        「标签写着一个数、表里躺着另一批」的坑，在这里同样能踩。
-        （切态时 setReportView 只摘阶段专属的收窄，来源筛选跨态保留，故三个数字始终同口径。）
+        风险工单池 · 下钻收窄标。
+        🔴 **三态切换已挪到左栏那一列**（待领取 / 已领取 / 已结论）：三态是这条链
+        最后一段的三个阶段，本就该与上游几档摆在同一列里读，摆在这里等于把链路截成两半。
+        这一行留下的全是**收窄条件**——它们是"我现在只看其中一部分"，与"换一段来看"不是一件事。
       -->
-      <div v-if="listView === 'report'" class="section-filters grade-filters report-filters">
-        <button
-          type="button"
-          class="gf-chip"
-          :class="{ active: reportView === 'unassigned', warn: reportView !== 'unassigned' && reportStore.overdueCount > 0 }"
-          title="还没有人领的条目 —— 谁有空谁领，池里没有分派"
-          @click="setReportView('unassigned')"
-        >
-          待领取<span class="gf-num">{{ reportUnassignedRows.length }}</span>
-        </button>
-        <button
-          type="button"
-          class="gf-chip"
-          :class="{ active: reportView === 'assigning' }"
-          title="已被客诉专员领走、还没有结论"
-          @click="setReportView('assigning')"
-        >
-          评估中<span class="gf-num">{{ reportAssigningRows.length }}</span>
-        </button>
-        <button
-          type="button"
-          class="gf-chip"
-          :class="{ active: reportView === 'assessed' }"
-          @click="setReportView('assessed')"
-        >
-          已评估<span class="gf-num">{{ reportAssessedRows.length }}</span>
-        </button>
-
+      <div
+        v-if="listView === 'report' && (onlyOverdue || sourceFilter !== 'all'
+          || (reportView === 'assessed' && (assessedTodayOnly || decisionFilter !== 'all')))"
+        class="section-filters grade-filters report-filters"
+      >
         <!--
           下钻收窄标：从上方 KPI 卡点进来的条件必须在清单旁边有一个**看得见、摘得掉**的落点。
           没有它，人从「超时未评 2」点进来只看到 2 行，会当成队列只剩 2 条。
-          🔴 超时横跨待领取与评估中两态，故这里给的是**两态之和**，与三枚 chip 上分开的条数
+          🔴 超时横跨待领取与已领取两态，故这里给的是**两态之和**，与左栏那两档上分开的条数
           相加恒等——不是同一个数写了两遍。
         -->
         <span v-if="reportView !== 'assessed' && onlyOverdue" class="nc-chip bad">
@@ -3031,13 +3269,15 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
 
       <!-- 风险工单池 · 空态：把当前收窄条件讲出来，否则"筛空了"会被读成"没有了" -->
       <div v-if="listView === 'report' && !reportRows.length" class="ob-empty">
-        <template v-if="reportView !== 'assessed'">
+        <!-- 收窄条件必须在空态里复述，否则"筛空了"会被读成"没有了"；工作组排在最前，它是最外一层 -->
+        <template v-if="groupFilter !== 'all'">「{{ groupFilter }}」在这一档下没有池行 —— 点「全部工作组」看全部</template>
+        <template v-else-if="reportView !== 'assessed'">
           {{
             onlyOverdue
-              ? `当前没有超时未评的${reportView === 'unassigned' ? '待领取' : '评估中'}条目`
+              ? `当前没有超时未评的${reportView === 'unassigned' ? '待领取' : '已领取'}条目`
               : sourceFilter !== 'all'
-                ? `「${sourceFilter}」当前没有${reportView === 'unassigned' ? '待领取' : '评估中'}的条目`
-                : reportView === 'unassigned' ? '暂无待领取条目' : '暂无评估中条目'
+                ? `「${sourceFilter}」当前没有${reportView === 'unassigned' ? '待领取' : '已领取'}的条目`
+                : reportView === 'unassigned' ? '暂无待领取条目' : '暂无已领取条目'
           }}
         </template>
         <template v-else-if="assessedTodayOnly">
@@ -3108,7 +3348,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                   <button
                     v-if="canClaim"
                     type="button" class="row-btn row-btn-tag"
-                    title="领取这一条，转「评估中」并打开工单详情做评估"
+                    title="领取这一条，转「已领取」并打开工单详情做评估"
                     @click="doClaim(r)"
                   >领取</button>
                   <span
@@ -3712,6 +3952,8 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
         />
       </div>
       </div>
+        </div><!-- /.funnel-main -->
+      </div><!-- /.funnel-layout -->
     </section>
 
     <!-- 风险词维护抽屉 -->
@@ -4454,10 +4696,6 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               </a-radio-group>
             </div>
             <div v-if="missAssessDecision" class="assess-err assess-dec-foot">请先选择一个评估决策</div>
-            <!-- 升级的去向按原单类型分流（O20），提示行必须跟着分流，否则在投诉单上说的是错的 -->
-            <div v-else-if="assessDecision === '升级'" class="tag-form-foot assess-dec-foot">
-              {{ escalateHint }}
-            </div>
           </div>
 
           <div class="op-field">
@@ -4811,53 +5049,136 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
   background: #f3f4f6; color: #6b7280; font-variant-numeric: tabular-nums;
 }
 
-/* 清单主 Tab：实时监控 / 手动筛查 / 已核实 */
-.list-panel-head {
+/*
+ * 左栏漏斗 + 右侧清单。
+ * 左栏定宽 186px：够放下「已标记无风险」这类最长的档名与三位数字而不折行，
+ * 又不至于把右侧那张十列的表挤到出横向滚动条。
+ */
+.funnel-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+.funnel-rail {
+  flex: none;
+  width: 186px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 12px;
+  border-right: 1px solid #eef2f7;
+  align-self: stretch;
+}
+.fr-group { display: flex; flex-direction: column; gap: 1px; }
+/* 组标题：小号、灰、不可点——它是分段的标签，不是第四个可选项 */
+.fr-group-t {
+  padding: 0 8px 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #9ca3af;
+  letter-spacing: 0.3px;
+  cursor: help;
+}
+.fr-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px 5px 10px;
+  border: none;
+  border-left: 2px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: #4b5563;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.fr-item:hover { background: #f8fafc; color: #111827; }
+/* 选中态＝填充块 + 深色文字 + 左侧一条主色标：只靠变色在一列里读不出"就是这一档" */
+.fr-item.on {
+  background: #eff6ff;
+  border-left-color: #1a6fff;
+  color: #1a6fff;
+  font-weight: 700;
+}
+.fr-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 数字右对齐 + 等宽数位：一列纵向读的就是这一竖排数，位数不对齐就比不出大小 */
+.fr-num {
+  flex: none;
+  min-width: 26px;
+  text-align: right;
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.fr-item.on .fr-num { color: #1a6fff; }
+.fr-num.bad { color: #ef4444; }
+/* 汇总项上方的细分隔线：读得出「全部有风险」是它上面几档的合计（且不含无风险） */
+.fr-sep { height: 1px; margin: 4px 8px; background: #eef2f7; }
+.fr-item.sum { color: #374151; font-weight: 600; }
+
+.funnel-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.funnel-main-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
 }
-.list-view-tabs {
-  display: flex;
-  align-items: stretch;
-  flex-wrap: wrap;
-  gap: 0 4px;
-  border-bottom: 1px solid #eef2f7;
-  flex: 1;
-  min-width: 0;
-}
-.lvt-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  margin-bottom: -1px;
-  border: none;
-  border-bottom: 2px solid transparent;
-  background: transparent;
-  color: #6b7280;
-  font-size: 13px;
-  font-weight: 500;
-  font-family: inherit;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.lvt-tab:hover { color: #374151; }
-.lvt-tab.on { color: #1a6fff; font-weight: 700; border-bottom-color: #1a6fff; }
-.lvt-num {
-  min-width: 18px;
-  padding: 0 5px;
-  border-radius: 8px;
-  background: #f3f4f6;
-  color: #6b7280;
-  font-size: 11px;
+.fm-lead { min-width: 0; }
+.fm-title {
+  margin: 0;
+  font-size: 14px;
   font-weight: 700;
-  font-variant-numeric: tabular-nums;
+  color: #111827;
+  line-height: 1.4;
 }
-.lvt-tab.on .lvt-num { background: #eff6ff; color: #1a6fff; }
-.lvt-num.bad { background: #fee2e2; color: #ef4444; }
+.fm-sub { margin-top: 2px; font-size: 12px; color: #6b7280; line-height: 1.5; }
+
+/*
+ * 窄屏（< 1100px）：左栏折成一行横向 chip。
+ * 纵向那一列在窄屏下会把右侧的表压到出滚动条，而表才是这一屏的正事。
+ * 🔴 折成横排之后组标题仍在，且仍按 待标记 / 已标记 / 待处置 的次序排 ——
+ * 漏斗的方向从"从上到下"变成"从左到右"，但顺序不能乱，乱了就又成了四枚平铺页签。
+ */
+@media (max-width: 1100px) {
+  .funnel-layout { flex-direction: column; gap: 10px; }
+  .funnel-rail {
+    width: auto;
+    align-self: auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 14px;
+    padding: 0 0 8px;
+    border-right: none;
+    border-bottom: 1px solid #eef2f7;
+  }
+  .fr-group { flex-direction: row; align-items: center; flex-wrap: wrap; gap: 4px; }
+  .fr-group-t { padding: 0 4px 0 0; }
+  .fr-item {
+    width: auto;
+    padding: 3px 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 3px;
+    font-size: 12px;
+  }
+  .fr-item.on { background: #1a6fff; border-color: #1a6fff; color: #fff; }
+  .fr-item.on .fr-num { color: #fff; }
+  .fr-num { min-width: 0; margin-left: 4px; }
+  .fr-sep { width: 1px; height: 14px; margin: 0 2px; }
+}
 
 /* ③-b 分级筛选 chip：选中态用品牌主色（§4.6 激活），等级点取 RISK_LEVEL_STYLE */
 .grade-filters { gap: 6px 8px; }
