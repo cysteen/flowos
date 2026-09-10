@@ -10,7 +10,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { DatePicker, message } from 'ant-design-vue';
 import dayjs, { type Dayjs } from 'dayjs';
-import { ReloadOutlined, ArrowRightOutlined, RightOutlined, SearchOutlined, SettingOutlined, HistoryOutlined, CheckOutlined, UnorderedListOutlined, DownOutlined, TagOutlined, TagsOutlined, EditOutlined, SaveOutlined, FilterOutlined } from '@ant-design/icons-vue';
+import { ReloadOutlined, ArrowRightOutlined, RightOutlined, SearchOutlined, SettingOutlined, HistoryOutlined, CheckOutlined, UnorderedListOutlined, DownOutlined, TagOutlined, TagsOutlined, EditOutlined, SaveOutlined, FilterOutlined, UserOutlined, PaperClipOutlined } from '@ant-design/icons-vue';
 import MetricTipIcon from '@/components/MetricTipIcon.vue';
 import OpActionModal from '@/views/tickets/components/operation/OpActionModal.vue';
 import AppPagination from '@/components/AppPagination.vue';
@@ -32,7 +32,9 @@ import {
 } from '@/stores/riskReports';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
 import { RISK_TAG_ROLES, RISK_WORD_MAINTAIN_ROLES } from '@/config/roles';
-import { riskLevelText } from '@/config/risk';
+import { RISK_LEVELS, riskLevelText } from '@/config/risk';
+import { TICKETS } from '@/mock/tickets';
+import { STATUS_GROUP, type Ticket } from '@/views/tickets/types/ticket';
 import { getOpsScopeSelectGroups, type OpsScope } from '@/mock/opsMonitor';
 import {
   RISK_LEVEL_STYLE,
@@ -120,6 +122,57 @@ const listView = ref<ListView>('realtime');
 const reportStore = useRiskReportStore();
 /** 接管派生的新投诉单落这里，工单页解析时兜在静态数据源之后 */
 const derivedTickets = useDerivedTicketStore();
+
+/*
+ * ==== 重点工单存量（页头第二块）====
+ *
+ * 🔴 **它的分母是「工单」，另外两块都不是**，三块并排最容易被读成一路数：
+ *   · 监控数据 ＝ 风险词**命中记录**
+ *   · 重点工单 ＝ 工单系统里的**工单**          ← 本块
+ *   · 风险评估 ＝ 重点工单页签里的**队列条目**
+ * 尤其「等级分布」：监控数据那栏的「确认是风险 高3·中1·低0」数的是**命中**，
+ * 本块的高/中/低数的是**工单**——一张单被三条词命中且都成立，那边计 3、这边计 1。
+ * 两个数天生不等，界面上不相减、不互校，各自 title 写明分母。
+ *
+ * 【为什么取在办、不取全库】这三个数对应的正是 §5.1 里三类**自动入队**的监控来源，
+ * 而终态单不入队。把已结案的投诉单也数进来，这一行就成了一个没法据以行动的历史总量。
+ */
+const isLiveTicket = (t: Ticket) => STATUS_GROUP[t.nodeStatus] !== '终态';
+
+/** 所有投诉类工单（在办）。对应监控来源「全量投诉」 */
+const complaintTicketCount = computed(
+  () => TICKETS.filter((t) => isLiveTicket(t) && t.type === '投诉').length,
+);
+
+/**
+ * 优先级为紧急 / 重要的工单（在办）。对应监控来源「紧急重要」。
+ * 取值口径来自 `types/ticket.ts` 的业务标签（0803 业务确认）：**P0 ＝ 紧急、P1 ＝ 重要**。
+ */
+const urgentTicketCount = computed(
+  () => TICKETS.filter((t) => isLiveTicket(t) && (t.priority === 'P0' || t.priority === 'P1')).length,
+);
+
+/**
+ * 风险工单等级分布：按**工单级风险等级**（＝该单已核实且成立的命中取最高，915 §4.9）
+ * 把工单分到高 / 中 / 低三档，给条数与占比。
+ * 分母 ＝ 有工单级等级的工单数，故三档占比之和恒为 100%；没有成立命中的单不参与。
+ */
+const ticketGradeDist = computed(() => {
+  const buckets: Record<RiskLevel, number> = { 高: 0, 中: 0, 低: 0 };
+  const seen = new Set<string>();
+  for (const h of allHits.value) {
+    if (seen.has(h.ticketNo)) continue;
+    seen.add(h.ticketNo);
+    const g = riskTags.ticketGradeOf(h.ticketNo);
+    if (g) buckets[g] += 1;
+  }
+  const total = buckets.高 + buckets.中 + buckets.低;
+  const pct = (n: number) => (total ? Math.round((n / total) * 100) : 0);
+  return {
+    total,
+    rows: RISK_LEVELS.map((lv) => ({ level: lv, count: buckets[lv], pct: pct(buckets[lv]) })),
+  };
+});
 /**
  * 视图内三态（N4）：待分派 / 评估中 / 已评估。
  *
@@ -2261,6 +2314,47 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
         </div>
 
         <!--
+          中栏 ＝ 重点工单存量。分母是**工单**，另外两栏一个是命中记录、一个是队列条目，
+          三栏并排最容易被读成一路数，故每个数各自 title 写明分母，且**整栏不可点**：
+          点出去必然落在另一个分母的清单上，数对不上比不能点更糟。
+        -->
+        <div class="effect-pane effect-pane--ticket">
+          <h2
+            class="pane-title"
+            title="工单系统里需要风险侧盯的存量 · 分母是在办工单，与左栏命中数、右栏队列条目均不可相加"
+          >重点工单</h2>
+          <div class="dash-grid dash-grid-2">
+            <div class="dm-cell dm-static" title="在办的投诉类工单 · 对应监控来源「全量投诉」">
+              <span class="dm-k">投诉工单</span>
+              <span class="dm-val"><span class="dm-v">{{ complaintTicketCount }}</span></span>
+            </div>
+            <div
+              class="dm-cell dm-static"
+              title="在办且优先级为 P0 紧急 / P1 重要的工单 · 对应监控来源「紧急重要」"
+            >
+              <span class="dm-k">紧急 / 重要</span>
+              <span class="dm-val"><span class="dm-v">{{ urgentTicketCount }}</span></span>
+            </div>
+          </div>
+          <div class="dash-links">
+            <span
+              class="dash-links-k"
+              :title="`共 ${ticketGradeDist.total} 张单有工单级风险等级（该单已核实且成立的命中取最高）；占比之和为 100%。此处数的是工单，与左栏「确认是风险」的高中低数的是命中，两组数天生不等`"
+            >风险等级</span>
+            <span
+              v-for="r in ticketGradeDist.rows"
+              :key="r.level"
+              class="dl-item dl-static"
+              :style="{ color: RISK_LEVEL_STYLE[r.level].color }"
+            >
+              {{ riskLevelText(r.level) }}<b>{{ r.count }}</b>
+              <small v-if="ticketGradeDist.total">{{ r.pct }}%</small>
+            </span>
+            <span v-if="!ticketGradeDist.total" class="dl-empty">暂无已核实成立的工单</span>
+          </div>
+        </div>
+
+        <!--
           右栏 ＝ 风险评估（O16 定分母）。装的是**走评估的四类来源**的队列条目：
           全量投诉 / 紧急重要 / VIP客户 / 二线报备。「关键词触发」走的是核实打标，
           它的数已经在左栏「监控数据」里报过一次，并进来就成了同一条命中数两遍（§7 撞名）。
@@ -3751,95 +3845,86 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
       @ok="confirmAssess"
     >
       <div v-if="assessTarget" class="op-form assess-form">
-        <!-- ① 报备信息：只读卡片，评估人照着这段下结论 -->
-        <section class="assess-block">
-          <h4 class="assess-block-title">报备信息</h4>
-          <div class="assess-src">
-            <div class="asrc-head">
-              <button type="button" class="tag-ticket-no asrc-ticket" @click="openTicket(assessTarget.ticketNo)">
-                {{ assessTarget.ticketNo }}
-              </button>
-              <div class="asrc-head-meta">
-                <span class="asrc-by">
-                  {{ assessTarget.by }}
-                  <em>{{ assessTarget.byRole }}</em>
+        <!-- ① 报备信息：对齐工单操作页「风险报备」在队卡片（rr-sheet） -->
+        <section class="assess-sheet" aria-label="报备信息">
+          <header class="assess-sheet-head">
+            <div class="assess-sheet-brand">
+              <div class="assess-sheet-title-row">
+                <button type="button" class="tag-ticket-no assess-ticket-no" @click="openTicket(assessTarget.ticketNo)">
+                  {{ assessTarget.ticketNo }}
+                </button>
+                <span class="assess-sheet-time">提交于 {{ assessTarget.at }}</span>
+              </div>
+              <div class="assess-sheet-meta">
+                <span class="assess-meta-pair">
+                  <UserOutlined class="assess-meta-icon" />
+                  <span class="assess-meta-label">报备人</span>
+                  <span class="assess-meta-value">{{ assessTarget.by }}（{{ assessTarget.byRole }}）</span>
                 </span>
-                <span class="asrc-at">{{ assessTarget.at }}</span>
+                <span class="assess-meta-sep" aria-hidden="true" />
+                <span class="assess-meta-pair">
+                  <span class="assess-meta-label">原因</span>
+                  <span class="assess-meta-value">{{ assessTarget.reason }}</span>
+                </span>
+                <template v-if="assessTarget.category">
+                  <span class="assess-meta-sep" aria-hidden="true" />
+                  <span class="assess-meta-pair">
+                    <span class="assess-meta-label">风险类型</span>
+                    <span class="assess-meta-value assess-meta-warn">{{ assessTarget.category }}</span>
+                  </span>
+                </template>
               </div>
             </div>
-            <div class="asrc-fields">
-              <div class="asrc-row asrc-row-pair">
-                <div class="asrc-pair-item">
-                  <span class="asrc-k">报备原因</span>
-                  <span class="asrc-v">{{ assessTarget.reason }}</span>
-                </div>
-                <div class="asrc-pair-item">
-                  <span class="asrc-k">风险类型</span>
-                  <span class="asrc-v" :class="{ muted: !assessTarget.category }">{{ assessTarget.category ?? '—' }}</span>
-                </div>
-              </div>
-              <div class="asrc-row">
-                <span class="asrc-k">场景描述</span>
-                <span class="asrc-v asrc-desc-text">{{ assessTarget.desc }}</span>
-              </div>
-              <div class="asrc-row">
-                <span class="asrc-k">附件</span>
-                <span class="asrc-v asrc-attach-val">
-                  <template v-if="assessTarget.attachments.length">
-                    <button
-                      v-for="a in assessTarget.attachments"
-                      :key="a"
-                      type="button"
-                      class="asrc-file"
-                      :title="`下载 ${a}`"
-                      @click="downloadReportAttachment(a)"
-                    >
-                      {{ a }}
-                    </button>
-                  </template>
-                  <span v-else class="asrc-empty">—</span>
-                </span>
-              </div>
-            </div>
-          </div>
-        </section>
+          </header>
 
-        <!-- ② 本单另有：佐证区，弱于报备信息与下方表单 -->
-        <section
-          v-if="assessTargetHits || assessTargetHistory.length"
-          class="assess-block assess-block-weak"
-        >
-          <h4 class="assess-block-title">本单另有</h4>
-          <div class="assess-also">
-            <div v-if="assessTargetHits" class="aa-row">
-              <span class="aa-k">风险词命中</span>
-              <span class="aa-v">
+          <div class="assess-sheet-body">
+            <blockquote class="assess-quote">{{ assessTarget.desc }}</blockquote>
+            <ul v-if="assessTarget.attachments.length" class="assess-files">
+              <li v-for="a in assessTarget.attachments" :key="a" class="assess-file">
+                <PaperClipOutlined />
+                <button
+                  type="button"
+                  class="assess-file-btn"
+                  :title="`下载 ${a}`"
+                  @click="downloadReportAttachment(a)"
+                >
+                  {{ a }}
+                </button>
+              </li>
+            </ul>
+            <p class="assess-sla-note">评估期间本单照常处理，SLA 不停表</p>
+          </div>
+
+          <!-- ② 本单另有：收在卡片底栏，弱于主体描述 -->
+          <footer
+            v-if="assessTargetHits || assessTargetHistory.length"
+            class="assess-sheet-foot"
+          >
+            <div v-if="assessTargetHits" class="assess-foot-row">
+              <span class="assess-foot-k">风险词命中</span>
+              <span class="assess-foot-v">
                 {{ assessTargetHits.hitCount }} 条
-                <span class="aa-sub">
+                <span class="assess-foot-sub">
                   成立 {{ assessTargetHits.confirmedCount }} · 误报 {{ assessTargetHits.falseCount }} · 待核实 {{ assessTargetHits.pendingCount }}
                 </span>
               </span>
             </div>
-            <div v-if="assessTargetHistory.length" class="aa-row aa-row-stack">
-              <span class="aa-k">历史报备</span>
-              <ol class="aa-list">
-                <li v-for="h in assessTargetHistory" :key="h.id" class="aa-item">
-                  <span class="aa-at">{{ h.assessment?.at ?? h.at }}</span>
-                  <span class="aa-dec">{{ h.status === '已撤回' ? '已撤回' : h.assessment?.decision }}</span>
-                  <!--
-                    历史那一条接管到哪张单，比"当时定了几级"重要得多——二选一之后
-                    评估本就不再产出等级（N1），能追的只有派生单号这一条线。
-                  -->
-                  <span v-if="h.assessment?.escalatedToNo" class="aa-esc">→ {{ h.assessment.escalatedToNo }}</span>
+            <div v-if="assessTargetHistory.length" class="assess-foot-row">
+              <span class="assess-foot-k">历史报备</span>
+              <ol class="assess-foot-list">
+                <li v-for="h in assessTargetHistory" :key="h.id" class="assess-foot-item">
+                  <span class="assess-foot-at">{{ h.assessment?.at ?? h.at }}</span>
+                  <span class="assess-foot-dec">{{ h.status === '已撤回' ? '已撤回' : h.assessment?.decision }}</span>
+                  <span v-if="h.assessment?.escalatedToNo" class="assess-foot-esc">→ {{ h.assessment.escalatedToNo }}</span>
                 </li>
               </ol>
             </div>
-          </div>
+          </footer>
         </section>
 
         <!-- ③ 评估表单：二选一决策 + 必填说明 -->
         <section class="assess-block assess-block-form">
-          <h4 class="assess-block-title">评估</h4>
+          <h4 class="assess-block-title">填写评估结论</h4>
 
           <!--
             决策**二选一**（N1）：不升级 / 接管。
@@ -3847,14 +3932,16 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
             二选一之后没有"确认有风险 + 定级"这一档，评估不再产出等级、不再往工单回传；
             而「关联已有投诉单」这一档随 O11 一并作废（报上来评估侧答不了它）。
           -->
-          <div class="op-field">
-            <div class="op-label req">评估决策</div>
-            <a-radio-group v-model:value="assessDecision" class="assess-dec-grid">
-              <a-radio v-for="d in ASSESS_DECISIONS" :key="d" :value="d">{{ d }}</a-radio>
-            </a-radio-group>
-            <div v-if="missAssessDecision" class="assess-err">请先选择一个评估决策</div>
+          <div class="op-field assess-dec-field">
+            <div class="op-field-h assess-dec-row">
+              <div class="op-label req">评估决策</div>
+              <a-radio-group v-model:value="assessDecision" class="assess-dec-inline">
+                <a-radio v-for="d in ASSESS_DECISIONS" :key="d" :value="d">{{ d }}</a-radio>
+              </a-radio-group>
+            </div>
+            <div v-if="missAssessDecision" class="assess-err assess-dec-foot">请先选择一个评估决策</div>
             <!-- 接管的去向按原单类型分流（O20），提示行必须跟着分流，否则在投诉单上说的是错的 -->
-            <div v-else-if="assessDecision === '接管'" class="tag-form-foot">
+            <div v-else-if="assessDecision === '接管'" class="tag-form-foot assess-dec-foot">
               {{ takeoverHint }}
             </div>
           </div>
@@ -3989,15 +4076,26 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
   border: none;
   box-shadow: none;
 }
+/*
+ * 三栏：监控数据（命中记录）｜ 重点工单（工单）｜ 风险评估（队列条目）。
+ * 左栏四个 KPI、右栏三个，中栏只有两个，故按 1.15 : 0.85 : 1 分宽，
+ * 均分会让中栏空出一截、左栏的四格挤成两行。
+ */
 .effect-split {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1.15fr 0.85fr 1fr;
   gap: 10px;
   min-width: 0;
   align-items: stretch;
 }
+@media (max-width: 1280px) {
+  .effect-split { grid-template-columns: 1fr 1fr; }
+  /* 折成两行时中栏独占一行，避免它跟右栏挤在半幅里 */
+  .effect-pane--ticket { grid-column: 1 / -1; }
+}
 @media (max-width: 900px) {
   .effect-split { grid-template-columns: 1fr; gap: 8px; }
+  .effect-pane--ticket { grid-column: auto; }
 }
 .effect-pane {
   display: flex;
@@ -4018,6 +4116,12 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
   border-color: #fde68a;
   box-shadow: inset 3px 0 0 #f59e0b;
 }
+/* 中栏取紫：与左蓝右橙拉开，三个分母一眼分得出是三块而不是一条长带 */
+.effect-pane--ticket {
+  background: linear-gradient(180deg, #faf5ff 0%, #fdfaff 100%);
+  border-color: #e9d5ff;
+  box-shadow: inset 3px 0 0 #a855f7;
+}
 .pane-title {
   margin: 0 0 5px;
   font-size: 12px;
@@ -4026,6 +4130,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
   line-height: 1.2;
 }
 .effect-pane--monitor .pane-title { color: #1e40af; }
+.effect-pane--ticket .pane-title { color: #7e22ce; }
 .effect-pane--report .pane-title { color: #b45309; }
 .dash-grid {
   display: grid;
@@ -4037,6 +4142,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
 }
 .dash-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .dash-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.dash-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 @media (max-width: 1100px) {
   .dash-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -4127,6 +4233,11 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
   color: #94a3b8;
   margin-left: 1px;
 }
+/* 等级分布是只读读数：不给指针、不给 hover 变色，免得被当成可下钻 */
+.dl-item.dl-static { cursor: default; font-weight: 600; }
+.dl-item.dl-static:hover { color: inherit; }
+.dl-item.dl-static b { color: inherit; }
+.dl-empty { font-size: 11px; color: #cbd5e1; }
 
 /* 上次执行 + 扫库记录：§4.1 次按钮外形，记录条数用主色点出可点 */
 .run-entry {
@@ -5217,146 +5328,198 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
 .rr-dec.risk { color: #B91C1C; font-weight: 600; }
 
 /* ---- 评估报备弹窗 ---- */
-.assess-form { gap: 16px !important; }
-.assess-block { display: flex; flex-direction: column; gap: 8px; }
+.assess-form { gap: 14px !important; }
+.assess-block { display: flex; flex-direction: column; gap: 10px; }
 .assess-block-title {
   margin: 0;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
-  color: #374151;
+  color: #111827;
 }
 .assess-block-form {
-  padding-top: 12px;
-  border-top: 1px solid #f1f5f9;
-}
-.assess-block-weak .assess-block-title { color: #6b7280; font-weight: 600; }
-
-/* ① 报备信息 */
-.assess-src {
-  display: flex;
-  flex-direction: column;
-  padding: 12px 14px;
-  border: 1px solid #e2e8f0;
+  padding: 14px;
+  border: 1px solid #e5e7eb;
   border-radius: 10px;
-  background: #f8fafc;
+  background: #fff;
 }
-.asrc-head {
+
+/* ① 报备信息（对齐工单侧 rr-sheet） */
+.assess-sheet {
+  background: #fff;
+  border: 1px solid #fed7aa;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(234, 88, 12, 0.06);
+}
+.assess-sheet-head {
+  padding: 12px 14px;
+  background: linear-gradient(180deg, #fff7ed 0%, #fff 100%);
+  border-bottom: 1px solid #ffedd5;
+}
+.assess-sheet-brand { min-width: 0; }
+.assess-sheet-title-row {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
+  align-items: center;
   flex-wrap: wrap;
+  gap: 8px;
 }
-.asrc-ticket { font-size: 13px; }
-.asrc-head-meta {
+.assess-ticket-no { font-size: 13px; }
+.assess-sheet-time {
+  font-size: 12px;
+  font-weight: 600;
+  color: #9a3412;
+  font-variant-numeric: tabular-nums;
+}
+.assess-sheet-meta {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-  text-align: right;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 0;
+  margin-top: 8px;
 }
-.asrc-by { font-size: 12px; color: #374151; font-weight: 600; }
-.asrc-by em { font-style: normal; margin-left: 4px; color: #9ca3af; font-weight: 400; }
-.asrc-at { font-size: 11px; color: #94a3b8; font-variant-numeric: tabular-nums; }
-.asrc-fields {
+.assess-meta-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+.assess-meta-icon { color: #9ca3af; font-size: 12px; }
+.assess-meta-label { color: #9ca3af; }
+.assess-meta-value { color: #374151; font-weight: 600; }
+.assess-meta-warn { color: #c2410c; }
+.assess-meta-sep {
+  width: 1px;
+  height: 12px;
+  margin: 0 10px;
+  background: #e5e7eb;
+  flex: none;
+}
+.assess-sheet-body { padding: 12px 14px 14px; }
+.assess-quote {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.65;
+  color: #1f2937;
+  background: #f8fafc;
+  border-left: 3px solid #fdba74;
+  border-radius: 0 6px 6px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.assess-sla-note {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: #9ca3af;
+}
+.assess-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.assess-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: #475569;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+}
+.assess-file :deep(.anticon) { color: #94a3b8; font-size: 11px; }
+.assess-file-btn {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: #4338ca;
+  cursor: pointer;
+  line-height: 1.4;
+}
+.assess-file-btn:hover { color: #1d4ed8; text-decoration: underline; }
+
+/* ② 本单另有：卡片底栏 */
+.assess-sheet-foot {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-top: 10px;
+  padding: 10px 14px 12px;
+  background: #fafafa;
+  border-top: 1px dashed #e5e7eb;
 }
-.asrc-row {
+.assess-foot-row {
   display: grid;
-  grid-template-columns: 72px 1fr;
+  grid-template-columns: 68px 1fr;
   gap: 8px;
   align-items: start;
   font-size: 12px;
 }
-.asrc-row-pair {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 6px 20px;
-}
-.asrc-pair-item {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 8px;
-  min-width: 0;
-}
-.asrc-k { color: #9ca3af; line-height: 1.6; flex: none; }
-.asrc-v { color: #374151; font-weight: 600; line-height: 1.65; }
-.asrc-v.muted { color: #cbd5e1; font-weight: 400; }
-.asrc-desc-text { font-weight: 400; white-space: pre-wrap; word-break: break-word; }
-.asrc-attach-val {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  font-weight: 400;
-}
-.asrc-empty { color: #cbd5e1; font-weight: 400; }
-.asrc-file {
-  padding: 3px 8px;
+.assess-foot-k { color: #9ca3af; line-height: 1.5; }
+.assess-foot-v { color: #374151; font-weight: 600; line-height: 1.5; }
+.assess-foot-sub {
+  display: block;
+  margin-top: 2px;
   font-size: 11px;
-  color: #4338ca;
-  background: #eef2ff;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-family: inherit;
-  line-height: 1.4;
-  transition: background 0.15s, color 0.15s;
+  font-weight: 400;
+  color: #64748b;
 }
-.asrc-file:hover {
-  color: #1d4ed8;
-  background: #dbeafe;
-  text-decoration: underline;
-}
-
-/* ② 本单另有 */
-.assess-also {
+.assess-foot-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px 12px;
-  border: 1px dashed #e2e8f0;
-  border-radius: 8px;
-  background: #fff;
+  gap: 4px;
 }
-.aa-row { display: grid; grid-template-columns: 72px 1fr; gap: 8px; align-items: start; font-size: 12px; }
-.aa-row-stack { align-items: start; }
-.aa-k { color: #9ca3af; line-height: 1.6; }
-.aa-v { color: #374151; font-weight: 600; line-height: 1.6; }
-.aa-sub { display: block; margin-top: 2px; font-size: 11px; font-weight: 400; color: #64748b; }
-.aa-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
-.aa-item { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 11px; color: #475569; }
-.aa-at { color: #94a3b8; font-variant-numeric: tabular-nums; }
-.aa-dec { color: #374151; font-weight: 600; }
-/* 派生单号是"这条接管到哪儿去了"的去向，弱于决策本身，故不加粗、只做等宽数字 */
-.aa-esc { color: #64748b; font-variant-numeric: tabular-nums; }
+.assess-foot-item {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 11px;
+  color: #475569;
+}
+.assess-foot-at { color: #94a3b8; font-variant-numeric: tabular-nums; }
+.assess-foot-dec { color: #374151; font-weight: 600; }
+.assess-foot-esc { color: #64748b; font-variant-numeric: tabular-nums; }
 
-/* ③ 评估表单：决策 2×2 卡片 + 垂直字段 */
-.assess-dec-grid :deep(.ant-radio-group) {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  width: 100%;
+/* ③ 评估表单：标签与决策同一行 */
+.assess-dec-row { margin: 0; }
+.assess-dec-row > .op-label { width: 72px; }
+.assess-dec-inline {
+  flex: 1;
+  min-width: 0;
 }
-.assess-dec-grid :deep(.ant-radio-wrapper) {
+.assess-dec-inline :deep(.ant-radio-group) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.assess-dec-inline :deep(.ant-radio-wrapper) {
   margin: 0 !important;
-  padding: 8px 10px;
+  padding: 6px 12px;
   border: 1.5px solid #e5e7eb;
   border-radius: 8px;
   background: #fff;
   line-height: 1.45;
   font-size: 12px;
-  white-space: normal;
-  align-items: flex-start;
+  white-space: nowrap;
+  align-items: center;
   transition: border-color 0.15s, background 0.15s;
 }
-.assess-dec-grid :deep(.ant-radio-wrapper-checked) {
+.assess-dec-inline :deep(.ant-radio-wrapper-checked) {
   border-color: #1a6fff;
   background: #eff6ff;
 }
-.assess-dec-grid :deep(.ant-radio) { margin-top: 2px; }
+.assess-dec-inline :deep(.ant-radio) { margin-top: 0; top: 0; }
+.assess-dec-foot {
+  margin-left: calc(72px + 10px);
+}
 .assess-err { margin-top: 4px; font-size: 11px; color: #ef4444; line-height: 1.4; }
 </style>
