@@ -16,6 +16,7 @@ import {
   ticketLatestHandlingItems,
   ticketProductIssue,
 } from '@/views/tickets/utils/ticketOverview';
+import { isSlaVoidStop } from '@/views/tickets/utils/ticketListCells';
 import {
   inferComplaintChannelSource,
   normalizeComplaintType,
@@ -98,9 +99,11 @@ function buildSlaClocks(t: Ticket): SlaClock[] {
   };
 
   if (t.slaText === '—') {
-    // 终态：双钟停表，按结果亮色（达标绿 / 未达标红）
+    // 终态：双钟停表，按结果亮色（达标绿 / 未达标红 / 中止深灰）
+    // 🔴 中止（升级派生、转出待回传、取消）**不是达标** —— 钟被掐断，本单从未被解决。
+    //    判据取列表那一份 `isSlaVoidStop`，否则同一张单会在列表说「已停表」、在本页说「已达标」。
     solve.phase = 'stopped';
-    solve.stopOutcome = t.solveBreached ? 'breached' : 'met';
+    solve.stopOutcome = t.solveBreached ? 'breached' : isSlaVoidStop(t) ? 'void' : 'met';
     if (t.solveBreached) solve.remainSec = -1800;
   } else if (t.slaState === 'paused') {
     // 挂起：在走的钟冻结（剩余保留、可恢复续算）

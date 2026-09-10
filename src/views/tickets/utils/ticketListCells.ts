@@ -94,10 +94,42 @@ export interface SlaLine {
 
 const BREACHED_LINE: SlaLine = { text: '未达标', color: SLA_COLOR.overdue };
 const MET_LINE: SlaLine = { text: '已达标', color: SLA_COLOR.ok };
+/**
+ * 第三种终态：**中止**（PRD-730 §8.1① 第三行「已停表 · 深灰 #6B7280」）。
+ * 钟不是走完的，是被掐断的 —— 本单从未被解决，也从未违约，**没有达标结论可言**。
+ * `SLA_COLOR.paused` 恰为 #6B7280，与操作页表盘条（`OpSlaBar.stateLabelOf` 的 `void` 分支）同色同文案。
+ */
+const VOID_LINE: SlaLine = { text: '已停表', color: SLA_COLOR.paused };
 
-/** 解决行状态全枚举：剩(正常绿/临期橙)/超(红·在计)/已暂停(灰·挂起)/已达标(绿·正常关闭)/未达标(红·超时后关闭) */
+/**
+ * 中止类停表原因。取值对齐 `opActions.terminateClocks(voidStop=true)` 的三个调用点：
+ * 升级派生新单（:861）、转到新单/转售后等待回传（:681）、取消等业务中止（:949）。
+ * 其余停表原因（已结案 / 已关闭 / 已强结 / 直接结案 / 售后已完成）都是**解决收口**，
+ * 钟是走完的，达标结论有效，不在此列。
+ */
+const VOID_STOP_REASON_RE = /升级|转出|取消|中止/;
+
+/**
+ * 这张单是否应按「中止停表」展示。
+ *
+ * 🔴 `solveBreached` **优先于中止**：真超时过再被掐钟，超时是已经发生的事实，
+ * 不能被一次升级/转出洗成"无结论"。同时这条优先级保住了 `isSlaBreachedNow`
+ * ——否则 t41（超时 15 天后升外投）会从「已超时」筛选里凭空消失。
+ */
+export function isSlaVoidStop(t: Ticket): boolean {
+  return t.slaText === '—' && !t.solveBreached && VOID_STOP_REASON_RE.test(t.slaSub ?? '');
+}
+
+/**
+ * 解决行状态全枚举：剩(正常绿/临期橙)/超(红·在计)/已暂停(灰·挂起)
+ * /已达标(绿·时限内收口)/未达标(红·超时后收口)/已停表(深灰·中止，无结论)
+ */
 export function slaResolveLine(t: Ticket): SlaLine {
-  if (t.slaText === '—') return t.solveBreached ? BREACHED_LINE : MET_LINE; // 已停表：终态按结果
+  if (t.slaText === '—') {
+    // 已停表：先看有没有记过超时（事实优先），再分「中止无结论」与「收口按结果」
+    if (t.solveBreached) return BREACHED_LINE;
+    return isSlaVoidStop(t) ? VOID_LINE : MET_LINE;
+  }
   if (!isFirstResponded(t) && t.resolveSlaText) {
     return { text: slaShort(t.resolveSlaText), color: SLA_COLOR[t.resolveSlaState ?? 'ok'] };
   }
