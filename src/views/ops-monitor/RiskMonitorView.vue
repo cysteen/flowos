@@ -127,15 +127,51 @@ type QueueView = 'monitoring' | 'pooled' | 'noRisk';
 const queueView = ref<QueueView>('monitoring');
 
 /**
- * 「已入池」这一档再按**现行打标等级**分档：高 / 中 / 低，`all` ＝ 全部有风险。
+ * 「待标记」这一档**再切三片**（业务补充口径）。业务点名要分开看的是三批：
+ *
+ *   · `kw`     预警词命中那一路（实时监控 + 手动筛查两个入口，同一路，见 `isVerifyMonitorSource`）
+ *   · `urgent` 重要紧急那一路（P0 / P1 的**非投诉单**，来源恒为「重要紧急」）
+ *   · `all`    **全部未标记**——上面两片 + 投诉单那一路
+ *
+ * 🔴 **`all` 是前两片的超集，不是并列的第三类来源**。它就是值班人员每天要清零的那个数，
+ * 故它是本组的**默认档**，且摆在这一组的最后一行：前两片是它的切面，看完切面回到全量。
+ * 也因此**前两片与 `all` 的数字必然重叠**，三个数不可相加 —— 这一句写在组标题的悬停里。
+ *
+ * 【为什么另开一个状态而不是塞进 `queueView`】`queueView` 分的是**打没打标**
+ * （待标记 / 已入池 / 无风险），是漏斗的段；切片分的是**同一段里看哪一批**，是段内的维度。
+ * 混进同一个枚举，"批量打标只在待标记出现"这类判据就要逐个比三个字面量，
+ * 而每加一片都得回头补一遍那些判据。
+ */
+type UntaggedSlice = 'kw' | 'urgent' | 'all';
+const untaggedSlice = ref<UntaggedSlice>('all');
+
+/**
+ * 「已入池」这一档再按**现行打标等级**分档：高 / 中 / 低，`all` ＝ 全部有风险，
+ * `tagger` ＝ 同一批条目**换按标记人看**。
  *
  * 🔴 **「全部有风险」不含「无风险」**。无风险是漏斗的另一个出口（`queueView === 'noRisk'`），
  * 把它并进来等于把已经排除掉的那一批重新算成风险，左栏那一列的合计当场答错
  * "现在到底有多少条确实有风险"——而那正是这一列存在的理由。
  * 判档读的是条目的现行 `tag.result`，**与池内状态无关**：池内三态是它进池之后的事，
  * 一条评估中的高危条目仍然是高危。
+ *
+ * 【为什么 `tagger` 跟等级挤在同一个 ref 里】左栏「已标记」组里这几档是**互斥单选**：
+ * 选中「按标记人」的同时不可能又选中「高危」。互斥的选项分存两个状态，
+ * 两边就都能声称自己被选中，`railKey` 还得再编一条"谁赢"的规则 —— 而那条规则一旦
+ * 与页头 KPI 卡的写法不一致，选中态与表里的数据当场分家（本文件反复踩过的坑）。
+ * `tagger` 不是第四个等级，它与 `all` 是**同一批行**，只是右侧多出一行标记人单选。
  */
-const tagLevelFilter = ref<RiskLevel | 'all'>('all');
+const tagLevelFilter = ref<RiskLevel | 'all' | 'tagger'>('all');
+
+/**
+ * 标记人单选（只在「按标记人」这一档作数）。`all` ＝ 不按人收窄。
+ *
+ * 🔴 **分母与「全部有风险」同一个**：只数打标为高 / 中 / 低的条目，**不含无风险**。
+ * 把无风险也数进来，这一行会变成"谁判得多"，而督导要的是"谁名下压着多少条有风险的"。
+ * 无风险那一批要看谁判的，去「无风险」那一档逐条看修正记录 —— 那是核查漏标的场子，
+ * 与这里的工作量分布不是同一个问题。
+ */
+const taggerFilter = ref<string>('all');
 
 /**
  * 工作组筛选（单选，横跨左栏每一档）。
@@ -146,9 +182,14 @@ const tagLevelFilter = ref<RiskLevel | 'all'>('all');
  * 而人正是照这一行决定"先盯哪一组"，被吞掉的那几条就再也没人管。
  */
 const groupFilter = ref<string>('all');
-/** 当前等级分档的人话说法；`all` 时为空串，空态与收窄标据此判断要不要出这一句 */
+/**
+ * 当前等级分档的人话说法；`all` / `tagger` 两档为空串（那两档装的是全部三个等级，
+ * 说不出"某一级"），空态与收窄标据此判断要不要出这一句。
+ */
 const tagLevelText = computed(() => (
-  tagLevelFilter.value === 'all' ? '' : riskLevelText(tagLevelFilter.value)
+  tagLevelFilter.value === 'all' || tagLevelFilter.value === 'tagger'
+    ? ''
+    : riskLevelText(tagLevelFilter.value)
 ));
 function inGroup<T extends { ticketNo: string }>(rows: T[]): T[] {
   if (groupFilter.value === 'all') return rows;
@@ -1888,15 +1929,129 @@ function tagTraceTitle(h: RiskHit): string | undefined {
 
 /** 三视图各自的行。取数**全部走 store 的三个 computed**，本页不另筛一遍——
  *  各筛各的话，chip 上的数字与表里的行数迟早对不上（本文件反复踩过的那个坑）。 */
+/* ---- 「待标记」三片：切面的取数与各自的默认排序 ---- */
+
+/**
+ * 未打标条目的**某一片**（未过工作组筛选）。三片的取数口径在 `UntaggedSlice` 上写清了：
+ * 预警词那一路判 `isVerifyMonitorSource`（实时监控 / 手动筛查同属一路），
+ * 重要紧急判来源字面量，`all` 不过滤 —— 它是前两片加上投诉单那一路的全量。
+ */
+function untaggedSliceRows(slice: UntaggedSlice): RiskQueueEntry[] {
+  const base = reportStore.monitoringEntries;
+  if (slice === 'kw') return base.filter((e) => isVerifyMonitorSource(e.source));
+  if (slice === 'urgent') return base.filter((e) => e.source === '重要紧急');
+  return base;
+}
+
+/**
+ * 工单优先级的次序。**只是排序用的刻度，不是新口径**：`P0 → P3` 与工单侧
+ * `slaUrgencyCompare` 里那一份同序，那一份没有导出、也不该为了排一列条目把 SLA 那套整个拖进来。
+ * 🔴 **工单库里查不到的排最后而不是当成 P3**：查不到是"不知道多急"，不是"不急"，
+ * 混进 P3 里会让它悄悄插在真 P3 前面，而这一批恰恰是最需要被人看见的异常数据。
+ */
+const PRIORITY_RANK: Record<string, number> = { P0: 0, P1: 1, P2: 2, P3: 3 };
+const RANK_UNKNOWN = 9;
+function priorityRankOf(ticketNo: string): number {
+  const t = TICKET_BY_NO.get(ticketNo);
+  if (!t) return RANK_UNKNOWN;
+  return PRIORITY_RANK[t.priority] ?? RANK_UNKNOWN;
+}
+
+/**
+ * 这条条目上**词表预设的识别风险等级**（取本单全部命中里最重的一条）。
+ *
+ * 【为什么是"取最重"】一张单可以被三条词命中、三条词各有各的预设等级，而人排队要的是
+ * "先看哪一张单"——按最轻的那条排，一张同时命中高危词的单会沉到底下去。
+ * 🔴 它是**词表带出来的机器建议值**（`RiskHit.level`），不是打标结论：待标记这一批
+ * 按定义还没有人给结论，这一列排的就是"机器认为多重"。
+ * 没有命中记录的（投诉单 / 重要紧急那两路本就不产生命中）排最后，不吞。
+ */
+const PRESET_LEVEL_RANK: Record<RiskLevel, number> = { 高: 0, 中: 1, 低: 2 };
+function presetLevelRankOf(ticketNo: string): number {
+  let best = RANK_UNKNOWN;
+  for (const h of riskTags.hitsOfTicket(ticketNo)) {
+    const r = PRESET_LEVEL_RANK[h.level];
+    if (r < best) best = r;
+  }
+  return best;
+}
+
+/**
+ * 「待标记」当前这一片的行，**已按这一片自己的默认序排好**：
+ *   · 预警词命中 —— 按**词表预设的识别风险等级**降序（高 → 中 → 低）；
+ *   · 重要紧急 / 全量未标记 —— 按**工单优先级**降序（P0 → P3）。
+ *
+ * 【为什么两片不共用一把尺】预警词那一路的排队依据是"机器觉得这句话多重"，
+ * 而重要紧急与全量看的是"这张单本身多急"——同分时一律早进先出（`at` 升序），
+ * 免得同一批数据两次进来给出两个次序。
+ */
+const untaggedRows = computed<RiskQueueEntry[]>(() => {
+  const slice = untaggedSlice.value;
+  const rankOf = slice === 'kw' ? presetLevelRankOf : priorityRankOf;
+  return untaggedSliceRows(slice).slice().sort((a, b) => (
+    rankOf(a.ticketNo) - rankOf(b.ticketNo) || a.at.localeCompare(b.at)
+  ));
+});
+
+/* ---- 「按标记人」：打标人这一维 ---- */
+
+/**
+ * 这条条目是谁打的标。**打标人是条目自己的字段**（`tag.by`），不像工作组要反查工单库。
+ * 🔴 空值不吞：条目能进池就必然打过标，打标人为空是数据自身的异常，
+ * 落一档「未署名」摆出来 —— 吞掉的话各人之和会小于「全部有风险」，
+ * 而督导正是照这一行看"谁名下压着多少条"。
+ */
+const UNSIGNED_TAGGER = '未署名';
+function taggerOf(e: RiskQueueEntry): string {
+  return e.tag?.by || UNSIGNED_TAGGER;
+}
+
+/**
+ * 「按标记人」那一档的行（未过工作组筛选）。左栏那一档的数字读它，故**选中某个人之后
+ * 左栏跟着收窄**——左栏每一档的数字就是点进去表里的行数，这条不变量对新增的这一档同样成立。
+ * 离开这一档时 `taggerFilter` 会被重置（见 `railKey` 后面那个 watch），故不在这一档时它就是全量。
+ */
+const taggerRailBase = computed<RiskQueueEntry[]>(() => {
+  const pooled = reportStore.pooledEntries;
+  return taggerFilter.value === 'all'
+    ? pooled
+    : pooled.filter((e) => taggerOf(e) === taggerFilter.value);
+});
+
+/**
+ * 标记人 chip 那一排。底表是**已过工作组、未过标记人**的池内条目 ——
+ * 与工作组那一排同一条道理：让自己那一排的筛选影响自己的数字，选中一个人之后
+ * 其余几枚全变 0，人再也看不出该切到谁。条数多的排前面，同数按姓名排。
+ */
+const taggerChips = computed(() => {
+  const base = inGroup(reportStore.pooledEntries);
+  const m = new Map<string, number>();
+  base.forEach((e) => {
+    const who = taggerOf(e);
+    m.set(who, (m.get(who) ?? 0) + 1);
+  });
+  return {
+    total: base.length,
+    rows: [...m].map(([tagger, count]) => ({ tagger, count }))
+      .sort((a, b) => b.count - a.count || a.tagger.localeCompare(b.tagger)),
+  };
+});
+
 /**
  * 左栏选中的那一档，**未过工作组筛选**。工作组 chip 那一排的数字要靠它算 ——
  * 让工作组筛选影响自己那一排的数字，选中一个组之后其余几枚全变 0，
  * 人再也看不出该切到哪一组（与 `reportSourceBase` 是同一条道理）。
  */
 const queueBase = computed<RiskQueueEntry[]>(() => {
-  if (queueView.value === 'monitoring') return reportStore.monitoringEntries;
+  if (queueView.value === 'monitoring') return untaggedRows.value;
   if (queueView.value === 'noRisk') return reportStore.noRiskEntries;
   const pooled = reportStore.pooledEntries;
+  // 「按标记人」与「全部有风险」是同一批行，差别只在多一层标记人收窄
+  if (tagLevelFilter.value === 'tagger') {
+    return taggerFilter.value === 'all'
+      ? pooled
+      : pooled.filter((e) => taggerOf(e) === taggerFilter.value);
+  }
   return tagLevelFilter.value === 'all'
     ? pooled
     : pooled.filter((e) => e.tag?.result === tagLevelFilter.value);
@@ -1926,9 +2081,20 @@ function setQueueView(v: QueueView) {
   queuePageCurrent.value = 1;
 }
 
-// 等级分档与工作组换了，底表就换了一批，页码必须回到第一页 ——
+// 等级分档、标记人与工作组换了，底表就换了一批，页码必须回到第一页 ——
 // 否则「第 3 页 → 切到中风险」会停在一张恰好没有行的页上。
-watch([tagLevelFilter, groupFilter], () => {
+watch([tagLevelFilter, taggerFilter, groupFilter], () => {
+  queuePageCurrent.value = 1;
+});
+
+/**
+ * 换「待标记」的切片：与 `setQueueView` 同一套善后 —— 勾选不能跨片残留
+ * （在「预警词命中」里勾了三条切到「重要紧急」，批量打标会对一批看不见的行动手），
+ * 页码同理回到第一页。
+ * 🔴 这一段不能并进上面那个 watch：那个只管页码，而切片必须连勾选一起清。
+ */
+watch(untaggedSlice, () => {
+  clearBulk();
   queuePageCurrent.value = 1;
 });
 
@@ -2239,19 +2405,26 @@ const groupTagStats = computed(() => {
 // 改成一列纵向之后，从上到下就是链路本身：
 //
 // ```
-//   待标记 · 重点关注 ── 打标 ──▶ 已标记 · 高 / 中 / 低（＝全部有风险）──▶ 待处置 · 三态
-//                                └─ 无风险 ─▶ 不进池，留在「无风险」里供核查漏标
+//   待标记 · 全量未标记 ── 打标 ──▶ 已标记 · 高 / 中 / 低（＝全部有风险）──▶ 待处置 · 三态
+//                                  └─ 无风险 ─▶ 不进池，留在「无风险」里供核查漏标
 // ```
 //
 // 上游、下游、分档、汇总全在一屏一列里，且三组的组标题（待标记 / 已标记 / 待处置）
 // 直接把"这条链分几段"写在了导航上。
 //
-// 🔴 **手动筛查与命中台账不在这一列里**：它们不是链上的一段。前者是"往重点关注里补货"的动作、
+// 🔴 **手动筛查与命中台账不在这一列里**：它们不是链上的一段。前者是"往「全量未标记」里补货"的动作、
 // 后者是命中记录（另一个分母）的旁路台账，两者都退成右上角的次级入口。
 // 摆回这一列会重新犯"把不平行的东西摆成平行"这个错。
+//
+// 【三组九档 → 三组十二档】业务补充口径之后，前两组各自长出了自己的维度：
+//   · 「待标记」拆三片 —— 预警词命中 / 重要紧急 / 全量未标记（见 `UntaggedSlice`）；
+//   · 「已标记」在等级之外多一个**按标记人**看的切面（老系统里那张「监控人员 · 数量」表）。
+// 🔴 两组新增的那几档都是**同一批条目的切面，不是新的来源类别**：
+//   前者与「全量未标记」重叠、后者与「全部有风险」是同一批行，故都摆在各自汇总项的近旁，
+//   且在组标题的悬停里写明"不可相加"——摆成并列而不说清楚，人第一反应就是把数加起来。
 type RailKey =
-  | 'monitoring'
-  | 'level:高' | 'level:中' | 'level:低' | 'level:all' | 'noRisk'
+  | 'untagged:kw' | 'untagged:urgent' | 'untagged:all'
+  | 'level:高' | 'level:中' | 'level:低' | 'level:all' | 'level:tagger' | 'noRisk'
   | 'pool:unassigned' | 'pool:assigning' | 'pool:assessed';
 
 interface RailItem {
@@ -2260,8 +2433,14 @@ interface RailItem {
   count: number;
   /** 数字标红：这一档堆着没人管就是要被看见的 */
   bad?: boolean;
-  /** 汇总项（「全部有风险」）：上方补一条细分隔线，读得出它是上面几档之和 */
+  /** 汇总项（「全量未标记」「全部有风险」）：字重加深，读得出它不是并列的一档 */
   sum?: boolean;
+  /**
+   * 上方补一条细分隔线。**与 `sum` 分开是因为两者不重合**：
+   * 「无风险」不是汇总项却要与上面那一段隔开（它是漏斗的另一个出口），
+   * 「按标记人」紧贴着「全部有风险」不该再断一次（它就是那一档的切面）。
+   */
+  sep?: boolean;
   title: string;
 }
 interface RailGroup {
@@ -2279,20 +2458,38 @@ function pooledLevelCount(lv: RiskLevel) {
 const railGroups = computed<RailGroup[]>(() => [
   {
     title: '待标记',
-    title2: '三类自动识别捞进来、还没有人打标的条目。打标是入池门槛，这一批不判就进不了下一段',
+    title2: '三类自动识别捞进来、还没有人打标的条目。打标是入池门槛，这一批不判就进不了下一段。'
+      + '🔴 前两档是「全量未标记」的切面，三个数会重叠、不可相加',
     items: [
       {
-        key: 'monitoring',
-        label: '重点关注',
+        key: 'untagged:kw',
+        label: '预警词命中',
+        count: inGroup(untaggedSliceRows('kw')).length,
+        title: '预警词捞进来、还没打标的条目（实时监控与手动筛查是同一路的两个入口）。'
+          + '默认按词表预设的识别风险等级降序排——机器认为最重的排最前，人从上往下判',
+      },
+      {
+        key: 'untagged:urgent',
+        label: '重要紧急',
+        count: inGroup(untaggedSliceRows('urgent')).length,
+        title: '重要紧急捞进来、还没打标的条目（P0 · P1 的非投诉单）。默认按工单优先级降序排',
+      },
+      {
+        key: 'untagged:all',
+        label: '全量未标记',
         count: inGroup(reportStore.monitoringEntries).length,
         bad: inGroup(reportStore.monitoringEntries).length > 0,
-        title: '漏斗的入口：预警词命中 / 投诉单 / 重要紧急三类自动识别进来的待打标条目，手动筛查补的货也并到这里',
+        sum: true,
+        sep: true,
+        title: '漏斗的入口，也是值班每天要清零的那个数：上面两档 + 投诉单那一路的全部未打标条目。'
+          + '它是上面两档的超集（同一条会同时出现在两处），默认按工单优先级降序排',
       },
     ],
   },
   {
     title: '已标记',
-    title2: '打过标的条目按现行结论分档。高 / 中 / 低进风险工单池，无风险不进池',
+    title2: '打过标的条目按现行结论分档。高 / 中 / 低进风险工单池，无风险不进池。'
+      + '🔴「按标记人」与「全部有风险」是同一批行的两种看法，两个数不可相加',
     items: [
       ...RISK_LEVELS.map((lv) => ({
         key: `level:${lv}` as RailKey,
@@ -2302,17 +2499,27 @@ const railGroups = computed<RailGroup[]>(() => [
         title: `打标为${riskLevelText(lv)}、已进风险工单池的条目`,
       })),
       {
-        key: 'noRisk' as RailKey,
-        label: NO_RISK,
-        count: inGroup(reportStore.noRiskEntries).length,
-        title: '打标判为无风险、不进池的条目。它不是回收站 —— 这里是核查漏标误判的唯一去处，可逐条修正',
-      },
-      {
         key: 'level:all' as RailKey,
         label: '全部有风险',
         count: inGroup(reportStore.pooledEntries).length,
         sum: true,
+        sep: true,
         title: '高危 + 中危 + 低危 的合计，不含无风险 —— 无风险是漏斗的另一个出口，算进来等于把已经排除掉的那批重新当成风险',
+      },
+      {
+        key: 'level:tagger' as RailKey,
+        label: '按标记人',
+        // 选中期间数字跟着标记人收窄走：左栏标签写着一个数、表里躺着另一批，是本文件反复踩过的坑
+        count: inGroup(taggerRailBase.value).length,
+        title: '把「全部有风险」换成按标记人看：点进去在清单上方出一行标记人单选，可查某个人已标记的风险工单。'
+          + '分母与「全部有风险」同一个，只数高 / 中 / 低，不含无风险',
+      },
+      {
+        key: 'noRisk' as RailKey,
+        label: NO_RISK,
+        count: inGroup(reportStore.noRiskEntries).length,
+        sep: true,
+        title: '打标判为无风险、不进池的条目。它不是回收站 —— 这里是核查漏标误判的唯一去处，可逐条修正',
       },
     ],
   },
@@ -2354,8 +2561,9 @@ const railGroups = computed<RailGroup[]>(() => [
  */
 const railKey = computed<RailKey | null>(() => {
   if (listView.value === 'realtime') {
-    if (queueView.value === 'monitoring') return 'monitoring';
+    if (queueView.value === 'monitoring') return `untagged:${untaggedSlice.value}` as RailKey;
     if (queueView.value === 'noRisk') return 'noRisk';
+    if (tagLevelFilter.value === 'tagger') return 'level:tagger';
     return tagLevelFilter.value === 'all' ? 'level:all' : (`level:${tagLevelFilter.value}` as RailKey);
   }
   if (listView.value === 'report') return `pool:${reportView.value}` as RailKey;
@@ -2364,10 +2572,11 @@ const railKey = computed<RailKey | null>(() => {
 
 /** 点左栏：把真源那几个状态一次写齐，页面上每一个通往漏斗某一段的入口都走这里 */
 function setRail(key: RailKey) {
-  if (key === 'monitoring') {
+  if (key.startsWith('untagged:')) {
     setListView('realtime');
     setQueueView('monitoring');
     tagLevelFilter.value = 'all';
+    untaggedSlice.value = key.slice('untagged:'.length) as UntaggedSlice;
     return;
   }
   if (key === 'noRisk') {
@@ -2379,12 +2588,27 @@ function setRail(key: RailKey) {
   if (key.startsWith('level:')) {
     setListView('realtime');
     setQueueView('pooled');
-    tagLevelFilter.value = key.slice('level:'.length) as RiskLevel | 'all';
+    tagLevelFilter.value = key.slice('level:'.length) as RiskLevel | 'all' | 'tagger';
     return;
   }
   setListView('report');
   setReportView(key.slice('pool:'.length) as ReportView);
 }
+
+/**
+ * 离开「按标记人」就把标记人选择放掉。
+ *
+ * 【为什么它与工作组的处理不同】工作组横跨每一档不清空，因为组是工单的固有属性，
+ * 在哪一档都答得上、且每一档都摆着那一行 chip 让人看得见自己筛过。
+ * 标记人这一行**只在这一档出现**：带着它切走，人在别处看不到任何"已按谁收窄"的痕迹，
+ * 回来时又莫名其妙只剩几条。故这一维随档进随档出。
+ *
+ * 🔴 挂在 `railKey` 上而不是 `setRail` 里：页头 KPI 卡是直接写 `setQueueView` 的另一条入口，
+ * 只在 `setRail` 里清的话，从卡片切走的那条路会漏掉这一步。
+ */
+watch(railKey, (k) => {
+  if (k !== 'level:tagger') taggerFilter.value = 'all';
+});
 
 /**
  * 工作组 chip 那一排：底表是**当前档在除工作组之外的全部条件下的行**，
@@ -2721,7 +2945,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                 hot: reportStore.monitoringEntries.length > 0,
               }"
               title="自动识别捞进来、还没有人打标的条目 —— 打标是入池门槛，这一批一天不判就一天进不了池"
-              @click="setListView('realtime'); setQueueView('monitoring')"
+              @click="setRail('untagged:all')"
             >
               <span class="dm-k">待打标</span>
               <span class="dm-val"><span class="dm-v">{{ reportStore.monitoringEntries.length }}</span></span>
@@ -2731,7 +2955,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               class="dm-cell"
               :class="{ on: listView === 'realtime' && queueView === 'pooled' }"
               title="打标为低 / 中 / 高、已进风险工单池的条目。它是右栏「风险评估」里 A 线那一半，两个数不相加"
-              @click="setListView('realtime'); setQueueView('pooled')"
+              @click="setRail('level:all')"
             >
               <span class="dm-k">已入池</span>
               <span class="dm-val"><span class="dm-v">{{ reportStore.pooledEntries.length }}</span></span>
@@ -2741,7 +2965,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               class="dm-cell"
               :class="{ on: listView === 'realtime' && queueView === 'noRisk' }"
               title="打标判为无风险、不进池的条目。这一批不是回收站 —— 它是核查漏标误判的唯一去处，点进去可逐条修正"
-              @click="setListView('realtime'); setQueueView('noRisk')"
+              @click="setRail('noRisk')"
             >
               <span class="dm-k">已标记无风险</span>
               <span class="dm-val"><span class="dm-v">{{ reportStore.noRiskEntries.length }}</span></span>
@@ -2761,8 +2985,8 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               :key="s.source"
               type="button"
               class="dl-item"
-              :title="`${s.source} 捞进来、还没打标的 ${s.count} 条 —— 点击回到待打标视图`"
-              @click="setListView('realtime'); setQueueView('monitoring')"
+              :title="`${s.source} 捞进来、还没打标的 ${s.count} 条 —— 点击回到「全量未标记」`"
+              @click="setRail('untagged:all')"
             >
               {{ s.source }}<b>{{ s.count }}</b>
             </button>
@@ -2926,14 +3150,15 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
         <!--
           左栏。三组之间用组标题分段，每一档右侧的数字**就是点进去表里的行数**
           （已过当前工作组筛选）——标签写着一个数、表里躺着另一批，正是本文件反复踩过的坑。
-          🔴 「全部有风险」＝ 高 + 中 + 低，**不含无风险**，故它上面单加一条细分隔线：
-          汇总项与分档项摆成一模一样，人会把无风险也读进这个合计里。
+          🔴 组内再用细分隔线分段：**上面是切面、线下面是这一段的全量与另一个出口**——
+          「全量未标记」是它上面两档的超集，「全部有风险」＝ 高 + 中 + 低且**不含无风险**，
+          而「无风险」压根是漏斗的另一条出口。三者与分档项摆成一模一样的话，人会把数加起来。
         -->
         <nav class="funnel-rail" aria-label="风险漏斗">
           <div v-for="g in railGroups" :key="g.title" class="fr-group">
             <div class="fr-group-t" :title="g.title2">{{ g.title }}</div>
             <template v-for="it in g.items" :key="it.key">
-              <div v-if="it.sum" class="fr-sep" />
+              <div v-if="it.sep" class="fr-sep" />
               <button
                 type="button"
                 class="fr-item"
@@ -2958,10 +3183,10 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               </h3>
               <!--
                 旁路的两个入口必须在这里自报家门：它们与左栏那条链**分母不同**，
-                不说清楚的话，人从「重点关注 2」切到命中台账看到 22 条，只会以为漏斗漏了一批。
+                不说清楚的话，人从「全量未标记 2」切到命中台账看到 22 条，只会以为漏斗漏了一批。
               -->
               <div v-if="listView === 'scan'" class="fm-sub">
-                旁路 · 拿条件去扫存量工单产出新命中；勾选并入清单后，由自动识别把它带进「重点关注」
+                旁路 · 拿条件去扫存量工单产出新命中；勾选并入清单后，由自动识别把它带进「待标记」
               </div>
               <div v-else-if="listView === 'judged'" class="fm-sub">
                 旁路 · 分母是风险词命中记录（不是工单、也不是监控条目），供事后点查与核实，词表准确率由这里回填
@@ -3001,7 +3226,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                 等于在屏幕上留一个点开什么也做不了的入口。
               -->
               <!--
-                手动筛查退成**动作按钮**：它不是一份平行的清单，而是"往重点关注里补货"的手段。
+                手动筛查退成**动作按钮**：它不是一份平行的清单，而是"往待标记里补货"的手段。
                 点开的仍是原来那套九维筛查条件面板，能力一格没动。
               -->
               <button
@@ -3037,7 +3262,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
             工作组筛选（单选）。它是**另一层**：左栏选的是"链上哪一段"，这一行选的是
             "这一段里哪一个组的活"。故摆成单独一行、且横跨左栏每一档不清空 ——
             组是工单的固有属性，不随条目走到哪一段而变；切档就清掉的话，
-            人在「重点关注 · 投诉风险组」筛完切到「高危」会看到全部组，只会以为筛选失灵。
+            人在「全量未标记 · 投诉风险组」筛完切到「高危」会看到全部组，只会以为筛选失灵。
             🔴 各枚的数字取的是**除工作组之外**的全部条件下的行数（见 groupChips），
             故选中一组之后其余几枚不归零，人还看得出该切到哪一组。
           -->
@@ -3065,10 +3290,49 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
             </button>
           </div>
 
+          <!--
+            标记人筛选（单选）。**只在「按标记人」那一档出现**：它是那一档的全部内容 ——
+            左栏点的是"换按标记人看"，这一行才是"看谁的"。
+            🔴 各枚的数字是**除标记人之外**的全部条件下的行数（与工作组那一排同一条道理），
+            故选中某个人之后其余几枚不归零，人还看得出该切到谁。
+            分母只含高 / 中 / 低，不含无风险 —— 与「全部有风险」同一个分母。
+          -->
+          <div
+            v-if="listView === 'realtime' && queueView === 'pooled' && tagLevelFilter === 'tagger'"
+            class="section-filters grade-filters report-source-filters"
+          >
+            <span class="rf-k">标记人</span>
+            <button
+              type="button"
+              class="gf-chip"
+              :class="{ active: taggerFilter === 'all' }"
+              title="不按标记人收窄"
+              @click="taggerFilter = 'all'"
+            >
+              全部标记人<span class="gf-num">{{ taggerChips.total }}</span>
+            </button>
+            <button
+              v-for="t in taggerChips.rows"
+              :key="t.tagger"
+              type="button"
+              class="gf-chip"
+              :class="{ active: taggerFilter === t.tagger }"
+              :title="t.tagger === UNSIGNED_TAGGER
+                ? '条目上没有留下打标人 —— 不吞掉，否则各人之和会小于「全部有风险」'
+                : `只看「${t.tagger}」已标记的风险工单`"
+              @click="taggerFilter = t.tagger"
+            >
+              {{ t.tagger }}<span class="gf-num">{{ t.count }}</span>
+            </button>
+          </div>
+
       <!-- 实时监控 · 空态：把当前视图讲出来，否则"这里没东西"会被读成"系统没在扫" -->
       <div v-if="listView === 'realtime' && !queueRows.length" class="ob-empty">
         <!-- 收窄条件必须在空态里复述，否则"筛空了"会被读成"没有了" -->
         <template v-if="groupFilter !== 'all'">「{{ groupFilter }}」在这一档下没有条目 —— 点「全部工作组」看全部</template>
+        <template v-else-if="taggerFilter !== 'all'">「{{ taggerFilter }}」名下没有已标记的风险工单 —— 点「全部标记人」看全部</template>
+        <template v-else-if="queueView === 'monitoring' && untaggedSlice === 'kw'">当前没有预警词命中的待打标条目 —— 点「全量未标记」看另外两路</template>
+        <template v-else-if="queueView === 'monitoring' && untaggedSlice === 'urgent'">当前没有重要紧急的待打标条目 —— 点「全量未标记」看另外两路</template>
         <template v-else-if="queueView === 'monitoring'">当前没有待打标的监控条目 —— 自动识别捞到新条目会落在这里</template>
         <template v-else-if="queueView === 'noRisk'">当前没有被判为无风险的条目</template>
         <template v-else-if="tagLevelText">当前没有打标为{{ tagLevelText }}的条目</template>
