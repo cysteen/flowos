@@ -175,6 +175,16 @@ function statusTone(s: ReportStatus): string {
   return STATUS_TONE[s] ?? 'gray';
 }
 
+/**
+ * 提交时刻列去掉年份（与工单页报备卡片的 formatShortAt 同形）：
+ * 这条队列的时间尺度是**小时**，评估时限才 2 小时，年份一格 12 列的表里挤不起。
+ * 完整时刻挂 title，鼠标停一下就有。
+ */
+function shortAt(at: string): string {
+  const m = at.match(/(\d{2}-\d{2})\s+(\d{2}:\d{2})/);
+  return m ? `${m[1]} ${m[2]}` : at;
+}
+
 /** 等待时长与工单页横幅同源（store 内含 60s 心跳），不本地各算一份 */
 function waitedText(r: RiskReport): string {
   if (!isOpen(r)) return '—';
@@ -358,7 +368,7 @@ function release(r: RiskReport) {
               <span v-else class="muted">—</span>
             </div>
             <div class="cell">
-              <span class="plain-text">{{ r.at }}</span>
+              <span class="plain-text" :title="r.at">{{ shortAt(r.at) }}</span>
             </div>
             <div class="cell cell-col">
               <span class="waited" :class="{ 'is-overdue': isOverdue(r) }">{{ waitedText(r) }}</span>
@@ -367,7 +377,8 @@ function release(r: RiskReport) {
             </div>
             <div class="cell">
               <span v-if="r.assignee" class="plain-text">{{ r.assignee }}</span>
-              <span v-else class="muted">未领取</span>
+              <!-- 只有还在队里的才说「未领取」：已撤回的那条谁也不会再去领，写它等于挂一个假的待办 -->
+              <span v-else class="muted">{{ r.status === '待分派' ? '未领取' : '—' }}</span>
             </div>
             <div class="cell">
               <span class="state" :class="`tone-${statusTone(r.status)}`">{{ statusText(r.status) }}</span>
@@ -514,12 +525,17 @@ function release(r: RiskReport) {
 }
 .rrp-grid {
   display: grid;
+  /*
+   * 两条弹性列（工单标题 / 场景描述）用 minmax + fr：宽屏时把富余宽度吃掉，
+   * 窄屏时缩到下限、整表横向滚动。
+   * ⚠️ 容器**不能**写 `width: max-content` —— 那会让 fr 按内容最大宽度解算，
+   * 场景描述一长，整张表就撑到屏外、把「操作」推得看不见（折叠也随之失效）。
+   */
   grid-template-columns:
-    150px minmax(160px, 1.2fr) 96px 96px 96px minmax(240px, 2fr)
-    140px 132px 108px 88px 88px 104px;
+    140px minmax(120px, 0.8fr) 80px 92px 88px minmax(190px, 1fr)
+    96px 92px 88px 76px 76px 84px;
   column-gap: 0;
-  width: max-content;
-  min-width: 100%;
+  width: 100%;
   padding: 0 16px;
   box-sizing: border-box;
 }
