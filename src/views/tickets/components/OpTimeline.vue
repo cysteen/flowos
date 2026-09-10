@@ -7,7 +7,7 @@ import {
   PauseCircleOutlined, SwapOutlined, PhoneOutlined, MessageOutlined,
   PaperClipOutlined, SnippetsOutlined, CommentOutlined, BellOutlined,
   CheckCircleOutlined, StarFilled, PlayCircleOutlined, DownloadOutlined,
-  ThunderboltOutlined, HistoryOutlined, ClockCircleOutlined,
+  ThunderboltOutlined, HistoryOutlined, ClockCircleOutlined, TeamOutlined,
 } from '@ant-design/icons-vue';
 import {
   CATEGORY_META, ROLE_BADGE, softBg,
@@ -37,7 +37,13 @@ const ICON: Record<TlAction, unknown> = {
   dunning: BellOutlined,        // 催办
   resolved: CheckCircleOutlined,// 已解决
   praise: StarFilled,           // 好评
+  collab: TeamOutlined,         // 协同处理（第八类「风险结论」，《【720】》§5.1 定的双人图标）
 };
+/**
+ * 图例 ＝ `CATEGORY_META` 的键序，**八格**（《【720】》§5.2）。
+ * 【为什么从 META 派生而不是另列一张表】图例本身就是筛选器，少一格就等于那一类的履历
+ * 在页面上永远筛不出来；派生之后"加了一类却忘了加图例"这件事从结构上不可能发生。
+ */
 const LEGEND = (Object.entries(CATEGORY_META) as [TlCategory, (typeof CATEGORY_META)[TlCategory]][])
   .map(([key, meta]) => ({ key, ...meta }));
 

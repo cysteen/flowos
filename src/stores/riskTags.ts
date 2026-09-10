@@ -55,7 +55,12 @@ export interface TicketRiskVerification {
   confirmedCount: number;
   falseCount: number;
   pendingCount: number;
-  /** 工单级风险等级 ＝ max(已核实且成立的命中等级)；无成立命中时为 null */
+  /**
+   * 工单级风险等级，取 `ticketGradeOf` 的**新口径**＝ max(已打标条目的等级, 已核实且成立的命中等级)。
+   * ⚠️ 它比本对象其余几个数**宽**：上面三个计数只数命中记录（词表准确率的分母，915 §8），
+   * 这一格还含 A 线的打标结论。故会出现"命中全部待核实、本单却已有高危等级"的行 ——
+   * 那正是打标给的，不是命中给的。
+   */
   grade: RiskLevel | null;
   /**
    * 由核实结论**推导**出的工单风险标记：
@@ -76,6 +81,45 @@ export const useRiskTagStore = defineStore('riskTags', () => {
    * 留在组件内的话，工单页算工单级等级时会漏掉筛查并入的那几条，两边算出两个等级。
    */
   const adoptedHits = ref<RiskHit[]>([]);
+
+  /**
+   * **A 线打标写进来的工单级等级**（《【930】》§6.1，2026-09-10 拍板）。
+   * 两层 key ＝ 工单号 → 条目 id → 等级；打为「无风险」的条目不落在这里（那一档没有等级）。
+   *
+   * 【为什么要有这么一份，而不是让 `ticketGradeOf` 直接去读 A 线的条目】
+   * A 线（`stores/riskQueue.ts`）**已经 import 了本 store**（打标历史走 `appendEntry`）。
+   * 反过来再让本 store import 它，两个模块就成了一个环。故方向不变：
+   * **打标那一侧往这里写**（`stores/riskQueue.ts` 的 `writeTicketGrade`），本 store 只读自己这一份。
+   * 这也正是「打标 → 工单侧」那个此前缺失的写入口本身。
+   *
+   * 【为什么按条目 id 分格而不是直接存一个等级】改判要能生效：同一条目从「高」改判为「低」，
+   * 那一格覆盖即可；若只存一个标量，"这张单当前有哪几条打标结论"就没地方记，
+   * 多条目的单改判一条会把另一条的结论一并抹掉。取 max 在读的时候做。
+   *
+   * 【为什么纯内存】与打标历史（`entries`）同一个理由：它是由条目派生的投影，
+   * 条目本身跟着 `stores/riskQueue.ts` 那份缓存走，刷新后由那一侧重新灌一遍（见 `writeTicketGrade`）。
+   */
+  const tagGrades = ref<Record<string, Record<string, RiskLevel>>>({});
+
+  /**
+   * 打标 → 工单侧的写入口。`level` 为 null（打为「无风险」）时把那一格**清掉**：
+   * 「无风险」不是一档等级，留着旧值会让改判为无风险的条目仍在给工单级贡献一个等级。
+   */
+  function setTicketTagGrade(ticketNo: string, entryId: string, level: RiskLevel | null) {
+    const cur = { ...(tagGrades.value[ticketNo] ?? {}) };
+    if (level) cur[entryId] = level;
+    else delete cur[entryId];
+    tagGrades.value = { ...tagGrades.value, [ticketNo]: cur };
+  }
+
+  /** 本单**已打标条目**贡献的最高等级；一条都没打过标时为 null */
+  function tagGradeOf(ticketNo: string): RiskLevel | null {
+    let best: RiskLevel | null = null;
+    for (const g of Object.values(tagGrades.value[ticketNo] ?? {})) {
+      if (!best || GRADE_ORDER[g] < GRADE_ORDER[best]) best = g;
+    }
+    return best;
+  }
 
   /** 全量命中 ＝ 词表实时命中 + 已并入的筛查命中。范围恒为全中心，与风险监控页一致 */
   const allHits = computed<RiskHit[]>(() => {
@@ -169,15 +213,26 @@ export const useRiskTagStore = defineStore('riskTags', () => {
   }
 
   /**
-   * 工单级风险等级 ＝ max(该单已核实且判定为「成立」的命中等级)（PRD §4.9 / 规则 13a）。
+   * 工单级风险等级 ＝ **max(该单已打标条目的等级, 该单已核实且成立的命中等级)**
+   * （《【930】》§6.1，2026-09-10 拍板；命中那一半的原口径见 915 §4.9 / 规则 13a）。
    *
-   * 【为什么取 max 而不是最新一条】后到的低等级命中不该在没有任何人做出降级判断的情况下
+   * 🔴 **分母本轮放宽了**：旧口径只数**风险词命中记录**，于是投诉单 P0·P1 与重要紧急单
+   * 这两类来源哪怕被打成「高」，工单级等级仍是空的 —— 而这两类根本不产生命中记录，
+   * 它们的等级除了打标之外没有第二个来源。放宽之后"打标为低/中/高回写工单级风险等级"
+   * 这条口径对三类来源一视同仁，不再只有预警词那一路作数。
+   *
+   * ⚠️ **《【915】》§8 的词表准确率一个字都不动**：那边的分子分母都取命中记录的
+   * `verdict`（成立 / 误报），走的是 `verdictOf` 与 `ticketVerificationOf` 的三个计数，
+   * 与本函数不共用任何一条判据。放宽的只是"这张单有多危险"，不是"规则捞得准不准"。
+   *
+   * 【为什么取 max 而不是最新一条】后到的低等级不该在没有任何人做出降级判断的情况下
    * 把这张单变回低危——等级降下来了，风险没有降。取 max 即棘轮。
    * 【为什么误报与未核实不参与】误报的结论恰恰是"这里没有风险"；未核实的还没有人的判断。
-   * 【为什么不落库】纯派生。落成字段就要维护它与命中记录的一致性，每次核实、每次修正都会改它。
+   * 同理，打为「无风险」的条目不贡献等级（它在 `tagGrades` 里那一格已被清掉）。
+   * 【为什么不落库】纯派生。落成字段就要维护它与命中记录、打标结论的一致性，每次改判都会改它。
    */
   function ticketGradeOf(ticketNo: string): RiskLevel | null {
-    let best: RiskLevel | null = null;
+    let best: RiskLevel | null = tagGradeOf(ticketNo);
     for (const h of hitsOfTicket(ticketNo)) {
       if (verdictOf(h) !== '成立') continue;
       const g = latestEntryOf(h)?.level;
@@ -229,6 +284,9 @@ export const useRiskTagStore = defineStore('riskTags', () => {
   return {
     entries,
     adoptedHits,
+    tagGrades,
+    setTicketTagGrade,
+    tagGradeOf,
     allHits,
     seedEntryOf,
     historyOf,

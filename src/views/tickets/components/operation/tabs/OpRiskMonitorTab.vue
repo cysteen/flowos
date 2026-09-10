@@ -41,7 +41,8 @@ import {
 } from '@/stores/riskShared';
 import OpActionModal from '../OpActionModal.vue';
 import { useUserStore } from '@/stores/user';
-import { resolveTicketTypeFor, riskCollabOf } from '@/views/tickets/composables/opActions';
+import { useRiskCollabStore } from '@/stores/riskCollab';
+import { resolveTicketTypeFor } from '@/views/tickets/composables/opActions';
 import {
   adviceLabelOf,
   advicePlaceholderOf,
@@ -66,6 +67,7 @@ const emit = defineEmits<{
 const user = useUserStore();
 const reportStore = useRiskReportStore();
 const queue = useRiskQueueStore();
+const collab = useRiskCollabStore();
 const router = useRouter();
 const {
   ASSESS_DECISIONS,
@@ -374,9 +376,14 @@ const tagHistory = computed(() => (tagEntry.value ? queue.tagHistoryOf(tagEntry.
  * **投诉单** —— 客诉专员在工单处理页自行打标；
  * **非投诉单** —— 处理人一律不能打，只靠命中规则自动打或审核人员在后台打。
  * 判据里的角色只有一个，因为本页只可能站着处理侧或客诉专员：投诉督导的打标入口在风险监控页。
+ *
+ * 🔴 **不再要求"本单已有实时监控条目"**（2026-09-10 收口）：一张 P0 投诉单按 §5A.1
+ * 本来就该被自动捞进监控，而条目只在风险监控页那一侧生成 —— 没进过监控的单在这里
+ * 点不动打标，等于这条口径在那批单上从来没生效过。条目由 store 在打标时按三类判据现补，
+ * 补不出来（不在三类范围内）时由 `confirmTag` 如实报出原因，见 `riskQueue.ensureEntryFor`。
  */
 const canTag = computed(
-  () => isComplaintTicket.value && user.roleKey === 'complaint-handler' && !!tagEntry.value,
+  () => isComplaintTicket.value && user.roleKey === 'complaint-handler',
 );
 
 const tagResults = RISK_TAG_RESULTS;
@@ -407,7 +414,9 @@ function nowStamp(): string {
 }
 
 /**
- * 提交打标。落 store 走 `recordTagFor`（按单号找条目，状态机的唯一入口）。
+ * 提交打标。落 store 走 `recordTagFor`（按单号找条目，状态机的唯一入口；
+ * 本单没进过实时监控时由它按三类判据现补一条，见 `riskQueue.ensureEntryFor`）。
+ * 打为低 / 中 / 高时 store 同时**回写工单级风险等级**（§6.1，取 max、只升不降）。
  *
  * 🔴 **本轮不发通知**（2026-09-10 业务口径变更）：《【930】》§5A.3 定的 `risk.tagged`
  * 「打标结果通知当前处理人」**本轮不做** —— 现有消息体系要先整体重新梳理，期间不加新事件。
@@ -421,7 +430,7 @@ function confirmTag() {
   if (isAmend.value && !tagAmendReason.value.trim()) return;
 
   const at = nowStamp();
-  const ok = queue.recordTagFor(props.ticketNo, {
+  const res = queue.recordTagFor(props.ticketNo, {
     result: tagResult.value,
     note: tagNote.value.trim(),
     by: user.name || '当前用户',
@@ -429,8 +438,10 @@ function confirmTag() {
     at,
     ...(isAmend.value ? { amendReason: tagAmendReason.value.trim() } : {}),
   });
-  if (!ok) {
-    message.warning('本单没有实时监控条目，无法在工单页打标');
+  if (!res.ok) {
+    // 原因由 store 给：挡住它的可能是"不在三类自动识别范围内"，也可能是"这张单查不到"，
+    // 两者要人做的事完全不同，不能一律说"本单没有实时监控条目"
+    message.warning(res.reason ?? '本单无法在工单页打标');
     return;
   }
 
@@ -442,7 +453,7 @@ function confirmTag() {
 /* ==================== 协同记录（《【930】》§3.3） ==================== */
 
 /** 本单历次协同处理，时间倒序。同一张投诉单可多次协同，每次各一条 */
-const collabRecords = computed(() => riskCollabOf(props.ticketNo));
+const collabRecords = computed(() => collab.recordsOf(props.ticketNo));
 const collabSectionBadge = computed(() =>
   collabRecords.value.length ? String(collabRecords.value.length) : undefined,
 );
@@ -778,10 +789,15 @@ const collabSectionBadge = computed(() =>
             {{ h.level ? riskLevelText(h.level) : '无风险' }} · {{ h.by }} · {{ formatShortAt(h.at) }}
           </span>
         </div>
+        <!--
+          ⚠️ 这里曾有一句「本单在池内待处置期间不另收风险报备，出结论后可再发起」。
+          **已删**（2026-09-10 收口）：报备的门控收成只看 B 线之后，A 线条目在不在池
+          与二线能不能发起报备**再无关系** —— 那句话现在是错的，留着会让二线以为
+          按钮点不动，而它其实是亮的。
+        -->
         <p class="rt-foot">
-          打标结论不改工单状态与处理人；改判独立留一条历史、不覆盖首次那条。<template
-            v-if="tagEntry && isPooledStatus(tagEntry.status) && !isComplaintTicket"
-          >本单在池内待处置期间不另收风险报备，出结论后可再发起。</template>
+          打标结论不改工单状态与处理人；改判独立留一条历史、不覆盖首次那条。
+          打为低 / 中 / 高时同时回写工单级风险等级（取 max、只升不降）。
         </p>
       </section>
 

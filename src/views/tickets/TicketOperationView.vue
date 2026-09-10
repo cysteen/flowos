@@ -34,7 +34,7 @@ import { useRiskQueueStore } from '@/stores/riskQueue';
 import { REPORT_ASSESS_LIMIT_MIN, isOpenStatus, isPooledStatus } from '@/stores/riskShared';
 import { RISK_FLAG_OPTIONS } from './types/operation';
 import { poolStatusText } from './components/operation/OpRiskDecision';
-import { riskAdviceMarksOf, riskCollabOf } from './composables/opActions';
+import { useRiskCollabStore } from '@/stores/riskCollab';
 import { RISK_LEVELS, riskLevelText } from '@/config/risk';
 import { pullbackOnCsEvent, headerActionsByRole, type TicketStatus } from './types/ticket';
 import { buildChildTicketPrefill, buildReopenTicketPrefill } from './composables/childTicketPrefill';
@@ -136,6 +136,8 @@ const riskTags = useRiskTagStore();
 const riskReports = useRiskReportStore();
 /** A 线（自动识别 → 实时监控 → 打标 → 风险工单池）。工单页要读它的打标结论与在池条目 */
 const riskQueue = useRiskQueueStore();
+/** 协同处理记录（建议标记 + 履历投影都从它来），见 `stores/riskCollab.ts` */
+const riskCollab = useRiskCollabStore();
 const riskMonitorVerify = computed(() => riskTags.ticketVerificationOf(ticketNo.value));
 
 /**
@@ -159,11 +161,27 @@ function levelRank(l: ProcessFormDraft['riskLevel'] | null | undefined): number 
  */
 const riskConclusion = computed(() => {
   const verify = riskMonitorVerify.value;
-  if (!verify) return null;
+  /*
+   * 🔴 **等级单独取一次，不从 `verify` 里拿**（2026-09-10 收口）：`ticketVerificationOf`
+   * 在**本单没有任何命中记录时返回 null** —— 那是它的本意（"没命中"不等于"没风险"，
+   * 监控对这单没话可说）。但工单级等级的新口径含**打标结论**，而投诉单 P0·P1 与
+   * 重要紧急单这两类根本不产生命中记录：走 `verify` 这条路，它们打了标也永远回写不进工单。
+   * 故等级直接问 `ticketGradeOf`（它自己已经把两个来源取过 max 了）。
+   */
+  const grade = riskTags.ticketGradeOf(ticketNo.value);
+  if (!verify && !grade) return null;
+  /*
+   * 没有命中结论、却已有打标等级时，「是否有风险」按**打标本身**推导为「有风险」。
+   * 【为什么必须推】风险等级字段只在 riskFlag ＝「有风险」时才渲染、才允许写入
+   * （见下方 patch.riskLevel 那一段）；不推的话等级有值也落不进去，⑥ 这条口径等于没做。
+   * 【为什么这么推是对的】打标四选一里"低 / 中 / 高"三档的含义就是**人看过并判定有风险**，
+   * 与 `ticketVerificationOf` 把"有任一成立命中"推成「有风险」是同一个道理。
+   * 打为「无风险」的条目不贡献等级（`tagGrades` 那一格已清），故走不到这里。
+   */
   return {
     ticketNo: ticketNo.value,
-    flag: verify.flag ?? null,
-    grade: verify.grade ?? null,
+    flag: verify?.flag ?? (grade ? '有风险' as const : null),
+    grade,
   };
 });
 
@@ -213,20 +231,31 @@ const showRiskReport = computed(() => {
 });
 
 /**
- * 报备形态的置灰条件（底栏提示原文「本单已有报备待评估」）。
+ * 报备形态的置灰条件。
  * **只对报备形态成立**：评估与协同两形态的条件不成立时按钮直接不出（上面那个 computed 已收），
  * 在这里返回 true 会让它们顶着一条说的是别的事的提示置灰在那儿。
  *
- * 🔴 **判据取 store 的 `canSubmitFor`，不取上面那个 B 线专用的 `riskReportPendingItem`**。
- * 基线 ※29 的门控原话是"同一张单不允许两条**报备**同时在队"，A 线进池的条目不是报备、
- * 按口径不该占这个名额；但 `riskReports.submit` 现在**仍按两条线合并判**（那个 store 自陈
- * 是拆线未完的过渡态）。按口径放开按钮的话，二线点得进弹窗、填完提交却被 store 静默驳回 ——
- * 一个填完才失败的入口比一个置灰的入口糟得多。故按钮跟着 store 的实际判据走，
- * 口径与实现的这道缝记在报告里，等 store 把 `canSubmitFor` 收成只看 B 线之后自动对齐。
+ * 🔴 **判据与 `riskReportPendingItem` 已经对齐**（2026-09-10 收口）：`riskReports.canSubmitFor`
+ * 本轮收成只看 B 线，与这里那个 B 线专用的在队报备是同一批条目了。此前两者分家 ——
+ * 按钮跟着合并口径的 store 走、横幅跟着 B 线走，于是一张挂着 A 线在池条目的单子
+ * 会顶着「本单已有报备待评估」置灰，而 Tab 里一条报备都找不到。那道缝已经消掉。
  */
 const riskReportPending = computed(
   () => riskActionForm.value === 'report' && !riskReports.canSubmitFor(ticketNo.value),
 );
+
+/**
+ * 置灰的**原因原文**，交给底栏呈现（底栏自己不写死，见 OpActionBar 的 `riskForbiddenTip`）。
+ * 分两态写：**待领取**＝还没人接，等的是队列；**已领取**＝活在某个客诉专员手上，该找的是这个人。
+ * 一句笼统的「已有报备待评估」把这两件事说成一件，二线不知道该等还是该催、催谁。
+ */
+const riskForbiddenTip = computed(() => {
+  const r = riskReportPendingItem.value;
+  if (!r) return '';
+  return r.status === '评估中'
+    ? `本单报备已由 ${r.assignee || '客诉专员'} 领取，评估中，出结论后可再发起`
+    : '本单已有报备待评估，出结论后可再发起';
+});
 
 function onRiskReport(payload: {
   reason: string;
@@ -248,14 +277,9 @@ function onRiskReport(payload: {
     at,
   });
   if (!created) {
-    // 兜底提示按**实际挡住它的那一条**分开写：挡住的可能是本单已有的报备（B 线），
-    // 也可能是一条还在风险工单池里等处置的自动条目（A 线）。一句"已有报备待评估"
-    // 会让二线去 Tab 里找那条根本不存在的报备。
-    message.warning(
-      riskReportPendingItem.value
-        ? '本单已有报备待评估'
-        : '本单已有一条风险条目在风险工单池待处置，出结论后可再发起报备',
-    );
+    // 走到这里只剩一种可能：本单已有一条**在队报备**（门控收成只看 B 线之后，
+    // A 线的在池条目不再挡这条路）。提示与底栏置灰用同一句，两处不各说一套
+    message.warning(riskForbiddenTip.value || '本单已有报备待评估，出结论后可再发起');
     return;
   }
   const limitText = REPORT_ASSESS_LIMIT_MIN % 60 === 0
@@ -323,7 +347,9 @@ const riskTagBanner = computed(() => {
 });
 
 /** 工单上的「建议标记」（《【930】》§3.3）：历次协同处理勾选项的并集，人不直接摘 */
-const riskAdviceMarks = computed(() => (user.role.frontline ? [] : riskAdviceMarksOf(ticketNo.value)));
+const riskAdviceMarks = computed(
+  () => (user.role.frontline ? [] : riskCollab.marksOf(ticketNo.value)),
+);
 
 /**
  * 「风险报备」Tab 上的状态圆点。三件事都往这一枚点上收 ——
@@ -347,20 +373,22 @@ const processTabDots = computed<Partial<Record<ProcessTabKey, 'warn' | 'danger'>
  *
  * 【幂等】按"本单协同记录条数 vs 履历里已有的协同条数"补差额，投影多少次结果都一样。
  *
- * ⚠️ **落的是 `handle`（工单处理）类，不是《【720】》定的第八类「风险结论」**：第八类要往
- * `TlCategory` 里加一个 `risk`（玫红 #DB2777）并给图例补一格，那两处都在 `types/ticketDetail.ts`
- * 与 `OpTimeline.vue` 上，本轮不动它们。行文按《【930】》§6.3 的模板写，接上第八类时只换类别。
+ * 🔴 **落的是第八类 `risk`（风险结论）**（《【720】》§3.2 / §4.4 事件③，2026-09-10 收口）。
+ * 此前它借 `handle`（工单处理）落 —— 那一类装的是**坐席在自己这张单上的办理留痕**，
+ * 而协同处理是**另一个角色对这张单下的判断**。混在一类里，质检点「工单处理」会同时捞出
+ * 坐席填的字段变更与客诉专员给的意见，而 §2.3 V12 要的恰恰是"点风险结论，一屏看全"。
+ * 图标取 `collab`（双人，§5.1 为协同处理指定的那一枚）。
  */
 function syncCollabTimeline() {
-  const records = riskCollabOf(ticketNo.value).slice().reverse(); // 正序补，履历本身按时间正序存
+  const records = riskCollab.recordsOf(ticketNo.value).slice().reverse(); // 正序补，履历本身按时间正序存
   const already = timeline.value.filter((e) => e.how === '协同处理').length;
   records.slice(already).forEach((r) => {
     const advice = r.advices.length
       ? r.advices.map((a) => (a === '其他' && r.otherAdvice ? `其他（${r.otherAdvice}）` : a)).join('、')
       : '未勾选建议事项';
     pushEntry(timeline.value, {
-      category: 'handle',
-      action: 'handle',
+      category: 'risk',
+      action: 'collab',
       who: r.by,
       role: mapUserRole('complaint-handler'),
       how: '协同处理',
@@ -370,7 +398,7 @@ function syncCollabTimeline() {
   });
 }
 watch(
-  [ticketNo, () => riskCollabOf(ticketNo.value).length],
+  [ticketNo, () => riskCollab.countOf(ticketNo.value)],
   () => syncCollabTimeline(),
   { immediate: true },
 );
@@ -1519,6 +1547,7 @@ watch(
       :at-tech-support="atTechSupport"
       :show-risk-report="showRiskReport"
       :risk-report-pending="riskReportPending"
+      :risk-forbidden-tip="riskForbiddenTip"
       @action="onAction"
       @cancel="cancelModalOpen = true"
       @withdraw="confirmWithdraw"

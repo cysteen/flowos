@@ -1,6 +1,7 @@
 import { computed } from 'vue';
 import { defineStore } from 'pinia';
 import { useNotifyLogStore } from '@/stores/notifyLog';
+import { useRiskCollabStore, type RiskAdviceItem } from '@/stores/riskCollab';
 import { useRiskQueueStore, type RiskTagInput } from '@/stores/riskQueue';
 import { useRiskReportStore, type ReportReason, type RiskCategory } from '@/stores/riskReports';
 import {
@@ -9,6 +10,7 @@ import {
   assigneeReceiver,
   asSentence,
   isOpenStatus,
+  isPooledStatus,
   normalizeDecision,
   reasonLine,
   reporterReceiver,
@@ -51,9 +53,20 @@ import {
 
 export type { RiskPoolItem };
 
+/** 一次协同处理要填的东西。`otherAdvice` 只在勾了「其他」时有（条件必填，由调用方收校验） */
+export interface CoordinateInput {
+  opinion: string;
+  advices: RiskAdviceItem[];
+  otherAdvice?: string;
+  by: string;
+  byRole: string;
+  at: string;
+}
+
 export const useRiskPoolStore = defineStore('riskPool', () => {
   const queue = useRiskQueueStore();
   const reportStore = useRiskReportStore();
+  const collabStore = useRiskCollabStore();
   const notifyLog = useNotifyLogStore();
   const clock = useRiskClock();
 
@@ -157,9 +170,13 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
     () => openQueue.value.filter((r) => goesToAssess(r) && isOverdue(r)).length,
   );
 
-  /** 结论时刻：走评估的取评估时刻，走核实打标的取核实时刻。两路共用一根时间轴排序 */
+  /**
+   * 结论时刻：走评估的取评估时刻，走协同的取协同时刻，走核实打标的取核实时刻。
+   * 三路共用一根时间轴排序 —— 已评估清单是按"什么时候出的结论"倒序，
+   * 协同处理同样是一次结论，不能因为它没有 `assessment` 就掉到列表末尾。
+   */
   function concludedAt(r: RiskPoolItem) {
-    return r.assessment?.at ?? r.verify?.at ?? '';
+    return r.assessment?.at ?? r.coordination?.at ?? r.verify?.at ?? '';
   }
 
   /**
@@ -173,7 +190,7 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
    */
   const assessedList = computed(() =>
     items.value
-      .filter((r) => r.status === '已评估' && (r.assessment || r.verify))
+      .filter((r) => r.status === '已评估' && (r.assessment || r.coordination || r.verify))
       .slice()
       .sort((a, b) => concludedAt(b).localeCompare(concludedAt(a))),
   );
@@ -276,6 +293,62 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
     });
   }
 
+  /**
+   * **协同处理**（基线 ※29 / 《【930】》§5C）—— 池内**投诉单**这一路的结论动作，
+   * 与非投诉单那一路的 `assess` 并列。
+   *
+   * 【为什么不复用 `assess`】`ReportAssessment` 只装得下「决策 + 一段说明」，
+   * 而协同要装的是「评估意见 + 多选建议事项」，且**没有决策那一格**（投诉单已经是投诉单了，
+   * 不存在升不升级这个问题）。硬塞进去就得给它编一个 decision，那个值会当场进
+   * B4「今日决策」的分布 —— 凭空多出来的一格会把决策分布做坏。故另开一个动作、另开一个字段。
+   *
+   * 【发生什么】
+   *   ① 往 `stores/riskCollab.ts` 追加一条记录（历次全留，工单页的协同记录块读它）；
+   *   ② 条目上写下**最近一次**协同结论（池行要答"这条什么时候出的结论"）；
+   *   ③ **首次协同把条目转「已结论」**（存储值「已评估」，界面词见 `OpRiskDecision.ts`）。
+   *
+   * 🔴 **只有第一次转状态**：协同不是一次性动作，同一张投诉单可以协同多次
+   * （§5C：每次各落一条履历）。但"这条还没有结论"只成立到第一次协同为止 ——
+   * 不转的话它会一直躺在待处理视图里，B1「待评估总数」与「超时未评」把一批
+   * 已经给过意见的条目继续数着、继续标红，而池内条数正是"当前有多少风险单没人处置"这个数本身。
+   * 第二次之后条目已经在「已评估」，本函数只追加记录、不再动状态。
+   *
+   * 【为什么顺手补 `assignee`】「已结论」的行要答得上"谁给的结论"。协同不必先领取
+   * （投诉单那一路没有领取这一步，按钮直接出在工单页底栏），没人认领时承办人一栏会是空的。
+   * 已经有人认领的**不覆盖**——那是别人手上的活，协同的人不该把它记到自己名下。
+   *
+   * 🔴 **工单状态、处理人、风险等级一格不动**（§5C.3「不发生的」），本函数不碰工单侧。
+   * 🔴 **本轮不发通知**：`risk.coordinated` 本轮不做，见 `stores/riskCollab.ts` 文件头。
+   */
+  function coordinate(id: string, input: CoordinateInput): boolean {
+    const r = findById(id);
+    // 只有进了池的条目谈得上协同：还在实时监控（没打标）与已标记无风险的都不在池里
+    if (!r || !isPooledStatus(r.status)) return false;
+
+    collabStore.record({
+      ticketNo: r.ticketNo,
+      opinion: input.opinion,
+      advices: [...input.advices],
+      ...(input.otherAdvice ? { otherAdvice: input.otherAdvice } : {}),
+      by: input.by,
+      byRole: input.byRole,
+      at: input.at,
+    });
+    r.coordination = {
+      opinion: input.opinion,
+      advices: [...input.advices],
+      ...(input.otherAdvice ? { otherAdvice: input.otherAdvice } : {}),
+      by: input.by,
+      byRole: input.byRole,
+      at: input.at,
+    };
+    if (isOpen(r)) {
+      r.status = '已评估';
+      if (!r.assignee) r.assignee = input.by;
+    }
+    return true;
+  }
+
   /*
    * ⚠️ **`risk.report.overdue`（超时未评）本轮没有落点**，是缺口不是遗漏。
    *
@@ -298,7 +371,10 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
 
   /* ---------------- 转交给两条线自己的动作与读口 ---------------- */
 
-  /** 二线报备提交（B 线）。同单在队门控由 `riskReports.canSubmitFor` 收，含 A 线条目 */
+  /**
+   * 二线报备提交（B 线）。同单在队门控由 `riskReports.canSubmitFor` 收，
+   * **只看 B 线**——A 线进池的条目不是报备，不占"同单至多一条在队"的名额（※29）。
+   */
   function submit(input: {
     ticketNo: string;
     reason: ReportReason;
@@ -341,9 +417,16 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
   function queueEntryOf(entryId: string) {
     return queue.findById(entryId);
   }
-  /** 按工单号打标（打标弹窗从命中侧点开，手上只有单号） */
+  /**
+   * 按工单号打标（打标弹窗从命中侧 / 工单页点开，手上只有单号）。
+   * 本单没进过实时监控时会**按三类判据现补一条条目**，见 `riskQueue.ensureEntryFor`。
+   */
   function recordTagFor(ticketNo: string, input: RiskTagInput) {
     return queue.recordTagFor(ticketNo, input);
+  }
+  /** 拿到一条可打标的条目（没有就按三类判据现补），见 `riskQueue.ensureEntryFor` */
+  function ensureEntryFor(ticketNo: string) {
+    return queue.ensureEntryFor(ticketNo);
   }
   /** 本条目的完整打标历史（含二次修改），时间正序 */
   function tagHistoryOf(entryId: string) {
@@ -404,11 +487,13 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
     isOverdue,
     claim,
     assess,
+    coordinate,
     submit,
     withdraw,
     recordVerify,
     recordTag,
     recordTagFor,
+    ensureEntryFor,
     queueEntryOf,
     tagHistoryOf,
     monitoringEntries,

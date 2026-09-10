@@ -1,9 +1,22 @@
 // 工单操作页类型与配色。配色/图标对齐 PRD-03 §7 F4（6 类语义色 + lucide 图标），
 // 角色徽章另用一套色（PRD-03 §7 F4）。
 
-/** 时间线条目语义类别（决定卡片色条/底色） */
-export type TlCategory = 'node' | 'relate' | 'handle' | 'comm' | 'customer' | 'dunning' | 'sla' | 'praise';
-/** 条目动作（决定图标 + How 徽章文案） */
+/**
+ * 时间线条目语义类别（决定卡片色条/底色）。
+ *
+ * 🔴 **`risk`（风险结论）是《【720】》§3.2 定的第八类**，定义名「人对风险下的结论」，
+ * 界面与图例写短名「风险结论」。它收报备提交 / 评估结论 / 协同处理 / 核实打标 / 等级变更五件。
+ *
+ * 【为什么不能塞进 `handle`】`handle` 是**坐席在自己这张单上的办理留痕**（字段级 diff，
+ * 走「保存并登记」）；风险结论是**另一个角色对这张单下的判断**，处理人只是被告知的一方。
+ * 混在一类里，质检复盘时点「工单处理」会同时捞出坐席填的字段与客诉专员给的意见，
+ * 而《【720】》§2.3 V12 要的恰恰是"点风险结论，一屏看全报备、评估、协同、打标、等级变更"。
+ */
+export type TlCategory = 'node' | 'relate' | 'handle' | 'comm' | 'customer' | 'dunning' | 'sla' | 'praise' | 'risk';
+/**
+ * 条目动作（决定图标 + How 徽章文案）。
+ * 第八类那几件**共用 `risk` 色条、图标各不相同**（《【720】》§5.1）：协同处理＝双人。
+ */
 export type TlAction =
   | 'create' | 'accept' | 'escalate' | 'hold' | 'transfer'
   | 'relate'
@@ -13,7 +26,8 @@ export type TlAction =
   | 'supplement' | 'reply'
   | 'dunning'
   | 'resolved'
-  | 'praise';
+  | 'praise'
+  | 'collab';
 /**
  * 处理履历上的角色徽章文案。取 0830 正式角色名（基线 §3.0 新旧名对照）：
  * 旧名「二线专员」→「二线专员」、「班组长」→「二线班组长」、「三线技术支持」→「技术支持」。
@@ -94,7 +108,11 @@ export interface RelatedTicketBrief {
   createdAt?: string;
 }
 
-/** 语义色：色条 + 浅底 + 图例标签（催办预警后为 SLA 时效） */
+/**
+ * 语义色：色条 + 浅底 + 图例标签（催办预警后为 SLA 时效）。
+ * 🔴 **本对象的键序就是图例的排列顺序**（`OpTimeline.vue` 直接 `Object.entries` 它），
+ * 故第八类 `risk` 摆在最后一格，与《【720】》§3.2 的类别表编号一致。
+ */
 export const CATEGORY_META: Record<TlCategory, { color: string; bg: string; label: string }> = {
   node: { color: '#7C3AED', bg: '#F5F3FF', label: '流转节点' },
   relate: { color: '#4F46E5', bg: '#EEF2FF', label: '关联单' },
@@ -104,6 +122,8 @@ export const CATEGORY_META: Record<TlCategory, { color: string; bg: string; labe
   dunning: { color: '#EF4444', bg: '#FEF2F2', label: '催办预警' },
   sla: { color: '#64748B', bg: '#F1F5F9', label: 'SLA时效' },
   praise: { color: '#F59E0B', bg: '#FFFBEB', label: '客户评价' },
+  // 第八类。玫红取《【720】》§3.2 原值 #DB2777，浅底取同色系最浅一档，与另七类的深浅关系一致
+  risk: { color: '#DB2777', bg: '#FDF2F8', label: '风险结论' },
 };
 
 /** 角色徽章配色（与事件色区分，PRD-03 §7 F4） */

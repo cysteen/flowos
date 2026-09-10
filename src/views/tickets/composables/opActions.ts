@@ -1,4 +1,3 @@
-import { computed, ref, watch } from 'vue';
 import type { TlRole, TimelineEntry, TimelineFieldChange } from '@/views/tickets/types/ticketDetail';
 import { TICKET_DETAIL } from '@/mock/ticketDetail';
 import type { TicketDetailMeta, FeishuRecord, LinkedAftersale } from '@/mock/ticketDetail';
@@ -960,127 +959,19 @@ export function applyOpAction(
   }
 }
 
-/* ==================== 协同处理 · 记录与建议标记 ==================== */
-
-/**
- * 建议事项四选（基线 ※29 / 《【930】》§5C.2）。**多选**，不是单选 ——
- * 「转交专员」与「每日跟进」经常同时成立（要交出去、交出去之前还得盯着）。
- */
-export const RISK_ADVICE_ITEMS = ['转交专员', '每日跟进', '法务协同', '其他'] as const;
-export type RiskAdviceItem = (typeof RISK_ADVICE_ITEMS)[number];
-
-/** 一次协同处理留下的记录。工单上的「建议标记」就是这些记录里 `advices` 的并集 */
-export interface RiskCollabRecord {
-  id: string;
-  ticketNo: string;
-  /** 评估意见（必填多行） */
-  opinion: string;
-  advices: RiskAdviceItem[];
-  /** 勾了「其他」时的具体建议（条件必填） */
-  otherAdvice?: string;
-  by: string;
-  byRole: string;
-  at: string;
-}
-
-/**
- * 协同处理记录的**跨角色留存**。
+/*
+ * ⚠️ **协同处理的记录与建议标记已整块搬去 `stores/riskCollab.ts`**（2026-09-10 收口）。
  *
- * 【为什么落在这里而不是 `stores/`】它本该是一个 store：协同处理由**客诉专员**提交，
- * 而要读它的是**当前处理人**（工单页的建议标记与协同记录块），两端天然是两次登录。
- * 本轮 `stores/` 由另一路改，新开 store 会与那一路撞车，故先落在动作层——
- * 形状、持久化机制与 `stores/notifyLog.ts` 一致，搬进 store 时是整块平移。
+ * 它此前落在本文件的一个模块级 ref + 自建的一份 localStorage 上，那是"风险 store 那一路
+ * 正在改、先不撞车"的临时安置。搬完之后风险侧四个 store 的边界才是齐的：
+ * A 线条目（`riskQueue`）/ B 线报备（`riskReports`）/ 两线合并（`riskPool`）/ 协同记录（`riskCollab`），
+ * 持久化也统一走 `riskShared` 的 `readRiskCache` / `writeRiskCache` 与同一份保质期。
  *
- * 【为什么必须持久化】纯内存态下换一次登录就清空：客诉专员提交完、切回二线，
- * 建议标记与协同记录一个都不在，"三个副作用"里的第三个在页面上一次都跑不出来。
- * 保质期与 `stores/riskShared.ts` 的 `RISK_STALE_MS` 一致：协同记录挂在池内条目上，
- * 条目回到种子而记录留着的话，工单上会挂着一批指向已不存在的条目的建议标记。
+ * 原来的四个读写口对应搬成：`riskCollabOf` → `recordsOf`、`riskAdviceMarksOf` → `marksOf`、
+ * `riskCollabCountOf` → `countOf`、`recordRiskCollab` → `record`。
+ * 🔴 **落条目状态那一步不在协同 store 里**：转「已结论」要动池内条目，走
+ * `stores/riskPool.ts` 的 `coordinate`（只有合并层拿得到两条线的条目）。
  */
-const COLLAB_LS_KEY = 'flowos-risk-collab';
-const COLLAB_STALE_MS = 12 * 60 * 60 * 1000;
-
-const collabRecords = ref<RiskCollabRecord[]>(readCollabCache());
-
-function readCollabCache(): RiskCollabRecord[] {
-  try {
-    const raw = localStorage.getItem(COLLAB_LS_KEY);
-    if (!raw) return [];
-    const saved = JSON.parse(raw) as { records?: RiskCollabRecord[]; savedAt?: number };
-    const fresh = typeof saved?.savedAt === 'number' && Date.now() - saved.savedAt < COLLAB_STALE_MS;
-    if (fresh && Array.isArray(saved.records)) return saved.records;
-    localStorage.removeItem(COLLAB_LS_KEY);
-    return [];
-  } catch {
-    /* 一份坏缓存不该把工单页打空 */
-    return [];
-  }
-}
-
-watch(
-  collabRecords,
-  () => {
-    try {
-      localStorage.setItem(
-        COLLAB_LS_KEY,
-        JSON.stringify({ records: collabRecords.value, savedAt: Date.now() }),
-      );
-    } catch {
-      /* 配额超限等忽略 */
-    }
-  },
-  { deep: true },
-);
-
-/** 本单的协同记录，**时间倒序**（最近一次在最上）。同一张投诉单可多次协同，条数不限 */
-export function riskCollabOf(ticketNo: string): RiskCollabRecord[] {
-  return collabRecords.value
-    .filter((r) => r.ticketNo === ticketNo)
-    .slice()
-    .sort((a, b) => b.at.localeCompare(a.at));
-}
-
-/**
- * 工单上的「建议标记」（《【930】》§3.3）＝ 本单历次协同勾选项的**并集**，去重后按枚举顺序排。
- *
- * 【为什么是并集而不是"最后一次"】标记的语义是"接下来要做的事"，做完了没有回执动作
- * （PRD §6.5 G3），第二次协同只勾了「每日跟进」并不表示第一次的「法务协同」已经不必做了。
- * 取最后一次会让先前的建议在屏幕上凭空消失，而它并没有被谁撤销。
- */
-export function riskAdviceMarksOf(ticketNo: string): RiskAdviceItem[] {
-  const hit = new Set<RiskAdviceItem>();
-  for (const r of collabRecords.value) {
-    if (r.ticketNo !== ticketNo) continue;
-    r.advices.forEach((a) => hit.add(a));
-  }
-  return RISK_ADVICE_ITEMS.filter((a) => hit.has(a));
-}
-
-/** 本单协同次数（协同弹窗「本单另有」那一段要报的数） */
-export function riskCollabCountOf(ticketNo: string): number {
-  return collabRecords.value.filter((r) => r.ticketNo === ticketNo).length;
-}
-
-/**
- * 落一条协同处理记录。**只落记录**——三个副作用里的通知与履历由调用方接：
- * 通知走 `stores/notifyLog.ts`（单一出口，不在这里自建第二条通道），
- * 履历要往工单页当前那份 timeline 里写，只有工单页拿得到它。
- *
- * 🔴 **工单状态与处理人一格不动**（基线 ※29）：本函数不碰 `TicketDetailMeta`，
- * 这是它与所有类2动作的分界，也是"协同处理进了动作矩阵却不改状态"这句话的落点。
- */
-export function recordRiskCollab(input: Omit<RiskCollabRecord, 'id'>): RiskCollabRecord {
-  const rec: RiskCollabRecord = { id: `rc-${Date.now()}-${collabRecords.value.length + 1}`, ...input };
-  collabRecords.value.push(rec);
-  return rec;
-}
-
-/** 响应式读口：模板里 `v-for` 用，函数式读口在 computed 外拿不到依赖 */
-export function useRiskCollab(ticketNo: () => string) {
-  return {
-    records: computed(() => riskCollabOf(ticketNo())),
-    marks: computed(() => riskAdviceMarksOf(ticketNo())),
-  };
-}
 
 /* ==================== 工单速查（形态判定与弹窗抬头共用） ==================== */
 

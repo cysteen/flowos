@@ -1,6 +1,10 @@
 import { computed, ref, watch } from 'vue';
 import { defineStore } from 'pinia';
 import { useRiskTagStore, type RiskTagEntry } from '@/stores/riskTags';
+import { useDerivedTicketStore } from '@/stores/derivedTickets';
+import { TICKETS } from '@/mock/tickets';
+import { isTicketClosed } from '@/views/tickets/types/ticket';
+import type { Ticket, TicketStatus } from '@/views/tickets/types/ticket';
 import {
   NO_RISK,
   agoStamp,
@@ -15,6 +19,7 @@ import {
   type QueueStatus,
   type ReportAssessment,
   type ReportVerify,
+  type RiskCoordination,
   type RiskTagRecord,
   type RiskTagResult,
 } from '@/stores/riskShared';
@@ -79,8 +84,15 @@ export interface RiskQueueEntry {
   tag?: RiskTagRecord;
   /**
    * 进池之后的评估结论（升级 / 不升级）。动作在合并层 `stores/riskPool.ts`，两条线共用。
+   * **只有非投诉单走这一格**：投诉单走下面的 `coordination`（基线 ※29 按原单类型分岔）。
    */
   assessment?: ReportAssessment;
+  /**
+   * 进池之后的**协同处理**结论（评估意见 + 建议事项），**只有投诉单走这一格**。
+   * 动作在合并层 `stores/riskPool.ts` 的 `coordinate`；历次协同的全量在 `stores/riskCollab.ts`，
+   * 这里只留最近一次，见 `RiskCoordination` 的说明。
+   */
+  coordination?: RiskCoordination;
   /**
    * ⚠️ **旧字段 · 由 `tag` 派生的只读投影**，写入方只有 `recordTag`，**不要拿它当判据**。
    *
@@ -349,9 +361,13 @@ const SEED: RiskQueueEntry[] = [
  *     v2 的缓存里躺着 `assessment.decision === '接管'`，那是一个已经不在枚举里的值：
  *     读进来之后「今日决策」两枚 chip 一枚也数不到它，而它又会在已评估列表里
  *     顶着一个作废的词渲染出来。值域变了就换号，不靠归一化去救本线自己的旧数据。
+ *   · v3 → v4：条目多了 `coordination` 这一格，且**协同处理会把条目转「已评估」**。
+ *     v3 的缓存里有一批"协同过、状态却还停在待分派 / 评估中"的条目 ——
+ *     读进来之后它们会在池子的待处理视图里重新冒出来，而工单页那边已经写着「已结论」。
+ *     状态机的迁移规则变了就换号。
  */
 const LS_KEY = 'flowos-risk-queue';
-const LS_VERSION = 3;
+const LS_VERSION = 4;
 
 /**
  * 找"该给哪一条打标"时的挑选顺序。**越靠前越优先**。
@@ -362,6 +378,19 @@ const LS_VERSION = 3;
  * 最后才轮到已经有人在办或已有结论的 —— 那两态改标不会把条目挪出池，见 `recordTag`。
  */
 const TAG_TARGET_ORDER: QueueStatus[] = ['实时监控中', '待分派', '已标记无风险', '评估中', '已评估'];
+
+/**
+ * 现补条目的入队说明，**按来源各一句**。
+ * 【为什么不共用一句】`desc` 那一列在实时监控与池子里都要显示，它答的是"这条为什么会进来"；
+ * 三类来源的答案完全不同，写成一句"自动纳入实时监控"等于什么都没说。
+ * 措辞与种子里同来源那几条保持一致，免得同一类条目在同一张表上有两种说法。
+ */
+const AUTO_DESC: Record<QueueSource, string> = {
+  实时监控: '沟通记录命中风险词，已自动纳入实时监控，待打标。',
+  手动筛查: '手动批量筛查命中风险词，已自动纳入实时监控，待打标。',
+  投诉单: '投诉类工单且优先级为 P0 / P1，自动纳入实时监控，待打标。',
+  重要紧急: '优先级为 P0 / P1 的非投诉工单，自动纳入实时监控，待打标。',
+};
 
 /** 一次打标要填的东西。`amendReason` 只在**二次修改**时有，首次打标没有 */
 export interface RiskTagInput {
@@ -402,6 +431,30 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
     { deep: true },
   );
 
+  /* ---------------- 打标 → 工单侧（《【930】》§6.1） ---------------- */
+
+  /**
+   * 把一条条目的打标等级写到**工单侧**（`stores/riskTags.ts` 的 `setTicketTagGrade`）。
+   *
+   * 【为什么要有这一步】`recordTag` 此前只改条目自己：条目在池子里显示成「高」，
+   * 而工单页的工单级风险等级仍是空的 —— 打标为低 / 中 / 高**回写工单级风险等级**
+   * （§6.1，取 max、只升不降）这条口径落了一半。工单级等级的读口在 `riskTags.ticketGradeOf`，
+   * 那边不能反向 import 本模块（会成环，见那边的说明），故写的方向定在这里。
+   *
+   * 「无风险」传 null：那一档没有等级，工单侧那一格要被清掉而不是留着旧值。
+   */
+  function writeTicketGrade(e: RiskQueueEntry) {
+    const level = e.tag && isPoolLevel(e.tag.result) ? e.tag.result : null;
+    tags.setTicketTagGrade(e.ticketNo, e.id, level);
+  }
+
+  /**
+   * 开屏灌一遍：种子与缓存里那批条目**自带打标结论**，它们没有走过 `recordTag`，
+   * 工单侧那份投影因此是空的。不灌这一道，"打标回写工单级等级"只对本次会话现打的标成立，
+   * 一刷新就退回去 —— 而种子里恰恰有三条已打标为高 / 中的条目。
+   */
+  entries.value.forEach(writeTicketGrade);
+
   function findById(id: string) {
     return entries.value.find((e) => e.id === id) ?? null;
   }
@@ -414,10 +467,12 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
   /**
    * 本单当前在队的那条 A 线条目（至多一条）。
    *
-   * ⚠️ **在队 ＝ 待分派 + 评估中，即已进池那一批**：还在「实时监控中」的**不算**。
-   * 它没有进池、没有人在等评估结论，工单页据此不再挂「报备中」横幅、也不再拦二线报备
-   * （门控读的就是本函数，见 `riskReports.pendingOf`）。这是新口径的直接推论：
-   * 系统怀疑一下就把二线的报备入口锁上，是把"怀疑"当成了"结论"。
+   * ⚠️ **在队 ＝ 待分派 + 评估中，即已进池、还没出结论那一批**：
+   * 还在「实时监控中」（没打标）的**不算**，「已评估 / 已标记无风险」的也不算。
+   *
+   * 🔴 **它不再参与二线报备的门控**（2026-09-10 收口）：报备的门控只看 B 线自己在不在队，
+   * 见 `riskReports.pendingOf`。A 线条目不是报备，拦住报备入口是把"系统怀疑"
+   * 当成了"已有人在报"。本函数现在只答"这条 A 线条目出结论了没有"，供本线自己判。
    */
   function openEntryOf(ticketNo: string) {
     return entries.value.find((e) => e.ticketNo === ticketNo && isOpenStatus(e.status)) ?? null;
@@ -543,6 +598,10 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
       ...(input.amendReason ? { amendReason: input.amendReason } : {}),
     });
 
+    // 回写工单级风险等级（§6.1）。放在状态迁移之前：等级是打标这一下就成立的事实，
+    // 与条目接下来落在池里还是落在「已标记无风险」无关
+    writeTicketGrade(e);
+
     if (isPoolLevel(input.result)) {
       // 旧字段的只读投影，供过渡期的页面读，见 `RiskQueueEntry.verify`
       e.verify = {
@@ -569,18 +628,103 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
   }
 
   /**
-   * 按**工单号**打标。打标弹窗是从命中侧点开的，那里手上只有单号，没有条目 id。
-   * 同一张单有多条条目时按 `TAG_TARGET_ORDER` 挑一条，见该常量的说明。
-   *
-   * 返回 false ＝ 这张单压根没有 A 线条目（池子按来源建条目，不是每条命中都有对应条目），
-   * 调用方据此决定提示词，不能一律说"已转待分派"。
+   * 按**工单号**挑一条该给它打标的条目。同一张单有多条条目时按 `TAG_TARGET_ORDER` 挑，
+   * 见该常量的说明。挑不到返回 null —— 这张单还没进过实时监控。
    */
-  function recordTagFor(ticketNo: string, input: RiskTagInput): boolean {
-    const target = entriesOf(ticketNo)
+  function tagTargetOf(ticketNo: string): RiskQueueEntry | null {
+    return entriesOf(ticketNo)
       .slice()
-      .sort((a, b) => TAG_TARGET_ORDER.indexOf(a.status) - TAG_TARGET_ORDER.indexOf(b.status))[0];
-    if (!target) return false;
-    return recordTag(target.id, input);
+      .sort((a, b) => TAG_TARGET_ORDER.indexOf(a.status) - TAG_TARGET_ORDER.indexOf(b.status))[0]
+      ?? null;
+  }
+
+  /**
+   * 一张单**本该**被哪一类自动识别捞进实时监控（《【930】》§5A.1 的三条判据，逐字对齐）：
+   *
+   * | # | 来源 | 判据 |
+   * |---|---|---|
+   * | ① | 预警词命中 | 本单在命中台账里有记录 |
+   * | ② | 投诉单 | 在办 ∧ 类型 ＝ 投诉 ∧ 优先级 ∈ {P0, P1} |
+   * | ③ | 重要紧急 | 在办 ∧ 类型 ≠ 投诉 ∧ 优先级 ∈ {P0, P1} |
+   *
+   * 判不出来就返回 null，**不给兜底值**：兜一个「实时监控」出来，等于让任何一张单
+   * 都能被现场造一条监控条目，实时监控的条数就再也答不了"规则今天捞了多少"这个问题。
+   *
+   * 【为什么②③要判在办】R50a：三类来源取在办口径，终态单不入队。
+   * 一张已结案的 P0 投诉单被补进监控，会在待打标视图里躺成一条谁也不会去处理的活。
+   *
+   * 【为什么①不判在办】命中记录是**已经发生过的事实**，它不随单子结案而消失；
+   * 而且命中那一路的条目本就该跟着命中走，见 `isVerifyMonitorSource`。
+   */
+  function autoSourceFor(ticketNo: string): QueueSource | null {
+    if (tags.hitsOfTicket(ticketNo).length) return '实时监控';
+    const t: Ticket | undefined = TICKETS.find((x) => x.no === ticketNo)
+      ?? useDerivedTicketStore().find(ticketNo);
+    if (!t) return null;
+    if (isTicketClosed(t.nodeStatus as TicketStatus)) return null;
+    if (t.priority !== 'P0' && t.priority !== 'P1') return null;
+    return t.type === '投诉' ? '投诉单' : '重要紧急';
+  }
+
+  /**
+   * **拿到一条可打标的条目**：本单已有条目就用它，没有就**按三类判据现补一条**。
+   *
+   * 【为什么必须有它】客诉专员在工单处理页给投诉单打标，走的是「按单号找条目」这条路；
+   * 而条目只在风险监控页那一侧由自动识别生成 —— 一张**没进过实时监控**的投诉单，
+   * 打标按钮点下去只会弹一句"本单没有实时监控条目"，那条口径（投诉单由客诉专员在
+   * 工单处理页自行打标，§3.1）在这批单上等于没做。补一条之后这条路才是通的。
+   *
+   * 🔴 **不凭空造不该进监控的条目**：来源由 `autoSourceFor` 按 §5A.1 的三条判据推，
+   * 推不出来就**如实失败并说清为什么**（"不在三类范围内"与"这单查不到"是两件事，
+   * 提示不能混成一句）。放宽这道判据的代价是实时监控里会长出一批本不该在的条目，
+   * 而那个视图的条数正是「规则捞了多少」这个指标本身。
+   *
+   * 补出来的条目落「实时监控中」——它就是自动识别刚捞进来的样子，打标紧跟着就把它推走。
+   */
+  function ensureEntryFor(ticketNo: string): { ok: true; entry: RiskQueueEntry } | { ok: false; reason: string } {
+    const exist = tagTargetOf(ticketNo);
+    if (exist) return { ok: true, entry: exist };
+
+    const source = autoSourceFor(ticketNo);
+    if (!source) {
+      const known = TICKETS.some((t) => t.no === ticketNo) || !!useDerivedTicketStore().find(ticketNo);
+      return {
+        ok: false,
+        reason: known
+          ? '本单不在实时监控的三类自动识别范围内（无预警词命中，且不是在办的 P0 / P1 单），不能在工单页打标'
+          : '工单库里查不到本单，无法判断它属于哪一类监控来源',
+      };
+    }
+
+    const seq = entries.value.length + 1;
+    const entry = autoEntry({
+      // 现补的条目走 `rq-` 号段：`rr-###` 那一段两条线各占一半、已经排满
+      // （A 线种子 12 以下、B 线 12 起自增），再往里挤必然撞 id。
+      id: `rq-${Date.now()}-${seq}`,
+      ticketNo,
+      source,
+      desc: AUTO_DESC[source],
+      at: agoStamp(0),
+      status: '实时监控中',
+    });
+    entries.value.push(entry);
+    return { ok: true, entry };
+  }
+
+  /**
+   * 按**工单号**打标。打标弹窗是从命中侧 / 工单页点开的，那里手上只有单号，没有条目 id。
+   *
+   * 🔴 **找不到条目时先按三类判据补一条**（见 `ensureEntryFor`），而不是直接失败：
+   * 旧实现在这里 `return false`，于是客诉专员在一张没进过实时监控的投诉单上打标，
+   * 只会收到一句 warning —— 而那张单按 §5A.1 本来就该在监控里。
+   *
+   * 返回失败时**带上原因**，调用方原样呈现：挡住它的可能是"不在三类范围内"，
+   * 也可能是"这张单查不到"，两者要人做的事完全不同。
+   */
+  function recordTagFor(ticketNo: string, input: RiskTagInput): { ok: boolean; reason?: string } {
+    const got = ensureEntryFor(ticketNo);
+    if (!got.ok) return { ok: false, reason: got.reason };
+    return { ok: recordTag(got.entry.id, input) };
   }
 
   /**
@@ -601,7 +745,7 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
    *
    * 本函数是过渡件，下一批页面改成直接调 `recordTag` / `recordTagFor` 之后删掉。
    */
-  function recordVerify(ticketNo: string, verify: ReportVerify): boolean {
+  function recordVerify(ticketNo: string, verify: ReportVerify) {
     const result: RiskTagResult =
       verify.verdict === '误报' || !verify.level ? NO_RISK : verify.level;
     return recordTagFor(ticketNo, {
@@ -628,5 +772,7 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
     recordTag,
     recordTagFor,
     recordVerify,
+    ensureEntryFor,
+    autoSourceFor,
   };
 });

@@ -5,25 +5,24 @@ import { TeamOutlined } from '@ant-design/icons-vue';
 import OpActionModal from './OpActionModal.vue';
 import { useUserStore } from '@/stores/user';
 import { useRiskQueueStore } from '@/stores/riskQueue';
+import { useRiskPoolStore } from '@/stores/riskPool';
+import { useRiskCollabStore, RISK_ADVICE_ITEMS, type RiskAdviceItem } from '@/stores/riskCollab';
 import { useRiskReportStore } from '@/stores/riskReports';
 import { useRiskTagStore } from '@/stores/riskTags';
 import { isPooledStatus } from '@/stores/riskShared';
-import {
-  RISK_ADVICE_ITEMS,
-  recordRiskCollab,
-  resolveTicketRowFor,
-  riskCollabOf,
-  type RiskAdviceItem,
-} from '@/views/tickets/composables/opActions';
+import { resolveTicketRowFor } from '@/views/tickets/composables/opActions';
 import { riskLevelText } from '@/config/risk';
 
 /**
  * **协同处理**（底栏那一枚按钮的第三形态，基线 ※29；同时是 §2 / §4 的第 28 个动作）。
  *
  * 一个动作 + 多选建议项：客诉专员对风险工单池里的**投诉单**给一次意见与建议。
- * 提交后发生**两件事**，除此之外工单一格不动：
- *   ① 落工单处理履历（由工单页从协同记录投影，见 TicketOperationView 的 syncCollabTimeline）；
- *   ② 工单上挂**建议标记**（历次勾选项的并集，见 opActions.ts 的 riskAdviceMarksOf）。
+ * 提交后发生**三件事**，除此之外工单一格不动：
+ *   ① 落工单处理履历（《【720】》第八类「风险结论」，由工单页从协同记录投影，
+ *      见 TicketOperationView 的 syncCollabTimeline）；
+ *   ② 工单上挂**建议标记**（历次勾选项的并集，见 `stores/riskCollab.ts` 的 `marksOf`）；
+ *   ③ **首次协同把池内条目转「已结论」**（`stores/riskPool.ts` 的 `coordinate`）——
+ *      同一张投诉单可协同多次，但"还没有结论"这件事只成立到第一次为止。
  *
  * 🔴 **本轮不发通知**（2026-09-10 业务口径变更）：《【930】》§5C.3 原定的第三个副作用
  * 「通知当前处理人（`risk.coordinated`）」**本轮不做** —— 现有消息体系要先整体重新梳理，
@@ -43,6 +42,8 @@ const emit = defineEmits<{ 'update:open': [v: boolean] }>();
 
 const user = useUserStore();
 const queue = useRiskQueueStore();
+const pool = useRiskPoolStore();
+const collab = useRiskCollabStore();
 const reportStore = useRiskReportStore();
 const riskTags = useRiskTagStore();
 
@@ -107,7 +108,7 @@ const reportSummary = computed(() => {
   return `历史风险报备 ${list.length} 条 · 已出结论 ${done} 条`;
 });
 const collabSummary = computed(() => {
-  const list = riskCollabOf(props.ticketNo);
+  const list = collab.recordsOf(props.ticketNo);
   if (!list.length) return '本单尚未协同处理过';
   return `已协同 ${list.length} 次 · 最近一次 ${list[0].at}`;
 });
@@ -127,17 +128,33 @@ function onOk() {
   if (!opinion.value.trim()) return;
   if (needsOther.value && !otherAdvice.value.trim()) return;
 
+  const entry = poolEntry.value;
+  if (!entry) {
+    // 按钮的出现条件就是"本单在风险工单池里"，走到这里只可能是条目在弹窗开着的时候
+    // 被人从池里撤了（改判无风险）。说清是哪一条挡住的，别给一句笼统的失败
+    message.warning('本单已不在风险工单池中，无法提交协同处理');
+    return;
+  }
+
   const picked = RISK_ADVICE_ITEMS.filter((a) => advices.value.includes(a));
-  const at = nowStamp();
-  recordRiskCollab({
-    ticketNo: props.ticketNo,
+  /**
+   * 「首次协同转已结论」由 store 判：`coordinate` 只在条目**还在队**时改状态，
+   * 第二次及以后只追加记录。判据留在 store 里，是因为"还在不在队"是条目自己的状态，
+   * 弹窗这边拿到的那份是渲染用的快照，隔着一次异步就可能不是最新的。
+   */
+  const firstTime = !entry.coordination;
+  const ok = pool.coordinate(entry.id, {
     opinion: opinion.value.trim(),
     advices: [...picked],
     ...(needsOther.value ? { otherAdvice: otherAdvice.value.trim() } : {}),
     by: user.name || '当前用户',
     byRole: user.role.name || '客诉专员',
-    at,
+    at: nowStamp(),
   });
+  if (!ok) {
+    message.warning('本单已不在风险工单池中，无法提交协同处理');
+    return;
+  }
 
   /*
    * 这里**没有**通知那一步：本轮不往消息体系里加新事件（2026-09-10 口径变更），
@@ -148,7 +165,12 @@ function onOk() {
     : '未勾选建议事项';
 
   close();
-  message.success(picked.length ? `已提交协同处理，建议事项：${adviceText}` : '已提交协同处理');
+  // 首次协同同时把池内条目结掉，这一步要在提示里说出来——否则客诉专员不知道
+  // 自己刚刚把这条从待处理队列里摘走了，还会回池里再找一遍
+  const tail = firstTime ? '，本单风险条目已转「已结论」' : '';
+  message.success(
+    picked.length ? `已提交协同处理，建议事项：${adviceText}${tail}` : `已提交协同处理${tail}`,
+  );
 }
 </script>
 

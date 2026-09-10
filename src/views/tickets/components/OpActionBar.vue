@@ -63,9 +63,21 @@ const props = defineProps<{
   hideBar?: boolean;
   /** 当前角色可发起风险报备（非投诉单 + 二线/班组长/管理员） */
   showRiskReport?: boolean;
-  /** 本单已有待评估报备时置灰 */
+  /** 风险那一枚按钮要不要置灰（条件由工单页按形态算，见 TicketOperationView） */
   riskReportPending?: boolean;
+  /**
+   * 置灰的**原因原文**，由调用方给。
+   *
+   * 🔴 **不要在本组件里写死**：底栏只知道"这枚按钮该灰"，不知道是谁挡住的 ——
+   * 此前这里硬写着「本单已有报备待评估」，而挡住它的可能是一条 A 线的自动条目
+   * （那不是报备，二线点进 Tab 一条报备都找不到），也可能是本单的报备已被人领走
+   * （该找的是领它的那个人，不是"等评估"）。判据在工单页手上，原因就该跟着判据走。
+   */
+  riskForbiddenTip?: string;
 }>();
+
+/** 置灰提示的兜底：调用方没给原因时至少说清"被挡住了"，不冒充一个具体理由 */
+const RISK_FORBIDDEN_FALLBACK = '当前不可发起风险操作';
 
 const emit = defineEmits<{
   action: [payload: Record<string, unknown>];
@@ -247,7 +259,7 @@ const barActions = computed<BarItem[]>(() => {
         label: def.label,
         icon: def.icon,
         forbidden: true,
-        forbiddenTip: '本单已有报备待评估',
+        forbiddenTip: props.riskForbiddenTip || RISK_FORBIDDEN_FALLBACK,
       });
       continue;
     }
@@ -393,7 +405,8 @@ function run(action: OpActionType | '转单') {
   if (action === '风险报备') {
     if (!props.showRiskReport) return;
     if (props.riskReportPending) {
-      message.warning('本单已有报备待评估');
+      // 键盘 / 程序调用的兜底走**同一句**提示：两处不同文案会让人以为是两回事
+      message.warning(props.riskForbiddenTip || RISK_FORBIDDEN_FALLBACK);
       return;
     }
     riskReportOpen.value = true;

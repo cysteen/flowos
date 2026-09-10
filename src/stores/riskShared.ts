@@ -303,6 +303,35 @@ export interface ReportVerify {
 }
 
 /**
+ * **一次协同处理的结论**（基线 ※29 / 《【930】》§5C）—— 客诉专员对池内**投诉单**给的意见。
+ *
+ * 【为什么它不是 `ReportAssessment`】评估答的是"升不升级"（二选一 + 一段说明），
+ * 协同答的是"这单接下来怎么办"（一段评估意见 + 多选建议事项），**没有决策那一格**。
+ * 硬塞进 `ReportAssessment` 就得给它编一个 `decision`，而那个值会当场进 B4「今日决策」的分布 ——
+ * 协同处理压根没有升不升级这回事，凭空多出来的一格会把决策分布做坏。
+ *
+ * 🔴 **条目上只留最近一次**：历次协同的全量在 `stores/riskCollab.ts`（同一张单可协同多次）。
+ * 条目上这一份回答的是池行自己的两个问题——"这条什么时候出的结论""谁给的"，
+ * 不复制历史；要看历次意见去协同记录块。
+ */
+export interface RiskCoordination {
+  /** 评估意见（必填） */
+  opinion: string;
+  /**
+   * 建议事项（多选）。
+   * 🔴 类型放宽成 `string[]` 的理由同 `RiskPoolItem.reason` / `category`：枚举
+   * （`RISK_ADVICE_ITEMS`）只对协同这一件事成立，它住在 `stores/riskCollab.ts`。
+   * 把它提到共享层，等于宣称两条线的池行都有建议事项这一维，而 B 线根本没有协同这个动作。
+   */
+  advices: string[];
+  /** 勾了「其他」时的具体建议 */
+  otherAdvice?: string;
+  by: string;
+  byRole: string;
+  at: string;
+}
+
+/**
  * **风险工单池的行**（930 §5，第二轮拍板 N6）—— 两条线在池子里合并之后的**共同形状**。
  *
  * 【为什么需要这么一个类型】风险工单池这张表装的是两条线的条目：A 线**打标进池**的条目
@@ -347,6 +376,14 @@ export interface RiskPoolItem {
    */
   status: PoolStatus;
   assessment?: ReportAssessment;
+  /**
+   * 最近一次**协同处理**的结论（**A 线的投诉单才有**）。B 线恒为空——报备只走评估。
+   *
+   * 【它与 `assessment` 互斥】同一张单只可能走其中一条：非投诉单走评估（升级 / 不升级），
+   * 投诉单走协同（评估意见 + 建议事项），按原单类型分岔（基线 ※29）。
+   * 故「已评估」这一态下，两个字段必有且只有一个有值。
+   */
+  coordination?: RiskCoordination;
   /**
    * 风险打标结论（**A 线才有**）。它是这条条目进池的凭据 —— 池里的每一条 A 线条目
    * 都必然有一个低 / 中 / 高的 `tag`，没有 `tag` 的还在实时监控里。B 线恒为空。
