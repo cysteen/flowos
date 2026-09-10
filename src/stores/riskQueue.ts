@@ -667,6 +667,24 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
   }
 
   /**
+   * 这张单**为什么打不了标**；返回空串 ＝ 打得了（已有条目，或推得出三类来源之一）。
+   *
+   * 【为什么单独抽出来、而且是纯函数】工单页要在**点之前**就把话说清楚：
+   * 打不了标的单直接不给按钮、原地写明原因，而不是让人填完弹窗才收到一句失败
+   * （一个填完才失败的入口比一个不出现的入口糟得多）。`ensureEntryFor` 会建条目，
+   * 组件的 computed 里不能调它 —— 那会让"渲染一次就悄悄多一条监控条目"。
+   * 两处共用本函数，页面上写的原因与提交时兜底给的那一句因此永远是同一句。
+   */
+  function tagBlockReasonOf(ticketNo: string): string {
+    if (tagTargetOf(ticketNo)) return '';
+    if (autoSourceFor(ticketNo)) return '';
+    const known = TICKETS.some((t) => t.no === ticketNo) || !!useDerivedTicketStore().find(ticketNo);
+    return known
+      ? '本单不在实时监控的三类自动识别范围内（无预警词命中，且不是在办的 P0 / P1 单），不能在工单页打标'
+      : '工单库里查不到本单，无法判断它属于哪一类监控来源';
+  }
+
+  /**
    * **拿到一条可打标的条目**：本单已有条目就用它，没有就**按三类判据现补一条**。
    *
    * 【为什么必须有它】客诉专员在工单处理页给投诉单打标，走的是「按单号找条目」这条路；
@@ -686,15 +704,7 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
     if (exist) return { ok: true, entry: exist };
 
     const source = autoSourceFor(ticketNo);
-    if (!source) {
-      const known = TICKETS.some((t) => t.no === ticketNo) || !!useDerivedTicketStore().find(ticketNo);
-      return {
-        ok: false,
-        reason: known
-          ? '本单不在实时监控的三类自动识别范围内（无预警词命中，且不是在办的 P0 / P1 单），不能在工单页打标'
-          : '工单库里查不到本单，无法判断它属于哪一类监控来源',
-      };
-    }
+    if (!source) return { ok: false, reason: tagBlockReasonOf(ticketNo) };
 
     const seq = entries.value.length + 1;
     const entry = autoEntry({
@@ -774,5 +784,6 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
     recordVerify,
     ensureEntryFor,
     autoSourceFor,
+    tagBlockReasonOf,
   };
 });

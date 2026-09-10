@@ -380,10 +380,15 @@ const tagHistory = computed(() => (tagEntry.value ? queue.tagHistoryOf(tagEntry.
  * 🔴 **不再要求"本单已有实时监控条目"**（2026-09-10 收口）：一张 P0 投诉单按 §5A.1
  * 本来就该被自动捞进监控，而条目只在风险监控页那一侧生成 —— 没进过监控的单在这里
  * 点不动打标，等于这条口径在那批单上从来没生效过。条目由 store 在打标时按三类判据现补，
- * 补不出来（不在三类范围内）时由 `confirmTag` 如实报出原因，见 `riskQueue.ensureEntryFor`。
+ * 见 `riskQueue.ensureEntryFor`。
+ *
+ * 【但仍然要在点之前把话说清】推不出来源的单（如 P3 投诉单）**不给按钮**，
+ * 原地写明原因（`tagBlockReason`）—— 让人填完弹窗才收到一句失败，比按钮不出现糟得多。
+ * 判据取 store 的纯函数，与提交时兜底那一句同源，两处不会说出两个理由。
  */
+const tagBlockReason = computed(() => queue.tagBlockReasonOf(props.ticketNo));
 const canTag = computed(
-  () => isComplaintTicket.value && user.roleKey === 'complaint-handler',
+  () => isComplaintTicket.value && user.roleKey === 'complaint-handler' && !tagBlockReason.value,
 );
 
 const tagResults = RISK_TAG_RESULTS;
@@ -810,8 +815,16 @@ const collabSectionBadge = computed(() =>
         </template>
         <template v-else>
           <p class="rt-empty-title">本单尚未打标</p>
-          <!-- 说清"为什么这里没有按钮"：不写这一句，处理人只会以为入口坏了或自己权限少了 -->
-          <p class="rt-empty-hint">非投诉单的风险等级由命中规则自动打标，或由客诉专员 / 投诉督导在风险监控页标注，处理人没有打标入口</p>
+          <!--
+            说清"为什么这里没有按钮"：不写这一句，看的人只会以为入口坏了或自己权限少了。
+            两种挡法要分开写：**有打标权但这张单进不了监控**（投诉单 + 客诉专员，
+            却推不出三类来源）与**这个角色本来就没有打标入口**（非投诉单 / 非客诉专员），
+            合成一句会让客诉专员以为自己被降权了。
+          -->
+          <p v-if="isComplaintTicket && user.roleKey === 'complaint-handler'" class="rt-empty-hint">
+            {{ tagBlockReason }}
+          </p>
+          <p v-else class="rt-empty-hint">非投诉单的风险等级由命中规则自动打标，或由客诉专员 / 投诉督导在风险监控页标注，处理人没有打标入口</p>
         </template>
       </div>
     </OpCollapsibleSection>
