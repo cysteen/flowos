@@ -203,7 +203,18 @@ const missRiskDesc = computed(
 const riskMonitorLine = computed(() => {
   const v = props.riskVerification;
   if (!v) return '';
-  if (!v.latest) return `风险监控核实：本单 ${v.hitCount} 条命中待核实，尚无核实结论`;
+  if (!v.latest) {
+    /*
+     * 🔴 **不能一句「尚无核实结论」了事**：命中核实与风险打标是两条线（前者判"这次命中准不准"，
+     * 后者判"这张单有没有风险、多大"），打完标之后命中确实仍是待核实 —— 但这张单**已经有结论了**。
+     * 原文案只说了前半句，于是打完标的单在同一屏上一边写着「尚无核实结论」、
+     * 一边紧挨着「风险打标 中危」。两条线各说各的那一半，读的人只会以为其中一处坏了。
+     */
+    const t = tagRecord.value;
+    if (!t) return `风险监控核实：本单 ${v.hitCount} 条命中待核实，尚无核实结论`;
+    const lv = t.result === '无风险' ? '无风险' : riskLevelText(t.result);
+    return `风险监控核实：本单 ${v.hitCount} 条命中待核实；风险打标已判「${lv}」· ${t.by}（${t.byRole}）· ${t.at}`;
+  }
   const e = v.latest;
   return `风险监控核实：${riskLevelText(v.grade)} · ${e.verdict} · ${e.by}（${e.byRole}）· ${e.at}`;
 });
@@ -419,7 +430,8 @@ function nowStamp(): string {
 /**
  * 提交打标。落 store 走 `recordTagFor`（按单号找条目，状态机的唯一入口；
  * 本单没进过实时监控时由它按三类判据现补一条，见 `riskQueue.ensureEntryFor`）。
- * 打为低 / 中 / 高时 store 同时**回写工单级风险等级**（§6.1，取 max、只升不降）。
+ * 打为低 / 中 / 高时 store 同时**回写工单级风险等级**（§6.1）：
+ * 工单级 ＝ 该单**各条结论取最高**；同一条**改判以最新结论为准**（改判要填理由，那就是一次人的降级判断）。
  *
  * 🔴 **本轮不发通知**（2026-09-10 业务口径变更）：《【930】》§5A.3 定的 `risk.tagged`
  * 「打标结果通知当前处理人」**本轮不做** —— 现有消息体系要先整体重新梳理，期间不加新事件。
@@ -797,7 +809,7 @@ const collabSectionBadge = computed(() =>
         -->
         <p class="rt-foot">
           打标结论不改工单状态与处理人；改判独立留一条历史、不覆盖首次那条。
-          打为低 / 中 / 高时同时回写工单级风险等级（取 max、只升不降）。
+          打为低 / 中 / 高时同时回写工单级风险等级：多条结论取最高，同一条改判以最新结论为准。
         </p>
       </section>
 

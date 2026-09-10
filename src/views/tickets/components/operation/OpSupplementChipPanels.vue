@@ -5,6 +5,7 @@ import OpQualityStandardFields from './OpQualityStandardFields.vue';
 import OpChannelTable from './OpChannelTable.vue';
 import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue';
 import { useRiskTagStore } from '@/stores/riskTags';
+import { useRiskQueueStore } from '@/stores/riskQueue';
 import { riskLevelText } from '@/config/risk';
 import type { ProcessFormDraft, RiskFlag, RiskLevel, SupplementChip } from '@/views/tickets/types/operation';
 import {
@@ -47,6 +48,7 @@ const props = defineProps<{
 const emit = defineEmits<{ 'update:form': [form: ProcessFormDraft] }>();
 
 const riskTags = useRiskTagStore();
+const riskQueue = useRiskQueueStore();
 const riskLevelOptions = RISK_LEVEL_SELECT_OPTIONS;
 const complaintMarkOpts = computed(() =>
   complaintMarkOptions(props.complaintPlatform).map((v) => ({ label: v, value: v })),
@@ -220,9 +222,20 @@ const riskMonitorVerify = computed(() =>
 const riskMonitorLine = computed(() => {
   const v = riskMonitorVerify.value;
   if (!v) return '';
-  if (!v.latest) return `风险监控核实：本单 ${v.hitCount} 条命中待核实，尚无核实结论`;
+  if (!v.latest) {
+    /*
+     * 🔴 **不能一句「尚无核实结论」了事**：命中核实与风险打标是两条线（前者判"这次命中准不准"，
+     * 后者判"这张单有没有风险、多大"），打完标之后命中确实仍是待核实 —— 但这张单**已经有结论了**。
+     * 原文案只说了前半句，于是打完标的单在同一屏上一边写着「尚无核实结论」、
+     * 一边在「风险报备」Tab 里写着「风险打标 中危」。两条线各说各的那一半，人只会以为其中一处坏了。
+     */
+    const t = props.ticketNo ? riskQueue.currentTagOf(props.ticketNo) : null;
+    if (!t) return `风险监控核实：本单 ${v.hitCount} 条命中待核实，尚无核实结论`;
+    const lv = t.result === '无风险' ? '无风险' : riskLevelText(t.result);
+    return `风险监控核实：本单 ${v.hitCount} 条命中待核实；风险打标已判「${lv}」· ${t.by}（${t.byRole}）· ${t.at}`;
+  }
   const e = v.latest;
-  // 等级取**工单级**（max 棘轮），不取最后一条命中自己的等级：工单页关心的是这张单有多危险
+  // 等级取**工单级**（跨条目取最高），不取最后一条命中自己的等级：工单页关心的是这张单有多危险
   return `风险监控核实：${riskLevelText(v.grade)} · ${e.verdict} · ${e.by}（${e.byRole}）· ${e.at}`;
 });
 
