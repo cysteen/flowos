@@ -988,16 +988,23 @@ export function headerActionsByRole(roleKey: string): {
 /**
  * 风险报备池里**能不能动手**（领取 / 评估 / 释放）—— 判据只认 `roleKey`，与 `headerActionsByRole` 同形。
  *
- * 取值只有 `complaint-handler` 一个。两条依据：
+ * 可执行领单 / 评估 / 释放的角色 ＝ **客诉专员 + 三类管理员兜底**（与风险监控页风险工单池同口径）。
  * ① 报备单的评估结论由**客诉专员**给出（《【930】》§5.4，评估二选一）；
- * ② **投诉督导已去权**（业务第三轮拍板）：分派 / 改派 / 批量分派整套取消，两个池子只留自取，
- *    督导对报备池是**只看数据**——页签给它（态势要看得到），动作一枚不给。
+ * ② **投诉督导已去权**（业务第三轮拍板）：页签可见但领单点击会被拦截并提示切换角色。
  *
- * ⚠️ 页签**看不看得见**不由本函数管，那是 `config/roles.ts` 的 hiddenTabs。
- * 两件事分开：看得见而没有动作，正是督导要的那一档；混成一个判据就表达不了它。
+ * ⚠️ **待领取行的「领单」按钮始终展示**（与工单池同形），本函数管的是能不能真的点下去。
+ * 页签**看不看得见**不由本函数管，那是 `config/roles.ts` 的 hiddenTabs。
  */
+/** 与风险监控页「风险工单池」领取权同口径：客诉专员 + 管理员兜底 */
+const REPORT_POOL_ACT_ROLES = new Set([
+  'complaint-handler',
+  'system-admin',
+  'ops-admin',
+  'tenant-admin',
+]);
+
 export function canClaimRiskReport(roleKey: string): boolean {
-  return roleKey === 'complaint-handler';
+  return REPORT_POOL_ACT_ROLES.has(roleKey);
 }
 
 /**

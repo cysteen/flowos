@@ -25,11 +25,9 @@ import {
   // 配色仍按 nodeStatus（落库子状态）算 —— 基线要求逻辑判断一律用子状态。
   ticketStatusDisplayName,
   type Ticket,
-  isDunningTagPending,
-  isSupplementTagPending,
 } from '@/views/tickets/types/ticket';
 import { ticketLatestHandlingPreview, resolveLatestHandlingAction } from '@/views/tickets/utils/ticketOverview';
-import { ticketListSourceLabel } from '@/views/tickets/types/createTicket';
+import TicketTitleCell from './TicketTitleCell.vue';
 
 const props = withDefaults(
   defineProps<{
@@ -87,32 +85,6 @@ function plainCellText(t: Ticket, key: string): string {
 function colClass(key: string): string {
   return `col-${key.replace(/([A-Z])/g, '-$1').toLowerCase()}`;
 }
-
-function dunningTagLabel(_t: Ticket): string {
-  return '催';
-}
-
-function supplementTagLabel(_t: Ticket): string {
-  return '补';
-}
-
-function dunningTagTip(t: Ticket): string {
-  return isDunningTagPending(t) ? '被催办 · 待联系回话' : '已催 · 已联系';
-}
-
-function supplementTagTip(t: Ticket): string {
-  return isSupplementTagPending(t) ? '新补充 · 待联系回话' : '已补 · 已联系';
-}
-
-/** 与 MetricTipIcon / 班组看板口径 Tooltip 统一：浅琥珀底 + 深棕字 */
-const csTagTipOverlayWrap = { maxWidth: '340px' };
-const csTagTipOverlayInner = {
-  maxWidth: '340px',
-  color: '#713f12',
-  fontSize: '12px',
-  lineHeight: '1.6',
-  padding: '10px 12px',
-};
 
 // ---- SLA 列：两行文本「解决：超/剩」「首响：超/剩」（PRD §8.2）----
 /** 倒计时短文案：'03:20:00'→'剩 03:20'；'已超 01:12'→'超 01:12'；'已暂停' 等非倒计时文案原样 */
@@ -358,77 +330,15 @@ const gridTemplateColumns = computed(() => {
 
       <!-- 工单 / 标题 -->
       <div
-        class="col-title cell-title"
+        class="col-title"
         :class="{ 'row-leading': !showSelectionColumn }"
         :style="!showSelectionColumn ? { borderLeftColor: PRIORITY_COLOR[t.priority] } : undefined"
       >
-        <a-popover trigger="hover" placement="rightTop" :mouse-enter-delay="0.2">
-          <div class="title-cell-inner">
-            <div class="title-line1">
-              <a-tooltip
-                v-if="t.hasDunning"
-                :title="dunningTagTip(t)"
-                placement="top"
-                :mouse-enter-delay="0.15"
-                color="#fffbeb"
-                :overlay-style="csTagTipOverlayWrap"
-                :overlay-inner-style="csTagTipOverlayInner"
-              >
-                <span
-                  class="cs-tag"
-                  :class="isDunningTagPending(t) ? 'cs-tag--dunning-pending' : 'cs-tag--dunning-done'"
-                  @click.stop
-                >
-                  {{ dunningTagLabel(t) }}
-                </span>
-              </a-tooltip>
-              <a-tooltip
-                v-if="t.hasSupplement"
-                :title="supplementTagTip(t)"
-                placement="top"
-                :mouse-enter-delay="0.15"
-                color="#fffbeb"
-                :overlay-style="csTagTipOverlayWrap"
-                :overlay-inner-style="csTagTipOverlayInner"
-              >
-                <span
-                  class="cs-tag"
-                  :class="isSupplementTagPending(t) ? 'cs-tag--supplement-pending' : 'cs-tag--supplement-done'"
-                  @click.stop
-                >
-                  {{ supplementTagLabel(t) }}
-                </span>
-              </a-tooltip>
-              <span
-                class="status-tag"
-                :style="statusStyle(t.nodeStatus)"
-                :title="ticketStatusDisplayName(t)"
-              >{{ ticketStatusDisplayName(t) }}</span>
-              <span class="tag">{{ t.type }}</span>
-              <span class="title-text" :class="{ unread: highlightMentionUnread && isMentionUnread(t) }">{{ t.title }}</span>
-              <span v-if="highlightMentionUnread && isMentionUnread(t)" class="unread-tag">未读</span>
-            </div>
-            <div class="title-line2">
-              <span class="channel">{{ ticketListSourceLabel(t) }}</span>
-              <span class="sep">·</span>
-              <span class="ticket-no" @click.stop="emit('clickNo', t)">{{ t.no }}</span>
-              <span v-if="t.escalatedToNo" class="rel-tag rel-tag--to">已升级为 {{ t.escalatedToNo }}</span>
-              <span v-else-if="t.escalatedFromNo" class="rel-tag rel-tag--from">升级自 {{ t.escalatedFromNo }}</span>
-            </div>
-          </div>
-          <template #content>
-            <div class="title-pop">
-              <div class="tp-head">
-                <span class="status-tag" :style="statusStyle(t.nodeStatus)">{{ ticketStatusDisplayName(t) }}</span>
-                <span class="tag">{{ t.type }}</span>
-              </div>
-              <div class="tp-title">{{ t.title }}</div>
-              <div class="tp-meta">{{ ticketListSourceLabel(t) }} · {{ t.no }}</div>
-              <div v-if="t.escalatedToNo" class="tp-rel">已升级为 {{ t.escalatedToNo }}</div>
-              <div v-else-if="t.escalatedFromNo" class="tp-rel">升级自 {{ t.escalatedFromNo }}</div>
-            </div>
-          </template>
-        </a-popover>
+        <TicketTitleCell
+          :ticket="t"
+          :highlight-mention-unread="highlightMentionUnread"
+          @click-no="emit('clickNo', $event)"
+        />
       </div>
 
       <template v-for="colKey in orderedCols" :key="`${t.id}-${colKey}`">
@@ -743,109 +653,6 @@ const gridTemplateColumns = computed(() => {
   border-color: #1a6fff;
 }
 
-/* 状态标签：STATUS_COLOR_MAP（基线 §1）；类型标签中性灰 */
-.status-tag {
-  flex: none;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 4px;
-  white-space: nowrap;
-  max-width: 108px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.tag {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 4px;
-  white-space: nowrap;
-  color: #4b5563;
-  background: #f3f4f6;
-}
-
-/* 工单/标题：第一行 类型+标题，第二行 来源+单号 */
-.cell-title { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; max-width: 100%; }
-.cell-title > :deep(.ant-popover-open),
-.cell-title > :deep(span.ant-popover-open) {
-  display: block;
-  width: 100%;
-  min-width: 0;
-}
-.title-cell-inner { width: 100%; min-width: 0; cursor: default; }
-.title-line1 { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; overflow: hidden; }
-.title-line1 :deep(.ant-tooltip) { flex: none; line-height: 1; }
-.title-line2 {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
-}
-.title-line2 .rel-tag {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-.title-text {
-  flex: 1;
-  min-width: 0;
-  font-size: 13px;
-  font-weight: 500;
-  color: #111827;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.channel { font-size: 12px; color: #6b7280; flex: none; }
-.sep { font-size: 12px; color: #d1d5db; flex: none; }
-.ticket-no { font-size: 12px; font-weight: 500; color: #1a6fff; cursor: pointer; flex: none; }
-.ticket-no:hover { text-decoration: underline; }
-.rel-tag {
-  flex: none;
-  font-size: 11px; font-weight: 600; line-height: 16px;
-  padding: 0 6px; border-radius: 4px;
-}
-.rel-tag--to { color: #7c3aed; background: #f5f3ff; border: 1px solid #ddd6fe; }
-.rel-tag--from { color: #4f46e5; background: #eef2ff; border: 1px solid #e0e7ff; }
-/* 已催 / 已补：与 status-tag / rel-tag 同系；待回红框强调，已回降噪 */
-.cs-tag {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 14px;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 2px;
-  border-radius: 3px;
-  white-space: nowrap;
-  cursor: default;
-  flex-shrink: 0;
-}
-.cs-tag--dunning-pending,
-.cs-tag--supplement-pending {
-  color: #dc2626;
-  background: #fee2e2;
-  border: 1px solid #ef4444;
-  font-weight: 700;
-}
-.cs-tag--dunning-done,
-.cs-tag--supplement-done {
-  color: #9ca3af;
-  background: #f3f4f6;
-  border: 1px solid #e5e7eb;
-  font-weight: 500;
-  padding: 0 2px;
-  min-width: 16px;
-}
-
 /* 工单摘要列：标签 + 内容单行展示 */
 .cell-summary { display: flex; align-items: center; min-width: 0; }
 .summary-stack {
@@ -1093,13 +900,8 @@ const gridTemplateColumns = computed(() => {
 .empty-act:hover { border-color: #1a6fff; color: #1a6fff; }
 </style>
 
-<!-- 工单标题 / 摘要 hover 弹窗（teleport 到 body，需非 scoped） -->
+<!-- 摘要 hover 弹窗（teleport 到 body，需非 scoped） -->
 <style>
-.title-pop { width: 320px; display: flex; flex-direction: column; gap: 6px; }
-.title-pop .tp-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.title-pop .tp-title { font-size: 13px; font-weight: 600; color: #111827; line-height: 1.5; word-break: break-word; }
-.title-pop .tp-meta { font-size: 12px; color: #6b7280; }
-.title-pop .tp-rel { font-size: 11px; font-weight: 600; color: #7c3aed; }
 .summary-pop { width: 320px; display: flex; flex-direction: column; gap: 8px; }
 .summary-pop .sp-title {
   font-size: 13px; font-weight: 600; color: #111827; line-height: 1.4;
