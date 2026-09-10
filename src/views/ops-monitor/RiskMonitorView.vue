@@ -2350,6 +2350,115 @@ function untaggedSliceRows(slice: UntaggedSlice): QueueRow[] {
   return untaggedUniverse.value.filter((r) => effectiveSourceOf(r) === src);
 }
 
+/* ---- 「未标记」这一段的筛选条 ---- */
+//
+// 【为什么这一段要有筛选、却不要统计头】命中台账那条统计头（待核实 / 已核实 / 确认是风险 /
+// 误报 / 规则准确率）讲的是**词表质量**，属于台账那条规则改进回路。摆在日常打标的工作面前，
+// 等于把"规则准不准"塞给一个正在判"这张单有没有风险"的人 —— 两个问题、两个分母。
+// 这一段要的只是**在当前这一路里把范围收窄**，故只补一条筛选条。
+//
+// 🔴 **字段随当前这一路而变**：只有「实时监控」那一路带命中证据（原话、风险词），
+// 另两路的行就是工单，没有原话也没有词可筛。
+//
+// 🔴 **不重复左栏与工作组 chip 已经承担的收窄**（加进去就是同一件事两个入口）：
+//   · 等级 / 优先级 —— 左栏子档已经在做；
+//   · 班组 —— 清单上方那行「工作组」chip 已经在做；
+//   · 核实结果 / 打标人 —— 这一段按定义全是没下过结论的单，两个字段恒空。
+interface UntaggedFilter {
+  keyword: string;
+  /** 只有「实时监控」这一路用得到：本单命中过的风险词（取现有词表里真出现过的） */
+  words: string[];
+  from: string;
+  to: string;
+}
+/**
+ * 默认**不设时间窗**。与命中台账那条相反：台账是只增不减的永久记录，不给默认窗口一开始就淹在
+ * 历史里；而这一段装的是**此刻的存量**（还没人下结论的单），本来就没有多少历史深度，
+ * 给一个默认窗口反而会让左栏角标与表行数在人什么都没筛的时候就对不上。
+ */
+function defaultUntaggedFilter(): UntaggedFilter {
+  return { keyword: '', words: [], from: '', to: '' };
+}
+const untaggedFilter = ref<UntaggedFilter>(defaultUntaggedFilter());
+
+const untaggedDateRange = computed((): [Dayjs, Dayjs] | undefined => {
+  const { from, to } = untaggedFilter.value;
+  if (!from || !to) return undefined;
+  return [dayjs(from), dayjs(to)];
+});
+function onUntaggedRangeChange(
+  dates: [Dayjs, Dayjs] | [string, string] | null,
+  dateStrings: [string, string],
+) {
+  if (!dates?.[0] || !dates?.[1]) {
+    untaggedFilter.value.from = '';
+    untaggedFilter.value.to = '';
+    return;
+  }
+  untaggedFilter.value.from = dateStrings[0] || dayjs(dates[0]).format('YYYY-MM-DD');
+  untaggedFilter.value.to = dateStrings[1] || dayjs(dates[1]).format('YYYY-MM-DD');
+}
+
+/**
+ * 「风险词」下拉的取值：**从这一路真出现过的词派生**，与台账那几个下拉同一条规矩
+ * （`uniqOptions` 的说明）—— 选了必有结果。
+ * 🔴 底表取**未过本条筛选**的整片：拿过滤后的行去派生，选中一个词之后下拉里就只剩它自己，
+ * 人再也换不回别的词。
+ */
+const untaggedWordOptions = computed(() => {
+  const seen: string[] = [];
+  for (const r of untaggedSliceRows('kw')) {
+    for (const w of rowWords(r)) if (!seen.includes(w)) seen.push(w);
+  }
+  return seen.map((w) => ({ value: w, label: w }));
+});
+
+/**
+ * 把筛选条件套到某一路的行上。
+ *
+ * 🔴 **时间这一维两路各锚各的**：实时监控锚**命中时刻**（这一路的行是被词捞进来的，
+ * "什么时候被发现"才是它的时间），另两路锚**进监控时刻**（表里那一列就是它）。
+ * 🔴 没有对应时刻的行，在设了区间时**照实筛掉**：一张还没纳入监控的单没有"进监控时刻"，
+ * 它不落在任何一个区间里。硬塞进去等于给它编一个时刻。
+ */
+function applyUntaggedFilter(list: QueueRow[], slice: UntaggedSlice): QueueRow[] {
+  const f = untaggedFilter.value;
+  const kw = f.keyword.trim().toLowerCase();
+  const words = slice === 'kw' ? f.words : [];
+  if (!kw && !words.length && !f.from && !f.to) return list;
+  return list.filter((r) => {
+    if (kw) {
+      const hay = [r.ticketNo, rowTitleOf(r)];
+      // 命中原话只有实时监控那一路有，另两路的行就是工单、没有原话可搜
+      if (slice === 'kw') for (const h of rowHits(r)) hay.push(h.excerpt ?? '');
+      if (!hay.some((s) => s.toLowerCase().includes(kw))) return false;
+    }
+    if (words.length && !rowWords(r).some((w) => words.includes(w))) return false;
+    if (f.from || f.to) {
+      const days = slice === 'kw'
+        ? rowHits(r).map((h) => h.when.slice(0, 10))
+        : (r.at ? [r.at.slice(0, 10)] : []);
+      const hit = days.some((d) => (!f.from || d >= f.from) && (!f.to || d <= f.to));
+      if (!hit) return false;
+    }
+    return true;
+  });
+}
+
+const untaggedFilterDirty = computed(() => {
+  const f = untaggedFilter.value;
+  return !!f.keyword.trim() || !!f.words.length || !!f.from || !!f.to;
+});
+
+function resetUntaggedFilter() {
+  untaggedFilter.value = defaultUntaggedFilter();
+}
+
+/** 与台账那条查询条一致：条件是**实时生效**的，这枚按钮只把页码收回第一页 */
+function applyUntaggedQuery() {
+  queuePageCurrent.value = 1;
+}
+
 /**
  * 这一行落在**当前切片的哪个子档**里；null ＝ 这一路推不出子档。
  *   · 实时监控 —— 词表预设的识别风险等级（取本单命中里最重的一条）；
@@ -2431,9 +2540,12 @@ const untaggedRows = computed<QueueRow[]>(() => {
   const slice = untaggedSlice.value;
   const sub = untaggedSub.value;
   const rankOf = slice === 'kw' ? presetLevelRankOf : priorityRankOf;
+  // 🔴 筛选条在这里生效**一处**：`groupChips` 与左栏当前这一路的角标都从这条链上取数，
+  // 各筛各的就会出现"标签写着一个数、表里躺着另一批"——本文件反复踩过的那个坑。
+  const base = applyUntaggedFilter(untaggedSliceRows(slice), slice);
   const rows = sub
-    ? untaggedSliceRows(slice).filter((r) => untaggedSubOf(r, slice) === sub)
-    : untaggedSliceRows(slice);
+    ? base.filter((r) => untaggedSubOf(r, slice) === sub)
+    : base;
   return rows.slice().sort((a, b) => (
     rankOf(a.ticketNo) - rankOf(b.ticketNo)
     || (a.at ?? AT_LAST).localeCompare(b.at ?? AT_LAST)
@@ -2595,6 +2707,20 @@ watch([tagLevelFilter, taggerFilter, groupFilter], () => {
 watch([untaggedSlice, untaggedSub], () => {
   clearBulk();
   queuePageCurrent.value = 1;
+});
+
+/**
+ * 换**路**（或整个离开「未标记」这一段）时把筛选条清空。
+ *
+ * 🔴 **只在换路时清，换子档时不清**：清的理由是"三路的字段本来就不一样"——
+ * 实时监控那一路有风险词、有原话，另两路一个都没有，留着上一路的条件只会让人以为筛坏了。
+ * 而同一路的三个子档共用同一套字段，切子档就清掉的话，
+ * 人在「实时监控」按词筛完点进「高风险」会看到全部，同样会以为筛选失灵；
+ * 更要命的是子档角标此时按筛选算，点进去却清空筛选 —— 角标与表行数当场对不上，
+ * 而"点哪一档，角标 ＝ 表行数"是这一列的第一条不变量。
+ */
+watch([untaggedSlice, queueView, listView], () => {
+  resetUntaggedFilter();
 });
 
 /** 这条条目上的**现行打标结论**；空 ＝ 还在待打标 */
@@ -3117,7 +3243,12 @@ function untaggedSliceItems(
   label: string,
   title: string,
 ): RailItem[] {
-  const rows = inGroup(untaggedSliceRows(slice));
+  // 🔴 筛选条只收窄**当前这一路**：它的字段是按这一路配的（另两路根本没有风险词、没有原话），
+  // 拿去套别的路等于用一把量不了的尺子去量。故另两路的角标不跟着变 ——
+  // 代价是**开着筛选时「三路之和 ＝ 页签数」不成立**（页签数仍是三路全量），
+  // 这一条在 `railGroups` 的 `title2` 里当场讲出来，不让它变成一处对不上的数。
+  const raw = untaggedSliceRows(slice);
+  const rows = inGroup(slice === untaggedSlice.value ? applyUntaggedFilter(raw, slice) : raw);
   const open = untaggedOpen.value[slice];
   const head: RailItem = {
     key: `untagged:${slice}` as RailKey,
@@ -3164,7 +3295,11 @@ const railGroups = computed<RailGroup[]>(() => {
         + '🔴 **它不是"整本工单库里没人标过的单"**：未标记是每张单与生俱来的默认态，'
         + '那样数出来的是全部在办单、永远清不零，真该判的那批反而被淹没。'
         + '🔴 这个数与「已标记」那个数**分属两批、不相减也不互校**：那边是历史累计打过标的，'
-        + '跑久了必然比这边大，那是正常状态、不是漏损',
+        + '跑久了必然比这边大，那是正常状态、不是漏损'
+        + (untaggedFilterDirty.value
+          ? '⚠️ **筛选生效中**：清单上那条筛选只收窄当前这一路，这个数仍是三路全量，'
+            + '故此刻三路之和小于它 —— 重置筛选即恢复恒等'
+          : ''),
       items: [
         ...untaggedSliceItems('kw', '实时监控',
           '预警词捞进来的那一路。下面按**词表预设的识别风险等级**分档 —— 机器认为最重的排最前，人从上往下判'),
@@ -4142,11 +4277,76 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
             同一个选择器在两处并存就是同屏重复，人还得先猜哪一处才是当前生效的那个。
           -->
 
+      <!--
+        「未标记」筛选条。**复用命中台账那条查询条的类名与排版**（ledger-bar / list-toolbar /
+        tb-fields / fi / tb-actions），一行新样式都不写 —— 这一段的外观已经定过，不该为多一条筛选另起一套。
+        🔴 **只补筛选、不搬统计头**：台账那条统计头（待核实 / 已核实 / 确认是风险 / 误报 / 规则准确率）
+        讲的是词表质量，属于台账那条规则改进回路；摆在日常打标的工作面前，
+        等于把"规则准不准"塞给一个正在判"这张单有没有风险"的人。
+        🔴 字段按路而变、且**不重复左栏子档与工作组 chip 已经承担的收窄**，见 `UntaggedFilter`。
+      -->
+      <div
+        v-if="listView === 'realtime' && queueView === 'monitoring'"
+        class="ledger-bar"
+        @keyup.enter="applyUntaggedQuery"
+      >
+        <div class="list-toolbar">
+          <div class="tb-fields">
+            <div class="fi">
+              <span class="fl">关键词</span>
+              <div class="tb-search">
+                <SearchOutlined class="tb-search-ic" />
+                <input
+                  v-model="untaggedFilter.keyword"
+                  class="tb-search-input"
+                  type="text"
+                  :placeholder="untaggedSlice === 'kw' ? '工单号 / 标题 / 命中原话' : '工单号 / 标题'"
+                >
+              </div>
+            </div>
+            <!-- 风险词只有「实时监控」这一路有：另两路的行是工单，压根不产生命中 -->
+            <div v-if="untaggedSlice === 'kw'" class="fi">
+              <span class="fl">风险词</span>
+              <a-select
+                v-model:value="untaggedFilter.words" mode="multiple" allow-clear
+                size="small" class="tb-ctl"
+                :dropdown-match-select-width="false" placeholder="不限" :max-tag-count="1"
+                :options="untaggedWordOptions"
+              />
+            </div>
+            <div class="fi">
+              <!-- 标签宽度是 4em（.fl），故这一路取「进监控」三字：五字会压到控件上 -->
+              <span class="fl">{{ untaggedSlice === 'kw' ? '命中时间' : '进监控' }}</span>
+              <RangePicker
+                :value="untaggedDateRange"
+                :presets="scanRangePresets"
+                allow-clear
+                size="small"
+                format="YYYY-MM-DD"
+                :placeholder="['开始日期', '结束日期']"
+                class="tb-range"
+                @change="onUntaggedRangeChange"
+              />
+            </div>
+          </div>
+          <div class="tb-actions">
+            <button type="button" class="scan-go" @click="applyUntaggedQuery">
+              <SearchOutlined />查询
+            </button>
+            <!-- 重置只清本条筛选：左栏选中档与工作组 chip 是另外两层，不归它管 -->
+            <button type="button" class="tb-btn" :disabled="!untaggedFilterDirty" @click="resetUntaggedFilter">
+              <ReloadOutlined /><span>重置</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- 实时监控 · 空态：把当前视图讲出来，否则"这里没东西"会被读成"系统没在扫" -->
       <div v-if="listView === 'realtime' && !queueRows.length" class="ob-empty">
         <!-- 收窄条件必须在空态里复述，否则"筛空了"会被读成"没有了" -->
         <template v-if="groupFilter !== 'all'">「{{ groupFilter }}」在这一档下没有条目 —— 点「全部工作组」看全部</template>
         <template v-else-if="taggerFilter !== 'all'">「{{ taggerFilter }}」名下没有已标记的风险工单 —— 点左栏「按标记人」看全部</template>
+        <template v-else-if="untaggedFilterDirty">当前筛选条件下没有工单 —— 点「重置」看这一路的全部</template>
         <template v-else-if="queueView === 'monitoring' && untaggedSub">这一档下没有未标记的工单 —— 点上一级看这一路的全部</template>
         <template v-else-if="queueView === 'monitoring'">这一路没有待判的工单 —— 换一路看，或用右上角「手动筛查」去存量里捞</template>
         <template v-else-if="queueView === 'noRisk'">当前没有被判为无风险的条目</template>
