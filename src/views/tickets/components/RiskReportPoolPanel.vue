@@ -16,10 +16,10 @@ import { computed, ref } from 'vue';
 import { message, Modal } from 'ant-design-vue';
 import {
   EditOutlined,
-  PaperClipOutlined,
   SearchOutlined,
 } from '@ant-design/icons-vue';
 import TicketFilterBar from './TicketFilterBar.vue';
+import TicketTitleCell from './TicketTitleCell.vue';
 import OpActionModal from './operation/OpActionModal.vue';
 import { useUserStore } from '@/stores/user';
 import { useRiskReportStore, type RiskReport } from '@/stores/riskReports';
@@ -30,7 +30,13 @@ import { useRiskPoolStore } from '@/stores/riskPool';
 import { useRiskReportAssess } from '@/composables/useRiskReportAssess';
 import type { ReportStatus } from '@/stores/riskShared';
 import { TICKETS } from '@/mock/tickets';
-import { canClaimRiskReport, type ChipMeta } from '@/views/tickets/types/ticket';
+import {
+  canClaimRiskReport,
+  PRIORITY_COLOR,
+  resolveTicketGroupNames,
+  type ChipMeta,
+  type Ticket,
+} from '@/views/tickets/types/ticket';
 
 const emit = defineEmits<{ openTicket: [ticketNo: string] }>();
 
@@ -47,7 +53,6 @@ const {
   missAssessAdvice,
   assessAdviceLabel,
   assessAdvicePlaceholder,
-  escalateHint,
   openAssess,
   confirmAssess,
 } = useRiskReportAssess();
@@ -60,10 +65,22 @@ const canAct = computed(() => canClaimRiskReport(user.roleKey));
 
 /* ---------------- 取数 ---------------- */
 
-/** 工单号 → 标题。报备单只带单号，标题得回工单库取一次 */
-const TICKET_TITLE = new Map(TICKETS.map((t) => [t.no, t.title]));
+/** 工单号 → 工单快照。报备单只带单号，展示列复用工单列表「工单 / 标题」单元格 */
+const TICKET_BY_NO = new Map<string, Ticket>(TICKETS.map((t) => [t.no, t]));
+function ticketOf(no: string): Ticket | undefined {
+  return TICKET_BY_NO.get(no);
+}
 function ticketTitle(no: string): string {
-  return TICKET_TITLE.get(no) ?? '—';
+  return ticketOf(no)?.title ?? '—';
+}
+function reporterGroup(no: string): string {
+  const t = ticketOf(no);
+  if (!t) return '—';
+  return resolveTicketGroupNames(t)[0] ?? '未归组';
+}
+function priorityColor(no: string): string {
+  const t = ticketOf(no);
+  return t ? PRIORITY_COLOR[t.priority] : 'transparent';
 }
 
 /** 在队 ＝ 待分派 + 评估中（还没有结论的全集） */
@@ -195,31 +212,19 @@ function isOverdue(r: RiskReport): boolean {
   return reportStore.isOverdue(r);
 }
 
-/**
- * 场景描述超两行折叠。两行装得下多少字没有精确解，按 40 字近似 ——
- * 判宽了顶多多出一枚点了没变化的「展开」，判窄了会把后半段藏死。
- */
-const DESC_CLAMP_CHARS = 40;
-const expandedDesc = ref<Set<string>>(new Set());
-function toggleDesc(id: string) {
-  const next = new Set(expandedDesc.value);
-  next.has(id) ? next.delete(id) : next.add(id);
-  expandedDesc.value = next;
-}
-
 /* ---------------- 动作 ---------------- */
 
 type RowAction = { label: string; primary?: boolean };
 
 /**
  * 行内动作。**没有分派 / 改派**（第三轮拍板取消），只有自取与它的回退：
- * - 待领取 → 「领取」（谁领谁办）
+ * - 待领取 → 「领单」（谁领谁办，与工作台工单池同词）
  * - 我承办 → 「评估」+「释放」（拿了办不了要能退回池子，否则等于把单子锁死在自己名下）
  * - 别人承办 / 已收口 → 无动作，承办人与结论在列上看得到
  */
 function actionsOf(r: RiskReport): RowAction[] {
   if (!canAct.value) return [];
-  if (r.status === '待分派') return [{ label: '领取', primary: true }];
+  if (r.status === '待分派') return [{ label: '领单', primary: true }];
   if (r.status === '评估中' && r.assignee === user.name) {
     return [{ label: '评估', primary: true }, { label: '释放' }];
   }
@@ -227,17 +232,18 @@ function actionsOf(r: RiskReport): RowAction[] {
 }
 
 function onAction(label: string, r: RiskReport) {
-  if (label === '领取') return claim(r);
+  if (label === '领单') return claim(r);
   if (label === '评估') return openAssess(r);
   if (label === '释放') return release(r);
 }
 
 function claim(r: RiskReport) {
   if (!pool.claim(r.id, user.name)) {
-    message.warning('该报备已被他人领取');
+    message.warning('该报备已被他人领单');
     return;
   }
-  message.success(`已领取 ${r.ticketNo} 的风险报备，可直接给出评估结论`);
+  message.success(`已领单 ${r.ticketNo}，请给出评估结论`);
+  openAssess(r);
 }
 
 function release(r: RiskReport) {
@@ -280,10 +286,7 @@ function release(r: RiskReport) {
 
     <!-- ② 工具行：与工作台搜索框同形（工单号 / 工单标题 / 报备人） -->
     <div class="rrp-toolbar">
-      <p v-if="!canAct" class="rrp-readonly">
-        本页为只读视角：报备单的领取与评估由客诉专员执行
-      </p>
-      <span v-else class="rrp-hint">谁领谁办 —— 报备单没有分派，领取后由你给出评估结论</span>
+      <span v-if="canAct" class="rrp-hint">谁领谁办 —— 报备单没有分派，领单后由你给出评估结论</span>
       <div class="rrp-search">
         <SearchOutlined :style="{ color: '#9CA3AF', fontSize: '14px' }" />
         <input
@@ -313,30 +316,38 @@ function release(r: RiskReport) {
 
         <div v-else class="rrp-grid">
           <div class="thead">
-            <div class="th th-cell">工单号</div>
-            <div class="th th-cell">工单标题</div>
-            <div class="th th-cell">报备人</div>
+            <div class="th th-cell th-prio" aria-hidden="true" />
+            <div class="th th-cell">工单 / 标题</div>
+            <div class="th th-cell">报备人/处理组</div>
             <div class="th th-cell">报备原因</div>
             <div class="th th-cell">风险类型</div>
             <div class="th th-cell">场景描述</div>
-            <div class="th th-cell">附件</div>
-            <div class="th th-cell">提交时刻</div>
+            <div class="th th-cell">报备时间</div>
             <div class="th th-cell">已等待</div>
-            <div class="th th-cell">承办人</div>
+            <div class="th th-cell">承办人/处理组</div>
             <div class="th th-cell">状态</div>
             <div class="th th-cell">操作</div>
           </div>
 
           <div v-for="r in list" :key="r.id" class="row">
-            <div class="cell">
-              <span class="ticket-no" @click="emit('openTicket', r.ticketNo)">{{ r.ticketNo }}</span>
-            </div>
-            <div class="cell">
-              <span class="plain-text" :title="ticketTitle(r.ticketNo)">{{ ticketTitle(r.ticketNo) }}</span>
+            <div
+              class="cell cell-prio row-leading"
+              :style="{ borderLeftColor: priorityColor(r.ticketNo) }"
+              aria-hidden="true"
+            />
+            <div class="cell cell-title-wrap">
+              <TicketTitleCell
+                v-if="ticketOf(r.ticketNo)"
+                :ticket="ticketOf(r.ticketNo)!"
+                @click-no="emit('openTicket', $event.no)"
+              />
+              <span v-else class="plain-text" :title="`${r.ticketNo} · ${ticketTitle(r.ticketNo)}`">
+                {{ r.ticketNo }} · {{ ticketTitle(r.ticketNo) }}
+              </span>
             </div>
             <div class="cell cell-col">
               <span class="who">{{ r.by }}</span>
-              <span class="who-role">{{ r.byRole }}</span>
+              <span class="who-role">{{ reporterGroup(r.ticketNo) }}</span>
             </div>
             <div class="cell">
               <span class="tag tag-reason">{{ r.reason }}</span>
@@ -345,27 +356,15 @@ function release(r: RiskReport) {
               <span v-if="r.category" class="tag tag-cat">{{ r.category }}</span>
               <span v-else class="muted">—</span>
             </div>
-            <div class="cell cell-col cell-desc">
-              <p class="desc" :class="{ 'is-clamp': !expandedDesc.has(r.id) }">{{ r.desc }}</p>
-              <button
-                v-if="r.desc.length > DESC_CLAMP_CHARS"
-                type="button"
-                class="desc-toggle"
-                @click="toggleDesc(r.id)"
-              >
-                {{ expandedDesc.has(r.id) ? '收起' : '展开' }}
-              </button>
-            </div>
-            <div class="cell">
-              <span
-                v-if="r.attachments.length"
-                class="files"
-                :title="r.attachments.join('、')"
-              >
-                <PaperClipOutlined />
-                <span class="files-text">{{ r.attachments.join('、') }}</span>
-              </span>
-              <span v-else class="muted">—</span>
+            <div class="cell cell-desc">
+              <a-popover trigger="hover" placement="rightTop" :mouse-enter-delay="0.2">
+                <div class="desc-text line-clamp-2">{{ r.desc || '—' }}</div>
+                <template #content>
+                  <div class="desc-pop">
+                    <div class="desc-pop-text">{{ r.desc || '—' }}</div>
+                  </div>
+                </template>
+              </a-popover>
             </div>
             <div class="cell">
               <span class="plain-text" :title="r.at">{{ shortAt(r.at) }}</span>
@@ -375,10 +374,11 @@ function release(r: RiskReport) {
               <!-- 超时的必须一眼看出来：这条队列卡的是投诉立项，压在池子里没人领是最坏的一档 -->
               <span v-if="isOverdue(r)" class="overdue-tag">超时未评</span>
             </div>
-            <div class="cell">
-              <span v-if="r.assignee" class="plain-text">{{ r.assignee }}</span>
+            <div class="cell cell-col">
+              <span v-if="r.assignee" class="who">{{ r.assignee }}</span>
               <!-- 只有还在队里的才说「未领取」：已撤回的那条谁也不会再去领，写它等于挂一个假的待办 -->
-              <span v-else class="muted">{{ r.status === '待分派' ? '未领取' : '—' }}</span>
+              <span v-else class="who muted">{{ r.status === '待分派' ? '未领取' : '—' }}</span>
+              <span class="who-role">{{ reporterGroup(r.ticketNo) }}</span>
             </div>
             <div class="cell">
               <span class="state" :class="`tone-${statusTone(r.status)}`">{{ statusText(r.status) }}</span>
@@ -423,7 +423,6 @@ function release(r: RiskReport) {
           </a-radio-group>
         </div>
         <p v-if="missAssessDecision" class="af-err">请先选择一个评估决策</p>
-        <p v-else-if="assessDecision === '升级'" class="af-hint">{{ escalateHint }}</p>
 
         <div class="af-field af-field-block">
           <span class="af-label req">{{ assessAdviceLabel }}</span>
@@ -466,8 +465,7 @@ function release(r: RiskReport) {
   width: 100%;
   min-width: 0;
 }
-.rrp-hint,
-.rrp-readonly {
+.rrp-hint {
   margin: 0;
   font-size: 12px;
   color: #6b7280;
@@ -475,18 +473,13 @@ function release(r: RiskReport) {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.rrp-readonly {
-  padding: 6px 12px;
-  background: #f3f4f6;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-}
 .rrp-search {
   display: flex;
   align-items: center;
   gap: 8px;
   width: 240px;
   height: 36px;
+  margin-left: auto;
   padding: 0 10px;
   background: #fff;
   border: 1px solid #d1d5db;
@@ -532,8 +525,8 @@ function release(r: RiskReport) {
    * 场景描述一长，整张表就撑到屏外、把「操作」推得看不见（折叠也随之失效）。
    */
   grid-template-columns:
-    140px minmax(120px, 0.8fr) 80px 92px 88px minmax(190px, 1fr)
-    96px 92px 88px 76px 76px 84px;
+    4px minmax(276px, 1.2fr) 96px 92px 88px minmax(190px, 1fr)
+    92px 88px 76px 76px 84px;
   column-gap: 0;
   width: 100%;
   padding: 0 16px;
@@ -574,15 +567,21 @@ function release(r: RiskReport) {
   align-items: flex-start;
   gap: 2px;
 }
-.ticket-no {
-  font-size: 12px;
-  font-weight: 500;
-  color: #1a6fff;
-  cursor: pointer;
-  flex: none;
+.th-prio,
+.cell-prio {
+  padding: 0;
+  min-width: 0;
+  align-self: stretch;
 }
-.ticket-no:hover {
-  text-decoration: underline;
+.row-leading {
+  border-left: 4px solid transparent;
+  margin-left: -4px;
+}
+.cell-title-wrap {
+  align-items: flex-start;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  padding-left: 4px;
 }
 .plain-text {
   font-size: 12px;
@@ -622,48 +621,24 @@ function release(r: RiskReport) {
   border: 1px solid #fed7aa;
 }
 .cell-desc {
-  justify-content: center;
+  align-items: flex-start;
+  min-width: 0;
 }
-.desc {
-  margin: 0;
+.desc-text {
+  flex: 1;
+  min-width: 0;
   font-size: 12px;
-  line-height: 1.6;
-  color: #4b5563;
-  width: 100%;
+  color: #6b7280;
+  line-height: 1.4;
+  cursor: default;
   word-break: break-word;
 }
-.desc.is-clamp {
+.desc-text.line-clamp-2 {
   display: -webkit-box;
-  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
-}
-.desc-toggle {
-  padding: 0;
-  border: none;
-  background: transparent;
-  font-family: inherit;
-  font-size: 11px;
-  color: #1a6fff;
-  cursor: pointer;
-}
-.files {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  font-size: 11px;
-  color: #475569;
-}
-.files :deep(.anticon) {
-  color: #94a3b8;
-  font-size: 11px;
-  flex: none;
-}
-.files-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .waited {
   font-size: 12px;
@@ -811,4 +786,9 @@ function release(r: RiskReport) {
   line-height: 1.5;
   color: #6b7280;
 }
+</style>
+
+<style>
+.desc-pop { width: 320px; }
+.desc-pop-text { font-size: 12px; color: #374151; line-height: 1.6; word-break: break-word; }
 </style>

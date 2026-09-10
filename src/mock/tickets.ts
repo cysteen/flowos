@@ -367,6 +367,19 @@ const BASE_TICKETS: Ticket[] = [
     createdAt: '2026-07-05 13:00', updatedAt: '2026-08-08 18:30',
   },
   // ── 关闭类终态 · 两种收口原因对照（PRD §5.6.4）────────────────────────────
+  // 咨询原单 → 风险报备 rr-006 挂载点；评估「升级」后派生 t40（IFLYTS-20260709-00001）
+  {
+    id: 't39', no: 'IFLYZX-20260707-00001', type: '咨询', channel: '电话',
+    title: '学习机屏幕漏光，客户要求升级', smartMarks: ['升级', '情绪'],
+    customer: '周敏', vip: false, product: '学习机 T20',
+    nodeStatus: '处理中', nodeStep: 5, nodeTotal: 5, priority: 'P1',
+    slaText: '—', slaSub: '已升级投诉·停表', slaState: 'ok', slaMinutes: 9999,
+    assignee: '王坐席', tab: 'done', handledByMe: true, myUpgradeAction: true,
+    customerPhone: '13500002222', sn: 'SN-T20-77301', productCategory: '学习硬件',
+    problemDesc: '客户连续两日致电反馈屏幕漏光，明确要求"给个说法否则去平台曝光"，并已在社交平台发帖。',
+    escalatedToNo: 'IFLYTS-20260709-00001',
+    createdAt: '2026-07-07 09:15', updatedAt: '2026-07-09 10:30',
+  },
   // ① 正常关闭：**无派生子单**（有父关联：本单是别的单升级来的）。
   //    再来诉求 → 补充/催单走「基于原单建新单承接」（§5.2，同 Zendesk follow-up）。
   { serviceScore: 3,

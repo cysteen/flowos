@@ -162,6 +162,23 @@ const SEED: RiskReport[] = [
     status: '待分派',
   }),
   /*
+   * 「评估中」样本。**必须有这一条**：没有它，领取之后状态列只剩「待领取」与「已评估」
+   * 两档，看不出"已有人领、还在等结论"这一中间态；「评估中」筛选 chip 也会恒为 0。
+   */
+  reported({
+    id: 'rr-010',
+    ticketNo: 'IFLYZX-20260715-00003',
+    reason: '客户要求升级',
+    category: null,
+    desc: '客户第三次来电追问处理进度，表示若今日无答复将向消费者协会投诉。',
+    attachments: [],
+    by: '林晓东',
+    byRole: '二线专员',
+    at: agoStamp(70),
+    status: '评估中',
+    assignee: '吴投诉',
+  }),
+  /*
    * 「已撤回」样本。**必须有这一条**：撤回的口径是「**不删除**，记录仍在、状态记『已撤回』
    * 并留下原因」（§4.8）。SEED 里没有它时，这条口径只能靠"现场报一条再撤一条"才看得到——
    * 而撤回恰恰是**报错了要纠错**的唯一出口，评审时最容易被追问"撤了之后那条去哪了"。
@@ -243,8 +260,9 @@ const LS_KEY = 'flowos-risk-reports';
  * v3：评估结论枚举由「不升级 / 接管」改为「升级 / 不升级」（2026-09-10 第三轮拍板）。
  * v2 那份缓存里 `decision` 存的是已废的 `'接管'`，读进来是枚举外的值——
  * 界面上它既不匹配「升级」也不匹配「不升级」，那一格会空掉且不报错。
+ * v4：B 线 SEED 补「评估中」样本（rr-010），否则状态列缺领单后的中间态。
  */
-const LS_VERSION = 3;
+const LS_VERSION = 4;
 
 export const useRiskReportStore = defineStore('riskReports', () => {
   const reports = ref<RiskReport[]>(SEED.map((r) => ({ ...r })));

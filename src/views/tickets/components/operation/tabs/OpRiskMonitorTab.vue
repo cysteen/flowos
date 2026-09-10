@@ -88,8 +88,6 @@ const {
  * 谁先改都不会出现"按钮写升级、说明写接管"。
  */
 const advicePlaceholder = computed(() => advicePlaceholderOf(assessDecision.value));
-/** 「升级」那一档的后果。本形态只在**非投诉单**上出现，故只讲第一跳派生这一路 */
-const escalateHint = '提交后原单落「已升级投诉」并派生一张投诉单，新单全量继承本单信息。此步不可撤销';
 
 const expanded = ref({ report: true, assess: true, tag: true, collab: true, risk: true });
 const riskLevelOptions = RISK_LEVEL_SELECT_OPTIONS;
@@ -646,9 +644,6 @@ const collabSectionBadge = computed(() =>
               </a-radio-group>
             </div>
             <div v-if="missAssessDecision" class="ticket-assess-err ticket-assess-foot">请先选择一个评估决策</div>
-            <div v-else-if="isEscalateDecision(assessDecision)" class="op-hint ticket-assess-foot">
-              {{ escalateHint }}
-            </div>
           </div>
           <div class="op-field">
             <div class="op-label req">{{ adviceLabel(assessDecision) }}</div>
