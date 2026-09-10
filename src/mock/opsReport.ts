@@ -197,6 +197,13 @@ export const RISK_WORDS: RiskWord[] = [
   { id: 'w4', word: '12315', synonyms: ['消协', '315', '市场监管局', '消费者协会', '打315', '找消协'], level: '高', speakerLimit: '不限', scopes: ['标题', '问题描述', '沟通记录', '处理结果'], receivers: ['值班经理', '投诉专员'], enabled: true, hits7dRaw: 5, hits7d: 5, judged7d: 5, valid7d: 3, updatedAt: '2026-08-01 11:00' },
   { id: 'w5', word: '投诉到底', synonyms: ['一直投诉', '天天投诉', '告到底', '投诉你们', '没完'], level: '中', speakerLimit: '不限', scopes: ['问题描述', '沟通记录', '处理结果'], receivers: ['值班经理'], enabled: true, hits7dRaw: 9, hits7d: 9, judged7d: 8, valid7d: 6, updatedAt: '2026-08-20 14:05' },
   { id: 'w6', word: '退一赔三', synonyms: ['三倍赔偿', '假一赔三', '退一赔十', '按消法赔'], level: '中', speakerLimit: '不限', scopes: ['问题描述', '沟通记录', '问题原因'], receivers: ['值班经理'], enabled: true, hits7dRaw: 3, hits7d: 3, judged7d: 3, valid7d: 3, updatedAt: '2026-08-10 10:18' },
+  // 🔴 **词表里唯一一条启用中的「低」**。没有它，`RiskHit.level` 这一维在整个页面上
+  // 只有高与中两档有值：低档的词此前只有下面那条已停用的「孩子」，而停用的词不产生新命中，
+  // 于是「待标记 · 实时监控」按识别风险等级分档时「低风险」恒为 0 ——
+  // 一个恒为 0 的档位会被读成筛选坏了，而不是"今天没有低风险"。
+  // 措辞按低档的定义选：**有不满、但没有指向任何外部渠道**（signal ＝ 无，见 signalOfWord），
+  // 与「投诉到底」那类"有威胁未指名"（中）、「12315」那类"指名了外部渠道"（高）逐级拉开。
+  { id: 'w8', word: '差评', synonyms: ['给差评', '打差评', '一星', '评价里说', '评分给低'], level: '低', speakerLimit: '不限', scopes: ['沟通记录', '处理结果'], receivers: ['值班经理'], enabled: true, hits7dRaw: 7, hits7d: 7, judged7d: 5, valid7d: 3, updatedAt: '2026-08-30 10:05' },
   // 反面教材：通用词，7 天命中 142 次、准确率 8%，上线即刷屏，已停用。
   // 同义词故意铺得较宽（青少年 / 祖国的花朵等），演示「一条规则 = 主词 + N 同义词」的覆盖感；
   // 也解释为什么这类泛化词一启用就刷屏——命中面太广，准确率自己报警。
@@ -376,6 +383,10 @@ const RISK_HITS_SEED: RiskHit[] = [
     impact: '一般', impactSource: '产品质量投诉 · 产品质量故障',
     signal: '中', signalSource: '命中「退一赔三」',
     track: '外部信号', legacyLevel: '中',
+    // 判为**低**：诉求停在换货与补偿上，没有指向任何外部渠道。
+    // 「预设中、判定低」正是打标存在的理由——预设值是机器按词给的建议，人看过原文才定得了级。
+    tagged: '低', taggedBy: '郑监控', taggedByRole: '投诉督导', taggedAt: '2026-08-04 13:45', taggedNote: '仅要求退换与补偿，未提及外部渠道，按常规售后流程跟进即可',
+    verdict: '成立',
   },
   {
     // 🔴 双轨的第二个反例：流程规则类诉求，客户喊了 12315。
@@ -402,6 +413,8 @@ const RISK_HITS_SEED: RiskHit[] = [
     impact: '一般', impactSource: '产品功能/性能投诉 · 产品性能未达到顾客预期',
     signal: '中', signalSource: '命中「投诉到底」',
     track: '外部信号', legacyLevel: '中',
+    tagged: '中', taggedBy: '吴投诉', taggedByRole: '客诉专员', taggedAt: '2026-08-04 12:05', taggedNote: '影响全校期末成绩录入，客户措辞强硬但未指名外部渠道，交班组长每日跟进',
+    verdict: '成立',
   },
   {
     // 🔴 角色维度的价值：这句"曝光"是坐席说的。
@@ -483,6 +496,11 @@ const RISK_HITS_SEED: RiskHit[] = [
     impact: '轻微', impactSource: '流程规则投诉 · 退换货政策不认可',
     signal: '强', signalSource: '命中「12315」',
     track: '外部信号', legacyLevel: '高',
+    // 预设高、判定**中**：客户确实提了消协，但争议标的是一只鼠标的保修期认定，
+    // 与 h20 那种"材料已经递上去了"不是一个量级。这条与 h20 并排，正好说明同一个词
+    // 为什么会判出两个级——判的是这句话背后的事，不是这个词本身。
+    tagged: '中', taggedBy: '秦督导', taggedByRole: '投诉督导', taggedAt: '2026-08-03 16:40', taggedNote: '仅口头提及消协、尚未实际登记，标的金额小，交班组长跟进并给出保修认定依据',
+    verdict: '成立',
   },
   {
     id: 'h13', ticketNo: 'IFLYZX-20260705-00001', title: '开放平台接口调用超额计费申诉',
@@ -495,6 +513,8 @@ const RISK_HITS_SEED: RiskHit[] = [
     impact: '一般', impactSource: '流程规则投诉 · 其他业务规则不认可',
     signal: '中', signalSource: '命中「投诉到底」',
     track: '外部信号', legacyLevel: '中',
+    tagged: '低', taggedBy: '秦督导', taggedByRole: '投诉督导', taggedAt: '2026-08-03 15:30', taggedNote: '计费口径争议，客户催的是进度不是赔偿，已给出对账明细与排期，按常规流程处理',
+    verdict: '成立',
   },
   {
     id: 'h14', ticketNo: 'IFLYZX-20260708-00001', title: '录音笔电池膨胀顶开外壳',
@@ -543,6 +563,8 @@ const RISK_HITS_SEED: RiskHit[] = [
     impact: '一般', impactSource: '产品质量投诉 · 产品质量故障',
     signal: '强', signalSource: '命中「曝光」（同义词「媒体」）',
     track: '外部信号', legacyLevel: '高',
+    tagged: '高', taggedBy: '郑监控', taggedByRole: '投诉督导', taggedAt: '2026-08-03 09:35', taggedNote: '新品上市期 + 客户点名媒体，扩散代价高，转客诉专员专项跟进',
+    verdict: '成立',
   },
   {
     id: 'h18', ticketNo: 'IFLYZX-20260718-00001', title: '医疗语音录入识别率低',
@@ -585,6 +607,103 @@ const RISK_HITS_SEED: RiskHit[] = [
     impact: '一般', impactSource: '产品质量投诉 · 产品质量故障',
     signal: '强', signalSource: '命中「12315」',
     track: '外部信号', legacyLevel: '高',
+    tagged: '高', taggedBy: '吴投诉', taggedByRole: '客诉专员', taggedAt: '2026-08-02 11:40', taggedNote: '两次换货未解决且客户已向 12315 递交材料，须限时答复并留存全过程记录',
+    verdict: '成立',
+  },
+
+  // ====================================================================
+  // 「待标记 · 实时监控」的分档语料 —— 共 6 条（h24 … h29）。
+  //
+  // 【为什么必须补】那一档按**词表预设的识别风险等级**（`RiskHit.level`）分高 / 中 / 低。
+  // 上面二十余条命中里，落在**工单库中还在办、且还没有人下过结论**的单上的**只有 h1 一条**
+  // （其余要么挂的单不在 `mock/tickets.ts` 里、要么那张单已经被打过标）——于是这一档
+  // 总共只有 1 行、且只落在「高」上，中与低两个子档恒为 0，分档这件事在页面上一次都没发生过。
+  //
+  // 🔴 三条硬约束，缺一条这几行就白补：
+  //   ① 工单号必须在 `mock/tickets.ts` 里**真实存在且在办**，否则这一行会掉进
+  //      「未纳入监控」，工作组也反查不到、落进「未归组」；
+  //   ② 那张单**不能已经被打过标**（`riskTags.ticketGradeOf` 非空即算下过结论），
+  //      否则它压根不在「待标记」里，补了也不显示；
+  //   ③ `when` 照上面的写法写**绝对时刻**、且**不晚于当前最新的一条**（h1 的 08-04 14:21）——
+  //      下方 `anchorHitDates()` 会把整批命中整体平移到"最新一条落在今天"，
+  //      写一个更新的时刻等于把整条时间轴的锚点挪走。
+  //
+  // 等级与措辞逐级对齐词表：高 ＝ 指名了外部渠道，中 ＝ 有威胁未指名，低 ＝ 只有不满。
+  // ====================================================================
+  {
+    id: 'h24', ticketNo: 'IFLYTS-20260610-00010', title: '客服响应慢，要求加急处理',
+    word: '曝光', matchedWord: '网上曝光', level: '高', position: '沟通记录',
+    excerpt: '三天了没人回我，再拖我就把工单截图拿去网上曝光。',
+    when: '2026-08-04 13:12', customer: '周敏',
+    groupId: 'cs-1', groupName: '受理一组', assignee: '王坐席',
+    receivers: ['李文萍', '值班经理'],
+    speakerRole: '客户',
+    impact: '一般', impactSource: '流程规则投诉 · 联系时效不认可',
+    signal: '强', signalSource: '命中「曝光」（同义词「网上曝光」）',
+    track: '外部信号', legacyLevel: '高',
+  },
+  {
+    id: 'h25', ticketNo: 'IFLYZX-20260715-00003', title: '空气净化器滤芯指示灯常亮',
+    word: '投诉到底', matchedWord: '投诉到底', level: '中', position: '沟通记录',
+    excerpt: '滤芯换了两次灯还亮，这次不给我说法我就投诉到底。',
+    when: '2026-08-04 11:05', customer: '李静',
+    groupId: 'cs-1', groupName: '受理一组', assignee: '陈坐席',
+    receivers: ['值班经理'],
+    speakerRole: '客户',
+    impact: '一般', impactSource: '产品功能/性能投诉 · 产品性能未达到顾客预期',
+    signal: '中', signalSource: '命中「投诉到底」',
+    track: '外部信号', legacyLevel: '中',
+  },
+  {
+    id: 'h26', ticketNo: 'IFLYZX-20260710-00002', title: '路由器固件升级后无法联网',
+    word: '退一赔三', matchedWord: '退一赔三', level: '中', position: '沟通记录',
+    excerpt: '是你们的升级把机器搞坏的，我要求退一赔三。',
+    when: '2026-08-03 15:48', customer: '田军',
+    groupId: 'cs-2', groupName: '受理二组', assignee: '陈坐席',
+    receivers: ['值班经理'],
+    speakerRole: '客户',
+    impact: '一般', impactSource: '产品质量投诉 · 产品质量故障',
+    signal: '中', signalSource: '命中「退一赔三」',
+    track: '外部信号', legacyLevel: '中',
+  },
+  {
+    id: 'h27', ticketNo: 'IFLYZX-20260802-00003', title: '发票重开申请未处理',
+    word: '投诉到底', matchedWord: '一直投诉', level: '中', position: '催补记录',
+    excerpt: '发票拖了半个多月还没重开，再没人管我就一直投诉。',
+    when: '2026-08-03 13:26', customer: '陈静',
+    groupId: 'cs-2', groupName: '受理二组', assignee: '林坐席',
+    receivers: ['值班经理'],
+    speakerRole: '客户',
+    impact: '轻微', impactSource: '流程规则投诉 · 其他业务规则不认可',
+    signal: '中', signalSource: '命中「投诉到底」（同义词「一直投诉」）',
+    track: '外部信号', legacyLevel: '中',
+  },
+  {
+    // 低档的第一条：客户只说要给差评，**没有指向任何外部渠道**，故 signal ＝ 无。
+    // 「命中了规则但信号为无」不是矛盾：低档词的信号强度按 `signalOfWord` 本就落在「无」，
+    // 手动筛查产出的低档命中也是这个组合。
+    id: 'h28', ticketNo: 'IFLYZX-20260609-00006', title: '@王坐席 请协助确认退款政策',
+    word: '差评', matchedWord: '给差评', level: '低', position: '沟通记录',
+    excerpt: '退款政策这么算太不合理了，我只能去给差评了。',
+    when: '2026-08-04 10:20', customer: '徐岚',
+    groupId: 'cs-1', groupName: '受理一组', assignee: '陈坐席',
+    receivers: ['值班经理'],
+    speakerRole: '客户',
+    impact: '轻微', impactSource: '流程规则投诉 · 退换货政策不认可',
+    signal: '无', signalSource: '命中「差评」（同义词「给差评」）',
+    track: '外部信号', legacyLevel: '低',
+  },
+  {
+    id: 'h29', ticketNo: 'IFLYZX-20260804-00003', title: '售后回传·配件到货续办咨询',
+    word: '差评', matchedWord: '打差评', level: '低', position: '沟通记录',
+    excerpt: '配件等了两周还没到，再这样我就去平台打差评。',
+    when: '2026-08-03 09:55', customer: '韩雪',
+    groupId: 'edu', groupName: '教育支持组', assignee: '王坐席',
+    receivers: ['值班经理'],
+    speakerRole: '客户',
+    impact: '轻微', impactSource: '流程规则投诉 · 售后维修方式不认可',
+    signal: '无', signalSource: '命中「差评」（同义词「打差评」）',
+    track: '外部信号', legacyLevel: '低',
   },
 
   // ====================================================================

@@ -673,6 +673,102 @@ const BASE_TICKETS: Ticket[] = [
     createdAt: '2026-07-31 09:30', updatedAt: '2026-08-02 09:10',
     responded: true, solveBreached: true,
   },
+
+  // ================================================================
+  // 风险监控「重要紧急」那一路的真单 —— 共 6 张（rk-1 … rk-6）。
+  //
+  // 【为什么必须补】风险监控页「待标记 · 重要紧急」按**工单优先级**分档，而这一档的判据是
+  // 「在办 ∧ 非投诉 ∧ P0 / P1」（《【930】》§5A.1 ③）。原有工单库里符合这条的**非投诉 P0
+  // 只有 t2 一张**，于是那一档的 P0 恒为 1：一个只有一条的档位既排不出队，也看不出
+  // "紧急的堆了多少"——而这正是这一路存在的理由。P1 那一档同理，本轮有五张 P1 被打标进池
+  // 之后只剩三张，同样过薄。
+  //
+  // 【为什么不改判据去凑数】把 P2 也算进「重要紧急」等于改口径：那一档答的是"有多少单本身就急"，
+  // 放宽之后它答的是"有多少单在办"，这一路就再也指不出该先动哪一批。故补的是**真单**不是判据。
+  //
+  // 【为什么沿用 ops-* 那套写法】`tab: 'done'` + `handledByMe: false` + 无 `groupId`：
+  // 这批单归属其他班组、处理人也不是本工作台的坐席，故本工作台的六个页签一个都不收它们
+  // （见上方 ops-* 的说明），只在查询中心与运营监控里可查、可点开。补数据不该顺带把
+  // 别的页面的条数改掉。
+  // ================================================================
+  {
+    id: 'rk-1', no: 'IFLYZX-20260806-00001', type: '咨询', channel: '邮件',
+    title: '智学网期末成绩批量导出失败', smartMarks: ['相似'],
+    customer: '合肥八中', vip: true, customerTags: ['校长'], product: '智学网校级版',
+    nodeStatus: '处理中', nodeStep: 2, nodeTotal: 5, priority: 'P0',
+    slaText: '已超 12:40', slaSub: '已超时', slaState: 'overdue', slaMinutes: -760,
+    assignee: '孙坐席', tab: 'done', handledByMe: false,
+    customerPhone: '13866667777', productCategory: '教育服务',
+    problemDesc: '期末成绩批量导出连续三次失败，年级组无法归档成绩单。',
+    latestHandling: '已复现导出超时，正在核对班级数据量上限。',
+    createdAt: '2026-08-05 16:20', updatedAt: '2026-08-06 09:05',
+    responded: true, solveBreached: true,
+  },
+  {
+    id: 'rk-2', no: 'IFLYZX-20260806-00002', type: '咨询', channel: '电话',
+    title: '学习机课本同步资源全部丢失', smartMarks: [],
+    customer: '周敏', vip: false, product: '学习机 T20',
+    nodeStatus: '处理中', nodeStep: 3, nodeTotal: 5, priority: 'P0',
+    slaText: '02:10:00', slaSub: '充足', slaState: 'ok', slaMinutes: 130,
+    assignee: '孙坐席', tab: 'done', handledByMe: false,
+    customerPhone: '13755558888', sn: 'SN-T20-660412', productCategory: '学习硬件',
+    problemDesc: '升级后本地课本同步资源清空，重新下载提示无权限。',
+    latestHandling: '已指导重新绑定教材版本，资源已恢复，客户确认可用。',
+    createdAt: '2026-08-06 08:40', updatedAt: '2026-08-06 10:15',
+    responded: true,
+  },
+  {
+    id: 'rk-3', no: 'IFLYZX-20260806-00003', type: '咨询', channel: '邮件',
+    title: '开放平台鉴权服务批量返回 500', smartMarks: ['相似', '知识'],
+    customer: '某科技公司', vip: true, product: '开放平台',
+    nodeStatus: '待响应', nodeStep: 1, nodeTotal: 5, priority: 'P0',
+    slaText: '00:35:00', slaSub: '距超时', slaState: 'soon', slaMinutes: 35,
+    assignee: '周工', tab: 'done', handledByMe: false,
+    customerPhone: '13500002222', productCategory: '开放平台',
+    problemDesc: '鉴权接口批量返回 500，客户线上业务全量调用失败。',
+    latestHandling: '已通知平台侧值班，等待网关侧回滚确认。',
+    createdAt: '2026-08-06 09:50', updatedAt: '2026-08-06 10:05',
+    responded: false,
+  },
+  {
+    id: 'rk-4', no: 'IFLYZX-20260806-00004', type: '咨询', channel: '在线客服',
+    title: '翻译机在线服务大面积超时', smartMarks: ['升级'],
+    customer: '马涛', vip: false, product: '讯飞翻译机 T10',
+    nodeStatus: '处理中', nodeStep: 2, nodeTotal: 5, priority: 'P0',
+    slaText: '已超 03:05', slaSub: '已超时', slaState: 'overdue', slaMinutes: -185,
+    assignee: '李坐席', tab: 'done', handledByMe: false,
+    customerPhone: '13633334444', sn: 'SN-T10-771203', productCategory: '消费电子',
+    problemDesc: '在线翻译连续超时，离线可用；同一小区多名用户反馈相同现象。',
+    latestHandling: '已上报在线服务侧排查区域节点，暂无结论。',
+    createdAt: '2026-08-06 06:30', updatedAt: '2026-08-06 09:40',
+    responded: true, solveBreached: true,
+  },
+  {
+    id: 'rk-5', no: 'IFLYZX-20260806-00005', type: '咨询', channel: '电话',
+    title: '录音笔转写文件批量丢失', smartMarks: [],
+    customer: '沈杰', vip: false, product: '智能音箱 X1',
+    nodeStatus: '处理中', nodeStep: 2, nodeTotal: 5, priority: 'P1',
+    slaText: '01:25:00', slaSub: '充足', slaState: 'ok', slaMinutes: 85,
+    assignee: '陈坐席', tab: 'done', handledByMe: false,
+    customerPhone: '13511112222', sn: 'SN-X1-118820', productCategory: '智能硬件',
+    problemDesc: '云端转写记录只剩最近三条，历史文件在 APP 内不可见。',
+    latestHandling: '已提交后台找回申请，等待数据侧回捞。',
+    createdAt: '2026-08-06 08:05', updatedAt: '2026-08-06 09:30',
+    responded: true,
+  },
+  {
+    id: 'rk-6', no: 'IFLYZX-20260806-00006', type: '咨询', channel: '小程序',
+    title: '智学网家长端消息推送停止', smartMarks: [],
+    customer: '芜湖某校', vip: false, customerTags: ['老师'], product: '智学网校级版',
+    nodeStatus: '处理中', nodeStep: 2, nodeTotal: 5, priority: 'P1',
+    slaText: '已超 06:18', slaSub: '已超时', slaState: 'overdue', slaMinutes: -378,
+    assignee: '孙坐席', tab: 'done', handledByMe: false,
+    customerPhone: '13899990000', productCategory: '教育服务',
+    problemDesc: '家长端两天未收到作业与成绩推送，教师端发送显示成功。',
+    latestHandling: '已核对推送通道配置，怀疑第三方通道限流，待确认。',
+    createdAt: '2026-08-05 14:10', updatedAt: '2026-08-06 08:50',
+    responded: true, solveBreached: true,
+  },
 ];
 
 /** 列表速览：问题描述 + 最新处理结果（按工单 id 合并，便于坐席快速扫读） */
@@ -752,18 +848,96 @@ const TICKET_FORM_FIELDS: Record<
   },
 };
 
-/** 路由分组名称（可多选，如翻录咨询 / 翻录投诉 / 技术支持） */
+/**
+ * 路由分组名称（可多选）。**第一个是这张单的处理组**，其余是它命中的路由分组。
+ *
+ * 🔴 **每一张单都要有**，一张不落。`resolveTicketGroupNames` 在没有 `groupNames` 时
+ * 回退到「业务类型 + 工单类型」拼名，而工单库里**只有四张单填了 `businessType`**
+ * （见 `TICKET_FORM_FIELDS`），于是绝大多数单拼不出名字、整批落进「未归组」——
+ * 风险监控页「工作组」那一行 39 条里有 23 条挂在「未归组」下，就是这么来的。
+ * 那不是映射规则漏了分支，是**数据缺字段**：一个占了六成的「未归组」既指不出该找哪个组，
+ * 也让"按组盯积压"这件事整个落空。故这里逐条补齐，回退分支保持原样不动。
+ *
+ * 【为什么第一个统一用五个处理组】`resolveTicketGroupNames(t)[0]` 是风险监控页头
+ * 「各处理组」与工单列表「分组名称」列取的那一个值，它要回答的是"**这张单归哪个组办**"。
+ * 「翻录投诉」这类是**路由分组**（进单时按业务线 + 类型分流用的），不是班组；
+ * 两种名字混在同一列里，读的人分不出哪几行是同一个组的活。故：
+ *   · 第一个 ＝ 处理组，取 `listQueryFilters.QUERY_GROUP_OPTIONS` 里那五个班组
+ *     （受理一组 / 受理二组 / 硬件缺陷组 / 教育支持组 / 技术支持组），与命中记录
+ *     （`mock/opsReport.ts` 的 `groupName`）同一套名字，**不新造组**；
+ *   · 原有的路由分组名**一个不删**，只是挪到后面 —— 查询中心按组筛用的是
+ *     `names.some(...)`（见 `listQueryFilters.ts`），挪位置不影响它筛得到。
+ */
 const TICKET_GROUP_NAMES: Record<string, string[]> = {
-  t1: ['翻录投诉', '技术支持'],
-  t2: ['翻录咨询'],
-  t4: ['翻录商机', '技术支持'],
-  t5: ['学习机投诉'],
-  t7: ['智学网咨询', '翻录咨询'],
-  t8: ['翻录投诉', '技术支持'],
-  t11: ['学习机投诉', '技术支持'],
-  t13: ['翻录咨询'],
-  t14: ['翻录投诉'],
-  t17: ['学习机咨询', '技术支持'],
+  // ---- 受理一组：消费类咨询与投诉的主力受理组 ----
+  t1: ['受理一组', '翻录投诉', '技术支持'],
+  t2: ['受理一组', '翻录咨询'],
+  t6: ['受理一组'],
+  t7: ['受理一组', '智学网咨询', '翻录咨询'],
+  t8: ['受理一组', '翻录投诉', '技术支持'],
+  t9: ['受理一组'],
+  t12: ['受理一组'],
+  t13: ['受理一组', '翻录咨询'],
+  t15: ['受理一组'],
+  t20: ['受理一组'],
+  t23: ['受理一组'],
+  t25: ['受理一组'],
+  t28: ['受理一组'],
+  t31: ['受理一组'],
+  'fd-d2': ['受理一组'],
+  'fd-d3': ['受理一组'],
+  'fd-d8': ['受理一组'],
+  'fd-d9': ['受理一组'],
+  'fd-d10': ['受理一组'],
+  'rk-5': ['受理一组'],
+
+  // ---- 受理二组：跨组调剂转入、翻译机与账务类 ----
+  't-feishu': ['受理二组'],
+  t5b: ['受理二组'],
+  t10: ['受理二组'],
+  t19: ['受理二组'],
+  t21: ['受理二组'],
+  t24: ['受理二组'],
+  t27: ['受理二组'],
+  t14: ['受理二组', '翻录投诉'],
+  'fd-d4': ['受理二组'],
+  'fd-d6': ['受理二组'],
+  'fd-d7': ['受理二组'],
+  'ops-6': ['受理二组'],
+  'rk-4': ['受理二组'],
+
+  // ---- 硬件缺陷组：返修、部件更换、硬件故障 ----
+  t18: ['硬件缺陷组'],
+  t22: ['硬件缺陷组'],
+  t29: ['硬件缺陷组'],
+  t32: ['硬件缺陷组'],
+  t33: ['硬件缺陷组'],
+  t41: ['硬件缺陷组'],
+  t42: ['硬件缺陷组'],
+  'ops-1': ['硬件缺陷组'],
+  'ops-4': ['硬件缺陷组'],
+
+  // ---- 教育支持组：学习机 / 智学网 / 校端 ----
+  t5: ['教育支持组', '学习机投诉'],
+  t5a: ['教育支持组'],
+  t40: ['教育支持组'],
+  'fd-d5': ['教育支持组'],
+  'ops-2': ['教育支持组'],
+  'rk-1': ['教育支持组'],
+  'rk-2': ['教育支持组'],
+  'rk-6': ['教育支持组'],
+
+  // ---- 技术支持组：开放平台 / API / 账号安全 ----
+  t3: ['技术支持组'],
+  t4: ['技术支持组', '翻录商机', '技术支持'],
+  t11: ['技术支持组', '学习机投诉', '技术支持'],
+  t16: ['技术支持组'],
+  t17: ['技术支持组', '学习机咨询', '技术支持'],
+  t26: ['技术支持组'],
+  t30: ['技术支持组'],
+  'ops-3': ['技术支持组'],
+  'ops-5': ['技术支持组'],
+  'rk-3': ['技术支持组'],
 };
 
 /** 产品五级归属（查询中心 BGBU/业务线/产品线筛选 Mock） */
