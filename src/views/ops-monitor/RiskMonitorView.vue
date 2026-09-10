@@ -52,7 +52,15 @@ import { RISK_LEVELS, riskLevelText } from '@/config/risk';
 import { TICKETS } from '@/mock/tickets';
 // 优先级的界面词取工单侧那一份**单一真源**：建单页下拉、班组看板都从那里取，
 // 本文件再抄一份，改天业务把「普通加急」改个说法，这一列就会静默地留在旧词上。
-import { PRIORITY_LABEL, STATUS_GROUP, resolveTicketGroupNames, type Priority, type Ticket } from '@/views/tickets/types/ticket';
+import { PRIORITY_LABEL, STATUS_GROUP, ticketStatusDisplayName, resolveTicketGroupNames, type Priority, type Ticket } from '@/views/tickets/types/ticket';
+// 🔴 清单表直接复用工作台那张富列表，不在本页另画一张长得像的：
+// 「投诉单」「重要紧急」两路的行**就是工单**，人在这一档要判的也正是工单本身
+// （摘要 / SLA / 状态 / 产品）。原先那两列（监控来源 ＝ 档名的复述、场景描述 ＝ 一句写死的套话）
+// 对判断没有任何信息量，停在这一档根本判不了，只能一条条点进工单。
+import TicketRichList from '@/views/tickets/components/TicketRichList.vue';
+// SLA 那两行与"此刻是否超时"的口径取工作台那一份**单一真源**（已提到 utils 共用）——
+// 本页再抄一份的话，同一张单在两个页面会给出不同的 SLA 说法
+import { isSlaBreachedNow, slaFirstLine, slaResolveLine } from '@/views/tickets/utils/ticketListCells';
 import { getOpsScopeSelectGroups, type OpsScope } from '@/mock/opsMonitor';
 import {
   RISK_LEVEL_STYLE,
@@ -2379,8 +2387,16 @@ interface UntaggedFilter {
   keyword: string;
   /** 只有「实时监控」这一路用得到：本单命中过的风险词（取现有词表里真出现过的） */
   words: string[];
+  /** 只有「实时监控」这一路用得到：命中时间区间 */
   from: string;
   to: string;
+  /* ---- 以下三维只有「投诉单」「重要紧急」两路用得到：那两路的行就是工单 ---- */
+  /** 产品（多选，从这一路真出现过的产品派生） */
+  products: string[];
+  /** 当前状态（多选，取工单列表那一列的展示名，与表里那一格逐字同源） */
+  statuses: string[];
+  /** SLA：`all` 不限 / `over` 已超时 / `ok` 未超时。判据取工作台那一份 `isSlaBreachedNow` */
+  sla: 'all' | 'over' | 'ok';
 }
 /**
  * 默认**不设时间窗**。与命中台账那条相反：台账是只增不减的永久记录，不给默认窗口一开始就淹在
@@ -2388,7 +2404,7 @@ interface UntaggedFilter {
  * 给一个默认窗口反而会让左栏角标与表行数在人什么都没筛的时候就对不上。
  */
 function defaultUntaggedFilter(): UntaggedFilter {
-  return { keyword: '', words: [], from: '', to: '' };
+  return { keyword: '', words: [], from: '', to: '', products: [], statuses: [], sla: 'all' };
 }
 const untaggedFilter = ref<UntaggedFilter>(defaultUntaggedFilter());
 
@@ -2425,32 +2441,76 @@ const untaggedWordOptions = computed(() => {
 });
 
 /**
- * 把筛选条件套到某一路的行上。
+ * 「产品」「当前状态」两个下拉的取值：同上，**从当前这一路真出现过的值派生**，选了必有结果。
+ * 状态取 `ticketStatusDisplayName` —— 与表里那一格显示的是同一个词，
+ * 各写各的话会出现"下拉里选的词，表里一个都找不到"。
+ */
+function untaggedTicketOptions(pick: (t: Ticket) => string) {
+  const seen: string[] = [];
+  for (const r of untaggedSliceRows(untaggedSlice.value)) {
+    const t = ticketOfRow(r);
+    const v = t ? pick(t) : '';
+    if (v && !seen.includes(v)) seen.push(v);
+  }
+  return seen.map((v) => ({ value: v, label: v }));
+}
+const untaggedProductOptions = computed(() => untaggedTicketOptions((t) => t.product));
+const untaggedStatusOptions = computed(() => untaggedTicketOptions((t) => ticketStatusDisplayName(t)));
+
+/**
+ * 这一行对应的**工单**；null ＝ 工单库与派生库里都查不到。
  *
- * 🔴 **时间这一维两路各锚各的**：实时监控锚**命中时刻**（这一路的行是被词捞进来的，
- * "什么时候被发现"才是它的时间），另两路锚**进监控时刻**（表里那一列就是它）。
- * 🔴 没有对应时刻的行，在设了区间时**照实筛掉**：一张还没纳入监控的单没有"进监控时刻"，
- * 它不落在任何一个区间里。硬塞进去等于给它编一个时刻。
+ * 🔴 **两处都要查**：静态样本 `TICKETS` 之外，「升级」派生出来的新投诉单落在
+ * `derivedTickets` 里（那个 store 存的就是完整 `Ticket`），只查前者会让那批行整批解析不出来。
+ * 🔴 **返回 null 的行不许被丢掉**：清单的行数必须恒等于左栏角标，少一行就是这一列的
+ * 第一条不变量破了。故 `untaggedTicketRows` 对 null 的处理是"照实留在行集里、
+ * 用行自己已知的信息补齐一张最小工单"，而不是 filter 掉，见那一段。
+ */
+function ticketOfRow(r: QueueRow): Ticket | null {
+  return TICKET_BY_NO.get(r.ticketNo) ?? derivedTickets.find(r.ticketNo) ?? null;
+}
+
+/**
+ * 把筛选条件套到某一路的行上。**字段按路分两套**，因为两路的行根本不是一种东西：
+ *   · 实时监控 —— 行由预警词命中产生，故筛 命中原话 / 风险词 / 命中时刻；
+ *   · 投诉单 / 重要紧急 —— 行**就是工单**，故筛 产品 / 当前状态 / SLA 是否超时。
+ *
+ * 🔴 「进监控时间」这一维**已删**：实测「投诉单」11 条里只有 2 条有进监控时刻
+ * （其余是「未纳入监控」、`at` 为 null），一设区间就只剩那 2 条 ——
+ * 一个筛完必然只剩两条的字段，摆在那里只会让人以为筛坏了。
  */
 function applyUntaggedFilter(list: QueueRow[], slice: UntaggedSlice): QueueRow[] {
   const f = untaggedFilter.value;
   const kw = f.keyword.trim().toLowerCase();
-  const words = slice === 'kw' ? f.words : [];
-  if (!kw && !words.length && !f.from && !f.to) return list;
+  const isKw = slice === 'kw';
+  const words = isKw ? f.words : [];
+  const products = isKw ? [] : f.products;
+  const statuses = isKw ? [] : f.statuses;
+  const sla = isKw ? 'all' : f.sla;
+  const timed = isKw && (!!f.from || !!f.to);
+  if (!kw && !words.length && !timed && !products.length && !statuses.length && sla === 'all') return list;
   return list.filter((r) => {
     if (kw) {
       const hay = [r.ticketNo, rowTitleOf(r)];
       // 命中原话只有实时监控那一路有，另两路的行就是工单、没有原话可搜
-      if (slice === 'kw') for (const h of rowHits(r)) hay.push(h.excerpt ?? '');
+      if (isKw) for (const h of rowHits(r)) hay.push(h.excerpt ?? '');
       if (!hay.some((s) => s.toLowerCase().includes(kw))) return false;
     }
     if (words.length && !rowWords(r).some((w) => words.includes(w))) return false;
-    if (f.from || f.to) {
-      const days = slice === 'kw'
-        ? rowHits(r).map((h) => h.when.slice(0, 10))
-        : (r.at ? [r.at.slice(0, 10)] : []);
-      const hit = days.some((d) => (!f.from || d >= f.from) && (!f.to || d <= f.to));
-      if (!hit) return false;
+    // 时间锚在**命中时刻**：这一路的行是被词捞进来的，"什么时候被发现"才是它的时间
+    if (timed) {
+      const days = rowHits(r).map((h) => h.when.slice(0, 10));
+      if (!days.some((d) => (!f.from || d >= f.from) && (!f.to || d <= f.to))) return false;
+    }
+    if (products.length || statuses.length || sla !== 'all') {
+      const t = ticketOfRow(r);
+      // 🔴 查不到工单的行，在这三维上**一律放行**而不是筛掉：它不是"不匹配"，
+      // 是"这一维答不上来"。筛掉的话，人按产品收窄一次就再也看不到这批数据异常的行了。
+      if (t) {
+        if (products.length && !products.includes(t.product)) return false;
+        if (statuses.length && !statuses.includes(ticketStatusDisplayName(t))) return false;
+        if (sla !== 'all' && isSlaBreachedNow(t) !== (sla === 'over')) return false;
+      }
     }
     return true;
   });
@@ -2458,7 +2518,8 @@ function applyUntaggedFilter(list: QueueRow[], slice: UntaggedSlice): QueueRow[]
 
 const untaggedFilterDirty = computed(() => {
   const f = untaggedFilter.value;
-  return !!f.keyword.trim() || !!f.words.length || !!f.from || !!f.to;
+  return !!f.keyword.trim() || !!f.words.length || !!f.from || !!f.to
+    || !!f.products.length || !!f.statuses.length || f.sla !== 'all';
 });
 
 function resetUntaggedFilter() {
@@ -2563,6 +2624,106 @@ const untaggedRows = computed<QueueRow[]>(() => {
   ));
 });
 
+/* ---- 「投诉单」「重要紧急」两路：直接用工作台那张富列表 ---- */
+//
+// 【为什么这两路换表】它们的行**就是工单**，人在这一档要判的也正是工单本身。
+// 原先那两列对判断零信息量：「监控来源」整列等于左栏档名的复述（停在「投诉单」那一档，
+// 整列都写着「投诉单」），「场景描述」是一句写死的套话。于是这一档没法就地判，
+// 只能一条条点进工单——与「实时监控」那一路当初的毛病一模一样，只是那边靠命中原话解决了。
+//
+// 🔴 **不另画一张长得像工作台的表**：摘要 / SLA 两行 / 状态徽章 / 优先级点 这几格的
+// 呈现规则各有分支（光 SLA 就有五条），抄一份迟早与工作台分叉，同一张单在两个页面
+// 说法不一。故给 `TicketRichList` 开了三个可选扩展位（`rowActionsFn` / `extraColumns` /
+// `selectable`），本页当调用方用，一格都不重画。
+/** 当前是不是停在「投诉单」「重要紧急」那两路（含它们的子档） */
+const ticketListView = computed(() => (
+  listView.value === 'realtime'
+  && queueView.value === 'monitoring'
+  && untaggedSlice.value !== 'kw'
+));
+
+/**
+ * 传给富列表的那批工单。**逐行对应 `pagedQueueRows`，一行不多一行不少** ——
+ * 富列表里的行数必须恒等于左栏角标与工作组 chip，这是这一页的第一条不变量。
+ *
+ * 🔴 **查不到工单的行不丢，补一张最小工单顶上**：`ticketOfRow` 返回 null 时，
+ * 用这一行**自己确实带着的**东西（工单号、条目里的描述）拼一张出来，其余字段留空。
+ * 丢掉那一行的话，左栏写着 11、表里躺着 10，而少的那一条谁也找不出来在哪 ——
+ * 那正是本文件反复警告的坑。补出来的行看得见、点得开、也照样能打标。
+ * 【它在今天的数据上是死路】三路入选时已经过了一道工单存在性判据
+ * （`effectiveSourceOf` 那一支），派生单也在 `derivedTickets` 里查得到。留着是为了
+ * 不变量不依赖"碰巧成立"：哪天某条入口漏了那道判据，界面上会多出一张空信息的行，
+ * 而不是静默少一行。
+ */
+const FALLBACK_TICKET_HINT = '工单库与派生库里都查不到这张单 —— 数据异常，不是空数据';
+function fallbackTicketOf(r: QueueRow): Ticket {
+  return {
+    ...({} as Ticket),
+    id: `rq-${r.id}`,
+    no: r.ticketNo,
+    title: r.desc || r.ticketNo,
+    customer: '—',
+    product: '—',
+    problemDesc: FALLBACK_TICKET_HINT,
+  } as Ticket;
+}
+const pagedTicketRows = computed<Ticket[]>(
+  () => pagedQueueRows.value.map((r) => ticketOfRow(r) ?? fallbackTicketOf(r)),
+);
+
+/**
+ * 富列表按**工单 id** 收发勾选，而本页的批量打标按**队列行 id**（`QueueRow.id`）记选中。
+ * 两边靠工单号搭桥，不另存第二份选中态 —— 存两份必然分叉，
+ * "批量打标对一批看不见的行动手"就是这么来的。
+ */
+const rowByTicketNo = computed(() => new Map(queueRows.value.map((r) => [r.ticketNo, r])));
+const selectedTicketIds = computed(() => {
+  const s = new Set<string>();
+  for (const t of pagedTicketRows.value) {
+    const r = rowByTicketNo.value.get(t.no);
+    if (r && bulkPicked.value.has(r.id)) s.add(t.id);
+  }
+  return s;
+});
+function toggleTicketPick(ticketId: string) {
+  const t = pagedTicketRows.value.find((x) => x.id === ticketId);
+  const r = t && rowByTicketNo.value.get(t.no);
+  if (r) toggleBulkPick(r.id);
+}
+/** 这一行的「等待时长」——队列属性，工作台没有这一列，故走富列表的附加列扩展位 */
+const TICKET_LIST_EXTRA_COLS = [{ key: 'waited', label: '等待时长', width: 72 }];
+/**
+ * 本页那张富列表的列宽。**必须自带一套**：工作台那一屏宽 1290+，它的默认列宽合计 1370，
+ * 而本页左边还压着一列漏斗导航，清单区只剩 1045 —— 照默认摆下来横向溢出 325px，
+ * 而"横着拖才能看全的表，等于每一行都要动两次手"（与「实时监控」那一路收窄列宽同一条理由）。
+ * 🔴 走 `columnWidths` 这个 prop 而不是去改工作台的默认值：那份默认是全局 localStorage，
+ * 改了会把工作台的列一起改窄。传了它的实例同时也不出拖拽把手 —— 在这里拖窄一列
+ * 会写回那份全局记忆，工作台跟着变。
+ * 合计 ＝ 16 + 200 + 168 + 100 + 46 + 76 + 96 + 88 + 88 + 72 + 88 ＝ 1038，放得下。
+ */
+const TICKET_LIST_COL_WIDTHS: Record<string, number> = {
+  title: 200,
+  summary: 168,
+  sla: 100,
+  priority: 46,
+  customer: 76,
+  product: 96,
+  node: 88,
+  flowNode: 88,
+  action: 88,
+};
+function rowOfTicketNo(no: string): QueueRow | undefined {
+  return rowByTicketNo.value.get(no);
+}
+/** 富列表的行内动作：这一段只有「核实打标」一枚，权限不足时不给按钮 */
+function untaggedRowActions() {
+  return canRiskTag.value ? [{ label: '核实打标', primary: true }] : [];
+}
+function onTicketRowAction(label: string, t: Ticket) {
+  const r = rowOfTicketNo(t.no);
+  if (label === '核实打标' && r) openEntryTag(r);
+}
+
 /* ---- 「实时监控」这一路的证据列 ---- */
 //
 // 【为什么这一路要换一套列】它的条目**全部由预警词命中产生**，人在这一档要判的就是
@@ -2593,6 +2754,54 @@ function rowHits(r: QueueRow): RiskHit[] {
 /** 最重的那条命中；null ＝ 这张单没有命中（这一路里不该出现，出现了就照实显示「—」） */
 function rowTopHit(r: QueueRow): RiskHit | null {
   return rowHits(r)[0] ?? null;
+}
+
+/* ---- 「已标记」段（已入池 / 无风险）的证据列 ---- */
+//
+// 【为什么这一段也要换列】它原先摆的是「监控来源」+「场景描述」，两列都答不了
+// "这条**凭什么**被判成这个等级"：
+//   · 监控来源只有三个值，且都是上游入口的复述；
+//   · 场景描述是一句写死的套话（「投诉类工单自动纳入实时监控」），一个字的判据都没有。
+// 于是复核一条打标结论——这一段唯一的活——只能一条条点进工单。
+//
+// 🔴 **两类行的证据不是一种东西，故这两列按行分岔**：
+//   · 预警词捞进来的行**有命中记录** —— 摆 命中词 + 原话摘录（与「实时监控」那一路同一套聚合，
+//     `rowWords` / `rowTopHit`，不另写一份）；
+//   · 投诉单 / 重要紧急那两路**本就不产生命中** —— 摆工单自己的信息（问题描述）。
+//   给后者硬凑一个空的「风险词」格并不诚实：它不是"没查到词"，是"这一路根本不靠词进来"。
+// 客户 / 产品 与 SLA 两列对**两类行都成立**，故不分岔、恒取工单。
+/** 当前是不是停在「已标记」段（已入池 / 无风险）那张表上 */
+const taggedEvidenceView = computed(() => (
+  listView.value === 'realtime' && queueView.value !== 'monitoring'
+));
+/** 这一行有没有命中记录 —— 上面那两列按它分岔 */
+function rowHasHits(r: QueueRow): boolean {
+  return rowHits(r).length > 0;
+}
+/**
+ * 这一行的「摘要」：取工单的**问题描述**，不取条目里那句套话。
+ * 查不到工单时退回条目描述 —— 那是这一行仅有的信息，比空着强。
+ */
+function rowSummaryOf(r: QueueRow): string {
+  const t = ticketOfRow(r);
+  return t?.problemDesc || t?.title || r.desc || '—';
+}
+/** 这一行的产品；查不到工单写「—」而不是留空 */
+function rowProductOf(r: QueueRow): string {
+  return ticketOfRow(r)?.product || '—';
+}
+/**
+ * 这一行的 SLA 两行。**取工作台那一份单一真源**（`slaResolveLine` / `slaFirstLine`）——
+ * 本页自己判一遍的话，同一张单在两个页面会给出不同的说法（光那两行的分支就有五条）。
+ * 查不到工单时返回空数组，格子里写「—」。
+ */
+function rowSlaLines(r: QueueRow): { text: string; color: string }[] {
+  const t = ticketOfRow(r);
+  if (!t) return [];
+  return [
+    { ...slaResolveLine(t), text: `解决：${slaResolveLine(t).text}` },
+    { ...slaFirstLine(t), text: `首响：${slaFirstLine(t).text}` },
+  ];
 }
 /**
  * 这一行命中的**全部**风险词（去重、保序）。
@@ -4371,30 +4580,68 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                 >
               </div>
             </div>
-            <!-- 风险词只有「实时监控」这一路有：另两路的行是工单，压根不产生命中 -->
-            <div v-if="untaggedSlice === 'kw'" class="fi">
-              <span class="fl">风险词</span>
-              <a-select
-                v-model:value="untaggedFilter.words" mode="multiple" allow-clear
-                size="small" class="tb-ctl"
-                :dropdown-match-select-width="false" placeholder="不限" :max-tag-count="1"
-                :options="untaggedWordOptions"
-              />
-            </div>
-            <div class="fi">
-              <!-- 标签宽度是 4em（.fl），故这一路取「进监控」三字：五字会压到控件上 -->
-              <span class="fl">{{ untaggedSlice === 'kw' ? '命中时间' : '进监控' }}</span>
-              <RangePicker
-                :value="untaggedDateRange"
-                :presets="scanRangePresets"
-                allow-clear
-                size="small"
-                format="YYYY-MM-DD"
-                :placeholder="['开始日期', '结束日期']"
-                class="tb-range"
-                @change="onUntaggedRangeChange"
-              />
-            </div>
+            <!-- 风险词 / 命中时间只有「实时监控」这一路有：另两路的行是工单，压根不产生命中 -->
+            <template v-if="untaggedSlice === 'kw'">
+              <div class="fi">
+                <span class="fl">风险词</span>
+                <a-select
+                  v-model:value="untaggedFilter.words" mode="multiple" allow-clear
+                  size="small" class="tb-ctl"
+                  :dropdown-match-select-width="false" placeholder="不限" :max-tag-count="1"
+                  :options="untaggedWordOptions"
+                />
+              </div>
+              <div class="fi">
+                <span class="fl">命中时间</span>
+                <RangePicker
+                  :value="untaggedDateRange"
+                  :presets="scanRangePresets"
+                  allow-clear
+                  size="small"
+                  format="YYYY-MM-DD"
+                  :placeholder="['开始日期', '结束日期']"
+                  class="tb-range"
+                  @change="onUntaggedRangeChange"
+                />
+              </div>
+            </template>
+            <!--
+              另两路的行就是工单，故筛的是工单自己的维度。
+              🔴 「进监控时间」已删：实测 11 条里只有 2 条有进监控时刻，一设区间就只剩那 2 条。
+            -->
+            <template v-else>
+              <div class="fi">
+                <span class="fl">产品</span>
+                <a-select
+                  v-model:value="untaggedFilter.products" mode="multiple" allow-clear show-search
+                  size="small" class="tb-ctl"
+                  :dropdown-match-select-width="false" placeholder="不限" :max-tag-count="1"
+                  :options="untaggedProductOptions"
+                />
+              </div>
+              <div class="fi">
+                <span class="fl">当前状态</span>
+                <a-select
+                  v-model:value="untaggedFilter.statuses" mode="multiple" allow-clear
+                  size="small" class="tb-ctl"
+                  :dropdown-match-select-width="false" placeholder="不限" :max-tag-count="1"
+                  :options="untaggedStatusOptions"
+                />
+              </div>
+              <div class="fi">
+                <span class="fl">SLA</span>
+                <a-select
+                  v-model:value="untaggedFilter.sla"
+                  size="small" class="tb-ctl"
+                  :dropdown-match-select-width="false"
+                  :options="[
+                    { value: 'all', label: '不限' },
+                    { value: 'over', label: '已超时' },
+                    { value: 'ok', label: '未超时' },
+                  ]"
+                />
+              </div>
+            </template>
           </div>
           <div class="tb-actions">
             <button type="button" class="scan-go" @click="applyUntaggedQuery">
@@ -4423,10 +4670,66 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
       </div>
 
       <!--
+        「投诉单」「重要紧急」两路 · **工作台那张富列表**（见 `ticketListView`）。
+        这两路的行就是工单，故摆的是工单自己的信息：工单/标题 · 工单摘要 · SLA 时效 ·
+        优先级 · 客户 · 产品 · 当前状态 / 节点，外加本页自己的「等待时长」与「核实打标」。
+        🔴 **去掉了「监控来源」**：停在「投诉单」那一档，整列都写着「投诉单」——
+        它是左栏档名的复述，占着一列却答不了任何问题。
+        🔴 **去掉了「上一个节点」**：这一档要判的是"这张单现在什么样"，不是它怎么走过来的。
+        🔴 行数、分页、勾选全部仍走本页那一套（`pagedQueueRows` / `bulkPicked`），
+        富列表只负责渲染 —— 它自带的那套无分页全量渲染与本页左栏角标的口径对不上。
+      -->
+      <div v-if="listView === 'realtime' && ticketListView && queueRows.length" class="tk-list-wrap">
+        <TicketRichList
+          :rows="pagedTicketRows"
+          variant="query"
+          :selectable="showQueueSelection"
+          :selected-ids="selectedTicketIds"
+          :all-page-selected="bulkAllPicked"
+          :column-order="['summary', 'sla', 'priority', 'customer', 'product', 'node', 'flowNode']"
+          :column-widths="TICKET_LIST_COL_WIDTHS"
+          :extra-columns="TICKET_LIST_EXTRA_COLS"
+          :row-actions-fn="untaggedRowActions"
+          @toggle="toggleTicketPick"
+          @toggle-all="toggleBulkAll"
+          @action="onTicketRowAction"
+          @click-no="openTicket($event.no)"
+          @open="openTicket($event.no)"
+        >
+          <!--
+            等待时长：**队列属性**（自进监控时刻起算），工作台没有这一列，故走附加列扩展位。
+            🔴 未纳入监控的行写「—」而不是 0 分钟：0 是一个会被读成"刚进来"的假数。
+          -->
+          <template #cell-waited="{ ticket }">
+            <span
+              class="rr-waited"
+              :class="{ over: rowOfTicketNo(ticket.no) && rowOverdue(rowOfTicketNo(ticket.no)!) }"
+              title="自进入实时监控起算。打标越慢，它进池时离评估时限就越近；未纳入监控的单还没起走这口钟"
+            >{{ rowOfTicketNo(ticket.no) ? rowWaitedText(rowOfTicketNo(ticket.no)!) : '—' }}</span>
+          </template>
+        </TicketRichList>
+
+        <div class="pager">
+          <div class="pager-left">
+            <span class="pager-total">共 {{ queueRows.length }} 条</span>
+            <span v-if="showQueueSelection && bulkCount > 0" class="pager-selected">已选 {{ bulkCount }} 项</span>
+          </div>
+          <AppPagination
+            :total="queueRows.length"
+            :current="queuePageCurrent"
+            :page-size="queuePageSize"
+            :show-total="false"
+            @change="setQueuePage"
+          />
+        </div>
+      </div>
+
+      <!--
         实时监控 · 条目表。三视图共用一张表：列大半相同，分成三张迟早只改一处；
         差异（勾选列 / 打标结论列 / 状态列 / 操作列）就地 v-if 掉。
+        🔴 「投诉单」「重要紧急」两路已改走上面那张富列表，故这里多一道 `!ticketListView`。
       -->
-      <div v-if="listView === 'realtime' && queueRows.length" class="hit-table-wrap report-table-wrap">
+      <div v-if="listView === 'realtime' && !ticketListView && queueRows.length" class="hit-table-wrap report-table-wrap">
         <table class="hit-table report-table">
           <thead>
             <tr>
@@ -4450,17 +4753,28 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               -->
               <th v-if="kwEvidenceView" style="width: 56px">等级</th>
               <th v-if="kwEvidenceView" style="width: 108px">风险词</th>
-              <th :style="kwEvidenceView ? 'width: 158px' : 'width: 190px'">
-                {{ kwEvidenceView ? '工单' : '工单号' }}
+              <th :style="kwEvidenceView ? 'width: 158px' : (taggedEvidenceView ? 'width: 152px' : 'width: 190px')">
+                {{ kwEvidenceView || taggedEvidenceView ? '工单' : '工单号' }}
               </th>
               <th v-if="kwEvidenceView" style="width: 262px">命中内容</th>
               <th v-if="kwEvidenceView" style="width: 96px">客户 / 班组</th>
-              <th v-if="!kwEvidenceView" style="width: 100px">监控来源</th>
-              <th v-if="!kwEvidenceView">场景描述</th>
-              <th v-if="queueView !== 'monitoring'" style="width: 88px">打标结论</th>
-              <th v-if="queueView !== 'monitoring'" style="width: 104px">打标人</th>
-              <th v-if="queueView !== 'monitoring'" style="width: 128px">打标时刻</th>
-              <th v-if="queueView === 'pooled'" style="width: 84px">池内状态</th>
+              <!--
+                🔴 「监控来源」「场景描述」两列**已删**，换成下面这四列，见 `taggedEvidenceView`。
+                列宽合计 1014px（152+88+156+90+104+72+80+96+72+104），加内边距正好占满 1044 的清单区 ——
+                与「实时监控」那一路收窄列宽同一条理由：横着拖才能看全的表，每一行都要动两次手。
+                ⚠️ **按有纵向滚动条时的可用宽算**（1044，不是 1058）：行少到不出滚动条时会多出 14px，
+                照那个宽度定列，行一多就溢出，而"行少的时候不溢出"恰恰是最容易漏测的一种。
+                ⚠️ **SLA 那一格要 104**：最长的一种是「解决：超 88:40」，给 88 会把末位数字切掉半个
+                （实测显示成「超 88:4(」）—— 一个被切掉的时间数字比不显示更糟。
+              -->
+              <th v-if="taggedEvidenceView" style="width: 88px">风险词</th>
+              <th v-if="taggedEvidenceView" style="width: 156px">证据 / 摘要</th>
+              <th v-if="taggedEvidenceView" style="width: 90px">客户 / 产品</th>
+              <th v-if="taggedEvidenceView" style="width: 104px">SLA</th>
+              <th v-if="queueView !== 'monitoring'" style="width: 72px">打标结论</th>
+              <th v-if="queueView !== 'monitoring'" :style="taggedEvidenceView ? 'width: 80px' : 'width: 104px'">打标人</th>
+              <th v-if="queueView !== 'monitoring'" :style="taggedEvidenceView ? 'width: 96px' : 'width: 128px'">打标时刻</th>
+              <th v-if="queueView === 'pooled'" style="width: 72px">池内状态</th>
               <th
                 v-if="queueView === 'monitoring'"
                 :style="kwEvidenceView ? 'width: 118px' : 'width: 128px'"
@@ -4537,32 +4851,56 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                 {{ rowCustomerOf(e) }}<div class="hit-sub">{{ rowGroupOf(e) }}</div>
               </td>
               <!--
-                🔴 「未纳入监控」是**这一格没有值**的人话说法，不是第五个监控来源。
-                故灰底弱化、与真来源的 chip 分开着色 —— 摆成一样的话，
-                人会以为系统新增了一路叫"未纳入监控"的自动识别。
+                风险词：**只有带命中记录的行有**。投诉单 / 重要紧急那两路本就不靠词进来，
+                给它们凑一个空格并不诚实 —— 那不是"没查到词"，是"这一路根本不产生命中"，
+                故写「不适用」而不是「—」。呈现与「实时监控」那一路同一套（前两枚 + 折叠）。
               -->
-              <td v-if="!kwEvidenceView">
-                <span
-                  v-if="e.source"
-                  class="src-tag"
-                  :class="{ kw: isVerifyMonitorSource(e.source) }"
-                >{{ e.source }}</span>
-                <span
-                  v-else
-                  class="src-tag none"
-                  title="这张单还没被自动识别捞进监控队列 —— 它是按工单属性归到这一路的"
-                >{{ NOT_MONITORED }}</span>
+              <td v-if="taggedEvidenceView">
+                <template v-if="rowHasHits(e)">
+                  <span
+                    v-for="w in rowWords(e).slice(0, ROW_WORD_VISIBLE)"
+                    :key="w"
+                    class="src-tag kw"
+                  >{{ w }}</span>
+                  <span
+                    v-if="rowWords(e).length > ROW_WORD_VISIBLE"
+                    class="kw-more"
+                    :title="rowWords(e).join('、')"
+                  >+{{ rowWords(e).length - ROW_WORD_VISIBLE }}</span>
+                </template>
+                <span v-else class="hit-sub" title="这一路不靠预警词进来（投诉单 / 重要紧急按工单属性自动识别），故没有命中词">不适用</span>
               </td>
               <!--
-                单行截断，全文挂 title：这一屏是用来挑下一条判的，不是在这里读完再判。
-                🔴 待判那一段取**工单标题**，不取条目里那句写死的套话
-                （「沟通记录命中风险词，已自动纳入实时监控」）—— 那句话对判断没有任何信息量。
+                证据 / 摘要：**两类行摆的不是一种东西**——
+                有命中的摆原话摘录（复核打标结论要看的就是这句话），
+                没命中的摆工单的问题描述。全文一律挂 title，这一屏是用来复核的、不是读完再判。
               -->
-              <td
-                v-if="!kwEvidenceView"
-                class="rr-desc"
-                :title="queueView === 'monitoring' ? rowTitleOf(e) : e.desc"
-              >{{ queueView === 'monitoring' ? rowTitleOf(e) : e.desc }}</td>
+              <td v-if="taggedEvidenceView" class="rr-desc">
+                <template v-if="rowHasHits(e)">
+                  <div :title="rowTopHit(e)!.excerpt">{{ rowTopHit(e)!.excerpt }}</div>
+                  <span
+                    v-if="rowHits(e).length > 1"
+                    class="kw-more"
+                    :title="rowHits(e).map((h) => `【${riskLevelText(h.level)}·${h.matchedWord || h.word}】${h.excerpt}`).join('\n')"
+                  >+{{ rowHits(e).length - 1 }} 条命中</span>
+                </template>
+                <span v-else :title="rowSummaryOf(e)">{{ rowSummaryOf(e) }}</span>
+              </td>
+              <td v-if="taggedEvidenceView" class="rr-desc">
+                {{ rowCustomerOf(e) }}<div class="hit-sub" :title="rowProductOf(e)">{{ rowProductOf(e) }}</div>
+              </td>
+              <!-- SLA 两行取工作台那一份单一真源（见 rowSlaLines），本页不另判一遍 -->
+              <td v-if="taggedEvidenceView">
+                <template v-if="rowSlaLines(e).length">
+                  <div
+                    v-for="l in rowSlaLines(e)"
+                    :key="l.text"
+                    class="sla-line"
+                    :style="{ color: l.color }"
+                  >{{ l.text }}</div>
+                </template>
+                <span v-else class="hit-sub">—</span>
+              </td>
               <td v-if="queueView !== 'monitoring'">
                 <!-- 无风险不是一档风险等级，故不套等级配色；套上去等于给已排除的东西重新贴风险标 -->
                 <span
@@ -7733,9 +8071,29 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
 }
 /* 定宽列里的工单号 / 人名不能被撑破，超出即省略，全值挂在 title 上 */
 .report-table td { overflow: hidden; text-overflow: ellipsis; }
+/*
+ * 「已标记」段那一格 SLA 的两行。**与工作台那张富列表逐字同一副形状**（12px / 18px 行高 / 600），
+ * 颜色由 `slaResolveLine` / `slaFirstLine` 现算现给 —— 那是两处共用的同一份口径，
+ * 本页只负责把它画出来，不自己判"算不算超时"。
+ */
+.report-table .sla-line {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+}
+/* 这一格里的产品名跟在客户下面，与「客户 / 班组」那一格同一副形状 */
+.report-table .rr-desc .hit-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 🔴 超时只标这一格：整行铺红后，队列一长满屏都是红的，反而分辨不出哪几条超了 */
 .rr-waited { color: #64748b; font-weight: 500; }
 .rr-waited.over { color: #EF4444; font-weight: 700; }
+/*
+ * 富列表那张表的外壳。它自己是 flex:1 + 内部滚动（工作台那一屏是整页高度），
+ * 而本页清单下面还挂着分页条，故这里给一个不撑满的高度上限，让它在本页也只占内容高度。
+ */
+.tk-list-wrap { display: flex; flex-direction: column; min-height: 0; }
+.tk-list-wrap :deep(.rich-list) { flex: none; }
+.tk-list-wrap :deep(.table-grid) { padding: 0; }
 .rr-dec { color: #374151; font-size: 12px; font-weight: 500; }
 .rr-dec.risk { color: #B91C1C; font-weight: 600; }
 
