@@ -143,9 +143,35 @@ export function useTicketOperation() {
    *  使处理页（Tab① 表单结构）随工单类型而变。匹配不到则回退样例。 */
   function loadDetail(no: string) {
     const base = JSON.parse(JSON.stringify(TICKET_DETAIL)) as TicketDetailMeta;
-    // 静态数据源优先；查不到再问运行时派生的那批（风险报备「接管」派生的新投诉单）。
+    // 静态数据源优先；查不到再问运行时派生的那批（风险评估判「升级」派生出的新投诉单）。
     // 两处不互相覆盖：派生单只补静态那批没有的号。
-    const t = TICKETS.find((x) => x.no === no) ?? derivedTickets.find(no);
+    const found = TICKETS.find((x) => x.no === no) ?? derivedTickets.find(no);
+    /*
+     * **本次会话里被升级派生走的原单**：把升级台账那一笔叠回工单对象上。
+     *
+     * 【为什么要叠】评估判「升级」会造出一张新投诉单，可原单那一头此前一个字都没写回去 ——
+     * 打开原单仍是「处理中」、可编辑、没有接管横幅，而同一页「评估结果」区块写着
+     * 「原单落『已升级投诉』」。一页之内两种说法，且实际状态是错的那一种。
+     *
+     * 【为什么叠在这里而不是改 TICKETS】`TICKETS` 是静态样本，改它会把样本改脏且刷新即回滚。
+     * 叠成一个**本地副本**之后，下面 `t.escalatedToNo` 那一支（830 的既有链路）
+     * 原封不动就把状态、关联位、接管横幅、整页只读全部走完，本函数不必再写一行状态逻辑。
+     *
+     * 🔴 **同时把 SLA 摘要按停表写**：升级投诉是终态，钟要停（与 `mock/tickets.ts` 里
+     * 那张预置的已升级单同一副写法）。只改状态不停钟，页头会出现「已升级投诉 + 剩 3 小时」。
+     */
+    const runtimeEscalatedNo = found && !found.escalatedToNo
+      ? derivedTickets.escalatedToNoOf(found.no)
+      : undefined;
+    const t: Ticket | undefined = runtimeEscalatedNo && found
+      ? {
+        ...found,
+        escalatedToNo: runtimeEscalatedNo,
+        slaText: '—',
+        slaSub: '已升级投诉·停表',
+        slaState: 'ok',
+      }
+      : found;
     // 回退样例是**静默的**：页面照常渲染演示单，只有地址栏还留着那个查不到的号，
     // 于是"多行点开是同一张单"这种配错很难被发现。开发态先把它喊出来。
     // 不做用户可见提示：班组看板 / 运营监控 / 客户视图的下钻明细目前也有大量非真实单号，
@@ -247,7 +273,10 @@ export function useTicketOperation() {
         base.childTickets = [];
         base.linkedRecords = [{
           no: t.escalatedToNo,
-          title: `外投·${t.title}`,
+          // 前缀按**这一跳落的是哪一态**写，与下面那行状态同一条判据：
+          // 第一跳（非投诉 → 投诉）派生的是内投单，硬写「外投·」会让关联卡上出现
+          // 「已升级为 … 外投·xxx」而状态栏写着「已升级投诉」，一屏两说
+          title: `${t.ticketSource === '外投渠道' ? '外投' : '投诉'}·${t.title}`,
           tag: '升级投诉',
           meta: `${(t.updatedAt ?? '').slice(5, 10)} ${t.assignee ?? ''} 升级`,
         }];
