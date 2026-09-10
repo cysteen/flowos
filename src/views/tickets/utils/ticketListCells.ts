@@ -1,5 +1,5 @@
 import type { Ticket } from '@/views/tickets/types/ticket';
-import { resolveTicketGroupNames } from '@/views/tickets/types/ticket';
+import { isFirstResponded, resolveTicketGroupNames, SLA_COLOR } from '@/views/tickets/types/ticket';
 import { resolveCurrentFlowNode, resolvePreviousFlowNode } from '@/views/tickets/utils/ticketFlowNodes';
 
 export function formatStartDate(t: Ticket): string {
@@ -70,4 +70,55 @@ export function listCellText(t: Ticket, key: string): string {
     default:
       return '—';
   }
+}
+
+/* ---------------- SLA 列：两行文本「解决：超/剩」「首响：超/剩」（PRD §8.2） ---------------- */
+//
+// 🔴 **从 `TicketRichList.vue` 的 `<script setup>` 里提出来的**，因为它不再只有一处用：
+// 风险监控页「未标记」段那两路也要摆同一格 SLA。留在组件私有作用域里的话，第二处只能抄一份，
+// 而"同一口径两处各写各的"迟早分叉 —— 这张表判「已达标 / 未达标 / 已暂停」的分支有五条，
+// 抄漏任何一条，两个页面就会对同一张单给出不同的 SLA 说法。
+// 组件那一侧改成 import，行为一字未动。
+
+/** 倒计时短文案：'03:20:00'→'剩 03:20'；'已超 01:12'→'超 01:12'；'已暂停' 等非倒计时文案原样 */
+export function slaShort(text: string): string {
+  if (text.startsWith('已超')) return text.replace('已超', '超');
+  if (!/\d/.test(text)) return text;
+  return `剩 ${text.replace(/^(\d{2}:\d{2}):\d{2}$/, '$1')}`;
+}
+
+export interface SlaLine {
+  text: string;
+  color: string;
+}
+
+const BREACHED_LINE: SlaLine = { text: '未达标', color: SLA_COLOR.overdue };
+const MET_LINE: SlaLine = { text: '已达标', color: SLA_COLOR.ok };
+
+/** 解决行状态全枚举：剩(正常绿/临期橙)/超(红·在计)/已暂停(灰·挂起)/已达标(绿·正常关闭)/未达标(红·超时后关闭) */
+export function slaResolveLine(t: Ticket): SlaLine {
+  if (t.slaText === '—') return t.solveBreached ? BREACHED_LINE : MET_LINE; // 已停表：终态按结果
+  if (!isFirstResponded(t) && t.resolveSlaText) {
+    return { text: slaShort(t.resolveSlaText), color: SLA_COLOR[t.resolveSlaState ?? 'ok'] };
+  }
+  return { text: slaShort(t.slaText), color: SLA_COLOR[t.slaState] };
+}
+
+/** 首响行状态全枚举：剩(正常绿/临期橙)/超(红·未响仍在计)/已暂停(灰·挂起且未响)/已达标(绿)/未达标(红·超时后才响) */
+export function slaFirstLine(t: Ticket): SlaLine {
+  if (isFirstResponded(t)) return t.firstRespBreached ? BREACHED_LINE : MET_LINE;
+  if (t.slaState === 'paused') return { text: '已暂停', color: SLA_COLOR.paused };
+  return { text: slaShort(t.slaText), color: SLA_COLOR[t.slaState] };
+}
+
+/**
+ * 这张单**此刻是不是超时态**（解决或首响任一未达标 / 已超）。
+ * 供"按 SLA 是否超时"这类筛选用 —— 判据取上面那两行的**结论文案**，
+ * 不另起一套阈值比较：另写一套的话，筛出来的行与它自己那一格显示的颜色迟早对不上。
+ */
+export function isSlaBreachedNow(t: Ticket): boolean {
+  const r = slaResolveLine(t);
+  const f = slaFirstLine(t);
+  const bad = (l: SlaLine) => l.text === '未达标' || l.text.startsWith('超');
+  return bad(r) || bad(f);
 }

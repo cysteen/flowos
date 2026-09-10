@@ -9,17 +9,18 @@ import {
   formatCurrentHandlerGroup,
   formatLastHandlerGroup,
   listCellText,
+  // SLA 那两行的口径已提到 utils 共用（风险监控页也要摆同一格），本组件改为引用，行为一字未动
+  slaFirstLine,
+  slaResolveLine,
 } from '@/views/tickets/utils/ticketListCells';
 import {
   doneRowActions,
-  isFirstResponded,
   isMentionUnread,
   mentionRowActions,
   mineRowActions,
   poolRowActions,
   PRIORITY_COLOR,
   rowActions,
-  SLA_COLOR,
   statusStyle,
   // 状态徽章文案取**页面展示名称**（基线 §1 第三列：列表状态列属"用户读到的文案"那一档）；
   // 配色仍按 nodeStatus（落库子状态）算 —— 基线要求逻辑判断一律用子状态。
@@ -52,11 +53,48 @@ const props = withDefaults(
      * 坐席会去清一个从没设过的筛选。
      */
     emptyKind?: 'none' | 'search' | 'filter';
+    /*
+     * ==== 以下三个是**可选扩展位**，不传时本组件行为逐字不变 ====
+     * 加它们是为了让风险监控页「未标记」段直接复用这张表，而不是另画一张长得像的。
+     * 🔴 三处一律**只加不改**：六个 `variant` 的映射、写死的那几组行内动作、勾选列的原判据，
+     * 一个字没动 —— 新 prop 不传时每一条都走回原来那一支。
+     */
+    /**
+     * 行内动作**由调用方给**。传了就整个接管 `actionsFor`，不再走 `variant` 那套映射。
+     *
+     * 【为什么需要它】`variant` 那六档映射到 `types/ticket.ts` 里写死的几组动作
+     * （受理 / 处理 / 调剂 / 领取 / 退回…），它们是工作台的动词。风险监控页要挂的是
+     * 「核实打标」—— 那是风险侧的动词，塞进那个枚举等于让工单侧的类型去背风险侧的流程。
+     */
+    rowActionsFn?: (t: Ticket) => { label: string; primary?: boolean }[];
+    /**
+     * 调用方自带的**附加列**：本组件列目录（`ticketListColumnCatalog`）里没有、
+     * 且只有那一处用得到的列。单元格内容走同名具名插槽 `#cell-<key>`。
+     *
+     * 【为什么不进列目录】风险监控页要的「等待时长」是**队列属性**（从条目进监控时刻起算），
+     * 压根不是 `Ticket` 上的字段。为一处需求往全局列目录里塞一个别处永远为空的 key，
+     * 会让工作台的列设置面板多出一个勾了也没用的选项。
+     */
+    extraColumns?: { key: string; label: string; width?: number }[];
+    /**
+     * 强制开／关勾选列。**不传时仍按原判据**（variant 为 mine / pool 才有勾选列）。
+     * 风险监控页要的是"能勾选做批量打标"，但它的行内动作不是「调剂」也不是「领取」，
+     * 借那两个 variant 去换勾选列会连带换来一组错的按钮。
+     */
+    selectable?: boolean;
   }>(),
   {
     selectedIds: () => new Set<string>(),
     allPageSelected: false,
     emptyKind: 'none',
+    /*
+     * 🔴 **必须显式给 `undefined`**，不能省。Vue 对声明为 `boolean` 的 prop 有**隐式布尔转换**：
+     * 不传时拿到的是 `false` 而**不是** `undefined`，于是 `props.selectable ?? (原判据)`
+     * 里的 `??` 永远短路在 `false` 上 —— 工作台「我的任务」「工单池」的勾选列会整列消失。
+     * 这一条是真机回归当场抓出来的（勾选框数 21 → 0），不是假想的风险。
+     * 显式 `undefined` 默认值会关掉那次转换，`??` 才落得回原判据。
+     */
+    selectable: undefined,
   },
 );
 
@@ -87,30 +125,8 @@ function colClass(key: string): string {
 }
 
 // ---- SLA 列：两行文本「解决：超/剩」「首响：超/剩」（PRD §8.2）----
-/** 倒计时短文案：'03:20:00'→'剩 03:20'；'已超 01:12'→'超 01:12'；'已暂停' 等非倒计时文案原样 */
-function slaShort(text: string): string {
-  if (text.startsWith('已超')) return text.replace('已超', '超');
-  if (!/\d/.test(text)) return text;
-  return `剩 ${text.replace(/^(\d{2}:\d{2}):\d{2}$/, '$1')}`;
-}
-const isResponded = isFirstResponded; // 共享口径（types/ticket.ts）
-const BREACHED_LINE = { text: '未达标', color: SLA_COLOR.overdue };
-const MET_LINE = { text: '已达标', color: SLA_COLOR.ok };
-
-/** 解决行状态全枚举：剩(正常绿/临期橙)/超(红·在计)/已暂停(灰·挂起)/已达标(绿·正常关闭)/未达标(红·超时后关闭) */
-function slaResolveLine(t: Ticket): { text: string; color: string } {
-  if (t.slaText === '—') return t.solveBreached ? BREACHED_LINE : MET_LINE; // 已停表：终态按结果
-  if (!isResponded(t) && t.resolveSlaText) {
-    return { text: slaShort(t.resolveSlaText), color: SLA_COLOR[t.resolveSlaState ?? 'ok'] };
-  }
-  return { text: slaShort(t.slaText), color: SLA_COLOR[t.slaState] };
-}
-/** 首响行状态全枚举：剩(正常绿/临期橙)/超(红·未响仍在计)/已暂停(灰·挂起且未响)/已达标(绿)/未达标(红·超时后才响) */
-function slaFirstLine(t: Ticket): { text: string; color: string } {
-  if (isResponded(t)) return t.firstRespBreached ? BREACHED_LINE : MET_LINE;
-  if (t.slaState === 'paused') return { text: '已暂停', color: SLA_COLOR.paused };
-  return { text: slaShort(t.slaText), color: SLA_COLOR[t.slaState] };
-}
+// 🔴 三个函数已提到 `utils/ticketListCells.ts` 共用（见文件头 import）：风险监控页要摆同一格，
+// 留在这里的话第二处只能抄一份，而这张表判「已达标 / 未达标 / 已暂停」的分支有五条。
 
 // 无分页全量列表：数据集变化（切 Tab / 筛选 / 重算快照）时滚回顶部
 const scrollEl = ref<HTMLElement | null>(null);
@@ -133,6 +149,8 @@ const emit = defineEmits<{
 }>();
 
 function actionsFor(t: Ticket) {
+  // 调用方自带动作时整个接管，下面那套 variant 映射一个字没动（见 `rowActionsFn`）
+  if (props.rowActionsFn) return props.rowActionsFn(t);
   if (props.variant === 'mine') return mineRowActions();
   if (props.variant === 'done') return doneRowActions();
   if (props.variant === 'mention') return mentionRowActions();
@@ -140,10 +158,15 @@ function actionsFor(t: Ticket) {
   return rowActions(t);
 }
 
-const showActionColumn = computed(
-  () => props.variant !== 'done' && props.variant !== 'mention' && props.variant !== 'query',
+const showActionColumn = computed(() => {
+  // 自带动作就必须有一列放它 —— 否则传了 `rowActionsFn` 却因为 variant 是 query 而整列不出，
+  // 调用方会得到一张"动作凭空消失"的表
+  if (props.rowActionsFn) return true;
+  return props.variant !== 'done' && props.variant !== 'mention' && props.variant !== 'query';
+});
+const showSelectionColumn = computed(
+  () => props.selectable ?? (props.variant === 'mine' || props.variant === 'pool'),
 );
-const showSelectionColumn = computed(() => props.variant === 'mine' || props.variant === 'pool');
 
 /** 列宽默认值（px） */
 const DEFAULT_COL_WIDTH: Record<string, number> = {
@@ -245,6 +268,8 @@ const gridTemplateColumns = computed(() => {
     parts.push(colWidthPx(key));
   }
   if (props.showAppointmentColumn) parts.push(colWidthPx('appointment'));
+  // 附加列坐在预约倒计时之后、操作之前：操作恒在最右，这一条是这张表的既有约定
+  for (const c of props.extraColumns ?? []) parts.push(`${c.width ?? 96}px`);
   if (showActionColumn.value) parts.push(colWidthPx('action'));
   return parts.join(' ');
 });
@@ -301,6 +326,16 @@ const gridTemplateColumns = computed(() => {
               @mousedown="onResizeStart($event, 'appointment')"
             />
           </div>
+          <!--
+            调用方自带的附加列（见 `extraColumns`）。**不给拖拽把手**：它的宽度由调用方在
+            prop 里定，本组件那套列宽记忆是按列目录的 key 存 localStorage 的，
+            把外来 key 混进去会让工作台的列宽缓存里长出一批它永远用不到的键。
+          -->
+          <template v-for="col in extraColumns ?? []" :key="`th-x-${col.key}`">
+            <div class="th th-cell">
+              <span class="th-label">{{ col.label }}</span>
+            </div>
+          </template>
           <div v-if="showActionColumn" class="col-action th th-cell th-cell--resizable">
             <span class="th-label">操作</span>
             <span
@@ -439,6 +474,13 @@ const gridTemplateColumns = computed(() => {
         >{{ t.appointmentText }}</span>
         <span v-else class="appt-empty">—</span>
       </div>
+
+      <!-- 附加列的格：内容整格交给调用方，本组件只负责把它放进网格的正确位置 -->
+      <template v-for="col in extraColumns ?? []" :key="`x-${t.id}-${col.key}`">
+        <div class="cell-extra">
+          <slot :name="`cell-${col.key}`" :ticket="t" />
+        </div>
+      </template>
 
       <!-- 操作 -->
       <div v-if="showActionColumn" class="col-action cell-action">
@@ -872,6 +914,9 @@ const gridTemplateColumns = computed(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* 调用方自带列的格：只给对齐与截断，内容样式由插槽自己带 */
+.cell-extra { display: flex; align-items: center; min-width: 0; overflow: hidden; font-size: 12px; color: #374151; }
 
 /* 操作 */
 .cell-action { display: flex; align-items: center; gap: 12px; }
