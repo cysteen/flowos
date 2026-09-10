@@ -29,7 +29,8 @@ import { formatTicketRecordWho, MOCK_FIRST_LINE_AGENTS } from './utils/ticketRec
 import { mergeDraftIntoLatestHandling } from './utils/ticketOverview';
 import { TICKETS } from '@/mock/tickets';
 import { useRiskTagStore } from '@/stores/riskTags';
-import { useRiskReportStore, REPORT_ASSESS_LIMIT_MIN } from '@/stores/riskReports';
+import { useRiskReportStore } from '@/stores/riskReports';
+import { REPORT_ASSESS_LIMIT_MIN } from '@/stores/riskShared';
 import { RISK_FLAG_OPTIONS, tabWritableFor, visibleProcessTabs } from './types/operation';
 import { RISK_LEVELS } from '@/config/risk';
 import { pullbackOnCsEvent, headerActionsByRole, type TicketStatus } from './types/ticket';

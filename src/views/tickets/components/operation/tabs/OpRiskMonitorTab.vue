@@ -25,12 +25,10 @@ import {
   type RiskFlag,
   type RiskLevel,
 } from '@/views/tickets/types/operation';
-import {
-  useRiskReportStore,
-  type AssessDecision,
-  type ReportAssessment,
-  type RiskReport,
-} from '@/stores/riskReports';
+// 本单的报备读口在 B 线自己的 store 里；行类型取合并池的行（同一张单上还可能有
+// A 线自动入池的条目，见 riskReports.ts 的 `reportsOf` 说明）。
+import { useRiskReportStore } from '@/stores/riskReports';
+import type { AssessDecision, ReportAssessment, RiskPoolItem } from '@/stores/riskShared';
 import OpActionModal from '../OpActionModal.vue';
 import { useUserStore } from '@/stores/user';
 
@@ -219,7 +217,7 @@ function waitedText(at: string) {
  * 「接管」额外带上派生的新投诉单号：这条记录的实际去向就在那张单上，
  * 只写「接管」两个字，读的人还得再翻一次「评估结果」才知道去了哪。
  */
-function assessmentSummary(r: RiskReport) {
+function assessmentSummary(r: RiskPoolItem) {
   const a = r.assessment;
   if (!a) return '';
   if (a.decision === '接管' && a.escalatedToNo) return `接管 → ${a.escalatedToNo}`;
@@ -234,7 +232,7 @@ function assessmentSummary(r: RiskReport) {
  * 同一条结论在一屏上出现两遍 —— 报备多轮之后两块内容还会分叉，
  * 读的人不知道该信哪个。这里只答"这条评过没有、谁评的"，详情往下看。
  */
-function assessmentDetail(r: RiskReport) {
+function assessmentDetail(r: RiskPoolItem) {
   const a = r.assessment;
   if (!a) return '';
   return `${a.by}（${a.byRole}）${formatShortAt(a.at)}`;

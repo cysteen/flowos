@@ -1,13 +1,15 @@
 import { computed, ref } from 'vue';
 import { message } from 'ant-design-vue';
 import { useUserStore } from '@/stores/user';
+// 评估是两条线共用的动作（A 线自动入池条目与 B 线报备单都要评），故走合并层 riskPool：
+// 「接管」派生新单号时要在**两条线**已用过的号里取最大值 +1，只扫一条线会派出重号。
+import { useRiskPoolStore } from '@/stores/riskPool';
 import {
-  useRiskReportStore,
   ASSESS_DECISIONS,
   isVerifyMonitorSource,
   type AssessDecision,
-  type RiskReport,
-} from '@/stores/riskReports';
+  type RiskPoolItem,
+} from '@/stores/riskShared';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
 
 function nowStamp(): string {
@@ -23,11 +25,11 @@ function isComplaintTicket(ticketNo: string) {
 /** 风险报备评估二选一（930 §5.4），监控页与工单详情页共用 */
 export function useRiskReportAssess() {
   const user = useUserStore();
-  const reportStore = useRiskReportStore();
+  const reportStore = useRiskPoolStore();
   const derivedTickets = useDerivedTicketStore();
 
   const assessOpen = ref(false);
-  const assessTarget = ref<RiskReport | null>(null);
+  const assessTarget = ref<RiskPoolItem | null>(null);
   const assessDecision = ref<AssessDecision | ''>('');
   const assessAdvice = ref('');
   const assessTried = ref(false);
@@ -68,13 +70,13 @@ export function useRiskReportAssess() {
     return `${prefix}${String(maxUsed + 1).padStart(5, '0')}`;
   }
 
-  function canAssessReport(r: RiskReport, assigneeName: string) {
+  function canAssessReport(r: RiskPoolItem, assigneeName: string) {
     return r.status === '评估中'
       && r.assignee === assigneeName
       && !isVerifyMonitorSource(r.source);
   }
 
-  function openAssess(r: RiskReport) {
+  function openAssess(r: RiskPoolItem) {
     if (r.status !== '评估中') {
       message.warning('该条目还没有分派，请先分派给客诉专员再评估');
       return;

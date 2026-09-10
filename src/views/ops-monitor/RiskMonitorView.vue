@@ -21,16 +21,17 @@ import { useUserStore } from '@/stores/user';
 import { useRiskTagStore, type RiskTagEntry } from '@/stores/riskTags';
 // 风险工单池（《【930】》§5）。队列条目与风险词命中记录**分母不同、两处不可相加**（§7 撞名），
 // 故各走各的 store，本页只是把两块工作面并在一屏。
+// 池是两条线（A 线自动入池 / B 线二线报备）合并后的那一个工作面，故读的是合并层 riskPool；
+// 枚举与时限等两线共用的口径在 riskShared，两条线各自的模型在各自的 store 里。
+import { useRiskPoolStore, type RiskPoolItem } from '@/stores/riskPool';
 import {
-  useRiskReportStore,
   ASSESS_DECISIONS,
   MONITOR_SOURCES,
   isVerifyMonitorSource,
   REPORT_ASSESS_LIMIT_MIN,
   type AssessDecision,
   type MonitorSource,
-  type RiskReport,
-} from '@/stores/riskReports';
+} from '@/stores/riskShared';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
 import { RISK_TAG_ROLES, RISK_WORD_MAINTAIN_ROLES } from '@/config/roles';
 import { RISK_LEVELS, riskLevelText } from '@/config/risk';
@@ -126,7 +127,7 @@ const listView = ref<ListView>('realtime');
 //   · 风险工单池 ＝ 分派 + 按来源分流处理（来源为「关键词触发」的条目点「核实」，
 //     直接落回上面那同一个打标弹窗，两处走的是同一份结论，不会各判一次）。
 // 备选是把 915 三个页签吞进一个"风险队列"，那等于拆掉 915（N7）；业务选了保留重复。
-const reportStore = useRiskReportStore();
+const reportStore = useRiskPoolStore();
 /** 接管派生的新投诉单落这里，工单页解析时兜在静态数据源之后 */
 const derivedTickets = useDerivedTicketStore();
 
@@ -220,7 +221,7 @@ const assessLimitText = computed(() =>
  * （§5.3 元素 ④，等最久的在最上）；按来源排一次就把它整个丢掉的话，
  * 等了三天的那条会沉到某一组的中间，再也没人看得见。故来源只做分组，不做重排。
  */
-function sortBySource(rows: RiskReport[], tie: (a: RiskReport, b: RiskReport) => number) {
+function sortBySource(rows: RiskPoolItem[], tie: (a: RiskPoolItem, b: RiskPoolItem) => number) {
   if (sourceSort.value === 'none') return rows;
   const dir = sourceSort.value === 'asc' ? 1 : -1;
   return [...rows].sort((a, b) => {
@@ -232,7 +233,7 @@ function cycleSourceSort() {
   sourceSort.value = sourceSort.value === 'none' ? 'asc' : sourceSort.value === 'asc' ? 'desc' : 'none';
 }
 
-function bySource(rows: RiskReport[]) {
+function bySource(rows: RiskPoolItem[]) {
   return sourceFilter.value === 'all' ? rows : rows.filter((r) => r.source === sourceFilter.value);
 }
 
@@ -358,7 +359,7 @@ function waitedText(at: string) {
 
 // ---- 评估弹窗（§5.4）----
 const assessOpen = ref(false);
-const assessTarget = ref<RiskReport | null>(null);
+const assessTarget = ref<RiskPoolItem | null>(null);
 const assessDecision = ref<AssessDecision | ''>('');
 const assessAdvice = ref('');
 const assessTried = ref(false);
@@ -379,7 +380,7 @@ const assessAdvicePlaceholder = computed(() => {
   }
 });
 
-function openAssess(r: RiskReport) {
+function openAssess(r: RiskPoolItem) {
   // 没分派过的条目谈不上"谁给的结论"（store 的 assess 也会拦），
   // 但拦在这里才说得出为什么——按钮本就只对「评估中」渲染，这道是兜底。
   if (r.status !== '评估中') { message.warning('该条目还没有分派，请先分派给客诉专员再评估'); return; }
@@ -398,7 +399,7 @@ function openAssess(r: RiskReport) {
  * 拿它去结掉一条命中，词表准确率就永远学不到东西。故这一路直接落回同一个打标弹窗，
  * **915 的能力一字不改**。其余四类来源走评估。
  */
-function isKeywordRow(r: RiskReport) {
+function isKeywordRow(r: RiskPoolItem) {
   return isVerifyMonitorSource(r.source);
 }
 
@@ -410,11 +411,11 @@ function isKeywordRow(r: RiskReport) {
  * 点开的是同一个打标弹窗、里面那条命中已经判过，只会落到"已全部核实"的提示上——
  * 条目就永远卡在队列里，而这正是方案 C 要修的那条断链。
  */
-function needsVerify(r: RiskReport) {
+function needsVerify(r: RiskPoolItem) {
   return isKeywordRow(r) && r.verify?.verdict !== '成立';
 }
 
-function openVerifyForReport(r: RiskReport) {
+function openVerifyForReport(r: RiskPoolItem) {
   const hits = allHits.value.filter((h) => h.ticketNo === r.ticketNo);
   if (!hits.length) {
     message.warning(`${r.ticketNo} 当前没有风险词命中记录，无法核实打标`);
@@ -430,7 +431,7 @@ function openVerifyForReport(r: RiskReport) {
 }
 
 /** 队列行的处理动作：来源 + 有没有核实成立，共同决定走哪一套结论 */
-function handleReportRow(r: RiskReport) {
+function handleReportRow(r: RiskPoolItem) {
   if (needsVerify(r)) openVerifyForReport(r);
   else openAssess(r);
 }
@@ -462,7 +463,7 @@ const REPORT_CLAIM_ROLES: string[] = [
 const canClaim = computed(() => REPORT_CLAIM_ROLES.includes(user.roleKey));
 
 /** 领取一条：转「评估中」并落在自己名下，随后跳转工单详情做评估 */
-function doClaim(r: RiskReport) {
+function doClaim(r: RiskPoolItem) {
   if (!canClaim.value) { message.warning('只有客诉专员可以领取风险工单池的单'); return; }
   if (!reportStore.claim(r.id, user.name)) {
     // 唯一会落空的情形：别人刚刚把它分派 / 领取走了，本页还没重算
@@ -476,12 +477,12 @@ function doClaim(r: RiskReport) {
 const ASSIGN_CANDIDATES = ['吴投诉', '李文萍'];
 
 const assignOpen = ref(false);
-const assignTargets = ref<RiskReport[]>([]);
+const assignTargets = ref<RiskPoolItem[]>([]);
 const assignTo = ref('');
 const assignTried = ref(false);
 const missAssignTo = computed(() => assignTried.value && !assignTo.value);
 
-function openAssign(rows: RiskReport[]) {
+function openAssign(rows: RiskPoolItem[]) {
   if (!canAssign.value) { message.warning('只有投诉督导可以分派风险工单池的单'); return; }
   // 🔴 **可改派**（O18 拍板）：待分派与评估中都能派。评估人请假 / 离职 / 手上堆太多时
   // 这活儿必须能挪 —— 不许改派的话唯一出路是"等它评完"，而它正卡在不在岗的人手上，
