@@ -179,7 +179,7 @@ const urgentTicketCount = computed(
 );
 
 /**
- * 风险工单等级分布：按**工单级风险等级**（＝该单已核实且成立的命中取最高，915 §4.9）
+ * 风险工单等级分布：按**工单级风险等级**（＝该单**已打标条目**与**已核实且成立的命中**取最高，2026-09-10 第三轮口径）
  * 把工单分到高 / 中 / 低三档，给条数与占比。
  * 分母 ＝ 有工单级等级的工单数，故三档占比之和恒为 100%；没有成立命中的单不参与。
  */
@@ -288,16 +288,35 @@ function todayPrefix() {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
+/**
+ * 一条已处理条目的**结论时刻 / 结论人**。
+ *
+ * 🔴 **三种收口方式各写各的字段**：走评估的落 `assessment`（升级 / 不升级）、
+ * 走协同处理的落 `coordination`（投诉单那一路，评估意见 + 建议事项）、
+ * 走核实打标的落 `verify`。只读 `assessment` 的话，**协同过的条目会整条从"仅今日"里被筛掉**，
+ * 关掉开关才出现、且评估人与时刻两格显示「—」——那正是这张表最该说清的两件事。
+ */
+function concludedAtOf(r: RiskPoolItem) {
+  return r.assessment?.at ?? r.coordination?.at ?? r.verify?.at ?? '';
+}
+function concludedByOf(r: RiskPoolItem) {
+  return r.assessment?.by ?? r.coordination?.by ?? r.verify?.by ?? '';
+}
+function concludedByRoleOf(r: RiskPoolItem) {
+  return r.assessment?.byRole ?? r.coordination?.byRole ?? r.verify?.byRole ?? '';
+}
+
 /** 已评估底表：今日开关 + 决策两个条件，**不含来源**（同上，来源 chip 的数字要靠它算） */
 const assessedBase = computed(() => {
   let rows = reportStore.assessedList;
   if (assessedTodayOnly.value) {
     const today = todayPrefix();
-    rows = rows.filter((r) => (r.assessment?.at ?? '').startsWith(today));
+    rows = rows.filter((r) => concludedAtOf(r).startsWith(today));
   }
   if (decisionFilter.value !== 'all') {
     // 归一化后再比：B 线的种子与它自己那份缓存里仍有旧词「接管」，
     // 直接比字面量的话，那一条在「升级」筛选下会凭空消失（见 riskShared.normalizeDecision）
+    // 协同处理不产出「升级 / 不升级」，故它天然不落进这两档的任何一档。
     rows = rows.filter(
       (r) => r.assessment && normalizeDecision(r.assessment.decision) === decisionFilter.value,
     );
@@ -311,7 +330,7 @@ const reportAssessedRows = computed(
   // 故 tie 单独给一份：套用队列那份会让刚评完的一条排到列表末尾去。
   () => sortBySource(
     bySource(assessedBase.value),
-    (a, b) => (b.assessment?.at ?? '').localeCompare(a.assessment?.at ?? ''),
+    (a, b) => concludedAtOf(b).localeCompare(concludedAtOf(a)),
   ),
 );
 
@@ -2558,7 +2577,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
           <div class="dash-links">
             <span
               class="dash-links-k"
-              :title="`共 ${ticketGradeDist.total} 张单有工单级风险等级（该单已核实且成立的命中取最高）；占比之和为 100%。此处数的是工单，与左栏「确认是风险」的高中低数的是命中，两组数天生不等`"
+              :title="`共 ${ticketGradeDist.total} 张单有工单级风险等级（该单已打标条目与已核实成立的命中取最高）；占比之和为 100%。此处数的是工单，与左栏「确认是风险」的高中低数的是命中，两组数天生不等`"
             >风险等级</span>
             <span
               v-for="r in ticketGradeDist.rows"
@@ -3150,15 +3169,16 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               <td>{{ r.by }}<div class="hit-sub">{{ r.byRole }}</div></td>
               <td>{{ r.reason }}</td>
               <!--
-                🔴 本表**只显示评估结论**（`assessment`）。旧实现在这几格里兜了一路 `verify`，
-                那是"核实成立就出池落已评估"时代的遗留；漏斗改版之后打标只决定进不进池、
-                不再结掉任何条目，能走到「已评估」的必然带着 assessment。
+                🔴 **两种收口方式共用这三格**：非投诉单走评估（`assessment`，升级 / 不升级）、
+                投诉单走协同处理（`coordination`，评估意见 + 建议事项）。
+                只读 `assessment` 的话，协同过的条目这三格全是「—」——而"谁在什么时候收的口"
+                恰恰是这张表存在的理由。
               -->
               <td>
-                {{ r.assessment?.by ?? '—' }}
-                <div v-if="r.assessment" class="hit-sub">{{ r.assessment.byRole }}</div>
+                {{ concludedByOf(r) || '—' }}
+                <div v-if="concludedByRoleOf(r)" class="hit-sub">{{ concludedByRoleOf(r) }}</div>
               </td>
-              <td class="hit-when">{{ r.assessment?.at ?? '—' }}</td>
+              <td class="hit-when">{{ concludedAtOf(r) || '—' }}</td>
               <td>
                 <!-- 旧词「接管」归一成「升级」再显示：B 线的种子里仍有旧值，见 normalizeDecision -->
                 <span
@@ -3168,6 +3188,11 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                 >
                   {{ normalizeDecision(r.assessment.decision) }}
                 </span>
+                <span
+                  v-else-if="r.coordination"
+                  class="rr-dec"
+                  title="投诉单不做风险评估，走协同处理：给意见与建议，不改状态、不改处理人"
+                >协同处理</span>
                 <span v-else class="hit-sub">—</span>
               </td>
               <td>
@@ -3605,7 +3630,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                   v-if="ticketGradeHint(h)"
                   class="ticket-grade-note"
                   :style="{ color: RISK_LEVEL_STYLE[ticketGradeHint(h)!].color }"
-                  title="工单级风险等级 ＝ 该单已核实且成立的命中取最高，只升不降"
+                  title="工单级风险等级 ＝ 该单已打标条目与已核实成立的命中取最高，只升不降"
                 >本单当前 <b>{{ ticketGradeHint(h) }}</b> 危</div>
               </div>
             </td>
@@ -3961,7 +3986,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                 v-if="ticketGradeOf(entryTagTarget.ticketNo)"
                 class="grade-pill-inline"
                 :style="{ color: RISK_LEVEL_STYLE[ticketGradeOf(entryTagTarget.ticketNo)!].color, background: RISK_LEVEL_STYLE[ticketGradeOf(entryTagTarget.ticketNo)!].bg }"
-                title="已核实且成立的命中取最高，只升不降；误报与未核实的不参与"
+                title="已打标条目与已核实成立的命中取最高，只升不降；误报与未核实的不参与"
               >{{ ticketGradeOf(entryTagTarget.ticketNo) }}危</span>
               <span v-else class="tag-sib-nograde" title="该单还没有任何一条命中被核实为成立">尚无</span>
             </span>
@@ -4158,7 +4183,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                 v-if="tagTicketGrade"
                 class="grade-pill-inline"
                 :style="{ color: RISK_LEVEL_STYLE[tagTicketGrade].color, background: RISK_LEVEL_STYLE[tagTicketGrade].bg }"
-                title="已核实且成立的命中取最高，只升不降；误报与未核实的不参与"
+                title="已打标条目与已核实成立的命中取最高，只升不降；误报与未核实的不参与"
               >{{ tagTicketGrade }}危</span>
               <span v-else class="tag-sib-nograde" title="该单还没有任何一条命中被核实为成立">尚无</span>
             </span>
