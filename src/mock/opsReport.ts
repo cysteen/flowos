@@ -324,7 +324,7 @@ export interface RiskHit {
   realized?: '已兑现' | '未兑现';
 }
 
-export const RISK_HITS: RiskHit[] = [
+const RISK_HITS_SEED: RiskHit[] = [
   {
     id: 'h1', ticketNo: 'IFLYTS-20260610-00002', title: '无线音乐播放跳过歌曲异常',
     word: '曝光', matchedWord: '媒体', level: '高', position: '沟通记录',
@@ -647,6 +647,38 @@ export const RISK_HITS: RiskHit[] = [
     track: '外部信号', legacyLevel: '高',
   },
 ];
+
+/**
+ * 命中记录的**时间锚定**。
+ *
+ * 🔴 **同一屏上不能有两套时间约定**：监控条目那一路早已改成"相对当下"生成（进队时刻、
+ * 等待时长都按 now 算），命中这一路却是写死的日历日（最新一条 2026-08-04）。两者并排，
+ * 风险监控页头就会天天给出「今日新增 12 / 今日命中记录 0」这种自相矛盾的读数——
+ * 它不是算错了，是种子过期：没有一条命中落在"今天"，任何按自然日切的流量指标恒为 0。
+ *
+ * 这里把整批命中**整体平移**到"最新的一条正好落在今天"：
+ *   · **只改日期、不改时刻**，故每条命中在一天中的先后不变；
+ *   · **平移量对全批相同**，故任意两条的间隔、先后次序、跨天分布全部保持原样。
+ * 于是所有按 `when` 排序 / 分档 / 算时长的口径都不受影响，只是整条时间轴贴到了今天。
+ */
+function anchorHitDates(rows: RiskHit[]): RiskHit[] {
+  const newest = rows.reduce((max, h) => (h.when > max ? h.when : max), '');
+  if (!newest) return rows;
+  const dayStart = (ymd: string) => new Date(`${ymd}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const shiftDays = Math.round((today.getTime() - dayStart(newest.slice(0, 10)).getTime()) / 86_400_000);
+  if (shiftDays === 0) return rows;
+  const p = (n: number) => String(n).padStart(2, '0');
+  return rows.map((h) => {
+    const d = dayStart(h.when.slice(0, 10));
+    d.setDate(d.getDate() + shiftDays);
+    // 时刻段（含空格）原样接回去，格式与长度都不动
+    return { ...h, when: `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}${h.when.slice(10)}` };
+  });
+}
+
+export const RISK_HITS: RiskHit[] = anchorHitDates(RISK_HITS_SEED);
 
 /** 本单最终等级：双轨交叉，不看词表预设等级 */
 export function riskGradeOf(h: RiskHit): RiskLevel {

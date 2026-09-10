@@ -839,34 +839,62 @@ interface ScanRun {
 }
 
 const SCAN_RUN_LS_KEY = 'flowos-risk-scan-runs';
-/** 种子版本：变更 DEFAULT_SCAN_RUNS 时递增，强制刷新演示数据 */
-const SCAN_RUN_SEED_VERSION = 2;
+/** 种子版本：变更 buildDefaultScanRuns() 时递增，强制刷新演示数据 */
+const SCAN_RUN_SEED_VERSION = 3;
 const SCAN_RUN_VERSION_KEY = 'flowos-risk-scan-runs-v';
+
+/**
+ * 扫库记录的时刻**按"距现在多久"生成**，不写死日历日。
+ *
+ * 🔴 **页头「扫描批次 / 命中记录」是按自然日切的流量指标**：种子若写死在某个过去的日子，
+ * 这两个数就恒为 0，而旁边的「今日新增」走的是相对当下的条目时刻——一屏之内出现
+ * 「今日新增 12 · 扫描批次 0 · 命中记录 0」，读起来像"今天没扫过却凭空多了 12 条"。
+ * 命中那一路已在 `mock/opsReport.ts` 用整体平移解决（见 `anchorHitDates`），
+ * 扫库这一路条数少、且只本页用，直接按偏移生成更直白。
+ *
+ * 【为什么今天那几条用"距现在多少分钟"而不是固定钟点】固定钟点（如今天 14:30）在
+ * 早上打开页面时会落在**未来**，出现"下次执行已经执行过了"。按分钟回推则任何时候打开都成立。
+ */
+function scanStamp(minutesAgo: number): string {
+  const d = new Date(Date.now() - minutesAgo * 60_000);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+/** 第 n 天前的某个钟点（n ≥ 1 时不会落到未来，故可以写死钟点） */
+function scanStampDaysAgo(days: number, hhmmss: string): string {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${hhmmss}`;
+}
 
 /**
  * 扫库记录演示样例 —— 覆盖实时监控 / 手动筛查 × 成功 / 失败 / 异常，
  * 以及「无新增」「有新增未并入」「有新增已并入」等结果口径。
  */
-const DEFAULT_SCAN_RUNS: ScanRun[] = [
-  // —— 实时监控 ——
-  { id: 'run-seed-01', kind: 'realtime', triggerBy: '系统', startedAt: '2026-08-04 14:30:02', endedAt: '2026-08-04 14:30:08', status: 'success', hitCount: 19, openCount: 15 },
-  { id: 'run-seed-02', kind: 'realtime', triggerBy: '王坐席', startedAt: '2026-08-04 13:20:00', endedAt: '2026-08-04 13:20:06', status: 'success', hitCount: 19, openCount: 15 },
-  { id: 'run-seed-03', kind: 'realtime', triggerBy: '系统', startedAt: '2026-08-04 10:00:01', endedAt: '2026-08-04 10:00:07', status: 'success', hitCount: 17, openCount: 12 },
-  { id: 'run-seed-04', kind: 'realtime', triggerBy: '系统', startedAt: '2026-08-03 14:00:00', endedAt: '2026-08-03 14:00:06', status: 'abnormal', errorMessage: '部分班组数据延迟，结果可能不完整', hitCount: 12, openCount: 8 },
-  { id: 'run-seed-05', kind: 'realtime', triggerBy: '系统', startedAt: '2026-08-03 08:00:00', endedAt: '2026-08-03 08:00:02', status: 'failed', errorMessage: '实时扫描中断，请检查词表与连接' },
-  { id: 'run-seed-06', kind: 'realtime', triggerBy: '系统', startedAt: '2026-08-02 18:00:00', endedAt: '2026-08-02 18:00:05', status: 'success', hitCount: 14, openCount: 9 },
-  // —— 手动筛查 · 成功 ——
-  { id: 'run-seed-07', kind: 'manual', triggerBy: '郑监控', startedAt: '2026-08-04 13:55:11', endedAt: '2026-08-04 13:56:42', status: 'success', filterName: '高危词专项', total: 47, fresh: 3, adopted: 2, highAdopted: 2 },
-  { id: 'run-seed-08', kind: 'manual', triggerBy: '李文萍', startedAt: '2026-08-04 11:08:33', endedAt: '2026-08-04 11:12:18', status: 'success', total: 128, fresh: 0, adopted: 0 },
-  { id: 'run-seed-09', kind: 'manual', triggerBy: '秦督导', startedAt: '2026-08-26 13:28:41', endedAt: '2026-08-26 13:29:06', status: 'success', total: 2, fresh: 0, adopted: 0 },
-  { id: 'run-seed-10', kind: 'manual', triggerBy: '孙坐席', startedAt: '2026-08-03 16:20:44', endedAt: '2026-08-03 16:24:01', status: 'success', total: 86, fresh: 5, adopted: 4, highAdopted: 1 },
-  { id: 'run-seed-11', kind: 'manual', triggerBy: '郑监控', startedAt: '2026-08-03 10:15:22', endedAt: '2026-08-03 10:18:55', status: 'success', filterName: '教育产线近30天', total: 203, fresh: 7, adopted: 6, highAdopted: 2 },
-  { id: 'run-seed-12', kind: 'manual', triggerBy: '周坐席', startedAt: '2026-08-02 15:33:08', endedAt: '2026-08-02 15:35:41', status: 'success', total: 56, fresh: 3, adopted: 0 },
-  { id: 'run-seed-13', kind: 'manual', triggerBy: '秦督导', startedAt: '2026-08-02 09:12:18', endedAt: '2026-08-02 09:14:52', status: 'success', filterName: '受理一组在办', total: 34, fresh: 2, adopted: 2, highAdopted: 1 },
-  // —— 手动筛查 · 失败 ——
-  { id: 'run-seed-14', kind: 'manual', triggerBy: '郑监控', startedAt: '2026-08-04 09:42:15', endedAt: '2026-08-04 09:42:16', status: 'failed', errorMessage: '词表服务超时，请稍后重试' },
-  { id: 'run-seed-15', kind: 'manual', triggerBy: '秦督导', startedAt: '2026-08-01 17:05:33', endedAt: '2026-08-01 17:05:34', status: 'failed', errorMessage: '筛查执行失败，请稍后重试' },
-];
+function buildDefaultScanRuns(): ScanRun[] {
+  return [
+    // —— 实时监控 · 今天三轮（页头「扫描批次」数的就是这三条） ——
+    { id: 'run-seed-01', kind: 'realtime', triggerBy: '系统', startedAt: scanStamp(35), endedAt: scanStamp(34), status: 'success', hitCount: 19, openCount: 15 },
+    { id: 'run-seed-02', kind: 'realtime', triggerBy: '王坐席', startedAt: scanStamp(105), endedAt: scanStamp(104), status: 'success', hitCount: 19, openCount: 15 },
+    { id: 'run-seed-03', kind: 'realtime', triggerBy: '系统', startedAt: scanStamp(240), endedAt: scanStamp(239), status: 'success', hitCount: 17, openCount: 12 },
+    // —— 实时监控 · 前几天 ——
+    { id: 'run-seed-04', kind: 'realtime', triggerBy: '系统', startedAt: scanStampDaysAgo(1, '14:00:00'), endedAt: scanStampDaysAgo(1, '14:00:06'), status: 'abnormal', errorMessage: '部分班组数据延迟，结果可能不完整', hitCount: 12, openCount: 8 },
+    { id: 'run-seed-05', kind: 'realtime', triggerBy: '系统', startedAt: scanStampDaysAgo(1, '08:00:00'), endedAt: scanStampDaysAgo(1, '08:00:02'), status: 'failed', errorMessage: '实时扫描中断，请检查词表与连接' },
+    { id: 'run-seed-06', kind: 'realtime', triggerBy: '系统', startedAt: scanStampDaysAgo(2, '18:00:00'), endedAt: scanStampDaysAgo(2, '18:00:05'), status: 'success', hitCount: 14, openCount: 9 },
+    // —— 手动筛查 · 成功 ——
+    { id: 'run-seed-07', kind: 'manual', triggerBy: '郑监控', startedAt: scanStamp(170), endedAt: scanStamp(168), status: 'success', filterName: '高危词专项', total: 47, fresh: 3, adopted: 2, highAdopted: 2 },
+    { id: 'run-seed-08', kind: 'manual', triggerBy: '李文萍', startedAt: scanStamp(320), endedAt: scanStamp(316), status: 'success', total: 128, fresh: 0, adopted: 0 },
+    { id: 'run-seed-09', kind: 'manual', triggerBy: '秦督导', startedAt: scanStampDaysAgo(1, '13:28:41'), endedAt: scanStampDaysAgo(1, '13:29:06'), status: 'success', total: 2, fresh: 0, adopted: 0 },
+    { id: 'run-seed-10', kind: 'manual', triggerBy: '孙坐席', startedAt: scanStampDaysAgo(1, '16:20:44'), endedAt: scanStampDaysAgo(1, '16:24:01'), status: 'success', total: 86, fresh: 5, adopted: 4, highAdopted: 1 },
+    { id: 'run-seed-11', kind: 'manual', triggerBy: '郑监控', startedAt: scanStampDaysAgo(1, '10:15:22'), endedAt: scanStampDaysAgo(1, '10:18:55'), status: 'success', filterName: '教育产线近30天', total: 203, fresh: 7, adopted: 6, highAdopted: 2 },
+    { id: 'run-seed-12', kind: 'manual', triggerBy: '周坐席', startedAt: scanStampDaysAgo(2, '15:33:08'), endedAt: scanStampDaysAgo(2, '15:35:41'), status: 'success', total: 56, fresh: 3, adopted: 0 },
+    { id: 'run-seed-13', kind: 'manual', triggerBy: '秦督导', startedAt: scanStampDaysAgo(2, '09:12:18'), endedAt: scanStampDaysAgo(2, '09:14:52'), status: 'success', filterName: '受理一组在办', total: 34, fresh: 2, adopted: 2, highAdopted: 1 },
+    // —— 手动筛查 · 失败 ——
+    { id: 'run-seed-14', kind: 'manual', triggerBy: '郑监控', startedAt: scanStamp(400), endedAt: scanStamp(400), status: 'failed', errorMessage: '词表服务超时，请稍后重试' },
+    { id: 'run-seed-15', kind: 'manual', triggerBy: '秦督导', startedAt: scanStampDaysAgo(3, '17:05:33'), endedAt: scanStampDaysAgo(3, '17:05:34'), status: 'failed', errorMessage: '筛查执行失败，请稍后重试' },
+  ];
+}
 
 function nowStamp(withSeconds = false): string {
   const d = new Date();
@@ -908,10 +936,18 @@ function loadScanRuns(): ScanRun[] {
     const raw = localStorage.getItem(SCAN_RUN_LS_KEY);
     if (raw) {
       const p = JSON.parse(raw);
-      if (Array.isArray(p) && p.length) return p.map((r) => normalizeScanRun(r as Record<string, unknown>));
+      if (Array.isArray(p) && p.length) {
+        const runs = p.map((r) => normalizeScanRun(r as Record<string, unknown>));
+        // 🔴 隔夜即作废：种子是按"距现在多久"生成的，缓存下来第二天再打开就全部落到昨天，
+        // 页头「扫描批次」又回到 0 —— 与写死日历日是同一个病，只是晚一天发作。
+        // 判据取"最新一条是不是今天"，而不是缓存写入时刻：人当天多次进出页面不该被清掉。
+        const newest = runs.reduce((max, r) => (r.startedAt > max ? r.startedAt : max), '');
+        if (newest.startsWith(todayPrefix())) return runs;
+        localStorage.removeItem(SCAN_RUN_LS_KEY);
+      }
     }
   } catch { /* ignore */ }
-  return [...DEFAULT_SCAN_RUNS];
+  return buildDefaultScanRuns();
 }
 
 const scanRuns = ref<ScanRun[]>(loadScanRuns());
