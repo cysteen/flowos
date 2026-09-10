@@ -47,6 +47,10 @@ import {
   type RiskTagResult,
 } from '@/stores/riskShared';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
+// 评估弹窗的两处口径与工单页那个入口**共用同一份实现**：
+// `escalateHintOf` 是「升级」那行分流提示的唯一文案来源，`deriveEscalatedComplaint` 是派生的完整落地。
+// 本页此前各写各的，于是提示行在这里从来就没出现过（工单页有、监控页没有）。
+import { deriveEscalatedComplaint, escalateHintOf } from '@/composables/useRiskReportAssess';
 import { RISK_TAG_ROLES, RISK_WORD_MAINTAIN_ROLES } from '@/config/roles';
 import { RISK_LEVELS, riskLevelText } from '@/config/risk';
 import { TICKETS } from '@/mock/tickets';
@@ -715,6 +719,16 @@ const assessAdvicePlaceholder = computed(() => {
   }
 });
 
+/**
+ * 选「升级」后那一行分流提示（O20）。
+ *
+ * ⚠️ **本页此前根本没有这一行** —— 文案与判据都在 `composables/useRiskReportAssess.ts`，
+ * 工单页的 `OpRiskAssessModal` 接了它，本页那个弹窗从来没接上：同一个动作，
+ * 在工单页告诉你"会派生一张新单、不可撤销"，在监控页什么都不说。
+ * 现在两处都走 `escalateHintOf`，谁也没法只改一半。
+ */
+const escalateHint = computed(() => escalateHintOf(assessTarget.value?.ticketNo));
+
 function openAssess(r: RiskPoolItem) {
   // 没人领过的条目谈不上"谁给的结论"（store 的 assess 也会拦），
   // 但拦在这里才说得出为什么——按钮本就只对「评估中」渲染，这道是兜底。
@@ -912,7 +926,9 @@ function confirmAssess() {
    * 而 PRD 写的是「新单全量继承本单信息」。
    */
   if (escalatedToNo) {
-    derivedTickets.deriveComplaint({
+    // 造新单 + 记原单升级台账 + 让新单按来源② 回流「未标记 · 投诉单」，
+    // 三件事绑在 `deriveEscalatedComplaint` 一处，与工单页那个评估入口共用
+    deriveEscalatedComplaint({
       fromNo: target.ticketNo,
       no: escalatedToNo,
       assignee: user.name,
@@ -935,7 +951,8 @@ function confirmAssess() {
   if (escalatedToNo) {
     message.success(`已升级，已派生投诉单 ${escalatedToNo}`);
   } else if (escalate) {
-    message.success(`已升级 ${target.ticketNo}，请在工单上执行「工单管控」接手`);
+    // 基线 ※29：结论这条语义上的「接管 / 接手」整体作废，只说这个动作实际做了什么
+    message.success(`已升级 ${target.ticketNo}，请在工单上执行「工单管控」把本单转到自己名下`);
   } else {
     message.success('已提交结论：不升级');
   }
@@ -2542,7 +2559,10 @@ function applyUntaggedQuery() {
 function untaggedSubOf(r: QueueRow, slice: UntaggedSlice): string | null {
   if (slice === 'kw') return presetLevelOf(r.ticketNo);
   if (slice === 'complaint' || slice === 'urgent') {
-    return TICKET_BY_NO.get(r.ticketNo)?.priority ?? null;
+    // 🔴 **两处都要查**（与 `ticketOf` / `groupNameOf` 同一条规矩）：升级派生的新投诉单
+    // 落在 `derivedTickets` 里，只问静态工单库会让它进得了父切面、却掉不进任何一个子档 ——
+    // 「Σ子档 ＝ 父切面」当场少一条，而这一条明明查得到自己的优先级。
+    return ticketOfRow(r)?.priority ?? null;
   }
   return null;
 }
@@ -2569,7 +2589,8 @@ function untaggedSubLabel(slice: UntaggedSlice, key: string): string {
 const PRIORITY_RANK: Record<string, number> = { P0: 0, P1: 1, P2: 2, P3: 3 };
 const RANK_UNKNOWN = 9;
 function priorityRankOf(ticketNo: string): number {
-  const t = TICKET_BY_NO.get(ticketNo);
+  // 两处都要查，同 `untaggedSubOf`：派生单查得到自己的优先级，不该被当成"不知道多急"排到最后
+  const t = TICKET_BY_NO.get(ticketNo) ?? derivedTickets.find(ticketNo);
   if (!t) return RANK_UNKNOWN;
   return PRIORITY_RANK[t.priority] ?? RANK_UNKNOWN;
 }
@@ -3326,7 +3347,9 @@ const taggedToday = computed(() => {
  */
 const TICKET_BY_NO = new Map(TICKETS.map((t) => [t.no, t]));
 function groupNameOf(ticketNo: string): string {
-  const t = TICKET_BY_NO.get(ticketNo);
+  // 🔴 **两处都要查**，与 `ticketOf` 同一条规矩：升级派生出来的新投诉单落在 `derivedTickets` 里，
+  // 只问静态工单库会把它整条判成「未归组」——它明明继承了原单的分组名。
+  const t = TICKET_BY_NO.get(ticketNo) ?? derivedTickets.find(ticketNo);
   if (!t) return '未归组';
   return resolveTicketGroupNames(t)[0] ?? '未归组';
 }
@@ -5693,7 +5716,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                   v-if="ticketGradeHint(h)"
                   class="ticket-grade-note"
                   :style="{ color: RISK_LEVEL_STYLE[ticketGradeHint(h)!].color }"
-                  title="工单级风险等级 ＝ 该单已打标条目与已核实成立的命中取最高，只升不降"
+                  title="工单级风险等级 ＝ 该单已打标条目与已核实成立的命中取最高；同一条改判以最新结论为准"
                 >本单当前 <b>{{ ticketGradeHint(h) }}</b> 危</div>
               </div>
             </td>
@@ -6058,7 +6081,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                 v-if="ticketGradeOf(entryTagTarget.ticketNo)"
                 class="grade-pill-inline"
                 :style="{ color: RISK_LEVEL_STYLE[ticketGradeOf(entryTagTarget.ticketNo)!].color, background: RISK_LEVEL_STYLE[ticketGradeOf(entryTagTarget.ticketNo)!].bg }"
-                title="已打标条目与已核实成立的命中取最高，只升不降；误报与未核实的不参与"
+                title="已打标条目与已核实成立的命中取最高；误报与未核实的不参与；同一条改判以最新结论为准"
               >{{ ticketGradeOf(entryTagTarget.ticketNo) }}危</span>
               <span v-else class="tag-sib-nograde" title="该单还没有任何一条命中被核实为成立">尚无</span>
             </span>
@@ -6255,7 +6278,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                 v-if="tagTicketGrade"
                 class="grade-pill-inline"
                 :style="{ color: RISK_LEVEL_STYLE[tagTicketGrade].color, background: RISK_LEVEL_STYLE[tagTicketGrade].bg }"
-                title="已打标条目与已核实成立的命中取最高，只升不降；误报与未核实的不参与"
+                title="已打标条目与已核实成立的命中取最高；误报与未核实的不参与；同一条改判以最新结论为准"
               >{{ tagTicketGrade }}危</span>
               <span v-else class="tag-sib-nograde" title="该单还没有任何一条命中被核实为成立">尚无</span>
             </span>
@@ -6526,6 +6549,15 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               </a-radio-group>
             </div>
             <div v-if="missAssessDecision" class="assess-err assess-dec-foot">请先选择一个评估决策</div>
+            <!--
+              选「升级」后才出现的分流提示（O20）：它是"你点下去会立刻发生什么"，
+              且**按原单类型给的是两种完全相反的后果**，是做决策所必需的一行。
+              常驻的话选「不升级」也跟着显示，那时它是句噪音，故只在选中「升级」时出。
+            -->
+            <div
+              v-else-if="assessDecision === '升级'"
+              class="assess-hint assess-dec-foot"
+            >{{ escalateHint }}</div>
           </div>
 
           <div class="op-field">
@@ -8311,4 +8343,6 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
   margin-left: calc(72px + 10px);
 }
 .assess-err { margin-top: 4px; font-size: 11px; color: #ef4444; line-height: 1.4; }
+/* 「升级」的派生说明行：与工单页 OpRiskAssessModal 的 .ticket-assess-hint 同一套 token */
+.assess-hint { margin-top: 4px; font-size: 11px; color: #6b7280; line-height: 1.5; }
 </style>
