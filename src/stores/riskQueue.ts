@@ -920,7 +920,8 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
    *
    * 【为什么要有这一步】`recordTag` 此前只改条目自己：条目在池子里显示成「高」，
    * 而工单页的工单级风险等级仍是空的 —— 打标为低 / 中 / 高**回写工单级风险等级**
-   * （§6.1，取 max、只升不降）这条口径落了一半。工单级等级的读口在 `riskTags.ticketGradeOf`，
+   * （§6.1；跨条目取最高、同一条改判以最新为准，口径全文见 `riskTags.ticketGradeOf`）
+   * 这条口径落了一半。工单级等级的读口在 `riskTags.ticketGradeOf`，
    * 那边不能反向 import 本模块（会成环，见那边的说明），故写的方向定在这里。
    *
    * 「无风险」传 null：那一档没有等级，工单侧那一格要被清掉而不是留着旧值。
@@ -944,6 +945,18 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
   /** 本单的全部 A 线条目（含还在实时监控的，不排序，排序归合并层） */
   function entriesOf(ticketNo: string) {
     return entries.value.filter((e) => e.ticketNo === ticketNo);
+  }
+
+  /**
+   * 本单**现行的风险打标结论**（A 线那一路），没打过标时 null。
+   *
+   * 【为什么要有这个读口】工单页那句「本单 N 条命中待核实，尚无核实结论」问的是**命中核实**，
+   * 而打标是另一条线：打完标之后那句话仍照旧显示"尚无结论"，与紧挨着的「风险打标 中危」
+   * 在同一屏上互相打脸。两处提示行（`OpRiskMonitorTab` 与 `OpSupplementChipPanels`）
+   * 都要读这份结论，读口收在这里，免得两边各写一遍 `entriesOf(...).find(e => !!e.tag)`。
+   */
+  function currentTagOf(ticketNo: string): RiskTagRecord | null {
+    return entriesOf(ticketNo).find((e) => !!e.tag)?.tag ?? null;
   }
 
   /**
@@ -1255,6 +1268,7 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
     entries,
     findById,
     entriesOf,
+    currentTagOf,
     openEntryOf,
     monitoringEntries,
     pooledEntries,
