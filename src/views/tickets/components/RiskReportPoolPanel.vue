@@ -47,7 +47,7 @@ const {
   missAssessAdvice,
   assessAdviceLabel,
   assessAdvicePlaceholder,
-  takeoverHint,
+  escalateHint,
   openAssess,
   confirmAssess,
 } = useRiskReportAssess();
@@ -423,7 +423,7 @@ function release(r: RiskReport) {
           </a-radio-group>
         </div>
         <p v-if="missAssessDecision" class="af-err">请先选择一个评估决策</p>
-        <p v-else-if="assessDecision === '接管'" class="af-hint">{{ takeoverHint }}</p>
+        <p v-else-if="assessDecision === '升级'" class="af-hint">{{ escalateHint }}</p>
 
         <div class="af-field af-field-block">
           <span class="af-label req">{{ assessAdviceLabel }}</span>

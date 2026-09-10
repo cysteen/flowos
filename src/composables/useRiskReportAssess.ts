@@ -146,12 +146,6 @@ export function useRiskReportAssess() {
     assessAdviceLabel,
     assessAdvicePlaceholder,
     escalateHint,
-    /**
-     * ⚠️ 兼容别名，指向同一个 computed。`RiskReportPoolPanel.vue`（工单工作台的报备池，
-     * 本轮不在本次改动范围内）仍按旧名解构；直接改名会让那里**静默取到 undefined**，
-     * 提示行整条消失而不报错。那一批改到新名之后删掉本行。
-     */
-    takeoverHint: escalateHint,
     openAssess,
     confirmAssess,
     canAssessReport,
