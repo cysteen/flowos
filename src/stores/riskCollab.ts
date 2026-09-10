@@ -1,6 +1,11 @@
 import { ref, watch } from 'vue';
 import { defineStore } from 'pinia';
-import { readRiskCache, writeRiskCache } from '@/stores/riskShared';
+import {
+  newestStampOf,
+  readDailyRiskCache,
+  todayPrefix,
+  writeRiskCache,
+} from '@/stores/riskShared';
 
 /**
  * **协同处理记录**（基线 ※29 / 《【930】》§5C）—— 客诉专员对风险工单池里的**投诉单**
@@ -52,9 +57,30 @@ export interface RiskCollabRecord {
  *
  * 保质期沿用 `RISK_STALE_MS`（`readRiskCache` 内含）：协同记录挂在池内条目上，
  * 条目过了保质期回到种子而记录留着的话，工单上会挂着一批指向已不存在的条目的建议标记。
+ *
+ * v1 → v2：**隔夜即作废**，判据与 A / B 两条线**共用同一套**
+ * （`riskShared.readDailyRiskCache`：`seedDay` + 最新一条落不落在今天），不另造一套。
+ *
+ * 🔴 **为什么协同记录也必须隔夜作废**：条目那两条线隔夜会整批重建，
+ * 而本 store 若留着昨天的记录，它们会**按 `ticketNo` 原样挂回今天重建出来的条目上** ——
+ * id 对得上、不报错、界面照常显示建议标记与协同次数，只有人去核那条记录的时刻
+ * 才会发现它是昨天的。**这种静默的错比崩溃难查得多**：屏幕上没有任何一处提示不对劲。
+ * 12 小时保质期拦不住它（昨晚 22 点协同、今早 9 点再开只过了 11 小时），故要这一道。
  */
 const LS_KEY = 'flowos-risk-collab';
-const LS_VERSION = 1;
+const LS_VERSION = 2;
+
+/**
+ * 缓存"新不新"的判据：取协同时刻里最新的那一个。
+ *
+ * 【与另两条线的差别】A / B 线要挑"保证落在今天的那一类字段"（`todayStamp` 生成的打标 /
+ * 结论时刻），因为它们的进队时刻里有几条是**故意留在昨天**的超时样本。
+ * 本 store **没有种子**、每条记录都是真人当场落下的，`at` 一律是写入那一刻，
+ * 故直接取 `at` 即可，不必绕。空表返回空串 —— 判不过就丢，而丢一份空缓存是无操作。
+ */
+function newestCollabStamp(saved: { records: RiskCollabRecord[] }): string {
+  return newestStampOf((saved.records ?? []).map((r) => r.at));
+}
 
 export const useRiskCollabStore = defineStore('riskCollab', () => {
   /**
@@ -63,11 +89,23 @@ export const useRiskCollabStore = defineStore('riskCollab', () => {
    */
   const records = ref<RiskCollabRecord[]>([]);
 
-  const cached = readRiskCache<{ records: RiskCollabRecord[] }>(LS_KEY, LS_VERSION);
+  const cached = readDailyRiskCache<{ records: RiskCollabRecord[] }>(
+    LS_KEY,
+    LS_VERSION,
+    newestCollabStamp,
+  );
+  /**
+   * 这批记录**属于哪一天**。字段名与另两条线保持一致（那边是种子生成于哪一天，
+   * 这边没有种子、指的是本次会话这批记录落在哪一天），判据因此可以完全共用。
+   * 🔴 **写回时原样带下去、不取写入那一刻**：一场跨零点的演示会在 00:03 触发一次写入，
+   * 那时若按写入时刻记，昨天那批记录就被盖上今天的戳，隔夜判据从此瞎掉
+   * —— 与 A / B 两条线同一处坑，三边写法必须一致。
+   */
+  const seedDay = cached?.seedDay ?? todayPrefix();
   if (cached && Array.isArray(cached.records)) records.value = cached.records;
   watch(
     records,
-    () => writeRiskCache(LS_KEY, LS_VERSION, { records: records.value }),
+    () => writeRiskCache(LS_KEY, LS_VERSION, { records: records.value, seedDay }),
     { deep: true },
   );
 
