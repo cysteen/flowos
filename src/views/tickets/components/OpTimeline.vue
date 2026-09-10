@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { message } from 'ant-design-vue';
 import {
   FileAddOutlined, SolutionOutlined, RiseOutlined, FormOutlined,
   ApartmentOutlined, LinkOutlined,
@@ -16,14 +15,10 @@ import {
   type TlAction, type TlCategory, type TimelineEntry, type RelatedTicketBrief,
 } from '@/views/tickets/types/ticketDetail';
 
-function openRelated(t: RelatedTicketBrief) {
-  message.info(`打开关联单 ${t.no}`);
-}
-
 const router = useRouter();
 
 /**
- * 第八类「风险结论」里那枚**可点跳的新投诉单号**（《【720】》§5.1 / 验收 T4）。
+ * **打开一张单，全仓唯一一句**（《【720】》验收 T4）。
  *
  * 【为什么是 `router.push`】全仓打开一张单就是这一句（`TicketOperationView.openRelation`、
  * `RiskMonitorView.openTicket`、工作台 / 查询中心 / 客户全景各处同）—— 工单页是常驻页签，
@@ -32,8 +27,20 @@ const router = useRouter();
  * 【为什么它必须可点】效果走查第六幕整幕在追问"从原单怎么走到新单"：
  * 一个不可点的单号等于让人把号手抄下来再去搜一遍。
  */
-function openDerived(no: string) {
+function openTicket(no: string) {
   router.push(`/tickets/${no}`);
+}
+
+/**
+ * 第 2 类「关联单」卡片。**T4 要求新投诉单号两处一致且都可点跳**，这是第二处。
+ *
+ * 🔴 这里此前是 `message.info('打开关联单 XXX')` —— 一张长得像卡片、带 `cursor: pointer`
+ * 和「打开 XXX」tooltip 的东西，点下去只弹一句提示，从来没跳过。第 8 类那一处上一轮已经真跳了，
+ * 两处不一致的话，同一个新投诉单号在同一屏上一处点得动、一处点不动。
+ * 走上面那**同一句** `openTicket`，不另造第二种跳法。
+ */
+function openRelated(t: RelatedTicketBrief) {
+  openTicket(t.no);
 }
 
 const props = defineProps<{ entries: TimelineEntry[] }>();
@@ -156,19 +163,41 @@ const filteredEntries = computed(() => {
           </div>
 
           <!--
-            风险结论（risk 事件）判「升级」派生出的新投诉单号：可点跳，样式对齐关联单卡片里
-            那一格单号（`rel-mini-no`），不内联整张卡（《【720】》§5.1）
+            风险结论（risk 事件）的**四样 chip**，顺序照《【720】》§5.1：
+            结论 / 建议事项 / 风险等级 / 新投诉单号。取值全部来自落库时固化的结构化字段，
+            这里不解析正文（正文只说动词，见 `stores/riskHistory.ts` 的 `renderRow`）。
+            一件至多用到其中两三样，没有的那几样整枚不出。
           -->
-          <button
-            v-if="e.riskDerivedNo"
-            type="button"
-            class="risk-derived"
-            :title="`打开新投诉单 ${e.riskDerivedNo}`"
-            @click="openDerived(e.riskDerivedNo)"
+          <div
+            v-if="e.riskConclusion || e.riskAdvices?.length || e.riskGradeTo || e.riskDerivedNo"
+            class="risk-chips"
           >
-            <LinkOutlined />
-            <span class="risk-derived-no">{{ e.riskDerivedNo }}</span>
-          </button>
+            <!-- ① 结论：打标＝低危/中危/高危/无风险，评估＝升级/不升级。整条卡最该被扫到的那个值 -->
+            <span v-if="e.riskConclusion" class="risk-chip risk-chip--concl">{{ e.riskConclusion }}</span>
+
+            <!-- ② 建议事项：每项各一枚。走中性灰蓝，与「结论」分开 —— 它们是待办不是结论 -->
+            <span v-for="(a, ai) in e.riskAdvices" :key="ai" class="risk-chip risk-chip--advice">{{ a }}</span>
+
+            <!-- ③ 风险等级「旧 → 新」。箭头压灰，让两端的等级值自己跳出来 -->
+            <span v-if="e.riskGradeTo" class="risk-chip risk-chip--grade">
+              {{ e.riskGradeFrom }}<span class="risk-chip-arrow">→</span>{{ e.riskGradeTo }}
+            </span>
+
+            <!--
+              ④ 新投诉单号：可点跳，样式对齐关联单卡片里那一格单号（`rel-mini-no`），
+              不内联整张卡（§5.1）
+            -->
+            <button
+              v-if="e.riskDerivedNo"
+              type="button"
+              class="risk-chip risk-derived"
+              :title="`打开新投诉单 ${e.riskDerivedNo}`"
+              @click="openTicket(e.riskDerivedNo)"
+            >
+              <LinkOutlined />
+              <span class="risk-derived-no">{{ e.riskDerivedNo }}</span>
+            </button>
+          </div>
 
           <!-- 关联单卡片（relate 事件）：对齐关联单卡片字段，可点跳转 -->
           <div
@@ -401,16 +430,35 @@ const filteredEntries = computed(() => {
 .rel-mini-time { margin-left: auto; font-size: 11px; color: #9ca3af; }
 
 /*
- * 风险结论派生出的新投诉单号（risk 事件）。走玫红一系 —— 与第八类的色条同源，
- * 一眼看得出这枚 chip 属于风险结论那条卡片，而不是隔壁的关联单卡。
+ * 风险结论（risk 事件）的四样 chip（《【720】》§5.1）。
+ *
+ * 【为什么共一个 `.risk-chip` 底子、只换配色】四样都是"从正文里摘出来的结构化取值"，
+ * 是同一类东西；尺寸/圆角/字重各写一套的话，一条协同处理卡上会出现三种高度的药丸。
+ * 配色分两族：**结论与等级走玫红**（与第八类色条同源，一眼看得出属于风险结论这张卡、
+ * 不是隔壁的关联单卡），**建议事项走中性灰蓝**（它们是待办，不是结论，不该抢结论的注意力）。
  */
-.risk-derived {
+.risk-chips {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
   align-self: flex-start;
+}
+.risk-chip {
   display: inline-flex; align-items: center; gap: 5px;
   margin: 0; padding: 3px 10px;
   font-family: inherit; font-size: 12px; font-weight: 600; line-height: 1.5;
-  color: #db2777; background: #fdf2f8;
-  border: 1px solid #fbcfe8; border-radius: 999px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+/* 结论：实心一点，整条卡上分量最重的那个值 */
+.risk-chip--concl { color: #9d174d; background: #fce7f3; border-color: #fbcfe8; }
+/* 风险等级「旧 → 新」：与结论同族但退一档，它答的是"变到了哪儿"而不是"判成了什么" */
+.risk-chip--grade { color: #db2777; background: #fdf2f8; border-color: #fbcfe8; }
+.risk-chip-arrow { color: #d1a0b8; margin: 0 5px; font-weight: 400; }
+/* 建议事项：中性灰蓝，逐项一枚 */
+.risk-chip--advice { color: #475569; background: #f8fafc; border-color: #e2e8f0; font-weight: 500; }
+
+/* 新投诉单号：唯一可点的一枚，故给 hover 反馈 */
+.risk-derived {
+  color: #db2777; background: #fdf2f8; border-color: #fbcfe8;
   cursor: pointer;
   transition: background .15s, border-color .15s, box-shadow .15s;
 }

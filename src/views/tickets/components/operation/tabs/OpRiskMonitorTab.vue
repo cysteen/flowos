@@ -837,7 +837,14 @@ const collabSectionBadge = computed(() =>
           <p v-if="isComplaintTicket && user.roleKey === 'complaint-handler'" class="rt-empty-hint">
             {{ tagBlockReason }}
           </p>
-          <p v-else class="rt-empty-hint">非投诉单的风险等级由命中规则自动打标，或由客诉专员 / 投诉督导在风险监控页标注，处理人没有打标入口</p>
+          <!--
+            🔴 这一句原来写的是「由命中规则自动打标」—— 系统里**没有这回事**：打标只有
+            `riskQueue.recordTag` 一个入口、`by` / `byRole` 必填，全部调用方都是人点出来的保存动作，
+            没有任何定时器 / 监听器 / 规则引擎回调。规则产出的只是**词表预设等级**（`RiskHit.level`），
+            用于排队展示与打标弹窗预置，`ticketGradeOf` 根本不吃它。
+            旧口径留在界面上会让人以为"等着系统自动打就行"，故按 930 v3.4 §9 规则 13 改成人工产出。
+          -->
+          <p v-else class="rt-empty-hint">非投诉单的风险等级由客诉专员 / 投诉督导在风险监控页打标产出，处理人没有打标入口；命中规则只给出词表预设等级，供排队与打标预置参考，人不确认不成立</p>
         </template>
       </div>
     </OpCollapsibleSection>

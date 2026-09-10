@@ -56,14 +56,29 @@ export interface RiskHistoryRecord {
   at: string;
   /** How 徽章文案 */
   how: string;
-  /** 正文：只有结构化事实，自由文本不进（见 `renderRow`） */
+  /** 正文：**只说发生了什么（动词）**，取值本身交给 chip（见 `renderRow` / `renderChips`） */
   what: string;
   /**
-   * 评估判「升级」时派生出的**新投诉单号**（《【720】》§5.1 富媒体第四样）。
+   * ---- 以下四格 ＝《【720】》§5.1 要求 `risk` 类挂的**四样 chip**，由 `renderChips` 一处生成 ----
    *
-   * 【为什么要单独存一格、而不是让界面从 `what` 里抠】§5.1 要求这枚单号**可点跳**，
-   * 而正文是一整条字符串 —— 从里面用正则抠单号，等于把"行文长什么样"变成界面的隐性依赖，
-   * 改一次措辞就断一次跳转。单号本来就是结构化事实，就该以结构化的样子存下来。
+   * 【为什么取值要单独存格、而不是让界面从 `what` 里抠】§5.1 里这四样都是**可交互 / 需着色**的
+   * 结构化取值（单号要能点跳、等级要能着色），而正文是一整条字符串 —— 从里面用正则抠值，
+   * 等于把"行文长什么样"变成界面的隐性依赖，改一次措辞就断一次。取值本来就是结构化事实，
+   * 就该以结构化的样子存下来；正文只留动词。
+   *
+   * 🔴 **存的是显示值**（低危 / 中危 / 高危 / 无风险，720 v0.6 与 930 v3.3 都已定），
+   * 不是 `RiskLevel` 存储值 —— chip 直接渲染，展示侧不再做第二次映射。
+   */
+  /** 第一样 · 结论：打标＝四选一显示值；评估＝升级 / 不升级。报备 / 协同 / 等级变更三件无 */
+  conclusion?: string;
+  /** 第三样 · 风险等级「旧 → 新」的旧值。打标**改判**与等级变更两件有，与 `gradeTo` 同生同灭 */
+  gradeFrom?: string;
+  /** 第三样 · 风险等级「旧 → 新」的新值 */
+  gradeTo?: string;
+  /** 第二样 · 建议事项：协同处理一件有，**每项一枚 chip**；勾了「其他」的已展开成「其他（…）」 */
+  advices?: string[];
+  /**
+   * 第四样 · 评估判「升级」时派生出的**新投诉单号**。
    * 只有 `kind: 'assess'` 且真的派生了新单时才有；其余四件与判「不升级」时为空。
    */
   derivedNo?: string;
@@ -156,19 +171,27 @@ function sentence(t?: string): string {
   return /[。！？.!?]$/.test(s) ? s : `${s}。`;
 }
 
+/** 建议事项的显示值：勾了「其他」的展开成「其他（具体建议）」。chip 与正文共用同一份 */
+function adviceTexts(input: Extract<RiskHistoryInput, { kind: 'collab' }>): string[] {
+  return input.advices.map((a) => (a === '其他' && input.otherAdvice ? `其他（${input.otherAdvice}）` : a));
+}
+
 /**
  * **五件的行文，全仓唯一一处**。口径逐条对齐《【930】》§6.3 的那张表
- * （它是 2026-09-11 v3.1 的现行口径；《【720】》§4.4 ④ 仍写着 915 旧模型的
- * 「核实风险命中 · 成立 / 误报」，那一套已被四选一的打标取代，见本轮汇报）。
+ * （《【720】》§4.4 ④ 已同步到 v0.6 的四选一打标表述，与本实现一致）。
  *
  * ⚠️ **模板里的〈谁〉不再写进正文**：PRD 那几条描述的是"一行履历"，而本系统的履历是
  * **卡片**——操作人与角色徽章已经在卡片头上了，正文再写一遍名字就成了「吴投诉 客诉专员
  * 吴投诉 标记风险等级…」。故正文从谓语起写，与既有的协同处理那一条保持一致。
  *
- * 🔴 **正文只写结构化事实，自由文本一律不搬**（《【720】》§4.4 第 3 条 / 验收 T7）：
- * 报备的**场景描述**、评估的**反馈意见 / 升级说明**、打标的**处置备注 / 修正原因**
- * 都留在各自的记录里（风险监控页点开原处即可看全），履历只留
- * 「谁 · 什么角色 · 什么时刻 · 结论 · 等级旧→新 · 派生单号 · 建议事项」。
+ * 🔴 **正文只说"发生了什么"，取值本身一律交给 chip**（《【720】》§5.1 的四样富媒体）。
+ * 结论、风险等级旧→新、建议事项、派生单号**都不再写进这句话** —— 写了就会出现
+ * 「…标记风险等级 · 高危」紧跟一枚写着「高危」的 chip，同一个值在一张卡上说两遍。
+ * 与既有的「关联单」那一类同一条口径：正文摆动词，卡片/chip 摆取值。
+ *
+ * 🔴 **自由文本一律不搬**（《【720】》§4.4 第 3 条 / 验收 T7）：报备的**场景描述**、
+ * 评估的**反馈意见 / 升级说明**、打标的**处置备注 / 修正原因**都留在各自的记录里
+ * （风险监控页点开原处即可看全）。
  *
  * 【为什么】履历是**时间线**，它答的是"发生了什么、谁做的、什么时候"；一屏要能扫完
  * 十几条不同类别的事件。把三段随手写的多行自由文本全搬进来，第八类会变成一堵文字墙，
@@ -181,41 +204,79 @@ function renderRow(input: RiskHistoryInput): string {
   switch (input.kind) {
     case 'report': {
       // 「〈报备人〉 发起风险报备 · 〈报备原因〉〈风险类型〉」
+      // 报备原因不在 §5.1 的四样 chip 之列（它不是结论、也不着色），照旧留在正文
       const reason = input.category ? `${input.reason} · ${input.category}` : input.reason;
       return `发起风险报备 · ${reason}`;
     }
-    case 'tag': {
-      // 「〈打标人〉 标记风险等级 · 〈低 / 中 / 高 / 无风险〉」；改判时带「〈旧值〉 → 〈新值〉」
-      // 界面词一律「修正」（PRD 的口径词「改判」不上界面，与两个打标弹窗的字段名一致）
-      const amend = input.prev && input.prev !== input.result
-        ? `（修正：${tagResultText(input.prev)} → ${tagResultText(input.result)}）`
-        : '';
-      // 「处置备注」「修正原因」不进正文（§4.4 第 3 条），它们留在打标记录里
-      return `标记风险等级 · ${tagResultText(input.result)}${amend}`;
-    }
-    case 'assess': {
-      // 「〈评估人〉 完成风险评估 · 〈升级 / 不升级〉」；结论＝升级时另带新投诉单号
-      // 「升级说明 / 反馈意见」不进正文（§4.4 第 3 条），它们留在评估记录里
-      //
-      // ⚠️ **单号本身不写进这句话**：它由卡片上那枚**可点跳的 chip** 承载（§5.1 第四样，
-      // 见 `RiskHistoryRecord.derivedNo`）。正文再写一遍就成了「…派生投诉单 IFLYTS-…-00001」
-      // 紧跟着一枚写着同一串号的 chip —— 同一个 18 位单号在两行里各出现一次。
-      // 与既有的「关联单」那一类同一条口径：正文说发生了什么，卡片/chip 摆单号本身。
-      const derived = input.escalatedToNo ? '，已派生新投诉单' : '';
-      return `完成风险评估 · ${input.decision}${derived}`;
-    }
+    case 'tag':
+      /*
+       * 结论（四选一）走**结论 chip**、改判的「旧 → 新」走**风险等级 chip**，正文都不带。
+       * 只留一个「（修正）」——它是**这次动作的性质**（首次打标还是回头改判），
+       * 不是任何一枚 chip 上的取值，去掉之后两种打标在正文上就一模一样了。
+       * 界面词一律「修正」（PRD 的口径词「改判」不上界面，与两个打标弹窗的字段名一致）。
+       */
+      return input.prev && input.prev !== input.result ? '标记风险等级（修正）' : '标记风险等级';
+    case 'assess':
+      /*
+       * 结论（升级 / 不升级）走**结论 chip**、新投诉单号走**可点跳的单号 chip**，正文都不带。
+       * 「已派生新投诉单」留着 —— 它说的是"这一跳还多干了一件事"，而 chip 只摆那串号本身；
+       * 少了这半句，判「升级」与判「升级且派生了新单」两种情形在正文上分不出来。
+       */
+      return input.escalatedToNo ? '完成风险评估，已派生新投诉单' : '完成风险评估';
     case 'collab': {
-      // 「〈客诉专员〉 提交协同处理 · 〈建议事项，逗号分隔〉」，正文摘要挂评估意见全文
-      const advice = input.advices.length
-        ? input.advices
-          .map((a) => (a === '其他' && input.otherAdvice ? `其他（${input.otherAdvice}）` : a))
-          .join('、')
-        : '未勾选建议事项';
-      return `提交协同处理 · ${advice}。评估意见：${sentence(input.opinion)}`;
+      /*
+       * 建议事项走**每项一枚 chip**，正文不再逐项罗列；评估意见全文照旧留正文（§4.4 唯一例外）。
+       * ⚠️ 一项都没勾时补一句「（未勾选建议事项）」：建议事项**不是必填**
+       * （弹窗只强制「其他」的具体建议），没勾就一枚 chip 都不出 ——
+       * 不说这一句的话，读的人分不清是"没勾"还是"chip 没渲染出来"。
+       */
+      const none = adviceTexts(input).length ? '' : '（未勾选建议事项）';
+      return `提交协同处理${none}。评估意见：${sentence(input.opinion)}`;
     }
     case 'grade':
-      // 「风险等级 〈旧值〉 → 〈新值〉 · 〈来源〉」
-      return `风险等级 ${gradeText(input.from)} → ${gradeText(input.to)} · ${input.source}`;
+      // 「旧 → 新」走**风险等级 chip**，正文只留动作 + 这一次变更的**来源**
+      //（核实结论回传 / 坐席在工单侧填写）—— 来源不是 §5.1 的四样之一，留在正文
+      return `风险等级变更 · ${input.source}`;
+  }
+}
+
+/**
+ * **《【720】》§5.1 要求 `risk` 类挂的四样 chip，全仓唯一一处**。
+ * 与 `renderRow` 同吃一份 `input`、同一个 `switch` —— "正文说什么、chip 摆什么"
+ * 这条分工只在这两个函数之间成立，分到别处去就必然出现两边都说同一个值。
+ *
+ * 🔴 **返回显示值，不返回存储值**：`RiskLevel` 的 `'高'` 到了这里已经是 `'高危'`，
+ * 展示侧拿到就渲染，不做第二次映射（映射散到展示侧，下一个页面就会渲成「高」）。
+ */
+function renderChips(input: RiskHistoryInput): Partial<Pick<
+  RiskHistoryRecord, 'conclusion' | 'gradeFrom' | 'gradeTo' | 'advices' | 'derivedNo'
+>> {
+  switch (input.kind) {
+    case 'report':
+      // 报备一件四样都没有：它只说"有人报了、因为什么"，结论要等评估那一件
+      return {};
+    case 'tag': {
+      // 改判才有「旧 → 新」；首次打标没有旧值，只出结论 chip 一枚
+      const prev = input.prev && input.prev !== input.result ? input.prev : null;
+      return {
+        conclusion: tagResultText(input.result),
+        ...(prev ? { gradeFrom: tagResultText(prev), gradeTo: tagResultText(input.result) } : {}),
+      };
+    }
+    case 'assess':
+      // 单号只在**真派生了新单**那一路有：投诉单那一路的「升级」走工单管控、不派生（O20）
+      return {
+        conclusion: input.decision,
+        ...(input.escalatedToNo ? { derivedNo: input.escalatedToNo } : {}),
+      };
+    case 'collab': {
+      // 一项都没勾时**不给空数组**：展示侧只认"有没有这一格"，空数组会渲出一个空 chip 行
+      const advices = adviceTexts(input);
+      return advices.length ? { advices } : {};
+    }
+    case 'grade':
+      // 等级变更这一件的全部信息就是这个「旧 → 新」，故两格必然同时有（空值渲「未定级」）
+      return { gradeFrom: gradeText(input.from), gradeTo: gradeText(input.to) };
   }
 }
 
@@ -229,7 +290,12 @@ function renderRow(input: RiskHistoryInput): string {
  * 这与 `stores/riskCollab.ts` 是同一处坑，四边写法必须一致。
  */
 const LS_KEY = 'flowos-risk-history';
-const LS_VERSION = 1;
+/**
+ * v2：四样 chip 的取值改为随记录固化（`conclusion` / `gradeFrom` / `gradeTo` / `advices`），
+ * 正文同步不再重复这些值。**必须跟着升版** —— v1 存的记录既没有那四格、正文里又还带着旧的
+ * 「· 高危」「· 升级」，混着读出来就是"有的卡有 chip、有的卡把值写在正文里"两套呈现并存。
+ */
+const LS_VERSION = 2;
 
 /**
  * 缓存"新不新"的判据：取记录时刻里最新的那一个。
@@ -294,8 +360,8 @@ export const useRiskHistoryStore = defineStore('riskHistory', () => {
       at: input.at,
       how: RISK_HISTORY_META[input.kind].how,
       what: renderRow(input),
-      // 派生单号随记录固化：投影出去的履历条目靠它渲染那枚可点跳的 chip
-      ...(input.kind === 'assess' && input.escalatedToNo ? { derivedNo: input.escalatedToNo } : {}),
+      // 四样 chip 的取值随记录一起固化：投影出去的履历条目直接渲染，不再回头解析正文
+      ...renderChips(input),
     };
     records.value.push(rec);
     return rec;

@@ -443,7 +443,15 @@ function syncRiskTimeline() {
       when: r.at,
       what: r.what,
       riskRecordId: r.id,
-      // 判「升级」时派生出的新投诉单号 —— 履历上那枚可点跳的 chip（《【720】》§5.1）
+      /*
+       * 《【720】》§5.1 的**四样 chip**，取值在落库时已由 `riskHistory.renderChips` 固化，
+       * 这里只做改名搬运（`conclusion` → `riskConclusion` …）：`TimelineEntry` 是八类共用的
+       * 一张扁平结构，风险这一类的字段必须带 `risk` 前缀才不会和别的类撞名。
+       * 🔴 **不在这里算 chip 取值**：一算就成了"落库一份、投影再算一份"，两处必然分叉。
+       */
+      ...(r.conclusion ? { riskConclusion: r.conclusion } : {}),
+      ...(r.gradeFrom && r.gradeTo ? { riskGradeFrom: r.gradeFrom, riskGradeTo: r.gradeTo } : {}),
+      ...(r.advices?.length ? { riskAdvices: [...r.advices] } : {}),
       ...(r.derivedNo ? { riskDerivedNo: r.derivedNo } : {}),
     });
   });
