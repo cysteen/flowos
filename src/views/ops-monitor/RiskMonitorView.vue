@@ -863,6 +863,24 @@ function openCollab(r: RiskPoolItem) {
   collabOpen.value = true;
 }
 
+/**
+ * 待评估的这一条**来自哪条线**。判据取条目自带的身份标 `source`（B 线恒为「二线报备」），
+ * 不看有没有 `tag` —— 那答的是"打没打标"，罕见的"进了池却没打标"会被误判成 B 线。
+ *
+ * 🔴 弹窗第一区块**按它分两种**（PRD §5.3.2）：
+ * · A 线（风险工单池里的条目）→「**入池依据**」：风险等级 / 打标人 / 打标时刻 /
+ *   打标备注 / 命中原话。这一组就是它被送来评估的全部理由。
+ * · B 线（二线报备单）→「**报备信息**」：报备人 / 报备原因 / 风险类型 / 场景描述 / 附件。
+ *
+ * 【为什么必须分】两条线此前共用一张「报备信息」卡，A 线条目在「报备人」「原因」两格里
+ * 显示的是 `riskQueue.autoEntry()` 补的**恒定占位**（系统（系统） / 其他）——A 线全程
+ * 没有"报备人"这个角色，条目是系统捞进来的。占位摆在评估人面前，读起来像"有人报过一次
+ * 却什么都没填"；而真正的入池理由（打标那一组）反倒缩在卡体里的一个子块。
+ */
+const assessTargetFromPool = computed(
+  () => !!assessTarget.value && assessTarget.value.source !== REPORT_SOURCE,
+);
+
 /** 「本单另有」——风险词命中那一半。报备只挂非投诉单、命中多在投诉单，一期常为 0 */
 const assessTargetHits = computed(() => {
   const no = assessTarget.value?.ticketNo;
@@ -6556,60 +6574,98 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
       @ok="confirmAssess"
     >
       <div v-if="assessTarget" class="op-form assess-form">
-        <!-- ① 报备信息：对齐工单操作页「风险报备」在队卡片（rr-sheet） -->
-        <section class="assess-sheet" aria-label="报备信息">
+        <!--
+          ① 第一区块：**按原单来路分两种**（PRD §5.3.2，见 `assessTargetFromPool`）
+          · A 线（池内条目）→「入池依据」：风险等级 / 打标人 / 打标时刻 / 打标备注 / 命中原话；
+          · B 线（报备单）→「报备信息」：报备人 / 原因 / 风险类型 / 场景描述 / 附件。
+          卡的骨架与配色两条线共用（对齐工单操作页「风险报备」在队卡片 rr-sheet），
+          分岔只发生在**抬头那几格与卡体里摆什么**。
+        -->
+        <section class="assess-sheet" :aria-label="assessTargetFromPool ? '入池依据' : '报备信息'">
           <header class="assess-sheet-head">
             <div class="assess-sheet-brand">
               <div class="assess-sheet-title-row">
+                <!-- 区块名摆在明面上：两条线的第一区块答的不是同一个问题，只靠内容差异读不出来 -->
+                <span class="assess-sheet-kind">{{ assessTargetFromPool ? '入池依据' : '报备信息' }}</span>
                 <button type="button" class="tag-ticket-no assess-ticket-no" @click="openTicket(assessTarget.ticketNo)">
                   {{ assessTarget.ticketNo }}
                 </button>
-                <span class="assess-sheet-time">提交于 {{ assessTarget.at }}</span>
+                <span class="assess-sheet-time">
+                  {{ assessTargetFromPool ? '入池于' : '提交于' }} {{ assessTarget.at }}
+                </span>
               </div>
               <div class="assess-sheet-meta">
-                <span class="assess-meta-pair">
-                  <UserOutlined class="assess-meta-icon" />
-                  <span class="assess-meta-label">报备人</span>
-                  <span class="assess-meta-value">{{ assessTarget.by }}（{{ assessTarget.byRole }}）</span>
-                </span>
-                <span class="assess-meta-sep" aria-hidden="true" />
-                <span class="assess-meta-pair">
-                  <span class="assess-meta-label">原因</span>
-                  <span class="assess-meta-value">{{ assessTarget.reason }}</span>
-                </span>
-                <template v-if="assessTarget.category">
+                <!--
+                  A 线的抬头 ＝ **打标那一组**（风险等级 / 打标人 / 打标时刻）。
+                  🔴 **这里不出「报备人」「原因」** —— A 线的这两格是 riskQueue 补的恒定占位
+                  （系统（系统） / 其他），不是谁填的数据，摆出来是在说一件没发生的事。
+                -->
+                <template v-if="assessTargetFromPool">
+                  <template v-if="assessTarget.tag">
+                    <span class="assess-meta-pair">
+                      <span class="assess-meta-label">风险等级</span>
+                      <span
+                        class="assess-meta-value"
+                        :class="{ 'assess-meta-warn': assessTarget.tag.result === '高' }"
+                      >{{ isPoolLevel(assessTarget.tag.result) ? riskLevelText(assessTarget.tag.result) : assessTarget.tag.result }}</span>
+                    </span>
+                    <span class="assess-meta-sep" aria-hidden="true" />
+                    <span class="assess-meta-pair">
+                      <UserOutlined class="assess-meta-icon" />
+                      <span class="assess-meta-label">打标人</span>
+                      <span class="assess-meta-value">{{ assessTarget.tag.by }}（{{ assessTarget.tag.byRole }}）</span>
+                    </span>
+                    <span class="assess-meta-sep" aria-hidden="true" />
+                    <span class="assess-meta-pair">
+                      <span class="assess-meta-label">打标时刻</span>
+                      <span class="assess-meta-value">{{ assessTarget.tag.at }}</span>
+                    </span>
+                  </template>
+                  <!--
+                    罕见：进了池却没有打标（旧缓存，见 needsVerify）。不编一个等级出来充数，
+                    只说清缺的正是这一格——评估人由此知道该先去补打标，而不是照着空白下结论。
+                  -->
+                  <span v-else class="assess-meta-pair">
+                    <span class="assess-meta-label">风险等级</span>
+                    <span class="assess-meta-value">未打标</span>
+                  </span>
+                </template>
+                <template v-else>
+                  <span class="assess-meta-pair">
+                    <UserOutlined class="assess-meta-icon" />
+                    <span class="assess-meta-label">报备人</span>
+                    <span class="assess-meta-value">{{ assessTarget.by }}（{{ assessTarget.byRole }}）</span>
+                  </span>
                   <span class="assess-meta-sep" aria-hidden="true" />
                   <span class="assess-meta-pair">
-                    <span class="assess-meta-label">风险类型</span>
-                    <span class="assess-meta-value assess-meta-warn">{{ assessTarget.category }}</span>
+                    <span class="assess-meta-label">原因</span>
+                    <span class="assess-meta-value">{{ assessTarget.reason }}</span>
                   </span>
+                  <template v-if="assessTarget.category">
+                    <span class="assess-meta-sep" aria-hidden="true" />
+                    <span class="assess-meta-pair">
+                      <span class="assess-meta-label">风险类型</span>
+                      <span class="assess-meta-value assess-meta-warn">{{ assessTarget.category }}</span>
+                    </span>
+                  </template>
                 </template>
               </div>
             </div>
           </header>
 
           <div class="assess-sheet-body">
+            <!-- A 线：入池说明（系统写的"为什么捞它"）；B 线：报备人填的场景描述 -->
             <blockquote class="assess-quote">{{ assessTarget.desc }}</blockquote>
 
             <!--
-              **风险打标结论**——它就是这条条目被送来评估的全部理由，故摆在主体、不收进底栏。
-              A 线的条目 desc 只有一句"命中风险词，已自动纳入实时监控"，说不出客户讲了什么；
+              入池依据的**证据那两项**：命中原话 + 打标备注。
+              等级 / 打标人 / 打标时刻已经上了抬头，这里不再复述一遍。
+              条目的 desc 只有一句"命中风险词，已自动纳入实时监控"，说不出客户讲了什么；
               客诉专员要在知道"监控为什么判它有风险"的前提下决定升不升级。
-              B 线的报备单没有打标（它不走那道门），整块 v-if 掉、不留空标题。
+              B 线的报备单没有打标也没有命中（它不走那道门），整块 v-if 掉、不留空标题。
               行式沿用底栏那套 assess-foot-*，两处读起来是同一种"键：值"。
             -->
-            <div v-if="assessTarget.tag" class="assess-verify">
-              <div class="assess-foot-row">
-                <span class="assess-foot-k">风险打标</span>
-                <span class="assess-foot-v">
-                  <span class="rr-dec" :class="{ risk: assessTarget.tag.result === '高' }">
-                    {{ isPoolLevel(assessTarget.tag.result) ? riskLevelText(assessTarget.tag.result) : assessTarget.tag.result }}
-                  </span>
-                  <span class="assess-foot-sub">
-                    {{ assessTarget.tag.by }}（{{ assessTarget.tag.byRole }}）· {{ assessTarget.tag.at }}
-                  </span>
-                </span>
-              </div>
+            <div v-if="assessTargetVerifiedHit || assessTarget.tag?.note" class="assess-verify">
               <!-- 命中原话：与命中清单、打标弹窗同一套取窗与高亮（三处一份口径） -->
               <div v-if="assessTargetVerifiedHit" class="assess-foot-row">
                 <span class="assess-foot-k">命中原话</span>
@@ -6622,7 +6678,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                 </span>
               </div>
               <!-- 打标时填的备注：打标人当时怎么想的，比结论本身更能帮下一个人接上 -->
-              <div v-if="assessTarget.tag.note" class="assess-foot-row">
+              <div v-if="assessTarget.tag?.note" class="assess-foot-row">
                 <span class="assess-foot-k">打标备注</span>
                 <span class="assess-foot-v">{{ assessTarget.tag.note }}</span>
               </div>
@@ -8309,7 +8365,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
   background: #fff;
 }
 
-/* ① 报备信息（对齐工单侧 rr-sheet） */
+/* ① 第一区块：入池依据（A 线）/ 报备信息（B 线），共用一张卡的骨架（对齐工单侧 rr-sheet） */
 .assess-sheet {
   background: #fff;
   border: 1px solid #fed7aa;
@@ -8330,6 +8386,20 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
   gap: 8px;
 }
 .assess-ticket-no { font-size: 13px; }
+/*
+ * 区块名（入池依据 / 报备信息）。做成小徽标而不是标题行：卡本身已经有描边与暖色抬头，
+ * 再压一行 h4 会把弹窗第一屏撑掉一截，而这里要说的只是"这一格答的是哪个问题"。
+ */
+.assess-sheet-kind {
+  flex: none;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  color: #9a3412;
+  background: #ffedd5;
+  border-radius: 4px;
+}
 .assess-sheet-time {
   font-size: 12px;
   font-weight: 600;

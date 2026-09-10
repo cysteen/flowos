@@ -222,13 +222,19 @@ type RowAction = { label: string; primary?: boolean };
 
 /**
  * 行内动作。**没有分派 / 改派**（第三轮拍板取消），只有自取与它的回退：
- * - 待领取 → 「领单」（谁领谁办，与工作台工单池同词）
+ * - 待领取 → 「领取」（谁领谁办）
  * - 我承办 → 「评估」+「释放」（拿了办不了要能退回池子，否则等于把单子锁死在自己名下）
  * - 别人承办 / 已收口 → 无动作，承办人与结论在列上看得到
+ *
+ * 🔴 **字面是「领取」不是「领单」**（PRD 明写池内条目的归属只写「领取」）。
+ * 原本取「领单」的理由是"与工单工作台的工单池同词"——那条理由留在这里备查，但它
+ * 让**同一个动作在两个风险池叫两个名字**：A 线风险工单池的按钮已经是「领取」，
+ * 一个人在两张池表上看到两个词，只会以为那是两件不同的事。工单池那一路的「领单」
+ * 是另一个池子的既有词，不在本轮改动之列。
  */
 function actionsOf(r: RiskReport): RowAction[] {
-  // 待领取一律露出「领单」，与工单池同形；能不能点由 claim 里按角色拦截
-  if (r.status === '待分派') return [{ label: '领单', primary: true }];
+  // 待领取一律露出「领取」，与 A 线风险工单池同形；能不能点由 claim 里按角色拦截
+  if (r.status === '待分派') return [{ label: '领取', primary: true }];
   if (!canAct.value) return [];
   if (r.status === '评估中' && r.assignee === user.name) {
     return [{ label: '评估', primary: true }, { label: '释放' }];
@@ -237,21 +243,21 @@ function actionsOf(r: RiskReport): RowAction[] {
 }
 
 function onAction(label: string, r: RiskReport) {
-  if (label === '领单') return claim(r);
+  if (label === '领取') return claim(r);
   if (label === '评估') return openAssess(r);
   if (label === '释放') return release(r);
 }
 
 function claim(r: RiskReport) {
   if (!canAct.value) {
-    message.warning('报备单的领单与评估由客诉专员执行，请切换至客诉专员角色');
+    message.warning('报备单的领取与评估由客诉专员执行，请切换至客诉专员角色');
     return;
   }
   if (!pool.claim(r.id, user.name)) {
-    message.warning('该报备已被他人领单');
+    message.warning('该报备已被他人领取');
     return;
   }
-  message.success(`已领单 ${r.ticketNo}，请给出评估结论`);
+  message.success(`已领取 ${r.ticketNo}，请给出评估结论`);
   openAssess(r);
 }
 
@@ -309,7 +315,7 @@ function release(r: RiskReport) {
 
     <!-- ② 工具行：与工作台搜索框同形（工单号 / 工单标题 / 报备人） -->
     <div class="rrp-toolbar">
-      <span v-if="canAct" class="rrp-hint">谁领谁办 —— 报备单没有分派，领单后由你给出评估结论</span>
+      <span v-if="canAct" class="rrp-hint">谁领谁办 —— 报备单没有分派，领取后由你给出评估结论</span>
       <div class="rrp-search">
         <SearchOutlined :style="{ color: '#9CA3AF', fontSize: '14px' }" />
         <input

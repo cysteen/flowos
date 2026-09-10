@@ -111,16 +111,34 @@ const DIRECT_CLOSURE_BLOCKED: OpActionType[] = [
 /**
  * 底部操作条上**只有一枚**风险按钮，文案 / 弹窗 / 类型集随「当前登录角色 × 本单工单类型」取：
  *
- * | 角色 | 文案 | 点开 | 类型 |
- * |---|---|---|---|
- * | 二线专员 / 二线班组长 / 管理员 | **风险报备** | 报备弹窗 | 咨 建 商 |
- * | 客诉专员（非投诉单） | **风险评估** | 评估弹窗（升级 / 不升级） | 咨 建 商 |
- * | 客诉专员（投诉单） | **协同处理** | 协同弹窗 | 投 |
+ * | 角色 | 非投诉单（咨 建 商） | 投诉单 |
+ * |---|---|---|
+ * | 二线专员 / 二线班组长 | **风险报备**（报备弹窗） | 不给 |
+ * | 客诉专员 | **风险评估**（升级 / 不升级） | **协同处理**（协同弹窗） |
+ * | 管理员（三个 scope） | **风险报备**（报备弹窗） | **协同处理**（协同弹窗） |
  *
- * 🔴 **三种形态是同一枚动作的形态，不是三个权限点**（基线 ※29）：实现是
- * "**一枚按钮 + 一次形态判定**"，判定命中协同处理时再过 §2 / §4 的「协同处理」门控。
- * 「协同处理」虽已收进动作矩阵（动作数 27 → 28），**也不在按钮位上再开一枚** ——
- * 故 `ACTION_DEFS` 里仍只有 `风险报备` 这一条登记，`BAR_ORDER` 里也只占一格。
+ * 🔴 **形态的第一维是"原单类型"，不是"角色"**（2026-09-11 逐格核基线 v1.24 §4 后改）：
+ * 基线「协同处理」行的**管理员格 ＝ 可用 · 类型「投」**，「风险报备」行的管理员格 ＝
+ * 「可用 · 报备形态 / 评估形态」· 类型咨建商 —— 两行合起来说的是"管理员在投诉单上做协同、
+ * 在非投诉单上做报备 / 评估"。原实现把三个 admin scope 塞进报备角色白名单里恒返报备形态，
+ * 而报备形态的类型集是咨建商，于是**投诉单上整枚按钮不给**，管理员做不了协同处理。
+ * 病根不是"基线与 PRD 打架"，是判定只按角色分岔、表达不出"同一个角色在两类单上两种形态"。
+ * 现在管理员与客诉专员走**同一条按类型分岔的路径**（见下方 `RISK_BY_TYPE_ROLES`），不留两套。
+ *
+ * ⚠️ **这不是放宽权限**：管理员的协同处理权、报备权都是基线原本就给的，改的只是
+ * "按原单类型正确分发"。其余角色的取值一格未动。
+ *
+ * ⚠️ **管理员非投诉单上那一格的「评估形态」不在按钮位上**：按钮位是"一枚按钮 + 一次形态判定"，
+ * 一格装不下两种形态，而形态若改成随"本单有没有在办报备"浮动，底栏（只有类型这一维）
+ * 就会写着「风险报备」却点开评估表单 —— 正是本文件一直在防的那类缝。管理员的评估形态
+ * 走**已有的另一条入口**：风险报备池 / 风险工单池「领取」（`REPORT_CLAIM_ROLES` 与
+ * `canClaimRiskReport` 都已含三个 admin scope）→ 工单「风险报备」Tab 的「评估」按钮
+ * （`canAssessReport` 按承办人判，与角色无关）。两个形态因此都落得下，按钮位只占一格。
+ *
+ * 🔴 **三种形态是同一枚动作的形态，不是三个权限点**（基线 ※29）：判定命中协同处理时
+ * 再过 §2 / §4 的「协同处理」门控。「协同处理」虽已收进动作矩阵（动作数 27 → 28），
+ * **也不在按钮位上再开一枚** —— 故 `ACTION_DEFS` 里仍只有 `风险报备` 这一条登记，
+ * `BAR_ORDER` 里也只占一格。
  *
  * **出现条件不在这里判**：报备要求"本单无在队报备"、评估要求"本单有未出结论的非投诉单条目"、
  * 协同要求"本单在风险工单池里"，三条都要读风险两条线的 store，而本模块是**按类型与结案方式
@@ -138,20 +156,30 @@ export interface RiskActionFormDef {
   types: TicketType[];
 }
 
-/** 报备形态给处理侧。管理员取报备形态（基线 ※29「管理员取报备形态」） */
-const RISK_REPORT_ROLES = ['agent-l2', 'team-leader', 'system-admin', 'ops-admin', 'tenant-admin'];
+const REPORT_FORM: RiskActionFormDef = { form: 'report', label: '风险报备', types: RISK_REPORT_TYPES };
+const ASSESS_FORM: RiskActionFormDef = { form: 'assess', label: '风险评估', types: RISK_REPORT_TYPES };
+const COLLAB_FORM: RiskActionFormDef = { form: 'collab', label: '协同处理', types: RISK_COLLAB_TYPES };
+
+/**
+ * **处理侧**的两个角色：只有报备形态一种，投诉单上不给（投诉单的风险活儿归客诉侧）。
+ * 🔴 三个 admin scope **不在这里** —— 它们与客诉专员同属"按原单类型分形态"的那一路。
+ */
+const RISK_REPORT_ROLES = ['agent-l2', 'team-leader'];
+
+/**
+ * **按原单类型分形态**的角色：客诉专员 + 三个 admin scope（基线 v1.24 §4「协同处理」
+ * 与「风险报备」两行的对应格）。投诉单一律协同形态，非投诉单按角色取评 / 报。
+ */
+const RISK_BY_TYPE_ROLES = ['complaint-handler', 'system-admin', 'ops-admin', 'tenant-admin'];
 
 export function resolveRiskActionForm(roleKey: string, ticketType: string): RiskActionFormDef | null {
-  if (RISK_REPORT_ROLES.includes(roleKey)) {
-    return { form: 'report', label: '风险报备', types: RISK_REPORT_TYPES };
-  }
-  // 报的人与评的人必须分开：客诉专员不能报，它只评（非投诉单）或协同（投诉单）
-  if (roleKey === 'complaint-handler') {
-    return ticketType === '投诉'
-      ? { form: 'collab', label: '协同处理', types: RISK_COLLAB_TYPES }
-      : { form: 'assess', label: '风险评估', types: RISK_REPORT_TYPES };
-  }
-  return null;
+  if (RISK_REPORT_ROLES.includes(roleKey)) return REPORT_FORM;
+  if (!RISK_BY_TYPE_ROLES.includes(roleKey)) return null;
+  // 第一维：原单类型。投诉单上"升不升级成投诉"是个不成立的问题，两个角色都只做协同
+  if (ticketType === '投诉') return COLLAB_FORM;
+  // 第二维：非投诉单上报的人与评的人必须分开 —— 客诉专员不能报（它是评估方），
+  // 管理员是处理侧的兜底，取报备形态；管理员的评估形态走池内「领取」那条入口，见上方说明
+  return roleKey === 'complaint-handler' ? ASSESS_FORM : REPORT_FORM;
 }
 
 export interface ActionCtx {

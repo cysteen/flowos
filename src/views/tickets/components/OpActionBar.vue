@@ -61,7 +61,11 @@ const props = defineProps<{
    * 头部按钮触发的弹窗（如「关联售后」）照常可用。
    */
   hideBar?: boolean;
-  /** 当前角色可发起风险报备（非投诉单 + 二线/班组长/管理员） */
+  /**
+   * 风险那一枚按钮要不要出。**说的是"三种形态里判出了一种、且它的出现条件成立"**，
+   * 不只是报备：文案与类型集由 `resolveRiskActionForm`（角色 × 原单类型）现算，
+   * 出现条件由工单页按形态算（见 TicketOperationView 的 `showRiskReport`）。
+   */
   showRiskReport?: boolean;
   /** 风险那一枚按钮要不要置灰（条件由工单页按形态算，见 TicketOperationView） */
   riskReportPending?: boolean;
