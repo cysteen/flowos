@@ -401,6 +401,18 @@ function isKeywordRow(r: RiskReport) {
   return r.source === '关键词触发';
 }
 
+/**
+ * 这一行下一步该做什么（方案 C）：**核实成立的关键词条目走评估，不再走核实**。
+ *
+ * 判据是 `verify.verdict === '成立'` 而不是来源：核实答完"这次命中准不准"之后，
+ * 成立的条目退回队列要答的是"升不升级"，那是评估二选一的活。仍按来源出「核实」的话，
+ * 点开的是同一个打标弹窗、里面那条命中已经判过，只会落到"已全部核实"的提示上——
+ * 条目就永远卡在队列里，而这正是方案 C 要修的那条断链。
+ */
+function needsVerify(r: RiskReport) {
+  return isKeywordRow(r) && r.verify?.verdict !== '成立';
+}
+
 function openVerifyForReport(r: RiskReport) {
   const hits = allHits.value.filter((h) => h.ticketNo === r.ticketNo);
   if (!hits.length) {
@@ -416,9 +428,9 @@ function openVerifyForReport(r: RiskReport) {
   openTag([...open].sort((a, b) => a.when.localeCompare(b.when))[0]);
 }
 
-/** 队列行的处理动作：来源决定走哪一套结论 */
+/** 队列行的处理动作：来源 + 有没有核实成立，共同决定走哪一套结论 */
 function handleReportRow(r: RiskReport) {
-  if (isKeywordRow(r)) openVerifyForReport(r);
+  if (needsVerify(r)) openVerifyForReport(r);
   else openAssess(r);
 }
 
@@ -542,6 +554,27 @@ const assessTargetHits = computed(() => {
 const assessTargetHistory = computed(() => {
   const no = assessTarget.value?.ticketNo;
   return no ? reportStore.historyOf(no) : [];
+});
+
+/**
+ * 核实成立后退回队列的这一条，它凭什么被判有风险 —— 取本单**判为成立**的那条命中。
+ *
+ * 【为什么要把原话捞出来】队列条目的 `desc` 只有一句"沟通记录命中风险词，已自动纳入监控"，
+ * 说不出客户到底讲了什么。客诉专员要决定升不升级，得先看见那句话本身；
+ * 只给「成立 · 高危」这个结论，他等于在替别人的判断背书。
+ *
+ * 多条成立时取**最近核实**的那条：弹窗里只摆得下一句，摆监控最后一次判成立的那句。
+ */
+const assessTargetVerifiedHit = computed(() => {
+  const t = assessTarget.value;
+  if (!t?.verify || t.verify.verdict !== '成立') return null;
+  const hits = riskTags
+    .hitsOfTicket(t.ticketNo)
+    .filter((h) => riskTags.verdictOf(h) === '成立')
+    .sort((a, b) =>
+      (riskTags.latestEntryOf(a)?.at ?? '').localeCompare(riskTags.latestEntryOf(b)?.at ?? ''),
+    );
+  return hits.length ? hits[hits.length - 1] : null;
 });
 
 /** 原型：附件名为占位，点击触发浏览器下载 */
@@ -1769,11 +1802,17 @@ function saveTag() {
   riskTags.appendEntry(target.id, entry);
   /*
    * 同步「风险工单池」里那一条（PRD §5.2）：两个页签装的是同一条命中，
-   * 这边判完了，那边不能还挂在「评估中」。只在**首次打标**时转态；
-   * 修正走的是已核实那一侧，队列条目早已是「已评估」，不必也不该再动一次。
+   * 这边判完了，那边不能一动不动。只在**首次打标**时同步；
+   * 修正走的是已核实那一侧，队列条目的去向在首次打标那一刻就定了，不必也不该再动一次。
+   *
+   * 🔴 去向按结论分流（方案 C，见 store 的 `recordVerify`）：
+   * 误报出池落「已评估」，成立**不出池**、退回「待分派」继续走评估。
    */
+  let backToQueue = false;
   if (!tagAmend.value) {
-    reportStore.recordVerify(target.ticketNo, {
+    // 返回值要接住：这条命中的单可能压根没进过池（池子按来源建条目，不是每条命中都有），
+    // 那时没有条目可转，提示里就不能说"已转待分派"。
+    const synced = reportStore.recordVerify(target.ticketNo, {
       verdict: entry.verdict,
       level: entry.level,
       note: entry.note,
@@ -1781,13 +1820,20 @@ function saveTag() {
       byRole: entry.byRole,
       at: entry.at,
     });
+    backToQueue = synced && entry.verdict === '成立';
   }
+  /*
+   * 成立时必须把"这条还没完"说出来：打标的人做完这一步会以为事儿结了，
+   * 而条目其实回到了待分派、还等着有人给评估结论。只说"打标成功"就是在报一个假的完成态。
+   */
   message.success(
     tagAmend.value
       ? `已修正 ${target.ticketNo} 的核实结果为「${entry.verdict}」，本次修正已留痕`
       : entry.verdict === '误报'
         ? `已记为误报`
-        : `已对 ${target.ticketNo} 打标「${levelText(tagLevel.value)}」`,
+        : backToQueue
+          ? `已对 ${target.ticketNo} 打标「${levelText(tagLevel.value)}」，该条已转「待分派」等待评估`
+          : `已对 ${target.ticketNo} 打标「${levelText(tagLevel.value)}」`,
   );
   tagOpen.value = false;
 }
@@ -2789,15 +2835,18 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                   >—</span>
                 </template>
                 <!--
-                  评估中：**按来源分流**（N7）。关键词触发的条目要的是 915 的「成立/误报 + 定级」，
-                  故它的按钮是「核实」、点开的是同一个核实打标弹窗；其余四类来源走评估二选一。
+                  评估中：**按来源分流**（N7）。关键词触发**且尚未核实成立**的条目要的是
+                  915 的「成立/误报 + 定级」，故它的按钮是「核实」、点开的是同一个核实打标弹窗。
+                  🔴 核实**成立**之后这条退回队列继续走评估（方案 C），按钮随之变成「评估」——
+                  判据是 `needsVerify`，不是来源；仍按来源出「核实」会把它送回一个已经判完的弹窗。
+                  其余四类来源恒走评估二选一。
                 -->
                 <template v-else>
                   <button
                     type="button" class="row-btn row-btn-tag"
-                    :title="isKeywordRow(r) ? '核实这条风险词命中是否成立并定级' : '给出评估结论：不升级 / 接管'"
+                    :title="needsVerify(r) ? '核实这条风险词命中是否成立并定级' : '给出评估结论：不升级 / 接管'"
                     @click="handleReportRow(r)"
-                  >{{ isKeywordRow(r) ? '核实' : '评估' }}</button>
+                  >{{ needsVerify(r) ? '核实' : '评估' }}</button>
                   <!--
                     改派（O18）：评估人请假 / 离职 / 手上堆太多时这活儿必须能挪。
                     不许改派的话唯一出路是"等它评完"，而它正卡在不在岗的人手上。
@@ -2856,11 +2905,17 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                 <span v-if="r.assessment" class="rr-dec" :class="{ risk: r.assessment.decision === '接管' }">
                   {{ r.assessment.decision }}
                 </span>
+                <!--
+                  🔴 方案 C 之后走到这一格的 verify **只剩误报**：核实成立的条目不出池、
+                  退回待分派继续走评估，它要么还在队列里（不在本表），要么已经带着 assessment
+                  从上面那一支渲染。误报没有等级，故这里恒读作「核实：误报」。
+                  `risk` 这一档留着不删：修正核实结果那条路将来若也回写队列，成立会从这里过。
+                -->
                 <span
                   v-else-if="r.verify"
                   class="rr-dec"
                   :class="{ risk: r.verify.verdict === '成立' }"
-                  :title="`关键词触发走 915 核实打标，结论是「成立 / 误报 + 定级」，不是评估二选一`"
+                  :title="`关键词触发走 915 核实打标，结论是「成立 / 误报 + 定级」，不是评估二选一；核实成立的条目会退回队列走评估，不落在本表`"
                 >核实：{{ r.verify.verdict }}{{ r.verify.level ? ` · ${riskLevelText(r.verify.level)}` : '' }}</span>
                 <span v-else class="hit-sub">—</span>
               </td>
@@ -3889,6 +3944,46 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
 
           <div class="assess-sheet-body">
             <blockquote class="assess-quote">{{ assessTarget.desc }}</blockquote>
+
+            <!--
+              核实结论（方案 C）。**只有核实成立后退回队列的关键词条目带 `verify`**，
+              其余四类来源没有这一块，故整块 v-if 掉、不留空标题。
+
+              🔴 为什么摆在主体而不是收进底栏「本单另有」：底栏是"顺带看看"，
+              而对这一条来说核实结论**就是它被送来评估的全部理由**——
+              它的 desc 只有一句"命中风险词，已自动纳入监控"，说不出客户讲了什么。
+              客诉专员要在知道"监控为什么判它有风险"的前提下决定升不升级。
+              行式沿用底栏那套 assess-foot-*，两处读起来是同一种"键：值"。
+            -->
+            <div v-if="assessTarget.verify" class="assess-verify">
+              <div class="assess-foot-row">
+                <span class="assess-foot-k">核实结论</span>
+                <span class="assess-foot-v">
+                  <span class="rr-dec" :class="{ risk: assessTarget.verify.verdict === '成立' }">
+                    {{ assessTarget.verify.verdict }}<template v-if="assessTarget.verify.level"> · {{ riskLevelText(assessTarget.verify.level) }}</template>
+                  </span>
+                  <span class="assess-foot-sub">
+                    {{ assessTarget.verify.by }}（{{ assessTarget.verify.byRole }}）· {{ assessTarget.verify.at }}
+                  </span>
+                </span>
+              </div>
+              <!-- 命中原话：与命中清单、打标弹窗同一套取窗与高亮（三处一份口径） -->
+              <div v-if="assessTargetVerifiedHit" class="assess-foot-row">
+                <span class="assess-foot-k">命中原话</span>
+                <span class="assess-foot-v" :title="assessTargetVerifiedHit.excerpt">
+                  <span class="hit-pos">{{ assessTargetVerifiedHit.position }}</span>
+                  <span class="excerpt-quote">「<template v-if="excerptWindow(assessTargetVerifiedHit).headTruncated">…</template>{{ excerptWindow(assessTargetVerifiedHit).before }}<mark v-if="excerptWindow(assessTargetVerifiedHit).hit" class="excerpt-hit">{{ excerptWindow(assessTargetVerifiedHit).hit }}</mark>{{ excerptWindow(assessTargetVerifiedHit).after }}<template v-if="excerptWindow(assessTargetVerifiedHit).tailTruncated">…</template>」</span>
+                  <span class="assess-foot-sub">
+                    风险词「{{ assessTargetVerifiedHit.word }}」<template v-if="assessTargetVerifiedHit.matchedWord && assessTargetVerifiedHit.matchedWord !== assessTargetVerifiedHit.word">，命中「{{ assessTargetVerifiedHit.matchedWord }}」</template>
+                  </span>
+                </span>
+              </div>
+              <!-- 核实时填的处置备注：核实人当时怎么想的，比结论本身更能帮下一个人接上 -->
+              <div v-if="assessTarget.verify.note" class="assess-foot-row">
+                <span class="assess-foot-k">核实备注</span>
+                <span class="assess-foot-v">{{ assessTarget.verify.note }}</span>
+              </div>
+            </div>
             <ul v-if="assessTarget.attachments.length" class="assess-files">
               <li v-for="a in assessTarget.attachments" :key="a" class="assess-file">
                 <PaperClipOutlined />
@@ -5415,6 +5510,21 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
   border-radius: 0 6px 6px 0;
   white-space: pre-wrap;
   word-break: break-word;
+}
+/*
+ * 核实结论块：行式直接复用底栏那套 assess-foot-*，这里只给它一个容器。
+ * 底色取 .assess-quote 同一个 #f8fafc、描边取 .assess-file 同一个 #e2e8f0——
+ * 不另起一套色，它与描述块是同一层级的"这条是怎么回事"，不该比描述更抢眼。
+ */
+.assess-verify {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
 }
 .assess-files {
   display: flex;
