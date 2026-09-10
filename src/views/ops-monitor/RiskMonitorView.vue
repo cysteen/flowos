@@ -597,18 +597,33 @@ const reportAllRows = computed(() => [
 ]);
 
 /**
- * 左栏「按处置阶段」那一行的数 ＝ **Σ三档**，与不限阶段那张表的行数逐条相等。
- * 🔴 不取「全部有风险」的条数：业务口径上两者是同一批（打标为高/中/低即入池），
+ * 左栏「按处置阶段」父档 + 三个子档的数，**全部从 `reportAllRows` 这一份行集里数出来**。
+ *
+ * 🔴 **Σ三档 ≡ 父档，恒成立**（含开着「超时未评」时）。它是构造出来的、不是事后对账对出来的：
+ * 父档取这份行集的长度，三档取同一份行集按 `poolStageOf` 的三路划分，
+ * 而那个函数把每一行**不重不漏**地分到三档之一（待分派 → 待领取、评估中 → 已领取、其余 → 已结论）。
+ * ⚠️ **别让哪一档自己去筛一遍源数据**——"各筛各的"是本文件反复踩过的坑：
+ * 上一版三档各取 `reportUnassignedRows / reportAssigningRows / reportAssessedRows` 的长度，
+ * 而「已结论」那一份不过 `onlyOverdue`，于是开着超时收窄时左栏写着 `0 + 3 + 4`、父档写着 3，
+ * 人一眼看出对不上。同理**也别拿"父档 ＝ 三档之和"去反推**：那样父档就不再等于表里的行数了。
+ *
+ * 🔴 父档不取「全部有风险」的条数：业务口径上两者是同一批（打标为高/中/低即入池），
  * 但「已结论」这一档带着「仅今日」这个默认收窄，历史上评过的那几条不在表里。
  * 行上的数必须等于表里的行数 —— 这条不变量优先于"三个轴的总数看起来一样齐"。
  * 两者不等时，摘掉「仅今日」收窄标即可对上。
  *
- * ⚠️ **开着「超时未评」时 Σ三档 会大于这一行的数**（此时这一行 ＝ 待领取 + 已领取，
- * 而「已结论」那一档的数不受超时影响 —— 已结论的行按定义就不可能"超时未评"）。
- * 这不是算错：三档各自的数仍然**逐档等于点进去表里的行数**（点「已结论」会先摘掉超时收窄，
- * 见 setReportView），而"行上的数 ＝ 表里的行数"才是这一列的硬不变量。
+ * ⚠️ **开着「超时未评」时「已结论」显示 0**，这是对的、不是漏算：超时未评的判据是
+ * "**在队**且钟走过了时限"，已结论的行按定义一条都不满足它，那张表里因此也一条不接
+ * （见 `reportAllRows`）。角标与表两处同进同退。点这一档会先摘掉超时收窄
+ * （见 setReportView），彼时三档与父档一起恢复到常态的数，仍然处处相等。
  */
 const poolStageTotal = computed(() => reportAllRows.value.length);
+/** 三个子档各多少行。**与父档同源**，见上面那段注释 */
+const poolStageCounts = computed(() => {
+  const base: Record<ReturnType<typeof poolStageOf>, number> = { 待领取: 0, 已领取: 0, 已结论: 0 };
+  for (const r of reportAllRows.value) base[poolStageOf(r)] += 1;
+  return base;
+});
 
 const reportRows = computed(() => {
   if (reportView.value === 'all') return reportAllRows.value;
@@ -3249,7 +3264,9 @@ const railGroups = computed<RailGroup[]>(() => {
             {
               key: 'pool:unassigned' as RailKey,
               label: '待领取',
-              count: reportUnassignedRows.value.length,
+              // 🔴 三档一律取 `poolStageCounts`（＝父档那一份行集的三路划分），
+              // 不各自去数各自的 rows：那样「已结论」会漏掉超时收窄，Σ三档当场大于父档
+              count: poolStageCounts.value.待领取,
               bad: alineOverdueCount.value > 0,
               depth: 1 as const,
               title: '还没有人领的池行 —— 谁有空谁领，池里没有分派',
@@ -3257,16 +3274,17 @@ const railGroups = computed<RailGroup[]>(() => {
             {
               key: 'pool:assigning' as RailKey,
               label: '已领取',
-              count: reportAssigningRows.value.length,
+              count: poolStageCounts.value.已领取,
               depth: 1 as const,
               title: '已被客诉专员领走、还没有结论的池行',
             },
             {
               key: 'pool:assessed' as RailKey,
               label: '已结论',
-              count: reportAssessedRows.value.length,
+              count: poolStageCounts.value.已结论,
               depth: 1 as const,
-              title: '已经收口的池行：走评估的给了升级 / 不升级，走协同处理的给了意见与建议。默认只看今日，收窄标可摘',
+              title: '已经收口的池行：走评估的给了升级 / 不升级，走协同处理的给了意见与建议。默认只看今日，收窄标可摘。'
+                + '开着「超时未评」收窄时这一档是 0 —— 已结论的行按定义不可能"超时未评"；点它即摘掉该收窄',
             },
           ]
           : []),
@@ -3859,12 +3877,19 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               🔴 点它落在「待领取」，表里的行数会**少于卡上的数**——这不是本文件开头那条
               「标签写着一个数、表里躺着另一批」：紧挨着的三枚 chip 就是它的分解，
               待领取 + 评估中 恒等于这个数，两者摆在同一屏上，读得出来。
+              🔴 **点亮条件只认「待领取」「已领取」这两档**，不是 `reportView !== 'assessed'`：
+              「按处置阶段 · 不限阶段」那一档**含已结论**，而这枚卡的口径是待领取 + 已领取、
+              不含已结论 —— 在不限阶段上点亮，等于说"这个数就是当前这张表的分母"，而分母根本不同。
+              `!onlyOverdue` 同样要留：开着超时收窄时看到的是这两档里超时的那几条，不是它们的全集
+              （那一路归隔壁「超时未评」卡点亮）。
             -->
             <button
               type="button"
               class="dm-cell"
               :class="{
-                on: listView === 'report' && reportView !== 'assessed' && !onlyOverdue,
+                on: listView === 'report'
+                  && (reportView === 'unassigned' || reportView === 'assigning')
+                  && !onlyOverdue,
                 hot: alineOverdueCount > 0,
               }"
               title="待领取 + 已领取 · 池内还没有结论的全集"
