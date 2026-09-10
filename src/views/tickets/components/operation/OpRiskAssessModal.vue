@@ -12,7 +12,6 @@ import {
   adviceLabelOf,
   advicePlaceholderOf,
   decisionText,
-  isEscalateDecision,
   poolStatusText,
 } from './OpRiskDecision';
 
@@ -44,6 +43,7 @@ const {
   assessAdvice,
   missAssessDecision,
   missAssessAdvice,
+  escalateHint,
   openAssess,
   confirmAssess,
 } = useRiskReportAssess();
@@ -92,12 +92,6 @@ watch(assessOpen, (v) => {
 const adviceLabel = computed(() => adviceLabelOf(assessDecision.value));
 const advicePlaceholder = computed(() => advicePlaceholderOf(assessDecision.value));
 
-/**
- * 「升级」那一档的后果提示。**只讲第一跳派生**：本形态只在非投诉单上出现
- * （投诉单走协同处理形态），故不再分岔讲"本单已是投诉单"的那一路。
- */
-const escalateHint = '提交后原单落「已升级投诉」并派生一张投诉单，新单全量继承本单信息。此步不可撤销';
-
 const sourceLine = computed(() => {
   const t = target.value;
   if (!t) return '';
@@ -134,9 +128,14 @@ const sourceLine = computed(() => {
             </a-radio-group>
           </div>
           <div v-if="missAssessDecision" class="ticket-assess-err ticket-assess-foot">请先选择一个评估决策</div>
-          <div v-else-if="isEscalateDecision(assessDecision)" class="op-hint ticket-assess-foot">
-            {{ escalateHint }}
-          </div>
+          <!--
+            选「升级」后才出现的分流提示（O20）：它是"你点下去会立刻发生什么"，
+            且**按原单类型给的是两种完全相反的后果**，是做决策所必需的一行。
+          -->
+          <div
+            v-else-if="assessDecision === '升级'"
+            class="ticket-assess-hint ticket-assess-foot"
+          >{{ escalateHint }}</div>
         </div>
         <div class="op-field">
           <div class="op-label req">{{ adviceLabel }}</div>
@@ -224,5 +223,12 @@ const sourceLine = computed(() => {
   font-size: 11px;
   color: #ef4444;
   line-height: 1.4;
+}
+/* 分流提示：与校验错误同一行位，但它讲的是后果不是错误，故取中性灰而非红 */
+.ticket-assess-hint {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #6b7280;
+  line-height: 1.5;
 }
 </style>
