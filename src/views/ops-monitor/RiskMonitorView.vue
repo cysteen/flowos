@@ -184,7 +184,7 @@ const untaggedOpen = ref<Record<UntaggedSlice, boolean>>({
  * 与页头 KPI 卡的写法不一致，选中态与表里的数据当场分家（本文件反复踩过的坑）。
  * `tagger` 不是第四个等级，它与 `all` 是**同一批行**，只是右侧多出一行标记人单选。
  */
-const tagLevelFilter = ref<RiskLevel | 'all' | 'tagger'>('all');
+const tagLevelFilter = ref<RiskLevel | 'all' | 'tagger' | 'stage'>('all');
 
 /**
  * 标记人单选（只在「按标记人」这一档作数）。`all` ＝ 不按人收窄。
@@ -201,8 +201,18 @@ const taggerFilter = ref<string>('all');
  */
 const taggerExpanded = ref(false);
 /**
+ * 池内处置阶段单选（只在「按处置阶段」这一档作数）。`all` ＝ 不按阶段收窄。
+ *
+ * 🔴 **判据取 `queueStatusText(e)`**，也就是这张表「池内状态」那一列显示的那个词 ——
+ * 左栏分档与表里那一格是同一个映射（`POOL_STATE_TEXT`），三档因此**不重不漏**，
+ * 且左栏写的词与表里那一格逐字一致。各写各的判据是本文件反复踩过的坑。
+ */
+const poolStageFilter = ref<string>('all');
+/** 三个阶段的界面词，**次序即时间序**（待领取 → 已领取 → 已结论），不按数量重排 */
+const POOL_STAGE_KEYS = ['待领取', '已领取', '已结论'] as const;
+/**
  * 左栏「按处置阶段」展开着没有。与 `taggerExpanded` 一样只管展开、不管选中
- * （选中的是 `reportView`）。**默认展开**：这三档是值班每天真要点的地方，
+ * （选中的是 `poolStageFilter`）。**默认展开**：这三档是值班每天真要点的地方，
  * 而「按标记人」是督导偶尔查工作量才展开的一份名单，两者默认态本就不同。
  */
 const poolAxisExpanded = ref(true);
@@ -221,7 +231,7 @@ const groupFilter = ref<string>('all');
  * 说不出"某一级"），空态与收窄标据此判断要不要出这一句。
  */
 const tagLevelText = computed(() => (
-  tagLevelFilter.value === 'all' || tagLevelFilter.value === 'tagger'
+  tagLevelFilter.value === 'all' || tagLevelFilter.value === 'tagger' || tagLevelFilter.value === 'stage'
     ? ''
     : riskLevelText(tagLevelFilter.value)
 ));
@@ -596,35 +606,19 @@ const reportAllRows = computed(() => [
   ...(onlyOverdue.value ? [] : reportAssessedRows.value),
 ]);
 
-/**
- * 左栏「按处置阶段」父档 + 三个子档的数，**全部从 `reportAllRows` 这一份行集里数出来**。
- *
- * 🔴 **Σ三档 ≡ 父档，恒成立**（含开着「超时未评」时）。它是构造出来的、不是事后对账对出来的：
- * 父档取这份行集的长度，三档取同一份行集按 `poolStageOf` 的三路划分，
- * 而那个函数把每一行**不重不漏**地分到三档之一（待分派 → 待领取、评估中 → 已领取、其余 → 已结论）。
- * ⚠️ **别让哪一档自己去筛一遍源数据**——"各筛各的"是本文件反复踩过的坑：
- * 上一版三档各取 `reportUnassignedRows / reportAssigningRows / reportAssessedRows` 的长度，
- * 而「已结论」那一份不过 `onlyOverdue`，于是开着超时收窄时左栏写着 `0 + 3 + 4`、父档写着 3，
- * 人一眼看出对不上。同理**也别拿"父档 ＝ 三档之和"去反推**：那样父档就不再等于表里的行数了。
- *
- * 🔴 父档不取「全部有风险」的条数：业务口径上两者是同一批（打标为高/中/低即入池），
- * 但「已结论」这一档带着「仅今日」这个默认收窄，历史上评过的那几条不在表里。
- * 行上的数必须等于表里的行数 —— 这条不变量优先于"三个轴的总数看起来一样齐"。
- * 两者不等时，摘掉「仅今日」收窄标即可对上。
- *
- * ⚠️ **开着「超时未评」时「已结论」显示 0**，这是对的、不是漏算：超时未评的判据是
- * "**在队**且钟走过了时限"，已结论的行按定义一条都不满足它，那张表里因此也一条不接
- * （见 `reportAllRows`）。角标与表两处同进同退。点这一档会先摘掉超时收窄
- * （见 setReportView），彼时三档与父档一起恢复到常态的数，仍然处处相等。
- */
-const poolStageTotal = computed(() => reportAllRows.value.length);
-/** 三个子档各多少行。**与父档同源**，见上面那段注释 */
-const poolStageCounts = computed(() => {
-  const base: Record<ReturnType<typeof poolStageOf>, number> = { 待领取: 0, 已领取: 0, 已结论: 0 };
-  for (const r of reportAllRows.value) base[poolStageOf(r)] += 1;
-  return base;
-});
-
+//
+// 🔴 **原先这里有一对 `poolStageTotal` / `poolStageCounts`**，给左栏「按处置阶段」那四行供数。
+// 整对删掉了：那一轴已经改回与另两个轴同源（`pooledEntries`，见 `pooledStageCount`）。
+// 【为什么必须搬走】它们数的是 `reportAllRows` —— **B 线那张池行表的行**（`RiskPoolItem`），
+// 而另两个轴数的是**监控条目**（`RiskQueueEntry`）。两批对象描述的是同一批单，
+// 但字段不同，于是：
+//   ① 列跟着不同 —— 那张表摆的是报备人 / 报备原因 / 风险类型，而这三格对 A 线
+//      **恒为「系统」/「其他」占位 / null**（见 `stores/riskShared.ts` 上的字段注释），
+//      三个轴里有一个摆着三列假数据；
+//   ② 合计随日期漂 —— 「已结论」那一份带着「仅今日」的默认收窄，跨天之后
+//      这一轴从 12 掉到 8，而另两个轴纹丝不动。同屏三个本该恒等的数，有一个每天自己变。
+// 「已标记」段三个轴是**同一批条目的三种看法**，同源才谈得上"数天然相等"。
+//
 const reportRows = computed(() => {
   if (reportView.value === 'all') return reportAllRows.value;
   if (reportView.value === 'unassigned') return reportUnassignedRows.value;
@@ -2657,14 +2651,21 @@ const queueBase = computed<QueueRow[]>(() => {
   if (queueView.value === 'monitoring') return untaggedRows.value;
   if (queueView.value === 'noRisk') return reportStore.noRiskEntries.map(rowOfEntry);
   const pooled = reportStore.pooledEntries;
-  // 「按标记人」与「全部有风险」是同一批行，差别只在多一层标记人收窄
+  // 🔴 **三个轴同出 `pooledEntries` 这一份行集**：按风险等级 / 按标记人 / 按处置阶段
+  // 是同一批条目的三种看法，差别只在各自多一层收窄。
+  // 三个轴各取各的数据源（上一版「按处置阶段」取的是 B 线那张池行表）必然分叉：
+  // 行对象不同 → 列跟着不同 → 总数还会随各自的默认收窄漂，而三者本该恒等。
   const picked = tagLevelFilter.value === 'tagger'
     ? (taggerFilter.value === 'all'
       ? pooled
       : pooled.filter((e) => taggerOf(e) === taggerFilter.value))
-    : (tagLevelFilter.value === 'all'
-      ? pooled
-      : pooled.filter((e) => e.tag?.result === tagLevelFilter.value));
+    : tagLevelFilter.value === 'stage'
+      ? (poolStageFilter.value === 'all'
+        ? pooled
+        : pooled.filter((e) => poolStageTextOf(e.status) === poolStageFilter.value))
+      : (tagLevelFilter.value === 'all'
+        ? pooled
+        : pooled.filter((e) => e.tag?.result === tagLevelFilter.value));
   return picked.map(rowOfEntry);
 });
 const queueRows = computed<QueueRow[]>(() => inGroup(queueBase.value));
@@ -2694,7 +2695,7 @@ function setQueueView(v: QueueView) {
 
 // 等级分档、标记人与工作组换了，底表就换了一批，页码必须回到第一页 ——
 // 否则「第 3 页 → 切到中风险」会停在一张恰好没有行的页上。
-watch([tagLevelFilter, taggerFilter, groupFilter], () => {
+watch([tagLevelFilter, taggerFilter, poolStageFilter, groupFilter], () => {
   queuePageCurrent.value = 1;
 });
 
@@ -2742,8 +2743,16 @@ const POOL_STATE_TEXT: Record<string, string> = {
   已评估: '已结论',
 };
 function queueStatusText(e: QueueRow): string {
-  if (!e.status) return '—';
-  return POOL_STATE_TEXT[e.status] ?? e.status;
+  return poolStageTextOf(e.status);
+}
+/**
+ * 落库状态 → 池内阶段的界面词。**左栏「按处置阶段」那三档与表里「池内状态」那一格共用它**，
+ * 故档名与格子里的词逐字一致、分档也不可能与显示分叉 —— 两处各写一份映射，
+ * 迟早出现"左栏写已领取、表里写评估中"。null ＝ 不在池里（待打标 / 已标记无风险）。
+ */
+function poolStageTextOf(status: RiskQueueEntry['status'] | null): string {
+  if (!status) return '—';
+  return POOL_STATE_TEXT[status] ?? status;
 }
 /** 这一行有没有超时。**未纳入监控的行恒不超时**：它压根没进过队列，钟还没起走 */
 function rowOverdue(r: QueueRow): boolean {
@@ -3158,14 +3167,29 @@ const groupTagStats = computed(() => {
 type RailKey =
   | `untagged:${UntaggedSlice}` | `untagged:${UntaggedSlice}:${string}`
   | 'level:高' | 'level:中' | 'level:低' | 'level:all' | 'level:tagger' | 'noRisk'
-  // `pool:all` ＝「按处置阶段」那一行本身（不限阶段），与 `level:all`、`level:tagger` 同为"分类表头"
-  | 'pool:all' | 'pool:unassigned' | 'pool:assigning' | 'pool:assessed'
+  // `stage:all` ＝「按处置阶段」那一行本身（不限阶段），与 `level:all`、`level:tagger` 同为"分类表头"
+  | 'stage:all' | `stage:${string}`
   | `tagger:${string}`;
 
 interface RailItem {
   key: RailKey;
   label: string;
   count: number;
+  /**
+   * 这一档的**全量**（未过「未标记」那条筛选）。只有**被筛的那一路**才给它，
+   * 给了就渲染成「筛后 / 全量」两段式，如「2 / 11」。
+   *
+   * 【为什么要有它】筛选只收窄当前这一路，页签数却是三路全量，于是开着筛选时
+   * `三路之和 ＝ 页签数` 这条恒等式在屏幕上会变成 `7 + 2 + 10 ≠ 28`。
+   * 两条路都不好走：只让角标跟着变，屏幕上就真有一处数字打架，全靠悬停解释；
+   * 让页签也跟着变，`28 → 19` 又会被读成"另外两路少了 9 条"。
+   * 两段式把**分母摆回屏幕上**：斜杠后那个数就是这一路的全量，
+   * `7 + 11 + 10 ＝ 28` 肉眼可验；斜杠前那个数仍然 ＝ 表里的行数（铁律一）。
+   *
+   * 🔴 **只给被筛的那一路**：未被筛的路与子档保持单个数，否则满屏斜杠，
+   * 人反而看不出到底哪一路被收窄了。
+   */
+  countTotal?: number;
   /**
    * **缩进层级 ＝ 这一行与上一行的关系**，是这一列唯一的视觉语法：
    *   · `0` 不缩进 + 字重加粗 —— 本阶段的全量，或与它**并列的另一种分类**
@@ -3231,6 +3255,20 @@ function pooledLevelCount(lv: RiskLevel) {
 }
 
 /**
+ * 池内某一处置阶段的条目数（已过工作组筛选）。
+ *
+ * 🔴 **底表与另两个轴逐字同源**（`pooledEntries`），判档读的是表里「池内状态」那一格
+ * 显示的同一个词（`queueStatusText`）。故：
+ *   · `待领取 + 已领取 + 已结论 ≡ 全部有风险 ≡ 按标记人`，三个轴恒等 —— 由构造成立；
+ *   · **合计不随日期漂**。上一版这一轴接在 B 线那张池行表上，「已结论」带着「仅今日」
+ *     这个默认收窄，跨了一天之后合计从 12 掉到 8，而另两个轴纹丝不动 ——
+ *     同屏三个本该相等的数，有一个每天自己变。
+ */
+function pooledStageCount(stage: string) {
+  return inGroup(reportStore.pooledEntries.filter((e) => poolStageTextOf(e.status) === stage)).length;
+}
+
+/**
  * 「未标记」某一路**连同它展开出来的子档**的那几行。
  *
  * 🔴 **父行的数字取整片的行数，不取 Σ子档**：两者可能差几条（推不出子档的行，
@@ -3244,16 +3282,19 @@ function untaggedSliceItems(
   title: string,
 ): RailItem[] {
   // 🔴 筛选条只收窄**当前这一路**：它的字段是按这一路配的（另两路根本没有风险词、没有原话），
-  // 拿去套别的路等于用一把量不了的尺子去量。故另两路的角标不跟着变 ——
-  // 代价是**开着筛选时「三路之和 ＝ 页签数」不成立**（页签数仍是三路全量），
-  // 这一条在 `railGroups` 的 `title2` 里当场讲出来，不让它变成一处对不上的数。
-  const raw = untaggedSliceRows(slice);
-  const rows = inGroup(slice === untaggedSlice.value ? applyUntaggedFilter(raw, slice) : raw);
+  // 拿去套别的路等于用一把量不了的尺子去量。故另两路的角标不跟着变。
+  // 🔴 被筛的那一路改摆**「筛后 / 全量」两段式**（见 `RailItem.countTotal`）：
+  // 分母留在屏幕上，`7 + 11 + 10 ＝ 28` 肉眼可验，同时斜杠前那个数仍 ＝ 表里的行数。
+  const raw = inGroup(untaggedSliceRows(slice));
+  const filtered = slice === untaggedSlice.value && untaggedFilterDirty.value;
+  const rows = filtered ? inGroup(applyUntaggedFilter(untaggedSliceRows(slice), slice)) : raw;
   const open = untaggedOpen.value[slice];
+  const subCount = (k: string, list: QueueRow[]) => list.filter((r) => untaggedSubOf(r, slice) === k).length;
   const head: RailItem = {
     key: `untagged:${slice}` as RailKey,
     label,
     count: rows.length,
+    countTotal: filtered ? raw.length : undefined,
     // 🔴 **d0**：三路提到与「已标记」段那三个分类同一层之后，这一段也只剩两级缩进。
     // 🔴 与「已标记」那三个 d0 **算法相反**：那边三个轴是同一批的三种看法、数天然相等、
     // 不可相加；这边三路两两互斥、可以相加，之和 ＝ 页签上那个数。
@@ -3270,7 +3311,9 @@ function untaggedSliceItems(
     ...UNTAGGED_SUB_KEYS[slice].map((k) => ({
       key: `untagged:${slice}:${k}` as RailKey,
       label: untaggedSubLabel(slice, k),
-      count: rows.filter((r) => untaggedSubOf(r, slice) === k).length,
+      count: subCount(k, rows),
+      // 子档同理只在被筛的这一路给两段式；另两路的子档保持单个数，免得满屏斜杠
+      countTotal: filtered ? subCount(k, raw) : undefined,
       depth: 1 as const,
       title: `「${label}」里${untaggedSubLabel(slice, k)}的那一档`,
     })),
@@ -3295,11 +3338,10 @@ const railGroups = computed<RailGroup[]>(() => {
         + '🔴 **它不是"整本工单库里没人标过的单"**：未标记是每张单与生俱来的默认态，'
         + '那样数出来的是全部在办单、永远清不零，真该判的那批反而被淹没。'
         + '🔴 这个数与「已标记」那个数**分属两批、不相减也不互校**：那边是历史累计打过标的，'
-        + '跑久了必然比这边大，那是正常状态、不是漏损'
-        + (untaggedFilterDirty.value
-          ? '⚠️ **筛选生效中**：清单上那条筛选只收窄当前这一路，这个数仍是三路全量，'
-            + '故此刻三路之和小于它 —— 重置筛选即恢复恒等'
-          : ''),
+        + '跑久了必然比这边大，那是正常状态、不是漏损。'
+        // 开着筛选时被筛的那一路显示「筛后 / 全量」，斜杠后那个数仍进这个恒等式 ——
+        // 数字自己把话说清楚了，这里不再补一句文字解释
+        + '🔴 开着清单上那条筛选时，被筛的那一路摆成「筛后 / 全量」，**斜杠后那三个数之和仍 ＝ 这个数**',
       items: [
         ...untaggedSliceItems('kw', '实时监控',
           '预警词捞进来的那一路。下面按**词表预设的识别风险等级**分档 —— 机器认为最重的排最前，人从上往下判'),
@@ -3376,11 +3418,11 @@ const railGroups = computed<RailGroup[]>(() => {
           另两个轴的取值之间没有先后。故这三行的排列顺序本身带信息，不按数量重排。
         */
         {
-          key: 'pool:all' as RailKey,
+          key: 'stage:all' as RailKey,
           label: '按处置阶段',
-          // 取 Σ三档，不取 pooledAll：这一行的数必须等于点进去表里的行数，
-          // 而那张表就是三档首尾相接的那一份（「已结论」还带着「仅今日」这个默认收窄）
-          count: poolStageTotal.value,
+          // 🔴 恒等于「全部有风险」，与「按标记人」同一条道理：它是"换一维看同一批"，
+          // 不是"看得更少了"。收窄发生在展开出来的三个阶段行上。
+          count: pooledAll,
           // 🔴 原「待处置」组标题旁的旁注「仅监控入池」**没有做成行尾可见的 note**：
           // 左栏收窄到 196px 之后，「按处置阶段」＋ 箭头 ＋ 数字已占满一行，
           // 再挂 5 个字会把档名挤到省略号 —— 而档名是这个选择器的唯一标识，
@@ -3390,38 +3432,28 @@ const railGroups = computed<RailGroup[]>(() => {
           expanded: poolAxisExpanded.value,
           title: '与「全部有风险」并列的**第三种分类**：同一批已标记条目换成按池内处置阶段看，'
             + '三个取值是真时间序（待领取 → 已领取 → 已结论）。点它展开／收起下面三档；行本身也可选 ＝ 不限阶段。'
-            + '🔴 与另两个轴是**同一批条目的不同看法，数天然相等、不可相加**。'
+            + '🔴 与另两个轴是**同一批条目的不同看法，数天然相等、不可相加**，且列也逐字相同 ——'
+            + '三个轴同一张表、同一批行对象。'
             + '仅监控入池 —— 🔴 只数 A 线（打标进池的条目）：二线报备有自己的家 ——'
-            + ' 工单工作台的「风险报备池」',
+            + ' 工单工作台的「风险报备池」。'
+            + '要领取 / 评估这一批，走页头「评估处置」那一块 —— 那是动作的工作面，这一列是看法',
         },
         ...(poolAxisExpanded.value
-          ? [
-            {
-              key: 'pool:unassigned' as RailKey,
-              label: '待领取',
-              // 🔴 三档一律取 `poolStageCounts`（＝父档那一份行集的三路划分），
-              // 不各自去数各自的 rows：那样「已结论」会漏掉超时收窄，Σ三档当场大于父档
-              count: poolStageCounts.value.待领取,
-              bad: alineOverdueCount.value > 0,
-              depth: 1 as const,
-              title: '还没有人领的池行 —— 谁有空谁领，池里没有分派',
-            },
-            {
-              key: 'pool:assigning' as RailKey,
-              label: '已领取',
-              count: poolStageCounts.value.已领取,
-              depth: 1 as const,
-              title: '已被客诉专员领走、还没有结论的池行',
-            },
-            {
-              key: 'pool:assessed' as RailKey,
-              label: '已结论',
-              count: poolStageCounts.value.已结论,
-              depth: 1 as const,
-              title: '已经收口的池行：走评估的给了升级 / 不升级，走协同处理的给了意见与建议。默认只看今日，收窄标可摘。'
-                + '开着「超时未评」收窄时这一档是 0 —— 已结论的行按定义不可能"超时未评"；点它即摘掉该收窄',
-            },
-          ]
+          ? POOL_STAGE_KEYS.map((s) => ({
+            key: `stage:${s}` as RailKey,
+            label: s,
+            // 🔴 三档与父档同源（都从 `pooledEntries` 数），故 Σ三档 ≡ 父档恒成立，
+            // 且**不随日期漂** —— 见 `pooledStageCount`
+            count: pooledStageCount(s),
+            bad: s === '待领取' && alineOverdueCount.value > 0,
+            depth: 1 as const,
+            title: s === '待领取'
+              ? '还没有人领的池行 —— 谁有空谁领，池里没有分派'
+              : s === '已领取'
+                ? '已被客诉专员领走、还没有结论的池行'
+                : '已经收口的池行：走评估的给了升级 / 不升级，走协同处理的给了意见与建议。'
+                  + '🔴 **是累计、不是当日**：这一档不带任何时间收窄，故三档之和恒等于另两个轴',
+          }))
           : []),
         {
           key: 'noRisk' as RailKey,
@@ -3460,9 +3492,17 @@ const railKey = computed<RailKey | null>(() => {
       // 而收窄之后表里躺的是那个人名下的几条
       return taggerFilter.value === 'all' ? 'level:tagger' : (`tagger:${taggerFilter.value}` as RailKey);
     }
+    if (tagLevelFilter.value === 'stage') {
+      return poolStageFilter.value === 'all' ? 'stage:all' : (`stage:${poolStageFilter.value}` as RailKey);
+    }
     return tagLevelFilter.value === 'all' ? 'level:all' : (`level:${tagLevelFilter.value}` as RailKey);
   }
-  if (listView.value === 'report') return `pool:${reportView.value}` as RailKey;
+  // 🔴 **「评估处置」工作面不点亮左栏任何一档**（`listView === 'report'`）。
+  // 它与手动筛查 / 命中台账同一类：**动作的工作面，不是漏斗的一档**——
+  // 领取 / 评估 / 协同都在那儿，进出走页头「评估处置」那一块。
+  // 上一版它借「按处置阶段」那几档当选中态，于是同一组键指着两张不同的表
+  // （左栏点进去是条目表、页头卡点进去是池行表），行数与列都对不上 ——
+  // 那正是"两套状态机分叉"。硬点亮一档才是假话，不点亮不是缺陷。
   return null;
 });
 
@@ -3511,17 +3551,17 @@ function setRail(key: RailKey) {
     tagLevelFilter.value = key.slice('level:'.length) as RiskLevel | 'all' | 'tagger';
     return;
   }
-  // 「按处置阶段」这一行自己也可选（＝不限阶段），点它同时展开／收起下级；
+  // 「按处置阶段」：与「按标记人」逐条同构 —— 同一批池内条目换一维看，
+  // 走的是同一张表（`queueView === 'pooled'`），不是 B 线那张池行表。
+  setListView('realtime');
+  setQueueView('pooled');
+  // 这一行自己也可选（＝不限阶段），点它同时展开／收起下级；
   // 已经停在它上面时再点一次就收起来 —— 与「按标记人」同一套手势
-  if (key === 'pool:all') {
-    poolAxisExpanded.value = !(railKey.value === 'pool:all' && poolAxisExpanded.value);
-    // 🔴 从**左栏**点这一行 ＝ 要看不限阶段的全量，故超时收窄在这里摘掉。
-    // 不能指望下面的 setReportView：已经停在这一档时（正是从页头「超时未评」点进来的那一刻）
-    // 它会早退，收窄留在原地，点下去就只是把下级收折了一下、表里还躺着那 3 条。
-    onlyOverdue.value = false;
+  if (key === 'stage:all') {
+    poolAxisExpanded.value = !(railKey.value === 'stage:all' && poolAxisExpanded.value);
   }
-  setListView('report');
-  setReportView(key.slice('pool:'.length) as ReportView);
+  tagLevelFilter.value = 'stage';
+  poolStageFilter.value = key === 'stage:all' ? 'all' : key.slice('stage:'.length);
 }
 
 /**
@@ -3536,8 +3576,9 @@ function setRail(key: RailKey) {
  * 只在 `setRail` 里清的话，从卡片切走的那条路会漏掉这一步。
  */
 watch(railKey, (k) => {
-  if (k === 'level:tagger' || k?.startsWith('tagger:')) return;
-  taggerFilter.value = 'all';
+  if (!(k === 'level:tagger' || k?.startsWith('tagger:'))) taggerFilter.value = 'all';
+  // 处置阶段同理随档进随档出：它也只在这一档出现，带着它切走同样看不见任何"已收窄"的痕迹
+  if (!k?.startsWith('stage:')) poolStageFilter.value = 'all';
 });
 
 /**
@@ -3574,7 +3615,9 @@ const currentRailGroup = computed<RailGroup>(() => {
  * 会让人切过来时看见一张不是这一段全量的表，而页签上写的却是整段的总数。
  */
 function setStage(stage: FunnelStage) {
-  if (stage === funnelStage.value && stageOfView.value) return;
+  // 🔴 `railKey` 也要判：停在「评估处置」工作面时左栏一档都不选中（见 `railKey`），
+  // 只判段的话，点这一段的页签会因为"已经在这一段了"而早退，人被卡在工作面上回不去左栏。
+  if (stage === funnelStage.value && stageOfView.value && railKey.value) return;
   const g = railGroups.value.find((x) => x.stage === stage);
   if (!g) return;
   setRail(g.defaultKey);
@@ -4161,7 +4204,14 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               >
                 <span class="fr-label">{{ it.label }}</span>
                 <span v-if="it.expandable" class="fr-caret">{{ it.expanded ? '▾' : '▸' }}</span>
-                <span class="fr-num" :class="{ bad: it.bad }">{{ it.count }}</span>
+                <!--
+                  「筛后 / 全量」两段式，只出在被筛的那一路上（见 RailItem.countTotal）。
+                  🔴 前一个数恒 ＝ 表里的行数（铁律一），后一个数是这一路的全量 ——
+                  分母留在屏幕上，`7 + 11 + 10 ＝ 页签数` 才仍然肉眼可验。
+                -->
+                <span class="fr-num" :class="{ bad: it.bad }">
+                  {{ it.count }}<template v-if="it.countTotal != null"><span class="fr-num-den">/ {{ it.countTotal }}</span></template>
+                </span>
               </button>
             </template>
           </div>
@@ -4346,6 +4396,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
         <!-- 收窄条件必须在空态里复述，否则"筛空了"会被读成"没有了" -->
         <template v-if="groupFilter !== 'all'">「{{ groupFilter }}」在这一档下没有条目 —— 点「全部工作组」看全部</template>
         <template v-else-if="taggerFilter !== 'all'">「{{ taggerFilter }}」名下没有已标记的风险工单 —— 点左栏「按标记人」看全部</template>
+        <template v-else-if="poolStageFilter !== 'all'">当前没有处在「{{ poolStageFilter }}」的池内条目 —— 点左栏「按处置阶段」看全部</template>
         <template v-else-if="untaggedFilterDirty">当前筛选条件下没有工单 —— 点「重置」看这一路的全部</template>
         <template v-else-if="queueView === 'monitoring' && untaggedSub">这一档下没有未标记的工单 —— 点上一级看这一路的全部</template>
         <template v-else-if="queueView === 'monitoring'">这一路没有待判的工单 —— 换一路看，或用右上角「手动筛查」去存量里捞</template>
@@ -6604,6 +6655,14 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
 }
 .fr-item.on .fr-num { color: #1a6fff; }
 .fr-num.bad { color: #ef4444; }
+/*
+ * 「筛后 / 全量」的分母那一半：**弱化到与档名同色**，不与前半争视线 ——
+ * 前半是"表里有多少行"（要看的），后半是"这一路本来有多少"（对分母用的）。
+ * 两半同粗同深的话，一列数字读起来全是分数，反而看不出哪一路被筛了。
+ */
+.fr-num-den { margin-left: 2px; color: #b6bcc7; font-weight: 500; }
+.fr-item.on .fr-num-den { color: #93b8ff; }
+.fr-num.bad .fr-num-den { color: #f4a5a5; }
 /* 「无风险」上方的细分隔线：它是漏斗的漏出口、走到这儿止步，不能和上面几档排成一列读 */
 .fr-sep { height: 1px; margin: 4px 8px; background: #eef2f7; }
 /*
