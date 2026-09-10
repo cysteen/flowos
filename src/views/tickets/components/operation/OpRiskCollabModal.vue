@@ -18,8 +18,9 @@ import { riskLevelText } from '@/config/risk';
  *
  * 一个动作 + 多选建议项：客诉专员对风险工单池里的**投诉单**给一次意见与建议。
  * 提交后发生**三件事**，除此之外工单一格不动：
- *   ① 落工单处理履历（《【720】》第八类「风险结论」，由工单页从协同记录投影，
- *      见 TicketOperationView 的 syncCollabTimeline）；
+ *   ① 落工单处理履历（《【720】》第八类「风险结论」）—— **落库在 `stores/riskPool.ts`
+ *      的 `coordinate` 里**，走第八类唯一的落库口 `riskHistory.recordRiskHistory`；
+ *      工单页只负责把记录投影成履历条目（`TicketOperationView` 的 `syncRiskTimeline`）；
  *   ② 工单上挂**建议标记**（历次勾选项的并集，见 `stores/riskCollab.ts` 的 `marksOf`）；
  *   ③ **首次协同把池内条目转「已结论」**（`stores/riskPool.ts` 的 `coordinate`）——
  *      同一张投诉单可协同多次，但"还没有结论"这件事只成立到第一次为止。
@@ -98,8 +99,21 @@ const tagLine = computed(() => {
 const hitSummary = computed(() => {
   const v = riskTags.ticketVerificationOf(props.ticketNo);
   if (!v || !v.hitCount) return '无预警词命中';
-  const tail = v.latest ? `最近一次结论 ${riskLevelText(v.latest.level ?? null)}` : '尚无核实结论';
-  return `预警词命中 ${v.hitCount} 条 · ${tail}`;
+  if (v.latest) return `预警词命中 ${v.hitCount} 条 · 最近一次结论 ${riskLevelText(v.latest.level ?? null)}`;
+  /*
+   * 🔴 **命中没核实 ≠ 这张单没有结论**：命中核实与风险打标是两条线（前者判"这次命中准不准"，
+   * 后者判"这张单有没有风险、多大"）。打完标之后命中确实仍是待核实，但结论已经有了 ——
+   * 一句「尚无核实结论」会与本弹窗头部紧挨着的「风险打标 中危」在同一屏上互相打脸。
+   *
+   * ⚠️ **这是同一句话的第三处**，另两处在 `tabs/OpRiskMonitorTab.vue` 与
+   * `OpSupplementChipPanels.vue`，上一轮只改了那两处、漏了这一处。三处一律走
+   * `riskQueue.currentTagOf` 这**同一个读口**（它就是为收掉重复判断而加的），
+   * 不要在任何一处再抄一份 `entriesOf(...).find(e => !!e.tag)`。
+   */
+  const t = queue.currentTagOf(props.ticketNo);
+  if (!t) return `预警词命中 ${v.hitCount} 条 · 尚无核实结论`;
+  const lv = t.result === '无风险' ? '无风险' : riskLevelText(t.result);
+  return `预警词命中 ${v.hitCount} 条 · 命中待核实；风险打标已判「${lv}」`;
 });
 const reportSummary = computed(() => {
   const list = reportStore.reportsOf(props.ticketNo).filter((r) => r.source === '二线报备');

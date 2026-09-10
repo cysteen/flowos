@@ -789,8 +789,14 @@ const collabSectionBadge = computed(() =>
             <dt>处置备注</dt>
             <dd class="rt-note">{{ tagRecord.note }}</dd>
           </div>
+          <!--
+            🔴 **界面词一律「修正原因」**，与风险监控页那两处（打标弹窗 · 条目打标弹窗）同名。
+            此前本页写「改判理由」、监控页写「修正原因」，同一个字段两个名字。
+            取「修正」而不是「改判」：**人点下去的按钮写的就是「修正 / 重新打标」**，
+            字段跟着动作走才连得上；「改判」是 PRD 的口径词，不上界面。
+          -->
           <div v-if="tagRecord.amendReason" class="rt-kv-row rt-kv-block">
-            <dt>改判理由</dt>
+            <dt>修正原因</dt>
             <dd class="rt-note">{{ tagRecord.amendReason }}</dd>
           </div>
         </dl>
@@ -874,14 +880,15 @@ const collabSectionBadge = computed(() =>
             <p v-if="missTagNote" class="field-err">请填写处置备注</p>
           </div>
           <div v-if="isAmend" class="op-field">
-            <div class="op-label req">改判理由</div>
+            <!-- 界面词与监控页两处打标弹窗统一为「修正原因」，理由见上方只读那一格的注释 -->
+            <div class="op-label req">修正原因</div>
             <a-textarea
               v-model:value="tagAmendReason"
               :rows="2"
               :status="missTagAmend ? 'error' : undefined"
               placeholder="上一次判的是什么、这次为什么改…"
             />
-            <p v-if="missTagAmend" class="field-err">请填写改判理由</p>
+            <p v-if="missTagAmend" class="field-err">请填写修正原因</p>
           </div>
         </div>
       </a-config-provider>
