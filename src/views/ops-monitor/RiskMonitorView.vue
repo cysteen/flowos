@@ -18,6 +18,9 @@ import dayjs, { type Dayjs } from 'dayjs';
 import { ReloadOutlined, ArrowRightOutlined, RightOutlined, SearchOutlined, SettingOutlined, HistoryOutlined, CheckOutlined, UnorderedListOutlined, DownOutlined, TagOutlined, TagsOutlined, EditOutlined, SaveOutlined, FilterOutlined, UserOutlined, PaperClipOutlined } from '@ant-design/icons-vue';
 import MetricTipIcon from '@/components/MetricTipIcon.vue';
 import OpActionModal from '@/views/tickets/components/operation/OpActionModal.vue';
+// 协同处理弹窗与工单页底栏那一枚**共用同一个组件**：投诉单在池里与在工单上做的是同一件事，
+// 抄第二份的下场是两个入口的必填项、副作用与履历行文各走各的（本项目在「派生说明行」上刚栽过）
+import OpRiskCollabModal from '@/views/tickets/components/operation/OpRiskCollabModal.vue';
 import AppPagination from '@/components/AppPagination.vue';
 import { opsTip } from '@/mock/opsMonitorTips';
 import { useUserStore } from '@/stores/user';
@@ -828,6 +831,34 @@ function doClaim(r: RiskPoolItem) {
  */
 function canAssessRow(r: RiskPoolItem) {
   return canClaim.value && r.status === '评估中' && r.assignee === user.name;
+}
+
+/* ---- 协同处理：**投诉单那一路的工作面**（《【930】》§5.2 / §5C，基线 ※29）---- */
+
+/**
+ * 🔴 **池行按原单类型分工作面**：非投诉单 → 风险评估（升级 / 不升级）；
+ * 投诉单 → **协同处理**（评估意见 + 建议事项）。
+ *
+ * 【为什么必须分】"升不升级成投诉单"对一张已经是投诉单的单**是个不成立的问题**——
+ * PRD 在四处重复写死了这条（§2 摘要表 / §5.2 两处「投诉单不做风险评估」/ §9 池内分工作面），
+ * 而本页此前对两类一律出「评估」，等于把投诉单送进一个它答不了的弹窗。
+ *
+ * 【为什么不要求先「领取」】协同不改工单、不占承办人这一格（`coordinate` 只在首次时
+ * 顺手补 `assignee`），投诉单那一路本来就没有领取这一步 —— 工单页底栏那一枚
+ * 「协同处理」按钮的出现条件也只是"本单是投诉单且在池里"，两处判据保持一致。
+ *
+ * 【为什么已结论的行也照给】同一张投诉单**可多次协同**（§5C.1 次数行），
+ * 条目转「已结论」只表示它不再回待处理队列，不表示这张单不能再给意见。
+ */
+const collabOpen = ref(false);
+const collabTarget = ref<RiskPoolItem | null>(null);
+function openCollab(r: RiskPoolItem) {
+  if (!canClaim.value) {
+    message.warning('协同处理归客诉专员与管理员');
+    return;
+  }
+  collabTarget.value = r;
+  collabOpen.value = true;
 }
 
 /** 「本单另有」——风险词命中那一半。报备只挂非投诉单、命中多在投诉单，一期常为 0 */
@@ -2367,6 +2398,56 @@ function effectiveSourceOf(r: QueueRow): '实时监控' | '投诉单' | '重要�
   if (t.type === '投诉') return '投诉单';
   if (t.priority === 'P0' || t.priority === 'P1') return '重要紧急';
   return null;
+}
+
+/**
+ * 这张单**同时还满足哪几路来源**（不含它已经被归到的那一路）。
+ *
+ * 【为什么需要它】归属是**唯一**的（`effectiveSourceOf`，命中 > 投诉 > 重要紧急），
+ * 否则「三路之和 ＝ 未标记页签数」当场不成立。可"唯一归属"只是**计数口径**，
+ * 不代表这张单只有一个身份：一张既命中预警词、又是投诉单的单，被算进「实时监控」之后，
+ * "它同时也是投诉单"这条对判风险有用的事实就没地方说了 ——
+ * 而《【930】》§5A.1 与附录 A R50b 要的正是**来源多值并列**。
+ *
+ * 🔴 **它只管显示，一格都不改归属**：本函数的返回值不参与 `untaggedSliceRows` 的任何筛选，
+ * 三路之和、每档角标 ＝ 表行数 两条不变量与它无关。
+ *
+ * 🔴 **判据与 `effectiveSourceOf` 逐条同源**，不另立一套：那边先读条目自带的 `source`
+ * （历史事实），再按工单属性推。两边分家的话，会出现"归到 A 路、却标着兼 A"这种自相矛盾。
+ *
+ * 【互斥关系】「投诉单」与「重要紧急」按**工单类型**天然互斥（一张单不可能既是投诉又非投诉），
+ * 故实际能出现的多路只有「实时监控 ＋ 其中之一」。多于一个时并列，不折叠。
+ */
+function allSourcesOf(r: QueueRow): Array<'实时监控' | '投诉单' | '重要紧急'> {
+  const out: Array<'实时监控' | '投诉单' | '重要紧急'> = [];
+  // ① 预警词那一路：条目本就从这条路进来的，或者这张单在命中台账里有记录
+  //    （「手动筛查」折算进「实时监控」，与 `effectiveSourceOf` 同一条口径）
+  if (r.source === '实时监控' || r.source === '手动筛查' || riskTags.hitsOfTicket(r.ticketNo).length) {
+    out.push('实时监控');
+  }
+  // ② 工单属性那两路。派生单落在 derivedTickets 里，两处都查（与 `ticketOfRow` 同）
+  const t = TICKET_BY_NO.get(r.ticketNo) ?? derivedTickets.find(r.ticketNo) ?? null;
+  if (t && isLiveTicket(t)) {
+    if (t.type === '投诉') out.push('投诉单');
+    else if (t.priority === 'P0' || t.priority === 'P1') out.push('重要紧急');
+  }
+  // ③ 条目自带的来源若上面两支都没推出来，仍算一路：它是这条条目**当初真的从哪儿进来的**，
+  //    工单属性事后变了（改类型、降优先级）不该把这段历史抹掉
+  if ((r.source === '投诉单' || r.source === '重要紧急') && !out.includes(r.source)) out.push(r.source);
+  return out;
+}
+
+/** 「兼：」要列的那几路 ＝ 全部来源减去当前归属的那一路。单路行返回空数组、界面上什么都不显示 */
+function alsoSourcesOf(r: QueueRow): string[] {
+  const eff = effectiveSourceOf(r);
+  return allSourcesOf(r).filter((s) => s !== eff);
+}
+
+/** 「兼：」那枚 chip 的悬停说明。两句话：本行按什么次序只算一档、「兼」列的是什么 */
+function alsoSourceTitle(r: QueueRow): string {
+  return `本行按「实时监控 > 投诉单 > 重要紧急」的固定次序**只算进一档**（现算「${effectiveSourceOf(r) ?? '—'}」），`
+    + `三路两两互斥、之和恒等于「未标记」页签上那个数。\n`
+    + `「兼」列出的是它**同时满足**的其余来源：${alsoSourcesOf(r).join('、')} —— 只作提示，不改归属、不计入任何一档。`;
 }
 
 /** 切片 ↔ 监控来源字面量。三片就是这一维的三个值，故映射一处写死、别处只引用它 */
@@ -4723,6 +4804,22 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
             等待时长：**队列属性**（自进监控时刻起算），工作台没有这一列，故走附加列扩展位。
             🔴 未纳入监控的行写「—」而不是 0 分钟：0 是一个会被读成"刚进来"的假数。
           -->
+          <!--
+            多路来源的行内小标「兼：X」。与上面那张条目表**共用同一个判据**
+            （`alsoSourcesOf`），两张表不会一处标、一处不标 —— 本文件族刚在
+            「派生说明行」与「尚无核实结论」上连栽两次同源表述只改一处的跟头。
+            单路行 `alsoSourcesOf` 返回空数组，v-for 不渲染，行一格不变。
+          -->
+          <template #title-extra="{ ticket }">
+            <template v-if="rowOfTicketNo(ticket.no)">
+              <span
+                v-for="s in alsoSourcesOf(rowOfTicketNo(ticket.no)!)"
+                :key="`also-${ticket.no}-${s}`"
+                class="src-tag also-src"
+                :title="alsoSourceTitle(rowOfTicketNo(ticket.no)!)"
+              >兼：{{ s }}</span>
+            </template>
+          </template>
           <template #cell-waited="{ ticket }">
             <span
               class="rr-waited"
@@ -4855,6 +4952,19 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               </td>
               <td>
                 <button type="button" class="rt-no" @click="openTicket(e.ticketNo)">{{ e.ticketNo }}</button>
+                <!--
+                  🔴 **多路命中才标「兼：X」，单路行什么都不显示**（《【930】》§5A.1 / 附录 A R50b
+                  要求来源多值并列；而归属仍是唯一的，见 `allSourcesOf` 的说明）。
+                  【为什么不加回整列】九成的行是单路，那一列在它们身上就是左栏档名的复述；
+                  为一成的行让每一行都多占一列，是拿全表的可读性换一个偶发的信息。
+                  故做成**跟着行走**的弱化 chip：有才出、没有就不占位。
+                -->
+                <span
+                  v-for="s in alsoSourcesOf(e)"
+                  :key="`also-${e.id}-${s}`"
+                  class="src-tag also-src"
+                  :title="alsoSourceTitle(e)"
+                >兼：{{ s }}</span>
                 <div v-if="kwEvidenceView" class="hit-sub rr-desc" :title="rowTitleOf(e)">{{ rowTitleOf(e) }}</div>
               </td>
               <!--
@@ -5183,7 +5293,28 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                   🔴 **按行自己走到哪一步判，不按当前是哪一档判**：不限阶段那一档里
                   三段混在一张表上，照 `reportView` 判的话，已结论的行也会长出一枚「评估」按钮。
                 -->
-                <template v-if="poolStageOf(r) === '已结论'">
+                <!--
+                  🔴 **先按原单类型分工作面，再按走到哪一步分动作**（《【930】》§2 摘要表 ·
+                  §5.2 两处「投诉单不做风险评估」· §9 池内分工作面 —— 同一条口径 PRD 写死了四处）：
+                  **投诉单 → 协同处理**，**非投诉单 → 风险评估**。
+                  此前两类一律出「评估」，投诉单点开是升级 / 不升级弹窗 ——
+                  而"升不升级成投诉单"对一张已经是投诉单的单根本不成立。
+                  协同不必先领取、已结论也可再协同（§5C.1 次数行），故它不进下面那三档分支。
+                -->
+                <template v-if="isComplaintTicket(r.ticketNo)">
+                  <button
+                    v-if="canClaim"
+                    type="button" class="row-btn row-btn-tag"
+                    title="投诉单不做风险评估，走协同处理：给评估意见 + 建议事项；工单状态与处理人均不变"
+                    @click="openCollab(r)"
+                  >协同处理</button>
+                  <span
+                    v-else
+                    class="hit-sub"
+                    title="协同处理归客诉专员与管理员；本视角只读"
+                  >—</span>
+                </template>
+                <template v-else-if="poolStageOf(r) === '已结论'">
                   <span
                     class="hit-sub"
                     title="评估结论提交即固化，不可修改；如需纠正请由报备人再报一次"
@@ -6572,6 +6703,18 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
         </section>
       </div>
     </OpActionModal>
+
+    <!--
+      协同处理弹窗（投诉单那一路的工作面）。**与工单页底栏那一枚是同一个组件**：
+      必填项、两个副作用（落第八类履历 + 挂建议标记）、"不发通知"这条口径都在组件里，
+      两个入口不会各走各的。提交后条目转「已结论」由 `riskPool.coordinate` 一处收口。
+    -->
+    <OpRiskCollabModal
+      v-if="collabTarget"
+      v-model:open="collabOpen"
+      :ticket-no="collabTarget.ticketNo"
+      :ticket-title="TICKET_BY_NO.get(collabTarget.ticketNo)?.title ?? derivedTickets.find(collabTarget.ticketNo)?.title"
+    />
 
     <!--
       🔴 **分派弹窗已删**（业务第三轮拍板取消分派 / 改派 / 批量分派整套）。
@@ -8073,6 +8216,19 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
   border: 1px dashed #dde3ea;
   color: #9ca3af;
   padding: 0 6px;
+}
+/*
+ * 「兼：X」＝ 这张单**同时还满足**的其余来源（多路命中的行才有）。
+ * 复用 `.src-tag` 的骨架、**不新造视觉**，只压小一档并转灰：它是提示、不是这一格的主角，
+ * 与紧邻的工单号抢不了视线。单路行根本不渲染这个节点，故不占位、不留空。
+ */
+.src-tag.also-src {
+  margin: 2px 4px 0 0;
+  padding: 0 6px;
+  font-size: 11px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  color: #94a3b8;
 }
 /*
  * 「实时监控」证据列里的风险词 chip：一单多命中时并排摆，故要能换行、要有行距。

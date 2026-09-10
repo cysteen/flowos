@@ -400,6 +400,12 @@ const gridTemplateColumns = computed(() => {
           :highlight-mention-unread="highlightMentionUnread"
           @click-no="emit('clickNo', $event)"
         />
+        <!--
+          调用方挂在**工单号 / 标题这一格里**的行内小标（当前用于风险监控页的「兼：X」多路来源标）。
+          🔴 **不做成附加列**：这类信息只在少数行上成立，开一列会让绝大多数行多出一格空白；
+          跟着标题走则是"有才出"。默认无插槽内容时本节点不渲染任何东西，行高一格不变。
+        -->
+        <slot name="title-extra" :ticket="t" />
       </div>
 
       <template v-for="colKey in orderedCols" :key="`${t.id}-${colKey}`">
