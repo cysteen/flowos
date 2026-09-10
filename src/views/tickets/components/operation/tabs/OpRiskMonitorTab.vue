@@ -28,9 +28,27 @@ import {
 // 本单的报备读口在 B 线自己的 store 里；行类型取合并池的行（同一张单上还可能有
 // A 线自动入池的条目，见 riskReports.ts 的 `reportsOf` 说明）。
 import { useRiskReportStore } from '@/stores/riskReports';
-import type { AssessDecision, ReportAssessment, RiskPoolItem } from '@/stores/riskShared';
+import { useRiskQueueStore } from '@/stores/riskQueue';
+import {
+  NO_RISK,
+  RISK_TAG_RESULTS,
+  isOpenStatus,
+  isPooledStatus,
+  type AssessDecision,
+  type ReportAssessment,
+  type RiskPoolItem,
+  type RiskTagResult,
+} from '@/stores/riskShared';
 import OpActionModal from '../OpActionModal.vue';
 import { useUserStore } from '@/stores/user';
+import { resolveTicketTypeFor, riskCollabOf } from '@/views/tickets/composables/opActions';
+import {
+  adviceLabelOf,
+  advicePlaceholderOf,
+  decisionText,
+  isEscalateDecision,
+  poolStatusText,
+} from '../OpRiskDecision';
 
 const props = defineProps<{
   ticketNo: string;
@@ -47,6 +65,7 @@ const emit = defineEmits<{
 
 const user = useUserStore();
 const reportStore = useRiskReportStore();
+const queue = useRiskQueueStore();
 const router = useRouter();
 const {
   ASSESS_DECISIONS,
@@ -55,28 +74,51 @@ const {
   assessAdvice,
   missAssessDecision,
   missAssessAdvice,
-  assessAdviceLabel,
-  assessAdvicePlaceholder,
-  takeoverHint,
   openAssess,
   confirmAssess,
   canAssessReport,
 } = useRiskReportAssess();
 
-const expanded = ref({ report: true, assess: true, risk: true });
+/*
+ * 决策文案与提示由本页自己给（`../OpRiskDecision`），不取 composable 里那三个：
+ * 基线 v1.23 已把「接管」整体作废、定名「升级 / 不升级」，而 composable 与 store 侧的改名
+ * 归风险那一路，两边不会同一次落地。工单页把"落到屏幕上的那个词"收在一处，
+ * 谁先改都不会出现"按钮写升级、说明写接管"。
+ */
+const advicePlaceholder = computed(() => advicePlaceholderOf(assessDecision.value));
+/** 「升级」那一档的后果。本形态只在**非投诉单**上出现，故只讲第一跳派生这一路 */
+const escalateHint = '提交后原单落「已升级投诉」并派生一张投诉单，新单全量继承本单信息。此步不可撤销';
+
+const expanded = ref({ report: true, assess: true, tag: true, collab: true, risk: true });
 const riskLevelOptions = RISK_LEVEL_SELECT_OPTIONS;
 
-/** 在队的那一条（至多一条） */
-const pending = computed(() => reportStore.pendingOf(props.ticketNo));
+/** 本单是不是投诉单。类型不在 props 里，走与操作页同一条取数链——本 Tab 的内容按它分岔 */
+const isComplaintTicket = computed(() => resolveTicketTypeFor(props.ticketNo) === '投诉');
+
+/**
+ * 本单的**报备**条目（B 线）。
+ *
+ * 🔴 **不用 `reportStore.reportsOf` 的全量**：那个读口把 A 线自动进池的条目也并了进来
+ * （见 `stores/riskReports.ts` 的说明）。A 线的条目在这张列表上会渲染成一条
+ * 报备人「系统」、报备原因「其他」、状态写着「实时监控中」的灰点记录 —— 三格全是占位，
+ * 读的人会以为有人报过一次却什么都没填。它们是**打标那条链**上的东西，
+ * 归下面的「风险打标」块，不进报备记录。判据取 `source`，那是条目自带的身份标。
+ */
+const reportItems = computed(
+  () => reportStore.reportsOf(props.ticketNo).filter((r) => r.source === '二线报备'),
+);
+/** 在队的那一条（至多一条，基线 ※29） */
+const pending = computed(() => reportItems.value.find((r) => isOpenStatus(r.status)) ?? null);
 /** 历史条目：已评估 + 已撤回，时间倒序。在队那条单独占一块，不进这个列表 */
-const history = computed(() => reportStore.historyOf(props.ticketNo));
+const history = computed(() => reportItems.value.filter((r) => !isOpenStatus(r.status)));
 // ---- 撤回（PRD §4.8）----
-// 提交即固化、不提供编辑；填错了只能撤回后重报。**仅待分派、仅本人**，
+// 提交即固化、不提供编辑；填错了只能撤回后重报。**仅待领取态、仅本人**，
 // 且撤回后**不删除**，转「已撤回」并留原因 —— 它是"这个人当时报过什么"的证据。
 //
-// 🔴 **分派之后不给撤回按钮**（N4 三态）：活已经指给某个客诉专员了，这时候抽走
-// 等于让他白读一遍。store 的 withdraw() 也只认「待分派」，两处口径必须一致——
-// 按钮还在、点了却什么都没发生，比按钮消失更糟。分派后要纠错走"评完再报一次"。
+// 🔴 **被领取之后不给撤回按钮**：活已经落到某个客诉专员名下了，这时候抽走
+// 等于让他白读一遍。store 的 withdraw() 也只认待领取那一态（存储值仍写「待分派」，
+// 界面词见 OpRiskDecision.ts），两处口径必须一致——按钮还在、点了却什么都没发生，
+// 比按钮消失更糟。被领取后要纠错走"评完再报一次"。
 const withdrawOpen = ref(false);
 const withdrawReason = ref('');
 const withdrawTried = ref(false);
@@ -84,6 +126,7 @@ const missWithdrawReason = computed(() => withdrawTried.value && !withdrawReason
 const canWithdraw = computed(
   () => !props.readonly
     && !!pending.value
+    // 存储值仍是「待分派」，界面写「待领取」（改名归风险 store 那一路，见 OpRiskDecision.ts）
     && pending.value.status === '待分派'
     && pending.value.by === user.name,
 );
@@ -150,7 +193,7 @@ const missRiskDesc = computed(
 /*
  * ⚠️ 这里曾有一行只读的「风险评估结论：高危 · 吴投诉（客诉专员）· …」（riskAssessLine）。
  * **已整条删除**（2026-09-09 业务第二轮拍板，《【930】》N1）：评估决策改回二选一
- * 「不升级 / 接管」之后没有"确认有风险 + 定级"这一档，评估**不再回传工单风险字段** ——
+ * 二选一「不升级 / 升级」之后没有"确认有风险 + 定级"这一档，评估**不再回传工单风险字段** ——
  * 没有"被坐席已填的值挡住"这回事了，也就没有必须另外亮一行的理由。
  * 结论本身在本 Tab 的「评估结果」区块里全文可见，比一行摘要说得全。
  *
@@ -214,20 +257,21 @@ function waitedText(at: string) {
 /**
  * 记录行的结论摘要。**只有决策**（二选一）——原先还并了一个风险等级，
  * 二选一之后评估不再定级（N1），那一段没有取值来源了。
- * 「接管」额外带上派生的新投诉单号：这条记录的实际去向就在那张单上，
- * 只写「接管」两个字，读的人还得再翻一次「评估结果」才知道去了哪。
+ * 「升级」额外带上派生的新投诉单号：这条记录的实际去向就在那张单上，
+ * 只写「升级」两个字，读的人还得再翻一次「评估结果」才知道去了哪。
  */
 function assessmentSummary(r: RiskPoolItem) {
   const a = r.assessment;
   if (!a) return '';
-  if (a.decision === '接管' && a.escalatedToNo) return `接管 → ${a.escalatedToNo}`;
-  return a.decision;
+  const text = decisionText(a.decision);
+  if (isEscalateDecision(a.decision) && a.escalatedToNo) return `${text} → ${a.escalatedToNo}`;
+  return text;
 }
 
 /**
  * 记录列表里的结论行**只给一行摘要**：谁、什么时候评的。
  *
- * 【为什么不带反馈意见 / 接管说明】完整结论（决策 / 评估人 / 评估时间 / 意见全文 / 接管去向）
+ * 【为什么不带反馈意见 / 升级说明】完整结论（决策 / 评估人 / 评估时间 / 意见全文 / 升级去向）
  * 由下方「评估结果」区块承担（业务拍板 2026-09-09）。两处都写全文的话，
  * 同一条结论在一屏上出现两遍 —— 报备多轮之后两块内容还会分叉，
  * 读的人不知道该信哪个。这里只答"这条评过没有、谁评的"，详情往下看。
@@ -239,20 +283,20 @@ function assessmentDetail(r: RiskPoolItem) {
 }
 
 /**
- * 在队那条的状态标。**分「待分派 / 评估中」两态显示**（N4）——
- * 都笼统写「待评估」的话，报备人看不出"还没人接"与"李文萍正在看"的差别，
- * 而这正是做分派要解决的事；催起来也不知道该催谁。
+ * 在队那条的状态标。**分「待领取 / 已领取」两态显示**——
+ * 都笼统写「待评估」的话，报备人看不出"还没人接"与"李文萍正在看"的差别；
+ * 催起来也不知道该催谁。
  */
 const pendingStateText = computed(() => {
   const p = pending.value;
   if (!p) return '';
-  if (p.status === '评估中') return p.assignee ? `评估中 · ${p.assignee}` : '评估中';
-  return '待分派';
+  if (p.status === '评估中') return p.assignee ? `已领取 · ${p.assignee}` : '已领取';
+  return '待领取';
 });
 
 const reportSectionBadge = computed(() => {
   // 角标跟着卡片上的状态标走，两处写同一个词
-  if (pending.value) return pending.value.status;
+  if (pending.value) return poolStatusText(pending.value.status);
   if (history.value.length) return String(history.value.length);
   return undefined;
 });
@@ -270,24 +314,18 @@ const latestAssessed = computed(() =>
 const assessSectionBadge = computed(() => (latestAssessed.value ? '已评估' : undefined));
 
 /**
- * 「接管」派生出的新投诉单号。**只有接管才有值** —— 二选一之后评估的产出
- * 要么是一句反馈意见（不升级），要么是一张新单（接管），没有第三种。
+ * 「升级」派生出的新投诉单号。**只有升级那一档才有值** —— 二选一之后评估的产出
+ * 要么是一句反馈意见（不升级），要么是一张新投诉单（升级），没有第三种。
  */
 const escalatedNo = computed(() => {
   const a = latestAssessed.value?.assessment;
-  return a?.decision === '接管' ? (a.escalatedToNo ?? '') : '';
+  return a && isEscalateDecision(a.decision) ? (a.escalatedToNo ?? '') : '';
 });
 
-function adviceLabel(decision: AssessDecision) {
-  return decision === '接管' ? '接管说明' : '反馈意见';
-}
+const adviceLabel = adviceLabelOf;
 
 function decisionTone(decision: AssessDecision) {
-  const map: Record<AssessDecision, string> = {
-    不升级: 'ok',
-    接管: 'danger',
-  };
-  return map[decision];
+  return isEscalateDecision(decision) ? 'danger' : 'ok';
 }
 
 function formatAssessor(a: ReportAssessment) {
@@ -295,19 +333,131 @@ function formatAssessor(a: ReportAssessment) {
 }
 
 /**
- * 「接管」派生的新投诉单：站内打开。
- * 【为什么必须可点】接管走的是《【830】》已有的第一跳派生——原单落终态、整页只读，
+ * 「升级」派生的新投诉单：站内打开。
+ * 【为什么必须可点】升级走的是《【830】》已有的第一跳派生——原单落终态、整页只读，
  * 接下来的事全在新单上。只把单号当文字印出来，报备人还得自己去列表里搜一遍。
  */
 function openEscalatedTicket(no: string) {
   router.push(`/tickets/${no}`);
 }
 
+/* ==================== 风险打标（A 线的入池门槛） ==================== */
+
+/**
+ * **为什么另开一块，而不是复用下面的「风险标记」区**（2026-09-10 核对后的取舍）。
+ *
+ * 两块看着都在说"这单有没有风险、多大"，但它们是两套东西，合在一起会当场出三处矛盾：
+ *
+ * | | 风险标记区（下方） | 风险打标（本块） |
+ * |---|---|---|
+ * | 存哪 | `ProcessFormDraft.riskFlag / riskLevel / riskDescription`，随「保存」落工单 | `stores/riskQueue.ts` 的条目，**提交即生效**，不等保存 |
+ * | 谁填 | **处理人自述**（二线在办这张单时填的判断） | **打标人**（客诉专员 / 投诉督导），带打标人、角色、时刻、处置备注与改判历史 |
+ * | 取值 | 是否有风险三档 + 风险等级两个字段 | **四选一**：低 / 中 / 高 / 无风险（一个枚举，非法组合从类型上就没有） |
+ * | 作用 | 工单字段，供统计与回传比对（915 §7.3「工单侧优先」） | **进不进风险工单池的那道门**（《【930】》§5A.3） |
+ * | 权限 | 二线在**非投诉单**上可写 | **非投诉单的处理人一律不能打**；投诉单由客诉专员在本页打 |
+ *
+ * 尤其是最后一行：合成一块之后，同一个控件对二线在非投诉单上要可写、对同一批人在
+ * 打标这件事上又必须只读 —— 一个控件答不了两个权限。故**新开一块**，
+ * 打标结论以只读形式回到风险标记区（那里本来就有一行只读的命中核实结论作邻居）。
+ */
+
+/** 本单的 A 线条目（自动识别进来的，一张单至多一条在池，§3.1） */
+const tagEntry = computed(() => queue.entriesOf(props.ticketNo).find((e) => !!e.tag)
+  ?? queue.entriesOf(props.ticketNo)[0]
+  ?? null);
+const tagRecord = computed(() => tagEntry.value?.tag ?? null);
+/** 打标历史（含改判），时间正序。改判独立成条、不覆盖首次那条 */
+const tagHistory = computed(() => (tagEntry.value ? queue.tagHistoryOf(tagEntry.value.id) : []));
+
+/**
+ * 谁能在这一页打标（§3.1，2026-09-10 拍板）：
+ * **投诉单** —— 客诉专员在工单处理页自行打标；
+ * **非投诉单** —— 处理人一律不能打，只靠命中规则自动打或审核人员在后台打。
+ * 判据里的角色只有一个，因为本页只可能站着处理侧或客诉专员：投诉督导的打标入口在风险监控页。
+ */
+const canTag = computed(
+  () => isComplaintTicket.value && user.roleKey === 'complaint-handler' && !!tagEntry.value,
+);
+
+const tagResults = RISK_TAG_RESULTS;
+const tagOpen = ref(false);
+const tagResult = ref<RiskTagResult | ''>('');
+const tagNote = ref('');
+const tagAmendReason = ref('');
+const tagTried = ref(false);
+/** 已有结论时这次就是**改判**，改判必须说清为什么（首次打标没有这一项） */
+const isAmend = computed(() => !!tagRecord.value);
+const missTagResult = computed(() => tagTried.value && !tagResult.value);
+const missTagNote = computed(() => tagTried.value && !tagNote.value.trim());
+const missTagAmend = computed(() => tagTried.value && isAmend.value && !tagAmendReason.value.trim());
+
+function openTag() {
+  if (!canTag.value) return;
+  tagResult.value = tagRecord.value?.result ?? '';
+  tagNote.value = '';
+  tagAmendReason.value = '';
+  tagTried.value = false;
+  tagOpen.value = true;
+}
+
+function nowStamp(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/**
+ * 提交打标。落 store 走 `recordTagFor`（按单号找条目，状态机的唯一入口）。
+ *
+ * 🔴 **本轮不发通知**（2026-09-10 业务口径变更）：《【930】》§5A.3 定的 `risk.tagged`
+ * 「打标结果通知当前处理人」**本轮不做** —— 现有消息体系要先整体重新梳理，期间不加新事件。
+ * 于是「打标结果二线处理人可见且通知」这条口径**只落了"可见"那一半**：
+ * 可见 ＝ 页头的打标条 + 本块的只读回显；触达 ＝ 无，处理人得自己打开这张单才看得到。
+ * **一线仍不可见**：本 Tab 对一线整个不渲染，页头那条也判掉了一线。
+ */
+function confirmTag() {
+  tagTried.value = true;
+  if (!tagResult.value || !tagNote.value.trim()) return;
+  if (isAmend.value && !tagAmendReason.value.trim()) return;
+
+  const at = nowStamp();
+  const ok = queue.recordTagFor(props.ticketNo, {
+    result: tagResult.value,
+    note: tagNote.value.trim(),
+    by: user.name || '当前用户',
+    byRole: user.role.name || '客诉专员',
+    at,
+    ...(isAmend.value ? { amendReason: tagAmendReason.value.trim() } : {}),
+  });
+  if (!ok) {
+    message.warning('本单没有实时监控条目，无法在工单页打标');
+    return;
+  }
+
+  const levelText = tagResult.value === NO_RISK ? '无风险' : riskLevelText(tagResult.value);
+  tagOpen.value = false;
+  message.success(`已标记为「${levelText}」`);
+}
+
+/* ==================== 协同记录（《【930】》§3.3） ==================== */
+
+/** 本单历次协同处理，时间倒序。同一张投诉单可多次协同，每次各一条 */
+const collabRecords = computed(() => riskCollabOf(props.ticketNo));
+const collabSectionBadge = computed(() =>
+  collabRecords.value.length ? String(collabRecords.value.length) : undefined,
+);
+
 </script>
 
 <template>
   <div class="risk-tab">
+    <!--
+      报备与评估两块**只在非投诉单上出现**（基线 ※29 类型集 ＝ 咨 建 商）：
+      报备的价值在这张单还没变成投诉之前；已经是投诉单的，"升不升级成投诉单"是个不成立的问题。
+      投诉单在本 Tab 上看到的是「风险打标」与「协同记录」两块（《【930】》§3.3 / §5A.3）。
+    -->
     <OpCollapsibleSection
+      v-if="!isComplaintTicket"
       title="风险报备"
       :icon="ContainerOutlined"
       :badge="reportSectionBadge"
@@ -358,7 +508,7 @@ function openEscalatedTicket(no: string) {
           </button>
           <!-- 按钮消失得给个理由：不写这一句，报备人只会以为撤回入口自己丢了 -->
           <span v-else-if="pending.status === '评估中'" class="rr-withdraw-locked">
-            已分派评估，不可撤回
+            已被领取评估，不可撤回
           </span>
         </header>
 
@@ -407,7 +557,7 @@ function openEscalatedTicket(no: string) {
                   class="rr-pill rr-pill-sm"
                   :class="h.status === '已撤回' ? 'rr-pill-gray' : 'rr-pill-done'"
                 >
-                  {{ h.status }}
+                  {{ poolStatusText(h.status) }}
                 </span>
               </header>
               <p class="rr-item-desc">{{ h.desc }}</p>
@@ -458,8 +608,9 @@ function openEscalatedTicket(no: string) {
 
     <!-- 评估结论：领取后自动打开，或在队卡片点「评估」 -->
     <OpActionModal
+      v-if="!isComplaintTicket"
       :open="assessOpen"
-      title="评估报备"
+      title="风险评估"
       :icon="EditOutlined"
       tone="primary"
       :width="520"
@@ -473,29 +624,31 @@ function openEscalatedTicket(no: string) {
           <div class="op-field ticket-assess-dec-field">
             <div class="op-field-h ticket-assess-dec-row">
               <div class="op-label req">评估决策</div>
+              <!-- 值取 store 的枚举、字取界面词（※29 定名「升级 / 不升级」），见 OpRiskDecision.ts -->
               <a-radio-group v-model:value="assessDecision" class="ticket-assess-dec-inline">
-                <a-radio v-for="d in ASSESS_DECISIONS" :key="d" :value="d">{{ d }}</a-radio>
+                <a-radio v-for="d in ASSESS_DECISIONS" :key="d" :value="d">{{ decisionText(d) }}</a-radio>
               </a-radio-group>
             </div>
             <div v-if="missAssessDecision" class="ticket-assess-err ticket-assess-foot">请先选择一个评估决策</div>
-            <div v-else-if="assessDecision === '接管'" class="op-hint ticket-assess-foot">
-              {{ takeoverHint }}
+            <div v-else-if="isEscalateDecision(assessDecision)" class="op-hint ticket-assess-foot">
+              {{ escalateHint }}
             </div>
           </div>
           <div class="op-field">
-            <div class="op-label req">{{ assessAdviceLabel || '反馈意见' }}</div>
+            <div class="op-label req">{{ adviceLabel(assessDecision) }}</div>
             <a-textarea
               v-model:value="assessAdvice"
               :rows="3"
-              :placeholder="assessAdvicePlaceholder || '请先选择评估决策'"
+              :placeholder="advicePlaceholder"
             />
-            <div v-if="missAssessAdvice" class="ticket-assess-err">请填写{{ assessAdviceLabel || '反馈意见' }}</div>
+            <div v-if="missAssessAdvice" class="ticket-assess-err">请填写{{ adviceLabel(assessDecision) }}</div>
           </div>
         </section>
       </div>
     </OpActionModal>
 
     <OpCollapsibleSection
+      v-if="!isComplaintTicket"
       title="评估结果"
       :icon="CheckCircleOutlined"
       :badge="assessSectionBadge"
@@ -510,14 +663,14 @@ function openEscalatedTicket(no: string) {
       >
         <!--
           结论二选一，**没有风险等级这一档**（N1）——原先并排的等级标已删。
-          「接管」的实际产出是一张新投诉单，故头部直接把去向摆出来。
+          「升级」的实际产出是一张新投诉单，故头部直接把去向摆出来。
         -->
         <header class="ra-head">
           <span
             class="ra-decision"
             :class="`tone-${decisionTone(latestAssessed.assessment.decision)}`"
           >
-            {{ latestAssessed.assessment.decision }}
+            {{ decisionText(latestAssessed.assessment.decision) }}
           </span>
           <!-- 有单号才敢说"已派生"：指不出是哪一张的时候，这句话等于没说 -->
           <span v-if="escalatedNo" class="ra-derive">已派生投诉工单</span>
@@ -534,7 +687,7 @@ function openEscalatedTicket(no: string) {
           </div>
           <div class="ra-kv-row">
             <dt>评估决策</dt>
-            <dd>{{ latestAssessed.assessment.decision }}</dd>
+            <dd>{{ decisionText(latestAssessed.assessment.decision) }}</dd>
           </div>
           <div v-if="escalatedNo" class="ra-kv-row">
             <dt>新投诉单</dt>
@@ -554,8 +707,8 @@ function openEscalatedTicket(no: string) {
 
         <!-- 两个决策的后续走向完全不同，必须写清楚，否则「不升级」看着像"什么都没发生" -->
         <p class="ra-foot">
-          <template v-if="latestAssessed.assessment.decision === '接管'">
-            本单已由客诉专员接管并升级为投诉工单，原单落「已升级投诉」；后续处理在新单上进行。
+          <template v-if="isEscalateDecision(latestAssessed.assessment.decision)">
+            本单已由客诉专员升级为投诉工单，原单落「已升级投诉」；后续处理在新单上进行。
           </template>
           <template v-else>
             本单不升级，仍由原处理人按反馈意见继续处理；如后续仍未闭环，可再次发起风险报备。
@@ -565,6 +718,170 @@ function openEscalatedTicket(no: string) {
 
       <div v-else class="ra-empty">
         尚无评估结论
+      </div>
+    </OpCollapsibleSection>
+
+    <!--
+      风险打标（《【930】》§5A.3）。**读的人是处理人**：等级、打标人、打标时刻、处置备注
+      四项缺一不可 —— 少了打标人与时刻，这条结论就成了一句没有出处的判断，处理人无从追问。
+      写的入口只对投诉单 + 客诉专员出（§3.1），非投诉单在这里恒为只读回显。
+    -->
+    <OpCollapsibleSection
+      title="风险打标"
+      :icon="WarningOutlined"
+      :badge="tagRecord ? (tagRecord.result === '无风险' ? '无风险' : `${tagRecord.result}危`) : undefined"
+      :badge-variant="tagRecord && tagRecord.result !== '无风险' ? 'warn' : 'hint'"
+      :expanded="expanded.tag"
+      @toggle="expanded.tag = !expanded.tag"
+    >
+      <section v-if="tagRecord" class="rt-sheet">
+        <header class="rt-head">
+          <span
+            class="rt-level"
+            :class="tagRecord.result === '无风险' ? 'tone-none' : `tone-${tagRecord.result}`"
+          >
+            {{ tagRecord.result === '无风险' ? '无风险' : riskLevelText(tagRecord.result) }}
+          </span>
+          <span v-if="tagEntry && isPooledStatus(tagEntry.status)" class="rt-pool">
+            风险工单池 · {{ poolStatusText(tagEntry.status) }}
+          </span>
+          <span v-else-if="tagRecord.result === '无风险'" class="rt-pool">不进池</span>
+          <!-- 打标是即时生效的动作，不随「保存」走，故按钮不受 Tab 的表单只读约束，见 script -->
+          <a-config-provider v-if="canTag" :component-disabled="false">
+            <button type="button" class="rt-btn" @click="openTag">
+              {{ isAmend ? '重新打标' : '打标' }}
+            </button>
+          </a-config-provider>
+        </header>
+        <dl class="rt-kv">
+          <div class="rt-kv-row">
+            <dt>打标人</dt>
+            <dd>{{ tagRecord.by }}（{{ tagRecord.byRole }}）</dd>
+          </div>
+          <div class="rt-kv-row">
+            <dt>打标时刻</dt>
+            <dd>{{ tagRecord.at }}</dd>
+          </div>
+          <div class="rt-kv-row rt-kv-block">
+            <dt>处置备注</dt>
+            <dd class="rt-note">{{ tagRecord.note }}</dd>
+          </div>
+          <div v-if="tagRecord.amendReason" class="rt-kv-row rt-kv-block">
+            <dt>改判理由</dt>
+            <dd class="rt-note">{{ tagRecord.amendReason }}</dd>
+          </div>
+        </dl>
+        <!-- 改判独立成条、不覆盖首次那条：两条并排才读得出"从中危改成高危"这条爬坡 -->
+        <div v-if="tagHistory.length > 1" class="rt-history">
+          <span class="rt-history-head">打标历史</span>
+          <span v-for="(h, i) in tagHistory" :key="i" class="rt-history-item">
+            {{ h.level ? riskLevelText(h.level) : '无风险' }} · {{ h.by }} · {{ formatShortAt(h.at) }}
+          </span>
+        </div>
+        <p class="rt-foot">
+          打标结论不改工单状态与处理人；改判独立留一条历史、不覆盖首次那条。<template
+            v-if="tagEntry && isPooledStatus(tagEntry.status) && !isComplaintTicket"
+          >本单在池内待处置期间不另收风险报备，出结论后可再发起。</template>
+        </p>
+      </section>
+
+      <div v-else class="rt-empty">
+        <template v-if="canTag">
+          <p class="rt-empty-title">本单尚未打标</p>
+          <a-config-provider :component-disabled="false">
+            <button type="button" class="rt-btn" @click="openTag">打标</button>
+          </a-config-provider>
+        </template>
+        <template v-else>
+          <p class="rt-empty-title">本单尚未打标</p>
+          <!-- 说清"为什么这里没有按钮"：不写这一句，处理人只会以为入口坏了或自己权限少了 -->
+          <p class="rt-empty-hint">非投诉单的风险等级由命中规则自动打标，或由客诉专员 / 投诉督导在风险监控页标注，处理人没有打标入口</p>
+        </template>
+      </div>
+    </OpCollapsibleSection>
+
+    <!-- 打标弹窗：四选一 + 处置备注；已有结论时这次是改判，必须说清为什么 -->
+    <OpActionModal
+      v-model:open="tagOpen"
+      title="风险打标"
+      :icon="WarningOutlined"
+      tone="warn"
+      :width="460"
+      ok-text="提交打标"
+      @ok="confirmTag"
+    >
+      <a-config-provider :component-disabled="false">
+        <div class="op-form">
+          <p class="rt-modal-sub">
+            工单 {{ ticketNo }}<template v-if="ticketTitle"> · {{ ticketTitle }}</template>
+          </p>
+          <div class="op-field">
+            <div class="op-label req">风险等级</div>
+            <a-radio-group v-model:value="tagResult" class="rt-radio-row">
+              <a-radio v-for="r in tagResults" :key="r" :value="r">
+                {{ r === '无风险' ? '无风险' : riskLevelText(r) }}
+              </a-radio>
+            </a-radio-group>
+            <p v-if="missTagResult" class="field-err">请选择风险等级</p>
+            <p class="rt-modal-tip">
+              标为 低 / 中 / 高 即进风险工单池等客诉专员处置；标为「无风险」不进池。
+            </p>
+          </div>
+          <div class="op-field">
+            <div class="op-label req">处置备注</div>
+            <a-textarea
+              v-model:value="tagNote"
+              :rows="3"
+              :status="missTagNote ? 'error' : undefined"
+              placeholder="写清判成这一档的依据，以及要处理人注意什么…"
+            />
+            <p v-if="missTagNote" class="field-err">请填写处置备注</p>
+          </div>
+          <div v-if="isAmend" class="op-field">
+            <div class="op-label req">改判理由</div>
+            <a-textarea
+              v-model:value="tagAmendReason"
+              :rows="2"
+              :status="missTagAmend ? 'error' : undefined"
+              placeholder="上一次判的是什么、这次为什么改…"
+            />
+            <p v-if="missTagAmend" class="field-err">请填写改判理由</p>
+          </div>
+        </div>
+      </a-config-provider>
+    </OpActionModal>
+
+    <!--
+      协同记录（《【930】》§3.3 界面落点之一）。**只在投诉单上出现** ——
+      协同处理的类型集是「投」，非投诉单那一路走报备与评估。
+      发起入口在底部操作条那一枚按钮（协同处理形态），本块只回看。
+    -->
+    <OpCollapsibleSection
+      v-if="isComplaintTicket"
+      title="协同记录"
+      :icon="CheckCircleOutlined"
+      :badge="collabSectionBadge"
+      badge-variant="count"
+      :expanded="expanded.collab"
+      @toggle="expanded.collab = !expanded.collab"
+    >
+      <div v-if="collabRecords.length" class="rc-list">
+        <article v-for="c in collabRecords" :key="c.id" class="rc-item">
+          <header class="rc-item-head">
+            <span class="rc-item-time">{{ formatShortAt(c.at) }}</span>
+            <span class="rc-item-who">{{ c.by }}（{{ c.byRole }}）</span>
+            <span
+              v-for="a in c.advices"
+              :key="a"
+              class="rc-advice-tag"
+            >{{ a === '其他' && c.otherAdvice ? `其他 · ${c.otherAdvice}` : a }}</span>
+          </header>
+          <p class="rc-item-opinion">{{ c.opinion }}</p>
+        </article>
+        <p class="rc-foot">协同处理不改工单状态与处理人；建议事项挂在工单上，由当前处理人执行。</p>
+      </div>
+      <div v-else class="ra-empty">
+        尚无协同记录，可在底部操作条点「协同处理」发起
       </div>
     </OpCollapsibleSection>
 
@@ -607,6 +924,14 @@ function openEscalatedTicket(no: string) {
           <p v-if="riskMonitorBreakdown" class="rm-sub">{{ riskMonitorBreakdown }}</p>
           <p v-if="riskMonitorDiff" class="rm-diff">{{ riskMonitorDiff }}</p>
         </div>
+        <!--
+          本区的三个字段是**处理人自述**，随「保存」落工单；上方「风险打标」块是**打标人**
+          给的结论，提交即生效、决定这张单进不进风险工单池。两者不是同一件事，
+          不写这一句，两块摆在一屏上会被当成同一个字段的两个入口。
+        -->
+        <p v-if="tagRecord" class="risk-flag-note">
+          本区是处理人自述，与上方「风险打标」是两件事：打标由客诉专员 / 投诉督导给出，本区取值不覆盖它。
+        </p>
         <div
           v-if="form.riskFlag === '疑似风险' || form.riskFlag === '有风险'"
           class="field"
@@ -940,7 +1265,7 @@ function openEscalatedTicket(no: string) {
 .ra-decision.tone-ok { color: #047857; background: #d1fae5; }
 .ra-decision.tone-warn { color: #b45309; background: #fef3c7; }
 .ra-decision.tone-info { color: #1d4ed8; background: #dbeafe; }
-/* 「接管」的去向标：沿用等级标原来的位置与配色，说的是"派生了新单"而不是"多危险" */
+/* 「升级」的去向标：沿用等级标原来的位置与配色，说的是"派生了新单"而不是"多危险" */
 .ra-derive {
   padding: 2px 8px;
   font-size: 11px;
@@ -998,6 +1323,172 @@ function openEscalatedTicket(no: string) {
   color: #6b7280;
   border-top: 1px dashed #f1f5f9;
 }
+/* ---- 风险打标（A 线结论的只读回显 + 打标入口） ---- */
+.rt-sheet {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.rt-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 14px;
+  background: linear-gradient(180deg, #f8fafc 0%, #fff 100%);
+  border-bottom: 1px solid #f1f5f9;
+}
+.rt-level {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 999px;
+}
+.rt-level.tone-高 { color: #b91c1c; background: #fee2e2; }
+.rt-level.tone-中 { color: #b45309; background: #fef3c7; }
+.rt-level.tone-低 { color: #4b5563; background: #f3f4f6; }
+.rt-level.tone-none { color: #047857; background: #d1fae5; }
+.rt-pool { font-size: 11px; color: #9ca3af; }
+.rt-btn {
+  margin-left: auto;
+  flex: none;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  color: #9a3412;
+  background: #fff;
+  border: 1px solid #fdba74;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.rt-btn:hover { background: #fff1e6; border-color: #fb923c; }
+.rt-kv {
+  margin: 0;
+  padding: 12px 14px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.rt-kv-row {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 8px 12px;
+  align-items: start;
+}
+.rt-kv-row dt {
+  margin: 0;
+  font-size: 12px;
+  color: #9ca3af;
+  font-weight: 500;
+  line-height: 1.6;
+}
+.rt-kv-row dd {
+  margin: 0;
+  font-size: 12px;
+  color: #111827;
+  font-weight: 500;
+  line-height: 1.6;
+  word-break: break-word;
+}
+.rt-kv-block { grid-template-columns: 1fr; gap: 4px; }
+.rt-kv-block dt { color: #374151; font-weight: 600; }
+.rt-note {
+  padding: 8px 10px;
+  background: #f8fafc;
+  border-left: 2px solid #cbd5e1;
+  border-radius: 0 4px 4px 0;
+  font-weight: 400 !important;
+  color: #374151 !important;
+}
+.rt-history {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px 8px;
+}
+.rt-history-head { font-size: 11px; font-weight: 600; color: #6b7280; }
+.rt-history-item {
+  padding: 1px 8px;
+  font-size: 11px;
+  color: #475569;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+}
+.rt-foot {
+  margin: 0;
+  padding: 8px 14px 12px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #6b7280;
+  border-top: 1px dashed #f1f5f9;
+}
+.rt-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 20px 14px;
+  text-align: center;
+  background: #fafafa;
+  border: 1px dashed #e5e7eb;
+  border-radius: 8px;
+}
+.rt-empty-title { margin: 0; font-size: 13px; font-weight: 600; color: #6b7280; }
+.rt-empty-hint { margin: 0; font-size: 12px; color: #9ca3af; line-height: 1.5; }
+.rt-empty .rt-btn { margin-left: 0; }
+.rt-modal-sub { margin: 0; font-size: 12px; color: #6b7280; line-height: 1.5; }
+.rt-modal-tip { margin: 0; font-size: 11px; color: #9ca3af; line-height: 1.5; }
+.rt-radio-row { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; }
+
+/* ---- 协同记录 ---- */
+.rc-list { display: flex; flex-direction: column; gap: 10px; }
+.rc-item {
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+.rc-item-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.rc-item-time { font-size: 12px; font-weight: 700; color: #111827; }
+.rc-item-who { font-size: 12px; color: #6b7280; }
+.rc-advice-tag {
+  padding: 1px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #9a3412;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 999px;
+}
+.rc-item-opinion {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.65;
+  color: #374151;
+  white-space: pre-wrap;
+}
+.rc-foot { margin: 0; font-size: 11px; color: #9ca3af; line-height: 1.5; }
+
+/* 两块摆在一屏上时的分界说明，压到最轻，不与字段抢 */
+.risk-flag-note {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #9ca3af;
+}
+
 .ra-empty {
   padding: 20px 14px;
   text-align: center;

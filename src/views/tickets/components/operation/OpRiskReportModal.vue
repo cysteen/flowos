@@ -3,18 +3,39 @@ import { computed, ref, watch } from 'vue';
 import { WarningOutlined } from '@ant-design/icons-vue';
 import OpActionModal from './OpActionModal.vue';
 import OpTextareaAttach from './shared/OpTextareaAttach.vue';
+import OpRiskAssessModal from './OpRiskAssessModal.vue';
+import OpRiskCollabModal from './OpRiskCollabModal.vue';
 import {
   REPORT_REASONS,
   RISK_CATEGORIES,
   type ReportReason,
   type RiskCategory,
 } from '@/stores/riskReports';
+import { useUserStore } from '@/stores/user';
+import { resolveRiskActionForm } from '@/views/tickets/composables/opActionRegistry';
+import { resolveTicketTypeFor } from '@/views/tickets/composables/opActions';
 
+/**
+ * 底部操作条上那**一枚**风险按钮点开的东西（基线 ※29）。
+ *
+ * 🔴 **一枚按钮 + 一次形态判定**：按钮位只有一个（`opActionRegistry` 的 `风险报备` 那一格），
+ * 判定出哪一种形态，就渲染哪一个弹窗 —— 报备形态是本文件自己这一份表单，
+ * 评估与协同两形态各交给一个子组件。**不要因为「协同处理」进了动作矩阵就在按钮位上再开一枚**：
+ * 三种形态按角色与类型互斥地占用同一格，同一个人在同一张单上只会见到其中一种。
+ *
+ * 判定用的角色与类型从登录态与工单数据现取，与底栏那一格算文案时走的是**同一个函数**
+ * （`resolveRiskActionForm`）—— 两处各判各的，迟早出现"按钮写着协同处理、点开是报备表单"。
+ */
 const props = defineProps<{
   open: boolean;
   ticketNo: string;
   ticketTitle?: string;
 }>();
+
+const user = useUserStore();
+/** 工单类型从工单库现取：底栏没有把它透下来，而形态判定的第二维就是它 */
+const ticketType = computed(() => resolveTicketTypeFor(props.ticketNo));
+const riskForm = computed(() => resolveRiskActionForm(user.roleKey, ticketType.value)?.form ?? null);
 
 const emit = defineEmits<{
   'update:open': [v: boolean];
@@ -78,7 +99,26 @@ function onOk() {
 </script>
 
 <template>
+  <!-- 评估形态：非投诉单 + 客诉专员。领取本单在队条目并给结论（升级 / 不升级） -->
+  <OpRiskAssessModal
+    v-if="riskForm === 'assess'"
+    :open="open"
+    :ticket-no="ticketNo"
+    :ticket-title="ticketTitle"
+    @update:open="emit('update:open', $event)"
+  />
+
+  <!-- 协同形态：投诉单 + 客诉专员。评估意见 + 建议事项，状态与处理人不变 -->
+  <OpRiskCollabModal
+    v-else-if="riskForm === 'collab'"
+    :open="open"
+    :ticket-no="ticketNo"
+    :ticket-title="ticketTitle"
+    @update:open="emit('update:open', $event)"
+  />
+
   <OpActionModal
+    v-else
     :open="open"
     title="风险报备"
     :icon="WarningOutlined"

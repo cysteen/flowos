@@ -10,6 +10,7 @@
 import { isDirectClosure } from '@/views/tickets/types/ticket';
 import type { ClosureMode, TicketType } from '@/views/tickets/types/ticket';
 import type { OpActionType } from './opActions';
+import { useUserStore } from '@/stores/user';
 
 export interface ActionDef {
   key: OpActionType;
@@ -33,8 +34,10 @@ export interface ActionDef {
 
 const ALL: TicketType[] = ['投诉', '咨询', '建议', '商机'];
 const NO_LEAD: TicketType[] = ['投诉', '咨询', '建议']; // 商机不支持
-/** 风险报备：咨 建 商（基线 §4「风险报备」行，与 risk Tab 类型集同源） */
+/** 风险报备 / 风险评估两形态：咨 建 商（基线 §4「风险报备」行，与 risk Tab 类型集同源） */
 const RISK_REPORT_TYPES: TicketType[] = ['咨询', '建议', '商机'];
+/** 协同处理形态：**仅投诉单**（基线 §4「协同处理」行）。与上一行在类型维正好互补 */
+const RISK_COLLAB_TYPES: TicketType[] = ['投诉'];
 /**
  * 转售后的类型集 = 咨 建 商（基线 §4 该行 + ※12a）。
  * ※12a 的口径是「投诉单走关联售后、**其余全部**走转售后」，两边合起来覆盖四类、不重不漏——
@@ -52,6 +55,9 @@ export const ACTION_DEFS: ActionDef[] = [
   // 底栏「升级」＝ 升三线技术支持 / 产研（※14 / ※14a），**与投诉无关**，
   // 故基线 ※8a 收回二线第一跳升级投诉那一条不落在这里，落在头部「升级投诉」上（见文件末尾）
   { key: '升级', label: '升级', icon: 'RiseOutlined', group: 'primary', types: NO_LEAD },
+  // 风险那一枚按钮。**登记的是"这一格"而不是"风险报备"这一个动作**：它按角色与类型
+  // 呈现 风险报备 / 风险评估 / 协同处理 三种形态（基线 ※29），文案与类型集由
+  // availableActions 走 resolveRiskActionForm 现算，这里的取值只是报备形态的缺省。
   { key: '风险报备', label: '风险报备', icon: 'WarningOutlined', group: 'more', types: RISK_REPORT_TYPES },
   // 转单：原单关闭、新单继续跑（基线 ※16）。全类型可用。
   // 它开的是**建单弹窗**（新单要有单号才谈得上"转"），不是 OpActionDialogs 里的表单弹窗，
@@ -100,23 +106,88 @@ const DIRECT_CLOSURE_BLOCKED: OpActionType[] = [
   '下送', '升级', '挂起', '调剂', '委派', '转单', '转售后', '退回',
 ];
 
+/* ---------------- 底栏那一枚风险按钮的三种形态（基线 ※29） ---------------- */
+
+/**
+ * 底部操作条上**只有一枚**风险按钮，文案 / 弹窗 / 类型集随「当前登录角色 × 本单工单类型」取：
+ *
+ * | 角色 | 文案 | 点开 | 类型 |
+ * |---|---|---|---|
+ * | 二线专员 / 二线班组长 / 管理员 | **风险报备** | 报备弹窗 | 咨 建 商 |
+ * | 客诉专员（非投诉单） | **风险评估** | 评估弹窗（升级 / 不升级） | 咨 建 商 |
+ * | 客诉专员（投诉单） | **协同处理** | 协同弹窗 | 投 |
+ *
+ * 🔴 **三种形态是同一枚动作的形态，不是三个权限点**（基线 ※29）：实现是
+ * "**一枚按钮 + 一次形态判定**"，判定命中协同处理时再过 §2 / §4 的「协同处理」门控。
+ * 「协同处理」虽已收进动作矩阵（动作数 27 → 28），**也不在按钮位上再开一枚** ——
+ * 故 `ACTION_DEFS` 里仍只有 `风险报备` 这一条登记，`BAR_ORDER` 里也只占一格。
+ *
+ * **出现条件不在这里判**：报备要求"本单无在队报备"、评估要求"本单有未出结论的非投诉单条目"、
+ * 协同要求"本单在风险工单池里"，三条都要读风险两条线的 store，而本模块是**按类型与结案方式
+ * 过滤动作**的纯登记表。条件由工单页算好，经 `showRiskReport` / `riskReportPending`
+ * 两个 prop 交给底栏（见 TicketOperationView）。本函数只答"这个角色在这类单上该看到哪一种"。
+ *
+ * **三种形态都不给的五个角色**：技术支持（主责仍是二线，由二线报）、一线坐席（走「新建补充」）、
+ * 投诉督导（去权后只看大盘）、工单运营 / 质检（只读）。它们在这里返回 null。
+ */
+export type RiskActionForm = 'report' | 'assess' | 'collab';
+
+export interface RiskActionFormDef {
+  form: RiskActionForm;
+  label: string;
+  types: TicketType[];
+}
+
+/** 报备形态给处理侧。管理员取报备形态（基线 ※29「管理员取报备形态」） */
+const RISK_REPORT_ROLES = ['agent-l2', 'team-leader', 'system-admin', 'ops-admin', 'tenant-admin'];
+
+export function resolveRiskActionForm(roleKey: string, ticketType: string): RiskActionFormDef | null {
+  if (RISK_REPORT_ROLES.includes(roleKey)) {
+    return { form: 'report', label: '风险报备', types: RISK_REPORT_TYPES };
+  }
+  // 报的人与评的人必须分开：客诉专员不能报，它只评（非投诉单）或协同（投诉单）
+  if (roleKey === 'complaint-handler') {
+    return ticketType === '投诉'
+      ? { form: 'collab', label: '协同处理', types: RISK_COLLAB_TYPES }
+      : { form: 'assess', label: '风险评估', types: RISK_REPORT_TYPES };
+  }
+  return null;
+}
+
 export interface ActionCtx {
   ticketType: string;
   /** 结案方式；缺省视为「正常流程」，见 resolveClosureMode */
   closureMode?: ClosureMode;
+  /**
+   * 当前登录角色。**缺省时读登录态**——底栏（OpActionBar）只按工单维度调用本函数，
+   * 而风险那一枚按钮的形态是「角色 × 类型」两维决定的（基线 ※29），类型在 ctx 里、
+   * 角色只能从当前登录态取。留成入参是为了让判据可被单独喂值，不必先切登录。
+   */
+  roleKey?: string;
 }
 
 /**
  * 按**工单类型**与**结案方式**过滤可见操作 —— 两者正交，各拦各的。
  * 数据维的拦截（产品无售后服务）走置灰 + 提示，不在这里把动作过滤掉（基线 ※12）。
+ *
+ * 风险那一枚按钮另过一道**形态判定**：形态决定它的文案与类型集，判不出形态即整枚不给。
  */
 export function availableActions(ctx: ActionCtx): ActionDef[] {
   const direct = isDirectClosure(ctx.closureMode);
-  return ACTION_DEFS.filter(
-    (a) =>
-      a.types.includes(ctx.ticketType as TicketType)
-      && !(direct && DIRECT_CLOSURE_BLOCKED.includes(a.key)),
-  );
+  const roleKey = ctx.roleKey ?? useUserStore().roleKey;
+  const riskForm = resolveRiskActionForm(roleKey, ctx.ticketType);
+  return ACTION_DEFS
+    .map((a) => {
+      if (a.key !== '风险报备') return a;
+      if (!riskForm) return null;
+      return { ...a, label: riskForm.label, types: riskForm.types };
+    })
+    .filter((a): a is ActionDef => !!a)
+    .filter(
+      (a) =>
+        a.types.includes(ctx.ticketType as TicketType)
+        && !(direct && DIRECT_CLOSURE_BLOCKED.includes(a.key)),
+    );
 }
 
 /** 基线 ※12 规定的拦截提示原文 */

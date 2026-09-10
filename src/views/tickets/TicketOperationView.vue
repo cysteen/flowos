@@ -30,16 +30,19 @@ import { mergeDraftIntoLatestHandling } from './utils/ticketOverview';
 import { TICKETS } from '@/mock/tickets';
 import { useRiskTagStore } from '@/stores/riskTags';
 import { useRiskReportStore } from '@/stores/riskReports';
-import { REPORT_ASSESS_LIMIT_MIN } from '@/stores/riskShared';
-import { RISK_FLAG_OPTIONS, tabWritableFor, visibleProcessTabs } from './types/operation';
-import { RISK_LEVELS } from '@/config/risk';
+import { useRiskQueueStore } from '@/stores/riskQueue';
+import { REPORT_ASSESS_LIMIT_MIN, isOpenStatus, isPooledStatus } from '@/stores/riskShared';
+import { RISK_FLAG_OPTIONS } from './types/operation';
+import { poolStatusText } from './components/operation/OpRiskDecision';
+import { riskAdviceMarksOf, riskCollabOf } from './composables/opActions';
+import { RISK_LEVELS, riskLevelText } from '@/config/risk';
 import { pullbackOnCsEvent, headerActionsByRole, type TicketStatus } from './types/ticket';
 import { buildChildTicketPrefill, buildReopenTicketPrefill } from './composables/childTicketPrefill';
 import {
   buildEscalatePrefill, buildEscalateVerdict, buildEscalatedTicket, escalateTargetLabel,
   isTicketTerminated, resolveEscalateOutcome, summarizeEscalateInput, type EscalateInput,
 } from './composables/complaintEscalation';
-import { escalateComplaintBlockTip } from './composables/opActionRegistry';
+import { escalateComplaintBlockTip, resolveRiskActionForm } from './composables/opActionRegistry';
 import { resolveSupersededBy, type TicketRelation } from './composables/ticketRelations';
 import type { CreateTicketPrefill, Ticket } from './types/ticket';
 import type { ProcessFormDraft, InsightAction, InsightModalKey } from './types/operation';
@@ -116,8 +119,8 @@ watch(
 // ---- 风险监控核实结论 → 工单风险字段（回传） ----
 //
 // 🔴 **只有命中核实这一路**（915 §7.3）。风险报备的评估**不进这条链路** ——
-// 2026-09-09 业务第二轮拍板（《【930】》N1）把评估决策改回二选一「不升级 / 接管」，
-// 没有"确认有风险 + 定级"这一档了：「不升级」往工单一字不写，「接管」的产出是**一张新单**
+// 2026-09-09 业务第二轮拍板（《【930】》N1）把评估决策改回二选一，v1.23 定名「不升级 / 升级」，
+// 没有"确认有风险 + 定级"这一档了：「不升级」往工单一字不写，「升级」的产出是**一张新单**
 // （走《【830】》已有的第一跳派生），不是往原单的风险字段里落值。
 // 此前这里把两路结论合流成一份再统一写入，那份合流已随之整块拆掉。
 //
@@ -131,6 +134,8 @@ watch(
 // 反过来把没碰过的空当成已填，回传就永远写不进去，这个功能等于没做。
 const riskTags = useRiskTagStore();
 const riskReports = useRiskReportStore();
+/** A 线（自动识别 → 实时监控 → 打标 → 风险工单池）。工单页要读它的打标结论与在池条目 */
+const riskQueue = useRiskQueueStore();
 const riskMonitorVerify = computed(() => riskTags.ticketVerificationOf(ticketNo.value));
 
 /**
@@ -162,13 +167,66 @@ const riskConclusion = computed(() => {
   };
 });
 
-/** 底栏「风险报备」：非投诉单 + 可写角色（二线/班组长/管理员） */
+/* ---------------- 底栏那一枚风险按钮：形态 × 出现条件（基线 ※29） ---------------- */
+
+/**
+ * 本单的**在队报备**（B 线）。
+ *
+ * 🔴 **不用 `riskReports.pendingOf`**：那个读口把 A 线（自动识别进池）的条目也算进来。
+ * 本轮拆线之后，A 线的条目在这张页面上要另说一句话 —— 它不是谁报上来的，
+ * 说成「风险报备待评估」既不实、也会把二线的报备入口白白锁上
+ * （报备形态的出现条件是"本单无**在队报备**"，A 线条目不占这个名额）。
+ * 判据取 `source` 而不是 `by === '系统'`：来源是条目自带的身份标，比落款稳。
+ */
+const riskReportPendingItem = computed(
+  () => riskReports.reportsOf(ticketNo.value)
+    .find((r) => r.source === '二线报备' && isOpenStatus(r.status)) ?? null,
+);
+/** 本单**未出结论**的风险条目（两条线合起来看）：评估形态的出现条件读它 */
+const riskOpenItem = computed(
+  () => riskReports.reportsOf(ticketNo.value).find((r) => isOpenStatus(r.status)) ?? null,
+);
+/** 本单在**风险工单池**里的那条 A 线条目（一张单至多一条，《【930】》§3.1） */
+const riskPoolEntry = computed(
+  () => riskQueue.entriesOf(ticketNo.value).find((e) => isPooledStatus(e.status)) ?? null,
+);
+
+/** 当前角色 × 本单类型落在哪一种形态；null ＝ 这个角色三种形态都不给 */
+const riskActionForm = computed(() => resolveRiskActionForm(user.roleKey, d.value.type)?.form ?? null);
+
+/**
+ * 底栏那一枚按钮**出不出**。三种形态各有各的出现条件（基线 ※29）：
+ * - **报备**：本单无在队报备 —— 有在队报备时按钮仍出，改为置灰 + 提示（见 riskReportPending）；
+ * - **评估**：本单有未出结论的非投诉单条目，且**还没人领**或**就是我领的**
+ *   （已被别人领走的由领取人给结论，不设改派 —— 「分派 / 改派」两个动作已取消）；
+ * - **协同**：本单是投诉单且在风险工单池里，**不论该条目是否已结论**（§3.1 末行）。
+ */
 const showRiskReport = computed(() => {
-  const feishuActive = !!d.value.feishuSync && d.value.feishuSync !== 'none';
-  const tabs = visibleProcessTabs(d.value.type, user.roleKey, { feishuActive });
-  return tabs.some((t) => t.key === 'risk') && tabWritableFor('risk', user.roleKey);
+  const form = riskActionForm.value;
+  if (!form) return false;
+  if (form === 'report') return true;
+  if (form === 'collab') return !!riskPoolEntry.value;
+  const item = riskOpenItem.value;
+  if (!item) return false;
+  // 「待分派」是 store 侧尚未改名的存储值，界面一律写「待领取」（见 OpRiskDecision.ts）
+  return item.status === '待分派' || item.assignee === (user.name || '当前用户');
 });
-const riskReportPending = computed(() => !!riskReports.pendingOf(ticketNo.value));
+
+/**
+ * 报备形态的置灰条件（底栏提示原文「本单已有报备待评估」）。
+ * **只对报备形态成立**：评估与协同两形态的条件不成立时按钮直接不出（上面那个 computed 已收），
+ * 在这里返回 true 会让它们顶着一条说的是别的事的提示置灰在那儿。
+ *
+ * 🔴 **判据取 store 的 `canSubmitFor`，不取上面那个 B 线专用的 `riskReportPendingItem`**。
+ * 基线 ※29 的门控原话是"同一张单不允许两条**报备**同时在队"，A 线进池的条目不是报备、
+ * 按口径不该占这个名额；但 `riskReports.submit` 现在**仍按两条线合并判**（那个 store 自陈
+ * 是拆线未完的过渡态）。按口径放开按钮的话，二线点得进弹窗、填完提交却被 store 静默驳回 ——
+ * 一个填完才失败的入口比一个置灰的入口糟得多。故按钮跟着 store 的实际判据走，
+ * 口径与实现的这道缝记在报告里，等 store 把 `canSubmitFor` 收成只看 B 线之后自动对齐。
+ */
+const riskReportPending = computed(
+  () => riskActionForm.value === 'report' && !riskReports.canSubmitFor(ticketNo.value),
+);
 
 function onRiskReport(payload: {
   reason: string;
@@ -190,7 +248,14 @@ function onRiskReport(payload: {
     at,
   });
   if (!created) {
-    message.warning('本单已有报备待评估');
+    // 兜底提示按**实际挡住它的那一条**分开写：挡住的可能是本单已有的报备（B 线），
+    // 也可能是一条还在风险工单池里等处置的自动条目（A 线）。一句"已有报备待评估"
+    // 会让二线去 Tab 里找那条根本不存在的报备。
+    message.warning(
+      riskReportPendingItem.value
+        ? '本单已有报备待评估'
+        : '本单已有一条风险条目在风险工单池待处置，出结论后可再发起报备',
+    );
     return;
   }
   const limitText = REPORT_ASSESS_LIMIT_MIN % 60 === 0
@@ -201,40 +266,114 @@ function onRiskReport(payload: {
 }
 
 /**
- * 头部「报备中」横幅（基线 ※29 / 《【930】》D5）。
+ * 头部「报备中」横幅（基线 ※29 / 《【930】》§3.2）。
  *
  * 【为什么要有它】报备是**正交标记**、不落子状态：本单状态一格不动、SLA 不停钟、
  * 处理人照常处理。正因为工单本身"看不出任何变化"，不挂一条横幅的话，
  * 报备人切回这张单只会以为自己没报成功，于是重复报或直接打电话催。
  *
- * 【为什么按三态分开写】待分派＝**还没人接**，该催的是投诉督导（他负责分派）；
- * 评估中＝活已经在某个客诉专员手上，该找的是这个人。一句笼统的「评估中」把这两件事
- * 说成一件，等待时长再长也不知道该找谁。
+ * 【为什么按两态分开写】待领取＝**还没人接**，评估钟在空转；已领取＝活在某个客诉专员手上，
+ * 该找的是这个人。一句笼统的「评估中」把这两件事说成一件，等待时长再长也不知道该找谁。
+ *
+ * 🔴 **只认 B 线的报备**（本轮改）：`riskReports.pendingOf` 把 A 线自动进池的条目也算在内，
+ * 而 A 线的条目**不是谁报上来的**，挂一条写着「风险报备待评估」的横幅是在说一件没发生的事，
+ * 也会让二线以为自己报过了。A 线的情况改由下面的「风险打标」条呈现，两件事各说各的。
  */
 const riskReportBanner = computed(() => {
-  const r = riskReports.pendingOf(ticketNo.value);
+  const r = riskReportPendingItem.value;
   if (!r) return null;
   const mins = riskReports.waitedMinutes(r.at);
   const waited = mins >= 60 ? `${Math.floor(mins / 60)} 小时 ${mins % 60} 分钟` : `${mins} 分钟`;
   const head = r.status === '评估中'
-    ? `风险报备评估中 · ${r.assignee || '客诉专员'}`
-    : '风险报备待分派';
+    ? `风险报备已领取 · ${r.assignee || '客诉专员'} 评估中`
+    : '风险报备待领取';
   return {
     text: `${head} · 已等待 ${waited}`,
     // 超时只改配色与后半句，不改前半句：等待时长是同一个事实，超没超时是它的一个判定
     overdue: riskReports.isOverdue(r),
   };
 });
+
 /**
- * 「风险报备」Tab 上的状态圆点。与横幅同源（都读 riskReportBanner），但承担的是提示重心：
- * 横幅只说"有这么回事"，圆点指的是**这件事在哪儿看** —— 点进去就是报备本身。
+ * 本单的**风险打标结论**（A 线，《【930】》§5A.3 / §6.1）。
+ *
+ * 【谁看得到】**二线处理人可见**，且打标时另收到一条通知；**一线坐席不可见** ——
+ * 一线的工单列表、详情与通知里都不出现风险等级（§3.1，2026-09-10 拍板）。
+ * 一线在本页走的是 `isFrontlineView` 那条分支，故这里显式判掉它，不靠 Tab 权限兜底：
+ * 这一条挂在页头，不在任何 Tab 里，Tab 的黑名单管不到它。
+ *
+ * 【为什么连「无风险」也要显示】"有人看过、判定没风险"与"还没有人看过"是两件事，
+ * 只显示有等级的那几档，处理人分不出自己这张单属于哪一种。
+ */
+const riskTagBanner = computed(() => {
+  if (user.role.frontline) return null;
+  const entry = riskQueue.entriesOf(ticketNo.value).find((e) => !!e.tag);
+  const tag = entry?.tag;
+  if (!tag) return null;
+  const level = tag.result === '无风险' ? '无风险' : riskLevelText(tag.result);
+  return {
+    level,
+    /** 高危单要"喊"一声：它是《【930】》§6.5 里唯一带「去管控」引导的一档 */
+    high: tag.result === '高',
+    text: `风险打标 ${level} · ${tag.by}（${tag.byRole}）· ${tag.at}`,
+    note: tag.note,
+    /** 已进池的另说一句它在池里的位置，二线才知道这条后面还有人跟 */
+    poolText: entry && isPooledStatus(entry.status) ? `风险工单池 · ${poolStatusText(entry.status)}` : '',
+  };
+});
+
+/** 工单上的「建议标记」（《【930】》§3.3）：历次协同处理勾选项的并集，人不直接摘 */
+const riskAdviceMarks = computed(() => (user.role.frontline ? [] : riskAdviceMarksOf(ticketNo.value)));
+
+/**
+ * 「风险报备」Tab 上的状态圆点。三件事都往这一枚点上收 ——
+ * 横幅只说"有这么回事"，圆点指的是**这件事在哪儿看**，点进去就是 Tab 里那几块。
+ * 报备超时最急（红），其次是有在队报备或有新的协同建议（橙）。
  * 无在队报备时给空对象而不是 undefined：Tab 侧只认"有没有这个 key"，空对象即一个点都不出。
  */
 const processTabDots = computed<Partial<Record<ProcessTabKey, 'warn' | 'danger'>>>(() => {
   const b = riskReportBanner.value;
-  if (!b) return {};
-  return { risk: b.overdue ? 'danger' : 'warn' };
+  if (b) return { risk: b.overdue ? 'danger' : 'warn' };
+  if (riskAdviceMarks.value.length) return { risk: 'warn' };
+  return {};
 });
+
+/**
+ * 协同处理 → **工单处理履历**（副作用①）。
+ *
+ * 【为什么是"投影"而不是提交时直接 push】提交协同的人是**客诉专员**，而要读这条履历的是
+ * 当前处理人 —— 两端是两次登录。履历（`timeline`）是按工单现搭的内存态，换一次登录就回到
+ * 种子；协同记录落了 localStorage，故让履历**从记录投影**，换谁登录、刷新几次都补得回来。
+ *
+ * 【幂等】按"本单协同记录条数 vs 履历里已有的协同条数"补差额，投影多少次结果都一样。
+ *
+ * ⚠️ **落的是 `handle`（工单处理）类，不是《【720】》定的第八类「风险结论」**：第八类要往
+ * `TlCategory` 里加一个 `risk`（玫红 #DB2777）并给图例补一格，那两处都在 `types/ticketDetail.ts`
+ * 与 `OpTimeline.vue` 上，本轮不动它们。行文按《【930】》§6.3 的模板写，接上第八类时只换类别。
+ */
+function syncCollabTimeline() {
+  const records = riskCollabOf(ticketNo.value).slice().reverse(); // 正序补，履历本身按时间正序存
+  const already = timeline.value.filter((e) => e.how === '协同处理').length;
+  records.slice(already).forEach((r) => {
+    const advice = r.advices.length
+      ? r.advices.map((a) => (a === '其他' && r.otherAdvice ? `其他（${r.otherAdvice}）` : a)).join('、')
+      : '未勾选建议事项';
+    pushEntry(timeline.value, {
+      category: 'handle',
+      action: 'handle',
+      who: r.by,
+      role: mapUserRole('complaint-handler'),
+      how: '协同处理',
+      when: r.at,
+      what: `提交协同处理 · ${advice}。评估意见：${r.opinion}`,
+    });
+  });
+}
+watch(
+  [ticketNo, () => riskCollabOf(ticketNo.value).length],
+  () => syncCollabTimeline(),
+  { immediate: true },
+);
 /**
  * 回传上次写进表单的值。有它才分得清"这个『疑似风险』是坐席填的还是回传自己填的"——
  * 只认空串的话，回传第一次填完就再也改不了自己写的那个值：
@@ -463,7 +602,7 @@ const canDunning = computed(() => headerRoleGate.value.dunning);
 const canEscalateComplaint = computed(() => headerRoleGate.value.escalateComplaint);
 /**
  * 基线 ※8a：**非投诉单 → 投诉单**这一跳，二线专员 / 二线班组长不再自主发起，
- * 入口改为「风险报备」，由客诉专员评为「接管」时代为发起。
+ * 入口改为「风险报备」，由客诉专员评为「升级」时代为发起（「升级」只指转投诉单，※29）。
  * 有值 ＝ 该拦，值就是提示原文；null ＝ 放行（第二跳内投→外投、客诉专员 / 投诉督导 / 管理员均放行）。
  */
 const escalateReportFirstTip = computed(
@@ -1266,6 +1405,40 @@ watch(
       </button>
     </div>
 
+    <!--
+      风险打标结论条（《【930】》§5A.3「可见性」）：**二线处理人可见**，一线不可见。
+      与上面那条报备横幅是两件事，故各占一行 —— 报备答"我报上去的那条评没评"，
+      这一条答"监控侧把这张单判成了几档"，同一张单可能只有其中一件、也可能两件都有。
+      处置备注挂在 title 里：它是打标人写给处理人的话，需要时 hover 可得，不占页头两行。
+    -->
+    <div
+      v-if="riskTagBanner"
+      class="risk-report-banner risk-tag-banner"
+      :class="{ high: riskTagBanner.high }"
+      :title="riskTagBanner.note"
+    >
+      <span class="rrb-dot" aria-hidden="true"></span>
+      <span class="rrb-text">{{ riskTagBanner.text }}</span>
+      <span v-if="riskTagBanner.poolText" class="rrb-pool">{{ riskTagBanner.poolText }}</span>
+      <button type="button" class="rrb-link" @click="processTabsRef?.switchTab('risk')">
+        查看打标
+      </button>
+    </div>
+
+    <!--
+      建议标记（《【930】》§3.3）：协同处理挂上来的正交标记，装历次勾选的建议事项。
+      **状态不变、处理人不变**，它不是子状态、不进动作矩阵判据 —— 摆在页头是因为
+      这几项恰恰是"接下来要处理人做的事"，收在 Tab 里等于让人自己去翻。人不直接摘，
+      工单进终态时随页头一起消失。
+    -->
+    <div v-if="riskAdviceMarks.length" class="risk-report-banner risk-advice-banner">
+      <span class="rrb-text">协同建议</span>
+      <span v-for="a in riskAdviceMarks" :key="a" class="rrb-advice">{{ a }}</span>
+      <button type="button" class="rrb-link" @click="processTabsRef?.switchTab('risk')">
+        查看协同记录
+      </button>
+    </div>
+
     <!-- 顶部通栏速览带：客户诉求 | 客户全景宫格 | 最新处理（关注信息一屏） -->
     <div class="op-overview-wrap" :class="{ elevated: overviewExpanded }">
       <OpOverviewBand :detail="d" @select="onOverviewSelect" @expand-change="overviewExpanded = $event">
@@ -1468,6 +1641,22 @@ watch(
   cursor: pointer;
 }
 .rrb-link:hover { text-decoration: underline; }
+/* 打标条：与报备条同一副骨架，只换点色 —— 蓝＝已有结论（不催人），高危转红 */
+.risk-tag-banner .rrb-dot { background: #2563eb; }
+.risk-tag-banner.high .rrb-dot { background: #dc2626; }
+.risk-tag-banner.high .rrb-text { color: #b91c1c; }
+.rrb-pool { font-size: 11px; color: #9ca3af; }
+/* 建议标记：一排小标，不带点 —— 它不是"等结论"的状态，是"要去做"的清单 */
+.risk-advice-banner .rrb-text { color: #9a3412; }
+.rrb-advice {
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #9a3412;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 999px;
+}
 .op-overview-wrap.elevated { z-index: 50; }
 .op-body {
   display: flex;
