@@ -82,6 +82,18 @@ const props = withDefaults(
      * 借那两个 variant 去换勾选列会连带换来一组错的按钮。
      */
     selectable?: boolean;
+    /**
+     * 按列覆盖列宽（px）。传了就**接管这一处实例的全部列宽**，同时**关掉拖拽把手**。
+     *
+     * 【为什么要它】本组件的列宽记忆是一份**全局 localStorage**
+     * （`flowos-ticket-column-widths`），工作台那一屏宽 1290+，默认宽度合计 1370；
+     * 换到风险监控页只剩 1045（左边还有一列漏斗导航），照默认摆就横向溢出 325px ——
+     * 而"横着拖才能看全的表，等于每一行都要动两次手"。
+     * 🔴 **不能让调用方去改那份全局默认**：那会把工作台的列宽一起改窄。
+     * 🔴 **也不能让这一处的拖拽写回那份全局**：拖窄风险页的列会让工作台跟着变。
+     * 故覆盖与"不参与列宽记忆"是同一件事的两面，绑在一个 prop 上。
+     */
+    columnWidths?: Record<string, number>;
   }>(),
   {
     selectedIds: () => new Set<string>(),
@@ -218,7 +230,12 @@ function loadColWidths(): Record<string, number> {
 const colWidths = ref<Record<string, number>>(loadColWidths());
 const resizing = ref<{ key: string; startX: number; startW: number } | null>(null);
 
+/** 传了 `columnWidths` 的实例不参与全局列宽记忆，故也不出拖拽把手（见那个 prop） */
+const resizable = computed(() => !props.columnWidths);
+
 function colWidthPx(key: string): string {
+  const fixed = props.columnWidths?.[key];
+  if (fixed != null) return `${fixed}px`;
   return `${colWidths.value[key] ?? DEFAULT_COL_WIDTH[key] ?? 88}px`;
 }
 
@@ -300,27 +317,35 @@ const gridTemplateColumns = computed(() => {
               <CheckOutlined v-if="allPageSelected" :style="{ color: '#fff', fontSize: '10px' }" />
             </div>
           </div>
-          <div class="col-title th th-cell th-cell--resizable">
+          <!-- 拖拽把手在传了 `columnWidths` 的实例上整体不出：那一处不参与全局列宽记忆 -->
+          <div class="col-title th th-cell" :class="{ 'th-cell--resizable': resizable }">
             <span class="th-label">工单 / 标题</span>
             <span
+              v-if="resizable"
               class="col-resize-handle"
               :class="{ 'is-active': resizing?.key === 'title' }"
               @mousedown="onResizeStart($event, 'title')"
             />
           </div>
           <template v-for="colKey in orderedCols" :key="`th-${colKey}`">
-            <div :class="[colClass(colKey), 'th', 'th-cell', 'th-cell--resizable']">
+            <div :class="[colClass(colKey), 'th', 'th-cell', { 'th-cell--resizable': resizable }]">
               <span class="th-label">{{ colLabel(colKey) }}</span>
               <span
+                v-if="resizable"
                 class="col-resize-handle"
                 :class="{ 'is-active': resizing?.key === colKey }"
                 @mousedown="onResizeStart($event, colKey)"
               />
             </div>
           </template>
-          <div v-if="showAppointmentColumn" class="col-appointment th th-cell th-cell--resizable">
+          <div
+            v-if="showAppointmentColumn"
+            class="col-appointment th th-cell"
+            :class="{ 'th-cell--resizable': resizable }"
+          >
             <span class="th-label">预约倒计时</span>
             <span
+              v-if="resizable"
               class="col-resize-handle"
               :class="{ 'is-active': resizing?.key === 'appointment' }"
               @mousedown="onResizeStart($event, 'appointment')"
@@ -336,9 +361,10 @@ const gridTemplateColumns = computed(() => {
               <span class="th-label">{{ col.label }}</span>
             </div>
           </template>
-          <div v-if="showActionColumn" class="col-action th th-cell th-cell--resizable">
+          <div v-if="showActionColumn" class="col-action th th-cell" :class="{ 'th-cell--resizable': resizable }">
             <span class="th-label">操作</span>
             <span
+              v-if="resizable"
               class="col-resize-handle"
               :class="{ 'is-active': resizing?.key === 'action' }"
               @mousedown="onResizeStart($event, 'action')"
