@@ -317,24 +317,63 @@ const urgentTicketCount = computed(
 );
 
 /**
- * 风险工单等级分布：按**工单级风险等级**（＝该单**已打标条目**与**已核实且成立的命中**取最高，2026-09-10 第三轮口径）
- * 把工单分到高 / 中 / 低三档，给条数与占比。
- * 分母 ＝ 有工单级等级的工单数，故三档占比之和恒为 100%；没有成立命中的单不参与。
+ * 风险工单等级分布（《【930】》§5.3.1 / §7.3 T3）：按**工单级风险等级**
+ * （＝该单**已打标条目**与**已核实且成立的命中**取最高，2026-09-10 第三轮口径）
+ * 把**在办工单**分到高 / 中 / 低三档，给条数与占比。
+ *
+ * 🔴 **遍历的起点是"工单"，不是"命中记录"**。这一条踩过一次，值得写死在这里：
+ * 旧实现先遍历 `allHits`、再对每个工单号问 `ticketGradeOf`，于是
+ * **打标进池、但本单一条命中记录都没有的工单整批数不到**（实测漏 10 张）——
+ * 而 `ticketGradeOf` 的口径本来就是两维的（`tagGrades` ∪ 已核实成立的命中），
+ * 投诉单 P0·P1 与重要紧急这两路根本不产生命中记录，它们的等级只有打标这一个来源。
+ * 以命中表为起点等于把"这张单算不算进分母"挂在"它有没有命中记录"上：
+ * 往命中表里补几条数据，这个分布就跟着变，而它本该只随打标与核实结论变。
+ * 故起点 ＝ **已打标条目所在的单 ∪ 有命中记录的单**，去重后逐单问 `ticketGradeOf`
+ * ——两个来源缺一不可，取空的（误报 / 未核实 / 打为无风险 / 未打标）自然不进分母。
+ *
+ * 🔴 **终态排除，但查不到的不吞**（与 `groupNameOf`、`ticketOfRow` 同一条规矩）：
+ * T3 的分母是**在办**工单，故解析得出且已进终态的单剔除；而监控侧的命中语料自带
+ * 一批工单库里没有的单（它们在语料里就是「在办」），把这批当终态丢掉会让这个数系统性报少。
  */
 const ticketGradeDist = computed(() => {
   const buckets: Record<RiskLevel, number> = { 高: 0, 中: 0, 低: 0 };
   const seen = new Set<string>();
-  for (const h of allHits.value) {
-    if (seen.has(h.ticketNo)) continue;
-    seen.add(h.ticketNo);
-    const g = riskTags.ticketGradeOf(h.ticketNo);
+  const take = (ticketNo: string) => {
+    if (seen.has(ticketNo)) return;
+    seen.add(ticketNo);
+    const t = TICKET_BY_NO.get(ticketNo) ?? derivedTickets.find(ticketNo);
+    if (t && !isLiveTicket(t)) return;
+    const g = riskTags.ticketGradeOf(ticketNo);
     if (g) buckets[g] += 1;
-  }
+  };
+  // 来源一：已打标条目（`tagGrades` 的一级 key 就是工单号，无命中记录的那批只在这里）
+  Object.keys(riskTags.tagGrades).forEach(take);
+  // 来源二：有命中记录的单（已核实成立的命中那一路）
+  allHits.value.forEach((h) => take(h.ticketNo));
   const total = buckets.高 + buckets.中 + buckets.低;
-  const pct = (n: number) => (total ? Math.round((n / total) * 100) : 0);
+  /*
+   * 🔴 **占比取整走最大余数法**（§7.3 T3 的舍入规则，`高 + 中 + 低 ＝ 100%` 的实现口径）：
+   * ① 各档 `条数 ÷ 分母 × 100` **向下取整**，各自记下小数余数；
+   * ② 与 100 的差额（0~2）按余数**从大到小**依次每档 +1；余数相同时按 **高 → 中 → 低** 补。
+   * 【为什么不能用 Math.round】四舍五入不保证和为 100：9 / 7 / 7（分母 23）
+   * 精确值 39.13 / 30.43 / 30.43，round 后 39 + 30 + 30 ＝ **99%**，
+   * 而这一行的 title 上明写着"占比之和为 100%"——那句话会当场变成假的。
+   */
+  const rows = RISK_LEVELS.map((lv, idx) => {
+    const exact = total ? (buckets[lv] / total) * 100 : 0;
+    const floor = Math.floor(exact);
+    return { level: lv, count: buckets[lv], pct: floor, rem: exact - floor, idx };
+  });
+  let gap = total ? 100 - rows.reduce((s, r) => s + r.pct, 0) : 0;
+  // 余数相同时按 高 → 中 → 低：`idx` 这一维不靠 sort 的稳定性，显式写出来
+  for (const r of [...rows].sort((a, b) => b.rem - a.rem || a.idx - b.idx)) {
+    if (gap <= 0) break;
+    r.pct += 1;
+    gap -= 1;
+  }
   return {
     total,
-    rows: RISK_LEVELS.map((lv) => ({ level: lv, count: buckets[lv], pct: pct(buckets[lv]) })),
+    rows: rows.map(({ level, count, pct }) => ({ level, count, pct })),
   };
 });
 /**
@@ -815,7 +854,10 @@ const canClaim = computed(() => REPORT_CLAIM_ROLES.includes(user.roleKey));
 
 /** 领取一条：转「评估中」并落在自己名下，随后跳转工单详情做评估 */
 function doClaim(r: RiskPoolItem) {
-  if (!canClaim.value) { message.warning('只有客诉专员可以领取风险工单池的单'); return; }
+  // 文案按 `REPORT_CLAIM_ROLES` 的实际取值写：客诉专员 + 三个管理员 scope。
+  // 写成"只有客诉专员"与上面那份角色表、与 `openCollab` 的「归客诉专员与管理员」都对不上——
+  // 管理员点得动却被告知自己没权限，三处同源表述必须同时改。
+  if (!canClaim.value) { message.warning('领取风险工单池的单归客诉专员与管理员'); return; }
   if (!reportStore.claim(r.id, user.name)) {
     // 唯一会落空的情形：别人刚刚把它领走了，本页还没重算
     message.warning('这一条刚被别人领走了，请刷新后再看');
@@ -4372,7 +4414,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
           <div class="dash-links">
             <span
               class="dash-links-k"
-              :title="`共 ${ticketGradeDist.total} 张单有工单级风险等级（该单已打标条目与已核实成立的命中取最高）；占比之和为 100%。此处数的是工单，与左栏「确认是风险」的高中低数的是命中，两组数天生不等`"
+              :title="`共 ${ticketGradeDist.total} 张在办工单有工单级风险等级（该单已打标条目与已核实成立的命中取最高；打为无风险的、未打标的、误报与未核实的都不进分母）；占比按最大余数法取整，之和恒为 100%。此处数的是工单，与左栏「确认是风险」的高中低数的是命中，两组数天生不等`"
             >风险等级</span>
             <span
               v-for="r in ticketGradeDist.rows"
@@ -4383,7 +4425,12 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               {{ riskLevelText(r.level) }}<b>{{ r.count }}</b>
               <small v-if="ticketGradeDist.total">{{ r.pct }}%</small>
             </span>
-            <span v-if="!ticketGradeDist.total" class="dl-empty">暂无已核实成立的工单</span>
+            <!--
+              空态文案以《【930】》§5.3.1 为准：分母是"按 §5A.3 算得出工单级风险等级的单"，
+              不是"已核实成立的单"——后者把打标那一路（无命中记录的两类来源）说没了，
+              与上面的取数口径对不上。
+            -->
+            <span v-if="!ticketGradeDist.total" class="dl-empty">暂无已打标进池的工单</span>
           </div>
         </div>
 
@@ -5356,7 +5403,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                   <span
                     v-else
                     class="hit-sub"
-                    title="领取与评估归客诉专员；本视角只读"
+                    title="领取与评估归客诉专员与管理员；本视角只读"
                   >—</span>
                 </template>
                 <!--
