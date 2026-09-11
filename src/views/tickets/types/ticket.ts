@@ -715,8 +715,10 @@ export interface TabMeta {
  * 角色配置的 hiddenTabs 里不要再写它 —— 过滤的是这个数组，写了也过滤不到东西。
  *
  * 「风险报备池」紧挨「催补待回」是有意的：两枚都是**本组共有、谁领谁办**的池子，
- * 与前三枚"已经在我名下"的页签分属两段。它只对客诉专员与投诉督导渲染，
- * 门控走 `config/roles.ts` 的 hiddenTabs，不在组件里判角色。
+ * 与前三枚"已经在我名下"的页签分属两段。它只对**客诉专员 + 投诉督导 + 三个管理员 scope**
+ * 渲染（基线 ※29「仅客诉专员 + 投诉督导 + 管理员可见」；管理员那三个是 v1.24 的两池兜底，
+ * 与 `canClaimRiskReport` 的取值一致），门控走 `config/roles.ts` 的 hiddenTabs，
+ * 不在组件里判角色。
  */
 export const TABS: TabMeta[] = [
   { key: 'mine', label: '我的任务', badge: '#1A6FFF' },
@@ -1005,6 +1007,23 @@ const REPORT_POOL_ACT_ROLES = new Set([
 
 export function canClaimRiskReport(roleKey: string): boolean {
   return REPORT_POOL_ACT_ROLES.has(roleKey);
+}
+
+/**
+ * 能不能释放**别人承办**的那一条（《【930】》§5.5 ②的**管理员兜底**那一路）。
+ *
+ * 释放的常规口子是**承办人本人**；管理员另可释放**任意已领取条目** ——
+ * 与其在两个池上与客诉专员同权一致（基线 v1.24 ※29）。少了这一路，
+ * 承办人休假 / 离岗时他名下那条就**锁死在池子里**：谁也领不走、谁也退不回，
+ * 而这条队列卡的正是投诉立项。
+ *
+ * ⚠️ **它不是「客诉专员的超集」**：客诉专员只能退自己的那条，故这里**只有三类管理员**，
+ * 不是 `REPORT_POOL_ACT_ROLES` 减去谁。投诉督导本轮已去权，两个集合都不含它。
+ */
+const REPORT_POOL_ADMIN_ROLES = new Set(['system-admin', 'ops-admin', 'tenant-admin']);
+
+export function canReleaseAnyRiskReport(roleKey: string): boolean {
+  return REPORT_POOL_ADMIN_ROLES.has(roleKey);
 }
 
 /**

@@ -32,7 +32,7 @@ import { useRiskTagStore } from '@/stores/riskTags';
 import { useRiskReportStore } from '@/stores/riskReports';
 import { useRiskQueueStore } from '@/stores/riskQueue';
 import { REPORT_ASSESS_LIMIT_MIN, isOpenStatus, isPooledStatus } from '@/stores/riskShared';
-import { RISK_FLAG_OPTIONS } from './types/operation';
+import { RISK_FLAG_OPTIONS, isProcessTabVisible } from './types/operation';
 import { poolStatusText } from './components/operation/OpRiskDecision';
 import { useRiskCollabStore } from '@/stores/riskCollab';
 import { useRiskHistoryStore, type RiskHistoryKind, type RiskHistoryRecord } from '@/stores/riskHistory';
@@ -358,7 +358,29 @@ function onRiskReport(payload: {
  * 而 A 线的条目**不是谁报上来的**，挂一条写着「风险报备待评估」的横幅是在说一件没发生的事，
  * 也会让二线以为自己报过了。A 线的情况改由下面的「风险打标」条呈现，两件事各说各的。
  */
+/**
+ * 当前角色在这张单上**看不看得到「风险报备」Tab** —— 页头三条风险横幅的渲染门控。
+ *
+ * 🔴 **入口与正文必须同一个判据**（2026-09-11 D-23 / D-24）：三条横幅上的
+ * 「查看报备 / 查看打标 / 查看协同记录」都是 `switchTab('risk')`，而 Tab 条上这一枚
+ * 对**一线坐席**与**工单运营**根本不渲染（`TAB_ROLE_DENY.risk`，真源＝基线 §3.1
+ * 「打标结果…**一线坐席仍不可见**」与「**工单运营不给** —— 它连风险词命中页都看不到」）。
+ * 横幅此前只判 `user.role.frontline`（只挡住一线）或干脆不判角色（报备横幅），
+ * 于是这两个角色能从页头把风险报备正文整块调出来：报备人、风险类型、场景描述全文、
+ * 附件、打标备注全部可见。
+ *
+ * 判据不在这里另写一张角色表 —— 直接问 `isProcessTabVisible`，与 Tab 条同源；
+ * 另写一张迟早与 `TAB_ROLE_DENY` 分家，那就是同一个洞换个地方再开一次。
+ *
+ * ⚠️ 这是**入口层**那一道；根上那一道在 `OpProcessTabs.switchTab`（拒绝切到不可见 Tab），
+ * 两层都要 —— 只有入口层挡不住 `?tab=risk` 深链。
+ */
+const canViewRiskTab = computed(
+  () => isProcessTabVisible('risk', d.value.type, user.roleKey),
+);
+
 const riskReportBanner = computed(() => {
+  if (!canViewRiskTab.value) return null;
   const r = riskReportPendingItem.value;
   if (!r) return null;
   const mins = riskReports.waitedMinutes(r.at);
@@ -388,6 +410,9 @@ const riskReportBanner = computed(() => {
  */
 const riskTagBanner = computed(() => {
   if (user.role.frontline) return null;
+  // 🔴 工单运营也不给（基线 §3.1「工单运营不给 —— 它连风险词命中页都看不到」）。
+  // 只判 frontline 时它照样能看到这条打标结论、并点「查看打标」把 Tab 正文调出来。
+  if (!canViewRiskTab.value) return null;
   const entry = riskQueue.entriesOf(ticketNo.value).find((e) => !!e.tag);
   const tag = entry?.tag;
   if (!tag) return null;
@@ -419,6 +444,9 @@ const riskTagBanner = computed(() => {
  */
 const riskAdviceMarks = computed(() => {
   if (user.role.frontline) return [];
+  // 🔴 与上面两条横幅同一道门控：看不到「风险报备」Tab 的角色不渲染这条 ——
+  // 它上面的「查看协同记录」同样是通向该 Tab 正文的入口（基线 §3.1）。
+  if (!canViewRiskTab.value) return [];
   if (isTicketTerminated(d.value.status)) return [];
   return riskCollab.marksOf(ticketNo.value);
 });

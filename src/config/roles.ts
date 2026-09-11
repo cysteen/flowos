@@ -52,8 +52,9 @@ export interface RoleDef {
    * 过滤是 `TABS.filter(t => !hiddenTabs.includes(t.key))` —— 写不存在的 key 等于没写。
    *
    * ⚠️ **默认是"给"**：不写就渲染。故新增页签时要在**每个不该看到它的角色**上补一行，
-   * 而不是在该看到它的角色上写点什么 —— `riskReport` 就是这么落的（只有客诉专员与
-   * 投诉督导没写它，其余七个角色逐个写上）。
+   * 而不是在该看到它的角色上写点什么 —— `riskReport` 就是这么落的：**客诉专员 +
+   * 投诉督导 + 三个管理员 scope** 不写它（基线 ※29「仅客诉专员 + 投诉督导 + 管理员可见」），
+   * 其余六个角色（一线坐席 / 二线专员 / 技术支持 / 二线班组长 / 工单运营 / 质检）逐个写上。
    */
   hiddenTabs: string[];
   /** 是否显示「管理后台」入口（头像下拉） */
@@ -231,13 +232,25 @@ export const ROLES: Record<RoleKey, RoleDef> = {
     hasAdminEntry: false,
     readonlyTickets: true,
   },
-  /* ⑨ 管理员 —— 前台一个角色，代码三个 key，差异只在 adminScope（基线 §3.0 末行） */
+  /*
+   * ⑨ 管理员 —— 前台一个角色，代码三个 key，差异只在 adminScope（基线 §3.0 末行）
+   *
+   * 🔴 **三个 scope 的 `hiddenTabs` 都不再含 `riskReport`**（2026-09-11 D-25）：
+   * 基线 ※29 的两条线表把报备池的可见角色写死为「**客诉专员 + 投诉督导 + 管理员可见**」，
+   * v1.24 又拍板「**两个池的兜底角色 ＝ 管理员**，领取 / 风险评估 / 协同处理三件事
+   * 客诉专员与管理员同权」。此前这三行写着 `['riskReport']` —— 页签根本进不去，
+   * 而同一份代码里 `canClaimRiskReport`（views/tickets/types/ticket.ts）与风险监控页的
+   * `REPORT_CLAIM_ROLES` 都已含这三个 scope，动作给了、入口没给，自相矛盾：
+   * A 线（风险工单池，在风险监控页）逐行同权成立，B 线报备池整个进不去。
+   *
+   * ⚠️ 这**不是放宽权限**，是把已定稿的同权口径落实到入口上；其余八个角色一格未动。
+   */
   'system-admin': {
     key: 'system-admin',
     name: '管理员',
     adminScopeLabel: '管理员 · 平台',
     menus: ['home', 'tickets', 'query-center', 'aftersale', 'team-board', 'ops-ticket-monitor', 'ops-risk-monitor', 'approval'],
-    hiddenTabs: ['riskReport'],
+    hiddenTabs: [],
     hasAdminEntry: true,
     adminScope: 'platform',
   },
@@ -246,7 +259,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
     name: '管理员',
     adminScopeLabel: '管理员 · 运营',
     menus: ['home', 'tickets', 'query-center', 'aftersale', 'team-board', 'ops-ticket-monitor', 'ops-risk-monitor', 'approval'],
-    hiddenTabs: ['riskReport'],
+    hiddenTabs: [],
     hasAdminEntry: true,
     adminScope: 'ops',
   },
@@ -255,7 +268,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
     name: '管理员',
     adminScopeLabel: '管理员 · 租户',
     menus: ['home', 'tickets', 'query-center', 'aftersale', 'team-board', 'ops-ticket-monitor', 'ops-risk-monitor', 'approval'],
-    hiddenTabs: ['riskReport'],
+    hiddenTabs: [],
     hasAdminEntry: true,
     adminScope: 'tenant',
   },

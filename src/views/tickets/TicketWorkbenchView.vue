@@ -47,8 +47,18 @@ const riskReports = useRiskReportStore();
  * 报备池开着就是它，否则跟着工单页签走。
  */
 const riskReportTabActive = ref(false);
+/**
+ * 🔴 **选中态要与 `hiddenTabs` 取交集**（2026-09-11 D-23 同类缺口）：
+ * 顶栏「切换演示角色」**不重挂本页**（AppHeader 的 `afterContextChange` 只在新角色
+ * 连 `tickets` 菜单都没有时才跳走），故报备池开着时切到一个看不到这枚页签的角色，
+ * `riskReportTabActive` 仍是 true —— 页签栏上已经没有「风险报备池」，正文却还开着，
+ * 报备人 / 风险类型 / 场景描述全文一览无余。渲染条件读这个合成值而不是裸 ref。
+ */
+const riskReportTabOpen = computed(
+  () => riskReportTabActive.value && !user.hiddenTabs.includes(RISK_REPORT_TAB),
+);
 const activeWorkbenchTab = computed<WorkbenchTabKey>(() =>
-  riskReportTabActive.value ? RISK_REPORT_TAB : wb.activeTab.value,
+  riskReportTabOpen.value ? RISK_REPORT_TAB : wb.activeTab.value,
 );
 
 /**
@@ -64,6 +74,9 @@ const workbenchTabCounts = computed<Record<string, number>>(() => ({
 }));
 
 function onTabChange(tab: WorkbenchTabKey) {
+  // 与 Tab 条同一道门控：`hiddenTabs` 里有它就不认这次切换（TicketTabs 本就不渲染该枚，
+  // 这里再挡一道是为了让"选中态"与"渲不渲染"永远是同一个答案）
+  if (user.hiddenTabs.includes(tab)) return;
   riskReportTabActive.value = tab === RISK_REPORT_TAB;
   if (isTicketTab(tab)) wb.setTab(tab);
 }
@@ -327,7 +340,7 @@ function onConfirmSaveFilter(name: string) {
     </div>
 
     <!-- 风险报备池：装的是报备单不是工单，故整块自成一页，不走下面那套工单列表 -->
-    <div v-if="riskReportTabActive" class="workbench-body">
+    <div v-if="riskReportTabOpen" class="workbench-body">
       <RiskReportPoolPanel @open-ticket="openTicketByNo" />
     </div>
 

@@ -299,6 +299,23 @@ export function visibleProcessTabs(
 }
 
 /**
+ * 单个 Tab 对「当前类型 + 当前角色」可不可见 —— 与 `visibleProcessTabs` **同一个判据**。
+ *
+ * 给**页面上指向某个 Tab 的入口**用（页头横幅上的「查看报备 / 查看打标 / 查看协同记录」等）：
+ * 入口该不该渲染，answer 必须与 Tab 条自己算出来的那一份严格一致，
+ * 否则就会出现"Tab 条上没有这一枚、页头却给了一个按钮把正文调出来"的绕过口
+ * （2026-09-11 D-24）。故这里**不另写一张表**，只是把同一个过滤跑一遍取 some。
+ */
+export function isProcessTabVisible(
+  tabKey: ProcessTabKey,
+  ticketType: string,
+  roleKey: string,
+  opts?: { feishuActive?: boolean },
+): boolean {
+  return visibleProcessTabs(ticketType, roleKey, opts).some((t) => t.key === tabKey);
+}
+
+/**
  * 矩阵「管理员」一列对应的三个角色 —— 前台只有一个「管理员」，代码里是三个 RoleKey
  * （platform / tenant / ops 的差异只在管理后台内部生效，基线 §3.0 末行）。
  * 下方判据表凡出现管理员的格子都展开成这三个。

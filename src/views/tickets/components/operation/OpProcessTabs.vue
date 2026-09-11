@@ -123,7 +123,21 @@ watch(visibleTabs, (tabs) => {
   if (!tabs.some((t) => t.key === activeTab.value)) activeTab.value = 'process';
 });
 
+/**
+ * 切 Tab —— **只认 `visibleTabs`**，切到当前角色/当前类型下不渲染的 Tab 一律拒绝。
+ *
+ * 🔴 这道校验是**根上那一道**，不能省：本函数经 `defineExpose` 暴露给工单页，
+ * 页头三条风险横幅的「查看报备 / 查看打标 / 查看协同记录」、风险监控页跳过来的
+ * `?tab=risk` 深链、底栏动作提交后的自动跳转，统统从这里进。少了它，
+ * 「风险报备」Tab 对一线坐席与工单运营在 Tab 条上不渲染（`TAB_ROLE_DENY.risk`），
+ * 正文却能被这些入口整块调出来 —— 报备人、风险类型、场景描述全文、附件、打标备注
+ * 全部可见，直接打穿基线 §3.1「打标结果一线不可见 / 工单运营连风险词命中页都看不到」。
+ *
+ * 入口侧**另有一层**（看不到该 Tab 的角色不渲染入口，见 TicketOperationView 的
+ * `canViewRiskTab`）：两层缺一层就还能绕 —— 只补入口挡不住深链，只补这里则入口会点了没反应。
+ */
 function switchTab(key: ProcessTabKey) {
+  if (!visibleTabs.value.some((t) => t.key === key)) return;
   activeTab.value = key;
 }
 
