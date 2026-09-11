@@ -15,7 +15,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { DatePicker, message } from 'ant-design-vue';
 import dayjs, { type Dayjs } from 'dayjs';
-import { ReloadOutlined, ArrowRightOutlined, RightOutlined, SearchOutlined, SettingOutlined, HistoryOutlined, CheckOutlined, UnorderedListOutlined, DownOutlined, TagOutlined, TagsOutlined, EditOutlined, SaveOutlined, FilterOutlined, UserOutlined, PaperClipOutlined } from '@ant-design/icons-vue';
+import { ReloadOutlined, ArrowRightOutlined, RightOutlined, SearchOutlined, SettingOutlined, HistoryOutlined, CheckOutlined, UnorderedListOutlined, DownOutlined, TagOutlined, TagsOutlined, EditOutlined, SaveOutlined, FilterOutlined, UserOutlined, PaperClipOutlined, RollbackOutlined } from '@ant-design/icons-vue';
 import MetricTipIcon from '@/components/MetricTipIcon.vue';
 import OpActionModal from '@/views/tickets/components/operation/OpActionModal.vue';
 // 协同处理弹窗与工单页底栏那一枚**共用同一个组件**：投诉单在池里与在工单上做的是同一件事，
@@ -47,6 +47,7 @@ import {
   REPORT_ASSESS_LIMIT_MIN,
   type AssessDecision,
   type MonitorSource,
+  type RiskReleaseRecord,
   type RiskTagResult,
 } from '@/stores/riskShared';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
@@ -59,7 +60,9 @@ import { RISK_LEVELS, riskLevelText } from '@/config/risk';
 import { TICKETS } from '@/mock/tickets';
 // 优先级的界面词取工单侧那一份**单一真源**：建单页下拉、班组看板都从那里取，
 // 本文件再抄一份，改天业务把「普通加急」改个说法，这一列就会静默地留在旧词上。
-import { PRIORITY_LABEL, STATUS_GROUP, ticketStatusDisplayName, resolveTicketGroupNames, type Priority, type Ticket } from '@/views/tickets/types/ticket';
+// `canReleaseAnyRiskReport` 是**管理员兜底释放**那一路的唯一判据，与 B 线报备池共用同一份 ——
+// 两个池的释放口径 PRD 明写「逐条同 §5.5」（§5B.4），各写一份就会各放各的权
+import { canReleaseAnyRiskReport, PRIORITY_LABEL, STATUS_GROUP, ticketStatusDisplayName, resolveTicketGroupNames, type Priority, type Ticket } from '@/views/tickets/types/ticket';
 // 🔴 清单表直接复用工作台那张富列表，不在本页另画一张长得像的：
 // 「投诉单」「重要紧急」两路的行**就是工单**，人在这一档要判的也正是工单本身
 // （摘要 / SLA / 状态 / 产品）。原先那两列（监控来源 ＝ 档名的复述、场景描述 ＝ 一句写死的套话）
@@ -871,7 +874,9 @@ function doClaim(r: RiskPoolItem) {
   // 写成"只有客诉专员"与上面那份角色表、与 `openCollab` 的「归客诉专员与管理员」都对不上——
   // 管理员点得动却被告知自己没权限，三处同源表述必须同时改。
   if (!canClaim.value) { message.warning('领取风险工单池的单归客诉专员与管理员'); return; }
-  if (!reportStore.claim(r.id, user.name)) {
+  // 第三个实参是**领取那一刻的实际角色**，落在 `risk.report.claimed` 的正文落款上
+  // （`riskPool.notifyClaimed`：不写死「客诉专员」——`REPORT_CLAIM_ROLES` 含三个管理员 scope）
+  if (!reportStore.claim(r.id, user.name, user.role.name)) {
     // 唯一会落空的情形：别人刚刚把它领走了，本页还没重算
     message.warning('这一条刚被别人领走了，请刷新后再看');
     return;
@@ -888,6 +893,100 @@ function doClaim(r: RiskPoolItem) {
  */
 function canAssessRow(r: RiskPoolItem) {
   return canClaim.value && r.status === '评估中' && r.assignee === user.name;
+}
+
+/* ---- 释放：把**已领取**的条目退回池子（《【930】》PRD §5.4 元素 ⑩a / §5.5 / §5B.4）---- */
+
+/**
+ * **管理员兜底**（§5.5 ②）：可释放**任意**已领取条目，不限于自己承办的那一条。
+ *
+ * 🔴 **与 B 线报备池共用 `canReleaseAnyRiskReport` 这一份判据**（§5B.4「逐条同 §5.5」）——
+ * 本页另写一份角色数组的话，同一个管理员在两个池上能不能释放会各说各的。
+ *
+ * ⚠️ **它不是 `canClaim` 的超集**：客诉专员只能退**自己领的**那一条，
+ * 故这一枚只含三个管理员 scope（见 `views/tickets/types/ticket.ts` 的 `REPORT_POOL_ADMIN_ROLES`）。
+ */
+const canReleaseAny = computed(() => canReleaseAnyRiskReport(user.roleKey));
+
+/**
+ * 这一行出不出「释放」。**三道判据、缺一不可**（§5.5 ② ③）：
+ *   ① **角色**：`canClaim`（客诉专员 + 三个管理员 scope）—— 投诉督导本轮已去权，
+ *      两个池都只读，这一列对他恒为「—」（§5.4 元素 ⑪）；
+ *   ② **状态**：仅「已领取」（落库值「评估中」）—— 待领取没有可退的东西、
+ *      已结论不可回退（§9 规则 23：这条回边是四态里唯一的一条）；
+ *   ③ **人**：承办人**本人**；管理员另可释放任意条目（②的兜底那一路）。
+ *
+ * 🔴 **这三道只是行上的可见性，不是最终门控**：store 侧 `riskPool.release` 各自再收一遍
+ * （状态 / 原因非空 / 承办人本人），那一道拦的是"绕过表单直接调进来"。两道都要。
+ */
+function canReleaseRow(r: RiskPoolItem) {
+  if (!canClaim.value) return false;
+  if (r.status !== '评估中') return false;
+  return r.assignee === user.name || canReleaseAny.value;
+}
+
+const releaseOpen = ref(false);
+const releaseTarget = ref<RiskPoolItem | null>(null);
+const releaseReason = ref('');
+const releaseTried = ref(false);
+/** 空白与全空格一律拦下（§5.5 ④），提示语按 PRD 原话写「请填写释放原因」 */
+const missReleaseReason = computed(() => releaseTried.value && !releaseReason.value.trim());
+
+/**
+ * 「释放」——把已领取的条目**退回池子**（§5.5）。
+ *
+ * 🔴 **点开只填「释放原因」这一项**（§5.5 ④）：不选接手人、不改等级、不写结论 ——
+ * 释放**不是换人**（§5.5 ①），弹窗里多摆任何一格都会让人以为自己正在把活指给谁。
+ * 🔴 **照 B 线报备池那个释放弹窗做**（`RiskReportPoolPanel` 的 `rrp-release`）：
+ * 同一个动作在两个池上是同一套版式与同一句提示文案，另造一版就是同一条口径两个样子。
+ */
+function openRelease(r: RiskPoolItem) {
+  releaseTarget.value = r;
+  releaseReason.value = '';
+  releaseTried.value = false;
+  releaseOpen.value = true;
+}
+
+function confirmRelease() {
+  releaseTried.value = true;
+  const target = releaseTarget.value;
+  const reason = releaseReason.value.trim();
+  if (!target || !reason) return;
+  /*
+   * 🔴 **走合并层的 `release`，不在本页自己改 store 里那个原对象**（与 `doClaim` 对称）：
+   * 状态回「待领取」、承办人清空、条目上**累积**一条释放记录（释放人 · 角色 · 时刻 · 原因）、
+   * 并撤掉 `claim` 埋下的那张"进工单页自动弹评估"的票 —— 四件事绑在 store 一处。
+   * 就地改 `r.status` 只做得到其中一件，另外三件会静默地不发生。
+   * 🔴 **本轮不发通知、不落 720 第八类履历**（§5.5 ⑦ ⑧ / §9 规则 32），两条都在 store 侧写死。
+   */
+  const ok = reportStore.release(target.id, {
+    by: user.name,
+    byRole: user.role.name,
+    at: nowStamp(),
+    reason,
+    // 管理员兜底可释放任意已领取条目；客诉专员恒 false，store 侧照旧校验承办人本人
+    anyAssignee: canReleaseAny.value,
+  });
+  if (!ok) {
+    /*
+     * 走到这里只有两种可能：条目已经不在「已领取」态（别人给了结论 / 已被释放过），
+     * 或它不在本人名下而本人又不是管理员。**不写"不在你名下"一句了事** ——
+     * 管理员释放的本来就是别人名下的条目（§5.5 ②），那句话对他恒为假。
+     */
+    message.warning('该条目已不在「已领取」态，或不在你名下，请刷新后再看');
+    releaseOpen.value = false;
+    return;
+  }
+  releaseOpen.value = false;
+  message.success(`已释放 ${target.ticketNo}，退回风险工单池等人重新领取`);
+}
+
+/**
+ * 历次释放记录，**最近一次在前**。没有被释放过时为空数组（§5.5 ⑥ 的留痕在这里读）。
+ * 入参取**结构**而不是 `RiskPoolItem`：与 B 线报备池那一份同形，两处读的是同一格。
+ */
+function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
+  return [...(r.releases ?? [])].reverse();
 }
 
 /* ---- 协同处理：**投诉单那一路的工作面**（《【930】》§5.2 / §5C，基线 ※29）---- */
@@ -5354,7 +5453,11 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               >承办人</th>
               <th style="width: 128px">提交时刻</th>
               <th style="width: 84px">等待时长</th>
-              <th style="width: 88px">操作</th>
+              <!--
+                已领取行现在是**两枚按钮**（处置 +「释放」，§5.4 元素 ⑥ ⑩a），
+                88px 装不下「协同处理」+「释放」，故放宽；多出来的宽度从「场景描述」那一列让。
+              -->
+              <th style="width: 136px">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -5400,6 +5503,12 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                   而"升不升级成投诉单"对一张已经是投诉单的单根本不成立。
                   协同不必先领取、已结论也可再协同（§5C.1 次数行），故它不进下面那三档分支。
                 -->
+                <!--
+                  🔴 **「释放」摆在处置按钮右边，两类工作面都有**（§5.4 元素 ⑥ ⑩a：
+                  已领取行 ＝ 处置按钮 +「释放」）：投诉单那一路的处置按钮是「协同处理」，
+                  非投诉单那一路是「评估」，但**退回池子这件事与原单类型无关** ——
+                  只与"这条在不在人手上"有关。判据统一走 `canReleaseRow`（三道：角色 / 状态 / 人）。
+                -->
                 <template v-if="isComplaintTicket(r.ticketNo)">
                   <button
                     v-if="canClaim"
@@ -5407,8 +5516,14 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                     title="投诉单不做风险评估，走协同处理：给评估意见 + 建议事项；工单状态与处理人均不变"
                     @click="openCollab(r)"
                   >协同处理</button>
+                  <button
+                    v-if="canReleaseRow(r)"
+                    type="button" class="row-btn row-btn-amend"
+                    title="把这一条退回「待领取」，由客诉专员或管理员重新领取；须填释放原因，等待时长不重新计时"
+                    @click="openRelease(r)"
+                  >释放</button>
                   <span
-                    v-else
+                    v-if="!canClaim"
                     class="hit-sub"
                     title="协同处理归客诉专员与管理员；本视角只读"
                   >—</span>
@@ -5444,8 +5559,24 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                     :title="needsVerify(r) ? '这一条还没有风险打标，先补一个结论' : '给出评估结论：升级 / 不升级'"
                     @click="handleReportRow(r)"
                   >{{ needsVerify(r) ? '补打标' : '评估' }}</button>
+                  <!--
+                    🔴 **管理员在这一格只出「释放」、不出「评估」**（与 B 线报备池同形）：
+                    结论要由**承办的那个人**给（`canAssessRow` 判的就是 `assignee === 本人`），
+                    管理员越过他直接评，等于替一个已经在读材料的人签了字；
+                    但承办人休假 / 离岗时那一条不能锁死在池子里，故释放这一路给他兜底。
+                  -->
+                  <button
+                    v-if="canReleaseRow(r)"
+                    type="button" class="row-btn row-btn-amend"
+                    title="把这一条退回「待领取」，由客诉专员或管理员重新领取；须填释放原因，等待时长不重新计时"
+                    @click="openRelease(r)"
+                  >释放</button>
+                  <!--
+                    🔴 **操作列恒在、无动作时写「—」**（§5.4 元素 ⑨）。这里不能再用 v-else ——
+                    同一格现在可能出两枚按钮，占位只在**两枚都不出**时才该出现。
+                  -->
                   <span
-                    v-else
+                    v-if="!canAssessRow(r) && !needsVerify(r) && !canReleaseRow(r)"
                     class="hit-sub"
                     :title="`承办人 ${r.assignee ?? '—'} · 结论由承办人本人给出`"
                   >—</span>
@@ -6769,6 +6900,32 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                 </button>
               </li>
             </ul>
+            <!--
+              释放记录（§5.5 ⑥「在**两个池**的条目详情上可见」）。**没被释放过整段不出**。
+              🔴 **它必须摆在评估人眼前**：这条条目刚被人领走过又退回来，退回的理由
+              往往正是"我判不了 / 不该我办"——现在轮到你判，那句话是你要读的第一手材料。
+              历次全列、最近一次在前（累积不覆盖）。
+              🔴 **与 B 线报备池、工单「风险报备」Tab 的在队卡同一口径同一版式**
+              （`RiskReportPoolPanel` 的 `.assess-releases` / `OpRiskMonitorTab` 的 `.rr-releases`）：
+              同一条留痕在三处长得不一样，人只会以为其中一处少显示了东西。
+            -->
+            <div v-if="releasesOf(assessTarget).length" class="assess-releases">
+              <div class="assess-releases-head">
+                <RollbackOutlined />
+                释放记录（已释放 {{ releasesOf(assessTarget).length }} 次）
+              </div>
+              <div
+                v-for="(rel, i) in releasesOf(assessTarget)"
+                :key="i"
+                class="assess-release"
+              >
+                <div class="assess-release-head">
+                  <span class="assess-release-who">{{ rel.by }}（{{ rel.byRole }}）</span>
+                  <span class="assess-release-at">{{ rel.at }}</span>
+                </div>
+                <div class="assess-release-reason">{{ rel.reason }}</div>
+              </div>
+            </div>
           </div>
 
           <!-- ② 本单另有：收在卡片底栏，弱于主体描述 -->
@@ -6854,9 +7011,53 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
     />
 
     <!--
+      释放：**只填一项「释放原因」**（§5.5 ④）。
+      🔴 **不出接手人这一格** —— 释放不指定接手人、不是换人（§5.5 ①）；
+      摆一个人员下拉在这里，做的就是已经整套取消的「改派」。
+      🔴 **版式与提示文案照 B 线报备池那个释放弹窗**（`RiskReportPoolPanel` 的 `rrp-release`）：
+      同一个动作在两个池上是同一套壳（OpActionModal · warn · 440 宽 ·「确认释放」danger），
+      两处只在"退回到哪个池"与"钟从哪个时刻起算"两句上不同。
+    -->
+    <OpActionModal
+      :open="releaseOpen"
+      :title="releaseTarget ? `释放条目 · ${releaseTarget.ticketNo}` : '释放条目'"
+      :icon="RollbackOutlined"
+      tone="warn"
+      :width="440"
+      ok-text="确认释放"
+      ok-tone="danger"
+      @update:open="releaseOpen = $event"
+      @ok="confirmRelease"
+    >
+      <div class="rm-release">
+        <div class="op-field">
+          <div class="op-label req">释放原因</div>
+          <a-textarea
+            v-model:value="releaseReason"
+            :rows="3"
+            :status="missReleaseReason ? 'error' : undefined"
+            placeholder="写清为什么退回，例如判不了 / 不该由我办 / 需要换人跟进…"
+          />
+          <div v-if="missReleaseReason" class="assess-err">请填写释放原因</div>
+        </div>
+        <!--
+          释放的两个后果都得在下决心之前说清：
+          ① 退回池子由**任何有资格的人**重新领（不是指给某个人）；
+          ② **等待时长不归零**（§5.5 ⑤）——已经超时的退回来仍是超时态，
+             不写这一句，人会以为退一次就把钟重置了、于是拿它当"续命"用。
+          🔴 A 线的钟从**进池时刻**起算（B 线是提交时刻，§9 规则 26），这一句两处不同。
+        -->
+        <p class="assess-hint rm-release-hint">
+          释放后本条退回「待领取」，由客诉专员或管理员重新领取；等待时长仍从进池时刻起算、不会因此重新计时。
+        </p>
+      </div>
+    </OpActionModal>
+
+    <!--
       🔴 **分派弹窗已删**（业务第三轮拍板取消分派 / 改派 / 批量分派整套）。
       池内只剩「领取」，它不需要弹窗——领取的对象就是当前这一行、承办人就是当前登录的人，
       没有任何一项要人填。为一个无参动作留一个确认弹窗，只是多一次点击。
+      ⚠️ 「**释放**」相反：它**必填释放原因**（§5.5 ④），故有上面那个弹窗。
     -->
   </div>
 </template>
@@ -8397,6 +8598,13 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
 /* 定宽列里的工单号 / 人名不能被撑破，超出即省略，全值挂在 title 上 */
 .report-table td { overflow: hidden; text-overflow: ellipsis; }
 /*
+ * 已领取行的操作格现在是两枚按钮（处置 +「释放」，§5.4 元素 ⑥ ⑩a）。
+ * Vue 的 `whitespace: condense` 会把两个元素之间那个带换行的空白节点整个抹掉，
+ * 两枚按钮会**贴死在一起**；故显式给间距，不靠模板里的换行。
+ * ⚠️ 只收在本表内：实时监控那张表的「去管控 + 修正」是既有形状，本轮不动它。
+ */
+.report-table .row-btn + .row-btn { margin-left: 6px; }
+/*
  * 「已标记」段那一格 SLA 的两行。**与工作台那张富列表逐字同一副形状**（12px / 18px 行高 / 600），
  * 颜色由 `slaResolveLine` / `slaFirstLine` 现算现给 —— 那是两处共用的同一份口径，
  * 本页只负责把它画出来，不自己判"算不算超时"。
@@ -8561,6 +8769,61 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
   line-height: 1.4;
 }
 .assess-file-btn:hover { color: #1d4ed8; text-decoration: underline; }
+
+/* ---- 释放记录（评估弹窗内 · §5.5 ⑥）：与 B 线报备池那一份**逐行同值**，改一处必两处同改 ---- */
+.assess-releases {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+}
+.assess-releases-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+}
+.assess-release {
+  margin-top: 6px;
+}
+/* 分隔线只给第二条起。⚠️ 不能写 `:first-of-type`——标题也是 div，规则会落空 */
+.assess-release + .assess-release {
+  padding-top: 6px;
+  border-top: 1px dashed #e2e8f0;
+}
+.assess-release-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.assess-release-who {
+  font-size: 11px;
+  font-weight: 600;
+  color: #374151;
+}
+.assess-release-at {
+  font-size: 11px;
+  color: #9ca3af;
+  font-variant-numeric: tabular-nums;
+}
+.assess-release-reason {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #4b5563;
+  word-break: break-word;
+}
+
+/* ---- 释放弹窗 ---- */
+.rm-release {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.rm-release-hint { margin: 0; }
 
 /* ② 本单另有：卡片底栏 */
 .assess-sheet-foot {

@@ -299,7 +299,9 @@ function claim(r: RiskReport) {
     message.warning(`报备单的领取与评估由${POOL_ACT_ROLE_TEXT}执行，本角色只读`);
     return;
   }
-  if (!pool.claim(r.id, user.name)) {
+  // 第三个实参是**领取那一刻的实际角色**，落在 `risk.report.claimed` 的正文落款上
+  // （`riskPool.notifyClaimed`：不写死「客诉专员」——本页的领取权含三个管理员 scope）
+  if (!pool.claim(r.id, user.name, user.role.name)) {
     message.warning('该报备已被他人领取');
     return;
   }

@@ -72,7 +72,9 @@ watch(
     }
     // 存储值仍是「待分派」，界面写「待领取」（改名归风险 store 那一路，见 OpRiskDecision.ts）
     if (t.status === '待分派') {
-      pool.claim(t.id, user.name || '当前用户');
+      // 第三个实参是**领取那一刻的实际角色**，落在 `risk.report.claimed` 的正文落款上
+      // （`riskPool.notifyClaimed`：不写死「客诉专员」，管理员兜底领取是常规路径）
+      pool.claim(t.id, user.name || '当前用户', user.role.name);
       reportStore.consumeAssessArrival(props.ticketNo);
     }
     if (t.assignee !== (user.name || '当前用户')) {

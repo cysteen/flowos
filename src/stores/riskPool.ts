@@ -265,15 +265,28 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
    * 而这条队列卡的是投诉立项（基线 ※8a）。改成"谁有空谁领"之后，
    * 队列的吞吐不再取决于某一个人在不在。
    * 【连带】`risk.report.reassigned`（已改派）这个事件随之没有落点——没有改派动作了。
+   *
+   * 🔴 **落款角色取领取那一刻的实际角色 `byRole`，不写死「客诉专员」**（2026-09-11 改）：
+   * 领取权 ＝ 客诉专员 **+ 三个管理员 scope**（`canClaimRiskReport` / 监控页的
+   * `REPORT_CLAIM_ROLES`），管理员兜底领取是**常规路径**（基线 v1.24 ※29、缺口 G6 已结案），
+   * 写死的话这封通知会当着报备人的面把管理员称作客诉专员 ——
+   * 而报备人正是据此判断"这条现在归谁办、该找谁问"。
+   *
+   * ⚠️ **锚点：凡是角色名的字面量，一律照常量 / 实参的实际取值写，同源须同改。**
+   * 这是本仓第 8 处同一种错法（前七处都在权限提示里，各自已加同样的锚点注释），
+   * 区别只在这一处落在**通知正文**里 —— 正文不像提示语那样点一下就看得见，
+   * 它发出去就进了通知记录，错的落款会一直留在凭据上。
+   *
+   * ⚠️ **只改正文取值，不新增通知事件**（§6.2 / §9 规则 34：本册不新增任何通知事件）。
    */
-  function notifyClaimed(r: RiskPoolItem) {
+  function notifyClaimed(r: RiskPoolItem, byRole: string) {
     notifyLog.emit({
       ticketNo: r.ticketNo,
       event: 'risk.report.claimed',
       kind: 'risk',
       title: '风险报备已领取',
       receivers: [reporterReceiver(r)],
-      content: `${r.ticketNo} 的风险报备已由 ${r.assignee || '客诉专员'}（客诉专员）领取，正在评估中。报备原因：${reasonLine(r)}；提交时刻：${r.at}。评估时限 ${REPORT_ASSESS_LIMIT_MIN} 分钟（自报备提交时刻起算），出结论后会再通知你。`,
+      content: `${r.ticketNo} 的风险报备已由 ${r.assignee || '承办人'}（${byRole}）领取，正在评估中。报备原因：${reasonLine(r)}；提交时刻：${r.at}。评估时限 ${REPORT_ASSESS_LIMIT_MIN} 分钟（自报备提交时刻起算），出结论后会再通知你。`,
     });
   }
 
@@ -283,15 +296,20 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
    *
    * **只能领还没人认领的那一批**：已在别人名下的不给伸手拿——那不是"领取"，
    * 那是把别人手上正在办的活抽走，而分派 / 改派整套本轮已经取消。
+   *
+   * 🔴 **`assigneeRole` 是领取那一刻操作人的实际角色**，只有一个用处：通知正文的落款
+   * （见 `notifyClaimed`）。**不落在条目上** —— 模型里没有"承办人角色"这一格，
+   * 补一格就等于多一份会过期的副本（人换角色后条目上那一格仍是旧的）。
+   * 与 `release` 把 `byRole` 记进释放留痕不同：那是**历史事件**的落款，本就该冻住。
    */
-  function claim(id: string, assignee: string) {
+  function claim(id: string, assignee: string, assigneeRole: string) {
     const r = findById(id);
     if (!r || r.status !== '待分派') return false;
     r.status = '评估中';
     r.assignee = assignee;
     reportStore.assessArrivalTicket = r.ticketNo;
     // 收件人是**报备人**（不是承办人自己），理由见 notifyClaimed
-    notifyClaimed(r);
+    notifyClaimed(r, assigneeRole);
     return true;
   }
 
