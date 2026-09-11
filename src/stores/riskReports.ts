@@ -20,6 +20,7 @@ import {
   type ReportAssessment,
   type ReportStatus,
   type RiskPoolItem,
+  type RiskReleaseRecord,
 } from '@/stores/riskShared';
 
 /**
@@ -96,6 +97,12 @@ export interface RiskReport {
   assessment?: ReportAssessment;
   /** 仅 status ＝「已撤回」时有值 */
   withdrawReason?: string;
+  /**
+   * 历次**释放**记录（§5.5 ⑥，v3.5 新立）。**累积不覆盖**：同一条被领取释放 N 次就有 N 条。
+   * 动作在合并层 `stores/riskPool.ts` 的 `release`（两条线共用，与 `claim` 对称）。
+   * 没有被释放过时**整格不存在**，见 `RiskPoolItem.releases` 的说明。
+   */
+  releases?: RiskReleaseRecord[];
 }
 
 /** 二线报备：来源恒为「二线报备」，种子里不再逐条重复 */
@@ -282,8 +289,11 @@ const LS_KEY = 'flowos-risk-reports';
  * v5：缓存里多了 `seedDay`（这份数据的时刻生成于哪一天），读缓存改走 `readDailyRiskCache`
  * ——**隔夜即作废**。v4 那份没有 `seedDay`，新判据一律判作废、本来也该丢；
  * 同时提交 / 评估时刻改由 `todayStamp` 生成（值域没变、取值变了），见 `SEED` 上方。
+ * v6：条目上多了 `releases`（历次释放留痕，PRD v3.5 §5.5 ⑥）。v5 那份里没有这一格，
+ * 读进来是 undefined —— 判据侧一律 `releases ?? []`，本来**不读也不会坏**；
+ * 升号是为了不让保质期内的旧快照与刚变过的模型混着用（与 A 线 v8 → v9 同批）。
  */
-const LS_VERSION = 5;
+const LS_VERSION = 6;
 
 /**
  * 缓存"新不新"的判据：取**提交与评估时刻**里最新的那一个。

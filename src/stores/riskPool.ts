@@ -20,6 +20,7 @@ import {
   type ReportAssessment,
   type ReportVerify,
   type RiskPoolItem,
+  type RiskReleaseRecord,
 } from '@/stores/riskShared';
 
 /**
@@ -52,6 +53,23 @@ import {
  */
 
 export type { RiskPoolItem };
+
+/**
+ * 一次**释放**要填的东西 ＝ 那条留痕本身（释放人 · 角色 · 时刻 · 原因，§5.5 ⑥）+ 一枚门控开关。
+ *
+ * 【为什么入参就是留痕】释放**没有第二个产物**：状态回退是它的效果，留痕是它留下的全部东西。
+ * 再造一个 Input 形状去映射一遍，只会多一处可以写歪的地方。
+ */
+export interface RiskReleaseInput extends RiskReleaseRecord {
+  /**
+   * **管理员兜底**（§5.5 ②）：置 true 时可释放**任意**已领取条目，不再校验承办人本人。
+   * 缺省 false ＝ 只能释放自己承办的那一条。
+   *
+   * 🔴 **它不是"跳过校验"的后门**：角色判据在页面层（`canReleaseAnyRiskReport`），
+   * 与 `claim` 把角色门控留在页面层同形 —— store 认得出人名，认不出角色。
+   */
+  anyAssignee?: boolean;
+}
 
 /** 一次协同处理要填的东西。`otherAdvice` 只在勾了「其他」时有（条件必填，由调用方收校验） */
 export interface CoordinateInput {
@@ -274,6 +292,82 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
     reportStore.assessArrivalTicket = r.ticketNo;
     // 收件人是**报备人**（不是承办人自己），理由见 notifyClaimed
     notifyClaimed(r);
+    return true;
+  }
+
+  /**
+   * **释放**（《【930】》PRD v3.5 §5.5 新立，两个池同一套口径 / §5B.4「逐条同 §5.5」）——
+   * 承办人把**已领取**的条目退回「待领取」，由任何有资格的人重新领。与 `claim` 互为逆动作。
+   *
+   * 🔴 **释放不是换人**（§5.5 ①）：它**不指定接手人**，只是把条目放回池子。
+   * 「领取后不能换人」这条因此收窄为"不能把条目直接指给另一个人"——
+   * 分派 / 改派 / 批量分派仍整套不做（§9 规则 9）。
+   *
+   * 【发生什么 · §5.5 ⑤ ⑥】
+   *   ① 状态回「待领取」（**落库值仍写 `'待分派'`**，界面映射不变，见 `unassignedQueue` 的说明）；
+   *   ② 承办人清空 —— 这一格正是"谁在办"的唯一判据，不清的话条目回到待领取却还挂着人名；
+   *   ③ 条目上**累积**一条释放记录（释放人 · 角色 · 时刻 · 原因），**不覆盖**前几次。
+   *
+   * 【不发生什么 · §5.5 ⑤ ⑦ ⑧ ⑩】
+   *   · **等待时长不归零、不重新计时**：本函数**一个字都不碰 `at`** —— 钟从进池 / 提交时刻起算
+   *     （§9 规则 26），已超时的行释放后仍标红。这不是疏漏，是这一条口径本身：
+   *     领了又退也是这条队列在拖，钟不该因为换了个人就重置。
+   *   · **不落《【720】》第八类履历**：释放与领取同属**队列内部事件**，工单一格没动
+   *     （§6.3 / §9 规则 32：第八类收报备提交 / 打标 / 评估结论 / 协同处理 / 风险等级变更**五件**，
+   *     明确不含「条目被领取」「条目被释放」）。🔴 **不要顺手补 `history.recordRiskHistory`。**
+   *   · **本轮不发任何通知**：本册不新增通知事件（§6.2、§9 规则 34）。收件人口径已
+   *     **预先写定并与 `risk.report.claimed` 对称**——**B 线＝报备人、A 线＝不发**
+   *     （A 线的 `by` 恒为「系统」，`reporterReceiver` 解析为空，本来就没有人在等这条）。
+   *     将来若为释放立事件，按此收件人执行、无须再议；🔴 在那之前**不要为它造事件码**。
+   *   · 不改工单子状态、不改处理人、不改风险等级、不改「报备中」标记（那是纯派生的，
+   *     见 `riskReports.isReporting`：条目回到「待领取」仍在队，标记照旧挂着）。
+   *   · **不进任何指标的分子**：B1 / A1 的口径含待领取与已领取两态，释放前后总数不变，
+   *     只有 A1a / A1b（B1a / B1b）两个分项此消彼长（§7 / §9 规则 4a）。
+   *
+   * 【B 线的连带 · §5.5 ⑨】条目退回「待领取」之后，报备人的「撤回」入口**随之恢复** ——
+   * 这一条**不用写代码**：`OpRiskMonitorTab.canWithdraw` 判的是"待分派 + 本人"，
+   * 状态一回去它自己就亮了。本注释只为说明那是设计而不是巧合。
+   *
+   * 【谁能释放 · §5.5 ②】该条的**承办人本人**；**管理员**为兜底，可释放任意已领取条目。
+   * 本函数只认得出"是不是本人"（`input.by` 对 `r.assignee`），认不出角色 ——
+   * 管理员那一路由调用方置 `anyAssignee`，与 `claim` 把角色门控留在页面层同形。
+   * **投诉督导不出这个动作**（`canClaimRiskReport` 已把它挡在外面）。
+   */
+  function release(id: string, input: RiskReleaseInput): boolean {
+    const r = findById(id);
+    // 🔴 **仅「已领取」态**（§5.5 ③）：已结论、已撤回、待领取三态都没有可退的东西
+    if (!r || r.status !== '评估中') return false;
+    // 释放原因必填（§5.5 ④）。空白与全空格在这里也收一道 —— 弹窗那道校验拦的是人，
+    // 这一道拦的是"别处绕过表单直接调进来"，两道都要，与 `submit` 收 `category` 同形
+    const reason = input.reason.trim();
+    if (!reason) return false;
+    // 管理员兜底之外，只有承办人本人能退自己领的那条
+    if (!input.anyAssignee && r.assignee !== input.by) return false;
+
+    r.status = '待分派';
+    /*
+     * 承办人清空。⚠️ §5.5 ⑤ 还要求"**领取时刻**清空"——模型上**没有这一格**：
+     * `claim` 从不记录领取时刻（等待时长按 §9 规则 26 从进池 / 提交时刻起算，
+     * 领取时刻在口径上无处可用）。故这一句在本原型里**无对应字段可清**，
+     * 不是漏做。哪天补上领取时刻，记得在这里一并清掉。
+     */
+    r.assignee = undefined;
+    // 🔴 **累积不覆盖**（§5.5 ⑥）：同一条被领取释放 N 次就有 N 条记录
+    r.releases = [...(r.releases ?? []), {
+      by: input.by,
+      byRole: input.byRole,
+      at: input.at,
+      reason,
+    }];
+    /*
+     * 撤掉 `claim` 埋下的那张"进工单页就弹评估弹窗"的票（它是领取的连带，不是条目的属性）。
+     * 不撤的话，释放完再点开这张单，工单页仍会试着为一条**已经不在任何人名下**的条目开弹窗
+     * ——那一步会被 `canAssessReport` 拦住、什么也不会发生，但那是靠下游兜住的，
+     * 票本身此刻已经失效。**谁埋谁撤**，与 `claim` 那一行对称。
+     */
+    if (reportStore.assessArrivalTicket === r.ticketNo) {
+      reportStore.assessArrivalTicket = null;
+    }
     return true;
   }
 
@@ -654,6 +748,7 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
     waitedMinutes,
     isOverdue,
     claim,
+    release,
     assess,
     coordinate,
     backfillSeedRiskHistory,

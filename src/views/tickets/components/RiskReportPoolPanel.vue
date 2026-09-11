@@ -13,10 +13,11 @@
  * 两个池子都只留自取。督导不再是队列的单点，谁有空谁领。
  */
 import { computed, ref } from 'vue';
-import { message, Modal } from 'ant-design-vue';
+import { message } from 'ant-design-vue';
 import {
   EditOutlined,
   PaperClipOutlined,
+  RollbackOutlined,
   SearchOutlined,
   UserOutlined,
 } from '@ant-design/icons-vue';
@@ -30,10 +31,11 @@ import { useRiskReportStore, type RiskReport } from '@/stores/riskReports';
 // 直接改状态做不到这两件事，而留痕正是这条队列的凭据。
 import { useRiskPoolStore } from '@/stores/riskPool';
 import { useRiskReportAssess } from '@/composables/useRiskReportAssess';
-import type { ReportStatus } from '@/stores/riskShared';
+import type { ReportStatus, RiskReleaseRecord } from '@/stores/riskShared';
 import { TICKETS } from '@/mock/tickets';
 import {
   canClaimRiskReport,
+  canReleaseAnyRiskReport,
   PRIORITY_COLOR,
   resolveTicketGroupNames,
   type ChipMeta,
@@ -66,6 +68,27 @@ const {
  * 判据收在 types/ticket.ts，本组件不写 `if (role === …)`。
  */
 const canAct = computed(() => canClaimRiskReport(user.roleKey));
+
+/**
+ * 池内**能动手的角色**，写给人看的那一串。
+ *
+ * 🔴 **文案照常量的实际取值写，改一处必同源同改**：判据是
+ * `REPORT_POOL_ACT_ROLES`（`types/ticket.ts`）＝ **客诉专员 + 三个 admin scope**
+ * （system-admin / ops-admin / tenant-admin），而前台视角只有一个「管理员」
+ * （基线 §3.1：三个 scope 在前台合并显示为一个角色），故这里写「客诉专员或管理员」。
+ *
+ * 【为什么非收成一个常量不可】此前几处提示只写了「客诉专员」—— 管理员**本来就有权**，
+ * 却被告知没权限，还被指挥去"切换角色"；切过去反而丢掉自己的兜底身份。
+ * 这不是漏写一个角色，是**给了一条会让人做错事的指令**。常量与文案分家，
+ * 同一种错法在本文件族已经犯过七次；收在这里之后，权限集改了、每一句提示跟着改。
+ */
+const POOL_ACT_ROLE_TEXT = '客诉专员或管理员';
+
+/**
+ * **管理员兜底**（PRD §5.5 ②）：可释放**任意**已领取条目，不限于自己承办的那一条。
+ * 客诉专员恒 false —— 他只能退自己的那条。
+ */
+const canReleaseAny = computed(() => canReleaseAnyRiskReport(user.roleKey));
 
 /* ---------------- 取数 ---------------- */
 
@@ -115,13 +138,14 @@ const activeChip = ref('all');
 const chips = computed<ChipMeta[]>(() => {
   const list: ChipMeta[] = [
     { key: 'all', label: '全部' },
-    { key: 'unclaimed', label: '待领取', title: '还没有人领的报备单，客诉专员可自取' },
+    // 两枚 title 里的角色串同样走 POOL_ACT_ROLE_TEXT：常量里有、文案里没有，正是那七处错法
+    { key: 'unclaimed', label: '待领取', title: `还没有人领的报备单，${POOL_ACT_ROLE_TEXT}可自取` },
   ];
   if (canAct.value) {
     list.push({ key: 'mine', label: '我承办', title: '已落在我名下、等我给结论的报备单' });
   }
   list.push(
-    { key: 'assessing', label: '评估中', title: '已有客诉专员承办，等结论' },
+    { key: 'assessing', label: '评估中', title: '已有人承办，等结论' },
     { key: 'assessed', label: '已评估' },
     { key: 'withdrawn', label: '已撤回', title: '报备人自行收回；记录保留，不再进队列' },
   );
@@ -236,9 +260,19 @@ function actionsOf(r: RiskReport): RowAction[] {
   // 待领取一律露出「领取」，与 A 线风险工单池同形；能不能点由 claim 里按角色拦截
   if (r.status === '待分派') return [{ label: '领取', primary: true }];
   if (!canAct.value) return [];
-  if (r.status === '评估中' && r.assignee === user.name) {
+  // 🔴 **仅「已领取」态出「释放」**（§5.5 ③）：已评估、已撤回、待领取三态无此入口 ——
+  // 上面两个 return 已经把待领取与无权角色拿走，这里剩下的判据只剩「评估中」+ 谁在办
+  if (r.status !== '评估中') return [];
+  if (r.assignee === user.name) {
     return [{ label: '评估', primary: true }, { label: '释放' }];
   }
+  /*
+   * **管理员兜底**（§5.5 ②）：别人承办的那条，管理员也能释放 —— 承办人休假 / 离岗时
+   * 不至于把条目锁死在池子里。**但只给「释放」不给「评估」**：结论要由承办的人给
+   * （`canAssessReport` 判的就是 `assignee === 本人`），管理员越过他直接评，
+   * 等于把一条已经有人在读的材料替他下了结论。
+   */
+  if (canReleaseAny.value) return [{ label: '释放' }];
   return [];
 }
 
@@ -250,7 +284,13 @@ function onAction(label: string, r: RiskReport) {
 
 function claim(r: RiskReport) {
   if (!canAct.value) {
-    message.warning('报备单的领取与评估由客诉专员执行，请切换至客诉专员角色');
+    /*
+     * 🔴 **只说"谁能做"，不指挥人去切角色**：走到这一句的只可能是投诉督导
+     * （本页签对其余角色整块不可见），而他**本轮已去权、只看数据** —— 让他切角色
+     * 既不是他该做的事，也没有一个"切过去就能领"的身份给他切。
+     * 角色串取 `POOL_ACT_ROLE_TEXT`，与 `REPORT_POOL_ACT_ROLES` 同源，见那里的说明。
+     */
+    message.warning(`报备单的领取与评估由${POOL_ACT_ROLE_TEXT}执行，本角色只读`);
     return;
   }
   if (!pool.claim(r.id, user.name)) {
@@ -275,29 +315,77 @@ function downloadReportAttachment(name: string) {
   URL.revokeObjectURL(url);
 }
 
+/* ---- 释放（PRD v3.5 §5.5） ---- */
+
+/**
+ * 释放留痕的时刻。与本目录下另外几个动作弹窗同一种写法（分钟粒度，
+ * 与队列上「报备时间」「已等待」两列同刻度）。
+ */
+function nowStamp(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+const releaseOpen = ref(false);
+const releaseTarget = ref<RiskReport | null>(null);
+const releaseReason = ref('');
+const releaseTried = ref(false);
+/** 空白与全空格一律拦下（§5.5 ④），提示语按 PRD 原话写「请填写释放原因」 */
+const missReleaseReason = computed(() => releaseTried.value && !releaseReason.value.trim());
+
+/**
+ * 「释放」——把已领取的条目**退回池子**（§5.5）。
+ *
+ * 🔴 **点开只填「释放原因」这一项**（§5.5 ④）：不选接手人、不改等级、不写结论 ——
+ * 释放**不是换人**（§5.5 ①），弹窗里多摆任何一格都会让人以为自己正在把活指给谁。
+ */
 function release(r: RiskReport) {
-  Modal.confirm({
-    title: '释放报备',
-    content: `释放后，${r.ticketNo} 的这条报备退回报备池等其他客诉专员领取；等待时长从提交时刻起算、不会因此重置。`,
-    okText: '释放',
-    cancelText: '取消',
-    onOk() {
-      /*
-       * ⚠️ **直改状态**：`riskReports` / `riskPool` 都没有"退回池子"的动作
-       * （分派时代只需要改派，用不上释放）。这里改的是 store 里那一条原对象，
-       * 改动照常落 localStorage；缺的是与 `claim` 对称的那条留痕通知 ——
-       * 等 store 补上 `release(id, by)` 之后，本段换成调它。
-       */
-      const target = reportStore.findById(r.id);
-      if (!target || target.status !== '评估中' || target.assignee !== user.name) {
-        message.warning('该报备已不在你名下');
-        return;
-      }
-      target.status = '待分派';
-      target.assignee = undefined;
-      message.success(`已释放 ${target.ticketNo} 的风险报备，退回报备池`);
-    },
+  releaseTarget.value = r;
+  releaseReason.value = '';
+  releaseTried.value = false;
+  releaseOpen.value = true;
+}
+
+function confirmRelease() {
+  releaseTried.value = true;
+  const target = releaseTarget.value;
+  const reason = releaseReason.value.trim();
+  if (!target || !reason) return;
+  /*
+   * 走合并层的 `release`（与 `claim` 对称）：状态回「待领取」、承办人清空、
+   * 条目上**累积**一条释放记录（释放人 · 角色 · 时刻 · 原因，累积不覆盖）。
+   * 🔴 **本轮不发通知、不落 720 履历**，两条都在 store 侧写死，见 `riskPool.release`。
+   */
+  const ok = pool.release(target.id, {
+    by: user.name,
+    byRole: user.role.name,
+    at: nowStamp(),
+    reason,
+    // 管理员兜底可释放任意已领取条目；客诉专员恒 false，store 侧照旧校验承办人本人
+    anyAssignee: canReleaseAny.value,
   });
+  if (!ok) {
+    /*
+     * 走到这里只有两种可能：条目已经不在「已领取」态（别人给了结论 / 已被释放过），
+     * 或它不在本人名下而本人又不是管理员。**不写"不在你名下"一句了事** ——
+     * 管理员释放的本来就是别人名下的条目（§5.5 ②），那句话对他恒为假。
+     */
+    message.warning('该报备已不在「已领取」态，或不在你名下，请刷新后再看');
+    releaseOpen.value = false;
+    return;
+  }
+  releaseOpen.value = false;
+  message.success(`已释放 ${target.ticketNo} 的风险报备，退回报备池等人重新领取`);
+}
+
+/**
+ * 历次释放记录，**最近一次在前**。没有被释放过时为空数组（§5.5 ⑥ 的留痕在这里读）。
+ * 入参取**结构**而不是 `RiskReport`：池表上拿到的是 B 线条目，评估弹窗里拿到的是
+ * 合并层的 `RiskPoolItem`，两者都有这一格，收窄类型只会逼出一个没必要的 as 断言。
+ */
+function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
+  return [...(r.releases ?? [])].reverse();
 }
 </script>
 
@@ -338,7 +426,7 @@ function release(r: RiskReport) {
           <template v-else>
             <div class="empty-title">报备池里还没有报备单</div>
             <div class="empty-sub">
-              二线专员在咨询 / 建议 / 商机单上发起风险报备后会落到这里，等客诉专员领取评估
+              二线专员在咨询 / 建议 / 商机单上发起风险报备后会落到这里，等{{ POOL_ACT_ROLE_TEXT }}领取评估
             </div>
           </template>
         </div>
@@ -407,6 +495,36 @@ function release(r: RiskReport) {
               <span v-if="r.assignee" class="who">{{ r.assignee }}</span>
               <!-- 只有还在队里的才说「未领取」：已撤回的那条谁也不会再去领，写它等于挂一个假的待办 -->
               <span v-else class="who muted">{{ r.status === '待分派' ? '未领取' : '—' }}</span>
+              <!--
+                释放留痕（§5.5 ⑥）。**没被释放过整段不出**。
+                🔴 **必须在这一格摆得到**：释放之后条目退回「待领取」、承办人清空，
+                行上看着与"从来没人领过"一模一样 —— 而这两件事对下一个来领的人意义相反：
+                后者是新活，前者是**别人看过之后退回来的活**，退回的理由正是他要先读的。
+                历次记录挂 popover，与「场景描述」那一列同一种展开方式。
+              -->
+              <a-popover
+                v-if="releasesOf(r).length"
+                trigger="hover"
+                placement="topRight"
+                :mouse-enter-delay="0.2"
+              >
+                <span class="release-flag">
+                  <RollbackOutlined />
+                  已释放 {{ releasesOf(r).length }} 次
+                </span>
+                <template #content>
+                  <div class="release-pop">
+                    <div class="release-pop-title">释放记录</div>
+                    <div v-for="(rel, i) in releasesOf(r)" :key="i" class="release-pop-item">
+                      <div class="release-pop-head">
+                        <span class="release-pop-who">{{ rel.by }}（{{ rel.byRole }}）</span>
+                        <span class="release-pop-at">{{ rel.at }}</span>
+                      </div>
+                      <div class="release-pop-reason">{{ rel.reason }}</div>
+                    </div>
+                  </div>
+                </template>
+              </a-popover>
               <span class="who-role">{{ reporterGroup(r.ticketNo) }}</span>
             </div>
             <div class="cell">
@@ -515,6 +633,29 @@ function release(r: RiskReport) {
                 >{{ a }}</button>
               </li>
             </ul>
+            <!--
+              ⑦ 释放记录（§5.5 ⑥「在条目详情上可见」）。**没被释放过整段不出**。
+              🔴 **它必须摆在评估人眼前**：这条条目刚被人领走过又退回来，退回的理由
+              往往正是"我判不了 / 不该我办"——现在轮到你判，那句话是你要读的第一手材料。
+              历次全列、最近一次在前（累积不覆盖）。
+            -->
+            <div v-if="releasesOf(assessTarget).length" class="assess-releases">
+              <div class="assess-releases-head">
+                <RollbackOutlined />
+                释放记录（{{ releasesOf(assessTarget).length }} 次）
+              </div>
+              <div
+                v-for="(rel, i) in releasesOf(assessTarget)"
+                :key="i"
+                class="assess-release"
+              >
+                <div class="assess-release-head">
+                  <span class="assess-release-who">{{ rel.by }}（{{ rel.byRole }}）</span>
+                  <span class="assess-release-at">{{ rel.at }}</span>
+                </div>
+                <div class="assess-release-reason">{{ rel.reason }}</div>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -536,6 +677,45 @@ function release(r: RiskReport) {
           />
         </div>
         <p v-if="missAssessAdvice" class="af-err">请填写{{ assessAdviceLabel }}</p>
+      </div>
+    </OpActionModal>
+
+    <!--
+      释放：**只填一项「释放原因」**（§5.5 ④）。
+      🔴 **不出接手人这一格** —— 释放不指定接手人、不是换人（§5.5 ①）；
+      摆一个人员下拉在这里，做的就是已经整套取消的「改派」。
+    -->
+    <OpActionModal
+      :open="releaseOpen"
+      :title="releaseTarget ? `释放报备 · ${releaseTarget.ticketNo}` : '释放报备'"
+      :icon="RollbackOutlined"
+      tone="warn"
+      :width="440"
+      ok-text="确认释放"
+      ok-tone="danger"
+      @update:open="releaseOpen = $event"
+      @ok="confirmRelease"
+    >
+      <div class="rrp-release">
+        <div class="af-field af-field-block">
+          <span class="af-label req">释放原因</span>
+          <a-textarea
+            v-model:value="releaseReason"
+            :rows="3"
+            :status="missReleaseReason ? 'error' : undefined"
+            placeholder="写清为什么退回，例如判不了 / 不该由我办 / 需要换人跟进…"
+          />
+        </div>
+        <p v-if="missReleaseReason" class="af-err">请填写释放原因</p>
+        <!--
+          释放的两个后果都得在下决心之前说清：
+          ① 退回池子由**任何有资格的人**重新领（不是指给某个人）；
+          ② **等待时长不归零**（§5.5 ⑤）——已经超时的退回来仍是超时态，
+             不写这一句，人会以为退一次就把钟重置了、于是拿它当"续命"用。
+        -->
+        <p class="af-hint">
+          释放后本条退回「待领取」，由{{ POOL_ACT_ROLE_TEXT }}重新领取；等待时长仍从报备提交时刻起算、不会因此重新计时。
+        </p>
       </div>
     </OpActionModal>
   </div>
@@ -785,6 +965,27 @@ function release(r: RiskReport) {
   color: #6b7280;
   background: #f3f4f6;
 }
+/*
+ * 释放标：**灰蓝、不用红**。它说的是"这条被人退回来过"，不是告警 ——
+ * 红色在这张表上已经归「超时未评」独占，两件事共用一个颜色会让超时那一档失去分量。
+ */
+.release-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #475569;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  white-space: nowrap;
+  cursor: default;
+}
+.release-flag :deep(.anticon) {
+  font-size: 10px;
+}
 .cell-action {
   gap: 12px;
 }
@@ -999,9 +1200,72 @@ function release(r: RiskReport) {
   line-height: 1.5;
   color: #6b7280;
 }
+
+/* ---- 释放记录（评估弹窗内 · §5.5 ⑥） ---- */
+.assess-releases {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+}
+.assess-releases-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+}
+.assess-release {
+  margin-top: 6px;
+}
+/* 分隔线只给第二条起。⚠️ 不能写 `:first-of-type`——标题也是 div，规则会落空 */
+.assess-release + .assess-release {
+  padding-top: 6px;
+  border-top: 1px dashed #e2e8f0;
+}
+.assess-release-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.assess-release-who {
+  font-size: 11px;
+  font-weight: 600;
+  color: #374151;
+}
+.assess-release-at {
+  font-size: 11px;
+  color: #9ca3af;
+  font-variant-numeric: tabular-nums;
+}
+.assess-release-reason {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #4b5563;
+  word-break: break-word;
+}
+
+/* ---- 释放弹窗 ---- */
+.rrp-release {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 </style>
 
 <style>
 .desc-pop { width: 320px; }
 .desc-pop-text { font-size: 12px; color: #374151; line-height: 1.6; word-break: break-word; }
+/* 释放记录 popover：挂在 body 上的浮层，故与 .desc-pop 同样走非 scoped 段 */
+.release-pop { width: 300px; }
+.release-pop-title { font-size: 11px; font-weight: 600; color: #64748b; margin-bottom: 4px; }
+.release-pop-item { padding-top: 6px; margin-top: 6px; border-top: 1px dashed #e5e7eb; }
+.release-pop-item:first-of-type { padding-top: 0; margin-top: 0; border-top: none; }
+.release-pop-head { display: flex; align-items: baseline; gap: 8px; }
+.release-pop-who { font-size: 11px; font-weight: 600; color: #374151; }
+.release-pop-at { font-size: 11px; color: #9ca3af; font-variant-numeric: tabular-nums; }
+.release-pop-reason { margin-top: 2px; font-size: 12px; color: #4b5563; line-height: 1.6; word-break: break-word; }
 </style>

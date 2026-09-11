@@ -9,6 +9,7 @@ import {
   ClockCircleOutlined,
   CheckOutlined,
   PaperClipOutlined,
+  RollbackOutlined,
   UserOutlined,
   EditOutlined,
 } from '@ant-design/icons-vue';
@@ -111,6 +112,11 @@ const reportItems = computed(
 const pending = computed(() => reportItems.value.find((r) => isOpenStatus(r.status)) ?? null);
 /** 历史条目：已评估 + 已撤回，时间倒序。在队那条单独占一块，不进这个列表 */
 const history = computed(() => reportItems.value.filter((r) => !isOpenStatus(r.status)));
+/**
+ * 在队那条的**历次释放记录**，最近一次在前（《【930】》§5.5 ⑥，累积不覆盖）。
+ * 只对在队那条取：已结论 / 已撤回的条目不再回池，它被退回过几次已经不影响任何人的下一步。
+ */
+const pendingReleases = computed(() => [...(pending.value?.releases ?? [])].reverse());
 // ---- 撤回（PRD §4.8）----
 // 提交即固化、不提供编辑；填错了只能撤回后重报。**仅待领取态、仅本人**，
 // 且撤回后**不删除**，转「已撤回」并留原因 —— 它是"这个人当时报过什么"的证据。
@@ -561,6 +567,27 @@ const collabSectionBadge = computed(() =>
               <span>{{ f }}</span>
             </li>
           </ul>
+          <!--
+            释放记录（《【930】》§5.5 ⑥ 点名的三个落点之一：**在队只读卡**）。
+            **没被释放过整段不出**。
+            🔴 **报备人必须看得到这一段**：条目被领走又退回来之后，这张卡会从
+            「已领取 · 李文萍」跳回「待领取」——不摆出释放记录，报备人只会看到
+            承办人凭空消失，既不知道有没有人看过，也不知道为什么退回来。
+            历次全列、最近一次在前（累积不覆盖）。
+          -->
+          <div v-if="pendingReleases.length" class="rr-releases">
+            <div class="rr-releases-head">
+              <RollbackOutlined />
+              释放记录（{{ pendingReleases.length }} 次）
+            </div>
+            <div v-for="(rel, i) in pendingReleases" :key="i" class="rr-release">
+              <div class="rr-release-head">
+                <span class="rr-release-who">{{ rel.by }}（{{ rel.byRole }}）</span>
+                <span class="rr-release-at">{{ formatShortAt(rel.at) }}</span>
+              </div>
+              <div class="rr-release-reason">{{ rel.reason }}</div>
+            </div>
+          </div>
           <!--
             报备不落子状态、SLA 不停钟（基线 ※29）。工单本身看不出任何变化，
             这句是它在可见区的**唯一**落点：头部那行只挂 hover title，
@@ -1163,6 +1190,52 @@ const collabSectionBadge = computed(() =>
   border-radius: 4px;
 }
 .rr-file :deep(.anticon) { color: #94a3b8; font-size: 11px; }
+
+/*
+ * 释放记录（§5.5 ⑥）。**灰蓝、不用红**：它说的是"被人退回来过"，不是告警 ——
+ * 这张卡上的红已经归超时那一档，两件事共用一个颜色会让超时失去分量。
+ */
+.rr-releases {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+}
+.rr-releases-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+}
+.rr-releases-head :deep(.anticon) { font-size: 11px; }
+.rr-release {
+  margin-top: 6px;
+}
+/*
+ * 分隔线只给**第二条起**。⚠️ 不能写 `:first-of-type` —— 上面那行标题也是 div，
+ * 它才是容器里的第一个 div，规则会落空、第一条记录照样顶着一条线。
+ */
+.rr-release + .rr-release {
+  padding-top: 6px;
+  border-top: 1px dashed #e2e8f0;
+}
+.rr-release-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.rr-release-who { font-size: 11px; font-weight: 600; color: #374151; }
+.rr-release-at { font-size: 11px; color: #9ca3af; font-variant-numeric: tabular-nums; }
+.rr-release-reason {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #4b5563;
+  word-break: break-word;
+}
 
 /* ---- 空态 ---- */
 .rr-empty {

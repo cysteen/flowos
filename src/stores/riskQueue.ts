@@ -24,6 +24,7 @@ import {
   type ReportAssessment,
   type ReportVerify,
   type RiskCoordination,
+  type RiskReleaseRecord,
   type RiskTagRecord,
   type RiskTagResult,
 } from '@/stores/riskShared';
@@ -108,6 +109,17 @@ export interface RiskQueueEntry {
    * 打标为**无风险**时本字段被清掉：它只在进池的条目上有意义，而无风险的根本不进池。
    */
   verify?: ReportVerify;
+  /**
+   * 历次**释放**记录（《【930】》§5.5 ⑥，v3.5 新立）。**累积不覆盖**。
+   *
+   * 【为什么 A 线也有这一格】释放是**两个池同一套口径**（§5B.4「逐条同 §5.5」），
+   * 动作落在合并层 `stores/riskPool.ts` 的 `release`，它按 id 跨两条线取条目 ——
+   * 只在 B 线声明这一格，A 线的条目就会在运行时长出一个类型上不存在的字段。
+   *
+   * ⚠️ **A 线的界面入口本轮没接**：风险监控页队列的行内「释放」按钮（§5.4 元素 ⑩a）
+   * 还没有落地，故这一格在 A 线上暂时只会由别处调 `release` 时写入。
+   */
+  releases?: RiskReleaseRecord[];
 
   /* ---- 以下五个字段是合并池渲染用的恒定占位，A 线没有人来填 ---- */
   /** 恒为「其他」：池表「报备原因」列要有值 */
@@ -937,9 +949,13 @@ const SEED: RiskQueueEntry[] = [
  *     ③ 池内三条条目补了命中语料（改的是 `mock/opsReport.ts`，但两者要同批生效）。
  *     不升号的话，保质期内打开过本页的人读到的仍是那份 14 条以前的旧快照：
  *     「已结论」照旧是 4、评估意见里照旧写着作废的词，而文件里明明已经改完了。
+ *   · v8 → v9：条目上多了 `releases`（历次释放留痕，PRD v3.5 §5.5 ⑥）。
+ *     **种子一条没动、值域也没变**，v8 那份读进来只是这一格为 undefined（判据侧一律
+ *     `releases ?? []`），不升号也不会坏；升号是为了不让保质期内的旧快照与刚变过的模型
+ *     混着用 —— 与 B 线 v5 → v6 同一批改动、同一个理由，两条线的号一起动。
  */
 const LS_KEY = 'flowos-risk-queue';
-const LS_VERSION = 8;
+const LS_VERSION = 9;
 
 /**
  * 缓存"新不新"的判据：取**打标时刻**里最新的那一个。
