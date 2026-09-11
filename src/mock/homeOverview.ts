@@ -1,6 +1,7 @@
 ﻿/** 首页·工作概览 Mock（对齐 .pen vzMJ3 / PRD-01） */
 
 import { TICKETS } from '@/mock/tickets';
+import { isSlaVoidStop } from '@/views/tickets/utils/ticketListCells';
 import {
   isFirstResponded,
   inMineTaskScope,
@@ -465,8 +466,11 @@ export interface HomeTodoItem {
    * - 首响已关 → 展示整单解决钟
    */
   slaKind: 'first' | 'whole';
-  /** running 态：ok/soon/overdue/paused；终态：met/breached */
-  slaVis: 'ok' | 'soon' | 'overdue' | 'paused' | 'met' | 'breached';
+  /**
+   * running 态：ok/soon/overdue/paused；终态三分：met/breached/void。
+   * `void` = 中止停表（升级派生 / 转出 / 取消），既不计达标也不计未达标，不进达成率分母。
+   */
+  slaVis: 'ok' | 'soon' | 'overdue' | 'paused' | 'met' | 'breached' | 'void';
   /** 如「剩 42m」「超 1h 20m」「已达标」 */
   slaText: string;
 }
@@ -479,6 +483,8 @@ export const HOME_SLA_COLOR: Record<HomeTodoItem['slaVis'], string> = {
   paused: '#9CA3AF',
   met: '#16A34A',
   breached: '#EF4444',
+  // 中止停表：深灰，比挂起灰更沉，与 SLA_COLOR.paused / OpSlaBar 的 void 分支同色
+  void: '#6B7280',
 };
 
 /** 待办 Top5 取几条 */
@@ -489,7 +495,13 @@ const HOME_TODO_LIMIT = 5;
  * 终态与挂起没有在跑的钟，直接给结论词。
  */
 function homeSlaText(t: Ticket): string {
-  if (t.slaText === '—') return t.solveBreached ? '未达标' : '已达标';
+  // 终态三分（PRD-730 §8.1①）：已记超时 > 中止 > 收口达标。
+  // 🔴 判据取列表那一份 `isSlaVoidStop`，不在门户另写一套 —— 否则同一张单会在列表说
+  //    「已停表」、在首页说「已达标」（因升级停钟、从未被解决的单被涂成绿色达标）。
+  if (t.slaText === '—') {
+    if (t.solveBreached) return '未达标';
+    return isSlaVoidStop(t) ? '已停表' : '已达标';
+  }
   if (t.slaState === 'paused') return '已暂停';
   const hms = /(\d{2}):(\d{2})/.exec(t.slaText);
   if (!hms) return t.slaText;
@@ -500,7 +512,11 @@ function homeSlaText(t: Ticket): string {
 }
 
 function homeSlaVis(t: Ticket): HomeTodoItem['slaVis'] {
-  if (t.slaText === '—') return t.solveBreached ? 'breached' : 'met';
+  // 与 homeSlaText 同一条优先级链，取值与操作页 OpSlaBar 的 stopOutcome 同名（met/breached/void）
+  if (t.slaText === '—') {
+    if (t.solveBreached) return 'breached';
+    return isSlaVoidStop(t) ? 'void' : 'met';
+  }
   return t.slaState;
 }
 

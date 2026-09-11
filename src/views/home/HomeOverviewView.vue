@@ -455,7 +455,10 @@ function openDrillTicket(no: string) {
               <span class="type-tag" :style="{ color: t.typeColor, background: t.typeColor + '1F' }">{{ t.type }}</span>
               <!--
                 SLA 摘要对齐 OpSlaBar：首响未关 → 展首响钟；首响已关 → 展整单解决钟。
-                文案：剩 / 超 / 已达标 / 未达标；色：正常绿 / 临期橙 / 超时红。
+                文案：剩 / 超 / 已暂停 / 已达标 / 未达标 / 已停表；
+                色：正常绿 / 临期橙 / 超时红 / 挂起灰 / 中止深灰（见 HOME_SLA_COLOR）。
+                「已停表」= 中止终态（升级派生 / 转出 / 取消）：钟被掐断、本单从未被解决，
+                既不是达标也不是未达标，不进达成率分母。
               -->
               <span
                 class="sla-chip"
