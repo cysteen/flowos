@@ -2123,6 +2123,11 @@ const effect = computed(() => {
 // 核实历史（首次核实 + 逐条修正）的结构、取值口径与写入都在 useRiskTagStore 里，
 // 本页只做转发：工单处理页要读同一份结论，两边各存一份就会各说各话。
 type TagEntry = RiskTagEntry;
+// 拦截提示与只读占位的文案按 `RISK_TAG_ROLES` 的**实际取值**写：
+// 客诉专员 + 投诉督导 + 三个管理员 scope（前台合并称「管理员」，基线 §3.1）。
+// 写成"只有客诉专员与投诉督导"会漏掉管理员——它是兜底角色（基线 §7 #27 明确
+// 「按"唯一"写的实现（如 `RISK_TAG_ROLES` 一类）须跟着放宽」）。
+// 本页此类表述共五处（三条 warning + 两个 title），改一处必须五处同改。
 const canRiskTag = computed(() => RISK_TAG_ROLES.includes(user.roleKey));
 
 function seedEntryOf(h: RiskHit): TagEntry | undefined {
@@ -2179,7 +2184,7 @@ const canSaveTag = computed(() => {
 });
 
 function openTag(h: RiskHit) {
-  if (!canRiskTag.value) { message.warning('只有客诉专员与投诉督导可以打标'); return; }
+  if (!canRiskTag.value) { message.warning('只有客诉专员、投诉督导与管理员可以打标'); return; }
   tagTarget.value = h;
   const cur = latestEntryOf(h);
   tagAmend.value = !!cur;
@@ -3261,7 +3266,7 @@ const bulkSourceMix = computed(() => {
 });
 
 function openBulk() {
-  if (!canRiskTag.value) { message.warning('只有客诉专员与投诉督导可以打标'); return; }
+  if (!canRiskTag.value) { message.warning('只有客诉专员、投诉督导与管理员可以打标'); return; }
   bulkResult.value = '';
   bulkNote.value = '';
   bulkOpen.value = true;
@@ -3342,7 +3347,7 @@ const entryTagHits = computed(() => {
 });
 
 function openEntryTag(e: QueueRow) {
-  if (!canRiskTag.value) { message.warning('只有客诉专员与投诉督导可以打标'); return; }
+  if (!canRiskTag.value) { message.warning('只有客诉专员、投诉督导与管理员可以打标'); return; }
   entryTagTarget.value = e;
   // 修改态先把现行结论灌回来：改完才知道自己动了哪一项
   entryTagResult.value = e.tag?.result ?? '';
@@ -5144,7 +5149,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                     title="判定这张单有没有风险、多大：高 / 中 / 低进风险工单池，无风险不进池"
                     @click="openEntryTag(e)"
                   >核实打标</button>
-                  <span v-else class="hit-sub" title="打标归客诉专员与投诉督导">—</span>
+                  <span v-else class="hit-sub" title="打标归客诉专员、投诉督导与管理员">—</span>
                 </template>
                 <template v-else>
                   <!--
@@ -5167,7 +5172,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                     :title="queueView === 'noRisk' ? '重新判定这条是否真的无风险；改判为低 / 中 / 高会补进风险工单池' : '重新判定风险等级；改判为无风险会把它撤出风险工单池'"
                     @click="openEntryTag(e)"
                   >修正</button>
-                  <span v-if="!canRiskTag" class="hit-sub" title="打标与修正归客诉专员与投诉督导">—</span>
+                  <span v-if="!canRiskTag" class="hit-sub" title="打标与修正归客诉专员、投诉督导与管理员">—</span>
                 </template>
               </td>
             </tr>

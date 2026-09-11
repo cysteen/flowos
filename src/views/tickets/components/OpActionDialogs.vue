@@ -48,7 +48,12 @@ const emit = defineEmits<{
 const user = useUserStore();
 const transfer = reactive({ scope: 'same' as 'same' | 'cross', target: TRANSFER_TARGETS_SAME[0], reason: '' });
 
-/** 跨组调剂权限：处理人仅同组，班组长/运营及以上可跨组 */
+/**
+ * 跨组调剂权限：二线专员仅同组内，其余按 `CROSS_GROUP_TRANSFER_ROLES` 放行。
+ * 拦截提示与置灰 title 的文案必须照那份常量的**实际取值**写（技术支持 / 二线班组长 /
+ * 客诉专员 / 投诉督导 / 管理员，共三处同源表述）——原文只写「班组长 / 运营管理员」，
+ * 技术支持、客诉专员、投诉督导点得动却被告知自己没权限。
+ */
 const canCrossGroup = computed(() => CROSS_GROUP_TRANSFER_ROLES.includes(user.roleKey));
 
 const transferToGroup = computed(() => transfer.scope === 'cross');
@@ -276,7 +281,7 @@ function validate(): boolean {
   switch (props.action) {
     case '调剂':
       if (transfer.scope === 'cross' && !canCrossGroup.value) {
-        message.warning('仅班组长 / 运营管理员可跨组调剂');
+        message.warning('仅技术支持 / 二线班组长 / 客诉专员 / 投诉督导 / 管理员可跨组调剂');
         return false;
       }
       if (!transfer.target) {
@@ -404,10 +409,10 @@ function onOk() {
           <a-radio
             value="cross"
             :disabled="!canCrossGroup"
-            :title="canCrossGroup ? undefined : '仅班组长 / 运营管理员可跨组调剂'"
+            :title="canCrossGroup ? undefined : '仅技术支持 / 二线班组长 / 客诉专员 / 投诉督导 / 管理员可跨组调剂'"
           >跨组（调剂到组）</a-radio>
         </a-radio-group>
-        <div v-if="!canCrossGroup" class="op-hint">仅班组长 / 运营管理员可跨组调剂</div>
+        <div v-if="!canCrossGroup" class="op-hint">仅技术支持 / 二线班组长 / 客诉专员 / 投诉督导 / 管理员可跨组调剂</div>
       </div>
       <div class="op-field">
         <div class="op-label req">{{ transferToGroup ? '目标处理组' : '目标处理人' }}</div>
