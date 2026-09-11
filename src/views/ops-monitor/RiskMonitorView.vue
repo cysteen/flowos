@@ -75,6 +75,7 @@ import {
   DISPOSAL_BY_GRADE,
   wordOnlyRiskHitsOf,
   runManualScan,
+  SCANNABLE_TICKETS,
   SCAN_FIELDS,
   SCAN_NODE_STATUS_OPTIONS,
   SCAN_TICKET_TYPES,
@@ -331,9 +332,17 @@ const urgentTicketCount = computed(
  * 故起点 ＝ **已打标条目所在的单 ∪ 有命中记录的单**，去重后逐单问 `ticketGradeOf`
  * ——两个来源缺一不可，取空的（误报 / 未核实 / 打为无风险 / 未打标）自然不进分母。
  *
- * 🔴 **终态排除，但查不到的不吞**（与 `groupNameOf`、`ticketOfRow` 同一条规矩）：
- * T3 的分母是**在办**工单，故解析得出且已进终态的单剔除；而监控侧的命中语料自带
- * 一批工单库里没有的单（它们在语料里就是「在办」），把这批当终态丢掉会让这个数系统性报少。
+ * 🔴 **在办判定分两路取**（§7.3「T3 分母的两个来源」③）：该工单号能在**工单库**里解析到
+ * → **按工单库的状态判，进终态的剔除**；解析不到 → **按监控语料自身携带的在办标记判**
+ * （`SCAN_TICKET_STATUS_BY_NO`）。故这个分母覆盖的是「**工单库中的在办单 ∪ 监控语料中标记为在办的单**」。
+ *
+ * 🔴 **"解析不到的不吞" ≠ "解析不到的照计"**（同表 ④，验收点 **R58j⒠**）：
+ * 剔除的判据是「**查到了、且它进了终态**」**或**「**查不到、但语料自己把它标成了终态**」，
+ * **两边都没说它是终态**才计入。两头都不能省——
+ * ⒜ 把查不到的整批当终态丢掉，分母会**静默缩水**，且缩水量随语料而变；
+ * ⒝ 反过来见 `t` 为空就直接照计，语料里那几张**自带「终态」的单**（它们在工单库里查不到）
+ * 只要哪天被打上等级，就会有一张**终态单被计进"在办"分母**——这一步谁也看不见，
+ * 数字却已经错了。`isLiveTicket` 只吃 `Ticket`，语料那一路只有子状态，故落到 `STATUS_GROUP` 上判。
  */
 const ticketGradeDist = computed(() => {
   const buckets: Record<RiskLevel, number> = { 高: 0, 中: 0, 低: 0 };
@@ -342,7 +351,11 @@ const ticketGradeDist = computed(() => {
     if (seen.has(ticketNo)) return;
     seen.add(ticketNo);
     const t = TICKET_BY_NO.get(ticketNo) ?? derivedTickets.find(ticketNo);
-    if (t && !isLiveTicket(t)) return;
+    // 路一：工单库解析得到 → 以工单库状态为准；路二：解析不到 → 以语料自带的状态为准。
+    // 两边都没判成终态才计入（语料里也没这张单时，无人说它是终态，照计）。
+    const corpusStatus = SCAN_TICKET_STATUS_BY_NO.get(ticketNo);
+    const terminal = t ? !isLiveTicket(t) : !!corpusStatus && STATUS_GROUP[corpusStatus] === '终态';
+    if (terminal) return;
     const g = riskTags.ticketGradeOf(ticketNo);
     if (g) buckets[g] += 1;
   };
@@ -3499,6 +3512,14 @@ const taggedToday = computed(() => {
  * 督导照这一行决定先盯哪一组时，被吞的那几条永远没人管。
  */
 const TICKET_BY_NO = new Map(TICKETS.map((t) => [t.no, t]));
+/**
+ * 🔴 **另一个"工单宇宙"的状态索引**（《【930】》§6.5 缺口 **G11**）：监控语料里有一批单的
+ * 单号在**工单库里根本不存在**，它们的状态只有**语料自己写的那一个**。`SCANNABLE_TICKETS`
+ * 的 `nodeStatus` 就是这一份：语料条目命中工单库时取工单库的状态，命中不了时由语料自带的
+ * 「在办 / 终态」落成子状态（见 `mock/opsReport.ts` 的 `enrichScannableTicket`）。
+ * 故本表**只在工单库解析不到时**当作状态来源用，解析得到时一律以工单库为准，两边不打架。
+ */
+const SCAN_TICKET_STATUS_BY_NO = new Map(SCANNABLE_TICKETS.map((t) => [t.ticketNo, t.nodeStatus]));
 function groupNameOf(ticketNo: string): string {
   // 🔴 **两处都要查**，与 `ticketOf` 同一条规矩：升级派生出来的新投诉单落在 `derivedTickets` 里，
   // 只问静态工单库会把它整条判成「未归组」——它明明继承了原单的分组名。
