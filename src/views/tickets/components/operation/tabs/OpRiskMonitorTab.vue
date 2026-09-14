@@ -77,6 +77,9 @@ const {
   assessAdvice,
   missAssessDecision,
   missAssessAdvice,
+  // 选「升级」后的派生说明行与「本单另有」区：与报备池、底栏两个评估入口同源，本页不另写
+  escalateHint,
+  assessOthers,
   openAssess,
   confirmAssess,
   canAssessReport,
@@ -674,11 +677,14 @@ const collabSectionBadge = computed(() =>
       </div>
     </OpActionModal>
 
-    <!-- 评估结论：领取后自动打开，或在队卡片点「评估」 -->
+    <!--
+      评估结论：领取后自动打开，或在队卡片点「评估」。
+      本弹窗的目标恒为 B 线在队报备（`pending` 只取 source＝二线报备），标题取「评估报备」。
+    -->
     <OpActionModal
       v-if="!isComplaintTicket"
       :open="assessOpen"
-      title="风险评估"
+      title="评估报备"
       :icon="EditOutlined"
       tone="primary"
       :width="520"
@@ -687,6 +693,14 @@ const collabSectionBadge = computed(() =>
       @ok="confirmAssess"
     >
       <div class="op-form ticket-assess-form">
+        <!-- 「本单另有」固定区块（§5.4 ⑦），取数见 riskOthersOf -->
+        <section class="ticket-assess-others" aria-label="本单另有">
+          <div class="ticket-assess-others-head">本单另有</div>
+          <div v-for="row in assessOthers" :key="row.label" class="ticket-assess-others-row">
+            <span class="ticket-assess-others-k">{{ row.label }}</span>
+            <span class="ticket-assess-others-v">{{ row.text }}</span>
+          </div>
+        </section>
         <section class="ticket-assess-block">
           <h4 class="ticket-assess-title">评估结论</h4>
           <div class="op-field ticket-assess-dec-field">
@@ -698,6 +712,11 @@ const collabSectionBadge = computed(() =>
               </a-radio-group>
             </div>
             <div v-if="missAssessDecision" class="ticket-assess-err ticket-assess-foot">请先选择一个评估决策</div>
+            <!-- 选「升级」后的派生说明行（escalateHintOf，三个评估入口同一句） -->
+            <div
+              v-else-if="isEscalateDecision(assessDecision)"
+              class="ticket-assess-hint ticket-assess-foot"
+            >{{ escalateHint }}</div>
           </div>
           <div class="op-field">
             <div class="op-label req">{{ adviceLabel(assessDecision) }}</div>
@@ -1793,5 +1812,42 @@ const collabSectionBadge = computed(() =>
   font-size: 11px;
   color: #ef4444;
   line-height: 1.4;
+}
+/* 派生说明行：与底栏评估弹窗的 .ticket-assess-hint 同一套 token（讲后果不是报错，取中性灰） */
+.ticket-assess-hint {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #6b7280;
+  line-height: 1.5;
+}
+/* 「本单另有」区：三个评估入口同一副版式 */
+.ticket-assess-others {
+  padding: 8px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+.ticket-assess-others-head {
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+}
+.ticket-assess-others-row {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.ticket-assess-others-k {
+  flex: none;
+  width: 72px;
+  color: #9ca3af;
+}
+.ticket-assess-others-v {
+  flex: 1;
+  min-width: 0;
+  color: #374151;
+  word-break: break-word;
 }
 </style>

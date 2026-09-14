@@ -6,11 +6,19 @@ import { useUserStore } from '@/stores/user';
 import { useRiskPoolStore } from '@/stores/riskPool';
 import {
   ASSESS_DECISIONS,
+  REPORT_SOURCE,
+  isOpenStatus,
+  normalizeDecision,
   type AssessDecision,
   type RiskPoolItem,
 } from '@/stores/riskShared';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
 import { useRiskQueueStore } from '@/stores/riskQueue';
+import { useRiskTagStore } from '@/stores/riskTags';
+import { useRiskCollabStore } from '@/stores/riskCollab';
+import { riskLevelText } from '@/config/risk';
+import { TICKETS } from '@/mock/tickets';
+import { isTicketClosed } from '@/views/tickets/types/ticket';
 
 function nowStamp(): string {
   const d = new Date();
@@ -47,6 +55,121 @@ export function escalateHintOf(ticketNo: string | undefined): string {
     return '本单已是投诉单，提交后由你在工单上执行「工单管控」把本单转到自己名下，本单状态不变、不派生新单。此步不可撤销';
   }
   return '提交后原单落「已升级投诉」并派生一张投诉单，新单全量继承本单信息。此步不可撤销';
+}
+
+/* ---------------- 提交前重查（《【930】》§5.6 校验末两条 / §9 规则 29） ---------------- */
+
+/** 条目已被报备人撤回：整个提交拦下 */
+export const ASSESS_WITHDRAWN_TIP = '本条报备已被报备人撤回';
+/** 原单已进终态：只拦「升级」，「不升级」照常可交 */
+export const ASSESS_TICKET_ENDED_TIP = '本单已结束，无法升级';
+
+/**
+ * 原单是否已进终态（基线 §1 的十个终态子状态）。
+ *
+ * 取数与工单处理页 `useTicketOperation.loadDetail` 同一条链：静态工单库 → 运行时派生单，
+ * 叠上本次会话的升级台账（`derivedTickets.escalatedToNoOf`）与停表单（列表 SLA 摘要为「—」）。
+ * 三个评估入口（报备池 / 工单页底栏 / 工单页 Tab 在队卡）都调它，判据只此一份。
+ */
+export function isRiskTicketEnded(ticketNo: string): boolean {
+  const derived = useDerivedTicketStore();
+  if (derived.escalatedToNoOf(ticketNo)) return true;
+  const t = TICKETS.find((x) => x.no === ticketNo) ?? derived.find(ticketNo);
+  if (!t) return false;
+  if (t.escalatedToNo) return true;
+  if (t.slaText === '—') return true;
+  return isTicketClosed(t.nodeStatus);
+}
+
+/**
+ * 提交结论前**按 id 回 store 重取条目**再判一次，返回拦截提示；可以提交时返回空串。
+ *
+ * 弹窗打开到点「提交结论」之间，条目可能已被承办人释放、被报备人撤回、或原单已结束 ——
+ * 弹窗手上那份 `assessTarget` 是打开那一刻的引用，判据必须读 store 里的现值。
+ */
+export function assessSubmitBlockOf(
+  id: string,
+  decision: AssessDecision | '',
+  assigneeName: string,
+): { tip: string; closeModal: boolean } {
+  const r = useRiskPoolStore().findById(id);
+  if (!r) return { tip: '该条目已不在风险池中，请刷新后再看', closeModal: true };
+  if (r.status === '已撤回') return { tip: ASSESS_WITHDRAWN_TIP, closeModal: true };
+  if (r.status !== '评估中' || r.assignee !== assigneeName) {
+    return {
+      tip: r.status === '已评估'
+        ? '本条已有评估结论，不可重复提交'
+        : '本条已不在你名下的「已领取」态，请刷新后再看',
+      closeModal: true,
+    };
+  }
+  if (decision && normalizeDecision(decision) === '升级' && isRiskTicketEnded(r.ticketNo)) {
+    return { tip: ASSESS_TICKET_ENDED_TIP, closeModal: false };
+  }
+  return { tip: '', closeModal: false };
+}
+
+/* ---------------- 「本单另有」区（《【930】》§5.4 ⑦ / R62） ---------------- */
+
+export interface RiskOtherRow {
+  label: string;
+  text: string;
+}
+
+function shortAt(at: string): string {
+  const m = at.match(/(\d{2}-\d{2})\s+(\d{2}:\d{2})/);
+  return m ? `${m[1]} ${m[2]}` : at;
+}
+
+/**
+ * 评估弹窗内「本单另有」固定区块的四行：风险词命中与打标结论、历史报备条数与结论、
+ * 历史协同处理次数与时刻。**三个评估入口共用这一个函数**，行文与取数只此一份；
+ * 没有取值的一行照常出、写「无」，区块不因全空而消失。
+ *
+ * `excludeId`：当前正在评的这一条，不计入「历史报备」。
+ */
+export function riskOthersOf(ticketNo: string, excludeId?: string): RiskOtherRow[] {
+  const tags = useRiskTagStore();
+  const queue = useRiskQueueStore();
+  const collab = useRiskCollabStore();
+  const pool = useRiskPoolStore();
+
+  const v = tags.ticketVerificationOf(ticketNo);
+  const hitText = v
+    ? `${v.hitCount} 条（成立 ${v.confirmedCount} · 误报 ${v.falseCount} · 待核实 ${v.pendingCount}）`
+    : '无';
+
+  const tag = queue.entriesOf(ticketNo).find((e) => !!e.tag)?.tag ?? null;
+  const tagText = tag
+    ? `${tag.result === '无风险' ? '无风险' : riskLevelText(tag.result)} · ${tag.by}（${tag.byRole}）· ${shortAt(tag.at)}`
+    : '未打标';
+
+  const reports = pool
+    .reportsOf(ticketNo)
+    .filter((r) => r.source === REPORT_SOURCE && r.id !== excludeId);
+  const reportText = reports.length
+    ? `${reports.length} 条：${reports
+      .map((r) => {
+        if (r.status === '已评估' && r.assessment) {
+          return `${normalizeDecision(r.assessment.decision)}（${shortAt(r.assessment.at)}）`;
+        }
+        if (r.status === '已撤回') return `已撤回（${shortAt(r.at)}）`;
+        return isOpenStatus(r.status) ? `未出结论（${shortAt(r.at)}）` : r.status;
+      })
+      .join('、')}`
+    : '无';
+
+  const collabs = collab.recordsOf(ticketNo);
+  const collabText = collabs.length
+    ? `${collabs.length} 次，最近一次 ${shortAt(collabs[0].at)}`
+    : '无';
+
+  return [
+    { label: '风险词命中', text: hitText },
+    { label: '打标结论', text: tagText },
+    { label: '历史报备', text: reportText },
+    { label: '协同处理', text: collabText },
+  ];
 }
 
 /**
@@ -108,6 +231,12 @@ export function useRiskReportAssess() {
    */
   const escalateHint = computed(() => escalateHintOf(assessTarget.value?.ticketNo));
 
+  /** 「本单另有」区四行，取数见 `riskOthersOf`（三个入口同源） */
+  const assessOthers = computed(() => {
+    const t = assessTarget.value;
+    return t ? riskOthersOf(t.ticketNo, t.id) : [];
+  });
+
   function nextEscalatedNo(): string {
     const d = new Date();
     const p = (n: number) => String(n).padStart(2, '0');
@@ -149,6 +278,14 @@ export function useRiskReportAssess() {
     assessTried.value = true;
     const target = assessTarget.value;
     if (!target || !assessValid.value || !assessDecision.value) return;
+
+    // 提交前重查（§5.6）：条目现值 + 原单终态，拦下时不落任何东西
+    const block = assessSubmitBlockOf(target.id, assessDecision.value, user.name || '当前用户');
+    if (block.tip) {
+      message.warning(block.tip);
+      if (block.closeModal) assessOpen.value = false;
+      return;
+    }
 
     const escalate = assessDecision.value === '升级';
     const derive = escalate && !isComplaintTicket(target.ticketNo);
@@ -194,6 +331,7 @@ export function useRiskReportAssess() {
     assessAdviceLabel,
     assessAdvicePlaceholder,
     escalateHint,
+    assessOthers,
     openAssess,
     confirmAssess,
     canAssessReport,

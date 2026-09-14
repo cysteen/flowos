@@ -7,7 +7,7 @@ import { useRiskReportAssess } from '@/composables/useRiskReportAssess';
 import { useRiskPoolStore } from '@/stores/riskPool';
 import { useRiskReportStore } from '@/stores/riskReports';
 import { useUserStore } from '@/stores/user';
-import { isOpenStatus, type RiskPoolItem } from '@/stores/riskShared';
+import { REPORT_SOURCE, isOpenStatus, type RiskPoolItem } from '@/stores/riskShared';
 import {
   adviceLabelOf,
   advicePlaceholderOf,
@@ -39,11 +39,13 @@ const reportStore = useRiskReportStore();
 const {
   ASSESS_DECISIONS,
   assessOpen,
+  assessTarget,
   assessDecision,
   assessAdvice,
   missAssessDecision,
   missAssessAdvice,
   escalateHint,
+  assessOthers,
   openAssess,
   confirmAssess,
 } = useRiskReportAssess();
@@ -94,6 +96,12 @@ watch(assessOpen, (v) => {
 const adviceLabel = computed(() => adviceLabelOf(assessDecision.value));
 const advicePlaceholder = computed(() => advicePlaceholderOf(assessDecision.value));
 
+/**
+ * 标题按条目所属的线取：A 线（风险工单池条目）「风险评估」、B 线（报备单）「评估报备」，
+ * 与风险报备池、工单 Tab 在队卡两处评估弹窗的叫法对齐。
+ */
+const modalTitle = computed(() => (assessTarget.value?.source === REPORT_SOURCE ? '评估报备' : '风险评估'));
+
 const sourceLine = computed(() => {
   const t = target.value;
   if (!t) return '';
@@ -105,7 +113,7 @@ const sourceLine = computed(() => {
 <template>
   <OpActionModal
     :open="assessOpen"
-    title="风险评估"
+    :title="modalTitle"
     :icon="EditOutlined"
     tone="primary"
     :width="520"
@@ -118,6 +126,15 @@ const sourceLine = computed(() => {
         工单 {{ ticketNo }}<template v-if="ticketTitle"> · {{ ticketTitle }}</template>
       </p>
       <p v-if="sourceLine" class="ra-source">{{ sourceLine }}</p>
+
+      <!-- 「本单另有」固定区块（§5.4 ⑦），取数见 riskOthersOf（三个评估入口同源） -->
+      <section class="ticket-assess-others" aria-label="本单另有">
+        <div class="ticket-assess-others-head">本单另有</div>
+        <div v-for="row in assessOthers" :key="row.label" class="ticket-assess-others-row">
+          <span class="ticket-assess-others-k">{{ row.label }}</span>
+          <span class="ticket-assess-others-v">{{ row.text }}</span>
+        </div>
+      </section>
 
       <section class="ticket-assess-block">
         <h4 class="ticket-assess-title">评估结论</h4>
@@ -232,5 +249,35 @@ const sourceLine = computed(() => {
   font-size: 11px;
   color: #6b7280;
   line-height: 1.5;
+}
+/* 「本单另有」区：三个评估入口同一副版式 */
+.ticket-assess-others {
+  padding: 8px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+.ticket-assess-others-head {
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+}
+.ticket-assess-others-row {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.ticket-assess-others-k {
+  flex: none;
+  width: 72px;
+  color: #9ca3af;
+}
+.ticket-assess-others-v {
+  flex: 1;
+  min-width: 0;
+  color: #374151;
+  word-break: break-word;
 }
 </style>
