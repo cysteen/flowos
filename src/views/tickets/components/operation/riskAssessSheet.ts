@@ -92,7 +92,7 @@ export function isKeywordRow(r: { source: RiskPoolItem['source'] }): boolean {
 
 /** 报备附件的下载：附件名为占位，点击触发浏览器下载一个同名文件 */
 export function downloadReportAttachment(name: string): void {
-  const blob = new Blob([`（原型演示）${name}\n`], { type: 'application/octet-stream' });
+  const blob = new Blob([`${name}\n`], { type: 'application/octet-stream' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
