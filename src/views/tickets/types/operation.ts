@@ -196,7 +196,7 @@ export interface ProcessFormDraft {
   leadStage: 'resolved' | 'unresolvedRejected' | 'noContact' | 'invalid' | 'toSales';
   /** 商机编号（CRM 商机单号）。终态仍可编辑，随「保存」提交 */
   leadNo: string;
-  /** 结案后备注（四类型通用）。所有状态可编辑，终态仍可编辑，随「保存」提交 */
+  /** 结案后备注（四类型通用）。仅终态展示与编辑，随「保存」提交 */
   closingNote: string;
   /** 结案后备注最近一次提交人 / 时间（YYYY-MM-DD HH:mm） */
   closingNoteUpdatedBy?: string;

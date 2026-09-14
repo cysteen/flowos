@@ -410,8 +410,9 @@ function chipActiveClass(key: SupplementChip): string {
       />
     </OpCollapsibleSection>
 
-    <!-- ===== 结案后备注（四类型通用；所有状态可编辑，终态仍可编辑） ===== -->
+    <!-- ===== 结案后备注（四类型通用；仅终态展示） ===== -->
     <OpCollapsibleSection
+      v-if="postClose"
       title="结案后备注"
       :icon="MessageOutlined"
       :expanded="expandedSections.closingNote"
