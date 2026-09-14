@@ -965,9 +965,11 @@ const SEED: RiskQueueEntry[] = [
  *     v9 那份里躺着 `source: '手动筛查'` 的 `rr-010`，读进来即是一个不在枚举里的值。
  *   · v10 → v11：补建条目（`rq-auto-*`）的进监控时刻改取**补建时刻**，不再取建单时刻。
  *     v10 那份里躺着一批进监控时刻在几十天前的补建条目，读进来等待时长照旧是几十天。
+ *   · v11 → v12：种子补建条目的进监控时刻上限由 300 分钟收到 110 分钟（小于处置时限），
+ *     v11 那份里有 9 条已等 132~276 分钟，一打标进池即算超时，页头「超时未评」失真。
  */
 const LS_KEY = 'flowos-risk-queue';
-const LS_VERSION = 11;
+const LS_VERSION = 12;
 
 /**
  * 缓存"新不新"的判据：取**打标时刻**里最新的那一个。
@@ -1007,8 +1009,12 @@ const AUTO_DESC: Record<QueueSource, string> = {
 const SEED_AUTO_FIRST_MIN = 6;
 /** 相邻两条的间隔上限（分钟） */
 const SEED_AUTO_STEP_MIN = 18;
-/** 最早一条距今的分钟数上限，须小于 `TODAY_SPAN_MIN`，否则 `todayStamp` 会把末尾几条夹到同一时刻 */
-const SEED_AUTO_LAST_MIN = 300;
+/**
+ * 最早一条距今的分钟数上限。须小于 `TODAY_SPAN_MIN`（否则 `todayStamp` 会把末尾几条夹到同一时刻），
+ * 且须小于处置时限 120 分钟：这批是演示用的待打标种子，一打标进池就算「超时未评」会让页头数失真。
+ * 超时样本另有专门的种子条目（rr-011 / rq-s12 / rq-s13），不靠这一批。
+ */
+const SEED_AUTO_LAST_MIN = 110;
 
 /**
  * 种子初始化时补建的 `n` 条条目的进监控时刻，第 i 条距今 `FIRST + i × step` 分钟，经 `todayStamp`
