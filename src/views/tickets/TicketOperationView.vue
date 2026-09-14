@@ -11,6 +11,7 @@ import OpStatDetailModal from './components/operation/OpStatDetailModal.vue';
 import OpSupplementModal from './components/operation/OpSupplementModal.vue';
 import OpDunningModal from './components/operation/OpDunningModal.vue';
 import OpCancelModal from './components/operation/OpCancelModal.vue';
+import OpLeadNoBackfillModal from './components/operation/OpLeadNoBackfillModal.vue';
 import OpEscalateComplaintModal from './components/operation/OpEscalateComplaintModal.vue';
 import OpSmsModal from './components/operation/OpSmsModal.vue';
 import OpEmailModal from './components/operation/OpEmailModal.vue';
@@ -49,7 +50,7 @@ import {
 import { escalateComplaintBlockTip, resolveRiskActionForm } from './composables/opActionRegistry';
 import { resolveSupersededBy, type TicketRelation } from './composables/ticketRelations';
 import type { CreateTicketPrefill, Ticket } from './types/ticket';
-import type { ProcessFormDraft, InsightAction, InsightModalKey } from './types/operation';
+import type { ClosingNote, ProcessFormDraft, InsightAction, InsightModalKey } from './types/operation';
 import type { ProcessTabKey } from './types/operation';
 import { COMPLAINT_SUPPLEMENT_TYPE } from './types/operationTabs';
 import type { OperationTabData } from './types/operationTabs';
@@ -874,6 +875,54 @@ const hideActionBar = computed(
 );
 
 /**
+ * 结案后补充：终态（已转/已升级的被接管单除外，整页已锁）处理表单锁定，
+ * 只留商机编号补录与结案后备注两处可写。补充不改状态、不重算 SLA、不触发调研，只记履历。
+ */
+const postClose = computed(() => isTicketTerminated(d.value.status) && !supersededBy.value);
+
+/** 结案后备注按工单号存（会话内），切单不串 */
+const closingNotesByTicket = ref<Record<string, ClosingNote[]>>({});
+const closingNotes = computed(() => closingNotesByTicket.value[ticketNo.value] ?? []);
+
+function onAddClosingNote(text: string) {
+  const list = closingNotesByTicket.value[ticketNo.value] ?? [];
+  const role = mapUserRole(user.roleKey);
+  list.push({
+    id: `cn-${Date.now()}`,
+    who: user.name || '当前坐席',
+    role,
+    at: riskNowStamp(),
+    text,
+    afterClose: postClose.value,
+  });
+  closingNotesByTicket.value[ticketNo.value] = list;
+  pushEntry(timeline.value, {
+    category: 'handle', action: 'handle', who: user.name || '当前坐席', role,
+    how: postClose.value ? '结案后补充' : '工单处理',
+    what: '追加结案后备注',
+    changes: [{ field: '结案后备注', kind: '补充', to: text }],
+  });
+  message.success('已添加结案后备注');
+}
+
+const leadNoModalOpen = ref(false);
+
+function onLeadNoBackfill({ value, reason }: { value: string; reason: string }) {
+  const before = form.value.leadNo.trim();
+  form.value = { ...form.value, leadNo: value };
+  processBaseline.leadNo = value;
+  pushEntry(timeline.value, {
+    category: 'handle', action: 'handle', who: user.name || '当前坐席', role: mapUserRole(user.roleKey),
+    how: '结案后补充',
+    what: before ? `修改商机编号（原因：${reason}）` : '补录商机编号',
+    changes: [before
+      ? { field: '商机编号', kind: '修改', from: before, to: value }
+      : { field: '商机编号', kind: '补充', to: value }],
+  });
+  message.success(before ? '商机编号已修改' : '商机编号已补录');
+}
+
+/**
  * 单子是否正在**三线技术支持**手上 —— 底栏「退回」是三线专属动作，只在这时出现。
  *
  * 依据基线 §1（※14b）：升级两类目标各占一个子状态，产研态处理人仍是二线、不给「退回」，
@@ -1022,6 +1071,7 @@ const PROCESS_FIELDS: { key: keyof ProcessFormDraft; label: string }[] = [
   { key: 'serviceMethod', label: '服务方式' },
   { key: 'conclusion', label: '问题解决结论' },
   { key: 'serviceSolution', label: '解决方案' },
+  { key: 'leadNo', label: '商机编号' },
 ];
 
 /** 处理表单快照（含各字段值 + 附件数），作为变更 diff 的基线 */
@@ -1745,6 +1795,10 @@ watch(
           :filled-supplement-count="filledSupplementCount"
           :tab-dots="processTabDots"
           :readonly="tabsReadonly"
+          :post-close="postClose"
+          :closing-notes="closingNotes"
+          @add-closing-note="onAddClosingNote"
+          @backfill-lead-no="leadNoModalOpen = true"
           @toggle-section="toggleSection"
           @select-chip="selectChip"
           @update:form="updateForm"
@@ -1837,6 +1891,12 @@ watch(
     <OpCancelModal
       v-model:open="cancelModalOpen"
       @submit="onCancelSubmit"
+    />
+
+    <OpLeadNoBackfillModal
+      v-model:open="leadNoModalOpen"
+      :current="form.leadNo"
+      @submit="onLeadNoBackfill"
     />
 
     <OpEscalateComplaintModal

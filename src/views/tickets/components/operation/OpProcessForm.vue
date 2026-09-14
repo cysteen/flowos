@@ -2,14 +2,15 @@
 import { computed, watch } from 'vue';
 import {
   FileTextOutlined, CheckCircleOutlined, AppstoreOutlined,
-  CheckOutlined,
+  CheckOutlined, EditOutlined,
 } from '@ant-design/icons-vue';
 import OpCollapsibleSection from './OpCollapsibleSection.vue';
 import OpRecordFields from './OpRecordFields.vue';
 import OpSupplementChipPanels from './OpSupplementChipPanels.vue';
+import OpClosingNotes from './OpClosingNotes.vue';
 import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue';
 import type {
-  ProcessFormDraft, SupplementChip, SectionKey,
+  ProcessFormDraft, SupplementChip, SectionKey, ClosingNote,
 } from '@/views/tickets/types/operation';
 import {
   RESOLUTION_CONCLUSION_OPTIONS,
@@ -51,13 +52,27 @@ const props = defineProps<{
    * 九列取值（例如「服务与结论」④ 三线不给、「建单规范 check」① ④ 不给），那套逐字段判据另议。
    */
   readonly?: boolean;
+  /**
+   * 工单已是终态：处理内容整区锁定，只留两处例外——
+   * 商机编号（弹窗补录/修改）与结案后备注（追加）。
+   */
+  postClose?: boolean;
+  /** 工单当前状态（终态提示条用） */
+  ticketStatus?: string;
+  /** 结案后备注（四类工单通用） */
+  closingNotes?: ClosingNote[];
 }>();
 
 const emit = defineEmits<{
   toggleSection: [key: SectionKey];
   selectChip: [chip: SupplementChip];
   'update:form': [form: ProcessFormDraft];
+  addClosingNote: [text: string];
+  backfillLeadNo: [];
 }>();
+
+/** 处理内容是否锁定（角色只读 或 终态） */
+const contentLocked = computed(() => !!props.readonly || !!props.postClose);
 
 const isComplaint = computed(() => props.ticketType === '投诉');
 const isConsult = computed(() => props.ticketType === '咨询');
@@ -73,7 +88,7 @@ const showComplaintChannel = computed(() => {
 
 /** 单一写出口：只读态在此统一拦一道，本区所有字段的回写都经过这里 */
 function patch(part: Partial<ProcessFormDraft>) {
-  if (props.readonly) return;
+  if (contentLocked.value) return;
   emit('update:form', { ...props.form, ...part });
 }
 
@@ -201,7 +216,13 @@ function chipActiveClass(key: SupplementChip): string {
 </script>
 
 <template>
+  <a-config-provider :component-disabled="contentLocked">
   <div class="process-form">
+    <div v-if="postClose" class="post-close-bar">
+      <CheckCircleOutlined class="pcb-icon" />
+      <span>工单{{ ticketStatus ? `「${ticketStatus}」` : '已结案' }}，处理内容已锁定；{{ isLead ? '商机编号、结案后备注' : '结案后备注' }}仍可补充。</span>
+    </div>
+
     <!-- 处理记录（所有工单类型共用核心区） -->
     <OpCollapsibleSection
       title="处理记录"
@@ -216,7 +237,7 @@ function chipActiveClass(key: SupplementChip): string {
         :process-result="form.processResult"
         :problem-cause-attachments="form.problemCauseAttachments"
         :process-result-attachments="form.processResultAttachments"
-        :readonly="readonly"
+        :readonly="contentLocked"
         @update:problem-cause="(v) => patch({ problemCause: v })"
         @update:process-result="(v) => patch({ processResult: v })"
         @update:problem-cause-attachments="(v) => patch({ problemCauseAttachments: v })"
@@ -326,7 +347,22 @@ function chipActiveClass(key: SupplementChip): string {
           </div>
           <div class="field inline">
             <label>商机编号</label>
+            <!-- 终态：只读展示 + 补录/修改入口（弹窗在工单页，免受本区禁用态影响） -->
+            <div v-if="postClose" class="backfill-field">
+              <span class="bf-value" :class="{ empty: !form.leadNo }">{{ form.leadNo || '未填写' }}</span>
+              <a-button
+                v-if="!readonly"
+                type="link"
+                size="small"
+                class="bf-btn"
+                :disabled="false"
+                @click="emit('backfillLeadNo')"
+              >
+                <EditOutlined />{{ form.leadNo ? '修改' : '补录' }}
+              </a-button>
+            </div>
             <a-input
+              v-else
               :value="form.leadNo"
               placeholder="CRM 商机单号"
               @update:value="(v: string) => patch({ leadNo: v })"
@@ -379,16 +415,41 @@ function chipActiveClass(key: SupplementChip): string {
         :complaint-platform="complaintPlatform"
         :complaint-platforms="complaintPlatforms"
         :show-external="showComplaintChannel"
-        :readonly="readonly"
+        :readonly="contentLocked"
         :ticket-no="ticketNo"
         @update:form="emit('update:form', $event)"
       />
     </OpCollapsibleSection>
+
+    <!-- ===== 结案后备注（四类型通用；只追加，终态仍可写） ===== -->
+    <OpClosingNotes
+      :notes="closingNotes ?? []"
+      :expanded="expandedSections.closingNote"
+      :readonly="readonly"
+      :post-close="postClose"
+      @toggle="emit('toggleSection', 'closingNote')"
+      @add="emit('addClosingNote', $event)"
+    />
   </div>
+  </a-config-provider>
 </template>
 
 <style scoped>
 .process-form { display: flex; flex-direction: column; gap: 12px; }
+.post-close-bar {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 8px; font-size: 12px;
+  color: #065f46; background: #ecfdf5; border: 1px solid #a7f3d0;
+}
+.pcb-icon { color: #059669; }
+.backfill-field {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  height: 32px; padding: 0 4px 0 11px; border-radius: 6px;
+  background: #fff; border: 1px solid #e5e7eb;
+}
+.bf-value { font-size: 13px; color: #1f2937; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bf-value.empty { color: #9ca3af; }
+.bf-btn { flex: none; padding: 0 6px; }
 .section-subhead {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
 }
