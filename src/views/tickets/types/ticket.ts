@@ -853,6 +853,28 @@ export const POOL_GROUPS: PoolGroupMeta[] = [
   { id: 'hardware', label: '硬件缺陷组' },
 ];
 
+/**
+ * 处理人 → 所属分组（原型 Mock，名册对齐工单数据源的处理人）。
+ * 终态「结案后补充」按「最后处理人所在组」判编辑权，见 `handlerGroupOf`。
+ */
+const HANDLER_GROUP: Record<string, string> = {
+  王坐席: 'line2',
+  林坐席: 'line2',
+  王组长: 'line2',
+  陈坐席: 'hardware',
+};
+
+/** 处理人所在分组；不在名册内返回 undefined（按无权处理，fail-closed） */
+export function handlerGroupOf(name?: string | null): PoolGroupMeta | undefined {
+  const id = name ? HANDLER_GROUP[name] : undefined;
+  return id ? POOL_GROUPS.find((g) => g.id === id) : undefined;
+}
+
+/** 当前登录用户在工单数据源里的处理人名：二线专员演示账号对应 `WORKBENCH_HANDLER` */
+export function currentHandlerName(roleKey: string, userName: string): string {
+  return roleKey === 'agent-l2' ? WORKBENCH_HANDLER : userName;
+}
+
 /** 列表「分组名称」列：优先 groupNames，否则按业务线+工单类型推断 */
 export function resolveTicketGroupNames(t: Ticket): string[] {
   if (t.groupNames?.length) return t.groupNames;

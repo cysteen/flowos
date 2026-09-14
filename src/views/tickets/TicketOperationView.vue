@@ -33,7 +33,7 @@ import { useRiskReportStore } from '@/stores/riskReports';
 import { useRiskQueueStore } from '@/stores/riskQueue';
 import { poolStageStatusOf } from '@/stores/riskPool';
 import { REPORT_ASSESS_LIMIT_MIN, isOpenStatus, isPooledStatus } from '@/stores/riskShared';
-import { POST_CLOSE_EDITABLE_FIELDS, RISK_FLAG_OPTIONS, isProcessTabVisible, tabWritableFor } from './types/operation';
+import { POST_CLOSE_EDITABLE_FIELDS, RISK_FLAG_OPTIONS, isProcessTabVisible } from './types/operation';
 import { poolStatusText } from './components/operation/OpRiskDecision';
 import { useRiskCollabStore } from '@/stores/riskCollab';
 import { useRiskHistoryStore, type RiskHistoryKind, type RiskHistoryRecord } from '@/stores/riskHistory';
@@ -41,7 +41,7 @@ import { useRiskPoolStore } from '@/stores/riskPool';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
 import { RISK_LEVELS, riskLevelText } from '@/config/risk';
 import type { TlAction, TlRole } from './types/ticketDetail';
-import { pullbackOnCsEvent, headerActionsByRole, type TicketStatus } from './types/ticket';
+import { pullbackOnCsEvent, headerActionsByRole, handlerGroupOf, currentHandlerName, type TicketStatus } from './types/ticket';
 import { buildChildTicketPrefill, buildReopenTicketPrefill } from './composables/childTicketPrefill';
 import {
   buildEscalatePrefill, buildEscalateVerdict, buildEscalatedTicket, escalateTargetLabel,
@@ -871,15 +871,21 @@ const canCancelTicket = computed(() => headerRoleGate.value.cancelTicket);
 const tabsReadonly = computed(() => !!supersededBy.value);
 
 /**
- * 结案后补充：终态（已转/已升级的被接管单除外，整页已锁）处理表单锁定，
- * 只留商机编号、结案后备注仍可编辑，底栏只剩「保存」。不改状态、不重算 SLA、不触发调研，只记履历。
+ * 结案后补充：终态（已转/已升级的被接管单整页已锁，不在此列）处理表单锁定；
+ * 已取消以外的终态，**最后处理人所在组**成员仍可编辑商机编号、结案后备注，底栏只剩「保存」。
+ * 不改状态、不重算 SLA、不触发调研，只记履历。
  */
 const postClose = computed(() => isTicketTerminated(d.value.status) && !supersededBy.value);
-const postCloseSavable = computed(() => postClose.value && tabWritableFor('process', user.roleKey));
+const lastHandlerGroup = computed(() => handlerGroupOf(d.value.lastHandler));
+const postCloseEditable = computed(() => {
+  if (!postClose.value || d.value.status === '已取消') return false;
+  const gid = lastHandlerGroup.value?.id;
+  return !!gid && handlerGroupOf(currentHandlerName(user.roleKey, user.name))?.id === gid;
+});
 
 const hideActionBar = computed(
   () => isFrontlineView.value || pageReadonly.value
-    || (isTicketTerminated(d.value.status) && !postCloseSavable.value),
+    || (isTicketTerminated(d.value.status) && !postCloseEditable.value),
 );
 
 /**
@@ -1135,6 +1141,7 @@ function onAction(payload: Record<string, unknown>) {
     }
     if (postClose.value) {
       // 终态只有商机编号 / 结案后备注可改：每次提交单独记一条「结案后补充」
+      if (!postCloseEditable.value) return;
       if (!log) {
         message.info('内容未变更，无需保存');
         return;
@@ -1787,6 +1794,8 @@ watch(
           :tab-dots="processTabDots"
           :readonly="tabsReadonly"
           :post-close="postClose"
+          :post-close-editable="postCloseEditable"
+          :last-handler-group="lastHandlerGroup?.label"
           @toggle-section="toggleSection"
           @select-chip="selectChip"
           @update:form="updateForm"
@@ -1815,7 +1824,7 @@ watch(
     <OpActionBar
       ref="actionBarRef"
       :hide-bar="hideActionBar"
-      :save-only="postCloseSavable"
+      :save-only="postCloseEditable"
       :ticket-no="ticketNo"
       :ticket-title="d.title"
       :ticket-type="d.type"

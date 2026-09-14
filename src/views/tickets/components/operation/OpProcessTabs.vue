@@ -64,8 +64,12 @@ const props = defineProps<{
    * 【为什么可选】不传即一个圆点不出，既有调用方行为完全不变。
    */
   tabDots?: Partial<Record<ProcessTabKey, 'warn' | 'danger'>>;
-  /** 工单已是终态：处理表单锁定，仅商机编号 / 结案后备注仍可编辑 */
+  /** 工单已是终态：处理表单锁定 */
   postClose?: boolean;
+  /** 终态下商机编号 / 结案后备注是否仍可编辑（非已取消 + 当前用户在最后处理人所在组） */
+  postCloseEditable?: boolean;
+  /** 最后处理人所在组名（提示条用） */
+  lastHandlerGroup?: string;
 }>();
 
 const emit = defineEmits<{
@@ -188,6 +192,8 @@ defineExpose({ switchTab });
         :readonly="activeTabReadonly"
         :post-close="postClose"
         :ticket-status="detail.status"
+        :post-close-editable="postCloseEditable"
+        :last-handler-group="lastHandlerGroup"
         @toggle-section="emit('toggleSection', $event)"
         @select-chip="emit('selectChip', $event)"
         @update:form="emit('update:form', $event)"

@@ -57,8 +57,12 @@ const props = defineProps<{
    * （商机编号、结案后备注）仍可编辑，随底栏「保存」提交。
    */
   postClose?: boolean;
+  /** 终态下两个字段是否仍可编辑（非已取消 + 当前用户在最后处理人所在组） */
+  postCloseEditable?: boolean;
   /** 工单当前状态（终态提示条用） */
   ticketStatus?: string;
+  /** 最后处理人所在组名（终态提示条用） */
+  lastHandlerGroup?: string;
 }>();
 
 const emit = defineEmits<{
@@ -69,8 +73,19 @@ const emit = defineEmits<{
 
 /** 处理内容是否锁定（角色只读 或 终态） */
 const contentLocked = computed(() => !!props.readonly || !!props.postClose);
-/** 终态仍可编辑的两个字段：只受角色只读约束 */
-const postCloseFieldDisabled = computed(() => !!props.readonly);
+/** 终态仍可编辑的两个字段：角色只读，或终态下无结案后编辑权 */
+const postCloseFieldDisabled = computed(
+  () => !!props.readonly || (!!props.postClose && !props.postCloseEditable),
+);
+
+/** 终态提示条文案 */
+const postCloseTip = computed(() => {
+  const head = `工单「${props.ticketStatus ?? '已结案'}」，处理内容已锁定`;
+  const fields = isLead.value ? '商机编号、结案后备注' : '结案后备注';
+  if (props.ticketStatus === '已取消') return `${head}。`;
+  if (props.postCloseEditable) return `${head}；${fields}仍可编辑，修改后点击底部「保存」提交。`;
+  return `${head}；${fields}仅最后处理人所在组${props.lastHandlerGroup ? `（${props.lastHandlerGroup}）` : ''}成员可编辑。`;
+});
 
 const isComplaint = computed(() => props.ticketType === '投诉');
 const isConsult = computed(() => props.ticketType === '咨询');
@@ -88,6 +103,7 @@ const showComplaintChannel = computed(() => {
 function patch(part: Partial<ProcessFormDraft>) {
   if (props.readonly) return;
   if (props.postClose) {
+    if (!props.postCloseEditable) return;
     const keys = Object.keys(part) as (keyof ProcessFormDraft)[];
     if (!keys.every((k) => (POST_CLOSE_EDITABLE_FIELDS as readonly string[]).includes(k))) return;
   }
@@ -222,7 +238,7 @@ function chipActiveClass(key: SupplementChip): string {
   <div class="process-form">
     <div v-if="postClose" class="post-close-bar">
       <CheckCircleOutlined class="pcb-icon" />
-      <span>工单{{ ticketStatus ? `「${ticketStatus}」` : '已结案' }}，处理内容已锁定；{{ isLead ? '商机编号、结案后备注' : '结案后备注' }}仍可编辑，修改后点击底部「保存」提交。</span>
+      <span>{{ postCloseTip }}</span>
     </div>
 
     <!-- 处理记录（所有工单类型共用核心区） -->
@@ -415,7 +431,7 @@ function chipActiveClass(key: SupplementChip): string {
     <OpCollapsibleSection
       title="结案后备注"
       :icon="MessageOutlined"
-      :badge="postClose ? '可编辑' : ''"
+      :badge="postClose && postCloseEditable ? '可编辑' : ''"
       badge-variant="hint"
       :expanded="expandedSections.closingNote"
       @toggle="emit('toggleSection', 'closingNote')"
