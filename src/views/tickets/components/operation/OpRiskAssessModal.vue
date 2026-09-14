@@ -1,18 +1,26 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue';
 import { message } from 'ant-design-vue';
-import { EditOutlined } from '@ant-design/icons-vue';
+import { EditOutlined, PaperClipOutlined, RollbackOutlined, UserOutlined } from '@ant-design/icons-vue';
 import OpActionModal from './OpActionModal.vue';
 import { useRiskReportAssess } from '@/composables/useRiskReportAssess';
 import { useRiskPoolStore } from '@/stores/riskPool';
 import { useRiskReportStore } from '@/stores/riskReports';
+import { useRiskTagStore } from '@/stores/riskTags';
 import { useUserStore } from '@/stores/user';
-import { REPORT_SOURCE, isOpenStatus, type RiskPoolItem } from '@/stores/riskShared';
+import {
+  REPORT_SOURCE,
+  isOpenStatus,
+  isPoolLevel,
+  isVerifyMonitorSource,
+  type RiskPoolItem,
+} from '@/stores/riskShared';
+import { riskLevelText } from '@/config/risk';
+import type { RiskHit } from '@/mock/opsReport';
 import {
   adviceLabelOf,
   advicePlaceholderOf,
   decisionText,
-  poolStatusText,
 } from './OpRiskDecision';
 
 /**
@@ -102,12 +110,53 @@ const advicePlaceholder = computed(() => advicePlaceholderOf(assessDecision.valu
  */
 const modalTitle = computed(() => (assessTarget.value?.source === REPORT_SOURCE ? '评估报备' : '风险评估'));
 
-const sourceLine = computed(() => {
-  const t = target.value;
-  if (!t) return '';
-  const who = t.byRole === '系统' ? '系统自动纳入' : `${t.by}（${t.byRole}）报备`;
-  return `${who} · ${poolStatusText(t.status)} · 提交于 ${t.at}`;
+/* ---- 第一区块：按条目来路分两种（PRD §5.3.2），字段与版式对齐风险监控页评估弹窗 ---- */
+
+const riskTags = useRiskTagStore();
+
+/** A 线（风险工单池条目）→「入池依据」；B 线（报备单）→「报备信息」。判据取条目的 `source` */
+const fromPool = computed(() => !!assessTarget.value && assessTarget.value.source !== REPORT_SOURCE);
+
+/** 入池依据的「命中原话」：实时监控来源且已打标的条目，取本单命中时刻最近的一条 */
+const verifiedHit = computed<RiskHit | null>(() => {
+  const t = assessTarget.value;
+  if (!t?.tag || !isVerifyMonitorSource(t.source)) return null;
+  const hits = riskTags.hitsOfTicket(t.ticketNo);
+  return hits.length ? hits[hits.length - 1] : null;
 });
+
+/** 命中原话取窗：命中词前后各 40 字，找不到命中词时取开头 80 字；只在被截的一侧加省略号 */
+const hitWindow = computed(() => {
+  const h = verifiedHit.value;
+  if (!h) return null;
+  const text = h.excerpt ?? '';
+  const term = h.matchedWord ?? '';
+  const at = term ? text.indexOf(term) : -1;
+  if (at < 0) {
+    return { before: text.slice(0, 80), hit: '', after: '', head: false, tail: text.length > 80 };
+  }
+  const start = Math.max(0, at - 40);
+  const end = Math.min(text.length, at + term.length + 40);
+  return {
+    before: text.slice(start, at),
+    hit: text.slice(at, at + term.length),
+    after: text.slice(at + term.length, end),
+    head: start > 0,
+    tail: end < text.length,
+  };
+});
+
+/** 历次释放记录，最近一次在前 */
+const releases = computed(() => [...(assessTarget.value?.releases ?? [])].reverse());
+
+function downloadAttachment(name: string) {
+  const url = URL.createObjectURL(new Blob([name], { type: 'application/octet-stream' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 </script>
 
 <template>
@@ -116,24 +165,132 @@ const sourceLine = computed(() => {
     :title="modalTitle"
     :icon="EditOutlined"
     tone="primary"
-    :width="520"
+    :width="600"
     ok-text="提交结论"
     @update:open="assessOpen = $event"
     @ok="confirmAssess"
   >
     <div class="op-form ticket-assess-form">
-      <p v-if="ticketNo" class="ra-sub">
-        工单 {{ ticketNo }}<template v-if="ticketTitle"> · {{ ticketTitle }}</template>
-      </p>
-      <p v-if="sourceLine" class="ra-source">{{ sourceLine }}</p>
+      <!--
+        ① 第一区块按条目来路分两种（PRD §5.3.2），与风险监控页评估弹窗同字段同版式：
+        · A 线（风险工单池条目）→「入池依据」：风险等级 / 打标人 / 打标时刻 / 纳入说明 / 命中原话 / 打标备注；
+        · B 线（报备单）→「报备信息」：报备人 / 原因 / 风险类型 / 场景描述 / 附件。
+        A 线不出「报备人」「原因」：那两格是系统补的恒定占位（系统（系统） / 其他）。
+      -->
+      <section
+        v-if="assessTarget"
+        class="assess-sheet"
+        :aria-label="fromPool ? '入池依据' : '报备信息'"
+      >
+        <header class="assess-sheet-head">
+          <div class="assess-sheet-title-row">
+            <span class="assess-sheet-kind">{{ fromPool ? '入池依据' : '报备信息' }}</span>
+            <span class="assess-ticket-no">{{ assessTarget.ticketNo }}</span>
+            <span class="assess-sheet-time">{{ fromPool ? '进监控于' : '提交于' }} {{ assessTarget.at }}</span>
+          </div>
+          <div class="assess-sheet-meta">
+            <template v-if="fromPool">
+              <template v-if="assessTarget.tag">
+                <span class="assess-meta-pair">
+                  <span class="assess-meta-label">风险等级</span>
+                  <span
+                    class="assess-meta-value"
+                    :class="{ 'assess-meta-warn': assessTarget.tag.result === '高' }"
+                  >{{ isPoolLevel(assessTarget.tag.result) ? riskLevelText(assessTarget.tag.result) : assessTarget.tag.result }}</span>
+                </span>
+                <span class="assess-meta-sep" aria-hidden="true" />
+                <span class="assess-meta-pair">
+                  <UserOutlined class="assess-meta-icon" />
+                  <span class="assess-meta-label">打标人</span>
+                  <span class="assess-meta-value">{{ assessTarget.tag.by }}（{{ assessTarget.tag.byRole }}）</span>
+                </span>
+                <span class="assess-meta-sep" aria-hidden="true" />
+                <span class="assess-meta-pair">
+                  <span class="assess-meta-label">打标时刻</span>
+                  <span class="assess-meta-value">{{ assessTarget.tag.at }}</span>
+                </span>
+              </template>
+              <span v-else class="assess-meta-pair">
+                <span class="assess-meta-label">风险等级</span>
+                <span class="assess-meta-value">未打标</span>
+              </span>
+            </template>
+            <template v-else>
+              <span class="assess-meta-pair">
+                <UserOutlined class="assess-meta-icon" />
+                <span class="assess-meta-label">报备人</span>
+                <span class="assess-meta-value">{{ assessTarget.by }}（{{ assessTarget.byRole }}）</span>
+              </span>
+              <span class="assess-meta-sep" aria-hidden="true" />
+              <span class="assess-meta-pair">
+                <span class="assess-meta-label">原因</span>
+                <span class="assess-meta-value">{{ assessTarget.reason }}</span>
+              </span>
+              <template v-if="assessTarget.category">
+                <span class="assess-meta-sep" aria-hidden="true" />
+                <span class="assess-meta-pair">
+                  <span class="assess-meta-label">风险类型</span>
+                  <span class="assess-meta-value assess-meta-warn">{{ assessTarget.category }}</span>
+                </span>
+              </template>
+            </template>
+          </div>
+        </header>
 
-      <!-- 「本单另有」固定区块（§5.4 ⑦），取数见 riskOthersOf（三个评估入口同源） -->
-      <section class="ticket-assess-others" aria-label="本单另有">
-        <div class="ticket-assess-others-head">本单另有</div>
-        <div v-for="row in assessOthers" :key="row.label" class="ticket-assess-others-row">
-          <span class="ticket-assess-others-k">{{ row.label }}</span>
-          <span class="ticket-assess-others-v">{{ row.text }}</span>
+        <div class="assess-sheet-body">
+          <!-- A 线：纳入说明；B 线：场景描述 -->
+          <blockquote class="assess-quote">{{ assessTarget.desc }}</blockquote>
+
+          <div v-if="verifiedHit || assessTarget.tag?.note" class="assess-verify">
+            <div v-if="verifiedHit && hitWindow" class="assess-foot-row">
+              <span class="assess-foot-k">命中原话</span>
+              <span class="assess-foot-v" :title="verifiedHit.excerpt">
+                <span class="hit-pos">{{ verifiedHit.position }}</span>
+                <span class="excerpt-quote">「<template v-if="hitWindow.head">…</template>{{ hitWindow.before }}<mark v-if="hitWindow.hit" class="excerpt-hit">{{ hitWindow.hit }}</mark>{{ hitWindow.after }}<template v-if="hitWindow.tail">…</template>」</span>
+                <span class="assess-foot-sub">
+                  风险词「{{ verifiedHit.word }}」<template v-if="verifiedHit.matchedWord && verifiedHit.matchedWord !== verifiedHit.word">，命中「{{ verifiedHit.matchedWord }}」</template>
+                </span>
+              </span>
+            </div>
+            <div v-if="assessTarget.tag?.note" class="assess-foot-row">
+              <span class="assess-foot-k">打标备注</span>
+              <span class="assess-foot-v">{{ assessTarget.tag.note }}</span>
+            </div>
+          </div>
+
+          <ul v-if="assessTarget.attachments.length" class="assess-files">
+            <li v-for="a in assessTarget.attachments" :key="a" class="assess-file">
+              <PaperClipOutlined />
+              <button type="button" class="assess-file-btn" :title="`下载 ${a}`" @click="downloadAttachment(a)">
+                {{ a }}
+              </button>
+            </li>
+          </ul>
+
+          <!-- 释放记录（§5.5 ⑥）：没被释放过整段不出；历次全列、最近一次在前 -->
+          <div v-if="releases.length" class="assess-releases">
+            <div class="assess-releases-head">
+              <RollbackOutlined />
+              释放记录（已释放 {{ releases.length }} 次）
+            </div>
+            <div v-for="(rel, i) in releases" :key="i" class="assess-release">
+              <div class="assess-release-head">
+                <span class="assess-release-who">{{ rel.by }}（{{ rel.byRole }}）</span>
+                <span class="assess-release-at">{{ rel.at }}</span>
+              </div>
+              <div class="assess-release-reason">{{ rel.reason }}</div>
+            </div>
+          </div>
         </div>
+
+        <!-- ② 「本单另有」固定区块（§5.4 ⑦），取数见 riskOthersOf（三个评估入口同源），收在卡片底栏 -->
+        <footer class="assess-sheet-foot" aria-label="本单另有">
+          <div class="assess-foot-head">本单另有</div>
+          <div v-for="row in assessOthers" :key="row.label" class="assess-foot-row">
+            <span class="assess-foot-k">{{ row.label }}</span>
+            <span class="assess-foot-v">{{ row.text }}</span>
+          </div>
+        </footer>
       </section>
 
       <section class="ticket-assess-block">
@@ -171,17 +328,208 @@ const sourceLine = computed(() => {
 </template>
 
 <style scoped>
-.ra-sub {
-  margin: 0;
-  font-size: 12px;
-  color: #6b7280;
-  line-height: 1.5;
+/* ① 第一区块（入池依据 / 报备信息）+ ② 本单另有底栏：值与风险监控页评估弹窗 .assess-sheet 一组逐项相同 */
+.assess-sheet {
+  background: #fff;
+  border: 1px solid #fed7aa;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(234, 88, 12, 0.06);
 }
-.ra-source {
+.assess-sheet-head {
+  padding: 12px 14px;
+  background: linear-gradient(180deg, #fff7ed 0%, #fff 100%);
+  border-bottom: 1px solid #ffedd5;
+}
+.assess-sheet-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.assess-ticket-no {
+  flex: none;
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: #111827;
+}
+.assess-sheet-kind {
+  flex: none;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  color: #9a3412;
+  background: #ffedd5;
+  border-radius: 4px;
+}
+.assess-sheet-time {
+  font-size: 12px;
+  font-weight: 600;
+  color: #9a3412;
+  font-variant-numeric: tabular-nums;
+}
+.assess-sheet-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 0;
+  margin-top: 8px;
+}
+.assess-meta-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+.assess-meta-icon { color: #9ca3af; font-size: 12px; }
+.assess-meta-label { color: #9ca3af; }
+.assess-meta-value { color: #374151; font-weight: 600; }
+.assess-meta-warn { color: #c2410c; }
+.assess-meta-sep {
+  width: 1px;
+  height: 12px;
+  margin: 0 10px;
+  background: #e5e7eb;
+  flex: none;
+}
+.assess-sheet-body { padding: 12px 14px 14px; }
+.assess-quote {
   margin: 0;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.65;
+  color: #1f2937;
+  background: #f8fafc;
+  border-left: 3px solid #fdba74;
+  border-radius: 0 6px 6px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.assess-verify {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+}
+.hit-pos {
+  display: inline-block;
+  padding: 0 5px;
+  margin-right: 4px;
+  border-radius: 3px;
+  background: #f3f4f6;
+  color: #6b7280;
+  font-size: 11px;
+}
+.excerpt-quote { word-break: break-word; }
+.excerpt-hit {
+  padding: 0 2px;
+  border-radius: 2px;
+  background: #fef3c7;
+  color: #b45309;
+  font-weight: 600;
+}
+.assess-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.assess-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: #475569;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+}
+.assess-file :deep(.anticon) { color: #94a3b8; font-size: 11px; }
+.assess-file-btn {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: #4338ca;
+  cursor: pointer;
+  line-height: 1.4;
+}
+.assess-file-btn:hover { color: #1d4ed8; text-decoration: underline; }
+.assess-releases {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+}
+.assess-releases-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+}
+.assess-release { margin-top: 6px; }
+.assess-release + .assess-release {
+  padding-top: 6px;
+  border-top: 1px dashed #e2e8f0;
+}
+.assess-release-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.assess-release-who {
+  font-size: 11px;
+  font-weight: 600;
+  color: #374151;
+}
+.assess-release-at {
   font-size: 11px;
   color: #9ca3af;
-  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+.assess-release-reason {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #4b5563;
+  word-break: break-word;
+}
+.assess-sheet-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px 12px;
+  background: #fafafa;
+  border-top: 1px dashed #e5e7eb;
+}
+.assess-foot-row {
+  display: grid;
+  grid-template-columns: 68px 1fr;
+  gap: 8px;
+  align-items: start;
+  font-size: 12px;
+}
+.assess-foot-head { font-size: 12px; font-weight: 600; color: #6b7280; }
+.assess-foot-k { color: #9ca3af; line-height: 1.5; }
+.assess-foot-v { color: #374151; font-weight: 600; line-height: 1.5; word-break: break-word; }
+.assess-foot-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 400;
+  color: #64748b;
 }
 .ticket-assess-form { gap: 10px !important; }
 .ticket-assess-block {
@@ -249,35 +597,5 @@ const sourceLine = computed(() => {
   font-size: 11px;
   color: #6b7280;
   line-height: 1.5;
-}
-/* 「本单另有」区：三个评估入口同一副版式 */
-.ticket-assess-others {
-  padding: 8px 12px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-}
-.ticket-assess-others-head {
-  margin-bottom: 4px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #475569;
-}
-.ticket-assess-others-row {
-  display: flex;
-  gap: 8px;
-  font-size: 12px;
-  line-height: 1.6;
-}
-.ticket-assess-others-k {
-  flex: none;
-  width: 72px;
-  color: #9ca3af;
-}
-.ticket-assess-others-v {
-  flex: 1;
-  min-width: 0;
-  color: #374151;
-  word-break: break-word;
 }
 </style>
