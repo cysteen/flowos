@@ -821,17 +821,17 @@ const RISK_HITS_SEED: RiskHit[] = [
     track: '外部信号', legacyLevel: '中',
   },
   {
-    // 条目 `rr-009`（投诉单 · 打标高危 · 已结论）的证据。
-    // 那条打标注记写的是「客户已向监管平台正式登记」，故命中原话里必须**真出现渠道名**，
+    // 条目 `rr-009`（咨询单 rk-5 · 打标高危 · 已结论 · 评估升级）的证据。
+    // 那条打标注记写的是「客户已向 12315 提交投诉材料」，故命中原话里必须**真出现渠道名**，
     // 否则「凭什么判高危」在这张表上仍然只有一句结论、没有证据。
-    id: 'h35', ticketNo: 'IFLYTS-20260711-00001', title: '维修超期未解决客户要求赔偿',
-    word: '12315', matchedWord: '12315', level: '高', position: '问题描述',
-    excerpt: '维修超期十五天没人管，我已经向 12315 提交了投诉材料，你们看着办。',
-    when: '2026-08-04 09:40', customer: '吴强',
-    groupId: 'hardware', groupName: '硬件缺陷组', assignee: '王坐席',
+    id: 'h35', ticketNo: 'IFLYZX-20260806-00005', title: '录音笔转写文件批量丢失',
+    word: '12315', matchedWord: '12315', level: '高', position: '沟通记录',
+    excerpt: '三个月的工作录音说没就没了，找回也给不了时间，我已经向 12315 提交了投诉材料，你们看着办。',
+    when: '2026-08-04 09:40', customer: '沈杰',
+    groupId: 'hardware', groupName: '硬件缺陷组', assignee: '陈坐席',
     receivers: ['值班经理', '投诉专员'],
     speakerRole: '客户',
-    impact: '一般', impactSource: '流程规则投诉 · 售后维修周期过长（>7天）',
+    impact: '一般', impactSource: '产品功能/性能投诉 · 产品性能未达到顾客预期',
     signal: '强', signalSource: '命中「12315」',
     track: '外部信号', legacyLevel: '高',
   },

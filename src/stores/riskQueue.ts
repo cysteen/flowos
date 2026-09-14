@@ -2,7 +2,7 @@ import { computed, ref, watch } from 'vue';
 import { defineStore } from 'pinia';
 import { useRiskTagStore, type RiskTagEntry } from '@/stores/riskTags';
 import { useRiskHistoryStore } from '@/stores/riskHistory';
-import { useDerivedTicketStore } from '@/stores/derivedTickets';
+import { SEED_RISK_ESCALATION, useDerivedTicketStore } from '@/stores/derivedTickets';
 import { TICKETS } from '@/mock/tickets';
 import { isTicketClosed } from '@/views/tickets/types/ticket';
 import type { Ticket, TicketStatus } from '@/views/tickets/types/ticket';
@@ -195,7 +195,7 @@ const SEED_TAGGERS = {
  * | 待标记 · 实时监控 | 命中记录的**词表预设等级** | 高 2 / 中 3 / 低 2（语料在 `mock/opsReport.ts`） |
  * | 待标记 · 投诉单 / 重要紧急 | 工单**优先级** | 由工单库直接决定，本文件只负责不把它们清空 |
  * | 已标记 · 等级 | `tag.result` | 高 5 / 中 4 / 低 5 |
- * | 已标记 · 按标记人 | `tag.by` | 郑监控 6 / 吴投诉 5 / 秦督导 3（见 `SEED_TAGGERS`） |
+ * | 已标记 · 按标记人 | `tag.by` | 池内 郑监控 7 / 吴投诉 4 / 秦督导 3（见 `SEED_TAGGERS`） |
  * | 已标记 · 无风险 | 「已标记无风险」态 | 4 条 |
  * | 待处置 · 三态 | `status` | 待领取 7 / 已领取 1 / **已结论 6** |
  * | 今日决策 | `assessment.decision` / `coordination` | 升级 1 / 不升级 2 / 协同 1 |
@@ -234,7 +234,7 @@ const SEED_DAY = todayPrefix();
  */
 const SEED: RiskQueueEntry[] = [
   /* ==================================================================
-   * 视图一：待打标（实时监控中）—— 10 条
+   * 视图一：待打标（实时监控中）—— 11 条（含升级派生单那一条 `rq-s22`）
    *
    * 这一段同时供两处取数：左栏「待标记」的三个切片，与页头「各处理组」那一行的**待判**。
    * 故它既要按来源铺开（三类来源各有条目），也要按班组铺开（五个班组各有条目）。
@@ -365,12 +365,25 @@ const SEED: RiskQueueEntry[] = [
     at: todayStamp(45),
     status: '实时监控中',
   }),
+  /*
+   * 「升级派生出的投诉单 · 待打标」。`rr-009` 评估判「升级」派生的新投诉单（`SEED_RISK_ESCALATION.no`），
+   * 照现场升级的 `deriveEscalatedComplaint` → `ensureEntryFor` 落一条：来源②投诉单、落「实时监控中」、
+   * 进监控时刻 ＝ 派生时刻（评估时刻）。`desc` 与 `AUTO_DESC.投诉单` 同一句（该常量在本数组之后声明，这里写字面量）。
+   */
+  autoEntry({
+    id: 'rq-s22',
+    ticketNo: SEED_RISK_ESCALATION.no,
+    source: '投诉单',
+    desc: '在办投诉类工单，自动纳入实时监控，待打标。',
+    at: SEED_RISK_ESCALATION.at,
+    status: '实时监控中',
+  }),
 
   /* ==================================================================
    * 视图二：已入池（打标为低 / 中 / 高）—— 14 条
    *
    * 三态各有样本（待分派 7 / 评估中 1 / 已评估 6；投诉单条目不落评估中），等级三档各有样本（高 5 / 中 4 / 低 5），
-   * 打标人三个（郑监控 6 / 吴投诉 5 / 秦督导 3），已评估那六条把**三种收口方式**
+   * 打标人三个（郑监控 7 / 吴投诉 4 / 秦督导 3），已评估那六条把**三种收口方式**
    * （升级 / 不升级 / 协同处理）全部铺到，故页头「今日决策」三枚一枚都不为 0。
    *
    * 🔴 已评估这六条**分两批**：四条今天收口（喂「今日已结论」与三枚决策 chip），
@@ -614,48 +627,51 @@ const SEED: RiskQueueEntry[] = [
 
   /* ---- 已评估（已结论）· **今天收的口** 4 条 —— 三种收口方式全部铺到 ---- */
   /*
-   * 【收口方式 ①：评估 · 升级】「投诉单上的升级」样本。**必须有这一条**：
-   * 它是升级按原单类型分流的另一半（O20）。
+   * 【收口方式 ①：评估 · 升级】A 线唯一的「升级」样本，也是页头「今日结论 · 升级」的唯一来源。
    *
-   * B 线的 rr-006 原单是**咨询单**（非投诉）：升级后原单落「已升级投诉」并**派生**一张投诉单。
-   * 本条原单**本身就是投诉单**：升级走基线 ※27「**工单管控**」——把这张单拿到客诉专员名下，
-   * **本单状态不变、不派生新单**，故 `escalatedToNo` 留空、队列「派生投诉单」列显示「—」。
+   * 🔴 **必须是非投诉单**：投诉单不做风险评估、只走协同处理（《【930】》§5.2 / 基线 ※29），
+   * 升级 / 不升级只对非投诉单。本条原先挂在投诉单 t41 上、带着「升级」结论，是旧模型的遗留，已改挂。
    *
-   * 🔴 **不要再给它填 `escalatedToNo`**：O17 原定的"投诉单走 830 第二跳（内投→外投）"已被 O20 推翻。
-   * 第二跳只走内投→外投，来源＝热线 / IM / 小程序的投诉单入口本就置灰，客诉专员点不动；
-   * 硬派生一张外投单等于在客户根本没有外投时造一张外投单，会把外投量与外投口径系统性抬高。
+   * 挂 rk-5 `IFLYZX-20260806-00005`（咨询、P1、在办）。形状照现场升级那条链逐项落：
+   *   ① 领取 → 「评估中 · 吴投诉」（非投诉单条目要先领取才能评估）；
+   *   ② 评估判「升级」→ `assessment.escalatedToNo` ＝ 派生投诉单号；
+   *   ③ 派生单与原单侧升级台账落 `stores/derivedTickets.ts`（`SEED_RISK_ESCALATION`，走 `deriveComplaint`），
+   *      原单打开即「已升级投诉」+ 接管横幅；
+   *   ④ 派生单按来源②进实时监控 → 条目 `rq-s22`（见视图一末尾）。
+   * 说明、评估时刻、派生单号三格一律取 `SEED_RISK_ESCALATION`，与派生单同源。
+   *
+   * 来源「实时监控」：本单沟通记录命中「12315」（命中 `h35`，语料见 `mock/opsReport.ts`），
+   * 打标人是投诉督导（非投诉单由审核人员在监控后台打标，见 `SEED_TAGGERS`）。
    */
   autoEntry({
     id: 'rr-009',
-    ticketNo: 'IFLYTS-20260711-00001',
-    source: '投诉单',
-    desc: '投诉类工单自动纳入实时监控。客户维修超期未解决并已向监管平台反映。',
+    ticketNo: SEED_RISK_ESCALATION.fromNo,
+    source: '实时监控',
+    desc: '沟通记录命中风险词「12315」，已自动纳入实时监控。',
     at: todayStamp(190),
     status: '已评估',
-    assignee: '吴投诉',
+    assignee: SEED_RISK_ESCALATION.assignee,
     tag: {
       result: '高',
-      note: '客户已向监管平台正式登记，判高危。',
-      ...SEED_TAGGERS.wu,
+      note: '客户已向 12315 提交投诉材料并要求赔偿，判高危。',
+      ...SEED_TAGGERS.zheng,
       at: todayStamp(185),
     },
     verify: {
       verdict: '成立',
       level: '高',
-      note: '客户已向监管平台正式登记，判高危。',
-      ...SEED_TAGGERS.wu,
+      note: '客户已向 12315 提交投诉材料并要求赔偿，判高危。',
+      ...SEED_TAGGERS.zheng,
       at: todayStamp(185),
     },
     assessment: {
       decision: '升级',
-      // 🔴 措辞不写「接手 / 接管」：基线 ※29 把这个词从**评估结论**这条语义上整体作废，
-      // 结论只叫「升级 / 不升级」，升级在投诉单上的落地动作叫「工单管控」。
-      // （"原单被新单接管"那种接管横幅的语义不在作废之列，见 `mock/tickets.ts` 的 t41。）
-      advice: '客户已向监管平台正式登记，须限时答复并留存全过程记录。本单已是投诉单，升级即由我执行「工单管控」，本单状态不变、不另开新单。',
-      by: '吴投诉',
+      advice: SEED_RISK_ESCALATION.reason,
+      escalatedToNo: SEED_RISK_ESCALATION.no,
+      by: SEED_RISK_ESCALATION.assignee,
       byRole: '客诉专员',
       // 评估时刻落在今日：否则 B3「今日已评估」与 B4 决策分布数不到它
-      at: todayStamp(160),
+      at: SEED_RISK_ESCALATION.at,
     },
   }),
   /*
@@ -978,9 +994,11 @@ const SEED: RiskQueueEntry[] = [
  *     v11 那份里有 9 条已等 132~276 分钟，一打标进池即算超时，页头「超时未评」失真。
  *   · v12 → v13：`rr-011` / `rq-s13` 两条投诉单条目由「评估中 · 吴投诉」改为「待分派」、清承办人
  *     （投诉单条目不经领取，§5.4 ⑥）。v12 那份里这两条仍是已领取、行上出「释放」。
+ *   · v13 → v14：`rr-009` 由投诉单 t41 上的「升级」改挂非投诉单 rk-5（来源实时监控、郑监控打标），
+ *     带派生投诉单号；新增派生单的监控条目 `rq-s22`。v13 那份里投诉单仍挂着评估结论「升级」。
  */
 const LS_KEY = 'flowos-risk-queue';
-const LS_VERSION = 13;
+const LS_VERSION = 14;
 
 /**
  * 缓存"新不新"的判据：取**打标时刻**里最新的那一个。

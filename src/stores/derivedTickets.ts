@@ -2,6 +2,34 @@ import { defineStore } from 'pinia';
 import { ref, watch } from 'vue';
 import type { Ticket } from '@/views/tickets/types/ticket';
 import { TICKETS } from '@/mock/tickets';
+import { todayPrefix, todayStamp } from '@/stores/riskShared';
+
+/** 一次「升级」派生要交的东西：原单号、新投诉单号、承接人（评估人）、升级说明 */
+export interface DeriveComplaintInput {
+  fromNo: string;
+  no: string;
+  assignee: string;
+  reason: string;
+}
+
+/**
+ * **预置的一次风险评估「升级」派生**：A 线种子 `rr-009`（`stores/riskQueue.ts`）的去向。
+ *
+ * 原单 `IFLYZX-20260806-00005`（rk-5，咨询、P1、在办）被判「升级」→ 派生一张投诉单。
+ * 派生单与原单侧的升级台账都照 `deriveComplaint` 同一个构造落进本 store（见 `applySeedEscalation`），
+ * A 线条目的 `assessment.escalatedToNo` / `advice` / `at` 与派生单监控条目 `rq-s22` 全部取本常量，
+ * 两处不各写一份。
+ *
+ * 单号取**今天**的号段 `IFLYTS-<今天>-00001`：现场派生的号按同一号段在已用号里取最大值 +1
+ * （`useRiskReportAssess.nextEscalatedNo`），故现场第一次升级拿到 00002，不会撞号。
+ */
+export const SEED_RISK_ESCALATION: DeriveComplaintInput & { at: string } = {
+  fromNo: 'IFLYZX-20260806-00005',
+  no: `IFLYTS-${todayPrefix().replace(/-/g, '')}-00001`,
+  assignee: '吴投诉',
+  reason: '客户称丢失的是近三个月的工作录音，数据侧回捞给不出确切时间，客户已向 12315 提交投诉材料并要求赔偿。已超出咨询单的处理范围，转投诉由客诉专员跟进，原单沟通记录已随新单继承。',
+  at: todayStamp(160),
+};
 
 /**
  * 运行时派生出来的工单（《【930】》§5.6「接管」的第一跳派生）。
@@ -102,20 +130,16 @@ export const useDerivedTicketStore = defineStore('derivedTickets', () => {
    * 由原单派生一张投诉单并登记。
    * 原单不在静态数据源里（如下钻明细里的示意号）时返回 null——
    * 没有可继承的内容，硬造一张空单比不造更误导。
+   *
+   * `at` 缺省取当前时刻；只有预置派生（`applySeedEscalation`）传入种子里的评估时刻。
    */
-  function deriveComplaint(input: {
-    fromNo: string;
-    no: string;
-    assignee: string;
-    reason: string;
-  }): Ticket | null {
+  function deriveComplaint(input: DeriveComplaintInput, at = nowStamp()): Ticket | null {
     if (find(input.no)) return find(input.no)!;
     const origin = TICKETS.find((t) => t.no === input.fromNo);
     if (!origin) return null;
     // 造出新单的同时把原单那一头记上：两件事必须同进同退，
     // 只记一头就是"新单指得回去、原单指不过来"的半条链（见 escalations 的说明）
     escalations.value = { ...escalations.value, [input.fromNo]: input.no };
-    const at = nowStamp();
     const derived: Ticket = {
       ...JSON.parse(JSON.stringify(origin)),
       id: `derived-${input.no}`,
@@ -142,6 +166,34 @@ export const useDerivedTicketStore = defineStore('derivedTickets', () => {
     tickets.value.unshift(derived);
     return derived;
   }
+
+  /**
+   * 落预置派生 `SEED_RISK_ESCALATION`：走 `deriveComplaint` 本身，派生单与升级台账的形状与现场升级一致。
+   * 缓存里与它冲突的旧记录先清掉：同一张原单指向别的号（隔夜留下的旧号），
+   * 或同一个号挂在别的原单上（本次改动前现场派生占用过这个号）。
+   */
+  function applySeedEscalation() {
+    const s = SEED_RISK_ESCALATION;
+    const stale = tickets.value.filter(
+      (t) => (t.escalatedFromNo === s.fromNo) !== (t.no === s.no),
+    );
+    if (stale.length) {
+      const staleNos = new Set(stale.map((t) => t.no));
+      tickets.value = tickets.value.filter((t) => !staleNos.has(t.no));
+      escalations.value = Object.fromEntries(
+        Object.entries(escalations.value).filter(([, no]) => !staleNos.has(no)),
+      );
+    }
+    if (find(s.no)) {
+      if (escalations.value[s.fromNo] !== s.no) {
+        escalations.value = { ...escalations.value, [s.fromNo]: s.no };
+      }
+      return;
+    }
+    const { at, ...input } = s;
+    deriveComplaint(input, at);
+  }
+  applySeedEscalation();
 
   return { tickets, escalations, find, escalatedToNoOf, deriveComplaint };
 });
