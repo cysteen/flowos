@@ -792,6 +792,22 @@ function setReportView(v: ReportView) {
 }
 
 /**
+ * 页头「评估处置」块的卡片下钻：先把工作面上的四维筛选（工作组 / 来源 / 原单类型 / 风险等级）
+ * 放回「全部」，再切到工作面与目标视图。卡上的数不跟这几维筛选，不清的话下钻后表行数 ≠ 卡上的数。
+ * 只在点卡片时清；进了工作面之后点筛选 chip 照常收窄。
+ * ⚠️ 工作组筛选是本页一份共享状态（左栏各档也按它收窄），故点卡片后左栏角标同样回到全部工作组口径。
+ * 超时 / 结论 / 仅今日这几个视图内条件由各卡在调用之后自己补设（`setReportView` 会先摘掉阶段专属的收窄）。
+ */
+function drillReport(v: ReportView) {
+  groupFilter.value = 'all';
+  sourceFilter.value = 'all';
+  poolTicketTypeFilter.value = 'all';
+  poolLevelFilter.value = 'all';
+  setListView('report');
+  setReportView(v);
+}
+
+/**
  * 风险工单池自己的翻页状态，**不与命中清单的 hitPageCurrent 共用**。
  * 两张表的行数各走各的（命中记录 vs 报备单），共用一个页码时
  * 「在命中清单翻到第 3 页 → 切到风险工单池」会看到一张空表，人只会以为池子清空了。
@@ -4561,7 +4577,7 @@ function toggleWordEnabled(w: RiskWord) {
                 hot: alineOverdueCount > 0,
               }"
               title="待领取 + 已领取 · 池内还没有结论的全集"
-              @click="setListView('report'); setReportView('open'); onlyOverdue = false"
+              @click="drillReport('open'); onlyOverdue = false"
             >
               <span class="dm-k">待评估总数</span>
               <span class="dm-val">
@@ -4589,7 +4605,7 @@ function toggleWordEnabled(w: RiskWord) {
                 hot: alineOverdueCount > 0,
               }"
               :title="`超过处置时限 ${assessLimitText} 仍无结论 · 从进入实时监控时刻起算、不从领取时刻 · 不是 SLA`"
-              @click="setListView('report'); setReportView('all'); onlyOverdue = true"
+              @click="drillReport('all'); onlyOverdue = true"
             >
               <span class="dm-k">超时未评</span>
               <span class="dm-val"><span class="dm-v">{{ alineOverdueCount }}</span></span>
@@ -4599,7 +4615,7 @@ function toggleWordEnabled(w: RiskWord) {
               class="dm-cell"
               :class="{ on: listView === 'report' && reportView === 'assessed' && decisionFilter === 'all' }"
               title="今日下过收口结论的池行 —— 升级 + 不升级 + 协同处理。三种收口都算，只数评估那两种会漏掉投诉单那一路"
-              @click="setListView('report'); setReportView('assessed'); decisionFilter = 'all'; assessedTodayOnly = true"
+              @click="drillReport('assessed'); decisionFilter = 'all'; assessedTodayOnly = true"
             >
               <span class="dm-k">今日已结论</span>
               <span class="dm-val"><span class="dm-v">{{ alineConcludedTodayCount }}</span></span>
@@ -4628,7 +4644,7 @@ function toggleWordEnabled(w: RiskWord) {
               :title="d === '协同'
                 ? '投诉单不做风险评估，走协同处理：给意见与建议，不改状态、不改处理人'
                 : `评估结论「${d}」`"
-              @click="setListView('report'); setReportView('assessed'); decisionFilter = d; assessedTodayOnly = true"
+              @click="drillReport('assessed'); decisionFilter = d; assessedTodayOnly = true"
             >
               {{ d }}<b>{{ alineDecisionCounts[d] }}</b>
             </button>
