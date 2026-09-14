@@ -31,7 +31,9 @@ import { useRiskReportStore, type RiskReport } from '@/stores/riskReports';
 // 直接改状态做不到这两件事，而留痕正是这条队列的凭据。
 import { useRiskPoolStore } from '@/stores/riskPool';
 import { useRiskReportAssess } from '@/composables/useRiskReportAssess';
-import type { ReportStatus, RiskReleaseRecord } from '@/stores/riskShared';
+import { todayPrefix, type ReportStatus, type RiskReleaseRecord } from '@/stores/riskShared';
+// 状态界面词与工单「风险报备」Tab、风险监控页同一张映射：待领取 / 已领取 / 已结论 / 已撤回
+import { poolStatusText } from './operation/OpRiskDecision';
 import { TICKETS } from '@/mock/tickets';
 import {
   canClaimRiskReport,
@@ -59,6 +61,9 @@ const {
   missAssessAdvice,
   assessAdviceLabel,
   assessAdvicePlaceholder,
+  // 选「升级」后的派生说明行与「本单另有」区：三个评估入口同一个 composable，不另写文案
+  escalateHint,
+  assessOthers,
   openAssess,
   confirmAssess,
 } = useRiskReportAssess();
@@ -150,9 +155,10 @@ const chips = computed<ChipMeta[]>(() => {
   if (canAct.value) {
     list.push({ key: 'mine', label: '我承办', title: '已落在我名下、等我给结论的报备单' });
   }
+  // chip 名与状态列同词（待领取 / 已领取 / 已结论 / 已撤回）；key 不变
   list.push(
-    { key: 'assessing', label: '评估中', title: '已有人承办，等结论' },
-    { key: 'assessed', label: '已评估' },
+    { key: 'assessing', label: '已领取', title: '已有人承办，等结论' },
+    { key: 'assessed', label: '已结论', title: '累计，不做时间收窄' },
     { key: 'withdrawn', label: '已撤回', title: '报备人自行收回；记录保留，不再进队列' },
   );
   return list;
@@ -171,7 +177,8 @@ function matchChip(r: RiskReport, key: string): boolean {
     case 'withdrawn':
       return r.status === '已撤回';
     default:
-      return true;
+      // 「全部」＝ 待领取 + 已领取 + 已结论，**不含已撤回**（《【930】》§5B.3 ① / ⑧）
+      return r.status !== '已撤回';
   }
 }
 
@@ -181,8 +188,20 @@ function matchSearch(r: RiskReport): boolean {
   return `${r.ticketNo} ${ticketTitle(r.ticketNo)} ${r.by}`.toLowerCase().includes(kw);
 }
 
+/**
+ * 「已结论」chip 下的「仅今日」可选筛选（§5B.3 ①）：默认关；勾上后按**评估时刻**收窄清单，
+ * chip 上的数不变（计数走 `searched`，不经过这一道）。只在「已结论」chip 下出现。
+ */
+const assessedTodayOnly = ref(false);
+function matchToday(r: RiskReport): boolean {
+  if (activeChip.value !== 'assessed' || !assessedTodayOnly.value) return true;
+  return (r.assessment?.at ?? '').startsWith(todayPrefix());
+}
+
 const searched = computed(() => rows.value.filter(matchSearch));
-const list = computed(() => searched.value.filter((r) => matchChip(r, activeChip.value)));
+const list = computed(() =>
+  searched.value.filter((r) => matchChip(r, activeChip.value) && matchToday(r)),
+);
 
 /** chip 计数与列表同口径：搜索已经生效的话，计数也跟着窄，否则两个数对不上 */
 const chipCounts = computed<Record<string, number>>(() => {
@@ -198,21 +217,22 @@ const isFiltered = computed(() => activeChip.value !== 'all' || !!search.value.t
 function resetFilters() {
   activeChip.value = 'all';
   search.value = '';
+  assessedTodayOnly.value = false;
+}
+
+/** 切 chip 时摘掉「仅今日」：它只挂在「已结论」下，带到别的 chip 再切回来会让人以为默认就是开的 */
+function selectChip(key: string) {
+  if (key !== activeChip.value) assessedTodayOnly.value = false;
+  activeChip.value = key;
 }
 
 /* ---------------- 单元格 ---------------- */
 
 /**
- * 状态**展示名**。落库值「待分派」是分派时代留下的词，分派已取消，
- * 池子里那一档现在的含义就是"还没人领"，故界面写「待领取」。
- * ⚠️ 只换展示名，判据一律仍用落库值（与工单状态的两列口径一致）。
+ * 状态**展示名**走 `poolStatusText`（`OpRiskDecision.ts`）：待领取 / 已领取 / 已结论 / 已撤回，
+ * 与工单「风险报备」Tab、风险监控页同一个词。本组件不再自带映射表。
+ * ⚠️ 只换展示名，判据一律仍用落库值。
  */
-const STATUS_TEXT: Record<string, string> = {
-  待分派: '待领取',
-  评估中: '评估中',
-  已评估: '已评估',
-  已撤回: '已撤回',
-};
 const STATUS_TONE: Record<string, string> = {
   待分派: 'warn',
   评估中: 'info',
@@ -220,7 +240,7 @@ const STATUS_TONE: Record<string, string> = {
   已撤回: 'gray',
 };
 function statusText(s: ReportStatus): string {
-  return STATUS_TEXT[s] ?? s;
+  return poolStatusText(s);
 }
 function statusTone(s: ReportStatus): string {
   return STATUS_TONE[s] ?? 'gray';
@@ -263,11 +283,12 @@ type RowAction = { label: string; primary?: boolean };
  * 是另一个池子的既有词，不在本轮改动之列。
  */
 function actionsOf(r: RiskReport): RowAction[] {
-  // 待领取一律露出「领取」，与 A 线风险工单池同形；能不能点由 claim 里按角色拦截
-  if (r.status === '待分派') return [{ label: '领取', primary: true }];
+  // 🔴 无权角色（投诉督导）整列为「—」（§5B.3 ⑨），与 A 线风险工单池的 `canClaim` 同形：
+  // 按钮不露出来，而不是露出来再点一下弹"本角色只读"
   if (!canAct.value) return [];
+  if (r.status === '待分派') return [{ label: '领取', primary: true }];
   // 🔴 **仅「已领取」态出「释放」**（§5.5 ③）：已评估、已撤回、待领取三态无此入口 ——
-  // 上面两个 return 已经把待领取与无权角色拿走，这里剩下的判据只剩「评估中」+ 谁在办
+  // 上面两个 return 已经把无权角色与待领取拿走，这里剩下的判据只剩「评估中」+ 谁在办
   if (r.status !== '评估中') return [];
   if (r.assignee === user.name) {
     return [{ label: '评估', primary: true }, { label: '释放' }];
@@ -405,13 +426,19 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
         :active-chip="activeChip"
         :chip-counts="chipCounts"
         :chips="chips"
-        @chip="activeChip = String($event)"
+        @chip="selectChip(String($event))"
       />
+      <!-- 「已结论」chip 的「仅今日」可选筛选：默认关，勾上只收窄清单、chip 上的数不变 -->
+      <a-checkbox
+        v-if="activeChip === 'assessed'"
+        v-model:checked="assessedTodayOnly"
+        class="rrp-today"
+      >仅今日</a-checkbox>
     </div>
 
     <!-- ② 工具行：与工作台搜索框同形（工单号 / 工单标题 / 报备人） -->
     <div class="rrp-toolbar">
-      <span v-if="canAct" class="rrp-hint">谁领谁办 —— 报备单没有分派，领取后由你给出评估结论</span>
+      <span v-if="canAct" class="rrp-hint">谁领谁办 —— 领取后由你给出评估结论</span>
       <div class="rrp-search">
         <SearchOutlined :style="{ color: '#9CA3AF', fontSize: '14px' }" />
         <input
@@ -449,12 +476,17 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
             <div class="th th-cell">场景描述</div>
             <div class="th th-cell">报备时间</div>
             <div class="th th-cell">已等待</div>
-            <div class="th th-cell">承办人/处理组</div>
+            <div class="th th-cell">承办人</div>
             <div class="th th-cell">状态</div>
             <div class="th th-cell">操作</div>
           </div>
 
-          <div v-for="r in list" :key="r.id" class="row">
+          <div
+            v-for="r in list"
+            :key="r.id"
+            class="row"
+            :class="{ 'is-withdrawn': r.status === '已撤回' }"
+          >
             <div
               class="cell cell-prio row-leading"
               :style="{ borderLeftColor: priorityColor(r.ticketNo) }"
@@ -490,6 +522,12 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
                   </div>
                 </template>
               </a-popover>
+              <!-- 已撤回条目：灰条 + 撤回原因（§5B.3 ⑧） -->
+              <div
+                v-if="r.status === '已撤回' && r.withdrawReason"
+                class="withdraw-reason"
+                :title="r.withdrawReason"
+              >撤回原因：{{ r.withdrawReason }}</div>
             </div>
             <div class="cell">
               <span class="plain-text" :title="r.at">{{ shortAt(r.at) }}</span>
@@ -497,7 +535,7 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
             <div class="cell cell-col">
               <span class="waited" :class="{ 'is-overdue': isOverdue(r) }">{{ waitedText(r) }}</span>
               <!-- 超时的必须一眼看出来：这条队列卡的是投诉立项，压在池子里没人领是最坏的一档 -->
-              <span v-if="isOverdue(r)" class="overdue-tag">超时未评</span>
+              <span v-if="isOverdue(r)" class="overdue-tag">已超处置时限</span>
             </div>
             <div class="cell cell-col">
               <span v-if="r.assignee" class="who">{{ r.assignee }}</span>
@@ -533,7 +571,6 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
                   </div>
                 </template>
               </a-popover>
-              <span class="who-role">{{ reporterGroup(r.ticketNo) }}</span>
             </div>
             <div class="cell">
               <span class="state" :class="`tone-${statusTone(r.status)}`">{{ statusText(r.status) }}</span>
@@ -584,9 +621,8 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
           报备人 / 提交时刻 / 报备原因 / 风险类型 / 场景描述 / 附件**六项一项都没有**。
           评估人要读场景描述，只能去看被遮罩挡住的池表 —— 而结论恰恰是照着那段描述下的。
 
-          🔴 **本块不复制 A 线的「风险打标」与「本单另有」两段**：B 线的报备单不走打标那道门
-          （`RiskReport` 上没有 `tag`），而「本单另有」是 A 线合并池的口径；
-          照搬过来只会渲染出两块恒空的标题。
+          🔴 **本块不复制 A 线的「入池依据」**：B 线的报备单不走打标那道门（`RiskReport` 上没有 `tag`）。
+          「本单另有」区另起一块摆在本卡之下，按工单号取、与另外两个评估入口同源（`riskOthersOf`）。
         -->
         <section class="assess-sheet" aria-label="报备信息">
           <header class="assess-sheet-head">
@@ -667,6 +703,15 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
           </div>
         </section>
 
+        <!-- 「本单另有」固定区块（§5.4 ⑦）：四行取数与另外两个评估入口同源（riskOthersOf） -->
+        <section class="assess-others" aria-label="本单另有">
+          <div class="assess-others-head">本单另有</div>
+          <div v-for="row in assessOthers" :key="row.label" class="assess-others-row">
+            <span class="assess-others-k">{{ row.label }}</span>
+            <span class="assess-others-v">{{ row.text }}</span>
+          </div>
+        </section>
+
         <!-- ② 评估表单：二选一决策 + 必填说明 -->
         <div class="af-field">
           <span class="af-label req">评估决策</span>
@@ -675,6 +720,8 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
           </a-radio-group>
         </div>
         <p v-if="missAssessDecision" class="af-err">请先选择一个评估决策</p>
+        <!-- 选「升级」后的派生说明行：文案取 escalateHintOf，三个评估入口同一句 -->
+        <p v-else-if="assessDecision === '升级'" class="af-hint">{{ escalateHint }}</p>
 
         <div class="af-field af-field-block">
           <span class="af-label req">{{ assessAdviceLabel }}</span>
@@ -912,8 +959,66 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
   border: 1px solid #fed7aa;
 }
 .cell-desc {
-  align-items: flex-start;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
   min-width: 0;
+}
+.cell-desc .desc-text {
+  flex: none;
+}
+.withdraw-reason {
+  font-size: 11px;
+  line-height: 1.4;
+  color: #9ca3af;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 已撤回条目＝灰条：整行底色转灰、正文降为灰字（§5B.3 ⑧） */
+.row.is-withdrawn > .cell {
+  background: #f9fafb;
+}
+.row.is-withdrawn .who,
+.row.is-withdrawn .plain-text,
+.row.is-withdrawn .desc-text {
+  color: #9ca3af;
+}
+.rrp-today {
+  flex: none;
+  margin-left: 12px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+/* 「本单另有」区（评估弹窗内） */
+.assess-others {
+  padding: 8px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+.assess-others-head {
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+}
+.assess-others-row {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.assess-others-k {
+  flex: none;
+  width: 72px;
+  color: #9ca3af;
+}
+.assess-others-v {
+  flex: 1;
+  min-width: 0;
+  color: #374151;
+  word-break: break-word;
 }
 .desc-text {
   flex: 1;
