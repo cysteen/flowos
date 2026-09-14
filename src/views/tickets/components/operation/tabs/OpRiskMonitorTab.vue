@@ -331,7 +331,9 @@ const latestAssessed = computed(() =>
 );
 
 /** 仅有结论时出角标；进行中状态在上面的报备卡片展示 */
-const assessSectionBadge = computed(() => (latestAssessed.value ? '已评估' : undefined));
+const assessSectionBadge = computed(() =>
+  latestAssessed.value ? poolStatusText(latestAssessed.value.status) : undefined,
+);
 
 /**
  * 「升级」派生出的新投诉单号。**只有升级那一档才有值** —— 二选一之后评估的产出

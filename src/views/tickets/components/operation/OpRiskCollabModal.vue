@@ -10,6 +10,7 @@ import { useRiskCollabStore, RISK_ADVICE_ITEMS, type RiskAdviceItem } from '@/st
 import { useRiskReportStore } from '@/stores/riskReports';
 import { useRiskTagStore } from '@/stores/riskTags';
 import { isPooledStatus } from '@/stores/riskShared';
+import { isRiskTicketEnded } from '@/composables/useRiskReportAssess';
 import { resolveTicketRowFor } from '@/views/tickets/composables/opActions';
 import { riskLevelText } from '@/config/risk';
 
@@ -138,6 +139,11 @@ function nowStamp(): string {
 }
 
 function onOk() {
+  // 弹窗开着期间原单可能已结束；判据与三个评估入口同一份（isRiskTicketEnded）
+  if (isRiskTicketEnded(props.ticketNo)) {
+    message.warning('本单已结束，无法协同处理');
+    return;
+  }
   tried.value = true;
   if (!opinion.value.trim()) return;
   if (needsOther.value && !otherAdvice.value.trim()) return;
