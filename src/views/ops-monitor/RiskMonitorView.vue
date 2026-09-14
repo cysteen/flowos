@@ -54,7 +54,15 @@ import { useDerivedTicketStore } from '@/stores/derivedTickets';
 // 评估弹窗的两处口径与工单页那个入口**共用同一份实现**：
 // `escalateHintOf` 是「升级」那行分流提示的唯一文案来源，`deriveEscalatedComplaint` 是派生的完整落地。
 // 本页此前各写各的，于是提示行在这里从来就没出现过（工单页有、监控页没有）。
-import { deriveEscalatedComplaint, escalateHintOf } from '@/composables/useRiskReportAssess';
+// 提交前重查（`assessSubmitBlockOf`）、「本单另有」四行（`riskOthersOf`）、原单终态判据（`isRiskTicketEnded`）
+// 与报备池、工单页的评估入口共用，三处行为一致
+import {
+  assessSubmitBlockOf,
+  deriveEscalatedComplaint,
+  escalateHintOf,
+  isRiskTicketEnded,
+  riskOthersOf,
+} from '@/composables/useRiskReportAssess';
 import { RISK_TAG_ROLES, RISK_WORD_MAINTAIN_ROLES } from '@/config/roles';
 import { RISK_LEVELS, riskLevelText } from '@/config/risk';
 import { TICKETS } from '@/mock/tickets';
@@ -468,8 +476,46 @@ function cycleSourceSort() {
   sourceSort.value = sourceSort.value === 'none' ? 'asc' : sourceSort.value === 'asc' ? 'desc' : 'none';
 }
 
+/**
+ * 池行表的另两维筛选（《【930】》§5.4 ③）：**原单类型**（投诉 / 非投诉）与**风险等级**（高 / 中 / 低）。
+ * 与监控来源一样是池行的固有属性，跨阶段保留。
+ */
+type PoolTicketTypeKey = '投诉' | '非投诉';
+const POOL_TICKET_TYPE_KEYS: PoolTicketTypeKey[] = ['投诉', '非投诉'];
+const poolTicketTypeFilter = ref<PoolTicketTypeKey | 'all'>('all');
+const poolLevelFilter = ref<RiskLevel | 'all'>('all');
+/** 原单的工单类型（咨询 / 建议 / 商机 / 投诉）。工单库与派生库两处都查；都查不到时按单号前缀判投诉与否 */
+function poolTicketTypeOf(r: { ticketNo: string }): string {
+  const t = TICKET_BY_NO.get(r.ticketNo) ?? derivedTickets.find(r.ticketNo);
+  return t?.type ?? (isComplaintTicket(r.ticketNo) ? '投诉' : '—');
+}
+/**
+ * 池行的「风险摘要」：打标备注（打标人为什么判这个等级）；没填备注时退回工单的问题描述 / 标题。
+ * 不取条目 `desc` —— 那是入队套话（「投诉类工单自动纳入实时监控」），答不了"风险是什么"。
+ */
+function poolRiskSummaryOf(r: RiskPoolItem): string {
+  if (r.tag?.note) return r.tag.note;
+  const t = TICKET_BY_NO.get(r.ticketNo) ?? derivedTickets.find(r.ticketNo);
+  return t?.problemDesc || t?.title || r.desc || '—';
+}
+function poolTicketTypeKeyOf(r: { ticketNo: string }): PoolTicketTypeKey {
+  return poolTicketTypeOf(r) === '投诉' ? '投诉' : '非投诉';
+}
+type PoolAttr = 'source' | 'type' | 'level';
+/**
+ * 三维池行筛选一处套用。`skip` 摘掉其中一维 —— 那一维 chip 上的数要靠"除自己之外"的底表算，
+ * 让筛选影响自己那一排的数字，选中一枚之后其余几枚全变 0，人再也看不出该切到哪一枚。
+ */
+function byPoolAttrs(rows: RiskPoolItem[], skip?: PoolAttr) {
+  return rows.filter((r) => {
+    if (skip !== 'source' && sourceFilter.value !== 'all' && r.source !== sourceFilter.value) return false;
+    if (skip !== 'type' && poolTicketTypeFilter.value !== 'all' && poolTicketTypeKeyOf(r) !== poolTicketTypeFilter.value) return false;
+    if (skip !== 'level' && poolLevelFilter.value !== 'all' && r.tag?.result !== poolLevelFilter.value) return false;
+    return true;
+  });
+}
 function bySource(rows: RiskPoolItem[]) {
-  return sourceFilter.value === 'all' ? rows : rows.filter((r) => r.source === sourceFilter.value);
+  return byPoolAttrs(rows);
 }
 
 /**
@@ -656,9 +702,19 @@ const reportGroupBase = computed(() => {
  * 其余几枚全变 0，人再也看不出该切到哪一枚——筛选器把自己筛没了。
  * 工作组不摘：它是**另一层**筛选，选了组之后来源那一排本就该只数这个组里的条目。
  */
-const reportSourceBase = computed(() => inGroup(reportGroupBase.value));
+const reportSourceBase = computed(() => byPoolAttrs(inGroup(reportGroupBase.value), 'source'));
 function sourceCountInView(s: MonitorSource) {
   return reportSourceBase.value.filter((r) => r.source === s).length;
+}
+/** 原单类型 chip 那一排的底表（摘掉原单类型这一维） */
+const reportTypeBase = computed(() => byPoolAttrs(inGroup(reportGroupBase.value), 'type'));
+function ticketTypeCountInView(k: PoolTicketTypeKey) {
+  return reportTypeBase.value.filter((r) => poolTicketTypeKeyOf(r) === k).length;
+}
+/** 风险等级 chip 那一排的底表（摘掉风险等级这一维） */
+const reportLevelBase = computed(() => byPoolAttrs(inGroup(reportGroupBase.value), 'level'));
+function poolLevelCountInView(lv: RiskLevel) {
+  return reportLevelBase.value.filter((r) => r.tag?.result === lv).length;
 }
 
 /**
@@ -740,7 +796,7 @@ function setReportPage(page: number, size: number) {
 
 // 任一视图内条件变了，底表就换了一批，页码必须回到第一页——
 // 否则「第 3 页 → 摘掉超时收窄」会停在一张恰好没有行的页上。
-watch([reportView, onlyOverdue, decisionFilter, assessedTodayOnly, sourceFilter, sourceSort, groupFilter], () => {
+watch([reportView, onlyOverdue, decisionFilter, assessedTodayOnly, sourceFilter, poolTicketTypeFilter, poolLevelFilter, sourceSort, groupFilter], () => {
   reportPageCurrent.value = 1;
 });
 
@@ -1012,6 +1068,11 @@ function openCollab(r: RiskPoolItem) {
     message.warning('协同处理归客诉专员与管理员');
     return;
   }
+  // 本单已进终态时拦下（§5C.2），与工单页底栏那条路同一口径；终态判据与评估入口共用
+  if (isRiskTicketEnded(r.ticketNo)) {
+    message.warning('本单已结束，无法协同处理');
+    return;
+  }
   collabTarget.value = r;
   collabOpen.value = true;
 }
@@ -1034,15 +1095,13 @@ const assessTargetFromPool = computed(
   () => !!assessTarget.value && assessTarget.value.source !== REPORT_SOURCE,
 );
 
-/** 「本单另有」——风险词命中那一半。报备只挂非投诉单、命中多在投诉单，一期常为 0 */
-const assessTargetHits = computed(() => {
-  const no = assessTarget.value?.ticketNo;
-  return no ? riskTags.ticketVerificationOf(no) : null;
-});
-/** 「本单另有」——历史报备那一半（已评估 + 已撤回，不含当前这条） */
-const assessTargetHistory = computed(() => {
-  const no = assessTarget.value?.ticketNo;
-  return no ? reportStore.historyOf(no) : [];
+/**
+ * 「本单另有」固定区块的四行（风险词命中 / 打标结论 / 历史报备 / 协同处理）。
+ * 与报备池、工单页两个评估入口同源（`riskOthersOf`），本页不另取数。
+ */
+const assessTargetOthers = computed(() => {
+  const t = assessTarget.value;
+  return t ? riskOthersOf(t.ticketNo, t.id) : [];
 });
 
 /**
@@ -1119,6 +1178,14 @@ function confirmAssess() {
   assessTried.value = true;
   const target = assessTarget.value;
   if (!target || !assessValid.value || !assessDecision.value) return;
+  // 提交前按 id 回 store 重查（§5.6 / §9 规则 29）：已撤回整次拦下、原单已终态只拦「升级」、
+  // 条目已不在本人名下拦下。与另外两个评估入口同一个判据
+  const block = assessSubmitBlockOf(target.id, assessDecision.value, user.name);
+  if (block.tip) {
+    message.warning(block.tip);
+    if (block.closeModal) assessOpen.value = false;
+    return;
+  }
 
   const escalate = assessDecision.value === '升级';
   const derive = escalate && !isComplaintTicket(target.ticketNo);
@@ -4510,7 +4577,7 @@ function toggleWordEnabled(w: RiskWord) {
                 on: listView === 'report' && reportView !== 'assessed' && onlyOverdue,
                 hot: alineOverdueCount > 0,
               }"
-              :title="`超过 ${assessLimitText} 仍无结论 · 从进池时刻起算、不从领取时刻 · 不是 SLA`"
+              :title="`超过处置时限 ${assessLimitText} 仍无结论 · 从进入实时监控时刻起算、不从领取时刻 · 不是 SLA`"
               @click="setListView('report'); setReportView('all'); onlyOverdue = true"
             >
               <span class="dm-k">超时未评</span>
@@ -4521,7 +4588,7 @@ function toggleWordEnabled(w: RiskWord) {
               class="dm-cell"
               :class="{ on: listView === 'report' && reportView === 'assessed' && decisionFilter === 'all' }"
               title="今日下过收口结论的池行 —— 升级 + 不升级 + 协同处理。三种收口都算，只数评估那两种会漏掉投诉单那一路"
-              @click="setListView('report'); setReportView('assessed'); decisionFilter = 'all'"
+              @click="setListView('report'); setReportView('assessed'); decisionFilter = 'all'; assessedTodayOnly = true"
             >
               <span class="dm-k">今日已结论</span>
               <span class="dm-val"><span class="dm-v">{{ alineConcludedTodayCount }}</span></span>
@@ -4550,7 +4617,7 @@ function toggleWordEnabled(w: RiskWord) {
               :title="d === '协同'
                 ? '投诉单不做风险评估，走协同处理：给意见与建议，不改状态、不改处理人'
                 : `评估结论「${d}」`"
-              @click="setListView('report'); setReportView('assessed'); decisionFilter = d"
+              @click="setListView('report'); setReportView('assessed'); decisionFilter = d; assessedTodayOnly = true"
             >
               {{ d }}<b>{{ alineDecisionCounts[d] }}</b>
             </button>
@@ -5306,11 +5373,53 @@ function toggleWordEnabled(w: RiskWord) {
           {{ s }}<span class="gf-num">{{ sourceCountInView(s) }}</span>
         </button>
       </div>
+      <!-- 原单类型 / 风险等级两维筛选（§5.4 ③）：与监控来源同形，各枚的数摘掉自己这一维再算 -->
+      <div v-if="listView === 'report'" class="section-filters grade-filters report-source-filters">
+        <span class="rf-k">原单类型</span>
+        <button
+          type="button"
+          class="gf-chip"
+          :class="{ active: poolTicketTypeFilter === 'all' }"
+          @click="poolTicketTypeFilter = 'all'"
+        >
+          全部<span class="gf-num">{{ reportTypeBase.length }}</span>
+        </button>
+        <button
+          v-for="k in POOL_TICKET_TYPE_KEYS"
+          :key="k"
+          type="button"
+          class="gf-chip"
+          :class="{ active: poolTicketTypeFilter === k }"
+          @click="poolTicketTypeFilter = k"
+        >
+          {{ k }}<span class="gf-num">{{ ticketTypeCountInView(k) }}</span>
+        </button>
+        <span class="rf-k">风险等级</span>
+        <button
+          type="button"
+          class="gf-chip"
+          :class="{ active: poolLevelFilter === 'all' }"
+          @click="poolLevelFilter = 'all'"
+        >
+          全部<span class="gf-num">{{ reportLevelBase.length }}</span>
+        </button>
+        <button
+          v-for="lv in RISK_LEVELS"
+          :key="lv"
+          type="button"
+          class="gf-chip"
+          :class="{ active: poolLevelFilter === lv }"
+          @click="poolLevelFilter = lv"
+        >
+          {{ riskLevelText(lv) }}<span class="gf-num">{{ poolLevelCountInView(lv) }}</span>
+        </button>
+      </div>
 
       <!-- 风险工单池 · 空态：把当前收窄条件讲出来，否则"筛空了"会被读成"没有了" -->
       <div v-if="listView === 'report' && !reportRows.length" class="ob-empty">
         <!-- 收窄条件必须在空态里复述，否则"筛空了"会被读成"没有了"；工作组排在最前，它是最外一层 -->
         <template v-if="groupFilter !== 'all'">「{{ groupFilter }}」在这一档下没有池行 —— 点「全部工作组」看全部</template>
+        <template v-else-if="poolTicketTypeFilter !== 'all' || poolLevelFilter !== 'all'">当前原单类型 / 风险等级筛选下没有池行 —— 点对应的「全部」看全部</template>
         <template v-else-if="reportView === 'all'">
           {{
             onlyOverdue
@@ -5344,19 +5453,22 @@ function toggleWordEnabled(w: RiskWord) {
         <table v-if="reportView !== 'assessed'" class="hit-table report-table">
           <thead>
             <tr>
-              <th style="width: 190px">工单号</th>
+              <th style="width: 168px">工单号</th>
+              <!--
+                本页池行只有 A 线（`isALine`）：「报备人 / 报备原因 / 风险类型」三格对 A 线恒为占位，已删；
+                换成原单类型与风险等级两列（§5.4 ④）。
+              -->
+              <th style="width: 64px">原单类型</th>
+              <th style="width: 64px">风险等级</th>
               <!-- 来源列可点排序：多类来源合一队之后，"先把同一类过一遍"是最常见的翻法 -->
               <th
-                style="width: 100px"
+                style="width: 96px"
                 class="th-sortable"
                 :class="{ on: sourceSort !== 'none' }"
                 :title="sourceSort === 'none' ? '点击按监控来源分组（同来源内仍按等待时长）' : sourceSort === 'asc' ? '点击倒序' : '点击恢复按等待时长排'"
                 @click="cycleSourceSort"
               >监控来源<span class="th-sort-mark">{{ sourceSort === 'asc' ? '↑' : sourceSort === 'desc' ? '↓' : '↕' }}</span></th>
-              <th style="width: 104px">报备人</th>
-              <th style="width: 92px">报备原因</th>
-              <th style="width: 92px">风险类型</th>
-              <th>场景描述</th>
+              <th>风险摘要</th>
               <!--
                 不限阶段这一档三段混在一张表里，**必须给一列写明每行走到哪一步**：
                 否则「领取」与「评估」两个按钮在同一列里交替出现，人看不出凭什么这行能领、那行只能评。
@@ -5366,8 +5478,8 @@ function toggleWordEnabled(w: RiskWord) {
                 v-if="reportView === 'assigning' || reportView === 'all'"
                 :style="reportView === 'all' ? 'width: 80px' : 'width: 92px'"
               >承办人</th>
-              <th style="width: 128px">提交时刻</th>
-              <th style="width: 84px">等待时长</th>
+              <th style="width: 128px">进监控时刻</th>
+              <th style="width: 96px">等待时长</th>
               <!--
                 已领取行现在是**两枚按钮**（处置 +「释放」，§5.4 元素 ⑥ ⑩a），
                 88px 装不下「协同处理」+「释放」，故放宽；多出来的宽度从「场景描述」那一列让。
@@ -5380,27 +5492,34 @@ function toggleWordEnabled(w: RiskWord) {
               <td>
                 <button type="button" class="rt-no" @click="openTicket(r.ticketNo)">{{ r.ticketNo }}</button>
               </td>
+              <td><span class="src-tag">{{ poolTicketTypeOf(r) }}</span></td>
+              <td>
+                <span
+                  v-if="r.tag && isPoolLevel(r.tag.result)"
+                  class="grade-pill"
+                  :style="{ color: RISK_LEVEL_STYLE[r.tag.result].color, background: RISK_LEVEL_STYLE[r.tag.result].bg }"
+                >{{ riskLevelText(r.tag.result) }}</span>
+                <span v-else class="hit-sub">—</span>
+              </td>
               <td><span class="src-tag" :class="{ kw: isKeywordRow(r) }">{{ r.source }}</span></td>
-              <td>{{ r.by }}<div class="hit-sub">{{ r.byRole }}</div></td>
-              <td>{{ r.reason }}</td>
-              <!-- 风险类型只在「风险场景」这一档有值，其余档位空着就是正确结果，不回填任何默认值 -->
-              <td>{{ r.category ?? '—' }}</td>
-              <!-- 单行截断，全文挂 title：队列是用来挑下一条办的，不是在这里读完再判 -->
-              <td class="rr-desc" :title="r.desc">{{ r.desc }}</td>
+              <!-- 风险摘要：单行截断，全文挂 title。队列是用来挑下一条办的，不是在这里读完再判 -->
+              <td class="rr-desc" :title="poolRiskSummaryOf(r)">{{ poolRiskSummaryOf(r) }}</td>
               <td v-if="reportView === 'all'"><span class="src-tag">{{ poolStageOf(r) }}</span></td>
               <td v-if="reportView === 'assigning' || reportView === 'all'">{{ r.assignee ?? '—' }}</td>
               <td class="hit-when">{{ r.at }}</td>
               <!--
                 🔴 超时**只标这一格，整行不变色**：队列长起来后满屏红底，
                 反而看不出到底哪几条超了——红色只有稀缺时才是警报。
-                等待时长恒从**进池 / 提交时刻**起算、不从领取时刻（N5）：
-                没人领的那段空悬时间不能从账上抹掉。
+                A 线等待时长从**进入实时监控时刻**起算、不从领取时刻（N5）。
               -->
               <td
                 class="hit-when rr-waited"
                 :class="{ over: reportStore.isOverdue(r) }"
-                :title="reportStore.isOverdue(r) ? `已超过 ${assessLimitText}评估时限（自提交时刻起算）` : `评估时限 ${assessLimitText}，自提交时刻起算`"
-              >{{ waitedText(r.at) }}</td>
+                :title="`处置时限 ${assessLimitText}，自进入实时监控起算`"
+              >
+                {{ waitedText(r.at) }}
+                <span v-if="reportStore.isOverdue(r)" class="rr-overdue-tag">已超处置时限</span>
+              </td>
               <td>
                 <!--
                   待领取 · **只有「领取」这一个动作**（分派 / 改派 / 批量分派整套已取消）。
@@ -5446,7 +5565,7 @@ function toggleWordEnabled(w: RiskWord) {
                 <template v-else-if="poolStageOf(r) === '已结论'">
                   <span
                     class="hit-sub"
-                    title="评估结论提交即固化，不可修改；如需纠正请由报备人再报一次"
+                    title="评估结论提交即固化，不可修改"
                   >—</span>
                 </template>
                 <template v-else-if="poolStageOf(r) === '待领取'">
@@ -5505,15 +5624,15 @@ function toggleWordEnabled(w: RiskWord) {
           <thead>
             <tr>
               <th style="width: 190px">工单号</th>
+              <th style="width: 64px">原单类型</th>
+              <th style="width: 64px">风险等级</th>
               <th
-                style="width: 100px"
+                style="width: 96px"
                 class="th-sortable"
                 :class="{ on: sourceSort !== 'none' }"
                 :title="sourceSort === 'none' ? '点击按监控来源分组（同来源内仍按评估时刻倒序）' : sourceSort === 'asc' ? '点击倒序' : '点击恢复按评估时刻排'"
                 @click="cycleSourceSort"
               >监控来源<span class="th-sort-mark">{{ sourceSort === 'asc' ? '↑' : sourceSort === 'desc' ? '↓' : '↕' }}</span></th>
-              <th style="width: 104px">报备人</th>
-              <th style="width: 92px">报备原因</th>
               <th style="width: 104px">评估人</th>
               <th style="width: 128px">评估时刻</th>
               <th style="width: 92px">评估决策</th>
@@ -5527,9 +5646,16 @@ function toggleWordEnabled(w: RiskWord) {
               <td>
                 <button type="button" class="rt-no" @click="openTicket(r.ticketNo)">{{ r.ticketNo }}</button>
               </td>
+              <td><span class="src-tag">{{ poolTicketTypeOf(r) }}</span></td>
+              <td>
+                <span
+                  v-if="r.tag && isPoolLevel(r.tag.result)"
+                  class="grade-pill"
+                  :style="{ color: RISK_LEVEL_STYLE[r.tag.result].color, background: RISK_LEVEL_STYLE[r.tag.result].bg }"
+                >{{ riskLevelText(r.tag.result) }}</span>
+                <span v-else class="hit-sub">—</span>
+              </td>
               <td><span class="src-tag" :class="{ kw: isKeywordRow(r) }">{{ r.source }}</span></td>
-              <td>{{ r.by }}<div class="hit-sub">{{ r.byRole }}</div></td>
-              <td>{{ r.reason }}</td>
               <!--
                 🔴 **两种收口方式共用这三格**：非投诉单走评估（`assessment`，升级 / 不升级）、
                 投诉单走协同处理（`coordination`，评估意见 + 建议事项）。
@@ -5581,7 +5707,7 @@ function toggleWordEnabled(w: RiskWord) {
                 这里既不给「修正」也不给「重评」——要纠错走的是"再报一次"那条路，不是改旧结论。
                 沿用本页命中清单里"这一格没有可做的事"的写法（—），空白单元格会被当成渲染缺漏。
               -->
-              <td><span class="hit-sub" title="评估结论提交即固化，不可修改；如需纠正请由报备人再报一次">—</span></td>
+              <td><span class="hit-sub" title="结论提交即固化，不可修改">—</span></td>
             </tr>
           </tbody>
         </table>
@@ -6661,7 +6787,7 @@ function toggleWordEnabled(w: RiskWord) {
     -->
     <OpActionModal
       :open="assessOpen"
-      title="评估报备"
+      :title="assessTargetFromPool ? '风险评估' : '评估报备'"
       :icon="EditOutlined"
       tone="primary"
       :width="600"
@@ -6687,7 +6813,7 @@ function toggleWordEnabled(w: RiskWord) {
                   {{ assessTarget.ticketNo }}
                 </button>
                 <span class="assess-sheet-time">
-                  {{ assessTargetFromPool ? '入池于' : '提交于' }} {{ assessTarget.at }}
+                  {{ assessTargetFromPool ? '进监控于' : '提交于' }} {{ assessTarget.at }}
                 </span>
               </div>
               <div class="assess-sheet-meta">
@@ -6820,29 +6946,15 @@ function toggleWordEnabled(w: RiskWord) {
             </div>
           </div>
 
-          <!-- ② 本单另有：收在卡片底栏，弱于主体描述 -->
-          <footer
-            v-if="assessTargetHits || assessTargetHistory.length"
-            class="assess-sheet-foot"
-          >
-            <div v-if="assessTargetHits" class="assess-foot-row">
-              <span class="assess-foot-k">风险词命中</span>
-              <span class="assess-foot-v">
-                {{ assessTargetHits.hitCount }} 条
-                <span class="assess-foot-sub">
-                  成立 {{ assessTargetHits.confirmedCount }} · 误报 {{ assessTargetHits.falseCount }} · 待核实 {{ assessTargetHits.pendingCount }}
-                </span>
-              </span>
-            </div>
-            <div v-if="assessTargetHistory.length" class="assess-foot-row">
-              <span class="assess-foot-k">历史报备</span>
-              <ol class="assess-foot-list">
-                <li v-for="h in assessTargetHistory" :key="h.id" class="assess-foot-item">
-                  <span class="assess-foot-at">{{ h.assessment?.at ?? h.at }}</span>
-                  <span class="assess-foot-dec">{{ h.status === '已撤回' ? '已撤回' : (h.assessment ? normalizeDecision(h.assessment.decision) : '—') }}</span>
-                  <span v-if="h.assessment?.escalatedToNo" class="assess-foot-esc">→ {{ h.assessment.escalatedToNo }}</span>
-                </li>
-              </ol>
+          <!--
+            ② 本单另有：**固定区块**（§5.4 ⑦ / R62），收在卡片底栏。四行（风险词命中 / 打标结论 /
+            历史报备 / 协同处理）取数与另外两个评估入口同源（`riskOthersOf`），无取值的行写「无」，区块不隐藏。
+          -->
+          <footer class="assess-sheet-foot" aria-label="本单另有">
+            <div class="assess-foot-head">本单另有</div>
+            <div v-for="o in assessTargetOthers" :key="o.label" class="assess-foot-row">
+              <span class="assess-foot-k">{{ o.label }}</span>
+              <span class="assess-foot-v">{{ o.text }}</span>
             </div>
           </footer>
         </section>
@@ -6937,10 +7049,10 @@ function toggleWordEnabled(w: RiskWord) {
           ① 退回池子由**任何有资格的人**重新领（不是指给某个人）；
           ② **等待时长不归零**（§5.5 ⑤）——已经超时的退回来仍是超时态，
              不写这一句，人会以为退一次就把钟重置了、于是拿它当"续命"用。
-          🔴 A 线的钟从**进池时刻**起算（B 线是提交时刻，§9 规则 26），这一句两处不同。
+          🔴 A 线的钟从**进入实时监控时刻**起算（B 线是提交时刻，§9 规则 26），这一句两处不同。
         -->
         <p class="assess-hint rm-release-hint">
-          释放后本条退回「待领取」，由客诉专员或管理员重新领取；等待时长仍从进池时刻起算、不会因此重新计时。
+          释放后本条退回「待领取」，由客诉专员或管理员重新领取；等待时长仍从进入实时监控时刻起算、不会因此重新计时。
         </p>
       </div>
     </OpActionModal>
@@ -8515,6 +8627,19 @@ function toggleWordEnabled(w: RiskWord) {
 /* 🔴 超时只标这一格：整行铺红后，队列一长满屏都是红的，反而分辨不出哪几条超了 */
 .rr-waited { color: #64748b; font-weight: 500; }
 .rr-waited.over { color: #EF4444; font-weight: 700; }
+.rr-overdue-tag {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 0 5px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  color: #dc2626;
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  border-radius: 4px;
+  white-space: nowrap;
+}
 /*
  * 富列表那张表的外壳。它自己是 flex:1 + 内部滚动（工作台那一屏是整页高度），
  * 而本页清单下面还挂着分页条，故这里给一个不撑满的高度上限，让它在本页也只占内容高度。
@@ -8736,6 +8861,7 @@ function toggleWordEnabled(w: RiskWord) {
   align-items: start;
   font-size: 12px;
 }
+.assess-foot-head { font-size: 12px; font-weight: 600; color: #6b7280; }
 .assess-foot-k { color: #9ca3af; line-height: 1.5; }
 .assess-foot-v { color: #374151; font-weight: 600; line-height: 1.5; }
 .assess-foot-sub {
