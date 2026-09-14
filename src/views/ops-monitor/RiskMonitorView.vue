@@ -2985,13 +2985,13 @@ const TICKET_LIST_COL_WIDTHS: Record<string, number> = {
 function rowOfTicketNo(no: string): QueueRow | undefined {
   return rowByTicketNo.value.get(no);
 }
-/** 富列表的行内动作：这一段只有「核实打标」一枚，权限不足时不给按钮 */
+/** 富列表的行内动作：这一段只有「打标」一枚，权限不足时不给按钮 */
 function untaggedRowActions() {
-  return canRiskTag.value ? [{ label: '核实打标', primary: true }] : [];
+  return canRiskTag.value ? [{ label: '打标', primary: true }] : [];
 }
 function onTicketRowAction(label: string, t: Ticket) {
   const r = rowOfTicketNo(t.no);
-  if (label === '核实打标' && r) openEntryTag(r);
+  if (label === '打标' && r) openEntryTag(r);
 }
 
 /* ---- 「实时监控」这一路 · 召回清单 ---- */
@@ -3002,7 +3002,7 @@ function onTicketRowAction(label: string, t: Ticket) {
 // 故 `实时监控 + 投诉单 + 重要紧急 ＝ 未标记页签数` 不变；命中条数只在分页处与单数并写。
 // 同一张单的命中相邻成组：组序沿用 `untaggedRows`（词表预设等级最重的在前），组内按命中时刻倒序，
 // 分页按组切，一组不被拆到两页。
-// 「处置」列的「核实打标」打的是**这张单的条目**（`openEntryTag`），不是改某条命中的核实结论 ——
+// 「处置」列的「打标」打的是**这张单的条目**（`openEntryTag`），不是改某条命中的核实结论 ——
 // 故它随工单格跨整组合并，一组只出一枚。
 /** 当前是不是停在「实时监控」那一路（含它的三个子档） */
 const kwEvidenceView = computed(() => (
@@ -4942,7 +4942,7 @@ function toggleWordEnabled(w: RiskWord) {
       <!--
         「投诉单」「重要紧急」两路 · **工作台那张富列表**（见 `ticketListView`）。
         这两路的行就是工单，故摆的是工单自己的信息：工单/标题 · 工单摘要 · SLA 时效 ·
-        优先级 · 客户 · 产品 · 当前状态 / 节点，外加本页自己的「等待时长」与「核实打标」。
+        优先级 · 客户 · 产品 · 当前状态 / 节点，外加本页自己的「等待时长」与「打标」。
         🔴 **去掉了「监控来源」**：停在「投诉单」那一档，整列都写着「投诉单」——
         它是左栏档名的复述，占着一列却答不了任何问题。
         🔴 **去掉了「上一个节点」**：这一档要判的是"这张单现在什么样"，不是它怎么走过来的。
@@ -5057,7 +5057,7 @@ function toggleWordEnabled(w: RiskWord) {
                     type="button" class="row-btn row-btn-tag"
                     title="判定这张单有没有风险、多大：高 / 中 / 低进风险工单池，无风险不进池"
                     @click="openEntryTag(g.row)"
-                  >核实打标</button>
+                  >打标</button>
                   <span v-else class="hit-sub" title="打标归客诉专员、投诉督导与管理员">—</span>
                 </td>
               </tr>
@@ -5113,7 +5113,7 @@ function toggleWordEnabled(w: RiskWord) {
                     type="button" class="row-btn row-btn-tag"
                     title="判定这张单有没有风险、多大：高 / 中 / 低进风险工单池，无风险不进池。打的是这张单的条目，不改任何一条命中的核实结论"
                     @click="openEntryTag(g.row)"
-                  >核实打标</button>
+                  >打标</button>
                   <span v-else class="hit-sub" title="打标归客诉专员、投诉督导与管理员">—</span>
                 </td>
               </tr>
@@ -8547,8 +8547,7 @@ function toggleWordEnabled(w: RiskWord) {
 .report-table-wrap .report-table { min-width: 1040px; table-layout: fixed; }
 /*
  * 监控来源标：与扫库记录的 .run-kind 同一个胶囊形态（本页已有的"分类标"写法），
- * 不另造一种。关键词触发单独着色——它是队列里**唯一走核实打标**的那一路，
- * 操作列的按钮也跟着变字，颜色先把这件事说在前面。
+ * 不另造一种。关键词触发单独着色，与另两类按工单属性自动识别的来源区分开。
  */
 .src-tag {
   display: inline-block; padding: 1px 7px; border-radius: 10px;

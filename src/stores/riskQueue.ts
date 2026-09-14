@@ -963,9 +963,11 @@ const SEED: RiskQueueEntry[] = [
  *   · v9 → v10：**来源枚举去掉「手动筛查」**（值域变了），条目与打标记录多了 `viaManualScan`；
  *     且开屏按三类判据**补齐监控条目**（`syncAutoEntries`），「未标记」段不再有无条目的行。
  *     v9 那份里躺着 `source: '手动筛查'` 的 `rr-010`，读进来即是一个不在枚举里的值。
+ *   · v10 → v11：补建条目（`rq-auto-*`）的进监控时刻改取**补建时刻**，不再取建单时刻。
+ *     v10 那份里躺着一批进监控时刻在几十天前的补建条目，读进来等待时长照旧是几十天。
  */
 const LS_KEY = 'flowos-risk-queue';
-const LS_VERSION = 10;
+const LS_VERSION = 11;
 
 /**
  * 缓存"新不新"的判据：取**打标时刻**里最新的那一个。
@@ -1000,6 +1002,24 @@ const AUTO_DESC: Record<QueueSource, string> = {
   投诉单: '在办投诉类工单，自动纳入实时监控，待打标。',
   重要紧急: '优先级为 P0 / P1 的非投诉工单，自动纳入实时监控，待打标。',
 };
+
+/** 种子初始化补建条目的进监控时刻：最近一条距今的分钟数 */
+const SEED_AUTO_FIRST_MIN = 6;
+/** 相邻两条的间隔上限（分钟） */
+const SEED_AUTO_STEP_MIN = 18;
+/** 最早一条距今的分钟数上限，须小于 `TODAY_SPAN_MIN`，否则 `todayStamp` 会把末尾几条夹到同一时刻 */
+const SEED_AUTO_LAST_MIN = 300;
+
+/**
+ * 种子初始化时补建的 `n` 条条目的进监控时刻，第 i 条距今 `FIRST + i × step` 分钟，经 `todayStamp`
+ * 落在当天已过去的几个小时内。调用方按工单号排序后依次取用，结果只由条数与当前时刻决定。
+ */
+function seedAutoStamps(n: number): string[] {
+  const step = n > 1
+    ? Math.max(1, Math.min(SEED_AUTO_STEP_MIN, Math.floor((SEED_AUTO_LAST_MIN - SEED_AUTO_FIRST_MIN) / (n - 1))))
+    : 0;
+  return Array.from({ length: n }, (_, i) => todayStamp(SEED_AUTO_FIRST_MIN + i * step));
+}
 
 /** 已结论条目改判为无风险时的拦截提示。界面置灰提示与 store 拒绝原因共用这一句 */
 export const NO_RISK_LOCKED_TIP = '已出结论的条目不能改判为无风险';
@@ -1055,7 +1075,8 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
    * 那时若按写入时刻记，昨天生成的这份数据就被盖上今天的戳，隔夜判据从此瞎掉。
    */
   const seedDay = cached?.seedDay ?? SEED_DAY;
-  if (cached && Array.isArray(cached.entries) && cached.entries.length) {
+  const usedCache = !!(cached && Array.isArray(cached.entries) && cached.entries.length);
+  if (cached && usedCache) {
     entries.value = cached.entries
       .map((e) => ({ ...e, source: normalizeMonitorSource(e.source) }))
       // 第二道拦截：版本号拦的是**格式**，这一道拦的是**值**。
@@ -1458,32 +1479,57 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
    * 【为什么要补】「未标记」段的行一律是监控条目，来源与进监控时刻照实写。此前这批单在页面上
    * 以"无条目的行"拼进来（来源空、时刻「—」），打标那一刻才现补条目 —— 同一段里有两类行。
    *
-   * 进监控时刻取**这张单满足判据的那一刻**：预警词那一路取本单最早一条命中的时刻；
-   * 投诉单 / 重要紧急两路取工单建单时刻（这两路按工单属性自动识别，建单即满足）。取不到时记当前时刻。
+   * 进监控时刻：
+   *   · 预警词那一路取本单**最早一条命中的时刻**；
+   *   · 投诉单 / 重要紧急两路（以及取不到命中时刻的）取**这条条目被补建的时刻**，不取建单时刻 ——
+   *     建单时刻在几十天前，等待时长从这里起算，一打标进池当场判超时。
+   *     运行时补的取补建那一刻（`agoStamp(0)`），随条目落缓存，之后刷新不重算。
+   *     开屏从种子初始化时补的那一批见 `seedAutoStamps`。
    *
    * 判据与「未标记」段的入选口径逐条同源：在办（基线 §1 十个终态之外）、工单级风险等级为空、
    * `autoSourceFor` 推得出来源。只看工单库 `TICKETS`：派生单在派生那一刻已由 `ensureEntryFor` 补过。
    * 返回本次补了几条。
    */
   function syncAutoEntries(): number {
+    return syncAutoEntriesWith(false);
+  }
+
+  /**
+   * `syncAutoEntries` 的本体。`fromSeed` ＝ 本次是开屏从种子初始化（没有读到缓存）时补的那一批：
+   * 这批按工单号排序，用 `todayStamp` 依次给递增的分钟数（`seedAutoStamps`），分布在当天已过去的
+   * 几个小时内，不全挤在同一分钟。
+   */
+  function syncAutoEntriesWith(fromSeed: boolean): number {
     const has = new Set(entries.value.map((e) => e.ticketNo));
     const added: RiskQueueEntry[] = [];
+    /** 进监控时刻要取补建时刻的那几条 */
+    const stampless: RiskQueueEntry[] = [];
+    const now = agoStamp(0);
     for (const t of TICKETS) {
       if (has.has(t.no)) continue;
       if (isTicketClosed(t.nodeStatus as TicketStatus)) continue;
       if (tags.ticketGradeOf(t.no) !== null) continue;
       const source = autoSourceFor(t.no);
       if (!source) continue;
-      const firstHit = source === '实时监控' ? tags.hitsOfTicket(t.no)[0] : undefined;
-      added.push(autoEntry({
+      const hitAt = source === '实时监控' ? tags.hitsOfTicket(t.no)[0]?.when : undefined;
+      const entry = autoEntry({
         id: `rq-auto-${t.no}`,
         ticketNo: t.no,
         source,
         desc: AUTO_DESC[source],
-        at: firstHit?.when || t.createdAt || agoStamp(0),
+        at: hitAt || now,
         status: '实时监控中',
-      }));
+      });
+      if (!hitAt) stampless.push(entry);
+      added.push(entry);
       has.add(t.no);
+    }
+    if (fromSeed && stampless.length) {
+      const stamps = seedAutoStamps(stampless.length);
+      stampless
+        .slice()
+        .sort((a, b) => a.ticketNo.localeCompare(b.ticketNo))
+        .forEach((e, i) => { e.at = stamps[i]; });
     }
     if (added.length) entries.value.push(...added);
     return added.length;
@@ -1568,8 +1614,10 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
     });
   }
 
-  // 开屏补齐一遍：种子与缓存之外，工单库里满足三类判据的在办单都要有条目（见 `syncAutoEntries`）
-  syncAutoEntries();
+  // 开屏补齐一遍：种子与缓存之外，工单库里满足三类判据的在办单都要有条目（见 `syncAutoEntries`）。
+  // 没读到缓存 ＝ 从种子初始化，这一批的进监控时刻按 `seedAutoStamps` 分布；读到缓存时补建条目已在缓存里，
+  // 这一遍只补缓存之后新满足判据的单，取当前时刻
+  syncAutoEntriesWith(!usedCache);
 
   return {
     entries,

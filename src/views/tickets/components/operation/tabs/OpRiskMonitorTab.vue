@@ -29,7 +29,7 @@ import {
 // 本单的报备读口在 B 线自己的 store 里；行类型取合并池的行（同一张单上还可能有
 // A 线自动入池的条目，见 riskReports.ts 的 `reportsOf` 说明）。
 import { useRiskReportStore } from '@/stores/riskReports';
-import { useRiskQueueStore } from '@/stores/riskQueue';
+import { NO_RISK_LOCKED_TIP, canTagNoRisk, useRiskQueueStore } from '@/stores/riskQueue';
 import {
   NO_RISK,
   RISK_TAG_RESULTS,
@@ -436,6 +436,11 @@ const missTagResult = computed(() => tagTried.value && !tagResult.value);
  * ⚠️ **真正需要理由的是改判**：那里有独立的必填「修正原因」（`missTagAmend`），一格不动。
  */
 const missTagAmend = computed(() => tagTried.value && isAmend.value && !tagAmendReason.value.trim());
+/**
+ * 本单条目已出结论：弹窗里「无风险」一档置灰（《【930】》§5A.3 改判规则；store 侧 `recordTag` 同样拒绝）。
+ * 判定走 `riskQueue.canTagNoRisk`，与风险监控页修正弹窗同源；读条目上的现行状态。
+ */
+const tagNoRiskLocked = computed(() => !!tagEntry.value && !canTagNoRisk(tagEntry.value.status));
 
 function openTag() {
   if (!canTag.value) return;
@@ -469,6 +474,7 @@ function confirmTag() {
   // 备注可选（见 missTagAmend 上方那段）：只拦等级与改判理由这两项真必填的
   if (!tagResult.value) return;
   if (isAmend.value && !tagAmendReason.value.trim()) return;
+  if (tagResult.value === NO_RISK && tagNoRiskLocked.value) { message.warning(NO_RISK_LOCKED_TIP); return; }
 
   const at = nowStamp();
   const res = queue.recordTagFor(props.ticketNo, {
@@ -834,6 +840,8 @@ const collabSectionBadge = computed(() =>
             风险工单池 · {{ poolStatusText(tagEntry.status) }}
           </span>
           <span v-else-if="tagRecord.result === '无风险'" class="rt-pool">不进池</span>
+          <!-- 并入痕迹记在打标记录上，不进来源（§5A.1 ④），写法与风险监控页修正弹窗一致 -->
+          <span v-if="tagRecord.viaManualScan" class="rt-pool">由手动筛查并入</span>
           <!-- 打标是即时生效的动作，不随「保存」走，故按钮不受 Tab 的表单只读约束，见 script -->
           <a-config-provider v-if="canTag" :component-disabled="false">
             <button type="button" class="rt-btn" @click="openTag">
@@ -932,12 +940,19 @@ const collabSectionBadge = computed(() =>
           <div class="op-field">
             <div class="op-label req">风险等级</div>
             <a-radio-group v-model:value="tagResult" class="rt-radio-row">
-              <a-radio v-for="r in tagResults" :key="r" :value="r">
+              <a-radio
+                v-for="r in tagResults"
+                :key="r"
+                :value="r"
+                :disabled="r === NO_RISK && tagNoRiskLocked"
+                :title="r === NO_RISK && tagNoRiskLocked ? NO_RISK_LOCKED_TIP : undefined"
+              >
                 {{ r === '无风险' ? '无风险' : riskLevelText(r) }}
               </a-radio>
             </a-radio-group>
             <p v-if="missTagResult" class="field-err">请选择风险等级</p>
             <p class="rt-modal-tip">
+              <template v-if="tagNoRiskLocked">{{ NO_RISK_LOCKED_TIP }}。</template>
               标为 低 / 中 / 高 即进风险工单池等客诉专员处置；标为「无风险」不进池。
             </p>
           </div>
