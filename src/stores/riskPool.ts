@@ -97,6 +97,26 @@ function currentHandlerReceiver(ticketNo: string): string {
   return group ? `${group}(归属组)` : '';
 }
 
+/**
+ * 池内条目的**原单是不是投诉单**。取数与工单处理页同源：静态工单库 → 运行时派生单；
+ * 两处都查不到时按单号前缀判（投诉单号段 `IFLYTS-`，与风险监控页、评估 composable 同一条兜底）。
+ */
+export function isComplaintPoolTicket(ticketNo: string): boolean {
+  const t = TICKETS.find((x) => x.no === ticketNo) ?? useDerivedTicketStore().find(ticketNo);
+  return t ? t.type === '投诉' : ticketNo.startsWith('IFLYTS-');
+}
+
+/**
+ * 池内条目**按处置阶段读的状态**（《【930】》§5.4 ⑥）：投诉单条目不经领取、没有「已领取」态，
+ * 落库值若为「评估中」（旧缓存或别处写入的带承办人未结论条目）一律按「待分派」（界面词「待领取」）读。
+ * 非投诉单条目原样返回落库值。队列分档、处置阶段列、按处置阶段计数都走它。
+ */
+export function poolStageStatusOf<S extends RiskPoolItem['status']>(
+  r: { ticketNo: string; status: S },
+): S | '待分派' {
+  return r.status === '评估中' && isComplaintPoolTicket(r.ticketNo) ? '待分派' : r.status;
+}
+
 export const useRiskPoolStore = defineStore('riskPool', () => {
   const queue = useRiskQueueStore();
   const reportStore = useRiskReportStore();
@@ -157,9 +177,9 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
    * （`ReportStatus` 是两条线共用的，B 线本轮不解冻）。**界面一律写「待领取」**，
    * 那才是这一档现在的含义：谁有空谁领。
    */
-  const unassignedQueue = computed(() => openQueue.value.filter((r) => r.status === '待分派'));
-  /** 评估中：已有人领走、等结论 */
-  const assigningQueue = computed(() => openQueue.value.filter((r) => r.status === '评估中'));
+  const unassignedQueue = computed(() => openQueue.value.filter((r) => poolStageStatusOf(r) === '待分派'));
+  /** 评估中：已有人领走、等结论。投诉单条目不进这一档（见 `poolStageStatusOf`） */
+  const assigningQueue = computed(() => openQueue.value.filter((r) => poolStageStatusOf(r) === '评估中'));
 
   /** **B1 待评估总数 ＝ 待分派 + 评估中**（§7，N4 改口径）。已撤回的不进任何一个数 */
   const openCount = computed(() => openQueue.value.length);
@@ -310,6 +330,8 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
    * **领取**（业务第三轮拍板后池内唯一的认领动作）：客诉专员从待领取里自领一条，
    * 转「评估中」并落在自己名下。
    *
+   * 🔴 **投诉单条目不能领取**（§5.4 ⑥）：投诉单那一路不经领取、直接协同处理，本函数对它返回 false。
+   *
    * **只能领还没人认领的那一批**：已在别人名下的不给伸手拿——那不是"领取"，
    * 那是把别人手上正在办的活抽走，而分派 / 改派整套本轮已经取消。
    *
@@ -321,6 +343,8 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
   function claim(id: string, assignee: string, assigneeRole: string) {
     const r = findById(id);
     if (!r || r.status !== '待分派') return false;
+    // 投诉单条目不经领取（§5.4 ⑥），走协同处理
+    if (isComplaintPoolTicket(r.ticketNo)) return false;
     r.status = '评估中';
     r.assignee = assignee;
     reportStore.assessArrivalTicket = r.ticketNo;
@@ -371,6 +395,8 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
     const r = findById(id);
     // 🔴 **仅「已领取」态**（§5.5 ③）：已结论、已撤回、待领取三态都没有可退的东西
     if (!r || r.status !== '评估中') return false;
+    // 投诉单条目没有「已领取」态，也就没有释放（§5.4 ⑥）
+    if (isComplaintPoolTicket(r.ticketNo)) return false;
     // 释放原因必填（§5.5 ④）。空白与全空格在这里也收一道 —— 弹窗那道校验拦的是人，
     // 这一道拦的是"别处绕过表单直接调进来"，两道都要，与 `submit` 收 `category` 同形
     const reason = input.reason.trim();
@@ -487,7 +513,8 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
    *
    * 【为什么顺手补 `assignee`】「已结论」的行要答得上"谁给的结论"。协同不必先领取
    * （投诉单那一路没有领取这一步，按钮直接出在工单页底栏），没人认领时承办人一栏会是空的。
-   * 已经有人认领的**不覆盖**——那是别人手上的活，协同的人不该把它记到自己名下。
+   * 非投诉单条目已经有人认领的**不覆盖**——那是别人手上的活；投诉单条目不经领取（§5.4 ⑥），
+   * 未结论时残留的承办人（旧缓存）不作数，以协同人覆盖。
    *
    * 🔴 **工单状态、处理人、风险等级一格不动**（§5C.3「不发生的」），本函数不碰工单侧。
    * 🔴 **本轮不发通知**：`risk.coordinated` 本轮不做，见 `stores/riskCollab.ts` 文件头。
@@ -536,7 +563,8 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
     });
     if (isOpen(r)) {
       r.status = '已评估';
-      if (!r.assignee) r.assignee = input.by;
+      // 投诉单条目不经领取，未结论时残留的承办人不作数，结论人即协同人
+      if (!r.assignee || isComplaintPoolTicket(r.ticketNo)) r.assignee = input.by;
     }
     return true;
   }

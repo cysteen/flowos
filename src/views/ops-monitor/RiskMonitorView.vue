@@ -35,7 +35,12 @@ import { useRiskTagStore, type RiskTagEntry } from '@/stores/riskTags';
 // 故各走各的 store，本页只是把两块工作面并在一屏。
 // 池是两条线（A 线自动入池 / B 线二线报备）合并后的那一个工作面，故读的是合并层 riskPool；
 // 枚举与时限等两线共用的口径在 riskShared，两条线各自的模型在各自的 store 里。
-import { useRiskPoolStore, type RiskPoolItem } from '@/stores/riskPool';
+import {
+  isComplaintPoolTicket,
+  poolStageStatusOf,
+  useRiskPoolStore,
+  type RiskPoolItem,
+} from '@/stores/riskPool';
 import { NO_RISK_LOCKED_TIP, canTagNoRisk, useRiskQueueStore, type RiskQueueEntry } from '@/stores/riskQueue';
 import {
   ASSESS_DECISIONS,
@@ -426,11 +431,19 @@ const ticketGradeDist = computed(() => {
  */
 type ReportView = 'all' | 'open' | 'unassigned' | 'assigning' | 'assessed';
 const reportView = ref<ReportView>('open');
-/** 池行走到哪一步。取 store 的 `status`，不靠"有没有承办人"倒推 */
+/**
+ * 池行走到哪一步。取 store 的 `status`，不靠"有没有承办人"倒推。
+ * 投诉单条目不经领取、没有「已领取」态（§5.4 ⑥），走 `poolStageStatusOf` 读成「待领取」。
+ */
 function poolStageOf(r: RiskPoolItem): '待领取' | '已领取' | '已结论' {
-  if (r.status === '待分派') return '待领取';
-  if (r.status === '评估中') return '已领取';
+  const status = poolStageStatusOf(r);
+  if (status === '待分派') return '待领取';
+  if (status === '评估中') return '已领取';
   return '已结论';
+}
+/** 承办人一格：待领取的行不显示承办人（投诉单条目残留的承办人不作数） */
+function poolAssigneeOf(r: RiskPoolItem): string {
+  return poolStageOf(r) === '待领取' ? '—' : (r.assignee ?? '—');
 }
 
 /**
@@ -1000,6 +1013,8 @@ const canReleaseAny = computed(() => canReleaseAnyRiskReport(user.roleKey));
  */
 function canReleaseRow(r: RiskPoolItem) {
   if (!canClaim.value) return false;
+  // 投诉单条目不经领取、没有「已领取」态，任何状态下都不出「释放」（§5.4 ⑥）
+  if (isComplaintTicket(r.ticketNo)) return false;
   if (r.status !== '评估中') return false;
   return r.assignee === user.name || canReleaseAny.value;
 }
@@ -1156,7 +1171,8 @@ function nextEscalatedNo(): string {
  * 投诉单本就置灰，点不动；硬派生还会撞业务原文自己的「一单到底」与「不重复建单」。
  */
 function isComplaintTicket(ticketNo: string) {
-  return ticketNo.startsWith('IFLYTS-');
+  // 与 store 的领取 / 释放门控同一个判据（原单类型，查不到时按 `IFLYTS-` 号段兜底）
+  return isComplaintPoolTicket(ticketNo);
 }
 
 function confirmAssess() {
@@ -3077,7 +3093,7 @@ const queueBase = computed<QueueRow[]>(() => {
     : tagLevelFilter.value === 'stage'
       ? (poolStageFilter.value === 'all'
         ? pooled
-        : pooled.filter((e) => poolStageTextOf(e.status) === poolStageFilter.value))
+        : pooled.filter((e) => poolStageTextOf(poolStageStatusOf(e)) === poolStageFilter.value))
       : (tagLevelFilter.value === 'all'
         ? pooled
         : pooled.filter((e) => e.tag?.result === tagLevelFilter.value));
@@ -3158,7 +3174,7 @@ const POOL_STATE_TEXT: Record<string, string> = {
   已评估: '已结论',
 };
 function queueStatusText(e: QueueRow): string {
-  return poolStageTextOf(e.status);
+  return poolStageTextOf(poolStageStatusOf(e));
 }
 /**
  * 落库状态 → 池内阶段的界面词。**左栏「按处置阶段」那三档与表里「池内状态」那一格共用它**，
@@ -3659,7 +3675,7 @@ function pooledLevelCount(lv: RiskLevel) {
  *     同屏三个本该相等的数，有一个每天自己变。
  */
 function pooledStageCount(stage: string) {
-  return inGroup(reportStore.pooledEntries.filter((e) => poolStageTextOf(e.status) === stage)).length;
+  return inGroup(reportStore.pooledEntries.filter((e) => poolStageTextOf(poolStageStatusOf(e)) === stage)).length;
 }
 
 /**
@@ -4064,6 +4080,20 @@ function goControl(h: RiskHit) {
   router.push(`/tickets/${h.ticketNo}`);
 }
 function openTicket(no: string) { router.push(`/tickets/${no}`); }
+/**
+ * 弹窗内点单号跳工单页：先关弹窗并清掉目标再跳。
+ * 本页在 keep-alive 里，弹窗挂在 body 上，不关的话会叠在工单页之上，回到本页时也会原样再出现。
+ * 表格行里的单号仍走 `openTicket`。
+ */
+function openTicketFromModal(no: string) {
+  assessOpen.value = false;
+  assessTarget.value = null;
+  entryTagOpen.value = false;
+  entryTagTarget.value = null;
+  tagOpen.value = false;
+  tagTarget.value = null;
+  openTicket(no);
+}
 
 // ---- 风险词管理（维护权归投诉督导与管理员；客诉专员只打标、词表只读，基线 §3.1） ----
 const riskWordsOpen = ref(false);
@@ -5156,7 +5186,7 @@ function toggleWordEnabled(w: RiskWord) {
               </td>
               <td class="hit-when">{{ e.tag?.at ?? '—' }}</td>
               <td v-if="queueView === 'pooled'">
-                <span class="state-chip" :title="e.assignee ? `承办人 ${e.assignee}` : '还没有人领'">{{ queueStatusText(e) }}</span>
+                <span class="state-chip" :title="e.assignee && queueStatusText(e) !== '待领取' ? `承办人 ${e.assignee}` : '还没有人领'">{{ queueStatusText(e) }}</span>
               </td>
               <td>
                   <!--
@@ -5388,8 +5418,9 @@ function toggleWordEnabled(w: RiskWord) {
               <!--
                 不限阶段这一档三段混在一张表里，**必须给一列写明每行走到哪一步**：
                 否则「领取」与「评估」两个按钮在同一列里交替出现，人看不出凭什么这行能领、那行只能评。
+                列宽 80px：三字胶囊约 50px + 单元格左右内边距 20px，68px 时被 `.report-table td` 的省略截成「待领取 …」。
               -->
-              <th v-if="reportView === 'all' || reportView === 'open'" style="width: 68px">处置阶段</th>
+              <th v-if="reportView === 'all' || reportView === 'open'" style="width: 80px">处置阶段</th>
               <th
                 v-if="reportView === 'assigning' || reportView === 'all' || reportView === 'open'"
                 :style="reportView === 'all' || reportView === 'open' ? 'width: 80px' : 'width: 92px'"
@@ -5421,7 +5452,7 @@ function toggleWordEnabled(w: RiskWord) {
               <!-- 风险摘要：单行截断，全文挂 title。队列是用来挑下一条办的，不是在这里读完再判 -->
               <td class="rr-desc" :title="poolRiskSummaryOf(r)">{{ poolRiskSummaryOf(r) }}</td>
               <td v-if="reportView === 'all' || reportView === 'open'"><span class="src-tag">{{ poolStageOf(r) }}</span></td>
-              <td v-if="reportView === 'assigning' || reportView === 'all' || reportView === 'open'">{{ r.assignee ?? '—' }}</td>
+              <td v-if="reportView === 'assigning' || reportView === 'all' || reportView === 'open'">{{ poolAssigneeOf(r) }}</td>
               <td class="hit-when">{{ r.at }}</td>
               <!--
                 🔴 超时**只标这一格，整行不变色**：队列长起来后满屏红底，
@@ -6324,7 +6355,7 @@ function toggleWordEnabled(w: RiskWord) {
       <div v-if="entryTagTarget" class="op-form tag-modal-form">
         <div class="tag-hit-head">
           <div class="tag-hit-top">
-            <button type="button" class="tag-ticket-no" @click="openTicket(entryTagTarget.ticketNo)">
+            <button type="button" class="tag-ticket-no" @click="openTicketFromModal(entryTagTarget.ticketNo)">
               {{ entryTagTarget.ticketNo }}
             </button>
             <span class="tag-hit-title">{{ rowTitleOf(entryTagTarget) }}</span>
@@ -6520,7 +6551,7 @@ function toggleWordEnabled(w: RiskWord) {
       <div v-if="tagTarget" class="op-form tag-modal-form">
         <div class="tag-hit-head">
           <div class="tag-hit-top">
-            <button type="button" class="tag-ticket-no" @click="openTicket(tagTarget.ticketNo)">
+            <button type="button" class="tag-ticket-no" @click="openTicketFromModal(tagTarget.ticketNo)">
               {{ tagTarget.ticketNo }}
             </button>
             <span class="tag-hit-title">{{ tagTarget.title }}</span>
@@ -6721,7 +6752,7 @@ function toggleWordEnabled(w: RiskWord) {
           :target="assessTarget"
           :others="assessTargetOthers"
           link-ticket
-          @open-ticket="openTicket"
+          @open-ticket="openTicketFromModal"
         />
 
         <!-- ③ 评估表单：二选一决策 + 必填说明 -->

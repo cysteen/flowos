@@ -31,7 +31,7 @@ import { useRiskReportStore, type RiskReport } from '@/stores/riskReports';
 // 领取走合并层的 `claim`：它一并落了「谁何时接走这条」的通知留痕，
 // 并置 `assessArrivalTicket`（工单详情页据此自动开评估弹窗）。
 // 直接改状态做不到这两件事，而留痕正是这条队列的凭据。
-import { useRiskPoolStore } from '@/stores/riskPool';
+import { isComplaintPoolTicket, useRiskPoolStore } from '@/stores/riskPool';
 import { useRiskReportAssess } from '@/composables/useRiskReportAssess';
 import { todayPrefix, type ReportStatus, type RiskReleaseRecord } from '@/stores/riskShared';
 // 状态界面词与工单「风险报备」Tab、风险监控页同一张映射：待领取 / 已领取 / 已结论 / 已撤回
@@ -288,6 +288,8 @@ function actionsOf(r: RiskReport): RowAction[] {
   // 🔴 无权角色（投诉督导）整列为「—」（§5B.3 ⑨），与 A 线风险工单池的 `canClaim` 同形：
   // 按钮不露出来，而不是露出来再点一下弹"本角色只读"
   if (!canAct.value) return [];
+  // 投诉单条目不经领取、没有「已领取」态（§5.4 ⑥），不出「领取」「释放」；报备本就只在非投诉单上发起
+  if (isComplaintPoolTicket(r.ticketNo)) return [];
   if (r.status === '待分派') return [{ label: '领取', primary: true }];
   // 🔴 **仅「已领取」态出「释放」**（§5.5 ③）：已评估、已撤回、待领取三态无此入口 ——
   // 上面两个 return 已经把无权角色与待领取拿走，这里剩下的判据只剩「评估中」+ 谁在办

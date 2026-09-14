@@ -30,6 +30,7 @@ import {
 // A 线自动入池的条目，见 riskReports.ts 的 `reportsOf` 说明）。
 import { useRiskReportStore } from '@/stores/riskReports';
 import { NO_RISK_LOCKED_TIP, canTagNoRisk, useRiskQueueStore } from '@/stores/riskQueue';
+import { poolStageStatusOf } from '@/stores/riskPool';
 import {
   NO_RISK,
   RISK_TAG_RESULTS,
@@ -837,7 +838,7 @@ const collabSectionBadge = computed(() =>
             {{ tagRecord.result === '无风险' ? '无风险' : riskLevelText(tagRecord.result) }}
           </span>
           <span v-if="tagEntry && isPooledStatus(tagEntry.status)" class="rt-pool">
-            风险工单池 · {{ poolStatusText(tagEntry.status) }}
+            风险工单池 · {{ poolStatusText(poolStageStatusOf(tagEntry)) }}
           </span>
           <span v-else-if="tagRecord.result === '无风险'" class="rt-pool">不进池</span>
           <!-- 并入痕迹记在打标记录上，不进来源（§5A.1 ④），写法与风险监控页修正弹窗一致 -->

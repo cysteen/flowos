@@ -32,6 +32,7 @@ import { TICKETS } from '@/mock/tickets';
 import { useRiskTagStore } from '@/stores/riskTags';
 import { useRiskReportStore } from '@/stores/riskReports';
 import { useRiskQueueStore } from '@/stores/riskQueue';
+import { poolStageStatusOf } from '@/stores/riskPool';
 import { REPORT_ASSESS_LIMIT_MIN, isOpenStatus, isPooledStatus } from '@/stores/riskShared';
 import { RISK_FLAG_OPTIONS, isProcessTabVisible } from './types/operation';
 import { poolStatusText } from './components/operation/OpRiskDecision';
@@ -450,7 +451,7 @@ const riskTagBanner = computed(() => {
     text: `风险打标 ${level} · ${tag.by}（${tag.byRole}）· ${tag.at}`,
     note: tag.note,
     /** 已进池的另说一句它在池里的位置，二线才知道这条后面还有人跟 */
-    poolText: entry && isPooledStatus(entry.status) ? `风险工单池 · ${poolStatusText(entry.status)}` : '',
+    poolText: entry && isPooledStatus(entry.status) ? `风险工单池 · ${poolStatusText(poolStageStatusOf(entry))}` : '',
   };
 });
 
