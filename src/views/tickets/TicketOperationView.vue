@@ -281,25 +281,50 @@ const showRiskReport = computed(() => {
 });
 
 /**
- * 报备形态的置灰条件。
- * **只对报备形态成立**：评估与协同两形态的条件不成立时按钮直接不出（上面那个 computed 已收），
- * 在这里返回 true 会让它们顶着一条说的是别的事的提示置灰在那儿。
+ * 风险按钮的置灰条件。
+ * ① **未认领**：报备形态与协同处理形态置灰（基线 §2，见 `ticketUnclaimed`）；
+ * ② **本单已有在队报备**：只对报备形态成立 —— 评估与协同两形态的出现条件不成立时按钮直接不出
+ * （上面那个 computed 已收），在这里返回 true 会让它们顶着一条说的是别的事的提示置灰在那儿。
  *
  * 🔴 **判据与 `riskReportPendingItem` 已经对齐**（2026-09-10 收口）：`riskReports.canSubmitFor`
  * 本轮收成只看 B 线，与这里那个 B 线专用的在队报备是同一批条目了。此前两者分家 ——
  * 按钮跟着合并口径的 store 走、横幅跟着 B 线走，于是一张挂着 A 线在池条目的单子
  * 会顶着「本单已有报备待评估」置灰，而 Tab 里一条报备都找不到。那道缝已经消掉。
  */
+/**
+ * 本单是否处于子状态「**未认领**」。
+ * 基线 §2 状态 × 动作矩阵「未认领」行：「风险报备」「协同处理」两列均为 **置灰 ※29**
+ * （※29：无处理人 —— 报备侧先领取再报；协同处理侧没有可承接建议的处理人，先领取或指派再协同）。
+ * 「风险报备」列只管报备形态的逐状态取值，评估形态不受这一格约束。
+ *
+ * 取数：详情页现值（跨组调剂后落「未认领」）或工单库里的原始子状态（工单池里无人领的单）。
+ */
+const ticketUnclaimed = computed(() => {
+  if (d.value.status === '未认领') return true;
+  const row = TICKETS.find((x) => x.no === d.value.no);
+  return !!row && row.nodeStatus === '未认领' && !row.assignee;
+});
+const riskUnclaimedBlocked = computed(
+  () => (riskActionForm.value === 'report' || riskActionForm.value === 'collab') && ticketUnclaimed.value,
+);
+
 const riskReportPending = computed(
-  () => riskActionForm.value === 'report' && !riskReports.canSubmitFor(ticketNo.value),
+  () => riskUnclaimedBlocked.value
+    || (riskActionForm.value === 'report' && !riskReports.canSubmitFor(ticketNo.value)),
 );
 
 /**
  * 置灰的**原因原文**，交给底栏呈现（底栏自己不写死，见 OpActionBar 的 `riskForbiddenTip`）。
- * 分两态写：**待领取**＝还没人接，等的是队列；**已领取**＝活在某个客诉专员手上，该找的是这个人。
+ * 未认领先于在队报备判（《【930】》§4.4 置灰提示语）。
+ * 在队报备分两态写：**待领取**＝还没人接，等的是队列；**已领取**＝活在某个客诉专员手上，该找的是这个人。
  * 一句笼统的「已有报备待评估」把这两件事说成一件，二线不知道该等还是该催、催谁。
  */
 const riskForbiddenTip = computed(() => {
+  if (riskUnclaimedBlocked.value) {
+    return riskActionForm.value === 'collab'
+      ? '本单尚未认领，领取或指派后可协同处理'
+      : '本单尚未认领，领取后可发起报备';
+  }
   const r = riskReportPendingItem.value;
   if (!r) return '';
   return r.status === '评估中'
@@ -1649,7 +1674,7 @@ watch(
     >
       <span class="rrb-dot" aria-hidden="true"></span>
       <span class="rrb-text">{{ riskReportBanner.text }}</span>
-      <span v-if="riskReportBanner.overdue" class="rrb-overdue">已超评估时限</span>
+      <span v-if="riskReportBanner.overdue" class="rrb-overdue">已超处置时限</span>
       <button type="button" class="rrb-link" @click="processTabsRef?.switchTab('risk')">
         查看报备
       </button>
@@ -1852,7 +1877,7 @@ watch(
 }
 /*
   报备中横幅：一行细文本，不是色块 —— 无底色、无边框、无圆角，只用一枚 6px 圆点带状态色
-  （橙＝在队等结论，红＝已过评估时限），与「风险报备」Tab 上的圆点同一套色。
+  （橙＝在队等结论，红＝已超处置时限），与「风险报备」Tab 上的圆点同一套色。
   高度压到 22px 上下，让位给下方的速览带：那里才是坐席处理这张单要看的东西。
 */
 .risk-report-banner {
