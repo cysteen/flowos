@@ -417,8 +417,13 @@ const ticketGradeDist = computed(() => {
  * 没有它的话，「按处置阶段 4」那一行点下去只能落到某一个阶段上，
  * 而那一档的数是 2 —— 行上写着 4、表里躺着 2，正是本文件反复踩过的坑。
  */
-type ReportView = 'all' | 'unassigned' | 'assigning' | 'assessed';
-const reportView = ref<ReportView>('unassigned');
+/**
+ * `open` ＝ 待领取 + 已领取（不限在队阶段、不含已结论）＝ 页头「待评估总数」那张卡的下钻落点。
+ * 与 `all` 的区别只在第三段：`all` 接已结论、`open` 不接。卡上的数是两段之和，
+ * 落到单一档（`unassigned`）时表里只躺着其中一段，卡上 8、表里 5。
+ */
+type ReportView = 'all' | 'open' | 'unassigned' | 'assigning' | 'assessed';
+const reportView = ref<ReportView>('open');
 /** 池行走到哪一步。取 store 的 `status`，不靠"有没有承办人"倒推 */
 function poolStageOf(r: RiskPoolItem): '待领取' | '已领取' | '已结论' {
   if (r.status === '待分派') return '待领取';
@@ -693,6 +698,10 @@ const reportGroupBase = computed(() => {
       ...(onlyOverdue.value ? [] : assessedBase.value),
     ];
   }
+  if (reportView.value === 'open') {
+    // 与 `reportOpenRows` 同进同退：两段在队行，不接已结论
+    return [...openBase('unassigned'), ...openBase('assigning')];
+  }
   return reportView.value === 'assessed' ? assessedBase.value : openBase(reportView.value);
 });
 
@@ -733,6 +742,11 @@ const reportAllRows = computed(() => [
   ...reportAssigningRows.value,
   ...(onlyOverdue.value ? [] : reportAssessedRows.value),
 ]);
+/** 待领取 + 已领取：两段在队行按时间序首尾相接，与 `reportAllRows` 的前两段逐字相同 */
+const reportOpenRows = computed(() => [
+  ...reportUnassignedRows.value,
+  ...reportAssigningRows.value,
+]);
 
 //
 // 🔴 **原先这里有一对 `poolStageTotal` / `poolStageCounts`**，给左栏「按处置阶段」那四行供数。
@@ -749,6 +763,7 @@ const reportAllRows = computed(() => [
 //
 const reportRows = computed(() => {
   if (reportView.value === 'all') return reportAllRows.value;
+  if (reportView.value === 'open') return reportOpenRows.value;
   if (reportView.value === 'unassigned') return reportUnassignedRows.value;
   if (reportView.value === 'assigning') return reportAssigningRows.value;
   return reportAssessedRows.value;
@@ -4530,27 +4545,23 @@ function toggleWordEnabled(w: RiskWord) {
           >评估处置</h2>
           <div class="dash-grid dash-grid-3">
             <!--
-              B1 待评估总数 ＝ **待领取 + 评估中**（N4 改口径，不再等于单一状态的条数）。
-              🔴 点它落在「待领取」，表里的行数会**少于卡上的数**——这不是本文件开头那条
-              「标签写着一个数、表里躺着另一批」：紧挨着的三枚 chip 就是它的分解，
-              待领取 + 评估中 恒等于这个数，两者摆在同一屏上，读得出来。
-              🔴 **点亮条件只认「待领取」「已领取」这两档**，不是 `reportView !== 'assessed'`：
-              「按处置阶段 · 不限阶段」那一档**含已结论**，而这枚卡的口径是待领取 + 已领取、
-              不含已结论 —— 在不限阶段上点亮，等于说"这个数就是当前这张表的分母"，而分母根本不同。
-              `!onlyOverdue` 同样要留：开着超时收窄时看到的是这两档里超时的那几条，不是它们的全集
+              B1 待评估总数 ＝ **待领取 + 已领取**（N4 改口径，不再等于单一状态的条数）。
+              🔴 下钻落到 `open`（待领取 + 已领取、不含已结论），表里行数 ＝ 卡上的数。
+              落「待领取」单一档时卡上 8、表里 5，正是本文件开头那条坑。
+              🔴 **点亮条件只认 `open`**，不是 `reportView !== 'assessed'`：
+              「不限阶段」`all` 那一档**含已结论**，在它上面点亮等于说"这个数就是当前这张表的分母"，而分母根本不同。
+              `!onlyOverdue` 同样要留：开着超时收窄时看到的是这两段里超时的那几条，不是它们的全集
               （那一路归隔壁「超时未评」卡点亮）。
             -->
             <button
               type="button"
               class="dm-cell"
               :class="{
-                on: listView === 'report'
-                  && (reportView === 'unassigned' || reportView === 'assigning')
-                  && !onlyOverdue,
+                on: listView === 'report' && reportView === 'open' && !onlyOverdue,
                 hot: alineOverdueCount > 0,
               }"
               title="待领取 + 已领取 · 池内还没有结论的全集"
-              @click="setListView('report'); setReportView('unassigned'); onlyOverdue = false"
+              @click="setListView('report'); setReportView('open'); onlyOverdue = false"
             >
               <span class="dm-k">待评估总数</span>
               <span class="dm-val">
@@ -5429,6 +5440,15 @@ function toggleWordEnabled(w: RiskWord) {
                 : '当前没有进池的条目 —— 打标为高 / 中 / 低才进池'
           }}
         </template>
+        <template v-else-if="reportView === 'open'">
+          {{
+            onlyOverdue
+              ? `当前没有超过 ${assessLimitText} 仍无结论的在队条目`
+              : sourceFilter !== 'all'
+                ? `「${sourceFilter}」当前没有待领取或已领取的条目`
+                : '暂无待评估条目'
+          }}
+        </template>
         <template v-else-if="reportView !== 'assessed'">
           {{
             onlyOverdue
@@ -5473,10 +5493,10 @@ function toggleWordEnabled(w: RiskWord) {
                 不限阶段这一档三段混在一张表里，**必须给一列写明每行走到哪一步**：
                 否则「领取」与「评估」两个按钮在同一列里交替出现，人看不出凭什么这行能领、那行只能评。
               -->
-              <th v-if="reportView === 'all'" style="width: 68px">处置阶段</th>
+              <th v-if="reportView === 'all' || reportView === 'open'" style="width: 68px">处置阶段</th>
               <th
-                v-if="reportView === 'assigning' || reportView === 'all'"
-                :style="reportView === 'all' ? 'width: 80px' : 'width: 92px'"
+                v-if="reportView === 'assigning' || reportView === 'all' || reportView === 'open'"
+                :style="reportView === 'all' || reportView === 'open' ? 'width: 80px' : 'width: 92px'"
               >承办人</th>
               <th style="width: 128px">进监控时刻</th>
               <th style="width: 96px">等待时长</th>
@@ -5504,8 +5524,8 @@ function toggleWordEnabled(w: RiskWord) {
               <td><span class="src-tag" :class="{ kw: isKeywordRow(r) }">{{ r.source }}</span></td>
               <!-- 风险摘要：单行截断，全文挂 title。队列是用来挑下一条办的，不是在这里读完再判 -->
               <td class="rr-desc" :title="poolRiskSummaryOf(r)">{{ poolRiskSummaryOf(r) }}</td>
-              <td v-if="reportView === 'all'"><span class="src-tag">{{ poolStageOf(r) }}</span></td>
-              <td v-if="reportView === 'assigning' || reportView === 'all'">{{ r.assignee ?? '—' }}</td>
+              <td v-if="reportView === 'all' || reportView === 'open'"><span class="src-tag">{{ poolStageOf(r) }}</span></td>
+              <td v-if="reportView === 'assigning' || reportView === 'all' || reportView === 'open'">{{ r.assignee ?? '—' }}</td>
               <td class="hit-when">{{ r.at }}</td>
               <!--
                 🔴 超时**只标这一格，整行不变色**：队列长起来后满屏红底，
