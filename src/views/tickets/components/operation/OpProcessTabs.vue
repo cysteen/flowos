@@ -21,7 +21,7 @@ import {
   deriveAppointmentNeeded,
   type ProcessTabKey,
 } from '@/views/tickets/types/operation';
-import type { ClosingNote, ProcessFormDraft, SectionKey } from '@/views/tickets/types/operation';
+import type { ProcessFormDraft, SectionKey } from '@/views/tickets/types/operation';
 import type { OperationTabData } from '@/views/tickets/types/operationTabs';
 import type { TicketRiskVerification } from '@/stores/riskTags';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
@@ -64,10 +64,8 @@ const props = defineProps<{
    * 【为什么可选】不传即一个圆点不出，既有调用方行为完全不变。
    */
   tabDots?: Partial<Record<ProcessTabKey, 'warn' | 'danger'>>;
-  /** 工单已是终态：处理表单锁定，仅商机编号 / 结案后备注可补充 */
+  /** 工单已是终态：处理表单锁定，仅商机编号 / 结案后备注仍可编辑 */
   postClose?: boolean;
-  /** 结案后备注 */
-  closingNotes?: ClosingNote[];
 }>();
 
 const emit = defineEmits<{
@@ -81,8 +79,6 @@ const emit = defineEmits<{
   'feishu-activate': [reason: string];
   'feishu-retry': [];
   dunning: [];
-  addClosingNote: [text: string];
-  backfillLeadNo: [];
 }>();
 
 const user = useUserStore();
@@ -192,12 +188,9 @@ defineExpose({ switchTab });
         :readonly="activeTabReadonly"
         :post-close="postClose"
         :ticket-status="detail.status"
-        :closing-notes="closingNotes"
         @toggle-section="emit('toggleSection', $event)"
         @select-chip="emit('selectChip', $event)"
         @update:form="emit('update:form', $event)"
-        @add-closing-note="emit('addClosingNote', $event)"
-        @backfill-lead-no="emit('backfillLeadNo')"
       />
 
       <OpFeishuTab

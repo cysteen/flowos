@@ -194,24 +194,17 @@ export interface ProcessFormDraft {
   suggestAccepted: boolean;
   /** 商机专属 · 商机解决结论 */
   leadStage: 'resolved' | 'unresolvedRejected' | 'noContact' | 'invalid' | 'toSales';
-  /** 商机编号（CRM 商机单号）。终态仍可补录/修改，走「补录商机编号」弹窗 */
+  /** 商机编号（CRM 商机单号）。终态仍可编辑，随「保存」提交 */
   leadNo: string;
+  /** 结案后备注（四类型通用）。所有状态可编辑，终态仍可编辑，随「保存」提交 */
+  closingNote: string;
+  /** 结案后备注最近一次提交人 / 时间（YYYY-MM-DD HH:mm） */
+  closingNoteUpdatedBy?: string;
+  closingNoteUpdatedAt?: string;
 }
 
-/**
- * 结案后备注：四类工单通用，**只追加、不可改删**，结案前后均可添加。
- * 每条同时落一条「工单处理」类履历。
- */
-export interface ClosingNote {
-  id: string;
-  who: string;
-  role: string;
-  /** YYYY-MM-DD HH:mm */
-  at: string;
-  text: string;
-  /** 添加时工单是否已是终态（区分结案前/结案后补充） */
-  afterClose: boolean;
-}
+/** 终态下处理表单仍可编辑的字段 */
+export const POST_CLOSE_EDITABLE_FIELDS = ['leadNo', 'closingNote'] as const;
 
 /** 处理表单可折叠区块 key（含各工单类型专属区） */
 export type SectionKey =

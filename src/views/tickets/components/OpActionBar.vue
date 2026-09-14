@@ -62,6 +62,10 @@ const props = defineProps<{
    */
   hideBar?: boolean;
   /**
+   * 终态「结案后补充」：底栏只留「保存」且可点（提交商机编号 / 结案后备注），流转动作不出。
+   */
+  saveOnly?: boolean;
+  /**
    * 风险那一枚按钮要不要出。**说的是"三种形态里判出了一种、且它的出现条件成立"**，
    * 不只是报备：文案与类型集由 `resolveRiskActionForm`（角色 × 原单类型）现算，
    * 出现条件由工单页按形态算（见 TicketOperationView 的 `showRiskReport`）。
@@ -484,12 +488,12 @@ defineExpose({ openEscalate, openAftersale });
 </script>
 
 <template>
-  <div v-if="!hideBar" class="op-actionbar" :class="{ disabled: isTerminal }">
+  <div v-if="!hideBar" class="op-actionbar" :class="{ disabled: isTerminal && !saveOnly }">
     <div class="bottom-actions">
       <button
         type="button"
         class="ab-item ab-save"
-        :disabled="isTerminal"
+        :disabled="isTerminal && !saveOnly"
         @click="saveDraft"
       >
         <SaveOutlined />
@@ -502,7 +506,7 @@ defineExpose({ openEscalate, openAftersale });
         状态一眼可见，工单地址可点直接跳售后系统操作（其余按钮无卡片，trigger 置空）
       -->
       <a-popover
-        v-for="a in barActions"
+        v-for="a in (saveOnly ? [] : barActions)"
         :key="a.key"
         :trigger="showsAftersaleCard(a.key) ? 'hover' : []"
         placement="top"

@@ -2,17 +2,17 @@
 import { computed, watch } from 'vue';
 import {
   FileTextOutlined, CheckCircleOutlined, AppstoreOutlined,
-  CheckOutlined, EditOutlined,
+  CheckOutlined, MessageOutlined,
 } from '@ant-design/icons-vue';
 import OpCollapsibleSection from './OpCollapsibleSection.vue';
 import OpRecordFields from './OpRecordFields.vue';
 import OpSupplementChipPanels from './OpSupplementChipPanels.vue';
-import OpClosingNotes from './OpClosingNotes.vue';
 import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue';
 import type {
-  ProcessFormDraft, SupplementChip, SectionKey, ClosingNote,
+  ProcessFormDraft, SupplementChip, SectionKey,
 } from '@/views/tickets/types/operation';
 import {
+  POST_CLOSE_EDITABLE_FIELDS,
   RESOLUTION_CONCLUSION_OPTIONS,
   SERVICE_SOLUTION_CONCLUSION,
   SERVICE_SOLUTION_OPTIONS,
@@ -53,26 +53,24 @@ const props = defineProps<{
    */
   readonly?: boolean;
   /**
-   * 工单已是终态：处理内容整区锁定，只留两处例外——
-   * 商机编号（弹窗补录/修改）与结案后备注（追加）。
+   * 工单已是终态：处理内容整区锁定，只留 `POST_CLOSE_EDITABLE_FIELDS`
+   * （商机编号、结案后备注）仍可编辑，随底栏「保存」提交。
    */
   postClose?: boolean;
   /** 工单当前状态（终态提示条用） */
   ticketStatus?: string;
-  /** 结案后备注（四类工单通用） */
-  closingNotes?: ClosingNote[];
 }>();
 
 const emit = defineEmits<{
   toggleSection: [key: SectionKey];
   selectChip: [chip: SupplementChip];
   'update:form': [form: ProcessFormDraft];
-  addClosingNote: [text: string];
-  backfillLeadNo: [];
 }>();
 
 /** 处理内容是否锁定（角色只读 或 终态） */
 const contentLocked = computed(() => !!props.readonly || !!props.postClose);
+/** 终态仍可编辑的两个字段：只受角色只读约束 */
+const postCloseFieldDisabled = computed(() => !!props.readonly);
 
 const isComplaint = computed(() => props.ticketType === '投诉');
 const isConsult = computed(() => props.ticketType === '咨询');
@@ -88,7 +86,11 @@ const showComplaintChannel = computed(() => {
 
 /** 单一写出口：只读态在此统一拦一道，本区所有字段的回写都经过这里 */
 function patch(part: Partial<ProcessFormDraft>) {
-  if (contentLocked.value) return;
+  if (props.readonly) return;
+  if (props.postClose) {
+    const keys = Object.keys(part) as (keyof ProcessFormDraft)[];
+    if (!keys.every((k) => (POST_CLOSE_EDITABLE_FIELDS as readonly string[]).includes(k))) return;
+  }
   emit('update:form', { ...props.form, ...part });
 }
 
@@ -220,7 +222,7 @@ function chipActiveClass(key: SupplementChip): string {
   <div class="process-form">
     <div v-if="postClose" class="post-close-bar">
       <CheckCircleOutlined class="pcb-icon" />
-      <span>工单{{ ticketStatus ? `「${ticketStatus}」` : '已结案' }}，处理内容已锁定；{{ isLead ? '商机编号、结案后备注' : '结案后备注' }}仍可补充。</span>
+      <span>工单{{ ticketStatus ? `「${ticketStatus}」` : '已结案' }}，处理内容已锁定；{{ isLead ? '商机编号、结案后备注' : '结案后备注' }}仍可编辑，修改后点击底部「保存」提交。</span>
     </div>
 
     <!-- 处理记录（所有工单类型共用核心区） -->
@@ -347,23 +349,11 @@ function chipActiveClass(key: SupplementChip): string {
           </div>
           <div class="field inline">
             <label>商机编号</label>
-            <!-- 终态：只读展示 + 补录/修改入口（弹窗在工单页，免受本区禁用态影响） -->
-            <div v-if="postClose" class="backfill-field">
-              <span class="bf-value" :class="{ empty: !form.leadNo }">{{ form.leadNo || '未填写' }}</span>
-              <a-button
-                v-if="!readonly"
-                type="link"
-                size="small"
-                class="bf-btn"
-                :disabled="false"
-                @click="emit('backfillLeadNo')"
-              >
-                <EditOutlined />{{ form.leadNo ? '修改' : '补录' }}
-              </a-button>
-            </div>
+            <!-- 终态仍可编辑：disabled 显式只看角色只读，不继承本区终态禁用 -->
             <a-input
-              v-else
               :value="form.leadNo"
+              :disabled="postCloseFieldDisabled"
+              :maxlength="64"
               placeholder="CRM 商机单号"
               @update:value="(v: string) => patch({ leadNo: v })"
             />
@@ -421,15 +411,28 @@ function chipActiveClass(key: SupplementChip): string {
       />
     </OpCollapsibleSection>
 
-    <!-- ===== 结案后备注（四类型通用；只追加，终态仍可写） ===== -->
-    <OpClosingNotes
-      :notes="closingNotes ?? []"
+    <!-- ===== 结案后备注（四类型通用；所有状态可编辑，终态仍可编辑） ===== -->
+    <OpCollapsibleSection
+      title="结案后备注"
+      :icon="MessageOutlined"
+      :badge="postClose ? '可编辑' : ''"
+      badge-variant="hint"
       :expanded="expandedSections.closingNote"
-      :readonly="readonly"
-      :post-close="postClose"
       @toggle="emit('toggleSection', 'closingNote')"
-      @add="emit('addClosingNote', $event)"
-    />
+    >
+      <a-textarea
+        :value="form.closingNote"
+        :disabled="postCloseFieldDisabled"
+        :rows="3"
+        :maxlength="500"
+        placeholder="补充结案后的跟进情况、客户反馈等"
+        @update:value="(v: string) => patch({ closingNote: v })"
+      />
+      <div class="cn-foot">
+        <span>{{ form.closingNoteUpdatedAt ? `最近提交：${form.closingNoteUpdatedBy} ${form.closingNoteUpdatedAt}` : '点击底部「保存」提交，每次提交记入处理履历' }}</span>
+        <span>{{ (form.closingNote ?? '').length }}/500</span>
+      </div>
+    </OpCollapsibleSection>
   </div>
   </a-config-provider>
 </template>
@@ -442,14 +445,10 @@ function chipActiveClass(key: SupplementChip): string {
   color: #065f46; background: #ecfdf5; border: 1px solid #a7f3d0;
 }
 .pcb-icon { color: #059669; }
-.backfill-field {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  height: 32px; padding: 0 4px 0 11px; border-radius: 6px;
-  background: #fff; border: 1px solid #e5e7eb;
+.cn-foot {
+  display: flex; justify-content: space-between; gap: 8px;
+  margin-top: -4px; font-size: 12px; color: #9ca3af;
 }
-.bf-value { font-size: 13px; color: #1f2937; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bf-value.empty { color: #9ca3af; }
-.bf-btn { flex: none; padding: 0 6px; }
 .section-subhead {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
 }

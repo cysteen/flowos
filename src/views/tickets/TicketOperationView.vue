@@ -11,7 +11,6 @@ import OpStatDetailModal from './components/operation/OpStatDetailModal.vue';
 import OpSupplementModal from './components/operation/OpSupplementModal.vue';
 import OpDunningModal from './components/operation/OpDunningModal.vue';
 import OpCancelModal from './components/operation/OpCancelModal.vue';
-import OpLeadNoBackfillModal from './components/operation/OpLeadNoBackfillModal.vue';
 import OpEscalateComplaintModal from './components/operation/OpEscalateComplaintModal.vue';
 import OpSmsModal from './components/operation/OpSmsModal.vue';
 import OpEmailModal from './components/operation/OpEmailModal.vue';
@@ -34,7 +33,7 @@ import { useRiskReportStore } from '@/stores/riskReports';
 import { useRiskQueueStore } from '@/stores/riskQueue';
 import { poolStageStatusOf } from '@/stores/riskPool';
 import { REPORT_ASSESS_LIMIT_MIN, isOpenStatus, isPooledStatus } from '@/stores/riskShared';
-import { RISK_FLAG_OPTIONS, isProcessTabVisible } from './types/operation';
+import { POST_CLOSE_EDITABLE_FIELDS, RISK_FLAG_OPTIONS, isProcessTabVisible, tabWritableFor } from './types/operation';
 import { poolStatusText } from './components/operation/OpRiskDecision';
 import { useRiskCollabStore } from '@/stores/riskCollab';
 import { useRiskHistoryStore, type RiskHistoryKind, type RiskHistoryRecord } from '@/stores/riskHistory';
@@ -51,7 +50,7 @@ import {
 import { escalateComplaintBlockTip, resolveRiskActionForm } from './composables/opActionRegistry';
 import { resolveSupersededBy, type TicketRelation } from './composables/ticketRelations';
 import type { CreateTicketPrefill, Ticket } from './types/ticket';
-import type { ClosingNote, ProcessFormDraft, InsightAction, InsightModalKey } from './types/operation';
+import type { ProcessFormDraft, InsightAction, InsightModalKey } from './types/operation';
 import type { ProcessTabKey } from './types/operation';
 import { COMPLAINT_SUPPLEMENT_TYPE } from './types/operationTabs';
 import type { OperationTabData } from './types/operationTabs';
@@ -871,57 +870,17 @@ const canCancelTicket = computed(() => headerRoleGate.value.cancelTicket);
  */
 const tabsReadonly = computed(() => !!supersededBy.value);
 
-const hideActionBar = computed(
-  () => isFrontlineView.value || pageReadonly.value || isTicketTerminated(d.value.status),
-);
-
 /**
  * 结案后补充：终态（已转/已升级的被接管单除外，整页已锁）处理表单锁定，
- * 只留商机编号补录与结案后备注两处可写。补充不改状态、不重算 SLA、不触发调研，只记履历。
+ * 只留商机编号、结案后备注仍可编辑，底栏只剩「保存」。不改状态、不重算 SLA、不触发调研，只记履历。
  */
 const postClose = computed(() => isTicketTerminated(d.value.status) && !supersededBy.value);
+const postCloseSavable = computed(() => postClose.value && tabWritableFor('process', user.roleKey));
 
-/** 结案后备注按工单号存（会话内），切单不串 */
-const closingNotesByTicket = ref<Record<string, ClosingNote[]>>({});
-const closingNotes = computed(() => closingNotesByTicket.value[ticketNo.value] ?? []);
-
-function onAddClosingNote(text: string) {
-  const list = closingNotesByTicket.value[ticketNo.value] ?? [];
-  const role = mapUserRole(user.roleKey);
-  list.push({
-    id: `cn-${Date.now()}`,
-    who: user.name || '当前坐席',
-    role,
-    at: riskNowStamp(),
-    text,
-    afterClose: postClose.value,
-  });
-  closingNotesByTicket.value[ticketNo.value] = list;
-  pushEntry(timeline.value, {
-    category: 'handle', action: 'handle', who: user.name || '当前坐席', role,
-    how: postClose.value ? '结案后补充' : '工单处理',
-    what: '追加结案后备注',
-    changes: [{ field: '结案后备注', kind: '补充', to: text }],
-  });
-  message.success('已添加结案后备注');
-}
-
-const leadNoModalOpen = ref(false);
-
-function onLeadNoBackfill({ value, reason }: { value: string; reason: string }) {
-  const before = form.value.leadNo.trim();
-  form.value = { ...form.value, leadNo: value };
-  processBaseline.leadNo = value;
-  pushEntry(timeline.value, {
-    category: 'handle', action: 'handle', who: user.name || '当前坐席', role: mapUserRole(user.roleKey),
-    how: '结案后补充',
-    what: before ? `修改商机编号（原因：${reason}）` : '补录商机编号',
-    changes: [before
-      ? { field: '商机编号', kind: '修改', from: before, to: value }
-      : { field: '商机编号', kind: '补充', to: value }],
-  });
-  message.success(before ? '商机编号已修改' : '商机编号已补录');
-}
+const hideActionBar = computed(
+  () => isFrontlineView.value || pageReadonly.value
+    || (isTicketTerminated(d.value.status) && !postCloseSavable.value),
+);
 
 /**
  * 单子是否正在**三线技术支持**手上 —— 底栏「退回」是三线专属动作，只在这时出现。
@@ -1073,6 +1032,7 @@ const PROCESS_FIELDS: { key: keyof ProcessFormDraft; label: string }[] = [
   { key: 'conclusion', label: '问题解决结论' },
   { key: 'serviceSolution', label: '解决方案' },
   { key: 'leadNo', label: '商机编号' },
+  { key: 'closingNote', label: '结案后备注' },
 ];
 
 /** 处理表单快照（含各字段值 + 附件数），作为变更 diff 的基线 */
@@ -1137,7 +1097,14 @@ function buildProcessLog() {
   for (const { key, label } of PROCESS_FIELDS) {
     const before = (processBaseline[key] ?? '').trim();
     const after = String(f[key] ?? '').trim();
-    if (before === after || !after) continue;
+    if (before === after) continue;
+    if (!after) {
+      // 终态可编辑的两个字段清空也要留痕；其余字段沿用「清空不登记」
+      if ((POST_CLOSE_EDITABLE_FIELDS as readonly string[]).includes(key)) {
+        changes.push({ field: label, kind: '修改', from: before, to: '（已清空）' });
+      }
+      continue;
+    }
     changes.push(before ? { field: label, kind: '修改', from: before, to: after } : { field: label, kind: '补充', to: after });
   }
   const attArr = [...(f.processResultAttachments ?? []), ...(f.problemCauseAttachments ?? [])];
@@ -1159,6 +1126,29 @@ function buildProcessLog() {
 function onAction(payload: Record<string, unknown>) {
   if (payload.type === '保存草稿') {
     const log = buildProcessLog();
+    if (log?.changes?.some((c) => c.field === '结案后备注')) {
+      form.value = {
+        ...form.value,
+        closingNoteUpdatedBy: user.name || '当前坐席',
+        closingNoteUpdatedAt: riskNowStamp(),
+      };
+    }
+    if (postClose.value) {
+      // 终态只有商机编号 / 结案后备注可改：每次提交单独记一条「结案后补充」
+      if (!log) {
+        message.info('内容未变更，无需保存');
+        return;
+      }
+      pushEntry(timeline.value, {
+        category: 'handle', action: 'handle', who: user.name || '当前坐席', role: mapUserRole(user.roleKey),
+        how: '结案后补充',
+        what: `更新${[...new Set(log.changes.map((c) => c.field))].join('、')}`,
+        changes: log.changes,
+      });
+      processBaseline = snapshotProcess();
+      message.success('已保存，变更已记入处理履历');
+      return;
+    }
     dispatch({ type: '保存草稿', process: log });
     // 风险等级落第八类、不落「工单处理」的字段 diff，故与 log 分开走，见 `recordAgentRiskLevelChange`
     recordAgentRiskLevelChange();
@@ -1797,9 +1787,6 @@ watch(
           :tab-dots="processTabDots"
           :readonly="tabsReadonly"
           :post-close="postClose"
-          :closing-notes="closingNotes"
-          @add-closing-note="onAddClosingNote"
-          @backfill-lead-no="leadNoModalOpen = true"
           @toggle-section="toggleSection"
           @select-chip="selectChip"
           @update:form="updateForm"
@@ -1828,6 +1815,7 @@ watch(
     <OpActionBar
       ref="actionBarRef"
       :hide-bar="hideActionBar"
+      :save-only="postCloseSavable"
       :ticket-no="ticketNo"
       :ticket-title="d.title"
       :ticket-type="d.type"
@@ -1892,12 +1880,6 @@ watch(
     <OpCancelModal
       v-model:open="cancelModalOpen"
       @submit="onCancelSubmit"
-    />
-
-    <OpLeadNoBackfillModal
-      v-model:open="leadNoModalOpen"
-      :current="form.leadNo"
-      @submit="onLeadNoBackfill"
     />
 
     <OpEscalateComplaintModal

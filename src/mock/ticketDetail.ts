@@ -621,4 +621,5 @@ export const DEFAULT_PROCESS_DRAFT = {
   suggestAccepted: false,
   leadStage: 'invalid' as const,
   leadNo: '',
+  closingNote: '',
 };
