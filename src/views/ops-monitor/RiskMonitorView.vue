@@ -2101,7 +2101,8 @@ function applyLedgerQuery() {
 
 /**
  * 命中清单的数据源。它只服务**两个页签**：手动筛查（结果态）与命中台账。
- * 🔴 实时监控页签已改成条目维度，走的是 `queueRows`，与本 computed 无关 ——
+ * 🔴 实时监控页签已改成条目维度，走的是 `queueRows`，与本 computed 无关
+ * （「未标记 · 实时监控」那一路的召回清单按工单组分页、组内命中取 `kwHitsOf`，同样不读它）——
  * 两批数据分母不同（命中记录 vs 监控条目），共用一个数据源必然在某处把两者读串。
  *
  * 筛查结果与台账**共用同一张表**：列、排序、判定依据的呈现完全一致，只是筛查态多一列勾选。
@@ -2190,39 +2191,13 @@ const GRADES: RiskLevel[] = ['高', '中', '低'];
 //
 // 「判过没有」一律看 isJudged，不看有没有等级：误报是判过的，但它没有等级，
 // 用 gradeOf 当判据会让所有误报重新掉回待核实里。
-const openHits = computed(() => rows.value.filter((h) => !isJudged(h)));
-const confirmedHits = computed(() => rows.value.filter((h) => verdictOf(h) === '成立'));
-const falseHits = computed(() => rows.value.filter((h) => verdictOf(h) === '误报'));
 
 /**
- * 确认是风险的等级分布——成效条要回答"等级如何"。
- * 底表只含成立的，而成立必定带等级，故这里不会出现无等级的行，三档之和恒等于成立数。
+ * 命中台账的记录总数 —— 右上角「命中台账」入口角标。
+ * 🔴 台账顶部原先那条统计条（命中 / 待核实 / 已核实 / 确认是风险 / 误报 / 规则准确率）已删：
+ * 这组数在看板上有展示，本页不再重复摆一遍。
  */
-const confirmedByGrade = computed<Record<RiskLevel, number>>(() => ({
-  高: confirmedHits.value.filter((h) => gradeOf(h) === '高').length,
-  中: confirmedHits.value.filter((h) => gradeOf(h) === '中').length,
-  低: confirmedHits.value.filter((h) => gradeOf(h) === '低').length,
-}));
-
-// ---- 监控成效 ----
-// 需求分析表 D 块定义了「命中条数 / 命中成立数 / 规则准确率」三个指标，
-// 但此前没有任何落点。打标即出队之后更需要它——待办清空了，
-// 这个岗位这段时间到底发现了什么、判准了没有，全靠这一组数说话。
-const effect = computed(() => {
-  const total = rows.value.length;
-  const valid = confirmedHits.value.length;
-  const falsePositive = falseHits.value.length;
-  const judged = valid + falsePositive;
-  return {
-    total,
-    judged,
-    valid,
-    falsePositive,
-    open: openHits.value.length,
-    // 准确率分母用**已判定数**，不用命中数——还没核实的不该拉低它（需求分析表 D-3）
-    accuracy: judged ? valid / judged : null,
-  };
-});
+const ledgerTotal = computed(() => rows.value.length);
 
 // ---- 打标（核实）与修正 ----
 // 打标即「已核实」，它本身就是确认动作，不另设复核角色、不加审批。
@@ -2653,25 +2628,30 @@ function untaggedSliceRows(slice: UntaggedSlice): QueueRow[] {
 
 /* ---- 「未标记」这一段的筛选条 ---- */
 //
-// 【为什么这一段要有筛选、却不要统计头】命中台账那条统计头（待核实 / 已核实 / 确认是风险 /
-// 误报 / 规则准确率）讲的是**词表质量**，属于台账那条规则改进回路。摆在日常打标的工作面前，
+// 【为什么这一段要有筛选、却不要统计头】命中统计（待核实 / 已核实 / 确认是风险 / 误报 /
+// 规则准确率）讲的是**词表质量**，属于命中核实那条规则改进回路（数在看板上展示，本页不摆）。摆在日常打标的工作面前，
 // 等于把"规则准不准"塞给一个正在判"这张单有没有风险"的人 —— 两个问题、两个分母。
 // 这一段要的只是**在当前这一路里把范围收窄**，故只补一条筛选条。
 //
 // 🔴 **字段随当前这一路而变**：只有「实时监控」那一路带命中证据（原话、风险词），
 // 另两路的行就是工单，没有原话也没有词可筛。
+// 🔴 「实时监控」那一路的条件**作用在命中上**（行 ＝ 一条召回），一组里命中全被筛掉的工单整组不出现。
 //
 // 🔴 **不重复左栏与工作组 chip 已经承担的收窄**（加进去就是同一件事两个入口）：
 //   · 等级 / 优先级 —— 左栏子档已经在做；
 //   · 班组 —— 清单上方那行「工作组」chip 已经在做；
-//   · 核实结果 / 打标人 —— 这一段按定义全是没下过结论的单，两个字段恒空。
+//   · 打标人 —— 这一段按定义全是没打过标的单，恒空。
+//   · 核实结果**保留**（只在「实时监控」那一路）：它是**命中**的核实结论，不是工单的打标结论 ——
+//     一张未打标的单上，个别命中可能已在命中台账里被判过成立 / 误报。
 interface UntaggedFilter {
   keyword: string;
-  /** 只有「实时监控」这一路用得到：本单命中过的风险词（取现有词表里真出现过的） */
+  /** 只有「实时监控」这一路用得到：命中的规则主词（与命中台账同一口径，取 `RiskHit.word`） */
   words: string[];
   /** 只有「实时监控」这一路用得到：命中时间区间 */
   from: string;
   to: string;
+  /** 只有「实时监控」这一路用得到：命中的核实结果，取值与命中台账那一格一致 */
+  verdict: 'all' | 'open' | HitVerdict;
   /* ---- 以下三维只有「投诉单」「重要紧急」两路用得到：那两路的行就是工单 ---- */
   /** 产品（多选，从这一路真出现过的产品派生） */
   products: string[];
@@ -2686,7 +2666,7 @@ interface UntaggedFilter {
  * 给一个默认窗口反而会让左栏角标与表行数在人什么都没筛的时候就对不上。
  */
 function defaultUntaggedFilter(): UntaggedFilter {
-  return { keyword: '', words: [], from: '', to: '', products: [], statuses: [], sla: 'all' };
+  return { keyword: '', words: [], from: '', to: '', verdict: 'all', products: [], statuses: [], sla: 'all' };
 }
 const untaggedFilter = ref<UntaggedFilter>(defaultUntaggedFilter());
 
@@ -2717,7 +2697,7 @@ function onUntaggedRangeChange(
 const untaggedWordOptions = computed(() => {
   const seen: string[] = [];
   for (const r of untaggedSliceRows('kw')) {
-    for (const w of rowWords(r)) if (!seen.includes(w)) seen.push(w);
+    for (const h of rowHits(r)) if (!seen.includes(h.word)) seen.push(h.word);
   }
   return seen.map((w) => ({ value: w, label: w }));
 });
@@ -2754,36 +2734,56 @@ function ticketOfRow(r: QueueRow): Ticket | null {
 
 /**
  * 把筛选条件套到某一路的行上。**字段按路分两套**，因为两路的行根本不是一种东西：
- *   · 实时监控 —— 行由预警词命中产生，故筛 命中原话 / 风险词 / 命中时刻；
+ *   · 实时监控 —— 行是**命中**（一条召回一行），故筛 关键词 / 风险词 / 命中时间 / 核实结果，见 `kwHitsOf`；
  *   · 投诉单 / 重要紧急 —— 行**就是工单**，故筛 产品 / 当前状态 / SLA 是否超时。
  *
  * 🔴 「进监控时间」这一维**已删**：实测「投诉单」11 条里只有 2 条有进监控时刻
  * （其余是「未纳入监控」、`at` 为 null），一设区间就只剩那 2 条 ——
  * 一个筛完必然只剩两条的字段，摆在那里只会让人以为筛坏了。
  */
-function applyUntaggedFilter(list: QueueRow[], slice: UntaggedSlice): QueueRow[] {
+/** 「实时监控」那一路的筛选条件动过没有（四个字段全部作用在命中上） */
+function kwHitFilterOn(): boolean {
+  const f = untaggedFilter.value;
+  return !!f.keyword.trim() || !!f.words.length || !!f.from || !!f.to || f.verdict !== 'all';
+}
+/**
+ * 这张单上**过了筛选的命中**，按命中时刻倒序 —— 召回清单里这一组的那几行。
+ * 🔴 组数（角标 / 工作组 chip / 分页）与行数（「N 条命中」）都从它派生，不另筛一遍。
+ * 关键词对工单级字段（单号 / 标题）命中时，本组全部命中都算匹配。
+ */
+function kwHitsOf(r: QueueRow): RiskHit[] {
+  const hits = rowHits(r).slice().sort((a, b) => b.when.localeCompare(a.when));
+  if (!kwHitFilterOn()) return hits;
   const f = untaggedFilter.value;
   const kw = f.keyword.trim().toLowerCase();
-  const isKw = slice === 'kw';
-  const words = isKw ? f.words : [];
-  const products = isKw ? [] : f.products;
-  const statuses = isKw ? [] : f.statuses;
-  const sla = isKw ? 'all' : f.sla;
-  const timed = isKw && (!!f.from || !!f.to);
-  if (!kw && !words.length && !timed && !products.length && !statuses.length && sla === 'all') return list;
+  const ticketHit = !!kw && [r.ticketNo, rowTitleOf(r)].some((s) => s.toLowerCase().includes(kw));
+  return hits.filter((h) => {
+    if (kw && !ticketHit
+      && ![h.excerpt ?? '', h.customer ?? ''].some((s) => s.toLowerCase().includes(kw))) return false;
+    if (f.words.length && !f.words.includes(h.word)) return false;
+    // 时间锚在**命中时刻**：召回问的是"什么时候被发现"
+    const day = h.when.slice(0, 10);
+    if (f.from && day < f.from) return false;
+    if (f.to && day > f.to) return false;
+    // 'open' ＝ 还没人核实过的：`verdictOf` 此时是 undefined，与命中台账同一条判法
+    if (f.verdict === 'open' && verdictOf(h)) return false;
+    if (f.verdict !== 'all' && f.verdict !== 'open' && verdictOf(h) !== f.verdict) return false;
+    return true;
+  });
+}
+
+function applyUntaggedFilter(list: QueueRow[], slice: UntaggedSlice): QueueRow[] {
+  // 「实时监控」：条件作用在命中上，**一组里命中全被筛掉的工单整组不出现**
+  if (slice === 'kw') {
+    if (!kwHitFilterOn()) return list;
+    return list.filter((r) => kwHitsOf(r).length > 0);
+  }
+  const f = untaggedFilter.value;
+  const kw = f.keyword.trim().toLowerCase();
+  const { products, statuses, sla } = f;
+  if (!kw && !products.length && !statuses.length && sla === 'all') return list;
   return list.filter((r) => {
-    if (kw) {
-      const hay = [r.ticketNo, rowTitleOf(r)];
-      // 命中原话只有实时监控那一路有，另两路的行就是工单、没有原话可搜
-      if (isKw) for (const h of rowHits(r)) hay.push(h.excerpt ?? '');
-      if (!hay.some((s) => s.toLowerCase().includes(kw))) return false;
-    }
-    if (words.length && !rowWords(r).some((w) => words.includes(w))) return false;
-    // 时间锚在**命中时刻**：这一路的行是被词捞进来的，"什么时候被发现"才是它的时间
-    if (timed) {
-      const days = rowHits(r).map((h) => h.when.slice(0, 10));
-      if (!days.some((d) => (!f.from || d >= f.from) && (!f.to || d <= f.to))) return false;
-    }
+    if (kw && ![r.ticketNo, rowTitleOf(r)].some((s) => s.toLowerCase().includes(kw))) return false;
     if (products.length || statuses.length || sla !== 'all') {
       const t = ticketOfRow(r);
       // 🔴 查不到工单的行，在这三维上**一律放行**而不是筛掉：它不是"不匹配"，
@@ -2800,7 +2800,7 @@ function applyUntaggedFilter(list: QueueRow[], slice: UntaggedSlice): QueueRow[]
 
 const untaggedFilterDirty = computed(() => {
   const f = untaggedFilter.value;
-  return !!f.keyword.trim() || !!f.words.length || !!f.from || !!f.to
+  return !!f.keyword.trim() || !!f.words.length || !!f.from || !!f.to || f.verdict !== 'all'
     || !!f.products.length || !!f.statuses.length || f.sla !== 'all';
 });
 
@@ -3010,22 +3010,33 @@ function onTicketRowAction(label: string, t: Ticket) {
   if (label === '核实打标' && r) openEntryTag(r);
 }
 
-/* ---- 「实时监控」这一路的证据列 ---- */
+/* ---- 「实时监控」这一路 · 召回清单 ---- */
 //
-// 【为什么这一路要换一套列】它的条目**全部由预警词命中产生**，人在这一档要判的就是
-// "这句话到底有多严重"。而通用条目列里的「场景描述」是一句写死的套话
-// （「沟通记录命中风险词，已自动纳入实时监控」）——**原话一个字都看不到**，
-// 停在这一档根本判不了，只能一条条点进工单，这一档等于没法直接干活。
-//
-// 🔴 **行仍然是条目（一行一张单），不是命中记录**。命中台账那张表的行是命中，
-// 一张单可以被三条词命中；直接把台账端过来的话，左栏角标数的是条目、表里躺的是命中，
-// 两个数当场对不上 —— 那正是本文件反复警告的那个坑。故这里做的是
-// **把证据聚合到工单行上**：等级取最重那条、风险词把全部并排摆出来、命中内容给最重那条的原话。
+// 🔴 **行 ＝ 命中记录（一条召回一行）**，列与命中台账一致：等级 · 风险词 · 工单 · 命中内容 ·
+// 客户 / 班组 · 时间 · 处置。只列**尚未打标的工单**上的命中；已打标的单上的命中在「已标记」段与命中台账里。
+// 🔴 **计数单位仍是工单**：左栏角标、工作组 chip、分页都按**工单组**数，
+// 故 `实时监控 + 投诉单 + 重要紧急 ＝ 未标记页签数` 不变；命中条数只在分页处与单数并写。
+// 同一张单的命中相邻成组：组序沿用 `untaggedRows`（词表预设等级最重的在前），组内按命中时刻倒序，
+// 分页按组切，一组不被拆到两页。
+// 「处置」列的「核实打标」打的是**这张单的条目**（`openEntryTag`），不是改某条命中的核实结论 ——
+// 故它随工单格跨整组合并，一组只出一枚。
 /** 当前是不是停在「实时监控」那一路（含它的三个子档） */
 const kwEvidenceView = computed(() => (
   listView.value === 'realtime'
   && queueView.value === 'monitoring'
   && untaggedSlice.value === 'kw'
+));
+/** 当前页的工单组，每组带着它过了筛选的命中。没有命中的组（数据异常）照实留一行，不吞 */
+const kwPageGroups = computed(() => (
+  kwEvidenceView.value
+    ? pagedQueueRows.value.map((r) => ({ row: r, hits: kwHitsOf(r) }))
+    : []
+));
+/** 当前这一档（已过筛选 / 子档 / 工作组）全部工单组上的命中条数 ——「N 单 · M 条命中」里的 M */
+const kwHitTotal = computed(() => (
+  kwEvidenceView.value
+    ? queueRows.value.reduce((n, r) => n + kwHitsOf(r).length, 0)
+    : 0
 ));
 /**
  * 这一行的全部命中，**按词表预设等级从重到轻**排（同级早的在前）。
@@ -3111,12 +3122,9 @@ const ROW_WORD_VISIBLE = 2;
 function rowTitleOf(r: QueueRow): string {
   return TICKET_BY_NO.get(r.ticketNo)?.title || r.desc;
 }
-/** 这一行的客户 / 班组：优先取命中记录（它带着这两格），没有命中就退回工单 */
+/** 这一行的客户：优先取命中记录（它带着这一格），没有命中就退回工单 */
 function rowCustomerOf(r: QueueRow): string {
   return rowTopHit(r)?.customer || TICKET_BY_NO.get(r.ticketNo)?.customer || '—';
-}
-function rowGroupOf(r: QueueRow): string {
-  return rowTopHit(r)?.groupName || groupNameOf(r.ticketNo);
 }
 
 /* ---- 「按标记人」：打标人这一维 ---- */
@@ -3866,7 +3874,9 @@ const railGroups = computed<RailGroup[]>(() => {
         + '🔴 开着清单上那条筛选时，被筛的那一路摆成「筛后 / 全量」，**斜杠后那三个数之和仍 ＝ 这个数**',
       items: [
         ...untaggedSliceItems('kw', '实时监控',
-          '预警词捞进来的那一路。下面按**词表预设的识别风险等级**分档 —— 机器认为最重的排最前，人从上往下判'),
+          '预警词捞进来的那一路。下面按**词表预设的识别风险等级**分档 —— 机器认为最重的排最前，人从上往下判。'
+          + '表里是**尚未打标的工单上的命中**（待处理的召回，一条命中一行、同单成组）；角标数的是**工单**，不是命中条数。'
+          + '全部召回历史（含已打标工单上的）在右上角「命中台账」'),
         ...untaggedSliceItems('complaint', '投诉单',
           '在办的投诉类工单那一路。下面按**工单优先级**分档'),
         ...untaggedSliceItems('urgent', '重要紧急',
@@ -4368,18 +4378,6 @@ function toggleWordEnabled(w: RiskWord) {
   }
   message.success(w.enabled ? `已停用「${w.word}」` : `已启用「${w.word}」`);
 }
-/** 准确率分档：低于 30% 的规则基本在制造噪音，该收窄或停用 */
-function accTone(v: number): 'bad' | 'mid' | 'good' {
-  if (v < 0.3) return 'bad';
-  if (v < 0.7) return 'mid';
-  return 'good';
-}
-/** 准确率分档取规范 §2.3 语义色，不另调色值 */
-const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
-  bad: '#EF4444',
-  mid: '#F59E0B',
-  good: '#10B981',
-};
 </script>
 
 <template>
@@ -4808,12 +4806,12 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                 type="button"
                 class="row-btn scan-entry"
                 :class="{ active: listView === 'judged' }"
-                title="旁路 · 风险词命中记录的台账：待核实 / 成立 / 误报三类都在，供事后点查与核实，词表准确率由它回填。分母是命中记录（不是工单、也不是监控条目），与左栏条目不可相加"
+                title="旁路 · 风险词命中记录的台账：待核实 / 成立 / 误报三类都在，供事后点查与核实，词表准确率由它回填。分母是**全部命中记录**（含已打标工单上的，不是工单、也不是监控条目），与左栏条目不可相加；左栏「实时监控」只列其中尚未打标工单上的那部分"
                 @click="setListView('judged')"
               >
                 <TagsOutlined :style="{ fontSize: '12px' }" />
                 <span>命中台账</span>
-                <span class="hit-batch-badge">{{ effect.total }}</span>
+                <span class="hit-batch-badge">{{ ledgerTotal }}</span>
               </button>
             </div>
           </div>
@@ -4858,8 +4856,8 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
       <!--
         「未标记」筛选条。**复用命中台账那条查询条的类名与排版**（ledger-bar / list-toolbar /
         tb-fields / fi / tb-actions），一行新样式都不写 —— 这一段的外观已经定过，不该为多一条筛选另起一套。
-        🔴 **只补筛选、不搬统计头**：台账那条统计头（待核实 / 已核实 / 确认是风险 / 误报 / 规则准确率）
-        讲的是词表质量，属于台账那条规则改进回路；摆在日常打标的工作面前，
+        🔴 **只补筛选、不摆统计头**：命中统计（待核实 / 已核实 / 确认是风险 / 误报 / 规则准确率）
+        讲的是词表质量，数在看板上展示；摆在日常打标的工作面前，
         等于把"规则准不准"塞给一个正在判"这张单有没有风险"的人。
         🔴 字段按路而变、且**不重复左栏子档与工作组 chip 已经承担的收窄**，见 `UntaggedFilter`。
       -->
@@ -4878,11 +4876,14 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                   v-model="untaggedFilter.keyword"
                   class="tb-search-input"
                   type="text"
-                  :placeholder="untaggedSlice === 'kw' ? '工单号 / 标题 / 命中原话' : '工单号 / 标题'"
+                  :placeholder="untaggedSlice === 'kw' ? '工单号 / 标题 / 客户 / 命中原话' : '工单号 / 标题'"
                 >
               </div>
             </div>
-            <!-- 风险词 / 命中时间只有「实时监控」这一路有：另两路的行是工单，压根不产生命中 -->
+            <!--
+              风险词 / 命中时间 / 核实结果只有「实时监控」这一路有：另两路的行是工单，压根不产生命中。
+              控件与命中台账那条逐一同形（风险词取规则主词、核实结果四档同值）。
+            -->
             <template v-if="untaggedSlice === 'kw'">
               <div class="fi">
                 <span class="fl">风险词</span>
@@ -4904,6 +4905,20 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                   :placeholder="['开始日期', '结束日期']"
                   class="tb-range"
                   @change="onUntaggedRangeChange"
+                />
+              </div>
+              <div class="fi">
+                <span class="fl">核实结果</span>
+                <a-select
+                  v-model:value="untaggedFilter.verdict"
+                  size="small" class="tb-ctl"
+                  :dropdown-match-select-width="false"
+                  :options="[
+                    { value: 'all', label: '全部' },
+                    { value: 'open', label: '待核实' },
+                    { value: '成立', label: '确认是风险' },
+                    { value: '误报', label: '误报' },
+                  ]"
                 />
               </div>
             </template>
@@ -5043,12 +5058,13 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
       </div>
 
       <!--
-        实时监控 · 条目表。三视图共用一张表：列大半相同，分成三张迟早只改一处；
-        差异（勾选列 / 打标结论列 / 状态列 / 操作列）就地 v-if 掉。
-        🔴 「投诉单」「重要紧急」两路已改走上面那张富列表，故这里多一道 `!ticketListView`。
+        实时监控 · 召回清单（见 script 里「召回清单」那段）。
+        🔴 行 ＝ 命中，列与命中台账那张表一致；同一张单的命中相邻成组，
+        勾选 / 工单 / 处置三格跨整组合并（它们都是**工单级**的：勾的是单、打标打的是单的条目）。
+        🔴 分页按工单组切（`pagedQueueRows`），「N 单 · M 条命中」两个数分别取 `queueRows` 与 `kwHitTotal`。
       -->
-      <div v-if="listView === 'realtime' && !ticketListView && queueRows.length" class="hit-table-wrap report-table-wrap">
-        <table class="hit-table report-table">
+      <div v-if="listView === 'realtime' && kwEvidenceView && queueRows.length" class="hit-table-wrap">
+        <table class="hit-table">
           <thead>
             <tr>
               <th v-if="showQueueSelection" style="width: 36px">
@@ -5056,26 +5072,127 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                   <CheckOutlined v-if="bulkAllPicked" :style="{ color: '#fff', fontSize: '10px' }" />
                 </div>
               </th>
-              <!--
-                「实时监控」这一路换一套**带命中证据**的列：等级 / 风险词 / 工单 / 命中内容 / 客户·班组。
-                🔴 行仍是**一行一条目（一张单）**，不是命中记录 —— 证据聚合到工单行上，
-                故左栏角标（数条目）与表行数仍然相等。要按命中逐条点查，走右上角「命中台账」。
-              -->
-              <!--
-                🔴 **这一路的列宽整体收一档**（等级 56 / 风险词 108 / 工单 158 / 客户·班组 96 …）：
-                它比通用条目列多了三列，照原宽度摆下来 1174px，会把这张表挤出横向滚动条 ——
-                而横着拖才能看全的表，等于每一行都要动两次手。收窄之后合计 ≈ 1006px，正好放得下。
-                🔴 **省下来的宽度全给「命中内容」**：那是这一路唯一该被看见的一格，
-                旁边几列都是定宽短内容，让表格自动分配的话，工单标题一长就把原话挤成三个字加省略号，
-                人又回到"判不了、只能点进工单"的状态。
-              -->
-              <th v-if="kwEvidenceView" style="width: 56px">等级</th>
-              <th v-if="kwEvidenceView" style="width: 108px">风险词</th>
-              <th :style="kwEvidenceView ? 'width: 158px' : (taggedEvidenceView ? 'width: 152px' : 'width: 190px')">
-                {{ kwEvidenceView || taggedEvidenceView ? '工单' : '工单号' }}
-              </th>
-              <th v-if="kwEvidenceView" style="width: 262px">命中内容</th>
-              <th v-if="kwEvidenceView" style="width: 96px">客户 / 班组</th>
+              <th style="width: 52px">等级</th>
+              <th style="width: 120px">风险词</th>
+              <th style="width: 190px">工单</th>
+              <th>命中内容</th>
+              <th style="width: 118px">客户 / 班组</th>
+              <th style="width: 60px">时间</th>
+              <th style="width: 88px">处置</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template v-for="g in kwPageGroups" :key="g.row.id">
+              <!-- 没有命中记录的组（数据异常）照实留一行，不吞：左栏角标数的是工单，少一组就对不上 -->
+              <tr v-if="!g.hits.length">
+                <td v-if="showQueueSelection">
+                  <div class="hit-cb" :class="{ checked: bulkPicked.has(g.row.id) }" @click.stop="toggleBulkPick(g.row.id)">
+                    <CheckOutlined v-if="bulkPicked.has(g.row.id)" :style="{ color: '#fff', fontSize: '10px' }" />
+                  </div>
+                </td>
+                <td><span class="hit-sub">—</span></td>
+                <td><span class="hit-sub">—</span></td>
+                <td>
+                  <button type="button" class="rt-no" @click="openTicket(g.row.ticketNo)">{{ g.row.ticketNo }}</button>
+                  <div class="hit-title">{{ rowTitleOf(g.row) }}</div>
+                </td>
+                <td class="hit-excerpt"><span class="hit-sub">本单暂无命中记录</span></td>
+                <td>{{ rowCustomerOf(g.row) }}<div class="hit-sub">{{ groupNameOf(g.row.ticketNo) }}</div></td>
+                <td class="hit-when">—</td>
+                <td>
+                  <button
+                    v-if="canRiskTag"
+                    type="button" class="row-btn row-btn-tag"
+                    title="判定这张单有没有风险、多大：高 / 中 / 低进风险工单池，无风险不进池"
+                    @click="openEntryTag(g.row)"
+                  >核实打标</button>
+                  <span v-else class="hit-sub" title="打标归客诉专员、投诉督导与管理员">—</span>
+                </td>
+              </tr>
+              <tr v-for="(h, hi) in g.hits" :key="`${g.row.id}-${h.id}`">
+                <td v-if="showQueueSelection && hi === 0" :rowspan="g.hits.length">
+                  <div class="hit-cb" :class="{ checked: bulkPicked.has(g.row.id) }" @click.stop="toggleBulkPick(g.row.id)">
+                    <CheckOutlined v-if="bulkPicked.has(g.row.id)" :style="{ color: '#fff', fontSize: '10px' }" />
+                  </div>
+                </td>
+                <td>
+                  <!-- 与命中台账同一格：已核实的取核实等级，误报没有等级 -->
+                  <span
+                    v-if="gradeOf(h)"
+                    class="grade-pill"
+                    :style="{ color: RISK_LEVEL_STYLE[gradeOf(h)!].color, background: RISK_LEVEL_STYLE[gradeOf(h)!].bg }"
+                  >{{ gradeOf(h) }}</span>
+                  <span v-else class="hit-sub" title="判为误报的命中不带风险等级">—</span>
+                </td>
+                <td>
+                  <div class="track-word">「{{ h.word }}」</div>
+                  <div v-if="h.matchedWord && h.matchedWord !== h.word" class="track-word-sub">命中「{{ h.matchedWord }}」</div>
+                  <div class="track-word-sub">词表预设 {{ presetGradeOf(h) }}危</div>
+                  <!-- 命中已在台账里被核实过才出：这是**命中**的核实结论，不是这张单的打标结论 -->
+                  <span
+                    v-if="verdictOf(h)"
+                    class="verdict-chip"
+                    :class="verdictOf(h) === '误报' ? 'vc-fp' : 'vc-ok'"
+                    :title="tagTraceTitle(h)"
+                  >命中{{ verdictOf(h) }}</span>
+                </td>
+                <td v-if="hi === 0" :rowspan="g.hits.length">
+                  <button type="button" class="rt-no" @click="openTicket(g.row.ticketNo)">{{ g.row.ticketNo }}</button>
+                  <div class="hit-title">{{ rowTitleOf(g.row) }}</div>
+                  <!-- 多路命中才标「兼：X」，判据与另两路富列表同一个 `alsoSourcesOf` -->
+                  <span
+                    v-for="s in alsoSourcesOf(g.row)"
+                    :key="`also-${g.row.id}-${s}`"
+                    class="src-tag also-src"
+                    :title="alsoSourceTitle(g.row)"
+                  >兼：{{ s }}</span>
+                  <div v-if="g.hits.length > 1" class="hit-sub">本单 {{ g.hits.length }} 条命中</div>
+                </td>
+                <td class="hit-excerpt" :title="h.excerpt">
+                  <span class="hit-pos">{{ h.position }}</span>
+                  <span class="excerpt-quote">「<template v-if="excerptWindow(h).headTruncated">…</template>{{ excerptWindow(h).before }}<mark v-if="excerptWindow(h).hit" class="excerpt-hit">{{ excerptWindow(h).hit }}</mark>{{ excerptWindow(h).after }}<template v-if="excerptWindow(h).tailTruncated">…</template>」</span>
+                </td>
+                <td>{{ h.customer }}<div class="hit-sub">{{ h.groupName }} · {{ h.assignee }}</div></td>
+                <!-- 这一档不设时间窗、跨天常见，故日期与时刻都给 -->
+                <td class="hit-when">{{ h.when.slice(5, 10) }}<div>{{ h.when.slice(11, 16) }}</div></td>
+                <td v-if="hi === 0" :rowspan="g.hits.length">
+                  <button
+                    v-if="canRiskTag"
+                    type="button" class="row-btn row-btn-tag"
+                    title="判定这张单有没有风险、多大：高 / 中 / 低进风险工单池，无风险不进池。打的是这张单的条目，不改任何一条命中的核实结论"
+                    @click="openEntryTag(g.row)"
+                  >核实打标</button>
+                  <span v-else class="hit-sub" title="打标归客诉专员、投诉督导与管理员">—</span>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+
+        <div class="pager">
+          <div class="pager-left">
+            <span class="pager-total">共 {{ queueRows.length }} 单 · {{ kwHitTotal }} 条命中</span>
+            <span v-if="showQueueSelection && bulkCount > 0" class="pager-selected">已选 {{ bulkCount }} 单</span>
+          </div>
+          <AppPagination
+            :total="queueRows.length"
+            :current="queuePageCurrent"
+            :page-size="queuePageSize"
+            :show-total="false"
+            @change="setQueuePage"
+          />
+        </div>
+      </div>
+
+      <!--
+        已标记段 · 条目表（已入池三轴 / 无风险共用）。
+        🔴 「未标记」三路都不走这张表：「实时监控」走上面的召回清单，「投诉单」「重要紧急」走富列表。
+      -->
+      <div v-if="listView === 'realtime' && queueView !== 'monitoring' && queueRows.length" class="hit-table-wrap report-table-wrap">
+        <table class="hit-table report-table">
+          <thead>
+            <tr>
+              <th style="width: 152px">工单</th>
               <!--
                 🔴 「监控来源」「场景描述」两列**已删**，换成下面这四列，见 `taggedEvidenceView`。
                 列宽合计 1014px（152+88+156+90+104+72+80+96+72+104），加内边距正好占满 1044 的清单区 ——
@@ -5089,65 +5206,15 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
               <th v-if="taggedEvidenceView" style="width: 156px">证据 / 摘要</th>
               <th v-if="taggedEvidenceView" style="width: 90px">客户 / 产品</th>
               <th v-if="taggedEvidenceView" style="width: 104px">SLA</th>
-              <th v-if="queueView !== 'monitoring'" style="width: 72px">打标结论</th>
-              <th v-if="queueView !== 'monitoring'" :style="taggedEvidenceView ? 'width: 80px' : 'width: 104px'">打标人</th>
-              <th v-if="queueView !== 'monitoring'" :style="taggedEvidenceView ? 'width: 96px' : 'width: 128px'">打标时刻</th>
+              <th style="width: 72px">打标结论</th>
+              <th :style="taggedEvidenceView ? 'width: 80px' : 'width: 104px'">打标人</th>
+              <th :style="taggedEvidenceView ? 'width: 96px' : 'width: 128px'">打标时刻</th>
               <th v-if="queueView === 'pooled'" style="width: 72px">池内状态</th>
-              <th
-                v-if="queueView === 'monitoring'"
-                :style="kwEvidenceView ? 'width: 118px' : 'width: 128px'"
-              >进监控时刻</th>
-              <th
-                v-if="queueView === 'monitoring'"
-                :style="kwEvidenceView ? 'width: 76px' : 'width: 84px'"
-              >等待时长</th>
-              <!-- 这一路的操作只有「核实打标」一枚，故比池内那几档（去管控 + 修正）窄一档 -->
-              <th :style="kwEvidenceView ? 'width: 96px' : 'width: 128px'">操作</th>
+              <th style="width: 128px">操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="e in pagedQueueRows" :key="e.id">
-              <td v-if="showQueueSelection">
-                <div
-                  class="hit-cb"
-                  :class="{ checked: bulkPicked.has(e.id) }"
-                  @click.stop="toggleBulkPick(e.id)"
-                >
-                  <CheckOutlined v-if="bulkPicked.has(e.id)" :style="{ color: '#fff', fontSize: '10px' }" />
-                </div>
-              </td>
-              <!--
-                等级 ＝ 本单命中里**最重**那条的词表预设识别等级，与这一路的排队依据、
-                子档分档依据同源；色板沿用现有的风险等级色，不另造一套。
-              -->
-              <td v-if="kwEvidenceView">
-                <span
-                  v-if="rowTopHit(e)"
-                  class="grade-pill"
-                  :style="{
-                    color: RISK_LEVEL_STYLE[rowTopHit(e)!.level].color,
-                    background: RISK_LEVEL_STYLE[rowTopHit(e)!.level].bg,
-                  }"
-                  :title="`词表预设的识别风险等级，取本单命中里最重的一条；人工打标后由判定值覆盖`"
-                >{{ riskLevelText(rowTopHit(e)!.level) }}</span>
-                <span v-else class="hit-sub">—</span>
-              </td>
-              <!-- 风险词：一单多命中时全部并排，超出的折成「+N」，全部词挂悬停 -->
-              <td v-if="kwEvidenceView">
-                <template v-if="rowWords(e).length">
-                  <span
-                    v-for="w in rowWords(e).slice(0, ROW_WORD_VISIBLE)"
-                    :key="w"
-                    class="src-tag kw kw-word"
-                  >{{ w }}</span>
-                  <span
-                    v-if="rowWords(e).length > ROW_WORD_VISIBLE"
-                    class="src-tag kw-more"
-                    :title="`本单命中的全部风险词：${rowWords(e).join('、')}`"
-                  >+{{ rowWords(e).length - ROW_WORD_VISIBLE }}</span>
-                </template>
-                <span v-else class="hit-sub">—</span>
-              </td>
               <td>
                 <button type="button" class="rt-no" @click="openTicket(e.ticketNo)">{{ e.ticketNo }}</button>
                 <!--
@@ -5163,23 +5230,6 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                   class="src-tag also-src"
                   :title="alsoSourceTitle(e)"
                 >兼：{{ s }}</span>
-                <div v-if="kwEvidenceView" class="hit-sub rr-desc" :title="rowTitleOf(e)">{{ rowTitleOf(e) }}</div>
-              </td>
-              <!--
-                命中内容 ＝ 最重那条命中的**原话摘录**。一单多命中时行尾给一枚「+N 条命中」，
-                全部原话挂在它的悬停上 —— 只看一条就定级，判的可能是最轻的那句。
-              -->
-              <td v-if="kwEvidenceView">
-                <div v-if="rowTopHit(e)" class="rr-desc" :title="rowTopHit(e)!.excerpt">{{ rowTopHit(e)!.excerpt }}</div>
-                <span v-else class="hit-sub">—</span>
-                <span
-                  v-if="rowHits(e).length > 1"
-                  class="kw-more"
-                  :title="rowHits(e).map((h) => `【${riskLevelText(h.level)}·${h.matchedWord || h.word}】${h.excerpt}`).join('\n')"
-                >+{{ rowHits(e).length - 1 }} 条命中</span>
-              </td>
-              <td v-if="kwEvidenceView">
-                {{ rowCustomerOf(e) }}<div class="hit-sub">{{ rowGroupOf(e) }}</div>
               </td>
               <!--
                 风险词：**只有带命中记录的行有**。投诉单 / 重要紧急那两路本就不靠词进来，
@@ -5232,7 +5282,7 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                 </template>
                 <span v-else class="hit-sub">—</span>
               </td>
-              <td v-if="queueView !== 'monitoring'">
+              <td>
                 <!-- 无风险不是一档风险等级，故不套等级配色；套上去等于给已排除的东西重新贴风险标 -->
                 <span
                   v-if="e.tag && isPoolLevel(e.tag.result)"
@@ -5242,36 +5292,14 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                 <span v-else-if="e.tag" class="state-chip" :title="e.tag.note">{{ e.tag.result }}</span>
                 <span v-else class="hit-sub">—</span>
               </td>
-              <td v-if="queueView !== 'monitoring'">
+              <td>
                 {{ e.tag?.by ?? '—' }}<div v-if="e.tag" class="hit-sub">{{ e.tag.byRole }}</div>
               </td>
-              <td v-if="queueView !== 'monitoring'" class="hit-when">{{ e.tag?.at ?? '—' }}</td>
+              <td class="hit-when">{{ e.tag?.at ?? '—' }}</td>
               <td v-if="queueView === 'pooled'">
                 <span class="state-chip" :title="e.assignee ? `承办人 ${e.assignee}` : '还没有人领'">{{ queueStatusText(e) }}</span>
               </td>
-              <td v-if="queueView === 'monitoring'" class="hit-when">{{ e.at ?? '—' }}</td>
-              <!--
-                🔴 等待时长恒从**进监控时刻**起算，不从打标时刻（N5）：
-                一条在实时监控里躺了两小时才被打标的，它一进池就是超时态。
-                这是 N5 的直接推论而不是缺陷——打标慢也是这条链在拖，钟不该因为换了个环节就重置。
-              -->
-              <td
-                v-if="queueView === 'monitoring'"
-                class="hit-when rr-waited"
-                :class="{ over: rowOverdue(e) }"
-                title="自进入实时监控起算。打标越慢，它进池时离评估时限就越近；未纳入监控的单还没起走这口钟"
-              >{{ rowWaitedText(e) }}</td>
               <td>
-                <template v-if="queueView === 'monitoring'">
-                  <button
-                    v-if="canRiskTag"
-                    type="button" class="row-btn row-btn-tag"
-                    title="判定这张单有没有风险、多大：高 / 中 / 低进风险工单池，无风险不进池"
-                    @click="openEntryTag(e)"
-                  >核实打标</button>
-                  <span v-else class="hit-sub" title="打标归客诉专员、投诉督导与管理员">—</span>
-                </template>
-                <template v-else>
                   <!--
                     去管控只对**高危**出（基线 ※27）：管控会把工单从原处理人名下拿走，
                     在办量、解决率分母、超时数全变，这个代价不该由一条低危条目触发。
@@ -5293,7 +5321,6 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
                     @click="openEntryTag(e)"
                   >修正</button>
                   <span v-if="!canRiskTag" class="hit-sub" title="打标与修正归客诉专员、投诉督导与管理员">—</span>
-                </template>
               </td>
             </tr>
           </tbody>
@@ -5302,7 +5329,6 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
         <div class="pager">
           <div class="pager-left">
             <span class="pager-total">共 {{ queueRows.length }} 条</span>
-            <span v-if="showQueueSelection && bulkCount > 0" class="pager-selected">已选 {{ bulkCount }} 项</span>
           </div>
           <AppPagination
             :total="queueRows.length"
@@ -5682,33 +5708,6 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
             :show-total="false"
             @change="setReportPage"
           />
-        </div>
-      </div>
-
-      <!--
-        命中台账 · 成效条。词表准确率是本页唯一的规则改进回路，它必须在这一屏里有个落点：
-        底表放宽成全部命中之后，「待核实」也成了台账的一档，这一条把三档与准确率一并交代。
-        沿用筛查结果条的 DOM 与 class（.scan-banner），两处做的都是"这批数据是什么成色"。
-      -->
-      <div v-if="listView === 'judged' && !ticketFocus" class="scan-banner">
-        <div class="sb-stat">
-          命中 <b>{{ effect.total }}</b> 条
-          <span class="sr-fresh">待核实 {{ effect.open }}</span>
-          <span class="sr-dup">已核实 {{ effect.judged }}</span>
-          <span class="sb-hint">
-            确认是风险 {{ confirmedHits.length }}（高{{ confirmedByGrade['高'] }}·中{{ confirmedByGrade['中'] }}·低{{ confirmedByGrade['低'] }}）
-            · 误报 {{ falseHits.length }}
-          </span>
-        </div>
-        <div class="sb-actions">
-          <span class="sb-picked" title="确认是风险 ÷ 已核实 · 还没核实的不进分母，它不该拉低准确率">
-            规则准确率
-            <b
-              v-if="effect.accuracy !== null"
-              :style="{ color: ACC_TONE_COLOR[accTone(effect.accuracy)] }"
-            >{{ Math.round(effect.accuracy * 100) }}%</b>
-            <b v-else>—</b>
-          </span>
         </div>
       </div>
 
@@ -8568,11 +8567,6 @@ const ACC_TONE_COLOR: Record<'bad' | 'mid' | 'good', string> = {
   border: 1px solid #e5e7eb;
   color: #94a3b8;
 }
-/*
- * 「实时监控」证据列里的风险词 chip：一单多命中时并排摆，故要能换行、要有行距。
- * 沿用 .src-tag.kw 的配色（同一路数据、同一件事），只补间距。
- */
-.kw-word { margin: 1px 4px 1px 0; }
 /* 「+N」＝ 这一格还有没摆出来的东西，全部内容挂在它的悬停上。弱化、可 hover */
 .kw-more {
   display: inline-block;
