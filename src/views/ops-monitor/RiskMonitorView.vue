@@ -15,12 +15,16 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { DatePicker, message } from 'ant-design-vue';
 import dayjs, { type Dayjs } from 'dayjs';
-import { ReloadOutlined, ArrowRightOutlined, RightOutlined, SearchOutlined, SettingOutlined, HistoryOutlined, CheckOutlined, UnorderedListOutlined, DownOutlined, TagOutlined, TagsOutlined, EditOutlined, SaveOutlined, FilterOutlined, UserOutlined, PaperClipOutlined, RollbackOutlined } from '@ant-design/icons-vue';
+import { ReloadOutlined, ArrowRightOutlined, RightOutlined, SearchOutlined, SettingOutlined, HistoryOutlined, CheckOutlined, UnorderedListOutlined, DownOutlined, TagOutlined, TagsOutlined, EditOutlined, SaveOutlined, FilterOutlined, RollbackOutlined } from '@ant-design/icons-vue';
 import MetricTipIcon from '@/components/MetricTipIcon.vue';
 import OpActionModal from '@/views/tickets/components/operation/OpActionModal.vue';
 // 协同处理弹窗与工单页底栏那一枚**共用同一个组件**：投诉单在池里与在工单上做的是同一件事，
 // 抄第二份的下场是两个入口的必填项、副作用与履历行文各走各的（本项目在「派生说明行」上刚栽过）
 import OpRiskCollabModal from '@/views/tickets/components/operation/OpRiskCollabModal.vue';
+// 评估弹窗第一区块（入池依据 / 报备信息 + 释放记录 + 本单另有）与工单页 OpRiskAssessModal 共用一个组件；
+// 命中原话取窗 `excerptWindow`、实时监控来源判断 `isKeywordRow` 与附件下载同一个共享文件（本页命中清单 / 打标弹窗也读它）
+import RiskAssessSheet from '@/views/tickets/components/operation/RiskAssessSheet.vue';
+import { excerptWindow, isKeywordRow } from '@/views/tickets/components/operation/riskAssessSheet';
 import AppPagination from '@/components/AppPagination.vue';
 import { opsTip } from '@/mock/opsMonitorTips';
 import { useUserStore } from '@/stores/user';
@@ -41,13 +45,11 @@ import {
   REPORT_SOURCE,
   RISK_TAG_RESULTS,
   isPoolLevel,
-  isVerifyMonitorSource,
   normalizeDecision,
   todayStamp,
   REPORT_ASSESS_LIMIT_MIN,
   type AssessDecision,
   type MonitorSource,
-  type RiskReleaseRecord,
   type RiskTagResult,
 } from '@/stores/riskShared';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
@@ -887,15 +889,6 @@ function openAssess(r: RiskPoolItem) {
 }
 
 /**
- * 这一行是不是**预警词命中**捞进来的。
- * 用处只剩一个：把命中原话摆出来（另两类来源没有原话可摆）。
- * 🔴 **它已经不再决定这一行下一步做什么** —— 三类来源都要打标才进池，见 `needsVerify`。
- */
-function isKeywordRow(r: RiskPoolItem) {
-  return isVerifyMonitorSource(r.source);
-}
-
-/**
  * 这一行下一步该做什么。**判据是有没有 `tag`，不是来源、也不是 `verify.verdict`**。
  *
  * 【为什么换判据】漏斗改版之后**打标已经是进池的前置门槛**：能出现在池子里的 A 线条目
@@ -1067,14 +1060,6 @@ function confirmRelease() {
   message.success(`已释放 ${target.ticketNo}，退回风险工单池等人重新领取`);
 }
 
-/**
- * 历次释放记录，**最近一次在前**。没有被释放过时为空数组（§5.5 ⑥ 的留痕在这里读）。
- * 入参取**结构**而不是 `RiskPoolItem`：与 B 线报备池那一份同形，两处读的是同一格。
- */
-function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
-  return [...(r.releases ?? [])].reverse();
-}
-
 /* ---- 协同处理：**投诉单那一路的工作面**（《【930】》§5.2 / §5C，基线 ※29）---- */
 
 /**
@@ -1134,37 +1119,6 @@ const assessTargetOthers = computed(() => {
   const t = assessTarget.value;
   return t ? riskOthersOf(t.ticketNo, t.id) : [];
 });
-
-/**
- * 打标进池的这一条，它凭什么被判有风险 —— 取本单最近的一条**风险词命中原话**。
- *
- * 【为什么要把原话捞出来】条目的 `desc` 只有一句"沟通记录命中风险词，已自动纳入实时监控"，
- * 说不出客户到底讲了什么。客诉专员要决定升不升级，得先看见那句话本身；
- * 只给「高危」这个结论，他等于在替别人的判断背书。
- *
- * 🔴 **不再要求命中"已核实成立"**：打标已经改成对**条目**四选一，命中的成立/误报
- * 不再是入池判据（见 `riskShared.ReportVerify`）。仍按成立筛的话，一条刚打完高危、
- * 但底下那几条命中还没人单独核实的条目，弹窗里这一块会整块消失——
- * 而它恰恰是这条条目被送来评估的全部理由。
- * 多条时取**命中时刻最近**的那条：弹窗里只摆得下一句，摆最新的那句。
- */
-const assessTargetVerifiedHit = computed(() => {
-  const t = assessTarget.value;
-  if (!t?.tag || !isKeywordRow(t)) return null;
-  const hits = riskTags.hitsOfTicket(t.ticketNo).slice().sort((a, b) => a.when.localeCompare(b.when));
-  return hits.length ? hits[hits.length - 1] : null;
-});
-
-/** 原型：附件名为占位，点击触发浏览器下载 */
-function downloadReportAttachment(name: string) {
-  const blob = new Blob([`（原型演示）${name}\n`], { type: 'application/octet-stream' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 /**
  * 「升级」派生出的新投诉单号（N2）。
@@ -1899,80 +1853,6 @@ const rows = computed(() => allHits.value);
 /** 这条是不是手动筛查并进来的——列表上标一下，来源要可追 */
 function isFromScan(h: RiskHit): boolean {
   return h.id.startsWith('scan-');
-}
-
-// ---- 命中原文片段：取窗与高亮 ----
-// 【为什么要取窗】`excerpt` 存的是**命中字段的全文**——手动筛查那条路径尤其明显，
-// 一整段沟通记录原样进来。整段直出有两个后果：表格行被撑爆，且复核的人得在一大段里
-// 自己找命中词在哪，而他点开这一行要看的恰恰就是那一句。
-//
-// 【为什么截在渲染层而不截数据层】数据层留全文，截过的原文是收不回来的：
-// 悬停看全文、将来的"展开原文"都要靠它。取窗是纯函数、无副作用，重算的代价远小于丢原文。
-//
-// 【为什么锚在 matchedWord 而不是 word】`word` 是规则主词，实际命中的可能是它的同义词，
-// 主词根本不在原文里（「曝光」命中的是「媒体」）——拿主词去定位一无所获，还会走进兜底分支。
-/** 命中词前后各取的字数：两侧合计 80 字上下，够读出一句话的语气，又不至于撑爆表格行 */
-const EXCERPT_CONTEXT = 40;
-/** 命中词在原文里找不到时的兜底长度：只取开头，不假装知道命中在哪 */
-const EXCERPT_FALLBACK = 80;
-
-interface ExcerptWindow {
-  /** 命中词之前的上文 */
-  before: string;
-  /** 命中词本身。兜底分支为空串，此时整段不高亮 */
-  hit: string;
-  /** 命中词之后的下文 */
-  after: string;
-  /**
-   * 该侧被截断了没有。**只有被截的一侧才加省略号**——
-   * 两侧一律加的话，人会以为一句完整的短句前后还有没显示出来的内容。
-   */
-  headTruncated: boolean;
-  tailTruncated: boolean;
-}
-
-/**
- * 取窗结果按「命中词 + 全文」缓存。
- * 模板里 before / hit / after / 两个截断标记各读一次，一行就是五次调用；
- * 缓存让这五次拿到同一个对象，也免得同一份文本被反复切五遍。
- */
-const excerptWindowCache = new Map<string, ExcerptWindow>();
-
-/** 以命中词为中心切一段可读的上下文，供命中清单与打标弹窗共用（三处一份口径） */
-function excerptWindow(h: RiskHit): ExcerptWindow {
-  const text = h.excerpt ?? '';
-  const term = h.matchedWord ?? '';
-  const key = `${term}\u0000${text}`;
-  const cached = excerptWindowCache.get(key);
-  if (cached) return cached;
-  // 命中词出现多次时以**第一次**为中心：客户把话说重是从第一次开始的，
-  // 后几次是重复，从第一次起读才读得出这句话是怎么起来的。
-  const at = term ? text.indexOf(term) : -1;
-  let win: ExcerptWindow;
-  if (at < 0) {
-    // 兜底：matchedWord 与原文对不上（两者不同源，数据可能不一致）。
-    // 此时不猜位置、不报错、更不留空白——照直给开头一段，人至少还看得到原文。
-    win = {
-      before: text.slice(0, EXCERPT_FALLBACK),
-      hit: '',
-      after: '',
-      headTruncated: false,
-      tailTruncated: text.length > EXCERPT_FALLBACK,
-    };
-  } else {
-    // 原文不足窗口长度就取到头/尾为止，不补白：省略号只表示"这一侧还有没显示的内容"
-    const start = Math.max(0, at - EXCERPT_CONTEXT);
-    const end = Math.min(text.length, at + term.length + EXCERPT_CONTEXT);
-    win = {
-      before: text.slice(start, at),
-      hit: text.slice(at, at + term.length),
-      after: text.slice(at + term.length, end),
-      headTruncated: start > 0,
-      tailTruncated: end < text.length,
-    };
-  }
-  excerptWindowCache.set(key, win);
-  return win;
 }
 
 const GRADE_ORDER: Record<RiskLevel, number> = { 高: 0, 中: 1, 低: 2 };
@@ -6833,167 +6713,16 @@ function toggleWordEnabled(w: RiskWord) {
     >
       <div v-if="assessTarget" class="op-form assess-form">
         <!--
-          ① 第一区块：**按原单来路分两种**（PRD §5.3.2，见 `assessTargetFromPool`）
-          · A 线（池内条目）→「入池依据」：风险等级 / 打标人 / 打标时刻 / 打标备注 / 命中原话；
-          · B 线（报备单）→「报备信息」：报备人 / 原因 / 风险类型 / 场景描述 / 附件。
-          卡的骨架与配色两条线共用（对齐工单操作页「风险报备」在队卡片 rr-sheet），
-          分岔只发生在**抬头那几格与卡体里摆什么**。
+          ① 第一区块 + ② 本单另有底栏：**按原单来路分两种**（PRD §5.3.2，A 线「入池依据」/ B 线「报备信息」），
+          与工单页 OpRiskAssessModal 共用 RiskAssessSheet，字段、出现条件与样式只在那一处改。
+          「本单另有」四行仍取 riskOthersOf（assessTargetOthers）。
         -->
-        <section class="assess-sheet" :aria-label="assessTargetFromPool ? '入池依据' : '报备信息'">
-          <header class="assess-sheet-head">
-            <div class="assess-sheet-brand">
-              <div class="assess-sheet-title-row">
-                <!-- 区块名摆在明面上：两条线的第一区块答的不是同一个问题，只靠内容差异读不出来 -->
-                <span class="assess-sheet-kind">{{ assessTargetFromPool ? '入池依据' : '报备信息' }}</span>
-                <button type="button" class="tag-ticket-no assess-ticket-no" @click="openTicket(assessTarget.ticketNo)">
-                  {{ assessTarget.ticketNo }}
-                </button>
-                <span class="assess-sheet-time">
-                  {{ assessTargetFromPool ? '进监控于' : '提交于' }} {{ assessTarget.at }}
-                </span>
-              </div>
-              <div class="assess-sheet-meta">
-                <!--
-                  A 线的抬头 ＝ **打标那一组**（风险等级 / 打标人 / 打标时刻）。
-                  🔴 **这里不出「报备人」「原因」** —— A 线的这两格是 riskQueue 补的恒定占位
-                  （系统（系统） / 其他），不是谁填的数据，摆出来是在说一件没发生的事。
-                -->
-                <template v-if="assessTargetFromPool">
-                  <template v-if="assessTarget.tag">
-                    <span class="assess-meta-pair">
-                      <span class="assess-meta-label">风险等级</span>
-                      <span
-                        class="assess-meta-value"
-                        :class="{ 'assess-meta-warn': assessTarget.tag.result === '高' }"
-                      >{{ isPoolLevel(assessTarget.tag.result) ? riskLevelText(assessTarget.tag.result) : assessTarget.tag.result }}</span>
-                    </span>
-                    <span class="assess-meta-sep" aria-hidden="true" />
-                    <span class="assess-meta-pair">
-                      <UserOutlined class="assess-meta-icon" />
-                      <span class="assess-meta-label">打标人</span>
-                      <span class="assess-meta-value">{{ assessTarget.tag.by }}（{{ assessTarget.tag.byRole }}）</span>
-                    </span>
-                    <span class="assess-meta-sep" aria-hidden="true" />
-                    <span class="assess-meta-pair">
-                      <span class="assess-meta-label">打标时刻</span>
-                      <span class="assess-meta-value">{{ assessTarget.tag.at }}</span>
-                    </span>
-                  </template>
-                  <!--
-                    罕见：进了池却没有打标（旧缓存，见 needsVerify）。不编一个等级出来充数，
-                    只说清缺的正是这一格——评估人由此知道该先去补打标，而不是照着空白下结论。
-                  -->
-                  <span v-else class="assess-meta-pair">
-                    <span class="assess-meta-label">风险等级</span>
-                    <span class="assess-meta-value">未打标</span>
-                  </span>
-                </template>
-                <template v-else>
-                  <span class="assess-meta-pair">
-                    <UserOutlined class="assess-meta-icon" />
-                    <span class="assess-meta-label">报备人</span>
-                    <span class="assess-meta-value">{{ assessTarget.by }}（{{ assessTarget.byRole }}）</span>
-                  </span>
-                  <span class="assess-meta-sep" aria-hidden="true" />
-                  <span class="assess-meta-pair">
-                    <span class="assess-meta-label">原因</span>
-                    <span class="assess-meta-value">{{ assessTarget.reason }}</span>
-                  </span>
-                  <template v-if="assessTarget.category">
-                    <span class="assess-meta-sep" aria-hidden="true" />
-                    <span class="assess-meta-pair">
-                      <span class="assess-meta-label">风险类型</span>
-                      <span class="assess-meta-value assess-meta-warn">{{ assessTarget.category }}</span>
-                    </span>
-                  </template>
-                </template>
-              </div>
-            </div>
-          </header>
-
-          <div class="assess-sheet-body">
-            <!-- A 线：入池说明（系统写的"为什么捞它"）；B 线：报备人填的场景描述 -->
-            <blockquote class="assess-quote">{{ assessTarget.desc }}</blockquote>
-
-            <!--
-              入池依据的**证据那两项**：命中原话 + 打标备注。
-              等级 / 打标人 / 打标时刻已经上了抬头，这里不再复述一遍。
-              条目的 desc 只有一句"命中风险词，已自动纳入实时监控"，说不出客户讲了什么；
-              客诉专员要在知道"监控为什么判它有风险"的前提下决定升不升级。
-              B 线的报备单没有打标也没有命中（它不走那道门），整块 v-if 掉、不留空标题。
-              行式沿用底栏那套 assess-foot-*，两处读起来是同一种"键：值"。
-            -->
-            <div v-if="assessTargetVerifiedHit || assessTarget.tag?.note" class="assess-verify">
-              <!-- 命中原话：与命中清单、打标弹窗同一套取窗与高亮（三处一份口径） -->
-              <div v-if="assessTargetVerifiedHit" class="assess-foot-row">
-                <span class="assess-foot-k">命中原话</span>
-                <span class="assess-foot-v" :title="assessTargetVerifiedHit.excerpt">
-                  <span class="hit-pos">{{ assessTargetVerifiedHit.position }}</span>
-                  <span class="excerpt-quote">「<template v-if="excerptWindow(assessTargetVerifiedHit).headTruncated">…</template>{{ excerptWindow(assessTargetVerifiedHit).before }}<mark v-if="excerptWindow(assessTargetVerifiedHit).hit" class="excerpt-hit">{{ excerptWindow(assessTargetVerifiedHit).hit }}</mark>{{ excerptWindow(assessTargetVerifiedHit).after }}<template v-if="excerptWindow(assessTargetVerifiedHit).tailTruncated">…</template>」</span>
-                  <span class="assess-foot-sub">
-                    风险词「{{ assessTargetVerifiedHit.word }}」<template v-if="assessTargetVerifiedHit.matchedWord && assessTargetVerifiedHit.matchedWord !== assessTargetVerifiedHit.word">，命中「{{ assessTargetVerifiedHit.matchedWord }}」</template>
-                  </span>
-                </span>
-              </div>
-              <!-- 打标时填的备注：打标人当时怎么想的，比结论本身更能帮下一个人接上 -->
-              <div v-if="assessTarget.tag?.note" class="assess-foot-row">
-                <span class="assess-foot-k">打标备注</span>
-                <span class="assess-foot-v">{{ assessTarget.tag.note }}</span>
-              </div>
-            </div>
-            <ul v-if="assessTarget.attachments.length" class="assess-files">
-              <li v-for="a in assessTarget.attachments" :key="a" class="assess-file">
-                <PaperClipOutlined />
-                <button
-                  type="button"
-                  class="assess-file-btn"
-                  :title="`下载 ${a}`"
-                  @click="downloadReportAttachment(a)"
-                >
-                  {{ a }}
-                </button>
-              </li>
-            </ul>
-            <!--
-              释放记录（§5.5 ⑥「在**两个池**的条目详情上可见」）。**没被释放过整段不出**。
-              🔴 **它必须摆在评估人眼前**：这条条目刚被人领走过又退回来，退回的理由
-              往往正是"我判不了 / 不该我办"——现在轮到你判，那句话是你要读的第一手材料。
-              历次全列、最近一次在前（累积不覆盖）。
-              🔴 **与 B 线报备池、工单「风险报备」Tab 的在队卡同一口径同一版式**
-              （`RiskReportPoolPanel` 的 `.assess-releases` / `OpRiskMonitorTab` 的 `.rr-releases`）：
-              同一条留痕在三处长得不一样，人只会以为其中一处少显示了东西。
-            -->
-            <div v-if="releasesOf(assessTarget).length" class="assess-releases">
-              <div class="assess-releases-head">
-                <RollbackOutlined />
-                释放记录（已释放 {{ releasesOf(assessTarget).length }} 次）
-              </div>
-              <div
-                v-for="(rel, i) in releasesOf(assessTarget)"
-                :key="i"
-                class="assess-release"
-              >
-                <div class="assess-release-head">
-                  <span class="assess-release-who">{{ rel.by }}（{{ rel.byRole }}）</span>
-                  <span class="assess-release-at">{{ rel.at }}</span>
-                </div>
-                <div class="assess-release-reason">{{ rel.reason }}</div>
-              </div>
-            </div>
-          </div>
-
-          <!--
-            ② 本单另有：**固定区块**（§5.4 ⑦ / R62），收在卡片底栏。四行（风险词命中 / 打标结论 /
-            历史报备 / 协同处理）取数与另外两个评估入口同源（`riskOthersOf`），无取值的行写「无」，区块不隐藏。
-          -->
-          <footer class="assess-sheet-foot" aria-label="本单另有">
-            <div class="assess-foot-head">本单另有</div>
-            <div v-for="o in assessTargetOthers" :key="o.label" class="assess-foot-row">
-              <span class="assess-foot-k">{{ o.label }}</span>
-              <span class="assess-foot-v">{{ o.text }}</span>
-            </div>
-          </footer>
-        </section>
+        <RiskAssessSheet
+          :target="assessTarget"
+          :others="assessTargetOthers"
+          link-ticket
+          @open-ticket="openTicket"
+        />
 
         <!-- ③ 评估表单：二选一决策 + 必填说明 -->
         <section class="assess-block assess-block-form">
@@ -8701,177 +8430,6 @@ function toggleWordEnabled(w: RiskWord) {
   background: #fff;
 }
 
-/* ① 第一区块：入池依据（A 线）/ 报备信息（B 线），共用一张卡的骨架（对齐工单侧 rr-sheet） */
-.assess-sheet {
-  background: #fff;
-  border: 1px solid #fed7aa;
-  border-radius: 10px;
-  overflow: hidden;
-  box-shadow: 0 1px 3px rgba(234, 88, 12, 0.06);
-}
-.assess-sheet-head {
-  padding: 12px 14px;
-  background: linear-gradient(180deg, #fff7ed 0%, #fff 100%);
-  border-bottom: 1px solid #ffedd5;
-}
-.assess-sheet-brand { min-width: 0; }
-.assess-sheet-title-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.assess-ticket-no { font-size: 13px; }
-/*
- * 区块名（入池依据 / 报备信息）。做成小徽标而不是标题行：卡本身已经有描边与暖色抬头，
- * 再压一行 h4 会把弹窗第一屏撑掉一截，而这里要说的只是"这一格答的是哪个问题"。
- */
-.assess-sheet-kind {
-  flex: none;
-  padding: 1px 6px;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 18px;
-  color: #9a3412;
-  background: #ffedd5;
-  border-radius: 4px;
-}
-.assess-sheet-time {
-  font-size: 12px;
-  font-weight: 600;
-  color: #9a3412;
-  font-variant-numeric: tabular-nums;
-}
-.assess-sheet-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 0;
-  margin-top: 8px;
-}
-.assess-meta-pair {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-}
-.assess-meta-icon { color: #9ca3af; font-size: 12px; }
-.assess-meta-label { color: #9ca3af; }
-.assess-meta-value { color: #374151; font-weight: 600; }
-.assess-meta-warn { color: #c2410c; }
-.assess-meta-sep {
-  width: 1px;
-  height: 12px;
-  margin: 0 10px;
-  background: #e5e7eb;
-  flex: none;
-}
-.assess-sheet-body { padding: 12px 14px 14px; }
-.assess-quote {
-  margin: 0;
-  padding: 10px 12px;
-  font-size: 13px;
-  line-height: 1.65;
-  color: #1f2937;
-  background: #f8fafc;
-  border-left: 3px solid #fdba74;
-  border-radius: 0 6px 6px 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-/*
- * 核实结论块：行式直接复用底栏那套 assess-foot-*，这里只给它一个容器。
- * 底色取 .assess-quote 同一个 #f8fafc、描边取 .assess-file 同一个 #e2e8f0——
- * 不另起一套色，它与描述块是同一层级的"这条是怎么回事"，不该比描述更抢眼。
- */
-.assess-verify {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 10px;
-  padding: 10px 12px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-}
-.assess-files {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 10px 0 0;
-  padding: 0;
-  list-style: none;
-}
-.assess-file {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  font-size: 11px;
-  color: #475569;
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
-  border-radius: 4px;
-}
-.assess-file :deep(.anticon) { color: #94a3b8; font-size: 11px; }
-.assess-file-btn {
-  padding: 0;
-  border: none;
-  background: none;
-  font: inherit;
-  color: #4338ca;
-  cursor: pointer;
-  line-height: 1.4;
-}
-.assess-file-btn:hover { color: #1d4ed8; text-decoration: underline; }
-
-/* ---- 释放记录（评估弹窗内 · §5.5 ⑥）：与 B 线报备池那一份**逐行同值**，改一处必两处同改 ---- */
-.assess-releases {
-  margin-top: 10px;
-  padding: 8px 10px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-}
-.assess-releases-head {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #64748b;
-}
-.assess-release {
-  margin-top: 6px;
-}
-/* 分隔线只给第二条起。⚠️ 不能写 `:first-of-type`——标题也是 div，规则会落空 */
-.assess-release + .assess-release {
-  padding-top: 6px;
-  border-top: 1px dashed #e2e8f0;
-}
-.assess-release-head {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-.assess-release-who {
-  font-size: 11px;
-  font-weight: 600;
-  color: #374151;
-}
-.assess-release-at {
-  font-size: 11px;
-  color: #9ca3af;
-  font-variant-numeric: tabular-nums;
-}
-.assess-release-reason {
-  margin-top: 2px;
-  font-size: 12px;
-  line-height: 1.55;
-  color: #4b5563;
-  word-break: break-word;
-}
-
 /* ---- 释放弹窗 ---- */
 .rm-release {
   display: flex;
@@ -8879,52 +8437,6 @@ function toggleWordEnabled(w: RiskWord) {
   gap: 8px;
 }
 .rm-release-hint { margin: 0; }
-
-/* ② 本单另有：卡片底栏 */
-.assess-sheet-foot {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px 14px 12px;
-  background: #fafafa;
-  border-top: 1px dashed #e5e7eb;
-}
-.assess-foot-row {
-  display: grid;
-  grid-template-columns: 68px 1fr;
-  gap: 8px;
-  align-items: start;
-  font-size: 12px;
-}
-.assess-foot-head { font-size: 12px; font-weight: 600; color: #6b7280; }
-.assess-foot-k { color: #9ca3af; line-height: 1.5; }
-.assess-foot-v { color: #374151; font-weight: 600; line-height: 1.5; }
-.assess-foot-sub {
-  display: block;
-  margin-top: 2px;
-  font-size: 11px;
-  font-weight: 400;
-  color: #64748b;
-}
-.assess-foot-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.assess-foot-item {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  font-size: 11px;
-  color: #475569;
-}
-.assess-foot-at { color: #94a3b8; font-variant-numeric: tabular-nums; }
-.assess-foot-dec { color: #374151; font-weight: 600; }
-.assess-foot-esc { color: #64748b; font-variant-numeric: tabular-nums; }
 
 /* ③ 评估表单：标签与决策同一行（须自带 display:flex，不能单靠 op-field-h） */
 .assess-dec-row {

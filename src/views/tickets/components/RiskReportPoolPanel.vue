@@ -24,6 +24,8 @@ import {
 import TicketFilterBar from './TicketFilterBar.vue';
 import TicketTitleCell from './TicketTitleCell.vue';
 import OpActionModal from './operation/OpActionModal.vue';
+// 报备附件的"下载"与风险监控页、工单页两个评估弹窗同一个实现（原型内造一个同名占位文件）
+import { downloadReportAttachment } from './operation/riskAssessSheet';
 import { useUserStore } from '@/stores/user';
 import { useRiskReportStore, type RiskReport } from '@/stores/riskReports';
 // 领取走合并层的 `claim`：它一并落了「谁何时接走这条」的通知留痕，
@@ -328,20 +330,6 @@ function claim(r: RiskReport) {
   }
   message.success(`已领取 ${r.ticketNo}，请给出评估结论`);
   openAssess(r);
-}
-
-/**
- * 报备附件的"下载"。**与风险监控页那个评估弹窗同一套做法**（原型内造一个同名占位文件）——
- * 两处都是"评估人要看报备人交上来的证据"，做法不一致会让人以为其中一处坏了。
- */
-function downloadReportAttachment(name: string) {
-  const blob = new Blob([`（原型演示）${name}\n`], { type: 'application/octet-stream' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 /* ---- 释放（PRD v3.5 §5.5） ---- */
