@@ -266,6 +266,30 @@ const BASE_TICKETS: Ticket[] = [
     createdAt: '2026-08-10 09:00', updatedAt: '2026-08-16 16:00',
     responded: true,
   },
+  // 结案后补充·商机：最后处理人与当前坐席同组（二线技术支持组）→ 商机编号 / 结案后备注可编辑，底栏只留「保存」
+  {
+    id: 'fd-lead-closed', no: 'IFLYSJ-20260818-00003', type: '商机', channel: '邮件',
+    title: '企业版扩容采购意向已转销售', smartMarks: [],
+    customer: '钱立', vip: false, product: '开放平台',
+    nodeStatus: '已结案', nodeStep: 5, nodeTotal: 5, priority: 'P2',
+    slaText: '—', slaSub: '已结案·停表', slaState: 'ok', slaMinutes: 9999,
+    assignee: '王坐席', tab: 'mine', groupId: 'line2',
+    customerPhone: '13755550123', productCategory: '开放平台',
+    createdAt: '2026-08-12 10:20', updatedAt: '2026-08-18 15:40',
+    responded: true,
+  },
+  // 结案后补充·商机：最后处理人在硬件缺陷组，与当前坐席不同组 → 两个字段只读、无底栏
+  {
+    id: 'fd-lead-closed-other', no: 'IFLYSJ-20260818-00004', type: '商机', channel: '电话',
+    title: '学习机批量采购咨询已转渠道', smartMarks: [],
+    customer: '贺敏', vip: false, product: '学习机 T20',
+    nodeStatus: '已结案', nodeStep: 5, nodeTotal: 5, priority: 'P3',
+    slaText: '—', slaSub: '已结案·停表', slaState: 'ok', slaMinutes: 9999,
+    assignee: '陈坐席', tab: 'done', handledByMe: true, groupId: 'hardware',
+    customerPhone: '13755550456', productCategory: '智能硬件',
+    createdAt: '2026-08-11 14:05', updatedAt: '2026-08-18 11:10',
+    responded: true,
+  },
   // D9 已升级外投：已有子单 → 点补充**跳子单**；本单整页冻结 + 接管横幅。
   //   本单来源＝外投渠道，走的是升阶**第二跳**（内投→外投），依据基线 §1
   //   直接落子状态「已升级外投」——不再靠字段在运行时拼名。
