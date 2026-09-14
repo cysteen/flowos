@@ -59,10 +59,6 @@ const props = defineProps<{
   postClose?: boolean;
   /** 终态下两个字段是否仍可编辑（非已取消 + 当前用户在最后处理人所在组） */
   postCloseEditable?: boolean;
-  /** 工单当前状态（终态提示条用） */
-  ticketStatus?: string;
-  /** 最后处理人所在组名（终态提示条用） */
-  lastHandlerGroup?: string;
 }>();
 
 const emit = defineEmits<{
@@ -77,15 +73,6 @@ const contentLocked = computed(() => !!props.readonly || !!props.postClose);
 const postCloseFieldDisabled = computed(
   () => !!props.readonly || (!!props.postClose && !props.postCloseEditable),
 );
-
-/** 终态提示条文案 */
-const postCloseTip = computed(() => {
-  const head = `工单「${props.ticketStatus ?? '已结案'}」，处理内容已锁定`;
-  const fields = isLead.value ? '商机编号、结案后备注' : '结案后备注';
-  if (props.ticketStatus === '已取消') return `${head}。`;
-  if (props.postCloseEditable) return `${head}；${fields}仍可编辑，修改后点击底部「保存」提交。`;
-  return `${head}；${fields}仅最后处理人所在组${props.lastHandlerGroup ? `（${props.lastHandlerGroup}）` : ''}成员可编辑。`;
-});
 
 const isComplaint = computed(() => props.ticketType === '投诉');
 const isConsult = computed(() => props.ticketType === '咨询');
@@ -236,10 +223,6 @@ function chipActiveClass(key: SupplementChip): string {
 <template>
   <a-config-provider :component-disabled="contentLocked">
   <div class="process-form">
-    <div v-if="postClose" class="post-close-bar">
-      <CheckCircleOutlined class="pcb-icon" />
-      <span>{{ postCloseTip }}</span>
-    </div>
 
     <!-- 处理记录（所有工单类型共用核心区） -->
     <OpCollapsibleSection
@@ -431,8 +414,6 @@ function chipActiveClass(key: SupplementChip): string {
     <OpCollapsibleSection
       title="结案后备注"
       :icon="MessageOutlined"
-      :badge="postClose && postCloseEditable ? '可编辑' : ''"
-      badge-variant="hint"
       :expanded="expandedSections.closingNote"
       @toggle="emit('toggleSection', 'closingNote')"
     >
@@ -445,7 +426,7 @@ function chipActiveClass(key: SupplementChip): string {
         @update:value="(v: string) => patch({ closingNote: v })"
       />
       <div class="cn-foot">
-        <span>{{ form.closingNoteUpdatedAt ? `最近提交：${form.closingNoteUpdatedBy} ${form.closingNoteUpdatedAt}` : '点击底部「保存」提交，每次提交记入处理履历' }}</span>
+        <span>{{ form.closingNoteUpdatedAt ? `最近提交：${form.closingNoteUpdatedBy} ${form.closingNoteUpdatedAt}` : '' }}</span>
         <span>{{ (form.closingNote ?? '').length }}/500</span>
       </div>
     </OpCollapsibleSection>
@@ -455,12 +436,6 @@ function chipActiveClass(key: SupplementChip): string {
 
 <style scoped>
 .process-form { display: flex; flex-direction: column; gap: 12px; }
-.post-close-bar {
-  display: flex; align-items: center; gap: 6px;
-  padding: 6px 12px; border-radius: 8px; font-size: 12px;
-  color: #065f46; background: #ecfdf5; border: 1px solid #a7f3d0;
-}
-.pcb-icon { color: #059669; }
 .cn-foot {
   display: flex; justify-content: space-between; gap: 8px;
   margin-top: -4px; font-size: 12px; color: #9ca3af;

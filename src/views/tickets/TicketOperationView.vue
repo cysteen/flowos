@@ -876,10 +876,9 @@ const tabsReadonly = computed(() => !!supersededBy.value);
  * 不改状态、不重算 SLA、不触发调研，只记履历。
  */
 const postClose = computed(() => isTicketTerminated(d.value.status) && !supersededBy.value);
-const lastHandlerGroup = computed(() => handlerGroupOf(d.value.lastHandler));
 const postCloseEditable = computed(() => {
   if (!postClose.value || d.value.status === '已取消') return false;
-  const gid = lastHandlerGroup.value?.id;
+  const gid = handlerGroupOf(d.value.lastHandler)?.id;
   return !!gid && handlerGroupOf(currentHandlerName(user.roleKey, user.name))?.id === gid;
 });
 
@@ -1794,9 +1793,7 @@ watch(
           :tab-dots="processTabDots"
           :readonly="tabsReadonly"
           :post-close="postClose"
-          :post-close-editable="postCloseEditable"
-          :last-handler-group="lastHandlerGroup?.label"
-          @toggle-section="toggleSection"
+          :post-close-editable="postCloseEditable"          @toggle-section="toggleSection"
           @select-chip="selectChip"
           @update:form="updateForm"
           @update:tab-data="updateTabData"

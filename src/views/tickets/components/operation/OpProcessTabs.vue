@@ -68,8 +68,6 @@ const props = defineProps<{
   postClose?: boolean;
   /** 终态下商机编号 / 结案后备注是否仍可编辑（非已取消 + 当前用户在最后处理人所在组） */
   postCloseEditable?: boolean;
-  /** 最后处理人所在组名（提示条用） */
-  lastHandlerGroup?: string;
 }>();
 
 const emit = defineEmits<{
@@ -191,9 +189,7 @@ defineExpose({ switchTab });
         :ticket-no="ticketNo"
         :readonly="activeTabReadonly"
         :post-close="postClose"
-        :ticket-status="detail.status"
         :post-close-editable="postCloseEditable"
-        :last-handler-group="lastHandlerGroup"
         @toggle-section="emit('toggleSection', $event)"
         @select-chip="emit('selectChip', $event)"
         @update:form="emit('update:form', $event)"
