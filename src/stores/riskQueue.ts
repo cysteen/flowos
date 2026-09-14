@@ -985,7 +985,7 @@ function newestQueueStamp(saved: { entries: RiskQueueEntry[] }): string {
  * 【为什么要排这个序】按单号打标（`recordTag`）时同一张单理论上可能有多条 A 线条目，
  * 而人在打标弹窗里判的是"这张单有没有风险"。先给还没打过标的那条（实时监控中），
  * 其次是打完还没人动的（待分派 / 已标记无风险，都属于二次修改），
- * 最后才轮到已经有人在办或已有结论的 —— 那两态改标不会把条目挪出池，见 `recordTag`。
+ * 最后才轮到已经有人在办或已有结论的（已领取的改判无风险会出池、已结论的不许改判无风险），见 `recordTag`。
  */
 const TAG_TARGET_ORDER: QueueStatus[] = ['实时监控中', '待分派', '已标记无风险', '评估中', '已评估'];
 
@@ -1000,6 +1000,17 @@ const AUTO_DESC: Record<QueueSource, string> = {
   投诉单: '在办投诉类工单，自动纳入实时监控，待打标。',
   重要紧急: '优先级为 P0 / P1 的非投诉工单，自动纳入实时监控，待打标。',
 };
+
+/** 已结论条目改判为无风险时的拦截提示。界面置灰提示与 store 拒绝原因共用这一句 */
+export const NO_RISK_LOCKED_TIP = '已出结论的条目不能改判为无风险';
+
+/**
+ * 这条条目**能不能打为「无风险」**：已结论（落库值「已评估」）的不能，其余态都能。
+ * 界面据此置灰「无风险」选项，`recordTag` / `recordTagFor` 据此拒绝。
+ */
+export function canTagNoRisk(status: QueueStatus): boolean {
+  return status !== '已评估';
+}
 
 /** 一次打标要填的东西。`amendReason` 只在**二次修改**时有，首次打标没有 */
 export interface RiskTagInput {
@@ -1129,7 +1140,7 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
    * **视图一 · 待打标**：在实时监控、尚未打标。
    *
    * 🔴 三个视图一律按 `status` 筛，**不按 `tag` 有没有值**。两者在今天的数据上等价，
-   * 但状态机认的是 `status`（`recordTag` 改的就是它），而「评估中 / 已评估的条目改标不改状态」
+   * 但状态机认的是 `status`（`recordTag` 改的就是它），而「池内条目改等级不改状态」
    * 这一条恰恰会让两个判据分家：那种条目 `tag` 变了、位置没变。
    * 视图与状态机各认各的判据，屏幕上就会出现"它在这个视图里、按状态却不该在"。
    */
@@ -1191,15 +1202,18 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
    *   实时监控中     ──低/中/高──▶ 待分派（进池，等人领取评估）
    *   实时监控中     ──无风险────▶ 已标记无风险（不进池，终态）
    *   已标记无风险   ──低/中/高──▶ 待分派        （二次修改：改判有风险，补进池）
-   *   待分派         ──无风险────▶ 已标记无风险  （二次修改：改判没风险，撤出池）
-   *   待分派         ──低/中/高──▶ 待分派        （只换等级，留在原地）
-   *   评估中/已评估  ──任何结论──▶ 原状态不动     （只更新等级，见下）
+   *   待分派 / 评估中 ──无风险────▶ 已标记无风险  （二次修改：改判没风险，撤出池，承办人清空）
+   *   待分派 / 评估中 ──低/中/高──▶ 原状态不动     （只换等级，留在原地）
+   *   已评估          ──低/中/高──▶ 已评估         （只换等级，结论不动）
+   *   已评估          ──无风险────▶ **拒绝**       （`NO_RISK_LOCKED_TIP`，本函数返回 false、一格不改）
    * ```
    *
-   * 🔴 **评估中 / 已评估的不跟着状态走**：那一刻已经有人在办、或者已经给出了评估结论。
-   * 改标把它从池里拽走，等于让评估人手上的活凭空消失、或者让一条已有结论的记录退回无结论态，
-   * 而评估结论是**提交即固化不可改**的（§9 规则 22）。改标仍然记下来（等级要更新、历史要留痕），
-   * 但**不改变它在池子里的位置**。
+   * 🔴 **改判无风险即出池**（《【930】》§5A.3「改判为无风险清空该格」）：条目在池里的前提是
+   * 打标为低 / 中 / 高，留一条「无风险」在池里会让 `高 + 中 + 低 ＝ 全部有风险` 当场不成立 ——
+   * 它被三个轴数到、却不进任何一个等级档，也不进「无风险」档。待领取、已领取的一律出池落
+   * 「已标记无风险」，已领取的承办人一并清空。
+   * 🔴 **已结论的不许改判为无风险**：评估 / 协同结论提交即固化（§9 规则 22），出池就等于把一条
+   * 已有结论的记录挪出「已结论」。故 store 侧拦截，界面上该选项置灰（`canTagNoRisk`）。
    *
    * 【二次修改与历史】现行结论覆盖 `tag`，同时向 `stores/riskTags.ts` 追加一条 ——
    * 追加不覆盖，故"从中危改成无风险、又改回高危"这条爬坡读得出先后。
@@ -1212,6 +1226,8 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
   function recordTag(entryId: string, input: RiskTagInput): boolean {
     const e = findById(entryId);
     if (!e) return false;
+    // 已结论的条目不许改判为无风险（见上方迁移表），在任何写入之前拦下
+    if (!isPoolLevel(input.result) && !canTagNoRisk(e.status)) return false;
 
     /*
      * 履历第八类要的两个"旧值"，**必须在覆盖之前取**：
@@ -1275,9 +1291,10 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
         delete e.assignee;
       }
     } else {
-      // 无风险的不进池，投影一并清掉：它只在进了池的条目上有意义
+      // 无风险的不进池，投影一并清掉：它只在进了池的条目上有意义。
+      // 待领取、已领取的一律出池（已领取的承办人清空）；已结论的已在函数开头拦下
       delete e.verify;
-      if (e.status === '实时监控中' || e.status === '待分派') {
+      if (e.status === '实时监控中' || e.status === '待分派' || e.status === '评估中') {
         e.status = '已标记无风险';
         delete e.assignee;
       }
@@ -1515,6 +1532,9 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
   function recordTagFor(ticketNo: string, input: RiskTagInput): { ok: boolean; reason?: string } {
     const got = ensureEntryFor(ticketNo);
     if (!got.ok) return { ok: false, reason: got.reason };
+    if (!isPoolLevel(input.result) && !canTagNoRisk(got.entry.status)) {
+      return { ok: false, reason: NO_RISK_LOCKED_TIP };
+    }
     return { ok: recordTag(got.entry.id, input) };
   }
 

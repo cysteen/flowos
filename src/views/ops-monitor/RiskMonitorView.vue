@@ -32,7 +32,7 @@ import { useRiskTagStore, type RiskTagEntry } from '@/stores/riskTags';
 // 池是两条线（A 线自动入池 / B 线二线报备）合并后的那一个工作面，故读的是合并层 riskPool；
 // 枚举与时限等两线共用的口径在 riskShared，两条线各自的模型在各自的 store 里。
 import { useRiskPoolStore, type RiskPoolItem } from '@/stores/riskPool';
-import { useRiskQueueStore, type RiskQueueEntry } from '@/stores/riskQueue';
+import { NO_RISK_LOCKED_TIP, canTagNoRisk, useRiskQueueStore, type RiskQueueEntry } from '@/stores/riskQueue';
 import {
   ASSESS_DECISIONS,
   MONITOR_SOURCES,
@@ -3283,7 +3283,7 @@ function saveBulk() {
   message.success(
     isPoolLevel(result)
       ? `已对 ${done} 条打标「${riskLevelText(result)}」，已进风险工单池等待领取`
-      : `已将 ${done} 条标记为无风险，不进池；可在「已标记无风险」视图里复核`,
+      : `已将 ${done} 条标记为无风险，不进池；可在「已标记 · 无风险」档里复核`,
   );
   bulkOpen.value = false;
   clearBulk();
@@ -3314,8 +3314,20 @@ const entryTagDirty = computed(() => {
   if (!cur) return true;
   return entryTagResult.value !== cur.result || entryTagNote.value.trim() !== cur.note;
 });
+/**
+ * 这条条目已出结论：「无风险」一档置灰（《【930】》§5A.3 改判规则；store 侧 `recordTag` 同样拒绝）。
+ * 读条目上的现行状态，不读行快照。
+ */
+const entryTagNoRiskLocked = computed(
+  () => !!entryTagTarget.value && !canTagNoRisk(entryTagTarget.value.entry.status),
+);
+function pickEntryTagResult(r: RiskTagResult) {
+  if (r === NO_RISK && entryTagNoRiskLocked.value) { message.warning(NO_RISK_LOCKED_TIP); return; }
+  entryTagResult.value = r;
+}
 const canSaveEntryTag = computed(() => {
   if (!canRiskTag.value || !entryTagResult.value) return false;
+  if (entryTagResult.value === NO_RISK && entryTagNoRiskLocked.value) return false;
   if (entryTagAmend.value) return entryTagDirty.value && !!entryTagReason.value.trim();
   return true;
 });
@@ -3353,6 +3365,9 @@ function saveEntryTag() {
   if (amend && !entryTagReason.value.trim()) { message.warning('请填写修正原因'); return; }
   const prev = target.tag?.result;
   const result = entryTagResult.value;
+  // 读条目上的现行状态，不读行快照：弹窗开着的这段时间里别人可能已经给了结论
+  const prevStatus = target.entry.status;
+  if (!isPoolLevel(result) && !canTagNoRisk(prevStatus)) { message.warning(NO_RISK_LOCKED_TIP); return; }
   const ok = reportStore.recordTag(target.entry.id, {
     result,
     note: entryTagNote.value.trim(),
@@ -3366,21 +3381,28 @@ function saveEntryTag() {
   /*
    * 提示必须把**去向**说出来，不能只说"保存成功"：打标的人做完这一步会以为事儿结了，
    * 而低/中/高的那一批其实刚进池、还等着有人领了给评估结论。
-   * 评估中 / 已评估的条目改标**不改变它在池子里的位置**（见 store 的 `recordTag`），
-   * 这一支要单独说清，否则人会以为自己刚把一条别人正在办的活拽走了。
+   * 去向按**保存前**的状态分：池内条目改等级不挪位置；待领取 / 已领取改判无风险即出池
+   * （已领取的承办人一并清空，见 store 的 `recordTag`）。
    */
-  const stuck = target.status === '评估中' || target.status === '已评估';
-  message.success(
-    stuck
-      ? `已把 ${target.ticketNo} 的风险等级改为「${result}」；该条已在评估中或已有结论，位置不变`
-      : isPoolLevel(result)
-        ? amend
-          ? `已把 ${target.ticketNo} 的打标由「${prev}」改为「${riskLevelText(result)}」，已在风险工单池`
-          : `已对 ${target.ticketNo} 打标「${riskLevelText(result)}」，已进风险工单池等待领取`
-        : amend
-          ? `已把 ${target.ticketNo} 改判为无风险，已撤出风险工单池`
-          : `已将 ${target.ticketNo} 标记为无风险，不进池；可在「已标记无风险」视图里复核`,
-  );
+  const no = target.ticketNo;
+  const prevText = prev && isPoolLevel(prev) ? riskLevelText(prev) : prev;
+  let tip: string;
+  if (isPoolLevel(result)) {
+    const lv = riskLevelText(result);
+    if (prevStatus === '评估中' || prevStatus === '已评估') tip = `已把 ${no} 的风险等级改为「${lv}」，池内处置阶段不变`;
+    else if (prevStatus === '待分派') tip = `已把 ${no} 的打标由「${prevText}」改为「${lv}」，仍在风险工单池等待领取`;
+    else if (prevStatus === '已标记无风险') tip = `已把 ${no} 改判为「${lv}」，已补进风险工单池等待领取`;
+    else tip = `已对 ${no} 打标「${lv}」，已进风险工单池等待领取`;
+  } else if (prevStatus === '评估中') {
+    tip = `已把 ${no} 改判为无风险，已撤出风险工单池、承办人已清空；可在「已标记 · 无风险」档里复核`;
+  } else if (prevStatus === '待分派') {
+    tip = `已把 ${no} 改判为无风险，已撤出风险工单池；可在「已标记 · 无风险」档里复核`;
+  } else if (prevStatus === '已标记无风险') {
+    tip = `已更新 ${no} 的无风险打标`;
+  } else {
+    tip = `已将 ${no} 标记为无风险，不进池；可在「已标记 · 无风险」档里复核`;
+  }
+  message.success(tip);
 }
 
 // ---- 监控雷达 ----
@@ -4401,7 +4423,7 @@ function toggleWordEnabled(w: RiskWord) {
           <div class="dash-links">
             <span
               class="dash-links-k"
-              :title="`共 ${ticketGradeDist.total} 张在办工单有工单级风险等级（该单已打标条目与已核实成立的命中取最高；打为无风险的、未打标的、误报与未核实的都不进分母）；占比按最大余数法取整，之和恒为 100%。此处数的是工单，与左栏「确认是风险」的高中低数的是命中，两组数天生不等`"
+              :title="`共 ${ticketGradeDist.total} 张在办工单有工单级风险等级（该单已打标条目与已核实成立的命中取最高；打为无风险的、未打标的、误报与未核实的都不进分母）；占比按最大余数法取整，之和恒为 100%。此处数的是工单，与左栏「全部有风险」的高中低数的是条目，两组数天生不等`"
             >风险等级</span>
             <span
               v-for="r in ticketGradeDist.rows"
@@ -4847,7 +4869,7 @@ function toggleWordEnabled(w: RiskWord) {
         <template v-else-if="queueView === 'monitoring'">这一路没有待判的工单 —— 换一路看，或用右上角「手动筛查」去存量里捞</template>
         <template v-else-if="queueView === 'noRisk'">当前没有被判为无风险的条目</template>
         <template v-else-if="tagLevelText">当前没有打标为{{ tagLevelText }}的条目</template>
-        <template v-else>当前没有已入池的条目 —— 打标为低 / 中 / 高的条目会落在这里</template>
+        <template v-else>当前没有有风险的条目 —— 打标为低 / 中 / 高的条目会落在这里</template>
       </div>
 
       <!--
@@ -5180,7 +5202,11 @@ function toggleWordEnabled(w: RiskWord) {
                   <button
                     v-if="canRiskTag"
                     type="button" class="row-btn row-btn-amend"
-                    :title="queueView === 'noRisk' ? '重新判定这条是否真的无风险；改判为低 / 中 / 高会补进风险工单池' : '重新判定风险等级；改判为无风险会把它撤出风险工单池'"
+                    :title="queueView === 'noRisk'
+                      ? '重新判定这条是否真的无风险；改判为低 / 中 / 高会补进风险工单池'
+                      : canTagNoRisk(e.status)
+                        ? '重新判定风险等级；改判为无风险会把它撤出风险工单池'
+                        : `重新判定风险等级；${NO_RISK_LOCKED_TIP}`"
                     @click="openEntryTag(e)"
                   >修正</button>
                   <span v-if="!canRiskTag" class="hit-sub" title="打标与修正归客诉专员、投诉督导与管理员">—</span>
@@ -6226,7 +6252,7 @@ function toggleWordEnabled(w: RiskWord) {
         <div class="tag-form-foot">
           {{
             bulkResult === NO_RISK
-              ? '标记为无风险的不进池，落「已标记无风险」视图，可在那里复核'
+              ? '标记为无风险的不进池，落「已标记 · 无风险」档，可在那里复核'
               : '低 / 中 / 高一律进风险工单池等待领取；本批须同一结论，有分歧请分次打标'
           }}
         </div>
@@ -6330,13 +6356,16 @@ function toggleWordEnabled(w: RiskWord) {
         <div class="op-field op-field-h tag-field-block">
           <div class="op-label req">打标结论</div>
           <div class="op-radio-cards op-radio-cards--row tag-radio-compact tag-radio-fill tag-radio-4">
+            <!-- 已结论的条目「无风险」一档置灰（store 侧 recordTag 同样拒绝），见 entryTagNoRiskLocked -->
             <div
               v-for="r in RISK_TAG_RESULTS"
               :key="r"
               class="op-radio-card"
-              :class="{ on: entryTagResult === r }"
+              :class="{ on: entryTagResult === r, 'tag-rc-locked': r === NO_RISK && entryTagNoRiskLocked }"
               :style="entryTagResult === r && isPoolLevel(r) ? { borderColor: RISK_LEVEL_STYLE[r].color, background: `${RISK_LEVEL_STYLE[r].bg}33` } : {}"
-              @click="entryTagResult = r"
+              :title="r === NO_RISK && entryTagNoRiskLocked ? NO_RISK_LOCKED_TIP : undefined"
+              :aria-disabled="r === NO_RISK && entryTagNoRiskLocked ? 'true' : undefined"
+              @click="pickEntryTagResult(r)"
             >
               <div class="op-rc-title">{{ isPoolLevel(r) ? `${r}危` : r }}</div>
             </div>
@@ -6344,11 +6373,15 @@ function toggleWordEnabled(w: RiskWord) {
         </div>
         <div class="tag-form-foot">
           {{
-            entryTagResult === NO_RISK
-              ? '判为无风险的不进池，落「已标记无风险」视图 —— 那里是核查漏标误判的地方，不是回收站'
-              : entryTagResult
-                ? '低 / 中 / 高一律进风险工单池，等客诉专员领取后给出升级 / 不升级的结论'
-                : '先判这张单有没有风险、多大；低 / 中 / 高进池，无风险不进池'
+            entryTagNoRiskLocked
+              ? NO_RISK_LOCKED_TIP
+              : entryTagResult === NO_RISK
+                ? '判为无风险的不进池，落「已标记 · 无风险」档 —— 那里是核查漏标误判的地方，不是回收站'
+                : entryTagResult
+                  ? (isComplaintTicket(entryTagTarget.ticketNo)
+                    ? '低 / 中 / 高一律进风险工单池；投诉单不做风险评估，由客诉专员协同处理'
+                    : '低 / 中 / 高一律进风险工单池，等客诉专员领取后给出升级 / 不升级的结论')
+                  : '先判这张单有没有风险、多大；低 / 中 / 高进池，无风险不进池'
           }}
         </div>
 
@@ -6368,7 +6401,7 @@ function toggleWordEnabled(w: RiskWord) {
         </div>
 
         <div v-if="entryTagResult === '高'" class="op-tip op-tip-info tag-tip-compact">
-          保存后可在「已入池」视图点「去管控」转交{{ DISPOSAL_BY_GRADE['高'].who }}
+          保存后可在「已标记 · 高危」档点「去管控」转交{{ DISPOSAL_BY_GRADE['高'].who }}
         </div>
 
         <!-- 打标历史：它是佐证不是填写项，按信息层级排在最后。追加不覆盖，故爬坡读得出先后 -->
@@ -8114,6 +8147,14 @@ function toggleWordEnabled(w: RiskWord) {
 .tag-modal-form :deep(.tag-radio-compact) { gap: 4px; }
 .tag-modal-form :deep(.tag-radio-4 .op-rc-title) { font-size: 11px; }
 .tag-modal-form :deep(.tag-radio-4 .op-radio-card) { padding: 2px 4px; }
+/* 已结论条目的「无风险」一档：置灰、不可选 */
+.tag-modal-form .op-radio-card.tag-rc-locked {
+  cursor: not-allowed;
+  color: #c0c4cc;
+  background: #f5f5f5;
+  border-color: #e5e7eb;
+}
+.tag-modal-form .op-radio-card.tag-rc-locked .op-rc-title { color: #c0c4cc; }
 .tag-modal-form .tag-field-block + .tag-field-block { margin-top: 8px; }
 .tag-field-note :deep(textarea.ant-input) { font-size: 13px; }
 .tag-form-foot {
