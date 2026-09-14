@@ -279,9 +279,8 @@ function inGroup<T extends { ticketNo: string }>(rows: T[]): T[] {
 // 判无风险的在实时监控·已标记无风险。两个页签看的是同一条链的前后两段，不再是同一条的两份副本。
 const reportStore = useRiskPoolStore();
 /**
- * A 线队列本体。**只在一处用到**：给「未纳入监控」那一批单现补条目时，
- * `riskPool.ensureEntryFor` 推不出来源（见 `adoptByManualScan` 的说明），
- * 本页要按「手动筛查」这一路把它补上。其余取数一律走合并层 `reportStore`。
+ * A 线队列本体。只用于两件补条目的事：按三类判据补齐监控条目（`syncAutoEntries`），
+ * 与手动筛查「并入清单」时补条目（`adoptScanTickets`）。其余取数一律走合并层 `reportStore`。
  */
 const riskQueue = useRiskQueueStore();
 /** 「升级」派生的新投诉单落这里，工单页解析时兜在静态数据源之后 */
@@ -1594,6 +1593,9 @@ function adoptScan() {
   if (!picked.length) { message.warning('请先勾选要并入清单的命中'); return; }
   const known = new Set(scanAdopted.value.map((h) => h.id));
   const fresh = picked.map((r) => r.hit).filter((h) => !known.has(h.id));
+  // 先补条目、再并命中：补条目时记下「并入时刻 ＝ 进监控时刻」与「由手动筛查并入」（§5A.1 ④）；
+  // 顺序反过来的话，并命中触发的自动补齐会先按命中时刻补一条不带并入痕迹的条目
+  riskQueue.adoptScanTickets([...new Set(fresh.map((h) => h.ticketNo))], nowStamp());
   riskTags.adoptHits(fresh);
   // 回填到本次任务记录：结果陈述靠它
   const runId = pendingManualRunId.value;
@@ -2409,36 +2411,19 @@ function tagTraceTitle(h: RiskHit): string | undefined {
 /**
  * 清单的**视图行**，三个视图共用一个形状。
  *
- * 🔴 **它比监控条目宽一格**：待标记这一段的分母是**工单**、不是条目（业务原话
- * 「全量没有标记风险的工单」「重要紧急的非投诉单，没有标注风险的」）。原系统 SOP 里
- * 「重点关注」这一档的用途正是"值班人员需重点关注**未经风险组处理的工单**"——
- * 取数只取监控队列的话，这一档**结构上不可能装进"监控没捞到的那批单"**，
- * 等于永远做不到它被设计出来要做的那件事。故行分两类：
- *   · 有监控条目的 —— 照旧摆监控来源 / 场景描述 / 进监控时刻 / 等待时长；
- *   · 从未纳入监控的在办单 —— 来源写「未纳入监控」，场景描述取工单标题，两个时间列写「—」。
- *
- * 【为什么归一在本文件里做】`RiskQueueEntry` 是 A 线条目的**落库形状**，
- * 给它加一个"其实没有条目"的态，store 里每一处判据都要多问一句"这条是真的吗"。
- * 而这里要的只是一张表能同时渲染两类行，是**视图**的事。
+ * 🔴 **表里只有一类行：监控条目**（《【930】》§5A.2）。在办、没人下过结论、满足三类判据的单
+ * 由 store 补齐条目（`riskQueue.syncAutoEntries`），来源与进监控时刻照实写，不再有"无条目的行"。
  */
-/**
- * 「未纳入监控」——**不是一个监控来源**，是"这一格没有值"的人话说法，故不进 `QUEUE_SOURCES`。
- * 界面上它与真来源的 chip 分开着色（灰底弱化），读得出它答的是另一个问题。
- */
-const NOT_MONITORED = '未纳入监控';
-
 interface QueueRow {
-  /** 有条目时 ＝ 条目 id；没有条目的行走 `tk-` 号段，与 store 的 id 段不会撞 */
+  /** ＝ 条目 id */
   id: string;
   ticketNo: string;
-  /** 指向监控条目；**null ＝ 这张单从未纳入监控** */
-  entry: RiskQueueEntry | null;
-  /** 监控来源；null ＝ 未纳入监控 */
-  source: RiskQueueEntry['source'] | null;
+  entry: RiskQueueEntry;
+  source: RiskQueueEntry['source'];
   desc: string;
-  /** 进监控时刻；null ＝ 未纳入监控 */
-  at: string | null;
-  status: RiskQueueEntry['status'] | null;
+  /** 进入实时监控的时刻 */
+  at: string;
+  status: RiskQueueEntry['status'];
   tag?: RiskQueueEntry['tag'];
   assignee?: string;
 }
@@ -2456,107 +2441,42 @@ function rowOfEntry(e: RiskQueueEntry): QueueRow {
     assignee: e.assignee,
   };
 }
-function rowOfTicket(t: Ticket): QueueRow {
-  return {
-    id: `tk-${t.no}`,
-    ticketNo: t.no,
-    entry: null,
-    source: null,
-    desc: t.title,
-    at: null,
-    status: null,
-  };
-}
+/**
+ * 「未标记」的**全集 ＝「全部待判」**（未过工作组筛选）＝ **监控队列里还没打标、且工单在办的条目**。
+ *
+ * 在办、没人下过结论、满足三类判据（实时监控 / 投诉单 / 重要紧急）的单，store 已按判据补齐条目
+ * （`riskQueue.syncAutoEntries`，本页挂 watch 随命中与核实结论重跑），故全集只取条目这一处。
+ * 三路按条目来源两两互斥，`实时监控 + 投诉单 + 重要紧急 ≡ 全部待判` 是**恒等号**。
+ *
+ * 🔴 **在办口径**（§5A.2 / R50a）：工单进终态即从「未标记」段消失。条目对应的单在工单库与派生库里
+ * 都查不到时照实留着（`fallbackTicketOf` 顶一张最小工单），不吞 —— 那是数据异常，不是终态。
+ *
+ * 🔴 **覆盖率由「手动筛查」兜底**：三路规则都没捞到的单，靠人拿条件去扫存量捞出来，
+ * 勾选并入后补一条来源「实时监控」的条目回到这一档（`riskQueue.adoptScanTickets`）。
+ */
+const untaggedUniverse = computed<QueueRow[]>(() => reportStore.monitoringEntries
+  .map(rowOfEntry)
+  .filter((r) => {
+    const t = ticketOfRow(r);
+    return !t || isLiveTicket(t);
+  }));
+/*
+ * 命中清单（并入的筛查命中）、命中核实结论与打标回写的工单级等级一变，按三类判据重补一遍条目：
+ * 例如一条命中由「成立」改判为「误报」后工单级等级清空，这张单应当回到「未标记」。
+ * store 开屏已补过一遍，这里只接会话内的变化；补的动作在 store 里，本页不另造条目。
+ */
+watch(
+  [() => riskTags.allHits, () => riskTags.entries, () => riskTags.tagGrades],
+  () => { riskQueue.syncAutoEntries(); },
+  { immediate: true },
+);
 
 /**
- * 这张单**被下过结论没有**。
- *
- * 🔴 「未标记」＝ **既没有有风险等级的标记、也没有「已标记无风险」的标记**，
- * 即从来没有人给它下过结论。只判前一半（`ticketGradeOf`）的话，
- * 一张已经被人看过、判定为无风险的单会重新掉回「待标记」，而那正是它已经走完的一段。
+ * 这一行**算哪一路监控来源的** ＝ 条目自己的 `source`，一个字不改。三片互斥就靠它一处判定。
+ * 它是当初真的从哪个入口进来的，现场按工单属性重推一遍等于把历史改写成"按今天的规则本该从哪儿进来"。
  */
-const concludedTicketNos = computed(() => {
-  const s = new Set<string>();
-  reportStore.pooledEntries.forEach((e) => s.add(e.ticketNo));
-  reportStore.noRiskEntries.forEach((e) => s.add(e.ticketNo));
-  return s;
-});
-function isUntaggedTicket(no: string): boolean {
-  if (concludedTicketNos.value.has(no)) return false;
-  // 命中核实成立并定了级的那一路也算下过结论（它写的是同一份工单级等级）
-  return riskTags.ticketGradeOf(no) === null;
-}
-
-/**
- * 「未标记」的**全集 ＝「全部待判」**（未过工作组筛选）＝
- *   （**在办且从未被下过结论的工单**）∪（**监控队列里还没打标的条目**），
- *   **再筛掉三路入口都推不出来的那批**。
- *
- * 【为什么要并上第二块】条目对应的单未必在工单库里 —— 升级派生出来的新投诉单落在
- * `derivedTickets` 里，只取工单库会把这批条目整批漏掉。并上之后这一档才**确实是**
- * 三片的并集，而不是"看起来像"。
- * 同一张单两边都有时以**条目**那一行为准：它带着来源与进监控时刻，信息更全。
- *
- * 🔴 【为什么最后那道 `effectiveSourceOf !== null` 的筛必须在】
- * 这一档原先叫「全量未标记」，装的是**整本在办工单库里没人下过结论的全部单**（45 条）。
- * 那个口径有两处硬伤：
- *   ① **永远清不零** —— 未标记是每张单与生俱来的默认态，今天新建一张单它立刻又是未标记。
- *      一个成员资格定义为"还没发生的事"的队列没有底，"每天清零"在数学上就不成立；
- *   ② **45 ≈ 全部在办单，不是待办** —— 绝大多数单没有任何风险信号，
- *      把它摆成漏斗入口等于让人对着"全书"发呆，真该判的那 24 条反而被淹没。
- * 筛掉之后这一档 ＝ 三路自动识别真的捞到的那批（实时监控 / 投诉单 / 重要紧急），
- * 且因为三路两两互斥，`实时监控 + 投诉单 + 重要紧急 ≡ 全部待判` 是**恒等号**。
- *
- * 🔴 **覆盖率由「手动筛查」兜底**：三路规则都没捞到的单不是不管了，
- * 而是靠人拿条件去扫存量捞出来（右上角那枚入口），扫出的命中并入清单后由自动识别带回这一档。
- */
-const untaggedUniverse = computed<QueueRow[]>(() => {
-  const rows: QueueRow[] = [];
-  const seen = new Set<string>();
-  for (const e of reportStore.monitoringEntries) {
-    rows.push(rowOfEntry(e));
-    seen.add(e.ticketNo);
-  }
-  for (const t of TICKETS) {
-    if (seen.has(t.no)) continue;
-    if (!isLiveTicket(t)) continue;
-    if (!isUntaggedTicket(t.no)) continue;
-    rows.push(rowOfTicket(t));
-  }
-  return rows.filter((r) => effectiveSourceOf(r) !== null);
-});
-
-/**
- * 这一行**算哪一路监控来源的**。三片互斥就靠它一处判定，判据分两支：
- *
- *   · **有条目** —— 就是条目自己的 `source`，一个字不改。它是当初真的从哪个入口进来的，
- *     现场按工单属性重推一遍等于把历史改写成"按今天的规则本该从哪儿进来"。
- *   · **未纳入监控** —— 没有条目可读，按三类自动识别的判据推它**本该属于哪一路**，
- *     次序与 `riskQueue.autoSourceFor` 逐条对齐（命中优先，其次投诉，再次重要紧急）。
- *     不共用那个函数是因为它还带着"终态单返回 null"等入队门槛，
- *     而这里已经先过了一道在办筛选，再判一次会把同一件事判两遍。
- *
- * 🔴 **命中优先于优先级**：一张 P0 的非投诉单若同时命中了预警词，它算「实时监控」而不是
- * 「重要紧急」。这不是取舍上的偏好，而是互斥的代价 —— 两片都算它，
- * 「三片之和 ＝ 全部待判」当场不成立，那条恒等式是这一列唯一能自证的东西。
- *
- * 🔴 **返回值只有三片或 null**，null ＝ 这张单不进「未标记」这一段
- * （见 `untaggedUniverse` 最后那道筛）。「手动筛查」并入的条目在**归片时**折算进
- * 「实时监控」：它同样是预警词命中那一路，只是入口由人发起；条目自己的 `source`
- * 一个字没改（表里那一格照旧写「手动筛查」），改的只是它算哪一片。
- * 不折算的话，这批行会落在"三片都不是、却又在全集里"的缝里，
- * 「三片之和 ＝ 全部待判」当场变回不等号 —— 而那条恒等式是这一列唯一能自证的东西。
- */
-function effectiveSourceOf(r: QueueRow): '实时监控' | '投诉单' | '重要紧急' | null {
-  if (r.source === '手动筛查' || r.source === '实时监控') return '实时监控';
-  if (r.source === '投诉单' || r.source === '重要紧急') return r.source;
-  if (r.source) return null;
-  if (riskTags.hitsOfTicket(r.ticketNo).length) return '实时监控';
-  const t = TICKET_BY_NO.get(r.ticketNo);
-  if (!t || !isLiveTicket(t)) return null;
-  if (t.type === '投诉') return '投诉单';
-  if (t.priority === 'P0' || t.priority === 'P1') return '重要紧急';
-  return null;
+function effectiveSourceOf(r: QueueRow): '实时监控' | '投诉单' | '重要紧急' {
+  return r.source;
 }
 
 /**
@@ -2580,8 +2500,7 @@ function effectiveSourceOf(r: QueueRow): '实时监控' | '投诉单' | '重要�
 function allSourcesOf(r: QueueRow): Array<'实时监控' | '投诉单' | '重要紧急'> {
   const out: Array<'实时监控' | '投诉单' | '重要紧急'> = [];
   // ① 预警词那一路：条目本就从这条路进来的，或者这张单在命中台账里有记录
-  //    （「手动筛查」折算进「实时监控」，与 `effectiveSourceOf` 同一条口径）
-  if (r.source === '实时监控' || r.source === '手动筛查' || riskTags.hitsOfTicket(r.ticketNo).length) {
+  if (r.source === '实时监控' || riskTags.hitsOfTicket(r.ticketNo).length) {
     out.push('实时监控');
   }
   // ② 工单属性那两路。派生单落在 derivedTickets 里，两处都查（与 `ticketOfRow` 同）
@@ -2604,9 +2523,9 @@ function alsoSourcesOf(r: QueueRow): string[] {
 
 /** 「兼：」那枚 chip 的悬停说明。两句话：本行按什么次序只算一档、「兼」列的是什么 */
 function alsoSourceTitle(r: QueueRow): string {
-  return `本行按「实时监控 > 投诉单 > 重要紧急」的固定次序**只算进一档**（现算「${effectiveSourceOf(r) ?? '—'}」），`
+  return `本行按监控条目的来源只算进一档（现算「${effectiveSourceOf(r)}」），`
     + `三路两两互斥、之和恒等于「未标记」页签上那个数。\n`
-    + `「兼」列出的是它**同时满足**的其余来源：${alsoSourcesOf(r).join('、')} —— 只作提示，不改归属、不计入任何一档。`;
+    + `「兼」列出的是它同时满足的其余来源：${alsoSourcesOf(r).join('、')} —— 只作提示，不改归属、不计入任何一档。`;
 }
 
 /** 切片 ↔ 监控来源字面量。三片就是这一维的三个值，故映射一处写死、别处只引用它 */
@@ -2892,8 +2811,6 @@ function presetLevelRankOf(ticketNo: string): number {
  * 而重要紧急与全量看的是"这张单本身多急"——同分时一律早进先出（`at` 升序），
  * 免得同一批数据两次进来给出两个次序。
  */
-/** 没有进监控时刻的行排在同分档的最后：它没有"进来的先后"可比，不该插到真排着队的前面 */
-const AT_LAST = '￿';
 const untaggedRows = computed<QueueRow[]>(() => {
   const slice = untaggedSlice.value;
   const sub = untaggedSub.value;
@@ -2906,7 +2823,7 @@ const untaggedRows = computed<QueueRow[]>(() => {
     : base;
   return rows.slice().sort((a, b) => (
     rankOf(a.ticketNo) - rankOf(b.ticketNo)
-    || (a.at ?? AT_LAST).localeCompare(b.at ?? AT_LAST)
+    || a.at.localeCompare(b.at)
   ));
 });
 
@@ -3274,58 +3191,13 @@ function poolStageTextOf(status: RiskQueueEntry['status'] | null): string {
   if (!status) return '—';
   return POOL_STATE_TEXT[status] ?? status;
 }
-/** 这一行有没有超时。**未纳入监控的行恒不超时**：它压根没进过队列，钟还没起走 */
+/** 这一行有没有超时（只有在队的池行才谈得上超时，判据在 store） */
 function rowOverdue(r: QueueRow): boolean {
-  if (!r.status || !r.at) return false;
   return reportStore.isOverdue({ status: r.status, at: r.at });
 }
-/** 等待时长；未纳入监控的写「—」而不是 0 分钟 —— 0 是一个会被读成"刚进来"的假数 */
+/** 等待时长：自进入实时监控起算 */
 function rowWaitedText(r: QueueRow): string {
-  return r.at ? waitedText(r.at) : '—';
-}
-
-/**
- * 给「未纳入监控」那一行**现补一条监控条目**，来源落「手动筛查」——
- * 这个枚举值的含义正是"人从全量里捞出来的"，不新增枚举。
- *
- * 🔴 **本函数是 store 侧缺口的绕行，不是最终形态**：`riskQueue.ensureEntryFor(no)` 不收来源，
- * 它自己按 `autoSourceFor` 的三条判据推 —— 而那三条推不出「手动筛查」，且对
- * "在办 · 无命中 · P2/P3 的非投诉单"（这批单如今连「全部待判」都进不来）直接返回 null。
- * 于是那一批单的「核实打标」按钮会当场失败。缺口该由 store 补一个
- * `ensureEntryFor(no, { source })` 的重载来填，本轮不动 store，故在页面这一侧按同样的
- * 恒定占位把条目补齐（五个占位字段与 `riskQueue.autoEntry` 逐字一致）。
- */
-function adoptByManualScan(r: QueueRow): { ok: true; entry: RiskQueueEntry } | { ok: false; reason: string } {
-  const t = TICKET_BY_NO.get(r.ticketNo);
-  if (!t) return { ok: false, reason: '工单库里查不到本单，无法为它建监控条目' };
-  const entry: RiskQueueEntry = {
-    id: `rq-${Date.now()}-${riskQueue.entries.length + 1}`,
-    ticketNo: r.ticketNo,
-    source: '手动筛查',
-    desc: r.desc,
-    at: nowStamp(),
-    status: '实时监控中',
-    reason: '其他',
-    category: null,
-    attachments: [],
-    by: '系统',
-    byRole: '系统',
-  };
-  riskQueue.entries.push(entry);
-  return { ok: true, entry };
-}
-
-/**
- * 拿到这一行**可打标的条目**：有条目就用它，没有就先按三类自动识别推
- * （`ensureEntryFor`，推得出来的走原来那条路、来源如实），推不出来才落「手动筛查」。
- * 🔴 **在保存那一刻才补，不在打开弹窗时补**：打开又取消的话，队列里会平白多一条
- * 谁也没判过的条目，而「全部待判」的条数正是值班当天要清掉的那批活。
- */
-function entryForRow(r: QueueRow): { ok: true; entry: RiskQueueEntry } | { ok: false; reason: string } {
-  if (r.entry) return { ok: true, entry: r.entry };
-  const got = reportStore.ensureEntryFor(r.ticketNo);
-  if (got.ok) return got;
-  return adoptByManualScan(r);
+  return waitedText(r.at);
 }
 
 /* ---- 条目批量打标：**只在待打标视图**（业务口径） ---- */
@@ -3379,7 +3251,7 @@ const bulkTargets = computed(
 const bulkSourceMix = computed(() => {
   const m = new Map<string, number>();
   bulkTargets.value.forEach((r) => {
-    const k = r.source ?? NOT_MONITORED;
+    const k = effectiveSourceOf(r);
     m.set(k, (m.get(k) ?? 0) + 1);
   });
   return [...m].map(([s, n]) => `${s} ${n}`).join(' · ');
@@ -3398,20 +3270,15 @@ function saveBulk() {
   const targets = bulkTargets.value;
   // 与单条走**同一个入口**（recordTag），状态迁移与留痕都在 store 里那一处，
   // 批量另写一套的话，"低/中/高进池、无风险不进池"这条门槛迟早只改一处
-  // 「未纳入监控」的行在**保存这一刻**才补条目，与单条走同一个 `entryForRow`
-  const done = targets.filter((r) => {
-    const got = entryForRow(r);
-    if (!got.ok) return false;
-    return reportStore.recordTag(got.entry.id, {
-      result,
-      note: bulkNote.value.trim(),
-      by: user.current.name,
-      byRole: user.role.name,
-      at,
-    });
-  }).length;
+  const done = targets.filter((r) => reportStore.recordTag(r.entry.id, {
+    result,
+    note: bulkNote.value.trim(),
+    by: user.current.name,
+    byRole: user.role.name,
+    at,
+  })).length;
   if (done < targets.length) {
-    message.warning(`有 ${targets.length - done} 条建不了监控条目，未打标 —— 刷新后仍在「待标记」里`);
+    message.warning(`有 ${targets.length - done} 条监控条目已不存在，未打标 —— 请刷新后再看`);
   }
   message.success(
     isPoolLevel(result)
@@ -3486,10 +3353,7 @@ function saveEntryTag() {
   if (amend && !entryTagReason.value.trim()) { message.warning('请填写修正原因'); return; }
   const prev = target.tag?.result;
   const result = entryTagResult.value;
-  // 「未纳入监控」的行到这一刻才补条目：打开又取消不该在队列里留下一条谁也没判过的活
-  const got = entryForRow(target);
-  if (!got.ok) { message.warning(got.reason); return; }
-  const ok = reportStore.recordTag(got.entry.id, {
+  const ok = reportStore.recordTag(target.entry.id, {
     result,
     note: entryTagNote.value.trim(),
     by: user.current.name,
@@ -5015,7 +4879,6 @@ function toggleWordEnabled(w: RiskWord) {
         >
           <!--
             等待时长：**队列属性**（自进监控时刻起算），工作台没有这一列，故走附加列扩展位。
-            🔴 未纳入监控的行写「—」而不是 0 分钟：0 是一个会被读成"刚进来"的假数。
           -->
           <!--
             多路来源的行内小标「兼：X」。与上面那张条目表**共用同一个判据**
@@ -5037,7 +4900,7 @@ function toggleWordEnabled(w: RiskWord) {
             <span
               class="rr-waited"
               :class="{ over: rowOfTicketNo(ticket.no) && rowOverdue(rowOfTicketNo(ticket.no)!) }"
-              title="自进入实时监控起算。打标越慢，它进池时离评估时限就越近；未纳入监控的单还没起走这口钟"
+              title="自进入实时监控起算。打标越慢，它进池时离处置时限就越近"
             >{{ rowOfTicketNo(ticket.no) ? rowWaitedText(rowOfTicketNo(ticket.no)!) : '—' }}</span>
           </template>
         </TicketRichList>
@@ -6396,21 +6259,14 @@ function toggleWordEnabled(w: RiskWord) {
             <button type="button" class="tag-ticket-no" @click="openTicket(entryTagTarget.ticketNo)">
               {{ entryTagTarget.ticketNo }}
             </button>
-            <span class="tag-hit-title">{{ entryTagTarget.desc }}</span>
+            <span class="tag-hit-title">{{ rowTitleOf(entryTagTarget) }}</span>
           </div>
-          <!--
-            未纳入监控的那一批没有来源与进监控时刻可摆，故整段换成一句实话：
-            摆一串「— · — · —」等于让人以为数据丢了。保存时会按「手动筛查」现补一条条目。
-          -->
-          <div v-if="entryTagTarget.source" class="tag-hit-meta">
+          <div class="tag-hit-meta">
             <span>监控来源 <strong>{{ entryTagTarget.source }}</strong></span>
             <span class="tag-hit-sep">·</span>
             <span>进监控 {{ entryTagTarget.at }}</span>
             <span class="tag-hit-sep">·</span>
             <span>已等待 {{ rowWaitedText(entryTagTarget) }}</span>
-          </div>
-          <div v-else class="tag-hit-meta">
-            <span>本单未纳入监控 —— 保存结论时按「手动筛查」补一条监控条目</span>
           </div>
           <!-- 修改态先把"现在是什么"摆明，否则改完不知道自己改动了哪一项 -->
           <div v-if="entryTagAmend && entryTagTarget.tag" class="tag-cur">
@@ -6528,7 +6384,11 @@ function toggleWordEnabled(w: RiskWord) {
                 <span class="tt-role">{{ e.byRole }}</span>
                 <span class="tt-at">{{ e.at }}</span>
               </div>
-              <div class="tt-change">{{ e.level ? `${e.level}危` : '无风险' }}</div>
+              <div class="tt-change">
+                {{ e.level ? `${e.level}危` : '无风险' }}
+                <!-- 并入痕迹记在打标记录上，不进来源列（§5A.1 ④） -->
+                <span v-if="e.viaManualScan" class="tt-role">由手动筛查并入</span>
+              </div>
               <div v-if="e.amendReason" class="tt-reason">原因：{{ e.amendReason }}</div>
             </li>
           </ol>

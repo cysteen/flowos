@@ -16,7 +16,7 @@ import type { RiskLevel } from '@/config/risk';
  */
 
 /**
- * 报备评估时限（分钟）。**不是 SLA**：不接 SLA 引擎、不走工作日历、不适用停表规则
+ * **处置时限**（分钟；界面与 PRD 统一叫「处置时限」，超时小标签写「已超处置时限」）。**不是 SLA**：不接 SLA 引擎、不走工作日历、不适用停表规则
  * （§9 规则 13）。这一个值同时供三处读：《【815】》的催办规则触发条件、
  * 风险评估页签「超时未评」卡的标红阈值（§9 规则 14），与两条线的超时判定。
  */
@@ -159,12 +159,15 @@ export interface ReportAssessment {
 }
 
 /**
- * **A 线的自动识别来源**（业务第三轮拍板 · 漏斗的入口）。**三类**：
- *   ① **预警词命中** —— 在界面上仍拆成「实时监控」与「手动筛查」两个展示值。
- *      它们是**同一路的两个入口**（一个由系统实时扫、一个由人拿条件去扫存量），
- *      命中之后走的是同一条链，故判据一律用 `isVerifyMonitorSource` 而不是逐个比字符串。
+ * **A 线的自动识别来源**（业务第三轮拍板 · 漏斗的入口）。**三类、三个字面量**：
+ *   ① **实时监控** —— 预警词命中。
  *   ② **投诉单** —— 投诉类工单自动纳入监控。
- *   ③ **重要紧急** —— P0 / 已超解决时限一类的单自动纳入监控。
+ *   ③ **重要紧急** —— P0 / P1 的非投诉单自动纳入监控。
+ *
+ * 🔴 **「手动筛查」不是来源取值**（《【930】》§5A.1 / R50 / R51i）：它是兜底进货手段，
+ * 并入的单来源写「实时监控」；"由手动筛查并入"这件事记在条目与打标记录的
+ * `viaManualScan` 上（见 `RiskTagRecord`），不进来源列、来源 chip 与左栏档位。
+ * 旧缓存里的「手动筛查」由 `normalizeMonitorSource` 归一成「实时监控」。
  *
  * 🔴 **「VIP客户」本轮砍掉**（业务明确不做）：它此前是第四类入口。旧缓存里可能还躺着
  * 来源为 VIP 的条目，靠 `isQueueSource` 在读缓存那一道拦掉，见 `stores/riskQueue.ts`。
@@ -175,7 +178,7 @@ export interface ReportAssessment {
  *
  * 「系统自动判断（AI）」是业务文档自标的第六类、**规划中**，本轮不做，故不在枚举里。
  */
-export const QUEUE_SOURCES = ['实时监控', '手动筛查', '投诉单', '重要紧急'] as const;
+export const QUEUE_SOURCES = ['实时监控', '投诉单', '重要紧急'] as const;
 export type QueueSource = (typeof QUEUE_SOURCES)[number];
 
 /** B 线在合并池里的来源标签，**恒一枚**。它不是 A 线的入口，故单独成一个类型 */
@@ -183,7 +186,7 @@ export const REPORT_SOURCE = '二线报备' as const;
 export type ReportSource = typeof REPORT_SOURCE;
 
 /**
- * 合并池那一列「监控来源」的取值全集 ＝ A 线三类（四个展示值）+ B 线一枚。
+ * 合并池那一列「监控来源」的取值全集 ＝ A 线三类 + B 线一枚。
  *
  * ⚠️ **这是过渡层的口径**：风险工单池今天还把两条线装在一张表上，来源 chip 那一排要把
  * 五个数并排摆出来，故仍需要一个并集。下一批把两池拆开之后，A 线的页面只读 `QUEUE_SOURCES`，
@@ -196,19 +199,20 @@ export const MONITOR_SOURCES = [...QUEUE_SOURCES, REPORT_SOURCE] as const;
 export type MonitorSource = (typeof MONITOR_SOURCES)[number];
 
 /**
- * 预警词命中那一路（原「关键词触发」，拆为实时 + 手动筛查两个入口展示）。
+ * 预警词命中那一路（原「关键词触发」）。手动筛查并入的条目来源同样写「实时监控」。
  *
  * ⚠️ **它已经不再是"要不要打标"的判据**：新口径下 A 线**三类来源都要打标**才进池
  * （打标是入池门槛，见 `RiskTagRecord`）。本函数现在只回答"这条是不是预警词捞进来的"，
  * 用处是页面上要把命中原话摆出来 —— 另外两类没有原话可摆。
  */
 export function isVerifyMonitorSource(source: MonitorSource): boolean {
-  return source === '实时监控' || source === '手动筛查';
+  return source === '实时监控';
 }
 
 /** 旧缓存里的来源名。**VIP客户不在这里**：它是被砍掉的一类，不映射到任何新值，见 `isQueueSource` */
 const LEGACY_MONITOR_SOURCE: Record<string, MonitorSource> = {
   关键词触发: '实时监控',
+  手动筛查: '实时监控',
   全量投诉: '投诉单',
   紧急重要: '重要紧急',
 };
@@ -272,6 +276,11 @@ export interface RiskTagRecord {
   at: string;
   /** 本次修正的理由。**首次打标没有这一项**，二次修改必填 */
   amendReason?: string;
+  /**
+   * 被打标的这条条目是**由手动筛查并入**监控的（《【930】》§5A.1 ④）。
+   * 只作留痕，不改来源（来源仍写「实时监控」）、不参与任何计数与归属判定。
+   */
+  viaManualScan?: boolean;
 }
 
 /**
@@ -395,7 +404,7 @@ export interface RiskPoolItem {
   /** **A 线恒为「系统」**，通知侧据此解析为"无人可通知"（O23） */
   by: string;
   byRole: string;
-  /** 提交 / 入池时刻。等待时长从这里起算，**不从任何"分派时刻"**（N5） */
+  /** B 线 ＝ 提交时刻；A 线 ＝ 进入实时监控时刻。等待时长从这里起算，**不从领取时刻**（N5） */
   at: string;
   /**
    * **并集类型**（见 `PoolStatus`）：B 线四态 + A 线独有的「实时监控中 / 已标记无风险」。

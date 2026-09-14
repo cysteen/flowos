@@ -39,6 +39,11 @@ export interface RiskTagEntry {
   at: string;
   /** 本次修正的理由。首次核实没有这一项 */
   amendReason?: string;
+  /**
+   * 仅 A 线条目的打标记录有：该条目由手动筛查并入监控（记录上显示「由手动筛查并入」）。
+   * 来源仍是「实时监控」，这一格只留痕。
+   */
+  viaManualScan?: boolean;
 }
 
 /** 等级由重到轻的序位，取 max 时比大小用 */
