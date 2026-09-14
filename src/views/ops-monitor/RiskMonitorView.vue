@@ -3786,7 +3786,7 @@ function untaggedSliceItems(
     expandable: true,
     expanded: open,
     title: `${title}。点它展开／收起下面的子档；行本身也可选 ＝ 这一路不限子档。`
-      + '🔴 三路（实时监控 / 投诉单 / 重要紧急）两两互斥，**之和 ＝ 页签上那个数**',
+      + '🔴 三路（实时监控 / 投诉单 / 重要紧急）两两互斥，之和 ＝ 页签上那个数',
   };
   if (!open) return [head];
   return [
@@ -3816,24 +3816,24 @@ const railGroups = computed<RailGroup[]>(() => {
       defaultKey: 'untagged:kw',
       title: '未标记',
       title2: '三路自动识别（实时监控 / 投诉单 / 重要紧急）捞到、还没有人给过结论的工单'
-        + ' —— **此刻的存量**。分母是**工单**不是条目。'
-        + '🔴 三路两两互斥，**三路之和 ＝ 这个数**（恒等号，不是约等）。'
-        + '🔴 **它不是"整本工单库里没人标过的单"**：未标记是每张单与生俱来的默认态，'
+        + ' —— 此刻的存量。计数单位是工单：一单多命中聚合成一行、按一单计，不是命中条数。'
+        + '🔴 三路两两互斥，三路之和 ＝ 这个数（恒等号，不是约等）。'
+        + '🔴 它不是"整本工单库里没人标过的单"：未标记是每张单与生俱来的默认态，'
         + '那样数出来的是全部在办单、永远清不零，真该判的那批反而被淹没。'
-        + '🔴 这个数与「已标记」那个数**分属两批、不相减也不互校**：那边是历史累计打过标的，'
+        + '🔴 这个数与「已标记」那个数分属两批、不相减也不互校：那边是历史累计打过标的，'
         + '跑久了必然比这边大，那是正常状态、不是漏损。'
         // 开着筛选时被筛的那一路显示「筛后 / 全量」，斜杠后那个数仍进这个恒等式 ——
         // 数字自己把话说清楚了，这里不再补一句文字解释
-        + '🔴 开着清单上那条筛选时，被筛的那一路摆成「筛后 / 全量」，**斜杠后那三个数之和仍 ＝ 这个数**',
+        + '🔴 开着清单上那条筛选时，被筛的那一路摆成「筛后 / 全量」，斜杠后那三个数之和仍 ＝ 这个数',
       items: [
         ...untaggedSliceItems('kw', '实时监控',
-          '预警词捞进来的那一路。下面按**词表预设的识别风险等级**分档 —— 机器认为最重的排最前，人从上往下判。'
-          + '表里是**尚未打标的工单上的命中**（待处理的召回，一条命中一行、同单成组）；角标数的是**工单**，不是命中条数。'
+          '预警词捞进来的那一路。下面按词表预设的识别风险等级分档 —— 机器认为最重的排最前，人从上往下判。'
+          + '表里是尚未打标的工单上的命中（待处理的召回，一条命中一行、同单成组）；角标数的是工单，不是命中条数。'
           + '全部召回历史（含已打标工单上的）在右上角「命中台账」'),
         ...untaggedSliceItems('complaint', '投诉单',
-          '在办的投诉类工单那一路。下面按**工单优先级**分档'),
+          '在办的投诉类工单那一路。下面按工单优先级分档'),
         ...untaggedSliceItems('urgent', '重要紧急',
-          '在办 · P0 / P1 的**非投诉单**那一路。下面按**工单优先级**分档，这一路本就只有 P0 / P1 两档'),
+          '在办 · P0 / P1 的非投诉单那一路。下面按工单优先级分档，这一路本就只有 P0 / P1 两档'),
       ],
     },
     {
@@ -3843,7 +3843,7 @@ const railGroups = computed<RailGroup[]>(() => {
       total: pooledAll + noRiskAll,
       defaultKey: 'level:all',
       title: '已标记',
-      title2: '打过标的条目 —— **历史累计**，不是此刻的存量。高 / 中 / 低进风险工单池，无风险不进池。'
+      title2: '打过标的条目 —— 历史累计，不是此刻的存量。高 / 中 / 低进风险工单池，无风险不进池。'
         + '🔴 这个数与「未标记」那个数分属两批、不相减也不互校：它比那边大是正常状态。'
         + '这一段摆三种并列的分类：按风险等级（全部有风险）、按标记人、按处置阶段 —— 同一批条目三个角度。'
         + '页签上的数 ＝ 全部有风险 + 无风险（两者都是这一段下过的结论）。'
@@ -3856,7 +3856,7 @@ const railGroups = computed<RailGroup[]>(() => {
           depth: 0,
           title: '按风险等级看这一段：高危 + 中危 + 低危 的合计，不含无风险'
             + '（无风险是这条链的漏出口，算进来等于把已经排除掉的那批重新当成风险）。'
-            + '🔴 与「按标记人」「按处置阶段」是**同一批条目的三种看法，数天然相等、不可相加**',
+            + '🔴 与「按标记人」「按处置阶段」是同一批条目的三种看法，数天然相等、不可相加',
         },
         ...RISK_LEVELS.map((lv) => ({
           key: `level:${lv}` as RailKey,
@@ -3879,9 +3879,9 @@ const railGroups = computed<RailGroup[]>(() => {
           depth: 0,
           expandable: true,
           expanded: taggerExpanded.value,
-          title: '与「全部有风险」并列的**另一种分类**：同一批已标记条目换成按标记人看。'
+          title: '与「全部有风险」并列的另一种分类：同一批已标记条目换成按标记人看。'
             + '点它展开／收起下面的标记人清单；分母与「全部有风险」同一个，只数高 / 中 / 低，不含无风险。'
-            + '🔴 与另两个轴是**同一批条目的不同看法，数天然相等、不可相加**',
+            + '🔴 与另两个轴是同一批条目的不同看法，数天然相等、不可相加',
         },
         ...(taggerExpanded.value
           ? taggerChips.value.rows.map((t) => ({
@@ -3915,9 +3915,9 @@ const railGroups = computed<RailGroup[]>(() => {
           depth: 0,
           expandable: true,
           expanded: poolAxisExpanded.value,
-          title: '与「全部有风险」并列的**第三种分类**：同一批已标记条目换成按池内处置阶段看，'
+          title: '与「全部有风险」并列的第三种分类：同一批已标记条目换成按池内处置阶段看，'
             + '三个取值是真时间序（待领取 → 已领取 → 已结论）。点它展开／收起下面三档；行本身也可选 ＝ 不限阶段。'
-            + '🔴 与另两个轴是**同一批条目的不同看法，数天然相等、不可相加**，且列也逐字相同 ——'
+            + '🔴 与另两个轴是同一批条目的不同看法，数天然相等、不可相加，且列也逐字相同 ——'
             + '三个轴同一张表、同一批行对象。'
             + '仅监控入池 —— 🔴 只数 A 线（打标进池的条目）：二线报备有自己的家 ——'
             + ' 工单工作台的「风险报备池」。'
@@ -3933,11 +3933,11 @@ const railGroups = computed<RailGroup[]>(() => {
             bad: s === '待领取' && alineOverdueCount.value > 0,
             depth: 1 as const,
             title: s === '待领取'
-              ? '还没有人领的池行 —— 谁有空谁领，池里没有分派'
+              ? '还没有人领的池行 —— 谁领谁办，领取后由领取人给出结论'
               : s === '已领取'
                 ? '已被客诉专员领走、还没有结论的池行'
                 : '已经收口的池行：走评估的给了升级 / 不升级，走协同处理的给了意见与建议。'
-                  + '🔴 **是累计、不是当日**：这一档不带任何时间收窄，故三档之和恒等于另两个轴',
+                  + '🔴 是累计、不是当日：这一档不带任何时间收窄，故三档之和恒等于另两个轴',
           }))
           : []),
         {
@@ -4360,7 +4360,7 @@ function toggleWordEnabled(w: RiskWord) {
         </div>
         <div class="greeting-text">
           <div class="greeting-title">风险监控</div>
-          <div class="greeting-sub">全中心 · 风险词实时命中 → 人工核实定级 → 成立后转交工单侧处置</div>
+          <div class="greeting-sub">全中心 · 三路自动识别 → 风险打标 → 有风险的进风险工单池处置</div>
         </div>
       </div>
       <div class="greeting-aside">
@@ -4428,7 +4428,7 @@ function toggleWordEnabled(w: RiskWord) {
             </div>
             <div
               class="dm-cell dm-static"
-              title="今日产生的风险词命中记录条数。🔴 分母是**命中**不是条目：一张单可以被三条词命中，两个数不可相加"
+              title="今日产生的风险词命中记录条数。🔴 分母是命中不是条目：一张单可以被三条词命中，两个数不可相加"
             >
               <span class="dm-k">命中记录</span>
               <span class="dm-val"><span class="dm-v">{{ hitsToday }}</span></span>
@@ -4475,13 +4475,13 @@ function toggleWordEnabled(w: RiskWord) {
             title="工单系统里需要风险侧盯的存量 · 分母是在办工单，与左栏监控条目、右栏池行均不可相加"
           >工单存量</h2>
           <div class="dash-grid dash-grid-2">
-            <div class="dm-cell dm-static" title="在办的投诉类工单 · 对应监控来源「投诉单」">
+            <div class="dm-cell dm-static" title="在办的投诉类工单数 · 分母是工单">
               <span class="dm-k">投诉工单</span>
               <span class="dm-val"><span class="dm-v">{{ complaintTicketCount }}</span></span>
             </div>
             <div
               class="dm-cell dm-static"
-              title="在办且优先级为 P0 紧急 / P1 重要的工单 · 对应监控来源「重要紧急」"
+              title="在办且优先级为 P0 紧急 / P1 重要的工单数 · 分母是工单"
             >
               <span class="dm-k">紧急 / 重要</span>
               <span class="dm-val"><span class="dm-v">{{ urgentTicketCount }}</span></span>
@@ -4526,7 +4526,7 @@ function toggleWordEnabled(w: RiskWord) {
         <div class="effect-pane effect-pane--report">
           <h2
             class="pane-title"
-            title="风险工单池里的池行 · 打标进池的监控条目 + 二线报备，全部走评估二选一（升级 / 不升级）"
+            title="风险工单池里的池行 · 只数打标进池的监控条目（A 线）：非投诉单走风险评估（升级 / 不升级），投诉单走协同处理。二线报备在工单工作台「风险报备池」，不进这一块"
           >评估处置</h2>
           <div class="dash-grid dash-grid-3">
             <!--
@@ -4744,7 +4744,7 @@ function toggleWordEnabled(w: RiskWord) {
                 type="button"
                 class="row-btn scan-entry"
                 :class="{ active: listView === 'scan' }"
-                title="旁路 · **三路自动识别的兜底**：实时监控 / 投诉单 / 重要紧急 都没捞到的单，靠它拿条件去扫存量捞出来；扫出的命中勾选并入清单后，由自动识别把它带进「未标记」。它不是链上的一段，是往上游补货的手段"
+                title="旁路 · 三路自动识别的兜底：实时监控 / 投诉单 / 重要紧急 都没捞到的单，靠它拿条件去扫存量捞出来；扫出的命中勾选并入清单后，由自动识别把它带进「未标记」。它不是链上的一段，是往上游补货的手段"
                 @click="setListView('scan')"
               >
                 <SearchOutlined :style="{ fontSize: '12px' }" />
@@ -4759,7 +4759,7 @@ function toggleWordEnabled(w: RiskWord) {
                 type="button"
                 class="row-btn scan-entry"
                 :class="{ active: listView === 'judged' }"
-                title="旁路 · 风险词命中记录的台账：待核实 / 成立 / 误报三类都在，供事后点查与核实，词表准确率由它回填。分母是**全部命中记录**（含已打标工单上的，不是工单、也不是监控条目），与左栏条目不可相加；左栏「实时监控」只列其中尚未打标工单上的那部分"
+                title="旁路 · 风险词命中记录的台账：待核实 / 成立 / 误报三类都在，供事后点查与核实，词表准确率由它回填。分母是全部命中记录（含已打标工单上的，不是工单、也不是监控条目），与左栏条目不可相加；左栏「实时监控」只列其中尚未打标工单上的那部分"
                 @click="setListView('judged')"
               >
                 <TagsOutlined :style="{ fontSize: '12px' }" />
@@ -6592,7 +6592,7 @@ function toggleWordEnabled(w: RiskWord) {
     <!-- 单条核实：首次打标与后续修正共用同一个弹窗，只在标题、必填项与留痕区上区分 -->
     <OpActionModal
       :open="tagOpen"
-      :title="tagAmend ? '修正核实结果' : '风险打标'"
+      :title="tagAmend ? '修正核实结果' : '核实打标'"
       :icon="tagAmend ? EditOutlined : TagOutlined"
       tone="primary"
       :width="480"
