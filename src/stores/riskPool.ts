@@ -5,8 +5,12 @@ import { useRiskCollabStore, type RiskAdviceItem } from '@/stores/riskCollab';
 import { useRiskHistoryStore } from '@/stores/riskHistory';
 import { useRiskQueueStore, type RiskTagInput } from '@/stores/riskQueue';
 import { useRiskReportStore, type ReportReason, type RiskCategory } from '@/stores/riskReports';
+import { useDerivedTicketStore } from '@/stores/derivedTickets';
+import { TICKETS } from '@/mock/tickets';
+import { resolveTicketGroupNames } from '@/views/tickets/types/ticket';
 import {
   REPORT_ASSESS_LIMIT_MIN,
+  REPORT_SOURCE,
   asSentence,
   isOpenStatus,
   isPoolLevel,
@@ -79,6 +83,18 @@ export interface CoordinateInput {
   by: string;
   byRole: string;
   at: string;
+}
+
+/**
+ * A 线结论通知的收件人：**本单当前处理人**；工单无处理人（未认领）时落**归属组**（基线 ※19）。
+ * 取数与工单处理页同源：静态工单库 → 运行时派生单。两者都解析不到时返回空串（O23 类型级跳过）。
+ */
+function currentHandlerReceiver(ticketNo: string): string {
+  const t = TICKETS.find((x) => x.no === ticketNo) ?? useDerivedTicketStore().find(ticketNo);
+  if (!t) return '';
+  if (t.assignee) return `${t.assignee}(处理人)`;
+  const group = resolveTicketGroupNames(t)[0];
+  return group ? `${group}(归属组)` : '';
 }
 
 export const useRiskPoolStore = defineStore('riskPool', () => {
@@ -286,7 +302,7 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
       kind: 'risk',
       title: '风险报备已领取',
       receivers: [reporterReceiver(r)],
-      content: `${r.ticketNo} 的风险报备已由 ${r.assignee || '承办人'}（${byRole}）领取，正在评估中。报备原因：${reasonLine(r)}；提交时刻：${r.at}。评估时限 ${REPORT_ASSESS_LIMIT_MIN} 分钟（自报备提交时刻起算），出结论后会再通知你。`,
+      content: `${r.ticketNo} 的风险报备已由 ${r.assignee || '承办人'}（${byRole}）领取，正在评估中。报备原因：${reasonLine(r)}；提交时刻：${r.at}。处置时限 ${REPORT_ASSESS_LIMIT_MIN} 分钟（自报备提交时刻起算），出结论后会再通知你。`,
     });
   }
 
@@ -426,24 +442,26 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
       ...(assessment.escalatedToNo ? { escalatedToNo: assessment.escalatedToNo } : {}),
     });
     /*
-     * 结论发回**报备人** —— 他报上来之后就再没有别的出口知道结果：
-     * 「不升级」时他要按反馈意见继续办这张单，「升级」时他要知道单子已经不归他了。
-     *
-     * A 线自动入池的条目报备人是「系统」，这一类解析为空（O23）：
-     * 这时没有别的收件人类型，整条不发 —— 不是丢消息，是本来就没有人在等这个结论。
+     * `risk.report.assessed` 的收件人按条目所属的线取（《【930】》§6.2 / §9 规则 31）：
+     *   · **B 线 → 报备人**；
+     *   · **A 线 → 本单当前处理人**（A 线没有报备人），无处理人时落**归属组**（基线 ※19）。
+     * 🔴 A 线不能再走 `reporterReceiver`：它的 `by` 恒为「系统」、解析为空，整条通知会被丢掉。
+     * 这是报备五个既有事件之一，不是新增事件。
      */
+    const isBLine = r.source === REPORT_SOURCE;
     const decision = normalizeDecision(assessment.decision);
     const escalate = decision === '升级';
     const tail = escalate
-      ? `本单已升级为投诉工单 ${assessment.escalatedToNo ?? '待生成'}，由客诉专员承接。升级说明：${asSentence(assessment.advice)}`
+      ? `本单已升级为投诉工单 ${assessment.escalatedToNo ?? '待生成'}，由 ${assessment.by}（${assessment.byRole}）承接。升级说明：${asSentence(assessment.advice)}`
       : `反馈意见：${asSentence(assessment.advice)}`;
+    const subject = isBLine ? '风险报备' : '风险条目';
     notifyLog.emit({
       ticketNo: r.ticketNo,
       event: 'risk.report.assessed',
       kind: 'risk',
-      title: escalate ? '风险报备评估结论 · 升级' : '风险报备评估结论 · 不升级',
-      receivers: [reporterReceiver(r)],
-      content: `${r.ticketNo} 的风险报备已完成评估，结论：${decision}。${tail}评估人：${assessment.by}（${assessment.byRole}）· ${assessment.at}。`,
+      title: `${subject}评估结论 · ${decision}`,
+      receivers: [isBLine ? reporterReceiver(r) : currentHandlerReceiver(r.ticketNo)],
+      content: `${r.ticketNo} 的${subject}已完成评估，结论：${decision}。${tail}评估人：${assessment.by}（${assessment.byRole}）· ${assessment.at}。`,
     });
   }
 

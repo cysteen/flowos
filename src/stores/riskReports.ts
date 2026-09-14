@@ -80,8 +80,8 @@ export interface RiskReport {
    */
   source: '二线报备';
   /**
-   * 分派给谁（客诉专员姓名）。空 ＝ 待分派。
-   * 分派由投诉督导做，单条或批量（930 §5）。
+   * 承办人（领取人姓名，客诉专员或管理员）。空 ＝ 待领取（存储值仍写「待分派」）。
+   * 只有自取，没有指给某人的动作（930 §5.5）。
    */
   assignee?: string;
   reason: ReportReason;
@@ -498,7 +498,7 @@ export const useRiskReportStore = defineStore('riskReports', () => {
       kind: 'risk',
       title: '风险报备待领取',
       receivers: [...RISK_POOL_RECEIVERS],
-      content: `${report.ticketNo} 新增一条风险报备，报备原因：${reasonLine(report)}；报备人：${report.by}（${report.byRole}）。请及时在风险报备池领取并给出评估结论，评估时限 ${REPORT_ASSESS_LIMIT_MIN} 分钟（自报备提交时刻起算）。`,
+      content: `${report.ticketNo} 新增一条风险报备，报备原因：${reasonLine(report)}；报备人：${report.by}（${report.byRole}）。请及时在风险报备池领取并给出评估结论，处置时限 ${REPORT_ASSESS_LIMIT_MIN} 分钟（自报备提交时刻起算）。`,
     });
     return report;
   }
