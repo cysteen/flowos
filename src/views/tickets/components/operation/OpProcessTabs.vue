@@ -180,6 +180,10 @@ defineExpose({ switchTab });
     -->
     <a-config-provider :component-disabled="activeTabReadonly">
     <div class="tab-content" :class="{ 'is-readonly': activeTabReadonly }">
+      <!-- 「工单处理」Tab 顶部的类型专属只读块（刷机单：自动刷机结果 · 刷机信息），由页面按类型填入 -->
+      <div v-if="activeTab === 'process' && $slots['process-top']" class="process-top">
+        <slot name="process-top" />
+      </div>
       <OpProcessForm
         v-if="activeTab === 'process'"
         :form="form"
@@ -336,6 +340,7 @@ defineExpose({ switchTab });
 @media (prefers-reduced-motion: reduce) {
   .tab-item.dot-danger .tab-dot { animation: none; }
 }
+.process-top { display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; flex: none; }
 .tab-content {
   padding: 12px 12px 16px; flex: 1 1 auto;
   display: flex; flex-direction: column; min-height: 0;

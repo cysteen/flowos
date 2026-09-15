@@ -6,17 +6,11 @@ import type { FlashProgressStage } from '@/views/tickets/types/flash';
 /**
  * 用户侧进度（930 教育刷机单 PRD §2.5「进度映射」/ 页面规格 P2 / P0-6）。
  *
- * 步骤条四步：已受理 → 处理中 → 待回访 → 已完成。
- * 地基 `flashProgressStage` 把未认领 / 待响应归为「受理中」，PRD §2.5 进度映射把它们归「处理中 · 人工处理中」，
- * 用户侧按 PRD 显示：受理中 → 处理中 · 人工处理中。
+ * 步骤条四步：已受理 → 处理中 → 待回访 → 已完成。进度取地基 `flashProgressStage`（已按 PRD §2.5 口径）。
  */
 export const FLASH_STEP_LABELS = ['已受理', '处理中', '待回访', '已完成'] as const;
 
-export type FlashUserStage = '自动刷机中' | '人工处理中' | '待回访' | '已完成';
-
-export function toUserStage(stage: FlashProgressStage): FlashUserStage {
-  return stage === '受理中' ? '人工处理中' : stage;
-}
+export type FlashUserStage = FlashProgressStage;
 
 /** 当前进度文案：处理中 · 自动刷机中 / 处理中 · 人工处理中 / 待回访 / 已完成 */
 export function userStageText(stage: FlashUserStage): string {
@@ -66,7 +60,7 @@ export function useFlashProgress(no: Ref<string>) {
     const raw = flash.progressStageOf(key);
     const ticket = TICKETS.find((t) => t.no === key);
     if (!raw || !ticket || ticket.isDraft || ticket.nodeStatus === '草稿') return null;
-    const stage = toUserStage(raw);
+    const stage = raw;
     return {
       no: key,
       stage,

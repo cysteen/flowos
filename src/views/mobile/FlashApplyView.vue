@@ -9,7 +9,7 @@ import { SCHOOL_LIBRARY } from '@/mock/schools';
 import { FLASH_FIELD_LABELS } from '@/views/tickets/types/flash';
 import FlashMobileShell from './FlashMobileShell.vue';
 import FlashProgressSteps from './FlashProgressSteps.vue';
-import { toUserStage, useFlashProgress, userStageText } from './useFlashProgress';
+import { useFlashProgress, userStageText } from './useFlashProgress';
 
 /**
  * 用户提报页「刷机申请」与结果页（930 教育刷机单 PRD §2.5 / 页面规格 P2 · P0-1/2/3/5/6/7）。
@@ -147,7 +147,7 @@ function showBlocked(ev: FlashEvaluationBlocked) {
     return;
   }
   if (ev.code === 'A2' && ev.inflightNo) {
-    const stage = userStageText(toUserStage(ev.inflightStage ?? '人工处理中'));
+    const stage = userStageText(ev.inflightStage ?? '人工处理中');
     alert.value = { text: `该设备已有刷机申请 ${ev.inflightNo}，当前进度：${stage}`, inflightNo: ev.inflightNo };
   } else {
     alert.value = { text: ev.message };

@@ -288,6 +288,11 @@ export interface FlashRun {
   resultAt?: string;
   /** 推送接口同步报错后是否已自动重试（M10） */
   autoRetried?: boolean;
+  /**
+   * 推送发出时的「回传超时时长」快照（分钟，PRD §10.5）：本次推送按它判回传超时，
+   * 后台保存的新值只对之后发出的推送生效。缺省（旧数据）回落当前配置值。
+   */
+  returnTimeoutMin?: number;
   /** 推送发出时本单处理人（人工重推后按它回原处理人，M19 / D16） */
   handlerAtPush?: string | null;
   /** 推送发出前的 SLA 摘要：回到处理人 / 转二线池时按它续算（自动刷机中整段停钟，D18 / M16） */
@@ -404,13 +409,16 @@ export function flashRunInitiator(run: Pick<FlashRun, 'by' | 'line'>): string {
   return run.line ? `${run.by}（${run.line}）` : '系统';
 }
 
-/** 用户侧进度（M2 / M29：提报页在途提示与按单号查进度） */
-export type FlashProgressStage = '受理中' | '自动刷机中' | '人工处理中' | '待回访' | '已完成';
+/**
+ * 用户侧进度（M2 / M29：提报页在途提示与按单号查进度；PRD §2.5 进度映射）：
+ * 自动刷机中 → 处理中 · 自动刷机中；未认领 / 待响应 / 处理中 / 已挂起 / 已委派 / 已转出 / 审核中 → 处理中 · 人工处理中；
+ * 调研中 → 待回访；终态 → 已完成。
+ */
+export type FlashProgressStage = '自动刷机中' | '人工处理中' | '待回访' | '已完成';
 
 export function flashProgressStage(status: string): FlashProgressStage {
   if (status === '自动刷机中') return '自动刷机中';
   if (status === '调研中') return '待回访';
-  if (status === '未认领' || status === '待响应' || status === '草稿') return '受理中';
   if (['已结案', '已关闭', '已强结', '已取消', '直接结案', '已升级投诉', '已升级外投', '已转咨询', '已转建议', '已转商机'].includes(status)) {
     return '已完成';
   }
@@ -454,6 +462,74 @@ export const FLASH_TIP_VERIFY_UNAVAILABLE = '建单校验暂不可用，请稍�
 export const FLASH_TIP_REPUSH_STATE = '当前工单状态不可重新推送';
 /** 当前状态不可修改刷机信息（M52：待响应、处理中可改） */
 export const FLASH_TIP_EDIT_STATE = '当前工单状态不可修改刷机信息';
+/** 自动刷机中的冻结原因（PRD §3.1 / §5.5：底栏置灰、页头升级投诉置灰、「修改刷机信息」置灰的悬停原因） */
+export const FLASH_TIP_AUTO_FLASHING = '自动刷机进行中，回传结果后再操作';
+
+/* ------------------------------------------------------------------ */
+/* 外部平台外链（M23 / M62，新窗口打开）                                  */
+/* ------------------------------------------------------------------ */
+
+export const FLASH_EXTERNAL_LINKS = {
+  /** 智能硬件平台（自动刷机结果卡卡头）：按 SN 查推送与回传 */
+  hardwarePlatform: { label: '智能硬件平台', url: 'https://hwp.iflytek.com/device/push-records' },
+  /** MDM 后台（刷机信息区块头） */
+  mdm: { label: 'MDM 后台', url: 'https://mdm.iflytek.com/console/devices' },
+  /** 保障中心 · 学校管理（刷机信息区块头） */
+  schoolAdmin: { label: '保障中心 · 学校管理', url: 'https://bzzx.iflytek.com/school/manage' },
+} as const;
+
+/** 外链地址：带 SN 的平台附上 `?sn=`，便于落地即定位该设备 */
+export function flashExternalUrl(key: keyof typeof FLASH_EXTERNAL_LINKS, sn?: string): string {
+  const base = FLASH_EXTERNAL_LINKS[key].url;
+  return sn && key !== 'schoolAdmin' ? `${base}?sn=${encodeURIComponent(sn)}` : base;
+}
+
+/* ------------------------------------------------------------------ */
+/* 展示文案（处理页结果卡 / 推送记录 / 处理履历，PRD §5.2 / §11.2）         */
+/* ------------------------------------------------------------------ */
+
+/** 推送结果展示名：等待回传 → 自动刷机中（PRD §5.2「当前结果」与推送记录「结果」列） */
+export function flashRunResultText(result: FlashRunResult | FlashOutcome): string {
+  return result === '等待回传' ? '自动刷机中' : result;
+}
+
+/** 建单校验结果两项分列：「SN与学生账号一致：通过；毕业生身份：通过」；未跑校验 →「未校验」 */
+export function flashVerifyText(v: FlashVerifyResult): string {
+  if (v.status === '未校验') return '未校验';
+  return `${FLASH_VERIFY_ITEM_LABELS.snAccountMatch}：${v.snAccountMatch}；${FLASH_VERIFY_ITEM_LABELS.graduate}：${v.graduate}`;
+}
+
+/** 已推送计时 `mm:ss`（分钟不封顶） */
+export function flashElapsedText(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return `${pad(Math.floor(s / 60))}:${pad(s % 60)}`;
+}
+
+/** 处理履历正文（PRD §11.2 逐字） */
+export const FLASH_TL = {
+  create(creator: FlashCreator, verify: FlashVerifyResult, dest: { auto: true } | { handoff: FlashHandoffReason }): string {
+    const v = verify.status === '未校验' ? '建单校验：未校验' : flashVerifyText(verify);
+    const d = 'auto' in dest ? '进入自动刷机中' : `转人工原因：${dest.handoff}`;
+    return `创建刷机单 · ${creator}；${v}；${d}`;
+  },
+  autoPush: (seq: number) => `推送刷机包 · 第 ${seq} 次推送 · 发起方：系统`,
+  repush: (seq: number, run: Pick<FlashRun, 'by' | 'line'>) => `重新推送 · 第 ${seq} 次推送 · 发起方：${flashRunInitiator(run)}`,
+  returnSuccess: '回传结果：接收成功',
+  /** `reasonText` ＝ 失败原因展示文案「接收失败 · 〈二级〉」 */
+  returnFail: (reasonText: string) => `回传结果：${reasonText}`,
+  repushSuccess: (handler: string) => `重推成功，交回 ${handler}`,
+  lateSuccess: '回传结果（迟到）：接收成功，子状态未变更',
+  /** `reasonText` ＝「推送异常 · 接口异常」 */
+  pushApiError: (reasonText: string) => `${reasonText}（已自动重试 1 次）`,
+  verifyApiError: (reasonText: string) => `${reasonText}（建单校验未执行）`,
+  /** `reasonText` ＝「推送异常 · 回传超时」 */
+  returnTimeout: (reasonText: string, hours: number) => `${reasonText}（推送后 ${hours} 小时无回传）`,
+  handoff: (reason: FlashHandoffReason, poolLabel: string) => `转人工 · ${reason} → ${poolLabel}`,
+  repushFailBack: (handler: string) => `重推失败 · 交回 ${handler}`,
+  editInfo: '修改刷机信息',
+  offlineRegister: (time: string) => flashOfflineRegisterRecord(time),
+  slaPause: (until: string) => `SLA 暂停至 ${until} · 线下登记`,
+} as const;
 
 /** SN 尾号（短信里只露后四位） */
 export function snTail(sn: string): string {

@@ -13,9 +13,9 @@
 import type { Ticket } from '@/views/tickets/types/ticket';
 import type { TimelineEntry, TlAction, TlCategory, TlRole } from '@/views/tickets/types/ticketDetail';
 import {
-  FLASH_POOLS, flashMinuteStamp, flashSmsHandoff, flashSmsSuccess, flashStamp, offlineBatchResumeAt,
-  parseFlashStamp,
-  type FlashCreator, type FlashFailL1, type FlashFailL2, type FlashInfo, type FlashPoolKey,
+  FLASH_POOLS, FLASH_RETURN_TIMEOUT_DEFAULT_MIN, FLASH_TL, flashFailReasonText, flashMinuteStamp, flashSmsHandoff,
+  flashSmsSuccess, flashStamp, offlineBatchResumeAt, parseFlashStamp,
+  type FlashCreator, type FlashFailL1, type FlashFailL2, type FlashHandoffReason, type FlashInfo, type FlashPoolKey,
   type FlashReason, type FlashRun, type FlashRunResult, type FlashState, type FlashPushTrigger,
   type FlashVerifyResult,
 } from '@/views/tickets/types/flash';
@@ -85,6 +85,7 @@ function run(p: {
     failL2: p.failL2,
     resultAt: p.resultAt,
     handlerAtPush: p.handlerAtPush ?? null,
+    returnTimeoutMin: FLASH_RETURN_TIMEOUT_DEFAULT_MIN,
   };
 }
 
@@ -161,26 +162,44 @@ function row(
   };
 }
 
-/** 「用户提报」建单履历 */
-function createdByUser(when: string, customer: string, info: FlashInfo): TimelineEntry {
-  return tl(when, 'node', 'create', customer, '客户', '刷机提报',
-    `通过客户服务小程序提交刷机申请：${info.productModel}，SN ${info.sn}，学生 ${info.studentName}（${info.schoolName}），刷机原因 ${info.reason}。`);
+type SeedDest = { auto: true } | { handoff: FlashHandoffReason };
+
+/** 「用户提报」建单履历（PRD §11.2「建单」；操作人沿用提报用户，X4） */
+function createdByUser(when: string, customer: string, verify: FlashVerifyResult, dest: SeedDest): TimelineEntry {
+  return tl(when, 'node', 'create', customer, '客户', '建单', FLASH_TL.create('用户提报', verify, dest));
 }
-function createdByAgent(when: string, agent: string, role: TlRole, info: FlashInfo): TimelineEntry {
-  return tl(when, 'node', 'create', agent, role, '代客建单',
-    `来电代客提交刷机申请：${info.productModel}，SN ${info.sn}，学生 ${info.studentName}（${info.schoolName}），刷机原因 ${info.reason}。`);
+function createdByAgent(when: string, agent: string, role: TlRole, creator: FlashCreator, verify: FlashVerifyResult, dest: SeedDest): TimelineEntry {
+  return tl(when, 'node', 'create', agent, role, '建单', FLASH_TL.create(creator, verify, dest));
 }
-function pushEntry(when: string, seq: number, sn: string): TimelineEntry {
-  return tl(when, 'node', 'flashPush', '系统', '系统', '自动推送', `第 ${seq} 次推送刷机包至设备 SN ${sn}，等待硬件平台回传。`);
+function pushEntry(when: string, seq: number): TimelineEntry {
+  return tl(when, 'node', 'flashPush', '系统', '系统', '自动推送', FLASH_TL.autoPush(seq));
+}
+function repushEntry(when: string, seq: number, by: string, role: TlRole): TimelineEntry {
+  return tl(when, 'node', 'flashRepush', by, role, '重新推送',
+    FLASH_TL.repush(seq, { by, line: role === '一线坐席' ? '一线' : '二线' }));
+}
+function returnOk(when: string): TimelineEntry {
+  return tl(when, 'node', 'flashSuccess', '系统', '系统', '回传结果', FLASH_TL.returnSuccess);
+}
+function returnFail(when: string, l2?: FlashFailL2): TimelineEntry {
+  return tl(when, 'node', 'flashFail', '系统', '系统', '回传结果', FLASH_TL.returnFail(flashFailReasonText('接收失败', l2)));
 }
 function smsEntry(when: string, phone: string, content: string): TimelineEntry {
   return tl(when, 'comm', 'sms', '系统', '系统', '短信通知', `发送至 ${phone}：${content}`);
 }
-function handoffEntry(when: string, reason: string, pool: FlashPoolKey, lead = ''): TimelineEntry {
-  return tl(when, 'node', 'flashHandoff', '系统', '系统', '转人工', `${lead}转人工（${reason}），进入${FLASH_POOLS[pool].label}。`);
+function handoffEntry(when: string, reason: FlashHandoffReason, pool: FlashPoolKey): TimelineEntry {
+  return tl(when, 'node', 'flashHandoff', '系统', '系统', '转人工', FLASH_TL.handoff(reason, FLASH_POOLS[pool].label));
 }
 function acceptEntry(when: string, who: string, role: TlRole): TimelineEntry {
   return tl(when, 'node', 'accept', who, role, '领取', `${who} 从池中领取本单。`);
+}
+/** 坐席处理记录（「保存」登记的处理进展） */
+function handleEntry(when: string, who: string, role: TlRole, what: string): TimelineEntry {
+  return tl(when, 'handle', 'handle', who, role, '工单处理', what);
+}
+function escalateEntry(when: string, who: string, note: string, checks: string): TimelineEntry {
+  return tl(when, 'node', 'escalate', who, '一线坐席', '升级二线',
+    `升级至教育刷机处理组；升级说明：${note}；已做排查：${checks}`);
 }
 
 export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
@@ -205,8 +224,8 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       flashState: state('用户提报', { outcome: '等待回传', pushCount: 1 }),
       runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '等待回传' })],
     }), [
-      createdByUser(created, '胡建国', info),
-      pushEntry(pushed, 1, info.sn),
+      createdByUser(created, '胡建国', VERIFY_PASS, { auto: true }),
+      pushEntry(pushed, 1),
     ]);
   }
 
@@ -223,8 +242,8 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       flashState: state('用户提报', { outcome: '等待回传', pushCount: 1 }),
       runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '等待回传' })],
     }), [
-      createdByUser(created, '程丽', info),
-      pushEntry(pushed, 1, info.sn),
+      createdByUser(created, '程丽', VERIFY_PASS, { auto: true }),
+      pushEntry(pushed, 1),
     ]);
   }
 
@@ -245,8 +264,8 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       }),
       runs: [],
     }), [
-      createdByUser(at, '唐伟', info),
-      handoffEntry(addSec(at, 2), '建单校验不通过', 'l1', '建单校验不通过：SN与学生账号不一致，未推送；'),
+      createdByUser(at, '唐伟', { status: '已校验', snAccountMatch: '不通过', graduate: '不通过' }, { handoff: '建单校验不通过' }),
+      handoffEntry(addSec(at, 2), '建单校验不通过', 'l1'),
       smsEntry(addSec(at, 3), '13705513377', sms),
     ]);
   }
@@ -263,8 +282,8 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       flashState: state('用户提报', { handoffReason: '非自研机型', pool: 'l1', handoffSmsSent: true }),
       runs: [],
     }), [
-      createdByUser(at, '马骏', info),
-      handoffEntry(addSec(at, 2), '非自研机型', 'l1', '建单校验通过；该机型不支持线上推送，'),
+      createdByUser(at, '马骏', VERIFY_PASS, { handoff: '非自研机型' }),
+      handoffEntry(addSec(at, 2), '非自研机型', 'l1'),
       smsEntry(addSec(at, 3), '13966304107', flashSmsHandoff(no(4))),
     ]);
   }
@@ -286,9 +305,9 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       }),
       runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '接收失败', failL1: '接收失败', failL2: '未开机', resultAt: back })],
     }), [
-      createdByUser(at, '许志强', info),
-      pushEntry(pushed, 1, info.sn),
-      tl(back, 'node', 'flashFail', '系统', '系统', '回传失败', '硬件平台回传：接收失败 · 未开机。'),
+      createdByUser(at, '许志强', VERIFY_PASS, { auto: true }),
+      pushEntry(pushed, 1),
+      returnFail(back, '未开机'),
       handoffEntry(addSec(back, 1), '接收失败', 'l1'),
       smsEntry(addSec(back, 2), '15855170233', flashSmsHandoff(no(5))),
     ]);
@@ -311,9 +330,9 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       }),
       runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '推送异常', failL1: '推送异常', failL2: '回传超时', resultAt: timeout })],
     }), [
-      createdByUser(at, '钱芳', info),
-      pushEntry(pushed, 1, info.sn),
-      tl(timeout, 'node', 'flashFail', '系统', '系统', '回传失败', '推送后 120 分钟未收到硬件平台回传：推送异常 · 回传超时。'),
+      createdByUser(at, '钱芳', VERIFY_PASS, { auto: true }),
+      pushEntry(pushed, 1),
+      tl(timeout, 'node', 'flashFail', '系统', '系统', '回传超时', FLASH_TL.returnTimeout('推送异常 · 回传超时', 2)),
       handoffEntry(addSec(timeout, 1), '推送异常', 'l1'),
       smsEntry(addSec(timeout, 2), '18955102021', flashSmsHandoff(no(6))),
     ]);
@@ -322,13 +341,14 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
   // ⑦ 一线处理中 · 已领取、未重推（接收失败 · 原因未返回）
   {
     const info = infoOf('XFS20240600512', 'SCH-340302-002', '毕业');
-    const at = '2026-09-14 16:05:10';
+    const at = '2026-09-15 07:05:10';
     const pushed = addSec(at, 2);
     const back = addSec(pushed, 12);
-    const claim = '2026-09-14 16:30:25';
+    const claim = '2026-09-15 07:30:25';
+    const handled = '2026-09-15 07:42:08';
     add(row(7, {
       info, creator: '用户提报', customer: '冯涛', phone: '13605521310',
-      createdAt: at.slice(0, 16), updatedAt: claim.slice(0, 16),
+      createdAt: at.slice(0, 16), updatedAt: handled.slice(0, 16),
       nodeStatus: '处理中', assignee: '刘一线', tab: 'mine', responded: true, nodeStep: 2,
       slaText: '03:40:00', slaSub: '距超时', slaState: 'ok', slaMinutes: 220,
       flashState: state('用户提报', {
@@ -337,12 +357,14 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       }),
       runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '接收失败', failL1: '接收失败', resultAt: back })],
     }), [
-      createdByUser(at, '冯涛', info),
-      pushEntry(pushed, 1, info.sn),
-      tl(back, 'node', 'flashFail', '系统', '系统', '回传失败', '硬件平台回传：接收失败 · 原因未返回。'),
+      createdByUser(at, '冯涛', VERIFY_PASS, { auto: true }),
+      pushEntry(pushed, 1),
+      returnFail(back),
       handoffEntry(addSec(back, 1), '接收失败', 'l1'),
       smsEntry(addSec(back, 2), '13605521310', flashSmsHandoff(no(7))),
       acceptEntry(claim, '刘一线', '一线坐席'),
+      handleEntry(handled, '刘一线', '一线坐席',
+        '已致电用户冯涛，经智能硬件平台查询设备推送时处于离线状态；已指导用户将平板连接家庭 WiFi，用户表示晚间开机联网后回电确认。'),
     ]);
   }
 
@@ -369,15 +391,16 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
         run({ seq: 2, trigger: '一线重推', by: '刘一线', byRole: '一线坐席', pushedAt: repushed, result: '接收成功', resultAt: back2, handlerAtPush: '刘一线' }),
       ],
     }), [
-      createdByUser(at, '梁红', info),
-      pushEntry(pushed, 1, info.sn),
-      tl(back, 'node', 'flashFail', '系统', '系统', '回传失败', '硬件平台回传：接收失败 · 未联网。'),
+      createdByUser(at, '梁红', VERIFY_PASS, { auto: true }),
+      pushEntry(pushed, 1),
+      returnFail(back, '未联网'),
       handoffEntry(addSec(back, 1), '接收失败', 'l1'),
       smsEntry(addSec(back, 2), '13966018716', flashSmsHandoff(no(8))),
       acceptEntry(claim, '刘一线', '一线坐席'),
-      tl(addSec(repushed, -1), 'node', 'flashRepush', '刘一线', '一线坐席', '重推', '已电话指导用户连接网络，刷机信息未修改，重新推送。'),
-      pushEntry(repushed, 2, info.sn),
-      tl(back2, 'node', 'flashSuccess', '系统', '系统', '回传成功', '硬件平台回传：接收成功，已回到处理人 刘一线 名下。'),
+      handleEntry(addSec(repushed, -95), '刘一线', '一线坐席', '已电话联系用户梁红，指导平板连接家庭 WiFi，设备已在线，准备重新推送。'),
+      repushEntry(repushed, 2, '刘一线', '一线坐席'),
+      returnOk(back2),
+      tl(back2, 'node', 'flashSuccess', '系统', '系统', '回传结果', FLASH_TL.repushSuccess('刘一线')),
       smsEntry(addSec(back2, 1), '13966018716', flashSmsSuccess(no(8), info.sn)),
     ]);
   }
@@ -394,8 +417,8 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       flashState: state('用户提报', { handoffReason: '特殊情况', pool: 'l2', handoffSmsSent: true, verifyResult: { status: '未校验' } }),
       runs: [],
     }), [
-      createdByUser(at, '邹敏', info),
-      handoffEntry(addSec(at, 2), '特殊情况', 'l2', '刷机原因为转校，需联系学校核实，未推送；'),
+      createdByUser(at, '邹敏', { status: '未校验' }, { handoff: '特殊情况' }),
+      handoffEntry(addSec(at, 2), '特殊情况', 'l2'),
       smsEntry(addSec(at, 3), '15955116702', flashSmsHandoff(no(9))),
     ]);
   }
@@ -416,8 +439,9 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       }),
       runs: [],
     }), [
-      createdByAgent(at, '刘一线', '一线坐席', info),
-      handoffEntry(addSec(at, 2), '建单校验不通过', 'l2', '建单校验不通过：非毕业生身份，未推送；'),
+      createdByAgent(at, '刘一线', '一线坐席', '一线代建',
+        { status: '已校验', snAccountMatch: '通过', graduate: '不通过' }, { handoff: '建单校验不通过' }),
+      handoffEntry(addSec(at, 2), '建单校验不通过', 'l2'),
       smsEntry(addSec(at, 3), '13866107133', flashSmsHandoff(no(10))),
     ]);
   }
@@ -425,11 +449,11 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
   // ⑪ 二线池 · 一线升级（首推接收失败 · 版本不符 → 一线领取 → 升级二线）
   {
     const info = infoOf('XFX3P240500518', 'SCH-340202-003', '毕业');
-    const at = '2026-09-14 10:12:28';
+    const at = '2026-09-15 07:12:28';
     const pushed = addSec(at, 2);
     const back = addSec(pushed, 12);
-    const claim = '2026-09-14 10:40:05';
-    const esc = '2026-09-14 11:05:33';
+    const claim = '2026-09-15 07:40:05';
+    const esc = '2026-09-15 08:05:33';
     add(row(11, {
       info, creator: '用户提报', customer: '沈建', phone: '13505536419',
       createdAt: at.slice(0, 16), updatedAt: esc.slice(0, 16),
@@ -442,25 +466,25 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       }),
       runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '接收失败', failL1: '接收失败', failL2: '版本不符', resultAt: back })],
     }), [
-      createdByUser(at, '沈建', info),
-      pushEntry(pushed, 1, info.sn),
-      tl(back, 'node', 'flashFail', '系统', '系统', '回传失败', '硬件平台回传：接收失败 · 版本不符。'),
+      createdByUser(at, '沈建', VERIFY_PASS, { auto: true }),
+      pushEntry(pushed, 1),
+      returnFail(back, '版本不符'),
       handoffEntry(addSec(back, 1), '接收失败', 'l1'),
       smsEntry(addSec(back, 2), '13505536419', flashSmsHandoff(no(11))),
       acceptEntry(claim, '刘一线', '一线坐席'),
-      tl(esc, 'node', 'escalate', '刘一线', '一线坐席', '升级二线',
-        '升级至教育刷机处理组。升级说明：设备系统版本过低，用户端检查更新无可用升级包，需二线处理。已做排查：已指导开机联网、其他。'),
+      handleEntry(addSec(esc, -120), '刘一线', '一线坐席', '已致电用户沈建，设备在线但系统版本过低，用户端检查更新无可用升级包，一线无法处理。'),
+      escalateEntry(esc, '刘一线', '设备系统版本过低，用户端检查更新无可用升级包，需二线处理', '已指导开机联网、其他'),
     ]);
   }
 
   // ⑫ 二线池 · 一线重推失败（未开机两次）
   {
     const info = infoOf('XFS20240600789', 'SCH-340104-050', '毕业');
-    const at = '2026-09-14 14:19:58';
+    const at = '2026-09-15 07:19:58';
     const pushed = addSec(at, 2);
     const back = addSec(pushed, 12);
-    const claim = '2026-09-14 14:48:10';
-    const repushed = '2026-09-14 15:30:10';
+    const claim = '2026-09-15 07:48:10';
+    const repushed = '2026-09-15 08:30:10';
     const back2 = addSec(repushed, 12);
     add(row(12, {
       info, creator: '用户提报', customer: '陆明', phone: '18055128520',
@@ -476,15 +500,15 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
         run({ seq: 2, trigger: '一线重推', by: '刘一线', byRole: '一线坐席', pushedAt: repushed, result: '接收失败', failL1: '接收失败', failL2: '未开机', resultAt: back2, handlerAtPush: '刘一线' }),
       ],
     }), [
-      createdByUser(at, '陆明', info),
-      pushEntry(pushed, 1, info.sn),
-      tl(back, 'node', 'flashFail', '系统', '系统', '回传失败', '硬件平台回传：接收失败 · 未开机。'),
+      createdByUser(at, '陆明', VERIFY_PASS, { auto: true }),
+      pushEntry(pushed, 1),
+      returnFail(back, '未开机'),
       handoffEntry(addSec(back, 1), '接收失败', 'l1'),
       smsEntry(addSec(back, 2), '18055128520', flashSmsHandoff(no(12))),
       acceptEntry(claim, '刘一线', '一线坐席'),
-      tl(addSec(repushed, -1), 'node', 'flashRepush', '刘一线', '一线坐席', '重推', '已电话联系用户开机，刷机信息未修改，重新推送。'),
-      pushEntry(repushed, 2, info.sn),
-      tl(back2, 'node', 'flashFail', '系统', '系统', '回传失败', '硬件平台回传：接收失败 · 未开机。'),
+      handleEntry(addSec(repushed, -80), '刘一线', '一线坐席', '已电话联系用户陆明，用户称已开机，准备重新推送。'),
+      repushEntry(repushed, 2, '刘一线', '一线坐席'),
+      returnFail(back2, '未开机'),
       handoffEntry(addSec(back2, 1), '一线重推失败', 'l2'),
     ]);
   }
@@ -492,10 +516,10 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
   // ⑬ 二线池 · 回访未解决（自助成功 → 回访反馈未解决）
   {
     const info = infoOf('XFS30240900690', 'SCH-340111-168', '毕业');
-    const at = '2026-09-13 09:29:58';
+    const at = '2026-09-15 06:29:58';
     const pushed = addSec(at, 2);
     const back = addSec(pushed, 12);
-    const survey = '2026-09-14 10:02:36';
+    const survey = '2026-09-15 09:02:36';
     add(row(13, {
       info, creator: '用户提报', customer: '杜娟', phone: '13956987908',
       createdAt: at.slice(0, 16), updatedAt: survey.slice(0, 16),
@@ -507,9 +531,9 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       }),
       runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '接收成功', resultAt: back })],
     }), [
-      createdByUser(at, '杜娟', info),
-      pushEntry(pushed, 1, info.sn),
-      tl(back, 'node', 'flashSuccess', '系统', '系统', '回传成功', '硬件平台回传：接收成功，处理结果「已线上刷机成功」，进入回访。'),
+      createdByUser(at, '杜娟', VERIFY_PASS, { auto: true }),
+      pushEntry(pushed, 1),
+      returnOk(back),
       smsEntry(addSec(back, 1), '13956987908', flashSmsSuccess(no(13), info.sn)),
       tl(survey, 'customer', 'reply', '杜娟', '客户', '回访评价', '是否解决：未解决。设备重启后仍停留在学校管控界面，无法进入个人桌面。'),
       handoffEntry(addSec(survey, 1), '回访未解决', 'l2'),
@@ -519,10 +543,10 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
   // ⑭ 二线处理中 · 已线下登记、等待批推后确认（非自研 → 一线升级 → 二线线下登记）
   {
     const info = infoOf('LNX6C62404B0277', 'SCH-340302-002', '毕业');
-    const at = '2026-09-14 09:10:12';
-    const claim1 = '2026-09-14 09:40:20';
-    const esc = '2026-09-14 10:20:45';
-    const claim2 = '2026-09-14 10:45:08';
+    const at = '2026-09-15 06:10:12';
+    const claim1 = '2026-09-15 06:40:20';
+    const esc = '2026-09-15 07:20:45';
+    const claim2 = '2026-09-15 07:45:08';
     // 登记时刻取加载时刻前 40 分钟，SLA 暂停至按平峰批推时刻推算；
     // 那一刻已跨过批推时刻（恢复时刻已过去、不暂停）时，改取加载时刻本身登记，保证样本处在暂停中
     let registered = flashMinuteStamp(nowMs - 40 * 60_000);
@@ -544,14 +568,16 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       }),
       runs: [],
     }), [
-      createdByUser(at, '蒋丽', info),
-      handoffEntry(addSec(at, 2), '非自研机型', 'l1', '建单校验通过；该机型不支持线上推送，'),
+      createdByUser(at, '蒋丽', VERIFY_PASS, { handoff: '非自研机型' }),
+      handoffEntry(addSec(at, 2), '非自研机型', 'l1'),
       smsEntry(addSec(at, 3), '13855205625', flashSmsHandoff(no(14))),
       acceptEntry(claim1, '刘一线', '一线坐席'),
-      tl(esc, 'node', 'escalate', '刘一线', '一线坐席', '升级二线',
-        '升级至教育刷机处理组。升级说明：联想定制机型需走线下登记推送，一线无登记权限。已做排查：已联系学校。'),
+      escalateEntry(esc, '刘一线', '联想定制机型需走线下登记推送，一线无登记权限', '已联系学校'),
       acceptEntry(claim2, '王坐席', '二线专员'),
-      tl(`${registered}:00`, 'handle', 'handle', '王坐席', '二线专员', '工单处理', `已线下登记推送，登记时间 ${registered}`),
+      tl(`${registered}:00`, 'handle', 'handle', '王坐席', '二线专员', '线下登记', FLASH_TL.offlineRegister(registered)),
+      ...(pausedUntil
+        ? [tl(`${registered}:01`, 'sla', 'hold', '系统', '系统', 'SLA 暂停', FLASH_TL.slaPause(pausedUntil))]
+        : []),
     ]);
   }
 
@@ -569,9 +595,9 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       flashState: state('用户提报', { outcome: '接收成功', pushCount: 1, result: '已线上刷机成功' }),
       runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '接收成功', resultAt: back })],
     }), [
-      createdByUser(at, '叶青', info),
-      pushEntry(pushed, 1, info.sn),
-      tl(back, 'node', 'flashSuccess', '系统', '系统', '回传成功', '硬件平台回传：接收成功，处理结果「已线上刷机成功」，进入回访。'),
+      createdByUser(at, '叶青', VERIFY_PASS, { auto: true }),
+      pushEntry(pushed, 1),
+      returnOk(back),
       smsEntry(addSec(back, 1), '15256430302', flashSmsSuccess(no(15), info.sn)),
     ]);
   }
@@ -579,10 +605,10 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
   // ⑯ 已结案（自助成功 → 回访已解决）
   {
     const info = infoOf('XFS30240900745', 'SCH-340103-001', '毕业');
-    const at = '2026-09-12 15:11:40';
+    const at = '2026-09-15 06:11:40';
     const pushed = addSec(at, 2);
     const back = addSec(pushed, 12);
-    const survey = '2026-09-13 09:18:05';
+    const survey = '2026-09-15 08:18:05';
     add(row(16, {
       info, creator: '用户提报', customer: '秦海', phone: '13721061811',
       createdAt: at.slice(0, 16), updatedAt: survey.slice(0, 16),
@@ -591,9 +617,9 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       flashState: state('用户提报', { outcome: '接收成功', pushCount: 1, result: '已线上刷机成功', surveyConcluded: true }),
       runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '接收成功', resultAt: back })],
     }), [
-      createdByUser(at, '秦海', info),
-      pushEntry(pushed, 1, info.sn),
-      tl(back, 'node', 'flashSuccess', '系统', '系统', '回传成功', '硬件平台回传：接收成功，处理结果「已线上刷机成功」，进入回访。'),
+      createdByUser(at, '秦海', VERIFY_PASS, { auto: true }),
+      pushEntry(pushed, 1),
+      returnOk(back),
       smsEntry(addSec(back, 1), '13721061811', flashSmsSuccess(no(16), info.sn)),
       tl(survey, 'praise', 'praise', '秦海', '客户', '回访评价', '是否解决：已解决 | 是否满意：满意。', { stars: 5 }),
       tl(addSec(survey, 1), 'node', 'resolved', '系统', '系统', '结案', '回访已解决，工单结案。'),
@@ -603,21 +629,21 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
   // ⑰ 已转出（转售后）：版本不符 → 一线升级 → 二线重推仍失败 → 转售后
   {
     const info = infoOf('XFX3P240500634', 'SCH-340111-008', '毕业');
-    const at = '2026-09-12 10:02:18';
+    const at = '2026-09-15 06:02:18';
     const pushed = addSec(at, 2);
     const back = addSec(pushed, 12);
-    const claim1 = '2026-09-12 10:30:40';
-    const esc = '2026-09-12 11:02:15';
-    const claim2 = '2026-09-12 13:20:02';
-    const repushed = '2026-09-13 11:00:06';
+    const claim1 = '2026-09-15 06:30:40';
+    const esc = '2026-09-15 07:02:15';
+    const claim2 = '2026-09-15 07:20:02';
+    const repushed = '2026-09-15 08:00:06';
     const back2 = addSec(repushed, 12);
-    const toAs = '2026-09-13 14:20:31';
+    const toAs = '2026-09-15 09:20:31';
     add(row(17, {
       info, creator: '用户提报', customer: '顾红梅', phone: '13966713907',
       createdAt: at.slice(0, 16), updatedAt: toAs.slice(0, 16),
       nodeStatus: '已转出', assignee: '王坐席', tab: 'mine', responded: true, nodeStep: 4,
       slaText: '—', slaSub: '已转出·停表', slaState: 'ok', slaMinutes: 9999,
-      linkedAftersaleNo: 'AS-20260913-39021', upgradeCount: 1,
+      linkedAftersaleNo: 'AS-20260915-39021', upgradeCount: 1,
       flashState: state('用户提报', {
         outcome: '接收失败', failL1: '接收失败', failL2: '版本不符', pushCount: 2,
         handoffReason: '一线升级', pool: 'l2', handoffSmsSent: true,
@@ -627,19 +653,46 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
         run({ seq: 2, trigger: '二线重推', by: '王坐席', byRole: '二线专员', pushedAt: repushed, result: '接收失败', failL1: '接收失败', failL2: '版本不符', resultAt: back2, handlerAtPush: '王坐席' }),
       ],
     }), [
-      createdByUser(at, '顾红梅', info),
-      pushEntry(pushed, 1, info.sn),
-      tl(back, 'node', 'flashFail', '系统', '系统', '回传失败', '硬件平台回传：接收失败 · 版本不符。'),
+      createdByUser(at, '顾红梅', VERIFY_PASS, { auto: true }),
+      pushEntry(pushed, 1),
+      returnFail(back, '版本不符'),
       handoffEntry(addSec(back, 1), '接收失败', 'l1'),
       smsEntry(addSec(back, 2), '13966713907', flashSmsHandoff(no(17))),
       acceptEntry(claim1, '刘一线', '一线坐席'),
-      tl(esc, 'node', 'escalate', '刘一线', '一线坐席', '升级二线',
-        '升级至教育刷机处理组。升级说明：设备系统版本过低无法在线升级。已做排查：已指导开机联网。'),
+      escalateEntry(esc, '刘一线', '设备系统版本过低无法在线升级', '已指导开机联网'),
       acceptEntry(claim2, '王坐席', '二线专员'),
-      tl(addSec(repushed, -1), 'node', 'flashRepush', '王坐席', '二线专员', '重推', '已协调硬件平台下发兼容刷机包，重新推送。'),
-      pushEntry(repushed, 2, info.sn),
-      tl(back2, 'node', 'flashFail', '系统', '系统', '回传失败', '硬件平台回传：接收失败 · 版本不符，已回到处理人 王坐席 名下。'),
-      tl(toAs, 'node', 'transfer', '王坐席', '二线专员', '转售后', '设备系统分区异常无法在线刷机，已转售后寄修检测，售后单 AS-20260913-39021。'),
+      handleEntry(addSec(repushed, -300), '王坐席', '二线专员', '已在工单刷机问题沟通群反馈，硬件平台下发兼容刷机包，准备重新推送。'),
+      repushEntry(repushed, 2, '王坐席', '二线专员'),
+      returnFail(back2, '版本不符'),
+      tl(addSec(back2, 1), 'node', 'flashHandoff', '系统', '系统', '转人工', FLASH_TL.repushFailBack('王坐席')),
+      tl(toAs, 'node', 'transfer', '王坐席', '二线专员', '转售后', '设备系统分区异常无法在线刷机，已转售后寄修检测，售后单 AS-20260915-39021。'),
+    ]);
+  }
+
+  // ⑱ 一线刷机池 · 回传超时转人工后迟到回传「接收成功」（M11 / M48）：状态与处理人不变，只记迟到回传时间
+  {
+    const info = infoOf('XFS30240900918', 'SCH-340302-002', '毕业');
+    const at = '2026-09-15 06:20:05';
+    const pushed = addSec(at, 2);
+    const timeout = addSec(pushed, 120 * 60);
+    const late = '2026-09-15 08:47:32';
+    add(row(18, {
+      info, creator: '用户提报', customer: '宋建华', phone: '13905527418',
+      createdAt: at.slice(0, 16), updatedAt: late.slice(0, 16),
+      nodeStatus: '未认领', assignee: null, tab: 'pool', nodeStep: 1,
+      slaText: '06:05:00', slaSub: '距超时', slaState: 'ok', slaMinutes: 365,
+      flashState: state('用户提报', {
+        outcome: '推送异常', failL1: '推送异常', failL2: '回传超时', pushCount: 1,
+        handoffReason: '推送异常', pool: 'l1', handoffSmsSent: true, lateSuccessAt: late,
+      }),
+      runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '推送异常', failL1: '推送异常', failL2: '回传超时', resultAt: timeout })],
+    }), [
+      createdByUser(at, '宋建华', VERIFY_PASS, { auto: true }),
+      pushEntry(pushed, 1),
+      tl(timeout, 'node', 'flashFail', '系统', '系统', '回传超时', FLASH_TL.returnTimeout('推送异常 · 回传超时', 2)),
+      handoffEntry(addSec(timeout, 1), '推送异常', 'l1'),
+      smsEntry(addSec(timeout, 2), '13905527418', flashSmsHandoff(no(18))),
+      tl(late, 'node', 'flashSuccess', '系统', '系统', '回传结果', FLASH_TL.lateSuccess),
     ]);
   }
 

@@ -9,6 +9,7 @@ import {
   isFirstResponded, isSlaPaused, isTicketClosed, resolveStoppedClockStatus,
 } from '@/views/tickets/types/ticket';
 import { useFlashStore } from '@/stores/flash';
+import { findSchoolById } from '@/mock/schools';
 import type { Ticket, Channel, TicketType, Priority } from '@/views/tickets/types/ticket';
 import { TICKETS } from '@/mock/tickets';
 import { TYPE_SAMPLES } from '@/mock/ticketTypeSamples';
@@ -345,8 +346,73 @@ export function useTicketOperation() {
     if (!t?.problemDesc?.trim() && sample?.demand) base.demand = sample.demand;
     if (sample?.insight) base.insight = sample.insight;
     if (sample?.aiInsight) base.aiInsight = sample.aiInsight;
+    if (t?.flash) applyFlashOverview(base, t);
     detail.value = base;
     if (t?.flash) projectFlashTimeline(t.no, true);
+  }
+
+  /**
+   * 刷机单的页头 / 速览带 / 侧栏取值与刷机种子单自洽（X5 / X7）：建单人取刷机履历的建单操作人，
+   * 建单时间取工单行，客户与产品取工单行与刷机信息，「最新处理」取刷机履历，不沿用投诉样例的台账。
+   */
+  function applyFlashOverview(base: TicketDetailMeta, t: Ticket) {
+    const f = t.flash!;
+    const creatorName = flash.creatorNameOf(t.no) ?? '—';
+    const createdAt = t.createdAt ?? '';
+    base.builder = creatorName;
+    base.builderShort = creatorName;
+    base.createdAt = createdAt;
+    base.createdAtFull = createdAt;
+    base.issueOccurredAt = createdAt;
+    base.expectedResolve = '—';
+    base.businessType = t.businessType ?? '教育';
+    base.businessLine = '教育业务线';
+    base.attachments = [];
+    base.product.name = f.info.productModel;
+    base.product.sn = f.info.sn;
+    base.product.tags = [];
+    base.product.issueTags = ['刷机申请', f.info.reason];
+    const phone = (t.customerPhone ?? '').replace(/^(\d{3})(\d{4})(\d{4})$/, '$1 $2 $3');
+    base.customer = {
+      name: t.customer,
+      types: ['G个人用户'],
+      gender: '—',
+      contacts: phone ? [{ type: 'phone', value: phone }] : [],
+      region: findSchoolById(f.info.schoolId)?.region ?? '—',
+      address: '—',
+    };
+    base.agent = null;
+    // 客户全景下钻：本客户名下只有这一张刷机单
+    const selfRow = { cells: [t.no, '刷机', createdAt, t.nodeStatus, t.nodeStatus], ticketNo: t.no };
+    base.insightDetails = {
+      contact: { ...base.insightDetails.contact, rows: [] },
+      history: { ...base.insightDetails.history, rows: [selfRow] },
+      complaint: { ...base.insightDetails.complaint, rows: [] },
+      recent30: { ...base.insightDetails.recent30, rows: [selfRow] },
+    };
+    const similar = TICKETS.find((x) => x.type === '刷机' && x.no !== t.no && x.nodeStatus === '已结案');
+    base.similarTicket = similar
+      ? { no: similar.no, title: similar.title, similarity: '相似 90%·已解决', solution: '方案：自动刷机接收成功，回访确认已解决' }
+      : base.similarTicket;
+    base.knowledge = ['教育刷机单处理指引', '刷机包接收失败排查（未开机 / 未联网 / 版本不符）'];
+    base.aiSummary = `学生${f.info.studentName}（${f.info.schoolName}）申请刷机，刷机原因：${f.info.reason}；设备 ${f.info.productModel}，SN ${f.info.sn}。`;
+    base.aiInsight = {
+      customerBrief: '教育用户，首次提报刷机申请',
+      ticketBrief: f.state.handoffReason
+        ? `${f.info.reason}刷机申请，转人工原因：${f.state.handoffReason}`
+        : `${f.info.reason}刷机申请，按自动刷机结果跟进`,
+      suggestion: '核对刷机信息与失败原因后处理',
+    };
+    base.latestHandling = flashLatestHandling(t.no);
+  }
+
+  /** 「最新处理」：刷机履历里最近的处理事件（不含短信），新在上，最多 3 条 */
+  function flashLatestHandling(no: string): TicketDetailMeta['latestHandling'] {
+    return flash.timelineOf(no)
+      .filter((e) => e.category !== 'comm')
+      .slice(-3)
+      .reverse()
+      .map((e) => ({ who: e.who, role: e.role, action: e.how, when: e.when.slice(5, 16), text: e.what }));
   }
 
   /**
@@ -369,13 +435,14 @@ export function useTicketOperation() {
    * 首次打开刷机单时以刷机履历为准（不沿用其他类型的样例履历），之后只追加新条目。
    */
   function projectFlashTimeline(no: string, reset = false) {
-    const entries = flash.timelineOf(no);
+    // 操作人为「系统」的刷机事件卡片头显示系统头像（PRD §11.2）
+    const entries = flash.timelineOf(no).map((e) => (e.role === '系统' ? { ...e, systemActor: true } : { ...e }));
     if (reset) {
-      timeline.value = entries.map((e) => ({ ...e }));
+      timeline.value = entries;
       return;
     }
     const seen = new Set(timeline.value.map((e) => e.id));
-    entries.forEach((e) => { if (!seen.has(e.id)) timeline.value.push({ ...e }); });
+    entries.forEach((e) => { if (!seen.has(e.id)) timeline.value.push(e); });
   }
 
   watch(
@@ -392,6 +459,7 @@ export function useTicketOperation() {
       if (!t?.flash) return;
       applyFlashRow(detail.value, t);
       detail.value.slaClocks = buildSlaClocks(t);
+      detail.value.latestHandling = flashLatestHandling(t.no);
       projectFlashTimeline(t.no);
     },
   );

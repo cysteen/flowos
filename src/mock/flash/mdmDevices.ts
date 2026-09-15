@@ -71,6 +71,8 @@ export const MDM_DEVICES: MdmDevice[] = [
   dev({ sn: 'XFS20240600823', model: S20, studentAccount: 'la1z2023s0302', romVersion: 'EDU-S20-3.2.4', mdmVersion: 'MDM 5.8.2' }),
   dev({ sn: 'XFS30240900745', model: S30, studentAccount: 'hf1z2023s0811', romVersion: 'EDU-S30-1.4.2', mdmVersion: 'MDM 5.8.2' }),
   dev({ sn: 'XFX3P240500634', model: X3P, studentAccount: 'hf8z2023s0907', romVersion: 'EDU-X3P-1.8.6', mdmVersion: 'MDM 5.7.2', versionOk: false }),
+  // 回传超时转人工后迟到「接收成功」（IFLYSH-20260915-00018）
+  dev({ sn: 'XFS30240900918', model: S30, studentAccount: 'bb2z2023s0418', romVersion: 'EDU-S30-1.4.2', mdmVersion: 'MDM 5.8.2', noResponse: true }),
 
   // ---- 待提报设备（建单可走通各条链路） ----
   // 成功：自研、账号一致、毕业生、在线

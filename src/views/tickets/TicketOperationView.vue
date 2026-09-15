@@ -18,6 +18,8 @@ import TicketEventToastStack from './components/operation/TicketEventToastStack.
 import OpProcessTabs from './components/operation/OpProcessTabs.vue';
 import OpSidePanel from './components/operation/OpSidePanel.vue';
 import OpActionBar from './components/OpActionBar.vue';
+import OpFlashResultCard from './components/operation/OpFlashResultCard.vue';
+import OpFlashInfoBlock from './components/operation/OpFlashInfoBlock.vue';
 // 建单弹窗仅在「转单/重开」时用，按需异步加载，不阻塞操作页首屏
 const CreateTicketModal = defineAsyncComponent(() => import('./components/CreateTicketModal.vue'));
 import { useTicketOperation } from './composables/useTicketOperation';
@@ -78,6 +80,12 @@ const {
 
 /** keep-alive 下仅当前激活的工单操作 Tab 展示实时通知 */
 const pageActive = ref(false);
+
+/**
+ * 刷机单（930 教育刷机单）：「工单处理」Tab 顶部出「自动刷机结果」卡与「刷机信息」区块（PRD §5.1）。
+ * 判据＝类型为刷机且带刷机字段组；四类老工单恒为 false，页面不变。
+ */
+const isFlash = computed(() => d.value.type === '刷机' && !!d.value.flash);
 
 const ticketNo = computed(() => (route.params.ticketNo as string) || d.value.no);
 const processTabsRef = ref<InstanceType<typeof OpProcessTabs> | null>(null);
@@ -1499,6 +1507,8 @@ function fireDemoEvent() {
 function startIncomingDemo() {
   stopIncomingDemo();
   if (demoFiredCount >= DEMO_MAX_COUNT) return;
+  // 刷机单的催补只来自页头催单 / 新建补充，不推送其他类型的样例进线事件（X7）
+  if (isFlash.value) return;
 
   incomingDemoTimeout = setTimeout(() => {
     incomingDemoTimeout = null;
@@ -1888,7 +1898,13 @@ watch(
           @feishu-activate="onFeishuActivate"
           @feishu-retry="onFeishuRetry"
           @dunning="dunningModalOpen = true"
-        />
+        >
+          <template v-if="isFlash && d.flash" #process-top>
+            <OpFlashResultCard :flash="d.flash" />
+            <!-- 区块头「修改刷机信息」按钮（PRD §5.3）走 OpFlashInfoBlock 的 #actions 插槽，排在两条外链左侧 -->
+            <OpFlashInfoBlock :info="d.flash.info" />
+          </template>
+        </OpProcessTabs>
       </div>
 
       <OpSidePanel

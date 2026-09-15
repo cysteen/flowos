@@ -9,7 +9,7 @@ import {
   CheckCircleOutlined, StarFilled,
   ThunderboltOutlined, HistoryOutlined, ClockCircleOutlined, TeamOutlined,
   SafetyOutlined, SafetyCertificateOutlined, FileSearchOutlined, WarningOutlined,
-  CloudUploadOutlined, CloseCircleOutlined, InteractionOutlined, RedoOutlined,
+  CloudUploadOutlined, CloseCircleOutlined, InteractionOutlined, RedoOutlined, RobotOutlined,
 } from '@ant-design/icons-vue';
 import RecordingPlayer from './operation/RecordingPlayer.vue';
 import {
@@ -131,6 +131,14 @@ const filteredEntries = computed(() => {
         :style="{ background: CATEGORY_META[e.category].bg, borderLeftColor: CATEGORY_META[e.category].color }"
       >
         <div
+          v-if="e.systemActor"
+          class="entry-avatar entry-avatar--system"
+          title="系统"
+        >
+          <RobotOutlined />
+        </div>
+        <div
+          v-else
           class="entry-avatar"
           :style="{ background: softBg(CATEGORY_META[e.category].color), color: CATEGORY_META[e.category].color }"
         >
@@ -362,6 +370,8 @@ const filteredEntries = computed(() => {
   justify-content: center;
   font-size: 14px;
 }
+/* 系统头像（刷机单系统事件）：中性灰底 + 白色机器人 */
+.entry-avatar--system { background: #64748b; color: #fff; }
 .entry-sla .entry-avatar {
   width: 24px;
   height: 24px;

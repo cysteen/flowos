@@ -37,6 +37,7 @@ export const GRADUATE_ROSTER: GraduateRecord[] = [
   { schoolId: 'SCH-340302-002', studentAccount: 'bb2z2023s0310', studentName: '冯一诺', graduateYear: 2026 },
   { schoolId: 'SCH-340302-002', studentAccount: 'bb2z2023s0625', studentName: '蒋天佑', graduateYear: 2026 },
   { schoolId: 'SCH-340302-002', studentAccount: 'bb2z2023s1106', studentName: '赵子轩', graduateYear: 2026 },
+  { schoolId: 'SCH-340302-002', studentAccount: 'bb2z2023s0418', studentName: '宋雨晴', graduateYear: 2026 },
   // 六安第一中学
   { schoolId: 'SCH-341502-001', studentAccount: 'la1z2023s0716', studentName: '梁晨', graduateYear: 2026 },
   { schoolId: 'SCH-341502-001', studentAccount: 'la1z2023s0302', studentName: '叶知秋', graduateYear: 2026 },

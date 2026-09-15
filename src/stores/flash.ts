@@ -14,7 +14,7 @@ import {
   FLASH_RETURN_DELAY_MS, FLASH_TIP_L1_REPUSH_EXHAUSTED, FLASH_TIP_MODEL_UNSUPPORTED,
   FLASH_TIP_NON_SELF_DEVELOPED, FLASH_TIP_REASON_NOT_GRADUATE_L1, FLASH_TIP_REASON_NOT_GRADUATE_L2,
   FLASH_TIP_EDIT_STATE, FLASH_TIP_REPUSH_STATE, FLASH_TIP_SYSTEM_BUSY, FLASH_TIP_VERIFY_UNAVAILABLE,
-  FLASH_VERIFY_NOT_RUN,
+  FLASH_VERIFY_NOT_RUN, FLASH_TL,
   flashMinuteStamp, flashProgressStage, flashSmsHandoff, flashSmsSuccess, flashStamp,
   flashTipInflight, flashTipRequired, flashTipVerifyFailed, isFrontlineActor,
   type FlashActor, type FlashCreator, type FlashFailL1, type FlashFailL2, type FlashHandoffReason,
@@ -255,7 +255,7 @@ export const useFlashStore = defineStore('flash', () => {
     pool: FlashPoolKey,
     reason: FlashHandoffReason,
     at: number,
-    opts: { lead?: string; sms?: boolean; keepSla?: FlashRun['slaBefore'] } = {},
+    opts: { sms?: boolean; keepSla?: FlashRun['slaBefore'] } = {},
   ) {
     const st = r.flash!.state;
     const meta = FLASH_POOLS[pool];
@@ -274,7 +274,7 @@ export const useFlashStore = defineStore('flash', () => {
     st.slaPausedUntil = undefined;
     log(r.no, at, {
       category: 'node', action: 'flashHandoff', who: '系统', role: '系统', how: '转人工',
-      what: `${opts.lead ?? ''}转人工（${reason}），进入${meta.label}。`,
+      what: FLASH_TL.handoff(reason, meta.label),
     });
     if (opts.sms && !st.handoffSmsSent) {
       st.handoffSmsSent = true;
@@ -300,6 +300,8 @@ export const useFlashStore = defineStore('flash', () => {
       slaBefore: { slaText: r.slaText, slaSub: r.slaSub, slaState: r.slaState, slaMinutes: r.slaMinutes },
       // M10：推送接口同步报错即自动重试 1 次
       autoRetried: !!device && device.pushApi !== '正常',
+      // PRD §10.5：回传超时时长按发出时的取值判定
+      returnTimeoutMin: config.returnTimeoutMin,
     };
     f.runs.push(run);
     st.pushCount += 1;
@@ -316,14 +318,16 @@ export const useFlashStore = defineStore('flash', () => {
       slaMinutes: 9999,
       updatedAt: flashMinuteStamp(at),
     });
-    log(r.no, at, {
-      category: 'node', action: 'flashPush', who: '系统', role: '系统', how: '自动推送',
-      what: `第 ${run.seq} 次推送刷机包至设备 SN ${f.info.sn}（${trigger}），等待硬件平台回传。`,
-    });
-    if (run.autoRetried) {
-      log(r.no, at + 1000, {
+    // PRD §11.2：首推落「自动推送」（系统）；人工重推落「重新推送」（发起人），不另落「自动推送」
+    if (trigger === '建单首推') {
+      log(r.no, at, {
         category: 'node', action: 'flashPush', who: '系统', role: '系统', how: '自动推送',
-        what: '推送接口返回异常，系统已自动重试 1 次。',
+        what: FLASH_TL.autoPush(run.seq),
+      });
+    } else {
+      log(r.no, at, {
+        category: 'node', action: 'flashRepush', who: by.name, role: by.role, how: '重新推送',
+        what: FLASH_TL.repush(run.seq, run),
       });
     }
     bump(r.no);
@@ -351,16 +355,20 @@ export const useFlashStore = defineStore('flash', () => {
       });
       st.result = '已线上刷机成功';
       log(r.no, at, {
-        category: 'node', action: 'flashSuccess', who: '系统', role: '系统', how: '回传成功',
-        what: '硬件平台回传：接收成功，处理结果「已线上刷机成功」，进入回访。',
+        category: 'node', action: 'flashSuccess', who: '系统', role: '系统', how: '回传结果',
+        what: FLASH_TL.returnSuccess,
       });
       sms(r, at + 1000, 'success');
     } else {
       // M19：人工重推成功回原处理人「处理中」，由处理人联系确认后下送；M32 同样发成功短信
       toHandler(r, run, at);
       log(r.no, at, {
-        category: 'node', action: 'flashSuccess', who: '系统', role: '系统', how: '回传成功',
-        what: `硬件平台回传：接收成功，已回到处理人 ${r.assignee ?? ''} 名下。`,
+        category: 'node', action: 'flashSuccess', who: '系统', role: '系统', how: '回传结果',
+        what: FLASH_TL.returnSuccess,
+      });
+      log(r.no, at, {
+        category: 'node', action: 'flashSuccess', who: '系统', role: '系统', how: '回传结果',
+        what: FLASH_TL.repushSuccess(r.assignee ?? ''),
       });
       sms(r, at + 1000, 'success');
       notifyRepushResult(r, run, `工单 ${r.no} 重新推送后回传：接收成功，请联系用户确认刷机完成后下送。`);
@@ -379,12 +387,14 @@ export const useFlashStore = defineStore('flash', () => {
     st.failL2 = l2;
     // 显示文案按后台配置（改名 / 二级停用显示「原因未返回」，M65）；落库仍存取值
     const reasonText = config.failReasonText(l1, l2);
+    const timeoutMin = run.returnTimeoutMin ?? config.returnTimeoutMin;
     const what = l2 === '回传超时'
-      ? `推送后 ${config.returnTimeoutMin} 分钟未收到硬件平台回传：${reasonText}。`
+      ? FLASH_TL.returnTimeout(reasonText, Math.round((timeoutMin / 60) * 10) / 10)
       : l2 === '接口异常'
-        ? `推送接口自动重试后仍失败：${reasonText}。`
-        : `硬件平台回传：${reasonText}。`;
-    log(r.no, at, { category: 'node', action: 'flashFail', who: '系统', role: '系统', how: '回传失败', what });
+        ? FLASH_TL.pushApiError(reasonText)
+        : FLASH_TL.returnFail(reasonText);
+    const how = l1 === '推送异常' ? (l2 === '回传超时' ? '回传超时' : '推送异常') : '回传结果';
+    log(r.no, at, { category: 'node', action: 'flashFail', who: '系统', role: '系统', how, what });
 
     if (run.trigger === '建单首推') {
       // M8′：自动环节失败一律进一线刷机池；首次转人工发短信（M37）
@@ -398,8 +408,8 @@ export const useFlashStore = defineStore('flash', () => {
       // D16：二线重推后失败 → 回原二线处理人；M38：通知本人
       toHandler(r, run, at);
       log(r.no, at + 1000, {
-        category: 'node', action: 'flashFail', who: '系统', role: '系统', how: '回传失败',
-        what: `已回到处理人 ${r.assignee ?? ''} 名下。`,
+        category: 'node', action: 'flashHandoff', who: '系统', role: '系统', how: '转人工',
+        what: FLASH_TL.repushFailBack(r.assignee ?? ''),
       });
       notifyRepushResult(r, run, `工单 ${r.no} 重新推送后回传：${reasonText}，已回到您名下。`);
     }
@@ -573,18 +583,24 @@ export const useFlashStore = defineStore('flash', () => {
     const r = reactive(raw);
     log(no, now, {
       category: 'node', action: 'create', who: by.name, role: by.role,
-      how: byUser ? '刷机提报' : '代客建单',
-      what: `${byUser ? '通过客户服务小程序' : '来电代客'}提交刷机申请：${info.productModel}，SN ${info.sn}，学生 ${info.studentName}（${info.schoolName}），刷机原因 ${info.reason}。`,
+      how: '建单',
+      what: FLASH_TL.create(
+        creator,
+        r.flash!.state.verifyResult,
+        evaluation.route === 'pool' ? { handoff: evaluation.handoffReason! } : { auto: true },
+      ),
     });
     if (evaluation.route === 'pool') {
       r.flash!.state.failL1 = evaluation.failL1;
       r.flash!.state.failL2 = evaluation.failL2;
-      const lead = evaluation.handoffReason === '特殊情况'
-        ? `刷机原因为${info.reason}，需联系学校核实，未推送；`
-        : evaluation.failL1
-          ? `${config.failReasonText(evaluation.failL1, evaluation.failL2)}，未推送；`
-          : '建单校验通过；该机型不支持线上推送，';
-      handoff(r, evaluation.pool!, evaluation.handoffReason!, now + 1000, { lead, sms: true });
+      if (evaluation.failL1 === '推送异常') {
+        // 建单校验接口不可用（M43）：PRD §11.2「推送异常 · 接口异常（建单校验未执行）」
+        log(no, now + 500, {
+          category: 'node', action: 'flashFail', who: '系统', role: '系统', how: '推送异常',
+          what: FLASH_TL.verifyApiError(config.failReasonText(evaluation.failL1, evaluation.failL2)),
+        });
+      }
+      handoff(r, evaluation.pool!, evaluation.handoffReason!, now + 1000, { sms: true });
     } else {
       pushInternal(r, SYSTEM, '建单首推', now + 1000);
     }
@@ -660,11 +676,13 @@ export const useFlashStore = defineStore('flash', () => {
     Object.assign(r, { sn: next.sn, product: next.productModel });
     r.flash.state.verifyResult = v.result;
     if (l1) r.flash.state.l1RepushCount += 1;
-    log(ticketNo, now, {
-      category: 'node', action: 'flashRepush', who: by.name, role: by.role, how: '重推',
-      what: diff.length ? '修改刷机信息并重新推送。' : '刷机信息未修改，重新推送。',
-      changes: diff.length ? diff : undefined,
-    });
+    // PRD §11.2：同一次重推依次落「修改刷机信息」（有改动时）、「重新推送」
+    if (diff.length) {
+      log(ticketNo, now, {
+        category: 'handle', action: 'handle', who: by.name, role: by.role, how: '修改刷机信息',
+        what: FLASH_TL.editInfo, changes: diff,
+      });
+    }
     pushInternal(r, by, l1 ? '一线重推' : '二线重推', now + 1000);
     persist();
     return { ok: true, message: '已重新推送，等待硬件平台回传' };
@@ -698,7 +716,7 @@ export const useFlashStore = defineStore('flash', () => {
     Object.assign(r, { sn: next.sn, product: next.productModel, updatedAt: flashMinuteStamp(now) });
     log(ticketNo, now, {
       category: 'handle', action: 'handle', who: by.name, role: by.role, how: '修改刷机信息',
-      what: '修改刷机信息。', changes: diff,
+      what: FLASH_TL.editInfo, changes: diff,
     });
     bump(ticketNo);
     persist();
@@ -752,8 +770,8 @@ export const useFlashStore = defineStore('flash', () => {
     if (!r?.flash || !run) return { ok: false, message: FLASH_TIP_REPUSH_STATE };
     r.flash.state.lateSuccessAt = flashStamp(at);
     log(r.no, at, {
-      category: 'node', action: 'flashSuccess', who: '系统', role: '系统', how: '回传成功',
-      what: `回传超时后收到硬件平台回传：接收成功（第 ${run.seq} 次推送），请联系用户确认刷机结果。`,
+      category: 'node', action: 'flashSuccess', who: '系统', role: '系统', how: '回传结果',
+      what: FLASH_TL.lateSuccess,
     });
     if (r.assignee) {
       useNotifyLogStore().emit({
@@ -820,8 +838,8 @@ export const useFlashStore = defineStore('flash', () => {
       const device = findMdmDevice(r.flash!.info.sn);
       const elapsed = now - run.pushedAtMs;
       if (!device || device.noResponse) {
-        // M11：回传无响应 → 到回传超时时长转人工
-        const timeoutMs = config.returnTimeoutMin * 60_000;
+        // M11：回传无响应 → 到回传超时时长转人工；时长取推送发出时的快照（PRD §10.5）
+        const timeoutMs = (run.returnTimeoutMin ?? config.returnTimeoutMin) * 60_000;
         if (elapsed < timeoutMs) continue;
         fail(r, run, '推送异常', '回传超时', run.pushedAtMs + timeoutMs);
         settled += 1;

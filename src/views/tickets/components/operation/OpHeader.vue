@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { message } from 'ant-design-vue';
+import { parseFlashStamp } from '@/views/tickets/types/flash';
 import { useUserStore } from '@/stores/user';
 import { CopyOutlined, FlagOutlined } from '@ant-design/icons-vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
@@ -101,6 +102,20 @@ const linkedAftersale = computed(() => {
   const la = props.detail.linkedAftersale;
   if (!la) return null;
   return { ...la, settled: isAftersaleSettled(la.status) };
+});
+
+/**
+ * 刷机单线下登记暂停期间，SLA 区显示「SLA 暂停至 〈年-月-日 时:分〉」；恢复计时后不显示（PRD §5.1 / §4.3）。
+ * 到点自动消失：每 30 秒对一次钟。
+ */
+const clockNow = ref(Date.now());
+let clockTimer: number | undefined;
+onMounted(() => { clockTimer = window.setInterval(() => { clockNow.value = Date.now(); }, 30_000); });
+onBeforeUnmount(() => window.clearInterval(clockTimer));
+const flashSlaPausedUntil = computed(() => {
+  const until = props.detail.type === '刷机' ? props.detail.flash?.state.slaPausedUntil : undefined;
+  if (!until) return '';
+  return parseFlashStamp(until).getTime() > clockNow.value ? until.slice(0, 16) : '';
 });
 
 const metaTitle = computed(
@@ -233,6 +248,7 @@ function priorityHex(p: string): string {
     </div>
     <div class="oh-right">
       <OpSlaBar :detail="detail" />
+      <span v-if="flashSlaPausedUntil" class="sla-paused-until">SLA 暂停至 {{ flashSlaPausedUntil }}</span>
       <OpSupersededBanner
         v-if="supersededBy"
         :by="supersededBy"
@@ -464,6 +480,13 @@ function priorityHex(p: string): string {
 .copy:hover { color: #6b7280; }
 
 .oh-right { display: flex; align-items: center; gap: 12px; flex: none; }
+.sla-paused-until {
+  flex: none; white-space: nowrap;
+  font-size: 12px; font-weight: 600; line-height: 22px;
+  padding: 0 8px; border-radius: 4px;
+  color: #4b5563; background: #f3f4f6;
+  font-variant-numeric: tabular-nums;
+}
 .oh-actions { display: flex; align-items: center; gap: 6px; flex: none; }
 .action-btn {
   box-sizing: border-box;

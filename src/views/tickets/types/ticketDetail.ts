@@ -70,6 +70,11 @@ export interface TimelineEntry {
   id: string;
   category: TlCategory;
   action: TlAction;
+  /**
+   * 卡片头显示系统头像（930 教育刷机单 PRD §11.2：操作人为「系统」的刷机事件）。
+   * 只由刷机履历投影置位，其他类型的履历不带，头像沿用事件图标。
+   */
+  systemActor?: boolean;
   who: string;
   role: TlRole;
   /** How 徽章文案 */

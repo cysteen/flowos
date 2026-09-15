@@ -285,6 +285,14 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
     },
     tabData: {
       currentFlowNode: '工单处理',
+      // 刷机单不走技术支持：清空投诉样例的技术支持草稿，否则会回写进速览带「最新处理」（X7）
+      techDraft: {
+        problemCause: '',
+        processResult: '',
+        problemCauseAttachments: [],
+        processResultAttachments: [],
+      },
+      attachmentHistory: [],
       flowHistory: [],
       relatedTickets: [],
       supplementRecords: [],
