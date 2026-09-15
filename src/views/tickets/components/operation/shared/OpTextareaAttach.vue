@@ -50,13 +50,19 @@ function openFilePicker() {
 function onFilesSelected(e: Event) {
   if (props.readonly) return;
   const input = e.target as HTMLInputElement;
-  const picked = Array.from(input.files ?? []);
+  // 按文件名去重：已在列表里的、同一次多选里重复的同名文件都不再新增标签
+  const seen = new Set(props.attachments);
+  const picked = Array.from(input.files ?? []).filter((f) => {
+    if (seen.has(f.name)) return false;
+    seen.add(f.name);
+    return true;
+  });
+  input.value = '';
+  if (!picked.length) return;
   const names = picked.map((f) => f.name);
-  if (!names.length) return;
   emit('filesAdded', picked.map((f) => ({ name: f.name, size: f.size })));
   emit('update:attachments', [...props.attachments, ...names]);
   message.success(`已添加 ${names.length} 个附件`);
-  input.value = '';
 }
 
 function removeFile(name: string) {
