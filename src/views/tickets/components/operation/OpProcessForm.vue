@@ -435,6 +435,7 @@ function chipActiveClass(key: SupplementChip): string {
         :shell-background="postCloseFieldDisabled ? '#f5f5f5' : '#fff'"
         :maxlength="500"
         :max-file-size-mb="200"
+        rename-duplicates
         placeholder="补充结案后的跟进情况、客户反馈等"
         @update:model-value="(v: string) => patch({ closingNote: v })"
         @update:attachments="(v: string[]) => patch({ closingNoteAttachments: v })"

@@ -24,6 +24,8 @@ const props = withDefaults(defineProps<{
   acceptExts?: readonly string[];
   /** 单个附件大小上限（MB）；不传不限 */
   maxFileSizeMb?: number;
+  /** 同名文件改为重命名追加（{原名}_{yyyyMMddHHmmss}{.扩展名}）；不传则同名不重复添加 */
+  renameDuplicates?: boolean;
 }>(), {
   minInputHeight: 52,
   shellBackground: '#fff',
@@ -51,22 +53,37 @@ function openFilePicker() {
   fileInput.value?.click();
 }
 
+/** 同名时在扩展名前追加添加时刻；同一批次仍重名再追加 _2、_3… */
+function renameWithTimestamp(name: string, taken: Set<string>): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  const ts = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+  const dot = name.lastIndexOf('.');
+  const stem = dot > 0 ? name.slice(0, dot) : name;
+  const ext = dot > 0 ? name.slice(dot) : '';
+  let candidate = `${stem}_${ts}${ext}`;
+  for (let i = 2; taken.has(candidate); i += 1) candidate = `${stem}_${ts}_${i}${ext}`;
+  return candidate;
+}
+
 function onFilesSelected(e: Event) {
   if (props.readonly) return;
   const input = e.target as HTMLInputElement;
-  // 按文件名去重：已在列表里的、同一次多选里重复的同名文件都不再新增标签
+  // 同名文件（与列表内或同一次多选内重名）：renameDuplicates 时重命名追加，否则不再新增标签
   const seen = new Set(props.attachments);
   let rejected = 0;
-  const picked = Array.from(input.files ?? []).filter((f) => {
-    if (seen.has(f.name)) return false;
+  const picked: { name: string; size: number }[] = [];
+  Array.from(input.files ?? []).forEach((f) => {
+    if (seen.has(f.name) && !props.renameDuplicates) return;
     const ext = f.name.includes('.') ? f.name.split('.').pop()!.toLowerCase() : '';
     if ((props.acceptExts && !props.acceptExts.includes(ext))
       || (props.maxFileSizeMb && f.size > props.maxFileSizeMb * 1024 * 1024)) {
       rejected += 1;
-      return false;
+      return;
     }
-    seen.add(f.name);
-    return true;
+    const name = seen.has(f.name) ? renameWithTimestamp(f.name, seen) : f.name;
+    seen.add(name);
+    picked.push({ name, size: f.size });
   });
   input.value = '';
   if (rejected) {
@@ -75,7 +92,7 @@ function onFilesSelected(e: Event) {
   }
   if (!picked.length) return;
   const names = picked.map((f) => f.name);
-  emit('filesAdded', picked.map((f) => ({ name: f.name, size: f.size })));
+  emit('filesAdded', picked);
   emit('update:attachments', [...props.attachments, ...names]);
   message.success(`已添加 ${names.length} 个附件`);
 }
