@@ -1,6 +1,9 @@
 import { computed, ref } from 'vue';
 import { buildAiSuggestions } from '@/mock/aiSuggestions';
 import { TICKETS } from '@/mock/tickets';
+import { useUserStore } from '@/stores/user';
+import { useFlashStore } from '@/stores/flash';
+import type { FlashActor } from '@/views/tickets/types/flash';
 import { useTicketDraftStore } from '@/stores/ticketDrafts';
 import { useSavedFilters } from '@/views/tickets/composables/useSavedFilters';
 import type { AiSuggestionSummary } from '@/views/tickets/types/aiSuggestion';
@@ -21,20 +24,22 @@ import {
 import {
   matchChip,
   chipsForTab,
+  currentHandlerName,
   inDoneScope,
+  inFlashL1PoolScope,
+  inFlashMineScope,
   inGroupPoolScope,
   inPoolPendingScope,
   inMineTaskScope,
   isWorkbenchSearchTab,
-  POOL_GROUPS,
+  poolGroupIdsForTicket,
   slaUrgencyCompare,
+  visiblePoolGroupsFor,
   WORKBENCH_HANDLER,
   type ChipKey,
   type TabKey,
   type Ticket,
 } from '@/views/tickets/types/ticket';
-
-const VISIBLE_POOL_GROUPS = POOL_GROUPS.map((g) => g.id);
 
 function savedFilterTab(tab: TabKey): SavedFilterTab | null {
   if (tab === 'mine' || tab === 'done' || tab === 'pool') return tab;
@@ -57,22 +62,59 @@ export function useTicketWorkbench() {
   const aiBarVisible = ref(true);
   const dismissedAiIds = ref<Set<string>>(new Set());
 
-  const poolGroups = POOL_GROUPS;
+  const user = useUserStore();
+  const flash = useFlashStore();
+
+  /**
+   * 工单池 / 催补待回的可见分组按角色取（930 教育刷机单 M72）：
+   * 老四类的分组维持演示态全给；教育刷机处理组只给二线专员 / 二线班组长 / 管理员；
+   * 一线刷机池的单不进这两个页签（见 `poolGroupIdsForTicket`）。
+   */
+  const poolGroups = computed(() => visiblePoolGroupsFor(user.roleKey));
+  const visiblePoolGroupIds = computed(() => poolGroups.value.map((g) => g.id));
+  /** 当前登录人在工单数据源里的处理人名（刷机单按它判本人已领 / 本人建） */
+  const flashHandler = computed(() => currentHandlerName(user.roleKey, user.name));
+
+  function inPoolTabScope(t: Ticket): boolean {
+    return inGroupPoolScope(t, poolGroupIdsForTicket(t, visiblePoolGroupIds.value));
+  }
+  function inPoolPendingTabScope(t: Ticket): boolean {
+    return inPoolPendingScope(t, poolGroupIdsForTicket(t, visiblePoolGroupIds.value));
+  }
+  /**
+   * 我的任务数据域。老四类照旧按 `WORKBENCH_HANDLER`；
+   * 一线坐席 / 二线专员的刷机单按本人已领 + 本人建取（§9.4 / M71），其余角色的刷机单沿用老口径。
+   */
+  function inMineTabScope(t: Ticket): boolean {
+    if (t.type === '刷机' && (user.roleKey === 'agent-l1' || user.roleKey === 'agent-l2')) {
+      return inFlashMineScope(t, user.roleKey, flashHandler.value, flash.creatorNameOf(t.no));
+    }
+    return inMineTaskScope(t, WORKBENCH_HANDLER);
+  }
+
+  /** 一线坐席「刷机池」：一线刷机池未认领的刷机单，按进池时间正序（§9.2） */
+  const flashPoolRows = computed(() =>
+    all.value
+      .filter(inFlashL1PoolScope)
+      .map((t) => ({ t, at: flash.poolEnteredAtOf(t.no) }))
+      .sort((a, b) => a.at.localeCompare(b.at))
+      .map((x) => x.t),
+  );
 
   // 当前 Tab 数据域
   const tabRows = computed(() => {
     if (activeTab.value === 'mine') {
-      return all.value.filter((t) => inMineTaskScope(t, WORKBENCH_HANDLER));
+      return all.value.filter(inMineTabScope);
     }
     if (activeTab.value === 'done') {
       return all.value.filter((t) => inDoneScope(t, WORKBENCH_HANDLER));
     }
     if (activeTab.value === 'pool') {
-      return all.value.filter((t) => inGroupPoolScope(t, VISIBLE_POOL_GROUPS));
+      return all.value.filter(inPoolTabScope);
     }
     // 催补待回：本组未结单中有客户侧催补且未联系的（PRD-915 补充与催单 §9.3）
     if (activeTab.value === 'poolPending') {
-      return all.value.filter((t) => inPoolPendingScope(t, VISIBLE_POOL_GROUPS));
+      return all.value.filter(inPoolPendingTabScope);
     }
     return all.value.filter((t) => t.tab === activeTab.value);
   });
@@ -135,16 +177,16 @@ export function useTicketWorkbench() {
   const tabCounts = computed<Record<TabKey, number>>(() => {
     const map: Record<TabKey, number> = { mine: 0, done: 0, pool: 0, poolPending: 0, cc: 0, review: 0 };
     for (const t of all.value) {
-      if (t.tab === 'mine') {
-        if (inMineTaskScope(t, WORKBENCH_HANDLER)) map.mine++;
-      } else if (t.tab === 'done') {
+      // 我的任务单独数：一线坐席 / 二线专员本人建的刷机单可能不在 mine 页（§9.4 / M71）
+      if (inMineTabScope(t)) map.mine++;
+      if (t.tab === 'done') {
         if (inDoneScope(t, WORKBENCH_HANDLER)) map.done++;
       } else if (t.tab === 'pool') {
-        if (inGroupPoolScope(t, VISIBLE_POOL_GROUPS)) map.pool++;
-      } else if (t.tab !== 'poolPending') {
+        if (inPoolTabScope(t)) map.pool++;
+      } else if (t.tab !== 'poolPending' && t.tab !== 'mine') {
         map[t.tab]++;
       }
-      if (inPoolPendingScope(t, VISIBLE_POOL_GROUPS)) map.poolPending++;
+      if (inPoolPendingTabScope(t)) map.poolPending++;
     }
     return map;
   });
@@ -351,9 +393,24 @@ export function useTicketWorkbench() {
   function addTicket(t: Ticket) {
     all.value = [t, ...all.value];
   }
+  /** 领取人（刷机服务写履历用）：一线坐席为一线，其余按二线专员记 */
+  function flashActor(): FlashActor {
+    const role = user.roleKey === 'agent-l1' ? '一线坐席' : user.roleKey === 'team-leader' ? '二线班组长' : '二线专员';
+    return { name: flashHandler.value, role };
+  }
+  /**
+   * 领取刷机单（刷机池 / 工单池里的教育刷机处理组池）：走刷机服务 `claimFromPool`，
+   * 子状态「待响应」、处理人＝本人、写履历并落刷机缓存（§4.2 / §9.2）。
+   */
+  function claimFlashTicket(id: string): { ok: boolean; message: string } {
+    const t = all.value.find((x) => x.id === id);
+    if (!t) return { ok: false, message: '' };
+    return flash.claimFromPool(t.no, flashActor());
+  }
   /** 领取本组工单池中的工单 → 转入我的任务 */
   function claimTicket(id: string): boolean {
     const t = all.value.find((x) => x.id === id);
+    if (t?.type === '刷机') return claimFlashTicket(id).ok;
     if (!t || t.tab !== 'pool' || t.assignee !== null) return false;
     t.tab = 'mine';
     t.assignee = WORKBENCH_HANDLER;
@@ -384,7 +441,7 @@ export function useTicketWorkbench() {
     selectedCount, allPageSelected, aiSuggestions, aiSummary, showAiBar,
     isDraftView, showAppointmentColumn, showSuspendColumns, isMineTab, isDoneTab, isPoolTab, usesStructuredFilter,
     setTab, setChip, setMineQuery, setDoneQuery, setStructuredQuery, saveCurrentFilter, removeSavedFilterChip, applyMineQuery, applyStructuredQuery, setMineSortRule, setSearch, toggleSelect, toggleSelectAllOnPage, clearSelection,
-    addTicket, claimTicket, claimTickets, dismissAiSuggestion, ticketById,
+    addTicket, claimTicket, claimTickets, claimFlashTicket, flashPoolRows, dismissAiSuggestion, ticketById,
     removeDraft: (id: string) => draftStore.remove(id),
   };
 }

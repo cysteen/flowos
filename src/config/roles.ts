@@ -389,6 +389,13 @@ export const QUERY_CENTER_CREATE_ROLES: RoleKey[] = [
   'system-admin', 'ops-admin', 'tenant-admin',
 ];
 
+/**
+ * 工作台「刷机池」页签对哪些角色渲染（930 教育刷机单 §9.2：一线坐席；其余角色不展示）。
+ * 页签是新增的，按 `hiddenTabs`「默认给」的口径得在其余十个角色上逐个补隐藏，
+ * 故单列白名单，工作台把它并进隐藏页签。
+ */
+export const FLASH_POOL_TAB_ROLES: RoleKey[] = ['agent-l1'];
+
 export const ALL_ROLE_KEYS = Object.keys(ROLES) as RoleKey[];
 
 export function isRoleKey(key: string): key is RoleKey {

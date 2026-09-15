@@ -770,6 +770,45 @@ export const useFlashStore = defineStore('flash', () => {
     return { ok: true, message: '已记录迟到回传' };
   }
 
+  /* ---------------- 工作台：池与领取（M3，§4.2 / §9） ---------------- */
+
+  /** 建单人姓名（刷机履历建单事件的操作人；用户提报为客户本人） */
+  function creatorNameOf(no: string): string | undefined {
+    return timelineOf(no).find((e) => e.action === 'create')?.who;
+  }
+
+  /** 进池时间：本单最近一次进入人工池的时刻（转人工 / 升级二线事件），取不到时回落更新时间 */
+  function poolEnteredAtOf(no: string): string {
+    const hit = [...timelineOf(no)].reverse().find((e) => e.action === 'flashHandoff' || e.action === 'escalate');
+    return hit?.when ?? rawOf(no)?.updatedAt ?? '';
+  }
+
+  /**
+   * 从池中领取（§4.2 / §9.2 / §9.3）：未认领且无处理人才可领；领到后子状态「待响应」、处理人＝领取人、
+   * 进「我的任务」，写履历「领取」；**不改 SLA**、不动归属池。已被他人领取时返回「该工单已被 〈姓名〉 领取」。
+   */
+  function claimFromPool(ticketNo: string, by: FlashActor): FlashActionResult {
+    const r = rowOf(ticketNo);
+    if (!r?.flash) return { ok: false, message: FLASH_TIP_REPUSH_STATE };
+    if (r.assignee) return { ok: false, message: `该工单已被 ${r.assignee} 领取` };
+    if (r.nodeStatus !== '未认领') return { ok: false, message: '当前工单状态不可领取' };
+    const now = Date.now();
+    Object.assign(r, {
+      nodeStatus: '待响应',
+      assignee: by.name,
+      tab: 'mine',
+      responded: false,
+      updatedAt: flashMinuteStamp(now),
+    });
+    log(ticketNo, now, {
+      category: 'node', action: 'accept', who: by.name, role: by.role, how: '领取',
+      what: `${by.name} 从池中领取本单。`,
+    });
+    bump(ticketNo);
+    persist();
+    return { ok: true, message: `已领取 ${ticketNo}` };
+  }
+
   /** 对账：到点的推送出回传结果。返回本次结算的单数 */
   function settleDue(now: number = Date.now()): number {
     let settled = 0;
@@ -869,6 +908,10 @@ export const useFlashStore = defineStore('flash', () => {
     transferToPool,
     recordLateSuccess,
     settleDue,
+    // 工作台（M3）
+    creatorNameOf,
+    poolEnteredAtOf,
+    claimFromPool,
   };
 });
 

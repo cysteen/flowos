@@ -5,12 +5,17 @@ import { message, Modal } from 'ant-design-vue';
 import { useUserStore } from '@/stores/user';
 import TicketTabs from './components/TicketTabs.vue';
 import RiskReportPoolPanel from './components/RiskReportPoolPanel.vue';
+import FlashPoolPanel from './components/FlashPoolPanel.vue';
 import {
+  FLASH_POOL_TAB,
   isPoolFamily,
   isTicketTab,
   RISK_REPORT_TAB,
+  visiblePoolGroupsFor,
   type WorkbenchTabKey,
 } from '@/views/tickets/types/ticket';
+import { FLASH_POOL_TAB_ROLES } from '@/config/roles';
+import { flashFailCellText, flashHandoffCellText } from './utils/flashPoolCells';
 import { useRiskReportStore } from '@/stores/riskReports';
 import AiSuggestionBar from './components/AiSuggestionBar.vue';
 import AiSuggestionDrawer from './components/AiSuggestionDrawer.vue';
@@ -47,6 +52,20 @@ const riskReports = useRiskReportStore();
  * 报备池开着就是它，否则跟着工单页签走。
  */
 const riskReportTabActive = ref(false);
+
+/**
+ * 「刷机池」页签（930 教育刷机单 §9.2）：只对一线坐席渲染。与报备池同形，选中态另存、
+ * 与隐藏页签取交集；隐藏页签＝角色 hiddenTabs ＋ 非 `FLASH_POOL_TAB_ROLES` 角色的「刷机池」。
+ */
+const flashPoolTabActive = ref(false);
+const workbenchHiddenTabs = computed(() =>
+  FLASH_POOL_TAB_ROLES.includes(user.roleKey)
+    ? user.hiddenTabs
+    : [...user.hiddenTabs, FLASH_POOL_TAB],
+);
+const flashPoolTabOpen = computed(
+  () => flashPoolTabActive.value && !workbenchHiddenTabs.value.includes(FLASH_POOL_TAB),
+);
 /**
  * 🔴 **选中态要与 `hiddenTabs` 取交集**（2026-09-11 D-23 同类缺口）：
  * 顶栏「切换演示角色」**不重挂本页**（AppHeader 的 `afterContextChange` 只在新角色
@@ -57,9 +76,11 @@ const riskReportTabActive = ref(false);
 const riskReportTabOpen = computed(
   () => riskReportTabActive.value && !user.hiddenTabs.includes(RISK_REPORT_TAB),
 );
-const activeWorkbenchTab = computed<WorkbenchTabKey>(() =>
-  riskReportTabOpen.value ? RISK_REPORT_TAB : wb.activeTab.value,
-);
+const activeWorkbenchTab = computed<WorkbenchTabKey>(() => {
+  if (riskReportTabOpen.value) return RISK_REPORT_TAB;
+  if (flashPoolTabOpen.value) return FLASH_POOL_TAB;
+  return wb.activeTab.value;
+});
 
 /**
  * 报备池的徽章数 ＝ **在队**（待领取 + 评估中）条数。
@@ -71,13 +92,15 @@ const riskReportOpenCount = computed(
 const workbenchTabCounts = computed<Record<string, number>>(() => ({
   ...headerTabCounts.value,
   [RISK_REPORT_TAB]: riskReportOpenCount.value,
+  [FLASH_POOL_TAB]: wb.flashPoolRows.value.length,
 }));
 
 function onTabChange(tab: WorkbenchTabKey) {
   // 与 Tab 条同一道门控：`hiddenTabs` 里有它就不认这次切换（TicketTabs 本就不渲染该枚，
   // 这里再挡一道是为了让"选中态"与"渲不渲染"永远是同一个答案）
-  if (user.hiddenTabs.includes(tab)) return;
+  if (workbenchHiddenTabs.value.includes(tab)) return;
   riskReportTabActive.value = tab === RISK_REPORT_TAB;
+  flashPoolTabActive.value = tab === FLASH_POOL_TAB;
   if (isTicketTab(tab)) wb.setTab(tab);
 }
 
@@ -86,6 +109,30 @@ const SUSPEND_EXTRA_COLUMNS = [
   { key: 'suspendedAt', label: '挂起时间', width: 128, after: 'node' },
   { key: 'suspendResumeAt', label: '解挂时间', width: 128, after: 'node' },
 ];
+
+/**
+ * 工单池 · 教育刷机处理组池的两列（§9.3）：当前角色看得到教育刷机处理组时追加
+ * 「转人工原因」「失败原因」，非刷机单显示「—」。
+ */
+const POOL_FLASH_EXTRA_COLUMNS = [
+  { key: 'flashHandoff', label: '转人工原因', width: 120 },
+  { key: 'flashFail', label: '失败原因', width: 160 },
+];
+const showPoolFlashColumns = computed(
+  () => wb.isPoolTab.value && visiblePoolGroupsFor(user.roleKey).some((g) => g.id === 'edu-flash'),
+);
+const listExtraColumns = computed(() => {
+  if (wb.showSuspendColumns.value) return SUSPEND_EXTRA_COLUMNS;
+  if (showPoolFlashColumns.value) return POOL_FLASH_EXTRA_COLUMNS;
+  return undefined;
+});
+
+/** 领取刷机单：刷机服务落状态与履历，Toast「已领取 〈单号〉」；已被他人领取时提示领取人（§9.2 / §9.3） */
+function claimFlash(t: Ticket) {
+  const res = wb.claimFlashTicket(t.id);
+  if (res.ok) message.success(res.message);
+  else if (res.message) message.warning(res.message);
+}
 
 /** 报备池行内点工单号：与列表点单号同一个去处（工单操作页） */
 function openTicketByNo(no: string) {
@@ -203,6 +250,10 @@ function openOperation(t: Ticket) {
 
 // 「处理 / 详情 / 审核 / 受理」进工单操作页（PRD-03）；其余即时反馈
 function onAction(label: string, t: Ticket) {
+  if (label === '领取' && t.type === '刷机') {
+    claimFlash(t);
+    return;
+  }
   if (label === '领取') {
     if (wb.claimTicket(t.id)) {
       message.success(`已领取 ${t.no}，转入「我的任务」`);
@@ -263,6 +314,7 @@ function onCreated(t: Ticket) {
   // 建完单要能看见它，故一并退出报备池 —— 只调 setTab 的话页签栏还停在报备池上，
   // 新单落进了「我的任务」却一眼看不到
   riskReportTabActive.value = false;
+  flashPoolTabActive.value = false;
   wb.setTab('mine');
 }
 
@@ -340,7 +392,7 @@ function onConfirmSaveFilter(name: string) {
       <TicketTabs
         :active="activeWorkbenchTab"
         :counts="workbenchTabCounts"
-        :hidden-tabs="user.hiddenTabs"
+        :hidden-tabs="workbenchHiddenTabs"
         @change="onTabChange"
       />
     </div>
@@ -348,6 +400,11 @@ function onConfirmSaveFilter(name: string) {
     <!-- 风险报备池：装的是报备单不是工单，故整块自成一页，不走下面那套工单列表 -->
     <div v-if="riskReportTabOpen" class="workbench-body">
       <RiskReportPoolPanel @open-ticket="openTicketByNo" />
+    </div>
+
+    <!-- 刷机池：一线刷机池未认领的刷机单，列与排序固定（§9.2） -->
+    <div v-else-if="flashPoolTabOpen" class="workbench-body">
+      <FlashPoolPanel :rows="wb.flashPoolRows.value" @claim="claimFlash" @open="openOperation" />
     </div>
 
     <div v-else class="workbench-body">
@@ -370,7 +427,7 @@ function onConfirmSaveFilter(name: string) {
           :expanded="true"
           :model-value="wb.structuredQuery.value"
           :variant="structuredFilterVariant"
-          :pool-groups="wb.poolGroups"
+          :pool-groups="wb.poolGroups.value"
           :optional-visible="optionalVisible"
           @update:model-value="wb.setStructuredQuery"
           @search="wb.applyStructuredQuery"
@@ -430,7 +487,7 @@ function onConfirmSaveFilter(name: string) {
                     : 'default'
             "
             :show-appointment-column="wb.showAppointmentColumn.value"
-            :extra-columns="wb.showSuspendColumns.value ? SUSPEND_EXTRA_COLUMNS : undefined"
+            :extra-columns="listExtraColumns"
             :visible-columns="visibleColumns"
             :column-order="columnOrder"
             @toggle="wb.toggleSelect"
@@ -445,6 +502,12 @@ function onConfirmSaveFilter(name: string) {
             </template>
             <template #cell-suspendResumeAt="{ ticket }">
               <span class="suspend-time">{{ ticket.suspendResumeAt || '—' }}</span>
+            </template>
+            <template #cell-flashHandoff="{ ticket }">
+              <span class="flash-cell">{{ flashHandoffCellText(ticket) }}</span>
+            </template>
+            <template #cell-flashFail="{ ticket }">
+              <span class="flash-cell" :title="flashFailCellText(ticket)">{{ flashFailCellText(ticket) }}</span>
             </template>
           </TicketRichList>
           <!-- 无分页：全量快照展示（PRD §8.2②），仅保留总数/已选统计 -->
@@ -528,6 +591,7 @@ function onConfirmSaveFilter(name: string) {
   min-width: 0;
 }
 .suspend-time { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.flash-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .table-card {
   background: #fff;
   border: 1px solid #e5e7eb;

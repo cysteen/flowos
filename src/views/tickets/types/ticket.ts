@@ -27,14 +27,21 @@ export const RISK_REPORT_TAB = 'riskReport';
  * （报备单不在工单数组里，那一格数不出任何东西）。
  * 分成两个类型之后，"页签栏有几枚"与"工单能落在哪几枚上"各自回答各自的问题。
  */
-export type WorkbenchTabKey = TabKey | typeof RISK_REPORT_TAB;
+export type WorkbenchTabKey = TabKey | typeof RISK_REPORT_TAB | typeof FLASH_POOL_TAB;
+
+/**
+ * 一线坐席工作台「刷机池」页签的键（930 教育刷机单 §9.2 / M30）。
+ * 与风险报备池同形，不并进 `TabKey`：池内的单 `Ticket.tab` 仍是 `pool`，
+ * 页签只是按「一线刷机池 · 未认领」另切出来的一片，由工作台单独取数。
+ */
+export const FLASH_POOL_TAB = 'flashPool';
 
 /**
  * 页签栏的键是不是一枚**工单页签** —— 是的才能喂给按 `TabKey` 取数的那一套。
  * 类型谓词而不是布尔：调用处 `if (isTicketTab(k)) setTab(k)` 直接把 k 收窄成 TabKey。
  */
 export function isTicketTab(key: WorkbenchTabKey): key is TabKey {
-  return key !== RISK_REPORT_TAB;
+  return key !== RISK_REPORT_TAB && key !== FLASH_POOL_TAB;
 }
 
 /** 工单列表（全量库）视图 Tab */
@@ -771,6 +778,8 @@ export const TABS: TabMeta[] = [
   { key: 'mine', label: '我的任务', badge: '#1A6FFF' },
   { key: 'done', label: '已办', badge: '#9CA3AF' },
   { key: 'pool', label: '工单池', badge: '#06B6D4' },
+  // 930 教育刷机单 §9.2：只对一线坐席渲染（门控见 config/roles.ts 的 FLASH_POOL_TAB_ROLES）
+  { key: FLASH_POOL_TAB, label: '刷机池', badge: '#7C3AED' },
   { key: 'poolPending', label: '催补待回', badge: '#6366F1' },
   { key: RISK_REPORT_TAB, label: '风险报备池', badge: '#F97316' },
   { key: 'review', label: '待审核', badge: '#F59E0B' },
@@ -925,6 +934,60 @@ export function handlerGroupOf(name?: string | null): PoolGroupMeta | undefined 
 /** 当前登录用户在工单数据源里的处理人名：二线专员演示账号对应 `WORKBENCH_HANDLER` */
 export function currentHandlerName(roleKey: string, userName: string): string {
   return roleKey === 'agent-l2' ? WORKBENCH_HANDLER : userName;
+}
+
+/* ---- 930 教育刷机单 · 工作台池可见性（§4.2 / §9.2–9.4，M15 / M71 / M72） ---- */
+
+/** 教育刷机处理组的分组 id（与 types/flash.ts `FLASH_POOLS.l2.groupId` 同值） */
+const EDU_FLASH_GROUP_ID = 'edu-flash';
+/** 一线刷机池复用的分组 id（与 `FLASH_POOLS.l1.groupId` 同值） */
+const FLASH_L1_GROUP_ID = 'line1';
+
+/**
+ * 「工单池 / 催补待回」里能看到教育刷机处理组的角色：
+ * 二线专员、二线班组长（管辖该组）、管理员（沿用基线）。技术支持不涉及刷机单。
+ */
+const EDU_FLASH_POOL_ROLES = new Set(['agent-l2', 'team-leader', 'system-admin', 'ops-admin', 'tenant-admin']);
+
+/**
+ * 按角色取「工单池 / 催补待回」的可见分组。
+ * 四类老工单的分组（一线客服组 / 二线技术支持组 / 硬件缺陷组）维持演示态全给，计数不变；
+ * 教育刷机处理组只给 `EDU_FLASH_POOL_ROLES`。
+ */
+export function visiblePoolGroupsFor(roleKey: string): PoolGroupMeta[] {
+  return POOL_GROUPS.filter((g) => g.id !== EDU_FLASH_GROUP_ID || EDU_FLASH_POOL_ROLES.has(roleKey));
+}
+
+/**
+ * 某张单在「工单池 / 催补待回」里适用的可见分组：
+ * 刷机单去掉一线刷机池（它只在一线坐席的「刷机池」页签里出现，二线专员 / 二线班组长都看不到，M72）。
+ */
+export function poolGroupIdsForTicket(t: Pick<Ticket, 'type'>, groupIds: string[]): string[] {
+  return t.type === '刷机' ? groupIds.filter((id) => id !== FLASH_L1_GROUP_ID) : groupIds;
+}
+
+/** 一线刷机池（未认领）：一线坐席「刷机池」页签的数据域（§9.2） */
+export function inFlashL1PoolScope(t: Ticket): boolean {
+  return (
+    t.type === '刷机'
+    && t.flash?.state.pool === 'l1'
+    && t.nodeStatus === '未认领'
+    && t.assignee === null
+    && !t.archived
+  );
+}
+
+/** 「我的任务」加「本人建的刷机单」的角色（一线坐席 §9.4；二线专员 M71，只读） */
+const FLASH_MINE_CREATOR_ROLES = new Set(['agent-l1', 'agent-l2']);
+
+/**
+ * 刷机单在「我的任务」的数据域：处理人为本人；一线坐席 / 二线专员另含本人建的单。
+ * `creatorName` 由调用方按刷机履历取（建单事件的操作人）。
+ */
+export function inFlashMineScope(t: Ticket, roleKey: string, handler: string, creatorName?: string): boolean {
+  if (t.type !== '刷机' || t.archived || t.isDraft) return false;
+  if (t.tab === 'mine' && t.assignee === handler) return true;
+  return FLASH_MINE_CREATOR_ROLES.has(roleKey) && !!creatorName && creatorName === handler;
 }
 
 /** 列表「分组名称」列：优先 groupNames，否则按业务线+工单类型推断 */

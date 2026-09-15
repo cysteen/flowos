@@ -61,7 +61,11 @@ const priorities: { value: '' | Priority; label: string }[] = [
 // value 落子状态（25 个），label 走 STATUS_DISPLAY_NAME（如「未认领」显示为「待领取」）。
 const nodeStatuses: { value: '' | NodeStatus; label: string }[] = [
   { value: '', label: '请选择' },
-  ...BASELINE_STATUSES.map((s) => ({ value: s, label: statusDisplayName(s) })),
+  // 「自动刷机中」归「处理中」分组，选项排在「处理中」之后（930 教育刷机单 §9.1）
+  ...BASELINE_STATUSES
+    .filter((s) => s !== '自动刷机中')
+    .flatMap((s) => (s === '处理中' ? [s, '自动刷机中' as NodeStatus] : [s]))
+    .map((s) => ({ value: s, label: statusDisplayName(s) })),
 ];
 
 const productNameOptions = computed(() =>
