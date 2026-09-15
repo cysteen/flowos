@@ -99,6 +99,13 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/mobile/FlashProgressView.vue'),
     meta: { public: true, title: '刷机进度' },
   },
+  // 930 教育刷机单 · 用户侧回访评价（调研短信链接进入，M86）
+  {
+    path: '/m/flash/survey',
+    name: 'm-flash-survey',
+    component: () => import('@/views/mobile/FlashSurveyView.vue'),
+    meta: { public: true, title: '服务评价' },
+  },
   {
     path: '/',
     component: WorkspaceShell,

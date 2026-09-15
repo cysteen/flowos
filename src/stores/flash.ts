@@ -15,6 +15,7 @@ import {
   FLASH_TIP_NON_SELF_DEVELOPED, FLASH_TIP_REASON_NOT_GRADUATE_L1, FLASH_TIP_REASON_NOT_GRADUATE_L2,
   FLASH_TIP_EDIT_STATE, FLASH_TIP_REPUSH_STATE, FLASH_TIP_SYSTEM_BUSY, FLASH_TIP_VERIFY_UNAVAILABLE,
   FLASH_VERIFY_NOT_RUN, FLASH_TL, FLASH_NOTICE, FLASH_RESULT_OFFLINE, FLASH_TOAST,
+  FLASH_CS_NOTICE, FLASH_SURVEY_TIMEOUT_HOURS,
   flashMinuteStamp, flashProgressStage, flashSmsHandoff, flashSmsSuccess, flashSmsSurvey, flashStamp,
   flashTipInflight, flashTipRequired, flashTipVerifyFailed, isFrontlineActor,
   offlineBatchResumeAt, parseFlashStamp, validateOfflineRegisteredAt,
@@ -273,6 +274,30 @@ export const useFlashStore = defineStore('flash', () => {
     });
   }
 
+  /**
+   * 发调研短信（PRD §8 / §11.1 / M86）：写通知记录与履历，记「调研短信发出时刻」供调研超时判定。
+   * 进「调研中」的两个入口（下送、首推自动刷机成功）都走这里。
+   */
+  function sendSurveySms(r: Ticket, at: number) {
+    r.flash!.state.surveySentAt = flashStamp(at);
+    const content = flashSmsSurvey(r.no);
+    const rec = useNotifyLogStore().emit({
+      ticketNo: r.no,
+      event: FLASH_NOTIFY_EVENTS.survey,
+      kind: 'accepted',
+      title: '调研短信',
+      receivers: [`${r.customer}(客户)`],
+      content,
+      channel: '短信',
+      status: '已发送',
+    });
+    if (rec) rec.when = flashStamp(at);
+    log(r.no, at, {
+      category: 'comm', action: 'sms', who: '系统', role: '系统', how: '短信通知',
+      what: `发送至 ${r.customerPhone ?? r.customer}：${content}`,
+    });
+  }
+
   /** 线下登记暂停是否仍在生效 */
   function pausedAt(st: FlashState, at: number): boolean {
     return !!st.slaPausedUntil && parseFlashStamp(st.slaPausedUntil).getTime() > at;
@@ -419,6 +444,8 @@ export const useFlashStore = defineStore('flash', () => {
         what: FLASH_TL.returnSuccess,
       });
       sms(r, at + 1000, 'success');
+      // PRD §8 入口「自动刷机成功」：发成功短信后进「调研中」，发调研短信（§11.1）
+      sendSurveySms(r, at + 2000);
     } else {
       // M19：人工重推成功回原处理人「处理中」，由处理人联系确认后下送；M32 同样发成功短信
       toHandler(r, run, at);
@@ -813,22 +840,130 @@ export const useFlashStore = defineStore('flash', () => {
   }
 
   /**
-   * 记回访结论（M58）：已解决 / 未解决才置位「已产生回访结论」；未解决转教育刷机处理组池（D5，不发短信 M47）。
-   * 已解决之后的结案走工单通用流程，本函数不改状态。
+   * 用户侧「服务评价」能不能提交（M86）：查不到单 / 已评价过 / 不在调研中 / 可评价。
+   * 已评价优先于子状态判定：评价过的单之后结案或回流，再打开链接仍显示已评价。
    */
-  function recordSurveyConclusion(ticketNo: string, solved: boolean): FlashActionResult {
+  function surveyGateOf(no: string): 'notFound' | 'evaluated' | 'unavailable' | 'open' {
+    const t = rawOf(no);
+    if (!t || t.type !== '刷机' || !t.flash || t.isDraft || t.nodeStatus === '草稿') return 'notFound';
+    if (t.flash.state.survey) return 'evaluated';
+    return t.nodeStatus === '调研中' ? 'open' : 'unavailable';
+  }
+
+  /**
+   * 记回访结论（PRD §8「回访结论去向」/ M58 / M86）：只在「调研中」且未评价过时可记，置位「已产生回访结论」。
+   * - 已解决 → 「已结案」，处理人不变，SLA 结束；履历「回访：已解决」+「结案」。
+   * - 未解决 → 教育刷机处理组池「未认领」、处理人清空，转人工原因「回访未解决」；
+   *   SLA：从未进过人工池（自动刷机成功直进回访）的此刻起算，其余按下送前的摘要接着跑；不发转人工短信（M47）。
+   */
+  function recordSurveyConclusion(
+    ticketNo: string,
+    solved: boolean,
+    feedback: { score?: number; remark?: string } = {},
+  ): FlashActionResult {
     const r = rowOf(ticketNo);
-    if (!r?.flash) return { ok: false, message: FLASH_TIP_REPUSH_STATE };
-    r.flash.state.surveyConcluded = true;
+    if (!r?.flash || r.nodeStatus !== '调研中' || r.flash.state.survey) return { ok: false, message: FLASH_TIP_REPUSH_STATE };
+    const st = r.flash.state;
     const now = Date.now();
-    if (!solved) {
-      handoff(r, 'l2', '回访未解决', now, {
-        keepSla: { slaText: r.slaText, slaSub: r.slaSub, slaState: r.slaState, slaMinutes: r.slaMinutes },
+    const score = Math.min(5, Math.max(1, Math.round(feedback.score ?? 5)));
+    const remark = (feedback.remark ?? '').trim();
+    st.surveyConcluded = true;
+    st.survey = { solved, score, remark, at: flashStamp(now) };
+    const slaBefore = st.slaBeforeForward;
+    st.forwardedBy = undefined;
+    st.slaBeforeForward = undefined;
+    r.serviceScore = score as NonNullable<Ticket['serviceScore']>;
+    log(ticketNo, now, {
+      category: solved ? 'praise' : 'customer',
+      action: solved ? 'praise' : 'reply',
+      who: r.customer, role: '客户', how: '回访评价',
+      what: FLASH_TL.surveyFeedback(solved, score, remark),
+      stars: score,
+    });
+    if (solved) {
+      Object.assign(r, {
+        nodeStatus: '已结案', nodeStep: 5, tab: 'mine',
+        slaText: '—', slaSub: '已结案', slaState: 'ok', slaMinutes: 9999,
+        updatedAt: flashMinuteStamp(now),
       });
+      log(ticketNo, now + 1, {
+        category: 'node', action: 'resolved', who: '系统', role: '系统', how: '结案', what: FLASH_TL.surveySolvedClosed,
+      });
+    } else {
+      // 下送进回访的单有下送前的 SLA 摘要 → 接着跑；自动刷机成功直进回访的单没有 → 进池时刻起算（handoff 内判）
+      handoff(r, 'l2', '回访未解决', now + 1, { keepSla: slaBefore });
     }
     bump(ticketNo);
     persist();
-    return { ok: true, message: solved ? '已记录回访结论' : `回访未解决，已转入${FLASH_POOLS.l2.label}` };
+    return { ok: true, message: solved ? '已结案' : `回访未解决，已转入${FLASH_POOLS.l2.label}` };
+  }
+
+  /**
+   * 调研超时未评价自动结案（PRD §8 / M26′）：「已结案」、处理人不变、SLA 结束；履历操作人「系统」。
+   */
+  function closeSurveyTimeout(r: Ticket, at: number) {
+    const st = r.flash!.state;
+    Object.assign(r, {
+      nodeStatus: '已结案', nodeStep: 5, tab: 'mine',
+      slaText: '—', slaSub: '已结案', slaState: 'ok', slaMinutes: 9999,
+      updatedAt: flashMinuteStamp(at),
+    });
+    st.forwardedBy = undefined;
+    st.slaBeforeForward = undefined;
+    log(r.no, at, {
+      category: 'node', action: 'resolved', who: '系统', role: '系统', how: '自动结案', what: FLASH_TL.surveyTimeoutClosed,
+    });
+    bump(r.no);
+  }
+
+  /**
+   * 客户侧催单 / 新建补充（PRD §3.1 / §4.1 第 10 行 / §8「调研中催补拉回」/ §11.1，M9 / M27 / M33 / M41 / M47 / M75）。
+   * - 调研中 ∧ 有处理人：撤回本次下送，回该处理人「处理中」，SLA 按下送前摘要接着跑，站内通知处理人；
+   * - 调研中 ∧ 无处理人：进一线刷机池「未认领」，转人工原因「回访期间客户催补」，SLA 从进池时刻起算，
+   *   通知归属组一线刷机池；不发转人工短信；
+   * - 自动刷机中：不拉回，有处理人通知处理人、无处理人通知一线刷机池。
+   * 两种拉回都不置「已产生回访结论」，再下送照常进「调研中」（M58）。其余子状态不在此处理，返回 `pulled: false`。
+   */
+  function onCustomerUrge(ticketNo: string, kind: 'urge' | 'supplement'): { pulled: boolean } {
+    const r = rowOf(ticketNo);
+    if (!r?.flash || (r.nodeStatus !== '调研中' && r.nodeStatus !== '自动刷机中')) return { pulled: false };
+    const st = r.flash.state;
+    const now = Date.now();
+    const notice = FLASH_CS_NOTICE[kind];
+    const notify = (receiver: string) => useNotifyLogStore().emit({
+      ticketNo: r.no,
+      event: kind === 'urge' ? FLASH_NOTIFY_EVENTS.urge : FLASH_NOTIFY_EVENTS.supplement,
+      kind,
+      title: notice.title,
+      receivers: [receiver],
+      content: notice.text(r.no),
+    });
+    const handler = r.assignee;
+    if (r.nodeStatus === '自动刷机中') {
+      notify(handler ? `${handler}(处理人)` : FLASH_POOLS.l1.label);
+      return { pulled: false };
+    }
+    if (handler) {
+      Object.assign(r, {
+        nodeStatus: '处理中', nodeStep: 3, tab: 'mine', responded: true,
+        ...(st.slaBeforeForward ?? POOL_SLA),
+        updatedAt: flashMinuteStamp(now),
+      });
+      st.forwardedBy = undefined;
+      st.slaBeforeForward = undefined;
+      log(ticketNo, now, {
+        category: 'node', action: 'handle', who: '系统', role: '系统', how: '因客户催补，自动撤回本次下送',
+        what: FLASH_TL.csPullbackForward('处理中'),
+      });
+      notify(`${handler}(处理人)`);
+    } else {
+      // 单上从未计时（slaText「—」）→ 转池时从进池时刻起算
+      transferToPool(ticketNo, 'l1', '回访期间客户催补');
+      notify(FLASH_POOLS.l1.label);
+    }
+    bump(ticketNo);
+    persist();
+    return { pulled: true };
   }
 
   /**
@@ -987,21 +1122,7 @@ export const useFlashStore = defineStore('flash', () => {
     log(ticketNo, now + 1, {
       category: 'node', action: 'resolved', who: by.name, role: by.role, how: '下送', what: FLASH_TL.forward(result),
     });
-    const content = flashSmsSurvey(r.no);
-    useNotifyLogStore().emit({
-      ticketNo: r.no,
-      event: FLASH_NOTIFY_EVENTS.survey,
-      kind: 'accepted',
-      title: '调研短信',
-      receivers: [`${r.customer}(客户)`],
-      content,
-      channel: '短信',
-      status: '已发送',
-    });
-    log(r.no, now + 2, {
-      category: 'comm', action: 'sms', who: '系统', role: '系统', how: '短信通知',
-      what: `发送至 ${r.customerPhone ?? r.customer}：${content}`,
-    });
+    sendSurveySms(r, now + 2);
     bump(ticketNo);
     persist();
     return { ok: true, message: FLASH_TOAST.forwarded };
@@ -1187,6 +1308,16 @@ export const useFlashStore = defineStore('flash', () => {
         bump(r.no);
         settled += 1;
       }
+      // PRD §8 / M26′：调研超时未评价 → 自动结案（时刻取调研短信发出时刻 + 调研超时时长）
+      if (t.type === '刷机' && t.flash && t.nodeStatus === '调研中' && !t.flash.state.survey) {
+        const sentAt = t.flash.state.surveySentAt ?? t.updatedAt;
+        const due = sentAt ? parseFlashStamp(sentAt).getTime() + FLASH_SURVEY_TIMEOUT_HOURS * 3_600_000 : NaN;
+        if (due <= now) {
+          closeSurveyTimeout(reactive(t), due);
+          settled += 1;
+        }
+        continue;
+      }
       if (t.type !== '刷机' || !t.flash || t.nodeStatus !== '自动刷机中') continue;
       const r = reactive(t);
       const run = [...r.flash!.runs].reverse().find((x) => x.result === '等待回传');
@@ -1263,10 +1394,63 @@ export const useFlashStore = defineStore('flash', () => {
     }
   }
 
+  /**
+   * 种子单的调研短信补进通知记录（M86）：种子单进「调研中」发生在页面打开之前，通知记录（运行时 store）里没有这条；
+   * 本单已有调研短信记录的不补。时刻取种子的调研短信发出时刻。
+   */
+  function backfillSurveySms() {
+    const notifyLog = useNotifyLogStore();
+    for (const t of TICKETS) {
+      const sentAt = t.type === '刷机' ? t.flash?.state.surveySentAt : undefined;
+      if (!sentAt) continue;
+      if (notifyLog.records.some((x) => x.ticketNo === t.no && x.event === FLASH_NOTIFY_EVENTS.survey)) continue;
+      const rec = notifyLog.emit({
+        ticketNo: t.no,
+        event: FLASH_NOTIFY_EVENTS.survey,
+        kind: 'accepted',
+        title: '调研短信',
+        receivers: [`${t.customer}(客户)`],
+        content: flashSmsSurvey(t.no),
+        channel: '短信',
+        status: '已发送',
+      });
+      if (rec) rec.when = sentAt;
+    }
+  }
+
+  /**
+   * 其他页签写了刷机缓存（如用户在评价页提交、处理页在另一页签办理）→ 本页签按缓存重读，
+   * 避免本页签之后落库时用旧快照把对方的改动覆盖掉。`timeline` 键在 `persist` 里后写，以它为准。
+   */
+  function syncFromOtherTab() {
+    const cachedTickets = readFlashCache<TicketsCache>(FLASH_LS_KEYS.tickets);
+    const cachedTl = readFlashCache<TimelineCache>(FLASH_LS_KEYS.timeline);
+    if (!cachedTickets || !cachedTl || !Array.isArray(cachedTickets.tickets)) return;
+    for (const saved of cachedTickets.tickets) {
+      const existing = rawOf(saved.no);
+      if (existing) {
+        const r = reactive(existing) as unknown as Record<string, unknown>;
+        Object.keys(existing).forEach((k) => { if (!(k in saved)) delete r[k]; });
+        Object.assign(r, saved);
+      } else {
+        TICKETS.push(saved);
+      }
+      bump(saved.no);
+    }
+    timelines.value = cachedTl.timelines ?? {};
+    tlSeq = typeof cachedTl.seq === 'number' ? Math.max(tlSeq, cachedTl.seq) : tlSeq;
+  }
+
   hydrate();
   settleDue();
   persist();
-  if (typeof window !== 'undefined') window.setInterval(() => settleDue(), 1000);
+  backfillSurveySms();
+  if (typeof window !== 'undefined') {
+    window.setInterval(() => settleDue(), 1000);
+    window.addEventListener('storage', (e) => {
+      if (e.key === FLASH_LS_KEYS.timeline && e.newValue) syncFromOtherTab();
+    });
+  }
 
   return {
     timelines,
@@ -1284,6 +1468,8 @@ export const useFlashStore = defineStore('flash', () => {
     repush,
     saveFlashInfo,
     recordSurveyConclusion,
+    surveyGateOf,
+    onCustomerUrge,
     transferToPool,
     recordLateSuccess,
     settleDue,

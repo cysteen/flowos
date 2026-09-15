@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { BellOutlined } from '@ant-design/icons-vue';
+import { FLASH_SURVEY_LINK_RE } from '@/views/tickets/types/flash';
 import type { NotifyRecord } from '@/views/tickets/types/operationTabs';
 import { useNotifyLogStore } from '@/stores/notifyLog';
 
@@ -36,6 +37,18 @@ const mergedRecords = computed<NotifyRecord[]>(() => [
 function displayReceiver(receiver: string) {
   return receiver.replace(/\s*\([^)]*\)/g, '').trim();
 }
+
+/**
+ * 通知内容切段：刷机单调研短信里的评价链接（930 M86）渲染为可点链接，新页签打开用户侧评价页。
+ * 其余内容原样展示。
+ */
+const router = useRouter();
+function contentSegments(content: string): { text: string; href?: string }[] {
+  return content
+    .split(FLASH_SURVEY_LINK_RE)
+    .filter((s) => s !== '')
+    .map((s) => (FLASH_SURVEY_LINK_RE.test(s) && s.startsWith('/') ? { text: s, href: router.resolve(s).href } : { text: s }));
+}
 </script>
 
 <template>
@@ -50,7 +63,12 @@ function displayReceiver(receiver: string) {
       </div>
       <div class="content-area">
         <div class="meta-line">通知方式: {{ r.channel }}</div>
-        <div class="content-box">{{ r.content }}</div>
+        <div class="content-box">
+          <template v-for="(seg, i) in contentSegments(r.content)" :key="i">
+            <a v-if="seg.href" class="content-link" :href="seg.href" target="_blank" rel="noopener">{{ seg.text }}</a>
+            <template v-else>{{ seg.text }}</template>
+          </template>
+        </div>
       </div>
     </div>
   </div>
@@ -140,5 +158,10 @@ function displayReceiver(receiver: string) {
   font-weight: 400;
   color: #6b7280;
   line-height: 1.6;
+}
+
+.content-link {
+  color: #1a6fff;
+  word-break: break-all;
 }
 </style>

@@ -75,6 +75,8 @@ export const MDM_DEVICES: MdmDevice[] = [
   // 回传超时转人工后迟到「接收成功」（IFLYSH-20260915-00018）
   // 人工重推时推送接口持续报错（自动重试 1 次仍失败，M69）
   dev({ sn: 'XFS30240900918', model: S30, studentAccount: 'bb2z2023s0418', romVersion: 'EDU-S30-1.4.2', mdmVersion: 'MDM 5.8.2', noResponse: true, pushApi: '持续报错' }),
+  // 调研超时未评价自动结案（IFLYSH-20260915-00019）：首推未联网 → 一线指导联网后重推成功 → 下送进回访
+  dev({ sn: 'XFS20240600966', model: S20, studentAccount: 'hf50z2023s0366', romVersion: 'EDU-S20-3.2.4', mdmVersion: 'MDM 5.8.2', online: '未联网', onlineAfterContact: true }),
 
   // ---- 待提报设备（建单可走通各条链路） ----
   // 成功：自研、账号一致、毕业生、在线

@@ -354,7 +354,29 @@ export interface FlashState {
   slaBeforeForward?: { slaText: string; slaSub: string; slaState: 'ok' | 'soon' | 'overdue' | 'paused'; slaMinutes: number };
   /** 转售后前的 SLA 摘要：售后唤起回原二线处理人时按它续算 */
   slaBeforeAftersale?: { slaText: string; slaSub: string; slaState: 'ok' | 'soon' | 'overdue' | 'paused'; slaMinutes: number };
+  /**
+   * 最近一次调研短信发出时刻（YYYY-MM-DD HH:mm:ss，PRD §8 / M26′ / M86）：进「调研中」时写入，
+   * 调研超时未评价按它 + `FLASH_SURVEY_TIMEOUT_HOURS` 判自动结案。
+   */
+  surveySentAt?: string;
+  /** 用户回访评价（M86）：提交即记为已产生回访结论，一张单只评价一次 */
+  survey?: FlashSurveyFeedback;
 }
+
+/** 用户回访评价（用户侧 H5「服务评价」提交，M86） */
+export interface FlashSurveyFeedback {
+  /** 刷机问题是否已解决 */
+  solved: boolean;
+  /** 满意度 1–5 星 */
+  score: number;
+  /** 补充说明（选填） */
+  remark: string;
+  /** 提交时刻（YYYY-MM-DD HH:mm:ss） */
+  at: string;
+}
+
+/** 调研超时时长（小时）：沿用回访模块的调研超时配置，原型内无该配置，取 72 小时（M26′ / M86） */
+export const FLASH_SURVEY_TIMEOUT_HOURS = 72;
 
 /** 刷机单字段展示名（统一口径：建单表单、处理页、用户提报页、履历字段 diff 都用这一份） */
 export const FLASH_FIELD_LABELS = {
@@ -574,6 +596,13 @@ export const FLASH_TL = {
   forward: (result: string) => `下送；处理结果：${result}`,
   forwardClosed: (result: string) => `下送（已回访过，直接结案）；处理结果：${result}`,
   withdrawForward: '撤回本次下送，回到处理中',
+  /** 回访评价（PRD §8「回访：已解决 / 未解决」+ 满意度与补充说明） */
+  surveyFeedback: (solved: boolean, score: number, remark: string) =>
+    `回访：${solved ? '已解决' : '未解决'}；满意度：${score} 星${remark ? `；补充说明：${remark}` : ''}`,
+  surveySolvedClosed: '回访已解决，工单结案。',
+  surveyTimeoutClosed: '调研超时未评价，自动结案',
+  /** 调研中催补拉回有处理人的单（基线 ※20，与四类工单同一口径） */
+  csPullbackForward: (to: string) => `因客户催补，自动撤回本次下送：调研中 → ${to}。SLA 解决钟接着跑，不重置。`,
 } as const;
 
 /** SN 尾号（短信里只露后四位） */
@@ -590,10 +619,23 @@ export function flashSmsHandoff(no: string): string {
   return `【讯飞客服】您的刷机申请需人工核实，客服将尽快与您联系，请保持电话畅通。工单号：${no}。`;
 }
 
+/** 用户侧回访评价页路径（M86） */
+export function flashSurveyPath(no: string): string {
+  return `/m/flash/survey?no=${no}`;
+}
+/** 通知内容里的评价链接（通知记录 Tab 据此把链接渲染为可点） */
+export const FLASH_SURVEY_LINK_RE = /(\/m\/flash\/survey\?no=[A-Za-z0-9-]+)/;
+
 /** 调研短信（PRD §8 / M86：含评价链接） */
 export function flashSmsSurvey(no: string): string {
-  return `【讯飞客服】您的刷机申请已处理，请点击链接评价本次服务：/m/flash/survey?no=${no}。工单号：${no}。`;
+  return `【讯飞客服】您的刷机申请已处理，请点击链接评价本次服务：${flashSurveyPath(no)}。工单号：${no}。`;
 }
+
+/** 催单 / 新建补充站内通知（PRD §11.1：沿用现有催补通知文案） */
+export const FLASH_CS_NOTICE = {
+  urge: { title: '催单提醒', text: (no: string) => `客户已催单,请优先处理并尽快回访。工单号:${no}` },
+  supplement: { title: '补充通知', text: (no: string) => `客户补充了新信息,请及时查阅。工单号:${no}` },
+} as const;
 
 /** 通知记录的事件码（接《【815】》通知规则事件目录，M14 新增 2 个 + M38 重推结果） */
 export const FLASH_NOTIFY_EVENTS = {
@@ -604,6 +646,8 @@ export const FLASH_NOTIFY_EVENTS = {
   escalateL2: 'ticket.flash.escalated',
   lateSuccess: 'ticket.flash.late.succeeded',
   survey: 'ticket.survey.sent',
+  urge: 'ticket.dunning.received',
+  supplement: 'ticket.supplement.received',
 } as const;
 
 /* ------------------------------------------------------------------ */

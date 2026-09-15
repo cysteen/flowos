@@ -1,17 +1,66 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { message } from 'ant-design-vue';
+import { useRoute, useRouter } from 'vue-router';
 import type { SurveyRecord } from '@/views/tickets/types/operationTabs';
+import { useFlashStore } from '@/stores/flash';
+import { useNotifyLogStore } from '@/stores/notifyLog';
+import { FLASH_NOTIFY_EVENTS, flashSurveyPath } from '@/views/tickets/types/flash';
 
-defineProps<{ records: SurveyRecord[] }>();
+const props = defineProps<{ records: SurveyRecord[] }>();
+
+const route = useRoute();
+const router = useRouter();
+const flash = useFlashStore();
+const notifyLog = useNotifyLogStore();
+const ticketNo = computed(() => String(route.params.ticketNo ?? ''));
+
+/**
+ * 刷机单（930 PRD §8 / M86）：调研记录取本单的调研短信（通知记录）与用户评价，
+ * 评价归到提交前最近发出的那一条调研短信上；四类老工单沿用预置样本。
+ */
+const flashRecords = computed<SurveyRecord[] | null>(() => {
+  const no = ticketNo.value;
+  void flash.revisionOf(no);
+  const f = flash.flashOf(no);
+  if (!f) return null;
+  const survey = f.state.survey;
+  const sent = notifyLog.recordsOf(no).filter((r) => r.event === FLASH_NOTIFY_EVENTS.survey);
+  const answeredId = survey ? sent.find((r) => r.when <= survey.at)?.id : undefined;
+  const conclusion = survey
+    ? `是否解决：${survey.solved ? '已解决' : '未解决'} | 满意度：${survey.score} 星${survey.remark ? ` | 补充说明：${survey.remark}` : ''}`
+    : '';
+  const rows: SurveyRecord[] = sent.map((r) => ({
+    id: r.id,
+    title: '满意度调研',
+    sentAt: r.when,
+    evaluated: r.id === answeredId,
+    linkLabel: '查看问卷',
+    conclusion: r.id === answeredId ? conclusion : '是否解决：— | 满意度：—',
+  }));
+  if (survey && !answeredId) {
+    rows.push({
+      id: `flash-survey-${no}`, title: '满意度调研', sentAt: f.state.surveySentAt ?? survey.at,
+      evaluated: true, linkLabel: '查看问卷', conclusion,
+    });
+  }
+  return rows;
+});
+
+const shownRecords = computed(() => flashRecords.value ?? props.records);
 
 function openSurvey() {
+  if (flashRecords.value) {
+    window.open(router.resolve(flashSurveyPath(ticketNo.value)).href, '_blank', 'noopener');
+    return;
+  }
   message.info('打开问卷');
 }
 </script>
 
 <template>
   <div class="survey-tab">
-    <div v-for="r in records" :key="r.id" class="record-card">
+    <div v-for="r in shownRecords" :key="r.id" class="record-card">
       <div class="card-head">
         <div class="title-left">
           <span class="icon-wrap" aria-hidden="true">
