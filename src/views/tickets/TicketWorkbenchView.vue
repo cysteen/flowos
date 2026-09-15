@@ -300,9 +300,16 @@ function onBatch(action: string) {
     return;
   }
   if (action === '调剂' || action === '退回') {
-    const tickets = [...wb.selectedIds.value]
+    const picked = [...wb.selectedIds.value]
       .map((id) => wb.ticketById(id))
       .filter((t): t is Ticket => !!t);
+    // 刷机单的流转动作统一在工单处理页办理（M116 / M117），批量调剂 / 退回跳过刷机单
+    const tickets = picked.filter((t) => t.type !== '刷机');
+    const skipped = picked.length - tickets.length;
+    if (skipped > 0) {
+      message.warning(`已跳过 ${skipped} 张刷机单，刷机单请在工单处理页操作`);
+    }
+    if (tickets.length === 0) return;
     openOpDialog(action, tickets);
     return;
   }

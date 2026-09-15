@@ -245,8 +245,8 @@ export function flashEscalateComplaintGate(stage: FlashStage): FlashGateResult {
 /**
  * 刷机单列表行内操作：按与处理页同一道视角判定裁剪通用行内动作（PRD §5.5 表一 / 表二、§9.4，M34）。
  * - 只读查看、待领取、其他视角不出任何行内操作（领取只在池页签，池页签不走本函数）；
- * - 一线视角不出调剂、挂起；「退回」刷机单一律没有；
- * - 二线视角「调剂」「挂起」按表二子状态取值，置灰列不出（行内操作无置灰态）；
+ * - 「退回」「调剂」「挂起」刷机单一律不在行内出：刷机单的流转动作统一在工单处理页办理，
+ *   经刷机服务写履历、恢复线下登记暂停（M117）；
  * - 进处理页类动作（处理 / 详情 / 审核 / 受理 / 恢复）在一线、二线视角保留。
  */
 export function flashListRowActions<T extends { label: string }>(
@@ -255,13 +255,7 @@ export function flashListRowActions<T extends { label: string }>(
 ): T[] {
   const view = resolveFlashView(i);
   if (view !== 'l1' && view !== 'l2') return [];
-  const stage = flashStageOf(i.status);
-  return base.filter((a) => {
-    if (a.label === '退回') return false;
-    if (a.label === '调剂') return view === 'l2' && AVAILABLE_STAGES.调剂.includes(stage);
-    if (a.label === '挂起') return view === 'l2' && AVAILABLE_STAGES.挂起.includes(stage);
-    return true;
-  });
+  return base.filter((a) => a.label !== '退回' && a.label !== '调剂' && a.label !== '挂起');
 }
 
 /** 调研中「升级投诉」置灰悬停原因（M100） */
