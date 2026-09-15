@@ -784,6 +784,9 @@ function openReopenCreate() {
  * 只留横幅上的「打开新单」。不这么做，催单/补充/再投诉就可能落在这张作废的旧单上。
  */
 const supersededBy = computed(() => resolveSupersededBy(d.value));
+/** 被接管子状态（已转 / 已升级）：业务已由新单承接，关联未写入时同样整页只读 */
+const SUPERSEDED_STATUSES = ['已转咨询', '已转建议', '已转商机', '已升级投诉', '已升级外投'];
+const supersededLocked = computed(() => !!supersededBy.value || SUPERSEDED_STATUSES.includes(d.value.status));
 /**
  * 只读态（**整页冻结**）：一线视角 / **已转…**（业务转到新单）/ **只读角色**（工单运营）。
  * 注意**关闭类终态不在此列**——已结案 / 已关闭 / 已强结的单仍保留头部动作
@@ -800,7 +803,7 @@ const supersededBy = computed(() => resolveSupersededBy(d.value));
  * 在一线视角下全被置灰、提示还错成"本单已被新单接管"。
  */
 const pageReadonly = computed(
-  () => !!supersededBy.value || !!user.role.readonlyTickets,
+  () => supersededLocked.value || !!user.role.readonlyTickets,
 );
 
 /**
@@ -868,19 +871,14 @@ const canCancelTicket = computed(() => headerRoleGate.value.cancelTicket);
  * ⑦ 工单运营虽整体只读，但矩阵写明「只读约束的是**工单内容**，打标不受此限」；
  * ① 一线坐席在「关联/补充/催单」Tab 上是「可用」（唯一写动作「已知晓」）。
  */
-const tabsReadonly = computed(() => !!supersededBy.value);
+const tabsReadonly = computed(() => supersededLocked.value);
 
 /**
  * 结案后补充：终态（已转/已升级的被接管单整页已锁，按关联或子状态判，均不在此列）处理表单锁定；
  * 已取消以外的终态，**最后处理人所在组**且有「工单处理」写权限的成员仍可编辑商机编号、结案后备注，底栏只剩「保存」。
  * 不改状态、不重算 SLA、不触发调研，只记履历。
  */
-const SUPERSEDED_STATUSES = ['已转咨询', '已转建议', '已转商机', '已升级投诉', '已升级外投'];
-const postClose = computed(
-  () => isTicketTerminated(d.value.status)
-    && !supersededBy.value
-    && !SUPERSEDED_STATUSES.includes(d.value.status),
-);
+const postClose = computed(() => isTicketTerminated(d.value.status) && !supersededLocked.value);
 const postCloseEditable = computed(() => {
   if (!postClose.value || d.value.status === '已取消') return false;
   if (!tabWritableFor('process', user.roleKey)) return false;
