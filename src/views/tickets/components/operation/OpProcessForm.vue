@@ -425,6 +425,8 @@ function chipActiveClass(key: SupplementChip): string {
         :model-value="form.closingNote"
         :attachments="form.closingNoteAttachments ?? []"
         :readonly="postCloseFieldDisabled"
+        :class="{ 'cn-disabled': postCloseFieldDisabled }"
+        :shell-background="postCloseFieldDisabled ? '#f5f5f5' : '#fff'"
         :maxlength="500"
         placeholder="补充结案后的跟进情况、客户反馈等"
         @update:model-value="(v: string) => patch({ closingNote: v })"
@@ -442,6 +444,7 @@ function chipActiveClass(key: SupplementChip): string {
 
 <style scoped>
 .process-form { display: flex; flex-direction: column; gap: 12px; }
+.cn-disabled :deep(.textarea-input) { color: rgba(0, 0, 0, 0.25); cursor: not-allowed; background: transparent; }
 .cn-foot {
   display: flex; justify-content: space-between; gap: 8px;
   margin-top: -4px; font-size: 12px; color: #9ca3af;
