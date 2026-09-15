@@ -916,6 +916,9 @@ const postCloseEditable = computed(() => {
   return !!gid && handlerGroupOf(currentHandlerName(user.roleKey, user.name))?.id === gid;
 });
 
+/** 商机编号编辑权：非终态＝工单处理人本人；终态＝结案后编辑权（同组 + 写权限） */
+const leadNoEditable = computed(() => (postClose.value ? postCloseEditable.value : isPrimaryHandler.value));
+
 const hideActionBar = computed(
   () => isFrontlineView.value || pageReadonly.value
     || (isTicketTerminated(d.value.status) && !postCloseEditable.value),
@@ -1868,7 +1871,9 @@ watch(
           :readonly="tabsReadonly"
           :post-close="postClose"
           @closing-note-files-added="onClosingNoteFilesAdded"
-          :post-close-editable="postCloseEditable"          @toggle-section="toggleSection"
+          :post-close-editable="postCloseEditable"
+          :lead-no-editable="leadNoEditable"
+          @toggle-section="toggleSection"
           @select-chip="selectChip"
           @update:form="updateForm"
           @update:tab-data="updateTabData"

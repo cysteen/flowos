@@ -68,6 +68,8 @@ const props = defineProps<{
   postClose?: boolean;
   /** 终态下商机编号 / 结案后备注是否仍可编辑（非已取消 + 当前用户在最后处理人所在组） */
   postCloseEditable?: boolean;
+  /** 商机编号是否可编辑（非终态＝工单处理人；终态＝同 postCloseEditable） */
+  leadNoEditable?: boolean;
   /** 底栏「风险报备」形态按钮出不出，透传给「风险报备」Tab（空态指引随它） */
   riskReportEntryVisible?: boolean;
 }>();
@@ -193,6 +195,7 @@ defineExpose({ switchTab });
         :readonly="activeTabReadonly"
         :post-close="postClose"
         :post-close-editable="postCloseEditable"
+        :lead-no-editable="leadNoEditable"
         @closing-note-files-added="emit('closingNoteFilesAdded', $event)"
         @toggle-section="emit('toggleSection', $event)"
         @select-chip="emit('selectChip', $event)"

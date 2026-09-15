@@ -60,6 +60,8 @@ const props = defineProps<{
   postClose?: boolean;
   /** 终态下两个字段是否仍可编辑（非已取消 + 当前用户在最后处理人所在组） */
   postCloseEditable?: boolean;
+  /** 商机编号是否可编辑（非终态＝工单处理人；终态＝同 postCloseEditable）；不传按 postCloseFieldDisabled */
+  leadNoEditable?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -75,6 +77,10 @@ const contentLocked = computed(() => !!props.readonly || !!props.postClose);
 const postCloseFieldDisabled = computed(
   () => !!props.readonly || (!!props.postClose && !props.postCloseEditable),
 );
+
+const leadNoDisabled = computed(() => (
+  props.leadNoEditable === undefined ? postCloseFieldDisabled.value : !!props.readonly || !props.leadNoEditable
+));
 
 const isComplaint = computed(() => props.ticketType === '投诉');
 const isConsult = computed(() => props.ticketType === '咨询');
@@ -350,10 +356,10 @@ function chipActiveClass(key: SupplementChip): string {
           </div>
           <div class="field inline">
             <label>商机编号</label>
-            <!-- 终态仍可编辑：disabled 显式只看角色只读，不继承本区终态禁用 -->
+            <!-- 非终态仅工单处理人可改；终态按结案后编辑权，不继承本区终态禁用 -->
             <a-input
               :value="form.leadNo"
-              :disabled="postCloseFieldDisabled"
+              :disabled="leadNoDisabled"
               :maxlength="64"
               placeholder="CRM 商机单号"
               @update:value="(v: string) => patch({ leadNo: v })"
