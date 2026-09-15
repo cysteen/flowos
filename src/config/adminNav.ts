@@ -128,6 +128,7 @@ export const ADMIN_GROUPS: AdminNavGroup[] = [
     key: 'ticket-config', label: '工单配置', icon: AppstoreOutlined, scope: 'ops',
     items: [
       { key: 'ticket-types', label: '工单类型管理', prd: 'PRD-60', v1Ref: 'A/A0-workorder-type-list.html' },
+      { key: 'flash-config', label: '刷机配置', prd: '【930】教育刷机单 §10' },
       { key: 'dicts', label: '字典管理', prd: 'PRD-52', v1Ref: 'A/A9-data-dictionary.html' },
       { key: 'entity-dict', label: '流程实体字典', prd: 'PRD-88' },
     ],

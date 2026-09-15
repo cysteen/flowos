@@ -32,6 +32,7 @@ function adminViewFor(key: string) {
   if (key === 'dicts') return () => import('@/views/admin/DictManageView.vue');
   if (key === 'entity-dict') return () => import('@/views/admin/EntityDictView.vue');
   if (key === 'ticket-types') return () => import('@/views/admin/TicketTypesView.vue');
+  if (key === 'flash-config') return () => import('@/views/admin/FlashConfigView.vue');
   if (key === 'form-templates' || key === 'flow-templates') return () => import('@/views/admin/TemplateLibraryView.vue');
   if (WORKFLOW_STUB_KEYS.has(key)) return () => import('@/views/admin/WorkflowEngineView.vue');
   if (key === 'teams') return () => import('@/views/admin/UserGroupView.vue');
@@ -82,6 +83,19 @@ const routes: RouteRecordRaw[] = [
     name: 'login',
     component: () => import('@/views/auth/LoginView.vue'),
     meta: { public: true, title: '登录' },
+  },
+  // 930 教育刷机单 · 用户侧小程序提报（免登录、移动端版式，无后台外壳）
+  {
+    path: '/m/flash/apply',
+    name: 'm-flash-apply',
+    component: () => import('@/views/mobile/FlashApplyView.vue'),
+    meta: { public: true, title: '刷机申请' },
+  },
+  {
+    path: '/m/flash/progress',
+    name: 'm-flash-progress',
+    component: () => import('@/views/mobile/FlashProgressView.vue'),
+    meta: { public: true, title: '刷机进度' },
   },
   {
     path: '/',
