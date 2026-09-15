@@ -25,6 +25,8 @@ import {
   isAppointmentFilled,
 } from '@/views/tickets/types/operation';
 import { isComplaintCategoryComplete } from '@/views/tickets/types/createTicket';
+import { FLASH_RESULTS, FLASH_RESULT_OFFLINE } from '@/views/tickets/types/flash';
+import { useUserStore } from '@/stores/user';
 
 const props = defineProps<{
   form: ProcessFormDraft;
@@ -63,6 +65,8 @@ const props = defineProps<{
   postCloseEditable?: boolean;
   /** 商机编号是否可编辑（非终态＝工单处理人；终态＝同 postCloseEditable）；不传按 postCloseFieldDisabled */
   leadNoEditable?: boolean;
+  /** 刷机单处理表单的字段下方提示（处理结果 / 线下登记时间，930 PRD §5.4） */
+  flashErrors?: { flashResult?: string; flashOfflineAt?: string };
 }>();
 
 const emit = defineEmits<{
@@ -87,6 +91,20 @@ const isComplaint = computed(() => props.ticketType === '投诉');
 const isConsult = computed(() => props.ticketType === '咨询');
 const isSuggest = computed(() => props.ticketType === '建议');
 const isLead = computed(() => props.ticketType === '商机');
+/**
+ * 刷机单（930 教育刷机单 PRD §5.4）：「处理记录」区出「处理结果」下拉 +（已线下登记推送时）「线下登记时间」+ 处理记录正文。
+ * 一线视角不含「已转售后」。
+ */
+const isFlash = computed(() => props.ticketType === '刷机');
+const user = useUserStore();
+const flashResultOptions = computed(() => FLASH_RESULTS
+  .filter((r) => user.roleKey !== 'agent-l1' || r !== '已转售后')
+  .map((r) => ({ label: r, value: r })));
+const showFlashOfflineAt = computed(() => props.form.flashResult === FLASH_RESULT_OFFLINE);
+function onFlashResultChange(v: unknown) {
+  const next = v == null ? '' : String(v);
+  patch({ flashResult: next, flashOfflineAt: next === FLASH_RESULT_OFFLINE ? props.form.flashOfflineAt : '' });
+}
 /** 投诉渠道 chip：建单登记了平台，或来源为内投/外投渠道（PRD：投诉渠道记录） */
 const showComplaintChannel = computed(() => {
   if ((props.complaintPlatforms ?? []).some((p) => p.platform)) return true;
@@ -246,7 +264,36 @@ function chipActiveClass(key: SupplementChip): string {
       :expanded="expandedSections.record"
       @toggle="emit('toggleSection', 'record')"
     >
+      <div v-if="isFlash" class="field-row field-row--flash">
+        <div class="field inline">
+          <label>处理结果</label>
+          <FormSelect
+            :value="form.flashResult || undefined"
+            :options="flashResultOptions"
+            placeholder="请选择"
+            style="width: 100%"
+            :status="flashErrors?.flashResult ? 'error' : ''"
+            @update:value="onFlashResultChange"
+          />
+          <div v-if="flashErrors?.flashResult" class="flash-err">{{ flashErrors.flashResult }}</div>
+        </div>
+        <div v-if="showFlashOfflineAt" class="field inline">
+          <label><span class="req">*</span>线下登记时间</label>
+          <a-date-picker
+            :value="form.flashOfflineAt || undefined"
+            show-time
+            format="YYYY-MM-DD HH:mm"
+            value-format="YYYY-MM-DD HH:mm"
+            placeholder="请选择线下登记时间"
+            style="width: 100%"
+            :status="flashErrors?.flashOfflineAt ? 'error' : ''"
+            @update:value="(v: unknown) => patch({ flashOfflineAt: typeof v === 'string' ? v : '' })"
+          />
+          <div v-if="flashErrors?.flashOfflineAt" class="flash-err">{{ flashErrors.flashOfflineAt }}</div>
+        </div>
+      </div>
       <OpRecordFields
+        :flash-mode="isFlash"
         :problem-cause="form.problemCause"
         :process-result="form.processResult"
         :problem-cause-attachments="form.problemCauseAttachments"
@@ -483,6 +530,8 @@ function chipActiveClass(key: SupplementChip): string {
 .field label .req { color: #ef4444; margin-right: 2px; }
 .field-row { display: flex; gap: 8px; }
 .field-row--lead { align-items: flex-start; flex-wrap: nowrap; }
+.field-row--flash { align-items: flex-start; margin-bottom: 10px; }
+.flash-err { font-size: 12px; line-height: 18px; color: #ef4444; }
 .field-row .field.inline { flex: 1 1 0; min-width: 0; }
 .field-row--service { align-items: flex-start; flex-wrap: nowrap; }
 .field-row--service .field.inline { flex: 1 1 0; min-width: 0; }

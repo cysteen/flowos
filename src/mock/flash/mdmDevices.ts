@@ -59,7 +59,8 @@ export const MDM_DEVICES: MdmDevice[] = [
   dev({ sn: 'XFS20240600377', model: S20, studentAccount: 'hf1z2023s0588', romVersion: 'EDU-S20-3.2.4', mdmVersion: 'MDM 5.8.2' }),
   dev({ sn: 'LNJ606F2403A0912', model: J606F, studentAccount: 'ahsdfz2023s0107', romVersion: 'TB-J606F_S250118', mdmVersion: 'MDM 5.6.0' }),
   dev({ sn: 'XFX3P240500452', model: X3P, studentAccount: 'hf50z2023s0233', romVersion: 'EDU-X3P-2.1.3', mdmVersion: 'MDM 5.8.1', online: '未开机', onlineAfterContact: true }),
-  dev({ sn: 'XFS30240900307', model: S30, studentAccount: 'hf168z2023s1021', romVersion: 'EDU-S30-1.4.2', mdmVersion: 'MDM 5.8.2', noResponse: true }),
+  // 首推回传无响应（已判回传超时转人工）；之后硬件平台恢复回传，设备仍未开机 → 人工重推回传「接收失败 · 未开机」
+  dev({ sn: 'XFS30240900307', model: S30, studentAccount: 'hf168z2023s1021', romVersion: 'EDU-S30-1.4.2', mdmVersion: 'MDM 5.8.2', online: '未开机' }),
   dev({ sn: 'XFS20240600512', model: S20, studentAccount: 'bb2z2023s0310', romVersion: 'EDU-S20-3.2.1', mdmVersion: 'MDM 5.8.0', online: '未联网', returnsDetail: false, onlineAfterContact: true }),
   dev({ sn: 'XFS30240900433', model: S30, studentAccount: 'la1z2023s0716', romVersion: 'EDU-S30-1.4.1', mdmVersion: 'MDM 5.8.2', online: '未联网', onlineAfterContact: true }),
   dev({ sn: 'XFS20240600645', model: S20, studentAccount: 'hf1z2023s0702', romVersion: 'EDU-S20-3.2.4', mdmVersion: 'MDM 5.8.2' }),
@@ -72,7 +73,8 @@ export const MDM_DEVICES: MdmDevice[] = [
   dev({ sn: 'XFS30240900745', model: S30, studentAccount: 'hf1z2023s0811', romVersion: 'EDU-S30-1.4.2', mdmVersion: 'MDM 5.8.2' }),
   dev({ sn: 'XFX3P240500634', model: X3P, studentAccount: 'hf8z2023s0907', romVersion: 'EDU-X3P-1.8.6', mdmVersion: 'MDM 5.7.2', versionOk: false }),
   // 回传超时转人工后迟到「接收成功」（IFLYSH-20260915-00018）
-  dev({ sn: 'XFS30240900918', model: S30, studentAccount: 'bb2z2023s0418', romVersion: 'EDU-S30-1.4.2', mdmVersion: 'MDM 5.8.2', noResponse: true }),
+  // 人工重推时推送接口持续报错（自动重试 1 次仍失败，M69）
+  dev({ sn: 'XFS30240900918', model: S30, studentAccount: 'bb2z2023s0418', romVersion: 'EDU-S30-1.4.2', mdmVersion: 'MDM 5.8.2', noResponse: true, pushApi: '持续报错' }),
 
   // ---- 待提报设备（建单可走通各条链路） ----
   // 成功：自研、账号一致、毕业生、在线

@@ -345,6 +345,15 @@ export interface FlashState {
   verifyResult: FlashVerifyResult;
   /** 已发转人工短信（M37：每单只发一次，首次转人工时发） */
   handoffSmsSent?: boolean;
+  /**
+   * 本次下送的发起人（处理人名，X30 / PRD §8「下送发起人撤回」）：进「调研中」时写入，撤回、结案或拉回后清空。
+   * 自动刷机成功直进回访的单为空，任何人都不能撤回。
+   */
+  forwardedBy?: string;
+  /** 下送前的 SLA 摘要：撤回下送回到「处理中」时按它续算（SLA 接着跑） */
+  slaBeforeForward?: { slaText: string; slaSub: string; slaState: 'ok' | 'soon' | 'overdue' | 'paused'; slaMinutes: number };
+  /** 转售后前的 SLA 摘要：售后唤起回原二线处理人时按它续算 */
+  slaBeforeAftersale?: { slaText: string; slaSub: string; slaState: 'ok' | 'soon' | 'overdue' | 'paused'; slaMinutes: number };
 }
 
 /** 刷机单字段展示名（统一口径：建单表单、处理页、用户提报页、履历字段 diff 都用这一份） */
@@ -452,10 +461,38 @@ export const FLASH_TIP_NON_SELF_DEVELOPED = '该机型不支持线上推送，�
 /** 重推时刷机原因非毕业（M44） */
 export const FLASH_TIP_REASON_NOT_GRADUATE_L1 = '刷机原因不是毕业，请升级二线处理';
 export const FLASH_TIP_REASON_NOT_GRADUATE_L2 = '刷机原因不是毕业，请线下登记或婉拒';
-/** 重推前建单校验不通过（M36） */
+/** 重推前建单校验不通过（M36 / PRD §5.6 提交判定第 8、9 条，逐字） */
 export function flashTipVerifyFailed(l2: FlashFailL2): string {
-  return `建单校验不通过：${l2}，请核对刷机信息后再推送`;
+  return l2 === 'SN与学生账号不一致'
+    ? 'SN与学生账号不一致，请核实后再推送'
+    : '未查询到该学生的毕业生身份，请核实后再推送';
 }
+/** 升级二线弹窗：升级说明为空（PRD §5.7） */
+export const FLASH_TIP_ESCALATE_NOTE_REQUIRED = '请填写升级说明';
+/** 处理表单 · 下送必填（PRD §5.4） */
+export const FLASH_TIP_RESULT_REQUIRED = '请选择处理结果';
+export const FLASH_TIP_OFFLINE_TIME_REQUIRED = '请填写线下登记时间';
+
+/** Toast（PRD §5.5 / §5.6 / §5.7 / §5.8，逐字） */
+export const FLASH_TOAST = {
+  repushed: '已重新推送',
+  repushPushErrorL1: '刷机推送未成功，已转入教育刷机处理组',
+  repushPushErrorL2: '刷机推送未成功，请稍后重试或线下登记',
+  infoSaved: '已保存修改',
+  escalatedL2: '已升级至教育刷机处理组',
+  forwarded: '已下送，工单进入「调研中」',
+  forwardClosed: '已结案',
+} as const;
+
+/** 站内通知文案（M67 / PRD §11.1，逐字） */
+export const FLASH_NOTICE = {
+  repushSuccess: (no: string) => `${no}重推结果：接收成功`,
+  /** `reasonText` ＝「〈一级失败原因〉 · 〈二级失败原因〉」 */
+  repushFail: (no: string, reasonText: string) => `${no}重推结果：${reasonText}`,
+  l1RepushFailToGroup: (no: string) => `${no}一线重推失败，已进入教育刷机处理组池`,
+  escalatedToGroup: (no: string) => `${no}已升级至教育刷机处理组，待领取`,
+  lateSuccess: (no: string) => `${no}收到迟到回传：接收成功`,
+} as const;
 /** 重推时建单校验接口不可用（M55） */
 export const FLASH_TIP_VERIFY_UNAVAILABLE = '建单校验暂不可用，请稍后重试或线下登记';
 /** 当前状态不可重推 */
@@ -529,6 +566,14 @@ export const FLASH_TL = {
   editInfo: '修改刷机信息',
   offlineRegister: (time: string) => flashOfflineRegisterRecord(time),
   slaPause: (until: string) => `SLA 暂停至 ${until} · 线下登记`,
+  /** `cause` ＝ 到达暂停截止时刻 / 下送 / 升级二线 / 重新推送 / 转售后 / 申请挂起 / 委派 / 关闭工单 / 强结 / 调剂 / 撤回 / 处理结果变更 / 线下登记时间变更 */
+  slaResume: (cause: string) => `SLA 恢复计时 · ${cause}`,
+  /** 升级二线：「升级至教育刷机处理组」；升级说明全文；已做排查逐项 */
+  escalateL2: (note: string, checks: readonly string[]) =>
+    `升级至教育刷机处理组；升级说明：${note}${checks.length ? `；已做排查：${checks.join('、')}` : ''}`,
+  forward: (result: string) => `下送；处理结果：${result}`,
+  forwardClosed: (result: string) => `下送（已回访过，直接结案）；处理结果：${result}`,
+  withdrawForward: '撤回本次下送，回到处理中',
 } as const;
 
 /** SN 尾号（短信里只露后四位） */
@@ -545,12 +590,20 @@ export function flashSmsHandoff(no: string): string {
   return `【讯飞客服】您的刷机申请需人工核实，客服将尽快与您联系，请保持电话畅通。工单号：${no}。`;
 }
 
+/** 调研短信（PRD §8 / M86：含评价链接） */
+export function flashSmsSurvey(no: string): string {
+  return `【讯飞客服】您的刷机申请已处理，请点击链接评价本次服务：/m/flash/survey?no=${no}。工单号：${no}。`;
+}
+
 /** 通知记录的事件码（接《【815】》通知规则事件目录，M14 新增 2 个 + M38 重推结果） */
 export const FLASH_NOTIFY_EVENTS = {
   success: 'ticket.flash.succeeded',
   handoff: 'ticket.flash.handoff',
   repushResult: 'ticket.flash.repush.returned',
+  l1RepushFailGroup: 'ticket.flash.repush.l1failed',
+  escalateL2: 'ticket.flash.escalated',
   lateSuccess: 'ticket.flash.late.succeeded',
+  survey: 'ticket.survey.sent',
 } as const;
 
 /* ------------------------------------------------------------------ */

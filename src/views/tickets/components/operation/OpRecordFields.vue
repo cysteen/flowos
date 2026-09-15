@@ -8,6 +8,8 @@ defineProps<{
   processResultAttachments: string[];
   /** 只读：两个正文框不可编辑、附件入口不出（原生 textarea 拦不住 antd 的 component-disabled） */
   readonly?: boolean;
+  /** 刷机单（930 PRD §5.4）：只出一个「处理记录」正文框（取 processResult），不出「问题原因」 */
+  flashMode?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -20,7 +22,7 @@ const emit = defineEmits<{
 
 <template>
   <div class="record-fields">
-    <div class="field">
+    <div v-if="!flashMode" class="field">
       <label>问题原因</label>
       <OpTextareaAttach
         :model-value="problemCause"
@@ -33,12 +35,12 @@ const emit = defineEmits<{
     </div>
 
     <div class="field">
-      <label>处理结果</label>
+      <label>{{ flashMode ? '处理记录' : '处理结果' }}</label>
       <OpTextareaAttach
         :model-value="processResult"
         :attachments="processResultAttachments"
         :readonly="readonly"
-        placeholder="描述处理结果…"
+        :placeholder="flashMode ? '描述核实、联系与处理过程…' : '描述处理结果…'"
         @update:model-value="(v) => emit('update:processResult', v)"
         @update:attachments="(v) => emit('update:processResultAttachments', v)"
       />

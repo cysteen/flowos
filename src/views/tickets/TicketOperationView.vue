@@ -20,6 +20,13 @@ import OpSidePanel from './components/operation/OpSidePanel.vue';
 import OpActionBar from './components/OpActionBar.vue';
 import OpFlashResultCard from './components/operation/OpFlashResultCard.vue';
 import OpFlashInfoBlock from './components/operation/OpFlashInfoBlock.vue';
+import OpFlashInfoEditModal from './components/operation/OpFlashInfoEditModal.vue';
+import OpFlashEscalateModal from './components/operation/OpFlashEscalateModal.vue';
+import {
+  FLASH_RESULT_OFFLINE, FLASH_TIP_OFFLINE_TIME_REQUIRED, FLASH_TIP_RESULT_REQUIRED,
+  FLASH_POOLS, validateOfflineRegisteredAt, type FlashActor, type FlashEscalateCheck, type FlashResult,
+} from './types/flash';
+import type { FlashActionResult, FlashInfoChanges } from '@/stores/flash';
 // 建单弹窗仅在「转单/重开」时用，按需异步加载，不阻塞操作页首屏
 const CreateTicketModal = defineAsyncComponent(() => import('./components/CreateTicketModal.vue'));
 import { useTicketOperation } from './composables/useTicketOperation';
@@ -341,7 +348,8 @@ const flashTabWritable = computed<Partial<Record<ProcessTabKey, boolean>> | unde
   if (!flashView.value) return undefined;
   if (flashView.value === 'l1') return { process: true, contact: true };
   if (flashView.value === 'claim' || flashView.value === 'readonly') {
-    return { process: false, contact: false, appointment: false, risk: false, feishu: false, tech: false };
+    // 终态结案后补充（基线 ※30，X28）：最后处理组成员保留「工单处理」写权，表单内只放开结案后两字段
+    return { process: postCloseEditable.value, contact: false, appointment: false, risk: false, feishu: false, tech: false };
   }
   return undefined;
 });
@@ -360,21 +368,94 @@ function onFlashClaim() {
   else message.warning(res.message);
 }
 
-/**
- * 刷机单三枚按钮的点击接入点：本步只渲染与门控，弹窗与落库由 M4b-2 在这三个函数里接
- * （重新推送弹窗 PRD §5.6、升级二线弹窗 §5.7、修改刷机信息弹窗 §5.8）。
- */
+/** 刷机服务的操作人：当前登录人在工单数据源里的处理人名 + 履历角色（一线坐席判一线重推） */
+function flashActor(): FlashActor {
+  return { name: currentHandlerName(user.roleKey, user.name), role: mapUserRole(user.roleKey) };
+}
+
+/* ---- 刷机单三枚按钮的弹窗（重新推送 PRD §5.6、升级二线 §5.7、修改刷机信息 §5.8） ---- */
+
+const flashInfoModalOpen = ref(false);
+const flashInfoModalMode = ref<'repush' | 'edit'>('repush');
+const flashEscalateOpen = ref(false);
+
 function onFlashRepush() {
-  flashActionRequest.value = { kind: 'repush', at: Date.now() };
+  flashInfoModalMode.value = 'repush';
+  flashInfoModalOpen.value = true;
 }
 function onFlashEscalateL2() {
-  flashActionRequest.value = { kind: 'escalateL2', at: Date.now() };
+  flashEscalateOpen.value = true;
 }
 function onFlashEditInfo() {
-  flashActionRequest.value = { kind: 'editInfo', at: Date.now() };
+  flashInfoModalMode.value = 'edit';
+  flashInfoModalOpen.value = true;
 }
-/** 最近一次刷机按钮点击（M4b-2 监听它开弹窗） */
-const flashActionRequest = ref<{ kind: 'repush' | 'escalateL2' | 'editInfo'; at: number } | null>(null);
+
+/** 两个刷机信息弹窗的提交：重推走 `repush`（判定 + 校验 + 推送），修改走 `saveFlashInfo`（只存不推） */
+function flashInfoSubmitter(changes: FlashInfoChanges): FlashActionResult {
+  return flashInfoModalMode.value === 'repush'
+    ? flashStore.repush(d.value.no, flashActor(), changes)
+    : flashStore.saveFlashInfo(d.value.no, flashActor(), changes);
+}
+function onFlashInfoDone(res: FlashActionResult) {
+  if (!res.ok || res.code === 'unchanged') return;
+  if (res.code === 'pushError') message.warning(res.message);
+  else message.success(res.message);
+}
+
+function onFlashEscalateSubmit(payload: { note: string; checks: FlashEscalateCheck[] }) {
+  const res = flashStore.escalateToL2(d.value.no, flashActor(), payload.note, payload.checks);
+  if (res.ok) message.success(res.message);
+  else message.warning(res.message);
+}
+
+/**
+ * 页面内站内通知条（PRD §5.6 / §11.1）：回传结果到达时，发起重推的处理人正停留在本单处理页才出现。
+ * 只认本会话新到达、收件人是当前处理人、单号是本单的通知。
+ */
+const flashLiveBanner = ref<{ id: number; text: string } | null>(null);
+watch(
+  () => flashStore.liveNotices.length,
+  (len, prev) => {
+    if (!isFlash.value || !pageActive.value) return;
+    const me = currentHandlerName(user.roleKey, user.name);
+    const fresh = flashStore.liveNotices.slice(prev ?? len).filter((n) => n.no === d.value.no && n.to === me);
+    const last = fresh[fresh.length - 1];
+    if (last) flashLiveBanner.value = { id: last.id, text: last.text };
+  },
+);
+watch(ticketNo, () => { flashLiveBanner.value = null; });
+
+/** 撤回（刷机单调研中）：限本次下送发起人（X30）；审核中撤回申请沿用通用口径 */
+const flashIsInitiator = computed(() => {
+  if (!isFlash.value) return isPrimaryHandler.value;
+  if (flashStage.value === '调研中') {
+    const by = d.value.flash?.state.forwardedBy;
+    return !!by && by === currentHandlerName(user.roleKey, user.name);
+  }
+  return isPrimaryHandler.value;
+});
+
+/** 刷机单下送必填校验（PRD §5.4）：空串＝通过 */
+const flashForwardTip = computed(() => {
+  if (!isFlash.value) return '';
+  const f = form.value;
+  if (!f.flashResult) return FLASH_TIP_RESULT_REQUIRED;
+  if (f.flashResult === FLASH_RESULT_OFFLINE) {
+    if (!f.flashOfflineAt) return FLASH_TIP_OFFLINE_TIME_REQUIRED;
+    return validateOfflineRegisteredAt(f.flashOfflineAt) ?? '';
+  }
+  return '';
+});
+/** 下送确认主按钮：本单已产生过回访结论＝「下送并结案」（M58） */
+const flashForwardOkText = computed(() => (d.value.flash?.state.surveyConcluded ? '下送并结案' : '确认下送'));
+
+/** 处理表单刷机字段的字段下方提示（保存时判，改动即清） */
+const flashFormErrors = ref<{ flashResult?: string; flashOfflineAt?: string }>({});
+watch(
+  () => [form.value.flashResult, form.value.flashOfflineAt],
+  () => { flashFormErrors.value = {}; },
+);
 
 /**
  * 底栏那一枚按钮**出不出**。三种形态各有各的出现条件（基线 ※29）：
@@ -1018,7 +1099,10 @@ const postCloseEditable = computed(() => {
   if (!tabWritableFor('process', user.roleKey)) return false;
   // 同组＝当前用户属于工单的最后处理组（groupId，唯一）；无最后处理组（如直接结案未分组）本期不支持
   const gid = d.value.groupId;
-  return !!gid && handlerGroupOf(currentHandlerName(user.roleKey, user.name))?.id === gid;
+  if (!gid) return false;
+  // 刷机单最后处理组＝教育刷机处理组时：该组即二线专员承接刷机单的组（与工作台本组池、刷机门控同一口径，X28）
+  if (isFlash.value && gid === FLASH_POOLS.l2.groupId && user.roleKey === 'agent-l2') return true;
+  return handlerGroupOf(currentHandlerName(user.roleKey, user.name))?.id === gid;
 });
 
 /** 商机编号编辑权：非终态＝工单处理人本人；终态＝结案后编辑权（同组 + 写权限） */
@@ -1026,7 +1110,7 @@ const leadNoEditable = computed(() => (postClose.value ? postCloseEditable.value
 
 const hideActionBar = computed(
   // 刷机单按视角判（只读查看不渲染；一线处理人放出，D2），老工单仍按一线视角整条隐藏
-  () => (flashView.value ? flashView.value === 'readonly' : isFrontlineView.value) || pageReadonly.value
+  () => (flashView.value ? flashView.value === 'readonly' && !postCloseEditable.value : isFrontlineView.value) || pageReadonly.value
     || (isTicketTerminated(d.value.status) && !postCloseEditable.value),
 );
 
@@ -1172,9 +1256,12 @@ function isFeishuEscalate(payload: Record<string, unknown>): boolean {
 }
 
 // 工单处理 Tab 参与变更登记的字段（键 + 展示名）
-const PROCESS_FIELDS: { key: keyof ProcessFormDraft; label: string }[] = [
+const BASE_PROCESS_FIELDS: { key: keyof ProcessFormDraft; label: string }[] = [
   { key: 'problemCause', label: '问题原因' },
   { key: 'processResult', label: '处理结果' },
+  // 刷机单处理表单（930 PRD §5.4）：处理结果下拉、线下登记时间；四类老工单恒为空，不产生差异
+  { key: 'flashResult', label: '处理结果' },
+  { key: 'flashOfflineAt', label: '线下登记时间' },
   { key: 'serviceType', label: '服务类型' },
   { key: 'serviceMethod', label: '服务方式' },
   { key: 'conclusion', label: '问题解决结论' },
@@ -1183,12 +1270,16 @@ const PROCESS_FIELDS: { key: keyof ProcessFormDraft; label: string }[] = [
   { key: 'leadNo', label: '商机编号' },
   { key: 'closingNote', label: '结案后备注' },
 ];
+/** 刷机单的「处理结果」正文框在页面上叫「处理记录」，履历字段名随之 */
+const PROCESS_FIELDS_PROXY = () => BASE_PROCESS_FIELDS.map((f) => (
+  isFlash.value && f.key === 'processResult' ? { ...f, label: '处理记录' } : f
+));
 
 /** 处理表单快照（含各字段值 + 附件数），作为变更 diff 的基线 */
 function snapshotProcess(): Record<string, string> {
   const f = form.value;
   const snap: Record<string, string> = {};
-  for (const { key } of PROCESS_FIELDS) snap[key] = String(f[key] ?? '').trim();
+  for (const { key } of PROCESS_FIELDS_PROXY()) snap[key] = String(f[key] ?? '').trim();
   snap.__att = String([...(f.processResultAttachments ?? []), ...(f.problemCauseAttachments ?? [])].length);
   snap.__cnAtt = JSON.stringify(f.closingNoteAttachments ?? []);
   return snap;
@@ -1209,6 +1300,17 @@ watch(ticketNo, () => {
   processBaseline = snapshotProcess();
   riskLevelBaseline = form.value.riskLevel;
 });
+// 刷机单：处理结果 / 线下登记时间按工单库回填表单（切单时），并以之为变更基线
+watch(
+  [() => d.value.no, isFlash],
+  () => {
+    if (!isFlash.value) return;
+    const st = d.value.flash?.state;
+    form.value = { ...form.value, flashResult: st?.result ?? '', flashOfflineAt: st?.offlineRegisteredAt ?? '' };
+    processBaseline = snapshotProcess();
+  },
+  { immediate: true },
+);
 
 /**
  * 第八类 ⑤「风险等级变更」的**第二个上游 —— 坐席在工单侧填写**（《【720】》§4.4 ⑤：
@@ -1278,7 +1380,7 @@ function syncClosingNoteAttachmentsToHistory(names: string[]) {
 function buildProcessLog() {
   const f = form.value;
   const changes: import('./types/ticketDetail').TimelineFieldChange[] = [];
-  for (const { key, label } of PROCESS_FIELDS) {
+  for (const { key, label } of PROCESS_FIELDS_PROXY()) {
     const before = (processBaseline[key] ?? '').trim();
     const after = String(f[key] ?? '').trim();
     if (before === after) continue;
@@ -1310,6 +1412,117 @@ function buildProcessLog() {
   };
 }
 
+/**
+ * 刷机单保存的附加动作（PRD §5.4 / §4.3）：先校验线下登记时间（字段下方提示），再交刷机服务落处理结果、
+ * 线下登记与 SLA 暂停 / 恢复；首次保存或改了登记时间时，把系统追加的那一行并进「处理记录」。
+ * 返回 false ＝ 拦下、不保存。
+ */
+function onFlashSave(): boolean {
+  const f = form.value;
+  if (f.flashResult === FLASH_RESULT_OFFLINE) {
+    const tip = !f.flashOfflineAt ? FLASH_TIP_OFFLINE_TIME_REQUIRED : validateOfflineRegisteredAt(f.flashOfflineAt);
+    if (tip) {
+      flashFormErrors.value = { flashOfflineAt: tip };
+      return false;
+    }
+  }
+  const res = flashStore.saveProcess(d.value.no, flashActor(), {
+    result: (f.flashResult ?? '') as FlashResult | '',
+    offlineRegisteredAt: f.flashOfflineAt ?? '',
+  });
+  if (!res.ok) {
+    if (res.message) flashFormErrors.value = { flashOfflineAt: res.message };
+    return false;
+  }
+  if (res.appendRecord) {
+    const cur = (form.value.processResult ?? '').replace(/\s+$/, '');
+    form.value = { ...form.value, processResult: cur ? `${cur}\n${res.appendRecord}` : res.appendRecord };
+  }
+  return true;
+}
+
+/** 线下登记暂停期间执行即恢复计时的通用动作 → 履历里的动作名（PRD §4.3 / §11.2） */
+const FLASH_RESUME_CAUSE: Record<string, string> = {
+  挂起: '申请挂起', 委派: '委派', 关闭工单: '关闭工单', 强结: '强结', 调剂: '调剂',
+};
+
+/**
+ * 刷机单底栏动作（PRD §5.5 / §7.3 / §8）：下送、转售后走刷机服务落工单库；其余沿用通用动作，
+ * 暂停期内先恢复计时，执行后把子状态同步回工单库。返回 true ＝ 已接管。
+ */
+function onFlashAction(payload: Record<string, unknown>): boolean {
+  const no = d.value.no;
+  const type = payload.type as string;
+  const data = (payload.data ?? {}) as Record<string, unknown>;
+  if (type === '下送' && !data.backToDelegator) {
+    const res = flashStore.forward(no, flashActor(), form.value.flashResult as FlashResult);
+    if (res.ok) message.success(res.message);
+    else message.warning(res.message);
+    return true;
+  }
+  if (type === '转售后') {
+    const p = payload.data as import('./composables/opActions').AftersalePayload;
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const asNo = `AS-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${String(Math.floor(Date.now() % 90000) + 10000)}`;
+    const region = [p.province, p.city, p.district].filter(Boolean).join(' ');
+    const facts = [
+      `客户 ${p.customerName}${p.customerPhone ? `（${p.customerPhone}）` : ''}`,
+      [region, p.address].filter(Boolean).join(' ') ? `地址 ${[region, p.address].filter(Boolean).join(' ')}` : '',
+      p.sn ? `SN ${p.sn}` : '',
+      p.fault ? `故障 ${p.fault}` : '',
+    ].filter(Boolean).join(' ｜ ');
+    const what = `新建售后单 ${asNo}（${p.serviceType}·${p.serviceMethod}），与本单建立关联。${facts}。${p.detail ? `说明：${p.detail}` : ''}`;
+    const res = flashStore.transferAftersale(no, flashActor(), asNo, what);
+    if (!res.ok) {
+      message.warning(res.message);
+      return true;
+    }
+    d.value.linkedAftersale = {
+      no: asNo, status: '待接单', serviceType: p.serviceType, serviceMethod: p.serviceMethod,
+      createdAt: nowFullText(), fromComplaint: false,
+    };
+    syncAftersaleRelatedCard();
+    message.success(res.message);
+    return true;
+  }
+  if (FLASH_RESUME_CAUSE[type]) flashStore.resumeSlaPause(no, FLASH_RESUME_CAUSE[type]);
+  dispatch(payload);
+  const cross = type === '调剂' && data.scope === 'cross';
+  flashStore.syncStatus(no, d.value.status, { clearAssignee: cross });
+  return true;
+}
+
+/**
+ * 撤回：刷机单调研中＝撤回本次下送（限发起人，X30 / PRD §8）；审核中＝撤回本次申请（回处理中）；
+ * 四类老工单沿用通用确认。
+ */
+function onWithdraw() {
+  if (!isFlash.value) {
+    confirmWithdraw();
+    return;
+  }
+  const no = d.value.no;
+  Modal.confirm({
+    title: '撤回操作',
+    content: '将撤回上一流转操作，工单回到上一处理节点。确定撤回？',
+    okText: '确认撤回',
+    cancelText: '取消',
+    onOk: () => {
+      if (flashStage.value === '调研中') {
+        const res = flashStore.withdrawForward(no, flashActor());
+        if (res.ok) message.success(res.message);
+        else message.warning(res.message);
+        return;
+      }
+      flashStore.resumeSlaPause(no, '撤回');
+      dispatch({ type: '撤回' });
+      d.value.status = '处理中';
+      flashStore.syncStatus(no, '处理中');
+    },
+  });
+}
+
 function onAction(payload: Record<string, unknown>) {
   if (payload.type === '保存草稿') {
     const log = buildProcessLog();
@@ -1338,12 +1551,14 @@ function onAction(payload: Record<string, unknown>) {
       message.success('已保存，变更已记入处理履历');
       return;
     }
+    if (isFlash.value && !onFlashSave()) return;
     dispatch({ type: '保存草稿', process: log });
     // 风险等级落第八类、不落「工单处理」的字段 diff，故与 log 分开走，见 `recordAgentRiskLevelChange`
     recordAgentRiskLevelChange();
-    if (log) processBaseline = snapshotProcess(); // 登记后更新基线，下次 diff 以此为准
+    if (log || isFlash.value) processBaseline = snapshotProcess(); // 登记后更新基线，下次 diff 以此为准
     return;
   }
+  if (isFlash.value && onFlashAction(payload)) return;
   const toFeishu = isFeishuEscalate(payload);
   dispatch(payload);
   if (toFeishu) {
@@ -1939,6 +2154,13 @@ watch(
       这几项恰恰是"接下来要处理人做的事"，收在 Tab 里等于让人自己去翻。人不直接摘，
       工单进终态时随页头一起消失。
     -->
+    <!-- 刷机单重推结果站内通知条（PRD §5.6 / §11.1）：回传到达时发起人正停留在本单才出现 -->
+    <div v-if="isFlash && flashLiveBanner" class="risk-report-banner flash-notice-banner">
+      <span class="rrb-dot" aria-hidden="true"></span>
+      <span class="rrb-text">{{ flashLiveBanner.text }}</span>
+      <button type="button" class="rrb-link" aria-label="关闭" @click="flashLiveBanner = null">×</button>
+    </div>
+
     <div v-if="riskAdviceMarks.length" class="risk-report-banner risk-advice-banner">
       <span class="rrb-text">协同建议</span>
       <span v-for="a in riskAdviceMarks" :key="a" class="rrb-advice">{{ a }}</span>
@@ -1984,6 +2206,7 @@ watch(
           :post-close-editable="postCloseEditable"
           :lead-no-editable="leadNoEditable"
           :tab-writable-override="flashTabWritable"
+          :flash-errors="flashFormErrors"
           @toggle-section="toggleSection"
           @select-chip="selectChip"
           @update:form="updateForm"
@@ -2059,13 +2282,15 @@ watch(
       :flash-stage="flashStage"
       :flash-repush-shown="flashRepushShown"
       :flash-l1-repush-count="d.flash?.state.l1RepushCount ?? 0"
-      :flash-is-initiator="isPrimaryHandler"
+      :flash-is-initiator="flashIsInitiator"
+      :flash-forward-tip="flashForwardTip"
+      :flash-forward-ok-text="flashForwardOkText"
       @flash-repush="onFlashRepush"
       @flash-escalate="onFlashEscalateL2"
       @claim="onFlashClaim"
       @action="onAction"
       @cancel="cancelModalOpen = true"
-      @withdraw="confirmWithdraw"
+      @withdraw="onWithdraw"
       @transfer-ticket="openChildCreate"
       @risk-report="onRiskReport"
     />
@@ -2111,6 +2336,21 @@ watch(
       v-model:open="escalateModalOpen"
       :detail="d"
       @submit="onEscalateSubmit"
+    />
+
+    <OpFlashInfoEditModal
+      v-if="isFlash && d.flash"
+      v-model:open="flashInfoModalOpen"
+      :mode="flashInfoModalMode"
+      :info="d.flash.info"
+      :submitter="flashInfoSubmitter"
+      @done="onFlashInfoDone"
+    />
+
+    <OpFlashEscalateModal
+      v-if="isFlash"
+      v-model:open="flashEscalateOpen"
+      @submit="onFlashEscalateSubmit"
     />
 
     <OpSmsModal
@@ -2204,6 +2444,10 @@ watch(
 .risk-tag-banner.high .rrb-dot { background: #dc2626; }
 .risk-tag-banner.high .rrb-text { color: #b91c1c; }
 .rrb-pool { font-size: 11px; color: #9ca3af; }
+/* 刷机单重推结果通知条：同一副骨架，蓝点 */
+.flash-notice-banner .rrb-dot { background: #1a6fff; }
+.flash-notice-banner .rrb-text { color: #1f2937; }
+.flash-notice-banner .rrb-link { font-size: 14px; color: #9ca3af; }
 /* 建议标记：一排小标，不带点 —— 它不是"等结论"的状态，是"要去做"的清单 */
 .risk-advice-banner .rrb-text { color: #9a3412; }
 .rrb-advice {

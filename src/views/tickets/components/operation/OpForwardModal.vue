@@ -9,6 +9,8 @@ const props = defineProps<{
   /** 委派中：下送=协办完成、回到委派节点，不结案 */
   backToDelegator?: boolean;
   delegateTargets?: string;
+  /** 主按钮文案；缺省「确认下送」（刷机单已产生过回访结论时为「下送并结案」，930 PRD §5.5） */
+  okText?: string;
 }>();
 
 const emit = defineEmits<{
@@ -33,7 +35,7 @@ function onSubmit() {
     :title="backToDelegator ? '下送 · 回到委派节点' : '下送'"
     :icon="VerticalAlignBottomOutlined"
     tone="success"
-    ok-text="确认下送"
+    :ok-text="okText || '确认下送'"
     :width="440"
     @update:open="emit('update:open', $event)"
     @ok="onSubmit"

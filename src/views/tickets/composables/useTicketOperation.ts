@@ -428,7 +428,11 @@ export function useTicketOperation() {
     base.flash = JSON.parse(JSON.stringify(t.flash)) as TicketFlash;
     if (t.nodeStatus === '自动刷机中' || t.nodeStatus === '已转出') opState.value = 'transferred';
     else if (t.nodeStatus === '调研中') opState.value = 'resolved';
-    else if (!isTicketClosed(t.nodeStatus)) opState.value = 'processing';
+    // 审核中三态 / 已挂起（通用动作经刷机服务同步回工单库后，M4b-2）
+    else if (['申请挂起中', '申请关闭中', '申请强结中'].includes(t.nodeStatus)) opState.value = 'review';
+    else if (t.nodeStatus === '已挂起') opState.value = 'suspended';
+    else if (isTicketClosed(t.nodeStatus)) opState.value = 'closed';
+    else opState.value = 'processing';
   }
 
   /**

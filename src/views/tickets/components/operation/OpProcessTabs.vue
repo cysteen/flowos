@@ -78,6 +78,8 @@ const props = defineProps<{
    * 四类老工单不传，取值与改前一致。整区 readonly 仍是更强的约束。
    */
   tabWritableOverride?: Partial<Record<ProcessTabKey, boolean>>;
+  /** 刷机单处理表单字段下方提示（透传给处理表单，930 PRD §5.4） */
+  flashErrors?: { flashResult?: string; flashOfflineAt?: string };
 }>();
 
 const emit = defineEmits<{
@@ -207,6 +209,7 @@ defineExpose({ switchTab });
         :post-close="postClose"
         :post-close-editable="postCloseEditable"
         :lead-no-editable="leadNoEditable"
+        :flash-errors="flashErrors"
         @closing-note-files-added="emit('closingNoteFilesAdded', $event)"
         @toggle-section="emit('toggleSection', $event)"
         @select-chip="emit('selectChip', $event)"

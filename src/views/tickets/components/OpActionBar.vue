@@ -105,6 +105,10 @@ const props = defineProps<{
   flashL1RepushCount?: number;
   /** 当前用户是否本次下送 / 申请的发起人（撤回） */
   flashIsInitiator?: boolean;
+  /** 刷机单下送必填校验不通过的提示（空＝通过，PRD §5.4「下送必填校验」） */
+  flashForwardTip?: string;
+  /** 刷机单下送确认弹窗主按钮文案（本单已产生过回访结论＝「下送并结案」，PRD §5.5） */
+  flashForwardOkText?: string;
 }>();
 
 /** 置灰提示的兜底：调用方没给原因时至少说清"被挡住了"，不冒充一个具体理由 */
@@ -460,6 +464,8 @@ function run(action: OpActionType | '转单') {
     return;
   }
   if (action === '撤回') {
+    // 刷机单撤回的可用与否已由门控逐格判定（限发起人，X30），不再按轻量态判
+    if (isFlashBar.value) return emit('withdraw');
     if (withdrawBlocked.value) {
       message.warning('当前无可撤回的操作');
       return;
@@ -484,6 +490,15 @@ function run(action: OpActionType | '转单') {
   if (action === '下送') {
     // 委派中：下送=协办完成、回到委派节点，不结案、不校验必填
     if (isDelegating.value) {
+      forwardModalOpen.value = true;
+      return;
+    }
+    // 刷机单：校验处理结果 / 线下登记时间（PRD §5.4），不校验问题原因
+    if (props.ticketType === '刷机') {
+      if (props.flashForwardTip) {
+        message.warning(props.flashForwardTip);
+        return;
+      }
       forwardModalOpen.value = true;
       return;
     }
@@ -699,6 +714,7 @@ defineExpose({ openEscalate, openAftersale });
     :ticket-title="ticketTitle"
     :back-to-delegator="isDelegating"
     :delegate-targets="delegateTargets"
+    :ok-text="ticketType === '刷机' && !isDelegating ? flashForwardOkText : undefined"
     @confirm="onForwardConfirm"
   />
 

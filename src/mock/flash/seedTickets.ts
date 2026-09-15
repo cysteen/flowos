@@ -613,6 +613,8 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       info, creator: '用户提报', customer: '秦海', phone: '13721061811',
       createdAt: at.slice(0, 16), updatedAt: survey.slice(0, 16),
       nodeStatus: '已结案', assignee: null, tab: 'mine', nodeStep: 5, serviceScore: 5,
+      // X28：最后处理组＝教育刷机处理组（结案后补充按该组成员判编辑权）
+      groupId: FLASH_POOLS.l2.groupId, groupNames: [FLASH_POOLS.l2.groupName],
       slaText: '—', slaSub: '已结案·未计时', slaState: 'ok', slaMinutes: 9999,
       flashState: state('用户提报', { outcome: '接收成功', pushCount: 1, result: '已线上刷机成功', surveyConcluded: true }),
       runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '接收成功', resultAt: back })],
