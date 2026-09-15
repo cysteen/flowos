@@ -433,7 +433,7 @@ export interface TicketFlash {
 export const FLASH_TIP_MODEL_UNSUPPORTED = '该机型暂不支持刷机申请，请核对产品型号';
 /** A2：同 SN 存在在途刷机单（M2；重推改 SN 撞在途单同文案，M44） */
 export function flashTipInflight(inflightNo: string): string {
-  return `该设备已有在途刷机工单 ${inflightNo}，请勿重复提交`;
+  return `该设备已有在途刷机单 ${inflightNo}，请勿重复提交`;
 }
 /** 在途查询不可用（M43） */
 export const FLASH_TIP_SYSTEM_BUSY = '系统繁忙，请稍后再提交';
