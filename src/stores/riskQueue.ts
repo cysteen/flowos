@@ -4,6 +4,8 @@ import { useRiskTagStore, type RiskTagEntry } from '@/stores/riskTags';
 import { useRiskHistoryStore } from '@/stores/riskHistory';
 import { SEED_RISK_ESCALATION, useDerivedTicketStore } from '@/stores/derivedTickets';
 import { TICKETS } from '@/mock/tickets';
+import type { RiskHit } from '@/mock/opsReport';
+import type { RiskLevel } from '@/config/risk';
 import { isTicketClosed } from '@/views/tickets/types/ticket';
 import type { Ticket, TicketStatus } from '@/views/tickets/types/ticket';
 import {
@@ -194,10 +196,10 @@ const SEED_TAGGERS = {
  * |---|---|---|
  * | 待标记 · 实时监控 | 命中记录的**词表预设等级** | 高 2 / 中 3 / 低 2（语料在 `mock/opsReport.ts`） |
  * | 待标记 · 投诉单 / 重要紧急 | 工单**优先级** | 由工单库直接决定，本文件只负责不把它们清空 |
- * | 已标记 · 等级 | `tag.result` | 高 5 / 中 4 / 低 5 |
- * | 已标记 · 按标记人 | `tag.by` | 池内 郑监控 7 / 吴投诉 4 / 秦督导 3（见 `SEED_TAGGERS`） |
+ * | 已标记 · 等级 | `tag.result` | 高 6 / 中 4 / 低 5 |
+ * | 已标记 · 按标记人 | `tag.by` | 池内 郑监控 8 / 吴投诉 4 / 秦督导 3（见 `SEED_TAGGERS`） |
  * | 已标记 · 无风险 | 「已标记无风险」态 | 4 条 |
- * | 待处置 · 三态 | `status` | 待领取 7 / 已领取 1 / **已结论 6** |
+ * | 待处置 · 三态 | `status` | 待领取 8 / 已领取 1 / **已结论 6** |
  * | 今日决策 | `assessment.decision` / `coordination` | 升级 1 / 不升级 2 / 协同 1 |
  *
  * 🔴 **最后两行是一对"看着该相等、其实不同源"的数，别去把它们对平**：
@@ -380,10 +382,10 @@ const SEED: RiskQueueEntry[] = [
   }),
 
   /* ==================================================================
-   * 视图二：已入池（打标为低 / 中 / 高）—— 14 条
+   * 视图二：已入池（打标为低 / 中 / 高）—— 15 条
    *
-   * 三态各有样本（待分派 7 / 评估中 1 / 已评估 6；投诉单条目不落评估中），等级三档各有样本（高 5 / 中 4 / 低 5），
-   * 打标人三个（郑监控 7 / 吴投诉 4 / 秦督导 3），已评估那六条把**三种收口方式**
+   * 三态各有样本（待分派 8 / 评估中 1 / 已评估 6；投诉单条目不落评估中），等级三档各有样本（高 6 / 中 4 / 低 5），
+   * 打标人三个（郑监控 8 / 吴投诉 4 / 秦督导 3），已评估那六条把**三种收口方式**
    * （升级 / 不升级 / 协同处理）全部铺到，故页头「今日决策」三枚一枚都不为 0。
    *
    * 🔴 已评估这六条**分两批**：四条今天收口（喂「今日已结论」与三枚决策 chip），
@@ -391,7 +393,7 @@ const SEED: RiskQueueEntry[] = [
    * 分批的理由见本段末尾那两条自己的说明。
    * ================================================================== */
 
-  /* ---- 待分派（待领取）7 条（下方另起一段的 2 条投诉单超时样本在内） ---- */
+  /* ---- 待分派（待领取）8 条（下方另起一段的 2 条投诉单超时样本在内） ---- */
   /*
    * 「预警词命中 · 打标高危 → 待分派」样本。**必须有这一条**：它是漏斗的那半条链。
    * rr-000 演示的是前半段（命中 → 待打标），本条演示打标为高之后**出实时监控、进池**，
@@ -531,6 +533,34 @@ const SEED: RiskQueueEntry[] = [
       note: '单客户集成偶发丢包，已给出重试与签名校验方案，无扩散面，判低危。',
       ...SEED_TAGGERS.zheng,
       at: todayStamp(20),
+    },
+  }),
+  /*
+   * 「预警词命中 · 命中核实成立 → 待分派」样本（2026-09-15 裁决：未打标工单上的命中首次核实成立即打标入池）。
+   * 挂 t42 `IFLYTS-20260711-00002`（外投单、在办、P0）：它在命中表里的 `h2`（「12315」）已由郑监控核实为
+   * 成立 · 高，按新规则这张单当时就该随之打标进池。打标结论 / 打标人 / 备注照抄 h2 那份核实，记「由命中核实」。
+   * 进监控 100 分钟前、打标 92 分钟前：未过 120 分钟处置时限，不进「超时未评」。
+   */
+  autoEntry({
+    id: 'rq-s23',
+    ticketNo: 'IFLYTS-20260711-00002',
+    source: '实时监控',
+    desc: '问题描述命中风险词「12315」，已自动纳入实时监控。',
+    at: todayStamp(100),
+    status: '待分派',
+    tag: {
+      result: '高',
+      note: '已进入外投流程，转投诉专员专项跟进',
+      ...SEED_TAGGERS.zheng,
+      at: todayStamp(92),
+      viaHitVerify: true,
+    },
+    verify: {
+      verdict: '成立',
+      level: '高',
+      note: '已进入外投流程，转投诉专员专项跟进',
+      ...SEED_TAGGERS.zheng,
+      at: todayStamp(92),
     },
   }),
 
@@ -996,9 +1026,12 @@ const SEED: RiskQueueEntry[] = [
  *     （投诉单条目不经领取，§5.4 ⑥）。v12 那份里这两条仍是已领取、行上出「释放」。
  *   · v13 → v14：`rr-009` 由投诉单 t41 上的「升级」改挂非投诉单 rk-5（来源实时监控、郑监控打标），
  *     带派生投诉单号；新增派生单的监控条目 `rq-s22`。v13 那份里投诉单仍挂着评估结论「升级」。
+ *   · v14 → v15：命中核实改为"未打标工单上首次成立即打标入池"（2026-09-15 裁决），打标记录多了 `viaHitVerify`。
+ *     种子新增 `rq-s23`（t42，h2 已核实成立 · 高 → 待分派）；命中表 `h36` 补为误报（ops-3 仍归重要紧急）。
+ *     v14 那份里 t42 没有条目，工单级等级已是高危却不在池里。
  */
 const LS_KEY = 'flowos-risk-queue';
-const LS_VERSION = 14;
+const LS_VERSION = 15;
 
 /**
  * 缓存"新不新"的判据：取**打标时刻**里最新的那一个。
@@ -1075,7 +1108,22 @@ export interface RiskTagInput {
   byRole: string;
   at: string;
   amendReason?: string;
+  /** 这次打标由命中核实产出（`verifyHit`），抄到打标记录上 */
+  viaHitVerify?: boolean;
 }
+
+/**
+ * 一次命中核实落下之后，条目那一侧发生了什么（`verifyHit` 的返回值，调用方据此给提示）：
+ *   · `hitOnly`  —— 只记了命中结论：修正、工单已有打标结论、误报后本单仍有待核实命中、或本单不在「未标记」；
+ *   · `tagged`   —— 首次成立，工单打为所选等级、进风险工单池待领取；
+ *   · `rerouted` —— 全部误报，改归「投诉单」/「重要紧急」，仍在「未标记」；
+ *   · `noRisk`   —— 全部误报且不符合另两路判据，工单打为无风险。
+ */
+export type HitVerifyOutcome =
+  | { kind: 'hitOnly' }
+  | { kind: 'tagged'; level: RiskLevel }
+  | { kind: 'rerouted'; source: QueueSource }
+  | { kind: 'noRisk' };
 
 export const useRiskQueueStore = defineStore('riskQueue', () => {
   const entries = ref<RiskQueueEntry[]>(SEED.map((e) => ({ ...e })));
@@ -1229,7 +1277,7 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
    */
   function tagSeedEntryOf(e: RiskQueueEntry): RiskTagEntry | undefined {
     if (!e.tag) return undefined;
-    const { result, note, by, byRole, at, amendReason, viaManualScan } = e.tag;
+    const { result, note, by, byRole, at, amendReason, viaManualScan, viaHitVerify } = e.tag;
     return {
       level: isPoolLevel(result) ? result : null,
       note,
@@ -1238,6 +1286,7 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
       at,
       ...(amendReason ? { amendReason } : {}),
       ...(viaManualScan ? { viaManualScan } : {}),
+      ...(viaHitVerify ? { viaHitVerify } : {}),
     };
   }
 
@@ -1315,6 +1364,8 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
       ...(input.amendReason ? { amendReason: input.amendReason } : {}),
       // 由手动筛查并入的条目，打标记录上标明「由手动筛查并入」（§5A.1 ④），来源列照旧写「实时监控」
       ...(e.viaManualScan ? { viaManualScan: true } : {}),
+      // 由命中核实产出的打标，记录上标明「由命中核实」（只挂在这一次的记录上）
+      ...(input.viaHitVerify ? { viaHitVerify: true } : {}),
     };
     // 留痕：与命中核实共用 `riskTags` 的追加机制，key ＝ 条目 id。
     // `verdict` 留空——漏斗打标不判"这次命中准不准"，见 `RiskTagEntry.verdict`
@@ -1326,6 +1377,7 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
       at: input.at,
       ...(input.amendReason ? { amendReason: input.amendReason } : {}),
       ...(e.viaManualScan ? { viaManualScan: true } : {}),
+      ...(input.viaHitVerify ? { viaHitVerify: true } : {}),
     });
 
     // 回写工单级风险等级（§6.1）。放在状态迁移之前：等级是打标这一下就成立的事实，
@@ -1436,9 +1488,15 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
    *
    * 【为什么①不判在办】命中记录是**已经发生过的事实**，它不随单子结案而消失；
    * 而且命中那一路的条目本就该跟着命中走，见 `isVerifyMonitorSource`。
+   *
+   * 🔴 **`pendingHitsOnly`**（2026-09-15 裁决）：「未标记」段的归属里，①收窄为**本单有待核实命中**
+   * ——召回清单只列未打标工单上待核实的命中，命中全部核实为误报的单按本函数的固定次序改归②③，
+   * 否则打为无风险（`verifyHit`）。补齐条目（`syncAutoEntries`）与改归都传它；
+   * 工单页打标（`ensureEntryFor` / `tagBlockReasonOf`）不传，照旧"有命中记录即①"。
    */
-  function autoSourceFor(ticketNo: string): QueueSource | null {
-    if (tags.hitsOfTicket(ticketNo).length) return '实时监控';
+  function autoSourceFor(ticketNo: string, opts: { pendingHitsOnly?: boolean } = {}): QueueSource | null {
+    const hits = tags.hitsOfTicket(ticketNo);
+    if (opts.pendingHitsOnly ? hits.some((h) => !tags.isJudged(h)) : hits.length) return '实时监控';
     const t: Ticket | undefined = TICKETS.find((x) => x.no === ticketNo)
       ?? useDerivedTicketStore().find(ticketNo);
     if (!t) return null;
@@ -1535,6 +1593,18 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
    * 几个小时内，不全挤在同一分钟。
    */
   function syncAutoEntriesWith(fromSeed: boolean): number {
+    /*
+     * 先按固定次序校一遍**还没打标**的条目的归属：本单有待核实命中、条目却挂在「投诉单」「重要紧急」
+     * （例如手动筛查并入的命中落在一张早已在监控里的投诉单上）→ 改归「实时监控」，
+     * 召回清单才列得出这几条命中。反方向（命中全部核实完）不在这里做：那要由核实的人
+     * 当场决定改归还是打为无风险，见 `verifyHit`。
+     */
+    entries.value.forEach((e) => {
+      if (e.status !== '实时监控中' || e.source === '实时监控') return;
+      if (autoSourceFor(e.ticketNo, { pendingHitsOnly: true }) !== '实时监控') return;
+      e.source = '实时监控';
+      e.desc = AUTO_DESC.实时监控;
+    });
     const has = new Set(entries.value.map((e) => e.ticketNo));
     const added: RiskQueueEntry[] = [];
     /** 进监控时刻要取补建时刻的那几条 */
@@ -1544,9 +1614,11 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
       if (has.has(t.no)) continue;
       if (isTicketClosed(t.nodeStatus as TicketStatus)) continue;
       if (tags.ticketGradeOf(t.no) !== null) continue;
-      const source = autoSourceFor(t.no);
+      const source = autoSourceFor(t.no, { pendingHitsOnly: true });
       if (!source) continue;
-      const hitAt = source === '实时监控' ? tags.hitsOfTicket(t.no)[0]?.when : undefined;
+      const hitAt = source === '实时监控'
+        ? tags.hitsOfTicket(t.no).find((h) => !tags.isJudged(h))?.when
+        : undefined;
       const entry = autoEntry({
         id: `rq-auto-${t.no}`,
         ticketNo: t.no,
@@ -1620,6 +1692,72 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
   }
 
   /**
+   * **命中核实 · 唯一入口**（2026-09-15 裁决推翻"命中核实不回写监控条目"）。
+   * 召回清单行内「核实打标」、命中台账「核实打标 / 修正」、召回清单「批量核实」都走这里。
+   *
+   * 命中那一侧永远落一条核实记录（追加不覆盖，回填词表准确率，同今）。条目那一侧：
+   * ```
+   *   修正（本条命中已核实过）        ──▶ 只改命中
+   *   工单已有打标结论               ──▶ 只改命中（工单级等级照"取最高"重算）
+   *   成立 · 工单未打标              ──▶ 工单打为所选等级（记「由命中核实」），进池待领取
+   *   误报 · 工单未打标 · 仍有待核实命中 ──▶ 只改命中
+   *   误报 · 工单未打标 · 已无待核实命中 ──▶ 按 `autoSourceFor` 的固定次序改归投诉单 / 重要紧急（仍未标记）；
+   *                                        推不出来 → 打为无风险（记「由命中核实」）
+   * ```
+   * 打标一律经 `recordTag`，打标人 / 打标时刻 / 备注取本次核实的。
+   *
+   * 【成立时先打标、后记命中】`recordTag` 在写入前取工单级等级作"旧值"落第八类履历；
+   * 先记命中的话，那条成立命中已把等级抬上去，履历里就少一条「风险等级变更」。
+   *
+   * 【本单不在「未标记」时】成立：本单没有条目、且在工单库 / 派生库里查得到并在办，才现补条目打标；
+   * 终态单、查不到的单只记命中。误报：只处理还在「实时监控中」的条目。
+   */
+  function verifyHit(hit: RiskHit, input: RiskTagEntry & { verdict: NonNullable<RiskTagEntry['verdict']> }): HitVerifyOutcome {
+    const no = hit.ticketNo;
+    const amend = tags.isJudged(hit);
+    const record = () => tags.appendEntry(hit.id, input);
+    if (amend || currentTagOf(no)) { record(); return { kind: 'hitOnly' }; }
+
+    const tagInput = (result: RiskTagResult): RiskTagInput => ({
+      result,
+      note: input.note,
+      by: input.by,
+      byRole: input.byRole,
+      at: input.at,
+      viaHitVerify: true,
+    });
+
+    const t: Ticket | undefined = TICKETS.find((x) => x.no === no) ?? useDerivedTicketStore().find(no);
+    // 终态单不在「未标记」段（R50a），核实只记命中
+    if (t && isTicketClosed(t.nodeStatus as TicketStatus)) { record(); return { kind: 'hitOnly' }; }
+    const monitoring = entriesOf(no).find((e) => e.status === '实时监控中') ?? null;
+
+    if (input.verdict === '成立') {
+      const level = input.level ?? hit.level;
+      let target = monitoring;
+      if (!target && t) {
+        const got = ensureEntryFor(no);
+        if (got.ok) target = got.entry;
+      }
+      const tagged = !!target && recordTag(target.id, tagInput(level));
+      record();
+      return tagged ? { kind: 'tagged', level } : { kind: 'hitOnly' };
+    }
+
+    record();
+    if (!monitoring) return { kind: 'hitOnly' };
+    if (tags.hitsOfTicket(no).some((h) => !tags.isJudged(h))) return { kind: 'hitOnly' };
+    const source = autoSourceFor(no, { pendingHitsOnly: true });
+    if (source && source !== '实时监控') {
+      monitoring.source = source;
+      monitoring.desc = AUTO_DESC[source];
+      return { kind: 'rerouted', source };
+    }
+    recordTag(monitoring.id, tagInput(NO_RISK));
+    return { kind: 'noRisk' };
+  }
+
+  /**
    * ⚠️ **旧入口 · 兼容适配器**。它把 915 命中核实的结论（成立 / 误报 + 等级）
    * **翻译**成新口径的打标结论（低 / 中 / 高 / 无风险），再走 `recordTagFor`。
    *
@@ -1670,6 +1808,7 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
     recordTag,
     recordTagFor,
     recordVerify,
+    verifyHit,
     ensureEntryFor,
     syncAutoEntries,
     adoptScanTickets,

@@ -845,6 +845,7 @@ const collabSectionBadge = computed(() =>
           <span v-else-if="tagRecord.result === '无风险'" class="rt-pool">不进池</span>
           <!-- 并入痕迹记在打标记录上，不进来源（§5A.1 ④），写法与风险监控页修正弹窗一致 -->
           <span v-if="tagRecord.viaManualScan" class="rt-pool">由手动筛查并入</span>
+          <span v-if="tagRecord.viaHitVerify" class="rt-pool">由命中核实</span>
           <!-- 打标是即时生效的动作，不随「保存」走，故按钮不受 Tab 的表单只读约束，见 script -->
           <a-config-provider v-if="canTag" :component-disabled="false">
             <button type="button" class="rt-btn" @click="openTag">

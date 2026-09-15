@@ -41,7 +41,13 @@ import {
   useRiskPoolStore,
   type RiskPoolItem,
 } from '@/stores/riskPool';
-import { NO_RISK_LOCKED_TIP, canTagNoRisk, useRiskQueueStore, type RiskQueueEntry } from '@/stores/riskQueue';
+import {
+  NO_RISK_LOCKED_TIP,
+  canTagNoRisk,
+  useRiskQueueStore,
+  type HitVerifyOutcome,
+  type RiskQueueEntry,
+} from '@/stores/riskQueue';
 import {
   ASSESS_DECISIONS,
   MONITOR_SOURCES,
@@ -294,8 +300,8 @@ function inGroup<T extends { ticketNo: string }>(rows: T[]): T[] {
 // 判无风险的在实时监控·已标记无风险。两个页签看的是同一条链的前后两段，不再是同一条的两份副本。
 const reportStore = useRiskPoolStore();
 /**
- * A 线队列本体。只用于两件补条目的事：按三类判据补齐监控条目（`syncAutoEntries`），
- * 与手动筛查「并入清单」时补条目（`adoptScanTickets`）。其余取数一律走合并层 `reportStore`。
+ * A 线队列本体。用于三件事：按三类判据补齐监控条目（`syncAutoEntries`）、
+ * 手动筛查「并入清单」时补条目（`adoptScanTickets`）、命中核实回写条目（`verifyHit`）。其余取数一律走合并层 `reportStore`。
  */
 const riskQueue = useRiskQueueStore();
 /** 「升级」派生的新投诉单落这里，工单页解析时兜在静态数据源之后 */
@@ -2293,28 +2299,33 @@ function saveTag() {
     at: nowStamp(),
     ...(tagAmend.value ? { amendReason: tagReason.value.trim() } : {}),
   };
-  // 追加而不覆盖
-  riskTags.appendEntry(target.id, entry);
   /*
-   * 🔴 **不再回写监控条目**（业务第三轮拍板）。旧实现在这里调 `recordVerify`，
-   * 把命中的「成立 / 误报 + 等级」翻译成条目的打标结论，顺手改掉条目状态。
-   *
-   * 【为什么必须断开】两者答的不是同一个问题：命中核实答"**这次命中准不准**"（词表的准确率），
-   * 条目打标答"**这张单有没有风险、多大**"（入池门槛）。一张单被三条词命中时，
-   * 让每一条核实都去改一次条目状态，那条条目会被来回搬进搬出池子，
-   * 而每次搬动的依据只是其中一条证据准不准 —— 池子里到底该不该有它，从此没人答得清。
-   *
-   * 断开之后：命中核实只回填词表准确率，条目进不进池**只由条目自己的四选一打标决定**
-   * （`openEntryTag` / `saveEntryTag` → `riskPool.recordTag`）。
+   * 🔴 **命中核实回写条目**（2026-09-15 裁决，推翻第三轮"命中核实不回写监控条目"）：
+   * 追加命中记录之外，未打标工单上首次成立即打标入池；全部误报则改归投诉单 / 重要紧急，或打为无风险。
+   * 已打标工单、修正只记命中。状态迁移全在 store 的 `verifyHit` 一处，批量核实走同一个入口。
    */
+  const outcome = riskQueue.verifyHit(target, { ...entry, verdict: tagVerdict.value });
   message.success(
     tagAmend.value
       ? `已修正 ${target.ticketNo} 的核实结果为「${entry.verdict}」，本次修正已留痕`
-      : entry.verdict === '误报'
-        ? '已记为误报，本条不计入风险，只回填词表准确率'
-        : `已核实 ${target.ticketNo} 的这条命中为「成立 · ${levelText(tagLevel.value)}」；该单进不进风险工单池，仍以「实时监控」里的风险打标为准`,
+      : verifyOutcomeTip(target.ticketNo, entry, outcome),
   );
   tagOpen.value = false;
+}
+/** 首次核实保存后的去向提示：命中结论之外，把工单这一侧发生了什么说出来 */
+function verifyOutcomeTip(no: string, entry: TagEntry, outcome: HitVerifyOutcome): string {
+  if (outcome.kind === 'tagged') {
+    return `已核实这条命中为「成立 · ${levelText(outcome.level)}」，${no} 已打标「${levelText(outcome.level)}」并进风险工单池等待领取`;
+  }
+  if (outcome.kind === 'rerouted') {
+    return `已记为误报；${no} 已无待核实命中，改归「${outcome.source}」，仍在未标记`;
+  }
+  if (outcome.kind === 'noRisk') {
+    return `已记为误报；${no} 已无待核实命中，已标记为无风险，可在「已标记 · 无风险」档里复核`;
+  }
+  return entry.verdict === '误报'
+    ? '已记为误报，本条不计入风险，只回填词表准确率'
+    : `已核实 ${no} 的这条命中为「成立 · ${levelText(entry.level)}」`;
 }
 /** 等级的人话说法：误报没有等级，说清"无等级"而不是留空，否则读不出这次改的是什么 */
 const levelText = riskLevelText;
@@ -2587,7 +2598,7 @@ const untaggedFilter = ref<UntaggedFilter>(defaultUntaggedFilter());
 const untaggedWordOptions = computed(() => {
   const seen: string[] = [];
   for (const r of untaggedSliceRows('kw')) {
-    for (const h of rowHits(r)) if (!seen.includes(h.word)) seen.push(h.word);
+    for (const h of pendingRowHits(r)) if (!seen.includes(h.word)) seen.push(h.word);
   }
   return seen.map((w) => ({ value: w, label: w }));
 });
@@ -2648,12 +2659,19 @@ function kwHitFilterOn(): boolean {
   return !!f.keyword.trim() || !!f.words.length;
 }
 /**
- * 这张单上**过了筛选的命中**，按命中时刻倒序 —— 召回清单里这一组的那几行。
+ * 这张单上**待核实**的命中（2026-09-15 裁决：召回清单只列未打标工单上待核实的命中；
+ * 成立 / 误报的只在命中台账里）。次序同 `rowHits`。
+ */
+function pendingRowHits(r: QueueRow): RiskHit[] {
+  return rowHits(r).filter((h) => !isJudged(h));
+}
+/**
+ * 这张单上**过了筛选的待核实命中**，按命中时刻倒序 —— 召回清单里这一组的那几行。
  * 🔴 组数（角标 / 工作组 / 分页）与行数（「N 条命中」）都从它派生，不另筛一遍。
- * 关键词是工单级的：本单对上了，本组全部命中都算匹配；对不上，整组没有命中。
+ * 关键词是工单级的：本单对上了，本组全部待核实命中都算匹配；对不上，整组没有命中。
  */
 function kwHitsOf(r: QueueRow): RiskHit[] {
-  const hits = rowHits(r).slice().sort((a, b) => b.when.localeCompare(a.when));
+  const hits = pendingRowHits(r).sort((a, b) => b.when.localeCompare(a.when));
   if (!kwHitFilterOn()) return hits;
   const f = untaggedFilter.value;
   const kw = f.keyword.trim().toLowerCase();
@@ -2759,10 +2777,15 @@ function priorityRankOf(ticketNo: string): number {
  * 没有命中记录的（投诉单 / 重要紧急那两路本就不产生命中）排最后，不吞。
  */
 const PRESET_LEVEL_RANK: Record<RiskLevel, number> = { 高: 0, 中: 1, 低: 2 };
-/** 本单命中里**最重**的那一条的预设等级；null ＝ 这张单没有命中记录 */
+/**
+ * 本单命中里**最重**的那一条的预设等级；null ＝ 这张单没有命中记录。
+ * 取**待核实**的命中（召回清单只列这一批，「等级」列与子档同源）；一条待核实的都没有时退回全部命中。
+ */
 function presetLevelOf(ticketNo: string): RiskLevel | null {
   let best: RiskLevel | null = null;
-  for (const h of riskTags.hitsOfTicket(ticketNo)) {
+  const all = riskTags.hitsOfTicket(ticketNo);
+  const pending = all.filter((h) => !isJudged(h));
+  for (const h of pending.length ? pending : all) {
     if (!best || PRESET_LEVEL_RANK[h.level] < PRESET_LEVEL_RANK[best]) best = h.level;
   }
   return best;
@@ -2900,13 +2923,15 @@ function onTicketRowAction(label: string, t: Ticket) {
 /* ---- 「实时监控」这一路 · 召回清单 ---- */
 //
 // 🔴 **行 ＝ 命中记录（一条召回一行）**，列与命中台账一致：等级 · 风险词 · 工单 · 命中内容 ·
-// 客户 / 班组 · 时间 · 处置。只列**尚未打标的工单**上的命中；已打标的单上的命中在「已标记」段与命中台账里。
+// 客户 / 班组 · 时间 · 处置。只列**尚未打标的工单**上**待核实**的命中（2026-09-15 裁决）；
+// 成立 / 误报的命中、已打标的单上的命中在命中台账里。
 // 🔴 **计数单位仍是工单**：左栏角标、工作组 chip、分页都按**工单组**数，
 // 故 `实时监控 + 投诉单 + 重要紧急 ＝ 未标记页签数` 不变；命中条数只在分页处与单数并写。
 // 同一张单的命中相邻成组：组序沿用 `untaggedRows`（词表预设等级最重的在前），组内按命中时刻倒序，
 // 分页按组切，一组不被拆到两页。
-// 「处置」列的「打标」打的是**这张单的条目**（`openEntryTag`），不是改某条命中的核实结论 ——
-// 故它随工单格跨整组合并，一组只出一枚。
+// 「处置」列**按命中逐行**出「核实打标」（`openTag`，与命中台账同一个弹窗、同一个 store 入口 `verifyHit`）：
+// 首次成立即给这张单打标入池，全部误报则改归或打为无风险。没有待核实命中的行（手动筛查并入、尚无命中）
+// 仍出「打标」，走条目的风险打标弹窗（`openEntryTag`）。
 /** 当前是不是停在「实时监控」那一路（含它的三个子档） */
 const kwEvidenceView = computed(() => (
   listView.value === 'realtime'
@@ -3202,7 +3227,9 @@ function pickBatchAction(action: 'tag' | 'clear') {
   if (action === 'tag') {
     if (!bulkCount.value) return;
     batchMenuOpen.value = false;
-    openBulk();
+    // 「实时监控」那一路批量核实命中，另两路批量打标条目（2026-09-15 裁决）
+    if (kwEvidenceView.value) openBulkVerify();
+    else openBulk();
     return;
   }
   if (bulkCount.value) clearBulk();
@@ -3259,13 +3286,79 @@ function saveBulk() {
   clearBulk();
 }
 
+/* ---- 「实时监控」那一路 · 批量核实（2026-09-15 裁决） ---- */
+//
+// 对所选工单组上**待核实**的命中统一给 成立 + 等级 / 误报 + 处置备注，逐条走单条同一个入口
+// （`riskQueue.verifyHit`）：同一张单的第一条成立即给这张单打标入池，其余几条只记命中；
+// 全部误报的单按固定次序改归投诉单 / 重要紧急，或打为无风险。
+// 命中取 `kwHitsOf`（过了当前筛选、即表里看得见的那几行），不对看不见的命中动手。
+const bulkVerifyOpen = ref(false);
+const bulkVerdict = ref<HitVerdict | undefined>(undefined);
+const bulkVerifyLevel = ref<RiskLevel>('高');
+const bulkVerifyNote = ref('');
+const bulkVerifyHits = computed(() => bulkTargets.value.flatMap((r) => kwHitsOf(r)));
+/** 所选组里没有待核实命中的单（手动筛查并入、尚无命中）：批量核实不处理，逐单走「打标」 */
+const bulkVerifySkipped = computed(() => bulkTargets.value.filter((r) => !kwHitsOf(r).length).length);
+const canSaveBulkVerify = computed(
+  () => canRiskTag.value && !!bulkVerdict.value && bulkVerifyHits.value.length > 0,
+);
+
+function openBulkVerify() {
+  if (!canRiskTag.value) { message.warning('只有客诉专员、投诉督导与管理员可以打标'); return; }
+  bulkVerdict.value = undefined;
+  // 等级默认取所选命中里**词表预设最高**的那一档：宁可让人往下调，也不让一批里的高危词被默认压低
+  bulkVerifyLevel.value = bulkVerifyHits.value.reduce<RiskLevel | null>(
+    (best, h) => (!best || GRADE_ORDER[h.level] < GRADE_ORDER[best] ? h.level : best),
+    null,
+  ) ?? '高';
+  bulkVerifyNote.value = '';
+  bulkVerifyOpen.value = true;
+}
+
+function saveBulkVerify() {
+  if (!canRiskTag.value) { message.warning('无打标权限'); return; }
+  const verdict = bulkVerdict.value;
+  if (!verdict) { message.warning('请先判定所选命中是否成立'); return; }
+  // 先取快照：逐条核实的过程中命中陆续离开召回清单，`bulkVerifyHits` 会跟着变
+  const hits = bulkVerifyHits.value.slice();
+  if (!hits.length) { message.warning('所选工单上没有待核实的命中'); return; }
+  const skipped = bulkVerifySkipped.value;
+  const base: TagEntry = {
+    level: verdict === '误报' ? null : bulkVerifyLevel.value,
+    verdict,
+    note: bulkVerifyNote.value.trim(),
+    by: user.current.name,
+    byRole: user.role.name,
+    at: nowStamp(),
+  };
+  let tagged = 0;
+  let rerouted = 0;
+  let noRisk = 0;
+  hits.forEach((h) => {
+    const o = riskQueue.verifyHit(h, { ...base, verdict });
+    if (o.kind === 'tagged') tagged += 1;
+    else if (o.kind === 'rerouted') rerouted += 1;
+    else if (o.kind === 'noRisk') noRisk += 1;
+  });
+  const parts = verdict === '成立'
+    ? [`已核实 ${hits.length} 条命中为「成立 · ${levelText(bulkVerifyLevel.value)}」`,
+      ...(tagged ? [`${tagged} 单已打标并进风险工单池等待领取`] : [])]
+    : [`已将 ${hits.length} 条命中记为误报`,
+      ...(rerouted ? [`${rerouted} 单改归投诉单 / 重要紧急`] : []),
+      ...(noRisk ? [`${noRisk} 单已标记为无风险`] : [])];
+  message.success(parts.join('；'));
+  if (skipped) message.warning(`${skipped} 单没有待核实命中，未处理，请逐单打标`);
+  bulkVerifyOpen.value = false;
+  clearBulk();
+}
+
 /* ---- 单条风险打标：四选一（高 / 中 / 低 / 无风险） ---- */
 //
 // 🔴 **它与「核实打标」不是一回事**，两个弹窗各答各的问题：
 //   · 本弹窗（条目）—— "**这张单有没有风险、多大**"。四选一，低/中/高进池、无风险不进池。
-//   · 命中打标弹窗（`openTag`）—— "**这次命中准不准**"。成立/误报 + 定级，只回填词表准确率。
-// 旧实现让后者顺手改前者的状态，于是一张单被三条词命中就会被搬进搬出池子三次，
-// 而每次搬动的依据只是其中一条证据准不准。两者断开之后，入池只由本弹窗决定。
+//   · 命中打标弹窗（`openTag`）—— "**这次命中准不准**"。成立/误报 + 定级，回填词表准确率。
+// 两者的衔接只有一处（2026-09-15 裁决，store 的 `verifyHit`）：**未打标**工单上首次成立即由核实给这张单打标入池，
+// 全部误报则改归或打为无风险；工单一旦有了打标结论，之后的核实与修正只改命中，条目要改走本弹窗。
 const entryTagOpen = ref(false);
 const entryTagTarget = ref<QueueRow | null>(null);
 const entryTagResult = ref<RiskTagResult | ''>('');
@@ -3731,8 +3824,8 @@ const railGroups = computed<RailGroup[]>(() => {
       items: [
         ...untaggedSliceItems('kw', '实时监控',
           '预警词捞进来的那一路。下面按词表预设的识别风险等级分档 —— 机器认为最重的排最前，人从上往下判。'
-          + '表里是尚未打标的工单上的命中（待处理的召回，一条命中一行、同单成组）；角标数的是工单，不是命中条数。'
-          + '全部召回历史（含已打标工单上的）在右上角「命中台账」'),
+          + '表里是尚未打标的工单上待核实的命中（一条命中一行、同单成组）；角标数的是工单，不是命中条数。'
+          + '全部召回历史（含已核实的、已打标工单上的）在右上角「命中台账」'),
         ...untaggedSliceItems('complaint', '投诉单',
           '在办的投诉类工单那一路。下面按工单优先级分档'),
         ...untaggedSliceItems('urgent', '重要紧急',
@@ -4636,7 +4729,7 @@ function toggleWordEnabled(w: RiskWord) {
                 <template #overlay>
                   <a-menu class="batch-menu">
                     <a-menu-item :disabled="bulkCount <= 0" @click="pickBatchAction('tag')">
-                      批量打标
+                      {{ kwEvidenceView ? '批量核实' : '批量打标' }}
                     </a-menu-item>
                     <a-menu-item :disabled="bulkCount <= 0" @click="pickBatchAction('clear')">
                       取消选择
@@ -4897,8 +4990,8 @@ function toggleWordEnabled(w: RiskWord) {
 
       <!--
         实时监控 · 召回清单（见 script 里「召回清单」那段）。
-        🔴 行 ＝ 命中，列与命中台账那张表一致；同一张单的命中相邻成组，
-        勾选 / 工单 / 处置三格跨整组合并（它们都是**工单级**的：勾的是单、打标打的是单的条目）。
+        🔴 行 ＝ 待核实的命中，列与命中台账那张表一致；同一张单的命中相邻成组，
+        勾选 / 工单两格跨整组合并（勾的是单）；处置格按命中逐行出「核实打标」。
         🔴 分页按工单组切（`pagedQueueRows`），「N 单 · M 条命中」两个数分别取 `queueRows` 与 `kwHitTotal`。
       -->
       <div v-if="listView === 'realtime' && kwEvidenceView && queueRows.length" class="hit-table-wrap">
@@ -4921,7 +5014,7 @@ function toggleWordEnabled(w: RiskWord) {
           </thead>
           <tbody>
             <template v-for="g in kwPageGroups" :key="g.row.id">
-              <!-- 没有命中记录的组（数据异常）照实留一行，不吞：左栏角标数的是工单，少一组就对不上 -->
+              <!-- 没有待核实命中的组（手动筛查并入、尚无命中）照实留一行，不吞：左栏角标数的是工单，少一组就对不上 -->
               <tr v-if="!g.hits.length">
                 <td v-if="showQueueSelection">
                   <div class="hit-cb" :class="{ checked: bulkPicked.has(g.row.id) }" @click.stop="toggleBulkPick(g.row.id)">
@@ -4934,7 +5027,7 @@ function toggleWordEnabled(w: RiskWord) {
                   <button type="button" class="rt-no" @click="openTicket(g.row.ticketNo)">{{ g.row.ticketNo }}</button>
                   <div class="hit-title">{{ rowTitleOf(g.row) }}</div>
                 </td>
-                <td class="hit-excerpt"><span class="hit-sub">本单暂无命中记录</span></td>
+                <td class="hit-excerpt"><span class="hit-sub">本单暂无待核实命中</span></td>
                 <td>{{ rowCustomerOf(g.row) }}<div class="hit-sub">{{ groupNameOf(g.row.ticketNo) }}</div></td>
                 <td class="hit-when">—</td>
                 <td>
@@ -4954,25 +5047,16 @@ function toggleWordEnabled(w: RiskWord) {
                   </div>
                 </td>
                 <td>
-                  <!-- 与命中台账同一格：已核实的取核实等级，误报没有等级 -->
+                  <!-- 这一批全是待核实的命中，等级即词表预设 -->
                   <span
-                    v-if="gradeOf(h)"
                     class="grade-pill"
-                    :style="{ color: RISK_LEVEL_STYLE[gradeOf(h)!].color, background: RISK_LEVEL_STYLE[gradeOf(h)!].bg }"
-                  >{{ gradeOf(h) }}</span>
-                  <span v-else class="hit-sub" title="判为误报的命中不带风险等级">—</span>
+                    :style="{ color: RISK_LEVEL_STYLE[presetGradeOf(h)].color, background: RISK_LEVEL_STYLE[presetGradeOf(h)].bg }"
+                  >{{ presetGradeOf(h) }}</span>
                 </td>
                 <td>
                   <div class="track-word">「{{ h.word }}」</div>
                   <div v-if="h.matchedWord && h.matchedWord !== h.word" class="track-word-sub">命中「{{ h.matchedWord }}」</div>
                   <div class="track-word-sub">词表预设 {{ presetGradeOf(h) }}危</div>
-                  <!-- 命中已在台账里被核实过才出：这是**命中**的核实结论，不是这张单的打标结论 -->
-                  <span
-                    v-if="verdictOf(h)"
-                    class="verdict-chip"
-                    :class="verdictOf(h) === '误报' ? 'vc-fp' : 'vc-ok'"
-                    :title="tagTraceTitle(h)"
-                  >命中{{ verdictOf(h) }}</span>
                 </td>
                 <td v-if="hi === 0" :rowspan="g.hits.length">
                   <button type="button" class="rt-no" @click="openTicket(g.row.ticketNo)">{{ g.row.ticketNo }}</button>
@@ -4993,13 +5077,12 @@ function toggleWordEnabled(w: RiskWord) {
                 <td>{{ h.customer }}<div class="hit-sub">{{ h.groupName }} · {{ h.assignee }}</div></td>
                 <!-- 这一档不设时间窗、跨天常见，故日期与时刻都给 -->
                 <td class="hit-when">{{ h.when.slice(5, 10) }}<div>{{ h.when.slice(11, 16) }}</div></td>
-                <td v-if="hi === 0" :rowspan="g.hits.length">
+                <td>
                   <button
                     v-if="canRiskTag"
                     type="button" class="row-btn row-btn-tag"
-                    title="判定这张单有没有风险、多大：高 / 中 / 低进风险工单池，无风险不进池。打的是这张单的条目，不改任何一条命中的核实结论"
-                    @click="openEntryTag(g.row)"
-                  >打标</button>
+                    @click="openTag(h)"
+                  >核实打标</button>
                   <span v-else class="hit-sub" title="打标归客诉专员、投诉督导与管理员">—</span>
                 </td>
               </tr>
@@ -6287,6 +6370,78 @@ function toggleWordEnabled(w: RiskWord) {
     </OpActionModal>
 
     <!--
+      批量核实（「未标记 · 实时监控」那一路）。字段与单条核实打标一致：本次命中 成立 / 误报、风险等级、处置备注。
+    -->
+    <OpActionModal
+      :open="bulkVerifyOpen"
+      title="批量核实"
+      :icon="TagsOutlined"
+      tone="primary"
+      :width="480"
+      ok-text="保存"
+      :ok-disabled="!canSaveBulkVerify"
+      @update:open="bulkVerifyOpen = $event"
+      @ok="saveBulkVerify"
+    >
+      <div class="op-form tag-modal-form">
+        <div class="tag-hit-head tag-bulk-head">
+          <div class="tag-bulk-summary">
+            <span>已选 <strong>{{ bulkTargets.length }}</strong> 单</span>
+            <span class="tag-hit-sep">·</span>
+            <span>待核实命中 <strong>{{ bulkVerifyHits.length }}</strong> 条</span>
+          </div>
+        </div>
+
+        <div class="op-field op-field-h tag-field-block">
+          <div class="op-label req">本次命中</div>
+          <div class="op-radio-cards op-radio-cards--row tag-radio-compact tag-radio-fill">
+            <div
+              class="op-radio-card"
+              :class="{ on: bulkVerdict === '成立' }"
+              @click="bulkVerdict = '成立'"
+            >
+              <div class="op-rc-title">成立</div>
+            </div>
+            <div
+              class="op-radio-card"
+              :class="{ on: bulkVerdict === '误报' }"
+              @click="bulkVerdict = '误报'"
+            >
+              <div class="op-rc-title">误报</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="op-field op-field-h tag-field-block">
+          <div class="op-label req">风险等级</div>
+          <div
+            class="op-radio-cards op-radio-cards--row tag-radio-compact tag-radio-fill"
+            :class="{ 'op-radio-disabled': bulkVerdict === '误报' }"
+          >
+            <div
+              v-for="g in GRADES"
+              :key="g"
+              class="op-radio-card"
+              :class="{ on: bulkVerifyLevel === g }"
+              :style="bulkVerifyLevel === g ? { borderColor: RISK_LEVEL_STYLE[g].color, background: `${RISK_LEVEL_STYLE[g].bg}33` } : {}"
+              @click="bulkVerdict !== '误报' && (bulkVerifyLevel = g)"
+            >
+              <div class="op-rc-title">{{ g }}危</div>
+            </div>
+          </div>
+        </div>
+        <div class="tag-form-foot">
+          {{ bulkVerdict === '误报' ? '误报无需定级' : '等级默认沿用词表预设，可按实际情况调整' }}
+        </div>
+
+        <div class="op-field op-field-h op-field-h-top tag-field-note">
+          <div class="op-label">处置备注</div>
+          <a-textarea v-model:value="bulkVerifyNote" :rows="2" placeholder="核实结论与后续动作（可选）" />
+        </div>
+      </div>
+    </OpActionModal>
+
+    <!--
       单条风险打标：四选一（高 / 中 / 低 / 无风险）。首次打标与二次修改共用这一个弹窗，
       只在标题、按钮文案、必填项与留痕区上分叉 —— 与命中打标弹窗同一副骨架。
     -->
@@ -6443,6 +6598,7 @@ function toggleWordEnabled(w: RiskWord) {
                 {{ e.level ? `${e.level}危` : '无风险' }}
                 <!-- 并入痕迹记在打标记录上，不进来源列（§5A.1 ④） -->
                 <span v-if="e.viaManualScan" class="tt-role">由手动筛查并入</span>
+                <span v-if="e.viaHitVerify" class="tt-role">由命中核实</span>
               </div>
               <div v-if="e.amendReason" class="tt-reason">原因：{{ e.amendReason }}</div>
             </li>

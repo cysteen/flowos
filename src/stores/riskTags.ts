@@ -44,6 +44,8 @@ export interface RiskTagEntry {
    * 来源仍是「实时监控」，这一格只留痕。
    */
   viaManualScan?: boolean;
+  /** 仅 A 线条目的打标记录有：这条打标由命中核实产出（记录上显示「由命中核实」），见 `RiskTagRecord.viaHitVerify` */
+  viaHitVerify?: boolean;
 }
 
 /** 等级由重到轻的序位，取 max 时比大小用 */
