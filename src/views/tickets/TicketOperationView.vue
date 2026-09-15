@@ -52,6 +52,12 @@ import {
 import {
   ESCALATE_VIA_HANDLER_REPORT_TIP, escalateComplaintBlockTip, resolveRiskActionForm,
 } from './composables/opActionRegistry';
+import {
+  flashEditInfoGate, flashEscalateComplaintGate, flashHeaderEscalateVisible, flashStageOf, resolveFlashView,
+  type FlashView,
+} from './composables/flashGate';
+import { useFlashStore } from '@/stores/flash';
+import { useFlashConfigStore } from '@/stores/flashConfig';
 import { resolveSupersededBy, type TicketRelation } from './composables/ticketRelations';
 import type { CreateTicketPrefill, Ticket } from './types/ticket';
 import type { ProcessFormDraft, InsightAction, InsightModalKey } from './types/operation';
@@ -295,6 +301,80 @@ const isPrimaryHandler = computed(
   () => !!primaryHandlerName.value
     && primaryHandlerName.value === currentHandlerName(user.roleKey, user.name),
 );
+
+/* ---------------- 刷机单门控（930 教育刷机单 PRD §5.5 / §1.2 / §9.4，判据见 composables/flashGate.ts） ---------------- */
+
+const flashStore = useFlashStore();
+const flashConfig = useFlashConfigStore();
+
+/**
+ * 当前登录人在本刷机单上的视角：一线 / 二线 / 可领取 / 只读查看 / 客诉专员。四类老工单为 null。
+ * 一线坐席的四处门控（底栏、工单处理 Tab 写权、联系客户、主责处理人）都从这一个取值派生，不各判一次（D2）。
+ */
+const flashView = computed<FlashView | null>(() => {
+  if (!isFlash.value) return null;
+  const assignee = d.value.lastHandler ?? null;
+  return resolveFlashView({
+    roleKey: user.roleKey,
+    handlerName: currentHandlerName(user.roleKey, user.name),
+    assignee,
+    status: d.value.status,
+    pool: d.value.flash?.state.pool,
+    assigneeGroupId: handlerGroupOf(assignee)?.id,
+  });
+});
+/** 表二的列 */
+const flashStage = computed(() => flashStageOf(d.value.status, !!d.value.delegateInfo));
+/** 「重新推送」渲染：本单产品型号为启用中的自研机型（非自研、已停用不渲染，M74） */
+const flashRepushShown = computed(() => {
+  const model = d.value.flash?.info.productModel ?? '';
+  return flashConfig.isSupportedModel(model) && flashConfig.isSelfDeveloped(model);
+});
+/** 刷机信息区块头「修改刷机信息」：null ＝ 不出 */
+const flashEditInfo = computed(() =>
+  (flashView.value ? flashEditInfoGate(flashView.value, flashStage.value, isPrimaryHandler.value) : null),
+);
+/** 页头「升级投诉」子状态门控 */
+const flashEscalateGate = computed(() => (isFlash.value ? flashEscalateComplaintGate(flashStage.value) : null));
+/** 逐 Tab 写权覆盖：一线处理人放开「工单处理」「联系记录」；待领取 / 只读查看各写 Tab 只读 */
+const flashTabWritable = computed<Partial<Record<ProcessTabKey, boolean>> | undefined>(() => {
+  if (!flashView.value) return undefined;
+  if (flashView.value === 'l1') return { process: true, contact: true };
+  if (flashView.value === 'claim' || flashView.value === 'readonly') {
+    return { process: false, contact: false, appointment: false, risk: false, feishu: false, tech: false };
+  }
+  return undefined;
+});
+/** 侧栏联系客户：一线处理人放出；只读查看收起；其余按角色 */
+const flashContactActions = computed<'show' | 'hide' | undefined>(() => {
+  if (flashView.value === 'l1') return 'show';
+  if (flashView.value === 'readonly') return 'hide';
+  return undefined;
+});
+
+/** 领取（PRD §4.2）：刷机服务落状态与履历，Toast「已领取 〈单号〉」 */
+function onFlashClaim() {
+  const role = user.roleKey === 'agent-l1' ? '一线坐席' : '二线专员';
+  const res = flashStore.claimFromPool(d.value.no, { name: currentHandlerName(user.roleKey, user.name), role });
+  if (res.ok) message.success(res.message);
+  else message.warning(res.message);
+}
+
+/**
+ * 刷机单三枚按钮的点击接入点：本步只渲染与门控，弹窗与落库由 M4b-2 在这三个函数里接
+ * （重新推送弹窗 PRD §5.6、升级二线弹窗 §5.7、修改刷机信息弹窗 §5.8）。
+ */
+function onFlashRepush() {
+  flashActionRequest.value = { kind: 'repush', at: Date.now() };
+}
+function onFlashEscalateL2() {
+  flashActionRequest.value = { kind: 'escalateL2', at: Date.now() };
+}
+function onFlashEditInfo() {
+  flashActionRequest.value = { kind: 'editInfo', at: Date.now() };
+}
+/** 最近一次刷机按钮点击（M4b-2 监听它开弹窗） */
+const flashActionRequest = ref<{ kind: 'repush' | 'escalateL2' | 'editInfo'; at: number } | null>(null);
 
 /**
  * 底栏那一枚按钮**出不出**。三种形态各有各的出现条件（基线 ※29）：
@@ -872,7 +952,19 @@ const customerEntryLocked = computed(
 const headerRoleGate = computed(() => headerActionsByRole(user.roleKey));
 const canSupplement = computed(() => headerRoleGate.value.supplement);
 const canDunning = computed(() => headerRoleGate.value.dunning);
-const canEscalateComplaint = computed(() => headerRoleGate.value.escalateComplaint);
+// 刷机单只读查看：二线只出新建补充，一线出催单 / 新建补充 / 升级投诉（M71 / M83）
+const canEscalateComplaint = computed(
+  () => headerRoleGate.value.escalateComplaint
+    && (!flashView.value || flashHeaderEscalateVisible(flashView.value, user.roleKey)),
+);
+/**
+ * 本单底栏上有没有「风险报备」按钮（※8a 拦截提示二选一的判据）。
+ * 刷机单只在二线视角出（待领取 / 只读查看不出办理按钮）；老工单照旧。
+ */
+const riskReportButtonShown = computed(
+  () => riskActionForm.value === 'report' && showRiskReport.value
+    && (!isFlash.value || flashView.value === 'l2'),
+);
 /**
  * 基线 ※8a：**非投诉单 → 投诉单**这一跳，二线专员 / 二线班组长不再自主发起，
  * 入口改为「风险报备」，由客诉专员评为「升级」时代为发起（「升级」只指转投诉单，※29）。
@@ -882,10 +974,11 @@ const canEscalateComplaint = computed(() => headerRoleGate.value.escalateComplai
 const escalateReportFirstTip = computed(() => {
   const tip = escalateComplaintBlockTip(user.roleKey, d.value.type);
   if (!tip) return null;
-  return riskActionForm.value === 'report' && showRiskReport.value ? tip : ESCALATE_VIA_HANDLER_REPORT_TIP;
+  return riskReportButtonShown.value ? tip : ESCALATE_VIA_HANDLER_REPORT_TIP;
 });
 const canLinkAftersale = computed(() => headerRoleGate.value.linkAftersale);
-const canCancelTicket = computed(() => headerRoleGate.value.cancelTicket);
+// 刷机单不提供取消工单（M6）
+const canCancelTicket = computed(() => headerRoleGate.value.cancelTicket && !isFlash.value);
 
 /**
  * 底部流转操作栏隐藏：只读态，**或原单已是终态**——
@@ -932,7 +1025,8 @@ const postCloseEditable = computed(() => {
 const leadNoEditable = computed(() => (postClose.value ? postCloseEditable.value : isPrimaryHandler.value));
 
 const hideActionBar = computed(
-  () => isFrontlineView.value || pageReadonly.value
+  // 刷机单按视角判（只读查看不渲染；一线处理人放出，D2），老工单仍按一线视角整条隐藏
+  () => (flashView.value ? flashView.value === 'readonly' : isFrontlineView.value) || pageReadonly.value
     || (isTicketTerminated(d.value.status) && !postCloseEditable.value),
 );
 
@@ -1716,7 +1810,7 @@ function onHeaderAction(name: string) {
       if (escalateReportFirstTip.value) {
         message.warning(escalateReportFirstTip.value);
         // 本单给了「风险报备」入口时顺手带到那个 Tab，少一次自己找
-        if (showRiskReport.value) processTabsRef.value?.switchTab('risk');
+        if (isFlash.value ? riskReportButtonShown.value : showRiskReport.value) processTabsRef.value?.switchTab('risk');
         return;
       }
       openEscalate();
@@ -1788,6 +1882,7 @@ watch(
       :can-cancel-ticket="canCancelTicket"
       :customer-entry-locked="customerEntryLocked"
       :superseded-by="supersededBy"
+      :escalate-gate="flashEscalateGate"
       @action="onHeaderAction"
       @open-relation="openRelation"
       @open-superseded="supersededBy && openRelation(supersededBy)"
@@ -1888,6 +1983,7 @@ watch(
           @closing-note-files-added="onClosingNoteFilesAdded"
           :post-close-editable="postCloseEditable"
           :lead-no-editable="leadNoEditable"
+          :tab-writable-override="flashTabWritable"
           @toggle-section="toggleSection"
           @select-chip="selectChip"
           @update:form="updateForm"
@@ -1902,7 +1998,17 @@ watch(
           <template v-if="isFlash && d.flash" #process-top>
             <OpFlashResultCard :flash="d.flash" />
             <!-- 区块头「修改刷机信息」按钮（PRD §5.3）走 OpFlashInfoBlock 的 #actions 插槽，排在两条外链左侧 -->
-            <OpFlashInfoBlock :info="d.flash.info" />
+            <OpFlashInfoBlock :info="d.flash.info">
+              <template v-if="flashEditInfo" #actions>
+                <button
+                  type="button"
+                  class="flash-edit-btn"
+                  :disabled="flashEditInfo.forbidden"
+                  :title="flashEditInfo.forbidden ? flashEditInfo.tip : undefined"
+                  @click="onFlashEditInfo"
+                >修改刷机信息</button>
+              </template>
+            </OpFlashInfoBlock>
           </template>
         </OpProcessTabs>
       </div>
@@ -1910,6 +2016,7 @@ watch(
       <OpSidePanel
         :detail="d"
         :ticket-id="ticketNo"
+        :contact-actions="flashContactActions"
         @contact="onContact"
         @action="toast"
       />
@@ -1948,6 +2055,14 @@ watch(
       :show-risk-report="showRiskReport"
       :risk-report-pending="riskReportPending"
       :risk-forbidden-tip="riskForbiddenTip"
+      :flash-view="flashView"
+      :flash-stage="flashStage"
+      :flash-repush-shown="flashRepushShown"
+      :flash-l1-repush-count="d.flash?.state.l1RepushCount ?? 0"
+      :flash-is-initiator="isPrimaryHandler"
+      @flash-repush="onFlashRepush"
+      @flash-escalate="onFlashEscalateL2"
+      @claim="onFlashClaim"
       @action="onAction"
       @cancel="cancelModalOpen = true"
       @withdraw="confirmWithdraw"
@@ -2022,6 +2137,20 @@ watch(
   display: flex; flex-direction: column; height: 100%; overflow: hidden;
   background: #f9fafb;
 }
+/* 刷机信息区块头「修改刷机信息」（PRD §5.3），与区块外链同一行 */
+.flash-edit-btn {
+  height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+  color: #1a6fff;
+  background: #fff;
+  border: 1px solid #1a6fff;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.flash-edit-btn:hover:not(:disabled) { background: #eef4ff; }
+.flash-edit-btn:disabled { color: #9ca3af; border-color: #d1d5db; background: #f9fafb; cursor: not-allowed; }
 .op-overview-wrap {
   flex: none;
   padding: 10px 20px 0;

@@ -6,7 +6,12 @@ import {
   PlayCircleOutlined, RiseOutlined, UndoOutlined, StopOutlined,
   ToolOutlined, CheckCircleOutlined, SaveOutlined, SwapOutlined,
   RollbackOutlined, TeamOutlined, WarningOutlined,
+  ReloadOutlined, DownOutlined,
 } from '@ant-design/icons-vue';
+import {
+  FLASH_GATE_TIPS, FLASH_L1_BAR_ORDER, FLASH_L2_BAR_ORDER, FLASH_L2_MORE_ORDER,
+  flashBarLabel, flashButtonGate, type FlashBarKey, type FlashStage, type FlashView,
+} from '../composables/flashGate';
 import OpActionDialogs from './OpActionDialogs.vue';
 import OpRiskReportModal from './operation/OpRiskReportModal.vue';
 import OpAftersaleLinkCard from './operation/OpAftersaleLinkCard.vue';
@@ -86,6 +91,20 @@ const props = defineProps<{
    * （该找的是领它的那个人，不是"等评估"）。判据在工单页手上，原因就该跟着判据走。
    */
   riskForbiddenTip?: string;
+  /**
+   * 刷机单视角（930 教育刷机单 PRD §5.5，判据见 `composables/flashGate.ts`）。
+   * 一线 / 二线视角走刷机单底栏（表一顺序 + 表二逐格取值）；可领取只出「领取」；客诉专员沿用风险按钮形态。
+   * 四类老工单不传，底栏走原路径。
+   */
+  flashView?: FlashView | null;
+  /** 刷机单子状态列（表二的列） */
+  flashStage?: FlashStage;
+  /** 「重新推送」是否渲染：本单产品型号为启用中的自研机型（非自研、已停用不渲染，M74） */
+  flashRepushShown?: boolean;
+  /** 本单一线重推次数 */
+  flashL1RepushCount?: number;
+  /** 当前用户是否本次下送 / 申请的发起人（撤回） */
+  flashIsInitiator?: boolean;
 }>();
 
 /** 置灰提示的兜底：调用方没给原因时至少说清"被挡住了"，不冒充一个具体理由 */
@@ -102,6 +121,12 @@ const emit = defineEmits<{
     desc: string;
     attachments: string[];
   }];
+  /** 刷机单「重新推送」：弹窗与落库由处理页接（PRD §5.6） */
+  flashRepush: [];
+  /** 刷机单「升级二线」：弹窗与落库由处理页接（PRD §5.7） */
+  flashEscalate: [];
+  /** 刷机单池中未认领：领取（PRD §4.2） */
+  claim: [];
 }>();
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -109,7 +134,7 @@ const ICONS: Record<string, any> = {
   ArrowRightOutlined, VerticalAlignBottomOutlined, PauseCircleOutlined,
   PlayCircleOutlined, RiseOutlined, UndoOutlined, StopOutlined,
   ToolOutlined, CheckCircleOutlined, SaveOutlined, SwapOutlined,
-  RollbackOutlined, TeamOutlined, WarningOutlined,
+  RollbackOutlined, TeamOutlined, WarningOutlined, ReloadOutlined,
 };
 
 /** 已成功关联产研反馈：底栏升级置灰，催单/二次激活改在「产研反馈」Tab */
@@ -177,7 +202,12 @@ const DELEGATE_LOCKED: (OpActionType | '转单')[] = [
 const DELEGATE_LOCK_TIP = '工单委派中，协办完成后可操作';
 
 const actions = computed(() =>
-  availableActions({ ticketType: props.ticketType, closureMode: props.closureMode }),
+  availableActions({
+    ticketType: props.ticketType,
+    closureMode: props.closureMode,
+    // 刷机单按视角收一道（表一）；老工单不传，取值与改前一致
+    ...(props.ticketType === '刷机' && props.flashView ? { flashView: props.flashView } : {}),
+  }),
 );
 
 /**
@@ -341,12 +371,75 @@ const barActions = computed<BarItem[]>(() => {
   return items;
 });
 
+/* ---------------- 刷机单底栏（930 教育刷机单 PRD §5.5 表一 × 表二） ---------------- */
+
+/** 走刷机单底栏：一线 / 二线视角与可领取。客诉专员（other）仍走上面的原路径（只剩风险那一枚） */
+const isFlashBar = computed(
+  () => props.ticketType === '刷机' && (props.flashView === 'l1' || props.flashView === 'l2' || props.flashView === 'claim'),
+);
+
+const FLASH_FALLBACK_ICON: Partial<Record<FlashBarKey, string>> = { 重推: 'ReloadOutlined', 升级二线: 'RiseOutlined' };
+
+function flashItem(k: FlashBarKey): BarItem | null {
+  const stage = props.flashStage ?? '处理中';
+  const def = actionMap.value.get(k as OpActionType);
+  if (k === '重推') {
+    if (!props.flashRepushShown) return null;
+  } else if (k === '升级二线') {
+    if (props.flashView !== 'l1') return null;
+  } else if (!def) {
+    return null;
+  }
+  // 风险报备限本单主责处理人（出现条件由工单页算）
+  if (k === '风险报备' && !props.showRiskReport) return null;
+  const gate = flashButtonGate(k, {
+    view: props.flashView ?? 'l2',
+    stage,
+    l1RepushCount: props.flashL1RepushCount ?? 0,
+    isInitiator: !!props.flashIsInitiator,
+    afterSaleEnabled: props.afterSaleEnabled,
+  });
+  let forbidden = gate.forbidden;
+  let tip = gate.tip;
+  if (!forbidden && k === '风险报备' && props.riskReportPending) {
+    forbidden = true;
+    tip = props.riskForbiddenTip || RISK_FORBIDDEN_FALLBACK;
+  }
+  if (!forbidden && k === '转售后' && aftersaleBlockedTip.value) {
+    forbidden = true;
+    tip = aftersaleBlockedTip.value;
+  }
+  let key: OpActionType = k;
+  let icon = def?.icon ?? FLASH_FALLBACK_ICON[k] ?? 'ArrowRightOutlined';
+  if (k === '挂起' && stage === '已挂起') { key = '恢复'; icon = 'PlayCircleOutlined'; }
+  if (k === '委派' && stage === '已委派') { key = '撤销委派'; icon = 'UndoOutlined'; }
+  return { key, label: flashBarLabel(k, stage), icon, danger: def?.danger, forbidden, forbiddenTip: tip };
+}
+
+const flashPrimaryItems = computed<BarItem[]>(() => {
+  const order = props.flashView === 'l1' ? FLASH_L1_BAR_ORDER : props.flashView === 'l2' ? FLASH_L2_BAR_ORDER : [];
+  return order.map(flashItem).filter((x): x is BarItem => !!x);
+});
+const flashMoreItems = computed<BarItem[]>(() =>
+  (props.flashView === 'l2' ? FLASH_L2_MORE_ORDER : []).map(flashItem).filter((x): x is BarItem => !!x),
+);
+const isFlashClaim = computed(() => props.ticketType === '刷机' && props.flashView === 'claim');
+
+function onFlashMoreClick(info: { key: string | number }) {
+  const item = flashMoreItems.value.find((x) => x.key === String(info.key));
+  if (!item || item.forbidden) return;
+  run(item.key);
+}
+
 function saveDraft() {
   emit('action', { type: '保存草稿' });
 }
 
 function run(action: OpActionType | '转单') {
   if (isTerminal.value || isTransferred.value) return;
+  // 刷机单专属两枚：只把点击抛给处理页（弹窗与落库在处理页接）
+  if (action === '重推') return emit('flashRepush');
+  if (action === '升级二线') return emit('flashEscalate');
   if (action === '转单') {
     emit('transferTicket');
     return;
@@ -499,7 +592,9 @@ defineExpose({ openEscalate, openAftersale });
       <button
         type="button"
         class="ab-item ab-save"
-        :disabled="isTerminal && !saveOnly"
+        :class="{ forbidden: isFlashClaim }"
+        :disabled="(isTerminal && !saveOnly) || isFlashClaim"
+        :title="isFlashClaim ? FLASH_GATE_TIPS.unclaimed : undefined"
         @click="saveDraft"
       >
         <SaveOutlined />
@@ -512,7 +607,7 @@ defineExpose({ openEscalate, openAftersale });
         状态一眼可见，工单地址可点直接跳售后系统操作（其余按钮无卡片，trigger 置空）
       -->
       <a-popover
-        v-for="a in (saveOnly ? [] : barActions)"
+        v-for="a in (saveOnly ? [] : (isFlashBar ? flashPrimaryItems : barActions))"
         :key="a.key"
         :trigger="showsAftersaleCard(a.key) ? 'hover' : []"
         placement="top"
@@ -550,6 +645,33 @@ defineExpose({ openEscalate, openAftersale });
           </button>
         </span>
       </a-popover>
+
+      <!-- 刷机单二线视角「更多」：申请挂起 · 委派 · 调剂 · 关闭工单 · 强结 · 风险报备 · 撤回（PRD §5.5） -->
+      <a-dropdown v-if="isFlashBar && !saveOnly && flashMoreItems.length" trigger="click" placement="topRight">
+        <button type="button" class="ab-item" :disabled="isTerminal">
+          <span>更多</span>
+          <DownOutlined />
+        </button>
+        <template #overlay>
+          <a-menu @click="onFlashMoreClick">
+            <a-menu-item
+              v-for="m in flashMoreItems"
+              :key="m.key"
+              :disabled="m.forbidden"
+              :danger="m.danger && !m.forbidden"
+            >
+              <span class="ab-more-item" :title="m.forbidden ? m.forbiddenTip : undefined">
+                <component :is="ICONS[m.icon]" />
+                <span>{{ m.label }}</span>
+              </span>
+            </a-menu-item>
+          </a-menu>
+        </template>
+      </a-dropdown>
+
+      <button v-if="isFlashClaim && !saveOnly" type="button" class="ab-item ab-claim" @click="emit('claim')">
+        <span>领取</span>
+      </button>
     </div>
   </div>
 
@@ -711,6 +833,29 @@ defineExpose({ openEscalate, openAftersale });
 
 .ab-item.ab-save :deep(.anticon) {
   color: #1a6fff;
+}
+
+.ab-item.ab-save.forbidden,
+.ab-item.ab-save.forbidden :deep(.anticon) {
+  color: #9ca3af;
+}
+
+.ab-more-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.ab-item.ab-claim {
+  color: #fff;
+  background: #1a6fff;
+  font-weight: 600;
+}
+
+.ab-item.ab-claim:hover:not(:disabled) {
+  color: #fff;
+  background: #1558d6;
 }
 
 .save-hint {

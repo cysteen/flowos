@@ -357,7 +357,8 @@ export function useTicketOperation() {
    */
   function applyFlashOverview(base: TicketDetailMeta, t: Ticket) {
     const f = t.flash!;
-    const creatorName = flash.creatorNameOf(t.no) ?? '—';
+    // 用户提报单页头建单人显示「用户提报」（M85 / X22）；坐席代建显示建单坐席
+    const creatorName = f.state.creator === '用户提报' ? '用户提报' : (flash.creatorNameOf(t.no) ?? '—');
     const createdAt = t.createdAt ?? '';
     base.builder = creatorName;
     base.builderShort = creatorName;
@@ -436,7 +437,13 @@ export function useTicketOperation() {
    */
   function projectFlashTimeline(no: string, reset = false) {
     // 操作人为「系统」的刷机事件卡片头显示系统头像（PRD §11.2）
-    const entries = flash.timelineOf(no).map((e) => (e.role === '系统' ? { ...e, systemActor: true } : { ...e }));
+    // 用户提报单的建单事件操作人显示「提报用户 · 〈姓名〉」（M85 / X22）；记录源里仍存姓名，建单人判定不受影响
+    const byUser = TICKETS.find((x) => x.no === no)?.flash?.state.creator === '用户提报';
+    const entries = flash.timelineOf(no).map((e) => {
+      if (e.role === '系统') return { ...e, systemActor: true };
+      if (byUser && e.action === 'create') return { ...e, who: `提报用户 · ${e.who}` };
+      return { ...e };
+    });
     if (reset) {
       timeline.value = entries;
       return;

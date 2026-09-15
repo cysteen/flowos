@@ -51,6 +51,11 @@ const props = defineProps<{
   customerEntryLocked?: boolean;
   /** 转单三态：业务转至新单，表头收束为只读提示 + 前往新单 */
   supersededBy?: TicketRelation | null;
+  /**
+   * 刷机单「升级投诉」的子状态门控（930 教育刷机单 PRD §5.5 表二，见 `flashEscalateComplaintGate`）：
+   * 置灰时覆盖阶层判定的取值与原因（如自动刷机中「自动刷机进行中，回传结果后再操作」）。老工单不传。
+   */
+  escalateGate?: { forbidden: boolean; tip?: string } | null;
 }>();
 
 const READONLY_TIP = '本单已被新单接管并锁定，请在新单上处理';
@@ -74,9 +79,12 @@ const DELEGATE_LOCK_TIP = '工单委派中，协办完成后可操作';
 const user = useUserStore();
 const escalateVerdict = computed(() => buildEscalateVerdict(props.detail, user.roleKey));
 // 升级投诉的可用性：整页锁死 / 委派中 / 阶层判定（一线在非投诉单上可升，见 815 §3.3）
-const escalateDisabled = computed(() => props.readonly || delegateLocked.value || !escalateVerdict.value.entryEnabled);
+const escalateDisabled = computed(
+  () => props.readonly || !!props.escalateGate?.forbidden || delegateLocked.value || !escalateVerdict.value.entryEnabled,
+);
 const escalateTip = computed(() => {
   if (props.readonly) return READONLY_TIP;
+  if (props.escalateGate?.forbidden) return props.escalateGate.tip;
   if (delegateLocked.value) return DELEGATE_LOCK_TIP;
   return escalateVerdict.value.entryTip;
 });

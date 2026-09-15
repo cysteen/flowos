@@ -12,6 +12,7 @@
 import { isDirectClosure } from '@/views/tickets/types/ticket';
 import type { ClosureMode, TicketType } from '@/views/tickets/types/ticket';
 import type { OpActionType } from './opActions';
+import type { FlashView } from './flashGate';
 import { useUserStore } from '@/stores/user';
 
 export interface ActionDef {
@@ -65,9 +66,29 @@ export const FLASH_ACTION_KEYS: readonly OpActionType[] = [
   '下送', '挂起', '转售后', '调剂', '委派', '关闭工单', '强结', '撤回', '风险报备',
 ];
 
-/** 该动作在该工单类型上是否在类型集内：刷机单走单列的 FLASH_ACTION_KEYS，其余四类走各动作的 types */
-function actionTypeAllowed(a: ActionDef, ticketType: string): boolean {
-  if (ticketType === '刷机') return FLASH_ACTION_KEYS.includes(a.key);
+/**
+ * **刷机单「角色视角 × 按钮」**（930 教育刷机单 PRD §5.5 表一，M4b）：在类型集之上再按视角收一道。
+ * 视角由「角色 × 本单处理人 / 池」判出（`flashGate.ts` 的 `resolveFlashView`），不是只看角色——
+ * 同一个一线坐席，本人名下的单是一线视角、他人名下的单是只读查看。
+ *
+ * - 一线视角：下送、撤回（「重新推送」「升级二线」两枚不是本表动作，由底栏按视角直接渲染，D2 / M34）；
+ * - 二线视角：刷机单类型集全部；
+ * - 客诉专员：只出风险那一枚（评估形态）；
+ * - 可领取 / 只读查看：一枚办理动作都不出（M71 / X26）。
+ */
+const FLASH_VIEW_ACTION_KEYS: Record<FlashView, readonly OpActionType[]> = {
+  l1: ['下送', '撤回'],
+  l2: FLASH_ACTION_KEYS,
+  other: ['风险报备'],
+  claim: [],
+  readonly: [],
+};
+
+/** 该动作在该工单类型上是否在类型集内：刷机单走单列的 FLASH_ACTION_KEYS（再过视角），其余四类走各动作的 types */
+function actionTypeAllowed(a: ActionDef, ticketType: string, flashView?: FlashView): boolean {
+  if (ticketType === '刷机') {
+    return FLASH_ACTION_KEYS.includes(a.key) && (!flashView || FLASH_VIEW_ACTION_KEYS[flashView].includes(a.key));
+  }
   return a.types.includes(ticketType as TicketType);
 }
 
@@ -218,6 +239,11 @@ export interface ActionCtx {
    * 角色只能从当前登录态取。留成入参是为了让判据可被单独喂值，不必先切登录。
    */
   roleKey?: string;
+  /**
+   * 刷机单的视角（角色 × 本单处理人 / 池，见 `flashGate.ts`）。只对刷机单生效；
+   * 四类老工单不传、不读，底栏取值与改前一致。
+   */
+  flashView?: FlashView;
 }
 
 /**
@@ -239,7 +265,7 @@ export function availableActions(ctx: ActionCtx): ActionDef[] {
     .filter((a): a is ActionDef => !!a)
     .filter(
       (a) =>
-        actionTypeAllowed(a, ctx.ticketType)
+        actionTypeAllowed(a, ctx.ticketType, ctx.flashView)
         // 风险那一枚的类型集随形态现算（协同形态只给投诉），刷机单上同样要过形态的类型集
         && (a.key !== '风险报备' || a.types.includes(ctx.ticketType as TicketType))
         && !(direct && DIRECT_CLOSURE_BLOCKED.includes(a.key)),

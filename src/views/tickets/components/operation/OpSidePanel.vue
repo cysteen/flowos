@@ -9,7 +9,15 @@ import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import { computed } from 'vue';
 import { useUserStore } from '@/stores/user';
 
-defineProps<{ detail: TicketDetailMeta; ticketId?: string }>();
+const props = defineProps<{
+  detail: TicketDetailMeta;
+  ticketId?: string;
+  /**
+   * 联络动作的类型维覆盖（930 教育刷机单 D2 / PRD §5.5）：刷机单上一线坐席是本单处理人时放出、
+   * 只读查看时收起。不传（四类老工单）按角色判，取值与改前一致。
+   */
+  contactActions?: 'show' | 'hide';
+}>();
 const user = useUserStore();
 
 const emit = defineEmits<{
@@ -23,7 +31,10 @@ const emit = defineEmits<{
  * 判据是**当前角色**——此前读工单的 frontlineDemo 字段，
  * 带该标记的单对所有角色都藏掉了联络动作。
  */
-const showContactActions = computed(() => !user.role.frontline);
+// 用取值而非布尔：布尔 prop 缺省会被 Vue 转成 false，老工单就吃不到按角色的原判据
+const showContactActions = computed(() =>
+  props.contactActions ? props.contactActions === 'show' : !user.role.frontline,
+);
 </script>
 
 <template>

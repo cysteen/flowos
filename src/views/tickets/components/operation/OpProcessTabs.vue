@@ -72,6 +72,12 @@ const props = defineProps<{
   leadNoEditable?: boolean;
   /** 底栏「风险报备」形态按钮出不出，透传给「风险报备」Tab（空态指引随它） */
   riskReportEntryVisible?: boolean;
+  /**
+   * 逐 Tab 写权的**工单维覆盖**（930 教育刷机单 D2 / PRD §5.5）：刷机单上一线坐席是本单处理人时
+   * 「工单处理」可写；只读查看 / 待领取时各写 Tab 只读。给了键的 Tab 以它为准，没给的仍按 tabWritableFor；
+   * 四类老工单不传，取值与改前一致。整区 readonly 仍是更强的约束。
+   */
+  tabWritableOverride?: Partial<Record<ProcessTabKey, boolean>>;
 }>();
 
 const emit = defineEmits<{
@@ -124,7 +130,8 @@ const drivingComplaintPlatform = computed(() => {
  * 让它们的点击处理函数硬拦一道（不止是视觉隐藏）。
  */
 const activeTabReadonly = computed(
-  () => !!props.readonly || !tabWritableFor(activeTab.value, user.roleKey),
+  () => !!props.readonly
+    || !(props.tabWritableOverride?.[activeTab.value] ?? tabWritableFor(activeTab.value, user.roleKey)),
 );
 
 /** 工单类型变化后，若当前 Tab 已被该类型隐藏，回退到「工单处理」。 */
