@@ -198,13 +198,15 @@ export interface ProcessFormDraft {
   leadNo: string;
   /** 结案后备注（四类型通用）。仅终态展示与编辑，随「保存」提交 */
   closingNote: string;
+  /** 结案后备注附件（文件名）；提交后同步进「附件历史」 */
+  closingNoteAttachments: string[];
   /** 结案后备注最近一次提交人 / 时间（YYYY-MM-DD HH:mm） */
   closingNoteUpdatedBy?: string;
   closingNoteUpdatedAt?: string;
 }
 
 /** 终态下处理表单仍可编辑的字段 */
-export const POST_CLOSE_EDITABLE_FIELDS = ['leadNo', 'closingNote'] as const;
+export const POST_CLOSE_EDITABLE_FIELDS = ['leadNo', 'closingNote', 'closingNoteAttachments'] as const;
 
 /** 处理表单可折叠区块 key（含各工单类型专属区） */
 export type SectionKey =

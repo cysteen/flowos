@@ -1050,6 +1050,7 @@ function snapshotProcess(): Record<string, string> {
   const snap: Record<string, string> = {};
   for (const { key } of PROCESS_FIELDS) snap[key] = String(f[key] ?? '').trim();
   snap.__att = String([...(f.processResultAttachments ?? []), ...(f.problemCauseAttachments ?? [])].length);
+  snap.__cnAtt = JSON.stringify(f.closingNoteAttachments ?? []);
   return snap;
 }
 
@@ -1099,6 +1100,40 @@ function recordAgentRiskLevelChange() {
   });
 }
 
+/** 结案后备注附件相对基线的增删（按文件名比对） */
+function closingNoteAttachmentDiff(): { added: string[]; removed: string[] } {
+  const before: string[] = JSON.parse(processBaseline.__cnAtt ?? '[]');
+  const now = form.value.closingNoteAttachments ?? [];
+  return {
+    added: now.filter((n) => !before.includes(n)),
+    removed: before.filter((n) => !now.includes(n)),
+  };
+}
+
+/** 结案后备注附件的文件大小（字节），选文件时记下，同步「附件历史」时取用 */
+const closingNoteFileSizes = new Map<string, number>();
+function onClosingNoteFilesAdded(files: { name: string; size: number }[]) {
+  files.forEach((f) => closingNoteFileSizes.set(f.name, f.size));
+}
+function formatFileSize(bytes?: number): string {
+  if (bytes == null) return '—';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+/** 结案后备注新增的附件同步进「附件历史」（只追加；移除附件不删历史记录） */
+function syncClosingNoteAttachmentsToHistory(names: string[]) {
+  if (!names.length) return;
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const at = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  const by = `${user.name || '当前坐席'}(${mapUserRole(user.roleKey)})`;
+  tabData.value.attachmentHistory.push(
+    ...names.map((name, i) => ({ id: `cn-att-${now.getTime()}-${i}`, name, uploadedAt: at, uploadedBy: by, size: formatFileSize(closingNoteFileSizes.get(name)) })),
+  );
+}
+
 /** 保存并登记：对处理字段做前后 diff，产出「补充/修改」变更（无变更则不登记） */
 function buildProcessLog() {
   const f = form.value;
@@ -1119,6 +1154,9 @@ function buildProcessLog() {
   const attArr = [...(f.processResultAttachments ?? []), ...(f.problemCauseAttachments ?? [])];
   const attAdded = attArr.length - Number(processBaseline.__att ?? '0');
   if (attAdded > 0) changes.push({ field: '附件', kind: '补充', to: `新增 ${attAdded} 个（${attArr[attArr.length - 1]}）` });
+  const cn = closingNoteAttachmentDiff();
+  if (cn.added.length) changes.push({ field: '结案后备注附件', kind: '补充', to: `新增 ${cn.added.length} 个（${cn.added.join('、')}）` });
+  if (cn.removed.length) changes.push({ field: '结案后备注附件', kind: '修改', from: cn.removed.join('、'), to: '（已移除）' });
   if (!changes.length) return undefined;
   const add = changes.filter((c) => c.kind === '补充').length;
   const mod = changes.filter((c) => c.kind === '修改').length;
@@ -1135,7 +1173,7 @@ function buildProcessLog() {
 function onAction(payload: Record<string, unknown>) {
   if (payload.type === '保存草稿') {
     const log = buildProcessLog();
-    if (log?.changes?.some((c) => c.field === '结案后备注')) {
+    if (log?.changes?.some((c) => c.field.startsWith('结案后备注'))) {
       form.value = {
         ...form.value,
         closingNoteUpdatedBy: user.name || '当前坐席',
@@ -1155,6 +1193,7 @@ function onAction(payload: Record<string, unknown>) {
         what: `更新${[...new Set(log.changes.map((c) => c.field))].join('、')}`,
         changes: log.changes,
       });
+      syncClosingNoteAttachmentsToHistory(closingNoteAttachmentDiff().added);
       processBaseline = snapshotProcess();
       message.success('已保存，变更已记入处理履历');
       return;
@@ -1797,6 +1836,7 @@ watch(
           :tab-dots="processTabDots"
           :readonly="tabsReadonly"
           :post-close="postClose"
+          @closing-note-files-added="onClosingNoteFilesAdded"
           :post-close-editable="postCloseEditable"          @toggle-section="toggleSection"
           @select-chip="selectChip"
           @update:form="updateForm"

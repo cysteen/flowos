@@ -18,6 +18,8 @@ const props = withDefaults(defineProps<{
    * 故必须显式接一个 readonly 下来。
    */
   readonly?: boolean;
+  /** 正文长度上限；不传不限 */
+  maxlength?: number;
 }>(), {
   minInputHeight: 52,
   shellBackground: '#fff',
@@ -27,6 +29,8 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   'update:modelValue': [value: string];
   'update:attachments': [files: string[]];
+  /** 本次选中的文件（名称 + 字节数），供调用方记录文件大小 */
+  filesAdded: [files: { name: string; size: number }[]];
 }>();
 
 const fileInput = ref<HTMLInputElement | null>(null);
@@ -46,8 +50,10 @@ function openFilePicker() {
 function onFilesSelected(e: Event) {
   if (props.readonly) return;
   const input = e.target as HTMLInputElement;
-  const names = Array.from(input.files ?? []).map((f) => f.name);
+  const picked = Array.from(input.files ?? []);
+  const names = picked.map((f) => f.name);
   if (!names.length) return;
+  emit('filesAdded', picked.map((f) => ({ name: f.name, size: f.size })));
   emit('update:attachments', [...props.attachments, ...names]);
   message.success(`已添加 ${names.length} 个附件`);
   input.value = '';
@@ -79,6 +85,7 @@ function removeFile(name: string) {
         :value="modelValue"
         :placeholder="placeholder"
         :readonly="readonly"
+        :maxlength="maxlength"
         @input="emit('update:modelValue', ($event.target as HTMLTextAreaElement).value)"
       />
       <div v-if="attachments.length" class="attach-chips">

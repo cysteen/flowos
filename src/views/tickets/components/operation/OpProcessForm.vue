@@ -7,6 +7,7 @@ import {
 import OpCollapsibleSection from './OpCollapsibleSection.vue';
 import OpRecordFields from './OpRecordFields.vue';
 import OpSupplementChipPanels from './OpSupplementChipPanels.vue';
+import OpTextareaAttach from './shared/OpTextareaAttach.vue';
 import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue';
 import type {
   ProcessFormDraft, SupplementChip, SectionKey,
@@ -65,6 +66,7 @@ const emit = defineEmits<{
   toggleSection: [key: SectionKey];
   selectChip: [chip: SupplementChip];
   'update:form': [form: ProcessFormDraft];
+  closingNoteFilesAdded: [files: { name: string; size: number }[]];
 }>();
 
 /** 处理内容是否锁定（角色只读 或 终态） */
@@ -418,13 +420,16 @@ function chipActiveClass(key: SupplementChip): string {
       :expanded="expandedSections.closingNote"
       @toggle="emit('toggleSection', 'closingNote')"
     >
-      <a-textarea
-        :value="form.closingNote"
-        :disabled="postCloseFieldDisabled"
-        :rows="3"
+      <!-- 与「处理记录」同一个带附件文本框；附件随「保存」提交并同步进「附件历史」 -->
+      <OpTextareaAttach
+        :model-value="form.closingNote"
+        :attachments="form.closingNoteAttachments ?? []"
+        :readonly="postCloseFieldDisabled"
         :maxlength="500"
         placeholder="补充结案后的跟进情况、客户反馈等"
-        @update:value="(v: string) => patch({ closingNote: v })"
+        @update:model-value="(v: string) => patch({ closingNote: v })"
+        @update:attachments="(v: string[]) => patch({ closingNoteAttachments: v })"
+        @files-added="emit('closingNoteFilesAdded', $event)"
       />
       <div class="cn-foot">
         <span>{{ form.closingNoteUpdatedAt ? `最近提交：${form.closingNoteUpdatedBy} ${form.closingNoteUpdatedAt}` : '' }}</span>

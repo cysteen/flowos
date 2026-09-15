@@ -624,4 +624,5 @@ export const DEFAULT_PROCESS_DRAFT = {
   leadStage: 'invalid' as const,
   leadNo: '',
   closingNote: '',
+  closingNoteAttachments: [],
 };

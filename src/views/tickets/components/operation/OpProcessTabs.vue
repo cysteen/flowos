@@ -81,6 +81,7 @@ const emit = defineEmits<{
   'feishu-activate': [reason: string];
   'feishu-retry': [];
   dunning: [];
+  closingNoteFilesAdded: [files: { name: string; size: number }[]];
 }>();
 
 const user = useUserStore();
@@ -190,6 +191,7 @@ defineExpose({ switchTab });
         :readonly="activeTabReadonly"
         :post-close="postClose"
         :post-close-editable="postCloseEditable"
+        @closing-note-files-added="emit('closingNoteFilesAdded', $event)"
         @toggle-section="emit('toggleSection', $event)"
         @select-chip="emit('selectChip', $event)"
         @update:form="emit('update:form', $event)"
