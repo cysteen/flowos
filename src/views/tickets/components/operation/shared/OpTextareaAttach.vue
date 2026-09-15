@@ -20,6 +20,10 @@ const props = withDefaults(defineProps<{
   readonly?: boolean;
   /** 正文长度上限；不传不限 */
   maxlength?: number;
+  /** 允许的附件扩展名（小写、不带点）；不传不限 */
+  acceptExts?: readonly string[];
+  /** 单个附件大小上限（MB）；不传不限 */
+  maxFileSizeMb?: number;
 }>(), {
   minInputHeight: 52,
   shellBackground: '#fff',
@@ -52,12 +56,20 @@ function onFilesSelected(e: Event) {
   const input = e.target as HTMLInputElement;
   // 按文件名去重：已在列表里的、同一次多选里重复的同名文件都不再新增标签
   const seen = new Set(props.attachments);
+  let rejected = 0;
   const picked = Array.from(input.files ?? []).filter((f) => {
     if (seen.has(f.name)) return false;
+    const ext = f.name.includes('.') ? f.name.split('.').pop()!.toLowerCase() : '';
+    if ((props.acceptExts && !props.acceptExts.includes(ext))
+      || (props.maxFileSizeMb && f.size > props.maxFileSizeMb * 1024 * 1024)) {
+      rejected += 1;
+      return false;
+    }
     seen.add(f.name);
     return true;
   });
   input.value = '';
+  if (rejected) message.warning(`${rejected} 个文件格式不支持或超过 ${props.maxFileSizeMb}MB，未添加`);
   if (!picked.length) return;
   const names = picked.map((f) => f.name);
   emit('filesAdded', picked.map((f) => ({ name: f.name, size: f.size })));
@@ -134,6 +146,7 @@ function removeFile(name: string) {
           ref="fileInput"
           type="file"
           class="file-input"
+          :accept="acceptExts?.map((x) => `.${x}`).join(',')"
           multiple
           @change="onFilesSelected"
         />
