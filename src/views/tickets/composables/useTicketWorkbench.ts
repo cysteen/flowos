@@ -4,6 +4,7 @@ import { TICKETS } from '@/mock/tickets';
 import { useUserStore } from '@/stores/user';
 import { useFlashStore } from '@/stores/flash';
 import type { FlashActor } from '@/views/tickets/types/flash';
+import { mapUserRole } from '@/views/tickets/composables/opActions';
 import { useTicketDraftStore } from '@/stores/ticketDrafts';
 import { useSavedFilters } from '@/views/tickets/composables/useSavedFilters';
 import type { AiSuggestionSummary } from '@/views/tickets/types/aiSuggestion';
@@ -89,6 +90,8 @@ export function useTicketWorkbench() {
     if (t.type === '刷机' && (user.roleKey === 'agent-l1' || user.roleKey === 'agent-l2')) {
       return inFlashMineScope(t, user.roleKey, flashHandler.value, flash.creatorNameOf(t.no));
     }
+    // 其余角色的刷机单只按「处理人为本人」取，不沿用老四类的演示处理人（技术支持不涉及刷机单，§9.4 / R113）
+    if (t.type === '刷机') return inFlashMineScope(t, user.roleKey, flashHandler.value);
     return inMineTaskScope(t, WORKBENCH_HANDLER);
   }
 
@@ -393,10 +396,9 @@ export function useTicketWorkbench() {
   function addTicket(t: Ticket) {
     all.value = [t, ...all.value];
   }
-  /** 领取人（刷机服务写履历用）：一线坐席为一线，其余按二线专员记 */
+  /** 领取人（刷机服务写履历用）：处理人名 + 本角色的履历角色名 */
   function flashActor(): FlashActor {
-    const role = user.roleKey === 'agent-l1' ? '一线坐席' : user.roleKey === 'team-leader' ? '二线班组长' : '二线专员';
-    return { name: flashHandler.value, role };
+    return { name: flashHandler.value, role: mapUserRole(user.roleKey) };
   }
   /**
    * 领取刷机单（刷机池 / 工单池里的教育刷机处理组池）：走刷机服务 `claimFromPool`，

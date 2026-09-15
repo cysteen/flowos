@@ -22,6 +22,7 @@ import {
   type CreateTicketFlashField,
 } from '@/views/tickets/types/createTicket';
 import type { Channel } from '@/views/tickets/types/ticket';
+import { currentHandlerName } from '@/views/tickets/types/ticket';
 import {
   useFlashStore,
   type FlashCreateEvaluation,
@@ -178,9 +179,10 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     return useUserStore().roleKey === 'agent-l1' ? '一线代建' : '二线代建';
   }
 
+  /** 建单人：取当前登录人在工单数据源里的处理人名，与「本人建的单」判定同一把（`currentHandlerName`） */
   function flashActor(): FlashActor {
     const user = useUserStore();
-    return { name: user.name, role: mapUserRole(user.roleKey) };
+    return { name: currentHandlerName(user.roleKey, user.name), role: mapUserRole(user.roleKey) };
   }
 
   function flashInput(): FlashCreateInput {
@@ -274,6 +276,13 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   watch(
     () => form.ticketType,
     (t) => { if (t !== FLASH_TICKET_TYPE) clearFlashErrors(); },
+  );
+
+  // 刷机单业务分类固定「教育」（PRD §2.4），控件锁定，与落库一致（预填 / 草稿恢复同样收口）
+  watch(
+    () => [form.ticketType, form.businessType] as const,
+    ([t, b]) => { if (t === FLASH_TICKET_TYPE && b !== '教育') form.businessType = '教育'; },
+    { immediate: true },
   );
 
   function syncTitle() {

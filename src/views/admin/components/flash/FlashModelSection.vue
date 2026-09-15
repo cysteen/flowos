@@ -198,7 +198,7 @@ defineExpose({ openCreate });
           <span v-if="errors.model" class="fc-err">{{ errors.model }}</span>
         </div>
         <div class="fc-switch-row">
-          <span class="op-label">自研 · 支持线上自助推送</span>
+          <span class="op-label">自研·支持线上自助推送</span>
           <a-switch v-model:checked="form.selfDeveloped" size="small" />
         </div>
       </div>

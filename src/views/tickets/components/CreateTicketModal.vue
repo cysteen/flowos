@@ -175,8 +175,9 @@ function onCreateFlash(processAfter: boolean) {
   }
   const { ticket, evaluation } = result;
   emit('created', ticket, processAfter);
+  // 按建单后的实际去向出 Toast：首推接口同步报错已转人工的，同样是「已转人工处理」（M87）
   message.success(
-    evaluation.route === 'auto'
+    evaluation.route === 'auto' && ticket.nodeStatus === '自动刷机中'
       ? `已创建刷机单 ${ticket.no}，正在自动刷机`
       : `已创建刷机单 ${ticket.no}，已转人工处理`,
   );
@@ -314,6 +315,7 @@ watch(
               v-model:value="form.businessType"
               class="inline-control field-control"
               size="middle"
+              :disabled="isFlashType"
               :status="errors.businessType ? 'error' : ''"
               :options="BUSINESS_TYPES.map((v) => ({ value: v, label: v }))"
             />

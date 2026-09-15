@@ -361,6 +361,11 @@ export interface FlashState {
   surveySentAt?: string;
   /** 用户回访评价（M86）：提交即记为已产生回访结论，一张单只评价一次 */
   survey?: FlashSurveyFeedback;
+  /**
+   * SLA 起算时间（YYYY-MM-DD HH:mm，PRD §4.3 / M88）：本单首次进入人工池的时刻，以最早一次为准，
+   * 此后再次进池、升级二线不改写；首推「自动刷机中」、自动刷机成功直进回访的单为空。
+   */
+  slaStartedAt?: string;
 }
 
 /** 用户回访评价（用户侧 H5「服务评价」提交，M86） */
@@ -614,9 +619,9 @@ export function snTail(sn: string): string {
 export function flashSmsSuccess(no: string, sn: string): string {
   return `【讯飞客服】您的设备（SN尾号${snTail(sn)}）刷机包已推送成功，请保持设备开机并连接网络完成刷机。如有疑问请致电400热线，工单号：${no}。`;
 }
-/** 转人工短信（M14 / M37，暂行文案） */
-export function flashSmsHandoff(no: string): string {
-  return `【讯飞客服】您的刷机申请需人工核实，客服将尽快与您联系，请保持电话畅通。工单号：${no}。`;
+/** 转人工短信（PRD §3.4 / §11.1，逐字） */
+export function flashSmsHandoff(_no: string): string {
+  return '刷机申请需人工核实，客服将尽快联系';
 }
 
 /** 用户侧回访评价页路径（M86） */
@@ -646,6 +651,8 @@ export const FLASH_NOTIFY_EVENTS = {
   escalateL2: 'ticket.flash.escalated',
   lateSuccess: 'ticket.flash.late.succeeded',
   survey: 'ticket.survey.sent',
+  /** 受理短信：沿用建单受理通知事件与模板（PRD §2.5 / §11.1） */
+  accepted: 'ticket.dispatched',
   urge: 'ticket.dunning.received',
   supplement: 'ticket.supplement.received',
 } as const;

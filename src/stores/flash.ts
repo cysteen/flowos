@@ -23,6 +23,7 @@ import {
   type FlashInfo, type FlashPoolKey, type FlashProgressStage, type FlashPushTrigger, type FlashReasonName,
   type FlashResult, type FlashRun, type FlashState, type FlashVerifyResult, type TicketFlash,
 } from '@/views/tickets/types/flash';
+import { templateOf } from '@/mock/notifyRules';
 import { useNotifyLogStore } from './notifyLog';
 import { useFlashConfigStore } from './flashConfig';
 import { FLASH_LS_KEYS, readFlashCache, writeFlashCache } from './flashCache';
@@ -244,6 +245,30 @@ export const useFlashStore = defineStore('flash', () => {
   }
 
   /**
+   * 受理短信（PRD §2.5 / §11.1）：坐席代建建单成功后发至联系手机号，文案沿用 400 渠道现行「建单受理通知」短信模板；
+   * 用户提报不发。与转人工短信、成功短信各自独立发送。
+   */
+  function acceptedSms(r: Ticket, at: number) {
+    const body = templateOf('短信', 'SMS_WO_ACCEPTED')?.body ?? '';
+    const content = body.replace('${productName}', r.flash!.info.productModel).replace('${ticketNo}', r.no);
+    const rec = useNotifyLogStore().emit({
+      ticketNo: r.no,
+      event: FLASH_NOTIFY_EVENTS.accepted,
+      kind: 'accepted',
+      title: '受理短信',
+      receivers: [`${r.customer}(客户)`],
+      content,
+      channel: '短信',
+      status: '已发送',
+    });
+    if (rec) rec.when = flashStamp(at);
+    log(r.no, at, {
+      category: 'comm', action: 'sms', who: '系统', role: '系统', how: '短信通知',
+      what: `发送至 ${r.customerPhone ?? r.customer}：${content}`,
+    });
+  }
+
+  /**
    * M61 / M67：重推结果站内通知**始终**发发起人（成功、失败都发）；`banner` 为 true 时
    * 同时投递页面内通知条（回传到达时发起人正停留在本单处理页才会出现，见处理页）。
    */
@@ -357,6 +382,8 @@ export const useFlashStore = defineStore('flash', () => {
     st.pool = pool;
     st.handoffReason = reason;
     st.slaPausedUntil = undefined;
+    // PRD §4.3 / M88：首次进入人工池写入「SLA 起算时间」，此后再次进池不改写
+    if (!st.slaStartedAt) st.slaStartedAt = flashMinuteStamp(at);
     log(r.no, at, {
       category: 'node', action: 'flashHandoff', who: '系统', role: '系统', how: '转人工',
       what: FLASH_TL.handoff(reason, meta.label),
@@ -685,6 +712,8 @@ export const useFlashStore = defineStore('flash', () => {
         evaluation.route === 'pool' ? { handoff: evaluation.handoffReason! } : { auto: true },
       ),
     });
+    // PRD §2.5 / §11.1：坐席代建建单成功发受理短信，用户提报不发
+    if (!byUser) acceptedSms(r, now + 200);
     if (evaluation.route === 'pool') {
       r.flash!.state.failL1 = evaluation.failL1;
       r.flash!.state.failL2 = evaluation.failL2;
@@ -698,6 +727,11 @@ export const useFlashStore = defineStore('flash', () => {
       handoff(r, evaluation.pool!, evaluation.handoffReason!, now + 1000, { sms: true });
     } else {
       pushInternal(r, SYSTEM, '建单首推', now + 1000);
+      // M87 / PRD §3.3：推送接口同步报错、自动重试 1 次仍失败 → 建单时即判定转人工（推送异常 · 接口异常）
+      if (findMdmDevice(info.sn)?.pushApi === '持续报错') {
+        const run = r.flash!.runs[r.flash!.runs.length - 1];
+        fail(r, run, '推送异常', '接口异常', now + 1500);
+      }
     }
     bump(no);
     persist();
@@ -809,10 +843,11 @@ export const useFlashStore = defineStore('flash', () => {
       next.mdmVersion = prev.mdmVersion;
       next.versionBackfilled = true;
     }
-    // M70：保存时检查必填（联系手机号不在刷机信息内，不在此判）
+    // M70：保存时检查必填（联系手机号不在刷机信息内，不在此判）；PRD §5.6 / §5.8 设备SN照片在弹窗内非必填，
+    // 不论建单入口一律按坐席代建口径判
     const missing = missingRequired(
       { ...next, contactPhone: r.customerPhone ?? '-' },
-      r.flash.state.creator,
+      '一线代建',
     );
     if (missing.length) return { ok: false, message: flashTipRequired(missing) };
     // M78 / M84：设备SN有改动时查同 SN 在途（查询不可用 → 系统繁忙）
@@ -1046,11 +1081,16 @@ export const useFlashStore = defineStore('flash', () => {
         });
         const resume = offlineBatchResumeAt(at, now);
         if (resume) {
-          st.slaPausedUntil = flashMinuteStamp(resume);
-          log(ticketNo, now + 1, {
-            category: 'sla', action: 'hold', who: '系统', role: '系统', how: 'SLA 暂停',
-            what: FLASH_TL.slaPause(st.slaPausedUntil),
-          });
+          const until = flashMinuteStamp(resume);
+          // M89：同一轮登记改了时间、但重算的恢复时刻未变且暂停仍在生效 → 不另记「SLA 暂停」
+          const sameRound = st.result === FLASH_RESULT_OFFLINE && st.slaPausedUntil === until && pausedAt(st, now);
+          st.slaPausedUntil = until;
+          if (!sameRound) {
+            log(ticketNo, now + 1, {
+              category: 'sla', action: 'hold', who: '系统', role: '系统', how: 'SLA 暂停',
+              what: FLASH_TL.slaPause(until),
+            });
+          }
         } else {
           resumePause(r, '线下登记时间变更', now + 1);
         }
@@ -1067,6 +1107,18 @@ export const useFlashStore = defineStore('flash', () => {
     bump(ticketNo);
     persist();
     return { ok: true, message: '', appendRecord };
+  }
+
+  /**
+   * 处理人在「待响应」外呼、发短信或发邮件（PRD §6 / §7.1 / M102）：转「处理中」，处理人不变。其余子状态不动。
+   */
+  function markRespondedByContact(ticketNo: string): boolean {
+    const r = rowOf(ticketNo);
+    if (!r?.flash || r.nodeStatus !== '待响应') return false;
+    Object.assign(r, { nodeStatus: '处理中', responded: true, updatedAt: flashMinuteStamp(Date.now()) });
+    bump(ticketNo);
+    persist();
+    return true;
   }
 
   /**
@@ -1392,6 +1444,19 @@ export const useFlashStore = defineStore('flash', () => {
       timelines.value = JSON.parse(JSON.stringify(FLASH_SEEDS.timelines)) as Record<string, TimelineEntry[]>;
       tlSeq = 0;
     }
+    backfillSlaStartedAt();
+  }
+
+  /**
+   * 「SLA 起算时间」补齐（PRD §4.3 / M88）：种子单进池发生在页面打开之前，按履历里最早一条「转人工」事件的时刻写入；
+   * 从未进过人工池的单保持为空。
+   */
+  function backfillSlaStartedAt() {
+    for (const t of TICKETS) {
+      if (t.type !== '刷机' || !t.flash || t.flash.state.slaStartedAt) continue;
+      const first = timelineOf(t.no).find((e) => e.action === 'flashHandoff');
+      if (first) t.flash.state.slaStartedAt = first.when.slice(0, 16);
+    }
   }
 
   /**
@@ -1478,6 +1543,7 @@ export const useFlashStore = defineStore('flash', () => {
     escalateToL2,
     saveProcess,
     resumeSlaPause,
+    markRespondedByContact,
     forward,
     withdrawForward,
     transferAftersale,
