@@ -2546,25 +2546,20 @@ function untaggedSliceRows(slice: UntaggedSlice): QueueRow[] {
 // 等于把"规则准不准"塞给一个正在判"这张单有没有风险"的人 —— 两个问题、两个分母。
 // 这一段要的只是**在当前这一路里把范围收窄**，故只补一条筛选条。
 //
-// 🔴 **字段随当前这一路而变**：只有「实时监控」那一路带命中证据（原话、风险词），
-// 另两路的行就是工单，没有原话也没有词可筛。
-// 🔴 「实时监控」那一路的条件**作用在命中上**（行 ＝ 一条召回），一组里命中全被筛掉的工单整组不出现。
+// 🔴 **字段随当前这一路而变**：关键词三路共用；风险词只有「实时监控」那一路有，
+// 另两路的行就是工单，没有词可筛。
+// 🔴 「实时监控」那一路的风险词**作用在命中上**（行 ＝ 一条召回），一组里命中全被筛掉的工单整组不出现。
 //
 // 🔴 **不重复左栏与工作组 chip 已经承担的收窄**（加进去就是同一件事两个入口）：
 //   · 等级 / 优先级 —— 左栏子档已经在做；
 //   · 班组 —— 清单上方那行「工作组」chip 已经在做；
 //   · 打标人 —— 这一段按定义全是没打过标的单，恒空。
-//   · 核实结果**保留**（只在「实时监控」那一路）：它是**命中**的核实结论，不是工单的打标结论 ——
-//     一张未打标的单上，个别命中可能已在命中台账里被判过成立 / 误报。
+//   · 命中时间 / 核实结果 —— 不在这一段筛，查命中历史走命中台账那条查询条。
 interface UntaggedFilter {
+  /** 三路共用：只比对 工单号 与 联系方式（工单 `customerPhone`），部分匹配 */
   keyword: string;
   /** 只有「实时监控」这一路用得到：命中的规则主词（与命中台账同一口径，取 `RiskHit.word`） */
   words: string[];
-  /** 只有「实时监控」这一路用得到：命中时间区间 */
-  from: string;
-  to: string;
-  /** 只有「实时监控」这一路用得到：命中的核实结果，取值与命中台账那一格一致 */
-  verdict: 'all' | 'open' | HitVerdict;
   /* ---- 以下三维只有「投诉单」「重要紧急」两路用得到：那两路的行就是工单 ---- */
   /** 产品（多选，从这一路真出现过的产品派生） */
   products: string[];
@@ -2579,27 +2574,9 @@ interface UntaggedFilter {
  * 给一个默认窗口反而会让左栏角标与表行数在人什么都没筛的时候就对不上。
  */
 function defaultUntaggedFilter(): UntaggedFilter {
-  return { keyword: '', words: [], from: '', to: '', verdict: 'all', products: [], statuses: [], sla: 'all' };
+  return { keyword: '', words: [], products: [], statuses: [], sla: 'all' };
 }
 const untaggedFilter = ref<UntaggedFilter>(defaultUntaggedFilter());
-
-const untaggedDateRange = computed((): [Dayjs, Dayjs] | undefined => {
-  const { from, to } = untaggedFilter.value;
-  if (!from || !to) return undefined;
-  return [dayjs(from), dayjs(to)];
-});
-function onUntaggedRangeChange(
-  dates: [Dayjs, Dayjs] | [string, string] | null,
-  dateStrings: [string, string],
-) {
-  if (!dates?.[0] || !dates?.[1]) {
-    untaggedFilter.value.from = '';
-    untaggedFilter.value.to = '';
-    return;
-  }
-  untaggedFilter.value.from = dateStrings[0] || dayjs(dates[0]).format('YYYY-MM-DD');
-  untaggedFilter.value.to = dateStrings[1] || dayjs(dates[1]).format('YYYY-MM-DD');
-}
 
 /**
  * 「风险词」下拉的取值：**从这一路真出现过的词派生**，与台账那几个下拉同一条规矩
@@ -2646,47 +2623,46 @@ function ticketOfRow(r: QueueRow): Ticket | null {
 }
 
 /**
- * 把筛选条件套到某一路的行上。**字段按路分两套**，因为两路的行根本不是一种东西：
- *   · 实时监控 —— 行是**命中**（一条召回一行），故筛 关键词 / 风险词 / 命中时间 / 核实结果，见 `kwHitsOf`；
+ * 把筛选条件套到某一路的行上。关键词三路同一条判法（`rowMatchesKeyword`），其余字段按路分两套：
+ *   · 实时监控 —— 行是**命中**（一条召回一行），故筛 风险词，见 `kwHitsOf`；
  *   · 投诉单 / 重要紧急 —— 行**就是工单**，故筛 产品 / 当前状态 / SLA 是否超时。
  *
  * 🔴 「进监控时间」这一维**已删**：实测「投诉单」11 条里只有 2 条有进监控时刻
  * （其余是「未纳入监控」、`at` 为 null），一设区间就只剩那 2 条 ——
  * 一个筛完必然只剩两条的字段，摆在那里只会让人以为筛坏了。
  */
-/** 「实时监控」那一路的筛选条件动过没有（四个字段全部作用在命中上） */
+/**
+ * 关键词只比对 **工单号** 与 **联系方式**（工单 `customerPhone`），均为部分匹配（输入手机号后四位即可）。
+ * 联系方式比对前去掉关键词里的空格与短横，号码常被人按 3-4-4 分段敲进来。
+ * 查不到工单的行只剩工单号可比。
+ */
+function rowMatchesKeyword(r: QueueRow, kw: string): boolean {
+  if (r.ticketNo.toLowerCase().includes(kw)) return true;
+  const digits = kw.replace(/[\s-]/g, '');
+  const phone = ticketOfRow(r)?.customerPhone ?? '';
+  return !!digits && !!phone && phone.includes(digits);
+}
+/** 「实时监控」那一路的筛选条件动过没有 */
 function kwHitFilterOn(): boolean {
   const f = untaggedFilter.value;
-  return !!f.keyword.trim() || !!f.words.length || !!f.from || !!f.to || f.verdict !== 'all';
+  return !!f.keyword.trim() || !!f.words.length;
 }
 /**
  * 这张单上**过了筛选的命中**，按命中时刻倒序 —— 召回清单里这一组的那几行。
- * 🔴 组数（角标 / 工作组 chip / 分页）与行数（「N 条命中」）都从它派生，不另筛一遍。
- * 关键词对工单级字段（单号 / 标题）命中时，本组全部命中都算匹配。
+ * 🔴 组数（角标 / 工作组 / 分页）与行数（「N 条命中」）都从它派生，不另筛一遍。
+ * 关键词是工单级的：本单对上了，本组全部命中都算匹配；对不上，整组没有命中。
  */
 function kwHitsOf(r: QueueRow): RiskHit[] {
   const hits = rowHits(r).slice().sort((a, b) => b.when.localeCompare(a.when));
   if (!kwHitFilterOn()) return hits;
   const f = untaggedFilter.value;
   const kw = f.keyword.trim().toLowerCase();
-  const ticketHit = !!kw && [r.ticketNo, rowTitleOf(r)].some((s) => s.toLowerCase().includes(kw));
-  return hits.filter((h) => {
-    if (kw && !ticketHit
-      && ![h.excerpt ?? '', h.customer ?? ''].some((s) => s.toLowerCase().includes(kw))) return false;
-    if (f.words.length && !f.words.includes(h.word)) return false;
-    // 时间锚在**命中时刻**：召回问的是"什么时候被发现"
-    const day = h.when.slice(0, 10);
-    if (f.from && day < f.from) return false;
-    if (f.to && day > f.to) return false;
-    // 'open' ＝ 还没人核实过的：`verdictOf` 此时是 undefined，与命中台账同一条判法
-    if (f.verdict === 'open' && verdictOf(h)) return false;
-    if (f.verdict !== 'all' && f.verdict !== 'open' && verdictOf(h) !== f.verdict) return false;
-    return true;
-  });
+  if (kw && !rowMatchesKeyword(r, kw)) return [];
+  return f.words.length ? hits.filter((h) => f.words.includes(h.word)) : hits;
 }
 
 function applyUntaggedFilter(list: QueueRow[], slice: UntaggedSlice): QueueRow[] {
-  // 「实时监控」：条件作用在命中上，**一组里命中全被筛掉的工单整组不出现**
+  // 「实时监控」：风险词作用在命中上，**一组里命中全被筛掉的工单整组不出现**
   if (slice === 'kw') {
     if (!kwHitFilterOn()) return list;
     return list.filter((r) => kwHitsOf(r).length > 0);
@@ -2696,7 +2672,7 @@ function applyUntaggedFilter(list: QueueRow[], slice: UntaggedSlice): QueueRow[]
   const { products, statuses, sla } = f;
   if (!kw && !products.length && !statuses.length && sla === 'all') return list;
   return list.filter((r) => {
-    if (kw && ![r.ticketNo, rowTitleOf(r)].some((s) => s.toLowerCase().includes(kw))) return false;
+    if (kw && !rowMatchesKeyword(r, kw)) return false;
     if (products.length || statuses.length || sla !== 'all') {
       const t = ticketOfRow(r);
       // 🔴 查不到工单的行，在这三维上**一律放行**而不是筛掉：它不是"不匹配"，
@@ -2713,7 +2689,7 @@ function applyUntaggedFilter(list: QueueRow[], slice: UntaggedSlice): QueueRow[]
 
 const untaggedFilterDirty = computed(() => {
   const f = untaggedFilter.value;
-  return !!f.keyword.trim() || !!f.words.length || !!f.from || !!f.to || f.verdict !== 'all'
+  return !!f.keyword.trim() || !!f.words.length
     || !!f.products.length || !!f.statuses.length || f.sla !== 'all';
 });
 
@@ -4766,13 +4742,13 @@ function toggleWordEnabled(w: RiskWord) {
                   v-model="untaggedFilter.keyword"
                   class="tb-search-input"
                   type="text"
-                  :placeholder="untaggedSlice === 'kw' ? '工单号 / 标题 / 客户 / 命中原话' : '工单号 / 标题'"
+                  placeholder="工单号 / 联系方式"
                 >
               </div>
             </div>
             <!--
-              风险词 / 命中时间 / 核实结果只有「实时监控」这一路有：另两路的行是工单，压根不产生命中。
-              控件与命中台账那条逐一同形（风险词取规则主词、核实结果四档同值）。
+              风险词只有「实时监控」这一路有：另两路的行是工单，压根不产生命中。
+              控件与命中台账那条同形（取规则主词）。
             -->
             <template v-if="untaggedSlice === 'kw'">
               <div class="fi">
@@ -4782,33 +4758,6 @@ function toggleWordEnabled(w: RiskWord) {
                   size="small" class="tb-ctl"
                   :dropdown-match-select-width="false" placeholder="不限" :max-tag-count="1"
                   :options="untaggedWordOptions"
-                />
-              </div>
-              <div class="fi">
-                <span class="fl">命中时间</span>
-                <RangePicker
-                  :value="untaggedDateRange"
-                  :presets="scanRangePresets"
-                  allow-clear
-                  size="small"
-                  format="YYYY-MM-DD"
-                  :placeholder="['开始日期', '结束日期']"
-                  class="tb-range"
-                  @change="onUntaggedRangeChange"
-                />
-              </div>
-              <div class="fi">
-                <span class="fl">核实结果</span>
-                <a-select
-                  v-model:value="untaggedFilter.verdict"
-                  size="small" class="tb-ctl"
-                  :dropdown-match-select-width="false"
-                  :options="[
-                    { value: 'all', label: '全部' },
-                    { value: 'open', label: '待核实' },
-                    { value: '成立', label: '确认是风险' },
-                    { value: '误报', label: '误报' },
-                  ]"
                 />
               </div>
             </template>
