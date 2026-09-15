@@ -2,8 +2,9 @@
 import { computed, ref, watchEffect } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { LeftOutlined, DownOutlined } from '@ant-design/icons-vue';
-import { adminGroupsFor, ADMIN_OVERVIEW, ADMIN_APPROVAL, PLATFORM_NAV, adminNavActiveKey, adminNavGroupKeyOf, adminSidebarKey } from '@/config/adminNav';
+import { adminGroupsFor, ADMIN_GROUPS, ADMIN_OVERVIEW, ADMIN_APPROVAL, PLATFORM_NAV, adminNavActiveKey, adminNavGroupKeyOf, adminSidebarKey } from '@/config/adminNav';
 import type { AdminNavGroup } from '@/config/adminNav';
+import { canAccessAdminItem } from '@/config/roles';
 import { APPROVALS } from '@/mock/approvalCenter';
 import { useUserStore } from '@/stores/user';
 
@@ -14,7 +15,18 @@ const router = useRouter();
 const user = useUserStore();
 // 平台超管(系统管理员)→「系统管理」精简导航；租户管理员/运营管理员→ 数据总览 + 各自 scope 分组
 const isPlatform = computed(() => user.role.adminScope === 'platform');
-const groups = computed(() => adminGroupsFor(user.role.adminScope));
+// 后台项白名单角色（如工单运营）：跨 scope 只取白名单内的项，不出数据总览 / 审批中心
+const isScoped = computed(() => !!user.role.adminItems);
+const groups = computed(() => {
+  if (!isScoped.value) return adminGroupsFor(user.role.adminScope);
+  return ADMIN_GROUPS
+    .map((g) => ({ ...g, items: g.items.filter((i) => canAccessAdminItem(user.role, i.key)) }))
+    .filter((g) => g.items.length > 0);
+});
+/** 单入口分组组头直达；白名单角色保留「分组 · 子项」两级，让页名可见 */
+function isDirectGroup(g: { items: unknown[] }) {
+  return g.items.length === 1 && !isScoped.value;
+}
 const approvalBadge = computed(() => APPROVALS.filter((a) => a.status === '待审批').length);
 // 智能分派 / SLA / 规则引擎 三个引擎分组置于「审批中心」之上
 const TOP_GROUP_KEYS = ['dispatch', 'sla', 'rules'];
@@ -25,7 +37,7 @@ const menuEntries = computed<MenuEntry[]>(() => {
   const bottom = gs.filter((g) => !TOP_GROUP_KEYS.includes(g.key));
   return [
     ...top.map((g) => ({ type: 'group', group: g } as MenuEntry)),
-    { type: 'approval' },
+    ...(isScoped.value ? [] : [{ type: 'approval' } as MenuEntry]),
     ...bottom.map((g) => ({ type: 'group', group: g } as MenuEntry)),
   ];
 });
@@ -49,7 +61,7 @@ function toggle(gk: string) {
 }
 function onGroupHeadExpanded(g: { key: string; items: { key: string }[] }) {
   // 单入口分组：组头即模块入口，点击直达（避免「组名 + 同名子项」双重点击）
-  if (g.items.length === 1) {
+  if (isDirectGroup(g)) {
     go(`/admin/${g.items[0].key}`);
     return;
   }
@@ -95,7 +107,7 @@ function backToWorkspace() {
     <!-- 租户管理员 / 运营管理员：数据总览 + 各自 scope 分组 -->
     <div v-else class="menu-list">
       <!-- 数据总览（一级直达） -->
-      <a-tooltip :title="collapsed ? ADMIN_OVERVIEW.label : ''" placement="right">
+      <a-tooltip v-if="!isScoped" :title="collapsed ? ADMIN_OVERVIEW.label : ''" placement="right">
         <div
           class="nav-item top"
           :class="{ active: activeKey === 'overview' }"
@@ -155,14 +167,14 @@ function backToWorkspace() {
           <template v-else>
             <div
               class="group-head"
-              :class="{ active: entry.group.items.length === 1 && groupOf(sidebarKey) === entry.group.key }"
+              :class="{ active: isDirectGroup(entry.group) && groupOf(sidebarKey) === entry.group.key }"
               @click="onGroupHeadExpanded(entry.group)"
             >
               <component :is="entry.group.icon" class="nav-icon" />
               <span class="nav-label">{{ entry.group.label }}</span>
-              <DownOutlined v-if="entry.group.items.length > 1" class="chev" :class="{ open: expanded === entry.group.key }" />
+              <DownOutlined v-if="!isDirectGroup(entry.group)" class="chev" :class="{ open: expanded === entry.group.key }" />
             </div>
-            <div v-show="expanded === entry.group.key && entry.group.items.length > 1" class="group-items">
+            <div v-show="expanded === entry.group.key && !isDirectGroup(entry.group)" class="group-items">
               <div
                 v-for="it in entry.group.items"
                 :key="it.key"

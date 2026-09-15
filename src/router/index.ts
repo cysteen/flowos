@@ -9,7 +9,9 @@ import TeamBoardView from '@/views/team-board/TeamBoardView.vue';
 import ApprovalWorkspaceView from '@/views/approval/ApprovalWorkspaceView.vue';
 import { useUserStore } from '@/stores/user';
 import { firstMenuPath } from '@/config/navigation';
+import { adminHomePath, canAccessAdminItem } from '@/config/roles';
 import {
+  adminNavActiveKey,
   ADMIN_ALL_ITEMS,
   ADMIN_LEGACY_REDIRECTS,
   RULES_NAV_ITEMS,
@@ -281,6 +283,10 @@ router.beforeEach((to) => {
 
   if (to.meta.adminOnly && !user.hasAdminEntry) {
     return firstMenuPath(user.visibleMenus);
+  }
+  // 后台项白名单（如工单运营只开刷机配置）：白名单外的后台页一律回默认落点
+  if (to.meta.adminOnly && !canAccessAdminItem(user.role, adminNavActiveKey(to.path))) {
+    return adminHomePath(user.role);
   }
   if (to.meta.platformOnly && user.role.adminScope !== 'platform') {
     return '/admin/overview';

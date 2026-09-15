@@ -18,8 +18,9 @@ import { useUserStore } from '@/stores/user';
 import { useTenantStore } from '@/stores/tenant';
 import { useAdminTabsStore } from '@/stores/adminTabs';
 import { useWorkspaceTabsStore } from '@/stores/workspaceTabs';
-import { ROLE_OPTION_GROUPS, isRoleKey, ROLES, CTI_BAR_ROLES } from '@/config/roles';
+import { ROLE_OPTION_GROUPS, isRoleKey, ROLES, CTI_BAR_ROLES, adminHomePath, canAccessAdminItem } from '@/config/roles';
 import { firstMenuPath } from '@/config/navigation';
+import { adminNavActiveKey } from '@/config/adminNav';
 import { DEFAULT_BRAND_LOGO_URL } from '@/constants/brand';
 
 defineProps<{ collapsed: boolean }>();
@@ -54,6 +55,10 @@ const roleOptionGroups = computed(() =>
 function afterContextChange() {
   if (route.path.startsWith('/admin') && !user.hasAdminEntry) {
     router.push(firstMenuPath(user.visibleMenus));
+  } else if (route.path.startsWith('/admin') && !canAccessAdminItem(user.role, adminNavActiveKey(route.path))) {
+    // 切到后台项白名单角色（如工单运营）：清掉白名单外的页签，回默认落点
+    useAdminTabsStore().reset();
+    router.push(adminHomePath(user.role));
   } else if (route.meta.menu && !user.canAccess(route.meta.menu as string)) {
     router.push(firstMenuPath(user.visibleMenus));
   }
@@ -78,7 +83,7 @@ function onMenuClick({ key }: { key: string | number }) {
   }
 
   if (k === 'admin') {
-    router.push('/admin');
+    router.push(adminHomePath(user.role));
     return;
   }
   if (k === 'logout') {

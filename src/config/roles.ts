@@ -61,6 +61,16 @@ export interface RoleDef {
   hasAdminEntry: boolean;
   /** 管理后台数据范围（仅 hasAdminEntry=true 时有效） */
   adminScope?: AdminScope;
+  /**
+   * 可访问的后台项白名单（取值＝`config/adminNav.ts` 的侧栏项 key，即 `/admin/{key}` 第一段）。
+   *
+   * - **不写**：按 `adminScope` 出全量后台（三类管理员）。
+   * - **写了**：只放这几页 —— 侧栏只出白名单项（不出数据总览 / 审批中心）、默认落点取首项、
+   *   其余后台路由一律被守卫重定向回首项。三处判据统一走下方 `canAccessAdminItem` / `adminHomePath`。
+   *
+   * 给非管理员角色开单页后台：`hasAdminEntry: true` + `adminItems: ['<key>']`，**不给 `adminScope`**。
+   */
+  adminItems?: string[];
   /** 演示切换器 / 登录账号表里的区分名（仅三类管理员用；前台仍统一显示 `name`） */
   adminScopeLabel?: string;
   /**
@@ -183,15 +193,18 @@ export const ROLES: Record<RoleKey, RoleDef> = {
    *    （基线 §3.1「工单运营不给 —— 它连风险词命中页都看不到」）。`ops-risk-monitor` 菜单随之撤掉。
    *
    * `readonlyTickets` 保留：只读约束的是**工单内容**，它仍可调剂 / 指派（换处理人不动内容）。
-   * 矩阵给的「管理后台 ✅ 部分（问题分类 + SLA 管理）」**本轮不开** —— `hasAdminEntry` 是整块
-   * 后台的开关、按 `adminScope` 出全量模块，没有"只给两块"的粒度；开了等于越权放出全部后台。
+   * 矩阵给的「管理后台 ✅ 部分（问题分类 + SLA 管理）」**本轮不开**。
+   *
+   * 930 教育刷机单（M82 / 偏差 X12）：后台**只开「工单配置 · 刷机配置」一页**，
+   * 靠 `adminItems` 白名单收口 —— 不给 `adminScope`，侧栏只出这一项，其余后台路由重定向回本页。
    */
   'ops-monitor': {
     key: 'ops-monitor',
     name: '工单运营',
     menus: ['query-center', 'team-board', 'ops-ticket-monitor'],
     hiddenTabs: ['riskReport', 'review'],
-    hasAdminEntry: false,
+    hasAdminEntry: true,
+    adminItems: ['flash-config'],
     readonlyTickets: true,
   },
   /**
@@ -273,6 +286,20 @@ export const ROLES: Record<RoleKey, RoleDef> = {
     adminScope: 'tenant',
   },
 };
+
+/**
+ * 当前角色能否访问某个后台项（key＝`/admin/{key}` 第一段）。
+ * 无后台入口 → 否；无白名单（管理员）→ 是（scope 级收口仍由各自守卫负责）；有白名单 → 看是否在内。
+ */
+export function canAccessAdminItem(role: RoleDef, key: string): boolean {
+  if (!role.hasAdminEntry) return false;
+  return !role.adminItems || role.adminItems.includes(key);
+}
+
+/** 进后台的默认落点：有白名单取首项；否则走 `/admin`，由路由按 adminScope 分流 */
+export function adminHomePath(role: RoleDef): string {
+  return role.adminItems?.length ? `/admin/${role.adminItems[0]}` : '/admin';
+}
 
 /** 角色在切换器 / 账号表里的展示名：管理员按 adminScope 区分，其余用正式名 */
 export function roleOptionLabel(key: RoleKey): string {
