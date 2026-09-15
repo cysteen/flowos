@@ -731,6 +731,9 @@ watch(
     const duration = prev.connectedAt
       ? formatCallDuration(Date.now() - prev.connectedAt)
       : '00:00';
+    const holdMs = (prev.holdAccumMs ?? 0)
+      + (prev.held && prev.holdSince ? Date.now() - prev.holdSince : 0);
+    const holdPart = holdMs > 0 ? ` | 保持: ${formatCallDuration(holdMs)}` : '';
     tabData.value.contactRecords.unshift({
       id: `c-${Date.now()}`,
       kind: 'call',
@@ -738,7 +741,7 @@ watch(
       emoji: '📞',
       operator: user.name || '当前坐席',
       when: formatNow(),
-      summary: `呼叫号码: ${prev.phone} | 状态: 接通 | 时长: ${duration}`,
+      summary: `呼叫号码: ${prev.phone} | 状态: 接通 | 时长: ${duration}${holdPart}`,
     });
     syncContactedAfterOutreach();
     processTabsRef.value?.switchTab('contact');
@@ -1074,6 +1077,7 @@ const PROCESS_FIELDS: { key: keyof ProcessFormDraft; label: string }[] = [
   { key: 'serviceMethod', label: '服务方式' },
   { key: 'conclusion', label: '问题解决结论' },
   { key: 'serviceSolution', label: '解决方案' },
+  { key: 'leadCategory', label: '商机归类' },
   { key: 'leadNo', label: '商机编号' },
   { key: 'closingNote', label: '结案后备注' },
 ];
@@ -1920,6 +1924,9 @@ watch(
       :service-method="form.serviceMethod"
       :problem-cause="form.problemCause"
       :process-result="form.processResult"
+      :group-names="d.groupNames"
+      :group-id="d.groupId"
+      :last-handler="d.lastHandler"
       :delegate-targets="d.delegateInfo?.targets"
       :at-tech-support="atTechSupport"
       :show-risk-report="showRiskReport"

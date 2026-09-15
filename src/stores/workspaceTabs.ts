@@ -1,6 +1,5 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import router from '@/router';
 import { TICKETS } from '@/mock/tickets';
 import { NAV_ITEMS, firstMenuPath } from '@/config/navigation';
 import { useUserStore } from '@/stores/user';
@@ -76,9 +75,9 @@ export const useWorkspaceTabsStore = defineStore('workspaceTabs', () => {
     const tab = tabs.value.find((t) => t.key === key);
     if (!tab) return;
     activeKey.value = key;
-    if (router.currentRoute.value.path !== tab.path) {
-      router.push(tab.path);
-    }
+    void import('@/router').then(({ default: r }) => {
+      if (r.currentRoute.value.path !== tab.path) r.push(tab.path);
+    });
   }
 
   function close(key: string) {
@@ -91,7 +90,7 @@ export const useWorkspaceTabsStore = defineStore('workspaceTabs', () => {
       activate(next.key);
     } else {
       activeKey.value = null;
-      router.push(defaultPath());
+      void import('@/router').then(({ default: r }) => r.push(defaultPath()));
     }
   }
 

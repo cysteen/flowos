@@ -81,7 +81,13 @@ const props = withDefaults(
      * 压根不是 `Ticket` 上的字段。为一处需求往全局列目录里塞一个别处永远为空的 key，
      * 会让工作台的列设置面板多出一个勾了也没用的选项。
      */
-    extraColumns?: { key: string; label: string; width?: number }[];
+    extraColumns?: {
+      key: string;
+      label: string;
+      width?: number;
+      /** 紧跟在该列目录列之后；不传或该列未显示时，落在预约倒计时之后、操作之前 */
+      after?: string;
+    }[];
     /**
      * 强制开／关勾选列。**不传时仍按原判据**（variant 为 mine / pool 才有勾选列）。
      * 风险监控页要的是"能勾选做批量打标"，但它的行内动作不是「调剂」也不是「领取」，
@@ -336,16 +342,25 @@ function onResizeStart(e: MouseEvent, key: string) {
 
 onUnmounted(endResize);
 
+/** 指定了 after 且该列在显示中的附加列，按锚点列分组 */
+function extraColsAfter(key: string) {
+  return (props.extraColumns ?? []).filter((c) => c.after === key);
+}
+const tailExtraCols = computed(() =>
+  (props.extraColumns ?? []).filter((c) => !c.after || !orderedCols.value.includes(c.after)),
+);
+
 const gridTemplateColumns = computed(() => {
   const parts: string[] = [];
   if (showSelectionColumn.value) parts.push('16px');
   parts.push(colWidthPx('title'));
   for (const key of orderedCols.value) {
     parts.push(colWidthPx(key));
+    for (const c of extraColsAfter(key)) parts.push(`${c.width ?? 96}px`);
   }
   if (props.showAppointmentColumn) parts.push(colWidthPx('appointment'));
-  // 附加列坐在预约倒计时之后、操作之前：操作恒在最右，这一条是这张表的既有约定
-  for (const c of props.extraColumns ?? []) parts.push(`${c.width ?? 96}px`);
+  // 未锚定的附加列坐在预约倒计时之后、操作之前：操作恒在最右，这一条是这张表的既有约定
+  for (const c of tailExtraCols.value) parts.push(`${c.width ?? 96}px`);
   if (showActionColumn.value) parts.push(colWidthPx('action'));
   return parts.join(' ');
 });
@@ -396,6 +411,9 @@ const gridTemplateColumns = computed(() => {
                 @mousedown="onResizeStart($event, colKey)"
               />
             </div>
+            <div v-for="col in extraColsAfter(colKey)" :key="`th-x-${col.key}`" class="th th-cell">
+              <span class="th-label">{{ col.label }}</span>
+            </div>
           </template>
           <div
             v-if="showAppointmentColumn"
@@ -415,7 +433,7 @@ const gridTemplateColumns = computed(() => {
             prop 里定，本组件那套列宽记忆是按列目录的 key 存 localStorage 的，
             把外来 key 混进去会让工作台的列宽缓存里长出一批它永远用不到的键。
           -->
-          <template v-for="col in extraColumns ?? []" :key="`th-x-${col.key}`">
+          <template v-for="col in tailExtraCols" :key="`th-x-${col.key}`">
             <div class="th th-cell">
               <span class="th-label">{{ col.label }}</span>
             </div>
@@ -595,6 +613,10 @@ const gridTemplateColumns = computed(() => {
         <div v-else :class="[colClass(colKey), 'cell-plain']">
           <span class="plain-text" :title="plainCellText(t, colKey)">{{ plainCellText(t, colKey) }}</span>
         </div>
+
+        <div v-for="col in extraColsAfter(colKey)" :key="`x-${t.id}-${col.key}`" class="cell-extra">
+          <slot :name="`cell-${col.key}`" :ticket="t" />
+        </div>
       </template>
 
       <!-- 预约倒计时 -->
@@ -607,7 +629,7 @@ const gridTemplateColumns = computed(() => {
       </div>
 
       <!-- 附加列的格：内容整格交给调用方，本组件只负责把它放进网格的正确位置 -->
-      <template v-for="col in extraColumns ?? []" :key="`x-${t.id}-${col.key}`">
+      <template v-for="col in tailExtraCols" :key="`x-${t.id}-${col.key}`">
         <div class="cell-extra">
           <slot :name="`cell-${col.key}`" :ticket="t" />
         </div>

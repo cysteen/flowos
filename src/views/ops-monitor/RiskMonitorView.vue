@@ -2561,9 +2561,9 @@ function untaggedSliceRows(slice: UntaggedSlice): QueueRow[] {
 // 另两路的行就是工单，没有词可筛。
 // 🔴 「实时监控」那一路的风险词**作用在命中上**（行 ＝ 一条召回），一组里命中全被筛掉的工单整组不出现。
 //
-// 🔴 **不重复左栏与工作组 chip 已经承担的收窄**（加进去就是同一件事两个入口）：
+// 🔴 **不重复左栏与搜索条「工作组」已经承担的收窄**（加进去就是同一件事两个入口）：
 //   · 等级 / 优先级 —— 左栏子档已经在做；
-//   · 班组 —— 清单上方那行「工作组」chip 已经在做；
+//   · 班组 —— 搜索条里的「工作组」下拉已经在做；
 //   · 打标人 —— 这一段按定义全是没打过标的单，恒空。
 //   · 命中时间 / 核实结果 —— 不在这一段筛，查命中历史走命中台账那条查询条。
 interface UntaggedFilter {
@@ -4125,6 +4125,15 @@ const groupChips = computed(() => {
   };
 });
 
+/** 搜索条里的「工作组」下拉：各枚数字仍取除工作组之外条件下的行数（见 groupChips） */
+const groupFilterOptions = computed(() => [
+  { value: 'all', label: `全部工作组（${groupChips.value.total}）` },
+  ...groupChips.value.rows.map(({ group, count }) => ({
+    value: group,
+    label: `${group}（${count}）`,
+  })),
+]);
+
 /** 左栏这一列只在漏斗的两个视图上作数；旁路的两个入口自带各自的筛选条，不套工作组 */
 const showGroupFilter = computed(() => listView.value === 'realtime' || listView.value === 'report');
 
@@ -4776,41 +4785,35 @@ function toggleWordEnabled(w: RiskWord) {
           </div>
 
           <!--
-            工作组筛选（单选）。它是**另一层**：左栏选的是"链上哪一段"，这一行选的是
-            "这一段里哪一个组的活"。故摆成单独一行、且横跨左栏每一档不清空 ——
-            组是工单的固有属性，不随条目走到哪一段而变；切档就清掉的话，
-            人在「全部待判 · 投诉风险组」筛完切到「高危」会看到全部组，只会以为筛选失灵。
-            🔴 各枚的数字取的是**除工作组之外**的全部条件下的行数（见 groupChips），
-            故选中一组之后其余几枚不归零，人还看得出该切到哪一组。
-          -->
-          <div v-if="showGroupFilter" class="section-filters grade-filters report-source-filters">
-            <span class="rf-k">工作组</span>
-            <button
-              type="button"
-              class="gf-chip"
-              :class="{ active: groupFilter === 'all' }"
-              title="不按工作组收窄"
-              @click="groupFilter = 'all'"
-            >
-              全部工作组<span class="gf-num">{{ groupChips.total }}</span>
-            </button>
-            <button
-              v-for="g in groupChips.rows"
-              :key="g.group"
-              type="button"
-              class="gf-chip"
-              :class="{ active: groupFilter === g.group }"
-              :title="g.group === '未归组' ? '工单库里查不到所属组的条目 —— 不吞掉，否则各组之和会小于左栏的总数' : `只看「${g.group}」的条目`"
-              @click="groupFilter = g.group"
-            >
-              {{ g.group }}<span class="gf-num">{{ g.count }}</span>
-            </button>
-          </div>
-
-          <!--
             🔴 **原来那行标记人 chip 已删**：标记人清单现在就在左栏「按标记人」下面展开着。
             同一个选择器在两处并存就是同屏重复，人还得先猜哪一处才是当前生效的那个。
           -->
+
+      <!--
+        工作组筛选（单选）。它是**另一层**：左栏选的是"链上哪一段"，搜索条选的是
+        "这一段里哪一个组的活"。横跨左栏每一档不清空 —— 组是工单的固有属性，
+        不随条目走到哪一段而变；切档就清掉的话，人在某一组筛完切档会看到全部组，只会以为筛选失灵。
+        🔴 各枚的数字取的是**除工作组之外**的全部条件下的行数（见 groupChips）。
+      -->
+      <div
+        v-if="showGroupFilter && !(listView === 'realtime' && queueView === 'monitoring')"
+        class="ledger-bar"
+      >
+        <div class="list-toolbar list-toolbar--group-only">
+          <div class="tb-fields tb-fields--group">
+            <div class="fi">
+              <span class="fl">工作组</span>
+              <a-select
+                v-model:value="groupFilter"
+                size="small"
+                class="tb-ctl"
+                :dropdown-match-select-width="false"
+                :options="groupFilterOptions"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
 
       <!--
         「未标记」筛选条。**复用命中台账那条查询条的类名与排版**（ledger-bar / list-toolbar /
@@ -4818,7 +4821,7 @@ function toggleWordEnabled(w: RiskWord) {
         🔴 **只补筛选、不摆统计头**：命中统计（待核实 / 已核实 / 确认是风险 / 误报 / 规则准确率）
         讲的是词表质量，数在看板上展示；摆在日常打标的工作面前，
         等于把"规则准不准"塞给一个正在判"这张单有没有风险"的人。
-        🔴 字段按路而变、且**不重复左栏子档与工作组 chip 已经承担的收窄**，见 `UntaggedFilter`。
+        🔴 字段按路而变、且**不重复左栏子档与搜索条「工作组」已经承担的收窄**，见 `UntaggedFilter`。
       -->
       <div
         v-if="listView === 'realtime' && queueView === 'monitoring'"
@@ -4827,6 +4830,16 @@ function toggleWordEnabled(w: RiskWord) {
       >
         <div class="list-toolbar">
           <div class="tb-fields">
+            <div class="fi">
+              <span class="fl">工作组</span>
+              <a-select
+                v-model:value="groupFilter"
+                size="small"
+                class="tb-ctl"
+                :dropdown-match-select-width="false"
+                :options="groupFilterOptions"
+              />
+            </div>
             <div class="fi">
               <span class="fl">关键词</span>
               <div class="tb-search">
@@ -4896,7 +4909,7 @@ function toggleWordEnabled(w: RiskWord) {
             <button type="button" class="scan-go" @click="applyUntaggedQuery">
               <SearchOutlined />查询
             </button>
-            <!-- 重置只清本条筛选：左栏选中档与工作组 chip 是另外两层，不归它管 -->
+            <!-- 重置只清本条筛选：左栏选中档与搜索条「工作组」是另外两层，不归它管 -->
             <button type="button" class="tb-btn" :disabled="!untaggedFilterDirty" @click="resetUntaggedFilter">
               <ReloadOutlined /><span>重置</span>
             </button>
@@ -7761,6 +7774,12 @@ function toggleWordEnabled(w: RiskWord) {
   padding: 8px 10px;
 }
 .ledger-bar .tb-actions { min-width: 84px; }
+.list-toolbar--group-only {
+  grid-template-columns: 1fr;
+}
+.tb-fields--group {
+  grid-template-columns: minmax(220px, 320px);
+}
 
 /* 筛选条：标签左、控件右（固定标签宽，列内对齐）；右侧动作跟两行控件对齐 */
 .list-toolbar {

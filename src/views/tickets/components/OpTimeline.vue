@@ -6,10 +6,11 @@ import {
   ApartmentOutlined, LinkOutlined,
   PauseCircleOutlined, SwapOutlined, PhoneOutlined, MessageOutlined,
   PaperClipOutlined, SnippetsOutlined, CommentOutlined, BellOutlined,
-  CheckCircleOutlined, StarFilled, PlayCircleOutlined, DownloadOutlined,
+  CheckCircleOutlined, StarFilled,
   ThunderboltOutlined, HistoryOutlined, ClockCircleOutlined, TeamOutlined,
   SafetyOutlined, SafetyCertificateOutlined, FileSearchOutlined, WarningOutlined,
 } from '@ant-design/icons-vue';
+import RecordingPlayer from './operation/RecordingPlayer.vue';
 import {
   CATEGORY_META, ROLE_BADGE, softBg,
   type TlAction, type TlCategory, type TimelineEntry, type RelatedTicketBrief,
@@ -234,12 +235,10 @@ const filteredEntries = computed(() => {
 
           <!-- 电话录音条 + ASR -->
           <template v-if="e.recording">
-            <div class="rec-bar">
-              <PlayCircleOutlined :style="{ color: '#06B6D4', fontSize: '16px' }" />
-              <div class="rec-track"><div class="rec-fill"></div></div>
-              <span class="rec-dur">{{ e.recording }}</span>
-              <DownloadOutlined :style="{ color: '#6B7280', fontSize: '13px' }" />
-            </div>
+            <RecordingPlayer
+              :progress="`00:00 / ${e.recording}`"
+              :name="`${e.how} ${e.when}`"
+            />
             <div v-if="e.asr" class="asr">
               <div class="asr-head"><ThunderboltOutlined :style="{ color: '#06B6D4', fontSize: '12px' }" />语音识别转写</div>
               <div v-for="(line, i) in e.asr" :key="i" class="asr-line">
@@ -481,18 +480,6 @@ const filteredEntries = computed(() => {
   padding: 3px 8px;
 }
 
-.rec-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: #fff;
-  border: 1px solid #cffafe;
-  border-radius: 6px;
-  padding: 6px 10px;
-}
-.rec-track { flex: 1; height: 4px; background: #e5e7eb; border-radius: 2px; overflow: hidden; }
-.rec-fill { width: 35%; height: 100%; background: #06b6d4; }
-.rec-dur { font-size: 11px; color: #6b7280; }
 
 .asr {
   background: #fff;

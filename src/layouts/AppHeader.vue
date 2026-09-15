@@ -13,7 +13,6 @@ import {
   CheckOutlined,
 } from '@ant-design/icons-vue';
 import AgentCtiBar from './AgentCtiBar.vue';
-import OutboundNumberPickerModal from '@/components/cti/OutboundNumberPickerModal.vue';
 import GlobalSearch from './GlobalSearch.vue';
 import { useUserStore } from '@/stores/user';
 import { useTenantStore } from '@/stores/tenant';
@@ -152,6 +151,7 @@ function switchTenant(tenantId: string) {
 </script>
 
 <template>
+  <div class="app-header-root">
   <header class="app-header">
     <!-- Logo 区（200，右边框分隔） -->
     <div class="logo-area">
@@ -240,10 +240,13 @@ function switchTenant(tenantId: string) {
       </div>
     </div>
   </header>
-  <OutboundNumberPickerModal v-if="showCtiBar" />
+  </div>
 </template>
 
 <style scoped>
+.app-header-root {
+  flex: none;
+}
 .app-header {
   display: flex;
   align-items: stretch;

@@ -47,6 +47,10 @@ const props = defineProps<{
   /** 处理表单现值：下送（正常结案）前需校验问题原因/处理结果已填 */
   problemCause?: string;
   processResult?: string;
+  /** 工单归属组（挂起/关单默认审批组） */
+  groupNames?: string[];
+  groupId?: string;
+  lastHandler?: string | null;
   /** 委派中：协办未完成前锁定流转/终结类动作 */
   delegateTargets?: string;
   /**
@@ -561,6 +565,9 @@ defineExpose({ openEscalate, openAftersale });
     :aftersale-context="aftersaleContext"
     :service-type="serviceType"
     :service-method="serviceMethod"
+    :group-names="groupNames"
+    :group-id="groupId"
+    :last-handler="lastHandler"
     @confirm="onDialogConfirm"
   />
 

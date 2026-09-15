@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { reactive } from 'vue';
 import {
-  CaretRightOutlined,
   DownOutlined,
   UpOutlined,
   PhoneOutlined,
@@ -12,6 +11,7 @@ import {
 } from '@ant-design/icons-vue';
 import { message } from 'ant-design-vue';
 import type { ContactRecord } from '@/views/tickets/types/operationTabs';
+import RecordingPlayer from '../RecordingPlayer.vue';
 
 defineProps<{ records: ContactRecord[] }>();
 
@@ -24,10 +24,6 @@ const TITLE_ICON = {
   email: MailOutlined,
   im: CommentOutlined,
 } as const;
-
-function play() {
-  message.info('播放录音');
-}
 
 function toggleAsr(id: string) {
   expandedAsr[id] = !expandedAsr[id];
@@ -84,18 +80,11 @@ function metaLabel(r: ContactRecord) {
       <template v-if="r.kind === 'call' && r.recording">
         <div class="media-block">
           <div class="sub-label">录音</div>
-          <div class="player">
-            <button class="play-btn" type="button" @click="play">
-              <CaretRightOutlined />
-            </button>
-            <div class="progress-track">
-              <div
-                class="progress-fill"
-                :style="{ width: `${r.recording.progressPercent}%` }"
-              />
-            </div>
-            <span class="duration">{{ r.recording.progress }}</span>
-          </div>
+          <RecordingPlayer
+            :progress="r.recording.progress"
+            :percent="r.recording.progressPercent"
+            :name="r.title"
+          />
           <div v-if="r.asr?.length" class="asr-box">
             <div class="asr-head">
               <span class="sub-label">文本转写</span>
@@ -211,43 +200,6 @@ function metaLabel(r: ContactRecord) {
 .content-block { gap: 6px; }
 
 .sub-label { font-size: 11px; font-weight: 600; color: #9ca3af; }
-
-.player {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: #f9fafb;
-  border: 1px solid #f0f0f0;
-  border-radius: 6px;
-  padding: 8px 10px;
-}
-.play-btn {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: 1px solid #d1d5db;
-  background: #fff;
-  color: #374151;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  font-size: 12px;
-}
-.play-btn:hover {
-  border-color: #93c5fd;
-  color: #1a6fff;
-}
-.progress-track {
-  flex: 1;
-  height: 4px;
-  background: #e5e7eb;
-  border-radius: 2px;
-  overflow: hidden;
-}
-.progress-fill { height: 100%; background: #9ca3af; border-radius: 2px; }
-.duration { font-size: 11px; color: #9ca3af; flex: none; }
 
 .asr-box {
   background: #f9fafb;

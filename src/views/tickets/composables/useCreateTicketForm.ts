@@ -6,14 +6,18 @@ import {
   type CreateTicketFormState,
   type CustomerInfo,
   BUSINESS_TYPES,
+  CUSTOMER_SEARCH_LIMIT,
   MOCK_CUSTOMER,
   PROBLEM_TREE,
   PRODUCT_NAMES,
   buildAutoTitle,
+  findCustomerById,
+  upsertCustomer,
   mapChannelToSource,
   mapFormTypeToTicketType,
   normalizeComplaintType,
   normalizeTicketSource,
+  searchCustomers,
 } from '@/views/tickets/types/createTicket';
 
 function defaultForm(): CreateTicketFormState {
@@ -60,6 +64,11 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   const submitting = ref(false);
   const customerModalOpen = ref(false);
   const editingCustomer = ref(false);
+  /** 客户搜索下拉 */
+  const customerSearchOpen = ref(false);
+  const customerSearchHits = ref<CustomerInfo[]>([]);
+  const customerSearchTooMany = ref(false);
+  let searchTimer: ReturnType<typeof setTimeout> | null = null;
 
   const errors = reactive({
     businessType: false,
@@ -73,7 +82,6 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     problemL3: false,
     description: false,
     title: false,
-    customerAddress: false,
     problemTime: false,
     complaintType: false,
   });
@@ -95,7 +103,6 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     () => form.ticketType === '投诉' || form.ticketType === '建议',
   );
   const typePartSubtitle = computed(() => `「${form.ticketType}」工单专属字段`);
-  const customerAddressRequired = computed(() => form.ticketType === '商机');
   /**
    * 投诉专属字段的**来源门控**（0803）：
    * 投诉平台 / 投诉编号 / 投诉类型 / 归属业务线 / 前期是否反馈 / 服务回溯
@@ -205,19 +212,44 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     syncTitle();
   }
 
+  /** 立即检索（回车触发）；输入过程走 300ms 防抖的 onCustomerQueryInput */
   function searchCustomer() {
-    if (!form.customerQuery.trim()) return;
-    form.customer = {
-      ...MOCK_CUSTOMER,
-      name: '李测试',
-      phone: form.customerQuery.replace(/\s/g, ''),
-    };
-    message.success('已匹配客户（Mock）');
+    const q = form.customerQuery.trim();
+    if (q.length < 2) {
+      customerSearchOpen.value = false;
+      customerSearchHits.value = [];
+      customerSearchTooMany.value = false;
+      return;
+    }
+    const all = searchCustomers(q);
+    customerSearchTooMany.value = all.length > CUSTOMER_SEARCH_LIMIT;
+    customerSearchHits.value = all.slice(0, CUSTOMER_SEARCH_LIMIT);
+    customerSearchOpen.value = true;
   }
 
+  function onCustomerQueryInput() {
+    if (searchTimer) clearTimeout(searchTimer);
+    searchTimer = setTimeout(searchCustomer, 300);
+  }
+
+  function closeCustomerSearch() {
+    customerSearchOpen.value = false;
+  }
+
+  /** 选中下拉里的客户 → 绑定并回填客户卡 */
+  function selectCustomer(c: CustomerInfo) {
+    form.customer = { ...c };
+    form.customerQuery = `${c.name} · ${c.phone}`;
+    customerSearchOpen.value = false;
+    errors.customer = false;
+  }
+
+  /** 「更换」：解除客户绑定回到搜索态，已填写的工单字段保留 */
   function clearCustomer() {
     form.customer = null;
     form.customerQuery = '';
+    customerSearchOpen.value = false;
+    customerSearchHits.value = [];
   }
 
   function openCreateCustomer() {
@@ -231,6 +263,8 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   }
 
   function saveCustomer(customer: CustomerInfo) {
+    // 写回容联云档案，下次搜索即可命中
+    upsertCustomer(customer);
     form.customer = customer;
     form.customerQuery = `${customer.name} · ${customer.phone}`;
     customerModalOpen.value = false;
@@ -250,20 +284,13 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     errors.problemL3 = !form.problemL3;
     errors.description = !form.description.trim();
     errors.title = !form.title.trim();
-    errors.customerAddress =
-      customerAddressRequired.value &&
-      (!form.customer?.region?.trim() || !form.customer?.address?.trim());
     errors.problemTime = false;
     errors.complaintType =
       showChannelComplaintFields.value && !form.complaintType;
 
     const hasError = Object.values(errors).some(Boolean);
     if (hasError) {
-      message.error(
-        customerAddressRequired.value && errors.customerAddress
-          ? '商机工单需填写客户省市区地址'
-          : '请填写必填项',
-      );
+      message.error('请填写必填项');
       return false;
     }
     return true;
@@ -303,16 +330,6 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   }
 
   watch(
-    () => form.ticketType,
-    () => {
-      if (form.ticketType === '商机' && form.customer && !form.customer.region) {
-        form.customer.region = '';
-        form.customer.address = '';
-      }
-    },
-  );
-
-  watch(
     () => [form.productName, form.problemL3, form.ticketSource] as const,
     () => syncTitle(),
   );
@@ -320,6 +337,31 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   watch(
     () => form.productCategory,
     () => onProductCategoryChange(),
+  );
+
+  /**
+   * 业务分类变更 —— **不清空已绑定客户**。
+   *
+   * 分类变的是"这张单归哪条业务线"，不是客户换了人；客户标识全局唯一，
+   * 让坐席重搜一遍搜到的还是同一条，纯属多做一遍。改分类多半是纠错
+   * （一开始选错业务线），清空绑定等于惩罚纠错。
+   *
+   * 正确做法：**按客户标识在新分类下重取档案**，让字段口径与完整度按新分类重判——
+   * 教育缺学校会自动出「信息不完整」提示条，非教育则不再展示学校三项。
+   * 只有**该客户在新分类下取不到**（不存在或无权访问）才解除绑定。
+   */
+  watch(
+    () => form.businessType,
+    () => {
+      if (!form.customer) return;
+      const latest = findCustomerById(form.customer.id);
+      if (!latest) {
+        clearCustomer();
+        message.warning('该客户在当前业务分类下不可用，请重新选择客户');
+        return;
+      }
+      form.customer = { ...latest };
+    },
   );
 
 
@@ -330,6 +372,9 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     submitting,
     customerModalOpen,
     editingCustomer,
+    customerSearchOpen,
+    customerSearchHits,
+    customerSearchTooMany,
     errors,
     problemL1Options,
     problemL2Options,
@@ -337,7 +382,6 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     productNameOptions,
     showTypePart,
     typePartSubtitle,
-    customerAddressRequired,
     showChannelComplaintFields,
     reset,
     applyPrefill,
@@ -347,6 +391,9 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     onProblemL1Change,
     onProblemL2Change,
     searchCustomer,
+    onCustomerQueryInput,
+    closeCustomerSearch,
+    selectCustomer,
     clearCustomer,
     openCreateCustomer,
     openEditCustomer,

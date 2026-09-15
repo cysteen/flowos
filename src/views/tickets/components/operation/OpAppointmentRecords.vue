@@ -3,10 +3,14 @@ import { CheckOutlined, CloseCircleOutlined } from '@ant-design/icons-vue';
 import { Modal, message } from 'ant-design-vue';
 import dayjs, { type Dayjs } from 'dayjs';
 import type { AppointmentRecord } from '@/views/tickets/types/operation';
-import { APPOINTMENT_DEMAND_OPTIONS } from '@/views/tickets/types/operation';
+import {
+  APPOINTMENT_DATE_TIME_FORMAT,
+  APPOINTMENT_DEMAND_OPTIONS,
+  isAppointmentExpired,
+} from '@/views/tickets/types/operation';
 import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue';
 
-const DATE_TIME_FORMAT = 'YYYY-MM-DD HH:mm:ss';
+const DATE_TIME_FORMAT = APPOINTMENT_DATE_TIME_FORMAT;
 const demandOptions = APPOINTMENT_DEMAND_OPTIONS.map((v) => ({ value: v, label: v }));
 
 const props = defineProps<{
@@ -37,8 +41,12 @@ function displayLabel(record: AppointmentRecord, index: number): string {
   return `预约${n}`;
 }
 
+function isRecordExpired(record: AppointmentRecord): boolean {
+  return !isDraft(record) && !record.done && !record.cancelled && isAppointmentExpired(record);
+}
+
 function isFieldDisabled(record: AppointmentRecord): boolean {
-  return !!props.readonly || !!record.done || !!record.cancelled;
+  return !!props.readonly || !!record.done || !!record.cancelled || isRecordExpired(record);
 }
 
 function newRecord(): AppointmentRecord {
@@ -84,7 +92,7 @@ function updateRecordTime(index: number, value: Dayjs | string | null) {
 
 function addRecord() {
   if (props.records.some(isDraft)) {
-    message.info('请先保留或放弃当前草稿预约');
+    message.info('请先保存或取消当前草稿预约');
     return;
   }
   commit([...props.records, newRecord()]);
@@ -111,7 +119,13 @@ function discardDraft(index: number) {
 
 /** 标记已与客户电话沟通（对齐关联 Tab「标记已读」） */
 function markDone(index: number) {
-  commit(props.records.map((r, i) => (i === index ? { ...r, done: true } : r)));
+  const record = props.records[index];
+  if (!record || isAppointmentExpired(record)) {
+    message.warning('预约时间已过期，无法标记已沟通');
+    return;
+  }
+  const doneAt = dayjs().format(DATE_TIME_FORMAT);
+  commit(props.records.map((r, i) => (i === index ? { ...r, done: true, doneAt } : r)));
 }
 
 /** 取消预约：保留记录、锁定字段、不再计入待回访 */
@@ -120,6 +134,11 @@ function cancelRecord(index: number) {
 }
 
 function confirmCancel(index: number) {
+  const record = props.records[index];
+  if (!record || isAppointmentExpired(record)) {
+    message.warning('预约时间已过期，无法取消预约');
+    return;
+  }
   Modal.confirm({
     title: '取消预约',
     content: '取消后该预约不再计入待回访，记录保留可追溯。',
@@ -139,7 +158,7 @@ defineExpose({ addRecord });
         v-for="(record, index) in records"
         :key="record.id"
         class="record-row"
-        :class="{ done: record.done, cancelled: record.cancelled, draft: isDraft(record) }"
+        :class="{ done: record.done, cancelled: record.cancelled, draft: isDraft(record), expired: isRecordExpired(record) }"
       >
         <span class="record-idx">
           {{ displayLabel(record, index) }}
@@ -173,18 +192,35 @@ defineExpose({ addRecord });
               :class="{ disabled: !canCommit(record) }"
               @click="commitRecord(index)"
             >
-              保留
+              保存
             </button>
             <button type="button" class="record-discard-btn" @click="discardDraft(index)">
-              放弃
+              取消
             </button>
           </template>
           <template v-else>
-            <span v-if="record.done" class="record-done-tag"><CheckOutlined /> 已沟通</span>
+            <span v-if="record.done" class="record-done-tag">
+              <CheckOutlined /> 已沟通
+              <span v-if="record.doneAt" class="record-done-at">{{ record.doneAt }}</span>
+            </span>
             <span v-else-if="record.cancelled" class="record-cancel-tag"><CloseCircleOutlined /> 已取消</span>
             <template v-else-if="!readonly">
-              <button type="button" class="record-done-btn" @click="markDone(index)">标记已沟通</button>
-              <button type="button" class="record-cancel-btn" @click="confirmCancel(index)">
+              <button
+                type="button"
+                class="record-done-btn"
+                :class="{ disabled: isAppointmentExpired(record) }"
+                :disabled="isAppointmentExpired(record)"
+                :title="isAppointmentExpired(record) ? '预约时间已过期，无法标记已沟通' : undefined"
+                @click="markDone(index)"
+              >标记已沟通</button>
+              <button
+                type="button"
+                class="record-cancel-btn"
+                :class="{ disabled: isAppointmentExpired(record) }"
+                :disabled="isAppointmentExpired(record)"
+                :title="isAppointmentExpired(record) ? '预约时间已过期，无法取消预约' : undefined"
+                @click="confirmCancel(index)"
+              >
                 取消预约
               </button>
             </template>
@@ -245,7 +281,9 @@ defineExpose({ addRecord });
   min-height: 32px !important;
 }
 .record-row.done .booker-chip,
-.record-row.cancelled .booker-chip { color: #9ca3af; }
+.record-row.cancelled .booker-chip,
+.record-row.expired .booker-chip { color: #9ca3af; }
+.record-row.expired .record-idx { color: #9ca3af; }
 .record-actions {
   flex: none;
   display: inline-flex;
@@ -289,17 +327,34 @@ defineExpose({ addRecord });
 .record-done-btn {
   color: #1a6fff;
 }
-.record-done-btn:hover {
+.record-done-btn:hover:not(.disabled) {
   border-color: #1a6fff;
   background: #f5f9ff;
+}
+.record-done-btn.disabled,
+.record-done-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  color: #9ca3af;
+}
+.record-done-at {
+  margin-left: 4px;
+  color: #6b7280;
+  font-weight: 400;
 }
 .record-cancel-btn {
   color: #6b7280;
 }
-.record-cancel-btn:hover {
+.record-cancel-btn:hover:not(.disabled) {
   border-color: #ef4444;
   color: #ef4444;
   background: #fef2f2;
+}
+.record-cancel-btn.disabled,
+.record-cancel-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  color: #9ca3af;
 }
 .record-done-tag {
   display: inline-flex;

@@ -467,6 +467,10 @@ export interface Ticket {
   returnCount?: number;
   /** 我申请挂起且挂起生效 */
   suspendedByMe?: boolean;
+  /** 挂起生效时间（YYYY-MM-DD HH:mm） */
+  suspendedAt?: string;
+  /** 挂起时填写的预计恢复时间（YYYY-MM-DD HH:mm，选填） */
+  suspendResumeAt?: string;
   /** 存在催单记录（行标识「催」） */
   hasDunning?: boolean;
   /** 存在补充记录（行标识「补」） */

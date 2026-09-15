@@ -6,7 +6,7 @@ import {
 } from '@ant-design/icons-vue';
 import CallSessionBar from '@/components/cti/CallSessionBar.vue';
 import CtiAuthIcon from '@/components/cti/CtiAuthIcon.vue';
-import DialPad from '@/components/cti/DialPad.vue';
+import DialPadPopover from '@/components/cti/DialPadPopover.vue';
 import { useOutboundCall } from '@/composables/useOutboundCall';
 import { useCtiStore, type BreakReason, type ReadyMode, READY_MODE_LABELS } from '@/stores/cti';
 
@@ -24,7 +24,7 @@ const BREAK_MENU: { key: BreakReason; label: string }[] = [
 ];
 
 const cti = useCtiStore();
-const { requestOutboundCall } = useOutboundCall();
+const { requestOutboundCall, checkCanCall } = useOutboundCall();
 
 const readyActive = computed(() => cti.workStatus === 'ready');
 const breakActive = computed(() => cti.workStatus === 'break');
@@ -32,16 +32,16 @@ const disabled = computed(() => cti.workButtonsDisabled);
 
 // 拨号盘：二席处理工单时，客户要求拨打其他号码 → 调出拨号盘外呼
 const dialPadOpen = ref(false);
-const callDisabled = computed(() => cti.inCall || cti.workStatus === 'break');
+const callBlocked = computed(() => checkCanCall());
 
 function closeDialPad() {
   dialPadOpen.value = false;
 }
 
-function onDial(phone: string) {
+function onDial(phone: string, outboundNumber: string, contactLabel?: string) {
   requestOutboundCall(
-    { phone, contactLabel: phone },
-    { onPickerOpen: closeDialPad, onSuccess: closeDialPad },
+    { phone, contactLabel: contactLabel || phone },
+    { outboundNumber, onSuccess: closeDialPad },
   );
 }
 
@@ -65,7 +65,6 @@ const menuSelectedKeys = computed(() => {
 
 function signIn() {
   cti.signIn();
-  message.success('已签入 · 未就绪');
 }
 function signOut() {
   if (cti.signOut()) message.info('已签出');
@@ -85,7 +84,7 @@ function onMenuClick({ key }: { key: string | number }) {
 </script>
 
 <template>
-  <div class="cti-bar">
+  <div class="cti-bar" :class="{ 'is-in-call': cti.inCall }">
     <template v-if="!cti.isSignedIn">
       <button class="cti-work-btn cti-work-btn--signin" type="button" @click="signIn">
         <span class="cti-work-btn__icon"><CtiAuthIcon kind="sign-in" /></span>
@@ -95,7 +94,7 @@ function onMenuClick({ key }: { key: string | number }) {
     </template>
 
     <template v-else>
-      <div class="actions">
+      <div class="actions" :class="{ 'is-covered': cti.inCall }">
         <button
           class="cti-work-btn cti-work-btn--ready"
           type="button"
@@ -161,30 +160,23 @@ function onMenuClick({ key }: { key: string | number }) {
           <span class="cti-work-btn__label">签出</span>
         </button>
 
-        <a-popover
-          v-model:open="dialPadOpen"
-          trigger="click"
-          placement="bottomRight"
-          :overlay-inner-style="{ padding: '0' }"
-          :disabled="callDisabled"
-        >
-          <template #content>
-            <DialPad @call="onDial" />
-          </template>
+        <DialPadPopover v-model:open="dialPadOpen" placement="bottomRight" @call="onDial">
           <button
             class="cti-work-btn cti-work-btn--call"
             type="button"
-            :class="{ 'is-disabled': callDisabled, 'is-active': dialPadOpen }"
-            :disabled="callDisabled"
+            :class="{ 'is-disabled': !!callBlocked, 'is-active': dialPadOpen }"
             title="拨号盘 · 外呼"
           >
             <span class="cti-work-btn__icon"><PhoneFilled /></span>
             <span class="cti-work-btn__label">呼叫</span>
           </button>
-        </a-popover>
-      </div>
+        </DialPadPopover>
 
-      <CallSessionBar v-if="cti.inCall" class="call-anchor" variant="anchor" />
+        <!-- 通话中：仅盖住 CTI 按钮区，不撑满整条 flex 槽 -->
+        <div v-if="cti.inCall" class="call-overlay">
+          <CallSessionBar variant="overlay" />
+        </div>
+      </div>
     </template>
   </div>
 </template>
@@ -194,11 +186,39 @@ function onMenuClick({ key }: { key: string | number }) {
   flex: 1; min-width: 0; height: 100%;
   display: flex; align-items: center; gap: 12px;
   padding: 0 8px; overflow: hidden;
+  position: relative;
+}
+.cti-bar.is-in-call {
+  overflow: visible;
 }
 
 .hint { font-size: 12px; color: #9ca3af; flex: none; white-space: nowrap; }
 
-.actions { display: flex; align-items: center; gap: 8px; flex: none; }
+.actions {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+/* 通话中取消定位，让浮层以整条 .cti-bar 为宽度基准，内容不被按钮区宽度截断 */
+.actions.is-covered { visibility: hidden; pointer-events: none; position: static; }
+
+.call-overlay {
+  position: absolute;
+  inset: 0 8px;
+  z-index: 95;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 0;
+  pointer-events: none;
+  /* 父级 .actions.is-covered 为 hidden，须显式恢复，否则通话条一并被隐藏 */
+  visibility: visible;
+}
+.call-overlay :deep(.call-bar) {
+  pointer-events: auto;
+}
 
 /* 横排胶囊：左图标 + 右文案，高度 36px */
 .cti-work-btn {
@@ -280,6 +300,4 @@ function onMenuClick({ key }: { key: string | number }) {
 .status-dd.ready { color: #10b981; }
 .status-dd.break { color: #d97706; background: #fffbeb; border-color: #fcd34d; }
 .status-dd.busy { color: #2563eb; background: #eff6ff; border-color: #bfdbfe; font-weight: 600; }
-
-.call-anchor { margin-left: auto; }
 </style>

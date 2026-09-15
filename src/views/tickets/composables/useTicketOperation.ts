@@ -189,6 +189,8 @@ export function useTicketOperation() {
       base.channel = t.channel;
       base.priority = t.priority;
       base.lastHandler = t.assignee;
+      base.groupId = t.groupId;
+      base.groupNames = t.groupNames;
       base.customer.name = t.customer;
       base.product.name = t.product;
       // 产品有无售后服务 → 「转售后」置灰 + 提示（基线 ※12）。按产品名判，不再恒为 true

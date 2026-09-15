@@ -25,8 +25,14 @@ function openInsight() {
 
 const activeFilter = ref<CustomerHistoryFilter>('all');
 
+/** 未认领 / 待响应按子状态判；展示名「待领取」同义 */
+const isUnclaimed = (t: CustomerHistoryTicket) => t.status === '未认领' || t.status === '待领取';
+const isUnresponded = (t: CustomerHistoryTicket) => t.status === '待响应';
+
 const FILTERS: { key: CustomerHistoryFilter; label: (d: CustomerHistoryData) => string }[] = [
   { key: 'all', label: (d) => `全部(${d.totalCount})` },
+  { key: 'unclaimed', label: (d) => `未认领(${d.tickets.filter(isUnclaimed).length})` },
+  { key: 'unresponded', label: (d) => `待响应(${d.tickets.filter(isUnresponded).length})` },
   { key: 'processing', label: (d) => `处理中(${d.processingCount})` },
   { key: 'closed', label: (d) => `已关闭(${d.closedCount})` },
   { key: 'complaint', label: (d) => `投诉(${d.complaintCount})` },
@@ -35,6 +41,10 @@ const FILTERS: { key: CustomerHistoryFilter; label: (d: CustomerHistoryData) => 
 const filteredTickets = computed(() => {
   const list = props.data.tickets;
   switch (activeFilter.value) {
+    case 'unclaimed':
+      return list.filter(isUnclaimed);
+    case 'unresponded':
+      return list.filter(isUnresponded);
     case 'processing':
       return list.filter((t) => t.isProcessing);
     case 'closed':
@@ -47,6 +57,9 @@ const filteredTickets = computed(() => {
 });
 
 function statusStyle(t: CustomerHistoryTicket) {
+  if (isUnclaimed(t) || isUnresponded(t)) {
+    return { color: '#d97706', background: '#d9770618' };
+  }
   if (t.isProcessing) {
     return { color: '#1a6fff', background: '#1a6fff18' };
   }

@@ -39,7 +39,7 @@ export const OUTBOUND_NUMBERS: OutboundNumberRow[] = [
     id: 'n1',
     number: '055166161914',
     teamKeys: ['g1', 'g2'],
-    remark: '测试',
+    remark: '彩铃专用',
     syncedAt: '2026-09-08 14:20:00',
     status: 'active',
     createdAt: '2026-09-01 09:00:00',
@@ -49,7 +49,7 @@ export const OUTBOUND_NUMBERS: OutboundNumberRow[] = [
     id: 'n2',
     number: '66161914',
     teamKeys: ['g2'],
-    remark: '',
+    remark: '合肥窗启专用',
     syncedAt: '2026-09-08 14:20:00',
     status: 'active',
     createdAt: '2026-09-01 09:00:00',
@@ -59,7 +59,7 @@ export const OUTBOUND_NUMBERS: OutboundNumberRow[] = [
     id: 'n3',
     number: '66161918',
     teamKeys: [],
-    remark: '',
+    remark: '教育智慧屏专用',
     syncedAt: '2026-09-08 14:20:00',
     status: 'active',
     createdAt: '2026-09-01 09:00:00',
@@ -70,7 +70,7 @@ export const OUTBOUND_NUMBERS: OutboundNumberRow[] = [
     id: 'n0',
     number: '055166161900',
     teamKeys: ['g1'],
-    remark: '历史号码',
+    remark: '学习机售后专用（已下线）',
     syncedAt: '2026-09-07 10:00:00',
     status: 'expired',
     createdAt: '2026-08-20 10:00:00',
@@ -103,6 +103,14 @@ export interface OutboundNumberOption {
   number: string;
   remark: string;
 }
+
+/** 不指定外显号 —— 由呼叫中心按默认策略下发 */
+export const OUTBOUND_NONE_ID = '__none__';
+export const OUTBOUND_NONE_OPTION: OutboundNumberOption = {
+  id: OUTBOUND_NONE_ID,
+  number: '',
+  remark: '使用呼叫中心默认',
+};
 
 /** 演示：角色 → 业务班组（与「用户分组」同源） */
 export function resolveAgentTeamKey(roleKey: RoleKey): string {

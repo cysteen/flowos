@@ -103,7 +103,7 @@ function processEntries(t: RelatedTicketCard) {
 
     <!-- 补充信息 -->
     <OpCollapsibleSection
-      title="补充信息"
+      :title="`补充信息 (${supplementRecords.length})`"
       :icon="FileAddOutlined"
       :expanded="expanded.supplement"
       @toggle="expanded.supplement = !expanded.supplement"
@@ -118,7 +118,7 @@ function processEntries(t: RelatedTicketCard) {
 
     <!-- 催单记录 -->
     <OpCollapsibleSection
-      title="催单记录"
+      :title="`催单记录 (${dunningRecords.length})`"
       :icon="BellOutlined"
       :expanded="expanded.dunning"
       @toggle="expanded.dunning = !expanded.dunning"

@@ -2,7 +2,9 @@
 import { ref, onMounted } from 'vue';
 import { PhoneFilled } from '@ant-design/icons-vue';
 
-const emit = defineEmits<{ (e: 'call', phone: string): void }>();
+const emit = defineEmits<{ (e: 'call', phone: string, outboundNumber: string): void }>();
+
+const outboundNumber = ref('');
 
 const num = ref('');
 const clipSuggest = ref('');
@@ -36,7 +38,7 @@ function clearAll() {
 }
 function call() {
   const phone = num.value.trim();
-  if (phone) emit('call', phone);
+  if (phone) emit('call', phone, outboundNumber.value);
 }
 
 /** 光标进入拨号盘：读剪贴板，若有号码则浮出粘贴提示 */
@@ -72,10 +74,22 @@ function onKeydown(e: KeyboardEvent) {
   else if (k === 'Enter') { call(); e.preventDefault(); }
 }
 
+function fillNumber(phone: string) {
+  num.value = sanitize(phone).slice(0, 24);
+  clipSuggest.value = '';
+  padEl.value?.focus();
+}
+
+function setOutboundNumber(number: string) {
+  outboundNumber.value = number;
+}
+
 onMounted(() => {
   padEl.value?.focus();
   checkClipboard();
 });
+
+defineExpose({ fillNumber, setOutboundNumber });
 </script>
 
 <template>
@@ -110,7 +124,13 @@ onMounted(() => {
 
     <div class="dp-actions">
       <span class="dp-side-ph" />
-      <button class="dp-call" type="button" :disabled="!num" title="呼叫" @click="call">
+      <button
+        class="dp-call"
+        type="button"
+        :disabled="!num"
+        title="呼叫"
+        @click="call"
+      >
         <PhoneFilled />
       </button>
       <button

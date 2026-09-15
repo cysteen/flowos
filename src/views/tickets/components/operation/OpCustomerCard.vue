@@ -12,6 +12,7 @@ defineProps<{
     address: string;
   };
   showContactActions?: boolean;
+  ticketId?: string;
 }>();
 const emit = defineEmits<{ contact: [type: 'call' | 'sms' | 'email', value: string] }>();
 </script>
@@ -35,6 +36,8 @@ const emit = defineEmits<{ contact: [type: 'call' | 'sms' | 'email', value: stri
       <OpContactRows
         :contacts="customer.contacts"
         :show-actions="showContactActions"
+        :ticket-id="ticketId"
+        :call-contact-label="customer.name ? `客户·${customer.name}` : '客户'"
         @contact="(t, v) => emit('contact', t, v)"
       />
     </div>

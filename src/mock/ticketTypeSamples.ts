@@ -93,12 +93,14 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
         { id: 'v1', title: '满意度调研', sentAt: '2026-06-17 10:00:25', evaluated: true, linkLabel: '查看问卷', conclusion: '是否解决: 已解决 | 是否满意: 满意' },
       ],
       customerHistory: {
-        customerName: '李大海', totalCount: 6, processingCount: 1, closedCount: 5, complaintCount: 0,
+        customerName: '李大海', totalCount: 8, processingCount: 1, closedCount: 5, complaintCount: 0,
         tickets: [
           // 售后历史单：channel='售后' 作来源标记，与客服单混排、独立成行计入总数（D10）
           { id: 'h0', no: 'AS-20260605-30412', title: '维修 · 扫地机器人 R2', status: '已完成', statusColor: '#10B981', type: '维修', typeColor: '#0EA5A4', typeBgColor: '#0EA5A41F', channel: '售后', date: '2026-06-05', summary: '滚刷卡死异响，网点上门更换滚刷组件，复测正常。', isProcessing: false, isClosed: true, isComplaint: false },
           { id: 'h1', no: 'IFLYZX-20260601-00001', title: '学习机 T20 账号登录咨询', status: '已关闭', statusColor: '#10B981', type: '咨询', typeColor: C.咨询, typeBgColor: bg(C.咨询), channel: '400呼入', date: '2026-06-01', summary: '咨询多设备登录策略，已说明并推送文档。', isProcessing: false, isClosed: true, isComplaint: false },
           { id: 'h2', no: 'IFLYZX-20260617-00001', title: '设备无法连接 WiFi 咨询', status: '处理中', statusColor: '#1A6FFF', type: '咨询', typeColor: C.咨询, typeBgColor: bg(C.咨询), channel: '电话', date: '2026-06-17', summary: '咨询 WiFi 连接与账号登录，远程指导中。', isProcessing: true, isClosed: false, isComplaint: false },
+          { id: 'h3', no: 'IFLYZX-20260619-00004', title: '扫地机器人 R2 回充座找不到', status: '未认领', statusColor: '#D97706', type: '咨询', typeColor: C.咨询, typeBgColor: bg(C.咨询), channel: '400呼入', date: '2026-06-19', summary: '清扫结束后无法自动回充，已建单待组内领取。', isProcessing: false, isClosed: false, isComplaint: false },
+          { id: 'h4', no: 'IFLYZX-20260618-00007', title: 'R2 耗材更换周期咨询', status: '待响应', statusColor: '#D97706', type: '咨询', typeColor: C.咨询, typeBgColor: bg(C.咨询), channel: '在线客服', date: '2026-06-18', summary: '咨询滚刷、滤网更换周期及购买渠道，已派单待首次响应。', isProcessing: false, isClosed: false, isComplaint: false },
         ],
       },
     },
@@ -124,6 +126,7 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
       processResult: '已记录扩容需求与预算区间，转商务团队跟进报价与合同。',
       processResultAttachments: [],
       qualityIsStandard: true,
+      leadCategory: '录音笔商机',
       leadStage: 'toSales',
       leadNo: 'OPP-20260610-002',
     },

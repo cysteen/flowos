@@ -1,12 +1,5 @@
-import { ref } from 'vue';
 import { message } from 'ant-design-vue';
-import {
-  getOutboundNumbersForTeam,
-  resolveAgentTeamKey,
-  type OutboundNumberOption,
-} from '@/mock/outboundNumbers';
 import { useCtiStore } from '@/stores/cti';
-import { useUserStore } from '@/stores/user';
 
 export interface OutboundCallPayload {
   phone: string;
@@ -14,14 +7,8 @@ export interface OutboundCallPayload {
   ticketId?: string;
 }
 
-const pickerOpen = ref(false);
-const pickerOptions = ref<OutboundNumberOption[]>([]);
-const selectedId = ref('');
-let pendingPayload: OutboundCallPayload | null = null;
-let pendingOnSuccess: ((outboundNumber: string) => void) | null = null;
-
 function validateCtiState(cti: ReturnType<typeof useCtiStore>): string | null {
-  if (cti.workStatus === 'offline') return '请先签入上班';
+  if (cti.workStatus === 'offline') return '请先签入';
   if (cti.workStatus === 'break') return '请先切换为就绪';
   if (cti.callSession) return '当前有进行中的外呼';
   return null;
@@ -35,34 +22,26 @@ function executeCall(payload: OutboundCallPayload, outboundNumber: string): bool
     contactLabel: payload.contactLabel,
     outboundNumber,
   });
-  if (ok) {
-    message.success(`正在呼叫 ${payload.phone}（外显 ${outboundNumber}）`);
-    pendingOnSuccess?.(outboundNumber);
-  } else {
+  if (!ok) {
     message.warning('当前状态无法外呼');
   }
   return ok;
 }
 
-function resetPicker() {
-  pickerOpen.value = false;
-  pendingPayload = null;
-  pendingOnSuccess = null;
-  pickerOptions.value = [];
-  selectedId.value = '';
-}
-
-/** 外呼前选择外显号码（拨号盘 / 工单侧栏一键呼叫共用） */
+/** 外呼（拨号盘 / 工单侧栏一键呼叫共用） */
 export function useOutboundCall() {
   const cti = useCtiStore();
-  const user = useUserStore();
+
+  function checkCanCall(): string | null {
+    return validateCtiState(cti);
+  }
 
   function requestOutboundCall(
     payload: OutboundCallPayload,
     hooks?: {
       onSuccess?: (outboundNumber: string) => void;
-      /** 弹出选号层前回调（如关闭拨号盘 Popover，避免遮挡 Modal） */
-      onPickerOpen?: () => void;
+      /** 拨号盘等场景已选定外显号（空字符串=不指定） */
+      outboundNumber?: string;
     },
   ): boolean {
     const err = validateCtiState(cti);
@@ -72,49 +51,18 @@ export function useOutboundCall() {
     }
     if (!payload.phone.trim()) return false;
 
-    const options = getOutboundNumbersForTeam(resolveAgentTeamKey(user.roleKey));
-    if (!options.length) {
-      message.warning('暂无可用外显号码，请联系管理员在「外显号码」中配置');
+    if (hooks?.outboundNumber === undefined) {
+      message.warning('请选择外显号码');
       return false;
     }
 
-    if (options.length === 1) {
-      pendingOnSuccess = hooks?.onSuccess ?? null;
-      const ok = executeCall(payload, options[0].number);
-      pendingOnSuccess = null;
-      return ok;
-    }
-
-    pendingPayload = payload;
-    pendingOnSuccess = hooks?.onSuccess ?? null;
-    pickerOptions.value = options;
-    selectedId.value = options[0].id;
-    hooks?.onPickerOpen?.();
-    pickerOpen.value = true;
-    return true;
-  }
-
-  function confirmPicker() {
-    if (!pendingPayload) return;
-    const picked = pickerOptions.value.find((o) => o.id === selectedId.value);
-    if (!picked) {
-      message.warning('请选择外显号码');
-      return;
-    }
-    executeCall(pendingPayload, picked.number);
-    resetPicker();
-  }
-
-  function cancelPicker() {
-    resetPicker();
+    const ok = executeCall(payload, hooks.outboundNumber.trim());
+    if (ok) hooks?.onSuccess?.(hooks.outboundNumber.trim());
+    return ok;
   }
 
   return {
-    pickerOpen,
-    pickerOptions,
-    selectedId,
     requestOutboundCall,
-    confirmPicker,
-    cancelPicker,
+    checkCanCall,
   };
 }

@@ -31,7 +31,7 @@ function addRecord() {
       <div class="appt-head-main">
         <span class="appt-title"><CalendarOutlined />预约回访</span>
         <span v-if="readonly" class="appt-hint">当前角色仅可查看预约记录</span>
-        <span v-else class="appt-hint">填写预约时间与需求后点「保留」正式登记；已保留的可标记已沟通或取消</span>
+        <span v-else class="appt-hint">填写预约时间与需求后点「保存」正式登记；已保存的可标记已沟通或取消预约</span>
       </div>
       <button v-if="!readonly" type="button" class="add-btn" @click="addRecord">
         <PlusOutlined />

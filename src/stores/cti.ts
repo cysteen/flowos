@@ -16,6 +16,14 @@ export interface CallSession {
   status: CallStatus;
   startedAt: number;
   connectedAt: number | null;
+  /** 坐席麦克风静音（仅影响本端发送，对方仍可说话） */
+  muted: boolean;
+  /** 保持通话：客户侧听等待音，链路不断（与静音不同） */
+  held: boolean;
+  /** 当前这次保持开始时刻；接回后置 null */
+  holdSince: number | null;
+  /** 累计保持时长（毫秒），挂断后可写入联系记录 */
+  holdAccumMs: number;
 }
 
 export const READY_MODE_LABELS: Record<ReadyMode, string> = {
@@ -81,6 +89,12 @@ export const useCtiStore = defineStore('cti', {
       if (s.status === 'connected' && s.connectedAt) return state.now - s.connectedAt;
       return state.now - s.startedAt;
     },
+    /** 当前保持段已持续毫秒（仅 held=true 时有意义） */
+    holdTimerMs(state): number {
+      const s = state.callSession;
+      if (!s?.held || !s.holdSince) return 0;
+      return state.now - s.holdSince;
+    },
   },
   actions: {
     ensureClock() {
@@ -142,7 +156,7 @@ export const useCtiStore = defineStore('cti', {
     },
     startCall(payload: { ticketId: string; phone: string; contactLabel: string; outboundNumber: string }) {
       const { ticketId, phone, contactLabel, outboundNumber } = payload;
-      if (!phone || !outboundNumber) return false;
+      if (!phone) return false;
       if (this.workStatus === 'offline') return false;
       if (this.workStatus === 'break') return false;
       if (this.callSession) return false;
@@ -161,6 +175,10 @@ export const useCtiStore = defineStore('cti', {
         status: 'dialing',
         startedAt,
         connectedAt: null,
+        muted: false,
+        held: false,
+        holdSince: null,
+        holdAccumMs: 0,
       };
       this.schedulePhaseTransitions();
       return true;
@@ -173,6 +191,28 @@ export const useCtiStore = defineStore('cti', {
       if (!this.callSession) return;
       if (this.callSession.status === 'dialing') return;
       this.endCall();
+    },
+    /** 静音/取消静音 —— 仅接通后可用；与 Hold 不同，对方仍可说话 */
+    toggleMute() {
+      const s = this.callSession;
+      if (s?.status !== 'connected') return;
+      this.callSession = { ...s, muted: !s.muted };
+    },
+    /** 保持 / 接回 —— 客户听等待音，通话链路不断 */
+    toggleHold() {
+      const s = this.callSession;
+      if (s?.status !== 'connected') return;
+      if (s.held) {
+        const extra = s.holdSince ? Date.now() - s.holdSince : 0;
+        this.callSession = {
+          ...s,
+          held: false,
+          holdSince: null,
+          holdAccumMs: s.holdAccumMs + extra,
+        };
+        return;
+      }
+      this.callSession = { ...s, held: true, holdSince: Date.now() };
     },
     endCall() {
       this.clearPhaseTimer();

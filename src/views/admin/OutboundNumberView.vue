@@ -51,10 +51,10 @@ const list = computed(() =>
 const cols = [
   { title: '序号', dataIndex: 'index', key: 'index', width: 56, align: 'center' as const },
   { title: '外显号码', dataIndex: 'number', key: 'number', width: 200 },
-  { title: '可用班组', dataIndex: 'teamNames', key: 'teams', ellipsis: true },
-  { title: '备注', dataIndex: 'remark', key: 'remark', width: 160, ellipsis: true },
-  { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', width: 168 },
-  { title: '更新时间', dataIndex: 'updatedAt', key: 'updatedAt', width: 168 },
+  { title: '可用班组', dataIndex: 'teamNames', key: 'teams', width: 240, ellipsis: true },
+  { title: '备注', dataIndex: 'remark', key: 'remark', width: 100, ellipsis: true },
+  { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', width: 140 },
+  { title: '更新时间', dataIndex: 'updatedAt', key: 'updatedAt', width: 140 },
   { title: '操作', key: 'op', width: 100, align: 'center' as const },
 ];
 

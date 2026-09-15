@@ -56,6 +56,7 @@ const BASE_TICKETS: Ticket[] = [
     customerPhone: '13600001111', productCategory: '企业服务',
     createdAt: '2026-06-09 15:20', updatedAt: '2026-06-10 10:00',
     responded: true, suspendedByMe: true, hasSupplement: true,
+    suspendedAt: '2026-06-10 10:00', suspendResumeAt: '2026-06-12 18:00',
   },
   { serviceScore: 1,
     id: 't4', no: 'IFLYSJ-20260610-00006', type: '商机', channel: '邮件',

@@ -27,6 +27,7 @@ import {
   SUGGEST_L1_OPTIONS,
   SUGGEST_L2_MAP,
   formatCustomerSubline,
+  maskPhone,
 } from '@/views/tickets/types/createTicket';
 import { useCreateTicketForm } from '@/views/tickets/composables/useCreateTicketForm';
 import CreateTicketPartCard from './create-ticket/CreateTicketPartCard.vue';
@@ -53,6 +54,9 @@ const {
   submitting,
   customerModalOpen,
   editingCustomer,
+  customerSearchOpen,
+  customerSearchHits,
+  customerSearchTooMany,
   errors,
   problemL1Options,
   problemL2Options,
@@ -60,7 +64,6 @@ const {
   productNameOptions,
   showTypePart,
   typePartSubtitle,
-  customerAddressRequired,
   showChannelComplaintFields,
   reset,
   applyPrefill,
@@ -70,6 +73,10 @@ const {
   onProblemL1Change,
   onProblemL2Change,
   searchCustomer,
+  onCustomerQueryInput,
+  closeCustomerSearch,
+  selectCustomer,
+  clearCustomer,
   openCreateCustomer,
   openEditCustomer,
   saveCustomer,
@@ -77,6 +84,15 @@ const {
   buildTicket,
   syncTitle,
 } = useCreateTicketForm(() => props.prefill);
+
+/**
+ * 「+ 新建客户」的联系方式预填：搜索只按联系方式，故搜索框里的原始输入必是一条联系方式。
+ * 选中客户后搜索框会被改写成「姓名 · 号码」，带 ` · ` 的不是原始输入，不预填。
+ */
+const newCustomerPrefill = computed(() => {
+  const q = form.customerQuery.trim();
+  return q && !q.includes(' · ') ? q : '';
+});
 
 const isChildMode = computed(() => props.prefill?.mode === 'child');
 const isReopenMode = computed(() => props.prefill?.mode === 'reopen');
@@ -274,13 +290,39 @@ watch(
       <CreateTicketPartCard title="客户信息">
         <div class="customer-body">
           <div class="customer-toolbar">
-            <div class="search-box" @keyup.enter="searchCustomer">
-              <SearchOutlined :style="{ color: '#9CA3AF', fontSize: '15px' }" />
-              <input
-                v-model="form.customerQuery"
-                class="search-input"
-                placeholder="搜索手机号 / 姓名"
-              />
+            <div class="search-wrap">
+              <div class="search-box" @keyup.enter="searchCustomer">
+                <SearchOutlined :style="{ color: '#9CA3AF', fontSize: '15px' }" />
+                <input
+                  v-model="form.customerQuery"
+                  class="search-input"
+                  placeholder="请输入客户联系方式进行搜索"
+                  @input="onCustomerQueryInput"
+                />
+              </div>
+              <!-- 搜索下拉：手机号脱敏展示，选中后才在客户卡里给完整号码 -->
+              <div v-if="customerSearchOpen" class="search-drop">
+                <button
+                  v-for="c in customerSearchHits"
+                  :key="c.id"
+                  type="button"
+                  class="drop-item"
+                  @click="selectCustomer(c)"
+                >
+                  <span class="drop-name">{{ c.name }}</span>
+                  <span v-if="c.vip" class="vip-tag sm">VIP</span>
+                  <span class="drop-phone">{{ maskPhone(c.phone) }}</span>
+                  <span class="drop-meta">{{ [c.customerType, c.region].filter(Boolean).join(' · ') }}</span>
+                </button>
+                <div v-if="!customerSearchHits.length" class="drop-empty">
+                  未找到匹配客户
+                  <span class="drop-link" @click="openCreateCustomer">+ 新建客户</span>
+                </div>
+                <div v-else-if="customerSearchTooMany" class="drop-tip">
+                  结果过多，请输入完整联系方式
+                </div>
+                <div class="drop-close" @click="closeCustomerSearch">收起</div>
+              </div>
             </div>
             <button type="button" class="btn-outline" @click="openCreateCustomer">
               <PlusOutlined />
@@ -297,14 +339,13 @@ watch(
             <a-input v-model:value="form.reporter.phone" placeholder="代报人手机" />
             <FormSelect
               v-model:value="form.reporter.relation"
-              :options="['家属', '同事', '朋友', '其他'].map((v) => ({ value: v, label: v }))"
+              :options="['校园代理', '家属', '同事', '朋友', '其他'].map((v) => ({ value: v, label: v }))"
             />
           </div>
 
           <div
             v-if="form.customer"
             class="customer-card"
-            :class="{ 'addr-missing': customerAddressRequired && errors.customerAddress }"
           >
             <div class="cust-avatar">{{ form.customer.name.slice(0, 1) }}</div>
             <div class="cust-info">
@@ -314,21 +355,20 @@ watch(
                 <span class="cust-phone">{{ form.customer.phone }}</span>
               </div>
               <div class="cust-line2">
-                {{ formatCustomerSubline(form.customer) }}
-                <span
-                  v-if="customerAddressRequired && errors.customerAddress"
-                  class="addr-warn"
-                >
-                  · * 省市区未填写
-                </span>
+                {{ formatCustomerSubline(form.customer, form.businessType) }}
               </div>
             </div>
             <div class="cust-actions">
               <span class="link" @click="openEditCustomer">编辑</span>
+              <span class="link" @click="clearCustomer">更换</span>
             </div>
           </div>
-          <div v-else class="customer-empty" :class="{ error: errors.customer }">
-            请搜索或新建客户
+          <!--
+            未绑定空态：撑住高度避免选中客户时布局跳动，并在校验失败时承载报错。
+            文案不重复搜索框占位（那句已经在教怎么操作），这里只说状态与后果。
+          -->
+          <div v-if="!form.customer" class="customer-empty" :class="{ error: errors.customer }">
+            {{ errors.customer ? '请先选择客户，未绑定客户不可提交工单' : '未绑定客户 · 客户为建单必填项' }}
           </div>
         </div>
       </CreateTicketPartCard>
@@ -638,9 +678,12 @@ watch(
     </div>
 
     <CustomerInfoModal
+      :key="form.businessType"
       v-model:open="customerModalOpen"
       :editing="editingCustomer"
+      :business-type="form.businessType"
       :initial="form.customer"
+      :prefill-contact="newCustomerPrefill"
       @save="saveCustomer"
     />
   </a-modal>
@@ -855,8 +898,77 @@ watch(
   align-items: center;
   flex-wrap: nowrap;
 }
-.search-box {
+
+.search-wrap {
+  position: relative;
   flex: 1;
+  min-width: 0;
+}
+.search-drop {
+  position: absolute;
+  top: 39px;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(17, 24, 39, 0.12);
+  overflow: hidden;
+}
+.drop-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+.drop-item + .drop-item { border-top: 1px solid #f3f4f6; }
+.drop-item:hover { background: #f0f7ff; }
+.drop-name { font-size: 13px; font-weight: 600; color: #111827; flex: none; }
+.drop-phone { font-size: 12px; color: #4b5563; flex: none; }
+.drop-meta {
+  font-size: 11px;
+  color: #9ca3af;
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.drop-empty {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: #9ca3af;
+}
+.drop-link { color: #1a6fff; cursor: pointer; font-weight: 500; }
+.drop-tip {
+  padding: 6px 12px;
+  font-size: 11px;
+  color: #b45309;
+  background: #fffbeb;
+  border-top: 1px solid #fde68a;
+}
+.drop-close {
+  padding: 6px 12px;
+  font-size: 11px;
+  color: #9ca3af;
+  text-align: right;
+  cursor: pointer;
+  border-top: 1px solid #f3f4f6;
+}
+.vip-tag.sm { font-size: 9px; padding: 0 4px; }
+
+.search-box {
+  width: 100%;
   min-width: 0;
   height: 35px;
   display: flex;
@@ -911,9 +1023,6 @@ watch(
   border-radius: 6px;
   box-sizing: border-box;
 }
-.customer-card.addr-missing {
-  border-color: #fca5a5;
-}
 .customer-empty {
   padding: 10px 12px;
   font-size: 12px;
@@ -964,12 +1073,12 @@ watch(
   margin-top: 3px;
   line-height: 1.4;
 }
-.addr-warn { color: #ef4444; font-weight: 600; }
 .cust-actions {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  justify-content: center;
+  flex-direction: row;
+  gap: 12px;
+  align-items: center;
+  justify-content: flex-end;
   flex: none;
   align-self: stretch;
 }

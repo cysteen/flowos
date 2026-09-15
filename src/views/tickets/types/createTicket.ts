@@ -59,10 +59,50 @@ export interface CustomerInfo {
   gender: string;
   region: string;
   address: string;
+  /** 教育分类 · 学校（§930 PRD §3.4） */
+  school?: string;
+  schoolTag?: string;
+  serviceOwner?: string;
 }
 
-export function formatCustomerSubline(c: CustomerInfo): string {
-  return [c.customerType, c.gender, c.region, c.address].filter(Boolean).join(' · ');
+export function formatCustomerSubline(c: CustomerInfo, businessType?: string): string {
+  const parts = [c.customerType, c.gender, c.region, c.address].filter(Boolean);
+  if (businessType === '教育') {
+    for (const item of [c.school, c.schoolTag, c.serviceOwner]) {
+      if (item) parts.push(item);
+    }
+  }
+  return parts.join(' · ');
+}
+
+/** 手机号脱敏：搜索下拉里只给中间四位打码，客户卡内仍展示完整号码 */
+export function maskPhone(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length < 7) return phone;
+  return `${digits.slice(0, 3)}****${digits.slice(-4)}`;
+}
+
+/** 按客户标识取档案最新快照；取不到表示该客户在当前口径下不可用 */
+export function findCustomerById(id: string): CustomerInfo | undefined {
+  return CUSTOMER_DIRECTORY.find((c) => c.id === id);
+}
+
+/**
+ * 保存客户 = **写回容联云档案**（930 补上的回写链路）。
+ * 930 之前新建 / 修改只存本单快照、不回写，下次来电搜不到新客户、搜到的仍是旧资料；
+ * 写回之后，再按联系方式搜索即可命中最新资料。
+ */
+export function upsertCustomer(c: CustomerInfo): void {
+  const i = CUSTOMER_DIRECTORY.findIndex((x) => x.id === c.id);
+  if (i >= 0) CUSTOMER_DIRECTORY.splice(i, 1, { ...c });
+  else CUSTOMER_DIRECTORY.push({ ...c });
+}
+
+/** 省 / 市 / 区 存储格式；解析时兼容历史数据里不带空格的「省/市/区」 */
+export const REGION_SEP = ' / ';
+export function regionToArray(region?: string): string[] {
+  if (!region?.trim()) return [];
+  return region.split('/').map((s) => s.trim()).filter(Boolean);
 }
 
 export interface ReporterInfo {
@@ -312,9 +352,220 @@ export const MOCK_CUSTOMER: CustomerInfo = {
   customerTypes: ['个人用户'],
   contacts: [{ type: '来电号码', value: '138 0013 8000' }],
   gender: '男',
-  region: '安徽省/合肥市/蜀山区',
+  region: '安徽省 / 合肥市 / 蜀山区',
   address: '望江西路666号',
 };
+
+/**
+ * 客户档案库 —— 建单客户搜索的检索源。
+ * 客户主数据由容联云维护，本表是工单侧检索/回填所依赖的字段口径样本：
+ * 手机号唯一、教育分类客户带学校三项、部分客户资料不全（用于「信息不完整」提示）。
+ */
+export const CUSTOMER_DIRECTORY: CustomerInfo[] = [
+  MOCK_CUSTOMER,
+  {
+    id: 'c-002',
+    name: '赵敏',
+    phone: '139 2244 7788',
+    vip: true,
+    customerType: '老师',
+    customerTypes: ['老师'],
+    contacts: [
+      { type: '来电号码', value: '139 2244 7788' },
+      { type: '邮箱', value: 'zhaomin@hf1z.edu.cn' },
+    ],
+    gender: '女',
+    region: '安徽省 / 合肥市 / 庐阳区',
+    address: '寿春路38号',
+    school: '合肥市第一中学',
+    schoolTag: '重点校',
+    serviceOwner: '王明',
+  },
+  {
+    id: 'c-003',
+    name: '吴芳',
+    phone: '137 8899 1200',
+    vip: false,
+    customerType: '家长',
+    customerTypes: ['家长'],
+    contacts: [{ type: '来电号码', value: '137 8899 1200' }],
+    gender: '女',
+    region: '安徽省 / 合肥市 / 包河区',
+    address: '马鞍山路100号',
+    school: '合肥八中',
+    schoolTag: '示范校',
+    serviceOwner: '李华',
+  },
+  {
+    id: 'c-004',
+    name: '李大海',
+    phone: '135 6677 8899',
+    vip: false,
+    customerType: '个人用户',
+    customerTypes: ['个人用户'],
+    contacts: [{ type: '来电号码', value: '135 6677 8899' }],
+    gender: '男',
+    region: '',
+    address: '',
+  },
+  {
+    id: 'c-005',
+    name: '施磊',
+    phone: '186 0551 3366',
+    vip: false,
+    customerType: '学生',
+    customerTypes: ['学生'],
+    contacts: [{ type: '来电号码', value: '186 0551 3366' }],
+    gender: '男',
+    region: '安徽省 / 芜湖市 / 镜湖区',
+    address: '北京中路12号',
+  },
+  {
+    id: 'c-006',
+    name: '孙倩',
+    phone: '158 2200 4455',
+    vip: false,
+    customerType: '个人用户',
+    customerTypes: ['个人用户'],
+    contacts: [{ type: '来电号码', value: '158 2200 4455' }],
+    gender: '女',
+    region: '江苏省 / 南京市 / 鼓楼区',
+    address: '中山北路200号',
+  },
+  {
+    id: 'c-007',
+    name: '张小雨',
+    phone: '138 0013 8111',
+    vip: false,
+    customerType: '经销商',
+    customerTypes: ['经销商'],
+    contacts: [{ type: '来电号码', value: '138 0013 8111' }],
+    gender: '女',
+    region: '浙江省 / 杭州市 / 西湖区',
+    address: '文三路90号',
+  },
+  {
+    id: 'c-008',
+    name: '田薇',
+    phone: '133 4455 6677',
+    vip: false,
+    customerType: '个人用户',
+    customerTypes: ['个人用户'],
+    contacts: [{ type: '来电号码', value: '133 4455 6677' }],
+    gender: '女',
+    region: '广东省 / 深圳市 / 南山区',
+    address: '科技园南路8号',
+  },
+  {
+    id: 'c-009',
+    name: '吴强',
+    phone: '136 1122 3344',
+    vip: false,
+    customerType: '个人用户',
+    customerTypes: ['个人用户'],
+    contacts: [{ type: '来电号码', value: '136 1122 3344' }],
+    gender: '男',
+    region: '北京市 / 北京市 / 朝阳区',
+    address: '建国路88号',
+  },
+  {
+    id: 'c-010',
+    name: '郑霞',
+    phone: '132 7788 9900',
+    vip: false,
+    customerType: '家长',
+    customerTypes: ['家长'],
+    contacts: [{ type: '来电号码', value: '132 7788 9900' }],
+    gender: '女',
+    region: '上海市 / 上海市 / 徐汇区',
+    address: '漕溪北路40号',
+  },
+  {
+    id: 'c-011',
+    name: '何敏',
+    phone: '134 5566 7788',
+    vip: false,
+    customerType: '个人用户',
+    customerTypes: ['个人用户'],
+    contacts: [{ type: '来电号码', value: '134 5566 7788' }],
+    gender: '女',
+    region: '浙江省 / 宁波市 / 鄞州区',
+    address: '天童南路500号',
+  },
+  {
+    id: 'c-012',
+    name: '孙莉',
+    phone: '130 2233 4455',
+    vip: false,
+    customerType: '经销商',
+    customerTypes: ['经销商'],
+    contacts: [{ type: '来电号码', value: '130 2233 4455' }],
+    gender: '女',
+    region: '江苏省 / 苏州市 / 工业园区',
+    address: '星湖街328号',
+  },
+  {
+    id: 'c-013',
+    name: '周杰',
+    phone: '131 9900 1122',
+    vip: false,
+    customerType: '个人用户',
+    customerTypes: ['个人用户'],
+    contacts: [{ type: '来电号码', value: '131 9900 1122' }],
+    gender: '男',
+    region: '广东省 / 广州市 / 天河区',
+    address: '珠江新城华夏路10号',
+  },
+];
+
+/** 搜索下拉一次最多展示的条数；超出即提示补充关键词 */
+export const CUSTOMER_SEARCH_LIMIT = 10;
+
+/**
+ * 建单客户检索 —— **只按联系方式检索，不支持按客户姓名检索**。
+ *
+ * 理由：姓名重名率高、同名多人无法区分，检索出来坐席还得逐条核号码；
+ * 而建单场景坐席手里一定有联系方式（来电号码、客户报的手机/邮箱/微信）。
+ * 姓名只作为下拉条目的**展示**信息，不作为检索入口。
+ *
+ * 检索范围覆盖客户档案中的**全部联系方式**（来电号码 / 联系电话 / 邮箱 / 微信），
+ * 不限于主手机号：数字类精确匹配优先、≥4 位支持后四位模糊；非数字按包含匹配。
+ */
+export function searchCustomers(query: string): CustomerInfo[] {
+  const q = query.trim();
+  if (q.length < 2) return [];
+  const digits = q.replace(/\D/g, '');
+  const isNumeric = /^[\d\s-]+$/.test(q);
+  const lower = q.toLowerCase();
+  const hit = new Map<string, CustomerInfo>();
+
+  for (const c of CUSTOMER_DIRECTORY) {
+    const values = c.contacts?.length
+      ? c.contacts.map((x) => x.value)
+      : [c.phone];
+    const matched = values.some((raw) => {
+      if (isNumeric) {
+        const cd = raw.replace(/\D/g, '');
+        if (!cd) return false;
+        if (cd === digits) return true;
+        if (digits.length >= 4 && cd.endsWith(digits)) return true;
+        return cd.includes(digits);
+      }
+      return raw.toLowerCase().includes(lower);
+    });
+    if (matched) hit.set(c.id, c);
+  }
+  return [...hit.values()];
+}
+
+/** 手机号租户内唯一：返回占用该号码的其他客户（用于新建/编辑时的冲突阻断） */
+export function findPhoneOwner(phone: string, selfId?: string): CustomerInfo | undefined {
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length < 7) return undefined;
+  return CUSTOMER_DIRECTORY.find(
+    (c) => c.id !== selfId && c.phone.replace(/\D/g, '') === digits,
+  );
+}
 
 /** 列表与新建表单工单类型一致 */
 export function mapFormTypeToTicketType(t: CreateFormTicketType): TicketType {

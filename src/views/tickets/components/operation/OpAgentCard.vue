@@ -2,7 +2,7 @@
 import OpContactRows from './OpContactRows.vue';
 import type { AgentInfo } from '@/views/tickets/types/operation';
 
-defineProps<{ agent: AgentInfo; showContactActions?: boolean }>();
+defineProps<{ agent: AgentInfo; showContactActions?: boolean; ticketId?: string }>();
 const emit = defineEmits<{ contact: [type: 'call' | 'sms' | 'email', value: string] }>();
 </script>
 
@@ -18,6 +18,8 @@ const emit = defineEmits<{ contact: [type: 'call' | 'sms' | 'email', value: stri
       <OpContactRows
         :contacts="agent.contacts"
         :show-actions="showContactActions"
+        :ticket-id="ticketId"
+        :call-contact-label="agent.name ? `代办人·${agent.name}` : '代办人'"
         @contact="(t, v) => emit('contact', t, v)"
       />
     </div>

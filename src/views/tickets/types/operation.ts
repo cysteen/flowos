@@ -1,5 +1,6 @@
 /** 工单操作页 · 处理 Tab 与侧栏展示类型 */
 
+import dayjs from 'dayjs';
 import type { RoleKey } from '@/config/roles';
 import { RISK_LEVELS, RISK_LEVEL_SELECT_OPTIONS, type RiskLevel } from '@/config/risk';
 
@@ -98,6 +99,8 @@ export interface AppointmentRecord {
   scheduledAt: string;
   /** 已完成（已与客户电话沟通） */
   done?: boolean;
+  /** 标记已沟通时刻（YYYY-MM-DD HH:mm:ss） */
+  doneAt?: string;
   /** 已取消（保留记录、不再计入待回访） */
   cancelled?: boolean;
   /** 预约人（入口前移后，需记录发起预约的坐席/人员） */
@@ -130,6 +133,15 @@ export const APPOINTMENT_DEMAND_OPTIONS = [
   '预约联系用户',
   '联系后端确认',
 ] as const;
+
+export const APPOINTMENT_DATE_TIME_FORMAT = 'YYYY-MM-DD HH:mm:ss';
+
+/** 预约时间是否已过期（当前时刻晚于 scheduledAt） */
+export function isAppointmentExpired(r: AppointmentRecord, now = dayjs()): boolean {
+  if (!r.scheduledAt?.trim()) return false;
+  const scheduled = dayjs(r.scheduledAt, APPOINTMENT_DATE_TIME_FORMAT);
+  return scheduled.isValid() && scheduled.isBefore(now);
+}
 
 export interface ProcessFormDraft {
   problemCause: string;
@@ -192,6 +204,8 @@ export interface ProcessFormDraft {
   qualityIssueCat2: string;
   /** 建议专属 · 是否采纳（建议服务结论；默认否，无下级字段） */
   suggestAccepted: boolean;
+  /** 商机专属 · 商机归类 */
+  leadCategory: string;
   /** 商机专属 · 商机解决结论 */
   leadStage: 'resolved' | 'unresolvedRejected' | 'noContact' | 'invalid' | 'toSales';
   /** 商机编号（CRM 商机单号）。终态仍可编辑，随「保存」提交 */
@@ -499,6 +513,26 @@ export const SERVICE_SOLUTION_OPTIONS = [
   '免费换新',
   '其他',
 ] as const;
+
+/** 商机归类 */
+export const LEAD_CATEGORY_OPTIONS: { label: string; value: string }[] = [
+  { label: '大区商机', value: '大区商机' },
+  { label: '机器人商机', value: '机器人商机' },
+  { label: '开放平台商机', value: '开放平台商机' },
+  { label: '工业智能商机', value: '工业智能商机' },
+  { label: 'AI交互商机', value: 'AI交互商机' },
+  { label: '海外商机', value: '海外商机' },
+  { label: '听见商机', value: '听见商机' },
+  { label: '录音笔商机', value: '录音笔商机' },
+  { label: '翻译机商机', value: '翻译机商机' },
+  { label: '耳机商机', value: '耳机商机' },
+  { label: '智能汽车商机', value: '智能汽车商机' },
+  { label: '助听器商机', value: '助听器商机' },
+  { label: '工牌录音笔商机', value: '工牌录音笔商机' },
+  { label: '眼镜商机', value: '眼镜商机' },
+  { label: '办公读写商机（英语通、英语宝）', value: '办公读写商机（英语通、英语宝）' },
+  { label: '其他商机（参观，活动邀约，展厅邀约，展厅搭建，采访邀约）', value: '其他商机（参观，活动邀约，展厅邀约，展厅搭建，采访邀约）' },
+];
 
 /** 商机解决结论 */
 export const LEAD_STAGE_OPTIONS: { label: string; value: ProcessFormDraft['leadStage'] }[] = [

@@ -18,7 +18,8 @@ import {
   FEISHU_SPACES, CLOSE_REASONS,
   RESUME_REASONS, RETURN_REASONS, MAX_RETURN_COUNT,
   DELEGATE_GROUPS, FEISHU_ESCALATE_CHANNEL, FEISHU_FEEDBACK_CATEGORIES,
-  APPROVAL_GROUPS,
+  APPROVAL_GROUP_OPTIONS,
+  resolveDefaultApprovalGroup,
 } from '../composables/opActions';
 
 const RESUME_AT_FORMAT = 'YYYY-MM-DD HH:mm';
@@ -38,6 +39,10 @@ const props = defineProps<{
   /** 处理表单现值：挂起申请需校验服务类型/服务方式，弹窗内带出并可补齐 */
   serviceType?: string;
   serviceMethod?: string;
+  /** 工单归属组（挂起/关单默认审批组） */
+  groupNames?: string[];
+  groupId?: string;
+  lastHandler?: string | null;
 }>();
 
 const emit = defineEmits<{
@@ -83,8 +88,7 @@ const delegate = reactive({
   reason: '',
 });
 const forceClose = reactive({ reason: '', approver: APPROVERS[0], detail: '' });
-const suspend = reactive({ reason: '', detail: '', resumeAt: '', approvalGroup: APPROVAL_GROUPS[0] });
-
+const suspend = reactive({ reason: '', detail: '', resumeAt: '', approvalGroup: '' });
 function resumeAtDayjs(value?: string): Dayjs | undefined {
   if (!value) return undefined;
   const parsed = dayjs(value, RESUME_AT_FORMAT);
@@ -115,7 +119,7 @@ const asIsComplaint = computed(() => !!asCtx.value?.isComplaint);
  */
 const aftersaleFormRef = ref<{ getPayload: () => AftersalePayload } | null>(null);
 const resolve = reactive({ solution: '', createCallback: true });
-const close = reactive({ reason: '', approvalGroup: APPROVAL_GROUPS[0], note: '' });
+const close = reactive({ reason: '', approvalGroup: '', note: '' });
 const resume = reactive({ reason: '', detail: '' });
 const returnForm = reactive({ reason: '', note: '' });
 
@@ -248,6 +252,14 @@ const cfg = computed<DlgConfig>(() => {
   return base;
 });
 
+function defaultApprovalGroup() {
+  return resolveDefaultApprovalGroup({
+    groupNames: props.groupNames,
+    groupId: props.groupId,
+    lastHandler: props.lastHandler,
+  });
+}
+
 function resetForms() {
   transfer.scope = 'same'; transfer.target = TRANSFER_TARGETS_SAME[0]; transfer.reason = '';
   delegate.mode = 'person';
@@ -256,7 +268,7 @@ function resetForms() {
   delegate.reason = '';
   forceClose.reason = ''; forceClose.approver = APPROVERS[0]; forceClose.detail = '';
   suspend.reason = ''; suspend.detail = ''; suspend.resumeAt = '';
-  suspend.approvalGroup = APPROVAL_GROUPS[0];
+  suspend.approvalGroup = defaultApprovalGroup();
   // 飞书已结案：不可再选飞书通道，默认落到其他升级通道
   const canFeishuEscalate = props.feishuEligible && props.feishuSync !== 'closed';
   escalate.channel = canFeishuEscalate ? FEISHU_ESCALATE_CHANNEL : ESCALATE_CHANNELS[0];
@@ -266,7 +278,7 @@ function resetForms() {
   escalate.feedbackCategory = FEISHU_FEEDBACK_CATEGORIES[0];
   syncFeishu.space = FEISHU_SPACES[0]; syncFeishu.message = '';
   resolve.solution = ''; resolve.createCallback = true;
-  close.reason = ''; close.approvalGroup = APPROVAL_GROUPS[0]; close.note = '';
+  close.reason = ''; close.approvalGroup = defaultApprovalGroup(); close.note = '';
   resume.reason = ''; resume.detail = '';
   returnForm.reason = ''; returnForm.note = '';
 }
@@ -306,10 +318,11 @@ function validate(): boolean {
       return true;
     case '挂起':
       if (!suspend.reason) { message.warning('请选择挂起原因'); return false; }
-      if (!suspend.approvalGroup) { message.warning('请选择审批组'); return false; }
+      if (!suspend.approvalGroup) { message.warning('未匹配到审批人'); return false; }
       // 校验处理表单的服务类型/服务方式：挂起停表、恢复后按「服务方式×优先级」矩阵续算，缺值则算不出续走时长
       if (!props.serviceType) { message.warning('请先在处理表单填写「服务类型」后再申请挂起'); return false; }
       if (!props.serviceMethod) { message.warning('请先在处理表单填写「服务方式」后再申请挂起'); return false; }
+      if (!suspend.resumeAt) { message.warning('请选择预计恢复时间'); return false; }
       return true;
     case '升级':
       if (escalateToFeishu.value && !escalate.feedbackCategory) {
@@ -536,25 +549,14 @@ function onOk() {
 
     <!-- 挂起 -->
     <div v-else-if="action === '挂起'" class="op-form">
-      <div class="op-field">
-        <div class="op-label req">挂起原因</div>
-        <a-select v-model:value="suspend.reason" placeholder="请选择..." style="width:100%"
-          :options="SUSPEND_REASONS.map((r) => ({ value: r, label: r }))" />
-      </div>
       <div class="op-field-row">
         <div class="op-field">
-          <div class="op-label req">审批组</div>
-          <a-select
-            v-model:value="suspend.approvalGroup"
-            :show-search="true"
-            option-filter-prop="label"
-            :filter-option="filterMemberOption"
-            style="width:100%"
-            :options="APPROVAL_GROUPS.map((g) => ({ value: g, label: g }))"
-          />
+          <div class="op-label req">挂起原因</div>
+          <a-select v-model:value="suspend.reason" placeholder="请选择..." style="width:100%"
+            :options="SUSPEND_REASONS.map((r) => ({ value: r, label: r }))" />
         </div>
         <div class="op-field">
-          <div class="op-label">预计恢复时间</div>
+          <div class="op-label req">预计恢复时间</div>
           <a-date-picker
             :value="resumeAtDayjs(suspend.resumeAt)"
             :show-time="{ format: 'HH:mm' }"
@@ -565,6 +567,7 @@ function onOk() {
           />
         </div>
       </div>
+      <p class="op-hint">审批人：{{ suspend.approvalGroup || '—' }}</p>
       <div class="op-field">
         <div class="op-label">详细说明</div>
         <a-textarea v-model:value="suspend.detail" :rows="2" placeholder="请补充说明..." />
@@ -713,7 +716,7 @@ function onOk() {
         <a-select
           v-model:value="close.approvalGroup"
           style="width:100%"
-          :options="APPROVAL_GROUPS.map((g) => ({ value: g, label: g }))"
+          :options="APPROVAL_GROUP_OPTIONS.map((g) => ({ value: g, label: g }))"
         />
       </div>
       <div class="op-field">

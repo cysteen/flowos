@@ -3,7 +3,6 @@ import WorkspaceShell from '@/layouts/WorkspaceShell.vue';
 import AdminShell from '@/layouts/AdminShell.vue';
 import HomeOverviewView from '@/views/home/HomeOverviewView.vue';
 import TicketWorkbenchView from '@/views/tickets/TicketWorkbenchView.vue';
-import TicketOperationView from '@/views/tickets/TicketOperationView.vue';
 import QueryCenterView from '@/views/query/QueryCenterView.vue';
 import AftersaleWorkbenchView from '@/views/aftersale/AftersaleWorkbenchView.vue';
 import TeamBoardView from '@/views/team-board/TeamBoardView.vue';
@@ -117,7 +116,7 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'tickets/:ticketNo',
         name: 'ticket-operation',
-        component: TicketOperationView,
+        component: () => import('@/views/tickets/TicketOperationView.vue'),
         meta: { menu: 'tickets', title: '工单处理' },
       },
       {

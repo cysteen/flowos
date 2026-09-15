@@ -9,7 +9,7 @@ import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import { computed } from 'vue';
 import { useUserStore } from '@/stores/user';
 
-defineProps<{ detail: TicketDetailMeta }>();
+defineProps<{ detail: TicketDetailMeta; ticketId?: string }>();
 const user = useUserStore();
 
 const emit = defineEmits<{
@@ -31,12 +31,14 @@ const showContactActions = computed(() => !user.role.frontline);
     <OpCustomerCard
       :customer="detail.customer"
       :show-contact-actions="showContactActions"
+      :ticket-id="ticketId"
       @contact="(t, v) => emit('contact', t, v)"
     />
     <OpAgentCard
       v-if="detail.agent"
       :agent="detail.agent"
       :show-contact-actions="showContactActions"
+      :ticket-id="ticketId"
       @contact="(t, v) => emit('contact', t, v)"
     />
     <OpTicketInfoCard :detail="detail" />

@@ -231,6 +231,10 @@ export function useTicketWorkbench() {
   const showAppointmentColumn = computed(
     () => activeTab.value === 'mine' && activeChip.value === 'appointment',
   );
+  /** 我的任务 ·「已挂起」：列表追加 挂起时间 / 预计恢复时间 */
+  const showSuspendColumns = computed(
+    () => activeTab.value === 'mine' && activeChip.value === 'suspended',
+  );
   const isMineTab = computed(() => activeTab.value === 'mine');
   const isDoneTab = computed(() => activeTab.value === 'done');
   const isPoolTab = computed(() => activeTab.value === 'pool');
@@ -378,7 +382,7 @@ export function useTicketWorkbench() {
     searchText, mineQuery, doneQuery, poolQuery, structuredQuery, mineSortRule, selectedIds, aiBarVisible,
     tabRows, filtered, sorted, paged, total, tabCounts, headerTabCounts, chipCounts, drafts,
     selectedCount, allPageSelected, aiSuggestions, aiSummary, showAiBar,
-    isDraftView, showAppointmentColumn, isMineTab, isDoneTab, isPoolTab, usesStructuredFilter,
+    isDraftView, showAppointmentColumn, showSuspendColumns, isMineTab, isDoneTab, isPoolTab, usesStructuredFilter,
     setTab, setChip, setMineQuery, setDoneQuery, setStructuredQuery, saveCurrentFilter, removeSavedFilterChip, applyMineQuery, applyStructuredQuery, setMineSortRule, setSearch, toggleSelect, toggleSelectAllOnPage, clearSelection,
     addTicket, claimTicket, claimTickets, dismissAiSuggestion, ticketById,
     removeDraft: (id: string) => draftStore.remove(id),

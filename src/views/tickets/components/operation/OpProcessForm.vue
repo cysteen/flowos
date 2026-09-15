@@ -19,6 +19,7 @@ import {
   SERVICE_SOLUTION_OPTIONS,
   SERVICE_TYPE_OPTIONS,
   SERVICE_TYPE_TO_METHODS,
+  LEAD_CATEGORY_OPTIONS,
   LEAD_STAGE_OPTIONS,
   deriveAppointmentNeeded,
   isAppointmentFilled,
@@ -110,6 +111,10 @@ function patch(part: Partial<ProcessFormDraft>) {
  * 但该 select 的 options 固定为 LEAD_STAGE_OPTIONS（单选、未开 labelInValue），
  * 取值只可能是 leadStage 的字面量之一，故收窄。
  */
+function onLeadCategoryChange(v: unknown) {
+  patch({ leadCategory: String(v ?? '') });
+}
+
 function onLeadStageChange(v: unknown) {
   patch({ leadStage: v as ProcessFormDraft['leadStage'] });
 }
@@ -333,7 +338,7 @@ function chipActiveClass(key: SupplementChip): string {
       </OpCollapsibleSection>
     </template>
 
-    <!-- ===== 商机：服务与结论(商机解决结论 + 商机编号) ===== -->
+    <!-- ===== 商机：服务与结论(商机归类 + 商机解决结论 + 商机编号) ===== -->
     <template v-if="isLead">
       <OpCollapsibleSection
         title="服务与结论"
@@ -343,7 +348,17 @@ function chipActiveClass(key: SupplementChip): string {
         :expanded="expandedSections.service"
         @toggle="emit('toggleSection', 'service')"
       >
-        <div class="field-row">
+        <div class="field-row field-row--lead">
+          <div class="field inline">
+            <label>商机归类</label>
+            <FormSelect
+              :value="form.leadCategory || undefined"
+              :options="LEAD_CATEGORY_OPTIONS"
+              placeholder="请选择或搜索"
+              style="width: 100%"
+              @update:value="onLeadCategoryChange"
+            />
+          </div>
           <div class="field inline">
             <label>商机解决结论</label>
             <FormSelect
@@ -467,6 +482,7 @@ function chipActiveClass(key: SupplementChip): string {
 .field label { font-size: 12px; font-weight: 600; color: #374151; }
 .field label .req { color: #ef4444; margin-right: 2px; }
 .field-row { display: flex; gap: 8px; }
+.field-row--lead { align-items: flex-start; flex-wrap: nowrap; }
 .field-row .field.inline { flex: 1 1 0; min-width: 0; }
 .field-row--service { align-items: flex-start; flex-wrap: nowrap; }
 .field-row--service .field.inline { flex: 1 1 0; min-width: 0; }

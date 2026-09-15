@@ -2,9 +2,11 @@ import type { TlRole, TimelineEntry, TimelineFieldChange } from '@/views/tickets
 import { TICKET_DETAIL } from '@/mock/ticketDetail';
 import type { TicketDetailMeta, FeishuRecord, LinkedAftersale } from '@/mock/ticketDetail';
 import { TICKETS } from '@/mock/tickets';
+import { SUPERIOR_CHAIN } from '@/mock/notifyRules';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
 import type { RoleKey } from '@/config/roles';
 import { AFTERSALE_INBOUND_SOURCE, normalizeTicketSource } from '@/views/tickets/types/createTicket';
+import { handlerGroupOf } from '@/views/tickets/types/ticket';
 // 终态判定单一实现：与头部按钮、只读锁同源，避免两处各写一份正则再漂
 import { isTicketTerminated } from './complaintEscalation';
 
@@ -312,12 +314,74 @@ export const DELEGATE_GROUPS = [
 export const REVIEWERS = ['班组长 · 王经理', '质检审核 · 李审核', '上级主管 · 张总监'];
 export const FORCE_CLOSE_REASONS = ['客户失联', '客户主动放弃', '诉求超出处理能力', '重复/无效工单'];
 export const APPROVERS = ['班组长 · 王经理', '客服主管 · 张总监'];
-/** 审批组（挂起 / 关闭工单 / 强结 共用）：提交时选定，由该组接单审批 */
-export const APPROVAL_GROUPS = [
-  '班组长审批组',
-  '质检审批组',
-  '运营审批组',
-];
+
+/** 五个处理组（与列表 groupNames 首项 / QUERY_GROUP_OPTIONS 同源） */
+export const PROCESSING_GROUPS = [
+  '受理一组',
+  '受理二组',
+  '硬件缺陷组',
+  '教育支持组',
+  '技术支持组',
+] as const;
+
+/** 各处理组班组长（原型 Mock；一组可配多名，展示时用顿号连接） */
+export const PROCESSING_GROUP_LEADERS: Record<string, string | string[]> = {
+  受理一组: ['王组长', '李组长', '张组长'],
+  受理二组: ['林组长', '陈组长'],
+  硬件缺陷组: ['杨帆'],
+  教育支持组: ['吴昊'],
+  技术支持组: ['杨帆'],
+  一线客服组: ['王芳'],
+  二线技术支持组: ['李强'],
+};
+
+function formatLeaderNames(leaders?: string | string[]): string {
+  if (!leaders) return '';
+  return Array.isArray(leaders) ? leaders.join('、') : leaders;
+}
+
+const GROUP_ID_TO_PROCESSING: Record<string, string> = {
+  line1: '受理一组',
+  line2: '受理二组',
+  hardware: '硬件缺陷组',
+  'cs-1': '受理一组',
+  'cs-2': '受理二组',
+  tech: '技术支持组',
+  edu: '教育支持组',
+};
+
+/** 展示格式：组名（班组长名1、班组长名2）；提交时 strip 括号段取组名路由审批 */
+export function formatApprovalGroupLabel(groupName: string, leader?: string | string[]): string {
+  const names = formatLeaderNames(leader ?? PROCESSING_GROUP_LEADERS[groupName]);
+  return names ? `${groupName}（${names}）` : groupName;
+}
+
+/** 审批组候选项（挂起 / 关闭工单 共用）：各处理组 + 班组长 */
+export const APPROVAL_GROUP_OPTIONS = PROCESSING_GROUPS.map((g) => formatApprovalGroupLabel(g));
+
+/** @deprecated 请用 APPROVAL_GROUP_OPTIONS；保留别名避免旧引用断裂 */
+export const APPROVAL_GROUPS = APPROVAL_GROUP_OPTIONS;
+
+/** 按工单归属解析挂起/关单默认审批组 */
+export function resolveDefaultApprovalGroup(input: {
+  groupNames?: string[];
+  groupId?: string;
+  lastHandler?: string | null;
+}): string {
+  let groupName = input.groupNames?.[0];
+  if (!groupName && input.groupId) {
+    groupName = GROUP_ID_TO_PROCESSING[input.groupId];
+  }
+  if (!groupName && input.lastHandler) {
+    groupName = handlerGroupOf(input.lastHandler)?.label;
+  }
+  if (!groupName) {
+    return APPROVAL_GROUP_OPTIONS[0] ?? formatApprovalGroupLabel(PROCESSING_GROUPS[0]);
+  }
+  const leaders = PROCESSING_GROUP_LEADERS[groupName]
+    ?? (input.lastHandler ? SUPERIOR_CHAIN[input.lastHandler] : undefined);
+  return formatApprovalGroupLabel(groupName, leaders);
+}
 export const SUSPEND_REASONS = [
   '故障',
   '资源错误',

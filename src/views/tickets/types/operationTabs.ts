@@ -196,7 +196,7 @@ export interface AttachmentHistoryRecord {
   uploadedBy: string;
 }
 
-export type CustomerHistoryFilter = 'all' | 'processing' | 'closed' | 'complaint';
+export type CustomerHistoryFilter = 'all' | 'unclaimed' | 'unresponded' | 'processing' | 'closed' | 'complaint';
 
 export interface CustomerHistoryTicket {
   id: string;

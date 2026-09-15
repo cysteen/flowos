@@ -81,6 +81,10 @@ export interface TicketDetailMeta {
   status: string;
   /** 最后处理人（取列表行 assignee）：终态「结案后补充」按其所在组判编辑权 */
   lastHandler?: string | null;
+  /** 归属用户分组 id（列表行 groupId） */
+  groupId?: string;
+  /** 路由分组名称（首项＝处理组，挂起/关单默认审批组据此解析） */
+  groupNames?: string[];
   // ⚠️ 依据基线 §1：升级目标已进状态（已升级技术支持 / 已升级产研），
   // 原 escalateTarget 字段随之删除 —— 判"在不在三线手上"读 status，不读第二个字段。
   /**
@@ -621,6 +625,7 @@ export const DEFAULT_PROCESS_DRAFT = {
   qualityIssueCat1: '',
   qualityIssueCat2: '',
   suggestAccepted: false,
+  leadCategory: '',
   leadStage: 'invalid' as const,
   leadNo: '',
   closingNote: '',

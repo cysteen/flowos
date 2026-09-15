@@ -81,6 +81,12 @@ function onTabChange(tab: WorkbenchTabKey) {
   if (isTicketTab(tab)) wb.setTab(tab);
 }
 
+/** 我的任务 ·「已挂起」追加列 */
+const SUSPEND_EXTRA_COLUMNS = [
+  { key: 'suspendedAt', label: '挂起时间', width: 128, after: 'node' },
+  { key: 'suspendResumeAt', label: '解挂时间', width: 128, after: 'node' },
+];
+
 /** 报备池行内点工单号：与列表点单号同一个去处（工单操作页） */
 function openTicketByNo(no: string) {
   router.push(`/tickets/${no}`);
@@ -424,6 +430,7 @@ function onConfirmSaveFilter(name: string) {
                     : 'default'
             "
             :show-appointment-column="wb.showAppointmentColumn.value"
+            :extra-columns="wb.showSuspendColumns.value ? SUSPEND_EXTRA_COLUMNS : undefined"
             :visible-columns="visibleColumns"
             :column-order="columnOrder"
             @toggle="wb.toggleSelect"
@@ -432,7 +439,14 @@ function onConfirmSaveFilter(name: string) {
             @open="openOperation"
             @click-no="onClickNo"
             @click-customer="onClickCustomer"
-          />
+          >
+            <template #cell-suspendedAt="{ ticket }">
+              <span class="suspend-time">{{ ticket.suspendedAt || '—' }}</span>
+            </template>
+            <template #cell-suspendResumeAt="{ ticket }">
+              <span class="suspend-time">{{ ticket.suspendResumeAt || '—' }}</span>
+            </template>
+          </TicketRichList>
           <!-- 无分页：全量快照展示（PRD §8.2②），仅保留总数/已选统计 -->
           <div class="pager">
             <div class="pager-left">
@@ -513,6 +527,7 @@ function onConfirmSaveFilter(name: string) {
   width: 100%;
   min-width: 0;
 }
+.suspend-time { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .table-card {
   background: #fff;
   border: 1px solid #e5e7eb;

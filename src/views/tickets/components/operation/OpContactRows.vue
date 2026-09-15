@@ -2,9 +2,16 @@
 import {
   PhoneOutlined, MailOutlined, MessageOutlined, SendOutlined,
 } from '@ant-design/icons-vue';
+import OutboundNumberPopover from '@/components/cti/OutboundNumberPopover.vue';
 import type { ContactItem } from '@/views/tickets/types/operation';
 
-defineProps<{ contacts: ContactItem[]; showActions?: boolean }>();
+defineProps<{
+  contacts: ContactItem[];
+  showActions?: boolean;
+  ticketId?: string;
+  /** 外呼话务条展示：如「客户·李大海」「代办人·区域代理」 */
+  callContactLabel?: string;
+}>();
 const emit = defineEmits<{ contact: [type: 'call' | 'sms' | 'email', value: string] }>();
 </script>
 
@@ -17,7 +24,17 @@ const emit = defineEmits<{ contact: [type: 'call' | 'sms' | 'email', value: stri
       <template v-if="showActions">
         <span v-if="c.type === 'phone'" class="spacer" />
         <template v-if="c.type === 'phone'">
-          <span class="act act-call" @click="emit('contact', 'call', c.value)">
+          <OutboundNumberPopover
+            v-if="ticketId && callContactLabel"
+            :phone="c.value"
+            :contact-label="callContactLabel"
+            :ticket-id="ticketId"
+          >
+            <span class="act act-call">
+              <PhoneOutlined class="act-icon" />呼叫
+            </span>
+          </OutboundNumberPopover>
+          <span v-else class="act act-call" @click="emit('contact', 'call', c.value)">
             <PhoneOutlined class="act-icon" />呼叫
           </span>
           <span class="act act-sms" @click="emit('contact', 'sms', c.value)">
