@@ -33,6 +33,8 @@ import { useCreateTicketForm } from '@/views/tickets/composables/useCreateTicket
 import CreateTicketPartCard from './create-ticket/CreateTicketPartCard.vue';
 import CustomerInfoModal from './create-ticket/CustomerInfoModal.vue';
 import FormSelect from './create-ticket/FormSelect.vue';
+import FlashInfoPart from './create-ticket/FlashInfoPart.vue';
+import { useRouter } from 'vue-router';
 
 const props = defineProps<{
   open: boolean;
@@ -83,7 +85,19 @@ const {
   validate,
   buildTicket,
   syncTitle,
+  isFlashType,
+  flashErrors,
+  flashPhoneError,
+  flashBlock,
+  submitFlash,
 } = useCreateTicketForm(() => props.prefill);
+
+const router = useRouter();
+
+/** 在途单号链接：新页签打开该单（PRD §2.4） */
+function ticketHref(no: string): string {
+  return router.resolve(`/tickets/${no}`).href;
+}
 
 /**
  * 「+ 新建客户」的联系方式预填：搜索只按联系方式，故搜索框里的原始输入必是一条联系方式。
@@ -150,7 +164,40 @@ function onCancel() {
   emit('update:open', false);
 }
 
+/** 刷机单提交：校验与建单都走刷机服务（PRD §2.3 / §2.4），不走 buildTicket */
+function onCreateFlash(processAfter: boolean) {
+  submitting.value = true;
+  const result = submitFlash();
+  submitting.value = false;
+  if (!result) {
+    scrollToFirstFlashError();
+    return;
+  }
+  const { ticket, evaluation } = result;
+  emit('created', ticket, processAfter);
+  message.success(
+    evaluation.route === 'auto'
+      ? `已创建刷机单 ${ticket.no}，正在自动刷机`
+      : `已创建刷机单 ${ticket.no}，已转人工处理`,
+  );
+  if (activeDraftId.value) { draftStore.remove(activeDraftId.value); activeDraftId.value = null; }
+  emit('update:open', false);
+  reset();
+}
+
+/** 必填提示落在字段下方；首个提示不在可视区时滚过去 */
+function scrollToFirstFlashError() {
+  requestAnimationFrame(() => {
+    const el = document.querySelector('.create-ticket-modal .fi-error, .create-ticket-modal .customer-empty.error, .create-ticket-modal .cust-phone-error, .create-ticket-modal .flash-block-tip');
+    el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  });
+}
+
 function onCreate(processAfter = false) {
+  if (isFlashType.value) {
+    onCreateFlash(processAfter);
+    return;
+  }
   if (!validate()) return;
   submitting.value = true;
   const ticket = buildTicket();
@@ -167,12 +214,19 @@ function onCreate(processAfter = false) {
   reset();
 }
 
+/** 刷机单草稿标题：与建单后的工单标题同口径（〈刷机原因〉刷机申请 · 〈产品型号〉） */
+function flashDraftTitle(): string {
+  const { reason, productModel } = form.flash;
+  if (!reason && !productModel) return '';
+  return [`${reason}刷机申请`, productModel].filter(Boolean).join(' · ');
+}
+
 function onDraft() {
   const id = activeDraftId.value || 'draft-' + Date.now();
   activeDraftId.value = id;
   draftStore.save({
     id,
-    title: form.title || '未命名草稿',
+    title: (isFlashType.value ? flashDraftTitle() : form.title) || '未命名草稿',
     typeLabel: form.ticketType || '工单',
     customerName: form.customer?.name || '未选择客户',
     savedAt: new Date().toLocaleString('zh-CN', { hour12: false }),
@@ -363,6 +417,9 @@ watch(
               <span class="link" @click="clearCustomer">更换</span>
             </div>
           </div>
+          <div v-if="form.customer && isFlashType && flashPhoneError" class="cust-phone-error">
+            {{ flashPhoneError }}
+          </div>
           <!--
             未绑定空态：撑住高度避免选中客户时布局跳动，并在校验失败时承载报错。
             文案不重复搜索框占位（那句已经在教怎么操作），这里只说状态与后果。
@@ -373,8 +430,8 @@ watch(
         </div>
       </CreateTicketPartCard>
 
-      <!-- ③ 产品问题（对齐 .pen BaY72 / OKN77） -->
-      <CreateTicketPartCard title="产品问题">
+      <!-- ③ 产品问题（对齐 .pen BaY72 / OKN77）；刷机单的产品与设备信息在「刷机信息」卡 -->
+      <CreateTicketPartCard v-if="!isFlashType" title="产品问题">
         <div class="product-body">
           <div class="row-3">
             <div class="inline-field">
@@ -644,8 +701,11 @@ watch(
         </template>
       </CreateTicketPartCard>
 
-      <!-- ⑤ 工单标题（无分区大标题，对齐 SlSwt） -->
-      <CreateTicketPartCard compact>
+      <!-- ④′ 刷机专属：「刷机信息」卡（930 教育刷机单 PRD §2.4） -->
+      <FlashInfoPart v-if="isFlashType" v-model:info="form.flash" :errors="flashErrors" />
+
+      <!-- ⑤ 工单标题（无分区大标题，对齐 SlSwt）；刷机单标题由系统按刷机原因与产品型号生成 -->
+      <CreateTicketPartCard v-if="!isFlashType" compact>
         <div class="inline-field">
           <label class="inline-label title-label">工单标题</label>
           <a-input
@@ -659,8 +719,22 @@ watch(
       </CreateTicketPartCard>
     </div>
 
+    <!-- 刷机单拦截提示：弹窗底栏上方，行内红字（机型不支持 / 同 SN 在途 / 系统繁忙） -->
+    <div v-if="isFlashType && flashBlock" class="flash-block-tip" role="alert">
+      <template v-if="flashBlock.code === 'A2' && flashBlock.inflightNo">
+        该设备已有在途刷机单
+        <a
+          class="flash-block-link"
+          :href="ticketHref(flashBlock.inflightNo)"
+          target="_blank"
+          rel="noopener"
+        >{{ flashBlock.inflightNo }}</a>，请勿重复提交
+      </template>
+      <template v-else>{{ flashBlock.message }}</template>
+    </div>
+
     <div class="modal-footer">
-      <div v-if="!isChildMode" class="footer-hint">
+      <div v-if="!isChildMode && !isFlashType" class="footer-hint">
         <WarningOutlined :style="{ color: '#F59E0B', fontSize: '13px' }" />
         <span v-if="isReopenMode">新建工单将自动建立 Reopen 关联，原单状态不变</span>
         <span v-else>检测到疑似重复工单 1 张，请确认</span>
@@ -1100,6 +1174,26 @@ watch(
   resize: none;
 }
 
+.cust-phone-error {
+  font-size: 12px;
+  line-height: 18px;
+  color: #ef4444;
+}
+.flash-block-tip {
+  padding: 8px 20px 0 14px;
+  font-size: 12px;
+  line-height: 18px;
+  color: #ef4444;
+  border-top: 1px solid #f0f0f0;
+}
+.flash-block-tip + .modal-footer {
+  border-top: none;
+}
+.flash-block-link {
+  margin: 0 2px;
+  color: #1a6fff;
+  text-decoration: underline;
+}
 .modal-footer {
   display: flex;
   align-items: center;

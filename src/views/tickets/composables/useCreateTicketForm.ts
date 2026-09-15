@@ -18,7 +18,44 @@ import {
   normalizeComplaintType,
   normalizeTicketSource,
   searchCustomers,
+  defaultCreateTicketFlashForm,
+  type CreateTicketFlashField,
 } from '@/views/tickets/types/createTicket';
+import type { Channel } from '@/views/tickets/types/ticket';
+import {
+  useFlashStore,
+  type FlashCreateEvaluation,
+  type FlashCreateInput,
+  type FlashEvaluationCreate,
+  type FlashTicketBase,
+} from '@/stores/flash';
+import {
+  FLASH_FIELD_LABELS,
+  FLASH_TICKET_TYPE,
+  type FlashActor,
+  type FlashCreator,
+} from '@/views/tickets/types/flash';
+import { findSchoolById } from '@/mock/schools';
+import { useUserStore } from '@/stores/user';
+import { mapUserRole } from '@/views/tickets/composables/opActions';
+
+/** 「刷机信息」卡必填项：字段 → 展示名 + 提示动词（输入类「请填写」、选择类「请选择」，PRD §2.3 第 1 条） */
+const FLASH_REQUIRED_FIELDS: { field: CreateTicketFlashField; label: string; verb: '请填写' | '请选择' }[] = [
+  { field: 'productModel', label: FLASH_FIELD_LABELS.productModel, verb: '请选择' },
+  { field: 'sn', label: FLASH_FIELD_LABELS.sn, verb: '请填写' },
+  { field: 'studentAccount', label: FLASH_FIELD_LABELS.studentAccount, verb: '请填写' },
+  { field: 'studentName', label: FLASH_FIELD_LABELS.studentName, verb: '请填写' },
+  { field: 'schoolId', label: FLASH_FIELD_LABELS.schoolName, verb: '请选择' },
+  { field: 'reason', label: FLASH_FIELD_LABELS.reason, verb: '请选择' },
+];
+
+/** 刷机单提交拦截（显示在弹窗底栏上方）：机型不支持 / 同 SN 在途 / 在途查询不可用 */
+export interface FlashSubmitBlock {
+  code: 'A1' | 'A2' | 'busy';
+  message: string;
+  /** A2：在途单号 */
+  inflightNo?: string;
+}
 
 function defaultForm(): CreateTicketFormState {
   return {
@@ -54,6 +91,7 @@ function defaultForm(): CreateTicketFormState {
     problemTime: '',
     suggestL1: '产品体验',
     suggestL2: '功能建议',
+    flash: defaultCreateTicketFlashForm(),
   };
 }
 
@@ -117,6 +155,127 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       (form.ticketSource === '内投渠道' || form.ticketSource === '外投渠道'),
   );
 
+  /* ---------------- 刷机单（930 教育刷机单 PRD §2.3 / §2.4） ---------------- */
+
+  const isFlashType = computed(() => form.ticketType === FLASH_TICKET_TYPE);
+  /** 「刷机信息」卡字段下方的必填提示 */
+  const flashErrors = reactive<Record<CreateTicketFlashField, string>>({
+    productModel: '', sn: '', studentAccount: '', studentName: '', schoolId: '', reason: '',
+  });
+  /** 客户信息区手机号字段下方的必填提示 */
+  const flashPhoneError = ref('');
+  /** 弹窗底栏上方的行内拦截提示 */
+  const flashBlock = ref<FlashSubmitBlock | null>(null);
+
+  function clearFlashErrors() {
+    (Object.keys(flashErrors) as CreateTicketFlashField[]).forEach((k) => { flashErrors[k] = ''; });
+    flashPhoneError.value = '';
+    flashBlock.value = null;
+  }
+
+  /** 坐席代建的建单入口：一线坐席记「一线代建」，其余代建角色记「二线代建」 */
+  function flashCreator(): FlashCreator {
+    return useUserStore().roleKey === 'agent-l1' ? '一线代建' : '二线代建';
+  }
+
+  function flashActor(): FlashActor {
+    const user = useUserStore();
+    return { name: user.name, role: mapUserRole(user.roleKey) };
+  }
+
+  function flashInput(): FlashCreateInput {
+    const f = form.flash;
+    return {
+      productModel: f.productModel ?? '',
+      sn: f.sn ?? '',
+      studentAccount: f.studentAccount ?? '',
+      studentName: f.studentName ?? '',
+      schoolId: f.schoolId ?? '',
+      schoolName: f.schoolId ? findSchoolById(f.schoolId)?.name : undefined,
+      reason: f.reason ?? '',
+      romVersion: (f.romVersion ?? '').trim(),
+      mdmVersion: (f.mdmVersion ?? '').trim(),
+      snPhotos: [...(f.snPhotos ?? [])],
+      // 联系手机号取客户信息区的客户手机号（PRD §2.4）
+      contactPhone: form.customer?.phone ?? '',
+    };
+  }
+
+  function flashBase(): FlashTicketBase {
+    const channel: Channel = form.ticketSource === 'IM'
+      ? '在线客服'
+      : form.ticketSource === '客户服务小程序' ? '小程序' : '电话';
+    return {
+      customer: form.customer?.name ?? '',
+      customerPhone: form.customer?.phone,
+      vip: form.customer?.vip ?? false,
+      channel,
+      ticketSource: form.ticketSource,
+    };
+  }
+
+  /**
+   * 刷机单提交校验（M46 顺序：必填 → 机型不支持 → 同 SN 在途 / 在途查询不可用）。
+   * 判定全部交给 `useFlashStore().evaluateCreate`；本函数只把结果落到提示位置：
+   * 必填 → 字段下方；其余拦截 → 弹窗底栏上方。通过返回建单分流结果，拦截返回 null。
+   */
+  function validateFlash(): FlashEvaluationCreate | null {
+    clearErrors();
+    clearFlashErrors();
+    errors.customer = !form.customer;
+    const evaluation: FlashCreateEvaluation = useFlashStore().evaluateCreate(flashInput(), flashCreator());
+    if (evaluation.kind === 'create') return evaluation;
+    if (evaluation.code === 'required') {
+      const missing = new Set(evaluation.missing ?? []);
+      FLASH_REQUIRED_FIELDS.forEach(({ field, label, verb }) => {
+        if (missing.has(label)) flashErrors[field] = `${verb}${label}`;
+      });
+      // 未绑定客户时由客户信息区的空态承载报错，不再叠加手机号提示
+      if (form.customer && missing.has(FLASH_FIELD_LABELS.contactPhone)) {
+        flashPhoneError.value = `请填写${FLASH_FIELD_LABELS.contactPhone}`;
+      }
+      return null;
+    }
+    flashBlock.value = { code: evaluation.code, message: evaluation.message, inflightNo: evaluation.inflightNo };
+    return null;
+  }
+
+  /** 校验通过后建刷机单（走刷机服务 `createFlashTicket`，不走 `buildTicket`） */
+  function submitFlash(): { ticket: Ticket; evaluation: FlashEvaluationCreate } | null {
+    if (!validateFlash()) return null;
+    const { evaluation, ticket } = useFlashStore().createFlashTicket(flashInput(), flashBase(), flashCreator(), flashActor());
+    if (evaluation.kind === 'blocked' || !ticket) {
+      if (evaluation.kind === 'blocked' && evaluation.code !== 'required') {
+        flashBlock.value = { code: evaluation.code, message: evaluation.message, inflightNo: evaluation.inflightNo };
+      }
+      return null;
+    }
+    return { ticket, evaluation };
+  }
+
+  // 改动刷机信息：底栏拦截提示随之失效；已补上的字段收起必填提示
+  watch(
+    () => form.flash,
+    (f) => {
+      flashBlock.value = null;
+      if (!f) return;
+      (Object.keys(flashErrors) as CreateTicketFlashField[]).forEach((k) => {
+        if (flashErrors[k] && String(f[k] ?? '').trim()) flashErrors[k] = '';
+      });
+    },
+    { deep: true },
+  );
+
+  watch(
+    () => form.customer?.phone,
+    (phone) => { if (phone?.trim()) flashPhoneError.value = ''; },
+  );
+
+  watch(
+    () => form.ticketType,
+    (t) => { if (t !== FLASH_TICKET_TYPE) clearFlashErrors(); },
+  );
+
   function syncTitle() {
     if (form.titleManual) return;
     form.title = buildAutoTitle(form.productName, form.problemL3, form.ticketSource);
@@ -130,6 +289,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     customerModalOpen.value = false;
     editingCustomer.value = false;
     clearErrors();
+    clearFlashErrors();
   }
 
   function clearErrors() {
@@ -401,5 +561,12 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     validate,
     buildTicket,
     syncTitle,
+    // 刷机单
+    isFlashType,
+    flashErrors,
+    flashPhoneError,
+    flashBlock,
+    validateFlash,
+    submitFlash,
   };
 }

@@ -156,6 +156,50 @@ export interface CreateTicketFormState {
   /** 建议专属 */
   suggestL1: string;
   suggestL2: string;
+  /** 刷机专属：「刷机信息」卡（930 教育刷机单 P1 / PRD §2.4） */
+  flash: CreateTicketFlashForm;
+}
+
+/**
+ * 新建工单 · 「刷机信息」卡表单（930 教育刷机单 PRD §2.2 / §2.4）。
+ * 字段名、枚举与判定一律取 `types/flash.ts` 与 `stores/flash.ts`；联系手机号取客户信息区，不在本卡。
+ */
+export interface CreateTicketFlashForm {
+  /** 产品型号（后台「支持刷机机型」启用项） */
+  productModel: string;
+  /** 设备SN */
+  sn: string;
+  /** 学生账号 */
+  studentAccount: string;
+  /** 学生姓名 */
+  studentName: string;
+  /** 学校库 ID（学校名称可搜索下拉，存 ID） */
+  schoolId: string;
+  /** 刷机原因（后台「刷机原因」启用项） */
+  reason: string;
+  /** ROM版本（选填） */
+  romVersion: string;
+  /** MDM版本（选填） */
+  mdmVersion: string;
+  /** 设备SN照片（文件名，最多 1 张，选填） */
+  snPhotos: string[];
+}
+
+/** 「刷机信息」卡里参与必填提示的字段 */
+export type CreateTicketFlashField = 'productModel' | 'sn' | 'studentAccount' | 'studentName' | 'schoolId' | 'reason';
+
+export function defaultCreateTicketFlashForm(): CreateTicketFlashForm {
+  return {
+    productModel: '',
+    sn: '',
+    studentAccount: '',
+    studentName: '',
+    schoolId: '',
+    reason: '',
+    romVersion: '',
+    mdmVersion: '',
+    snPhotos: [],
+  };
 }
 
 export const BUSINESS_TYPES: BusinessType[] = [
