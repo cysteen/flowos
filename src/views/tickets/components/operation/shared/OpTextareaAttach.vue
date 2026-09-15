@@ -69,7 +69,10 @@ function onFilesSelected(e: Event) {
     return true;
   });
   input.value = '';
-  if (rejected) message.warning(`${rejected} 个文件格式不支持或超过 ${props.maxFileSizeMb}MB，未添加`);
+  if (rejected) {
+    const reason = props.acceptExts ? `格式不支持或超过 ${props.maxFileSizeMb}MB` : `超过 ${props.maxFileSizeMb}MB`;
+    message.warning(`${rejected} 个文件${reason}，未添加`);
+  }
   if (!picked.length) return;
   const names = picked.map((f) => f.name);
   emit('filesAdded', picked.map((f) => ({ name: f.name, size: f.size })));

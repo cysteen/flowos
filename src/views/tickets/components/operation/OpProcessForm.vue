@@ -82,13 +82,6 @@ const leadNoDisabled = computed(() => (
   props.leadNoEditable === undefined ? postCloseFieldDisabled.value : !!props.readonly || !props.leadNoEditable
 ));
 
-/** 结案后备注附件：图片、文档、压缩包，单个 ≤200MB（同「附件历史」上传口径） */
-const CLOSING_NOTE_ATTACH_EXTS = [
-  'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp',
-  'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv',
-  'zip', 'rar', '7z',
-] as const;
-
 const isComplaint = computed(() => props.ticketType === '投诉');
 const isConsult = computed(() => props.ticketType === '咨询');
 const isSuggest = computed(() => props.ticketType === '建议');
@@ -441,7 +434,6 @@ function chipActiveClass(key: SupplementChip): string {
         :class="{ 'cn-disabled': postCloseFieldDisabled }"
         :shell-background="postCloseFieldDisabled ? '#f5f5f5' : '#fff'"
         :maxlength="500"
-        :accept-exts="CLOSING_NOTE_ATTACH_EXTS"
         :max-file-size-mb="200"
         placeholder="补充结案后的跟进情况、客户反馈等"
         @update:model-value="(v: string) => patch({ closingNote: v })"
