@@ -33,7 +33,7 @@ import { useRiskReportStore } from '@/stores/riskReports';
 import { useRiskQueueStore } from '@/stores/riskQueue';
 import { poolStageStatusOf } from '@/stores/riskPool';
 import { REPORT_ASSESS_LIMIT_MIN, isOpenStatus, isPooledStatus } from '@/stores/riskShared';
-import { POST_CLOSE_EDITABLE_FIELDS, RISK_FLAG_OPTIONS, isProcessTabVisible } from './types/operation';
+import { POST_CLOSE_EDITABLE_FIELDS, RISK_FLAG_OPTIONS, isProcessTabVisible, tabWritableFor } from './types/operation';
 import { poolStatusText } from './components/operation/OpRiskDecision';
 import { useRiskCollabStore } from '@/stores/riskCollab';
 import { useRiskHistoryStore, type RiskHistoryKind, type RiskHistoryRecord } from '@/stores/riskHistory';
@@ -871,13 +871,19 @@ const canCancelTicket = computed(() => headerRoleGate.value.cancelTicket);
 const tabsReadonly = computed(() => !!supersededBy.value);
 
 /**
- * 结案后补充：终态（已转/已升级的被接管单整页已锁，不在此列）处理表单锁定；
- * 已取消以外的终态，**最后处理人所在组**成员仍可编辑商机编号、结案后备注，底栏只剩「保存」。
+ * 结案后补充：终态（已转/已升级的被接管单整页已锁，按关联或子状态判，均不在此列）处理表单锁定；
+ * 已取消以外的终态，**最后处理人所在组**且有「工单处理」写权限的成员仍可编辑商机编号、结案后备注，底栏只剩「保存」。
  * 不改状态、不重算 SLA、不触发调研，只记履历。
  */
-const postClose = computed(() => isTicketTerminated(d.value.status) && !supersededBy.value);
+const SUPERSEDED_STATUSES = ['已转咨询', '已转建议', '已转商机', '已升级投诉', '已升级外投'];
+const postClose = computed(
+  () => isTicketTerminated(d.value.status)
+    && !supersededBy.value
+    && !SUPERSEDED_STATUSES.includes(d.value.status),
+);
 const postCloseEditable = computed(() => {
   if (!postClose.value || d.value.status === '已取消') return false;
+  if (!tabWritableFor('process', user.roleKey)) return false;
   const gid = handlerGroupOf(d.value.lastHandler)?.id;
   return !!gid && handlerGroupOf(currentHandlerName(user.roleKey, user.name))?.id === gid;
 });
