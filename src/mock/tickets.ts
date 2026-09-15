@@ -261,7 +261,7 @@ const BASE_TICKETS: Ticket[] = [
     customer: '尹洁', vip: false, product: '蓝牙耳机 Air',
     nodeStatus: '已结案', nodeStep: 5, nodeTotal: 5, priority: 'P3',
     slaText: '—', slaSub: '已结案·停表', slaState: 'ok', slaMinutes: 9999,
-    assignee: '王坐席', tab: 'mine',
+    assignee: '王坐席', tab: 'mine', groupId: 'line2',
     customerPhone: '13766667777', productCategory: '智能硬件',
     createdAt: '2026-08-10 09:00', updatedAt: '2026-08-16 16:00',
     responded: true,

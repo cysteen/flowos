@@ -912,7 +912,8 @@ const postClose = computed(() => isTicketTerminated(d.value.status) && !supersed
 const postCloseEditable = computed(() => {
   if (!postClose.value || d.value.status === '已取消') return false;
   if (!tabWritableFor('process', user.roleKey)) return false;
-  const gid = handlerGroupOf(d.value.lastHandler)?.id;
+  // 同组＝当前用户属于工单的最后处理组（groupId，唯一）；无最后处理组（如直接结案未分组）本期不支持
+  const gid = d.value.groupId;
   return !!gid && handlerGroupOf(currentHandlerName(user.roleKey, user.name))?.id === gid;
 });
 
