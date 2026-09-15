@@ -99,7 +99,6 @@ import {
   DISPOSAL_BY_GRADE,
   wordOnlyRiskHitsOf,
   runManualScan,
-  SCANNABLE_TICKETS,
   SCAN_FIELDS,
   SCAN_NODE_STATUS_OPTIONS,
   SCAN_TICKET_TYPES,
@@ -311,107 +310,79 @@ const derivedTickets = useDerivedTicketStore();
  * ==== 工单存量（页头第二块）====
  *
  * 🔴 **它的分母是「工单」，另外两块都不是**，三块并排最容易被读成一路数：
- *   · 监控数据 ＝ **监控条目**（A 线，含每日新增与打标漏斗三段）
+ *   · 实时监控 ＝ **监控条目**（A 线，含今日发现与打标漏斗三段）
  *   · 工单存量 ＝ 工单系统里的**在办工单**          ← 本块
  *   · 评估处置 ＝ **风险工单池**里的**池行**（A 线打标进池的条目 + B 线报备单）
  * 还有一处同屏撞名要盯住：页签「风险工单池」的角标数的是**池行**，
  * 本块「工单存量」数的是**工单**——两者同屏并列，但不是一回事，不可相加、不互校。
- * 「等级分布」尤其要盯：本块的高/中/低是**工单级风险等级**
- * （＝该单**已打标条目**与**已核实且成立的命中**跨条目取最高、同一条以最新结论为准派生），
- * 与左栏打标漏斗里的等级**不是一个口径**——那边一条条目一个等级、数的是**条目**；
- * 这边把一张单上的已打标条目与已核实成立的命中并起来取最高、数的是**工单**。
- * 两个数天生不等，界面上不相减、不互校，各自 title 写明分母。
+ * 「风险等级」一行的高/中/低数的是**工单**（按该单打标结论），
+ * 与左栏打标漏斗里一条条目一个等级、数**条目**的那组数不是一个分母，界面上不相减、不互校。
  *
  * 【为什么取在办、不取全库】这三个数对应的正是 §5.1 里三类**自动入队**的监控来源，
  * 而终态单不入队。把已结案的投诉单也数进来，这一行就成了一个没法据以行动的历史总量。
  */
 const isLiveTicket = (t: Ticket) => STATUS_GROUP[t.nodeStatus] !== '终态';
 
-/** 所有投诉类工单（在办）。对应监控来源「全量投诉」 */
-const complaintTicketCount = computed(
-  () => TICKETS.filter((t) => isLiveTicket(t) && t.type === '投诉').length,
-);
+/**
+ * 已有**打标结论**的工单号集合：A 线条目中带 `tag` 的（`tag.result` 为 高 / 中 / 低 / 无风险 任一），
+ * 取 `reportStore.pooledEntries`（已入池）∪ `reportStore.noRiskEntries`（已标记无风险）两个视图，按 `ticketNo` 去重。
+ */
+const taggedTicketNos = computed(() => new Set(
+  [...reportStore.pooledEntries, ...reportStore.noRiskEntries].filter((e) => !!e.tag).map((e) => e.ticketNo),
+));
+
+/**
+ * 工单存量一格的三个数，全部取工单库 `TICKETS`、只数在办（`isLiveTicket`）：
+ *   · `total`    ＝ 该口径的在办工单数（主数）；
+ *   · `newToday` ＝ 其中 `createdAt` 落在今天（自然日）的工单数 —— 当日建单；
+ *   · `tagged`   ＝ 其中工单号在 `taggedTicketNos` 里的工单数 —— 已有打标结论（含无风险）。
+ */
+function ticketStockOf(match: (t: Ticket) => boolean) {
+  const today = todayPrefix();
+  const rows = TICKETS.filter((t) => isLiveTicket(t) && match(t));
+  return {
+    total: rows.length,
+    newToday: rows.filter((t) => !!t.createdAt?.startsWith(today)).length,
+    tagged: rows.filter((t) => taggedTicketNos.value.has(t.no)).length,
+  };
+}
+
+/** 投诉类工单（在办）：`type === '投诉'`。对应监控来源「全量投诉」 */
+const complaintTicketStock = computed(() => ticketStockOf((t) => t.type === '投诉'));
 
 /**
  * 优先级为紧急 / 重要的工单（在办）。对应监控来源「紧急重要」。
  * 取值口径来自 `types/ticket.ts` 的业务标签（0803 业务确认）：**P0 ＝ 紧急、P1 ＝ 重要**。
  */
-const urgentTicketCount = computed(
-  () => TICKETS.filter((t) => isLiveTicket(t) && (t.priority === 'P0' || t.priority === 'P1')).length,
-);
+const urgentTicketStock = computed(() => ticketStockOf((t) => t.priority === 'P0' || t.priority === 'P1'));
 
 /**
- * 风险工单等级分布（《【930】》§5.3.1 / §7.3 T3）：按**工单级风险等级**
- * （＝该单**已打标条目**与**已核实且成立的命中**取最高，2026-09-10 第三轮口径）
- * 把**在办工单**分到高 / 中 / 低三档，给条数与占比。
- *
- * 🔴 **遍历的起点是"工单"，不是"命中记录"**。这一条踩过一次，值得写死在这里：
- * 旧实现先遍历 `allHits`、再对每个工单号问 `ticketGradeOf`，于是
- * **打标进池、但本单一条命中记录都没有的工单整批数不到**（实测漏 10 张）——
- * 而 `ticketGradeOf` 的口径本来就是两维的（`tagGrades` ∪ 已核实成立的命中），
- * 投诉单 P0·P1 与重要紧急这两路根本不产生命中记录，它们的等级只有打标这一个来源。
- * 以命中表为起点等于把"这张单算不算进分母"挂在"它有没有命中记录"上：
- * 往命中表里补几条数据，这个分布就跟着变，而它本该只随打标与核实结论变。
- * 故起点 ＝ **已打标条目所在的单 ∪ 有命中记录的单**，去重后逐单问 `ticketGradeOf`
- * ——两个来源缺一不可，取空的（误报 / 未核实 / 打为无风险 / 未打标）自然不进分母。
- *
- * 🔴 **在办判定分两路取**（§7.3「T3 分母的两个来源」③）：该工单号能在**工单库**里解析到
- * → **按工单库的状态判，进终态的剔除**；解析不到 → **按监控语料自身携带的在办标记判**
- * （`SCAN_TICKET_STATUS_BY_NO`）。故这个分母覆盖的是「**工单库中的在办单 ∪ 监控语料中标记为在办的单**」。
- *
- * 🔴 **"解析不到的不吞" ≠ "解析不到的照计"**（同表 ④，验收点 **R58j⒠**）：
- * 剔除的判据是「**查到了、且它进了终态**」**或**「**查不到、但语料自己把它标成了终态**」，
- * **两边都没说它是终态**才计入。两头都不能省——
- * ⒜ 把查不到的整批当终态丢掉，分母会**静默缩水**，且缩水量随语料而变；
- * ⒝ 反过来见 `t` 为空就直接照计，语料里那几张**自带「终态」的单**（它们在工单库里查不到）
- * 只要哪天被打上等级，就会有一张**终态单被计进"在办"分母**——这一步谁也看不见，
- * 数字却已经错了。`isLiveTicket` 只吃 `Ticket`，语料那一路只有子状态，故落到 `STATUS_GROUP` 上判。
+ * 按**工单**数打标结论的高 / 中 / 低：取 `reportStore.pooledEntries`（打标为 高 / 中 / 低 进池的条目）
+ * 经 `pick` 过滤后的条目，按 `ticketNo` 去重；同一张单有多条条目时取其中最高的 `tag.result`。
+ * 「无风险」不进池、不在这批条目里，故不列。
  */
-const ticketGradeDist = computed(() => {
-  const buckets: Record<RiskLevel, number> = { 高: 0, 中: 0, 低: 0 };
-  const seen = new Set<string>();
-  const take = (ticketNo: string) => {
-    if (seen.has(ticketNo)) return;
-    seen.add(ticketNo);
-    const t = TICKET_BY_NO.get(ticketNo) ?? derivedTickets.find(ticketNo);
-    // 路一：工单库解析得到 → 以工单库状态为准；路二：解析不到 → 以语料自带的状态为准。
-    // 两边都没判成终态才计入（语料里也没这张单时，无人说它是终态，照计）。
-    const corpusStatus = SCAN_TICKET_STATUS_BY_NO.get(ticketNo);
-    const terminal = t ? !isLiveTicket(t) : !!corpusStatus && STATUS_GROUP[corpusStatus] === '终态';
-    if (terminal) return;
-    const g = riskTags.ticketGradeOf(ticketNo);
-    if (g) buckets[g] += 1;
-  };
-  // 来源一：已打标条目（`tagGrades` 的一级 key 就是工单号，无命中记录的那批只在这里）
-  Object.keys(riskTags.tagGrades).forEach(take);
-  // 来源二：有命中记录的单（已核实成立的命中那一路）
-  allHits.value.forEach((h) => take(h.ticketNo));
-  const total = buckets.高 + buckets.中 + buckets.低;
-  /*
-   * 🔴 **占比取整走最大余数法**（§7.3 T3 的舍入规则，`高 + 中 + 低 ＝ 100%` 的实现口径）：
-   * ① 各档 `条数 ÷ 分母 × 100` **向下取整**，各自记下小数余数；
-   * ② 与 100 的差额（0~2）按余数**从大到小**依次每档 +1；余数相同时按 **高 → 中 → 低** 补。
-   * 【为什么不能用 Math.round】四舍五入不保证和为 100：9 / 7 / 7（分母 23）
-   * 精确值 39.13 / 30.43 / 30.43，round 后 39 + 30 + 30 ＝ **99%**，
-   * 而这一行的 title 上明写着"占比之和为 100%"——那句话会当场变成假的。
-   */
-  const rows = RISK_LEVELS.map((lv, idx) => {
-    const exact = total ? (buckets[lv] / total) * 100 : 0;
-    const floor = Math.floor(exact);
-    return { level: lv, count: buckets[lv], pct: floor, rem: exact - floor, idx };
-  });
-  let gap = total ? 100 - rows.reduce((s, r) => s + r.pct, 0) : 0;
-  // 余数相同时按 高 → 中 → 低：`idx` 这一维不靠 sort 的稳定性，显式写出来
-  for (const r of [...rows].sort((a, b) => b.rem - a.rem || a.idx - b.idx)) {
-    if (gap <= 0) break;
-    r.pct += 1;
-    gap -= 1;
+function tagLevelCountsOf(pick: (e: RiskQueueEntry) => boolean): Record<RiskLevel, number> {
+  const best = new Map<string, RiskLevel>();
+  for (const e of reportStore.pooledEntries) {
+    const lv = e.tag?.result;
+    if (!lv || !(RISK_LEVELS as readonly string[]).includes(lv) || !pick(e)) continue;
+    const cur = best.get(e.ticketNo);
+    if (!cur || RISK_LEVELS.indexOf(lv as RiskLevel) < RISK_LEVELS.indexOf(cur)) best.set(e.ticketNo, lv as RiskLevel);
   }
-  return {
-    total,
-    rows: rows.map(({ level, count, pct }) => ({ level, count, pct })),
-  };
-});
+  const counts: Record<RiskLevel, number> = { 高: 0, 中: 0, 低: 0 };
+  best.forEach((lv) => { counts[lv] += 1; });
+  return counts;
+}
+
+/**
+ * 工单存量「风险等级」一行：**在办工单**按打标结论计的高 / 中 / 低工单数，只给数量。
+ * 在办判定：工单号能在工单库（`TICKET_BY_NO`）或派生库（`derivedTickets`）解析到时按 `isLiveTicket` 判，终态剔除。
+ */
+const liveTagLevelCounts = computed(() => tagLevelCountsOf((e) => {
+  const t = TICKET_BY_NO.get(e.ticketNo) ?? derivedTickets.find(e.ticketNo);
+  return !t || isLiveTicket(t);
+}));
+
 /**
  * 视图内三态（N4）：待领取 / 评估中 / 已评估。
  *
@@ -1284,8 +1255,8 @@ const SCAN_RUN_VERSION_KEY = 'flowos-risk-scan-runs-v';
  * 扫库记录的时刻**按"距现在多久"生成**，不写死日历日。
  *
  * 🔴 **页头「扫描批次 / 命中记录」是按自然日切的流量指标**：种子若写死在某个过去的日子，
- * 这两个数就恒为 0，而旁边的「今日新增」走的是相对当下的条目时刻——一屏之内出现
- * 「今日新增 12 · 扫描批次 0 · 命中记录 0」，读起来像"今天没扫过却凭空多了 12 条"。
+ * 这两个数就恒为 0，而旁边的「今日发现」走的是相对当下的条目时刻——一屏之内出现
+ * 「今日发现 12 · 扫描批次 0 · 命中记录 0」，读起来像"今天没扫过却凭空多了 12 条"。
  * 命中那一路已在 `mock/opsReport.ts` 用整体平移解决（见 `anchorHitDates`），
  * 扫库这一路条数少、且只本页用，直接按偏移生成更直白。
  *
@@ -3505,27 +3476,23 @@ const untaggedHigh = computed(() =>
 /* ==================== 页头大盘 · 督导要的四组数 ==================== */
 //
 // 业务给的四组：**每日报备量 / 各处理组标记情况 / 未标记的工单分布 / 被标记为无风险的工单**。
-// 四组全部落在**监控条目**这个分母上，故整块并进页头左栏「监控数据」，
+// 四组全部落在**监控条目**这个分母上，故整块并进页头左栏「实时监控」，
 // 不另起第四块卡区——四块并排会把每块压到读不出数字的宽度，而三块的骨架现成。
 //
 // 🔴 每一个数都从现有 store 现算，**不预置任何写死的统计数字**：写死的数会在打完一次标之后
 // 与列表当场对不上，而这一屏的全部用处就是让督导据以判断"今天该盯哪一批"。
 
-/** 今天（自然日）进风险侧的条目 —— **每日报备量**。A 线自动识别与 B 线二线报备分开报：
- *  两者的来路完全不同（一个是系统捞的、一个是人报的），合成一个数就看不出今天是谁在动。 */
+/**
+ * 「今日发现」＝ 今天（自然日）新进入**监控队列**的条目数：自动纳入 + 手动筛查并入。
+ * 只数 A 线条目，按进队时刻 `at` 切日；条目此刻落在哪个视图（待打标 / 已入池 / 已标记无风险）都算，
+ * 三个视图是 A 线条目状态的全集。二线报备不计入。
+ */
 const dailyIntake = computed(() => {
   const today = todayPrefix();
-  const auto = reportStore.items.filter(
-    (r) => r.source !== '二线报备' && r.at.startsWith(today),
-  ).length;
-  const reported = reportStore.items.filter(
-    (r) => r.source === '二线报备' && r.at.startsWith(today),
-  ).length;
-  // A 线还在实时监控（没进池）的条目不在 `items` 里，要单独并进来——
-  // 「今天进来了多少」问的是入口，不是"今天有多少进了池"
-  const monitoring = reportStore.monitoringEntries.filter((e) => e.at.startsWith(today)).length;
-  const noRisk = reportStore.noRiskEntries.filter((e) => e.at.startsWith(today)).length;
-  return { auto: auto + monitoring + noRisk, reported, total: auto + monitoring + noRisk + reported };
+  const inToday = (e: RiskQueueEntry) => e.at.startsWith(today);
+  return reportStore.monitoringEntries.filter(inToday).length
+    + reportStore.pooledEntries.filter(inToday).length
+    + reportStore.noRiskEntries.filter(inToday).length;
 });
 
 /*
@@ -3538,7 +3505,7 @@ const dailyIntake = computed(() => {
  * 两者摆在同一屏上互相补足，才是这块卡区该有的用处。
  *
  * 【原「未打标分布」那一行删掉】它按监控来源给待打标条目分档，分母恒等于左栏的「全部待判」，
- * 是重复里最重的一处。「各处理组」那一行留着——组这一维左栏没有。
+ * 是重复里最重的一处。
  */
 
 /** 今日跑过的**实时扫描批次**。手动筛查是人发起的旁路，不算"系统今天跑了几轮" */
@@ -3557,25 +3524,21 @@ const taggedToday = computed(() => {
   const hit = (e: RiskQueueEntry) => !!e.tag?.at.startsWith(today);
   return reportStore.pooledEntries.filter(hit).length + reportStore.noRiskEntries.filter(hit).length;
 });
+/**
+ * 「风险标注」一行：**今日打标**结论为高 / 中 / 低的工单数。
+ * 条目取 `tag.at` 落在今天的（与「今日打标」同一自然日窗口），按工单去重取最高，见 `tagLevelCountsOf`；无风险不列。
+ */
+const tagLevelToday = computed(() => {
+  const today = todayPrefix();
+  return tagLevelCountsOf((e) => !!e.tag?.at.startsWith(today));
+});
 
 /**
- * **各处理组标记情况** —— 按工单所属处理组，看这一组的条目打没打标。
- *
- * 🔴 **组是从工单join 过来的，不是条目自己的字段**：监控条目上只有工单号。
- * 故这里按 `mock/tickets.ts` 反查，取 `resolveTicketGroupNames` 的第一个名字
- * （工单列表「分组名称」列用的就是它，两处同一个口径，不另造一套分组）。
- * 查不到的落「未归组」——**不吞掉**：吞掉的话各组之和会小于总数，
- * 督导照这一行决定先盯哪一组时，被吞的那几条永远没人管。
+ * 工单号 → 工单（工单库）。
+ * 组名由 `groupNameOf` 按它反查，取 `resolveTicketGroupNames` 的第一个名字
+ * （工单列表「分组名称」列用的就是它，两处同一个口径，不另造一套分组）；查不到的落「未归组」。
  */
 const TICKET_BY_NO = new Map(TICKETS.map((t) => [t.no, t]));
-/**
- * 🔴 **另一个"工单宇宙"的状态索引**（《【930】》§6.5 缺口 **G11**）：监控语料里有一批单的
- * 单号在**工单库里根本不存在**，它们的状态只有**语料自己写的那一个**。`SCANNABLE_TICKETS`
- * 的 `nodeStatus` 就是这一份：语料条目命中工单库时取工单库的状态，命中不了时由语料自带的
- * 「在办 / 终态」落成子状态（见 `mock/opsReport.ts` 的 `enrichScannableTicket`）。
- * 故本表**只在工单库解析不到时**当作状态来源用，解析得到时一律以工单库为准，两边不打架。
- */
-const SCAN_TICKET_STATUS_BY_NO = new Map(SCANNABLE_TICKETS.map((t) => [t.ticketNo, t.nodeStatus]));
 function groupNameOf(ticketNo: string): string {
   // 🔴 **两处都要查**，与 `ticketOf` 同一条规矩：升级派生出来的新投诉单落在 `derivedTickets` 里，
   // 只问静态工单库会把它整条判成「未归组」——它明明继承了原单的分组名。
@@ -3583,20 +3546,6 @@ function groupNameOf(ticketNo: string): string {
   if (!t) return '未归组';
   return resolveTicketGroupNames(t)[0] ?? '未归组';
 }
-const groupTagStats = computed(() => {
-  const m = new Map<string, { group: string; untagged: number; tagged: number; noRisk: number }>();
-  const bump = (ticketNo: string, key: 'untagged' | 'tagged' | 'noRisk') => {
-    const group = groupNameOf(ticketNo);
-    const row = m.get(group) ?? { group, untagged: 0, tagged: 0, noRisk: 0 };
-    row[key] += 1;
-    m.set(group, row);
-  };
-  reportStore.monitoringEntries.forEach((e) => bump(e.ticketNo, 'untagged'));
-  reportStore.pooledEntries.forEach((e) => bump(e.ticketNo, 'tagged'));
-  reportStore.noRiskEntries.forEach((e) => bump(e.ticketNo, 'noRisk'));
-  // 未打标多的排前面：这一行是给督导找"谁那边堆着没人判"用的
-  return [...m.values()].sort((a, b) => b.untagged - a.untagged || b.tagged - a.tagged);
-});
 
 /* ==================== 左栏漏斗导航（本页的主导航） ==================== */
 //
@@ -4379,7 +4328,7 @@ function toggleWordEnabled(w: RiskWord) {
         </div>
         <div class="greeting-text">
           <div class="greeting-title">风险监控</div>
-          <div class="greeting-sub">全中心 · 三路自动识别 → 风险打标 → 有风险的进风险工单池处置</div>
+          <div class="greeting-sub">实时识别预警词命中、投诉单与重要紧急工单，打标定级后进入风险工单池处置</div>
         </div>
       </div>
       <div class="greeting-aside">
@@ -4416,27 +4365,23 @@ function toggleWordEnabled(w: RiskWord) {
     <section class="overview-section effect-section">
       <div class="effect-split">
         <!--
-          左栏 ＝ 监控数据。**它只讲扫描本身，与左栏漏斗零重叠**：
+          左栏 ＝ 实时监控。**它只讲扫描本身，与左栏漏斗零重叠**：
           待打标 / 已入池 / 已标记无风险 三个存量数已经完整摆在下方那一列漏斗里了，
           页头再摆一遍就是同屏重复 —— 两处摆同一个数，人只会去找它们为什么不一样。
           这一块答的是**今天动了多少**（流量）：扫了几轮、扫出多少条命中、判掉了多少。
-          「各处理组」那一行留着 —— 组这一维漏斗那一列没有。
         -->
         <div class="effect-pane effect-pane--monitor">
           <h2
             class="pane-title"
-            title="今天这套监控跑了些什么 · 四个数全按自然日算，与下方漏斗那一列的存量不是一个口径"
-          >监控数据</h2>
+            title="今日监控运行情况，按自然日统计"
+          >实时监控</h2>
           <div class="dash-grid dash-grid-4">
             <div
               class="dm-cell dm-static"
-              :title="`今日进入风险侧的条目：自动识别 ${dailyIntake.auto} 条 · 二线报备 ${dailyIntake.reported} 条`"
+              title="当日新进入监控队列的条目数，含手动筛查并入"
             >
-              <span class="dm-k">今日新增</span>
-              <span class="dm-val">
-                <span class="dm-v">{{ dailyIntake.total }}</span>
-                <span class="dm-h">自动 {{ dailyIntake.auto }} · 报备 {{ dailyIntake.reported }}</span>
-              </span>
+              <span class="dm-k">今日发现</span>
+              <span class="dm-val"><span class="dm-v">{{ dailyIntake }}</span></span>
             </div>
             <div
               class="dm-cell dm-static"
@@ -4460,26 +4405,17 @@ function toggleWordEnabled(w: RiskWord) {
               <span class="dm-val"><span class="dm-v">{{ taggedToday }}</span></span>
             </div>
           </div>
-          <!--
-            各处理组标记情况。组名由**工单号反查工单库**得到，与工单列表「分组名称」列同一个口径。
-            ⚠️ 查不到工单的落「未归组」并照常列出，**不吞掉**：吞掉的话各组之和会小于总数，
-            督导照这一行分配注意力时，被吞的那几条永远没人认领。
-          -->
+          <!-- 风险标注：今日打标结论为高 / 中 / 低的工单数（tagLevelToday），无风险不列 -->
           <div class="dash-links">
+            <span class="dash-links-k" title="今日打标结论为高危 / 中危 / 低危的工单数">风险标注</span>
             <span
-              class="dash-links-k"
-              title="按工单所属处理组看条目打没打标：待打标 / 已入池 / 无风险。组名由工单号反查工单库，与工单列表「分组名称」同一口径"
-            >各处理组</span>
-            <span
-              v-for="g in groupTagStats"
-              :key="g.group"
+              v-for="lv in RISK_LEVELS"
+              :key="lv"
               class="dl-item dl-static"
-              :title="`${g.group}：待打标 ${g.untagged} · 已入池 ${g.tagged} · 无风险 ${g.noRisk}`"
+              :style="{ color: RISK_LEVEL_STYLE[lv].color }"
             >
-              {{ g.group }}<b>{{ g.untagged }}</b>
-              <small>已判 {{ g.tagged + g.noRisk }}</small>
+              {{ riskLevelText(lv) }}<b>{{ tagLevelToday[lv] }}</b>
             </span>
-            <span v-if="!groupTagStats.length" class="dl-empty">当前没有监控条目</span>
           </div>
         </div>
 
@@ -4496,36 +4432,32 @@ function toggleWordEnabled(w: RiskWord) {
           <div class="dash-grid dash-grid-2">
             <div class="dm-cell dm-static" title="在办的投诉类工单数 · 分母是工单">
               <span class="dm-k">投诉工单</span>
-              <span class="dm-val"><span class="dm-v">{{ complaintTicketCount }}</span></span>
+              <span class="dm-val">
+                <span class="dm-v">{{ complaintTicketStock.total }}</span>
+                <span class="dm-h">今日新增 {{ complaintTicketStock.newToday }} · 已打标 {{ complaintTicketStock.tagged }}</span>
+              </span>
             </div>
             <div
               class="dm-cell dm-static"
               title="在办且优先级为 P0 紧急 / P1 重要的工单数 · 分母是工单"
             >
               <span class="dm-k">紧急 / 重要</span>
-              <span class="dm-val"><span class="dm-v">{{ urgentTicketCount }}</span></span>
+              <span class="dm-val">
+                <span class="dm-v">{{ urgentTicketStock.total }}</span>
+                <span class="dm-h">今日新增 {{ urgentTicketStock.newToday }} · 已打标 {{ urgentTicketStock.tagged }}</span>
+              </span>
             </div>
           </div>
           <div class="dash-links">
+            <span class="dash-links-k" title="在办工单按打标结论计">风险等级</span>
             <span
-              class="dash-links-k"
-              :title="`共 ${ticketGradeDist.total} 张在办工单有工单级风险等级（该单已打标条目与已核实成立的命中取最高；打为无风险的、未打标的、误报与未核实的都不进分母）；占比按最大余数法取整，之和恒为 100%。此处数的是工单，与左栏「全部有风险」的高中低数的是条目，两组数天生不等`"
-            >风险等级</span>
-            <span
-              v-for="r in ticketGradeDist.rows"
-              :key="r.level"
+              v-for="lv in RISK_LEVELS"
+              :key="lv"
               class="dl-item dl-static"
-              :style="{ color: RISK_LEVEL_STYLE[r.level].color }"
+              :style="{ color: RISK_LEVEL_STYLE[lv].color }"
             >
-              {{ riskLevelText(r.level) }}<b>{{ r.count }}</b>
-              <small v-if="ticketGradeDist.total">{{ r.pct }}%</small>
+              {{ riskLevelText(lv) }}<b>{{ liveTagLevelCounts[lv] }}</b>
             </span>
-            <!--
-              空态文案以《【930】》§5.3.1 为准：分母是"按 §5A.3 算得出工单级风险等级的单"，
-              不是"已核实成立的单"——后者把打标那一路（无命中记录的两类来源）说没了，
-              与上面的取数口径对不上。
-            -->
-            <span v-if="!ticketGradeDist.total" class="dl-empty">暂无已打标进池的工单</span>
           </div>
         </div>
 
@@ -7055,7 +6987,7 @@ function toggleWordEnabled(w: RiskWord) {
   box-shadow: none;
 }
 /*
- * 三栏：监控数据（命中记录）｜ 工单存量（在办工单）｜ 评估处置（队列条目）。
+ * 三栏：实时监控（命中记录）｜ 工单存量（在办工单）｜ 评估处置（队列条目）。
  * 左栏四个 KPI、右栏三个，中栏只有两个，故按 1.15 : 0.85 : 1 分宽，
  * 均分会让中栏空出一截、左栏的四格挤成两行。
  */
@@ -7215,7 +7147,6 @@ function toggleWordEnabled(w: RiskWord) {
 .dl-item.dl-static { cursor: default; font-weight: 600; }
 .dl-item.dl-static:hover { color: inherit; }
 .dl-item.dl-static b { color: inherit; }
-.dl-empty { font-size: 11px; color: #cbd5e1; }
 
 /* 上次执行 + 扫库记录：§4.1 次按钮外形，记录条数用主色点出可点 */
 .run-entry {
