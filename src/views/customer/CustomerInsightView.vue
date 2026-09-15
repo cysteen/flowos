@@ -229,7 +229,7 @@ const TONE_STYLE: Record<CustomerTicketRow['tone'], { color: string; background:
   closed: { color: '#10b981', background: '#10b98118' },
 };
 const TYPE_TONE: Record<string, string> = {
-  投诉: '#EF4444', 建议: '#10B981', 商机: '#F59E0B', 咨询: '#1A6FFF', 维修: '#8B5CF6',
+  投诉: '#EF4444', 建议: '#10B981', 商机: '#F59E0B', 咨询: '#1A6FFF', 刷机: '#7C3AED', 维修: '#8B5CF6',
 };
 const CONTACT_ICON = { call: PhoneOutlined, im: MessageOutlined, sms: MessageOutlined, email: MailOutlined };
 const CONTACT_LABEL = { call: '热线', im: '在线', sms: '短信', email: '邮件' };

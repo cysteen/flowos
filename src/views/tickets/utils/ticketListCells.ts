@@ -1,5 +1,5 @@
 import type { Ticket } from '@/views/tickets/types/ticket';
-import { isFirstResponded, resolveTicketGroupNames, SLA_COLOR } from '@/views/tickets/types/ticket';
+import { isFirstResponded, isSlaPaused, resolveTicketGroupNames, SLA_COLOR } from '@/views/tickets/types/ticket';
 import { resolveCurrentFlowNode, resolvePreviousFlowNode } from '@/views/tickets/utils/ticketFlowNodes';
 
 export function formatStartDate(t: Ticket): string {
@@ -107,7 +107,8 @@ const VOID_LINE: SlaLine = { text: '已停表', color: SLA_COLOR.paused };
  * 其余停表原因（已结案 / 已关闭 / 已强结 / 直接结案 / 售后已完成）都是**解决收口**，
  * 钟是走完的，达标结论有效，不在此列。
  */
-const VOID_STOP_REASON_RE = /升级|转出|取消|中止/;
+// 「未计时」：刷机单自助刷机成功直进回访，从未进过人工池、SLA 从未起算（930 教育刷机单 D18），无达标结论
+const VOID_STOP_REASON_RE = /升级|转出|取消|中止|未计时/;
 
 /**
  * 这张单是否应按「中止停表」展示。
@@ -130,6 +131,8 @@ export function slaResolveLine(t: Ticket): SlaLine {
     if (t.solveBreached) return BREACHED_LINE;
     return isSlaVoidStop(t) ? VOID_LINE : MET_LINE;
   }
+  // 刷机单停钟（自动刷机中 / 线下登记待批推，930 D18 / M31）：挂起单仍走下方原逻辑
+  if (t.slaState !== 'paused' && isSlaPaused(t)) return { text: '已暂停', color: SLA_COLOR.paused };
   if (!isFirstResponded(t) && t.resolveSlaText) {
     return { text: slaShort(t.resolveSlaText), color: SLA_COLOR[t.resolveSlaState ?? 'ok'] };
   }
@@ -139,7 +142,7 @@ export function slaResolveLine(t: Ticket): SlaLine {
 /** 首响行状态全枚举：剩(正常绿/临期橙)/超(红·未响仍在计)/已暂停(灰·挂起且未响)/已达标(绿)/未达标(红·超时后才响) */
 export function slaFirstLine(t: Ticket): SlaLine {
   if (isFirstResponded(t)) return t.firstRespBreached ? BREACHED_LINE : MET_LINE;
-  if (t.slaState === 'paused') return { text: '已暂停', color: SLA_COLOR.paused };
+  if (isSlaPaused(t)) return { text: '已暂停', color: SLA_COLOR.paused };
   return { text: slaShort(t.slaText), color: SLA_COLOR[t.slaState] };
 }
 

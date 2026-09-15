@@ -17,7 +17,7 @@ const typeId = computed(() => String(route.params.id));
 const isNew = computed(() => typeId.value === 'new');
 const TYPE_NAMES: Record<string, string> = {
   complaint: '投诉工单', consult: '咨询工单', suggest: '建议工单',
-  biz: '商机工单', aftersale: '售后工单', return: '退换货工单',
+  biz: '商机工单', flash: '刷机工单', aftersale: '售后工单', return: '退换货工单',
 };
 const typeName = computed(() => (isNew.value ? '新建工单类型' : TYPE_NAMES[typeId.value] ?? typeId.value));
 const activeTab = ref(String(route.query.tab || 'basic'));

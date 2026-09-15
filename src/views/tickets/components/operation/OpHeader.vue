@@ -5,7 +5,7 @@ import { useUserStore } from '@/stores/user';
 import { CopyOutlined, FlagOutlined } from '@ant-design/icons-vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import {
-  PRIORITY_COLOR, softBg, csEntryAvailability, statusDisplayName,
+  PRIORITY_COLOR, softBg, csEntryAvailability, statusDisplayName, AUTO_FLASH_STATUS_HEX,
   type Priority, type TicketStatus,
 } from '@/views/tickets/types/ticket';
 import OpSlaBar from './OpSlaBar.vue';
@@ -158,6 +158,8 @@ const statusText = computed(() => statusDisplayName(props.detail.status));
  * 拿展示名来匹配就落不进下面的紫色分支了。
  */
 function statusHex(s: string): string {
+  // 刷机单「自动刷机中」（930 M9）：系统自动环节，与列表 statusTone('auto') 同色
+  if (s === '自动刷机中') return AUTO_FLASH_STATUS_HEX;
   // 转单三态 / 升阶两态 / 已转出＝业务转到别的单上，用紫与关闭类终态的灰区分开
   if (/已转咨询|已转建议|已转商机|已升级投诉|已升级外投|已转出/.test(s)) return '#7C3AED';
   // 「已关闭」＝关闭工单审批通过，与已结案 / 直接结案同属正常收口，取绿——

@@ -2,6 +2,7 @@
 // 业务规则对齐 PRD-02。
 
 import type { BusinessType, CreateFormTicketType, TicketSource } from '@/views/tickets/types/createTicket';
+import type { TicketFlash } from '@/views/tickets/types/flash';
 
 /**
  * 工作台主 Tab。
@@ -129,6 +130,12 @@ export type TicketStatus =
   | '已委派'
   | '已退回'
   | '已转出'
+  /**
+   * 刷机单专属（930 教育刷机单 M9）：推送已发出、等硬件平台回传。分组归「处理中」；
+   * 期间冻结语义同「已转出」（底栏只留保存、联系客户），催补可做但**不拉回**（同「已升级产研」）；
+   * SLA 暂停（D18，停钟判据见 `isSlaPaused`）。**基线待同步项**：基线 §1 尚无此子状态。
+   */
+  | '自动刷机中'
   /** 结案方式＝**正常流程**的单走完调研后到这里（基线 §1 该行） */
   | '已结案'
   /**
@@ -153,16 +160,21 @@ export type FlowNode =
   | '技术支持'
   | '调研回访'
   | '挂起审批'
-  | '强结审批';
+  | '强结审批'
+  /** 刷机单系统自动环节（子状态「自动刷机中」，930 教育刷机单 M9） */
+  | '自动刷机';
 
 export type NodeStatus = TicketStatus;
 
-/** 基线 §1 全部子状态（筛选项 / 校验用）：25 行 = 25 个可落库子状态，顺序与基线 §1 表一致 */
+/**
+ * 全部子状态（筛选项 / 校验用）：基线 §1 的 25 行 + 刷机单「自动刷机中」（930 M9）= 26 个可落库子状态。
+ * 基线部分顺序与基线 §1 表一致；「自动刷机中」归「处理中」分组，排在已转出之后。
+ */
 export const BASELINE_STATUSES: TicketStatus[] = [
   '草稿', '未认领', '待响应', '处理中', '调研中',
   '申请挂起中', '申请关闭中', '申请强结中', '业务动作审核中',
   '已挂起', '已升级技术支持', '已升级产研', '已升级投诉', '已升级外投',
-  '已委派', '已退回', '已转出',
+  '已委派', '已退回', '已转出', '自动刷机中',
   '已结案', '已关闭', '已强结', '已转咨询', '已转建议', '已转商机', '已取消', '直接结案',
 ];
 
@@ -202,6 +214,7 @@ export const STATUS_GROUP: Record<TicketStatus, StatusGroup> = {
   已委派: '处理中',
   已退回: '处理中',
   已转出: '处理中',
+  自动刷机中: '处理中',
   已结案: '终态',
   已关闭: '终态',
   已强结: '终态',
@@ -240,6 +253,7 @@ export const STATUS_DISPLAY_NAME: Record<TicketStatus, string> = {
   已委派: '已委派',
   已退回: '已退回',
   已转出: '已转售后',
+  自动刷机中: '自动刷机中',
   已结案: '已结案',
   已关闭: '已关闭',
   已强结: '已强结',
@@ -267,7 +281,7 @@ export function ticketStatusDisplayName(t: Ticket): string {
 
 /**
  * 结案方式（基线 §1「结案方式」小节）——**建单时选定、此后不可改**，与工单类型正交
- * （工单类型仍是咨询 / 建议 / 投诉 / 商机四类不变）。
+ * （工单类型为咨询 / 建议 / 投诉 / 商机 / 刷机五类（含刷机，见 930 教育刷机单））。
  *
  * - 正常流程：进流程办理，走完调研回访后结案 → 落「已结案」
  * - 直接结案：一次性解答完、当场收口，从未进流程 → 落「直接结案」；**不下送、不升级、不挂起、不转派**
@@ -288,16 +302,21 @@ export function isDirectClosure(mode?: ClosureMode): boolean {
   return resolveClosureMode(mode) === '直接结案';
 }
 
-export type StatusTone = 'primary' | 'success' | 'warning' | 'danger' | 'info';
+export type StatusTone = 'primary' | 'success' | 'warning' | 'danger' | 'info' | 'auto';
 
-/** 列表状态标签配色（待处理 / 已完成 / 处理中 / 强结·取消 / 默认） */
+/** 列表状态标签配色（待处理 / 已完成 / 处理中 / 强结·取消 / 默认 / 系统自动环节） */
 export const STATUS_COLOR_MAP: Record<StatusTone, { color: string; bg: string }> = {
   primary: { color: '#1a6fff', bg: '#1a6fff18' },
   success: { color: '#10b981', bg: '#10b98118' },
   warning: { color: '#f59e0b', bg: '#f59e0b18' },
   danger: { color: '#ef4444', bg: '#ef444418' },
   info: { color: '#6b7280', bg: '#6b728018' },
+  // 刷机单「自动刷机中」：单在系统自动环节、不在人手上，与「处理中」一族的橙色区分开（930 M9）
+  auto: { color: '#0891b2', bg: '#0891b218' },
 };
+
+/** 「自动刷机中」徽章色（列表 statusTone 与操作页头 statusHex 共用） */
+export const AUTO_FLASH_STATUS_HEX = '#0891B2';
 
 const REVIEW_STATUSES: TicketStatus[] = [
   '申请挂起中', '申请关闭中', '申请强结中', '业务动作审核中',
@@ -308,6 +327,7 @@ const REVIEW_STATUSES: TicketStatus[] = [
  * 终态内部再按子状态分：正常收口=绿、异常终止=红、业务转到别的单上=中性。
  */
 export function statusTone(status: TicketStatus): StatusTone {
+  if (status === '自动刷机中') return 'auto';
   if (STATUS_GROUP[status] !== '终态') {
     return STATUS_GROUP[status] === '初始' ? 'primary' : 'warning';
   }
@@ -346,8 +366,24 @@ export function isReviewStatus(status: TicketStatus): boolean {
 export function isEscalatedStatus(status: TicketStatus): boolean {
   return status === '已升级技术支持' || status === '已升级产研';
 }
-/** SLA 倒计时态：充足/临期/超时/暂停(挂起冻结) */
+/** SLA 倒计时态：充足/临期/超时/暂停(挂起冻结 · 自动刷机中) */
 export type SlaState = 'ok' | 'soon' | 'overdue' | 'paused';
+
+/**
+ * SLA **停钟判据**：挂起 ∨ 自动刷机中 ∨ 线下登记后等待批推（930 教育刷机单 D18 / M17 / M31）。
+ * - 挂起：列表行 `slaState === 'paused'`（原判据）；
+ * - 自动刷机中：推送后等待回传的整段不计时，按子状态判，数据侧漏写 `slaState` 时也停得住；
+ * - 线下登记：刷机单 `flash.state.slaPausedUntil` 晚于当前时刻即暂停，到批推时刻自动恢复
+ *   （暂停至时刻由 `offlineBatchResumeAt` 算，见 types/flash.ts）。
+ */
+export function isSlaPaused(
+  t: Pick<Ticket, 'slaState' | 'nodeStatus' | 'flash'>,
+  now: number = Date.now(),
+): boolean {
+  if (t.slaState === 'paused' || t.nodeStatus === '自动刷机中') return true;
+  const until = t.flash?.state.slaPausedUntil;
+  return !!until && now < new Date(until.replace(' ', 'T')).getTime();
+}
 
 export interface Ticket {
   id: string;
@@ -550,6 +586,11 @@ export interface Ticket {
    * 处理页据此判定「被接管」：整页只读 + 接管横幅（PRD §5.6.3）。
    */
   escalatedToNo?: string;
+  /**
+   * 刷机单字段组（仅 `type === '刷机'` 有值，930 教育刷机单）：刷机信息 + 自动刷机状态 + 推送记录。
+   * 列表与处理页读同一份；写口只有刷机服务 `stores/flash.ts`。
+   */
+  flash?: TicketFlash;
 }
 
 /** 新建工单弹窗预填（子单 / reopen 场景从原单继承客户/产品/渠道等） */
@@ -599,6 +640,8 @@ export const TYPE_COLOR: Record<TicketType, string> = {
   建议: '#10B981',
   商机: '#F59E0B',
   咨询: '#1A6FFF',
+  // 刷机（930 教育刷机单）：靛紫，与投诉红 / 建议绿 / 商机橙 / 咨询蓝拉开
+  刷机: '#7C3AED',
 };
 
 export const SMART_MARK_COLOR: Record<SmartMark, string> = {
@@ -664,7 +707,7 @@ const SLA_STATE_RANK: Record<SlaState, number> = { overdue: 0, soon: 1, ok: 2, p
  */
 export function slaSortKey(t: Ticket): { group: number; minutes: number } {
   if (t.slaText === '—') return { group: 4, minutes: Number.MAX_SAFE_INTEGER }; // 终态：无活跃钟
-  if (t.slaState === 'paused') return { group: 3, minutes: Number.MAX_SAFE_INTEGER }; // 挂起：冻结置底
+  if (isSlaPaused(t)) return { group: 3, minutes: Number.MAX_SAFE_INTEGER }; // 挂起 / 自动刷机中：冻结置底
   // 活跃钟集合：扁平摘要（已响=解决钟 / 未响=首响钟）+ 未响时的解决钟独立字段
   const clocks: { state: SlaState; minutes: number }[] = [
     { state: t.slaState, minutes: t.slaMinutes },
@@ -855,6 +898,8 @@ export const POOL_GROUPS: PoolGroupMeta[] = [
   { id: 'line1', label: '一线客服组' },
   { id: 'line2', label: '二线技术支持组' },
   { id: 'hardware', label: '硬件缺陷组' },
+  // 930 教育刷机单 M15：二线「教育刷机处理组池」。一线刷机池复用 line1（一线客服组），见 types/flash.ts FLASH_POOLS
+  { id: 'edu-flash', label: '教育刷机处理组' },
 ];
 
 /**
@@ -866,6 +911,9 @@ const HANDLER_GROUP: Record<string, string> = {
   林坐席: 'line2',
   王组长: 'line2',
   陈坐席: 'hardware',
+  // 930 教育刷机单：一线刷机池的一线坐席、教育刷机处理组的二线专员
+  刘一线: 'line1',
+  许文静: 'edu-flash',
 };
 
 /** 处理人所在分组；不在名册内返回 undefined（按无权处理，fail-closed） */
@@ -890,6 +938,7 @@ export function resolveTicketGroupNames(t: Ticket): string[] {
       投诉: '投诉',
       建议: '建议',
       商机: '商机',
+      刷机: '刷机',
     };
     names.push(`${biz}${typeSuffix[t.type] ?? t.type}`);
   }
@@ -1059,7 +1108,8 @@ export function canReleaseAnyRiskReport(roleKey: string): boolean {
  *
  * 三类（依据基线 §1 状态拆细后逐个子状态铺开）：
  * - 全给：非终态且非已转出（未认领 / 待响应 / 处理中 / 已退回 / 调研中 / 审核中4态 /
- *   已挂起 / 已升级技术支持 / 已升级产研 / 已委派）
+ *   已挂起 / 已升级技术支持 / 已升级产研 / 已委派 / 自动刷机中）
+ *   —— 「自动刷机中」催补可做、不拉回（930 M9），见 pullbackOnCsEvent
  * - 只给补充：**8 个终态**（已结案 / 已关闭 / 已强结 / 已转咨询 / 已转建议 / 已转商机 /
  *   已升级投诉 / 已升级外投）—— 客户催的是已收口的事，没有承接对象；
  *   转单与升阶两态的补充跳子单（基线 ※23）
@@ -1095,6 +1145,8 @@ export function csEntryAvailability(status: TicketStatus): {
  * 前提已经变了，不该继续跑。
  * **两个已升级态 / 已委派 / 已转出不拉回** —— 调研回访是系统服务、撤回没代价；三线是人、正在
  * 查问题，拉回等于让人白干；已转出的单根本不在客服侧。
+ * **自动刷机中也不拉回**（930 教育刷机单 M9，参照已升级产研）：推送已发出、不可撤回，
+ * 催补通知按基线 ※19 落给归属组，回传结果出来后由系统按规则落点。
  */
 export function pullbackOnCsEvent(status: TicketStatus): { to: TicketStatus; why: string } | null {
   if (status === '调研中') return { to: '处理中', why: '因客户催补，自动撤回本次下送' };

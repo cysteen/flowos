@@ -1038,7 +1038,7 @@ function renderedBody(ch: NotifyChannel) {
                     class="cond-number"
                     :min="0"
                     placeholder="输入数值"
-                    @update:value="(v) => setCondNumberValue(c, v)"
+                    @update:value="(v) => setCondNumberValue(c, v as number | null)"
                   />
                   <a-select
                     v-model:value="c.unit"
@@ -1054,7 +1054,7 @@ function renderedBody(ch: NotifyChannel) {
                   class="cond-number"
                   :min="0"
                   :placeholder="condValuePlaceholder(c.field)"
-                  @update:value="(v) => setCondNumberValue(c, v)"
+                  @update:value="(v) => setCondNumberValue(c, v as number | null)"
                 />
                 <!-- 自由文本 / 时间 → 输入 -->
                 <a-select

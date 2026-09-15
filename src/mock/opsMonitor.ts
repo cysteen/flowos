@@ -53,7 +53,8 @@ export interface OpsGroupRaw {
   /** 渠道 / 产线 / 工单类型的组内占比权重（和为 1） */
   channelMix: Record<string, number>;
   productMix: Record<string, number>;
-  typeMix: Record<TicketType, number>;
+  /** 统计口径为既有四类；刷机单（930）未纳入本份运营统计样本 */
+  typeMix: Record<Exclude<TicketType, '刷机'>, number>;
 }
 
 const CORE_OPS_GROUPS: OpsGroupRaw[] = [

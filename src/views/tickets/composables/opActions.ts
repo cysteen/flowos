@@ -57,7 +57,12 @@ export type OpActionType =
   // 形态判定见 opActionRegistry.ts 的 resolveRiskActionForm。
   | '协同处理'
   | '激活飞书' | '激活售后'
-  | '关闭工单' | '取消工单';
+  | '关闭工单' | '取消工单'
+  /**
+   * 刷机单专属两枚（930 教育刷机单 D4 / M16 / M18）。**本步只登记动作键**：
+   * 按钮、弹窗、落库分支由 M4 接入；重推的状态迁移走刷机服务 `stores/flash.ts` 的 `repush`。
+   */
+  | '升级二线' | '重推';
 
 export interface TransferPayload { scope: 'same' | 'cross'; target: string; reason: string; }
 /** 委派到人：逐人任务说明 */
@@ -801,6 +806,9 @@ export function applyOpAction(
         });
         return { opState, suspendInfo, message: `已升级至产研反馈 · 反馈单 ${feedbackNo}` };
       }
+      // TODO(930 教育刷机单 · M4)：本分支按「通道名是否含『技术支持』」二分，新通道默认落「已升级产研」。
+      // 刷机单的「升级二线」（D4 / M16：转入教育刷机处理组池、子状态回未认领、处理人清空、SLA 不重置）
+      // **另走独立分支**（动作键 `升级二线`），不得复用本分支，否则会被误落「已升级产研」。
       const toTech = channel.includes('技术支持');
       // 升级目标直接进状态：技术支持组 → 「已升级技术支持」（处理人转到该组池、由组员领取）；
       // RDM / TPD 等产研系统 → 「已升级产研」（服务节点，处理人仍是原二线）

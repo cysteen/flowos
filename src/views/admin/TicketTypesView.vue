@@ -27,6 +27,7 @@ const all = ref<TType[]>([
   { id: 'complaint', name: '投诉工单', code: 'WO_COMPLAINT', app: '客服中心', channels: ['电话', '在线', '12315'], bizTypes: ['学习机', '翻录', '智学网'], version: 'v3.2', fields: 24, nodes: 7, status: '已发布', updated: '2026-06-18' },
   { id: 'consult', name: '咨询工单', code: 'WO_CONSULT', app: '客服中心', channels: ['电话', '在线'], bizTypes: ['学习机', '智学网'], version: 'v2.0', fields: 16, nodes: 4, status: '已发布', updated: '2026-06-15' },
   { id: 'suggest', name: '建议工单', code: 'WO_SUGGEST', app: '客服中心', channels: ['在线', '邮件'], bizTypes: ['学习机', '智学网'], version: 'v1.4', fields: 14, nodes: 4, status: '已发布', updated: '2026-06-10' },
+  { id: 'flash', name: '刷机工单', code: 'WO_EDU_FLASH', app: '客服中心', channels: ['电话', '在线', '小程序'], bizTypes: ['教育', '学习机'], version: 'v1.0', fields: 20, nodes: 6, status: '已发布', updated: '2026-09-15' },
   { id: 'biz', name: '商机工单', code: 'WO_BIZ', app: '商机管理', channels: ['电话'], bizTypes: ['学习机', '翻录'], version: 'v1.1', fields: 18, nodes: 5, status: '已发布', updated: '2026-06-12' },
   { id: 'aftersale', name: '售后工单', code: 'WO_AFTERSALE', app: '售后服务', channels: ['电话', '在线'], bizTypes: ['学习机', '翻录'], version: 'v2.3', fields: 22, nodes: 6, status: '已发布', updated: '2026-06-17' },
   { id: 'return', name: '退换货工单', code: 'WO_RETURN', app: '售后服务', channels: ['在线'], bizTypes: ['学习机'], version: 'v0.9', fields: 12, nodes: 5, status: '草稿', updated: '2026-06-19' },

@@ -9,6 +9,7 @@ import {
   CheckCircleOutlined, StarFilled,
   ThunderboltOutlined, HistoryOutlined, ClockCircleOutlined, TeamOutlined,
   SafetyOutlined, SafetyCertificateOutlined, FileSearchOutlined, WarningOutlined,
+  CloudUploadOutlined, CloseCircleOutlined, InteractionOutlined, RedoOutlined,
 } from '@ant-design/icons-vue';
 import RecordingPlayer from './operation/RecordingPlayer.vue';
 import {
@@ -69,6 +70,12 @@ const ICON: Record<TlAction, unknown> = {
   collab: TeamOutlined,                 // 协同处理＝双人
   riskTag: FileSearchOutlined,          // 打标＝放大镜+✓
   riskGrade: WarningOutlined,           // 风险等级变更＝警示三角
+  // ---- 刷机单自动刷机链路（930 教育刷机单），归 node 类 ----
+  flashPush: CloudUploadOutlined,       // 自动推送
+  flashSuccess: CheckCircleOutlined,    // 回传成功
+  flashFail: CloseCircleOutlined,       // 回传失败
+  flashHandoff: InteractionOutlined,    // 转人工
+  flashRepush: RedoOutlined,            // 重推
 };
 /**
  * 图例 ＝ `CATEGORY_META` 的键序，**八格**（《【720】》§5.2）。

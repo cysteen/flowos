@@ -17,7 +17,7 @@ const types = ref<DictType[]>([
 const selected = ref<string>('workorder_status');
 
 const dataMap: Record<string, DictData[]> = reactive({
-  // 工单状态字典＝基线 §1 的 25 个可落库子状态，顺序与 BASELINE_STATUSES 一致；
+  // 工单状态字典＝基线 §1 的 25 个可落库子状态 + 刷机单「自动刷机中」（D26，930 教育刷机单），顺序与 BASELINE_STATUSES 一致；
   // colorType 按基线第二列的粗粒度分组给：初始 warning / 处理中 primary / 调研中 info /
   // 审核中 warning / 终态 success（被新单接管的五个终态用 default）。
   workorder_status: [
@@ -38,6 +38,7 @@ const dataMap: Record<string, DictData[]> = reactive({
     { code: 'D15', label: '已委派', value: 'DELEGATED', sort: 15, status: '启用', colorType: 'primary', remark: '' },
     { code: 'D16', label: '已退回', value: 'RETURNED', sort: 16, status: '启用', colorType: 'primary', remark: '' },
     { code: 'D17', label: '已转出', value: 'TRANSFERRED_OUT', sort: 17, status: '启用', colorType: 'primary', remark: '' },
+    { code: 'D26', label: '自动刷机中', value: 'AUTO_FLASHING', sort: 17, status: '启用', colorType: 'primary', remark: '刷机单 · SLA停表' },
     { code: 'D18', label: '已结案', value: 'SETTLED', sort: 18, status: '启用', colorType: 'success', remark: '' },
     { code: 'D19', label: '已关闭', value: 'CLOSED', sort: 19, status: '启用', colorType: 'success', remark: '' },
     { code: 'D20', label: '已强结', value: 'FORCE_CLOSED', sort: 20, status: '启用', colorType: 'success', remark: '' },

@@ -6,7 +6,7 @@
 import type { OperationTabData } from '@/views/tickets/types/operationTabs';
 import type { ProcessFormDraft, InsightStats, AiTicketInsight } from '@/views/tickets/types/operation';
 
-const C = { 投诉: '#EF4444', 建议: '#10B981', 商机: '#F59E0B', 咨询: '#1A6FFF' };
+const C = { 投诉: '#EF4444', 建议: '#10B981', 商机: '#F59E0B', 咨询: '#1A6FFF', 刷机: '#7C3AED' };
 const bg = (hex: string) => `${hex}1F`;
 
 export interface TypeDetailOverride {
@@ -257,6 +257,44 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
           { id: 'h1', no: 'IFLYJY-20260605-00001', title: '智能门锁 App 推送建议', status: '已关闭', statusColor: '#10B981', type: '建议', typeColor: C.建议, typeBgColor: bg(C.建议), channel: '400呼入', date: '2026-06-05', summary: '建议开锁记录支持 App 推送，已采纳进迭代。', isProcessing: false, isClosed: true, isComplaint: false },
           { id: 'h2', no: 'IFLYJY-20260617-00003', title: '预约上门安装智能门锁建议', status: '处理中', statusColor: '#1A6FFF', type: '建议', typeColor: C.建议, typeBgColor: bg(C.建议), channel: '电话', date: '2026-06-17', summary: '建议增加临时密码分享功能，转产品评估。', isProcessing: true, isClosed: false, isComplaint: false },
         ],
+      },
+    },
+  },
+
+  // ===================== 刷机（930 教育刷机单） =====================
+  // 刷机单的推送记录、履历、短信通知按单取自刷机服务（stores/flash.ts），这里只给类型级的概要与空白 Tab，
+  // 避免缺键时回落到投诉样例、在刷机单上显示投诉单的沟通与通知记录
+  刷机: {
+    detail: {
+      demand: '学生毕业，申请解除学校管控并恢复个人使用（刷机）。',
+      insight: {
+        contactCount: 0, historyCount: 1, complaintCount: 0, sameTypeCount: 1, recent30Count: 1,
+        dunningCount: 0, supplementCount: 0, relatedCount: 0,
+      },
+      aiInsight: {
+        customerBrief: '教育用户，首次提报刷机申请',
+        ticketBrief: '毕业刷机申请，按自动刷机结果跟进',
+        suggestion: '核对刷机信息与失败原因后处理',
+      },
+    },
+    processDraft: {
+      problemCause: '',
+      processResult: '',
+      processResultAttachments: [],
+      qualityIsStandard: true,
+    },
+    tabData: {
+      currentFlowNode: '工单处理',
+      flowHistory: [],
+      relatedTickets: [],
+      supplementRecords: [],
+      dunningRecords: [],
+      contactRecords: [],
+      notifyRecords: [],
+      surveyRecords: [],
+      customerHistory: {
+        customerName: '', totalCount: 1, processingCount: 1, closedCount: 0, complaintCount: 0,
+        tickets: [],
       },
     },
   },

@@ -37,7 +37,13 @@ export type TlAction =
    * 图标是质检点开这一类之后**区分五件**的唯一线索；合并之后一屏全是同一个图形，
    * 而《【720】》§2.3 V12 要的正是"一屏看全报备、评估、协同、打标、等级变更"。
    */
-  | 'collab' | 'riskReport' | 'riskAssess' | 'riskTag' | 'riskGrade';
+  | 'collab' | 'riskReport' | 'riskAssess' | 'riskTag' | 'riskGrade'
+  /**
+   * 刷机单自动刷机链路（930 教育刷机单），归 `node` 类「流转节点」：
+   * `flashPush` ＝ 自动推送、`flashSuccess` ＝ 回传成功、`flashFail` ＝ 回传失败、
+   * `flashHandoff` ＝ 转人工、`flashRepush` ＝ 重推。系统产生的条目 `who: '系统'`。
+   */
+  | 'flashPush' | 'flashSuccess' | 'flashFail' | 'flashHandoff' | 'flashRepush';
 /**
  * 处理履历上的角色徽章文案。取 0830 正式角色名（基线 §3.0 新旧名对照）：
  * 旧名「二线专员」→「二线专员」、「班组长」→「二线班组长」、「三线技术支持」→「技术支持」。

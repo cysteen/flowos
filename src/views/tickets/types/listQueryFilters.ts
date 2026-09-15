@@ -68,7 +68,7 @@ export const QUERY_SLA_OPTIONS = [
   { value: 'paused', label: '挂起中' },
 ] as const;
 
-export const QUERY_TYPE_OPTIONS: TicketType[] = ['投诉', '建议', '商机', '咨询'];
+export const QUERY_TYPE_OPTIONS: TicketType[] = ['投诉', '建议', '商机', '咨询', '刷机'];
 
 export const QUERY_CHANNEL_OPTIONS = ['在线客服', '电话', '邮件', '小程序', 'APP'] as const;
 
@@ -182,7 +182,8 @@ function matchStatus(t: Ticket, status: string): boolean {
   // 依据基线 §1 第二列的粗粒度分组铺开子状态（升级两态、转出态各自单列）
   const map: Record<string, string[]> = {
     pending: ['未认领', '待响应'],
-    processing: ['处理中', '已升级技术支持', '已升级产研', '已委派', '已退回', '调研中'],
+    // 「自动刷机中」归「处理中」分组（930 教育刷机单 M9）
+    processing: ['处理中', '已升级技术支持', '已升级产研', '已委派', '已退回', '调研中', '自动刷机中'],
     held: ['已挂起'],
     review: ['申请挂起中', '申请关闭中', '申请强结中', '业务动作审核中'],
   };

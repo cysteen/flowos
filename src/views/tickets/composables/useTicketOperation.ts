@@ -4,9 +4,11 @@ import { message, Modal } from 'ant-design-vue';
 import { TICKET_DETAIL, TIMELINE, productHasAfterSaleService } from '@/mock/ticketDetail';
 import type { TicketDetailMeta, ChildTicket, SlaClock } from '@/mock/ticketDetail';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
+import type { TicketFlash } from '@/views/tickets/types/flash';
 import {
-  isFirstResponded, isTicketClosed, resolveStoppedClockStatus,
+  isFirstResponded, isSlaPaused, isTicketClosed, resolveStoppedClockStatus,
 } from '@/views/tickets/types/ticket';
+import { useFlashStore } from '@/stores/flash';
 import type { Ticket, Channel, TicketType, Priority } from '@/views/tickets/types/ticket';
 import { TICKETS } from '@/mock/tickets';
 import { TYPE_SAMPLES } from '@/mock/ticketTypeSamples';
@@ -105,8 +107,8 @@ function buildSlaClocks(t: Ticket): SlaClock[] {
     solve.phase = 'stopped';
     solve.stopOutcome = t.solveBreached ? 'breached' : isSlaVoidStop(t) ? 'void' : 'met';
     if (t.solveBreached) solve.remainSec = -1800;
-  } else if (t.slaState === 'paused') {
-    // 挂起：在走的钟冻结（剩余保留、可恢复续算）
+  } else if (isSlaPaused(t)) {
+    // 挂起 / 自动刷机中 / 线下登记待批推（930 D18 / M31）：在走的钟冻结（剩余保留、可恢复续算）
     solve.phase = 'paused';
     solve.remainSec = 2 * 3600;
     solve.totalSec = 8 * 3600;
@@ -137,6 +139,7 @@ export function useTicketOperation() {
   const user = useUserStore();
   const route = useRoute();
   const derivedTickets = useDerivedTicketStore();
+  const flash = useFlashStore();
   const detail = ref<TicketDetailMeta>(JSON.parse(JSON.stringify(TICKET_DETAIL)));
   const timeline = ref<TimelineEntry[]>([...TIMELINE]);
   const opState = ref<TicketOpState>('processing');
@@ -295,7 +298,11 @@ export function useTicketOperation() {
       base.feishuRecords = [];
       base.productIssue = ticketProductIssue(t);
       base.slaClocks = buildSlaClocks(t); // 时钟与列表行 SLA 摘要一致
-      if (t.slaState === 'paused') {
+      if (t.nodeStatus === '自动刷机中') {
+        // 刷机单推送后等待回传（930 M9）：冻结语义同「已转出」—— 底栏只留保存、联系客户
+        base.status = '自动刷机中';
+        opState.value = 'transferred';
+      } else if (t.slaState === 'paused') {
         base.status = '已挂起';
         opState.value = 'suspended';
       } else {
@@ -327,6 +334,7 @@ export function useTicketOperation() {
           fromComplaint: t.type === '投诉',
         };
       }
+      if (t.flash) applyFlashRow(base, t);
       if (t.problemDesc?.trim()) {
         base.demand = t.problemDesc.trim();
       }
@@ -338,12 +346,54 @@ export function useTicketOperation() {
     if (sample?.insight) base.insight = sample.insight;
     if (sample?.aiInsight) base.aiInsight = sample.aiInsight;
     detail.value = base;
+    if (t?.flash) projectFlashTimeline(t.no, true);
+  }
+
+  /**
+   * 刷机单：把工单库那一行的状态 / 处理人 / 刷机字段组同步到详情（930 教育刷机单）。
+   * 状态直接取子状态；轻量态按冻结语义映射：自动刷机中 / 已转出 → transferred，调研中 → resolved。
+   */
+  function applyFlashRow(base: TicketDetailMeta, t: Ticket) {
+    base.status = t.nodeStatus;
+    base.lastHandler = t.assignee;
+    base.groupId = t.groupId;
+    base.groupNames = t.groupNames;
+    base.flash = JSON.parse(JSON.stringify(t.flash)) as TicketFlash;
+    if (t.nodeStatus === '自动刷机中' || t.nodeStatus === '已转出') opState.value = 'transferred';
+    else if (t.nodeStatus === '调研中') opState.value = 'resolved';
+    else if (!isTicketClosed(t.nodeStatus)) opState.value = 'processing';
+  }
+
+  /**
+   * 刷机链路履历投影进本页时间线（记录源 `stores/flash.ts`）。按条目 id 幂等：
+   * 首次打开刷机单时以刷机履历为准（不沿用其他类型的样例履历），之后只追加新条目。
+   */
+  function projectFlashTimeline(no: string, reset = false) {
+    const entries = flash.timelineOf(no);
+    if (reset) {
+      timeline.value = entries.map((e) => ({ ...e }));
+      return;
+    }
+    const seen = new Set(timeline.value.map((e) => e.id));
+    entries.forEach((e) => { if (!seen.has(e.id)) timeline.value.push({ ...e }); });
   }
 
   watch(
     () => route.params.ticketNo as string,
     (no) => { if (no) loadDetail(no); },
     { immediate: true },
+  );
+
+  // 刷机服务写回工单库后（回传结果、转人工、重推），本页同步状态与履历，不整页重载
+  watch(
+    () => flash.revisionOf(detail.value.no),
+    () => {
+      const t = TICKETS.find((x) => x.no === detail.value.no);
+      if (!t?.flash) return;
+      applyFlashRow(detail.value, t);
+      detail.value.slaClocks = buildSlaClocks(t);
+      projectFlashTimeline(t.no);
+    },
   );
   const draftSavedAt = ref<string | null>(null);
 

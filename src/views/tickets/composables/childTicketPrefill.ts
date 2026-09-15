@@ -17,6 +17,8 @@ const CHILD_FORM_TYPE_HINT: Record<string, CreateFormTicketType> = {
   建议: '咨询',
   商机: '咨询',
   咨询: '咨询',
+  // 刷机单的子单多为用户就同一台设备另提的咨询（930 教育刷机单）
+  刷机: '咨询',
 };
 
 function mapPriority(p: string): Priority {
@@ -62,7 +64,7 @@ export function buildReopenTicketPrefill(parent: TicketDetailMeta): CreateTicket
   const parentType = parent.type;
   /**
    * 原单类型照搬到 reopen 弹窗。TicketDetailMeta.type 在 mock 里只声明成宽松 string，
-   * 而工单类型的真源是 TicketType（= CreateFormTicketType 的四类：投诉/建议/商机/咨询），
+   * 而工单类型的真源是 TicketType（= CreateFormTicketType 的五类：投诉/建议/商机/咨询/刷机，含刷机见 930 教育刷机单），
    * 故按该口径收窄，运行时与原来的直接照搬一致。
    */
   const formTicketType = parent.type as CreateFormTicketType;

@@ -1,7 +1,9 @@
 // 工单可操作项注册表（单一数据源）。按**工单类型**过滤出**底部操作条**要展示的操作。
 // 类型矩阵取自基线「动作 × 角色 × 工单类型」表的「工单类型」列：
-//   转单 / 调剂 / 委派 / 下送 / 撤回 / 强结 / 关闭工单 = 全部四类；
+//   转单 / 调剂 / 委派 / 下送 / 撤回 / 强结 / 关闭工单 = 投 咨 建 商四类；
 //   挂起 / 退回 / 升级 = 投 咨 建（商机不可）；转售后 = 咨 建 商（投诉走头部「关联售后」）。
+// 工单类型现为五类（含刷机，见 930 教育刷机单）：刷机单的动作类型集**单列**（FLASH_ACTION_KEYS，M25），
+// 不并入 ALL / NO_LEAD / AFTERSALE_TRANSFER —— 并进去会把「转单」「升级」一并带给刷机单。
 // 底栏扁平展示顺序见 OpActionBar 的 BAR_ORDER；此处仅登记能力与类型矩阵。
 //
 // ⚠️ **只登记底栏的动作**。基线§2「本表与操作页按钮的对照」把动作分了三处，
@@ -34,8 +36,11 @@ export interface ActionDef {
 
 const ALL: TicketType[] = ['投诉', '咨询', '建议', '商机'];
 const NO_LEAD: TicketType[] = ['投诉', '咨询', '建议']; // 商机不支持
-/** 风险报备 / 风险评估两形态：咨 建 商（基线 §4「风险报备」行，与 risk Tab 类型集同源） */
-const RISK_REPORT_TYPES: TicketType[] = ['咨询', '建议', '商机'];
+/**
+ * 风险报备 / 风险评估两形态：咨 建 商（基线 §4「风险报备」行，与 risk Tab 类型集同源）+ 刷机。
+ * 刷机单开放风险报备（930 教育刷机单 D17）：二线在刷机单上升级投诉走 ※8a「先报备」；**基线待同步项**。
+ */
+const RISK_REPORT_TYPES: TicketType[] = ['咨询', '建议', '商机', '刷机'];
 /** 协同处理形态：**仅投诉单**（基线 §4「协同处理」行）。与上一行在类型维正好互补 */
 const RISK_COLLAB_TYPES: TicketType[] = ['投诉'];
 /**
@@ -44,6 +49,27 @@ const RISK_COLLAB_TYPES: TicketType[] = ['投诉'];
  * 所以这里必须是三类，不是只有咨询。基线 §5.5 原写的「商机/建议不可转售后」已在 v1.6 作废。
  */
 const AFTERSALE_TRANSFER: TicketType[] = ['咨询', '建议', '商机'];
+
+/**
+ * **刷机单动作类型集**（930 教育刷机单 M25，只定类型维；角色维由 M4 接）。
+ *
+ * - 给：下送、挂起 / 解除挂起（解除挂起是「挂起」位在已挂起态的切换，随挂起一起给）、转售后、
+ *   调剂、委派、关闭工单、强结、撤回、风险报备（D17）；
+ *   「指派」不在操作页底栏（基线 §2「不在操作页的动作」），不在本表登记。
+ * - 不给：转单（D3 不可互转）、升级（底栏「升级」＝ 三线技术支持 / 产研，研测不进系统，D6）、
+ *   同步飞书（本就不在本表）、退回（只有三线 → 处理人一个方向，刷机单不升三线）、
+ *   取消工单（M6：刷机单不提供取消，用户放弃走下送 · 处理结果「用户放弃」）。
+ * - 刷机专属的「升级二线」「重推」两枚只在 `OpActionType` 登记动作键，按钮与落库由 M4 接入。
+ */
+export const FLASH_ACTION_KEYS: readonly OpActionType[] = [
+  '下送', '挂起', '转售后', '调剂', '委派', '关闭工单', '强结', '撤回', '风险报备',
+];
+
+/** 该动作在该工单类型上是否在类型集内：刷机单走单列的 FLASH_ACTION_KEYS，其余四类走各动作的 types */
+function actionTypeAllowed(a: ActionDef, ticketType: string): boolean {
+  if (ticketType === '刷机') return FLASH_ACTION_KEYS.includes(a.key);
+  return a.types.includes(ticketType as TicketType);
+}
 
 export const ACTION_DEFS: ActionDef[] = [
   // —— 主操作区（高频流转）——
@@ -213,7 +239,9 @@ export function availableActions(ctx: ActionCtx): ActionDef[] {
     .filter((a): a is ActionDef => !!a)
     .filter(
       (a) =>
-        a.types.includes(ctx.ticketType as TicketType)
+        actionTypeAllowed(a, ctx.ticketType)
+        // 风险那一枚的类型集随形态现算（协同形态只给投诉），刷机单上同样要过形态的类型集
+        && (a.key !== '风险报备' || a.types.includes(ctx.ticketType as TicketType))
         && !(direct && DIRECT_CLOSURE_BLOCKED.includes(a.key)),
     );
 }

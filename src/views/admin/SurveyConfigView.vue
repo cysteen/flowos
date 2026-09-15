@@ -33,7 +33,7 @@ interface Strategy {
  * 各字段可选枚举取自项目已有枚举（工单类型/工单来源/产品分类）+ 业务补充值。
  * 勾选=纳入该分流判定；默认勾选业务规则命中的值。
  */
-const TICKET_TYPE_OPTS = [...CREATE_TICKET_TYPES, '表扬'];                  // 投诉/建议/商机/咨询/表扬
+const TICKET_TYPE_OPTS = [...CREATE_TICKET_TYPES, '表扬'];                  // 投诉/建议/商机/咨询/刷机/表扬
 const CALL_NATURE_OPTS = ['无', '无声通话', '非我司产品', '重复来电 - 不同问题', '重复来电 - 同一问题', '骚扰用户 - 纯骚扰', '骚扰用户 - 业务骚扰']; // 小结·话务性质
 const PROD_CAT_OPTS = [...PRODUCT_CATEGORIES, '综合类问题'];                // 产品分类
 const BIZ_TYPE_OPTS = [...BUSINESS_TYPES]; // 业务分类，与建单弹窗同源

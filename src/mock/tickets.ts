@@ -1,6 +1,7 @@
 import type { Ticket } from '@/views/tickets/types/ticket';
 import { resolveTicketGroupNames } from '@/views/tickets/types/ticket';
 import { mapChannelToSource } from '@/views/tickets/types/createTicket';
+import { FLASH_SEEDS } from './flash/seedTickets';
 
 // 工单 Mock 数据（对齐 PRD-02 §9 字段与分布；样例文案参考 .pen SJpgc）。
 // 分布：我的任务 8 / 已办 6 / 本组工单池 5 / @我的工单 3 / 待审核 3 = 25（活跃）+ 归档。
@@ -1140,7 +1141,8 @@ function ensureTicketTimestamps(t: Ticket): Pick<Ticket, 'createdAt' | 'updatedA
   return { createdAt, updatedAt };
 }
 
-export const TICKETS: Ticket[] = BASE_TICKETS.map((t) => {
+// 教育刷机单样本（930）并入同一个工单库：列表 / 处理页 / 查询中心读同一份，刷机服务 `stores/flash.ts` 写回这里
+export const TICKETS: Ticket[] = [...BASE_TICKETS, ...FLASH_SEEDS.tickets].map((t) => {
   const row = {
     ...defaultListExtras(t),
     ...t,

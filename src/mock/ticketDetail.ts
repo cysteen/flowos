@@ -4,6 +4,7 @@ import type {
 } from '@/views/tickets/types/operation';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 import type { ClosureMode } from '@/views/tickets/types/ticket';
+import type { TicketFlash } from '@/views/tickets/types/flash';
 
 // 工单操作页 Mock（样例 = 设计稿 IFLYTS-20260610-00002 · P-工单处理 定稿）。
 
@@ -171,6 +172,11 @@ export interface TicketDetailMeta {
    * 期间锁定「下送/委派/调剂/关闭工单/强结」等流转与终结类动作，协办完成或撤销后解锁。
    */
   delegateInfo?: DelegateInfo | null;
+  /**
+   * 刷机单字段组（仅刷机单有值，930 教育刷机单）：刷机信息 `info` · 自动刷机状态 `state` · 推送记录 `runs`。
+   * 取自工单库那一行（`Ticket.flash`），写口只有刷机服务 `stores/flash.ts`。
+   */
+  flash?: TicketFlash;
 }
 
 /** 委派中信息（协办完成或撤销委派后清空） */

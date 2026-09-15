@@ -604,12 +604,13 @@ export const RISK_LEVEL_OPTIONS = RISK_LEVELS;
 export { RISK_LEVEL_SELECT_OPTIONS };
 export type { RiskLevel };
 
-/** 客户全景宫格：与当前工单类型对齐的统计标签（投诉/建议/商机/咨询 → ××单） */
+/** 客户全景宫格：与当前工单类型对齐的统计标签（投诉/建议/商机/咨询/刷机 → ××单） */
 const SAME_TYPE_STAT_LABEL: Record<string, string> = {
   投诉: '投诉单',
   建议: '建议单',
   商机: '商机单',
   咨询: '咨询单',
+  刷机: '刷机单',
 };
 
 export function insightSameTypeLabel(ticketType: string): string {

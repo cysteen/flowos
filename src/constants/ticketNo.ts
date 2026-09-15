@@ -5,7 +5,8 @@
  *
  *     {类型前缀}-{YYYYMMDD}-{自增位}      例：IFLYZX-20260820-00001
  *
- * - **类型前缀跟着工单类型走**，不是一套走天下：咨询 ZX / 投诉 TS / 建议 JY / 商机 SJ。
+ * - **类型前缀跟着工单类型走**，不是一套走天下：咨询 ZX / 投诉 TS / 建议 JY / 商机 SJ / 刷机 SH
+ *   （五类，含刷机，见 930 教育刷机单 M7：前缀 IFLYSH，避开商机 SJ）。
  *   所以升级投诉、转咨询 / 转建议 / 转商机这些**建新单**的动作，新单前缀按**新类型**取。
  * - 所属应用「客服系统」**不进编号**。
  * - 自增位 **5 位**、按日重置、补零。
@@ -14,20 +15,25 @@
  */
 import type { TicketType } from '@/views/tickets/types/ticket';
 
-/** 工单类型 → 类型前缀。四类之外没有前缀，调用方须先归一到四类 */
+/** 工单类型 → 类型前缀。五类（含刷机，见 930 教育刷机单）之外没有前缀，调用方须先归一到五类 */
 export const TICKET_NO_PREFIX: Record<TicketType, string> = {
   咨询: 'IFLYZX',
   投诉: 'IFLYTS',
   建议: 'IFLYJY',
   商机: 'IFLYSJ',
+  刷机: 'IFLYSH',
 };
 
-/** 工单类型 → 工单类型编码（模板编码，业务侧口径） */
+/**
+ * 工单类型 → 工单类型编码（模板编码，业务侧口径）。
+ * 刷机的两字母类型码 `SH` 体现在单号前缀里（M7）；模板编码沿用本表 `{域}_{类型}` 体例。
+ */
 export const TICKET_TYPE_CODE: Record<TicketType, string> = {
   咨询: 'general_consult',
   投诉: 'general_complaint',
   建议: 'general_suggestion',
   商机: 'general_opportunity',
+  刷机: 'edu_flash',
 };
 
 function ymd(d: Date): string {

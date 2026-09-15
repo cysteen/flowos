@@ -3,6 +3,7 @@ import { computed, reactive, ref, watch } from 'vue';
 import { message } from 'ant-design-vue';
 import { PlusOutlined } from '@ant-design/icons-vue';
 import type { BusinessType, CustomerContactType, CustomerInfo } from '@/views/tickets/types/createTicket';
+import { SCHOOL_LIBRARY, type SchoolRecord } from '@/mock/schools';
 import {
   REGION_SEP,
   findPhoneOwner,
@@ -89,18 +90,8 @@ const REGION_OPTIONS: RegionNode[] = [
   },
 ];
 
-/** 教育 · 学校档案，选定学校后反查带出标签与归口人 */
-interface SchoolRecord {
-  name: string;
-  tag: string;
-  owner: string;
-}
-const SCHOOL_CATALOG: SchoolRecord[] = [
-  { name: '合肥市第一中学', tag: '重点校', owner: '王明' },
-  { name: '合肥八中', tag: '示范校', owner: '李华' },
-  { name: '安徽师范大学附属中学', tag: '示范校', owner: '赵强' },
-  { name: '合肥市五十中学', tag: '普通校', owner: '陈静' },
-];
+/** 教育 · 学校档案，选定学校后反查带出标签与归口人。与刷机单「学校名称」共用学校库（930 M42） */
+const SCHOOL_CATALOG: SchoolRecord[] = SCHOOL_LIBRARY;
 
 const props = defineProps<{
   open: boolean;

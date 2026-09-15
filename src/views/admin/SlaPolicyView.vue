@@ -138,7 +138,7 @@ interface Policy {
   serviceMethodSolve?: ServiceMethodSolveRow[];
 }
 
-const TYPE_OPTS = ['投诉', '咨询', '建议', '商机', '报修', '退费', '退换', '技术故障'];
+const TYPE_OPTS = ['投诉', '咨询', '建议', '商机', '刷机', '报修', '退费', '退换', '技术故障'];
 const CHANNEL_OPTS = ['在线客服', '电话', '邮件', '小程序', 'APP'];
 const LEVEL_OPTS = ['校长', '教师', '自媒体', '大V博主', '律师', '记者'];
 const PRODUCT_OPTS = ['学习机', '翻译机', '录音笔', '办公本', '智能硬件', 'AI服务', '通用'];
@@ -159,6 +159,7 @@ const TEMPLATE_CATALOG: { name: string; type: string; product: string }[] = [
   { name: '技术故障·AI服务故障模板', type: '技术故障', product: 'AI服务' },
   { name: '建议·产品改进建议模板', type: '建议', product: '通用' },
   { name: '商机·商机登记模板', type: '商机', product: '商机' },
+  { name: '刷机·教育刷机模板', type: '刷机', product: '学习机' },
 ];
 const SCOPE_ALL = '全部';
 const CAL_OPTS = ['标准工作日历(9:00-18:00)', '7×24 自然时间', '售后工作日历'];

@@ -1,8 +1,11 @@
 import { PRIORITY_LABEL } from '@/views/tickets/types/ticket';
 import type { Channel, ClosureMode, Priority, TicketType } from '@/views/tickets/types/ticket';
 
-/** 新建弹窗工单类型（对齐 .pen V6xQCz 等画板） */
-export type CreateFormTicketType = '投诉' | '建议' | '商机' | '咨询';
+/**
+ * 新建弹窗工单类型（对齐 .pen V6xQCz 等画板）。
+ * 五类（含刷机，见 930 教育刷机单 D1）：刷机是独立工单类型，常量与字段组见 `types/flash.ts`。
+ */
+export type CreateFormTicketType = '投诉' | '建议' | '商机' | '咨询' | '刷机';
 
 export type BusinessType =
   | '无线音乐'
@@ -167,7 +170,7 @@ export const BUSINESS_TYPES: BusinessType[] = [
   '政法',
   '其他',
 ];
-export const CREATE_TICKET_TYPES: CreateFormTicketType[] = ['投诉', '建议', '商机', '咨询'];
+export const CREATE_TICKET_TYPES: CreateFormTicketType[] = ['投诉', '建议', '商机', '咨询', '刷机'];
 
 export const PRODUCT_CATEGORIES = ['智能硬件', '学习硬件', '软件服务'];
 export const PRODUCT_NAMES: Record<string, string[]> = {

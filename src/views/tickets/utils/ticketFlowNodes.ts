@@ -7,6 +7,7 @@ export const FLOW_NODES: FlowNode[] = [
   '调研回访',
   '挂起审批',
   '强结审批',
+  '自动刷机',
 ];
 
 const TERMINAL_STATUSES = new Set<NodeStatus>([
@@ -29,10 +30,13 @@ const STATUS_FLOW_NODE: Partial<Record<NodeStatus, FlowNode>> = {
   申请关闭中: '强结审批',
   已升级技术支持: '技术支持',
   调研中: '调研回访',
+  // 刷机单推送后等待回传（930 M9）：冻结语义同已转出，但节点在系统自动环节，不在工单处理
+  自动刷机中: '自动刷机',
 };
 
 /** 当前节点 → 上一节点兜底（真实数据以接口 prevFlowNode 为准） */
 const DEFAULT_PREV_NODE: Partial<Record<FlowNode, FlowNode>> = {
+  自动刷机: '工单处理',
   技术支持: '工单处理',
   调研回访: '工单处理',
   挂起审批: '工单处理',

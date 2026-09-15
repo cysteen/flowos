@@ -66,7 +66,7 @@ export interface EventField {
 
 /* ---- 枚举字典：与项目既有字典同源，改一处即全局生效 ---- */
 /** 工单类型（含表扬，表扬不建单但用于抑制判定） */
-export const DICT_TICKET_TYPE = ['投诉', '建议', '商机', '咨询', '表扬'] as const;
+export const DICT_TICKET_TYPE = ['投诉', '建议', '商机', '咨询', '刷机', '表扬'] as const;
 /** 工单来源 */
 export const DICT_SOURCE = ['电话', 'IM', '内投渠道', '外投渠道', '客户服务小程序', '售后系统'] as const;
 /** 业务分类 */
@@ -123,7 +123,7 @@ export interface NotifyEvent {
 const BASE: EventField[] = [
   { key: 'ticketNo', label: '工单号', type: 'string', desc: '工单唯一编号，几乎所有模板都以它开头，便于收件人一眼定位是哪张单' },
   { key: 'title', label: '工单标题', type: 'string', desc: '建单时填写的问题概述' },
-  { key: 'ticketType', label: '工单类型', type: 'enum', enumValues: DICT_TICKET_TYPE, desc: '投诉 / 建议 / 商机 / 咨询 / 表扬。常用作条件，把不同类型分流到不同规则' },
+  { key: 'ticketType', label: '工单类型', type: 'enum', enumValues: DICT_TICKET_TYPE, desc: '投诉 / 建议 / 商机 / 咨询 / 刷机 / 表扬。常用作条件，把不同类型分流到不同规则' },
   { key: 'source', label: '工单来源', type: 'enum', enumValues: DICT_SOURCE, desc: '客户从哪个渠道来的。对客短信的抑制条件主要靠它' },
   { key: 'bizType', label: '业务分类', type: 'enum', enumValues: DICT_BIZ_TYPE, desc: '工单归属的业务线。常用作条件，按业务线区分通知策略' },
   { key: 'productName', label: '产品名称', type: 'string', desc: '工单关联的产品型号，来自产品主数据。模板中常用于区分不同产品的通知文案' },
