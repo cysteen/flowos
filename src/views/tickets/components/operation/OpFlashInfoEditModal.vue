@@ -17,6 +17,7 @@ import { useFlashConfigStore } from '@/stores/flashConfig';
 import type { FlashActionResult, FlashInfoChanges } from '@/stores/flash';
 import { SCHOOL_LIBRARY, findSchoolById } from '@/mock/schools';
 import { FLASH_FIELD_LABELS as L, type FlashInfo } from '@/views/tickets/types/flash';
+import { snPlateDataUri } from '@/views/tickets/utils/flashSnPlate';
 
 const props = defineProps<{
   open: boolean;
@@ -77,7 +78,11 @@ watch(
     Object.assign(draft, fromInfo(props.info));
     (Object.keys(errors) as FieldKey[]).forEach((k) => delete errors[k]);
     bottomTip.value = null;
-    photoList.value = draft.snPhotos.map((name, i) => ({ uid: `sn-${i}-${name}`, name, status: 'done' }));
+    // 本单已存照片出缩略图（与处理页「刷机信息」区块同一张铭牌图），点开看大图
+    photoList.value = draft.snPhotos.map((name, i) => {
+      const src = snPlateDataUri(props.info.sn || name);
+      return { uid: `sn-${i}-${name}`, name, status: 'done', url: src, thumbUrl: src };
+    });
   },
   { immediate: true },
 );
@@ -108,6 +113,23 @@ function onPhotoChange({ fileList }: { fileList: UploadFile[] }) {
   const list = fileList.slice(-1);
   photoList.value = list;
   draft.snPhotos = list.map((f) => f.name);
+}
+
+/** 缩略图点开大图：已存照片取铭牌图，新选的本地图片取读出的预览 */
+const photoPreview = reactive({ open: false, src: '' });
+async function onPhotoPreview(file: UploadFile) {
+  let src = file.url || file.thumbUrl || '';
+  if (!src && file.originFileObj) {
+    src = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result ?? ''));
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(file.originFileObj as Blob);
+    });
+  }
+  if (!src) return;
+  photoPreview.src = src;
+  photoPreview.open = true;
 }
 
 const schoolNameOf = (id: string) => findSchoolById(id)?.name ?? '';
@@ -288,14 +310,21 @@ const inflightHref = computed(() => (tipParts.value?.no ? router.resolve(`/ticke
             accept="image/*"
             :max-count="1"
             :before-upload="() => false"
-            :show-upload-list="{ showPreviewIcon: false }"
+            :show-upload-list="{ showPreviewIcon: true, showRemoveIcon: true }"
             @change="onPhotoChange"
+            @preview="onPhotoPreview"
           >
             <div v-if="!photoList.length" class="fe-upload-btn">
               <PlusOutlined />
               <span>上传</span>
             </div>
           </a-upload>
+          <div class="fe-photo-preview">
+            <a-image
+              :src="photoPreview.src"
+              :preview="{ visible: photoPreview.open, src: photoPreview.src, onVisibleChange: (v: boolean) => (photoPreview.open = v) }"
+            />
+          </div>
         </div>
       </div>
 
@@ -324,6 +353,8 @@ const inflightHref = computed(() => (tipParts.value?.no ? router.resolve(`/ticke
 .fe-backfill { flex: none; font-size: 12px; color: #9ca3af; white-space: nowrap; }
 .fe-photo :deep(.ant-upload-wrapper .ant-upload.ant-upload-select),
 .fe-photo :deep(.ant-upload-list-item-container) { width: 88px !important; height: 88px !important; margin: 0 !important; }
+.fe-photo :deep(.ant-upload-list-item-thumbnail img) { object-fit: cover; }
+.fe-photo-preview { display: none; }
 .fe-upload-btn { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 12px; color: #6b7280; }
 .fe-changes {
   display: flex; flex-direction: column; gap: 4px; padding: 10px 12px;

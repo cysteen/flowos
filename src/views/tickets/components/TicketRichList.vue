@@ -13,12 +13,16 @@ import { TICKET_LIST_COLUMN_KEYS } from '@/views/tickets/composables/ticketListC
 import {
   formatCurrentHandlerGroup,
   formatLastHandlerGroup,
+  isFlashSlaIdle,
   listCellText,
   // SLA 那两行的口径已提到 utils 共用（风险监控页也要摆同一格），本组件改为引用，行为一字未动
   slaFirstLine,
   slaResolveLine,
 } from '@/views/tickets/utils/ticketListCells';
+import { flashListRowActions } from '@/views/tickets/composables/flashGate';
 import {
+  currentHandlerName,
+  handlerGroupOf,
   doneRowActions,
   isMentionUnread,
   isTicketClosed,
@@ -228,6 +232,21 @@ const emit = defineEmits<{
 function actionsFor(t: Ticket) {
   // 调用方自带动作时整个接管，下面那套 variant 映射一个字没动（见 `rowActionsFn`）
   if (props.rowActionsFn) return props.rowActionsFn(t);
+  // 刷机单（池页签除外）：行内操作按刷机门控的视角裁剪（930 教育刷机单 §5.5 / §9.4，M34）；老四类不经过这里
+  if (t.type === '刷机' && t.flash && props.variant !== 'pool') {
+    const base = props.variant === 'mine' ? mineRowActions()
+      : props.variant === 'done' ? doneRowActions()
+        : props.variant === 'mention' ? mentionRowActions()
+          : rowActions(t);
+    return flashListRowActions(base, {
+      roleKey: user.roleKey,
+      handlerName: currentHandlerName(user.roleKey, user.name),
+      assignee: t.assignee,
+      status: t.nodeStatus,
+      pool: t.flash.state.pool,
+      assigneeGroupId: handlerGroupOf(t.assignee)?.id,
+    });
+  }
   if (props.variant === 'mine') return mineRowActions();
   if (props.variant === 'done') return doneRowActions();
   if (props.variant === 'mention') return mentionRowActions();
@@ -592,6 +611,9 @@ const gridTemplateColumns = computed(() => {
           >{{ ticketStatusDisplayName(t) }}</span>
         </div>
 
+        <div v-else-if="colKey === 'sla' && isFlashSlaIdle(t)" class="col-sla cell-sla">
+          <span class="sla-line" :style="{ color: slaResolveLine(t).color }">—</span>
+        </div>
         <div v-else-if="colKey === 'sla'" class="col-sla cell-sla">
           <span class="sla-line" :style="{ color: slaResolveLine(t).color }">解决：{{ slaResolveLine(t).text }}</span>
           <span class="sla-line" :style="{ color: slaFirstLine(t).color }">首响：{{ slaFirstLine(t).text }}</span>

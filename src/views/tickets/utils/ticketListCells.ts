@@ -122,10 +122,22 @@ export function isSlaVoidStop(t: Ticket): boolean {
 }
 
 /**
+ * 刷机单 SLA 不计时（930 教育刷机单 PRD §4.3 / §9.2，M88 / M103）：从未起算（首推「自动刷机中」、
+ * 自动刷机成功直进回访）或「调研中」，列表 SLA 列显示「—」，与处理页页头同一口径。老四类恒为 false。
+ */
+export function isFlashSlaIdle(t: Ticket): boolean {
+  if (t.type !== '刷机' || !t.flash) return false;
+  return !t.flash.state.slaStartedAt || t.nodeStatus === '调研中';
+}
+
+const IDLE_LINE: SlaLine = { text: '—', color: SLA_COLOR.paused };
+
+/**
  * 解决行状态全枚举：剩(正常绿/临期橙)/超(红·在计)/已暂停(灰·挂起)
  * /已达标(绿·时限内收口)/未达标(红·超时后收口)/已停表(深灰·中止，无结论)
  */
 export function slaResolveLine(t: Ticket): SlaLine {
+  if (isFlashSlaIdle(t)) return IDLE_LINE;
   if (t.slaText === '—') {
     // 已停表：先看有没有记过超时（事实优先），再分「中止无结论」与「收口按结果」
     if (t.solveBreached) return BREACHED_LINE;
@@ -141,6 +153,7 @@ export function slaResolveLine(t: Ticket): SlaLine {
 
 /** 首响行状态全枚举：剩(正常绿/临期橙)/超(红·未响仍在计)/已暂停(灰·挂起且未响)/已达标(绿)/未达标(红·超时后才响) */
 export function slaFirstLine(t: Ticket): SlaLine {
+  if (isFlashSlaIdle(t)) return IDLE_LINE;
   if (isFirstResponded(t)) return t.firstRespBreached ? BREACHED_LINE : MET_LINE;
   if (isSlaPaused(t)) return { text: '已暂停', color: SLA_COLOR.paused };
   return { text: slaShort(t.slaText), color: SLA_COLOR[t.slaState] };
