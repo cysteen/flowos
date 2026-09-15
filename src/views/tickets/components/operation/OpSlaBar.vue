@@ -8,7 +8,11 @@ import {
 } from '@ant-design/icons-vue';
 import type { TicketDetailMeta, SlaClock } from '@/mock/ticketDetail';
 
-const props = defineProps<{ detail: TicketDetailMeta }>();
+const props = defineProps<{
+  detail: TicketDetailMeta;
+  /** 悬停浮层的起算行改写（刷机单「SLA 起算 〈时间〉」，930 教育刷机单 M88）；不传按起算 → 终止展示 */
+  startText?: string;
+}>();
 
 type Vis = 'normal' | 'warn' | 'over' | 'paused' | 'stopped';
 
@@ -340,7 +344,8 @@ const relationData = computed<{ rows: RelationRow[]; nowLeft: number }>(() => {
             <span class="pop-badge" :style="{ color: d.color, background: `${d.color}1F` }">{{ d.stateLabel }}</span>
           </div>
           <div class="pop-big" :style="{ color: d.color }">{{ d.bigText }}</div>
-          <div class="pop-range">起算 {{ d.startText }}&ensp;→&ensp;终止 {{ d.endText }}</div>
+          <div v-if="startText" class="pop-range">{{ startText }}</div>
+          <div v-else class="pop-range">起算 {{ d.startText }}&ensp;→&ensp;终止 {{ d.endText }}</div>
           <div class="pop-divider" />
           <div class="pop-rel-label">时效关系（节点 ⊂ 整单）</div>
           <div v-for="r in relationData.rows" :key="r.key" class="pop-row">

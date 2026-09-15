@@ -183,6 +183,8 @@ export interface FlashBarGateCtx {
   l1RepushCount: number;
   /** 当前用户是否本次下送 / 申请的发起人（撤回用） */
   isInitiator: boolean;
+  /** 调研中：本单有没有下送发起人（自动刷机成功直进回访的单没有，M99） */
+  hasForwarder?: boolean;
   /** 本单产品有售后服务（转售后用，基线 ※12） */
   afterSaleEnabled: boolean;
 }
@@ -191,7 +193,11 @@ export interface FlashBarGateCtx {
 export function flashButtonGate(key: FlashBarKey, ctx: FlashBarGateCtx): FlashGateResult {
   const { stage } = ctx;
   if (key === '撤回') {
-    if (stage === '调研中') return ctx.isInitiator ? { forbidden: false } : { forbidden: true, tip: FLASH_GATE_TIPS.withdrawNotForwarder };
+    if (stage === '调研中') {
+      if (ctx.isInitiator) return { forbidden: false };
+      // M99：无下送发起人（自动刷机成功直进回访）→ 谁都撤不了
+      return { forbidden: true, tip: ctx.hasForwarder === false ? FLASH_GATE_TIPS.withdrawNone : FLASH_GATE_TIPS.withdrawNotForwarder };
+    }
     if (stage === '审核中') return ctx.isInitiator ? { forbidden: false } : { forbidden: true, tip: FLASH_GATE_TIPS.withdrawNotApplicant };
     return { forbidden: true, tip: stageTip(stage, { withdraw: true }) ?? FLASH_GATE_TIPS.withdrawNone };
   }
@@ -227,8 +233,13 @@ export function flashEditInfoGate(view: FlashView, stage: FlashStage, isHandler:
 /** 置灰与否 + 原因；「已升级投诉」列不展示由整页接管锁收掉，这里不另判 */
 export function flashEscalateComplaintGate(stage: FlashStage): FlashGateResult {
   if (stage === '待响应' || stage === '处理中' || stage === '终态' || stage === '已升级投诉') return { forbidden: false };
+  // M100：调研中另给撤回下送与新建补充两条出路
+  if (stage === '调研中') return { forbidden: true, tip: FLASH_TIP_SURVEY_ESCALATE_COMPLAINT };
   return { forbidden: true, tip: stageTip(stage) };
 }
+
+/** 调研中「升级投诉」置灰悬停原因（M100） */
+export const FLASH_TIP_SURVEY_ESCALATE_COMPLAINT = '工单回访中，撤回下送或新建补充后可操作';
 
 /**
  * 页头按钮的视角裁剪（§5.5「只读查看」行）：只读查看时一线坐席出催单 / 新建补充 / 升级投诉，

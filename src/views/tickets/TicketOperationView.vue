@@ -435,6 +435,8 @@ const flashIsInitiator = computed(() => {
   }
   return isPrimaryHandler.value;
 });
+/** 调研中本单有无下送发起人：自动刷机成功直进回访的单没有，撤回悬停「当前无可撤回的操作」（M99） */
+const flashHasForwarder = computed(() => !!d.value.flash?.state.forwardedBy);
 
 /** 刷机单下送必填校验（PRD §5.4）：空串＝通过 */
 const flashForwardTip = computed(() => {
@@ -469,7 +471,11 @@ watch(
 const showRiskReport = computed(() => {
   const form = riskActionForm.value;
   if (!form) return false;
-  if (form === 'report') return ticketUnclaimed.value || isPrimaryHandler.value;
+  if (form === 'report') {
+    // M95：二线班组长可对本组刷机单发起风险报备（组员名下的单同样出，本组范围由刷机视角 l2 判定）
+    if (isFlash.value && user.roleKey === 'team-leader' && flashView.value === 'l2') return true;
+    return ticketUnclaimed.value || isPrimaryHandler.value;
+  }
   if (form === 'collab') return !!riskPoolEntry.value;
   const item = riskOpenItem.value;
   if (!item) return false;
@@ -1031,7 +1037,10 @@ const customerEntryLocked = computed(
  * - 新建补充：除工单运营 / 质检外都给（※21a 0826 放开）；催单：一线唯一
  */
 const headerRoleGate = computed(() => headerActionsByRole(user.roleKey));
-const canSupplement = computed(() => headerRoleGate.value.supplement);
+// 技术支持不涉及刷机单：查询中心打开刷机单只读查看，页头不出新建补充（M92 / M104）；
+// 刷机单已升级投诉 / 已升级外投不出任何催补按钮（M110，催单另由状态门控收掉）
+const canSupplement = computed(() => headerRoleGate.value.supplement
+  && !(isFlash.value && (user.roleKey === 'tech-support' || ['已升级投诉', '已升级外投'].includes(d.value.status))));
 const canDunning = computed(() => headerRoleGate.value.dunning);
 // 刷机单只读查看：二线只出新建补充，一线出催单 / 新建补充 / 升级投诉（M71 / M83）
 const canEscalateComplaint = computed(
@@ -1111,6 +1120,8 @@ const leadNoEditable = computed(() => (postClose.value ? postCloseEditable.value
 const hideActionBar = computed(
   // 刷机单按视角判（只读查看不渲染；一线处理人放出，D2），老工单仍按一线视角整条隐藏
   () => (flashView.value ? flashView.value === 'readonly' && !postCloseEditable.value : isFrontlineView.value) || pageReadonly.value
+    // 客诉专员在刷机单上底栏只有风险那一枚（M94 / M102）：该形态不出现时整条不出
+    || (flashView.value === 'other' && !showRiskReport.value)
     || (isTicketTerminated(d.value.status) && !postCloseEditable.value),
 );
 
@@ -1719,6 +1730,10 @@ function markRecordAcknowledged(rec: { read?: boolean }, isDunning: boolean) {
 
 /** 对客联系后自动置已联系，并连带已知晓（PRD §10.1） */
 function syncContactedAfterOutreach() {
+  // 刷机单处理人在「待响应」外呼 / 发短信 / 发邮件 → 转「处理中」（930 教育刷机单 PRD §6 / §7.1，M102）
+  if (isFlash.value && (flashView.value === 'l1' || flashView.value === 'l2')) {
+    flashStore.markRespondedByContact(d.value.no);
+  }
   let touchedDunning = false;
   let touchedSupplement = false;
   for (const rec of tabData.value.dunningRecords) {
@@ -2288,6 +2303,7 @@ watch(
       :flash-repush-shown="flashRepushShown"
       :flash-l1-repush-count="d.flash?.state.l1RepushCount ?? 0"
       :flash-is-initiator="flashIsInitiator"
+      :flash-has-forwarder="flashHasForwarder"
       :flash-forward-tip="flashForwardTip"
       :flash-forward-ok-text="flashForwardOkText"
       @flash-repush="onFlashRepush"

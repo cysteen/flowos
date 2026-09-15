@@ -105,6 +105,8 @@ const props = defineProps<{
   flashL1RepushCount?: number;
   /** 当前用户是否本次下送 / 申请的发起人（撤回） */
   flashIsInitiator?: boolean;
+  /** 调研中本单有无下送发起人（撤回悬停原因取值，M99） */
+  flashHasForwarder?: boolean;
   /** 刷机单下送必填校验不通过的提示（空＝通过，PRD §5.4「下送必填校验」） */
   flashForwardTip?: string;
   /** 刷机单下送确认弹窗主按钮文案（本单已产生过回访结论＝「下送并结案」，PRD §5.5） */
@@ -262,6 +264,8 @@ const barActions = computed<BarItem[]>(() => {
     if (isTransferred.value) {
       const def = key === '转单' ? null : actionMap.value.get(key);
       if (key !== '转单' && !def) continue;
+      // 刷机单不出「转单」（M25，任何角色、任何子状态）
+      if (key === '转单' && props.ticketType === '刷机') continue;
       if (key === '退回' && !props.atTechSupport) continue;
       // 报备形态只给本单主责处理人：不是主责处理人的，冻结态下也不展示（评估 / 协同两形态不在此判）
       if (key === '风险报备' && def?.label === '风险报备' && !props.showRiskReport) continue;
@@ -280,6 +284,7 @@ const barActions = computed<BarItem[]>(() => {
     if (isDelegating.value && DELEGATE_LOCKED.includes(key)) {
       const locked = key === '转单' ? null : actionMap.value.get(key);
       if (key !== '转单' && !locked) continue;
+      if (key === '转单' && props.ticketType === '刷机') continue;
       items.push({
         key,
         label: locked?.label ?? '转单',
@@ -401,6 +406,7 @@ function flashItem(k: FlashBarKey): BarItem | null {
     stage,
     l1RepushCount: props.flashL1RepushCount ?? 0,
     isInitiator: !!props.flashIsInitiator,
+    hasForwarder: props.flashHasForwarder,
     afterSaleEnabled: props.afterSaleEnabled,
   });
   let forbidden = gate.forbidden;
@@ -428,6 +434,8 @@ const flashMoreItems = computed<BarItem[]>(() =>
   (props.flashView === 'l2' ? FLASH_L2_MORE_ORDER : []).map(flashItem).filter((x): x is BarItem => !!x),
 );
 const isFlashClaim = computed(() => props.ticketType === '刷机' && props.flashView === 'claim');
+/** 客诉专员在刷机单上只读工单内容（M94 / M102）：底栏不出「保存」，只留风险那一枚 */
+const hideFlashSave = computed(() => props.ticketType === '刷机' && props.flashView === 'other');
 
 function onFlashMoreClick(info: { key: string | number }) {
   const item = flashMoreItems.value.find((x) => x.key === String(info.key));
@@ -605,6 +613,7 @@ defineExpose({ openEscalate, openAftersale });
   <div v-if="!hideBar" class="op-actionbar" :class="{ disabled: isTerminal && !saveOnly }">
     <div class="bottom-actions">
       <button
+        v-if="!hideFlashSave"
         type="button"
         class="ab-item ab-save"
         :class="{ forbidden: isFlashClaim }"

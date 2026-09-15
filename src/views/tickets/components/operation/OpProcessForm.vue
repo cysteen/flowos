@@ -433,6 +433,7 @@ function chipActiveClass(key: SupplementChip): string {
 
     <!-- ===== 补充处理（四类型通用：预约 + 建单规范；投诉另含投诉分类 / 风险） ===== -->
     <OpCollapsibleSection
+      v-if="!isFlash"
       title="补充处理"
       :icon="AppstoreOutlined"
       :badge="supplementBadge"

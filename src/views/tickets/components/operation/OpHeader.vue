@@ -126,6 +126,20 @@ const flashSlaPausedUntil = computed(() => {
   return parseFlashStamp(until).getTime() > clockNow.value ? until.slice(0, 16) : '';
 });
 
+/**
+ * 刷机单 SLA 区（PRD §4.3 / M88 / M103）：悬停显示「SLA 起算 〈年-月-日 时:分〉」，未起算显示「未起算」；
+ * 从未起算（首推自动刷机中、自动刷机成功直进回访）或调研中不计时，SLA 区显示「—」，不画暂停钟。
+ */
+const isFlashTicket = computed(() => props.detail.type === '刷机' && !!props.detail.flash);
+const flashSlaStartText = computed(() => {
+  if (!isFlashTicket.value) return undefined;
+  const at = props.detail.flash?.state.slaStartedAt;
+  return at ? `SLA 起算 ${at.slice(0, 16)}` : '未起算';
+});
+const flashSlaIdle = computed(
+  () => isFlashTicket.value && (!props.detail.flash?.state.slaStartedAt || props.detail.status === '调研中'),
+);
+
 const metaTitle = computed(
   () =>
     `建单人：${props.detail.builderShort}，建单时间：${props.detail.createdAtFull}，期望解决：${props.detail.expectedResolve}，单号：${props.ticketNo}`,
@@ -255,7 +269,8 @@ function priorityHex(p: string): string {
       </div>
     </div>
     <div class="oh-right">
-      <OpSlaBar :detail="detail" />
+      <span v-if="flashSlaIdle" class="sla-idle" :title="flashSlaStartText">—</span>
+      <OpSlaBar v-else :detail="detail" :start-text="flashSlaStartText" />
       <span v-if="flashSlaPausedUntil" class="sla-paused-until">SLA 暂停至 {{ flashSlaPausedUntil }}</span>
       <OpSupersededBanner
         v-if="supersededBy"
@@ -488,6 +503,10 @@ function priorityHex(p: string): string {
 .copy:hover { color: #6b7280; }
 
 .oh-right { display: flex; align-items: center; gap: 12px; flex: none; }
+.sla-idle {
+  flex: none; min-width: 24px; text-align: center; cursor: default;
+  font-size: 14px; font-weight: 600; line-height: 22px; color: #6b7280;
+}
 .sla-paused-until {
   flex: none; white-space: nowrap;
   font-size: 12px; font-weight: 600; line-height: 22px;

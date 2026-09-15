@@ -84,7 +84,16 @@ watch(
 
 const versionLocked = computed(() => props.info.versionBackfilled);
 
-const modelOptions = computed(() => config.enabledModels().map((m) => ({ value: m.model, label: m.model })));
+/**
+ * 产品型号下拉只列启用机型；本单原机型已停用时保留原值一项，标「已停用」且不可再选（M101 / PRD §5.8）：
+ * 不改型号可直接保存，改型号只能选启用中的机型。
+ */
+const modelOptions = computed(() => {
+  const opts: { value: string; label: string; disabled?: boolean }[] = config.enabledModels().map((m) => ({ value: m.model, label: m.model }));
+  const origin = original.value.productModel;
+  if (origin && !config.isSupportedModel(origin)) opts.unshift({ value: origin, label: `${origin}（已停用）`, disabled: true });
+  return opts;
+});
 const reasonOptions = computed(() => config.enabledReasons().map((r) => ({ value: r, label: r })));
 const schoolOptions = SCHOOL_LIBRARY.map((s) => ({ value: s.id, label: s.name }));
 
