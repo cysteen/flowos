@@ -60,6 +60,8 @@ const props = defineProps<{
   form: ProcessFormDraft;
   riskVerification?: TicketRiskVerification | null;
   readonly?: boolean;
+  /** 底栏「风险报备」形态按钮出不出（工单页 `showRiskReport` 的报备形态）：空态里指向底栏的那句随它 */
+  reportEntryVisible?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -612,7 +614,7 @@ const collabSectionBadge = computed(() =>
       <div v-if="!pending && !history.length" class="rr-empty">
         <ContainerOutlined class="rr-empty-icon" />
         <p class="rr-empty-title">暂无风险报备</p>
-        <p class="rr-empty-hint">请点击底部「风险报备」发起</p>
+        <p v-if="reportEntryVisible" class="rr-empty-hint">请点击底部「风险报备」发起</p>
       </div>
 
       <!-- 历史报备：时间线样式，与在队卡片同屏可见 -->

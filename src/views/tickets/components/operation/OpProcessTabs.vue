@@ -68,6 +68,8 @@ const props = defineProps<{
   postClose?: boolean;
   /** 终态下商机编号 / 结案后备注是否仍可编辑（非已取消 + 当前用户在最后处理人所在组） */
   postCloseEditable?: boolean;
+  /** 底栏「风险报备」形态按钮出不出，透传给「风险报备」Tab（空态指引随它） */
+  riskReportEntryVisible?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -229,6 +231,7 @@ defineExpose({ switchTab });
         :form="form"
         :risk-verification="riskVerification"
         :readonly="activeTabReadonly"
+        :report-entry-visible="riskReportEntryVisible"
         @update:draft="updateTabData({ ...tabData, riskDraft: $event })"
         @update:form="emit('update:form', $event)"
       />

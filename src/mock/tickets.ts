@@ -734,7 +734,8 @@ const BASE_TICKETS: Ticket[] = [
     customer: '合肥八中', vip: true, customerTags: ['校长'], product: '智学网校级版',
     nodeStatus: '处理中', nodeStep: 2, nodeTotal: 5, priority: 'P0',
     slaText: '已超 12:40', slaSub: '已超时', slaState: 'overdue', slaMinutes: -760,
-    assignee: '孙坐席', tab: 'done', handledByMe: false,
+    // 处理人＝管理员演示账号（18756826666 周运营）：「风险报备」只给本单主责处理人，管理员要有自己在办的单
+    assignee: '周运营', tab: 'done', handledByMe: false,
     customerPhone: '13866667777', productCategory: '教育服务',
     problemDesc: '期末成绩批量导出连续三次失败，年级组无法归档成绩单。',
     latestHandling: '已复现导出超时，正在核对班级数据量上限。',
@@ -799,7 +800,8 @@ const BASE_TICKETS: Ticket[] = [
     customer: '芜湖某校', vip: false, customerTags: ['老师'], product: '智学网校级版',
     nodeStatus: '处理中', nodeStep: 2, nodeTotal: 5, priority: 'P1',
     slaText: '已超 06:18', slaSub: '已超时', slaState: 'overdue', slaMinutes: -378,
-    assignee: '孙坐席', tab: 'done', handledByMe: false,
+    // 处理人＝二线班组长演示账号（18500003333 王组长）：「风险报备」只给本单主责处理人，班组长要有自己在办的单
+    assignee: '王组长', tab: 'done', handledByMe: false,
     customerPhone: '13899990000', productCategory: '教育服务',
     problemDesc: '家长端两天未收到作业与成绩推送，教师端发送显示成功。',
     latestHandling: '已核对推送通道配置，怀疑第三方通道限流，待确认。',

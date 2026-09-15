@@ -225,6 +225,8 @@ const barActions = computed<BarItem[]>(() => {
       const def = key === '转单' ? null : actionMap.value.get(key);
       if (key !== '转单' && !def) continue;
       if (key === '退回' && !props.atTechSupport) continue;
+      // 报备形态只给本单主责处理人：不是主责处理人的，冻结态下也不展示（评估 / 协同两形态不在此判）
+      if (key === '风险报备' && def?.label === '风险报备' && !props.showRiskReport) continue;
       items.push({
         key,
         label: key === '挂起' ? '申请挂起' : (def?.label ?? '转单'),

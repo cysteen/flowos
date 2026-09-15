@@ -41,13 +41,15 @@ import { useRiskPoolStore } from '@/stores/riskPool';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
 import { RISK_LEVELS, riskLevelText } from '@/config/risk';
 import type { TlAction, TlRole } from './types/ticketDetail';
-import { pullbackOnCsEvent, headerActionsByRole, handlerGroupOf, currentHandlerName, type TicketStatus } from './types/ticket';
+import { pullbackOnCsEvent, headerActionsByRole, handlerGroupOf, currentHandlerName, WORKBENCH_HANDLER, type TicketStatus } from './types/ticket';
 import { buildChildTicketPrefill, buildReopenTicketPrefill } from './composables/childTicketPrefill';
 import {
   buildEscalatePrefill, buildEscalateVerdict, buildEscalatedTicket, escalateTargetLabel,
   isTicketTerminated, resolveEscalateOutcome, summarizeEscalateInput, type EscalateInput,
 } from './composables/complaintEscalation';
-import { escalateComplaintBlockTip, resolveRiskActionForm } from './composables/opActionRegistry';
+import {
+  ESCALATE_VIA_HANDLER_REPORT_TIP, escalateComplaintBlockTip, resolveRiskActionForm,
+} from './composables/opActionRegistry';
 import { resolveSupersededBy, type TicketRelation } from './composables/ticketRelations';
 import type { CreateTicketPrefill, Ticket } from './types/ticket';
 import type { ProcessFormDraft, InsightAction, InsightModalKey } from './types/operation';
@@ -264,8 +266,33 @@ const riskPoolEntry = computed(
 const riskActionForm = computed(() => resolveRiskActionForm(user.roleKey, d.value.type)?.form ?? null);
 
 /**
+ * 本单的**主责处理人**（基线 ※14 / ※14a / ※1）：工单当前处理人；
+ * 单在三线技术支持、产研或协办人手上时，主责仍是原二线。
+ *
+ * 取数：
+ * - 基准取 `d.lastHandler`（加载时取自工单行 `assignee`）。本页内的「升级」「委派」只改状态 /
+ *   `delegateInfo`、不改它，故本页内升级 / 委派之后它仍是原二线；
+ *   已升级产研（※14a）、已委派（※1）的种子单 `assignee` 本就是原二线。
+ * - 种子单落「已升级技术支持」时 `assignee` 可能已是三线（※14），主责二线只剩工单行
+ *   `upgradedByMe`（「我发起过升级 —— 即我是主责」）可认，它相对的「我」是 `WORKBENCH_HANDLER`。
+ *   不是本工作台坐席升级的技术支持单，工单行上没有记原二线的字段，只能回落 `assignee`。
+ */
+const primaryHandlerName = computed(() => {
+  const row = TICKETS.find((x) => x.no === d.value.no);
+  if (row?.upgradedByMe && row.nodeStatus === '已升级技术支持') return WORKBENCH_HANDLER;
+  return d.value.lastHandler ?? null;
+});
+/** 当前登录用户是不是本单主责处理人。用户 → 工单处理人名的映射与「结案后补充」同一把（`currentHandlerName`） */
+const isPrimaryHandler = computed(
+  () => !!primaryHandlerName.value
+    && primaryHandlerName.value === currentHandlerName(user.roleKey, user.name),
+);
+
+/**
  * 底栏那一枚按钮**出不出**。三种形态各有各的出现条件（基线 ※29）：
- * - **报备**：本单无在队报备 —— 有在队报备时按钮仍出，改为置灰 + 提示（见 riskReportPending）；
+ * - **报备**：只给**本单主责处理人**，不跨数据范围（班组长看得到本组单、管理员看得到全租户，
+ *   也只在自己是主责处理人时出）；非主责处理人不展示。本单未认领时照出、置灰（见 riskUnclaimedBlocked）。
+ *   有在队报备时按钮仍出，改为置灰 + 提示（见 riskReportPending）；
  * - **评估**：本单有未出结论的非投诉单条目，且**还没人领**或**就是我领的**
  *   （已被别人领走的由领取人给结论，不设改派 —— 「分派 / 改派」两个动作已取消）；
  * - **协同**：本单是投诉单且在风险工单池里，**不论该条目是否已结论**（§3.1 末行）。
@@ -273,7 +300,7 @@ const riskActionForm = computed(() => resolveRiskActionForm(user.roleKey, d.valu
 const showRiskReport = computed(() => {
   const form = riskActionForm.value;
   if (!form) return false;
-  if (form === 'report') return true;
+  if (form === 'report') return ticketUnclaimed.value || isPrimaryHandler.value;
   if (form === 'collab') return !!riskPoolEntry.value;
   const item = riskOpenItem.value;
   if (!item) return false;
@@ -839,10 +866,13 @@ const canEscalateComplaint = computed(() => headerRoleGate.value.escalateComplai
  * 基线 ※8a：**非投诉单 → 投诉单**这一跳，二线专员 / 二线班组长不再自主发起，
  * 入口改为「风险报备」，由客诉专员评为「升级」时代为发起（「升级」只指转投诉单，※29）。
  * 有值 ＝ 该拦，值就是提示原文；null ＝ 放行（第二跳内投→外投、客诉专员 / 投诉督导 / 管理员均放行）。
+ * 当前用户在本单上没有「风险报备」入口（不是主责处理人）时照拦，提示改指向本单处理人。
  */
-const escalateReportFirstTip = computed(
-  () => escalateComplaintBlockTip(user.roleKey, d.value.type),
-);
+const escalateReportFirstTip = computed(() => {
+  const tip = escalateComplaintBlockTip(user.roleKey, d.value.type);
+  if (!tip) return null;
+  return riskActionForm.value === 'report' && showRiskReport.value ? tip : ESCALATE_VIA_HANDLER_REPORT_TIP;
+});
 const canLinkAftersale = computed(() => headerRoleGate.value.linkAftersale);
 const canCancelTicket = computed(() => headerRoleGate.value.cancelTicket);
 
@@ -1829,6 +1859,7 @@ watch(
           :tab-data="tabData"
           :form="form"
           :risk-verification="riskMonitorVerify"
+          :risk-report-entry-visible="riskActionForm === 'report' && showRiskReport"
           :timeline="timeline"
           :expanded-sections="expandedSections"
           :active-chip="activeChip"
