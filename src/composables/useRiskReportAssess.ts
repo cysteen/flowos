@@ -13,6 +13,8 @@ import {
   type RiskPoolItem,
 } from '@/stores/riskShared';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
+import { useFlashStore } from '@/stores/flash';
+import { mapUserRole } from '@/views/tickets/composables/opActions';
 import { useRiskQueueStore } from '@/stores/riskQueue';
 import { useRiskTagStore } from '@/stores/riskTags';
 import { useRiskCollabStore } from '@/stores/riskCollab';
@@ -194,7 +196,20 @@ export function deriveEscalatedComplaint(input: {
   reason: string;
 }) {
   const derived = useDerivedTicketStore().deriveComplaint(input);
-  if (derived) useRiskQueueStore().ensureEntryFor(input.no);
+  if (!derived) return derived;
+  useRiskQueueStore().ensureEntryFor(input.no);
+  // ③ 刷机原单（930）的状态真源是工单行：终态要写回去，否则页头仍是「待响应」、底栏仍可操作，
+  //    刷新更是原样回滚。老工单四类的原单侧仍由升级台账 `escalations` 承载，不走这一支。
+  const origin = TICKETS.find((t) => t.no === input.fromNo);
+  if (origin?.type === '刷机') {
+    const user = useUserStore();
+    useFlashStore().markEscalatedComplaint(
+      input.fromNo,
+      input.no,
+      { name: input.assignee || user.name, role: mapUserRole(user.roleKey) },
+      input.reason,
+    );
+  }
   return derived;
 }
 

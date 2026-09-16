@@ -1053,6 +1053,40 @@ export const useFlashStore = defineStore('flash', () => {
   }
 
   /**
+   * 升级投诉落终态（PRD §7.4）：原单「已升级投诉」、SLA 停表、记下派生出的新投诉单号，
+   * 履历记一条关联事件。**工单行是刷机单状态的真源** —— 升级只改当页详情的话，
+   * `applyFlashRow` 会拿工单行的子状态把它覆写回去，刷新更是原样回滚。
+   *
+   * 落库与新投诉单本体（`stores/derivedTickets.ts`）由调用方在同一次点击内成对落。
+   */
+  function markEscalatedComplaint(
+    ticketNo: string,
+    newNo: string,
+    by: FlashActor,
+    note: string,
+  ): FlashActionResult {
+    const r = rowOf(ticketNo);
+    if (!r?.flash) return { ok: false, message: FLASH_TIP_REPUSH_STATE };
+    const now = Date.now();
+    Object.assign(r, {
+      nodeStatus: '已升级投诉',
+      nodeStep: 5,
+      tab: 'mine',
+      escalatedToNo: newNo,
+      slaText: '—', slaSub: '已升级投诉·停表', slaState: 'ok', slaMinutes: 9999,
+      updatedAt: flashMinuteStamp(now),
+    });
+    const trimmed = note.trim();
+    log(ticketNo, now, {
+      category: 'relate', action: 'relate', who: by.name, role: by.role, how: '升级投诉',
+      what: `本单升级为投诉单 ${newNo}，原单转入「已升级投诉」，SLA 停表。${trimmed ? `升级原因：${trimmed}` : ''}`,
+    });
+    bump(ticketNo);
+    persist();
+    return { ok: true, message: `已升级投诉，新投诉单 ${newNo}` };
+  }
+
+  /**
    * 处理表单保存（PRD §5.4 / §4.3 / M31 / M35 / M49 / M57 / M66 / M73）。
    * - 处理结果＝已线下登记推送：首次保存或改了线下登记时间 → 履历「线下登记」＋ 返回要追加进处理记录的一行；
    *   按登记时间算恢复时刻：未过去 → 写「SLA 暂停至」并记「SLA 暂停」；已过去 → 不暂停（原本暂停中则立即恢复）。
@@ -1541,6 +1575,7 @@ export const useFlashStore = defineStore('flash', () => {
     // 处理页（M4b-2）
     liveNotices,
     escalateToL2,
+    markEscalatedComplaint,
     saveProcess,
     resumeSlaPause,
     markRespondedByContact,

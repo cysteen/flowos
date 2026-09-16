@@ -421,11 +421,21 @@ export function useTicketOperation() {
    * 状态直接取子状态；轻量态按冻结语义映射：自动刷机中 / 已转出 → transferred，调研中 → resolved。
    */
   function applyFlashRow(base: TicketDetailMeta, t: Ticket) {
-    base.status = t.nodeStatus;
     base.lastHandler = t.assignee;
     base.groupId = t.groupId;
     base.groupNames = t.groupNames;
     base.flash = JSON.parse(JSON.stringify(t.flash)) as TicketFlash;
+    // 已升级派生走了的单：终态与只读态由 `t.escalatedToNo` 那一支判定（见上）。
+    // 工单行的子状态还停在在办态时**不能拿它覆写回去** —— 那正是「已升级投诉」被写回
+    // 「待响应」、底栏跟着放出来的由来；已写到终态的照常同步。
+    if (t.escalatedToNo) {
+      if (isTicketClosed(t.nodeStatus)) {
+        base.status = t.nodeStatus;
+        opState.value = 'closed';
+      }
+      return;
+    }
+    base.status = t.nodeStatus;
     if (t.nodeStatus === '自动刷机中' || t.nodeStatus === '已转出') opState.value = 'transferred';
     else if (t.nodeStatus === '调研中') opState.value = 'resolved';
     // 审核中三态 / 已挂起（通用动作经刷机服务同步回工单库后，M4b-2）

@@ -1230,6 +1230,8 @@ function finishEscalate(ticket: Ticket, targetLabel: string, processAfter?: bool
   addEscalatedComplaint(ticket, targetLabel, note);
   syncEscalatedRelatedCard(ticket, targetLabel);
   dispatch({ type: '升级投诉', data: { target: targetLabel, newNo: ticket.no, note } });
+  // 刷机单：终态写回工单行（子状态 + 停表 + 关联新单号），否则刷新即回滚
+  if (isFlash.value) flashStore.markEscalatedComplaint(d.value.no, ticket.no, flashActor(), note);
   escalateInput.value = null;
   if (!processAfter) processTabsRef.value?.switchTab('related');
 }
