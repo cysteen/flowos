@@ -50,7 +50,7 @@ import { useRiskPoolStore } from '@/stores/riskPool';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
 import { RISK_LEVELS, riskLevelText } from '@/config/risk';
 import type { TlAction, TlRole } from './types/ticketDetail';
-import { pullbackOnCsEvent, headerActionsByRole, handlerGroupOf, currentHandlerName, WORKBENCH_HANDLER, type TicketStatus } from './types/ticket';
+import { pullbackOnCsEvent, headerActionsByRole, handlerGroupOf, currentHandlerName, STATUS_GROUP, WORKBENCH_HANDLER, type TicketStatus } from './types/ticket';
 import { buildChildTicketPrefill, buildReopenTicketPrefill } from './composables/childTicketPrefill';
 import {
   buildEscalatePrefill, buildEscalateVerdict, buildEscalatedTicket, escalateTargetLabel,
@@ -505,7 +505,13 @@ const showRiskReport = computed(() => {
 const ticketUnclaimed = computed(() => {
   if (d.value.status === '未认领') return true;
   const row = TICKETS.find((x) => x.no === d.value.no);
-  return !!row && row.nodeStatus === '未认领' && !row.assignee;
+  if (!!row && row.nodeStatus === '未认领' && !row.assignee) return true;
+  // 930 教育刷机单：刷机单在「自动刷机中」「调研中」也可能无处理人（首推成功直进调研中、
+  // 自动刷机中未落人）。《【930】风险报备》2.1 五维表「数据范围」维：本单无处理人时按未认领置灰。
+  // 有处理人而当前登录人不是主责的单不走这一支 —— 那一档是「不展示」，由 showRiskReport 收。
+  if (!isFlash.value) return false;
+  if (STATUS_GROUP[d.value.status as TicketStatus] === '终态') return false;
+  return !primaryHandlerName.value && !row?.assignee;
 });
 const riskUnclaimedBlocked = computed(
   () => (riskActionForm.value === 'report' || riskActionForm.value === 'collab') && ticketUnclaimed.value,
