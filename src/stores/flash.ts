@@ -23,6 +23,7 @@ import {
   type FlashInfo, type FlashPoolKey, type FlashProgressStage, type FlashPushTrigger, type FlashReasonName,
   type FlashResult, type FlashRun, type FlashState, type FlashVerifyResult, type TicketFlash,
 } from '@/views/tickets/types/flash';
+import { formatSlaClock, readFlashSla, slaStateOf } from '@/views/tickets/utils/slaClock';
 import { templateOf } from '@/mock/notifyRules';
 import { useNotifyLogStore } from './notifyLog';
 import { useFlashConfigStore } from './flashConfig';
@@ -140,8 +141,6 @@ const SYSTEM: FlashActor = { name: '系统', role: '系统' };
 const REPUSHABLE_STATUSES = ['处理中', '待响应', '已退回'];
 /** 可修改刷机信息的子状态（M52） */
 const EDITABLE_STATUSES = ['待响应', '处理中'];
-/** 进人工池时解决钟起算（M17 暂行：同咨询单） */
-const POOL_SLA = { slaText: '08:00:00', slaSub: '距超时', slaState: 'ok' as const, slaMinutes: 480 };
 
 type VerifyResult =
   | { ok: true; device: MdmDevice; result: FlashVerifyResult }
@@ -328,9 +327,60 @@ export const useFlashStore = defineStore('flash', () => {
     return !!st.slaPausedUntil && parseFlashStamp(st.slaPausedUntil).getTime() > at;
   }
 
+  /* ---------------- SLA 账本（PRD §4.3，D-01：账本是唯一真源） ---------------- */
+
   /**
-   * 线下登记暂停期间的恢复（PRD §4.3 / M73）：清空「SLA 暂停至」；暂停仍在生效时记「SLA 恢复计时 · 〈原因〉」。
-   * 返回是否确有一段生效中的暂停被恢复。
+   * 工单行 SLA 摘要字段的**投影**。真源是账本（`FlashState` 上那几个时刻），这里只在每次记账后
+   * 把读数落回 `slaText/slaSub/slaState/slaMinutes`，供尚未接账本的展示位（个人门户待办等）取用。
+   * 刷机单的列表格、排序键与处理页页头都直接读账本，不读这几个字段。
+   */
+  function syncSlaRow(r: Ticket, at: number, pauseReason?: string) {
+    const read = readFlashSla(r.flash!.state, at);
+    if (!read || read.status === 'stopped') return;
+    if (read.status === 'paused') {
+      Object.assign(r, {
+        slaText: '已暂停', slaSub: pauseReason ?? r.slaSub, slaState: 'paused', slaMinutes: 9999,
+      });
+      return;
+    }
+    Object.assign(r, {
+      slaText: formatSlaClock(read.remainMs),
+      slaSub: read.remainMs < 0 ? '已超时' : '距超时',
+      slaState: slaStateOf(read.remainMs),
+      slaMinutes: Math.round(Math.abs(read.remainMs) / 60_000),
+    });
+  }
+
+  /** 停钟：记下本段起点。未起算、已停表、已在停钟中都不重复记。 */
+  function pauseClock(r: Ticket, at: number, reason: string) {
+    const st = r.flash!.state;
+    if (!st.slaStartedAt || st.slaStoppedAt || st.slaPausedSince) return;
+    st.slaPausedSince = flashStamp(at);
+    syncSlaRow(r, at, reason);
+  }
+
+  /** 恢复计时：把本段停钟并入累计毫秒，剩余自停钟前接续（不重置、不大于停钟前的剩余）。 */
+  function resumeClock(r: Ticket, at: number) {
+    const st = r.flash!.state;
+    if (!st.slaPausedSince) return;
+    const since = parseFlashStamp(st.slaPausedSince).getTime();
+    st.slaPausedAccumMs = (st.slaPausedAccumMs ?? 0) + Math.max(0, at - since);
+    st.slaPausedSince = undefined;
+    syncSlaRow(r, at);
+  }
+
+  /** 关钟：终态收口。`voidStop` 为中止（升级、转出、取消）——钟被掐断，没有达标结论。 */
+  function stopClock(r: Ticket, at: number, voidStop = false) {
+    const st = r.flash!.state;
+    if (!st.slaStartedAt || st.slaStoppedAt) return;
+    const read = readFlashSla(st, at);
+    st.slaStoppedAt = flashStamp(at);
+    st.slaOutcome = voidStop ? 'void' : (read?.remainMs ?? 0) >= 0 ? 'met' : 'breached';
+  }
+
+  /**
+   * 线下登记暂停期间的恢复（PRD §4.3 / M73）：清空「SLA 暂停至」、把这一段并入账本；
+   * 暂停仍在生效时记「SLA 恢复计时 · 〈原因〉」。返回是否确有一段生效中的暂停被恢复。
    */
   function resumePause(r: Ticket, cause: string, at: number): boolean {
     const st = r.flash!.state;
@@ -338,6 +388,7 @@ export const useFlashStore = defineStore('flash', () => {
     const active = pausedAt(st, at);
     st.slaPausedUntil = undefined;
     if (active) {
+      resumeClock(r, at);
       log(r.no, at, {
         category: 'sla', action: 'hold', who: '系统', role: '系统', how: 'SLA 恢复',
         what: FLASH_TL.slaResume(cause),
@@ -352,24 +403,24 @@ export const useFlashStore = defineStore('flash', () => {
       assignee: run.handlerAtPush ?? r.assignee,
       tab: 'mine',
       updatedAt: flashMinuteStamp(at),
-      ...(run.slaBefore ?? POOL_SLA),
     });
+    // 回传回到人工侧：「自动刷机中」那段停钟结束，剩余自停钟前接续（PRD §4.3）
+    resumeClock(r, at);
   }
 
   /**
    * 转入人工池。`sms` 只对自动环节首次转人工为 true（M14 / M37：每单一条，已发过不再发）。
-   * `keepSla` 传入推送前的 SLA 摘要时续算（一线重推失败转二线池，M16「SLA 接着跑」）；否则从进池时刻起算（D18）。
+   * SLA：首次进池起算，此后再次进池接着跑（停钟中的先恢复），一律不重置（PRD §4.3 / M16 / D18）。
    */
   function handoff(
     r: Ticket,
     pool: FlashPoolKey,
     reason: FlashHandoffReason,
     at: number,
-    opts: { sms?: boolean; keepSla?: FlashRun['slaBefore'] } = {},
+    opts: { sms?: boolean } = {},
   ) {
     const st = r.flash!.state;
     const meta = FLASH_POOLS[pool];
-    const running = opts.keepSla && opts.keepSla.slaText !== '—' && opts.keepSla.slaState !== 'paused';
     Object.assign(r, {
       nodeStatus: '未认领',
       assignee: null,
@@ -377,13 +428,18 @@ export const useFlashStore = defineStore('flash', () => {
       groupId: meta.groupId,
       groupNames: [meta.groupName],
       updatedAt: flashMinuteStamp(at),
-      ...(running ? opts.keepSla : { ...POOL_SLA, responded: false }),
     });
     st.pool = pool;
     st.handoffReason = reason;
     st.slaPausedUntil = undefined;
     // PRD §4.3 / M88：首次进入人工池写入「SLA 起算时间」，此后再次进池不改写
-    if (!st.slaStartedAt) st.slaStartedAt = flashMinuteStamp(at);
+    if (!st.slaStartedAt) {
+      st.slaStartedAt = flashMinuteStamp(at);
+      st.slaPausedAccumMs = st.slaPausedAccumMs ?? 0;
+      r.responded = false;
+    }
+    resumeClock(r, at);
+    syncSlaRow(r, at);
     log(r.no, at, {
       category: 'node', action: 'flashHandoff', who: '系统', role: '系统', how: '转人工',
       what: FLASH_TL.handoff(reason, meta.label),
@@ -409,7 +465,6 @@ export const useFlashStore = defineStore('flash', () => {
       pushedAtMs: at,
       result: '等待回传',
       handlerAtPush: r.assignee,
-      slaBefore: { slaText: r.slaText, slaSub: r.slaSub, slaState: r.slaState, slaMinutes: r.slaMinutes },
       // M10：推送接口同步报错即自动重试 1 次
       autoRetried: !!device && device.pushApi !== '正常',
       // PRD §10.5：回传超时时长按发出时的取值判定
@@ -430,6 +485,9 @@ export const useFlashStore = defineStore('flash', () => {
       slaMinutes: 9999,
       updatedAt: flashMinuteStamp(at),
     });
+    // 重推「自动刷机中」整段停钟（PRD §4.3）：线下登记暂停期内先把那一段结掉，再起本段
+    resumeClock(r, at);
+    pauseClock(r, at, '自动刷机中');
     // PRD §11.2：首推落「自动推送」（系统）；人工重推落「重新推送」（发起人），不另落「自动推送」
     if (trigger === '建单首推') {
       log(r.no, at, {
@@ -523,7 +581,7 @@ export const useFlashStore = defineStore('flash', () => {
       handoff(r, 'l1', l1, at + 1000, { sms: true });
     } else if (run.trigger === '一线重推') {
       // D13：一线重推后再失败 → 二线池；M38：通知归属组
-      handoff(r, 'l2', '一线重推失败', at + 1000, { keepSla: run.slaBefore });
+      handoff(r, 'l2', '一线重推失败', at + 1000);
       notifyRepushInitiator(r, run, FLASH_NOTICE.repushFail(r.no, reasonText), banner);
       notifyGroup(r, 'l2', FLASH_NOTIFY_EVENTS.l1RepushFailGroup, '一线重推失败进池', FLASH_NOTICE.l1RepushFailToGroup(r.no));
     } else {
@@ -696,6 +754,7 @@ export const useFlashStore = defineStore('flash', () => {
         info,
         state: {
           outcome: '未推送', pushCount: 0, l1RepushCount: 0, surveyConcluded: false, creator,
+          slaPausedAccumMs: 0,
           verifyResult: evaluation.verifyResult ?? FLASH_VERIFY_NOT_RUN,
         },
         runs: [],
@@ -904,9 +963,7 @@ export const useFlashStore = defineStore('flash', () => {
     const remark = (feedback.remark ?? '').trim();
     st.surveyConcluded = true;
     st.survey = { solved, score, remark, at: flashStamp(now) };
-    const slaBefore = st.slaBeforeForward;
     st.forwardedBy = undefined;
-    st.slaBeforeForward = undefined;
     r.serviceScore = score as NonNullable<Ticket['serviceScore']>;
     log(ticketNo, now, {
       category: solved ? 'praise' : 'customer',
@@ -916,6 +973,7 @@ export const useFlashStore = defineStore('flash', () => {
       stars: score,
     });
     if (solved) {
+      stopClock(r, now);
       Object.assign(r, {
         nodeStatus: '已结案', nodeStep: 5, tab: 'mine',
         slaText: '—', slaSub: '已结案', slaState: 'ok', slaMinutes: 9999,
@@ -925,8 +983,8 @@ export const useFlashStore = defineStore('flash', () => {
         category: 'node', action: 'resolved', who: '系统', role: '系统', how: '结案', what: FLASH_TL.surveySolvedClosed,
       });
     } else {
-      // 下送进回访的单有下送前的 SLA 摘要 → 接着跑；自动刷机成功直进回访的单没有 → 进池时刻起算（handoff 内判）
-      handoff(r, 'l2', '回访未解决', now + 1, { keepSla: slaBefore });
+      // 已起算的单接着跑（「调研中」那段停钟在 handoff 里结掉）；自动刷机成功直进回访的单从进池时刻起算
+      handoff(r, 'l2', '回访未解决', now + 1);
     }
     bump(ticketNo);
     persist();
@@ -938,13 +996,13 @@ export const useFlashStore = defineStore('flash', () => {
    */
   function closeSurveyTimeout(r: Ticket, at: number) {
     const st = r.flash!.state;
+    stopClock(r, at);
     Object.assign(r, {
       nodeStatus: '已结案', nodeStep: 5, tab: 'mine',
       slaText: '—', slaSub: '已结案', slaState: 'ok', slaMinutes: 9999,
       updatedAt: flashMinuteStamp(at),
     });
     st.forwardedBy = undefined;
-    st.slaBeforeForward = undefined;
     log(r.no, at, {
       category: 'node', action: 'resolved', who: '系统', role: '系统', how: '自动结案', what: FLASH_TL.surveyTimeoutClosed,
     });
@@ -981,11 +1039,11 @@ export const useFlashStore = defineStore('flash', () => {
     if (handler) {
       Object.assign(r, {
         nodeStatus: '处理中', nodeStep: 3, tab: 'mine', responded: true,
-        ...(st.slaBeforeForward ?? POOL_SLA),
         updatedAt: flashMinuteStamp(now),
       });
+      // 催补拉回有处理人的单：「调研中」那段停钟结束，剩余接着跑（PRD §4.3）
+      resumeClock(r, now);
       st.forwardedBy = undefined;
-      st.slaBeforeForward = undefined;
       log(ticketNo, now, {
         category: 'node', action: 'handle', who: '系统', role: '系统', how: '因客户催补，自动撤回本次下送',
         what: FLASH_TL.csPullbackForward('处理中'),
@@ -1011,9 +1069,7 @@ export const useFlashStore = defineStore('flash', () => {
       return { ok: false, message: FLASH_TIP_REPUSH_STATE };
     }
     const now = Date.now();
-    handoff(r, pool, reason, now, {
-      keepSla: { slaText: r.slaText, slaSub: r.slaSub, slaState: r.slaState, slaMinutes: r.slaMinutes },
-    });
+    handoff(r, pool, reason, now);
     bump(ticketNo);
     persist();
     return { ok: true, message: `已转入${FLASH_POOLS[pool].label}` };
@@ -1068,6 +1124,7 @@ export const useFlashStore = defineStore('flash', () => {
     const r = rowOf(ticketNo);
     if (!r?.flash) return { ok: false, message: FLASH_TIP_REPUSH_STATE };
     const now = Date.now();
+    stopClock(r, now, true); // 升级派生 = 中止停表，钟被掐断，无达标结论
     Object.assign(r, {
       nodeStatus: '已升级投诉',
       nodeStep: 5,
@@ -1119,6 +1176,7 @@ export const useFlashStore = defineStore('flash', () => {
           // M89：同一轮登记改了时间、但重算的恢复时刻未变且暂停仍在生效 → 不另记「SLA 暂停」
           const sameRound = st.result === FLASH_RESULT_OFFLINE && st.slaPausedUntil === until && pausedAt(st, now);
           st.slaPausedUntil = until;
+          pauseClock(r, now, '线下登记待批推');
           if (!sameRound) {
             log(ticketNo, now + 1, {
               category: 'sla', action: 'hold', who: '系统', role: '系统', how: 'SLA 暂停',
@@ -1185,6 +1243,7 @@ export const useFlashStore = defineStore('flash', () => {
     st.result = result;
     if (result !== FLASH_RESULT_OFFLINE) st.offlineRegisteredAt = undefined;
     if (st.surveyConcluded) {
+      stopClock(r, now);
       Object.assign(r, {
         nodeStatus: '已结案', nodeStep: 5, tab: 'mine',
         slaText: '—', slaSub: '已结案', slaState: 'ok', slaMinutes: 9999,
@@ -1198,8 +1257,9 @@ export const useFlashStore = defineStore('flash', () => {
       persist();
       return { ok: true, code: 'closed', message: FLASH_TOAST.forwardClosed };
     }
-    st.slaBeforeForward = { slaText: r.slaText, slaSub: r.slaSub, slaState: r.slaState, slaMinutes: r.slaMinutes };
     st.forwardedBy = by.name;
+    // 「调研中」不计时（PRD §4.3）：停钟，撤回 / 催补拉回时剩余自此接续
+    pauseClock(r, now, '调研中');
     Object.assign(r, {
       nodeStatus: '调研中', nodeStep: 4, tab: 'mine', assignee: by.name,
       slaText: '—', slaSub: '调研中', slaState: 'ok', slaMinutes: 9999,
@@ -1226,11 +1286,11 @@ export const useFlashStore = defineStore('flash', () => {
     const now = Date.now();
     Object.assign(r, {
       nodeStatus: '处理中', nodeStep: 3, tab: 'mine', assignee: by.name, responded: true,
-      ...(st.slaBeforeForward ?? POOL_SLA),
       updatedAt: flashMinuteStamp(now),
     });
+    // 撤回下送：结掉「调研中」那段停钟，剩余回到下送前（PRD §4.3 / R55）
+    resumeClock(r, now);
     st.forwardedBy = undefined;
-    st.slaBeforeForward = undefined;
     log(ticketNo, now, {
       category: 'node', action: 'transfer', who: by.name, role: by.role, how: '撤回', what: FLASH_TL.withdrawForward,
     });
@@ -1249,7 +1309,8 @@ export const useFlashStore = defineStore('flash', () => {
     const st = r.flash.state;
     const now = Date.now();
     resumePause(r, '转售后', now);
-    st.slaBeforeAftersale = { slaText: r.slaText, slaSub: r.slaSub, slaState: r.slaState, slaMinutes: r.slaMinutes };
+    // 已转出：客服侧冻结，SLA 停钟；售后唤起回原处理人时剩余接续（PRD §7.3）
+    pauseClock(r, now, '已转出');
     Object.assign(r, {
       nodeStatus: '已转出', linkedAftersaleNo: asNo,
       slaText: '—', slaSub: '已转出·停表', slaState: 'ok', slaMinutes: 9999,
@@ -1274,11 +1335,10 @@ export const useFlashStore = defineStore('flash', () => {
     const now = Date.now();
     Object.assign(r, {
       nodeStatus: '处理中', tab: 'mine',
-      ...(st.slaBeforeAftersale ?? POOL_SLA),
       updatedAt: flashMinuteStamp(now),
     });
+    resumeClock(r, now);
     delete (r as Partial<Ticket>).linkedAftersaleNo;
-    st.slaBeforeAftersale = undefined;
     st.result = '已转售后';
     log(ticketNo, now, {
       category: 'node', action: 'transfer', who: '系统', role: '系统', how: '售后唤起',
@@ -1387,6 +1447,8 @@ export const useFlashStore = defineStore('flash', () => {
         const r = reactive(t);
         const at = parseFlashStamp(until).getTime();
         r.flash!.state.slaPausedUntil = undefined;
+        // 恢复时刻取「SLA 暂停至」本身，不能取 now —— 取 now 会把到点之后这段也当成停钟多扣
+        resumeClock(r, at);
         log(r.no, at, {
           category: 'sla', action: 'hold', who: '系统', role: '系统', how: 'SLA 恢复',
           what: FLASH_TL.slaResume('到达暂停截止时刻'),

@@ -91,6 +91,26 @@ function run(p: {
 
 const VERIFY_PASS: FlashVerifyResult = { status: '已校验', snAccountMatch: '通过', graduate: '通过' };
 
+/**
+ * SLA 账本（PRD §4.3，D-01）。种子单按**本行要呈现的剩余**倒推起算时刻：
+ * 履历里的进池时刻是写死的日期，直接拿它起算会让样本隔天全部变成「已超」，
+ * 本行的剩余读数（页头与列表同源）才是样本要立的靶子。停钟中的单以停钟起点为锚，
+ * 读数冻结在停钟那一刻的剩余。
+ */
+const SLA_LIMIT_MIN = 480;
+function ledger(
+  nowMs: number,
+  remainMin: number,
+  pausedSinceMs?: number,
+): Pick<FlashState, 'slaStartedAt' | 'slaPausedAccumMs' | 'slaPausedSince'> {
+  const anchor = pausedSinceMs ?? nowMs;
+  return {
+    slaStartedAt: flashMinuteStamp(anchor - (SLA_LIMIT_MIN - remainMin) * 60_000),
+    slaPausedAccumMs: 0,
+    ...(pausedSinceMs == null ? {} : { slaPausedSince: flashStamp(pausedSinceMs) }),
+  };
+}
+
 /** 缺省按「建单校验两项均通过」；未跑校验的（特殊情况）显式传「未校验」 */
 function state(creator: FlashCreator, p: Partial<FlashState>): FlashState {
   return {
@@ -261,6 +281,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
         failL1: '建单校验不通过', failL2: 'SN与学生账号不一致',
         verifyResult: { status: '已校验', snAccountMatch: '不通过', graduate: '不通过' },
         handoffReason: '建单校验不通过', pool: 'l1', handoffSmsSent: true,
+        ...ledger(nowMs, 372),
       }),
       runs: [],
     }), [
@@ -279,7 +300,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       createdAt: at.slice(0, 16), updatedAt: at.slice(0, 16),
       nodeStatus: '未认领', assignee: null, tab: 'pool', nodeStep: 1,
       slaText: '06:35:00', slaSub: '距超时', slaState: 'ok', slaMinutes: 395,
-      flashState: state('用户提报', { handoffReason: '非自研机型', pool: 'l1', handoffSmsSent: true }),
+      flashState: state('用户提报', { handoffReason: '非自研机型', pool: 'l1', handoffSmsSent: true, ...ledger(nowMs, 395) }),
       runs: [],
     }), [
       createdByUser(at, '马骏', VERIFY_PASS, { handoff: '非自研机型' }),
@@ -302,6 +323,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       flashState: state('用户提报', {
         outcome: '接收失败', failL1: '接收失败', failL2: '未开机', pushCount: 1,
         handoffReason: '接收失败', pool: 'l1', handoffSmsSent: true,
+        ...ledger(nowMs, 410),
       }),
       runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '接收失败', failL1: '接收失败', failL2: '未开机', resultAt: back })],
     }), [
@@ -327,6 +349,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       flashState: state('用户提报', {
         outcome: '推送异常', failL1: '推送异常', failL2: '回传超时', pushCount: 1,
         handoffReason: '推送异常', pool: 'l1', handoffSmsSent: true,
+        ...ledger(nowMs, 425),
       }),
       runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '推送异常', failL1: '推送异常', failL2: '回传超时', resultAt: timeout })],
     }), [
@@ -354,6 +377,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       flashState: state('用户提报', {
         outcome: '接收失败', failL1: '接收失败', pushCount: 1,
         handoffReason: '接收失败', pool: 'l1', handoffSmsSent: true,
+        ...ledger(nowMs, 220),
       }),
       runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '接收失败', failL1: '接收失败', resultAt: back })],
     }), [
@@ -385,6 +409,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       flashState: state('用户提报', {
         outcome: '接收成功', pushCount: 2, l1RepushCount: 1,
         handoffReason: '接收失败', pool: 'l1', handoffSmsSent: true,
+        ...ledger(nowMs, 320),
       }),
       runs: [
         run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '接收失败', failL1: '接收失败', failL2: '未联网', resultAt: back }),
@@ -414,7 +439,9 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       createdAt: at.slice(0, 16), updatedAt: at.slice(0, 16),
       nodeStatus: '未认领', assignee: null, tab: 'pool', nodeStep: 1,
       slaText: '06:25:00', slaSub: '距超时', slaState: 'ok', slaMinutes: 385,
-      flashState: state('用户提报', { handoffReason: '特殊情况', pool: 'l2', handoffSmsSent: true, verifyResult: { status: '未校验' } }),
+      flashState: state('用户提报', {
+        handoffReason: '特殊情况', pool: 'l2', handoffSmsSent: true, verifyResult: { status: '未校验' }, ...ledger(nowMs, 385),
+      }),
       runs: [],
     }), [
       createdByUser(at, '邹敏', { status: '未校验' }, { handoff: '特殊情况' }),
@@ -436,6 +463,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
         failL1: '建单校验不通过', failL2: '非毕业生身份',
         verifyResult: { status: '已校验', snAccountMatch: '通过', graduate: '不通过' },
         handoffReason: '建单校验不通过', pool: 'l2', handoffSmsSent: true,
+        ...ledger(nowMs, 402),
       }),
       runs: [],
     }), [
@@ -463,6 +491,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       flashState: state('用户提报', {
         outcome: '接收失败', failL1: '接收失败', failL2: '版本不符', pushCount: 1,
         handoffReason: '一线升级', pool: 'l2', handoffSmsSent: true,
+        ...ledger(nowMs, 135),
       }),
       runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '接收失败', failL1: '接收失败', failL2: '版本不符', resultAt: back })],
     }), [
@@ -494,6 +523,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       flashState: state('用户提报', {
         outcome: '接收失败', failL1: '接收失败', failL2: '未开机', pushCount: 2, l1RepushCount: 1,
         handoffReason: '一线重推失败', pool: 'l2', handoffSmsSent: true,
+        ...ledger(nowMs, 110),
       }),
       runs: [
         run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '接收失败', failL1: '接收失败', failL2: '未开机', resultAt: back }),
@@ -529,6 +559,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       flashState: state('用户提报', {
         outcome: '接收成功', pushCount: 1, result: '已线上刷机成功', surveyConcluded: true,
         handoffReason: '回访未解决', pool: 'l2',
+        ...ledger(nowMs, 330),
         surveySentAt: addSec(back, 2),
         survey: { solved: false, score: 2, remark: surveyRemark, at: survey },
       }),
@@ -569,6 +600,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       flashState: state('用户提报', {
         handoffReason: '一线升级', pool: 'l2', handoffSmsSent: true,
         result: '已线下登记推送', offlineRegisteredAt: registered, slaPausedUntil: pausedUntil,
+        ...ledger(nowMs, 270, parseFlashStamp(registered).getTime()),
       }),
       runs: [],
     }), [
@@ -661,6 +693,8 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       flashState: state('用户提报', {
         outcome: '接收失败', failL1: '接收失败', failL2: '版本不符', pushCount: 2,
         handoffReason: '一线升级', pool: 'l2', handoffSmsSent: true,
+        // 转售后停钟：客服侧冻结，售后唤起回原处理人时剩余接续（PRD §7.3 / §4.3）
+        ...ledger(nowMs, 282, parseFlashStamp(toAs).getTime()),
       }),
       runs: [
         run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '接收失败', failL1: '接收失败', failL2: '版本不符', resultAt: back }),
@@ -698,6 +732,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       flashState: state('用户提报', {
         outcome: '推送异常', failL1: '推送异常', failL2: '回传超时', pushCount: 1,
         handoffReason: '推送异常', pool: 'l1', handoffSmsSent: true, lateSuccessAt: late,
+        ...ledger(nowMs, 365),
       }),
       runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '推送异常', failL1: '推送异常', failL2: '回传超时', resultAt: timeout })],
     }), [
@@ -731,7 +766,8 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
         outcome: '接收成功', pushCount: 2, l1RepushCount: 1,
         handoffReason: '接收失败', pool: 'l1', handoffSmsSent: true,
         result: '已线上刷机成功', forwardedBy: '刘一线',
-        slaBeforeForward: { slaText: '05:40:00', slaSub: '距超时', slaState: 'ok', slaMinutes: 340 },
+        // 下送进「调研中」即停钟，剩余冻结在下送那一刻（PRD §4.3）
+        ...ledger(nowMs, 340, forwardAt),
         surveySentAt: addSec(forwarded, 1),
       }),
       runs: [

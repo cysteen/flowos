@@ -295,13 +295,6 @@ export interface FlashRun {
   returnTimeoutMin?: number;
   /** 推送发出时本单处理人（人工重推后按它回原处理人，M19 / D16） */
   handlerAtPush?: string | null;
-  /** 推送发出前的 SLA 摘要：回到处理人 / 转二线池时按它续算（自动刷机中整段停钟，D18 / M16） */
-  slaBefore?: {
-    slaText: string;
-    slaSub: string;
-    slaState: 'ok' | 'soon' | 'overdue' | 'paused';
-    slaMinutes: number;
-  };
 }
 
 /** 自动刷机状态 */
@@ -350,10 +343,6 @@ export interface FlashState {
    * 自动刷机成功直进回访的单为空，任何人都不能撤回。
    */
   forwardedBy?: string;
-  /** 下送前的 SLA 摘要：撤回下送回到「处理中」时按它续算（SLA 接着跑） */
-  slaBeforeForward?: { slaText: string; slaSub: string; slaState: 'ok' | 'soon' | 'overdue' | 'paused'; slaMinutes: number };
-  /** 转售后前的 SLA 摘要：售后唤起回原二线处理人时按它续算 */
-  slaBeforeAftersale?: { slaText: string; slaSub: string; slaState: 'ok' | 'soon' | 'overdue' | 'paused'; slaMinutes: number };
   /**
    * 最近一次调研短信发出时刻（YYYY-MM-DD HH:mm:ss，PRD §8 / M26′ / M86）：进「调研中」时写入，
    * 调研超时未评价按它 + `FLASH_SURVEY_TIMEOUT_HOURS` 判自动结案。
