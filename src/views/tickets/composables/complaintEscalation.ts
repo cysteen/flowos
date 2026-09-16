@@ -353,7 +353,7 @@ export function buildEscalatedTicket(
   };
 }
 
-/** 详情页用「—」表示空位，预填不带这种占位值过去 */
+/** 详情页的空值写作「—」；预填只带真正有内容的值 */
 function realValue(v: string | undefined): string | undefined {
   const s = (v ?? '').trim();
   return s && s !== '—' ? s : undefined;
