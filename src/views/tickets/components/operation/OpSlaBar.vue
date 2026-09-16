@@ -42,16 +42,22 @@ const DIAL_STROKE: Record<Vis, string> = {
  */
 const now = ref(Date.now());
 
-const clockSource = computed<SlaClockSource>(() => ({
-  type: props.detail.type,
-  flash: props.detail.flash,
-  nodeStatus: props.detail.status,
-}));
+const clockSource = computed<SlaClockSource>(() => {
+  // 首响是否已关：详情上没有 `responded` 字段，取 `useTicketOperation` 构造好的那只首响钟
+  // ——它与列表那一格同走 `isFirstResponded(t)`，两处才不会一个说「已达标」一个还在倒计时
+  const first = props.detail.slaClocks.find((c) => c.kind === 'first');
+  return {
+    type: props.detail.type,
+    flash: props.detail.flash,
+    nodeStatus: props.detail.status,
+    responded: first ? first.phase === 'stopped' : undefined,
+    firstRespBreached: first?.stopOutcome === 'breached',
+  };
+});
 
 /** 刷机单账本钟；非刷机单 / 未起算返回 null，落回 `detail.slaClocks` */
-const clocks = computed<SlaClock[]>(
-  () => flashSlaClocks(clockSource.value, now.value) ?? props.detail.slaClocks,
-);
+const ledgerClocks = computed<SlaClock[] | null>(() => flashSlaClocks(clockSource.value, now.value));
+const clocks = computed<SlaClock[]>(() => ledgerClocks.value ?? props.detail.slaClocks);
 
 const liveRemain = reactive<number[]>([]);
 
@@ -69,7 +75,7 @@ onMounted(() => {
   timer = setInterval(() => {
     now.value = Date.now();
     // 刷机单：钟已由 clocks 按账本重算，本条不再自己递减
-    if (flashSlaClocks(clockSource.value, now.value)) return;
+    if (ledgerClocks.value) return;
     props.detail.slaClocks.forEach((c, i) => {
       if (c.phase === 'running') liveRemain[i] = (liveRemain[i] ?? c.remainSec) - 1;
     });
@@ -195,7 +201,9 @@ function buildDial(c: SlaClock, i: number, wholeStartMs?: number): Dial {
   if (outcome === 'met') remainText = '已达标';
   else if (outcome === 'breached') remainText = '未达标';
   else if (outcome === 'void') remainText = '已停表';
-  else if (vis === 'paused') remainText = fmtShort(rem, rem < 0); // 暂停显示冻结剩余，暂停态由表盘徽标标识
+  // 刷机单停钟 / 暂停期间固定「已暂停」、不做倒计时，与列表 SLA 列同文案（PRD §4.3 / R154）；
+  // 老四类沿用原样：显示冻结剩余，暂停态由表盘徽标标识
+  else if (vis === 'paused') remainText = ledgerClocks.value ? '已暂停' : fmtShort(rem, rem < 0);
   else remainText = fmtShort(rem, vis === 'over');
 
   const pct = clamp(((c.totalSec - rem) / c.totalSec) * 100);
