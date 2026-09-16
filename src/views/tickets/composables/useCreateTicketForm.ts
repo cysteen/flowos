@@ -1,4 +1,4 @@
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { message } from 'ant-design-vue';
 import type { CreateTicketPrefill, Ticket } from '@/views/tickets/types/ticket';
 import { makeTicketNo } from '@/constants/ticketNo';
@@ -108,6 +108,14 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   const customerSearchHits = ref<CustomerInfo[]>([]);
   const customerSearchTooMany = ref(false);
   let searchTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * 预填批量赋值期间置位：产品分类与业务分类两个联动 watcher 直接跳过。
+   *
+   * 两个 watcher 是给**坐席手动改**准备的——改分类要连带换产品名、按客户标识重取档案。
+   * 预填是整批灌值，灌完就是最终值，联动一跑反而把刚填进去的产品名换成分类首项、
+   * 把客户卡换回档案库里的默认客户（搜索框却还是原单客户，一页两说）。
+   */
+  let applyingPrefill = false;
 
   const errors = reactive({
     businessType: false,
@@ -308,6 +316,17 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   }
 
   function applyPrefill(p: CreateTicketPrefill) {
+    applyingPrefill = true;
+    try {
+      fillPrefill(p);
+    } finally {
+      // watcher 回调在本轮 flush 里跑，复位要排在它们之后；异常路径同样复位，
+      // 否则守卫留在 true，坐席之后手动改分类将不再联动
+      void nextTick(() => { applyingPrefill = false; });
+    }
+  }
+
+  function fillPrefill(p: CreateTicketPrefill) {
     reset();
     form.ticketType = p.formTicketType ?? (p.mode === 'child' ? '咨询' : '投诉');
     form.ticketSource = (
@@ -319,15 +338,33 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       ? `${p.customerName}${p.customerPhone ? ` · ${p.customerPhone}` : ''}`
       : '';
     if (p.customerName) {
-      form.customer = {
-        ...MOCK_CUSTOMER,
-        name: p.customerName,
-        phone: p.customerPhone ?? MOCK_CUSTOMER.phone,
-        vip: p.vip ?? false,
-      };
+      // 原单带来了客户档案字段（标识 / 地区 / 地址 / 客户类型）时按原单客户成卡，
+      // 只带名字手机号的旧场景仍沿用档案库默认客户的其余字段
+      const fromOrigin = !!(p.customerId || p.customerRegion || p.customerAddress || p.customerTypes);
+      form.customer = fromOrigin
+        ? {
+          id: p.customerId ?? MOCK_CUSTOMER.id,
+          name: p.customerName,
+          phone: p.customerPhone ?? '',
+          vip: p.vip ?? false,
+          customerType: p.customerTypes?.[0] ?? '',
+          customerTypes: p.customerTypes ? [...p.customerTypes] : undefined,
+          contacts: p.customerPhone ? [{ type: '来电号码', value: p.customerPhone }] : [],
+          gender: '',
+          region: p.customerRegion ?? '',
+          address: p.customerAddress ?? '',
+        }
+        : {
+          ...MOCK_CUSTOMER,
+          name: p.customerName,
+          phone: p.customerPhone ?? MOCK_CUSTOMER.phone,
+          vip: p.vip ?? false,
+        };
     } else {
       form.customer = null;
     }
+    // 产品分类先落、产品名后落：分类是产品名下拉的取值域，反过来会被分类联动重置
+    if (p.productCategory && PRODUCT_NAMES[p.productCategory]) form.productCategory = p.productCategory;
     form.productName = p.product ?? form.productName;
     form.deviceSn = p.sn ?? '';
     form.description = p.desc ?? '';
@@ -338,7 +375,8 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       form.businessType = p.businessType as CreateTicketFormState['businessType'];
     }
     if (p.businessLine) form.businessLine = p.businessLine;
-    if (p.problemL1) {
+    // 传空串＝清空三级分类（原单问题落不到问题树上时由坐席显式选，三项仍必填）
+    if (p.problemL1 !== undefined) {
       form.problemL1 = p.problemL1;
       form.problemL2 = p.problemL2 ?? Object.keys(PROBLEM_TREE[p.problemL1] ?? {})[0] ?? '';
       form.problemL3 = p.problemL3 ?? PROBLEM_TREE[p.problemL1]?.[form.problemL2]?.[0] ?? '';
@@ -505,7 +543,10 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
 
   watch(
     () => form.productCategory,
-    () => onProductCategoryChange(),
+    () => {
+      if (applyingPrefill) return;
+      onProductCategoryChange();
+    },
   );
 
   /**
@@ -522,6 +563,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   watch(
     () => form.businessType,
     () => {
+      if (applyingPrefill) return;
       if (!form.customer) return;
       const latest = findCustomerById(form.customer.id);
       if (!latest) {

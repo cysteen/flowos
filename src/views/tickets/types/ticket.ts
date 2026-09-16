@@ -608,8 +608,18 @@ export interface CreateTicketPrefill {
   parentTitle?: string;
   customerName?: string;
   customerPhone?: string;
+  /** 客户标识：业务分类变更后按它重取档案 */
+  customerId?: string;
+  /** 客户地区 */
+  customerRegion?: string;
+  /** 客户地址 */
+  customerAddress?: string;
+  /** 客户类型（多选） */
+  customerTypes?: string[];
   vip?: boolean;
   product?: string;
+  /** 产品分类（与产品名成对带入，先落分类再落名称） */
+  productCategory?: string;
   sn?: string;
   channel?: Channel;
   /** 列表侧工单类型（旧枚举，兼容 Mock） */
