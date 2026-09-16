@@ -7,7 +7,8 @@
  */
 import { detectQueryKind, QUERY_KIND_LABEL, type QueryKind } from '@/mock/customerInsight';
 import { TICKETS } from '@/mock/tickets';
-import { isSearchableTicket } from '@/views/tickets/types/ticket';
+import { useDerivedTicketStore } from '@/stores/derivedTickets';
+import { isSearchableTicket, type Ticket } from '@/views/tickets/types/ticket';
 
 /** E2 输入上限：超出即截断并提示 */
 export const MAX_QUERY_LEN = 64;
@@ -69,9 +70,22 @@ export type SearchTarget =
  */
 function matchTicketsByNo(q: string) {
   const key = q.toUpperCase();
-  return TICKETS.filter(
+  return searchableSource().filter(
     (t) => isSearchableTicket(t) && (t.no.toUpperCase() === key || t.no.toUpperCase().endsWith(key)),
   );
+}
+
+/**
+ * 检索源＝静态工单库 ＋ 本次会话里运行时派生出来的单（升级投诉派生的新投诉单）。
+ * 派生单是真实存在、能打开的单，只因为不在静态数组里就查不到，是个纯窟窿。
+ * store 尚未就绪（pinia 未激活）时退回静态那批，检索不至于抛错。
+ */
+function searchableSource(): Ticket[] {
+  try {
+    return [...TICKETS, ...useDerivedTicketStore().tickets];
+  } catch {
+    return TICKETS;
+  }
 }
 
 /**
