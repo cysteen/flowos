@@ -67,9 +67,18 @@ export const useNotifyLogStore = defineStore('notifyLog', () => {
    */
   const LS_KEY = 'flowos-notify-log';
   const STALE_MS = 12 * 60 * 60 * 1000;
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (raw) {
+
+  /**
+   * 🔴 **本页签专属的 id 前缀**。原来 id 是 `nl-<自增序号>`，两个页签各自从 1 数起，
+   * 两边落的记录 id 逐一撞上 —— 合并时分不清"同一条"和"两条不同的"。带上页签标识后
+   * id 全局唯一，下面的按 id 合并才成立。
+   */
+  const TAB_ID = Math.random().toString(36).slice(2, 8);
+
+  function readSaved(): { records: RuntimeNotifyRecord[]; seq: number } | null {
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      if (!raw) return null;
       const saved = JSON.parse(raw) as {
         records: RuntimeNotifyRecord[];
         seq: number;
@@ -77,29 +86,57 @@ export const useNotifyLogStore = defineStore('notifyLog', () => {
       };
       const fresh = typeof saved?.savedAt === 'number' && Date.now() - saved.savedAt < STALE_MS;
       if (fresh && Array.isArray(saved?.records)) {
-        records.value = saved.records;
-        seq.value = typeof saved.seq === 'number' ? saved.seq : saved.records.length;
-      } else {
-        localStorage.removeItem(LS_KEY);
+        return { records: saved.records, seq: typeof saved.seq === 'number' ? saved.seq : saved.records.length };
       }
+      localStorage.removeItem(LS_KEY);
+      return null;
+    } catch {
+      /* 解析失败就从空开始，只影响运行时那批，静态样本照常 */
+      return null;
     }
-  } catch {
-    /* 解析失败就从空开始，只影响运行时那批，静态样本照常 */
   }
-  watch(
-    [records, seq],
-    () => {
-      try {
-        localStorage.setItem(
-          LS_KEY,
-          JSON.stringify({ records: records.value, seq: seq.value, savedAt: Date.now() }),
-        );
-      } catch {
-        /* 配额超限等忽略 */
-      }
-    },
-    { deep: true },
-  );
+
+  const boot = readSaved();
+  if (boot) {
+    records.value = boot.records;
+    seq.value = boot.seq;
+  }
+
+  /**
+   * 🔴 **落库是"并进去"，不是"整份盖掉"**。原来这里把本页签内存里的整个数组写回去，
+   * 另一个页签在本页签加载之后落的通知（催单通知、报备通知）会被这一次写回**整批抹掉** ——
+   * 演示里一线坐席在 A 页签催单、管理员在 B 页签随手办一件事，催单通知就没了。
+   * 现在先读回当前库里的那份，把不属于本页签内存的记录留下，再与本页签的合并按时刻排序写回。
+   */
+  function persist() {
+    try {
+      const mine = new Set(records.value.map((r) => r.id));
+      const others = (readSaved()?.records ?? []).filter((r) => !mine.has(r.id));
+      const merged = [...records.value, ...others].sort((a, b) => a.when.localeCompare(b.when));
+      localStorage.setItem(
+        LS_KEY,
+        JSON.stringify({ records: merged, seq: seq.value, savedAt: Date.now() }),
+      );
+    } catch {
+      /* 配额超限等忽略 */
+    }
+  }
+
+  watch([records, seq], persist, { deep: true });
+
+  /** 别的页签落了新通知 → 本页签把没有的那几条并进来，界面上立刻能看到 */
+  if (typeof window !== 'undefined') {
+    window.addEventListener('storage', (e) => {
+      if (e.key !== LS_KEY || !e.newValue) return;
+      const saved = readSaved();
+      if (!saved) return;
+      const mine = new Set(records.value.map((r) => r.id));
+      const incoming = saved.records.filter((r) => !mine.has(r.id));
+      if (!incoming.length) return;
+      records.value = [...records.value, ...incoming].sort((a, b) => a.when.localeCompare(b.when));
+      seq.value = Math.max(seq.value, saved.seq);
+    });
+  }
 
   /**
    * 发一条通知。返回落下的那条；一条都没发出去时返回 null。
@@ -121,7 +158,7 @@ export const useNotifyLogStore = defineStore('notifyLog', () => {
     if (!receivers.length) return null;
     seq.value += 1;
     const rec: RuntimeNotifyRecord = {
-      id: `nl-${seq.value}`,
+      id: `nl-${TAB_ID}-${seq.value}`,
       ticketNo: input.ticketNo,
       event: input.event,
       kind: input.kind,

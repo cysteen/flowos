@@ -53,6 +53,7 @@ function contentSegments(content: string): { text: string; href?: string }[] {
 
 <template>
   <div class="notify-tab">
+    <div v-if="!mergedRecords.length" class="notify-empty">暂无通知记录</div>
     <div v-for="r in mergedRecords" :key="r.id" class="record-card">
       <div class="card-head">
         <div class="title-left">
@@ -81,6 +82,16 @@ function contentSegments(content: string): { text: string; href?: string }[] {
   gap: 8px;
   width: 100%;
   font-family: inherit;
+}
+
+.notify-empty {
+  padding: 28px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: #94a3b8;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px dashed #e2e8f0;
 }
 
 .record-card {

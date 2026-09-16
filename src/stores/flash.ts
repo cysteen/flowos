@@ -1626,6 +1626,40 @@ export const useFlashStore = defineStore('flash', () => {
   }
 
   /**
+   * 种子单的转人工短信 / 刷机成功短信补进通知记录：这两条短信在种子里发生于页面打开之前，
+   * 履历沟通类有、运行时通知记录（`stores/notifyLog.ts`）里没有，「通知记录」Tab 因此是空的。
+   * 逐单按履历里那条短信的文案对上号，时刻取履历时刻；本单已有同事件记录的不补。
+   */
+  function backfillSeedSms() {
+    const notifyLog = useNotifyLogStore();
+    for (const t of TICKETS) {
+      if (t.type !== '刷机' || !t.flash) continue;
+      const smsEntries = timelineOf(t.no).filter((e) => e.category === 'comm' && e.action === 'sms');
+      if (!smsEntries.length) continue;
+      const kinds = [
+        { event: FLASH_NOTIFY_EVENTS.handoff, title: '转人工短信', content: flashSmsHandoff(t.no) },
+        { event: FLASH_NOTIFY_EVENTS.success, title: '刷机成功短信', content: flashSmsSuccess(t.no, t.flash.info.sn) },
+      ];
+      for (const k of kinds) {
+        if (notifyLog.records.some((x) => x.ticketNo === t.no && x.event === k.event)) continue;
+        const entry = smsEntries.find((e) => e.what.endsWith(k.content));
+        if (!entry) continue;
+        const rec = notifyLog.emit({
+          ticketNo: t.no,
+          event: k.event,
+          kind: 'accepted',
+          title: k.title,
+          receivers: [`${t.customer}(客户)`],
+          content: k.content,
+          channel: '短信',
+          status: '已发送',
+        });
+        if (rec) rec.when = entry.when;
+      }
+    }
+  }
+
+  /**
    * 其他页签写了刷机缓存（如用户在评价页提交、处理页在另一页签办理）→ 本页签按缓存重读，
    * 避免本页签之后落库时用旧快照把对方的改动覆盖掉。`timeline` 键在 `persist` 里后写，以它为准。
    */
@@ -1652,6 +1686,7 @@ export const useFlashStore = defineStore('flash', () => {
   settleDue();
   persist();
   backfillSurveySms();
+  backfillSeedSms();
   if (typeof window !== 'undefined') {
     window.setInterval(() => settleDue(), 1000);
     window.addEventListener('storage', (e) => {
