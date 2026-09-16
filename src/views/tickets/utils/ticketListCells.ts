@@ -1,6 +1,7 @@
 import type { Ticket } from '@/views/tickets/types/ticket';
 import { isFirstResponded, isSlaPaused, resolveTicketGroupNames, SLA_COLOR } from '@/views/tickets/types/ticket';
 import { resolveCurrentFlowNode, resolvePreviousFlowNode } from '@/views/tickets/utils/ticketFlowNodes';
+import { formatSlaRemain, readSla, slaStateOf, type SlaReading } from '@/views/tickets/utils/slaClock';
 
 export function formatStartDate(t: Ticket): string {
   if (!t.createdAt) return '—';
@@ -133,11 +134,27 @@ export function isFlashSlaIdle(t: Ticket): boolean {
 const IDLE_LINE: SlaLine = { text: '—', color: SLA_COLOR.paused };
 
 /**
+ * 刷机单账本读数 → 一行 SLA（D-01）。与处理页页头同走 `readSla`，只是采样频率不同，读数不分叉。
+ * 停钟期间固定「已暂停」且不随停留变化（PRD §4.3 / R154）。
+ */
+function flashLine(r: SlaReading, remainMs: number): SlaLine {
+  if (r.status === 'stopped') {
+    if (r.outcome === 'void') return VOID_LINE;
+    return r.outcome === 'breached' ? BREACHED_LINE : MET_LINE;
+  }
+  if (r.status === 'paused') return { text: '已暂停', color: SLA_COLOR.paused };
+  return { text: formatSlaRemain(remainMs), color: SLA_COLOR[slaStateOf(remainMs)] };
+}
+
+/**
  * 解决行状态全枚举：剩(正常绿/临期橙)/超(红·在计)/已暂停(灰·挂起)
  * /已达标(绿·时限内收口)/未达标(红·超时后收口)/已停表(深灰·中止，无结论)
  */
-export function slaResolveLine(t: Ticket): SlaLine {
+export function slaResolveLine(t: Ticket, now: number = Date.now()): SlaLine {
   if (isFlashSlaIdle(t)) return IDLE_LINE;
+  // 刷机单走 SLA 账本（D-01）；老四类一律落到下方现有实现，口径一字未动
+  const led = readSla(t, now);
+  if (led) return flashLine(led, led.remainMs);
   if (t.slaText === '—') {
     // 已停表：先看有没有记过超时（事实优先），再分「中止无结论」与「收口按结果」
     if (t.solveBreached) return BREACHED_LINE;
@@ -152,9 +169,12 @@ export function slaResolveLine(t: Ticket): SlaLine {
 }
 
 /** 首响行状态全枚举：剩(正常绿/临期橙)/超(红·未响仍在计)/已暂停(灰·挂起且未响)/已达标(绿)/未达标(红·超时后才响) */
-export function slaFirstLine(t: Ticket): SlaLine {
+export function slaFirstLine(t: Ticket, now: number = Date.now()): SlaLine {
   if (isFlashSlaIdle(t)) return IDLE_LINE;
   if (isFirstResponded(t)) return t.firstRespBreached ? BREACHED_LINE : MET_LINE;
+  // 刷机单首响行取账本的首响钟；此前这里无条件取 `t.slaText`，摆的其实是解决钟的数（D-01）
+  const led = readSla(t, now);
+  if (led) return flashLine(led, led.firstRemainMs);
   if (isSlaPaused(t)) return { text: '已暂停', color: SLA_COLOR.paused };
   return { text: slaShort(t.slaText), color: SLA_COLOR[t.slaState] };
 }

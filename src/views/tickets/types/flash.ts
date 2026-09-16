@@ -366,6 +366,21 @@ export interface FlashState {
    * 此后再次进池、升级二线不改写；首推「自动刷机中」、自动刷机成功直进回访的单为空。
    */
   slaStartedAt?: string;
+  /**
+   * 累计停钟毫秒（PRD §4.3，D-01 账本）：已结束的各段停钟之和，默认 0。
+   * 记「累计毫秒」而不是分段区间：读取 O(1)（页头每秒重算），撤回下送只要不动它剩余天然接续，
+   * 缓存体积恒定。哪一段停的由处理履历（`slaPause` / `slaResume`）负责，账本不留第二真源。
+   */
+  slaPausedAccumMs?: number;
+  /**
+   * 当前这一段停钟的起点（YYYY-MM-DD HH:mm:ss）。有值即停钟中——**停钟判据以它为准**：
+   * 重推「自动刷机中」、线下登记待批推、调研中、已转出都写它，恢复时并入 `slaPausedAccumMs` 后清空。
+   */
+  slaPausedSince?: string;
+  /** 终态关钟时刻（YYYY-MM-DD HH:mm:ss）：结案 / 关闭 / 强结 / 升级投诉等收口时写入，写入后钟不再走 */
+  slaStoppedAt?: string;
+  /** 关钟结论：met=时限内收口 / breached=超时后收口 / void=中止（升级、转出、取消，无达标结论） */
+  slaOutcome?: 'met' | 'breached' | 'void';
 }
 
 /** 用户回访评价（用户侧 H5「服务评价」提交，M86） */

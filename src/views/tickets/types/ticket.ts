@@ -3,6 +3,7 @@
 
 import type { BusinessType, CreateFormTicketType, TicketSource } from '@/views/tickets/types/createTicket';
 import type { TicketFlash } from '@/views/tickets/types/flash';
+import { readSla, slaStateOf } from '@/views/tickets/utils/slaClock';
 
 /**
  * 工作台主 Tab。
@@ -723,6 +724,18 @@ const SLA_STATE_RANK: Record<SlaState, number> = { overdue: 0, soon: 1, ok: 2, p
  * group：0 已超时 / 1 临期 / 2 正常 / 3 挂起 / 4 终态；minutes：组内距超时分钟升序。
  */
 export function slaSortKey(t: Ticket): { group: number; minutes: number } {
+  // 刷机单按 SLA 账本的剩余排（D-01）：与列表那一格、处理页页头同一份计算，不再解析快照字符串。
+  // 未起算的刷机单与老四类一律落到下方现有实现。
+  const led = readSla(t);
+  if (led) {
+    if (led.status === 'stopped') return { group: 4, minutes: Number.MAX_SAFE_INTEGER };
+    if (led.status === 'paused') return { group: 3, minutes: Number.MAX_SAFE_INTEGER };
+    const remains = isFirstResponded(t) ? [led.remainMs] : [led.remainMs, led.firstRemainMs];
+    const worst = remains
+      .map((ms) => ({ state: slaStateOf(ms), minutes: ms / 60_000 }))
+      .sort((a, b) => SLA_STATE_RANK[a.state] - SLA_STATE_RANK[b.state] || a.minutes - b.minutes)[0];
+    return { group: SLA_STATE_RANK[worst.state], minutes: worst.minutes };
+  }
   if (t.slaText === '—') return { group: 4, minutes: Number.MAX_SAFE_INTEGER }; // 终态：无活跃钟
   if (isSlaPaused(t)) return { group: 3, minutes: Number.MAX_SAFE_INTEGER }; // 挂起 / 自动刷机中：冻结置底
   // 活跃钟集合：扁平摘要（已响=解决钟 / 未响=首响钟）+ 未响时的解决钟独立字段
