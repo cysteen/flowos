@@ -1017,13 +1017,10 @@ export const useFlashStore = defineStore('flash', () => {
    * - 自动刷机中：不拉回，有处理人通知处理人、无处理人通知一线刷机池。
    * 两种拉回都不置「已产生回访结论」，再下送照常进「调研中」（M58）。其余子状态不在此处理，返回 `pulled: false`。
    */
-  function onCustomerUrge(ticketNo: string, kind: 'urge' | 'supplement'): { pulled: boolean } {
-    const r = rowOf(ticketNo);
-    if (!r?.flash || (r.nodeStatus !== '调研中' && r.nodeStatus !== '自动刷机中')) return { pulled: false };
-    const st = r.flash.state;
-    const now = Date.now();
+  /** 催单 / 补充的站内通知（收件人一位，文案见 `FLASH_CS_NOTICE`） */
+  function emitCsNotice(r: Ticket, kind: 'urge' | 'supplement', receiver: string) {
     const notice = FLASH_CS_NOTICE[kind];
-    const notify = (receiver: string) => useNotifyLogStore().emit({
+    useNotifyLogStore().emit({
       ticketNo: r.no,
       event: kind === 'urge' ? FLASH_NOTIFY_EVENTS.urge : FLASH_NOTIFY_EVENTS.supplement,
       kind,
@@ -1031,6 +1028,26 @@ export const useFlashStore = defineStore('flash', () => {
       receivers: [receiver],
       content: notice.text(r.no),
     });
+  }
+
+  /**
+   * 催单 / 补充落在**不由 `onCustomerUrge` 接管的子状态**（审核中四态、已委派）时补发站内通知。
+   * 收件人＝当前工单的处理人，无处理人则发归属组（基线 ※19）；协办人不另发。
+   * 状态与 SLA 一概不动 —— 这一档的拉回照基线走处理页那一侧。
+   */
+  function notifyCsEvent(ticketNo: string, kind: 'urge' | 'supplement') {
+    const r = rowOf(ticketNo);
+    if (!r?.flash) return;
+    const handler = r.assignee;
+    emitCsNotice(r, kind, handler ? `${handler}(处理人)` : FLASH_POOLS[r.flash.state.pool ?? 'l1'].label);
+  }
+
+  function onCustomerUrge(ticketNo: string, kind: 'urge' | 'supplement'): { pulled: boolean } {
+    const r = rowOf(ticketNo);
+    if (!r?.flash || (r.nodeStatus !== '调研中' && r.nodeStatus !== '自动刷机中')) return { pulled: false };
+    const st = r.flash.state;
+    const now = Date.now();
+    const notify = (receiver: string) => emitCsNotice(r, kind, receiver);
     const handler = r.assignee;
     if (r.nodeStatus === '自动刷机中') {
       notify(handler ? `${handler}(处理人)` : FLASH_POOLS.l1.label);
@@ -1660,6 +1677,7 @@ export const useFlashStore = defineStore('flash', () => {
     recordSurveyConclusion,
     surveyGateOf,
     onCustomerUrge,
+    notifyCsEvent,
     transferToPool,
     recordLateSuccess,
     settleDue,

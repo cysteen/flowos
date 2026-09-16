@@ -1930,6 +1930,7 @@ onBeforeUnmount(() => {
  */
 function applyCsEventSideEffects(kind: 'supplement' | 'urge') {
   // ① 拉回
+  const statusBefore = d.value.status as TicketStatus;
   const pull = pullbackOnCsEvent(d.value.status as TicketStatus);
   // 刷机单（930 PRD §3.1 / §8）：调研中拉回（有处理人回处理中 / 无处理人进一线刷机池）与自动刷机中的催补通知由刷机服务落库
   if (isFlash.value && (d.value.status === '调研中' || d.value.status === '自动刷机中')) {
@@ -1947,6 +1948,11 @@ function applyCsEventSideEffects(kind: 'supplement' | 'urge') {
     });
     // 刷机单审核中 / 已挂起照基线拉回，子状态同步回工单库
     if (isFlash.value) flashStore.syncStatus(d.value.no, pull.to);
+  }
+  // 刷机单落在审核中四态 / 已委派时，`onCustomerUrge` 不接管，站内催补通知在这里补发
+  // （基线 ※19：收件＝当前处理人，无处理人发归属组；协办人不另发）
+  if (isFlash.value && (STATUS_GROUP[statusBefore] === '审核中' || statusBefore === '已委派')) {
+    flashStore.notifyCsEvent(d.value.no, kind);
   }
   // ② 行内 Tag + 催补待回：新的一次催补 → 复位为「未联系」
   const row = TICKETS.find((t) => t.no === d.value.no);
