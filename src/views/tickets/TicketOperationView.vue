@@ -1194,6 +1194,39 @@ function finishEscalateAsSupplement(payload: EscalateInput) {
 /** 升级落库：登记关联单 + 写关联履历 + 关原单（两条分支共用） */
 function finishEscalate(ticket: Ticket, targetLabel: string, processAfter?: boolean) {
   const note = escalateInput.value?.note ?? ticket.problemDesc ?? '';
+  // 刷机单（930）：新单先进运行时工单库再 dispatch。建单页产出的只是个临时对象，
+  // 不落库的话点关联卡进新单号解析不到，页面会静默回退成演示单。老工单四类照旧不落。
+  if (isFlash.value && createPrefill.value?.mode === 'escalate') {
+    const derived = derivedTickets.deriveComplaint(
+      { fromNo: d.value.no, no: ticket.no, assignee: ticket.assignee ?? user.name, reason: note },
+      undefined,
+      {
+        title: ticket.title,
+        type: ticket.type,
+        channel: ticket.channel,
+        product: ticket.product,
+        priority: ticket.priority,
+        customer: ticket.customer,
+        vip: ticket.vip,
+        smartMarks: ticket.smartMarks,
+        closureMode: ticket.closureMode,
+        nodeStatus: ticket.nodeStatus,
+        nodeStep: ticket.nodeStep,
+        nodeTotal: ticket.nodeTotal,
+        slaText: ticket.slaText,
+        slaSub: ticket.slaSub,
+        slaState: ticket.slaState,
+        slaMinutes: ticket.slaMinutes,
+        tab: ticket.tab,
+        problemDesc: createPrefill.value?.desc?.trim()
+          || note.trim()
+          || `【升级投诉·原单 ${d.value.no}】${d.value.type} → ${targetLabel}`,
+      },
+    );
+    if (!derived) {
+      console.warn(`[TicketOperationView] 原单 ${d.value.no} 不在工单数据源中，升级投诉未落库`);
+    }
+  }
   addEscalatedComplaint(ticket, targetLabel, note);
   syncEscalatedRelatedCard(ticket, targetLabel);
   dispatch({ type: '升级投诉', data: { target: targetLabel, newNo: ticket.no, note } });

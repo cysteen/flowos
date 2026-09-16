@@ -121,6 +121,16 @@ export const useDerivedTicketStore = defineStore('derivedTickets', () => {
     return tickets.value.find((t) => t.no === no);
   }
 
+  /** 身份与升级链两端由入参定死，覆盖项改不到：改了就是一张指不回原单的孤单 */
+  const PROTECTED_KEYS = ['id', 'no', 'escalatedFromNo', 'escalatedToNo'] as const;
+
+  function safeOverrides(o?: Partial<Ticket>): Partial<Ticket> {
+    if (!o) return {};
+    const out: Partial<Ticket> = { ...o };
+    PROTECTED_KEYS.forEach((k) => { delete out[k]; });
+    return out;
+  }
+
   /** 这张原单在本次会话里升级派生出的新投诉单号；没升级过时 undefined */
   function escalatedToNoOf(fromNo: string): string | undefined {
     return escalations.value[fromNo];
@@ -132,8 +142,15 @@ export const useDerivedTicketStore = defineStore('derivedTickets', () => {
    * 没有可继承的内容，硬造一张空单比不造更误导。
    *
    * `at` 缺省取当前时刻；只有预置派生（`applySeedEscalation`）传入种子里的评估时刻。
+   *
+   * `overrides` 给的是**新单自己的值**：由建单页提交的那条链路上，标题、产品、优先级等
+   * 是坐席在建单页填的，不是原单的抄件，继承之后要按表单值覆盖回来。
    */
-  function deriveComplaint(input: DeriveComplaintInput, at = nowStamp()): Ticket | null {
+  function deriveComplaint(
+    input: DeriveComplaintInput,
+    at = nowStamp(),
+    overrides?: Partial<Ticket>,
+  ): Ticket | null {
     if (find(input.no)) return find(input.no)!;
     const origin = TICKETS.find((t) => t.no === input.fromNo);
     if (!origin) return null;
@@ -162,6 +179,7 @@ export const useDerivedTicketStore = defineStore('derivedTickets', () => {
       // 这两处原写「【风险报备接管】…接管说明：」，与弹窗里的「升级说明」是同一段文字的两个名字。
       // （指"原单被新单接管"的既有表述 —— 接管横幅 —— 不在作废之列，那是另一件事。）
       problemDesc: `${origin.problemDesc ?? origin.title}\n\n【风险升级】由 ${input.assignee} 自 ${input.fromNo} 升级承接。升级说明：${input.reason}`,
+      ...safeOverrides(overrides),
     };
     tickets.value.unshift(derived);
     return derived;
