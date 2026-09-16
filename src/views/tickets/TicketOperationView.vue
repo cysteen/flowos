@@ -1538,8 +1538,10 @@ function onFlashAction(payload: Record<string, unknown>): boolean {
     message.success(res.message);
     return true;
   }
-  if (FLASH_RESUME_CAUSE[type]) flashStore.resumeSlaPause(no, FLASH_RESUME_CAUSE[type]);
+  // 线下登记暂停的恢复计时**放在动作成功之后**：动作本身抛错时不能把停钟放走
+  // （否则单没流转、钟先跑了，还留下一条「SLA 恢复计时」的账）
   dispatch(payload);
+  if (FLASH_RESUME_CAUSE[type]) flashStore.resumeSlaPause(no, FLASH_RESUME_CAUSE[type]);
   // 委派 / 撤销委派 / 协办回送：通用动作只改 `delegateInfo`，子状态由这里落库
   // （基线 §1 「已委派」子状态 · PRD §5.5 表二），页头徽章与查询中心才跟着走、重开也在
   if (type === '委派') d.value.status = '已委派';

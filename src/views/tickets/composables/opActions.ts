@@ -89,7 +89,13 @@ export interface ForwardPayload { ticketTitle: string; backToDelegator?: boolean
  * 原先这里是 `approver`（单点审批人）而落库却直接进终态，等于表单在说审批、行为没审批；
  * 现统一走 APPROVAL_GROUPS（该常量本来就注明「挂起 / 关闭工单 / 强结 共用」）。
  */
-export interface ForceClosePayload { reason: string; approvalGroup: string; detail: string; }
+/**
+ * 🔴 弹窗（`OpActionDialogs.vue` 的 `forceClose`）落的字段名是 `approver`，不是 `approvalGroup` ——
+ * 上面那次「统一走 APPROVAL_GROUPS」只改了本文件，表单那一侧没跟着改，于是提交时
+ * `approvalGroup` 恒为 `undefined`，下面的 `.replace` 直接抛 TypeError、整个动作落不了库。
+ * 两个字段都收，取到哪个用哪个，表单形态不动。
+ */
+export interface ForceClosePayload { reason: string; approvalGroup?: string; approver?: string; detail: string; }
 /**
  * 转单 = **原单关闭、新单继续跑**（基线 §1 转单三态、§4「转单（原单关闭，新单跑）」※16）。
  * 新单在建单弹窗里落库，本 payload 只带回新单标识，用于原单收口与写履历。
@@ -742,10 +748,10 @@ export function applyOpAction(
        *   两个动作在基线里本来就是同一类；文案也跟着改成"已提交审批"，不再谎报通过。
        * 连带效果：进「申请强结中」后 ※20 拉回（pullbackOnCsEvent）与 ※2「撤回」自动生效。
        */
-      const { reason, approvalGroup, detail: note } = payload.data;
+      const { reason, approvalGroup, approver, detail: note } = payload.data;
       detail.status = '申请强结中';
       freezeSolveForReview(detail);
-      const group = approvalGroup.replace(/（.*?）$/, '');
+      const group = (approvalGroup || approver || '').replace(/（.*?）$/, '');
       pushEntry(timeline, {
         category: 'node', action: 'hold', who: operator, role: operatorRole,
         how: '提交强结审批',
