@@ -1540,6 +1540,10 @@ function onFlashAction(payload: Record<string, unknown>): boolean {
   }
   if (FLASH_RESUME_CAUSE[type]) flashStore.resumeSlaPause(no, FLASH_RESUME_CAUSE[type]);
   dispatch(payload);
+  // 委派 / 撤销委派 / 协办回送：通用动作只改 `delegateInfo`，子状态由这里落库
+  // （基线 §1 「已委派」子状态 · PRD §5.5 表二），页头徽章与查询中心才跟着走、重开也在
+  if (type === '委派') d.value.status = '已委派';
+  else if (type === '撤销委派' || (type === '下送' && data.backToDelegator)) d.value.status = '处理中';
   const cross = type === '调剂' && data.scope === 'cross';
   flashStore.syncStatus(no, d.value.status, { clearAssignee: cross });
   return true;
