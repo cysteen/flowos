@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, computed, watch, onMounted, onUnmounted } from 'vue';
+import { reactive, computed, ref, watch, onMounted, onUnmounted } from 'vue';
 import {
   AimOutlined,
   MessageOutlined,
@@ -7,6 +7,7 @@ import {
   ToolOutlined,
 } from '@ant-design/icons-vue';
 import type { TicketDetailMeta, SlaClock } from '@/mock/ticketDetail';
+import { flashSlaClocks, type SlaClockSource } from '@/views/tickets/utils/slaClock';
 
 const props = defineProps<{
   detail: TicketDetailMeta;
@@ -32,20 +33,43 @@ const DIAL_STROKE: Record<Vis, string> = {
   stopped: '#E5E7EB',
 };
 
+/**
+ * 每秒刷新的取数时刻。
+ *
+ * 🔴 刷机单（930 教育刷机单 D-01）：**本条不再自己做 `-1` 算术**，只把 `now` 推前一秒、
+ * 按 SLA 账本重算一次。页头的每一秒和列表的每一次渲染跑的是同一条算式（`utils/slaClock`），
+ * 只是采样频率不同，读数永不分叉。老四类维持原样：钟由 `buildSlaClocks` 构造、在本条里逐秒递减。
+ */
+const now = ref(Date.now());
+
+const clockSource = computed<SlaClockSource>(() => ({
+  type: props.detail.type,
+  flash: props.detail.flash,
+  nodeStatus: props.detail.status,
+}));
+
+/** 刷机单账本钟；非刷机单 / 未起算返回 null，落回 `detail.slaClocks` */
+const clocks = computed<SlaClock[]>(
+  () => flashSlaClocks(clockSource.value, now.value) ?? props.detail.slaClocks,
+);
+
 const liveRemain = reactive<number[]>([]);
 
 function sync() {
-  liveRemain.length = props.detail.slaClocks.length;
-  props.detail.slaClocks.forEach((c, i) => {
+  liveRemain.length = clocks.value.length;
+  clocks.value.forEach((c, i) => {
     liveRemain[i] = c.remainSec;
   });
 }
 sync();
-watch(() => props.detail.slaClocks, sync);
+watch(clocks, sync);
 
 let timer: ReturnType<typeof setInterval> | undefined;
 onMounted(() => {
   timer = setInterval(() => {
+    now.value = Date.now();
+    // 刷机单：钟已由 clocks 按账本重算，本条不再自己递减
+    if (flashSlaClocks(clockSource.value, now.value)) return;
     props.detail.slaClocks.forEach((c, i) => {
       if (c.phase === 'running') liveRemain[i] = (liveRemain[i] ?? c.remainSec) - 1;
     });
@@ -217,15 +241,15 @@ function buildDial(c: SlaClock, i: number, wholeStartMs?: number): Dial {
 
 /** 整单钟起算时刻（ms）：首响/整单共用（同起算于建单） */
 function wholeStartMs(): number | undefined {
-  const i = props.detail.slaClocks.findIndex((c) => c.kind === 'whole');
+  const i = clocks.value.findIndex((c) => c.kind === 'whole');
   if (i < 0) return undefined;
-  const c = props.detail.slaClocks[i];
+  const c = clocks.value[i];
   return Date.now() - (c.totalSec - (liveRemain[i] ?? c.remainSec)) * 1000;
 }
 
 const dials = computed<Dial[]>(() => {
   const ws = wholeStartMs();
-  return props.detail.slaClocks
+  return clocks.value
     .map((c, i) => ({ c, i }))
     // op-header 固定只展示「整单首响 + 整单解决」两类整单时效；节点/回访时效不在头部展示
     .filter(({ c }) => c.kind === 'first' || c.kind === 'whole')
@@ -247,7 +271,7 @@ interface RelationRow {
 }
 
 const relationData = computed<{ rows: RelationRow[]; nowLeft: number }>(() => {
-  const items = props.detail.slaClocks.map((c, i) => ({ c, rem: liveRemain[i] ?? c.remainSec }));
+  const items = clocks.value.map((c, i) => ({ c, rem: liveRemain[i] ?? c.remainSec }));
   const whole = items.find((x) => x.c.kind === 'whole') ?? items[0];
   if (!whole) return { rows: [], nowLeft: 0 };
   const span = Math.max(whole.c.totalSec, 1);

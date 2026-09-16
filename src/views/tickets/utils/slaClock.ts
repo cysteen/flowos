@@ -13,9 +13,23 @@
  */
 
 import type { SlaClock } from '@/mock/ticketDetail';
-import type { FlashState } from '@/views/tickets/types/flash';
+import type { FlashState, TicketFlash } from '@/views/tickets/types/flash';
 import { parseFlashStamp } from '@/views/tickets/types/flash';
 import type { SlaState, Ticket } from '@/views/tickets/types/ticket';
+
+/**
+ * 取数对象：工单行（`Ticket`）与处理页详情（`TicketDetailMeta`）都能直接喂进来 ——
+ * 两处画的是同一张单的同一只钟，取数入口只留这一个。
+ */
+export interface SlaClockSource {
+  /** 工单类型；处理页详情上是裸字符串，故此处放宽为 string */
+  type: string;
+  flash?: TicketFlash;
+  /** 是否已首响；缺省按子状态推（未认领 / 待响应 = 未响） */
+  responded?: boolean;
+  nodeStatus?: string;
+  firstRespBreached?: boolean;
+}
 
 /** 解决时限（PRD §4.3「暂行同咨询单」：8 小时） */
 export const FLASH_SLA_LIMIT_MS = 8 * 3_600_000;
@@ -83,7 +97,7 @@ export function readFlashSla(st: FlashState, now: number = Date.now()): SlaReadi
  * 分流入口：**刷机单且已起算**才有账本读数；其余（老四类、未起算的刷机单）返回 `null`，
  * 调用方转调现有实现。
  */
-export function readSla(t: Pick<Ticket, 'type' | 'flash'>, now: number = Date.now()): SlaReading | null {
+export function readSla(t: SlaClockSource, now: number = Date.now()): SlaReading | null {
   if (t.type !== '刷机' || !t.flash) return null;
   return readFlashSla(t.flash.state, now);
 }
@@ -143,10 +157,7 @@ export function flashSlaClock(
 }
 
 /** 账本 → 页头双钟（首响 + 整单解决）。非刷机单 / 未起算返回 `null`。 */
-export function flashSlaClocks(
-  t: Pick<Ticket, 'type' | 'flash' | 'responded' | 'nodeStatus' | 'firstRespBreached'>,
-  now: number = Date.now(),
-): SlaClock[] | null {
+export function flashSlaClocks(t: SlaClockSource, now: number = Date.now()): SlaClock[] | null {
   const r = readSla(t, now);
   if (!r) return null;
   const responded = t.responded ?? (t.nodeStatus !== '未认领' && t.nodeStatus !== '待响应');

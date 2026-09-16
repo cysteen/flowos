@@ -20,6 +20,7 @@ import {
   ticketProductIssue,
 } from '@/views/tickets/utils/ticketOverview';
 import { isSlaVoidStop } from '@/views/tickets/utils/ticketListCells';
+import { flashSlaClocks } from '@/views/tickets/utils/slaClock';
 import {
   inferComplaintChannelSource,
   normalizeComplaintType,
@@ -298,7 +299,8 @@ export function useTicketOperation() {
       base.feishuSync = 'none';
       base.feishuRecords = [];
       base.productIssue = ticketProductIssue(t);
-      base.slaClocks = buildSlaClocks(t); // 时钟与列表行 SLA 摘要一致
+      // 刷机单走 SLA 账本（D-01：页头与列表同源）；老四类仍由列表行摘要反推构造
+      base.slaClocks = flashSlaClocks(t) ?? buildSlaClocks(t);
       if (t.nodeStatus === '自动刷机中') {
         // 刷机单推送后等待回传（930 M9）：冻结语义同「已转出」—— 底栏只留保存、联系客户
         base.status = '自动刷机中';
@@ -479,7 +481,7 @@ export function useTicketOperation() {
       const t = TICKETS.find((x) => x.no === detail.value.no);
       if (!t?.flash) return;
       applyFlashRow(detail.value, t);
-      detail.value.slaClocks = buildSlaClocks(t);
+      detail.value.slaClocks = flashSlaClocks(t) ?? buildSlaClocks(t);
       detail.value.latestHandling = flashLatestHandling(t.no);
       projectFlashTimeline(t.no);
     },

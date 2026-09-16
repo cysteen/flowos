@@ -10,6 +10,7 @@ import {
   type Priority, type TicketStatus,
 } from '@/views/tickets/types/ticket';
 import OpSlaBar from './OpSlaBar.vue';
+import { readSla } from '@/views/tickets/utils/slaClock';
 import OpAftersaleLinkCard from './OpAftersaleLinkCard.vue';
 import { isAftersaleSettled } from '../../composables/opActions';
 import { buildEscalateVerdict, isTicketTerminated } from '../../composables/complaintEscalation';
@@ -136,8 +137,10 @@ const flashSlaStartText = computed(() => {
   const at = props.detail.flash?.state.slaStartedAt;
   return at ? `SLA 起算 ${at.slice(0, 16)}` : '未起算';
 });
+// 「未起算」与「调研中」都不计时：SLA 区显示「—」，不画钟。判据取 `readSla` —— 与列表那一格同一份计算
 const flashSlaIdle = computed(
-  () => isFlashTicket.value && (!props.detail.flash?.state.slaStartedAt || props.detail.status === '调研中'),
+  () => isFlashTicket.value
+    && (!readSla({ type: props.detail.type, flash: props.detail.flash }) || props.detail.status === '调研中'),
 );
 
 const metaTitle = computed(
