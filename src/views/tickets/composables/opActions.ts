@@ -7,6 +7,7 @@ import { useDerivedTicketStore } from '@/stores/derivedTickets';
 import type { RoleKey } from '@/config/roles';
 import { AFTERSALE_INBOUND_SOURCE, normalizeTicketSource } from '@/views/tickets/types/createTicket';
 import { handlerGroupOf } from '@/views/tickets/types/ticket';
+import { useFlashStore } from '@/stores/flash';
 // 终态判定单一实现：与头部按钮、只读锁同源，避免两处各写一份正则再漂
 import { isTicketTerminated } from './complaintEscalation';
 
@@ -547,6 +548,15 @@ function nowCloseTime(): string {
 }
 
 /**
+ * 刷机单单号（930 教育刷机单 D-01）：刷机单的 SLA 真源在账本里（`stores/flash.ts`），
+ * 本文件那几条通用动作改的是页面上的钟对象 —— 刷机单还须把同一笔记进账本，
+ * 否则页头钟停了、列表那一格还在走。老四类返回 `null`，一行不动。
+ */
+function flashTicketNo(detail: TicketDetailMeta): string | null {
+  return detail.type === '刷机' && detail.flash ? detail.no : null;
+}
+
+/**
  * 计时终止（结案/关闭/取消）：关闭所有活跃钟。
  * 首响与整单分别新增一条独立关钟履历。
  */
@@ -555,6 +565,8 @@ function terminateClocks(
   timeline: TimelineEntry[],
   voidStop = false,
 ): void {
+  const flashNo = flashTicketNo(detail);
+  if (flashNo) useFlashStore().stopSla(flashNo, voidStop);
   const closedAt = nowCloseTime();
   const closedTargets: Array<{ clock: '首响' | '整单'; closedAt: string }> = [];
   detail.slaClocks.forEach((c) => {
@@ -588,6 +600,8 @@ function terminateClocks(
  * 首响钟若已达标(stopped)不动；仍在走(running)的解决钟才冻结。
  */
 function freezeSolveForReview(detail: TicketDetailMeta): void {
+  const flashNo = flashTicketNo(detail);
+  if (flashNo) useFlashStore().holdSla(flashNo, '审核中');
   detail.slaClocks.forEach((c) => {
     if (c.kind === 'whole' && c.phase === 'running') {
       c.reviewSubmitAtMs = Date.now(); // 提交时刻，供驳回时计入等待时长
@@ -602,6 +616,8 @@ function freezeSolveForReview(detail: TicketDetailMeta): void {
  * 审批/调研时间计入 SLA，不因走审核而免除这段耗时。
  */
 function reopenSolveOnReject(detail: TicketDetailMeta): boolean {
+  const flashNo = flashTicketNo(detail);
+  if (flashNo) useFlashStore().resumeSla(flashNo);
   let reopened = false;
   detail.slaClocks.forEach((c) => {
     if (c.kind === 'whole' && c.reviewSubmitAtMs != null) {
@@ -972,6 +988,8 @@ export function applyOpAction(
       const { reason, detail: note } = payload.data;
       detail.status = '处理中';
       // 解冻续走：挂起冻结的钟按保留的剩余续算；停表钟为终态不动
+      const flashNo = flashTicketNo(detail);
+      if (flashNo) useFlashStore().resumeSla(flashNo);
       detail.slaClocks.forEach((c) => {
         if (c.phase === 'paused') c.phase = 'running';
       });

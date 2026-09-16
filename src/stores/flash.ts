@@ -1229,6 +1229,35 @@ export const useFlashStore = defineStore('flash', () => {
   }
 
   /**
+   * 通用动作侧的 SLA 记账入口（PRD §4.3）。处理页那几条沿用现有实现的动作
+   * （提交审核冻结 / 驳回续走 / 解除挂起 / 结案关闭强结取消）改的是页面上的钟对象；
+   * 刷机单的钟在账本里，由这三个入口落回账本，页头与列表随之一起变。
+   */
+  function holdSla(ticketNo: string, reason: string): void {
+    const r = rowOf(ticketNo);
+    if (!r?.flash) return;
+    pauseClock(r, Date.now(), reason);
+    bump(ticketNo);
+    persist();
+  }
+
+  function resumeSla(ticketNo: string): void {
+    const r = rowOf(ticketNo);
+    if (!r?.flash) return;
+    resumeClock(r, Date.now());
+    bump(ticketNo);
+    persist();
+  }
+
+  function stopSla(ticketNo: string, voidStop = false): void {
+    const r = rowOf(ticketNo);
+    if (!r?.flash) return;
+    stopClock(r, Date.now(), voidStop);
+    bump(ticketNo);
+    persist();
+  }
+
+  /**
    * 下送（PRD §5.5「下送确认」/ §8 / M26 / M58）：
    * - 本单已产生过回访结论 → 跳过回访直接「已结案」，不发调研短信，履历「下送（已回访过，直接结案）」；
    * - 否则 → 进「调研中」，处理人为下送人，记下送发起人（X30），发调研短信（写通知记录）。
@@ -1640,6 +1669,9 @@ export const useFlashStore = defineStore('flash', () => {
     markEscalatedComplaint,
     saveProcess,
     resumeSlaPause,
+    holdSla,
+    resumeSla,
+    stopSla,
     markRespondedByContact,
     forward,
     withdrawForward,
