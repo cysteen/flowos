@@ -1361,6 +1361,26 @@ export function rowActions(t: Ticket): { label: string; primary?: boolean }[] {
   }
 }
 
+/**
+ * 「临期 / 已超时」chip 判据（930 教育刷机单 PRD §4.3 同源清单④，D-10 / R156）。
+ *
+ * 工作台「我的任务」与查询中心那两枚 chip 共用这一处，别再各写一份。
+ *
+ * 刷机单取 SLA 账本：`slaSortKey` 的刷机分支已按「本单在计钟中最紧急的那一口」归约出
+ * 状态组（0 已超时 / 1 临期 / 2 正常 / 3 停钟 / 4 终态），此处直接复用它算出来的组，
+ * 不另写一套 —— 列表 SLA 列、紧急度排序与这两枚 chip 因此永远给同一个结论。
+ * 停钟（3）、终态（4）与未起算（无账本读数）既不算临期也不算已超时。
+ *
+ * 老四类一字不动，继续读工单行上的 `slaState`。
+ */
+export function matchSlaChip(t: Ticket, key: 'soon' | 'overdue'): boolean {
+  if (t.type === '刷机') {
+    if (!readSla(t)) return false;
+    return slaSortKey(t).group === (key === 'overdue' ? 0 : 1);
+  }
+  return t.slaState === key;
+}
+
 /** 我的任务 chip 是否命中 */
 export function matchMineChip(t: Ticket, chip: MineChipKey): boolean {
   switch (chip) {
@@ -1385,9 +1405,9 @@ export function matchMineChip(t: Ticket, chip: MineChipKey): boolean {
     case 'suspended':
       return !!t.suspendedByMe;
     case 'soon':
-      return t.slaState === 'soon';
+      return matchSlaChip(t, 'soon');
     case 'overdue':
-      return t.slaState === 'overdue';
+      return matchSlaChip(t, 'overdue');
     default:
       return true;
   }
