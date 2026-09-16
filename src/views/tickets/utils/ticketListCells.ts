@@ -179,14 +179,26 @@ export function slaFirstLine(t: Ticket, now: number = Date.now()): SlaLine {
   return { text: slaShort(t.slaText), color: SLA_COLOR[t.slaState] };
 }
 
+/** 一行 SLA 的结论文案是不是"超时"（在计已超 / 收口未达标） */
+function isBreachedLine(l: SlaLine): boolean {
+  return l.text === '未达标' || l.text.startsWith('超');
+}
+
+/** 解决钟此刻是不是超时态（判据同 `isSlaBreachedNow`：取解决行的结论文案） */
+export function isResolveBreachedNow(t: Ticket): boolean {
+  return isBreachedLine(slaResolveLine(t));
+}
+
+/** 首响钟此刻是不是超时态（判据同 `isSlaBreachedNow`：取首响行的结论文案） */
+export function isFirstRespBreachedNow(t: Ticket): boolean {
+  return isBreachedLine(slaFirstLine(t));
+}
+
 /**
  * 这张单**此刻是不是超时态**（解决或首响任一未达标 / 已超）。
  * 供"按 SLA 是否超时"这类筛选用 —— 判据取上面那两行的**结论文案**，
  * 不另起一套阈值比较：另写一套的话，筛出来的行与它自己那一格显示的颜色迟早对不上。
  */
 export function isSlaBreachedNow(t: Ticket): boolean {
-  const r = slaResolveLine(t);
-  const f = slaFirstLine(t);
-  const bad = (l: SlaLine) => l.text === '未达标' || l.text.startsWith('超');
-  return bad(r) || bad(f);
+  return isResolveBreachedNow(t) || isFirstRespBreachedNow(t);
 }

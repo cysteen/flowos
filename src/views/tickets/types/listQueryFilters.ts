@@ -9,6 +9,10 @@ import {
   type Ticket,
   type TicketType,
 } from '@/views/tickets/types/ticket';
+import {
+  isFirstRespBreachedNow,
+  isResolveBreachedNow,
+} from '@/views/tickets/utils/ticketListCells';
 
 /** 查询中心 · 工单列表筛选条件 */
 export interface ListFilters {
@@ -169,10 +173,15 @@ function matchStatus(t: Ticket, status: string): boolean {
     // 本项筛的是"升级过的单"，与升级目标无关，故两个子状态都收（isEscalatedStatus）。
     return isEscalatedStatus(t.nodeStatus) || !!t.smartMarks?.includes('升级');
   }
+  // 「首响超时 / 解决超时」两项：刷机单取 SLA 账本的对应那只钟，判据即列表 SLA 列
+  // 两行的结论文案（930 教育刷机单 PRD §4.3 同源清单⑤，D-10）—— 筛出来的行与它自己
+  // 那一格显示的颜色永远一致。老四类一字不动，继续读工单行上的扁平快照。
   if (status === 'firstResponseOverdue') {
+    if (t.type === '刷机') return isFirstRespBreachedNow(t);
     return !isFirstResponded(t) && t.slaState === 'overdue';
   }
   if (status === 'resolutionOverdue') {
+    if (t.type === '刷机') return isResolveBreachedNow(t);
     const resolveState = isFirstResponded(t) ? t.slaState : t.resolveSlaState;
     return resolveState === 'overdue';
   }
