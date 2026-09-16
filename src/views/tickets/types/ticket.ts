@@ -2,7 +2,7 @@
 // 业务规则对齐 PRD-02。
 
 import type { BusinessType, CreateFormTicketType, TicketSource } from '@/views/tickets/types/createTicket';
-import type { TicketFlash } from '@/views/tickets/types/flash';
+import { FLASH_POOLS, FLASH_TICKET_TYPE, type TicketFlash } from '@/views/tickets/types/flash';
 import { readSla, slaStateOf } from '@/views/tickets/utils/slaClock';
 
 /**
@@ -1016,6 +1016,11 @@ export function inFlashMineScope(t: Ticket, roleKey: string, handler: string, cr
 /** 列表「分组名称」列：优先 groupNames，否则按业务线+工单类型推断 */
 export function resolveTicketGroupNames(t: Ticket): string[] {
   if (t.groupNames?.length) return t.groupNames;
+  // 930 教育刷机单 §4.2：刷机单的分组取本单归属刷机池的组名，不按「业务线＋工单类型」兜底；
+  // 未进池的单（首推「自动刷机中」、自动刷机成功直进「调研中」）归一线刷机池＝一线客服组。
+  if (t.type === FLASH_TICKET_TYPE) {
+    return [FLASH_POOLS[t.flash?.state.pool ?? 'l1'].groupName];
+  }
   const names: string[] = [];
   const biz = t.businessType?.trim();
   if (biz) {
