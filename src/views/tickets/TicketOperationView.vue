@@ -3,7 +3,7 @@ import { computed, defineAsyncComponent, onActivated, onBeforeUnmount, onDeactiv
 import { useRoute, useRouter } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
 import { useWorkspaceTabsStore, resolveTicketTabTitle } from '@/stores/workspaceTabs';
-import { useCtiStore, formatCallDuration } from '@/stores/cti';
+import { useCtiStore, buildCallContactSummary } from '@/stores/cti';
 import { useUserStore } from '@/stores/user';
 import OpHeader from './components/operation/OpHeader.vue';
 import OpOverviewBand from './components/operation/OpOverviewBand.vue';
@@ -908,21 +908,18 @@ watch(
   () => cti.callSession,
   (cur, prev) => {
     if (!prev || cur || prev.ticketId !== ticketNo.value) return;
+    // 拨号阶段取消不落记录；振铃未接 / 接通后挂断均写入联系记录
     if (prev.status === 'dialing') return;
-    const duration = prev.connectedAt
-      ? formatCallDuration(Date.now() - prev.connectedAt)
-      : '00:00';
-    const holdMs = (prev.holdAccumMs ?? 0)
-      + (prev.held && prev.holdSince ? Date.now() - prev.holdSince : 0);
-    const holdPart = holdMs > 0 ? ` | 保持: ${formatCallDuration(holdMs)}` : '';
+    const endedAt = Date.now();
+    const connected = prev.status === 'connected' && prev.connectedAt != null;
     tabData.value.contactRecords.unshift({
       id: `c-${Date.now()}`,
       kind: 'call',
-      title: '外呼联系',
+      title: connected ? '外呼联系' : '外呼',
       emoji: '📞',
       operator: user.name || '当前坐席',
       when: formatNow(),
-      summary: `呼叫号码: ${prev.phone} | 状态: 接通 | 时长: ${duration}${holdPart}`,
+      summary: buildCallContactSummary(prev.phone, prev, endedAt),
     });
     syncContactedAfterOutreach();
     processTabsRef.value?.switchTab('contact');
@@ -1717,6 +1714,13 @@ function formatNow() {
   return `今天 ${hh}:${mm}:${ss}`;
 }
 
+/** 标记已知晓 / 已沟通类时刻（对齐预约 Tab doneAt：YYYY-MM-DD HH:mm:ss） */
+function formatAckNow() {
+  const n = new Date();
+  const p = (x: number) => String(x).padStart(2, '0');
+  return `${n.getFullYear()}-${p(n.getMonth() + 1)}-${p(n.getDate())} ${p(n.getHours())}:${p(n.getMinutes())}:${p(n.getSeconds())}`;
+}
+
 function onIncomingTicketEvent(
   type: TicketLiveEventType,
   content: string,
@@ -1767,9 +1771,10 @@ function onIncomingTicketEvent(
 }
 
 /** 标记催单/补充为已知晓，并同步统计宫格计数 */
-function markRecordAcknowledged(rec: { read?: boolean }, isDunning: boolean) {
+function markRecordAcknowledged(rec: { read?: boolean; readAt?: string }, isDunning: boolean) {
   if (rec.read) return;
   rec.read = true;
+  rec.readAt = formatAckNow();
   const ins = d.value.insight;
   if (isDunning) ins.dunningReadCount = (ins.dunningReadCount ?? 0) + 1;
   else ins.supplementReadCount = (ins.supplementReadCount ?? 0) + 1;

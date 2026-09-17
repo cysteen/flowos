@@ -92,6 +92,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       content: '补充设备 SN 照片及相关检测材料',
       attachments: ['SN背面.jpg', '检测报告.pdf'],
       read: true,
+      readAt: '2026-09-17 10:12:08',
       contacted: true,
     },
     {
@@ -113,6 +114,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       content: '客户二次来电催单，要求今日内反馈处理进度',
       attachments: ['催单通话录音.mp3'],
       read: true,
+      readAt: '2026-09-17 13:00:41',
       contacted: true,
     },
     {
@@ -126,6 +128,33 @@ export const OPERATION_TAB_DATA: OperationTabData = {
     },
   ],
   contactRecords: [
+    {
+      id: 'c-nc1',
+      kind: 'call',
+      title: '外呼',
+      emoji: '📞',
+      operator: '叶爱凤',
+      when: '2026-09-17 09:38:10',
+      summary: '呼叫号码: 15300013857 | 状态: 未接通 | 振铃时长: 00:22',
+    },
+    {
+      id: 'c-nc2',
+      kind: 'call',
+      title: '外呼',
+      emoji: '📞',
+      operator: '叶爱凤',
+      when: '2026-09-17 09:37:50',
+      summary: '呼叫号码: 15300013857 | 状态: 未接通 | 振铃时长: 00:35',
+    },
+    {
+      id: 'c-nc3',
+      kind: 'call',
+      title: '外呼',
+      emoji: '📞',
+      operator: '叶爱凤',
+      when: '2026-08-31 18:05:33',
+      summary: '呼叫号码: 15300013857 | 状态: 未接通 | 振铃时长: 00:45',
+    },
     {
       id: 'c1',
       kind: 'call',

@@ -60,6 +60,22 @@ export function formatCallDuration(ms: number): string {
   return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
 }
 
+/** 联系记录 Tab · 外呼卡片摘要（接通展示通话时长，未接通展示振铃时长） */
+export function buildCallContactSummary(
+  phone: string,
+  session: Pick<CallSession, 'status' | 'connectedAt' | 'startedAt' | 'holdAccumMs' | 'held' | 'holdSince'>,
+  endedAt: number = Date.now(),
+): string {
+  const connected = session.status === 'connected' && session.connectedAt != null;
+  if (connected) {
+    const holdMs = (session.holdAccumMs ?? 0)
+      + (session.held && session.holdSince ? endedAt - session.holdSince : 0);
+    const holdPart = holdMs > 0 ? ` | 保持: ${formatCallDuration(holdMs)}` : '';
+    return `呼叫号码: ${phone} | 状态: 接通 | 时长: ${formatCallDuration(endedAt - session.connectedAt!)}${holdPart}`;
+  }
+  return `呼叫号码: ${phone} | 状态: 未接通 | 振铃时长: ${formatCallDuration(endedAt - session.startedAt)}`;
+}
+
 export const useCtiStore = defineStore('cti', {
   state: () => ({
     agentNo: '001006',

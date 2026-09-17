@@ -22,7 +22,49 @@
     </script>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <!-- Vue 挂载前占位；若 JS 加载失败则保留此提示，避免整页白屏 -->
+      <div
+        id="app-boot"
+        style="
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 100vh;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+          color: #6b7280;
+          background: #f9fafb;
+        "
+      >
+        加载中…
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
+    <script>
+      (function () {
+        // Vue 3 挂载后会给 #app 加 data-v-app=""（值为空字符串），不能用 if (dataset.vApp) 判真
+        function isAppMounted() {
+          return document.getElementById('app')?.hasAttribute('data-v-app') === true;
+        }
+        function showBootError(msg) {
+          if (isAppMounted()) return;
+          var el = document.getElementById('app');
+          if (!el) return;
+          el.innerHTML =
+            '<div style="padding:48px 24px;font-family:sans-serif;color:#374151;background:#f9fafb;min-height:100vh">' +
+            '<h2 style="margin:0 0 12px;font-size:18px">页面未能正常加载</h2>' +
+            '<p style="margin:0 0 16px;color:#6b7280">' + msg + '</p>' +
+            '<p style="margin:0;color:#6b7280">请尝试 <strong>Ctrl+Shift+R</strong> 强制刷新；若仍失败，在项目目录执行 <code>npm run dev</code> 后重试。</p>' +
+            '</div>';
+        }
+        window.addEventListener('error', function (e) {
+          showBootError((e && e.message) || '页面脚本加载失败');
+        });
+        window.addEventListener('unhandledrejection', function (e) {
+          var reason = e && e.reason;
+          showBootError((reason && reason.message) || String(reason || '模块加载失败'));
+        });
+      })();
+    </script>
   </body>
 </html>

@@ -30,7 +30,10 @@ const emit = defineEmits<{
         <span class="record-read-slot">
           <span v-if="r.contacted" class="record-contact-tag">已联系</span>
           <span v-else-if="r.read" class="record-pending-contact">待联系</span>
-          <span v-if="r.read" class="record-read-tag"><CheckOutlined /> 已知晓</span>
+          <span v-if="r.read" class="record-read-tag">
+            <CheckOutlined /> 已知晓
+            <span v-if="r.readAt" class="record-read-at">{{ r.readAt }}</span>
+          </span>
           <button
             v-else-if="!readonly"
             type="button"
@@ -141,6 +144,13 @@ const emit = defineEmits<{
   gap: 3px;
   font-size: 12px;
   color: #16a34a;
+  white-space: nowrap;
+}
+.record-read-at {
+  margin-left: 4px;
+  color: #6b7280;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
 }
 .simple-item.is-read {
   background: #fafafa;

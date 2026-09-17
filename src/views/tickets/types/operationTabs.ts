@@ -76,6 +76,8 @@ export interface SimpleRecord {
   attachments?: string[];
   /** 坐席是否已知晓（催单/补充明细，原 read） */
   read?: boolean;
+  /** 标记已知晓时刻（YYYY-MM-DD HH:mm:ss，对齐预约 Tab「已沟通」） */
+  readAt?: string;
   /** 该次催补之后是否已有对客联系（系统自动，无手动入口） */
   contacted?: boolean;
 }

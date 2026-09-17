@@ -69,6 +69,10 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
       dunningRecords: [],
       contactRecords: [
         {
+          id: 'c-nc', kind: 'call', title: '外呼', emoji: '📞', operator: '王坐席',
+          when: '2026-09-17 09:38:10', summary: '呼叫号码: 15300013857 | 状态: 未接通 | 振铃时长: 00:22',
+        },
+        {
           id: 'c1', kind: 'call', title: '外呼回访', emoji: '📞', operator: '王坐席',
           when: '2026-06-17 09:18:22', summary: '呼叫号码: 139 0000 0002 | 状态: 接通 | 时长: 03:05',
           recording: { progress: '01:20 / 03:05', progressPercent: 43 },

@@ -23,6 +23,7 @@ export const TICKET_DEMO_TAB_OVERRIDES: Record<string, Partial<OperationTabData>
         supplementType: '补充信息',
         content: '补充客户微信号，便于平台调解联系',
         read: true,
+        readAt: '2026-09-17 08:55:20',
         contacted: true,
       },
     ],

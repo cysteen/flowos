@@ -23,6 +23,9 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    // 绑定 0.0.0.0，避免 Cursor 内置浏览器 / 局域网访问 localhost 偶发连不上
+    host: true,
+    strictPort: true,
   },
   preview: {
     // host: true 绑定 0.0.0.0，局域网同事可通过本机内网 IP 访问
