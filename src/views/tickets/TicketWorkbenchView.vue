@@ -106,8 +106,8 @@ function onTabChange(tab: WorkbenchTabKey) {
 
 /** 我的任务 ·「已挂起」追加列 */
 const SUSPEND_EXTRA_COLUMNS = [
-  { key: 'suspendedAt', label: '挂起时间', width: 128, after: 'node' },
-  { key: 'suspendResumeAt', label: '解挂时间', width: 128, after: 'node' },
+  { key: 'suspendedAt', label: '申请挂起时间', width: 128, after: 'node' },
+  { key: 'suspendResumeAt', label: '预期解挂时间', width: 128, after: 'node' },
 ];
 
 /**
