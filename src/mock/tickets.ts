@@ -1,6 +1,7 @@
 import type { Ticket } from '@/views/tickets/types/ticket';
 import { resolveTicketGroupNames } from '@/views/tickets/types/ticket';
 import { mapChannelToSource } from '@/views/tickets/types/createTicket';
+import { todayStamp } from '@/stores/riskShared';
 import { FLASH_SEEDS } from './flash/seedTickets';
 
 // 工单 Mock 数据（对齐 PRD-02 §9 字段与分布；样例文案参考 .pen SJpgc）。
@@ -730,6 +731,24 @@ const BASE_TICKETS: Ticket[] = [
   // 这批单归属其他班组、处理人也不是本工作台的坐席，故本工作台的六个页签一个都不收它们
   // （见上方 ops-* 的说明），只在查询中心与运营监控里可查、可点开。补数据不该顺带把
   // 别的页面的条数改掉。
+  //
+  // ---- 当日建单三张：rk-3、rk-8、rk-9 的 `createdAt` 走 `todayStamp` ----
+  // 风险监控页头「工单存量」两格下方的「今日新增 N」按 `createdAt` 是否落在自然日今天来数
+  // （`RiskMonitorView.ticketStockOf`）。整份工单库的建单时刻都写死在 6~8 月，那两个数于是恒为 0：
+  // 一个永远是 0 的指标，读的人分不清是"今天真没进单"还是"这一格根本不走数"。
+  //
+  // 【为什么挑这三张】①两格各要有数：rk-8 / rk-9 是投诉（投诉工单那格），rk-3 是非投诉 P0
+  // （紧急 / 重要那格），两张投诉又都是 P1，故后一格收三张。②三张的 SLA 现状都是"未超时"
+  // （rk-3 距首响 35 分、rk-8 距首响 48 分、rk-9 解决剩 01:36），改成当天建单不会撞出
+  // "今天刚建、却已超时几十小时"这种自相矛盾的行——rk-1 / rk-6 / rk-7 那几张挂着 `solveBreached`
+  // 的就是因此不动。③三张都没被风险种子（`stores/riskQueue.ts`）与运营报表（`mock/opsReport.ts`）
+  // 引用，改时刻不会牵动那两处的样本。
+  //
+  // 🔴 **单号一律不动**。号段里的日期与 `createdAt` 本就不要求相等（rk-1 / rk-6 / rk-7 是
+  // `20260806` 配 08-05 建单），而 `IFLYTS-<今天>-` 这一段是派生投诉单的号段
+  // （`stores/derivedTickets.ts` 的 `SEED_RISK_ESCALATION` 占 00001，现场升级由
+  // `useRiskReportAssess.nextEscalatedNo` 顺序取号）——把样本单改到那一段里去，
+  // 等于在演示数据里埋一个会撞号的坑。
   // ================================================================
   {
     id: 'rk-1', no: 'IFLYZX-20260806-00001', type: '咨询', channel: '邮件',
@@ -768,7 +787,9 @@ const BASE_TICKETS: Ticket[] = [
     customerPhone: '13500002222', productCategory: '开放平台',
     problemDesc: '鉴权接口批量返回 500，客户线上业务全量调用失败。',
     latestHandling: '已通知平台侧值班，等待网关侧回滚确认。',
-    createdAt: '2026-08-06 09:50', updatedAt: '2026-08-06 10:05',
+    // 当日建单之一（见上方 rk-1…rk-6 段首「当日建单三张」说明）：非投诉 P0 的那一张。
+    // 尚未首响、距首响超时 35 分钟，与 75 分钟前建单对得上。
+    createdAt: todayStamp(75), updatedAt: todayStamp(60),
     responded: false,
   },
   {
@@ -853,7 +874,8 @@ const BASE_TICKETS: Ticket[] = [
     customerPhone: '13633334444', sn: 'SN-T10-771203', productCategory: '消费电子',
     problemDesc: '换新机器录音仍有底噪，客户不再接受换货，要求全额退货。',
     latestHandling: '暂无处理记录。',
-    createdAt: '2026-08-06 09:22', updatedAt: '2026-08-06 09:22',
+    // 当日建单之二：投诉 P1、刚进来还没人碰，建单与更新同一刻。
+    createdAt: todayStamp(100), updatedAt: todayStamp(100),
     responded: false,
   },
   {
@@ -866,7 +888,8 @@ const BASE_TICKETS: Ticket[] = [
     customerPhone: '13744445555', sn: 'SN-X1-330925', productCategory: '智能硬件',
     problemDesc: '三次预约上门均爽约，客户为此三次请假，要求赔偿误工费。',
     latestHandling: '已致歉并改约本周六上午，赔偿口径待班组长确认。',
-    createdAt: '2026-08-06 08:15', updatedAt: '2026-08-06 10:30',
+    // 当日建单之三：投诉 P1、已首响且解决时限仍充足（剩 01:36），与 3 小时前建单对得上。
+    createdAt: todayStamp(180), updatedAt: todayStamp(45),
     responded: true,
   },
 ];
