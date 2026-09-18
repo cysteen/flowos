@@ -238,8 +238,8 @@ const riskConclusion = computed(() => {
   /*
    * 🔴 **等级单独取一次，不从 `verify` 里拿**（2026-09-10 收口）：`ticketVerificationOf`
    * 在**本单没有任何命中记录时返回 null** —— 那是它的本意（"没命中"不等于"没风险"，
-   * 监控对这单没话可说）。但工单级等级的新口径含**打标结论**，而投诉单 P0·P1 与
-   * 重要紧急单这两类根本不产生命中记录：走 `verify` 这条路，它们打了标也永远回写不进工单。
+   * 监控对这单没话可说）。但工单级等级的新口径含**打标结论**，而「重点工单」那一路的单
+   * 根本不产生命中记录：走 `verify` 这条路，它们打了标也永远回写不进工单。
    * 故等级直接问 `ticketGradeOf`（它自己已经把两个来源取过 max 了）。
    */
   const grade = riskTags.ticketGradeOf(ticketNo.value);

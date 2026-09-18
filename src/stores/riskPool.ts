@@ -221,12 +221,12 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
    */
   const goesToAssess = (_r: RiskPoolItem) => true;
 
-  /** B1 待评估总数（四类来源）＝ 待分派 + 评估中 */
+  /** B1 待评估总数（三类来源）＝ 待分派 + 评估中 */
   const assessOpenCount = computed(() => openQueue.value.filter(goesToAssess).length);
   /** B1 的两个分项，界面上紧挨着 B1 摆，读得出 `待分派 + 评估中 ≡ B1` */
   const assessUnassignedCount = computed(() => unassignedQueue.value.filter(goesToAssess).length);
   const assessAssigningCount = computed(() => assigningQueue.value.filter(goesToAssess).length);
-  /** B2 超时未评（四类来源） */
+  /** B2 超时未评（三类来源） */
   const assessOverdueCount = computed(
     () => openQueue.value.filter((r) => goesToAssess(r) && isOverdue(r)).length,
   );
@@ -256,7 +256,7 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
       .sort((a, b) => concludedAt(b).localeCompare(concludedAt(a))),
   );
 
-  /** B3 今日已评估数（§7）。按**评估时刻**落在今日算，不按提交时刻；分母同 B1，四类来源 */
+  /** B3 今日已评估数（§7）。按**评估时刻**落在今日算，不按提交时刻；分母同 B1，三类来源 */
   const assessedTodayCount = computed(
     () =>
       assessedList.value.filter(
