@@ -6,6 +6,7 @@
 // 未建档客户按工单聚合出基础档案。
 
 import { TICKETS } from './tickets';
+import { todayPrefix } from '@/stores/riskShared';
 import {
   isTicketClosed,
   resolveStoppedClockStatus,
@@ -14,8 +15,25 @@ import {
   type Ticket,
 } from '@/views/tickets/types/ticket';
 
-/** 客户全景页时间基准（与工单 Mock 时间轴对齐） */
-export const INSIGHT_TODAY = '2026-08-04';
+/* -------------------------------------------------------------------------
+ * 时间基准 ＝ **系统真实日期**（`todayPrefix()`，与风险监控页同一个「今天」）。
+ *
+ * 本页此前自带一个写死的基准日，于是「近 30 天 / 近 90 天」按它算、而「最近来单」
+ * 显示的却是工单库里的真实时刻：`todayStamp()` 生成的当日建单落在基准日**之后**，
+ * 天数差为负，一并被算进「近 30 天」——页面一边说今天是某日，一边把那之后的单
+ * 当成"最近 30 天内"。基准日一旦改成真实日期，这一类"未来单"自己就没了。
+ *
+ * ⚠️ **本文件里的历史时刻一律保持绝对日期，不改成"相对今天回溯 N 天"**，两条理由：
+ * ① 历史单必须始终**早于工单库那批在办单**（本文件的既有约定：历史单只存于履历、
+ *    不可点开）。工单库的建单时刻写死在 6～8 月，是**不随真实时间走**的；
+ *    历史单一旦改成"N 天前"，它每天往前挪一天、在办单却钉在原地，
+ *    几天到几周之内归档单就会翻到在办单前面，「最近来单」指向一张点不开的归档单。
+ * ② 每条历史记录的单号里带着自己的日期段（`IFLYTS-20260412-00002`）。
+ *    日期浮动、单号不动，等于给每一行都造一处"单号日期与建单日期对不上"。
+ *
+ * 历史记录本就是"发生在某个确切日子的事"，绝对日期是它的正解；
+ * 会随时间变味的是**拿今天去比**的那些读数，那些已经全部收口到 `daysBefore()`。
+ * ----------------------------------------------------------------------- */
 
 /**
  * 客户角色：**客户是谁**，决定对客口径与升级敏感度。
@@ -563,8 +581,8 @@ function fromTicket(t: Ticket): CustomerTicketRow {
   };
 }
 
-/** 'YYYY-MM-DD hh:mm' → 天数差（相对基准日） */
-function daysBefore(when: string, base = INSIGHT_TODAY): number {
+/** 'YYYY-MM-DD hh:mm' → 天数差（相对今天）。本页所有「近 N 天」口径只经这一个函数 */
+function daysBefore(when: string, base = todayPrefix()): number {
   const d = new Date(when.slice(0, 10).replace(/-/g, '/'));
   const b = new Date(base.replace(/-/g, '/'));
   return Math.round((b.getTime() - d.getTime()) / 86400000);
