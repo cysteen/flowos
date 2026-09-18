@@ -83,8 +83,8 @@ export function excerptWindow(h: Pick<RiskHit, 'excerpt' | 'matchedWord'>): Exce
 
 /**
  * 这一行是不是**预警词命中**捞进来的（来源＝实时监控）。
- * 用处只剩一个：把命中原话摆出来（另两类来源没有原话可摆）。
- * 🔴 **它已经不再决定这一行下一步做什么** —— 三类来源都要打标才进池，见风险监控页 `needsVerify`。
+ * 用处只剩一个：把命中原话摆出来（「重点工单」与「二线报备」没有原话可摆）。
+ * 🔴 **它已经不再决定这一行下一步做什么** —— 两类来源都要打标才进池，见风险监控页 `needsVerify`。
  */
 export function isKeywordRow(r: { source: RiskPoolItem['source'] }): boolean {
   return isVerifyMonitorSource(r.source);

@@ -462,7 +462,7 @@ function nowStamp(): string {
 
 /**
  * 提交打标。落 store 走 `recordTagFor`（按单号找条目，状态机的唯一入口；
- * 本单没进过实时监控时由它按三类判据现补一条，见 `riskQueue.ensureEntryFor`）。
+ * 本单没进过实时监控时由它按两类判据现补一条，见 `riskQueue.ensureEntryFor`）。
  * 打为低 / 中 / 高时 store 同时**回写工单级风险等级**（§6.1）：
  * 工单级 ＝ 该单**各条结论取最高**；同一条**改判以最新结论为准**（改判要填理由，那就是一次人的降级判断）。
  *
@@ -489,7 +489,7 @@ function confirmTag() {
     ...(isAmend.value ? { amendReason: tagAmendReason.value.trim() } : {}),
   });
   if (!res.ok) {
-    // 原因由 store 给：挡住它的可能是"不在三类自动识别范围内"，也可能是"这张单查不到"，
+    // 原因由 store 给：挡住它的可能是"不在两类自动识别范围内"，也可能是"这张单查不到"，
     // 两者要人做的事完全不同，不能一律说"本单没有实时监控条目"
     message.warning(res.reason ?? '本单无法在工单页打标');
     return;

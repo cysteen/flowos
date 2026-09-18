@@ -732,12 +732,12 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
   }
   /**
    * 按工单号打标（打标弹窗从命中侧 / 工单页点开，手上只有单号）。
-   * 本单没进过实时监控时会**按三类判据现补一条条目**，见 `riskQueue.ensureEntryFor`。
+   * 本单没进过实时监控时会**按两类判据现补一条条目**，见 `riskQueue.ensureEntryFor`。
    */
   function recordTagFor(ticketNo: string, input: RiskTagInput) {
     return queue.recordTagFor(ticketNo, input);
   }
-  /** 拿到一条可打标的条目（没有就按三类判据现补），见 `riskQueue.ensureEntryFor` */
+  /** 拿到一条可打标的条目（没有就按两类判据现补），见 `riskQueue.ensureEntryFor` */
   function ensureEntryFor(ticketNo: string) {
     return queue.ensureEntryFor(ticketNo);
   }
