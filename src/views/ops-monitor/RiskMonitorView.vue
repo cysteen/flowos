@@ -74,6 +74,7 @@ import {
   deriveEscalatedComplaint,
   escalateHintOf,
   isRiskTicketEnded,
+  nextEscalatedNoOf,
   riskOthersOf,
 } from '@/composables/useRiskReportAssess';
 import { RISK_TAG_ROLES, RISK_WORD_MAINTAIN_ROLES } from '@/config/roles';
@@ -1132,16 +1133,9 @@ const assessTargetOthers = computed(() => {
  * 再来一条又是 00002 —— 两张单同号，而单号恰恰是这条链路上唯一的追溯凭据。
  */
 function nextEscalatedNo(): string {
-  const d = new Date();
-  const p = (n: number) => String(n).padStart(2, '0');
-  const prefix = `IFLYTS-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-`;
-  const maxUsed = reportStore.reports.reduce((max, r) => {
-    const no = r.assessment?.escalatedToNo;
-    if (!no?.startsWith(prefix)) return max;
-    const n = Number(no.slice(prefix.length));
-    return Number.isFinite(n) && n > max ? n : max;
-  }, 0);
-  return `${prefix}${String(maxUsed + 1).padStart(5, '0')}`;
+  // 取号规则与工单页那个评估入口共用一份（`nextEscalatedNoOf`）：两处各写一份，
+  // 规则一改就分叉，同一天两个入口有可能发出同一个号。
+  return nextEscalatedNoOf(reportStore.reports);
 }
 
 /**

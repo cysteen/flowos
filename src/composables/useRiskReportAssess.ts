@@ -33,6 +33,24 @@ function isComplaintTicket(ticketNo: string) {
 }
 
 /**
+ * 升级派生新投诉单的取号 —— **两个评估入口共用这一份**（工单页与风险监控页）。
+ * 号段＝`IFLYTS-<今天>-`，序号取已用号的最大值 + 1；预置派生单占 00001（`SEED_RISK_ESCALATION`）。
+ * 两处各写一份的话，取号规则一改就会分叉，同一天两个入口有可能发出同一个号。
+ */
+export function nextEscalatedNoOf(reports: Array<{ assessment?: { escalatedToNo?: string } }>): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  const prefix = `IFLYTS-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-`;
+  const maxUsed = reports.reduce((max, r) => {
+    const no = r.assessment?.escalatedToNo;
+    if (!no?.startsWith(prefix)) return max;
+    const n = Number(no.slice(prefix.length));
+    return Number.isFinite(n) && n > max ? n : max;
+  }, 0);
+  return `${prefix}${String(maxUsed + 1).padStart(5, '0')}`;
+}
+
+/**
  * 选「升级」后要摆出来的那一行分流提示 —— **两个评估入口的唯一文案来源**。
  *
  * 🔴 **这是 O20「按原单类型分流」在界面上的唯一可见区分**，缺了客诉专员就不知道
@@ -253,16 +271,7 @@ export function useRiskReportAssess() {
   });
 
   function nextEscalatedNo(): string {
-    const d = new Date();
-    const p = (n: number) => String(n).padStart(2, '0');
-    const prefix = `IFLYTS-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-`;
-    const maxUsed = reportStore.reports.reduce((max, r) => {
-      const no = r.assessment?.escalatedToNo;
-      if (!no?.startsWith(prefix)) return max;
-      const n = Number(no.slice(prefix.length));
-      return Number.isFinite(n) && n > max ? n : max;
-    }, 0);
-    return `${prefix}${String(maxUsed + 1).padStart(5, '0')}`;
+    return nextEscalatedNoOf(reportStore.reports);
   }
 
   /**
