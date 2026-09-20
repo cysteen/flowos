@@ -7,6 +7,7 @@ import {
 import CallSessionBar from '@/components/cti/CallSessionBar.vue';
 import CtiAuthIcon from '@/components/cti/CtiAuthIcon.vue';
 import DialPadPopover from '@/components/cti/DialPadPopover.vue';
+import SignInModal from '@/components/cti/SignInModal.vue';
 import { useOutboundCall } from '@/composables/useOutboundCall';
 import { useCtiStore, type BreakReason, type ReadyMode, READY_MODE_LABELS } from '@/stores/cti';
 
@@ -30,7 +31,8 @@ const readyActive = computed(() => cti.workStatus === 'ready');
 const breakActive = computed(() => cti.workStatus === 'break');
 const disabled = computed(() => cti.workButtonsDisabled);
 
-// 拨号盘：二席处理工单时，客户要求拨打其他号码 → 调出拨号盘外呼
+// 签入弹窗 · 拨号盘
+const signInOpen = ref(false);
 const dialPadOpen = ref(false);
 const callBlocked = computed(() => checkCanCall());
 
@@ -63,8 +65,8 @@ const menuSelectedKeys = computed(() => {
   return ['logged_in'];
 });
 
-function signIn() {
-  cti.signIn();
+function openSignIn() {
+  signInOpen.value = true;
 }
 function signOut() {
   if (cti.signOut()) message.info('已签出');
@@ -86,11 +88,12 @@ function onMenuClick({ key }: { key: string | number }) {
 <template>
   <div class="cti-bar" :class="{ 'is-in-call': cti.inCall }">
     <template v-if="!cti.isSignedIn">
-      <button class="cti-work-btn cti-work-btn--signin" type="button" @click="signIn">
+      <button class="cti-work-btn cti-work-btn--signin" type="button" @click="openSignIn">
         <span class="cti-work-btn__icon"><CtiAuthIcon kind="sign-in" /></span>
         <span class="cti-work-btn__label">签入</span>
       </button>
       <span class="hint">签入后开始处理工单</span>
+      <SignInModal v-model:open="signInOpen" />
     </template>
 
     <template v-else>

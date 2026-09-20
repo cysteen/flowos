@@ -3,6 +3,10 @@ import { defineStore } from 'pinia';
 // 软电话(CTI) —— 对齐 iFLY-FlowOS-坐席视角.pen · ropW8 双层状态模型（workStatus + callSession）。
 
 export type WorkStatus = 'offline' | 'logged_in' | 'ready' | 'break' | 'busy';
+/** 签入通道：SIP 话机 / 浏览器 WebRTC */
+export type SignInChannel = 'sip' | 'browser';
+/** 签入号码模式：软号单呼 / 手机号双呼 */
+export type SignInNumberMode = 'soft' | 'mobile';
 /** 就绪子态：坐席当前主工作模式（下拉在「就绪」高亮时展示） */
 export type ReadyMode = 'ticket_work' | 'outbound' | 'offline_comm';
 export type BreakReason = 'meeting' | 'training' | 'tea' | 'meal';
@@ -76,10 +80,36 @@ export function buildCallContactSummary(
   return `呼叫号码: ${phone} | 状态: 未接通 | 振铃时长: ${formatCallDuration(endedAt - session.startedAt)}`;
 }
 
+/** 签入号码记忆：跨刷新保留，故落 localStorage 而非仅存内存 */
+const SIGN_IN_NUMBERS_KEY = 'flowos-cti-signin-numbers';
+
+export type SignInNumbers = { sip: string; mobile: string };
+
+function loadLastSignInNumbers(): SignInNumbers {
+  try {
+    const raw = localStorage.getItem(SIGN_IN_NUMBERS_KEY);
+    if (raw) {
+      const v = JSON.parse(raw) as Partial<SignInNumbers>;
+      return { sip: v.sip ?? '', mobile: v.mobile ?? '' };
+    }
+  } catch {
+    /* 隐私模式 / storage 被禁时静默回落为空，不影响签入 */
+  }
+  return { sip: '', mobile: '' };
+}
+
 export const useCtiStore = defineStore('cti', {
   state: () => ({
-    agentNo: '001006',
-    extension: '8788001006',
+    agentNo: '10041',
+    extension: '',
+    signInChannel: null as SignInChannel | null,
+    signInNumberMode: null as SignInNumberMode | null,
+    /**
+     * 各签入方式上次用过的号码，按方式分开记。
+     * 分开记是因为两者不通用：SIP 填分机、手机回拨填 11 位手机号，
+     * 共用一个槽会在切换方式时把上次的号码冲掉。
+     */
+    lastSignInNumbers: loadLastSignInNumbers(),
     workStatus: 'offline' as WorkStatus,
     workStatusSince: 0,
     readyMode: 'ticket_work' as ReadyMode,
@@ -126,10 +156,35 @@ export const useCtiStore = defineStore('cti', {
     signIn() {
       this.touchWorkStatus('logged_in');
     },
+    signInWith(payload: {
+      extension: string;
+      password: string;
+      channel: SignInChannel;
+      numberMode?: SignInNumberMode | null;
+    }) {
+      this.extension = payload.extension;
+      this.signInChannel = payload.channel;
+      this.signInNumberMode = payload.numberMode ?? null;
+      // 本次用的号码存进对应槽位，下次打开签入弹窗直接带出来
+      if (payload.extension && payload.numberMode) {
+        this.lastSignInNumbers = {
+          ...this.lastSignInNumbers,
+          [payload.numberMode === 'mobile' ? 'mobile' : 'sip']: payload.extension,
+        };
+        try {
+          localStorage.setItem(SIGN_IN_NUMBERS_KEY, JSON.stringify(this.lastSignInNumbers));
+        } catch {
+          /* 存不下不影响本次签入 */
+        }
+      }
+      this.touchWorkStatus('logged_in');
+    },
     signOut(): boolean {
       if (this.inCall) return false;
       this.workStatus = 'offline';
       this.workStatusSince = 0;
+      this.signInChannel = null;
+      this.signInNumberMode = null;
       return true;
     },
     // mode 不写默认值 —— 默认参数里引用 this 会让 TS 推不出 this 类型（TS2683）
