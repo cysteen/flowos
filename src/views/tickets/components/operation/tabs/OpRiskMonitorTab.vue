@@ -96,7 +96,7 @@ const {
  */
 const advicePlaceholder = computed(() => advicePlaceholderOf(assessDecision.value));
 
-const expanded = ref({ report: true, assess: true, tag: true, collab: true, risk: true });
+const expanded = ref({ report: true, assess: true, collab: true, risk: true });
 const riskLevelOptions = RISK_LEVEL_SELECT_OPTIONS;
 
 /** 本单是不是投诉单。类型不在 props 里，走与操作页同一条取数链——本 Tab 的内容按它分岔 */
@@ -109,7 +109,7 @@ const isComplaintTicket = computed(() => resolveTicketTypeFor(props.ticketNo) ==
  * （见 `stores/riskReports.ts` 的说明）。A 线的条目在这张列表上会渲染成一条
  * 报备人「系统」、报备原因「其他」、状态写着「实时监控中」的灰点记录 —— 三格全是占位，
  * 读的人会以为有人报过一次却什么都没填。它们是**打标那条链**上的东西，
- * 归下面的「风险打标」块，不进报备记录。判据取 `source`，那是条目自带的身份标。
+ * 归「风险标记」块上半的打标那半，不进报备记录。判据取 `source`，那是条目自带的身份标。
  */
 const reportItems = computed(
   () => reportStore.reportsOf(props.ticketNo).filter((r) => r.source === '二线报备'),
@@ -369,21 +369,34 @@ function openEscalatedTicket(no: string) {
 /* ==================== 风险打标（A 线的入池门槛） ==================== */
 
 /**
- * **为什么另开一块，而不是复用下面的「风险标记」区**（2026-09-10 核对后的取舍）。
+ * **打标已并入下方「风险标记」一块**（2026-09-20 业务拍板，推翻 2026-09-10「另开一块」那次取舍）。
  *
- * 两块看着都在说"这单有没有风险、多大"，但它们是两套东西，合在一起会当场出三处矛盾：
+ * 旧取舍的理由是"一个控件答不了两个权限"。**并块并不要求共用控件** —— 一块之内分上下两半，
+ * 中间一条细分隔线，两半各用各的判据、各用各的控件，那条理由就不成立了。
+ * 而两块并排的实际后果是：同一屏上两处都写着"这单有没有风险、多大"，
+ * 读的人第一眼分不出该看哪个、该填哪个。
  *
- * | | 风险标记区（下方） | 风险打标（本块） |
+ * 合并后「风险标记」块自上而下是：
+ *   ① **打标结论**（只读）：等级 · 打标人（角色）· 打标时刻一行；打标备注 / 修正原因各另起一行；
+ *      命中核实结论照旧只读回显；尚无结论时出缺省文案。
+ *   ② **打标记录 + 打标按钮**同一行：改判历史横排，按钮只对**投诉单 + 打标权角色**出（`canTag`）。
+ *   ③ **细分隔线**。
+ *   ④ **处理人自述三字段**：是否有风险 / 风险等级 / 风险描述。
+ *
+ * 🔴 **两套数据互不覆盖这条仍然成立**，并块没有把它们合成一个字段：
+ *
+ * | | ①②（上半） | ④（下半） |
  * |---|---|---|
- * | 存哪 | `ProcessFormDraft.riskFlag / riskLevel / riskDescription`，随「保存」落工单 | `stores/riskQueue.ts` 的条目，**提交即生效**，不等保存 |
- * | 谁填 | **处理人自述**（二线在办这张单时填的判断） | **打标人**（客诉专员 / 投诉督导），带打标人、角色、时刻、打标备注与改判历史 |
- * | 取值 | 是否有风险三档 + 风险等级两个字段 | **四选一**：低 / 中 / 高 / 无风险（一个枚举，非法组合从类型上就没有） |
- * | 作用 | 工单字段，供统计与回传比对（915 §7.3「工单侧优先」） | **进不进风险工单池的那道门**（《【930】》§5A.3） |
- * | 权限 | 二线在**非投诉单**上可写 | **非投诉单的处理人一律不能打**；投诉单由客诉专员在本页打 |
+ * | 存哪 | `stores/riskQueue.ts` 的条目，**提交即生效**，不等保存 | `ProcessFormDraft.riskFlag / riskLevel / riskDescription`，随「保存」落工单 |
+ * | 谁填 | **打标人**（客诉专员 / 投诉督导），带打标人、角色、时刻、备注与改判历史 | **处理人自述**（二线在办这张单时填的判断） |
+ * | 取值 | **四选一**：低 / 中 / 高 / 无风险（一个枚举，非法组合从类型上就没有） | 是否有风险三档 + 风险等级两个字段 |
+ * | 作用 | **进不进风险工单池的那道门**（《【930】》§5A.3），回写工单级风险等级 | 工单字段，供统计与回传比对（915 §7.3「工单侧优先」） |
+ * | 判据 | `canTag`（原单类型 + 打标权），**不看** Tab 的表单只读 | 处理人写权限（`props.readonly` / Tab 只读） |
  *
- * 尤其是最后一行：合成一块之后，同一个控件对二线在非投诉单上要可写、对同一批人在
- * 打标这件事上又必须只读 —— 一个控件答不了两个权限。故**新开一块**，
- * 打标结论以只读形式回到风险标记区（那里本来就有一行只读的命中核实结论作邻居）。
+ * 🔴 **上下两半的权限判据不许混用同一个变量**：上半按 `canTag` 走（打标即时生效，
+ * 故按钮外面套 `a-config-provider :component-disabled="false"`，不受本 Tab 表单只读约束）；
+ * 下半走 `updateForm`，`props.readonly` 时一律不落。拿其中一个去管另一半，
+ * 就会出现"二线在非投诉单上能改打标结论"或"客诉专员打不了标"这两种反过来的错。
  */
 
 /** 本单的 A 线条目（自动识别进来的，一张单至多一条在池，§3.1） */
@@ -515,7 +528,8 @@ const collabSectionBadge = computed(() =>
     <!--
       报备与评估两块**只在非投诉单上出现**（基线 ※29 类型集 ＝ 咨 建 商）：
       报备的价值在这张单还没变成投诉之前；已经是投诉单的，"升不升级成投诉单"是个不成立的问题。
-      投诉单在本 Tab 上看到的是「风险打标」与「协同记录」两块（《【930】》§3.3 / §5A.3）。
+      投诉单在本 Tab 上看到的是「风险标记」与「协同记录」两块（《【930】》§3.3 / §5A.3）——
+      打标结论在「风险标记」块的上半（2026-09-20 并块）。
     -->
     <OpCollapsibleSection
       v-if="!isComplaintTicket"
@@ -817,112 +831,153 @@ const collabSectionBadge = computed(() =>
     </OpCollapsibleSection>
 
     <!--
-      风险打标（《【930】》§5A.3）。**读的人是处理人**：等级、打标人、打标时刻三项缺一不可
+      「风险标记」（2026-09-20 并块：原「风险打标」块整块并入，Tab 上不再有两块讲同一件事）。
+      上半 ＝ 打标那一路（《【930】》§5A.3）：**读的人是处理人**，等级、打标人、打标时刻三项缺一不可
       —— 少了打标人与时刻，这条结论就成了一句没有出处的判断，处理人无从追问。
-      打标备注**可选**（三入口统一，见 script 的 missTagAmend 上方），没填时整行不出，
-      不留一格空 dd 让人以为是漏加载。
-      写的入口只对投诉单 + 客诉专员出（§3.1），非投诉单在这里恒为只读回显。
+      打标备注**可选**（三入口统一，见 script 的 missTagAmend 上方），没填时整行不出。
+      打标按钮只对投诉单 + 打标权角色出（§3.1，判据 `canTag`），非投诉单在这里恒为只读回显。
+      下半 ＝ 处理人自述三字段，随「保存」落工单，判据是处理人写权限。两半只共用一个外壳，
+      不共用任何控件与判据（见 script 内并块那段）。
     -->
     <OpCollapsibleSection
-      title="风险打标"
+      title="风险标记"
       :icon="WarningOutlined"
       :badge="tagRecord ? (tagRecord.result === '无风险' ? '无风险' : `${tagRecord.result}危`) : undefined"
       :badge-variant="tagRecord && tagRecord.result !== '无风险' ? 'warn' : 'hint'"
-      :expanded="expanded.tag"
-      @toggle="expanded.tag = !expanded.tag"
+      body-variant="risk"
+      :expanded="expanded.risk"
+      @toggle="expanded.risk = !expanded.risk"
     >
-      <section v-if="tagRecord" class="rt-sheet">
-        <header class="rt-head">
-          <span
-            class="rt-level"
-            :class="tagRecord.result === '无风险' ? 'tone-none' : `tone-${tagRecord.result}`"
-          >
-            {{ tagRecord.result === '无风险' ? '无风险' : riskLevelText(tagRecord.result) }}
-          </span>
-          <span v-if="tagEntry && isPooledStatus(tagEntry.status)" class="rt-pool">
-            风险工单池 · {{ poolStatusText(poolStageStatusOf(tagEntry)) }}
-          </span>
-          <span v-else-if="tagRecord.result === '无风险'" class="rt-pool">不进池</span>
-          <!-- 并入痕迹记在打标记录上，不进来源（§5A.1 ④），写法与风险监控页修正弹窗一致 -->
-          <span v-if="tagRecord.viaManualScan" class="rt-pool">由手动筛查并入</span>
-          <span v-if="tagRecord.viaHitVerify" class="rt-pool">由命中核实</span>
-          <!-- 打标是即时生效的动作，不随「保存」走，故按钮不受 Tab 的表单只读约束，见 script -->
-          <a-config-provider v-if="canTag" :component-disabled="false">
-            <button type="button" class="rt-btn" @click="openTag">
-              {{ isAmend ? '重新打标' : '打标' }}
-            </button>
-          </a-config-provider>
-        </header>
-        <dl class="rt-kv">
-          <div class="rt-kv-row">
-            <dt>打标人</dt>
-            <dd>{{ tagRecord.by }}（{{ tagRecord.byRole }}）</dd>
-          </div>
-          <div class="rt-kv-row">
-            <dt>打标时刻</dt>
-            <dd>{{ tagRecord.at }}</dd>
-          </div>
-          <div v-if="tagRecord.note" class="rt-kv-row rt-kv-block">
-            <dt>打标备注</dt>
-            <dd class="rt-note">{{ tagRecord.note }}</dd>
-          </div>
-          <!--
-            🔴 **界面词一律「修正原因」**，与风险监控页那两处（打标弹窗 · 条目打标弹窗）同名。
-            此前本页写「改判理由」、监控页写「修正原因」，同一个字段两个名字。
-            取「修正」而不是「改判」：**人点下去的按钮写的就是「修正 / 重新打标」**，
-            字段跟着动作走才连得上；「改判」是 PRD 的口径词，不上界面。
-          -->
-          <div v-if="tagRecord.amendReason" class="rt-kv-row rt-kv-block">
-            <dt>修正原因</dt>
-            <dd class="rt-note">{{ tagRecord.amendReason }}</dd>
-          </div>
-        </dl>
-        <!-- 改判独立成条、不覆盖首次那条：两条并排才读得出"从中危改成高危"这条爬坡 -->
-        <div v-if="tagHistory.length > 1" class="rt-history">
-          <span class="rt-history-head">打标历史</span>
-          <span v-for="(h, i) in tagHistory" :key="i" class="rt-history-item">
-            {{ h.level ? riskLevelText(h.level) : '无风险' }} · {{ h.by }} · {{ formatShortAt(h.at) }}
-          </span>
-        </div>
-        <!--
-          ⚠️ 这里曾有一句「本单在池内待处置期间不另收风险报备，出结论后可再发起」。
-          **已删**（2026-09-10 收口）：报备的门控收成只看 B 线之后，A 线条目在不在池
-          与二线能不能发起报备**再无关系** —— 那句话现在是错的，留着会让二线以为
-          按钮点不动，而它其实是亮的。
-        -->
-        <p class="rt-foot">
-          打标结论不改工单状态与处理人；改判独立留一条历史、不覆盖首次那条。
-          打为低 / 中 / 高时同时回写工单级风险等级：多条结论取最高，同一条改判以最新结论为准。
-        </p>
-      </section>
+      <div class="chip-panel panel-neutral">
+        <!-- ===== 上半：打标结论（只读）+ 打标记录 + 打标按钮，判据一律 canTag ===== -->
+        <section class="rk-tag" aria-label="风险打标结论">
+          <template v-if="tagRecord">
+            <div class="rk-tag-line">
+              <span
+                class="rt-level"
+                :class="tagRecord.result === '无风险' ? 'tone-none' : `tone-${tagRecord.result}`"
+              >
+                {{ tagRecord.result === '无风险' ? '无风险' : riskLevelText(tagRecord.result) }}
+              </span>
+              <span class="rk-tag-who">{{ tagRecord.by }}（{{ tagRecord.byRole }}）</span>
+              <span class="rk-tag-at">{{ tagRecord.at }}</span>
+              <span v-if="tagEntry && isPooledStatus(tagEntry.status)" class="rt-pool">
+                风险工单池 · {{ poolStatusText(poolStageStatusOf(tagEntry)) }}
+              </span>
+              <span v-else-if="tagRecord.result === '无风险'" class="rt-pool">不进池</span>
+              <!-- 并入痕迹记在打标记录上，不进来源（§5A.1 ④），写法与风险监控页修正弹窗一致 -->
+              <span v-if="tagRecord.viaManualScan" class="rt-pool">由手动筛查并入</span>
+              <span v-if="tagRecord.viaHitVerify" class="rt-pool">由命中核实</span>
+            </div>
+            <p v-if="tagRecord.note" class="rk-tag-note">
+              <span class="rk-tag-note-label">打标备注</span>{{ tagRecord.note }}
+            </p>
+            <!--
+              🔴 **界面词一律「修正原因」**，与风险监控页那两处（打标弹窗 · 条目打标弹窗）同名。
+              此前本页写「改判理由」、监控页写「修正原因」，同一个字段两个名字。
+              取「修正」而不是「改判」：**人点下去的按钮写的就是「修正 / 重新打标」**，
+              字段跟着动作走才连得上；「改判」是 PRD 的口径词，不上界面。
+            -->
+            <p v-if="tagRecord.amendReason" class="rk-tag-note">
+              <span class="rk-tag-note-label">修正原因</span>{{ tagRecord.amendReason }}
+            </p>
+          </template>
 
-      <div v-else class="rt-empty">
-        <template v-if="canTag">
-          <p class="rt-empty-title">本单尚未打标</p>
-          <a-config-provider :component-disabled="false">
-            <button type="button" class="rt-btn" @click="openTag">打标</button>
-          </a-config-provider>
-        </template>
-        <template v-else>
-          <p class="rt-empty-title">本单尚未打标</p>
+          <div v-else class="rt-empty">
+            <p class="rt-empty-title">本单尚未打标</p>
+            <!--
+              说清"为什么这里没有按钮"：不写这一句，看的人只会以为入口坏了或自己权限少了。
+              两种挡法要分开写：**有打标权但这张单进不了监控**（投诉单 + 客诉专员，
+              却推不出两类来源）与**这个角色本来就没有打标入口**（非投诉单 / 非客诉专员），
+              合成一句会让客诉专员以为自己被降权了。有打标权且这张单打得动时不出任何一句，
+              那时该看的是下面那枚「打标」按钮。
+            -->
+            <template v-if="!canTag">
+              <p v-if="isComplaintTicket && user.roleKey === 'complaint-handler'" class="rt-empty-hint">
+                {{ tagBlockReason }}
+              </p>
+              <!--
+                🔴 这一句原来写的是「由命中规则自动打标」—— 系统里**没有这回事**：打标只有
+                `riskQueue.recordTag` 一个入口、`by` / `byRole` 必填，全部调用方都是人点出来的保存动作，
+                没有任何定时器 / 监听器 / 规则引擎回调。规则产出的只是**词表预设等级**（`RiskHit.level`），
+                用于排队展示与打标弹窗预置，`ticketGradeOf` 根本不吃它。
+                旧口径留在界面上会让人以为"等着系统自动打就行"，故按 930 v3.4 §9 规则 13 改成人工产出。
+              -->
+              <p v-else class="rt-empty-hint">非投诉单的风险等级由客诉专员 / 投诉督导在风险监控页打标产出，处理人没有打标入口；命中规则只给出词表预设等级，供排队与打标预置参考，人不确认不成立</p>
+            </template>
+          </div>
+
           <!--
-            说清"为什么这里没有按钮"：不写这一句，看的人只会以为入口坏了或自己权限少了。
-            两种挡法要分开写：**有打标权但这张单进不了监控**（投诉单 + 客诉专员，
-            却推不出两类来源）与**这个角色本来就没有打标入口**（非投诉单 / 非客诉专员），
-            合成一句会让客诉专员以为自己被降权了。
+            风险词命中的**核实结论**：只读回显，不进 form、不参与必填校验。
+            （报备评估那一行已删——二选一之后评估不回传风险字段，见 script 内说明。）
           -->
-          <p v-if="isComplaintTicket && user.roleKey === 'complaint-handler'" class="rt-empty-hint">
-            {{ tagBlockReason }}
-          </p>
+          <div v-if="riskMonitorLine" class="risk-monitor-note">
+            <p class="rm-line">{{ riskMonitorLine }}</p>
+            <p v-if="riskMonitorBreakdown" class="rm-sub">{{ riskMonitorBreakdown }}</p>
+            <p v-if="riskMonitorDiff" class="rm-diff">{{ riskMonitorDiff }}</p>
+          </div>
+
           <!--
-            🔴 这一句原来写的是「由命中规则自动打标」—— 系统里**没有这回事**：打标只有
-            `riskQueue.recordTag` 一个入口、`by` / `byRole` 必填，全部调用方都是人点出来的保存动作，
-            没有任何定时器 / 监听器 / 规则引擎回调。规则产出的只是**词表预设等级**（`RiskHit.level`），
-            用于排队展示与打标弹窗预置，`ticketGradeOf` 根本不吃它。
-            旧口径留在界面上会让人以为"等着系统自动打就行"，故按 930 v3.4 §9 规则 13 改成人工产出。
+            打标记录与打标按钮同一行。改判独立成条、不覆盖首次那条：两条并排才读得出
+            "从中危改成高危"这条爬坡。打标是即时生效的动作、不随「保存」走，
+            故按钮不受 Tab 的表单只读约束（a-config-provider 解禁），判据只看 canTag。
           -->
-          <p v-else class="rt-empty-hint">非投诉单的风险等级由客诉专员 / 投诉督导在风险监控页打标产出，处理人没有打标入口；命中规则只给出词表预设等级，供排队与打标预置参考，人不确认不成立</p>
-        </template>
+          <div v-if="tagHistory.length > 1 || canTag" class="rk-tag-ops">
+            <template v-if="tagHistory.length > 1">
+              <span class="rt-history-head">打标记录</span>
+              <span v-for="(h, i) in tagHistory" :key="i" class="rt-history-item">
+                {{ h.level ? riskLevelText(h.level) : '无风险' }} · {{ h.by }} · {{ formatShortAt(h.at) }}
+              </span>
+            </template>
+            <a-config-provider v-if="canTag" :component-disabled="false">
+              <button type="button" class="rt-btn" @click="openTag">
+                {{ isAmend ? '重新打标' : '打标' }}
+              </button>
+            </a-config-provider>
+          </div>
+        </section>
+
+        <!-- 上下两半的分界：上半只读 / 打标权，下半处理人写权限，两半不共用控件 -->
+        <div class="rk-split" aria-hidden="true"></div>
+
+        <!-- ===== 下半：处理人自述三字段，随「保存」落工单，判据是处理人写权限 ===== -->
+        <div class="field inline-row risk-row">
+          <label>是否有风险</label>
+          <a-radio-group
+            :value="form.riskFlag || undefined"
+            class="radio-row"
+            @update:value="(v: RiskFlag) => onRiskFlagChange(v)"
+          >
+            <a-radio v-for="opt in RISK_FLAG_OPTIONS" :key="opt" :value="opt">{{ opt }}</a-radio>
+          </a-radio-group>
+          <template v-if="form.riskFlag === '有风险'">
+            <label class="field-label-sm risk-level-label"><span class="req">*</span>风险等级</label>
+            <FormSelect
+              class="risk-level-select"
+              :class="{ 'ctrl-missing': missRiskLevel }"
+              :value="form.riskLevel || undefined"
+              :options="riskLevelOptions"
+              placeholder="请选择或搜索"
+              @update:value="onRiskLevelChange"
+            />
+          </template>
+        </div>
+        <p v-if="missRiskLevel" class="field-err">请选择风险等级</p>
+        <div
+          v-if="form.riskFlag === '疑似风险' || form.riskFlag === '有风险'"
+          class="field"
+          :class="{ 'is-missing': missRiskDesc }"
+        >
+          <label><span class="req">*</span>风险描述</label>
+          <a-textarea
+            :value="form.riskDescription"
+            :rows="3"
+            :status="missRiskDesc ? 'error' : undefined"
+            placeholder="描述风险点、影响范围与建议处置…（必填）"
+            @update:value="(v: string) => updateForm({ riskDescription: v ?? '' })"
+          />
+          <p v-if="missRiskDesc" class="field-err">请填写风险描述</p>
+        </div>
       </div>
     </OpCollapsibleSection>
 
@@ -1017,70 +1072,6 @@ const collabSectionBadge = computed(() =>
       </div>
     </OpCollapsibleSection>
 
-    <OpCollapsibleSection
-      title="风险标记"
-      :icon="WarningOutlined"
-      body-variant="risk"
-      :expanded="expanded.risk"
-      @toggle="expanded.risk = !expanded.risk"
-    >
-      <div class="chip-panel panel-neutral">
-        <div class="field inline-row risk-row">
-          <label>是否有风险</label>
-          <a-radio-group
-            :value="form.riskFlag || undefined"
-            class="radio-row"
-            @update:value="(v: RiskFlag) => onRiskFlagChange(v)"
-          >
-            <a-radio v-for="opt in RISK_FLAG_OPTIONS" :key="opt" :value="opt">{{ opt }}</a-radio>
-          </a-radio-group>
-          <template v-if="form.riskFlag === '有风险'">
-            <label class="field-label-sm risk-level-label"><span class="req">*</span>风险等级</label>
-            <FormSelect
-              class="risk-level-select"
-              :class="{ 'ctrl-missing': missRiskLevel }"
-              :value="form.riskLevel || undefined"
-              :options="riskLevelOptions"
-              placeholder="请选择或搜索"
-              @update:value="onRiskLevelChange"
-            />
-          </template>
-        </div>
-        <p v-if="missRiskLevel" class="field-err">请选择风险等级</p>
-        <!--
-          风险词命中的**核实结论**：只读回显，不进 form、不参与必填校验。
-          （报备评估那一行已删——二选一之后评估不回传风险字段，见 script 内说明。）
-        -->
-        <div v-if="riskMonitorLine" class="risk-monitor-note">
-          <p class="rm-line">{{ riskMonitorLine }}</p>
-          <p v-if="riskMonitorBreakdown" class="rm-sub">{{ riskMonitorBreakdown }}</p>
-          <p v-if="riskMonitorDiff" class="rm-diff">{{ riskMonitorDiff }}</p>
-        </div>
-        <!--
-          本区的三个字段是**处理人自述**，随「保存」落工单；上方「风险打标」块是**打标人**
-          给的结论，提交即生效、决定这张单进不进风险工单池。两者不是同一件事，
-          不写这一句，两块摆在一屏上会被当成同一个字段的两个入口。
-        -->
-        <p v-if="tagRecord" class="risk-flag-note">
-          本区是处理人自述，与上方「风险打标」是两件事：打标由客诉专员 / 投诉督导给出，本区取值不覆盖它。
-        </p>
-        <div
-          v-if="form.riskFlag === '疑似风险' || form.riskFlag === '有风险'"
-          class="field"
-          :class="{ 'is-missing': missRiskDesc }"
-        >
-          <label><span class="req">*</span>风险描述</label>
-          <a-textarea
-            :value="form.riskDescription"
-            :rows="3"
-            :status="missRiskDesc ? 'error' : undefined"
-            placeholder="描述风险点、影响范围与建议处置…（必填）"
-            @update:value="(v: string) => updateForm({ riskDescription: v ?? '' })"
-          />
-          <p v-if="missRiskDesc" class="field-err">请填写风险描述</p>
-        </div>
-      </div>
-    </OpCollapsibleSection>
   </div>
 </template>
 
@@ -1501,22 +1492,20 @@ const collabSectionBadge = computed(() =>
   color: #6b7280;
   border-top: 1px dashed #f1f5f9;
 }
-/* ---- 风险打标（A 线结论的只读回显 + 打标入口） ---- */
-.rt-sheet {
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  overflow: hidden;
+/* ---- 「风险标记」上半：打标结论的只读回显 + 打标入口（并块后与下半共用一个面板） ---- */
+.rk-tag {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
-.rt-head {
+.rk-tag-line {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 12px 14px;
-  background: linear-gradient(180deg, #f8fafc 0%, #fff 100%);
-  border-bottom: 1px solid #f1f5f9;
 }
+.rk-tag-who { font-size: 12px; font-weight: 600; color: #111827; }
+.rk-tag-at { font-size: 12px; color: #6b7280; }
 .rt-level {
   display: inline-flex;
   align-items: center;
@@ -1545,50 +1534,27 @@ const collabSectionBadge = computed(() =>
   transition: background 0.15s, border-color 0.15s;
 }
 .rt-btn:hover { background: #fff1e6; border-color: #fb923c; }
-.rt-kv {
+.rk-tag-note {
   margin: 0;
-  padding: 12px 14px 4px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.rt-kv-row {
-  display: grid;
-  grid-template-columns: 72px 1fr;
-  gap: 8px 12px;
-  align-items: start;
-}
-.rt-kv-row dt {
-  margin: 0;
-  font-size: 12px;
-  color: #9ca3af;
-  font-weight: 500;
+  padding: 6px 10px;
+  font-size: 11px;
   line-height: 1.6;
-}
-.rt-kv-row dd {
-  margin: 0;
-  font-size: 12px;
-  color: #111827;
-  font-weight: 500;
-  line-height: 1.6;
-  word-break: break-word;
-}
-.rt-kv-block { grid-template-columns: 1fr; gap: 4px; }
-.rt-kv-block dt { color: #374151; font-weight: 600; }
-.rt-note {
-  padding: 8px 10px;
-  background: #f8fafc;
+  color: #374151;
+  background: #fff;
   border-left: 2px solid #cbd5e1;
   border-radius: 0 4px 4px 0;
-  font-weight: 400 !important;
-  color: #374151 !important;
+  word-break: break-word;
 }
-.rt-history {
+.rk-tag-note-label {
+  margin-right: 6px;
+  font-weight: 600;
+  color: #6b7280;
+}
+.rk-tag-ops {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  padding: 0 14px 8px;
 }
 .rt-history-head { font-size: 11px; font-weight: 600; color: #6b7280; }
 .rt-history-item {
@@ -1599,28 +1565,24 @@ const collabSectionBadge = computed(() =>
   border: 1px solid #e2e8f0;
   border-radius: 999px;
 }
-.rt-foot {
-  margin: 0;
-  padding: 8px 14px 12px;
-  font-size: 11px;
-  line-height: 1.6;
-  color: #6b7280;
-  border-top: 1px dashed #f1f5f9;
-}
 .rt-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 20px 14px;
+  gap: 6px;
+  padding: 14px;
   text-align: center;
-  background: #fafafa;
+  background: #fff;
   border: 1px dashed #e5e7eb;
   border-radius: 8px;
 }
 .rt-empty-title { margin: 0; font-size: 13px; font-weight: 600; color: #6b7280; }
 .rt-empty-hint { margin: 0; font-size: 12px; color: #9ca3af; line-height: 1.5; }
-.rt-empty .rt-btn { margin-left: 0; }
+/* 上下两半的细分隔线：一块之内分两套判据，靠这一条把"只读"与"可写"分开 */
+.rk-split {
+  height: 1px;
+  background: #e5e7eb;
+}
 .rt-modal-sub { margin: 0; font-size: 12px; color: #6b7280; line-height: 1.5; }
 .rt-modal-tip { margin: 0; font-size: 11px; color: #9ca3af; line-height: 1.5; }
 .rt-radio-row { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; }
@@ -1658,14 +1620,6 @@ const collabSectionBadge = computed(() =>
   white-space: pre-wrap;
 }
 .rc-foot { margin: 0; font-size: 11px; color: #9ca3af; line-height: 1.5; }
-
-/* 两块摆在一屏上时的分界说明，压到最轻，不与字段抢 */
-.risk-flag-note {
-  margin: 0;
-  font-size: 11px;
-  line-height: 1.5;
-  color: #9ca3af;
-}
 
 .ra-empty {
   padding: 20px 14px;

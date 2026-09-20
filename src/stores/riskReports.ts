@@ -406,7 +406,7 @@ export const useRiskReportStore = defineStore('riskReports', () => {
    * 🔴 **同样收成只看 B 线**（与 `pendingOf` 同一次改动）：这张列表的表头是
    * 报备人 / 报备原因 / 风险类型，而 A 线条目在这三格里装的是恒定占位（系统 / 其他 / —）。
    * 混进来的行看着像"有人报过一次却什么都没填"，读的人分不出那是占位还是漏填。
-   * A 线的痕迹在「风险打标」那一块，两件事各说各的。
+   * A 线的痕迹在「风险标记」块上半的打标那一段，两件事各说各的。
    */
   function historyOf(ticketNo: string): RiskPoolItem[] {
     return reportsOf(ticketNo).filter(

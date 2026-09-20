@@ -1139,7 +1139,7 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
   /**
    * 第八类履历（风险结论）的**唯一落库口**，见 `stores/riskHistory.ts`。
    * 打标那一件（以及它带来的工单级等级变更）在本模块产出，故写入方向定在这里 ——
-   * 两个打标入口（风险监控页的单条 / 批量、工单处理页的「风险打标」块）都收敛到
+   * 两个打标入口（风险监控页的单条 / 批量、工单处理页「风险标记」块上半的打标按钮）都收敛到
    * `recordTag` 这一个状态机入口上，履历因此不可能只在其中一个入口落下。
    */
   const history = useRiskHistoryStore();
