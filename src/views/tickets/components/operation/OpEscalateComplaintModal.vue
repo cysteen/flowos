@@ -9,7 +9,7 @@ import {
   COMPLAINT_L1_OPTIONS,
   COMPLAINT_L2_MAP,
   CUSTOM_PLATFORM_OPTION,
-  TICKET_SOURCE_OPTIONS,
+  ticketSourceOptionsForRole,
   complaintPlatformsBySource,
 } from '@/views/tickets/types/createTicket';
 import {
@@ -50,7 +50,12 @@ const platforms = ref<ComplaintPlatformPick[]>([]);
 const note = ref('');
 const syncOpen = ref(false);
 
-const sourceOptions = TICKET_SOURCE_OPTIONS.map((v) => ({ value: v, label: v }));
+/**
+ * 本次投诉的来源可选项按角色收窄：内投 / 外投渠道仅客诉专员、投诉督导可选
+ * （《【紧急需求】内投外投渠道可选范围与对客短信抑制-需求说明》§二 规则 A，入口②升级投诉）。
+ * 判据与建单弹窗同一个函数，别在这里另写一份过滤。
+ */
+const sourceOptions = computed(() => ticketSourceOptionsForRole(user.roleKey, source.value));
 const cat1Options = COMPLAINT_L1_OPTIONS.map((v) => ({ value: v, label: v }));
 function cat2OptionsOf(cat1: string) {
   return (COMPLAINT_L2_MAP[cat1] ?? []).map((v) => ({ value: v, label: v }));

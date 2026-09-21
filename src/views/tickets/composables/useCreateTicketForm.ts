@@ -75,7 +75,8 @@ function defaultForm(): CreateTicketFormState {
     problemL1: '功能异常',
     problemL2: '播放问题',
     problemL3: '在线播放',
-    priority: 'P0',
+    // 与默认工单类型「投诉」配套：双向联动下投诉只能 P0/P1，取其中较低的 P1
+    priority: 'P1',
     description: '在线播放频繁跳歌，重启无效，影响使用，要求尽快解决。',
     resolveTimeRemark: '',
     title: '',
@@ -120,6 +121,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   const errors = reactive({
     businessType: false,
     ticketType: false,
+    priority: false,
     customer: false,
     productCategory: false,
     productName: false,
@@ -482,6 +484,8 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     clearErrors();
     errors.businessType = !form.businessType;
     errors.ticketType = !form.ticketType;
+    // 两个字段可清空（联动死锁的出口，见 CreateTicketModal），故必填校验放在这里兜
+    errors.priority = !form.priority;
     errors.customer = !form.customer;
     errors.productCategory = !form.productCategory;
     errors.productName = !form.productName;
@@ -498,6 +502,24 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     const hasError = Object.values(errors).some(Boolean);
     if (hasError) {
       message.error('请填写必填项');
+      return false;
+    }
+
+    /*
+     * 紧急 / 重要的必然是投诉（见《【紧急需求】建单优先级与工单类型联动-需求说明》）。
+     * **单向**——投诉单四档优先级都合法，只拦"非投诉 + P0/P1"。
+     *
+     * 表单联动已把这个组合挡在前面，本条是兜底：真正要防的是**不走本表单的入口**
+     * ——接口建单、批量导入、容联云建单，那些地方绕不过服务端校验，只做前端联动等于没防。
+     * 刷机单尚未上线，不纳入本规则。
+     */
+    const RULED = ['建议', '商机', '咨询'];
+    if (
+      RULED.includes(form.ticketType)
+      && (form.priority === 'P0' || form.priority === 'P1')
+    ) {
+      message.error('紧急 / 重要仅适用于投诉工单。请将工单类型改为投诉，或将优先级调为普通加急 / 普通。');
+      errors.ticketType = true;
       return false;
     }
     return true;

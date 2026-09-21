@@ -5,7 +5,8 @@ defineOptions({ inheritAttrs: false });
 
 const props = defineProps<{
   value?: string | number | string[] | undefined;
-  options?: { value: string | number; label: string }[];
+  /** `disabled` 用于"存量值可回显、不可再选"（见 createTicket.ts ticketSourceOptionsForRole） */
+  options?: { value: string | number; label: string; disabled?: boolean }[];
   mode?: 'multiple' | 'tags';
 }>();
 

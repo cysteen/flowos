@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { message } from 'ant-design-vue';
 import { useTicketDraftStore } from '@/stores/ticketDrafts';
+import { useUserStore } from '@/stores/user';
 import {
   SearchOutlined,
   PlusOutlined,
@@ -9,13 +10,14 @@ import {
   WarningOutlined,
   UserAddOutlined,
 } from '@ant-design/icons-vue';
-import type { Ticket, CreateTicketPrefill } from '@/views/tickets/types/ticket';
+import type { Ticket, CreateTicketPrefill, Priority } from '@/views/tickets/types/ticket';
+import type { CreateFormTicketType } from '@/views/tickets/types/createTicket';
 import {
   BUSINESS_TYPES,
   CREATE_TICKET_TYPES,
   PRODUCT_CATEGORIES,
   PRIORITY_OPTIONS,
-  TICKET_SOURCE_OPTIONS,
+  ticketSourceOptionsForRole,
   COMPLAINT_TYPE_OPTIONS,
   BUSINESS_LINE_OPTIONS,
   complaintPlatformsBySource,
@@ -44,6 +46,7 @@ const props = defineProps<{
 }>();
 
 const draftStore = useTicketDraftStore();
+const userStore = useUserStore();
 const activeDraftId = ref<string | null>(null);
 
 const emit = defineEmits<{
@@ -129,6 +132,16 @@ const showParentInTitle = computed(
 
 const complaintL2Options = computed(
   () => COMPLAINT_L2_MAP[form.complaintL1] ?? [],
+);
+
+/**
+ * 工单来源可选项按角色收窄：内投 / 外投渠道仅客诉专员、投诉督导可选
+ * （《【紧急需求】内投外投渠道可选范围与对客短信抑制-需求说明》§二 规则 A，入口①建单）。
+ * 本弹窗同时承载「转单」「重新建单」「升级投诉·新建投诉单」，故入口③转类型一并受限；
+ * 原单来源被预填为内投 / 外投时按当前值回显（置灰不可再选）。
+ */
+const ticketSourceOptions = computed(
+  () => ticketSourceOptionsForRole(userStore.roleKey, form.ticketSource),
 );
 
 /** 投诉平台字典随来源切换：外投渠道=外部平台，内投渠道=公司前台/官网监督举报/其他 */
@@ -278,6 +291,67 @@ watch(
     if (!opts.includes(form.suggestL2)) form.suggestL2 = opts[0] ?? '';
   },
 );
+
+/**
+ * 优先级 → 工单类型联动（**单向**）。
+ *
+ * 口径：紧急 / 重要的必然是投诉；**反之不成立——投诉单四档优先级都可以有**。
+ * 见《【紧急需求】建单优先级与工单类型联动-需求说明》。
+ */
+const HIGH_PRIORITIES: Priority[] = ['P0', 'P1'];
+const LOW_PRIORITIES: Priority[] = ['P2', 'P3'];
+/** 刷机单尚未上线，不纳入本规则 */
+const RULED_TYPES: CreateFormTicketType[] = ['投诉', '建议', '商机', '咨询'];
+
+/** 该工单类型允许的优先级；null = 不限（投诉单与刷机单） */
+function prioritiesFor(type: CreateFormTicketType | ''): Priority[] | null {
+  if (!type || type === '投诉' || !RULED_TYPES.includes(type)) return null;
+  return LOW_PRIORITIES;
+}
+
+/** 该优先级允许的工单类型；空值不参与约束，必填由 validate() 兜 */
+function typesFor(priority: Priority | ''): CreateFormTicketType[] {
+  if (!priority) return [...CREATE_TICKET_TYPES];
+  return HIGH_PRIORITIES.includes(priority)
+    ? ['投诉']
+    : [...CREATE_TICKET_TYPES];
+}
+
+const ticketTypeOptions = computed(() =>
+  typesFor(form.priority).map((v) => ({ value: v, label: v })),
+);
+
+const priorityOptions = computed(() => {
+  const allowed = prioritiesFor(form.ticketType);
+  // 选项顺序沿用 PRIORITY_OPTIONS（P3→P0 倒序），过滤不重排
+  return PRIORITY_OPTIONS.filter((p) => !allowed || allowed.includes(p.value))
+    .map((p) => ({ value: p.value, label: p.label }));
+});
+
+/*
+ * 两个 watch 互为对方兜底，但不会来回打架：各自只在**对方取值已非法**时才写，
+ * 改完一次后另一边即合法，第二轮不再触发。
+ */
+watch(
+  () => form.priority,
+  () => {
+    if (!form.priority || !form.ticketType) return;
+    const types = typesFor(form.priority);
+    if (!types.includes(form.ticketType)) form.ticketType = types[0];
+  },
+);
+
+watch(
+  () => form.ticketType,
+  () => {
+    if (!form.priority || !form.ticketType) return;
+    const allowed = prioritiesFor(form.ticketType);
+    if (allowed && !allowed.includes(form.priority)) {
+      // 落到可选范围内的首项：选项是 P3→P0 倒序，首项即该档最低优先级
+      form.priority = priorityOptions.value[0]?.value ?? allowed[allowed.length - 1];
+    }
+  },
+);
 </script>
 
 <template>
@@ -306,11 +380,12 @@ watch(
     </div>
 
     <div class="modal-body">
-      <!-- ① 工单基础：三字段单行三列（对齐 .pen yTou1 / m8cXVW） -->
+      <!-- ① 工单基础（对齐 .pen yTou1 / m8cXVW）
+           优先级排在工单类型之前：P0/P1 选定后类型只出「投诉」，先后顺序即联动顺序 -->
       <CreateTicketPartCard title="工单基础">
         <div class="row-3 basic-row">
           <div class="inline-field basic-field">
-            <label class="inline-label base"><span class="req">*</span>业务分类</label>
+            <label class="inline-label xl"><span class="req">*</span>业务分类</label>
             <FormSelect
               v-model:value="form.businessType"
               class="inline-control field-control"
@@ -321,22 +396,34 @@ watch(
             />
           </div>
           <div class="inline-field basic-field">
-            <label class="inline-label base"><span class="req">*</span>工单类型</label>
+            <label class="inline-label xl"><span class="req">*</span>优先级</label>
+            <FormSelect
+              v-model:value="form.priority"
+              class="inline-control field-control"
+              size="middle"
+              allow-clear
+              :status="errors.priority ? 'error' : ''"
+              :options="priorityOptions"
+            />
+          </div>
+          <div class="inline-field basic-field">
+            <label class="inline-label xl"><span class="req">*</span>工单类型</label>
             <FormSelect
               v-model:value="form.ticketType"
               class="inline-control field-control"
               size="middle"
+              allow-clear
               :status="errors.ticketType ? 'error' : ''"
-              :options="CREATE_TICKET_TYPES.map((v) => ({ value: v, label: v }))"
+              :options="ticketTypeOptions"
             />
           </div>
           <div class="inline-field basic-field">
-            <label class="inline-label base"><span class="req">*</span>工单来源</label>
+            <label class="inline-label xl"><span class="req">*</span>工单来源</label>
             <FormSelect
               v-model:value="form.ticketSource"
               class="inline-control field-control"
               size="middle"
-              :options="TICKET_SOURCE_OPTIONS.map((v) => ({ value: v, label: v }))"
+              :options="ticketSourceOptions"
             />
           </div>
         </div>
@@ -508,15 +595,6 @@ watch(
           </div>
 
           <div class="row-3">
-            <div class="inline-field">
-              <label class="inline-label xl"><span class="req">*</span>优先级</label>
-              <FormSelect
-                v-model:value="form.priority"
-                class="inline-control field-control"
-                size="middle"
-                :options="PRIORITY_OPTIONS.map((p) => ({ value: p.value, label: p.label }))"
-              />
-            </div>
             <div class="inline-field">
               <label class="inline-label xl">问题发生时间</label>
               <a-input
@@ -881,16 +959,19 @@ watch(
   width: 100%;
   min-height: 32px;
 }
-.basic-row {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
+.row-3.basic-row {
+  /* 业务分类 / 优先级 / 工单类型 / 工单来源 四项同一行（覆盖 .row-3 的三列） */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
   align-items: center;
 }
 .basic-row .basic-field {
   min-width: 0;
   width: 100%;
+  gap: 4px;
 }
-.basic-row .inline-label.base {
+.basic-row .inline-label {
+  width: auto;
   flex-shrink: 0;
   white-space: nowrap;
 }

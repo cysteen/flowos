@@ -477,6 +477,9 @@ export const NOTIFY_RULES: NotifyRule[] = [
   { id: 'R02', name: '建单受理通知', event: 'ticket.dispatched', audience: 'external',
     conditions: [
       { field: 'dispatchFrom', op: 'eq', value: ['建单'] },
+      // 内投 / 外投渠道一律不发对客短信 —— 规则落在**触发条件**上，不动发短信的底层链路
+      //（《【紧急需求】内投外投渠道可选范围与对客短信抑制-需求说明》§三 规则 B）。
+      // 不限建单方式（页面 / 升级投诉派生 / 接口 / 批量导入）：本条件判的是工单来源，与建单方式无关。
       { field: 'source', op: 'nin', value: ['内投渠道', '外投渠道', '客户服务小程序'] },
       { field: 'bizType', op: 'ne', value: ['无线音乐'] },
       { field: 'ticketType', op: 'ne', value: ['表扬'] },

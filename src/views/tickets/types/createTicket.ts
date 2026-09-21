@@ -1,5 +1,6 @@
 import { PRIORITY_LABEL } from '@/views/tickets/types/ticket';
 import type { Channel, ClosureMode, Priority, TicketType } from '@/views/tickets/types/ticket';
+import type { RoleKey } from '@/config/roles';
 
 /**
  * 新建弹窗工单类型（对齐 .pen V6xQCz 等画板）。
@@ -41,6 +42,66 @@ export const TICKET_SOURCE_OPTIONS: TicketSource[] = [
 
 /** 售后转入判据：来源为该值即视为售后转入工单（PRD §4.3.3 门禁①） */
 export const AFTERSALE_INBOUND_SOURCE: TicketSource = '售后系统';
+
+/**
+ * 受角色限制的工单来源 —— 内投渠道 / 外投渠道。
+ *
+ * 出处：《【紧急需求】内投外投渠道可选范围与对客短信抑制-需求说明》§二 规则 A。
+ * 两者同属外部投诉、**同层并列**（同文档 §四 修正口径），故按同一组收口，不分层级。
+ */
+export const RESTRICTED_TICKET_SOURCES: TicketSource[] = ['内投渠道', '外投渠道'];
+
+/**
+ * 能选内投 / 外投渠道的角色：**客诉专员 + 投诉督导**（同上 §二）。
+ * 其余角色（含一线坐席）在建单 / 升级投诉 / 转单三处入口都不展示这两个选项。
+ */
+export const RESTRICTED_TICKET_SOURCE_ROLES: RoleKey[] = [
+  'complaint-handler',
+  'complaint-supervisor',
+];
+
+/** 某来源是否属于内投 / 外投（先归一化存量别名「内投」「外投」） */
+export function isRestrictedTicketSource(source?: string): boolean {
+  return (RESTRICTED_TICKET_SOURCES as string[]).includes(normalizeTicketSource(source));
+}
+
+/** 当前角色能否选内投 / 外投渠道 */
+export function canPickRestrictedTicketSource(roleKey?: string): boolean {
+  return RESTRICTED_TICKET_SOURCE_ROLES.includes(roleKey as RoleKey);
+}
+
+export interface TicketSourceOption {
+  value: TicketSource;
+  label: string;
+  /** 存量值回显用：选项照常渲染，但不可被重新选中 */
+  disabled?: boolean;
+}
+
+/**
+ * 工单来源下拉选项 —— **建单 / 升级投诉 / 转单三处入口共用这一个判据**（规则 A，见上）。
+ *
+ * @param roleKey 当前登录角色（`stores/user.ts` 的 `roleKey`）
+ * @param current 表单当前值：已经是内投 / 外投的存量单，非授权角色打开时照常回显该值
+ *                （置灰、不可再选），不因过滤而显示为空。
+ *
+ * ⚠️ 只管**建单侧取值域**。筛选器里的工单来源是查询条件不是建单，仍用 `TICKET_SOURCE_OPTIONS` 全量。
+ */
+export function ticketSourceOptionsForRole(
+  roleKey?: string,
+  current?: string,
+): TicketSourceOption[] {
+  const allowRestricted = canPickRestrictedTicketSource(roleKey);
+  const keep = normalizeTicketSource(current);
+  const options: TicketSourceOption[] = [];
+  for (const source of TICKET_SOURCE_OPTIONS) {
+    if (allowRestricted || !isRestrictedTicketSource(source)) {
+      options.push({ value: source, label: source });
+    } else if (source === keep) {
+      options.push({ value: source, label: source, disabled: true });
+    }
+  }
+  return options;
+}
 
 export type CustomerContactType = '来电号码' | '联系电话' | '邮箱' | '微信';
 
@@ -229,8 +290,9 @@ export const PROBLEM_TREE: Record<string, Record<string, string[]>> = {
   账号问题: { 登录: ['验证码失败', '密码错误'], 权益: ['会员失效', '订单未同步'] },
 };
 
+/** 建单下拉按 P3 → P0 倒序：默认落在最低档，高优先级需坐席主动选 */
 export const PRIORITY_OPTIONS: { value: Priority; label: string }[] =
-  (['P0', 'P1', 'P2', 'P3'] as Priority[]).map((v) => ({
+  (['P3', 'P2', 'P1', 'P0'] as Priority[]).map((v) => ({
     value: v,
     label: `${v}（${PRIORITY_LABEL[v]}）`,
   }));
