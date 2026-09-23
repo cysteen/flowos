@@ -135,9 +135,9 @@ const complaintL2Options = computed(
 );
 
 /**
- * 工单来源可选项按角色收窄：内投 / 外投渠道仅客诉专员、投诉督导可选
+ * 工单来源可选项按角色收窄：内投 / 外投渠道**仅一线坐席选不到**，二线及以上不受限
  * （《【紧急需求】内投外投渠道可选范围与对客短信抑制-需求说明》§二 规则 A，入口①建单）。
- * 本弹窗同时承载「转单」「重新建单」「升级投诉·新建投诉单」，故入口③转类型一并受限；
+ * 本弹窗同时承载「转单」「重新建单」「升级投诉·新建投诉单」，这些入口一并按同一判据收窄；
  * 原单来源被预填为内投 / 外投时按当前值回显（置灰不可再选）。
  */
 const ticketSourceOptions = computed(
@@ -822,10 +822,11 @@ watch(
       <div class="footer-btns">
         <button type="button" class="btn-ghost" @click="onCancel">取消</button>
         <button type="button" class="btn-ghost" @click="onDraft">存草稿</button>
-        <button type="button" class="btn-ghost" :disabled="submitting" @click="onCreate(false)">
+        <!-- 主操作是「创建」：建完回列表是常态，建完立刻处理是少数场景 -->
+        <button type="button" class="btn-primary" :disabled="submitting" @click="onCreate(false)">
           创建
         </button>
-        <button type="button" class="btn-primary" :disabled="submitting" @click="onCreate(true)">
+        <button type="button" class="btn-ghost" :disabled="submitting" @click="onCreate(true)">
           创建并处理
         </button>
       </div>

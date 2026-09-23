@@ -193,7 +193,7 @@ const LIST_DRILL_KEYS = new Set([
   // 今日指标区（2026-08-05 起同样直达列表）
   'escalated',
   'returnedToday',
-  'contact-rate-24h',
+  // contact-rate-24h：PRD §5.5/5.6 仅展示，不下钻列表
   'first-response-overdue',
   'resolution-overdue',
   'service-bad',
@@ -208,8 +208,6 @@ const LIST_STATUS_OF: Record<string, string> = {
   transferIn: 'transferIn',
   escalated: 'escalated',
   returnedToday: 'returned',
-  /** 率值卡点进去看的是**分子的反面**——没联络上的那批，才是要动手的 */
-  'contact-rate-24h': 'contactMissed',
   'first-response-overdue': 'firstResponseOverdue',
   'resolution-overdue': 'resolutionOverdue',
   'service-bad': 'serviceBad',

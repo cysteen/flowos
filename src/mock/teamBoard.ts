@@ -665,14 +665,15 @@ export const BOARD_METRICS: BoardMetric[] = [
    * ⚠️ 分母口径业务未明确，此处为按看板既有规则的推定，待确认。
    * 89 / 97 = 91.8%。
    *
-   * ⚠️ 与组员表「跟进率」**同名不同义**：那一列只数**对客有效联络**（通话接通 /
-   * 短信已发出 / 消息已送达），本卡还含**保存**这种纯系统动作。两处不可互校。
+ * ⚠️ 与组员表「跟进率」**同名不同义**：那一列只数**对客有效联络**（通话接通 /
+ * 短信已发出 / 消息已送达），本卡还含**保存**这种纯系统动作。两处不可互校。
+ * 卡片**不可点击**，不下钻未联络明细（§5.5/5.6）。
    */
   {
     key: 'contact-rate-24h',
     label: '24 小时联络率',
     value: '91.8%',
-    sub: '昨日 97 单 · 89 单已联络',
+    sub: '97单，89单已联络',
     delta: '-1.4%',
     deltaTone: 'bad',
     iconName: 'FieldTimeOutlined',
@@ -1351,7 +1352,7 @@ export function getTeamBoardSnapshot(teamId: string): TeamBoardSnapshot {
         patchMetric(BOARD_METRICS[1], { value: '86', sub: '下送 / 关闭 / 强结', delta: '+11' }),
         patchMetric(BOARD_METRICS[2], { value: '14', sub: '技术支持 / 飞书', delta: '+3', deltaTone: 'bad' }),
         patchMetric(BOARD_METRICS[3], { value: '2', sub: '技术支持 / 回访', delta: '0', deltaTone: 'neutral' }),
-        patchMetric(BOARD_METRICS[4], { value: '93.2%', sub: '昨日 74 单 · 69 单已联络', delta: '+0.8%', deltaTone: 'good' }),
+        patchMetric(BOARD_METRICS[4], { value: '93.2%', sub: '74单，69单已联络', delta: '+0.8%', deltaTone: 'good' }),
         patchMetric(BOARD_METRICS[5], { value: '2.0%', sub: '首响超 2 / 98 · 平均超 0.6h', delta: '-0.2%', deltaTone: 'good' }),
         patchMetric(BOARD_METRICS[6], { value: '3.1%', sub: '解决超 3 / 98 · 平均超 1.6h', delta: '-0.2%', deltaTone: 'good' }),
         // 「服务不满意」是**单量**不是 5 分制均分 —— 原先写 '4.7' 是被 2026-08-05 换掉的
@@ -1402,7 +1403,7 @@ export function getTeamBoardSnapshot(teamId: string): TeamBoardSnapshot {
         patchMetric(BOARD_METRICS[1], { value: '52', label: '今日完工', sub: '下送 / 关闭 / 强结', delta: '+6' }),
         patchMetric(BOARD_METRICS[2], { value: '8', sub: '技术支持 / 飞书', delta: '+2', deltaTone: 'bad' }),
         patchMetric(BOARD_METRICS[3], { value: '1', sub: '技术支持 / 回访', delta: '0', deltaTone: 'neutral' }),
-        patchMetric(BOARD_METRICS[4], { value: '88.1%', sub: '昨日 42 单 · 37 单已联络', delta: '+1.5%', deltaTone: 'good' }),
+        patchMetric(BOARD_METRICS[4], { value: '88.1%', sub: '42单，37单已联络', delta: '+1.5%', deltaTone: 'good' }),
         patchMetric(BOARD_METRICS[5], { value: '1.6%', sub: '首响超 1 / 64 · 平均超 0.5h', delta: '0', deltaTone: 'neutral' }),
         patchMetric(BOARD_METRICS[6], { value: '3.1%', sub: '解决超 2 / 64 · 平均超 3.1h', delta: '+0.3%', deltaTone: 'bad' }),
         // 同上：单量，不是 5 分制均分。

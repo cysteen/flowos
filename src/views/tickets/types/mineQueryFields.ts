@@ -5,6 +5,7 @@ export type MineFilterFieldKey =
   | 'phone'
   | 'sn'
   | 'priority'
+  | 'sla'
   | 'productCategory'
   | 'productName'
   | 'timePreset'
@@ -35,6 +36,7 @@ export const MINE_FILTER_FIELD_DEFS: MineFilterFieldDef[] = [
   { key: 'phone', label: '手机号', fixed: true },
   { key: 'sn', label: '设备 SN', fixed: true },
   { key: 'priority', label: '优先级', fixed: true },
+  { key: 'sla', label: 'SLA', defaultVisible: true },
   { key: 'ticketType', label: '工单类型', defaultVisible: true },
   { key: 'businessType', label: '业务分类', defaultVisible: true },
   { key: 'productCategory', label: '产品分类', fixed: true },
@@ -59,8 +61,9 @@ const ALL_KEYS = MINE_FILTER_FIELD_DEFS.map((f) => f.key);
  * 不换 key 的话，只有从没打开过这个页面的浏览器才吃得到新默认，改了等于没改。
  *
  * v2（0903）：业务分类 / 工单类型 / 客户名称 改为默认展示。
+ * v3（0923）：新增 SLA 项，默认展示。
  */
-const LS_KEY = 'flowos-mine-query-fields.v2';
+const LS_KEY = 'flowos-mine-query-fields.v3';
 
 function defaultOptionalVisible(): Record<string, boolean> {
   return Object.fromEntries(

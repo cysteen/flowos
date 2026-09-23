@@ -1381,6 +1381,93 @@ export function matchSlaChip(t: Ticket, key: 'soon' | 'overdue'): boolean {
   return t.slaState === key;
 }
 
+/**
+ * SLA 结构化筛选（查询中心筛选条「SLA」项，多选＝或关系）。
+ *
+ * 与 `matchSlaChip` 的区别：chip 只看「最急钟」的扁平结论，这里把**两只钟拆开**判 ——
+ * 首响钟与解决钟各自出状态，一张单可同时命中「首响超时」与「解决临期」。
+ *
+ * 作用域：**只管在办且钟在走的单**。挂起（含自动刷机中 / 线下登记待批推）与终态单
+ * 钟已停表，不落任何一个值 —— 它们从状态筛选去找，不占 SLA 的口径。
+ *
+ * 「首响超时」取**超过就算**：现在还欠着首响且已超的、以及已经响了但响的时候就超了的
+ * （`firstRespBreached`），两批都命中。
+ */
+export type SlaFilterKey = 'ok' | 'firstSoon' | 'firstOverdue' | 'solveSoon' | 'solveOverdue';
+
+export const SLA_FILTER_OPTIONS: { value: SlaFilterKey; label: string }[] = [
+  { value: 'ok', label: '正常' },
+  { value: 'firstSoon', label: '首响临期' },
+  { value: 'firstOverdue', label: '首响超时' },
+  { value: 'solveSoon', label: '解决临期' },
+  { value: 'solveOverdue', label: '解决超时' },
+];
+
+interface TicketSlaClocks {
+  /** 钟已停：挂起 / 终态 —— 不落任何筛选值 */
+  stopped: boolean;
+  /** 首响钟状态；null = 首响钟已停表（已首响） */
+  first: SlaState | null;
+  /** 解决钟状态；null = 无活跃解决钟读数 */
+  solve: SlaState | null;
+  /** 首响终态未达标（超时后才响） */
+  firstBreached: boolean;
+}
+
+const STOPPED_CLOCKS: TicketSlaClocks = { stopped: true, first: null, solve: null, firstBreached: false };
+
+/** 把一张单拆成两只钟的当前状态（刷机单读 SLA 账本，老四类读工单行上的扁平字段） */
+function ticketSlaClocks(t: Ticket): TicketSlaClocks {
+  const responded = isFirstResponded(t);
+  const firstBreached = !!t.firstRespBreached;
+
+  const led = readSla(t);
+  if (led) {
+    if (led.status !== 'running') return STOPPED_CLOCKS;
+    return {
+      stopped: false,
+      first: responded ? null : slaStateOf(led.firstRemainMs),
+      solve: slaStateOf(led.remainMs),
+      firstBreached,
+    };
+  }
+
+  if (t.slaText === '—' || isSlaPaused(t)) return STOPPED_CLOCKS;
+
+  // 扁平字段的两钟约定（见 Ticket.resolveSlaText 注释）：
+  // 未首响时 slaState = 首响钟、resolveSlaState = 解决钟；已首响后首响钟停表、slaState 即解决钟。
+  return responded
+    ? { stopped: false, first: null, solve: t.slaState, firstBreached }
+    : { stopped: false, first: t.slaState, solve: t.resolveSlaState ?? null, firstBreached };
+}
+
+export function matchSlaFilter(t: Ticket, key: SlaFilterKey): boolean {
+  const c = ticketSlaClocks(t);
+  if (c.stopped) return false;
+  switch (key) {
+    case 'firstSoon':
+      return c.first === 'soon';
+    case 'firstOverdue':
+      return c.first === 'overdue' || c.firstBreached;
+    case 'solveSoon':
+      return c.solve === 'soon';
+    case 'solveOverdue':
+      return c.solve === 'overdue';
+    case 'ok':
+    default:
+      // 正常＝两只钟都不临期不超时，且首响没有超时过
+      return !c.firstBreached
+        && c.first !== 'soon' && c.first !== 'overdue'
+        && c.solve !== 'soon' && c.solve !== 'overdue';
+  }
+}
+
+/** 多选＝或关系；空数组＝不过滤 */
+export function matchSlaFilters(t: Ticket, keys?: SlaFilterKey[]): boolean {
+  if (!keys?.length) return true;
+  return keys.some((k) => matchSlaFilter(t, k));
+}
+
 /** 我的任务 chip 是否命中 */
 export function matchMineChip(t: Ticket, chip: MineChipKey): boolean {
   switch (chip) {

@@ -198,23 +198,19 @@ const weekForward = computed(
   () => weekEfficiency.value?.metrics.find((m) => m.label.includes('下送量'))?.value ?? '—',
 );
 
-const summaryParts = computed(() => {
-  const rank = weekEfficiency.value?.rank ?? 0;
-  const total = weekEfficiency.value?.teamSize ?? 0;
-  /** 前三名才说「继续保持」，否则这句话读起来是反讽 */
-  const tail = rank > 0 && rank <= 3 ? '。继续保持！' : '。再往前一步！';
-  return [
-    { text: '今天有 ', tone: 'plain' as const },
-    { text: `${kpiValue('todo')} 个待办`, tone: 'risk' as const },
-    { text: '、', tone: 'plain' as const },
-    { text: `${kpiValue('soon')} 个 SLA 临期`, tone: 'risk' as const },
-    { text: '，建议优先跟进；本周你已下送 ', tone: 'plain' as const },
-    { text: weekForward.value, tone: 'gain' as const },
-    { text: '，效率', tone: 'plain' as const },
-    { text: `组内第 ${rank}/${total}`, tone: 'gain' as const },
-    { text: tail, tone: 'plain' as const },
-  ];
-});
+/*
+ * 问候语不含组内排名：排名要按班组全员算，首屏不拉这份数据。
+ * 排名仍在「我的效能」面板内展示，那里本就要加载绩效数据。
+ */
+const summaryParts = computed(() => [
+  { text: '今天有 ', tone: 'plain' as const },
+  { text: `${kpiValue('todo')} 个待办`, tone: 'risk' as const },
+  { text: '、', tone: 'plain' as const },
+  { text: `${kpiValue('soon')} 个 SLA 临期`, tone: 'risk' as const },
+  { text: '，建议优先跟进；本周你已下送 ', tone: 'plain' as const },
+  { text: weekForward.value, tone: 'gain' as const },
+  { text: '。', tone: 'plain' as const },
+]);
 
 const quickIcons = {
   plus: PlusOutlined,

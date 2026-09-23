@@ -1,7 +1,7 @@
 import { matchesSearchText } from '@/views/query/queryCenterSearch';
 import { TICKETS } from '@/mock/tickets';
-import type { Priority, Ticket, TicketType } from '@/views/tickets/types/ticket';
-import { resolveTicketGroupNames } from '@/views/tickets/types/ticket';
+import type { Priority, SlaFilterKey, Ticket, TicketType } from '@/views/tickets/types/ticket';
+import { matchSlaFilters, resolveTicketGroupNames } from '@/views/tickets/types/ticket';
 import type { BusinessType, TicketSource } from '@/views/tickets/types/createTicket';
 import { prototypeDayEnd } from '@/config/prototypeDate';
 
@@ -39,6 +39,8 @@ export interface MineQueryFilter {
   businessType: string;
   ticketType: '' | TicketType;
   ticketSource: '' | TicketSource;
+  /** SLA · 多选，或关系；空=不过滤。判据见 `matchSlaFilter` */
+  sla: SlaFilterKey[];
   problemL1: string;
   problemL2: string;
   problemL3: string;
@@ -62,6 +64,7 @@ export const EMPTY_MINE_QUERY = (): MineQueryFilter => ({
   businessType: '',
   ticketType: '',
   ticketSource: '',
+  sla: [],
   problemL1: '',
   problemL2: '',
   problemL3: '',
@@ -233,6 +236,7 @@ export function matchMineQuery(t: Ticket, q: MineQueryFilter): boolean {
     const src = t.ticketSource ?? (t.channel === '电话' ? '电话' : t.channel);
     if (src !== q.ticketSource) return false;
   }
+  if (!matchSlaFilters(t, q.sla)) return false;
   if (q.problemL1 && t.problemL1 !== q.problemL1) return false;
   if (q.problemL2 && t.problemL2 !== q.problemL2) return false;
   if (q.problemL3 && t.problemL3 !== q.problemL3) return false;
@@ -268,6 +272,7 @@ export function hasMineQuery(q: MineQueryFilter): boolean {
     || q.businessType
     || q.ticketType
     || q.ticketSource
+    || q.sla?.length
     || q.problemL1
     || q.problemL2
     || q.problemL3

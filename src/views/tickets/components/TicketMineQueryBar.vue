@@ -4,6 +4,7 @@ import { DatePicker } from 'ant-design-vue';
 import dayjs, { type Dayjs } from 'dayjs';
 import TicketFilterFieldPicker from '@/views/tickets/components/TicketFilterFieldPicker.vue';
 import MineFilterSelect from '@/views/tickets/components/MineFilterSelect.vue';
+import MineFilterMultiSelect from '@/views/tickets/components/MineFilterMultiSelect.vue';
 import {
   BUSINESS_TYPES,
   CREATE_TICKET_TYPES,
@@ -20,8 +21,8 @@ import {
   type MineTimePreset,
 } from '@/views/tickets/types/mineQuery';
 import { fieldsForVariant, type MineFilterFieldKey } from '@/views/tickets/types/mineQueryFields';
-import type { NodeStatus, PoolGroupMeta, Priority } from '@/views/tickets/types/ticket';
-import { BASELINE_STATUSES, statusDisplayName } from '@/views/tickets/types/ticket';
+import type { NodeStatus, PoolGroupMeta, Priority, SlaFilterKey } from '@/views/tickets/types/ticket';
+import { BASELINE_STATUSES, SLA_FILTER_OPTIONS, statusDisplayName } from '@/views/tickets/types/ticket';
 
 const RangePicker = DatePicker.RangePicker;
 
@@ -56,6 +57,8 @@ const priorities: { value: '' | Priority; label: string }[] = [
   { value: 'P2', label: 'P2' },
   { value: 'P3', label: 'P3' },
 ];
+
+const slaOptions = SLA_FILTER_OPTIONS.map((o) => ({ value: o.value as string, label: o.label }));
 
 // 依据基线 §1「用法」第 2 条：**筛选落库取子状态、页面呈现取展示名**，两列不混用。
 // value 落子状态（25 个），label 走 STATUS_DISPLAY_NAME（如「未认领」显示为「待领取」）。
@@ -269,6 +272,15 @@ const problemL3SelectOptions = computed(() => toStrOpts(problemL3Options.value))
               :model-value="modelValue.priority"
               :options="priorityOptions"
               @update:model-value="patch('priority', $event as MineQueryFilter['priority'])"
+            />
+          </label>
+
+          <label v-else-if="f.key === 'sla'" class="filter-item filter-item-wide">
+            <span class="fi-label">{{ fieldLabel('sla') }}</span>
+            <MineFilterMultiSelect
+              :model-value="modelValue.sla ?? []"
+              :options="slaOptions"
+              @update:model-value="patch('sla', $event as SlaFilterKey[])"
             />
           </label>
 
