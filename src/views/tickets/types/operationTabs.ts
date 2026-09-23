@@ -74,6 +74,10 @@ export interface SimpleRecord {
   supplementType?: string;
   content: string;
   attachments?: string[];
+  /** 仅「补充投诉信息」：本次补录的投诉分类（只追加一组） */
+  complaintCategories?: { cat1: string; cat2: string }[];
+  /** 仅「补充投诉信息」：本次补录的投诉渠道记录（可多条） */
+  complaintChannels?: { platform: string; complaintNo: string; complaintContent: string }[];
   /** 坐席是否已知晓（催单/补充明细，原 read） */
   read?: boolean;
   /** 标记已知晓时刻（YYYY-MM-DD HH:mm:ss，对齐预约 Tab「已沟通」） */

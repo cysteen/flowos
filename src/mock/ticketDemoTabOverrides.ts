@@ -13,6 +13,14 @@ export const TICKET_DEMO_TAB_OVERRIDES: Record<string, Partial<OperationTabData>
         supplementType: COMPLAINT_SUPPLEMENT_TYPE,
         content: '客户又在黑猫平台追加投诉，补充平台截图与投诉编号',
         attachments: ['黑猫追加截图.png'],
+        complaintCategories: [{ cat1: '客户体验与规则问题', cat2: '售后体验' }],
+        complaintChannels: [
+          {
+            platform: '黑猫消费者服务平台',
+            complaintNo: 'HM20260817002',
+            complaintContent: '客户称售后推诿，要求 7 日内给出书面答复',
+          },
+        ],
         read: false,
         contacted: false,
       },

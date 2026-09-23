@@ -1998,6 +1998,12 @@ function onSupplementSubmit(payload: {
   if (record && payload.attachments.length) {
     record.attachments = payload.attachments;
   }
+  if (record && payload.complaintCategories?.length) {
+    record.complaintCategories = payload.complaintCategories;
+  }
+  if (record && payload.complaintChannels?.length) {
+    record.complaintChannels = payload.complaintChannels;
+  }
 
   // 「补充投诉信息」的两项补录：投诉分类只追加一组，投诉渠道记录逐条追加。
   // 都是**只追加、不覆盖**——原有记录一条不动（PRD-915 补充与催单 §5.3）。

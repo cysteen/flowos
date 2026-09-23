@@ -43,7 +43,35 @@ const emit = defineEmits<{
         </span>
       </p>
 
-      <p class="record-body">{{ r.content }}</p>
+      <div
+        v-if="r.complaintCategories?.length || r.complaintChannels?.length"
+        class="record-fields"
+      >
+        <div v-if="r.complaintCategories?.length" class="record-field">
+          <span class="field-label">投诉分类</span>
+          <span class="field-value">
+            <span v-for="(c, i) in r.complaintCategories" :key="i" class="field-line">
+              {{ c.cat1 }} / {{ c.cat2 }}
+            </span>
+          </span>
+        </div>
+        <div v-if="r.complaintChannels?.length" class="record-field">
+          <span class="field-label">投诉渠道</span>
+          <span class="field-value">
+            <template v-for="(ch, i) in r.complaintChannels" :key="i">
+              <span class="field-line">{{ ch.platform }} · {{ ch.complaintNo }}</span>
+              <span v-if="ch.complaintContent" class="field-line field-line-sub">
+                {{ ch.complaintContent }}
+              </span>
+            </template>
+          </span>
+        </div>
+        <div class="record-field">
+          <span class="field-label">补充内容</span>
+          <p class="record-body field-value">{{ r.content }}</p>
+        </div>
+      </div>
+      <p v-else class="record-body">{{ r.content }}</p>
       <OpAttachList v-if="r.attachments?.length" :files="r.attachments" />
     </div>
   </div>
@@ -176,5 +204,40 @@ const emit = defineEmits<{
   line-height: 1.55;
   color: v-bind('T.text.body');
   word-break: break-word;
+}
+
+/* 结构化补录：标签 + 值两列式 */
+.record-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.record-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.field-label {
+  flex: none;
+  width: 56px;
+  color: v-bind('T.text.meta');
+}
+
+.field-value {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  color: v-bind('T.text.body');
+  word-break: break-word;
+}
+
+.field-line-sub {
+  padding-left: 12px;
+  color: v-bind('T.text.meta');
 }
 </style>
