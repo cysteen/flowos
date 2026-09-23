@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { CheckOutlined } from '@ant-design/icons-vue';
-import { computed, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, ref, watch } from 'vue';
 import { RISK_LEVEL_STYLE, riskLevelText, type RiskLevel } from '@/config/risk';
 import { useUserStore } from '@/stores/user';
 import { useRiskCollabStore } from '@/stores/riskCollab';
@@ -211,6 +211,7 @@ function colClass(key: string): string {
 
 // 无分页全量列表：数据集变化（切 Tab / 筛选 / 重算快照）时滚回顶部
 const scrollEl = ref<HTMLElement | null>(null);
+
 watch(
   () => props.rows,
   () => {
@@ -383,11 +384,46 @@ const gridTemplateColumns = computed(() => {
   if (showActionColumn.value) parts.push(colWidthPx('action'));
   return parts.join(' ');
 });
+/*
+ * 冻结列的边界投影。
+ *
+ * 「工单 / 标题」钉左、「操作」钉右，横向拉动时恒可见。投影只在**那一侧真的还有内容**
+ * 时才画 —— 恒画的话，列没撑满、根本不能横拉的窄表上也会挂两道灰边，看着像渲染缺陷。
+ */
+const stuckLeft = ref(false);
+const stuckRight = ref(false);
+
+function syncStuck() {
+  const el = scrollEl.value;
+  if (!el) return;
+  stuckLeft.value = el.scrollLeft > 0;
+  // -1 容差：缩放比例非整数时 scrollLeft + clientWidth 会差出零点几像素，取不到严格相等
+  stuckRight.value = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+}
+
+onMounted(() => {
+  syncStuck();
+  const el = scrollEl.value;
+  if (!el || typeof ResizeObserver === 'undefined') return;
+  // 列宽拖拽、窗口缩放、列设置增减都会改可滚动宽度，靠 scroll 事件追不到
+  const ro = new ResizeObserver(syncStuck);
+  ro.observe(el);
+  onBeforeUnmount(() => ro.disconnect());
+});
+
+watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () => {
+  nextTick(syncStuck);
+});
 </script>
 
 <template>
   <div class="rich-list" :class="{ 'rich-list--resizing': !!resizing }">
-    <div ref="scrollEl" class="rich-list-scroll">
+    <div
+      ref="scrollEl"
+      class="rich-list-scroll"
+      :class="{ 'is-stuck-l': stuckLeft, 'is-stuck-r': stuckRight }"
+      @scroll="syncStuck"
+    >
       <div v-if="rows.length === 0" class="empty">
         <template v-if="emptyKind === 'search'">
           <div class="empty-title">未找到匹配的工单</div>
@@ -402,7 +438,11 @@ const gridTemplateColumns = computed(() => {
         </template>
       </div>
 
-      <div v-else class="table-grid" :style="{ gridTemplateColumns }">
+      <div
+        v-else
+        class="table-grid"
+        :style="{ gridTemplateColumns, '--sticky-title-left': showSelectionColumn ? '16px' : '0px' }"
+      >
         <!-- 表头 -->
         <div class="thead">
           <div v-if="showSelectionColumn" class="cell-cb th-cell">
@@ -1192,5 +1232,41 @@ const gridTemplateColumns = computed(() => {
 .group-pop .group-tag {
   flex: none;
   white-space: nowrap;
+}
+
+/* ============== 冻结列 ==============
+ * 「工单 / 标题」（含左侧勾选列）钉左、「操作」钉右，横向拉动时两端恒可见。
+ *
+ * ⚠️ 这一段必须留在样式表**最末**：`.th-cell--resizable` 的 `position: relative`
+ * 与下面的 `position: sticky` 同特异度，靠书写顺序决胜 —— 挪到前面去，表头那三列的
+ * sticky 会被 relative 覆盖掉，只剩数据行冻结、表头照常跟着滚。
+ * sticky 同样能当绝对定位子元素的包含块，列宽拖拽把手不受影响。
+ */
+.cell-cb,
+.col-title,
+.col-action {
+  position: sticky;
+  z-index: 1;
+}
+.cell-cb { left: 0; }
+/* 有勾选列时让开它那 16px，两列一起钉住 */
+.col-title { left: var(--sticky-title-left, 0px); }
+.col-action { right: 0; }
+
+/* 表头要压住同列滚上来的数据行 */
+.th-cell.cell-cb,
+.th-cell.col-title,
+.th-cell.col-action {
+  z-index: 2;
+}
+
+/* 边界投影：仅在那一侧还有未露出的内容时出现 */
+.is-stuck-l .col-title {
+  box-shadow: 6px 0 8px -6px rgba(17, 24, 39, 0.18);
+  clip-path: inset(0 -12px 0 0);
+}
+.is-stuck-r .col-action {
+  box-shadow: -6px 0 8px -6px rgba(17, 24, 39, 0.18);
+  clip-path: inset(0 0 0 -12px);
 }
 </style>
