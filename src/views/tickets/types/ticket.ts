@@ -1312,8 +1312,88 @@ export function inDoneScope(t: Ticket, handler = WORKBENCH_HANDLER): boolean {
 }
 
 /** 本组工单池 · 行内动作（PRD-02 v1.2：领取） */
-export function poolRowActions(): { label: string; primary?: boolean }[] {
-  return [{ label: '领取', primary: true }];
+/**
+ * 「指派」权（动作矩阵 §G4.5 d）：**班组长 / 租户运营 / 租户管理员**可跳过领取，
+ * 把池中「待受理」单直接指定给人。0830 新增的**投诉督导**同权（基线 §4 ※28
+ * 三行分家：工单管控不展示、审批可用、**指派可用**；roles.ts ⑦ 亦按此写）。
+ *
+ * 工单运营（`ops-monitor`）也有指派权，但它**没有工单工作台菜单**，入口在班组看板，
+ * 故不进本集合 —— 这里管的只是工作台列表那一颗按钮。
+ */
+const TICKET_ASSIGN_ROLES = new Set([
+  'team-leader',
+  'complaint-supervisor',
+  'system-admin',
+  'ops-admin',
+  'tenant-admin',
+]);
+
+export function canAssignTicket(roleKey?: string): boolean {
+  return TICKET_ASSIGN_ROLES.has(roleKey ?? '');
+}
+
+/**
+ * 查询中心列表的「调剂」权。
+ *
+ * **工单运营**（`ops-monitor`）没有工单工作台菜单，查询中心是它唯一能碰到工单的地方；
+ * 它的职责本就是"不办单，只调剂 / 指派"（roles.ts ⑥），入口不给等于职责落不了地。
+ * **投诉督导**同给（roles.ts ⑦：审批 + 指派 + 盯态势，换处理人不动工单内容）。
+ *
+ * 其余角色在查询中心整列不出 —— 查询中心是查询视图，动作列只为这两个"只调剂不办单"
+ * 的角色而开；办单角色的调剂入口在工作台「我的任务」行内与处理页底栏，不在这里重复一份。
+ */
+const QUERY_CENTER_TRANSFER_ROLES = new Set([
+  'ops-monitor',
+  'complaint-supervisor',
+]);
+
+export function canTransferInQueryCenter(roleKey?: string): boolean {
+  return QUERY_CENTER_TRANSFER_ROLES.has(roleKey ?? '');
+}
+
+/**
+ * 「调剂」在哪些子状态下可用（动作矩阵 §G4.4 状态×动作表该列取 ✅ 的三行）：
+ * **待处理 / 处理中 / 处理中〔已升级〕**。
+ *
+ * - 「未认领」不给 —— 池内无人领的单换的不是处理人，是**指派**（§G4.5 d）；
+ * - 「已委派」不给 —— 委派中先撤销委派再调剂，否则协办关系挂空；
+ * - 调研中 / 三个申请中 / 已挂起 / 已转出 / 自动刷机中 / 终态一律不给：单已冻结或在别人手上。
+ */
+const TRANSFERABLE_STATUSES = new Set<TicketStatus>([
+  '待响应',
+  '处理中',
+  '已退回',
+  '已升级技术支持',
+  '已升级产研',
+]);
+
+export function canTransferTicket(t: Ticket): boolean {
+  return TRANSFERABLE_STATUSES.has(t.nodeStatus) && !t.archived;
+}
+
+/**
+ * 查询中心 · 行内动作。整列由 `canTransferInQueryCenter` 决定出不出，
+ * 逐行再按状态判可用性；不可用的行返回空数组（该格显示为空，不出一颗点不动的按钮）。
+ */
+export function queryCenterRowActions(
+  t: Ticket,
+  roleKey?: string,
+): { label: string; primary?: boolean }[] {
+  if (!canTransferInQueryCenter(roleKey)) return [];
+  return canTransferTicket(t) ? [{ label: '调剂', primary: true }] : [];
+}
+
+/**
+ * 工单池 · 行内动作。
+ *
+ * 「指派」位置在**工作台列表行、不在处理页底栏**（动作矩阵 §G4.5 d 明写）——
+ * 待受理单处理页是只读的，底栏放不下这颗按钮。
+ * 不传 `roleKey` 时行为逐字不变（只出「领取」），老调用点无需改。
+ */
+export function poolRowActions(roleKey?: string): { label: string; primary?: boolean }[] {
+  const acts: { label: string; primary?: boolean }[] = [{ label: '领取', primary: true }];
+  if (canAssignTicket(roleKey)) acts.push({ label: '指派' });
+  return acts;
 }
 
 /** @我的工单 · 行内动作（PRD-02 v1.2：仅双击进详情） */

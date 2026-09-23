@@ -250,7 +250,7 @@ function actionsFor(t: Ticket) {
   if (props.variant === 'mine') return mineRowActions();
   if (props.variant === 'done') return doneRowActions();
   if (props.variant === 'mention') return mentionRowActions();
-  if (props.variant === 'pool') return poolRowActions();
+  if (props.variant === 'pool') return poolRowActions(user.roleKey);
   return rowActions(t);
 }
 

@@ -12,6 +12,7 @@ import {
   isTicketTab,
   RISK_REPORT_TAB,
   visiblePoolGroupsFor,
+  canAssignTicket,
   type WorkbenchTabKey,
 } from '@/views/tickets/types/ticket';
 import { FLASH_POOL_TAB_ROLES } from '@/config/roles';
@@ -28,6 +29,11 @@ import TicketDraftList from './components/TicketDraftList.vue';
 import CreateTicketModal from './components/CreateTicketModal.vue';
 import SaveFilterModal from './components/SaveFilterModal.vue';
 import OpActionDialogs from './components/OpActionDialogs.vue';
+import AssignModal, {
+  type AssignSubmitPayload,
+  type AssignTicket,
+} from '@/views/team-board/components/AssignModal.vue';
+import { TEAM_MEMBERS } from '@/mock/teamBoard';
 import { useTicketWorkbench } from './composables/useTicketWorkbench';
 import { useTicketColumns } from './composables/useTicketColumns';
 import { useMineQueryFields } from './composables/useMineQueryFields';
@@ -219,9 +225,10 @@ function onOpDialogConfirm(payload: Record<string, unknown>) {
 }
 
 const isPoolFamilyTab = computed(() => isPoolFamily(wb.activeTab.value));
-const batchActions = computed(() =>
-  isPoolFamilyTab.value ? ['领取'] : wb.isMineTab.value ? ['调剂', '退回'] : [],
-);
+const batchActions = computed(() => {
+  if (isPoolFamilyTab.value) return canAssign.value ? ['领取', '指派'] : ['领取'];
+  return wb.isMineTab.value ? ['调剂', '退回'] : [];
+});
 const showBatchToolbar = computed(() => wb.isMineTab.value || isPoolFamilyTab.value);
 const structuredFilterVariant = computed<'done' | 'pool' | 'mine'>(() => {
   if (wb.isDoneTab.value) return 'done';
@@ -248,6 +255,60 @@ function openOperation(t: Ticket) {
   router.push(`/tickets/${t.no}`);
 }
 
+/*
+ * —— 指派（动作矩阵 §G4.5 d）——
+ * 班组长 / 投诉督导 / 管理员可跳过领取，把池中「待受理」单直接指给人。
+ * 位置在**工作台列表行与批量工具条**，不在处理页底栏 —— 待受理单的处理页是只读的。
+ * 弹窗直接复用班组看板那只 `AssignModal`（它本就是 B6 调剂的批量壳），不另画一个。
+ */
+const canAssign = computed(() => canAssignTicket(user.roleKey));
+const assignOpen = ref(false);
+const assignPreselect = ref<string[]>([]);
+const assignRef = ref<InstanceType<typeof AssignModal> | null>(null);
+
+/** 候选工单＝当前页签筛选后的全量池内单（不止本页），与弹窗内可勾选范围一致 */
+const assignTickets = computed<AssignTicket[]>(() =>
+  wb.sorted.value
+    .filter((t) => t.tab === 'pool' && t.assignee === null)
+    .map((t) => ({
+      id: t.id,
+      no: t.no,
+      customer: t.customer,
+      type: t.type,
+      priority: t.priority,
+      slaLeftMin: t.slaMinutes,
+      createdAt: t.createdAt ?? '',
+    })),
+);
+
+function openAssign(preselect: string[]) {
+  if (preselect.length === 0) {
+    message.info('请先勾选要指派的工单');
+    return;
+  }
+  assignPreselect.value = preselect;
+  assignOpen.value = true;
+}
+
+function onAssignSubmit(p: AssignSubmitPayload) {
+  assignRef.value?.setSubmitting(true);
+  const rows = wb.assignTickets(p.ticketIds, {
+    scope: p.scope,
+    targetId: p.targetId,
+    targetName: p.targetName,
+  });
+  assignRef.value?.setSubmitting(false);
+  const failed = rows.filter((r) => !r.ok);
+  if (failed.length > 0) {
+    // 池内单随时可能被别人先领走 —— 交给弹窗的部分失败态，不静默吞掉
+    assignRef.value?.applyResults(rows);
+    return;
+  }
+  assignOpen.value = false;
+  wb.clearSelection();
+  message.success(`已指派 ${rows.length} 张工单给 ${p.targetName}`);
+}
+
 // 「处理 / 详情 / 审核 / 受理」进工单操作页（PRD-03）；其余即时反馈
 function onAction(label: string, t: Ticket) {
   if (label === '领取' && t.type === '刷机') {
@@ -260,6 +321,10 @@ function onAction(label: string, t: Ticket) {
     } else {
       message.warning('该工单已被他人认领');
     }
+    return;
+  }
+  if (label === '指派') {
+    openAssign([t.id]);
     return;
   }
   if (label === '调剂' || label === '退回') {
@@ -285,6 +350,10 @@ function onClickCustomer(t: Ticket) {
   message.info(`查看客户「${t.customer}」详情卡`);
 }
 function onBatch(action: string) {
+  if (action === '指派') {
+    openAssign([...wb.selectedIds.value]);
+    return;
+  }
   if (action === '领取') {
     const { claimed, failed } = wb.claimTickets(wb.selectedIds.value);
     if (claimed > 0) {
@@ -529,6 +598,16 @@ function onConfirmSaveFilter(name: string) {
     </div>
 
     <CreateTicketModal v-model:open="createOpen" :draft-id="editingDraftId" @created="onCreated" />
+
+    <AssignModal
+      ref="assignRef"
+      v-model:open="assignOpen"
+      :preselected-ids="assignPreselect"
+      :candidates="TEAM_MEMBERS"
+      :tickets="assignTickets"
+      :can-cross-team="canAssign"
+      @submit="onAssignSubmit"
+    />
 
     <AiSuggestionDrawer
       v-model:open="aiDrawerOpen"

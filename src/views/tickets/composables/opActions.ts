@@ -302,12 +302,18 @@ export const TRANSFER_TARGET_GROUPS = [
  *
  * `complaint-handler` 必须在列：它的作用域是**全中心**，管控来的单常常不属于本组，
  * 而基线把「释放管控」寄生在调剂上（※9）—— 缺了跨组权限，它管控了别组的单就还不回去。
+ *
+ * `ops-monitor`（工单运营）同理：它的职责就是"不办单，只调剂 / 指派"（roles.ts ⑥），
+ * 作用域全租户，调剂的对象天然是别组的单。此前不在列只因它够不着任何一个调剂入口
+ * （无工单工作台菜单、查询中心也没有动作列）；入口开出来后这一格必须跟着给，
+ * 否则它点开弹窗看到的「跨组」是灰的。
  */
 export const CROSS_GROUP_TRANSFER_ROLES = [
   'tech-support',
   'team-leader',
   'complaint-handler',
   'complaint-supervisor',
+  'ops-monitor',
   'ops-admin',
   'system-admin',
   'tenant-admin',

@@ -429,6 +429,40 @@ export function useTicketWorkbench() {
     }
     return { claimed, failed };
   }
+  /**
+   * 指派（动作矩阵 §G4.5 d）：把池中「待受理」单跳过领取、直接定给人或转给组。
+   *
+   * - **同组内 → 到人**：单离池（`tab='mine'` + `assignee=目标人`）。指给本人时才落进
+   *   「我的任务」，指给别人就只是从池里消失 —— 这与「领取」共用 `inGroupPoolScope`
+   *   的同一套判据（`tab==='pool' && assignee===null`），不另开一个"已指派"中间态。
+   * - **跨组 → 到组**：只换 `groupId`，单仍在池内待领。与 B6 调剂·跨组同口径
+   *   （转入目标组工单池，由该组自行领取，不指定到对方组里的具体某个人）。
+   *
+   * 逐单返回结果而不是整批成败：池内单随时可能被别人先领走，弹窗要据此进部分失败态。
+   */
+  function assignTickets(
+    ids: Iterable<string>,
+    opts: { scope: 'in-team' | 'cross-team'; targetId: string; targetName: string },
+  ): { id: string; ok: boolean; reason?: string }[] {
+    const rows: { id: string; ok: boolean; reason?: string }[] = [];
+    for (const id of ids) {
+      const t = all.value.find((x) => x.id === id);
+      if (!t || t.tab !== 'pool' || t.assignee !== null) {
+        rows.push({ id, ok: false, reason: t?.assignee ? `已被 ${t.assignee} 领取` : '工单已不在池内' });
+        continue;
+      }
+      if (opts.scope === 'cross-team') {
+        t.groupId = opts.targetId;
+      } else {
+        t.tab = 'mine';
+        t.assignee = opts.targetName;
+        t.responded = false;
+      }
+      rows.push({ id, ok: true });
+    }
+    return rows;
+  }
+
   function dismissAiSuggestion(id: string) {
     dismissedAiIds.value = new Set([...dismissedAiIds.value, id]);
   }
@@ -443,7 +477,7 @@ export function useTicketWorkbench() {
     selectedCount, allPageSelected, aiSuggestions, aiSummary, showAiBar,
     isDraftView, showAppointmentColumn, showSuspendColumns, isMineTab, isDoneTab, isPoolTab, usesStructuredFilter,
     setTab, setChip, setMineQuery, setDoneQuery, setStructuredQuery, saveCurrentFilter, removeSavedFilterChip, applyMineQuery, applyStructuredQuery, setMineSortRule, setSearch, toggleSelect, toggleSelectAllOnPage, clearSelection,
-    addTicket, claimTicket, claimTickets, claimFlashTicket, flashPoolRows, dismissAiSuggestion, ticketById,
+    addTicket, claimTicket, claimTickets, claimFlashTicket, assignTickets, flashPoolRows, dismissAiSuggestion, ticketById,
     removeDraft: (id: string) => draftStore.remove(id),
   };
 }

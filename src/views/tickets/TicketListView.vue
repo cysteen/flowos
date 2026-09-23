@@ -22,6 +22,10 @@ import CreateTicketModal from './components/CreateTicketModal.vue';
 
 import SaveFilterModal from './components/SaveFilterModal.vue';
 
+import OpActionDialogs from './components/OpActionDialogs.vue';
+
+import type { TransferPayload } from './composables/opActions';
+
 import { useTicketList } from './composables/useTicketList';
 
 import { useTicketColumns } from './composables/useTicketColumns';
@@ -48,7 +52,15 @@ import { useQueryCenterColumns } from '@/views/query/useQueryCenterColumns';
 
 import { hasMineQuery, type MineQueryFilter } from './types/mineQuery';
 
-import { type Ticket } from './types/ticket';
+import {
+
+  canTransferInQueryCenter,
+
+  queryCenterRowActions,
+
+  type Ticket,
+
+} from './types/ticket';
 
 import { queryCenterLocation } from '@/views/query/queryCenterRoute';
 
@@ -291,7 +303,57 @@ function openCustomerInsight(t: Ticket) {
 
 
 
+/*
+ * —— 查询中心行内「调剂」——
+ * 工单运营 / 投诉督导在查询中心直接换处理人（判据见 `queryCenterRowActions`）。
+ * 弹窗与落库逻辑整个复用工作台那套 `OpActionDialogs` + `TransferPayload`，不另写一份。
+ */
+
+const canTransfer = computed(() => props.embedded && canTransferInQueryCenter(user.roleKey));
+
+const rowActionsFn = computed(() =>
+
+  canTransfer.value ? (t: Ticket) => queryCenterRowActions(t, user.roleKey) : undefined,
+
+);
+
+const opDialogOpen = ref(false);
+
+const opTransferTicket = ref<Ticket | null>(null);
+
+function onOpDialogConfirm(payload: Record<string, unknown>) {
+
+  const t = opTransferTicket.value;
+
+  opDialogOpen.value = false;
+
+  opTransferTicket.value = null;
+
+  if (!t || payload.type !== '调剂') return;
+
+  // 候选项形如「张三 受理一组」，落库只取姓名 —— 与工作台 onOpDialogConfirm 同一套解析
+  const name = (payload.data as TransferPayload).target.split(' ')[0];
+
+  t.assignee = name;
+
+  t.myTransferAction = true;
+
+  message.success(`已将 ${t.no} 调剂至 ${name}`);
+
+}
+
 function onAction(label: string, t: Ticket) {
+
+  if (label === '调剂') {
+
+    opTransferTicket.value = t;
+
+    opDialogOpen.value = true;
+
+    return;
+
+  }
+
 
   if (['处理', '详情', '审核', '受理', '恢复'].includes(label)) {
 
@@ -585,6 +647,8 @@ function onClearFilters() {
 
         :variant="embedded ? 'query' : 'default'"
 
+        :row-actions-fn="rowActionsFn"
+
         @action="onAction"
 
         @click-no="openOperation"
@@ -633,6 +697,16 @@ function onClearFilters() {
       v-if="embedded"
       v-model:open="saveFilterModalOpen"
       @save="onConfirmSaveFilter"
+    />
+
+    <OpActionDialogs
+      v-model:open="opDialogOpen"
+      action="调剂"
+      :ticket-no="opTransferTicket?.no ?? ''"
+      :suspend-info="null"
+      :return-count="0"
+      :group-id="opTransferTicket?.groupId"
+      @confirm="onOpDialogConfirm"
     />
 
   </div>
