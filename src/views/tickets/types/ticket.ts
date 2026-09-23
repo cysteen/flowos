@@ -1136,17 +1136,19 @@ export function headerActionsByRole(roleKey: string): {
   cancelTicket: boolean;
 } {
   // 取值逐格对齐基线 §4（v1.17，R13 B 组 12 格已全部采纳 0830）：
-  //   升级投诉 = 一线 + 二线专员 + 技术支持 + 二线班组长 + 客诉专员 + 投诉督导 + 管理员
-  //   新建补充 = 同上（※21a 2026-08-26 放开）
-  //   关联售后 = 上面这组**去掉一线**（※12a：建不建售后单由二线判断，一线转二线后由二线关联）
+  //   升级投诉 = 一线 + 二线专员 + 二线班组长 + 客诉专员 + 投诉督导 + 管理员
+  //   新建补充 = 上面这组 + 技术支持（※21a 2026-08-26 放开）
+  //   关联售后 = 升级投诉那组**去掉一线**（※12a：建不建售后单由二线判断，一线转二线后由二线关联）
   //   催单 / 取消工单 = 一线唯一
   // 工单运营与质检两行全部不展示（前者不办单，后者纯只读）。
+  // 技术支持这两格 0923 按《工单动作矩阵》§G4.4 收回，与基线 §4 v1.17 原取值相反，以 §G4.4 为准。
   const canWorkTicket = !['ops-monitor', 'qa'].includes(roleKey);
   const isL1 = roleKey === 'agent-l1';
+  const isTechSupport = roleKey === 'tech-support';
   return {
-    escalateComplaint: canWorkTicket,
+    escalateComplaint: canWorkTicket && !isTechSupport,
     // 投诉单上一线另按阶层置灰（※8），那是类型门控、不在本函数
-    linkAftersale: canWorkTicket && !isL1,
+    linkAftersale: canWorkTicket && !isL1 && !isTechSupport,
     supplement: canWorkTicket,
     dunning: isL1,
     cancelTicket: isL1,
@@ -1352,23 +1354,20 @@ export function canTransferInQueryCenter(roleKey?: string): boolean {
 }
 
 /**
- * 「调剂」在哪些子状态下可用（动作矩阵 §G4.4 状态×动作表该列取 ✅ 的三行）：
- * **待处理 / 处理中 / 处理中〔已升级〕**。
+ * 查询中心「调剂」的状态口径【定 · 2026-09-23】：**在办单全给，只排除终态**。
  *
- * - 「未认领」不给 —— 池内无人领的单换的不是处理人，是**指派**（§G4.5 d）；
- * - 「已委派」不给 —— 委派中先撤销委派再调剂，否则协办关系挂空；
- * - 调研中 / 三个申请中 / 已挂起 / 已转出 / 自动刷机中 / 终态一律不给：单已冻结或在别人手上。
+ * 这是**调度视角**，与工单处理页底栏那套按子状态逐格开合的门控（§G4.4 状态×动作表
+ * 「调剂」列）不同口径：工单运营 / 投诉督导在查询中心做的是人力调配，
+ * 挂起中、调研中、审批中的单同样可能因人员变动要换人，逐格锁反而调不动。
+ *
+ * 排除项只有两类：
+ * - **终态**（10 个子状态，见 `STATUS_GROUP`）：单已收口，换处理人无意义；
+ * - **草稿**：尚未提交，不进查询中心列表。
  */
-const TRANSFERABLE_STATUSES = new Set<TicketStatus>([
-  '待响应',
-  '处理中',
-  '已退回',
-  '已升级技术支持',
-  '已升级产研',
-]);
-
 export function canTransferTicket(t: Ticket): boolean {
-  return TRANSFERABLE_STATUSES.has(t.nodeStatus) && !t.archived;
+  if (t.archived) return false;
+  if (t.nodeStatus === '草稿') return false;
+  return STATUS_GROUP[t.nodeStatus] !== '终态';
 }
 
 /**

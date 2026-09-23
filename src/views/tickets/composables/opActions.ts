@@ -297,8 +297,11 @@ export const TRANSFER_TARGET_GROUPS = [
   '退费处理组',
 ];
 /**
- * 可跨组调剂的角色（基线 §4「调剂 · 跨组」行）：技术支持、二线班组长、客诉专员、投诉督导、管理员；
+ * 可跨组调剂的角色（基线 §4「调剂 · 跨组」行）：二线班组长、客诉专员、投诉督导、管理员；
  * 二线专员仅限同组内（它那一格是「不展示」）。
+ *
+ * `tech-support`（技术支持）按 §G4.4 只做保存 / 联系客户 / 退回，不参与流转类动作；
+ * 此前在列与文档相反，0923 按文档收回。
  *
  * `complaint-handler` 必须在列：它的作用域是**全中心**，管控来的单常常不属于本组，
  * 而基线把「释放管控」寄生在调剂上（※9）—— 缺了跨组权限，它管控了别组的单就还不回去。
@@ -309,7 +312,6 @@ export const TRANSFER_TARGET_GROUPS = [
  * 否则它点开弹窗看到的「跨组」是灰的。
  */
 export const CROSS_GROUP_TRANSFER_ROLES = [
-  'tech-support',
   'team-leader',
   'complaint-handler',
   'complaint-supervisor',
