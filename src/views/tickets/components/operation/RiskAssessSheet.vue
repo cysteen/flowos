@@ -51,7 +51,7 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
 
 <template>
   <!--
-    卡的骨架与配色两条线共用（对齐工单操作页「风险报备」在队卡片 rr-sheet），
+    卡的骨架与配色两条线共用（对齐工单操作页「风险报备」在队卡片 rr-card-live），
     分岔只发生在**抬头那几格与卡体里摆什么**。
   -->
   <section class="assess-sheet" :aria-label="fromPool ? '入池依据' : '报备信息'">
