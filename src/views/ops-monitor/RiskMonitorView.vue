@@ -28,6 +28,11 @@ import RiskAssessSheet from '@/views/tickets/components/operation/RiskAssessShee
 // **共用同一个组件**，字段、级联与校验全在 `useEscalateComplaintFields`，本页不另写一份
 import EscalateComplaintFields from '@/views/tickets/components/operation/EscalateComplaintFields.vue';
 import { useEscalateComplaintFields } from '@/composables/useEscalateComplaintFields';
+// 「风险标记」弹窗下半**投诉支**那三项（评估意见 / 建议事项 /「其他」的具体建议）：
+// 与工单页页头「风险管控」弹窗、风险工单池的协同处理弹窗**共用同一份**，字段、校验与
+// 落库（`submitTo`）全在 `useRiskCollabFields` 里，本页不另写一套
+import RiskCollabFields from '@/views/tickets/components/operation/RiskCollabFields.vue';
+import { useRiskCollabFields } from '@/composables/useRiskCollabFields';
 import { excerptWindow, isKeywordRow } from '@/views/tickets/components/operation/riskAssessSheet';
 import AppPagination from '@/components/AppPagination.vue';
 import { opsTip } from '@/mock/opsMonitorTips';
@@ -951,18 +956,33 @@ function tagAssessEntryOf(ticketNo: string | undefined): RiskQueueEntry | null {
 }
 
 /**
- * 这一段出不出的**四道门**（任一不过整段不出；不出即不参与校验，提交＝只打标，原行为）：
+ * 下半整块出不出的**三道与单类型无关的门**（任一不过整块不出；不出即不参与校验，
+ * 提交＝只打标，原行为）：
  *   ① **打标结论本身要"有风险"** —— 核实那一路＝本次命中成立且有等级，
  *      风险打标那一路＝高 / 中 / 低。选「误报」/「无风险」整段不出。
  *   ② **有一条承载结论的条目，且它还没出过结论** —— 一条条目只出一次结论
- *      （§9 规则 22 提交即固化）；两个「修正」形态改的是打标结论，不重开评估。
- *   ③ **原单不是投诉单** —— 投诉单不做风险评估，由客诉专员协同处理（与底部说明同一口径）。
- *   ④ **当前用户有评估权** —— 见 `canAssessOnTag`。
+ *      （§9 规则 22 提交即固化）；两个「修正」形态改的是打标结论，不重开结论。
+ *   ③ **当前用户有出结论的权** —— 见 `canAssessOnTag`（投诉督导只读，不在其中）。
+ */
+function tagLowerHalfOpenFor(entry: RiskQueueEntry | null, hasRisk: boolean): boolean {
+  if (!hasRisk || !canAssessOnTag.value) return false;
+  return !!entry && entry.status !== '已评估';
+}
+
+/**
+ * 下半走**评估结论**那一支：上面三道门 + **原单不是投诉单**
+ * —— 投诉单不做风险评估，它走协同处理那一支（与底部说明同一口径）。
  */
 function showTagAssessFor(entry: RiskQueueEntry | null, hasRisk: boolean): boolean {
-  if (!hasRisk || !canAssessOnTag.value) return false;
-  if (!entry || entry.status === '已评估') return false;
-  return !isComplaintTicket(entry.ticketNo);
+  return tagLowerHalfOpenFor(entry, hasRisk) && !isComplaintTicket(entry!.ticketNo);
+}
+
+/**
+ * 下半走**协同处理**那一支：上面三道门 + **原单是投诉单**。
+ * 两支互斥且并集就是"下半出不出"，故没有"两段同时出"或"都不出却该出"的中间态。
+ */
+function showTagCollabFor(entry: RiskQueueEntry | null, hasRisk: boolean): boolean {
+  return tagLowerHalfOpenFor(entry, hasRisk) && isComplaintTicket(entry!.ticketNo);
 }
 
 /**
@@ -3712,14 +3732,34 @@ const entryTagAssessHint = computed(() => escalateHintOf(entryTagTarget.value?.t
 const missEntryTagAssessAdvice = computed(
   () => entryTagAssessTried.value && !!entryTagAssessDecision.value && !assessAdvice.value.trim(),
 );
+
+/* ---- 风险标记弹窗下半的**投诉支**：协同处理（判出高 / 中 / 低之后接出，可留空） ---- */
+//
+// 🔴 字段、校验与落库整套走共享件 `useRiskCollabFields` + `RiskCollabFields.vue`
+// （工单页页头「风险管控」弹窗的投诉支、风险工单池的协同处理弹窗用的是同一份）。
+// 本页只负责"什么时候出这一段"与"在哪一步调 `submitTo`"，一个字段都不自己声明。
+const entryTagCollab = useRiskCollabFields();
+/** 投诉支出不出：与评估支同三道门，只在"原单是不是投诉单"这一维上相反 */
+const showEntryTagCollab = computed(() => showTagCollabFor(
+  entryTagTarget.value?.entry ?? null,
+  !!entryTagResult.value && isPoolLevel(entryTagResult.value),
+));
+/**
+ * 段内动过没有。**全空 ＝ 不协同**，提交就是原来的那一下打标（与评估支"决策留空＝不评估"同形）；
+ * 动过任意一项才进校验 —— 否则「评估意见」的必填会把只想打个标的人拦在这儿。
+ */
+const entryTagCollabFilled = computed(() => {
+  const f = entryTagCollab.fields;
+  return !!f.opinion.trim() || f.advices.length > 0 || !!f.otherAdvice.trim();
+});
 /**
  * 主按钮文案：段内决策＝「升级」→「确认升级」（与三处评估弹窗一致，
- * 点下去真的会派生一张新单，按钮得说出来）；其余情形维持本弹窗原文案。
+ * 点下去真的会派生一张新单，按钮得说出来）；改判了等级 →「保存修正」；其余「保存」。
  */
 const entryTagOkText = computed(() => (
   showEntryTagAssess.value && entryTagAssessDecision.value === '升级'
     ? '确认升级'
-    : entryTagAmend.value ? '保存修改' : '保存'
+    : entryTagAmend.value ? '保存修正' : '保存'
 ));
 /**
  * 打标时摆出来的**证据**：本单的风险词命中原话。
@@ -3744,10 +3784,12 @@ function openEntryTag(e: QueueRow) {
   entryTagResult.value = e.tag?.result ?? '';
   entryTagNote.value = e.tag?.note ?? '';
   entryTagReason.value = '';
-  // 「评估结论」段每次打开都从空开始：决策不选＝不评估，字段与红字走共享实例 reset 一次清完
+  // 下半两支每次打开都从空开始：评估支决策不选＝不评估、协同支全空＝不协同，
+  // 两边的字段与红字各由自己那份共享实例 reset 一次清完
   entryTagAssessDecision.value = '';
   entryTagAssessTried.value = false;
   escalateFields.reset();
+  entryTagCollab.reset();
   entryTagOpen.value = true;
 }
 
@@ -3782,6 +3824,17 @@ function saveEntryTag() {
       return;
     }
   }
+  /*
+   * 投诉支同理**整个跑在任何写入之前**：终态判据取共享的 `isRiskTicketEnded`（`submitTo`
+   * 里那一道与这里是同一个函数），必填校验取共享件的 `validate()`。
+   * 🔴 拦下时打标那一下也不该发生 —— 人只是漏填了评估意见，不该换来一条已经进了池、
+   * 却没有协同意见的条目。
+   */
+  const collab = showEntryTagCollab.value && entryTagCollabFilled.value;
+  if (collab) {
+    if (isRiskTicketEnded(target.ticketNo)) { message.warning('本单已结束，无法协同处理'); return; }
+    if (!entryTagCollab.validate()) return;
+  }
   const ok = reportStore.recordTag(target.entry.id, {
     result,
     note: entryTagNote.value.trim(),
@@ -3793,6 +3846,13 @@ function saveEntryTag() {
   if (!ok) { message.warning('这条监控条目已不存在，请刷新后再看'); return; }
   // 段内给了结论：条目照常进池，但**直接落「已结论」**（结论人＝打标人、结论时刻＝本次提交时刻）
   const assessPhrase = assessDec ? commitTagAssess(target.ticketNo, assessDec) : '';
+  /*
+   * 投诉支的落库**整个在共享件里**（`submitTo`：提交前重查 + `riskPool.coordinate` +
+   * 成功 / 拦截提示 + "首次协同转已结论"那半句）。本页不复述它的任何一条判据，
+   * 也不另发一条协同的成功提示 —— 两个入口做的是同一件事（基线 ※29 /《【930】》§5C）。
+   * 🔴 **在 `recordTag` 之后调**：条目正是被那一步送进池的，`submitTo` 要在池里找得到它。
+   */
+  const collabOk = collab ? entryTagCollab.submitTo(target.ticketNo) : false;
   entryTagOpen.value = false;
   /*
    * 提示必须把**去向**说出来，不能只说"保存成功"：打标的人做完这一步会以为事儿结了，
@@ -3807,6 +3867,8 @@ function saveEntryTag() {
     const lv = riskLevelText(result);
     // 段内给了结论时去向已经是「已结论」，下面那几句"等领取 / 处置阶段不变"一句都不成立
     if (assessPhrase) tip = `已对 ${no} 打标「${lv}」，${assessPhrase}`;
+    // 协同支的去向由 `submitTo` 自己那条提示接着说（含"已转已结论"那半句），这里只报打标
+    else if (collabOk) tip = `已对 ${no} 打标「${lv}」`;
     else if (prevStatus === '评估中' || prevStatus === '已评估') tip = `已把 ${no} 的风险等级改为「${lv}」，池内处置阶段不变`;
     else if (prevStatus === '待分派') tip = `已把 ${no} 的打标由「${prevText}」改为「${lv}」，仍在风险工单池等待领取`;
     else if (prevStatus === '已标记无风险') tip = `已把 ${no} 改判为「${lv}」，已补进风险工单池等待领取`;
@@ -6898,7 +6960,9 @@ function toggleWordEnabled(w: RiskWord) {
                 ? '判为无风险的不进池，落「已标记 · 无风险」档 —— 那里是核查漏标误判的地方，不是回收站'
                 : entryTagResult
                   ? (isComplaintTicket(entryTagTarget.ticketNo)
-                    ? '低 / 中 / 高一律进风险工单池；投诉单不做风险评估，由客诉专员协同处理'
+                    ? showEntryTagCollab
+                      ? '低 / 中 / 高一律进风险工单池；投诉单不做风险评估，下方给出协同处理即直接落「已结论」，留空则等客诉专员领取后再协同'
+                      : '低 / 中 / 高一律进风险工单池；投诉单不做风险评估，由客诉专员协同处理'
                     : showEntryTagAssess
                       ? '低 / 中 / 高一律进风险工单池；下方给出评估结论即直接落「已结论」，留空则等客诉专员领取后再评'
                       : '低 / 中 / 高一律进风险工单池，等客诉专员领取后给出升级 / 不升级的结论')
@@ -6922,10 +6986,14 @@ function toggleWordEnabled(w: RiskWord) {
         </div>
 
         <!--
-          「评估结论」段（判出高 / 中 / 低之后接出）。🔴 **可留空**：不选评估决策就照旧只打标、
-          条目进池等领取；给了结论则条目照常进池但**直接落「已结论」**，结论人＝打标人。
-          字段、校验、派生与红字文案与本页评估弹窗**同一套**（同一份 `escalateFields` 实例 +
-          共享组件 `EscalateComplaintFields`），四道"不出段"的门见 `showTagAssessFor`。
+          🔴 **下半按原单类型分岔**（2026-09-29 裁决）：非投诉单走「评估结论」段、
+          投诉单走「协同处理」段。两支互斥、都可留空；门控见 `tagLowerHalfOpenFor`
+          与它派生的 `showTagAssessFor` / `showTagCollabFor`。
+
+          ① 非投诉单：「评估结论」段（判出高 / 中 / 低之后接出）。🔴 **可留空**：
+          不选评估决策就照旧只打标、条目进池等领取；给了结论则条目照常进池但
+          **直接落「已结论」**，结论人＝打标人。字段、校验、派生与红字文案与本页评估弹窗
+          **同一套**（同一份 `escalateFields` 实例 + 共享组件 `EscalateComplaintFields`）。
         -->
         <section v-if="showEntryTagAssess" class="assess-block assess-block-form">
           <h4 class="assess-block-title">评估结论</h4>
@@ -6959,6 +7027,15 @@ function toggleWordEnabled(w: RiskWord) {
           <!-- 投诉工单专属字段（投诉一类 / 二类 / 升级说明），三项均必填，与评估弹窗共用组件与状态 -->
           <EscalateComplaintFields v-if="showEntryTagAssessEscalate" :ctl="escalateFields" />
         </section>
+
+        <!--
+          ② 投诉单：「协同处理」段（评估意见 / 建议事项 /「其他」的具体建议）。
+          **整段是共享件**，与工单页页头「风险管控」弹窗的投诉支、风险工单池的协同处理弹窗
+          用的是同一个组件与同一个 composable —— 字段、占位文案、红字与落库只此一份。
+          🔴 **可留空**：一项都没动就只打标、条目进池等领取；动过任意一项即走
+          `useRiskCollabFields` 的校验与 `submitTo` 落库（首次协同同时把条目转「已结论」）。
+        -->
+        <RiskCollabFields v-if="showEntryTagCollab" :ctl="entryTagCollab" />
 
         <!-- 打标历史：它是佐证不是填写项，按信息层级排在最后。追加不覆盖，故爬坡读得出先后 -->
         <div v-if="entryTagHistory.length" class="tag-trace">
