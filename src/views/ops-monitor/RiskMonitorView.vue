@@ -6753,13 +6753,13 @@ function toggleWordEnabled(w: RiskWord) {
     </a-modal>
 
     <!--
-      批量风险打标（只对「待打标」这一批）。结论与单条**同一个四选一**，
+      批量打标（只对「待打标」这一批）。结论与单条**同一个四选一**，
       不给"保持预设"这种只有批量才有的第五档 —— 批量与单条口径分家的话，
       同一批条目走两条路会得到两种结论，而进不进池全看它。
     -->
     <OpActionModal
       :open="bulkOpen"
-      title="批量风险打标"
+      title="批量打标"
       :icon="TagsOutlined"
       tone="primary"
       :width="480"
