@@ -59,6 +59,15 @@ const props = defineProps<{
   form: ProcessFormDraft;
   riskVerification?: TicketRiskVerification | null;
   readonly?: boolean;
+  /**
+   * 当前登录人是不是**本单主责处理人**。取自工单页的 `isPrimaryHandler`
+   * （`TicketOperationView.vue` 的 `primaryHandlerName === currentHandlerName(...)`，
+   * 与刷机单门控 / 商机编号编辑权同一把），本 Tab 不另判一次。
+   *
+   * 只管「风险标记」块**下半的处理人自述**：那三个字段的写权限是「处理人写权限」，
+   * 角色白名单（`readonly`）之外还要求是本人。不传按非处理人算（只读）。
+   */
+  isPrimaryHandler?: boolean;
   /** 底栏「风险报备」形态按钮出不出（工单页 `showRiskReport` 的报备形态）：空态里指向底栏的那句随它 */
   reportEntryVisible?: boolean;
 }>();
@@ -169,8 +178,14 @@ function confirmWithdraw() {
   message.success('已撤回本次报备，可重新发起');
 }
 
+/**
+ * 「风险标记」块**下半（处理人自述三字段）**的写权限 ＝ 角色白名单（`readonly`）**∧ 本单处理人本人**。
+ * 上半的打标那半不看它（判据是 `canTag`，见下方并块那段的表）。
+ */
+const selfReportWritable = computed(() => !props.readonly && !!props.isPrimaryHandler);
+
 function updateForm(partial: Partial<ProcessFormDraft>) {
-  if (props.readonly) return;
+  if (!selfReportWritable.value) return;
   emit('update:form', { ...props.form, ...partial });
 }
 
@@ -386,11 +401,15 @@ function openEscalatedTicket(no: string) {
  * | 谁填 | **打标人**（客诉专员 / 投诉督导），带打标人、角色、时刻、备注与改判历史 | **处理人自述**（二线在办这张单时填的判断） |
  * | 取值 | **四选一**：低 / 中 / 高 / 无风险（一个枚举，非法组合从类型上就没有） | 是否有风险三档 + 风险等级两个字段 |
  * | 作用 | **进不进风险工单池的那道门**（《【930】》§5A.3），回写工单级风险等级 | 工单字段，供统计与回传比对（915 §7.3「工单侧优先」） |
- * | 判据 | `canTag`（原单类型 + 打标权），**不看** Tab 的表单只读 | 处理人写权限（`props.readonly` / Tab 只读） |
+ * | 判据 | `canTag`（原单类型 + 打标权），**不看** Tab 的表单只读 | `selfReportWritable` ＝ 角色白名单（`props.readonly` / Tab 只读）**∧ 本单处理人本人**（`props.isPrimaryHandler`） |
+ *
+ * 🔴 **下半只有本单处理人本人能填**：它是"处理人自述"，角色对了但不是这张单的处理人，
+ * 填出来的是别人单子上的自述。故按 PRD 的「按处理人写权限」收窄为角色 ∧ 本人，
+ * 非处理人看到的是同一套控件的禁用态（`a-config-provider`），不另加提示。
  *
  * 🔴 **上下两半的权限判据不许混用同一个变量**：上半按 `canTag` 走（打标即时生效，
  * 故按钮外面套 `a-config-provider :component-disabled="false"`，不受本 Tab 表单只读约束）；
- * 下半走 `updateForm`，`props.readonly` 时一律不落。拿其中一个去管另一半，
+ * 下半走 `updateForm`，`selfReportWritable` 不成立时一律不落。拿其中一个去管另一半，
  * 就会出现"二线在非投诉单上能改打标结论"或"客诉专员打不了标"这两种反过来的错。
  */
 
@@ -895,44 +914,51 @@ const collabSectionBadge = computed(() =>
         <!-- 上下两半的分界：上半只读 / 打标权，下半处理人写权限，两半不共用控件 -->
         <div class="rk-split" aria-hidden="true"></div>
 
-        <!-- ===== 下半：处理人自述三字段，随「保存」落工单，判据是处理人写权限 ===== -->
-        <div class="field inline-row risk-row">
-          <label>是否有风险</label>
-          <a-radio-group
-            :value="form.riskFlag || undefined"
-            class="radio-row"
-            @update:value="(v: RiskFlag) => onRiskFlagChange(v)"
+        <!--
+          ===== 下半：处理人自述三字段，随「保存」落工单 =====
+          判据 `selfReportWritable` ＝ 角色白名单 ∧ 本单处理人本人（PRD 的「按处理人写权限」）。
+          非处理人：同一套控件的禁用态（这里的 a-config-provider 覆盖外层 Tab 那一层），
+          `updateForm` 再硬拦一道，值改不动也提交不了。
+        -->
+        <a-config-provider :component-disabled="!selfReportWritable">
+          <div class="field inline-row risk-row">
+            <label>是否有风险</label>
+            <a-radio-group
+              :value="form.riskFlag || undefined"
+              class="radio-row"
+              @update:value="(v: RiskFlag) => onRiskFlagChange(v)"
+            >
+              <a-radio v-for="opt in RISK_FLAG_OPTIONS" :key="opt" :value="opt">{{ opt }}</a-radio>
+            </a-radio-group>
+            <template v-if="form.riskFlag === '有风险'">
+              <label class="field-label-sm risk-level-label"><span class="req">*</span>风险等级</label>
+              <FormSelect
+                class="risk-level-select"
+                :class="{ 'ctrl-missing': missRiskLevel }"
+                :value="form.riskLevel || undefined"
+                :options="riskLevelOptions"
+                placeholder="请选择或搜索"
+                @update:value="onRiskLevelChange"
+              />
+            </template>
+          </div>
+          <p v-if="missRiskLevel" class="field-err">请选择风险等级</p>
+          <div
+            v-if="form.riskFlag === '疑似风险' || form.riskFlag === '有风险'"
+            class="field"
+            :class="{ 'is-missing': missRiskDesc }"
           >
-            <a-radio v-for="opt in RISK_FLAG_OPTIONS" :key="opt" :value="opt">{{ opt }}</a-radio>
-          </a-radio-group>
-          <template v-if="form.riskFlag === '有风险'">
-            <label class="field-label-sm risk-level-label"><span class="req">*</span>风险等级</label>
-            <FormSelect
-              class="risk-level-select"
-              :class="{ 'ctrl-missing': missRiskLevel }"
-              :value="form.riskLevel || undefined"
-              :options="riskLevelOptions"
-              placeholder="请选择或搜索"
-              @update:value="onRiskLevelChange"
+            <label><span class="req">*</span>风险描述</label>
+            <a-textarea
+              :value="form.riskDescription"
+              :rows="3"
+              :status="missRiskDesc ? 'error' : undefined"
+              placeholder="描述风险点、影响范围与建议处置…（必填）"
+              @update:value="(v: string) => updateForm({ riskDescription: v ?? '' })"
             />
-          </template>
-        </div>
-        <p v-if="missRiskLevel" class="field-err">请选择风险等级</p>
-        <div
-          v-if="form.riskFlag === '疑似风险' || form.riskFlag === '有风险'"
-          class="field"
-          :class="{ 'is-missing': missRiskDesc }"
-        >
-          <label><span class="req">*</span>风险描述</label>
-          <a-textarea
-            :value="form.riskDescription"
-            :rows="3"
-            :status="missRiskDesc ? 'error' : undefined"
-            placeholder="描述风险点、影响范围与建议处置…（必填）"
-            @update:value="(v: string) => updateForm({ riskDescription: v ?? '' })"
-          />
-          <p v-if="missRiskDesc" class="field-err">请填写风险描述</p>
-        </div>
+            <p v-if="missRiskDesc" class="field-err">请填写风险描述</p>
+          </div>
+        </a-config-provider>
       </div>
     </OpCollapsibleSection>
 

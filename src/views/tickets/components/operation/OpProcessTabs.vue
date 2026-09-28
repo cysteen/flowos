@@ -70,6 +70,11 @@ const props = defineProps<{
   postCloseEditable?: boolean;
   /** 商机编号是否可编辑（非终态＝工单处理人；终态＝同 postCloseEditable） */
   leadNoEditable?: boolean;
+  /**
+   * 当前登录人是不是本单主责处理人（页面侧 `isPrimaryHandler`，与商机编号编辑权同一把）。
+   * 透传给「风险报备」Tab：「风险标记」块下半的处理人自述按「角色 ∧ 本人」写。
+   */
+  isPrimaryHandler?: boolean;
   /** 底栏「风险报备」形态按钮出不出，透传给「风险报备」Tab（空态指引随它） */
   riskReportEntryVisible?: boolean;
   /**
@@ -248,6 +253,7 @@ defineExpose({ switchTab });
         :form="form"
         :risk-verification="riskVerification"
         :readonly="activeTabReadonly"
+        :is-primary-handler="isPrimaryHandler"
         :report-entry-visible="riskReportEntryVisible"
         @update:draft="updateTabData({ ...tabData, riskDraft: $event })"
         @update:form="emit('update:form', $event)"

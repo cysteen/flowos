@@ -2282,6 +2282,7 @@ watch(
           @closing-note-files-added="onClosingNoteFilesAdded"
           :post-close-editable="postCloseEditable"
           :lead-no-editable="leadNoEditable"
+          :is-primary-handler="isPrimaryHandler"
           :tab-writable-override="flashTabWritable"
           :flash-errors="flashFormErrors"
           @toggle-section="toggleSection"
