@@ -4,6 +4,8 @@ import { message } from 'ant-design-vue';
 import { EditOutlined } from '@ant-design/icons-vue';
 import OpActionModal from './OpActionModal.vue';
 import RiskAssessSheet from './RiskAssessSheet.vue';
+// 选「升级」后那一段投诉专属建单要素：与风险监控页、风险报备池两个评估入口共用同一个组件
+import EscalateComplaintFields from './EscalateComplaintFields.vue';
 import { useRiskReportAssess } from '@/composables/useRiskReportAssess';
 import { useRiskPoolStore } from '@/stores/riskPool';
 import { useRiskReportStore } from '@/stores/riskReports';
@@ -49,6 +51,8 @@ const {
   missAssessDecision,
   missAssessAdvice,
   escalateHint,
+  escalateFields,
+  showEscalateFields,
   assessOthers,
   openAssess,
   confirmAssess,
@@ -155,6 +159,12 @@ const modalTitle = computed(() => (assessTarget.value?.source === REPORT_SOURCE 
           <div v-if="missAssessAdvice" class="ticket-assess-err">请填写{{ adviceLabel }}</div>
         </div>
       </section>
+
+      <!--
+        ② 投诉工单专属字段：选「升级」（且会派生新投诉单）时才出，排在「升级说明」之后。
+        出哪些字段按**原单的工单来源**决定，判据与建单弹窗同一条；切到「不升级」整段隐藏、已填值保留。
+      -->
+      <EscalateComplaintFields v-if="showEscalateFields" :ctl="escalateFields" />
     </div>
   </OpActionModal>
 </template>

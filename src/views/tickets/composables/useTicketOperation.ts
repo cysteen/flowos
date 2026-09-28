@@ -231,6 +231,20 @@ export function useTicketOperation() {
         if (inferredSource === '外投渠道') base.isExternalAppeal = true;
       }
       if (t.complaintType) base.complaint.complaintType = normalizeComplaintType(t.complaintType);
+      /*
+       * 投诉专属建单要素按工单行落到「投诉信息」区：建单弹窗填的、以及风险评估判「升级」
+       * 时在评估弹窗里补的（`composables/useEscalateComplaintFields.ts`）都存在工单行上，
+       * 不读回来的话派生出的新投诉单打开是一片空的投诉信息，而那几格恰恰是刚填过的。
+       */
+      if (t.complaintL1 || t.complaintL2) {
+        base.complaint.categories = [{ cat1: t.complaintL1 ?? '', cat2: t.complaintL2 ?? '' }];
+      }
+      if (t.complaintPlatforms?.length) {
+        base.complaint.platforms = t.complaintPlatforms.map((p) => ({ ...p }));
+      }
+      if (t.complaintReceivedAt) base.complaint.receivedAt = t.complaintReceivedAt;
+      if (t.priorFeedback) base.complaint.priorFeedback = t.priorFeedback;
+      if (t.serviceReview) base.complaint.serviceReview = t.serviceReview;
       // D3 外投演示单：投诉渠道记录 + 分类与 PRD 附录一致，便于验「补充投诉信息」全字段
       if (t.no === 'IFLYTS-20260817-00001') {
         base.complaint.categories = [

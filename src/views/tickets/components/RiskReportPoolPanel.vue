@@ -26,6 +26,8 @@ import TicketTitleCell from './TicketTitleCell.vue';
 import OpActionModal from './operation/OpActionModal.vue';
 // 报备附件的"下载"与风险监控页、工单页两个评估弹窗同一个实现（原型内造一个同名占位文件）
 import { downloadReportAttachment } from './operation/riskAssessSheet';
+// 选「升级」后那一段投诉专属建单要素：与工单页底栏、风险监控页两个评估入口共用同一个组件
+import EscalateComplaintFields from './operation/EscalateComplaintFields.vue';
 import { useUserStore } from '@/stores/user';
 import { useRiskReportStore, type RiskReport } from '@/stores/riskReports';
 // 领取走合并层的 `claim`：它一并落了「谁何时接走这条」的通知留痕，
@@ -65,6 +67,8 @@ const {
   assessAdvicePlaceholder,
   // 选「升级」后的派生说明行与「本单另有」区：三个评估入口同一个 composable，不另写文案
   escalateHint,
+  escalateFields,
+  showEscalateFields,
   assessOthers,
   openAssess,
   confirmAssess,
@@ -722,6 +726,12 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
           />
         </div>
         <p v-if="missAssessAdvice" class="af-err">请填写{{ assessAdviceLabel }}</p>
+
+        <!--
+          ③ 投诉工单专属字段：选「升级」（且会派生新投诉单）时才出，排在「升级说明」之后。
+          出哪些字段按**原单的工单来源**决定；三个评估入口共用 EscalateComplaintFields。
+        -->
+        <EscalateComplaintFields v-if="showEscalateFields" :ctl="escalateFields" />
       </div>
     </OpActionModal>
 

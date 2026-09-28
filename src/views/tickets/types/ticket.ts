@@ -414,6 +414,23 @@ export interface Ticket {
    * 投诉类型（仅投诉单有值：投诉 / 举报 / 信访件 / 督办件 / 监测线索 / 监管同步 / 其他）。
    */
   complaintType?: string;
+  /*
+   * 投诉专属建单要素（仅投诉单有值）。建单弹窗填一份、风险评估判「升级」派生新投诉单时
+   * 在评估弹窗里补一份（`composables/useEscalateComplaintFields.ts`），两条路径落同一组字段。
+   * 处理页的 `ComplaintInfo`（types/operation.ts）由 `useTicketOperation.loadDetail` 从这里取。
+   */
+  /** 投诉一类 */
+  complaintL1?: string;
+  /** 投诉二类 */
+  complaintL2?: string;
+  /** 投诉平台 + 投诉编号台账：成对多组，平台选「其他」时 customPlatform 为手填名称 */
+  complaintPlatforms?: { platform: string; customPlatform?: string; complaintNo: string }[];
+  /** 投诉接收时间（非必填） */
+  complaintReceivedAt?: string;
+  /** 前期是否反馈 */
+  priorFeedback?: string;
+  /** 服务回溯（非必填，自由文本） */
+  serviceReview?: string;
   /** 问题分类（新建工单 · 产品问题） */
   problemL1?: string;
   problemL2?: string;

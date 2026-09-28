@@ -24,6 +24,10 @@ import OpRiskCollabModal from '@/views/tickets/components/operation/OpRiskCollab
 // 评估弹窗第一区块（入池依据 / 报备信息 + 释放记录 + 本单另有）与工单页 OpRiskAssessModal 共用一个组件；
 // 命中原话取窗 `excerptWindow`、实时监控来源判断 `isKeywordRow` 与附件下载同一个共享文件（本页命中清单 / 打标弹窗也读它）
 import RiskAssessSheet from '@/views/tickets/components/operation/RiskAssessSheet.vue';
+// 选「升级」后那一段投诉专属建单要素：与工单页底栏、风险报备池两个评估入口**共用同一个组件**，
+// 字段、级联、显隐判据与校验全在 `useEscalateComplaintFields`，本页不另写一份
+import EscalateComplaintFields from '@/views/tickets/components/operation/EscalateComplaintFields.vue';
+import { useEscalateComplaintFields } from '@/composables/useEscalateComplaintFields';
 import { excerptWindow, isKeywordRow } from '@/views/tickets/components/operation/riskAssessSheet';
 import AppPagination from '@/components/AppPagination.vue';
 import { opsTip } from '@/mock/opsMonitorTips';
@@ -76,6 +80,7 @@ import {
   isRiskTicketEnded,
   nextEscalatedNoOf,
   riskOthersOf,
+  showEscalateComplaintFields,
 } from '@/composables/useRiskReportAssess';
 import { RISK_TAG_ROLES, RISK_WORD_MAINTAIN_ROLES } from '@/config/roles';
 import { RISK_LEVELS, riskLevelText } from '@/config/risk';
@@ -873,6 +878,16 @@ const assessAdvicePlaceholder = computed(() => {
  */
 const escalateHint = computed(() => escalateHintOf(assessTarget.value?.ticketNo));
 
+/**
+ * 「投诉工单专属字段」段落（排在「升级说明」之后）：状态与校验走共享 composable、
+ * 渲染走共享组件 `EscalateComplaintFields`，与工单页底栏、风险报备池两个评估入口**同一份实现**。
+ * 显隐判据同样是共享的 `showEscalateComplaintFields`，本页不自判一遍。
+ */
+const escalateFields = useEscalateComplaintFields(() => assessTarget.value?.ticketNo);
+const showEscalateFields = computed(() =>
+  showEscalateComplaintFields(assessDecision.value, assessTarget.value?.ticketNo),
+);
+
 function openAssess(r: RiskPoolItem) {
   // 没人领过的条目谈不上"谁给的结论"（store 的 assess 也会拦），
   // 但拦在这里才说得出为什么——按钮本就只对「评估中」渲染，这道是兜底。
@@ -881,6 +896,7 @@ function openAssess(r: RiskPoolItem) {
   assessDecision.value = '';
   assessAdvice.value = '';
   assessTried.value = false;
+  escalateFields.reset();
   assessOpen.value = true;
 }
 
@@ -1166,6 +1182,9 @@ function confirmAssess() {
 
   const escalate = assessDecision.value === '升级';
   const derive = escalate && !isComplaintTicket(target.ticketNo);
+  // 会派生新投诉单 → 先过投诉专属字段的必填校验，缺项拦下提交、红字落在字段下方
+  // （判据与显隐同源，隐藏的字段不参与校验）。与另外两个评估入口同一份 validate
+  if (showEscalateFields.value && !escalateFields.validate()) return;
   const escalatedToNo = derive ? nextEscalatedNo() : undefined;
 
   /*
@@ -1181,6 +1200,8 @@ function confirmAssess() {
       no: escalatedToNo,
       assignee: user.name,
       reason: assessAdvice.value.trim(),
+      // 评估弹窗里补齐的投诉单专属建单要素随派生动作写到新单上
+      complaint: escalateFields.payload(),
     });
   }
 
@@ -6836,6 +6857,13 @@ function toggleWordEnabled(w: RiskWord) {
             <div v-if="missAssessAdvice" class="assess-err">请填写{{ assessAdviceLabel || '反馈意见' }}</div>
           </div>
         </section>
+
+        <!--
+          ④ 投诉工单专属字段：选「升级」（且会派生新投诉单）时才出，排在「升级说明」之后。
+          出哪些字段按**原单的工单来源**决定，判据与建单弹窗同一条；切到「不升级」整段隐藏、已填值保留。
+          组件与状态和工单页底栏、风险报备池两个评估入口共用，本页不另写一份字段表。
+        -->
+        <EscalateComplaintFields v-if="showEscalateFields" :ctl="escalateFields" />
       </div>
     </OpActionModal>
 
