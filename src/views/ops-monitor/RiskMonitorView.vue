@@ -21,7 +21,7 @@ import OpActionModal from '@/views/tickets/components/operation/OpActionModal.vu
 // 协同处理弹窗与工单页底栏那一枚**共用同一个组件**：投诉单在池里与在工单上做的是同一件事，
 // 抄第二份的下场是两个入口的必填项、副作用与履历行文各走各的（本项目在「派生说明行」上刚栽过）
 import OpRiskCollabModal from '@/views/tickets/components/operation/OpRiskCollabModal.vue';
-// 评估弹窗第一区块（入池依据 / 报备信息 + 释放记录 + 本单另有）与工单页 OpRiskAssessModal 共用一个组件；
+// 评估弹窗第一区块（入池依据 / 报备信息 + 释放记录）与工单页 OpRiskAssessModal 共用一个组件；
 // 命中原话取窗 `excerptWindow`、实时监控来源判断 `isKeywordRow` 与附件下载同一个共享文件（本页命中清单 / 打标弹窗也读它）
 import RiskAssessSheet from '@/views/tickets/components/operation/RiskAssessSheet.vue';
 // 选「升级」后那一段投诉专属建单要素（投诉一类 / 二类）：与工单页底栏、风险报备池两个评估入口
@@ -71,15 +71,14 @@ import { useDerivedTicketStore } from '@/stores/derivedTickets';
 // 评估弹窗的两处口径与工单页那个入口**共用同一份实现**：
 // `escalateHintOf` 是「升级」那行分流提示的唯一文案来源，`deriveEscalatedComplaint` 是派生的完整落地。
 // 本页此前各写各的，于是提示行在这里从来就没出现过（工单页有、监控页没有）。
-// 提交前重查（`assessSubmitBlockOf`）、「本单另有」四行（`riskOthersOf`）、原单终态判据（`isRiskTicketEnded`）
-// 与报备池、工单页的评估入口共用，三处行为一致
+// 提交前重查（`assessSubmitBlockOf`）与原单终态判据（`isRiskTicketEnded`）
+// 与报备池、工单页的评估入口共用，各处行为一致
 import {
   assessSubmitBlockOf,
   deriveEscalatedComplaint,
   escalateHintOf,
   isRiskTicketEnded,
   nextEscalatedNoOf,
-  riskOthersOf,
   showEscalateComplaintFields,
 } from '@/composables/useRiskReportAssess';
 import { RISK_TAG_ROLES, RISK_WORD_MAINTAIN_ROLES } from '@/config/roles';
@@ -1143,15 +1142,6 @@ function openCollab(r: RiskPoolItem) {
 const assessTargetFromPool = computed(
   () => !!assessTarget.value && assessTarget.value.source !== REPORT_SOURCE,
 );
-
-/**
- * 「本单另有」固定区块的四行（风险词命中 / 打标结论 / 历史报备 / 协同处理）。
- * 与报备池、工单页两个评估入口同源（`riskOthersOf`），本页不另取数。
- */
-const assessTargetOthers = computed(() => {
-  const t = assessTarget.value;
-  return t ? riskOthersOf(t.ticketNo, t.id) : [];
-});
 
 /**
  * 「升级」派生出的新投诉单号（N2）。
@@ -7006,13 +6996,11 @@ function toggleWordEnabled(w: RiskWord) {
     >
       <div v-if="assessTarget" class="op-form assess-form">
         <!--
-          ① 第一区块 + ② 本单另有底栏：**按原单来路分两种**（PRD §5.3.2，A 线「入池依据」/ B 线「报备信息」），
+          ① 第一区块：**按原单来路分两种**（PRD §5.3.2，A 线「入池依据」/ B 线「报备信息」），
           与工单页 OpRiskAssessModal 共用 RiskAssessSheet，字段、出现条件与样式只在那一处改。
-          「本单另有」四行仍取 riskOthersOf（assessTargetOthers）。
         -->
         <RiskAssessSheet
           :target="assessTarget"
-          :others="assessTargetOthers"
           link-ticket
           @open-ticket="openTicketFromModal"
         />

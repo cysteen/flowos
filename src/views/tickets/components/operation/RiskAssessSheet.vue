@@ -4,19 +4,15 @@ import { PaperClipOutlined, RollbackOutlined, UserOutlined } from '@ant-design/i
 import { useRiskTagStore } from '@/stores/riskTags';
 import { REPORT_SOURCE, isPoolLevel, type RiskPoolItem } from '@/stores/riskShared';
 import { riskLevelText } from '@/config/risk';
-import type { RiskOtherRow } from '@/composables/useRiskReportAssess';
 import { downloadReportAttachment, excerptWindow, isKeywordRow } from './riskAssessSheet';
 
 /**
  * 风险评估弹窗的**第一区块**（PRD §5.3.2）：卡片抬头 + 入池依据 / 报备信息 + 命中原话 + 打标备注 +
- * 附件 + 释放记录 +「本单另有」底栏。风险监控页评估弹窗与工单页 `OpRiskAssessModal` 共用这一份，
+ * 附件 + 释放记录。风险监控页评估弹窗与工单页 `OpRiskAssessModal` 共用这一份，
  * 字段、顺序、出现条件与样式只在这里改。
- *
- * 「本单另有」四行由调用方传入（取数仍走 `riskOthersOf`，本组件不另取数）。
  */
 const props = defineProps<{
   target: RiskPoolItem;
-  others: RiskOtherRow[];
   /** 单号是否可点（风险监控页可点开工单；工单页就在本单上，不可点） */
   linkTicket?: boolean;
 }>();
@@ -184,18 +180,6 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
         </div>
       </div>
     </div>
-
-    <!--
-      「本单另有」：固定区块（§5.4 ⑦ / R62），收在卡片底栏。四行（风险词命中 / 打标结论 /
-      历史报备 / 协同处理）由调用方按 riskOthersOf 取数，无取值的行写「无」，区块不隐藏。
-    -->
-    <footer class="assess-sheet-foot" aria-label="本单另有">
-      <div class="assess-foot-head">本单另有</div>
-      <div v-for="o in others" :key="o.label" class="assess-foot-row">
-        <span class="assess-foot-k">{{ o.label }}</span>
-        <span class="assess-foot-v">{{ o.text }}</span>
-      </div>
-    </footer>
   </section>
 </template>
 
@@ -299,7 +283,7 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
   word-break: break-word;
 }
 /*
- * 核实结论块：行式直接复用底栏那套 assess-foot-*，这里只给它一个容器。
+ * 核实结论块：行式走下面那套 assess-foot-*（命中原话 / 打标备注两行），这里只给它一个容器。
  * 底色取 .assess-quote 同一个 #f8fafc、描边取 .assess-file 同一个 #e2e8f0。
  */
 .assess-verify {
@@ -406,15 +390,7 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
   word-break: break-word;
 }
 
-/* 本单另有：卡片底栏 */
-.assess-sheet-foot {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px 14px 12px;
-  background: #fafafa;
-  border-top: 1px dashed #e5e7eb;
-}
+/* 核实结论块的行式（命中原话 / 打标备注） */
 .assess-foot-row {
   display: grid;
   grid-template-columns: 68px 1fr;
@@ -422,7 +398,6 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
   align-items: start;
   font-size: 12px;
 }
-.assess-foot-head { font-size: 12px; font-weight: 600; color: #6b7280; }
 .assess-foot-k { color: #9ca3af; line-height: 1.5; }
 .assess-foot-v { color: #374151; font-weight: 600; line-height: 1.5; word-break: break-word; }
 .assess-foot-sub {

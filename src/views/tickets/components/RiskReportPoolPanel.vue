@@ -66,11 +66,10 @@ const {
   assessAdviceLabel,
   assessAdvicePlaceholder,
   assessOkText,
-  // 选「升级」后的派生说明行与「本单另有」区：三个评估入口同一个 composable，不另写文案
+  // 选「升级」后的派生说明行：四个评估入口同一个 composable，不另写文案
   escalateHint,
   escalateFields,
   showEscalateFields,
-  assessOthers,
   openAssess,
   confirmAssess,
 } = useRiskReportAssess();
@@ -617,7 +616,6 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
           评估人要读场景描述，只能去看被遮罩挡住的池表 —— 而结论恰恰是照着那段描述下的。
 
           🔴 **本块不复制 A 线的「入池依据」**：B 线的报备单不走打标那道门（`RiskReport` 上没有 `tag`）。
-          「本单另有」区另起一块摆在本卡之下，按工单号取、与另外两个评估入口同源（`riskOthersOf`）。
         -->
         <section class="assess-sheet" aria-label="报备信息">
           <header class="assess-sheet-head">
@@ -695,15 +693,6 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
                 <div class="assess-release-reason">{{ rel.reason }}</div>
               </div>
             </div>
-          </div>
-        </section>
-
-        <!-- 「本单另有」固定区块（§5.4 ⑦）：四行取数与另外两个评估入口同源（riskOthersOf） -->
-        <section class="assess-others" aria-label="本单另有">
-          <div class="assess-others-head">本单另有</div>
-          <div v-for="row in assessOthers" :key="row.label" class="assess-others-row">
-            <span class="assess-others-k">{{ row.label }}</span>
-            <span class="assess-others-v">{{ row.text }}</span>
           </div>
         </section>
 
@@ -997,36 +986,6 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
   margin-left: 12px;
   font-size: 12px;
   white-space: nowrap;
-}
-/* 「本单另有」区（评估弹窗内） */
-.assess-others {
-  padding: 8px 12px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-}
-.assess-others-head {
-  margin-bottom: 4px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #475569;
-}
-.assess-others-row {
-  display: flex;
-  gap: 8px;
-  font-size: 12px;
-  line-height: 1.6;
-}
-.assess-others-k {
-  flex: none;
-  width: 72px;
-  color: #9ca3af;
-}
-.assess-others-v {
-  flex: 1;
-  min-width: 0;
-  color: #374151;
-  word-break: break-word;
 }
 .desc-text {
   flex: 1;

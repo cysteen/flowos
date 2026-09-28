@@ -6,8 +6,6 @@ import { useUserStore } from '@/stores/user';
 import { useRiskPoolStore } from '@/stores/riskPool';
 import {
   ASSESS_DECISIONS,
-  REPORT_SOURCE,
-  isOpenStatus,
   normalizeDecision,
   type AssessDecision,
   type RiskPoolItem,
@@ -23,9 +21,6 @@ import {
 import { useFlashStore } from '@/stores/flash';
 import { mapUserRole } from '@/views/tickets/composables/opActions';
 import { useRiskQueueStore } from '@/stores/riskQueue';
-import { useRiskTagStore } from '@/stores/riskTags';
-import { useRiskCollabStore } from '@/stores/riskCollab';
-import { riskLevelText } from '@/config/risk';
 import { TICKETS } from '@/mock/tickets';
 import { isTicketClosed } from '@/views/tickets/types/ticket';
 
@@ -154,69 +149,6 @@ export function assessSubmitBlockOf(
   return { tip: '', closeModal: false };
 }
 
-/* ---------------- 「本单另有」区（《【930】》§5.4 ⑦ / R62） ---------------- */
-
-export interface RiskOtherRow {
-  label: string;
-  text: string;
-}
-
-function shortAt(at: string): string {
-  const m = at.match(/(\d{2}-\d{2})\s+(\d{2}:\d{2})/);
-  return m ? `${m[1]} ${m[2]}` : at;
-}
-
-/**
- * 评估弹窗内「本单另有」固定区块的四行：风险词命中与打标结论、历史报备条数与结论、
- * 历史协同处理次数与时刻。**三个评估入口共用这一个函数**，行文与取数只此一份；
- * 没有取值的一行照常出、写「无」，区块不因全空而消失。
- *
- * `excludeId`：当前正在评的这一条，不计入「历史报备」。
- */
-export function riskOthersOf(ticketNo: string, excludeId?: string): RiskOtherRow[] {
-  const tags = useRiskTagStore();
-  const queue = useRiskQueueStore();
-  const collab = useRiskCollabStore();
-  const pool = useRiskPoolStore();
-
-  const v = tags.ticketVerificationOf(ticketNo);
-  const hitText = v
-    ? `${v.hitCount} 条（成立 ${v.confirmedCount} · 误报 ${v.falseCount} · 待核实 ${v.pendingCount}）`
-    : '无';
-
-  const tag = queue.entriesOf(ticketNo).find((e) => !!e.tag)?.tag ?? null;
-  const tagText = tag
-    ? `${tag.result === '无风险' ? '无风险' : riskLevelText(tag.result)} · ${tag.by}（${tag.byRole}）· ${shortAt(tag.at)}`
-    : '未打标';
-
-  const reports = pool
-    .reportsOf(ticketNo)
-    .filter((r) => r.source === REPORT_SOURCE && r.id !== excludeId);
-  const reportText = reports.length
-    ? `${reports.length} 条：${reports
-      .map((r) => {
-        if (r.status === '已评估' && r.assessment) {
-          return `${normalizeDecision(r.assessment.decision)}（${shortAt(r.assessment.at)}）`;
-        }
-        if (r.status === '已撤回') return `已撤回（${shortAt(r.at)}）`;
-        return isOpenStatus(r.status) ? `未出结论（${shortAt(r.at)}）` : r.status;
-      })
-      .join('、')}`
-    : '无';
-
-  const collabs = collab.recordsOf(ticketNo);
-  const collabText = collabs.length
-    ? `${collabs.length} 次，最近一次 ${shortAt(collabs[0].at)}`
-    : '无';
-
-  return [
-    { label: '风险词命中', text: hitText },
-    { label: '打标结论', text: tagText },
-    { label: '历史报备', text: reportText },
-    { label: '协同处理', text: collabText },
-  ];
-}
-
 /**
  * 「升级」派生的**完整落地**，两个评估入口共用：
  *   ① 造出新投诉单（`derivedTickets`，同时把原单那一头记进升级台账）；
@@ -324,12 +256,6 @@ export function useRiskReportAssess() {
   /** 弹窗主按钮：决策＝升级 →「确认升级」，未选或「不升级」→「提交结论」（三个入口一致） */
   const assessOkText = computed(() => (assessDecision.value === '升级' ? '确认升级' : '提交结论'));
 
-  /** 「本单另有」区四行，取数见 `riskOthersOf`（三个入口同源） */
-  const assessOthers = computed(() => {
-    const t = assessTarget.value;
-    return t ? riskOthersOf(t.ticketNo, t.id) : [];
-  });
-
   function nextEscalatedNo(): string {
     return nextEscalatedNoOf(reportStore.reports);
   }
@@ -427,7 +353,6 @@ export function useRiskReportAssess() {
     escalateHint,
     escalateFields,
     showEscalateFields,
-    assessOthers,
     openAssess,
     confirmAssess,
     canAssessReport,

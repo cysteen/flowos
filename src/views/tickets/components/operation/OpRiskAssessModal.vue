@@ -54,7 +54,6 @@ const {
   escalateHint,
   escalateFields,
   showEscalateFields,
-  assessOthers,
   openAssess,
   confirmAssess,
 } = useRiskReportAssess();
@@ -124,11 +123,8 @@ const modalTitle = computed(() => (assessTarget.value?.source === REPORT_SOURCE 
     @ok="confirmAssess"
   >
     <div class="op-form ticket-assess-form">
-      <!--
-        ① 第一区块（入池依据 / 报备信息 + 释放记录 + 「本单另有」底栏）：与风险监控页评估弹窗共用 RiskAssessSheet。
-        「本单另有」取 composable 的 assessOthers（riskOthersOf，三个评估入口同源）。
-      -->
-      <RiskAssessSheet v-if="assessTarget" :target="assessTarget" :others="assessOthers" />
+      <!-- ① 第一区块（入池依据 / 报备信息 + 释放记录）：与风险监控页评估弹窗共用 RiskAssessSheet -->
+      <RiskAssessSheet v-if="assessTarget" :target="assessTarget" />
 
       <section class="ticket-assess-block">
         <h4 class="ticket-assess-title">评估结论</h4>
