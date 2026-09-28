@@ -15,7 +15,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { DatePicker, message } from 'ant-design-vue';
 import dayjs, { type Dayjs } from 'dayjs';
-import { ReloadOutlined, RightOutlined, SearchOutlined, SettingOutlined, HistoryOutlined, CheckOutlined, UnorderedListOutlined, DownOutlined, TagOutlined, TagsOutlined, EditOutlined, SaveOutlined, FilterOutlined, RollbackOutlined } from '@ant-design/icons-vue';
+import { ReloadOutlined, SearchOutlined, SettingOutlined, HistoryOutlined, CheckOutlined, UnorderedListOutlined, DownOutlined, TagOutlined, TagsOutlined, EditOutlined, SaveOutlined, FilterOutlined, RollbackOutlined } from '@ant-design/icons-vue';
 import MetricTipIcon from '@/components/MetricTipIcon.vue';
 import OpActionModal from '@/views/tickets/components/operation/OpActionModal.vue';
 // 协同处理弹窗与工单页底栏那一枚**共用同一个组件**：投诉单在池里与在工单上做的是同一件事，
@@ -4907,7 +4907,7 @@ function toggleWordEnabled(w: RiskWord) {
           </div>
           <!-- 风险标注：今日打标结论为高 / 中 / 低的工单数（tagLevelToday），无风险不列 -->
           <div class="dash-links">
-            <span class="dash-links-k" title="今日打标结论为高危 / 中危 / 低危的工单数">风险标注</span>
+            <span class="dash-links-k" title="今日判为高危 / 中危 / 低危的工单数">风险标注</span>
             <span
               v-for="lv in RISK_LEVELS"
               :key="lv"
@@ -4949,7 +4949,7 @@ function toggleWordEnabled(w: RiskWord) {
             </div>
           </div>
           <div class="dash-links">
-            <span class="dash-links-k" title="在办工单按打标结论计">风险等级</span>
+            <span class="dash-links-k" title="在办工单按风险等级计">风险等级</span>
             <span
               v-for="lv in RISK_LEVELS"
               :key="lv"
@@ -5984,8 +5984,8 @@ function toggleWordEnabled(w: RiskWord) {
                 -->
                 <!--
                   🔴 **「释放」摆在处置按钮右边，两类工作面都有**（§5.4 元素 ⑥ ⑩a：
-                  已领取行 ＝ 处置按钮 +「释放」）：投诉单那一路的处置按钮是「协同处理」，
-                  非投诉单那一路是「评估」，但**退回池子这件事与原单类型无关** ——
+                  已领取行 ＝ 处置按钮 +「释放」）：两类工作面的处置按钮都叫「风险管控」
+                  （入口名 ＝ 弹窗名），但**退回池子这件事与原单类型无关** ——
                   只与"这条在不在人手上"有关。判据统一走 `canReleaseRow`（三道：角色 / 状态 / 人）。
                 -->
                 <template v-if="isComplaintTicket(r.ticketNo)">
@@ -5994,7 +5994,7 @@ function toggleWordEnabled(w: RiskWord) {
                     type="button" class="row-btn row-btn-tag"
                     title="投诉单不做风险评估，走协同处理：给评估意见 + 建议事项；工单状态与处理人均不变"
                     @click="openCollab(r)"
-                  >协同处理</button>
+                  >风险管控</button>
                   <button
                     v-if="canReleaseRow(r)"
                     type="button" class="row-btn row-btn-amend"
@@ -6035,7 +6035,7 @@ function toggleWordEnabled(w: RiskWord) {
                     type="button" class="row-btn row-btn-tag"
                     title="给出评估结论：升级 / 不升级"
                     @click="openAssess(r)"
-                  >评估</button>
+                  >风险管控</button>
                   <!--
                     🔴 **管理员在这一格只出「释放」、不出「评估」**（与 B 线报备池同形）：
                     结论要由**承办的那个人**给（`canAssessRow` 判的就是 `assignee === 本人`），
@@ -6578,7 +6578,9 @@ function toggleWordEnabled(w: RiskWord) {
                   >{{ verdictOf(h) }}</span>
                   <!--
                     已核实的行走的是同一个弹窗的修正态，故按钮**同样叫「风险管控」**
-                    （2026-09-29 裁决：入口名 ＝ 弹窗名，全站一个名字）——"这次是改已有结论"
+                    （2026-09-29 裁决：**本册（风险报备 · 监控 · 管控）内**，入口按钮文案 ＝ 弹窗标题；
+                    全仓另有一批"动词 + 对象"式标题（调剂工单 / 挂起工单 / 释放条目 · 单号 …），
+                    这条规矩不越出本册）——"这次是改已有结论"
                     由次按钮形状、悬停原文与弹窗内必填的「修正原因」说清，不靠第二个名字。
                     绝大多数已核实的记录不需要再动，故仍用次按钮排在动作末位，
                     但它必须存在——台账里翻出一条判错的，正是要改的时候。

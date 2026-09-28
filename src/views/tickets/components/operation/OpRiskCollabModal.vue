@@ -112,7 +112,7 @@ const hitSummary = computed(() => {
   const t = queue.currentTagOf(props.ticketNo);
   if (!t) return `预警词命中 ${v.hitCount} 条 · 尚无核实结论`;
   const lv = t.result === '无风险' ? '无风险' : riskLevelText(t.result);
-  return `预警词命中 ${v.hitCount} 条 · 命中待核实；风险打标已判「${lv}」`;
+  return `预警词命中 ${v.hitCount} 条 · 命中待核实；风险等级已判「${lv}」`;
 });
 const reportSummary = computed(() => {
   const list = reportStore.reportsOf(props.ticketNo).filter((r) => r.source === '二线报备');
@@ -158,7 +158,7 @@ function onOk() {
           <span class="rc-head-value">{{ handler || '未认领' }}</span>
         </span>
         <span v-if="tagLine" class="rc-head-pair">
-          <span class="rc-head-label">风险打标</span>
+          <span class="rc-head-label">风险等级</span>
           <span class="rc-head-value rc-head-warn">{{ tagLine }}</span>
         </span>
       </div>

@@ -279,7 +279,7 @@ type RowAction = { label: string; primary?: boolean };
 /**
  * 行内动作。**没有分派 / 改派**（第三轮拍板取消），只有自取与它的回退：
  * - 待领取 → 「领取」（谁领谁办）
- * - 我承办 → 「评估」+「释放」（拿了办不了要能退回池子，否则等于把单子锁死在自己名下）
+ * - 我承办 → 「风险管控」+「释放」（拿了办不了要能退回池子，否则等于把单子锁死在自己名下）
  * - 别人承办 / 已收口 → 无动作，承办人与结论在列上看得到
  *
  * 🔴 **字面是「领取」不是「领单」**（PRD 明写池内条目的归属只写「领取」）。
@@ -299,7 +299,7 @@ function actionsOf(r: RiskReport): RowAction[] {
   // 上面两个 return 已经把无权角色与待领取拿走，这里剩下的判据只剩「评估中」+ 谁在办
   if (r.status !== '评估中') return [];
   if (r.assignee === user.name) {
-    return [{ label: '评估', primary: true }, { label: '释放' }];
+    return [{ label: '风险管控', primary: true }, { label: '释放' }];
   }
   /*
    * **管理员兜底**（§5.5 ②）：别人承办的那条，管理员也能释放 —— 承办人休假 / 离岗时
@@ -313,7 +313,7 @@ function actionsOf(r: RiskReport): RowAction[] {
 
 function onAction(label: string, r: RiskReport) {
   if (label === '领取') return claim(r);
-  if (label === '评估') return openAssess(r);
+  if (label === '风险管控') return openAssess(r);
   if (label === '释放') return release(r);
 }
 

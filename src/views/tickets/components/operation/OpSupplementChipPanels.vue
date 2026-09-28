@@ -256,7 +256,7 @@ const riskMonitorLine = computed(() => {
     const t = props.ticketNo ? riskQueue.currentTagOf(props.ticketNo) : null;
     if (!t) return `风险监控核实：本单 ${v.hitCount} 条命中待核实，尚无核实结论`;
     const lv = t.result === '无风险' ? '无风险' : riskLevelText(t.result);
-    return `风险监控核实：本单 ${v.hitCount} 条命中待核实；风险打标已判「${lv}」· ${t.by}（${t.byRole}）· ${t.at}`;
+    return `风险监控核实：本单 ${v.hitCount} 条命中待核实；风险等级已判「${lv}」· ${t.by}（${t.byRole}）· ${t.at}`;
   }
   const e = v.latest;
   // 等级取**工单级**（跨条目取最高），不取最后一条命中自己的等级：工单页关心的是这张单有多危险

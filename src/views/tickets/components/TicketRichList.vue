@@ -566,7 +566,7 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
                   background: RISK_LEVEL_STYLE[riskGradeOf(t)!].bg,
                   borderColor: RISK_LEVEL_STYLE[riskGradeOf(t)!].color,
                 }"
-                :title="`风险打标 ${riskLevelText(riskGradeOf(t)!)} · 工单级取该单各条结论里最高的一档`"
+                :title="`风险等级 ${riskLevelText(riskGradeOf(t)!)} · 工单级取该单各条结论里最高的一档`"
               >{{ riskLevelText(riskGradeOf(t)!) }}</span>
               <!-- ② 报备中：本单有一条在队报备，等客诉专员领取评估 -->
               <span

@@ -231,7 +231,7 @@ const riskMonitorLine = computed(() => {
     const t = tagRecord.value;
     if (!t) return `风险监控核实：本单 ${v.hitCount} 条命中待核实，尚无核实结论`;
     const lv = t.result === '无风险' ? '无风险' : riskLevelText(t.result);
-    return `风险监控核实：本单 ${v.hitCount} 条命中待核实；风险打标已判「${lv}」· ${t.by}（${t.byRole}）· ${t.at}`;
+    return `风险监控核实：本单 ${v.hitCount} 条命中待核实；风险等级已判「${lv}」· ${t.by}（${t.byRole}）· ${t.at}`;
   }
   const e = v.latest;
   return `风险监控核实：${riskLevelText(v.grade)} · ${e.verdict} · ${e.by}（${e.byRole}）· ${e.at}`;
@@ -824,7 +824,7 @@ const collabSectionBadge = computed(() =>
     >
       <div class="chip-panel panel-neutral">
         <!-- ===== 上半：打标结论（只读）+ 打标记录 + 打标按钮，判据一律 canTag ===== -->
-        <section class="rk-tag" aria-label="风险打标结论">
+        <section class="rk-tag" aria-label="风险等级结论">
           <template v-if="tagRecord">
             <div class="rk-tag-line">
               <span
@@ -965,7 +965,7 @@ const collabSectionBadge = computed(() =>
     <!-- 打标弹窗：四选一（必填）+ 打标备注（可选）；已有结论时这次是改判，必须说清为什么 -->
     <OpActionModal
       v-model:open="tagOpen"
-      title="风险打标"
+      :title="isAmend ? '重新打标' : '打标'"
       :icon="WarningOutlined"
       tone="warn"
       :width="460"

@@ -278,7 +278,7 @@ function priorityHex(p: string): string {
               background: RISK_LEVEL_STYLE[riskGrade].bg,
               borderColor: RISK_LEVEL_STYLE[riskGrade].color,
             }"
-            :title="`风险打标 ${riskLevelText(riskGrade)} · 工单级取该单各条结论里最高的一档`"
+            :title="`风险等级 ${riskLevelText(riskGrade)} · 工单级取该单各条结论里最高的一档`"
           >{{ riskLevelText(riskGrade) }}</span>
           <span
             v-if="riskReporting"
