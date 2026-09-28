@@ -256,9 +256,9 @@ const taggerExpanded = ref(false);
 /**
  * 池内处置阶段单选（只在「按处置阶段」这一档作数）。`all` ＝ 不按阶段收窄。
  *
- * 🔴 **判据取 `queueStatusText(e)`**，也就是这张表「池内状态」那一列显示的那个词 ——
- * 左栏分档与表里那一格是同一个映射（`POOL_STATE_TEXT`），三档因此**不重不漏**，
- * 且左栏写的词与表里那一格逐字一致。各写各的判据是本文件反复踩过的坑。
+ * 🔴 **判据取 `poolStageTextOf(poolStageStatusOf(e))`**，也就是「评估处置工作面」那张池行表
+ * 写的那个词 —— 左栏分档与池行表是同一个映射（`POOL_STATE_TEXT`），三档因此**不重不漏**，
+ * 且左栏写的词与池行表里那一格逐字一致。各写各的判据是本文件反复踩过的坑。
  */
 const poolStageFilter = ref<string>('all');
 /** 三个阶段的界面词，**次序即时间序**（待领取 → 已领取 → 已结论），不按数量重排 */
@@ -3469,12 +3469,9 @@ const POOL_STATE_TEXT: Record<string, string> = {
   评估中: '已领取',
   已评估: '已结论',
 };
-function queueStatusText(e: QueueRow): string {
-  return poolStageTextOf(poolStageStatusOf(e));
-}
 /**
- * 落库状态 → 池内阶段的界面词。**左栏「按处置阶段」那三档与表里「池内状态」那一格共用它**，
- * 故档名与格子里的词逐字一致、分档也不可能与显示分叉 —— 两处各写一份映射，
+ * 落库状态 → 池内阶段的界面词。**左栏「按处置阶段」那三档与「评估处置工作面」那张池行表
+ * 共用它**，故档名与行里的词逐字一致、分档也不可能与显示分叉 —— 两处各写一份映射，
  * 迟早出现"左栏写已领取、表里写评估中"。null ＝ 不在池里（待打标 / 已标记无风险）。
  */
 function poolStageTextOf(status: RiskPoolItem['status'] | null): string {
@@ -4072,8 +4069,8 @@ function pooledLevelCount(lv: RiskLevel) {
 /**
  * 池内某一处置阶段的条目数（已过班组筛选）。
  *
- * 🔴 **底表与另两个轴逐字同源**（`pooledEntries`），判档读的是表里「池内状态」那一格
- * 显示的同一个词（`queueStatusText`）。故：
+ * 🔴 **底表与另两个轴逐字同源**（`pooledEntries`），判档读的是池行表「处置阶段」那一格
+ * 显示的同一个词（`poolStageTextOf`）。故：
  *   · `待领取 + 已领取 + 已结论 ≡ 全部有风险 ≡ 按标记人`，三个轴恒等 —— 由构造成立；
  *   · **合计不随日期漂**。上一版这一轴接在 B 线那张池行表上，「已结论」带着「仅今日」
  *     这个默认收窄，跨了一天之后合计从 12 掉到 8，而另两个轴纹丝不动 ——
@@ -5467,7 +5464,7 @@ function toggleWordEnabled(w: RiskWord) {
               <th style="width: 152px">工单</th>
               <!--
                 🔴 「监控来源」「场景描述」两列**已删**，换成下面这四列，见 `taggedEvidenceView`。
-                列宽合计 1014px（152+88+156+90+104+72+80+96+72+104），加内边距正好占满 1044 的清单区 ——
+                列宽合计 942px（152+88+156+90+104+72+80+96+104），加内边距落在 1044 的清单区内 ——
                 与「实时监控」那一路收窄列宽同一条理由：横着拖才能看全的表，每一行都要动两次手。
                 ⚠️ **按有纵向滚动条时的可用宽算**（1044，不是 1058）：行少到不出滚动条时会多出 14px，
                 照那个宽度定列，行一多就溢出，而"行少的时候不溢出"恰恰是最容易漏测的一种。
@@ -5481,6 +5478,10 @@ function toggleWordEnabled(w: RiskWord) {
                 🔴 **「风险等级 / 标记人 / 标记时间」改成「结论 / 结论人 / 结论时间」**：
                 报备行没有等级、也没有打标人，它出的是评估结论（升级 / 不升级）或「已撤回」。
                 三列的列宽一格没动。
+                🔴 **「池内状态」这一列已删**（2026-09-29 裁决），全表定为**九列**：
+                这张表答的是"标了什么结论"，池内阶段是条目进池之后的事，它的真源在
+                「评估处置工作面」那张池行表与左栏「按处置阶段」三档里，在这儿再摆一格
+                等于把同一件事写成两处。
               -->
               <th v-if="taggedEvidenceView" style="width: 88px">风险来源</th>
               <th v-if="taggedEvidenceView" style="width: 156px">证据 / 摘要</th>
@@ -5490,13 +5491,9 @@ function toggleWordEnabled(w: RiskWord) {
               <th :style="taggedEvidenceView ? 'width: 80px' : 'width: 104px'">结论人</th>
               <th :style="taggedEvidenceView ? 'width: 96px' : 'width: 128px'">结论时间</th>
               <!--
-                池内状态：池内三轴那一档写的是池内阶段（待领取 / 已领取 / 已结论），
-                「风险报备」那一档写的是报备自己的状态（已结论 / 已撤回）——
-                两者同一套词表（`POOL_STATE_TEXT`，已评估 → 已结论），故共用这一列、不另起一列。
-                「无风险」那一档压根没进过池，整列 v-if 掉。
+                操作列只剩一枚「风险标记」，列宽由 128 收到 104 —— 一枚按钮不需要两枚的位。
               -->
-              <th v-if="queueView === 'pooled' || queueView === 'reported'" style="width: 72px">池内状态</th>
-              <th style="width: 128px">操作</th>
+              <th style="width: 104px">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -5582,20 +5579,6 @@ function toggleWordEnabled(w: RiskWord) {
                 {{ rowConclusionBy(e).name }}<div v-if="rowConclusionBy(e).role" class="hit-sub">{{ rowConclusionBy(e).role }}</div>
               </td>
               <td class="hit-when">{{ rowConclusionAt(e) }}</td>
-              <td v-if="queueView === 'pooled' || queueView === 'reported'">
-                <!--
-                  悬停按行分岔：池内条目说的是"谁在办"，已撤回的报备没有承办人，
-                  照池行那句写会得到一句「还没有人领」—— 一条已经被报备人收回的记录不存在"等人领"。
-                -->
-                <span
-                  class="state-chip"
-                  :title="e.report
-                    ? (e.report.status === '已撤回'
-                      ? '报备人已撤回，本条不再进待评估队列'
-                      : `评估结论由 ${rowConclusionBy(e).name} 给出`)
-                    : (e.assignee && queueStatusText(e) !== '待领取' ? `承办人 ${e.assignee}` : '还没有人领')"
-                >{{ queueStatusText(e) }}</span>
-              </td>
               <td>
                   <!--
                     🔴 **报备行不给行内操作**：它的处置在工单工作台的「风险报备池」，
@@ -5605,20 +5588,21 @@ function toggleWordEnabled(w: RiskWord) {
                   <span v-if="e.report" class="hit-sub">—</span>
                   <template v-else>
                     <!--
-                      修正：判错的那一条不改就永远错着。「已标记无风险」这一视图存在的
-                      全部意义就是它 —— 漏标误判除了从这里翻出来改，没有第二条路。
+                      🔴 **打标来源的行只给一枚「风险标记」**（2026-09-29 裁决）：原来那枚
+                      「修正」已取消 —— 改判等级走的就是这个弹窗的上半（打开时预置现行结论，
+                      改选别的即为改判、「修正原因」必填），一个动作不必摆两枚按钮。
                     -->
                     <button
                       v-if="canRiskTag"
-                      type="button" class="row-btn row-btn-amend"
+                      type="button" class="row-btn row-btn-tag"
                       :title="queueView === 'noRisk'
                         ? '重新判定这条是否真的无风险；改判为低 / 中 / 高会补进风险工单池'
                         : e.entry && canTagNoRisk(e.entry.status)
-                          ? '重新判定风险等级；改判为无风险会把它撤出风险工单池'
-                          : `重新判定风险等级；${NO_RISK_LOCKED_TIP}`"
+                          ? '判定风险等级；改判为无风险会把它撤出风险工单池'
+                          : `判定风险等级；${NO_RISK_LOCKED_TIP}`"
                       @click="openEntryTag(e)"
-                    >修正</button>
-                    <span v-if="!canRiskTag" class="hit-sub" title="打标与修正归客诉专员、投诉督导与管理员">—</span>
+                    >风险标记</button>
+                    <span v-if="!canRiskTag" class="hit-sub" title="风险标记归客诉专员、投诉督导与管理员">—</span>
                   </template>
               </td>
             </tr>
