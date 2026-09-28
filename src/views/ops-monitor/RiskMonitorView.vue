@@ -1257,10 +1257,12 @@ function openCollab(r: RiskPoolItem) {
 }
 
 /**
- * 待评估的这一条**来自哪条线**。判据取条目自带的身份标 `source`（B 线恒为「二线报备」），
- * 不看有没有 `tag` —— 那答的是"打没打标"，罕见的"进了池却没打标"会被误判成 B 线。
+ * 评估弹窗的**副标题 ＝ 来源 · 单号**（与工单页页头「风险管控」弹窗逐字同形）。
+ * 来源取条目自带的身份标 `source`（实时监控 / 重点工单 / 二线报备），不另造词；
+ * 取不到条目时给空串，`OpActionModal` 的副标题位自动不出。
  *
- * 🔴 弹窗第一区块**按它分两种**（PRD §5.3.2）：
+ * 🔴 弹窗第一区块**按同一个 `source` 分两种**（PRD §5.3.2，判据在 `RiskAssessSheet` 里，
+ * 本页不再自判一遍）：
  * · A 线（风险工单池里的条目）→「**入池依据**」：风险等级 / 打标人 / 打标时刻 /
  *   打标备注 / 命中原话。这一组就是它被送来评估的全部理由。
  * · B 线（二线报备单）→「**报备信息**」：报备人 / 报备原因 / 风险类型 / 场景描述 / 附件。
@@ -1270,8 +1272,8 @@ function openCollab(r: RiskPoolItem) {
  * 没有"报备人"这个角色，条目是系统捞进来的。占位摆在评估人面前，读起来像"有人报过一次
  * 却什么都没填"；而真正的入池理由（打标那一组）反倒缩在卡体里的一个子块。
  */
-const assessTargetFromPool = computed(
-  () => !!assessTarget.value && assessTarget.value.source !== REPORT_SOURCE,
+const assessSubtitle = computed(
+  () => (assessTarget.value ? `${assessTarget.value.source} · ${assessTarget.value.ticketNo}` : ''),
 );
 
 /**
@@ -7325,13 +7327,17 @@ function toggleWordEnabled(w: RiskWord) {
     </OpActionModal>
 
     <!--
-      评估报备（《【930】》§5.4）。
+      风险管控 · 评估结论（《【930】》§5.4）。
+      🔴 **标题恒为「风险管控」+ 副标题「来源 · 单号」**（2026-09-29 裁决）：与工单页页头
+      那一枚逐字同形。原来那个按来路二选一的标题（「风险评估」/「评估报备」）已取消 ——
+      同一个弹窗在两条线上各叫一个名字，说"去评估"没人知道指的是哪一处。
       主按钮**不做 disabled**：报备信息一屏读完就要下结论，按钮灰着不说为什么，
       人只能逐项试探哪里没填。故点了就校验、缺哪项在哪项下面出红字（missAssess* 一组）。
     -->
     <OpActionModal
       :open="assessOpen"
-      :title="assessTargetFromPool ? '风险评估' : '评估报备'"
+      title="风险管控"
+      :subtitle="assessSubtitle"
       :icon="EditOutlined"
       tone="primary"
       :width="600"
@@ -9056,7 +9062,7 @@ function toggleWordEnabled(w: RiskWord) {
 .rr-dec { color: #374151; font-size: 12px; font-weight: 500; }
 .rr-dec.risk { color: #B91C1C; font-weight: 600; }
 
-/* ---- 评估报备弹窗 ---- */
+/* ---- 「风险管控」弹窗（评估处置工作面与风险报备池两处共用这一个） ---- */
 .assess-form { gap: 14px !important; }
 .assess-block { display: flex; flex-direction: column; gap: 10px; }
 .assess-block-title {

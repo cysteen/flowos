@@ -590,10 +590,15 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
       </div>
     </div>
 
-    <!-- 评估结论：与工单详情页「风险报备」Tab 同一个 composable，两处结论口径不会分叉 -->
+    <!--
+      评估结论：与工单详情页「风险报备」Tab 同一个 composable，两处结论口径不会分叉。
+      🔴 **标题恒为「风险管控」+ 副标题「来源 · 单号」**（2026-09-29 裁决），与工单页页头
+      和风险监控页那两处逐字同形；原来的「评估报备 · 单号」已取消。
+    -->
     <OpActionModal
       :open="assessOpen"
-      :title="assessTarget ? `评估报备 · ${assessTarget.ticketNo}` : '评估报备'"
+      title="风险管控"
+      :subtitle="assessTarget ? `${assessTarget.source} · ${assessTarget.ticketNo}` : ''"
       :icon="EditOutlined"
       tone="primary"
       :width="520"
