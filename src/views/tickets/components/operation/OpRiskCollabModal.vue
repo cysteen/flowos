@@ -1,21 +1,23 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
-import { message } from 'ant-design-vue';
+import { computed, watch } from 'vue';
 import { TeamOutlined } from '@ant-design/icons-vue';
 import OpActionModal from './OpActionModal.vue';
-import { useUserStore } from '@/stores/user';
+import RiskCollabFields from './RiskCollabFields.vue';
 import { useRiskQueueStore } from '@/stores/riskQueue';
-import { useRiskPoolStore } from '@/stores/riskPool';
-import { useRiskCollabStore, RISK_ADVICE_ITEMS, type RiskAdviceItem } from '@/stores/riskCollab';
+import { useRiskCollabStore } from '@/stores/riskCollab';
 import { useRiskReportStore } from '@/stores/riskReports';
 import { useRiskTagStore } from '@/stores/riskTags';
 import { isPooledStatus } from '@/stores/riskShared';
-import { isRiskTicketEnded } from '@/composables/useRiskReportAssess';
+import { useRiskCollabFields } from '@/composables/useRiskCollabFields';
 import { resolveTicketRowFor } from '@/views/tickets/composables/opActions';
 import { riskLevelText } from '@/config/risk';
 
 /**
- * **协同处理**（底栏那一枚按钮的第三形态，基线 ※29；同时是 §2 / §4 的第 28 个动作）。
+ * **协同处理**（风险工单池里投诉单那一路的工作面，基线 ※29；同时是 §2 / §4 的第 28 个动作）。
+ *
+ * 🔴 **字段与落库走共享件**（`useRiskCollabFields` + `RiskCollabFields.vue`）：
+ * 工单处理页页头「风险管控」弹窗的投诉支用的是同一份，两处不各写一套。
+ * 本文件只剩"这张单现在什么情况"那几段抬头与主按钮壳。
  *
  * 一个动作 + 多选建议项：客诉专员对风险工单池里的**投诉单**给一次意见与建议。
  * 提交后发生**三件事**，除此之外工单一格不动：
@@ -42,38 +44,20 @@ const props = defineProps<{
 
 const emit = defineEmits<{ 'update:open': [v: boolean] }>();
 
-const user = useUserStore();
 const queue = useRiskQueueStore();
-const pool = useRiskPoolStore();
 const collab = useRiskCollabStore();
 const reportStore = useRiskReportStore();
 const riskTags = useRiskTagStore();
 
-const opinion = ref('');
-const advices = ref<RiskAdviceItem[]>([]);
-const otherAdvice = ref('');
-const tried = ref(false);
-
-const adviceOptions = RISK_ADVICE_ITEMS.map((v) => ({ label: v, value: v }));
-const needsOther = computed(() => advices.value.includes('其他'));
+/** 三项字段 + 校验 + 落库：与工单页页头「风险管控」弹窗同一份共享件 */
+const ctl = useRiskCollabFields();
 
 watch(
   () => props.open,
   (v) => {
-    if (!v) return;
-    opinion.value = '';
-    advices.value = [];
-    otherAdvice.value = '';
-    tried.value = false;
+    if (v) ctl.reset();
   },
 );
-
-watch(needsOther, (v) => {
-  if (!v) otherAdvice.value = '';
-});
-
-const missOpinion = computed(() => tried.value && !opinion.value.trim());
-const missOther = computed(() => tried.value && needsOther.value && !otherAdvice.value.trim());
 
 /* ---------------- 头部：这张单现在是什么情况 ---------------- */
 
@@ -132,65 +116,9 @@ function close() {
   emit('update:open', false);
 }
 
-function nowStamp(): string {
-  const d = new Date();
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
-}
-
+/** 校验、落库与提示全在共享件里（`submitTo`），本处只负责落成之后关窗 */
 function onOk() {
-  // 弹窗开着期间原单可能已结束；判据与三处评估弹窗同一份（isRiskTicketEnded）
-  if (isRiskTicketEnded(props.ticketNo)) {
-    message.warning('本单已结束，无法协同处理');
-    return;
-  }
-  tried.value = true;
-  if (!opinion.value.trim()) return;
-  if (needsOther.value && !otherAdvice.value.trim()) return;
-
-  const entry = poolEntry.value;
-  if (!entry) {
-    // 按钮的出现条件就是"本单在风险工单池里"，走到这里只可能是条目在弹窗开着的时候
-    // 被人从池里撤了（改判无风险）。说清是哪一条挡住的，别给一句笼统的失败
-    message.warning('本单已不在风险工单池中，无法提交协同处理');
-    return;
-  }
-
-  const picked = RISK_ADVICE_ITEMS.filter((a) => advices.value.includes(a));
-  /**
-   * 「首次协同转已结论」由 store 判：`coordinate` 只在条目**还在队**时改状态，
-   * 第二次及以后只追加记录。判据留在 store 里，是因为"还在不在队"是条目自己的状态，
-   * 弹窗这边拿到的那份是渲染用的快照，隔着一次异步就可能不是最新的。
-   */
-  const firstTime = !entry.coordination;
-  const ok = pool.coordinate(entry.id, {
-    opinion: opinion.value.trim(),
-    advices: [...picked],
-    ...(needsOther.value ? { otherAdvice: otherAdvice.value.trim() } : {}),
-    by: user.name || '当前用户',
-    byRole: user.role.name || '客诉专员',
-    at: nowStamp(),
-  });
-  if (!ok) {
-    message.warning('本单已不在风险工单池中，无法提交协同处理');
-    return;
-  }
-
-  /*
-   * 这里**没有**通知那一步：本轮不往消息体系里加新事件（2026-09-10 口径变更），
-   * 故建议事项只落在工单上、等当前处理人自己打开这张单时读到。见文件头的说明。
-   */
-  const adviceText = picked.length
-    ? picked.map((a) => (a === '其他' ? `其他（${otherAdvice.value.trim()}）` : a)).join('、')
-    : '未勾选建议事项';
-
-  close();
-  // 首次协同同时把池内条目结掉，这一步要在提示里说出来——否则客诉专员不知道
-  // 自己刚刚把这条从待处理队列里摘走了，还会回池里再找一遍
-  const tail = firstTime ? '，本单风险条目已转「已结论」' : '';
-  message.success(
-    picked.length ? `已提交协同处理，建议事项：${adviceText}${tail}` : `已提交协同处理${tail}`,
-  );
+  if (ctl.submitTo(props.ticketNo)) close();
 }
 </script>
 
@@ -228,31 +156,8 @@ function onOk() {
         <li>{{ collabSummary }}</li>
       </ul>
 
-      <div class="op-field">
-        <div class="op-label req">评估意见</div>
-        <a-textarea
-          v-model:value="opinion"
-          :rows="4"
-          :status="missOpinion ? 'error' : undefined"
-          placeholder="写清这张单当前的风险判断，以及要处理人怎么调整处理方式…"
-        />
-        <p v-if="missOpinion" class="field-err">请填写评估意见</p>
-      </div>
-
-      <div class="op-field">
-        <div class="op-label">建议事项</div>
-        <a-checkbox-group v-model:value="advices" :options="adviceOptions" class="rc-advices" />
-      </div>
-
-      <div v-if="needsOther" class="op-field">
-        <div class="op-label req">「其他」的具体建议</div>
-        <a-input
-          v-model:value="otherAdvice"
-          :status="missOther ? 'error' : undefined"
-          placeholder="一句话说清要处理人做什么"
-        />
-        <p v-if="missOther" class="field-err">请填写「其他」的具体建议</p>
-      </div>
+      <!-- 三项字段走共享组件：工单页页头「风险管控」弹窗的投诉支渲染的是同一份 -->
+      <RiskCollabFields :ctl="ctl" />
     </div>
   </OpActionModal>
 </template>
@@ -286,12 +191,5 @@ function onOk() {
   font-size: 11px;
   line-height: 1.6;
   color: #6b7280;
-}
-.rc-advices { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; }
-.field-err {
-  margin: 0;
-  font-size: 11px;
-  color: #ef4444;
-  line-height: 1.3;
 }
 </style>
