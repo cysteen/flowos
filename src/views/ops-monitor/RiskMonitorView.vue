@@ -81,6 +81,7 @@ import {
   isRiskTicketEnded,
   nextEscalatedNoOf,
   showEscalateComplaintFields,
+  tagAssessSubmitBlockOf,
 } from '@/composables/useRiskReportAssess';
 import { RISK_TAG_ROLES, RISK_WORD_MAINTAIN_ROLES } from '@/config/roles';
 import { RISK_LEVELS, riskLevelText } from '@/config/risk';
@@ -963,6 +964,58 @@ function showTagAssessFor(entry: RiskQueueEntry | null, hasRisk: boolean): boole
   if (!hasRisk || !canAssessOnTag.value) return false;
   if (!entry || entry.status === '已评估') return false;
   return !isComplaintTicket(entry.ticketNo);
+}
+
+/**
+ * 段内必填项的校验，两个打标弹窗共用，与评估路径同一套：
+ * 会派生新投诉单时整段交给共享的 `escalateFields.validate()`（投诉一类 / 二类 / 升级说明
+ * 三项各自出红字）；其余情形只校验「反馈意见」那一格。
+ * 🔴 **决策留空时调用方根本不调它** —— 留空＝不评估，整段不参与校验。
+ */
+function tagAssessFieldsOk(escalate: boolean): boolean {
+  return escalate ? escalateFields.validate() : !!assessAdvice.value.trim();
+}
+
+/**
+ * 段内给了结论时的落库 —— **与评估路径同一个派生入口、同一个结论写口**，不另造一条。
+ *
+ * 🔴 **在打标 / 核实那一步写完之后才调**：条目正是被那一步送进池的，
+ * 本函数按单号重取它、确认真的在池里且还没出结论，再落结论。
+ *
+ * 落的三件与评估弹窗逐字相同：① 选「升级」且原单不是投诉单 → `deriveEscalatedComplaint`
+ * （造新单 + 记原单升级台账 + 新单问题描述＝原单问题描述 ＋ 空行 ＋ 升级说明 +
+ * 投诉一类 / 二类写到新单 + 新单回流实时监控）；② 条目落「已结论」，**结论人＝打标人、
+ * 结论时刻＝本次提交时刻**（`assessOnTag`）；③ 第八类履历与 `risk.report.assessed` 通知
+ * 由 `assessOnTag` 内部与评估路径共用的那一份实现落，不另造事件。
+ *
+ * 返回接在打标提示后面的那半句；落不了库时返回空串（此时一个字都没写，打标那一句照旧成立）。
+ */
+function commitTagAssess(ticketNo: string, decision: AssessDecision): string {
+  const entry = tagAssessEntryOf(ticketNo);
+  if (!entry || !isPooledStatus(entry.status) || entry.status === '已评估') return '';
+  const escalate = decision === '升级';
+  // 投诉单不派生（段对投诉单本就不出，这一判据只为与评估路径逐字同形）
+  const escalatedToNo = escalate && !isComplaintTicket(ticketNo) ? nextEscalatedNo() : undefined;
+  if (escalatedToNo) {
+    deriveEscalatedComplaint({
+      fromNo: ticketNo,
+      no: escalatedToNo,
+      assignee: user.name,
+      reason: assessAdvice.value.trim(),
+      complaint: escalateFields.payload(),
+    });
+  }
+  const ok = reportStore.assessOnTag(entry.id, {
+    decision,
+    advice: assessAdvice.value.trim(),
+    ...(escalatedToNo ? { escalatedToNo } : {}),
+    by: user.name,
+    byRole: user.role.name,
+    at: nowStamp(),
+  });
+  if (!ok) return '';
+  if (escalatedToNo) return `并直接给出结论：升级，已派生投诉单 ${escalatedToNo}`;
+  return escalate ? '并直接给出结论：升级' : '并直接给出结论：不升级';
 }
 
 function openAssess(r: RiskPoolItem) {
@@ -2378,6 +2431,15 @@ const tagAssessHint = computed(() => escalateHintOf(tagTarget.value?.ticketNo));
 const missTagAssessAdvice = computed(
   () => tagAssessTried.value && !!tagAssessDecision.value && !assessAdvice.value.trim(),
 );
+/**
+ * 主按钮文案：段内决策＝「升级」→「确认升级」（与三处评估弹窗一致，
+ * 点下去真的会派生一张新单，按钮得说出来）；其余情形维持本弹窗原文案。
+ */
+const tagOkText = computed(() => (
+  showTagAssess.value && tagAssessDecision.value === '升级'
+    ? '确认升级'
+    : tagAmend.value ? '保存修正' : '保存'
+));
 
 function openTag(h: RiskHit) {
   if (!canRiskTag.value) { message.warning('只有客诉专员、投诉督导与管理员可以打标'); return; }
@@ -2401,6 +2463,24 @@ function saveTag() {
   if (!tagVerdict.value) { message.warning('请先判定本次命中是否成立'); return; }
   if (tagAmend.value && !tagDirty.value) { message.warning('核实结果没有变化，无需修正'); return; }
   if (tagAmend.value && !tagReason.value.trim()) { message.warning('请填写修正原因'); return; }
+  /*
+   * 「评估结论」段的校验与提交前重查。**段不出 / 决策留空一律不跑**（提交＝只核实打标，原行为）。
+   * 🔴 **整个跑在任何写入之前**：拦下时核实那一下也不该发生 ——
+   * 人只是漏填了升级说明，不该换来一条已经进了池、却没有结论的条目。
+   */
+  const assessDec = showTagAssess.value ? tagAssessDecision.value : '';
+  const assessCarrier = tagAssessEntry.value;
+  if (assessDec && assessCarrier) {
+    tagAssessTried.value = true;
+    if (!tagAssessFieldsOk(showTagAssessEscalate.value)) return;
+    // 原单已进终态只拦「升级」、条目已被他人出结论整次拦下，与评估路径同一套判据
+    const block = tagAssessSubmitBlockOf(assessCarrier.id, assessDec, target.ticketNo);
+    if (block.tip) {
+      message.warning(block.tip);
+      if (block.closeModal) tagOpen.value = false;
+      return;
+    }
+  }
   const entry: TagEntry = {
     level: tagLevelToSave.value,
     verdict: tagVerdict.value,
@@ -2416,10 +2496,15 @@ function saveTag() {
    * 已打标工单、修正只记命中。状态迁移全在 store 的 `verifyHit` 一处，批量核实走同一个入口。
    */
   const outcome = riskQueue.verifyHit(target, { ...entry, verdict: tagVerdict.value });
+  // 段内给了结论：条目照常进池，但**直接落「已结论」**（结论人＝打标人、结论时刻＝本次提交时刻）
+  const assessPhrase = assessDec && assessCarrier ? commitTagAssess(target.ticketNo, assessDec) : '';
   message.success(
-    tagAmend.value
-      ? `已修正 ${target.ticketNo} 的核实结果为「${entry.verdict}」，本次修正已留痕`
-      : verifyOutcomeTip(target.ticketNo, entry, outcome),
+    // 给了结论时不能再说"进池等领取"——去向已经是「已结论」，故这一句整条换掉
+    assessPhrase
+      ? `已核实 ${target.ticketNo} 的这条命中为「成立 · ${levelText(entry.level)}」，${assessPhrase}`
+      : tagAmend.value
+        ? `已修正 ${target.ticketNo} 的核实结果为「${entry.verdict}」，本次修正已留痕`
+        : verifyOutcomeTip(target.ticketNo, entry, outcome),
   );
   tagOpen.value = false;
 }
@@ -3632,6 +3717,15 @@ const missEntryTagAssessAdvice = computed(
   () => entryTagAssessTried.value && !!entryTagAssessDecision.value && !assessAdvice.value.trim(),
 );
 /**
+ * 主按钮文案：段内决策＝「升级」→「确认升级」（与三处评估弹窗一致，
+ * 点下去真的会派生一张新单，按钮得说出来）；其余情形维持本弹窗原文案。
+ */
+const entryTagOkText = computed(() => (
+  showEntryTagAssess.value && entryTagAssessDecision.value === '升级'
+    ? '确认升级'
+    : entryTagAmend.value ? '保存修改' : '保存'
+));
+/**
  * 打标时摆出来的**证据**：本单的风险词命中原话。
  * 「重点工单」那一路没有原话可摆，整块 v-if 掉、不留空标题。
  * 只取最近三条：这一屏是给人下判断的，不是把全部证据读完；要读全的点单号进工单。
@@ -3675,6 +3769,23 @@ function saveEntryTag() {
   // 读条目上的现行状态，不读行快照：弹窗开着的这段时间里别人可能已经给了结论
   const prevStatus = target.entry.status;
   if (!isPoolLevel(result) && !canTagNoRisk(prevStatus)) { message.warning(NO_RISK_LOCKED_TIP); return; }
+  /*
+   * 「评估结论」段的校验与提交前重查。**段不出 / 决策留空一律不跑**（提交＝只打标，原行为）。
+   * 🔴 **整个跑在任何写入之前**：拦下时打标那一下也不该发生 ——
+   * 人只是漏填了升级说明，不该换来一条已经进了池、却没有结论的条目。
+   */
+  const assessDec = showEntryTagAssess.value ? entryTagAssessDecision.value : '';
+  if (assessDec) {
+    entryTagAssessTried.value = true;
+    if (!tagAssessFieldsOk(showEntryTagAssessEscalate.value)) return;
+    // 原单已进终态只拦「升级」、条目已被他人出结论整次拦下，与评估路径同一套判据
+    const block = tagAssessSubmitBlockOf(target.entry.id, assessDec, target.ticketNo);
+    if (block.tip) {
+      message.warning(block.tip);
+      if (block.closeModal) entryTagOpen.value = false;
+      return;
+    }
+  }
   const ok = reportStore.recordTag(target.entry.id, {
     result,
     note: entryTagNote.value.trim(),
@@ -3684,6 +3795,8 @@ function saveEntryTag() {
     ...(amend ? { amendReason: entryTagReason.value.trim() } : {}),
   });
   if (!ok) { message.warning('这条监控条目已不存在，请刷新后再看'); return; }
+  // 段内给了结论：条目照常进池，但**直接落「已结论」**（结论人＝打标人、结论时刻＝本次提交时刻）
+  const assessPhrase = assessDec ? commitTagAssess(target.ticketNo, assessDec) : '';
   entryTagOpen.value = false;
   /*
    * 提示必须把**去向**说出来，不能只说"保存成功"：打标的人做完这一步会以为事儿结了，
@@ -3696,7 +3809,9 @@ function saveEntryTag() {
   let tip: string;
   if (isPoolLevel(result)) {
     const lv = riskLevelText(result);
-    if (prevStatus === '评估中' || prevStatus === '已评估') tip = `已把 ${no} 的风险等级改为「${lv}」，池内处置阶段不变`;
+    // 段内给了结论时去向已经是「已结论」，下面那几句"等领取 / 处置阶段不变"一句都不成立
+    if (assessPhrase) tip = `已对 ${no} 打标「${lv}」，${assessPhrase}`;
+    else if (prevStatus === '评估中' || prevStatus === '已评估') tip = `已把 ${no} 的风险等级改为「${lv}」，池内处置阶段不变`;
     else if (prevStatus === '待分派') tip = `已把 ${no} 的打标由「${prevText}」改为「${lv}」，仍在风险工单池等待领取`;
     else if (prevStatus === '已标记无风险') tip = `已把 ${no} 改判为「${lv}」，已补进风险工单池等待领取`;
     else tip = `已对 ${no} 打标「${lv}」，已进风险工单池等待领取`;
@@ -6734,7 +6849,7 @@ function toggleWordEnabled(w: RiskWord) {
       :icon="entryTagAmend ? EditOutlined : TagOutlined"
       tone="primary"
       :width="480"
-      :ok-text="entryTagAmend ? '保存修改' : '保存'"
+      :ok-text="entryTagOkText"
       :ok-disabled="!canSaveEntryTag"
       @update:open="entryTagOpen = $event"
       @ok="saveEntryTag"
@@ -6972,7 +7087,7 @@ function toggleWordEnabled(w: RiskWord) {
       :icon="tagAmend ? EditOutlined : TagOutlined"
       tone="primary"
       :width="480"
-      :ok-text="tagAmend ? '保存修正' : '保存'"
+      :ok-text="tagOkText"
       :ok-disabled="!canSaveTag"
       @update:open="tagOpen = $event"
       @ok="saveTag"
