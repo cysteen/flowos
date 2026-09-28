@@ -97,6 +97,8 @@ export interface RiskReport {
   assessment?: ReportAssessment;
   /** 仅 status ＝「已撤回」时有值 */
   withdrawReason?: string;
+  /** 撤回时刻。与 `withdrawReason` 同生同灭，见 `RiskPoolItem.withdrawAt` */
+  withdrawAt?: string;
   /**
    * 历次**释放**记录（§5.5 ⑥，v3.5 新立）。**累积不覆盖**：同一条被领取释放 N 次就有 N 条。
    * 动作在合并层 `stores/riskPool.ts` 的 `release`（两条线共用，与 `claim` 对称）。
@@ -227,6 +229,8 @@ const SEED: RiskReport[] = [
     at: todayStamp(150),
     status: '已撤回',
     withdrawReason: '开放平台已临时提额并当场恢复导入，客户明确表示不再对外说明；风险已解除，本条报备由报备人撤回。',
+    // 撤回发生在提交之后：报备 150 分钟前、撤回 120 分钟前
+    withdrawAt: todayStamp(120),
   }),
   /*
    * 「升级」样本。**必须有这一条**：SEED 里若只有「不升级」，升级那条分支
@@ -293,8 +297,10 @@ const LS_KEY = 'flowos-risk-reports';
  * v6：条目上多了 `releases`（历次释放留痕，PRD v3.5 §5.5 ⑥）。v5 那份里没有这一格，
  * 读进来是 undefined —— 判据侧一律 `releases ?? []`，本来**不读也不会坏**；
  * 升号是为了不让保质期内的旧快照与刚变过的模型混着用（与 A 线 v8 → v9 同批）。
+ * v7：已撤回的条目上多了 `withdrawAt`（撤回时刻）。v6 那份里没有这一格，读进来是 undefined，
+ * 风险监控页「风险报备」那一档的「结论时间」会空成「—」——**不升号就会有一条看不出何时撤回的行**。
  */
-const LS_VERSION = 6;
+const LS_VERSION = 7;
 
 /**
  * 缓存"新不新"的判据：取**提交与评估时刻**里最新的那一个。
@@ -517,6 +523,7 @@ export const useRiskReportStore = defineStore('riskReports', () => {
     if (!r || r.status !== '待分派') return;
     r.status = '已撤回';
     r.withdrawReason = reason;
+    r.withdrawAt = agoStamp(0);
     /*
      * 收件人配的是「客诉专员 + 管理员 + 承办人」三类（前两类见 `RISK_POOL_RECEIVERS`：
      * 基线 v1.24 两池同权），而**撤回只能发生在待领取态**，那一刻 `assignee` **必然为空**

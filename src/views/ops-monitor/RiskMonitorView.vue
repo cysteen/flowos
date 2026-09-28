@@ -171,8 +171,13 @@ const listView = ref<ListView>('realtime');
  * 判错的那一条不会再出现在任何待办里，不给它一个看得见的去处，
  * "有没有人把该管的判成了没风险"这个问题在整个系统里没有一处答得了。
  * 故这一视图给「修正」入口、且默认与另两个视图平级摆在同一排，不折叠、不藏。
+ *
+ * 🔴 **`reported` 是 B 线（二线报备）落在这一段的那一档**：已结论（已评估）与已撤回两种。
+ * 它与另两档同走条目表，但**不进「全部有风险 / 按标记人 / 按处置阶段」那三个轴** ——
+ * 报备不走打标，混进去会把"三个轴恒等于全部有风险"这条恒等式弄脏。
+ * 待判段不收报备：还在队的报备（待分派 / 评估中）有自己的工作面，在工单工作台「风险报备池」。
  */
-type QueueView = 'monitoring' | 'pooled' | 'noRisk';
+type QueueView = 'monitoring' | 'pooled' | 'noRisk' | 'reported';
 const queueView = ref<QueueView>('monitoring');
 
 /**
@@ -2411,15 +2416,22 @@ function tagTraceTitle(h: RiskHit): string | undefined {
  * 由 store 补齐条目（`riskQueue.syncAutoEntries`），来源与进监控时刻照实写，不再有"无条目的行"。
  */
 interface QueueRow {
-  /** ＝ 条目 id */
+  /** ＝ 条目 id（报备行 ＝ 报备单 id，两条线共用一个 `rr-###` 号段，不会撞） */
   id: string;
   ticketNo: string;
-  entry: RiskQueueEntry;
-  source: RiskQueueEntry['source'];
+  /**
+   * A 线的监控条目。**报备行没有** —— B 线不走打标这道门，见 `report`。
+   * 打标、批量打标、修正三处只对有它的行开口，故那几处先判它在不在。
+   */
+  entry?: RiskQueueEntry;
+  /** B 线的报备单。**只有「风险报备」这一档的行有**，与 `entry` 恰有其一 */
+  report?: RiskPoolItem;
+  /** 监控来源。A 线两值，报备行恒为「二线报备」（界面词见 `rowSourceText`） */
+  source: MonitorSource;
   desc: string;
-  /** 进入实时监控的时刻 */
+  /** 进入实时监控的时刻；报备行 ＝ 报备提交时刻 */
   at: string;
-  status: RiskQueueEntry['status'];
+  status: RiskPoolItem['status'];
   tag?: RiskQueueEntry['tag'];
   assignee?: string;
 }
@@ -2435,6 +2447,23 @@ function rowOfEntry(e: RiskQueueEntry): QueueRow {
     status: e.status,
     tag: e.tag,
     assignee: e.assignee,
+  };
+}
+
+/**
+ * 报备单 → 视图行。**不造第三种对象**：`report` 原样挂着，
+ * 结论 / 结论人 / 结论时间三列直接从它身上读（见 `rowConclusion*`）。
+ */
+function rowOfReport(r: RiskPoolItem): QueueRow {
+  return {
+    id: r.id,
+    ticketNo: r.ticketNo,
+    report: r,
+    source: r.source,
+    desc: r.desc,
+    at: r.at,
+    status: r.status,
+    assignee: r.assignee,
   };
 }
 /**
@@ -2471,7 +2500,7 @@ watch(
  * 这一行**算哪一路监控来源的** ＝ 条目自己的 `source`，一个字不改。三片互斥就靠它一处判定。
  * 它是当初真的从哪个入口进来的，现场按工单属性重推一遍等于把历史改写成"按今天的规则本该从哪儿进来"。
  */
-function effectiveSourceOf(r: QueueRow): '实时监控' | '重点工单' {
+function effectiveSourceOf(r: QueueRow): MonitorSource {
   return r.source;
 }
 
@@ -2950,7 +2979,7 @@ function rowTopHit(r: QueueRow): RiskHit | null {
   return rowHits(r)[0] ?? null;
 }
 
-/* ---- 「已标记」段（已入池 / 无风险）的证据列 ---- */
+/* ---- 「已标记」段（已入池 / 无风险 / 风险报备）的证据列 ---- */
 //
 // 【为什么这一段也要换列】它原先摆的是「监控来源」+「场景描述」，两列都答不了
 // "这条**凭什么**被判成这个等级"：
@@ -2958,13 +2987,12 @@ function rowTopHit(r: QueueRow): RiskHit | null {
 //   · 场景描述是一句写死的套话（「投诉类工单自动纳入实时监控」），一个字的判据都没有。
 // 于是复核一条打标结论——这一段唯一的活——只能一条条点进工单。
 //
-// 🔴 **两类行的证据不是一种东西，故这两列按行分岔**：
-//   · 预警词捞进来的行**有命中记录** —— 摆 命中词 + 原话摘录（与「实时监控」那一路同一套聚合，
-//     `rowWords` / `rowTopHit`，不另写一份）；
-//   · 「重点工单」那一路**本就不产生命中** —— 摆工单自己的信息（问题描述）。
-//   给后者硬凑一个空的「风险词」格并不诚实：它不是"没查到词"，是"这一路根本不靠词进来"。
-// 客户 / 产品 与 SLA 两列对**两类行都成立**，故不分岔、恒取工单。
-/** 当前是不是停在「已标记」段（已入池 / 无风险）那张表上 */
+// 🔴 **三类行的证据不是一种东西，故「证据 / 摘要」这一列按来源分岔**（见 `rowEvidenceKind`）：
+//   · 实时监控 —— 摆**命中原话摘录**（最新一条，命中词高亮）；
+//   · 重点工单 —— 这一路本就不产生命中，摆工单自己的**问题描述**；
+//   · 风险报备 —— 摆报备单的**场景描述**（报备弹窗里那一项填的内容）。
+// 客户 / 产品 与 SLA 两列对**三类行都成立**，故不分岔、恒取工单。
+/** 当前是不是停在「已标记」段（已入池 / 无风险 / 风险报备）那张表上 */
 const taggedEvidenceView = computed(() => (
   listView.value === 'realtime' && queueView.value !== 'monitoring'
 ));
@@ -2997,21 +3025,12 @@ function rowSlaLines(r: QueueRow): { text: string; color: string }[] {
     { ...slaFirstLine(t), text: `首响：${slaFirstLine(t).text}` },
   ];
 }
-/**
- * 这一行命中的**全部**风险词（去重、保序）。
- * 🔴 只显示第一条就完事的话，人会按一条不具代表性的词去定级 ——
- * "一单多命中"恰恰是这一路最需要被看见的形态。
+/*
+ * ⚠️ **已删除 `rowWords` 与 `ROW_WORD_VISIBLE`**（2026-09-28 裁决的连带）。
+ * 它们是原「风险词」那一列的取数与折叠阈值：把一行命中的全部词去重列出、前两枚并排、其余折成「+N」。
+ * 那一列改成「风险来源」之后没有第二个调用方 —— 词并没有丢，它跟着证据走：
+ * 「证据 / 摘要」那一格的原话里命中词仍然高亮（`excerptWindow`）。
  */
-function rowWords(r: QueueRow): string[] {
-  const out: string[] = [];
-  for (const h of rowHits(r)) {
-    const w = h.matchedWord || h.word;
-    if (!out.includes(w)) out.push(w);
-  }
-  return out;
-}
-/** 词多的时候只并排前两枚，其余折成「+N」，全部词挂在悬停上 */
-const ROW_WORD_VISIBLE = 2;
 /**
  * 这一行的工单标题。**取工单库的真标题**，不取条目里那句写死的套话 ——
  * 「重点工单」那一路的「场景描述」同样走它，那一路本就没有命中原话可摆。
@@ -3022,6 +3041,82 @@ function rowTitleOf(r: QueueRow): string {
 /** 这一行的客户：优先取命中记录（它带着这一格），没有命中就退回工单 */
 function rowCustomerOf(r: QueueRow): string {
   return rowTopHit(r)?.customer || TICKET_BY_NO.get(r.ticketNo)?.customer || '—';
+}
+
+/* ---- 「已判」段条目表：来源 / 证据 / 结论三组按行分岔（2026-09-28 裁决） ---- */
+
+/**
+ * 「风险来源」列的界面词 —— 原「风险词」那一列改成的这一维，取值三种。
+ *
+ * 🔴 A 线两路**照写条目自己的来源**（实时监控 / 重点工单，与待判段、来源 chip 全站一个说法）；
+ * B 线写「**风险报备**」而不是它在合并池里的来源标签「二线报备」：这一列答的是
+ * "这条风险从哪条路进来的"，写成岗位名等于把来源说成了报备人的职级。
+ */
+const REPORTED_SOURCE_TEXT = '风险报备';
+function rowSourceText(r: QueueRow): string {
+  return r.report ? REPORTED_SOURCE_TEXT : r.source;
+}
+
+/**
+ * 这一行**最新的那条命中** —— 「证据 / 摘要」列摆的原话取它。
+ * 🔴 与 `rowTopHit`（按词表预设等级最重的那条）不是一回事：那一枚是定级时要看的"最重的证据"，
+ * 这一格要的是"客户最近说了什么"，故多条命中取**最新一条**。
+ */
+function rowLatestHit(r: QueueRow): RiskHit | null {
+  return rowHits(r).slice().sort((a, b) => b.when.localeCompare(a.when))[0] ?? null;
+}
+
+/**
+ * 「证据 / 摘要」这一格摆的是哪一种东西 —— **按来源分岔，不按"有没有命中"分岔**：
+ *   · 报备行 → 报备单的**场景描述**（报备弹窗里那一项填的内容）；
+ *   · 实时监控 → **命中原话摘录**（最新一条，命中词高亮）；
+ *   · 重点工单 → **工单的问题描述**（这一路本就不靠词进来，没有原话可摆）。
+ * 实时监控那一路万一一条命中都没有（手动筛查并入、命中已被删），退回问题描述，不留空格。
+ */
+function rowEvidenceKind(r: QueueRow): 'report' | 'hit' | 'summary' {
+  if (r.report) return 'report';
+  if (r.source === '实时监控' && rowHasHits(r)) return 'hit';
+  return 'summary';
+}
+
+/**
+ * 报备单**出结论的时刻**：已撤回取撤回时刻、已评估取评估时刻。
+ * 两者都没有（旧缓存）时退回提交时刻 —— 这一支**只给排序用**，
+ * 「结论时间」那一格另走 `rowConclusionAt`，取不到就写「—」，不拿提交时刻冒充结论时刻。
+ */
+function reportConcludedAt(r: RiskPoolItem): string {
+  return (r.status === '已撤回' ? r.withdrawAt : r.assessment?.at) ?? r.at;
+}
+
+/**
+ * 「结论」列。打标行填**打标结论**（高 / 中 / 低 / 无风险，配色由模板按等级分岔），
+ * 报备行填**评估结论**（升级 / 不升级），已撤回的填「已撤回」。
+ */
+function rowConclusionText(r: QueueRow): string {
+  if (r.report) {
+    if (r.report.status === '已撤回') return '已撤回';
+    return r.report.assessment?.decision ?? '—';
+  }
+  return r.tag?.result ?? '—';
+}
+/**
+ * 「结论人」列的两行：姓名 + 角色。打标行取打标人，报备行取评估人；
+ * 已撤回取**撤回人** —— 撤回只能由报备人本人发起（§4.8），故取报备人那一对。
+ */
+function rowConclusionBy(r: QueueRow): { name: string; role: string } {
+  if (r.report) {
+    if (r.report.status === '已撤回') return { name: r.report.by, role: r.report.byRole };
+    const a = r.report.assessment;
+    return { name: a?.by ?? '—', role: a?.byRole ?? '' };
+  }
+  return { name: r.tag?.by ?? '—', role: r.tag?.byRole ?? '' };
+}
+/** 「结论时间」列。打标行取打标时刻，报备行取评估 / 撤回时刻；取不到写「—」 */
+function rowConclusionAt(r: QueueRow): string {
+  if (r.report) {
+    return (r.report.status === '已撤回' ? r.report.withdrawAt : r.report.assessment?.at) ?? '—';
+  }
+  return r.tag?.at ?? '—';
 }
 
 /* ---- 「按标记人」：打标人这一维 ---- */
@@ -3064,9 +3159,25 @@ const taggerChips = computed(() => {
  * 让工作组筛选影响自己那一排的数字，选中一个组之后其余几枚全变 0，
  * 人再也看不出该切到哪一组（与 `reportSourceBase` 是同一条道理）。
  */
+/**
+ * 「已判」段那一档 **风险报备** 的底表 ＝ B 线**已出结论**的报备单：已评估 + 已撤回。
+ *
+ * 🔴 **只收 B 线**（`source === REPORT_SOURCE`）：合并层的 `reports` 里躺着两条线
+ * （见 `stores/riskPool.ts` 的 `items`），不收窄的话 A 线的池内条目会在这一档里再出现一遍，
+ * 而它们已经在「全部有风险」那三个轴上数过了 —— 同一条行被数两次，段总数当场对不上。
+ * 🔴 **在队的两态（待分派 / 评估中）不收**：那是「还没下结论」，它的工作面在工单工作台的
+ * 「风险报备池」。待判段也不收报备（仍只有实时监控 / 重点工单两路）。
+ * 次序：结论时刻倒序，没有结论时刻的退回提交时刻 —— 最近判的排最前，与另两档一致。
+ */
+const reportedEntries = computed<RiskPoolItem[]>(() => reportStore.reports
+  .filter((r) => r.source === REPORT_SOURCE && (r.status === '已评估' || r.status === '已撤回'))
+  .slice()
+  .sort((a, b) => reportConcludedAt(b).localeCompare(reportConcludedAt(a))));
+
 const queueBase = computed<QueueRow[]>(() => {
   if (queueView.value === 'monitoring') return untaggedRows.value;
   if (queueView.value === 'noRisk') return reportStore.noRiskEntries.map(rowOfEntry);
+  if (queueView.value === 'reported') return reportedEntries.value.map(rowOfReport);
   const pooled = reportStore.pooledEntries;
   // 🔴 **三个轴同出 `pooledEntries` 这一份行集**：按风险等级 / 按标记人 / 按处置阶段
   // 是同一批条目的三种看法，差别只在各自多一层收窄。
@@ -3167,7 +3278,7 @@ function queueStatusText(e: QueueRow): string {
  * 故档名与格子里的词逐字一致、分档也不可能与显示分叉 —— 两处各写一份映射，
  * 迟早出现"左栏写已领取、表里写评估中"。null ＝ 不在池里（待打标 / 已标记无风险）。
  */
-function poolStageTextOf(status: RiskQueueEntry['status'] | null): string {
+function poolStageTextOf(status: RiskPoolItem['status'] | null): string {
   if (!status) return '—';
   return POOL_STATE_TEXT[status] ?? status;
 }
@@ -3252,7 +3363,8 @@ function saveBulk() {
   const targets = bulkTargets.value;
   // 与单条走**同一个入口**（recordTag），状态迁移与留痕都在 store 里那一处，
   // 批量另写一套的话，"低/中/高进池、无风险不进池"这条门槛迟早只改一处
-  const done = targets.filter((r) => reportStore.recordTag(r.entry.id, {
+  // 批量只在待打标视图开（`showQueueSelection`），那一批全是 A 线条目；判一道 `r.entry` 是类型收口
+  const done = targets.filter((r) => !!r.entry && reportStore.recordTag(r.entry.id, {
     result,
     note: bulkNote.value.trim(),
     by: user.current.name,
@@ -3367,7 +3479,7 @@ const entryTagDirty = computed(() => {
  * 读条目上的现行状态，不读行快照。
  */
 const entryTagNoRiskLocked = computed(
-  () => !!entryTagTarget.value && !canTagNoRisk(entryTagTarget.value.entry.status),
+  () => !!entryTagTarget.value?.entry && !canTagNoRisk(entryTagTarget.value.entry.status),
 );
 function pickEntryTagResult(r: RiskTagResult) {
   if (r === NO_RISK && entryTagNoRiskLocked.value) { message.warning(NO_RISK_LOCKED_TIP); return; }
@@ -3394,6 +3506,8 @@ const entryTagHits = computed(() => {
 });
 
 function openEntryTag(e: QueueRow) {
+  // 报备行不走打标（它的操作列本就没有按钮），这一道是防第二个调用方绕进来
+  if (!e.entry) return;
   if (!canRiskTag.value) { message.warning('只有客诉专员、投诉督导与管理员可以打标'); return; }
   entryTagTarget.value = e;
   // 修改态先把现行结论灌回来：改完才知道自己动了哪一项
@@ -3405,7 +3519,8 @@ function openEntryTag(e: QueueRow) {
 
 function saveEntryTag() {
   const target = entryTagTarget.value;
-  if (!target) return;
+  // 打标只对 A 线条目开（报备行的操作列写「—」，见条目表），故这里必有 `entry`
+  if (!target?.entry) return;
   if (!canRiskTag.value) { message.warning('无打标权限'); return; }
   if (!entryTagResult.value) { message.warning('请先给出打标结论'); return; }
   const amend = entryTagAmend.value;
@@ -3608,7 +3723,7 @@ function groupNameOf(ticketNo: string): string {
  */
 type RailKey =
   | `untagged:${UntaggedSlice}` | `untagged:${UntaggedSlice}:${string}`
-  | 'level:高' | 'level:中' | 'level:低' | 'level:all' | 'level:tagger' | 'noRisk'
+  | 'level:高' | 'level:中' | 'level:低' | 'level:all' | 'level:tagger' | 'noRisk' | 'reported'
   // `stage:all` ＝「按处置阶段」那一行本身（不限阶段），与 `level:all`、`level:tagger` 同为"分类表头"
   | 'stage:all' | `stage:${string}`
   | `tagger:${string}`;
@@ -3768,6 +3883,9 @@ const railGroups = computed<RailGroup[]>(() => {
   const untaggedAll = inGroup(untaggedUniverse.value).length;
   const pooledAll = inGroup(reportStore.pooledEntries).length;
   const noRiskAll = inGroup(reportStore.noRiskEntries).length;
+  // B 线已出结论的报备（已评估 + 已撤回）。它与另两个数互斥、可以相加，
+  // 三者之和 ＝ 页签上那个数；而它**不进三个轴**，见 `reportedEntries`
+  const reportedAll = inGroup(reportedEntries.value).length;
   return [
     {
       stage: 'untagged',
@@ -3793,16 +3911,18 @@ const railGroups = computed<RailGroup[]>(() => {
     },
     {
       stage: 'tagged',
-      // 🔴 **全部有风险 + 无风险**，不是「全部有风险」：无风险也是这一阶段下过的结论，
-      // 页签数的是"这一段判过多少"，漏掉漏出口那一批，页签上的数就对不上侧栏那两档之和
-      total: pooledAll + noRiskAll,
+      // 🔴 **全部有风险 + 无风险 + 风险报备**，不是「全部有风险」：无风险也是这一阶段下过的结论，
+      // 已结论 / 已撤回的报备同样是下过结论的一批，页签数的是"这一段判过多少"，
+      // 漏掉哪一档，页签上的数就对不上侧栏那几档之和
+      total: pooledAll + noRiskAll + reportedAll,
       defaultKey: 'level:all',
       title: '已标记',
       title2: '打过标的条目 —— 历史累计，不是此刻的存量。高 / 中 / 低进风险工单池，无风险不进池。'
         + '🔴 这个数与「未标记」那个数分属两批、不相减也不互校：它比那边大是正常状态。'
         + '这一段摆三种并列的分类：按风险等级（全部有风险）、按标记人、按处置阶段 —— 同一批条目三个角度。'
-        + '页签上的数 ＝ 全部有风险 + 无风险（两者都是这一段下过的结论）。'
-        + '🔴 高 + 中 + 低 ≡ 全部有风险 ≡ 按标记人 ≡ 按处置阶段 ≡ 各自取值行之和，五处是同一批行',
+        + '页签上的数 ＝ 全部有风险 + 无风险 + 风险报备（三者都是这一段下过的结论，互斥、可以相加）。'
+        + '🔴 高 + 中 + 低 ≡ 全部有风险 ≡ 按标记人 ≡ 按处置阶段 ≡ 各自取值行之和，五处是同一批行；'
+        + '🔴 那三个轴**只数打标条目**，报备不走打标、不进这三个轴',
       items: [
         {
           key: 'level:all' as RailKey,
@@ -3904,6 +4024,23 @@ const railGroups = computed<RailGroup[]>(() => {
           title: '打标判为无风险、不进池的条目 —— 漏斗的漏出口，走到这儿止步。'
             + '它不是回收站：核查漏标误判除了从这里翻出来改，没有第二条路',
         },
+        /*
+          B 线落在这一段的那一档。**与「无风险」并列在同一条细分隔线之下**：
+          两者都是"已经有结论、不在那三个轴上"的一批，故同为 d0、共用上面那一条分隔线，
+          这一档自己不再补第二条（补了会读成又起了一段）。
+          🔴 它**不进三个轴**：报备不走打标，混进去会把"三个轴 ≡ 全部有风险"弄脏，见 `reportedEntries`。
+        */
+        {
+          key: 'reported' as RailKey,
+          label: REPORTED_SOURCE_TEXT,
+          count: reportedAll,
+          depth: 0,
+          title: '二线报备里**已经有结论**的那一批：已评估（升级 / 不升级）与已撤回。'
+            + '🔴 它不在「全部有风险 / 按标记人 / 按处置阶段」那三个轴上 —— 报备不走打标，'
+            + '数进去那三个本该相等的数会当场分叉。'
+            + '🔴 还在队的报备（待领取 / 评估中）不在这里，也不在待判段：'
+            + '那是它的工作面，在工单工作台的「风险报备池」',
+        },
       ],
     },
   ];
@@ -3927,6 +4064,7 @@ const railKey = computed<RailKey | null>(() => {
         : `untagged:${untaggedSlice.value}`) as RailKey;
     }
     if (queueView.value === 'noRisk') return 'noRisk';
+    if (queueView.value === 'reported') return 'reported';
     if (tagLevelFilter.value === 'tagger') {
       // 选了某个人就点亮那一行本身，不点亮它的父行：左栏每一档的数字要等于表里的行数，
       // 而收窄之后表里躺的是那个人名下的几条
@@ -3969,6 +4107,13 @@ function setRail(key: RailKey) {
   if (key === 'noRisk') {
     setListView('realtime');
     setQueueView('noRisk');
+    tagLevelFilter.value = 'all';
+    return;
+  }
+  // 风险报备：与「无风险」逐条同构 —— 同一张条目表的另一档，不是漏斗的下一段
+  if (key === 'reported') {
+    setListView('realtime');
+    setQueueView('reported');
     tagLevelFilter.value = 'all';
     return;
   }
@@ -4870,6 +5015,7 @@ function toggleWordEnabled(w: RiskWord) {
         <template v-else-if="queueView === 'monitoring' && untaggedSub">这一档下没有未标记的工单 —— 点上一级看这一路的全部</template>
         <template v-else-if="queueView === 'monitoring'">这一路没有待判的工单 —— 换一路看，或用右上角「手动筛查」去存量里捞</template>
         <template v-else-if="queueView === 'noRisk'">当前没有被判为无风险的条目</template>
+        <template v-else-if="queueView === 'reported'">当前没有已出结论或已撤回的风险报备</template>
         <template v-else-if="tagLevelText">当前没有打标为{{ tagLevelText }}的条目</template>
         <template v-else>当前没有有风险的条目 —— 打标为低 / 中 / 高的条目会落在这里</template>
       </div>
@@ -5063,8 +5209,11 @@ function toggleWordEnabled(w: RiskWord) {
       </div>
 
       <!--
-        已标记段 · 条目表（已入池三轴 / 无风险共用）。
+        已标记段 · 条目表（已入池三轴 / 无风险 / 风险报备共用）。
         🔴 「未标记」两路都不走这张表：「实时监控」走上面的召回清单，「重点工单」走富列表。
+        🔴 **三档共用这一张表、一份列定义**：打标行与报备行摆的东西不同，
+        分岔发生在单元格里（见各 `row*` 取数），不是再画一张长得像的表 ——
+        各画一张的下场是同一列在两处给出两种填法，而这正是「风险词」那一列被改掉的原因。
       -->
       <div v-if="listView === 'realtime' && queueView !== 'monitoring' && queueRows.length" class="hit-table-wrap report-table-wrap">
         <table class="hit-table report-table">
@@ -5079,15 +5228,29 @@ function toggleWordEnabled(w: RiskWord) {
                 照那个宽度定列，行一多就溢出，而"行少的时候不溢出"恰恰是最容易漏测的一种。
                 ⚠️ **SLA 那一格要 104**：最长的一种是「解决：超 88:40」，给 88 会把末位数字切掉半个
                 （实测显示成「超 88:4(」）—— 一个被切掉的时间数字比不显示更糟。
+
+                🔴 **原「风险词」这一列改成「风险来源」**（2026-09-28 裁决）：三档共用这张表之后，
+                词只对其中一路成立，而"这条从哪条路进来的"三档都答得上 —— 取值三种：
+                实时监控 / 重点工单 / 风险报备。原来那格里的词并没有丢，它跟着证据走：
+                「证据 / 摘要」那一列的原话里命中词仍然高亮。
+                🔴 **「风险等级 / 标记人 / 标记时间」改成「结论 / 结论人 / 结论时间」**：
+                报备行没有等级、也没有打标人，它出的是评估结论（升级 / 不升级）或「已撤回」。
+                三列的列宽一格没动。
               -->
-              <th v-if="taggedEvidenceView" style="width: 88px">风险词</th>
+              <th v-if="taggedEvidenceView" style="width: 88px">风险来源</th>
               <th v-if="taggedEvidenceView" style="width: 156px">证据 / 摘要</th>
               <th v-if="taggedEvidenceView" style="width: 90px">客户 / 产品</th>
               <th v-if="taggedEvidenceView" style="width: 104px">SLA</th>
-              <th style="width: 72px">打标结论</th>
-              <th :style="taggedEvidenceView ? 'width: 80px' : 'width: 104px'">打标人</th>
-              <th :style="taggedEvidenceView ? 'width: 96px' : 'width: 128px'">打标时刻</th>
-              <th v-if="queueView === 'pooled'" style="width: 72px">池内状态</th>
+              <th style="width: 72px">结论</th>
+              <th :style="taggedEvidenceView ? 'width: 80px' : 'width: 104px'">结论人</th>
+              <th :style="taggedEvidenceView ? 'width: 96px' : 'width: 128px'">结论时间</th>
+              <!--
+                池内状态：池内三轴那一档写的是池内阶段（待领取 / 已领取 / 已结论），
+                「风险报备」那一档写的是报备自己的状态（已结论 / 已撤回）——
+                两者同一套词表（`POOL_STATE_TEXT`，已评估 → 已结论），故共用这一列、不另起一列。
+                「无风险」那一档压根没进过池，整列 v-if 掉。
+              -->
+              <th v-if="queueView === 'pooled' || queueView === 'reported'" style="width: 72px">池内状态</th>
               <th style="width: 128px">操作</th>
             </tr>
           </thead>
@@ -5110,39 +5273,30 @@ function toggleWordEnabled(w: RiskWord) {
                 >兼：{{ s }}</span>
               </td>
               <!--
-                风险词：**只有带命中记录的行有**。「重点工单」那一路本就不靠词进来，
-                给它凑一个空格并不诚实 —— 那不是"没查到词"，是"这一路根本不产生命中"，
-                故写「不适用」而不是「—」。呈现与「实时监控」那一路同一套（前两枚 + 折叠）。
+                风险来源：三档共用的那一维，取值三种（实时监控 / 重点工单 / 风险报备）。
+                配色沿用风险工单池那张表的写法 —— 预警词那一路蓝底，另两路灰底。
               -->
               <td v-if="taggedEvidenceView">
-                <template v-if="rowHasHits(e)">
-                  <span
-                    v-for="w in rowWords(e).slice(0, ROW_WORD_VISIBLE)"
-                    :key="w"
-                    class="src-tag kw"
-                  >{{ w }}</span>
-                  <span
-                    v-if="rowWords(e).length > ROW_WORD_VISIBLE"
-                    class="kw-more"
-                    :title="rowWords(e).join('、')"
-                  >+{{ rowWords(e).length - ROW_WORD_VISIBLE }}</span>
-                </template>
-                <span v-else class="hit-sub" title="这一路不靠预警词进来（重点工单按工单类型与优先级自动识别），故没有命中词">不适用</span>
+                <span class="src-tag" :class="{ kw: rowSourceText(e) === '实时监控' }">{{ rowSourceText(e) }}</span>
               </td>
               <!--
-                证据 / 摘要：**两类行摆的不是一种东西**——
-                有命中的摆原话摘录（复核打标结论要看的就是这句话），
-                没命中的摆工单的问题描述。全文一律挂 title，这一屏是用来复核的、不是读完再判。
+                证据 / 摘要：**三种行摆的不是一种东西**，按来源分岔（见 `rowEvidenceKind`）——
+                实时监控摆命中原话摘录（最新一条，命中词高亮，取窗与召回清单、打标弹窗同一个
+                `excerptWindow`）、重点工单摆工单的问题描述、风险报备摆报备单的场景描述。
+                全文一律挂 title，这一屏是用来复核的、不是读完再判。
               -->
               <td v-if="taggedEvidenceView" class="rr-desc">
-                <template v-if="rowHasHits(e)">
-                  <div :title="rowTopHit(e)!.excerpt">{{ rowTopHit(e)!.excerpt }}</div>
+                <template v-if="rowEvidenceKind(e) === 'hit'">
+                  <div :title="rowLatestHit(e)!.excerpt">
+                    <span class="excerpt-quote">「<template v-if="excerptWindow(rowLatestHit(e)!).headTruncated">…</template>{{ excerptWindow(rowLatestHit(e)!).before }}<mark v-if="excerptWindow(rowLatestHit(e)!).hit" class="excerpt-hit">{{ excerptWindow(rowLatestHit(e)!).hit }}</mark>{{ excerptWindow(rowLatestHit(e)!).after }}<template v-if="excerptWindow(rowLatestHit(e)!).tailTruncated">…</template>」</span>
+                  </div>
                   <span
                     v-if="rowHits(e).length > 1"
                     class="kw-more"
                     :title="rowHits(e).map((h) => `【${riskLevelText(h.level)}·${h.matchedWord || h.word}】${h.excerpt}`).join('\n')"
                   >+{{ rowHits(e).length - 1 }} 条命中</span>
                 </template>
+                <span v-else-if="rowEvidenceKind(e) === 'report'" :title="e.report!.desc">{{ e.report!.desc }}</span>
                 <span v-else :title="rowSummaryOf(e)">{{ rowSummaryOf(e) }}</span>
               </td>
               <td v-if="taggedEvidenceView" class="rr-desc">
@@ -5160,49 +5314,77 @@ function toggleWordEnabled(w: RiskWord) {
                 </template>
                 <span v-else class="hit-sub">—</span>
               </td>
+              <!--
+                结论：打标行填打标结论（高 / 中 / 低 套等级配色，无风险不套 ——
+                套上去等于给已排除的东西重新贴风险标）；报备行填评估结论（升级 / 不升级），
+                已撤回的填「已撤回」。报备的结论不是风险等级，故一律走中性的 state-chip。
+              -->
               <td>
-                <!-- 无风险不是一档风险等级，故不套等级配色；套上去等于给已排除的东西重新贴风险标 -->
                 <span
-                  v-if="e.tag && isPoolLevel(e.tag.result)"
+                  v-if="!e.report && e.tag && isPoolLevel(e.tag.result)"
                   class="grade-pill"
                   :style="{ color: RISK_LEVEL_STYLE[e.tag.result].color, background: RISK_LEVEL_STYLE[e.tag.result].bg }"
                 >{{ riskLevelText(e.tag.result) }}</span>
+                <span
+                  v-else-if="e.report"
+                  class="state-chip"
+                  :title="e.report.status === '已撤回' ? e.report.withdrawReason : e.report.assessment?.advice"
+                >{{ rowConclusionText(e) }}</span>
                 <span v-else-if="e.tag" class="state-chip" :title="e.tag.note">{{ e.tag.result }}</span>
                 <span v-else class="hit-sub">—</span>
               </td>
               <td>
-                {{ e.tag?.by ?? '—' }}<div v-if="e.tag" class="hit-sub">{{ e.tag.byRole }}</div>
+                {{ rowConclusionBy(e).name }}<div v-if="rowConclusionBy(e).role" class="hit-sub">{{ rowConclusionBy(e).role }}</div>
               </td>
-              <td class="hit-when">{{ e.tag?.at ?? '—' }}</td>
-              <td v-if="queueView === 'pooled'">
-                <span class="state-chip" :title="e.assignee && queueStatusText(e) !== '待领取' ? `承办人 ${e.assignee}` : '还没有人领'">{{ queueStatusText(e) }}</span>
+              <td class="hit-when">{{ rowConclusionAt(e) }}</td>
+              <td v-if="queueView === 'pooled' || queueView === 'reported'">
+                <!--
+                  悬停按行分岔：池内条目说的是"谁在办"，已撤回的报备没有承办人，
+                  照池行那句写会得到一句「还没有人领」—— 一条已经被报备人收回的记录不存在"等人领"。
+                -->
+                <span
+                  class="state-chip"
+                  :title="e.report
+                    ? (e.report.status === '已撤回'
+                      ? '报备人已撤回，本条不再进待评估队列'
+                      : `评估结论由 ${rowConclusionBy(e).name} 给出`)
+                    : (e.assignee && queueStatusText(e) !== '待领取' ? `承办人 ${e.assignee}` : '还没有人领')"
+                >{{ queueStatusText(e) }}</span>
               </td>
               <td>
                   <!--
-                    去管控只对**高危**出（基线 ※27）：管控会把工单从原处理人名下拿走，
-                    在办量、解决率分母、超时数全变，这个代价不该由一条低危条目触发。
+                    🔴 **报备行不给行内操作**：它的处置在工单工作台的「风险报备池」，
+                    而这一档装的本就是已经出过结论的那一批。在这儿再摆一枚按钮，
+                    等于给同一件事开第二个入口，两处的门控迟早各走各的。
                   -->
-                  <button
-                    v-if="queueView === 'pooled' && e.tag?.result === '高'"
-                    type="button" class="row-btn row-btn-primary"
-                    :title="`本条打标为高危，转交${DISPOSAL_BY_GRADE['高'].who}`"
-                    @click="openTicket(e.ticketNo)"
-                  >去管控<ArrowRightOutlined /></button>
-                  <!--
-                    修正：判错的那一条不改就永远错着。「已标记无风险」这一视图存在的
-                    全部意义就是它 —— 漏标误判除了从这里翻出来改，没有第二条路。
-                  -->
-                  <button
-                    v-if="canRiskTag"
-                    type="button" class="row-btn row-btn-amend"
-                    :title="queueView === 'noRisk'
-                      ? '重新判定这条是否真的无风险；改判为低 / 中 / 高会补进风险工单池'
-                      : canTagNoRisk(e.status)
-                        ? '重新判定风险等级；改判为无风险会把它撤出风险工单池'
-                        : `重新判定风险等级；${NO_RISK_LOCKED_TIP}`"
-                    @click="openEntryTag(e)"
-                  >修正</button>
-                  <span v-if="!canRiskTag" class="hit-sub" title="打标与修正归客诉专员、投诉督导与管理员">—</span>
+                  <span v-if="e.report" class="hit-sub">—</span>
+                  <template v-else>
+                    <!--
+                      去管控只对**高危**出（基线 ※27）：管控会把工单从原处理人名下拿走，
+                      在办量、解决率分母、超时数全变，这个代价不该由一条低危条目触发。
+                    -->
+                    <button
+                      v-if="queueView === 'pooled' && e.tag?.result === '高'"
+                      type="button" class="row-btn row-btn-primary"
+                      :title="`本条打标为高危，转交${DISPOSAL_BY_GRADE['高'].who}`"
+                      @click="openTicket(e.ticketNo)"
+                    >去管控<ArrowRightOutlined /></button>
+                    <!--
+                      修正：判错的那一条不改就永远错着。「已标记无风险」这一视图存在的
+                      全部意义就是它 —— 漏标误判除了从这里翻出来改，没有第二条路。
+                    -->
+                    <button
+                      v-if="canRiskTag"
+                      type="button" class="row-btn row-btn-amend"
+                      :title="queueView === 'noRisk'
+                        ? '重新判定这条是否真的无风险；改判为低 / 中 / 高会补进风险工单池'
+                        : e.entry && canTagNoRisk(e.entry.status)
+                          ? '重新判定风险等级；改判为无风险会把它撤出风险工单池'
+                          : `重新判定风险等级；${NO_RISK_LOCKED_TIP}`"
+                      @click="openEntryTag(e)"
+                    >修正</button>
+                    <span v-if="!canRiskTag" class="hit-sub" title="打标与修正归客诉专员、投诉督导与管理员">—</span>
+                  </template>
               </td>
             </tr>
           </tbody>
