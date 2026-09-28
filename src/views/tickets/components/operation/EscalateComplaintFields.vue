@@ -10,13 +10,13 @@ import type { EscalateComplaintFieldsCtl } from '@/composables/useEscalateCompla
  * `useEscalateComplaintFields` 的 `fields.advice` 上（宿主选「不升级」时同一个格子
  * 改叫「反馈意见」、由宿主自己那一格渲染），各处不各存一份。
  *
- * 🔴 **四个评估入口共用这一个组件**：工单页底栏「风险评估」（`OpRiskAssessModal`）、
- * 工单页「风险报备」Tab 在队卡「评估」（`operation/tabs/OpRiskMonitorTab.vue`）、
- * 风险监控页评估工作面（`views/ops-monitor/RiskMonitorView.vue`）、
- * 风险报备池（`components/RiskReportPoolPanel.vue`）。字段、顺序、级联与红字提示只在这里改。
+ * 🔴 **三处评估弹窗共用这一个组件**：风险监控页评估处置工作面
+ * （`views/ops-monitor/RiskMonitorView.vue`）、风险报备池（`components/RiskReportPoolPanel.vue`）、
+ * 工单页底栏「风险评估」（`operation/OpRiskAssessModal.vue`）。
+ * 字段、顺序、级联与红字提示只在这里改。
  *
  * 取值域、级联与校验全在 `composables/useEscalateComplaintFields.ts`，
- * 本组件只渲染：`ctl` 是那个 composable 的实例 —— 每个入口**只持一份**（工单页两个入口与
+ * 本组件只渲染：`ctl` 是那个 composable 的实例 —— 每处**只持一份**（工单页底栏与
  * 报备池取 `useRiskReportAssess` 暴露的那一份，风险监控页自己建一份），共用同一套规则。
  *
  * 样式**自带、不依赖外层**：各宿主弹窗的类名各不相同（.op-field / .assess-* / .af-*），

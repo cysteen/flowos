@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue';
+import { computed, onMounted, watch } from 'vue';
 import { message } from 'ant-design-vue';
 import { EditOutlined } from '@ant-design/icons-vue';
 import OpActionModal from './OpActionModal.vue';
 import RiskAssessSheet from './RiskAssessSheet.vue';
-// 选「升级」后那一段投诉专属建单要素（投诉一类 / 二类）：与风险监控页、风险报备池两个评估入口共用同一个组件
+// 选「升级」后那一段投诉专属建单要素（投诉一类 / 二类）：与风险监控页、风险报备池
+// 另外两处评估弹窗共用同一个组件
 import EscalateComplaintFields from './EscalateComplaintFields.vue';
 import { useRiskReportAssess } from '@/composables/useRiskReportAssess';
 import { useRiskPoolStore } from '@/stores/riskPool';
@@ -56,6 +57,7 @@ const {
   showEscalateFields,
   openAssess,
   confirmAssess,
+  canAssessReport,
 } = useRiskReportAssess();
 
 /** 本单**未出结论**的那条条目（至多一条：同单在队至多一条，基线 ※29） */
@@ -67,8 +69,8 @@ const target = computed<RiskPoolItem | null>(
  * 打开：先把条目领到自己名下（已在自己名下的跳过这一步），再弹表单。
  *
  * 领取会往 `assessArrivalTicket` 写一笔（那是"领取后跳工单页自动弹评估"用的信号），
- * 这里**当场消费掉**——否则工单页「风险报备」Tab 会收到同一个信号再弹一次，
- * 屏幕上叠出两个一模一样的评估弹窗。
+ * 这里**当场消费掉**——那张票此刻已经兑现（人就站在评估表单前面），留着它
+ * 只会让 `tryAssessArrival` 再走一遍同样的路。
  */
 watch(
   () => props.open,
@@ -96,6 +98,32 @@ watch(
   },
 );
 
+/**
+ * 从风险报备池 / 风险监控页**领取后跳到这张单**时自动把评估表单弹出来（《【930】》O18）。
+ *
+ * 信号是 `claim` 埋下的 `assessArrivalTicket`（`stores/riskPool.ts`），一次性票：
+ * **消费掉就不再补第二次**，它是"这一跳"的连带，不是条目的属性；释放时由 `release` 撤票。
+ * 判据与人点底栏那条路一致 —— 只对**已在自己名下的在队条目**开（`canAssessReport`）；
+ * 条目已被别人领走、或已被释放退回池里的，票照样烧掉但什么都不弹。
+ *
+ * 🔴 **这段原先住在工单页「风险报备」Tab 里**、开的是那个 Tab 自持的评估弹窗。
+ * 该 Tab 已退回纯读（2026-09-28 裁决：在队卡「评估」按钮与 Tab 自持的弹窗整块删除），
+ * 故整段搬到底栏这个弹窗自己身上 —— 工单页的评估只剩这一个落点，两处不会再各弹一个。
+ * 也因此它**只在本组件挂载时才成立**：本组件的出现条件是「非投诉单 + 客诉专员」
+ * （`resolveRiskActionForm` 判出 assess 形态），管理员兜底领取的那条路评估入口在池内，
+ * 不在工单页。
+ */
+function tryAssessArrival() {
+  if (!reportStore.consumeAssessArrival(props.ticketNo)) return;
+  const t = target.value;
+  if (!t || !canAssessReport(t, user.name)) return;
+  openAssess(t);
+}
+
+watch(() => props.ticketNo, tryAssessArrival);
+watch(target, tryAssessArrival);
+onMounted(tryAssessArrival);
+
 /** 内部表单关掉时把外部 open 一并收回，两个开关不能各走各的 */
 watch(assessOpen, (v) => {
   if (!v && props.open) emit('update:open', false);
@@ -106,7 +134,7 @@ const advicePlaceholder = computed(() => advicePlaceholderOf(assessDecision.valu
 
 /**
  * 标题按条目所属的线取：A 线（风险工单池条目）「风险评估」、B 线（报备单）「评估报备」，
- * 与风险报备池、工单 Tab 在队卡两处评估弹窗的叫法对齐。
+ * 与风险报备池、风险监控页两处评估弹窗的叫法对齐。
  */
 const modalTitle = computed(() => (assessTarget.value?.source === REPORT_SOURCE ? '评估报备' : '风险评估'));
 </script>

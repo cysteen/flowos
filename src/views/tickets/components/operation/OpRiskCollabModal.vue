@@ -139,7 +139,7 @@ function nowStamp(): string {
 }
 
 function onOk() {
-  // 弹窗开着期间原单可能已结束；判据与四个评估入口同一份（isRiskTicketEnded）
+  // 弹窗开着期间原单可能已结束；判据与三处评估弹窗同一份（isRiskTicketEnded）
   if (isRiskTicketEnded(props.ticketNo)) {
     message.warning('本单已结束，无法协同处理');
     return;

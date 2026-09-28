@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 import {
@@ -11,14 +11,9 @@ import {
   PaperClipOutlined,
   RollbackOutlined,
   UserOutlined,
-  EditOutlined,
   DownOutlined,
   RightOutlined,
 } from '@ant-design/icons-vue';
-import { useRiskReportAssess } from '@/composables/useRiskReportAssess';
-// 选「升级」后那一段投诉专属建单要素（投诉一类 / 二类 / 升级说明）：与另外三个评估入口
-// **共用同一个组件**，状态取 composable 已暴露的那一份（escalateFields），本页不另造第二份
-import EscalateComplaintFields from '../EscalateComplaintFields.vue';
 import OpCollapsibleSection from '../OpCollapsibleSection.vue';
 import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue';
 import { riskLevelText } from '@/config/risk';
@@ -52,7 +47,6 @@ import { useRiskCollabStore } from '@/stores/riskCollab';
 import { resolveTicketTypeFor } from '@/views/tickets/composables/opActions';
 import {
   adviceLabelOf,
-  advicePlaceholderOf,
   decisionText,
   isEscalateDecision,
   poolStatusText,
@@ -78,32 +72,13 @@ const reportStore = useRiskReportStore();
 const queue = useRiskQueueStore();
 const collab = useRiskCollabStore();
 const router = useRouter();
-const {
-  ASSESS_DECISIONS,
-  assessOpen,
-  assessDecision,
-  assessAdvice,
-  missAssessDecision,
-  missAssessAdvice,
-  // 选「升级」后的派生说明行：与报备池、底栏两个评估入口同源，本页不另写
-  escalateHint,
-  // 投诉专属字段段：出现判据与字段状态都取这一份，校验由 confirmAssess 先于结论正文跑
-  escalateFields,
-  showEscalateFields,
-  // 主按钮文案：升级→「确认升级」，否则「提交结论」（四个评估入口同一句）
-  assessOkText,
-  openAssess,
-  confirmAssess,
-  canAssessReport,
-} = useRiskReportAssess();
 
 /*
- * 决策文案与提示由本页自己给（`../OpRiskDecision`），不取 composable 里那三个：
- * 基线 v1.23 已把「接管」整体作废、定名「升级 / 不升级」，而 composable 与 store 侧的改名
- * 归风险那一路，两边不会同一次落地。工单页把"落到屏幕上的那个词"收在一处，
+ * 本 Tab 只承载"读"：报备与评估的结论文案走本页这一份（`../OpRiskDecision`）。
+ * 基线 v1.23 已把「接管」整体作废、定名「升级 / 不升级」，而 store 侧的改名归风险那一路，
+ * 两边不会同一次落地。工单页把"落到屏幕上的那个词"收在一处，
  * 谁先改都不会出现"按钮写升级、说明写接管"。
  */
-const advicePlaceholder = computed(() => advicePlaceholderOf(assessDecision.value));
 
 const expanded = ref({ report: true, assess: true, collab: true, risk: true });
 const riskLevelOptions = RISK_LEVEL_SELECT_OPTIONS;
@@ -170,24 +145,13 @@ const canWithdraw = computed(
     && pending.value.by === user.name,
 );
 
-/** 当前承办人可在工单详情页提交评估结论 */
-const canAssess = computed(
-  () => !props.readonly
-    && !!pending.value
-    && canAssessReport(pending.value, user.name),
-);
-
-function tryAssessArrival() {
-  if (!reportStore.consumeAssessArrival(props.ticketNo)) return;
-  const p = pending.value;
-  if (!p || !canAssessReport(p, user.name)) return;
-  expanded.value.report = true;
-  nextTick(() => openAssess(p));
-}
-
-watch(() => props.ticketNo, tryAssessArrival);
-watch(pending, tryAssessArrival);
-onMounted(tryAssessArrival);
+/*
+ * ⚠️ 本 Tab 上**没有评估入口**（2026-09-28 裁决）：在队卡那枚「评估」按钮与本 Tab 自持的
+ * 「评估报备」弹窗已整块删除，工单页的评估只剩底栏「风险评估」那一个弹窗
+ * （`operation/OpRiskAssessModal.vue`）。本 Tab 写权限给的是二线专员 / 二线班组长 / 管理员
+ * （它承载「发起报备」），而评估权只在客诉专员手上 —— 那枚按钮对任何角色都不可达。
+ * 「从报备池领取后跳工单页自动弹评估」这条路径随之搬到底栏那个弹窗里（`consumeAssessArrival`）。
+ */
 
 function openWithdraw() {
   if (!canWithdraw.value) return;
@@ -574,10 +538,10 @@ const collabSectionBadge = computed(() =>
       <!--
         在队报备。**与历史每条同一套卡**（`rr-card`）：在队那条高亮（实边框 + 主色底纹），
         历史弱化（灰边浅底）。两者用两种完全不同的骨架时，读的人分不出它们是同一种东西的两个阶段。
-        发起入口在底栏弹窗，本卡只读 + 两个动作。
+        发起入口在底栏弹窗，本卡只读 + 报备人自己的「撤回」。
       -->
       <article v-if="pending" class="rr-card rr-card-live" aria-label="当前在队报备">
-        <!-- 第一行：状态 · 提交于 · 已等待，右端是这条报备当前能做的那一个动作 -->
+        <!-- 第一行：状态 · 提交于 · 已等待，右端是报备人自己的「撤回」 -->
         <div class="rr-card-top">
           <div class="rr-card-top-main">
             <span
@@ -590,10 +554,7 @@ const collabSectionBadge = computed(() =>
             <span class="rr-card-time">提交于 {{ formatShortAt(pending.at) }}</span>
             <span class="rr-card-wait">已等待 {{ waitedText(pending.at) }}</span>
           </div>
-          <button v-if="canAssess" type="button" class="rr-assess" @click="openAssess(pending)">
-            评估
-          </button>
-          <button v-else-if="canWithdraw" type="button" class="rr-withdraw" @click="openWithdraw">
+          <button v-if="canWithdraw" type="button" class="rr-withdraw" @click="openWithdraw">
             撤回
           </button>
           <!-- 按钮消失得给个理由：不写这一句，报备人只会以为撤回入口自己丢了 -->
@@ -747,63 +708,6 @@ const collabSectionBadge = computed(() =>
         <p v-if="missWithdrawReason" class="field-err">请填写撤回原因</p>
         <!-- 撤回是破坏性动作，"记录不删除"是下决心前必须知道的后果，故留一句 -->
         <p class="report-tip">撤回后保留记录，可重新发起。</p>
-      </div>
-    </OpActionModal>
-
-    <!--
-      评估结论：领取后自动打开，或在队卡片点「评估」。
-      本弹窗的目标恒为 B 线在队报备（`pending` 只取 source＝二线报备），标题取「评估报备」。
-    -->
-    <OpActionModal
-      v-if="!isComplaintTicket"
-      :open="assessOpen"
-      title="评估报备"
-      :icon="EditOutlined"
-      tone="primary"
-      :width="520"
-      :ok-text="assessOkText"
-      @update:open="assessOpen = $event"
-      @ok="confirmAssess"
-    >
-      <div class="op-form ticket-assess-form">
-        <section class="ticket-assess-block">
-          <h4 class="ticket-assess-title">评估结论</h4>
-          <div class="op-field ticket-assess-dec-field">
-            <div class="op-field-h ticket-assess-dec-row">
-              <div class="op-label req">评估决策</div>
-              <!-- 值取 store 的枚举、字取界面词（※29 定名「升级 / 不升级」），见 OpRiskDecision.ts -->
-              <a-radio-group v-model:value="assessDecision" class="ticket-assess-dec-inline">
-                <a-radio v-for="d in ASSESS_DECISIONS" :key="d" :value="d">{{ decisionText(d) }}</a-radio>
-              </a-radio-group>
-            </div>
-            <div v-if="missAssessDecision" class="ticket-assess-err ticket-assess-foot">请先选择一个评估决策</div>
-            <!-- 选「升级」后的派生说明行（escalateHintOf，四个评估入口同一句） -->
-            <div
-              v-else-if="isEscalateDecision(assessDecision)"
-              class="ticket-assess-hint ticket-assess-foot"
-            >{{ escalateHint }}</div>
-          </div>
-          <!--
-            结论正文那一格。选「升级」（且会派生新投诉单）时它并进下面那一段、改由段内的
-            「升级说明」渲染，故本格只在**段不出**时出；两处渲染的是同一个格子
-            （assessAdvice 代理 escalateFields.fields.advice）。
-          -->
-          <div v-if="!showEscalateFields" class="op-field">
-            <div class="op-label req">{{ adviceLabel(assessDecision) }}</div>
-            <a-textarea
-              v-model:value="assessAdvice"
-              :rows="3"
-              :placeholder="advicePlaceholder"
-            />
-            <div v-if="missAssessAdvice" class="ticket-assess-err">请填写{{ adviceLabel(assessDecision) }}</div>
-          </div>
-        </section>
-
-        <!--
-          投诉工单专属字段：选「升级」（且会派生新投诉单）时才出。
-          投诉一类 / 二类 / 升级说明三项、均必填；切到「不升级」整段隐藏、已填值保留。
-        -->
-        <EscalateComplaintFields v-if="showEscalateFields" :ctl="escalateFields" />
       </div>
     </OpActionModal>
 
@@ -1218,20 +1122,6 @@ const collabSectionBadge = computed(() =>
   background: #e5e7eb;
   flex: none;
 }
-.rr-assess {
-  flex: none;
-  padding: 6px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  font-family: inherit;
-  color: #1d4ed8;
-  background: #eff6ff;
-  border: 1px solid #93c5fd;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-}
-.rr-assess:hover { background: #dbeafe; border-color: #60a5fa; }
 .rr-withdraw {
   flex: none;
   padding: 6px 12px;
@@ -1763,74 +1653,5 @@ const collabSectionBadge = computed(() =>
 .risk-level-select :deep(.ant-select-selection-placeholder) {
   font-size: 12px;
   line-height: 26px;
-}
-
-/* ---- 评估结论弹窗（领取后自动打开） ---- */
-.ticket-assess-form { gap: 12px !important; }
-.ticket-assess-block {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  background: #fff;
-}
-.ticket-assess-title {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 700;
-  color: #111827;
-}
-.ticket-assess-dec-row {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 10px;
-  margin: 0;
-}
-.ticket-assess-dec-row > .op-label {
-  flex: none;
-  width: 72px;
-  text-align: right;
-  white-space: nowrap;
-}
-.ticket-assess-dec-inline {
-  display: inline-flex !important;
-  flex: 1;
-  flex-wrap: nowrap;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-.ticket-assess-dec-inline :deep(.ant-radio-wrapper) {
-  margin: 0 !important;
-  padding: 6px 12px;
-  border: 1.5px solid #e5e7eb;
-  border-radius: 8px;
-  background: #fff;
-  line-height: 1.45;
-  font-size: 12px;
-  white-space: nowrap;
-  align-items: center;
-}
-.ticket-assess-dec-inline :deep(.ant-radio-wrapper-checked) {
-  border-color: #1a6fff;
-  background: #eff6ff;
-}
-.ticket-assess-dec-inline :deep(.ant-radio) { margin-top: 0; top: 0; }
-.ticket-assess-foot { margin-left: calc(72px + 10px); margin-top: 4px; }
-.ticket-assess-err {
-  margin-top: 4px;
-  font-size: 11px;
-  color: #ef4444;
-  line-height: 1.4;
-}
-/* 派生说明行：与底栏评估弹窗的 .ticket-assess-hint 同一套 token（讲后果不是报错，取中性灰） */
-.ticket-assess-hint {
-  margin-top: 4px;
-  font-size: 11px;
-  color: #6b7280;
-  line-height: 1.5;
 }
 </style>

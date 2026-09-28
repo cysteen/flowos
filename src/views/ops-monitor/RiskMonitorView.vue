@@ -888,7 +888,7 @@ const assessAdvicePlaceholder = computed(() => {
   }
 });
 
-/** 弹窗主按钮：决策＝升级 →「确认升级」，未选或「不升级」→「提交结论」（四个评估入口一致） */
+/** 弹窗主按钮：决策＝升级 →「确认升级」，未选或「不升级」→「提交结论」（三处评估弹窗一致） */
 const assessOkText = computed(() => (assessDecision.value === '升级' ? '确认升级' : '提交结论'));
 
 /**
