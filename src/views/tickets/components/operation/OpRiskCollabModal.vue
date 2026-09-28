@@ -150,9 +150,8 @@ function onOk() {
     @cancel="close"
   >
     <div class="op-form">
-      <p class="rc-sub">
-        工单 {{ ticketNo }}<template v-if="ticketTitle"> · {{ ticketTitle }}</template>
-      </p>
+      <!-- 单号已在抬头副标题里（来源 · 单号），体内只补标题，不再写第二遍单号 -->
+      <p v-if="ticketTitle" class="rc-sub">{{ ticketTitle }}</p>
       <div class="rc-head">
         <span class="rc-head-pair">
           <span class="rc-head-label">当前处理人</span>

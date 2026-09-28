@@ -3809,7 +3809,10 @@ function saveEntryTag() {
   const retag = !amend || entryTagDirty.value;
   const assessDec = showEntryTagAssess.value ? entryTagAssessDecision.value : '';
   const collab = showEntryTagCollab.value && entryTagCollabFilled.value;
-  if (!retag && !assessDec && !collab) { message.warning('打标结论没有变化，无需修改'); return; }
+  // 文案说「风险标记」而不是「风险等级」：判据是 `entryTagDirty`（等级**或**打标备注动过），
+  // 写成「风险等级」比判据窄 —— 只改了备注的人会被告知"等级没变"，对不上自己刚做的事。
+  // 「风险标记」既是本弹窗的名字，也正好覆盖上半那两项。
+  if (!retag && !assessDec && !collab) { message.warning('风险标记没有变化，无需修改'); return; }
   // 「为什么改」只在**真的改判**时才问得出口：没改判的那一路不要它
   if (retag && amend && !entryTagReason.value.trim()) { message.warning('请填写修正原因'); return; }
   const prev = target.tag?.result;
