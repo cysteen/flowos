@@ -17,6 +17,7 @@ import { buildEscalateVerdict, isTicketTerminated } from '../../composables/comp
 import { buildTicketRelations, type TicketRelation } from '../../composables/ticketRelations';
 import OpRelationList from './OpRelationList.vue';
 import OpSupersededBanner from './OpSupersededBanner.vue';
+import { RISK_LEVEL_STYLE, riskLevelText, type RiskLevel } from '@/config/risk';
 
 const props = defineProps<{
   detail: TicketDetailMeta;
@@ -57,6 +58,16 @@ const props = defineProps<{
    * 置灰时覆盖阶层判定的取值与原因（如自动刷机中「自动刷机进行中，回传结果后再操作」）。老工单不传。
    */
   escalateGate?: { forbidden: boolean; tip?: string } | null;
+  /**
+   * 标题行的两枚风险状态标（《【930】》§5A.3 / §3.2）。**判据不在本组件算** ——
+   * 整套由 TicketOperationView 的 `titleRiskGrade` / `titleRiskReporting` 给，
+   * 那两条又复用工单列表行内标的同源读口（`riskTags.ticketGradeOf` /
+   * `riskReports.isReporting`）。可见性（一线坐席 / 工单运营不给）也在那里判完：
+   * 门控落在取值一侧，本组件只管"有值就渲染"，不会出现列表与页头各判一套角色。
+   * 无等级 / 未报备时传 null / false，标题行与没有这两枚标时一模一样。
+   */
+  riskGrade?: RiskLevel | null;
+  riskReporting?: boolean;
 }>();
 
 const READONLY_TIP = '本单已被新单接管并锁定，请在新单上处理';
@@ -241,6 +252,26 @@ function priorityHex(p: string): string {
           <span class="badge" :style="tagStyle(priorityHex(detail.priority))">
             <FlagOutlined />{{ detail.priority }}
           </span>
+          <!--
+            风险状态标两枚，排在优先级之后、标题之前。悬停提示与工单列表行内标逐字同文，
+            等级色板取 `config/risk.ts` 的 RISK_LEVEL_STYLE（全仓一把刻度，不在此另配色）。
+            两枚都 `flex: none`（`.badge` 自带）：横向挤的时候收窄的是标题文本那一段。
+          -->
+          <span
+            v-if="riskGrade"
+            class="badge risk-badge"
+            :style="{
+              color: RISK_LEVEL_STYLE[riskGrade].color,
+              background: RISK_LEVEL_STYLE[riskGrade].bg,
+              borderColor: RISK_LEVEL_STYLE[riskGrade].color,
+            }"
+            :title="`风险打标 ${riskLevelText(riskGrade)} · 工单级取该单各条结论里最高的一档`"
+          >{{ riskLevelText(riskGrade) }}</span>
+          <span
+            v-if="riskReporting"
+            class="badge risk-badge risk-badge--reporting"
+            title="本单有一条风险报备在队（待领取 / 评估中），出结论后自动撤下"
+          >报备中</span>
           <span class="oh-title">{{ detail.title }}</span>
         </div>
         <div class="meta-row" :title="metaTitle">
@@ -415,6 +446,17 @@ function priorityHex(p: string): string {
   border-radius: 4px; padding: 0 8px; flex: none; height: 24px;
 }
 .badge-neutral { color: #6b7280; background: #f3f4f6; }
+/* 风险状态标：与同行其它标同一形制，只多一道细边（色值由行内 style 按等级给） */
+.risk-badge {
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+/* 报备中恒为橙，与列表行内标 `.risk-tag--reporting` 同一组色值 */
+.risk-badge--reporting {
+  color: #c2410c;
+  background: #fff7ed;
+  border-color: #fdba74;
+}
 .badge-dot {
   width: 6px; height: 6px; border-radius: 50%;
 }

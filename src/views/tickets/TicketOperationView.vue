@@ -40,15 +40,13 @@ import { TICKETS } from '@/mock/tickets';
 import { useRiskTagStore } from '@/stores/riskTags';
 import { useRiskReportStore } from '@/stores/riskReports';
 import { useRiskQueueStore } from '@/stores/riskQueue';
-import { poolStageStatusOf } from '@/stores/riskPool';
 import { REPORT_ASSESS_LIMIT_MIN, isOpenStatus, isPooledStatus } from '@/stores/riskShared';
 import { POST_CLOSE_EDITABLE_FIELDS, RISK_FLAG_OPTIONS, isProcessTabVisible, tabWritableFor } from './types/operation';
-import { poolStatusText } from './components/operation/OpRiskDecision';
 import { useRiskCollabStore } from '@/stores/riskCollab';
 import { useRiskHistoryStore, type RiskHistoryKind, type RiskHistoryRecord } from '@/stores/riskHistory';
 import { useRiskPoolStore } from '@/stores/riskPool';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
-import { RISK_LEVELS, riskLevelText } from '@/config/risk';
+import { RISK_LEVELS } from '@/config/risk';
 import type { TlAction, TlRole } from './types/ticketDetail';
 import { pullbackOnCsEvent, headerActionsByRole, handlerGroupOf, currentHandlerName, STATUS_GROUP, WORKBENCH_HANDLER, type TicketStatus } from './types/ticket';
 import { buildChildTicketPrefill, buildReopenTicketPrefill } from './composables/childTicketPrefill';
@@ -579,16 +577,17 @@ function onRiskReport(payload: {
 }
 
 /**
- * 当前角色在这张单上**看不看得到「风险报备」Tab** ——
- * 页头风险打标行 / 协同建议行与 Tab 圆点的渲染门控。
+ * 当前角色在这张单上**看不看得到「风险报备」Tab** —— 标题行两枚风险状态标、
+ * 协同建议行与 Tab 圆点的渲染门控。
  *
- * 🔴 **入口与正文必须同一个判据**（2026-09-11 D-23 / D-24）：页头这几行上的
- * 「查看打标 / 查看协同记录」都是 `switchTab('risk')`，而 Tab 条上这一枚
+ * 🔴 **入口与正文必须同一个判据**（2026-09-11 D-23 / D-24）：协同建议行上的
+ * 「查看协同记录」是 `switchTab('risk')`，而 Tab 条上这一枚
  * 对**一线坐席**与**工单运营**根本不渲染（`TAB_ROLE_DENY.risk`，真源＝基线 §3.1
  * 「打标结果…**一线坐席仍不可见**」与「**工单运营不给** —— 它连风险词命中页都看不到」）。
- * 页头这几行此前只判 `user.role.frontline`（只挡住一线）或干脆不判角色，
+ * 页头这几处此前只判 `user.role.frontline`（只挡住一线）或干脆不判角色，
  * 于是这两个角色能从页头把风险报备正文整块调出来：报备人、风险类型、场景描述全文、
- * 附件、打标备注全部可见。
+ * 附件、打标备注全部可见。标题行两枚标同走这道门 —— 它们本身不是入口，
+ * 但等级与「报备中」也是基线 §3.1 点名这两个角色不可见的信息。
  *
  * 判据不在这里另写一张角色表 —— 直接问 `isProcessTabVisible`，与 Tab 条同源；
  * 另写一张迟早与 `TAB_ROLE_DENY` 分家，那就是同一个洞换个地方再开一次。
@@ -600,38 +599,36 @@ const canViewRiskTab = computed(
   () => isProcessTabVisible('risk', d.value.type, user.roleKey),
 );
 
-/**
- * 本单的**风险打标结论**（A 线，《【930】》§5A.3 / §6.1）。
+/* ==================== 标题行的两枚风险状态标（《【930】》§5A.3 / §3.2 可见性） ====================
  *
- * 【谁看得到】**二线处理人可见**；**一线坐席不可见** ——
- * 一线的工单列表、详情与通知里都不出现风险等级（§3.1，2026-09-10 拍板）。
- * 🔴 **打标不推送任何消息**（本轮不加通知）：这条横幅就是处理人知道自己单子被打了标的
- * 唯一方式，别再往这一步挂推送 —— 挂了就得有配得上它的通知规则，本轮没有。
- * 一线在本页走的是 `isFrontlineView` 那条分支，故这里显式判掉它，不靠 Tab 权限兜底：
- * 这一条挂在页头，不在任何 Tab 里，Tab 的黑名单管不到它。
+ * 落点＝**页头标题行**（状态 · 类型 · 优先级 之后、标题文本之前），两枚：
+ * 风险等级（高危 / 中危 / 低危）· 报备中。详情（打标人 / 打标时刻 / 打标备注 /
+ * 报备正文 / 协同记录）一律去「风险报备」Tab 的「风险标记」块看，那里本就完整。
  *
- * 【为什么连「无风险」也要显示】"有人看过、判定没风险"与"还没有人看过"是两件事，
- * 只显示有等级的那几档，处理人分不出自己这张单属于哪一种。
+ * 🔴 **判据与文案整套复用工单列表的行内标**（`TicketRichList.riskGradeOf` /
+ * `riskReportingOf`），不在这里另写一份：等级走 `riskTags.ticketGradeOf`
+ * （§6.1 跨条目取最高、同一条改判以最新为准），报备中走 `riskReports.isReporting`
+ * （纯派生＝本单有没有一条在队报备）。两处各算一次的话，同一张单会在列表与工单页
+ * 显示两个等级 —— 那是本仓库为「等级四处各存一份字面量」栽过的同一个坑。
+ *
+ * 【「无风险」不出】与列表一致：标题行只承担"有等级 / 在报备"这两种要喊一声的态；
+ * "有人看过、判定没风险"这一档仍在「风险标记」块里看得到，不占标题行的横向空间。
+ *
+ * 【可见性】一线坐席不可见（基线 §3.1，一线的列表、详情与通知里都不出现风险等级），
+ * **工单运营也不给**（§3.1「它连风险词命中页都看不到」）—— 后者靠 `canViewRiskTab`
+ * 与 Tab 条同源，不另写角色表；与下面的协同建议行逐条同一道门控。
  */
-const riskTagBanner = computed(() => {
-  if (user.role.frontline) return null;
-  // 🔴 工单运营也不给（基线 §3.1「工单运营不给 —— 它连风险词命中页都看不到」）。
-  // 只判 frontline 时它照样能看到这条打标结论、并点「查看打标」把 Tab 正文调出来。
-  if (!canViewRiskTab.value) return null;
-  const entry = riskQueue.entriesOf(ticketNo.value).find((e) => !!e.tag);
-  const tag = entry?.tag;
-  if (!tag) return null;
-  const level = tag.result === '无风险' ? '无风险' : riskLevelText(tag.result);
-  return {
-    level,
-    /** 高危单要"喊"一声：它是《【930】》§6.5 里唯一带「去管控」引导的一档 */
-    high: tag.result === '高',
-    text: `风险打标 ${level} · ${tag.by}（${tag.byRole}）· ${tag.at}`,
-    note: tag.note,
-    /** 已进池的另说一句它在池里的位置，二线才知道这条后面还有人跟 */
-    poolText: entry && isPooledStatus(entry.status) ? `风险工单池 · ${poolStatusText(poolStageStatusOf(entry))}` : '',
-  };
-});
+const showTitleRiskTags = computed(() => !user.role.frontline && canViewRiskTab.value);
+
+/** 工单级风险等级；口径整条走 store，本页不自己比大小 */
+const titleRiskGrade = computed(
+  () => (showTitleRiskTags.value ? riskTags.ticketGradeOf(ticketNo.value) : null),
+);
+
+/** 「报备中」＝ 本单有一条在队报备（待领取 / 评估中），出结论后自动撤下 */
+const titleRiskReporting = computed(
+  () => showTitleRiskTags.value && riskReports.isReporting(ticketNo.value),
+);
 
 /**
  * 工单上的「建议标记」（《【930】》§3.3）：历次协同处理勾选项的并集，人不直接摘。
@@ -2169,33 +2166,23 @@ watch(
       :customer-entry-locked="customerEntryLocked"
       :superseded-by="supersededBy"
       :escalate-gate="flashEscalateGate"
+      :risk-grade="titleRiskGrade"
+      :risk-reporting="titleRiskReporting"
       @action="onHeaderAction"
       @open-relation="openRelation"
       @open-superseded="supersededBy && openRelation(supersededBy)"
     />
 
     <!--
-      风险打标结论条（《【930】》§5A.3「可见性」）：**二线处理人可见**，一线不可见。
-      处置备注挂在 title 里：它是打标人写给处理人的话，需要时 hover 可得，不占页头两行。
+      风险等级 / 报备中两枚状态标落在 OpHeader 的**标题行**里（优先级之后、标题之前），
+      判据与文案复用工单列表行内标那一套，见 `titleRiskGrade` / `titleRiskReporting`。
 
-      🔴 页头**只剩这一条与下面的协同建议条**：原来排在它上面的「报备中」提示行
-      （「风险报备待领取 · 已等待 N」+「查看报备」）已整行删除，报备中改由
-      「风险报备」Tab 的状态圆点 + Tab 内在队只读卡 + 底栏按钮置灰提示 + 工单列表行内标
-      四处承担（见 `processTabDots` 上的说明）。**不要再往页头加回一条报备提示行。**
+      🔴 页头常驻行**只剩下面的协同建议条**：原来的「风险打标」行（打标人 / 打标时刻 /
+      打标备注 +「查看打标」入口）与更早的「报备中」提示行都已整行删除 ——
+      打标结论与报备中收进标题行两枚标，明细去「风险报备」Tab 的「风险标记」块；
+      报备中另有 Tab 状态圆点 + Tab 内在队只读卡 + 底栏按钮置灰提示承担
+      （见 `processTabDots` 上的说明）。**不要再往页头加回这两条提示行。**
     -->
-    <div
-      v-if="riskTagBanner"
-      class="risk-report-banner risk-tag-banner"
-      :class="{ high: riskTagBanner.high }"
-      :title="riskTagBanner.note"
-    >
-      <span class="rrb-dot" aria-hidden="true"></span>
-      <span class="rrb-text">{{ riskTagBanner.text }}</span>
-      <span v-if="riskTagBanner.poolText" class="rrb-pool">{{ riskTagBanner.poolText }}</span>
-      <button type="button" class="rrb-link" @click="processTabsRef?.switchTab('risk')">
-        查看打标
-      </button>
-    </div>
 
     <!--
       建议标记（《【930】》§3.3）：协同处理挂上来的正交标记，装历次勾选的建议事项。
@@ -2448,7 +2435,7 @@ watch(
   z-index: 1;
 }
 /*
-  页头提示行的共用骨架（打标条 / 刷机回传条 / 协同建议条三家共用这一副）：
+  页头提示行的共用骨架（刷机回传条 / 协同建议条两家共用这一副）：
   一行细文本，不是色块 —— 无底色、无边框、无圆角，只用一枚 6px 圆点带状态色。
   高度压到 22px 上下，让位给下方的速览带：那里才是坐席处理这张单要看的东西。
   类名沿用 `risk-report-banner` 是历史名（报备提示行已删），当骨架读即可。
@@ -2479,11 +2466,6 @@ watch(
   cursor: pointer;
 }
 .rrb-link:hover { text-decoration: underline; }
-/* 打标条：与报备条同一副骨架，只换点色 —— 蓝＝已有结论（不催人），高危转红 */
-.risk-tag-banner .rrb-dot { background: #2563eb; }
-.risk-tag-banner.high .rrb-dot { background: #dc2626; }
-.risk-tag-banner.high .rrb-text { color: #b91c1c; }
-.rrb-pool { font-size: 11px; color: #9ca3af; }
 /* 刷机单重推结果通知条：同一副骨架，蓝点 */
 .flash-notice-banner .rrb-dot { background: #1a6fff; }
 .flash-notice-banner .rrb-text { color: #1f2937; }
