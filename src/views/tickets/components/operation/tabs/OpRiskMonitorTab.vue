@@ -269,8 +269,11 @@ function formatShortAt(at: string) {
 }
 
 /**
- * 等待时长与头部横幅同源：都取 store 的 `waitedMinutes`（内含 60s 心跳）。
- * 本地各算各的会让同一条报备在横幅与本页显示成两个数。
+ * 等待时长整条走 store 的 `waitedMinutes`（内含 60s 心跳），风险监控页那份也是同一把。
+ * 本地各算各的会让同一条报备在两处显示成两个数。
+ *
+ * 🔴 本页在队只读卡上的这个数是"报备等了多久"在工单页的**唯一**落点
+ * （页头那条报备提示行已删，见 TicketOperationView 的 `processTabDots`），别再挪。
  */
 function waitedText(at: string) {
   const mins = reportStore.waitedMinutes(at);

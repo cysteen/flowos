@@ -579,27 +579,14 @@ function onRiskReport(payload: {
 }
 
 /**
- * 头部「报备中」横幅（基线 ※29 / 《【930】》§3.2）。
+ * 当前角色在这张单上**看不看得到「风险报备」Tab** ——
+ * 页头风险打标行 / 协同建议行与 Tab 圆点的渲染门控。
  *
- * 【为什么要有它】报备是**正交标记**、不落子状态：本单状态一格不动、SLA 不停钟、
- * 处理人照常处理。正因为工单本身"看不出任何变化"，不挂一条横幅的话，
- * 报备人切回这张单只会以为自己没报成功，于是重复报或直接打电话催。
- *
- * 【为什么按两态分开写】待领取＝**还没人接**，评估钟在空转；已领取＝活在某个客诉专员手上，
- * 该找的是这个人。一句笼统的「评估中」把这两件事说成一件，等待时长再长也不知道该找谁。
- *
- * 🔴 **只认 B 线的报备**（本轮改）：`riskReports.pendingOf` 把 A 线自动进池的条目也算在内，
- * 而 A 线的条目**不是谁报上来的**，挂一条写着「风险报备待评估」的横幅是在说一件没发生的事，
- * 也会让二线以为自己报过了。A 线的情况改由下面的「风险打标」条呈现，两件事各说各的。
- */
-/**
- * 当前角色在这张单上**看不看得到「风险报备」Tab** —— 页头三条风险横幅的渲染门控。
- *
- * 🔴 **入口与正文必须同一个判据**（2026-09-11 D-23 / D-24）：三条横幅上的
- * 「查看报备 / 查看打标 / 查看协同记录」都是 `switchTab('risk')`，而 Tab 条上这一枚
+ * 🔴 **入口与正文必须同一个判据**（2026-09-11 D-23 / D-24）：页头这几行上的
+ * 「查看打标 / 查看协同记录」都是 `switchTab('risk')`，而 Tab 条上这一枚
  * 对**一线坐席**与**工单运营**根本不渲染（`TAB_ROLE_DENY.risk`，真源＝基线 §3.1
  * 「打标结果…**一线坐席仍不可见**」与「**工单运营不给** —— 它连风险词命中页都看不到」）。
- * 横幅此前只判 `user.role.frontline`（只挡住一线）或干脆不判角色（报备横幅），
+ * 页头这几行此前只判 `user.role.frontline`（只挡住一线）或干脆不判角色，
  * 于是这两个角色能从页头把风险报备正文整块调出来：报备人、风险类型、场景描述全文、
  * 附件、打标备注全部可见。
  *
@@ -612,22 +599,6 @@ function onRiskReport(payload: {
 const canViewRiskTab = computed(
   () => isProcessTabVisible('risk', d.value.type, user.roleKey),
 );
-
-const riskReportBanner = computed(() => {
-  if (!canViewRiskTab.value) return null;
-  const r = riskReportPendingItem.value;
-  if (!r) return null;
-  const mins = riskReports.waitedMinutes(r.at);
-  const waited = mins >= 60 ? `${Math.floor(mins / 60)} 小时 ${mins % 60} 分钟` : `${mins} 分钟`;
-  const head = r.status === '评估中'
-    ? `风险报备已领取 · ${r.assignee || '客诉专员'} 评估中`
-    : '风险报备待领取';
-  return {
-    text: `${head} · 已等待 ${waited}`,
-    // 超时只改配色与后半句，不改前半句：等待时长是同一个事实，超没超时是它的一个判定
-    overdue: riskReports.isOverdue(r),
-  };
-});
 
 /**
  * 本单的**风险打标结论**（A 线，《【930】》§5A.3 / §6.1）。
@@ -674,7 +645,7 @@ const riskTagBanner = computed(() => {
  *
  * 🔴 **只改渲染门控，不动数据**：`riskCollab` 里那几条协同记录一条不删 ——
  * 建议事项是历次协同的痕迹，终态单的「风险报备」Tab 里协同记录块照常查得到，
- * 撤下的只是页头这条常驻横幅。
+ * 撤下的只是页头这条常驻提示行。
  */
 const riskAdviceMarks = computed(() => {
   if (user.role.frontline) return [];
@@ -686,14 +657,30 @@ const riskAdviceMarks = computed(() => {
 });
 
 /**
- * 「风险报备」Tab 上的状态圆点。三件事都往这一枚点上收 ——
- * 横幅只说"有这么回事"，圆点指的是**这件事在哪儿看**，点进去就是 Tab 里那几块。
+ * 「风险报备」Tab 上的状态圆点 —— **"报备中"在页头的唯一表达**（基线 ※29 / 《【930】》§3.2）。
+ *
+ * 报备是**正交标记**、不落子状态：本单状态一格不动、SLA 不停钟、处理人照常处理。
+ * 正因为工单本身"看不出任何变化"，「报备中」必须在页面上有落点，否则报备人切回这张单
+ * 会以为自己没报成功，于是重复报或直接打电话催。
+ *
+ * 🔴 页头原本还有一条「风险报备待领取 · 已等待 N」的提示行，已整行删除：
+ * 这件事在本页已有四处承担（本圆点、Tab 内的在队只读卡与等待时长、底栏「风险报备」按钮
+ * 置灰 + 悬停提示、工单列表行内标），再占页头一行只是重复。**报备超时也收在这一枚点上**
+ * —— 点转红即"已超处置时限"，别再往页头加第二个表达。
+ *
+ * 判据与那条提示行同源，一处不改：`canViewRiskTab` + `riskReportPendingItem`。
+ *   · 看不到「风险报备」Tab 的角色（一线坐席 / 工单运营，`TAB_ROLE_DENY.risk`）
+ *     连这枚点都不出 —— 否则点得亮、切不进去；
+ *   · **只认 B 线的报备**（`riskReportPendingItem` 判 `source === '二线报备'`）：
+ *     A 线自动进池的条目不是谁报上来的，让它点亮这枚点等于说一件没发生的事，
+ *     A 线的情况由下面的「风险打标」行呈现。
+ *
  * 报备超时最急（红），其次是有在队报备或有新的协同建议（橙）。
  * 无在队报备时给空对象而不是 undefined：Tab 侧只认"有没有这个 key"，空对象即一个点都不出。
  */
 const processTabDots = computed<Partial<Record<ProcessTabKey, 'warn' | 'danger'>>>(() => {
-  const b = riskReportBanner.value;
-  if (b) return { risk: b.overdue ? 'danger' : 'warn' };
+  const r = canViewRiskTab.value ? riskReportPendingItem.value : null;
+  if (r) return { risk: riskReports.isOverdue(r) ? 'danger' : 'warn' };
   if (riskAdviceMarks.value.length) return { risk: 'warn' };
   return {};
 });
@@ -2188,35 +2175,13 @@ watch(
     />
 
     <!--
-      「报备中」横幅：报备不落子状态（※29），工单本身看不出任何变化，
-      故必须在头部把"报上去了、还没有结论"这件事明说，否则会被当成没报成功而重复报。
-      点「查看报备」直达「风险监控」Tab，横幅上不重复展示报备正文。
-
-      【为什么是一行细文本而不是色块】提示重心已移到「风险报备」Tab 上的状态圆点——
-      那里才是这件事的去处。横幅退为一行辅助信息：只交代"报上去了、等了多久"，
-      不再用整条橙底抢走页面的第一注意力（它并不比工单本身的处理更急）。
-      「评估期间本单照常处理，SLA 不停表」是一次性的口径说明，看第二遍就是噪音，
-      收进 title 里 —— 需要时 hover 可得，口径不丢。
-    -->
-    <div
-      v-if="riskReportBanner"
-      class="risk-report-banner"
-      :class="{ overdue: riskReportBanner.overdue }"
-      title="评估期间本单照常处理，SLA 不停表"
-    >
-      <span class="rrb-dot" aria-hidden="true"></span>
-      <span class="rrb-text">{{ riskReportBanner.text }}</span>
-      <span v-if="riskReportBanner.overdue" class="rrb-overdue">已超处置时限</span>
-      <button type="button" class="rrb-link" @click="processTabsRef?.switchTab('risk')">
-        查看报备
-      </button>
-    </div>
-
-    <!--
       风险打标结论条（《【930】》§5A.3「可见性」）：**二线处理人可见**，一线不可见。
-      与上面那条报备横幅是两件事，故各占一行 —— 报备答"我报上去的那条评没评"，
-      这一条答"监控侧把这张单判成了几档"，同一张单可能只有其中一件、也可能两件都有。
       处置备注挂在 title 里：它是打标人写给处理人的话，需要时 hover 可得，不占页头两行。
+
+      🔴 页头**只剩这一条与下面的协同建议条**：原来排在它上面的「报备中」提示行
+      （「风险报备待领取 · 已等待 N」+「查看报备」）已整行删除，报备中改由
+      「风险报备」Tab 的状态圆点 + Tab 内在队只读卡 + 底栏按钮置灰提示 + 工单列表行内标
+      四处承担（见 `processTabDots` 上的说明）。**不要再往页头加回一条报备提示行。**
     -->
     <div
       v-if="riskTagBanner"
@@ -2483,9 +2448,10 @@ watch(
   z-index: 1;
 }
 /*
-  报备中横幅：一行细文本，不是色块 —— 无底色、无边框、无圆角，只用一枚 6px 圆点带状态色
-  （橙＝在队等结论，红＝已超处置时限），与「风险报备」Tab 上的圆点同一套色。
+  页头提示行的共用骨架（打标条 / 刷机回传条 / 协同建议条三家共用这一副）：
+  一行细文本，不是色块 —— 无底色、无边框、无圆角，只用一枚 6px 圆点带状态色。
   高度压到 22px 上下，让位给下方的速览带：那里才是坐席处理这张单要看的东西。
+  类名沿用 `risk-report-banner` 是历史名（报备提示行已删），当骨架读即可。
 */
 .risk-report-banner {
   flex: none;
@@ -2501,18 +2467,7 @@ watch(
   width: 6px; height: 6px; border-radius: 50%; flex: none;
   background: #f97316;
 }
-.risk-report-banner.overdue .rrb-dot { background: #dc2626; }
 .rrb-text { font-weight: 600; color: #4b5563; }
-/* 超时是唯一需要"喊"一声的态：主文案转红，配合右侧红标签 */
-.risk-report-banner.overdue .rrb-text { color: #b91c1c; }
-.rrb-overdue {
-  padding: 1px 6px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #b91c1c;
-  background: #fee2e2;
-  border-radius: 4px;
-}
 .rrb-link {
   margin-left: auto;
   padding: 0;

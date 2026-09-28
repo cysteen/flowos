@@ -95,20 +95,6 @@ const csTagTipOverlayInner = {
             :class="{ unread: highlightMentionUnread && isMentionUnread(ticket) }"
           >{{ ticket.title }}</span>
           <span v-if="highlightMentionUnread && isMentionUnread(ticket)" class="unread-tag">未读</span>
-          <!--
-            调用方挂在**标题这一行行尾**的额外小标（当前用于工单列表的风险侧行内标：
-            风险等级 / 报备中 / 建议标记，见 `TicketRichList.vue`）。
-
-            🔴 **必须落在第一行、不能挂在整个标题格的右侧**：挂在格子右侧的话，它占的宽度是
-            **两行共有的**，于是第二行的工单号会被挤出可视区（`.title-line2` 是 overflow:hidden，
-            而 `.ticket-no` 是 flex:none 不缩），三枚标就足以把工单号截成「IFLYTS-2…」——
-            那是这一格唯一的点击入口。落在第一行则只和 `.title-text` 抢宽度，
-            而它自带 `flex:1; min-width:0` + 省略号，缩得优雅、且工单号一格不动。
-
-            不传插槽内容时本节点不渲染任何东西，行高与既有布局一字不变
-            （`RiskReportPoolPanel.vue` 那处调用不传，故完全不受影响）。
-          -->
-          <slot name="line1-extra" :ticket="ticket" />
         </div>
         <div class="title-line2">
           <span class="channel">{{ ticketListSourceLabel(ticket) }}</span>
@@ -116,6 +102,27 @@ const csTagTipOverlayInner = {
           <span class="ticket-no" @click.stop="emit('clickNo', ticket)">{{ ticket.no }}</span>
           <span v-if="ticket.escalatedToNo" class="rel-tag rel-tag--to">已升级为 {{ ticket.escalatedToNo }}</span>
           <span v-else-if="ticket.escalatedFromNo" class="rel-tag rel-tag--from">升级自 {{ ticket.escalatedFromNo }}</span>
+          <!--
+            调用方挂在**第二行行尾**的额外小标（当前用于工单列表的风险侧行内标：
+            风险等级 / 报备中 / 建议 N，见 `TicketRichList.vue`）。
+            本行的顺序即渠道 · 单号 · 关联标 · 本插槽，风险标恒在最右。
+
+            🔴 **落点在第二行**（2026-09-28 改，原方案挂在第一行行尾）：第一行已有
+            催 / 补、状态、类型、标题，再往行尾塞三枚标只剩标题在缩，标题是这一格的正文。
+
+            🔴 **被挤时压缩的是本插槽，不是单号**：单号是这一格唯一的点击入口，必须完整显示。
+            实现 = 本行只有这一个可缩项 —— `.channel` / `.sep` / `.ticket-no` / `.rel-tag`
+            全是 `flex: none`（flex-shrink:0，一格不让），而下面的 `.line2-extra`
+            是 `flex: 0 1 auto; min-width: 0; overflow: hidden`：宽度不够时 flex 只找得到
+            它来收，收到 0 为止，里面那几枚标（各自 `flex: none` 不变形）**整段被裁切**，
+            读不全的是风险标而不是单号。裁切优于缩小：缩到一半的标读不出是哪一档。
+
+            不传插槽内容时下面的包裹节点不渲染，行高与既有布局一字不变
+            （`RiskReportPoolPanel.vue` 那处调用不传，故完全不受影响）。
+          -->
+          <span v-if="$slots['line2-extra']" class="line2-extra">
+            <slot name="line2-extra" :ticket="ticket" />
+          </span>
         </div>
       </div>
       <template #content>
@@ -165,6 +172,19 @@ const csTagTipOverlayInner = {
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+}
+/*
+  第二行行尾插槽的包裹节点 —— 本行**唯一的可缩项**（见模板里那段说明）。
+  `flex: 0 1 auto` 而不是 `flex: none`：同行的渠道 / 单号 / 关联标全是 flex:none，
+  故宽度不够时 flex 只能从这里收，单号与关联标一格不动。
+  `min-width: 0` + `overflow: hidden` ＝ 收到 0 也不把里面的标撑出去，整段裁切。
+*/
+.title-line2 .line2-extra {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  overflow: hidden;
 }
 .status-tag {
   flex: none;

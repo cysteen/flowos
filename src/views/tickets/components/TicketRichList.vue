@@ -541,14 +541,22 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
             三个函数里（含"一线不可见"与"终态不出建议标记"），此处只负责摆。
             三种标都**有才出**：无标记的行一个节点都不渲染，行高一格不变。
 
-            🔴 **摆在标题行的行尾**（`line1-extra` 插槽），紧挨着同格里的「催」「补」——
-            挂在整个标题格右侧会把第二行的工单号挤出可视区，见那个插槽上的说明。
+            🔴 **摆在第二行的行尾**（`line2-extra` 插槽，2026-09-28 改，原在 `line1-extra`）：
+            第一行只留催 / 补、状态、类型、标题。本行顺序＝渠道 · 单号 · 关联标 · 这三枚标，
+            风险标恒在最右；空间不够时裁切的是这一段，单号与关联标不缩 ——
+            防挤实现见 TicketTitleCell 里 `.line2-extra` 那段说明。
           -->
-          <template #line1-extra>
-            <span
-              v-if="riskGradeOf(t) || riskReportingOf(t) || riskAdviceMarksOf(t).length"
-              class="risk-marks"
-            >
+          <!--
+            🔴 `v-if` 挂在 `<template #…>` 上、不挂在里面那个 `<span>` 上：条件为假时
+            **整个插槽不进 `$slots`**，于是 TicketTitleCell 连包裹节点都不渲染 ——
+            挂在里层的话包裹节点照样是个 flex 项，会白吃一份 6px 行内 gap，
+            无标记的行第二行就不是"与现在一模一样"了。
+          -->
+          <template
+            v-if="riskGradeOf(t) || riskReportingOf(t) || riskAdviceMarksOf(t).length"
+            #line2-extra
+          >
+            <span class="risk-marks">
               <!-- ① 风险等级：色板取 `config/risk.ts` 的 RISK_LEVEL_STYLE，全仓一把刻度 -->
               <span
                 v-if="riskGradeOf(t)"
@@ -566,13 +574,18 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
                 class="cs-tag risk-tag risk-tag--reporting"
                 title="本单有一条风险报备在队（待领取 / 评估中），出结论后自动撤下"
               >报备中</span>
-              <!-- ③ 建议标记：历次协同处理勾选项的并集；工单进终态即不再显示 -->
+              <!--
+                ③ 建议标记：历次协同处理勾选项的并集；工单进终态即不再显示。
+                🔴 **多项合成一枚「建议 N」**，完整列表进悬停提示：逐项平铺时"转交专员 +
+                每日跟进 + 法务协同"三枚就把这一段撑到比单号还宽，而这一段恰恰是被裁切的那一段
+                —— 平铺越宽，裁掉的越多、一枚都读不全。合成一枚则宽度恒定，
+                「N」先答"有没有、有几件"，具体几件 hover 可得。
+              -->
               <span
-                v-for="a in riskAdviceMarksOf(t)"
-                :key="`adv-${t.id}-${a}`"
+                v-if="riskAdviceMarksOf(t).length"
                 class="cs-tag risk-tag risk-tag--advice"
-                :title="`客诉专员协同处理给出的建议事项：${a}`"
-              >{{ a }}</span>
+                :title="`客诉专员协同处理给出的建议事项：${riskAdviceMarksOf(t).join('、')}`"
+              >建议 {{ riskAdviceMarksOf(t).length }}</span>
             </span>
           </template>
         </TicketTitleCell>
@@ -969,9 +982,11 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
  * 🔴 不另造一套视觉：同一格里两种小标长得不一样，读的人会以为它们是两类东西。
  */
 /*
- * 摆在标题行行尾。`flex: none` ＝ **不缩**：要缩的是标题文字
- * （`.title-text` 自带 flex:1 + 省略号），不是这几枚标 —— 缩到一半的标读不出是哪一档。
- * 行内 `gap` 由 `.title-line1` 的 4px 给，这里只管标与标之间那 4px。
+ * 摆在第二行行尾（`line2-extra` 插槽）。本节点自己 `flex: none` ＝ **不变形**：
+ * 三枚标要么完整、要么被外层裁掉，不许压扁 —— 缩到一半的标读不出是哪一档。
+ * 让位这件事由外层 `TicketTitleCell` 的 `.line2-extra` 承担（它是本行唯一可缩项，
+ * 收窄时把本节点整段裁切），单号与关联标一格不动。
+ * 与前一项之间那 6px 由 `.title-line2` 的 gap 给，这里只管标与标之间那 4px。
  */
 .risk-marks {
   flex: none;
