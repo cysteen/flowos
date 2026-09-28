@@ -438,6 +438,40 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
   function assess(id: string, assessment: ReportAssessment) {
     const r = findById(id);
     if (!r || r.status !== '评估中') return;
+    applyAssessment(r, assessment);
+  }
+
+  /**
+   * **打标即结论**（单条打标弹窗里那一段「评估结论」的落库口）：打标人在打标的同一次提交里
+   * 给出升级 / 不升级，条目**不经「待领取」「已领取」两态**、直接落「已结论」。
+   *
+   * 🔴 **它不是 `assess` 的旁路**：结论的三件产物（状态迁移 + `assessment` + 第八类履历
+   * + `risk.report.assessed` 通知）与 `assess` 共用 `applyAssessment` 这一份实现，
+   * 两条路径的产物逐字相同。区别只有两条，也只能有这两条：
+   *   ① **门禁**：`assess` 只收「已领取」态，本函数收**进了池、还没出结论**的那两态
+   *      （待分派 / 评估中）—— 打标这一下条目才刚进池，没有人领过它；
+   *   ② **承办人**：「已结论」的行要答得上"谁给的结论"，而这一路没有领取这一步、
+   *      `assignee` 一栏是空的，故由结论人（＝打标人，`assessment.by`）补上。
+   *      **已经有人认领的不覆盖** —— 那是别人手上的活，与 `coordinate` 同一条口径。
+   *
+   * 🔴 **已结论的一律拒绝**（返回 false，一格不改）：一条条目只出一次结论
+   * （§9 规则 22 提交即固化），「修正核实结果」「修正风险打标」两个形态改的是打标结论，
+   * 不重开评估。界面侧同判据（打标弹窗对已结论条目**不出**那一段）。
+   */
+  function assessOnTag(id: string, assessment: ReportAssessment): boolean {
+    const r = findById(id);
+    if (!r || !isPooledStatus(r.status) || r.status === '已评估') return false;
+    if (!r.assignee) r.assignee = assessment.by;
+    applyAssessment(r, assessment);
+    return true;
+  }
+
+  /**
+   * 一条评估结论落库的**全部产物**，`assess`（领取→评估）与 `assessOnTag`（打标即结论）
+   * 两条路径共用。🔴 门禁归调用方，本函数只管写 —— 两处各抄一份履历 / 通知的下场是
+   * 同一个结论在两条路径上产物不一样（本项目在「派生说明行」上刚栽过）。
+   */
+  function applyAssessment(r: RiskPoolItem, assessment: ReportAssessment) {
     r.status = '已评估';
     r.assessment = assessment;
     /*
@@ -814,6 +848,7 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
     claim,
     release,
     assess,
+    assessOnTag,
     coordinate,
     backfillSeedRiskHistory,
     submit,

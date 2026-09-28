@@ -150,6 +150,36 @@ export function assessSubmitBlockOf(
 }
 
 /**
+ * **打标即结论**那一路的提交前重查 —— 与 `assessSubmitBlockOf` 同一套判据，
+ * 只有"条目此刻该处在哪一态"这一条不同。
+ *
+ * 【为什么不能直接用 `assessSubmitBlockOf`】那一份要的是「已领取 · 且在本人名下」：
+ * 打标弹窗里给结论的人**没有领过这条**（打标这一下条目才刚进池，甚至还没进），
+ * 拿那一份来判会把每一次提交都拦成"本条已不在你名下的「已领取」态"。
+ *
+ * 【判据】① 条目还在不在（撤回的整次拦下）；② **已被他人出结论 → 整次拦下**
+ * （一条条目只出一次结论，§9 规则 22）；③ 原单已进终态 → **只拦「升级」**，
+ * 提示与另两处评估入口同一句 `ASSESS_TICKET_ENDED_TIP`。
+ *
+ * ⚠️ 本函数**不判「实时监控中」**：核实打标那一路提交时条目可能还没打标进池，
+ * 打标与结论是同一次提交里的两步，进池那一步紧接着就会跑。
+ */
+export function tagAssessSubmitBlockOf(
+  entryId: string,
+  decision: AssessDecision | '',
+  ticketNo: string,
+): { tip: string; closeModal: boolean } {
+  const r = useRiskPoolStore().findById(entryId);
+  if (!r) return { tip: '该条目已不在风险池中，请刷新后再看', closeModal: true };
+  if (r.status === '已撤回') return { tip: ASSESS_WITHDRAWN_TIP, closeModal: true };
+  if (r.status === '已评估') return { tip: '本条已有评估结论，不可重复提交', closeModal: true };
+  if (decision && normalizeDecision(decision) === '升级' && isRiskTicketEnded(ticketNo)) {
+    return { tip: ASSESS_TICKET_ENDED_TIP, closeModal: false };
+  }
+  return { tip: '', closeModal: false };
+}
+
+/**
  * 「升级」派生的**完整落地**，两个评估入口共用：
  *   ① 造出新投诉单（`derivedTickets`，同时把原单那一头记进升级台账）；
  *   ② 让新单按**来源②**（在办投诉类工单，自动纳入实时监控）回流「未标记 · 重点工单」。
