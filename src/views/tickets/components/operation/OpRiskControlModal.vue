@@ -117,6 +117,10 @@ watch(
       return;
     }
     openAssess(t);
+    // openAssess 有自己的拦截（条目不在「已领取」态时只弹提示不开窗）。它没开成时
+    // 把外部开关收回来 —— 否则 `riskControlOpen` 卡在 true，再点按钮 props.open 没变化、
+    // 本 watch 不再触发，那枚按钮就成了死按钮。
+    if (!assessOpen.value) emit('update:open', false);
   },
 );
 
