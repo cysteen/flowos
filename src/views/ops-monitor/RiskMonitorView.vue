@@ -21,7 +21,7 @@ import OpActionModal from '@/views/tickets/components/operation/OpActionModal.vu
 // 协同处理弹窗与工单页底栏那一枚**共用同一个组件**：投诉单在池里与在工单上做的是同一件事，
 // 抄第二份的下场是两个入口的必填项、副作用与履历行文各走各的（本项目在「派生说明行」上刚栽过）
 import OpRiskCollabModal from '@/views/tickets/components/operation/OpRiskCollabModal.vue';
-// 评估弹窗第一区块（入池依据 / 报备信息 + 释放记录）与工单页 OpRiskAssessModal 共用一个组件；
+// 评估弹窗第一区块（入池依据 / 报备信息 + 释放记录）与工单页 OpRiskControlModal 共用一个组件；
 // 命中原话取窗 `excerptWindow`、实时监控来源判断 `isKeywordRow` 与附件下载同一个共享文件（本页命中清单 / 打标弹窗也读它）
 import RiskAssessSheet from '@/views/tickets/components/operation/RiskAssessSheet.vue';
 // 选「升级」后那一段投诉专属建单要素（投诉一类 / 二类）：与工单页底栏、风险报备池两个评估入口
@@ -664,7 +664,7 @@ const alineConcludedTodayCount = computed(
  * 🔴 **只补过打标、还没给结论的池行（只有 `verify`、没有 `assessment` / `coordination`）
  * 返回 null —— 它既不计入「今日已结论」，也不计入下面那三枚结论 chip。这是有意为之，不是漏了一种。**
  *
- * 【为什么】`verify` 是打标反向派生出来的只读投影（见 `stores/riskQueue.ts` 与 `needsVerify`），
+ * 【为什么】`verify` 是打标反向派生出来的只读投影（见 `stores/riskQueue.ts`），
  * 它答的是"这条**成不成立**"，不是"这条**怎么收口**"。一条补完打标就停在那儿的行，
  * 还等着人给升级 / 不升级 / 协同 —— 把它算成一种收口，等于说这条已经处理完了。
  *
@@ -901,7 +901,7 @@ const assessOkText = computed(() => (assessDecision.value === '升级' ? '确认
  * 选「升级」后那一行分流提示（O20）。
  *
  * ⚠️ **本页此前根本没有这一行** —— 文案与判据都在 `composables/useRiskReportAssess.ts`，
- * 工单页的 `OpRiskAssessModal` 接了它，本页那个弹窗从来没接上：同一个动作，
+ * 工单页的 `OpRiskControlModal` 接了它，本页那个弹窗从来没接上：同一个动作，
  * 在工单页告诉你"会派生一张新单、不可撤销"，在监控页什么都不说。
  * 现在两处都走 `escalateHintOf`，谁也没法只改一半。
  */
@@ -1047,42 +1047,6 @@ function openAssess(r: RiskPoolItem) {
   // 结论正文（升级说明 / 反馈意见）与投诉一类 / 二类同在 escalateFields，reset 一次清完
   escalateFields.reset();
   assessOpen.value = true;
-}
-
-/**
- * 这一行下一步该做什么。**判据是有没有 `tag`，不是来源、也不是 `verify.verdict`**。
- *
- * 【为什么换判据】漏斗改版之后**打标已经是进池的前置门槛**：能出现在池子里的 A 线条目
- * 必然带着一个低/中/高的 `tag`，B 线的报备单不走打标这道门。故本函数在今天的数据上
- * **恒为 false**，池内一律出「评估」按钮。留着它不删，是因为"进了池还没打标"这件事
- * 在数据上仍然构造得出来（旧缓存、或将来某条新入口漏了打标那一步），
- * 那时这一行要能自己说出"缺的是打标"，而不是把人送进一个填不出结论的评估弹窗。
- *
- * 旧判据 `verify.verdict === '成立'` 已作废：`verify` 是由 `tag` 反向派生的只读投影
- * （见 `stores/riskQueue.ts`），拿投影当判据等于绕一圈再问同一个问题。
- */
-function needsVerify(r: RiskPoolItem) {
-  return isKeywordRow(r) && !r.tag;
-}
-
-/**
- * 池内那条罕见的"没打标却进了池"如何收场：把它送回**条目打标弹窗**四选一。
- * 🔴 送回的是条目的打标，**不是命中核实** —— 入池门槛问的是"这张单有没有风险、多大"，
- * 而命中核实问的是"这次命中准不准"，后者答不了前者（见 `riskShared.ReportVerify`）。
- */
-function openTagForReport(r: RiskPoolItem) {
-  const entry = reportStore.queueEntryOf(r.id);
-  if (!entry) {
-    message.warning(`${r.ticketNo} 这一条不是自动识别的监控条目，不走风险打标`);
-    return;
-  }
-  openEntryTag(rowOfEntry(entry));
-}
-
-/** 池行的处理动作：有 tag 的走评估，没有的先补打标 */
-function handleReportRow(r: RiskPoolItem) {
-  if (needsVerify(r)) openTagForReport(r);
-  else openAssess(r);
 }
 
 // ---- 领取（池内唯一的认领动作）----
@@ -1800,6 +1764,9 @@ function toggleScanPickAll() {
 }
 
 function adoptScan() {
+  // 并入是打标那条链的上游动作，权限与打标同源（`canRiskTag`）。按钮本就只对有权的人渲染，
+  // 这一道拦的是"绕过界面直接调进来"——与本页三处打标的写法一致，两道都要
+  if (!canRiskTag.value) { message.warning('只有客诉专员、投诉督导与管理员可以并入清单'); return; }
   const picked = (scanResult.value ?? []).filter((r) => scanPicked.value.has(r.hit.id));
   if (!picked.length) { message.warning('请先勾选要并入清单的命中'); return; }
   const known = new Set(scanAdopted.value.map((h) => h.id));
@@ -5984,16 +5951,14 @@ function toggleWordEnabled(w: RiskWord) {
                 </template>
                 <!--
                   评估中：给结论的只能是**这一条的承办人本人**（结论提交即固化，落款写的是他的名字）。
-                  🔴 罕见的"进了池却没打标"那一条走的是补打标，判据是有没有 `tag`、不是来源，
-                  见 `needsVerify` —— 漏斗下它恒为 false，池内一律出「评估」。
                 -->
                 <template v-else>
                   <button
-                    v-if="canAssessRow(r) || needsVerify(r)"
+                    v-if="canAssessRow(r)"
                     type="button" class="row-btn row-btn-tag"
-                    :title="needsVerify(r) ? '这一条还没有风险打标，先补一个结论' : '给出评估结论：升级 / 不升级'"
-                    @click="handleReportRow(r)"
-                  >{{ needsVerify(r) ? '补打标' : '评估' }}</button>
+                    title="给出评估结论：升级 / 不升级"
+                    @click="openAssess(r)"
+                  >评估</button>
                   <!--
                     🔴 **管理员在这一格只出「释放」、不出「评估」**（与 B 线报备池同形）：
                     结论要由**承办的那个人**给（`canAssessRow` 判的就是 `assignee === 本人`），
@@ -6011,7 +5976,7 @@ function toggleWordEnabled(w: RiskWord) {
                     同一格现在可能出两枚按钮，占位只在**两枚都不出**时才该出现。
                   -->
                   <span
-                    v-if="!canAssessRow(r) && !needsVerify(r) && !canReleaseRow(r)"
+                    v-if="!canAssessRow(r) && !canReleaseRow(r)"
                     class="hit-sub"
                     :title="`承办人 ${r.assignee ?? '—'} · 结论由承办人本人给出`"
                   >—</span>
@@ -6374,14 +6339,22 @@ function toggleWordEnabled(w: RiskWord) {
           <span v-if="scanDupCount" class="sr-dup">已在清单 {{ scanDupCount }}</span>
           <span class="sb-hint">结果尚未并入，勾选后确认</span>
         </div>
+        <!--
+          🔴 **并入那一组按打标权门控**（`canRiskTag`，与本页打标那一套同源）：
+          「并入清单」往「未标记」段补货，补进来的每一条都等着人去打标 —— 这是打标那条链
+          的上游动作，不是查看。只读的投诉督导在这儿本就没有落点，故三件一并不渲染
+          （全选 / 已选 / 并入），只留「退出筛查」这条出路；逐行的勾选框同理，见清单表。
+        -->
         <div class="sb-actions">
-          <label class="sb-all">
-            <a-checkbox :checked="scanAllPicked" @change="toggleScanPickAll" />全选新命中
-          </label>
-          <span class="sb-picked">已选 {{ scanPicked.size }}</span>
-          <button type="button" class="row-btn row-btn-solid" :disabled="!scanPicked.size" @click="adoptScan">
-            并入清单
-          </button>
+          <template v-if="canRiskTag">
+            <label class="sb-all">
+              <a-checkbox :checked="scanAllPicked" @change="toggleScanPickAll" />全选新命中
+            </label>
+            <span class="sb-picked">已选 {{ scanPicked.size }}</span>
+            <button type="button" class="row-btn row-btn-solid" :disabled="!scanPicked.size" @click="adoptScan">
+              并入清单
+            </button>
+          </template>
           <button type="button" class="link-btn" @click="exitScanResult">退出筛查</button>
         </div>
       </div>
@@ -6430,7 +6403,8 @@ function toggleWordEnabled(w: RiskWord) {
       <table class="hit-table">
         <thead>
           <tr>
-            <th v-if="inScanResult" style="width: 36px"></th>
+            <!-- 勾选框那一列与「并入清单」同一道门（`canRiskTag`）：勾了却并不进去的勾选框没有用处 -->
+            <th v-if="inScanResult && canRiskTag" style="width: 36px"></th>
             <th style="width: 52px">等级</th>
             <th style="width: 120px">风险词</th>
             <th style="width: 200px">工单</th>
@@ -6448,7 +6422,7 @@ function toggleWordEnabled(w: RiskWord) {
               'scan-dup': inScanResult && scanDupIds.has(h.id),
             }"
           >
-            <td v-if="inScanResult">
+            <td v-if="inScanResult && canRiskTag">
               <a-checkbox
                 :checked="scanPicked.has(h.id)"
                 :disabled="scanDupIds.has(h.id)"
@@ -7348,7 +7322,7 @@ function toggleWordEnabled(w: RiskWord) {
       <div v-if="assessTarget" class="op-form assess-form">
         <!--
           ① 第一区块：**按原单来路分两种**（PRD §5.3.2，A 线「入池依据」/ B 线「报备信息」），
-          与工单页 OpRiskAssessModal 共用 RiskAssessSheet，字段、出现条件与样式只在那一处改。
+          与工单页 OpRiskControlModal 共用 RiskAssessSheet，字段、出现条件与样式只在那一处改。
         -->
         <RiskAssessSheet
           :target="assessTarget"
@@ -9129,6 +9103,6 @@ function toggleWordEnabled(w: RiskWord) {
   margin-left: calc(72px + 10px);
 }
 .assess-err { margin-top: 4px; font-size: 11px; color: #ef4444; line-height: 1.4; }
-/* 「升级」的派生说明行：与工单页 OpRiskAssessModal 的 .ticket-assess-hint 同一套 token */
+/* 「升级」的派生说明行：与工单页 OpRiskControlModal 的 .ticket-assess-hint 同一套 token */
 .assess-hint { margin-top: 4px; font-size: 11px; color: #6b7280; line-height: 1.5; }
 </style>

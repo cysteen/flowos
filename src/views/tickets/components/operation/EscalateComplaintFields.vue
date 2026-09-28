@@ -12,7 +12,7 @@ import type { EscalateComplaintFieldsCtl } from '@/composables/useEscalateCompla
  *
  * 🔴 **三处评估弹窗共用这一个组件**：风险监控页评估处置工作面
  * （`views/ops-monitor/RiskMonitorView.vue`）、风险报备池（`components/RiskReportPoolPanel.vue`）、
- * 工单页底栏「风险评估」（`operation/OpRiskAssessModal.vue`）。
+ * 工单页页头「风险管控」的非投诉支（`operation/OpRiskControlModal.vue`）。
  * 字段、顺序、级联与红字提示只在这里改。
  *
  * 取值域、级联与校验全在 `composables/useEscalateComplaintFields.ts`，

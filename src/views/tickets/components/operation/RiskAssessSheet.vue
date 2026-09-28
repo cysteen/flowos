@@ -7,8 +7,8 @@ import { riskLevelText } from '@/config/risk';
 import { downloadReportAttachment, excerptWindow, isKeywordRow } from './riskAssessSheet';
 
 /**
- * 风险评估弹窗的**第一区块**（PRD §5.3.2）：卡片抬头 + 入池依据 / 报备信息 + 命中原话 + 打标备注 +
- * 附件 + 释放记录。风险监控页评估弹窗与工单页 `OpRiskAssessModal` 共用这一份，
+ * 「风险管控」弹窗的**第一区块**（PRD §5.3.2）：卡片抬头 + 入池依据 / 报备信息 + 命中原话 + 打标备注 +
+ * 附件 + 释放记录。风险监控页那一个与工单页 `OpRiskControlModal` 共用这一份，
  * 字段、顺序、出现条件与样式只在这里改。
  */
 const props = defineProps<{
