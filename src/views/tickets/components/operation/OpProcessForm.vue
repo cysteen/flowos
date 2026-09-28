@@ -65,6 +65,12 @@ const props = defineProps<{
   postCloseEditable?: boolean;
   /** 商机编号是否可编辑（非终态＝工单处理人；终态＝同 postCloseEditable）；不传按 postCloseFieldDisabled */
   leadNoEditable?: boolean;
+  /**
+   * 当前登录人是不是本单主责处理人（页面侧 `isPrimaryHandler`，与商机编号编辑权同一把）。
+   * 本组件自己不用，原样转发给 `OpSupplementChipPanels`：风险 chip 面板那三个字段
+   * （`riskFlag` / `riskLevel` / `riskDescription`）是处理人自述，按「角色 ∧ 本人」写。
+   */
+  isPrimaryHandler?: boolean;
   /** 刷机单处理表单的字段下方提示（处理结果 / 线下登记时间，930 PRD §5.4） */
   flashErrors?: { flashResult?: string; flashOfflineAt?: string };
 }>();
@@ -476,6 +482,7 @@ function chipActiveClass(key: SupplementChip): string {
         :complaint-platforms="complaintPlatforms"
         :show-external="showComplaintChannel"
         :readonly="contentLocked"
+        :is-primary-handler="isPrimaryHandler"
         :ticket-no="ticketNo"
         @update:form="emit('update:form', $event)"
       />

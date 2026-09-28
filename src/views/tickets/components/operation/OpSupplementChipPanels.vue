@@ -41,6 +41,16 @@ const props = defineProps<{
   showExternal?: boolean;
   /** 只读：随「工单处理」Tab 的 Tab 级只读判据传下来（见 OpProcessForm.readonly） */
   readonly?: boolean;
+  /**
+   * 当前登录人是不是**本单主责处理人**。取自工单页的 `isPrimaryHandler`
+   * （`TicketOperationView.vue` 的 `primaryHandlerName === currentHandlerName(...)`），
+   * 经 OpProcessTabs → OpProcessForm 原样转发，本组件不另判一次。
+   *
+   * 只管风险 chip 面板那三个字段（`riskFlag` / `riskLevel` / `riskDescription`）：
+   * 它们是**处理人自述**，写权限是「角色白名单（`readonly`）∧ 本人」，与「风险报备」Tab
+   * 「风险标记」块下半同一套判据。不传按非处理人算（只读）。本面板别的 chip 不看它。
+   */
+  isPrimaryHandler?: boolean;
   /** 当前工单号：风险面板要据此取风险监控侧对本单的核实结论 */
   ticketNo?: string;
 }>();
@@ -138,10 +148,24 @@ watch(
   },
 );
 
+/**
+ * 风险 chip 面板三字段（处理人自述）的写权限 ＝ 角色白名单（`readonly`）**∧ 本单处理人本人**。
+ * 与「风险报备」Tab「风险标记」块下半的 `selfReportWritable` 同一套判据 —— 同一组字段
+ * 两处控件，判据分家就会出现「这个 Tab 填不了、换个 Tab 就能填」。
+ * 本面板别的 chip（投诉 / 预约 / 质检 / 外部申诉…）仍只按 `readonly`，不看它。
+ */
+const selfReportWritable = computed(() => !props.readonly && !!props.isPrimaryHandler);
+
+/** 风险三字段专用写出口：在 `update` 的只读之外再要求是本单处理人 */
+function updateRiskSelfReport(partial: Partial<ProcessFormDraft>) {
+  if (!selfReportWritable.value) return;
+  update(partial);
+}
+
 function onRiskFlagChange(flag: RiskFlag) {
   const needsDesc = flag === '有风险' || flag === '疑似风险';
   const hasRisk = flag === '有风险';
-  update({
+  updateRiskSelfReport({
     riskFlag: flag,
     riskLevel: hasRisk ? props.form.riskLevel : '',
     riskDescription: needsDesc ? props.form.riskDescription : '',
@@ -150,7 +174,7 @@ function onRiskFlagChange(flag: RiskFlag) {
 }
 
 function onRiskLevelChange(v: string | number | string[] | undefined) {
-  update({ riskLevel: (v == null ? '' : String(v)) as RiskLevel | '' });
+  updateRiskSelfReport({ riskLevel: (v == null ? '' : String(v)) as RiskLevel | '' });
 }
 
 function onComplaintCat1Change(v: string | number | string[] | undefined) {
@@ -423,55 +447,62 @@ const riskMonitorDiff = computed(() => {
     </div>
   </div>
 
-  <!-- 风险 -->
+  <!--
+    风险：这三个字段是**处理人自述**，与「风险报备」Tab「风险标记」块下半是同一组字段、
+    同一套控件，故判据也用同一把 —— `selfReportWritable` ＝ 角色白名单 ∧ 本单处理人本人。
+    非处理人：同一套控件的禁用态（这里的 a-config-provider 覆盖 OpProcessForm 外层那一层），
+    值照常回显，`updateRiskSelfReport` 再硬拦一道。
+  -->
   <div v-else-if="activeChip === 'risk'" class="chip-panel panel-neutral">
-    <div class="field inline-row risk-row">
-      <label>是否有风险</label>
-      <a-radio-group
-        :value="form.riskFlag || undefined"
-        class="radio-row"
-        @update:value="(v: RiskFlag) => onRiskFlagChange(v)"
+    <a-config-provider :component-disabled="!selfReportWritable">
+      <div class="field inline-row risk-row">
+        <label>是否有风险</label>
+        <a-radio-group
+          :value="form.riskFlag || undefined"
+          class="radio-row"
+          @update:value="(v: RiskFlag) => onRiskFlagChange(v)"
+        >
+          <a-radio v-for="opt in RISK_FLAG_OPTIONS" :key="opt" :value="opt">{{ opt }}</a-radio>
+        </a-radio-group>
+        <template v-if="form.riskFlag === '有风险'">
+          <label class="field-label-sm risk-level-label"><span class="req">*</span>风险等级</label>
+          <FormSelect
+            class="risk-level-select"
+            :class="{ 'ctrl-missing': missRiskLevel }"
+            :value="form.riskLevel || undefined"
+            :options="riskLevelOptions"
+            placeholder="请选择或搜索"
+            @update:value="onRiskLevelChange"
+          />
+        </template>
+      </div>
+      <p v-if="missRiskLevel" class="field-err">请选择风险等级</p>
+      <!--
+        风险词命中的**核实结论**：只读回显，不参与必填校验。
+        回传是"只填空、不覆盖坐席已填"，被挡住时若不亮出来，信息就在写入那一步消失了。
+        （报备评估那一行已删，二选一之后评估不再回传风险字段，见 script 内说明。）
+      -->
+      <div v-if="riskMonitorLine" class="risk-monitor-note">
+        <p class="rm-line">{{ riskMonitorLine }}</p>
+        <p v-if="riskMonitorBreakdown" class="rm-sub">{{ riskMonitorBreakdown }}</p>
+        <p v-if="riskMonitorDiff" class="rm-diff">{{ riskMonitorDiff }}</p>
+      </div>
+      <div
+        v-if="form.riskFlag === '疑似风险' || form.riskFlag === '有风险'"
+        class="field"
+        :class="{ 'is-missing': missRiskDesc }"
       >
-        <a-radio v-for="opt in RISK_FLAG_OPTIONS" :key="opt" :value="opt">{{ opt }}</a-radio>
-      </a-radio-group>
-      <template v-if="form.riskFlag === '有风险'">
-        <label class="field-label-sm risk-level-label"><span class="req">*</span>风险等级</label>
-        <FormSelect
-          class="risk-level-select"
-          :class="{ 'ctrl-missing': missRiskLevel }"
-          :value="form.riskLevel || undefined"
-          :options="riskLevelOptions"
-          placeholder="请选择或搜索"
-          @update:value="onRiskLevelChange"
+        <label><span class="req">*</span>风险描述</label>
+        <a-textarea
+          :value="form.riskDescription"
+          :rows="3"
+          :status="missRiskDesc ? 'error' : undefined"
+          placeholder="描述风险点、影响范围与建议处置…（必填）"
+          @update:value="(v: string) => updateRiskSelfReport({ riskDescription: v ?? '' })"
         />
-      </template>
-    </div>
-    <p v-if="missRiskLevel" class="field-err">请选择风险等级</p>
-    <!--
-      风险词命中的**核实结论**：只读回显，不参与必填校验。
-      回传是"只填空、不覆盖坐席已填"，被挡住时若不亮出来，信息就在写入那一步消失了。
-      （报备评估那一行已删，二选一之后评估不再回传风险字段，见 script 内说明。）
-    -->
-    <div v-if="riskMonitorLine" class="risk-monitor-note">
-      <p class="rm-line">{{ riskMonitorLine }}</p>
-      <p v-if="riskMonitorBreakdown" class="rm-sub">{{ riskMonitorBreakdown }}</p>
-      <p v-if="riskMonitorDiff" class="rm-diff">{{ riskMonitorDiff }}</p>
-    </div>
-    <div
-      v-if="form.riskFlag === '疑似风险' || form.riskFlag === '有风险'"
-      class="field"
-      :class="{ 'is-missing': missRiskDesc }"
-    >
-      <label><span class="req">*</span>风险描述</label>
-      <a-textarea
-        :value="form.riskDescription"
-        :rows="3"
-        :status="missRiskDesc ? 'error' : undefined"
-        placeholder="描述风险点、影响范围与建议处置…（必填）"
-        @update:value="(v: string) => update({ riskDescription: v ?? '' })"
-      />
-      <p v-if="missRiskDesc" class="field-err">请填写风险描述</p>
-    </div>
+        <p v-if="missRiskDesc" class="field-err">请填写风险描述</p>
+      </div>
+    </a-config-provider>
   </div>
 
   <!-- 建单是否规范 -->

@@ -72,7 +72,10 @@ const props = defineProps<{
   leadNoEditable?: boolean;
   /**
    * 当前登录人是不是本单主责处理人（页面侧 `isPrimaryHandler`，与商机编号编辑权同一把）。
-   * 透传给「风险报备」Tab：「风险标记」块下半的处理人自述按「角色 ∧ 本人」写。
+   * 两处都要：
+   * - 「风险报备」Tab：「风险标记」块下半的处理人自述按「角色 ∧ 本人」写；
+   * - 「工单处理」Tab → 补充处理 → 风险 chip 面板：同一组字段（`riskFlag` / `riskLevel` /
+   *   `riskDescription`）的同一套控件，判据必须与上一处一致，否则同一份数据两套门禁。
    */
   isPrimaryHandler?: boolean;
   /** 底栏「风险报备」形态按钮出不出，透传给「风险报备」Tab（空态指引随它） */
@@ -214,6 +217,7 @@ defineExpose({ switchTab });
         :post-close="postClose"
         :post-close-editable="postCloseEditable"
         :lead-no-editable="leadNoEditable"
+        :is-primary-handler="isPrimaryHandler"
         :flash-errors="flashErrors"
         @closing-note-files-added="emit('closingNoteFilesAdded', $event)"
         @toggle-section="emit('toggleSection', $event)"
