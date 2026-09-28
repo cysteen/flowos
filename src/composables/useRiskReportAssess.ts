@@ -12,7 +12,7 @@ import {
 } from '@/stores/riskShared';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
 import { isComplaintPoolTicket } from '@/stores/riskPool';
-// 选「升级」时要补齐的投诉单专属建单要素（投诉一类 / 二类）：字段、级联与校验只此一份，三个评估入口共用
+// 选「升级」时要补齐的投诉单专属建单要素（投诉一类 / 二类）：字段、级联与校验只此一份，四个评估入口共用
 import {
   escalateComplaintOverrides,
   useEscalateComplaintFields,
@@ -80,7 +80,7 @@ export function escalateHintOf(ticketNo: string | undefined): string {
 }
 
 /**
- * 选「升级」后要不要出「投诉工单专属字段」（投诉一类 / 二类）那一段 —— **三个评估入口的唯一判据**。
+ * 选「升级」后要不要出「投诉工单专属字段」（投诉一类 / 二类）那一段 —— **四个评估入口的唯一判据**。
  *
  * 只在**会派生一张新投诉单**时出：原单已是投诉单的那一支不派生新单（`escalateHintOf` 里
  * 那句兜底文案写的就是「本单状态不变、不派生新单」），没有新单可填，摆出一段建单要素
@@ -109,7 +109,7 @@ export const ASSESS_TICKET_ENDED_TIP = '本单已结束，无法升级';
  *
  * 取数与工单处理页 `useTicketOperation.loadDetail` 同一条链：静态工单库 → 运行时派生单，
  * 叠上本次会话的升级台账（`derivedTickets.escalatedToNoOf`）与停表单（列表 SLA 摘要为「—」）。
- * 三个评估入口（报备池 / 工单页底栏 / 工单页 Tab 在队卡）都调它，判据只此一份。
+ * 四个评估入口（风险监控页 / 报备池 / 工单页底栏 / 工单页 Tab 在队卡）都调它，判据只此一份。
  */
 export function isRiskTicketEnded(ticketNo: string): boolean {
   const derived = useDerivedTicketStore();
@@ -210,8 +210,9 @@ export function useRiskReportAssess() {
 
   /**
    * 「投诉工单专属字段」段落（投诉一类 / 二类 / 升级说明三项）。字段与校验走共享
-   * composable，组件是共享的 `EscalateComplaintFields.vue` —— 报备池与工单页两个入口由本
-   * composable 一并接上，风险监控页那个弹窗自持一份状态、调的是同一对 composable + 组件。
+   * composable，组件是共享的 `EscalateComplaintFields.vue` —— 报备池与工单页的两个入口
+   * （底栏「风险评估」、「风险报备」Tab 在队卡「评估」）都由本 composable 这一份状态接上，
+   * 三处不各造一份；风险监控页那个弹窗自持一份状态、调的是同一对 composable + 组件。
    *
    * 切到「不升级」段落隐藏但**状态留在这里不清**，切回来原样还在；
    * 提交「不升级」时 `payload()` 根本不会被调到，两项分类一律不落库。
@@ -253,7 +254,7 @@ export function useRiskReportAssess() {
    */
   const escalateHint = computed(() => escalateHintOf(assessTarget.value?.ticketNo));
 
-  /** 弹窗主按钮：决策＝升级 →「确认升级」，未选或「不升级」→「提交结论」（三个入口一致） */
+  /** 弹窗主按钮：决策＝升级 →「确认升级」，未选或「不升级」→「提交结论」（四个入口一致） */
   const assessOkText = computed(() => (assessDecision.value === '升级' ? '确认升级' : '提交结论'));
 
   function nextEscalatedNo(): string {

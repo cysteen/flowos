@@ -704,7 +704,7 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
           </a-radio-group>
         </div>
         <p v-if="missAssessDecision" class="af-err">请先选择一个评估决策</p>
-        <!-- 选「升级」后的派生说明行：文案取 escalateHintOf，三个评估入口同一句 -->
+        <!-- 选「升级」后的派生说明行：文案取 escalateHintOf，四个评估入口同一句 -->
         <p v-else-if="assessDecision === '升级'" class="af-hint">{{ escalateHint }}</p>
 
         <!--
@@ -726,7 +726,7 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
 
         <!--
           ③ 投诉工单专属字段：选「升级」（且会派生新投诉单）时才出。
-          投诉一类 / 二类 / 升级说明三项、均必填；三个评估入口共用 EscalateComplaintFields。
+          投诉一类 / 二类 / 升级说明三项、均必填；四个评估入口共用 EscalateComplaintFields。
         -->
         <EscalateComplaintFields v-if="showEscalateFields" :ctl="escalateFields" />
       </div>

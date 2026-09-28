@@ -16,6 +16,9 @@ import {
   RightOutlined,
 } from '@ant-design/icons-vue';
 import { useRiskReportAssess } from '@/composables/useRiskReportAssess';
+// 选「升级」后那一段投诉专属建单要素（投诉一类 / 二类 / 升级说明）：与另外三个评估入口
+// **共用同一个组件**，状态取 composable 已暴露的那一份（escalateFields），本页不另造第二份
+import EscalateComplaintFields from '../EscalateComplaintFields.vue';
 import OpCollapsibleSection from '../OpCollapsibleSection.vue';
 import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue';
 import { riskLevelText } from '@/config/risk';
@@ -84,6 +87,11 @@ const {
   missAssessAdvice,
   // 选「升级」后的派生说明行：与报备池、底栏两个评估入口同源，本页不另写
   escalateHint,
+  // 投诉专属字段段：出现判据与字段状态都取这一份，校验由 confirmAssess 先于结论正文跑
+  escalateFields,
+  showEscalateFields,
+  // 主按钮文案：升级→「确认升级」，否则「提交结论」（四个评估入口同一句）
+  assessOkText,
   openAssess,
   confirmAssess,
   canAssessReport,
@@ -753,7 +761,7 @@ const collabSectionBadge = computed(() =>
       :icon="EditOutlined"
       tone="primary"
       :width="520"
-      ok-text="提交结论"
+      :ok-text="assessOkText"
       @update:open="assessOpen = $event"
       @ok="confirmAssess"
     >
@@ -769,13 +777,18 @@ const collabSectionBadge = computed(() =>
               </a-radio-group>
             </div>
             <div v-if="missAssessDecision" class="ticket-assess-err ticket-assess-foot">请先选择一个评估决策</div>
-            <!-- 选「升级」后的派生说明行（escalateHintOf，三个评估入口同一句） -->
+            <!-- 选「升级」后的派生说明行（escalateHintOf，四个评估入口同一句） -->
             <div
               v-else-if="isEscalateDecision(assessDecision)"
               class="ticket-assess-hint ticket-assess-foot"
             >{{ escalateHint }}</div>
           </div>
-          <div class="op-field">
+          <!--
+            结论正文那一格。选「升级」（且会派生新投诉单）时它并进下面那一段、改由段内的
+            「升级说明」渲染，故本格只在**段不出**时出；两处渲染的是同一个格子
+            （assessAdvice 代理 escalateFields.fields.advice）。
+          -->
+          <div v-if="!showEscalateFields" class="op-field">
             <div class="op-label req">{{ adviceLabel(assessDecision) }}</div>
             <a-textarea
               v-model:value="assessAdvice"
@@ -785,6 +798,12 @@ const collabSectionBadge = computed(() =>
             <div v-if="missAssessAdvice" class="ticket-assess-err">请填写{{ adviceLabel(assessDecision) }}</div>
           </div>
         </section>
+
+        <!--
+          投诉工单专属字段：选「升级」（且会派生新投诉单）时才出。
+          投诉一类 / 二类 / 升级说明三项、均必填；切到「不升级」整段隐藏、已填值保留。
+        -->
+        <EscalateComplaintFields v-if="showEscalateFields" :ctl="escalateFields" />
       </div>
     </OpActionModal>
 

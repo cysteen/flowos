@@ -6,18 +6,20 @@ import type { EscalateComplaintFieldsCtl } from '@/composables/useEscalateCompla
  * 风险评估选「升级」后出现的**投诉工单专属字段**段落：
  * 投诉一类 / 投诉二类 / 升级说明三项，均必填，升级说明排在两项分类之后、段内最后一项。
  *
- * 「升级说明」此前是三个宿主弹窗各摆一个的独立字段，现已并进本段；它的值仍存在
+ * 「升级说明」此前是各宿主弹窗各摆一个的独立字段，现已并进本段；它的值仍存在
  * `useEscalateComplaintFields` 的 `fields.advice` 上（宿主选「不升级」时同一个格子
- * 改叫「反馈意见」、由宿主自己那一格渲染），三处不各存一份。
+ * 改叫「反馈意见」、由宿主自己那一格渲染），各处不各存一份。
  *
- * 🔴 **三个评估入口共用这一个组件**：工单页底栏「风险评估」（`OpRiskAssessModal`）、
+ * 🔴 **四个评估入口共用这一个组件**：工单页底栏「风险评估」（`OpRiskAssessModal`）、
+ * 工单页「风险报备」Tab 在队卡「评估」（`operation/tabs/OpRiskMonitorTab.vue`）、
  * 风险监控页评估工作面（`views/ops-monitor/RiskMonitorView.vue`）、
  * 风险报备池（`components/RiskReportPoolPanel.vue`）。字段、顺序、级联与红字提示只在这里改。
  *
  * 取值域、级联与校验全在 `composables/useEscalateComplaintFields.ts`，
- * 本组件只渲染：`ctl` 是那个 composable 的实例，三处各持一份状态、共用同一套规则。
+ * 本组件只渲染：`ctl` 是那个 composable 的实例 —— 每个入口**只持一份**（工单页两个入口与
+ * 报备池取 `useRiskReportAssess` 暴露的那一份，风险监控页自己建一份），共用同一套规则。
  *
- * 样式**自带、不依赖外层**：三个宿主弹窗的类名各不相同（.op-field / .assess-* / .af-*），
+ * 样式**自带、不依赖外层**：各宿主弹窗的类名各不相同（.op-field / .assess-* / .af-*），
  * 借外层的类会让同一段字段在三处长得不一样。
  */
 defineProps<{ ctl: EscalateComplaintFieldsCtl }>();

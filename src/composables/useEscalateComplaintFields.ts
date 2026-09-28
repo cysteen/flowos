@@ -14,12 +14,13 @@ import { COMPLAINT_L1_OPTIONS, COMPLAINT_L2_MAP } from '@/views/tickets/types/cr
  * 由接手人在新投诉单上走工单页「补充投诉信息」补录，不在评估弹窗里出。
  *
  * 【升级说明为什么也在这里】它是评估结论的一部分（落 `assessment.advice`）、又是派生新单
- * 问题描述的后半段，三处评估弹窗此前各自摆一个独立字段。值收在本 composable 的
+ * 问题描述的后半段，各处评估弹窗此前各自摆一个独立字段。值收在本 composable 的
  * `fields.advice` 上，选「不升级」时那格改叫「反馈意见」、由宿主弹窗自己那一格渲染，
- * 读写的仍是这同一个格子 —— 三处不各存一份。
+ * 读写的仍是这同一个格子 —— 各处不各存一份。
  *
- * 【三个入口共用】工单页底栏「风险评估」、风险监控页评估工作面、风险报备池三处评估弹窗
- * 都调本 composable + `EscalateComplaintFields.vue`，字段、级联与校验只此一份。
+ * 【四个入口共用】工单页底栏「风险评估」、工单页「风险报备」Tab 在队卡「评估」、
+ * 风险监控页评估工作面、风险报备池四处评估弹窗都调本 composable +
+ * `EscalateComplaintFields.vue`，字段、级联与校验只此一份。
  */
 
 export interface EscalateComplaintFieldsState {
@@ -134,5 +135,5 @@ export function useEscalateComplaintFields() {
   };
 }
 
-/** 三个评估入口共用的实例类型（`EscalateComplaintFields.vue` 的唯一入参） */
+/** 四个评估入口共用的实例类型（`EscalateComplaintFields.vue` 的唯一入参） */
 export type EscalateComplaintFieldsCtl = ReturnType<typeof useEscalateComplaintFields>;
