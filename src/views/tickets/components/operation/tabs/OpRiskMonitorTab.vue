@@ -12,6 +12,8 @@ import {
   RollbackOutlined,
   UserOutlined,
   EditOutlined,
+  DownOutlined,
+  RightOutlined,
 } from '@ant-design/icons-vue';
 import { useRiskReportAssess } from '@/composables/useRiskReportAssess';
 import OpCollapsibleSection from '../OpCollapsibleSection.vue';
@@ -123,6 +125,24 @@ const history = computed(() => reportItems.value.filter((r) => !isOpenStatus(r.s
  * 只对在队那条取：已结论 / 已撤回的条目不再回池，它被退回过几次已经不影响任何人的下一步。
  */
 const pendingReleases = computed(() => [...(pending.value?.releases ?? [])].reverse());
+
+/**
+ * 历史每条的展开态。**默认全折叠**，键是条目 id。
+ * 切单即清空 —— 展开态是"这一次看这张单时翻开了哪几条"，不跨工单记忆。
+ */
+const openHistory = ref<Record<string, boolean>>({});
+watch(() => props.ticketNo, () => { openHistory.value = {}; });
+function toggleHistory(id: string) {
+  openHistory.value = { ...openHistory.value, [id]: !openHistory.value[id] };
+}
+
+/**
+ * 折叠态那一行的报备原因。有风险类型时接在原因后面 ——
+ * 折叠态只有一行的位置，原因与类型是这条报备"讲的是什么事"的最小一对。
+ */
+function historyReasonText(r: RiskPoolItem) {
+  return r.category ? `${r.reason} · ${r.category}` : r.reason;
+}
 // ---- 撤回（PRD §4.8）----
 // 提交即固化、不提供编辑；填错了只能撤回后重报。**仅待领取态、仅本人**，
 // 且撤回后**不删除**，转「已撤回」并留原因 —— 它是"这个人当时报过什么"的证据。
@@ -320,16 +340,17 @@ const pendingStateText = computed(() => {
   return '待领取';
 });
 
+/**
+ * 块头角标**只给条数**：有在队写「1 条在队 · 历史 N」，无在队写「历史 N」，两者皆无时不出角标。
+ * 状态词归卡内那一枚状态标，角标不再重复它 —— 同一个词在块头、在队卡、历史行上出现三遍，
+ * 读的人会以为是三件不同的事。在队恒至多一条（基线 ※29），故写死「1 条在队」。
+ */
 const reportSectionBadge = computed(() => {
-  // 角标跟着卡片上的状态标走，两处写同一个词
-  if (pending.value) return poolStatusText(pending.value.status);
-  if (history.value.length) return String(history.value.length);
-  return undefined;
+  const parts: string[] = [];
+  if (pending.value) parts.push('1 条在队');
+  if (history.value.length) parts.push(`历史 ${history.value.length}`);
+  return parts.length ? parts.join(' · ') : undefined;
 });
-
-const reportSectionBadgeVariant = computed(() =>
-  pending.value ? 'warn' as const : 'count' as const,
-);
 
 /** 本单最近一次已评估的报备（按评估时刻倒序） */
 const latestAssessed = computed(() =>
@@ -539,44 +560,28 @@ const collabSectionBadge = computed(() =>
       title="风险报备"
       :icon="ContainerOutlined"
       :badge="reportSectionBadge"
-      :badge-variant="reportSectionBadgeVariant"
+      badge-variant="count"
       :expanded="expanded.report"
       @toggle="expanded.report = !expanded.report"
     >
-      <!-- 在队报备：卡片主体 + 元信息，发起入口在底栏弹窗 -->
-      <section v-if="pending" class="rr-sheet rr-sheet-pending" aria-label="当前在队报备">
-        <header class="rr-sheet-head">
-          <div class="rr-sheet-brand">
-            <div class="rr-sheet-title-row">
-              <span
-                class="rr-pill"
-                :class="pending.status === '评估中' ? 'rr-pill-doing' : 'rr-pill-pending'"
-              >
-                <ClockCircleOutlined />
-                {{ pendingStateText }}
-              </span>
-              <span class="rr-sheet-time">提交于 {{ formatShortAt(pending.at) }}</span>
-              <span class="rr-sheet-wait">已等待 {{ waitedText(pending.at) }}</span>
-            </div>
-            <div class="rr-sheet-meta">
-              <span class="rr-meta-pair">
-                <UserOutlined class="rr-meta-icon" />
-                <span class="rr-meta-label">报备人</span>
-                <span class="rr-meta-value">{{ pending.by }}</span>
-              </span>
-              <span class="rr-meta-sep" aria-hidden="true" />
-              <span class="rr-meta-pair">
-                <span class="rr-meta-label">原因</span>
-                <span class="rr-meta-value">{{ pending.reason }}</span>
-              </span>
-              <template v-if="pending.category">
-                <span class="rr-meta-sep" aria-hidden="true" />
-                <span class="rr-meta-pair">
-                  <span class="rr-meta-label">风险类型</span>
-                  <span class="rr-meta-value rr-meta-warn">{{ pending.category }}</span>
-                </span>
-              </template>
-            </div>
+      <!--
+        在队报备。**与历史每条同一套卡**（`rr-card`）：在队那条高亮（实边框 + 主色底纹），
+        历史弱化（灰边浅底）。两者用两种完全不同的骨架时，读的人分不出它们是同一种东西的两个阶段。
+        发起入口在底栏弹窗，本卡只读 + 两个动作。
+      -->
+      <article v-if="pending" class="rr-card rr-card-live" aria-label="当前在队报备">
+        <!-- 第一行：状态 · 提交于 · 已等待，右端是这条报备当前能做的那一个动作 -->
+        <div class="rr-card-top">
+          <div class="rr-card-top-main">
+            <span
+              class="rr-pill"
+              :class="pending.status === '评估中' ? 'rr-pill-doing' : 'rr-pill-pending'"
+            >
+              <ClockCircleOutlined />
+              {{ pendingStateText }}
+            </span>
+            <span class="rr-card-time">提交于 {{ formatShortAt(pending.at) }}</span>
+            <span class="rr-card-wait">已等待 {{ waitedText(pending.at) }}</span>
           </div>
           <button v-if="canAssess" type="button" class="rr-assess" @click="openAssess(pending)">
             评估
@@ -588,9 +593,30 @@ const collabSectionBadge = computed(() =>
           <span v-else-if="pending.status === '评估中'" class="rr-withdraw-locked">
             已被领取评估，不可撤回
           </span>
-        </header>
+        </div>
 
-        <div class="rr-sheet-body">
+        <!-- 第二行：报备人 ｜ 原因 ｜ 风险类型。三格恒出，没取值的写「—」 -->
+        <div class="rr-card-fields">
+          <span class="rr-field">
+            <UserOutlined class="rr-field-icon" />
+            <span class="rr-field-k">报备人</span>
+            <span class="rr-field-v">{{ pending.by || '—' }}</span>
+          </span>
+          <span class="rr-field-sep" aria-hidden="true" />
+          <span class="rr-field">
+            <span class="rr-field-k">原因</span>
+            <span class="rr-field-v">{{ pending.reason || '—' }}</span>
+          </span>
+          <span class="rr-field-sep" aria-hidden="true" />
+          <span class="rr-field">
+            <span class="rr-field-k">风险类型</span>
+            <span class="rr-field-v" :class="{ 'rr-field-warn': pending.category }">
+              {{ pending.category || '—' }}
+            </span>
+          </span>
+        </div>
+
+        <div class="rr-card-body">
           <blockquote class="rr-quote">{{ pending.desc }}</blockquote>
           <ul v-if="pending.attachments.length" class="rr-files">
             <li v-for="f in pending.attachments" :key="f" class="rr-file">
@@ -620,13 +646,12 @@ const collabSectionBadge = computed(() =>
             </div>
           </div>
           <!--
-            报备不落子状态、SLA 不停钟（基线 ※29）。工单本身看不出任何变化，
-            这句是它在可见区的**唯一**落点：头部那行只挂 hover title，
-            两处都不写的话，处理人会以为报备期间单子冻住了、停下来等结论。
+            ⚠️ 这里曾有一行「评估期间本单照常处理，SLA 不停表」，**已删**（2026-09-28 裁决）。
+            报备不落子状态、SLA 不停钟（基线 ※29）是**规则**，规则写在 PRD，页面不写：
+            卡上没有任何冻结迹象，本身就是这条规则在界面上的表达。
           -->
-          <p class="rr-sla-note">评估期间本单照常处理，SLA 不停表</p>
         </div>
-      </section>
+      </article>
 
       <div v-if="!pending && !history.length" class="rr-empty">
         <ContainerOutlined class="rr-empty-icon" />
@@ -634,36 +659,49 @@ const collabSectionBadge = computed(() =>
         <p v-if="reportEntryVisible" class="rr-empty-hint">请点击底部「风险报备」发起</p>
       </div>
 
-      <!-- 历史报备：时间线样式，与在队卡片同屏可见 -->
+      <!--
+        历史报备：与在队同一套卡（`rr-card`，`rr-card-past` 弱化），**每条默认折叠**。
+        折叠态一行给的是"这条讲的是什么事、结局如何"——时刻 · 报备人 · 原因（带风险类型）· 状态标；
+        描述全文、附件、评估结论 / 撤回原因在展开后出。
+        报备多轮之后全展开会把在队那条挤出屏幕，而回看历史多半只找其中一条。
+      -->
       <div v-if="history.length" class="rr-history" :class="{ 'has-pending': pending }">
         <h4 class="rr-history-head">报备记录<span class="rr-history-count">{{ history.length }}</span></h4>
-        <div class="rr-timeline">
-          <article v-for="h in history" :key="h.id" class="rr-item">
-            <div class="rr-rail" aria-hidden="true">
-              <span
-                class="rr-dot"
-                :class="h.status === '已评估' ? 'dot-done' : 'dot-gray'"
+        <div class="rr-cards">
+          <article
+            v-for="h in history"
+            :key="h.id"
+            class="rr-card rr-card-past"
+            :class="{ 'is-open': openHistory[h.id] }"
+          >
+            <button
+              type="button"
+              class="rr-card-sum"
+              :aria-expanded="!!openHistory[h.id]"
+              @click="toggleHistory(h.id)"
+            >
+              <component
+                :is="openHistory[h.id] ? DownOutlined : RightOutlined"
+                class="rr-sum-caret"
               />
-              <span class="rr-line" />
-            </div>
-            <div class="rr-item-body">
-              <header class="rr-item-head">
-                <span class="rr-item-time">{{ formatShortAt(h.at) }}</span>
-                <span class="rr-item-who">{{ h.by }}</span>
-                <span class="rr-tag-reason">{{ h.reason }}</span>
-                <span v-if="h.category" class="rr-tag-cat">{{ h.category }}</span>
-                <span
-                  class="rr-pill rr-pill-sm"
-                  :class="h.status === '已撤回' ? 'rr-pill-gray' : 'rr-pill-done'"
-                >
-                  {{ poolStatusText(h.status) }}
-                </span>
-              </header>
-              <p class="rr-item-desc">{{ h.desc }}</p>
-              <div v-if="h.attachments.length" class="rr-item-files">
-                <PaperClipOutlined />
-                <span>{{ h.attachments.join('、') }}</span>
-              </div>
+              <span class="rr-card-time">{{ formatShortAt(h.at) }}</span>
+              <span class="rr-sum-who">{{ h.by }}</span>
+              <span class="rr-sum-reason">{{ historyReasonText(h) }}</span>
+              <span
+                class="rr-pill rr-pill-sm rr-sum-pill"
+                :class="h.status === '已撤回' ? 'rr-pill-gray' : 'rr-pill-done'"
+              >
+                {{ poolStatusText(h.status) }}
+              </span>
+            </button>
+            <div v-if="openHistory[h.id]" class="rr-card-body">
+              <blockquote class="rr-quote rr-quote-past">{{ h.desc }}</blockquote>
+              <ul v-if="h.attachments.length" class="rr-files">
+                <li v-for="f in h.attachments" :key="f" class="rr-file">
+                  <PaperClipOutlined />
+                  <span>{{ f }}</span>
+                </li>
+              </ul>
               <div v-if="h.status === '已评估'" class="rr-eval">
                 <CheckOutlined class="rr-eval-icon" />
                 <div class="rr-eval-body">
@@ -1081,32 +1119,39 @@ const collabSectionBadge = computed(() =>
 <style scoped>
 .risk-tab { display: flex; flex-direction: column; gap: 12px; width: 100%; }
 
-/* ---- 风险报备：在队卡片 ---- */
-.rr-sheet {
-  background: #fff;
-  border: 1px solid #e5e7eb;
+/*
+ * ---- 风险报备：卡片（在队与历史共用一套骨架）----
+ * 在队 `.rr-card-live`：白底、橙实边、浅阴影；历史 `.rr-card-past`：灰边、浅灰底、不投影。
+ * 差别只在边框与底色两项，骨架 / 圆角 / 内距全同 —— 它们是同一种东西的两个阶段。
+ */
+.rr-card {
   border-radius: 10px;
   overflow: hidden;
 }
-.rr-sheet-pending {
-  border-color: #fed7aa;
+.rr-card-live {
+  /* 顶部一层很浅的暖色渐隐，替掉原先那条头/体硬分割线：高亮靠色温，不靠再切一刀 */
+  background: linear-gradient(180deg, #fff7ed 0%, #fff 72px);
+  border: 1px solid #fed7aa;
   box-shadow: 0 1px 3px rgba(234, 88, 12, 0.06);
 }
-.rr-sheet-head {
+.rr-card-past {
+  background: #fafafa;
+  border: 1px solid #ebedf0;
+}
+.rr-card-top {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 14px;
-  background: linear-gradient(180deg, #fff7ed 0%, #fff 100%);
-  border-bottom: 1px solid #ffedd5;
+  padding: 10px 12px 0;
 }
-.rr-sheet-brand { min-width: 0; flex: 1; }
-.rr-sheet-title-row {
+.rr-card-top-main {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
+  min-width: 0;
+  flex: 1;
 }
 .rr-pill {
   display: inline-flex;
@@ -1126,26 +1171,37 @@ const collabSectionBadge = computed(() =>
 .rr-pill-done { color: #047857; background: #d1fae5; }
 .rr-pill-gray { color: #6b7280; background: #f3f4f6; }
 .rr-pill-sm { font-size: 10px; padding: 2px 8px; font-weight: 600; }
-.rr-sheet-time { font-size: 13px; font-weight: 600; color: #9a3412; }
-.rr-sheet-wait { font-size: 12px; color: #ea580c; }
-.rr-sheet-meta {
+/* 时刻在两种卡上是同一个角色（"这条什么时候的事"），故共用一个类 */
+.rr-card-time {
+  font-size: 12px;
+  font-weight: 600;
+  color: #111827;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.rr-card-live .rr-card-time { font-size: 13px; color: #9a3412; }
+.rr-card-wait { font-size: 12px; color: #ea580c; white-space: nowrap; }
+
+/* 第二行的字段组：标签灰、取值深，竖线分格；没取值的那格写「—」，仍占位 */
+.rr-card-fields {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 0;
-  margin-top: 8px;
+  padding: 8px 12px 0;
 }
-.rr-meta-pair {
+.rr-field {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   font-size: 12px;
+  min-width: 0;
 }
-.rr-meta-icon { color: #9ca3af; font-size: 12px; }
-.rr-meta-label { color: #9ca3af; }
-.rr-meta-value { color: #374151; font-weight: 600; }
-.rr-meta-warn { color: #c2410c; }
-.rr-meta-sep {
+.rr-field-icon { color: #9ca3af; font-size: 12px; }
+.rr-field-k { color: #9ca3af; }
+.rr-field-v { color: #374151; font-weight: 600; word-break: break-word; }
+.rr-field-warn { color: #c2410c; }
+.rr-field-sep {
   width: 1px;
   height: 12px;
   margin: 0 10px;
@@ -1187,7 +1243,7 @@ const collabSectionBadge = computed(() =>
   color: #9ca3af;
   white-space: nowrap;
 }
-.rr-sheet-body { padding: 12px 14px 14px; }
+.rr-card-body { padding: 10px 12px 12px; }
 .rr-quote {
   margin: 0;
   padding: 10px 12px;
@@ -1198,11 +1254,12 @@ const collabSectionBadge = computed(() =>
   border-left: 3px solid #fdba74;
   border-radius: 0 6px 6px 0;
 }
-/* SLA 口径行：是背景信息不是要读的内容，压到最轻，不与场景描述抢 */
-.rr-sla-note {
-  margin: 8px 0 0;
-  font-size: 11px;
-  color: #9ca3af;
+/* 历史那条已成定局，引文的强调边跟着弱化，底色也让开卡片本身的浅灰 */
+.rr-quote-past {
+  font-size: 12px;
+  color: #4b5563;
+  background: #fff;
+  border-left-color: #d1d5db;
 }
 .rr-files {
   display: flex;
@@ -1286,7 +1343,7 @@ const collabSectionBadge = computed(() =>
 .rr-empty-title { margin: 0; font-size: 13px; font-weight: 600; color: #6b7280; }
 .rr-empty-hint { margin: 4px 0 0; font-size: 12px; color: #9ca3af; }
 
-/* ---- 历史时间线 ---- */
+/* ---- 历史报备（同一套卡，每条可折叠）---- */
 .rr-history { margin-top: 4px; }
 .rr-history.has-pending {
   margin-top: 14px;
@@ -1316,69 +1373,37 @@ const collabSectionBadge = computed(() =>
   border: 1px solid #bfdbfe;
   border-radius: 999px;
 }
-.rr-timeline { display: flex; flex-direction: column; gap: 0; }
-.rr-item { display: flex; gap: 10px; }
-.rr-rail {
+.rr-cards { display: flex; flex-direction: column; gap: 8px; }
+/*
+ * 折叠态整行可点（按钮而非 div：键盘也要能翻开）。整行做成一条基线对齐的横排，
+ * 状态标靠 margin-left:auto 顶到右端 —— 一列状态在同一个 x 上，扫一眼就能挑出想找的那条。
+ */
+.rr-card-sum {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  width: 16px;
-  flex: none;
-  padding-top: 4px;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  font-family: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
 }
-.rr-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex: none;
-}
-.rr-dot.dot-done { background: #10b981; box-shadow: 0 0 0 3px #d1fae5; }
-.rr-dot.dot-gray { background: #d1d5db; box-shadow: 0 0 0 3px #f3f4f6; }
-.rr-line {
-  flex: 1;
-  width: 1px;
-  min-height: 12px;
-  margin: 4px 0;
-  background: #e5e7eb;
-}
-.rr-item:last-child .rr-line { display: none; }
-.rr-item-body {
-  flex: 1;
-  min-width: 0;
-  padding-bottom: 14px;
-}
-.rr-item-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-.rr-item-time { font-size: 12px; font-weight: 700; color: #111827; }
-.rr-item-who { font-size: 12px; color: #6b7280; }
-.rr-tag-reason,
-.rr-tag-cat {
-  padding: 1px 6px;
-  font-size: 10px;
-  font-weight: 600;
-  border-radius: 4px;
-}
-.rr-tag-reason { color: #475569; background: #f1f5f9; border: 1px solid #e2e8f0; }
-.rr-tag-cat { color: #c2410c; background: #fff7ed; border: 1px solid #fed7aa; }
-.rr-item-desc {
-  margin: 6px 0 0;
+.rr-card-sum:hover { background: #f3f4f6; }
+.rr-card.is-open .rr-card-sum { border-bottom: 1px dashed #e5e7eb; }
+.rr-sum-caret { color: #9ca3af; font-size: 10px; flex: none; }
+.rr-sum-who { font-size: 12px; color: #6b7280; white-space: nowrap; }
+.rr-sum-reason {
   font-size: 12px;
-  line-height: 1.6;
   color: #4b5563;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
-.rr-item-files {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 6px;
-  font-size: 11px;
-  color: #94a3b8;
-}
-.rr-item-files :deep(.anticon) { font-size: 11px; }
+.rr-sum-pill { margin-left: auto; flex: none; }
+.rr-card-past .rr-card-body { padding-top: 10px; }
 .rr-eval {
   display: flex;
   gap: 8px;
