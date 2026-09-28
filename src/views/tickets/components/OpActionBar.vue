@@ -75,12 +75,12 @@ const props = defineProps<{
    */
   saveOnly?: boolean;
   /**
-   * 风险那一枚按钮要不要出。**说的是"三种形态里判出了一种、且它的出现条件成立"**，
-   * 不只是报备：文案与类型集由 `resolveRiskActionForm`（角色 × 原单类型）现算，
-   * 出现条件由工单页按形态算（见 TicketOperationView 的 `showRiskReport`）。
+   * 底栏那一枚风险按钮要不要出。**底栏只剩报备形态**（2026-09-28 裁决：评估结论与
+   * 协同处理两支已挪到页头「风险管控」），文案与类型集由 `resolveRiskBarForm` 现算，
+   * 出现条件由工单页算（见 TicketOperationView 的 `showRiskReport`）。
    */
   showRiskReport?: boolean;
-  /** 风险那一枚按钮要不要置灰（条件由工单页按形态算，见 TicketOperationView） */
+  /** 那一枚按钮要不要置灰（条件由工单页算，见 TicketOperationView） */
   riskReportPending?: boolean;
   /**
    * 置灰的**原因原文**，由调用方给。
@@ -93,7 +93,8 @@ const props = defineProps<{
   riskForbiddenTip?: string;
   /**
    * 刷机单视角（930 教育刷机单 PRD §5.5，判据见 `composables/flashGate.ts`）。
-   * 一线 / 二线视角走刷机单底栏（表一顺序 + 表二逐格取值）；可领取只出「领取」；客诉专员沿用风险按钮形态。
+   * 一线 / 二线视角走刷机单底栏（表一顺序 + 表二逐格取值）；可领取只出「领取」；
+   * 客诉专员在底栏一枚都不出（他落的是评估形态，已挪到页头「风险管控」）。
    * 四类老工单不传，底栏走原路径。
    */
   flashView?: FlashView | null;
@@ -267,8 +268,9 @@ const barActions = computed<BarItem[]>(() => {
       // 刷机单不出「转单」（M25，任何角色、任何子状态）
       if (key === '转单' && props.ticketType === '刷机') continue;
       if (key === '退回' && !props.atTechSupport) continue;
-      // 报备形态只给本单主责处理人：不是主责处理人的，冻结态下也不展示（评估 / 协同两形态不在此判）
-      if (key === '风险报备' && def?.label === '风险报备' && !props.showRiskReport) continue;
+      // 报备形态只给本单主责处理人：不是主责处理人的，冻结态下也不展示
+      // （底栏这一格只会是报备形态，判定已在 resolveRiskBarForm 收口）
+      if (key === '风险报备' && !props.showRiskReport) continue;
       items.push({
         key,
         label: key === '挂起' ? '申请挂起' : (def?.label ?? '转单'),

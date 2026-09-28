@@ -66,7 +66,7 @@ export function nextEscalatedNoOf(reports: Array<{ assessment?: { escalatedToNo?
 export function escalateHintOf(ticketNo: string | undefined): string {
   /*
    * ⚠️ **按《【930】》§5.2「投诉单不做风险评估」，投诉单不入评估工作面，这一支正常走不到**
-   * （风险工单池的投诉单行现在给的是「协同处理」，工单页底栏那一枚在投诉单上也取协同形态）。
+   * （风险工单池的投诉单行现在给的是「协同处理」，工单页页头「风险管控」在投诉单上也开协同那一段）。
    *
    * 🔴 **不要因为"走不到"就顺手删掉它** —— 这一整行的历史就是被删过两次：
    * 一次跨文件改造整条带走、一次只在两个入口里补了一处。留着它当**兜底分支**，
@@ -109,7 +109,7 @@ export const ASSESS_TICKET_ENDED_TIP = '本单已结束，无法升级';
  *
  * 取数与工单处理页 `useTicketOperation.loadDetail` 同一条链：静态工单库 → 运行时派生单，
  * 叠上本次会话的升级台账（`derivedTickets.escalatedToNoOf`）与停表单（列表 SLA 摘要为「—」）。
- * 三处评估弹窗（风险监控页评估处置工作面 / 风险报备池 / 工单页底栏「风险评估」）都调它，判据只此一份。
+ * 三处评估弹窗（风险监控页评估处置工作面 / 风险报备池 / 工单页页头「风险管控」）都调它，判据只此一份。
  */
 export function isRiskTicketEnded(ticketNo: string): boolean {
   const derived = useDerivedTicketStore();
@@ -240,8 +240,8 @@ export function useRiskReportAssess() {
 
   /**
    * 「投诉工单专属字段」段落（投诉一类 / 二类 / 升级说明三项）。字段与校验走共享
-   * composable，组件是共享的 `EscalateComplaintFields.vue` —— 风险报备池与工单页底栏
-   * 「风险评估」两处都由本 composable 这一份状态接上，两处不各造一份；
+   * composable，组件是共享的 `EscalateComplaintFields.vue` —— 风险报备池与工单页页头
+   * 「风险管控」两处都由本 composable 这一份状态接上，两处不各造一份；
    * 风险监控页那个弹窗自持一份状态、调的是同一对 composable + 组件。
    *
    * 切到「不升级」段落隐藏但**状态留在这里不清**，切回来原样还在；

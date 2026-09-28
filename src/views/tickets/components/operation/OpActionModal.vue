@@ -8,6 +8,11 @@ const props = withDefaults(
   defineProps<{
     open: boolean;
     title: string;
+    /**
+     * 标题下方那一行副标题（如「二线报备 · IFLYZX-…」）：写这次动作的**来源与对象**。
+     * 不传则整行不出、标题行与没有它时一模一样。
+     */
+    subtitle?: string;
     /** 标题左侧图标组件（如 SwapOutlined）；不传则无图标徽标 */
     icon?: unknown;
     /** 图标徽标配色 */
@@ -21,6 +26,7 @@ const props = withDefaults(
     confirmLoading?: boolean;
   }>(),
   {
+    subtitle: '',
     icon: undefined,
     tone: 'primary',
     width: 480,
@@ -75,7 +81,10 @@ function onCancel() {
         <span v-if="icon" class="opm-icon" :class="`tone-${tone}`">
           <component :is="icon" />
         </span>
-        <span class="opm-title-text">{{ title }}</span>
+        <div class="opm-title-body">
+          <span class="opm-title-text">{{ title }}</span>
+          <span v-if="subtitle" class="opm-subtitle">{{ subtitle }}</span>
+        </div>
       </div>
     </template>
 
@@ -95,7 +104,15 @@ function onCancel() {
 .opm-icon.tone-success { background: #ecfdf5; color: #059669; }
 .opm-icon.tone-warn { background: #fff7ed; color: #ea580c; }
 .opm-icon.tone-danger { background: #fef2f2; color: #dc2626; }
+.opm-title-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .opm-title-text { font-size: 15px; font-weight: 700; color: #111827; line-height: 1.3; }
+.opm-subtitle {
+  font-size: 12px;
+  font-weight: 500;
+  color: #6b7280;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
 .op-modal-body { padding: 2px 0; }
 </style>
 

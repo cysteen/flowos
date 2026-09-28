@@ -73,7 +73,9 @@ export const FLASH_ACTION_KEYS: readonly OpActionType[] = [
  *
  * - 一线视角：下送、撤回（「重新推送」「升级二线」两枚不是本表动作，由底栏按视角直接渲染，D2 / M34）；
  * - 二线视角：刷机单类型集全部；
- * - 客诉专员：只出风险那一枚（评估形态）；
+ * - 客诉专员：底栏一枚都不出 —— 他在刷机单上落的是**评估形态**，而评估已挪到页头「风险管控」；
+ *   本行仍登记「风险报备」，是因为形态判定（`resolveRiskBarForm`）在类型集之后才跑，
+ *   两道门都要过得去才轮得到他；
  * - 可领取 / 只读查看：一枚办理动作都不出（M71 / X26）。
  */
 const FLASH_VIEW_ACTION_KEYS: Record<FlashView, readonly OpActionType[]> = {
@@ -102,9 +104,9 @@ export const ACTION_DEFS: ActionDef[] = [
   // 底栏「升级」＝ 升三线技术支持 / 产研（※14 / ※14a），**与投诉无关**，
   // 故基线 ※8a 收回二线第一跳升级投诉那一条不落在这里，落在头部「升级投诉」上（见文件末尾）
   { key: '升级', label: '升级', icon: 'RiseOutlined', group: 'primary', types: NO_LEAD },
-  // 风险那一枚按钮。**登记的是"这一格"而不是"风险报备"这一个动作**：它按角色与类型
-  // 呈现 风险报备 / 风险评估 / 协同处理 三种形态（基线 ※29），文案与类型集由
-  // availableActions 走 resolveRiskActionForm 现算，这里的取值只是报备形态的缺省。
+  // 风险那一枚按钮。底栏这一格**只出报备形态**（基线 ※29 的三种形态里，评估与协同
+  // 两支已挪到页头「风险管控」）：文案与类型集由 availableActions 走 resolveRiskBarForm
+  // 现算，判不出报备形态即整枚不给。
   { key: '风险报备', label: '风险报备', icon: 'WarningOutlined', group: 'more', types: RISK_REPORT_TYPES },
   // 转单：原单关闭、新单继续跑（基线 ※16）。全类型可用。
   // 它开的是**建单弹窗**（新单要有单号才谈得上"转"），不是 OpActionDialogs 里的表单弹窗，
@@ -153,16 +155,25 @@ const DIRECT_CLOSURE_BLOCKED: OpActionType[] = [
   '下送', '升级', '挂起', '调剂', '委派', '转单', '转售后', '退回',
 ];
 
-/* ---------------- 底栏那一枚风险按钮的三种形态（基线 ※29） ---------------- */
+/* ---------------- 风险那一枚按钮的三种形态（基线 ※29） ---------------- */
 
 /**
- * 底部操作条上**只有一枚**风险按钮，文案 / 弹窗 / 类型集随「当前登录角色 × 本单工单类型」取：
+ * 风险那一枚按钮的形态，随「当前登录角色 × 本单工单类型」取：
  *
  * | 角色 | 非投诉单（咨 建 商） | 投诉单 |
  * |---|---|---|
  * | 二线专员 / 二线班组长 | **风险报备**（报备弹窗） | 不给 |
- * | 客诉专员 | **风险评估**（升级 / 不升级） | **协同处理**（协同弹窗） |
+ * | 客诉专员 | **评估结论**（升级 / 不升级） | **协同处理**（协同弹窗） |
  * | 管理员（三个 scope） | **风险报备**（报备弹窗） | **协同处理**（协同弹窗） |
+ *
+ * 🔴 **三种形态落在两个界面位上**（2026-09-28 裁决）：
+ * - `report` 留在**底部操作条**（本单处理人的动作，见 `resolveRiskBarForm`）；
+ * - `assess` / `collab` 挪到**页头右上角那一枚「风险管控」**（「新建补充」旁，
+ *   见 `resolveRiskControlForm`）—— 它们是**非处理人**（客诉专员 / 管理员）的权限，
+ *   不该混在处理人的底栏流转动作里。两支合成一枚按钮、一个弹窗，弹窗内容按原单类型分岔。
+ *
+ * **本函数仍是那张矩阵的唯一真源**：两个界面位各自从它筛出自己那一半，
+ * 不各写一套角色表 —— 另写一张迟早与这一张分家。
  *
  * 🔴 **形态的第一维是"原单类型"，不是"角色"**（2026-09-11 逐格核基线 v1.24 §4 后改）：
  * 基线「协同处理」行的**管理员格 ＝ 可用 · 类型「投」**，「风险报备」行的管理员格 ＝
@@ -175,22 +186,23 @@ const DIRECT_CLOSURE_BLOCKED: OpActionType[] = [
  * ⚠️ **这不是放宽权限**：管理员的协同处理权、报备权都是基线原本就给的，改的只是
  * "按原单类型正确分发"。其余角色的取值一格未动。
  *
- * ⚠️ **管理员非投诉单上那一格的「评估形态」不在按钮位上**：按钮位是"一枚按钮 + 一次形态判定"，
- * 一格装不下两种形态，而形态若改成随"本单有没有在办报备"浮动，底栏（只有类型这一维）
- * 就会写着「风险报备」却点开评估表单 —— 正是本文件一直在防的那类缝。管理员的评估形态
- * 走**已有的另一条入口**：风险报备池 / 风险工单池「领取」（`REPORT_CLAIM_ROLES` 与
- * `canClaimRiskReport` 都已含三个 admin scope）→ 工单「风险报备」Tab 的「评估」按钮
- * （`canAssessReport` 按承办人判，与角色无关）。两个形态因此都落得下，按钮位只占一格。
+ * ⚠️ **管理员非投诉单上那一格的「评估形态」不在按钮位上**：一个界面位是"一枚按钮 +
+ * 一次形态判定"，一格装不下两种形态，而形态若改成随"本单有没有在办报备"浮动，底栏
+ * （只有类型这一维）就会写着「风险报备」却点开评估表单 —— 正是本文件一直在防的那类缝。
+ * 管理员的评估形态走**已有的另一条入口**：风险报备池 / 风险工单池「领取」
+ * （`REPORT_CLAIM_ROLES` 与 `canClaimRiskReport` 都已含三个 admin scope）→
+ * 工单「风险报备」Tab 那一路。两个形态因此都落得下，按钮位只占一格。
  *
  * 🔴 **三种形态是同一枚动作的形态，不是三个权限点**（基线 ※29）：判定命中协同处理时
  * 再过 §2 / §4 的「协同处理」门控。「协同处理」虽已收进动作矩阵（动作数 27 → 28），
- * **也不在按钮位上再开一枚** —— 故 `ACTION_DEFS` 里仍只有 `风险报备` 这一条登记，
+ * **也不再在底栏开一枚** —— 故 `ACTION_DEFS` 里仍只有 `风险报备` 这一条登记，
  * `BAR_ORDER` 里也只占一格。
  *
  * **出现条件不在这里判**：报备要求"本单无在队报备"、评估要求"本单有未出结论的非投诉单条目"、
  * 协同要求"本单在风险工单池里"，三条都要读风险两条线的 store，而本模块是**按类型与结案方式
  * 过滤动作**的纯登记表。条件由工单页算好，经 `showRiskReport` / `riskReportPending`
- * 两个 prop 交给底栏（见 TicketOperationView）。本函数只答"这个角色在这类单上该看到哪一种"。
+ * 交给底栏、经 `showRiskControl` / `riskControlBlocked` 交给页头（见 TicketOperationView）。
+ * 本函数只答"这个角色在这类单上该看到哪一种"。
  *
  * **三种形态都不给的五个角色**：技术支持（主责仍是二线，由二线报）、一线坐席（走「新建补充」）、
  * 投诉督导（去权后只看大盘）、工单运营 / 质检（只读）。它们在这里返回 null。
@@ -203,9 +215,12 @@ export interface RiskActionFormDef {
   types: TicketType[];
 }
 
+/** 页头那一枚的文案：两支合成一枚，按钮上**不再写形态名**（原「风险评估」「协同处理」） */
+export const RISK_CONTROL_LABEL = '风险管控';
+
 const REPORT_FORM: RiskActionFormDef = { form: 'report', label: '风险报备', types: RISK_REPORT_TYPES };
-const ASSESS_FORM: RiskActionFormDef = { form: 'assess', label: '风险评估', types: RISK_REPORT_TYPES };
-const COLLAB_FORM: RiskActionFormDef = { form: 'collab', label: '协同处理', types: RISK_COLLAB_TYPES };
+const ASSESS_FORM: RiskActionFormDef = { form: 'assess', label: RISK_CONTROL_LABEL, types: RISK_REPORT_TYPES };
+const COLLAB_FORM: RiskActionFormDef = { form: 'collab', label: RISK_CONTROL_LABEL, types: RISK_COLLAB_TYPES };
 
 /**
  * **处理侧**的两个角色：只有报备形态一种，投诉单上不给（投诉单的风险活儿归客诉侧）。
@@ -227,6 +242,24 @@ export function resolveRiskActionForm(roleKey: string, ticketType: string): Risk
   // 第二维：非投诉单上报的人与评的人必须分开 —— 客诉专员不能报（它是评估方），
   // 管理员是处理侧的兜底，取报备形态；管理员的评估形态走池内「领取」那条入口，见上方说明
   return roleKey === 'complaint-handler' ? ASSESS_FORM : REPORT_FORM;
+}
+
+/**
+ * **底部操作条**那一格取到的形态：只剩报备一种。
+ * `assess` / `collab` 两支已挪到页头「风险管控」，底栏判出它们时整枚不给。
+ */
+export function resolveRiskBarForm(roleKey: string, ticketType: string): RiskActionFormDef | null {
+  const f = resolveRiskActionForm(roleKey, ticketType);
+  return f?.form === 'report' ? f : null;
+}
+
+/**
+ * **页头右上角「风险管控」**那一枚取到的形态：`assess`（非投诉单）或 `collab`（投诉单）。
+ * 判不出这两支即整枚不出 —— 报备形态留在底栏，不在页头开第二个入口。
+ */
+export function resolveRiskControlForm(roleKey: string, ticketType: string): RiskActionFormDef | null {
+  const f = resolveRiskActionForm(roleKey, ticketType);
+  return f && f.form !== 'report' ? f : null;
 }
 
 export interface ActionCtx {
@@ -255,7 +288,8 @@ export interface ActionCtx {
 export function availableActions(ctx: ActionCtx): ActionDef[] {
   const direct = isDirectClosure(ctx.closureMode);
   const roleKey = ctx.roleKey ?? useUserStore().roleKey;
-  const riskForm = resolveRiskActionForm(roleKey, ctx.ticketType);
+  // 底栏只认报备形态：评估 / 协同两支在页头「风险管控」上，不在这一排
+  const riskForm = resolveRiskBarForm(roleKey, ctx.ticketType);
   return ACTION_DEFS
     .map((a) => {
       if (a.key !== '风险报备') return a;

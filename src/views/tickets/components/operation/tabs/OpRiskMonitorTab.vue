@@ -147,10 +147,10 @@ const canWithdraw = computed(
 
 /*
  * ⚠️ 本 Tab 上**没有评估入口**（2026-09-28 裁决）：在队卡那枚「评估」按钮与本 Tab 自持的
- * 「评估报备」弹窗已整块删除，工单页的评估只剩底栏「风险评估」那一个弹窗
- * （`operation/OpRiskAssessModal.vue`）。本 Tab 写权限给的是二线专员 / 二线班组长 / 管理员
+ * 「评估报备」弹窗已整块删除，工单页的评估只剩**页头「风险管控」**那一个弹窗
+ * （`operation/OpRiskControlModal.vue`）。本 Tab 写权限给的是二线专员 / 二线班组长 / 管理员
  * （它承载「发起报备」），而评估权只在客诉专员手上 —— 那枚按钮对任何角色都不可达。
- * 「从报备池领取后跳工单页自动弹评估」这条路径随之搬到底栏那个弹窗里（`consumeAssessArrival`）。
+ * 「从报备池领取后跳工单页自动弹评估」这条路径随之搬到页头那个弹窗里（`consumeAssessArrival`）。
  */
 
 function openWithdraw() {

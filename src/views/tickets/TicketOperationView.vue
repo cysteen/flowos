@@ -11,6 +11,8 @@ import OpStatDetailModal from './components/operation/OpStatDetailModal.vue';
 import OpSupplementModal from './components/operation/OpSupplementModal.vue';
 import OpDunningModal from './components/operation/OpDunningModal.vue';
 import OpCancelModal from './components/operation/OpCancelModal.vue';
+// 页头「风险管控」：评估结论（非投诉单）与协同处理（投诉单）两支合成的一枚弹窗
+import OpRiskControlModal from './components/operation/OpRiskControlModal.vue';
 import OpEscalateComplaintModal from './components/operation/OpEscalateComplaintModal.vue';
 import OpSmsModal from './components/operation/OpSmsModal.vue';
 import OpEmailModal from './components/operation/OpEmailModal.vue';
@@ -55,7 +57,8 @@ import {
   isTicketTerminated, resolveEscalateOutcome, summarizeEscalateInput, type EscalateInput,
 } from './composables/complaintEscalation';
 import {
-  ESCALATE_VIA_HANDLER_REPORT_TIP, escalateComplaintBlockTip, resolveRiskActionForm,
+  ESCALATE_VIA_HANDLER_REPORT_TIP, escalateComplaintBlockTip,
+  resolveRiskBarForm, resolveRiskControlForm,
 } from './composables/opActionRegistry';
 import {
   flashEditInfoGate, flashEscalateComplaintGate, flashHeaderEscalateVisible, flashStageOf, resolveFlashView,
@@ -257,7 +260,14 @@ const riskConclusion = computed(() => {
   };
 });
 
-/* ---------------- 底栏那一枚风险按钮：形态 × 出现条件（基线 ※29） ---------------- */
+/* ---------------- 风险那两枚按钮：形态 × 出现条件（基线 ※29） ----------------
+ *
+ * 三种形态落在**两个界面位**上（2026-09-28 裁决，判据表仍在 `opActionRegistry`）：
+ * - 底栏「**风险报备**」——本单处理人的动作，`showRiskReport` / `riskReportPending`；
+ * - 页头右上角「**风险管控**」（「新建补充」旁）——评估结论与协同处理两支合成的一枚，
+ *   是**非处理人**（客诉专员 / 管理员）的权限，`showRiskControl` / `riskControlBlocked`。
+ *   出现条件与置灰判据是原底栏那两枚**各自判据的合并**，一条都没有新定。
+ */
 
 /**
  * 本单的**在队报备**（B 线）。
@@ -281,8 +291,10 @@ const riskPoolEntry = computed(
   () => riskQueue.entriesOf(ticketNo.value).find((e) => isPooledStatus(e.status)) ?? null,
 );
 
-/** 当前角色 × 本单类型落在哪一种形态；null ＝ 这个角色三种形态都不给 */
-const riskActionForm = computed(() => resolveRiskActionForm(user.roleKey, d.value.type)?.form ?? null);
+/** 底栏那一格取到的形态：只剩 `report` 一种；null ＝ 底栏这一格不给 */
+const riskBarForm = computed(() => resolveRiskBarForm(user.roleKey, d.value.type)?.form ?? null);
+/** 页头「风险管控」取到的形态：`assess`（非投诉单）/ `collab`（投诉单）；null ＝ 整枚不出 */
+const riskControlForm = computed(() => resolveRiskControlForm(user.roleKey, d.value.type)?.form ?? null);
 
 /**
  * 本单的**主责处理人**（基线 ※14 / ※14a / ※1）：工单当前处理人；
@@ -458,22 +470,29 @@ watch(
 );
 
 /**
- * 底栏那一枚按钮**出不出**。三种形态各有各的出现条件（基线 ※29）：
- * - **报备**：只给**本单主责处理人**，不跨数据范围（班组长看得到本组单、管理员看得到全租户，
- *   也只在自己是主责处理人时出）；非主责处理人不展示。本单未认领时照出、置灰（见 riskUnclaimedBlocked）。
- *   有在队报备时按钮仍出，改为置灰 + 提示（见 riskReportPending）；
- * - **评估**：本单有未出结论的非投诉单条目，且**还没人领**或**就是我领的**
- *   （已被别人领走的由领取人给结论，不设改派 —— 「分派 / 改派」两个动作已取消）；
- * - **协同**：本单是投诉单且在风险工单池里，**不论该条目是否已结论**（§3.1 末行）。
+ * **底栏**那一枚按钮出不出 —— 只剩报备形态这一条出现条件（基线 ※29）：
+ * 只给**本单主责处理人**，不跨数据范围（班组长看得到本组单、管理员看得到全租户，
+ * 也只在自己是主责处理人时出）；非主责处理人不展示。本单未认领时照出、置灰
+ * （见 riskUnclaimedBlocked）。有在队报备时按钮仍出，改为置灰 + 提示（见 riskReportPending）。
  */
 const showRiskReport = computed(() => {
-  const form = riskActionForm.value;
+  if (riskBarForm.value !== 'report') return false;
+  // M95：二线班组长可对本组刷机单发起风险报备（组员名下的单同样出，本组范围由刷机视角 l2 判定）
+  if (isFlash.value && user.roleKey === 'team-leader' && flashView.value === 'l2') return true;
+  return ticketUnclaimed.value || isPrimaryHandler.value;
+});
+
+/**
+ * **页头「风险管控」**那一枚出不出。两支各带原来那一枚的出现条件，一条未改：
+ * - **评估结论**（非投诉单）：本单有未出结论的条目，且**还没人领**或**就是我领的**
+ *   （已被别人领走的由领取人给结论，不设改派 —— 「分派 / 改派」两个动作已取消）；
+ * - **协同处理**（投诉单）：本单在风险工单池里，**不论该条目是否已结论**（§3.1 末行）。
+ *
+ * 两支都不满足就整枚不出。
+ */
+const showRiskControl = computed(() => {
+  const form = riskControlForm.value;
   if (!form) return false;
-  if (form === 'report') {
-    // M95：二线班组长可对本组刷机单发起风险报备（组员名下的单同样出，本组范围由刷机视角 l2 判定）
-    if (isFlash.value && user.roleKey === 'team-leader' && flashView.value === 'l2') return true;
-    return ticketUnclaimed.value || isPrimaryHandler.value;
-  }
   if (form === 'collab') return !!riskPoolEntry.value;
   const item = riskOpenItem.value;
   if (!item) return false;
@@ -483,9 +502,9 @@ const showRiskReport = computed(() => {
 
 /**
  * 风险按钮的置灰条件。
- * ① **未认领**：报备形态与协同处理形态置灰（基线 §2，见 `ticketUnclaimed`）；
+ * ① **未认领**：报备形态（底栏）与协同处理形态（页头）置灰（基线 §2，见 `ticketUnclaimed`）；
  * ② **本单已有在队报备**：只对报备形态成立 —— 评估与协同两形态的出现条件不成立时按钮直接不出
- * （上面那个 computed 已收），在这里返回 true 会让它们顶着一条说的是别的事的提示置灰在那儿。
+ * （上面那两个 computed 已收），在这里返回 true 会让它们顶着一条说的是别的事的提示置灰在那儿。
  *
  * 🔴 **判据与 `riskReportPendingItem` 已经对齐**（2026-09-10 收口）：`riskReports.canSubmitFor`
  * 本轮收成只看 B 线，与这里那个 B 线专用的在队报备是同一批条目了。此前两者分家 ——
@@ -511,13 +530,14 @@ const ticketUnclaimed = computed(() => {
   if (STATUS_GROUP[d.value.status as TicketStatus] === '终态') return false;
   return !primaryHandlerName.value && !row?.assignee;
 });
+/** 底栏报备形态的未认领置灰 */
 const riskUnclaimedBlocked = computed(
-  () => (riskActionForm.value === 'report' || riskActionForm.value === 'collab') && ticketUnclaimed.value,
+  () => riskBarForm.value === 'report' && ticketUnclaimed.value,
 );
 
 const riskReportPending = computed(
   () => riskUnclaimedBlocked.value
-    || (riskActionForm.value === 'report' && !riskReports.canSubmitFor(ticketNo.value)),
+    || (riskBarForm.value === 'report' && !riskReports.canSubmitFor(ticketNo.value)),
 );
 
 /**
@@ -527,17 +547,27 @@ const riskReportPending = computed(
  * 一句笼统的「已有报备待评估」把这两件事说成一件，二线不知道该等还是该催、催谁。
  */
 const riskForbiddenTip = computed(() => {
-  if (riskUnclaimedBlocked.value) {
-    return riskActionForm.value === 'collab'
-      ? '本单尚未认领，领取或指派后可协同处理'
-      : '本单尚未认领，领取后可发起报备';
-  }
+  if (riskUnclaimedBlocked.value) return '本单尚未认领，领取后可发起报备';
   const r = riskReportPendingItem.value;
   if (!r) return '';
   return r.status === '评估中'
     ? `本单报备已由 ${r.assignee || '客诉专员'} 领取，评估中，出结论后可再发起`
     : '本单已有报备待评估，出结论后可再发起';
 });
+
+/**
+ * 页头「风险管控」的置灰与悬停原文 —— **沿用原底栏协同形态那一条**（基线 §2「未认领」行
+ * 的「协同处理」格 ※29：没有可承接建议的处理人，先领取或指派再协同）。
+ * 评估那一支不设置灰：它的出现条件不成立时按钮直接不出。
+ */
+const riskControlBlocked = computed(
+  () => riskControlForm.value === 'collab' && ticketUnclaimed.value,
+);
+const riskControlTip = computed(
+  () => (riskControlBlocked.value ? '本单尚未认领，领取或指派后可协同处理' : ''),
+);
+/** 页头「风险管控」弹窗的开关 */
+const riskControlOpen = ref(false);
 
 /** 风险侧统一的时刻格式（`YYYY-MM-DD HH:mm`），四个风险 store 与履历记录共用这一把 */
 function riskNowStamp(): string {
@@ -1039,7 +1069,7 @@ const canEscalateComplaint = computed(
  * 刷机单只在二线视角出（待领取 / 只读查看不出办理按钮）；老工单照旧。
  */
 const riskReportButtonShown = computed(
-  () => riskActionForm.value === 'report' && showRiskReport.value
+  () => riskBarForm.value === 'report' && showRiskReport.value
     && (!isFlash.value || flashView.value === 'l2'),
 );
 /**
@@ -2112,6 +2142,14 @@ function onHeaderAction(name: string) {
     case '取消工单':
       cancelModalOpen.value = true;
       break;
+    case '风险管控':
+      // 置灰态的键盘 / 程序调用兜底走同一句提示，与按钮悬停文案一处不分叉
+      if (riskControlBlocked.value) {
+        message.warning(riskControlTip.value);
+        return;
+      }
+      riskControlOpen.value = true;
+      break;
     default:
       toast(name);
   }
@@ -2163,6 +2201,9 @@ watch(
       :can-escalate-complaint="canEscalateComplaint"
       :can-link-aftersale="canLinkAftersale"
       :can-cancel-ticket="canCancelTicket"
+      :show-risk-control="showRiskControl"
+      :risk-control-blocked="riskControlBlocked"
+      :risk-control-tip="riskControlTip"
       :customer-entry-locked="customerEntryLocked"
       :superseded-by="supersededBy"
       :escalate-gate="flashEscalateGate"
@@ -2230,7 +2271,7 @@ watch(
           :tab-data="tabData"
           :form="form"
           :risk-verification="riskMonitorVerify"
-          :risk-report-entry-visible="riskActionForm === 'report' && showRiskReport"
+          :risk-report-entry-visible="riskBarForm === 'report' && showRiskReport"
           :timeline="timeline"
           :expanded-sections="expandedSections"
           :active-chip="activeChip"
@@ -2362,6 +2403,18 @@ watch(
     <OpDunningModal
       v-model:open="dunningModalOpen"
       @submit="onDunningSubmit"
+    />
+
+    <!--
+      页头右上角「风险管控」点开的东西。**只在按钮出得来时挂载**：
+      非投诉支一打开就会自动领取本单那条在队条目（原底栏「风险评估」那条，照旧），
+      恒挂的话在没有入口的单上也会跟着跑领取那一步。
+    -->
+    <OpRiskControlModal
+      v-if="showRiskControl"
+      v-model:open="riskControlOpen"
+      :ticket-no="ticketNo"
+      :ticket-type="d.type"
     />
 
     <OpCancelModal

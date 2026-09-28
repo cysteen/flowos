@@ -49,6 +49,19 @@ const props = defineProps<{
   canEscalateComplaint?: boolean;
   canLinkAftersale?: boolean;
   canCancelTicket?: boolean;
+  /**
+   * 页头「**风险管控**」那一枚（基线 ※29 的评估 / 协同两形态合成的一枚）。
+   *
+   * 🔴 **它不在底栏**：底栏那一排是本单**处理人**的流转动作，而风险管控是
+   * **非处理人**（客诉专员 / 管理员）的权限，故落在页头这一排、摆在「新建补充」旁。
+   *
+   * 出现条件、置灰判据与悬停原文**整套由 TicketOperationView 算**
+   * （`showRiskControl` / `riskControlBlocked` / `riskControlTip`）——
+   * 判据要读风险两条线的 store，本组件只管"有值就渲染"。
+   */
+  showRiskControl?: boolean;
+  riskControlBlocked?: boolean;
+  riskControlTip?: string;
   /** 客户侧录入被锁：转单三态 / 只读角色。一线视角**不**锁 */
   customerEntryLocked?: boolean;
   /** 转单三态：业务转至新单，表头收束为只读提示 + 前往新单 */
@@ -380,6 +393,18 @@ function priorityHex(p: string): string {
           :title="customerEntryLocked ? READONLY_TIP : undefined"
           @click="emit('action', '新建补充')"
         >新建补充</button>
+        <!--
+          风险管控：评估结论（非投诉单）与协同处理（投诉单）合成的一枚，弹窗内容按原单类型分岔。
+          置灰只有一种情形（本单未认领 · 投诉单那一支），原因原文由上层给。
+        -->
+        <button
+          v-if="showRiskControl"
+          type="button"
+          class="action-btn"
+          :disabled="riskControlBlocked"
+          :title="riskControlBlocked ? riskControlTip : undefined"
+          @click="emit('action', '风险管控')"
+        >风险管控</button>
         <button
           v-if="showDunning"
           type="button"
