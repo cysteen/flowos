@@ -272,7 +272,7 @@ const POOL_STAGE_KEYS = ['待领取', '已领取', '已结论'] as const;
 const poolAxisExpanded = ref(true);
 
 /**
- * 工作组筛选（单选，横跨左栏每一档）。
+ * 班组筛选（单选，横跨左栏每一档）。
  *
  * 🔴 **组不是条目自己的字段**：条目与池行上都只有工单号，组名由 `groupNameOf` 反查工单库，
  * 与页头「各处理组」那一行、工单列表「分组名称」列同一个口径，本页不另造一套分组。
@@ -693,13 +693,13 @@ const alineDecisionCounts = computed(() => {
 });
 
 /**
- * 工作组 chip 那一排的底表 ＝ 当前态在**除工作组之外**的全部条件下的行。
- * 摘出工作组的道理与下面摘出来源的完全一样，见 `reportSourceBase`。
+ * 班组 chip 那一排的底表 ＝ 当前态在**除班组之外**的全部条件下的行。
+ * 摘出班组的道理与下面摘出来源的完全一样，见 `reportSourceBase`。
  */
 const reportGroupBase = computed(() => {
   if (reportView.value === 'all') {
     // 第三段接不接，判据与 `reportAllRows` 完全一样（开着「超时未评」时整段不接）——
-    // 两处必须同进同退：只改一处的话，表里躺着 3 行、下面「全部工作组 7 / 全部来源 7」，
+    // 两处必须同进同退：只改一处的话，表里躺着 3 行、下面「全部班组 7 / 全部来源 7」，
     // 那两排 chip 当场变成同屏的第二个数
     return [
       ...openBase('unassigned'),
@@ -718,7 +718,7 @@ const reportGroupBase = computed(() => {
  * 来源 chip 那一排的底表 ＝ 当前态在**除来源之外**的全部条件下的行。
  * 【为什么要把来源摘出去】让来源筛选影响自己那一排的数字，选中「重点工单」之后
  * 其余几枚全变 0，人再也看不出该切到哪一枚——筛选器把自己筛没了。
- * 工作组不摘：它是**另一层**筛选，选了组之后来源那一排本就该只数这个组里的条目。
+ * 班组不摘：它是**另一层**筛选，选了组之后来源那一排本就该只数这个组里的条目。
  */
 const reportSourceBase = computed(() => byPoolAttrs(inGroup(reportGroupBase.value), 'source'));
 function sourceCountInView(s: MonitorSource) {
@@ -801,10 +801,10 @@ function setReportView(v: ReportView) {
 }
 
 /**
- * 页头「评估处置」块的卡片下钻：先把工作面上的四维筛选（工作组 / 来源 / 原单类型 / 风险等级）
+ * 页头「评估处置」块的卡片下钻：先把工作面上的四维筛选（班组 / 来源 / 原单类型 / 风险等级）
  * 放回「全部」，再切到工作面与目标视图。卡上的数不跟这几维筛选，不清的话下钻后表行数 ≠ 卡上的数。
  * 只在点卡片时清；进了工作面之后点筛选 chip 照常收窄。
- * ⚠️ 工作组筛选是本页一份共享状态（左栏各档也按它收窄），故点卡片后左栏角标同样回到全部工作组口径。
+ * ⚠️ 班组筛选是本页一份共享状态（左栏各档也按它收窄），故点卡片后左栏角标同样回到全部班组口径。
  * 超时 / 结论 / 仅今日这几个视图内条件由各卡在调用之后自己补设（`setReportView` 会先摘掉阶段专属的收窄）。
  */
 function drillReport(v: ReportView) {
@@ -2667,7 +2667,7 @@ function rowOfReport(r: RiskPoolItem): QueueRow {
   };
 }
 /**
- * 「未标记」的**全集 ＝「全部待判」**（未过工作组筛选）＝ **监控队列里还没打标、且工单在办的条目**。
+ * 「未标记」的**全集 ＝「全部待判」**（未过班组筛选）＝ **监控队列里还没打标、且工单在办的条目**。
  *
  * 在办、没人下过结论、满足两类判据（实时监控 / 重点工单）的单，store 已按判据补齐条目
  * （`riskQueue.syncAutoEntries`，本页挂 watch 随命中与核实结论重跑），故全集只取条目这一处。
@@ -2757,7 +2757,7 @@ const SLICE_SOURCE: Record<UntaggedSlice, NonNullable<QueueRow['source']>> = {
 };
 
 /**
- * 「未标记」的某一路（未过工作组筛选、未过子档）。
+ * 「未标记」的某一路（未过班组筛选、未过子档）。
  * 两路**同出一个全集**（`untaggedUniverse`），故"两路之和 ＝ 页签上那个数"
  * 是构造出来的、不是碰巧成立的：换两条独立的查询去取，各自的"未标记"判据迟早分叉。
  */
@@ -2777,9 +2777,9 @@ function untaggedSliceRows(slice: UntaggedSlice): QueueRow[] {
 // 「重点工单」那一路的行就是工单，没有词可筛。
 // 🔴 「实时监控」那一路的风险词**作用在命中上**（行 ＝ 一条召回），一组里命中全被筛掉的工单整组不出现。
 //
-// 🔴 **不重复左栏与搜索条「工作组」已经承担的收窄**（加进去就是同一件事两个入口）：
+// 🔴 **不重复左栏与搜索条「班组」已经承担的收窄**（加进去就是同一件事两个入口）：
 //   · 等级 / 优先级 —— 左栏子档已经在做；
-//   · 班组 —— 搜索条里的「工作组」下拉已经在做；
+//   · 班组 —— 搜索条里的「班组」下拉已经在做；
 //   · 打标人 —— 这一段按定义全是没打过标的单，恒空。
 //   · 命中时间 / 核实结果 —— 不在这一段筛，查命中历史走命中台账那条查询条。
 interface UntaggedFilter {
@@ -2883,7 +2883,7 @@ function pendingRowHits(r: QueueRow): RiskHit[] {
 }
 /**
  * 这张单上**过了筛选的待核实命中**，按命中时刻倒序 —— 召回清单里这一组的那几行。
- * 🔴 组数（角标 / 工作组 / 分页）与行数（「N 条命中」）都从它派生，不另筛一遍。
+ * 🔴 组数（角标 / 班组 / 分页）与行数（「N 条命中」）都从它派生，不另筛一遍。
  * 关键词是工单级的：本单对上了，本组全部待核实命中都算匹配；对不上，整组没有命中。
  */
 function kwHitsOf(r: QueueRow): RiskHit[] {
@@ -3054,7 +3054,7 @@ const ticketListView = computed(() => (
 
 /**
  * 传给富列表的那批工单。**逐行对应 `pagedQueueRows`，一行不多一行不少** ——
- * 富列表里的行数必须恒等于左栏角标与工作组 chip，这是这一页的第一条不变量。
+ * 富列表里的行数必须恒等于左栏角标与班组 chip，这是这一页的第一条不变量。
  *
  * 🔴 **查不到工单的行不丢，补一张最小工单顶上**：`ticketOfRow` 返回 null 时，
  * 用这一行**自己确实带着的**东西（工单号、条目里的描述）拼一张出来，其余字段留空。
@@ -3139,7 +3139,7 @@ function onTicketRowAction(label: string, t: Ticket) {
 // 🔴 **行 ＝ 命中记录（一条召回一行）**，列与命中台账一致：等级 · 风险词 · 工单 · 命中内容 ·
 // 客户 / 班组 · 时间 · 处置。只列**尚未打标的工单**上**待核实**的命中（2026-09-15 裁决）；
 // 成立 / 误报的命中、已打标的单上的命中在命中台账里。
-// 🔴 **计数单位仍是工单**：左栏角标、工作组 chip、分页都按**工单组**数，
+// 🔴 **计数单位仍是工单**：左栏角标、班组 chip、分页都按**工单组**数，
 // 故 `实时监控 + 重点工单 ＝ 未标记页签数` 不变；命中条数只在分页处与单数并写。
 // 同一张单的命中相邻成组：组序沿用 `untaggedRows`（词表预设等级最重的在前），组内按命中时刻倒序，
 // 分页按组切，一组不被拆到两页。
@@ -3158,7 +3158,7 @@ const kwPageGroups = computed(() => (
     ? pagedQueueRows.value.map((r) => ({ row: r, hits: kwHitsOf(r) }))
     : []
 ));
-/** 当前这一档（已过筛选 / 子档 / 工作组）全部工单组上的命中条数 ——「N 单 · M 条命中」里的 M */
+/** 当前这一档（已过筛选 / 子档 / 班组）全部工单组上的命中条数 ——「N 单 · M 条命中」里的 M */
 const kwHitTotal = computed(() => (
   kwEvidenceView.value
     ? queueRows.value.reduce((n, r) => n + kwHitsOf(r).length, 0)
@@ -3322,7 +3322,7 @@ function rowConclusionAt(r: QueueRow): string {
 /* ---- 「按标记人」：打标人这一维 ---- */
 
 /**
- * 这条条目是谁打的标。**打标人是条目自己的字段**（`tag.by`），不像工作组要反查工单库。
+ * 这条条目是谁打的标。**打标人是条目自己的字段**（`tag.by`），不像班组要反查工单库。
  * 🔴 空值不吞：条目能进池就必然打过标，打标人为空是数据自身的异常，
  * 落一档「未署名」摆出来 —— 吞掉的话各人之和会小于「全部有风险」，
  * 而督导正是照这一行看"谁名下压着多少条"。
@@ -3333,7 +3333,7 @@ function taggerOf(e: RiskQueueEntry): string {
 }
 
 /**
- * 左栏「按标记人」展开出来的那几行。底表是**已过工作组**的池内条目 ——
+ * 左栏「按标记人」展开出来的那几行。底表是**已过班组**的池内条目 ——
  * 每一行的数字就是点进去表里的行数，且**各行之和 ≡「按标记人」≡「全部有风险」**
  * （只数高 / 中 / 低，不含无风险）。条数多的排前面，同数按姓名排。
  *
@@ -3355,8 +3355,8 @@ const taggerChips = computed(() => {
 });
 
 /**
- * 左栏选中的那一档，**未过工作组筛选**。工作组 chip 那一排的数字要靠它算 ——
- * 让工作组筛选影响自己那一排的数字，选中一个组之后其余几枚全变 0，
+ * 左栏选中的那一档，**未过班组筛选**。班组 chip 那一排的数字要靠它算 ——
+ * 让班组筛选影响自己那一排的数字，选中一个组之后其余几枚全变 0，
  * 人再也看不出该切到哪一组（与 `reportSourceBase` 是同一条道理）。
  */
 /**
@@ -3421,7 +3421,7 @@ function setQueueView(v: QueueView) {
   queuePageCurrent.value = 1;
 }
 
-// 等级分档、标记人与工作组换了，底表就换了一批，页码必须回到第一页 ——
+// 等级分档、标记人与班组换了，底表就换了一批，页码必须回到第一页 ——
 // 否则「第 3 页 → 切到中风险」会停在一张恰好没有行的页上。
 watch([tagLevelFilter, taggerFilter, poolStageFilter, groupFilter], () => {
   queuePageCurrent.value = 1;
@@ -4065,13 +4065,13 @@ interface RailGroup {
   items: RailItem[];
 }
 
-/** 池内某一等级的条目数（已过工作组筛选）。判档读现行 `tag.result`，与池内状态无关 */
+/** 池内某一等级的条目数（已过班组筛选）。判档读现行 `tag.result`，与池内状态无关 */
 function pooledLevelCount(lv: RiskLevel) {
   return inGroup(reportStore.pooledEntries.filter((e) => e.tag?.result === lv)).length;
 }
 
 /**
- * 池内某一处置阶段的条目数（已过工作组筛选）。
+ * 池内某一处置阶段的条目数（已过班组筛选）。
  *
  * 🔴 **底表与另两个轴逐字同源**（`pooledEntries`），判档读的是表里「池内状态」那一格
  * 显示的同一个词（`queueStatusText`）。故：
@@ -4411,7 +4411,7 @@ function setRail(key: RailKey) {
 /**
  * 离开「按标记人」就把标记人选择放掉。
  *
- * 【为什么它与工作组的处理不同】工作组横跨每一档不清空，因为组是工单的固有属性，
+ * 【为什么它与班组的处理不同】班组横跨每一档不清空，因为组是工单的固有属性，
  * 在哪一档都答得上、且每一档都摆着那一行 chip 让人看得见自己筛过。
  * 标记人这一行**只在这一档出现**：带着它切走，人在别处看不到任何"已按谁收窄"的痕迹，
  * 回来时又莫名其妙只剩几条。故这一维随档进随档出。
@@ -4468,7 +4468,7 @@ function setStage(stage: FunnelStage) {
 }
 
 /**
- * 工作组 chip 那一排：底表是**当前档在除工作组之外的全部条件下的行**，
+ * 班组 chip 那一排：底表是**当前档在除班组之外的全部条件下的行**，
  * 故选中某一组之后其余几枚的数字不变，人还看得出该切到哪一组。
  * 条数多的排前面；同数按组名排，免得同一份数据两次进来给出两个次序。
  */
@@ -4488,16 +4488,16 @@ const groupChips = computed(() => {
   };
 });
 
-/** 搜索条里的「工作组」下拉：各枚数字仍取除工作组之外条件下的行数（见 groupChips） */
+/** 搜索条里的「班组」下拉：各枚数字仍取除班组之外条件下的行数（见 groupChips） */
 const groupFilterOptions = computed(() => [
-  { value: 'all', label: `全部工作组（${groupChips.value.total}）` },
+  { value: 'all', label: `全部班组（${groupChips.value.total}）` },
   ...groupChips.value.rows.map(({ group, count }) => ({
     value: group,
     label: `${group}（${count}）`,
   })),
 ]);
 
-/** 左栏这一列只在漏斗的两个视图上作数；旁路的两个入口自带各自的筛选条，不套工作组 */
+/** 左栏这一列只在漏斗的两个视图上作数；旁路的两个入口自带各自的筛选条，不套班组 */
 const showGroupFilter = computed(() => listView.value === 'realtime' || listView.value === 'report');
 
 //
@@ -4996,7 +4996,7 @@ function toggleWordEnabled(w: RiskWord) {
       <div class="funnel-layout">
         <!--
           左栏 ＝ **阶段切换器 + 当前这一段自己的档**。
-          每一档右侧的数字**就是点进去表里的行数**（已过当前工作组筛选）——
+          每一档右侧的数字**就是点进去表里的行数**（已过当前班组筛选）——
           标签写着一个数、表里躺着另一批，正是本文件反复踩过的坑。
           🔴 **段内先全量、后取值**：不缩进 ＝ 本段的全量或与它并列的另一种分类，
           缩进一级 ＝ 上面那个分类的取值行，缩进两级 ＝ 取值行里再展开的一层。
@@ -5136,10 +5136,10 @@ function toggleWordEnabled(w: RiskWord) {
           -->
 
       <!--
-        工作组筛选（单选）。它是**另一层**：左栏选的是"链上哪一段"，搜索条选的是
+        班组筛选（单选）。它是**另一层**：左栏选的是"链上哪一段"，搜索条选的是
         "这一段里哪一个组的活"。横跨左栏每一档不清空 —— 组是工单的固有属性，
         不随条目走到哪一段而变；切档就清掉的话，人在某一组筛完切档会看到全部组，只会以为筛选失灵。
-        🔴 各枚的数字取的是**除工作组之外**的全部条件下的行数（见 groupChips）。
+        🔴 各枚的数字取的是**除班组之外**的全部条件下的行数（见 groupChips）。
       -->
       <div
         v-if="showGroupFilter && !(listView === 'realtime' && queueView === 'monitoring')"
@@ -5148,7 +5148,7 @@ function toggleWordEnabled(w: RiskWord) {
         <div class="list-toolbar list-toolbar--group-only">
           <div class="tb-fields tb-fields--group">
             <div class="fi">
-              <span class="fl">工作组</span>
+              <span class="fl">班组</span>
               <a-select
                 v-model:value="groupFilter"
                 size="small"
@@ -5167,7 +5167,7 @@ function toggleWordEnabled(w: RiskWord) {
         🔴 **只补筛选、不摆统计头**：命中统计（待核实 / 已核实 / 确认是风险 / 误报 / 规则准确率）
         讲的是词表质量，数在看板上展示；摆在日常打标的工作面前，
         等于把"规则准不准"塞给一个正在判"这张单有没有风险"的人。
-        🔴 字段按路而变、且**不重复左栏子档与搜索条「工作组」已经承担的收窄**，见 `UntaggedFilter`。
+        🔴 字段按路而变、且**不重复左栏子档与搜索条「班组」已经承担的收窄**，见 `UntaggedFilter`。
       -->
       <div
         v-if="listView === 'realtime' && queueView === 'monitoring'"
@@ -5177,7 +5177,7 @@ function toggleWordEnabled(w: RiskWord) {
         <div class="list-toolbar">
           <div class="tb-fields">
             <div class="fi">
-              <span class="fl">工作组</span>
+              <span class="fl">班组</span>
               <a-select
                 v-model:value="groupFilter"
                 size="small"
@@ -5256,7 +5256,7 @@ function toggleWordEnabled(w: RiskWord) {
             <button type="button" class="scan-go" @click="applyUntaggedQuery">
               <SearchOutlined />查询
             </button>
-            <!-- 重置只清本条筛选：左栏选中档与搜索条「工作组」是另外两层，不归它管 -->
+            <!-- 重置只清本条筛选：左栏选中档与搜索条「班组」是另外两层，不归它管 -->
             <button type="button" class="tb-btn" :disabled="!untaggedFilterDirty" @click="resetUntaggedFilter">
               <ReloadOutlined /><span>重置</span>
             </button>
@@ -5267,7 +5267,7 @@ function toggleWordEnabled(w: RiskWord) {
       <!-- 实时监控 · 空态：把当前视图讲出来，否则"这里没东西"会被读成"系统没在扫" -->
       <div v-if="listView === 'realtime' && !queueRows.length" class="ob-empty">
         <!-- 收窄条件必须在空态里复述，否则"筛空了"会被读成"没有了" -->
-        <template v-if="groupFilter !== 'all'">「{{ groupFilter }}」在这一档下没有条目 —— 点「全部工作组」看全部</template>
+        <template v-if="groupFilter !== 'all'">「{{ groupFilter }}」在这一档下没有条目 —— 点「全部班组」看全部</template>
         <template v-else-if="taggerFilter !== 'all'">「{{ taggerFilter }}」名下没有已标记的风险工单 —— 点左栏「按标记人」看全部</template>
         <template v-else-if="poolStageFilter !== 'all'">当前没有处在「{{ poolStageFilter }}」的池内条目 —— 点左栏「按处置阶段」看全部</template>
         <template v-else-if="untaggedFilterDirty">当前筛选条件下没有工单 —— 点「重置」看这一路的全部</template>
@@ -5784,8 +5784,8 @@ function toggleWordEnabled(w: RiskWord) {
 
       <!-- 风险工单池 · 空态：把当前收窄条件讲出来，否则"筛空了"会被读成"没有了" -->
       <div v-if="listView === 'report' && !reportRows.length" class="ob-empty">
-        <!-- 收窄条件必须在空态里复述，否则"筛空了"会被读成"没有了"；工作组排在最前，它是最外一层 -->
-        <template v-if="groupFilter !== 'all'">「{{ groupFilter }}」在这一档下没有池行 —— 点「全部工作组」看全部</template>
+        <!-- 收窄条件必须在空态里复述，否则"筛空了"会被读成"没有了"；班组排在最前，它是最外一层 -->
+        <template v-if="groupFilter !== 'all'">「{{ groupFilter }}」在这一档下没有池行 —— 点「全部班组」看全部</template>
         <template v-else-if="poolTicketTypeFilter !== 'all' || poolLevelFilter !== 'all'">当前原单类型 / 风险等级筛选下没有池行 —— 点对应的「全部」看全部</template>
         <template v-else-if="reportView === 'all'">
           {{
@@ -6738,7 +6738,7 @@ function toggleWordEnabled(w: RiskWord) {
         </div>
 
         <div class="op-field op-field-h tag-field-block">
-          <div class="op-label req">打标结论</div>
+          <div class="op-label req">风险等级</div>
           <div class="op-radio-cards op-radio-cards--row tag-radio-compact tag-radio-fill tag-radio-4">
             <div
               v-for="r in RISK_TAG_RESULTS"
@@ -6929,7 +6929,7 @@ function toggleWordEnabled(w: RiskWord) {
           而这两种组合恰恰决定条目进不进池。
         -->
         <div class="op-field op-field-h tag-field-block">
-          <div class="op-label req">打标结论</div>
+          <div class="op-label req">风险等级</div>
           <div class="op-radio-cards op-radio-cards--row tag-radio-compact tag-radio-fill tag-radio-4">
             <!-- 已结论的条目「无风险」一档置灰（store 侧 recordTag 同样拒绝），见 entryTagNoRiskLocked -->
             <div
