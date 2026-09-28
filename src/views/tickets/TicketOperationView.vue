@@ -62,7 +62,7 @@ import {
 } from './composables/opActionRegistry';
 import {
   flashEditInfoGate, flashEscalateComplaintGate, flashHeaderEscalateVisible, flashStageOf, resolveFlashView,
-  type FlashView,
+  FLASH_GATE_TIPS, type FlashView,
 } from './composables/flashGate';
 import { useFlashStore } from '@/stores/flash';
 import { useFlashConfigStore } from '@/stores/flashConfig';
@@ -489,10 +489,17 @@ const showRiskReport = computed(() => {
  * - **协同处理**（投诉单）：本单在风险工单池里，**不论该条目是否已结论**（§3.1 末行）。
  *
  * 两支都不满足就整枚不出。
+ *
+ * 🔴 **终态整枚不展示**（《【930】》§4.5「工单状态」行：非终态可用、终态不展示）。
+ * 判据取本页既有的 `isTicketTerminated(d.status)` —— 底栏隐藏（`hideActionBar`）与
+ * 结案后补充（`postClose`）读的是同一个，页头不另立一份终态表。
+ * 少了这一道，终态投诉单上还点得开协同弹窗，要到提交时才被共享件的 `isRiskTicketEnded`
+ * 拦回来 —— "界面允许 → 落库兜底"正是 §4.5 要避免的那一档。
  */
 const showRiskControl = computed(() => {
   const form = riskControlForm.value;
   if (!form) return false;
+  if (isTicketTerminated(d.value.status)) return false;
   if (form === 'collab') return !!riskPoolEntry.value;
   const item = riskOpenItem.value;
   if (!item) return false;
@@ -556,16 +563,28 @@ const riskForbiddenTip = computed(() => {
 });
 
 /**
- * 页头「风险管控」的置灰与悬停原文 —— **沿用原底栏协同形态那一条**（基线 §2「未认领」行
- * 的「协同处理」格 ※29：没有可承接建议的处理人，先领取或指派再协同）。
+ * 页头「风险管控」的置灰与悬停原文 —— **沿用原底栏协同形态那两条**（《【930】》§4.5
+ * 「工单状态」行：未认领、已转出置灰）：
+ * ① **未认领** —— 基线 §2「未认领」行的「协同处理」格 ※29：没有可承接建议的处理人，
+ *    先领取或指派再协同；
+ * ② **已转出** —— 单子在售后手上、客服侧冻结，判据读的就是底栏 `isTransferred`
+ *    那个值（`opState === 'transferred'`，由 `useTicketOperation` 一处产出），
+ *    悬停原文取共享的 `FLASH_GATE_TIPS.transferred`，与底栏逐字同一句。
+ *
  * 评估那一支不设置灰：它的出现条件不成立时按钮直接不出。
+ * 终态更不在这里 —— 那一档是「不展示」，由 `showRiskControl` 收。
  */
+const riskControlTransferred = computed(() => opState.value === 'transferred');
 const riskControlBlocked = computed(
-  () => riskControlForm.value === 'collab' && ticketUnclaimed.value,
+  () => riskControlForm.value === 'collab'
+    && (ticketUnclaimed.value || riskControlTransferred.value),
 );
-const riskControlTip = computed(
-  () => (riskControlBlocked.value ? '本单尚未认领，领取或指派后可协同处理' : ''),
-);
+const riskControlTip = computed(() => {
+  if (!riskControlBlocked.value) return '';
+  // 未认领先于已转出判：与底栏「未认领先于在队报备」同一个先后次序
+  if (ticketUnclaimed.value) return '本单尚未认领，领取或指派后可协同处理';
+  return FLASH_GATE_TIPS.transferred;
+});
 /** 页头「风险管控」弹窗的开关 */
 const riskControlOpen = ref(false);
 

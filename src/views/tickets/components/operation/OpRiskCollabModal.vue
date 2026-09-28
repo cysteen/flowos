@@ -19,6 +19,10 @@ import { riskLevelText } from '@/config/risk';
  * 工单处理页页头「风险管控」弹窗的投诉支用的是同一份，两处不各写一套。
  * 本文件只剩"这张单现在什么情况"那几段抬头与主按钮壳。
  *
+ * 🔴 **抬头也与那一枚同口径**：标题「风险管控」+ 副标题「来源 · 单号」。
+ * 「协同处理」是这个动作在规格里的名字，不是弹窗抬头 —— 同一个动作在两个入口上
+ * 写两个抬头，人会以为自己点开的是两件事。
+ *
  * 一个动作 + 多选建议项：客诉专员对风险工单池里的**投诉单**给一次意见与建议。
  * 提交后发生**三件事**，除此之外工单一格不动：
  *   ① 落工单处理履历（《【720】》第八类「风险结论」）—— **落库在 `stores/riskPool.ts`
@@ -73,6 +77,16 @@ const handler = computed(() => ticket.value?.assignee ?? '');
 const poolEntry = computed(
   () => queue.entriesOf(props.ticketNo).find((e) => isPooledStatus(e.status)) ?? null,
 );
+/**
+ * 副标题 ＝ **来源 · 单号**（如「实时监控 · IFLYZX-…」），与工单处理页页头那一枚
+ * 「风险管控」弹窗（`OpRiskControlModal.vue`）逐字同口径 —— 同一个动作在两个入口上
+ * 不能有两个抬头。来源取条目自带的 `source`，不另造词；条目一时取不到就只写单号。
+ */
+const subtitle = computed(() => {
+  const src = poolEntry.value?.source;
+  return src ? `${src} · ${props.ticketNo}` : props.ticketNo;
+});
+
 const tagLine = computed(() => {
   const tag = poolEntry.value?.tag;
   if (!tag) return '';
@@ -125,7 +139,8 @@ function onOk() {
 <template>
   <OpActionModal
     :open="open"
-    title="协同处理"
+    title="风险管控"
+    :subtitle="subtitle"
     :icon="TeamOutlined"
     tone="primary"
     :width="520"
