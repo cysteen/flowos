@@ -956,30 +956,41 @@ function tagAssessEntryOf(ticketNo: string | undefined): RiskQueueEntry | null {
 }
 
 /**
- * 下半整块出不出的**三道与单类型无关的门**（任一不过整块不出；不出即不参与校验，
+ * 下半整块出不出的**两道与单类型无关的门**（任一不过整块不出；不出即不参与校验，
  * 提交＝只打标，原行为）：
  *   ① **打标结论本身要"有风险"** —— 核实那一路＝本次命中成立且有等级，
  *      风险打标那一路＝高 / 中 / 低。选「误报」/「无风险」整段不出。
- *   ② **有一条承载结论的条目，且它还没出过结论** —— 一条条目只出一次结论
- *      （§9 规则 22 提交即固化）；两个「修正」形态改的是打标结论，不重开结论。
+ *   ② **有一条承载结论 / 协同记录的条目** —— 没有承载体时结论落不了库。
  *   ③ **当前用户有出结论的权** —— 见 `canAssessOnTag`（投诉督导只读，不在其中）。
+ *
+ * 🔴 **「这条条目还没出过结论」那一道只归评估支**（挪进了 `showTagAssessFor`）：
+ * 一条条目只出一次**评估**结论（§9 规则 22 提交即固化），而**协同处理本就可多次**
+ * （§4.5 次数行：首次协同把条目转「已结论」，再次协同只追加记录、状态不变，
+ * 判据在 `riskPool.coordinate` 里）。把它摆在这一层，已结论的投诉单条目
+ * 就再也打不开协同段 —— §4.5「协同可多次」在这个入口上失效。
  */
 function tagLowerHalfOpenFor(entry: RiskQueueEntry | null, hasRisk: boolean): boolean {
   if (!hasRisk || !canAssessOnTag.value) return false;
-  return !!entry && entry.status !== '已评估';
+  return !!entry;
 }
 
 /**
- * 下半走**评估结论**那一支：上面三道门 + **原单不是投诉单**
- * —— 投诉单不做风险评估，它走协同处理那一支（与底部说明同一口径）。
+ * 下半走**评估结论**那一支：上面两道门 + **这条条目还没出过结论**
+ * （一条条目只出一次评估结论；两个「修正」形态改的是打标结论，不重开结论）
+ * + **原单不是投诉单** —— 投诉单不做风险评估，它走协同处理那一支（与底部说明同一口径）。
  */
 function showTagAssessFor(entry: RiskQueueEntry | null, hasRisk: boolean): boolean {
-  return tagLowerHalfOpenFor(entry, hasRisk) && !isComplaintTicket(entry!.ticketNo);
+  return tagLowerHalfOpenFor(entry, hasRisk)
+    && entry!.status !== '已评估'
+    && !isComplaintTicket(entry!.ticketNo);
 }
 
 /**
- * 下半走**协同处理**那一支：上面三道门 + **原单是投诉单**。
- * 两支互斥且并集就是"下半出不出"，故没有"两段同时出"或"都不出却该出"的中间态。
+ * 下半走**协同处理**那一支：上面两道门 + **原单是投诉单**。
+ * 🔴 **不判「已评估」**（见 `tagLowerHalfOpenFor` 的红字）：协同可多次，
+ * 已结论的投诉单条目再次进来照样出这一段，落库仍走共享件 `submitTo`。
+ * 两支仍然互斥（投诉 / 非投诉），但并集不再等于"下半出不出" ——
+ * 非投诉单的已结论条目两支都不出，那正是"一条条目只出一次评估结论"。
  */
 function showTagCollabFor(entry: RiskQueueEntry | null, hasRisk: boolean): boolean {
   return tagLowerHalfOpenFor(entry, hasRisk) && isComplaintTicket(entry!.ticketNo);
@@ -2502,10 +2513,10 @@ function verifyOutcomeTip(no: string, entry: TagEntry, outcome: HitVerifyOutcome
     return `已核实这条命中为「成立 · ${levelText(outcome.level)}」，${no} 已打标「${levelText(outcome.level)}」并进风险工单池等待领取`;
   }
   if (outcome.kind === 'rerouted') {
-    return `已记为误报；${no} 已无待核实命中，改归「${outcome.source}」，仍在未标记`;
+    return `已记为误报；${no} 已无待核实命中，改归「${outcome.source}」，仍在待判`;
   }
   if (outcome.kind === 'noRisk') {
-    return `已记为误报；${no} 已无待核实命中，已标记为无风险，可在「已标记 · 无风险」档里复核`;
+    return `已记为误报；${no} 已无待核实命中，已判为无风险，可在「已判 · 无风险」档里复核`;
   }
   return entry.verdict === '误报'
     ? '已记为误报，本条不计入风险，只回填词表准确率'
@@ -3542,7 +3553,7 @@ function openBulk() {
   bulkOpen.value = true;
 }
 function saveBulk() {
-  if (!bulkResult.value) { message.warning('请先给这批条目定一个打标结论'); return; }
+  if (!bulkResult.value) { message.warning('请先给这批条目定一个风险等级'); return; }
   const result = bulkResult.value;
   const at = nowStamp();
   const targets = bulkTargets.value;
@@ -3562,7 +3573,7 @@ function saveBulk() {
   message.success(
     isPoolLevel(result)
       ? `已对 ${done} 条打标「${riskLevelText(result)}」，已进风险工单池等待领取`
-      : `已将 ${done} 条标记为无风险，不进池；可在「已标记 · 无风险」档里复核`,
+      : `已将 ${done} 条判为无风险，不进池；可在「已判 · 无风险」档里复核`,
   );
   bulkOpen.value = false;
   clearBulk();
@@ -3786,7 +3797,7 @@ function saveEntryTag() {
   // 打标只对 A 线条目开（报备行的操作列写「—」，见条目表），故这里必有 `entry`
   if (!target?.entry) return;
   if (!canRiskTag.value) { message.warning('无打标权限'); return; }
-  if (!entryTagResult.value) { message.warning('请先给出打标结论'); return; }
+  if (!entryTagResult.value) { message.warning('请先选择风险等级'); return; }
   const amend = entryTagAmend.value;
   /*
    * 这一次到底要做哪几件事，**在任何校验之前先认清**：
@@ -3884,13 +3895,13 @@ function saveEntryTag() {
     else if (prevStatus === '已标记无风险') tip = `已把 ${no} 改判为「${lv}」，已补进风险工单池等待领取`;
     else tip = `已对 ${no} 打标「${lv}」，已进风险工单池等待领取`;
   } else if (prevStatus === '评估中') {
-    tip = `已把 ${no} 改判为无风险，已撤出风险工单池、承办人已清空；可在「已标记 · 无风险」档里复核`;
+    tip = `已把 ${no} 改判为无风险，已撤出风险工单池、承办人已清空；可在「已判 · 无风险」档里复核`;
   } else if (prevStatus === '待分派') {
-    tip = `已把 ${no} 改判为无风险，已撤出风险工单池；可在「已标记 · 无风险」档里复核`;
+    tip = `已把 ${no} 改判为无风险，已撤出风险工单池；可在「已判 · 无风险」档里复核`;
   } else if (prevStatus === '已标记无风险') {
     tip = `已更新 ${no} 的无风险打标`;
   } else {
-    tip = `已将 ${no} 标记为无风险，不进池；可在「已标记 · 无风险」档里复核`;
+    tip = `已将 ${no} 判为无风险，不进池；可在「已判 · 无风险」档里复核`;
   }
   message.success(tip);
 }
@@ -5153,14 +5164,19 @@ function toggleWordEnabled(w: RiskWord) {
                 等于在屏幕上留一个点开什么也做不了的入口。
               -->
               <!--
-                手动筛查退成**动作按钮**：它不是一份平行的清单，而是"往待标记里补货"的手段。
+                手动筛查退成**动作按钮**：它不是一份平行的清单，而是"往待判里补货"的手段。
                 点开的仍是原来那套九维筛查条件面板，能力一格没动。
+
+                🔴 **入口本身受打标权门控**（§3.5 / 验收 93：无打标权不展示）：门内的
+                「并入清单」同受这道门（`v-if="canRiskTag"` + `adoptScan()` 的运行时兜底），
+                判据同源取 `canRiskTag`，不另立一份角色表。
               -->
               <button
+                v-if="canRiskTag"
                 type="button"
                 class="row-btn scan-entry"
                 :class="{ active: listView === 'scan' }"
-                title="旁路 · 两路自动识别的兜底：实时监控 / 重点工单 都没捞到的单，靠它拿条件去扫存量捞出来；扫出的命中勾选并入清单后，由自动识别把它带进「未标记」。它不是链上的一段，是往上游补货的手段"
+                title="旁路 · 两路自动识别的兜底：实时监控 / 重点工单 都没捞到的单，靠它拿条件去扫存量捞出来；扫出的命中勾选并入清单后，由自动识别把它带进「待判」。它不是链上的一段，是往上游补货的手段"
                 @click="setListView('scan')"
               >
                 <SearchOutlined :style="{ fontSize: '12px' }" />
@@ -5326,7 +5342,7 @@ function toggleWordEnabled(w: RiskWord) {
         <template v-else-if="taggerFilter !== 'all'">「{{ taggerFilter }}」名下没有已标记的风险工单 —— 点左栏「按标记人」看全部</template>
         <template v-else-if="poolStageFilter !== 'all'">当前没有处在「{{ poolStageFilter }}」的池内条目 —— 点左栏「按处置阶段」看全部</template>
         <template v-else-if="untaggedFilterDirty">当前筛选条件下没有工单 —— 点「重置」看这一路的全部</template>
-        <template v-else-if="queueView === 'monitoring' && untaggedSub">这一档下没有未标记的工单 —— 点上一级看这一路的全部</template>
+        <template v-else-if="queueView === 'monitoring' && untaggedSub">这一档下没有待判的工单 —— 点上一级看这一路的全部</template>
         <template v-else-if="queueView === 'monitoring'">这一路没有待判的工单 —— 换一路看，或用右上角「手动筛查」去存量里捞</template>
         <template v-else-if="queueView === 'noRisk'">当前没有被判为无风险的条目</template>
         <template v-else-if="queueView === 'reported'">当前没有已出结论或已撤回的风险报备</template>
@@ -6778,7 +6794,7 @@ function toggleWordEnabled(w: RiskWord) {
         <div class="tag-form-foot">
           {{
             bulkResult === NO_RISK
-              ? '标记为无风险的不进池，落「已标记 · 无风险」档，可在那里复核'
+              ? '判为无风险的不进池，落「已判 · 无风险」档，可在那里复核'
               : '低 / 中 / 高一律进风险工单池等待领取；本批须同一结论，有分歧请分次打标'
           }}
         </div>
@@ -6974,7 +6990,7 @@ function toggleWordEnabled(w: RiskWord) {
             entryTagNoRiskLocked
               ? NO_RISK_LOCKED_TIP
               : entryTagResult === NO_RISK
-                ? '判为无风险的不进池，落「已标记 · 无风险」档 —— 那里是核查漏标误判的地方，不是回收站'
+                ? '判为无风险的不进池，落「已判 · 无风险」档 —— 那里是核查漏标误判的地方，不是回收站'
                 : entryTagResult
                   ? (isComplaintTicket(entryTagTarget.ticketNo)
                     ? showEntryTagCollab
