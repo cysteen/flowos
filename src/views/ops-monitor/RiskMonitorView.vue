@@ -3670,12 +3670,6 @@ function pickEntryTagResult(r: RiskTagResult) {
   if (r === NO_RISK && entryTagNoRiskLocked.value) { message.warning(NO_RISK_LOCKED_TIP); return; }
   entryTagResult.value = r;
 }
-const canSaveEntryTag = computed(() => {
-  if (!canRiskTag.value || !entryTagResult.value) return false;
-  if (entryTagResult.value === NO_RISK && entryTagNoRiskLocked.value) return false;
-  if (entryTagAmend.value) return entryTagDirty.value && !!entryTagReason.value.trim();
-  return true;
-});
 
 /* ---- 风险打标弹窗里的「评估结论」段（判出高 / 中 / 低之后接出，可留空） ---- */
 
@@ -3720,6 +3714,31 @@ const showEntryTagCollab = computed(() => showTagCollabFor(
 const entryTagCollabFilled = computed(() => {
   const f = entryTagCollab.fields;
   return !!f.opinion.trim() || f.advices.length > 0 || !!f.otherAdvice.trim();
+});
+
+/**
+ * 下半**给没给东西**：两支互斥，取各自那一支自己的"动过没有"判据
+ * （评估支＝选了决策，协同支＝三项里动过任意一项）。
+ */
+const entryTagLowerFilled = computed(
+  () => (showEntryTagAssess.value && !!entryTagAssessDecision.value)
+    || (showEntryTagCollab.value && entryTagCollabFilled.value),
+);
+/**
+ * 主按钮可用性 ＝ **上半可保存 ∨ 下半有内容**。
+ *
+ * 🔴 修正形态下**不能只认上半**：人从「已判」段进来，多半是为了补一条评估结论 / 协同意见，
+ * 等级一个字都不必改。按老判据（改动过 ∧ 填了修正原因）那种人只会看到一个永远灰着的按钮。
+ * 没改判就没有"为什么改"可答，故这一路也不要「修正原因」——它只在真改判时必填。
+ * 定义位置排在下半两支之后，读的顺序就是判据的顺序。
+ */
+const canSaveEntryTag = computed(() => {
+  if (!canRiskTag.value || !entryTagResult.value) return false;
+  if (entryTagResult.value === NO_RISK && entryTagNoRiskLocked.value) return false;
+  if (entryTagAmend.value) {
+    return (entryTagDirty.value && !!entryTagReason.value.trim()) || entryTagLowerFilled.value;
+  }
+  return true;
 });
 /**
  * 主按钮文案：段内决策＝「升级」→「确认升级」（与三处评估弹窗一致，
@@ -3769,8 +3788,19 @@ function saveEntryTag() {
   if (!canRiskTag.value) { message.warning('无打标权限'); return; }
   if (!entryTagResult.value) { message.warning('请先给出打标结论'); return; }
   const amend = entryTagAmend.value;
-  if (amend && !entryTagDirty.value) { message.warning('打标结论没有变化，无需修改'); return; }
-  if (amend && !entryTagReason.value.trim()) { message.warning('请填写修正原因'); return; }
+  /*
+   * 这一次到底要做哪几件事，**在任何校验之前先认清**：
+   *   · `retag` —— 上半那一下打标落不落。首次打标必落；修正形态只在结论真的动过时才落，
+   *     没动过还落一遍，打标历史里就多一条与上一条逐字相同的记录、条数还虚增。
+   *   · `assessDec` / `collab` —— 下半两支各自给没给东西（留空＝不做那一支，与首次打标同形）。
+   * 三者全空才是"什么都没发生"，才拦；只要下半有一支有内容，这一次就是成立的提交。
+   */
+  const retag = !amend || entryTagDirty.value;
+  const assessDec = showEntryTagAssess.value ? entryTagAssessDecision.value : '';
+  const collab = showEntryTagCollab.value && entryTagCollabFilled.value;
+  if (!retag && !assessDec && !collab) { message.warning('打标结论没有变化，无需修改'); return; }
+  // 「为什么改」只在**真的改判**时才问得出口：没改判的那一路不要它
+  if (retag && amend && !entryTagReason.value.trim()) { message.warning('请填写修正原因'); return; }
   const prev = target.tag?.result;
   const result = entryTagResult.value;
   // 读条目上的现行状态，不读行快照：弹窗开着的这段时间里别人可能已经给了结论
@@ -3781,7 +3811,6 @@ function saveEntryTag() {
    * 🔴 **整个跑在任何写入之前**：拦下时打标那一下也不该发生 ——
    * 人只是漏填了升级说明，不该换来一条已经进了池、却没有结论的条目。
    */
-  const assessDec = showEntryTagAssess.value ? entryTagAssessDecision.value : '';
   if (assessDec) {
     entryTagAssessTried.value = true;
     if (!tagAssessFieldsOk(showEntryTagAssessEscalate.value)) return;
@@ -3799,20 +3828,22 @@ function saveEntryTag() {
    * 🔴 拦下时打标那一下也不该发生 —— 人只是漏填了评估意见，不该换来一条已经进了池、
    * 却没有协同意见的条目。
    */
-  const collab = showEntryTagCollab.value && entryTagCollabFilled.value;
   if (collab) {
     if (isRiskTicketEnded(target.ticketNo)) { message.warning('本单已结束，无法协同处理'); return; }
     if (!entryTagCollab.validate()) return;
   }
-  const ok = reportStore.recordTag(target.entry.id, {
-    result,
-    note: entryTagNote.value.trim(),
-    by: user.current.name,
-    byRole: user.role.name,
-    at: nowStamp(),
-    ...(amend ? { amendReason: entryTagReason.value.trim() } : {}),
-  });
-  if (!ok) { message.warning('这条监控条目已不存在，请刷新后再看'); return; }
+  // 没改判就不落打标：条目本就带着结论、早已在池里，下半两支找得到它（见下方两处注释）
+  if (retag) {
+    const ok = reportStore.recordTag(target.entry.id, {
+      result,
+      note: entryTagNote.value.trim(),
+      by: user.current.name,
+      byRole: user.role.name,
+      at: nowStamp(),
+      ...(amend ? { amendReason: entryTagReason.value.trim() } : {}),
+    });
+    if (!ok) { message.warning('这条监控条目已不存在，请刷新后再看'); return; }
+  }
   // 段内给了结论：条目照常进池，但**直接落「已结论」**（结论人＝打标人、结论时刻＝本次提交时刻）
   const assessPhrase = assessDec ? commitTagAssess(target.ticketNo, assessDec) : '';
   /*
@@ -3830,6 +3861,16 @@ function saveEntryTag() {
    * （已领取的承办人一并清空，见 store 的 `recordTag`）。
    */
   const no = target.ticketNo;
+  /*
+   * 上半没落（没改判、只提交了下半）：这一次发生的事里没有"打标"，一个字都不能提。
+   *   · 评估支 —— `commitTagAssess` 返回的是接在打标那句后面的半句（以「并」起头），
+   *     这一路没有前半句，去掉那个「并」自己成句；它返回空串就是一个字都没写，不报成功。
+   *   · 协同支 —— 提示由共享件 `submitTo` 自己那条发（含"已转已结论"那半句），本页不复述。
+   */
+  if (!retag) {
+    if (assessPhrase) message.success(`已为 ${no} ${assessPhrase.replace(/^并/, '')}`);
+    return;
+  }
   const prevText = prev && isPoolLevel(prev) ? riskLevelText(prev) : prev;
   let tip: string;
   if (isPoolLevel(result)) {
