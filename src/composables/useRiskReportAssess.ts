@@ -14,7 +14,7 @@ import {
 } from '@/stores/riskShared';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
 import { isComplaintPoolTicket } from '@/stores/riskPool';
-// 选「升级」时要补齐的投诉单专属建单要素：字段、级联、显隐判据与校验只此一份，三个评估入口共用
+// 选「升级」时要补齐的投诉单专属建单要素（投诉一类 / 二类）：字段、级联与校验只此一份，三个评估入口共用
 import {
   escalateComplaintOverrides,
   useEscalateComplaintFields,
@@ -85,7 +85,7 @@ export function escalateHintOf(ticketNo: string | undefined): string {
 }
 
 /**
- * 选「升级」后要不要出「投诉工单专属字段」那一段 —— **三个评估入口的唯一判据**。
+ * 选「升级」后要不要出「投诉工单专属字段」（投诉一类 / 二类）那一段 —— **三个评估入口的唯一判据**。
  *
  * 只在**会派生一张新投诉单**时出：原单已是投诉单的那一支不派生新单（`escalateHintOf` 里
  * 那句兜底文案写的就是「本单状态不变、不派生新单」），没有新单可填，摆出一段建单要素
@@ -238,8 +238,8 @@ export function deriveEscalatedComplaint(input: {
   assignee: string;
   reason: string;
   /**
-   * 评估弹窗里补齐的投诉单专属建单要素。新单是一张投诉单，这几格是建单要素而不是继承项
-   * ——原单（咨询 / 建议 / 商机 / 刷机）身上本来就没有，不补就永远是空的。
+   * 评估弹窗里补齐的投诉单专属建单要素（投诉一类 / 二类）。新单是一张投诉单，这两项是建单要素
+   * 而不是继承项——原单（咨询 / 建议 / 商机 / 刷机）身上本来就没有，不补就永远是空的。
    */
   complaint?: EscalateComplaintPayload;
 }) {
@@ -300,14 +300,14 @@ export function useRiskReportAssess() {
   const escalateHint = computed(() => escalateHintOf(assessTarget.value?.ticketNo));
 
   /**
-   * 「投诉工单专属字段」段落（排在「升级说明」之后）。字段与校验走共享 composable，
-   * 组件是共享的 `EscalateComplaintFields.vue` —— 报备池与工单页两个入口由本 composable 一并接上，
-   * 风险监控页那个弹窗自持一份状态、调的是同一对 composable + 组件。
+   * 「投诉工单专属字段」段落（排在「升级说明」之后，投诉一类 / 二类两项）。字段与校验走共享
+   * composable，组件是共享的 `EscalateComplaintFields.vue` —— 报备池与工单页两个入口由本
+   * composable 一并接上，风险监控页那个弹窗自持一份状态、调的是同一对 composable + 组件。
    *
    * 切到「不升级」段落隐藏但**状态留在这里不清**，切回来原样还在；
-   * 提交「不升级」时 `payload()` 根本不会被调到，这些值一律不落库。
+   * 提交「不升级」时 `payload()` 根本不会被调到，这两项一律不落库。
    */
-  const escalateFields = useEscalateComplaintFields(() => assessTarget.value?.ticketNo);
+  const escalateFields = useEscalateComplaintFields();
   const showEscalateFields = computed(() =>
     showEscalateComplaintFields(assessDecision.value, assessTarget.value?.ticketNo),
   );
@@ -362,8 +362,7 @@ export function useRiskReportAssess() {
 
     const escalate = assessDecision.value === '升级';
     const derive = escalate && !isComplaintTicket(target.ticketNo);
-    // 会派生新投诉单 → 先过投诉专属字段的必填校验，缺项拦下提交、红字落在字段下方。
-    // 隐藏的字段不参与校验（判据与显隐同源，见 useEscalateComplaintFields）
+    // 会派生新投诉单 → 先过投诉一类 / 二类的必填校验，缺项拦下提交、红字落在字段下方
     if (showEscalateFields.value && !escalateFields.validate()) return;
     const escalatedToNo = derive ? nextEscalatedNo() : undefined;
 
