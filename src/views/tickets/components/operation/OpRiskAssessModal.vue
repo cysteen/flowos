@@ -50,6 +50,7 @@ const {
   assessAdvice,
   missAssessDecision,
   missAssessAdvice,
+  assessOkText,
   escalateHint,
   escalateFields,
   showEscalateFields,
@@ -118,7 +119,7 @@ const modalTitle = computed(() => (assessTarget.value?.source === REPORT_SOURCE 
     :icon="EditOutlined"
     tone="primary"
     :width="600"
-    ok-text="提交结论"
+    :ok-text="assessOkText"
     @update:open="assessOpen = $event"
     @ok="confirmAssess"
   >
@@ -149,7 +150,12 @@ const modalTitle = computed(() => (assessTarget.value?.source === REPORT_SOURCE 
             class="ticket-assess-hint ticket-assess-foot"
           >{{ escalateHint }}</div>
         </div>
-        <div class="op-field">
+        <!--
+          结论正文那一格。选「升级」（且会派生新投诉单）时它并进下面那一段、改由段内的
+          「升级说明」渲染，故本格只在**段不出**时出（写「反馈意见」，或投诉单那一支的
+          「升级说明」）—— 两处渲染的是同一个格子（assessAdvice 代理 escalateFields.fields.advice）。
+        -->
+        <div v-if="!showEscalateFields" class="op-field">
           <div class="op-label req">{{ adviceLabel }}</div>
           <a-textarea
             v-model:value="assessAdvice"
@@ -161,8 +167,8 @@ const modalTitle = computed(() => (assessTarget.value?.source === REPORT_SOURCE 
       </section>
 
       <!--
-        ② 投诉工单专属字段：选「升级」（且会派生新投诉单）时才出，排在「升级说明」之后。
-        只投诉一类 / 二类两项、均必填；切到「不升级」整段隐藏、已填值保留。
+        ② 投诉工单专属字段：选「升级」（且会派生新投诉单）时才出。
+        投诉一类 / 二类 / 升级说明三项、均必填；切到「不升级」整段隐藏、已填值保留。
       -->
       <EscalateComplaintFields v-if="showEscalateFields" :ctl="escalateFields" />
     </div>

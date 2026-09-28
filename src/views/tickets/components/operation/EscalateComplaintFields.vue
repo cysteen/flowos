@@ -3,8 +3,12 @@ import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue'
 import type { EscalateComplaintFieldsCtl } from '@/composables/useEscalateComplaintFields';
 
 /**
- * 风险评估选「升级」后出现的**投诉工单专属字段**段落（排在「升级说明」之后）：
- * 投诉一类 / 投诉二类两项，均必填。
+ * 风险评估选「升级」后出现的**投诉工单专属字段**段落：
+ * 投诉一类 / 投诉二类 / 升级说明三项，均必填，升级说明排在两项分类之后、段内最后一项。
+ *
+ * 「升级说明」此前是三个宿主弹窗各摆一个的独立字段，现已并进本段；它的值仍存在
+ * `useEscalateComplaintFields` 的 `fields.advice` 上（宿主选「不升级」时同一个格子
+ * 改叫「反馈意见」、由宿主自己那一格渲染），三处不各存一份。
  *
  * 🔴 **三个评估入口共用这一个组件**：工单页底栏「风险评估」（`OpRiskAssessModal`）、
  * 风险监控页评估工作面（`views/ops-monitor/RiskMonitorView.vue`）、
@@ -47,6 +51,17 @@ defineProps<{ ctl: EscalateComplaintFieldsCtl }>();
         />
         <p v-if="ctl.errors.complaintL2" class="ecf-err">{{ ctl.errors.complaintL2 }}</p>
       </div>
+    </div>
+
+    <!-- 升级说明：段内最后一项，必填。整行占满，不进上面那张两列栅格 -->
+    <div class="ecf-field">
+      <label class="ecf-label"><span class="ecf-req">*</span>升级说明</label>
+      <a-textarea
+        v-model:value="ctl.fields.advice"
+        :rows="3"
+        placeholder="写清升级理由与后续处置安排…"
+      />
+      <p v-if="ctl.errors.advice" class="ecf-err">{{ ctl.errors.advice }}</p>
     </div>
   </section>
 </template>

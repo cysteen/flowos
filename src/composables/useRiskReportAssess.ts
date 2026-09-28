@@ -274,8 +274,30 @@ export function useRiskReportAssess() {
   const assessOpen = ref(false);
   const assessTarget = ref<RiskPoolItem | null>(null);
   const assessDecision = ref<AssessDecision | ''>('');
-  const assessAdvice = ref('');
   const assessTried = ref(false);
+
+  /**
+   * 「投诉工单专属字段」段落（投诉一类 / 二类 / 升级说明三项）。字段与校验走共享
+   * composable，组件是共享的 `EscalateComplaintFields.vue` —— 报备池与工单页两个入口由本
+   * composable 一并接上，风险监控页那个弹窗自持一份状态、调的是同一对 composable + 组件。
+   *
+   * 切到「不升级」段落隐藏但**状态留在这里不清**，切回来原样还在；
+   * 提交「不升级」时 `payload()` 根本不会被调到，两项分类一律不落库。
+   */
+  const escalateFields = useEscalateComplaintFields();
+  const showEscalateFields = computed(() =>
+    showEscalateComplaintFields(assessDecision.value, assessTarget.value?.ticketNo),
+  );
+
+  /**
+   * 结论正文那一格。值存在 `escalateFields.fields.advice` 上，本 ref 只是个读写代理：
+   * 选「升级」时这一格由段内的「升级说明」渲染，其余情形由宿主弹窗自己那格「反馈意见」渲染，
+   * 两处写的是同一个格子 —— 切换决策不丢字，提交路径照常从 `assessAdvice` 取值。
+   */
+  const assessAdvice = computed({
+    get: () => escalateFields.fields.advice,
+    set: (v: string) => { escalateFields.fields.advice = v; },
+  });
 
   const missAssessDecision = computed(() => assessTried.value && !assessDecision.value);
   const missAssessAdvice = computed(() => assessTried.value && !assessAdvice.value.trim());
@@ -299,18 +321,8 @@ export function useRiskReportAssess() {
    */
   const escalateHint = computed(() => escalateHintOf(assessTarget.value?.ticketNo));
 
-  /**
-   * 「投诉工单专属字段」段落（排在「升级说明」之后，投诉一类 / 二类两项）。字段与校验走共享
-   * composable，组件是共享的 `EscalateComplaintFields.vue` —— 报备池与工单页两个入口由本
-   * composable 一并接上，风险监控页那个弹窗自持一份状态、调的是同一对 composable + 组件。
-   *
-   * 切到「不升级」段落隐藏但**状态留在这里不清**，切回来原样还在；
-   * 提交「不升级」时 `payload()` 根本不会被调到，这两项一律不落库。
-   */
-  const escalateFields = useEscalateComplaintFields();
-  const showEscalateFields = computed(() =>
-    showEscalateComplaintFields(assessDecision.value, assessTarget.value?.ticketNo),
-  );
+  /** 弹窗主按钮：决策＝升级 →「确认升级」，未选或「不升级」→「提交结论」（三个入口一致） */
+  const assessOkText = computed(() => (assessDecision.value === '升级' ? '确认升级' : '提交结论'));
 
   /** 「本单另有」区四行，取数见 `riskOthersOf`（三个入口同源） */
   const assessOthers = computed(() => {
@@ -341,8 +353,8 @@ export function useRiskReportAssess() {
     }
     assessTarget.value = r;
     assessDecision.value = '';
-    assessAdvice.value = '';
     assessTried.value = false;
+    // 结论正文（升级说明 / 反馈意见）与投诉一类 / 二类同在 escalateFields，reset 一次清完
     escalateFields.reset();
     assessOpen.value = true;
   }
@@ -350,7 +362,14 @@ export function useRiskReportAssess() {
   function confirmAssess() {
     assessTried.value = true;
     const target = assessTarget.value;
-    if (!target || !assessValid.value || !assessDecision.value) return;
+    if (!target) return;
+    /*
+     * 会派生新投诉单 → 段内三项（投诉一类 / 二类 / 升级说明）的必填校验**先跑**，
+     * 缺项的红字才落得到字段下方。放在 `assessValid` 之后的话，升级说明空着会在那一句
+     * 直接 return，而它此时正藏在段内，屏幕上一句红字都不会出。
+     */
+    const escalateFieldsOk = !showEscalateFields.value || escalateFields.validate();
+    if (!assessValid.value || !assessDecision.value || !escalateFieldsOk) return;
 
     // 提交前重查（§5.6）：条目现值 + 原单终态，拦下时不落任何东西
     const block = assessSubmitBlockOf(target.id, assessDecision.value, user.name || '当前用户');
@@ -362,8 +381,6 @@ export function useRiskReportAssess() {
 
     const escalate = assessDecision.value === '升级';
     const derive = escalate && !isComplaintTicket(target.ticketNo);
-    // 会派生新投诉单 → 先过投诉一类 / 二类的必填校验，缺项拦下提交、红字落在字段下方
-    if (showEscalateFields.value && !escalateFields.validate()) return;
     const escalatedToNo = derive ? nextEscalatedNo() : undefined;
 
     if (escalatedToNo) {
@@ -406,6 +423,7 @@ export function useRiskReportAssess() {
     missAssessAdvice,
     assessAdviceLabel,
     assessAdvicePlaceholder,
+    assessOkText,
     escalateHint,
     escalateFields,
     showEscalateFields,

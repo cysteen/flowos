@@ -65,6 +65,7 @@ const {
   missAssessAdvice,
   assessAdviceLabel,
   assessAdvicePlaceholder,
+  assessOkText,
   // 选「升级」后的派生说明行与「本单另有」区：三个评估入口同一个 composable，不另写文案
   escalateHint,
   escalateFields,
@@ -597,7 +598,7 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
       :icon="EditOutlined"
       tone="primary"
       :width="520"
-      ok-text="提交结论"
+      :ok-text="assessOkText"
       @update:open="assessOpen = $event"
       @ok="confirmAssess"
     >
@@ -717,19 +718,26 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
         <!-- 选「升级」后的派生说明行：文案取 escalateHintOf，三个评估入口同一句 -->
         <p v-else-if="assessDecision === '升级'" class="af-hint">{{ escalateHint }}</p>
 
-        <div class="af-field af-field-block">
-          <span class="af-label req">{{ assessAdviceLabel }}</span>
-          <a-textarea
-            v-model:value="assessAdvice"
-            :rows="3"
-            :placeholder="assessAdvicePlaceholder"
-          />
-        </div>
-        <p v-if="missAssessAdvice" class="af-err">请填写{{ assessAdviceLabel }}</p>
+        <!--
+          结论正文那一格。选「升级」（且会派生新投诉单）时它并进下面那一段、改由段内的
+          「升级说明」渲染，故本格只在**段不出**时出；两处渲染的是同一个格子
+          （assessAdvice 代理 escalateFields.fields.advice）。
+        -->
+        <template v-if="!showEscalateFields">
+          <div class="af-field af-field-block">
+            <span class="af-label req">{{ assessAdviceLabel }}</span>
+            <a-textarea
+              v-model:value="assessAdvice"
+              :rows="3"
+              :placeholder="assessAdvicePlaceholder"
+            />
+          </div>
+          <p v-if="missAssessAdvice" class="af-err">请填写{{ assessAdviceLabel }}</p>
+        </template>
 
         <!--
-          ③ 投诉工单专属字段：选「升级」（且会派生新投诉单）时才出，排在「升级说明」之后。
-          只投诉一类 / 二类两项、均必填；三个评估入口共用 EscalateComplaintFields。
+          ③ 投诉工单专属字段：选「升级」（且会派生新投诉单）时才出。
+          投诉一类 / 二类 / 升级说明三项、均必填；三个评估入口共用 EscalateComplaintFields。
         -->
         <EscalateComplaintFields v-if="showEscalateFields" :ctl="escalateFields" />
       </div>

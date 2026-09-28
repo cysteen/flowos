@@ -13,6 +13,22 @@ export interface DeriveComplaintInput {
 }
 
 /**
+ * 派生投诉单的**问题描述** ＝ 原单问题描述 ＋ 空行 ＋ 升级说明。
+ * 原单问题描述为空时只写升级说明；升级说明为空时只写原单问题描述。
+ *
+ * 拼接**只在派生那一刻做一次**、落成新单自己的问题描述：不在渲染层拼，
+ * 否则原单之后被改，新单上这段文字会跟着变。评估弹窗「评估结果」块与履历里
+ * 回显的「升级说明」仍是那段原文，不受本函数影响。
+ */
+export function escalatedProblemDesc(originDesc: string | undefined, advice: string): string {
+  const base = (originDesc ?? '').trim();
+  const add = (advice ?? '').trim();
+  if (!base) return add;
+  if (!add) return base;
+  return `${base}\n\n${add}`;
+}
+
+/**
  * **预置的一次风险评估「升级」派生**：A 线种子 `rr-009`（`stores/riskQueue.ts`）的去向。
  *
  * 原单 `IFLYZX-20260806-00005`（rk-5，咨询、P1、在办）被判「升级」→ 派生一张投诉单。
@@ -175,10 +191,10 @@ export const useDerivedTicketStore = defineStore('derivedTickets', () => {
       updatedAt: at,
       responded: false,
       upgradedByMe: false,
-      // 基线 ※29：「接管」这个词在**评估结论**这条语义上整体作废，结论只叫「升级 / 不升级」。
-      // 这两处原写「【风险报备接管】…接管说明：」，与弹窗里的「升级说明」是同一段文字的两个名字。
-      // （指"原单被新单接管"的既有表述 —— 接管横幅 —— 不在作废之列，那是另一件事。）
-      problemDesc: `${origin.problemDesc ?? origin.title}\n\n【风险升级】由 ${input.assignee} 自 ${input.fromNo} 升级承接。升级说明：${input.reason}`,
+      // 问题描述 ＝ 原单问题描述 ＋ 空行 ＋ 升级说明，见 `escalatedProblemDesc`。
+      // 原先这里还前缀一句「【风险升级】由 X 自 Y 升级承接。升级说明：」：那句是"这张单从哪来"，
+      // 派生单上已由接管横幅与 `escalatedFromNo` 说清，写进问题描述等于把来路混进客户问题本身。
+      problemDesc: escalatedProblemDesc(origin.problemDesc, input.reason),
       ...safeOverrides(overrides),
     };
     tickets.value.unshift(derived);

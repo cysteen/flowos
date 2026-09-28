@@ -854,8 +854,24 @@ function waitedText(at: string) {
 const assessOpen = ref(false);
 const assessTarget = ref<RiskPoolItem | null>(null);
 const assessDecision = ref<AssessDecision | ''>('');
-const assessAdvice = ref('');
 const assessTried = ref(false);
+
+/**
+ * 「投诉工单专属字段」段落（投诉一类 / 二类 / 升级说明三项）：状态与校验走共享
+ * composable、渲染走共享组件 `EscalateComplaintFields`，与工单页底栏、风险报备池两个评估入口
+ * **同一份实现**。整段显隐同样是共享的 `showEscalateComplaintFields`，本页不自判一遍。
+ */
+const escalateFields = useEscalateComplaintFields();
+
+/**
+ * 结论正文那一格。值存在 `escalateFields.fields.advice` 上，本 ref 只是个读写代理：
+ * 选「升级」时这一格由段内的「升级说明」渲染，其余情形由本弹窗自己那格「反馈意见」渲染，
+ * 两处写的是同一个格子 —— 切换决策不丢字，提交路径照常从 `assessAdvice` 取值。
+ */
+const assessAdvice = computed({
+  get: () => escalateFields.fields.advice,
+  set: (v: string) => { escalateFields.fields.advice = v; },
+});
 
 const missAssessDecision = computed(() => assessTried.value && !assessDecision.value);
 const missAssessAdvice = computed(() => assessTried.value && !assessAdvice.value.trim());
@@ -873,6 +889,9 @@ const assessAdvicePlaceholder = computed(() => {
   }
 });
 
+/** 弹窗主按钮：决策＝升级 →「确认升级」，未选或「不升级」→「提交结论」（三个评估入口一致） */
+const assessOkText = computed(() => (assessDecision.value === '升级' ? '确认升级' : '提交结论'));
+
 /**
  * 选「升级」后那一行分流提示（O20）。
  *
@@ -883,12 +902,7 @@ const assessAdvicePlaceholder = computed(() => {
  */
 const escalateHint = computed(() => escalateHintOf(assessTarget.value?.ticketNo));
 
-/**
- * 「投诉工单专属字段」段落（排在「升级说明」之后，投诉一类 / 二类两项）：状态与校验走共享
- * composable、渲染走共享组件 `EscalateComplaintFields`，与工单页底栏、风险报备池两个评估入口
- * **同一份实现**。整段显隐同样是共享的 `showEscalateComplaintFields`，本页不自判一遍。
- */
-const escalateFields = useEscalateComplaintFields();
+/** 整段的显隐判据同样是共享的 `showEscalateComplaintFields`，本页不自判一遍 */
 const showEscalateFields = computed(() =>
   showEscalateComplaintFields(assessDecision.value, assessTarget.value?.ticketNo),
 );
@@ -899,8 +913,8 @@ function openAssess(r: RiskPoolItem) {
   if (r.status !== '评估中') { message.warning('该条目还没有人领取，请先领取再评估'); return; }
   assessTarget.value = r;
   assessDecision.value = '';
-  assessAdvice.value = '';
   assessTried.value = false;
+  // 结论正文（升级说明 / 反馈意见）与投诉一类 / 二类同在 escalateFields，reset 一次清完
   escalateFields.reset();
   assessOpen.value = true;
 }
@@ -1175,7 +1189,14 @@ function isComplaintTicket(ticketNo: string) {
 function confirmAssess() {
   assessTried.value = true;
   const target = assessTarget.value;
-  if (!target || !assessValid.value || !assessDecision.value) return;
+  if (!target) return;
+  /*
+   * 会派生新投诉单 → 段内三项（投诉一类 / 二类 / 升级说明）的必填校验**先跑**，缺项的红字
+   * 才落得到字段下方。放在 `assessValid` 之后的话，升级说明空着会在那一句直接 return，
+   * 而它此时正藏在段内，屏幕上一句红字都不会出。与另外两个评估入口同一份 validate。
+   */
+  const escalateFieldsOk = !showEscalateFields.value || escalateFields.validate();
+  if (!assessValid.value || !assessDecision.value || !escalateFieldsOk) return;
   // 提交前按 id 回 store 重查（§5.6 / §9 规则 29）：已撤回整次拦下、原单已终态只拦「升级」、
   // 条目已不在本人名下拦下。与另外两个评估入口同一个判据
   const block = assessSubmitBlockOf(target.id, assessDecision.value, user.name);
@@ -1187,9 +1208,6 @@ function confirmAssess() {
 
   const escalate = assessDecision.value === '升级';
   const derive = escalate && !isComplaintTicket(target.ticketNo);
-  // 会派生新投诉单 → 先过投诉一类 / 二类的必填校验，缺项拦下提交、红字落在字段下方。
-  // 与另外两个评估入口同一份 validate
-  if (showEscalateFields.value && !escalateFields.validate()) return;
   const escalatedToNo = derive ? nextEscalatedNo() : undefined;
 
   /*
@@ -6982,7 +7000,7 @@ function toggleWordEnabled(w: RiskWord) {
       :icon="EditOutlined"
       tone="primary"
       :width="600"
-      ok-text="提交结论"
+      :ok-text="assessOkText"
       @update:open="assessOpen = $event"
       @ok="confirmAssess"
     >
@@ -7029,7 +7047,12 @@ function toggleWordEnabled(w: RiskWord) {
             >{{ escalateHint }}</div>
           </div>
 
-          <div class="op-field">
+          <!--
+            结论正文那一格。选「升级」（且会派生新投诉单）时它并进下面那一段、改由段内的
+            「升级说明」渲染，故本格只在**段不出**时出；两处渲染的是同一个格子
+            （assessAdvice 代理 escalateFields.fields.advice）。
+          -->
+          <div v-if="!showEscalateFields" class="op-field">
             <div class="op-label req">{{ assessAdviceLabel || '反馈意见' }}</div>
             <a-textarea
               v-model:value="assessAdvice"
@@ -7041,8 +7064,8 @@ function toggleWordEnabled(w: RiskWord) {
         </section>
 
         <!--
-          ④ 投诉工单专属字段：选「升级」（且会派生新投诉单）时才出，排在「升级说明」之后。
-          只投诉一类 / 二类两项、均必填；切到「不升级」整段隐藏、已填值保留。
+          ④ 投诉工单专属字段：选「升级」（且会派生新投诉单）时才出。
+          投诉一类 / 二类 / 升级说明三项、均必填；切到「不升级」整段隐藏、已填值保留。
           组件与状态和工单页底栏、风险报备池两个评估入口共用，本页不另写一份字段表。
         -->
         <EscalateComplaintFields v-if="showEscalateFields" :ctl="escalateFields" />
