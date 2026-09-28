@@ -60,6 +60,7 @@ import {
   REPORT_SOURCE,
   RISK_TAG_RESULTS,
   isPoolLevel,
+  isPooledStatus,
   normalizeDecision,
   todayStamp,
   REPORT_ASSESS_LIMIT_MIN,
@@ -88,7 +89,7 @@ import { TICKETS } from '@/mock/tickets';
 // 本文件再抄一份，改天业务把「普通加急」改个说法，这一列就会静默地留在旧词上。
 // `canReleaseAnyRiskReport` 是**管理员兜底释放**那一路的唯一判据，与 B 线报备池共用同一份 ——
 // 两个池的释放口径 PRD 明写「逐条同 §5.5」（§5B.4），各写一份就会各放各的权
-import { canReleaseAnyRiskReport, PRIORITY_LABEL, STATUS_GROUP, ticketStatusDisplayName, resolveTicketGroupNames, type Priority, type Ticket } from '@/views/tickets/types/ticket';
+import { canReleaseAnyRiskReport, isTicketClosed, PRIORITY_LABEL, STATUS_GROUP, ticketStatusDisplayName, resolveTicketGroupNames, type Priority, type Ticket } from '@/views/tickets/types/ticket';
 // 🔴 清单表直接复用工作台那张富列表，不在本页另画一张长得像的：
 // 「重点工单」那一路的行**就是工单**，人在这一档要判的也正是工单本身
 // （摘要 / SLA / 状态 / 产品）。原先那两列（监控来源 ＝ 档名的复述、场景描述 ＝ 一句写死的套话）
@@ -905,6 +906,64 @@ const escalateHint = computed(() => escalateHintOf(assessTarget.value?.ticketNo)
 const showEscalateFields = computed(() =>
   showEscalateComplaintFields(assessDecision.value, assessTarget.value?.ticketNo),
 );
+
+/* ==================== 打标即结论：两个单条打标弹窗里那一段「评估结论」 ==================== */
+//
+// 判成立 / 判出等级之后，打标人可以在**同一次提交**里把结论一起给掉（升级 / 不升级），
+// 条目照常进池但**直接落「已结论」**，不经「待领取」「已领取」两态；段留空就照旧只打标进池等领取。
+//
+// 🔴 **只在两个单条弹窗上**：单条「核实打标」（含「修正核实结果」形态）与单条「风险打标」
+// （含「修正风险打标」形态）。**批量核实、批量风险打标两个弹窗一字不动** ——
+// 批量里一屏几十条各有各的原单类型与条目状态，一个共用的结论落不到它们头上。
+//
+// 【为什么两个打标弹窗与评估弹窗**共用上面那一份 `escalateFields` 实例**，而不是各建一份】
+// 三个弹窗各有自己的 open ref，但**永不同时开着**：三者都由清单的行内动作打开、
+// 都是带遮罩的 `OpActionModal`，弹窗内部没有任何入口能打开另一个（命中清单、条目清单
+// 在段内都是只读的）。而三个入口的 `openXxx` 各自 `reset()` 一次（reset 连红字一并清），
+// 于是同一份实例在任一弹窗打开的那一刻都是干净的。再建第二份实例，等于把这个共享
+// composable 存在的理由（字段、级联、校验只此一份）在同一个文件里推翻一次。
+// 结论正文那一格同理走上面那个 `assessAdvice` 代理 —— 三处写的是同一个格子。
+
+/**
+ * 这一段的**权限门**：出结论只归**客诉专员与管理员**（`REPORT_CLAIM_ROLES`，即 `canClaim`）。
+ *
+ * 🔴 **投诉督导不在其中**：他有打标权（`RISK_TAG_ROLES` 含他），但在风险评估那一侧是
+ * **只读**（PRD §4.2 / §4.3；池内可见但不出动作，见 `REPORT_CLAIM_ROLES` 的说明）。
+ * 少了这道门，他就能从打标弹窗**绕开评估权限**出结论 —— 那是同一份权限在两个入口上
+ * 各说一套。判据直接取池内领取 / 评估那一份 `canClaim`，本段不另立一份角色表。
+ */
+const canAssessOnTag = computed(() => canClaim.value);
+
+/**
+ * 本次打标的结论会落到**哪一条条目**上。
+ *
+ * 优先取这张单**已在池里**的那一条；没有的话取还在**实时监控**的那一条 ——
+ * 核实打标判成立的那一下正是它打标进池（见 store 的 `verifyHit`）。
+ * 两者都没有（打标判了无风险、或这张单根本没有 A 线条目）时返回 null，**整段不出**：
+ * 没有承载体的结论落不了库，摆一段出来只会让人白填。
+ */
+function tagAssessEntryOf(ticketNo: string | undefined): RiskQueueEntry | null {
+  if (!ticketNo) return null;
+  const es = riskQueue.entriesOf(ticketNo);
+  return es.find((e) => isPooledStatus(e.status))
+    ?? es.find((e) => e.status === '实时监控中')
+    ?? null;
+}
+
+/**
+ * 这一段出不出的**四道门**（任一不过整段不出；不出即不参与校验，提交＝只打标，原行为）：
+ *   ① **打标结论本身要"有风险"** —— 核实那一路＝本次命中成立且有等级，
+ *      风险打标那一路＝高 / 中 / 低。选「误报」/「无风险」整段不出。
+ *   ② **有一条承载结论的条目，且它还没出过结论** —— 一条条目只出一次结论
+ *      （§9 规则 22 提交即固化）；两个「修正」形态改的是打标结论，不重开评估。
+ *   ③ **原单不是投诉单** —— 投诉单不做风险评估，由客诉专员协同处理（与底部说明同一口径）。
+ *   ④ **当前用户有评估权** —— 见 `canAssessOnTag`。
+ */
+function showTagAssessFor(entry: RiskQueueEntry | null, hasRisk: boolean): boolean {
+  if (!hasRisk || !canAssessOnTag.value) return false;
+  if (!entry || entry.status === '已评估') return false;
+  return !isComplaintTicket(entry.ticketNo);
+}
 
 function openAssess(r: RiskPoolItem) {
   // 没人领过的条目谈不上"谁给的结论"（store 的 assess 也会拦），
@@ -2276,6 +2335,50 @@ const canSaveTag = computed(() => {
   return true;
 });
 
+/* ---- 核实打标弹窗里的「评估结论」段（判成立之后接出，可留空） ---- */
+
+/** 段内的评估决策。**空 ＝ 不评估**，提交就是原来的那一下核实打标 */
+const tagAssessDecision = ref<AssessDecision | ''>('');
+/** 点过一次保存才出红字：进来就满屏红字的表单没人读得下去 */
+const tagAssessTried = ref(false);
+/** 本次核实的结论会落到哪一条条目上（没有承载体时整段不出，见 `tagAssessEntryOf`） */
+const tagAssessEntry = computed(() => tagAssessEntryOf(tagTarget.value?.ticketNo));
+/**
+ * 本次核实**会不会真的让这条单进池** —— 与 store 的 `verifyHit` 同一条判据。
+ *
+ * 【为什么要多这一道】核实打标与条目打标不是一回事：核实回写条目**只在一种情形下发生**
+ * （本单还没有打标结论、本条命中是首次核实、原单不在终态），其余情形只记命中、
+ * 条目一格不动。条目还停在「实时监控中」时结论没有落点，段却照出的话，
+ * 人填完一段会得到一次"什么都没发生"的提交。
+ */
+const tagVerifyWillPool = computed(() => {
+  const no = tagTarget.value?.ticketNo;
+  const e = tagAssessEntry.value;
+  if (!no || !e) return false;
+  // 已经在池里：本次核实不改它的去向，结论照样落得上
+  if (isPooledStatus(e.status)) return true;
+  // 还在实时监控：只有"首次核实 + 本单还没有打标结论"这一路会把它打标进池
+  if (tagAmend.value || riskQueue.currentTagOf(no)) return false;
+  // 终态单不在「未标记」段（R50a），核实只记命中、不建不改条目
+  const t = TICKETS.find((x) => x.no === no) ?? derivedTickets.find(no);
+  return !(t && isTicketClosed(t.nodeStatus));
+});
+/** 段出不出：四道门之外，再加"这一次核实真的会让它进池"那一道 */
+const showTagAssess = computed(() =>
+  tagVerifyWillPool.value
+  && showTagAssessFor(tagAssessEntry.value, tagVerdict.value === '成立' && !!tagLevel.value),
+);
+/** 选「升级」后那一段投诉专属字段的显隐，与评估弹窗同一个共享判据 */
+const showTagAssessEscalate = computed(() =>
+  showEscalateComplaintFields(tagAssessDecision.value, tagTarget.value?.ticketNo),
+);
+/** 选「升级」后那一行派生说明，文案与三处评估入口同一个来源 */
+const tagAssessHint = computed(() => escalateHintOf(tagTarget.value?.ticketNo));
+/** 「不升级」那一格反馈意见的红字，提示文案与评估弹窗逐字一致 */
+const missTagAssessAdvice = computed(
+  () => tagAssessTried.value && !!tagAssessDecision.value && !assessAdvice.value.trim(),
+);
+
 function openTag(h: RiskHit) {
   if (!canRiskTag.value) { message.warning('只有客诉专员、投诉督导与管理员可以打标'); return; }
   tagTarget.value = h;
@@ -2285,6 +2388,10 @@ function openTag(h: RiskHit) {
   tagVerdict.value = cur?.verdict;
   tagNote.value = cur?.note ?? '';
   tagReason.value = '';
+  // 「评估结论」段每次打开都从空开始：决策不选＝不评估，字段与红字走共享实例 reset 一次清完
+  tagAssessDecision.value = '';
+  tagAssessTried.value = false;
+  escalateFields.reset();
   tagOpen.value = true;
 }
 function saveTag() {
@@ -3499,6 +3606,31 @@ const canSaveEntryTag = computed(() => {
   if (entryTagAmend.value) return entryTagDirty.value && !!entryTagReason.value.trim();
   return true;
 });
+
+/* ---- 风险打标弹窗里的「评估结论」段（判出高 / 中 / 低之后接出，可留空） ---- */
+
+/** 段内的评估决策。**空 ＝ 不评估**，提交就是原来的那一下打标 */
+const entryTagAssessDecision = ref<AssessDecision | ''>('');
+const entryTagAssessTried = ref(false);
+/**
+ * 段出不出。承载体就是本弹窗这条条目本身 —— 打标为高 / 中 / 低之后它必进池
+ * （`recordTag` 的迁移表：实时监控中 / 已标记无风险 → 待分派，池内三态原地不动），
+ * 故这一路不需要核实那边那道"会不会真的进池"的判断。
+ */
+const showEntryTagAssess = computed(() => showTagAssessFor(
+  entryTagTarget.value?.entry ?? null,
+  !!entryTagResult.value && isPoolLevel(entryTagResult.value),
+));
+/** 选「升级」后那一段投诉专属字段的显隐，与评估弹窗同一个共享判据 */
+const showEntryTagAssessEscalate = computed(() =>
+  showEscalateComplaintFields(entryTagAssessDecision.value, entryTagTarget.value?.ticketNo),
+);
+/** 选「升级」后那一行派生说明，文案与三处评估入口同一个来源 */
+const entryTagAssessHint = computed(() => escalateHintOf(entryTagTarget.value?.ticketNo));
+/** 「不升级」那一格反馈意见的红字，提示文案与评估弹窗逐字一致 */
+const missEntryTagAssessAdvice = computed(
+  () => entryTagAssessTried.value && !!entryTagAssessDecision.value && !assessAdvice.value.trim(),
+);
 /**
  * 打标时摆出来的**证据**：本单的风险词命中原话。
  * 「重点工单」那一路没有原话可摆，整块 v-if 掉、不留空标题。
@@ -3522,6 +3654,10 @@ function openEntryTag(e: QueueRow) {
   entryTagResult.value = e.tag?.result ?? '';
   entryTagNote.value = e.tag?.note ?? '';
   entryTagReason.value = '';
+  // 「评估结论」段每次打开都从空开始：决策不选＝不评估，字段与红字走共享实例 reset 一次清完
+  entryTagAssessDecision.value = '';
+  entryTagAssessTried.value = false;
+  escalateFields.reset();
   entryTagOpen.value = true;
 }
 
@@ -6704,7 +6840,9 @@ function toggleWordEnabled(w: RiskWord) {
                 : entryTagResult
                   ? (isComplaintTicket(entryTagTarget.ticketNo)
                     ? '低 / 中 / 高一律进风险工单池；投诉单不做风险评估，由客诉专员协同处理'
-                    : '低 / 中 / 高一律进风险工单池，等客诉专员领取后给出升级 / 不升级的结论')
+                    : showEntryTagAssess
+                      ? '低 / 中 / 高一律进风险工单池；下方给出评估结论即直接落「已结论」，留空则等客诉专员领取后再评'
+                      : '低 / 中 / 高一律进风险工单池，等客诉专员领取后给出升级 / 不升级的结论')
                   : '先判这张单有没有风险、多大；低 / 中 / 高进池，无风险不进池'
           }}
         </div>
@@ -6723,6 +6861,45 @@ function toggleWordEnabled(w: RiskWord) {
           <div class="op-label">打标备注</div>
           <a-textarea v-model:value="entryTagNote" :rows="2" placeholder="判断依据与后续动作（可选）" />
         </div>
+
+        <!--
+          「评估结论」段（判出高 / 中 / 低之后接出）。🔴 **可留空**：不选评估决策就照旧只打标、
+          条目进池等领取；给了结论则条目照常进池但**直接落「已结论」**，结论人＝打标人。
+          字段、校验、派生与红字文案与本页评估弹窗**同一套**（同一份 `escalateFields` 实例 +
+          共享组件 `EscalateComplaintFields`），四道"不出段"的门见 `showTagAssessFor`。
+        -->
+        <section v-if="showEntryTagAssess" class="assess-block assess-block-form">
+          <h4 class="assess-block-title">评估结论</h4>
+
+          <div class="op-field assess-dec-field">
+            <!-- 决策**不带必填星**：留空是合法的一种（＝不评估），与评估弹窗那一处的口径差别只在这里 -->
+            <div class="op-field-h assess-dec-row">
+              <div class="op-label">评估决策</div>
+              <a-radio-group v-model:value="entryTagAssessDecision" class="assess-dec-inline">
+                <a-radio v-for="d in ASSESS_DECISIONS" :key="d" :value="d">{{ d }}</a-radio>
+              </a-radio-group>
+            </div>
+            <!-- 选「升级」后才出的派生说明行（O20），文案取 `escalateHintOf`，与三处评估入口同源 -->
+            <div
+              v-if="entryTagAssessDecision === '升级'"
+              class="assess-hint assess-dec-foot"
+            >{{ entryTagAssessHint }}</div>
+          </div>
+
+          <!-- 「不升级」那一格；选「升级」时同一个格子并进下面那一段、改由段内的「升级说明」渲染 -->
+          <div v-if="entryTagAssessDecision === '不升级'" class="op-field">
+            <div class="op-label req">反馈意见</div>
+            <a-textarea
+              v-model:value="assessAdvice"
+              :rows="3"
+              placeholder="告知报备人为什么不升级、可以怎么继续处理…"
+            />
+            <div v-if="missEntryTagAssessAdvice" class="assess-err">请填写反馈意见</div>
+          </div>
+
+          <!-- 投诉工单专属字段（投诉一类 / 二类 / 升级说明），三项均必填，与评估弹窗共用组件与状态 -->
+          <EscalateComplaintFields v-if="showEntryTagAssessEscalate" :ctl="escalateFields" />
+        </section>
 
         <div v-if="entryTagResult === '高'" class="op-tip op-tip-info tag-tip-compact">
           保存后可在「已标记 · 高危」档点「去管控」转交{{ DISPOSAL_BY_GRADE['高'].who }}
@@ -6949,6 +7126,46 @@ function toggleWordEnabled(w: RiskWord) {
           <div class="op-label">处置备注</div>
           <a-textarea v-model:value="tagNote" :rows="2" placeholder="核实结论与后续动作（可选）" />
         </div>
+
+        <!--
+          「评估结论」段（判成立之后接出）。🔴 **可留空**：不选评估决策就照旧只核实打标、
+          条目进池等领取；给了结论则条目照常进池但**直接落「已结论」**，结论人＝打标人。
+          字段、校验、派生与红字文案与本页评估弹窗**同一套**（同一份 `escalateFields` 实例 +
+          共享组件 `EscalateComplaintFields`），"不出段"的门见 `showTagAssess`
+          （四道共用门 + 本次核实真的会让条目进池那一道）。
+        -->
+        <section v-if="showTagAssess" class="assess-block assess-block-form">
+          <h4 class="assess-block-title">评估结论</h4>
+
+          <div class="op-field assess-dec-field">
+            <!-- 决策**不带必填星**：留空是合法的一种（＝不评估），与评估弹窗那一处的口径差别只在这里 -->
+            <div class="op-field-h assess-dec-row">
+              <div class="op-label">评估决策</div>
+              <a-radio-group v-model:value="tagAssessDecision" class="assess-dec-inline">
+                <a-radio v-for="d in ASSESS_DECISIONS" :key="d" :value="d">{{ d }}</a-radio>
+              </a-radio-group>
+            </div>
+            <!-- 选「升级」后才出的派生说明行（O20），文案取 `escalateHintOf`，与三处评估入口同源 -->
+            <div
+              v-if="tagAssessDecision === '升级'"
+              class="assess-hint assess-dec-foot"
+            >{{ tagAssessHint }}</div>
+          </div>
+
+          <!-- 「不升级」那一格；选「升级」时同一个格子并进下面那一段、改由段内的「升级说明」渲染 -->
+          <div v-if="tagAssessDecision === '不升级'" class="op-field">
+            <div class="op-label req">反馈意见</div>
+            <a-textarea
+              v-model:value="assessAdvice"
+              :rows="3"
+              placeholder="告知报备人为什么不升级、可以怎么继续处理…"
+            />
+            <div v-if="missTagAssessAdvice" class="assess-err">请填写反馈意见</div>
+          </div>
+
+          <!-- 投诉工单专属字段（投诉一类 / 二类 / 升级说明），三项均必填，与评估弹窗共用组件与状态 -->
+          <EscalateComplaintFields v-if="showTagAssessEscalate" :ctl="escalateFields" />
+        </section>
 
         <div v-if="tagVerdict === '成立' && tagLevel === '高'" class="op-tip op-tip-info tag-tip-compact">
           保存后可在列表点「去管控」转交{{ DISPOSAL_BY_GRADE['高'].who }}
