@@ -28,7 +28,7 @@ import RiskAssessSheet from '@/views/tickets/components/operation/RiskAssessShee
 // **共用同一个组件**，字段、级联与校验全在 `useEscalateComplaintFields`，本页不另写一份
 import EscalateComplaintFields from '@/views/tickets/components/operation/EscalateComplaintFields.vue';
 import { useEscalateComplaintFields } from '@/composables/useEscalateComplaintFields';
-// 「风险标记」弹窗下半**投诉支**那三项（评估意见 / 建议事项 /「其他」的具体建议）：
+// 「风险管控」弹窗下半**投诉支**那三项（评估意见 / 建议事项 /「其他」的具体建议）：
 // 与工单页页头「风险管控」弹窗、风险工单池的协同处理弹窗**共用同一份**，字段、校验与
 // 落库（`submitTo`）全在 `useRiskCollabFields` 里，本页不另写一套
 import RiskCollabFields from '@/views/tickets/components/operation/RiskCollabFields.vue';
@@ -917,8 +917,8 @@ const showEscalateFields = computed(() =>
 // 判成立 / 判出等级之后，打标人可以在**同一次提交**里把结论一起给掉（升级 / 不升级），
 // 条目照常进池但**直接落「已结论」**，不经「待领取」「已领取」两态；段留空就照旧只打标进池等领取。
 //
-// 🔴 **只在两个单条弹窗上**：单条「核实打标」（含「修正核实结果」形态）与单条「风险打标」
-// （含「修正风险打标」形态）。**批量核实、批量风险打标两个弹窗一字不动** ——
+// 🔴 **只在两个单条弹窗上**：两枚单条「风险管控」弹窗 —— 命中核实形态（含它的修正态）
+// 与条目打标形态（含它的修正态）。**批量打标、批量核实两个弹窗一字不动** ——
 // 批量里一屏几十条各有各的原单类型与条目状态，一个共用的结论落不到它们头上。
 //
 // 【为什么两个打标弹窗与评估弹窗**共用上面那一份 `escalateFields` 实例**，而不是各建一份】
@@ -2075,7 +2075,7 @@ function clearTicketFocus() {
 // 【为什么必须放宽】日常工作面已经改成条目漏斗（实时监控页签），命中不再是待办；
 // 底表若仍只收已核实的，**待核实的命中在整页里就没有任何入口** ——
 // 没人能再核实它们，词表准确率（本页唯一的规则改进回路）会永久停在当前这个数上。
-// 放宽之后「待核实」降为查询条里的一个取值，与成立 / 误报同层，行内动作照旧给「核实打标」。
+// 放宽之后「待核实」降为查询条里的一个取值，与成立 / 误报同层，行内动作照旧给「风险管控」。
 //
 // 【与手动筛查的区别】手动筛查是拿条件去扫**存量工单**产生新命中（发现），
 // 这里是在**已有命中记录**里回溯（查证）。两者形态像、目标反，故各自独立一套条件，不复用。
@@ -2351,8 +2351,18 @@ const tagVerdict = ref<HitVerdict | undefined>(undefined);
 const tagNote = ref('');
 /** 本次修正的理由。修正必填——只记改前改后而不记为什么，复盘时链条仍是断的 */
 const tagReason = ref('');
-/** 已核实过的再打开就是修正：标题、按钮文案与必填项都随之不同 */
+/** 已核实过的再打开就是修正：图标、按钮文案与必填项都随之不同（标题恒为「风险管控」） */
 const tagAmend = ref(false);
+/**
+ * 「风险管控」弹窗（命中核实形态）的**副标题 ＝ 来源 · 单号**，与工单页页头那一枚、
+ * 评估弹窗（`assessSubtitle`）逐字同形。
+ *
+ * 命中记录只可能来自预警词那一路，故来源恒写「实时监控」（见 `isVerifyMonitorSource`：
+ * 「重点工单」那一路没有命中原话可摆，也就进不了这个形态）。
+ */
+const tagSubtitle = computed(
+  () => (tagTarget.value ? `实时监控 · ${tagTarget.value.ticketNo}` : ''),
+);
 const tagHistory = computed(() => (tagTarget.value ? historyOf(tagTarget.value) : []));
 const tagCurrent = computed(() => (tagTarget.value ? latestEntryOf(tagTarget.value) : undefined));
 /**
@@ -3124,13 +3134,13 @@ const TICKET_LIST_COL_WIDTHS: Record<string, number> = {
 function rowOfTicketNo(no: string): QueueRow | undefined {
   return rowByTicketNo.value.get(no);
 }
-/** 富列表的行内动作：这一段只有「打标」一枚，权限不足时不给按钮 */
+/** 富列表的行内动作：这一段只有「风险管控」一枚，权限不足时不给按钮 */
 function untaggedRowActions() {
-  return canRiskTag.value ? [{ label: '打标', primary: true }] : [];
+  return canRiskTag.value ? [{ label: '风险管控', primary: true }] : [];
 }
 function onTicketRowAction(label: string, t: Ticket) {
   const r = rowOfTicketNo(t.no);
-  if (label === '打标' && r) openEntryTag(r);
+  if (label === '风险管控' && r) openEntryTag(r);
 }
 
 /* ---- 「实时监控」这一路 · 召回清单 ---- */
@@ -3142,9 +3152,9 @@ function onTicketRowAction(label: string, t: Ticket) {
 // 故 `实时监控 + 重点工单 ＝ 未标记页签数` 不变；命中条数只在分页处与单数并写。
 // 同一张单的命中相邻成组：组序沿用 `untaggedRows`（词表预设等级最重的在前），组内按命中时刻倒序，
 // 分页按组切，一组不被拆到两页。
-// 「处置」列**按命中逐行**出「核实打标」（`openTag`，与命中台账同一个弹窗、同一个 store 入口 `verifyHit`）：
+// 「处置」列**按命中逐行**出「风险管控」（`openTag`，与命中台账同一个弹窗、同一个 store 入口 `verifyHit`）：
 // 首次成立即给这张单打标入池，全部误报则改归或打为无风险。没有待核实命中的行（手动筛查并入、尚无命中）
-// 仍出「打标」，走条目的风险打标弹窗（`openEntryTag`）。
+// 同样出「风险管控」，走条目打标形态那个弹窗（`openEntryTag`）。
 /** 当前是不是停在「实时监控」那一路（含它的三个子档） */
 const kwEvidenceView = computed(() => (
   listView.value === 'realtime'
@@ -3590,7 +3600,7 @@ const bulkVerdict = ref<HitVerdict | undefined>(undefined);
 const bulkVerifyLevel = ref<RiskLevel>('高');
 const bulkVerifyNote = ref('');
 const bulkVerifyHits = computed(() => bulkTargets.value.flatMap((r) => kwHitsOf(r)));
-/** 所选组里没有待核实命中的单（手动筛查并入、尚无命中）：批量核实不处理，逐单走「打标」 */
+/** 所选组里没有待核实命中的单（手动筛查并入、尚无命中）：批量核实不处理，逐单走「风险管控」 */
 const bulkVerifySkipped = computed(() => bulkTargets.value.filter((r) => !kwHitsOf(r).length).length);
 const canSaveBulkVerify = computed(
   () => canRiskTag.value && !!bulkVerdict.value && bulkVerifyHits.value.length > 0,
@@ -3658,8 +3668,15 @@ const entryTagResult = ref<RiskTagResult | ''>('');
 const entryTagNote = ref('');
 /** 二次修改的理由。**首次打标没有这一项，改标必填**——只记改前改后而不记为什么，复盘时链条仍是断的 */
 const entryTagReason = ref('');
-/** 已经打过标的再打开就是修改：标题、按钮文案与必填项都随之不同 */
+/** 已经打过标的再打开就是修改：图标、按钮文案与必填项都随之不同（标题恒为「风险管控」） */
 const entryTagAmend = computed(() => !!entryTagTarget.value?.tag);
+/**
+ * 「风险管控」弹窗（条目打标形态）的**副标题 ＝ 来源 · 单号**，与评估弹窗
+ * （`assessSubtitle`）、工单页页头那一枚逐字同形。来源取条目自带的身份标，不另造词。
+ */
+const entryTagSubtitle = computed(
+  () => (entryTagTarget.value ? `${rowSourceText(entryTagTarget.value)} · ${entryTagTarget.value.ticketNo}` : ''),
+);
 /** 完整打标历史（含二次修改），时间正序。走 store 的 `tagHistoryOf`，与命中核实同一套留痕机制 */
 const entryTagHistory = computed(
   () => (entryTagTarget.value ? reportStore.tagHistoryOf(entryTagTarget.value.id) : []),
@@ -3707,7 +3724,7 @@ const missEntryTagAssessAdvice = computed(
   () => entryTagAssessTried.value && !!entryTagAssessDecision.value && !assessAdvice.value.trim(),
 );
 
-/* ---- 风险标记弹窗下半的**投诉支**：协同处理（判出高 / 中 / 低之后接出，可留空） ---- */
+/* ---- 「风险管控」弹窗下半的**投诉支**：协同处理（判出高 / 中 / 低之后接出，可留空） ---- */
 //
 // 🔴 字段、校验与落库整套走共享件 `useRiskCollabFields` + `RiskCollabFields.vue`
 // （工单页页头「风险管控」弹窗的投诉支、风险工单池的协同处理弹窗用的是同一份）。
@@ -3811,7 +3828,7 @@ function saveEntryTag() {
   const collab = showEntryTagCollab.value && entryTagCollabFilled.value;
   // 文案说「风险标记」而不是「风险等级」：判据是 `entryTagDirty`（等级**或**打标备注动过），
   // 写成「风险等级」比判据窄 —— 只改了备注的人会被告知"等级没变"，对不上自己刚做的事。
-  // 「风险标记」既是本弹窗的名字，也正好覆盖上半那两项。
+  // 「风险标记」指的是上半那两项本身（等级 + 打标备注），不是本弹窗的名字（弹窗叫「风险管控」）。
   if (!retag && !assessDec && !collab) { message.warning('风险标记没有变化，无需修改'); return; }
   // 「为什么改」只在**真的改判**时才问得出口：没改判的那一路不要它
   if (retag && amend && !entryTagReason.value.trim()) { message.warning('请填写修正原因'); return; }
@@ -5356,7 +5373,7 @@ function toggleWordEnabled(w: RiskWord) {
       <!--
         「重点工单」那一路 · **工作台那张富列表**（见 `ticketListView`）。
         这一路的行就是工单，故摆的是工单自己的信息：工单/标题 · 工单摘要 · SLA 时效 ·
-        优先级 · 客户 · 产品 · 当前状态 / 节点，外加本页自己的「等待时长」与「打标」。
+        优先级 · 客户 · 产品 · 当前状态 / 节点，外加本页自己的「等待时长」与「风险管控」。
         列与筛选沿用原「投诉单」「重要紧急」两路的那一套，一格没动；默认按工单优先级降序。
         🔴 **去掉了「监控来源」**：停在这一档，整列都写着「重点工单」——
         它是左栏档名的复述，占着一列却答不了任何问题。
@@ -5427,7 +5444,7 @@ function toggleWordEnabled(w: RiskWord) {
       <!--
         实时监控 · 召回清单（见 script 里「召回清单」那段）。
         🔴 行 ＝ 待核实的命中，列与命中台账那张表一致；同一张单的命中相邻成组，
-        勾选 / 工单两格跨整组合并（勾的是单）；处置格按命中逐行出「核实打标」。
+        勾选 / 工单两格跨整组合并（勾的是单）；处置格按命中逐行出「风险管控」。
         🔴 分页按工单组切（`pagedQueueRows`），「N 单 · M 条命中」两个数分别取 `queueRows` 与 `kwHitTotal`。
       -->
       <div v-if="listView === 'realtime' && kwEvidenceView && queueRows.length" class="hit-table-wrap">
@@ -5472,7 +5489,7 @@ function toggleWordEnabled(w: RiskWord) {
                     type="button" class="row-btn row-btn-tag"
                     title="判定这张单有没有风险、多大：高 / 中 / 低进风险工单池，无风险不进池"
                     @click="openEntryTag(g.row)"
-                  >打标</button>
+                  >风险管控</button>
                   <span v-else class="hit-sub" title="打标归客诉专员、投诉督导与管理员">—</span>
                 </td>
               </tr>
@@ -5518,7 +5535,7 @@ function toggleWordEnabled(w: RiskWord) {
                     v-if="canRiskTag"
                     type="button" class="row-btn row-btn-tag"
                     @click="openTag(h)"
-                  >核实打标</button>
+                  >风险管控</button>
                   <span v-else class="hit-sub" title="打标归客诉专员、投诉督导与管理员">—</span>
                 </td>
               </tr>
@@ -5582,7 +5599,7 @@ function toggleWordEnabled(w: RiskWord) {
               <th :style="taggedEvidenceView ? 'width: 80px' : 'width: 104px'">结论人</th>
               <th :style="taggedEvidenceView ? 'width: 96px' : 'width: 128px'">结论时间</th>
               <!--
-                操作列只剩一枚「风险标记」，列宽由 128 收到 104 —— 一枚按钮不需要两枚的位。
+                操作列只剩一枚「风险管控」，列宽由 128 收到 104 —— 一枚按钮不需要两枚的位。
               -->
               <th style="width: 104px">操作</th>
             </tr>
@@ -5679,7 +5696,7 @@ function toggleWordEnabled(w: RiskWord) {
                   <span v-if="e.report" class="hit-sub">—</span>
                   <template v-else>
                     <!--
-                      🔴 **打标来源的行只给一枚「风险标记」**（2026-09-29 裁决）：原来那枚
+                      🔴 **打标来源的行只给一枚「风险管控」**（2026-09-29 裁决）：原来那枚
                       「修正」已取消 —— 改判等级走的就是这个弹窗的上半（打开时预置现行结论，
                       改选别的即为改判、「修正原因」必填），一个动作不必摆两枚按钮。
                     -->
@@ -5692,8 +5709,8 @@ function toggleWordEnabled(w: RiskWord) {
                           ? '判定风险等级；改判为无风险会把它撤出风险工单池'
                           : `判定风险等级；${NO_RISK_LOCKED_TIP}`"
                       @click="openEntryTag(e)"
-                    >风险标记</button>
-                    <span v-if="!canRiskTag" class="hit-sub" title="风险标记归客诉专员、投诉督导与管理员">—</span>
+                    >风险管控</button>
+                    <span v-if="!canRiskTag" class="hit-sub" title="风险管控归客诉专员、投诉督导与管理员">—</span>
                   </template>
               </td>
             </tr>
@@ -6560,7 +6577,10 @@ function toggleWordEnabled(w: RiskWord) {
                     :title="tagTraceTitle(h)"
                   >{{ verdictOf(h) }}</span>
                   <!--
-                    修正入口：绝大多数已核实的记录不需要再动，故用次按钮排在动作末位，
+                    已核实的行走的是同一个弹窗的修正态，故按钮**同样叫「风险管控」**
+                    （2026-09-29 裁决：入口名 ＝ 弹窗名，全站一个名字）——"这次是改已有结论"
+                    由次按钮形状、悬停原文与弹窗内必填的「修正原因」说清，不靠第二个名字。
+                    绝大多数已核实的记录不需要再动，故仍用次按钮排在动作末位，
                     但它必须存在——台账里翻出一条判错的，正是要改的时候。
                   -->
                   <button
@@ -6568,10 +6588,10 @@ function toggleWordEnabled(w: RiskWord) {
                     type="button" class="row-btn row-btn-amend"
                     :title="historyOf(h).length > 1 ? `已修正 ${historyOf(h).length - 1} 次，可继续修正` : '重新核实并修正本条结果'"
                     @click="openTag(h)"
-                  >修正</button>
+                  >风险管控</button>
                 </template>
                 <template v-else>
-                  <button v-if="canRiskTag" type="button" class="row-btn row-btn-tag" @click="openTag(h)">核实打标</button>
+                  <button v-if="canRiskTag" type="button" class="row-btn row-btn-tag" @click="openTag(h)">风险管控</button>
                   <span v-else class="hit-sub">—</span>
                 </template>
               </div>
@@ -6882,12 +6902,17 @@ function toggleWordEnabled(w: RiskWord) {
     </OpActionModal>
 
     <!--
-      单条风险打标：四选一（高 / 中 / 低 / 无风险）。首次打标与二次修改共用这一个弹窗，
-      只在标题、按钮文案、必填项与留痕区上分叉 —— 与命中打标弹窗同一副骨架。
+      风险管控 · 条目打标形态：四选一（高 / 中 / 低 / 无风险）。首次打标与二次修改共用这一个弹窗，
+      只在按钮文案、必填项与留痕区上分叉 —— 与命中核实形态同一副骨架。
+      🔴 **标题恒为「风险管控」+ 副标题「来源 · 单号」**（2026-09-29 裁决）：与工单页页头那一枚、
+      评估处置工作面、风险报备池、协同处理弹窗逐字同形。原来那个按首次 / 修正二选一的旧标题
+      已取消 —— 同一个动作在四处各叫一个名字，说"去做风险管控"没人知道指的是哪一处；
+      "这次是改已有结论"由图标、按钮文案与必填的「修正原因」说清。
     -->
     <OpActionModal
       :open="entryTagOpen"
-      :title="entryTagAmend ? '修正风险打标' : '风险打标'"
+      title="风险管控"
+      :subtitle="entryTagSubtitle"
       :icon="entryTagAmend ? EditOutlined : TagOutlined"
       tone="primary"
       :width="480"
@@ -7133,10 +7158,15 @@ function toggleWordEnabled(w: RiskWord) {
       </table>
     </a-drawer>
 
-    <!-- 单条核实：首次打标与后续修正共用同一个弹窗，只在标题、必填项与留痕区上区分 -->
+    <!--
+      风险管控 · 命中核实形态：首次核实与后续修正共用同一个弹窗，只在必填项与留痕区上区分。
+      🔴 **标题恒为「风险管控」+ 副标题「来源 · 单号」**（2026-09-29 裁决），与条目打标形态、
+      工单页页头那一枚同名同形；两个形态靠**内容**（命中原话 / 条目结论）分辨，不靠标题。
+    -->
     <OpActionModal
       :open="tagOpen"
-      :title="tagAmend ? '修正核实结果' : '核实打标'"
+      title="风险管控"
+      :subtitle="tagSubtitle"
       :icon="tagAmend ? EditOutlined : TagOutlined"
       tone="primary"
       :width="480"
@@ -9054,7 +9084,7 @@ function toggleWordEnabled(w: RiskWord) {
  * 已领取行的操作格现在是两枚按钮（处置 +「释放」，§5.4 元素 ⑥ ⑩a）。
  * Vue 的 `whitespace: condense` 会把两个元素之间那个带换行的空白节点整个抹掉，
  * 两枚按钮会**贴死在一起**；故显式给间距，不靠模板里的换行。
- * ⚠️ 只收在本表内：实时监控那张表的「修正」是既有形状，本轮不动它。
+ * ⚠️ 只收在本表内：命中台账那张表的次按钮（`.row-btn-amend`）是既有形状，本轮不动它。
  */
 .report-table .row-btn + .row-btn { margin-left: 6px; }
 /*

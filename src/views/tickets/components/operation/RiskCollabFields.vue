@@ -7,7 +7,7 @@ import type { RiskCollabFieldsCtl } from '@/composables/useRiskCollabFields';
  *
  * 🔴 **两处共用这一个组件**：工单处理页页头「风险管控」弹窗的投诉支
  * （`OpRiskControlModal.vue`）与风险工单池的协同处理弹窗（`OpRiskCollabModal.vue`）。
- * 字段、顺序、占位文案与红字提示只在这里改；风险监控页「风险标记」弹窗下半的投诉支
+ * 字段、顺序、占位文案与红字提示只在这里改；风险监控页「风险管控」弹窗下半的投诉支
  * 随后也接这一份。
  *
  * 取值域与校验全在 `composables/useRiskCollabFields.ts`，本组件只渲染：

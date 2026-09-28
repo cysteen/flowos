@@ -13,7 +13,7 @@ import { isRiskTicketEnded } from '@/composables/useRiskReportAssess';
  *
  * 🔴 **两处共用**：工单处理页页头「风险管控」弹窗的投诉支
  * （`operation/OpRiskControlModal.vue`）与风险工单池的协同处理弹窗
- * （`operation/OpRiskCollabModal.vue`，风险监控页挂载）。风险监控页「风险标记」弹窗
+ * （`operation/OpRiskCollabModal.vue`，风险监控页挂载）。风险监控页「风险管控」弹窗
  * 下半的投诉支随后也接这一份，**任何第四处都不要再抄一遍字段定义**。
  *
  * 与 `useEscalateComplaintFields` 同形：状态 + 校验在本 composable、渲染在
