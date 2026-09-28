@@ -244,12 +244,12 @@ export function gradeOf(impact: RiskImpact, signal: RiskSignal): RiskLevel {
   return RISK_MATRIX[impact][signal];
 }
 
-/** 分级即定处置层级 —— 等级不是颜色，是"该找谁"。系统不自动指派，只指路 */
-export const DISPOSAL_BY_GRADE: Record<RiskLevel, { who: string; hint: string }> = {
-  高: { who: '客诉专员', hint: '建议工单管控介入' },
-  中: { who: '班组长', hint: '由班组长跟进处理' },
-  低: { who: '当前处理人', hint: '按常规流程处理即可' },
-};
+/*
+ * 🔴 **`DISPOSAL_BY_GRADE` 已删**（2026-09-28 裁决）：它只被风险监控页三枚「去管控」按钮的
+ * 悬停文案读过（「转交客诉专员」），而那三枚按钮已整块删除 —— 风险处置统称「风险管控」，
+ * 入口在工单处理页页头，不在监控页开第二条跳转路径。等级 → 该找谁的口径若要回来，
+ * 得先答清"谁来落地、落在哪一页"，不是补回一张常量表。
+ */
 
 export interface RiskHit {
   id: string;

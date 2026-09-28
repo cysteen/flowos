@@ -6,7 +6,7 @@
 //   ② 打标 —— 对条目四选一：高 / 中 / 低 / 无风险。**打标是入池门槛**
 //   ③ 分流 —— 低/中/高 进风险工单池等评估；无风险落「已标记无风险」，不进池
 //   ④ 评估 —— 池内条目二选一：升级 / 不升级（升级只指转投诉单，不含升三线）
-//   ⑤ 下游 —— 高危给「去管控」入口（基线 ※27，人点、系统不自动管控）
+//   ⑤ 下游 —— 高危单的管控由人在工单上发起（基线 ※27，人点、系统不自动管控）
 //
 // 【命中记录这一层还在，但退到台账】风险词命中是**证据**不是工作项：一张单可以被三条词命中，
 // 而人要判的始终是"这张单有没有风险"。故日常工作面是条目（实时监控页签），
@@ -15,7 +15,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { DatePicker, message } from 'ant-design-vue';
 import dayjs, { type Dayjs } from 'dayjs';
-import { ReloadOutlined, ArrowRightOutlined, RightOutlined, SearchOutlined, SettingOutlined, HistoryOutlined, CheckOutlined, UnorderedListOutlined, DownOutlined, TagOutlined, TagsOutlined, EditOutlined, SaveOutlined, FilterOutlined, RollbackOutlined } from '@ant-design/icons-vue';
+import { ReloadOutlined, RightOutlined, SearchOutlined, SettingOutlined, HistoryOutlined, CheckOutlined, UnorderedListOutlined, DownOutlined, TagOutlined, TagsOutlined, EditOutlined, SaveOutlined, FilterOutlined, RollbackOutlined } from '@ant-design/icons-vue';
 import MetricTipIcon from '@/components/MetricTipIcon.vue';
 import OpActionModal from '@/views/tickets/components/operation/OpActionModal.vue';
 // 协同处理弹窗与工单页底栏那一枚**共用同一个组件**：投诉单在池里与在工单上做的是同一件事，
@@ -103,7 +103,6 @@ import { getOpsScopeSelectGroups, type OpsScope } from '@/mock/opsMonitor';
 import {
   RISK_LEVEL_STYLE,
   RISK_WORDS,
-  DISPOSAL_BY_GRADE,
   wordOnlyRiskHitsOf,
   runManualScan,
   SCAN_FIELDS,
@@ -4507,19 +4506,6 @@ const showGroupFilter = computed(() => listView.value === 'realtime' || listView
 // （而且 `item.title` 里带着给悬停写的 `**` 星号，直接渲染出来是一串没解析的 markdown）。
 // 口径没丢：它本来就是左栏每一档按钮 `title` 的原文，悬停仍在。
 //
-/**
- * 「去管控」：只跳到工单、把入口送到人眼前，**不代替人做管控**。
- * 基线 ※27——分级决定"该找谁"，不代表系统自动指派；管控会把工单从原处理人
- * 名下拿走（在办量、解决率分母、超时数全变），这个代价必须由人承担判断。
- *
- * 【入口按工单级判，不按单条命中判】（《【915】》§7.2 的出现条件 + §9 规则 13a 的取值口径）
- * 管控管的是**工单**，不是某一条证据。
- * 一张单只要有一条条目被打为高危、或有一条命中被核实为成立·高危，该单每一行都该有这个入口——
- * 否则人正停在那条中危命中上，明明该管控却看不到路，还得先猜到"别处还有一条"。
- */
-function goControl(h: RiskHit) {
-  router.push(`/tickets/${h.ticketNo}`);
-}
 function openTicket(no: string) { router.push(`/tickets/${no}`); }
 /**
  * 弹窗内点单号跳工单页：先关弹窗并清掉目标再跳。
@@ -5619,16 +5605,6 @@ function toggleWordEnabled(w: RiskWord) {
                   <span v-if="e.report" class="hit-sub">—</span>
                   <template v-else>
                     <!--
-                      去管控只对**高危**出（基线 ※27）：管控会把工单从原处理人名下拿走，
-                      在办量、解决率分母、超时数全变，这个代价不该由一条低危条目触发。
-                    -->
-                    <button
-                      v-if="queueView === 'pooled' && e.tag?.result === '高'"
-                      type="button" class="row-btn row-btn-primary"
-                      :title="`本条打标为高危，转交${DISPOSAL_BY_GRADE['高'].who}`"
-                      @click="openTicket(e.ticketNo)"
-                    >去管控<ArrowRightOutlined /></button>
-                    <!--
                       修正：判错的那一条不改就永远错着。「已标记无风险」这一视图存在的
                       全部意义就是它 —— 漏标误判除了从这里翻出来改，没有第二条路。
                     -->
@@ -6486,10 +6462,6 @@ function toggleWordEnabled(w: RiskWord) {
                 <span v-else-if="scanPicked.has(h.id)" class="state-chip sc-will">并入后待核实</span>
                 <span v-else class="state-chip sc-skip">不并入</span>
               </template>
-              <!--
-                「去管控」按**工单级**判（《【915】》§7.2 + §9 规则 13a），故它在已核实与待核实两支里都出现：
-                管控管的是工单，本条自己判成什么、判没判过都不改变"这张单已经是高危"这件事。
-              -->
               <div v-else class="cell-done">
                 <template v-if="isJudged(h)">
                   <!-- 误报只出判定标，不出风险标：两个标同时挂着，读的人不知道该信哪一个 -->
@@ -6505,12 +6477,6 @@ function toggleWordEnabled(w: RiskWord) {
                     :class="verdictOf(h) === '误报' ? 'vc-fp' : 'vc-ok'"
                     :title="tagTraceTitle(h)"
                   >{{ verdictOf(h) }}</span>
-                  <button
-                    v-if="ticketGradeOf(h.ticketNo) === '高'"
-                    type="button" class="row-btn row-btn-primary"
-                    :title="`本单工单级风险等级为高，转交${DISPOSAL_BY_GRADE['高'].who}`"
-                    @click="goControl(h)"
-                  >去管控<ArrowRightOutlined /></button>
                   <!--
                     修正入口：绝大多数已核实的记录不需要再动，故用次按钮排在动作末位，
                     但它必须存在——台账里翻出一条判错的，正是要改的时候。
@@ -6523,14 +6489,8 @@ function toggleWordEnabled(w: RiskWord) {
                   >修正</button>
                 </template>
                 <template v-else>
-                  <button
-                    v-if="ticketGradeOf(h.ticketNo) === '高'"
-                    type="button" class="row-btn row-btn-primary"
-                    :title="`本单已有条目或命中被定为高危，转交${DISPOSAL_BY_GRADE['高'].who}；本条仍需单独核实`"
-                    @click="goControl(h)"
-                  >去管控<ArrowRightOutlined /></button>
                   <button v-if="canRiskTag" type="button" class="row-btn row-btn-tag" @click="openTag(h)">核实打标</button>
-                  <span v-else-if="ticketGradeOf(h.ticketNo) !== '高'" class="hit-sub">—</span>
+                  <span v-else class="hit-sub">—</span>
                 </template>
               </div>
             </td>
@@ -7016,10 +6976,6 @@ function toggleWordEnabled(w: RiskWord) {
           <EscalateComplaintFields v-if="showEntryTagAssessEscalate" :ctl="escalateFields" />
         </section>
 
-        <div v-if="entryTagResult === '高'" class="op-tip op-tip-info tag-tip-compact">
-          保存后可在「已标记 · 高危」档点「去管控」转交{{ DISPOSAL_BY_GRADE['高'].who }}
-        </div>
-
         <!-- 打标历史：它是佐证不是填写项，按信息层级排在最后。追加不覆盖，故爬坡读得出先后 -->
         <div v-if="entryTagHistory.length" class="tag-trace">
           <div class="tag-trace-head">
@@ -7281,10 +7237,6 @@ function toggleWordEnabled(w: RiskWord) {
           <!-- 投诉工单专属字段（投诉一类 / 二类 / 升级说明），三项均必填，与评估弹窗共用组件与状态 -->
           <EscalateComplaintFields v-if="showTagAssessEscalate" :ctl="escalateFields" />
         </section>
-
-        <div v-if="tagVerdict === '成立' && tagLevel === '高'" class="op-tip op-tip-info tag-tip-compact">
-          保存后可在列表点「去管控」转交{{ DISPOSAL_BY_GRADE['高'].who }}
-        </div>
 
         <!-- 改动历史：它是佐证不是填写项，按信息层级排在最后 -->
         <div v-if="tagHistory.length" class="tag-trace">
@@ -8670,7 +8622,6 @@ function toggleWordEnabled(w: RiskWord) {
   color: #9ca3af;
   line-height: 1.4;
 }
-.tag-tip-compact { padding: 8px 10px; font-size: 11px; }
 
 /* 修正态：现行结果与改动历史 */
 .tag-cur {
@@ -8797,7 +8748,7 @@ function toggleWordEnabled(w: RiskWord) {
 }
 .row-btn:hover { background: #F9FAFB; }
 .row-btn-tag { border-color: #1A6FFF; color: #1A6FFF; font-weight: 600; }
-/* 修正是低频动作，收到次按钮里最轻的一档，不与「去管控」争视线 */
+/* 修正是低频动作，收到次按钮里最轻的一档 */
 .row-btn-amend { border-color: #E5E7EB; color: #6B7280; }
 .row-btn-amend:hover { border-color: #D1D5DB; color: #374151; }
 .row-btn-primary { border-color: #1A6FFF; color: #1A6FFF; display: inline-flex; align-items: center; gap: 3px; font-weight: 600; }
@@ -9002,7 +8953,7 @@ function toggleWordEnabled(w: RiskWord) {
  * 已领取行的操作格现在是两枚按钮（处置 +「释放」，§5.4 元素 ⑥ ⑩a）。
  * Vue 的 `whitespace: condense` 会把两个元素之间那个带换行的空白节点整个抹掉，
  * 两枚按钮会**贴死在一起**；故显式给间距，不靠模板里的换行。
- * ⚠️ 只收在本表内：实时监控那张表的「去管控 + 修正」是既有形状，本轮不动它。
+ * ⚠️ 只收在本表内：实时监控那张表的「修正」是既有形状，本轮不动它。
  */
 .report-table .row-btn + .row-btn { margin-left: 6px; }
 /*
