@@ -624,15 +624,10 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
         -->
         <section class="assess-sheet" aria-label="报备信息">
           <header class="assess-sheet-head">
-            <div class="assess-sheet-title-row">
-              <button
-                type="button"
-                class="assess-ticket-no"
-                @click="emit('openTicket', assessTarget.ticketNo)"
-              >{{ assessTarget.ticketNo }}</button>
-              <!-- ② 提交时刻：等待时长与评估时限都从这一刻起算，故摆在最显眼的一行 -->
-              <span class="assess-sheet-time">提交于 {{ assessTarget.at }}</span>
-            </div>
+            <!--
+              标题行（单号 + 提交于）已随 RiskAssessSheet 一并删除：单号已在弹窗副标题
+              （`〈来源〉 · 〈工单号〉`）里，一屏两遍；提交时刻并进下面的 meta 行作末位一对。
+            -->
             <div class="assess-sheet-meta">
               <!-- ① 报备人 -->
               <span class="assess-meta-pair">
@@ -657,6 +652,12 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
                   <span class="assess-meta-value assess-meta-warn">{{ assessTarget.category }}</span>
                 </span>
               </template>
+              <span class="assess-meta-sep" aria-hidden="true" />
+              <!-- ② 提交时刻：等待时长与评估时限都从这一刻起算，排在这一行末位 -->
+              <span class="assess-meta-pair">
+                <span class="assess-meta-label">提交于</span>
+                <span class="assess-meta-value">{{ assessTarget.at }}</span>
+              </span>
             </div>
           </header>
 
@@ -1145,36 +1146,11 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
   background: linear-gradient(180deg, #fff7ed 0%, #fff 100%);
   border-bottom: 1px solid #ffedd5;
 }
-.assess-sheet-title-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.assess-ticket-no {
-  padding: 0;
-  border: none;
-  background: none;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  color: #1a6fff;
-  cursor: pointer;
-  line-height: 1.4;
-}
-.assess-ticket-no:hover { text-decoration: underline; }
-.assess-sheet-time {
-  font-size: 12px;
-  font-weight: 600;
-  color: #9a3412;
-  font-variant-numeric: tabular-nums;
-}
 .assess-sheet-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 0;
-  margin-top: 8px;
 }
 .assess-meta-pair {
   display: inline-flex;
