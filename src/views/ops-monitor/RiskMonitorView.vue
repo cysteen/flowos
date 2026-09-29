@@ -7253,19 +7253,24 @@ function toggleWordEnabled(w: RiskWord) {
           </div>
         </div>
 
-        <div class="op-field op-field-h tag-field-block">
+        <!--
+          风险等级。🔴 **判「误报」时整段不出**（2026-09-29 追加裁决）：
+          误报的结论是"**规则捞错了**"，不是"风险很低"——这一次核实里没有等级要调，
+          落库本来就是 `误报 → null`（见 `tagLevelToSave`）。原先那一路是把三档置灰摆着，
+          等于界面上摆着一个选了也不生效的答案，与口径打架。
+          `tagLevel` 在段不出这段时间里**不被写**，故切回「成立」时自动还是切换前那个值。
+          段不出**不带来任何新的必填拦截**：`canSaveTag` 本来就只认 `tagVerdict` 与处置备注。
+        -->
+        <div v-if="tagVerdict !== '误报'" class="op-field op-field-h tag-field-block">
           <div class="op-label req">风险等级</div>
-          <div
-            class="op-radio-cards op-radio-cards--row tag-radio-compact tag-radio-fill"
-            :class="{ 'op-radio-disabled': tagVerdict === '误报' }"
-          >
+          <div class="op-radio-cards op-radio-cards--row tag-radio-compact tag-radio-fill">
             <div
               v-for="g in GRADES"
               :key="g"
               class="op-radio-card"
               :class="{ on: tagLevel === g }"
               :style="tagLevel === g ? { borderColor: RISK_LEVEL_STYLE[g].color, background: `${RISK_LEVEL_STYLE[g].bg}33` } : {}"
-              @click="tagVerdict !== '误报' && (tagLevel = g)"
+              @click="tagLevel = g"
             >
               <div class="op-rc-title">{{ g }}危</div>
             </div>
