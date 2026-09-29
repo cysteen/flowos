@@ -7,7 +7,7 @@ import { riskLevelText } from '@/config/risk';
 import { downloadReportAttachment, excerptWindow, isKeywordRow } from './riskAssessSheet';
 
 /**
- * 「风险管控」弹窗的**第一区块**（PRD §5.3.2）：卡片抬头 + 入池依据 / 报备信息 + 命中原话 + 打标备注 +
+ * 「风险管控」弹窗的**第一区块**（PRD §5.3.2）：卡片抬头 + 入池依据 / 报备信息 + 命中原话 + 标记备注 +
  * 附件 + 释放记录。风险监控页那一个与工单页 `OpRiskControlModal` 共用这一份，
  * 字段、顺序、出现条件与样式只在这里改。
  */
@@ -24,7 +24,7 @@ const riskTags = useRiskTagStore();
 /**
  * 待评估的这一条**来自哪条线**。判据取条目自带的身份标 `source`（B 线恒为「二线报备」），
  * 不看有没有 `tag` —— 那答的是"打没打标"，罕见的"进了池却没打标"会被误判成 B 线。
- * · A 线（风险工单池里的条目）→「入池依据」：风险等级 / 打标人 / 打标时刻 / 打标备注 / 命中原话。
+ * · A 线（风险工单池里的条目）→「入池依据」：风险等级 / 标记人 / 标记时间 / 标记备注 / 命中原话。
  * · B 线（二线报备单）→「报备信息」：报备人 / 报备原因 / 风险类型 / 场景描述 / 附件。
  * A 线不出「报备人」「原因」：那两格是 `riskQueue.autoEntry()` 补的恒定占位（系统（系统） / 其他）。
  */
@@ -70,7 +70,7 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
           </span>
         </div>
         <div class="assess-sheet-meta">
-          <!-- A 线的抬头 ＝ 打标那一组（风险等级 / 打标人 / 打标时刻） -->
+          <!-- A 线的抬头 ＝ 打标那一组（风险等级 / 标记人 / 标记时间） -->
           <template v-if="fromPool">
             <template v-if="target.tag">
               <span class="assess-meta-pair">
@@ -83,19 +83,19 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
               <span class="assess-meta-sep" aria-hidden="true" />
               <span class="assess-meta-pair">
                 <UserOutlined class="assess-meta-icon" />
-                <span class="assess-meta-label">打标人</span>
+                <span class="assess-meta-label">标记人</span>
                 <span class="assess-meta-value">{{ target.tag.by }}（{{ target.tag.byRole }}）</span>
               </span>
               <span class="assess-meta-sep" aria-hidden="true" />
               <span class="assess-meta-pair">
-                <span class="assess-meta-label">打标时刻</span>
+                <span class="assess-meta-label">标记时间</span>
                 <span class="assess-meta-value">{{ target.tag.at }}</span>
               </span>
             </template>
             <!-- 罕见：进了池却没有打标（旧缓存）。不编一个等级出来充数，只说清缺的正是这一格 -->
             <span v-else class="assess-meta-pair">
               <span class="assess-meta-label">风险等级</span>
-              <span class="assess-meta-value">未打标</span>
+              <span class="assess-meta-value">未标记</span>
             </span>
           </template>
           <template v-else>
@@ -126,7 +126,7 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
       <blockquote class="assess-quote">{{ target.desc }}</blockquote>
 
       <!--
-        入池依据的证据那两项：命中原话 + 打标备注。等级 / 打标人 / 打标时刻已上抬头，这里不复述。
+        入池依据的证据那两项：命中原话 + 标记备注。等级 / 标记人 / 标记时间已上抬头，这里不复述。
         B 线的报备单没有打标也没有命中，整块 v-if 掉、不留空标题。
       -->
       <div v-if="verifiedHit || target.tag?.note" class="assess-verify">
@@ -141,9 +141,9 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
             </span>
           </span>
         </div>
-        <!-- 打标时填的备注：打标人当时怎么想的，比结论本身更能帮下一个人接上 -->
+        <!-- 打标时填的备注：标记人当时怎么想的，比结论本身更能帮下一个人接上 -->
         <div v-if="target.tag?.note" class="assess-foot-row">
-          <span class="assess-foot-k">打标备注</span>
+          <span class="assess-foot-k">标记备注</span>
           <span class="assess-foot-v">{{ target.tag.note }}</span>
         </div>
       </div>
@@ -283,7 +283,7 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
   word-break: break-word;
 }
 /*
- * 核实结论块：行式走下面那套 assess-foot-*（命中原话 / 打标备注两行），这里只给它一个容器。
+ * 核实结论块：行式走下面那套 assess-foot-*（命中原话 / 标记备注两行），这里只给它一个容器。
  * 底色取 .assess-quote 同一个 #f8fafc、描边取 .assess-file 同一个 #e2e8f0。
  */
 .assess-verify {
@@ -393,7 +393,7 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
   word-break: break-word;
 }
 
-/* 核实结论块的行式（命中原话 / 打标备注） */
+/* 核实结论块的行式（命中原话 / 标记备注） */
 .assess-foot-row {
   display: grid;
   grid-template-columns: 68px 1fr;
