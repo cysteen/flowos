@@ -77,7 +77,7 @@ const flashPoolTabOpen = computed(
  * 顶栏「切换演示角色」**不重挂本页**（AppHeader 的 `afterContextChange` 只在新角色
  * 连 `tickets` 菜单都没有时才跳走），故报备池开着时切到一个看不到这枚页签的角色，
  * `riskReportTabActive` 仍是 true —— 页签栏上已经没有「风险报备池」，正文却还开着，
- * 报备人 / 风险类型 / 场景描述全文一览无余。渲染条件读这个合成值而不是裸 ref。
+ * 报备人 / 风险类型 / 风险描述全文一览无余。渲染条件读这个合成值而不是裸 ref。
  */
 const riskReportTabOpen = computed(
   () => riskReportTabActive.value && !user.hiddenTabs.includes(RISK_REPORT_TAB),
