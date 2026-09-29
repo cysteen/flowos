@@ -118,11 +118,11 @@ export type RiskHistoryInput =
     /** 改判时的旧值；首次打标没有这一项 */
     prev?: RiskTagResult | null;
     /**
-     * **打标备注**（界面词三个入口已统一，工单处理页原来叫「处置备注」，2026-09-11 改齐）。
+     * **标记备注**（界面词三个入口已统一，工单处理页原来叫「处置备注」，2026-09-11 改齐）。
      *
      * 🔴 **它不是必填 —— 三个入口已统一为可选**（2026-09-11 裁决）：
      *   · 风险监控页 · 单条打标（`RiskMonitorView.saveEntryTag`）：不校验，标签无 `req`；
-     *   · 风险监控页 · 批量打标（`RiskMonitorView.saveBulk`）：不校验，同上；
+     *   · 风险监控页 · 批量标记（`RiskMonitorView.saveBulk`）：不校验，同上；
      *   · 工单处理页 · 风险打标（`OpRiskMonitorTab.confirmTag`）：**本轮去掉了那道校验与 `req`**。
      * 状态机入口 `riskQueue.recordTag` 自己也不校验它（`RiskTagInput.note` 只要求是字符串，
      * 空串照收）。故本类型上它是可选的，三个入口空着都落库。
@@ -170,7 +170,7 @@ export type RiskHistoryInput =
  */
 export const RISK_HISTORY_META: Record<RiskHistoryKind, { how: string }> = {
   report: { how: '风险报备' },
-  tag: { how: '风险打标' },
+  tag: { how: '风险标记' },
   assess: { how: '风险评估' },
   collab: { how: '协同处理' },
   grade: { how: '风险等级变更' },

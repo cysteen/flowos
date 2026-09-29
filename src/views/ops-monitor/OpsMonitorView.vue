@@ -1088,7 +1088,7 @@ const OVERDUE_UI: Record<OverdueBucket, { time: string; sub: string }> = {
             <span class="rb-sub">近 24h · 实时 60s</span>
           </button>
           <button type="button" class="rb-card" :class="{ warn: untagged.length > 0 }" @click="goRiskMonitor(true)">
-            <span class="rb-label">待打标（高危）<MetricTipIcon :tip="opsTip('riskUntagged')!" /></span>
+            <span class="rb-label">待标记（高危）<MetricTipIcon :tip="opsTip('riskUntagged')!" /></span>
             <span class="rb-num">{{ untagged.length }}</span>
             <span class="rb-sub">未核实的高危命中</span>
           </button>

@@ -655,10 +655,10 @@ export function deriveIssues(scope: OpsScope, untaggedHighRiskCount = 0, topRisk
     issues.push({
       id: 'riskword',
       level: 'critical',
-      title: `${untaggedHighRiskCount} 单命中高危风险词，尚未打标`,
+      title: `${untaggedHighRiskCount} 单命中高危风险词，尚未标记`,
       detail: topRiskWord
-        ? `最新命中「${topRiskWord}」；命中即已按词表推送责任人，需核实后打标并跟进`
-        : '命中即已按词表推送责任人，需核实后打标并跟进',
+        ? `最新命中「${topRiskWord}」；命中即已按词表推送责任人，需核实后标记并跟进`
+        : '命中即已按词表推送责任人，需核实后标记并跟进',
       owner: '李文萍、值班经理',
       action: 'riskword',
     });
