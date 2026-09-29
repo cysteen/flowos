@@ -864,7 +864,7 @@ const collabSectionBadge = computed(() =>
               两种挡法要分开写：**有打标权但这张单进不了监控**（投诉单 + 客诉专员，
               却推不出两类来源）与**这个角色本来就没有打标入口**（非投诉单 / 非客诉专员），
               合成一句会让客诉专员以为自己被降权了。有打标权且这张单打得动时不出任何一句，
-              那时该看的是下面那枚「打标」按钮。
+              那时该看的是下面那枚「标记」按钮。
             -->
             <template v-if="!canTag">
               <p v-if="isComplaintTicket && user.roleKey === 'complaint-handler'" class="rt-empty-hint">
