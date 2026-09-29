@@ -66,7 +66,7 @@ const {
   ASSESS_DECISIONS,
   assessOpen,
   // 评估弹窗里那块「报备信息」读的就是它（六项齐：报备人 / 提交时刻 / 报备原因 /
-  // 风险类型 / 场景描述 / 附件），不再让评估人隔着遮罩去池表上读场景描述
+  // 风险类型 / 风险描述 / 附件），不再让评估人隔着遮罩去池表上读风险描述
   assessTarget,
   assessDecision,
   assessAdvice,
@@ -478,7 +478,7 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
             <div class="th th-cell">报备人/处理组</div>
             <div class="th th-cell">报备原因</div>
             <div class="th th-cell">风险类型</div>
-            <div class="th th-cell">场景描述</div>
+            <div class="th th-cell">风险描述</div>
             <div class="th th-cell">报备时间</div>
             <div class="th th-cell">已等待</div>
             <div class="th th-cell">承办人</div>
@@ -551,7 +551,7 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
                 🔴 **必须在这一格摆得到**：释放之后条目退回「待领取」、承办人清空，
                 行上看着与"从来没人领过"一模一样 —— 而这两件事对下一个来领的人意义相反：
                 后者是新活，前者是**别人看过之后退回来的活**，退回的理由正是他要先读的。
-                历次记录挂 popover，与「场景描述」那一列同一种展开方式。
+                历次记录挂 popover，与「风险描述」那一列同一种展开方式。
               -->
               <a-popover
                 v-if="releasesOf(r).length"
@@ -628,8 +628,8 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
           不新造一套 —— 两条线的评估人是同一批客诉专员，同一件事读起来必须是同一种样子。
 
           🔴 **必须有这一块**：原来这个弹窗只有「评估决策 + 反馈意见」两项，
-          报备人 / 提交时刻 / 报备原因 / 风险类型 / 场景描述 / 附件**六项一项都没有**。
-          评估人要读场景描述，只能去看被遮罩挡住的池表 —— 而结论恰恰是照着那段描述下的。
+          报备人 / 提交时刻 / 报备原因 / 风险类型 / 风险描述 / 附件**六项一项都没有**。
+          评估人要读风险描述，只能去看被遮罩挡住的池表 —— 而结论恰恰是照着那段描述下的。
 
           🔴 **本块不复制 A 线的「入池依据」**：B 线的报备单不走打标那道门（`RiskReport` 上没有 `tag`）。
         -->
@@ -673,7 +673,7 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
           </header>
 
           <div class="assess-sheet-body">
-            <!-- ⑤ 场景描述：这条报备的正文，结论就是照着它下的，故摆主体、不收进底栏 -->
+            <!-- ⑤ 风险描述：这条报备的正文，结论就是照着它下的，故摆主体、不收进底栏 -->
             <blockquote class="assess-quote">{{ assessTarget.desc || '—' }}</blockquote>
             <!-- ⑥ 附件：报备人交上来的证据（录音片段 / 截图），没有时整段不出 -->
             <ul v-if="assessTarget.attachments.length" class="assess-files">
@@ -878,10 +878,10 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
 .rrp-grid {
   display: grid;
   /*
-   * 两条弹性列（工单标题 / 场景描述）用 minmax + fr：宽屏时把富余宽度吃掉，
+   * 两条弹性列（工单标题 / 风险描述）用 minmax + fr：宽屏时把富余宽度吃掉，
    * 窄屏时缩到下限、整表横向滚动。
    * ⚠️ 容器**不能**写 `width: max-content` —— 那会让 fr 按内容最大宽度解算，
-   * 场景描述一长，整张表就撑到屏外、把「操作」推得看不见（折叠也随之失效）。
+   * 风险描述一长，整张表就撑到屏外、把「操作」推得看不见（折叠也随之失效）。
    */
   grid-template-columns:
     4px minmax(276px, 1.2fr) 96px 92px 88px minmax(190px, 1fr)

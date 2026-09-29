@@ -103,7 +103,7 @@ import { canReleaseAnyRiskReport, isTicketClosed, STATUS_GROUP, ticketStatusDisp
 import { PRIORITY_OPTIONS } from '@/views/tickets/types/createTicket';
 // 🔴 清单表直接复用工作台那张富列表，不在本页另画一张长得像的：
 // 「重点工单」那一路的行**就是工单**，人在这一档要判的也正是工单本身
-// （摘要 / SLA / 状态 / 产品）。原先那两列（监控来源 ＝ 档名的复述、场景描述 ＝ 一句写死的套话）
+// （摘要 / SLA / 状态 / 产品）。原先那两列（监控来源 ＝ 档名的复述、风险描述 ＝ 一句写死的套话）
 // 对判断没有任何信息量，停在这一档根本判不了，只能一条条点进工单。
 import TicketRichList from '@/views/tickets/components/TicketRichList.vue';
 // SLA 那两行与"此刻是否超时"的口径取工作台那一份**单一真源**（已提到 utils 共用）——
@@ -554,6 +554,14 @@ function bySource(rows: RiskPoolItem[]) {
  * 像是同一批数据的两个阶段，而实际上那 8 条里有一半从来没经过上面那 4 条所在的那道门。
  *
  * 🔴 **收窄之后三个数会变小，这是对的**：少掉的那几条不是丢了，是回它自己的池子里去了。
+ *
+ * 🔴 **连「二线报备」来源的池内条目也一并挡在外面，这是口径不是漏洞**（2026-09-29 裁决）。
+ * 报备线的评估弹窗给风险等级时，`riskQueue.ensureEntryFor` 会现补一条来源
+ * 「二线报备」的条目（见 `autoSourceFor` 第三支）——**它只承载等级与计数**：
+ * 让「已判 · 全部有风险」那三个轴（走 `pooledEntries`，不过本函数）把它数进去。
+ * 它的**处置入口仍在工单工作台的「风险报备池」**，报备单本身就有评估那条路。
+ * 放它进本页这个处置工作面排队的话，同一件事会在两个队列里各排一次，
+ * 谁先动都会把另一边弄成脏数据。故本函数照旧按来源一刀切，**不要"修"回来**。
  */
 function isALine<T extends { source: MonitorSource }>(r: T): boolean {
   return r.source !== REPORT_SOURCE;
@@ -1258,7 +1266,7 @@ function openCollab(r: RiskPoolItem) {
  * 本页不再自判一遍）：
  * · A 线（风险工单池里的条目）→「**入池依据**」：风险等级 / 标记人 / 标记时间 /
  *   标记备注 / 命中原话。这一组就是它被送来评估的全部理由。
- * · B 线（二线报备单）→「**报备信息**」：报备人 / 报备原因 / 风险类型 / 场景描述 / 附件。
+ * · B 线（二线报备单）→「**报备信息**」：报备人 / 报备原因 / 风险类型 / 风险描述 / 附件。
  *
  * 【为什么必须分】两条线此前共用一张「报备信息」卡，A 线条目在「报备人」「原因」两格里
  * 显示的是 `riskQueue.autoEntry()` 补的**恒定占位**（系统（系统） / 其他）——A 线全程
@@ -3049,7 +3057,7 @@ const untaggedRows = computed<QueueRow[]>(() => {
 //
 // 【为什么这一路换表】它的行**就是工单**，人在这一档要判的也正是工单本身。
 // 原先那两列对判断零信息量：「监控来源」整列等于左栏档名的复述（停在这一档，
-// 整列都写着同一个来源名），「场景描述」是一句写死的套话。于是这一档没法就地判，
+// 整列都写着同一个来源名），「风险描述」是一句写死的套话。于是这一档没法就地判，
 // 只能一条条点进工单——与「实时监控」那一路当初的毛病一模一样，只是那边靠命中原话解决了。
 //
 // 🔴 **不另画一张长得像工作台的表**：摘要 / SLA 两行 / 状态徽章 / 优先级点 这几格的
@@ -3193,16 +3201,16 @@ function rowTopHit(r: QueueRow): RiskHit | null {
 
 /* ---- 「已标记」段（已入池 / 无风险 / 风险报备）的证据列 ---- */
 //
-// 【为什么这一段也要换列】它原先摆的是「监控来源」+「场景描述」，两列都答不了
+// 【为什么这一段也要换列】它原先摆的是「监控来源」+「风险描述」，两列都答不了
 // "这条**凭什么**被判成这个等级"：
 //   · 监控来源只有两个值，且都是上游入口的复述；
-//   · 场景描述是一句写死的套话（「投诉类工单自动纳入实时监控」），一个字的判据都没有。
+//   · 风险描述是一句写死的套话（「投诉类工单自动纳入实时监控」），一个字的判据都没有。
 // 于是复核一条打标结论——这一段唯一的活——只能一条条点进工单。
 //
 // 🔴 **三类行的证据不是一种东西，故「证据 / 摘要」这一列按来源分岔**（见 `rowEvidenceKind`）：
 //   · 实时监控 —— 摆**命中原话摘录**（最新一条，命中词高亮）；
 //   · 重点工单 —— 这一路本就不产生命中，摆工单自己的**问题描述**；
-//   · 风险报备 —— 摆报备单的**场景描述**（报备弹窗里那一项填的内容）。
+//   · 风险报备 —— 摆报备单的**风险描述**（报备弹窗里那一项填的内容）。
 // 客户 / 产品 与 SLA 两列对**三类行都成立**，故不分岔、恒取工单。
 /** 当前是不是停在「已标记」段（已入池 / 无风险 / 风险报备）那张表上 */
 const taggedEvidenceView = computed(() => (
@@ -3245,7 +3253,7 @@ function rowSlaLines(r: QueueRow): { text: string; color: string }[] {
  */
 /**
  * 这一行的工单标题。**取工单库的真标题**，不取条目里那句写死的套话 ——
- * 「重点工单」那一路的「场景描述」同样走它，那一路本就没有命中原话可摆。
+ * 「重点工单」那一路的「风险描述」同样走它，那一路本就没有命中原话可摆。
  */
 function rowTitleOf(r: QueueRow): string {
   return TICKET_BY_NO.get(r.ticketNo)?.title || r.desc;
@@ -3279,10 +3287,17 @@ function rowHandlerLine(r: QueueRow, hit?: RiskHit | null): string {
  * 🔴 A 线两路**照写条目自己的来源**（实时监控 / 重点工单，与待判段、来源 chip 全站一个说法）；
  * B 线写「**风险报备**」而不是它在合并池里的来源标签「二线报备」：这一列答的是
  * "这条风险从哪条路进来的"，写成岗位名等于把来源说成了报备人的职级。
+ *
+ * 🔴 **按来源判，不按行是不是报备单判**（2026-09-29 裁决）：报备线定级现补的那条条目
+ * （`riskQueue.autoSourceFor` 第三支）走的是 `rowOfEntry`，`report` 为空、`source` 却是
+ * 「二线报备」—— 只判 `r.report` 的话，同一张表里同一件事会出现两种写法：
+ * 那一行写「二线报备」，B 线报备行写「风险报备」。**界面一律写「风险报备」**。
+ * ⚠️ 这是**显示层的映射**，不是数据改名：内部常量 `REPORT_SOURCE` 仍是「二线报备」，
+ * 条目、池行、缓存与筛选一律照旧用它，不要反过来去改那个常量。
  */
 const REPORTED_SOURCE_TEXT = '风险报备';
 function rowSourceText(r: QueueRow): string {
-  return r.report ? REPORTED_SOURCE_TEXT : r.source;
+  return r.report || r.source === REPORT_SOURCE ? REPORTED_SOURCE_TEXT : r.source;
 }
 
 /**
@@ -3296,7 +3311,7 @@ function rowLatestHit(r: QueueRow): RiskHit | null {
 
 /**
  * 「证据 / 摘要」这一格摆的是哪一种东西 —— **按来源分岔，不按"有没有命中"分岔**：
- *   · 报备行 → 报备单的**场景描述**（报备弹窗里那一项填的内容）；
+ *   · 报备行 → 报备单的**风险描述**（报备弹窗里那一项填的内容）；
  *   · 实时监控 → **命中原话摘录**（最新一条，命中词高亮）；
  *   · 重点工单 → **工单的问题描述**（这一路本就不靠词进来，没有原话可摆）。
  * 实时监控那一路万一一条命中都没有（手动筛查并入、命中已被删），退回问题描述，不留空格。
@@ -5634,7 +5649,7 @@ function toggleWordEnabled(w: RiskWord) {
             <tr>
               <th style="width: 152px">工单</th>
               <!--
-                🔴 「监控来源」「场景描述」两列**已删**，换成下面这四列，见 `taggedEvidenceView`。
+                🔴 「监控来源」「风险描述」两列**已删**，换成下面这四列，见 `taggedEvidenceView`。
                 列宽合计 942px（152+88+156+90+104+72+80+96+104），加内边距落在 1044 的清单区内 ——
                 与「实时监控」那一路收窄列宽同一条理由：横着拖才能看全的表，每一行都要动两次手。
                 ⚠️ **按有纵向滚动条时的可用宽算**（1044，不是 1058）：行少到不出滚动条时会多出 14px，
@@ -5682,7 +5697,7 @@ function toggleWordEnabled(w: RiskWord) {
               <!--
                 证据 / 摘要：**三种行摆的不是一种东西**，按来源分岔（见 `rowEvidenceKind`）——
                 实时监控摆命中原话摘录（最新一条，命中词高亮，取窗与召回清单、打标弹窗同一个
-                `excerptWindow`）、重点工单摆工单的问题描述、风险报备摆报备单的场景描述。
+                `excerptWindow`）、重点工单摆工单的问题描述、风险报备摆报备单的风险描述。
                 全文一律挂 title，这一屏是用来复核的、不是读完再判。
               -->
               <td v-if="taggedEvidenceView" class="rr-desc">
@@ -5977,7 +5992,7 @@ function toggleWordEnabled(w: RiskWord) {
               <th style="width: 96px">等待时长</th>
               <!--
                 已领取行现在是**两枚按钮**（处置 +「释放」，§5.4 元素 ⑥ ⑩a），
-                88px 装不下「协同处理」+「释放」，故放宽；多出来的宽度从「场景描述」那一列让。
+                88px 装不下「协同处理」+「释放」，故放宽；多出来的宽度从「风险描述」那一列让。
               -->
               <th style="width: 136px">操作</th>
             </tr>
@@ -9145,7 +9160,7 @@ function toggleWordEnabled(w: RiskWord) {
 
 /*
  * 报备表比命中表少一列长文本，min-width 相应放低，窄屏下不必无谓地出横滚。
- * table-layout: fixed 是「场景描述单行截断」的前提——自动布局下长描述会把
+ * table-layout: fixed 是「风险描述单行截断」的前提——自动布局下长描述会把
  * 这一列一路撑宽、把其余列挤扁，ellipsis 根本不会触发。
  */
 .report-table-wrap .report-table { min-width: 1040px; table-layout: fixed; }
@@ -9187,7 +9202,7 @@ function toggleWordEnabled(w: RiskWord) {
 .th-sortable:hover { color: #1A6FFF; }
 .th-sortable.on { color: #1A6FFF; }
 .th-sort-mark { margin-left: 3px; font-size: 10px; opacity: 0.7; }
-/* 场景描述单行截断：队列是用来挑下一条评的，全文在 title 与评估弹窗里 */
+/* 风险描述单行截断：队列是用来挑下一条评的，全文在 title 与评估弹窗里 */
 .rr-desc {
   color: #475569; font-size: 12px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
