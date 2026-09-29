@@ -15,17 +15,16 @@
 import { computed, ref } from 'vue';
 import { message } from 'ant-design-vue';
 import {
-  PaperClipOutlined,
   RollbackOutlined,
   SafetyCertificateOutlined,
   SearchOutlined,
-  UserOutlined,
 } from '@ant-design/icons-vue';
 import TicketFilterBar from './TicketFilterBar.vue';
 import TicketTitleCell from './TicketTitleCell.vue';
 import OpActionModal from './operation/OpActionModal.vue';
-// 报备附件的"下载"与风险监控页、工单页两个评估弹窗同一个实现（原型内造一个同名占位文件）
-import { downloadReportAttachment } from './operation/riskAssessSheet';
+// 第一区块（报备信息）：与工单页页头「风险管控」、风险监控页评估弹窗**共用同一份**。
+// 本池原先是照它手抄的一套同名类，抄出来的那份没跟上后来的三处改动，已换回共享件。
+import RiskAssessSheet from './operation/RiskAssessSheet.vue';
 // 选「升级」后那一段投诉专属建单要素（投诉一类 / 二类）：与工单页底栏、风险监控页两个评估入口共用同一个组件
 import EscalateComplaintFields from './operation/EscalateComplaintFields.vue';
 import { useUserStore } from '@/stores/user';
@@ -623,95 +622,14 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
       -->
       <div v-if="assessTarget" class="rrp-assess">
         <!--
-          ① 报备信息（2026-09-11 补）。**照风险监控页那个评估弹窗的「报备信息」卡做**，
-          版式与类名一并沿用（`assess-sheet-*` / `assess-meta-*` / `assess-quote` / `assess-file*`），
-          不新造一套 —— 两条线的评估人是同一批客诉专员，同一件事读起来必须是同一种样子。
-
-          🔴 **必须有这一块**：原来这个弹窗只有「评估决策 + 反馈意见」两项，
-          报备人 / 提交时刻 / 报备原因 / 风险类型 / 风险描述 / 附件**六项一项都没有**。
-          评估人要读风险描述，只能去看被遮罩挡住的池表 —— 而结论恰恰是照着那段描述下的。
-
-          🔴 **本块不复制 A 线的「入池依据」**：B 线的报备单不走打标那道门（`RiskReport` 上没有 `tag`）。
+          ① 第一区块（报备信息）。🔴 **改走共享件 `RiskAssessSheet`**（2026-09-30 效果验证发现）：
+          这里原先是**照那一份手抄的一套同名类**，于是它没跟上后来落在共享件上的三处改动 ——
+          标签写「报备原因」而共享件写「原因」、末位还留着「提交于」（第一区块内已不再使用，
+          报备时间在池表里有一列）、引文缺字段名标签「风险描述」。同一张报备单在本池与在
+          工单页页头两个入口读起来长得不一样，正是"一件事两份实现"的必然结果。
+          报备人 / 原因 / 风险类型 / 风险描述引文 / 附件 / 释放记录六项共享件全都有，一项不丢。
         -->
-        <section class="assess-sheet" aria-label="报备信息">
-          <header class="assess-sheet-head">
-            <!--
-              标题行（单号 + 提交于）已随 RiskAssessSheet 一并删除：单号已在弹窗副标题
-              （`〈来源〉 · 〈工单号〉`）里，一屏两遍；提交时刻并进下面的 meta 行作末位一对。
-            -->
-            <div class="assess-sheet-meta">
-              <!-- ① 报备人 -->
-              <span class="assess-meta-pair">
-                <UserOutlined class="assess-meta-icon" />
-                <span class="assess-meta-label">报备人</span>
-                <span class="assess-meta-value">{{ assessTarget.by }}（{{ assessTarget.byRole }}）</span>
-              </span>
-              <span class="assess-meta-sep" aria-hidden="true" />
-              <!-- ③ 报备原因 -->
-              <span class="assess-meta-pair">
-                <span class="assess-meta-label">报备原因</span>
-                <span class="assess-meta-value">{{ assessTarget.reason }}</span>
-              </span>
-              <!--
-                ④ 风险类型：**只在原因＝「风险场景」时才有值**（§9 规则 10），
-                故整段 v-if 掉而不是显示一个「—」——那会让人以为报备人漏填了一格。
-              -->
-              <template v-if="assessTarget.category">
-                <span class="assess-meta-sep" aria-hidden="true" />
-                <span class="assess-meta-pair">
-                  <span class="assess-meta-label">风险类型</span>
-                  <span class="assess-meta-value assess-meta-warn">{{ assessTarget.category }}</span>
-                </span>
-              </template>
-              <span class="assess-meta-sep" aria-hidden="true" />
-              <!-- ② 提交时刻：等待时长与评估时限都从这一刻起算，排在这一行末位 -->
-              <span class="assess-meta-pair">
-                <span class="assess-meta-label">提交于</span>
-                <span class="assess-meta-value">{{ assessTarget.at }}</span>
-              </span>
-            </div>
-          </header>
-
-          <div class="assess-sheet-body">
-            <!-- ⑤ 风险描述：这条报备的正文，结论就是照着它下的，故摆主体、不收进底栏 -->
-            <blockquote class="assess-quote">{{ assessTarget.desc || '—' }}</blockquote>
-            <!-- ⑥ 附件：报备人交上来的证据（录音片段 / 截图），没有时整段不出 -->
-            <ul v-if="assessTarget.attachments.length" class="assess-files">
-              <li v-for="a in assessTarget.attachments" :key="a" class="assess-file">
-                <PaperClipOutlined />
-                <button
-                  type="button"
-                  class="assess-file-btn"
-                  :title="`下载 ${a}`"
-                  @click="downloadReportAttachment(a)"
-                >{{ a }}</button>
-              </li>
-            </ul>
-            <!--
-              ⑦ 释放记录（§5.5 ⑥「在条目详情上可见」）。**没被释放过整段不出**。
-              🔴 **它必须摆在评估人眼前**：这条条目刚被人领走过又退回来，退回的理由
-              往往正是"我判不了 / 不该我办"——现在轮到你判，那句话是你要读的第一手材料。
-              历次全列、最近一次在前（累积不覆盖）。
-            -->
-            <div v-if="releasesOf(assessTarget).length" class="assess-releases">
-              <div class="assess-releases-head">
-                <RollbackOutlined />
-                释放记录（{{ releasesOf(assessTarget).length }} 次）
-              </div>
-              <div
-                v-for="(rel, i) in releasesOf(assessTarget)"
-                :key="i"
-                class="assess-release"
-              >
-                <div class="assess-release-head">
-                  <span class="assess-release-who">{{ rel.by }}（{{ rel.byRole }}）</span>
-                  <span class="assess-release-at">{{ rel.at }}</span>
-                </div>
-                <div class="assess-release-reason">{{ rel.reason }}</div>
-              </div>
-            </div>
-          </div>
-        </section>
+        <RiskAssessSheet :target="assessTarget" />
 
         <!--
           ② 风险等级（2026-09-29「风险管控」弹窗全站统一）：五处入口同一段，共用
