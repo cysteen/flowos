@@ -2349,9 +2349,17 @@ const tagOpen = ref(false);
 const tagTarget = ref<RiskHit | null>(null);
 const tagLevel = ref<RiskLevel>('高');
 const tagVerdict = ref<HitVerdict | undefined>(undefined);
+/**
+ * 本次核实的**处置备注**。
+ *
+ * 🔴 **原来它旁边还有一格必填的「修正原因」，2026-09-29 裁决已取消** ——
+ * 两格用途重叠（都在答"这一次是怎么判的、为什么"），修正时人得把同一件事写两遍。
+ * **取消的是字段、不是约束**：原先"修正必须填修正原因"那道硬校验**迁到本格**，
+ * 即**修正时处置备注必填**，首次核实仍可选。
+ * 故本格在修正形态下**不预填上一次那条** —— 预填等于让上一次的备注自动满足这一次的必填，
+ * 那道约束就名存实亡了（`tagDirty` 随之把"空备注"排除在"动过"之外，见下）。
+ */
 const tagNote = ref('');
-/** 本次修正的理由。修正必填——只记改前改后而不记为什么，复盘时链条仍是断的 */
-const tagReason = ref('');
 /** 已核实过的再打开就是修正：图标、按钮文案与必填项都随之不同（标题恒为「风险管控」） */
 const tagAmend = ref(false);
 /**
@@ -2379,17 +2387,23 @@ const tagCurrent = computed(() => (tagTarget.value ? latestEntryOf(tagTarget.val
 const tagLevelToSave = computed<RiskLevel | null>(
   () => (tagVerdict.value === '误报' ? null : tagLevel.value),
 );
-/** 值没变就不该追加一条空修正，否则历史会被无意义的记录稀释 */
+/**
+ * 值没变就不该追加一条空修正，否则历史会被无意义的记录稀释。
+ * 备注那一项判的是"**填了东西且与上一条不同**"：修正形态下本格从空开始（见 `tagNote`），
+ * 若照旧直接比较，一打开就成了"动过"。
+ */
 const tagDirty = computed(() => {
   const cur = tagCurrent.value;
   if (!cur) return true;
+  const note = tagNote.value.trim();
   return tagVerdict.value !== cur.verdict
     || tagLevelToSave.value !== cur.level
-    || tagNote.value.trim() !== cur.note;
+    || (!!note && note !== cur.note);
 });
 const canSaveTag = computed(() => {
   if (!canRiskTag.value || !tagVerdict.value) return false;
-  if (tagAmend.value) return tagDirty.value && !!tagReason.value.trim();
+  // 修正必须答得出"为什么改"，那句话现在写在处置备注里（「修正原因」已取消）
+  if (tagAmend.value) return tagDirty.value && !!tagNote.value.trim();
   return true;
 });
 
@@ -2453,8 +2467,8 @@ function openTag(h: RiskHit) {
   tagAmend.value = !!cur;
   tagLevel.value = cur?.level ?? h.level;
   tagVerdict.value = cur?.verdict;
-  tagNote.value = cur?.note ?? '';
-  tagReason.value = '';
+  // 处置备注每次从空开始：修正形态下它承载"为什么改"，预填上一次那条会让必填名存实亡
+  tagNote.value = '';
   // 「评估结论」段每次打开都从空开始：决策不选＝不评估，字段与红字走共享实例 reset 一次清完
   tagAssessDecision.value = '';
   tagAssessTried.value = false;
@@ -2467,7 +2481,8 @@ function saveTag() {
   if (!canRiskTag.value) { message.warning('无标记权限'); return; }
   if (!tagVerdict.value) { message.warning('请先判定本次命中是否成立'); return; }
   if (tagAmend.value && !tagDirty.value) { message.warning('核实结果没有变化，无需修正'); return; }
-  if (tagAmend.value && !tagReason.value.trim()) { message.warning('请填写修正原因'); return; }
+  // 「修正原因」已取消，那道约束迁到处置备注上：修正必填、首次可选
+  if (tagAmend.value && !tagNote.value.trim()) { message.warning('请填写处置备注'); return; }
   /*
    * 「评估结论」段的校验与提交前重查。**段不出 / 决策留空一律不跑**（提交＝只核实打标，原行为）。
    * 🔴 **整个跑在任何写入之前**：拦下时核实那一下也不该发生 ——
@@ -2493,7 +2508,6 @@ function saveTag() {
     by: user.current.name,
     byRole: user.role.name,
     at: nowStamp(),
-    ...(tagAmend.value ? { amendReason: tagReason.value.trim() } : {}),
   };
   /*
    * 🔴 **命中核实回写条目**（2026-09-15 裁决，推翻第三轮"命中核实不回写监控条目"）：
@@ -3475,7 +3489,8 @@ function rowWaitedText(r: QueueRow): string {
 
 /* ---- 条目批量标记：**只在待打标视图**（业务口径） ---- */
 // 【为什么另两个视图不给批量】它们装的都是**已经有结论**的条目，对这两批做的唯一一件事是
-// 「修正」——而修正必须逐条写清"为什么改"（`amendReason` 必填）。
+// 「修正」——而修正必须逐条写清"为什么改"（改判时**标记备注必填**，2026-09-29 之前是
+// 独立的「修正原因」那一格，已并入备注）。
 // 批量改判等于绕过那道必填门，一次给一批条目追加一条没有理由的改判，
 // 而「已标记无风险」这一视图存在的全部意义恰恰是**核查漏标误判**，它最不该被一键刷过去。
 const bulkPicked = ref<Set<string>>(new Set());
@@ -3641,9 +3656,16 @@ function saveBulkVerify() {
 const entryTagOpen = ref(false);
 const entryTagTarget = ref<QueueRow | null>(null);
 const entryTagResult = ref<RiskTagResult | ''>('');
+/**
+ * 本次标记的**标记备注**。
+ *
+ * 🔴 **原来它旁边还有一格必填的「修正原因」，2026-09-29 裁决已取消**（两格用途重叠）。
+ * **取消的是字段、不是约束**：原先"修正必须填修正原因"那道硬校验**迁到本格** ——
+ * **改判时标记备注必填**，首次标记仍可选。
+ * 故本格在改判形态下**不预填上一次那条**，否则上一次的备注会自动满足这一次的必填
+ * （`entryTagDirty` 随之把"空备注"排除在"动过"之外，见下）。
+ */
 const entryTagNote = ref('');
-/** 二次修改的理由。**首次打标没有这一项，改标必填**——只记改前改后而不记为什么，复盘时链条仍是断的 */
-const entryTagReason = ref('');
 /** 已经打过标的再打开就是修改：图标、按钮文案与必填项都随之不同（标题恒为「风险管控」） */
 const entryTagAmend = computed(() => !!entryTagTarget.value?.tag);
 /**
@@ -3657,11 +3679,16 @@ const entryTagSubtitle = computed(
 const entryTagHistory = computed(
   () => (entryTagTarget.value ? reportStore.tagHistoryOf(entryTagTarget.value.id) : []),
 );
-/** 值没变就不该追加一条空修改，否则历史会被无意义的记录稀释 */
+/**
+ * 值没变就不该追加一条空修改，否则历史会被无意义的记录稀释。
+ * 备注那一项判的是"**填了东西且与上一条不同**"：改判形态下本格从空开始（见 `entryTagNote`），
+ * 若照旧直接比较，一打开就成了"动过"。
+ */
 const entryTagDirty = computed(() => {
   const cur = entryTagTarget.value?.tag;
   if (!cur) return true;
-  return entryTagResult.value !== cur.result || entryTagNote.value.trim() !== cur.note;
+  const note = entryTagNote.value.trim();
+  return entryTagResult.value !== cur.result || (!!note && note !== cur.note);
 });
 /**
  * 这条条目已出结论：「无风险」一档置灰（《【930】》§5A.3 改判规则；store 侧 `recordTag` 同样拒绝）。
@@ -3732,15 +3759,16 @@ const entryTagLowerFilled = computed(
  * 主按钮可用性 ＝ **上半可保存 ∨ 下半有内容**。
  *
  * 🔴 修正形态下**不能只认上半**：人从「已判」段进来，多半是为了补一条评估结论 / 协同意见，
- * 等级一个字都不必改。按老判据（改动过 ∧ 填了修正原因）那种人只会看到一个永远灰着的按钮。
- * 没改判就没有"为什么改"可答，故这一路也不要「修正原因」——它只在真改判时必填。
+ * 等级一个字都不必改。按老判据（改动过 ∧ 填了备注）那种人只会看到一个永远灰着的按钮。
+ * 没改判就没有"为什么改"可答，故这一路也不要求备注——它只在真改判时必填。
  * 定义位置排在下半两支之后，读的顺序就是判据的顺序。
  */
 const canSaveEntryTag = computed(() => {
   if (!canRiskTag.value || !entryTagResult.value) return false;
   if (entryTagResult.value === NO_RISK && entryTagNoRiskLocked.value) return false;
   if (entryTagAmend.value) {
-    return (entryTagDirty.value && !!entryTagReason.value.trim()) || entryTagLowerFilled.value;
+    // 改判必须答得出"为什么改"，那句话现在写在标记备注里（「修正原因」已取消）
+    return (entryTagDirty.value && !!entryTagNote.value.trim()) || entryTagLowerFilled.value;
   }
   return true;
 });
@@ -3774,8 +3802,8 @@ function openEntryTag(e: QueueRow) {
   entryTagTarget.value = e;
   // 修改态先把现行结论灌回来：改完才知道自己动了哪一项
   entryTagResult.value = e.tag?.result ?? '';
-  entryTagNote.value = e.tag?.note ?? '';
-  entryTagReason.value = '';
+  // 标记备注每次从空开始：改判形态下它承载"为什么改"，预填上一次那条会让必填名存实亡
+  entryTagNote.value = '';
   // 下半两支每次打开都从空开始：评估支决策不选＝不评估、协同支全空＝不协同，
   // 两边的字段与红字各由自己那份共享实例 reset 一次清完
   entryTagAssessDecision.value = '';
@@ -3806,8 +3834,9 @@ function saveEntryTag() {
   // 写成「风险等级」比判据窄 —— 只改了备注的人会被告知"等级没变"，对不上自己刚做的事。
   // 「风险标记」指的是上半那两项本身（等级 + 标记备注），不是本弹窗的名字（弹窗叫「风险管控」）。
   if (!retag && !assessDec && !collab) { message.warning('风险标记没有变化，无需修改'); return; }
-  // 「为什么改」只在**真的改判**时才问得出口：没改判的那一路不要它
-  if (retag && amend && !entryTagReason.value.trim()) { message.warning('请填写修正原因'); return; }
+  // 「为什么改」只在**真的改判**时才问得出口：没改判的那一路不要它。
+  // 「修正原因」已取消，那句话现在写在标记备注里（约束迁移，不是取消）
+  if (retag && amend && !entryTagNote.value.trim()) { message.warning('请填写标记备注'); return; }
   const prev = target.tag?.result;
   const result = entryTagResult.value;
   // 读条目上的现行状态，不读行快照：弹窗开着的这段时间里别人可能已经给了结论
@@ -3847,7 +3876,6 @@ function saveEntryTag() {
       by: user.current.name,
       byRole: user.role.name,
       at: nowStamp(),
-      ...(amend ? { amendReason: entryTagReason.value.trim() } : {}),
     });
     if (!ok) { message.warning('这条监控条目已不存在，请刷新后再看'); return; }
   }
@@ -5675,7 +5703,7 @@ function toggleWordEnabled(w: RiskWord) {
                     <!--
                       🔴 **打标来源的行只给一枚「风险管控」**（2026-09-29 裁决）：原来那枚
                       「修正」已取消 —— 改判等级走的就是这个弹窗的上半（打开时预置现行结论，
-                      改选别的即为改判、「修正原因」必填），一个动作不必摆两枚按钮。
+                      改选别的即为改判、改判时「标记备注」必填），一个动作不必摆两枚按钮。
                     -->
                     <button
                       v-if="canRiskTag"
@@ -6555,7 +6583,7 @@ function toggleWordEnabled(w: RiskWord) {
                     （2026-09-29 裁决：**本册（风险报备 · 监控 · 管控）内**，入口按钮文案 ＝ 弹窗标题；
                     全仓另有一批"动词 + 对象"式标题（调剂工单 / 挂起工单 / 释放条目 · 单号 …），
                     这条规矩不越出本册）——"这次是改已有结论"
-                    由次按钮形状、悬停原文与弹窗内必填的「修正原因」说清，不靠第二个名字。
+                    由次按钮形状、悬停原文与弹窗内改判时必填的「标记备注」说清，不靠第二个名字。
                     绝大多数已核实的记录不需要再动，故仍用次按钮排在动作末位，
                     但它必须存在——台账里翻出一条判错的，正是要改的时候。
                   -->
@@ -6880,7 +6908,7 @@ function toggleWordEnabled(w: RiskWord) {
       🔴 **标题恒为「风险管控」+ 副标题「来源 · 单号」**（2026-09-29 裁决）：与工单页页头那一枚、
       评估处置工作面、风险报备池、协同处理弹窗逐字同形。原来那个按首次 / 修正二选一的旧标题
       已取消 —— 同一个动作在四处各叫一个名字，说"去做风险管控"没人知道指的是哪一处；
-      "这次是改已有结论"由图标、按钮文案与必填的「修正原因」说清。
+      "这次是改已有结论"由图标、按钮文案与改判时必填的「标记备注」说清。
     -->
     <OpActionModal
       :open="entryTagOpen"
@@ -6987,19 +7015,20 @@ function toggleWordEnabled(w: RiskWord) {
           }}
         </div>
 
-        <!-- 二次修改必须答得出"为什么改"：只记改前改后，复盘时链条仍是断的 -->
-        <div v-if="entryTagAmend" class="op-field op-field-h op-field-h-top tag-field-note">
-          <div class="op-label req">修正原因</div>
-          <a-textarea
-            v-model:value="entryTagReason"
-            :rows="2"
-            placeholder="为什么改判，如：复听通话录音，客户已明确提出对外投诉"
-          />
-        </div>
-
+        <!--
+          标记备注。**改判时必填**（2026-09-29 裁决把原来那格「修正原因」并了进来：
+          两格都在答"这一次是怎么判的、为什么"，修正时人得把同一件事写两遍）。
+          改判形态下本格从空开始、placeholder 换成问"为什么改"——只记改前改后，复盘时链条仍是断的。
+        -->
         <div class="op-field op-field-h op-field-h-top tag-field-note">
-          <div class="op-label">标记备注</div>
-          <a-textarea v-model:value="entryTagNote" :rows="2" placeholder="判断依据与后续动作（可选）" />
+          <div class="op-label" :class="{ req: entryTagAmend }">标记备注</div>
+          <a-textarea
+            v-model:value="entryTagNote"
+            :rows="2"
+            :placeholder="entryTagAmend
+              ? '为什么改判，如：复听通话录音，客户已明确提出对外投诉（必填）'
+              : '判断依据与后续动作（可选）'"
+          />
         </div>
 
         <!--
@@ -7073,7 +7102,11 @@ function toggleWordEnabled(w: RiskWord) {
                 <span v-if="e.viaManualScan" class="tt-role">由手动筛查并入</span>
                 <span v-if="e.viaHitVerify" class="tt-role">由命中核实</span>
               </div>
-              <div v-if="e.amendReason" class="tt-reason">原因：{{ e.amendReason }}</div>
+              <!--
+                每条带当次的标记备注。改判那几条的"为什么改"就在这里
+                （「修正原因」已取消、约束迁到备注上，2026-09-29）；没填的不占位。
+              -->
+              <div v-if="e.note" class="tt-reason">备注：{{ e.note }}</div>
             </li>
           </ol>
         </div>
@@ -7209,19 +7242,20 @@ function toggleWordEnabled(w: RiskWord) {
           </div>
         </div>
 
-        <!-- 修正必须答得出"为什么改"：只记改前改后，复盘时链条仍是断的 -->
-        <div v-if="tagAmend" class="op-field op-field-h op-field-h-top tag-field-note">
-          <div class="op-label req">修正原因</div>
-          <a-textarea
-            v-model:value="tagReason"
-            :rows="2"
-            placeholder="为什么改判，如：复听通话录音，客户并未提及外部渠道"
-          />
-        </div>
-
+        <!--
+          处置备注。**修正时必填**（2026-09-29 裁决把原来那格「修正原因」并了进来：
+          两格都在答"这一次是怎么判的、为什么"，修正时人得把同一件事写两遍）。
+          修正形态下本格从空开始、placeholder 换成问"为什么改"——只记改前改后，复盘时链条仍是断的。
+        -->
         <div class="op-field op-field-h op-field-h-top tag-field-note">
-          <div class="op-label">处置备注</div>
-          <a-textarea v-model:value="tagNote" :rows="2" placeholder="核实结论与后续动作（可选）" />
+          <div class="op-label" :class="{ req: tagAmend }">处置备注</div>
+          <a-textarea
+            v-model:value="tagNote"
+            :rows="2"
+            :placeholder="tagAmend
+              ? '为什么改判，如：复听通话录音，客户并未提及外部渠道（必填）'
+              : '核实结论与后续动作（可选）'"
+          />
         </div>
 
         <!--
@@ -7282,7 +7316,11 @@ function toggleWordEnabled(w: RiskWord) {
                 <template v-if="i === 0">判为 {{ e.verdict }}{{ e.level ? ` · ${e.level}危` : '' }}</template>
                 <template v-else>{{ entryDiffText(tagHistory[i - 1], e) }}</template>
               </div>
-              <div v-if="e.amendReason" class="tt-reason">原因：{{ e.amendReason }}</div>
+              <!--
+                每条带当次的处置备注。修正那几条的"为什么改"就在这里
+                （「修正原因」已取消、约束迁到备注上，2026-09-29）；没填的不占位。
+              -->
+              <div v-if="e.note" class="tt-reason">备注：{{ e.note }}</div>
             </li>
           </ol>
         </div>

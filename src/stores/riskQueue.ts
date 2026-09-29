@@ -1111,13 +1111,20 @@ export function canTagNoRisk(status: QueueStatus): boolean {
   return status !== '已评估';
 }
 
-/** 一次打标要填的东西。`amendReason` 只在**二次修改**时有，首次打标没有 */
+/** 一次打标要填的东西。`note` 在**二次修改**时由界面收成必填（见下方 `amendReason`） */
 export interface RiskTagInput {
   result: RiskTagResult;
   note: string;
   by: string;
   byRole: string;
   at: string;
+  /**
+   * ⚠️ **已停写**（2026-09-29 裁决）：原来它是"二次修改必填的修正原因"，与 `note` 用途重叠
+   * （两格都在答"这一次是怎么判的、为什么"），已**并入 `note`** ——
+   * 那道"改判必须说清为什么"的约束迁成**改判时 `note` 必填**，由三处界面各自收。
+   * **字段与状态机一格不动**：留着它是为了不动持久化（旧缓存里的值仍在，只是不再回显、不再写入）。
+   * 全仓已无调用方传它；新代码也不要再传。
+   */
   amendReason?: string;
   /** 这次打标由命中核实产出（`verifyHit`），抄到标记记录上 */
   viaHitVerify?: boolean;
@@ -1333,8 +1340,9 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
    *
    * 【二次修改与历史】现行结论覆盖 `tag`，同时向 `stores/riskTags.ts` 追加一条 ——
    * 追加不覆盖，故"从中危改成无风险、又改回高危"这条爬坡读得出先后。
-   * 首次打标不带 `amendReason`，二次修改必须带（由调用方收这道校验，本函数不拦：
-   * store 拦的话，错误只能以 `return false` 的形式回到界面上，说不出缺的是哪一项）。
+   * 二次修改必须答得出"为什么改"，那句话写在 `note` 里（原独立字段 `amendReason` 已停写，
+   * 2026-09-29）；这道校验**由调用方收，本函数不拦** —— store 拦的话，错误只能以
+   * `return false` 的形式回到界面上，说不出缺的是哪一项。
    *
    * 【为什么进池要清 `assignee`】「待分派」的定义就是还没有人认领。
    * 从「已标记无风险」补进池的条目若留着旧名字，待分派列表里会冒出一条已经有主的条目。

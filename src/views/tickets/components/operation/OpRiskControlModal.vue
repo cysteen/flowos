@@ -206,19 +206,29 @@ const canTag = computed(
 
 const tagResults = RISK_TAG_RESULTS;
 const tagResult = ref<RiskTagResult | ''>('');
+/**
+ * 本次标记的**标记备注**。
+ *
+ * 🔴 **原来它旁边还有一格必填的「修正原因」，2026-09-29 裁决已取消**（两格用途重叠，
+ * 改判时人得把同一件事写两遍）。**取消的是字段、不是约束**：原先"改判必须填修正原因"
+ * 那道硬校验**迁到本格** —— **改判时标记备注必填**，首次标记仍可选。
+ * 故本格在改判形态下**不预填上一次那条**，否则上一次的备注会自动满足这一次的必填。
+ */
 const tagNote = ref('');
-const tagAmendReason = ref('');
 const tagTried = ref(false);
 /** 已有结论时这次就是**改判**，改判必须说清为什么（首次标记没有这一项） */
 const isAmend = computed(() => !!tagRecord.value);
 /**
  * 等级或标记备注动过没有。与风险监控页 `entryTagDirty` 同一口径 ——
  * 没动过还落一遍，标记记录里就多一条与上一条逐字相同的记录、条数还虚增。
+ * 备注那一项判的是"**填了东西且与上一条不同**"：改判形态下它从空开始，
+ * 若照旧直接比较，一打开就成了"动过"。
  */
 const tagDirty = computed(() => {
   const cur = tagRecord.value;
   if (!cur) return !!tagResult.value;
-  return tagResult.value !== cur.result || tagNote.value.trim() !== cur.note;
+  const note = tagNote.value.trim();
+  return tagResult.value !== cur.result || (!!note && note !== cur.note);
 });
 /** 这一次上半落不落：首次标记必落；改判形态只在真动过时落 */
 const tagRetag = computed(
@@ -226,8 +236,8 @@ const tagRetag = computed(
 );
 const missTagResult = computed(() => tagTried.value && canTag.value && !tagResult.value);
 /** 「为什么改」只在**真改判**时问得出口：没改判的那一路（只补协同）不要它 */
-const missTagAmend = computed(
-  () => tagTried.value && tagRetag.value && isAmend.value && !tagAmendReason.value.trim(),
+const missTagNote = computed(
+  () => tagTried.value && tagRetag.value && isAmend.value && !tagNote.value.trim(),
 );
 /**
  * 已出结论的条目「无风险」一档置灰（《【930】》§5A.3 改判规则；store 侧 `recordTag` 同样拒绝）。
@@ -235,11 +245,13 @@ const missTagAmend = computed(
  */
 const tagNoRiskLocked = computed(() => !!tagEntry.value && !canTagNoRisk(tagEntry.value.status));
 
-/** 打开时把现行结论灌回来：改完才知道自己动了哪一项（与风险监控页 `openEntryTag` 同形） */
+/**
+ * 打开时把现行**等级**灌回来：改完才知道自己动了哪一项（与风险监控页 `openEntryTag` 同形）。
+ * 备注**不灌**：改判形态下它承载"为什么改"，预填会让那道必填名存实亡。
+ */
 function resetTag() {
   tagResult.value = tagRecord.value?.result ?? '';
-  tagNote.value = tagRecord.value?.note ?? '';
-  tagAmendReason.value = '';
+  tagNote.value = '';
   tagTried.value = false;
 }
 
@@ -300,8 +312,9 @@ function onComplaintOk() {
     message.warning('风险标记没有变化，也没有填写协同处理内容');
     return;
   }
-  if (retag && isAmend.value && !tagAmendReason.value.trim()) {
-    message.warning('请填写修正原因');
+  // 「修正原因」已取消，那道约束迁到标记备注上：改判必填、首次可选
+  if (retag && isAmend.value && !tagNote.value.trim()) {
+    message.warning('请填写标记备注');
     return;
   }
   // 读条目上的现行状态：弹窗开着这段时间里别人可能已经给了结论
@@ -318,7 +331,6 @@ function onComplaintOk() {
       by: user.name || '当前用户',
       byRole: user.role.name || '客诉专员',
       at: nowStamp(),
-      ...(isAmend.value ? { amendReason: tagAmendReason.value.trim() } : {}),
     });
     if (!res.ok) {
       // 原因由 store 给：挡住它的可能是"不在两类自动识别范围内"，也可能是"这张单查不到"
@@ -395,7 +407,7 @@ function onOk() {
         ② 投诉单上半：风险等级（标记 / 改判）。**只对投诉单 + 标记权角色出**（判据 `canTag`）。
         四选一：一个枚举答"这张单有没有风险、多大"——拆成"有没有风险 + 等级"两个字段会立刻
         长出"无风险却带着等级""有风险却没等级"两种非法组合，而这两种组合恰恰决定条目进不进池。
-        已有结论时这次就是改判，必须答得出「修正原因」；标记备注一律可选（三入口统一）。
+        已有结论时这次就是改判，**改判时「标记备注」必填**（原「修正原因」已并入），首次标记可选。
       -->
       <section v-if="isComplaint && canTag" class="ticket-assess-block">
         <h4 class="ticket-assess-title">风险等级</h4>
@@ -416,19 +428,21 @@ function onOk() {
             标为 低 / 中 / 高 即进风险工单池；标为「无风险」不进池。
           </div>
         </div>
-        <!-- 界面词一律「修正原因」，与风险监控页那两处标记弹窗同名 -->
-        <div v-if="isAmend" class="op-field">
-          <div class="op-label req">修正原因</div>
-          <a-textarea
-            v-model:value="tagAmendReason"
-            :rows="2"
-            placeholder="上一次判的是什么、这次为什么改…"
-          />
-          <div v-if="missTagAmend" class="ticket-assess-err">请填写修正原因</div>
-        </div>
+        <!--
+          标记备注。**改判时必填**（原来那格「修正原因」已并进来，2026-09-29 裁决）：
+          两格都在答"这一次是怎么判的、为什么"，改判时人得把同一件事写两遍。
+          改判形态下本格从空开始、问法换成"为什么改"。
+        -->
         <div class="op-field">
-          <div class="op-label">标记备注</div>
-          <a-textarea v-model:value="tagNote" :rows="2" placeholder="判断依据与后续动作（可选）" />
+          <div class="op-label" :class="{ req: isAmend }">标记备注</div>
+          <a-textarea
+            v-model:value="tagNote"
+            :rows="2"
+            :placeholder="isAmend
+              ? '上一次判的是什么、这次为什么改…（必填）'
+              : '判断依据与后续动作（可选）'"
+          />
+          <div v-if="missTagNote" class="ticket-assess-err">请填写标记备注</div>
         </div>
       </section>
 
