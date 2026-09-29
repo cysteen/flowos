@@ -2430,6 +2430,8 @@ const showTagAssess = computed(() =>
 const showTagAssessEscalate = computed(() =>
   showEscalateComplaintFields(tagAssessDecision.value, tagTarget.value?.ticketNo),
 );
+/** 选「升级」后那一行派生说明，文案与三处评估入口同一个来源 */
+const tagAssessHint = computed(() => escalateHintOf(tagTarget.value?.ticketNo));
 /** 「不升级」那一格反馈意见的红字，提示文案与评估弹窗逐字一致 */
 const missTagAssessAdvice = computed(
   () => tagAssessTried.value && !!tagAssessDecision.value && !assessAdvice.value.trim(),
@@ -3691,6 +3693,8 @@ const showEntryTagAssess = computed(() => showTagAssessFor(
 const showEntryTagAssessEscalate = computed(() =>
   showEscalateComplaintFields(entryTagAssessDecision.value, entryTagTarget.value?.ticketNo),
 );
+/** 选「升级」后那一行派生说明，文案与三处评估入口同一个来源 */
+const entryTagAssessHint = computed(() => escalateHintOf(entryTagTarget.value?.ticketNo));
 /** 「不升级」那一格反馈意见的红字，提示文案与评估弹窗逐字一致 */
 const missEntryTagAssessAdvice = computed(
   () => entryTagAssessTried.value && !!entryTagAssessDecision.value && !assessAdvice.value.trim(),
@@ -7019,6 +7023,11 @@ function toggleWordEnabled(w: RiskWord) {
                 <a-radio v-for="d in ASSESS_DECISIONS" :key="d" :value="d">{{ d }}</a-radio>
               </a-radio-group>
             </div>
+            <!-- 选「升级」后那一行派生说明：文案与三处评估入口同一个来源（escalateHintOf） -->
+            <div
+              v-if="entryTagAssessDecision === '升级'"
+              class="assess-hint assess-dec-foot"
+            >{{ entryTagAssessHint }}</div>
           </div>
 
           <!-- 「不升级」那一格；选「升级」时同一个格子并进下面那一段、改由段内的「升级说明」渲染 -->
@@ -7233,6 +7242,11 @@ function toggleWordEnabled(w: RiskWord) {
                 <a-radio v-for="d in ASSESS_DECISIONS" :key="d" :value="d">{{ d }}</a-radio>
               </a-radio-group>
             </div>
+            <!-- 选「升级」后那一行派生说明：文案与三处评估入口同一个来源（escalateHintOf） -->
+            <div
+              v-if="tagAssessDecision === '升级'"
+              class="assess-hint assess-dec-foot"
+            >{{ tagAssessHint }}</div>
           </div>
 
           <!-- 「不升级」那一格；选「升级」时同一个格子并进下面那一段、改由段内的「升级说明」渲染 -->
