@@ -172,7 +172,8 @@ export type NotifyKind =
   | 'risk'
   | 'cancel'
   | 'appointment'
-  | 'group';
+  | 'group'
+  | 'attachment';
 
 export interface NotifyRecord {
   id: string;
@@ -194,12 +195,16 @@ export interface SurveyRecord {
   conclusion?: string;
 }
 
+/** 附件进入本单的通道。容联云两项由在线/热线会话经附件上传短信回流（会话ID→工单ID 多对一） */
+export type AttachmentSource = '手工上传' | '工单短信' | '容联云在线' | '容联云热线';
+
 export interface AttachmentHistoryRecord {
   id: string;
   name: string;
   size: string;
   uploadedAt: string;
   uploadedBy: string;
+  source: AttachmentSource;
 }
 
 export type CustomerHistoryFilter = 'all' | 'unclaimed' | 'unresponded' | 'processing' | 'closed' | 'complaint';

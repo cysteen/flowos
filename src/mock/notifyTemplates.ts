@@ -1,9 +1,25 @@
 // 工单处理页·联系客户的短信/邮件模板（原型 mock）。
 // 占位符与后台「消息中心」(MessageCenterView) 一致：${no} 工单号 / ${name} 客户 / ${product} 产品 / ${agent} 坐席。
 
+/**
+ * 短信模板类型：
+ * - plain          普通文本
+ * - attachSend     附件下发 —— 坐席选文件发给客户，客户点短信里的下载链接取件
+ * - attachRequest  附件上传邀请 —— 短信带上传链接（绑本单工单ID），客户上传后回流「附件历史」
+ * 附件上传服务由容联云提供，链接生成/有效期/数量与大小上限均在容联云侧。
+ */
+export type SmsTemplateKind = 'plain' | 'attachSend' | 'attachRequest';
+
+export const SMS_TEMPLATE_KIND_LABEL: Record<SmsTemplateKind, string> = {
+  plain: '普通',
+  attachSend: '附件下发',
+  attachRequest: '附件上传邀请',
+};
+
 export interface SmsTemplate {
   code: string;
   name: string;
+  kind: SmsTemplateKind;
   content: string;
 }
 
@@ -18,21 +34,37 @@ export const SMS_TEMPLATES: SmsTemplate[] = [
   {
     code: 'SMS_WO_PROGRESS',
     name: '处理进展通知',
+    kind: 'plain',
     content: '尊敬的${name}，您的工单${no}（${product}）正在加紧处理中，我们会尽快为您解决，感谢您的耐心等待。【讯飞客服】',
   },
   {
     code: 'SMS_NEED_INFO',
     name: '请补充信息',
+    kind: 'plain',
     content: '尊敬的${name}，您的工单${no}需补充相关信息以便继续处理，请留意稍后来电或回复本短信，谢谢。【讯飞客服】',
+  },
+  {
+    code: 'SMS_ATTACH_REQUEST',
+    name: '请上传材料',
+    kind: 'attachRequest',
+    content: '尊敬的${name}，您的工单${no}（${product}）需您上传照片或相关材料以便继续处理，请点击链接上传：${link}【讯飞客服】',
+  },
+  {
+    code: 'SMS_ATTACH_SEND',
+    name: '材料下发',
+    kind: 'attachSend',
+    content: '尊敬的${name}，关于您的工单${no}（${product}），现将相关材料发送给您，请点击短信内链接查收。【讯飞客服】',
   },
   {
     code: 'SMS_WO_DONE',
     name: '处理完成通知',
+    kind: 'plain',
     content: '尊敬的${name}，您的工单${no}已处理完成，如仍有疑问请回拨客服热线，祝您生活愉快。【讯飞客服】',
   },
   {
     code: 'SMS_VISIT',
     name: '满意度回访',
+    kind: 'plain',
     content: '尊敬的${name}，关于工单${no}的本次服务，诚邀您参与满意度评价，您的反馈是我们改进的动力，感谢支持。【讯飞客服】',
   },
 ];
@@ -65,11 +97,17 @@ export interface TemplateContext {
   agent: string;
 }
 
+/** 附件上传链接由容联云按工单ID生成，坐席不可编辑 */
+export function uploadLinkOf(no: string): string {
+  return `https://kf.iflytek.com/up/${no}`;
+}
+
 /** 用工单上下文替换模板占位符 */
 export function fillTemplate(tpl: string, ctx: TemplateContext): string {
   return tpl
     .replaceAll('${no}', ctx.no)
     .replaceAll('${name}', ctx.name || '客户')
     .replaceAll('${product}', ctx.product || '相关产品')
-    .replaceAll('${agent}', ctx.agent || '');
+    .replaceAll('${agent}', ctx.agent || '')
+    .replaceAll('${link}', uploadLinkOf(ctx.no));
 }

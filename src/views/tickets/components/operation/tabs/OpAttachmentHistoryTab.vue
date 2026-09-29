@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { message } from 'ant-design-vue';
-import type { AttachmentHistoryRecord } from '@/views/tickets/types/operationTabs';
+import type { AttachmentHistoryRecord, AttachmentSource } from '@/views/tickets/types/operationTabs';
 
 const props = defineProps<{
   records: AttachmentHistoryRecord[];
@@ -22,6 +22,13 @@ function fileIcon(name: string): string {
   if (['mp4', 'mov', 'avi', 'mp3'].includes(ext)) return '🎬';
   if (['zip', 'rar', '7z'].includes(ext)) return '📦';
   return '📄';
+}
+
+/** 手工上传＝坐席自己传；其余三项均由短信回流，按通道分色 */
+function sourceClass(s: AttachmentSource): string {
+  if (s === '工单短信') return 'is-sms';
+  if (s === '容联云在线' || s === '容联云热线') return 'is-ronglian';
+  return 'is-manual';
 }
 
 function openUpload() {
@@ -72,6 +79,7 @@ function onDownload(name: string) {
             <th class="col-size">文件大小</th>
             <th class="col-time">上传时间</th>
             <th class="col-user">上传人</th>
+            <th class="col-source">来源</th>
             <th class="col-actions">操作</th>
           </tr>
         </thead>
@@ -86,6 +94,9 @@ function onDownload(name: string) {
             <td class="col-size">{{ r.size }}</td>
             <td class="col-time">{{ r.uploadedAt }}</td>
             <td class="col-user">{{ r.uploadedBy }}</td>
+            <td class="col-source">
+              <span class="source-tag" :class="sourceClass(r.source)">{{ r.source }}</span>
+            </td>
             <td class="col-actions">
               <button type="button" class="link-btn" @click="onView(r.name)">查看</button>
               <button type="button" class="link-btn" @click="onDownload(r.name)">下载</button>
@@ -219,6 +230,32 @@ function onDownload(name: string) {
 .col-user {
   width: 120px;
   white-space: nowrap;
+}
+
+.col-source {
+  width: 96px;
+  white-space: nowrap;
+}
+
+.source-tag {
+  display: inline-block;
+  padding: 1px 7px;
+  font-size: 11px;
+  line-height: 18px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.source-tag.is-manual {
+  color: #6b7280;
+  background: #f3f4f6;
+}
+.source-tag.is-sms {
+  color: #1a6fff;
+  background: #eff6ff;
+}
+.source-tag.is-ronglian {
+  color: #0d9488;
+  background: #ecfdf5;
 }
 
 .col-actions {

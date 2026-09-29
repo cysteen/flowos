@@ -31,6 +31,8 @@ import {
 import type { FlashActionResult, FlashInfoChanges } from '@/stores/flash';
 // 建单弹窗仅在「转单/重开」时用，按需异步加载，不阻塞操作页首屏
 const CreateTicketModal = defineAsyncComponent(() => import('./components/CreateTicketModal.vue'));
+import type { AttachmentSource } from './types/operationTabs';
+import type { SmsTemplateKind } from '@/mock/notifyTemplates';
 import { useTicketOperation } from './composables/useTicketOperation';
 import { FEISHU_ESCALATE_CHANNEL, mapUserRole, pushEntry, isAftersaleSettled, isAftersaleInbound } from './composables/opActions';
 import { useProcessForm } from './composables/useProcessForm';
@@ -937,7 +939,25 @@ function onContact(type: 'call' | 'sms' | 'email', value: string) {
   emailModalOpen.value = true;
 }
 
-function onSmsSubmit(payload: { phone: string; templateName: string; content: string }) {
+function onSmsSubmit(payload: {
+  phone: string;
+  templateName: string;
+  templateKind: SmsTemplateKind;
+  content: string;
+  attachments: { name: string; size: number }[];
+}) {
+  // 附件下发：所发文件同步入「附件历史」；上传邀请：链接已随正文发出，回流由容联云回调写入
+  let tail = '';
+  if (payload.templateKind === 'attachSend' && payload.attachments.length) {
+    tail = ` | 附件: ${payload.attachments.map((a) => a.name).join('、')}`;
+    pushAttachmentHistory(
+      payload.attachments.map((a) => ({ name: a.name, size: formatFileSize(a.size) })),
+      '工单短信',
+      `${user.name || '当前坐席'}(${mapUserRole(user.roleKey)})`,
+    );
+  } else if (payload.templateKind === 'attachRequest') {
+    tail = ' | 已发送附件上传链接';
+  }
   tabData.value.contactRecords.unshift({
     id: `c-${Date.now()}`,
     kind: 'sms',
@@ -946,7 +966,7 @@ function onSmsSubmit(payload: { phone: string; templateName: string; content: st
     operator: user.name || '当前坐席',
     when: formatNow(),
     metaPrefix: '发送人',
-    summary: `接收号码: ${payload.phone} | 状态: 发送成功 | 模板: ${payload.templateName}`,
+    summary: `接收号码: ${payload.phone} | 状态: 发送成功 | 模板: ${payload.templateName}${tail}`,
     smsContent: payload.content,
   });
   syncContactedAfterOutreach();
@@ -1464,15 +1484,34 @@ function formatFileSize(bytes?: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-/** 结案后备注新增的附件同步进「附件历史」（只追加；移除附件不删历史记录） */
-function syncClosingNoteAttachmentsToHistory(names: string[]) {
-  if (!names.length) return;
+/** 写「附件历史」的统一入口：只追加，来源按通道标记 */
+function pushAttachmentHistory(
+  files: { name: string; size: string }[],
+  source: AttachmentSource,
+  uploadedBy: string,
+) {
+  if (!files.length) return;
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
   const at = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-  const by = `${user.name || '当前坐席'}(${mapUserRole(user.roleKey)})`;
   tabData.value.attachmentHistory.push(
-    ...names.map((name, i) => ({ id: `cn-att-${now.getTime()}-${i}`, name, uploadedAt: at, uploadedBy: by, size: formatFileSize(closingNoteFileSizes.get(name)) })),
+    ...files.map((f, i) => ({
+      id: `att-${now.getTime()}-${i}`,
+      name: f.name,
+      size: f.size,
+      uploadedAt: at,
+      uploadedBy,
+      source,
+    })),
+  );
+}
+
+/** 结案后备注新增的附件同步进「附件历史」（只追加；移除附件不删历史记录） */
+function syncClosingNoteAttachmentsToHistory(names: string[]) {
+  pushAttachmentHistory(
+    names.map((name) => ({ name, size: formatFileSize(closingNoteFileSizes.get(name)) })),
+    '手工上传',
+    `${user.name || '当前坐席'}(${mapUserRole(user.roleKey)})`,
   );
 }
 

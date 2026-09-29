@@ -303,6 +303,26 @@ export const OPERATION_TAB_DATA: OperationTabData = {
   ],
   notifyRecords: [
     {
+      id: 'n0b',
+      kind: 'attachment',
+      title: '客户上传附件',
+      receiver: '陈伟(处理人)',
+      when: '2026-06-18 15:40:21',
+      channel: 'i讯飞',
+      status: '已读',
+      content: '客户 张小凡 上传附件 1 个：通话录音补充说明.m4a（来源:容联云热线），请及时处理。工单号:IFLYZX-20260618-00003',
+    },
+    {
+      id: 'n0a',
+      kind: 'attachment',
+      title: '客户上传附件',
+      receiver: '陈伟(处理人)',
+      when: '2026-06-18 14:12:37',
+      channel: 'i讯飞',
+      status: '已读',
+      content: '客户 张小凡 上传附件 1 个：购机发票.jpg（来源:工单短信），请及时处理。工单号:IFLYZX-20260618-00003',
+    },
+    {
       id: 'n1',
       kind: 'upgrade',
       title: '升级通知',
@@ -488,6 +508,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       size: '2.3 MB',
       uploadedAt: '2026-06-18 10:20:15',
       uploadedBy: '张晓芸(客服)',
+      source: '手工上传',
     },
     {
       id: 'a2',
@@ -495,6 +516,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       size: '1.8 MB',
       uploadedAt: '2026-06-18 10:20:18',
       uploadedBy: '张晓芸(客服)',
+      source: '手工上传',
     },
     {
       id: 'a3',
@@ -502,6 +524,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       size: '450 KB',
       uploadedAt: '2026-06-18 11:05:42',
       uploadedBy: '王坐席(二线)',
+      source: '手工上传',
     },
     {
       id: 'a4',
@@ -509,6 +532,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       size: '18.6 MB',
       uploadedAt: '2026-06-18 09:50:03',
       uploadedBy: '张小凡(客户)',
+      source: '容联云在线',
     },
     {
       id: 'a5',
@@ -516,6 +540,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       size: '320 KB',
       uploadedAt: '2026-06-18 09:50:08',
       uploadedBy: '张小凡(客户)',
+      source: '容联云在线',
     },
     {
       id: 'a6',
@@ -523,6 +548,23 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       size: '12 KB',
       uploadedAt: '2026-06-18 16:32:10',
       uploadedBy: '王坐席(二线)',
+      source: '手工上传',
+    },
+    {
+      id: 'a7',
+      name: '购机发票.jpg',
+      size: '1.1 MB',
+      uploadedAt: '2026-06-18 14:12:37',
+      uploadedBy: '张小凡(客户)',
+      source: '工单短信',
+    },
+    {
+      id: 'a8',
+      name: '通话录音补充说明.m4a',
+      size: '860 KB',
+      uploadedAt: '2026-06-18 15:40:21',
+      uploadedBy: '张小凡(客户)',
+      source: '容联云热线',
     },
   ],
   customerHistory: {
