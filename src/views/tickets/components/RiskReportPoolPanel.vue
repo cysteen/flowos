@@ -74,8 +74,6 @@ const {
   assessAdviceLabel,
   assessAdvicePlaceholder,
   assessOkText,
-  // 选「升级」后的派生说明行：三处评估弹窗同一个 composable，不另写文案
-  escalateHint,
   escalateFields,
   showEscalateFields,
   openAssess,
@@ -654,8 +652,6 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
             </a-radio-group>
           </div>
           <p v-if="missAssessDecision" class="af-err">请先选择一个评估决策</p>
-          <!-- 选「升级」后的派生说明行：文案取 escalateHintOf，三处评估弹窗同一句 -->
-          <p v-else-if="assessDecision === '升级'" class="af-hint">{{ escalateHint }}</p>
 
           <!--
             结论正文那一格。选「升级」（且会派生新投诉单）时它并进下面那一段、改由段内的

@@ -54,38 +54,10 @@ export function nextEscalatedNoOf(reports: Array<{ assessment?: { escalatedToNo?
 }
 
 /**
- * 选「升级」后要摆出来的那一行分流提示 —— **两个评估入口的唯一文案来源**。
- *
- * 🔴 **这是 O20「按原单类型分流」在界面上的唯一可见区分**，缺了客诉专员就不知道
- * 自己点下去是**派生一张新投诉单**还是**把本单拿到自己名下**——两者对原单的后果完全相反。
- *
- * ⚠️ 它曾在一次跨文件改造里被整条带走，补回来之后又发现**风险监控页那个入口从来没接上**
- * （工单页接了、监控页没接，同一个动作两处说法不一样）。故本轮把文案从 computed 里
- * **提成这个纯函数**：两处都调它，谁也没法只改一半、也没法只在一处把它删掉。
- * 判据（按原单类型分流）与文案绑在同一个函数里，改一次两个入口一起变。
- */
-export function escalateHintOf(ticketNo: string | undefined): string {
-  /*
-   * ⚠️ **按《【930】》§5.2「投诉单不做风险评估」，投诉单不入评估工作面，这一支正常走不到**
-   * （风险工单池的投诉单行现在给的是「协同处理」，工单页页头「风险管控」在投诉单上也开协同那一段）。
-   *
-   * 🔴 **不要因为"走不到"就顺手删掉它** —— 这一整行的历史就是被删过两次：
-   * 一次跨文件改造整条带走、一次只在两个入口里补了一处。留着它当**兜底分支**，
-   * 万一哪条新入口漏了分流、把投诉单送进了评估弹窗，人至少读得到"点下去会发生什么"，
-   * 而不是看到一句写着"派生一张新投诉单"的假话。
-   */
-  if (ticketNo && isComplaintTicket(ticketNo)) {
-    return '本单已是投诉单，提交后由你在工单上执行「工单管控」把本单转到自己名下，本单状态不变、不派生新单。此步不可撤销';
-  }
-  return '提交后原单落「已升级投诉」并派生一张投诉单，新单全量继承本单信息。此步不可撤销';
-}
-
-/**
  * 选「升级」后要不要出「投诉工单专属字段」（投诉一类 / 二类）那一段 —— **三处评估弹窗的唯一判据**。
  *
- * 只在**会派生一张新投诉单**时出：原单已是投诉单的那一支不派生新单（`escalateHintOf` 里
- * 那句兜底文案写的就是「本单状态不变、不派生新单」），没有新单可填，摆出一段建单要素
- * 等于让人白填一遍、还跟同屏的那句提示自相矛盾。
+ * 只在**会派生一张新投诉单**时出：原单已是投诉单的那一支不派生新单、没有新单可填，
+ * 摆出一段建单要素等于让人白填一遍。
  *
  * 判据取 `isComplaintPoolTicket`（原单类型，查不到时按 `IFLYTS-` 号段兜底），
  * 与池的领取 / 释放门控、风险监控页的派生分流同一把。
@@ -289,13 +261,6 @@ export function useRiskReportAssess(opts?: { level?: RiskLevelFieldsCtl }) {
     }
   });
 
-  /**
-   * 选「升级」后出现的分流提示行。文案与判据都在 `escalateHintOf`（本文件顶部导出），
-   * **风险监控页那个评估弹窗调的是同一个函数** —— 两处说法不会再分叉。
-   * 它只在选中「升级」时出现：常驻的话，选「不升级」也跟着显示，那时它是句噪音。
-   */
-  const escalateHint = computed(() => escalateHintOf(assessTarget.value?.ticketNo));
-
   /** 弹窗主按钮：决策＝升级 →「确认升级」，未选或「不升级」→「提交结论」（三处评估弹窗一致） */
   const assessOkText = computed(() => (assessDecision.value === '升级' ? '确认升级' : '提交结论'));
 
@@ -407,7 +372,6 @@ export function useRiskReportAssess(opts?: { level?: RiskLevelFieldsCtl }) {
     assessAdviceLabel,
     assessAdvicePlaceholder,
     assessOkText,
-    escalateHint,
     escalateFields,
     showEscalateFields,
     openAssess,

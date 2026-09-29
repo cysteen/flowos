@@ -114,7 +114,6 @@ const {
   missAssessDecision,
   missAssessAdvice,
   assessOkText,
-  escalateHint,
   escalateFields,
   showEscalateFields,
   openAssess,
@@ -486,14 +485,6 @@ function onOk() {
               </a-radio-group>
             </div>
             <div v-if="missAssessDecision" class="ticket-assess-err ticket-assess-foot">请先选择一个评估决策</div>
-            <!--
-              选「升级」后才出现的分流提示（O20）：它是"你点下去会立刻发生什么"，
-              且**按原单类型给的是两种完全相反的后果**，是做决策所必需的一行。
-            -->
-            <div
-              v-else-if="assessDecision === '升级'"
-              class="ticket-assess-hint ticket-assess-foot"
-            >{{ escalateHint }}</div>
           </div>
           <!--
             结论正文那一格。选「升级」（且会派生新投诉单）时它并进下面那一段、改由段内的
@@ -509,13 +500,15 @@ function onOk() {
             />
             <div v-if="missAssessAdvice" class="ticket-assess-err">请填写{{ adviceLabel }}</div>
           </div>
-        </section>
 
-        <!--
-          ③ 投诉工单专属字段：选「升级」（且会派生新投诉单）时才出。
-          投诉一类 / 二类 / 升级说明三项、均必填；切到「不升级」整段隐藏、已填值保留。
-        -->
-        <EscalateComplaintFields v-if="showEscalateFields" :ctl="escalateFields" />
+          <!--
+            投诉工单专属字段：选「升级」（且会派生新投诉单）时才出。
+            投诉一类 / 二类 / 升级说明三项、均必填；切到「不升级」整段隐藏、已填值保留。
+            🔴 它在**本段 `<section>` 之内**（六处一致，2026-09-30 裁决）：它填的是本段
+            「升级」这一档的要素，摆到段外会读成与「风险处理措施」并列的另一段。
+          -->
+          <EscalateComplaintFields v-if="showEscalateFields" :ctl="escalateFields" />
+        </section>
       </template>
     </div>
   </OpActionModal>
@@ -581,12 +574,5 @@ function onOk() {
   font-size: 11px;
   color: #ef4444;
   line-height: 1.4;
-}
-/* 分流提示：与校验错误同一行位，但它讲的是后果不是错误，故取中性灰而非红 */
-.ticket-assess-hint {
-  margin-top: 4px;
-  font-size: 11px;
-  color: #6b7280;
-  line-height: 1.5;
 }
 </style>
