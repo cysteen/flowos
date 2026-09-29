@@ -24,10 +24,11 @@ import OpRiskCollabModal from '@/views/tickets/components/operation/OpRiskCollab
 // 评估弹窗第一区块（入池依据 / 报备信息 + 释放记录）与工单页 OpRiskControlModal 共用一个组件；
 // 命中原话取窗 `excerptWindow`、实时监控来源判断 `isKeywordRow` 与附件下载同一个共享文件（本页命中清单 / 打标弹窗也读它）
 import RiskAssessSheet from '@/views/tickets/components/operation/RiskAssessSheet.vue';
-// 风险等级四选一 + 标记备注：与工单工作台风险报备池那个评估入口**共用同一份**，
-// 取值域、必填规则与落库（recordTagFor）全在 `useRiskLevelFields` 里，本页不另写一套
+// 风险等级四选一 + 标记备注：**六处「风险管控」弹窗共用同一份呈现**（2026-09-29 裁决）。
+// 评估处置工作面走真实例 `useRiskLevelFields`（落库 recordTagFor）；条目打标与命中核实
+// 两个形态各有既有状态与落库路径，用 `makeRiskLevelFieldsView` 包一层薄适配器交给同一个组件渲染。
 import RiskLevelFields from '@/views/tickets/components/operation/RiskLevelFields.vue';
-import { useRiskLevelFields } from '@/composables/useRiskLevelFields';
+import { makeRiskLevelFieldsView, useRiskLevelFields } from '@/composables/useRiskLevelFields';
 // 选「升级」后那一段投诉专属建单要素（投诉一类 / 二类）：与工单页底栏、风险报备池两个评估入口
 // **共用同一个组件**，字段、级联与校验全在 `useEscalateComplaintFields`，本页不另写一份
 import EscalateComplaintFields from '@/views/tickets/components/operation/EscalateComplaintFields.vue';
@@ -2481,8 +2482,6 @@ const showTagAssess = computed(() =>
 const showTagAssessEscalate = computed(() =>
   showEscalateComplaintFields(tagAssessDecision.value, tagTarget.value?.ticketNo),
 );
-/** 选「升级」后那一行派生说明，文案与三处评估入口同一个来源 */
-const tagAssessHint = computed(() => escalateHintOf(tagTarget.value?.ticketNo));
 /** 「不升级」那一格反馈意见的红字，提示文案与评估弹窗逐字一致 */
 const missTagAssessAdvice = computed(
   () => tagAssessTried.value && !!tagAssessDecision.value && !assessAdvice.value.trim(),
@@ -3760,6 +3759,30 @@ function pickEntryTagResult(r: RiskTagResult) {
   entryTagResult.value = r;
 }
 
+/**
+ * 「风险等级 + 标记备注」那一段交给**六处共用**的 `RiskLevelFields` 渲染
+ * （2026-09-29 裁决「风险等级段收敛成一份共享件、一种呈现」）。
+ *
+ * 🔴 **只是把既有状态包一层给组件看**：本形态是对**具体条目**做的事，落库走
+ * `saveEntryTag` 里那条既有路径（不是 `recordTagFor(ticketNo)`），state、校验与写库一格未动。
+ * · `setLevel` 走 `pickEntryTagResult` —— 那一步原本就带着置灰档的拦截，不能绕过；
+ * · `required`：本来没有等级才标必填（原先恒标必填星，但"已有等级"形态下值本来就预置着、
+ *   那道星从不落到 `canSaveEntryTag` 上，故口径统一不改变任何实际可提交性）；
+ * · `missLevel` / `missNote` 恒假：本弹窗靠主按钮 disabled 拦，从来不出这两行红字。
+ */
+const entryTagLevelView = makeRiskLevelFieldsView({
+  getLevel: () => entryTagResult.value,
+  setLevel: (r) => pickEntryTagResult(r),
+  getNote: () => entryTagNote.value,
+  setNote: (v) => { entryTagNote.value = v; },
+  visible: computed(() => true),
+  isAmend: entryTagAmend,
+  required: computed(() => !entryTagAmend.value),
+  missLevel: computed(() => false),
+  missNote: computed(() => false),
+  noRiskLocked: entryTagNoRiskLocked,
+});
+
 /* ---- 风险打标弹窗里的「评估结论」段（判出高 / 中 / 低之后接出，可留空） ---- */
 
 /** 段内的评估决策。**空 ＝ 不评估**，提交就是原来的那一下打标 */
@@ -3778,8 +3801,6 @@ const showEntryTagAssess = computed(() => showTagAssessFor(
 const showEntryTagAssessEscalate = computed(() =>
   showEscalateComplaintFields(entryTagAssessDecision.value, entryTagTarget.value?.ticketNo),
 );
-/** 选「升级」后那一行派生说明，文案与三处评估入口同一个来源 */
-const entryTagAssessHint = computed(() => escalateHintOf(entryTagTarget.value?.ticketNo));
 /** 「不升级」那一格反馈意见的红字，提示文案与评估弹窗逐字一致 */
 const missEntryTagAssessAdvice = computed(
   () => entryTagAssessTried.value && !!entryTagAssessDecision.value && !assessAdvice.value.trim(),
@@ -7035,61 +7056,15 @@ function toggleWordEnabled(w: RiskWord) {
         </div>
 
         <!--
-          🔴 **四选一**：高 / 中 / 低 / 无风险。四个答案回答的是同一个问题——"这张单有没有风险、多大"。
-          拆成"有没有风险 + 等级"两个字段会立刻长出"无风险却带着等级""有风险却没等级"两种非法组合，
+          🔴 **四选一 + 标记备注：六处「风险管控」弹窗同一份共享件**（2026-09-29 裁决）。
+          四个答案回答的是同一个问题——"这张单有没有风险、多大"。拆成"有没有风险 + 等级"
+          两个字段会立刻长出"无风险却带着等级""有风险却没等级"两种非法组合，
           而这两种组合恰恰决定条目进不进池。
-        -->
-        <div class="op-field op-field-h tag-field-block">
-          <div class="op-label req">风险等级</div>
-          <div class="op-radio-cards op-radio-cards--row tag-radio-compact tag-radio-fill tag-radio-4">
-            <!-- 已结论的条目「无风险」一档置灰（store 侧 recordTag 同样拒绝），见 entryTagNoRiskLocked -->
-            <div
-              v-for="r in RISK_TAG_RESULTS"
-              :key="r"
-              class="op-radio-card"
-              :class="{ on: entryTagResult === r, 'tag-rc-locked': r === NO_RISK && entryTagNoRiskLocked }"
-              :style="entryTagResult === r && isPoolLevel(r) ? { borderColor: RISK_LEVEL_STYLE[r].color, background: `${RISK_LEVEL_STYLE[r].bg}33` } : {}"
-              :title="r === NO_RISK && entryTagNoRiskLocked ? NO_RISK_LOCKED_TIP : undefined"
-              :aria-disabled="r === NO_RISK && entryTagNoRiskLocked ? 'true' : undefined"
-              @click="pickEntryTagResult(r)"
-            >
-              <div class="op-rc-title">{{ isPoolLevel(r) ? `${r}危` : r }}</div>
-            </div>
-          </div>
-        </div>
-        <div class="tag-form-foot">
-          {{
-            entryTagNoRiskLocked
-              ? NO_RISK_LOCKED_TIP
-              : entryTagResult === NO_RISK
-                ? '判为无风险的不进池，落「已判 · 无风险」档 —— 那里是核查漏标误判的地方，不是回收站'
-                : entryTagResult
-                  ? (isComplaintTicket(entryTagTarget.ticketNo)
-                    ? showEntryTagCollab
-                      ? '低 / 中 / 高一律进风险工单池；投诉单不做风险评估，下方给出协同处理即直接落「已结论」，留空则等客诉专员领取后再协同'
-                      : '低 / 中 / 高一律进风险工单池；投诉单不做风险评估，由客诉专员协同处理'
-                    : showEntryTagAssess
-                      ? '低 / 中 / 高一律进风险工单池；下方给出评估结论即直接落「已结论」，留空则等客诉专员领取后再评'
-                      : '低 / 中 / 高一律进风险工单池，等客诉专员领取后给出升级 / 不升级的结论')
-                  : '先判这张单有没有风险、多大；低 / 中 / 高进池，无风险不进池'
-          }}
-        </div>
 
-        <!--
-          标记备注。**改判时必填**（2026-09-29 裁决把原来那格「修正原因」并了进来：
-          两格都在答"这一次是怎么判的、为什么"，修正时人得把同一件事写两遍）。
-          改判形态下本格从空开始、placeholder 换成问"为什么改"——只记改前改后，复盘时链条仍是断的。
+          本形态的 state 与落库照旧走自己那条路（`entryTagResult` / `entryTagNote` /
+          `saveEntryTag`），只是把它们包成 `entryTagLevelView` 交给共享件渲染。
         -->
-        <div class="op-field op-field-h op-field-h-top tag-field-note">
-          <div class="op-label" :class="{ req: entryTagAmend }">标记备注</div>
-          <a-textarea
-            v-model:value="entryTagNote"
-            :rows="2"
-            :placeholder="entryTagAmend
-              ? '为什么改判，如：复听通话录音，客户已明确提出对外投诉（必填）'
-              : '判断依据与后续动作（可选）'"
-          />
-        </div>
+        <RiskLevelFields :ctl="entryTagLevelView" />
 
         <!--
           🔴 **下半按原单类型分岔**（2026-09-29 裁决）：非投诉单走「评估结论」段、
@@ -7112,11 +7087,6 @@ function toggleWordEnabled(w: RiskWord) {
                 <a-radio v-for="d in ASSESS_DECISIONS" :key="d" :value="d">{{ d }}</a-radio>
               </a-radio-group>
             </div>
-            <!-- 选「升级」后那一行派生说明：文案与三处评估入口同一个来源（escalateHintOf） -->
-            <div
-              v-if="entryTagAssessDecision === '升级'"
-              class="assess-hint assess-dec-foot"
-            >{{ entryTagAssessHint }}</div>
           </div>
 
           <!-- 「不升级」那一格；选「升级」时同一个格子并进下面那一段、改由段内的「升级说明」渲染 -->
@@ -7336,11 +7306,6 @@ function toggleWordEnabled(w: RiskWord) {
                 <a-radio v-for="d in ASSESS_DECISIONS" :key="d" :value="d">{{ d }}</a-radio>
               </a-radio-group>
             </div>
-            <!-- 选「升级」后那一行派生说明：文案与三处评估入口同一个来源（escalateHintOf） -->
-            <div
-              v-if="tagAssessDecision === '升级'"
-              class="assess-hint assess-dec-foot"
-            >{{ tagAssessHint }}</div>
           </div>
 
           <!-- 「不升级」那一格；选「升级」时同一个格子并进下面那一段、改由段内的「升级说明」渲染 -->
