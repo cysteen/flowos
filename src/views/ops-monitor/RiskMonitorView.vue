@@ -7313,11 +7313,7 @@ function toggleWordEnabled(w: RiskWord) {
           ① 第一区块：**按原单来路分两种**（PRD §5.3.2，A 线「入池依据」/ B 线「报备信息」），
           与工单页 OpRiskControlModal 共用 RiskAssessSheet，字段、出现条件与样式只在那一处改。
         -->
-        <RiskAssessSheet
-          :target="assessTarget"
-          link-ticket
-          @open-ticket="openTicketFromModal"
-        />
+        <RiskAssessSheet :target="assessTarget" />
 
         <!-- ③ 评估表单：二选一决策 + 必填说明 -->
         <section class="assess-block assess-block-form">

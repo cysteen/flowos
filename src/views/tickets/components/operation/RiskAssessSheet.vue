@@ -7,17 +7,14 @@ import { riskLevelText } from '@/config/risk';
 import { downloadReportAttachment, excerptWindow, isKeywordRow } from './riskAssessSheet';
 
 /**
- * 「风险管控」弹窗的**第一区块**（PRD §5.3.2）：卡片抬头 + 入池依据 / 报备信息 + 命中原话 + 标记备注 +
- * 附件 + 释放记录。风险监控页那一个与工单页 `OpRiskControlModal` 共用这一份，
- * 字段、顺序、出现条件与样式只在这里改。
+ * 「风险管控」弹窗的**第一区块**（PRD §5.3.2）：风险等级与标记备注一组 + 抬头 meta 行 +
+ * 入池依据 / 报备信息 + 命中原话 + 附件 + 释放记录。风险监控页那一个与工单页
+ * `OpRiskControlModal` 共用这一份，字段、顺序、出现条件与样式只在这里改。
+ *
+ * 🔴 卡上**不出单号、不出区块名**：两者都已在弹窗副标题（`〈来源〉 · 〈工单号〉`）里，
+ * 一屏两遍。原来那一行的时刻没丢，并进了下面的 meta 行（`进监控` / `提交于`）。
  */
-const props = defineProps<{
-  target: RiskPoolItem;
-  /** 单号是否可点（风险监控页可点开工单；工单页就在本单上，不可点） */
-  linkTicket?: boolean;
-}>();
-
-const emit = defineEmits<{ openTicket: [ticketNo: string] }>();
+const props = defineProps<{ target: RiskPoolItem }>();
 
 const riskTags = useRiskTagStore();
 
@@ -53,34 +50,31 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
   <section class="assess-sheet" :aria-label="fromPool ? '入池依据' : '报备信息'">
     <header class="assess-sheet-head">
       <div class="assess-sheet-brand">
-        <div class="assess-sheet-title-row">
-          <!-- 区块名摆在明面上：两条线的第一区块答的不是同一个问题，只靠内容差异读不出来 -->
-          <span class="assess-sheet-kind">{{ fromPool ? '入池依据' : '报备信息' }}</span>
-          <button
-            v-if="linkTicket"
-            type="button"
-            class="assess-ticket-link"
-            @click="emit('openTicket', target.ticketNo)"
-          >
-            {{ target.ticketNo }}
-          </button>
-          <span v-else class="assess-ticket-no">{{ target.ticketNo }}</span>
-          <span class="assess-sheet-time">
-            {{ fromPool ? '进监控于' : '提交于' }} {{ target.at }}
+        <!--
+          A 线的头一行 ＝ 打标结论那一组：风险等级在前、标记备注紧随其后。
+          备注是标记人当时的判断依据，跟结论挨着读才接得上；备注长时在自己那一列里换行、行行左对齐。
+          备注为空时整格不出，不留空行也不出标签。
+        -->
+        <div v-if="fromPool" class="assess-sheet-level">
+          <span class="assess-meta-pair">
+            <span class="assess-meta-label">风险等级</span>
+            <!-- 罕见：进了池却没有打标（旧缓存）。不编一个等级出来充数，只说清缺的正是这一格 -->
+            <span
+              v-if="target.tag"
+              class="assess-meta-value"
+              :class="{ 'assess-meta-warn': target.tag.result === '高' }"
+            >{{ isPoolLevel(target.tag.result) ? riskLevelText(target.tag.result) : target.tag.result }}</span>
+            <span v-else class="assess-meta-value">未标记</span>
+          </span>
+          <span v-if="target.tag?.note" class="assess-note-pair">
+            <span class="assess-meta-label">标记备注</span>
+            <span class="assess-note-value">{{ target.tag.note }}</span>
           </span>
         </div>
         <div class="assess-sheet-meta">
-          <!-- A 线的抬头 ＝ 打标那一组（风险等级 / 标记人 / 标记时间） -->
+          <!-- A 线：标记人 / 标记时间；B 线：报备人 / 原因 / 风险类型。时刻一律排在末位 -->
           <template v-if="fromPool">
             <template v-if="target.tag">
-              <span class="assess-meta-pair">
-                <span class="assess-meta-label">风险等级</span>
-                <span
-                  class="assess-meta-value"
-                  :class="{ 'assess-meta-warn': target.tag.result === '高' }"
-                >{{ isPoolLevel(target.tag.result) ? riskLevelText(target.tag.result) : target.tag.result }}</span>
-              </span>
-              <span class="assess-meta-sep" aria-hidden="true" />
               <span class="assess-meta-pair">
                 <UserOutlined class="assess-meta-icon" />
                 <span class="assess-meta-label">标记人</span>
@@ -91,12 +85,8 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
                 <span class="assess-meta-label">标记时间</span>
                 <span class="assess-meta-value">{{ target.tag.at }}</span>
               </span>
+              <span class="assess-meta-sep" aria-hidden="true" />
             </template>
-            <!-- 罕见：进了池却没有打标（旧缓存）。不编一个等级出来充数，只说清缺的正是这一格 -->
-            <span v-else class="assess-meta-pair">
-              <span class="assess-meta-label">风险等级</span>
-              <span class="assess-meta-value">未标记</span>
-            </span>
           </template>
           <template v-else>
             <span class="assess-meta-pair">
@@ -109,14 +99,20 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
               <span class="assess-meta-label">原因</span>
               <span class="assess-meta-value">{{ target.reason }}</span>
             </span>
+            <span class="assess-meta-sep" aria-hidden="true" />
             <template v-if="target.category">
-              <span class="assess-meta-sep" aria-hidden="true" />
               <span class="assess-meta-pair">
                 <span class="assess-meta-label">风险类型</span>
                 <span class="assess-meta-value assess-meta-warn">{{ target.category }}</span>
               </span>
+              <span class="assess-meta-sep" aria-hidden="true" />
             </template>
           </template>
+          <!-- 删掉的标题行里那个时刻并到这里：A 线＝进监控、B 线＝提交于 -->
+          <span class="assess-meta-pair">
+            <span class="assess-meta-label">{{ fromPool ? '进监控' : '提交于' }}</span>
+            <span class="assess-meta-value">{{ target.at }}</span>
+          </span>
         </div>
       </div>
     </header>
@@ -126,12 +122,12 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
       <blockquote class="assess-quote">{{ target.desc }}</blockquote>
 
       <!--
-        入池依据的证据那两项：命中原话 + 标记备注。等级 / 标记人 / 标记时间已上抬头，这里不复述。
-        B 线的报备单没有打标也没有命中，整块 v-if 掉、不留空标题。
+        入池依据的证据只剩「命中原话」一项：等级 / 标记备注 / 标记人 / 标记时间都在抬头，这里不复述。
+        B 线的报备单没有命中，整块 v-if 掉、不留空标题。
       -->
-      <div v-if="verifiedHit || target.tag?.note" class="assess-verify">
+      <div v-if="verifiedHit" class="assess-verify">
         <!-- 命中原话：与风险监控页命中清单、打标弹窗同一套取窗与高亮（excerptWindow） -->
-        <div v-if="verifiedHit" class="assess-foot-row">
+        <div class="assess-foot-row">
           <span class="assess-foot-k">命中原话</span>
           <span class="assess-foot-v" :title="verifiedHit.excerpt">
             <span class="hit-pos">{{ verifiedHit.position }}</span>
@@ -140,11 +136,6 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
               风险词「{{ verifiedHit.word }}」<template v-if="verifiedHit.matchedWord && verifiedHit.matchedWord !== verifiedHit.word">，命中「{{ verifiedHit.matchedWord }}」</template>
             </span>
           </span>
-        </div>
-        <!-- 打标时填的备注：标记人当时怎么想的，比结论本身更能帮下一个人接上 -->
-        <div v-if="target.tag?.note" class="assess-foot-row">
-          <span class="assess-foot-k">标记备注</span>
-          <span class="assess-foot-v">{{ target.tag.note }}</span>
         </div>
       </div>
 
@@ -196,61 +187,45 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
   background: linear-gradient(180deg, #fff7ed 0%, #fff 100%);
   border-bottom: 1px solid #ffedd5;
 }
-.assess-sheet-brand { min-width: 0; }
-.assess-sheet-title-row {
+/* 抬头两行（风险等级＋标记备注 / meta 行）之间的行距走同一个 gap，B 线只有 meta 行时不留空档 */
+.assess-sheet-brand {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 8px;
+  min-width: 0;
 }
-/* 单号：不可点（工单页）走深灰字 */
-.assess-ticket-no {
-  flex: none;
-  font-size: 13px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  color: #111827;
-}
-/* 单号：可点（风险监控页）走链接蓝，值同风险监控页 .tag-ticket-no */
-.assess-ticket-link {
-  flex: none;
-  border: none;
-  background: none;
-  padding: 0;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  color: #1a6fff;
-  cursor: pointer;
-}
-.assess-ticket-link:hover { text-decoration: underline; }
 /*
- * 区块名（入池依据 / 报备信息）。做成小徽标而不是标题行：卡本身已经有描边与暖色抬头，
- * 再压一行 h4 会把弹窗第一屏撑掉一截，而这里要说的只是"这一格答的是哪个问题"。
+ * 风险等级与标记备注一组。两列 grid（等级 | 备注）：备注只在自己那一列里换行，
+ * 续行与首行左对齐，相对等级自然缩进；备注不出时这一行就只剩等级那一格。
  */
-.assess-sheet-kind {
-  flex: none;
-  padding: 1px 6px;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 18px;
-  color: #9a3412;
-  background: #ffedd5;
-  border-radius: 4px;
+.assess-sheet-level {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: 4px 14px;
+  min-width: 0;
 }
-.assess-sheet-time {
+/* 备注本身再分「标签 | 正文」两列，续行退到正文那一列，不顶到标签底下 */
+.assess-note-pair {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
   font-size: 12px;
+}
+.assess-note-value {
+  color: #374151;
   font-weight: 600;
-  color: #9a3412;
-  font-variant-numeric: tabular-nums;
+  line-height: 1.55;
+  word-break: break-word;
+  white-space: pre-wrap;
 }
 .assess-sheet-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 0;
-  margin-top: 8px;
 }
 .assess-meta-pair {
   display: inline-flex;
@@ -283,7 +258,7 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
   word-break: break-word;
 }
 /*
- * 核实结论块：行式走下面那套 assess-foot-*（命中原话 / 标记备注两行），这里只给它一个容器。
+ * 核实结论块：行式走下面那套 assess-foot-*（只剩命中原话一行），这里只给它一个容器。
  * 底色取 .assess-quote 同一个 #f8fafc、描边取 .assess-file 同一个 #e2e8f0。
  */
 .assess-verify {
@@ -393,7 +368,7 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
   word-break: break-word;
 }
 
-/* 核实结论块的行式（命中原话 / 标记备注） */
+/* 核实结论块的行式（命中原话） */
 .assess-foot-row {
   display: grid;
   grid-template-columns: 68px 1fr;
