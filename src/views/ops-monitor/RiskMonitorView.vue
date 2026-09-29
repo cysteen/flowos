@@ -80,14 +80,12 @@ import {
 } from '@/stores/riskShared';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
 // 评估弹窗的两处口径与工单页那个入口**共用同一份实现**：
-// `escalateHintOf` 是「升级」那行分流提示的唯一文案来源，`deriveEscalatedComplaint` 是派生的完整落地。
-// 本页此前各写各的，于是提示行在这里从来就没出现过（工单页有、监控页没有）。
+// `deriveEscalatedComplaint` 是「升级」派生的完整落地，
 // 提交前重查（`assessSubmitBlockOf`）与原单终态判据（`isRiskTicketEnded`）
 // 与报备池、工单页的评估入口共用，各处行为一致
 import {
   assessSubmitBlockOf,
   deriveEscalatedComplaint,
-  escalateHintOf,
   isRiskTicketEnded,
   nextEscalatedNoOf,
   showEscalateComplaintFields,
@@ -921,16 +919,6 @@ const assessAdvicePlaceholder = computed(() => {
 
 /** 弹窗主按钮：决策＝升级 →「确认升级」，未选或「不升级」→「提交结论」（三处评估弹窗一致） */
 const assessOkText = computed(() => (assessDecision.value === '升级' ? '确认升级' : '提交结论'));
-
-/**
- * 选「升级」后那一行分流提示（O20）。
- *
- * ⚠️ **本页此前根本没有这一行** —— 文案与判据都在 `composables/useRiskReportAssess.ts`，
- * 工单页的 `OpRiskControlModal` 接了它，本页那个弹窗从来没接上：同一个动作，
- * 在工单页告诉你"会派生一张新单、不可撤销"，在监控页什么都不说。
- * 现在两处都走 `escalateHintOf`，谁也没法只改一半。
- */
-const escalateHint = computed(() => escalateHintOf(assessTarget.value?.ticketNo));
 
 /** 整段的显隐判据同样是共享的 `showEscalateComplaintFields`，本页不自判一遍 */
 const showEscalateFields = computed(() =>
@@ -2449,12 +2437,6 @@ const canSaveTag = computed(() => {
 
 /** 段内的评估决策。**空 ＝ 不评估**，提交就是原来的那一下核实打标 */
 const tagAssessDecision = ref<AssessDecision | ''>('');
-/**
- * 选「升级」后那一行派生说明。文案取 `escalateHintOf` —— **与三处评估入口同一个来源**，
- * 谁也没法只改一半。它答的是"你点下去会立刻发生什么"，且按原单类型给的是两种相反的后果，
- * 是做这个决策所必需的一行，不是操作说明。
- */
-const tagAssessHint = computed(() => escalateHintOf(tagTarget.value?.ticketNo));
 /** 点过一次保存才出红字：进来就满屏红字的表单没人读得下去 */
 const tagAssessTried = ref(false);
 /** 本次核实的结论会落到哪一条条目上（没有承载体时整段不出，见 `tagAssessEntryOf`） */
@@ -3799,8 +3781,6 @@ const entryTagLevelView = makeRiskLevelFieldsView({
 
 /** 段内的评估决策。**空 ＝ 不评估**，提交就是原来的那一下打标 */
 const entryTagAssessDecision = ref<AssessDecision | ''>('');
-/** 选「升级」后那一行派生说明，与核实形态的 `tagAssessHint` 同一个来源（`escalateHintOf`） */
-const entryTagAssessHint = computed(() => escalateHintOf(entryTagTarget.value?.ticketNo));
 const entryTagAssessTried = ref(false);
 /**
  * 段出不出。承载体就是本弹窗这条条目本身 —— 打标为高 / 中 / 低之后它必进池
@@ -7102,11 +7082,6 @@ function toggleWordEnabled(w: RiskWord) {
                 <a-radio v-for="d in ASSESS_DECISIONS" :key="d" :value="d">{{ d }}</a-radio>
               </a-radio-group>
             </div>
-            <!-- 选「升级」后那一行派生说明：文案与三处评估入口同一个来源（escalateHintOf） -->
-            <div
-              v-if="entryTagAssessDecision === '升级'"
-              class="assess-hint assess-dec-foot"
-            >{{ entryTagAssessHint }}</div>
           </div>
 
           <!-- 「不升级」那一格；选「升级」时同一个格子并进下面那一段、改由段内的「升级说明」渲染 -->
@@ -7332,11 +7307,6 @@ function toggleWordEnabled(w: RiskWord) {
                 <a-radio v-for="d in ASSESS_DECISIONS" :key="d" :value="d">{{ d }}</a-radio>
               </a-radio-group>
             </div>
-            <!-- 选「升级」后那一行派生说明：文案与三处评估入口同一个来源（escalateHintOf） -->
-            <div
-              v-if="tagAssessDecision === '升级'"
-              class="assess-hint assess-dec-foot"
-            >{{ tagAssessHint }}</div>
           </div>
 
           <!-- 「不升级」那一格；选「升级」时同一个格子并进下面那一段、改由段内的「升级说明」渲染 -->
@@ -7435,15 +7405,6 @@ function toggleWordEnabled(w: RiskWord) {
               </a-radio-group>
             </div>
             <div v-if="missAssessDecision" class="assess-err assess-dec-foot">请先选择一个评估决策</div>
-            <!--
-              选「升级」后才出现的分流提示（O20）：它是"你点下去会立刻发生什么"，
-              且**按原单类型给的是两种完全相反的后果**，是做决策所必需的一行。
-              常驻的话选「不升级」也跟着显示，那时它是句噪音，故只在选中「升级」时出。
-            -->
-            <div
-              v-else-if="assessDecision === '升级'"
-              class="assess-hint assess-dec-foot"
-            >{{ escalateHint }}</div>
           </div>
 
           <!--
@@ -7460,14 +7421,16 @@ function toggleWordEnabled(w: RiskWord) {
             />
             <div v-if="missAssessAdvice" class="assess-err">请填写{{ assessAdviceLabel || '反馈意见' }}</div>
           </div>
-        </section>
 
-        <!--
-          ④ 投诉工单专属字段：选「升级」（且会派生新投诉单）时才出。
-          投诉一类 / 二类 / 升级说明三项、均必填；切到「不升级」整段隐藏、已填值保留。
-          组件与状态和工单页底栏、风险报备池两个评估入口共用，本页不另写一份字段表。
-        -->
-        <EscalateComplaintFields v-if="showEscalateFields" :ctl="escalateFields" />
+          <!--
+            投诉工单专属字段：选「升级」（且会派生新投诉单）时才出。
+            投诉一类 / 二类 / 升级说明三项、均必填；切到「不升级」整段隐藏、已填值保留。
+            组件与状态和工单页底栏、风险报备池两个评估入口共用，本页不另写一份字段表。
+            🔴 它在**本段 `<section>` 之内**（六处一致，2026-09-30 裁决）：它填的是本段
+            「升级」这一档的要素，摆到段外会读成与「风险处理措施」并列的第四段。
+          -->
+          <EscalateComplaintFields v-if="showEscalateFields" :ctl="escalateFields" />
+        </section>
       </div>
     </OpActionModal>
 
@@ -9358,6 +9321,6 @@ function toggleWordEnabled(w: RiskWord) {
   margin-left: calc(72px + 10px);
 }
 .assess-err { margin-top: 4px; font-size: 11px; color: #ef4444; line-height: 1.4; }
-/* 「升级」的派生说明行：与工单页 OpRiskControlModal 的 .ticket-assess-hint 同一套 token */
+/* 中性灰的说明行（释放弹窗那一句后果）：与校验红字同一行位，但讲的是后果不是错误 */
 .assess-hint { margin-top: 4px; font-size: 11px; color: #6b7280; line-height: 1.5; }
 </style>
