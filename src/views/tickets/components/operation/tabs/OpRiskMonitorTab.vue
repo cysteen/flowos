@@ -15,17 +15,10 @@ import {
   RightOutlined,
 } from '@ant-design/icons-vue';
 import OpCollapsibleSection from '../OpCollapsibleSection.vue';
-import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue';
 import { riskLevelText } from '@/config/risk';
 import type { RiskTagEntry, TicketRiskVerification } from '@/stores/riskTags';
 import type { RiskMonitorDraft } from '@/views/tickets/types/operationTabs';
-import {
-  RISK_FLAG_OPTIONS,
-  RISK_LEVEL_SELECT_OPTIONS,
-  type ProcessFormDraft,
-  type RiskFlag,
-  type RiskLevel,
-} from '@/views/tickets/types/operation';
+import type { ProcessFormDraft } from '@/views/tickets/types/operation';
 // 本单的报备读口在 B 线自己的 store 里；行类型取合并池的行（同一张单上还可能有
 // A 线自动入池的条目，见 riskReports.ts 的 `reportsOf` 说明）。
 import { useRiskReportStore } from '@/stores/riskReports';
@@ -59,21 +52,8 @@ const props = defineProps<{
   form: ProcessFormDraft;
   riskVerification?: TicketRiskVerification | null;
   readonly?: boolean;
-  /**
-   * 当前登录人是不是**本单主责处理人**。取自工单页的 `isPrimaryHandler`
-   * （`TicketOperationView.vue` 的 `primaryHandlerName === currentHandlerName(...)`，
-   * 与刷机单门控 / 商机编号编辑权同一把），本 Tab 不另判一次。
-   *
-   * 只管「风险标记」块**下半的处理人自述**：那三个字段的写权限是「处理人写权限」，
-   * 角色白名单（`readonly`）之外还要求是本人。不传按非处理人算（只读）。
-   */
-  isPrimaryHandler?: boolean;
   /** 底栏「风险报备」形态按钮出不出（工单页 `showRiskReport` 的报备形态）：空态里指向底栏的那句随它 */
   reportEntryVisible?: boolean;
-}>();
-
-const emit = defineEmits<{
-  'update:form': [form: ProcessFormDraft];
 }>();
 
 const user = useUserStore();
@@ -90,7 +70,6 @@ const router = useRouter();
  */
 
 const expanded = ref({ report: true, assess: true, collab: true, risk: true });
-const riskLevelOptions = RISK_LEVEL_SELECT_OPTIONS;
 
 /** 本单是不是投诉单。类型不在 props 里，走与操作页同一条取数链——本 Tab 的内容按它分岔 */
 const isComplaintTicket = computed(() => resolveTicketTypeFor(props.ticketNo) === '投诉');
@@ -178,35 +157,19 @@ function confirmWithdraw() {
   message.success('已撤回本次报备，可重新发起');
 }
 
-/**
- * 「风险标记」块**下半（处理人自述三字段）**的写权限 ＝ 角色白名单（`readonly`）**∧ 本单处理人本人**。
- * 上半的打标那半不看它（判据是 `canTag`，见下方并块那段的表）。
+/*
+ * ⚠️ **「风险标记」块的下半（处理人自述：是否有风险 / 风险等级 / 风险描述）整组已删**
+ * （2026-09-29 裁决）：那三个字段与「发起风险报备」这条正路讲的是同一件事，
+ * 且非处理人在这里看到的是一组发灰的空字段。
+ *
+ * 🔴 **字段本身没删**：它们仍属 `ProcessFormDraft`，控件在「工单处理」Tab 的
+ * 补充处理 · 风险 chip 面板里（`OpSupplementChipPanels.vue`）——那是处理表单的一部分、
+ * 基线有规定，删完块内这一份之后，chip 面板就是这三个字段的**唯一入口**。
+ * 随之一并清掉的还有本 Tab 的 `selfReportWritable`、写出口（`updateForm` / `update:form`）、
+ * 两条必填校验与 `isPrimaryHandler` 透传 —— 它们只为这半块而存在。
+ *
+ * `form` 这个 prop **保留**：下方 `riskMonitorDiff` 还要拿它与命中核实结论比对（915 §7.3）。
  */
-const selfReportWritable = computed(() => !props.readonly && !!props.isPrimaryHandler);
-
-function updateForm(partial: Partial<ProcessFormDraft>) {
-  if (!selfReportWritable.value) return;
-  emit('update:form', { ...props.form, ...partial });
-}
-
-function onRiskFlagChange(flag: RiskFlag) {
-  const needsDesc = flag === '有风险' || flag === '疑似风险';
-  updateForm({
-    riskFlag: flag,
-    riskLevel: flag === '有风险' ? props.form.riskLevel : '',
-    riskDescription: needsDesc ? props.form.riskDescription : '',
-    riskDescriptionAttachments: needsDesc ? props.form.riskDescriptionAttachments : [],
-  });
-}
-
-const missRiskLevel = computed(
-  () => props.form.riskFlag === '有风险' && !props.form.riskLevel,
-);
-const missRiskDesc = computed(
-  () =>
-    (props.form.riskFlag === '疑似风险' || props.form.riskFlag === '有风险')
-    && !props.form.riskDescription.trim(),
-);
 
 /*
  * ⚠️ 这里曾有一行只读的「风险评估结论：高危 · 吴投诉（客诉专员）· …」（riskAssessLine）。
@@ -260,14 +223,6 @@ const riskMonitorDiff = computed(() => {
   if (!parts.length) return '';
   return `${parts.join('；')}。本页取值以坐席填写为准，监控结论不覆盖。`;
 });
-
-function selectedText(v: unknown): string {
-  return v == null ? '' : String(v);
-}
-
-function onRiskLevelChange(v: unknown) {
-  updateForm({ riskLevel: selectedText(v) as RiskLevel | '' });
-}
 
 function formatShortAt(at: string) {
   const m = at.match(/(\d{2}-\d{2})\s+(\d{2}:\d{2})/);
@@ -380,37 +335,22 @@ function openEscalatedTicket(no: string) {
 
 /**
  * **打标已并入下方「风险标记」一块**（2026-09-20 业务拍板，推翻 2026-09-10「另开一块」那次取舍）。
+ * 并块的理由是：两块并排时同一屏上两处都写着"这单有没有风险、多大"，
+ * 读的人第一眼分不出该看哪个。
  *
- * 旧取舍的理由是"一个控件答不了两个权限"。**并块并不要求共用控件** —— 一块之内分上下两半，
- * 中间一条细分隔线，两半各用各的判据、各用各的控件，那条理由就不成立了。
- * 而两块并排的实际后果是：同一屏上两处都写着"这单有没有风险、多大"，
- * 读的人第一眼分不出该看哪个、该填哪个。
- *
- * 合并后「风险标记」块自上而下是：
+ * **2026-09-29 裁决之后「风险标记」块只剩打标那一路**，自上而下是：
  *   ① **打标结论**（只读）：等级 · 标记人（角色）· 标记时间一行；标记备注 / 修正原因各另起一行；
  *      命中核实结论照旧只读回显；尚无结论时出缺省文案。
- *   ② **标记记录 + 打标按钮**同一行：改判历史横排，按钮只对**投诉单 + 打标权角色**出（`canTag`）。
- *   ③ **细分隔线**。
- *   ④ **处理人自述三字段**：是否有风险 / 风险等级 / 风险描述。
+ *   ② **标记记录**：默认折叠，折叠态「标记记录 N 次」+ 最新一条，展开出全部；
+ *      「标记 / 重新标记」按钮摆在同一行右端，只对**投诉单 + 打标权角色**出（`canTag`）。
  *
- * 🔴 **两套数据互不覆盖这条仍然成立**，并块没有把它们合成一个字段：
+ * 删掉的是原来的③细分隔线与④处理人自述三字段（见上方那段）。
  *
- * | | ①②（上半） | ④（下半） |
- * |---|---|---|
- * | 存哪 | `stores/riskQueue.ts` 的条目，**提交即生效**，不等保存 | `ProcessFormDraft.riskFlag / riskLevel / riskDescription`，随「保存」落工单 |
- * | 谁填 | **标记人**（客诉专员 / 投诉督导），带标记人、角色、时刻、备注与改判历史 | **处理人自述**（二线在办这张单时填的判断） |
- * | 取值 | **四选一**：低 / 中 / 高 / 无风险（一个枚举，非法组合从类型上就没有） | 是否有风险三档 + 风险等级两个字段 |
- * | 作用 | **进不进风险工单池的那道门**（《【930】》§5A.3），回写工单级风险等级 | 工单字段，供统计与回传比对（915 §7.3「工单侧优先」） |
- * | 判据 | `canTag`（原单类型 + 打标权），**不看** Tab 的表单只读 | `selfReportWritable` ＝ 角色白名单（`props.readonly` / Tab 只读）**∧ 本单处理人本人**（`props.isPrimaryHandler`） |
- *
- * 🔴 **下半只有本单处理人本人能填**：它是"处理人自述"，角色对了但不是这张单的处理人，
- * 填出来的是别人单子上的自述。故按 PRD 的「按处理人写权限」收窄为角色 ∧ 本人，
- * 非处理人看到的是同一套控件的禁用态（`a-config-provider`），不另加提示。
- *
- * 🔴 **上下两半的权限判据不许混用同一个变量**：上半按 `canTag` 走（打标即时生效，
- * 故按钮外面套 `a-config-provider :component-disabled="false"`，不受本 Tab 表单只读约束）；
- * 下半走 `updateForm`，`selfReportWritable` 不成立时一律不落。拿其中一个去管另一半，
- * 就会出现"二线在非投诉单上能改打标结论"或"客诉专员打不了标"这两种反过来的错。
+ * 🔴 打标那一路与工单风险字段**互不覆盖**这条没变：
+ * 打标存 `stores/riskQueue.ts` 的条目、提交即生效、四选一（低/中/高/无风险）、
+ * 是**进不进风险工单池的那道门**（《【930】》§5A.3）；
+ * `ProcessFormDraft.riskFlag / riskLevel / riskDescription` 是工单字段、随「保存」落库，
+ * 控件在「工单处理」Tab 的补充处理 · 风险 chip 面板里。
  */
 
 /** 本单的 A 线条目（自动识别进来的，一张单至多一条在池，§3.1） */
@@ -822,13 +762,13 @@ const collabSectionBadge = computed(() =>
     </OpCollapsibleSection>
 
     <!--
-      「风险标记」（2026-09-20 并块：原「风险打标」块整块并入，Tab 上不再有两块讲同一件事）。
-      上半 ＝ 打标那一路（《【930】》§5A.3）：**读的人是处理人**，等级、标记人、标记时间三项缺一不可
+      「风险标记」（2026-09-20 并块：原「风险打标」块整块并入，Tab 上不再有两块讲同一件事；
+      2026-09-29 裁决删掉了下半的处理人自述三字段，那一组的控件只留在「工单处理」Tab 的
+      补充处理 · 风险 chip 面板里）。
+      本块 ＝ 打标那一路（《【930】》§5A.3）：**读的人是处理人**，等级、标记人、标记时间三项缺一不可
       —— 少了标记人与时刻，这条结论就成了一句没有出处的判断，处理人无从追问。
       标记备注**可选**（三入口统一，见 script 的 missTagAmend 上方），没填时整行不出。
       打标按钮只对投诉单 + 打标权角色出（§3.1，判据 `canTag`），非投诉单在这里恒为只读回显。
-      下半 ＝ 处理人自述三字段，随「保存」落工单，判据是处理人写权限。两半只共用一个外壳，
-      不共用任何控件与判据（见 script 内并块那段）。
     -->
     <OpCollapsibleSection
       title="风险标记"
@@ -943,55 +883,6 @@ const collabSectionBadge = computed(() =>
             </a-config-provider>
           </div>
         </section>
-
-        <!-- 上下两半的分界：上半只读 / 打标权，下半处理人写权限，两半不共用控件 -->
-        <div class="rk-split" aria-hidden="true"></div>
-
-        <!--
-          ===== 下半：处理人自述三字段，随「保存」落工单 =====
-          判据 `selfReportWritable` ＝ 角色白名单 ∧ 本单处理人本人（PRD 的「按处理人写权限」）。
-          非处理人：同一套控件的禁用态（这里的 a-config-provider 覆盖外层 Tab 那一层），
-          `updateForm` 再硬拦一道，值改不动也提交不了。
-        -->
-        <a-config-provider :component-disabled="!selfReportWritable">
-          <div class="field inline-row risk-row">
-            <label>是否有风险</label>
-            <a-radio-group
-              :value="form.riskFlag || undefined"
-              class="radio-row"
-              @update:value="(v: RiskFlag) => onRiskFlagChange(v)"
-            >
-              <a-radio v-for="opt in RISK_FLAG_OPTIONS" :key="opt" :value="opt">{{ opt }}</a-radio>
-            </a-radio-group>
-            <template v-if="form.riskFlag === '有风险'">
-              <label class="field-label-sm risk-level-label"><span class="req">*</span>风险等级</label>
-              <FormSelect
-                class="risk-level-select"
-                :class="{ 'ctrl-missing': missRiskLevel }"
-                :value="form.riskLevel || undefined"
-                :options="riskLevelOptions"
-                placeholder="请选择或搜索"
-                @update:value="onRiskLevelChange"
-              />
-            </template>
-          </div>
-          <p v-if="missRiskLevel" class="field-err">请选择风险等级</p>
-          <div
-            v-if="form.riskFlag === '疑似风险' || form.riskFlag === '有风险'"
-            class="field"
-            :class="{ 'is-missing': missRiskDesc }"
-          >
-            <label><span class="req">*</span>风险描述</label>
-            <a-textarea
-              :value="form.riskDescription"
-              :rows="3"
-              :status="missRiskDesc ? 'error' : undefined"
-              placeholder="描述风险点、影响范围与建议处置…（必填）"
-              @update:value="(v: string) => updateForm({ riskDescription: v ?? '' })"
-            />
-            <p v-if="missRiskDesc" class="field-err">请填写风险描述</p>
-          </div>
-        </a-config-provider>
       </div>
     </OpCollapsibleSection>
 
@@ -1602,11 +1493,6 @@ const collabSectionBadge = computed(() =>
 }
 .rt-empty-title { margin: 0; font-size: 13px; font-weight: 600; color: #6b7280; }
 .rt-empty-hint { margin: 0; font-size: 12px; color: #9ca3af; line-height: 1.5; }
-/* 上下两半的细分隔线：一块之内分两套判据，靠这一条把"只读"与"可写"分开 */
-.rk-split {
-  height: 1px;
-  background: #e5e7eb;
-}
 .rt-modal-sub { margin: 0; font-size: 12px; color: #6b7280; line-height: 1.5; }
 .rt-modal-tip { margin: 0; font-size: 11px; color: #9ca3af; line-height: 1.5; }
 .rt-radio-row { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; }
@@ -1673,40 +1559,10 @@ const collabSectionBadge = computed(() =>
 }
 .lbl-72 { width: 72px; }
 
-.form-select { flex: 1; min-width: 0; }
-.form-select :deep(.ant-select-selector) {
-  min-height: 32px !important;
-  height: 32px !important;
-  padding: 0 8px !important;
-  border-radius: 6px !important;
-  border-color: #e5e7eb !important;
-  background: #fff !important;
-  box-shadow: none !important;
-  font-size: 12px;
-}
-.form-select :deep(.ant-select-selection-item),
-.form-select :deep(.ant-select-selection-placeholder) {
-  line-height: 30px !important;
-  font-size: 12px;
-}
-.form-select :deep(.ant-select-selection-placeholder) { color: #9ca3af; }
-.form-select :deep(.ant-select-arrow) { color: #9ca3af; font-size: 10px; }
-.form-select:hover :deep(.ant-select-selector),
-.form-select.ant-select-focused :deep(.ant-select-selector) {
-  border-color: #e5e7eb !important;
-  box-shadow: none !important;
-}
-
 .chip-panel { display: flex; flex-direction: column; gap: 12px; }
 .panel-neutral {
   background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px;
 }
-.field { display: flex; flex-direction: column; gap: 6px; }
-.field label { font-size: 12px; font-weight: 600; color: #374151; }
-.field-label-sm { font-size: 11px; font-weight: 500; color: #6b7280; }
-.inline-row { flex-direction: row; align-items: center; gap: 12px; }
-.radio-row { display: flex; gap: 14px; font-size: 12px; }
-.chip-panel :deep(.ant-radio-wrapper) { white-space: nowrap; }
 .req {
   color: #ef4444;
   margin-right: 2px;
@@ -1717,14 +1573,6 @@ const collabSectionBadge = computed(() =>
   font-size: 11px;
   color: #ef4444;
   line-height: 1.3;
-}
-.field.is-missing label { color: #b91c1c; }
-.ctrl-missing :deep(.ant-select-selector) {
-  border-color: #fca5a5 !important;
-}
-.risk-row {
-  flex-wrap: wrap;
-  align-items: center;
 }
 .risk-monitor-note {
   display: flex;
@@ -1739,23 +1587,4 @@ const collabSectionBadge = computed(() =>
 .rm-line { font-size: 11px; color: #475569; font-weight: 600; }
 .rm-sub { font-size: 11px; color: #64748b; }
 .rm-diff { font-size: 11px; color: #b45309; }
-.risk-level-label {
-  margin-left: 4px;
-  flex: none;
-  white-space: nowrap;
-}
-.risk-level-select {
-  width: 140px;
-  flex: none;
-}
-.risk-level-select :deep(.ant-select-selector) {
-  height: 28px;
-  min-height: 28px;
-  font-size: 12px;
-}
-.risk-level-select :deep(.ant-select-selection-item),
-.risk-level-select :deep(.ant-select-selection-placeholder) {
-  font-size: 12px;
-  line-height: 26px;
-}
 </style>

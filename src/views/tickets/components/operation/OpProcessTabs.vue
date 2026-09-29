@@ -248,7 +248,12 @@ defineExpose({ switchTab });
         @update:draft="updateTabData({ ...tabData, techDraft: $event })"
       />
 
-      <!-- 风险标记三件套走 form（与「补充处理 → 风险」面板同一份），Tab 本地字段仍走 riskDraft -->
+      <!--
+        本 Tab **不写 form**（2026-09-29 裁决删掉了「风险标记」块下半的处理人自述三字段）：
+        风险三件套（是否有风险 / 风险等级 / 风险描述）的控件只剩「补充处理 → 风险」面板那一份，
+        `is-primary-handler` 与 `@update:form` 随之不再透到这里。
+        `form` 仍要给 —— 块内的命中核实那一行要拿它与监控结论比对（915 §7.3）。
+      -->
       <OpRiskMonitorTab
         v-else-if="activeTab === 'risk'"
         :ticket-no="ticketNo"
@@ -257,10 +262,8 @@ defineExpose({ switchTab });
         :form="form"
         :risk-verification="riskVerification"
         :readonly="activeTabReadonly"
-        :is-primary-handler="isPrimaryHandler"
         :report-entry-visible="riskReportEntryVisible"
         @update:draft="updateTabData({ ...tabData, riskDraft: $event })"
-        @update:form="emit('update:form', $event)"
       />
 
       <OpFlowHistoryTab
