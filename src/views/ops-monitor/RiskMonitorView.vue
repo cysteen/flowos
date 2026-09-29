@@ -509,7 +509,7 @@ function poolTicketTypeOf(r: { ticketNo: string }): string {
   return t?.type ?? (isComplaintTicket(r.ticketNo) ? '投诉' : '—');
 }
 /**
- * 池行的「风险摘要」：打标备注（打标人为什么判这个等级）；没填备注时退回工单的问题描述 / 标题。
+ * 池行的「风险摘要」：标记备注（标记人为什么判这个等级）；没填备注时退回工单的问题描述 / 标题。
  * 不取条目 `desc` —— 那是入队套话（「投诉类工单自动纳入实时监控」），答不了"风险是什么"。
  */
 function poolRiskSummaryOf(r: RiskPoolItem): string {
@@ -915,11 +915,11 @@ const showEscalateFields = computed(() =>
 
 /* ==================== 打标即结论：两个单条打标弹窗里那一段「评估结论」 ==================== */
 //
-// 判成立 / 判出等级之后，打标人可以在**同一次提交**里把结论一起给掉（升级 / 不升级），
+// 判成立 / 判出等级之后，标记人可以在**同一次提交**里把结论一起给掉（升级 / 不升级），
 // 条目照常进池但**直接落「已结论」**，不经「待领取」「已领取」两态；段留空就照旧只打标进池等领取。
 //
 // 🔴 **只在两个单条弹窗上**：两枚单条「风险管控」弹窗 —— 命中核实形态（含它的修正态）
-// 与条目打标形态（含它的修正态）。**批量打标、批量核实两个弹窗一字不动** ——
+// 与条目打标形态（含它的修正态）。**批量标记、批量核实两个弹窗一字不动** ——
 // 批量里一屏几十条各有各的原单类型与条目状态，一个共用的结论落不到它们头上。
 //
 // 【为什么两个打标弹窗与评估弹窗**共用上面那一份 `escalateFields` 实例**，而不是各建一份】
@@ -1015,7 +1015,7 @@ function tagAssessFieldsOk(escalate: boolean): boolean {
  *
  * 落的三件与评估弹窗逐字相同：① 选「升级」且原单不是投诉单 → `deriveEscalatedComplaint`
  * （造新单 + 记原单升级台账 + 新单问题描述＝原单问题描述 ＋ 空行 ＋ 升级说明 +
- * 投诉一类 / 二类写到新单 + 新单回流实时监控）；② 条目落「已结论」，**结论人＝打标人、
+ * 投诉一类 / 二类写到新单 + 新单回流实时监控）；② 条目落「已结论」，**结论人＝标记人、
  * 结论时刻＝本次提交时刻**（`assessOnTag`）；③ 第八类履历与 `risk.report.assessed` 通知
  * 由 `assessOnTag` 内部与评估路径共用的那一份实现落，不另造事件。
  *
@@ -1239,8 +1239,8 @@ function openCollab(r: RiskPoolItem) {
  *
  * 🔴 弹窗第一区块**按同一个 `source` 分两种**（PRD §5.3.2，判据在 `RiskAssessSheet` 里，
  * 本页不再自判一遍）：
- * · A 线（风险工单池里的条目）→「**入池依据**」：风险等级 / 打标人 / 打标时刻 /
- *   打标备注 / 命中原话。这一组就是它被送来评估的全部理由。
+ * · A 线（风险工单池里的条目）→「**入池依据**」：风险等级 / 标记人 / 标记时间 /
+ *   标记备注 / 命中原话。这一组就是它被送来评估的全部理由。
  * · B 线（二线报备单）→「**报备信息**」：报备人 / 报备原因 / 风险类型 / 场景描述 / 附件。
  *
  * 【为什么必须分】两条线此前共用一张「报备信息」卡，A 线条目在「报备人」「原因」两格里
@@ -2032,7 +2032,7 @@ function siblingCountOf(h: RiskHit): number {
  *     误报的、未核实的、打为「无风险」的、尚未打标的**都不参与**；一条都不参与时取**空**。
  *   · **同一条条目 / 命中内以最新结论为准**：一条只占一格，改判**覆盖该格、可升可降**、须填原因；
  *     改判为「无风险」**清空该格**。
- * ⚠️ 第三句并存、管的是另一件事：**打标记录累积、不覆盖**（改判 N 次就有 N + 1 条记录）。
+ * ⚠️ 第三句并存、管的是另一件事：**标记记录累积、不覆盖**（改判 N 次就有 N + 1 条记录）。
  * 这几条口径与实现，连同"纯派生不落库"，都在 useRiskTagStore.ticketGradeOf，注释也在那里。
  *
  * 【为什么挪去 store】工单处理页要展示同一个等级（打标回传）。同一个口径写两遍，
@@ -2181,7 +2181,7 @@ function applyLedgerFilter(list: RiskHit[]): RiskHit[] {
     // 误报没有等级（gradeOf 返回 null），故选定任一具体等级时它一律不匹配。
     // 让它落进某一档等于承认"误报也是风险，只是低一点"，与准确率的口径直接打架。
     if (f.level !== 'all' && gradeOf(h) !== f.level) return false;
-    // 时间锚在**命中时刻**而非打标时刻：点查问的是"当时有没有发现"
+    // 时间锚在**命中时刻**而非标记时间：点查问的是"当时有没有发现"
     const day = h.when.slice(0, 10);
     if (f.from && day < f.from) return false;
     if (f.to && day > f.to) return false;
@@ -2447,7 +2447,7 @@ const tagOkText = computed(() => (
 ));
 
 function openTag(h: RiskHit) {
-  if (!canRiskTag.value) { message.warning('只有客诉专员、投诉督导与管理员可以打标'); return; }
+  if (!canRiskTag.value) { message.warning('只有客诉专员、投诉督导与管理员可以标记'); return; }
   tagTarget.value = h;
   const cur = latestEntryOf(h);
   tagAmend.value = !!cur;
@@ -2464,7 +2464,7 @@ function openTag(h: RiskHit) {
 function saveTag() {
   const target = tagTarget.value;
   if (!target) return;
-  if (!canRiskTag.value) { message.warning('无打标权限'); return; }
+  if (!canRiskTag.value) { message.warning('无标记权限'); return; }
   if (!tagVerdict.value) { message.warning('请先判定本次命中是否成立'); return; }
   if (tagAmend.value && !tagDirty.value) { message.warning('核实结果没有变化，无需修正'); return; }
   if (tagAmend.value && !tagReason.value.trim()) { message.warning('请填写修正原因'); return; }
@@ -2501,7 +2501,7 @@ function saveTag() {
    * 已打标工单、修正只记命中。状态迁移全在 store 的 `verifyHit` 一处，批量核实走同一个入口。
    */
   const outcome = riskQueue.verifyHit(target, { ...entry, verdict: tagVerdict.value });
-  // 段内给了结论：条目照常进池，但**直接落「已结论」**（结论人＝打标人、结论时刻＝本次提交时刻）
+  // 段内给了结论：条目照常进池，但**直接落「已结论」**（结论人＝标记人、结论时刻＝本次提交时刻）
   const assessPhrase = assessDec && assessCarrier ? commitTagAssess(target.ticketNo, assessDec) : '';
   message.success(
     // 给了结论时不能再说"进池等领取"——去向已经是「已结论」，故这一句整条换掉
@@ -2516,7 +2516,7 @@ function saveTag() {
 /** 首次核实保存后的去向提示：命中结论之外，把工单这一侧发生了什么说出来 */
 function verifyOutcomeTip(no: string, entry: TagEntry, outcome: HitVerifyOutcome): string {
   if (outcome.kind === 'tagged') {
-    return `已核实这条命中为「成立 · ${levelText(outcome.level)}」，${no} 已打标「${levelText(outcome.level)}」并进风险工单池等待领取`;
+    return `已核实这条命中为「成立 · ${levelText(outcome.level)}」，${no} 已标记「${levelText(outcome.level)}」并进风险工单池等待领取`;
   }
   if (outcome.kind === 'rerouted') {
     return `已记为误报；${no} 已无待核实命中，改归「${outcome.source}」，仍在待判`;
@@ -2601,7 +2601,7 @@ function tagTraceTitle(h: RiskHit): string | undefined {
   const t = traceOf(h);
   if (!t) return undefined;
   // 角色与姓名同行给出：光看姓名答不出"这条判定有多少分量"
-  const lines = [`打标人：${t.by}（${t.byRole}）`, `打标时刻：${t.at}`];
+  const lines = [`标记人：${t.by}（${t.byRole}）`, `标记时间：${t.at}`];
   if (t.note) lines.push(`处置备注：${t.note}`);
   const amended = historyOf(h).length - 1;
   if (amended > 0) lines.push(`已修正 ${amended} 次，明细见「修正」`);
@@ -2626,7 +2626,7 @@ interface QueueRow {
   ticketNo: string;
   /**
    * A 线的监控条目。**报备行没有** —— B 线不走打标这道门，见 `report`。
-   * 打标、批量打标、修正三处只对有它的行开口，故那几处先判它在不在。
+   * 打标、批量标记、修正三处只对有它的行开口，故那几处先判它在不在。
    */
   entry?: RiskQueueEntry;
   /** B 线的报备单。**只有「风险报备」这一档的行有**，与 `entry` 恰有其一 */
@@ -2739,7 +2739,7 @@ function untaggedSliceRows(slice: UntaggedSlice): QueueRow[] {
 // 🔴 **不重复左栏与搜索条「班组」已经承担的收窄**（加进去就是同一件事两个入口）：
 //   · 等级 / 优先级 —— 左栏子档已经在做；
 //   · 班组 —— 搜索条里的「班组」下拉已经在做；
-//   · 打标人 —— 这一段按定义全是没打过标的单，恒空。
+//   · 标记人 —— 这一段按定义全是没打过标的单，恒空。
 //   · 命中时间 / 核实结果 —— 不在这一段筛，查命中历史走命中台账那条查询条。
 interface UntaggedFilter {
   /** 两路共用：只比对 工单号 与 联系方式（工单 `customerPhone`），部分匹配 */
@@ -3050,9 +3050,9 @@ const pagedTicketRows = computed<Ticket[]>(
 );
 
 /**
- * 富列表按**工单 id** 收发勾选，而本页的批量打标按**队列行 id**（`QueueRow.id`）记选中。
+ * 富列表按**工单 id** 收发勾选，而本页的批量标记按**队列行 id**（`QueueRow.id`）记选中。
  * 两边靠工单号搭桥，不另存第二份选中态 —— 存两份必然分叉，
- * "批量打标对一批看不见的行动手"就是这么来的。
+ * "批量标记对一批看不见的行动手"就是这么来的。
  */
 const rowByTicketNo = computed(() => new Map(queueRows.value.map((r) => [r.ticketNo, r])));
 const selectedTicketIds = computed(() => {
@@ -3285,7 +3285,7 @@ function rowConclusionText(r: QueueRow): string {
   return r.tag?.result ?? '—';
 }
 /**
- * 「结论人」列的两行：姓名 + 角色。打标行取打标人，报备行取评估人；
+ * 「结论人」列的两行：姓名 + 角色。打标行取标记人，报备行取评估人；
  * 已撤回取**撤回人** —— 撤回只能由报备人本人发起（§4.8），故取报备人那一对。
  */
 function rowConclusionBy(r: QueueRow): { name: string; role: string } {
@@ -3296,7 +3296,7 @@ function rowConclusionBy(r: QueueRow): { name: string; role: string } {
   }
   return { name: r.tag?.by ?? '—', role: r.tag?.byRole ?? '' };
 }
-/** 「结论时间」列。打标行取打标时刻，报备行取评估 / 撤回时刻；取不到写「—」 */
+/** 「结论时间」列。打标行取标记时间，报备行取评估 / 撤回时刻；取不到写「—」 */
 function rowConclusionAt(r: QueueRow): string {
   if (r.report) {
     return (r.report.status === '已撤回' ? r.report.withdrawAt : r.report.assessment?.at) ?? '—';
@@ -3304,11 +3304,11 @@ function rowConclusionAt(r: QueueRow): string {
   return r.tag?.at ?? '—';
 }
 
-/* ---- 「按标记人」：打标人这一维 ---- */
+/* ---- 「按标记人」：标记人这一维 ---- */
 
 /**
- * 这条条目是谁打的标。**打标人是条目自己的字段**（`tag.by`），不像班组要反查工单库。
- * 🔴 空值不吞：条目能进池就必然打过标，打标人为空是数据自身的异常，
+ * 这条条目是谁打的标。**标记人是条目自己的字段**（`tag.by`），不像班组要反查工单库。
+ * 🔴 空值不吞：条目能进池就必然打过标，标记人为空是数据自身的异常，
  * 落一档「未署名」摆出来 —— 吞掉的话各人之和会小于「全部有风险」，
  * 而督导正是照这一行看"谁名下压着多少条"。
  */
@@ -3396,7 +3396,7 @@ function setQueuePage(page: number, size: number) {
 
 /**
  * 切三视图。**勾选不能跨视图残留**：在待打标里勾了三条再切到已入池，
- * 批量打标会对一批看不见的行动手（而那一批已经有结论了）。
+ * 批量标记会对一批看不见的行动手（而那一批已经有结论了）。
  * 页码同理回到第一页——底表换了一批，停在第 3 页多半是一张空表。
  */
 function setQueueView(v: QueueView) {
@@ -3414,7 +3414,7 @@ watch([tagLevelFilter, taggerFilter, poolStageFilter, groupFilter], () => {
 
 /**
  * 换「待标记」的切片：与 `setQueueView` 同一套善后 —— 勾选不能跨片残留
- * （在「实时监控」里勾了三条切到「重点工单」，批量打标会对一批看不见的行动手），
+ * （在「实时监控」里勾了三条切到「重点工单」，批量标记会对一批看不见的行动手），
  * 页码同理回到第一页。
  * 🔴 这一段不能并进上面那个 watch：那个只管页码，而切片必须连勾选一起清。
  */
@@ -3473,7 +3473,7 @@ function rowWaitedText(r: QueueRow): string {
   return waitedText(r.at);
 }
 
-/* ---- 条目批量打标：**只在待打标视图**（业务口径） ---- */
+/* ---- 条目批量标记：**只在待打标视图**（业务口径） ---- */
 // 【为什么另两个视图不给批量】它们装的都是**已经有结论**的条目，对这两批做的唯一一件事是
 // 「修正」——而修正必须逐条写清"为什么改"（`amendReason` 必填）。
 // 批量改判等于绕过那道必填门，一次给一批条目追加一条没有理由的改判，
@@ -3505,7 +3505,7 @@ function pickBatchAction(action: 'tag' | 'clear') {
   if (action === 'tag') {
     if (!bulkCount.value) return;
     batchMenuOpen.value = false;
-    // 「实时监控」那一路批量核实命中，另两路批量打标条目（2026-09-15 裁决）
+    // 「实时监控」那一路批量核实命中，另两路批量标记条目（2026-09-15 裁决）
     if (kwEvidenceView.value) openBulkVerify();
     else openBulk();
     return;
@@ -3533,7 +3533,7 @@ const bulkSourceMix = computed(() => {
 });
 
 function openBulk() {
-  if (!canRiskTag.value) { message.warning('只有客诉专员、投诉督导与管理员可以打标'); return; }
+  if (!canRiskTag.value) { message.warning('只有客诉专员、投诉督导与管理员可以标记'); return; }
   bulkResult.value = '';
   bulkNote.value = '';
   bulkOpen.value = true;
@@ -3554,11 +3554,11 @@ function saveBulk() {
     at,
   })).length;
   if (done < targets.length) {
-    message.warning(`有 ${targets.length - done} 条监控条目已不存在，未打标 —— 请刷新后再看`);
+    message.warning(`有 ${targets.length - done} 条监控条目已不存在，未标记 —— 请刷新后再看`);
   }
   message.success(
     isPoolLevel(result)
-      ? `已对 ${done} 条打标「${riskLevelText(result)}」，已进风险工单池等待领取`
+      ? `已对 ${done} 条标记「${riskLevelText(result)}」，已进风险工单池等待领取`
       : `已将 ${done} 条判为无风险，不进池；可在「已判 · 无风险」档里复核`,
   );
   bulkOpen.value = false;
@@ -3583,7 +3583,7 @@ const canSaveBulkVerify = computed(
 );
 
 function openBulkVerify() {
-  if (!canRiskTag.value) { message.warning('只有客诉专员、投诉督导与管理员可以打标'); return; }
+  if (!canRiskTag.value) { message.warning('只有客诉专员、投诉督导与管理员可以标记'); return; }
   bulkVerdict.value = undefined;
   // 等级默认取所选命中里**词表预设最高**的那一档：宁可让人往下调，也不让一批里的高危词被默认压低
   bulkVerifyLevel.value = bulkVerifyHits.value.reduce<RiskLevel | null>(
@@ -3595,7 +3595,7 @@ function openBulkVerify() {
 }
 
 function saveBulkVerify() {
-  if (!canRiskTag.value) { message.warning('无打标权限'); return; }
+  if (!canRiskTag.value) { message.warning('无标记权限'); return; }
   const verdict = bulkVerdict.value;
   if (!verdict) { message.warning('请先判定所选命中是否成立'); return; }
   // 先取快照：逐条核实的过程中命中陆续离开召回清单，`bulkVerifyHits` 会跟着变
@@ -3621,12 +3621,12 @@ function saveBulkVerify() {
   });
   const parts = verdict === '成立'
     ? [`已核实 ${hits.length} 条命中为「成立 · ${levelText(bulkVerifyLevel.value)}」`,
-      ...(tagged ? [`${tagged} 单已打标并进风险工单池等待领取`] : [])]
+      ...(tagged ? [`${tagged} 单已标记并进风险工单池等待领取`] : [])]
     : [`已将 ${hits.length} 条命中记为误报`,
       ...(rerouted ? [`${rerouted} 单改归「重点工单」`] : []),
       ...(noRisk ? [`${noRisk} 单已标记为无风险`] : [])];
   message.success(parts.join('；'));
-  if (skipped) message.warning(`${skipped} 单没有待核实命中，未处理，请逐单打标`);
+  if (skipped) message.warning(`${skipped} 单没有待核实命中，未处理，请逐单标记`);
   bulkVerifyOpen.value = false;
   clearBulk();
 }
@@ -3653,7 +3653,7 @@ const entryTagAmend = computed(() => !!entryTagTarget.value?.tag);
 const entryTagSubtitle = computed(
   () => (entryTagTarget.value ? `${rowSourceText(entryTagTarget.value)} · ${entryTagTarget.value.ticketNo}` : ''),
 );
-/** 完整打标历史（含二次修改），时间正序。走 store 的 `tagHistoryOf`，与命中核实同一套留痕机制 */
+/** 完整标记历史（含二次修改），时间正序。走 store 的 `tagHistoryOf`，与命中核实同一套留痕机制 */
 const entryTagHistory = computed(
   () => (entryTagTarget.value ? reportStore.tagHistoryOf(entryTagTarget.value.id) : []),
 );
@@ -3770,7 +3770,7 @@ const entryTagHits = computed(() => {
 function openEntryTag(e: QueueRow) {
   // 报备行不走打标（它的操作列本就没有按钮），这一道是防第二个调用方绕进来
   if (!e.entry) return;
-  if (!canRiskTag.value) { message.warning('只有客诉专员、投诉督导与管理员可以打标'); return; }
+  if (!canRiskTag.value) { message.warning('只有客诉专员、投诉督导与管理员可以标记'); return; }
   entryTagTarget.value = e;
   // 修改态先把现行结论灌回来：改完才知道自己动了哪一项
   entryTagResult.value = e.tag?.result ?? '';
@@ -3789,22 +3789,22 @@ function saveEntryTag() {
   const target = entryTagTarget.value;
   // 打标只对 A 线条目开（报备行的操作列写「—」，见条目表），故这里必有 `entry`
   if (!target?.entry) return;
-  if (!canRiskTag.value) { message.warning('无打标权限'); return; }
+  if (!canRiskTag.value) { message.warning('无标记权限'); return; }
   if (!entryTagResult.value) { message.warning('请先选择风险等级'); return; }
   const amend = entryTagAmend.value;
   /*
    * 这一次到底要做哪几件事，**在任何校验之前先认清**：
    *   · `retag` —— 上半那一下打标落不落。首次打标必落；修正形态只在结论真的动过时才落，
-   *     没动过还落一遍，打标历史里就多一条与上一条逐字相同的记录、条数还虚增。
+   *     没动过还落一遍，标记历史里就多一条与上一条逐字相同的记录、条数还虚增。
    *   · `assessDec` / `collab` —— 下半两支各自给没给东西（留空＝不做那一支，与首次打标同形）。
    * 三者全空才是"什么都没发生"，才拦；只要下半有一支有内容，这一次就是成立的提交。
    */
   const retag = !amend || entryTagDirty.value;
   const assessDec = showEntryTagAssess.value ? entryTagAssessDecision.value : '';
   const collab = showEntryTagCollab.value && entryTagCollabFilled.value;
-  // 文案说「风险标记」而不是「风险等级」：判据是 `entryTagDirty`（等级**或**打标备注动过），
+  // 文案说「风险标记」而不是「风险等级」：判据是 `entryTagDirty`（等级**或**标记备注动过），
   // 写成「风险等级」比判据窄 —— 只改了备注的人会被告知"等级没变"，对不上自己刚做的事。
-  // 「风险标记」指的是上半那两项本身（等级 + 打标备注），不是本弹窗的名字（弹窗叫「风险管控」）。
+  // 「风险标记」指的是上半那两项本身（等级 + 标记备注），不是本弹窗的名字（弹窗叫「风险管控」）。
   if (!retag && !assessDec && !collab) { message.warning('风险标记没有变化，无需修改'); return; }
   // 「为什么改」只在**真的改判**时才问得出口：没改判的那一路不要它
   if (retag && amend && !entryTagReason.value.trim()) { message.warning('请填写修正原因'); return; }
@@ -3851,7 +3851,7 @@ function saveEntryTag() {
     });
     if (!ok) { message.warning('这条监控条目已不存在，请刷新后再看'); return; }
   }
-  // 段内给了结论：条目照常进池，但**直接落「已结论」**（结论人＝打标人、结论时刻＝本次提交时刻）
+  // 段内给了结论：条目照常进池，但**直接落「已结论」**（结论人＝标记人、结论时刻＝本次提交时刻）
   const assessPhrase = assessDec ? commitTagAssess(target.ticketNo, assessDec) : '';
   /*
    * 投诉支的落库**整个在共享件里**（`submitTo`：提交前重查 + `riskPool.coordinate` +
@@ -3883,19 +3883,19 @@ function saveEntryTag() {
   if (isPoolLevel(result)) {
     const lv = riskLevelText(result);
     // 段内给了结论时去向已经是「已结论」，下面那几句"等领取 / 处置阶段不变"一句都不成立
-    if (assessPhrase) tip = `已对 ${no} 打标「${lv}」，${assessPhrase}`;
+    if (assessPhrase) tip = `已对 ${no} 标记「${lv}」，${assessPhrase}`;
     // 协同支的去向由 `submitTo` 自己那条提示接着说（含"已转已结论"那半句），这里只报打标
-    else if (collabOk) tip = `已对 ${no} 打标「${lv}」`;
+    else if (collabOk) tip = `已对 ${no} 标记「${lv}」`;
     else if (prevStatus === '评估中' || prevStatus === '已评估') tip = `已把 ${no} 的风险等级改为「${lv}」，池内处置阶段不变`;
-    else if (prevStatus === '待分派') tip = `已把 ${no} 的打标由「${prevText}」改为「${lv}」，仍在风险工单池等待领取`;
+    else if (prevStatus === '待分派') tip = `已把 ${no} 的标记由「${prevText}」改为「${lv}」，仍在风险工单池等待领取`;
     else if (prevStatus === '已标记无风险') tip = `已把 ${no} 改判为「${lv}」，已补进风险工单池等待领取`;
-    else tip = `已对 ${no} 打标「${lv}」，已进风险工单池等待领取`;
+    else tip = `已对 ${no} 标记「${lv}」，已进风险工单池等待领取`;
   } else if (prevStatus === '评估中') {
     tip = `已把 ${no} 改判为无风险，已撤出风险工单池、承办人已清空；可在「已判 · 无风险」档里复核`;
   } else if (prevStatus === '待分派') {
     tip = `已把 ${no} 改判为无风险，已撤出风险工单池；可在「已判 · 无风险」档里复核`;
   } else if (prevStatus === '已标记无风险') {
-    tip = `已更新 ${no} 的无风险打标`;
+    tip = `已更新 ${no} 的无风险标记`;
   } else {
     tip = `已将 ${no} 判为无风险，不进池；可在「已判 · 无风险」档里复核`;
   }
@@ -3988,8 +3988,8 @@ const taggedToday = computed(() => {
   return reportStore.pooledEntries.filter(hit).length + reportStore.noRiskEntries.filter(hit).length;
 });
 /**
- * 「风险标注」一行：**今日打标**结论为高 / 中 / 低的工单数。
- * 条目取 `tag.at` 落在今天的（与「今日打标」同一自然日窗口），按工单去重取最高，见 `tagLevelCountsOf`；无风险不列。
+ * 「风险标注」一行：**今日标记**结论为高 / 中 / 低的工单数。
+ * 条目取 `tag.at` 落在今天的（与「今日标记」同一自然日窗口），按工单去重取最高，见 `tagLevelCountsOf`；无风险不列。
  */
 const tagLevelToday = computed(() => {
   const today = todayPrefix();
@@ -4242,7 +4242,7 @@ const railGroups = computed<RailGroup[]>(() => {
         + '🔴 开着清单上那条筛选时，被筛的那一路摆成「筛后 / 全量」，斜杠后那两个数之和仍 ＝ 这个数',
       items: [
         ...untaggedSliceItems('kw', '实时监控',
-          '预警词捞进来的那一路，表里是尚未打标工单上待核实的命中，按词表预设的识别风险等级分档、最重的排最前，角标数的是工单；'),
+          '预警词捞进来的那一路，表里是尚未标记工单上待核实的命中，按词表预设的识别风险等级分档、最重的排最前，角标数的是工单；'),
         ...untaggedSliceItems('focus', '重点工单',
           '在办的投诉类工单，或优先级为 P0 / P1 的工单，按工单优先级分档；'),
       ],
@@ -4261,7 +4261,7 @@ const railGroups = computed<RailGroup[]>(() => {
         + '这一段摆三种并列的分类：按风险等级（全部有风险）、按标记人、按处置阶段 —— 同一批条目三个角度。'
         + '页签上的数 ＝ 全部有风险 + 无风险 + 风险报备（三者都是这一段下过的结论，互斥、可以相加）。'
         + '🔴 高 + 中 + 低 ≡ 全部有风险 ≡ 按标记人 ≡ 按处置阶段 ≡ 各自取值行之和，五处是同一批行；'
-        + '🔴 那三个轴**只数打标条目**，报备不走打标、不进这三个轴',
+        + '🔴 那三个轴**只数标记条目**，报备不走标记、不进这三个轴',
       items: [
         {
           key: 'level:all' as RailKey,
@@ -4278,7 +4278,7 @@ const railGroups = computed<RailGroup[]>(() => {
           count: pooledLevelCount(lv),
           bad: lv === '高' && pooledLevelCount(lv) > 0,
           depth: 1 as const,
-          title: `打标为${riskLevelText(lv)}、已进风险工单池的条目`,
+          title: `标记为${riskLevelText(lv)}、已进风险工单池的条目`,
         })),
         {
           key: 'level:tagger' as RailKey,
@@ -4305,7 +4305,7 @@ const railGroups = computed<RailGroup[]>(() => {
             // 与高 / 中 / 低同一层：它们各自是所属分类下的取值行
             depth: 1 as const,
             title: t.tagger === UNSIGNED_TAGGER
-              ? '条目上没有留下打标人 —— 不吞掉，否则各人之和会小于「全部有风险」'
+              ? '条目上没有留下标记人 —— 不吞掉，否则各人之和会小于「全部有风险」'
               : `只看「${t.tagger}」已标记的风险工单`,
           }))
           : []),
@@ -4333,7 +4333,7 @@ const railGroups = computed<RailGroup[]>(() => {
             + '三个取值是真时间序（待领取 → 已领取 → 已结论）。点它展开／收起下面三档；行本身也可选 ＝ 不限阶段。'
             + '🔴 与另两个轴是同一批条目的不同看法，数天然相等、不可相加，且列也逐字相同 ——'
             + '三个轴同一张表、同一批行对象。'
-            + '仅监控入池 —— 🔴 只数 A 线（打标进池的条目）：二线报备有自己的家 ——'
+            + '仅监控入池 —— 🔴 只数 A 线（标记进池的条目）：二线报备有自己的家 ——'
             + ' 工单工作台的「风险报备池」。'
             + '要领取 / 评估这一批，走页头「评估处置」那一块 —— 那是动作的工作面，这一列是看法',
         },
@@ -4360,7 +4360,7 @@ const railGroups = computed<RailGroup[]>(() => {
           count: noRiskAll,
           depth: 0,
           sep: true,
-          title: '打标判为无风险、不进池的条目 —— 漏斗的漏出口，走到这儿止步。'
+          title: '标记判为无风险、不进池的条目 —— 漏斗的漏出口，走到这儿止步。'
             + '它不是回收站：核查漏标误判除了从这里翻出来改，没有第二条路',
         },
         /*
@@ -4375,7 +4375,7 @@ const railGroups = computed<RailGroup[]>(() => {
           count: reportedAll,
           depth: 0,
           title: '二线报备里**已经有结论**的那一批：已评估（升级 / 不升级）与已撤回。'
-            + '🔴 它不在「全部有风险 / 按标记人 / 按处置阶段」那三个轴上 —— 报备不走打标，'
+            + '🔴 它不在「全部有风险 / 按标记人 / 按处置阶段」那三个轴上 —— 报备不走标记，'
             + '数进去那三个本该相等的数会当场分叉。'
             + '🔴 还在队的报备（待领取 / 评估中）不在这里，也不在待判段：'
             + '那是它的工作面，在工单工作台的「风险报备池」',
@@ -4809,7 +4809,7 @@ function toggleWordEnabled(w: RiskWord) {
         </div>
         <div class="greeting-text">
           <div class="greeting-title">风险监控</div>
-          <div class="greeting-sub">实时识别预警词命中与重点工单，打标定级后进入风险工单池处置</div>
+          <div class="greeting-sub">实时识别预警词命中与重点工单，标记定级后进入风险工单池处置</div>
         </div>
       </div>
       <div class="greeting-aside">
@@ -4882,11 +4882,11 @@ function toggleWordEnabled(w: RiskWord) {
               class="dm-cell dm-static"
               title="今日下过结论的条目数，含判为无风险的那一批 —— 判无风险同样是一次结论，不算进来就看不出今天判了多少活"
             >
-              <span class="dm-k">今日打标</span>
+              <span class="dm-k">今日标记</span>
               <span class="dm-val"><span class="dm-v">{{ taggedToday }}</span></span>
             </div>
           </div>
-          <!-- 风险标注：今日打标结论为高 / 中 / 低的工单数（tagLevelToday），无风险不列 -->
+          <!-- 风险标注：今日标记结论为高 / 中 / 低的工单数（tagLevelToday），无风险不列 -->
           <div class="dash-links">
             <span class="dash-links-k" title="今日判为高危 / 中危 / 低危的工单数">风险标注</span>
             <span
@@ -4915,7 +4915,7 @@ function toggleWordEnabled(w: RiskWord) {
               <span class="dm-k">投诉工单</span>
               <span class="dm-val">
                 <span class="dm-v">{{ complaintTicketStock.total }}</span>
-                <span class="dm-h">今日新增 {{ complaintTicketStock.newToday }} · 已打标 {{ complaintTicketStock.tagged }}</span>
+                <span class="dm-h">今日新增 {{ complaintTicketStock.newToday }} · 已标记 {{ complaintTicketStock.tagged }}</span>
               </span>
             </div>
             <div
@@ -4925,7 +4925,7 @@ function toggleWordEnabled(w: RiskWord) {
               <span class="dm-k">紧急 / 重要</span>
               <span class="dm-val">
                 <span class="dm-v">{{ urgentTicketStock.total }}</span>
-                <span class="dm-h">今日新增 {{ urgentTicketStock.newToday }} · 已打标 {{ urgentTicketStock.tagged }}</span>
+                <span class="dm-h">今日新增 {{ urgentTicketStock.newToday }} · 已标记 {{ urgentTicketStock.tagged }}</span>
               </span>
             </div>
           </div>
@@ -4958,7 +4958,7 @@ function toggleWordEnabled(w: RiskWord) {
         <div class="effect-pane effect-pane--report">
           <h2
             class="pane-title"
-            title="风险工单池里的池行 · 只数打标进池的监控条目（A 线）：非投诉单走风险评估（升级 / 不升级），投诉单走协同处理。二线报备在工单工作台「风险报备池」，不进这一块"
+            title="风险工单池里的池行 · 只数标记进池的监控条目（A 线）：非投诉单走风险评估（升级 / 不升级），投诉单走协同处理。二线报备在工单工作台「风险报备池」，不进这一块"
           >评估处置</h2>
           <div class="dash-grid dash-grid-3">
             <!--
@@ -5152,7 +5152,7 @@ function toggleWordEnabled(w: RiskWord) {
                 <template #overlay>
                   <a-menu class="batch-menu">
                     <a-menu-item :disabled="bulkCount <= 0" @click="pickBatchAction('tag')">
-                      {{ kwEvidenceView ? '批量核实' : '批量打标' }}
+                      {{ kwEvidenceView ? '批量核实' : '批量标记' }}
                     </a-menu-item>
                     <a-menu-item :disabled="bulkCount <= 0" @click="pickBatchAction('clear')">
                       取消选择
@@ -5193,7 +5193,7 @@ function toggleWordEnabled(w: RiskWord) {
                 type="button"
                 class="row-btn scan-entry"
                 :class="{ active: listView === 'judged' }"
-                title="旁路 · 风险词命中记录的台账：待核实 / 成立 / 误报三类都在，供事后点查与核实，词表准确率由它回填。分母是全部命中记录（含已打标工单上的，不是工单、也不是监控条目），与左栏条目不可相加；左栏「实时监控」只列其中尚未打标工单上的那部分"
+                title="旁路 · 风险词命中记录的台账：待核实 / 成立 / 误报三类都在，供事后点查与核实，词表准确率由它回填。分母是全部命中记录（含已标记工单上的，不是工单、也不是监控条目），与左栏条目不可相加；左栏「实时监控」只列其中尚未标记工单上的那部分"
                 @click="setListView('judged')"
               >
                 <TagsOutlined :style="{ fontSize: '12px' }" />
@@ -5348,8 +5348,8 @@ function toggleWordEnabled(w: RiskWord) {
         <template v-else-if="queueView === 'monitoring'">这一路没有待判的工单 —— 换一路看，或用右上角「手动筛查」去存量里捞</template>
         <template v-else-if="queueView === 'noRisk'">当前没有被判为无风险的条目</template>
         <template v-else-if="queueView === 'reported'">当前没有已出结论或已撤回的风险报备</template>
-        <template v-else-if="tagLevelText">当前没有打标为{{ tagLevelText }}的条目</template>
-        <template v-else>当前没有有风险的条目 —— 打标为低 / 中 / 高的条目会落在这里</template>
+        <template v-else-if="tagLevelText">当前没有标记为{{ tagLevelText }}的条目</template>
+        <template v-else>当前没有有风险的条目 —— 标记为低 / 中 / 高的条目会落在这里</template>
       </div>
 
       <!--
@@ -5469,7 +5469,7 @@ function toggleWordEnabled(w: RiskWord) {
                     title="判定这张单有没有风险、多大：高 / 中 / 低进风险工单池，无风险不进池"
                     @click="openEntryTag(g.row)"
                   >风险管控</button>
-                  <span v-else class="hit-sub" title="打标归客诉专员、投诉督导与管理员">—</span>
+                  <span v-else class="hit-sub" title="标记归客诉专员、投诉督导与管理员">—</span>
                 </td>
               </tr>
               <tr v-for="(h, hi) in g.hits" :key="`${g.row.id}-${h.id}`">
@@ -5526,7 +5526,7 @@ function toggleWordEnabled(w: RiskWord) {
                     type="button" class="row-btn row-btn-tag"
                     @click="openTag(h)"
                   >风险管控</button>
-                  <span v-else class="hit-sub" title="打标归客诉专员、投诉督导与管理员">—</span>
+                  <span v-else class="hit-sub" title="标记归客诉专员、投诉督导与管理员">—</span>
                 </td>
               </tr>
             </template>
@@ -5574,7 +5574,7 @@ function toggleWordEnabled(w: RiskWord) {
                 实时监控 / 重点工单 / 风险报备。原来那格里的词并没有丢，它跟着证据走：
                 「证据 / 摘要」那一列的原话里命中词仍然高亮。
                 🔴 **「风险等级 / 标记人 / 标记时间」改成「结论 / 结论人 / 结论时间」**：
-                报备行没有等级、也没有打标人，它出的是评估结论（升级 / 不升级）或「已撤回」。
+                报备行没有等级、也没有标记人，它出的是评估结论（升级 / 不升级）或「已撤回」。
                 三列的列宽一格没动。
                 🔴 **「池内状态」这一列已删**（2026-09-29 裁决），全表定为**九列**：
                 这张表答的是"标了什么结论"，池内阶段是条目进池之后的事，它的真源在
@@ -5838,7 +5838,7 @@ function toggleWordEnabled(w: RiskWord) {
               ? `当前没有超过 ${assessLimitText} 仍无结论的在队条目`
               : sourceFilter !== 'all'
                 ? `「${sourceFilter}」当前没有进池的条目`
-                : '当前没有进池的条目 —— 打标为高 / 中 / 低才进池'
+                : '当前没有进池的条目 —— 标记为高 / 中 / 低才进池'
           }}
         </template>
         <template v-else-if="reportView === 'open'">
@@ -6219,7 +6219,7 @@ function toggleWordEnabled(w: RiskWord) {
               />
             </div>
             <div class="fi">
-              <span class="fl">打标人</span>
+              <span class="fl">标记人</span>
               <a-select
                 v-model:value="ledgerFilter.taggers" mode="multiple" allow-clear
                 size="small" class="tb-ctl"
@@ -6429,7 +6429,7 @@ function toggleWordEnabled(w: RiskWord) {
               :style="{ color: RISK_LEVEL_STYLE[ticketGradeOf(ticketFocus!)!].color, background: RISK_LEVEL_STYLE[ticketGradeOf(ticketFocus!)!].bg }"
             >{{ ticketGradeOf(ticketFocus!) }}危</span>
           </span>
-          <span v-else class="fb-grade muted">本单尚无已打标的条目，也没有已核实成立的命中</span>
+          <span v-else class="fb-grade muted">本单尚无已标记的条目，也没有已核实成立的命中</span>
         </div>
         <button type="button" class="fb-exit" @click="clearTicketFocus">
           退出<span class="fb-x">×</span>
@@ -6517,7 +6517,7 @@ function toggleWordEnabled(w: RiskWord) {
                   v-if="ticketGradeHint(h)"
                   class="ticket-grade-note"
                   :style="{ color: RISK_LEVEL_STYLE[ticketGradeHint(h)!].color }"
-                  title="工单级风险等级 ＝ 该单已打标条目与已核实成立的命中取最高；同一条改判以最新结论为准"
+                  title="工单级风险等级 ＝ 该单已标记条目与已核实成立的命中取最高；同一条改判以最新结论为准"
                 >本单当前 <b>{{ ticketGradeHint(h) }}</b> 危</div>
               </div>
             </td>
@@ -6749,13 +6749,13 @@ function toggleWordEnabled(w: RiskWord) {
     </a-modal>
 
     <!--
-      批量打标（只对「待打标」这一批）。结论与单条**同一个四选一**，
+      批量标记（只对「待打标」这一批）。结论与单条**同一个四选一**，
       不给"保持预设"这种只有批量才有的第五档 —— 批量与单条口径分家的话，
       同一批条目走两条路会得到两种结论，而进不进池全看它。
     -->
     <OpActionModal
       :open="bulkOpen"
-      title="批量打标"
+      title="批量标记"
       :icon="TagsOutlined"
       tone="primary"
       :width="480"
@@ -6794,12 +6794,12 @@ function toggleWordEnabled(w: RiskWord) {
           {{
             bulkResult === NO_RISK
               ? '判为无风险的不进池，落「已判 · 无风险」档，可在那里复核'
-              : '低 / 中 / 高一律进风险工单池等待领取；本批须同一结论，有分歧请分次打标'
+              : '低 / 中 / 高一律进风险工单池等待领取；本批须同一结论，有分歧请分次标记'
           }}
         </div>
 
         <div class="op-field op-field-h op-field-h-top tag-field-note">
-          <div class="op-label">打标备注</div>
+          <div class="op-label">标记备注</div>
           <a-textarea v-model:value="bulkNote" :rows="2" placeholder="判断依据与后续动作（可选）" />
         </div>
       </div>
@@ -6998,7 +6998,7 @@ function toggleWordEnabled(w: RiskWord) {
         </div>
 
         <div class="op-field op-field-h op-field-h-top tag-field-note">
-          <div class="op-label">打标备注</div>
+          <div class="op-label">标记备注</div>
           <a-textarea v-model:value="entryTagNote" :rows="2" placeholder="判断依据与后续动作（可选）" />
         </div>
 
@@ -7009,7 +7009,7 @@ function toggleWordEnabled(w: RiskWord) {
 
           ① 非投诉单：「评估结论」段（判出高 / 中 / 低之后接出）。🔴 **可留空**：
           不选评估决策就照旧只打标、条目进池等领取；给了结论则条目照常进池但
-          **直接落「已结论」**，结论人＝打标人。字段、校验、派生与红字文案与本页评估弹窗
+          **直接落「已结论」**，结论人＝标记人。字段、校验、派生与红字文案与本页评估弹窗
           **同一套**（同一份 `escalateFields` 实例 + 共享组件 `EscalateComplaintFields`）。
         -->
         <section v-if="showEntryTagAssess" class="assess-block assess-block-form">
@@ -7054,22 +7054,22 @@ function toggleWordEnabled(w: RiskWord) {
         -->
         <RiskCollabFields v-if="showEntryTagCollab" :ctl="entryTagCollab" />
 
-        <!-- 打标历史：它是佐证不是填写项，按信息层级排在最后。追加不覆盖，故爬坡读得出先后 -->
+        <!-- 标记历史：它是佐证不是填写项，按信息层级排在最后。追加不覆盖，故爬坡读得出先后 -->
         <div v-if="entryTagHistory.length" class="tag-trace">
           <div class="tag-trace-head">
-            打标记录<span class="tag-trace-n">{{ entryTagHistory.length }} 条</span>
+            标记记录<span class="tag-trace-n">{{ entryTagHistory.length }} 条</span>
           </div>
           <ol class="tag-trace-list">
             <li v-for="(e, i) in entryTagHistory" :key="`${e.at}-${i}`" class="tt-item">
               <div class="tt-head">
-                <span class="tt-step">{{ i === 0 ? '首次打标' : `第 ${i} 次修正` }}</span>
+                <span class="tt-step">{{ i === 0 ? '首次标记' : `第 ${i} 次修正` }}</span>
                 <span class="tt-by">{{ e.by }}</span>
                 <span class="tt-role">{{ e.byRole }}</span>
                 <span class="tt-at">{{ e.at }}</span>
               </div>
               <div class="tt-change">
                 {{ e.level ? `${e.level}危` : '无风险' }}
-                <!-- 并入痕迹记在打标记录上，不进来源列（§5A.1 ④） -->
+                <!-- 并入痕迹记在标记记录上，不进来源列（§5A.1 ④） -->
                 <span v-if="e.viaManualScan" class="tt-role">由手动筛查并入</span>
                 <span v-if="e.viaHitVerify" class="tt-role">由命中核实</span>
               </div>
@@ -7226,7 +7226,7 @@ function toggleWordEnabled(w: RiskWord) {
 
         <!--
           「评估结论」段（判成立之后接出）。🔴 **可留空**：不选评估决策就照旧只核实打标、
-          条目进池等领取；给了结论则条目照常进池但**直接落「已结论」**，结论人＝打标人。
+          条目进池等领取；给了结论则条目照常进池但**直接落「已结论」**，结论人＝标记人。
           字段、校验、派生与红字文案与本页评估弹窗**同一套**（同一份 `escalateFields` 实例 +
           共享组件 `EscalateComplaintFields`），"不出段"的门见 `showTagAssess`
           （四道共用门 + 本次核实真的会让条目进池那一道）。
