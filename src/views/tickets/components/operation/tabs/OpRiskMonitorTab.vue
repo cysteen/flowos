@@ -17,7 +17,7 @@ import {
 import OpCollapsibleSection from '../OpCollapsibleSection.vue';
 import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue';
 import { riskLevelText } from '@/config/risk';
-import type { TicketRiskVerification } from '@/stores/riskTags';
+import type { RiskTagEntry, TicketRiskVerification } from '@/stores/riskTags';
 import type { RiskMonitorDraft } from '@/views/tickets/types/operationTabs';
 import {
   RISK_FLAG_OPTIONS,
@@ -420,6 +420,23 @@ const tagEntry = computed(() => queue.entriesOf(props.ticketNo).find((e) => !!e.
 const tagRecord = computed(() => tagEntry.value?.tag ?? null);
 /** 标记历史（含改判），时间正序。改判独立成条、不覆盖首次那条 */
 const tagHistory = computed(() => (tagEntry.value ? queue.tagHistoryOf(tagEntry.value.id) : []));
+
+/**
+ * 标记记录的展开态。**默认折叠**，与历史报备条同一个做法：
+ * 折叠态只给「标记记录 N 次」+ **最新一条**，展开才出全部。
+ * 改判多轮之后横排全展开会把上半的现行结论挤下去，而回看历史多半只关心最近一次。
+ * 切单即收起 —— 展开态是"这一次看这张单时翻开了它"，不跨工单记忆。
+ */
+const tagRecordsOpen = ref(false);
+watch(() => props.ticketNo, () => { tagRecordsOpen.value = false; });
+/**
+ * 折叠态摆的那一条。`tagHistory` 是**时间正序**（顺序口径不动），故"最新"在**末位**。
+ */
+const latestTagRecord = computed(() => tagHistory.value[tagHistory.value.length - 1] ?? null);
+/** 一条标记记录的行文：等级 · 标记人 · 时刻。折叠态与展开态共用这一份 */
+function tagRecordText(h: RiskTagEntry) {
+  return `${h.level ? riskLevelText(h.level) : '无风险'} · ${h.by} · ${formatShortAt(h.at)}`;
+}
 
 /**
  * 谁能在这一页打标（§3.1，2026-09-10 拍板）：
@@ -897,12 +914,28 @@ const collabSectionBadge = computed(() =>
             故按钮不受 Tab 的表单只读约束（a-config-provider 解禁），判据只看 canTag。
           -->
           <div v-if="tagHistory.length > 1 || canTag" class="rk-tag-ops">
-            <template v-if="tagHistory.length > 1">
-              <span class="rt-history-head">标记记录</span>
-              <span v-for="(h, i) in tagHistory" :key="i" class="rt-history-item">
-                {{ h.level ? riskLevelText(h.level) : '无风险' }} · {{ h.by }} · {{ formatShortAt(h.at) }}
-              </span>
-            </template>
+            <div v-if="tagHistory.length > 1" class="rt-history">
+              <button
+                type="button"
+                class="rt-history-sum"
+                :aria-expanded="tagRecordsOpen"
+                @click="tagRecordsOpen = !tagRecordsOpen"
+              >
+                <component
+                  :is="tagRecordsOpen ? DownOutlined : RightOutlined"
+                  class="rt-history-caret"
+                />
+                <span class="rt-history-head">标记记录 {{ tagHistory.length }} 次</span>
+                <span v-if="!tagRecordsOpen && latestTagRecord" class="rt-history-item">
+                  {{ tagRecordText(latestTagRecord) }}
+                </span>
+              </button>
+              <div v-if="tagRecordsOpen" class="rt-history-list">
+                <span v-for="(h, i) in tagHistory" :key="i" class="rt-history-item">
+                  {{ tagRecordText(h) }}
+                </span>
+              </div>
+            </div>
             <a-config-provider v-if="canTag" :component-disabled="false">
               <button type="button" class="rt-btn" @click="openTag">
                 {{ isAmend ? '重新标记' : '标记' }}
@@ -1511,10 +1544,43 @@ const collabSectionBadge = computed(() =>
 .rk-tag-ops {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
 }
-.rt-history-head { font-size: 11px; font-weight: 600; color: #6b7280; }
+/* 标记记录：折叠态一行（摘要行整行可点，键盘也要能翻开），展开后横排全部 */
+.rt-history {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.rt-history-sum {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0;
+  font-family: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.rt-history-caret { color: #9ca3af; font-size: 10px; flex: none; }
+.rt-history-sum .rt-history-item {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.rt-history-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-left: 16px;
+}
+.rt-history-head { font-size: 11px; font-weight: 600; color: #6b7280; white-space: nowrap; }
 .rt-history-item {
   padding: 1px 8px;
   font-size: 11px;
