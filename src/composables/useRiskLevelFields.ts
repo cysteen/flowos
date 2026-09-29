@@ -155,8 +155,94 @@ export function useRiskLevelFields() {
   };
 }
 
-/** 各处入口共用的实例类型（`RiskLevelFields.vue` 的唯一入参） */
+/** 各处入口共用的实例类型（本 composable 的实例；满足 `RiskLevelFieldsView`） */
 export type RiskLevelFieldsCtl = ReturnType<typeof useRiskLevelFields>;
+
+/** 只读布尔视图：`Ref<boolean>` 与 `ComputedRef<boolean>` 都满足它，适配器可直接透传宿主的 computed */
+type BoolView = { readonly value: boolean };
+/** 只读档位视图（同上，给可选的 `levels` 用） */
+type LevelsView = { readonly value: readonly RiskTagResult[] };
+
+/**
+ * `RiskLevelFields.vue` 的**唯一入参形状** —— 它渲染这一段所需要的全部，一个不多。
+ *
+ * 🔴 **为什么要这个接口**：六处「风险管控」弹窗的风险等级段必须是**同一个组件、同一种呈现**
+ * （2026-09-29 裁决）。但只有三处（评估处置工作面 / 风险报备池 / 页头非投诉支）用得上
+ * `useRiskLevelFields` 的那条落库路径；另外三处（条目打标、命中核实、页头投诉支）是对
+ * **具体条目**做的事，各有既有状态与落库路径，改成本 composable 就等于改落库。
+ * 故组件只认这个接口：真实例满足它，宿主把既有状态包成适配器（`makeRiskLevelFieldsView`）
+ * 也满足它 —— 呈现收一份，落库一格不动。
+ */
+export interface RiskLevelFieldsView {
+  fields: { level: RiskTagResult | ''; note: string };
+  /** 整段出不出 */
+  visible: BoolView;
+  /** 这一次是改判（决定「标记备注」的必填与问法） */
+  isAmend: BoolView;
+  /** 「风险等级」标签带不带必填星 */
+  required: BoolView;
+  /** 等级缺项红字（宿主靠主按钮 disabled 拦的那一路恒给假） */
+  missLevel: BoolView;
+  /** 备注缺项红字 */
+  missNote: BoolView;
+  /** 「无风险」一档置灰 */
+  noRiskLocked: BoolView;
+  /**
+   * **可选**：这一段渲染哪几档。**不给就是全部四档**（`RISK_TAG_RESULTS`）——
+   * 五处入口都不给，行为一字不变。目前只有风险监控页的**命中核实形态**给：
+   * 那一处「成立」支的取值域本来就是三档（高 / 中 / 低，`tagLevel` 的类型是 `RiskLevel`），
+   * 选「误报」时只出「无风险」一档并默认选中（2026-09-29 追加裁决）。
+   */
+  levels?: LevelsView;
+}
+
+/** `makeRiskLevelFieldsView` 的入参：宿主既有状态的读写口 + 一组只读判据 */
+export interface RiskLevelFieldsViewSource {
+  getLevel: () => RiskTagResult | '';
+  /**
+   * 写等级。🔴 宿主若在"选中"这一步还做别的事（如条目打标那一处的 `pickEntryTagResult`
+   * 会先挡置灰档并发提示），**setter 必须走它**，不要直接写 ref —— 否则那一道就被绕过了。
+   */
+  setLevel: (v: RiskTagResult) => void;
+  getNote: () => string;
+  setNote: (v: string) => void;
+  visible: BoolView;
+  isAmend: BoolView;
+  required: BoolView;
+  missLevel: BoolView;
+  missNote: BoolView;
+  noRiskLocked: BoolView;
+  /** 可选，见 `RiskLevelFieldsView.levels` */
+  levels?: LevelsView;
+}
+
+/**
+ * **薄适配器**：把宿主既有的一组 ref/computed 包成 `RiskLevelFieldsView`，交给同一个
+ * `RiskLevelFields.vue` 渲染。
+ *
+ * 🔴 **它不碰落库**：校验与写库仍由宿主自己那套跑（`saveEntryTag` / `onComplaintOk` …）。
+ * 本函数只负责"让那一段长成共用的样子"，state 与落库路径一格不动。
+ *
+ * `fields` 是一个**带访问器的普通对象**而不是 `reactive`：读走宿主的 ref（渲染副作用照常
+ * 收集依赖），写走宿主给的 setter（宿主那一步原有的动作全保留）。
+ */
+export function makeRiskLevelFieldsView(src: RiskLevelFieldsViewSource): RiskLevelFieldsView {
+  return {
+    fields: {
+      get level() { return src.getLevel(); },
+      set level(v: RiskTagResult | '') { if (v) src.setLevel(v); },
+      get note() { return src.getNote(); },
+      set note(v: string) { src.setNote(v); },
+    },
+    visible: src.visible,
+    isAmend: src.isAmend,
+    required: src.required,
+    missLevel: src.missLevel,
+    missNote: src.missNote,
+    noRiskLocked: src.noRiskLocked,
+    levels: src.levels,
+  };
+}
 
 function nowStamp(): string {
   const d = new Date();
