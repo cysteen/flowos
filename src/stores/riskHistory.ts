@@ -262,7 +262,7 @@ function renderRow(input: RiskHistoryInput): string {
        * 不说这一句的话，读的人分不清是"没勾"还是"chip 没渲染出来"。
        */
       const none = adviceTexts(input).length ? '' : '（未勾选建议事项）';
-      return `提交协同处理${none}。评估意见：${sentence(input.opinion)}`;
+      return `提交风险处理建议${none}。评估意见：${sentence(input.opinion)}`;
     }
     case 'grade':
       // 「旧 → 新」走**风险等级 chip**，正文只留动作 + 这一次变更的**来源**
@@ -340,7 +340,9 @@ const LS_KEY = 'flowos-risk-history';
  * （`seed-tag-rr-009` 等），不作废的话旧单上那几条回填记录留着、新单上的同 id 记录回填不进来。
  *
  * v5：How 徽章两件改词 —— `tag`「风险打标」→「风险标记」（71256652）、
- * `collab`「协同处理」→「风险处理建议」。**改 `how` 必须升版**：它是**落库时固化**的展示串，
+ * `collab`「协同处理」→「风险处理建议」，同批把 `collab` 的**正文**也改口
+ * （`renderRow`：「提交协同处理…」→「提交风险处理建议…」，徽章与正文同卡不能两个词）。
+ * **改 `how` / `what` 必须升版**：两者都是**落库时固化**的展示串，
  * 读取侧一律直出、不回头按 `kind` 重算，故保质期内的旧缓存会照旧渲出旧词 ——
  * 同一条履历上新落的卡写「风险处理建议」、缓存里那批写「协同处理」，两套词并存。
  * 🔴 71256652 那次按"本 store 不落 localStorage"放行，**那个判断是错的**（本文件就有这份日缓存），
