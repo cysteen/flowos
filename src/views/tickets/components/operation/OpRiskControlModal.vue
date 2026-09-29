@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { message } from 'ant-design-vue';
 import { SafetyCertificateOutlined } from '@ant-design/icons-vue';
 import OpActionModal from './OpActionModal.vue';
@@ -13,12 +13,18 @@ import { useRiskReportAssess } from '@/composables/useRiskReportAssess';
 import { useRiskCollabFields } from '@/composables/useRiskCollabFields';
 import { useRiskPoolStore } from '@/stores/riskPool';
 import { useRiskReportStore } from '@/stores/riskReports';
+import { NO_RISK_LOCKED_TIP, canTagNoRisk, useRiskQueueStore } from '@/stores/riskQueue';
 import { useUserStore } from '@/stores/user';
+import { riskLevelText } from '@/config/risk';
 import {
+  NO_RISK,
   REPORT_SOURCE,
+  RISK_TAG_RESULTS,
   isOpenStatus,
+  isPoolLevel,
   isPooledStatus,
   type RiskPoolItem,
+  type RiskTagResult,
 } from '@/stores/riskShared';
 import {
   adviceLabelOf,
@@ -32,7 +38,15 @@ import {
  * 🔴 **一枚按钮 + 一个弹窗，内容按原单类型分岔**（基线 ※29 按原单类型分形态）：
  * - **非投诉单** → 第一区块（入池依据 / 报备信息）+「评估结论」段（升级 / 不升级，
  *   选「升级」再接出投诉工单专属字段）。点开时若那条条目还没人领，**先自动领到自己名下**。
- * - **投诉单** → 第一区块 +「协同处理」段（评估意见 / 建议事项 /「其他」的具体建议）。
+ * - **投诉单** → 第一区块 + **上半「风险等级」段**（可标记 / 改判，改判填修正原因）
+ *   +「协同处理」段（评估意见 / 建议事项 /「其他」的具体建议）。
+ *
+ * 🔴 **上半是 2026-09-29 裁决搬过来的**：「风险报备」Tab 的「风险标记」块里原来有一枚
+ * 「标记 / 重新标记」按钮与一个自持的弹窗，那一对已整块撤掉，标记改由页头这一枚承担。
+ * 上半与风险监控页那个「风险管控」弹窗**同构**（四选一等级 · 修正原因 · 标记备注），
+ * 权限判据沿用原来那把 `canTag`（原单类型 + 标记权 + 这张单推不推得出来源），
+ * 落库仍是 `riskQueue.recordTagFor` 那条唯一入口 —— **没有新判据、没有第二条落库路径**。
+ * **非投诉单不出上半**：工单页不允许标记非投诉单（标记归风险监控页），口径一格未动。
  *
  * 两支的字段、校验、派生、落库、通知与履历**一律沿用原来那两个弹窗的规格**，
  * 本组件只做入口与组装：评估那一段走 `useRiskReportAssess` + `EscalateComplaintFields`，
@@ -56,8 +70,15 @@ const emit = defineEmits<{ 'update:open': [v: boolean] }>();
 const user = useUserStore();
 const pool = useRiskPoolStore();
 const reportStore = useRiskReportStore();
+const queue = useRiskQueueStore();
 
 const isComplaint = computed(() => props.ticketType === '投诉');
+
+function nowStamp(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
 
 /* ---------------- 非投诉支：评估结论（原「风险评估」形态，规格一格未动） ---------------- */
 
@@ -95,6 +116,8 @@ watch(
   (v) => {
     if (!v) return;
     if (isComplaint.value) {
+      // 上半灌回现行结论、下半每次从空开始（全空＝不协同）
+      resetTag();
       collab.reset();
       return;
     }
@@ -154,9 +177,88 @@ watch(assessOpen, (v) => {
 const adviceLabel = computed(() => adviceLabelOf(assessDecision.value));
 const advicePlaceholder = computed(() => advicePlaceholderOf(assessDecision.value));
 
-/* ---------------- 投诉支：协同处理（规格一格未动，字段与落库走共享件） ---------------- */
+/* ---------------- 投诉支上半：风险等级（标记 / 改判） ---------------- */
+
+/**
+ * 本单的 A 线条目（一张单至多一条在池，《【930】》§3.1）。
+ * 取法与「风险报备」Tab 的「风险标记」块逐字同源：优先取带结论那条，没有就取第一条。
+ */
+const tagEntry = computed(() => queue.entriesOf(props.ticketNo).find((e) => !!e.tag)
+  ?? queue.entriesOf(props.ticketNo)[0]
+  ?? null);
+const tagRecord = computed(() => tagEntry.value?.tag ?? null);
+/** 这张单推不推得出监控来源；推不出来就没得标记（原因由 store 给，与提交时兜底那一句同源） */
+const tagBlockReason = computed(() => queue.tagBlockReasonOf(props.ticketNo));
+/**
+ * 上半出不出 ＝ 现行 `canTag` 那把（原单类型 + 标记权 + 这张单推得出来源），
+ * **与「风险报备」Tab 里原来那份逐字相同，一条判据都没有新造**。
+ * 非投诉单在工单页不允许标记（标记归风险监控页），故上半只可能在投诉支出现。
+ */
+const canTag = computed(
+  () => isComplaint.value && user.roleKey === 'complaint-handler' && !tagBlockReason.value,
+);
+
+const tagResults = RISK_TAG_RESULTS;
+const tagResult = ref<RiskTagResult | ''>('');
+const tagNote = ref('');
+const tagAmendReason = ref('');
+const tagTried = ref(false);
+/** 已有结论时这次就是**改判**，改判必须说清为什么（首次标记没有这一项） */
+const isAmend = computed(() => !!tagRecord.value);
+/**
+ * 等级或标记备注动过没有。与风险监控页 `entryTagDirty` 同一口径 ——
+ * 没动过还落一遍，标记记录里就多一条与上一条逐字相同的记录、条数还虚增。
+ */
+const tagDirty = computed(() => {
+  const cur = tagRecord.value;
+  if (!cur) return !!tagResult.value;
+  return tagResult.value !== cur.result || tagNote.value.trim() !== cur.note;
+});
+/** 这一次上半落不落：首次标记必落；改判形态只在真动过时落 */
+const tagRetag = computed(
+  () => canTag.value && !!tagResult.value && (!isAmend.value || tagDirty.value),
+);
+const missTagResult = computed(() => tagTried.value && canTag.value && !tagResult.value);
+/** 「为什么改」只在**真改判**时问得出口：没改判的那一路（只补协同）不要它 */
+const missTagAmend = computed(
+  () => tagTried.value && tagRetag.value && isAmend.value && !tagAmendReason.value.trim(),
+);
+/**
+ * 已出结论的条目「无风险」一档置灰（《【930】》§5A.3 改判规则；store 侧 `recordTag` 同样拒绝）。
+ * 判定走 `riskQueue.canTagNoRisk`，与风险监控页那两处修正弹窗同源；读条目上的现行状态。
+ */
+const tagNoRiskLocked = computed(() => !!tagEntry.value && !canTagNoRisk(tagEntry.value.status));
+
+/** 打开时把现行结论灌回来：改完才知道自己动了哪一项（与风险监控页 `openEntryTag` 同形） */
+function resetTag() {
+  tagResult.value = tagRecord.value?.result ?? '';
+  tagNote.value = tagRecord.value?.note ?? '';
+  tagAmendReason.value = '';
+  tagTried.value = false;
+}
+
+/* ---------------- 投诉支下半：协同处理（规格一格未动，字段与落库走共享件） ---------------- */
 
 const collab = useRiskCollabFields();
+
+/**
+ * 下半「协同处理」段出不出。
+ * - 上半出不来的角色（非客诉专员 / 这张单推不出来源）**恒出** —— 那一路这个弹窗就只是
+ *   协同处理，与本轮之前逐字相同。
+ * - 上半出得来时跟着上半的取值走（与风险监控页 `showTagCollabFor` 同一口径）：判为「无风险」
+ *   的条目会被撤出风险工单池，池外没有可协同的条目，那一段留着只会让人填完再收到一句
+ *   "本单已不在风险工单池中"。
+ */
+const showCollab = computed(() => !canTag.value || isPoolLevel(tagResult.value as RiskTagResult));
+
+/**
+ * 下半动过没有。**全空 ＝ 不协同**（与风险监控页那套同形）：只想改个等级的人
+ * 不该被「评估意见」的必填拦在这儿。
+ */
+const collabFilled = computed(() => {
+  const f = collab.fields;
+  return !!f.opinion.trim() || f.advices.length > 0 || !!f.otherAdvice.trim();
+});
 
 /** 本单在**风险工单池**里的那条 A 线条目（一张单至多一条，《【930】》§3.1） */
 const poolItem = computed<RiskPoolItem | null>(
@@ -165,8 +267,59 @@ const poolItem = computed<RiskPoolItem | null>(
     .find((r) => r.source !== REPORT_SOURCE && isPooledStatus(r.status)) ?? null,
 );
 
-function onCollabOk() {
-  if (collab.submitTo(props.ticketNo)) emit('update:open', false);
+/**
+ * 投诉支提交。上半（标记 / 改判）与下半（协同处理）**各自可留空**，
+ * 顺序与判据一律照风险监控页那个「风险管控」弹窗（`saveEntryTag`）：
+ *   ① 上半出不来的角色：这一次只可能是协同，原样交给共享件 `submitTo`（含它自己的三道拦截）；
+ *   ② 两半都没给东西才是"什么都没发生"，才拦；
+ *   ③ 下半的必填**整个跑在任何写入之前** —— 人只是漏填了评估意见，
+ *      不该换来一条已经被改了等级的条目；
+ *   ④ 落库先上半后下半：`submitTo` 要在池里找得到这条条目。
+ */
+function onComplaintOk() {
+  if (!canTag.value) {
+    if (collab.submitTo(props.ticketNo)) emit('update:open', false);
+    return;
+  }
+  tagTried.value = true;
+  const retag = tagRetag.value;
+  const doCollab = showCollab.value && collabFilled.value;
+  if (!retag && !doCollab) {
+    if (!tagResult.value) { message.warning('请先选择风险等级'); return; }
+    message.warning('风险标记没有变化，也没有填写协同处理内容');
+    return;
+  }
+  if (retag && isAmend.value && !tagAmendReason.value.trim()) {
+    message.warning('请填写修正原因');
+    return;
+  }
+  // 读条目上的现行状态：弹窗开着这段时间里别人可能已经给了结论
+  if (retag && tagResult.value === NO_RISK && tagNoRiskLocked.value) {
+    message.warning(NO_RISK_LOCKED_TIP);
+    return;
+  }
+  if (doCollab && !collab.validate()) return;
+
+  if (retag) {
+    const res = queue.recordTagFor(props.ticketNo, {
+      result: tagResult.value as RiskTagResult,
+      note: tagNote.value.trim(),
+      by: user.name || '当前用户',
+      byRole: user.role.name || '客诉专员',
+      at: nowStamp(),
+      ...(isAmend.value ? { amendReason: tagAmendReason.value.trim() } : {}),
+    });
+    if (!res.ok) {
+      // 原因由 store 给：挡住它的可能是"不在两类自动识别范围内"，也可能是"这张单查不到"
+      message.warning(res.reason ?? '本单无法在工单页标记');
+      return;
+    }
+    const lv = tagResult.value === NO_RISK ? '无风险' : riskLevelText(tagResult.value as '高' | '中' | '低');
+    message.success(`已标记为「${lv}」`);
+  }
+  // 协同那条成功 / 拦截提示由共享件 `submitTo` 自己发，本组件不复述
+  if (doCollab && !collab.submitTo(props.ticketNo)) return;
+  emit('update:open', false);
 }
 
 /* ---------------- 两支共用的壳：开关 / 副标题 / 主按钮 ---------------- */
@@ -193,11 +346,20 @@ const subtitle = computed(() => {
   return src ? `${src} · ${props.ticketNo}` : props.ticketNo;
 });
 
-/** 主按钮：投诉支「提交」；非投诉支沿用评估那一套（升级 →「确认升级」，其余「提交结论」） */
-const okText = computed(() => (isComplaint.value ? '提交' : assessOkText.value));
+/**
+ * 主按钮。非投诉支沿用评估那一套（升级 →「确认升级」，其余「提交结论」）。
+ *
+ * 投诉支按 **"含改判即保存修正"** 这条既有优先级（与风险监控页 `entryTagOkText` 一致）：
+ * 上半出得来且这张单**已有结论**（即这一次是改判形态）→「保存修正」；
+ * 其余（上半出不来 ＝ 只提交协同、或上半是首次标记）→「提交」。
+ */
+const okText = computed(() => {
+  if (!isComplaint.value) return assessOkText.value;
+  return canTag.value && isAmend.value ? '保存修正' : '提交';
+});
 
 function onOk() {
-  if (isComplaint.value) onCollabOk();
+  if (isComplaint.value) onComplaintOk();
   else confirmAssess();
 }
 </script>
@@ -218,10 +380,51 @@ function onOk() {
       <!-- ① 第一区块（入池依据 / 报备信息 + 释放记录）：与风险监控页评估弹窗共用 RiskAssessSheet -->
       <RiskAssessSheet v-if="sheetTarget" :target="sheetTarget" />
 
-      <!-- ② 投诉单：协同处理段（评估意见 / 建议事项 /「其他」的具体建议） -->
-      <RiskCollabFields v-if="isComplaint" :ctl="collab" />
+      <!--
+        ② 投诉单上半：风险等级（标记 / 改判）。**只对投诉单 + 标记权角色出**（判据 `canTag`）。
+        四选一：一个枚举答"这张单有没有风险、多大"——拆成"有没有风险 + 等级"两个字段会立刻
+        长出"无风险却带着等级""有风险却没等级"两种非法组合，而这两种组合恰恰决定条目进不进池。
+        已有结论时这次就是改判，必须答得出「修正原因」；标记备注一律可选（三入口统一）。
+      -->
+      <section v-if="isComplaint && canTag" class="ticket-assess-block">
+        <h4 class="ticket-assess-title">风险等级</h4>
+        <div class="op-field">
+          <a-radio-group v-model:value="tagResult" class="rc-tag-radio-row">
+            <!-- 已结论的条目「无风险」一档置灰（store 侧 recordTag 同样拒绝），见 tagNoRiskLocked -->
+            <a-radio
+              v-for="r in tagResults"
+              :key="r"
+              :value="r"
+              :disabled="r === NO_RISK && tagNoRiskLocked"
+              :title="r === NO_RISK && tagNoRiskLocked ? NO_RISK_LOCKED_TIP : undefined"
+            >{{ r === NO_RISK ? NO_RISK : riskLevelText(r) }}</a-radio>
+          </a-radio-group>
+          <div v-if="missTagResult" class="ticket-assess-err">请选择风险等级</div>
+          <div v-else class="rc-tag-foot">
+            <template v-if="tagNoRiskLocked">{{ NO_RISK_LOCKED_TIP }}。</template>
+            标为 低 / 中 / 高 即进风险工单池；标为「无风险」不进池。
+          </div>
+        </div>
+        <!-- 界面词一律「修正原因」，与风险监控页那两处标记弹窗同名 -->
+        <div v-if="isAmend" class="op-field">
+          <div class="op-label req">修正原因</div>
+          <a-textarea
+            v-model:value="tagAmendReason"
+            :rows="2"
+            placeholder="上一次判的是什么、这次为什么改…"
+          />
+          <div v-if="missTagAmend" class="ticket-assess-err">请填写修正原因</div>
+        </div>
+        <div class="op-field">
+          <div class="op-label">标记备注</div>
+          <a-textarea v-model:value="tagNote" :rows="2" placeholder="判断依据与后续动作（可选）" />
+        </div>
+      </section>
 
-      <!-- ② 非投诉单：评估结论段（升级 / 不升级） -->
+      <!-- ③ 投诉单下半：协同处理段（评估意见 / 建议事项 /「其他」的具体建议） -->
+      <RiskCollabFields v-if="isComplaint && showCollab" :ctl="collab" />
+
+      <!-- ② 非投诉单：评估结论段（升级 / 不升级）。**非投诉单不出上半**，工单页不允许标记它 -->
       <template v-else>
         <section class="ticket-assess-block">
           <h4 class="ticket-assess-title">评估结论</h4>
@@ -332,6 +535,16 @@ function onOk() {
 }
 /* 分流提示：与校验错误同一行位，但它讲的是后果不是错误，故取中性灰而非红 */
 .ticket-assess-hint {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #6b7280;
+  line-height: 1.5;
+}
+/* 上半四选一：一行排满，与「评估决策」那一行同一种横排密度 */
+.rc-tag-radio-row { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; }
+.rc-tag-radio-row :deep(.ant-radio-wrapper) { margin: 0 !important; white-space: nowrap; }
+/* 去向说明：讲的是"点下去会发生什么"，与分流提示同一套 token */
+.rc-tag-foot {
   margin-top: 4px;
   font-size: 11px;
   color: #6b7280;

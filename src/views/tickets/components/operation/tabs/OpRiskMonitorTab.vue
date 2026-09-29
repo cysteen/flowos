@@ -22,17 +22,14 @@ import type { ProcessFormDraft } from '@/views/tickets/types/operation';
 // 本单的报备读口在 B 线自己的 store 里；行类型取合并池的行（同一张单上还可能有
 // A 线自动入池的条目，见 riskReports.ts 的 `reportsOf` 说明）。
 import { useRiskReportStore } from '@/stores/riskReports';
-import { NO_RISK_LOCKED_TIP, canTagNoRisk, useRiskQueueStore } from '@/stores/riskQueue';
+import { useRiskQueueStore } from '@/stores/riskQueue';
 import { poolStageStatusOf } from '@/stores/riskPool';
 import {
-  NO_RISK,
-  RISK_TAG_RESULTS,
   isOpenStatus,
   isPooledStatus,
   type AssessDecision,
   type ReportAssessment,
   type RiskPoolItem,
-  type RiskTagResult,
 } from '@/stores/riskShared';
 import OpActionModal from '../OpActionModal.vue';
 import { useUserStore } from '@/stores/user';
@@ -47,7 +44,6 @@ import {
 
 const props = defineProps<{
   ticketNo: string;
-  ticketTitle?: string;
   draft: RiskMonitorDraft;
   form: ProcessFormDraft;
   riskVerification?: TicketRiskVerification | null;
@@ -341,10 +337,10 @@ function openEscalatedTicket(no: string) {
  * **2026-09-29 裁决之后「风险标记」块只剩打标那一路**，自上而下是：
  *   ① **打标结论**（只读）：等级 · 标记人（角色）· 标记时间一行；标记备注 / 修正原因各另起一行；
  *      命中核实结论照旧只读回显；尚无结论时出缺省文案。
- *   ② **标记记录**：默认折叠，折叠态「标记记录 N 次」+ 最新一条，展开出全部；
- *      「标记 / 重新标记」按钮摆在同一行右端，只对**投诉单 + 打标权角色**出（`canTag`）。
+ *   ② **标记记录**：默认折叠，折叠态「标记记录 N 次」+ 最新一条，展开出全部。
  *
- * 删掉的是原来的③细分隔线与④处理人自述三字段（见上方那段）。
+ * **无下半、无按钮**：删掉的是原来的③细分隔线与④处理人自述三字段（见上方那段），
+ * 以及原来摆在②那一行右端的「标记 / 重新标记」按钮与它的弹窗（见下方那段）。
  *
  * 🔴 打标那一路与工单风险字段**互不覆盖**这条没变：
  * 打标存 `stores/riskQueue.ts` 的条目、提交即生效、四选一（低/中/高/无风险）、
@@ -406,83 +402,18 @@ const canTag = computed(
   () => isComplaintTicket.value && user.roleKey === 'complaint-handler' && !tagBlockReason.value,
 );
 
-const tagResults = RISK_TAG_RESULTS;
-const tagOpen = ref(false);
-const tagResult = ref<RiskTagResult | ''>('');
-const tagNote = ref('');
-const tagAmendReason = ref('');
-const tagTried = ref(false);
-/** 已有结论时这次就是**改判**，改判必须说清为什么（首次打标没有这一项） */
-const isAmend = computed(() => !!tagRecord.value);
-const missTagResult = computed(() => tagTried.value && !tagResult.value);
 /*
- * 🔴 **标记备注是可选的，本页不再校验它**（2026-09-11 裁决，三入口统一为可选）。
- * 监控页的单条打标与批量标记本来就没有这道校验，只有本页要求必填 ——
- * 同一个动作在两个入口一个能提交、一个卡住，看着像本页坏了。
- * 打标已经有必填的四选一等级，那才是这次动作的结论；高频动作不该再加一道自由文本门槛。
- * ⚠️ **真正需要理由的是改判**：那里有独立的必填「修正原因」（`missTagAmend`），一格不动。
- */
-const missTagAmend = computed(() => tagTried.value && isAmend.value && !tagAmendReason.value.trim());
-/**
- * 本单条目已出结论：弹窗里「无风险」一档置灰（《【930】》§5A.3 改判规则；store 侧 `recordTag` 同样拒绝）。
- * 判定走 `riskQueue.canTagNoRisk`，与风险监控页修正弹窗同源；读条目上的现行状态。
- */
-const tagNoRiskLocked = computed(() => !!tagEntry.value && !canTagNoRisk(tagEntry.value.status));
-
-function openTag() {
-  if (!canTag.value) return;
-  tagResult.value = tagRecord.value?.result ?? '';
-  tagNote.value = '';
-  tagAmendReason.value = '';
-  tagTried.value = false;
-  tagOpen.value = true;
-}
-
-function nowStamp(): string {
-  const d = new Date();
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
-}
-
-/**
- * 提交打标。落 store 走 `recordTagFor`（按单号找条目，状态机的唯一入口；
- * 本单没进过实时监控时由它按两类判据现补一条，见 `riskQueue.ensureEntryFor`）。
- * 打为低 / 中 / 高时 store 同时**回写工单级风险等级**（§6.1）：
- * 工单级 ＝ 该单**各条结论取最高**；同一条**改判以最新结论为准**（改判要填理由，那就是一次人的降级判断）。
+ * ⚠️ **块内那枚「标记 / 重新标记」按钮与它的弹窗已整块撤掉**（2026-09-29 裁决）：
+ * 标记改由**页头「风险管控」**承担 —— 那个弹窗在投诉单上补出了"上半 风险等级
+ * （可标记 / 改判，改判填修正原因）"，与风险监控页那个弹窗同构
+ * （`operation/OpRiskControlModal.vue`）。
  *
- * 🔴 **本轮不发通知**（2026-09-10 业务口径变更）：《【930】》§5A.3 定的 `risk.tagged`
- * 「打标结果通知当前处理人」**本轮不做** —— 现有消息体系要先整体重新梳理，期间不加新事件。
- * 于是「打标结果二线处理人可见且通知」这条口径**只落了"可见"那一半**：
- * 可见 ＝ 页头的打标条 + 本块的只读回显；触达 ＝ 无，处理人得自己打开这张单才看得到。
- * **一线仍不可见**：本 Tab 对一线整个不渲染，页头那条也判掉了一线。
+ * 判据与落库**一条都没有新造**：权限仍是本文件这把 `canTag` 的同一口径（原单类型 + 标记权），
+ * 落库仍走 `riskQueue.recordTagFor` 那条唯一入口，随之搬走的还有四选一等级、
+ * 「无风险」置灰（`canTagNoRisk`）、改判必填「修正原因」与标记备注可选这几条规格。
+ *
+ * 本文件留着 `canTag` 只剩一个用处：空态里那句"为什么这里没有标记入口"要按它分岔。
  */
-function confirmTag() {
-  tagTried.value = true;
-  // 备注可选（见 missTagAmend 上方那段）：只拦等级与改判理由这两项真必填的
-  if (!tagResult.value) return;
-  if (isAmend.value && !tagAmendReason.value.trim()) return;
-  if (tagResult.value === NO_RISK && tagNoRiskLocked.value) { message.warning(NO_RISK_LOCKED_TIP); return; }
-
-  const at = nowStamp();
-  const res = queue.recordTagFor(props.ticketNo, {
-    result: tagResult.value,
-    note: tagNote.value.trim(),
-    by: user.name || '当前用户',
-    byRole: user.role.name || '客诉专员',
-    at,
-    ...(isAmend.value ? { amendReason: tagAmendReason.value.trim() } : {}),
-  });
-  if (!res.ok) {
-    // 原因由 store 给：挡住它的可能是"不在两类自动识别范围内"，也可能是"这张单查不到"，
-    // 两者要人做的事完全不同，不能一律说"本单没有实时监控条目"
-    message.warning(res.reason ?? '本单无法在工单页标记');
-    return;
-  }
-
-  const levelText = tagResult.value === NO_RISK ? '无风险' : riskLevelText(tagResult.value);
-  tagOpen.value = false;
-  message.success(`已标记为「${levelText}」`);
-}
 
 /* ==================== 协同记录（《【930】》§3.3） ==================== */
 
@@ -767,8 +698,9 @@ const collabSectionBadge = computed(() =>
       补充处理 · 风险 chip 面板里）。
       本块 ＝ 打标那一路（《【930】》§5A.3）：**读的人是处理人**，等级、标记人、标记时间三项缺一不可
       —— 少了标记人与时刻，这条结论就成了一句没有出处的判断，处理人无从追问。
-      标记备注**可选**（三入口统一，见 script 的 missTagAmend 上方），没填时整行不出。
-      打标按钮只对投诉单 + 打标权角色出（§3.1，判据 `canTag`），非投诉单在这里恒为只读回显。
+      标记备注**可选**（三入口统一），没填时整行不出。
+      **全块只读、块内没有按钮**：标记入口在页头「风险管控」（投诉单 + 标记权角色，判据 `canTag`，
+      §3.1），非投诉单在工单页恒为只读回显。
     -->
     <OpCollapsibleSection
       title="风险标记"
@@ -780,7 +712,7 @@ const collabSectionBadge = computed(() =>
       @toggle="expanded.risk = !expanded.risk"
     >
       <div class="chip-panel panel-neutral">
-        <!-- ===== 上半：打标结论（只读）+ 标记记录 + 打标按钮，判据一律 canTag ===== -->
+        <!-- ===== 标记结论（只读回显）+ 命中核实结论 + 折叠的标记记录，全块无按钮 ===== -->
         <section class="rk-tag" aria-label="风险等级结论">
           <template v-if="tagRecord">
             <div class="rk-tag-line">
@@ -804,9 +736,9 @@ const collabSectionBadge = computed(() =>
               <span class="rk-tag-note-label">标记备注</span>{{ tagRecord.note }}
             </p>
             <!--
-              🔴 **界面词一律「修正原因」**，与风险监控页那两处（打标弹窗 · 条目打标弹窗）同名。
+              🔴 **界面词一律「修正原因」**，与页头「风险管控」的上半、风险监控页那两处标记弹窗同名。
               此前本页写「改判理由」、监控页写「修正原因」，同一个字段两个名字。
-              取「修正」而不是「改判」：**人点下去的按钮写的就是「修正 / 重新标记」**，
+              取「修正」而不是「改判」：**人点下去的主按钮写的就是「保存修正」**，
               字段跟着动作走才连得上；「改判」是 PRD 的口径词，不上界面。
             -->
             <p v-if="tagRecord.amendReason" class="rk-tag-note">
@@ -817,11 +749,11 @@ const collabSectionBadge = computed(() =>
           <div v-else class="rt-empty">
             <p class="rt-empty-title">本单尚未标记</p>
             <!--
-              说清"为什么这里没有按钮"：不写这一句，看的人只会以为入口坏了或自己权限少了。
-              两种挡法要分开写：**有打标权但这张单进不了监控**（投诉单 + 客诉专员，
-              却推不出两类来源）与**这个角色本来就没有打标入口**（非投诉单 / 非客诉专员），
-              合成一句会让客诉专员以为自己被降权了。有打标权且这张单打得动时不出任何一句，
-              那时该看的是下面那枚「标记」按钮。
+              说清"为什么这里没有入口"：不写这一句，看的人只会以为入口坏了或自己权限少了。
+              两种挡法要分开写：**有标记权但这张单进不了监控**（投诉单 + 客诉专员，
+              却推不出两类来源）与**这个角色本来就没有标记入口**（非投诉单 / 非客诉专员），
+              合成一句会让客诉专员以为自己被降权了。有标记权且这张单标得动时不出任何一句 ——
+              那时入口在**页头「风险管控」**，块里本来就不该再指路。
             -->
             <template v-if="!canTag">
               <p v-if="isComplaintTicket && user.roleKey === 'complaint-handler'" class="rt-empty-hint">
@@ -849,99 +781,35 @@ const collabSectionBadge = computed(() =>
           </div>
 
           <!--
-            标记记录与打标按钮同一行。改判独立成条、不覆盖首次那条：两条并排才读得出
-            "从中危改成高危"这条爬坡。打标是即时生效的动作、不随「保存」走，
-            故按钮不受 Tab 的表单只读约束（a-config-provider 解禁），判据只看 canTag。
+            标记记录。改判独立成条、不覆盖首次那条：两条并排才读得出"从中危改成高危"这条爬坡。
+            **默认折叠**：折叠态「标记记录 N 次」+ 最新一条，展开出全部（顺序仍是时间正序）。
+            这一行**不再有按钮** —— 标记改由页头「风险管控」承担（见 script 内那段）。
           -->
-          <div v-if="tagHistory.length > 1 || canTag" class="rk-tag-ops">
-            <div v-if="tagHistory.length > 1" class="rt-history">
-              <button
-                type="button"
-                class="rt-history-sum"
-                :aria-expanded="tagRecordsOpen"
-                @click="tagRecordsOpen = !tagRecordsOpen"
-              >
-                <component
-                  :is="tagRecordsOpen ? DownOutlined : RightOutlined"
-                  class="rt-history-caret"
-                />
-                <span class="rt-history-head">标记记录 {{ tagHistory.length }} 次</span>
-                <span v-if="!tagRecordsOpen && latestTagRecord" class="rt-history-item">
-                  {{ tagRecordText(latestTagRecord) }}
-                </span>
-              </button>
-              <div v-if="tagRecordsOpen" class="rt-history-list">
-                <span v-for="(h, i) in tagHistory" :key="i" class="rt-history-item">
-                  {{ tagRecordText(h) }}
-                </span>
-              </div>
+          <div v-if="tagHistory.length > 1" class="rt-history">
+            <button
+              type="button"
+              class="rt-history-sum"
+              :aria-expanded="tagRecordsOpen"
+              @click="tagRecordsOpen = !tagRecordsOpen"
+            >
+              <component
+                :is="tagRecordsOpen ? DownOutlined : RightOutlined"
+                class="rt-history-caret"
+              />
+              <span class="rt-history-head">标记记录 {{ tagHistory.length }} 次</span>
+              <span v-if="!tagRecordsOpen && latestTagRecord" class="rt-history-item">
+                {{ tagRecordText(latestTagRecord) }}
+              </span>
+            </button>
+            <div v-if="tagRecordsOpen" class="rt-history-list">
+              <span v-for="(h, i) in tagHistory" :key="i" class="rt-history-item">
+                {{ tagRecordText(h) }}
+              </span>
             </div>
-            <a-config-provider v-if="canTag" :component-disabled="false">
-              <button type="button" class="rt-btn" @click="openTag">
-                {{ isAmend ? '重新标记' : '标记' }}
-              </button>
-            </a-config-provider>
           </div>
         </section>
       </div>
     </OpCollapsibleSection>
-
-    <!-- 打标弹窗：四选一（必填）+ 标记备注（可选）；已有结论时这次是改判，必须说清为什么 -->
-    <OpActionModal
-      v-model:open="tagOpen"
-      :title="isAmend ? '重新标记' : '标记'"
-      :icon="WarningOutlined"
-      tone="warn"
-      :width="460"
-      ok-text="提交标记"
-      @ok="confirmTag"
-    >
-      <a-config-provider :component-disabled="false">
-        <div class="op-form">
-          <p class="rt-modal-sub">
-            工单 {{ ticketNo }}<template v-if="ticketTitle"> · {{ ticketTitle }}</template>
-          </p>
-          <div class="op-field">
-            <div class="op-label req">风险等级</div>
-            <a-radio-group v-model:value="tagResult" class="rt-radio-row">
-              <a-radio
-                v-for="r in tagResults"
-                :key="r"
-                :value="r"
-                :disabled="r === NO_RISK && tagNoRiskLocked"
-                :title="r === NO_RISK && tagNoRiskLocked ? NO_RISK_LOCKED_TIP : undefined"
-              >
-                {{ r === '无风险' ? '无风险' : riskLevelText(r) }}
-              </a-radio>
-            </a-radio-group>
-            <p v-if="missTagResult" class="field-err">请选择风险等级</p>
-            <p class="rt-modal-tip">
-              <template v-if="tagNoRiskLocked">{{ NO_RISK_LOCKED_TIP }}。</template>
-              标为 低 / 中 / 高 即进风险工单池等客诉专员处置；标为「无风险」不进池。
-            </p>
-          </div>
-          <div class="op-field">
-            <div class="op-label">标记备注</div>
-            <a-textarea
-              v-model:value="tagNote"
-              :rows="3"
-              placeholder="判断依据与后续动作（可选）"
-            />
-          </div>
-          <div v-if="isAmend" class="op-field">
-            <!-- 界面词与监控页两处打标弹窗统一为「修正原因」，理由见上方只读那一格的注释 -->
-            <div class="op-label req">修正原因</div>
-            <a-textarea
-              v-model:value="tagAmendReason"
-              :rows="2"
-              :status="missTagAmend ? 'error' : undefined"
-              placeholder="上一次判的是什么、这次为什么改…"
-            />
-            <p v-if="missTagAmend" class="field-err">请填写修正原因</p>
-          </div>
-        </div>
-      </a-config-provider>
-    </OpActionModal>
 
     <!--
       协同记录（《【930】》§3.3 界面落点之一）。**只在投诉单上出现** ——
@@ -1401,21 +1269,6 @@ const collabSectionBadge = computed(() =>
 .rt-level.tone-低 { color: #4b5563; background: #f3f4f6; }
 .rt-level.tone-none { color: #047857; background: #d1fae5; }
 .rt-pool { font-size: 11px; color: #9ca3af; }
-.rt-btn {
-  margin-left: auto;
-  flex: none;
-  padding: 6px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  font-family: inherit;
-  color: #9a3412;
-  background: #fff;
-  border: 1px solid #fdba74;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-}
-.rt-btn:hover { background: #fff1e6; border-color: #fb923c; }
 .rk-tag-note {
   margin: 0;
   padding: 6px 10px;
@@ -1432,19 +1285,13 @@ const collabSectionBadge = computed(() =>
   font-weight: 600;
   color: #6b7280;
 }
-.rk-tag-ops {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 6px;
-}
 /* 标记记录：折叠态一行（摘要行整行可点，键盘也要能翻开），展开后横排全部 */
 .rt-history {
-  flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
+  align-items: flex-start;
 }
 .rt-history-sum {
   display: flex;
@@ -1493,10 +1340,6 @@ const collabSectionBadge = computed(() =>
 }
 .rt-empty-title { margin: 0; font-size: 13px; font-weight: 600; color: #6b7280; }
 .rt-empty-hint { margin: 0; font-size: 12px; color: #9ca3af; line-height: 1.5; }
-.rt-modal-sub { margin: 0; font-size: 12px; color: #6b7280; line-height: 1.5; }
-.rt-modal-tip { margin: 0; font-size: 11px; color: #9ca3af; line-height: 1.5; }
-.rt-radio-row { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; }
-
 /* ---- 协同记录 ---- */
 .rc-list { display: flex; flex-direction: column; gap: 10px; }
 .rc-item {

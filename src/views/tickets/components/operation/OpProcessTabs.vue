@@ -257,7 +257,6 @@ defineExpose({ switchTab });
       <OpRiskMonitorTab
         v-else-if="activeTab === 'risk'"
         :ticket-no="ticketNo"
-        :ticket-title="detail.title"
         :draft="tabData.riskDraft"
         :form="form"
         :risk-verification="riskVerification"
