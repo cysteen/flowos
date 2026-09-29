@@ -21,6 +21,7 @@ import {
 import { useFlashStore } from '@/stores/flash';
 import { mapUserRole } from '@/views/tickets/composables/opActions';
 import { useRiskQueueStore } from '@/stores/riskQueue';
+import type { RiskLevelFieldsCtl } from '@/composables/useRiskLevelFields';
 import { TICKETS } from '@/mock/tickets';
 import { isTicketClosed } from '@/views/tickets/types/ticket';
 
@@ -228,8 +229,16 @@ export function deriveEscalatedComplaint(input: {
   return derived;
 }
 
-/** 风险报备评估二选一（930 §5.4），监控页与工单详情页共用 */
-export function useRiskReportAssess() {
+/**
+ * 风险报备评估二选一（930 §5.4），监控页与工单详情页共用。
+ *
+ * `opts.level` ＝「风险管控」弹窗统一后补进来的**风险等级段**（`useRiskLevelFields` 的实例）。
+ * 传了它，`openAssess` 会顺手把段重置到这张单上、`confirmAssess` 会在落评估结论**之前**
+ * 先校验并落这一段（走 `recordTagFor` 那条与标记同一的入口）。
+ * 🔴 **不传就整段不存在**：工单页页头那个弹窗自己已经有一份风险等级段（投诉支上半），
+ * 它接的是本 composable 的**评估那一支**，再从这里塞一段进去它就会出现两段「风险等级」。
+ */
+export function useRiskReportAssess(opts?: { level?: RiskLevelFieldsCtl }) {
   const user = useUserStore();
   const reportStore = useRiskPoolStore();
 
@@ -313,6 +322,8 @@ export function useRiskReportAssess() {
     assessTried.value = false;
     // 结论正文（升级说明 / 反馈意见）与投诉一类 / 二类同在 escalateFields，reset 一次清完
     escalateFields.reset();
+    // 风险等级段：把现行等级灌回这张单（没有就留空并转必填），见 useRiskLevelFields.reset
+    opts?.level?.reset(r.ticketNo);
     assessOpen.value = true;
   }
 
@@ -326,7 +337,12 @@ export function useRiskReportAssess() {
      * 直接 return，而它此时正藏在段内，屏幕上一句红字都不会出。
      */
     const escalateFieldsOk = !showEscalateFields.value || escalateFields.validate();
-    if (!assessValid.value || !assessDecision.value || !escalateFieldsOk) return;
+    /*
+     * 风险等级段的校验**与上面那几项同批跑**（不短路），缺项的红字才能一屏全出：
+     * 先 return 的话，人补完决策再点一次才看到等级那道红字。
+     */
+    const levelOk = opts?.level ? opts.level.validate() : true;
+    if (!assessValid.value || !assessDecision.value || !escalateFieldsOk || !levelOk) return;
 
     // 提交前重查（§5.6）：条目现值 + 原单终态，拦下时不落任何东西
     const block = assessSubmitBlockOf(target.id, assessDecision.value, user.name || '当前用户');
@@ -335,6 +351,13 @@ export function useRiskReportAssess() {
       if (block.closeModal) assessOpen.value = false;
       return;
     }
+
+    /*
+     * 风险等级先落、评估结论后落（与页头「风险管控」那一支"先上半后下半"同序）。
+     * 🔴 被 store 挡下就整次中止：等级没写进去还接着落评估结论，得到的是一条
+     * "有结论、没等级"的条目 —— 它在左栏三个轴上一档都归不进去。
+     */
+    if (opts?.level && !opts.level.submit()) return;
 
     const escalate = assessDecision.value === '升级';
     const derive = escalate && !isComplaintTicket(target.ticketNo);

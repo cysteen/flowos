@@ -12,7 +12,8 @@ import { downloadReportAttachment, excerptWindow, isKeywordRow } from './riskAss
  * `OpRiskControlModal` 共用这一份，字段、顺序、出现条件与样式只在这里改。
  *
  * 🔴 卡上**不出单号、不出区块名**：两者都已在弹窗副标题（`〈来源〉 · 〈工单号〉`）里，
- * 一屏两遍。原来那一行的时刻没丢，并进了下面的 meta 行（`进监控` / `提交于`）。
+ * 一屏两遍。原来那一行的时刻并进了下面的 meta 行，且**只在实时监控那一路还留着**
+ * （末位一对「进监控」）—— 另两路的那个时刻要么不存在、要么在列表里已有一列，见 `entryAtVisible`。
  */
 const props = defineProps<{ target: RiskPoolItem }>();
 
@@ -28,17 +29,19 @@ const riskTags = useRiskTagStore();
 const fromPool = computed(() => props.target.source !== REPORT_SOURCE);
 
 /**
- * meta 行末位那一对时刻出不出。**「重点工单」这一路整对不出**（2026-09-29）。
+ * meta 行末位那一对时刻出不出。**只有「实时监控」这一路出**，另两路整对不出（2026-09-29）。
  *
- * 🔴 **那一档没有"进监控"的那一刻**：重点工单是"在办 ∧（类型＝投诉 ∨ P0/P1）"**天然成立**
- * 就在这一档里的，不存在被捞进来的动作；`at` 实际是条目生成时刻，标成「进监控」会被当成
- * 业务事实读。换个标签硬凑、或补一个「—」，同样是在答一个不存在的问题，故整对省掉。
- * · 实时监控（A 线）→「进监控」：命中把它捞进监控，这个时刻是真的。
- * · 二线报备（B 线）→「提交于」：报备人按下提交的那一刻。
+ * 三种来源处置不同，判据是**这个时刻在别处看不看得到**：
+ * · **实时监控** → 出「进监控 〈at〉」。命中把它捞进监控，这个时刻是真的，而且
+ *   **只有这里看得到** —— 清单与列表都没有这一列，省掉就再也查不出它是什么时候进的监控。
+ * · **重点工单** → 不出。那一档是"在办 ∧（类型＝投诉 ∨ P0/P1）"**天然成立**就在里面的，
+ *   不存在被捞进来的动作；`at` 实际是条目生成时刻，标成「进监控」会被当成业务事实读。
+ * · **二线报备** → 不出。它的提交时刻**报备池列表里本来就有一列**，弹窗里再摆一遍是重复。
  *
- * 判据取现成的读口（`isVerifyMonitorSource` / `REPORT_SOURCE`），不另造一套来源判断。
+ * 换个标签硬凑、或补一个「—」，同样是在答一个不存在或已经答过的问题，故一律整对省掉。
+ * 判据取现成的读口 `isVerifyMonitorSource`，不另造一套来源判断。
  */
-const entryAtVisible = computed(() => !fromPool.value || isVerifyMonitorSource(props.target.source));
+const entryAtVisible = computed(() => isVerifyMonitorSource(props.target.source));
 
 /**
  * 入池依据的「命中原话」：实时监控来源且已打标的条目，取本单**命中时刻最近**的一条风险词命中。
@@ -113,21 +116,25 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
               <span class="assess-meta-label">原因</span>
               <span class="assess-meta-value">{{ target.reason }}</span>
             </span>
-            <span class="assess-meta-sep" aria-hidden="true" />
+            <!--
+              分隔点改成**前置**：报备线的末位那一对（原「提交于」）已整对取消，
+              照旧后置会在行尾留一个孤立的「·」。
+            -->
             <template v-if="target.category">
+              <span class="assess-meta-sep" aria-hidden="true" />
               <span class="assess-meta-pair">
                 <span class="assess-meta-label">风险类型</span>
                 <span class="assess-meta-value assess-meta-warn">{{ target.category }}</span>
               </span>
-              <span class="assess-meta-sep" aria-hidden="true" />
             </template>
           </template>
           <!--
-            删掉的标题行里那个时刻并到这里：实时监控＝进监控、二线报备＝提交于。
-            **重点工单整对不出** —— 判据与理由见 `entryAtVisible`。
+            末位那一对时刻：**只有实时监控这一路出**「进监控」。重点工单没有"被捞进来"的那一刻，
+            二线报备的提交时刻在报备池列表里本来就有一列 —— 判据与理由见 `entryAtVisible`。
+            标签因此是定值，不再按来源分岔。
           -->
           <span v-if="entryAtVisible" class="assess-meta-pair">
-            <span class="assess-meta-label">{{ fromPool ? '进监控' : '提交于' }}</span>
+            <span class="assess-meta-label">进监控</span>
             <span class="assess-meta-value">{{ target.at }}</span>
           </span>
         </div>
@@ -135,8 +142,19 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
     </header>
 
     <div class="assess-sheet-body">
-      <!-- A 线：入池说明（系统写的"为什么捞它"）；B 线：报备人填的场景描述 -->
-      <blockquote class="assess-quote">{{ target.desc }}</blockquote>
+      <!--
+        引文**要有身份**：它此前是一段没头没尾的话，读的人不知道自己在读什么。
+        标签按来源给，用的都是本册的**现行字段名**，不是解释句：
+        · B 线 →「风险描述」——报备弹窗里报备人填的正是这一格（`OpRiskReportModal`）。
+        · A 线 →「入池依据」——系统按判据写的那一句 + 该单问题描述。
+        🔴 标签落在引文头上，**不是把删掉的标题行加回来**：那一行删的是"区块名 + 单号"
+        （两者都已在弹窗副标题里），而这里补的是这段正文自己的字段名，此前无处可读。
+        样式复用 meta 行那一档标签（`assess-meta-label`），不新造一套。
+      -->
+      <div class="assess-quote-field">
+        <span class="assess-meta-label">{{ fromPool ? '入池依据' : '风险描述' }}</span>
+        <blockquote class="assess-quote">{{ target.desc }}</blockquote>
+      </div>
 
       <!--
         入池依据的证据只剩「命中原话」一项：等级 / 标记备注 / 标记人 / 标记时间都在抬头，这里不复述。
@@ -262,6 +280,18 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
   flex: none;
 }
 .assess-sheet-body { padding: 12px 14px 14px; }
+/*
+ * 引文 + 它的字段名。标签复用 meta 行那一档（`.assess-meta-label` 只给灰度，
+ * 字号挂在 `.assess-meta-pair` 上），故这里把同一个 12px 给到容器上 ——
+ * 不新造一套标签样式，两处标签在同一屏上必须是同一种东西。
+ */
+.assess-quote-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  font-size: 12px;
+}
 .assess-quote {
   margin: 0;
   padding: 10px 12px;

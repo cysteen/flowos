@@ -35,6 +35,9 @@ import { useRiskReportStore, type RiskReport } from '@/stores/riskReports';
 // 直接改状态做不到这两件事，而留痕正是这条队列的凭据。
 import { isComplaintPoolTicket, useRiskPoolStore } from '@/stores/riskPool';
 import { useRiskReportAssess } from '@/composables/useRiskReportAssess';
+// 风险等级四选一 + 标记备注：与风险监控页评估处置工作面共用同一份（落库走 recordTagFor）
+import { useRiskLevelFields } from '@/composables/useRiskLevelFields';
+import RiskLevelFields from './operation/RiskLevelFields.vue';
 import { todayPrefix, type ReportStatus, type RiskReleaseRecord } from '@/stores/riskShared';
 // 状态界面词与工单「风险报备」Tab、风险监控页同一张映射：待领取 / 已领取 / 已结论 / 已撤回
 import { poolStatusText } from './operation/OpRiskDecision';
@@ -53,6 +56,12 @@ const emit = defineEmits<{ openTicket: [ticketNo: string] }>();
 const user = useUserStore();
 const reportStore = useRiskReportStore();
 const pool = useRiskPoolStore();
+/**
+ * 「风险管控」弹窗统一后补进来的**风险等级段**（2026-09-29 裁决）：报备条目也要给等级，
+ * 且**与标记同源** —— 落库走 `recordTagFor`，写工单级等级、条目进风险工单池。
+ * 校验与落库的时机交给 `useRiskReportAssess`（`opts.level`），本组件只持实例并渲染。
+ */
+const assessLevel = useRiskLevelFields();
 const {
   ASSESS_DECISIONS,
   assessOpen,
@@ -72,7 +81,7 @@ const {
   showEscalateFields,
   openAssess,
   confirmAssess,
-} = useRiskReportAssess();
+} = useRiskReportAssess({ level: assessLevel });
 
 /**
  * 能不能动手。**投诉督导看得见、一枚动作没有**——它已去权，只看数据。
@@ -704,7 +713,14 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
           </div>
         </section>
 
-        <!-- ② 评估表单：二选一决策 + 必填说明 -->
+        <!--
+          ② 风险等级（2026-09-29「风险管控」弹窗全站统一）：五处入口同一段，共用
+          RiskLevelFields。报备条目定的等级**与标记同源** —— 写工单级等级、条目进风险工单池、
+          计入左栏「全部有风险」与页头风险标注。本单还推不出监控来源时整段不出（见 ctl.visible）。
+        -->
+        <RiskLevelFields :ctl="assessLevel" />
+
+        <!-- ③ 评估表单：二选一决策 + 必填说明 -->
         <div class="af-field">
           <span class="af-label req">评估决策</span>
           <a-radio-group v-model:value="assessDecision" class="af-decisions">
@@ -733,7 +749,7 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
         </template>
 
         <!--
-          ③ 投诉工单专属字段：选「升级」（且会派生新投诉单）时才出。
+          ④ 投诉工单专属字段：选「升级」（且会派生新投诉单）时才出。
           投诉一类 / 二类 / 升级说明三项、均必填；三处评估弹窗共用 EscalateComplaintFields。
         -->
         <EscalateComplaintFields v-if="showEscalateFields" :ctl="escalateFields" />

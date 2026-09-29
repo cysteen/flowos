@@ -24,6 +24,10 @@ import OpRiskCollabModal from '@/views/tickets/components/operation/OpRiskCollab
 // 评估弹窗第一区块（入池依据 / 报备信息 + 释放记录）与工单页 OpRiskControlModal 共用一个组件；
 // 命中原话取窗 `excerptWindow`、实时监控来源判断 `isKeywordRow` 与附件下载同一个共享文件（本页命中清单 / 打标弹窗也读它）
 import RiskAssessSheet from '@/views/tickets/components/operation/RiskAssessSheet.vue';
+// 风险等级四选一 + 标记备注：与工单工作台风险报备池那个评估入口**共用同一份**，
+// 取值域、必填规则与落库（recordTagFor）全在 `useRiskLevelFields` 里，本页不另写一套
+import RiskLevelFields from '@/views/tickets/components/operation/RiskLevelFields.vue';
+import { useRiskLevelFields } from '@/composables/useRiskLevelFields';
 // 选「升级」后那一段投诉专属建单要素（投诉一类 / 二类）：与工单页底栏、风险报备池两个评估入口
 // **共用同一个组件**，字段、级联与校验全在 `useEscalateComplaintFields`，本页不另写一份
 import EscalateComplaintFields from '@/views/tickets/components/operation/EscalateComplaintFields.vue';
@@ -865,6 +869,13 @@ const assessOpen = ref(false);
 const assessTarget = ref<RiskPoolItem | null>(null);
 const assessDecision = ref<AssessDecision | ''>('');
 const assessTried = ref(false);
+/**
+ * 评估弹窗的**风险等级段**（2026-09-29「风险管控」弹窗全站统一）。
+ * 此前本弹窗只有评估决策，而同名弹窗在标记那三处都有这一段 —— 同一个弹窗名两种内容。
+ * 与工单工作台风险报备池那一处共用 `useRiskLevelFields` / `RiskLevelFields`：
+ * 落库走 `recordTagFor` 那条与标记同一的入口（写工单级等级、条目进风险工单池）。
+ */
+const assessLevel = useRiskLevelFields();
 
 /**
  * 「投诉工单专属字段」段落（投诉一类 / 二类 / 升级说明三项）：状态与校验走共享
@@ -1062,6 +1073,8 @@ function openAssess(r: RiskPoolItem) {
   assessTried.value = false;
   // 结论正文（升级说明 / 反馈意见）与投诉一类 / 二类同在 escalateFields，reset 一次清完
   escalateFields.reset();
+  // 风险等级段：把现行等级灌回这张单（没有就留空并转必填），见 useRiskLevelFields.reset
+  assessLevel.reset(r.ticketNo);
   assessOpen.value = true;
 }
 
@@ -1299,7 +1312,9 @@ function confirmAssess() {
    * 而它此时正藏在段内，屏幕上一句红字都不会出。与另外两个评估入口同一份 validate。
    */
   const escalateFieldsOk = !showEscalateFields.value || escalateFields.validate();
-  if (!assessValid.value || !assessDecision.value || !escalateFieldsOk) return;
+  // 风险等级段的校验与上面几项**同批跑**（不短路），缺项的红字才能一屏全出
+  const levelOk = assessLevel.validate();
+  if (!assessValid.value || !assessDecision.value || !escalateFieldsOk || !levelOk) return;
   // 提交前按 id 回 store 重查（§5.6 / §9 规则 29）：已撤回整次拦下、原单已终态只拦「升级」、
   // 条目已不在本人名下拦下。与另外两个评估入口同一个判据
   const block = assessSubmitBlockOf(target.id, assessDecision.value, user.name);
@@ -1308,6 +1323,13 @@ function confirmAssess() {
     if (block.closeModal) assessOpen.value = false;
     return;
   }
+
+  /*
+   * 风险等级先落、评估结论后落（与页头「风险管控」那一支"先上半后下半"同序）。
+   * 🔴 被 store 挡下就整次中止：等级没写进去还接着落评估结论，得到的是一条
+   * "有结论、没等级"的条目 —— 它在左栏三个轴上一档都归不进去。
+   */
+  if (!assessLevel.submit()) return;
 
   const escalate = assessDecision.value === '升级';
   const derive = escalate && !isComplaintTicket(target.ticketNo);
@@ -7375,6 +7397,13 @@ function toggleWordEnabled(w: RiskWord) {
           与工单页 OpRiskControlModal 共用 RiskAssessSheet，字段、出现条件与样式只在那一处改。
         -->
         <RiskAssessSheet :target="assessTarget" />
+
+        <!--
+          ② 风险等级：五处「风险管控」入口同一段，共用 RiskLevelFields（2026-09-29 裁决）。
+          已有等级预置可改（改了即改判、标记备注转必填），本来没有则必填；
+          本单还推不出监控来源时整段不出（见 ctl.visible）。
+        -->
+        <RiskLevelFields :ctl="assessLevel" />
 
         <!-- ③ 评估表单：二选一决策 + 必填说明 -->
         <section class="assess-block assess-block-form">
