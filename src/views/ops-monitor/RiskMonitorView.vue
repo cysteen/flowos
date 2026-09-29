@@ -15,7 +15,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { DatePicker, message } from 'ant-design-vue';
 import dayjs, { type Dayjs } from 'dayjs';
-import { ReloadOutlined, SearchOutlined, SettingOutlined, HistoryOutlined, CheckOutlined, UnorderedListOutlined, DownOutlined, TagOutlined, TagsOutlined, EditOutlined, SaveOutlined, FilterOutlined, RollbackOutlined } from '@ant-design/icons-vue';
+import { ReloadOutlined, SearchOutlined, SettingOutlined, HistoryOutlined, CheckOutlined, UnorderedListOutlined, DownOutlined, TagsOutlined, SafetyCertificateOutlined, SaveOutlined, FilterOutlined, RollbackOutlined } from '@ant-design/icons-vue';
 import MetricTipIcon from '@/components/MetricTipIcon.vue';
 import OpActionModal from '@/views/tickets/components/operation/OpActionModal.vue';
 // 协同处理弹窗与工单页底栏那一枚**共用同一个组件**：投诉单在池里与在工单上做的是同一件事，
@@ -460,12 +460,16 @@ const SOURCE_ORDER = new Map<MonitorSource, number>(MONITOR_SOURCES.map((s, i) =
 /** 待领取/评估中视图内的收窄：只看超时未评的（由「超时未评」卡下钻置上）。**横跨两个在队态** */
 const onlyOverdue = ref(false);
 /**
- * 「协同处理」——投诉单那一路的收口方式，**与升级 / 不升级并列的第三种结论**。
+ * 「风险处理建议」——投诉单那一路的收口方式，**与升级 / 不升级并列的第三种结论**。
  * 🔴 它不是 `AssessDecision`（那个枚举归 store，只装评估二选一），
  * 故本页自己给它一个字面量，与那两枚摆在同一排上读。
  * 不摆出来的话，「今日已结论」与下面几枚决策之和会差一条，而那一条谁也找不出来在哪。
+ *
+ * 🔴 **字面量取短词「建议」**：它同时是那一排指标的**显示文案**，而那一格只有一枚数字的宽度，
+ * 摆全称会把「升级 / 不升级」两枚挤到换行。判等一律用本常量，不要再写字面量 ——
+ * 界面词再改一次时，改这一处就够。
  */
-const COORD_DECISION = '协同' as const;
+const COORD_DECISION = '建议' as const;
 type DecisionKey = AssessDecision | typeof COORD_DECISION;
 /** 三枚决策：升级 / 不升级 来自 store 的枚举，协同是本页并列的第三种收口 */
 const DECISION_KEYS = computed<DecisionKey[]>(() => [...ASSESS_DECISIONS, COORD_DECISION]);
@@ -2360,7 +2364,10 @@ const tagVerdict = ref<HitVerdict | undefined>(undefined);
  * 那道约束就名存实亡了（`tagDirty` 随之把"空备注"排除在"动过"之外，见下）。
  */
 const tagNote = ref('');
-/** 已核实过的再打开就是修正：图标、按钮文案与必填项都随之不同（标题恒为「风险管控」） */
+/**
+ * 已核实过的再打开就是修正：按钮文案与必填项随之不同。
+ * **标题与图标恒定**（「风险管控」+ 盾牌 `SafetyCertificateOutlined`）—— 弹窗名没变，脸就不该变。
+ */
 const tagAmend = ref(false);
 /**
  * 「风险管控」弹窗（命中核实形态）的**副标题 ＝ 来源 · 单号**，与工单页页头那一枚、
@@ -3666,7 +3673,10 @@ const entryTagResult = ref<RiskTagResult | ''>('');
  * （`entryTagDirty` 随之把"空备注"排除在"动过"之外，见下）。
  */
 const entryTagNote = ref('');
-/** 已经打过标的再打开就是修改：图标、按钮文案与必填项都随之不同（标题恒为「风险管控」） */
+/**
+ * 已经打过标的再打开就是修改：按钮文案与必填项随之不同。
+ * **标题与图标恒定**（「风险管控」+ 盾牌 `SafetyCertificateOutlined`）—— 弹窗名没变，脸就不该变。
+ */
 const entryTagAmend = computed(() => !!entryTagTarget.value?.tag);
 /**
  * 「风险管控」弹窗（条目打标形态）的**副标题 ＝ 来源 · 单号**，与评估弹窗
@@ -4986,7 +4996,7 @@ function toggleWordEnabled(w: RiskWord) {
         <div class="effect-pane effect-pane--report">
           <h2
             class="pane-title"
-            title="风险工单池里的池行 · 只数标记进池的监控条目（A 线）：非投诉单走风险评估（升级 / 不升级），投诉单走协同处理。二线报备在工单工作台「风险报备池」，不进这一块"
+            title="风险工单池里的池行 · 只数标记进池的监控条目（A 线）：非投诉单走风险评估（升级 / 不升级），投诉单走风险处理建议。二线报备在工单工作台「风险报备池」，不进这一块"
           >评估处置</h2>
           <div class="dash-grid dash-grid-3">
             <!--
@@ -5043,7 +5053,7 @@ function toggleWordEnabled(w: RiskWord) {
               type="button"
               class="dm-cell"
               :class="{ on: listView === 'report' && reportView === 'assessed' && decisionFilter === 'all' }"
-              title="今日下过收口结论的池行 —— 升级 + 不升级 + 协同处理。三种收口都算，只数评估那两种会漏掉投诉单那一路"
+              title="今日下过收口结论的池行 —— 升级 + 不升级 + 风险处理建议。三种收口都算，只数评估那两种会漏掉投诉单那一路"
               @click="drillReport('assessed'); decisionFilter = 'all'; assessedTodayOnly = true"
             >
               <span class="dm-k">今日已结论</span>
@@ -5070,8 +5080,8 @@ function toggleWordEnabled(w: RiskWord) {
                 on: listView === 'report' && reportView === 'assessed' && decisionFilter === d,
                 danger: d === '升级' && alineDecisionCounts[d] > 0,
               }"
-              :title="d === '协同'
-                ? '投诉单不做风险评估，走协同处理：给意见与建议，不改状态、不改处理人'
+              :title="d === COORD_DECISION
+                ? '投诉单不做风险评估，由客诉专员给出风险处理建议：不改状态、不改处理人'
                 : `评估结论「${d}」`"
               @click="drillReport('assessed'); decisionFilter = d; assessedTodayOnly = true"
             >
@@ -5767,7 +5777,7 @@ function toggleWordEnabled(w: RiskWord) {
         </span>
         <span v-if="reportView === 'assessed' && decisionFilter !== 'all'" class="nc-chip">
           结论：{{ decisionFilter }}
-          <button type="button" class="nc-del" title="看全部结论（升级 / 不升级 / 协同）" @click="decisionFilter = 'all'">×</button>
+          <button type="button" class="nc-del" title="看全部结论（升级 / 不升级 / 建议）" @click="decisionFilter = 'all'">×</button>
         </span>
         <!--
           「仅今日」默认就开着，故它也得摆出来——不摆的话，翻不到昨天的记录会被读成"昨天没人评估"。
@@ -6127,8 +6137,8 @@ function toggleWordEnabled(w: RiskWord) {
                 <span
                   v-else-if="r.coordination"
                   class="rr-dec"
-                  title="投诉单不做风险评估，走协同处理：给意见与建议，不改状态、不改处理人"
-                >协同处理</span>
+                  title="投诉单不做风险评估，由客诉专员给出风险处理建议：不改状态、不改处理人"
+                >风险处理建议</span>
                 <span v-else class="hit-sub">—</span>
               </td>
               <td>
@@ -6914,7 +6924,7 @@ function toggleWordEnabled(w: RiskWord) {
       :open="entryTagOpen"
       title="风险管控"
       :subtitle="entryTagSubtitle"
-      :icon="entryTagAmend ? EditOutlined : TagOutlined"
+      :icon="SafetyCertificateOutlined"
       tone="primary"
       :width="480"
       :ok-text="entryTagOkText"
@@ -7156,7 +7166,7 @@ function toggleWordEnabled(w: RiskWord) {
       :open="tagOpen"
       title="风险管控"
       :subtitle="tagSubtitle"
-      :icon="tagAmend ? EditOutlined : TagOutlined"
+      :icon="SafetyCertificateOutlined"
       tone="primary"
       :width="480"
       :ok-text="tagOkText"
@@ -7339,7 +7349,7 @@ function toggleWordEnabled(w: RiskWord) {
       :open="assessOpen"
       title="风险管控"
       :subtitle="assessSubtitle"
-      :icon="EditOutlined"
+      :icon="SafetyCertificateOutlined"
       tone="primary"
       :width="600"
       :ok-text="assessOkText"

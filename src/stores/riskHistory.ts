@@ -176,7 +176,7 @@ export const RISK_HISTORY_META: Record<RiskHistoryKind, { how: string }> = {
   report: { how: '风险报备' },
   tag: { how: '风险标记' },
   assess: { how: '风险评估' },
-  collab: { how: '协同处理' },
+  collab: { how: '风险处理建议' },
   grade: { how: '风险等级变更' },
 };
 
@@ -338,8 +338,15 @@ const LS_KEY = 'flowos-risk-history';
  *
  * v4：A 线种子 `rr-009` 改挂另一张单（与 `riskQueue` v14 同批）。回填 id 按条目 id 固定
  * （`seed-tag-rr-009` 等），不作废的话旧单上那几条回填记录留着、新单上的同 id 记录回填不进来。
+ *
+ * v5：How 徽章两件改词 —— `tag`「风险打标」→「风险标记」（71256652）、
+ * `collab`「协同处理」→「风险处理建议」。**改 `how` 必须升版**：它是**落库时固化**的展示串，
+ * 读取侧一律直出、不回头按 `kind` 重算，故保质期内的旧缓存会照旧渲出旧词 ——
+ * 同一条履历上新落的卡写「风险处理建议」、缓存里那批写「协同处理」，两套词并存。
+ * 🔴 71256652 那次按"本 store 不落 localStorage"放行，**那个判断是错的**（本文件就有这份日缓存），
+ * 故这一次把两件一起收在 v5 里。
  */
-const LS_VERSION = 4;
+const LS_VERSION = 5;
 
 /**
  * 缓存"新不新"的判据：取记录时刻里最新的那一个。

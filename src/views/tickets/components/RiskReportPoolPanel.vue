@@ -15,9 +15,9 @@
 import { computed, ref } from 'vue';
 import { message } from 'ant-design-vue';
 import {
-  EditOutlined,
   PaperClipOutlined,
   RollbackOutlined,
+  SafetyCertificateOutlined,
   SearchOutlined,
   UserOutlined,
 } from '@ant-design/icons-vue';
@@ -601,7 +601,7 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
       :open="assessOpen"
       title="风险管控"
       :subtitle="assessTarget ? `${assessTarget.source} · ${assessTarget.ticketNo}` : ''"
-      :icon="EditOutlined"
+      :icon="SafetyCertificateOutlined"
       tone="primary"
       :width="520"
       :ok-text="assessOkText"

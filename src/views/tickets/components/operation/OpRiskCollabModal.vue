@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue';
-import { TeamOutlined } from '@ant-design/icons-vue';
+import { SafetyCertificateOutlined } from '@ant-design/icons-vue';
 import OpActionModal from './OpActionModal.vue';
 import RiskCollabFields from './RiskCollabFields.vue';
 import { useRiskQueueStore } from '@/stores/riskQueue';
@@ -141,7 +141,7 @@ function onOk() {
     :open="open"
     title="风险管控"
     :subtitle="subtitle"
-    :icon="TeamOutlined"
+    :icon="SafetyCertificateOutlined"
     tone="primary"
     :width="520"
     ok-text="提交"

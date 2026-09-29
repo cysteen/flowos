@@ -2276,10 +2276,10 @@ watch(
     </div>
 
     <div v-if="riskAdviceMarks.length" class="risk-report-banner risk-advice-banner">
-      <span class="rrb-text">协同建议</span>
+      <span class="rrb-text">风险处理建议</span>
       <span v-for="a in riskAdviceMarks" :key="a" class="rrb-advice">{{ a }}</span>
       <button type="button" class="rrb-link" @click="processTabsRef?.switchTab('risk')">
-        查看协同记录
+        查看风险处理建议
       </button>
     </div>
 

@@ -667,57 +667,34 @@ const collabSectionBadge = computed(() =>
         aria-label="评估记录"
       >
         <!--
-          结论二选一，**没有风险等级这一档**（N1）——原先并排的等级标已删。
-          「升级」的实际产出是一张新投诉单，故头部直接把去向摆出来。
+          **一行 meta + 一行意见**，照本 Tab「风险标记」块上半那套排法
+          （`rk-tag-line` / `rk-tag-note`）：结论标在行首、评估人与时刻紧随、去向标收尾。
+          原来是渐变抬头带 + `dl` 竖排五行 —— 评估人 / 时刻 / 决策 / 新单号全是短值，
+          一项一行把整块撑到 280px 上下、右侧一路留白，而同一个 Tab 上讲同一类事的
+          「风险标记」块就是横排的：两种排法并存会让人以为它们是两种东西。
+
+          结论二选一，**没有风险等级这一档**（N1）。行首那枚结论标就是「评估决策」那一格的值，
+          不再另起一行复述同一个词。
         -->
-        <header class="ra-head">
+        <div class="ra-line">
           <span
             class="ra-decision"
             :class="`tone-${decisionTone(latestAssessed.assessment.decision)}`"
-          >
-            {{ decisionText(latestAssessed.assessment.decision) }}
-          </span>
+          >{{ decisionText(latestAssessed.assessment.decision) }}</span>
+          <span class="ra-who">{{ formatAssessor(latestAssessed.assessment) }}</span>
+          <span class="ra-at">{{ formatAt(latestAssessed.assessment.at) }}</span>
           <!-- 有单号才敢说"已派生"：指不出是哪一张的时候，这句话等于没说 -->
-          <span v-if="escalatedNo" class="ra-derive">已派生投诉工单</span>
-        </header>
-
-        <dl class="ra-kv">
-          <div class="ra-kv-row">
-            <dt>评估人</dt>
-            <dd>{{ formatAssessor(latestAssessed.assessment) }}</dd>
-          </div>
-          <div class="ra-kv-row">
-            <dt>评估时间</dt>
-            <dd>{{ formatAt(latestAssessed.assessment.at) }}</dd>
-          </div>
-          <div class="ra-kv-row">
-            <dt>评估决策</dt>
-            <dd>{{ decisionText(latestAssessed.assessment.decision) }}</dd>
-          </div>
-          <div v-if="escalatedNo" class="ra-kv-row">
-            <dt>新投诉单</dt>
-            <dd>
-              <a
-                class="ra-link"
-                href="javascript:void(0)"
-                @click="openEscalatedTicket(escalatedNo)"
-              >{{ escalatedNo }}</a>
-            </dd>
-          </div>
-          <div class="ra-kv-row ra-kv-block">
-            <dt>{{ adviceLabel(latestAssessed.assessment.decision) }}</dt>
-            <dd class="ra-advice">{{ latestAssessed.assessment.advice }}</dd>
-          </div>
-        </dl>
-
-        <!-- 两个决策的后续走向完全不同，必须写清楚，否则「不升级」看着像"什么都没发生" -->
-        <p class="ra-foot">
-          <template v-if="isEscalateDecision(latestAssessed.assessment.decision)">
-            本单已由客诉专员升级为投诉工单，原单落「已升级投诉」；后续处理在新单上进行。
-          </template>
-          <template v-else>
-            本单不升级，仍由原处理人按反馈意见继续处理；如后续仍未闭环，可再次发起风险报备。
-          </template>
+          <span v-if="escalatedNo" class="ra-derive">
+            已派生投诉工单
+            <a
+              class="ra-link"
+              href="javascript:void(0)"
+              @click="openEscalatedTicket(escalatedNo)"
+            >{{ escalatedNo }}</a>
+          </span>
+        </div>
+        <p class="ra-advice">
+          <span class="ra-advice-label">{{ adviceLabel(latestAssessed.assessment.decision) }}</span>{{ latestAssessed.assessment.advice }}
         </p>
       </section>
 
@@ -1189,21 +1166,28 @@ const collabSectionBadge = computed(() =>
 }
 
 /* ---- 评估结果（仅有结论时展示，进行中状态在上方报备卡片） ---- */
+/*
+ * 评估结果：**骨架与「风险标记」上半（`.rk-tag`）同一套** —— 一行 meta（结论标 · 人 · 时刻 ·
+ * 去向标）+ 一行左竖线的意见块。两块在同一个 Tab 上讲的是同一类事（谁、什么时候、
+ * 下了什么结论，外加一段说明），骨架各写一套就成了两种视觉语言。
+ */
 .ra-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 10px;
-  overflow: hidden;
 }
-.ra-head {
+.ra-line {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 12px 14px;
-  background: linear-gradient(180deg, #f8fafc 0%, #fff 100%);
-  border-bottom: 1px solid #f1f5f9;
 }
+.ra-who { font-size: 12px; font-weight: 600; color: #111827; }
+.ra-at { font-size: 12px; color: #6b7280; }
 .ra-decision {
   display: inline-flex;
   align-items: center;
@@ -1216,8 +1200,11 @@ const collabSectionBadge = computed(() =>
 .ra-decision.tone-ok { color: #047857; background: #d1fae5; }
 .ra-decision.tone-warn { color: #b45309; background: #fef3c7; }
 .ra-decision.tone-info { color: #1d4ed8; background: #dbeafe; }
-/* 「升级」的去向标：沿用等级标原来的位置与配色，说的是"派生了新单"而不是"多危险" */
+/* 「升级」的去向标：沿用等级标原来的位置与配色，说的是"派生了新单"而不是"多危险"。新单号内联在标里 */
 .ra-derive {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   padding: 2px 8px;
   font-size: 11px;
   font-weight: 600;
@@ -1226,54 +1213,25 @@ const collabSectionBadge = computed(() =>
   border: 1px solid #fed7aa;
   border-radius: 4px;
 }
-.ra-kv {
-  margin: 0;
-  padding: 12px 14px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.ra-kv-row {
-  display: grid;
-  grid-template-columns: 72px 1fr;
-  gap: 8px 12px;
-  align-items: start;
-}
-.ra-kv-row dt {
-  margin: 0;
-  font-size: 12px;
-  color: #9ca3af;
-  font-weight: 500;
-  line-height: 1.6;
-}
-.ra-kv-row dd {
-  margin: 0;
-  font-size: 12px;
-  color: #111827;
-  font-weight: 500;
-  line-height: 1.6;
-  word-break: break-word;
-}
-.ra-kv-block { grid-template-columns: 1fr; gap: 4px; }
-.ra-kv-block dt { color: #374151; font-weight: 600; }
+/* 意见块：与「风险标记」的 `rk-tag-note` 逐格同形（同一套左竖线、字号与内距） */
 .ra-advice {
-  padding: 8px 10px;
+  margin: 0;
+  padding: 6px 10px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #374151;
   background: #f8fafc;
   border-left: 2px solid #cbd5e1;
   border-radius: 0 4px 4px 0;
-  font-weight: 400 !important;
-  color: #374151 !important;
+  word-break: break-word;
+}
+.ra-advice-label {
+  margin-right: 6px;
+  font-weight: 600;
+  color: #6b7280;
 }
 .ra-link { color: #1a6fff !important; font-family: ui-monospace, monospace; }
 .ra-link:hover { text-decoration: underline; }
-.ra-foot {
-  margin: 0;
-  padding: 8px 14px 12px;
-  font-size: 11px;
-  line-height: 1.6;
-  color: #6b7280;
-  border-top: 1px dashed #f1f5f9;
-}
 /* ---- 「风险标记」上半：打标结论的只读回显 + 打标入口（并块后与下半共用一个面板） ---- */
 .rk-tag {
   display: flex;
