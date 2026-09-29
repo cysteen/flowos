@@ -221,8 +221,19 @@ const riskMonitorDiff = computed(() => {
   return `${parts.join('；')}。本页取值以坐席填写为准，监控结论不覆盖。`;
 });
 
-function formatShortAt(at: string) {
-  const m = at.match(/(\d{2}-\d{2})\s+(\d{2}:\d{2})/);
+/**
+ * 本 Tab 的**唯一**时刻格式：**全格式 `YYYY-MM-DD HH:mm`**（2026-09-29 裁决）。
+ *
+ * 🔴 原来这里是 `formatShortAt`，把年份掐掉只出 `MM-DD HH:mm`，于是同一屏上两套并存 ——
+ * 在队卡 / 历史条 / 协同条是短格式，「风险标记」块的标记时间是全格式。
+ * 风险这条链动辄跨月跨年（报备等评估、条目在池里挂着、改判隔很久才发生），
+ * 掐掉年份之后"去年那条"和"今年这条"长得一模一样，排序与追溯都读不出来。
+ *
+ * 取值本身就是 `YYYY-MM-DD HH:mm`（各 store 的 `nowStamp` 同一把），本函数只做归一：
+ * 带秒 / 带 T 的也切回到分钟，认不出来的原样返回、不臆造。
+ */
+function formatAt(at: string) {
+  const m = at.match(/(\d{4}-\d{2}-\d{2})[\sT]+(\d{2}:\d{2})/);
   return m ? `${m[1]} ${m[2]}` : at;
 }
 
@@ -263,7 +274,7 @@ function assessmentSummary(r: RiskPoolItem) {
 function assessmentDetail(r: RiskPoolItem) {
   const a = r.assessment;
   if (!a) return '';
-  return `${a.by}（${a.byRole}）${formatShortAt(a.at)}`;
+  return `${a.by}（${a.byRole}）${formatAt(a.at)}`;
 }
 
 /**
@@ -372,7 +383,7 @@ watch(() => props.ticketNo, () => { tagRecordsOpen.value = false; });
 const latestTagRecord = computed(() => tagHistory.value[tagHistory.value.length - 1] ?? null);
 /** 一条标记记录的行文：等级 · 标记人 · 时刻。折叠态与展开态共用这一份 */
 function tagRecordText(h: RiskTagEntry) {
-  return `${h.level ? riskLevelText(h.level) : '无风险'} · ${h.by} · ${formatShortAt(h.at)}`;
+  return `${h.level ? riskLevelText(h.level) : '无风险'} · ${h.by} · ${formatAt(h.at)}`;
 }
 
 /**
@@ -466,7 +477,7 @@ const collabSectionBadge = computed(() =>
               <ClockCircleOutlined />
               {{ pendingStateText }}
             </span>
-            <span class="rr-card-time">提交于 {{ formatShortAt(pending.at) }}</span>
+            <span class="rr-card-time">提交于 {{ formatAt(pending.at) }}</span>
             <span class="rr-card-wait">已等待 {{ waitedText(pending.at) }}</span>
           </div>
           <button v-if="canWithdraw" type="button" class="rr-withdraw" @click="openWithdraw">
@@ -523,7 +534,7 @@ const collabSectionBadge = computed(() =>
             <div v-for="(rel, i) in pendingReleases" :key="i" class="rr-release">
               <div class="rr-release-head">
                 <span class="rr-release-who">{{ rel.by }}（{{ rel.byRole }}）</span>
-                <span class="rr-release-at">{{ formatShortAt(rel.at) }}</span>
+                <span class="rr-release-at">{{ formatAt(rel.at) }}</span>
               </div>
               <div class="rr-release-reason">{{ rel.reason }}</div>
             </div>
@@ -567,7 +578,7 @@ const collabSectionBadge = computed(() =>
                 :is="openHistory[h.id] ? DownOutlined : RightOutlined"
                 class="rr-sum-caret"
               />
-              <span class="rr-card-time">{{ formatShortAt(h.at) }}</span>
+              <span class="rr-card-time">{{ formatAt(h.at) }}</span>
               <span class="rr-sum-who">{{ h.by }}</span>
               <span class="rr-sum-reason">{{ historyReasonText(h) }}</span>
               <span
@@ -662,7 +673,7 @@ const collabSectionBadge = computed(() =>
           </div>
           <div class="ra-kv-row">
             <dt>评估时间</dt>
-            <dd>{{ latestAssessed.assessment.at }}</dd>
+            <dd>{{ formatAt(latestAssessed.assessment.at) }}</dd>
           </div>
           <div class="ra-kv-row">
             <dt>评估决策</dt>
@@ -731,7 +742,7 @@ const collabSectionBadge = computed(() =>
                 {{ tagRecord.result === '无风险' ? '无风险' : riskLevelText(tagRecord.result) }}
               </span>
               <span class="rk-tag-who">{{ tagRecord.by }}（{{ tagRecord.byRole }}）</span>
-              <span class="rk-tag-at">{{ tagRecord.at }}</span>
+              <span class="rk-tag-at">{{ formatAt(tagRecord.at) }}</span>
               <span v-if="tagEntry && isPooledStatus(tagEntry.status)" class="rt-pool">
                 风险工单池 · {{ poolStatusText(poolStageStatusOf(tagEntry)) }}
               </span>
@@ -846,7 +857,7 @@ const collabSectionBadge = computed(() =>
               :key="a"
               class="rc-advice-tag"
             >{{ a === '其他' && c.otherAdvice ? `其他 · ${c.otherAdvice}` : a }}</span>
-            <span class="rc-item-time">{{ formatShortAt(c.at) }}</span>
+            <span class="rc-item-time">{{ formatAt(c.at) }}</span>
           </header>
           <p class="rc-item-opinion">{{ c.opinion }}</p>
         </article>
