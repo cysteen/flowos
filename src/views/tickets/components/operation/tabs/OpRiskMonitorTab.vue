@@ -1035,14 +1035,18 @@ const collabSectionBadge = computed(() =>
     >
       <div v-if="collabRecords.length" class="rc-list">
         <article v-for="c in collabRecords" :key="c.id" class="rc-item">
+          <!--
+            时刻**顶到右端**（`margin-left:auto`），与本 Tab 历史报备条那一行的状态标同一个做法：
+            一列时刻落在同一个 x 上，扫一眼就能挑出想找的那一条；左端留给"谁 + 建议了什么"。
+          -->
           <header class="rc-item-head">
-            <span class="rc-item-time">{{ formatShortAt(c.at) }}</span>
             <span class="rc-item-who">{{ c.by }}（{{ c.byRole }}）</span>
             <span
               v-for="a in c.advices"
               :key="a"
               class="rc-advice-tag"
             >{{ a === '其他' && c.otherAdvice ? `其他 · ${c.otherAdvice}` : a }}</span>
+            <span class="rc-item-time">{{ formatShortAt(c.at) }}</span>
           </header>
           <p class="rc-item-opinion">{{ c.opinion }}</p>
         </article>
@@ -1555,8 +1559,16 @@ const collabSectionBadge = computed(() =>
   align-items: center;
   gap: 6px;
 }
-.rc-item-time { font-size: 12px; font-weight: 700; color: #111827; }
-.rc-item-who { font-size: 12px; color: #6b7280; }
+/* 时刻靠右：与历史报备条的 `.rr-sum-pill` 同一个做法，末位元素靠 auto 顶到行尾 */
+.rc-item-time {
+  margin-left: auto;
+  flex: none;
+  font-size: 12px;
+  color: #9ca3af;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.rc-item-who { font-size: 12px; font-weight: 600; color: #374151; }
 .rc-advice-tag {
   padding: 1px 8px;
   font-size: 10px;
