@@ -8,7 +8,12 @@ import {
   WORKBENCH_HANDLER,
   type Ticket,
 } from '@/views/tickets/types/ticket';
-import { matchesSearchText, TOO_MANY_RESULTS } from '@/views/query/queryCenterSearch';
+import {
+  matchesSearchText,
+  parseBatchTicketQuery,
+  resolveBatchTicketMatches,
+  TOO_MANY_RESULTS,
+} from '@/views/query/queryCenterSearch';
 import {
   EMPTY_MINE_QUERY,
   matchMineQuery,
@@ -67,19 +72,29 @@ export function useTicketList(scope: TicketListScope = 'workbench') {
   /** chip 等附加过滤（查询中心的「临期 / 已超时」走这里，不污染结构化筛选的 query） */
   const extraFilter = ref<((t: Ticket) => boolean) | null>(null);
 
-  const filtered = computed(() =>
-    baseRows.value.filter((t) => {
+  const filtered = computed(() => {
+    const kw = keyword.value.trim();
+    const batchTokens = kw ? parseBatchTicketQuery(kw) : null;
+
+    if (batchTokens?.length) {
+      const { orderedTickets } = resolveBatchTicketMatches(batchTokens, baseRows.value);
+      const order = new Map(orderedTickets.map((t, i) => [t.id, i]));
+      return orderedTickets.filter((t) => {
+        if (extraFilter.value && !extraFilter.value(t)) return false;
+        return matchMineQuery(t, query.value);
+      }).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+    }
+
+    return baseRows.value.filter((t) => {
       if (extraFilter.value && !extraFilter.value(t)) return false;
-      const kw = keyword.value.trim();
       if (kw) {
         // 检索键覆盖 §3.2 的四类：工单号 / 客户（名 + 手机号）/ 设备 SN / 关键词（标题、摘要）
-        // 手机号允许带空格（操作页展示态「138 0013 8000」对库里的 13800138000）
         const hay = `${t.no} ${t.title} ${t.customer} ${t.customerPhone ?? ''} ${t.sn ?? ''} ${t.problemDesc ?? ''}`;
         if (!matchesSearchText(hay, kw)) return false;
       }
       return matchMineQuery(t, query.value);
-    }),
-  );
+    });
+  });
 
   const sorted = computed(() => [...filtered.value].sort(byUpdatedDesc));
 

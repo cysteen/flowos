@@ -135,7 +135,7 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
           <span class="assess-foot-k">命中原话</span>
           <span class="assess-foot-v" :title="verifiedHit.excerpt">
             <span class="hit-pos">{{ verifiedHit.position }}</span>
-            <span class="excerpt-quote">「<template v-if="excerptWindow(verifiedHit).headTruncated">…</template>{{ excerptWindow(verifiedHit).before }}<mark v-if="excerptWindow(verifiedHit).hit" class="excerpt-hit">{{ excerptWindow(verifiedHit).hit }}</mark>{{ excerptWindow(verifiedHit).after }}<template v-if="excerptWindow(verifiedHit).tailTruncated">…</template>」</span>
+            <span class="excerpt-quote">「<template v-if="excerptWindow(verifiedHit).headTruncated">…</template>{{ excerptWindow(verifiedHit).before }}<span v-if="excerptWindow(verifiedHit).hit" class="excerpt-hit">{{ excerptWindow(verifiedHit).hit }}</span>{{ excerptWindow(verifiedHit).after }}<template v-if="excerptWindow(verifiedHit).tailTruncated">…</template>」</span>
             <span class="assess-foot-sub">
               风险词「{{ verifiedHit.word }}」<template v-if="verifiedHit.matchedWord && verifiedHit.matchedWord !== verifiedHit.word">，命中「{{ verifiedHit.matchedWord }}」</template>
             </span>
@@ -308,11 +308,14 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
 }
 .excerpt-quote { word-break: break-word; }
 .excerpt-hit {
+  display: inline;
   padding: 0 2px;
   border-radius: 2px;
   background: #fef3c7;
   color: #b45309;
   font-weight: 600;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }
 .assess-files {
   display: flex;

@@ -716,7 +716,7 @@ watch(
             </div>
           </template>
 
-          <!-- 不受门控：所有投诉单都要填（投诉接收时间非必填） -->
+          <!-- 投诉一类/二类：所有投诉单必填；投诉接收时间仅内投/外投渠道展示（非必填） -->
           <div class="row-3">
             <div class="inline-field">
               <label class="inline-label xl"><span class="req">*</span>投诉一类</label>
@@ -734,7 +734,7 @@ watch(
                 :options="complaintL2Options.map((v) => ({ value: v, label: v }))"
               />
             </div>
-            <div class="inline-field">
+            <div v-if="showChannelComplaintFields" class="inline-field">
               <label class="inline-label xl">投诉接收时间</label>
               <a-date-picker
                 v-model:value="form.complaintReceiveTime"

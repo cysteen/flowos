@@ -95,7 +95,8 @@ import { TICKETS } from '@/mock/tickets';
 // 本文件再抄一份，改天业务把「普通加急」改个说法，这一列就会静默地留在旧词上。
 // `canReleaseAnyRiskReport` 是**管理员兜底释放**那一路的唯一判据，与 B 线报备池共用同一份 ——
 // 两个池的释放口径 PRD 明写「逐条同 §5.5」（§5B.4），各写一份就会各放各的权
-import { canReleaseAnyRiskReport, isTicketClosed, PRIORITY_LABEL, STATUS_GROUP, ticketStatusDisplayName, resolveTicketGroupNames, type Priority, type Ticket } from '@/views/tickets/types/ticket';
+import { canReleaseAnyRiskReport, isTicketClosed, STATUS_GROUP, ticketStatusDisplayName, resolveTicketGroupNames, type Priority, type Ticket } from '@/views/tickets/types/ticket';
+import { PRIORITY_OPTIONS } from '@/views/tickets/types/createTicket';
 // 🔴 清单表直接复用工作台那张富列表，不在本页另画一张长得像的：
 // 「重点工单」那一路的行**就是工单**，人在这一档要判的也正是工单本身
 // （摘要 / SLA / 状态 / 产品）。原先那两列（监控来源 ＝ 档名的复述、场景描述 ＝ 一句写死的套话）
@@ -2370,11 +2371,6 @@ const tagCurrent = computed(() => (tagTarget.value ? latestEntryOf(tagTarget.val
  * 【为什么必须靠前】它不是佐证，是**做这次判断的前提**：本条是不是一次升级、
  * 客户是第几次加码，答案全在别的命中里。摆到底部与修正记录并列，等于让人先下结论再看依据。
  */
-const tagSiblings = computed(() => (tagTarget.value ? siblingsOf(tagTarget.value) : []));
-/** 本单当前风险等级——同一块区域一并给出，人不必自己把几条等级在心里取一次 max */
-const tagTicketGrade = computed(
-  () => (tagTarget.value ? ticketGradeOf(tagTarget.value.ticketNo) : null),
-);
 /**
  * 本次真正会落库的等级。误报一律落 null——等级单选还留着上一次的选中态，
  * 拿它当"改动了"的依据的话，把成立改判成误报后再点一次某个等级，
@@ -2434,8 +2430,6 @@ const showTagAssess = computed(() =>
 const showTagAssessEscalate = computed(() =>
   showEscalateComplaintFields(tagAssessDecision.value, tagTarget.value?.ticketNo),
 );
-/** 选「升级」后那一行派生说明，文案与三处评估入口同一个来源 */
-const tagAssessHint = computed(() => escalateHintOf(tagTarget.value?.ticketNo));
 /** 「不升级」那一格反馈意见的红字，提示文案与评估弹窗逐字一致 */
 const missTagAssessAdvice = computed(
   () => tagAssessTried.value && !!tagAssessDecision.value && !assessAdvice.value.trim(),
@@ -2713,52 +2707,6 @@ function effectiveSourceOf(r: QueueRow): MonitorSource {
   return r.source;
 }
 
-/**
- * 这张单**同时还满足哪几路来源**（不含它已经被归到的那一路）。
- *
- * 【为什么需要它】归属是**唯一**的（`effectiveSourceOf`，实时监控 > 重点工单），
- * 否则「两路之和 ＝ 未标记页签数」当场不成立。可"唯一归属"只是**计数口径**，
- * 不代表这张单只有一个身份：一张既命中预警词、又是在办投诉单的单，被算进「实时监控」之后，
- * "它同时也是重点工单"这条对判风险有用的事实就没地方说了 ——
- * 而《【930】》§5A.1 与附录 A R50b 要的正是**来源多值并列**。
- *
- * 🔴 **它只管显示，一格都不改归属**：本函数的返回值不参与 `untaggedSliceRows` 的任何筛选，
- * 两路之和、每档角标 ＝ 表行数 两条不变量与它无关。
- *
- * 🔴 **判据与 `effectiveSourceOf` 逐条同源**，不另立一套：那边先读条目自带的 `source`
- * （历史事实），再按工单属性推。两边分家的话，会出现"归到 A 路、却标着兼 A"这种自相矛盾。
- */
-function allSourcesOf(r: QueueRow): Array<'实时监控' | '重点工单'> {
-  const out: Array<'实时监控' | '重点工单'> = [];
-  // ① 预警词那一路：条目本就从这条路进来的，或者这张单在命中台账里有记录
-  if (r.source === '实时监控' || riskTags.hitsOfTicket(r.ticketNo).length) {
-    out.push('实时监控');
-  }
-  // ② 工单属性那一路：在办 ∧（类型 ＝ 投诉 ∨ 优先级 ∈ {P0, P1}）。
-  //    派生单落在 derivedTickets 里，两处都查（与 `ticketOfRow` 同）
-  const t = TICKET_BY_NO.get(r.ticketNo) ?? derivedTickets.find(r.ticketNo) ?? null;
-  if (t && isLiveTicket(t) && (t.type === '投诉' || t.priority === 'P0' || t.priority === 'P1')) {
-    out.push('重点工单');
-  }
-  // ③ 条目自带的来源若上面两支都没推出来，仍算一路：它是这条条目**当初真的从哪儿进来的**，
-  //    工单属性事后变了（改类型、降优先级）不该把这段历史抹掉
-  if (r.source === '重点工单' && !out.includes(r.source)) out.push(r.source);
-  return out;
-}
-
-/** 「兼：」要列的那几路 ＝ 全部来源减去当前归属的那一路。单路行返回空数组、界面上什么都不显示 */
-function alsoSourcesOf(r: QueueRow): string[] {
-  const eff = effectiveSourceOf(r);
-  return allSourcesOf(r).filter((s) => s !== eff);
-}
-
-/** 「兼：」那枚 chip 的悬停说明。两句话：本行按什么次序只算一档、「兼」列的是什么 */
-function alsoSourceTitle(r: QueueRow): string {
-  return `本行按监控条目的来源只算进一档（现算「${effectiveSourceOf(r)}」），`
-    + `两路互斥、之和恒等于「未标记」页签上那个数。\n`
-    + `「兼」列出的是它同时满足的其余来源：${alsoSourcesOf(r).join('、')} —— 只作提示，不改归属、不计入任何一档。`;
-}
-
 /** 切片 ↔ 监控来源字面量。两片就是这一维的两个值，故映射一处写死、别处只引用它 */
 const SLICE_SOURCE: Record<UntaggedSlice, NonNullable<QueueRow['source']>> = {
   kw: '实时监控',
@@ -2969,10 +2917,19 @@ const UNTAGGED_SUB_KEYS: Record<UntaggedSlice, string[]> = {
   kw: [...RISK_LEVELS],
   focus: ['P0', 'P1', 'P2', 'P3'],
 };
-/** 子档的界面词。等级取 `riskLevelText`，优先级取工单侧的 `PRIORITY_LABEL` —— 两处都是单一真源 */
+/** 与建单页 `PRIORITY_OPTIONS` 同文案：`P1（重要）` … */
+const PRIORITY_RAIL_LABEL = Object.fromEntries(
+  PRIORITY_OPTIONS.map((o) => [o.value, o.label]),
+) as Record<Priority, string>;
+
+/** 子档的界面词。等级取 `riskLevelText`；优先级取建单下拉同一套 `PRIORITY_OPTIONS` */
 function untaggedSubLabel(slice: UntaggedSlice, key: string): string {
   if (slice === 'kw') return `${key}风险`;
-  return `${key}（${PRIORITY_LABEL[key as Priority]}）`;
+  return PRIORITY_RAIL_LABEL[key as Priority] ?? key;
+}
+function untaggedSubTitle(slice: UntaggedSlice, key: string, parentLabel: string): string {
+  if (slice === 'kw') return `「${parentLabel}」里${key}风险的那一档`;
+  return `「${parentLabel}」里 ${untaggedSubLabel(slice, key)} 那一档`;
 }
 
 /**
@@ -3109,8 +3066,6 @@ function toggleTicketPick(ticketId: string) {
   const r = t && rowByTicketNo.value.get(t.no);
   if (r) toggleBulkPick(r.id);
 }
-/** 这一行的「等待时长」——队列属性，工作台没有这一列，故走富列表的附加列扩展位 */
-const TICKET_LIST_EXTRA_COLS = [{ key: 'waited', label: '等待时长', width: 72 }];
 /**
  * 本页那张富列表的列宽。**必须自带一套**：工作台那一屏宽 1290+，它的默认列宽合计 1370，
  * 而本页左边还压着一列漏斗导航，清单区只剩 1045 —— 照默认摆下来横向溢出 325px，
@@ -3118,7 +3073,7 @@ const TICKET_LIST_EXTRA_COLS = [{ key: 'waited', label: '等待时长', width: 7
  * 🔴 走 `columnWidths` 这个 prop 而不是去改工作台的默认值：那份默认是全局 localStorage，
  * 改了会把工作台的列一起改窄。传了它的实例同时也不出拖拽把手 —— 在这里拖窄一列
  * 会写回那份全局记忆，工作台跟着变。
- * 合计 ＝ 16 + 200 + 168 + 100 + 46 + 76 + 96 + 88 + 88 + 72 + 88 ＝ 1038，放得下。
+ * 合计 ＝ 16 + 200 + 168 + 100 + 46 + 76 + 96 + 88 + 108 + 88 + 120 + 120 + 1fr + 132。
  */
 const TICKET_LIST_COL_WIDTHS: Record<string, number> = {
   title: 200,
@@ -3128,8 +3083,11 @@ const TICKET_LIST_COL_WIDTHS: Record<string, number> = {
   customer: 76,
   product: 96,
   node: 88,
+  assignee: 108,
   flowNode: 88,
-  action: 88,
+  createdAt: 120,
+  updatedAt: 120,
+  action: 72,
 };
 function rowOfTicketNo(no: string): QueueRow | undefined {
   return rowByTicketNo.value.get(no);
@@ -3250,6 +3208,22 @@ function rowTitleOf(r: QueueRow): string {
 /** 这一行的客户：优先取命中记录（它带着这一格），没有命中就退回工单 */
 function rowCustomerOf(r: QueueRow): string {
   return rowTopHit(r)?.customer || TICKET_BY_NO.get(r.ticketNo)?.customer || '—';
+}
+/** 处理组 · 处理人（如「投诉风险组 · 刘振撼」） */
+function handlerLineOf(groupName: string | undefined, assignee: string | null | undefined): string {
+  const g = (groupName ?? '').trim();
+  const p = (assignee ?? '').trim();
+  if (!g && !p) return '—';
+  if (!p) return g;
+  if (!g) return p;
+  return `${g} · ${p}`;
+}
+function rowHandlerLine(r: QueueRow, hit?: RiskHit | null): string {
+  const t = ticketOfRow(r);
+  return handlerLineOf(
+    groupNameOf(r.ticketNo),
+    t?.assignee ?? hit?.assignee ?? r.assignee ?? rowTopHit(r)?.assignee,
+  );
 }
 
 /* ---- 「已判」段条目表：来源 / 证据 / 结论三组按行分岔（2026-09-28 裁决） ---- */
@@ -3717,8 +3691,6 @@ const showEntryTagAssess = computed(() => showTagAssessFor(
 const showEntryTagAssessEscalate = computed(() =>
   showEscalateComplaintFields(entryTagAssessDecision.value, entryTagTarget.value?.ticketNo),
 );
-/** 选「升级」后那一行派生说明，文案与三处评估入口同一个来源 */
-const entryTagAssessHint = computed(() => escalateHintOf(entryTagTarget.value?.ticketNo));
 /** 「不升级」那一格反馈意见的红字，提示文案与评估弹窗逐字一致 */
 const missEntryTagAssessAdvice = computed(
   () => entryTagAssessTried.value && !!entryTagAssessDecision.value && !assessAdvice.value.trim(),
@@ -4150,7 +4122,10 @@ type FunnelStage = 'untagged' | 'tagged';
 
 interface RailGroup {
   stage: FunnelStage;
+  /** 无障碍与侧栏 aria 用的全称（未标记 / 已标记） */
   title: string;
+  /** 阶段切换器上的两字简称，省左栏宽度；语义见 title + title2 */
+  segLabel: string;
   /** 阶段的悬停说明：这一段在链路上是什么、分母是什么。原先挂在组标题上，组标题删了之后挂到页签上 */
   title2: string;
   /**
@@ -4230,7 +4205,7 @@ function untaggedSliceItems(
       // 子档同理只在被筛的这一路给两段式；另两路的子档保持单个数，免得满屏斜杠
       countTotal: filtered ? subCount(k, raw) : undefined,
       depth: 1 as const,
-      title: `「${label}」里${untaggedSubLabel(slice, k)}的那一档`,
+      title: untaggedSubTitle(slice, k, label),
     })),
   ];
 }
@@ -4250,7 +4225,8 @@ const railGroups = computed<RailGroup[]>(() => {
       total: untaggedAll,
       defaultKey: 'untagged:kw',
       title: '未标记',
-      title2: '两路自动识别（实时监控 / 重点工单）捞到、还没有人给过结论的工单'
+      segLabel: '待判',
+      title2: '【未标记】两路自动识别（实时监控 / 重点工单）捞到、还没有人给过结论的工单'
         + ' —— 此刻的存量。计数单位是工单：一单多命中聚合成一行、按一单计，不是命中条数。'
         + '🔴 两路互斥，两路之和 ＝ 这个数（恒等号，不是约等）。'
         + '🔴 它不是"整本工单库里没人标过的单"：未标记是每张单与生俱来的默认态，'
@@ -4275,7 +4251,8 @@ const railGroups = computed<RailGroup[]>(() => {
       total: pooledAll + noRiskAll + reportedAll,
       defaultKey: 'level:all',
       title: '已标记',
-      title2: '打过标的条目 —— 历史累计，不是此刻的存量。高 / 中 / 低进风险工单池，无风险不进池。'
+      segLabel: '已判',
+      title2: '【已标记】已经有结论的条目 —— 历史累计，不是此刻的存量。高 / 中 / 低进风险工单池，无风险不进池。'
         + '🔴 这个数与「未标记」那个数分属两批、不相减也不互校：它比那边大是正常状态。'
         + '这一段摆三种并列的分类：按风险等级（全部有风险）、按标记人、按处置阶段 —— 同一批条目三个角度。'
         + '页签上的数 ＝ 全部有风险 + 无风险 + 风险报备（三者都是这一段下过的结论，互斥、可以相加）。'
@@ -4342,7 +4319,7 @@ const railGroups = computed<RailGroup[]>(() => {
           // 不是"看得更少了"。收窄发生在展开出来的三个阶段行上。
           count: pooledAll,
           // 🔴 原「待处置」组标题旁的旁注「仅监控入池」**没有做成行尾可见的 note**：
-          // 左栏收窄到 196px 之后，「按处置阶段」＋ 箭头 ＋ 数字已占满一行，
+          // 左栏收窄之后，「按处置阶段」＋ 箭头 ＋ 数字已占满一行，
           // 再挂 5 个字会把档名挤到省略号 —— 而档名是这个选择器的唯一标识，
           // 截断比把旁注收进悬停更贵。故原话整句搬进下面的 title，一个字没减。
           depth: 0,
@@ -5110,10 +5087,11 @@ function toggleWordEnabled(w: RiskWord) {
                 class="fr-seg-btn"
                 :class="{ on: funnelStage === g.stage }"
                 :aria-selected="funnelStage === g.stage"
+                :aria-label="`${g.title} ${g.total}`"
                 :title="g.title2"
                 @click="setStage(g.stage)"
               >
-                <span class="fr-seg-label">{{ g.title }}</span>
+                <span class="fr-seg-label">{{ g.segLabel }}</span>
                 <span class="fr-seg-num">{{ g.total }}</span>
               </button>
             </template>
@@ -5236,7 +5214,7 @@ function toggleWordEnabled(w: RiskWord) {
         v-if="showGroupFilter && !(listView === 'realtime' && queueView === 'monitoring')"
         class="ledger-bar"
       >
-        <div class="list-toolbar list-toolbar--group-only">
+        <div class="list-toolbar list-toolbar--one-line list-toolbar--group-only">
           <div class="tb-fields tb-fields--group">
             <div class="fi">
               <span class="fl">班组</span>
@@ -5265,7 +5243,7 @@ function toggleWordEnabled(w: RiskWord) {
         class="ledger-bar"
         @keyup.enter="applyUntaggedQuery"
       >
-        <div class="list-toolbar">
+        <div class="list-toolbar list-toolbar--one-line">
           <div class="tb-fields">
             <div class="fi">
               <span class="fl">班组</span>
@@ -5373,7 +5351,7 @@ function toggleWordEnabled(w: RiskWord) {
       <!--
         「重点工单」那一路 · **工作台那张富列表**（见 `ticketListView`）。
         这一路的行就是工单，故摆的是工单自己的信息：工单/标题 · 工单摘要 · SLA 时效 ·
-        优先级 · 客户 · 产品 · 当前状态 / 节点，外加本页自己的「等待时长」与「风险管控」。
+        优先级 · 客户 · 产品 · 当前状态 · 当前处理人/组 · 当前节点 · 创建/更新时间，末列「风险管控」。
         列与筛选沿用原「投诉单」「重要紧急」两路的那一套，一格没动；默认按工单优先级降序。
         🔴 **去掉了「监控来源」**：停在这一档，整列都写着「重点工单」——
         它是左栏档名的复述，占着一列却答不了任何问题。
@@ -5388,43 +5366,16 @@ function toggleWordEnabled(w: RiskWord) {
           :selectable="showQueueSelection"
           :selected-ids="selectedTicketIds"
           :all-page-selected="bulkAllPicked"
-          :column-order="['summary', 'sla', 'priority', 'customer', 'product', 'node', 'flowNode']"
+          :column-order="['summary', 'sla', 'priority', 'customer', 'product', 'node', 'assignee', 'flowNode', 'createdAt', 'updatedAt']"
           :column-widths="TICKET_LIST_COL_WIDTHS"
-          :extra-columns="TICKET_LIST_EXTRA_COLS"
+          flex-before-action
           :row-actions-fn="untaggedRowActions"
           @toggle="toggleTicketPick"
           @toggle-all="toggleBulkAll"
           @action="onTicketRowAction"
           @click-no="openTicket($event.no)"
           @open="openTicket($event.no)"
-        >
-          <!--
-            等待时长：**队列属性**（自进监控时刻起算），工作台没有这一列，故走附加列扩展位。
-          -->
-          <!--
-            多路来源的行内小标「兼：X」。与上面那张条目表**共用同一个判据**
-            （`alsoSourcesOf`），两张表不会一处标、一处不标 —— 本文件族刚在
-            「派生说明行」与「尚无核实结论」上连栽两次同源表述只改一处的跟头。
-            单路行 `alsoSourcesOf` 返回空数组，v-for 不渲染，行一格不变。
-          -->
-          <template #title-extra="{ ticket }">
-            <template v-if="rowOfTicketNo(ticket.no)">
-              <span
-                v-for="s in alsoSourcesOf(rowOfTicketNo(ticket.no)!)"
-                :key="`also-${ticket.no}-${s}`"
-                class="src-tag also-src"
-                :title="alsoSourceTitle(rowOfTicketNo(ticket.no)!)"
-              >兼：{{ s }}</span>
-            </template>
-          </template>
-          <template #cell-waited="{ ticket }">
-            <span
-              class="rr-waited"
-              :class="{ over: rowOfTicketNo(ticket.no) && rowOverdue(rowOfTicketNo(ticket.no)!) }"
-              title="自进入实时监控起算。打标越慢，它进池时离处置时限就越近"
-            >{{ rowOfTicketNo(ticket.no) ? rowWaitedText(rowOfTicketNo(ticket.no)!) : '—' }}</span>
-          </template>
-        </TicketRichList>
+        />
 
         <div class="pager">
           <div class="pager-left">
@@ -5443,12 +5394,24 @@ function toggleWordEnabled(w: RiskWord) {
 
       <!--
         实时监控 · 召回清单（见 script 里「召回清单」那段）。
-        🔴 行 ＝ 待核实的命中，列与命中台账那张表一致；同一张单的命中相邻成组，
-        勾选 / 工单两格跨整组合并（勾的是单）；处置格按命中逐行出「风险管控」。
+        🔴 行 ＝ 待核实的命中；同一张单的命中相邻成组，勾选只在组首行（勾的是整单）；
+        类型 / 工单每行重复，避免 rowspan 导致续行列错位；处置按命中逐行出「风险管控」。
         🔴 分页按工单组切（`pagedQueueRows`），「N 单 · M 条命中」两个数分别取 `queueRows` 与 `kwHitTotal`。
       -->
       <div v-if="listView === 'realtime' && kwEvidenceView && queueRows.length" class="hit-table-wrap">
-        <table class="hit-table">
+        <table class="hit-table hit-table--kw">
+          <colgroup>
+            <col v-if="showQueueSelection" style="width: 36px">
+            <col style="width: 52px">
+            <col style="width: 108px">
+            <col style="width: 52px">
+            <col style="width: 200px">
+            <col>
+            <col style="width: 72px">
+            <col style="width: 128px">
+            <col style="width: 88px">
+            <col style="width: 76px">
+          </colgroup>
           <thead>
             <tr>
               <th v-if="showQueueSelection" style="width: 36px">
@@ -5458,11 +5421,13 @@ function toggleWordEnabled(w: RiskWord) {
               </th>
               <th style="width: 52px">等级</th>
               <th style="width: 120px">风险词</th>
+              <th style="width: 52px">类型</th>
               <th style="width: 190px">工单</th>
               <th>命中内容</th>
-              <th style="width: 118px">客户 / 班组</th>
+              <th style="width: 72px">客户</th>
+              <th style="width: 128px">处理人</th>
               <th style="width: 60px">时间</th>
-              <th style="width: 88px">处置</th>
+              <th style="width: 88px">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -5476,14 +5441,24 @@ function toggleWordEnabled(w: RiskWord) {
                 </td>
                 <td><span class="hit-sub">—</span></td>
                 <td><span class="hit-sub">—</span></td>
-                <td>
-                  <button type="button" class="rt-no" @click="openTicket(g.row.ticketNo)">{{ g.row.ticketNo }}</button>
-                  <div class="hit-title">{{ rowTitleOf(g.row) }}</div>
+                <td class="hit-type-cell">{{ poolTicketTypeOf(g.row) }}</td>
+                <td class="hit-ticket-cell">
+                  <button
+                    type="button"
+                    class="hit-ticket-link"
+                    :title="`${g.row.ticketNo} · ${rowTitleOf(g.row)}`"
+                    @click="openTicket(g.row.ticketNo)"
+                  >{{ rowTitleOf(g.row) }}</button>
                 </td>
                 <td class="hit-excerpt"><span class="hit-sub">本单暂无待核实命中</span></td>
-                <td>{{ rowCustomerOf(g.row) }}<div class="hit-sub">{{ groupNameOf(g.row.ticketNo) }}</div></td>
+                <td class="hit-customer-cell">
+                  <span class="hit-clip-line">{{ rowCustomerOf(g.row) }}</span>
+                </td>
+                <td class="hit-handler-cell">
+                  <span class="hit-clip-line" :title="rowHandlerLine(g.row)">{{ rowHandlerLine(g.row) }}</span>
+                </td>
                 <td class="hit-when">—</td>
-                <td>
+                <td class="hit-act-cell">
                   <button
                     v-if="canRiskTag"
                     type="button" class="row-btn row-btn-tag"
@@ -5494,8 +5469,16 @@ function toggleWordEnabled(w: RiskWord) {
                 </td>
               </tr>
               <tr v-for="(h, hi) in g.hits" :key="`${g.row.id}-${h.id}`">
+                <!--
+                  类型 / 工单每行重复（不用 rowspan，避免续行列错位）。
+                  勾选仍按整单合并：只在组首行出 td + rowspan，续行不占勾选列，避免空格子。
+                -->
                 <td v-if="showQueueSelection && hi === 0" :rowspan="g.hits.length">
-                  <div class="hit-cb" :class="{ checked: bulkPicked.has(g.row.id) }" @click.stop="toggleBulkPick(g.row.id)">
+                  <div
+                    class="hit-cb"
+                    :class="{ checked: bulkPicked.has(g.row.id) }"
+                    @click.stop="toggleBulkPick(g.row.id)"
+                  >
                     <CheckOutlined v-if="bulkPicked.has(g.row.id)" :style="{ color: '#fff', fontSize: '10px' }" />
                   </div>
                 </td>
@@ -5508,29 +5491,32 @@ function toggleWordEnabled(w: RiskWord) {
                 </td>
                 <td>
                   <div class="track-word">「{{ h.word }}」</div>
-                  <div v-if="h.matchedWord && h.matchedWord !== h.word" class="track-word-sub">命中「{{ h.matchedWord }}」</div>
-                  <div class="track-word-sub">词表预设 {{ presetGradeOf(h) }}危</div>
                 </td>
-                <td v-if="hi === 0" :rowspan="g.hits.length">
-                  <button type="button" class="rt-no" @click="openTicket(g.row.ticketNo)">{{ g.row.ticketNo }}</button>
-                  <div class="hit-title">{{ rowTitleOf(g.row) }}</div>
-                  <!-- 多路命中才标「兼：X」，判据与另两路富列表同一个 `alsoSourcesOf` -->
-                  <span
-                    v-for="s in alsoSourcesOf(g.row)"
-                    :key="`also-${g.row.id}-${s}`"
-                    class="src-tag also-src"
-                    :title="alsoSourceTitle(g.row)"
-                  >兼：{{ s }}</span>
-                  <div v-if="g.hits.length > 1" class="hit-sub">本单 {{ g.hits.length }} 条命中</div>
+                <td class="hit-type-cell">
+                  {{ poolTicketTypeOf(g.row) }}
                 </td>
-                <td class="hit-excerpt" :title="h.excerpt">
-                  <span class="hit-pos">{{ h.position }}</span>
-                  <span class="excerpt-quote">「<template v-if="excerptWindow(h).headTruncated">…</template>{{ excerptWindow(h).before }}<mark v-if="excerptWindow(h).hit" class="excerpt-hit">{{ excerptWindow(h).hit }}</mark>{{ excerptWindow(h).after }}<template v-if="excerptWindow(h).tailTruncated">…</template>」</span>
+                <td class="hit-ticket-cell">
+                  <button
+                    type="button"
+                    class="hit-ticket-link"
+                    :title="`${g.row.ticketNo} · ${rowTitleOf(g.row)}`"
+                    @click="openTicket(g.row.ticketNo)"
+                  >{{ rowTitleOf(g.row) }}</button>
                 </td>
-                <td>{{ h.customer }}<div class="hit-sub">{{ h.groupName }} · {{ h.assignee }}</div></td>
-                <!-- 这一档不设时间窗、跨天常见，故日期与时刻都给 -->
-                <td class="hit-when">{{ h.when.slice(5, 10) }}<div>{{ h.when.slice(11, 16) }}</div></td>
-                <td>
+                <td class="hit-excerpt" :title="`${h.position}：${h.excerpt}`">
+                  <div class="hit-excerpt-inner">
+                    <span class="hit-pos">{{ h.position }}</span>
+                    <span class="excerpt-quote">「<template v-if="excerptWindow(h).headTruncated">…</template>{{ excerptWindow(h).before }}<span v-if="excerptWindow(h).hit" class="excerpt-hit">{{ excerptWindow(h).hit }}</span>{{ excerptWindow(h).after }}<template v-if="excerptWindow(h).tailTruncated">…</template>」</span>
+                  </div>
+                </td>
+                <td class="hit-customer-cell">
+                  <span class="hit-clip-line" :title="h.customer">{{ h.customer }}</span>
+                </td>
+                <td class="hit-handler-cell">
+                  <span class="hit-clip-line" :title="rowHandlerLine(g.row, h)">{{ rowHandlerLine(g.row, h) }}</span>
+                </td>
+                <td class="hit-when">{{ h.when.slice(5, 10) }} {{ h.when.slice(11, 16) }}</td>
+                <td class="hit-act-cell">
                   <button
                     v-if="canRiskTag"
                     type="button" class="row-btn row-btn-tag"
@@ -5608,19 +5594,6 @@ function toggleWordEnabled(w: RiskWord) {
             <tr v-for="e in pagedQueueRows" :key="e.id">
               <td>
                 <button type="button" class="rt-no" @click="openTicket(e.ticketNo)">{{ e.ticketNo }}</button>
-                <!--
-                  🔴 **多路命中才标「兼：X」，单路行什么都不显示**（《【930】》§5A.1 / 附录 A R50b
-                  要求来源多值并列；而归属仍是唯一的，见 `allSourcesOf` 的说明）。
-                  【为什么不加回整列】九成的行是单路，那一列在它们身上就是左栏档名的复述；
-                  为一成的行让每一行都多占一列，是拿全表的可读性换一个偶发的信息。
-                  故做成**跟着行走**的弱化 chip：有才出、没有就不占位。
-                -->
-                <span
-                  v-for="s in alsoSourcesOf(e)"
-                  :key="`also-${e.id}-${s}`"
-                  class="src-tag also-src"
-                  :title="alsoSourceTitle(e)"
-                >兼：{{ s }}</span>
               </td>
               <!--
                 风险来源：三档共用的那一维，取值三种（实时监控 / 重点工单 / 风险报备）。
@@ -5638,7 +5611,7 @@ function toggleWordEnabled(w: RiskWord) {
               <td v-if="taggedEvidenceView" class="rr-desc">
                 <template v-if="rowEvidenceKind(e) === 'hit'">
                   <div :title="rowLatestHit(e)!.excerpt">
-                    <span class="excerpt-quote">「<template v-if="excerptWindow(rowLatestHit(e)!).headTruncated">…</template>{{ excerptWindow(rowLatestHit(e)!).before }}<mark v-if="excerptWindow(rowLatestHit(e)!).hit" class="excerpt-hit">{{ excerptWindow(rowLatestHit(e)!).hit }}</mark>{{ excerptWindow(rowLatestHit(e)!).after }}<template v-if="excerptWindow(rowLatestHit(e)!).tailTruncated">…</template>」</span>
+                    <span class="excerpt-quote">「<template v-if="excerptWindow(rowLatestHit(e)!).headTruncated">…</template>{{ excerptWindow(rowLatestHit(e)!).before }}<span v-if="excerptWindow(rowLatestHit(e)!).hit" class="excerpt-hit">{{ excerptWindow(rowLatestHit(e)!).hit }}</span>{{ excerptWindow(rowLatestHit(e)!).after }}<template v-if="excerptWindow(rowLatestHit(e)!).tailTruncated">…</template>」</span>
                   </div>
                   <span
                     v-if="rowHits(e).length > 1"
@@ -6171,7 +6144,7 @@ function toggleWordEnabled(w: RiskWord) {
 
       <!-- 台账查询条：七维全部展开，右侧动作对齐手动筛查（查询 + 重置） -->
       <div v-if="listView === 'judged' && !ticketFocus" class="ledger-bar" @keyup.enter="applyLedgerQuery">
-        <div class="list-toolbar">
+        <div class="list-toolbar list-toolbar--one-line">
           <div class="tb-fields">
             <div class="fi">
               <span class="fl">核实结果</span>
@@ -6517,9 +6490,6 @@ function toggleWordEnabled(w: RiskWord) {
             </td>
             <td>
               <div class="track-word">「{{ h.word }}」</div>
-              <!-- 命中的是同义词时必须标出来，否则复核的人在原文里找不到主词 -->
-              <div v-if="h.matchedWord && h.matchedWord !== h.word" class="track-word-sub">命中「{{ h.matchedWord }}」</div>
-              <div class="track-word-sub">词表预设 {{ presetGradeOf(h) }}危</div>
             </td>
             <td>
               <button type="button" class="rt-no" @click="openTicket(h.ticketNo)">{{ h.ticketNo }}</button>
@@ -6550,7 +6520,7 @@ function toggleWordEnabled(w: RiskWord) {
             <!-- 原文全文挂在 title 上：取窗只是为了读得快，要核对整段时鼠标一停就有 -->
             <td class="hit-excerpt" :title="h.excerpt">
               <span class="hit-pos">{{ h.position }}</span>
-              <span class="excerpt-quote">「<template v-if="excerptWindow(h).headTruncated">…</template>{{ excerptWindow(h).before }}<mark v-if="excerptWindow(h).hit" class="excerpt-hit">{{ excerptWindow(h).hit }}</mark>{{ excerptWindow(h).after }}<template v-if="excerptWindow(h).tailTruncated">…</template>」</span>
+              <span class="excerpt-quote">「<template v-if="excerptWindow(h).headTruncated">…</template>{{ excerptWindow(h).before }}<span v-if="excerptWindow(h).hit" class="excerpt-hit">{{ excerptWindow(h).hit }}</span>{{ excerptWindow(h).after }}<template v-if="excerptWindow(h).tailTruncated">…</template>」</span>
             </td>
             <td>{{ h.customer }}<div class="hit-sub">{{ h.groupName }} · {{ h.assignee }}</div></td>
             <td class="hit-when">{{ h.when.slice(11) }}</td>
@@ -6892,9 +6862,6 @@ function toggleWordEnabled(w: RiskWord) {
             </div>
           </div>
         </div>
-        <div class="tag-form-foot">
-          {{ bulkVerdict === '误报' ? '误报无需定级' : '等级默认沿用词表预设，可按实际情况调整' }}
-        </div>
 
         <div class="op-field op-field-h op-field-h-top tag-field-note">
           <div class="op-label">处置备注</div>
@@ -6931,13 +6898,6 @@ function toggleWordEnabled(w: RiskWord) {
             </button>
             <span class="tag-hit-title">{{ rowTitleOf(entryTagTarget) }}</span>
           </div>
-          <div class="tag-hit-meta">
-            <span>监控来源 <strong>{{ entryTagTarget.source }}</strong></span>
-            <span class="tag-hit-sep">·</span>
-            <span>进监控 {{ entryTagTarget.at }}</span>
-            <span class="tag-hit-sep">·</span>
-            <span>已等待 {{ rowWaitedText(entryTagTarget) }}</span>
-          </div>
           <!-- 修改态先把"现在是什么"摆明，否则改完不知道自己改动了哪一项 -->
           <div v-if="entryTagAmend && entryTagTarget.tag" class="tag-cur">
             <span class="tag-cur-k">现行结论</span>
@@ -6961,16 +6921,6 @@ function toggleWordEnabled(w: RiskWord) {
           <div class="tag-sib-head">
             <span class="tag-sib-title">本单风险词命中</span>
             <span class="tag-sib-n">{{ entryTagHits.length }} 条</span>
-            <span class="tag-sib-grade">
-              本单当前风险等级
-              <span
-                v-if="ticketGradeOf(entryTagTarget.ticketNo)"
-                class="grade-pill-inline"
-                :style="{ color: RISK_LEVEL_STYLE[ticketGradeOf(entryTagTarget.ticketNo)!].color, background: RISK_LEVEL_STYLE[ticketGradeOf(entryTagTarget.ticketNo)!].bg }"
-                title="已打标条目与已核实成立的命中取最高；误报与未核实的不参与；同一条改判以最新结论为准"
-              >{{ ticketGradeOf(entryTagTarget.ticketNo) }}危</span>
-              <span v-else class="tag-sib-nograde" title="该单还没有任何一条条目被打标，也没有任何一条命中被核实为成立">尚无</span>
-            </span>
           </div>
           <ol class="tag-sib-list">
             <li v-for="s in entryTagHits" :key="s.id" class="tsb-item">
@@ -6986,7 +6936,7 @@ function toggleWordEnabled(w: RiskWord) {
               </div>
               <div class="tsb-excerpt" :title="s.excerpt">
                 <span class="hit-pos">{{ s.position }}</span>
-                <span class="excerpt-quote">「<template v-if="excerptWindow(s).headTruncated">…</template>{{ excerptWindow(s).before }}<mark v-if="excerptWindow(s).hit" class="excerpt-hit">{{ excerptWindow(s).hit }}</mark>{{ excerptWindow(s).after }}<template v-if="excerptWindow(s).tailTruncated">…</template>」</span>
+                <span class="excerpt-quote">「<template v-if="excerptWindow(s).headTruncated">…</template>{{ excerptWindow(s).before }}<span v-if="excerptWindow(s).hit" class="excerpt-hit">{{ excerptWindow(s).hit }}</span>{{ excerptWindow(s).after }}<template v-if="excerptWindow(s).tailTruncated">…</template>」</span>
               </div>
             </li>
           </ol>
@@ -7069,11 +7019,6 @@ function toggleWordEnabled(w: RiskWord) {
                 <a-radio v-for="d in ASSESS_DECISIONS" :key="d" :value="d">{{ d }}</a-radio>
               </a-radio-group>
             </div>
-            <!-- 选「升级」后才出的派生说明行（O20），文案取 `escalateHintOf`，与三处评估入口同源 -->
-            <div
-              v-if="entryTagAssessDecision === '升级'"
-              class="assess-hint assess-dec-foot"
-            >{{ entryTagAssessHint }}</div>
           </div>
 
           <!-- 「不升级」那一格；选「升级」时同一个格子并进下面那一段、改由段内的「升级说明」渲染 -->
@@ -7187,7 +7132,7 @@ function toggleWordEnabled(w: RiskWord) {
           </div>
           <div class="tag-hit-excerpt" :title="tagTarget.excerpt">
             <span class="hit-pos">{{ tagTarget.position }}</span>
-            <span class="excerpt-quote">「<template v-if="excerptWindow(tagTarget).headTruncated">…</template>{{ excerptWindow(tagTarget).before }}<mark v-if="excerptWindow(tagTarget).hit" class="excerpt-hit">{{ excerptWindow(tagTarget).hit }}</mark>{{ excerptWindow(tagTarget).after }}<template v-if="excerptWindow(tagTarget).tailTruncated">…</template>」</span>
+            <span class="excerpt-quote">「<template v-if="excerptWindow(tagTarget).headTruncated">…</template>{{ excerptWindow(tagTarget).before }}<span v-if="excerptWindow(tagTarget).hit" class="excerpt-hit">{{ excerptWindow(tagTarget).hit }}</span>{{ excerptWindow(tagTarget).after }}<template v-if="excerptWindow(tagTarget).tailTruncated">…</template>」</span>
           </div>
           <div class="tag-hit-meta">
             <span>风险词 <strong>「{{ tagTarget.word }}」</strong></span>
@@ -7214,54 +7159,6 @@ function toggleWordEnabled(w: RiskWord) {
             <span class="tag-hit-sep">·</span>
             <span>{{ tagCurrent.by }}（{{ tagCurrent.byRole }}）于 {{ tagCurrent.at }}</span>
           </div>
-        </div>
-
-        <!--
-          同单其它命中及其结论（PRD §6.7 / 规则 26b）。
-          🔴 这一块是「同单互见」的全部价值所在：核实第二条的人必须看得到第一条判成了什么。
-          客户从「退一赔三」升级到「12315」是**措辞在爬坡**，比一个客户单次说 12315
-          严重得多——而这个判断只有把两条摆在一起才做得出来。故连原文片段一并列出，
-          光有规则名与结论看不出"话是怎么一步步说重的"。
-        -->
-        <div v-if="tagSiblings.length" class="tag-sib">
-          <div class="tag-sib-head">
-            <span class="tag-sib-title">本单其它命中</span>
-            <span class="tag-sib-n">{{ tagSiblings.length }} 条</span>
-            <span class="tag-sib-grade">
-              本单当前风险等级
-              <span
-                v-if="tagTicketGrade"
-                class="grade-pill-inline"
-                :style="{ color: RISK_LEVEL_STYLE[tagTicketGrade].color, background: RISK_LEVEL_STYLE[tagTicketGrade].bg }"
-                title="已打标条目与已核实成立的命中取最高；误报与未核实的不参与；同一条改判以最新结论为准"
-              >{{ tagTicketGrade }}危</span>
-              <span v-else class="tag-sib-nograde" title="该单还没有任何一条条目被打标，也没有任何一条命中被核实为成立">尚无</span>
-            </span>
-          </div>
-          <ol class="tag-sib-list">
-            <li v-for="s in tagSiblings" :key="s.id" class="tsb-item">
-              <div class="tsb-head">
-                <span class="tsb-word">「{{ s.word }}」</span>
-                <span class="tsb-at">{{ s.when }}</span>
-                <span v-if="!verdictOf(s)" class="tsb-open">待核实</span>
-                <template v-else>
-                  <span
-                    class="verdict-chip"
-                    :class="verdictOf(s) === '误报' ? 'vc-fp' : 'vc-ok'"
-                  >{{ verdictOf(s) }}</span>
-                  <span
-                    v-if="gradeOf(s)"
-                    class="grade-pill-inline"
-                    :style="{ color: RISK_LEVEL_STYLE[gradeOf(s)!].color, background: RISK_LEVEL_STYLE[gradeOf(s)!].bg }"
-                  >{{ gradeOf(s) }}危</span>
-                </template>
-              </div>
-              <div class="tsb-excerpt" :title="s.excerpt">
-                <span class="hit-pos">{{ s.position }}</span>
-                <span class="excerpt-quote">「<template v-if="excerptWindow(s).headTruncated">…</template>{{ excerptWindow(s).before }}<mark v-if="excerptWindow(s).hit" class="excerpt-hit">{{ excerptWindow(s).hit }}</mark>{{ excerptWindow(s).after }}<template v-if="excerptWindow(s).tailTruncated">…</template>」</span>
-              </div>
-            </li>
-          </ol>
         </div>
 
         <div class="op-field op-field-h tag-field-block">
@@ -7302,15 +7199,6 @@ function toggleWordEnabled(w: RiskWord) {
             </div>
           </div>
         </div>
-        <div class="tag-form-foot">
-          {{
-            tagVerdict === '误报'
-              ? '误报无需定级'
-              : tagAmend
-                ? '改判会立即改变台账归属与准确率，等级同理'
-                : '等级默认沿用词表预设，可按实际情况调整'
-          }}
-        </div>
 
         <!-- 修正必须答得出"为什么改"：只记改前改后，复盘时链条仍是断的 -->
         <div v-if="tagAmend" class="op-field op-field-h op-field-h-top tag-field-note">
@@ -7345,11 +7233,6 @@ function toggleWordEnabled(w: RiskWord) {
                 <a-radio v-for="d in ASSESS_DECISIONS" :key="d" :value="d">{{ d }}</a-radio>
               </a-radio-group>
             </div>
-            <!-- 选「升级」后才出的派生说明行（O20），文案取 `escalateHintOf`，与三处评估入口同源 -->
-            <div
-              v-if="tagAssessDecision === '升级'"
-              class="assess-hint assess-dec-foot"
-            >{{ tagAssessHint }}</div>
           </div>
 
           <!-- 「不升级」那一格；选「升级」时同一个格子并进下面那一段、改由段内的「升级说明」渲染 -->
@@ -7873,25 +7756,21 @@ function toggleWordEnabled(w: RiskWord) {
 /*
  * 左栏漏斗 + 右侧清单。
  *
- * 【左栏定宽 196px 是量出来的，不是拍的】三段拆到顶部页签之后每行只剩"档名 + 一个数字"，
- * 全页最长的一行是第三级缩进下的「P2（普通加急）」：
- *   缩进 33 + 标签 85.2 + 间隙 8 + 数字位 26 + 右内边距 8 ＝ 160.2px。
- * 减去右内边距 12 与那条 1px 分隔线，内容区还有 183px，富余 23px。
- * 🔴 **一行都不许折行、不许省略号截断** —— 档名是这个选择器的唯一标识，
- * 截断之后人不知道自己点的是哪一档。再往下收就会先卡在这一行上。
+ * 【左栏定宽 158px】阶段切换器用两字（待判 / 已判）；重点工单子档文案同建单优先级下拉。
+ * 🔴 **一行都不许折行、不许省略号截断** —— 档名是这个选择器的唯一标识。
  */
 .funnel-layout {
   display: flex;
   align-items: flex-start;
-  gap: 14px;
+  gap: 10px;
 }
 .funnel-rail {
   flex: none;
-  width: 196px;
+  width: 158px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding-right: 12px;
+  gap: 8px;
+  padding-right: 8px;
   border-right: 1px solid #eef2f7;
   align-self: stretch;
 }
@@ -7916,19 +7795,20 @@ function toggleWordEnabled(w: RiskWord) {
   display: inline-flex;
   align-items: baseline;
   justify-content: center;
-  gap: 5px;
-  padding: 5px 4px;
+  gap: 2px;
+  padding: 3px 1px;
   border: none;
   border-radius: 5px;
   background: transparent;
   color: #6b7280;
   font-family: inherit;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-  line-height: 1.3;
+  line-height: 1.25;
   white-space: nowrap;
   cursor: pointer;
 }
+.fr-seg-label { letter-spacing: -0.02em; }
 .fr-seg-btn:hover { color: #111827; }
 .fr-seg-btn.on {
   background: #fff;
@@ -7938,7 +7818,7 @@ function toggleWordEnabled(w: RiskWord) {
 }
 /* 阶段总数：比段名大一号且等宽数位 —— 这个控件上要读的就是这两个数 */
 .fr-seg-num {
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 700;
   color: #374151;
   font-variant-numeric: tabular-nums;
@@ -7966,9 +7846,9 @@ function toggleWordEnabled(w: RiskWord) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 4px;
   width: 100%;
-  padding: 5px 8px 5px 10px;
+  padding: 4px 6px 4px 8px;
   border: none;
   border-left: 2px solid transparent;
   border-radius: 4px;
@@ -7992,7 +7872,7 @@ function toggleWordEnabled(w: RiskWord) {
 /* 数字右对齐 + 等宽数位：一列纵向读的就是这一竖排数，位数不对齐就比不出大小 */
 .fr-num {
   flex: none;
-  min-width: 26px;
+  min-width: 20px;
   text-align: right;
   color: #6b7280;
   font-size: 12px;
@@ -8012,14 +7892,14 @@ function toggleWordEnabled(w: RiskWord) {
 /* 「无风险」上方的细分隔线：它是漏斗的漏出口、走到这儿止步，不能和上面几档排成一列读 */
 .fr-sep { height: 1px; margin: 4px 8px; background: #eef2f7; }
 /*
- * 缩进语法（左栏只有 186px 宽，故第二、三级靠**缩进 + 字号/字重弱化**分层，不再加图标）：
+ * 缩进语法（左栏收窄后靠**缩进 + 字号/字重弱化**分层，不再加图标）：
  *   d0 阶段全量 / 阶段本身 / 与全量并列的另一种分类 —— 不缩进、字重加粗、颜色最深；
  *   d1 上一行那一类的取值行 —— 缩进一级、常规字重；
  *   d2 取值行里再展开的一层 —— 缩进两级、更小字号、更浅。
  */
-.fr-item.d0 { padding-left: 10px; color: #374151; font-weight: 600; }
-.fr-item.d1 { padding-left: 21px; color: #6b7280; font-weight: 500; }
-.fr-item.d2 { padding-left: 33px; padding-top: 3px; padding-bottom: 3px; color: #949dab; font-weight: 400; font-size: 12px; }
+.fr-item.d0 { padding-left: 8px; color: #374151; font-weight: 600; font-size: 12px; }
+.fr-item.d1 { padding-left: 16px; color: #6b7280; font-weight: 500; font-size: 12px; }
+.fr-item.d2 { padding-left: 24px; padding-top: 2px; padding-bottom: 2px; color: #949dab; font-weight: 400; font-size: 11px; }
 .fr-item.d2 .fr-num { font-size: 11px; }
 /* 展开箭头：这一列里唯一一个有下级的入口，不给箭头会被当成和「高危」一类 */
 .fr-caret { flex: none; margin-left: auto; color: #9ca3af; font-size: 9px; line-height: 1; }
@@ -8150,12 +8030,42 @@ function toggleWordEnabled(w: RiskWord) {
   color: #1a6fff;
 }
 
-.hit-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.hit-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+.hit-table--kw .row-btn { white-space: nowrap; }
+/*
+ * 召回清单 ↔ 重点工单富列表：同一套字号（与 TicketTitleCell / 摘要列一致）
+ * 标题 13 · 正文 12 · 字段标签 10–11
+ */
+.funnel-main .hit-table--kw { font-size: 12px; }
+.funnel-main .hit-table--kw .hit-ticket-link {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: #111827;
+}
+.funnel-main .hit-table--kw .hit-ticket-link:hover {
+  color: #1a6fff;
+}
+.funnel-main .hit-table--kw .hit-excerpt,
+.funnel-main .hit-table--kw .hit-clip-line,
+.funnel-main .hit-table--kw .track-word,
+.funnel-main .hit-table--kw .hit-type-cell,
+.funnel-main .hit-table--kw .hit-when {
+  font-size: 12px;
+  line-height: 1.4;
+}
+.funnel-main .hit-table--kw .hit-pos {
+  font-size: 10px;
+  line-height: 16px;
+}
+.funnel-main .hit-table--kw .grade-pill {
+  font-size: 11px;
+}
 .hit-table th {
   text-align: left; font-weight: 600; color: #6B7280; font-size: 11px;
   padding: 8px 10px; border-bottom: 1px solid #E5E7EB; background: #F3F4F6;
 }
-.hit-table td { padding: 8px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+.hit-table td { padding: 6px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
 .hit-table tr.untagged { background: #fef2f2; }
 /*
  * 浅红底上原来的 #f1f5f9 行线几乎看不见，连续高危行会糊成一块。
@@ -8178,23 +8088,87 @@ function toggleWordEnabled(w: RiskWord) {
 .hit-sub { color: #94a3b8; font-size: 11px; }
 .hit-excerpt { color: #475569; line-height: 1.6; font-size: 12px; }
 /*
+ * 召回清单：flex 写在 td 上会破坏表格列对齐（表头与数据列错位）。
+ * 单行省略放在内层 div；列宽由 colgroup + table-layout: fixed 约束。
+ */
+.hit-table td.hit-ticket-cell,
+.hit-table td.hit-excerpt,
+.hit-table td.hit-customer-cell,
+.hit-table td.hit-handler-cell {
+  overflow: hidden;
+  max-width: 0;
+}
+.hit-type-cell {
+  font-size: 12px;
+  color: #374151;
+  white-space: nowrap;
+  text-align: center;
+}
+.hit-excerpt-inner {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+}
+.hit-ticket-link {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 500;
+  color: #1a6fff;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: inherit;
+}
+.hit-ticket-link:hover { text-decoration: underline; }
+.hit-table td.hit-excerpt .hit-pos { flex: none; }
+.hit-table td.hit-excerpt .excerpt-quote {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  word-break: normal;
+}
+.hit-clip-line {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: #475569;
+}
+.hit-handler-cell .hit-clip-line { color: #4b5563; }
+.hit-table td.hit-act-cell { white-space: nowrap; }
+.hit-when { white-space: nowrap; }
+/*
   命中词高亮。取本页既有的琥珀强调（与「待核实」标 .tsb-open 同一对色值），
   不用 <mark> 的浏览器默认荧光黄——那个色在本页任何一处都没出现过，看着像别的系统混进来的。
   三处片段（命中清单 / 打标弹窗顶部 / 同单其它命中）共用这一份。
 */
 .excerpt-quote { word-break: break-word; }
 .excerpt-hit {
+  display: inline;
   padding: 0 2px;
   border-radius: 2px;
-  background: #FEF3C7;
-  color: #B45309;
+  background: #fef3c7;
+  color: #b45309;
   font-weight: 600;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }
 .hit-pos { display: inline-block; padding: 0 5px; margin-right: 4px; border-radius: 3px; background: #F3F4F6; color: #6B7280; font-size: 11px; }
 .hit-when { color: #64748b; font-variant-numeric: tabular-nums; font-size: 12px; }
 
 .track-word { color: #475569; font-size: 12px; font-weight: 500; }
-.track-word-sub { font-size: 11px; color: #94a3b8; margin-top: 2px; }
 .grade-pill-inline { padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; }
 
 .hit-flag { display: inline-block; margin-top: 4px; padding: 0 6px; border-radius: 3px; font-size: 10px; }
@@ -8329,11 +8303,6 @@ function toggleWordEnabled(w: RiskWord) {
 .sf-preview-v { margin-top: 4px; font-size: 12px; color: #475569; line-height: 1.6; }
 
 .ledger-bar { margin: 2px 0 8px; }
-.ledger-bar .list-toolbar {
-  gap: 6px 10px;
-  padding: 8px 10px;
-}
-.ledger-bar .tb-actions { min-width: 84px; }
 .list-toolbar--group-only {
   grid-template-columns: 1fr;
 }
@@ -8341,7 +8310,7 @@ function toggleWordEnabled(w: RiskWord) {
   grid-template-columns: minmax(220px, 320px);
 }
 
-/* 筛选条：标签左、控件右（固定标签宽，列内对齐）；右侧动作跟两行控件对齐 */
+/* 筛选条：标签左、控件右（固定标签宽，列内对齐）；默认右侧动作竖排（手动筛查等多行字段） */
 .list-toolbar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -8499,8 +8468,66 @@ function toggleWordEnabled(w: RiskWord) {
 .tb-actions .tb-btn,
 .tb-actions .scan-go { width: 100%; }
 
+/*
+ * 台账 / 未标记筛选条：整栏一行（字段横排 + 查询/重置并排）。
+ * 写在 `.tb-actions` 竖排规则之后，避免动作列把工具条撑到 ~80px 高。
+ */
+.list-toolbar--one-line {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px 10px;
+  padding: 6px 10px;
+}
+.list-toolbar--one-line .tb-fields {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px 10px;
+  min-width: 0;
+}
+.list-toolbar--one-line .fi {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.list-toolbar--one-line .fl {
+  width: 3.5em;
+}
+.list-toolbar--one-line .tb-actions {
+  display: flex;
+  flex-direction: row;
+  flex: none;
+  align-items: center;
+  align-self: center;
+  gap: 8px;
+  min-width: 0;
+}
+.list-toolbar--one-line .tb-actions .scan-go,
+.list-toolbar--one-line .tb-actions .tb-btn {
+  width: auto;
+}
+.list-toolbar--one-line.list-toolbar--group-only .tb-fields {
+  display: flex;
+  flex: none;
+  max-width: min(320px, 100%);
+}
+
 @media (max-width: 860px) {
   .list-toolbar { grid-template-columns: 1fr; }
+  .list-toolbar--one-line {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+  .list-toolbar--one-line .tb-fields {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+  }
+  .list-toolbar--one-line .fi {
+    flex: 1 1 calc(50% - 6px);
+    min-width: 140px;
+  }
   .tb-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .scan-bar .tb-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tb-actions { flex-direction: row; min-width: 0; gap: 8px; }
@@ -8783,8 +8810,6 @@ function toggleWordEnabled(w: RiskWord) {
 }
 .tag-sib-title { font-weight: 600; color: #312E81; }
 .tag-sib-n { font-size: 11px; color: #6366F1; font-variant-numeric: tabular-nums; }
-.tag-sib-grade { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; color: #6b7280; }
-.tag-sib-nograde { color: #9ca3af; cursor: help; }
 .tag-sib-list {
   margin: 8px 0 0;
   padding: 0;
@@ -9045,19 +9070,6 @@ function toggleWordEnabled(w: RiskWord) {
   color: #9ca3af;
   padding: 0 6px;
 }
-/*
- * 「兼：X」＝ 这张单**同时还满足**的其余来源（多路命中的行才有）。
- * 复用 `.src-tag` 的骨架、**不新造视觉**，只压小一档并转灰：它是提示、不是这一格的主角，
- * 与紧邻的工单号抢不了视线。单路行根本不渲染这个节点，故不占位、不留空。
- */
-.src-tag.also-src {
-  margin: 2px 4px 0 0;
-  padding: 0 6px;
-  font-size: 11px;
-  background: #f8fafc;
-  border: 1px solid #e5e7eb;
-  color: #94a3b8;
-}
 /* 「+N」＝ 这一格还有没摆出来的东西，全部内容挂在它的悬停上。弱化、可 hover */
 .kw-more {
   display: inline-block;
@@ -9125,6 +9137,46 @@ function toggleWordEnabled(w: RiskWord) {
 .tk-list-wrap { display: flex; flex-direction: column; min-height: 0; }
 .tk-list-wrap :deep(.rich-list) { flex: none; }
 .tk-list-wrap :deep(.table-grid) { padding: 0; }
+/* 与召回清单同尺度，避免本页两套列表「一大一小」 */
+.tk-list-wrap :deep(.title-text) {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.tk-list-wrap :deep(.tag) {
+  font-size: 11px;
+}
+.tk-list-wrap :deep(.summary-line .hi-label) {
+  font-size: 10px;
+  line-height: 16px;
+}
+.tk-list-wrap :deep(.summary-line .hi-text),
+.tk-list-wrap :deep(.plain-text),
+.tk-list-wrap :deep(.sla-line),
+.tk-list-wrap :deep(.handler-line),
+.tk-list-wrap :deep(.product-name),
+.tk-list-wrap :deep(.node-badge),
+.tk-list-wrap :deep(.channel),
+.tk-list-wrap :deep(.ticket-no) {
+  font-size: 12px;
+  line-height: 1.4;
+}
+/* 操作列「风险管控」与召回清单 `.row-btn.row-btn-tag` 同形 */
+.tk-list-wrap :deep(.cell-action .act) {
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px solid #1a6fff;
+  border-radius: 3px;
+  background: #fff;
+  color: #1a6fff !important;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: normal;
+  white-space: nowrap;
+}
+.tk-list-wrap :deep(.cell-action .act:hover) {
+  background: #f9fafb;
+}
 .rr-dec { color: #374151; font-size: 12px; font-weight: 500; }
 .rr-dec.risk { color: #B91C1C; font-weight: 600; }
 

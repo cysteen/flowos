@@ -10,11 +10,15 @@ import { TICKETS } from '@/mock/tickets';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
 import { isSearchableTicket, type Ticket } from '@/views/tickets/types/ticket';
 
-/** E2 输入上限：超出即截断并提示 */
+/** E2 输入上限：超出即截断并提示（单次检索） */
 export const MAX_QUERY_LEN = 64;
 
+/** 批量工单号粘贴上限（字符 / 条数） */
+export const MAX_BATCH_QUERY_LEN = 2000;
+export const MAX_BATCH_TICKET_COUNT = 50;
+
 /** 两处搜索框统一的 placeholder（PRD §4.2 · §5.2，C2） */
-export const QUERY_PLACEHOLDER = '工单号 / 手机号 / 客户';
+export const QUERY_PLACEHOLDER = '工单号 / 手机号 / 客户（多单号可用逗号或换行分隔）';
 
 /** E1 空输入提示 */
 export const EMPTY_QUERY_TIP = '请输入工单号、手机号或客户';
@@ -52,10 +56,78 @@ export interface NormalizedQuery {
  * E3「含检索保留字符（`% _ \ '`）按字面检索」—— 本函数**不做任何转义**即是按字面：
  * 下游一律走 `String.includes`，没有通配语义可言，所以不需要额外处理，也不该报错。
  */
+const BATCH_SEP_RE = /[\s,，;；\n\r\t]+/;
+
+/** 单个 token 是否像工单号（与 detectQueryKind 的 ticket 分支一致） */
+export function isTicketToken(token: string): boolean {
+  const q = token.trim();
+  if (!q) return false;
+  const compact = compactSearchText(q);
+  return /^IFLY/i.test(q) || /^\d{4,}$/.test(compact);
+}
+
+/** 按逗号 / 换行 / 空格等拆成去重后的 token 列表（保序） */
+export function splitBatchTokens(raw: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const part of raw.trim().split(BATCH_SEP_RE)) {
+    const t = part.trim();
+    if (!t) continue;
+    const key = t.toUpperCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+  }
+  return out;
+}
+
+/**
+ * 批量工单号检索：**至少 2 个 token，且每个都像工单号**。
+ * 否则走原有单次检索（避免把「13800138000 13800138001」误判成批量）。
+ */
+export function parseBatchTicketQuery(raw: string): string[] | null {
+  const tokens = splitBatchTokens(raw);
+  if (tokens.length < 2) return null;
+  if (!tokens.every(isTicketToken)) return null;
+  return tokens;
+}
+
+export function matchTicketNoToken(t: Ticket, token: string): boolean {
+  const key = token.trim().toUpperCase();
+  const no = t.no.toUpperCase();
+  return no === key || no.endsWith(key);
+}
+
+export interface BatchTicketHit {
+  token: string;
+  ticket: Ticket | null;
+}
+
+/** 在给定数据源上逐 token 匹配；列表行按输入顺序去重排列 */
+export function resolveBatchTicketMatches(tokens: string[], source: Ticket[]): {
+  hits: BatchTicketHit[];
+  orderedTickets: Ticket[];
+} {
+  const hits: BatchTicketHit[] = tokens.map((token) => ({
+    token,
+    ticket: source.find((t) => matchTicketNoToken(t, token)) ?? null,
+  }));
+  const orderedTickets: Ticket[] = [];
+  const seen = new Set<string>();
+  for (const h of hits) {
+    if (!h.ticket || seen.has(h.ticket.id)) continue;
+    seen.add(h.ticket.id);
+    orderedTickets.push(h.ticket);
+  }
+  return { hits, orderedTickets };
+}
+
 export function normalizeQuery(raw: string): NormalizedQuery {
   const trimmed = raw.trim();
-  if (trimmed.length <= MAX_QUERY_LEN) return { text: trimmed, truncated: false };
-  return { text: trimmed.slice(0, MAX_QUERY_LEN), truncated: true };
+  const batch = parseBatchTicketQuery(trimmed);
+  const maxLen = batch ? MAX_BATCH_QUERY_LEN : MAX_QUERY_LEN;
+  if (trimmed.length <= maxLen) return { text: trimmed, truncated: false };
+  return { text: trimmed.slice(0, maxLen), truncated: true };
 }
 
 export type SearchTarget =
@@ -97,6 +169,26 @@ function searchableSource(): Ticket[] {
  * - **手机号 / 设备 SN / 客户名 / 关键词** → 一律落列表（C1 · §8 规则 3）。
  */
 export function resolveSearchTarget(q: string): SearchTarget {
+  const batch = parseBatchTicketQuery(q);
+  if (batch) {
+    if (batch.length > MAX_BATCH_TICKET_COUNT) {
+      return {
+        to: 'list',
+        kind: 'ticket',
+        hint: `单次最多查询 ${MAX_BATCH_TICKET_COUNT} 个单号，请分批检索`,
+      };
+    }
+    const { hits } = resolveBatchTicketMatches(
+      batch,
+      searchableSource().filter(isSearchableTicket),
+    );
+    const hitCount = hits.filter((h) => h.ticket).length;
+    const miss = batch.length - hitCount;
+    let hint = `批量查询 ${batch.length} 个单号，命中 ${hitCount} 张`;
+    if (miss > 0) hint += `，${miss} 个未找到`;
+    return { to: 'list', kind: 'ticket', hint };
+  }
+
   const kind = detectQueryKind(q);
   if (kind !== 'ticket') return { to: 'list', kind };
 
@@ -113,7 +205,9 @@ export function resolveSearchTarget(q: string): SearchTarget {
 /** 输入框右侧的类型徽标文案（PRD §3.2：判定结果实时回显） */
 export function queryKindLabel(raw: string): string {
   const q = raw.trim();
-  return q ? QUERY_KIND_LABEL[detectQueryKind(q)] : '';
+  if (!q) return '';
+  if (parseBatchTicketQuery(q)) return '批量工单号';
+  return QUERY_KIND_LABEL[detectQueryKind(q)];
 }
 
 /** E10 结果收敛阈值 */

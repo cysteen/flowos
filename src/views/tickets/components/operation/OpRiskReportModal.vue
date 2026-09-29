@@ -132,7 +132,7 @@ function onOk() {
       <p v-if="showCategory && missCategory" class="field-err">请选择风险类型</p>
 
       <div class="op-field">
-        <div class="op-label req">场景描述</div>
+        <div class="op-label req">风险描述</div>
         <OpTextareaAttach
           :model-value="desc"
           :attachments="attachments"
@@ -141,7 +141,7 @@ function onOk() {
           @update:model-value="desc = $event"
           @update:attachments="attachments = $event"
         />
-        <p v-if="missDesc" class="field-err">请填写场景描述</p>
+        <p v-if="missDesc" class="field-err">请填写风险描述</p>
       </div>
     </div>
   </OpActionModal>

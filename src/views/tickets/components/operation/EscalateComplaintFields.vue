@@ -84,11 +84,16 @@ defineProps<{ ctl: EscalateComplaintFieldsCtl }>();
   font-weight: 700;
   color: #111827;
 }
-/* 两列栅格，窄弹窗下自动落成一列 */
+/* 投诉一类 / 二类固定同一行；窄弹窗也并排，各占一半 */
 .ecf-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
   gap: 10px 12px;
+}
+.ecf-grid > .ecf-field {
+  flex: 1 1 0;
+  min-width: 0;
 }
 .ecf-field {
   display: flex;

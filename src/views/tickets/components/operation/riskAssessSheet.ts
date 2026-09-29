@@ -44,16 +44,32 @@ export interface ExcerptWindow {
  */
 const excerptWindowCache = new Map<string, ExcerptWindow>();
 
-/** 以命中词为中心切一段可读的上下文，供命中清单、打标弹窗与评估弹窗共用（一份口径） */
-export function excerptWindow(h: Pick<RiskHit, 'excerpt' | 'matchedWord'>): ExcerptWindow {
+function resolveHitTermInText(h: Pick<RiskHit, 'excerpt' | 'matchedWord' | 'word'>): { at: number; term: string } {
   const text = h.excerpt ?? '';
-  const term = h.matchedWord ?? '';
-  const key = `${term}\u0000${text}`;
+  const candidates: string[] = [];
+  const push = (t?: string) => {
+    const s = (t ?? '').trim();
+    if (!s || s === '—') return;
+    if (!candidates.includes(s)) candidates.push(s);
+  };
+  push(h.matchedWord);
+  push(h.word);
+  // 长到短：避免「曝光」先命中在「媒体曝光」里只高亮末尾两字
+  candidates.sort((a, b) => b.length - a.length);
+  for (const term of candidates) {
+    const at = text.indexOf(term);
+    if (at >= 0) return { at, term };
+  }
+  return { at: -1, term: '' };
+}
+
+/** 以命中词为中心切一段可读的上下文，供命中清单、打标弹窗与评估弹窗共用（一份口径） */
+export function excerptWindow(h: Pick<RiskHit, 'excerpt' | 'matchedWord' | 'word'>): ExcerptWindow {
+  const text = h.excerpt ?? '';
+  const key = `${h.matchedWord ?? ''}|${h.word ?? ''}\u0000${text}`;
   const cached = excerptWindowCache.get(key);
   if (cached) return cached;
-  // 命中词出现多次时以**第一次**为中心：客户把话说重是从第一次开始的，
-  // 后几次是重复，从第一次起读才读得出这句话是怎么起来的。
-  const at = term ? text.indexOf(term) : -1;
+  const { at, term } = resolveHitTermInText(h);
   let win: ExcerptWindow;
   if (at < 0) {
     // 兜底：matchedWord 与原文对不上（两者不同源，数据可能不一致）。

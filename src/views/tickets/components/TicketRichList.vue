@@ -110,6 +110,10 @@ const props = withDefaults(
      * 故覆盖与"不参与列宽记忆"是同一件事的两面，绑在一个 prop 上。
      */
     columnWidths?: Record<string, number>;
+    /**
+     * 操作列前插入 `1fr` 空白列，表宽不足一屏时把「操作」贴到可视区右缘（风险监控左栏占宽时用）。
+     */
+    flexBeforeAction?: boolean;
   }>(),
   {
     selectedIds: () => new Set<string>(),
@@ -123,6 +127,7 @@ const props = withDefaults(
      * 显式 `undefined` 默认值会关掉那次转换，`??` 才落得回原判据。
      */
     selectable: undefined,
+    flexBeforeAction: false,
   },
 );
 
@@ -381,6 +386,7 @@ const gridTemplateColumns = computed(() => {
   if (props.showAppointmentColumn) parts.push(colWidthPx('appointment'));
   // 未锚定的附加列坐在预约倒计时之后、操作之前：操作恒在最右，这一条是这张表的既有约定
   for (const c of tailExtraCols.value) parts.push(`${c.width ?? 96}px`);
+  if (props.flexBeforeAction && showActionColumn.value) parts.push('1fr');
   if (showActionColumn.value) parts.push(colWidthPx('action'));
   return parts.join(' ');
 });
@@ -497,6 +503,11 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
               <span class="th-label">{{ col.label }}</span>
             </div>
           </template>
+          <div
+            v-if="flexBeforeAction && showActionColumn"
+            class="col-grid-fill th th-cell"
+            aria-hidden="true"
+          />
           <div v-if="showActionColumn" class="col-action th th-cell" :class="{ 'th-cell--resizable': resizable }">
             <span class="th-label">操作</span>
             <span
@@ -710,6 +721,12 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
         </div>
       </template>
 
+      <div
+        v-if="flexBeforeAction && showActionColumn"
+        class="col-grid-fill"
+        aria-hidden="true"
+      />
+
       <!-- 操作 -->
       <div v-if="showActionColumn" class="col-action cell-action">
         <span
@@ -794,6 +811,19 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
 .col-appointment { min-width: 0; overflow: hidden; }
 .col-assignee { min-width: 0; overflow: hidden; }
 .col-action { min-width: 0; overflow: hidden; }
+.col-grid-fill {
+  min-width: 0;
+  padding: 0 !important;
+  border-bottom: 1px solid #f0f0f0;
+  background: #fff;
+}
+.th-cell.col-grid-fill {
+  background: #fafafb;
+  border-bottom: 1px solid #e5e7eb;
+}
+.row:hover > .col-grid-fill {
+  background: #fafbff;
+}
 .col-start-date { min-width: 0; overflow: hidden; }
 .cell-plain { display: flex; align-items: center; min-width: 0; overflow: hidden; }
 .plain-text {
