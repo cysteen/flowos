@@ -840,7 +840,7 @@ const collabSectionBadge = computed(() =>
     <!--
       协同记录（《【930】》§3.3 界面落点之一）。**只在投诉单上出现** ——
       协同处理的类型集是「投」，非投诉单那一路走报备与评估。
-      发起入口在底部操作条那一枚按钮（协同处理形态），本块只回看。
+      发起入口在页头「风险管控」（协同处理形态），本块只回看。
     -->
     <OpCollapsibleSection
       v-if="isComplaintTicket"
@@ -871,7 +871,7 @@ const collabSectionBadge = computed(() =>
         <p class="rc-foot">协同处理不改工单状态与处理人；建议事项挂在工单上，由当前处理人执行。</p>
       </div>
       <div v-else class="ra-empty">
-        尚无协同记录，可在底部操作条点「协同处理」发起
+        尚无协同记录，请点击页头「风险管控」发起
       </div>
     </OpCollapsibleSection>
 
