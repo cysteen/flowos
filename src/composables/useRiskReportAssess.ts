@@ -235,8 +235,11 @@ export function deriveEscalatedComplaint(input: {
  * `opts.level` ＝「风险管控」弹窗统一后补进来的**风险等级段**（`useRiskLevelFields` 的实例）。
  * 传了它，`openAssess` 会顺手把段重置到这张单上、`confirmAssess` 会在落评估结论**之前**
  * 先校验并落这一段（走 `recordTagFor` 那条与标记同一的入口）。
- * 🔴 **不传就整段不存在**：工单页页头那个弹窗自己已经有一份风险等级段（投诉支上半），
- * 它接的是本 composable 的**评估那一支**，再从这里塞一段进去它就会出现两段「风险等级」。
+ * 🔴 **不传就整段不存在**。三处接本 composable 的入口一律传：风险监控页评估处置工作面、
+ * 风险报备池、工单处理页页头「风险管控」的**非投诉支**（2026-09-29 拍板"页头这一支也出
+ * 等级段，与报备池同源"：同一张报备单从哪个入口评，定级这件事都得做）。
+ * 页头那个弹窗的**投诉支**另有一份自持的风险等级段，但它走 `props.open`、从不经过
+ * `openAssess`，两段不会同时出现。
  */
 export function useRiskReportAssess(opts?: { level?: RiskLevelFieldsCtl }) {
   const user = useUserStore();

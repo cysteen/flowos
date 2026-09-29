@@ -9,7 +9,10 @@ import RiskAssessSheet from './RiskAssessSheet.vue';
 import EscalateComplaintFields from './EscalateComplaintFields.vue';
 // 投诉支那三项（评估意见 / 建议事项 /「其他」的具体建议）：与风险工单池的协同处理弹窗共用同一份
 import RiskCollabFields from './RiskCollabFields.vue';
+// 非投诉支（报备评估）的风险等级段：与风险监控页评估处置工作面、风险报备池共用同一份
+import RiskLevelFields from './RiskLevelFields.vue';
 import { useRiskReportAssess } from '@/composables/useRiskReportAssess';
+import { useRiskLevelFields } from '@/composables/useRiskLevelFields';
 import { useRiskCollabFields } from '@/composables/useRiskCollabFields';
 import { useRiskPoolStore } from '@/stores/riskPool';
 import { useRiskReportStore } from '@/stores/riskReports';
@@ -37,8 +40,10 @@ import { canTagRiskOnTicketPage } from '@/views/tickets/composables/opActionRegi
  * **风险管控** —— 工单处理页**页头右上角**那一枚按钮点开的东西（「新建补充」旁）。
  *
  * 🔴 **一枚按钮 + 一个弹窗，内容按原单类型分岔**（基线 ※29 按原单类型分形态）：
- * - **非投诉单** → 第一区块（入池依据 / 报备信息）+「评估结论」段（升级 / 不升级，
- *   选「升级」再接出投诉工单专属字段）。点开时若那条条目还没人领，**先自动领到自己名下**。
+ * - **非投诉单** → 第一区块（入池依据 / 报备信息）+「风险等级」段 +「评估结论」段
+ *   （升级 / 不升级，选「升级」再接出投诉工单专属字段）。点开时若那条条目还没人领，
+ *   **先自动领到自己名下**。等级段与**风险报备池**那一处同源：同一张报备单从哪个入口评，
+ *   定级这件事都得做（2026-09-29 拍板）。
  * - **投诉单** → **按数据有无分两种形态**（2026-09-29 补裁决）：
  *   · 本单**有**池内条目 → 第一区块 + 上半「风险等级」段（标记 / 改判）+「协同处理」段；
  *   · 本单**没有**池内条目（尚未标记 / 已标成无风险）→ **只出上半「风险等级」段** ——
@@ -85,7 +90,19 @@ function nowStamp(): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-/* ---------------- 非投诉支：评估结论（原「风险评估」形态，规格一格未动） ---------------- */
+/* ---------------- 非投诉支：风险等级 + 评估结论 ---------------- */
+
+/**
+ * 非投诉支的**风险等级段**。它承载的是 B 线（二线报备）那条条目 ——
+ * 同一张报备单在**风险报备池**里评估时要定级，从工单页页头评估时也要定，
+ * 一件事两个入口一套规则（2026-09-29 拍板「页头这一支也出等级段，与报备池同源」）。
+ *
+ * 🔴 与**投诉支上半**不是同一段、也不会同时出现：投诉支走的是 `props.open`，
+ * 从不经过 `openAssess`，本段所在的 `v-if="!isComplaint"` 分支也就渲染不到它。
+ * 段内的取值域、必填规则（已有则预置可改、本来没有则必填）与落库（`recordTagFor`
+ * 那条与标记同一的唯一入口）全在 `useRiskLevelFields` 里，本组件不另写一套。
+ */
+const assessLevel = useRiskLevelFields();
 
 const {
   ASSESS_DECISIONS,
@@ -102,7 +119,7 @@ const {
   openAssess,
   confirmAssess,
   canAssessReport,
-} = useRiskReportAssess();
+} = useRiskReportAssess({ level: assessLevel });
 
 /** 本单**未出结论**的那条条目（至多一条：同单在队至多一条，基线 ※29） */
 const openItem = computed<RiskPoolItem | null>(
@@ -449,8 +466,22 @@ function onOk() {
       <!-- ③ 投诉单下半：协同处理段（评估意见 / 建议事项 /「其他」的具体建议） -->
       <RiskCollabFields v-if="isComplaint && showCollab" :ctl="collab" />
 
-      <!-- ② 非投诉单：评估结论段（升级 / 不升级）。**非投诉单不出上半**，工单页不允许标记它 -->
-      <template v-else>
+      <!--
+        非投诉单（报备评估）这一支。段序与另外四处入口一致：① 第一区块 → ② 风险等级 → ③ 评估结论。
+
+        🔴 判据写成 `!isComplaint` 而不是接在上面那个 `v-if` 后面的 `v-else`：协同段的出现条件
+        还带着"本单有池内条目"这一道，投诉单在池外时它为假，`v-else` 会把评估结论段渲染到
+        投诉单上 —— 那一段此时既提交不了（走的是 onComplaintOk）、也不该出现在投诉单上。
+      -->
+      <template v-if="!isComplaint">
+        <!--
+          ② 风险等级：报备条目定的等级**与标记同源** —— 写工单级等级、条目进风险工单池、
+          计入左栏「全部有风险」三档。本来没有等级则必填，已有则预置现值、可改。
+          与风险报备池那一处共用 RiskLevelFields，取值域与落库不在本组件里。
+        -->
+        <RiskLevelFields :ctl="assessLevel" />
+
+        <!-- ③ 评估结论段（升级 / 不升级） -->
         <section class="ticket-assess-block">
           <h4 class="ticket-assess-title">评估结论</h4>
           <div class="op-field ticket-assess-dec-field">
