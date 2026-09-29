@@ -9,10 +9,12 @@ import RiskAssessSheet from './RiskAssessSheet.vue';
 import EscalateComplaintFields from './EscalateComplaintFields.vue';
 // 投诉支那三项（评估意见 / 建议事项 /「其他」的具体建议）：与风险工单池的协同处理弹窗共用同一份
 import RiskCollabFields from './RiskCollabFields.vue';
-// 非投诉支（报备评估）的风险等级段：与风险监控页评估处置工作面、风险报备池共用同一份
+// 风险等级段：**六处「风险管控」弹窗共用同一份呈现**（2026-09-29 裁决）。
+// 非投诉支走真实例 `useRiskLevelFields`（落库 recordTagFor）；投诉支上半各有既有状态与落库路径，
+// 用 `makeRiskLevelFieldsView` 包一层薄适配器交给同一个组件渲染。
 import RiskLevelFields from './RiskLevelFields.vue';
 import { useRiskReportAssess } from '@/composables/useRiskReportAssess';
-import { useRiskLevelFields } from '@/composables/useRiskLevelFields';
+import { makeRiskLevelFieldsView, useRiskLevelFields } from '@/composables/useRiskLevelFields';
 import { useRiskCollabFields } from '@/composables/useRiskCollabFields';
 import { useRiskPoolStore } from '@/stores/riskPool';
 import { useRiskReportStore } from '@/stores/riskReports';
@@ -22,7 +24,6 @@ import { riskLevelText } from '@/config/risk';
 import {
   NO_RISK,
   REPORT_SOURCE,
-  RISK_TAG_RESULTS,
   isOpenStatus,
   isPoolLevel,
   isPooledStatus,
@@ -221,7 +222,6 @@ const canTag = computed(
   () => canTagRiskOnTicketPage(props.ticketType, user.roleKey, tagBlockReason.value),
 );
 
-const tagResults = RISK_TAG_RESULTS;
 const tagResult = ref<RiskTagResult | ''>('');
 /**
  * 本次标记的**标记备注**。
@@ -261,6 +261,30 @@ const missTagNote = computed(
  * 判定走 `riskQueue.canTagNoRisk`，与风险监控页那两处修正弹窗同源；读条目上的现行状态。
  */
 const tagNoRiskLocked = computed(() => !!tagEntry.value && !canTagNoRisk(tagEntry.value.status));
+
+/**
+ * 投诉支上半那一段交给**六处共用**的 `RiskLevelFields` 渲染
+ * （2026-09-29 裁决「风险等级段收敛成一份共享件、一种呈现」）。
+ *
+ * 🔴 **只是把既有状态包一层给组件看**：本支的校验与落库仍走 `onComplaintOk`
+ * 里那条既有路径，state、判据与写库一格未动。
+ * · `visible` 给 `canTag`（**保留角色维那道门**：原单类型 ∧ 标记权 ∧ 这张单推得出来源），
+ *   不换成共享件自己那个 `visible`，两者判据不同；
+ * · `required`：本来没有等级才标必填（原先这一段连标签都没有、更没有星，
+ *   `canSaveTag` 那一路的可提交性不受影响）。
+ */
+const tagLevelView = makeRiskLevelFieldsView({
+  getLevel: () => tagResult.value,
+  setLevel: (r) => { tagResult.value = r; },
+  getNote: () => tagNote.value,
+  setNote: (v) => { tagNote.value = v; },
+  visible: canTag,
+  isAmend,
+  required: computed(() => canTag.value && !isAmend.value),
+  missLevel: missTagResult,
+  missNote: missTagNote,
+  noRiskLocked: tagNoRiskLocked,
+});
 
 /**
  * 打开时把现行**等级**灌回来：改完才知道自己动了哪一项（与风险监控页 `openEntryTag` 同形）。
@@ -421,47 +445,16 @@ function onOk() {
       <RiskAssessSheet v-if="sheetTarget" :target="sheetTarget" />
 
       <!--
-        ② 投诉单上半：风险等级（标记 / 改判）。**只对投诉单 + 标记权角色出**（判据 `canTag`）。
+        ② 投诉单上半：风险等级（标记 / 改判）。**只对投诉单 + 标记权角色出**
+        （`v-if` 管原单类型这一维，`canTag` 走共享件的 `visible`）。
         四选一：一个枚举答"这张单有没有风险、多大"——拆成"有没有风险 + 等级"两个字段会立刻
         长出"无风险却带着等级""有风险却没等级"两种非法组合，而这两种组合恰恰决定条目进不进池。
         已有结论时这次就是改判，**改判时「标记备注」必填**（原「修正原因」已并入），首次标记可选。
+
+        🔴 **整段是六处共用的 `RiskLevelFields`**（2026-09-29 裁决）：呈现只此一份；
+        本支的 state、校验与落库照旧走 `onComplaintOk` 那条既有路径（见 `tagLevelView`）。
       -->
-      <section v-if="isComplaint && canTag" class="ticket-assess-block">
-        <h4 class="ticket-assess-title">风险等级</h4>
-        <div class="op-field">
-          <a-radio-group v-model:value="tagResult" class="rc-tag-radio-row">
-            <!-- 已结论的条目「无风险」一档置灰（store 侧 recordTag 同样拒绝），见 tagNoRiskLocked -->
-            <a-radio
-              v-for="r in tagResults"
-              :key="r"
-              :value="r"
-              :disabled="r === NO_RISK && tagNoRiskLocked"
-              :title="r === NO_RISK && tagNoRiskLocked ? NO_RISK_LOCKED_TIP : undefined"
-            >{{ r === NO_RISK ? NO_RISK : riskLevelText(r) }}</a-radio>
-          </a-radio-group>
-          <div v-if="missTagResult" class="ticket-assess-err">请选择风险等级</div>
-          <div v-else class="rc-tag-foot">
-            <template v-if="tagNoRiskLocked">{{ NO_RISK_LOCKED_TIP }}。</template>
-            标为 低 / 中 / 高 即进风险工单池；标为「无风险」不进池。
-          </div>
-        </div>
-        <!--
-          标记备注。**改判时必填**（原来那格「修正原因」已并进来，2026-09-29 裁决）：
-          两格都在答"这一次是怎么判的、为什么"，改判时人得把同一件事写两遍。
-          改判形态下本格从空开始、问法换成"为什么改"。
-        -->
-        <div class="op-field">
-          <div class="op-label" :class="{ req: isAmend }">标记备注</div>
-          <a-textarea
-            v-model:value="tagNote"
-            :rows="2"
-            :placeholder="isAmend
-              ? '上一次判的是什么、这次为什么改…（必填）'
-              : '判断依据与后续动作（可选）'"
-          />
-          <div v-if="missTagNote" class="ticket-assess-err">请填写标记备注</div>
-        </div>
-      </section>
+      <RiskLevelFields v-if="isComplaint" :ctl="tagLevelView" />
 
       <!-- ③ 投诉单下半：协同处理段（评估意见 / 建议事项 /「其他」的具体建议） -->
       <RiskCollabFields v-if="isComplaint && showCollab" :ctl="collab" />
@@ -591,16 +584,6 @@ function onOk() {
 }
 /* 分流提示：与校验错误同一行位，但它讲的是后果不是错误，故取中性灰而非红 */
 .ticket-assess-hint {
-  margin-top: 4px;
-  font-size: 11px;
-  color: #6b7280;
-  line-height: 1.5;
-}
-/* 上半四选一：一行排满，与「评估决策」那一行同一种横排密度 */
-.rc-tag-radio-row { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; }
-.rc-tag-radio-row :deep(.ant-radio-wrapper) { margin: 0 !important; white-space: nowrap; }
-/* 去向说明：讲的是"点下去会发生什么"，与分流提示同一套 token */
-.rc-tag-foot {
   margin-top: 4px;
   font-size: 11px;
   color: #6b7280;
