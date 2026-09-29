@@ -3228,9 +3228,15 @@ function rowHasHits(r: QueueRow): boolean {
 /**
  * 这一行的「摘要」：取工单的**问题描述**，不取条目里那句套话。
  * 查不到工单时退回条目描述 —— 那是这一行仅有的信息，比空着强。
+ *
+ * 🔴 **来源为「二线报备」的标记条目是例外，先取条目自己的 `desc`**：那一路的 `desc`
+ * 抄的正是**报备人填的风险描述**（条目由 `ensureEntryFor` 在定级那一刻现补，见
+ * `riskQueue.autoSourceFor` 第三支），而它恰恰是这一行的证据本身 —— 结论就是照着它下的。
+ * 退回工单问题描述会把这一行的证据换成一句与风险无关的话，那一列也就不再是"证据"。
  */
 function rowSummaryOf(r: QueueRow): string {
   const t = ticketOfRow(r);
+  if (r.source === REPORT_SOURCE && r.desc) return r.desc;
   return t?.problemDesc || t?.title || r.desc || '—';
 }
 /** 这一行的产品；查不到工单写「—」而不是留空 */
