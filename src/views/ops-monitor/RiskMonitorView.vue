@@ -2445,10 +2445,16 @@ const canSaveTag = computed(() => {
   return true;
 });
 
-/* ---- 核实打标弹窗里的「评估结论」段（判成立之后接出，可留空） ---- */
+/* ---- 核实打标弹窗里的「风险处理措施」段（判成立之后接出，可留空） ---- */
 
 /** 段内的评估决策。**空 ＝ 不评估**，提交就是原来的那一下核实打标 */
 const tagAssessDecision = ref<AssessDecision | ''>('');
+/**
+ * 选「升级」后那一行派生说明。文案取 `escalateHintOf` —— **与三处评估入口同一个来源**，
+ * 谁也没法只改一半。它答的是"你点下去会立刻发生什么"，且按原单类型给的是两种相反的后果，
+ * 是做这个决策所必需的一行，不是操作说明。
+ */
+const tagAssessHint = computed(() => escalateHintOf(tagTarget.value?.ticketNo));
 /** 点过一次保存才出红字：进来就满屏红字的表单没人读得下去 */
 const tagAssessTried = ref(false);
 /** 本次核实的结论会落到哪一条条目上（没有承载体时整段不出，见 `tagAssessEntryOf`） */
@@ -3783,10 +3789,12 @@ const entryTagLevelView = makeRiskLevelFieldsView({
   noRiskLocked: entryTagNoRiskLocked,
 });
 
-/* ---- 风险打标弹窗里的「评估结论」段（判出高 / 中 / 低之后接出，可留空） ---- */
+/* ---- 风险打标弹窗里的「风险处理措施」段（判出高 / 中 / 低之后接出，可留空） ---- */
 
 /** 段内的评估决策。**空 ＝ 不评估**，提交就是原来的那一下打标 */
 const entryTagAssessDecision = ref<AssessDecision | ''>('');
+/** 选「升级」后那一行派生说明，与核实形态的 `tagAssessHint` 同一个来源（`escalateHintOf`） */
+const entryTagAssessHint = computed(() => escalateHintOf(entryTagTarget.value?.ticketNo));
 const entryTagAssessTried = ref(false);
 /**
  * 段出不出。承载体就是本弹窗这条条目本身 —— 打标为高 / 中 / 低之后它必进池
@@ -7088,6 +7096,11 @@ function toggleWordEnabled(w: RiskWord) {
                 <a-radio v-for="d in ASSESS_DECISIONS" :key="d" :value="d">{{ d }}</a-radio>
               </a-radio-group>
             </div>
+            <!-- 选「升级」后那一行派生说明：文案与三处评估入口同一个来源（escalateHintOf） -->
+            <div
+              v-if="entryTagAssessDecision === '升级'"
+              class="assess-hint assess-dec-foot"
+            >{{ entryTagAssessHint }}</div>
           </div>
 
           <!-- 「不升级」那一格；选「升级」时同一个格子并进下面那一段、改由段内的「升级说明」渲染 -->
@@ -7313,6 +7326,11 @@ function toggleWordEnabled(w: RiskWord) {
                 <a-radio v-for="d in ASSESS_DECISIONS" :key="d" :value="d">{{ d }}</a-radio>
               </a-radio-group>
             </div>
+            <!-- 选「升级」后那一行派生说明：文案与三处评估入口同一个来源（escalateHintOf） -->
+            <div
+              v-if="tagAssessDecision === '升级'"
+              class="assess-hint assess-dec-foot"
+            >{{ tagAssessHint }}</div>
           </div>
 
           <!-- 「不升级」那一格；选「升级」时同一个格子并进下面那一段、改由段内的「升级说明」渲染 -->
