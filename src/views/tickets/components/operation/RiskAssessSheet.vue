@@ -2,7 +2,7 @@
 import { computed } from 'vue';
 import { PaperClipOutlined, RollbackOutlined, UserOutlined } from '@ant-design/icons-vue';
 import { useRiskTagStore } from '@/stores/riskTags';
-import { REPORT_SOURCE, isPoolLevel, type RiskPoolItem } from '@/stores/riskShared';
+import { REPORT_SOURCE, isPoolLevel, isVerifyMonitorSource, type RiskPoolItem } from '@/stores/riskShared';
 import { riskLevelText } from '@/config/risk';
 import { downloadReportAttachment, excerptWindow, isKeywordRow } from './riskAssessSheet';
 
@@ -26,6 +26,19 @@ const riskTags = useRiskTagStore();
  * A 线不出「报备人」「原因」：那两格是 `riskQueue.autoEntry()` 补的恒定占位（系统（系统） / 其他）。
  */
 const fromPool = computed(() => props.target.source !== REPORT_SOURCE);
+
+/**
+ * meta 行末位那一对时刻出不出。**「重点工单」这一路整对不出**（2026-09-29）。
+ *
+ * 🔴 **那一档没有"进监控"的那一刻**：重点工单是"在办 ∧（类型＝投诉 ∨ P0/P1）"**天然成立**
+ * 就在这一档里的，不存在被捞进来的动作；`at` 实际是条目生成时刻，标成「进监控」会被当成
+ * 业务事实读。换个标签硬凑、或补一个「—」，同样是在答一个不存在的问题，故整对省掉。
+ * · 实时监控（A 线）→「进监控」：命中把它捞进监控，这个时刻是真的。
+ * · 二线报备（B 线）→「提交于」：报备人按下提交的那一刻。
+ *
+ * 判据取现成的读口（`isVerifyMonitorSource` / `REPORT_SOURCE`），不另造一套来源判断。
+ */
+const entryAtVisible = computed(() => !fromPool.value || isVerifyMonitorSource(props.target.source));
 
 /**
  * 入池依据的「命中原话」：实时监控来源且已打标的条目，取本单**命中时刻最近**的一条风险词命中。
@@ -85,7 +98,8 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
                 <span class="assess-meta-label">标记时间</span>
                 <span class="assess-meta-value">{{ target.tag.at }}</span>
               </span>
-              <span class="assess-meta-sep" aria-hidden="true" />
+              <!-- 分隔点跟着末位那一对走：重点工单不出那一对，这一点也不能留成尾巴 -->
+              <span v-if="entryAtVisible" class="assess-meta-sep" aria-hidden="true" />
             </template>
           </template>
           <template v-else>
@@ -108,8 +122,11 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
               <span class="assess-meta-sep" aria-hidden="true" />
             </template>
           </template>
-          <!-- 删掉的标题行里那个时刻并到这里：A 线＝进监控、B 线＝提交于 -->
-          <span class="assess-meta-pair">
+          <!--
+            删掉的标题行里那个时刻并到这里：实时监控＝进监控、二线报备＝提交于。
+            **重点工单整对不出** —— 判据与理由见 `entryAtVisible`。
+          -->
+          <span v-if="entryAtVisible" class="assess-meta-pair">
             <span class="assess-meta-label">{{ fromPool ? '进监控' : '提交于' }}</span>
             <span class="assess-meta-value">{{ target.at }}</span>
           </span>

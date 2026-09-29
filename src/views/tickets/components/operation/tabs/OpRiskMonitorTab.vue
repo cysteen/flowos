@@ -388,10 +388,16 @@ const latestTagRecord = computed(() => tagHistory.value[tagHistory.value.length 
  * 🔴 **备注必须带上**（2026-09-29 裁决）：「修正原因」那一格取消之后，改判那几条的
  * "为什么改"就写在**当次的标记备注**里 —— 记录列表只报等级与人，那条爬坡还是读不出因果。
  * 备注是可选的（首次标记不强制），**没填的不占位**，不补「—」。
+ *
+ * 🔴 **取备注要回退一次 `amendReason`**：旧缓存里的历史记录是在「修正原因」还是独立字段的
+ * 年代写下的 —— 文本落在 `amendReason` 上、`note` 是空的，只取 `note` 会让那几条一律显示不出因由。
+ * `amendReason` 已停写（`024cfdd2`），这里回退取它**只为让旧记录还能显示出当时写的那句话**；
+ * 新记录一律只写 `note`，**不要**因为这个回退就把 `amendReason` 重新变成写入口。
  */
 function tagRecordText(h: RiskTagEntry) {
   const head = `${h.level ? riskLevelText(h.level) : '无风险'} · ${h.by} · ${formatAt(h.at)}`;
-  return h.note ? `${head} · ${h.note}` : head;
+  const note = (h.note || h.amendReason || '').trim();
+  return note ? `${head} · ${note}` : head;
 }
 
 /**
@@ -838,13 +844,13 @@ const collabSectionBadge = computed(() =>
     </OpCollapsibleSection>
 
     <!--
-      协同记录（《【930】》§3.3 界面落点之一）。**只在投诉单上出现** ——
-      协同处理的类型集是「投」，非投诉单那一路走报备与评估。
+      风险处理建议（《【930】》§3.3 界面落点之一，块名原为「协同记录」）。**只在投诉单上出现**
+      —— 协同处理的类型集是「投」，非投诉单那一路走报备与评估。
       发起入口在页头「风险管控」（协同处理形态），本块只回看。
     -->
     <OpCollapsibleSection
       v-if="isComplaintTicket"
-      title="协同记录"
+      title="风险处理建议"
       :icon="CheckCircleOutlined"
       :badge="collabSectionBadge"
       badge-variant="count"
@@ -868,10 +874,10 @@ const collabSectionBadge = computed(() =>
           </header>
           <p class="rc-item-opinion">{{ c.opinion }}</p>
         </article>
-        <p class="rc-foot">协同处理不改工单状态与处理人；建议事项挂在工单上，由当前处理人执行。</p>
+        <p class="rc-foot">风险处理建议不改工单状态与处理人；建议事项挂在工单上，由当前处理人执行。</p>
       </div>
       <div v-else class="ra-empty">
-        尚无协同记录，请点击页头「风险管控」发起
+        尚无风险处理建议，请点击页头「风险管控」发起
       </div>
     </OpCollapsibleSection>
 

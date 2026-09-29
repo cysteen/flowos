@@ -20,8 +20,8 @@ defineProps<{ ctl: RiskCollabFieldsCtl }>();
 </script>
 
 <template>
-  <section class="rcf" aria-label="协同处理">
-    <h4 class="rcf-title">协同处理</h4>
+  <section class="rcf" aria-label="风险处理建议">
+    <h4 class="rcf-title">风险处理建议</h4>
 
     <div class="rcf-field">
       <label class="rcf-label"><span class="rcf-req">*</span>评估意见</label>
