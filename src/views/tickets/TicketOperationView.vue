@@ -58,7 +58,7 @@ import {
 } from './composables/complaintEscalation';
 import {
   ESCALATE_VIA_HANDLER_REPORT_TIP, escalateComplaintBlockTip,
-  resolveRiskBarForm, resolveRiskControlForm,
+  resolveRiskBarForm, resolveRiskControlForm, canTagRiskOnTicketPage,
 } from './composables/opActionRegistry';
 import {
   flashEditInfoGate, flashEscalateComplaintGate, flashHeaderEscalateVisible, flashStageOf, resolveFlashView,
@@ -291,6 +291,17 @@ const riskPoolEntry = computed(
   () => riskQueue.entriesOf(ticketNo.value).find((e) => isPooledStatus(e.status)) ?? null,
 );
 
+/**
+ * 本单在工单页**标不标记得动**（判据 `canTagRiskOnTicketPage`，与页头弹窗上半、
+ * 「风险报备」Tab 空态那句共用同一份）。页头「风险管控」的投诉支拿它放宽出现条件：
+ * 未入池（尚未标记 / 已标成无风险）的投诉单也要点得开，否则块内那枚按钮撤走之后
+ * 工单页上一个标记入口都没有了。
+ */
+const riskTagBlockReason = computed(() => riskQueue.tagBlockReasonOf(ticketNo.value));
+const canTagRisk = computed(
+  () => canTagRiskOnTicketPage(d.value.type, user.roleKey, riskTagBlockReason.value),
+);
+
 /** 底栏那一格取到的形态：只剩 `report` 一种；null ＝ 底栏这一格不给 */
 const riskBarForm = computed(() => resolveRiskBarForm(user.roleKey, d.value.type)?.form ?? null);
 /** 页头「风险管控」取到的形态：`assess`（非投诉单）/ `collab`（投诉单）；null ＝ 整枚不出 */
@@ -500,7 +511,14 @@ const showRiskControl = computed(() => {
   const form = riskControlForm.value;
   if (!form) return false;
   if (isTicketTerminated(d.value.status)) return false;
-  if (form === 'collab') return !!riskPoolEntry.value;
+  /*
+   * 投诉支 ＝ **本单在风险工单池里 ∨ 本单标记得动**（2026-09-29 补裁决）。
+   * 后一支是本轮补上的：「风险标记」块里那枚「标记 / 重新标记」按钮已撤，标记改由页头承担，
+   * 而池内条目只有被标成低 / 中 / 高才有 —— 只判入池的话，尚未标记与已标成「无风险」的
+   * 投诉单在工单页会一个标记入口都没有。弹窗内容按数据有无分层（见 OpRiskControlModal）：
+   * 没有池内条目时只出上半「风险等级」段，标完进池，下次打开自然是完整形态。
+   */
+  if (form === 'collab') return !!riskPoolEntry.value || canTagRisk.value;
   const item = riskOpenItem.value;
   if (!item) return false;
   // 「待分派」是 store 侧尚未改名的存储值，界面一律写「待领取」（见 OpRiskDecision.ts）

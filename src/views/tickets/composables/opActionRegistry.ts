@@ -262,6 +262,29 @@ export function resolveRiskControlForm(roleKey: string, ticketType: string): Ris
   return f && f.form !== 'report' ? f : null;
 }
 
+/**
+ * **工单处理页上"这个人能不能标记本单的风险等级"**（《【930】》§3.1，2026-09-10 拍板）：
+ * **投诉单** ∧ **客诉专员** ∧ **这张单推得出监控来源**。
+ * 非投诉单的风险等级只由客诉专员 / 投诉督导在风险监控页产出，处理人一律没有标记入口；
+ * 投诉督导在工单页也没有（它的入口在监控页），故角色只列一个。
+ *
+ * 🔴 **三处共用这一份**（2026-09-29 裁决之后）：页头「风险管控」的**出现条件**
+ * （`TicketOperationView.showRiskControl` 的投诉支）、页头弹窗**上半「风险等级」段的显隐**
+ * （`OpRiskControlModal`）、「风险报备」Tab 空态那句**"为什么这里没有入口"的分岔**
+ * （`tabs/OpRiskMonitorTab`）。三处各写一遍同一个表达式，就迟早会出现
+ * "按钮出得来、弹窗里那一段却不出"这种自己打自己的组合。
+ *
+ * `tagBlockReason` 由调用方从 `riskQueue.tagBlockReasonOf(ticketNo)` 取（空串 ＝ 推得出来源），
+ * 本函数保持纯函数、不碰 store —— 它和本模块其它判据一样要能被单独喂值。
+ */
+export function canTagRiskOnTicketPage(
+  ticketType: string,
+  roleKey: string,
+  tagBlockReason: string,
+): boolean {
+  return ticketType === '投诉' && roleKey === 'complaint-handler' && !tagBlockReason;
+}
+
 export interface ActionCtx {
   ticketType: string;
   /** 结案方式；缺省视为「正常流程」，见 resolveClosureMode */

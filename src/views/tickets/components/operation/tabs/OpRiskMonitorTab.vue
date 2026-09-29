@@ -35,6 +35,7 @@ import OpActionModal from '../OpActionModal.vue';
 import { useUserStore } from '@/stores/user';
 import { useRiskCollabStore } from '@/stores/riskCollab';
 import { resolveTicketTypeFor } from '@/views/tickets/composables/opActions';
+import { canTagRiskOnTicketPage } from '@/views/tickets/composables/opActionRegistry';
 import {
   adviceLabelOf,
   decisionText,
@@ -396,10 +397,17 @@ function tagRecordText(h: RiskTagEntry) {
  * 【但仍然要在点之前把话说清】推不出来源的单（如已结案的单）**不给按钮**，
  * 原地写明原因（`tagBlockReason`）—— 让人填完弹窗才收到一句失败，比按钮不出现糟得多。
  * 判据取 store 的纯函数，与提交时兜底那一句同源，两处不会说出两个理由。
+ *
+ * 🔴 **判据本身已抽成共享的 `canTagRiskOnTicketPage`**（2026-09-29）：页头按钮的出现条件、
+ * 页头弹窗上半的显隐、本块空态那句的分岔读的是同一份，三处不会再各写一遍同一个表达式。
  */
 const tagBlockReason = computed(() => queue.tagBlockReasonOf(props.ticketNo));
 const canTag = computed(
-  () => isComplaintTicket.value && user.roleKey === 'complaint-handler' && !tagBlockReason.value,
+  () => canTagRiskOnTicketPage(
+    resolveTicketTypeFor(props.ticketNo),
+    user.roleKey,
+    tagBlockReason.value,
+  ),
 );
 
 /*

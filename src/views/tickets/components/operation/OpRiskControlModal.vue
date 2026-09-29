@@ -31,6 +31,7 @@ import {
   advicePlaceholderOf,
   decisionText,
 } from './OpRiskDecision';
+import { canTagRiskOnTicketPage } from '@/views/tickets/composables/opActionRegistry';
 
 /**
  * **风险管控** —— 工单处理页**页头右上角**那一枚按钮点开的东西（「新建补充」旁）。
@@ -38,14 +39,18 @@ import {
  * 🔴 **一枚按钮 + 一个弹窗，内容按原单类型分岔**（基线 ※29 按原单类型分形态）：
  * - **非投诉单** → 第一区块（入池依据 / 报备信息）+「评估结论」段（升级 / 不升级，
  *   选「升级」再接出投诉工单专属字段）。点开时若那条条目还没人领，**先自动领到自己名下**。
- * - **投诉单** → 第一区块 + **上半「风险等级」段**（可标记 / 改判，改判填修正原因）
- *   +「协同处理」段（评估意见 / 建议事项 /「其他」的具体建议）。
+ * - **投诉单** → **按数据有无分两种形态**（2026-09-29 补裁决）：
+ *   · 本单**有**池内条目 → 第一区块 + 上半「风险等级」段（标记 / 改判）+「协同处理」段；
+ *   · 本单**没有**池内条目（尚未标记 / 已标成无风险）→ **只出上半「风险等级」段** ——
+ *     第一区块没有 target 就不渲染，协同处理是对池内条目做的事、池外无从谈起。
+ *     标成低 / 中 / 高之后条目进池，下次再打开就是完整形态，链路自洽、不需要补丁。
  *
  * 🔴 **上半是 2026-09-29 裁决搬过来的**：「风险报备」Tab 的「风险标记」块里原来有一枚
  * 「标记 / 重新标记」按钮与一个自持的弹窗，那一对已整块撤掉，标记改由页头这一枚承担。
- * 上半与风险监控页那个「风险管控」弹窗**同构**（四选一等级 · 修正原因 · 标记备注），
- * 权限判据沿用原来那把 `canTag`（原单类型 + 标记权 + 这张单推不推得出来源），
- * 落库仍是 `riskQueue.recordTagFor` 那条唯一入口 —— **没有新判据、没有第二条落库路径**。
+ * 上半与风险监控页那个「风险管控」弹窗**同构**（四选一等级 · 标记备注），
+ * 权限判据走共享的 `canTagRiskOnTicketPage`（原单类型 ∧ 标记权 ∧ 这张单推不推得出来源，
+ * 与页头按钮的出现条件同一份），落库仍是 `riskQueue.recordTagFor` 那条唯一入口
+ * —— **没有新判据、没有第二条落库路径**。
  * **非投诉单不出上半**：工单页不允许标记非投诉单（标记归风险监控页），口径一格未动。
  *
  * 两支的字段、校验、派生、落库、通知与履历**一律沿用原来那两个弹窗的规格**，
@@ -190,12 +195,13 @@ const tagRecord = computed(() => tagEntry.value?.tag ?? null);
 /** 这张单推不推得出监控来源；推不出来就没得标记（原因由 store 给，与提交时兜底那一句同源） */
 const tagBlockReason = computed(() => queue.tagBlockReasonOf(props.ticketNo));
 /**
- * 上半出不出 ＝ 现行 `canTag` 那把（原单类型 + 标记权 + 这张单推得出来源），
- * **与「风险报备」Tab 里原来那份逐字相同，一条判据都没有新造**。
+ * 上半出不出 ＝ 共享判据 `canTagRiskOnTicketPage`（原单类型 ∧ 标记权 ∧ 这张单推得出来源）。
+ * **工单页三处共用那一份**：页头按钮的出现条件（`TicketOperationView.showRiskControl`
+ * 的投诉支）、本段的显隐、「风险报备」Tab 空态那句的分岔。
  * 非投诉单在工单页不允许标记（标记归风险监控页），故上半只可能在投诉支出现。
  */
 const canTag = computed(
-  () => isComplaint.value && user.roleKey === 'complaint-handler' && !tagBlockReason.value,
+  () => canTagRiskOnTicketPage(props.ticketType, user.roleKey, tagBlockReason.value),
 );
 
 const tagResults = RISK_TAG_RESULTS;
@@ -241,15 +247,27 @@ function resetTag() {
 
 const collab = useRiskCollabFields();
 
+/** 本单在**风险工单池**里的那条 A 线条目（一张单至多一条，《【930】》§3.1） */
+const poolItem = computed<RiskPoolItem | null>(
+  () => reportStore
+    .reportsOf(props.ticketNo)
+    .find((r) => r.source !== REPORT_SOURCE && isPooledStatus(r.status)) ?? null,
+);
+
 /**
- * 下半「协同处理」段出不出。
- * - 上半出不来的角色（非客诉专员 / 这张单推不出来源）**恒出** —— 那一路这个弹窗就只是
- *   协同处理，与本轮之前逐字相同。
- * - 上半出得来时跟着上半的取值走（与风险监控页 `showTagCollabFor` 同一口径）：判为「无风险」
- *   的条目会被撤出风险工单池，池外没有可协同的条目，那一段留着只会让人填完再收到一句
- *   "本单已不在风险工单池中"。
+ * 下半「协同处理」段出不出。**两道，缺一不可**：
+ * ① **本单得有池内条目**（`poolItem`）—— 协同处理是对池内那条条目做的事
+ *    （`submitTo` 到池里找它）。尚未标记 / 已标成无风险的单进不来这一支，
+ *    此时弹窗只剩上半「风险等级」段，是**只标记**的形态（2026-09-29 补裁决）；
+ * ② 上半出得来时还要跟着上半的取值走（与风险监控页 `showTagCollabFor` 同一口径）：
+ *    判为「无风险」的条目会被撤出风险工单池，池外没有可协同的条目，那一段留着
+ *    只会让人填完再收到一句"本单已不在风险工单池中"。
+ *    上半出不来的角色（非客诉专员 / 这张单推不出来源）不受第二道约束 ——
+ *    那一路这个弹窗就只是协同处理，与本轮之前逐字相同。
  */
-const showCollab = computed(() => !canTag.value || isPoolLevel(tagResult.value as RiskTagResult));
+const showCollab = computed(
+  () => !!poolItem.value && (!canTag.value || isPoolLevel(tagResult.value as RiskTagResult)),
+);
 
 /**
  * 下半动过没有。**全空 ＝ 不协同**（与风险监控页那套同形）：只想改个等级的人
@@ -259,13 +277,6 @@ const collabFilled = computed(() => {
   const f = collab.fields;
   return !!f.opinion.trim() || f.advices.length > 0 || !!f.otherAdvice.trim();
 });
-
-/** 本单在**风险工单池**里的那条 A 线条目（一张单至多一条，《【930】》§3.1） */
-const poolItem = computed<RiskPoolItem | null>(
-  () => reportStore
-    .reportsOf(props.ticketNo)
-    .find((r) => r.source !== REPORT_SOURCE && isPooledStatus(r.status)) ?? null,
-);
 
 /**
  * 投诉支提交。上半（标记 / 改判）与下半（协同处理）**各自可留空**，
