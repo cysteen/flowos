@@ -2,6 +2,7 @@ import { computed, ref, watch } from 'vue';
 import { defineStore } from 'pinia';
 import { useRiskTagStore, type RiskTagEntry } from '@/stores/riskTags';
 import { useRiskHistoryStore } from '@/stores/riskHistory';
+import { useRiskReportStore } from '@/stores/riskReports';
 import { SEED_RISK_ESCALATION, useDerivedTicketStore } from '@/stores/derivedTickets';
 import { TICKETS } from '@/mock/tickets';
 import type { RiskHit } from '@/mock/opsReport';
@@ -10,6 +11,7 @@ import { isTicketClosed } from '@/views/tickets/types/ticket';
 import type { Ticket, TicketStatus } from '@/views/tickets/types/ticket';
 import {
   NO_RISK,
+  REPORT_SOURCE,
   agoStamp,
   isOpenStatus,
   isPoolLevel,
@@ -21,6 +23,7 @@ import {
   todayPrefix,
   todayStamp,
   writeRiskCache,
+  type MonitorSource,
   type QueueSource,
   type QueueStatus,
   type ReportAssessment,
@@ -70,8 +73,15 @@ import {
 export interface RiskQueueEntry {
   id: string;
   ticketNo: string;
-  /** 自动识别来源两类（实时监控 / 重点工单），见 `QUEUE_SOURCES`。手动筛查并入的也写「实时监控」 */
-  source: QueueSource;
+  /**
+   * 自动识别来源两类（实时监控 / 重点工单），见 `QUEUE_SOURCES`。手动筛查并入的也写「实时监控」。
+   *
+   * 🔴 **值域是 `MonitorSource` 而不是 `QueueSource`**（2026-09-29 裁决）：除那两类之外，
+   * 还有**恰好一种**条目会带「二线报备」这个来源 —— 报备线的评估弹窗给出风险等级时，
+   * 由 `ensureEntryFor` 现补的那一条（见 `autoSourceFor` 第三支）。它**天然带 `tag`**、
+   * 建出来即落已判段，故「未标记」段仍只有实时监控 / 重点工单两路（那条恒等式不受影响）。
+   */
+  source: MonitorSource;
   /**
    * 本条由**手动筛查并入**监控（《【930】》§5A.1 ④）。只留痕：打标时抄到标记记录上
    * （`RiskTagRecord.viaManualScan`），不改来源、不参与归属与计数。
@@ -1073,9 +1083,11 @@ const TAG_TARGET_ORDER: QueueStatus[] = ['实时监控中', '待分派', '已标
  * 两类来源的答案完全不同，写成一句"自动纳入实时监控"等于什么都没说。
  * 措辞与种子里同来源那几条保持一致，免得同一类条目在同一张表上有两种说法。
  */
-const AUTO_DESC: Record<QueueSource, string> = {
+const AUTO_DESC: Record<MonitorSource, string> = {
   实时监控: '沟通记录命中风险词，已自动纳入实时监控，待标记。',
   重点工单: '在办投诉类工单或 P0 / P1 工单，自动纳入实时监控，待标记。',
+  // 第三支（`autoSourceFor` 的 ③）现补的条目：它一建出来就带结论，故末句不是「待标记」
+  二线报备: '二线已就本单发起风险报备，评估时定级，随定级纳入风险工单池。',
 };
 
 /** 种子初始化补建条目的进监控时刻：最近一条距今的分钟数 */
@@ -1183,7 +1195,9 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
       // 第二道拦截：版本号拦的是**格式**，这一道拦的是**值**。
       // 「VIP客户」这一类本轮砍掉，归一化之后它仍是一个已不在枚举里的字符串，
       // 放进来会在来源筛选那一排长出一个点不亮的幽灵 chip。
-      .filter((e): e is RiskQueueEntry => isQueueSource(e.source));
+      // 🔴 **「二线报备」要放行**：报备线定级现补的那一条条目就落这个来源（见 `autoSourceFor` ③），
+      // 只认 `isQueueSource` 的话，它一刷新就被整条丢掉 —— 等级还在工单上、池里那行却没了。
+      .filter((e): e is RiskQueueEntry => isQueueSource(e.source) || e.source === REPORT_SOURCE);
   }
   watch(
     entries,
@@ -1481,12 +1495,14 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
   }
 
   /**
-   * 一张单**本该**被哪一类自动识别捞进实时监控（2026-09-18 裁决，两条判据）：
+   * 一张单**本该**被哪一类来源捞出条目（2026-09-18 裁决两条判据，2026-09-29 补第三支）。
+   * **按下表的次序取第一个命中的，即 命中 ＞ 重点工单 ＞ 二线报备**：
    *
-   * | # | 来源 | 判据 |
-   * |---|---|---|
-   * | ① | 实时监控 | 本单在命中台账里有记录 |
-   * | ② | 重点工单 | 在办 ∧（类型 ＝ 投诉 ∨ 优先级 ∈ {P0, P1}） |
+   * | # | 来源 | 判据 | 什么时候参与 |
+   * |---|---|---|---|
+   * | ① | 实时监控 | 本单在命中台账里有记录 | 始终 |
+   * | ② | 重点工单 | 在办 ∧（类型 ＝ 投诉 ∨ 优先级 ∈ {P0, P1}） | 始终 |
+   * | ③ | 二线报备 | 本单有二线报备记录（在队 / 已结论皆可） | **仅 `forTagging`**，见下 |
    *
    * 🔴 **②是并集不是交集**：投诉单**不判优先级**（左栏这一路定稿为 P0 / P1 / P2 / P3 四个子档，
    * 收窄成 P0 / P1 之后 P2 / P3 那两档必然是空的，而它们眼下明明有 11 条在办投诉单 ——
@@ -1511,21 +1527,59 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
    * ——召回清单只列未打标工单上待核实的命中，命中全部核实为误报的单按本函数的固定次序改归②，
    * 否则打为无风险（`verifyHit`）。补齐条目（`syncAutoEntries`）与改归都传它；
    * 工单页打标（`ensureEntryFor` / `tagBlockReasonOf`）不传，照旧"有命中记录即①"。
+   *
+   * 🔴 **`forTagging` ＝ 第三支「二线报备」的那道门**（2026-09-29 裁决）：
+   * 「风险管控」弹窗统一之后，报备线的评估弹窗也要给风险等级，而定级只有
+   * `recordTagFor` → `ensureEntryFor` 这一条入口。实测有一张报备单（无预警词命中、
+   * 也不是在办投诉单 / P0 / P1）被前两支一并挡住，**给不了等级**。故补第三支：
+   * 本单有二线报备记录（在队或已结论皆可）时返回 `REPORT_SOURCE`。
+   * 优先级排最后：**命中 ＞ 重点工单 ＞ 二线报备**，前两支的判据一格不动。
+   *
+   * 🔴 **这一支只对定级那一刻开放**，故用参数而不是无条件放开，理由有两条、缺一不可：
+   *   ① **恒等式**：「未标记」段只有实时监控 / 重点工单两路
+   *      （`两路之和 ≡ 全部待判`，见 `RiskMonitorView.untaggedUniverse`）。自动补齐
+   *      （`syncAutoEntriesWith`）与命中改归（`verifyHit`）都不传本参数，
+   *      因此**不会**有一条来源「二线报备」、却没有结论的条目落进待判段 ——
+   *      这一支建出来的条目由 `recordTagFor` 紧接着打标，天然带 `tag`、直接落已判段。
+   *   ② **不能在 store 初始化期调它**：本 store 的 setup 末尾会跑一遍 `syncAutoEntriesWith`，
+   *      那时若去 `useRiskReportStore()`，而报备 store 的 setup 又要 `useRiskQueueStore()`，
+   *      两边互等成环。报备 store 只在本支里惰性取，而本支只由用户动作触发，
+   *      彼时两个 store 都已建好。
+   *
+   * 返回类型跟着这道门分岔：不传 `forTagging` 的调用方拿到的仍是 `QueueSource | null`，
+   * 「二线报备」在类型上就到不了它们手里。
    */
-  function autoSourceFor(ticketNo: string, opts: { pendingHitsOnly?: boolean } = {}): QueueSource | null {
+  function autoSourceFor(
+    ticketNo: string,
+    opts: { pendingHitsOnly?: boolean; forTagging: true },
+  ): MonitorSource | null;
+  function autoSourceFor(
+    ticketNo: string,
+    opts?: { pendingHitsOnly?: boolean; forTagging?: false },
+  ): QueueSource | null;
+  function autoSourceFor(
+    ticketNo: string,
+    opts: { pendingHitsOnly?: boolean; forTagging?: boolean } = {},
+  ): MonitorSource | null {
     const hits = tags.hitsOfTicket(ticketNo);
     if (opts.pendingHitsOnly ? hits.some((h) => !tags.isJudged(h)) : hits.length) return '实时监控';
     const t: Ticket | undefined = TICKETS.find((x) => x.no === ticketNo)
       ?? useDerivedTicketStore().find(ticketNo);
     if (!t) return null;
-    if (isTicketClosed(t.nodeStatus as TicketStatus)) return null;
-    // ② 重点工单：投诉单全量收（不看优先级，四个子档 P0~P3 都要收得住），非投诉单看 P0 / P1
-    if (t.type === '投诉' || t.priority === 'P0' || t.priority === 'P1') return '重点工单';
+    if (!isTicketClosed(t.nodeStatus as TicketStatus)) {
+      // ② 重点工单：投诉单全量收（不看优先级，四个子档 P0~P3 都要收得住），非投诉单看 P0 / P1
+      if (t.type === '投诉' || t.priority === 'P0' || t.priority === 'P1') return '重点工单';
+    }
+    // ③ 二线报备（仅定级那一刻）：本单报过就够，不问在队还是已出结论；终态单也收得住 ——
+    //    报备的评估可以晚于结案，而 ② 判在办是为了不往待判段里塞没人处理的活，③ 不进待判段
+    if (opts.forTagging && useRiskReportStore().reports.some((r) => r.ticketNo === ticketNo)) {
+      return REPORT_SOURCE;
+    }
     return null;
   }
 
   /**
-   * 这张单**为什么打不了标**；返回空串 ＝ 打得了（已有条目，或推得出两类来源之一）。
+   * 这张单**为什么打不了标**；返回空串 ＝ 打得了（已有条目，或推得出三类来源之一）。
    *
    * 【为什么单独抽出来、而且是纯函数】工单页要在**点之前**就把话说清楚：
    * 打不了标的单直接不给按钮、原地写明原因，而不是让人填完弹窗才收到一句失败
@@ -1535,10 +1589,13 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
    */
   function tagBlockReasonOf(ticketNo: string): string {
     if (tagTargetOf(ticketNo)) return '';
-    if (autoSourceFor(ticketNo)) return '';
+    // 🔴 与 `ensureEntryFor` 同一口径**必须带 `forTagging`**：两处少一个参数，
+    // 报备单就会在页面上被写成"不能标记"、点下去却又标得成（或反过来），两句话自相矛盾。
+    // 本函数是纯读，不建条目，带这个参数不会多出任何条目。
+    if (autoSourceFor(ticketNo, { forTagging: true })) return '';
     const known = TICKETS.some((t) => t.no === ticketNo) || !!useDerivedTicketStore().find(ticketNo);
     return known
-      ? '本单不在实时监控的两类自动识别范围内（无预警词命中，也不是在办的投诉单或 P0 / P1 单），不能在工单页标记'
+      ? '本单不在实时监控的自动识别范围内（无预警词命中，不是在办的投诉单或 P0 / P1 单，也没有二线报备记录），不能在工单页标记'
       : '工单库里查不到本单，无法判断它属于哪一类监控来源';
   }
 
@@ -1550,7 +1607,8 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
    * 打标按钮点下去只会弹一句"本单没有实时监控条目"，那条口径（投诉单由客诉专员在
    * 工单处理页自行打标，§3.1）在这批单上等于没做。补一条之后这条路才是通的。
    *
-   * 🔴 **不凭空造不该进监控的条目**：来源由 `autoSourceFor` 按那两条判据推，
+   * 🔴 **不凭空造不该进监控的条目**：来源由 `autoSourceFor` 按那三条判据推（本函数是**唯一**
+   * 带 `forTagging` 去建条目的地方，第三支「二线报备」只从这里进），
    * 推不出来就**如实失败并说清为什么**（"不在两类范围内"与"这单查不到"是两件事，
    * 提示不能混成一句）。放宽这道判据的代价是实时监控里会长出一批本不该在的条目，
    * 而那个视图的条数正是「规则捞了多少」这个指标本身。
@@ -1561,7 +1619,9 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
     const exist = tagTargetOf(ticketNo);
     if (exist) return { ok: true, entry: exist };
 
-    const source = autoSourceFor(ticketNo);
+    // 🔴 **`forTagging` 只在这里和 `tagBlockReasonOf` 里给**：第三支「二线报备」由此进，
+    // 自动补齐那条路径（`syncAutoEntriesWith`）拿不到它，待判段因此不会长出报备来源的行。
+    const source = autoSourceFor(ticketNo, { forTagging: true });
     if (!source) return { ok: false, reason: tagBlockReasonOf(ticketNo) };
 
     const seq = entries.value.length + 1;
