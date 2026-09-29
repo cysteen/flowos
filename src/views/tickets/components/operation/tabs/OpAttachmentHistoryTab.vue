@@ -27,7 +27,7 @@ function fileIcon(name: string): string {
 /** 手工上传＝坐席自己传；其余三项均由短信回流，按通道分色 */
 function sourceClass(s: AttachmentSource): string {
   if (s === '工单短信') return 'is-sms';
-  if (s === '容联云在线' || s === '容联云热线') return 'is-ronglian';
+  if (s === '在线短信' || s === '热线短信') return 'is-ronglian';
   return 'is-manual';
 }
 

@@ -92,6 +92,8 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
         { id: 'n2', kind: 'assign', title: '派工提醒', receiver: '王坐席(处理人)', when: '2026-06-17 09:05:30', channel: '站内信 + i讯飞', status: '已读', content: '您有一条新工单待处理,请于2小时内响应。工单号:IFLYZX-20260617-00001' },
         { id: 'n3', kind: 'group', title: '班组通知', receiver: '咨询支持组', when: '2026-06-17 09:05:00', channel: '站内信 + i讯飞', status: '已读', content: '组内有一条待认领工单,请尽快认领处理。工单号:IFLYZX-20260617-00001' },
         { id: 'n4', kind: 'supplement', title: '补充通知', receiver: '王坐席(处理人)', when: '2026-06-17 10:30:00', channel: '站内信 + i讯飞', status: '未读', content: '客户补充了新信息,请及时查阅。工单号:IFLYZX-20260617-00001' },
+        { id: 'n5', kind: 'attachment', title: '客户上传附件通知', receiver: '王坐席(处理人)', when: '2026-06-17 11:12:37', channel: 'i讯飞', status: '未读', content: '您好，工单（IFLYZX-20260617-00001）的客户 李大海 于 2026-06-17 11:12:37 通过工单短信上传了 1 个附件：购机发票.jpg，请尽快查看处理。' },
+        { id: 'n6', kind: 'attachment', title: '客户上传附件通知', receiver: '王坐席(处理人)', when: '2026-06-17 11:40:21', channel: 'i讯飞', status: '未读', content: '您好，工单（IFLYZX-20260617-00001）的客户 李大海 于 2026-06-17 11:40:21 通过热线短信上传了 1 个附件：通话录音补充说明.m4a，请尽快查看处理。' },
       ],
       surveyRecords: [
         { id: 'v1', title: '满意度调研', sentAt: '2026-06-17 10:00:25', evaluated: true, linkLabel: '查看问卷', conclusion: '是否解决: 已解决 | 是否满意: 满意' },

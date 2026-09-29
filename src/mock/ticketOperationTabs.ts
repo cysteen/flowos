@@ -305,22 +305,22 @@ export const OPERATION_TAB_DATA: OperationTabData = {
     {
       id: 'n0b',
       kind: 'attachment',
-      title: '客户上传附件',
+      title: '客户上传附件通知',
       receiver: '陈伟(处理人)',
       when: '2026-06-18 15:40:21',
       channel: 'i讯飞',
       status: '已读',
-      content: '客户 张小凡 上传附件 1 个：通话录音补充说明.m4a（来源:容联云热线），请及时处理。工单号:IFLYZX-20260618-00003',
+      content: '您好，工单（IFLYZX-20260618-00003）的客户 张小凡 于 2026-06-18 15:40:21 通过热线短信上传了 1 个附件：通话录音补充说明.m4a，请尽快查看处理。',
     },
     {
       id: 'n0a',
       kind: 'attachment',
-      title: '客户上传附件',
+      title: '客户上传附件通知',
       receiver: '陈伟(处理人)',
       when: '2026-06-18 14:12:37',
       channel: 'i讯飞',
       status: '已读',
-      content: '客户 张小凡 上传附件 1 个：购机发票.jpg（来源:工单短信），请及时处理。工单号:IFLYZX-20260618-00003',
+      content: '您好，工单（IFLYZX-20260618-00003）的客户 张小凡 于 2026-06-18 14:12:37 通过工单短信上传了 1 个附件：购机发票.jpg，请尽快查看处理。',
     },
     {
       id: 'n1',
@@ -532,7 +532,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       size: '18.6 MB',
       uploadedAt: '2026-06-18 09:50:03',
       uploadedBy: '张小凡(客户)',
-      source: '容联云在线',
+      source: '在线短信',
     },
     {
       id: 'a5',
@@ -540,7 +540,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       size: '320 KB',
       uploadedAt: '2026-06-18 09:50:08',
       uploadedBy: '张小凡(客户)',
-      source: '容联云在线',
+      source: '在线短信',
     },
     {
       id: 'a6',
@@ -564,7 +564,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       size: '860 KB',
       uploadedAt: '2026-06-18 15:40:21',
       uploadedBy: '张小凡(客户)',
-      source: '容联云热线',
+      source: '热线短信',
     },
   ],
   customerHistory: {

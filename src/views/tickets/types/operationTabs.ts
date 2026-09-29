@@ -196,7 +196,7 @@ export interface SurveyRecord {
 }
 
 /** 附件进入本单的通道。容联云两项由在线/热线会话经附件上传短信回流（会话ID→工单ID 多对一） */
-export type AttachmentSource = '手工上传' | '工单短信' | '容联云在线' | '容联云热线';
+export type AttachmentSource = '手工上传' | '工单短信' | '在线短信' | '热线短信';
 
 export interface AttachmentHistoryRecord {
   id: string;
