@@ -349,7 +349,8 @@ function openEscalatedTicket(no: string) {
  * **2026-09-29 裁决之后「风险标记」块只剩打标那一路**，自上而下是：
  *   ① **打标结论**（只读）：等级 · 标记人（角色）· 标记时间一行；标记备注另起一行；
  *      命中核实结论照旧只读回显；尚无结论时出缺省文案。
- *   ② **标记记录**：默认折叠，折叠态「标记记录 N 次」+ 最新一条，展开出全部。
+ *   ② **标记记录**：默认折叠，折叠态「标记记录 N 次」+ 最新一条，展开出全部；
+ *      每条 ＝ 等级 · 标记人 · 时刻 · 当次标记备注（没填的不占位）。
  *
  * **无下半、无按钮**：删掉的是原来的③细分隔线与④处理人自述三字段（见上方那段），
  * 以及原来摆在②那一行右端的「标记 / 重新标记」按钮与它的弹窗（见下方那段）。
@@ -381,9 +382,16 @@ watch(() => props.ticketNo, () => { tagRecordsOpen.value = false; });
  * 折叠态摆的那一条。`tagHistory` 是**时间正序**（顺序口径不动），故"最新"在**末位**。
  */
 const latestTagRecord = computed(() => tagHistory.value[tagHistory.value.length - 1] ?? null);
-/** 一条标记记录的行文：等级 · 标记人 · 时刻。折叠态与展开态共用这一份 */
+/**
+ * 一条标记记录的行文：**等级 · 标记人 · 时刻 · 本次备注**。折叠态与展开态共用这一份。
+ *
+ * 🔴 **备注必须带上**（2026-09-29 裁决）：「修正原因」那一格取消之后，改判那几条的
+ * "为什么改"就写在**当次的标记备注**里 —— 记录列表只报等级与人，那条爬坡还是读不出因果。
+ * 备注是可选的（首次标记不强制），**没填的不占位**，不补「—」。
+ */
 function tagRecordText(h: RiskTagEntry) {
-  return `${h.level ? riskLevelText(h.level) : '无风险'} · ${h.by} · ${formatAt(h.at)}`;
+  const head = `${h.level ? riskLevelText(h.level) : '无风险'} · ${h.by} · ${formatAt(h.at)}`;
+  return h.note ? `${head} · ${h.note}` : head;
 }
 
 /**
@@ -799,7 +807,8 @@ const collabSectionBadge = computed(() =>
 
           <!--
             标记记录。改判独立成条、不覆盖首次那条：两条并排才读得出"从中危改成高危"这条爬坡。
-            **默认折叠**：折叠态「标记记录 N 次」+ 最新一条，展开出全部（顺序仍是时间正序）。
+            **默认折叠**：折叠态「标记记录 N 次」+ 最新一条，展开出全部（顺序仍是时间正序，一条一行）。
+            每条带**当次的标记备注**——改判的"为什么改"就在那里（「修正原因」已并入备注）。
             这一行**不再有按钮** —— 标记改由页头「风险管控」承担（见 script 内那段）。
           -->
           <div v-if="tagHistory.length > 1" class="rt-history">
@@ -1329,20 +1338,32 @@ const collabSectionBadge = computed(() =>
   white-space: nowrap;
   min-width: 0;
 }
+/*
+ * 展开态**一条一行**：每条带上了当次备注之后行长参差，横排会拼成一堵读不动的墙。
+ * 竖排还顺带把"第几次"的先后立了起来（时间正序，自上而下就是这条爬坡）。
+ */
 .rt-history-list {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
   padding-left: 16px;
 }
 .rt-history-head { font-size: 11px; font-weight: 600; color: #6b7280; white-space: nowrap; }
+/*
+ * 带上备注之后它装的是一句话而不是一个标，故圆角收成 6px、允许换行 ——
+ * 一枚被撑到两行的胶囊比方角的框更难读。
+ */
 .rt-history-item {
-  padding: 1px 8px;
+  max-width: 100%;
+  padding: 2px 8px;
   font-size: 11px;
+  line-height: 1.6;
   color: #475569;
   background: #f1f5f9;
   border: 1px solid #e2e8f0;
-  border-radius: 999px;
+  border-radius: 6px;
+  word-break: break-word;
 }
 .rt-empty {
   display: flex;
