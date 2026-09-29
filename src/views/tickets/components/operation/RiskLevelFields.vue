@@ -33,8 +33,13 @@ import { RISK_LEVEL_STYLE, riskLevelText } from '@/config/risk';
 const props = defineProps<{ ctl: RiskLevelFieldsView }>();
 
 /**
- * 渲染哪几档。**默认全部四档**；宿主给了 `levels` 才按它来
- * （目前只有命中核实形态给：「成立」支三档、「误报」支只出「无风险」一档，2026-09-29 追加裁决）。
+ * 渲染哪几档。**默认全部四档**；宿主给了 `levels` 才按它来。
+ *
+ * 🔴 **目前零调用方、有意保留**：它是给"误报时只出无风险一档"那一版规格开的口子，
+ * 而那一版已被推翻（现行口径是**误报时整段不出**，由宿主自己的 `visible` 承担）。
+ * 命中核实形态**也没有接进本组件**（它只有三档、备注是另一格「处置备注」、
+ * 没有"无风险置灰"这回事，接进来要开三个开关，就不再是"一份共享件、一种呈现"）。
+ * 留着这个口子是为了下一处真需要收窄档位的宿主，不要据此以为命中核实已经共用本件。
  */
 const levels = computed<readonly RiskTagResult[]>(() => props.ctl.levels?.value ?? RISK_TAG_RESULTS);
 
