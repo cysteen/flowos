@@ -474,9 +474,9 @@ function onOk() {
         -->
         <RiskLevelFields :ctl="assessLevel" />
 
-        <!-- ③ 评估结论段（升级 / 不升级） -->
+        <!-- ③ 风险处理措施段（升级 / 不升级）。段名六处同名（2026-09-29 追加裁决） -->
         <section class="ticket-assess-block">
-          <h4 class="ticket-assess-title">评估结论</h4>
+          <h4 class="ticket-assess-title">风险处理措施</h4>
           <div class="op-field ticket-assess-dec-field">
             <div class="op-field-h ticket-assess-dec-row">
               <div class="op-label req">评估决策</div>

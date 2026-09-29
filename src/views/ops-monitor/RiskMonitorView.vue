@@ -7067,17 +7067,18 @@ function toggleWordEnabled(w: RiskWord) {
         <RiskLevelFields :ctl="entryTagLevelView" />
 
         <!--
-          🔴 **下半按原单类型分岔**（2026-09-29 裁决）：非投诉单走「评估结论」段、
-          投诉单走「协同处理」段。两支互斥、都可留空；门控见 `tagLowerHalfOpenFor`
-          与它派生的 `showTagAssessFor` / `showTagCollabFor`。
+          🔴 **「风险处理措施」段按原单类型分岔**（2026-09-29 裁决；段名统一见追加裁决②）：
+          非投诉单走判是否升级那一支、投诉单走给处理意见那一支。两支互斥、都可留空；
+          门控见 `tagLowerHalfOpenFor` 与它派生的 `showTagAssessFor` / `showTagCollabFor`。
 
-          ① 非投诉单：「评估结论」段（判出高 / 中 / 低之后接出）。🔴 **可留空**：
+          ① 非投诉单这一支（判出高 / 中 / 低之后接出）。🔴 **可留空**：
           不选评估决策就照旧只打标、条目进池等领取；给了结论则条目照常进池但
           **直接落「已结论」**，结论人＝标记人。字段、校验、派生与红字文案与本页评估弹窗
           **同一套**（同一份 `escalateFields` 实例 + 共享组件 `EscalateComplaintFields`）。
         -->
         <section v-if="showEntryTagAssess" class="assess-block assess-block-form">
-          <h4 class="assess-block-title">评估结论</h4>
+          <!-- 段名恒为「风险处理措施」（六处同名，2026-09-29 追加裁决）；内容随原单类型分岔 -->
+          <h4 class="assess-block-title">风险处理措施</h4>
 
           <div class="op-field assess-dec-field">
             <!-- 决策**不带必填星**：留空是合法的一种（＝不评估），与评估弹窗那一处的口径差别只在这里 -->
@@ -7294,14 +7295,15 @@ function toggleWordEnabled(w: RiskWord) {
         </div>
 
         <!--
-          「评估结论」段（判成立之后接出）。🔴 **可留空**：不选评估决策就照旧只核实打标、
+          「风险处理措施」段（判成立之后接出）。🔴 **可留空**：不选评估决策就照旧只核实打标、
           条目进池等领取；给了结论则条目照常进池但**直接落「已结论」**，结论人＝标记人。
           字段、校验、派生与红字文案与本页评估弹窗**同一套**（同一份 `escalateFields` 实例 +
           共享组件 `EscalateComplaintFields`），"不出段"的门见 `showTagAssess`
           （四道共用门 + 本次核实真的会让条目进池那一道）。
         -->
         <section v-if="showTagAssess" class="assess-block assess-block-form">
-          <h4 class="assess-block-title">评估结论</h4>
+          <!-- 段名恒为「风险处理措施」（六处同名，2026-09-29 追加裁决）；内容随原单类型分岔 -->
+          <h4 class="assess-block-title">风险处理措施</h4>
 
           <div class="op-field assess-dec-field">
             <!-- 决策**不带必填星**：留空是合法的一种（＝不评估），与评估弹窗那一处的口径差别只在这里 -->
@@ -7390,9 +7392,9 @@ function toggleWordEnabled(w: RiskWord) {
         -->
         <RiskLevelFields :ctl="assessLevel" />
 
-        <!-- ③ 评估表单：二选一决策 + 必填说明 -->
+        <!-- ③ 风险处理措施：二选一决策 + 必填说明。段名六处同名（2026-09-29 追加裁决） -->
         <section class="assess-block assess-block-form">
-          <h4 class="assess-block-title">评估结论</h4>
+          <h4 class="assess-block-title">风险处理措施</h4>
 
           <!--
             决策**二选一**：升级 / 不升级。「升级」只指**转投诉单**（走 830 第一跳派生），

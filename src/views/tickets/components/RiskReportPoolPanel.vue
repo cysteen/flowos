@@ -720,39 +720,48 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
         -->
         <RiskLevelFields :ctl="assessLevel" />
 
-        <!-- ③ 评估表单：二选一决策 + 必填说明 -->
-        <div class="af-field">
-          <span class="af-label req">评估决策</span>
-          <a-radio-group v-model:value="assessDecision" class="af-decisions">
-            <a-radio v-for="d in ASSESS_DECISIONS" :key="d" :value="d">{{ d }}</a-radio>
-          </a-radio-group>
-        </div>
-        <p v-if="missAssessDecision" class="af-err">请先选择一个评估决策</p>
-        <!-- 选「升级」后的派生说明行：文案取 escalateHintOf，三处评估弹窗同一句 -->
-        <p v-else-if="assessDecision === '升级'" class="af-hint">{{ escalateHint }}</p>
-
         <!--
-          结论正文那一格。选「升级」（且会派生新投诉单）时它并进下面那一段、改由段内的
-          「升级说明」渲染，故本格只在**段不出**时出；两处渲染的是同一个格子
-          （assessAdvice 代理 escalateFields.fields.advice）。
+          ③ 风险处理措施：二选一决策 + 必填说明。
+          🔴 **段头与外框是 2026-09-29 追加裁决补的**：六处「风险管控」弹窗的第三段一律
+          「外框 + h4 风险处理措施」，本处原先是一排没有段头也没有外框的散字段。
+          段名恒定、内容随原单类型分岔（非投诉单判是否升级，投诉单给处理意见）。
         -->
-        <template v-if="!showEscalateFields">
-          <div class="af-field af-field-block">
-            <span class="af-label req">{{ assessAdviceLabel }}</span>
-            <a-textarea
-              v-model:value="assessAdvice"
-              :rows="3"
-              :placeholder="assessAdvicePlaceholder"
-            />
+        <section class="rrp-measure">
+          <h4 class="rrp-measure-title">风险处理措施</h4>
+
+          <div class="af-field">
+            <span class="af-label req">评估决策</span>
+            <a-radio-group v-model:value="assessDecision" class="af-decisions">
+              <a-radio v-for="d in ASSESS_DECISIONS" :key="d" :value="d">{{ d }}</a-radio>
+            </a-radio-group>
           </div>
-          <p v-if="missAssessAdvice" class="af-err">请填写{{ assessAdviceLabel }}</p>
-        </template>
+          <p v-if="missAssessDecision" class="af-err">请先选择一个评估决策</p>
+          <!-- 选「升级」后的派生说明行：文案取 escalateHintOf，三处评估弹窗同一句 -->
+          <p v-else-if="assessDecision === '升级'" class="af-hint">{{ escalateHint }}</p>
 
-        <!--
-          ④ 投诉工单专属字段：选「升级」（且会派生新投诉单）时才出。
-          投诉一类 / 二类 / 升级说明三项、均必填；三处评估弹窗共用 EscalateComplaintFields。
-        -->
-        <EscalateComplaintFields v-if="showEscalateFields" :ctl="escalateFields" />
+          <!--
+            结论正文那一格。选「升级」（且会派生新投诉单）时它并进下面那一段、改由段内的
+            「升级说明」渲染，故本格只在**段不出**时出；两处渲染的是同一个格子
+            （assessAdvice 代理 escalateFields.fields.advice）。
+          -->
+          <template v-if="!showEscalateFields">
+            <div class="af-field af-field-block">
+              <span class="af-label req">{{ assessAdviceLabel }}</span>
+              <a-textarea
+                v-model:value="assessAdvice"
+                :rows="3"
+                :placeholder="assessAdvicePlaceholder"
+              />
+            </div>
+            <p v-if="missAssessAdvice" class="af-err">请填写{{ assessAdviceLabel }}</p>
+          </template>
+
+          <!--
+            投诉工单专属字段：选「升级」（且会派生新投诉单）时才出。
+            投诉一类 / 二类 / 升级说明三项、均必填；三处评估弹窗共用 EscalateComplaintFields。
+          -->
+          <EscalateComplaintFields v-if="showEscalateFields" :ctl="escalateFields" />
+        </section>
       </div>
     </OpActionModal>
 
@@ -1230,6 +1239,22 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
   line-height: 1.4;
 }
 .assess-file-btn:hover { color: #1d4ed8; text-decoration: underline; }
+/* 第三段「风险处理措施」的外框与段头：与另外五处「风险管控」弹窗的③段同款（2026-09-29 追加裁决） */
+.rrp-measure {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+}
+.rrp-measure-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #111827;
+}
 .af-field {
   display: flex;
   align-items: center;
