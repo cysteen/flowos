@@ -8,8 +8,9 @@ import { RISK_ADVICE_ITEMS, type RiskAdviceItem } from '@/stores/riskCollab';
 import { isRiskTicketEnded } from '@/composables/useRiskReportAssess';
 
 /**
- * **协同处理**要填的那一段：评估意见（必填）· 建议事项（多选）·「其他」的具体建议
- * （勾了「其他」时条件必填）。字段、校验、落库与提示文案只此一份。
+ * **协同处理**要填的那一段：处理意见（**不必填**）· 建议事项（多选）·「其他」的具体建议
+ * （勾了「其他」时条件必填）。整段全空才拦（`submitTo` 第 ② 道），单个字段一律不强制。
+ * 字段、校验、落库与提示文案只此一份。
  *
  * 🔴 **两处共用**：工单处理页页头「风险管控」弹窗的投诉支
  * （`operation/OpRiskControlModal.vue`）与风险工单池的协同处理弹窗

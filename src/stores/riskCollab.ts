@@ -37,7 +37,7 @@ export type RiskAdviceItem = (typeof RISK_ADVICE_ITEMS)[number];
 export interface RiskCollabRecord {
   id: string;
   ticketNo: string;
-  /** 评估意见（必填多行） */
+  /** 处理意见（多行，不必填） */
   opinion: string;
   advices: RiskAdviceItem[];
   /** 勾了「其他」时的具体建议（条件必填） */
