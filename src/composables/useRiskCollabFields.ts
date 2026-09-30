@@ -31,9 +31,13 @@ export interface RiskCollabFieldsState {
   otherAdvice: string;
 }
 
-/** 字段下方的红字提示；空串＝这一项没错 */
+/**
+ * 字段下方的红字提示；空串＝这一项没错。
+ *
+ * 🔴 **只剩「其他」那一格**（2026-09-30 拍板「风险处理措施非必填」）：
+ * 处理意见已不必填，故它那一格再也不会出红字。
+ */
 export interface RiskCollabFieldErrors {
-  opinion: string;
   otherAdvice: string;
 }
 
@@ -42,7 +46,7 @@ function emptyFields(): RiskCollabFieldsState {
 }
 
 function emptyErrors(): RiskCollabFieldErrors {
-  return { opinion: '', otherAdvice: '' };
+  return { otherAdvice: '' };
 }
 
 function nowStamp(): string {
@@ -92,14 +96,27 @@ export function useRiskCollabFields() {
 
   // 补上值即收起该项的红字，不必再点一次提交才知道自己填对了
   watch(fields, () => {
-    if (fields.opinion.trim()) errors.opinion = '';
     if (fields.otherAdvice.trim()) errors.otherAdvice = '';
   });
 
-  /** 必填校验：评估意见必填，勾了「其他」时具体建议条件必填 */
+  /**
+   * 这一段动过没有。**全空 ＝ 不处置**，是合法的一种（宿主据此决定这一次要不要走这一段）。
+   * 与 `OpRiskControlModal.collabFilled` 同一口径，抽到这里来两处不再各判一遍。
+   */
+  const filled = computed(
+    () => !!fields.opinion.trim() || fields.advices.length > 0 || !!fields.otherAdvice.trim(),
+  );
+
+  /**
+   * 校验。
+   *
+   * 🔴 **处理意见已不必填**（2026-09-30 拍板「风险处理措施非必填」）：整段是可选的，
+   * 只勾几条建议事项、不写正文也是一种合法的处置。**单个字段一律不强制**，
+   * 只剩「其他」那一项的**条件必填** —— 那不是"这一段必须填"，
+   * 而是"你既然勾了「其他」，就得说清其他是什么"，勾选本身就是自己选进来的。
+   */
   function validate(): boolean {
     clearErrors();
-    if (!fields.opinion.trim()) errors.opinion = '请填写评估意见';
     if (needsOther.value && !fields.otherAdvice.trim()) errors.otherAdvice = '请填写「其他」的具体建议';
     return !Object.values(errors).some(Boolean);
   }
@@ -110,13 +127,25 @@ export function useRiskCollabFields() {
   /**
    * 提交一次协同处理。返回 true ＝ 已落库（宿主可以关弹窗）。
    *
-   * 三道拦截与两处入口同一套：① 原单已进终态（判据 `isRiskTicketEnded`，与三处评估弹窗同源）；
-   * ② 必填校验；③ 条目此刻还在不在风险工单池里 —— 弹窗开着期间条目可能被改判无风险撤出池。
+   * 四道拦截与各处入口同一套：① 原单已进终态（判据 `isRiskTicketEnded`，与三处评估弹窗同源）；
+   * ② **整段全空**；③ 校验（只剩「其他」那一项条件必填）；
+   * ④ 条目此刻还在不在风险工单池里 —— 弹窗开着期间条目可能被改判无风险撤出池。
    * 「首次协同转已结论」由 `riskPool.coordinate` 判，本函数不复述那条判据。
+   *
+   * 🔴 **第 ② 道是 2026-09-30「风险处理措施非必填」那次拍板的连带**：单个字段都不强制之后，
+   * 这一段就可能被整段空着提交 —— 落进去是一条什么都没说的处置记录，
+   * 而首次提交还会把池内条目转「已结论」，等于把一条单从队列里空手摘走。
+   * 门放在这里而不是某个字段上：它约束的是"这一次有没有给出东西"，不是"哪一格必须填"。
+   * 页头那一路本来就先判 `collabFilled` 再调本函数，不会走到这一句；
+   * 风险工单池那个专用弹窗直接调本函数，靠的就是这一道。
    */
   function submitTo(ticketNo: string): boolean {
     if (isRiskTicketEnded(ticketNo)) {
       message.warning('本单已结束，无法协同处理');
+      return false;
+    }
+    if (!filled.value) {
+      message.warning('请填写处理意见或勾选建议事项');
       return false;
     }
     if (!validate()) return false;
@@ -164,6 +193,7 @@ export function useRiskCollabFields() {
     errors,
     adviceOptions,
     needsOther,
+    filled,
     pickedAdvices,
     reset,
     clearErrors,

@@ -2,8 +2,8 @@
 import type { RiskCollabFieldsCtl } from '@/composables/useRiskCollabFields';
 
 /**
- * **协同处理**那一段字段：评估意见（必填）· 建议事项（多选）·「其他」的具体建议
- * （勾了「其他」时条件必填）。
+ * **风险处理措施**那一段字段（投诉支）：处理意见（**不必填**）· 建议事项（多选）·
+ *「其他」的具体建议（勾了「其他」时条件必填）。
  *
  * 🔴 **两处共用这一个组件**：工单处理页页头「风险管控」弹窗的投诉支
  * （`OpRiskControlModal.vue`）与风险工单池的协同处理弹窗（`OpRiskCollabModal.vue`）。
@@ -24,15 +24,18 @@ defineProps<{ ctl: RiskCollabFieldsCtl }>();
   <section class="rcf" aria-label="风险处理措施">
     <h4 class="rcf-title">风险处理措施</h4>
 
+    <!--
+      处理意见**不必填**（2026-09-30 拍板「风险处理措施非必填」）：这一段整体是可选的 ——
+      只勾几条建议事项、不写正文也是一种合法的处置。**整段全空**才没有意义，
+      那一道由共享件 `submitTo` 统一拦（见 `useRiskCollabFields`），不落在单个字段上。
+    -->
     <div class="rcf-field">
-      <label class="rcf-label"><span class="rcf-req">*</span>评估意见</label>
+      <label class="rcf-label">处理意见</label>
       <a-textarea
         v-model:value="ctl.fields.opinion"
         :rows="4"
-        :status="ctl.errors.opinion ? 'error' : undefined"
         placeholder="写清这张单当前的风险判断，以及要处理人怎么调整处理方式…"
       />
-      <p v-if="ctl.errors.opinion" class="rcf-err">{{ ctl.errors.opinion }}</p>
     </div>
 
     <!-- 建议事项：标签与多选项同一行（标签左、复选组右），窄屏放不下才换行 -->

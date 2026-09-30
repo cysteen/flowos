@@ -322,13 +322,14 @@ const showCollab = computed(
 );
 
 /**
- * 下半动过没有。**全空 ＝ 不协同**（与风险监控页那套同形）：只想改个等级的人
- * 不该被「评估意见」的必填拦在这儿。
+ * ③ 段动过没有。**全空 ＝ 不处置**（与风险监控页那套同形）：只想改个等级的人
+ * 不该被这一段拦在这儿。
+ *
+ * 判据取共享件那一份（`collab.filled`），本组件不再自己数一遍三个字段 ——
+ * 2026-09-30「风险处理措施非必填」之后，"这一次有没有给出东西"成了这一段唯一的门，
+ * 两处各判一遍迟早分叉。
  */
-const collabFilled = computed(() => {
-  const f = collab.fields;
-  return !!f.opinion.trim() || f.advices.length > 0 || !!f.otherAdvice.trim();
-});
+const collabFilled = computed(() => collab.filled.value);
 
 /**
  * 投诉支提交。上半（标记 / 改判）与下半（协同处理）**各自可留空**，
