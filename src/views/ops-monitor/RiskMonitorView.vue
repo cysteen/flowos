@@ -33,7 +33,7 @@ import { makeRiskLevelFieldsView, useRiskLevelFields } from '@/composables/useRi
 // **共用同一个组件**，字段、级联与校验全在 `useEscalateComplaintFields`，本页不另写一份
 import EscalateComplaintFields from '@/views/tickets/components/operation/EscalateComplaintFields.vue';
 import { useEscalateComplaintFields } from '@/composables/useEscalateComplaintFields';
-// 「风险管控」弹窗下半**投诉支**那三项（评估意见 / 建议事项 /「其他」的具体建议）：
+// 「风险管控」弹窗下半**投诉支**那三项（处理意见 / 建议事项 /「其他」的具体建议）：
 // 与工单页页头「风险管控」弹窗、风险工单池的协同处理弹窗**共用同一份**，字段、校验与
 // 落库（`submitTo`）全在 `useRiskCollabFields` 里，本页不另写一套
 import RiskCollabFields from '@/views/tickets/components/operation/RiskCollabFields.vue';
@@ -601,7 +601,7 @@ function todayPrefix() {
  * 一条已处理条目的**结论时刻 / 结论人**。
  *
  * 🔴 **三种收口方式各写各的字段**：走评估的落 `assessment`（升级 / 不升级）、
- * 走协同处理的落 `coordination`（投诉单那一路，评估意见 + 建议事项）、
+ * 走协同处理的落 `coordination`（投诉单那一路，处理意见 + 建议事项）、
  * 走核实打标的落 `verify`。只读 `assessment` 的话，**协同过的条目会整条从"仅今日"里被筛掉**，
  * 关掉开关才出现、且评估人与时刻两格显示「—」——那正是这张表最该说清的两件事。
  */
@@ -1217,7 +1217,7 @@ function confirmRelease() {
 
 /**
  * 🔴 **池行按原单类型分工作面**：非投诉单 → 风险评估（升级 / 不升级）；
- * 投诉单 → **协同处理**（评估意见 + 建议事项）。
+ * 投诉单 → **协同处理**（处理意见 + 建议事项）。
  *
  * 【为什么必须分】"升不升级成投诉单"对一张已经是投诉单的单**是个不成立的问题**——
  * PRD 在四处重复写死了这条（§2 摘要表 / §5.2 两处「投诉单不做风险评估」/ §9 池内分工作面），
@@ -3813,7 +3813,8 @@ const showEntryTagCollab = computed(() => showTagCollabFor(
 ));
 /**
  * 段内动过没有。**全空 ＝ 不协同**，提交就是原来的那一下打标（与评估支"决策留空＝不评估"同形）；
- * 动过任意一项才进校验 —— 否则「评估意见」的必填会把只想打个标的人拦在这儿。
+ * 动过任意一项才进这一段的校验与落库 —— 否则共享件那道「整段全空不予提交」的拦截
+ * 会把只想打个标的人挡在这儿。
  */
 const entryTagCollabFilled = computed(() => {
   const f = entryTagCollab.fields;
@@ -3933,8 +3934,8 @@ function saveEntryTag() {
   }
   /*
    * 投诉支同理**整个跑在任何写入之前**：终态判据取共享的 `isRiskTicketEnded`（`submitTo`
-   * 里那一道与这里是同一个函数），必填校验取共享件的 `validate()`。
-   * 🔴 拦下时打标那一下也不该发生 —— 人只是漏填了评估意见，不该换来一条已经进了池、
+   * 里那一道与这里是同一个函数），「其他」那一项的条件必填校验取共享件的 `validate()`。
+   * 🔴 拦下时打标那一下也不该发生 —— 人只是漏填了「其他」的具体建议，不该换来一条已经进了池、
    * 却没有协同意见的条目。
    */
   if (collab) {
@@ -6181,7 +6182,7 @@ function toggleWordEnabled(w: RiskWord) {
               <td><span class="src-tag" :class="{ kw: isKeywordRow(r) }">{{ r.source }}</span></td>
               <!--
                 🔴 **两种收口方式共用这三格**：非投诉单走评估（`assessment`，升级 / 不升级）、
-                投诉单走协同处理（`coordination`，评估意见 + 建议事项）。
+                投诉单走协同处理（`coordination`，处理意见 + 建议事项）。
                 只读 `assessment` 的话，协同过的条目这三格全是「—」——而"谁在什么时候收的口"
                 恰恰是这张表存在的理由。
               -->
@@ -7100,7 +7101,7 @@ function toggleWordEnabled(w: RiskWord) {
         </section>
 
         <!--
-          ② 投诉单：「协同处理」段（评估意见 / 建议事项 /「其他」的具体建议）。
+          ② 投诉单：「协同处理」段（处理意见 / 建议事项 /「其他」的具体建议）。
           **整段是共享件**，与工单页页头「风险管控」弹窗的投诉支、风险工单池的协同处理弹窗
           用的是同一个组件与同一个 composable —— 字段、占位文案、红字与落库只此一份。
           🔴 **可留空**：一项都没动就只打标、条目进池等领取；动过任意一项即走
