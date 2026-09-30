@@ -195,8 +195,8 @@ export interface SurveyRecord {
   conclusion?: string;
 }
 
-/** 附件进入本单的通道。容联云两项由在线/热线会话经附件上传短信回流（会话ID→工单ID 多对一） */
-export type AttachmentSource = '手工上传' | '工单短信' | '在线短信' | '热线短信';
+/** 附件进入本单的通道（均属坐席侧产生）。客户经短链接上传的附件不入平铺表，走「客户上传」子页签 */
+export type AttachmentSource = '手工上传' | '工单短信';
 
 export interface AttachmentHistoryRecord {
   id: string;
@@ -205,6 +205,46 @@ export interface AttachmentHistoryRecord {
   uploadedAt: string;
   uploadedBy: string;
   source: AttachmentSource;
+}
+
+/**
+ * 上传链接的发出渠道（这条短链接是从哪个渠道发给客户的）。
+ * 与 `AttachmentSource` 是两个正交维度：`AttachmentSource` 描述文件怎么进到本单，
+ * 本类型描述链接从哪个渠道发出；「工单短信」仅字面相同，含义不同，两者不可混用或互相扩展。
+ */
+export type AttachmentLinkSource = '工单短信' | '热线短信' | '在线短信';
+
+/** 短链接下客户上传的单个文件 */
+export interface AttachmentLinkFile {
+  id: string;
+  name: string;
+  /** 文件备注 */
+  note: string;
+  uploadedAt: string;
+}
+
+/** 下发给客户的附件上传短链接（一条链接对应一次下发，客户可在有效期内上传多个文件） */
+export interface AttachmentLinkRecord {
+  id: string;
+  /** 完整短链接 URL */
+  url: string;
+  /** 接收号码 */
+  phone: string;
+  /** 发送人姓名 */
+  senderName: string;
+  /** 发送人域账号 */
+  senderAccount: string;
+  sentAt: string;
+  /** 该链接的发出渠道 */
+  source: AttachmentLinkSource;
+  /** 失效状态 */
+  expired: boolean;
+  /** 上传状态 */
+  uploaded: boolean;
+  /** 更新时间；未上传时为空 */
+  updatedAt: string;
+  /** 该链接下客户上传的文件 */
+  files: AttachmentLinkFile[];
 }
 
 export type CustomerHistoryFilter = 'all' | 'unclaimed' | 'unresponded' | 'processing' | 'closed' | 'complaint';
@@ -247,5 +287,6 @@ export interface OperationTabData {
   notifyRecords: NotifyRecord[];
   surveyRecords: SurveyRecord[];
   attachmentHistory: AttachmentHistoryRecord[];
+  attachmentLinks: AttachmentLinkRecord[];
   customerHistory: CustomerHistoryData;
 }

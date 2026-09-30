@@ -306,6 +306,7 @@ defineExpose({ switchTab });
       <OpAttachmentHistoryTab
         v-else-if="activeTab === 'attachments'"
         :records="tabData.attachmentHistory"
+        :links="tabData.attachmentLinks"
         :readonly="activeTabReadonly"
       />
 
