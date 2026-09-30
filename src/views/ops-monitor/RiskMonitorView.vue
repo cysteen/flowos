@@ -5012,7 +5012,7 @@ function toggleWordEnabled(w: RiskWord) {
           <h2
             class="pane-title"
             title="工单系统里需要风险侧盯的存量 · 分母是在办工单，与左栏监控条目、右栏池行均不可相加"
-          >工单存量</h2>
+          >重点工单</h2>
           <div class="dash-grid dash-grid-2">
             <div class="dm-cell dm-static" title="在办的投诉类工单数 · 分母是工单">
               <span class="dm-k">投诉工单</span>

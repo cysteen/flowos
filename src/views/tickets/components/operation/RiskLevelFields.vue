@@ -75,10 +75,7 @@ function pick(r: RiskTagResult) {
       </div>
     </div>
     <p v-if="ctl.missLevel.value" class="rlf-err">请选择风险等级</p>
-    <p v-else class="rlf-foot">
-      <template v-if="ctl.noRiskLocked.value">{{ NO_RISK_LOCKED_TIP }}。</template>
-      标为 低 / 中 / 高 即进风险工单池；标为「无风险」不进池。
-    </p>
+    <p v-else-if="ctl.noRiskLocked.value" class="rlf-foot">{{ NO_RISK_LOCKED_TIP }}。</p>
 
     <!--
       标记备注。**改判时必填**（原来那格「修正原因」已并进来，2026-09-29 裁决）：
