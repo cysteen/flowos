@@ -6073,7 +6073,7 @@ function toggleWordEnabled(w: RiskWord) {
                   <button
                     v-if="canClaim"
                     type="button" class="row-btn row-btn-tag"
-                    title="投诉单不做风险评估，走协同处理：给评估意见 + 建议事项；工单状态与处理人均不变"
+                    title="投诉单不做风险评估，走风险处理建议：给处理意见 + 建议事项；工单状态与处理人均不变"
                     @click="openCollab(r)"
                   >风险管控</button>
                   <button
