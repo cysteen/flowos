@@ -7,7 +7,7 @@ import RiskAssessSheet from './RiskAssessSheet.vue';
 // 选「升级」后那一段投诉专属建单要素（投诉一类 / 投诉二类）：与风险监控页、风险报备池
 // 另外两处评估弹窗共用同一个组件
 import EscalateComplaintFields from './EscalateComplaintFields.vue';
-// 投诉支那三项（评估意见 / 建议事项 /「其他」的具体建议）：与风险工单池的协同处理弹窗共用同一份
+// 投诉支那三项（处理意见 / 建议事项 /「其他」的具体建议）：与风险工单池的协同处理弹窗共用同一份
 import RiskCollabFields from './RiskCollabFields.vue';
 // 风险等级段：**六处「风险管控」弹窗共用同一份呈现**（2026-09-29 裁决）。
 // 非投诉支走真实例 `useRiskLevelFields`（落库 recordTagFor）；投诉支上半各有既有状态与落库路径，
@@ -336,8 +336,8 @@ const collabFilled = computed(() => collab.filled.value);
  * 顺序与判据一律照风险监控页那个「风险管控」弹窗（`saveEntryTag`）：
  *   ① 上半出不来的角色：这一次只可能是协同，原样交给共享件 `submitTo`（含它自己的三道拦截）；
  *   ② 两半都没给东西才是"什么都没发生"，才拦；
- *   ③ 下半的必填**整个跑在任何写入之前** —— 人只是漏填了评估意见，
- *      不该换来一条已经被改了等级的条目；
+ *   ③ 下半的校验（只剩「其他」那一项的条件必填）**整个跑在任何写入之前** ——
+ *      人只是漏填了「其他」的具体建议，不该换来一条已经被改了等级的条目；
  *   ④ 落库先上半后下半：`submitTo` 要在池里找得到这条条目。
  */
 function onComplaintOk() {
@@ -456,7 +456,7 @@ function onOk() {
       -->
       <RiskLevelFields v-if="isComplaint" :ctl="tagLevelView" />
 
-      <!-- ③ 投诉单下半：协同处理段（评估意见 / 建议事项 /「其他」的具体建议） -->
+      <!-- ③ 投诉单下半：协同处理段（处理意见 / 建议事项 /「其他」的具体建议） -->
       <RiskCollabFields v-if="isComplaint && showCollab" :ctl="collab" />
 
       <!--
