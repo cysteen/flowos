@@ -166,20 +166,18 @@ function openLinkFiles(link: AttachmentLinkRecord) {
         <table class="attach-table links-table">
           <thead>
             <tr>
-              <th class="col-idx">序号</th>
               <th class="col-url">链接</th>
               <th class="col-phone">接收号码</th>
               <th class="col-sender">发送人</th>
               <th class="col-time">发送时间</th>
               <th class="col-link-source">来源</th>
-              <th class="col-state">失效状态</th>
-              <th class="col-state">上传状态</th>
+              <th class="col-state">链接状态</th>
+              <th class="col-state">是否上传</th>
               <th class="col-time">更新时间</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(l, i) in sortedLinks" :key="l.id">
-              <td class="col-idx">{{ i + 1 }}</td>
+            <tr v-for="l in sortedLinks" :key="l.id">
               <td class="col-url">
                 <button
                   v-if="l.uploaded"
@@ -364,7 +362,7 @@ function openLinkFiles(link: AttachmentLinkRecord) {
 }
 
 .col-time {
-  width: 148px;
+  width: 140px;
   white-space: nowrap;
 }
 
@@ -378,45 +376,40 @@ function openLinkFiles(link: AttachmentLinkRecord) {
   white-space: nowrap;
 }
 
-.col-idx {
-  width: 48px;
-  white-space: nowrap;
-}
-
 .col-phone {
-  width: 118px;
+  width: 112px;
   white-space: nowrap;
 }
 
 .col-sender {
-  width: 96px;
+  width: 80px;
   white-space: nowrap;
 }
 
 .col-state {
-  width: 84px;
+  width: 80px;
   white-space: nowrap;
 }
 
 .col-link-source {
-  width: 96px;
+  width: 88px;
   white-space: nowrap;
 }
 
 .col-url {
-  width: 280px;
+  width: 168px;
 }
 
-/* 「客户上传」子页签：九列定宽，窄容器下整表横向滚动而非挤压各列 */
+/* 「客户上传」子页签：八列定宽，窄容器下整表横向滚动而非挤压各列 */
 .table-wrap.links-wrap {
   overflow-x: auto;
   overflow-y: hidden;
 }
 
-/* min-width = 48+280+118+96+148+96+84+84+148 */
+/* min-width = 168+112+80+140+88+80+80+140 */
 .links-table {
   table-layout: fixed;
-  min-width: 1102px;
+  min-width: 888px;
 }
 
 .source-tag {

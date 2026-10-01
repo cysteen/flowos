@@ -621,7 +621,7 @@ export function snTail(sn: string): string {
 
 /** 刷机成功短信（M14 / M32，暂行文案） */
 export function flashSmsSuccess(no: string, sn: string): string {
-  return `【讯飞客服】您的设备（SN尾号${snTail(sn)}）刷机包已推送成功，请保持设备开机并连接网络完成刷机。如有疑问请致电400热线，工单号：${no}。`;
+  return `【科大讯飞】您的设备（SN尾号${snTail(sn)}）刷机包已推送成功，请保持设备开机并连接网络完成刷机。如有疑问请致电400热线，工单号：${no}。`;
 }
 /** 转人工短信（PRD §3.4 / §11.1，逐字） */
 export function flashSmsHandoff(_no: string): string {
@@ -637,7 +637,7 @@ export const FLASH_SURVEY_LINK_RE = /(\/m\/flash\/survey\?no=[A-Za-z0-9-]+)/;
 
 /** 调研短信（PRD §8 / M86：含评价链接） */
 export function flashSmsSurvey(no: string): string {
-  return `【讯飞客服】您的刷机申请已处理，请点击链接评价本次服务：${flashSurveyPath(no)}。工单号：${no}。`;
+  return `【科大讯飞】您的刷机申请已处理，请点击链接评价本次服务：${flashSurveyPath(no)}。工单号：${no}。`;
 }
 
 /** 催单 / 新建补充站内通知（PRD §11.1：沿用现有催补通知文案） */

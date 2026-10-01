@@ -153,7 +153,7 @@ function onSubmit() {
           placeholder="选择模板后自动填充，可在此基础上编辑…"
         />
         <div class="sms-meta">
-          <span>已含签名【讯飞客服】</span>
+          <span>已含签名【科大讯飞】</span>
           <span>{{ charCount }} 字 · 约 {{ segments }} 条</span>
         </div>
       </div>

@@ -172,8 +172,7 @@ export type NotifyKind =
   | 'risk'
   | 'cancel'
   | 'appointment'
-  | 'group'
-  | 'attachment';
+  | 'group';
 
 export interface NotifyRecord {
   id: string;
@@ -221,6 +220,11 @@ export interface AttachmentLinkFile {
   /** 文件备注 */
   note: string;
   uploadedAt: string;
+  /**
+   * 客户是否已把这个已上传的文件撤回。
+   * 撤回后工单侧仍保留该条记录并标出，文件实体仍在、照常可下载。
+   */
+  revoked: boolean;
 }
 
 /** 下发给客户的附件上传短链接（一条链接对应一次下发，客户可在有效期内上传多个文件） */

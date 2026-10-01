@@ -9,8 +9,8 @@ const props = withDefaults(
     open: boolean;
     title: string;
     /**
-     * 标题下方那一行副标题（如「二线报备 · IFLYZX-…」）：写这次动作的**来源与对象**。
-     * 不传则整行不出、标题行与没有它时一模一样。
+     * 标题同行副标题（如「二线报备 · IFLYZX-…」）：写这次动作的**来源与对象**。
+     * 不传则不出、标题行与没有它时一模一样。
      */
     subtitle?: string;
     /** 标题左侧图标组件（如 SwapOutlined）；不传则无图标徽标 */
@@ -23,6 +23,8 @@ const props = withDefaults(
     /** 主按钮配色：primary 蓝 / success 绿 / danger 红 */
     okTone?: 'primary' | 'success' | 'danger';
     okDisabled?: boolean;
+    /** 主按钮置灰时的悬停提示；仅在 okDisabled 为真时生效 */
+    okDisabledTip?: string;
     confirmLoading?: boolean;
   }>(),
   {
@@ -45,10 +47,11 @@ const emit = defineEmits<{
 }>();
 
 /** style 不在 antd 的 ButtonProps 声明内（行内样式走 HTML attrs），故单独并进来 */
-type OkButtonProps = ButtonProps & { style?: CSSProperties };
+type OkButtonProps = ButtonProps & { style?: CSSProperties; title?: string };
 
 const okButtonProps = computed<OkButtonProps>(() => {
   const base: OkButtonProps = { disabled: props.okDisabled };
+  if (props.okDisabled && props.okDisabledTip) base.title = props.okDisabledTip;
   if (props.okTone === 'danger') return { ...base, danger: true };
   if (props.okTone === 'success') {
     return { ...base, type: 'primary', style: { background: '#059669', borderColor: '#059669' } };
@@ -104,14 +107,32 @@ function onCancel() {
 .opm-icon.tone-success { background: #ecfdf5; color: #059669; }
 .opm-icon.tone-warn { background: #fff7ed; color: #ea580c; }
 .opm-icon.tone-danger { background: #fef2f2; color: #dc2626; }
-.opm-title-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.opm-title-text { font-size: 15px; font-weight: 700; color: #111827; line-height: 1.3; }
+.opm-title-body {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+.opm-title-text {
+  font-size: 15px;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1.3;
+  white-space: nowrap;
+  flex: none;
+}
 .opm-subtitle {
   font-size: 12px;
   font-weight: 500;
   color: #6b7280;
   line-height: 1.4;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 .op-modal-body { padding: 2px 0; }
 </style>

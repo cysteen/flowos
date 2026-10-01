@@ -7,6 +7,7 @@
  * - attachSend     附件下发 —— 坐席选文件发给客户，客户点短信里的下载链接取件
  * - attachRequest  附件上传邀请 —— 短信带上传链接（绑本单工单ID），客户上传后回流「附件历史」
  * 附件上传服务由容联云提供，链接生成/有效期/数量与大小上限均在容联云侧。
+ * 链接有效期当前为 30 分钟，由容联云侧配置。
  */
 export type SmsTemplateKind = 'plain' | 'attachSend' | 'attachRequest';
 
@@ -35,37 +36,37 @@ export const SMS_TEMPLATES: SmsTemplate[] = [
     code: 'SMS_WO_PROGRESS',
     name: '处理进展通知',
     kind: 'plain',
-    content: '尊敬的${name}，您的工单${no}（${product}）正在加紧处理中，我们会尽快为您解决，感谢您的耐心等待。【讯飞客服】',
+    content: '尊敬的${name}，您的工单${no}（${product}）正在加紧处理中，我们会尽快为您解决，感谢您的耐心等待。【科大讯飞】',
   },
   {
     code: 'SMS_NEED_INFO',
     name: '请补充信息',
     kind: 'plain',
-    content: '尊敬的${name}，您的工单${no}需补充相关信息以便继续处理，请留意稍后来电或回复本短信，谢谢。【讯飞客服】',
+    content: '尊敬的${name}，您的工单${no}需补充相关信息以便继续处理，请留意稍后来电或回复本短信，谢谢。【科大讯飞】',
   },
   {
     code: 'SMS_ATTACH_REQUEST',
     name: '请上传材料',
     kind: 'attachRequest',
-    content: '尊敬的${name}，您的工单${no}（${product}）需您上传照片或相关材料以便继续处理，请点击链接上传：${link}【讯飞客服】',
+    content: '【科大讯飞】尊敬的客户您好，为了尽快解决您的问题，您可以通过以下链接：${link} 上传您的问题截图或附件，本链接30分钟内有效。收到后会尽快为您处理，谢谢！',
   },
   {
     code: 'SMS_ATTACH_SEND',
     name: '材料下发',
     kind: 'attachSend',
-    content: '尊敬的${name}，关于您的工单${no}（${product}），现将相关材料发送给您，请点击短信内链接查收。【讯飞客服】',
+    content: '尊敬的${name}，关于您的工单${no}（${product}），现将相关材料发送给您，请点击短信内链接查收。【科大讯飞】',
   },
   {
     code: 'SMS_WO_DONE',
     name: '处理完成通知',
     kind: 'plain',
-    content: '尊敬的${name}，您的工单${no}已处理完成，如仍有疑问请回拨客服热线，祝您生活愉快。【讯飞客服】',
+    content: '尊敬的${name}，您的工单${no}已处理完成，如仍有疑问请回拨客服热线，祝您生活愉快。【科大讯飞】',
   },
   {
     code: 'SMS_VISIT',
     name: '满意度回访',
     kind: 'plain',
-    content: '尊敬的${name}，关于工单${no}的本次服务，诚邀您参与满意度评价，您的反馈是我们改进的动力，感谢支持。【讯飞客服】',
+    content: '尊敬的${name}，关于工单${no}的本次服务，诚邀您参与满意度评价，您的反馈是我们改进的动力，感谢支持。【科大讯飞】',
   },
 ];
 
@@ -97,9 +98,23 @@ export interface TemplateContext {
   agent: string;
 }
 
-/** 附件上传链接由容联云按工单ID生成，坐席不可编辑 */
+const UPLOAD_SHORT_CODE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+
+/**
+ * 附件上传链接为容联云生成的短链接（https://kfaichat.iflytek.com/f/{6位短码}），坐席不可编辑。
+ * 短码由容联云侧生成、与工单号无关；原型内按工单号派生短码，保证同一工单号每次得到同一链接。
+ */
 export function uploadLinkOf(no: string): string {
-  return `https://kf.iflytek.com/up/${no}`;
+  let h = 0x811c9dc5;
+  for (let i = 0; i < no.length; i += 1) {
+    h = ((h ^ no.charCodeAt(i)) * 0x01000193) >>> 0;
+  }
+  let code = '';
+  for (let i = 0; i < 6; i += 1) {
+    code += UPLOAD_SHORT_CODE_CHARS.charAt(h % UPLOAD_SHORT_CODE_CHARS.length);
+    h = (Math.floor(h / UPLOAD_SHORT_CODE_CHARS.length) + 0x9e3779b9) >>> 0;
+  }
+  return `https://kfaichat.iflytek.com/f/${code}`;
 }
 
 /** 用工单上下文替换模板占位符 */
