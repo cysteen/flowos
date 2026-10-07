@@ -5,6 +5,7 @@ import {
   SendOutlined, SyncOutlined, CheckCircleOutlined,
   ThunderboltOutlined, BellOutlined, CloseCircleOutlined, ReloadOutlined,
 } from '@ant-design/icons-vue';
+import { formatOpTime } from '@/views/tickets/utils/opTime';
 import type { FeishuRecord, FeishuSyncState } from '@/mock/ticketDetail';
 
 /** 二次激活原因枚举（对齐 PRD §7.4） */
@@ -234,12 +235,12 @@ function onDunning() {
         <span class="fs-meta-sep" aria-hidden="true" />
         <span class="fs-meta-pair">
           <span class="fs-meta-label">创建</span>
-          <span class="fs-meta-value">{{ createdAt || '—' }}</span>
+          <span class="fs-meta-value">{{ formatOpTime(createdAt) }}</span>
         </span>
         <span class="fs-meta-sep" aria-hidden="true" />
         <span class="fs-meta-pair">
           <span class="fs-meta-label">更新</span>
-          <span class="fs-meta-value">{{ updatedAt }}</span>
+          <span class="fs-meta-value">{{ formatOpTime(updatedAt) }}</span>
         </span>
       </div>
     </section>
@@ -281,7 +282,7 @@ function onDunning() {
           <div class="fs-item-meta">
             <span>{{ displayWho(rec.who) }}</span>
             <span v-if="rec.meta" class="fs-item-metabadge">{{ rec.meta }}</span>
-            <span class="fs-item-when">{{ rec.when }}</span>
+            <span class="fs-item-when">{{ formatOpTime(rec.when) }}</span>
           </div>
         </div>
       </div>
@@ -527,7 +528,7 @@ function onDunning() {
 .fs-item-content { font-size: 13px; color: #374151; line-height: 1.6; margin-top: 5px; }
 .fs-item-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 11px; color: #9ca3af; margin-top: 6px; }
 .fs-item-metabadge { color: #1d4ed8; background: #eff6ff; border-radius: 4px; padding: 1px 6px; }
-.fs-item-when { margin-left: auto; }
+.fs-item-when { margin-left: auto; flex: none; font-variant-numeric: tabular-nums; }
 
 .act-tip { margin: 0 0 14px; font-size: 13px; color: #64748b; line-height: 1.55; }
 .act-field { margin-bottom: 12px; }
