@@ -706,6 +706,8 @@ export function ticketSourceDisplayLabel(source?: string): string {
   const src = normalizeTicketSource(source);
   if (src === '外投渠道') return '外部反馈渠道';
   if (src === '内投渠道') return '内部反馈渠道';
+  // 售后发起建出的单（③ 投诉 / ④ 咨询）：来源类型页面名「售后转入」（《【1025】》§4）
+  if (src === AFTERSALE_INBOUND_SOURCE) return '售后转入';
   return src || '—';
 }
 

@@ -10,6 +10,7 @@ import {
   CREATE_TICKET_TYPES,
   PROBLEM_TREE,
   TICKET_SOURCE_OPTIONS,
+  AFTERSALE_INBOUND_SOURCE,
 } from '@/views/tickets/types/createTicket';
 import {
   DEFAULT_DONE_QUERY,
@@ -222,7 +223,11 @@ const nodeStatusOptions = computed(() =>
 
 const businessTypeOptions = computed(() => toStrOpts(BUSINESS_TYPES));
 const ticketTypeOptions = computed(() => toStrOpts(CREATE_TICKET_TYPES));
-const ticketSourceOptions = computed(() => toStrOpts(TICKET_SOURCE_OPTIONS));
+// 「售后系统」这一取值的页面名是「售后转入」（③ ④ 建出的单，《【1025】》§4），筛选值不变
+const ticketSourceOptions = computed(() => TICKET_SOURCE_OPTIONS.map((v) => ({
+  value: v,
+  label: v === AFTERSALE_INBOUND_SOURCE ? '售后转入' : v,
+})));
 const productCategoryOptions = computed(() => toStrOpts(PRODUCT_CATEGORIES));
 const productNameSelectOptions = computed(() => toStrOpts(productNameOptions.value));
 const problemL1SelectOptions = computed(() => toStrOpts(problemL1Options.value));
