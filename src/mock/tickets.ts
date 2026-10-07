@@ -300,6 +300,98 @@ function buildAftersaleSeeds() {
     ...migrated.to,
   } as Ticket);
 
+  // 产品无售后服务的投诉单（处理中、无关联）：「关联售后」按 §5.1 第 4 行置灰
+  seeds.push({
+    id: 'as-n1', no: 'IFLYTS-20261005-00044', type: '投诉', channel: '电话',
+    title: '会员自动续费未提醒即扣款，客户投诉', smartMarks: ['情绪'],
+    customer: '贺洁', vip: false, product: '会员服务', complaintType: '投诉',
+    nodeStatus: '处理中', nodeStep: 2, nodeTotal: 5, priority: 'P1',
+    slaText: '05:50:00', slaSub: '充足', slaState: 'ok', slaMinutes: 350,
+    assignee: '王坐席', tab: 'mine', groupId: 'line1', responded: true,
+    customerPhone: '13600004408', productCategory: '会员权益',
+    problemDesc: '会员到期前未收到续费提醒即被自动扣款 198 元，客户要求退款并投诉扣费规则不透明。',
+    createdAt: '2026-10-05 09:20', updatedAt: '2026-10-05 09:45',
+  });
+
+  // ① 投诉单已关联售后单，售后单已完成（客服来源位，AS_CLOSED 只写履历、不改投诉单状态）
+  seeds.push(applyAftersaleEvent({
+    id: 'as-c2', no: 'IFLYTS-20260925-00045', type: '投诉', channel: '电话',
+    title: '智能音箱维修后仍有杂音，客户投诉维修质量', smartMarks: [],
+    customer: '岑雨', vip: false, product: '智能音箱 X1', complaintType: '投诉',
+    nodeStatus: '处理中', nodeStep: 2, nodeTotal: 5, priority: 'P1',
+    slaText: '03:30:00', slaSub: '充足', slaState: 'ok', slaMinutes: 210,
+    assignee: '王坐席', tab: 'mine', groupId: 'hardware',
+    linkedAftersaleNo: 'AS-20260925-41231', linkedAftersaleServiceType: '维修', linkedAftersaleStatus: '待接单',
+    customerPhone: '13500004123', sn: 'SN-X1-41231', productCategory: '智能硬件',
+    problemDesc: '智能音箱维修后播放仍有明显杂音，客户对维修质量不满，要求重新检测并补偿。',
+    createdAt: '2026-09-25 10:05', updatedAt: '2026-09-25 10:30', responded: true,
+    eventTimeline: [{
+      id: 'as-IFLYTS-20260925-00045-link', category: 'node', action: 'transfer', who: '王坐席', role: '二线专员',
+      how: '关联售后', what: '售后单 AS-20260925-41231 · 维修', when: '2026-09-25 10:30',
+    }],
+  }, {
+    type: 'AS_CLOSED', asNo: 'AS-20260925-41231', eventId: 'ase-41231-closed',
+    at: '2026-10-03 16:40', operator: '吴师傅（售后一组）', status: '已完成',
+    resultSummary: '更换喇叭单元并复检，播放无杂音，客户签收确认。',
+  }).ticket);
+
+  // ② 转售后原单在「已转出」期间被人工强结（§3.4）
+  const forceClosed = (t: Ticket, at: string): Ticket => ({
+    ...t,
+    nodeStatus: '已强结', tab: 'done', handledByMe: true, myForceCloseAction: true,
+    slaText: '—', slaSub: '已强结·停表', slaState: 'ok', slaMinutes: 9999, updatedAt: at,
+    eventTimeline: [...(t.eventTimeline ?? []), {
+      id: `as-${t.no}-force`, category: 'node', action: 'resolved', who: '王坐席', role: '二线专员',
+      how: '强结', what: '强结申请审批通过，工单强结。', when: at,
+    }],
+  });
+  const transferredOut = (t: Partial<Ticket> & Pick<Ticket, 'id' | 'no' | 'title' | 'customer' | 'product'>, asNo: string, at: string): Ticket => ({
+    type: '咨询', channel: '电话', smartMarks: [], vip: false,
+    nodeStatus: '已转出', nodeStep: 4, nodeTotal: 5, priority: 'P2',
+    slaText: '04:00:00', slaSub: '充足', slaState: 'ok', slaMinutes: 240,
+    assignee: '王坐席', tab: 'mine', groupId: 'hardware', myTransferAction: true, responded: true,
+    linkedAftersaleNo: asNo, linkedAftersaleServiceType: '维修', linkedAftersaleStatus: '待接单',
+    productCategory: '智能硬件', updatedAt: at,
+    ...t,
+    eventTimeline: [{
+      id: `as-${t.no}-transfer`, category: 'node', action: 'transfer', who: '王坐席', role: '二线专员',
+      how: '转售后', what: `售后单 ${asNo} · 维修 / 上门`, when: at,
+    }],
+  } as Ticket);
+
+  // #22：强结后收到 AS_RETURNED → 新建咨询单挂派生位，与原单建「承接」（§4.5 支二）
+  const k1 = forceClosed(transferredOut({
+    id: 'as-k1', no: 'IFLYZX-20260919-00046', title: '扫地机器人主刷不转，咨询上门维修',
+    customer: '柯敏', product: '扫地机器人 R2', customerPhone: '13700004188', sn: 'SN-R2-41188',
+    problemDesc: '扫地机器人主刷不转动，客户咨询上门维修安排。',
+    createdAt: '2026-09-19 09:10',
+  }, 'AS-20260919-41188', '2026-09-19 09:40'), '2026-09-26 17:30');
+  const k1Succ = created([k1], {
+    type: 'AS_RETURNED', asNo: 'AS-20260919-41188', eventId: 'ase-41188-returned-1',
+    at: '2026-10-03 10:20', operator: '钱师傅（售后二组）', status: '已关闭',
+    returnReason: '主刷电机正常，客户询问保养周期与耗材更换，转回客服答复',
+    inbound: inbound({
+      id: 'as-k1n', no: 'IFLYZX-20261003-00047', title: '扫地机器人主刷保养与耗材更换咨询',
+      customer: '柯敏', product: '扫地机器人 R2', customerPhone: '13700004188', sn: 'SN-R2-41188',
+      problemDesc: '售后检测主刷电机正常，客户咨询主刷保养周期与耗材更换方式。',
+      asTitle: '扫地机器人 R2 主刷不转上门维修', asServiceType: '维修',
+    }),
+  });
+  seeds.push(k1Succ.rows[0], k1Succ.created);
+
+  // #22a：强结后收到 AS_CLOSED → 只写履历、刷新售后卡片，状态仍「已强结」
+  seeds.push(routeAftersaleEvent([forceClosed(transferredOut({
+    id: 'as-k2', no: 'IFLYZX-20260917-00048', title: '学习机充电口松动，咨询保修维修',
+    customer: '詹琪', product: '讯飞学习机 T20', customerPhone: '13600004166', sn: 'SN-T20-41166',
+    productCategory: '学习硬件',
+    problemDesc: '学习机充电口松动接触不良，客户咨询保修期内维修。',
+    createdAt: '2026-09-17 14:00',
+  }, 'AS-20260917-41166', '2026-09-17 14:30'), '2026-09-24 11:00')], {
+    type: 'AS_CLOSED', asNo: 'AS-20260917-41166', eventId: 'ase-41166-closed',
+    at: '2026-10-02 15:10', operator: '孙师傅（售后一组）', status: '已完成',
+    resultSummary: '更换充电接口小板，充电测试正常，已寄回客户。',
+  }).rows[0]);
+
   // t5a：售后转咨询转入（④），售后单已关闭，看板「转入」下钻按来源取到它
   const t5a = claimSeed(created([], {
     type: 'AS_RETURNED', asNo: 'AS-20260731-40217', eventId: 'ase-40217-returned-1',
@@ -1371,6 +1463,7 @@ const TICKET_GROUP_NAMES: Record<string, string[]> = {
   t25: ['受理一组'],
   t28: ['受理一组'],
   t31: ['受理一组'],
+  'as-n1': ['受理一组'],
   'fd-d2': ['受理一组'],
   'fd-d3': ['受理一组'],
   'fd-d8': ['受理一组'],
@@ -1420,6 +1513,10 @@ const TICKET_GROUP_NAMES: Record<string, string[]> = {
   'as-s2': ['硬件缺陷组'],
   'as-u1': ['硬件缺陷组'],
   'as-u2': ['硬件缺陷组'],
+  'as-c2': ['硬件缺陷组'],
+  'as-k1': ['硬件缺陷组'],
+  'as-k1n': ['硬件缺陷组'],
+  'as-k2': ['硬件缺陷组'],
   'ops-1': ['硬件缺陷组'],
   'ops-4': ['硬件缺陷组'],
 
