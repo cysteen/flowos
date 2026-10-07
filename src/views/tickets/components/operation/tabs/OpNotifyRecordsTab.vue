@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { BellOutlined } from '@ant-design/icons-vue';
 import { FLASH_SURVEY_LINK_RE } from '@/views/tickets/types/flash';
 import type { NotifyRecord } from '@/views/tickets/types/operationTabs';
+import { formatOpTime } from '@/views/tickets/utils/opTime';
 import { useNotifyLogStore } from '@/stores/notifyLog';
 
 const props = defineProps<{ records: NotifyRecord[] }>();
@@ -60,7 +61,7 @@ function contentSegments(content: string): { text: string; href?: string }[] {
           <BellOutlined class="kind-icon" />
           <span class="title-text">{{ r.title }}</span>
         </div>
-        <span class="card-meta">接收人: {{ displayReceiver(r.receiver) }} | {{ r.when }}</span>
+        <span class="card-meta">接收人: {{ displayReceiver(r.receiver) }} | {{ formatOpTime(r.when) }}</span>
       </div>
       <div class="content-area">
         <div class="meta-line">通知方式: {{ r.channel }}</div>
