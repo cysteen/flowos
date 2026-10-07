@@ -14,15 +14,35 @@ import {
  * 与运行时同一套函数，不在这里手写状态。
  * ================================================================ */
 
-/** 坐席从池中领取（新单照通用流转；种子取已首响、处理中） */
+/** 'YYYY-MM-DD HH:mm' 加若干分钟 */
+function plusMinutes(at: string, min: number): string {
+  const d = new Date(`${at.replace(' ', 'T')}:00`);
+  d.setMinutes(d.getMinutes() + min);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/**
+ * ③ ④ 转入的新单照通用流转（《【1025】》§4.1 / §4.3）：领取 → 「待响应」→ 首响 → 「处理中」，
+ * 三步都留履历。回流单不走这里（直落「处理中」，见 takeOverReturnedTicket）。
+ */
 function claimSeed(t: Ticket, who: string, at: string): Ticket {
+  const respondedAt = plusMinutes(at, 8);
   return {
     ...t,
-    assignee: who, nodeStatus: '处理中', tab: 'mine', responded: true, updatedAt: at,
-    eventTimeline: [...(t.eventTimeline ?? []), {
-      id: `as-${t.no}-claim`, category: 'node', action: 'accept', who, role: '二线专员',
-      how: '领取', what: `${who} 从池中领取本单。`, when: at,
-    }],
+    assignee: who, nodeStatus: '处理中', tab: 'mine', responded: true, updatedAt: respondedAt,
+    eventTimeline: [
+      ...(t.eventTimeline ?? []),
+      {
+        id: `as-${t.no}-claim`, category: 'node', action: 'accept', who, role: '二线专员',
+        how: '领取', what: `${who} 从池中领取本单，进入「待响应」。`, when: at,
+      },
+      {
+        id: `as-${t.no}-first`, category: 'sla', action: 'slaClose', who: '系统', role: '系统',
+        how: '首响时钟关闭', what: '', when: respondedAt,
+        slaClose: { clock: '首响', closedAt: respondedAt },
+      },
+    ],
   };
 }
 
@@ -40,7 +60,8 @@ function settleSeed(t: Ticket, at: string): Ticket {
 }
 
 function inbound(seed: AftersaleInboundSeed): AftersaleInboundSeed {
-  return { channel: '电话', priority: 'P2', productCategory: '智能硬件', ...seed };
+  // 现行分派规则落二线硬件缺陷组池（与 TICKET_GROUP_NAMES 里 as-* 的处理组一致）
+  return { channel: '电话', priority: 'P2', productCategory: '智能硬件', groupId: 'hardware', ...seed };
 }
 
 /** 跑一条售后事件并取出新建的那张单 */
@@ -67,7 +88,7 @@ function buildAftersaleSeeds() {
     createdAt: '2026-09-30 09:12', updatedAt: '2026-09-30 10:40', responded: true,
     eventTimeline: [{
       id: 'as-IFLYTS-20260930-00031-link', category: 'node', action: 'transfer', who: '王坐席', role: '二线专员',
-      how: '关联售后', what: '关联售后单 AS-20260930-41502（服务类型：维修）。', when: '2026-09-30 10:40',
+      how: '关联售后', what: '售后单 AS-20260930-41502 · 维修', when: '2026-09-30 10:40',
     }],
   }, {
     type: 'AS_PROGRESS', asNo: 'AS-20260930-41502', at: '2026-10-01 09:30', operator: '吴师傅（售后一组）', status: '处理中',
@@ -746,7 +767,7 @@ const BASE_TICKETS: Ticket[] = [
     customer: '韩雪', vip: false, product: '讯飞学习机 T20',
     nodeStatus: '已转出', nodeStep: 4, nodeTotal: 5, priority: 'P2',
     slaText: '05:10:00', slaSub: '充足', slaState: 'ok', slaMinutes: 310,
-    assignee: '王坐席', tab: 'mine', groupId: 'line2', myTransferAction: true,
+    assignee: '王坐席', tab: 'mine', groupId: 'hardware', myTransferAction: true,
     linkedAftersaleNo: 'AS-20260924-41163', linkedAftersaleServiceType: '维修',
     customerPhone: '13800009012', sn: 'SN-T20-90412', productCategory: '智能硬件',
     createdAt: '2026-09-24 09:30', updatedAt: '2026-09-24 10:12', responded: true,
@@ -763,7 +784,7 @@ const BASE_TICKETS: Ticket[] = [
       customer: '邵峰', vip: false, product: '讯飞翻译机 T10',
       nodeStatus: '已转出', nodeStep: 4, nodeTotal: 5, priority: 'P3',
       slaText: '09:20:00', slaSub: '充足', slaState: 'ok', slaMinutes: 560,
-      assignee: '林坐席', tab: 'mine', groupId: 'line2',
+      assignee: '林坐席', tab: 'mine', groupId: 'hardware',
       linkedAftersaleNo: 'AS-20260923-40877', linkedAftersaleServiceType: '维修',
       customerPhone: '13600007788', sn: 'SN-T10-23877', productCategory: '消费电子',
       createdAt: '2026-09-23 16:05', updatedAt: '2026-09-23 16:40', responded: true,
@@ -1235,8 +1256,8 @@ const TICKET_BRIEFS: Record<string, { problemDesc: string; latestHandling: strin
   t25: { problemDesc: '预约上门安装智能门锁', latestHandling: '已上门安装完成，功能正常' },
   t27: { problemDesc: '路由器固件升级后无法联网', latestHandling: '已指导回退固件，待客户验证' },
   t28: { problemDesc: '被重复扣费，要求退还', latestHandling: '已确认重复扣费，已发起退款' },
-  t32: { problemDesc: '扫地机器人滚刷卡死、异响，需上门维修', latestHandling: '非诉转售后，关联售后单 AS-20260716-38025（上门维修）已完成并回传关闭，客服单随之关闭' },
-  t33: { problemDesc: '录音笔充电无反应，指示灯不亮，需寄修检测', latestHandling: '已转售后寄修，关联售后单 AS-20260722-38104（寄修检测）· 售后状态：冻结，等待售后处理结果' },
+  t32: { problemDesc: '扫地机器人滚刷卡死、异响，需上门维修', latestHandling: '售后已完成关闭，关联售后单 AS-20260716-38025' },
+  t33: { problemDesc: '录音笔充电无反应，指示灯不亮，需寄修检测', latestHandling: '已转售后 AS-20260722-38104 · 售后状态：冻结' },
   t29: { problemDesc: '屏幕出现花屏，需返厂检测', latestHandling: '未认领，尚未安排' },
   t30: { problemDesc: '客户 API 鉴权失败，无法调用', latestHandling: '未认领，尚未安排' },
   t31: { problemDesc: '同事 @ 请求协助确认退款政策', latestHandling: '待确认退款政策口径' },
@@ -1349,6 +1370,8 @@ const TICKET_GROUP_NAMES: Record<string, string[]> = {
   t29: ['硬件缺陷组'],
   t32: ['硬件缺陷组'],
   t33: ['硬件缺陷组'],
+  t36: ['硬件缺陷组'],
+  t37: ['硬件缺陷组'],
   t41: ['硬件缺陷组'],
   t42: ['硬件缺陷组'],
   // 1025 客服⇄售后互转：售后发起与关联售后的单
