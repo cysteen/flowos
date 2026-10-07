@@ -10,6 +10,7 @@ import { handlerGroupOf } from '@/views/tickets/types/ticket';
 import { useFlashStore } from '@/stores/flash';
 // 终态判定单一实现：与头部按钮、只读锁同源，避免两处各写一份正则再漂
 import { isTicketTerminated } from './complaintEscalation';
+import { aftersaleLinkDemotedEntry } from './aftersaleEvents';
 
 /** 升级通道 · 飞书项目（消费者BG专属，走 OpenAPI 推送产研反馈单） */
 export const FEISHU_ESCALATE_CHANNEL = '飞书项目 · 产研反馈单';
@@ -991,6 +992,13 @@ export function applyOpAction(
           : `诉求升级为${target}，已生成新投诉单 ${newNo}并双向关联，原单关闭（SLA 停表·中止）。`
             + `升级原因：${note}。本单转为「${detail.status}」并锁定只读，后续补充/催单请在新单处理。`,
       });
+      // 基线 ※26：已关联售后照常放行，客服来源位关联随升级迁到新投诉单（新单侧「关联接入」由建新单处写）。
+      // 原单解除关联、只留「关联降级」履历，不做历史关联分组（Q5），不静默丢。
+      const asNo = detail.linkedAftersale?.no;
+      if (asNo) {
+        detail.linkedAftersale = undefined;
+        pushEntry(timeline, aftersaleLinkDemotedEntry({ asNo, toNo: newNo, who: operator, role: operatorRole, at: nowWhen() }));
+      }
       return {
         opState: alreadyEnded ? opState : 'closed',
         suspendInfo: null,

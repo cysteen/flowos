@@ -34,6 +34,7 @@ const CreateTicketModal = defineAsyncComponent(() => import('./components/Create
 import type { SmsTemplateKind } from '@/mock/notifyTemplates';
 import { useTicketOperation } from './composables/useTicketOperation';
 import { FEISHU_ESCALATE_CHANNEL, mapUserRole, pushEntry, isAftersaleSettled, isAftersaleInbound } from './composables/opActions';
+import { aftersaleLinkJoinedEntry } from './composables/aftersaleEvents';
 import { useProcessForm } from './composables/useProcessForm';
 import { useOperationTabs } from './composables/useOperationTabs';
 import { useTicketLiveNotify } from './composables/useTicketLiveNotify';
@@ -1262,6 +1263,24 @@ function finishEscalateAsSupplement(payload: EscalateInput) {
 /** 升级落库：登记关联单 + 写关联履历 + 关原单（两条分支共用） */
 function finishEscalate(ticket: Ticket, targetLabel: string, processAfter?: boolean) {
   const note = escalateInput.value?.note ?? ticket.problemDesc ?? '';
+  // 基线 ※26：客服来源位关联随升级迁到新投诉单，新单写「关联接入」（原单侧「关联降级」在 applyOpAction）
+  const la = d.value.linkedAftersale;
+  if (la) {
+    Object.assign(ticket, {
+      linkedAftersaleNo: la.no,
+      linkedAftersaleStatus: la.status,
+      linkedAftersaleServiceType: la.serviceType,
+      eventTimeline: [
+        ...(ticket.eventTimeline ?? []),
+        {
+          id: `as-${ticket.no}-joined-${la.no}`,
+          ...aftersaleLinkJoinedEntry({
+            asNo: la.no, fromNo: d.value.no, who: user.name || '系统', role: mapUserRole(user.roleKey), at: nowFullText(),
+          }),
+        },
+      ],
+    });
+  }
   // 刷机单（930）：新单先进运行时工单库再 dispatch。建单页产出的只是个临时对象，
   // 不落库的话点关联卡进新单号解析不到，页面会静默回退成演示单。老工单四类照旧不落。
   if (isFlash.value && createPrefill.value?.mode === 'escalate') {

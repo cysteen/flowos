@@ -30,6 +30,7 @@ import {
   applyOpAction, mapUserRole, nowWhen, pushEntry,
   type OpActionPayload, type SuspendInfo, type TicketOpState,
 } from './opActions';
+import { migrateAftersaleLink } from './aftersaleEvents';
 
 // ---- 列表行 SLA 摘要 → 操作页时钟（保证工作台 ↔ 操作页状态一致，PRD §8.1/§8.2）----
 
@@ -151,6 +152,8 @@ export function useTicketOperation() {
    *  使处理页（Tab① 表单结构）随工单类型而变。匹配不到则回退样例。 */
   function loadDetail(no: string) {
     const base = JSON.parse(JSON.stringify(TICKET_DETAIL)) as TicketDetailMeta;
+    /** 载入时现算出的履历（如升级后的关联降级），取代工单行上那份 */
+    let eventTimelineOverride: TimelineEntry[] | undefined;
     // 静态数据源优先；查不到再问运行时派生的那批（风险评估判「升级」派生出的新投诉单）。
     // 两处不互相覆盖：派生单只补静态那批没有的号。
     const found = TICKETS.find((x) => x.no === no) ?? derivedTickets.find(no);
@@ -300,6 +303,12 @@ export function useTicketOperation() {
           meta: `${(t.updatedAt ?? '').slice(5, 10)} ${t.assignee ?? ''} 升级`,
         }];
         base.linkedAftersale = undefined;
+        // 基线 ※26：来源位关联已随升级迁到新投诉单，原单只留「关联降级」履历（不静默丢）
+        if (t.linkedAftersaleNo) {
+          eventTimelineOverride = migrateAftersaleLink(t, t.escalatedToNo, {
+            who: '系统', role: '系统', at: t.updatedAt ?? '',
+          }).from.eventTimeline;
+        }
         // 依据基线 §1「一跳一态」：原单是外投单则是第二跳（已升级外投），否则是第一跳
         base.status = t.ticketSource === '外投渠道' ? '已升级外投' : '已升级投诉';
         opState.value = 'closed';
@@ -323,7 +332,7 @@ export function useTicketOperation() {
       // 已转出：非诉转售后后原单不关闭，留在「我的任务」等售后终态回传（D11）。
       // 🔴 **投诉单永不冻结**（1025）：投诉单有关联售后＝①格「关联售后」，保持原状态、照常可操作，
       // 只挂关联卡片；只有非诉单才因关联售后进「已转出」。
-      if (t.linkedAftersaleNo && t.tab !== 'done') {
+      if (t.linkedAftersaleNo && t.tab !== 'done' && !t.escalatedToNo) {
         const isComplaint = t.type === '投诉';
         base.linkedAftersale = {
           no: t.linkedAftersaleNo,
@@ -368,9 +377,10 @@ export function useTicketOperation() {
     detail.value = base;
     if (t?.flash) projectFlashTimeline(t.no, true);
     // 售后回传 / 关联迁移写在工单行上的履历（aftersaleEvents.ts），并入本页履历
-    else if (t?.eventTimeline?.length) {
+    else {
+      const entries = eventTimelineOverride ?? t?.eventTimeline ?? [];
       const seen = new Set(timeline.value.map((e) => e.id));
-      t.eventTimeline.forEach((e) => { if (!seen.has(e.id)) timeline.value.push({ ...e }); });
+      entries.forEach((e) => { if (!seen.has(e.id)) timeline.value.push({ ...e }); });
     }
   }
 

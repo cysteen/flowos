@@ -31,9 +31,11 @@ const AFTERSALE_INBOUND_TIP = '售后转入工单，不支持升级投诉；如�
 /**
  * 门禁③：冻结态不可升级（0801 拍板）。
  * 挂起在停表、待审核在等审批结果——此时升级会让 SLA 与审批双双失效（原单关了、审批还在跑）。
- * 「已转出」也是冻结态，但它必然带活跃售后关联，已被门禁②拦下。
+ * 「已转出」也是冻结态（基线 §2 该行「升级投诉」＝置灰），1025 起门禁②不再拦已关联售后（※26），
+ * 故单列一道，提示与底栏冻结同文。
  */
 const FROZEN_STATUS = /已挂起|申请(?:挂起|关闭|强结)中|业务动作审核中/;
+const TRANSFERRED_OUT_TIP = '工单已转出至售后，等待售后处理结果';
 /** 中止态：已取消是业务中止，不该再派生新单（基线该行整行 🔒） */
 const VOID_STATUS = /已取消/;
 const EXTERNAL_TERMINAL_TIP = '原单已是外投（投诉最高阶），不可再升级；如需补充请用「新建补充」';
@@ -95,11 +97,11 @@ export function complaintTierLabel(detail: TicketDetailMeta): string {
 
 /**
  * 门禁②：原单是否已有活跃关联 / 从属关系。
- * 关联位是 **1:1** ——已关联售后单、已关联其他客服单、或已在从属跟跑，都不可再升级，
- * 即**一张单只能升一次**（PRD §4.2.1）。
+ * 已关联其他客服单、或已在从属跟跑，都不可再升级，即**一张单只能升一次**（PRD §4.2.1）。
+ * **已关联售后单不拦**（基线 ※26，0818 拍板，1025 落地）：售后来源位关联随升级迁到新投诉单，
+ * 见 useTicketOperation 的 `migrateAftersaleLinkOnEscalate`。
  */
 function resolveLinkBlock(detail: TicketDetailMeta): string | null {
-  if (detail.linkedAftersale) return '本单已关联售后单，关联位已占用，不可升级；如需补充请用「新建补充」';
   if (detail.linkedRecords?.some((r) => r.tag === '升级投诉')) {
     return '本单已升级过并关联投诉单（1:1），不可再次升级；如需补充请用「新建补充」';
   }
@@ -136,6 +138,12 @@ export function buildEscalateVerdict(detail: TicketDetailMeta, roleKey: string):
   if (FROZEN_STATUS.test(detail.status)) {
     const tip = `工单${detail.status}，恢复后可升级`;
     return { tier, tierLabel, kind: null, entryEnabled: false, entryTip: tip, headline: tip };
+  }
+  if (detail.status === '已转出') {
+    return {
+      tier, tierLabel, kind: null, entryEnabled: false,
+      entryTip: TRANSFERRED_OUT_TIP, headline: TRANSFERRED_OUT_TIP,
+    };
   }
   if (VOID_STATUS.test(detail.status)) {
     const tip = `工单${detail.status}，不可升级`;

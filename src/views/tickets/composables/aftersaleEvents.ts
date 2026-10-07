@@ -246,6 +246,66 @@ function applyReturned(t: Ticket, e: AftersaleEvent, dispatch: DispatchResolver)
   };
 }
 
+/* ---------------- 升级投诉时的关联迁移（基线 ※26 / R11，1025 R1.5-8） ---------------- */
+
+/** 原单侧「关联降级」履历（同位内：客服来源位从原单改绑到新投诉单） */
+export function aftersaleLinkDemotedEntry(
+  input: { asNo: string; toNo: string; who: string; role: TlRole; at: string },
+): Omit<TimelineEntry, 'id'> {
+  return {
+    category: 'relate', action: 'relate', who: input.who, role: input.role,
+    how: '关联降级',
+    what: `售后单 ${input.asNo} 的客服来源位关联已转至工单 ${input.toNo}，本单关联转为历史只读`,
+    when: input.at,
+  };
+}
+
+/** 新单侧「关联接入」履历 */
+export function aftersaleLinkJoinedEntry(
+  input: { asNo: string; fromNo: string; who: string; role: TlRole; at: string },
+): Omit<TimelineEntry, 'id'> {
+  return {
+    category: 'relate', action: 'relate', who: input.who, role: input.role,
+    how: '关联接入',
+    what: `接下售后单 ${input.asNo} 的客服来源位关联（原关联工单 ${input.fromNo}）`,
+    when: input.at,
+  };
+}
+
+/**
+ * 升级投诉时把**客服来源位**关联从原单迁到新投诉单：原单解除关联、写「关联降级」；
+ * 新单接上关联、写「关联接入」。不做历史关联分组（Q5），旧关联只留履历。
+ * 原单没有来源位关联时原样返回、`to` 为空。
+ */
+export function migrateAftersaleLink(
+  from: Ticket,
+  toNo: string,
+  ctx: { who: string; role: TlRole; at: string },
+): { from: Ticket; to: Partial<Ticket> } {
+  const asNo = from.linkedAftersaleNo;
+  if (!asNo) return { from, to: {} };
+  const demotedId = `as-${from.no}-demoted-${asNo}`;
+  const already = from.eventTimeline?.some((e) => e.id === demotedId);
+  return {
+    from: {
+      ...from,
+      linkedAftersaleNo: undefined,
+      eventTimeline: already
+        ? from.eventTimeline
+        : [...(from.eventTimeline ?? []), { id: demotedId, ...aftersaleLinkDemotedEntry({ asNo, toNo, ...ctx }) }],
+    },
+    to: {
+      linkedAftersaleNo: asNo,
+      linkedAftersaleStatus: from.linkedAftersaleStatus,
+      linkedAftersaleServiceType: from.linkedAftersaleServiceType,
+      eventTimeline: [{
+        id: `as-${toNo}-joined-${asNo}`,
+        ...aftersaleLinkJoinedEntry({ asNo, fromNo: from.no, ...ctx }),
+      }],
+    },
+  };
+}
+
 /**
  * 回流单被领取 / 被指派（D10）：**直落「处理中」、首响不重计**。
  * 只对 `returnedFromAftersale` 且仍「未认领」的单生效；其余单返回 null，由调用方走原领取 / 指派流转。

@@ -3,6 +3,7 @@ import { ref, watch } from 'vue';
 import type { Ticket } from '@/views/tickets/types/ticket';
 import { TICKETS } from '@/mock/tickets';
 import { todayPrefix, todayStamp } from '@/stores/riskShared';
+import { migrateAftersaleLink } from '@/views/tickets/composables/aftersaleEvents';
 
 /** 一次「升级」派生要交的东西：原单号、新投诉单号、承接人（评估人）、升级说明 */
 export interface DeriveComplaintInput {
@@ -195,6 +196,13 @@ export const useDerivedTicketStore = defineStore('derivedTickets', () => {
       // 原先这里还前缀一句「【风险升级】由 X 自 Y 升级承接。升级说明：」：那句是"这张单从哪来"，
       // 派生单上已由接管横幅与 `escalatedFromNo` 说清，写进问题描述等于把来路混进客户问题本身。
       problemDesc: escalatedProblemDesc(origin.problemDesc, input.reason),
+      // 原单的售后回传履历与回流标记属于原单，不随抄件过来
+      eventTimeline: undefined,
+      aftersaleEventIds: undefined,
+      returnedFromAftersale: undefined,
+      closeReason: undefined,
+      // 基线 ※26：原单的客服来源位关联迁到新单，新单写「关联接入」（原单侧「关联降级」在原单载入时写）
+      ...migrateAftersaleLink(origin, input.no, { who: '系统', role: '系统', at }).to,
       ...safeOverrides(overrides),
     };
     tickets.value.unshift(derived);
