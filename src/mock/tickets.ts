@@ -3,7 +3,268 @@ import { resolveTicketGroupNames } from '@/views/tickets/types/ticket';
 import { mapChannelToSource } from '@/views/tickets/types/createTicket';
 import { todayStamp } from '@/stores/riskShared';
 import { FLASH_SEEDS } from './flash/seedTickets';
-import { applyAftersaleEvent, takeOverReturnedTicket } from '@/views/tickets/composables/aftersaleEvents';
+import {
+  applyAftersaleEvent, applyAftersaleResult, routeAftersaleEvent, takeOverReturnedTicket,
+  type AftersaleEvent, type AftersaleInboundSeed,
+} from '@/views/tickets/composables/aftersaleEvents';
+
+/* ================================================================
+ * 客服⇄售后互转（1025）售后发起的单：③ 售后升级投诉转入 / ④ 售后转咨询转入，及 ① 投诉单关联售后。
+ * 一律经售后回传通道 `routeAftersaleEvent` / `applyAftersaleEvent` / `applyAftersaleResult` 生成，
+ * 与运行时同一套函数，不在这里手写状态。
+ * ================================================================ */
+
+/** 坐席从池中领取（新单照通用流转；种子取已首响、处理中） */
+function claimSeed(t: Ticket, who: string, at: string): Ticket {
+  return {
+    ...t,
+    assignee: who, nodeStatus: '处理中', tab: 'mine', responded: true, updatedAt: at,
+    eventTimeline: [...(t.eventTimeline ?? []), {
+      id: `as-${t.no}-claim`, category: 'node', action: 'accept', who, role: '二线专员',
+      how: '领取', what: `${who} 从池中领取本单。`, when: at,
+    }],
+  };
+}
+
+/** 下送结案（承接链路的原单需先落终态） */
+function settleSeed(t: Ticket, at: string): Ticket {
+  return {
+    ...t,
+    nodeStatus: '已结案', tab: 'done', handledByMe: true,
+    slaText: '—', slaSub: '已结案', slaState: 'ok', slaMinutes: 9999, updatedAt: at,
+    eventTimeline: [...(t.eventTimeline ?? []), {
+      id: `as-${t.no}-settled`, category: 'node', action: 'resolved', who: t.assignee ?? '王坐席', role: '二线专员',
+      how: '下送', what: '处理完毕，下送结案。', when: at,
+    }],
+  };
+}
+
+function inbound(seed: AftersaleInboundSeed): AftersaleInboundSeed {
+  return { channel: '电话', priority: 'P2', productCategory: '智能硬件', ...seed };
+}
+
+/** 跑一条售后事件并取出新建的那张单 */
+function created(rows: Ticket[], e: AftersaleEvent): { rows: Ticket[]; created: Ticket } {
+  const r = routeAftersaleEvent(rows, e);
+  if (!r.created) throw new Error(`[mock/tickets] ${e.type} ${e.asNo} 未建出新单`);
+  return { rows: r.rows, created: r.created };
+}
+
+function buildAftersaleSeeds() {
+  const seeds: Ticket[] = [];
+
+  // ① 投诉单已关联售后单，售后单处理中（客服来源位）
+  seeds.push(applyAftersaleEvent({
+    id: 'as-c1', no: 'IFLYTS-20260930-00031', type: '投诉', channel: '电话',
+    title: '扫地机器人维修后再次故障，要求退换', smartMarks: ['情绪'],
+    customer: '高婷', vip: false, product: '扫地机器人 R2', complaintType: '投诉',
+    nodeStatus: '处理中', nodeStep: 2, nodeTotal: 5, priority: 'P1',
+    slaText: '05:20:00', slaSub: '充足', slaState: 'ok', slaMinutes: 320,
+    assignee: '王坐席', tab: 'mine', groupId: 'line1',
+    linkedAftersaleNo: 'AS-20260930-41502', linkedAftersaleServiceType: '维修', linkedAftersaleStatus: '待接单',
+    customerPhone: '13700004521', sn: 'SN-R2-41502', productCategory: '智能硬件',
+    problemDesc: '扫地机器人上月维修更换主板后再次无法回充，客户对维修质量不满，要求退换新机。',
+    createdAt: '2026-09-30 09:12', updatedAt: '2026-09-30 10:40', responded: true,
+    eventTimeline: [{
+      id: 'as-IFLYTS-20260930-00031-link', category: 'node', action: 'transfer', who: '王坐席', role: '二线专员',
+      how: '关联售后', what: '关联售后单 AS-20260930-41502（服务类型：维修）。', when: '2026-09-30 10:40',
+    }],
+  }, {
+    type: 'AS_PROGRESS', asNo: 'AS-20260930-41502', at: '2026-10-01 09:30', operator: '吴师傅（售后一组）', status: '处理中',
+  }).ticket);
+
+  // ③ 售后升级投诉转入：售后单冻结、尚未回传
+  const e1 = created([], {
+    type: 'AS_ESCALATE_COMPLAINT', asNo: 'AS-20260926-41288', eventId: 'ase-41288-esc',
+    at: '2026-09-26 14:05', operator: '钱师傅（售后二组）',
+    escalateReason: '客户对上门维修时效强烈不满，现场要求投诉处理',
+    inbound: inbound({
+      id: 'as-e1', no: 'IFLYTS-20260926-00032', title: '翻译机寄修超期，客户要求投诉处理',
+      customer: '罗佳', product: '讯飞翻译机 T10', customerPhone: '13900004128', sn: 'SN-T10-41288',
+      productCategory: '消费电子', priority: 'P1',
+      problemDesc: '翻译机寄修已超承诺时效 7 天仍未寄回，客户多次催促无果，要求按投诉处理并给出赔偿方案。',
+      asTitle: '讯飞翻译机 T10 屏幕无显示寄修', asServiceType: '维修',
+    }),
+  }).created;
+  seeds.push(claimSeed(e1, '王坐席', '2026-09-26 14:40'));
+
+  // ③ 售后升级投诉转入：已回传过一次（首次回传 · 已解冻）
+  const e2 = claimSeed(created([], {
+    type: 'AS_ESCALATE_COMPLAINT', asNo: 'AS-20260927-41340', eventId: 'ase-41340-esc',
+    at: '2026-09-27 10:20', operator: '孙师傅（售后一组）',
+    escalateReason: '二次维修仍未修复，客户要求升级投诉',
+    inbound: inbound({
+      id: 'as-e2', no: 'IFLYTS-20260927-00033', title: '学习机二次维修未修复，要求升级处理',
+      customer: '谢磊', product: '讯飞学习机 T20', customerPhone: '13600004134', sn: 'SN-T20-41340',
+      productCategory: '学习硬件', priority: 'P1',
+      problemDesc: '学习机触屏失灵，两次寄修后问题依旧，客户要求退机并对维修质量投诉。',
+      asTitle: '讯飞学习机 T20 触屏失灵二次寄修', asServiceType: '维修',
+    }),
+  }).created, '王坐席', '2026-09-27 10:55');
+  seeds.push(applyAftersaleResult(e2, {
+    conclusion: '部分解决', note: '已与客户达成换新方案，等待售后侧安排寄送新机，赔偿事项另行跟进。',
+    who: '王坐席', role: '二线专员', at: '2026-09-28 16:10', unfrozenStatus: '处理中',
+  }).ticket);
+
+  // 同一张售后单挂两张客服单：来源位＝已转出的咨询单 t33，派生位＝售后升级投诉转入的投诉单
+  const t33Base: Ticket = {
+    id: 't33', no: 'IFLYZX-20260722-00002', type: '咨询', channel: '电话',
+    title: '录音笔无法充电，需寄修检测', smartMarks: [],
+    customer: '孙倩', vip: false, product: '智能录音笔 SR302',
+    nodeStatus: '已转出', nodeStep: 4, nodeTotal: 5, priority: 'P2',
+    slaText: '04:30:00', slaSub: '充足', slaState: 'ok', slaMinutes: 270,
+    assignee: '王坐席', tab: 'mine',
+    linkedAftersaleNo: 'AS-20260722-38104', linkedAftersaleServiceType: '寄修检测', linkedAftersaleStatus: '处理中',
+    customerPhone: '13977778888', sn: 'SN-SR302-40915', productCategory: '智能硬件',
+    createdAt: '2026-07-22 09:40', updatedAt: '2026-07-22 11:15',
+    // 830 演示：已转出态下催补两枚都不展示，hover 售后单号出提示去售后系统操作
+    responded: true,
+  };
+  const pair = created([t33Base], {
+    type: 'AS_ESCALATE_COMPLAINT', asNo: 'AS-20260722-38104', eventId: 'ase-38104-esc',
+    at: '2026-09-28 11:30', operator: '赵师傅（售后三组）',
+    escalateReason: '寄修检测超期，客户在售后侧提出投诉',
+    inbound: inbound({
+      id: 'as-e3', no: 'IFLYTS-20260928-00034', title: '录音笔寄修检测超期，客户投诉',
+      customer: '孙倩', product: '智能录音笔 SR302', customerPhone: '13977778888', sn: 'SN-SR302-40915',
+      priority: 'P1',
+      problemDesc: '录音笔寄修检测超期两个月未有结论，客户在售后侧投诉，要求明确处理时限。',
+      asTitle: '智能录音笔 SR302 充电故障寄修检测', asServiceType: '寄修检测',
+    }),
+  });
+  const t33 = pair.rows[0];
+  seeds.push(claimSeed(pair.created, '王坐席', '2026-09-28 12:05'));
+
+  // 同位降级：同一售后单先后由售后转咨询、售后升级投诉建出两张客服单（客服派生位）
+  const d1 = created([], {
+    type: 'AS_RETURNED', asNo: 'AS-20260918-40655', eventId: 'ase-40655-returned-1',
+    at: '2026-09-18 15:20', operator: '周师傅（售后二组）', status: '已关闭',
+    returnReason: '检测无硬件故障，属使用咨询，转回客服',
+    inbound: inbound({
+      id: 'as-d1', no: 'IFLYZX-20260918-00035', title: '智能音箱唤醒不灵敏咨询',
+      customer: '陶然', product: '智能音箱 X1', customerPhone: '13500004065', sn: 'SN-X1-40655',
+      problemDesc: '智能音箱远场唤醒成功率低，售后检测无硬件故障，转回客服指导设置。',
+      asTitle: '智能音箱 X1 唤醒异常检测', asServiceType: '维修',
+    }),
+  });
+  const d1Claimed = claimSeed(d1.created, '王坐席', '2026-09-18 16:00');
+  const d2 = created([d1Claimed], {
+    type: 'AS_ESCALATE_COMPLAINT', asNo: 'AS-20260918-40655', eventId: 'ase-40655-esc',
+    at: '2026-09-20 10:15', operator: '周师傅（售后二组）',
+    escalateReason: '客户不认可检测结论，在售后侧提出投诉',
+    inbound: inbound({
+      id: 'as-d2', no: 'IFLYTS-20260920-00036', title: '智能音箱检测结论争议投诉',
+      customer: '陶然', product: '智能音箱 X1', customerPhone: '13500004065', sn: 'SN-X1-40655',
+      priority: 'P1',
+      problemDesc: '客户不认可售后「无硬件故障」的检测结论，要求重新检测并投诉检测人员态度。',
+      asTitle: '智能音箱 X1 唤醒异常检测', asServiceType: '维修',
+    }),
+  });
+  seeds.push(d2.rows[0], claimSeed(d2.created, '王坐席', '2026-09-20 10:50'));
+
+  // ④ 售后转咨询转入：关联售后单已关闭，可激活
+  seeds.push(claimSeed(created([], {
+    type: 'AS_RETURNED', asNo: 'AS-20260929-41420', eventId: 'ase-41420-returned-1',
+    at: '2026-09-29 11:00', operator: '冯师傅（售后一组）', status: '已关闭',
+    returnReason: '配件已寄出，客户咨询安装方法，转回客服指导',
+    inbound: inbound({
+      id: 'as-r1', no: 'IFLYZX-20260929-00037', title: '净化器滤芯配件安装咨询',
+      customer: '韦琳', product: '空气净化器 P2', customerPhone: '13800004142', sn: 'SN-P2-41420',
+      problemDesc: '售后已寄出替换滤芯，客户不清楚安装与复位步骤，需客服指导。',
+      asTitle: '空气净化器 P2 滤芯配件寄送', asServiceType: '配件',
+    }),
+  }).created, '王坐席', '2026-09-29 11:35'));
+
+  // ④ 售后转咨询转入：关联售后单关闭已久，激活会被售后侧拒绝
+  seeds.push(claimSeed(created([], {
+    type: 'AS_RETURNED', asNo: 'AS-20260515-36120', eventId: 'ase-36120-returned-1',
+    at: '2026-05-18 09:40', operator: '郑师傅（售后二组）', status: '已关闭',
+    returnReason: '维修完成后客户咨询延保政策，转回客服答复',
+    inbound: inbound({
+      id: 'as-r2', no: 'IFLYZX-20260518-00038', title: '录音笔维修后延保政策咨询',
+      customer: '石岩', product: '智能录音笔 SR302', customerPhone: '13700003612', sn: 'SN-SR302-36120',
+      problemDesc: '录音笔维修完成，客户咨询维修部件是否享受单独延保及延保期限。',
+      asTitle: '智能录音笔 SR302 按键失灵维修', asServiceType: '维修',
+    }),
+  }).created, '王坐席', '2026-05-18 10:20'));
+
+  // ④ 激活后售后再次转客服：原单未结案，落原单（第 n 次）
+  const r3Base = claimSeed(created([], {
+    type: 'AS_RETURNED', asNo: 'AS-20260920-40712', eventId: 'ase-40712-returned-1',
+    at: '2026-09-21 09:30', operator: '何师傅（售后一组）', status: '已关闭',
+    returnReason: '检测为网络设置问题，转回客服指导',
+    inbound: inbound({
+      id: 'as-r3', no: 'IFLYZX-20260921-00039', title: '学习机连不上家庭网络咨询',
+      customer: '江楠', product: '讯飞学习机 T20', customerPhone: '13600004071', sn: 'SN-T20-40712',
+      productCategory: '学习硬件',
+      problemDesc: '学习机无法连接家庭 5G 频段 WiFi，售后检测硬件正常，转客服指导网络设置。',
+      asTitle: '讯飞学习机 T20 无线模块检测', asServiceType: '维修',
+    }),
+  }).created, '王坐席', '2026-09-21 10:05');
+  let r3 = r3Base;
+  for (const [i, step] of [
+    { reopenAt: '2026-09-23 14:00', returnAt: '2026-09-26 16:20', reason: '更换无线模块后仍连不上，转回客服排查路由器设置' },
+    { reopenAt: '2026-09-29 10:30', returnAt: '2026-10-02 11:15', reason: '复检硬件正常，客户路由器信道设置问题，转回客服指导' },
+  ].entries()) {
+    r3 = routeAftersaleEvent([r3], {
+      type: 'AS_PROGRESS', asNo: 'AS-20260920-40712', at: step.reopenAt, operator: '何师傅（售后一组）', status: '待接单',
+    }).rows[0];
+    r3 = routeAftersaleEvent([r3], {
+      type: 'AS_RETURNED', asNo: 'AS-20260920-40712', eventId: `ase-40712-returned-${i + 2}`,
+      at: step.returnAt, operator: '何师傅（售后一组）', status: '已关闭', returnReason: step.reason,
+    }).rows[0];
+  }
+  seeds.push(r3);
+
+  // ④ 激活后售后再次转客服：原单已结案 → 新建咨询单并与原单建「承接」
+  const s1Open = claimSeed(created([], {
+    type: 'AS_RETURNED', asNo: 'AS-20260910-40388', eventId: 'ase-40388-returned-1',
+    at: '2026-09-11 10:10', operator: '林师傅（售后二组）', status: '已关闭',
+    returnReason: '耳机配对问题属使用咨询，转回客服指导',
+    inbound: inbound({
+      id: 'as-s1', no: 'IFLYZX-20260911-00040', title: '蓝牙耳机配对失败咨询',
+      customer: '鲁静', product: '蓝牙耳机 Air', customerPhone: '13900004038', sn: 'SN-AIR-40388',
+      problemDesc: '蓝牙耳机与手机配对失败，售后检测正常，转客服指导配对与重置。',
+      asTitle: '蓝牙耳机 Air 配对异常检测', asServiceType: '维修',
+    }),
+  }).created, '王坐席', '2026-09-11 10:40');
+  const s1Settled = settleSeed(s1Open, '2026-09-15 17:20');
+  const s1Reopened = routeAftersaleEvent([s1Settled], {
+    type: 'AS_PROGRESS', asNo: 'AS-20260910-40388', at: '2026-09-27 09:00', operator: '林师傅（售后二组）', status: '待接单',
+  }).rows[0];
+  const s2 = created([s1Reopened], {
+    type: 'AS_RETURNED', asNo: 'AS-20260910-40388', eventId: 'ase-40388-returned-2',
+    at: '2026-09-30 15:45', operator: '林师傅（售后二组）', status: '已关闭',
+    returnReason: '左耳无声为固件问题，升级后客户咨询降噪设置，转回客服',
+    inbound: inbound({
+      id: 'as-s2', no: 'IFLYZX-20260930-00041', title: '蓝牙耳机固件升级后降噪设置咨询',
+      customer: '鲁静', product: '蓝牙耳机 Air', customerPhone: '13900004038', sn: 'SN-AIR-40388',
+      problemDesc: '耳机左耳无声经售后升级固件解决，客户咨询升级后降噪模式的设置方法。',
+      asTitle: '蓝牙耳机 Air 配对异常检测', asServiceType: '维修',
+    }),
+  });
+  seeds.push(s2.rows[0], s2.created);
+
+  // t5a：售后转咨询转入（④），售后单已关闭，看板「转入」下钻按来源取到它
+  const t5a = claimSeed(created([], {
+    type: 'AS_RETURNED', asNo: 'AS-20260731-40217', eventId: 'ase-40217-returned-1',
+    at: '2026-08-04 09:20', operator: '陈师傅（售后一组）', status: '已关闭',
+    returnReason: '滤芯配件到货，客户咨询续办事项，转回客服',
+    inbound: inbound({
+      id: 't5a', no: 'IFLYZX-20260804-00003', title: '售后回传·配件到货续办咨询',
+      customer: '何敏', product: '空气净化器 P2', customerPhone: '13900008801', sn: 'SN-P2-88001',
+      asTitle: '空气净化器 P2 滤芯配件更换（寄修）', asServiceType: '寄修检测',
+    }),
+  }).created, '王坐席', '2026-08-04 10:05');
+
+  return {
+    t33,
+    t5a: { ...t5a, slaText: '05:40:00', slaMinutes: 340 } as Ticket,
+    seeds,
+  };
+}
+
+const AS_SEEDS = buildAftersaleSeeds();
 
 // 工单 Mock 数据（对齐 PRD-02 §9 字段与分布；样例文案参考 .pen SJpgc）。
 // 分布：我的任务 8 / 已办 6 / 本组工单池 5 / @我的工单 3 / 待审核 3 = 25（活跃）+ 归档。
@@ -85,25 +346,9 @@ const BASE_TICKETS: Ticket[] = [
     responded: true, supplementUnread: true, hasSupplement: true, contactedAfterUrge: true,
   },
   // 班组长看板「转入」下钻：售后回传 / 跨组调剂
-  {
-    id: 't5a', no: 'IFLYZX-20260804-00003', type: '咨询', channel: '电话',
-    title: '售后回传·配件到货续办咨询', smartMarks: [],
-    customer: '何敏', vip: false, product: '空气净化器 P2',
-    ticketSource: '售后系统',
-    // 售后把单转回客服（AS_RETURNED）：1:1 关联位仍指向这张售后单，
-    // 客服侧再点「转售后」不是建第二张，而是把它重新激活
-    aftersaleOriginNo: 'AS-20260731-40217',
-    aftersaleOriginTitle: '空气净化器 P2 滤芯配件更换（寄修）',
-    aftersaleOriginStatus: '已转回客服',
-    nodeStatus: '处理中', nodeStep: 2, nodeTotal: 5, priority: 'P2',
-    slaText: '05:40:00', slaSub: '充足', slaState: 'ok', slaMinutes: 340,
-    // 挂在 WORKBENCH_HANDLER 名下，「我的任务」首屏即可点开验激活分支；
-    // 看板「转入」下钻按 ticketSource 过滤，与处理人无关，不受影响
-    assignee: '王坐席', tab: 'mine',
-    customerPhone: '13900008801', sn: 'SN-P2-88001', productCategory: '智能硬件',
-    createdAt: '2026-08-04 09:20', updatedAt: '2026-08-04 10:05',
-    responded: true,
-  },
+  // 售后转咨询转入（④）：售后单转回客服、客服侧新建咨询单占客服派生位，「转售后」位为「激活售后单」。
+  // 挂在 WORKBENCH_HANDLER 名下，「我的任务」首屏即可点开；看板「转入」下钻按 ticketSource 过滤，与处理人无关
+  AS_SEEDS.t5a,
   { serviceScore: 3,
     id: 't5b', no: 'IFLYTS-20260804-00004', type: '投诉', channel: '在线客服',
     title: '跨组调剂·二组转入待跟进', smartMarks: ['情绪'],
@@ -155,19 +400,10 @@ const BASE_TICKETS: Ticket[] = [
   },
   // 非诉转售后后的「已转出」等待态：原单不关闭、留在我的任务、SLA 照常走（1025：转出不停钟），
   // 等售后回传终态（AS_CLOSED → 原单正常关闭进已办；AS_RETURNED → 清空处理人重新派单）
-  {
-    id: 't33', no: 'IFLYZX-20260722-00002', type: '咨询', channel: '电话',
-    title: '录音笔无法充电，需寄修检测', smartMarks: [],
-    customer: '孙倩', vip: false, product: '智能录音笔 SR302',
-    nodeStatus: '已转出', nodeStep: 4, nodeTotal: 5, priority: 'P2',
-    slaText: '04:30:00', slaSub: '充足', slaState: 'ok', slaMinutes: 270,
-    assignee: '王坐席', tab: 'mine',
-    linkedAftersaleNo: 'AS-20260722-38104',
-    customerPhone: '13977778888', sn: 'SN-SR302-40915', productCategory: '智能硬件',
-    createdAt: '2026-07-22 09:40', updatedAt: '2026-07-22 11:15',
-    // 830 演示：已转出态下催补两枚都不展示，hover 售后单号出提示去售后系统操作
-    responded: true,
-  },
+  // 该售后单此后被售后升级投诉（③）：本单占客服来源位不动，卡片呈「冻结」，派生位上是新投诉单
+  AS_SEEDS.t33,
+  // 1025 客服⇄售后互转：① 关联售后 / ③ 售后升级投诉转入 / ④ 售后转咨询转入 / 同位降级 / 承接
+  ...AS_SEEDS.seeds,
 
   // ================================================================
   // 补充与催单（830）演示单 —— 共 9 张。
@@ -966,7 +1202,7 @@ const TICKET_BRIEFS: Record<string, { problemDesc: string; latestHandling: strin
   t27: { problemDesc: '路由器固件升级后无法联网', latestHandling: '已指导回退固件，待客户验证' },
   t28: { problemDesc: '被重复扣费，要求退还', latestHandling: '已确认重复扣费，已发起退款' },
   t32: { problemDesc: '扫地机器人滚刷卡死、异响，需上门维修', latestHandling: '非诉转售后，关联售后单 AS-20260716-38025（上门维修）已完成并回传关闭，客服单随之关闭' },
-  t33: { problemDesc: '录音笔充电无反应，指示灯不亮，需寄修检测', latestHandling: '已转售后寄修，关联售后单 AS-20260722-38104（寄修检测）· 售后状态：处理中，等待售后处理结果' },
+  t33: { problemDesc: '录音笔充电无反应，指示灯不亮，需寄修检测', latestHandling: '已转售后寄修，关联售后单 AS-20260722-38104（寄修检测）· 售后状态：冻结，等待售后处理结果' },
   t29: { problemDesc: '屏幕出现花屏，需返厂检测', latestHandling: '未认领，尚未安排' },
   t30: { problemDesc: '客户 API 鉴权失败，无法调用', latestHandling: '未认领，尚未安排' },
   t31: { problemDesc: '同事 @ 请求协助确认退款政策', latestHandling: '待确认退款政策口径' },
@@ -1081,6 +1317,18 @@ const TICKET_GROUP_NAMES: Record<string, string[]> = {
   t33: ['硬件缺陷组'],
   t41: ['硬件缺陷组'],
   t42: ['硬件缺陷组'],
+  // 1025 客服⇄售后互转：售后发起与关联售后的单
+  'as-c1': ['硬件缺陷组'],
+  'as-e1': ['硬件缺陷组'],
+  'as-e2': ['硬件缺陷组'],
+  'as-e3': ['硬件缺陷组'],
+  'as-d1': ['硬件缺陷组'],
+  'as-d2': ['硬件缺陷组'],
+  'as-r1': ['硬件缺陷组'],
+  'as-r2': ['硬件缺陷组'],
+  'as-r3': ['硬件缺陷组'],
+  'as-s1': ['硬件缺陷组'],
+  'as-s2': ['硬件缺陷组'],
   'ops-1': ['硬件缺陷组'],
   'ops-4': ['硬件缺陷组'],
 

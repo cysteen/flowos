@@ -167,7 +167,11 @@ export function applyAftersaleEvent(
     return {
       ticket: inSourceSlot
         ? { ...ticket, linkedAftersaleStatus: status }
-        : { ...ticket, aftersaleOriginStatus: status },
+        : {
+            ...ticket,
+            aftersaleOriginStatus: status,
+            aftersaleOriginClosedAt: isAftersaleSettledStatus(status) ? ticket.aftersaleOriginClosedAt ?? event.at : undefined,
+          },
       outcome: 'card-only',
     };
   }
@@ -218,10 +222,12 @@ function returnFacts(e: AftersaleEvent): string {
 function applyReturnedToDerived(t: Ticket, e: AftersaleEvent): AftersaleEventResult {
   if (isDerivedSettled(t)) return { ticket: t, outcome: 'derived-closed' };
   const n = (t.aftersaleReturnCount ?? 1) + 1;
+  const status = e.status ?? AS_RETURNED_STATUS;
   return {
     ticket: {
       ...t,
-      aftersaleOriginStatus: e.status ?? AS_RETURNED_STATUS,
+      aftersaleOriginStatus: status,
+      aftersaleOriginClosedAt: isAftersaleSettledStatus(status) ? e.at : undefined,
       aftersaleReturnCount: n,
       eventTimeline: withEntries(t, [{
         category: 'node', action: 'transfer', who: e.operator, role: AFTERSALE_ACTOR_ROLE,
@@ -540,6 +546,7 @@ export function routeAftersaleEvent(
       when: e.at,
     }], deps.dispatch);
     created.aftersaleOriginStatus = e.status ?? AS_RETURNED_STATUS;
+    if (isAftersaleSettledStatus(created.aftersaleOriginStatus)) created.aftersaleOriginClosedAt = e.at;
     created.aftersaleReturnCount = (der.aftersaleReturnCount ?? 1) + 1;
     created.succeedsFromNo = der.no;
     out[derIdx] = {

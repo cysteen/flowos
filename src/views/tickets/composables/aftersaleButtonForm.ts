@@ -7,9 +7,19 @@
  */
 import type { LinkedAftersale, TicketDetailMeta } from '@/mock/ticketDetail';
 import { statusStyle } from '@/views/tickets/types/ticket';
-import { isAftersaleInbound, isAftersaleSettled } from './opActions';
+import { AFTERSALE_INBOUND_SOURCE, normalizeTicketSource } from '@/views/tickets/types/createTicket';
 import { NO_AFTERSALE_LINK_TIP, NO_AFTERSALE_TIP } from './opActionRegistry';
 import { FLASH_GATE_TIPS } from './flashGate';
+
+// 判据与 opActions 的 isAftersaleSettled / isAftersaleInbound 同源；此处不引 opActions，
+// 免得 mock/tickets（种子经售后回传通道生成）→ aftersaleEvents → 本模块 → opActions → mock/tickets 成环
+const AFTERSALE_SETTLED_STATUS = ['已完成', '已关闭', '已取消'];
+function isAftersaleSettled(status: string): boolean {
+  return AFTERSALE_SETTLED_STATUS.includes(status);
+}
+function isAftersaleInbound(d: { source?: string }): boolean {
+  return normalizeTicketSource(d.source) === AFTERSALE_INBOUND_SOURCE;
+}
 
 /** ③ ④ 建出的新单：来源类型的页面名称，页头「建单人」同显此名（§4.1 / §4.3） */
 export const AFTERSALE_INBOUND_LABEL = '售后转入';
