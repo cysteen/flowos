@@ -806,9 +806,18 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
    * ⚠️ 容器**不能**写 `width: max-content` —— 那会让 fr 按内容最大宽度解算，
    * 风险描述一长，整张表就撑到屏外、把「操作」推得看不见（折叠也随之失效）。
    */
+  /*
+   * ⚠️ **末列 104，不是 84**：已领取那一行是两枚动作（「风险管控」+「释放」），
+   * 84px 装不下，`.act` 会**从词中间折行**成「风险管 / 控」。
+   * 实测两枚并排的内容宽 84px + 右内边距 12px ＝ 96px，取 104 留 8px 余量。
+   * 🔴 **不要再往上加**：多出来的宽度是从两条弹性列身上拿的，而「工单 / 标题」那一列
+   * 本来就不够（第二行的「已升级为 〈单号〉」关联标按 `TicketTitleCell` 的既定优先级
+   * 被裁 —— 单号完整优先、关联标可裁），每多拿 1px 那枚标就少露 1px。
+   * `.act` 另加 `white-space: nowrap` 兜底：哪怕将来再挤，也只会整词换行，不会把动作名劈成两半。
+   */
   grid-template-columns:
     4px minmax(276px, 1.2fr) 96px 92px 88px minmax(190px, 1fr)
-    92px 88px 76px 76px 84px;
+    92px 88px 76px 76px 104px;
   column-gap: 0;
   width: 100%;
   padding: 0 16px;
@@ -1020,6 +1029,8 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
+  /* 动作名不许从词中间断（见 .rrp-grid 末列那段注释） */
+  white-space: nowrap;
 }
 .empty {
   padding: 64px 0;
