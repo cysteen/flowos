@@ -98,7 +98,7 @@ import { TICKETS } from '@/mock/tickets';
 // 本文件再抄一份，改天业务把「普通加急」改个说法，这一列就会静默地留在旧词上。
 // `canReleaseAnyRiskReport` 是**管理员兜底释放**那一路的唯一判据，与 B 线报备池共用同一份 ——
 // 两个池的释放口径 PRD 明写「逐条同 §5.5」（§5B.4），各写一份就会各放各的权
-import { canReleaseAnyRiskReport, STATUS_GROUP, ticketStatusDisplayName, resolveTicketGroupNames, type Priority, type Ticket } from '@/views/tickets/types/ticket';
+import { canReleaseAnyRiskReport, STATUS_GROUP, ticketStatusDisplayName, resolveTicketGroupNames, type Priority, type Ticket, type TicketType } from '@/views/tickets/types/ticket';
 import { PRIORITY_OPTIONS } from '@/views/tickets/types/createTicket';
 // 🔴 清单表直接复用工作台那张富列表，不在本页另画一张长得像的：
 // 「重点工单」那一路的行**就是工单**，人在这一档要判的也正是工单本身
@@ -362,18 +362,23 @@ const livePriorityCounts = computed<Record<Priority, number>>(() => {
 });
 
 /**
- * 第二行 · **工单类型四类**。
- * ⚠️ 工单类型这一维在建单侧是**五个**取值（`CREATE_TICKET_TYPES` 还有「刷机」），
- * 业务给的是这四类，故 **Σ四类 ≤ 在办工单总数**，差额就是在办的刷机单。
- * 差额如实留着，不吞也不凑：凑出来的"漂亮总数"会让人以为每一张在办单都归了这四类之一。
+ * 第二行 · **工单类型**。业务点名的是前四类（咨询 / 建议 / 商机 / 投诉）。
+ *
+ * 🔴 **「刷机」作为第五格照常摆上**（2026-10-07 补）：工单类型这一维在建单侧**就是五个取值**
+ * （`CreateFormTicketType`），只摆四类的话这一行之和会比上面那行少掉在办的刷机单 ——
+ * 实测 ΣP0..P3 ＝ 92、Σ四类 ＝ 74，**同一块卡里两行差着 18 而没有任何说明，
+ * 读的人只会以为其中一处坏了**。两行本来就同分母（都取 `liveTickets` ＝ 全部在办工单），
+ * 差额纯粹是"类型这一维的第五个取值没摆出来"。摆上之后
+ * **Σ五类 ≡ ΣP0..P3 ≡ 在办工单总数**，两行肉眼可验。
+ * 🔴 差额如实摆出来、不吞也不凑：吞掉的话差的那十几条谁也找不出来在哪。
+ *
+ * `Record<TicketType, number>` 这一笔是**编译期的穷举保证**：将来枚举多一个取值，
+ * 这里会直接编译不过，而不是静默地又少掉一格。
  */
-const HEAD_TICKET_TYPES = ['咨询', '建议', '商机', '投诉'] as const;
-type HeadTicketType = (typeof HEAD_TICKET_TYPES)[number];
-const liveTicketTypeCounts = computed<Record<HeadTicketType, number>>(() => {
-  const base: Record<HeadTicketType, number> = { 咨询: 0, 建议: 0, 商机: 0, 投诉: 0 };
-  for (const t of liveTickets.value) {
-    if ((HEAD_TICKET_TYPES as readonly string[]).includes(t.type)) base[t.type as HeadTicketType] += 1;
-  }
+const HEAD_TICKET_TYPES = ['咨询', '建议', '商机', '投诉', '刷机'] as const satisfies readonly TicketType[];
+const liveTicketTypeCounts = computed<Record<TicketType, number>>(() => {
+  const base: Record<TicketType, number> = { 咨询: 0, 建议: 0, 商机: 0, 投诉: 0, 刷机: 0 };
+  for (const t of liveTickets.value) base[t.type] += 1;
   return base;
 });
 
@@ -4329,6 +4334,37 @@ function pooledLevelCount(lv: RiskLevel) {
 }
 
 /**
+ * 页头「风险工单」块第二行 · **已判那一批按原单类型的分布**。
+ *
+ * 🔴 **分母是风险工单（＝左栏已判那一批监控条目），不是「重点工单」块那一行的全部在办工单**。
+ * 同一个词「工单类型」在同屏出现两次、分母不同，两行**不可相减**；各自的 title 写死分母。
+ * 🔴 **与本块另外四个数走同一批条目**（`inGroup(reportStore.pooledEntries)`，即
+ * `pooledAllCount` / `pooledLevelCount` 读的那一份），故 **Σ各格 ≡ 风险工单总数**
+ * 由构造成立，不是事后对账凑出来的；要改口径仍然只能改那一份，不许在这里另起一条查询。
+ *
+ * 原单类型取 `poolTicketTypeOf` —— 池行表「原单类型」那一列同一个口径（工单库 + 派生库两处查）。
+ * ⚠️ 查不到原单、或原单类型落在四类之外（刷机）的条目收进「其他」一格，**不吞**：
+ * 吞掉的话各格之和会小于总数，而差的那几条谁也找不出来在哪。
+ * 「其他」为 0 时整格不出现 —— 它是**余额**不是一个档，摆一个恒为 0 的格只会让人去找它是什么。
+ */
+const POOLED_TYPE_KEYS = ['咨询', '建议', '商机', '投诉'] as const;
+const POOLED_TYPE_REST = '其他';
+const pooledTicketTypeCounts = computed<Record<string, number>>(() => {
+  const base: Record<string, number> = { 咨询: 0, 建议: 0, 商机: 0, 投诉: 0, [POOLED_TYPE_REST]: 0 };
+  for (const e of inGroup(reportStore.pooledEntries)) {
+    const t = poolTicketTypeOf(e);
+    base[(POOLED_TYPE_KEYS as readonly string[]).includes(t) ? t : POOLED_TYPE_REST] += 1;
+  }
+  return base;
+});
+/** 实际要摆的格：四类恒摆，「其他」只在真有余额时摆 */
+const pooledTypeRowKeys = computed<string[]>(() => (
+  pooledTicketTypeCounts.value[POOLED_TYPE_REST]
+    ? [...POOLED_TYPE_KEYS, POOLED_TYPE_REST]
+    : [...POOLED_TYPE_KEYS]
+));
+
+/**
  * 页头「风险工单」块的下钻：进「评估处置」工作面的**不限阶段**（三段首尾相接），
  * 可带一个风险等级收窄 —— 那一块原本就是这个工作面的唯一入口（`drillReport` 是唯一的进法），
  * 换数之后**下钻能力照留**，否则领取 / 评估 / 协同整个工作面就进不去了。
@@ -5048,17 +5084,22 @@ function toggleWordEnabled(w: RiskWord) {
               <span class="dm-val"><span class="dm-v">{{ livePriorityCounts[p] }}</span></span>
             </div>
           </div>
-          <!-- 第二行 · 工单类型四类。工单类型另有第五个取值「刷机」，故四类之和 ≤ 在办工单总数，差额就是在办的刷机单 -->
+          <!--
+            第二行 · 工单类型。业务点名的是前四类，🔴 **「刷机」第五格照常摆上**：
+            两行本就同分母（都取 `liveTickets`），少摆一格会让两行之和差着在办的刷机单，
+            一块卡里两行对不上又没有说明，读的人只会以为其中一处坏了。
+            摆上之后 Σ五类 ≡ ΣP0..P3 ≡ 在办工单总数，肉眼可验。
+          -->
           <div class="dash-links">
             <span
               class="dash-links-k"
-              title="同一个分母（全部在办工单）换一维看：按工单类型计。🔴 工单类型另有第五个取值「刷机」，不在这四类里，故四类之和可能小于在办工单总数，差额就是在办的刷机单"
+              title="同一个分母（全部在办工单）换一维看：按工单类型计。🔴 五类之和 ≡ 上面 P0 + P1 + P2 + P3 ≡ 在办工单总数 —— 工单类型这一维就是这五个取值，没有落不进格的单"
             >工单类型</span>
             <span
               v-for="tt in HEAD_TICKET_TYPES"
               :key="tt"
               class="dl-item dl-static"
-              :title="`在办的「${tt}」类工单数 · 本块分母 ＝ 全部在办工单`"
+              :title="`在办的「${tt}」类工单数 · 本块分母 ＝ 全部在办工单（与下方「风险工单」块那一行的「工单类型」不是同一个分母，两处不可相减）`"
             >
               {{ tt }}<b>{{ liveTicketTypeCounts[tt] }}</b>
             </span>
@@ -5120,6 +5161,29 @@ function toggleWordEnabled(w: RiskWord) {
               <span class="dm-k">{{ riskLevelText(lv) }}</span>
               <span class="dm-val"><span class="dm-v">{{ pooledLevelCount(lv) }}</span></span>
             </button>
+          </div>
+          <!--
+            第二行 · 已判那一批按**原单类型**的分布（2026-10-07 补：业务「也展示一个工单类型维度的总集」）。
+            🔴 **分母是风险工单，不是上面那块的全部在办工单** —— 同一个词「工单类型」同屏出现两次、
+            两个分母，故两处的 title 都把分母写死，并点明不可相减。
+            🔴 走的仍是本块另外四个数那一批条目（见 `pooledTicketTypeCounts`），
+            故 Σ各格 ≡ 风险工单总数由构造成立。
+          -->
+          <div class="dash-links">
+            <span
+              class="dash-links-k"
+              title="同一批风险工单（＝左栏「已判」那一批监控条目）换一维看：按原单的工单类型计。🔴 各格之和 ≡ 左边「风险工单总数」。🔴 分母是风险工单、不是全部在办工单 —— 与上面「重点工单」块那一行的「工单类型」不是同一个集合，两处不可相减"
+            >工单类型</span>
+            <span
+              v-for="tt in pooledTypeRowKeys"
+              :key="tt"
+              class="dl-item dl-static"
+              :title="tt === POOLED_TYPE_REST
+                ? '原单类型落在四类之外（刷机），或原单已查不到的那几条 —— 不吞，吞掉的话各格之和会小于风险工单总数'
+                : `原单类型为「${tt}」的风险工单数 · 分母 ＝ 风险工单（已判那一批），不是全部在办工单`"
+            >
+              {{ tt }}<b>{{ pooledTicketTypeCounts[tt] }}</b>
+            </span>
           </div>
         </div>
       </div>
