@@ -6227,7 +6227,13 @@ function toggleWordEnabled(w: RiskWord) {
                 :style="reportView === 'all' || reportView === 'open' ? 'width: 80px' : 'width: 92px'"
               >承办人</th>
               <th style="width: 128px">进监控时刻</th>
-              <th style="width: 96px">等待时长</th>
+              <!--
+                ⚠️ **列宽 136**，不是 96：超时那一档的全文是「10 小时 已超处置时限」，实测需 136px，
+                给 96 会被 `.report-table td` 的省略截成「10 小时 …」—— 被截掉的恰好是
+                「已超处置时限」这个判据本身，剩下的「10 小时」看不出超没超。
+                多出的 40px 从「风险摘要」让（那一列无固定宽、本来就靠省略号收尾）。
+              -->
+              <th style="width: 136px">等待时长</th>
               <!--
                 已领取行现在是**两枚按钮**（处置 +「释放」，§5.4 元素 ⑥ ⑩a），
                 88px 装不下「协同处理」+「释放」，故放宽；多出来的宽度从「风险描述」那一列让。
