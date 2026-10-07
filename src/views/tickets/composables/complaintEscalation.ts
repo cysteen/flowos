@@ -26,8 +26,11 @@ export type EscalateKind =
 
 /** 一线不可外投 / 投诉单不可升级的提示（业务方 0730 定稿文案） */
 const FRONTLINE_COMPLAINT_TIP = '当前投诉单，不可升级';
-/** 门禁①：售后转入的投诉单不可再升级（来源非内投渠道，不能升外投）；非诉的售后转入单放行（1025 6b） */
-const AFTERSALE_INBOUND_TIP = FRONTLINE_COMPLAINT_TIP;
+/**
+ * 门禁①：售后转入的投诉单不可再升级（来源非内投渠道，不能升外投）；非诉的售后转入单放行（1025 6b）。
+ * 二线悬停取《【830】升级投诉 PRD》§3.3 来源非外投那一行原文，一线仍取「当前投诉单，不可升级」（《【1025】》§8 #52）。
+ */
+const AFTERSALE_INBOUND_TIP = '当前来源不产生外投单；补投诉信息请用『新建补充』';
 /**
  * 门禁③：冻结态不可升级（0801 拍板）。
  * 挂起在停表、待审核在等审批结果——此时升级会让 SLA 与审批双双失效（原单关了、审批还在跑）。
@@ -130,9 +133,10 @@ export function buildEscalateVerdict(detail: TicketDetailMeta, roleKey: string):
   // 售后转入的非诉单（④）放行（1025 口径定稿 6b，推翻 0801「售后转入一律不可升级」）：
   // 升级时客服派生位关联随单迁到新投诉单，见 migrateAftersaleLink。
   if (normalizeTicketSource(detail.source) === AFTERSALE_INBOUND_SOURCE && tier !== 'none') {
+    const tip = frontline ? FRONTLINE_COMPLAINT_TIP : AFTERSALE_INBOUND_TIP;
     return {
       tier, tierLabel, kind: null, entryEnabled: false,
-      entryTip: AFTERSALE_INBOUND_TIP, headline: AFTERSALE_INBOUND_TIP,
+      entryTip: tip, headline: tip,
     };
   }
 
