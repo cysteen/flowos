@@ -33,8 +33,9 @@ import type { FlashActionResult, FlashInfoChanges } from '@/stores/flash';
 const CreateTicketModal = defineAsyncComponent(() => import('./components/CreateTicketModal.vue'));
 import type { SmsTemplateKind } from '@/mock/notifyTemplates';
 import { useTicketOperation } from './composables/useTicketOperation';
-import { FEISHU_ESCALATE_CHANNEL, mapUserRole, pushEntry, isAftersaleSettled, isAftersaleInbound } from './composables/opActions';
+import { FEISHU_ESCALATE_CHANNEL, mapUserRole, pushEntry, isAftersaleSettled } from './composables/opActions';
 import { aftersaleLinkJoinedEntry } from './composables/aftersaleEvents';
+import { resolveAftersaleButtonForm } from './composables/aftersaleButtonForm';
 import { useProcessForm } from './composables/useProcessForm';
 import { useOperationTabs } from './composables/useOperationTabs';
 import { useTicketLiveNotify } from './composables/useTicketLiveNotify';
@@ -1382,6 +1383,12 @@ const aftersaleContext = computed(() => ({
     : undefined,
 }));
 
+/** 底栏「转售后」位的形态（《【1025】》§5.1；页头「关联售后」位由 OpHeader 以同一函数判） */
+const transferAftersaleForm = computed(() => resolveAftersaleButtonForm(d.value, {
+  position: 'transfer',
+  unclaimed: ticketUnclaimed.value,
+}));
+
 function isFeishuEscalate(payload: Record<string, unknown>): boolean {
   if (payload.type !== '升级') return false;
   const data = payload.data as { channel?: string } | undefined;
@@ -2298,6 +2305,7 @@ watch(
       :can-escalate-complaint="canEscalateComplaint"
       :can-link-aftersale="canLinkAftersale"
       :can-cancel-ticket="canCancelTicket"
+      :ticket-unclaimed="ticketUnclaimed"
       :show-risk-control="showRiskControl"
       :risk-control-blocked="riskControlBlocked"
       :risk-control-tip="riskControlTip"
@@ -2440,7 +2448,7 @@ watch(
       :feishu-eligible="feishuEligible"
       :feishu-sync="d.feishuSync"
       :aftersale-context="aftersaleContext"
-      :aftersale-inbound="isAftersaleInbound(d)"
+      :aftersale-form="transferAftersaleForm"
       :service-type="form.serviceType"
       :service-method="form.serviceMethod"
       :problem-cause="form.problemCause"

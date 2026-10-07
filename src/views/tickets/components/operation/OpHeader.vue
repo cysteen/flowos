@@ -12,8 +12,7 @@ import {
 import OpSlaBar from './OpSlaBar.vue';
 import { readSla } from '@/views/tickets/utils/slaClock';
 import OpAftersaleLinkCard from './OpAftersaleLinkCard.vue';
-import { isAftersaleSettled } from '../../composables/opActions';
-import { NO_AFTERSALE_LINK_TIP } from '../../composables/opActionRegistry';
+import { aftersaleCardFoot, resolveAftersaleButtonForm } from '../../composables/aftersaleButtonForm';
 import { buildEscalateVerdict, isTicketTerminated } from '../../composables/complaintEscalation';
 import { buildTicketRelations, type TicketRelation } from '../../composables/ticketRelations';
 import OpRelationList from './OpRelationList.vue';
@@ -50,6 +49,8 @@ const props = defineProps<{
   canEscalateComplaint?: boolean;
   canLinkAftersale?: boolean;
   canCancelTicket?: boolean;
+  /** 本单无处理人（工单池未认领）：「关联售后」位按 §5.1 第 0 行置灰 */
+  ticketUnclaimed?: boolean;
   /**
    * 页头「**风险管控**」那一枚（基线 ※29 的评估 / 协同两形态合成的一枚）。
    *
@@ -131,29 +132,24 @@ const csAvail = computed(() => csEntryAvailability(props.detail.status as Ticket
 const showSupplement = computed(() => props.canSupplement && csAvail.value.supplement);
 const showDunning = computed(() => props.canDunning && csAvail.value.dunning);
 
-/** 已有 1:1 关联售后单 → 「关联售后」封口，hover 出卡片跳售后系统（D2 改写） */
-const linkedAftersale = computed(() => {
-  const la = props.detail.linkedAftersale;
-  if (!la) return null;
-  return { ...la, settled: isAftersaleSettled(la.status) };
-});
+/** 本单的活跃关联售后单（卡片内容） */
+const linkedAftersale = computed(() => props.detail.linkedAftersale ?? null);
 
 /**
- * 产品无售后服务 → 「关联售后」置灰 + 悬停提示（1025 N9，与底栏「转售后」同一拦截、文案分开）。
- * 先于"已有关联"判：没有卡片可弹，靠 title 把原因带出来。
+ * 「关联售后」位的形态（《【1025】》§5.1）：建单 / 回传 / 置灰 + hover 卡片，一律取 resolveAftersaleButtonForm。
  */
-const noAftersaleProduct = computed(() => !props.detail.product.afterSaleEnabled);
-const linkAftersaleDisabled = computed(
-  () => !!props.readonly || delegateLocked.value || noAftersaleProduct.value || !!linkedAftersale.value,
-);
-const linkAftersaleTip = computed(() => {
-  if (props.readonly) return READONLY_TIP;
-  if (delegateLocked.value) return DELEGATE_LOCK_TIP;
-  if (noAftersaleProduct.value) return NO_AFTERSALE_LINK_TIP;
-  return undefined;
-});
-/** 已有关联、且不是因产品无售后服务而置灰时，悬停出售后单卡片 */
-const linkAftersaleCard = computed(() => !!linkedAftersale.value && !noAftersaleProduct.value);
+const linkForm = computed(() => resolveAftersaleButtonForm(props.detail, {
+  position: 'link',
+  unclaimed: props.ticketUnclaimed,
+  lockTip: props.readonly ? READONLY_TIP : undefined,
+}));
+/** 已转出芯片的卡片底部提示（同一张卡片，§5.4） */
+const transferredFoot = computed(() => (linkedAftersale.value ? aftersaleCardFoot(linkedAftersale.value, 'create') : null));
+
+function onLinkAftersaleClick() {
+  if (!linkForm.value.enabled) return;
+  emit('action', linkForm.value.shape === 'returnResult' ? '回传处理结果' : '关联售后');
+}
 
 /**
  * 刷机单线下登记暂停期间，SLA 区显示「SLA 暂停至 〈年-月-日 时:分〉」；恢复计时后不显示（PRD §5.1 / §4.3）。
@@ -356,12 +352,12 @@ function priorityHex(p: string): string {
           @click="emit('action', '升级投诉')"
         >升级投诉</button>
         <!--
-          已有 1:1 关联售后单时「关联售后」置灰（不建第二张单），
-          改为 hover 出售后单卡片：状态可见、工单地址可点跳售后系统操作
+          「关联售后」位（§5.1）：建单形态「关联售后」/ 回传形态「回传处理结果」/ 置灰；
+          有活跃关联时 hover 出售后单卡片：状态可见、工单号可点跳售后系统操作
         -->
         <a-popover
           v-if="canLinkAftersale && detail.type === '投诉'"
-          :trigger="linkAftersaleCard ? 'hover' : []"
+          :trigger="linkForm.card ? 'hover' : []"
           placement="bottomRight"
         >
           <template #content>
@@ -370,17 +366,17 @@ function priorityHex(p: string): string {
               :no="linkedAftersale.no"
               :status="linkedAftersale.status"
               :service-type="linkedAftersale.serviceType"
-              :settled="linkedAftersale.settled"
+              :foot="linkForm.cardFoot"
             />
           </template>
           <span class="btn-slot">
             <button
               type="button"
               class="action-btn"
-              :disabled="linkAftersaleDisabled"
-              :title="linkAftersaleTip"
-              @click="emit('action', '关联售后')"
-            >关联售后</button>
+              :disabled="!linkForm.enabled"
+              :title="linkForm.card ? undefined : linkForm.tip"
+              @click="onLinkAftersaleClick"
+            >{{ linkForm.label }}</button>
           </span>
         </a-popover>
         <!--
@@ -398,7 +394,7 @@ function priorityHex(p: string): string {
               :no="linkedAftersale.no"
               :status="linkedAftersale.status"
               :service-type="linkedAftersale.serviceType"
-              :settled="linkedAftersale.settled"
+              :foot="transferredFoot"
             />
           </template>
           <span class="as-chip">⇄ 已转售后 {{ linkedAftersale.no }}</span>

@@ -22,6 +22,7 @@ import { availableActions, NO_AFTERSALE_TIP } from '../composables/opActionRegis
 import type { ClosureMode } from '@/views/tickets/types/ticket';
 import { MAX_RETURN_COUNT } from '../composables/opActions';
 import { activateAftersaleTicket } from '@/api/aftersaleActivate';
+import type { AftersaleButtonForm } from '../composables/aftersaleButtonForm';
 
 const props = defineProps<{
   ticketNo: string;
@@ -44,8 +45,11 @@ const props = defineProps<{
   feishuSync?: string;
   /** 转售后上下文（投诉分流 + 预填 + 已有关联售后单） */
   aftersaleContext?: AftersaleContext;
-  /** 售后转入工单：「转售后」改为激活来源售后单，不建第二张 */
-  aftersaleInbound?: boolean;
+  /**
+   * 「转售后」位的形态（《【1025】》§5.1，`resolveAftersaleButtonForm` 的结果，由工单页算好传入）：
+   * 建单「转售后」/ 激活「激活售后单」/ 置灰（含 hover 卡片）。本组件不另判。
+   */
+  aftersaleForm?: AftersaleButtonForm;
   /** 处理表单现值：挂起申请需校验服务类型/服务方式 */
   serviceType?: string;
   serviceMethod?: string;
@@ -176,26 +180,15 @@ const isSuspended = computed(() => props.opState === 'suspended');
 const isTransferred = computed(() => props.opState === 'transferred');
 const TRANSFERRED_LOCK_TIP = '工单已转出至售后，等待售后处理结果';
 
-/**
- * 已有 1:1 关联售后单 → 「转售后」封口，不再建第二张单（D2 改写，激活动作取消）。
- * 未结案：去关联单 Tab 点售后卡片跳售后系统补充/催单；已结案：只能线下联系售后。
- */
+/** 本单的活跃关联售后单（hover 卡片内容） */
 const linkedAftersale = computed(() => props.aftersaleContext?.existing);
 /**
- * 售后转入单是封口的例外：关联位虽被占着，但占它的正是转回来的那张售后单。
- * 「转售后」在这里**照常点亮**，点下去按来源分流——售后转入走激活弹窗、其余走建单弹窗
- * （见 api/aftersaleActivate.ts）。能不能激活由售后侧判，客服侧不预判、不置灰。
+ * 激活形态（§5.1 第 2 / 3 行：售后转入的非诉单、回流单）：「转售后」位换成「激活售后单」，
+ * 点开无表单二次确认，激活的是已关联的那张售后单。能不能激活由售后侧判，客服侧不预判、不置灰（§4.4）。
  */
 const activatableAftersale = computed(() =>
-  (props.aftersaleInbound && linkedAftersale.value) || null,
+  (props.aftersaleForm?.shape === 'activate' && linkedAftersale.value) || null,
 );
-const aftersaleBlockedTip = computed(() => {
-  const as = linkedAftersale.value;
-  if (!as || activatableAftersale.value) return null;
-  return as.settled
-    ? `关联售后单 ${as.no} 已结案，如需继续处理请线下联系售后`
-    : '补充与催单请点开工单号，在售后系统中操作';
-});
 
 /** 委派中：单子交给协办人先处理，处理完回到本节点，期间锁定流转与终结类动作 */
 const isDelegating = computed(() => !!props.delegateTargets);
@@ -225,12 +218,25 @@ const actions = computed(() =>
 const noAftersaleProduct = computed(() => !props.afterSaleEnabled);
 
 /**
- * 「转售后」何时用 hover 卡片代替原生 title：只有**已有关联售后单**这一种。
- * 其余置灰原因（如产品无售后服务）没有卡片可弹，必须让 title 把提示带出来——
- * 否则就成了"置灰但不说为什么"，与基线 ※12「置灰 + 提示」只做了一半。
+ * 「转售后」何时用 hover 卡片代替原生 title：形态判定给了卡片（本单有活跃关联）时。
+ * 其余置灰原因（状态、产品无售后服务）没有卡片可弹，由 title 把提示带出来。
  */
 function showsAftersaleCard(key: OpActionType | '转单'): boolean {
-  return key === '转售后' && !!linkedAftersale.value && !activatableAftersale.value;
+  return key === '转售后' && !!props.aftersaleForm?.card && !!linkedAftersale.value;
+}
+
+/** 「转售后」位按形态判定出一格（底栏冻结 / 委派 / 常态三条路径共用） */
+function aftersaleBarItem(def: { key: OpActionType; icon: string; danger?: boolean }): BarItem {
+  const f = props.aftersaleForm;
+  if (!f) return { key: def.key, label: def.key, icon: def.icon, danger: def.danger };
+  return {
+    key: def.key,
+    label: f.label,
+    icon: def.icon,
+    danger: def.danger,
+    forbidden: !f.enabled,
+    forbiddenTip: f.tip,
+  };
 }
 const actionMap = computed(() => new Map(actions.value.map((a) => [a.key, a])));
 
@@ -271,15 +277,26 @@ const barActions = computed<BarItem[]>(() => {
       // 报备形态只给本单主责处理人：不是主责处理人的，冻结态下也不展示
       // （底栏这一格只会是报备形态，判定已在 resolveRiskBarForm 收口）
       if (key === '风险报备' && !props.showRiskReport) continue;
+      // 「转售后」取形态判定（§5.1 第 5 / 6 / 7 行：置灰 + hover 卡片），其余统一说明冻结原因
+      if (key === '转售后' && def && props.aftersaleForm) {
+        items.push(aftersaleBarItem(def));
+        continue;
+      }
       items.push({
         key,
         label: key === '挂起' ? '申请挂起' : (def?.label ?? '转单'),
         icon: def?.icon ?? 'SwapOutlined',
         danger: def?.danger,
         forbidden: true,
-        // 「转售后」单独指路到关联单 Tab，其余统一说明冻结原因
-        forbiddenTip: (key === '转售后' && aftersaleBlockedTip.value) || TRANSFERRED_LOCK_TIP,
+        forbiddenTip: TRANSFERRED_LOCK_TIP,
       });
+      continue;
+    }
+    // 「转售后」位：形态与置灰一律取 §5.1 判定（委派中＝第 0 行「已委派」，同一句提示）
+    if (key === '转售后' && props.aftersaleForm) {
+      const def = actionMap.value.get(key);
+      if (!def) continue;
+      items.push(aftersaleBarItem(def));
       continue;
     }
     // 委派中：锁定流转与终结类动作，置灰并说明原因
@@ -355,17 +372,6 @@ const barActions = computed<BarItem[]>(() => {
       });
       continue;
     }
-    // 已有关联售后单：转售后置灰，按是否结案给不同去处
-    if (key === '转售后' && aftersaleBlockedTip.value) {
-      items.push({
-        key: def.key,
-        label: def.label,
-        icon: def.icon,
-        forbidden: true,
-        forbiddenTip: aftersaleBlockedTip.value,
-      });
-      continue;
-    }
     // 已升级飞书项目：升级置灰（催单/二次激活在「产研反馈」Tab）
     if (key === '升级' && feishuEscalateBlocked.value) {
       items.push({
@@ -417,9 +423,9 @@ function flashItem(k: FlashBarKey): BarItem | null {
     forbidden = true;
     tip = props.riskForbiddenTip || RISK_FORBIDDEN_FALLBACK;
   }
-  if (!forbidden && k === '转售后' && aftersaleBlockedTip.value) {
+  if (!forbidden && k === '转售后' && props.aftersaleForm && !props.aftersaleForm.enabled) {
     forbidden = true;
-    tip = aftersaleBlockedTip.value;
+    tip = props.aftersaleForm.tip;
   }
   let key: OpActionType = k;
   let icon = def?.icon ?? FLASH_FALLBACK_ICON[k] ?? 'ArrowRightOutlined';
@@ -524,13 +530,18 @@ function run(action: OpActionType | '转单') {
     forwardModalOpen.value = true;
     return;
   }
-  // 产品无售后服务：按钮已置灰，键盘/程序调用兜底也给同一条提示（基线 ※12）
-  if (action === '转售后' && noAftersaleProduct.value) {
+  // 「转售后」位：置灰形态的键盘 / 程序调用兜底给同一句；激活形态走确认弹窗，不进建单表单
+  if (action === '转售后' && props.aftersaleForm && !props.aftersaleForm.enabled) {
+    const f = props.aftersaleForm;
+    message.warning(f.tip ?? f.cardFoot ?? NO_AFTERSALE_TIP);
+    return;
+  }
+  if (action === '转售后' && noAftersaleProduct.value && !activatableAftersale.value) {
     message.warning(NO_AFTERSALE_TIP);
     return;
   }
-  // 售后转入单：转售后 = 激活来源售后单，走确认弹窗，不进建单表单
   if (action === '转售后' && activatableAftersale.value) {
+    activateError.value = '';
     activateOpen.value = true;
     return;
   }
@@ -550,20 +561,22 @@ function run(action: OpActionType | '转单') {
   }
 }
 
-/* ---------------- 转售后 · 激活来源售后单（售后转入单） ---------------- */
+/* ---------------- 激活售后单（售后转入的非诉单 / 回流单，§4.4） ---------------- */
 
 const activateOpen = ref(false);
 const activateLoading = ref(false);
+/** 激活失败原因：弹窗不关、红字原样透出售后侧返回，不降级为新建售后单 */
+const activateError = ref('');
 
 async function onActivateConfirm() {
   const as = activatableAftersale.value;
   if (!as || activateLoading.value) return;
   activateLoading.value = true;
+  activateError.value = '';
   const res = await activateAftersaleTicket({ no: as.no, ticketNo: props.ticketNo });
   activateLoading.value = false;
-  // 激活成败都当场给结论：坐席点完就要知道要不要改走线下联系售后
   if (!res.ok) {
-    message.error(`售后工单 ${as.no} 激活失败：${res.error ?? '售后侧未返回结果'}`);
+    activateError.value = `售后工单 ${as.no} 激活失败：${res.error ?? ''}`;
     return;
   }
   activateOpen.value = false;
@@ -594,16 +607,10 @@ function openEscalate() {
  * 已有 1:1 关联时不弹窗——未结案点开工单号去售后系统操作、已结案线下联系售后（D2 改写）。
  */
 function openAftersale() {
-  if (isTerminal.value || isTransferred.value) return;
-  // 售后转入的投诉单同理：走激活，不建第二张
-  if (activatableAftersale.value) {
-    activateOpen.value = true;
-    return;
-  }
-  if (aftersaleBlockedTip.value) {
-    message.info(aftersaleBlockedTip.value);
-    return;
-  }
+  // 投诉单终态仍可关联售后（§2.1 状态维「展示」列含已结案等，基线 ※7）
+  if (isTransferred.value) return;
+  // 已有活跃关联时按钮已置灰（§5.1 第 5 / 6 行），不建第二张
+  if (linkedAftersale.value) return;
   dialogAction.value = '关联售后';
   dialogOpen.value = true;
 }
@@ -644,7 +651,7 @@ defineExpose({ openEscalate, openAftersale });
             :no="linkedAftersale.no"
             :status="linkedAftersale.status"
             :service-type="linkedAftersale.serviceType"
-            :settled="linkedAftersale.settled"
+            :foot="aftersaleForm?.cardFoot ?? null"
           />
         </template>
         <span class="ab-slot">
@@ -735,6 +742,7 @@ defineExpose({ openEscalate, openAftersale });
     :no="activatableAftersale.no"
     :title="activatableAftersale.title"
     :loading="activateLoading"
+    :error="activateError"
     @confirm="onActivateConfirm"
   />
 

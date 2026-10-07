@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 转售后 · 激活来源售后单（售后转入工单专用）
+ * 激活售后单（《【1025】》§4.4：售后转入的非诉单与回流单共用这一个确认）
  *
  * 形态对齐「下送」的二次确认：一句问话 + 一张认人的单据卡，没有表单字段——
  * 激活不需要坐席再填任何东西，要确认的只有"是不是这张单"。
@@ -15,6 +15,8 @@ defineProps<{
   title?: string;
   /** 提交中：接口在途时锁住按钮，避免重复激活 */
   loading?: boolean;
+  /** 售后接口返回失败：弹窗不关，红字原样透出（§4.4） */
+  error?: string;
 }>();
 
 const emit = defineEmits<{
@@ -42,6 +44,7 @@ const emit = defineEmits<{
         <span class="asa-no">{{ no }}</span>
         <span v-if="title" class="asa-title">{{ title }}</span>
       </div>
+      <div v-if="error" class="asa-error">{{ error }}</div>
     </div>
   </OpActionModal>
 </template>
@@ -60,4 +63,5 @@ const emit = defineEmits<{
 }
 .asa-no { font-size: 14px; color: #374151; line-height: 1.6; }
 .asa-title { font-size: 14px; font-weight: 600; color: #111827; line-height: 1.5; }
+.asa-error { font-size: 13px; color: #dc2626; line-height: 1.6; }
 </style>
