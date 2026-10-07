@@ -10,7 +10,7 @@ import {
 } from '@/views/tickets/types/ticket';
 import { useFlashStore } from '@/stores/flash';
 import { findSchoolById } from '@/mock/schools';
-import type { Ticket, Channel, TicketType, Priority } from '@/views/tickets/types/ticket';
+import type { Ticket, Channel, TicketType, Priority, TicketStatus } from '@/views/tickets/types/ticket';
 import { TICKETS } from '@/mock/tickets';
 import { TYPE_SAMPLES } from '@/mock/ticketTypeSamples';
 import { useUserStore } from '@/stores/user';
@@ -152,6 +152,9 @@ function buildSlaClocks(t: Ticket): SlaClock[] {
   first.dueBy = dueByFromStart(wholeStart, first.totalSec);
   return [solve, first];
 }
+
+/** 工单行上这几种在办子状态直接同步到详情（置灰判定依赖它们） */
+const ROW_GRAY_STATUSES: TicketStatus[] = ['未认领', '调研中', '申请挂起中', '申请关闭中', '申请强结中', '业务动作审核中', '已委派'];
 
 export function useTicketOperation() {
   const user = useUserStore();
@@ -343,6 +346,9 @@ export function useTicketOperation() {
         opState.value = 'suspended';
       } else {
         opState.value = 'processing';
+        // 未认领 / 调研中 / 审核中四态 / 已委派：页头与按钮判定取工单行子状态，
+        // 不落样例的「处理中」（《【1025】》§2.1 置灰列，验收 #3）
+        if (ROW_GRAY_STATUSES.includes(t.nodeStatus) && !t.escalatedToNo && t.slaText !== '—') base.status = t.nodeStatus;
       }
       suspendInfo.value = null;
       // 已转出：非诉转售后后原单不关闭，留在「我的任务」等售后终态回传（D11）。

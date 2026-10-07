@@ -599,7 +599,8 @@ export function routeAftersaleEvent(
     created.aftersaleReturnCount = returnCountBase(prior) + 1;
     created.succeedsFromNo = prior.no;
     out[origin.idx] = {
-      ...(origin.slot === 'derived' ? clearDerivedLink(prior) : prior),
+      // 来源位原单：关联转只读保留，售后卡片照常刷成最新状态（§3.4）
+      ...(origin.slot === 'derived' ? clearDerivedLink(prior) : { ...prior, linkedAftersaleStatus: e.status ?? AS_RETURNED_STATUS }),
       succeededByNo: newNo,
       eventTimeline: withEntries(prior, [{
         category: 'relate', action: 'relate', who: AFTERSALE_ACTOR, role: AFTERSALE_ACTOR_ROLE,
