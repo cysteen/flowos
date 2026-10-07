@@ -450,8 +450,15 @@ export interface Ticket {
   problemDesc?: string;
   /** 最新处理结果（列表行速览） */
   latestHandling?: string;
-  /** 关联售后单号（非诉转售后/建售后单后，已办行可见、可跳转） */
+  /**
+   * 关联售后单号（客服来源位：非诉转售后 / 投诉关联售后后，已办行可见、可跳转）。
+   * 非诉单有它且未办结＝「已转出」；**投诉单有它不冻结**（1025），只挂关联卡片。
+   */
   linkedAftersaleNo?: string;
+  /** 关联售后单当前状态（售后回传 AS_PROGRESS 刷新；缺省按「处理中」展示） */
+  linkedAftersaleStatus?: string;
+  /** 关联售后单服务类型 */
+  linkedAftersaleServiceType?: string;
   /**
    * 售后转入的来源售后单（`ticketSource='售后系统'` 时有值）。
    * 与 linkedAftersaleNo 分开存：那个表示"本单已转出去、在售后手上"，会把状态压成「已转出」；

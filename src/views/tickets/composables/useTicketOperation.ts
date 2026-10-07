@@ -320,18 +320,23 @@ export function useTicketOperation() {
         opState.value = 'processing';
       }
       suspendInfo.value = null;
-      // 已转出：非诉转售后后原单不关闭，留在「我的任务」等售后终态回传（D11）
+      // 已转出：非诉转售后后原单不关闭，留在「我的任务」等售后终态回传（D11）。
+      // 🔴 **投诉单永不冻结**（1025）：投诉单有关联售后＝①格「关联售后」，保持原状态、照常可操作，
+      // 只挂关联卡片；只有非诉单才因关联售后进「已转出」。
       if (t.linkedAftersaleNo && t.tab !== 'done') {
+        const isComplaint = t.type === '投诉';
         base.linkedAftersale = {
           no: t.linkedAftersaleNo,
-          status: '处理中',
-          serviceType: '寄修检测',
+          status: t.linkedAftersaleStatus ?? '处理中',
+          serviceType: t.linkedAftersaleServiceType ?? '寄修检测',
           serviceMethod: '寄修',
           createdAt: t.updatedAt ?? t.createdAt ?? '',
-          fromComplaint: t.type === '投诉',
+          fromComplaint: isComplaint,
         };
-        base.status = '已转出';
-        opState.value = 'transferred';
+        if (!isComplaint) {
+          base.status = '已转出';
+          opState.value = 'transferred';
+        }
       }
       // 售后转入：关联位仍指向来源售后单，但本单正常在跑，不进「已转出」
       if (t.aftersaleOriginNo) {

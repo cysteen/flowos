@@ -162,7 +162,8 @@ function matchStatus(t: Ticket, status: string): boolean {
     return !!(t.hasDelegateHistory || t.myDelegateAction);
   }
   if (status === 'transferred') {
-    return String(t.nodeStatus).includes('已转出') || !!t.linkedAftersaleNo;
+    // 投诉单关联售后不是转出（1025：投诉单永不冻结），不收
+    return String(t.nodeStatus).includes('已转出') || (!!t.linkedAftersaleNo && t.type !== '投诉');
   }
   if (status === 'returned') return !!t.hasReturnAction;
   if (status === 'transferIn') {
