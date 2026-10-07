@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import { message } from 'ant-design-vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { SurveyRecord } from '@/views/tickets/types/operationTabs';
+import { formatOpTime } from '@/views/tickets/utils/opTime';
 import { useFlashStore } from '@/stores/flash';
 import { useNotifyLogStore } from '@/stores/notifyLog';
 import { FLASH_NOTIFY_EVENTS, flashSurveyPath } from '@/views/tickets/types/flash';
@@ -79,7 +80,7 @@ function openSurvey() {
           </span>
           <span class="title-text">{{ r.title }}</span>
         </div>
-        <span class="card-meta">发送时间: {{ r.sentAt }}</span>
+        <span class="card-meta">发送时间: {{ formatOpTime(r.sentAt) }}</span>
       </div>
 
       <div class="detail-row">
