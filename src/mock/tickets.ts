@@ -4,7 +4,7 @@ import { mapChannelToSource } from '@/views/tickets/types/createTicket';
 import { todayStamp } from '@/stores/riskShared';
 import { FLASH_SEEDS } from './flash/seedTickets';
 import {
-  applyAftersaleEvent, applyAftersaleResult, routeAftersaleEvent, takeOverReturnedTicket,
+  applyAftersaleEvent, applyAftersaleResult, migrateAftersaleLink, routeAftersaleEvent, takeOverReturnedTicket,
   type AftersaleEvent, type AftersaleInboundSeed,
 } from '@/views/tickets/composables/aftersaleEvents';
 
@@ -244,6 +244,40 @@ function buildAftersaleSeeds() {
     }),
   });
   seeds.push(s2.rows[0], s2.created);
+
+  // ④ 咨询单升级投诉（口径定稿 6b / 6d）：客服派生位关联随单迁到投诉新单、保留「转咨询转入」类型，
+  // 投诉新单的「关联售后」位为「激活售后单」；原咨询单落「已升级投诉」，只留「关联降级」履历
+  const u1 = claimSeed(created([], {
+    type: 'AS_RETURNED', asNo: 'AS-20260922-40790', eventId: 'ase-40790-returned-1',
+    at: '2026-09-22 14:10', operator: '彭师傅（售后二组）', status: '已关闭',
+    returnReason: '耳机更换后客户咨询以旧换新政策，转回客服答复',
+    inbound: inbound({
+      id: 'as-u1', no: 'IFLYZX-20260922-00042', title: '蓝牙耳机换新后以旧换新政策咨询',
+      customer: '蔡宁', product: '蓝牙耳机 Air', customerPhone: '13800004079', sn: 'SN-AIR-40790',
+      problemDesc: '耳机售后换新后，客户咨询旧机是否可参与以旧换新及补贴标准。',
+      asTitle: '蓝牙耳机 Air 左耳无声换新', asServiceType: '维修',
+    }),
+  }).created, '王坐席', '2026-09-22 14:45');
+  const u2No = 'IFLYTS-20260924-00043';
+  const migrated = migrateAftersaleLink(u1, u2No, { who: '王坐席', role: '二线专员', at: '2026-09-24 09:30' });
+  seeds.push({
+    ...migrated.from,
+    escalatedToNo: u2No, tab: 'done', handledByMe: true, myUpgradeAction: true,
+    slaText: '—', slaSub: '已升级投诉·停表', slaState: 'ok', slaMinutes: 9999, updatedAt: '2026-09-24 09:30',
+  });
+  seeds.push({
+    id: 'as-u2', no: u2No, type: '投诉', channel: '电话',
+    title: '以旧换新补贴口径不一致，客户投诉', smartMarks: ['情绪'],
+    customer: '蔡宁', vip: false, product: '蓝牙耳机 Air', complaintType: '投诉',
+    nodeStatus: '处理中', nodeStep: 2, nodeTotal: 5, priority: 'P1',
+    slaText: '06:10:00', slaSub: '充足', slaState: 'ok', slaMinutes: 370,
+    assignee: '王坐席', tab: 'mine', responded: true,
+    customerPhone: '13800004079', sn: 'SN-AIR-40790', productCategory: '智能硬件',
+    problemDesc: '客户称门店与客服告知的以旧换新补贴标准不一致，要求按较高标准执行并投诉服务口径混乱。',
+    escalatedFromNo: u1.no,
+    createdAt: '2026-09-24 09:30', updatedAt: '2026-09-24 09:30',
+    ...migrated.to,
+  } as Ticket);
 
   // t5a：售后转咨询转入（④），售后单已关闭，看板「转入」下钻按来源取到它
   const t5a = claimSeed(created([], {
@@ -1329,6 +1363,8 @@ const TICKET_GROUP_NAMES: Record<string, string[]> = {
   'as-r3': ['硬件缺陷组'],
   'as-s1': ['硬件缺陷组'],
   'as-s2': ['硬件缺陷组'],
+  'as-u1': ['硬件缺陷组'],
+  'as-u2': ['硬件缺陷组'],
   'ops-1': ['硬件缺陷组'],
   'ops-4': ['硬件缺陷组'],
 

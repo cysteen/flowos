@@ -187,8 +187,13 @@ const linkedAftersale = computed(() => props.aftersaleContext?.existing);
  * 点开无表单二次确认，激活的是已关联的那张售后单。能不能激活由售后侧判，客服侧不预判、不置灰（§4.4）。
  */
 const activatableAftersale = computed(() =>
-  (props.aftersaleForm?.shape === 'activate' && linkedAftersale.value) || null,
+  ((props.aftersaleForm?.shape === 'activate' || headerActivate.value) && linkedAftersale.value) || null,
 );
+/**
+ * 页头「关联售后」位的激活形态（口径定稿 6d：④ 咨询单升级投诉而来的投诉单）也走这一个确认弹窗；
+ * 投诉单底栏没有「转售后」位，故由页头经 `openActivate` 打开。
+ */
+const headerActivate = ref(false);
 
 /** 委派中：单子交给协办人先处理，处理完回到本节点，期间锁定流转与终结类动作 */
 const isDelegating = computed(() => !!props.delegateTargets);
@@ -615,7 +620,15 @@ function openAftersale() {
   dialogOpen.value = true;
 }
 
-defineExpose({ openEscalate, openAftersale });
+/** 页头「关联售后」位的激活形态：打开同一个激活确认 */
+function openActivate() {
+  if (!linkedAftersale.value) return;
+  headerActivate.value = true;
+  activateError.value = '';
+  activateOpen.value = true;
+}
+
+defineExpose({ openEscalate, openAftersale, openActivate });
 </script>
 
 <template>

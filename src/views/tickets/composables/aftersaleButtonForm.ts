@@ -11,14 +11,34 @@ import { AFTERSALE_INBOUND_SOURCE, normalizeTicketSource } from '@/views/tickets
 import { NO_AFTERSALE_LINK_TIP, NO_AFTERSALE_TIP } from './opActionRegistry';
 import { FLASH_GATE_TIPS } from './flashGate';
 
-// 判据与 opActions 的 isAftersaleSettled / isAftersaleInbound 同源；此处不引 opActions，
+// 判据与 opActions 的 isAftersaleSettled 同源；此处不引 opActions，
 // 免得 mock/tickets（种子经售后回传通道生成）→ aftersaleEvents → 本模块 → opActions → mock/tickets 成环
 const AFTERSALE_SETTLED_STATUS = ['已完成', '已关闭', '已取消'];
 function isAftersaleSettled(status: string): boolean {
   return AFTERSALE_SETTLED_STATUS.includes(status);
 }
-function isAftersaleInbound(d: { source?: string }): boolean {
-  return normalizeTicketSource(d.source) === AFTERSALE_INBOUND_SOURCE;
+
+export type AftersaleRelation = 'escalated' | 'converted' | 'source';
+
+/**
+ * 关联记录的关系类型（口径定稿 6d）：取关联上记的值；未记时按所占位兜底
+ * （来源位＝source；派生位按来源字段 + 工单类型推：投诉＝escalated、其余＝converted）。
+ */
+export function aftersaleRelationOf(
+  la: Pick<LinkedAftersale, 'relation' | 'slot'>,
+  d: { type: string; source?: string },
+): AftersaleRelation {
+  if (la.relation) return la.relation;
+  if (la.slot === 'source') return 'source';
+  if (la.slot === 'derived' || normalizeTicketSource(d.source) === AFTERSALE_INBOUND_SOURCE) {
+    return d.type === '投诉' ? 'escalated' : 'converted';
+  }
+  return 'source';
+}
+
+/** 关系类型 → 所占关联位 */
+export function slotOfRelation(r: AftersaleRelation): AftersaleSlot {
+  return r === 'source' ? 'source' : 'derived';
 }
 
 /** ③ ④ 建出的新单：来源类型的页面名称，页头「建单人」同显此名（§4.1 / §4.3） */
@@ -124,14 +144,14 @@ export function resolveAftersaleButtonForm(d: FormSubject, ctx: AftersaleButtonC
   const stTip = statusGrayTip(d, ctx);
   if (stTip) return gray(0, stTip);
 
-  const isComplaint = d.type === '投诉';
-  const inbound = isAftersaleInbound(d);
-  // 1：售后转入的投诉单 ∧ 有活跃关联 → 回传形态
-  if (ctx.position === 'link' && inbound && isComplaint && la) {
+  // 1 / 2：按关联记录的**关系类型**判（口径定稿 6d），不看来源字段
+  const relation = la ? aftersaleRelationOf(la, d) : null;
+  // 1：③ 升级投诉转入 → 关联售后位回传形态
+  if (ctx.position === 'link' && relation === 'escalated') {
     return withCard(1, 'returnResult', '回传处理结果', true);
   }
-  // 2：售后转入的非诉单 ∧ 有活跃关联 → 激活形态
-  if (ctx.position === 'transfer' && inbound && !isComplaint && la) {
+  // 2：④ 转咨询转入 → 激活形态：非诉单在转售后位；④ 咨询单升级投诉迁来的投诉单在关联售后位
+  if (relation === 'converted' && ctx.position === (d.type === '投诉' ? 'link' : 'transfer')) {
     return withCard(2, 'activate', '激活售后单', true);
   }
   // 3：回流单（已被领取 / 指派）∧ 有活跃关联 → 激活形态

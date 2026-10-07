@@ -373,6 +373,7 @@ function clearDerivedLink(t: Ticket): Ticket {
   return {
     ...t,
     aftersaleOriginNo: undefined,
+    aftersaleRelation: undefined,
     aftersaleOriginTitle: undefined,
     aftersaleOriginStatus: undefined,
     aftersaleOriginServiceType: undefined,
@@ -407,6 +408,8 @@ export function migrateAftersaleLink(
       from: { ...clearDerivedLink(from), eventTimeline: timeline },
       to: {
         aftersaleOriginNo: asNo,
+        // 关系类型随单保留：④ 咨询单升级投诉后，投诉新单的派生位关联仍是「转咨询转入」（口径定稿 6d）
+        aftersaleRelation: from.aftersaleRelation ?? (from.type === '投诉' ? 'escalated' : 'converted'),
         aftersaleOriginTitle: from.aftersaleOriginTitle,
         aftersaleOriginStatus: from.aftersaleOriginStatus,
         aftersaleOriginServiceType: from.aftersaleOriginServiceType,
@@ -456,6 +459,8 @@ function buildInboundTicket(
     slaText: '04:00:00', slaSub: '充足', slaState: 'ok', slaMinutes: 240,
     assignee: null, tab: 'pool',
     aftersaleOriginNo: e.asNo,
+    // 关系类型（口径定稿 6d）：③ 升级投诉转入 / ④ 转咨询转入
+    aftersaleRelation: type === '投诉' ? 'escalated' : 'converted',
     aftersaleOriginTitle: s.asTitle,
     aftersaleOriginServiceType: s.asServiceType,
     createdAt: e.at, updatedAt: e.at, responded: false,

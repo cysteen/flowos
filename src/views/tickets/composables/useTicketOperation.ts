@@ -358,6 +358,7 @@ export function useTicketOperation() {
           createdAt: t.updatedAt ?? t.createdAt ?? '',
           fromComplaint: isComplaint,
           slot: 'source',
+          relation: 'source',
           peer: findAftersalePeer(t.linkedAftersaleNo, t.no, 'source'),
         };
         if (!isComplaint && t.nodeStatus === '已转出') {
@@ -379,6 +380,8 @@ export function useTicketOperation() {
           createdAt: t.createdAt ?? '',
           fromComplaint: t.type === '投诉',
           slot: 'derived',
+          // 存量单没写关系类型时按工单类型兜底（投诉＝③ 升级投诉转入，其余＝④ 转咨询转入）
+          relation: t.aftersaleRelation ?? (t.type === '投诉' ? 'escalated' : 'converted'),
           peer: findAftersalePeer(t.aftersaleOriginNo, t.no, 'derived'),
           resultCount: t.aftersaleResultCount ?? 0,
         };

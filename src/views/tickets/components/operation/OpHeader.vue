@@ -148,7 +148,8 @@ const transferredFoot = computed(() => (linkedAftersale.value ? aftersaleCardFoo
 
 function onLinkAftersaleClick() {
   if (!linkForm.value.enabled) return;
-  emit('action', linkForm.value.shape === 'returnResult' ? '回传处理结果' : '关联售后');
+  const shape = linkForm.value.shape;
+  emit('action', shape === 'returnResult' ? '回传处理结果' : shape === 'activate' ? '激活售后单' : '关联售后');
 }
 
 /**

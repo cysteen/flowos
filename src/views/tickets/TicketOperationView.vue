@@ -110,7 +110,7 @@ const isFlash = computed(() => d.value.type === '刷机' && !!d.value.flash);
 
 const ticketNo = computed(() => (route.params.ticketNo as string) || d.value.no);
 const processTabsRef = ref<InstanceType<typeof OpProcessTabs> | null>(null);
-const actionBarRef = ref<{ openEscalate: () => void; openAftersale: () => void } | null>(null);
+const actionBarRef = ref<{ openEscalate: () => void; openAftersale: () => void; openActivate: () => void } | null>(null);
 
 const tabsStore = useWorkspaceTabsStore();
 const cti = useCtiStore();
@@ -1276,6 +1276,8 @@ function finishEscalate(ticket: Ticket, targetLabel: string, processAfter?: bool
     Object.assign(ticket, slot === 'derived'
       ? {
           aftersaleOriginNo: la.no,
+          // 关系类型随单保留（口径定稿 6d）：投诉新单的「关联售后」位为「激活售后单」
+          aftersaleRelation: la.relation === 'escalated' ? 'escalated' : 'converted',
           aftersaleOriginTitle: la.title,
           aftersaleOriginStatus: la.status,
           aftersaleOriginServiceType: la.serviceType,
@@ -2336,6 +2338,9 @@ function onHeaderAction(name: string) {
       break;
     case '关联售后': // 投诉工单：独立动作（1025），打开售后建单弹窗，提交落 applyOpAction 的「关联售后」分支
       openLinkAftersale();
+      break;
+    case '激活售后单': // ④ 咨询单升级投诉而来的投诉单：「关联售后」位的激活形态，与底栏共用同一个确认弹窗（口径定稿 6d）
+      actionBarRef.value?.openActivate();
       break;
     case '回传处理结果': // 售后升级投诉转入的投诉单：「关联售后」位的回传形态（《【1025】》§4.2）
       resultError.value = '';

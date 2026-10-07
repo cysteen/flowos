@@ -215,6 +215,11 @@ export interface LinkedAftersale {
    * 或客服派生位（③售后升级投诉 / ④售后转咨询建出的单）。
    */
   slot?: 'source' | 'derived';
+  /**
+   * 关系类型（口径定稿 6d，按钮形态的判据）：`escalated`＝③ 升级投诉转入、`converted`＝④ 转咨询转入
+   * （两者占客服派生位）、`source`＝①② 客服发起（占客服来源位）。slot 由它推出。
+   */
+  relation?: 'escalated' | 'converted' | 'source';
   /** 同一售后单另一位上的活跃客服单：hover 卡片只显示单号 + 状态，不显示内容（§5.4） */
   peer?: { no: string; status: string };
   /** 本单已向该售后单回传处理结果的次数（③；0＝尚未回传，下一次是首次回传） */

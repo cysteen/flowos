@@ -484,6 +484,11 @@ export interface Ticket {
   aftersaleOriginTitle?: string;
   /** 来源售后单当前状态（激活确认弹窗要展示） */
   aftersaleOriginStatus?: string;
+  /**
+   * 派生位关联的关系类型（口径定稿 6d）：`escalated`＝③ 升级投诉转入、`converted`＝④ 转咨询转入。
+   * 随单迁移时保留（④ 咨询单升级投诉后，投诉新单的派生位关联仍是 converted）。按钮形态按它判，不看来源字段。
+   */
+  aftersaleRelation?: 'escalated' | 'converted';
   /** 来源售后单服务类型（hover 卡片） */
   aftersaleOriginServiceType?: string;
   /** 来源售后单结案时刻（售后侧关闭时回传；激活时售后侧据此判可重开窗口） */
