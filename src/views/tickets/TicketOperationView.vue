@@ -45,6 +45,7 @@ import { useOperationTabs } from './composables/useOperationTabs';
 import { useTicketLiveNotify } from './composables/useTicketLiveNotify';
 import { formatTicketRecordWho, MOCK_FIRST_LINE_AGENTS } from './utils/ticketRecordWho';
 import { mergeDraftIntoLatestHandling } from './utils/ticketOverview';
+import { opTimeNow } from './utils/opTime';
 import { TICKETS } from '@/mock/tickets';
 import { useRiskTagStore } from '@/stores/riskTags';
 import { useRiskReportStore } from '@/stores/riskReports';
@@ -1873,19 +1874,20 @@ function toast(name: string) {
   message.info(`「${name}」`);
 }
 
+/**
+ * 运行态落在页签上的时刻（联系记录 / 补充 / 催单等）。
+ *
+ * 🔴 原来出的是「今天 HH:mm:ss」。2026-10-07 裁决把全部页签的时刻统一成绝对时间，
+ * 展示那一道虽然已把「今天」换算掉，但落库的取值也一并写成绝对的 ——
+ * 这样新写的记录与预置样本在同一个口径上，排序与比对不必先认一遍相对日。
+ */
 function formatNow() {
-  const n = new Date();
-  const hh = String(n.getHours()).padStart(2, '0');
-  const mm = String(n.getMinutes()).padStart(2, '0');
-  const ss = String(n.getSeconds()).padStart(2, '0');
-  return `今天 ${hh}:${mm}:${ss}`;
+  return opTimeNow();
 }
 
-/** 标记已知晓 / 已沟通类时刻（对齐预约 Tab doneAt：YYYY-MM-DD HH:mm:ss） */
+/** 标记已知晓 / 已沟通类时刻（与上面同一口径：YYYY-MM-DD HH:mm:ss） */
 function formatAckNow() {
-  const n = new Date();
-  const p = (x: number) => String(x).padStart(2, '0');
-  return `${n.getFullYear()}-${p(n.getMonth() + 1)}-${p(n.getDate())} ${p(n.getHours())}:${p(n.getMinutes())}:${p(n.getSeconds())}`;
+  return opTimeNow();
 }
 
 function onIncomingTicketEvent(

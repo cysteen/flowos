@@ -11,6 +11,7 @@ import { useFlashStore } from '@/stores/flash';
 // 终态判定单一实现：与头部按钮、只读锁同源，避免两处各写一份正则再漂
 import { isTicketTerminated } from './complaintEscalation';
 import { aftersaleLinkDemotedEntry } from './aftersaleEvents';
+import { opTimeNow } from '@/views/tickets/utils/opTime';
 
 /** 升级通道 · 飞书项目（消费者BG专属，走 OpenAPI 推送产研反馈单） */
 export const FEISHU_ESCALATE_CHANNEL = '飞书项目 · 产研反馈单';
@@ -448,9 +449,15 @@ export const RESUME_REASONS = ['客户已反馈', '问题已解决', '备件已�
 export const RETURN_REASONS = ['信息不全', '分类错误', '不属于本组', '需补充调查'];
 export const MAX_RETURN_COUNT = 3;
 
+/**
+ * 运行态写入履历 / 协同记录 / 流转信息的时刻。
+ *
+ * 🔴 原来出的是「今天 HH:mm」。2026-10-07 裁决把工单处理页全部页签的时刻统一成
+ * **绝对时间带秒**，相对日一律不再出现；落库取值一并跟上，新写的记录与预置样本
+ * 从此在同一个口径上（展示那一道的共享函数见 `utils/opTime`）。
+ */
 export function nowWhen(): string {
-  const d = new Date();
-  return `今天 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return opTimeNow();
 }
 
 /**
@@ -494,11 +501,9 @@ function aftersaleNo(): string {
   return `AS-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-${String(Math.floor(Date.now() % 90000) + 10000)}`;
 }
 
-/** 完整时间戳（关联卡片展示） */
+/** 完整时间戳（关联卡片展示）——与全页签口径同一把，带秒 */
 function nowFull(): string {
-  const d = new Date();
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  return opTimeNow();
 }
 
 /** 升级到飞书：演示完整协同时间线（建关联 → 预反馈 → 关单） */
@@ -568,10 +573,9 @@ export function statusLabel(state: TicketOpState): string {
   return map[state];
 }
 
+/** SLA 关钟时刻。**关钟时刻是时间点**，不是倒计时 / 剩余时长，故与全页签同一个口径 */
 function nowCloseTime(): string {
-  const d = new Date();
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `今天 ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  return opTimeNow();
 }
 
 /**
