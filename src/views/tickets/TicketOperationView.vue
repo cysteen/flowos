@@ -59,7 +59,7 @@ import {
 } from './composables/complaintEscalation';
 import {
   ESCALATE_VIA_HANDLER_REPORT_TIP, escalateComplaintBlockTip,
-  resolveRiskBarForm, resolveRiskControlForm, canTagRiskOnTicketPage,
+  resolveRiskBarForm, resolveRiskControlForm, canTagRiskOnTicketPage, NO_AFTERSALE_LINK_TIP,
 } from './composables/opActionRegistry';
 import {
   flashEditInfoGate, flashEscalateComplaintGate, flashHeaderEscalateVisible, flashStageOf, resolveFlashView,
@@ -2182,7 +2182,12 @@ function confirmCarryOnNewTicket(kind: '补充' | '催单'): boolean {
 
 /** 页头「关联售后」：只给投诉单（转售后在底栏，只给非诉单） */
 function openLinkAftersale() {
-  if (d.value.type !== '投诉') return;
+  if (d.value.type !== '投诉' || !canLinkAftersale.value) return;
+  // 产品无售后服务：按钮已置灰，键盘 / 程序调用兜底给同一句（1025 N9）
+  if (!d.value.product.afterSaleEnabled) {
+    message.warning(NO_AFTERSALE_LINK_TIP);
+    return;
+  }
   actionBarRef.value?.openAftersale();
 }
 

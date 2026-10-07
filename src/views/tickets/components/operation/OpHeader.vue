@@ -13,6 +13,7 @@ import OpSlaBar from './OpSlaBar.vue';
 import { readSla } from '@/views/tickets/utils/slaClock';
 import OpAftersaleLinkCard from './OpAftersaleLinkCard.vue';
 import { isAftersaleSettled } from '../../composables/opActions';
+import { NO_AFTERSALE_LINK_TIP } from '../../composables/opActionRegistry';
 import { buildEscalateVerdict, isTicketTerminated } from '../../composables/complaintEscalation';
 import { buildTicketRelations, type TicketRelation } from '../../composables/ticketRelations';
 import OpRelationList from './OpRelationList.vue';
@@ -42,7 +43,7 @@ const props = defineProps<{
   /**
    * 同排另三枚的角色门控（基线「动作 × 角色」表）：
    * - 升级投诉：一线 · 二线专员 · 技术支持 · 二线班组长 · 客诉专员 · 投诉督导 · 管理员
-   * - 关联售后：同上但**不给一线**（※12a，0826 收回——建不建售后单由二线判断）
+   * - 关联售后：仅投诉单，**不给一线**（※12a，0826 收回——建不建售后单由二线判断）；技术支持可用（1025）
    *   （工单运营与质检不展示）
    * - **取消工单：一线专属** —— 二线及以上整枚不展示
    */
@@ -136,6 +137,23 @@ const linkedAftersale = computed(() => {
   if (!la) return null;
   return { ...la, settled: isAftersaleSettled(la.status) };
 });
+
+/**
+ * 产品无售后服务 → 「关联售后」置灰 + 悬停提示（1025 N9，与底栏「转售后」同一拦截、文案分开）。
+ * 先于"已有关联"判：没有卡片可弹，靠 title 把原因带出来。
+ */
+const noAftersaleProduct = computed(() => !props.detail.product.afterSaleEnabled);
+const linkAftersaleDisabled = computed(
+  () => !!props.readonly || delegateLocked.value || noAftersaleProduct.value || !!linkedAftersale.value,
+);
+const linkAftersaleTip = computed(() => {
+  if (props.readonly) return READONLY_TIP;
+  if (delegateLocked.value) return DELEGATE_LOCK_TIP;
+  if (noAftersaleProduct.value) return NO_AFTERSALE_LINK_TIP;
+  return undefined;
+});
+/** 已有关联、且不是因产品无售后服务而置灰时，悬停出售后单卡片 */
+const linkAftersaleCard = computed(() => !!linkedAftersale.value && !noAftersaleProduct.value);
 
 /**
  * 刷机单线下登记暂停期间，SLA 区显示「SLA 暂停至 〈年-月-日 时:分〉」；恢复计时后不显示（PRD §5.1 / §4.3）。
@@ -343,7 +361,7 @@ function priorityHex(p: string): string {
         -->
         <a-popover
           v-if="canLinkAftersale && detail.type === '投诉'"
-          :trigger="linkedAftersale ? 'hover' : []"
+          :trigger="linkAftersaleCard ? 'hover' : []"
           placement="bottomRight"
         >
           <template #content>
@@ -359,8 +377,8 @@ function priorityHex(p: string): string {
             <button
               type="button"
               class="action-btn"
-              :disabled="readonly || delegateLocked || !!linkedAftersale"
-              :title="readonly ? READONLY_TIP : (delegateLocked ? DELEGATE_LOCK_TIP : undefined)"
+              :disabled="linkAftersaleDisabled"
+              :title="linkAftersaleTip"
               @click="emit('action', '关联售后')"
             >关联售后</button>
           </span>

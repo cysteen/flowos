@@ -1149,17 +1149,19 @@ export function headerActionsByRole(roleKey: string): {
   // 取值逐格对齐基线 §4（v1.17，R13 B 组 12 格已全部采纳 0830）：
   //   升级投诉 = 一线 + 二线专员 + 二线班组长 + 客诉专员 + 投诉督导 + 管理员
   //   新建补充 = 上面这组 + 技术支持（※21a 2026-08-26 放开）
-  //   关联售后 = 升级投诉那组**去掉一线**（※12a：建不建售后单由二线判断，一线转二线后由二线关联）
+  //   关联售后 = 升级投诉那组**去掉一线**、加上技术支持（※12a：建不建售后单由二线判断，一线转二线后由二线关联）
   //   催单 / 取消工单 = 一线唯一
   // 工单运营与质检两行全部不展示（前者不办单，后者纯只读）。
-  // 技术支持这两格 0923 按《工单动作矩阵》§G4.4 收回，与基线 §4 v1.17 原取值相反，以 §G4.4 为准。
+  // 技术支持的升级投诉格 0923 按《工单动作矩阵》§G4.4 收回；关联售后格 1025 按需求分析表恢复为可用。
   const canWorkTicket = !['ops-monitor', 'qa'].includes(roleKey);
   const isL1 = roleKey === 'agent-l1';
   const isTechSupport = roleKey === 'tech-support';
   return {
     escalateComplaint: canWorkTicket && !isTechSupport,
-    // 投诉单上一线另按阶层置灰（※8），那是类型门控、不在本函数
-    linkAftersale: canWorkTicket && !isL1 && !isTechSupport,
+    // 投诉单上一线另按阶层置灰（※8），那是类型门控、不在本函数。
+    // 关联售后：一线坐席 / 工单运营 / 质检不展示，**技术支持可用**（基线 §4 行 320；
+    // 1025 需求分析表角色表「技术支持 ✅ 关联售后」，与转售后的「技术支持不展示」分开取值）
+    linkAftersale: canWorkTicket && !isL1,
     supplement: canWorkTicket,
     dunning: isL1,
     cancelTicket: isL1,

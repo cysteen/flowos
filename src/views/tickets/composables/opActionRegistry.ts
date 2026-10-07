@@ -32,8 +32,19 @@ export interface ActionDef {
    * 置灰与提示由 OpActionBar 呈现。
    */
   needsAftersale?: boolean;
+  /**
+   * 角色维：这些角色**不展示**该动作（基线 §4「不展示」格）。缺省＝不按角色收。
+   * 1025 起先给「转售后」用（技术支持 / 一线坐席 / 工单运营 / 质检不展示），判据只认 roleKey。
+   */
+  hiddenRoles?: readonly string[];
   danger?: boolean;
 }
+
+/**
+ * 「转售后」不展示的角色（基线 §4 行 332 + ※12a，1025 需求分析表 R1.2-2）：
+ * 技术支持不参与结案与流转；一线坐席转二线后由二线判断；工单运营 / 质检只读。
+ */
+export const AFTERSALE_TRANSFER_HIDDEN_ROLES = ['tech-support', 'agent-l1', 'ops-monitor', 'qa'] as const;
 
 const ALL: TicketType[] = ['投诉', '咨询', '建议', '商机'];
 const NO_LEAD: TicketType[] = ['投诉', '咨询', '建议']; // 商机不支持
@@ -126,7 +137,10 @@ export const ACTION_DEFS: ActionDef[] = [
    * 将来若在飞书协同 Tab 上开入口可直接复用，不必重写。
    */
   // 转售后 = 咨 建 商（基线 §4 该行）：投诉单改走工单头「关联售后」入口（类1，本单状态不变）
-  { key: '转售后', label: '转售后', icon: 'ToolOutlined', group: 'more', types: AFTERSALE_TRANSFER, needsAftersale: true },
+  {
+    key: '转售后', label: '转售后', icon: 'ToolOutlined', group: 'more', types: AFTERSALE_TRANSFER,
+    needsAftersale: true, hiddenRoles: AFTERSALE_TRANSFER_HIDDEN_ROLES,
+  },
   // —— 更多 · 管理类（不属于 9 子流程）——
   { key: '关闭工单', label: '关闭工单', icon: 'CheckCircleOutlined', group: 'manage', types: ALL },
   /*
@@ -325,12 +339,15 @@ export function availableActions(ctx: ActionCtx): ActionDef[] {
         actionTypeAllowed(a, ctx.ticketType, ctx.flashView)
         // 风险那一枚的类型集随形态现算（协同形态只给投诉），刷机单上同样要过形态的类型集
         && (a.key !== '风险报备' || a.types.includes(ctx.ticketType as TicketType))
+        && !a.hiddenRoles?.includes(roleKey)
         && !(direct && DIRECT_CLOSURE_BLOCKED.includes(a.key)),
     );
 }
 
 /** 基线 ※12 规定的拦截提示原文 */
 export const NO_AFTERSALE_TIP = '该产品无售后服务，不可转售后';
+/** 同一拦截落在页头「关联售后」上的提示（1025 N9：两枚都置灰，文案分开定义） */
+export const NO_AFTERSALE_LINK_TIP = '该产品无售后服务，不可关联售后';
 
 /**
  * 基线 ※8a 的拦截提示原文（2026-09-09 业务第二轮拍板，《【930】》N3）。
