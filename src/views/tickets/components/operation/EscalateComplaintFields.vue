@@ -95,23 +95,39 @@ defineProps<{ ctl: EscalateComplaintFieldsCtl }>();
   flex: 1 1 0;
   min-width: 0;
 }
+/* 标签左、控件右（key–value）；错误提示折到下一整行 */
 .ecf-field {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
   min-width: 0;
 }
+.ecf-field:has(textarea) { align-items: flex-start; }
 .ecf-label {
+  flex: none;
+  white-space: nowrap;
   font-size: 12px;
   color: #6b7280;
   line-height: 1.4;
 }
+.ecf-field:has(textarea) .ecf-label { padding-top: 6px; }
 .ecf-req {
   margin-right: 2px;
   color: #ef4444;
 }
-.ecf-control { width: 100%; }
+.ecf-control {
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto;
+}
+.ecf-field :deep(textarea.ant-input) {
+  flex: 1 1 0;
+  min-width: 0;
+}
 .ecf-err {
+  flex: 1 1 100%;
   margin: 0;
   font-size: 11px;
   color: #ef4444;

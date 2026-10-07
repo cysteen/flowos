@@ -299,8 +299,8 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
   line-height: 1.65;
   color: #1f2937;
   background: #f8fafc;
-  border-left: 3px solid #fdba74;
-  border-radius: 0 6px 6px 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
   white-space: pre-wrap;
   word-break: break-word;
 }

@@ -194,23 +194,16 @@ export interface SurveyRecord {
   conclusion?: string;
 }
 
-/** 附件进入本单的通道（均属坐席侧产生）。客户经短链接上传的附件不入平铺表，走「客户上传」子页签 */
-export type AttachmentSource = '手工上传' | '工单短信';
-
+/** 坐席侧上传的附件。客户经短链接上传的附件不入平铺表，走「客户上传」子页签 */
 export interface AttachmentHistoryRecord {
   id: string;
   name: string;
   size: string;
   uploadedAt: string;
   uploadedBy: string;
-  source: AttachmentSource;
 }
 
-/**
- * 上传链接的发出渠道（这条短链接是从哪个渠道发给客户的）。
- * 与 `AttachmentSource` 是两个正交维度：`AttachmentSource` 描述文件怎么进到本单，
- * 本类型描述链接从哪个渠道发出；「工单短信」仅字面相同，含义不同，两者不可混用或互相扩展。
- */
+/** 上传链接的发出渠道（这条短链接是从哪个渠道发给客户的） */
 export type AttachmentLinkSource = '工单短信' | '热线短信' | '在线短信';
 
 /** 短链接下客户上传的单个文件 */

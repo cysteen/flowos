@@ -488,7 +488,6 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       size: '2.3 MB',
       uploadedAt: '2026-06-18 10:20:15',
       uploadedBy: '张晓芸(客服)',
-      source: '手工上传',
     },
     {
       id: 'a2',
@@ -496,7 +495,6 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       size: '1.8 MB',
       uploadedAt: '2026-06-18 10:20:18',
       uploadedBy: '张晓芸(客服)',
-      source: '手工上传',
     },
     {
       id: 'a3',
@@ -504,7 +502,6 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       size: '450 KB',
       uploadedAt: '2026-06-18 11:05:42',
       uploadedBy: '王坐席(二线)',
-      source: '手工上传',
     },
     {
       id: 'a6',
@@ -512,7 +509,6 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       size: '12 KB',
       uploadedAt: '2026-06-18 16:32:10',
       uploadedBy: '王坐席(二线)',
-      source: '手工上传',
     },
   ],
   attachmentLinks: [

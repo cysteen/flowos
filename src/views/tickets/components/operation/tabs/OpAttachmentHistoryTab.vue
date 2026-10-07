@@ -7,7 +7,6 @@ import type {
   AttachmentLinkFile,
   AttachmentLinkRecord,
   AttachmentLinkSource,
-  AttachmentSource,
 } from '@/views/tickets/types/operationTabs';
 
 const props = defineProps<{
@@ -41,11 +40,6 @@ function fileIcon(name: string): string {
   return '📄';
 }
 
-/** 手工上传＝坐席自己传；工单短信＝随短信下发回流 */
-function sourceClass(s: AttachmentSource): string {
-  return s === '工单短信' ? 'is-sms' : 'is-manual';
-}
-
 function openUpload() {
   if (props.readonly) return;
   fileInput.value?.click();
@@ -68,9 +62,9 @@ function onDownload(name: string) {
   message.info(`下载 ${name}`);
 }
 
-/* ---- 子页签二：客户上传（附件上传短链接回流） ---- */
+/* ---- 子页签二：客户上传（按关联 ID 向容联云拉取上传短链接与文件清单） ---- */
 
-/** 链接的发出渠道；与坐席侧 AttachmentSource 是两套枚举，配色各自独立 */
+/** 链接的发出渠道，每个渠道一套配色 */
 function linkSourceClass(s: AttachmentLinkSource): string {
   if (s === '工单短信') return 'is-sms';
   if (s === '热线短信') return 'is-hotline';
@@ -133,7 +127,6 @@ function openLinkFiles(link: AttachmentLinkRecord) {
               <th class="col-size">文件大小</th>
               <th class="col-time">上传时间</th>
               <th class="col-user">上传人</th>
-              <th class="col-source">来源</th>
               <th class="col-actions">操作</th>
             </tr>
           </thead>
@@ -148,9 +141,6 @@ function openLinkFiles(link: AttachmentLinkRecord) {
               <td class="col-size">{{ r.size }}</td>
               <td class="col-time">{{ r.uploadedAt }}</td>
               <td class="col-user">{{ r.uploadedBy }}</td>
-              <td class="col-source">
-                <span class="source-tag" :class="sourceClass(r.source)">{{ r.source }}</span>
-              </td>
               <td class="col-actions">
                 <button type="button" class="link-btn" @click="onView(r.name)">查看</button>
                 <button type="button" class="link-btn" @click="onDownload(r.name)">下载</button>
@@ -371,11 +361,6 @@ function openLinkFiles(link: AttachmentLinkRecord) {
   white-space: nowrap;
 }
 
-.col-source {
-  width: 96px;
-  white-space: nowrap;
-}
-
 .col-phone {
   width: 112px;
   white-space: nowrap;
@@ -419,10 +404,6 @@ function openLinkFiles(link: AttachmentLinkRecord) {
   line-height: 18px;
   border-radius: 4px;
   white-space: nowrap;
-}
-.source-tag.is-manual {
-  color: #6b7280;
-  background: #f3f4f6;
 }
 .source-tag.is-sms {
   color: #1a6fff;

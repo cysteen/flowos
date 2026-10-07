@@ -4,16 +4,15 @@
 /**
  * 短信模板类型：
  * - plain          普通文本
- * - attachSend     附件下发 —— 坐席选文件发给客户，客户点短信里的下载链接取件
- * - attachRequest  附件上传邀请 —— 短信带上传链接（绑本单工单ID），客户上传后回流「附件历史」
+ * - attachRequest  附件上传邀请 —— 短信带上传链接（绑本单工单ID），客户上传的文件在
+ *                  「附件历史」·「客户上传」子页签按关联 ID 拉取呈现
  * 附件上传服务由容联云提供，链接生成/有效期/数量与大小上限均在容联云侧。
  * 链接有效期当前为 30 分钟，由容联云侧配置。
  */
-export type SmsTemplateKind = 'plain' | 'attachSend' | 'attachRequest';
+export type SmsTemplateKind = 'plain' | 'attachRequest';
 
 export const SMS_TEMPLATE_KIND_LABEL: Record<SmsTemplateKind, string> = {
   plain: '普通',
-  attachSend: '附件下发',
   attachRequest: '附件上传邀请',
 };
 
@@ -49,12 +48,6 @@ export const SMS_TEMPLATES: SmsTemplate[] = [
     name: '请上传材料',
     kind: 'attachRequest',
     content: '【科大讯飞】尊敬的客户您好，为了尽快解决您的问题，您可以通过以下链接：${link} 上传您的问题截图或附件，本链接30分钟内有效。收到后会尽快为您处理，谢谢！',
-  },
-  {
-    code: 'SMS_ATTACH_SEND',
-    name: '材料下发',
-    kind: 'attachSend',
-    content: '尊敬的${name}，关于您的工单${no}（${product}），现将相关材料发送给您，请点击短信内链接查收。【科大讯飞】',
   },
   {
     code: 'SMS_WO_DONE',
