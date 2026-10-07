@@ -4991,8 +4991,10 @@ function toggleWordEnabled(w: RiskWord) {
     </div>
 
     <!--
-      ② 页头大盘：三栏 —— 左监控条目（打标漏斗）、中工单存量、右评估处置。
-      三个分母（条目 / 工单 / 池行）两两不可相加，每个数的 title 各自写明自己数的是什么。
+      ② 页头大盘：三栏 —— 左实时监控（今日扫描流量）、中重点工单（在办工单）、右风险工单（已判条目）。
+      三个分母（今日条目流量 / 在办工单 / 已判条目）两两不可相加，每个数的 title 各自写明自己数的是什么。
+      🔴 「工单类型」这一维在中栏与右栏**各出现一次、分母不同**（全部在办 vs 已判那一批），
+      两行不可相减；各自的 `.dash-links-k` title 都把分母写死。
     -->
     <section class="overview-section effect-section">
       <div class="effect-split">
