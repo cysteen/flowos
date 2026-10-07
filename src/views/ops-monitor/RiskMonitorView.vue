@@ -5599,8 +5599,8 @@ function toggleWordEnabled(w: RiskWord) {
                     v-if="canRiskTag"
                     type="button" class="row-btn row-btn-tag"
                     title="判定这张单有没有风险、多大：高 / 中 / 低进风险工单池，无风险不进池"
-                    @click="openEntryTag(g.row)"
-                  >风险管控</button>
+                    @click="openEntryTag(g.row, 'untagged')"
+                  >风险识别</button>
                   <span v-else class="hit-sub" title="标记归客诉专员、投诉督导与管理员">—</span>
                 </td>
               </tr>
@@ -5656,8 +5656,8 @@ function toggleWordEnabled(w: RiskWord) {
                   <button
                     v-if="canRiskTag"
                     type="button" class="row-btn row-btn-tag"
-                    @click="openTag(h)"
-                  >风险管控</button>
+                    @click="openTag(h, 'untagged')"
+                  >风险识别</button>
                   <span v-else class="hit-sub" title="标记归客诉专员、投诉督导与管理员">—</span>
                 </td>
               </tr>
@@ -5817,7 +5817,7 @@ function toggleWordEnabled(w: RiskWord) {
                         : e.entry && canTagNoRisk(e.entry.status)
                           ? '判定风险等级；改判为无风险会把它撤出风险工单池'
                           : `判定风险等级；${NO_RISK_LOCKED_TIP}`"
-                      @click="openEntryTag(e)"
+                      @click="openEntryTag(e, 'judged')"
                     >风险管控</button>
                     <span v-if="!canRiskTag" class="hit-sub" title="风险管控归客诉专员、投诉督导与管理员">—</span>
                   </template>
@@ -6695,11 +6695,11 @@ function toggleWordEnabled(w: RiskWord) {
                     v-if="canRiskTag"
                     type="button" class="row-btn row-btn-amend"
                     :title="historyOf(h).length > 1 ? `已修正 ${historyOf(h).length - 1} 次，可继续修正` : '重新核实并修正本条结果'"
-                    @click="openTag(h)"
-                  >风险管控</button>
+                    @click="openTag(h, 'ledger')"
+                  >命中核实</button>
                 </template>
                 <template v-else>
-                  <button v-if="canRiskTag" type="button" class="row-btn row-btn-tag" @click="openTag(h)">风险管控</button>
+                  <button v-if="canRiskTag" type="button" class="row-btn row-btn-tag" @click="openTag(h, 'ledger')">命中核实</button>
                   <span v-else class="hit-sub">—</span>
                 </template>
               </div>
@@ -7016,7 +7016,7 @@ function toggleWordEnabled(w: RiskWord) {
     -->
     <OpActionModal
       :open="entryTagOpen"
-      title="风险管控"
+      :title="entryTagModalTitle"
       :subtitle="entryTagSubtitle"
       :icon="SafetyCertificateOutlined"
       tone="primary"
@@ -7208,7 +7208,7 @@ function toggleWordEnabled(w: RiskWord) {
     -->
     <OpActionModal
       :open="tagOpen"
-      title="风险管控"
+      :title="tagModalTitle"
       :subtitle="tagSubtitle"
       :icon="SafetyCertificateOutlined"
       tone="primary"
