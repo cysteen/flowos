@@ -330,6 +330,23 @@ function buildAftersaleSeeds() {
     }],
   });
 
+  // 咨询单（处理中、产品有售后服务、无关联）：底栏「转售后」可点，走售后建单弹窗 + 转出说明（§2.2 / §2.3）
+  seeds.push({
+    id: 'as-l2', no: 'IFLYZX-20261006-00050', type: '咨询', channel: '电话',
+    title: '扫地机器人边刷不转，咨询上门维修', smartMarks: [],
+    customer: '房悦', vip: false, product: '扫地机器人 R2',
+    nodeStatus: '处理中', nodeStep: 2, nodeTotal: 5, priority: 'P2',
+    slaText: '05:10:00', slaSub: '充足', slaState: 'ok', slaMinutes: 310,
+    assignee: '王坐席', tab: 'mine', groupId: 'hardware', responded: true,
+    customerPhone: '13700005012', sn: 'SN-R2-50120', productCategory: '智能硬件',
+    problemDesc: '扫地机器人左侧边刷不转动，清洁后重启仍无改善，客户咨询能否安排上门维修。',
+    createdAt: '2026-10-06 13:20', updatedAt: '2026-10-06 13:45',
+    eventTimeline: [{
+      id: 'as-IFLYZX-20261006-00050-claim', category: 'node', action: 'accept', who: '王坐席', role: '二线专员',
+      how: '领取', what: '王坐席 从池中领取本单，进入「待响应」。', when: '2026-10-06 13:45',
+    }],
+  });
+
   // ① 投诉单已关联售后单，售后单已完成（客服来源位，AS_CLOSED 只写履历、不改投诉单状态）
   seeds.push(applyAftersaleEvent({
     id: 'as-c2', no: 'IFLYTS-20260925-00045', type: '投诉', channel: '电话',
@@ -1532,6 +1549,7 @@ const TICKET_GROUP_NAMES: Record<string, string[]> = {
   'as-u2': ['硬件缺陷组'],
   'as-c2': ['硬件缺陷组'],
   'as-l1': ['硬件缺陷组'],
+  'as-l2': ['硬件缺陷组'],
   'as-k1': ['硬件缺陷组'],
   'as-k1n': ['硬件缺陷组'],
   'as-k2': ['硬件缺陷组'],

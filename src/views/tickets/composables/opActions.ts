@@ -965,7 +965,7 @@ export function applyOpAction(
       if (detail.linkedAftersale) detail.linkedAftersale.status = status;
       pushEntry(timeline, {
         category: 'node', action: 'transfer', who: operator, role: operatorRole,
-        how: '激活售后单 · reopen 来源售后单',
+        how: '激活售后单 · 重开来源售后单',
         what: [`售后单 ${no}`, title ?? '', `售后侧返回状态：${status}`].filter(Boolean).join(' · '),
       });
       return { opState, suspendInfo, message: `售后工单 ${no} 激活成功，已重回售后工单池` };
