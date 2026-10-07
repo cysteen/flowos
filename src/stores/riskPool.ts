@@ -432,8 +432,11 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
   }
 
   /**
-   * 评估：一条条目最多一条评估记录，**提交即固化不可改**（§9 规则 22）。
-   * **必须先有人领**——没人认领的条目谈不上"谁给的结论"。
+   * 评估（领取 → 评估那一路）：**必须先有人领**——没人认领的条目谈不上"谁给的结论"。
+   * 门禁只收「评估中」，故本入口天然一条条目只走一次（落完就是「已评估」了）。
+   *
+   * ⚠️ **"提交即固化、不可修改"（§9 规则 22）已被 2026-10-07 裁决推翻**：重新给结论
+   * 走下面的 `assessOnTag`（「风险管控」弹窗那一路），不是本函数的门禁松了。
    */
   function assess(id: string, assessment: ReportAssessment) {
     const r = findById(id);
@@ -454,13 +457,17 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
    *      `assignee` 一栏是空的，故由结论人（＝打标人，`assessment.by`）补上。
    *      **已经有人认领的不覆盖** —— 那是别人手上的活，与 `coordinate` 同一条口径。
    *
-   * 🔴 **已结论的一律拒绝**（返回 false，一格不改）：一条条目只出一次结论
-   * （§9 规则 22 提交即固化），「修正核实结果」「修正风险打标」两个形态改的是打标结论，
-   * 不重开评估。界面侧同判据（打标弹窗对已结论条目**不出**那一段）。
+   * 🔴 **已结论的照收**（2026-10-07 裁决，推翻 §9 规则 22「提交即固化、不可修改」）：
+   * 风险是会变的 —— 一开始风险可控、结论是不升级，后来风险增大就得改成升级，
+   * 管控手段必须跟着改。故本函数**不判「已评估」**，重提即覆盖**当前**结论，
+   * 历次留痕由 `applyAssessment` 往第八类履历追加（累积不覆盖，见那里的 `prev`）。
+   * ⚠️ **"不重复派生"那道门不在这里**：它判的是"本条目派生过投诉单没有"，
+   * 判据是 `r.assessment.escalatedToNo`，归调用方（`RiskMonitorView.commitTagAssess`
+   * 决定这一次要不要取新号 + 造新单），本函数只管写。
    */
   function assessOnTag(id: string, assessment: ReportAssessment): boolean {
     const r = findById(id);
-    if (!r || !isPooledStatus(r.status) || r.status === '已评估') return false;
+    if (!r || !isPooledStatus(r.status)) return false;
     if (!r.assignee) r.assignee = assessment.by;
     applyAssessment(r, assessment);
     return true;
@@ -472,6 +479,19 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
    * 同一个结论在两条路径上产物不一样（本项目在「派生说明行」上刚栽过）。
    */
   function applyAssessment(r: RiskPoolItem, assessment: ReportAssessment) {
+    /*
+     * 重提结论那一路要答的两件事，都只在**覆盖之前**答得出来：
+     *   · `prevDecision` —— 上一次的结论是什么。它进履历的 `prev`，与打标改判那一路
+     *     （`kind: 'tag'` 的 `prev`）**同一套机制**：正文带「（修正，原结论：…）」，
+     *     记录累积不覆盖，于是"从什么改成什么"读得出来。
+     *   · `derivedNow` —— **这一次**是不是真派生了一张新单。重提时派生单号是上一次那张
+     *     **原样带下来的**（调用方必须带，它是"本条目派生过"的真源），
+     *     照 `assessment.escalatedToNo` 有没有值去判，会让每一次重提都在履历上
+     *     再喊一遍「已派生新投诉单」、再挂一枚同号的单号 chip。
+     */
+    const prevDecision = r.assessment ? normalizeDecision(r.assessment.decision) : undefined;
+    const derivedNow = !!assessment.escalatedToNo
+      && assessment.escalatedToNo !== r.assessment?.escalatedToNo;
     r.status = '已评估';
     r.assessment = assessment;
     /*
@@ -499,7 +519,8 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
       at: assessment.at,
       decision: normalizeDecision(assessment.decision),
       advice: assessment.advice,
-      ...(assessment.escalatedToNo ? { escalatedToNo: assessment.escalatedToNo } : {}),
+      ...(derivedNow ? { escalatedToNo: assessment.escalatedToNo } : {}),
+      ...(prevDecision ? { prev: prevDecision } : {}),
     });
     /*
      * `risk.report.assessed` 的收件人按条目所属的线取（《【930】》§6.2 / §9 规则 31）：

@@ -130,9 +130,18 @@ export function assessSubmitBlockOf(
  * 打标弹窗里给结论的人**没有领过这条**（打标这一下条目才刚进池，甚至还没进），
  * 拿那一份来判会把每一次提交都拦成"本条已不在你名下的「已领取」态"。
  *
- * 【判据】① 条目还在不在（撤回的整次拦下）；② **已被他人出结论 → 整次拦下**
- * （一条条目只出一次结论，§9 规则 22）；③ 原单已进终态 → **只拦「升级」**，
+ * 【判据】① 条目还在不在（撤回的整次拦下）；② 原单已进终态 → **只拦「升级」**，
  * 提示与另两处评估入口同一句 `ASSESS_TICKET_ENDED_TIP`。
+ *
+ * 🔴 **原来还有一道「已有评估结论 → 整次拦下」，2026-10-07 裁决已取消**：
+ * 已出结论的非投诉单**可以重新给结论**（风险变大了就得把不升级改成升级，
+ * 推翻 §9 规则 22「提交即固化」）。
+ *
+ * 🔴 **②对「已派生过投诉单」的条目不成立**：原单此刻的终态正是**上一次派生**造成的
+ * （`isRiskTicketEnded` 读的就是升级台账），而这一次重提**只更新结论正文、不再派生**。
+ * 照旧拦的话，裁决要的"再次提交只改正文"这一路会被自己上一次的成果永久挡住。
+ * 判据取**本条目结论上的派生单号**（`assessment.escalatedToNo`，派生这件事的既有真源），
+ * 与界面侧那道"决策锁在「升级」"的门同源。
  *
  * ⚠️ 本函数**不判「实时监控中」**：核实打标那一路提交时条目可能还没打标进池，
  * 打标与结论是同一次提交里的两步，进池那一步紧接着就会跑。
@@ -145,8 +154,12 @@ export function tagAssessSubmitBlockOf(
   const r = useRiskPoolStore().findById(entryId);
   if (!r) return { tip: '该条目已不在风险池中，请刷新后再看', closeModal: true };
   if (r.status === '已撤回') return { tip: ASSESS_WITHDRAWN_TIP, closeModal: true };
-  if (r.status === '已评估') return { tip: '本条已有评估结论，不可重复提交', closeModal: true };
-  if (decision && normalizeDecision(decision) === '升级' && isRiskTicketEnded(ticketNo)) {
+  const alreadyDerived = !!r.assessment?.escalatedToNo;
+  if (
+    !alreadyDerived
+    && decision && normalizeDecision(decision) === '升级'
+    && isRiskTicketEnded(ticketNo)
+  ) {
     return { tip: ASSESS_TICKET_ENDED_TIP, closeModal: false };
   }
   return { tip: '', closeModal: false };
