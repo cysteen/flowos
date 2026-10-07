@@ -1134,7 +1134,9 @@ const escalateReportFirstTip = computed(() => {
 });
 const canLinkAftersale = computed(() => headerRoleGate.value.linkAftersale);
 // 刷机单不提供取消工单（M6）
-const canCancelTicket = computed(() => headerRoleGate.value.cancelTicket && !isFlash.value);
+// 售后转回重派后仍「未认领」的回流单：一线坐席不展示取消（1025 口径定稿 §4-6a）
+const canCancelTicket = computed(() => headerRoleGate.value.cancelTicket && !isFlash.value
+  && !(d.value.returnedFromAftersale && ticketUnclaimed.value));
 
 /**
  * 底部流转操作栏隐藏：只读态，**或原单已是终态**——

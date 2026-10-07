@@ -167,6 +167,8 @@ export interface TicketDetailMeta {
   feishuRecords?: FeishuRecord[];
   /** 1:1 活跃关联售后单（转售后/关联售后后回传，客服侧松耦合展示，详情走深链） */
   linkedAftersale?: LinkedAftersale;
+  /** 售后转回后重派的回流单（AS_RETURNED，1025 N16）：未认领时一线坐席不展示「取消工单」 */
+  returnedFromAftersale?: boolean;
   /**
    * 委派中：把单子交给他人先处理、处理完回到本节点。
    * 期间锁定「下送/委派/调剂/关闭工单/强结」等流转与终结类动作，协办完成或撤销后解锁。

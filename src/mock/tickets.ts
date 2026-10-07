@@ -3,6 +3,7 @@ import { resolveTicketGroupNames } from '@/views/tickets/types/ticket';
 import { mapChannelToSource } from '@/views/tickets/types/createTicket';
 import { todayStamp } from '@/stores/riskShared';
 import { FLASH_SEEDS } from './flash/seedTickets';
+import { applyAftersaleEvent, takeOverReturnedTicket } from '@/views/tickets/composables/aftersaleEvents';
 
 // 工单 Mock 数据（对齐 PRD-02 §9 字段与分布；样例文案参考 .pen SJpgc）。
 // 分布：我的任务 8 / 已办 6 / 本组工单池 5 / @我的工单 3 / 待审核 3 = 25（活跃）+ 归档。
@@ -452,18 +453,59 @@ const BASE_TICKETS: Ticket[] = [
     escalatedFromNo: 'IFLYTS-20260711-00001',
     createdAt: '2026-07-11 14:25', updatedAt: '2026-07-11 15:02',
   },
-  // 非诉转售后 → 售后侧关单回传 → 原单随之收口，进「已办」，行内可见关联售后单号（可跳转）
-  {
+  // 非诉转售后 → 售后侧关单回传（AS_CLOSED）→ 原单正常关闭，进「已办」，行内可见关联售后单号（可跳转）
+  applyAftersaleEvent({
     id: 't32', no: 'IFLYZX-20260716-00003', type: '咨询', channel: '电话',
     title: '扫地机器人滚刷卡死需上门维修', smartMarks: [],
     customer: '雷军', vip: false, product: '扫地机器人 R2',
-    nodeStatus: '处理中', nodeStep: 5, nodeTotal: 5, priority: 'P2',
-    slaText: '—', slaSub: '售后已完成', slaState: 'ok', slaMinutes: 9999,
-    assignee: '陈坐席', tab: 'done', handledByMe: true, myTransferAction: true,
-    linkedAftersaleNo: 'AS-20260716-38025',
+    nodeStatus: '已转出', nodeStep: 5, nodeTotal: 5, priority: 'P2',
+    slaText: '03:40:00', slaSub: '充足', slaState: 'ok', slaMinutes: 220,
+    assignee: '陈坐席', tab: 'mine', handledByMe: true, myTransferAction: true,
+    linkedAftersaleNo: 'AS-20260716-38025', linkedAftersaleServiceType: '维修',
     customerPhone: '13100002200', sn: 'SN-R2-77120', productCategory: '智能硬件',
-    createdAt: '2026-07-16 10:20', updatedAt: '2026-08-12 15:05',
-  },
+    createdAt: '2026-07-16 10:20', updatedAt: '2026-07-16 11:02', responded: true,
+  }, {
+    type: 'AS_CLOSED', asNo: 'AS-20260716-38025', eventId: 'ase-38025-closed',
+    at: '2026-08-12 15:05', operator: '周师傅', status: '已完成',
+    resultSummary: '上门更换滚刷组件并清理主刷仓，试机运行正常，客户签字确认。',
+  }).ticket,
+  // 非诉转售后 → 售后转回客服（AS_RETURNED）→ 清空处理人、按分派规则落回本组工单池，尚未领取
+  applyAftersaleEvent({
+    id: 't36', no: 'IFLYZX-20260924-00012', type: '咨询', channel: '电话',
+    title: '学习机屏幕间歇性闪烁，咨询保修范围', smartMarks: [],
+    customer: '韩雪', vip: false, product: '讯飞学习机 T20',
+    nodeStatus: '已转出', nodeStep: 4, nodeTotal: 5, priority: 'P2',
+    slaText: '05:10:00', slaSub: '充足', slaState: 'ok', slaMinutes: 310,
+    assignee: '王坐席', tab: 'mine', groupId: 'line2', myTransferAction: true,
+    linkedAftersaleNo: 'AS-20260924-41163', linkedAftersaleServiceType: '维修',
+    customerPhone: '13800009012', sn: 'SN-T20-90412', productCategory: '智能硬件',
+    createdAt: '2026-09-24 09:30', updatedAt: '2026-09-24 10:12', responded: true,
+  }, {
+    type: 'AS_RETURNED', asNo: 'AS-20260924-41163', eventId: 'ase-41163-returned-1',
+    at: '2026-09-25 14:20', operator: '许师傅（售后二组）',
+    returnReason: '检测为系统设置问题，非硬件故障，转回客服指导客户调整显示设置。',
+  }).ticket,
+  // 同上回流后已被领取：直落「处理中」、首响不重计
+  ((): Ticket => {
+    const returned = applyAftersaleEvent({
+      id: 't37', no: 'IFLYZX-20260923-00008', type: '建议', channel: '在线客服',
+      title: '翻译机充电底座接触不良，建议改进底座设计', smartMarks: [],
+      customer: '邵峰', vip: false, product: '讯飞翻译机 T10',
+      nodeStatus: '已转出', nodeStep: 4, nodeTotal: 5, priority: 'P3',
+      slaText: '09:20:00', slaSub: '充足', slaState: 'ok', slaMinutes: 560,
+      assignee: '林坐席', tab: 'mine', groupId: 'line2',
+      linkedAftersaleNo: 'AS-20260923-40877', linkedAftersaleServiceType: '维修',
+      customerPhone: '13600007788', sn: 'SN-T10-23877', productCategory: '消费电子',
+      createdAt: '2026-09-23 16:05', updatedAt: '2026-09-23 16:40', responded: true,
+    }, {
+      type: 'AS_RETURNED', asNo: 'AS-20260923-40877', eventId: 'ase-40877-returned-1',
+      at: '2026-09-25 10:05', operator: '马师傅（售后一组）',
+      returnReason: '底座更换后客户仍反馈产品设计问题，属产品建议，转回客服登记跟进。',
+    }).ticket;
+    return takeOverReturnedTicket(returned, {
+      assignee: '王坐席', how: '领取', operator: '王坐席', operatorRole: '二线专员', at: '2026-09-25 10:32',
+    }) ?? returned;
+  })(),
 
   // ---- 本组工单池 (pool) 5 ----
   {

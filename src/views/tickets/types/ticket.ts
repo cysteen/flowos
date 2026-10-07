@@ -2,6 +2,7 @@
 // 业务规则对齐 PRD-02。
 
 import type { BusinessType, CreateFormTicketType, TicketSource } from '@/views/tickets/types/createTicket';
+import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 import { FLASH_POOLS, FLASH_TICKET_TYPE, type TicketFlash } from '@/views/tickets/types/flash';
 import { readSla, slaStateOf } from '@/views/tickets/utils/slaClock';
 
@@ -459,6 +460,21 @@ export interface Ticket {
   linkedAftersaleStatus?: string;
   /** 关联售后单服务类型 */
   linkedAftersaleServiceType?: string;
+  /**
+   * **售后回传回流标记**（1025 N16 / D10）：本单曾因 `AS_RETURNED` 从「已转出」被唤醒、重新派单。
+   * 被领取 / 被指派时据此**直落「处理中」、首响不重计**（领取 / 指派流转只对这条链路开例外）；
+   * 回流后处于「未认领」时一线坐席不展示「取消工单」。由 `aftersaleEvents.ts` 置位，此后不清。
+   */
+  returnedFromAftersale?: boolean;
+  /** 关闭原因（售后回传 AS_CLOSED 落「已关闭」时为「售后已完成」，不走关闭审批） */
+  closeReason?: string;
+  /**
+   * 本单由售后回传与关联迁移产生的处理履历（`aftersaleEvents.ts` 写入），处理页载入时并入履历。
+   * 只追加、不改写。
+   */
+  eventTimeline?: TimelineEntry[];
+  /** 已处理过的售后终态事件 id（幂等：同一事件重复到达直接丢弃） */
+  aftersaleEventIds?: string[];
   /**
    * 售后转入的来源售后单（`ticketSource='售后系统'` 时有值）。
    * 与 linkedAftersaleNo 分开存：那个表示"本单已转出去、在售后手上"，会把状态压成「已转出」；

@@ -333,11 +333,14 @@ export function useTicketOperation() {
           createdAt: t.updatedAt ?? t.createdAt ?? '',
           fromComplaint: isComplaint,
         };
-        if (!isComplaint) {
+        if (!isComplaint && t.nodeStatus === '已转出') {
           base.status = '已转出';
           opState.value = 'transferred';
         }
       }
+      // 售后转回后重派（AS_RETURNED，见 aftersaleEvents.ts）：子状态取工单行（未认领 / 处理中），关联位保持活跃
+      base.returnedFromAftersale = !!t.returnedFromAftersale;
+      if (t.returnedFromAftersale && t.tab !== 'done') base.status = t.nodeStatus;
       // 售后转入：关联位仍指向来源售后单，但本单正常在跑，不进「已转出」
       if (t.aftersaleOriginNo) {
         base.linkedAftersale = {
@@ -364,6 +367,11 @@ export function useTicketOperation() {
     if (t?.flash) applyFlashOverview(base, t);
     detail.value = base;
     if (t?.flash) projectFlashTimeline(t.no, true);
+    // 售后回传 / 关联迁移写在工单行上的履历（aftersaleEvents.ts），并入本页履历
+    else if (t?.eventTimeline?.length) {
+      const seen = new Set(timeline.value.map((e) => e.id));
+      t.eventTimeline.forEach((e) => { if (!seen.has(e.id)) timeline.value.push({ ...e }); });
+    }
   }
 
   /**

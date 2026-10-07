@@ -5,6 +5,14 @@ import { useUserStore } from '@/stores/user';
 import { useFlashStore } from '@/stores/flash';
 import type { FlashActor } from '@/views/tickets/types/flash';
 import { mapUserRole } from '@/views/tickets/composables/opActions';
+import { takeOverReturnedTicket } from '@/views/tickets/composables/aftersaleEvents';
+
+/** 履历时刻 YYYY-MM-DD HH:mm */
+function nowMinuteStamp(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
 import { useTicketDraftStore } from '@/stores/ticketDrafts';
 import { useSavedFilters } from '@/views/tickets/composables/useSavedFilters';
 import type { AiSuggestionSummary } from '@/views/tickets/types/aiSuggestion';
@@ -414,6 +422,15 @@ export function useTicketWorkbench() {
     const t = all.value.find((x) => x.id === id);
     if (t?.type === '刷机') return claimFlashTicket(id).ok;
     if (!t || t.tab !== 'pool' || t.assignee !== null) return false;
+    // 售后转回重派的回流单：直落「处理中」、首响不重计（1025 D10，只对这条链路开例外）
+    const taken = takeOverReturnedTicket(t, {
+      assignee: WORKBENCH_HANDLER, how: '领取', operator: WORKBENCH_HANDLER,
+      operatorRole: mapUserRole(user.roleKey), at: nowMinuteStamp(),
+    });
+    if (taken) {
+      Object.assign(t, taken);
+      return true;
+    }
     t.tab = 'mine';
     t.assignee = WORKBENCH_HANDLER;
     t.responded = false;
@@ -451,7 +468,14 @@ export function useTicketWorkbench() {
         rows.push({ id, ok: false, reason: t?.assignee ? `已被 ${t.assignee} 领取` : '工单已不在池内' });
         continue;
       }
-      if (opts.scope === 'cross-team') {
+      const taken = opts.scope === 'cross-team' ? null : takeOverReturnedTicket(t, {
+        assignee: opts.targetName, how: '指派', operator: user.name || WORKBENCH_HANDLER,
+        operatorRole: mapUserRole(user.roleKey), at: nowMinuteStamp(),
+      });
+      if (taken) {
+        // 回流单被指派：直落「处理中」、首响不重计（1025 D10）
+        Object.assign(t, taken);
+      } else if (opts.scope === 'cross-team') {
         t.groupId = opts.targetId;
       } else {
         t.tab = 'mine';
