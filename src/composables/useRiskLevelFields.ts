@@ -5,7 +5,7 @@ import { NO_RISK_LOCKED_TIP, canTagNoRisk, useRiskQueueStore } from '@/stores/ri
 import { NO_RISK, type RiskTagResult } from '@/stores/riskShared';
 
 /**
- * 「风险管控」弹窗的**风险等级段**：四选一（高 / 中 / 低 / 无风险）+ 标记备注。
+ * 「风险管控」弹窗的**风险等级段**：四选一（高 / 中 / 低 / 无风险）+ 风险备注。
  *
  * 🔴 **五处入口同一份**（2026-09-29 裁决「弹窗全站统一」）：工单处理页页头、风险监控页
  * 评估处置工作面、风险监控页条目表、命中台账 / 召回清单、工单工作台风险报备池。
@@ -31,7 +31,7 @@ export function useRiskLevelFields() {
   /** 本段挂在哪张单上。宿主每次打开弹窗调一次 `reset(ticketNo)` 置上 */
   const ticketNo = ref('');
 
-  /** 四选一 + 标记备注。与 `useRiskCollabFields` 同形：一个 reactive 对象，宿主只读不重建 */
+  /** 四选一 + 风险备注。与 `useRiskCollabFields` 同形：一个 reactive 对象，宿主只读不重建 */
   const fields = reactive<{ level: RiskTagResult | ''; note: string }>({ level: '', note: '' });
   const tried = ref(false);
 
@@ -57,7 +57,7 @@ export function useRiskLevelFields() {
   const required = computed(() => visible.value && !isAmend.value);
 
   /**
-   * 等级或标记备注动过没有。与页头「风险管控」的 `tagDirty`、风险监控页的 `entryTagDirty`
+   * 等级或风险备注动过没有。与页头「风险管控」的 `tagDirty`、风险监控页的 `entryTagDirty`
    * 同一口径 —— 没动过还落一遍，标记记录里就多一条与上一条逐字相同的记录、条数还虚增。
    * 备注那一项判的是"填了东西且与上一条不同"：改判形态下它从空开始，照旧直接比较的话
    * 一打开就成了"动过"。
@@ -107,7 +107,7 @@ export function useRiskLevelFields() {
       return false;
     }
     if (willWrite.value && isAmend.value && !fields.note.trim()) {
-      message.warning('请填写标记备注');
+      message.warning('请填写风险备注');
       return false;
     }
     // 读条目上的现行状态：弹窗开着这段时间里别人可能已经给了结论
@@ -177,7 +177,7 @@ export interface RiskLevelFieldsView {
   fields: { level: RiskTagResult | ''; note: string };
   /** 整段出不出 */
   visible: BoolView;
-  /** 这一次是改判（决定「标记备注」的必填与问法） */
+  /** 这一次是改判（决定「风险备注」的必填与问法） */
   isAmend: BoolView;
   /** 「风险等级」标签带不带必填星 */
   required: BoolView;

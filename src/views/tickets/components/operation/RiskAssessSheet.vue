@@ -7,7 +7,7 @@ import { riskLevelText } from '@/config/risk';
 import { downloadReportAttachment, excerptWindow, isKeywordRow } from './riskAssessSheet';
 
 /**
- * 「风险管控」弹窗的**第一区块**（PRD §5.3.2）：风险等级与标记备注一组 + 抬头 meta 行 +
+ * 「风险管控」弹窗的**第一区块**（PRD §5.3.2）：风险等级与风险备注一组 + 抬头 meta 行 +
  * 入池依据 / 报备信息 + 命中原话 + 附件 + 释放记录。风险监控页那一个与工单页
  * `OpRiskControlModal` 共用这一份，字段、顺序、出现条件与样式只在这里改。
  *
@@ -22,7 +22,7 @@ const riskTags = useRiskTagStore();
 /**
  * 待评估的这一条**来自哪条线**。判据取条目自带的身份标 `source`（B 线恒为「二线报备」），
  * 不看有没有 `tag` —— 那答的是"打没打标"，罕见的"进了池却没打标"会被误判成 B 线。
- * · A 线（风险工单池里的条目）→「入池依据」：风险等级 / 标记人 / 标记时间 / 标记备注 / 命中原话。
+ * · A 线（风险工单池里的条目）→「入池依据」：风险等级 / 标记人 / 标记时间 / 风险备注 / 命中原话。
  * · B 线（二线报备单）→「报备信息」：报备人 / 报备原因 / 风险类型 / 风险描述 / 附件。
  * A 线不出「报备人」「原因」：那两格是 `riskQueue.autoEntry()` 补的恒定占位（系统（系统） / 其他）。
  */
@@ -67,7 +67,7 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
     <header class="assess-sheet-head">
       <div class="assess-sheet-brand">
         <!--
-          A 线的头一行 ＝ 打标结论那一组：风险等级在前、标记备注紧随其后。
+          A 线的头一行 ＝ 打标结论那一组：风险等级在前、风险备注紧随其后。
           备注是标记人当时的判断依据，跟结论挨着读才接得上；备注长时在自己那一列里换行、行行左对齐。
           备注为空时整格不出，不留空行也不出标签。
         -->
@@ -83,7 +83,7 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
             <span v-else class="assess-meta-value">未标记</span>
           </span>
           <span v-if="target.tag?.note" class="assess-note-pair">
-            <span class="assess-meta-label">标记备注</span>
+            <span class="assess-meta-label">风险备注</span>
             <span class="assess-note-value">{{ target.tag.note }}</span>
           </span>
         </div>
@@ -157,7 +157,7 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
       </div>
 
       <!--
-        入池依据的证据只剩「命中原话」一项：等级 / 标记备注 / 标记人 / 标记时间都在抬头，这里不复述。
+        入池依据的证据只剩「命中原话」一项：等级 / 风险备注 / 标记人 / 标记时间都在抬头，这里不复述。
         B 线的报备单没有命中，整块 v-if 掉、不留空标题。
       -->
       <div v-if="verifiedHit" class="assess-verify">
@@ -222,7 +222,7 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
   background: linear-gradient(180deg, #fff7ed 0%, #fff 100%);
   border-bottom: 1px solid #ffedd5;
 }
-/* 抬头两行（风险等级＋标记备注 / meta 行）之间的行距走同一个 gap，B 线只有 meta 行时不留空档 */
+/* 抬头两行（风险等级＋风险备注 / meta 行）之间的行距走同一个 gap，B 线只有 meta 行时不留空档 */
 .assess-sheet-brand {
   display: flex;
   flex-direction: column;
@@ -230,7 +230,7 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
   min-width: 0;
 }
 /*
- * 风险等级与标记备注一组。两列 grid（等级 | 备注）：备注只在自己那一列里换行，
+ * 风险等级与风险备注一组。两列 grid（等级 | 备注）：备注只在自己那一列里换行，
  * 续行与首行左对齐，相对等级自然缩进；备注不出时这一行就只剩等级那一格。
  */
 .assess-sheet-level {

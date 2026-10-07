@@ -7,7 +7,7 @@ import { NO_RISK, RISK_TAG_RESULTS, isPoolLevel, type RiskTagResult } from '@/st
 import { RISK_LEVEL_STYLE, riskLevelText } from '@/config/risk';
 
 /**
- * **风险等级**那一段字段：四选一（高危 / 中危 / 低危 / 无风险）+ 标记备注。
+ * **风险等级**那一段字段：四选一（高危 / 中危 / 低危 / 无风险）+ 风险备注。
  *
  * 🔴 **六处「风险管控」弹窗同一份、同一种呈现**（2026-09-29 裁决「风险等级段收敛」）：
  * 风险监控页的条目打标形态、评估处置工作面，工单工作台的风险报备池，
@@ -37,7 +37,7 @@ const props = defineProps<{ ctl: RiskLevelFieldsView }>();
  *
  * 🔴 **目前零调用方、有意保留**：它是给"误报时只出无风险一档"那一版规格开的口子，
  * 而那一版已被推翻（现行口径是**误报时整段不出**，由宿主自己的 `visible` 承担）。
- * 命中核实形态**也没有接进本组件**（它只有三档、备注是另一格「处置备注」、
+ * 命中核实形态**也没有接进本组件**（它只有三档、风险备注走它自己那一格 `tagNote`、
  * 没有"无风险置灰"这回事，接进来要开三个开关，就不再是"一份共享件、一种呈现"）。
  * 留着这个口子是为了下一处真需要收窄档位的宿主，不要据此以为命中核实已经共用本件。
  */
@@ -78,12 +78,12 @@ function pick(r: RiskTagResult) {
     <p v-else-if="ctl.noRiskLocked.value" class="rlf-foot">{{ NO_RISK_LOCKED_TIP }}。</p>
 
     <!--
-      标记备注。**改判时必填**（原来那格「修正原因」已并进来，2026-09-29 裁决）：
+      风险备注。**改判时必填**（原来那格「修正原因」已并进来，2026-09-29 裁决）：
       两格都在答"这一次是怎么判的、为什么"，改判时人得把同一件事写两遍。
       改判形态下本格从空开始、问法换成"为什么改"。
     -->
     <div class="op-field op-field-h op-field-h-top rlf-row rlf-row-note">
-      <div class="op-label rlf-label" :class="{ req: ctl.isAmend.value }">标记备注</div>
+      <div class="op-label rlf-label" :class="{ req: ctl.isAmend.value }">风险备注</div>
       <a-textarea
         v-model:value="ctl.fields.note"
         :rows="2"
@@ -93,7 +93,7 @@ function pick(r: RiskTagResult) {
           : '判断依据与后续动作（可选）'"
       />
     </div>
-    <p v-if="ctl.missNote.value" class="rlf-err">请填写标记备注</p>
+    <p v-if="ctl.missNote.value" class="rlf-err">请填写风险备注</p>
   </section>
 </template>
 

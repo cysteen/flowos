@@ -24,7 +24,7 @@ import OpRiskCollabModal from '@/views/tickets/components/operation/OpRiskCollab
 // 评估弹窗第一区块（入池依据 / 报备信息 + 释放记录）与工单页 OpRiskControlModal 共用一个组件；
 // 命中原话取窗 `excerptWindow`、实时监控来源判断 `isKeywordRow` 与附件下载同一个共享文件（本页命中清单 / 打标弹窗也读它）
 import RiskAssessSheet from '@/views/tickets/components/operation/RiskAssessSheet.vue';
-// 风险等级四选一 + 标记备注：**六处「风险管控」弹窗共用同一份呈现**（2026-09-29 裁决）。
+// 风险等级四选一 + 风险备注：**六处「风险管控」弹窗共用同一份呈现**（2026-09-29 裁决）。
 // 评估处置工作面走真实例 `useRiskLevelFields`（落库 recordTagFor）；条目打标与命中核实
 // 两个形态各有既有状态与落库路径，用 `makeRiskLevelFieldsView` 包一层薄适配器交给同一个组件渲染。
 import RiskLevelFields from '@/views/tickets/components/operation/RiskLevelFields.vue';
@@ -516,7 +516,7 @@ function poolTicketTypeOf(r: { ticketNo: string }): string {
   return t?.type ?? (isComplaintTicket(r.ticketNo) ? '投诉' : '—');
 }
 /**
- * 池行的「风险摘要」：标记备注（标记人为什么判这个等级）；没填备注时退回工单的问题描述 / 标题。
+ * 池行的「风险摘要」：风险备注（标记人为什么判这个等级）；没填备注时退回工单的问题描述 / 标题。
  * 不取条目 `desc` —— 那是入队套话（「投诉类工单自动纳入实时监控」），答不了"风险是什么"。
  */
 function poolRiskSummaryOf(r: RiskPoolItem): string {
@@ -1254,7 +1254,7 @@ function openCollab(r: RiskPoolItem) {
  * 🔴 弹窗第一区块**按同一个 `source` 分两种**（PRD §5.3.2，判据在 `RiskAssessSheet` 里，
  * 本页不再自判一遍）：
  * · A 线（风险工单池里的条目）→「**入池依据**」：风险等级 / 标记人 / 标记时间 /
- *   标记备注 / 命中原话。这一组就是它被送来评估的全部理由。
+ *   风险备注 / 命中原话。这一组就是它被送来评估的全部理由。
  * · B 线（二线报备单）→「**报备信息**」：报备人 / 报备原因 / 风险类型 / 风险描述 / 附件。
  *
  * 【为什么必须分】两条线此前共用一张「报备信息」卡，A 线条目在「报备人」「原因」两格里
@@ -2373,12 +2373,12 @@ const tagTarget = ref<RiskHit | null>(null);
 const tagLevel = ref<RiskLevel>('高');
 const tagVerdict = ref<HitVerdict | undefined>(undefined);
 /**
- * 本次核实的**处置备注**。
+ * 本次核实的**风险备注**。
  *
  * 🔴 **原来它旁边还有一格必填的「修正原因」，2026-09-29 裁决已取消** ——
  * 两格用途重叠（都在答"这一次是怎么判的、为什么"），修正时人得把同一件事写两遍。
  * **取消的是字段、不是约束**：原先"修正必须填修正原因"那道硬校验**迁到本格**，
- * 即**修正时处置备注必填**，首次核实仍可选。
+ * 即**修正时风险备注必填**，首次核实仍可选。
  * 故本格在修正形态下**不预填上一次那条** —— 预填等于让上一次的备注自动满足这一次的必填，
  * 那道约束就名存实亡了（`tagDirty` 随之把"空备注"排除在"动过"之外，见下）。
  */
@@ -2429,7 +2429,7 @@ const tagDirty = computed(() => {
 });
 const canSaveTag = computed(() => {
   if (!canRiskTag.value || !tagVerdict.value) return false;
-  // 修正必须答得出"为什么改"，那句话现在写在处置备注里（「修正原因」已取消）
+  // 修正必须答得出"为什么改"，那句话现在写在风险备注里（「修正原因」已取消）
   if (tagAmend.value) return tagDirty.value && !!tagNote.value.trim();
   return true;
 });
@@ -2481,8 +2481,8 @@ function saveTag() {
   if (!canRiskTag.value) { message.warning('无标记权限'); return; }
   if (!tagVerdict.value) { message.warning('请先判定本次命中是否成立'); return; }
   if (tagAmend.value && !tagDirty.value) { message.warning('核实结果没有变化，无需修正'); return; }
-  // 「修正原因」已取消，那道约束迁到处置备注上：修正必填、首次可选
-  if (tagAmend.value && !tagNote.value.trim()) { message.warning('请填写处置备注'); return; }
+  // 「修正原因」已取消，那道约束迁到风险备注上：修正必填、首次可选
+  if (tagAmend.value && !tagNote.value.trim()) { message.warning('请填写风险备注'); return; }
   const entry: TagEntry = {
     level: tagLevelToSave.value,
     verdict: tagVerdict.value,
@@ -2526,7 +2526,7 @@ function entryDiffText(prev: TagEntry, next: TagEntry): string {
   const parts: string[] = [];
   if (prev.verdict !== next.verdict) parts.push(`判定 ${prev.verdict} → ${next.verdict}`);
   if (prev.level !== next.level) parts.push(`等级 ${levelText(prev.level)} → ${levelText(next.level)}`);
-  if (prev.note !== next.note) parts.push(next.note ? '处置备注已更新' : '处置备注已清空');
+  if (prev.note !== next.note) parts.push(next.note ? '风险备注已更新' : '风险备注已清空');
   return parts.join(' · ');
 }
 /** 这条判过没有。等级可以为空（误报），判定不会，故"判过没有"只认它 */
@@ -2593,7 +2593,7 @@ function tagTraceTitle(h: RiskHit): string | undefined {
   if (!t) return undefined;
   // 角色与姓名同行给出：光看姓名答不出"这条判定有多少分量"
   const lines = [`标记人：${t.by}（${t.byRole}）`, `标记时间：${t.at}`];
-  if (t.note) lines.push(`处置备注：${t.note}`);
+  if (t.note) lines.push(`风险备注：${t.note}`);
   const amended = historyOf(h).length - 1;
   if (amended > 0) lines.push(`已修正 ${amended} 次，明细见「修正」`);
   return lines.join('\n');
@@ -3490,7 +3490,7 @@ function rowWaitedText(r: QueueRow): string {
 
 /* ---- 条目批量标记：**只在待打标视图**（业务口径） ---- */
 // 【为什么另两个视图不给批量】它们装的都是**已经有结论**的条目，对这两批做的唯一一件事是
-// 「修正」——而修正必须逐条写清"为什么改"（改判时**标记备注必填**，2026-09-29 之前是
+// 「修正」——而修正必须逐条写清"为什么改"（改判时**风险备注必填**，2026-09-29 之前是
 // 独立的「修正原因」那一格，已并入备注）。
 // 批量改判等于绕过那道必填门，一次给一批条目追加一条没有理由的改判，
 // 而「已标记无风险」这一视图存在的全部意义恰恰是**核查漏标误判**，它最不该被一键刷过去。
@@ -3583,7 +3583,7 @@ function saveBulk() {
 
 /* ---- 「实时监控」那一路 · 批量核实（2026-09-15 裁决） ---- */
 //
-// 对所选工单组上**待核实**的命中统一给 成立 + 等级 / 误报 + 处置备注，逐条走单条同一个入口
+// 对所选工单组上**待核实**的命中统一给 成立 + 等级 / 误报 + 风险备注，逐条走单条同一个入口
 // （`riskQueue.verifyHit`）：同一张单的第一条成立即给这张单打标入池，其余几条只记命中；
 // 全部误报的单按固定次序改归「重点工单」，或打为无风险。
 // 命中取 `kwHitsOf`（过了当前筛选、即表里看得见的那几行），不对看不见的命中动手。
@@ -3658,11 +3658,11 @@ const entryTagOpen = ref(false);
 const entryTagTarget = ref<QueueRow | null>(null);
 const entryTagResult = ref<RiskTagResult | ''>('');
 /**
- * 本次标记的**标记备注**。
+ * 本次标记的**风险备注**。
  *
  * 🔴 **原来它旁边还有一格必填的「修正原因」，2026-09-29 裁决已取消**（两格用途重叠）。
  * **取消的是字段、不是约束**：原先"修正必须填修正原因"那道硬校验**迁到本格** ——
- * **改判时标记备注必填**，首次标记仍可选。
+ * **改判时风险备注必填**，首次标记仍可选。
  * 故本格在改判形态下**不预填上一次那条**，否则上一次的备注会自动满足这一次的必填
  * （`entryTagDirty` 随之把"空备注"排除在"动过"之外，见下）。
  */
@@ -3708,7 +3708,7 @@ function pickEntryTagResult(r: RiskTagResult) {
 }
 
 /**
- * 「风险等级 + 标记备注」那一段交给**六处共用**的 `RiskLevelFields` 渲染
+ * 「风险等级 + 风险备注」那一段交给**六处共用**的 `RiskLevelFields` 渲染
  * （2026-09-29 裁决「风险等级段收敛成一份共享件、一种呈现」）。
  *
  * 🔴 **只是把既有状态包一层给组件看**：本形态是对**具体条目**做的事，落库走
@@ -3813,7 +3813,7 @@ const canSaveEntryTag = computed(() => {
   if (!canRiskTag.value || !entryTagResult.value) return false;
   if (entryTagResult.value === NO_RISK && entryTagNoRiskLocked.value) return false;
   if (entryTagAmend.value) {
-    // 改判必须答得出"为什么改"，那句话现在写在标记备注里（「修正原因」已取消）
+    // 改判必须答得出"为什么改"，那句话现在写在风险备注里（「修正原因」已取消）
     return (entryTagDirty.value && !!entryTagNote.value.trim()) || entryTagLowerFilled.value;
   }
   return true;
@@ -3857,7 +3857,7 @@ function openEntryTag(e: QueueRow, from: EntryTagFrom) {
   entryTagTarget.value = e;
   // 修改态先把现行结论灌回来：改完才知道自己动了哪一项
   entryTagResult.value = e.tag?.result ?? '';
-  // 标记备注每次从空开始：改判形态下它承载"为什么改"，预填上一次那条会让必填名存实亡
+  // 风险备注每次从空开始：改判形态下它承载"为什么改"，预填上一次那条会让必填名存实亡
   entryTagNote.value = '';
   // 下半两支每次打开都从空开始：评估支决策不选＝不评估、协同支全空＝不协同，
   // 两边的字段与红字各由自己那份共享实例 reset 一次清完
@@ -3885,13 +3885,13 @@ function saveEntryTag() {
   const retag = !amend || entryTagDirty.value;
   const assessDec = showEntryTagAssess.value ? entryTagAssessDecision.value : '';
   const collab = showEntryTagCollab.value && entryTagCollabFilled.value;
-  // 文案说「风险标记」而不是「风险等级」：判据是 `entryTagDirty`（等级**或**标记备注动过），
+  // 文案说「风险标记」而不是「风险等级」：判据是 `entryTagDirty`（等级**或**风险备注动过），
   // 写成「风险等级」比判据窄 —— 只改了备注的人会被告知"等级没变"，对不上自己刚做的事。
-  // 「风险标记」指的是上半那两项本身（等级 + 标记备注），不是本弹窗的名字（弹窗叫「风险管控」）。
+  // 「风险标记」指的是上半那两项本身（等级 + 风险备注），不是本弹窗的名字（弹窗叫「风险管控」）。
   if (!retag && !assessDec && !collab) { message.warning('风险标记没有变化，无需修改'); return; }
   // 「为什么改」只在**真的改判**时才问得出口：没改判的那一路不要它。
-  // 「修正原因」已取消，那句话现在写在标记备注里（约束迁移，不是取消）
-  if (retag && amend && !entryTagNote.value.trim()) { message.warning('请填写标记备注'); return; }
+  // 「修正原因」已取消，那句话现在写在风险备注里（约束迁移，不是取消）
+  if (retag && amend && !entryTagNote.value.trim()) { message.warning('请填写风险备注'); return; }
   const prev = target.tag?.result;
   const result = entryTagResult.value;
   // 读条目上的现行状态，不读行快照：弹窗开着的这段时间里别人可能已经给了结论
@@ -5760,7 +5760,7 @@ function toggleWordEnabled(w: RiskWord) {
                     <!--
                       🔴 **打标来源的行只给一枚「风险管控」**（2026-09-29 裁决）：原来那枚
                       「修正」已取消 —— 改判等级走的就是这个弹窗的上半（打开时预置现行结论，
-                      改选别的即为改判、改判时「标记备注」必填），一个动作不必摆两枚按钮。
+                      改选别的即为改判、改判时「风险备注」必填），一个动作不必摆两枚按钮。
                     -->
                     <button
                       v-if="canRiskTag"
@@ -6640,7 +6640,7 @@ function toggleWordEnabled(w: RiskWord) {
                     （2026-09-29 裁决：**本册（风险报备 · 监控 · 管控）内**，入口按钮文案 ＝ 弹窗标题；
                     全仓另有一批"动词 + 对象"式标题（调剂工单 / 挂起工单 / 释放条目 · 单号 …），
                     这条规矩不越出本册）——"这次是改已有结论"
-                    由次按钮形状、悬停原文与弹窗内改判时必填的「标记备注」说清，不靠第二个名字。
+                    由次按钮形状、悬停原文与弹窗内改判时必填的「风险备注」说清，不靠第二个名字。
                     绝大多数已核实的记录不需要再动，故仍用次按钮排在动作末位，
                     但它必须存在——台账里翻出一条判错的，正是要改的时候。
                   -->
@@ -6884,14 +6884,14 @@ function toggleWordEnabled(w: RiskWord) {
         </div>
 
         <div class="op-field op-field-h op-field-h-top tag-field-note">
-          <div class="op-label">标记备注</div>
+          <div class="op-label">风险备注</div>
           <a-textarea v-model:value="bulkNote" :rows="2" placeholder="判断依据与后续动作（可选）" />
         </div>
       </div>
     </OpActionModal>
 
     <!--
-      批量核实（「未标记 · 实时监控」那一路）。字段与单条核实打标一致：本次命中 成立 / 误报、风险等级、处置备注。
+      批量核实（「未标记 · 实时监控」那一路）。字段与单条核实打标一致：本次命中 成立 / 误报、风险等级、风险备注。
     -->
     <OpActionModal
       :open="bulkVerifyOpen"
@@ -6953,7 +6953,7 @@ function toggleWordEnabled(w: RiskWord) {
         </div>
 
         <div class="op-field op-field-h op-field-h-top tag-field-note">
-          <div class="op-label">处置备注</div>
+          <div class="op-label">风险备注</div>
           <a-textarea v-model:value="bulkVerifyNote" :rows="2" placeholder="核实结论与后续动作（可选）" />
         </div>
       </div>
@@ -6968,7 +6968,7 @@ function toggleWordEnabled(w: RiskWord) {
       规矩是「入口名＝它自己那个弹窗的标题」—— 它放宽了 2026-09-29 那条"六处同名"，
       但仍守住当初要治的病（每个入口都有确定的名字、点进去标题与它一致）：
       改名前是**同一类动作**在各页各叫一个名，现在是**三类不同动作**各有一个名。
-      "这次是改已有结论"仍由按钮文案与改判时必填的「标记备注」说清，不靠标题。
+      "这次是改已有结论"仍由按钮文案与改判时必填的「风险备注」说清，不靠标题。
     -->
     <OpActionModal
       :open="entryTagOpen"
@@ -7035,7 +7035,7 @@ function toggleWordEnabled(w: RiskWord) {
         </div>
 
         <!--
-          🔴 **四选一 + 标记备注：各处弹窗同一份共享件**（2026-09-29 裁决；入口名 2026-10-07 拆成
+          🔴 **四选一 + 风险备注：各处弹窗同一份共享件**（2026-09-29 裁决；入口名 2026-10-07 拆成
           风险识别 / 命中核实 / 风险管控三类，共享件不随名字分叉）。
           四个答案回答的是同一个问题——"这张单有没有风险、多大"。拆成"有没有风险 + 等级"
           两个字段会立刻长出"无风险却带着等级""有风险却没等级"两种非法组合，
@@ -7117,7 +7117,7 @@ function toggleWordEnabled(w: RiskWord) {
                 <span v-if="e.viaHitVerify" class="tt-role">由命中核实</span>
               </div>
               <!--
-                每条带当次的标记备注。改判那几条的"为什么改"就在这里
+                每条带当次的风险备注。改判那几条的"为什么改"就在这里
                 （「修正原因」已取消、约束迁到备注上，2026-09-29）；没填的不占位。
               -->
               <div v-if="e.note" class="tt-reason">备注：{{ e.note }}</div>
@@ -7246,7 +7246,7 @@ function toggleWordEnabled(w: RiskWord) {
           落库本来就是 `误报 → null`（见 `tagLevelToSave`）。原先那一路是把三档置灰摆着，
           等于界面上摆着一个选了也不生效的答案，与口径打架。
           `tagLevel` 在段不出这段时间里**不被写**，故切回「成立」时自动还是切换前那个值。
-          段不出**不带来任何新的必填拦截**：`canSaveTag` 本来就只认 `tagVerdict` 与处置备注。
+          段不出**不带来任何新的必填拦截**：`canSaveTag` 本来就只认 `tagVerdict` 与风险备注。
         -->
         <div v-if="tagVerdict !== '误报'" class="op-field op-field-h tag-field-block">
           <div class="op-label req">风险等级</div>
@@ -7265,12 +7265,12 @@ function toggleWordEnabled(w: RiskWord) {
         </div>
 
         <!--
-          处置备注。**修正时必填**（2026-09-29 裁决把原来那格「修正原因」并了进来：
+          风险备注。**修正时必填**（2026-09-29 裁决把原来那格「修正原因」并了进来：
           两格都在答"这一次是怎么判的、为什么"，修正时人得把同一件事写两遍）。
           修正形态下本格从空开始、placeholder 换成问"为什么改"——只记改前改后，复盘时链条仍是断的。
         -->
         <div class="op-field op-field-h op-field-h-top tag-field-note">
-          <div class="op-label" :class="{ req: tagAmend }">处置备注</div>
+          <div class="op-label" :class="{ req: tagAmend }">风险备注</div>
           <a-textarea
             v-model:value="tagNote"
             :rows="2"
@@ -7305,7 +7305,7 @@ function toggleWordEnabled(w: RiskWord) {
                 <template v-else>{{ entryDiffText(tagHistory[i - 1], e) }}</template>
               </div>
               <!--
-                每条带当次的处置备注。修正那几条的"为什么改"就在这里
+                每条带当次的风险备注。修正那几条的"为什么改"就在这里
                 （「修正原因」已取消、约束迁到备注上，2026-09-29）；没填的不占位。
               -->
               <div v-if="e.note" class="tt-reason">备注：{{ e.note }}</div>
@@ -7344,7 +7344,7 @@ function toggleWordEnabled(w: RiskWord) {
         <!--
           ② 风险等级：各处入口同一段，共用 RiskLevelFields（2026-09-29 裁决；
           入口名 2026-10-07 拆成三类，这一段不随名字分叉）。
-          已有等级预置可改（改了即改判、标记备注转必填），本来没有则必填；
+          已有等级预置可改（改了即改判、风险备注转必填），本来没有则必填；
           本单还推不出监控来源时整段不出（见 ctl.visible）。
         -->
         <RiskLevelFields :ctl="assessLevel" />

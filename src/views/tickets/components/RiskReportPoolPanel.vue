@@ -34,7 +34,7 @@ import { useRiskReportStore, type RiskReport } from '@/stores/riskReports';
 // 直接改状态做不到这两件事，而留痕正是这条队列的凭据。
 import { isComplaintPoolTicket, useRiskPoolStore } from '@/stores/riskPool';
 import { useRiskReportAssess } from '@/composables/useRiskReportAssess';
-// 风险等级四选一 + 标记备注：与风险监控页评估处置工作面共用同一份（落库走 recordTagFor）
+// 风险等级四选一 + 风险备注：与风险监控页评估处置工作面共用同一份（落库走 recordTagFor）
 import { useRiskLevelFields } from '@/composables/useRiskLevelFields';
 import RiskLevelFields from './operation/RiskLevelFields.vue';
 import { todayPrefix, type ReportStatus, type RiskReleaseRecord } from '@/stores/riskShared';
