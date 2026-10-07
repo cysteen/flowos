@@ -66,6 +66,15 @@ const router = useRouter();
  * 谁先改都不会出现"按钮写升级、说明写接管"。
  */
 
+/**
+ * 四块的展开态。**初值按"这一块在这张单上有没有内容"算**——空块默认收起、有内容默认展开。
+ * 四块恒展开时，一张还没动过的单打开本 Tab 就是四个空块摞在一起，得滚完四屏才知道都没东西。
+ *
+ * 🔴 **判据只管"打开这张单"那一刻**：赋初值在下方 `watch(ticketNo, { immediate: true })` 里，
+ * 之后一律只由块头 `@toggle` 改。写成 computed 直绑 `:expanded` 的话，人把空块点开、
+ * 判据下一拍就把它收回去。切单重算（而不是沿用上一张单翻开过什么）也归那个 watch。
+ * 这里的字面量只为定住键集与类型，渲染前就会被 watch 的首跑覆盖。
+ */
 const expanded = ref({ report: true, assess: true, collab: true, risk: true });
 
 /** 本单是不是投诉单。类型不在 props 里，走与操作页同一条取数链——本 Tab 的内容按它分岔 */
@@ -78,7 +87,7 @@ const isComplaintTicket = computed(() => resolveTicketTypeFor(props.ticketNo) ==
  * （见 `stores/riskReports.ts` 的说明）。A 线的条目在这张列表上会渲染成一条
  * 报备人「系统」、报备原因「其他」、状态写着「实时监控中」的灰点记录 —— 三格全是占位，
  * 读的人会以为有人报过一次却什么都没填。它们是**打标那条链**上的东西，
- * 归「风险标记」块上半的打标那半，不进报备记录。判据取 `source`，那是条目自带的身份标。
+ * 归「风险识别」块上半的打标那半，不进报备记录。判据取 `source`，那是条目自带的身份标。
  */
 const reportItems = computed(
   () => reportStore.reportsOf(props.ticketNo).filter((r) => r.source === '二线报备'),
@@ -173,7 +182,7 @@ function confirmWithdraw() {
  * **已整条删除**（2026-09-09 业务第二轮拍板，《【930】》N1）：评估决策改回二选一
  * 二选一「不升级 / 升级」之后没有"确认有风险 + 定级"这一档，评估**不再回传工单风险字段** ——
  * 没有"被坐席已填的值挡住"这回事了，也就没有必须另外亮一行的理由。
- * 结论本身在本 Tab 的「评估结果」区块里全文可见，比一行摘要说得全。
+ * 结论本身在本 Tab 的「风险管控」区块里全文可见，比一行摘要说得全。
  *
  * 下面三个 riskMonitor* 是**命中核实**那一路（915），与本次反转无关，一字不动。
  */
@@ -225,7 +234,7 @@ const riskMonitorDiff = computed(() => {
  * 本 Tab 的**唯一**时刻格式：**全格式 `YYYY-MM-DD HH:mm`**（2026-09-29 裁决）。
  *
  * 🔴 原来这里是 `formatShortAt`，把年份掐掉只出 `MM-DD HH:mm`，于是同一屏上两套并存 ——
- * 在队卡 / 历史条 / 协同条是短格式，「风险标记」块的标记时间是全格式。
+ * 在队卡 / 历史条 / 协同条是短格式，「风险识别」块的标记时间是全格式。
  * 风险这条链动辄跨月跨年（报备等评估、条目在池里挂着、改判隔很久才发生），
  * 掐掉年份之后"去年那条"和"今年这条"长得一模一样，排序与追溯都读不出来。
  *
@@ -253,7 +262,7 @@ function waitedText(at: string) {
  * 记录行的结论摘要。**只有决策**（二选一）——原先还并了一个风险等级，
  * 二选一之后评估不再定级（N1），那一段没有取值来源了。
  * 「升级」额外带上派生的新投诉单号：这条记录的实际去向就在那张单上，
- * 只写「升级」两个字，读的人还得再翻一次「评估结果」才知道去了哪。
+ * 只写「升级」两个字，读的人还得再翻一次「风险管控」才知道去了哪。
  */
 function assessmentSummary(r: RiskPoolItem) {
   const a = r.assessment;
@@ -267,7 +276,7 @@ function assessmentSummary(r: RiskPoolItem) {
  * 记录列表里的结论行**只给一行摘要**：谁、什么时候评的。
  *
  * 【为什么不带反馈意见 / 升级说明】完整结论（决策 / 评估人 / 评估时间 / 意见全文 / 升级去向）
- * 由下方「评估结果」区块承担（业务拍板 2026-09-09）。两处都写全文的话，
+ * 由下方「风险管控」区块承担（业务拍板 2026-09-09）。两处都写全文的话，
  * 同一条结论在一屏上出现两遍 —— 报备多轮之后两块内容还会分叉，
  * 读的人不知道该信哪个。这里只答"这条评过没有、谁评的"，详情往下看。
  */
@@ -346,7 +355,7 @@ function openEscalatedTicket(no: string) {
  * 并块的理由是：两块并排时同一屏上两处都写着"这单有没有风险、多大"，
  * 读的人第一眼分不出该看哪个。
  *
- * **2026-09-29 裁决之后「风险标记」块只剩打标那一路**，自上而下是：
+ * **2026-09-29 裁决之后「风险识别」块只剩打标那一路**，自上而下是：
  *   ① **打标结论**（只读）：等级 · 标记人（角色）· 标记时间一行；风险备注另起一行；
  *      命中核实结论照旧只读回显；尚无结论时出缺省文案。
  *   ② **标记记录**：默认折叠，折叠态「标记记录 N 次」+ 最新一条，展开出全部；
@@ -457,6 +466,30 @@ const collabSectionBadge = computed(() =>
   collabRecords.value.length ? String(collabRecords.value.length) : undefined,
 );
 
+/* ==================== 四块的初始展开态 ==================== */
+
+/**
+ * 空块收起、有内容展开，**切单重算**（见上方 `expanded` 那段）。
+ *
+ * 🔴 **这个 watch 必须摆在所有派生值之后**：`immediate` 会在 `watch()` 这一行同步跑一遍回调，
+ * 搁到文件上方就会在 `pending` / `latestAssessed` / `tagRecord` / `collabRecords` 初始化之前读到它们。
+ *
+ * 判据各取本块已有的那份派生值，不另造一套（两套判据会让块头与块内各说一话）：
+ *   `report` ＝ 在队那条卡 **或** 历史条（与块内空态 `!pending && !history.length` 同一个表达式的反面）；
+ *   `assess` ＝ 已评估那条的结论（与块内 `v-if` 同源）；
+ *   `risk`   ＝ 打标结论 **或** 命中核实结论 —— `riskMonitorLine` 有话说就算有内容，
+ *              「本单 N 条命中待核实」也是这一块要报的事；
+ *   `collab` ＝ 协同条数。
+ */
+watch(() => props.ticketNo, () => {
+  expanded.value = {
+    report: !!pending.value || history.value.length > 0,
+    assess: !!latestAssessed.value?.assessment,
+    risk: !!tagRecord.value || !!riskMonitorLine.value,
+    collab: collabRecords.value.length > 0,
+  };
+}, { immediate: true });
+
 </script>
 
 <template>
@@ -464,8 +497,8 @@ const collabSectionBadge = computed(() =>
     <!--
       报备与评估两块**只在非投诉单上出现**（基线 ※29 类型集 ＝ 咨 建 商）：
       报备的价值在这张单还没变成投诉之前；已经是投诉单的，"升不升级成投诉单"是个不成立的问题。
-      投诉单在本 Tab 上看到的是「风险标记」与「协同记录」两块（《【930】》§3.3 / §5A.3）——
-      打标结论在「风险标记」块的上半（2026-09-20 并块）。
+      投诉单在本 Tab 上看到的是「风险识别」与「风险处理建议」两块（《【930】》§3.3 / §5A.3）——
+      打标结论在「风险识别」块的上半（2026-09-20 并块）。
     -->
     <OpCollapsibleSection
       v-if="!isComplaintTicket"
@@ -654,7 +687,7 @@ const collabSectionBadge = computed(() =>
 
     <OpCollapsibleSection
       v-if="!isComplaintTicket"
-      title="评估结果"
+      title="风险管控"
       :icon="CheckCircleOutlined"
       :badge="assessSectionBadge"
       badge-variant="hint"
@@ -667,11 +700,11 @@ const collabSectionBadge = computed(() =>
         aria-label="评估记录"
       >
         <!--
-          **一行 meta + 一行意见**，照本 Tab「风险标记」块上半那套排法
+          **一行 meta + 一行意见**，照本 Tab「风险识别」块上半那套排法
           （`rk-tag-line` / `rk-tag-note`）：结论标在行首、评估人与时刻紧随、去向标收尾。
           原来是渐变抬头带 + `dl` 竖排五行 —— 评估人 / 时刻 / 决策 / 新单号全是短值，
           一项一行把整块撑到 280px 上下、右侧一路留白，而同一个 Tab 上讲同一类事的
-          「风险标记」块就是横排的：两种排法并存会让人以为它们是两种东西。
+          「风险识别」块就是横排的：两种排法并存会让人以为它们是两种东西。
 
           结论二选一，**没有风险等级这一档**（N1）。行首那枚结论标就是「评估决策」那一格的值，
           不再另起一行复述同一个词。
@@ -704,7 +737,7 @@ const collabSectionBadge = computed(() =>
     </OpCollapsibleSection>
 
     <!--
-      「风险标记」（2026-09-20 并块：原「风险打标」块整块并入，Tab 上不再有两块讲同一件事；
+      「风险识别」（2026-09-20 并块：原「风险打标」块整块并入，Tab 上不再有两块讲同一件事；
       2026-09-29 裁决删掉了下半的处理人自述三字段，那一组的控件只留在「工单处理」Tab 的
       补充处理 · 风险 chip 面板里）。
       本块 ＝ 打标那一路（《【930】》§5A.3）：**读的人是处理人**，等级、标记人、标记时间三项缺一不可
@@ -714,7 +747,7 @@ const collabSectionBadge = computed(() =>
       §3.1），非投诉单在工单页恒为只读回显。
     -->
     <OpCollapsibleSection
-      title="风险标记"
+      title="风险识别"
       :icon="WarningOutlined"
       :badge="tagRecord ? (tagRecord.result === '无风险' ? '无风险' : `${tagRecord.result}危`) : undefined"
       :badge-variant="tagRecord && tagRecord.result !== '无风险' ? 'warn' : 'hint'"
@@ -1165,9 +1198,9 @@ const collabSectionBadge = computed(() =>
   color: #9ca3af;
 }
 
-/* ---- 评估结果（仅有结论时展示，进行中状态在上方报备卡片） ---- */
+/* ---- 风险管控（仅有结论时展示，进行中状态在上方报备卡片） ---- */
 /*
- * 评估结果：**骨架与「风险标记」上半（`.rk-tag`）同一套** —— 一行 meta（结论标 · 人 · 时刻 ·
+ * 风险管控：**骨架与「风险识别」上半（`.rk-tag`）同一套** —— 一行 meta（结论标 · 人 · 时刻 ·
  * 去向标）+ 一行左竖线的意见块。两块在同一个 Tab 上讲的是同一类事（谁、什么时候、
  * 下了什么结论，外加一段说明），骨架各写一套就成了两种视觉语言。
  */
@@ -1213,7 +1246,7 @@ const collabSectionBadge = computed(() =>
   border: 1px solid #fed7aa;
   border-radius: 4px;
 }
-/* 意见块：与「风险标记」的 `rk-tag-note` 逐格同形（同一套左竖线、字号与内距） */
+/* 意见块：与「风险识别」的 `rk-tag-note` 逐格同形（同一套左竖线、字号与内距） */
 .ra-advice {
   margin: 0;
   padding: 6px 10px;
@@ -1232,7 +1265,7 @@ const collabSectionBadge = computed(() =>
 }
 .ra-link { color: #1a6fff !important; font-family: ui-monospace, monospace; }
 .ra-link:hover { text-decoration: underline; }
-/* ---- 「风险标记」上半：打标结论的只读回显 + 打标入口（并块后与下半共用一个面板） ---- */
+/* ---- 「风险识别」上半：打标结论的只读回显 + 打标入口（并块后与下半共用一个面板） ---- */
 .rk-tag {
   display: flex;
   flex-direction: column;
