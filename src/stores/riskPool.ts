@@ -109,7 +109,8 @@ export function isComplaintPoolTicket(ticketNo: string): boolean {
 /**
  * 池内条目**按处置阶段读的状态**（《【930】》§5.4 ⑥）：投诉单条目不经领取、没有「已领取」态，
  * 落库值若为「评估中」（旧缓存或别处写入的带承办人未结论条目）一律按「待分派」（界面词「待领取」）读。
- * 非投诉单条目原样返回落库值。队列分档、处置阶段列、按处置阶段计数都走它。
+ * 非投诉单条目原样返回落库值。队列分档与「处置阶段」那一列都走它。
+ * ⚠️ 原先风险监控页左栏「按处置阶段」那一轴的计数也走它，那一轴已随 2026-10-07 裁决删除。
  */
 export function poolStageStatusOf<S extends RiskPoolItem['status']>(
   r: { ticketNo: string; status: S },
