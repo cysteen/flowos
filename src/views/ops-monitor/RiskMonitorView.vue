@@ -2403,13 +2403,13 @@ const tagVerdict = ref<HitVerdict | undefined>(undefined);
  */
 const tagNote = ref('');
 /**
- * 已核实过的再打开就是修正：按钮文案与必填项随之不同。
- * **图标恒定**（盾牌 `SafetyCertificateOutlined`）；**标题不随"首次 / 修正"变、只随入口变**
- * （见 `tagModalTitle`：待判段写「风险识别」、命中台账写「命中核实」，2026-10-07 裁决）。
+ * 已核实过的再打开就是修正：按钮文案、必填项与**标题**随之不同。
+ * **图标恒定**（盾牌 `SafetyCertificateOutlined`）；**标题随"首次 / 再次"变、不随入口变**
+ * （见 `tagModalTitle`：首次写「风险识别」、再次写「重新识别」，2026-10-07 裁决）。
  */
 const tagAmend = ref(false);
 /**
- * 「风险管控」弹窗（命中核实形态）的**副标题 ＝ 来源 · 单号**，与工单页页头那一枚、
+ * 命中弹窗（「风险识别」/「重新识别」）的**副标题 ＝ 来源 · 单号**，与工单页页头那一枚、
  * 评估弹窗（`assessSubtitle`）逐字同形。
  *
  * 命中记录只可能来自预警词那一路，故来源恒写「实时监控」（见 `isVerifyMonitorSource`：
@@ -2456,7 +2456,7 @@ const canSaveTag = computed(() => {
 /*
  * ---- 本弹窗**没有**「风险处理措施」段（2026-10-07 裁决） ----
  *
- * 待判段打开它叫「风险识别」、命中台账打开它叫「命中核实」，两个入口答的都只是
+ * 首次打开它叫「风险识别」、已有结论再打开叫「重新识别」，两态答的都只是
  * "这条命中成不成立、风险多大、风险备注写什么"。处置怎么做归「风险管控」那一类弹窗
  * （已判段条目表 / 评估处置工作面 / 风险报备池 / 工单页页头），本弹窗一概不承载。
  *
@@ -2470,20 +2470,15 @@ const canSaveTag = computed(() => {
 const tagOkText = computed(() => (tagAmend.value ? '保存修正' : '保存'));
 
 /**
- * 这一枚命中弹窗是从**哪个入口**点开的。`untagged` ＝ 待判段的召回清单行，
- * `ledger` ＝ 命中台账行。标题随入口变（见 `tagModalTitle`），弹窗本体一格不变。
+ * 命中弹窗的标题：**只认"首次 / 再次"，不认入口**（2026-10-07 裁决，命名从三类收成两类）。
+ * 这一路两个入口（待判段的召回清单行、命中明细行）答的是同一个问题
+ * "这条命中成不成立、风险多大"＝**识别**；它没有处置段，故"再次"仍是识别，
+ * 叫「重新识别」，不叫管控（条目那一路的"再次"带处置段，才叫「风险管控」，
+ * 见 `entryTagModalTitle`——那条分岔与本处无关）。
  */
-type TagFrom = 'untagged' | 'ledger';
-const tagFrom = ref<TagFrom>('untagged');
-/**
- * 命中弹窗的标题：待判段问的是"这单有没有风险、多大"＝**风险识别**；
- * 命中台账问的是"这条命中成立还是误报"＝**命中核实**。
- */
-const tagModalTitle = computed(() => (tagFrom.value === 'untagged' ? '风险识别' : '命中核实'));
+const tagModalTitle = computed(() => (tagAmend.value ? '重新识别' : '风险识别'));
 
-function openTag(h: RiskHit, from: TagFrom) {
-  // 来源每次都显式落一遍，不依赖默认值：漏一处就会拿到上一次打开时的残留标题
-  tagFrom.value = from;
+function openTag(h: RiskHit) {
   if (!canRiskTag.value) { message.warning('只有客诉专员、投诉督导与管理员可以标记'); return; }
   tagTarget.value = h;
   const cur = latestEntryOf(h);
@@ -5714,7 +5709,7 @@ function toggleWordEnabled(w: RiskWord) {
                   <button
                     v-if="canRiskTag"
                     type="button" class="row-btn row-btn-tag"
-                    @click="openTag(h, 'untagged')"
+                    @click="openTag(h)"
                   >风险识别</button>
                   <span v-else class="hit-sub" title="标记归客诉专员、投诉督导与管理员">—</span>
                 </td>
@@ -6746,23 +6741,24 @@ function toggleWordEnabled(w: RiskWord) {
                     :title="tagTraceTitle(h)"
                   >{{ verdictOf(h) }}</span>
                   <!--
-                    已核实的行走的是同一个弹窗的修正态，故按钮**同样叫「命中核实」**
-                    （2026-09-29 裁决：**本册（风险报备 · 监控 · 管控）内**，入口按钮文案 ＝ 弹窗标题；
+                    已核实的行走的是同一个弹窗的修正态，故按钮叫「**重新识别**」——
+                    与弹窗标题同字（2026-10-07 裁决：这一路的名字只认"首次 / 再次"，
+                    首次「风险识别」、再次「重新识别」；
+                    2026-09-29 那条"**本册（风险报备 · 监控 · 管控）内**入口按钮文案 ＝ 弹窗标题"照旧，
                     全仓另有一批"动词 + 对象"式标题（调剂工单 / 挂起工单 / 释放条目 · 单号 …），
-                    这条规矩不越出本册）——"这次是改已有结论"
-                    由次按钮形状、悬停原文与弹窗内改判时必填的「风险备注」说清，不靠第二个名字。
+                    这条规矩不越出本册）。
                     绝大多数已核实的记录不需要再动，故仍用次按钮排在动作末位，
-                    但它必须存在——台账里翻出一条判错的，正是要改的时候。
+                    但它必须存在——明细里翻出一条判错的，正是要改的时候。
                   -->
                   <button
                     v-if="canRiskTag"
                     type="button" class="row-btn row-btn-amend"
                     :title="historyOf(h).length > 1 ? `已修正 ${historyOf(h).length - 1} 次，可继续修正` : '重新核实并修正本条结果'"
-                    @click="openTag(h, 'ledger')"
-                  >命中核实</button>
+                    @click="openTag(h)"
+                  >重新识别</button>
                 </template>
                 <template v-else>
-                  <button v-if="canRiskTag" type="button" class="row-btn row-btn-tag" @click="openTag(h, 'ledger')">命中核实</button>
+                  <button v-if="canRiskTag" type="button" class="row-btn row-btn-tag" @click="openTag(h)">风险识别</button>
                   <span v-else class="hit-sub">—</span>
                 </template>
               </div>
