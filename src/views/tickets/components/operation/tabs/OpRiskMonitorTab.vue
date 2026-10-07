@@ -15,6 +15,7 @@ import {
   RightOutlined,
 } from '@ant-design/icons-vue';
 import OpCollapsibleSection from '../OpCollapsibleSection.vue';
+import { formatOpTime } from '@/views/tickets/utils/opTime';
 import { riskLevelText } from '@/config/risk';
 import type { RiskTagEntry, TicketRiskVerification } from '@/stores/riskTags';
 import type { RiskMonitorDraft } from '@/views/tickets/types/operationTabs';
@@ -231,20 +232,17 @@ const riskMonitorDiff = computed(() => {
 });
 
 /**
- * 本 Tab 的**唯一**时刻格式：**全格式 `YYYY-MM-DD HH:mm`**（2026-09-29 裁决）。
+ * 本 Tab 的**唯一**时刻格式：**全格式 `YYYY-MM-DD HH:mm:ss`**（2026-10-07 裁决）。
  *
- * 🔴 原来这里是 `formatShortAt`，把年份掐掉只出 `MM-DD HH:mm`，于是同一屏上两套并存 ——
- * 在队卡 / 历史条 / 协同条是短格式，「风险识别」块的标记时间是全格式。
- * 风险这条链动辄跨月跨年（报备等评估、条目在池里挂着、改判隔很久才发生），
+ * 🔴 原来这里是本地的 `formatAt`，把取值切回分钟。2026-10-07 裁决把工单处理页全部页签
+ * 的时刻统一到带秒的全格式、一列靠右，故本 Tab 不再自己拼，整条改走共享函数
+ * `utils/opTime.formatOpTime` —— 各 store 的 `nowStamp` 只到分钟，秒位由它补 `:00`，
+ * 补秒的理由与"别拿它做判断"的告警写在那个文件里。
+ *
+ * 🔴 这覆盖了 2026-09-29 裁决的「`YYYY-MM-DD HH:mm`（不带秒）」，是拍板覆盖、不是漏改。
+ * 年份仍必须在：风险这条链动辄跨月跨年（报备等评估、条目在池里挂着、改判隔很久才发生），
  * 掐掉年份之后"去年那条"和"今年这条"长得一模一样，排序与追溯都读不出来。
- *
- * 取值本身就是 `YYYY-MM-DD HH:mm`（各 store 的 `nowStamp` 同一把），本函数只做归一：
- * 带秒 / 带 T 的也切回到分钟，认不出来的原样返回、不臆造。
  */
-function formatAt(at: string) {
-  const m = at.match(/(\d{4}-\d{2}-\d{2})[\sT]+(\d{2}:\d{2})/);
-  return m ? `${m[1]} ${m[2]}` : at;
-}
 
 /**
  * 等待时长整条走 store 的 `waitedMinutes`（内含 60s 心跳），风险监控页那份也是同一把。
@@ -283,7 +281,7 @@ function assessmentSummary(r: RiskPoolItem) {
 function assessmentDetail(r: RiskPoolItem) {
   const a = r.assessment;
   if (!a) return '';
-  return `${a.by}（${a.byRole}）${formatAt(a.at)}`;
+  return `${a.by}（${a.byRole}）${formatOpTime(a.at)}`;
 }
 
 /**
@@ -404,7 +402,7 @@ const latestTagRecord = computed(() => tagHistory.value[tagHistory.value.length 
  * 新记录一律只写 `note`，**不要**因为这个回退就把 `amendReason` 重新变成写入口。
  */
 function tagRecordText(h: RiskTagEntry) {
-  const head = `${h.level ? riskLevelText(h.level) : '无风险'} · ${h.by} · ${formatAt(h.at)}`;
+  const head = `${h.level ? riskLevelText(h.level) : '无风险'} · ${h.by} · ${formatOpTime(h.at)}`;
   const note = (h.note || h.amendReason || '').trim();
   return note ? `${head} · ${note}` : head;
 }
@@ -525,7 +523,7 @@ watch(() => props.ticketNo, () => {
               <ClockCircleOutlined />
               {{ pendingStateText }}
             </span>
-            <span class="rr-card-time">提交于 {{ formatAt(pending.at) }}</span>
+            <span class="rr-card-time">提交于 {{ formatOpTime(pending.at) }}</span>
             <span class="rr-card-wait">已等待 {{ waitedText(pending.at) }}</span>
           </div>
           <button v-if="canWithdraw" type="button" class="rr-withdraw" @click="openWithdraw">
@@ -582,7 +580,7 @@ watch(() => props.ticketNo, () => {
             <div v-for="(rel, i) in pendingReleases" :key="i" class="rr-release">
               <div class="rr-release-head">
                 <span class="rr-release-who">{{ rel.by }}（{{ rel.byRole }}）</span>
-                <span class="rr-release-at">{{ formatAt(rel.at) }}</span>
+                <span class="rr-release-at">{{ formatOpTime(rel.at) }}</span>
               </div>
               <div class="rr-release-reason">{{ rel.reason }}</div>
             </div>
@@ -603,7 +601,7 @@ watch(() => props.ticketNo, () => {
 
       <!--
         历史报备：与在队同一套卡（`rr-card`，`rr-card-past` 弱化），**每条默认折叠**。
-        折叠态一行给的是"这条讲的是什么事、结局如何"——时刻 · 报备人 · 原因（带风险类型）· 状态标；
+        折叠态一行给的是"这条讲的是什么事、结局如何"——报备人 · 原因（带风险类型），时刻与状态标靠右；
         描述全文、附件、评估结论 / 撤回原因在展开后出。
         报备多轮之后全展开会把在队那条挤出屏幕，而回看历史多半只找其中一条。
       -->
@@ -626,9 +624,9 @@ watch(() => props.ticketNo, () => {
                 :is="openHistory[h.id] ? DownOutlined : RightOutlined"
                 class="rr-sum-caret"
               />
-              <span class="rr-card-time">{{ formatAt(h.at) }}</span>
               <span class="rr-sum-who">{{ h.by }}</span>
               <span class="rr-sum-reason">{{ historyReasonText(h) }}</span>
+              <span class="rr-card-time">{{ formatOpTime(h.at) }}</span>
               <span
                 class="rr-pill rr-pill-sm rr-sum-pill"
                 :class="h.status === '已撤回' ? 'rr-pill-gray' : 'rr-pill-done'"
@@ -701,7 +699,8 @@ watch(() => props.ticketNo, () => {
       >
         <!--
           **一行 meta + 一行意见**，照本 Tab「风险识别」块上半那套排法
-          （`rk-tag-line` / `rk-tag-note`）：结论标在行首、评估人与时刻紧随、去向标收尾。
+          （`rk-tag-line` / `rk-tag-note`）：结论标在行首、评估人紧随、去向标居中，
+          **时刻顶到右端**（2026-10-07 裁决：全页签时刻一律靠右，一列落在同一个 x 上）。
           原来是渐变抬头带 + `dl` 竖排五行 —— 评估人 / 时刻 / 决策 / 新单号全是短值，
           一项一行把整块撑到 280px 上下、右侧一路留白，而同一个 Tab 上讲同一类事的
           「风险识别」块就是横排的：两种排法并存会让人以为它们是两种东西。
@@ -715,7 +714,6 @@ watch(() => props.ticketNo, () => {
             :class="`tone-${decisionTone(latestAssessed.assessment.decision)}`"
           >{{ decisionText(latestAssessed.assessment.decision) }}</span>
           <span class="ra-who">{{ formatAssessor(latestAssessed.assessment) }}</span>
-          <span class="ra-at">{{ formatAt(latestAssessed.assessment.at) }}</span>
           <!-- 有单号才敢说"已派生"：指不出是哪一张的时候，这句话等于没说 -->
           <span v-if="escalatedNo" class="ra-derive">
             已派生投诉工单
@@ -725,6 +723,7 @@ watch(() => props.ticketNo, () => {
               @click="openEscalatedTicket(escalatedNo)"
             >{{ escalatedNo }}</a>
           </span>
+          <span class="ra-at">{{ formatOpTime(latestAssessed.assessment.at) }}</span>
         </div>
         <p class="ra-advice">
           <span class="ra-advice-label">{{ adviceLabel(latestAssessed.assessment.decision) }}</span>{{ latestAssessed.assessment.advice }}
@@ -767,7 +766,6 @@ watch(() => props.ticketNo, () => {
                 {{ tagRecord.result === '无风险' ? '无风险' : riskLevelText(tagRecord.result) }}
               </span>
               <span class="rk-tag-who">{{ tagRecord.by }}（{{ tagRecord.byRole }}）</span>
-              <span class="rk-tag-at">{{ formatAt(tagRecord.at) }}</span>
               <span v-if="tagEntry && isPooledStatus(tagEntry.status)" class="rt-pool">
                 风险工单池 · {{ poolStatusText(poolStageStatusOf(tagEntry)) }}
               </span>
@@ -775,6 +773,8 @@ watch(() => props.ticketNo, () => {
               <!-- 并入痕迹记在标记记录上，不进来源（§5A.1 ④），写法与风险监控页修正弹窗一致 -->
               <span v-if="tagRecord.viaManualScan" class="rt-pool">由手动筛查并入</span>
               <span v-if="tagRecord.viaHitVerify" class="rt-pool">由命中核实</span>
+              <!-- 时刻顶到右端（2026-10-07 裁决：全页签时刻一律靠右） -->
+              <span class="rk-tag-at">{{ formatOpTime(tagRecord.at) }}</span>
             </div>
             <!--
               风险备注。**改判那几条的"为什么改"也在这里** ——
@@ -880,7 +880,7 @@ watch(() => props.ticketNo, () => {
               :key="a"
               class="rc-advice-tag"
             >{{ a === '其他' && c.otherAdvice ? `其他 · ${c.otherAdvice}` : a }}</span>
-            <span class="rc-item-time">{{ formatAt(c.at) }}</span>
+            <span class="rc-item-time">{{ formatOpTime(c.at) }}</span>
           </header>
           <p class="rc-item-opinion">{{ c.opinion }}</p>
         </article>
@@ -949,8 +949,14 @@ watch(() => props.ticketNo, () => {
 .rr-pill-done { color: #047857; background: #d1fae5; }
 .rr-pill-gray { color: #6b7280; background: #f3f4f6; }
 .rr-pill-sm { font-size: 10px; padding: 2px 8px; font-weight: 600; }
-/* 时刻在两种卡上是同一个角色（"这条什么时候的事"），故共用一个类 */
+/*
+ * 时刻在两种卡上是同一个角色（"这条什么时候的事"），故共用一个类。
+ * **顶到右端**（2026-10-07 裁决：全页签时刻一律靠右）：在队卡上「提交于 X · 已等待 Y」
+ * 这一对一起被推到行尾，历史条上它与状态标并排收尾 —— 两种卡的时刻落在同一个 x 上。
+ */
 .rr-card-time {
+  margin-left: auto;
+  flex: none;
   font-size: 12px;
   font-weight: 600;
   color: #111827;
@@ -1083,7 +1089,7 @@ watch(() => props.ticketNo, () => {
   gap: 8px;
 }
 .rr-release-who { font-size: 11px; font-weight: 600; color: #374151; }
-.rr-release-at { font-size: 11px; color: #9ca3af; font-variant-numeric: tabular-nums; }
+.rr-release-at { margin-left: auto; flex: none; font-size: 11px; color: #9ca3af; font-variant-numeric: tabular-nums; }
 .rr-release-reason {
   margin-top: 2px;
   font-size: 12px;
@@ -1220,7 +1226,7 @@ watch(() => props.ticketNo, () => {
   gap: 8px;
 }
 .ra-who { font-size: 12px; font-weight: 600; color: #111827; }
-.ra-at { font-size: 12px; color: #6b7280; }
+.ra-at { margin-left: auto; flex: none; font-size: 12px; color: #6b7280; font-variant-numeric: tabular-nums; }
 .ra-decision {
   display: inline-flex;
   align-items: center;
@@ -1278,7 +1284,7 @@ watch(() => props.ticketNo, () => {
   gap: 8px;
 }
 .rk-tag-who { font-size: 12px; font-weight: 600; color: #111827; }
-.rk-tag-at { font-size: 12px; color: #6b7280; }
+.rk-tag-at { margin-left: auto; flex: none; font-size: 12px; color: #6b7280; font-variant-numeric: tabular-nums; }
 .rt-level {
   display: inline-flex;
   align-items: center;
