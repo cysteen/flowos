@@ -6532,9 +6532,14 @@ function toggleWordEnabled(w: RiskWord) {
             <button type="button" class="tb-btn" @click="resetScanForm">
               <ReloadOutlined /><span>重置</span>
             </button>
+            <!--
+              `tb-btn-row2` ＝ 这一枚独占动作列的**第二行**（查询 / 重置并排在第一行）。
+              🔴 用类名而不是 `:last-child` / `:first-of-type` 这类位置选择器：
+              这一块以后再加一枚按钮，位置选择器会当场错位。
+            -->
             <button
               type="button"
-              class="tb-btn"
+              class="tb-btn tb-btn-row2"
               title="把当前九个维度的取值整套存下来，下次点一下即按它筛查；同名覆盖"
               @click="openSaveFilter"
             >
@@ -8389,7 +8394,36 @@ function toggleWordEnabled(w: RiskWord) {
   font-size: 11px;
   line-height: 28px;
 }
-.scan-bar .tb-actions { min-width: 84px; }
+/*
+ * 手动筛查条的动作列排成**两行**（2026-10-07 用户指定）：
+ *   [查询] [重置]   ← 第一行，各占一半
+ *   [ 保存筛选器 ]   ← 第二行，整行
+ *
+ * 🔴 **只写成 `.scan-bar` 的后代规则**：`.tb-actions` 的竖排本体与
+ * `.list-toolbar--one-line .tb-actions` 的横排覆盖是**台账条与「未标记」筛选条共用**的
+ * （那两条各只有两枚按钮、现状不动），改它们会把那两条一起带走。
+ * 🔴 **高度仍是 28px**：同条里的输入控件与 `.fi` 行都按 28px 对基线，
+ * "调小一些"只收横向 padding 与字号，不碰高度。
+ */
+.scan-bar .tb-actions {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  /* 两枚并排放得下（原来是 84px，只够竖排一枚） */
+  min-width: 148px;
+}
+.scan-bar .tb-actions .scan-go,
+.scan-bar .tb-actions .tb-btn {
+  flex: 1 1 0;
+  width: auto;
+  padding: 0 8px;
+  font-size: 12px;
+}
+.scan-bar .tb-actions .tb-btn-row2 {
+  flex: 1 1 100%;
+  width: 100%;
+}
 .scan-bar .list-toolbar :deep(.tb-ctl.ant-select-multiple .ant-select-selection-item) {
   max-width: 64px;
 }
