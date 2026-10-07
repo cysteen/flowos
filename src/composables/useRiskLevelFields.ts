@@ -166,12 +166,19 @@ type LevelsView = { readonly value: readonly RiskTagResult[] };
 /**
  * `RiskLevelFields.vue` 的**唯一入参形状** —— 它渲染这一段所需要的全部，一个不多。
  *
- * 🔴 **为什么要这个接口**：六处「风险管控」弹窗的风险等级段必须是**同一个组件、同一种呈现**
+ * 🔴 **为什么要这个接口**：各处「风险管控」弹窗的风险等级段必须是**同一个组件、同一种呈现**
  * （2026-09-29 裁决）。但只有三处（评估处置工作面 / 风险报备池 / 页头非投诉支）用得上
- * `useRiskLevelFields` 的那条落库路径；另外三处（条目打标、命中那一路、页头投诉支）是对
- * **具体条目**做的事，各有既有状态与落库路径，改成本 composable 就等于改落库。
- * 故组件只认这个接口：真实例满足它，宿主把既有状态包成适配器（`makeRiskLevelFieldsView`）
- * 也满足它 —— 呈现收一份，落库一格不动。
+ * `useRiskLevelFields` 的那条落库路径；另外几处是对**具体条目**做的事，各有既有状态与
+ * 落库路径，改成本 composable 就等于改落库。故组件只认这个接口：真实例满足它，宿主把既有
+ * 状态包成适配器（`makeRiskLevelFieldsView`）也满足它 —— 呈现收一份，落库一格不动。
+ *
+ * 🔴 **接进来的是六处**（2026-10-08 复核时数准，此前这段注释写「六处」却只列得出五处，
+ * 且把**没接进来**的那一路算了进去，见下）：
+ *   · 真实例三处 —— 评估处置工作面 / 风险报备池 / 页头非投诉支；
+ *   · 适配器三处 —— 条目打标（`entryTagLevelView`）/ 页头投诉支（`tagLevelView`）/
+ *     **风险工单池投诉支**（`OpRiskCollabModal`，2026-10-08 接入，**只读回显**，见 `readonly`）。
+ * ⚠️ **风险监控页命中那一路的弹窗不在其中、至今没有接进来**（理由见 `RiskLevelFields.vue`
+ * 里 `levels` 那段）。它是第七个「风险管控 / 识别」弹窗，**别把它算进"共用"的那一批**。
  */
 export interface RiskLevelFieldsView {
   fields: { level: RiskTagResult | ''; note: string };
