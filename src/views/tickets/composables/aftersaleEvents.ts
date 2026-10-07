@@ -12,10 +12,40 @@
  * 纯函数：入参不改，返回新的工单行；不读写任何 store。种子数据与运行时走同一个函数（口径定稿 §4-6）。
  * 回传契约以售后侧为准（N4），这里只取客服侧需要的字段。
  */
-import { POOL_GROUPS, type Ticket } from '@/views/tickets/types/ticket';
+import {
+  POOL_GROUPS, isTicketClosed, type Channel, type Priority, type Ticket, type TicketType,
+} from '@/views/tickets/types/ticket';
 import type { TimelineEntry, TlRole } from '@/views/tickets/types/ticketDetail';
+import { AFTERSALE_INBOUND_SOURCE } from '@/views/tickets/types/createTicket';
+import { AFTERSALE_FROZEN_STATUS, AFTERSALE_SLOT_LABEL, type AftersaleSlot } from './aftersaleButtonForm';
 
-export type AftersaleEventType = 'AS_CLOSED' | 'AS_RETURNED' | 'AS_PROGRESS';
+/**
+ * `AS_ESCALATE_COMPLAINT`：售后升级投诉（③，《【1025】》§4.1）—— 客服侧新建投诉单挂客服派生位，
+ * 该售后单在客服侧呈现「冻结」。事件名为客服侧暂用名，契约以售后侧为准（§6）。
+ */
+export type AftersaleEventType = 'AS_CLOSED' | 'AS_RETURNED' | 'AS_PROGRESS' | 'AS_ESCALATE_COMPLAINT';
+
+/**
+ * 售后侧建客服新单时随事件带来的单据信息（③ 升级投诉 / ④ 转咨询）。
+ * 客户与产品取售后单上的值；工单号由客服侧生成，种子单在此给定。
+ */
+export interface AftersaleInboundSeed {
+  id: string;
+  no: string;
+  title: string;
+  customer: string;
+  product: string;
+  customerPhone?: string;
+  sn?: string;
+  productCategory?: string;
+  channel?: Channel;
+  priority?: Priority;
+  problemDesc?: string;
+  /** 售后单标题（激活确认 / 回传表单的单据卡） */
+  asTitle?: string;
+  /** 售后服务类型（hover 卡片） */
+  asServiceType?: string;
+}
 
 export interface AftersaleEvent {
   type: AftersaleEventType;
@@ -33,6 +63,10 @@ export interface AftersaleEvent {
   resultSummary?: string;
   /** AS_RETURNED：转回原因 */
   returnReason?: string;
+  /** AS_ESCALATE_COMPLAINT：升级原因 */
+  escalateReason?: string;
+  /** 需要客服侧新建单时（③ / ④）的单据信息 */
+  inbound?: AftersaleInboundSeed;
 }
 
 /** 分派结果：派到人（assignee 有值）或落池（assignee＝null，进 groupId 那个组的池「未认领」） */
@@ -70,8 +104,14 @@ export type AftersaleEventOutcome =
   | 'logged-only'
   /** 同一事件重复到达：丢弃 */
   | 'duplicate'
-  /** 派生位（③④）上的回流：属第二段，此处只留分支入口 */
-  | 'derived-slot-pending'
+  /** 派生位原单未结案：售后再次转客服落原单（§4.5 支一） */
+  | 'derived-returned'
+  /** 派生位原单已结案：需新建咨询单承接（§4.5 支二，由 routeAftersaleEvent 建单） */
+  | 'derived-closed'
+  /** 新建了客服单（③ 投诉 / ④ 咨询） */
+  | 'created'
+  /** 新建咨询单并与已结案原单建「承接」（§4.5 支二） */
+  | 'succeeded'
   /** 本单与该售后单无关联 */
   | 'unlinked';
 
@@ -135,24 +175,65 @@ export function applyAftersaleEvent(
   if (ticket.aftersaleEventIds?.includes(eventKey(event))) return { ticket, outcome: 'duplicate' };
 
   if (inDerivedSlot) {
-    // 派生位（③④）：本段只处理卡片刷新
+    // 派生位（③④）：售后关单只刷卡片，不改客服单状态
     if (event.type === 'AS_CLOSED') {
       return {
         ticket: {
           ...ticket,
           aftersaleOriginStatus: event.status ?? AS_DEFAULT_CLOSED_STATUS,
+          aftersaleOriginClosedAt: event.at,
           aftersaleEventIds: markHandled(ticket, event),
         },
         outcome: 'card-only',
       };
     }
-    // TODO(1025 第二段 · ④)：来源位没有等待原单、售后转咨询 —— 新建咨询单 / 落派生位原单（D11 两支）。
-    return { ticket, outcome: 'derived-slot-pending' };
+    if (event.type === 'AS_RETURNED') return applyReturnedToDerived(ticket, event);
+    // 升级投诉不落已有客服单：由 routeAftersaleEvent 新建投诉单（§4.1）
+    return { ticket, outcome: 'unlinked' };
   }
 
+  if (event.type === 'AS_ESCALATE_COMPLAINT') {
+    // 来源位一律不动：只把卡片刷成「冻结」（§4.1 / §5.4）
+    return { ticket: { ...ticket, linkedAftersaleStatus: AFTERSALE_FROZEN_STATUS }, outcome: 'card-only' };
+  }
   return event.type === 'AS_CLOSED'
     ? applyClosed(ticket, event)
     : applyReturned(ticket, event, deps.dispatch);
+}
+
+/** 派生位客服单是否已落终态（§4.5 支二判据） */
+function isDerivedSettled(t: Ticket): boolean {
+  return isTicketClosed(t.nodeStatus) || t.tab === 'done' || !!t.escalatedToNo;
+}
+
+function returnFacts(e: AftersaleEvent): string {
+  return [e.returnReason ? `转回原因：${e.returnReason}` : '', `售后侧操作人：${e.operator}`]
+    .filter(Boolean).join(' · ');
+}
+
+/**
+ * AS_RETURNED · 派生位（§4.5）：原单未结案 → 落原单（支一，不新建、不改状态与处理人、不通知）；
+ * 已结案 → 原样返回 `derived-closed`，由 routeAftersaleEvent 新建咨询单承接（支二）。
+ */
+function applyReturnedToDerived(t: Ticket, e: AftersaleEvent): AftersaleEventResult {
+  if (isDerivedSettled(t)) return { ticket: t, outcome: 'derived-closed' };
+  const n = (t.aftersaleReturnCount ?? 1) + 1;
+  return {
+    ticket: {
+      ...t,
+      aftersaleOriginStatus: e.status ?? AS_RETURNED_STATUS,
+      aftersaleReturnCount: n,
+      eventTimeline: withEntries(t, [{
+        category: 'node', action: 'transfer', who: e.operator, role: AFTERSALE_ACTOR_ROLE,
+        how: `售后再次转客服（第 ${n} 次）`,
+        what: `售后单 ${e.asNo} · ${returnFacts(e)}`,
+        when: e.at,
+      }]),
+      aftersaleEventIds: markHandled(t, e),
+      updatedAt: e.at,
+    },
+    outcome: 'derived-returned',
+  };
 }
 
 /** AS_CLOSED · 来源位 */
@@ -248,61 +329,289 @@ function applyReturned(t: Ticket, e: AftersaleEvent, dispatch: DispatchResolver)
 
 /* ---------------- 升级投诉时的关联迁移（基线 ※26 / R11，1025 R1.5-8） ---------------- */
 
-/** 原单侧「关联降级」履历（同位内：客服来源位从原单改绑到新投诉单） */
+/** 原单侧「关联降级」履历（§5.3，同位内改绑；〈位名〉取客服来源位 / 客服派生位） */
 export function aftersaleLinkDemotedEntry(
-  input: { asNo: string; toNo: string; who: string; role: TlRole; at: string },
+  input: { asNo: string; toNo: string; who: string; role: TlRole; at: string; slot?: AftersaleSlot },
 ): Omit<TimelineEntry, 'id'> {
+  const slotName = AFTERSALE_SLOT_LABEL[input.slot ?? 'source'];
   return {
     category: 'relate', action: 'relate', who: input.who, role: input.role,
     how: '关联降级',
-    what: `售后单 ${input.asNo} 的客服来源位关联已转至工单 ${input.toNo}，本单关联转为历史只读`,
+    what: `售后单 ${input.asNo} 的${slotName}关联已转至工单 ${input.toNo}`,
     when: input.at,
   };
 }
 
-/** 新单侧「关联接入」履历 */
+/** 新单侧「关联接入」履历（§5.3） */
 export function aftersaleLinkJoinedEntry(
-  input: { asNo: string; fromNo: string; who: string; role: TlRole; at: string },
+  input: { asNo: string; fromNo: string; who: string; role: TlRole; at: string; slot?: AftersaleSlot },
 ): Omit<TimelineEntry, 'id'> {
+  const slotName = AFTERSALE_SLOT_LABEL[input.slot ?? 'source'];
   return {
     category: 'relate', action: 'relate', who: input.who, role: input.role,
     how: '关联接入',
-    what: `接下售后单 ${input.asNo} 的客服来源位关联（原关联工单 ${input.fromNo}）`,
+    what: `接下售后单 ${input.asNo} 的${slotName}关联（原关联工单 ${input.fromNo}）`,
     when: input.at,
+  };
+}
+
+/** 本单占着的那一位（来源位优先：客服单侧 1:1，两者不会同时有值） */
+export function aftersaleSlotOf(t: Pick<Ticket, 'linkedAftersaleNo' | 'aftersaleOriginNo'>): AftersaleSlot | null {
+  if (t.linkedAftersaleNo) return 'source';
+  if (t.aftersaleOriginNo) return 'derived';
+  return null;
+}
+
+/** 解除本单在派生位上的关联（降级 / 承接后旧单只留履历） */
+function clearDerivedLink(t: Ticket): Ticket {
+  return {
+    ...t,
+    aftersaleOriginNo: undefined,
+    aftersaleOriginTitle: undefined,
+    aftersaleOriginStatus: undefined,
+    aftersaleOriginServiceType: undefined,
+    aftersaleOriginClosedAt: undefined,
   };
 }
 
 /**
- * 升级投诉时把**客服来源位**关联从原单迁到新投诉单：原单解除关联、写「关联降级」；
- * 新单接上关联、写「关联接入」。不做历史关联分组（Q5），旧关联只留履历。
- * 原单没有来源位关联时原样返回、`to` 为空。
+ * 升级投诉时把本单占的那一位关联迁到新投诉单（基线 ※26，§5.3）：原单解除关联、写「关联降级」；
+ * 新单接上同一位、写「关联接入」。来源位（①②）与派生位（④，口径定稿 6b）都走这里，〈位名〉随位取。
+ * 不做历史关联分组（Q5），旧关联只留履历。原单没有关联时原样返回、`to` 为空。
  */
 export function migrateAftersaleLink(
   from: Ticket,
   toNo: string,
   ctx: { who: string; role: TlRole; at: string },
 ): { from: Ticket; to: Partial<Ticket> } {
-  const asNo = from.linkedAftersaleNo;
-  if (!asNo) return { from, to: {} };
+  const slot = aftersaleSlotOf(from);
+  if (!slot) return { from, to: {} };
+  const asNo = (slot === 'source' ? from.linkedAftersaleNo : from.aftersaleOriginNo)!;
   const demotedId = `as-${from.no}-demoted-${asNo}`;
   const already = from.eventTimeline?.some((e) => e.id === demotedId);
+  const timeline = already
+    ? from.eventTimeline
+    : [...(from.eventTimeline ?? []), { id: demotedId, ...aftersaleLinkDemotedEntry({ asNo, toNo, slot, ...ctx }) }];
+  const joined = [{
+    id: `as-${toNo}-joined-${asNo}`,
+    ...aftersaleLinkJoinedEntry({ asNo, fromNo: from.no, slot, ...ctx }),
+  }];
+  if (slot === 'derived') {
+    return {
+      from: { ...clearDerivedLink(from), eventTimeline: timeline },
+      to: {
+        aftersaleOriginNo: asNo,
+        aftersaleOriginTitle: from.aftersaleOriginTitle,
+        aftersaleOriginStatus: from.aftersaleOriginStatus,
+        aftersaleOriginServiceType: from.aftersaleOriginServiceType,
+        aftersaleOriginClosedAt: from.aftersaleOriginClosedAt,
+        eventTimeline: joined,
+      },
+    };
+  }
   return {
-    from: {
-      ...from,
-      linkedAftersaleNo: undefined,
-      eventTimeline: already
-        ? from.eventTimeline
-        : [...(from.eventTimeline ?? []), { id: demotedId, ...aftersaleLinkDemotedEntry({ asNo, toNo, ...ctx }) }],
-    },
+    from: { ...from, linkedAftersaleNo: undefined, eventTimeline: timeline },
     to: {
       linkedAftersaleNo: asNo,
       linkedAftersaleStatus: from.linkedAftersaleStatus,
       linkedAftersaleServiceType: from.linkedAftersaleServiceType,
-      eventTimeline: [{
-        id: `as-${toNo}-joined-${asNo}`,
-        ...aftersaleLinkJoinedEntry({ asNo, fromNo: from.no, ...ctx }),
-      }],
+      eventTimeline: joined,
     },
+  };
+}
+
+/* ---------------- 售后发起：③ 升级投诉转入 / ④ 转咨询转入（§4.1 / §4.3 / §4.5） ---------------- */
+
+export interface AftersaleRouteResult {
+  /** 入参各行处理后的结果（顺序、长度与入参一致） */
+  rows: Ticket[];
+  /** 本次新建的客服单（③ 投诉 / ④ 咨询） */
+  created?: Ticket;
+  outcome: AftersaleEventOutcome;
+}
+
+/** 按 `AS_RETURNED` / `AS_ESCALATE_COMPLAINT` 新建客服单：来源「售后转入」、未认领、挂客服派生位 */
+function buildInboundTicket(
+  e: AftersaleEvent,
+  type: TicketType,
+  entries: Omit<TimelineEntry, 'id'>[],
+  dispatch: DispatchResolver,
+): Ticket {
+  const s = e.inbound;
+  if (!s) throw new Error(`[aftersaleEvents] ${e.type} 缺少新单信息（inbound）`);
+  const draft: Ticket = {
+    id: s.id, no: s.no, type, channel: s.channel ?? '电话',
+    title: s.title, smartMarks: [], customer: s.customer, vip: false, product: s.product,
+    customerPhone: s.customerPhone, sn: s.sn, productCategory: s.productCategory,
+    problemDesc: s.problemDesc,
+    ticketSource: AFTERSALE_INBOUND_SOURCE,
+    ...(type === '投诉' ? { complaintType: '投诉' } : {}),
+    nodeStatus: '未认领', nodeStep: 1, nodeTotal: 5, priority: s.priority ?? 'P2',
+    slaText: '04:00:00', slaSub: '充足', slaState: 'ok', slaMinutes: 240,
+    assignee: null, tab: 'pool',
+    aftersaleOriginNo: e.asNo,
+    aftersaleOriginTitle: s.asTitle,
+    aftersaleOriginServiceType: s.asServiceType,
+    createdAt: e.at, updatedAt: e.at, responded: false,
+  };
+  // ③ 按投诉现行分派规则、④ 系统派单进客服工单池：落池「未认领」（N5-c）
+  const to = dispatch(draft);
+  const t: Ticket = { ...draft, groupId: to.groupId };
+  return {
+    ...t,
+    eventTimeline: entries.map((p, i) => ({ id: `as-${s.no}-${i + 1}`, ...p })),
+    aftersaleEventIds: [eventKey(e)],
+  };
+}
+
+/**
+ * 售后单两位路由（§5.2「事件按关系类型路由」）：入参是挂在该售后单上的客服单（来源位 / 派生位，可空），
+ * 返回各行处理结果与可能新建的那张单。三条售后侧事件与种子数据都走这里。
+ * - `AS_RETURNED`：来源位有「已转出」原单 → 回流（§3.3）；否则看派生位：空 → 新建咨询单（§4.3），
+ *   未结案 → 落原单（§4.5 支一），已结案 → 新建咨询单并建「承接」（§4.5 支二）；
+ * - `AS_ESCALATE_COMPLAINT`：新建投诉单挂派生位（§4.1），派生位已占 → 同位降级（§5.3）；来源位不动、卡片置「冻结」；
+ * - `AS_PROGRESS` / `AS_CLOSED`：两位各自落（§3.2 / §3.4）。
+ */
+export function routeAftersaleEvent(
+  rows: Ticket[],
+  e: AftersaleEvent,
+  deps: { dispatch: DispatchResolver } = { dispatch: dispatchByCurrentRule },
+): AftersaleRouteResult {
+  const out = [...rows];
+  const srcIdx = out.findIndex((t) => t.linkedAftersaleNo === e.asNo);
+  const derIdx = out.findIndex((t) => t.aftersaleOriginNo === e.asNo);
+  const src = srcIdx >= 0 ? out[srcIdx] : undefined;
+  const der = derIdx >= 0 ? out[derIdx] : undefined;
+
+  if (e.type === 'AS_PROGRESS' || e.type === 'AS_CLOSED') {
+    let outcome: AftersaleEventOutcome = 'card-only';
+    if (der) out[derIdx] = applyAftersaleEvent(der, e, deps).ticket;
+    if (src) {
+      const r = applyAftersaleEvent(src, e, deps);
+      out[srcIdx] = r.ticket;
+      outcome = r.outcome;
+    }
+    return { rows: out, outcome };
+  }
+
+  if (e.type === 'AS_ESCALATE_COMPLAINT') {
+    const entries: Omit<TimelineEntry, 'id'>[] = [{
+      category: 'node', action: 'create', who: e.operator, role: AFTERSALE_ACTOR_ROLE,
+      how: '售后升级投诉转入',
+      what: [`售后单 ${e.asNo}`, e.escalateReason ? `升级原因：${e.escalateReason}` : '', `售后侧操作人：${e.operator}`]
+        .filter(Boolean).join(' · '),
+      when: e.at,
+    }];
+    if (der) {
+      entries.push(aftersaleLinkJoinedEntry({
+        asNo: e.asNo, fromNo: der.no, who: AFTERSALE_ACTOR, role: AFTERSALE_ACTOR_ROLE, at: e.at, slot: 'derived',
+      }));
+      out[derIdx] = {
+        ...clearDerivedLink(der),
+        eventTimeline: withEntries(der, [aftersaleLinkDemotedEntry({
+          asNo: e.asNo, toNo: e.inbound?.no ?? '', who: AFTERSALE_ACTOR, role: AFTERSALE_ACTOR_ROLE, at: e.at, slot: 'derived',
+        })]),
+      };
+    }
+    const created = buildInboundTicket(e, '投诉', entries, deps.dispatch);
+    created.aftersaleOriginStatus = AFTERSALE_FROZEN_STATUS;
+    if (src) out[srcIdx] = applyAftersaleEvent(src, e, deps).ticket;
+    return { rows: out, created, outcome: 'created' };
+  }
+
+  // AS_RETURNED
+  if (src && src.nodeStatus === '已转出') {
+    const r = applyAftersaleEvent(src, e, deps);
+    out[srcIdx] = r.ticket;
+    return { rows: out, outcome: r.outcome };
+  }
+  if (der) {
+    const r = applyAftersaleEvent(der, e, deps);
+    if (r.outcome !== 'derived-closed') {
+      out[derIdx] = r.ticket;
+      return { rows: out, outcome: r.outcome };
+    }
+    // 支二：新建咨询单承接已结案原单；原单派生位关联随之解除，以两条承接履历留痕，不另写「关联降级」
+    const newNo = e.inbound?.no ?? '';
+    const created = buildInboundTicket(e, '咨询', [{
+      category: 'relate', action: 'relate', who: e.operator, role: AFTERSALE_ACTOR_ROLE,
+      how: `承接工单 ${der.no}（售后再次转客服）`,
+      what: `售后单 ${e.asNo} · ${returnFacts(e)}`,
+      when: e.at,
+    }], deps.dispatch);
+    created.aftersaleOriginStatus = e.status ?? AS_RETURNED_STATUS;
+    created.aftersaleReturnCount = (der.aftersaleReturnCount ?? 1) + 1;
+    created.succeedsFromNo = der.no;
+    out[derIdx] = {
+      ...clearDerivedLink(der),
+      succeededByNo: newNo,
+      eventTimeline: withEntries(der, [{
+        category: 'relate', action: 'relate', who: AFTERSALE_ACTOR, role: AFTERSALE_ACTOR_ROLE,
+        how: '售后再次转客服',
+        what: `本单已结案，售后再次转客服已承接至 ${newNo}`,
+        when: e.at,
+      }]),
+    };
+    return { rows: out, created, outcome: 'succeeded' };
+  }
+  // 两位都空（或来源位上不是「已转出」原单）：新建咨询单挂派生位（§4.3），来源位一律不动
+  const overComplaint = src?.type === '投诉';
+  const created = buildInboundTicket(e, '咨询', [{
+    category: 'node', action: 'create', who: e.operator, role: AFTERSALE_ACTOR_ROLE,
+    how: '售后转入建单',
+    what: [`来源售后单 ${e.asNo}`, returnFacts(e), overComplaint ? '售后侧越过投诉关联限制转出' : '']
+      .filter(Boolean).join(' · '),
+    when: e.at,
+  }], deps.dispatch);
+  created.aftersaleOriginStatus = e.status ?? AS_RETURNED_STATUS;
+  created.aftersaleReturnCount = 1;
+  if (isAftersaleSettledStatus(created.aftersaleOriginStatus)) created.aftersaleOriginClosedAt = e.at;
+  return { rows: out, created, outcome: 'created' };
+}
+
+const SETTLED = ['已完成', '已关闭', '已取消'];
+function isAftersaleSettledStatus(s: string): boolean {
+  return SETTLED.includes(s);
+}
+
+/* ---------------- 回传处理结果（③，§4.2） ---------------- */
+
+/** 回传处理结果入参 */
+export interface AftersaleResultInput {
+  conclusion: string;
+  note: string;
+  who: string;
+  role: TlRole;
+  at: string;
+  /** 首次回传解冻后，售后侧返回的售后单状态（解冻后状态由售后侧定） */
+  unfrozenStatus?: string;
+}
+
+/**
+ * 回传处理结果落客服单：本单状态、处理人都不变；第一次回传使售后单解冻（卡片取售后侧返回状态），
+ * 第二次起标「补充回传」、不再解冻。返回更新后的工单行与那条履历。
+ */
+export function applyAftersaleResult(
+  t: Ticket,
+  input: AftersaleResultInput,
+): { ticket: Ticket; entry: Omit<TimelineEntry, 'id'>; first: boolean } {
+  const first = (t.aftersaleResultCount ?? 0) === 0;
+  const entry: Omit<TimelineEntry, 'id'> = {
+    category: 'handle', action: 'handle', who: input.who, role: input.role,
+    how: '回传处理结果',
+    what: `${input.conclusion} · ${input.note.trim()} · ${first ? '首次回传 · 已解冻' : '补充回传'}`,
+    when: input.at,
+  };
+  return {
+    ticket: {
+      ...t,
+      aftersaleResultCount: (t.aftersaleResultCount ?? 0) + 1,
+      aftersaleOriginStatus: first ? (input.unfrozenStatus ?? '处理中') : t.aftersaleOriginStatus,
+      eventTimeline: withEntries(t, [entry]),
+      updatedAt: input.at,
+    },
+    entry,
+    first,
   };
 }
 

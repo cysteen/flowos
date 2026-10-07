@@ -34,7 +34,9 @@ const CreateTicketModal = defineAsyncComponent(() => import('./components/Create
 import type { SmsTemplateKind } from '@/mock/notifyTemplates';
 import { useTicketOperation } from './composables/useTicketOperation';
 import { FEISHU_ESCALATE_CHANNEL, mapUserRole, pushEntry, isAftersaleSettled } from './composables/opActions';
-import { aftersaleLinkJoinedEntry } from './composables/aftersaleEvents';
+import { aftersaleLinkJoinedEntry, applyAftersaleResult } from './composables/aftersaleEvents';
+import { submitAftersaleResult } from '@/api/aftersaleResult';
+import OpAftersaleResultModal from './components/operation/OpAftersaleResultModal.vue';
 import { aftersaleStatusTier, aftersaleTierStyle, resolveAftersaleButtonForm } from './composables/aftersaleButtonForm';
 import { useProcessForm } from './composables/useProcessForm';
 import { useOperationTabs } from './composables/useOperationTabs';
@@ -2211,6 +2213,51 @@ function confirmCarryOnNewTicket(kind: '补充' | '催单'): boolean {
   return true;
 }
 
+/* ---------------- 回传处理结果（③，《【1025】》§4.2） ---------------- */
+
+const resultModalOpen = ref(false);
+const resultSubmitting = ref(false);
+const resultError = ref('');
+
+/**
+ * 回传落库：本单状态、处理人不变；第一次回传使售后单解冻（卡片取售后侧返回状态），其后标「补充回传」。
+ * 工单行与本页同步写，来源位上的客服单只刷售后卡片、不改状态。
+ */
+async function onAftersaleResultConfirm(p: { conclusion: string; note: string }) {
+  const la = d.value.linkedAftersale;
+  const row = TICKETS.find((x) => x.no === d.value.no);
+  if (!la || !row || resultSubmitting.value) return;
+  const first = (row.aftersaleResultCount ?? 0) === 0;
+  resultSubmitting.value = true;
+  resultError.value = '';
+  const res = await submitAftersaleResult({
+    no: la.no, ticketNo: d.value.no, conclusion: p.conclusion, note: p.note,
+    operator: user.name || '当前坐席', at: nowFullText(), first,
+  });
+  resultSubmitting.value = false;
+  if (!res.ok) {
+    resultError.value = `回传失败：${res.error ?? ''}`;
+    return;
+  }
+  const applied = applyAftersaleResult(row, {
+    conclusion: p.conclusion, note: p.note,
+    who: user.name || '当前坐席', role: mapUserRole(user.roleKey), at: nowFullText(),
+    unfrozenStatus: res.status,
+  });
+  Object.assign(row, applied.ticket);
+  const entry = applied.ticket.eventTimeline?.[applied.ticket.eventTimeline.length - 1];
+  if (entry) timeline.value.push({ ...entry });
+  la.resultCount = row.aftersaleResultCount;
+  if (applied.first && row.aftersaleOriginStatus) {
+    la.status = row.aftersaleOriginStatus;
+    // 解冻后售后单状态同步到来源位上的客服单卡片（售后侧随后以 AS_PROGRESS 推送，客服单状态不变）
+    const srcRow = TICKETS.find((x) => x.linkedAftersaleNo === la.no);
+    if (srcRow) srcRow.linkedAftersaleStatus = row.aftersaleOriginStatus;
+  }
+  resultModalOpen.value = false;
+  message.success('已回传处理结果');
+}
+
 /** 页头「关联售后」：只给投诉单（转售后在底栏，只给非诉单） */
 function openLinkAftersale() {
   if (d.value.type !== '投诉' || !canLinkAftersale.value) return;
@@ -2237,6 +2284,10 @@ function onHeaderAction(name: string) {
       break;
     case '关联售后': // 投诉工单：独立动作（1025），打开售后建单弹窗，提交落 applyOpAction 的「关联售后」分支
       openLinkAftersale();
+      break;
+    case '回传处理结果': // 售后升级投诉转入的投诉单：「关联售后」位的回传形态（《【1025】》§4.2）
+      resultError.value = '';
+      resultModalOpen.value = true;
       break;
     case '新建补充':
       if (confirmCarryOnNewTicket('补充')) return;
@@ -2480,6 +2531,16 @@ watch(
       @withdraw="onWithdraw"
       @transfer-ticket="openChildCreate"
       @risk-report="onRiskReport"
+    />
+
+    <OpAftersaleResultModal
+      v-if="d.linkedAftersale"
+      v-model:open="resultModalOpen"
+      :no="d.linkedAftersale.no"
+      :title="d.linkedAftersale.title"
+      :loading="resultSubmitting"
+      :error="resultError"
+      @confirm="onAftersaleResultConfirm"
     />
 
     <CreateTicketModal
