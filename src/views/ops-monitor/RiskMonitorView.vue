@@ -976,11 +976,14 @@ function tagAssessEntryOf(ticketNo: string | undefined): RiskQueueEntry | null {
  *   ② **有一条承载结论 / 协同记录的条目** —— 没有承载体时结论落不了库。
  *   ③ **当前用户有出结论的权** —— 见 `canAssessOnTag`（投诉督导只读，不在其中）。
  *
- * 🔴 **「这条条目还没出过结论」那一道只归评估支**（挪进了 `showTagAssessFor`）：
- * 一条条目只出一次**评估**结论（§9 规则 22 提交即固化），而**协同处理本就可多次**
- * （§4.5 次数行：首次协同把条目转「已结论」，再次协同只追加记录、状态不变，
- * 判据在 `riskPool.coordinate` 里）。把它摆在这一层，已结论的投诉单条目
- * 就再也打不开协同段 —— §4.5「协同可多次」在这个入口上失效。
+ * 🔴 **「这条条目还没出过结论」那一道门已经整个取消**（2026-10-07 裁决）：
+ * 两支现在都可多次提交 ——
+ *   · 投诉支本来就可多次（§4.5 次数行：首次协同把条目转「已结论」，再次协同只追加记录、
+ *     状态不变，判据在 `riskPool.coordinate` 里）；
+ *   · 评估支这一轮跟上：**已出结论的非投诉单可以重新给结论**，推翻 §9 规则 22
+ *     「提交即固化、不可修改」——"刚开始风险可控、判不升级，后来风险增大就得改成升级"，
+ *     管控手段必须跟着风险走。
+ * 故「风险管控」弹窗**一律出**下半那一段，不分未出结论 / 已出结论。
  */
 function tagLowerHalfOpenFor(entry: RiskQueueEntry | null, hasRisk: boolean): boolean {
   if (!hasRisk || !canAssessOnTag.value) return false;
@@ -988,22 +991,21 @@ function tagLowerHalfOpenFor(entry: RiskQueueEntry | null, hasRisk: boolean): bo
 }
 
 /**
- * 下半走**评估结论**那一支：上面两道门 + **这条条目还没出过结论**
- * （一条条目只出一次评估结论；「修正」形态改的是打标结论，不重开结论）
- * + **原单不是投诉单** —— 投诉单不做风险评估，它走协同处理那一支（与底部说明同一口径）。
+ * 下半走**评估结论**那一支：上面两道门 + **原单不是投诉单**
+ * —— 投诉单不做风险评估，它走协同处理那一支（与底部说明同一口径）。
+ *
+ * 🔴 **不判「已评估」**（2026-10-07 裁决取消了那道门）：已出结论的非投诉单条目再次进来
+ * 照样出这一段，且打开时把现行结论灌回来（见 `openEntryTag`）。两支互斥（投诉 / 非投诉），
+ * 并集就等于"下半出不出" —— 本页的「风险管控」弹窗恒有一支下半。
  */
 function showTagAssessFor(entry: RiskQueueEntry | null, hasRisk: boolean): boolean {
-  return tagLowerHalfOpenFor(entry, hasRisk)
-    && entry!.status !== '已评估'
-    && !isComplaintTicket(entry!.ticketNo);
+  return tagLowerHalfOpenFor(entry, hasRisk) && !isComplaintTicket(entry!.ticketNo);
 }
 
 /**
  * 下半走**协同处理**那一支：上面两道门 + **原单是投诉单**。
- * 🔴 **不判「已评估」**（见 `tagLowerHalfOpenFor` 的红字）：协同可多次，
- * 已结论的投诉单条目再次进来照样出这一段，落库仍走共享件 `submitTo`。
- * 两支仍然互斥（投诉 / 非投诉），但并集不再等于"下半出不出" ——
- * 非投诉单的已结论条目两支都不出，那正是"一条条目只出一次评估结论"。
+ * 🔴 **不判「已评估」**：协同可多次（§4.5），已结论的投诉单条目再次进来照样出这一段，
+ * 落库仍走共享件 `submitTo`。这一支本轮**一格未动**。
  */
 function showTagCollabFor(entry: RiskQueueEntry | null, hasRisk: boolean): boolean {
   return tagLowerHalfOpenFor(entry, hasRisk) && isComplaintTicket(entry!.ticketNo);
@@ -1023,7 +1025,7 @@ function tagAssessFieldsOk(escalate: boolean): boolean {
  * 段内给了结论时的落库 —— **与评估路径同一个派生入口、同一个结论写口**，不另造一条。
  *
  * 🔴 **在打标那一步写完之后才调**：条目正是被那一步送进池的，
- * 本函数按单号重取它、确认真的在池里且还没出结论，再落结论。
+ * 本函数按单号重取它、确认真的在池里，再落结论。
  *
  * 落的三件与评估弹窗逐字相同：① 选「升级」且原单不是投诉单 → `deriveEscalatedComplaint`
  * （造新单 + 记原单升级台账 + 新单问题描述＝原单问题描述 ＋ 空行 ＋ 升级说明 +
@@ -1031,15 +1033,31 @@ function tagAssessFieldsOk(escalate: boolean): boolean {
  * 结论时刻＝本次提交时刻**（`assessOnTag`）；③ 第八类履历与 `risk.report.assessed` 通知
  * 由 `assessOnTag` 内部与评估路径共用的那一份实现落，不另造事件。
  *
+ * 🔴 **派生门：一条条目最多派生一张投诉单**（2026-10-07 裁决的必要推论）。
+ * 结论可以重提，而"升级"那一支**会造一张真单**——照旧无条件取号造单的话，
+ * 同一条条目重提三次就有三张投诉单，这是本轮最严重的失败模式。
+ * 判据取 `entry.assessment.escalatedToNo`（派生这件事的**既有真源**，不新造字段）：
+ *   · 没派生过 → 照旧取号 + 造单（**首次**）；
+ *   · **已派生过 → 一个号都不取、一张单都不造**，只把上一次那个号**原样带下去**
+ *     （它得留在结论上，否则重提一次就把"本单派生过谁"抹掉了，池行的单号 chip
+ *     与下一次的这道门一起失效）。履历那边靠号变没变认"这一次是不是真派生了"，
+ *     见 `riskPool.applyAssessment` 的 `derivedNow`。
+ * 界面侧同源：已派生过的条目，决策锁在「升级」、「不升级」置灰（见 `entryTagNoDowngradeTip`）。
+ *
  * 返回接在打标提示后面的那半句；落不了库时返回空串（此时一个字都没写，打标那一句照旧成立）。
  */
 function commitTagAssess(ticketNo: string, decision: AssessDecision): string {
   const entry = tagAssessEntryOf(ticketNo);
-  if (!entry || !isPooledStatus(entry.status) || entry.status === '已评估') return '';
+  if (!entry || !isPooledStatus(entry.status)) return '';
+  const derivedNo = entry.assessment?.escalatedToNo;
   const escalate = decision === '升级';
+  // 已派生过的条目决策只能是「升级」（界面已置灰「不升级」）。真走到这儿就是哪条门漏了，
+  // 宁可一个字都不写：改回不升级意味着那张已经存在的投诉单无人认领
+  if (derivedNo && !escalate) { message.warning(entryTagNoDowngradeTip.value); return ''; }
   // 投诉单不派生（段对投诉单本就不出，这一判据只为与评估路径逐字同形）
-  const escalatedToNo = escalate && !isComplaintTicket(ticketNo) ? nextEscalatedNo() : undefined;
-  if (escalatedToNo) {
+  const firstDerive = !derivedNo && escalate && !isComplaintTicket(ticketNo);
+  const escalatedToNo = derivedNo ?? (firstDerive ? nextEscalatedNo() : undefined);
+  if (firstDerive && escalatedToNo) {
     deriveEscalatedComplaint({
       fromNo: ticketNo,
       no: escalatedToNo,
@@ -1057,7 +1075,8 @@ function commitTagAssess(ticketNo: string, decision: AssessDecision): string {
     at: nowStamp(),
   });
   if (!ok) return '';
-  if (escalatedToNo) return `并直接给出结论：升级，已派生投诉单 ${escalatedToNo}`;
+  if (firstDerive && escalatedToNo) return `并直接给出结论：升级，已派生投诉单 ${escalatedToNo}`;
+  if (derivedNo) return `并更新结论：升级（投诉单 ${derivedNo} 已派生，未重复派生）`;
   return escalate ? '并直接给出结论：升级' : '并直接给出结论：不升级';
 }
 
@@ -3748,26 +3767,89 @@ const entryTagFrom = ref<EntryTagFrom>('untagged');
 // 归「风险管控」。原先那条"标完顺手给结论、条目直接落「已结论」"的捷径随之取消 ——
 // 待判段提交后条目照原路进池落「待领取」，一个字的结论都不落。
 
-/** 段内的评估决策。**空 ＝ 不评估**，提交就是原来的那一下打标 */
+/**
+ * 段内的评估决策。**空 ＝ 不评估**，提交就是原来的那一下打标。
+ * 条目已有结论时打开即**灌着现行结论**（见 `openEntryTag`），此时留空这一档人点不回去
+ * —— 那正是"已有结论"本身，不是"不评估"。
+ */
 const entryTagAssessDecision = ref<AssessDecision | ''>('');
 const entryTagAssessTried = ref(false);
 /**
  * 段出不出。第一道门是**入口**（只归已判段）；其后承载体就是本弹窗这条条目本身 ——
  * 打标为高 / 中 / 低之后它必进池（`recordTag` 的迁移表：实时监控中 / 已标记无风险 →
  * 待分派，池内三态原地不动）。
+ * 🔴 **已出结论的条目照样出**（2026-10-07 裁决取消了「还没出过结论」那道门）。
  */
 const showEntryTagAssess = computed(() => entryTagFrom.value === 'judged' && showTagAssessFor(
   entryTagTarget.value?.entry ?? null,
   !!entryTagResult.value && isPoolLevel(entryTagResult.value),
 ));
-/** 选「升级」后那一段投诉专属字段的显隐，与评估弹窗同一个共享判据 */
-const showEntryTagAssessEscalate = computed(() =>
-  showEscalateComplaintFields(entryTagAssessDecision.value, entryTagTarget.value?.ticketNo),
+
+/**
+ * 本条目**已经派生过**的那张投诉单号；没派生过为 undefined。
+ *
+ * 🔴 **派生这件事的既有真源就是它**（`ReportAssessment.escalatedToNo`，条目结论上那一格），
+ * 本轮不新造字段。它同时管三件事：决策锁死、「不升级」置灰的理由、
+ * 以及 `commitTagAssess` 里"这一次还要不要造单"。
+ */
+const entryTagDerivedNo = computed(() => entryTagTarget.value?.entry?.assessment?.escalatedToNo);
+/**
+ * 「不升级」那一档置灰。做法照「无风险」置灰那一处：**挡住 + 说清为什么**
+ * （`NO_RISK_LOCKED_TIP` 既做 title 也做脚注），不是悄悄禁用。
+ *
+ * 【为什么必须锁】「升级」那一支已经造出了一张真的投诉单，改回「不升级」既撤不掉那张单、
+ * 也没有任何动作去撤 —— 屏幕上会出现"结论：不升级"而池行里挂着一个派生单号。
+ */
+const entryTagNoDowngradeLocked = computed(() => !!entryTagDerivedNo.value);
+const entryTagNoDowngradeTip = computed(
+  () => `本单已派生投诉单 ${entryTagDerivedNo.value ?? ''}，无法改回不升级`,
 );
-/** 「不升级」那一格反馈意见的红字，提示文案与评估弹窗逐字一致 */
+
+/**
+ * 选「升级」后那一段投诉专属字段（投诉一类 / 二类 / 升级说明）的显隐，判据与评估弹窗共享。
+ *
+ * 🔴 **已派生过就不出**：那一段是**建新单的要素**，而这一次不造新单 ——
+ * 摆出来等于让人把一类 / 二类重填一遍再丢掉，三项必填还会把提交挡住。
+ * 这一路的结论正文改由下面那一格「升级说明」渲染（见 `showEntryTagAssessAdvice`）。
+ */
+const showEntryTagAssessEscalate = computed(() =>
+  !entryTagDerivedNo.value
+  && showEscalateComplaintFields(entryTagAssessDecision.value, entryTagTarget.value?.ticketNo),
+);
+/**
+ * 结论正文那一格自己出不出。**选了决策、而投诉专属字段那一段没出**时由它承载 ——
+ * 「不升级」恒走这一路；「升级」只在已派生过（段不出）那一路走这里，
+ * 否则正文那一格在段内（`EscalateComplaintFields` 的「升级说明」），两处写的是同一个格子。
+ */
+const showEntryTagAssessAdvice = computed(
+  () => !!entryTagAssessDecision.value && !showEntryTagAssessEscalate.value,
+);
+/** 这一格的标签与占位：与评估弹窗（`assessAdviceLabel` / `assessAdvicePlaceholder`）逐字一致 */
+const entryTagAssessAdviceLabel = computed(
+  () => (entryTagAssessDecision.value === '升级' ? '升级说明' : '反馈意见'),
+);
+const entryTagAssessAdvicePlaceholder = computed(
+  () => (entryTagAssessDecision.value === '升级'
+    ? '写清升级理由与后续处置安排…'
+    : '告知报备人为什么不升级、可以怎么继续处理…'),
+);
+/** 结论正文那一格的红字，提示文案与评估弹窗逐字一致 */
 const missEntryTagAssessAdvice = computed(
   () => entryTagAssessTried.value && !!entryTagAssessDecision.value && !assessAdvice.value.trim(),
 );
+/**
+ * 这一段**动过没有**。没结论的条目沿用老判据（选了决策＝要评估）；
+ * 已有结论的条目一打开就灌着现行值，照老判据会恒为"动过"——于是主按钮永远亮着、
+ * 一点就往履历里再追加一条与上一条逐字相同的结论。故已结论那一路比的是
+ * **决策或正文真的变了**，与上半 `entryTagDirty` 同一条口径。
+ */
+const entryTagAssessDirty = computed(() => {
+  if (!entryTagAssessDecision.value) return false;
+  const cur = entryTagTarget.value?.entry?.assessment;
+  if (!cur) return true;
+  return normalizeDecision(cur.decision) !== entryTagAssessDecision.value
+    || assessAdvice.value.trim() !== (cur.advice ?? '').trim();
+});
 
 /* ---- 「风险管控」弹窗下半的**投诉支**：协同处理（判出高 / 中 / 低之后接出，可留空） ---- */
 //
@@ -3795,10 +3877,10 @@ const entryTagCollabFilled = computed(() => {
 
 /**
  * 下半**给没给东西**：两支互斥，取各自那一支自己的"动过没有"判据
- * （评估支＝选了决策，协同支＝三项里动过任意一项）。
+ * （评估支＝`entryTagAssessDirty`，协同支＝三项里动过任意一项）。
  */
 const entryTagLowerFilled = computed(
-  () => (showEntryTagAssess.value && !!entryTagAssessDecision.value)
+  () => (showEntryTagAssess.value && entryTagAssessDirty.value)
     || (showEntryTagCollab.value && entryTagCollabFilled.value),
 );
 /**
@@ -3859,12 +3941,26 @@ function openEntryTag(e: QueueRow, from: EntryTagFrom) {
   entryTagResult.value = e.tag?.result ?? '';
   // 风险备注每次从空开始：改判形态下它承载"为什么改"，预填上一次那条会让必填名存实亡
   entryTagNote.value = '';
-  // 下半两支每次打开都从空开始：评估支决策不选＝不评估、协同支全空＝不协同，
+  // 下半两支先各自清干净：评估支决策不选＝不评估、协同支全空＝不协同，
   // 两边的字段与红字各由自己那份共享实例 reset 一次清完
   entryTagAssessDecision.value = '';
   entryTagAssessTried.value = false;
   escalateFields.reset();
   entryTagCollab.reset();
+  /*
+   * 🔴 **已出结论的非投诉单：把现行结论灌回来**（2026-10-07 裁决，与「风险等级」段
+   * 预置现值同一个做法）。不灌的话，人一打开看到的是一张空表 —— 既读不出"现在判的是什么"，
+   * 又会把"只改一句反馈意见"变成"把结论整个重填一遍"。
+   * 正文那一格值在 `escalateFields.fields.advice` 上（`assessAdvice` 是它的读写代理），
+   * 故必须排在 `escalateFields.reset()` **之后**，否则刚灌的值当场被清掉。
+   * 投诉支不灌：它的历次协同记录另有落点（`stores/riskCollab.ts`），
+   * 且那一支本来就是"每次新写一条意见"，本轮一格不动。
+   */
+  const cur = e.entry.assessment;
+  if (cur && !isComplaintTicket(e.ticketNo)) {
+    entryTagAssessDecision.value = normalizeDecision(cur.decision);
+    assessAdvice.value = cur.advice ?? '';
+  }
   entryTagOpen.value = true;
 }
 
@@ -3883,7 +3979,10 @@ function saveEntryTag() {
    * 三者全空才是"什么都没发生"，才拦；只要下半有一支有内容，这一次就是成立的提交。
    */
   const retag = !amend || entryTagDirty.value;
-  const assessDec = showEntryTagAssess.value ? entryTagAssessDecision.value : '';
+  // 评估支：**动过才算这一次给了结论**（已结论的条目一打开就灌着现行值，见 `entryTagAssessDirty`）
+  const assessDec = showEntryTagAssess.value && entryTagAssessDirty.value
+    ? entryTagAssessDecision.value
+    : '';
   const collab = showEntryTagCollab.value && entryTagCollabFilled.value;
   // 文案说「风险标记」而不是「风险等级」：判据是 `entryTagDirty`（等级**或**风险备注动过），
   // 写成「风险等级」比判据窄 —— 只改了备注的人会被告知"等级没变"，对不上自己刚做的事。
@@ -7068,30 +7167,53 @@ function toggleWordEnabled(w: RiskWord) {
           不选评估决策就照旧只打标、条目进池等领取；给了结论则条目照常进池但
           **直接落「已结论」**，结论人＝标记人。字段、校验、派生与红字文案与本页评估弹窗
           **同一套**（同一份 `escalateFields` 实例 + 共享组件 `EscalateComplaintFields`）。
+
+          🔴 **已出结论的条目照样出这一段、且结论可以重新给**（2026-10-07 裁决，推翻
+          §9 规则 22）：打开即灌着现行结论（见 `openEntryTag`），改完提交覆盖**当前**结论、
+          历次留痕往第八类履历累积（`riskPool.applyAssessment` 的 `prev`）。
+          **派生过投诉单的条目**决策锁在「升级」、「不升级」置灰，再次提交只更新正文、
+          一张单都不再造（判据与落库见 `commitTagAssess` 的派生门）。
         -->
         <section v-if="showEntryTagAssess" class="assess-block assess-block-form">
           <!-- 段名恒为「风险处理措施」（六处同名，2026-09-29 追加裁决）；内容随原单类型分岔 -->
           <h4 class="assess-block-title">风险处理措施</h4>
 
           <div class="op-field assess-dec-field">
-            <!-- 决策**不带必填星**：留空是合法的一种（＝不评估），与评估弹窗那一处的口径差别只在这里 -->
+            <!--
+              决策**不带必填星**：留空是合法的一种（＝不评估），与评估弹窗那一处的口径差别只在这里。
+              🔴 条目**已派生过投诉单**时「不升级」那一档置灰：那张单既撤不掉、也没有动作去撤它。
+              做法照「无风险」置灰那一处 —— 挡住（`disabled`）+ 说清为什么（title + 下面那行脚注）。
+            -->
             <div class="op-field-h assess-dec-row">
               <div class="op-label">评估决策</div>
               <a-radio-group v-model:value="entryTagAssessDecision" class="assess-dec-inline">
-                <a-radio v-for="d in ASSESS_DECISIONS" :key="d" :value="d">{{ d }}</a-radio>
+                <a-radio
+                  v-for="d in ASSESS_DECISIONS"
+                  :key="d"
+                  :value="d"
+                  :disabled="d === '不升级' && entryTagNoDowngradeLocked"
+                  :title="d === '不升级' && entryTagNoDowngradeLocked ? entryTagNoDowngradeTip : undefined"
+                >{{ d }}</a-radio>
               </a-radio-group>
+            </div>
+            <div v-if="entryTagNoDowngradeLocked" class="tag-form-foot assess-dec-foot">
+              {{ entryTagNoDowngradeTip }}；再次提交只更新结论正文，不会重复派生。
             </div>
           </div>
 
-          <!-- 「不升级」那一格；选「升级」时同一个格子并进下面那一段、改由段内的「升级说明」渲染 -->
-          <div v-if="entryTagAssessDecision === '不升级'" class="op-field">
-            <div class="op-label req">反馈意见</div>
+          <!--
+            结论正文那一格（「不升级」→ 反馈意见、「升级」→ 升级说明），两者写的是同一个格子。
+            ⚠️ 选「升级」且**要派生新单**时它并进下面那一段、改由段内的「升级说明」渲染；
+            已派生过的那一路段不出，正文就回到这里（见 `showEntryTagAssessAdvice`）。
+          -->
+          <div v-if="showEntryTagAssessAdvice" class="op-field">
+            <div class="op-label req">{{ entryTagAssessAdviceLabel }}</div>
             <a-textarea
               v-model:value="assessAdvice"
               :rows="3"
-              placeholder="告知报备人为什么不升级、可以怎么继续处理…"
+              :placeholder="entryTagAssessAdvicePlaceholder"
             />
-            <div v-if="missEntryTagAssessAdvice" class="assess-err">请填写反馈意见</div>
+            <div v-if="missEntryTagAssessAdvice" class="assess-err">请填写{{ entryTagAssessAdviceLabel }}</div>
           </div>
 
           <!-- 投诉工单专属字段（投诉一类 / 二类 / 升级说明），三项均必填，与评估弹窗共用组件与状态 -->
@@ -9265,6 +9387,8 @@ function toggleWordEnabled(w: RiskWord) {
   text-align: right;
   white-space: nowrap;
 }
+/* 「不升级」置灰的原因脚注：与上面决策那一排的控件左缘对齐（标签 72px + gap 10px） */
+.assess-dec-foot { margin: 4px 0 0 82px; }
 .assess-dec-inline {
   display: inline-flex !important;
   flex: 1;
