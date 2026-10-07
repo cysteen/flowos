@@ -2484,7 +2484,21 @@ const tagOkText = computed(() => (
     : tagAmend.value ? '保存修正' : '保存'
 ));
 
-function openTag(h: RiskHit) {
+/**
+ * 这一枚命中弹窗是从**哪个入口**点开的。`untagged` ＝ 待判段的召回清单行，
+ * `ledger` ＝ 命中台账行。标题随入口变（见 `tagModalTitle`），弹窗本体一格不变。
+ */
+type TagFrom = 'untagged' | 'ledger';
+const tagFrom = ref<TagFrom>('untagged');
+/**
+ * 命中弹窗的标题：待判段问的是"这单有没有风险、多大"＝**风险识别**；
+ * 命中台账问的是"这条命中成立还是误报"＝**命中核实**。
+ */
+const tagModalTitle = computed(() => (tagFrom.value === 'untagged' ? '风险识别' : '命中核实'));
+
+function openTag(h: RiskHit, from: TagFrom) {
+  // 来源每次都显式落一遍，不依赖默认值：漏一处就会拿到上一次打开时的残留标题
+  tagFrom.value = from;
   if (!canRiskTag.value) { message.warning('只有客诉专员、投诉督导与管理员可以标记'); return; }
   tagTarget.value = h;
   const cur = latestEntryOf(h);
@@ -3134,11 +3148,11 @@ function rowOfTicketNo(no: string): QueueRow | undefined {
 }
 /** 富列表的行内动作：这一段只有「风险管控」一枚，权限不足时不给按钮 */
 function untaggedRowActions() {
-  return canRiskTag.value ? [{ label: '风险管控', primary: true }] : [];
+  return canRiskTag.value ? [{ label: '风险识别', primary: true }] : [];
 }
 function onTicketRowAction(label: string, t: Ticket) {
   const r = rowOfTicketNo(t.no);
-  if (label === '风险管控' && r) openEntryTag(r);
+  if (label === '风险识别' && r) openEntryTag(r, 'untagged');
 }
 
 /* ---- 「实时监控」这一路 · 召回清单 ---- */
@@ -3869,7 +3883,21 @@ const entryTagHits = computed(() => {
     .slice(0, 3);
 });
 
-function openEntryTag(e: QueueRow) {
+/**
+ * 这一枚条目弹窗是从**哪个入口**点开的。`untagged` ＝ 待判段（重点工单富列表行、
+ * 召回清单里无待核实命中的行），`judged` ＝ 已判段条目表行。
+ */
+type EntryTagFrom = 'untagged' | 'judged';
+const entryTagFrom = ref<EntryTagFrom>('untagged');
+/**
+ * 条目弹窗的标题：待判段本单尚无风险结论，答的是"有没有风险、多大"＝**风险识别**；
+ * 已判段已有结论，答的是"之后怎么处置"＝**风险管控**。
+ */
+const entryTagModalTitle = computed(() => (entryTagFrom.value === 'untagged' ? '风险识别' : '风险管控'));
+
+function openEntryTag(e: QueueRow, from: EntryTagFrom) {
+  // 来源每次都显式落一遍，不依赖默认值：漏一处就会拿到上一次打开时的残留标题
+  entryTagFrom.value = from;
   // 报备行不走打标（它的操作列本就没有按钮），这一道是防第二个调用方绕进来
   if (!e.entry) return;
   if (!canRiskTag.value) { message.warning('只有客诉专员、投诉督导与管理员可以标记'); return; }
