@@ -4,7 +4,7 @@
 // 【本页现在的主线：漏斗】（业务第三轮拍板）
 //   ① 识别 —— 两类自动识别（预警词命中 / 重点工单）产生**监控条目**
 //   ② 打标 —— 对条目四选一：高 / 中 / 低 / 无风险。**打标是入池门槛**
-//   ③ 分流 —— 低/中/高 进风险工单池等评估；无风险落「已标记无风险」，不进池
+//   ③ 分流 —— 低/中/高 进风险工单池等评估；无风险不进池、**离开漏斗**（本页左栏不再列它）
 //   ④ 评估 —— 池内条目二选一：升级 / 不升级（升级只指转投诉单，不含升三线）
 //   ⑤ 下游 —— 高危单的管控由人在工单上发起（基线 ※27，人点、系统不自动管控）
 //
@@ -173,20 +173,23 @@ const listView = ref<ListView>('realtime');
  *
  * ```
  *   待打标（monitoring）──低/中/高──▶ 已入池（pooled）──▶ 风险工单池页签接着往下走
- *                       └─无风险────▶ 已标记无风险（noRisk）
+ *                       └─无风险────▶ 离开漏斗（条目照旧落库，左栏不列、已判不计）
  * ```
  *
- * 🔴 **「已标记无风险」不是回收站**：它是投诉督导核查**漏标误判**的唯一容器 ——
- * 判错的那一条不会再出现在任何待办里，不给它一个看得见的去处，
- * "有没有人把该管的判成了没风险"这个问题在整个系统里没有一处答得了。
- * 故这一视图给「修正」入口、且默认与另两个视图平级摆在同一排，不折叠、不藏。
+ * 🔴 **本轮只剩两视图**（2026-10-07 裁决）：原先的 `noRisk`（已标记无风险）与
+ * `reported`（二线报备已出结论）两档**随左栏那两档一并删除** ——
+ *   · **无风险不进已判**：判为无风险的离开漏斗，`已判 ＝ 全部有风险`；
+ *   · **报备不在后台展示**：报备只在前台（工单工作台「风险报备池」）露出。
+ * 两档的条目 / 报备单**数据照旧在 store 里**（`noRiskEntries` / `reports`），
+ * 删掉的只是本页这两个视图与左栏那两档；页头「今日发现」「今日标记」仍照各自口径数无风险。
  *
- * 🔴 **`reported` 是 B 线（二线报备）落在这一段的那一档**：已结论（已评估）与已撤回两种。
- * 它与另两档同走条目表，但**不进「全部有风险 / 按标记人 / 按处置阶段」那三个轴** ——
- * 报备不走打标，混进去会把"三个轴恒等于全部有风险"这条恒等式弄脏。
- * 待判段不收报备：还在队的报备（待分派 / 评估中）有自己的工作面，在工单工作台「风险报备池」。
+ * 🔴 **随 `noRisk` 一并消失的是"核查漏标误判"那个容器**：原注释写着
+ * "核查漏标误判除了从这里翻出来改，没有第二条路" —— 本轮按业务口径照删，
+ * **这条能力本页不再提供**（判为无风险之后没有复核入口）。
+ * 原因是无风险不进已判，容器挂在已判段上就不成立了；
+ * 复核入口另立待办（命中明细 / 查询中心里做筛选项），本轮不补。
  */
-type QueueView = 'monitoring' | 'pooled' | 'noRisk' | 'reported';
+type QueueView = 'monitoring' | 'pooled';
 const queueView = ref<QueueView>('monitoring');
 
 /**
@@ -234,7 +237,8 @@ const untaggedOpen = ref<Record<UntaggedSlice, boolean>>({
  * 「已入池」这一档再按**现行打标等级**分档：高 / 中 / 低，`all` ＝ 全部有风险，
  * `tagger` ＝ 同一批条目**换按标记人看**。
  *
- * 🔴 **「全部有风险」不含「无风险」**。无风险是漏斗的另一个出口（`queueView === 'noRisk'`），
+ * 🔴 **「全部有风险」不含「无风险」**，且**本轮起 `已判 ＝ 全部有风险`**（2026-10-07 裁决）：
+ * 判为无风险的离开漏斗，左栏任何一段都不再计它、不再列它。
  * 把它并进来等于把已经排除掉的那一批重新算成风险，左栏那一列的合计当场答错
  * "现在到底有多少条确实有风险"——而那正是这一列存在的理由。
  * 判档读的是条目的现行 `tag.result`，**与池内状态无关**：池内三态是它进池之后的事，
@@ -246,15 +250,15 @@ const untaggedOpen = ref<Record<UntaggedSlice, boolean>>({
  * 与页头 KPI 卡的写法不一致，选中态与表里的数据当场分家（本文件反复踩过的坑）。
  * `tagger` 不是第四个等级，它与 `all` 是**同一批行**，只是右侧多出一行标记人单选。
  */
-const tagLevelFilter = ref<RiskLevel | 'all' | 'tagger' | 'stage'>('all');
+const tagLevelFilter = ref<RiskLevel | 'all' | 'tagger'>('all');
 
 /**
  * 标记人单选（只在「按标记人」这一档作数）。`all` ＝ 不按人收窄。
  *
  * 🔴 **分母与「全部有风险」同一个**：只数打标为高 / 中 / 低的条目，**不含无风险**。
  * 把无风险也数进来，这一行会变成"谁判得多"，而督导要的是"谁名下压着多少条有风险的"。
- * 无风险那一批要看谁判的，去「无风险」那一档逐条看修正记录 —— 那是核查漏标的场子，
- * 与这里的工作量分布不是同一个问题。
+ * 🔴 无风险那一批**本页已没有去处**（「无风险」那一档随 2026-10-07 裁决删除）：
+ * 谁判的、判得对不对，要等复核入口另立待办之后才答得上，这一行只管有风险的那一批。
  */
 const taggerFilter = ref<string>('all');
 /**
@@ -262,22 +266,13 @@ const taggerFilter = ref<string>('all');
  * 选中的是"看谁的"（`taggerFilter`）。合成一个变量的话，选了某个人再想看全部就只能先收起来。
  */
 const taggerExpanded = ref(false);
-/**
- * 池内处置阶段单选（只在「按处置阶段」这一档作数）。`all` ＝ 不按阶段收窄。
- *
- * 🔴 **判据取 `poolStageTextOf(poolStageStatusOf(e))`**，也就是「评估处置工作面」那张池行表
- * 写的那个词 —— 左栏分档与池行表是同一个映射（`POOL_STATE_TEXT`），三档因此**不重不漏**，
- * 且左栏写的词与池行表里那一格逐字一致。各写各的判据是本文件反复踩过的坑。
+/*
+ * 🔴 **原先这里有一组「按处置阶段」的状态**（`poolStageFilter` / `POOL_STAGE_KEYS` /
+ * `poolAxisExpanded`），给左栏那个第三轴供选中态与展开态。**整组随该轴删除**
+ * （2026-10-07 裁决）：领取逻辑未闭环，且这一轴与「评估处置工作面」那张池行表
+ * 的「处置阶段」列是同一件事 —— 同一个维度摆两处，人只会去找它们为什么不一样。
+ * 池内阶段仍然看得到，去**评估处置工作面**那张池行表（`poolStageOf` / 那一列照旧，一格没动）。
  */
-const poolStageFilter = ref<string>('all');
-/** 三个阶段的界面词，**次序即时间序**（待领取 → 已领取 → 已结论），不按数量重排 */
-const POOL_STAGE_KEYS = ['待领取', '已领取', '已结论'] as const;
-/**
- * 左栏「按处置阶段」展开着没有。与 `taggerExpanded` 一样只管展开、不管选中
- * （选中的是 `poolStageFilter`）。**默认展开**：这三档是值班每天真要点的地方，
- * 而「按标记人」是督导偶尔查工作量才展开的一份名单，两者默认态本就不同。
- */
-const poolAxisExpanded = ref(true);
 
 /**
  * 班组筛选（单选，横跨左栏每一档）。
@@ -293,7 +288,7 @@ const groupFilter = ref<string>('all');
  * 说不出"某一级"），空态与收窄标据此判断要不要出这一句。
  */
 const tagLevelText = computed(() => (
-  tagLevelFilter.value === 'all' || tagLevelFilter.value === 'tagger' || tagLevelFilter.value === 'stage'
+  tagLevelFilter.value === 'all' || tagLevelFilter.value === 'tagger'
     ? ''
     : riskLevelText(tagLevelFilter.value)
 ));
@@ -317,8 +312,9 @@ function inGroup<T extends { ticketNo: string }>(rows: T[]): T[] {
 //
 // 🔴 **O14 那条"同一条在两个页签各出现一次"的已知代价，本轮随漏斗消失了**：
 // 打标成了入池门槛之后，一条条目在同一时刻只可能落在**一个**视图里——
-// 还没打标的在实时监控·待打标，打完低/中/高的在实时监控·已入池（＝风险工单池里那一半），
-// 判无风险的在实时监控·已标记无风险。两个页签看的是同一条链的前后两段，不再是同一条的两份副本。
+// 还没打标的在实时监控·待判，打完低/中/高的在实时监控·已判（＝风险工单池里那一半），
+// 判无风险的**离开漏斗**（2026-10-07 裁决：无风险不进已判，本页不再给它一个档）。
+// 两个页签看的是同一条链的前后两段，不再是同一条的两份副本。
 const reportStore = useRiskPoolStore();
 /**
  * A 线队列本体。用于三件事：按两类判据补齐监控条目（`syncAutoEntries`）、
@@ -2628,20 +2624,24 @@ function tagTraceTitle(h: RiskHit): string | undefined {
  * 由 store 补齐条目（`riskQueue.syncAutoEntries`），来源与进监控时刻照实写，不再有"无条目的行"。
  */
 interface QueueRow {
-  /** ＝ 条目 id（报备行 ＝ 报备单 id，两条线共用一个 `rr-###` 号段，不会撞） */
+  /** ＝ 条目 id */
   id: string;
   ticketNo: string;
   /**
-   * A 线的监控条目。**报备行没有** —— B 线不走打标这道门，见 `report`。
+   * A 线的监控条目。
    * 打标、批量识别（条目那一路）、修正三处只对有它的行开口，故那几处先判它在不在。
+   *
+   * 🔴 **原先还有一个 `report?: RiskPoolItem` 字段**，装 B 线报备单，给「已判 · 风险报备」
+   * 那一档的行用。字段与那一档**一并删除**（2026-10-07 裁决：报备只在前台
+   * 「风险报备池」展示、后台不展示），故这张表现在只有一类行：**A 线监控条目**。
+   * ⚠️ 别把它与「来源恰好是二线报备的标记条目」搞混（`rowSourceText` 那一支仍在）：
+   * 那是**标记条目**、走 `rowOfEntry`、`report` 本来就是空的，照旧进「全部有风险」。
    */
   entry?: RiskQueueEntry;
-  /** B 线的报备单。**只有「风险报备」这一档的行有**，与 `entry` 恰有其一 */
-  report?: RiskPoolItem;
-  /** 监控来源。A 线两值，报备行恒为「二线报备」（界面词见 `rowSourceText`） */
+  /** 监控来源。A 线两值；报备线定级现补的那条标记条目为「二线报备」（界面词见 `rowSourceText`） */
   source: MonitorSource;
   desc: string;
-  /** 进入实时监控的时刻；报备行 ＝ 报备提交时刻 */
+  /** 进入实时监控的时刻 */
   at: string;
   status: RiskPoolItem['status'];
   tag?: RiskQueueEntry['tag'];
@@ -2662,22 +2662,11 @@ function rowOfEntry(e: RiskQueueEntry): QueueRow {
   };
 }
 
-/**
- * 报备单 → 视图行。**不造第三种对象**：`report` 原样挂着，
- * 结论 / 结论人 / 结论时间三列直接从它身上读（见 `rowConclusion*`）。
+/*
+ * 🔴 **原先这里有一个 `rowOfReport`**（报备单 → 视图行），给「已判 · 风险报备」那一档供行。
+ * 随该档一并删除（2026-10-07 裁决：报备只在前台「风险报备池」展示、后台不展示）。
+ * 报备单的数据照旧在 `reportStore.reports` 里，本页只是不再把它渲染成已判表的行。
  */
-function rowOfReport(r: RiskPoolItem): QueueRow {
-  return {
-    id: r.id,
-    ticketNo: r.ticketNo,
-    report: r,
-    source: r.source,
-    desc: r.desc,
-    at: r.at,
-    status: r.status,
-    assignee: r.assignee,
-  };
-}
 /**
  * 「未标记」的**全集 ＝「全部待判」**（未过班组筛选）＝ **监控队列里还没打标、且工单在办的条目**。
  *
@@ -3157,7 +3146,7 @@ function rowTopHit(r: QueueRow): RiskHit | null {
   return rowHits(r)[0] ?? null;
 }
 
-/* ---- 「已标记」段（已入池 / 无风险 / 风险报备）的证据列 ---- */
+/* ---- 「已判」段（＝「全部有风险」那一批，两个轴共用）的证据列 ---- */
 //
 // 【为什么这一段也要换列】它原先摆的是「监控来源」+「风险描述」，两列都答不了
 // "这条**凭什么**被判成这个等级"：
@@ -3165,14 +3154,15 @@ function rowTopHit(r: QueueRow): RiskHit | null {
 //   · 风险描述是一句写死的套话（「投诉类工单自动纳入实时监控」），一个字的判据都没有。
 // 于是复核一条打标结论——这一段唯一的活——只能一条条点进工单。
 //
-// 🔴 **三类行的证据不是一种东西，故「证据 / 摘要」这一列按来源分岔**（见 `rowEvidenceKind`）：
+// 🔴 **两类行的证据不是一种东西，故「证据 / 摘要」这一列按来源分岔**（见 `rowEvidenceKind`）：
 //   · 实时监控 —— 摆**命中原话摘录**（最新一条，命中词高亮）；
-//   · 重点工单 —— 这一路本就不产生命中，摆工单自己的**问题描述**；
-//   · 风险报备 —— 摆报备单的**风险描述**（报备弹窗里那一项填的内容）。
-// 客户 / 产品 与 SLA 两列对**三类行都成立**，故不分岔、恒取工单。
-/** 当前是不是停在「已标记」段（已入池 / 无风险 / 风险报备）那张表上 */
+//   · 重点工单 —— 这一路本就不产生命中，摆工单自己的**问题描述**。
+//   （来源「二线报备」的那条标记条目走「重点工单」同一支，摆条目自己的 `desc` ＝ 报备人填的风险描述，
+//     见 `rowSummaryOf`。它是**标记条目**不是报备单，故仍在这张表上。）
+// 客户 / 产品 与 SLA 两列对**两类行都成立**，故不分岔、恒取工单。
+/** 当前是不是停在「已判」段那张条目表上 */
 const taggedEvidenceView = computed(() => (
-  listView.value === 'realtime' && queueView.value !== 'monitoring'
+  listView.value === 'realtime' && queueView.value === 'pooled'
 ));
 /** 这一行有没有命中记录 —— 上面那两列按它分岔 */
 function rowHasHits(r: QueueRow): boolean {
@@ -3248,20 +3238,21 @@ function rowHandlerLine(r: QueueRow, hit?: RiskHit | null): string {
 /**
  * 「风险来源」列的界面词 —— 原「风险词」那一列改成的这一维，取值三种。
  *
- * 🔴 A 线两路**照写条目自己的来源**（实时监控 / 重点工单，与待判段、来源 chip 全站一个说法）；
- * B 线写「**风险报备**」而不是它在合并池里的来源标签「二线报备」：这一列答的是
- * "这条风险从哪条路进来的"，写成岗位名等于把来源说成了报备人的职级。
+ * 🔴 两路**照写条目自己的来源**（实时监控 / 重点工单，与待判段、来源 chip 全站一个说法）。
  *
- * 🔴 **按来源判，不按行是不是报备单判**（2026-09-29 裁决）：报备线定级现补的那条条目
- * （`riskQueue.autoSourceFor` 第三支）走的是 `rowOfEntry`，`report` 为空、`source` 却是
- * 「二线报备」—— 只判 `r.report` 的话，同一张表里同一件事会出现两种写法：
- * 那一行写「二线报备」，B 线报备行写「风险报备」。**界面一律写「风险报备」**。
+ * 🔴 **第三种取值「风险报备」保留**（2026-10-07 裁决的连带判定）：它答的不是
+ * "这里展示报备单"，而是"**这条标记条目是从报备那条路进来的**" ——
+ * 报备线定级现补的那条条目（`riskQueue.autoSourceFor` 第三支）走的是 `rowOfEntry`，
+ * `source` 为「二线报备」，而它**已经打过标、已经在「全部有风险」里**，是标记条目。
+ * 本轮删掉的是"后台展示**报备条目**"（左栏那一档 + B 线报备行），不是这一支。
+ * 界面写「风险报备」而不是落库值「二线报备」：这一列答的是"从哪条路进来的"，
+ * 写成岗位名等于把来源说成了报备人的职级。
  * ⚠️ 这是**显示层的映射**，不是数据改名：内部常量 `REPORT_SOURCE` 仍是「二线报备」，
  * 条目、池行、缓存与筛选一律照旧用它，不要反过来去改那个常量。
  */
 const REPORTED_SOURCE_TEXT = '风险报备';
 function rowSourceText(r: QueueRow): string {
-  return r.report || r.source === REPORT_SOURCE ? REPORTED_SOURCE_TEXT : r.source;
+  return r.source === REPORT_SOURCE ? REPORTED_SOURCE_TEXT : r.source;
 }
 
 /**
@@ -3275,54 +3266,34 @@ function rowLatestHit(r: QueueRow): RiskHit | null {
 
 /**
  * 「证据 / 摘要」这一格摆的是哪一种东西 —— **按来源分岔，不按"有没有命中"分岔**：
- *   · 报备行 → 报备单的**风险描述**（报备弹窗里那一项填的内容）；
  *   · 实时监控 → **命中原话摘录**（最新一条，命中词高亮）；
  *   · 重点工单 → **工单的问题描述**（这一路本就不靠词进来，没有原话可摆）。
  * 实时监控那一路万一一条命中都没有（手动筛查并入、命中已被删），退回问题描述，不留空格。
+ *
+ * 🔴 **原先还有一支 `'report'`**（报备行摆报备单的风险描述），随「风险报备」那一档删除。
+ * 来源「二线报备」的标记条目走 `'summary'`，而 `rowSummaryOf` 对这一路先取条目自己的 `desc`
+ * ＝ 报备人填的风险描述 —— 那一格的内容一个字没变，只是不再走单独一支。
  */
-function rowEvidenceKind(r: QueueRow): 'report' | 'hit' | 'summary' {
-  if (r.report) return 'report';
+function rowEvidenceKind(r: QueueRow): 'hit' | 'summary' {
   if (r.source === '实时监控' && rowHasHits(r)) return 'hit';
   return 'summary';
 }
 
-/**
- * 报备单**出结论的时刻**：已撤回取撤回时刻、已评估取评估时刻。
- * 两者都没有（旧缓存）时退回提交时刻 —— 这一支**只给排序用**，
- * 「结论时间」那一格另走 `rowConclusionAt`，取不到就写「—」，不拿提交时刻冒充结论时刻。
+/*
+ * 🔴 **原先这里有一个 `reportConcludedAt`**（报备单出结论的时刻，给 `reportedEntries` 排序用）。
+ * 随「风险报备」那一档删除（2026-10-07 裁决）。
  */
-function reportConcludedAt(r: RiskPoolItem): string {
-  return (r.status === '已撤回' ? r.withdrawAt : r.assessment?.at) ?? r.at;
-}
 
-/**
- * 「结论」列。打标行填**打标结论**（高 / 中 / 低 / 无风险，配色由模板按等级分岔），
- * 报备行填**评估结论**（升级 / 不升级），已撤回的填「已撤回」。
- */
+/** 「结论」列 ＝ **打标结论**（高 / 中 / 低，配色由模板按等级分岔） */
 function rowConclusionText(r: QueueRow): string {
-  if (r.report) {
-    if (r.report.status === '已撤回') return '已撤回';
-    return r.report.assessment?.decision ?? '—';
-  }
   return r.tag?.result ?? '—';
 }
-/**
- * 「结论人」列的两行：姓名 + 角色。打标行取标记人，报备行取评估人；
- * 已撤回取**撤回人** —— 撤回只能由报备人本人发起（§4.8），故取报备人那一对。
- */
+/** 「结论人」列的两行：姓名 + 角色，取**标记人**那一对 */
 function rowConclusionBy(r: QueueRow): { name: string; role: string } {
-  if (r.report) {
-    if (r.report.status === '已撤回') return { name: r.report.by, role: r.report.byRole };
-    const a = r.report.assessment;
-    return { name: a?.by ?? '—', role: a?.byRole ?? '' };
-  }
   return { name: r.tag?.by ?? '—', role: r.tag?.byRole ?? '' };
 }
-/** 「结论时间」列。打标行取标记时间，报备行取评估 / 撤回时刻；取不到写「—」 */
+/** 「结论时间」列 ＝ **标记时间**；取不到写「—」 */
 function rowConclusionAt(r: QueueRow): string {
-  if (r.report) {
-    return (r.report.status === '已撤回' ? r.report.withdrawAt : r.report.assessment?.at) ?? '—';
-  }
   return r.tag?.at ?? '—';
 }
 
@@ -3366,52 +3337,32 @@ const taggerChips = computed(() => {
  * 让班组筛选影响自己那一排的数字，选中一个组之后其余几枚全变 0，
  * 人再也看不出该切到哪一组（与 `reportSourceBase` 是同一条道理）。
  */
-/**
- * 「已判」段那一档 **风险报备** 的底表 ＝ B 线**已出结论**的报备单：已评估 + 已撤回。
- *
- * 🔴 **只收 B 线**（`source === REPORT_SOURCE`）：合并层的 `reports` 里躺着两条线
- * （见 `stores/riskPool.ts` 的 `items`），不收窄的话 A 线的池内条目会在这一档里再出现一遍，
- * 而它们已经在「全部有风险」那三个轴上数过了 —— 同一条行被数两次，段总数当场对不上。
- * 🔴 **在队的两态（待分派 / 评估中）不收**：那是「还没下结论」，它的工作面在工单工作台的
- * 「风险报备池」。待判段也不收报备（仍只有实时监控 / 重点工单两路）。
- * 次序：结论时刻倒序，没有结论时刻的退回提交时刻 —— 最近判的排最前，与另两档一致。
- *
- * 🔴 **再收窄一道：本单已有打标结论的不收**（2026-09-29，「风险管控」弹窗统一的连带）。
- * 统一之后报备线的弹窗也出「风险等级」段，而报备定的等级走的是**与标记同一条入口**
- * （`recordTagFor`：写工单级等级、条目进风险工单池）。于是那张单会同时躺在
- * 「全部有风险」对应等级档与本档里 —— 同一条行被数两次，「已判」段三段相加就不再是
- * 三段互斥之和，恒等式当场失守。故本档的定义收窄为"**报备来源、已出结论、且这张单
- * 还没有打标结论**"：一给等级即归入「全部有风险」，不再重复计入本档。
- * 判据取 `taggedTicketNos`（A 线带 `tag` 的工单号集合，本页算「已标记」存量用的就是它），
- * 不另造一套"有没有等级"的判断。
+/*
+ * 🔴 **原先这里有一个 `reportedEntries`**：「已判」段那一档「风险报备」的底表
+ * （B 线已出结论的报备单，已评估 + 已撤回，且本单还没有打标结论）。
+ * **整个删除**（2026-10-07 裁决）：报备只在**前台**（工单工作台「风险报备池」）展示，
+ * 后台（本页）不展示。随之：
+ *   · 已判表里不再有报备行；
+ *   · 「已判」页签的数不再加这一档，`已判 ＝ 全部有风险`；
+ *   · B 线报备单的数据照旧在 `reportStore.reports` 里，前台那一页一字不动。
+ * ⚠️ 报备线定级现补的那条**标记条目**（来源「二线报备」）照旧进「全部有风险」——
+ * 那是标记条目不是报备条目，见 `rowSourceText`。
  */
-const reportedEntries = computed<RiskPoolItem[]>(() => reportStore.reports
-  .filter((r) => r.source === REPORT_SOURCE
-    && (r.status === '已评估' || r.status === '已撤回')
-    && !taggedTicketNos.value.has(r.ticketNo))
-  .slice()
-  .sort((a, b) => reportConcludedAt(b).localeCompare(reportConcludedAt(a))));
 
 const queueBase = computed<QueueRow[]>(() => {
   if (queueView.value === 'monitoring') return untaggedRows.value;
-  if (queueView.value === 'noRisk') return reportStore.noRiskEntries.map(rowOfEntry);
-  if (queueView.value === 'reported') return reportedEntries.value.map(rowOfReport);
   const pooled = reportStore.pooledEntries;
-  // 🔴 **三个轴同出 `pooledEntries` 这一份行集**：按风险等级 / 按标记人 / 按处置阶段
-  // 是同一批条目的三种看法，差别只在各自多一层收窄。
-  // 三个轴各取各的数据源（上一版「按处置阶段」取的是 B 线那张池行表）必然分叉：
-  // 行对象不同 → 列跟着不同 → 总数还会随各自的默认收窄漂，而三者本该恒等。
+  // 🔴 **两个轴同出 `pooledEntries` 这一份行集**：按风险等级 / 按标记人
+  // 是同一批条目的两种看法，差别只在各自多一层收窄。
+  // 🔴 原先还有第三个轴「按处置阶段」，已随 2026-10-07 裁决删除 ——
+  // 池内阶段的真源是「评估处置工作面」那张池行表的「处置阶段」列，同一个维度不摆两处。
   const picked = tagLevelFilter.value === 'tagger'
     ? (taggerFilter.value === 'all'
       ? pooled
       : pooled.filter((e) => taggerOf(e) === taggerFilter.value))
-    : tagLevelFilter.value === 'stage'
-      ? (poolStageFilter.value === 'all'
-        ? pooled
-        : pooled.filter((e) => poolStageTextOf(poolStageStatusOf(e)) === poolStageFilter.value))
-      : (tagLevelFilter.value === 'all'
-        ? pooled
-        : pooled.filter((e) => e.tag?.result === tagLevelFilter.value));
+    : (tagLevelFilter.value === 'all'
+      ? pooled
+      : pooled.filter((e) => e.tag?.result === tagLevelFilter.value));
   return picked.map(rowOfEntry);
 });
 const queueRows = computed<QueueRow[]>(() => inGroup(queueBase.value));
@@ -3428,7 +3379,7 @@ function setQueuePage(page: number, size: number) {
 }
 
 /**
- * 切三视图。**勾选不能跨视图残留**：在待打标里勾了三条再切到已入池，
+ * 切两视图（待判 / 已判）。**勾选不能跨视图残留**：在待判里勾了三条再切到已判，
  * 批量识别会对一批看不见的行动手（而那一批已经有结论了）。
  * 页码同理回到第一页——底表换了一批，停在第 3 页多半是一张空表。
  */
@@ -3441,7 +3392,7 @@ function setQueueView(v: QueueView) {
 
 // 等级分档、标记人与班组换了，底表就换了一批，页码必须回到第一页 ——
 // 否则「第 3 页 → 切到中风险」会停在一张恰好没有行的页上。
-watch([tagLevelFilter, taggerFilter, poolStageFilter, groupFilter], () => {
+watch([tagLevelFilter, taggerFilter, groupFilter], () => {
   queuePageCurrent.value = 1;
 });
 
