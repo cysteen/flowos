@@ -495,7 +495,7 @@ export interface Ticket {
   aftersaleOriginClosedAt?: string;
   /** 已向派生位售后单回传处理结果的次数（③；第一次回传使售后单解冻，其后为补充回传） */
   aftersaleResultCount?: number;
-  /** 售后单转客服落到本单的次数（④：建单那次计 1，此后每次「售后再次转客服」累加） */
+  /** 售后单转客服落到本单的次数（④：建单那次计 1；② 回流单：转出后第一次 AS_RETURNED 计 1；此后每次「售后再次转客服」累加） */
   aftersaleReturnCount?: number;
   /** 本单承接自哪张已结案的客服单（④ 支二：售后再次转客服新建，§4.5） */
   succeedsFromNo?: string;

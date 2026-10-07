@@ -797,6 +797,37 @@ const BASE_TICKETS: Ticket[] = [
       assignee: '王坐席', how: '领取', operator: '王坐席', operatorRole: '二线专员', at: '2026-09-25 10:32',
     }) ?? returned;
   })(),
+  // 回流单激活售后单后，售后再次转客服：落原单（§4.3 判据第 2 条 / §4.5 支一），履历「售后再次转客服（第 2 次）」
+  ((): Ticket => {
+    const asNo = 'AS-20260926-41205';
+    const returned = routeAftersaleEvent([{
+      id: 't38', no: 'IFLYZX-20260926-00013', type: '咨询', channel: '电话',
+      title: '扫地机器人边刷异响，咨询保修处理', smartMarks: [],
+      customer: '冯悦', vip: false, product: '扫地机器人 R2',
+      nodeStatus: '已转出', nodeStep: 4, nodeTotal: 5, priority: 'P2',
+      slaText: '06:30:00', slaSub: '充足', slaState: 'ok', slaMinutes: 390,
+      assignee: '王坐席', tab: 'mine', groupId: 'hardware', myTransferAction: true,
+      linkedAftersaleNo: asNo, linkedAftersaleServiceType: '维修',
+      customerPhone: '13700004120', sn: 'SN-R2-41205', productCategory: '智能硬件',
+      createdAt: '2026-09-26 09:15', updatedAt: '2026-09-26 09:50', responded: true,
+    }], {
+      type: 'AS_RETURNED', asNo, eventId: 'ase-41205-returned-1',
+      at: '2026-09-27 15:10', operator: '曹师傅（售后一组）',
+      returnReason: '检测边刷电机正常，异响为缠绕异物，转回客服指导清理。',
+    }).rows[0];
+    const claimed = takeOverReturnedTicket(returned, {
+      assignee: '王坐席', how: '领取', operator: '王坐席', operatorRole: '二线专员', at: '2026-09-27 15:40',
+    }) ?? returned;
+    // 客服侧「激活售后单」：售后单重新打开
+    const reopened = routeAftersaleEvent([claimed], {
+      type: 'AS_PROGRESS', asNo, at: '2026-09-28 10:20', operator: '曹师傅（售后一组）', status: '待接单',
+    }).rows[0];
+    return routeAftersaleEvent([reopened], {
+      type: 'AS_RETURNED', asNo, eventId: 'ase-41205-returned-2',
+      at: '2026-10-01 14:30', operator: '曹师傅（售后一组）',
+      returnReason: '清理后异响复现，复检硬件正常，转回客服指导更换边刷耗材。',
+    }).rows[0];
+  })(),
 
   // ---- 本组工单池 (pool) 5 ----
   {
@@ -1372,7 +1403,8 @@ const TICKET_GROUP_NAMES: Record<string, string[]> = {
   t33: ['硬件缺陷组'],
   t36: ['硬件缺陷组'],
   t37: ['硬件缺陷组'],
-  t41: ['硬件缺陷组'],
+  t38: ['硬件缺陷组'],
+  t41:['硬件缺陷组'],
   t42: ['硬件缺陷组'],
   // 1025 客服⇄售后互转：售后发起与关联售后的单
   'as-c1': ['硬件缺陷组'],
