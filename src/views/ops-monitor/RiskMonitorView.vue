@@ -325,62 +325,57 @@ const riskQueue = useRiskQueueStore();
 const derivedTickets = useDerivedTicketStore();
 
 /*
- * ==== 工单存量（页头第二块）====
+ * ==== 重点工单（页头第二块）====
  *
  * 🔴 **它的分母是「工单」，另外两块都不是**，三块并排最容易被读成一路数：
- *   · 实时监控 ＝ **监控条目**（A 线，含今日发现与打标漏斗三段）
- *   · 工单存量 ＝ 工单系统里的**在办工单**          ← 本块
- *   · 评估处置 ＝ **风险工单池**里的**池行**（A 线打标进池的条目 + B 线报备单）
- * 还有一处同屏撞名要盯住：页签「风险工单池」的角标数的是**池行**，
- * 本块「工单存量」数的是**工单**——两者同屏并列，但不是一回事，不可相加、不互校。
- * 「风险等级」一行的高/中/低数的是**工单**（按该单打标结论），
- * 与左栏打标漏斗里一条条目一个等级、数**条目**的那组数不是一个分母，界面上不相减、不互校。
+ *   · 实时监控 ＝ **监控条目**（A 线，今日扫描流量）
+ *   · 重点工单 ＝ 工单系统里的**全部在办工单**      ← 本块
+ *   · 风险工单 ＝ 左栏「已判」那一批**监控条目**（高 / 中 / 低）
+ * 三者两两不可相加、不互校。
  *
- * 【为什么取在办、不取全库】这几个数对应的正是**自动入队**的那套在办口径，
- * 而终态单不入队。把已结案的投诉单也数进来，这一行就成了一个没法据以行动的历史总量。
+ * 🔴 **本块分母 ＝ 全部在办工单，不是左栏来源档「重点工单」那个集合**（2026-10-07 裁决）。
+ * 左栏那一档是**自动纳入监控的判据**，更窄：在办 ∧（投诉 ∨ P0 / P1）。
+ * 同一个词在同屏指两个集合，故本块的块标题与每个数的 title 都把分母写死。
+ * 【为什么本块取全量在办】类型四类（咨询 / 建议 / 商机 / 投诉）只有落在全量在办上才有参考价值；
+ * 落在那个更窄的子集上，咨询 / 建议 / 商机三类会小到没法据以行动。
+ *
+ * 【为什么取在办、不取全库】终态单不入队、也不再需要盯。
+ * 把已结案的单数进来，这两行就成了一个没法据以行动的历史总量。
  */
 const isLiveTicket = (t: Ticket) => STATUS_GROUP[t.nodeStatus] !== '终态';
 
 /**
- * 已有**打标结论**的工单号集合：A 线条目中带 `tag` 的（`tag.result` 为 高 / 中 / 低 / 无风险 任一），
- * 取 `reportStore.pooledEntries`（已入池）∪ `reportStore.noRiskEntries`（已标记无风险）两批，按 `ticketNo` 去重。
- *
- * 🔴 **照旧含无风险**（2026-10-07 裁决的逐处判定之一）：它答的是"这张单**有没有人判过**"，
- * 给「工单存量」那两枚卡上的「已标记 N」用 —— 判为无风险也是判过，剔出去那一行就会把
- * 已经处理完的单重新算成"还没人看"，而督导正是照它决定哪一批要催。
- * 与左栏「已判」那个数不是一个口径（那边只数有风险的），两个数不相等是对的。
+ * 本块的底表 ＝ **全部在办工单**。下面两行分布同取这一份，
+ * 故 `ΣP0..P3 ≡ 它的条数`（`Priority` 只有四个取值，没有落不进格的单）。
  */
-const taggedTicketNos = computed(() => new Set(
-  [...reportStore.pooledEntries, ...reportStore.noRiskEntries].filter((e) => !!e.tag).map((e) => e.ticketNo),
-));
+const liveTickets = computed(() => TICKETS.filter(isLiveTicket));
 
 /**
- * 工单存量一格的三个数，全部取工单库 `TICKETS`、只数在办（`isLiveTicket`）：
- *   · `total`    ＝ 该口径的在办工单数（主数）；
- *   · `newToday` ＝ 其中 `createdAt` 落在今天（自然日）的工单数 —— 当日建单；
- *   · `tagged`   ＝ 其中工单号在 `taggedTicketNos` 里的工单数 —— 已有打标结论（含无风险）。
+ * 第一行 · **优先级四维**。界面词取建单下拉同一份 `PRIORITY_OPTIONS`（见 `PRIORITY_RAIL_LABEL`），
+ * 本文件不另抄一套说法 —— 改天业务把「普通加急」改个词，这一行会跟着走。
  */
-function ticketStockOf(match: (t: Ticket) => boolean) {
-  const today = todayPrefix();
-  const rows = TICKETS.filter((t) => isLiveTicket(t) && match(t));
-  return {
-    total: rows.length,
-    newToday: rows.filter((t) => !!t.createdAt?.startsWith(today)).length,
-    tagged: rows.filter((t) => taggedTicketNos.value.has(t.no)).length,
-  };
-}
+const HEAD_PRIORITY_KEYS = ['P0', 'P1', 'P2', 'P3'] as const satisfies readonly Priority[];
+const livePriorityCounts = computed<Record<Priority, number>>(() => {
+  const base: Record<Priority, number> = { P0: 0, P1: 0, P2: 0, P3: 0 };
+  for (const t of liveTickets.value) base[t.priority] += 1;
+  return base;
+});
 
 /**
- * 投诉类工单（在办）：`type === '投诉'`。数的是**工单类型**这一维，
- * 与监控来源无关 —— 来源那一维只有「实时监控 / 重点工单」两个值。
+ * 第二行 · **工单类型四类**。
+ * ⚠️ 工单类型这一维在建单侧是**五个**取值（`CREATE_TICKET_TYPES` 还有「刷机」），
+ * 业务给的是这四类，故 **Σ四类 ≤ 在办工单总数**，差额就是在办的刷机单。
+ * 差额如实留着，不吞也不凑：凑出来的"漂亮总数"会让人以为每一张在办单都归了这四类之一。
  */
-const complaintTicketStock = computed(() => ticketStockOf((t) => t.type === '投诉'));
-
-/**
- * 优先级为紧急 / 重要的工单（在办）。数的是**工单优先级**这一维，同样与监控来源无关。
- * 取值口径来自 `types/ticket.ts` 的业务标签（0803 业务确认）：**P0 ＝ 紧急、P1 ＝ 重要**。
- */
-const urgentTicketStock = computed(() => ticketStockOf((t) => t.priority === 'P0' || t.priority === 'P1'));
+const HEAD_TICKET_TYPES = ['咨询', '建议', '商机', '投诉'] as const;
+type HeadTicketType = (typeof HEAD_TICKET_TYPES)[number];
+const liveTicketTypeCounts = computed<Record<HeadTicketType, number>>(() => {
+  const base: Record<HeadTicketType, number> = { 咨询: 0, 建议: 0, 商机: 0, 投诉: 0 };
+  for (const t of liveTickets.value) {
+    if ((HEAD_TICKET_TYPES as readonly string[]).includes(t.type)) base[t.type as HeadTicketType] += 1;
+  }
+  return base;
+});
 
 /**
  * 按**工单**数打标结论的高 / 中 / 低：取 `reportStore.pooledEntries`（打标为 高 / 中 / 低 进池的条目）
@@ -400,14 +395,15 @@ function tagLevelCountsOf(pick: (e: RiskQueueEntry) => boolean): Record<RiskLeve
   return counts;
 }
 
-/**
- * 工单存量「风险等级」一行：**在办工单**按打标结论计的高 / 中 / 低工单数，只给数量。
- * 在办判定：工单号能在工单库（`TICKET_BY_NO`）或派生库（`derivedTickets`）解析到时按 `isLiveTicket` 判，终态剔除。
+/*
+ * 🔴 **原先这里有一个 `liveTagLevelCounts`**，给页头「重点工单」块那一行「风险等级
+ * 高危 / 中危 / 低危」供数：在办工单按打标结论、按工单去重取最高。
+ * 随该行删除（2026-10-07 裁决）：它**与左栏「已判」那三档同名不同数** ——
+ * 那边数的是**监控条目**、一条条目一个等级，这边按**工单**去重取最高，同屏两个「高危」天生不等。
+ * 业务判「重点工单都没有风险等级，这个数也不合适」，整行撤掉，页头的高 / 中 / 低
+ * 只在「风险工单」那一块出现一处，且与左栏走同一个派生值（见 `pooledAllCount` / `pooledLevelCount`）。
+ * `tagLevelCountsOf` 本身**照旧在用**（「实时监控」块的「风险标注」走它），一个字没动。
  */
-const liveTagLevelCounts = computed(() => tagLevelCountsOf((e) => {
-  const t = TICKET_BY_NO.get(e.ticketNo) ?? derivedTickets.find(e.ticketNo);
-  return !t || isLiveTicket(t);
-}));
 
 /**
  * 视图内三态（N4）：待领取 / 评估中 / 已评估。
@@ -648,11 +644,17 @@ const reportAssessedRows = computed(
   ),
 );
 
-/* ---- 页头右栏「评估处置」四卡：与左栏「待处置」同一个分母，一并收窄到 A 线 ---- */
+/* ---- A 线池行的几个计数：一并收窄到 A 线（口径与 store 那几个 count 逐条对齐，差别只在多一道 `isALine`）---- */
 //
-// 🔴 **不收窄的话这一屏当场自相矛盾**：卡上写「待评估总数 8」、左栏写「待领取 3 · 已领取 2」，
-// 点卡片落到的还是同一张表。同屏同一件事只能有一个数，这是本文件反复踩过的那个坑。
-// 口径与 store 那几个 count 逐条对齐，差别只在多一道 `isALine`。
+// 🔴 **不收窄的话这一屏当场自相矛盾**：一处写「待评估总数 8」、另一处写「待领取 3 · 已领取 2」，
+// 点下去落到的还是同一张表。同屏同一件事只能有一个数，这是本文件反复踩过的那个坑。
+//
+// ⚠️ **2026-10-07 之后这几个数里只剩 `alineOverdueCount` 有消费者**（「评估处置」工作面
+// 收窄标那一行）。页头右栏那一块原本摆着「待评估总数 / 待领取 · 已领取 / 超时未评 /
+// 今日已结论 / 今日结论三档」，整组已随块名改「风险工单」撤掉（业务拍板：那一块改展示已判数据）。
+// 🔴 **被撤的那几个数不要往别处搬**：它们的真源是「评估处置」工作面与它自己的三枚下钻卡，
+// 那一面一格没动。下面几个 computed 因此暂时没有消费者，**留着不删**是因为它们是那张
+// 工作面的现成口径、且与 store 的 count 一一对应；要复用先回头读本段，别另写一份。
 const alineUnassignedCount = computed(() => reportStore.unassignedQueue.filter(isALine).length);
 const alineAssigningCount = computed(() => reportStore.assigningQueue.filter(isALine).length);
 const alineOpenCount = computed(() => alineUnassignedCount.value + alineAssigningCount.value);
@@ -4305,9 +4307,48 @@ interface RailGroup {
   items: RailItem[];
 }
 
+/*
+ * ==== 已判段的两个派生值 · 本页**唯一一份** ====
+ *
+ * 🔴 **页头「风险工单」块与左栏「已判」段同取这两个，两处的数恒等**：
+ *     · 页头「风险工单总数」 ≡ 左栏已判页签 ≡ 左栏「全部有风险」      → `pooledAllCount`
+ *     · 页头「高危 / 中危 / 低危」 ≡ 左栏那三档                      → `pooledLevelCount`
+ * 🔴 **改一处必须两处一起改**，也就是说：要改口径只能改这两个函数，
+ *     不许在页头另写一份计数。页头与左栏同屏，各数各的必然分叉，
+ *     而"同屏两个「高危」不同数"正是 2026-10-07 这一轮要治的病
+ *     （被删掉的 `liveTagLevelCounts` 就是那个病例：它按工单去重取最高，与左栏天生不等）。
+ * 🔴 两者都已过班组筛选（`inGroup`），故切班组时页头与左栏同进同退。
+ */
+
+/** 已判段总数 ＝ 池内全部条目（已过班组筛选）。页头「风险工单总数」与左栏已判页签同取它 */
+const pooledAllCount = computed(() => inGroup(reportStore.pooledEntries).length);
+
 /** 池内某一等级的条目数（已过班组筛选）。判档读现行 `tag.result`，与池内状态无关 */
 function pooledLevelCount(lv: RiskLevel) {
   return inGroup(reportStore.pooledEntries.filter((e) => e.tag?.result === lv)).length;
+}
+
+/**
+ * 页头「风险工单」块的下钻：进「评估处置」工作面的**不限阶段**（三段首尾相接），
+ * 可带一个风险等级收窄 —— 那一块原本就是这个工作面的唯一入口（`drillReport` 是唯一的进法），
+ * 换数之后**下钻能力照留**，否则领取 / 评估 / 协同整个工作面就进不去了。
+ *
+ * ⚠️ 三件事必须在 `drillReport` 之后补：
+ *   ① `assessedTodayOnly = false` —— 它默认开着，不关的话第三段只躺今天结论的那几条；
+ *   ② `onlyOverdue = false` —— `setReportView` 在 `v === reportView` 时会早退，
+ *      从工作面自己开着超时收窄的状态点进来，收窄会留在那儿；
+ *   ③ `poolLevelFilter` —— `drillReport` 先把它放回「全部」，这里再按卡片补上。
+ *
+ * 🔴 **本块的卡不点亮 `on`**：卡上的数是**监控条目**（已判，含来源为「风险报备」的那一条），
+ * 工作面那张表数的是**池行**且只收 A 线（`isALine` 把来源「二线报备」挡在外面）——
+ * 两个数天生差着那几条。点亮 `on` 等于宣称"这个数就是这张表的分母"，那是假话；
+ * 本块是**进工作面的入口**，不是工作面的一个筛选档。
+ */
+function drillPooled(lv: RiskLevel | 'all') {
+  drillReport('all');
+  assessedTodayOnly.value = false;
+  onlyOverdue.value = false;
+  poolLevelFilter.value = lv;
 }
 
 /*
@@ -4377,7 +4418,8 @@ const railGroups = computed<RailGroup[]>(() => {
   // 🔴 **已判段这一个数管到底**（2026-10-07 裁决）：页签、「全部有风险」、「按标记人」
   // 三处同取它 —— 已判 ＝ 全部有风险 ＝ 高危+中危+低危 ＝ 按标记人各项之和。
   // 原先这里还取 `noRiskAll` / `reportedAll` 两个数去加页签，两档删掉之后一并取消。
-  const pooledAll = inGroup(reportStore.pooledEntries).length;
+  // 🔴 **第四处是页头「风险工单」块**：它同取 `pooledAllCount`，与这里恒等、改一处必须两处一起改。
+  const pooledAll = pooledAllCount.value;
   return [
     {
       stage: 'untagged',
@@ -4974,153 +5016,109 @@ function toggleWordEnabled(w: RiskWord) {
         </div>
 
         <!--
-          中栏 ＝ 工单存量。分母是**工单**，另外两栏一个是监控条目、一个是池行，
+          中栏 ＝ 重点工单。分母是**工单**，另外两栏一个是今日监控流量、一个是已判条目，
           三栏并排最容易被读成一路数，故每个数各自 title 写明分母，且**整栏不可点**：
           点出去必然落在另一个分母的清单上，数对不上比不能点更糟。
+
+          🔴 **块名「重点工单」与左栏来源档「重点工单」同名、不同集合**（2026-10-07 业务拍板
+          「不冲突，重点工单都是在办的工单」，块名保留）：左栏那一档是**自动纳入监控的判据**、
+          更窄 —— 在办 ∧（投诉 ∨ P0 / P1）。同一个词在同屏指两个集合，不写清没人说得明白，
+          故块标题与每个数的 title 都把「本块分母 ＝ 全部在办工单」写死，并点明与左栏那个判据不是同一批。
+
+          🔴 **原先这里是「投诉工单 / 紧急·重要」两枚数 + 一行「风险等级 高危 / 中危 / 低危」**，
+          2026-10-07 整块重做成**优先级四维 + 类型四类**：那一行按工单去重取最高、
+          与左栏「已判」那三档同名不同数（见 script 里 `liveTagLevelCounts` 那段墓碑），
+          业务判「重点工单都没有风险等级，所以这个数据也不合适」。两枚旧数连同小字里的
+          「今日新增 / 已标记」一并撤掉，**不保留、也不搬到别处**。
         -->
         <div class="effect-pane effect-pane--ticket">
           <h2
             class="pane-title"
-            title="工单系统里需要风险侧盯的存量 · 分母是在办工单，与左栏监控条目、右栏池行均不可相加"
+            title="在办工单的两维分布（优先级 / 工单类型）· 🔴 本块分母 ＝ 全部在办工单（终态单不计）。🔴 与左栏来源档「重点工单」同名、不是同一个集合：左栏那一档是自动纳入监控的判据，更窄 —— 在办 ∧（投诉 ∨ P0 / P1）。与左栏监控条目、右栏已判条目均不可相加"
           >重点工单</h2>
-          <div class="dash-grid dash-grid-2">
-            <div class="dm-cell dm-static" title="在办的投诉类工单数 · 分母是工单">
-              <span class="dm-k">投诉工单</span>
-              <span class="dm-val">
-                <span class="dm-v">{{ complaintTicketStock.total }}</span>
-                <span class="dm-h">今日新增 {{ complaintTicketStock.newToday }} · 已标记 {{ complaintTicketStock.tagged }}</span>
-              </span>
-            </div>
+          <!-- 第一行 · 优先级四维。`Priority` 只有这四个取值，故 P0 + P1 + P2 + P3 ≡ 在办工单总数 -->
+          <div class="dash-grid dash-grid-4">
             <div
+              v-for="p in HEAD_PRIORITY_KEYS"
+              :key="p"
               class="dm-cell dm-static"
-              title="在办且优先级为 P0 紧急 / P1 重要的工单数 · 分母是工单"
+              :title="`在办且优先级为 ${PRIORITY_RAIL_LABEL[p]} 的工单数 · 本块分母 ＝ 全部在办工单；P0 + P1 + P2 + P3 ＝ 在办工单总数`"
             >
-              <span class="dm-k">紧急 / 重要</span>
-              <span class="dm-val">
-                <span class="dm-v">{{ urgentTicketStock.total }}</span>
-                <span class="dm-h">今日新增 {{ urgentTicketStock.newToday }} · 已标记 {{ urgentTicketStock.tagged }}</span>
-              </span>
+              <span class="dm-k">{{ PRIORITY_RAIL_LABEL[p] }}</span>
+              <span class="dm-val"><span class="dm-v">{{ livePriorityCounts[p] }}</span></span>
             </div>
           </div>
+          <!-- 第二行 · 工单类型四类。工单类型另有第五个取值「刷机」，故四类之和 ≤ 在办工单总数，差额就是在办的刷机单 -->
           <div class="dash-links">
-            <span class="dash-links-k" title="在办工单按风险等级计">风险等级</span>
             <span
-              v-for="lv in RISK_LEVELS"
-              :key="lv"
+              class="dash-links-k"
+              title="同一个分母（全部在办工单）换一维看：按工单类型计。🔴 工单类型另有第五个取值「刷机」，不在这四类里，故四类之和可能小于在办工单总数，差额就是在办的刷机单"
+            >工单类型</span>
+            <span
+              v-for="tt in HEAD_TICKET_TYPES"
+              :key="tt"
               class="dl-item dl-static"
-              :style="{ color: RISK_LEVEL_STYLE[lv].color }"
+              :title="`在办的「${tt}」类工单数 · 本块分母 ＝ 全部在办工单`"
             >
-              {{ riskLevelText(lv) }}<b>{{ liveTagLevelCounts[lv] }}</b>
+              {{ tt }}<b>{{ liveTicketTypeCounts[tt] }}</b>
             </span>
           </div>
         </div>
 
         <!--
-          右栏 ＝ 评估处置。装的是**风险工单池里的池行**：A 线打标进池的条目 + B 线的二线报备。
-          🔴 本轮**不再按来源排除任何一路**：打标已经是进池的前置门槛，能进池的都已经确认有风险，
-          下一步只剩"升不升级"一个问题。旧口径把「关键词触发」那一路排除在分母外，
-          在漏斗模型下会让一批确实要评估的条目不进分母，这一栏系统性报少。
+          右栏 ＝ 风险工单。装的是**已判出风险等级（高 / 中 / 低）的监控条目**。
 
-          🔴 **块名由「风险评估」改成「评估处置」（只改块名，块内几枚 KPI 的文案与口径一个字没动）**。
-          【为什么改】「风险评估」这个词已经背了三个意思：工单底栏的**动作**形态、非投诉单的**结论流程**、
-          以及这里的**页头卡块名**。同一个词指三样东西，说"去看风险评估"没人知道说的是哪一处。
-          更硬的一条：它与「风险报备池」页签上那三枚（待评估总数 / 超时未评 / 今日已评估）**同屏撞名**，
-          两处只靠"分居两个页面"区分——一旦有人截图或转述，就分不出说的是哪一块的数。
-          故这一块改叫「评估处置」：它讲的本就是池行**从进池到收口**这一段处置，与底栏那个动作脱钩。
+          🔴 **它与左栏「已判」段走同一个派生值，两处恒等**（见 script 里 `pooledAllCount` /
+          `pooledLevelCount` 那一段）：
+            · 风险工单总数 ≡ 左栏「已判」页签 ≡ 左栏「全部有风险」；
+            · 高危 / 中危 / 低危 ≡ 左栏已判段那三档。
+          🔴 **改一处必须两处一起改** —— 要改口径只能改那两个派生值，**不许在这里另写一份计数**：
+          页头与左栏同屏，各数各的必然分叉，而"同屏两个「高危」不同数"正是本轮要治的病
+          （被删掉的中栏那一行「风险等级」就是那个病例）。
+          🔴 **允许它与左栏重复**（2026-10-07 业务拍板："就让它重复，但两处恒相等"）。
+
+          🔴 **块名由「评估处置」改成「风险工单」，块内六个数整组撤掉**（2026-10-07 裁决）：
+          待评估总数 / 待领取 · 已领取 / 超时未评 / 今日已结论 / 今日结论（升级 · 不升级 · 建议）
+          全部不要，**也不搬到别处** —— 它们的真源是下面那个「评估处置」工作面与它自己的
+          三枚下钻卡，那一面连同池行表一格没动，下钻进去照样找得到。
+          【为什么】业务指着这一块判「这个数据调整下，展示已判的数据，比如风险工单总单、高中低分布」。
+          块名跟着它数的东西走：它现在数的是**已判出等级的风险工单**，不再是池行的处置进度。
+          块名不叫「已判」—— 那是左栏的段名，两处用同一个词会立刻被读成同一个控件。
+
+          🔴 **下钻能力照留**：这一块原本是「评估处置」工作面的**唯一入口**
+          （`drillReport` 是本页唯一一处 `setListView('report')`）。四枚卡仍然点得动、
+          仍然进那个工作面，只是换了显示的数；不留的话领取 / 评估 / 协同整个工作面就再也进不去了。
+          🔴 **四枚卡一律不点亮 `on`**：卡上数的是**监控条目**（已判，含来源为「风险报备」的那一条），
+          工作面那张表数的是**池行**且只收 A 线（`isALine` 把来源「二线报备」挡在外面），
+          两个数天生差着那几条。点亮 `on` 等于宣称"这个数就是这张表的分母"，那是假话。
+          本块是**进工作面的入口**，不是工作面的一个筛选档。详见 `drillPooled` 的注释。
         -->
         <div class="effect-pane effect-pane--report">
           <h2
             class="pane-title"
-            title="风险工单池里的池行 · 只数标记进池的监控条目（A 线）：非投诉单走风险评估（升级 / 不升级），投诉单走风险处理建议。二线报备在工单工作台「风险报备池」，不进这一块"
-          >评估处置</h2>
-          <div class="dash-grid dash-grid-3">
-            <!--
-              B1 待评估总数 ＝ **待领取 + 已领取**（N4 改口径，不再等于单一状态的条数）。
-              🔴 下钻落到 `open`（待领取 + 已领取、不含已结论），表里行数 ＝ 卡上的数。
-              落「待领取」单一档时卡上 8、表里 5，正是本文件开头那条坑。
-              🔴 **点亮条件只认 `open`**，不是 `reportView !== 'assessed'`：
-              「不限阶段」`all` 那一档**含已结论**，在它上面点亮等于说"这个数就是当前这张表的分母"，而分母根本不同。
-              `!onlyOverdue` 同样要留：开着超时收窄时看到的是这两段里超时的那几条，不是它们的全集
-              （那一路归隔壁「超时未评」卡点亮）。
-            -->
+            title="已判出风险等级（高 / 中 / 低）的监控条目 · 🔴 与左栏「已判」段恒等：总数 ≡ 左栏已判页签 ≡ 「全部有风险」，高 / 中 / 低 ≡ 左栏那三档，两处同取一个派生值，改一处必须两处一起改。判为无风险的不在这一批（不进池、离开漏斗）。点任一枚进「评估处置」工作面处置这一批"
+          >风险工单</h2>
+          <div class="dash-grid dash-grid-4">
             <button
               type="button"
               class="dm-cell"
-              :class="{
-                on: listView === 'report' && reportView === 'open' && !onlyOverdue,
-                hot: alineOverdueCount > 0,
-              }"
-              title="待领取 + 已领取 · 池内还没有结论的全集"
-              @click="drillReport('open'); onlyOverdue = false"
+              title="已判出风险等级（高 / 中 / 低）的监控条目总数 ≡ 左栏「已判」页签上那个数 ≡ 左栏「全部有风险」。点它进「评估处置」工作面 · 不限阶段"
+              @click="drillPooled('all')"
             >
-              <span class="dm-k">待评估总数</span>
-              <span class="dm-val">
-                <span class="dm-v">{{ alineOpenCount }}</span>
-                <span class="dm-h">
-                  待领取 {{ alineUnassignedCount }} · 已领取 {{ alineAssigningCount }}
-                </span>
-              </span>
+              <span class="dm-k">风险工单总数</span>
+              <span class="dm-val"><span class="dm-v">{{ pooledAllCount }}</span></span>
             </button>
-            <!--
-              B2 超时未评 · 下钻落到本工作面的「不限阶段」＋「超时未评」这个收窄。
-              🔴 **不能落在「待领取」**：超时这件事横跨待领取与已领取两态，而超时的那几条
-              完全可能一条都不在待领取里（领了没结论照样在走钟）。落单一档时，卡上写着 3、
-              点进去是一张空表 —— 人只会以为这个数算错了，而不会想到"它们在隔壁那一档"。
-              故去向取 `all`（不限阶段），三段一起看，那几条一条不落地出现在同一张表里。
-              ⚠️ 两句调用**有先后**：`setReportView('all')` 自己会把两个阶段专属的收窄摘掉，
-              故 `onlyOverdue = true` 必须写在它后面补上。
-              顺序颠倒的话点下去就是"不限阶段的全表"，收窄当场丢掉。
-            -->
             <button
+              v-for="lv in RISK_LEVELS"
+              :key="lv"
               type="button"
               class="dm-cell"
-              :class="{
-                on: listView === 'report' && reportView !== 'assessed' && onlyOverdue,
-                hot: alineOverdueCount > 0,
-              }"
-              :title="`超过处置时限 ${assessLimitText} 仍无结论 · 从进入实时监控时刻起算、不从领取时刻 · 不是 SLA`"
-              @click="drillReport('all'); onlyOverdue = true"
+              :class="{ hot: lv === '高' && pooledLevelCount(lv) > 0 }"
+              :title="`判为${riskLevelText(lv)}的监控条目数 ≡ 左栏已判段「${riskLevelText(lv)}」那一档（同一个派生值，两处恒等）。点它进「评估处置」工作面 · 不限阶段并收窄到${riskLevelText(lv)}`"
+              @click="drillPooled(lv)"
             >
-              <span class="dm-k">超时未评</span>
-              <span class="dm-val"><span class="dm-v">{{ alineOverdueCount }}</span></span>
-            </button>
-            <button
-              type="button"
-              class="dm-cell"
-              :class="{ on: listView === 'report' && reportView === 'assessed' && decisionFilter === 'all' }"
-              title="今日下过收口结论的池行 —— 升级 + 不升级 + 风险处理建议。三种收口都算，只数评估那两种会漏掉投诉单那一路"
-              @click="drillReport('assessed'); decisionFilter = 'all'; assessedTodayOnly = true"
-            >
-              <span class="dm-k">今日已结论</span>
-              <span class="dm-val"><span class="dm-v">{{ alineConcludedTodayCount }}</span></span>
-            </button>
-          </div>
-          <!--
-            收口**三选一**：升级 / 不升级 / 协同。前两枚来自 store 的 ASSESS_DECISIONS
-            （旧词「接管」整个作废，它同时背着三个意思；「升级」只指**转投诉单**，不含升三线）；
-            🔴 第三枚「协同」是**投诉单那一路的收口方式**，不进那个枚举，由本页并上去 ——
-            少这一枚的话，上面「今日已结论」与这一排之和会差一条，而那一条谁也找不出来在哪。
-          -->
-          <div class="dash-links">
-            <span
-              class="dash-links-k"
-              title="今日三种收口各多少条 · 三枚之和 ≡ 上面的「今日已结论」"
-            >今日结论</span>
-            <button
-              v-for="d in DECISION_KEYS"
-              :key="d"
-              type="button"
-              class="dl-item"
-              :class="{
-                on: listView === 'report' && reportView === 'assessed' && decisionFilter === d,
-                danger: d === '升级' && alineDecisionCounts[d] > 0,
-              }"
-              :title="d === COORD_DECISION
-                ? '投诉单不做风险评估，由客诉专员给出风险处理建议：不改状态、不改处理人'
-                : `评估结论「${d}」`"
-              @click="drillReport('assessed'); decisionFilter = d; assessedTodayOnly = true"
-            >
-              {{ d }}<b>{{ alineDecisionCounts[d] }}</b>
+              <span class="dm-k">{{ riskLevelText(lv) }}</span>
+              <span class="dm-val"><span class="dm-v">{{ pooledLevelCount(lv) }}</span></span>
             </button>
           </div>
         </div>
@@ -7561,13 +7559,15 @@ function toggleWordEnabled(w: RiskWord) {
   box-shadow: none;
 }
 /*
- * 三栏：实时监控（命中记录）｜ 工单存量（在办工单）｜ 评估处置（队列条目）。
- * 左栏四个 KPI、右栏三个，中栏只有两个，故按 1.15 : 0.85 : 1 分宽，
- * 均分会让中栏空出一截、左栏的四格挤成两行。
+ * 三栏：实时监控（今日扫描流量）｜ 重点工单（在办工单）｜ 风险工单（已判条目）。
+ * 🔴 **三栏现在各四格，故三等分**（2026-10-07 卡区改版）：
+ * 上一版是 1.15 : 0.85 : 1 —— 彼时中栏只有两个 KPI，不收窄它会空出一截。
+ * 中栏改成优先级四维之后三栏格数齐平，再留那个比例反而会把中栏的
+ * 「P2（普通加急）」挤成两行。
  */
 .effect-split {
   display: grid;
-  grid-template-columns: 1.15fr 0.85fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
   min-width: 0;
   align-items: stretch;
