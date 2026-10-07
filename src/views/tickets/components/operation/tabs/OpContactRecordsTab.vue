@@ -11,6 +11,7 @@ import {
 } from '@ant-design/icons-vue';
 import { message } from 'ant-design-vue';
 import type { ContactRecord } from '@/views/tickets/types/operationTabs';
+import { formatOpTime } from '@/views/tickets/utils/opTime';
 import RecordingPlayer from '../RecordingPlayer.vue';
 
 defineProps<{ records: ContactRecord[] }>();
@@ -37,9 +38,14 @@ function jumpFirstline() {
   message.info('前往一线工作台查看 IM 记录');
 }
 
+/**
+ * 卡头右端那一行 ——〔`操作人: 王坐席 | 2026-06-17 15:08:22`〕。
+ * 2026-10-07 裁决拿它当全页签时刻展示的**参照样式**，故格式与位置都保持不变；
+ * 时刻仍过一道 formatOpTime，让精度不齐的那几条（只到分钟的）也排进同一个宽度。
+ */
 function metaLabel(r: ContactRecord) {
   const prefix = r.metaPrefix ?? '操作人';
-  let s = `${prefix}: ${r.operator} | ${r.when}`;
+  let s = `${prefix}: ${r.operator} | ${formatOpTime(r.when)}`;
   if (r.im) s += ` | 会话 ${r.im.sessionDuration} · ${r.im.messageCount} 条`;
   return s;
 }
