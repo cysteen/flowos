@@ -200,11 +200,19 @@ const riskMonitorLine = computed(() => {
      */
     const t = tagRecord.value;
     if (!t) return `风险监控核实：本单 ${v.hitCount} 条命中待核实，尚无核实结论`;
-    const lv = t.result === '无风险' ? '无风险' : riskLevelText(t.result);
-    return `风险监控核实：本单 ${v.hitCount} 条命中待核实；风险等级已判「${lv}」· ${t.by}（${t.byRole}）· ${t.at}`;
+    /*
+     * 🔴 **这里只说命中那一半**（2026-10-07 裁决）：原来这一支还接着
+     * 「；风险等级已判「X」· 〈标记人〉· 〈标记时刻〉」——那三格**上半 `.rk-tag-line` 已经摆着**，
+     * 同一块里同一个结论、同一个人、同一个时刻各写两遍，时刻还因为是拼进长句里的
+     * 而漏掉了全页签统一的秒位。
+     * 上面那段注释担心的"打完标的单被写成『尚无核实结论』"不会发生：
+     * 这一支的前提就是 `tagRecord` 存在，而它的结论正由上半那一行负责说。
+     */
+    return `风险监控核实：本单 ${v.hitCount} 条命中待核实`;
   }
   const e = v.latest;
-  return `风险监控核实：${riskLevelText(v.grade)} · ${e.verdict} · ${e.by}（${e.byRole}）· ${e.at}`;
+  // 核实结论与上半的标记结论是两条线，这一行不重复：核实人与核实时刻只在这里出
+  return `风险监控核实：${riskLevelText(v.grade)} · ${e.verdict} · ${e.by}（${e.byRole}）· ${formatOpTime(e.at)}`;
 });
 
 const riskMonitorBreakdown = computed(() => {
