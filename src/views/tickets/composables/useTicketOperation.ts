@@ -369,7 +369,8 @@ export function useTicketOperation() {
       }
       // 售后转回后重派（AS_RETURNED，见 aftersaleEvents.ts）：子状态取工单行（未认领 / 处理中），关联位保持活跃
       base.returnedFromAftersale = !!t.returnedFromAftersale;
-      if (t.returnedFromAftersale && t.tab !== 'done') base.status = t.nodeStatus;
+      // 售后转入（③④）的新单同样取工单行子状态：未认领进池时页头不能落样例的「处理中」（§4.1 / §4.3）
+      if ((t.returnedFromAftersale || isAftersaleInbound(base)) && t.tab !== 'done') base.status = t.nodeStatus;
       // 售后转入（③④）：本单占该售后单的客服派生位，正常在跑，不进「已转出」
       if (t.aftersaleOriginNo && !t.escalatedToNo) {
         base.linkedAftersale = {
@@ -391,6 +392,11 @@ export function useTicketOperation() {
       if (isAftersaleInbound(base)) {
         base.builder = AFTERSALE_INBOUND_LABEL;
         base.builderShort = AFTERSALE_INBOUND_LABEL;
+        // 建单时间取售后事件到达建单的时刻，与履历首条一致
+        if (t.createdAt) {
+          base.createdAt = t.createdAt;
+          base.createdAtFull = t.createdAt;
+        }
       }
       if (t.flash) applyFlashRow(base, t);
       if (t.problemDesc?.trim()) {
@@ -411,7 +417,9 @@ export function useTicketOperation() {
       const entries = eventTimelineOverride ?? t?.eventTimeline ?? [];
       // 客服⇄售后链路上的单（1025）：履历只取本单自己的事件，不沿用样例单的履历，
       // 否则别的单的「升级售后」「升级投诉」等样例条目会混进来，与本单的关联位自相矛盾
-      if (t && (t.linkedAftersaleNo || t.aftersaleOriginNo || t.returnedFromAftersale || t.succeedsFromNo || t.succeededByNo)) {
+      // （含关联已被同位降级 / 迁走、只剩售后履历的旧单：履历条目 id 以 `as-` 起头，见 aftersaleEvents.ts）
+      if (t && (t.linkedAftersaleNo || t.aftersaleOriginNo || t.returnedFromAftersale || t.succeedsFromNo || t.succeededByNo
+        || entries.some((e) => e.id.startsWith('as-')))) {
         const own = entries.map((e) => ({ ...e }));
         const hasCreate = own.some((e) => e.action === 'create');
         timeline.value = hasCreate || !t.createdAt ? own : [{
