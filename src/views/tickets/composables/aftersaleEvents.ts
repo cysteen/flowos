@@ -152,7 +152,8 @@ function markHandled(t: Ticket, e: AftersaleEvent): string[] {
  *
  * 幂等：终态事件（AS_CLOSED / AS_RETURNED）按事件 id 去重，重复到达直接丢弃；
  * reopen 后售后再转客服不限次数（Q4）—— 每次是新事件 id，照常处理。
- * 原单已不在「已转出」（如已被别的回传唤醒、或是投诉单①）时只写履历、不改状态。
+ * 来源位原单已不在「已转出」时：AS_CLOSED 只写履历、不改状态；AS_RETURNED 遇已结案原单按 §4.5 支二
+ * 返回 `origin-settled`（由 routeAftersaleEvent 新建咨询单承接），遇未结案回流单落原单（§3.4）。
  */
 export function applyAftersaleEvent(
   ticket: Ticket,
@@ -203,8 +204,9 @@ export function applyAftersaleEvent(
     return { ticket: { ...ticket, linkedAftersaleStatus: AFTERSALE_FROZEN_STATUS }, outcome: 'card-only' };
   }
   if (event.type === 'AS_CLOSED') return applyClosed(ticket, event);
-  // 来源位上的回流单（已不在「已转出」）：激活后售后再次转客服，同 §4.5
-  if (isActiveReflow(ticket)) return applyReturnedAgain(ticket, event, 'source');
+  // 来源位上的回流单（已不在「已转出」）：激活后售后再次转客服，同 §4.5；
+  // 「已转出」期间被人工强结 / 关闭的原单：按 §4.5 支二新建咨询单承接（§3.4）
+  if (isActiveReflow(ticket) || isSettledTransferOrigin(ticket)) return applyReturnedAgain(ticket, event, 'source');
   return applyReturned(ticket, event, deps.dispatch);
 }
 
@@ -221,9 +223,23 @@ function isOriginSettled(t: Ticket): boolean {
   return isTicketClosed(t.nodeStatus) || t.tab === 'done' || !!t.escalatedToNo;
 }
 
-/** 〈n〉的起点（§4.5）：④ 建单那次计 1；② 转出后第一次 `AS_RETURNED` 计 1；③ 升级投诉转入不计 */
+/**
+ * 来源位上已离开「已转出」且已结案的转售后原单（§3.4 / §4.3 判据第 3 条）：含回流单结案，
+ * 及「已转出」期间被人工强结 / 关闭的原单；投诉单（① 关联售后）不算。尚未被承接。
+ */
+function isSettledTransferOrigin(t: Ticket): boolean {
+  return t.nodeStatus !== '已转出' && !t.succeededByNo && t.type !== '投诉' && isOriginSettled(t);
+}
+
+/**
+ * 〈n〉的起点（§4.5）：④ 建单那次计 1；② 转出后第一次 `AS_RETURNED` 计 1（未回流过的来源位原单起点为 0）；
+ * ③ 升级投诉转入不计
+ */
 function returnCountBase(t: Ticket): number {
-  return t.aftersaleReturnCount ?? (t.aftersaleRelation === 'escalated' ? 0 : 1);
+  if (t.aftersaleReturnCount != null) return t.aftersaleReturnCount;
+  if (t.aftersaleRelation === 'escalated') return 0;
+  if (t.linkedAftersaleNo && !t.returnedFromAftersale) return 0;
+  return 1;
 }
 
 function returnFacts(e: AftersaleEvent): string {
@@ -499,7 +515,8 @@ function buildInboundTicket(
 /**
  * 售后单两位路由（§5.2「事件按关系类型路由」）：入参是挂在该售后单上的客服单（来源位 / 派生位，可空），
  * 返回各行处理结果与可能新建的那张单。三条售后侧事件与种子数据都走这里。
- * - `AS_RETURNED`（§4.3，命中即止）：来源位有「已转出」原单 → 回流（§3.3）；来源位有回流单、否则派生位有单 →
+ * - `AS_RETURNED`（§4.3，命中即止）：来源位有「已转出」原单 → 回流（§3.3）；来源位有回流单或已结案的转售后原单
+ *   （含「已转出」期间被人工强结，§3.4）、否则派生位有单 →
  *   未结案落原单（§4.5 支一），已结案新建咨询单并建「承接」（§4.5 支二）；两位都空 → 新建咨询单（§4.3）；
  * - `AS_ESCALATE_COMPLAINT`：新建投诉单挂派生位（§4.1），派生位已占 → 同位降级（§5.3）；来源位不动、卡片置「冻结」；
  * - `AS_PROGRESS` / `AS_CLOSED`：两位各自落（§3.2 / §3.4）。
@@ -558,7 +575,7 @@ export function routeAftersaleEvent(
     return { rows: out, outcome: r.outcome };
   }
   // 发起激活的那张客服单（§4.5）：先看来源位上的回流单，再看派生位上的单
-  const origin = src && isActiveReflow(src)
+  const origin = src && (isActiveReflow(src) || isSettledTransferOrigin(src))
     ? { idx: srcIdx, t: src, slot: 'source' as const }
     : der ? { idx: derIdx, t: der, slot: 'derived' as const } : undefined;
   if (origin) {
