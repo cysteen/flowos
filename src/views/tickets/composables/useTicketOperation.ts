@@ -415,6 +415,17 @@ export function useTicketOperation() {
     if (!t?.problemDesc?.trim() && sample?.demand) base.demand = sample.demand;
     if (sample?.insight) base.insight = sample.insight;
     if (sample?.aiInsight) base.aiInsight = sample.aiInsight;
+    // 客服⇄售后链路上的单：问题描述与 AI 洞察的工单摘要取本单，不落类型样例（客户维度的摘要保留）
+    if (isAftersaleChainTicket(t)) {
+      if (!t.problemDesc?.trim()) base.demand = t.title;
+      base.product.issueTags = [];
+      if (t.createdAt) base.issueOccurredAt = t.createdAt;
+      base.aiInsight = {
+        customerBrief: base.aiInsight.customerBrief,
+        ticketBrief: `${t.type}单，${t.title}`,
+        suggestion: t.linkedAftersaleNo || t.aftersaleOriginNo ? '结合关联售后单状态跟进处理' : '核实诉求后跟进处理',
+      };
+    }
     if (t?.flash) applyFlashOverview(base, t);
     detail.value = base;
     if (t?.flash) projectFlashTimeline(t.no, true);
