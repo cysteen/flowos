@@ -316,7 +316,7 @@ function drawerConf(key: string) {
     },
     transferredOut: {
       title: '已转出 · 按原处理人',
-      subtitle: 'SLA 已停表 · 等对方回传，按已转出时长排序',
+      subtitle: '等售后回传 · 按已转出时长排序，最久的在最前',
       total: n('transferredOut'),
       footer: `在工单工作台查看这 ${n('transferredOut')} 单 →`,
     },

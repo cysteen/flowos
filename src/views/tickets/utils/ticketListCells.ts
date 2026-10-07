@@ -103,13 +103,14 @@ const MET_LINE: SlaLine = { text: '已达标', color: SLA_COLOR.ok };
 const VOID_LINE: SlaLine = { text: '已停表', color: SLA_COLOR.paused };
 
 /**
- * 中止类停表原因。取值对齐 `opActions.terminateClocks(voidStop=true)` 的三个调用点：
- * 升级派生新单（:861）、转到新单/转售后等待回传（:681）、取消等业务中止（:949）。
+ * 中止类停表原因。取值对齐 `opActions.terminateClocks(voidStop=true)` 的调用点：
+ * 升级派生新单、转到新单、取消等业务中止。
  * 其余停表原因（已结案 / 已关闭 / 已强结 / 直接结案 / 售后已完成）都是**解决收口**，
  * 钟是走完的，达标结论有效，不在此列。
+ * 「已转出」（转售后等待回传）**不停钟**（1025 N3）：列表照常显示倒计时与超时，不归入本档。
  */
 // 「未计时」：刷机单自助刷机成功直进回访，从未进过人工池、SLA 从未起算（930 教育刷机单 D18），无达标结论
-const VOID_STOP_REASON_RE = /升级|转出|取消|中止|未计时/;
+const VOID_STOP_REASON_RE = /升级|取消|中止|未计时/;
 
 /**
  * 这张单是否应按「中止停表」展示。

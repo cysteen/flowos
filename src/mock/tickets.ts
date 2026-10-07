@@ -152,14 +152,14 @@ const BASE_TICKETS: Ticket[] = [
     // 未联系（缺省即未联系）→ 进催补待回
     responded: true, firstRespBreached: true, dunningUnread: true, hasDunning: true,
   },
-  // 非诉转售后后的「已转出」等待态：原单不关闭、留在我的任务、SLA 停表，
-  // 等售后回传终态（售后侧关单 → 原单收口进已办；转回客服 → 回处理中续跑）
+  // 非诉转售后后的「已转出」等待态：原单不关闭、留在我的任务、SLA 照常走（1025：转出不停钟），
+  // 等售后回传终态（AS_CLOSED → 原单正常关闭进已办；AS_RETURNED → 清空处理人重新派单）
   {
     id: 't33', no: 'IFLYZX-20260722-00002', type: '咨询', channel: '电话',
     title: '录音笔无法充电，需寄修检测', smartMarks: [],
     customer: '孙倩', vip: false, product: '智能录音笔 SR302',
     nodeStatus: '已转出', nodeStep: 4, nodeTotal: 5, priority: 'P2',
-    slaText: '—', slaSub: '已转出·停表', slaState: 'ok', slaMinutes: 9999,
+    slaText: '04:30:00', slaSub: '充足', slaState: 'ok', slaMinutes: 270,
     assignee: '王坐席', tab: 'mine',
     linkedAftersaleNo: 'AS-20260722-38104',
     customerPhone: '13977778888', sn: 'SN-SR302-40915', productCategory: '智能硬件',

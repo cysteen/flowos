@@ -468,7 +468,7 @@ export interface HomeTodoItem {
   slaKind: 'first' | 'whole';
   /**
    * running 态：ok/soon/overdue/paused；终态三分：met/breached/void。
-   * `void` = 中止停表（升级派生 / 转出 / 取消），既不计达标也不计未达标，不进达成率分母。
+   * `void` = 中止停表（升级派生 / 转单 / 取消；已转出不停钟，1025 N3），既不计达标也不计未达标，不进达成率分母。
    */
   slaVis: 'ok' | 'soon' | 'overdue' | 'paused' | 'met' | 'breached' | 'void';
   /** 如「剩 42m」「超 1h 20m」「已达标」 */

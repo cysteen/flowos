@@ -72,7 +72,7 @@ export const OVERALL_TIMELY = {
   yesterday: 92.8,
   lastWeek: 90.2,
   healthy: 95,
-  tip: '本期关闭工单中，在 SLA 解决时限内完成的占比；SLA 停表期间（挂起/已转出）不计入耗时',
+  tip: '本期关闭工单中，在 SLA 解决时限内完成的占比；SLA 停表期间（挂起）不计入耗时',
 };
 
 export interface GroupSlaRow {
