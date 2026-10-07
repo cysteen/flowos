@@ -4,6 +4,9 @@ import { PaperClipOutlined, RollbackOutlined, UserOutlined } from '@ant-design/i
 import { useRiskTagStore } from '@/stores/riskTags';
 import { REPORT_SOURCE, isPoolLevel, isVerifyMonitorSource, type RiskPoolItem } from '@/stores/riskShared';
 import { riskLevelText } from '@/config/risk';
+// 时刻一律走全页统一的 `YYYY-MM-DD HH:mm:ss`：各 store 的 `nowStamp` 只到分钟，秒位由它补 `:00`。
+// 不补的话同一个标记时刻在「风险报备」页签里写 13:23:00、在本弹窗里写 13:23，一屏之内两种写法。
+import { formatOpTime } from '@/views/tickets/utils/opTime';
 import { downloadReportAttachment, excerptWindow, isKeywordRow } from './riskAssessSheet';
 
 /**
@@ -99,7 +102,7 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
               <span class="assess-meta-sep" aria-hidden="true" />
               <span class="assess-meta-pair">
                 <span class="assess-meta-label">标记时间</span>
-                <span class="assess-meta-value">{{ target.tag.at }}</span>
+                <span class="assess-meta-value">{{ formatOpTime(target.tag.at) }}</span>
               </span>
               <!-- 分隔点跟着末位那一对走：重点工单不出那一对，这一点也不能留成尾巴 -->
               <span v-if="entryAtVisible" class="assess-meta-sep" aria-hidden="true" />
@@ -135,7 +138,7 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
           -->
           <span v-if="entryAtVisible" class="assess-meta-pair">
             <span class="assess-meta-label">进监控</span>
-            <span class="assess-meta-value">{{ target.at }}</span>
+            <span class="assess-meta-value">{{ formatOpTime(target.at) }}</span>
           </span>
         </div>
       </div>
@@ -200,7 +203,7 @@ const releases = computed(() => [...(props.target.releases ?? [])].reverse());
         <div v-for="(rel, i) in releases" :key="i" class="assess-release">
           <div class="assess-release-head">
             <span class="assess-release-who">{{ rel.by }}（{{ rel.byRole }}）</span>
-            <span class="assess-release-at">{{ rel.at }}</span>
+            <span class="assess-release-at">{{ formatOpTime(rel.at) }}</span>
           </div>
           <div class="assess-release-reason">{{ rel.reason }}</div>
         </div>
