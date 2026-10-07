@@ -210,6 +210,15 @@ export interface LinkedAftersale {
    * 非诉=原单进「已转出」冻结，等售后回传终态（D11）。
    */
   fromComplaint?: boolean;
+  /**
+   * 本单占该售后单的哪一位（《【1025】》§5.2）：客服来源位（①关联售后 / ②转售后，含回流单）
+   * 或客服派生位（③售后升级投诉 / ④售后转咨询建出的单）。
+   */
+  slot?: 'source' | 'derived';
+  /** 同一售后单另一位上的活跃客服单：hover 卡片只显示单号 + 状态，不显示内容（§5.4） */
+  peer?: { no: string; status: string };
+  /** 本单已向该售后单回传处理结果的次数（③；0＝尚未回传，下一次是首次回传） */
+  resultCount?: number;
 }
 
 /** 飞书关联进度（与 PRD §3.2 feishuSync 一致） */

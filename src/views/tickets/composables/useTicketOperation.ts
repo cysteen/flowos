@@ -6,7 +6,7 @@ import type { TicketDetailMeta, ChildTicket, SlaClock } from '@/mock/ticketDetai
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 import type { TicketFlash } from '@/views/tickets/types/flash';
 import {
-  isFirstResponded, isSlaPaused, isTicketClosed, resolveStoppedClockStatus,
+  isFirstResponded, isSlaPaused, isTicketClosed, resolveStoppedClockStatus, statusDisplayName,
 } from '@/views/tickets/types/ticket';
 import { useFlashStore } from '@/stores/flash';
 import { findSchoolById } from '@/mock/schools';
@@ -27,10 +27,25 @@ import {
   resolveTicketSourceForList,
 } from '@/views/tickets/types/createTicket';
 import {
-  applyOpAction, mapUserRole, nowWhen, pushEntry,
+  applyOpAction, isAftersaleInbound, mapUserRole, nowWhen, pushEntry,
   type OpActionPayload, type SuspendInfo, type TicketOpState,
 } from './opActions';
 import { migrateAftersaleLink } from './aftersaleEvents';
+import { AFTERSALE_INBOUND_LABEL } from './aftersaleButtonForm';
+
+/**
+ * 同一售后单另一位上的活跃客服单（《【1025】》§5.2 / §5.4）：本单在来源位就找派生位，反之亦然。
+ * hover 卡片只露单号 + 状态（页面展示名），不露内容。
+ */
+function findAftersalePeer(
+  asNo: string,
+  selfNo: string,
+  selfSlot: 'source' | 'derived',
+): { no: string; status: string } | undefined {
+  const peer = TICKETS.find((x) => x.no !== selfNo
+    && (selfSlot === 'source' ? x.aftersaleOriginNo === asNo : x.linkedAftersaleNo === asNo));
+  return peer ? { no: peer.no, status: statusDisplayName(peer.nodeStatus) } : undefined;
+}
 
 // ---- 列表行 SLA 摘要 → 操作页时钟（保证工作台 ↔ 操作页状态一致，PRD §8.1/§8.2）----
 
@@ -341,6 +356,8 @@ export function useTicketOperation() {
           serviceMethod: '寄修',
           createdAt: t.updatedAt ?? t.createdAt ?? '',
           fromComplaint: isComplaint,
+          slot: 'source',
+          peer: findAftersalePeer(t.linkedAftersaleNo, t.no, 'source'),
         };
         if (!isComplaint && t.nodeStatus === '已转出') {
           base.status = '已转出';
@@ -350,17 +367,25 @@ export function useTicketOperation() {
       // 售后转回后重派（AS_RETURNED，见 aftersaleEvents.ts）：子状态取工单行（未认领 / 处理中），关联位保持活跃
       base.returnedFromAftersale = !!t.returnedFromAftersale;
       if (t.returnedFromAftersale && t.tab !== 'done') base.status = t.nodeStatus;
-      // 售后转入：关联位仍指向来源售后单，但本单正常在跑，不进「已转出」
+      // 售后转入（③④）：本单占该售后单的客服派生位，正常在跑，不进「已转出」
       if (t.aftersaleOriginNo) {
         base.linkedAftersale = {
           no: t.aftersaleOriginNo,
           title: t.aftersaleOriginTitle,
           status: t.aftersaleOriginStatus ?? '已转回客服',
-          serviceType: '寄修检测',
+          serviceType: t.aftersaleOriginServiceType ?? '寄修检测',
           serviceMethod: '寄修',
           createdAt: t.createdAt ?? '',
           fromComplaint: t.type === '投诉',
+          slot: 'derived',
+          peer: findAftersalePeer(t.aftersaleOriginNo, t.no, 'derived'),
+          resultCount: t.aftersaleResultCount ?? 0,
         };
+      }
+      // 售后转入的单页头「建单人」显示「售后转入」（§4.1 / §4.3）
+      if (isAftersaleInbound(base)) {
+        base.builder = AFTERSALE_INBOUND_LABEL;
+        base.builderShort = AFTERSALE_INBOUND_LABEL;
       }
       if (t.flash) applyFlashRow(base, t);
       if (t.problemDesc?.trim()) {

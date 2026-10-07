@@ -242,7 +242,12 @@ export interface AftersaleContext {
    * 已有 1:1 关联售后单 → 入口封口、不再建单（D2 改写，激活动作取消）。
    * `settled` 决定提示与出路：false=引导去关联单 Tab 跳售后跟进；true=只能线下联系售后。
    */
-  existing?: { no: string; title?: string; serviceType: string; status: string; settled: boolean };
+  existing?: {
+    no: string; title?: string; serviceType: string; status: string; settled: boolean;
+    /** 本单所占关联位与对侧客服单（hover 卡片，《【1025】》§5.4） */
+    slot?: 'source' | 'derived';
+    peer?: { no: string; status: string };
+  };
 }
 /** 售后转入单再点「转售后」＝激活原关联售后单，不建第二张（见 api/aftersaleActivate.ts） */
 export interface AftersaleActivatePayload {

@@ -35,7 +35,7 @@ import type { SmsTemplateKind } from '@/mock/notifyTemplates';
 import { useTicketOperation } from './composables/useTicketOperation';
 import { FEISHU_ESCALATE_CHANNEL, mapUserRole, pushEntry, isAftersaleSettled } from './composables/opActions';
 import { aftersaleLinkJoinedEntry } from './composables/aftersaleEvents';
-import { resolveAftersaleButtonForm } from './composables/aftersaleButtonForm';
+import { aftersaleStatusTier, aftersaleTierStyle, resolveAftersaleButtonForm } from './composables/aftersaleButtonForm';
 import { useProcessForm } from './composables/useProcessForm';
 import { useOperationTabs } from './composables/useOperationTabs';
 import { useTicketLiveNotify } from './composables/useTicketLiveNotify';
@@ -1379,6 +1379,8 @@ const aftersaleContext = computed(() => ({
         serviceType: d.value.linkedAftersale.serviceType,
         status: d.value.linkedAftersale.status,
         settled: isAftersaleSettled(d.value.linkedAftersale.status),
+        slot: d.value.linkedAftersale.slot,
+        peer: d.value.linkedAftersale.peer,
       }
     : undefined,
 }));
@@ -1739,11 +1741,12 @@ function syncAftersaleRelatedCard(focus = true) {
   if (!la) return;
   const cards = tabData.value.relatedTickets;
   const existed = cards.find((c) => c.no === la.no);
+  // 关联单 Tab 只画本单所占那一位上的售后单（§5.4），状态按三档配色
   const card = {
     no: la.no,
     title: `${la.serviceType} · ${d.value.product.name}`,
     status: la.status,
-    statusColor: '#1a6fff',
+    statusColor: aftersaleTierStyle(aftersaleStatusTier(la.status)).color,
     type: la.serviceType,
     typeColor: '#0EA5A4',
     createdAt: la.createdAt,
@@ -1794,8 +1797,8 @@ function syncAftersaleHistoryRow() {
 // 工单本身带关联售后单（「已转出」态）：载入即把售后单挂进关联单列表与客户历史，
 // 否则坐席在冻结的底栏之外找不到那张在跑的售后单。
 watch(
-  () => d.value.linkedAftersale?.no,
-  (no) => { if (no) syncAftersaleRelatedCard(false); },
+  [() => d.value.linkedAftersale?.no, () => d.value.linkedAftersale?.status],
+  ([no]) => { if (no) syncAftersaleRelatedCard(false); },
   { immediate: true },
 );
 

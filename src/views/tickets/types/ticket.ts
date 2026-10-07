@@ -484,6 +484,18 @@ export interface Ticket {
   aftersaleOriginTitle?: string;
   /** 来源售后单当前状态（激活确认弹窗要展示） */
   aftersaleOriginStatus?: string;
+  /** 来源售后单服务类型（hover 卡片） */
+  aftersaleOriginServiceType?: string;
+  /** 来源售后单结案时刻（售后侧关闭时回传；激活时售后侧据此判可重开窗口） */
+  aftersaleOriginClosedAt?: string;
+  /** 已向派生位售后单回传处理结果的次数（③；第一次回传使售后单解冻，其后为补充回传） */
+  aftersaleResultCount?: number;
+  /** 售后单转客服落到本单的次数（④：建单那次计 1，此后每次「售后再次转客服」累加） */
+  aftersaleReturnCount?: number;
+  /** 本单承接自哪张已结案的客服单（④ 支二：售后再次转客服新建，§4.5） */
+  succeedsFromNo?: string;
+  /** 本单已被哪张新单承接（④ 支二，原单侧） */
+  succeededByNo?: string;
   nodeStatus: NodeStatus;
   /**
    * 结案方式（基线 §1「结案方式」小节）：建单时选定、此后不可改，与工单类型正交。

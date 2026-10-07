@@ -652,6 +652,8 @@ defineExpose({ openEscalate, openAftersale });
             :status="linkedAftersale.status"
             :service-type="linkedAftersale.serviceType"
             :foot="aftersaleForm?.cardFoot ?? null"
+            :held-slot="linkedAftersale.slot"
+            :peer="linkedAftersale.peer"
           />
         </template>
         <span class="ab-slot">

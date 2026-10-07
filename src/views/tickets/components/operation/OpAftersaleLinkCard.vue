@@ -4,7 +4,9 @@
 import { computed } from 'vue';
 import { ExportOutlined } from '@ant-design/icons-vue';
 import { aftersaleDeepLink } from '../../composables/opActions';
-import { aftersaleStatusTier, aftersaleTierStyle } from '../../composables/aftersaleButtonForm';
+import {
+  AFTERSALE_SLOT_LABEL, aftersaleStatusTier, aftersaleTierStyle, type AftersaleSlot,
+} from '../../composables/aftersaleButtonForm';
 
 const props = defineProps<{
   no: string;
@@ -12,6 +14,10 @@ const props = defineProps<{
   serviceType: string;
   /** 底部提示；null ＝ 不出（回传 / 激活形态） */
   foot: string | null;
+  /** 本单所占的关联位 */
+  heldSlot?: AftersaleSlot;
+  /** 同一售后单另一位上的活跃客服单：只显示单号 + 状态 */
+  peer?: { no: string; status: string };
 }>();
 
 /** 工单号即深链锚点：关联ID 拼进 URL，点单号跳售后系统详情页 */
@@ -33,6 +39,14 @@ const statusStyle = computed(() => aftersaleTierStyle(aftersaleStatusTier(props.
       <span class="as-pop-label">服务类型</span>
       <span class="as-pop-value">{{ serviceType }}</span>
     </div>
+    <div v-if="heldSlot" class="as-pop-row">
+      <span class="as-pop-label">本单关联</span>
+      <span class="as-pop-value">{{ AFTERSALE_SLOT_LABEL[heldSlot] }}</span>
+    </div>
+    <div v-if="peer" class="as-pop-row">
+      <span class="as-pop-label">对侧客服单</span>
+      <span class="as-pop-value">{{ peer.no }} · {{ peer.status }}</span>
+    </div>
     <div v-if="foot" class="as-pop-foot">{{ foot }}</div>
   </div>
 </template>
@@ -46,7 +60,7 @@ const statusStyle = computed(() => aftersaleTierStyle(aftersaleStatusTier(props.
 .as-pop-no .anticon { margin-left: 2px; font-size: 11px; }
 .as-pop-status { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; }
 .as-pop-row { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-.as-pop-label { flex: none; width: 52px; font-size: 11px; color: #9ca3af; }
+.as-pop-label { flex: none; width: 60px; font-size: 11px; color: #9ca3af; }
 .as-pop-value { font-size: 12px; color: #1f2937; }
 .as-pop-foot { margin-top: 2px; padding-top: 6px; border-top: 1px solid #f0f0f0; font-size: 11px; color: #6b7280; line-height: 16px; }
 </style>

@@ -367,6 +367,8 @@ function priorityHex(p: string): string {
               :status="linkedAftersale.status"
               :service-type="linkedAftersale.serviceType"
               :foot="linkForm.cardFoot"
+              :held-slot="linkedAftersale.slot"
+              :peer="linkedAftersale.peer"
             />
           </template>
           <span class="btn-slot">
@@ -395,6 +397,8 @@ function priorityHex(p: string): string {
               :status="linkedAftersale.status"
               :service-type="linkedAftersale.serviceType"
               :foot="transferredFoot"
+              :held-slot="linkedAftersale.slot"
+              :peer="linkedAftersale.peer"
             />
           </template>
           <span class="as-chip">⇄ 已转售后 {{ linkedAftersale.no }}</span>
