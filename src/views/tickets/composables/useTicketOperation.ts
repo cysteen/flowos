@@ -425,6 +425,7 @@ export function useTicketOperation() {
         ticketBrief: `${t.type}单，${t.title}`,
         suggestion: t.linkedAftersaleNo || t.aftersaleOriginNo ? '结合关联售后单状态跟进处理' : '核实诉求后跟进处理',
       };
+      if (!t.flash) applyChainOwnProfile(base, t);
     }
     if (t?.flash) applyFlashOverview(base, t);
     detail.value = base;
@@ -505,6 +506,39 @@ export function useTicketOperation() {
       suggestion: '核对刷机信息与失败原因后处理',
     };
     base.latestHandling = flashLatestHandling(t.no);
+  }
+
+  /**
+   * 客服⇄售后链路上的单（1025）：右侧栏客户信息、代报人、工单信息与客户全景的本单计数取本单工单行，
+   * 不落样例单的客户档案。售后建单弹窗的联系人预填读的就是这里（《【1025】》§2.2）。
+   */
+  function applyChainOwnProfile(base: TicketDetailMeta, t: Ticket) {
+    const phone = (t.customerPhone ?? '').replace(/^(\d{3})(\d{4})(\d{4})$/, '$1 $2 $3');
+    base.customer = {
+      name: t.customer,
+      types: ['G个人用户'],
+      gender: t.customerGender ?? '—',
+      contacts: phone ? [{ type: 'phone', value: phone }] : [],
+      region: t.customerRegion ?? '—',
+      address: t.customerAddress ?? '—',
+    };
+    base.agent = null;
+    base.businessType = t.businessType ?? '—';
+    base.businessLine = t.businessLine ?? '—';
+    base.product.name = t.product;
+    base.product.category = t.productCategory ?? '—';
+    base.product.sn = t.sn ?? '—';
+    base.product.tags = [];
+    // 本单维度计数：补充 / 催单取本单记录（链路单不推样例进线事件，起始为 0）；
+    // 关联取关联单 Tab 实际挂出的行数，由处理页随 Tab 同步（TicketOperationView）
+    base.insight = {
+      ...base.insight,
+      dunningCount: 0,
+      supplementCount: 0,
+      dunningReadCount: 0,
+      supplementReadCount: 0,
+      relatedCount: (t.linkedAftersaleNo || t.aftersaleOriginNo ? 1 : 0) + (t.succeedsFromNo || t.succeededByNo ? 1 : 0),
+    };
   }
 
   /** 「最新处理」：本单履历里最近的处理事件（不含沟通、时效、评价类），新在上，最多 3 条 */

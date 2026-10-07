@@ -405,6 +405,12 @@ export interface Ticket {
   vip: boolean;
   /** 客户手机号（筛选） */
   customerPhone?: string;
+  /** 客户省市区（「省 / 市 / 区」），处理页客户信息与售后建单预填取它 */
+  customerRegion?: string;
+  /** 客户详细地址 */
+  customerAddress?: string;
+  /** 客户性别 */
+  customerGender?: string;
   /** 设备 SN（筛选） */
   sn?: string;
   /** 业务分类（新建工单 · 工单基础） */

@@ -1593,6 +1593,42 @@ const TICKET_PRODUCT_HIERARCHY: Record<
   t7: { productBg: '教育事业群', businessLine: '智学网业务线', productLine: '课堂产品线' },
 };
 
+/**
+ * 客服⇄售后链路单（1025）的客户档案与业务归属：处理页客户信息、工单信息与售后建单预填取本单这几项。
+ * 业务分类按产品取：学习机 → 学习机 / 学习机业务线；其余硬件 → 智能硬件 / 智能硬件业务线。
+ */
+const AS_CHAIN_PROFILE: Record<
+  string,
+  { customerRegion: string; customerAddress: string; customerGender: string; businessType: string; businessLine?: string }
+> = {
+  'as-c1': { customerRegion: '安徽省 / 合肥市 / 包河区', customerAddress: '徽州大道 1288 号滨湖世纪城 3 栋 1602 室', customerGender: '女', businessType: '智能硬件', businessLine: '智能硬件业务线' },
+  'as-e1': { customerRegion: '江苏省 / 南京市 / 鼓楼区', customerAddress: '中山北路 218 号 2 栋 501 室', customerGender: '女', businessType: '智能硬件', businessLine: '智能硬件业务线' },
+  'as-e2': { customerRegion: '安徽省 / 芜湖市 / 镜湖区', customerAddress: '北京中路 66 号 5 栋 902 室', customerGender: '男', businessType: '学习机', businessLine: '学习机业务线' },
+  t33: { customerRegion: '浙江省 / 杭州市 / 西湖区', customerAddress: '文三路 478 号 1 幢 703 室', customerGender: '女', businessType: '智能硬件', businessLine: '智能硬件业务线' },
+  'as-e3': { customerRegion: '浙江省 / 杭州市 / 西湖区', customerAddress: '文三路 478 号 1 幢 703 室', customerGender: '女', businessType: '智能硬件', businessLine: '智能硬件业务线' },
+  'as-d1': { customerRegion: '安徽省 / 合肥市 / 蜀山区', customerAddress: '长江西路 669 号 8 栋 1101 室', customerGender: '男', businessType: '智能硬件', businessLine: '智能硬件业务线' },
+  'as-d2': { customerRegion: '安徽省 / 合肥市 / 蜀山区', customerAddress: '长江西路 669 号 8 栋 1101 室', customerGender: '男', businessType: '智能硬件', businessLine: '智能硬件业务线' },
+  'as-r1': { customerRegion: '上海市 / 上海市 / 浦东新区', customerAddress: '张杨路 1500 弄 12 号 604 室', customerGender: '女', businessType: '智能硬件', businessLine: '智能硬件业务线' },
+  'as-r2': { customerRegion: '湖北省 / 武汉市 / 洪山区', customerAddress: '珞喻路 1037 号 3 栋 402 室', customerGender: '男', businessType: '智能硬件', businessLine: '智能硬件业务线' },
+  'as-r3': { customerRegion: '安徽省 / 合肥市 / 庐阳区', customerAddress: '阜南路 99 号 6 栋 1203 室', customerGender: '男', businessType: '学习机', businessLine: '学习机业务线' },
+  'as-s1': { customerRegion: '山东省 / 济南市 / 历下区', customerAddress: '经十路 17703 号 2 单元 801 室', customerGender: '女', businessType: '智能硬件', businessLine: '智能硬件业务线' },
+  'as-s2': { customerRegion: '山东省 / 济南市 / 历下区', customerAddress: '经十路 17703 号 2 单元 801 室', customerGender: '女', businessType: '智能硬件', businessLine: '智能硬件业务线' },
+  'as-u1': { customerRegion: '广东省 / 深圳市 / 南山区', customerAddress: '科技南十二路 18 号 B 座 1508 室', customerGender: '女', businessType: '智能硬件', businessLine: '智能硬件业务线' },
+  'as-u2': { customerRegion: '广东省 / 深圳市 / 南山区', customerAddress: '科技南十二路 18 号 B 座 1508 室', customerGender: '女', businessType: '智能硬件', businessLine: '智能硬件业务线' },
+  'as-n1': { customerRegion: '安徽省 / 合肥市 / 蜀山区', customerAddress: '潜山路 320 号 4 栋 1201 室', customerGender: '女', businessType: '其他' },
+  'as-l1': { customerRegion: '安徽省 / 合肥市 / 瑶海区', customerAddress: '长江东路 1100 号 4 栋 302 室', customerGender: '女', businessType: '智能硬件', businessLine: '智能硬件业务线' },
+  'as-l2': { customerRegion: '安徽省 / 六安市 / 金安区', customerAddress: '梅山南路 155 号 9 栋 1702 室', customerGender: '女', businessType: '智能硬件', businessLine: '智能硬件业务线' },
+  'as-c2': { customerRegion: '江苏省 / 苏州市 / 姑苏区', customerAddress: '干将西路 1288 号 5 栋 203 室', customerGender: '女', businessType: '智能硬件', businessLine: '智能硬件业务线' },
+  'as-k1': { customerRegion: '浙江省 / 宁波市 / 鄞州区', customerAddress: '天童南路 588 号 7 栋 1405 室', customerGender: '女', businessType: '智能硬件', businessLine: '智能硬件业务线' },
+  'as-k1n': { customerRegion: '浙江省 / 宁波市 / 鄞州区', customerAddress: '天童南路 588 号 7 栋 1405 室', customerGender: '女', businessType: '智能硬件', businessLine: '智能硬件业务线' },
+  'as-k2': { customerRegion: '安徽省 / 安庆市 / 迎江区', customerAddress: '人民路 211 号 2 栋 506 室', customerGender: '女', businessType: '学习机', businessLine: '学习机业务线' },
+  t5a: { customerRegion: '安徽省 / 合肥市 / 包河区', customerAddress: '马鞍山路 130 号 2 栋 1101 室', customerGender: '女', businessType: '智能硬件', businessLine: '智能硬件业务线' },
+  t32: { customerRegion: '北京市 / 北京市 / 海淀区', customerAddress: '中关村大街 27 号 3 单元 1206 室', customerGender: '男', businessType: '智能硬件', businessLine: '智能硬件业务线' },
+  t36: { customerRegion: '安徽省 / 合肥市 / 蜀山区', customerAddress: '黄山路 459 号 3 栋 1003 室', customerGender: '女', businessType: '学习机', businessLine: '学习机业务线' },
+  t37: { customerRegion: '河南省 / 郑州市 / 金水区', customerAddress: '花园路 39 号 6 栋 801 室', customerGender: '男', businessType: '智能硬件', businessLine: '智能硬件业务线' },
+  t38: { customerRegion: '安徽省 / 蚌埠市 / 蚌山区', customerAddress: '涂山路 1036 号 5 栋 602 室', customerGender: '女', businessType: '智能硬件', businessLine: '智能硬件业务线' },
+};
+
 /** 查询中心列表扩展字段 Mock */
 const TICKET_LIST_EXTRAS: Record<
   string,
@@ -1688,6 +1724,7 @@ export const TICKETS: Ticket[] = [...BASE_TICKETS, ...FLASH_SEEDS.tickets].map((
     ...(TICKET_FORM_FIELDS[t.id] ?? {}),
     ...(TICKET_GROUP_NAMES[t.id] ? { groupNames: TICKET_GROUP_NAMES[t.id] } : {}),
     ...(TICKET_PRODUCT_HIERARCHY[t.id] ?? {}),
+    ...(AS_CHAIN_PROFILE[t.id] ?? {}),
     ...(TICKET_LIST_EXTRAS[t.id] ?? {}),
     // 显式写了来源的（售后转入 / 跨组调剂）保留原值，只有没写的才按渠道推。
     // 之前这里无条件覆盖，把「售后转入」冲成了「热线电话」——看板「转入」下钻筛不出单、

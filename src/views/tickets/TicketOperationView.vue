@@ -1860,6 +1860,15 @@ watch(
   { immediate: true },
 );
 
+// 客服⇄售后链路上的单（1025）：客户全景「关联」计数取关联单 Tab 实际挂出的行数（含关联售后后新挂上的那一行）
+watch(
+  [() => tabData.value.relatedTickets.length, () => d.value.no],
+  ([n]) => {
+    if (isAftersaleChainTicket(TICKETS.find((x) => x.no === d.value.no))) d.value.insight.relatedCount = n;
+  },
+  { immediate: true },
+);
+
 /** 产研反馈 Tab · 二次激活 */
 function onFeishuActivate(reason: string) {
   dispatch({ type: '激活飞书', data: { reason } });
