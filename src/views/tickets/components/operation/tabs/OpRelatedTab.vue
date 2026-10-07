@@ -6,6 +6,7 @@ import { LinkOutlined, FileAddOutlined, BellOutlined } from '@ant-design/icons-v
 import OpCollapsibleSection from '../OpCollapsibleSection.vue';
 import OpAttachList from '../shared/OpAttachList.vue';
 import OpSimpleRecordList from '../shared/OpSimpleRecordList.vue';
+import { formatOpTime } from '@/views/tickets/utils/opTime';
 import type { RelatedTicketCard, SimpleRecord } from '@/views/tickets/types/operationTabs';
 
 defineProps<{
@@ -79,7 +80,7 @@ function processEntries(t: RelatedTicketCard) {
               >{{ t.status }}</span>
               <span class="rel-title">{{ t.title }}</span>
             </div>
-            <span class="rel-time">{{ t.createdAtFull ?? t.createdAt }}</span>
+            <span class="rel-time">{{ formatOpTime(t.createdAtFull ?? t.createdAt) }}</span>
           </div>
           <div class="rel-meta">
             <span class="rel-no">{{ t.no }}</span>
@@ -97,10 +98,10 @@ function processEntries(t: RelatedTicketCard) {
           <div v-if="processEntries(t).length" class="rel-block">
             <div class="rel-label">处理信息</div>
             <div v-for="(p, idx) in processEntries(t)" :key="idx" class="process-entry">
+              <!-- 时刻靠右（2026-10-07 裁决）：处理人在行首、时刻顶到行尾 -->
               <div v-if="p.who || p.when" class="who-when">
                 <span v-if="p.who" class="who">{{ p.who }}</span>
-                <span v-if="p.who && p.when" class="sep">·</span>
-                <span v-if="p.when" class="muted">{{ p.when }}</span>
+                <span v-if="p.when" class="muted">{{ formatOpTime(p.when) }}</span>
               </div>
               <div class="entry-desc">{{ p.content }}</div>
               <OpAttachList v-if="p.attachments?.length" :files="p.attachments" />
@@ -176,7 +177,14 @@ function processEntries(t: RelatedTicketCard) {
 
 .process-entry { display: flex; flex-direction: column; gap: 6px; }
 .process-entry + .process-entry { margin-top: 6px; }
-.process-entry .who { font-weight: 600; color: #374151; font-size: 11px; }
-.process-entry .muted { color: #9ca3af; font-size: 11px; }
+.who-when { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.process-entry .who { font-weight: 600; color: #374151; font-size: 11px; min-width: 0; }
+.process-entry .muted {
+  margin-left: auto;
+  flex: none;
+  color: #9ca3af;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
 .process-entry .entry-desc { font-size: 12px; color: #6b7280; line-height: 1.6; }
 </style>

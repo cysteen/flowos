@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { CheckOutlined } from '@ant-design/icons-vue';
 import OpAttachList from '../shared/OpAttachList.vue';
+import { formatOpTime } from '@/views/tickets/utils/opTime';
 import { TICKET_EVENT_NOTIFY_THEME as T } from '@/views/tickets/styles/ticketEventNotifyTheme';
 import type { SimpleRecord } from '@/views/tickets/types/operationTabs';
 
@@ -25,14 +26,14 @@ const emit = defineEmits<{
           class="category-tag"
         >{{ r.supplementType }}</span>
         <span class="record-who">{{ r.who }}</span>
-        <span class="record-sep">·</span>
-        <span class="record-when">{{ r.when }}</span>
+        <!-- 时刻靠右（2026-10-07 裁决）：与「已知晓 / 已联系」一组收尾，一列落在同一个 x 上 -->
+        <span class="record-when">{{ formatOpTime(r.when) }}</span>
         <span class="record-read-slot">
           <span v-if="r.contacted" class="record-contact-tag">已联系</span>
           <span v-else-if="r.read" class="record-pending-contact">待联系</span>
           <span v-if="r.read" class="record-read-tag">
             <CheckOutlined /> 已知晓
-            <span v-if="r.readAt" class="record-read-at">{{ r.readAt }}</span>
+            <span v-if="r.readAt" class="record-read-at">{{ formatOpTime(r.readAt) }}</span>
           </span>
           <button
             v-else-if="!readonly"
@@ -110,11 +111,10 @@ const emit = defineEmits<{
   color: v-bind('T.text.body');
 }
 
-.record-sep {
-  color: #d1d5db;
-}
-
+/* 时刻靠右：末位元素组靠 auto 顶到行尾，与「已知晓 / 已联系」并排收尾 */
 .record-when {
+  margin-left: auto;
+  flex: none;
   font-variant-numeric: tabular-nums;
 }
 
