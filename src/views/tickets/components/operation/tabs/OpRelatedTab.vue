@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
+import { useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 import { LinkOutlined, FileAddOutlined, BellOutlined } from '@ant-design/icons-vue';
 import OpCollapsibleSection from '../OpCollapsibleSection.vue';
@@ -25,9 +26,16 @@ const emit = defineEmits<{
 
 const expanded = ref({ related: true, supplement: true, dunning: true });
 
+const router = useRouter();
+
 function openRelated(t: RelatedTicketCard) {
   // 售后单在客服侧只读，跳转入口在底栏「转售后」的悬浮卡片上，卡片本身不响应
   if (t.source === '售后' || t.externalLink) return;
+  // 承接关系：双向可跳，站内打开对侧客服单（§4.5）
+  if (t.succession) {
+    router.push(`/tickets/${t.no}`);
+    return;
+  }
   message.info(`打开 ${t.no}`);
 }
 
@@ -64,6 +72,7 @@ function processEntries(t: RelatedTicketCard) {
           <div class="rel-top">
             <div class="rel-title-row">
               <span v-if="t.source === '售后'" class="src-badge">售后</span>
+              <span v-if="t.succession" class="src-badge src-badge--succession">承接</span>
               <span
                 class="status-tag"
                 :style="{ color: t.statusColor, background: t.statusColor + '18' }"
@@ -147,6 +156,7 @@ function processEntries(t: RelatedTicketCard) {
 .rel-title-row { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
 .status-tag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; flex: none; }
 .src-badge { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; flex: none; color: #0e7490; background: #cffafe; }
+.src-badge--succession { color: #4f46e5; background: #eef2ff; }
 /* 售后单在客服侧只读：整卡不可点，仅工单地址可点跳售后系统 */
 .rel-card--external { border-style: dashed; cursor: default; }
 .rel-title { font-size: 13px; font-weight: 600; color: #111827; min-width: 0; }

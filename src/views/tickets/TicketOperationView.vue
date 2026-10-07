@@ -37,7 +37,9 @@ import { FEISHU_ESCALATE_CHANNEL, mapUserRole, pushEntry, isAftersaleSettled } f
 import { aftersaleLinkJoinedEntry, applyAftersaleResult } from './composables/aftersaleEvents';
 import { submitAftersaleResult } from '@/api/aftersaleResult';
 import OpAftersaleResultModal from './components/operation/OpAftersaleResultModal.vue';
-import { aftersaleStatusTier, aftersaleTierStyle, resolveAftersaleButtonForm } from './composables/aftersaleButtonForm';
+import {
+  AFTERSALE_INBOUND_LABEL, aftersaleStatusTier, aftersaleTierStyle, resolveAftersaleButtonForm,
+} from './composables/aftersaleButtonForm';
 import { useProcessForm } from './composables/useProcessForm';
 import { useOperationTabs } from './composables/useOperationTabs';
 import { useTicketLiveNotify } from './composables/useTicketLiveNotify';
@@ -55,7 +57,7 @@ import { useRiskPoolStore } from '@/stores/riskPool';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
 import { RISK_LEVELS } from '@/config/risk';
 import type { TlAction, TlRole } from './types/ticketDetail';
-import { pullbackOnCsEvent, headerActionsByRole, handlerGroupOf, currentHandlerName, STATUS_GROUP, WORKBENCH_HANDLER, type TicketStatus } from './types/ticket';
+import { pullbackOnCsEvent, headerActionsByRole, handlerGroupOf, currentHandlerName, STATUS_GROUP, WORKBENCH_HANDLER, statusDisplayName, statusStyle, type TicketStatus } from './types/ticket';
 import { buildChildTicketPrefill, buildReopenTicketPrefill } from './composables/childTicketPrefill';
 import {
   buildEscalatePrefill, buildEscalateVerdict, buildEscalatedTicket, escalateTargetLabel,
@@ -1267,18 +1269,29 @@ function finishEscalateAsSupplement(payload: EscalateInput) {
 function finishEscalate(ticket: Ticket, targetLabel: string, processAfter?: boolean) {
   const note = escalateInput.value?.note ?? ticket.problemDesc ?? '';
   // 基线 ※26：客服来源位关联随升级迁到新投诉单，新单写「关联接入」（原单侧「关联降级」在 applyOpAction）
+  // ④ 的售后转入咨询单升级时迁的是客服派生位（口径定稿 6b），新单接同一位
   const la = d.value.linkedAftersale;
   if (la) {
+    const slot = la.slot ?? 'source';
+    Object.assign(ticket, slot === 'derived'
+      ? {
+          aftersaleOriginNo: la.no,
+          aftersaleOriginTitle: la.title,
+          aftersaleOriginStatus: la.status,
+          aftersaleOriginServiceType: la.serviceType,
+        }
+      : {
+          linkedAftersaleNo: la.no,
+          linkedAftersaleStatus: la.status,
+          linkedAftersaleServiceType: la.serviceType,
+        });
     Object.assign(ticket, {
-      linkedAftersaleNo: la.no,
-      linkedAftersaleStatus: la.status,
-      linkedAftersaleServiceType: la.serviceType,
       eventTimeline: [
         ...(ticket.eventTimeline ?? []),
         {
           id: `as-${ticket.no}-joined-${la.no}`,
           ...aftersaleLinkJoinedEntry({
-            asNo: la.no, fromNo: d.value.no, who: user.name || '系统', role: mapUserRole(user.roleKey), at: nowFullText(),
+            asNo: la.no, fromNo: d.value.no, who: user.name || '系统', role: mapUserRole(user.roleKey), at: nowFullText(), slot,
           }),
         },
       ],
@@ -1731,6 +1744,17 @@ function onAction(payload: Record<string, unknown>) {
     processTabsRef.value?.switchTab('feishu');
   }
   if (payload.type === '转售后' || payload.type === '关联售后') syncAftersaleRelatedCard();
+  // 激活售后单成功：售后单重开，卡片回写售后侧返回状态（工单行同步，关联位不变）
+  if (payload.type === '激活售后') {
+    const row = TICKETS.find((x) => x.no === d.value.no);
+    const status = (payload.data as { status: string }).status;
+    if (row && d.value.linkedAftersale?.slot === 'derived') {
+      row.aftersaleOriginStatus = status;
+      row.aftersaleOriginClosedAt = undefined;
+    } else if (row) {
+      row.linkedAftersaleStatus = status;
+    }
+  }
 }
 
 /**
@@ -1795,6 +1819,34 @@ function syncAftersaleHistoryRow() {
   if (processing) hist.processingCount += 1;
   else hist.closedCount += 1;
 }
+
+/**
+ * 「承接」关系（《【1025】》§4.5 支二）：售后再次转客服新建的单与已结案原单之间，关联单 Tab 各出只读一行、双向可跳。
+ * 不占售后单的任何关联位，不参与按钮形态判定。
+ */
+function syncSuccessionCard() {
+  const row = TICKETS.find((x) => x.no === d.value.no);
+  const peerNo = row?.succeedsFromNo ?? row?.succeededByNo;
+  if (!row || !peerNo) return;
+  const peer = TICKETS.find((x) => x.no === peerNo);
+  const cards = tabData.value.relatedTickets;
+  if (!peer || cards.some((c) => c.no === peer.no)) return;
+  const statusText = statusDisplayName(peer.nodeStatus);
+  cards.unshift({
+    no: peer.no,
+    title: peer.title,
+    status: statusText,
+    statusColor: statusStyle(peer.nodeStatus).color,
+    type: peer.type,
+    typeColor: '#1A6FFF',
+    createdAt: peer.createdAt ?? '',
+    createdAtFull: peer.createdAt ?? '',
+    builder: AFTERSALE_INBOUND_LABEL,
+    demand: peer.problemDesc ?? '',
+    succession: row.succeedsFromNo ? 'from' : 'to',
+  });
+}
+watch(() => d.value.no, () => syncSuccessionCard(), { immediate: true });
 
 // 工单本身带关联售后单（「已转出」态）：载入即把售后单挂进关联单列表与客户历史，
 // 否则坐席在冻结的底栏之外找不到那张在跑的售后单。

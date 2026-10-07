@@ -64,6 +64,11 @@ export interface RelatedTicketCard {
   source?: '客服' | '售后';
   /** 售后单等外部单：客服侧只读，跳转入口在「转售后 / 关联售后」的悬浮卡片上（附件也走跳转，不内嵌，D6） */
   externalLink?: boolean;
+  /**
+   * 两张客服单之间的「承接」关系（《【1025】》§4.5 支二：售后再次转客服新建的单 ⇄ 已结案原单）：
+   * 只读一行，双向可跳（点卡片站内打开对侧单）。
+   */
+  succession?: 'from' | 'to';
 }
 
 export interface SimpleRecord {

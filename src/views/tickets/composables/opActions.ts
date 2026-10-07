@@ -961,14 +961,14 @@ export function applyOpAction(
     }
 
     case '激活售后': {
-      // 售后转入单：关联位已被来源售后单占着，「转售后」走激活而非建第二张（同 D12 的理由）。
-      // 激活成功后本单不进「已转出」——球回到售后手上，但客服侧仍持单跟进回传结果。
+      // 激活形态（《【1025】》§4.4，售后转入的非诉单 / 回流单）：重新打开已关联的那张售后单，
+      // 不建新单、不改关联位、不改本单状态与处理人，不进「已转出」。
       const { no, title, status } = payload.data;
       if (detail.linkedAftersale) detail.linkedAftersale.status = status;
       pushEntry(timeline, {
         category: 'node', action: 'transfer', who: operator, role: operatorRole,
-        how: '转售后 · 激活来源售后单',
-        what: `本单由售后转入，已激活来源售后单 ${no}${title ? `（${title}）` : ''}，售后状态更新为「${status}」。未新建售后单，1:1 关联不变。`,
+        how: '激活售后单 · reopen 来源售后单',
+        what: [`售后单 ${no}`, title ?? '', `售后侧返回状态：${status}`].filter(Boolean).join(' · '),
       });
       return { opState, suspendInfo, message: `售后工单 ${no} 激活成功，已重回售后工单池` };
     }
@@ -999,10 +999,14 @@ export function applyOpAction(
       });
       // 基线 ※26：已关联售后照常放行，客服来源位关联随升级迁到新投诉单（新单侧「关联接入」由建新单处写）。
       // 原单解除关联、只留「关联降级」履历，不做历史关联分组（Q5），不静默丢。
+      // ④ 的售后转入咨询单升级时，迁的是客服派生位（口径定稿 6b），〈位名〉随位取
       const asNo = detail.linkedAftersale?.no;
       if (asNo) {
+        const slot = detail.linkedAftersale?.slot ?? 'source';
         detail.linkedAftersale = undefined;
-        pushEntry(timeline, aftersaleLinkDemotedEntry({ asNo, toNo: newNo, who: operator, role: operatorRole, at: nowWhen() }));
+        pushEntry(timeline, aftersaleLinkDemotedEntry({
+          asNo, toNo: newNo, who: operator, role: operatorRole, at: nowWhen(), slot,
+        }));
       }
       return {
         opState: alreadyEnded ? opState : 'closed',

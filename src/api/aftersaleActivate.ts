@@ -16,6 +16,7 @@
  *
  * 未配置 VITE_AFTERSALE_API 时走本地实现，保证原型链路完整；接上后端后调用方无需改动。
  */
+import { TICKETS } from '@/mock/tickets';
 
 export interface ActivateAftersaleReq {
   /** 售后工单号（=关联ID） */
@@ -36,16 +37,35 @@ export interface ActivateAftersaleRes {
 
 const BASE = import.meta.env.VITE_AFTERSALE_API as string | undefined;
 
+/** 售后单关闭后的可重开窗口（天）——口径在售后侧，本地实现按此判 */
+const REOPEN_WINDOW_DAYS = 90;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * 本地实现的售后侧判定：按该售后单当前状态给结论。
+ * 已取消 → 不支持重开；已关闭 / 已完成且超出可重开窗口 → 失败；其余重开回售后工单池「待接单」。
+ */
+function localActivate(no: string): ActivateAftersaleRes {
+  const row = TICKETS.find((t) => t.aftersaleOriginNo === no) ?? TICKETS.find((t) => t.linkedAftersaleNo === no);
+  const status = row?.aftersaleOriginNo === no ? row?.aftersaleOriginStatus : row?.linkedAftersaleStatus;
+  const closedAt = row?.aftersaleOriginNo === no ? row?.aftersaleOriginClosedAt : undefined;
+  if (status === '已取消') return { ok: false, error: '售后单已取消，不支持重开' };
+  if ((status === '已关闭' || status === '已完成') && closedAt) {
+    const closedMs = new Date(closedAt.replace(' ', 'T')).getTime();
+    if (Date.now() - closedMs > REOPEN_WINDOW_DAYS * DAY_MS) {
+      return { ok: false, error: `售后单已关闭超过 ${REOPEN_WINDOW_DAYS} 天，超出可重开窗口` };
+    }
+  }
+  return { ok: true, status: '待接单' };
+}
+
 export async function activateAftersaleTicket(
   req: ActivateAftersaleReq,
 ): Promise<ActivateAftersaleRes> {
   if (!req.no) return { ok: false, error: '缺少售后工单号' };
   if (!req.ticketNo) return { ok: false, error: '缺少发起激活的客服工单号' };
 
-  if (!BASE) {
-    // 本地实现：与后端同样的入参校验，回传激活后状态
-    return { ok: true, status: '待接单' };
-  }
+  if (!BASE) return localActivate(req.no);
 
   try {
     const resp = await fetch(`${BASE}/aftersale/tickets/${encodeURIComponent(req.no)}/activate`, {

@@ -318,8 +318,9 @@ export function useTicketOperation() {
           meta: `${(t.updatedAt ?? '').slice(5, 10)} ${t.assignee ?? ''} 升级`,
         }];
         base.linkedAftersale = undefined;
-        // 基线 ※26：来源位关联已随升级迁到新投诉单，原单只留「关联降级」履历（不静默丢）
-        if (t.linkedAftersaleNo) {
+        // 基线 ※26：本单所占那一位（来源位 / ④ 的派生位）的关联已随升级迁到新投诉单，
+        // 原单只留「关联降级」履历（不静默丢）
+        if (t.linkedAftersaleNo || t.aftersaleOriginNo) {
           eventTimelineOverride = migrateAftersaleLink(t, t.escalatedToNo, {
             who: '系统', role: '系统', at: t.updatedAt ?? '',
           }).from.eventTimeline;
@@ -368,7 +369,7 @@ export function useTicketOperation() {
       base.returnedFromAftersale = !!t.returnedFromAftersale;
       if (t.returnedFromAftersale && t.tab !== 'done') base.status = t.nodeStatus;
       // 售后转入（③④）：本单占该售后单的客服派生位，正常在跑，不进「已转出」
-      if (t.aftersaleOriginNo) {
+      if (t.aftersaleOriginNo && !t.escalatedToNo) {
         base.linkedAftersale = {
           no: t.aftersaleOriginNo,
           title: t.aftersaleOriginTitle,
