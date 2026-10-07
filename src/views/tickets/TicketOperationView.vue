@@ -34,7 +34,7 @@ const CreateTicketModal = defineAsyncComponent(() => import('./components/Create
 import type { SmsTemplateKind } from '@/mock/notifyTemplates';
 import { useTicketOperation } from './composables/useTicketOperation';
 import { FEISHU_ESCALATE_CHANNEL, mapUserRole, pushEntry, isAftersaleSettled } from './composables/opActions';
-import { aftersaleLinkJoinedEntry, applyAftersaleResult } from './composables/aftersaleEvents';
+import { aftersaleLinkJoinedEntry, applyAftersaleResult, isAftersaleChainTicket } from './composables/aftersaleEvents';
 import { submitAftersaleResult } from '@/api/aftersaleResult';
 import OpAftersaleResultModal from './components/operation/OpAftersaleResultModal.vue';
 import {
@@ -2054,6 +2054,8 @@ function startIncomingDemo() {
   if (demoFiredCount >= DEMO_MAX_COUNT) return;
   // 刷机单的催补只来自页头催单 / 新建补充，不推送其他类型的样例进线事件（X7）
   if (isFlash.value) return;
+  // 客服⇄售后链路上的单同理：补充 / 催单只画本单真实的记录（1025）
+  if (isAftersaleChainTicket(TICKETS.find((x) => x.no === ticketNo.value))) return;
 
   incomingDemoTimeout = setTimeout(() => {
     incomingDemoTimeout = null;

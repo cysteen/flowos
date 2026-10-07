@@ -398,11 +398,11 @@ export function useTicketOperation() {
       if (isAftersaleInbound(base)) {
         base.builder = AFTERSALE_INBOUND_LABEL;
         base.builderShort = AFTERSALE_INBOUND_LABEL;
-        // 建单时间取售后事件到达建单的时刻，与履历首条一致
-        if (t.createdAt) {
-          base.createdAt = t.createdAt;
-          base.createdAtFull = t.createdAt;
-        }
+      }
+      // 建单时间取工单行（售后转入＝事件到达建单的时刻），与履历首条「创建工单」一致，不落样例时刻
+      if ((isAftersaleInbound(base) || isAftersaleChainTicket(t)) && t.createdAt) {
+        base.createdAt = t.createdAt;
+        base.createdAtFull = t.createdAt;
       }
       if (t.flash) applyFlashRow(base, t);
       if (t.problemDesc?.trim()) {

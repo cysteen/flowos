@@ -313,6 +313,23 @@ function buildAftersaleSeeds() {
     createdAt: '2026-10-05 09:20', updatedAt: '2026-10-05 09:45',
   });
 
+  // 投诉单（处理中、产品有售后服务、无关联）：「关联售后」可点，走售后建单弹窗（§2.2 / §2.3）
+  seeds.push({
+    id: 'as-l1', no: 'IFLYTS-20261006-00049', type: '投诉', channel: '电话',
+    title: '智能音箱频繁断连，客户投诉要求上门检修', smartMarks: ['情绪'],
+    customer: '韦岚', vip: false, product: '智能音箱 X1', complaintType: '投诉',
+    nodeStatus: '处理中', nodeStep: 2, nodeTotal: 5, priority: 'P1',
+    slaText: '04:40:00', slaSub: '充足', slaState: 'ok', slaMinutes: 280,
+    assignee: '王坐席', tab: 'mine', groupId: 'hardware', responded: true,
+    customerPhone: '13900004916', sn: 'SN-X1-49160', productCategory: '智能硬件',
+    problemDesc: '智能音箱购买三个月内频繁断开 WiFi，重置后仍反复出现，客户投诉并要求安排上门检修。',
+    createdAt: '2026-10-06 10:15', updatedAt: '2026-10-06 10:40',
+    eventTimeline: [{
+      id: 'as-IFLYTS-20261006-00049-claim', category: 'node', action: 'accept', who: '王坐席', role: '二线专员',
+      how: '领取', what: '王坐席 从池中领取本单，进入「待响应」。', when: '2026-10-06 10:40',
+    }],
+  });
+
   // ① 投诉单已关联售后单，售后单已完成（客服来源位，AS_CLOSED 只写履历、不改投诉单状态）
   seeds.push(applyAftersaleEvent({
     id: 'as-c2', no: 'IFLYTS-20260925-00045', type: '投诉', channel: '电话',
@@ -1514,6 +1531,7 @@ const TICKET_GROUP_NAMES: Record<string, string[]> = {
   'as-u1': ['硬件缺陷组'],
   'as-u2': ['硬件缺陷组'],
   'as-c2': ['硬件缺陷组'],
+  'as-l1': ['硬件缺陷组'],
   'as-k1': ['硬件缺陷组'],
   'as-k1n': ['硬件缺陷组'],
   'as-k2': ['硬件缺陷组'],
