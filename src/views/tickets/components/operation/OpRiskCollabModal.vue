@@ -3,6 +3,10 @@ import { computed, watch } from 'vue';
 import { SafetyCertificateOutlined } from '@ant-design/icons-vue';
 import OpActionModal from './OpActionModal.vue';
 import RiskCollabFields from './RiskCollabFields.vue';
+// 风险等级段与另外六处「风险管控」弹窗共用同一份呈现；本处是**只读回显**（2026-10-08 拍板）
+import RiskLevelFields from './RiskLevelFields.vue';
+import { makeRiskLevelFieldsView } from '@/composables/useRiskLevelFields';
+import { formatOpTime } from '@/views/tickets/utils/opTime';
 import { useRiskQueueStore } from '@/stores/riskQueue';
 import { useRiskCollabStore } from '@/stores/riskCollab';
 import { useRiskReportStore } from '@/stores/riskReports';
@@ -87,10 +91,45 @@ const subtitle = computed(() => {
   return src ? `${src} · ${props.ticketNo}` : props.ticketNo;
 });
 
-const tagLine = computed(() => {
+/**
+ * 抬头那一对现在**只剩"谁标的、什么时候"** —— 等级与风险备注已移进下面那个共用段
+ * （2026-10-08 用户拍板「等级段接进来，只读回显」）。
+ * 🔴 两处别再各写一遍：等级留在抬头、下面又摆一份，就是同屏两个「中危」。
+ * 时刻走 `formatOpTime`，与 `RiskAssessSheet` 的〔标记时间〕同一个写法（分钟精度源补 `:00`）。
+ */
+const tagMeta = computed(() => {
   const tag = poolEntry.value?.tag;
   if (!tag) return '';
-  return `${riskLevelText(tag.result === '无风险' ? null : tag.result)} · ${tag.by}（${tag.byRole}）· ${tag.at}`;
+  return `${tag.by}（${tag.byRole}）· ${formatOpTime(tag.at)}`;
+});
+
+/**
+ * **风险等级段 · 只读回显**（2026-10-08 用户拍板）。
+ *
+ * 🔴 **本处与另外六处「风险管控」弹窗共用 `RiskLevelFields` 的同一份呈现** ——
+ * 在此之前本弹窗把等级写成抬头上一行灰色文字，而同一个动作在工单处理页页头的投诉支
+ * 走的是共用件，同为投诉支「风险管控」却长成两样。
+ *
+ * 🔴 **只读、不落库**：这一路的工作是**协同处理**（给处理意见与建议事项），
+ * 不是改判。要改等级走「已判」段条目表那一枚「风险管控」或工单页页头那一枚
+ * —— 那两处才带落库路径（`recordTag` / `recordTagFor`）。故 setter 给空函数：
+ * 接口不为只读态分叉，但本处**没有**写库的口子，将来也不许从这里加。
+ *
+ * `visible` 判的是"有没有结论可回显"：本单还没有标记结论时整段不出
+ * （那时抬头的 `tagMeta` 同样为空，一屏不会只剩一个孤零零的标签）。
+ */
+const tagLevelView = makeRiskLevelFieldsView({
+  getLevel: () => poolEntry.value?.tag?.result ?? '',
+  setLevel: () => {},
+  getNote: () => poolEntry.value?.tag?.note ?? '',
+  setNote: () => {},
+  visible: computed(() => !!poolEntry.value?.tag),
+  isAmend: computed(() => false),
+  required: computed(() => false),
+  missLevel: computed(() => false),
+  missNote: computed(() => false),
+  noRiskLocked: computed(() => false),
+  readonly: computed(() => true),
 });
 
 /* ---------------- 「本单另有」：一屏交代还有哪些痕迹（§5C.2） ---------------- */
@@ -111,8 +150,13 @@ const hitSummary = computed(() => {
    */
   const t = queue.currentTagOf(props.ticketNo);
   if (!t) return `预警词命中 ${v.hitCount} 条 · 尚无核实结论`;
-  const lv = t.result === '无风险' ? '无风险' : riskLevelText(t.result);
-  return `预警词命中 ${v.hitCount} 条 · 命中待核实；风险等级已判「${lv}」`;
+  /*
+   * 🔴 **这一支只说命中那一半**（2026-10-08，与 `tabs/OpRiskMonitorTab.vue` 那次同一个改法）：
+   * 原来这里还接着「；风险等级已判「X」」—— 上面那段注释担心的"打完标的单被写成
+   * 『尚无核实结论』"不会发生，因为这一支的前提就是 `t` 存在；而**它的结论现在由紧挨着的
+   * 只读等级段负责说**，再写一遍就是同屏两个「中危」。
+   */
+  return `预警词命中 ${v.hitCount} 条 · 命中待核实`;
 });
 const reportSummary = computed(() => {
   const list = reportStore.reportsOf(props.ticketNo).filter((r) => r.source === '二线报备');
@@ -157,9 +201,9 @@ function onOk() {
           <span class="rc-head-label">当前处理人</span>
           <span class="rc-head-value">{{ handler || '未认领' }}</span>
         </span>
-        <span v-if="tagLine" class="rc-head-pair">
-          <span class="rc-head-label">风险等级</span>
-          <span class="rc-head-value rc-head-warn">{{ tagLine }}</span>
+        <span v-if="tagMeta" class="rc-head-pair">
+          <span class="rc-head-label">标记人</span>
+          <span class="rc-head-value">{{ tagMeta }}</span>
         </span>
       </div>
 
@@ -170,7 +214,13 @@ function onOk() {
         <li>{{ collabSummary }}</li>
       </ul>
 
-      <!-- 三项字段走共享组件：工单页页头「风险管控」弹窗的投诉支渲染的是同一份 -->
+      <!--
+        ② 风险等级 —— 六处「风险管控」弹窗同一份共享件、同一种呈现，本处**只读回显**
+        （2026-10-08 拍板）。段序与另几处一致：① 这张单什么情况 → ② 风险等级 → ③ 风险处理措施。
+      -->
+      <RiskLevelFields :ctl="tagLevelView" />
+
+      <!-- ③ 风险处理措施：三项字段走共享组件，工单页页头「风险管控」弹窗的投诉支渲染的是同一份 -->
       <RiskCollabFields :ctl="ctl" />
     </div>
   </OpActionModal>
@@ -195,7 +245,7 @@ function onOk() {
 .rc-head-pair { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
 .rc-head-label { color: #9ca3af; }
 .rc-head-value { color: #374151; font-weight: 600; }
-.rc-head-warn { color: #c2410c; }
+/* `.rc-head-warn` 已随抬头那一对里的等级移进共用段一并删除（2026-10-08） */
 .rc-context {
   margin: 0;
   padding: 0 0 0 16px;

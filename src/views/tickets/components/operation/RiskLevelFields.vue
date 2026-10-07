@@ -43,8 +43,17 @@ const props = defineProps<{ ctl: RiskLevelFieldsView }>();
  */
 const levels = computed<readonly RiskTagResult[]>(() => props.ctl.levels?.value ?? RISK_TAG_RESULTS);
 
+/**
+ * 只读回显（2026-10-08 用户拍板，给风险工单池投诉单那一路的「风险管控」用）。
+ * 不给就是可编辑 —— 既有五处一个都不传，行为一格不变。
+ */
+const readonly = computed(() => props.ctl.readonly?.value ?? false);
+
 /** 置灰档由本组件挡住并给出原因；其余交给 `ctl.fields.level` 的 setter（宿主那一步的动作全保留） */
 function pick(r: RiskTagResult) {
+  // 只读态**静默不动**：不写值，也不发提示 —— 点一个本来就不该能点的东西，
+  // 弹一句话等于告诉人"你操作错了"，而他并没有。不可点由 cursor 与淡化表达。
+  if (readonly.value) return;
   if (r === NO_RISK && props.ctl.noRiskLocked.value) {
     message.warning(NO_RISK_LOCKED_TIP);
     return;
@@ -54,28 +63,31 @@ function pick(r: RiskTagResult) {
 </script>
 
 <template>
-  <section v-if="ctl.visible.value" class="rlf" aria-label="风险等级">
+  <section v-if="ctl.visible.value" class="rlf" :class="{ 'rlf-readonly': readonly }" aria-label="风险等级">
     <div class="op-field op-field-h rlf-row">
-      <!-- 本来没有等级才标必填：已有等级的那一路是预置可改，不强制再选一次 -->
-      <div class="op-label rlf-label" :class="{ req: ctl.required.value }">风险等级</div>
+      <!-- 本来没有等级才标必填：已有等级的那一路是预置可改，不强制再选一次。只读态不标星 -->
+      <div class="op-label rlf-label" :class="{ req: ctl.required.value && !readonly }">风险等级</div>
       <div class="op-radio-cards op-radio-cards--row rlf-cards">
         <!-- 已结论的条目「无风险」一档置灰（store 侧 recordTag 同样拒绝），见 ctl.noRiskLocked -->
         <div
           v-for="r in levels"
           :key="r"
           class="op-radio-card rlf-card"
-          :class="{ on: ctl.fields.level === r, 'rlf-card-locked': r === NO_RISK && ctl.noRiskLocked.value }"
+          :class="{ on: ctl.fields.level === r, 'rlf-card-locked': !readonly && r === NO_RISK && ctl.noRiskLocked.value }"
           :style="ctl.fields.level === r && isPoolLevel(r) ? { borderColor: RISK_LEVEL_STYLE[r].color, background: `${RISK_LEVEL_STYLE[r].bg}33` } : {}"
-          :title="r === NO_RISK && ctl.noRiskLocked.value ? NO_RISK_LOCKED_TIP : undefined"
-          :aria-disabled="r === NO_RISK && ctl.noRiskLocked.value ? 'true' : undefined"
+          :title="!readonly && r === NO_RISK && ctl.noRiskLocked.value ? NO_RISK_LOCKED_TIP : undefined"
+          :aria-disabled="readonly || (r === NO_RISK && ctl.noRiskLocked.value) ? 'true' : undefined"
           @click="pick(r)"
         >
           <div class="op-rc-title">{{ r === NO_RISK ? NO_RISK : riskLevelText(r) }}</div>
         </div>
       </div>
     </div>
-    <p v-if="ctl.missLevel.value" class="rlf-err">请选择风险等级</p>
-    <p v-else-if="ctl.noRiskLocked.value" class="rlf-foot">{{ NO_RISK_LOCKED_TIP }}。</p>
+    <!-- 只读态没有"缺项"也没有"选不了"，两条一律不出 -->
+    <template v-if="!readonly">
+      <p v-if="ctl.missLevel.value" class="rlf-err">请选择风险等级</p>
+      <p v-else-if="ctl.noRiskLocked.value" class="rlf-foot">{{ NO_RISK_LOCKED_TIP }}。</p>
+    </template>
 
     <!--
       风险备注。**改判时必填**（原来那格「修正原因」已并进来，2026-09-29 裁决）：
@@ -83,8 +95,14 @@ function pick(r: RiskTagResult) {
       改判形态下本格从空开始、问法换成"为什么改"。
     -->
     <div class="op-field op-field-h op-field-h-top rlf-row rlf-row-note">
-      <div class="op-label rlf-label" :class="{ req: ctl.isAmend.value }">风险备注</div>
+      <div class="op-label rlf-label" :class="{ req: ctl.isAmend.value && !readonly }">风险备注</div>
+      <!--
+        只读态渲染成一行文本、不是禁用的输入框：禁用框仍长着"这里本来能填"的样子，
+        而这一路**永远**填不了。空备注写「—」，不留一块无法解释的空白。
+      -->
+      <p v-if="readonly" class="rlf-note-ro">{{ ctl.fields.note || '—' }}</p>
       <a-textarea
+        v-else
         v-model:value="ctl.fields.note"
         :rows="2"
         :status="ctl.missNote.value ? 'error' : undefined"
@@ -93,7 +111,7 @@ function pick(r: RiskTagResult) {
           : '判这个等级的依据…（可选）'"
       />
     </div>
-    <p v-if="ctl.missNote.value" class="rlf-err">请填写风险备注</p>
+    <p v-if="!readonly && ctl.missNote.value" class="rlf-err">请填写风险备注</p>
   </section>
 </template>
 
@@ -152,4 +170,30 @@ function pick(r: RiskTagResult) {
 .rlf-foot { color: #9ca3af; }
 .rlf-err { color: #ef4444; }
 .rlf-row-note :deep(textarea.ant-input) { font-size: 13px; }
+
+/*
+  只读回显（2026-10-08 拍板）。🔴 **只改"能不能点"，不改版式**：
+  标签宽度、卡片尺寸、档位顺序、行距一律沿用上面那套，不在这里另开一种长相。
+  未选中的档淡一档、选中的那档照常高亮（高亮走的是上面的 .on 与内联 style，这里不覆盖）。
+*/
+.rlf-readonly .rlf-card {
+  cursor: default;
+  background: #fafafa;
+  border-color: #eef0f2;
+}
+.rlf-readonly .rlf-card .op-rc-title { color: #b6bbc2; }
+.rlf-readonly .rlf-card.on { cursor: default; }
+.rlf-readonly .rlf-card.on .op-rc-title { color: #374151; font-weight: 600; }
+/* 备注那一行的只读文本：与输入框同一条基线，不缩进、不加框 */
+.rlf-note-ro {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding-top: 3px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #374151;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 </style>

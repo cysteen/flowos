@@ -194,6 +194,21 @@ export interface RiskLevelFieldsView {
    * 但那一处本轮没有接进共享件（它的备注是另一格、判「误报」时等级段整段不出）。
    */
   levels?: LevelsView;
+  /**
+   * **可选 · 只读回显**。为真时这一段**只摆不收**：四档照常渲染、现行那一档照常高亮，
+   * 但点不动；风险备注渲染成一行只读文本（空则「—」）；必填星、缺项红字、
+   * 「无风险置灰」那句脚注一律不出 —— 只读态下没有"缺项"也没有"选不了"这回事。
+   *
+   * 🔴 **只读不是另一种呈现**（2026-10-08 用户拍板「等级段接进来，只读回显」）：
+   * 档位、顺序、版式、标签一律与可编辑态逐像素相同，差别只在能不能点。
+   * 做成"一行文字摘要"就又长出第七种呈现了，那正是本共享件要收掉的东西。
+   *
+   * 🔴 **它不替代 `visible`**：整段出不出仍由 `visible` 管（如这张单还没有标记结论，
+   * 只读态下也没什么可回显，应当整段不出）。
+   *
+   * 不给就是可编辑（既有五处一个都不传，行为一格不变）。
+   */
+  readonly?: BoolView;
 }
 
 /** `makeRiskLevelFieldsView` 的入参：宿主既有状态的读写口 + 一组只读判据 */
@@ -214,6 +229,11 @@ export interface RiskLevelFieldsViewSource {
   noRiskLocked: BoolView;
   /** 可选，见 `RiskLevelFieldsView.levels` */
   levels?: LevelsView;
+  /**
+   * 可选，见 `RiskLevelFieldsView.readonly`。只读态下 `setLevel` / `setNote` 不会被调到，
+   * 宿主仍须照给（接口不为只读态分叉），给个空函数即可。
+   */
+  readonly?: BoolView;
 }
 
 /**
@@ -241,6 +261,7 @@ export function makeRiskLevelFieldsView(src: RiskLevelFieldsViewSource): RiskLev
     missNote: src.missNote,
     noRiskLocked: src.noRiskLocked,
     levels: src.levels,
+    readonly: src.readonly,
   };
 }
 
