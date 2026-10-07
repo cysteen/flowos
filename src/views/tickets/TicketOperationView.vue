@@ -91,7 +91,7 @@ const {
 const {
   form, activeChip, expandedSections, filledSupplementCount,
   toggleSection, selectChip,
-} = useProcessForm(() => d.value.type);
+} = useProcessForm(() => d.value.type, () => d.value.no);
 const { tabData } = useOperationTabs(() => d.value.type, () => d.value.no);
 const {
   toasts: liveToasts,

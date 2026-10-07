@@ -405,6 +405,15 @@ export function aftersaleSlotOf(t: Pick<Ticket, 'linkedAftersaleNo' | 'aftersale
   return null;
 }
 
+/**
+ * 客服⇄售后链路上的单：占着关联位、售后转回 / 承接，或关联已降级迁走只剩售后履历（条目 id 以 `as-` 起头）。
+ * 处理页的履历、「最新处理」、关联单 Tab 只取本单自己的数据，不沿用类型样例。
+ */
+export function isAftersaleChainTicket(t: Ticket | undefined): t is Ticket {
+  return !!t && !!(t.linkedAftersaleNo || t.aftersaleOriginNo || t.returnedFromAftersale
+    || t.succeedsFromNo || t.succeededByNo || (t.eventTimeline ?? []).some((e) => e.id.startsWith('as-')));
+}
+
 /** 解除本单在派生位上的关联（降级 / 承接后旧单只留履历） */
 function clearDerivedLink(t: Ticket): Ticket {
   return {

@@ -30,7 +30,7 @@ import {
   applyOpAction, isAftersaleInbound, mapUserRole, nowWhen, pushEntry,
   type OpActionPayload, type SuspendInfo, type TicketOpState,
 } from './opActions';
-import { migrateAftersaleLink } from './aftersaleEvents';
+import { isAftersaleChainTicket, migrateAftersaleLink } from './aftersaleEvents';
 import { AFTERSALE_INBOUND_LABEL } from './aftersaleButtonForm';
 
 /**
@@ -424,14 +424,15 @@ export function useTicketOperation() {
       // 客服⇄售后链路上的单（1025）：履历只取本单自己的事件，不沿用样例单的履历，
       // 否则别的单的「升级售后」「升级投诉」等样例条目会混进来，与本单的关联位自相矛盾
       // （含关联已被同位降级 / 迁走、只剩售后履历的旧单：履历条目 id 以 `as-` 起头，见 aftersaleEvents.ts）
-      if (t && (t.linkedAftersaleNo || t.aftersaleOriginNo || t.returnedFromAftersale || t.succeedsFromNo || t.succeededByNo
-        || entries.some((e) => e.id.startsWith('as-')))) {
+      if (t && (isAftersaleChainTicket(t) || entries.some((e) => e.id.startsWith('as-')))) {
         const own = entries.map((e) => ({ ...e }));
         const hasCreate = own.some((e) => e.action === 'create');
         timeline.value = hasCreate || !t.createdAt ? own : [{
           id: `tl-${t.no}-create`, category: 'node', action: 'create', who: '系统', role: '系统', systemActor: true,
           how: '创建工单', what: `客户经${t.channel}渠道反馈问题，系统生成工单。`, when: t.createdAt,
         }, ...own];
+        // 「最新处理」同样取本单履历，不落类型样例的处理人与处理结果
+        detail.value.latestHandling = ownLatestHandling(timeline.value);
         return;
       }
       const seen = new Set(timeline.value.map((e) => e.id));
@@ -493,6 +494,15 @@ export function useTicketOperation() {
       suggestion: '核对刷机信息与失败原因后处理',
     };
     base.latestHandling = flashLatestHandling(t.no);
+  }
+
+  /** 「最新处理」：本单履历里最近的处理事件（不含沟通、时效、评价类），新在上，最多 3 条 */
+  function ownLatestHandling(entries: TimelineEntry[]): TicketDetailMeta['latestHandling'] {
+    return entries
+      .filter((e) => !['comm', 'sla', 'praise'].includes(e.category))
+      .slice(-3)
+      .reverse()
+      .map((e) => ({ who: e.who, role: e.role, action: e.how, when: e.when.slice(5, 16), text: e.what }));
   }
 
   /** 「最新处理」：刷机履历里最近的处理事件（不含短信），新在上，最多 3 条 */

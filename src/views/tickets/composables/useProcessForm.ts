@@ -2,20 +2,30 @@ import { computed, ref, watch } from 'vue';
 import type { ProcessFormDraft, SupplementChip, SectionKey } from '@/views/tickets/types/operation';
 import { DEFAULT_PROCESS_DRAFT } from '@/mock/ticketDetail';
 import { TYPE_SAMPLES } from '@/mock/ticketTypeSamples';
+import { TICKETS } from '@/mock/tickets';
+import { isAftersaleChainTicket } from './aftersaleEvents';
 import { isComplaintCategoryComplete } from '@/views/tickets/types/createTicket';
 
 function complaintCategoryFilled(f: ProcessFormDraft): boolean {
   return isComplaintCategoryComplete(f);
 }
 
-/** 按工单类型构建 Tab① 处理表单预填（投诉用 base，咨询/商机/建议用类型样例覆盖）。 */
-function buildDraft(type: string): ProcessFormDraft {
-  return {
+/**
+ * 按工单类型构建 Tab① 处理表单预填（投诉用 base，咨询/商机/建议用类型样例覆盖）。
+ * 客服⇄售后链路上的单（1025）：问题原因 / 处理结果不预填样例文字，否则会回写进本单的「最新处理」。
+ */
+function buildDraft(type: string, ticketNo?: string): ProcessFormDraft {
+  const draft: ProcessFormDraft = {
     ...DEFAULT_PROCESS_DRAFT,
     qualityIsStandard: true,
     qualityIssueCat1: '',
     qualityIssueCat2: '',
     ...(TYPE_SAMPLES[type]?.processDraft ?? {}),
+  };
+  const row = ticketNo ? TICKETS.find((x) => x.no === ticketNo) : undefined;
+  if (!isAftersaleChainTicket(row)) return draft;
+  return {
+    ...draft, problemCause: '', processResult: '', problemCauseAttachments: [], processResultAttachments: [],
   };
 }
 
@@ -41,12 +51,12 @@ function countFilledSupplements(form: ProcessFormDraft): number {
   return n;
 }
 
-export function useProcessForm(getType: () => string) {
-  const form = ref<ProcessFormDraft>(buildDraft(getType()));
+export function useProcessForm(getType: () => string, getNo?: () => string) {
+  const form = ref<ProcessFormDraft>(buildDraft(getType(), getNo?.()));
   const activeChip = ref<SupplementChip>('complaint');
 
-  watch(getType, (type) => {
-    form.value = buildDraft(type);
+  watch([getType, () => getNo?.() ?? ''], ([type, no]) => {
+    form.value = buildDraft(type, no || undefined);
   });
   const expandedSections = ref<Record<SectionKey, boolean>>({
     record: true,
