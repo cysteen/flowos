@@ -6885,7 +6885,7 @@ function toggleWordEnabled(w: RiskWord) {
 
         <div class="op-field op-field-h op-field-h-top tag-field-note">
           <div class="op-label">风险备注</div>
-          <a-textarea v-model:value="bulkNote" :rows="2" placeholder="判断依据与后续动作（可选）" />
+          <a-textarea v-model:value="bulkNote" :rows="2" placeholder="判这个等级的依据…（可选）" />
         </div>
       </div>
     </OpActionModal>
@@ -6954,7 +6954,7 @@ function toggleWordEnabled(w: RiskWord) {
 
         <div class="op-field op-field-h op-field-h-top tag-field-note">
           <div class="op-label">风险备注</div>
-          <a-textarea v-model:value="bulkVerifyNote" :rows="2" placeholder="核实结论与后续动作（可选）" />
+          <a-textarea v-model:value="bulkVerifyNote" :rows="2" placeholder="本次核实的依据…（可选）" />
         </div>
       </div>
     </OpActionModal>
@@ -7276,7 +7276,7 @@ function toggleWordEnabled(w: RiskWord) {
             :rows="2"
             :placeholder="tagAmend
               ? '为什么改判，如：复听通话录音，客户并未提及外部渠道（必填）'
-              : '核实结论与后续动作（可选）'"
+              : '本次核实的依据…（可选）'"
           />
         </div>
 

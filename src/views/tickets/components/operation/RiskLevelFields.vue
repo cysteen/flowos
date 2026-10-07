@@ -90,7 +90,7 @@ function pick(r: RiskTagResult) {
         :status="ctl.missNote.value ? 'error' : undefined"
         :placeholder="ctl.isAmend.value
           ? '上一次判的是什么、这次为什么改…（必填）'
-          : '判断依据与后续动作（可选）'"
+          : '判这个等级的依据…（可选）'"
       />
     </div>
     <p v-if="ctl.missNote.value" class="rlf-err">请填写风险备注</p>
