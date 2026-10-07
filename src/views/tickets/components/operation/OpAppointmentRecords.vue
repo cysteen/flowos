@@ -8,6 +8,7 @@ import {
   APPOINTMENT_DEMAND_OPTIONS,
   isAppointmentExpired,
 } from '@/views/tickets/types/operation';
+import { formatOpTime } from '@/views/tickets/utils/opTime';
 import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue';
 
 const DATE_TIME_FORMAT = APPOINTMENT_DATE_TIME_FORMAT;
@@ -201,7 +202,7 @@ defineExpose({ addRecord });
           <template v-else>
             <span v-if="record.done" class="record-done-tag">
               <CheckOutlined /> 已沟通
-              <span v-if="record.doneAt" class="record-done-at">{{ record.doneAt }}</span>
+              <span v-if="record.doneAt" class="record-done-at">{{ formatOpTime(record.doneAt) }}</span>
             </span>
             <span v-else-if="record.cancelled" class="record-cancel-tag"><CloseCircleOutlined /> 已取消</span>
             <template v-else-if="!readonly">
@@ -341,6 +342,7 @@ defineExpose({ addRecord });
   margin-left: 4px;
   color: #6b7280;
   font-weight: 400;
+  font-variant-numeric: tabular-nums;
 }
 .record-cancel-btn {
   color: #6b7280;
