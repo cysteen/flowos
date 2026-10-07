@@ -6054,9 +6054,15 @@ function toggleWordEnabled(w: RiskWord) {
           来源：{{ sourceFilter }}
           <button type="button" class="nc-del" title="看全部监控来源" @click="sourceFilter = 'all'">×</button>
         </span>
+        <!--
+          🔴 收窄标与 chip 排、与表里「评估决策」列**写同一个词**：协同那一档一律写全称
+          「风险处理建议」。`COORD_DECISION` 那个短词只是**判等用的常量键**（它存在是因为
+          「今日结论」那一格只有一枚数字的宽度），不要让它漏到这里当界面词 ——
+          同一个档在三处写两个名字，读的人会以为是两件事。
+        -->
         <span v-if="reportView === 'assessed' && decisionFilter !== 'all'" class="nc-chip">
-          结论：{{ decisionFilter }}
-          <button type="button" class="nc-del" title="看全部结论（升级 / 不升级 / 建议）" @click="decisionFilter = 'all'">×</button>
+          结论：{{ decisionFilter === COORD_DECISION ? '风险处理建议' : decisionFilter }}
+          <button type="button" class="nc-del" title="看全部结论（升级 / 不升级 / 风险处理建议）" @click="decisionFilter = 'all'">×</button>
         </span>
         <!--
           「仅今日」默认就开着，故它也得摆出来——不摆的话，翻不到昨天的记录会被读成"昨天没人评估"。
