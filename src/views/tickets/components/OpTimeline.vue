@@ -12,6 +12,7 @@ import {
   CloudUploadOutlined, CloseCircleOutlined, InteractionOutlined, RedoOutlined, RobotOutlined,
 } from '@ant-design/icons-vue';
 import RecordingPlayer from './operation/RecordingPlayer.vue';
+import { formatOpTime } from '@/views/tickets/utils/opTime';
 import {
   CATEGORY_META, ROLE_BADGE, softBg,
   type TlAction, type TlCategory, type TimelineEntry, type RelatedTicketBrief,
@@ -151,7 +152,11 @@ const filteredEntries = computed(() => {
             class="how-badge"
             :style="{ color: CATEGORY_META.sla.color, background: softBg(CATEGORY_META.sla.color) }"
           >{{ e.how }}</span>
-          <span class="sla-close-time">{{ e.slaClose.closedAt }}</span>
+          <!--
+            关钟时刻是**时间点**，与 SLA 那一路的倒计时 / 剩余时长（`slaClock.ts`、`OpSlaBar.vue`）
+            不是一回事，故同样走全页签统一的 formatOpTime。
+          -->
+          <span class="sla-close-time">{{ formatOpTime(e.slaClose.closedAt) }}</span>
         </div>
 
         <div v-else class="entry-main">
@@ -162,7 +167,7 @@ const filteredEntries = computed(() => {
               {{ e.how }}<template v-if="e.dunningTimes"> · 第{{ e.dunningTimes }}次</template>
             </span>
             <span v-if="e.internal" class="internal">仅内部可见</span>
-            <span class="when">{{ e.when }}</span>
+            <span class="when">{{ formatOpTime(e.when) }}</span>
           </div>
 
           <div v-if="e.what" class="what">{{ e.what }}</div>
@@ -239,7 +244,7 @@ const filteredEntries = computed(() => {
               >{{ e.relatedTicket.type }}</span>
               <span class="rel-mini-sep">·</span>
               <span class="rel-mini-builder">{{ e.relatedTicket.builder }}</span>
-              <span v-if="e.relatedTicket.createdAt" class="rel-mini-time">{{ e.relatedTicket.createdAt }}</span>
+              <span v-if="e.relatedTicket.createdAt" class="rel-mini-time">{{ formatOpTime(e.relatedTicket.createdAt) }}</span>
             </div>
           </div>
 
@@ -252,7 +257,7 @@ const filteredEntries = computed(() => {
           <template v-if="e.recording">
             <RecordingPlayer
               :progress="`00:00 / ${e.recording}`"
-              :name="`${e.how} ${e.when}`"
+              :name="`${e.how} ${formatOpTime(e.when)}`"
             />
             <div v-if="e.asr" class="asr">
               <div class="asr-head"><ThunderboltOutlined :style="{ color: '#06B6D4', fontSize: '12px' }" />语音识别转写</div>
