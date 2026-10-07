@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { message } from 'ant-design-vue';
 import { PaperClipOutlined } from '@ant-design/icons-vue';
 import OpActionModal from './OpActionModal.vue';
+import { formatOpTime } from '@/views/tickets/utils/opTime';
 import type { AttachmentLinkFile } from '@/views/tickets/types/operationTabs';
 
 const props = defineProps<{
@@ -106,7 +107,7 @@ function onDownloadPicked() {
                 <button type="button" class="link-btn" @click="onDownload(f.name)">{{ f.name }}</button>
               </td>
               <td class="col-note">{{ f.note }}</td>
-              <td class="col-time">{{ f.uploadedAt }}</td>
+              <td class="col-time">{{ formatOpTime(f.uploadedAt) }}</td>
               <td class="col-revoked">
                 <span class="av-pill" :class="f.revoked ? 'av-pill-warn' : 'av-pill-gray'">
                   {{ f.revoked ? '是' : '否' }}
@@ -171,9 +172,11 @@ function onDownloadPicked() {
   width: 140px;
 }
 
+/* 时刻列靠右（2026-10-07 裁决：全页签时刻一律靠右），与附件历史 Tab 的表同一做法 */
 .col-time {
-  width: 148px;
+  width: 164px;
   white-space: nowrap;
+  text-align: right;
 }
 
 .col-revoked {

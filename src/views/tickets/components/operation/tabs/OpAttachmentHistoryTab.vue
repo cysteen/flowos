@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue';
 import { message } from 'ant-design-vue';
 import OpAttachmentViewModal from '@/views/tickets/components/operation/OpAttachmentViewModal.vue';
+import { formatOpTime } from '@/views/tickets/utils/opTime';
 import type {
   AttachmentHistoryRecord,
   AttachmentLinkFile,
@@ -139,7 +140,7 @@ function openLinkFiles(link: AttachmentLinkRecord) {
                 </div>
               </td>
               <td class="col-size">{{ r.size }}</td>
-              <td class="col-time">{{ r.uploadedAt }}</td>
+              <td class="col-time">{{ formatOpTime(r.uploadedAt) }}</td>
               <td class="col-user">{{ r.uploadedBy }}</td>
               <td class="col-actions">
                 <button type="button" class="link-btn" @click="onView(r.name)">查看</button>
@@ -182,7 +183,7 @@ function openLinkFiles(link: AttachmentLinkRecord) {
               </td>
               <td class="col-phone">{{ l.phone }}</td>
               <td class="col-sender">{{ l.senderName }}</td>
-              <td class="col-time">{{ l.sentAt }}</td>
+              <td class="col-time">{{ formatOpTime(l.sentAt) }}</td>
               <td class="col-link-source">
                 <span class="source-tag" :class="linkSourceClass(l.source)">{{ l.source }}</span>
               </td>
@@ -196,7 +197,7 @@ function openLinkFiles(link: AttachmentLinkRecord) {
                   {{ l.uploaded ? '已上传' : '未上传' }}
                 </span>
               </td>
-              <td class="col-time">{{ l.updatedAt || '-' }}</td>
+              <td class="col-time">{{ l.updatedAt ? formatOpTime(l.updatedAt) : '-' }}</td>
             </tr>
           </tbody>
         </table>
@@ -351,9 +352,11 @@ function openLinkFiles(link: AttachmentLinkRecord) {
   white-space: nowrap;
 }
 
+/* 时刻列靠右（2026-10-07 裁决：全页签时刻一律靠右），表头与单元格同向 */
 .col-time {
-  width: 140px;
+  width: 164px;
   white-space: nowrap;
+  text-align: right;
 }
 
 .col-user {
