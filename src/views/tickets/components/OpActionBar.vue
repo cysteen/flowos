@@ -194,7 +194,7 @@ const aftersaleBlockedTip = computed(() => {
   if (!as || activatableAftersale.value) return null;
   return as.settled
     ? `关联售后单 ${as.no} 已结案，如需继续处理请线下联系售后`
-    : `已有在跑的售后单 ${as.no}，请在「关联单」Tab 点开跟进`;
+    : '补充与催单请点开工单号，在售后系统中操作';
 });
 
 /** 委派中：单子交给协办人先处理，处理完回到本节点，期间锁定流转与终结类动作 */
@@ -590,8 +590,8 @@ function openEscalate() {
 }
 
 /**
- * 投诉单「关联售后」入口：打开售后建单弹窗（复用转售后动作，投诉分支=建关联单独立跑）。
- * 已有 1:1 关联时不弹窗——未结案去关联单 Tab 跟进、已结案线下联系售后（D2 改写）。
+ * 投诉单「关联售后」入口：打开售后建单弹窗，提交走独立动作「关联售后」（1025，不再复用转售后）。
+ * 已有 1:1 关联时不弹窗——未结案点开工单号去售后系统操作、已结案线下联系售后（D2 改写）。
  */
 function openAftersale() {
   if (isTerminal.value || isTransferred.value) return;
@@ -604,7 +604,7 @@ function openAftersale() {
     message.info(aftersaleBlockedTip.value);
     return;
   }
-  dialogAction.value = '转售后';
+  dialogAction.value = '关联售后';
   dialogOpen.value = true;
 }
 

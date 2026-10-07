@@ -1698,7 +1698,7 @@ function onAction(payload: Record<string, unknown>) {
   if (toFeishu) {
     processTabsRef.value?.switchTab('feishu');
   }
-  if (payload.type === '转售后') syncAftersaleRelatedCard();
+  if (payload.type === '转售后' || payload.type === '关联售后') syncAftersaleRelatedCard();
 }
 
 /**
@@ -2180,6 +2180,12 @@ function confirmCarryOnNewTicket(kind: '补充' | '催单'): boolean {
   return true;
 }
 
+/** 页头「关联售后」：只给投诉单（转售后在底栏，只给非诉单） */
+function openLinkAftersale() {
+  if (d.value.type !== '投诉') return;
+  actionBarRef.value?.openAftersale();
+}
+
 function onHeaderAction(name: string) {
   switch (name) {
     case '升级投诉': // 非投诉→建单页；投诉单→小弹窗（《【815】关联投诉 PRD》§4.2）
@@ -2193,8 +2199,8 @@ function onHeaderAction(name: string) {
       }
       openEscalate();
       break;
-    case '关联售后': // 投诉工单：打开售后建单弹窗
-      actionBarRef.value?.openAftersale();
+    case '关联售后': // 投诉工单：独立动作（1025），打开售后建单弹窗，提交落 applyOpAction 的「关联售后」分支
+      openLinkAftersale();
       break;
     case '新建补充':
       if (confirmCarryOnNewTicket('补充')) return;

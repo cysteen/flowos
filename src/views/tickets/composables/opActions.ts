@@ -52,6 +52,9 @@ export type OpActionType =
   | '保存草稿' | '标记已解决'
   | '调剂' | '委派' | '下送' | '撤回' | '强结' | '转单'
   | '挂起' | '恢复' | '退回' | '升级' | '同步飞书' | '转售后' | '升级投诉' | '撤销委派' | '风险报备'
+  // 「关联售后」：投诉单在工单头建关联售后单（①格，本单状态不变）。1025 起与「转售后」（②格，
+  // 非诉单进「已转出」）拆成两个独立动作——履历、门控、置灰文案各走各的，不再复用转售后分支
+  | '关联售后'
   // 「协同处理」是基线 v1.23 新收进动作矩阵的第 28 个动作（§2 一列 / §4 一行）：
   // 它**改工单**（挂建议标记、写履历、发通知），够得上独立动作；报备与评估只改队列条目故不进表。
   // ⚠️ 它同时是风险那一枚按钮的第三种形态（基线 ※29），**不在 BAR_ORDER 里另开一枚按钮** ——
@@ -276,6 +279,7 @@ export type OpActionPayload =
   | { type: '同步飞书'; data: SyncFeishuPayload }
   | { type: '激活飞书'; data: FeishuActivatePayload }
   | { type: '转售后'; data: AftersalePayload }
+  | { type: '关联售后'; data: AftersalePayload }
   | { type: '激活售后'; data: AftersaleActivatePayload }
   | { type: '升级投诉'; data: EscalateComplaintPayload }
   | { type: '标记已解决'; data: ResolvePayload }
@@ -646,6 +650,24 @@ function reopenSolveOnReject(detail: TicketDetailMeta): boolean {
   return reopened;
 }
 
+/** 关联售后 / 转售后共用：按建单表单在本单上挂 1:1 关联售后单（客服来源位） */
+function linkAftersaleFromPayload(
+  detail: TicketDetailMeta,
+  data: AftersalePayload,
+  fromComplaint: boolean,
+): LinkedAftersale {
+  const la: LinkedAftersale = {
+    no: aftersaleNo(),
+    status: '待接单',
+    serviceType: data.serviceType,
+    serviceMethod: data.serviceMethod,
+    createdAt: nowFull(),
+    fromComplaint,
+  };
+  detail.linkedAftersale = la;
+  return la;
+}
+
 export function applyOpAction(
   detail: TicketDetailMeta,
   timeline: TimelineEntry[],
@@ -885,24 +907,28 @@ export function applyOpAction(
       return { opState, suspendInfo, message: '已二次激活产研反馈单' };
     }
 
+    case '关联售后': {
+      // ①格（1025）：投诉单建关联售后单，投诉单独立继续跑——状态不变、不进「已转出」、不冻结。
+      // 已有 1:1 关联时按钮置灰、走不到这里。履历 how 写动作名「关联售后」，
+      // what 只写操作人看得见的售后单号与服务类型（建单字段整份在售后单上，不在投诉单履历里复述）。
+      const la = linkAftersaleFromPayload(detail, payload.data, true);
+      pushEntry(timeline, {
+        category: 'node', action: 'transfer', who: operator, role: operatorRole,
+        how: '关联售后',
+        what: `关联售后单 ${la.no}（服务类型：${la.serviceType}）。`,
+      });
+      return { opState, suspendInfo, message: `已关联售后单 ${la.no}，投诉单继续跟进` };
+    }
+
     case '转售后': {
-      // 按 D1 分流：投诉=建关联单、投诉单独立跑（状态不变）；非诉=原单进「已转出」等待态（D11，不关闭）。
-      // D2 改写：已有 1:1 关联时按钮就该置灰、走不到这里——售后系统没有「激活」动作，
-      // 未结案去关联单 Tab 跳售后跟进、已结案只能线下联系售后，两者都不再建第二张单。
+      // ②格：非诉单（咨询 / 建议 / 商机）转售后——原单进「已转出」等待态（D11，不关闭）。
+      // 投诉单不走这里，走「关联售后」（1025 拆成独立动作）。
+      // 已有 1:1 关联时按钮置灰、走不到这里，不建第二张单。
       const {
         serviceType, serviceMethod, detail: note,
         customerName, customerPhone, province, city, district, address, fault, sn,
       } = payload.data;
-      const isComplaint = detail.type === '投诉';
-
-      detail.linkedAftersale = {
-        no: aftersaleNo(),
-        status: '待接单',
-        serviceType,
-        serviceMethod,
-        createdAt: nowFull(),
-        fromComplaint: isComplaint,
-      };
+      const la = linkAftersaleFromPayload(detail, payload.data, false);
       // 履历要留下"交给售后的到底是什么"——建单页收的客户 / 地址 / 故障 / SN 都写进来。
       // 这几项是售后能否接单的判据，只写服务类型与方式的话，履历看不出售后为什么退单。
       const region = [province, city, district].filter(Boolean).join(' ');
@@ -915,22 +941,16 @@ export function applyOpAction(
       ].filter(Boolean).join(' ｜ ');
       pushEntry(timeline, {
         category: 'node', action: 'transfer', who: operator, role: operatorRole,
-        how: '转售后 · 建关联售后单',
-        what: `新建售后单 ${detail.linkedAftersale.no}（${serviceType}·${serviceMethod}），与本单建立关联。${asFacts}。${note ? `说明：${note}` : ''}`,
+        how: '转售后',
+        what: `新建售后单 ${la.no}（${serviceType}·${serviceMethod}），与本单建立关联。${asFacts}。${note ? `说明：${note}` : ''}`,
       });
-
-      const asNo = detail.linkedAftersale.no;
-      if (isComplaint) {
-        // 投诉：建关联单，投诉单独立继续跑（状态不变，不进「已转出」）
-        return { opState, suspendInfo, message: `已建关联售后单 ${asNo}，投诉单继续跟进` };
-      }
-      // 非诉：原单进「已转出」等待态——不关闭、客服侧冻结，出态只由售后回传驱动
-      // （售后侧关单 → 原单收口进已办；售后转回客服 → 回处理中续跑原流程）
+      // 原单进「已转出」等待态——不关闭、客服侧冻结、SLA 不停钟（1025 N3），出态只由售后回传驱动
+      // （AS_CLOSED → 原单正常关闭进已办；AS_RETURNED → 清空处理人重新派单，见 aftersaleEvents.ts）
       detail.status = '已转出';
       return {
         opState: 'transferred',
         suspendInfo,
-        message: `已转售后 ${asNo}，工单转入「已转出」，等待售后处理结果`,
+        message: `已转售后 ${la.no}，工单转入「已转出」，等待售后处理结果`,
       };
     }
 
