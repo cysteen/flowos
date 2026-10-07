@@ -23,6 +23,8 @@ export interface ActivateAftersaleReq {
   no: string;
   /** 发起激活的客服工单号，供售后侧校验 1:1 关联 */
   ticketNo: string;
+  /** 关系类型：发起单占的是客服来源位（回流单）还是客服派生位（售后转入单）（《【1025】》§6） */
+  slot?: 'source' | 'derived';
   /** 激活说明，写进售后侧流水 */
   note?: string;
 }
@@ -71,7 +73,7 @@ export async function activateAftersaleTicket(
     const resp = await fetch(`${BASE}/aftersale/tickets/${encodeURIComponent(req.no)}/activate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ticketNo: req.ticketNo, note: req.note ?? '' }),
+      body: JSON.stringify({ ticketNo: req.ticketNo, slot: req.slot, note: req.note ?? '' }),
     });
     if (!resp.ok) return { ok: false, error: `售后侧返回 ${resp.status}` };
     return (await resp.json()) as ActivateAftersaleRes;

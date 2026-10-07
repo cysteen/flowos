@@ -235,8 +235,9 @@ const DLG_CONFIG: Partial<Record<OpActionType, DlgConfig>> = {
   挂起: { title: '挂起工单', icon: PauseCircleOutlined, tone: 'warn', width: 520, okTone: 'primary', okText: '提交挂起申请' },
   升级: { title: '升级工单', icon: RiseOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认升级' },
   同步飞书: { title: '同步飞书协同', icon: SyncOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认同步' },
-  转售后: { title: '转售后处理', icon: ToolOutlined, tone: 'primary', width: 640, okTone: 'primary', okText: '确认转售后' },
-  关联售后: { title: '关联售后', icon: ToolOutlined, tone: 'primary', width: 640, okTone: 'primary', okText: '确认关联售后' },
+  // 《【1025】》§2.2：标题与入口同名，底部 [ 取消 ] [ 确认 ]
+  转售后: { title: '转售后', icon: ToolOutlined, tone: 'primary', width: 640, okTone: 'primary', okText: '确认' },
+  关联售后: { title: '关联售后', icon: ToolOutlined, tone: 'primary', width: 640, okTone: 'primary', okText: '确认' },
   标记已解决: { title: '标记已解决', icon: CheckCircleOutlined, tone: 'success', width: 520, okTone: 'success', okText: '确认标记' },
   恢复: { title: '解除挂起', icon: PlayCircleOutlined, tone: 'success', width: 560, okTone: 'success', okText: '确认解除' },
   退回: { title: '退回工单', icon: RollbackOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认退回' },

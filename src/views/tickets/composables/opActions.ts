@@ -238,6 +238,8 @@ export interface AftersaleContext {
   productCategory: string;
   productName: string;
   sn?: string;
+  /** 客服单问题描述：预填售后建单页「故障描述」（§2.2） */
+  fault?: string;
   /**
    * 已有 1:1 关联售后单 → 入口封口、不再建单（D2 改写，激活动作取消）。
    * `settled` 决定提示与出路：false=引导去关联单 Tab 跳售后跟进；true=只能线下联系售后。
@@ -921,7 +923,7 @@ export function applyOpAction(
       pushEntry(timeline, {
         category: 'node', action: 'transfer', who: operator, role: operatorRole,
         how: '关联售后',
-        what: `关联售后单 ${la.no}（服务类型：${la.serviceType}）。`,
+        what: `售后单 ${la.no} · ${la.serviceType}`,
       });
       return { opState, suspendInfo, message: `已关联售后单 ${la.no}，投诉单继续跟进` };
     }
@@ -930,25 +932,17 @@ export function applyOpAction(
       // ②格：非诉单（咨询 / 建议 / 商机）转售后——原单进「已转出」等待态（D11，不关闭）。
       // 投诉单不走这里，走「关联售后」（1025 拆成独立动作）。
       // 已有 1:1 关联时按钮置灰、走不到这里，不建第二张单。
-      const {
-        serviceType, serviceMethod, detail: note,
-        customerName, customerPhone, province, city, district, address, fault, sn,
-      } = payload.data;
+      const { serviceType, serviceMethod, detail: note } = payload.data;
       const la = linkAftersaleFromPayload(detail, payload.data, false);
-      // 履历要留下"交给售后的到底是什么"——建单页收的客户 / 地址 / 故障 / SN 都写进来。
-      // 这几项是售后能否接单的判据，只写服务类型与方式的话，履历看不出售后为什么退单。
-      const region = [province, city, district].filter(Boolean).join(' ');
-      const shipTo = [region, address].filter(Boolean).join(' ');
-      const asFacts = [
-        `客户 ${customerName}${customerPhone ? `（${customerPhone}）` : ''}`,
-        shipTo ? `地址 ${shipTo}` : '',
-        sn ? `SN ${sn}` : '',
-        fault ? `故障 ${fault}` : '',
-      ].filter(Boolean).join(' ｜ ');
+      // §2.3：「转售后」：操作人 · 售后单号 · 服务类型 / 方式 · 转出说明（建单字段整份在售后单上）
       pushEntry(timeline, {
         category: 'node', action: 'transfer', who: operator, role: operatorRole,
         how: '转售后',
-        what: `新建售后单 ${la.no}（${serviceType}·${serviceMethod}），与本单建立关联。${asFacts}。${note ? `说明：${note}` : ''}`,
+        what: [
+          `售后单 ${la.no}`,
+          `${serviceType} / ${serviceMethod}`,
+          note?.trim() ? `转出说明：${note.trim()}` : '',
+        ].filter(Boolean).join(' · '),
       });
       // 原单进「已转出」等待态——不关闭、客服侧冻结、SLA 不停钟（1025 N3），出态只由售后回传驱动
       // （AS_CLOSED → 原单正常关闭进已办；AS_RETURNED → 清空处理人重新派单，见 aftersaleEvents.ts）
@@ -956,7 +950,7 @@ export function applyOpAction(
       return {
         opState: 'transferred',
         suspendInfo,
-        message: `已转售后 ${la.no}，工单转入「已转出」，等待售后处理结果`,
+        message: `已转售后 ${la.no}，等待售后处理结果`,
       };
     }
 

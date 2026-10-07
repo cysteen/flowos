@@ -37,6 +37,7 @@ function prefill(ctx?: AftersaleContext) {
   form.customerPhone = ctx.customerPhone ?? '';
   form.province = p; form.city = c; form.district = d;
   form.address = ctx.address ?? '';
+  form.fault = ctx.fault ?? '';
   form.productCategory = ctx.productCategory ?? '';
   form.productName = ctx.productName ?? '';
   form.sn = ctx.sn ?? '';
@@ -123,15 +124,15 @@ defineExpose({ getPayload });
         </div>
       </div>
       <div class="as-field">
-        <div class="as-label req">详细地址</div>
-        <a-input v-model:value="form.address" placeholder="请输入地址（带不出可留空补填）" />
+        <div class="as-label">详细地址</div>
+        <a-input v-model:value="form.address" placeholder="请输入地址" />
       </div>
       <div class="as-field">
         <div class="as-label req">故障描述</div>
         <a-textarea v-model:value="form.fault" :rows="2" placeholder="请输入描述" />
       </div>
       <div class="as-field">
-        <div class="as-label">故障图片/视频</div>
+        <div class="as-label">故障图片 / 视频</div>
         <div class="as-upload"><PlusOutlined /><span>最多 9 个文件</span></div>
       </div>
     </div>
@@ -165,8 +166,8 @@ defineExpose({ getPayload });
           <a-input v-model:value="form.productAttr" placeholder="按产品自动带出" disabled />
         </div>
         <div class="as-field">
-          <div class="as-label">设备SN</div>
-          <a-input v-model:value="form.sn" placeholder="请输入SN（带不出可留空）" />
+          <div class="as-label">设备 SN</div>
+          <a-input v-model:value="form.sn" placeholder="请输入SN" />
         </div>
       </div>
     </div>
@@ -206,9 +207,10 @@ defineExpose({ getPayload });
       </div>
     </template>
 
-    <div class="as-field as-field-stack">
+    <!-- 转出说明：只在「转售后」弹窗出现（§2.2） -->
+    <div v-if="!context?.isComplaint" class="as-field as-field-stack">
       <div class="as-label">转出说明</div>
-      <a-textarea v-model:value="form.detail" :rows="2" placeholder="请填写转售后说明..." />
+      <a-textarea v-model:value="form.detail" :rows="2" placeholder="请填写转出说明" />
     </div>
   </div>
 </template>

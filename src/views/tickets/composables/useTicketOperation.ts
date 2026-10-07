@@ -348,7 +348,8 @@ export function useTicketOperation() {
       // 已转出：非诉转售后后原单不关闭，留在「我的任务」等售后终态回传（D11）。
       // 🔴 **投诉单永不冻结**（1025）：投诉单有关联售后＝①格「关联售后」，保持原状态、照常可操作，
       // 只挂关联卡片；只有非诉单才因关联售后进「已转出」。
-      if (t.linkedAftersaleNo && t.tab !== 'done' && !t.escalatedToNo) {
+      // 结案后关联照常展示、照常参与按钮判定（§2.3，基线 ※7）
+      if (t.linkedAftersaleNo && !t.escalatedToNo) {
         const isComplaint = t.type === '投诉';
         base.linkedAftersale = {
           no: t.linkedAftersaleNo,

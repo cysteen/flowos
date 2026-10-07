@@ -1389,6 +1389,7 @@ const aftersaleContext = computed(() => ({
   productCategory: d.value.product.category,
   productName: d.value.product.name,
   sn: d.value.product.sn,
+  fault: d.value.demand,
   existing: d.value.linkedAftersale
     ? {
         no: d.value.linkedAftersale.no,

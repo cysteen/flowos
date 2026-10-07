@@ -578,7 +578,7 @@ async function onActivateConfirm() {
   if (!as || activateLoading.value) return;
   activateLoading.value = true;
   activateError.value = '';
-  const res = await activateAftersaleTicket({ no: as.no, ticketNo: props.ticketNo });
+  const res = await activateAftersaleTicket({ no: as.no, ticketNo: props.ticketNo, slot: as.slot });
   activateLoading.value = false;
   if (!res.ok) {
     activateError.value = `售后工单 ${as.no} 激活失败：${res.error ?? ''}`;

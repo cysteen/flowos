@@ -132,6 +132,9 @@ const csAvail = computed(() => csEntryAvailability(props.detail.status as Ticket
 const showSupplement = computed(() => props.canSupplement && csAvail.value.supplement);
 const showDunning = computed(() => props.canDunning && csAvail.value.dunning);
 
+/** 「关联售后」位工单状态维「不展示」列（《【1025】》§2.1 / §4.2）：草稿、被新单接管的五个终态、已取消 */
+const LINK_HIDDEN_STATUSES = ['草稿', '已升级投诉', '已升级外投', '已转咨询', '已转建议', '已转商机', '已取消'];
+
 /** 本单的活跃关联售后单（卡片内容） */
 const linkedAftersale = computed(() => props.detail.linkedAftersale ?? null);
 
@@ -357,7 +360,7 @@ function priorityHex(p: string): string {
           有活跃关联时 hover 出售后单卡片：状态可见、工单号可点跳售后系统操作
         -->
         <a-popover
-          v-if="canLinkAftersale && detail.type === '投诉'"
+          v-if="canLinkAftersale && detail.type === '投诉' && !LINK_HIDDEN_STATUSES.includes(detail.status)"
           :trigger="linkForm.card ? 'hover' : []"
           placement="bottomRight"
         >
@@ -402,7 +405,7 @@ function priorityHex(p: string): string {
               :peer="linkedAftersale.peer"
             />
           </template>
-          <span class="as-chip">⇄ 已转售后 {{ linkedAftersale.no }}</span>
+          <span class="as-chip">⇄ 关联售后单 {{ linkedAftersale.no }} · {{ linkedAftersale.status }}</span>
         </a-popover>
         <button
           v-if="showSupplement"

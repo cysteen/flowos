@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 激活售后单（《【1025】》§4.4：售后转入的非诉单与回流单共用这一个确认）
+ * 激活售后单（《【1025】》§4.4：售后转入的非诉单、回流单、④ 升级投诉后的投诉新单共用这一个确认）
  *
  * 形态对齐「下送」的二次确认：一句问话 + 一张认人的单据卡，没有表单字段——
  * 激活不需要坐席再填任何东西，要确认的只有"是不是这张单"。
@@ -39,7 +39,7 @@ const emit = defineEmits<{
     @cancel="emit('update:open', false)"
   >
     <div class="asa-confirm">
-      <div class="asa-ask">本单由售后转入，确认激活以下售后工单？</div>
+      <div class="asa-ask">确认激活以下售后工单？</div>
       <div class="asa-ticket">
         <span class="asa-no">{{ no }}</span>
         <span v-if="title" class="asa-title">{{ title }}</span>

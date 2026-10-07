@@ -45,6 +45,8 @@ export interface AftersaleInboundSeed {
   asTitle?: string;
   /** 售后服务类型（hover 卡片） */
   asServiceType?: string;
+  /** 分派规则据以落池的处理组（缺省由分派规则取默认池） */
+  groupId?: string;
 }
 
 export interface AftersaleEvent {
@@ -221,7 +223,8 @@ function returnFacts(e: AftersaleEvent): string {
  */
 function applyReturnedToDerived(t: Ticket, e: AftersaleEvent): AftersaleEventResult {
   if (isDerivedSettled(t)) return { ticket: t, outcome: 'derived-closed' };
-  const n = (t.aftersaleReturnCount ?? 1) + 1;
+  // n＝该售后单累计转客服次数，含首次转入（§4.5）：④ 建单那次计 1；③ 是升级投诉转入、不计
+  const n = (t.aftersaleReturnCount ?? (t.aftersaleRelation === 'escalated' ? 0 : 1)) + 1;
   const status = e.status ?? AS_RETURNED_STATUS;
   return {
     ticket: {
@@ -232,7 +235,7 @@ function applyReturnedToDerived(t: Ticket, e: AftersaleEvent): AftersaleEventRes
       eventTimeline: withEntries(t, [{
         category: 'node', action: 'transfer', who: e.operator, role: AFTERSALE_ACTOR_ROLE,
         how: `售后再次转客服（第 ${n} 次）`,
-        what: `售后单 ${e.asNo} · ${returnFacts(e)}`,
+        what: returnFacts(e),
         when: e.at,
       }]),
       aftersaleEventIds: markHandled(t, e),
@@ -245,14 +248,12 @@ function applyReturnedToDerived(t: Ticket, e: AftersaleEvent): AftersaleEventRes
 /** AS_CLOSED · 来源位 */
 function applyClosed(t: Ticket, e: AftersaleEvent): AftersaleEventResult {
   const asStatus = e.status ?? AS_DEFAULT_CLOSED_STATUS;
-  const summary = e.resultSummary ? `售后处理结果：${e.resultSummary}` : '';
   const waiting = t.nodeStatus === '已转出';
+  // §3.2：「售后单已关闭」：售后单号 · 售后处理结果摘要
   const timeline = withEntries(t, [{
     category: 'node', action: 'resolved', who: AFTERSALE_ACTOR, role: AFTERSALE_ACTOR_ROLE,
     how: '售后单已关闭',
-    what: waiting
-      ? `售后单 ${e.asNo} 已关闭（售后侧操作人：${e.operator}），本单随之关闭，关闭原因：${AFTERSALE_CLOSE_REASON}。${summary}`
-      : `售后单 ${e.asNo} 已关闭（售后侧操作人：${e.operator}）。${summary}`,
+    what: [`售后单 ${e.asNo}`, e.resultSummary ?? ''].filter(Boolean).join(' · '),
     when: e.at,
   }]);
   const base: Ticket = {
@@ -282,11 +283,11 @@ function applyClosed(t: Ticket, e: AftersaleEvent): AftersaleEventResult {
 /** AS_RETURNED · 来源位 */
 function applyReturned(t: Ticket, e: AftersaleEvent, dispatch: DispatchResolver): AftersaleEventResult {
   const waiting = t.nodeStatus === '已转出';
-  const reason = e.returnReason ? `转回原因：${e.returnReason}` : '';
+  // §3.3：「售后转回客服」：转回原因 · 售后侧操作人
   const returnedEntry: Omit<TimelineEntry, 'id'> = {
     category: 'node', action: 'transfer', who: e.operator, role: AFTERSALE_ACTOR_ROLE,
     how: '售后转回客服',
-    what: `售后单 ${e.asNo} 转回客服（售后侧操作人：${e.operator}）。${reason}`,
+    what: returnFacts(e),
     when: e.at,
   };
   if (!waiting) {
@@ -304,13 +305,14 @@ function applyReturned(t: Ticket, e: AftersaleEvent, dispatch: DispatchResolver)
   const prev = t.assignee;
   const cleared: Ticket = { ...t, assignee: null };
   const to = dispatch(cleared);
-  const dest = to.assignee ? `${to.groupLabel} · ${to.assignee}` : to.groupLabel;
+  // 《【1025】》§3.3：「回流重新派单（原处理人 〈姓名〉）」：派至 〈处理人〉 或 进入 〈组名〉 工单池 · 未认领
+  const dest = to.assignee ? `派至 ${to.assignee}` : `进入 ${to.groupLabel} 工单池 · 未认领`;
   const timeline = withEntries(t, [
     returnedEntry,
     {
       category: 'node', action: 'transfer', who: '系统', role: '系统',
-      how: '重新派单',
-      what: `重新派单至 ${dest}（原处理人 ${prev ?? '—'}）`,
+      how: `回流重新派单（原处理人 ${prev ?? '—'}）`,
+      what: dest,
       when: e.at,
     },
   ]);
@@ -457,7 +459,7 @@ function buildInboundTicket(
     ...(type === '投诉' ? { complaintType: '投诉' } : {}),
     nodeStatus: '未认领', nodeStep: 1, nodeTotal: 5, priority: s.priority ?? 'P2',
     slaText: '04:00:00', slaSub: '充足', slaState: 'ok', slaMinutes: 240,
-    assignee: null, tab: 'pool',
+    assignee: null, tab: 'pool', groupId: s.groupId,
     aftersaleOriginNo: e.asNo,
     // 关系类型（口径定稿 6d）：③ 升级投诉转入 / ④ 转咨询转入
     aftersaleRelation: type === '投诉' ? 'escalated' : 'converted',
@@ -552,15 +554,15 @@ export function routeAftersaleEvent(
     }], deps.dispatch);
     created.aftersaleOriginStatus = e.status ?? AS_RETURNED_STATUS;
     if (isAftersaleSettledStatus(created.aftersaleOriginStatus)) created.aftersaleOriginClosedAt = e.at;
-    created.aftersaleReturnCount = (der.aftersaleReturnCount ?? 1) + 1;
+    created.aftersaleReturnCount = (der.aftersaleReturnCount ?? (der.aftersaleRelation === 'escalated' ? 0 : 1)) + 1;
     created.succeedsFromNo = der.no;
     out[derIdx] = {
       ...clearDerivedLink(der),
       succeededByNo: newNo,
       eventTimeline: withEntries(der, [{
         category: 'relate', action: 'relate', who: AFTERSALE_ACTOR, role: AFTERSALE_ACTOR_ROLE,
-        how: '售后再次转客服',
-        what: `本单已结案，售后再次转客服已承接至 ${newNo}`,
+        how: `本单已结案，售后再次转客服已承接至 ${newNo}`,
+        what: `售后单 ${e.asNo} · ${returnFacts(e)}`,
         when: e.at,
       }]),
     };
