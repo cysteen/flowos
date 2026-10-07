@@ -654,12 +654,16 @@ const reportAssessedRows = computed(
 // 🔴 **不收窄的话这一屏当场自相矛盾**：一处写「待评估总数 8」、另一处写「待领取 3 · 已领取 2」，
 // 点下去落到的还是同一张表。同屏同一件事只能有一个数，这是本文件反复踩过的那个坑。
 //
-// ⚠️ **2026-10-07 之后这几个数里只剩 `alineOverdueCount` 有消费者**（「评估处置」工作面
-// 收窄标那一行）。页头右栏那一块原本摆着「待评估总数 / 待领取 · 已领取 / 超时未评 /
-// 今日已结论 / 今日结论三档」，整组已随块名改「风险工单」撤掉（业务拍板：那一块改展示已判数据）。
-// 🔴 **被撤的那几个数不要往别处搬**：它们的真源是「评估处置」工作面与它自己的三枚下钻卡，
-// 那一面一格没动。下面几个 computed 因此暂时没有消费者，**留着不删**是因为它们是那张
-// 工作面的现成口径、且与 store 的 count 一一对应；要复用先回头读本段，别另写一份。
+// 🔴 **这几个数的消费者是「评估处置」工作面自己那一排阶段 chip**（见模板里 `setPoolStage`
+// 那一行），以及收窄标那一行的「超时未评」。
+// 【它们为什么在这儿而不在页头】页头右栏那一块原本摆着「待评估总数 / 待领取 · 已领取 /
+// 超时未评 / 今日已结论 / 今日结论三档」，整组已随块名改「风险工单」撤掉
+// （业务拍板：那一块改展示已判数据）。撤掉之后这六个数**落到工作面自己的 chip 排上**
+// （2026-10-07 裁决），道理是**分母**：摆在页头时卡数的是监控条目（含来源「二线报备」那条
+// 标记条目），而工作面这张表经 `isALine` 只收 A 线池行——同一个名字两个分母，必然对不上；
+// 摆在表的正上方，分母就是这张表自己。
+// 🔴 **不要再往页头搬，也不要另写一份计数**：下面几个 computed 与 store 的 count 一一对应
+// （差别只在多一道 `isALine`），要复用先回头读本段。
 const alineUnassignedCount = computed(() => reportStore.unassignedQueue.filter(isALine).length);
 const alineAssigningCount = computed(() => reportStore.assigningQueue.filter(isALine).length);
 const alineOpenCount = computed(() => alineUnassignedCount.value + alineAssigningCount.value);
@@ -710,12 +714,36 @@ function decisionKindOf(r: RiskPoolItem): DecisionKey | null {
   if (r.coordination) return COORD_DECISION;
   return null;
 }
-/** 今日三种收口各多少条。**三枚之和 ≡ 今日已结论** */
+/**
+ * 「已结论」那一档的**底表** ＝ A 线已结论池行，只过「仅今日」这一个开关。
+ *
+ * 🔴 **它就是 `assessedBase` 摘掉 `decisionFilter` 那一条腿**，不是另一份口径：
+ * 阶段 chip 上的数是**这一档有多少条**，不能跟着档内的决策收窄一起变 —— 跟着变的话，
+ * 筛到「升级」之后「已结论 2」，而上一枚「不限阶段」仍写 15，两个数当场差着 4 条，
+ * 人再也看不出该摘掉哪个条件（与 `reportSourceBase` 摘掉来源那一维是同一条道理）。
+ * 反过来「仅今日」必须过：它决定这一档到底躺着哪一批行，不过的话 chip 上写全量、
+ * 表里只躺着今天那几条。
+ */
+const alineConcludedBase = computed(() => {
+  const rows = alineAssessedList.value;
+  if (!assessedTodayOnly.value) return rows;
+  const today = todayPrefix();
+  return rows.filter((r) => concludedAtOf(r).startsWith(today));
+});
+/**
+ * 「不限阶段」那一枚上的数 ＝ 三段之和，**由构造等于 `待领取 + 已领取 + 已结论`**。
+ * 🔴 不要改成另数一遍整表：那样迟早出现"不限阶段 15、三档加起来 14"，而差的那一条谁也找不出来。
+ */
+const alineStageAllCount = computed(() => alineOpenCount.value + alineConcludedBase.value.length);
+/**
+ * 「已结论」档内三种收口各多少条。**三枚之和 ≡ 这一档的数**（verify-only 的行除外，见
+ * `decisionKindOf`：它既不算一种收口，也不给自己一枚 chip）。
+ * 🔴 底表取 `alineConcludedBase`、**跟着「仅今日」走**：写死今日的话，关掉开关之后
+ * 「已结论 31」而三枚加起来仍是今天那 4 条，同一排上两个分母。
+ */
 const alineDecisionCounts = computed(() => {
   const base: Record<DecisionKey, number> = { 升级: 0, 不升级: 0, [COORD_DECISION]: 0 };
-  const today = todayPrefix();
-  for (const r of alineAssessedList.value) {
-    if (!concludedAtOf(r).startsWith(today)) continue;
+  for (const r of alineConcludedBase.value) {
     const k = decisionKindOf(r);
     if (k) base[k] += 1;
   }
@@ -823,6 +851,34 @@ function setReportView(v: ReportView) {
   }
   if (v === 'assessed') onlyOverdue.value = false;
   else if (wasAssessed) decisionFilter.value = 'all';
+}
+
+/**
+ * 工作面那一排阶段 chip 的落点。五枚里**只有四枚是阶段**，第五枚「超时未评」是**跨档的标记**：
+ * 它的判据是"在队且钟走过了时限"（store 的 `isOverdue`），横跨待领取与已领取两档，
+ * 落点 ＝ 不限阶段 + 超时收窄（已结论的行按定义一条都不满足它，故第三段整段不接，
+ * 见 `reportAllRows`）。因此 `待领取 + 已领取 + 已结论 ≡ 不限阶段`，而「超时未评」
+ * **不参与这个等式**，它是前两档里的一个子集 —— 别拿它去加减。
+ *
+ * 🔴 **四枚阶段档一律把 `onlyOverdue` 摘掉**：`setReportView` 在这两档之间互切时有意不摘
+ * （超时横跨两档，筛着切态不该失灵），但从「超时未评」这一枚点到「待领取」时，收窄留着的话
+ * chip 上写 5、表里躺着 2 行 —— 同一排上标签与行数对不上，正是本文件反复踩过的那个坑。
+ * `setReportView` 的早退（`v === reportView`）也靠这一行兜住：停在「超时未评」上点「不限阶段」
+ * 时它整函数不执行，收窄得由本函数自己清。
+ */
+function setPoolStage(k: ReportView | 'overdue') {
+  if (k === 'overdue') {
+    setReportView('all');
+    onlyOverdue.value = true;
+    return;
+  }
+  setReportView(k);
+  onlyOverdue.value = false;
+}
+/** 当前停在哪一枚上。「超时未评」优先：它一开着，表里就只有超时那几行，此刻说"停在不限阶段"是假话 */
+function poolStageChipOn(k: ReportView | 'overdue'): boolean {
+  if (onlyOverdue.value) return k === 'overdue';
+  return reportView.value === k;
 }
 
 /**
@@ -5843,6 +5899,129 @@ function toggleWordEnabled(w: RiskWord) {
             @change="setQueuePage"
           />
         </div>
+      </div>
+
+      <!--
+        评估处置工作面 · **自己那一排阶段 chip**（2026-10-07 裁决）。
+        这六个数原先摆在页头「评估处置」块里，那一块改名「风险工单」、改展示已判数据之后整组撤掉，
+        于是「待评估总数 / 待领取 · 已领取 / 超时未评 / 今日已结论 / 今日结论三档」全站无处可查，
+        连 `reportView` 的四档、`decisionFilter`、`onlyOverdue` 也一并失去了唯一入口。补回这一排。
+
+        🔴 **分母 ＝ 下面这张表自己**（经 `isALine` 只收 A 线的池行）。这正是把它从页头挪下来的理由：
+        页头那一块数的是**监控条目**（含来源「二线报备」那一条标记条目），两个分母天生差着那几条，
+        同一个名字挂在两个分母上，必然被读成"少了几条"。**两处的数不可相减**，行首的悬停里写着这句。
+        🔴 页头那四枚卡**照旧不点亮 `on`**（见 `drillPooled` 的注释）：它们是进这个工作面的入口，
+        不是这张表的筛选档；点亮等于宣称"卡上那个数就是这张表的分母"，那是假话。本轮不改。
+
+        🔴 **样式复用本页既有的那一套**（`.section-filters.grade-filters.report-source-filters`
+        + `.gf-chip` / `.gf-num`，与下面「监控来源 / 原单类型 / 风险等级」三排逐字同形），不另造一套：
+        阶段摆在最上一排是因为它是**最外一层**（"换一段来看"），下面几排是段内的收窄。
+        ⚠️ `reportView` 的 `open` 档（待领取 + 已领取）**在这一排上没有自己的 chip**：它原本是页头
+        「待评估总数」那张卡的落点，卡已撤、`listView` 进本工作面只有 `drillReport('all')` 一条路，
+        故这一档现在进不来；真要再给它一枚，得先在这里给它一个数（`alineOpenCount` 就是）。
+      -->
+      <div v-if="listView === 'report'" class="section-filters grade-filters report-source-filters">
+        <span
+          class="rf-k"
+          :title="`本排的分母 ＝ 下面这张表自己：进池的 A 线池行，当前 ${alineStageAllCount} 条。🔴 与页头「风险工单」块那个数不是同一个分母 —— 那一块数的是监控条目、含来源「二线报备」的标记条目，两处不可相减`"
+        >处置阶段</span>
+        <button
+          type="button"
+          class="gf-chip"
+          :class="{ active: poolStageChipOn('all') }"
+          :title="`三段按时间序首尾相接（待领取 → 已领取 → 已结论），共 ${alineStageAllCount} 条 ＝ 后面三枚之和`"
+          @click="setPoolStage('all')"
+        >
+          不限阶段<span class="gf-num">{{ alineStageAllCount }}</span>
+        </button>
+        <button
+          type="button"
+          class="gf-chip"
+          :class="{ active: poolStageChipOn('unassigned') }"
+          title="池内还没人领的池行，客诉专员在这里自领"
+          @click="setPoolStage('unassigned')"
+        >
+          待领取<span class="gf-num">{{ alineUnassignedCount }}</span>
+        </button>
+        <button
+          type="button"
+          class="gf-chip"
+          :class="{ active: poolStageChipOn('assigning') }"
+          title="已被人领走、等结论的池行"
+          @click="setPoolStage('assigning')"
+        >
+          已领取<span class="gf-num">{{ alineAssigningCount }}</span>
+        </button>
+        <button
+          type="button"
+          class="gf-chip"
+          :class="{ active: poolStageChipOn('assessed') }"
+          :title="assessedTodayOnly
+            ? '已出结论的池行（升级 / 不升级 / 风险处理建议）· 当前只看今日，开关在下面那一排'
+            : '已出结论的池行（升级 / 不升级 / 风险处理建议）· 当前看全部历史'"
+          @click="setPoolStage('assessed')"
+        >
+          已结论<span class="gf-num">{{ alineConcludedBase.length }}</span>
+        </button>
+        <!--
+          🔴 **第五枚不是第四个阶段，是跨档的标记**：在队且钟走过了 `assessLimitText` 仍无结论，
+          横跨待领取与已领取两档，故**不参与「前三枚之和 ＝ 不限阶段」这个等式**，别拿它去加减。
+          它的落点是「不限阶段 + 超时收窄」，此时第三段整段不接（已结论的行按定义一条都不超时，
+          见 `reportAllRows`），行数 ≡ 这枚上的数。
+          🔴 数取 `alineOverdueCount`、不取 store 的 `overdueCount`：后者两条线一起数，本页只数 A 线。
+        -->
+        <button
+          type="button"
+          class="gf-chip warn"
+          :class="{ active: poolStageChipOn('overdue') }"
+          :title="`在队超过 ${assessLimitText} 仍无结论的池行 · 横跨待领取与已领取两档，是前两枚里的一个子集，不是第四个阶段`"
+          @click="setPoolStage('overdue')"
+        >
+          超时未评<span class="gf-num">{{ alineOverdueCount }}</span>
+        </button>
+      </div>
+      <!--
+        第二排 · **只在「已结论」档下出**：决策是这一档独有的属性，在队的行一条都没有结论，
+        摆出来只会是四枚 0。右端那枚「仅今日」是**开关**不是档，故与四枚决策同形但独立点选。
+        🔴 四枚之和 ≡ 上一排「已结论」那个数（见 `alineDecisionCounts` 的注释，由构造成立）。
+      -->
+      <div
+        v-if="listView === 'report' && reportView === 'assessed'"
+        class="section-filters grade-filters report-source-filters"
+      >
+        <span class="rf-k" title="这一档的收口方式：评估给升级 / 不升级，投诉单那一路给风险处理建议">结论</span>
+        <button
+          type="button"
+          class="gf-chip"
+          :class="{ active: decisionFilter === 'all' }"
+          title="看全部结论"
+          @click="decisionFilter = 'all'"
+        >
+          全部<span class="gf-num">{{ alineConcludedBase.length }}</span>
+        </button>
+        <!-- 「建议」这个字面量是常量的短词（那一处只有一枚数字的宽度），chip 排上摆得开全称 -->
+        <button
+          v-for="k in DECISION_KEYS"
+          :key="k"
+          type="button"
+          class="gf-chip"
+          :class="{ active: decisionFilter === k }"
+          @click="decisionFilter = k"
+        >
+          {{ k === COORD_DECISION ? '风险处理建议' : k }}<span class="gf-num">{{ alineDecisionCounts[k] }}</span>
+        </button>
+        <span class="rf-k">时间</span>
+        <button
+          type="button"
+          class="gf-chip"
+          :class="{ active: assessedTodayOnly }"
+          :title="assessedTodayOnly
+            ? `当前只看今日结论的池行（今日已结论 ${alineConcludedTodayCount} 条）· 点一下看全部历史`
+            : `当前看全部历史结论（共 ${alineAssessedList.length} 条，其中今日已结论 ${alineConcludedTodayCount} 条）· 点一下收回今日`"
+          @click="assessedTodayOnly = !assessedTodayOnly"
+        >
+          仅今日
+        </button>
       </div>
 
       <!--
