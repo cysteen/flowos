@@ -390,8 +390,8 @@ function onOk() {
       // 只有新建分支：已有 1:1 关联时入口已置灰（D2 改写，激活分支取消）。
       // 两个动作共用建单表单，提交时各带各的动作键（1025：关联售后为独立动作）
       const data = aftersaleFormRef.value?.getPayload();
-      // 表单未挂载＝弹窗没真打开，此时"提交一张字段不全的售后单"比不提交更糟，直接不发
-      if (!data) break;
+      // 售后建单页必填未齐（页内已原样提示）或表单未挂载：不提交、弹窗不关（§2.2）
+      if (!data) return;
       emit('confirm', { type: props.action, data });
       break;
     }

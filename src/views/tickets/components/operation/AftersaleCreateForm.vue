@@ -55,6 +55,46 @@ const isMail = computed(() => form.serviceMethod === '寄修');
 const opt = (arr: readonly string[]) => arr.map((v) => ({ value: v, label: v }));
 
 /**
+ * 售后建单页自身的必填校验（《【1025】》§2.2：必填项为空或全空格时售后建单页原样提示，客服侧不另出提示）。
+ * 条件必填随服务方式：上门＝上门预约时间；寄修＝取件 / 回寄六项。
+ */
+type ReqKey = keyof typeof form | 'region';
+const REQUIRED: { key: ReqKey; msg: string; when?: () => boolean }[] = [
+  { key: 'customerName', msg: '请输入客户名称' },
+  { key: 'customerPhone', msg: '请输入联系号码' },
+  { key: 'region', msg: '请选择省市区' },
+  { key: 'fault', msg: '请输入故障描述' },
+  { key: 'productCategory', msg: '请选择产品分类' },
+  { key: 'productName', msg: '请选择产品名称' },
+  { key: 'serviceType', msg: '请选择售后服务类型' },
+  { key: 'serviceMethod', msg: '请选择售后服务方式' },
+  { key: 'visitTime', msg: '请输入上门预约时间', when: () => isVisit.value },
+  { key: 'pickName', msg: '请输入寄件人姓名', when: () => isMail.value },
+  { key: 'pickPhone', msg: '请输入寄件人号码', when: () => isMail.value },
+  { key: 'pickAddress', msg: '请输入寄件人详细地址', when: () => isMail.value },
+  { key: 'backName', msg: '请输入收货人姓名', when: () => isMail.value },
+  { key: 'backPhone', msg: '请输入收货人号码', when: () => isMail.value },
+  { key: 'backAddress', msg: '请输入收货人详细地址', when: () => isMail.value },
+];
+const errs = reactive<Partial<Record<ReqKey, string>>>({});
+const blank = (key: ReqKey) => (key === 'region'
+  ? [form.province, form.city, form.district].some((v) => !v?.trim())
+  : !String(form[key] ?? '').trim());
+const MAIL_LABEL = {
+  pickName: '寄件人姓名', pickPhone: '寄件人号码', pickAddress: '寄件人详细地址',
+  backName: '收货人姓名', backPhone: '收货人号码', backAddress: '收货人详细地址',
+} as const;
+function validate(): boolean {
+  for (const k of Object.keys(errs) as ReqKey[]) delete errs[k];
+  for (const r of REQUIRED) if ((!r.when || r.when()) && blank(r.key)) errs[r.key] = r.msg;
+  return Object.keys(errs).length === 0;
+}
+// 补齐即撤掉该项提示
+watch(form, () => {
+  for (const k of Object.keys(errs) as ReqKey[]) if (!blank(k)) delete errs[k];
+});
+
+/**
  * 交出**整份表单**。此前只回传 serviceType / serviceMethod / detail 三项，
  * 客户、省市区、详细地址、故障描述、产品分类、SN 等 20 余个字段在提交那一刻全部丢弃 ——
  * 而转售后是在售后侧真建一张单，缺这些字段售后接到的是张空单（基线 §5.1「服务节点」）。
@@ -62,7 +102,8 @@ const opt = (arr: readonly string[]) => arr.map((v) => ({ value: v, label: v }))
  * 条件字段按服务方式取舍：上门方式不带取件 / 回寄，寄修方式不带上门预约，
  * 避免把上一次切换留下的残值一并送出。
  */
-function getPayload(): AftersalePayload {
+function getPayload(): AftersalePayload | null {
+  if (!validate()) return null;
   const base = {
     customerName: form.customerName,
     customerPhone: form.customerPhone,
@@ -108,20 +149,23 @@ defineExpose({ getPayload });
       <div class="as-grid">
         <div class="as-field">
           <div class="as-label req">客户名称</div>
-          <a-input v-model:value="form.customerName" placeholder="请输入名称" />
+          <a-input v-model:value="form.customerName" placeholder="请输入名称" :status="errs.customerName ? 'error' : undefined" />
+          <div v-if="errs.customerName" class="as-err">{{ errs.customerName }}</div>
         </div>
         <div class="as-field">
           <div class="as-label req">联系号码</div>
-          <a-input v-model:value="form.customerPhone" placeholder="请输入联系号码" />
+          <a-input v-model:value="form.customerPhone" placeholder="请输入联系号码" :status="errs.customerPhone ? 'error' : undefined" />
+          <div v-if="errs.customerPhone" class="as-err">{{ errs.customerPhone }}</div>
         </div>
       </div>
       <div class="as-field">
         <div class="as-label req">省市区</div>
         <div class="as-region">
-          <a-select v-model:value="form.province" :options="opt([form.province || '安徽省','北京市','上海市'])" placeholder="省" style="flex:1" />
-          <a-select v-model:value="form.city" :options="opt([form.city || '合肥市','—'])" placeholder="市" style="flex:1" />
-          <a-select v-model:value="form.district" :options="opt([form.district || '蜀山区','—'])" placeholder="区/县" style="flex:1" />
+          <a-select v-model:value="form.province" :options="opt([form.province || '安徽省','北京市','上海市'])" placeholder="省" style="flex:1" :status="errs.region && !form.province ? 'error' : undefined" />
+          <a-select v-model:value="form.city" :options="opt([form.city || '合肥市','—'])" placeholder="市" style="flex:1" :status="errs.region && !form.city ? 'error' : undefined" />
+          <a-select v-model:value="form.district" :options="opt([form.district || '蜀山区','—'])" placeholder="区/县" style="flex:1" :status="errs.region && !form.district ? 'error' : undefined" />
         </div>
+        <div v-if="errs.region" class="as-err">{{ errs.region }}</div>
       </div>
       <div class="as-field">
         <div class="as-label">详细地址</div>
@@ -129,7 +173,8 @@ defineExpose({ getPayload });
       </div>
       <div class="as-field">
         <div class="as-label req">故障描述</div>
-        <a-textarea v-model:value="form.fault" :rows="2" placeholder="请输入描述" />
+        <a-textarea v-model:value="form.fault" :rows="2" placeholder="请输入描述" :status="errs.fault ? 'error' : undefined" />
+        <div v-if="errs.fault" class="as-err">{{ errs.fault }}</div>
       </div>
       <div class="as-field">
         <div class="as-label">故障图片 / 视频</div>
@@ -143,11 +188,13 @@ defineExpose({ getPayload });
       <div class="as-grid">
         <div class="as-field">
           <div class="as-label req">产品分类</div>
-          <a-input v-model:value="form.productCategory" placeholder="请选择产品分类" />
+          <a-input v-model:value="form.productCategory" placeholder="请选择产品分类" :status="errs.productCategory ? 'error' : undefined" />
+          <div v-if="errs.productCategory" class="as-err">{{ errs.productCategory }}</div>
         </div>
         <div class="as-field">
           <div class="as-label req">产品名称</div>
-          <a-input v-model:value="form.productName" placeholder="请选择产品名称" />
+          <a-input v-model:value="form.productName" placeholder="请选择产品名称" :status="errs.productName ? 'error' : undefined" />
+          <div v-if="errs.productName" class="as-err">{{ errs.productName }}</div>
         </div>
         <div class="as-field">
           <div class="as-label req">售后服务类型</div>
@@ -178,7 +225,8 @@ defineExpose({ getPayload });
       <div class="as-grid">
         <div class="as-field">
           <div class="as-label req">上门预约时间</div>
-          <a-input v-model:value="form.visitTime" placeholder="年月日 时分" />
+          <a-input v-model:value="form.visitTime" placeholder="年月日 时分" :status="errs.visitTime ? 'error' : undefined" />
+          <div v-if="errs.visitTime" class="as-err">{{ errs.visitTime }}</div>
         </div>
         <div class="as-field">
           <div class="as-label">预约备注</div>
@@ -192,18 +240,32 @@ defineExpose({ getPayload });
       <div class="as-section">
         <div class="as-sec-title">取件信息</div>
         <div class="as-grid">
-          <div class="as-field"><div class="as-label req">寄件人姓名</div><a-input v-model:value="form.pickName" /></div>
-          <div class="as-field"><div class="as-label req">寄件人号码</div><a-input v-model:value="form.pickPhone" /></div>
+          <div v-for="k in (['pickName', 'pickPhone'] as const)" :key="k" class="as-field">
+            <div class="as-label req">{{ MAIL_LABEL[k] }}</div>
+            <a-input v-model:value="form[k]" :status="errs[k] ? 'error' : undefined" />
+            <div v-if="errs[k]" class="as-err">{{ errs[k] }}</div>
+          </div>
         </div>
-        <div class="as-field"><div class="as-label req">寄件人详细地址</div><a-input v-model:value="form.pickAddress" /></div>
+        <div class="as-field">
+          <div class="as-label req">{{ MAIL_LABEL.pickAddress }}</div>
+          <a-input v-model:value="form.pickAddress" :status="errs.pickAddress ? 'error' : undefined" />
+          <div v-if="errs.pickAddress" class="as-err">{{ errs.pickAddress }}</div>
+        </div>
       </div>
       <div class="as-section">
         <div class="as-sec-title">回寄信息</div>
         <div class="as-grid">
-          <div class="as-field"><div class="as-label req">收货人姓名</div><a-input v-model:value="form.backName" /></div>
-          <div class="as-field"><div class="as-label req">收货人号码</div><a-input v-model:value="form.backPhone" /></div>
+          <div v-for="k in (['backName', 'backPhone'] as const)" :key="k" class="as-field">
+            <div class="as-label req">{{ MAIL_LABEL[k] }}</div>
+            <a-input v-model:value="form[k]" :status="errs[k] ? 'error' : undefined" />
+            <div v-if="errs[k]" class="as-err">{{ errs[k] }}</div>
+          </div>
         </div>
-        <div class="as-field"><div class="as-label req">收货人详细地址</div><a-input v-model:value="form.backAddress" /></div>
+        <div class="as-field">
+          <div class="as-label req">{{ MAIL_LABEL.backAddress }}</div>
+          <a-input v-model:value="form.backAddress" :status="errs.backAddress ? 'error' : undefined" />
+          <div v-if="errs.backAddress" class="as-err">{{ errs.backAddress }}</div>
+        </div>
       </div>
     </template>
 
@@ -221,7 +283,9 @@ defineExpose({ getPayload });
 .as-sec-title { font-size: 13px; font-weight: 700; color: #1f2937; }
 .as-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
 /* key/value 左右布局，节省纵向空间 */
-.as-field { display: flex; flex-direction: row; align-items: center; gap: 8px; }
+.as-field { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.as-err { flex-basis: 100%; padding-left: 98px; font-size: 12px; line-height: 1.5; color: #dc2626; }
+.as-field-stack > .as-err { padding-left: 0; }
 .as-label { flex: none; width: 90px; text-align: right; white-space: nowrap; font-size: 12px; color: #6b7280; }
 .as-label.req::before { content: '*'; color: #ef4444; margin-right: 2px; }
 .as-field > .ant-input,

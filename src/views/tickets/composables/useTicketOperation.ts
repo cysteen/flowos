@@ -409,6 +409,17 @@ export function useTicketOperation() {
     // 售后回传 / 关联迁移写在工单行上的履历（aftersaleEvents.ts），并入本页履历
     else {
       const entries = eventTimelineOverride ?? t?.eventTimeline ?? [];
+      // 客服⇄售后链路上的单（1025）：履历只取本单自己的事件，不沿用样例单的履历，
+      // 否则别的单的「升级售后」「升级投诉」等样例条目会混进来，与本单的关联位自相矛盾
+      if (t && (t.linkedAftersaleNo || t.aftersaleOriginNo || t.returnedFromAftersale || t.succeedsFromNo || t.succeededByNo)) {
+        const own = entries.map((e) => ({ ...e }));
+        const hasCreate = own.some((e) => e.action === 'create');
+        timeline.value = hasCreate || !t.createdAt ? own : [{
+          id: `tl-${t.no}-create`, category: 'node', action: 'create', who: '系统', role: '系统', systemActor: true,
+          how: '创建工单', what: `客户经${t.channel}渠道反馈问题，系统生成工单。`, when: t.createdAt,
+        }, ...own];
+        return;
+      }
       const seen = new Set(timeline.value.map((e) => e.id));
       entries.forEach((e) => { if (!seen.has(e.id)) timeline.value.push({ ...e }); });
     }
