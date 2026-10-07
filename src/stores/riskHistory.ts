@@ -123,7 +123,7 @@ export type RiskHistoryInput =
      *
      * 🔴 **它不是必填 —— 三个入口已统一为可选**（2026-09-11 裁决）：
      *   · 风险监控页 · 单条打标（`RiskMonitorView.saveEntryTag`）：不校验，标签无 `req`；
-     *   · 风险监控页 · 批量标记（`RiskMonitorView.saveBulk`）：不校验，同上；
+     *   · 风险监控页 · 批量识别（条目那一路，`RiskMonitorView.saveBulk`）：不校验，同上；
      *   · 工单处理页 · 风险打标（`OpRiskMonitorTab.confirmTag`）：**本轮去掉了那道校验与 `req`**。
      * 状态机入口 `riskQueue.recordTag` 自己也不校验它（`RiskTagInput.note` 只要求是字符串，
      * 空串照收）。故本类型上它是可选的，三个入口空着都落库。

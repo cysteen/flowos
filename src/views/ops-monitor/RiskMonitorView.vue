@@ -933,7 +933,7 @@ const showEscalateFields = computed(() =>
 // 🔴 **只在条目弹窗的已判段入口上**（2026-10-07 裁决，见 `showEntryTagAssess` 的第一道门）：
 //   · 待判段的那两枚叫「风险识别」—— 只做识别，没有这一段；
 //   · 命中台账那一枚叫「命中核实」—— 答的是"监控识别准不准"，同样没有这一段；
-//   · **批量标记、批量核实两个弹窗一字不动** —— 批量里一屏几十条各有各的原单类型与条目
+//   · **两枚「批量识别」弹窗（条目那一路 / 命中那一路）一字不动** —— 批量里一屏几十条各有各的原单类型与条目
 //     状态，一个共用的结论落不到它们头上。
 //
 // 【为什么条目弹窗与评估弹窗**共用上面那一份 `escalateFields` 实例**，而不是各建一份】
@@ -2494,7 +2494,7 @@ function saveTag() {
   /*
    * 🔴 **命中核实回写条目**（2026-09-15 裁决，推翻第三轮"命中核实不回写监控条目"）：
    * 追加命中记录之外，未打标工单上首次成立即打标入池；全部误报则改归「重点工单」，或打为无风险。
-   * 已打标工单、修正只记命中。状态迁移全在 store 的 `verifyHit` 一处，批量核实走同一个入口。
+   * 已打标工单、修正只记命中。状态迁移全在 store 的 `verifyHit` 一处，批量识别（命中那一路）走同一个入口。
    */
   const outcome = riskQueue.verifyHit(target, { ...entry, verdict: tagVerdict.value });
   message.success(
@@ -2617,7 +2617,7 @@ interface QueueRow {
   ticketNo: string;
   /**
    * A 线的监控条目。**报备行没有** —— B 线不走打标这道门，见 `report`。
-   * 打标、批量标记、修正三处只对有它的行开口，故那几处先判它在不在。
+   * 打标、批量识别（条目那一路）、修正三处只对有它的行开口，故那几处先判它在不在。
    */
   entry?: RiskQueueEntry;
   /** B 线的报备单。**只有「风险报备」这一档的行有**，与 `entry` 恰有其一 */
@@ -3041,9 +3041,9 @@ const pagedTicketRows = computed<Ticket[]>(
 );
 
 /**
- * 富列表按**工单 id** 收发勾选，而本页的批量标记按**队列行 id**（`QueueRow.id`）记选中。
+ * 富列表按**工单 id** 收发勾选，而本页的批量识别按**队列行 id**（`QueueRow.id`）记选中。
  * 两边靠工单号搭桥，不另存第二份选中态 —— 存两份必然分叉，
- * "批量标记对一批看不见的行动手"就是这么来的。
+ * "批量识别对一批看不见的行动手"就是这么来的。
  */
 const rowByTicketNo = computed(() => new Map(queueRows.value.map((r) => [r.ticketNo, r])));
 const selectedTicketIds = computed(() => {
@@ -3411,7 +3411,7 @@ function setQueuePage(page: number, size: number) {
 
 /**
  * 切三视图。**勾选不能跨视图残留**：在待打标里勾了三条再切到已入池，
- * 批量标记会对一批看不见的行动手（而那一批已经有结论了）。
+ * 批量识别会对一批看不见的行动手（而那一批已经有结论了）。
  * 页码同理回到第一页——底表换了一批，停在第 3 页多半是一张空表。
  */
 function setQueueView(v: QueueView) {
@@ -3429,7 +3429,7 @@ watch([tagLevelFilter, taggerFilter, poolStageFilter, groupFilter], () => {
 
 /**
  * 换「待标记」的切片：与 `setQueueView` 同一套善后 —— 勾选不能跨片残留
- * （在「实时监控」里勾了三条切到「重点工单」，批量标记会对一批看不见的行动手），
+ * （在「实时监控」里勾了三条切到「重点工单」，批量识别会对一批看不见的行动手），
  * 页码同理回到第一页。
  * 🔴 这一段不能并进上面那个 watch：那个只管页码，而切片必须连勾选一起清。
  */
@@ -3488,7 +3488,7 @@ function rowWaitedText(r: QueueRow): string {
   return waitedText(r.at);
 }
 
-/* ---- 条目批量标记：**只在待打标视图**（业务口径） ---- */
+/* ---- 批量识别（条目那一路）：**只在待打标视图**（业务口径） ---- */
 // 【为什么另两个视图不给批量】它们装的都是**已经有结论**的条目，对这两批做的唯一一件事是
 // 「修正」——而修正必须逐条写清"为什么改"（改判时**风险备注必填**，2026-09-29 之前是
 // 独立的「修正原因」那一格，已并入备注）。
@@ -3521,7 +3521,7 @@ function pickBatchAction(action: 'tag' | 'clear') {
   if (action === 'tag') {
     if (!bulkCount.value) return;
     batchMenuOpen.value = false;
-    // 「实时监控」那一路批量核实命中，另两路批量标记条目（2026-09-15 裁决）
+    // 两条路同一枚菜单项「批量识别」：「实时监控」那一路核实命中，另两路标记条目（2026-09-15 裁决）
     if (kwEvidenceView.value) openBulkVerify();
     else openBulk();
     return;
@@ -3581,7 +3581,7 @@ function saveBulk() {
   clearBulk();
 }
 
-/* ---- 「实时监控」那一路 · 批量核实（2026-09-15 裁决） ---- */
+/* ---- 「实时监控」那一路 · 批量识别（命中那一路）（2026-09-15 裁决） ---- */
 //
 // 对所选工单组上**待核实**的命中统一给 成立 + 等级 / 误报 + 风险备注，逐条走单条同一个入口
 // （`riskQueue.verifyHit`）：同一张单的第一条成立即给这张单打标入池，其余几条只记命中；
@@ -3592,7 +3592,7 @@ const bulkVerdict = ref<HitVerdict | undefined>(undefined);
 const bulkVerifyLevel = ref<RiskLevel>('高');
 const bulkVerifyNote = ref('');
 const bulkVerifyHits = computed(() => bulkTargets.value.flatMap((r) => kwHitsOf(r)));
-/** 所选组里没有待核实命中的单（手动筛查并入、尚无命中）：批量核实不处理，逐单走「风险管控」 */
+/** 所选组里没有待核实命中的单（手动筛查并入、尚无命中）：批量识别（命中那一路）不处理，逐单走「风险识别」 */
 const bulkVerifySkipped = computed(() => bulkTargets.value.filter((r) => !kwHitsOf(r).length).length);
 const canSaveBulkVerify = computed(
   () => canRiskTag.value && !!bulkVerdict.value && bulkVerifyHits.value.length > 0,
@@ -5236,8 +5236,14 @@ function toggleWordEnabled(w: RiskWord) {
                 </div>
                 <template #overlay>
                   <a-menu class="batch-menu">
+                    <!--
+                      🔴 **文案恒为「批量识别」、不按视图分叉**（2026-10-07 裁决）：
+                      两个分支都在待判段（条目那一路只在待打标视图、命中那一路在
+                      「未标记 · 实时监控」），按三类命名都归"识别"。
+                      点下去走哪一个弹窗仍按视图分（见 `pickBatchAction`），只是两个弹窗同名。
+                    -->
                     <a-menu-item :disabled="bulkCount <= 0" @click="pickBatchAction('tag')">
-                      {{ kwEvidenceView ? '批量核实' : '批量标记' }}
+                      批量识别
                     </a-menu-item>
                     <a-menu-item :disabled="bulkCount <= 0" @click="pickBatchAction('clear')">
                       取消选择
@@ -6834,13 +6840,16 @@ function toggleWordEnabled(w: RiskWord) {
     </a-modal>
 
     <!--
-      批量标记（只对「待打标」这一批）。结论与单条**同一个四选一**，
+      批量识别（条目那一路，只对「待打标」这一批）。结论与单条**同一个四选一**，
       不给"保持预设"这种只有批量才有的第五档 —— 批量与单条口径分家的话，
       同一批条目走两条路会得到两种结论，而进不进池全看它。
+      🔴 标题与下面那一枚**同名**（入口名＝弹窗标题，2026-10-07 裁决）：两路都在待判段、
+      都只做识别。内容不同（命中那一路多一格「本次命中」）不是分两个名字的理由 ——
+      单条那边的「风险识别」本来就有两支完全同形的内容。
     -->
     <OpActionModal
       :open="bulkOpen"
-      title="批量标记"
+      title="批量识别"
       :icon="TagsOutlined"
       tone="primary"
       :width="480"
@@ -6891,11 +6900,12 @@ function toggleWordEnabled(w: RiskWord) {
     </OpActionModal>
 
     <!--
-      批量核实（「未标记 · 实时监控」那一路）。字段与单条核实打标一致：本次命中 成立 / 误报、风险等级、风险备注。
+      批量识别（命中那一路，「未标记 · 实时监控」）。字段与单条「命中核实」一致：
+      本次命中 成立 / 误报、风险等级、风险备注。标题与上面那一枚同名，见上面那段红字。
     -->
     <OpActionModal
       :open="bulkVerifyOpen"
-      title="批量核实"
+      title="批量识别"
       :icon="TagsOutlined"
       tone="primary"
       :width="480"
