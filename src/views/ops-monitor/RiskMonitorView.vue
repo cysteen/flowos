@@ -5080,7 +5080,7 @@ function toggleWordEnabled(w: RiskWord) {
               v-for="p in HEAD_PRIORITY_KEYS"
               :key="p"
               class="dm-cell dm-static"
-              :title="`在办且优先级为 ${PRIORITY_RAIL_LABEL[p]} 的工单数 · 本块分母 ＝ 全部在办工单；P0 + P1 + P2 + P3 ＝ 在办工单总数`"
+              :title="`在办且优先级为「${PRIORITY_RAIL_LABEL[p]}」的工单数 · 本块分母 ＝ 全部在办工单；P0 + P1 + P2 + P3 ＝ 在办工单总数`"
             >
               <span class="dm-k">{{ PRIORITY_RAIL_LABEL[p] }}</span>
               <span class="dm-val"><span class="dm-v">{{ livePriorityCounts[p] }}</span></span>
