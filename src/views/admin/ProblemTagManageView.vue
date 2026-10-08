@@ -74,9 +74,9 @@ interface ProblemTagRow {
 
 /**
  * 筛选项排序（左→右）：
- * 第1行：维度（按产品 | 按组织）→ 级联（按产品：业务类型/产品分类/产品名称；按组织：BGBU/业务线/产品线）
- *        → 处理组 → 是否售后 → 是否小结专用 → 状态
- * 工具条：一级/二级分类（按产品且级联选到产品名称才出现）→ 分类名称搜索 → 查询/重置/批量/导出
+ * 第1行：维度（产品维度 | 组织维度）→ 级联（产品维度：业务类型/产品分类/产品名称；组织维度：BGBU/业务线/产品线）
+ *        | 处理组 → 是否售后 → 是否小结专用 → 状态
+ * 工具条：一级/二级分类（产品维度且级联选到产品名称才出现）→ 分类名称搜索 → 查询/重置/批量/导出
  */
 type ScopeDim = 'product' | 'org';
 const emptyFilter = () => ({
@@ -128,8 +128,8 @@ const SCOPE_FIELDS: Record<ScopeDim, [keyof ProductInfo, keyof ProductInfo, keyo
   org: ['bgbu', 'bizLine', 'prodLine'],
 };
 const DIM_OPTIONS = [
-  { label: '按产品', value: 'product' },
-  { label: '按组织', value: 'org' },
+  { label: '产品维度', value: 'product' },
+  { label: '组织维度', value: 'org' },
 ];
 const SCOPE_PLACEHOLDER: Record<ScopeDim, string> = { product: '请选择产品', org: '请选择组织' };
 
@@ -396,30 +396,21 @@ const pagination = computed(() => stdPagination({
 }));
 
 const checkedRowKeys = ref<string[]>([]);
-/** 经表头菜单「选择全部筛选结果」选中：状态行展示；手动增减任一行即退回普通勾选 */
-const allFilteredSelected = ref(false);
 function clearSelection() {
   checkedRowKeys.value = [];
-  allFilteredSelected.value = false;
 }
+/** 选择全部筛选结果：勾选当前生效条件下全部行（跨页）；之后手动增减任一行即为普通勾选 */
 function selectAllFiltered() {
   checkedRowKeys.value = displayRows.value.map((r) => r.key);
-  allFilteredSelected.value = checkedRowKeys.value.length > 0;
 }
 const rowSelection = computed(() => ({
   selectedRowKeys: checkedRowKeys.value,
-  onChange: (keys: (string | number)[]) => {
-    checkedRowKeys.value = keys as string[];
-    allFilteredSelected.value = false;
-  },
+  onChange: (keys: (string | number)[]) => { checkedRowKeys.value = keys as string[]; },
   selections: [
     {
       key: 'page',
       text: '选择当前页',
-      onSelect: (pageKeys: (string | number)[]) => {
-        checkedRowKeys.value = [...(pageKeys as string[])];
-        allFilteredSelected.value = false;
-      },
+      onSelect: (pageKeys: (string | number)[]) => { checkedRowKeys.value = [...(pageKeys as string[])]; },
     },
     { key: 'filtered', text: '选择全部筛选结果', onSelect: selectAllFiltered },
     { key: 'none', text: '清空选择', onSelect: clearSelection },
@@ -1056,12 +1047,11 @@ function doImport(withUpdate: boolean) {
         <div class="list-toolbar">
           <div class="toolbar-row">
             <div class="fi fi-scope">
-              <a-segmented v-model:value="draftFilter.dim" class="scope-dim" size="small" :options="DIM_OPTIONS" />
+              <a-segmented v-model:value="draftFilter.dim" class="scope-dim" :options="DIM_OPTIONS" />
               <a-cascader
                 :key="draftFilter.dim"
                 :value="draftFilter.scopePath"
                 class="tb-ctl scope-cascader"
-                size="small"
                 change-on-select
                 allow-clear
                 :show-search="scopeShowSearch"
@@ -1070,21 +1060,24 @@ function doImport(withUpdate: boolean) {
                 @change="onScopeChange"
               />
             </div>
-            <div class="fi">
-              <span class="fl">处理组</span>
-              <a-select v-model:value="draftFilter.team" class="tb-ctl sel-w" size="small" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="toOpts(TEAMS)" />
-            </div>
-            <div class="fi">
-              <span class="fl">是否售后</span>
-              <a-select v-model:value="draftFilter.aftersale" class="tb-ctl sel-w-sm" size="small" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="toOpts(['是', '否'])" />
-            </div>
-            <div class="fi">
-              <span class="fl">是否小结专用</span>
-              <a-select v-model:value="draftFilter.summaryOnly" class="tb-ctl sel-w-sm" size="small" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="toOpts(['是', '否'])" />
-            </div>
-            <div class="fi">
-              <span class="fl">状态</span>
-              <a-select v-model:value="draftFilter.status" class="tb-ctl sel-w-sm" size="small" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="toOpts(['启用', '停用'])" />
+            <span class="fi-divider" />
+            <div class="fi-group-attr">
+              <div class="fi">
+                <span class="fl">处理组</span>
+                <a-select v-model:value="draftFilter.team" class="tb-ctl sel-w" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="toOpts(TEAMS)" />
+              </div>
+              <div class="fi">
+                <span class="fl">是否售后</span>
+                <a-select v-model:value="draftFilter.aftersale" class="tb-ctl sel-w-sm" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="toOpts(['是', '否'])" />
+              </div>
+              <div class="fi">
+                <span class="fl">是否小结专用</span>
+                <a-select v-model:value="draftFilter.summaryOnly" class="tb-ctl sel-w-sm" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="toOpts(['是', '否'])" />
+              </div>
+              <div class="fi">
+                <span class="fl">状态</span>
+                <a-select v-model:value="draftFilter.status" class="tb-ctl sel-w-sm" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="toOpts(['启用', '停用'])" />
+              </div>
             </div>
           </div>
         </div>
@@ -1169,11 +1162,6 @@ function doImport(withUpdate: boolean) {
               </a-tooltip>
             </div>
           </div>
-        </div>
-
-        <div v-if="allFilteredSelected" class="select-all-bar">
-          <span>已选择全部筛选结果 {{ displayRows.length }} 条</span>
-          <a class="select-all-bar__clear" @click="clearSelection">清空</a>
         </div>
 
         <div class="table-wrap">
@@ -1464,20 +1452,37 @@ function doImport(withUpdate: boolean) {
 }
 .list-toolbar {
   display: flex; flex-direction: column; gap: 6px;
-  padding: 6px 12px; border-bottom: 1px solid #f0f2f5;
+  padding: 10px 12px; border-bottom: 1px solid #f0f2f5;
 }
 .toolbar-row {
-  display: flex; align-items: center; gap: 6px 14px; flex-wrap: wrap; width: 100%;
+  display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; width: 100%;
 }
+/* 维度分段 + 级联：一组，紧挨、等高 */
+.fi-scope { gap: 8px; }
+.scope-dim { flex: none; padding: 2px; }
+.scope-dim :deep(.ant-segmented-item-label) {
+  min-height: 26px; line-height: 26px; padding: 0 12px; font-size: 13px;
+}
+.scope-cascader { width: 300px !important; }
+/* 组间细分隔线 */
+.fi-divider { flex: none; width: 1px; height: 18px; background: #e5e7eb; }
+.fi-group-attr { display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; }
+/* 筛选控件统一 30px 高，与工具条按钮对齐 */
+.toolbar-row :deep(.tb-ctl.ant-select:not(.ant-select-customize-input) .ant-select-selector) {
+  height: 30px !important; padding: 0 10px;
+}
+.toolbar-row :deep(.tb-ctl.ant-select .ant-select-selection-search-input) { height: 28px !important; }
+.toolbar-row :deep(.tb-ctl.ant-select .ant-select-selection-item),
+.toolbar-row :deep(.tb-ctl.ant-select .ant-select-selection-placeholder) { line-height: 28px !important; }
+.toolbar-row :deep(.tb-ctl.ant-select .ant-select-selection-search) { inset-inline-start: 10px; inset-inline-end: 10px; }
 .fi-group {
   display: flex; align-items: center; gap: 8px; flex: none;
   padding: 2px 8px; border-radius: 6px; background: #f9fafb;
 }
-.fi { display: flex; align-items: center; gap: 6px; flex: none; }
-.fl { font-size: 12px; color: #6b7280; white-space: nowrap; }
-.sel-w { width: 108px !important; }
-.sel-w-lg { width: 168px !important; }
-.sel-w-sm { width: 80px !important; }
+.fi { display: flex; align-items: center; gap: 8px; flex: none; }
+.fl { font-size: 13px; color: #6b7280; white-space: nowrap; }
+.sel-w { width: 120px !important; }
+.sel-w-sm { width: 88px !important; }
 .toolbar-row :deep(.tb-ctl.ant-select .ant-select-selector) {
   font-size: 13px; border-radius: 6px; background: #fff;
 }
@@ -1533,15 +1538,6 @@ function doImport(withUpdate: boolean) {
   color: #bfbfbf; background: #f5f5f5; border-color: #d9d9d9; cursor: not-allowed;
 }
 .wb-toolbar__btn--export.is-disabled:hover { border-color: #d9d9d9; }
-.select-all-bar {
-  display: flex; align-items: center; gap: 12px;
-  padding: 6px 12px; font-size: 13px; color: #1f2937;
-  background: #f0f6ff; border-bottom: 1px solid #dbe8ff;
-}
-.select-all-bar__clear { color: #1a6fff; cursor: pointer; }
-.fi-scope { gap: 8px; }
-.scope-dim { flex: none; }
-.scope-cascader { width: 300px !important; }
 .wb-toolbar__badge {
   min-width: 18px; height: 18px; padding: 0 5px;
   font-size: 11px; font-weight: 600; line-height: 18px; text-align: center;
