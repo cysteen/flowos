@@ -649,7 +649,7 @@ const reportAssessedRows = computed(
   ),
 );
 
-/* ---- A 线池行的几个计数：一并收窄到 A 线（口径与 store 那几个 count 逐条对齐，差别只在多一道 `isALine`）---- */
+/* ---- A 线池行的几个计数：一并收窄到 A 线 + 当前班组（口径与 store 那几个 count 逐条对齐，差别就是多出来的这两道）---- */
 //
 // 🔴 **不收窄的话这一屏当场自相矛盾**：一处写「待评估总数 8」、另一处写「待领取 3 · 已领取 2」，
 // 点下去落到的还是同一张表。同屏同一件事只能有一个数，这是本文件反复踩过的那个坑。
@@ -663,15 +663,29 @@ const reportAssessedRows = computed(
 // 标记条目），而工作面这张表经 `isALine` 只收 A 线池行——同一个名字两个分母，必然对不上；
 // 摆在表的正上方，分母就是这张表自己。
 // 🔴 **不要再往页头搬，也不要另写一份计数**：下面几个 computed 与 store 的 count 一一对应
-// （差别只在多一道 `isALine`），要复用先回头读本段。
-const alineUnassignedCount = computed(() => reportStore.unassignedQueue.filter(isALine).length);
-const alineAssigningCount = computed(() => reportStore.assigningQueue.filter(isALine).length);
-const alineOpenCount = computed(() => alineUnassignedCount.value + alineAssigningCount.value);
-const alineOverdueCount = computed(
-  () => [...reportStore.unassignedQueue, ...reportStore.assigningQueue]
-    .filter((r) => isALine(r) && reportStore.isOverdue(r)).length,
+// （差别只在多出来的 `isALine` + `inGroup` 这两道），要复用先回头读本段。
+//
+// 🔴 **班组这一道（`inGroup`）与表身走同一个判据，少了它这一排当场说假话**：清单上沿那个班组
+// 单选横跨本页每一档，表身三段各自都过了 `inGroup`（见 `reportUnassignedRows` /
+// `reportAssigningRows` / `reportAssessedRows`）。只过 `isALine` 不过班组的话，切到「受理一组」
+// 之后 chip 上仍写着全量、而它下面那张表只躺着这个组的几行 —— 同排另外三轴（来源 / 原单类型 /
+// 风险等级，走 `inGroup(reportGroupBase)`）早就跟着班组收窄了，唯独最外这一层没跟，
+// 于是 `待领取 + 已领取 + 已结论 ＝ 不限阶段 ＝ 表行数` 这条恒等式在切组后整排失真。
+// **复用 `inGroup`、不要另造一份按组反查**：组名由 `groupNameOf` 反查工单库，本页只有那一个口径。
+const alineUnassignedCount = computed(
+  () => inGroup(reportStore.unassignedQueue.filter(isALine)).length,
 );
-const alineAssessedList = computed(() => reportStore.assessedList.filter(isALine));
+const alineAssigningCount = computed(
+  () => inGroup(reportStore.assigningQueue.filter(isALine)).length,
+);
+const alineOpenCount = computed(() => alineUnassignedCount.value + alineAssigningCount.value);
+// 🔴 「超时未评」同样跟着班组收窄，但它仍是**跨档子集、不参与那条等式**（见 `setPoolStage`）：
+// 收窄与入等式是两件事，别因为它跟着变就把它加进去。
+const alineOverdueCount = computed(
+  () => inGroup([...reportStore.unassignedQueue, ...reportStore.assigningQueue]
+    .filter((r) => isALine(r) && reportStore.isOverdue(r))).length,
+);
+const alineAssessedList = computed(() => inGroup(reportStore.assessedList.filter(isALine)));
 /**
  * 今日**已结论**的池行数。
  *
@@ -5910,7 +5924,8 @@ function toggleWordEnabled(w: RiskWord) {
         于是「待评估总数 / 待领取 · 已领取 / 超时未评 / 今日已结论 / 今日结论三档」全站无处可查，
         连 `reportView` 的四档、`decisionFilter`、`onlyOverdue` 也一并失去了唯一入口。补回这一排。
 
-        🔴 **分母 ＝ 下面这张表自己**（经 `isALine` 只收 A 线的池行）。这正是把它从页头挪下来的理由：
+        🔴 **分母 ＝ 下面这张表自己**（经 `isALine` 只收 A 线的池行，并与表身同走一道 `inGroup`
+        跟着上沿那个班组单选收窄）。这正是把它从页头挪下来的理由：
         页头那一块数的是**监控条目**（含来源「二线报备」那一条标记条目），两个分母天生差着那几条，
         同一个名字挂在两个分母上，必然被读成"少了几条"。**两处的数不可相减**，行首的悬停里写着这句。
         🔴 页头那四枚卡**照旧不点亮 `on`**（见 `drillPooled` 的注释）：它们是进这个工作面的入口，
@@ -5926,7 +5941,7 @@ function toggleWordEnabled(w: RiskWord) {
       <div v-if="listView === 'report'" class="section-filters grade-filters report-source-filters">
         <span
           class="rf-k"
-          :title="`本排的分母 ＝ 下面这张表自己：进池的 A 线池行，当前 ${alineStageAllCount} 条。🔴 与页头「风险工单」块那个数不是同一个分母 —— 那一块数的是监控条目、含来源「二线报备」的标记条目，两处不可相减`"
+          :title="`本排的分母 ＝ 下面这张表自己：进池的 A 线池行、跟着当前班组收窄，当前 ${alineStageAllCount} 条。🔴 与页头「风险工单」块那个数不是同一个分母 —— 那一块数的是监控条目、含来源「二线报备」的标记条目，两处不可相减`"
         >处置阶段</span>
         <button
           type="button"
