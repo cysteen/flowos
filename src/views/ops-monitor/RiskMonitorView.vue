@@ -5795,18 +5795,24 @@ function toggleWordEnabled(w: RiskWord) {
         <table class="hit-table report-table">
           <thead>
             <tr>
-              <th style="width: 152px">工单</th>
+              <!--
+                第一格 ＝ **工单标题单元格**（与「评估处置工作面」池行表、工作台富列表同一个共享件），
+                列宽 264 的量法与池行表那一格同一条（最宽一种第二行「客户服务小程序 · 单号」232 ＋ 内边距 20 ＝ 252，留 12）。
+              -->
+              <th style="width: 264px">工单</th>
               <!--
                 🔴 「监控来源」「风险描述」两列**已删**，换成下面这四列。
-                列宽合计 942px（152+88+148+90+104+72+80+104+104），加内边距落在 1044 的清单区内 ——
-                与「实时监控」那一路收窄列宽同一条理由：横着拖才能看全的表，每一行都要动两次手。
+                列宽合计 1040px（264+88+134+100+110+64+72+120+88），与本表 min-width 1040 同值，
+                落在 1044 的清单区内 —— 与「实时监控」那一路收窄列宽同一条理由：横着拖才能看全的表，每一行都要动两次手。
                 ⚠️ **按有纵向滚动条时的可用宽算**（1044，不是 1058）：行少到不出滚动条时会多出 14px，
                 照那个宽度定列，行一多就溢出，而"行少的时候不溢出"恰恰是最容易漏测的一种。
-                ⚠️ **SLA 那一格要 104**：最长的一种是「解决：超 88:40」，给 88 会把末位数字切掉半个
-                （实测显示成「超 88:4(」）—— 一个被切掉的时间数字比不显示更糟。
-                ⚠️ **「结论时间」同一个坑，已犯过一次**：给 96 时整列被省略成「2026-10-06 10:…」
-                （实测该格需 113px，分到 110px），现改 **104**，多出的 8px 从「证据 / 摘要」匀
-                （156 → 148，那一列本来就是靠省略号收尾的长文，少 8px 不丢信息）。列宽合计仍是 942。
+                ⚠️ **合计贴到 1040 之后，各列在 1044 下几乎拿不到余量**（原先合计 942 时每列按 1.108 倍放大，
+                「结论时间」给 104 实得 115 才没被切）—— 故下面每一格都按**实测自然宽（含内边距）＋ 余量**直接给足：
+                SLA 实测 102 → **110**（最长一种「解决：超 88:40」，被切掉半个末位数字比不显示更糟）；
+                「结论时间」实测 114 → **120**（给 96 时整列被省略成「2026-10-06 10:…」，已犯过一次）；
+                风险来源 82 → 88、客户 / 产品 96 → 100、结论 56 → 64、结论人 64 → 72、操作 82 → 88。
+                第一格多出来的 112px 与上面这几格补足的余量，全部从「证据 / 摘要」让（148 → 134）：
+                那一列本来就是靠省略号收尾的长文、全文挂 title，少几十像素不丢信息。
 
                 🔴 **原「风险词」这一列改成「风险来源」**（2026-09-28 裁决）：词只对其中一路成立，
                 而"这条从哪条路进来的"每一行都答得上 —— 取值三种：
@@ -5820,22 +5826,34 @@ function toggleWordEnabled(w: RiskWord) {
                 那是为「无风险」那一档不摆证据列留的分支，这张表只剩一档之后四列恒出、列宽恒定。
               -->
               <th style="width: 88px">风险来源</th>
-              <th style="width: 148px">证据 / 摘要</th>
-              <th style="width: 90px">客户 / 产品</th>
-              <th style="width: 104px">SLA</th>
-              <th style="width: 72px">结论</th>
-              <th style="width: 80px">结论人</th>
-              <th style="width: 104px">结论时间</th>
+              <th style="width: 134px">证据 / 摘要</th>
+              <th style="width: 100px">客户 / 产品</th>
+              <th style="width: 110px">SLA</th>
+              <th style="width: 64px">结论</th>
+              <th style="width: 72px">结论人</th>
+              <th style="width: 120px">结论时间</th>
               <!--
-                操作列只剩一枚「风险管控」，列宽由 128 收到 104 —— 一枚按钮不需要两枚的位。
+                操作列只剩一枚「风险管控」，列宽由 128 收到 88 —— 一枚按钮不需要两枚的位。
               -->
-              <th style="width: 104px">操作</th>
+              <th style="width: 88px">操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="e in pagedQueueRows" :key="e.id">
+              <!--
+                第一格 ＝ **工单标题单元格**（共享件 `TicketTitleCell`，取数走 `poolTicketOf`）：
+                催 / 补 · 状态 · 类型 · 标题 · 渠道 · 单号 · 关联标。单号仍可点、落点不变；
+                `line2-wrap` 让关联标放不下时整枚换行，不被切成半个单号；
+                查不到原单的行回退成光单号按钮 —— 写法与池行表那一格逐字同一套。
+              -->
               <td>
-                <button type="button" class="rt-no" @click="openTicket(e.ticketNo)">{{ e.ticketNo }}</button>
+                <TicketTitleCell
+                  v-if="poolTicketOf(e)"
+                  :ticket="poolTicketOf(e)!"
+                  line2-wrap
+                  @click-no="openTicket($event.no)"
+                />
+                <button v-else type="button" class="rt-no" @click="openTicket(e.ticketNo)">{{ e.ticketNo }}</button>
               </td>
               <!--
                 风险来源：这一维取值三种（实时监控 / 重点工单 / 风险报备）。
@@ -6444,7 +6462,15 @@ function toggleWordEnabled(w: RiskWord) {
         <table v-else class="hit-table report-table">
           <thead>
             <tr>
-              <th style="width: 190px">工单号</th>
+              <!--
+                第一格 ＝ **工单标题单元格**，列宽 264 与上面池行表那一格同一条量法。
+                列宽合计 1004（264+64+64+96+72+120+96+172+56），低于本表 min-width 1040，
+                1044 的清单区下各列还有约 4% 的余量；每一格都按**实测自然宽（含内边距）＋ 余量**给：
+                评估人 64 → 72、评估时刻 114 → 120、评估决策（「风险处理建议」）92 → 96、
+                派生投诉单（一个完整单号）166 → 172、操作（表头两字）→ 56。
+                第一格多出来的 74px 从原先各列放大后的余量里出，不再有哪一列靠省略号收尾。
+              -->
+              <th style="width: 264px">工单号</th>
               <th style="width: 64px">原单类型</th>
               <th style="width: 64px">风险等级</th>
               <th
@@ -6454,18 +6480,24 @@ function toggleWordEnabled(w: RiskWord) {
                 :title="sourceSort === 'none' ? '点击按监控来源分组（同来源内仍按评估时刻倒序）' : sourceSort === 'asc' ? '点击倒序' : '点击恢复按评估时刻排'"
                 @click="cycleSourceSort"
               >监控来源<span class="th-sort-mark">{{ sourceSort === 'asc' ? '↑' : sourceSort === 'desc' ? '↓' : '↕' }}</span></th>
-              <th style="width: 104px">评估人</th>
-              <th style="width: 128px">评估时刻</th>
-              <th style="width: 92px">评估决策</th>
-              <!-- 158px 是量出来的：再宽 18px 这张九列表就会挤出横向滚动条 -->
-              <th style="width: 158px">派生投诉单</th>
-              <th style="width: 76px">操作</th>
+              <th style="width: 72px">评估人</th>
+              <th style="width: 120px">评估时刻</th>
+              <th style="width: 96px">评估决策</th>
+              <th style="width: 172px">派生投诉单</th>
+              <th style="width: 56px">操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="r in pagedReportRows" :key="r.id">
+              <!-- 第一格 ＝ 工单标题单元格，写法与池行表那一格逐字同一套（查不到原单回退光单号） -->
               <td>
-                <button type="button" class="rt-no" @click="openTicket(r.ticketNo)">{{ r.ticketNo }}</button>
+                <TicketTitleCell
+                  v-if="poolTicketOf(r)"
+                  :ticket="poolTicketOf(r)!"
+                  line2-wrap
+                  @click-no="openTicket($event.no)"
+                />
+                <button v-else type="button" class="rt-no" @click="openTicket(r.ticketNo)">{{ r.ticketNo }}</button>
               </td>
               <td><span class="src-tag">{{ poolTicketTypeOf(r) }}</span></td>
               <td>
@@ -9478,8 +9510,9 @@ function toggleWordEnabled(w: RiskWord) {
  * 唯一那条弹性列「风险摘要」会被分到 **0 宽**、整列静默消失，
  * 而"静默消失"正是这张表最不能出的一种坏法（同 `.hit-table-wrap` 那段：宁可滚）。
  * 抬 96 之后「风险摘要」在任何屏宽下都还有 80px 的下限，与改动前同一条下限。
- * ⚠️ **不抬共用的那条**：另两张 `.report-table`（已判段条目表、已收口表）本轮一格不动，
- * 共用的 min-width 一抬，它们在 1040~1136 这一段屏宽上会凭空多出一条横向滚动条。
+ * ⚠️ **不抬共用的那条**：另两张 `.report-table`（已判段条目表、已收口表）第一格也换成了标题单元格，
+ * 但它们没有弹性列、靠收别的定宽列把合计压在 1040 以内（1040 / 1004），共用的 min-width 一抬，
+ * 它们在 1040~1136 这一段屏宽上会凭空多出一条横向滚动条。
  */
 .report-table-wrap .report-table.pool-row-table { min-width: 1136px; }
 /*
