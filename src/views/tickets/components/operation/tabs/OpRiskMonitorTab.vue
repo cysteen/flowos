@@ -36,7 +36,6 @@ import OpActionModal from '../OpActionModal.vue';
 import { useUserStore } from '@/stores/user';
 import { useRiskCollabStore } from '@/stores/riskCollab';
 import { resolveTicketTypeFor } from '@/views/tickets/composables/opActions';
-import { canTagRiskOnTicketPage } from '@/views/tickets/composables/opActionRegistry';
 import {
   adviceLabelOf,
   decisionText,
@@ -415,53 +414,15 @@ function tagRecordText(h: RiskTagEntry) {
   return note ? `${head} · ${note}` : head;
 }
 
-/**
- * 谁能在这一页打标（§3.1，2026-09-10 拍板）：
- * **投诉单** —— 客诉专员在工单处理页自行打标；
- * **非投诉单** —— 处理人一律不能打，只由客诉专员 / 投诉督导在风险监控页打。
- * 判据里的角色只有一个，因为本页只可能站着处理侧或客诉专员：投诉督导的打标入口在风险监控页。
- *
- * 🔴 **这一行原来还写着"或靠命中规则自动打"—— 系统里没有这回事**（930 v3.4 §9 规则 13）：
- * 打标状态机全仓只有 `riskQueue.recordTag` 一个入口，`by` / `byRole` 必填，
- * 全部调用方都是人点出来的保存动作，没有任何定时器 / 监听器 / 规则引擎回调。
- * 规则产出的只是**词表预设等级**（`RiskHit.level`），供排队展示与打标弹窗预置，
- * `ticketGradeOf` 根本不吃它 —— 人不确认，这张单一个等级都不会有。
- * 【为什么要把注释也改掉】"自动打标"这句话此前正是靠散在几处注释里活下来的，
- * 于是每一轮都有人照着它去找那条不存在的自动链路，或默认"没人打也会有结果"。
- *
- * 🔴 **不再要求"本单已有实时监控条目"**（2026-09-10 收口）：一张 P0 投诉单按 §5A.1
- * 本来就该被自动捞进监控，而条目只在风险监控页那一侧生成 —— 没进过监控的单在这里
- * 点不动打标，等于这条口径在那批单上从来没生效过。条目由 store 在打标时按两类判据现补，
- * 见 `riskQueue.ensureEntryFor`。
- *
- * 【但仍然要在点之前把话说清】推不出来源的单（如已结案的单）**不给按钮**，
- * 原地写明原因（`tagBlockReason`）—— 让人填完弹窗才收到一句失败，比按钮不出现糟得多。
- * 判据取 store 的纯函数，与提交时兜底那一句同源，两处不会说出两个理由。
- *
- * 🔴 **判据本身已抽成共享的 `canTagRiskOnTicketPage`**（2026-09-29）：页头按钮的出现条件、
- * 页头弹窗上半的显隐、本块空态那句的分岔读的是同一份，三处不会再各写一遍同一个表达式。
- */
-const tagBlockReason = computed(() => queue.tagBlockReasonOf(props.ticketNo));
-const canTag = computed(
-  () => canTagRiskOnTicketPage(
-    resolveTicketTypeFor(props.ticketNo),
-    user.roleKey,
-    tagBlockReason.value,
-  ),
-);
-
 /*
  * ⚠️ **块内那枚「标记 / 重新标记」按钮与它的弹窗已整块撤掉**（2026-09-29 裁决）：
  * 标记改由**页头「风险管控」**承担 —— 那个弹窗在投诉单上补出了"上半 风险等级
  * （可标记 / 改判，改判填风险备注）"，与风险监控页那个弹窗同构
  * （`operation/OpRiskControlModal.vue`）。
  *
- * 判据与落库**一条都没有新造**：权限仍是本文件这把 `canTag` 的同一口径（原单类型 + 标记权），
- * 落库仍走 `riskQueue.recordTagFor` 那条唯一入口，随之搬走的还有四选一等级、
- * 「无风险」置灰（`canTagNoRisk`）、改判必填风险备注这几条规格
- * （原来那格独立的「修正原因」已并进风险备注，2026-09-29）。
- *
- * 本文件留着 `canTag` 只剩一个用处：空态里那句"为什么这里没有标记入口"要按它分岔。
+ * 判据与落库不在本文件：页头按钮与弹窗上半读共享的 `canTagRiskOnTicketPage`，
+ * 落库仍走 `riskQueue.recordTagFor`。本块只回显结论；没有结论时出一句「本单尚未标记」，
+ * 不再在空态里解释谁有标记权、命中规则算不算数。
  */
 
 /* ==================== 协同记录（《【930】》§3.3） ==================== */
@@ -793,29 +754,7 @@ watch(() => props.ticketNo, () => {
             </p>
           </template>
 
-          <div v-else class="rt-empty">
-            <p class="rt-empty-title">本单尚未标记</p>
-            <!--
-              说清"为什么这里没有入口"：不写这一句，看的人只会以为入口坏了或自己权限少了。
-              两种挡法要分开写：**有标记权但这张单进不了监控**（投诉单 + 客诉专员，
-              却推不出两类来源）与**这个角色本来就没有标记入口**（非投诉单 / 非客诉专员），
-              合成一句会让客诉专员以为自己被降权了。有标记权且这张单标得动时不出任何一句 ——
-              那时入口在**页头「风险管控」**，块里本来就不该再指路。
-            -->
-            <template v-if="!canTag">
-              <p v-if="isComplaintTicket && user.roleKey === 'complaint-handler'" class="rt-empty-hint">
-                {{ tagBlockReason }}
-              </p>
-              <!--
-                🔴 这一句原来写的是「由命中规则自动打标」—— 系统里**没有这回事**：打标只有
-                `riskQueue.recordTag` 一个入口、`by` / `byRole` 必填，全部调用方都是人点出来的保存动作，
-                没有任何定时器 / 监听器 / 规则引擎回调。规则产出的只是**词表预设等级**（`RiskHit.level`），
-                用于排队展示与打标弹窗预置，`ticketGradeOf` 根本不吃它。
-                旧口径留在界面上会让人以为"等着系统自动打就行"，故按 930 v3.4 §9 规则 13 改成人工产出。
-              -->
-              <p v-else class="rt-empty-hint">非投诉单的风险等级由客诉专员 / 投诉督导在风险监控页标记产出，处理人没有标记入口；命中规则只给出词表预设等级，供排队与标记预置参考，人不确认不成立</p>
-            </template>
-          </div>
+          <div v-else class="ra-empty">本单尚未标记</div>
 
           <!--
             风险词命中的**核实结论**：只读回显，不进 form、不参与必填校验。
@@ -1374,19 +1313,6 @@ watch(() => props.ticketNo, () => {
   border-radius: 6px;
   word-break: break-word;
 }
-.rt-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 14px;
-  text-align: center;
-  background: #fff;
-  border: 1px dashed #e5e7eb;
-  border-radius: 8px;
-}
-.rt-empty-title { margin: 0; font-size: 13px; font-weight: 600; color: #6b7280; }
-.rt-empty-hint { margin: 0; font-size: 12px; color: #9ca3af; line-height: 1.5; }
 /* ---- 协同记录 ---- */
 .rc-list { display: flex; flex-direction: column; gap: 10px; }
 .rc-item {

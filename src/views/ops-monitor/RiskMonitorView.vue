@@ -1002,7 +1002,7 @@ const assessValid = computed(() => !!assessDecision.value && !!assessAdvice.valu
 
 /** 二选一决策各自必填文本的标签 */
 const assessAdviceLabel = computed(() =>
-  assessDecision.value === '升级' ? '升级说明' : '反馈意见',
+  assessDecision.value === '升级' ? '升级说明' : '处理意见',
 );
 const assessAdvicePlaceholder = computed(() => {
   switch (assessDecision.value) {
@@ -3855,7 +3855,7 @@ const showEntryTagAssessAdvice = computed(
 );
 /** 这一格的标签与占位：与评估弹窗（`assessAdviceLabel` / `assessAdvicePlaceholder`）逐字一致 */
 const entryTagAssessAdviceLabel = computed(
-  () => (entryTagAssessDecision.value === '升级' ? '升级说明' : '反馈意见'),
+  () => (entryTagAssessDecision.value === '升级' ? '升级说明' : '处理意见'),
 );
 const entryTagAssessAdvicePlaceholder = computed(
   () => (entryTagAssessDecision.value === '升级'
@@ -7737,13 +7737,13 @@ function toggleWordEnabled(w: RiskWord) {
             （assessAdvice 代理 escalateFields.fields.advice）。
           -->
           <div v-if="!showEscalateFields" class="op-field">
-            <div class="op-label req">{{ assessAdviceLabel || '反馈意见' }}</div>
+            <div class="op-label req">{{ assessAdviceLabel || '处理意见' }}</div>
             <a-textarea
               v-model:value="assessAdvice"
               :rows="3"
               :placeholder="assessAdvicePlaceholder || '请先选择评估决策'"
             />
-            <div v-if="missAssessAdvice" class="assess-err">请填写{{ assessAdviceLabel || '反馈意见' }}</div>
+            <div v-if="missAssessAdvice" class="assess-err">请填写{{ assessAdviceLabel || '处理意见' }}</div>
           </div>
 
           <!--

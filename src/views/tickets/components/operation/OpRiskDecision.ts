@@ -29,9 +29,9 @@ export function isEscalateDecision(decision: AssessDecision | ''): boolean {
   return !!decision && decision !== '不升级';
 }
 
-/** 该档结论要填的那一栏叫什么：升级填「升级说明」，不升级填「反馈意见」（※29） */
+/** 该档结论要填的那一栏叫什么：升级填「升级说明」，不升级填「处理意见」（※29） */
 export function adviceLabelOf(decision: AssessDecision | ''): string {
-  return isEscalateDecision(decision) ? '升级说明' : '反馈意见';
+  return isEscalateDecision(decision) ? '升级说明' : '处理意见';
 }
 
 export function advicePlaceholderOf(decision: AssessDecision | ''): string {

@@ -535,7 +535,7 @@ export const useRiskPoolStore = defineStore('riskPool', () => {
     const escalate = decision === '升级';
     const tail = escalate
       ? `本单已升级为投诉工单 ${assessment.escalatedToNo ?? '待生成'}，由 ${assessment.by}（${assessment.byRole}）承接。升级说明：${asSentence(assessment.advice)}`
-      : `反馈意见：${asSentence(assessment.advice)}`;
+      : `处理意见：${asSentence(assessment.advice)}`;
     const subject = isBLine ? '风险报备' : '风险条目';
     notifyLog.emit({
       ticketNo: r.ticketNo,

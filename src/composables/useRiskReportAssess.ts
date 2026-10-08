@@ -264,7 +264,7 @@ export function useRiskReportAssess(opts?: { level?: RiskLevelFieldsCtl }) {
   const assessValid = computed(() => !!assessDecision.value && !!assessAdvice.value.trim());
 
   const assessAdviceLabel = computed(() =>
-    assessDecision.value === '升级' ? '升级说明' : '反馈意见',
+    assessDecision.value === '升级' ? '升级说明' : '处理意见',
   );
   const assessAdvicePlaceholder = computed(() => {
     switch (assessDecision.value) {
