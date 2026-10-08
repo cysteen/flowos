@@ -836,7 +836,7 @@ function poolLevelCountInView(lv: RiskLevel) {
  *
  * 🔴 **三段恒接满**：原先第三段在开着「超时未评」时整段不接，那枚 chip 已随「处置阶段」
  * 整排删除（2026-10-08 裁决），这里不再分叉。池内阶段仍然看得到 —— 它写在每一行的
- * 「操作」列上（能领取的行摆「领取」、已出结论的行摆只读入口，见下面那张表）。
+ * 「操作」列上（待领取摆「领取」、已领取摆「风险管控」+「释放」、已结论两枚都不摆）。
  */
 const reportAllRows = computed(() => [
   ...reportUnassignedRows.value,
@@ -4755,6 +4755,24 @@ const groupFilterOptions = computed(() => [
   })),
 ]);
 
+/*
+ * 「监控来源」「原单类型」两个下拉：**与「班组」同一套控件、同一副标签写法**
+ * （`全部X（N）` / `取值（N）`）。2026-10-08 裁决把这两维从筛选区那两排 chip
+ * 改成了与班组并排的筛选项，**筛选行为、计数口径与表的联动一个字没改** ——
+ * 各项的数仍取"摘掉自己这一维"之后的底表（`reportSourceBase` / `reportTypeBase`），
+ * 否则选中一项之后其余几项全变 0，筛选器把自己筛没了。
+ * 🔴 **只在「评估处置」工作面上摆**（见模板里那两格的 `v-if`）：这两维是池行的属性，
+ * 这条工具条另一个落点（实时监控的「重点工单」等路）摆的不是池行。
+ */
+const sourceFilterOptions = computed(() => [
+  { value: 'all', label: `全部来源（${reportSourceBase.value.length}）` },
+  ...QUEUE_SOURCES.map((s) => ({ value: s, label: `${s}（${sourceCountInView(s)}）` })),
+]);
+const poolTicketTypeFilterOptions = computed(() => [
+  { value: 'all', label: `全部类型（${reportTypeBase.value.length}）` },
+  ...POOL_TICKET_TYPE_KEYS.map((k) => ({ value: k, label: `${k}（${ticketTypeCountInView(k)}）` })),
+]);
+
 /** 左栏这一列只在漏斗的两个视图上作数；旁路的两个入口自带各自的筛选条，不套班组 */
 const showGroupFilter = computed(() => listView.value === 'realtime' || listView.value === 'report');
 
@@ -5172,7 +5190,7 @@ function toggleWordEnabled(w: RiskWord) {
             <button
               type="button"
               class="dm-cell"
-              title="在办工单上已判出风险等级（高 / 中 / 低）的监控条目总数 ≡ 左栏「已判」页签上那个数 ≡ 左栏「全部有风险」。点它进「评估处置」工作面 · 不限阶段"
+              title="在办工单上已判出风险等级（高 / 中 / 低）的监控条目总数 ≡ 左栏「已判」页签上那个数 ≡ 左栏「全部有风险」。点它进「评估处置」工作面"
               @click="drillPooled('all')"
             >
               <span class="dm-k">风险工单总数</span>
@@ -5184,7 +5202,7 @@ function toggleWordEnabled(w: RiskWord) {
               type="button"
               class="dm-cell"
               :class="{ hot: lv === '高' && pooledLevelCount(lv) > 0 }"
-              :title="`判为${riskLevelText(lv)}的监控条目数 ≡ 左栏已判段「${riskLevelText(lv)}」那一档（同一个派生值，两处恒等）。点它进「评估处置」工作面 · 不限阶段并收窄到${riskLevelText(lv)}`"
+              :title="`判为${riskLevelText(lv)}的监控条目数 ≡ 左栏已判段「${riskLevelText(lv)}」那一档（同一个派生值，两处恒等）。点它进「评估处置」工作面并收窄到${riskLevelText(lv)}`"
               @click="drillPooled(lv)"
             >
               <span class="dm-k">{{ riskLevelText(lv) }}</span>
@@ -5386,17 +5404,25 @@ function toggleWordEnabled(w: RiskWord) {
           -->
 
       <!--
-        班组筛选（单选）。它是**另一层**：左栏选的是"链上哪一段"，搜索条选的是
+        班组筛选（单选）。它是**另一层**：左栏选的是"链上哪一段"，这条工具条选的是
         "这一段里哪一个组的活"。横跨左栏每一档不清空 —— 组是工单的固有属性，
         不随条目走到哪一段而变；切档就清掉的话，人在某一组筛完切档会看到全部组，只会以为筛选失灵。
-        🔴 各枚的数字取的是**除班组之外**的全部条件下的行数（见 groupChips）。
+        🔴 各项的数字取的是**除自己这一维之外**的全部条件下的行数（见 groupChips / reportSourceBase）。
+
+        🔴 **「监控来源」「原单类型」并排摆在这里**（2026-10-08 裁决）：它们原先是筛选区里
+        两排 chip，与班组这一个下拉是同一类东西（单选、带计数、互不相干的几维），
+        却长着两套形态；收进这一行之后，这一屏上"筛什么"只有一处可找。
+        🔴 **控件与班组逐字同形**（`.fi` + `.fl` + `a-select.tb-ctl`，标签写法 `全部X（N）`），
+        不另起一套视觉语言。
+        ⚠️ 两维只对池行成立，故只在工作面（`listView === 'report'`）上出；
+        这条工具条的另一个落点（实时监控的「重点工单」等路）摆的不是池行。
       -->
       <div
         v-if="showGroupFilter && !(listView === 'realtime' && queueView === 'monitoring')"
         class="ledger-bar"
       >
-        <div class="list-toolbar list-toolbar--one-line list-toolbar--group-only">
-          <div class="tb-fields tb-fields--group">
+        <div class="list-toolbar list-toolbar--one-line list-toolbar--no-actions">
+          <div class="tb-fields">
             <div class="fi">
               <span class="fl">班组</span>
               <a-select
@@ -5405,6 +5431,26 @@ function toggleWordEnabled(w: RiskWord) {
                 class="tb-ctl"
                 :dropdown-match-select-width="false"
                 :options="groupFilterOptions"
+              />
+            </div>
+            <div v-if="listView === 'report'" class="fi">
+              <span class="fl">监控来源</span>
+              <a-select
+                v-model:value="sourceFilter"
+                size="small"
+                class="tb-ctl"
+                :dropdown-match-select-width="false"
+                :options="sourceFilterOptions"
+              />
+            </div>
+            <div v-if="listView === 'report'" class="fi">
+              <span class="fl">原单类型</span>
+              <a-select
+                v-model:value="poolTicketTypeFilter"
+                size="small"
+                class="tb-ctl"
+                :dropdown-match-select-width="false"
+                :options="poolTicketTypeFilterOptions"
               />
             </div>
           </div>
@@ -5874,8 +5920,9 @@ function toggleWordEnabled(w: RiskWord) {
         `alineAssigningCount` / `alineOverdueCount` 五个计数，以及 `onlyOverdue` /
         `reportOpenRows` / `setReportView` / `setPoolStage` / `poolStageChipOn`
         —— 它们的消费端全在那一排上，别处一个都没有。
-        ⚠️ **池内阶段不是没处看了**：它写在每一行的「操作」列上（能领的摆「领取」、已出结论的
-        摆只读入口）；行级的超时催办也照旧，标在「等待时长」那一格（红字 +「已超处置时限」）。
+        ⚠️ **池内阶段不是没处看了**：它写在每一行的「操作」列上（待领取摆「领取」、已领取摆
+        「风险管控」+「释放」、已结论两枚都不摆），以及「承办人」那一格有没有名字；
+        行级的超时催办也照旧，标在「等待时长」那一格（红字 +「已超处置时限」）。
         ⚠️ `待领取 + 已领取 + 已结论 ＝ 不限阶段 ＝ 表行数` 这条恒等式随那一轴一并消失，**预期之内**。
       -->
       <!--
@@ -6074,7 +6121,8 @@ function toggleWordEnabled(w: RiskWord) {
               <!--
                 🔴 **原先这里有一列「处置阶段」（80px，池内阶段：待领取 / 已领取 / 已结论）。
                 整列已删**（2026-10-08 裁决：业务侧没有这个定义），与它同名的那一排 chip 一并删。
-                每行走到哪一步照旧看得出来 —— 「操作」列按行分岔：能领的摆「领取」、已出结论的摆只读入口。
+                每行走到哪一步照旧看得出来 —— 「操作」列按行分岔（待领取摆「领取」、已领取摆
+                「风险管控」+「释放」、已结论两枚都不摆），「承办人」那一格也只有领过的行才有名字。
               -->
               <!--
                 ⚠️ 列宽 **80**：格里最宽的是「吴投诉」59、表头 53，80 放得下四字人名。
@@ -6165,8 +6213,9 @@ function toggleWordEnabled(w: RiskWord) {
                   投诉督导在这一列**看得见、点不动**：他本轮已去权，只看数据。
                 -->
                 <!--
-                  🔴 **按行自己走到哪一步判，不按当前是哪一档判**：不限阶段那一档里
-                  三段混在一张表上，照 `reportView` 判的话，已结论的行也会长出一枚「评估」按钮。
+                  🔴 **按行自己走到哪一步判**：这张表三段混在一起、恒摆全部条目，
+                  照整张表的状态判的话，已结论的行也会长出一枚「评估」按钮。
+                  🔴 这也是删掉「处置阶段」那一列之后，**池内阶段仍然读得出来**的那一处。
                 -->
                 <!--
                   🔴 **先按原单类型分工作面，再按走到哪一步分动作**（《【930】》§2 摘要表 ·
@@ -8552,11 +8601,14 @@ function toggleWordEnabled(w: RiskWord) {
 .sf-preview-v { margin-top: 4px; font-size: 12px; color: #475569; line-height: 1.6; }
 
 .ledger-bar { margin: 2px 0 8px; }
-.list-toolbar--group-only {
+/*
+ * 这条工具条**没有右侧动作区**（班组 / 监控来源 / 原单类型 三个筛选项都是选完即生效、
+ * 不需要「查询」按钮），故收掉 `.list-toolbar` 的第二列。
+ * ⚠️ 类名原先叫 `--group-only`（那时这一行上只有「班组」一个字段）。2026-10-08 把
+ * 「监控来源」「原单类型」两维收进来之后那个名字已不准，改按"没有动作区"这个真实差异命名。
+ */
+.list-toolbar--no-actions {
   grid-template-columns: 1fr;
-}
-.tb-fields--group {
-  grid-template-columns: minmax(220px, 320px);
 }
 
 /* 筛选条：标签左、控件右（固定标签宽，列内对齐）；默认右侧动作竖排（手动筛查等多行字段） */
@@ -8757,10 +8809,24 @@ function toggleWordEnabled(w: RiskWord) {
 .list-toolbar--one-line .tb-actions .tb-btn {
   width: auto;
 }
-.list-toolbar--one-line.list-toolbar--group-only .tb-fields {
+/*
+ * 字段区按内容排、不吃满整行：一个字段（左栏其余各档）与三个字段（评估处置工作面）
+ * 共用这一条，故**不给固定列数**，各格自己占宽、放不下就换行。
+ * ⚠️ 原先这里是 `max-width: min(320px, 100%)`（那时这一行上只有「班组」一个字段）。
+ * 三个字段下 320px 会把后两个挤到换行、再把下拉压到装不住 `全部来源（14）` 这种标签，
+ * 故改成按内容排 + 每个控件 180px（实测最长标签「全部班组（15）」约 110px，留足余量）。
+ */
+.list-toolbar--one-line.list-toolbar--no-actions .tb-fields {
   display: flex;
   flex: none;
-  max-width: min(320px, 100%);
+  flex-wrap: wrap;
+  max-width: 100%;
+  gap: 8px 16px;
+}
+.list-toolbar--one-line.list-toolbar--no-actions .fi { flex: 0 0 auto; }
+.list-toolbar--one-line.list-toolbar--no-actions .tb-ctl {
+  flex: none;
+  width: 180px !important;
 }
 
 @media (max-width: 860px) {
@@ -9296,10 +9362,13 @@ function toggleWordEnabled(w: RiskWord) {
 /*
  * 🔴 **池行表没有自己的 min-width，走上面共用的那条 1040**。
  * 第一列换成工单标题单元格（168 → 256）之后，多出来的 88px 全部就地腾出来了 ——
- * 删「原单类型」整列 −64、「监控来源」96 → 88 −8、「承办人」80 → 72 −8，
- * 定宽列合计 960 → **968**（不限阶段档九列），仍在 1040 以内。
- * 于是这张表**不出横向滚动条**，弹性的「风险摘要」拿到的是"清单区可视宽 − 968"，
- * 窄屏下也还有 1040 − 968 ＝ 72px 的下限，不会被压成 0 宽、整列静默消失。
+ * 删「原单类型」整列 −64，余下 24 从弹性的「风险摘要」让。
+ * 🔴 **2026-10-08 删「处置阶段」整列之后再配平一次**：腾出的 80px 里，
+ * 「监控来源」88 → 96、「承办人」72 → 80 各拿回上一轮被挤掉的 8px，余下 64 全给「风险摘要」。
+ * 定宽列合计 968 → **904**（八列），仍在 1040 以内。
+ * 于是这张表**不出横向滚动条**，弹性的「风险摘要」拿到的是"清单区可视宽 − 904"
+ * （实测 1090px 宽下为 186px），窄屏下也还有 1040 − 904 ＝ 136px 的下限，
+ * 不会被压成 0 宽、整列静默消失。
  */
 /*
  * 🔴 **「风险摘要」改成两行夹断**（只收在池行表这一张）：这一列是全表唯一说明
