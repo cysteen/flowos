@@ -6490,15 +6490,20 @@ function toggleWordEnabled(w: RiskWord) {
           <thead>
             <tr>
               <!--
-                第一格 ＝ **工单标题单元格**，列宽 264 与上面池行表那一格同一条量法。
-                列宽合计 1004（264+64+64+96+72+120+96+172+56），低于本表 min-width 1040，
+                第一格 ＝ **工单标题单元格**，列宽 264 起步（与上面池行表那一格同一条量法；删列后放到 312，见本段末）。
+                删列前列宽合计 1004（264+64+64+96+72+120+96+172+56），低于本表 min-width 1040，
                 1044 的清单区下各列还有约 4% 的余量；每一格都按**实测自然宽（含内边距）＋ 余量**给：
                 评估人 64 → 72、评估时刻 114 → 120、评估决策（「风险处理建议」）92 → 96、
                 派生投诉单（一个完整单号）166 → 172、操作（表头两字）→ 56。
                 第一格多出来的 74px 从原先各列放大后的余量里出，不再有哪一列靠省略号收尾。
+                🔴 **「原单类型」这一列已删**（2026-10-08 裁决，与池行表同一条理由）：
+                它与标题单元格第一行那枚**类型角标逐字重复**，同一个值在一行里摆两处。
+                按原单类型筛的那排 chip（全部 / 投诉 / 非投诉）**照旧在**，筛选维度一个没少。
+                腾出的 64px：「评估时刻」120 → **128**（实测 114）、「派生投诉单」172 → **180**（实测 166），
+                两格各留 14px 余量、整串时刻与整个单号一个字不切；余下 48 给第一格 264 → **312**（标题省略号收尾的那一截）。
+                列宽合计仍为 1004（312+64+96+72+128+96+180+56），不超共用 min-width 1040，1044 的清单区下不出横向滚动条。
               -->
-              <th style="width: 264px">工单号</th>
-              <th style="width: 64px">原单类型</th>
+              <th style="width: 312px">工单号</th>
               <th style="width: 64px">风险等级</th>
               <th
                 style="width: 96px"
@@ -6508,9 +6513,9 @@ function toggleWordEnabled(w: RiskWord) {
                 @click="cycleSourceSort"
               >监控来源<span class="th-sort-mark">{{ sourceSort === 'asc' ? '↑' : sourceSort === 'desc' ? '↓' : '↕' }}</span></th>
               <th style="width: 72px">评估人</th>
-              <th style="width: 120px">评估时刻</th>
+              <th style="width: 128px">评估时刻</th>
               <th style="width: 96px">评估决策</th>
-              <th style="width: 172px">派生投诉单</th>
+              <th style="width: 180px">派生投诉单</th>
               <th style="width: 56px">操作</th>
             </tr>
           </thead>
@@ -6526,7 +6531,7 @@ function toggleWordEnabled(w: RiskWord) {
                 />
                 <button v-else type="button" class="rt-no" @click="openTicket(r.ticketNo)">{{ r.ticketNo }}</button>
               </td>
-              <td><span class="src-tag">{{ poolTicketTypeOf(r) }}</span></td>
+              <!-- 「原单类型」那一格已删（与上面标题单元格里的类型角标逐字重复），见表头那一段 -->
               <td>
                 <span
                   v-if="r.tag && isPoolLevel(r.tag.result)"
