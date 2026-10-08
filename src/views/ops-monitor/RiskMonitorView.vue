@@ -352,7 +352,25 @@ const derivedTickets = useDerivedTicketStore();
  * 【为什么取在办、不取全库】终态单不入队、也不再需要盯。
  * 把已结案的单数进来，这两行就成了一个没法据以行动的历史总量。
  */
-const isLiveTicket = (t: Ticket) => STATUS_GROUP[t.nodeStatus] !== '终态';
+/**
+ * 这张单**已被升级派生走**（已升级投诉 / 已升级外投）—— 判据与工单处理页
+ * `useTicketOperation.loadDetail` 逐字同一份，不另写一套：
+ *   · 工单自带的 `escalatedToNo`（工单库里那几张停表单写在字段上）；
+ *   · 叠上本次会话的**升级台账** `derivedTickets.escalations`（评估判「升级」现场派生出来的那一跳）。
+ *
+ * 🔴 **台账那一跳非认不可**：`mock/tickets.ts` 的 `nodeStatus` 对原单仍写「处理中」
+ * （那是有意的 —— 静态样本不可改脏、改了刷新即回滚，见 `stores/derivedTickets.ts`），
+ * 「已升级投诉」是 `loadDetail` 从台账现推出来的。只读 `nodeStatus` 的话，
+ * 同一张单在工单详情页是终态、在本页却还算在办，本页整条漏斗跟着算错。
+ */
+function escalatedAwayOf(t: Ticket): boolean {
+  return !!t.escalatedToNo || !!derivedTickets.escalatedToNoOf(t.no);
+}
+/**
+ * 🔴 **本页唯一一份"在办"判据**（待判段 / 已判段 / 评估处置工作面三处同取它，见 `isLiveRow`）。
+ * 两条腿：基线 §1 的十个终态子状态，加上上面那条升级判据。
+ */
+const isLiveTicket = (t: Ticket) => STATUS_GROUP[t.nodeStatus] !== '终态' && !escalatedAwayOf(t);
 
 /**
  * 本块的底表 ＝ **全部在办工单**。下面两行分布同取这一份，
@@ -590,10 +608,25 @@ function isALine<T extends { source: MonitorSource }>(r: T): boolean {
   return r.source !== REPORT_SOURCE;
 }
 
+/**
+ * **本工作面池行的入选判据 ＝ A 线 ∧ 原单在办**。
+ *
+ * 🔴 **在办这一道走的是全页唯一那份 `isLiveRow`**（＝ `ticketOfRow` + `isLiveTicket`），
+ * 与左栏待判段 / 已判段逐字同一个，不另写一份：三处分叉的话，同一张已进终态的单
+ * 会从左栏退出、却还躺在这张处置表里等人领 —— 一屏之内两种在办口径。
+ * 🔴 工单库与派生库都查不到的行**照实留着**（`isLiveRow` 对 null 放行），不吞：那是数据异常、不是终态。
+ *
+ * 下面六处取数（在队两段的底表、已结论底表，以及与它们一一对应的四个计数）全部过这一道，
+ * 故 `待领取 + 已领取 + 已结论 ＝ 不限阶段 ＝ 表行数` 这条恒等式在改口径之后自动成立。
+ */
+function isPoolRow<T extends { source: MonitorSource; ticketNo: string }>(r: T): boolean {
+  return isALine(r) && isLiveRow(r);
+}
+
 /** 在队某一态的底表：只过超时这一个条件，**不含来源**（来源 chip 的数字要靠它算） */
 function openBase(v: 'unassigned' | 'assigning') {
   const all = v === 'unassigned' ? reportStore.unassignedQueue : reportStore.assigningQueue;
-  const rows = all.filter(isALine);
+  const rows = all.filter(isPoolRow);
   return onlyOverdue.value ? rows.filter((r) => reportStore.isOverdue(r)) : rows;
 }
 
@@ -641,7 +674,7 @@ function concludedByRoleOf(r: RiskPoolItem) {
 
 /** 已评估底表：今日开关 + 决策两个条件，**不含来源**（同上，来源 chip 的数字要靠它算） */
 const assessedBase = computed(() => {
-  let rows = reportStore.assessedList.filter(isALine);
+  let rows = reportStore.assessedList.filter(isPoolRow);
   if (assessedTodayOnly.value) {
     const today = todayPrefix();
     rows = rows.filter((r) => concludedAtOf(r).startsWith(today));
@@ -669,7 +702,7 @@ const reportAssessedRows = computed(
   ),
 );
 
-/* ---- A 线池行的几个计数：一并收窄到 A 线 + 当前班组（口径与 store 那几个 count 逐条对齐，差别就是多出来的这两道）---- */
+/* ---- A 线池行的几个计数：一并收窄到 A 线 ∧ 原单在办 ∧ 当前班组（口径与 store 那几个 count 逐条对齐，差别就是多出来的这三道）---- */
 //
 // 🔴 **不收窄的话这一屏当场自相矛盾**：一处写「待评估总数 8」、另一处写「待领取 3 · 已领取 2」，
 // 点下去落到的还是同一张表。同屏同一件事只能有一个数，这是本文件反复踩过的那个坑。
@@ -683,7 +716,7 @@ const reportAssessedRows = computed(
 // 标记条目），而工作面这张表经 `isALine` 只收 A 线池行——同一个名字两个分母，必然对不上；
 // 摆在表的正上方，分母就是这张表自己。
 // 🔴 **不要再往页头搬，也不要另写一份计数**：下面几个 computed 与 store 的 count 一一对应
-// （差别只在多出来的 `isALine` + `inGroup` 这两道），要复用先回头读本段。
+// （差别只在多出来的 `isPoolRow` ＝ `isALine` ∧ `isLiveRow`，加上 `inGroup` 这几道），要复用先回头读本段。
 //
 // 🔴 **班组这一道（`inGroup`）与表身走同一个判据，少了它这一排当场说假话**：清单上沿那个班组
 // 单选横跨本页每一档，表身三段各自都过了 `inGroup`（见 `reportUnassignedRows` /
@@ -693,19 +726,19 @@ const reportAssessedRows = computed(
 // 于是 `待领取 + 已领取 + 已结论 ＝ 不限阶段 ＝ 表行数` 这条恒等式在切组后整排失真。
 // **复用 `inGroup`、不要另造一份按组反查**：组名由 `groupNameOf` 反查工单库，本页只有那一个口径。
 const alineUnassignedCount = computed(
-  () => inGroup(reportStore.unassignedQueue.filter(isALine)).length,
+  () => inGroup(reportStore.unassignedQueue.filter(isPoolRow)).length,
 );
 const alineAssigningCount = computed(
-  () => inGroup(reportStore.assigningQueue.filter(isALine)).length,
+  () => inGroup(reportStore.assigningQueue.filter(isPoolRow)).length,
 );
 const alineOpenCount = computed(() => alineUnassignedCount.value + alineAssigningCount.value);
 // 🔴 「超时未评」同样跟着班组收窄，但它仍是**跨档子集、不参与那条等式**（见 `setPoolStage`）：
 // 收窄与入等式是两件事，别因为它跟着变就把它加进去。
 const alineOverdueCount = computed(
   () => inGroup([...reportStore.unassignedQueue, ...reportStore.assigningQueue]
-    .filter((r) => isALine(r) && reportStore.isOverdue(r))).length,
+    .filter((r) => isPoolRow(r) && reportStore.isOverdue(r))).length,
 );
-const alineAssessedList = computed(() => inGroup(reportStore.assessedList.filter(isALine)));
+const alineAssessedList = computed(() => inGroup(reportStore.assessedList.filter(isPoolRow)));
 /**
  * 今日**已结论**的池行数。
  *
