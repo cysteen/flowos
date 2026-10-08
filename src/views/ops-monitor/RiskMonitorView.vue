@@ -5624,8 +5624,14 @@ function toggleWordEnabled(w: RiskWord) {
         class="ledger-bar"
       >
         <div class="list-toolbar list-toolbar--one-line list-toolbar--no-actions">
+          <!--
+            🔴 **每一格的 `--tbw` 是量出来的**（13px 字 canvas 实测，取这一格**全部选项里最长的那一个**，
+            不是当前选中的那一个）：班组「硬件缺陷组（9）」99、两位数时约 106 ⇒ 150；
+            监控来源 / 原单类型 / 风险等级「全部X（15）」93 ⇒ 134；结论「风险处理建议（2）」112 ⇒ 152。
+            控件宽 ＝ 文字 + 34（内边距 14 + 边框 2 + 箭头 18）再留 6px 余量。量法见样式里那一段。
+          -->
           <div class="tb-fields">
-            <div class="fi">
+            <div class="fi" style="--tbw: 150px">
               <span class="fl">班组</span>
               <a-select
                 v-model:value="groupFilter"
@@ -5635,7 +5641,7 @@ function toggleWordEnabled(w: RiskWord) {
                 :options="groupFilterOptions"
               />
             </div>
-            <div v-if="listView === 'report'" class="fi">
+            <div v-if="listView === 'report'" class="fi" style="--tbw: 134px">
               <span class="fl">监控来源</span>
               <a-select
                 v-model:value="sourceFilter"
@@ -5645,7 +5651,7 @@ function toggleWordEnabled(w: RiskWord) {
                 :options="sourceFilterOptions"
               />
             </div>
-            <div v-if="listView === 'report'" class="fi">
+            <div v-if="listView === 'report'" class="fi" style="--tbw: 134px">
               <span class="fl">原单类型</span>
               <a-select
                 v-model:value="poolTicketTypeFilter"
@@ -5655,7 +5661,7 @@ function toggleWordEnabled(w: RiskWord) {
                 :options="poolTicketTypeFilterOptions"
               />
             </div>
-            <div v-if="listView === 'report'" class="fi">
+            <div v-if="listView === 'report'" class="fi" style="--tbw: 134px">
               <span class="fl">风险等级</span>
               <a-select
                 v-model:value="poolLevelFilter"
@@ -5665,7 +5671,7 @@ function toggleWordEnabled(w: RiskWord) {
                 :options="poolLevelFilterOptions"
               />
             </div>
-            <div v-if="listView === 'report'" class="fi">
+            <div v-if="listView === 'report'" class="fi" style="--tbw: 152px">
               <span class="fl">结论</span>
               <a-select
                 v-model:value="decisionFilter"
@@ -5683,7 +5689,7 @@ function toggleWordEnabled(w: RiskWord) {
               `tagLevelFilter` 的代理）：左栏点哪一档这一格就显示哪一档，反过来也成立。
               🔴 **「结论」这一维不出**：已判段装的是监控条目，身上没有结论字段。
             -->
-            <div v-if="listView === 'realtime'" class="fi">
+            <div v-if="listView === 'realtime'" class="fi" style="--tbw: 134px">
               <span class="fl">监控来源</span>
               <a-select
                 v-model:value="judgedSourceFilter"
@@ -5693,7 +5699,7 @@ function toggleWordEnabled(w: RiskWord) {
                 :options="judgedSourceFilterOptions"
               />
             </div>
-            <div v-if="listView === 'realtime'" class="fi">
+            <div v-if="listView === 'realtime'" class="fi" style="--tbw: 134px">
               <span class="fl">原单类型</span>
               <a-select
                 v-model:value="judgedTypeFilter"
@@ -5703,7 +5709,7 @@ function toggleWordEnabled(w: RiskWord) {
                 :options="judgedTypeFilterOptions"
               />
             </div>
-            <div v-if="listView === 'realtime'" class="fi">
+            <div v-if="listView === 'realtime'" class="fi" style="--tbw: 134px">
               <span class="fl">风险等级</span>
               <a-select
                 v-model:value="judgedLevelFilter"
@@ -5736,8 +5742,15 @@ function toggleWordEnabled(w: RiskWord) {
           120 来像素、「当前状态」这种四字标签 + 多选标签当场换行。两条筛选条一套排版。
         -->
         <div class="list-toolbar list-toolbar--one-line list-toolbar--grid">
+          <!--
+            🔴 **每一格的 `--tbw` 是量出来的**（13px 字 canvas 实测，取这一格全部选项里最长的那一个）：
+            班组「硬件缺陷组（9）」99（两位数约 106）⇒ 150；关键词占位「工单号 / 联系方式」104
+            ＋ 放大镜 20 ＋ 内边距边框 18 ⇒ 150；优先级「P2（普通加急）」93 ⇒ 134；
+            类型（多选）最长标签「投诉」26 ⇒ 92；产品（多选）「智能录音笔 SR302」105 ⇒ 166；
+            当前状态（多选）「已升级技术支持」91 ⇒ 152；SLA「已超时」39 ⇒ 80。量法见样式里那一段。
+          -->
           <div class="tb-fields">
-            <div class="fi">
+            <div class="fi" style="--tbw: 150px">
               <span class="fl">班组</span>
               <a-select
                 v-model:value="groupFilter"
@@ -5747,7 +5760,7 @@ function toggleWordEnabled(w: RiskWord) {
                 :options="groupFilterOptions"
               />
             </div>
-            <div class="fi">
+            <div class="fi" style="--tbw: 150px">
               <span class="fl">关键词</span>
               <div class="tb-search">
                 <SearchOutlined class="tb-search-ic" />
@@ -5764,7 +5777,7 @@ function toggleWordEnabled(w: RiskWord) {
               控件与命中明细那条同形（取规则主词）。
             -->
             <template v-if="untaggedSlice === 'kw'">
-              <div class="fi">
+              <div class="fi" style="--tbw: 150px">
                 <span class="fl">风险词</span>
                 <a-select
                   v-model:value="untaggedFilter.words" mode="multiple" allow-clear
@@ -5786,7 +5799,7 @@ function toggleWordEnabled(w: RiskWord) {
               优先级与类型都不是它的排队依据，摆上去是两把量不了的尺。
             -->
             <template v-else>
-              <div class="fi">
+              <div class="fi" style="--tbw: 134px">
                 <span class="fl">优先级</span>
                 <a-select
                   v-model:value="untaggedSub"
@@ -5795,7 +5808,7 @@ function toggleWordEnabled(w: RiskWord) {
                   :options="untaggedPriorityOptions"
                 />
               </div>
-              <div class="fi">
+              <div class="fi" style="--tbw: 92px">
                 <span class="fl">类型</span>
                 <a-select
                   v-model:value="untaggedFilter.types" mode="multiple" allow-clear
@@ -5804,7 +5817,7 @@ function toggleWordEnabled(w: RiskWord) {
                   :options="untaggedTypeOptions"
                 />
               </div>
-              <div class="fi">
+              <div class="fi" style="--tbw: 166px">
                 <span class="fl">产品</span>
                 <a-select
                   v-model:value="untaggedFilter.products" mode="multiple" allow-clear show-search
@@ -5813,7 +5826,7 @@ function toggleWordEnabled(w: RiskWord) {
                   :options="untaggedProductOptions"
                 />
               </div>
-              <div class="fi">
+              <div class="fi" style="--tbw: 152px">
                 <span class="fl">当前状态</span>
                 <a-select
                   v-model:value="untaggedFilter.statuses" mode="multiple" allow-clear
@@ -5822,7 +5835,7 @@ function toggleWordEnabled(w: RiskWord) {
                   :options="untaggedStatusOptions"
                 />
               </div>
-              <div class="fi">
+              <div class="fi" style="--tbw: 80px">
                 <span class="fl">SLA</span>
                 <a-select
                   v-model:value="untaggedFilter.sla"
@@ -8870,53 +8883,53 @@ function toggleWordEnabled(w: RiskWord) {
   width: auto;
 }
 /*
- * 字段区 ＝ **等宽轨的网格**（不是 flex 自由换行）。一个字段（左栏其余各档）与五个字段
- * （评估处置工作面：班组 / 监控来源 / 原单类型 / 风险等级 / 结论）共用这一条。
+ * 字段区 ＝ **一格一宽、按各自最长取值量出来的** flex 行（2026-10-09 改）。
+ * 三条筛选条共用这一套：评估处置工作面（5 格）· 已判段（4 格）· 待判 · 重点工单（7 格 + 两枚按钮）。
  *
- * 🔴 **轨宽 200px 是按"最长那一路实测取"的，不是拍脑袋的整数**（13px 字，canvas 实测）：
- *   · 下拉里最长的取值文字 ——「风险处理建议（2）」**112**、「技术支持组（3）」/
- *     「硬件缺陷组（3）」**99**（班组两位数时约 106）、其余各维「全部X（14）」**93**；
- *   · 控件 ＝ 文字 ＋ 左右内边距 7×2 ＋ 边框 2 ＋ 右侧箭头预留 18 ＝ 文字 + 34
- *     ⇒ 结论 **146**、班组 **140**、来源 / 原单类型 / 风险等级 **127**；
- *   · 标签按内容宽（12px 字）：四字「监控来源」**48**、两字「班组」「结论」**24**；
- *   · 单格 ＝ 标签 + 8 + 控件 ⇒ 来源 / 原单类型 / 风险等级 **183**（最紧的一路）、
- *     结论 178、班组 172。
- *   🔴 **取 184（= 最紧那一路 +1）实测仍被省略号截掉**：「全部来源（14）」在画面上成了
- *     「全部来源（14…」—— 算出来的 1px 余量在真实排版里不够。**取 200**，最紧那一路
- *     留 17px、其余各留 22~28px，画面上三格一个字不缺。
- *   🔴 **这一条只能看画面、不能信 `scrollWidth === clientWidth`**：实测那两个值相等时
- *     画面上照样有省略号（本轮就是这么误判了一次）。
- *   🔴 **按"大多数够用"取 160 的话，选中「风险处理建议」那一刻就被截掉** ——
- *     本仓在「等待时长」「结论时间」「风险管控」三列上已经踩过三次这条。
+ * 🔴 **原先是等宽轨网格 `repeat(auto-fit, 200px)`，改掉了**：各维最长取值差着一倍
+ * （`SLA` 那一格最长「已超时」39px，`产品` 那一格「智能录音笔 SR302」105px），
+ * 等宽轨按最长的那一格给所有格，一条四格的筛选条白白多占 60~80px，直接导致要换行。
  *
- * 🔴 **`auto-fit` + 固定轨宽**：一行放得下几格由**容器宽度**定，与取值长短无关 ——
- * 换行点因此是稳定的，不会随筛选结果忽上忽下；换行之后每一轨仍等宽、左边缘对齐成网格。
- * 实测清单区 1066px 下 5 轨（5×200 + 4×8 ＝ 1032）**一行放得下**；
- * 窄到 866px 时退成 4 + 1 两行，仍是对齐的网格。**不出横向滚动条**。
- * ⚠️ 不要改回 `1fr`：单字段那几路（左栏「已判」等）会把那一个下拉拉到整行宽。
+ * 🔴 **每一格的宽度写在模板里的 `--tbw`，数是量出来的**（13px 字 canvas 实测，
+ * 取值域取"这一格全部选项里最长的那一个"，不是当前选中的那一个 —— 后者会让控件随选随变宽）：
+ *   · 单选控件宽 ＝ 文字 ＋ 34（左右内边距 7×2 ＋ 边框 2 ＋ 右侧箭头预留 18），再留 6px 余量；
+ *   · 多选控件宽 ＝ 文字 ＋ 56（上面那些 ＋ 标签自己的内边距与关闭叉约 22）；
+ *   · 标签按内容宽（12px 字）：四字 48 / 三字 36 / 两字 24 / `SLA` 21。
+ *   🔴 **只能看画面、不能信 `scrollWidth === clientWidth`**：实测那两个值相等时画面上
+ *     照样有省略号（上一轮就是这么误判了一次，184px 那一版「全部来源（14」真的被切了）。
+ *   🔴 **按"大多数够用"取宽必被打脸**：本仓在「等待时长」「结论时间」「风险管控」
+ *     三列上已经踩过三次。
+ *
+ * 🔴 **换行点仍然只由容器宽度决定**：每一格的宽度是定值、与当前选中什么无关，
+ * 故不会随筛选结果忽上忽下。**不出横向滚动条**。
  */
 .list-toolbar--one-line.list-toolbar--no-actions .tb-fields,
 .list-toolbar--one-line.list-toolbar--grid .tb-fields {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, 200px);
-  justify-content: start;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   max-width: 100%;
-  gap: 8px;
+  gap: 6px 12px;
 }
 /* 没有右侧动作区的那一条按内容排；带动作区的那一条仍吃满左侧剩余宽（动作区自己 flex: none） */
 .list-toolbar--one-line.list-toolbar--no-actions .tb-fields { flex: none; }
 .list-toolbar--one-line.list-toolbar--grid .tb-fields { flex: 1 1 auto; }
 .list-toolbar--one-line.list-toolbar--no-actions .fi,
-.list-toolbar--one-line.list-toolbar--grid .fi { min-width: 0; }
-/* 标签按内容宽：轨宽固定，省下的全给控件（四字标签 48、两字 24，差出来的 24px 够结论那一格用） */
+.list-toolbar--one-line.list-toolbar--grid .fi {
+  flex: 0 0 auto;
+  min-width: 0;
+  gap: 6px;
+}
+/* 标签按内容宽：省下的宽度全留给控件 */
 .list-toolbar--one-line.list-toolbar--no-actions .fl,
 .list-toolbar--one-line.list-toolbar--grid .fl { width: auto; }
+/* 🔴 `--tbw` 由模板逐格给（量出来的数）；没给的退回 136px，够「全部X（14）」那一类取值 */
 .list-toolbar--one-line.list-toolbar--no-actions .tb-ctl,
 .list-toolbar--one-line.list-toolbar--grid .tb-ctl,
 .list-toolbar--one-line.list-toolbar--grid .tb-search {
-  flex: 1;
+  flex: none;
   min-width: 0;
-  width: auto !important;
+  width: var(--tbw, 136px) !important;
 }
 
 @media (max-width: 860px) {
