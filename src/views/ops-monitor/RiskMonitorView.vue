@@ -2665,6 +2665,54 @@ const untaggedUniverse = computed<QueueRow[]>(() => reportStore.monitoringEntrie
 const judgedUniverse = computed<RiskQueueEntry[]>(
   () => reportStore.pooledEntries.filter(isLiveRow),
 );
+
+/* ---- 「已判」段那条筛选条的另两维（2026-10-09 裁决：这条筛选条在已判段常驻，出四格） ---- */
+/**
+ * 「监控来源」「原单类型」两维在**已判段**的筛选值。
+ *
+ * 🔴 **与工作面那两维各存一份、互不干扰**：两段的分母本来就不是一个 —— 已判段数的是
+ * **监控条目**（含来源「二线报备」那条标记条目，故这一维在这里有**三个**取值），
+ * 工作面只收 A 线**池行**（经 `isALine`，两个取值）。共用一份状态的话，
+ * "在工作面筛了重点工单 → 切回已判发现也被筛了"，而两边的数怎么也对不上。
+ *
+ * 🔴 **「风险等级」不在这里另存**：它与左栏「已判」段那一轴是同一件事，
+ * 共用 `tagLevelFilter` 这一份真源（见 `judgedLevelFilter` 那个代理）。
+ * 另存一份再去同步，迟早漂 —— 本文件在"同一个数两处各算一遍"上已经付过几次账。
+ *
+ * 🔴 **「结论」这一维不出**（2026-10-09 裁决）：已判段装的是 `RiskQueueEntry`（监控条目），
+ * 身上**没有结论字段** —— 结论落在池行 `RiskPoolItem` 的 `assessment` / `coordination` 上。
+ * 摆上去会是「全部结论 15 / 升级 0 / 不升级 0 / 风险处理建议 0」那种四格三个零。
+ */
+const judgedSourceFilter = ref<MonitorSource | 'all'>('all');
+const judgedTypeFilter = ref<PoolTicketTypeKey | 'all'>('all');
+/** 两维一处套用；`skip` 摘掉其中一维 —— 那一维自己的计数要靠"除自己之外"的底表算 */
+function byJudgedAttrs(rows: RiskQueueEntry[], skip?: 'source' | 'type') {
+  return rows.filter((e) => {
+    if (skip !== 'source' && judgedSourceFilter.value !== 'all' && e.source !== judgedSourceFilter.value) return false;
+    if (skip !== 'type' && judgedTypeFilter.value !== 'all' && poolTicketTypeKeyOf(e) !== judgedTypeFilter.value) return false;
+    return true;
+  });
+}
+const judgedAttrDirty = computed(
+  () => judgedSourceFilter.value !== 'all' || judgedTypeFilter.value !== 'all',
+);
+/** 已判段过了那两维之后的全集。左栏各档与表身**同走它**，两处不会分叉 */
+const judgedFilteredUniverse = computed(() => byJudgedAttrs(judgedUniverse.value));
+/**
+ * 左栏当前那一档（按风险等级 / 按标记人）的收窄，抽成一处。
+ * 🔴 表身与两个下拉的计数底表都走它，**档位逻辑只写这一份** ——
+ * 原先它内联在 `queueBase` 里，加了筛选项之后要在三处各写一遍，必然分叉。
+ */
+function judgedPicked(list: RiskQueueEntry[]): RiskQueueEntry[] {
+  if (tagLevelFilter.value === 'tagger') {
+    return taggerFilter.value === 'all'
+      ? list
+      : list.filter((e) => taggerOf(e) === taggerFilter.value);
+  }
+  return tagLevelFilter.value === 'all'
+    ? list
+    : list.filter((e) => e.tag?.result === tagLevelFilter.value);
+}
 /*
  * 命中核实结论与打标回写的工单级等级一变，按两类判据重补一遍条目：
  * 例如一条命中由「成立」改判为「误报」后工单级等级清空，这张单应当回到「未标记」。
@@ -3318,17 +3366,37 @@ function taggerOf(e: RiskQueueEntry): string {
  * 🔴 **不随选中的人收窄**：这几行本身就是选择器，选中一个人之后其余几行全变 0，
  * 人再也看不出该切到谁。
  */
-const taggerChips = computed(() => {
-  const base = inGroup(judgedUniverse.value);
+function taggerCountsOf(list: RiskQueueEntry[]) {
+  const base = inGroup(list);
   const m = new Map<string, number>();
   base.forEach((e) => {
     const who = taggerOf(e);
     m.set(who, (m.get(who) ?? 0) + 1);
   });
+  return { total: base.length, map: m };
+}
+/**
+ * 🔴 **开着「监控来源」/「原单类型」筛选时改摆「筛后 / 全量」两段式**（`countTotal`，
+ * 与「待判」段那两路同一套写法）：分母留在屏幕上，各行之和 ≡ 斜杠后那个总数仍肉眼可验，
+ * 而斜杠前那个数 ＝ 表里的行数。少了这一笔，左栏写着 5、表里躺着 2，正是本文件反复踩的坑。
+ * 🔴 **行的清单与次序取全量那一份**：按筛后的数排序的话，换一个来源整列人名会重排，
+ * 而且筛成 0 的人会整行消失 —— 选择器把自己的选项筛没了。
+ */
+const taggerChips = computed(() => {
+  const dirty = judgedAttrDirty.value;
+  const hit = taggerCountsOf(judgedFilteredUniverse.value);
+  const all = dirty ? taggerCountsOf(judgedUniverse.value) : hit;
   return {
-    total: base.length,
-    rows: [...m].map(([tagger, count]) => ({ tagger, count }))
-      .sort((a, b) => b.count - a.count || a.tagger.localeCompare(b.tagger)),
+    total: hit.total,
+    totalAll: all.total,
+    rows: [...all.map]
+      .map(([tagger, count]) => ({
+        tagger,
+        count: dirty ? (hit.map.get(tagger) ?? 0) : count,
+        countTotal: dirty ? count : undefined,
+      }))
+      .sort((a, b) => (b.countTotal ?? b.count) - (a.countTotal ?? a.count)
+        || a.tagger.localeCompare(b.tagger)),
   };
 });
 
@@ -3353,17 +3421,11 @@ const queueBase = computed<QueueRow[]>(() => {
   if (queueView.value === 'monitoring') return untaggedRows.value;
   // 🔴 **两个轴同出 `judgedUniverse` 这一份行集**（已过在办过滤）：按风险等级 / 按标记人
   // 是同一批条目的两种看法，差别只在各自多一层收窄。
-  const pooled = judgedUniverse.value;
   // 🔴 原先还有第三个轴「按处置阶段」，已随 2026-10-07 裁决删除；
   // 工作面那张池行表的同名列也已删（2026-10-08 裁决），本页再没有「处置阶段」这个维度。
-  const picked = tagLevelFilter.value === 'tagger'
-    ? (taggerFilter.value === 'all'
-      ? pooled
-      : pooled.filter((e) => taggerOf(e) === taggerFilter.value))
-    : (tagLevelFilter.value === 'all'
-      ? pooled
-      : pooled.filter((e) => e.tag?.result === tagLevelFilter.value));
-  return picked.map(rowOfEntry);
+  // 🔴 **先过筛选条那两维、再过左栏那一档**，两步各只写一处（`byJudgedAttrs` /
+  // `judgedPicked`）—— 左栏角标与这里同走这两个函数，故"标签写一个数、表里躺另一批"不会出现。
+  return judgedPicked(judgedFilteredUniverse.value).map(rowOfEntry);
 });
 const queueRows = computed<QueueRow[]>(() => inGroup(queueBase.value));
 
@@ -3390,9 +3452,9 @@ function setQueueView(v: QueueView) {
   queuePageCurrent.value = 1;
 }
 
-// 等级分档、标记人与班组换了，底表就换了一批，页码必须回到第一页 ——
+// 等级分档、标记人、班组，以及已判段筛选条那两维换了，底表就换了一批，页码必须回到第一页 ——
 // 否则「第 3 页 → 切到中风险」会停在一张恰好没有行的页上。
-watch([tagLevelFilter, taggerFilter, groupFilter], () => {
+watch([tagLevelFilter, taggerFilter, groupFilter, judgedSourceFilter, judgedTypeFilter], () => {
   queuePageCurrent.value = 1;
 });
 
@@ -4327,6 +4389,24 @@ function pooledLevelCount(lv: RiskLevel) {
   return inGroup(judgedUniverse.value.filter((e) => e.tag?.result === lv)).length;
 }
 
+/*
+ * 🔴 **上面两个是「全量」口径，下面两个是「筛后」口径**，两者的差别只在
+ * 已判段筛选条那两维（监控来源 / 原单类型）过没过。
+ *
+ * 【为什么必须分两份】
+ *   · **页头「风险工单」那四枚卡取全量那一份** —— 它与左栏已判段**恒等**是一条硬约束，
+ *     而那一块按设计只跟「班组」走、不跟这条筛选条走。让它跟着新维变，恒等式当场断。
+ *   · **左栏各档取筛后那一份当 `count`、全量那一份当 `countTotal`**，开着筛选时摆成
+ *     「筛后 / 全量」两段式（与「待判」段那两路逐字同一套写法）：斜杠前 ＝ 表里的行数，
+ *     斜杠后仍 ＝ 页头那个数，恒等式落在斜杠后那一侧，一眼可验。
+ *   · **筛选条上「风险等级」那一格的计数直接取这两个函数**，与左栏那几档**逐字同源**
+ *     —— 同一个数不在两处各算一遍。
+ */
+const pooledAllCountHit = computed(() => inGroup(judgedFilteredUniverse.value).length);
+function pooledLevelCountHit(lv: RiskLevel) {
+  return inGroup(judgedFilteredUniverse.value.filter((e) => e.tag?.result === lv)).length;
+}
+
 /**
  * 页头「风险工单」块第二行 · **已判那一批按原单类型的分布**。
  *
@@ -4446,7 +4526,10 @@ const railGroups = computed<RailGroup[]>(() => {
   // 三处同取它 —— 已判 ＝ 全部有风险 ＝ 高危+中危+低危 ＝ 按标记人各项之和。
   // 原先这里还取 `noRiskAll` / `reportedAll` 两个数去加页签，两档删掉之后一并取消。
   // 🔴 **第四处是页头「风险工单」块**：它同取 `pooledAllCount`，与这里恒等、改一处必须两处一起改。
+  // 🔴 它是**全量**口径：已判段筛选条那两维（监控来源 / 原单类型）**不进这个数**，
+  // 否则页头那一块（只跟班组走）与这里当场不等。开着那两维时各档改摆「筛后 / 全量」。
   const pooledAll = pooledAllCount.value;
+  const attrDirty = judgedAttrDirty.value;
   return [
     {
       stage: 'untagged',
@@ -4486,12 +4569,15 @@ const railGroups = computed<RailGroup[]>(() => {
         + '页签上的数 ＝ 全部有风险（已判 ＝ 必须标注了风险等级：高 / 中 / 低）。'
         + '🔴 高 + 中 + 低 ≡ 全部有风险 ≡ 按标记人各项之和 ≡ 页签上这个数，四处是同一批行；'
         + '🔴 判为无风险的**不在这一段**：它不进池、离开漏斗，左栏任何一段都不计它；'
-        + '🔴 二线报备**不在后台展示**：它的工作面在工单工作台的「风险报备池」',
+        + '🔴 二线报备**不在后台展示**：它的工作面在工单工作台的「风险报备池」'
+        + '🔴 开着清单上那条筛选条的「监控来源」/「原单类型」时，下面各档摆成「筛后 / 全量」，'
+        + '斜杠后那个数仍 ＝ 这个数',
       items: [
         {
           key: 'level:all' as RailKey,
           label: '全部有风险',
-          count: pooledAll,
+          count: pooledAllCountHit.value,
+          countTotal: attrDirty ? pooledAll : undefined,
           depth: 0,
           title: '按风险等级看这一段：高危 + 中危 + 低危 的合计 ＝ 页签上那个数（已判 ＝ 全部有风险）。'
             + '🔴 不含无风险 —— 判为无风险的不进已判、离开漏斗，算进来等于把已经排除掉的那批重新当成风险。'
@@ -4500,8 +4586,9 @@ const railGroups = computed<RailGroup[]>(() => {
         ...RISK_LEVELS.map((lv) => ({
           key: `level:${lv}` as RailKey,
           label: riskLevelText(lv),
-          count: pooledLevelCount(lv),
-          bad: lv === '高' && pooledLevelCount(lv) > 0,
+          count: pooledLevelCountHit(lv),
+          countTotal: attrDirty ? pooledLevelCount(lv) : undefined,
+          bad: lv === '高' && pooledLevelCountHit(lv) > 0,
           depth: 1 as const,
           title: `标记为${riskLevelText(lv)}、已进风险工单池的条目`,
         })),
@@ -4510,7 +4597,8 @@ const railGroups = computed<RailGroup[]>(() => {
           label: '按标记人',
           // 🔴 恒等于「全部有风险」，**不随选中的人收窄**：它是"换一维看同一批"，
           // 而不是"看得更少了"。收窄发生在展开出来的人员行上，那几行的数字才是表里的行数。
-          count: pooledAll,
+          count: pooledAllCountHit.value,
+          countTotal: attrDirty ? pooledAll : undefined,
           // 🔴 **d0，与「全部有风险」平级**：它不是「全部有风险」的第四档，
           // 而是同一批已标记条目的**另一种分类方式**（一种按风险等级看、一种按标记人看）。
           // 挂在 d1 上跟高/中/低并排时，读起来就成了"按标记人"是一个等级，那是错的。
@@ -4527,6 +4615,7 @@ const railGroups = computed<RailGroup[]>(() => {
             key: `tagger:${t.tagger}` as RailKey,
             label: t.tagger,
             count: t.count,
+            countTotal: t.countTotal,
             // 与高 / 中 / 低同一层：它们各自是所属分类下的取值行
             depth: 1 as const,
             title: t.tagger === UNSIGNED_TAGGER
@@ -4761,6 +4850,53 @@ const decisionFilterOptions = computed(() => [
 const poolLevelFilterOptions = computed(() => [
   { value: 'all', label: `全部等级（${reportLevelBase.value.length}）` },
   ...RISK_LEVELS.map((lv) => ({ value: lv, label: `${riskLevelText(lv)}（${poolLevelCountInView(lv)}）` })),
+]);
+
+/* ---- 「已判」段那条筛选条的四格（2026-10-09 裁决）。班组那一格与工作面共用，另三格在这里 ---- */
+/**
+ * 「风险等级」那一格 ＝ **左栏那一轴的代理，不是第二份状态**。
+ * 真源只有 `tagLevelFilter` 一个：左栏点「高危」这一格就显示「高危」，
+ * 在这一格改成「中危」左栏当场亮到「中危」—— 一份 state、两个视图，不会漂。
+ * 🔴 `tagger`（按标记人）**读成「全部等级」**：那一档与「全部有风险」是同一批行的两种看法，
+ * 等级上本来就没有收窄。反过来在这一格选一个等级会把左栏从「按标记人」切到那一档 ——
+ * 两者互斥（见 `tagLevelFilter` 的注释），这正是互斥该有的样子。
+ */
+const judgedLevelFilter = computed<RiskLevel | 'all'>({
+  get: () => (tagLevelFilter.value === 'all' || tagLevelFilter.value === 'tagger'
+    ? 'all'
+    : tagLevelFilter.value),
+  set: (v) => { tagLevelFilter.value = v; },
+});
+/** 🔴 计数**直接取左栏那几档读的同两个函数**，不另算一份 —— 同一个数不在两处各算一遍 */
+const judgedLevelFilterOptions = computed(() => [
+  { value: 'all', label: `全部等级（${pooledAllCountHit.value}）` },
+  ...RISK_LEVELS.map((lv) => ({ value: lv, label: `${riskLevelText(lv)}（${pooledLevelCountHit(lv)}）` })),
+]);
+/**
+ * 「监控来源」「原单类型」两格的底表：**摘掉自己这一维**，但过左栏当前那一档
+ * （`judgedPicked`）与班组 —— 与工作面那四格同一条规矩。
+ * 🔴 来源这一维在已判段有**三个**取值（走 `MONITOR_SOURCES`，含「二线报备」那条标记条目），
+ * 与工作面那两个不同：工作面经 `isALine` 把报备挡在外面，这一段不挡。
+ */
+const judgedSourceBase = computed(
+  () => inGroup(byJudgedAttrs(judgedPicked(judgedUniverse.value), 'source')),
+);
+const judgedTypeBase = computed(
+  () => inGroup(byJudgedAttrs(judgedPicked(judgedUniverse.value), 'type')),
+);
+const judgedSourceFilterOptions = computed(() => [
+  { value: 'all', label: `全部来源（${judgedSourceBase.value.length}）` },
+  ...MONITOR_SOURCES.map((s) => ({
+    value: s,
+    label: `${s}（${judgedSourceBase.value.filter((e) => e.source === s).length}）`,
+  })),
+]);
+const judgedTypeFilterOptions = computed(() => [
+  { value: 'all', label: `全部类型（${judgedTypeBase.value.length}）` },
+  ...POOL_TICKET_TYPE_KEYS.map((k) => ({
+    value: k,
+    label: `${k}（${judgedTypeBase.value.filter((e) => poolTicketTypeKeyOf(e) === k).length}）`,
+  })),
 ]);
 
 /** 左栏这一列只在漏斗的两个视图上作数；旁路的两个入口自带各自的筛选条，不套班组 */
@@ -5466,6 +5602,44 @@ function toggleWordEnabled(w: RiskWord) {
                 class="tb-ctl"
                 :dropdown-match-select-width="false"
                 :options="decisionFilterOptions"
+              />
+            </div>
+            <!--
+              「已判」段那三格（2026-10-09 裁决：这条筛选条在已判段常驻）。
+              🔴 **与工作面那四格各存各的状态**：两段的分母不是一个（已判段数监控条目、
+              含来源「二线报备」那条标记条目；工作面只收 A 线池行），见 `judgedSourceFilter`。
+              🔴 **「风险等级」与左栏那一轴共用一份 state**（`judgedLevelFilter` 只是
+              `tagLevelFilter` 的代理）：左栏点哪一档这一格就显示哪一档，反过来也成立。
+              🔴 **「结论」这一维不出**：已判段装的是监控条目，身上没有结论字段。
+            -->
+            <div v-if="listView === 'realtime'" class="fi">
+              <span class="fl">监控来源</span>
+              <a-select
+                v-model:value="judgedSourceFilter"
+                size="small"
+                class="tb-ctl"
+                :dropdown-match-select-width="false"
+                :options="judgedSourceFilterOptions"
+              />
+            </div>
+            <div v-if="listView === 'realtime'" class="fi">
+              <span class="fl">原单类型</span>
+              <a-select
+                v-model:value="judgedTypeFilter"
+                size="small"
+                class="tb-ctl"
+                :dropdown-match-select-width="false"
+                :options="judgedTypeFilterOptions"
+              />
+            </div>
+            <div v-if="listView === 'realtime'" class="fi">
+              <span class="fl">风险等级</span>
+              <a-select
+                v-model:value="judgedLevelFilter"
+                size="small"
+                class="tb-ctl"
+                :dropdown-match-select-width="false"
+                :options="judgedLevelFilterOptions"
               />
             </div>
           </div>
