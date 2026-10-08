@@ -2769,11 +2769,17 @@ interface UntaggedFilter {
   keyword: string;
   /** 只有「实时监控」这一路用得到：命中的规则主词（与命中明细同一口径，取 `RiskHit.word`） */
   words: string[];
-  /* ---- 以下三维只有「重点工单」那一路用得到：那一路的行就是工单 ---- */
+  /* ---- 以下四维只有「重点工单」那一路用得到：那一路的行就是工单 ---- */
   /** 产品（多选，从这一路真出现过的产品派生） */
   products: string[];
   /** 当前状态（多选，取工单列表那一列的展示名，与表里那一格逐字同源） */
   statuses: string[];
+  /**
+   * 工单类型（多选，从这一路真出现过的类型派生）。2026-10-09 裁决补进来的一维。
+   * 🔴 **「实时监控」那一路不出这一维**：那一路的排队依据是"机器觉得这句话多重"
+   * （词表预设等级），筛选条按路出维（见本接口开头那段）—— 与「优先级」同一条理由。
+   */
+  types: string[];
   /** SLA：`all` 不限 / `over` 已超时 / `ok` 未超时。判据取工作台那一份 `isSlaBreachedNow` */
   sla: 'all' | 'over' | 'ok';
 }
@@ -2783,7 +2789,7 @@ interface UntaggedFilter {
  * 给一个默认窗口反而会让左栏角标与表行数在人什么都没筛的时候就对不上。
  */
 function defaultUntaggedFilter(): UntaggedFilter {
-  return { keyword: '', words: [], products: [], statuses: [], sla: 'all' };
+  return { keyword: '', words: [], products: [], statuses: [], types: [], sla: 'all' };
 }
 const untaggedFilter = ref<UntaggedFilter>(defaultUntaggedFilter());
 
@@ -2817,6 +2823,8 @@ function untaggedTicketOptions(pick: (t: Ticket) => string) {
 }
 const untaggedProductOptions = computed(() => untaggedTicketOptions((t) => t.product));
 const untaggedStatusOptions = computed(() => untaggedTicketOptions((t) => ticketStatusDisplayName(t)));
+/** 「类型」下拉的取值：同上，从这一路真出现过的工单类型派生 —— 选了必有结果 */
+const untaggedTypeOptions = computed(() => untaggedTicketOptions((t) => t.type));
 
 /**
  * 这一行对应的**工单**；null ＝ 工单库与派生库里都查不到。
@@ -2897,17 +2905,18 @@ function applyUntaggedFilter(list: QueueRow[], slice: UntaggedSlice): QueueRow[]
   }
   const f = untaggedFilter.value;
   const kw = f.keyword.trim().toLowerCase();
-  const { products, statuses, sla } = f;
-  if (!kw && !products.length && !statuses.length && sla === 'all') return list;
+  const { products, statuses, types, sla } = f;
+  if (!kw && !products.length && !statuses.length && !types.length && sla === 'all') return list;
   return list.filter((r) => {
     if (kw && !rowMatchesKeyword(r, kw)) return false;
-    if (products.length || statuses.length || sla !== 'all') {
+    if (products.length || statuses.length || types.length || sla !== 'all') {
       const t = ticketOfRow(r);
-      // 🔴 查不到工单的行，在这三维上**一律放行**而不是筛掉：它不是"不匹配"，
+      // 🔴 查不到工单的行，在这几维上**一律放行**而不是筛掉：它不是"不匹配"，
       // 是"这一维答不上来"。筛掉的话，人按产品收窄一次就再也看不到这批数据异常的行了。
       if (t) {
         if (products.length && !products.includes(t.product)) return false;
         if (statuses.length && !statuses.includes(ticketStatusDisplayName(t))) return false;
+        if (types.length && !types.includes(t.type)) return false;
         if (sla !== 'all' && isSlaBreachedNow(t) !== (sla === 'over')) return false;
       }
     }
@@ -2918,7 +2927,7 @@ function applyUntaggedFilter(list: QueueRow[], slice: UntaggedSlice): QueueRow[]
 const untaggedFilterDirty = computed(() => {
   const f = untaggedFilter.value;
   return !!f.keyword.trim() || !!f.words.length
-    || !!f.products.length || !!f.statuses.length || f.sla !== 'all';
+    || !!f.products.length || !!f.statuses.length || !!f.types.length || f.sla !== 'all';
 });
 
 function resetUntaggedFilter() {
@@ -2958,6 +2967,29 @@ const UNTAGGED_SUB_KEYS: Record<UntaggedSlice, string[]> = {
 const PRIORITY_RAIL_LABEL = Object.fromEntries(
   PRIORITY_OPTIONS.map((o) => [o.value, o.label]),
 ) as Record<Priority, string>;
+
+/**
+ * 「重点工单」那一路筛选条上的「优先级」那一格（2026-10-09 裁决）。
+ *
+ * 🔴 **它就是左栏那四档本身，不是第二份状态**：`v-model` 直接绑 `untaggedSub` ——
+ * 左栏点「P1（重要）」这一格就显示它，在这一格改成 P2 左栏当场亮到 P2，空串 ＝ 不限。
+ * 一份 state、两个视图，不会漂（与已判段「风险等级」那一格同一条做法）。
+ *
+ * 🔴 **这一格不摆数**：那四个数就在左栏同一屏上、且是同一批行，
+ * 摆两遍就是"同一个数两处各算一遍"——本文件反复踩过的那个坑。与同一条上的
+ * 「产品 / 当前状态 / SLA」三格也逐字同形（那三格本来就不带数）。
+ *
+ * 🔴 **「实时监控」那一路不出这一格**：那一路的子档是**词表预设的识别风险等级**
+ * （"机器觉得这句话多重"），不是工单优先级（"这张单本身多急"）—— 两把尺量的不是一件事，
+ * 硬摆上去会让 `untaggedSub` 在两套取值域之间串台（见 `UNTAGGED_SUB_KEYS`）。
+ */
+const untaggedPriorityOptions = computed(() => [
+  { value: '', label: '不限' },
+  ...UNTAGGED_SUB_KEYS.focus.map((k) => ({
+    value: k,
+    label: PRIORITY_RAIL_LABEL[k as Priority] ?? k,
+  })),
+]);
 
 /** 子档的界面词。等级取 `riskLevelText`；优先级取建单下拉同一套 `PRIORITY_OPTIONS` */
 function untaggedSubLabel(slice: UntaggedSlice, key: string): string {
@@ -5659,7 +5691,12 @@ function toggleWordEnabled(w: RiskWord) {
         class="ledger-bar"
         @keyup.enter="applyUntaggedQuery"
       >
-        <div class="list-toolbar list-toolbar--one-line">
+        <!--
+          🔴 **字段区走与工作面那条同一套等宽轨网格**（`--grid`，2026-10-09）：
+          「重点工单」那一路补进优先级与类型之后是六格，原来那套 flex 等分会把每格压到
+          120 来像素、「当前状态」这种四字标签 + 多选标签当场换行。两条筛选条一套排版。
+        -->
+        <div class="list-toolbar list-toolbar--one-line list-toolbar--grid">
           <div class="tb-fields">
             <div class="fi">
               <span class="fl">班组</span>
@@ -5702,8 +5739,32 @@ function toggleWordEnabled(w: RiskWord) {
               「重点工单」那一路的行就是工单，故筛的是工单自己的维度 ——
               产品 / 当前状态 / SLA 三维沿用原「投诉单」「重要紧急」两路的那一套，一格没动。
               🔴 「进监控时间」已删：实测 11 条里只有 2 条有进监控时刻，一设区间就只剩那 2 条。
+              🔴 **2026-10-09 补「优先级」「类型」两格**（业务：提到筛选项里来）：
+                · 优先级 ＝ **左栏那四档本身**（`untaggedSub`，一份 state 两个视图），不摆数，
+                  见 `untaggedPriorityOptions`；
+                · 类型是这一路新的一维（左栏没有对应轴），与产品 / 当前状态同形（多选、不限）。
+              ⚠️ 两格都**只在这一路出**：「实时监控」那一路的行按词表预设等级排队，
+              优先级与类型都不是它的排队依据，摆上去是两把量不了的尺。
             -->
             <template v-else>
+              <div class="fi">
+                <span class="fl">优先级</span>
+                <a-select
+                  v-model:value="untaggedSub"
+                  size="small" class="tb-ctl"
+                  :dropdown-match-select-width="false"
+                  :options="untaggedPriorityOptions"
+                />
+              </div>
+              <div class="fi">
+                <span class="fl">类型</span>
+                <a-select
+                  v-model:value="untaggedFilter.types" mode="multiple" allow-clear
+                  size="small" class="tb-ctl"
+                  :dropdown-match-select-width="false" placeholder="不限" :max-tag-count="1"
+                  :options="untaggedTypeOptions"
+                />
+              </div>
               <div class="fi">
                 <span class="fl">产品</span>
                 <a-select
@@ -8795,18 +8856,25 @@ function toggleWordEnabled(w: RiskWord) {
  * 窄到 866px 时退成 4 + 1 两行，仍是对齐的网格。**不出横向滚动条**。
  * ⚠️ 不要改回 `1fr`：单字段那几路（左栏「已判」等）会把那一个下拉拉到整行宽。
  */
-.list-toolbar--one-line.list-toolbar--no-actions .tb-fields {
+.list-toolbar--one-line.list-toolbar--no-actions .tb-fields,
+.list-toolbar--one-line.list-toolbar--grid .tb-fields {
   display: grid;
   grid-template-columns: repeat(auto-fit, 200px);
   justify-content: start;
-  flex: none;
   max-width: 100%;
   gap: 8px;
 }
-.list-toolbar--one-line.list-toolbar--no-actions .fi { min-width: 0; }
+/* 没有右侧动作区的那一条按内容排；带动作区的那一条仍吃满左侧剩余宽（动作区自己 flex: none） */
+.list-toolbar--one-line.list-toolbar--no-actions .tb-fields { flex: none; }
+.list-toolbar--one-line.list-toolbar--grid .tb-fields { flex: 1 1 auto; }
+.list-toolbar--one-line.list-toolbar--no-actions .fi,
+.list-toolbar--one-line.list-toolbar--grid .fi { min-width: 0; }
 /* 标签按内容宽：轨宽固定，省下的全给控件（四字标签 48、两字 24，差出来的 24px 够结论那一格用） */
-.list-toolbar--one-line.list-toolbar--no-actions .fl { width: auto; }
-.list-toolbar--one-line.list-toolbar--no-actions .tb-ctl {
+.list-toolbar--one-line.list-toolbar--no-actions .fl,
+.list-toolbar--one-line.list-toolbar--grid .fl { width: auto; }
+.list-toolbar--one-line.list-toolbar--no-actions .tb-ctl,
+.list-toolbar--one-line.list-toolbar--grid .tb-ctl,
+.list-toolbar--one-line.list-toolbar--grid .tb-search {
   flex: 1;
   min-width: 0;
   width: auto !important;
