@@ -5626,12 +5626,21 @@ function toggleWordEnabled(w: RiskWord) {
         <div class="list-toolbar list-toolbar--one-line list-toolbar--no-actions">
           <!--
             🔴 **每一格的 `--tbw` 是量出来的**（13px 字 canvas 实测，取这一格**全部选项里最长的那一个**，
-            不是当前选中的那一个）：班组「硬件缺陷组（9）」99、两位数时约 106 ⇒ 150；
-            监控来源 / 原单类型 / 风险等级「全部X（15）」93 ⇒ 134；结论「风险处理建议（2）」112 ⇒ 152。
-            控件宽 ＝ 文字 + 34（内边距 14 + 边框 2 + 箭头 18）再留 6px 余量。量法见样式里那一段。
+            不是当前选中的那一个）：班组「硬件缺陷组（9）」99、两位数时约 106 ⇒ 147；
+            来源 / 类型 / 等级「全部X（15）」93 ⇒ 131；结论「风险处理建议（2）」112 ⇒ 149。
+            控件宽 ＝ 文字 + 34（内边距 14 + 边框 2 + 箭头 18）再留 3px 余量。量法见样式里那一段。
+
+            🔴 **三个四字标签 2026-10-09 收成两字**（监控来源→来源、原单类型→类型、风险等级→等级）：
+            窄窗（清单区 867px）下这一条原先是两行，而最吃宽的不是控件、是**四字标签各占 48px、
+            三个合计 144px**；收成两字省 72px。已判段那条同名三格一起改，两条形态保持一致。
+            ⚠️ **「类型」这个词在本页有两处、同名不同义，不要去"统一"它们**：
+              · 这一格（工作面）的「类型」＝ **原单类型**，取值 投诉 / 非投诉（`poolTicketTypeFilter`）；
+              · 待判「重点工单」那条筛选条上的「类型」＝ **工单类型**，取值 咨询 / 建议 / 商机 /
+                投诉 / 刷机（`untaggedFilter.types`）。
+            两者取值域完全不同、分处两个视图，是业务看过提示之后拍的板。
           -->
           <div class="tb-fields">
-            <div class="fi" style="--tbw: 150px">
+            <div class="fi" style="--tbw: 147px">
               <span class="fl">班组</span>
               <a-select
                 v-model:value="groupFilter"
@@ -5641,8 +5650,8 @@ function toggleWordEnabled(w: RiskWord) {
                 :options="groupFilterOptions"
               />
             </div>
-            <div v-if="listView === 'report'" class="fi" style="--tbw: 134px">
-              <span class="fl">监控来源</span>
+            <div v-if="listView === 'report'" class="fi" style="--tbw: 131px">
+              <span class="fl">来源</span>
               <a-select
                 v-model:value="sourceFilter"
                 size="small"
@@ -5651,8 +5660,8 @@ function toggleWordEnabled(w: RiskWord) {
                 :options="sourceFilterOptions"
               />
             </div>
-            <div v-if="listView === 'report'" class="fi" style="--tbw: 134px">
-              <span class="fl">原单类型</span>
+            <div v-if="listView === 'report'" class="fi" style="--tbw: 131px">
+              <span class="fl">类型</span>
               <a-select
                 v-model:value="poolTicketTypeFilter"
                 size="small"
@@ -5661,8 +5670,8 @@ function toggleWordEnabled(w: RiskWord) {
                 :options="poolTicketTypeFilterOptions"
               />
             </div>
-            <div v-if="listView === 'report'" class="fi" style="--tbw: 134px">
-              <span class="fl">风险等级</span>
+            <div v-if="listView === 'report'" class="fi" style="--tbw: 131px">
+              <span class="fl">等级</span>
               <a-select
                 v-model:value="poolLevelFilter"
                 size="small"
@@ -5671,7 +5680,7 @@ function toggleWordEnabled(w: RiskWord) {
                 :options="poolLevelFilterOptions"
               />
             </div>
-            <div v-if="listView === 'report'" class="fi" style="--tbw: 152px">
+            <div v-if="listView === 'report'" class="fi" style="--tbw: 149px">
               <span class="fl">结论</span>
               <a-select
                 v-model:value="decisionFilter"
@@ -5689,8 +5698,8 @@ function toggleWordEnabled(w: RiskWord) {
               `tagLevelFilter` 的代理）：左栏点哪一档这一格就显示哪一档，反过来也成立。
               🔴 **「结论」这一维不出**：已判段装的是监控条目，身上没有结论字段。
             -->
-            <div v-if="listView === 'realtime'" class="fi" style="--tbw: 134px">
-              <span class="fl">监控来源</span>
+            <div v-if="listView === 'realtime'" class="fi" style="--tbw: 131px">
+              <span class="fl">来源</span>
               <a-select
                 v-model:value="judgedSourceFilter"
                 size="small"
@@ -5699,8 +5708,8 @@ function toggleWordEnabled(w: RiskWord) {
                 :options="judgedSourceFilterOptions"
               />
             </div>
-            <div v-if="listView === 'realtime'" class="fi" style="--tbw: 134px">
-              <span class="fl">原单类型</span>
+            <div v-if="listView === 'realtime'" class="fi" style="--tbw: 131px">
+              <span class="fl">类型</span>
               <a-select
                 v-model:value="judgedTypeFilter"
                 size="small"
@@ -5709,8 +5718,8 @@ function toggleWordEnabled(w: RiskWord) {
                 :options="judgedTypeFilterOptions"
               />
             </div>
-            <div v-if="listView === 'realtime'" class="fi" style="--tbw: 134px">
-              <span class="fl">风险等级</span>
+            <div v-if="listView === 'realtime'" class="fi" style="--tbw: 131px">
+              <span class="fl">等级</span>
               <a-select
                 v-model:value="judgedLevelFilter"
                 size="small"
@@ -8892,9 +8901,11 @@ function toggleWordEnabled(w: RiskWord) {
  *
  * 🔴 **每一格的宽度写在模板里的 `--tbw`，数是量出来的**（13px 字 canvas 实测，
  * 取值域取"这一格全部选项里最长的那一个"，不是当前选中的那一个 —— 后者会让控件随选随变宽）：
- *   · 单选控件宽 ＝ 文字 ＋ 34（左右内边距 7×2 ＋ 边框 2 ＋ 右侧箭头预留 18），再留 6px 余量；
+ *   · 单选控件宽 ＝ 文字 ＋ 34（左右内边距 7×2 ＋ 边框 2 ＋ 右侧箭头预留 18），再留 3px 余量；
  *   · 多选控件宽 ＝ 文字 ＋ 56（上面那些 ＋ 标签自己的内边距与关闭叉约 22）；
  *   · 标签按内容宽（12px 字）：四字 48 / 三字 36 / 两字 24 / `SLA` 21。
+ *   ⚠️ **余量 6 → 3 是 2026-10-09 为了把工作面那条压进窄窗的一行榨出来的**（五格省 15px），
+ *     已逐格看画面确认最长取值仍一个字不缺。**再往下收就会复现 184px 那一版的截断**。
  *   🔴 **只能看画面、不能信 `scrollWidth === clientWidth`**：实测那两个值相等时画面上
  *     照样有省略号（上一轮就是这么误判了一次，184px 那一版「全部来源（14」真的被切了）。
  *   🔴 **按"大多数够用"取宽必被打脸**：本仓在「等待时长」「结论时间」「风险管控」
@@ -8909,8 +8920,16 @@ function toggleWordEnabled(w: RiskWord) {
   flex-wrap: wrap;
   align-items: center;
   max-width: 100%;
-  gap: 6px 12px;
+  /* 🔴 格间 12 → 10（2026-10-09 为把工作面那条压进窄窗的一行）：四道间距省 8px */
+  gap: 6px 10px;
 }
+/*
+ * 🔴 左右内边距 10 → 6（2026-10-09，同上为把工作面那条压进窄窗的一行）：两侧省 8px。
+ * **三条筛选条一起收**，不动「命中明细」那条台账条 —— 三条之间左边缘要对齐，
+ * 只收其中一条会让人在切档时看见工具条整体左右跳。
+ */
+.list-toolbar--one-line.list-toolbar--no-actions,
+.list-toolbar--one-line.list-toolbar--grid { padding-inline: 6px; }
 /* 没有右侧动作区的那一条按内容排；带动作区的那一条仍吃满左侧剩余宽（动作区自己 flex: none） */
 .list-toolbar--one-line.list-toolbar--no-actions .tb-fields { flex: none; }
 .list-toolbar--one-line.list-toolbar--grid .tb-fields { flex: 1 1 auto; }
@@ -8918,7 +8937,8 @@ function toggleWordEnabled(w: RiskWord) {
 .list-toolbar--one-line.list-toolbar--grid .fi {
   flex: 0 0 auto;
   min-width: 0;
-  gap: 6px;
+  /* 🔴 标签→控件 6 → 4（同上）：五格省 10px */
+  gap: 4px;
 }
 /* 标签按内容宽：省下的宽度全留给控件 */
 .list-toolbar--one-line.list-toolbar--no-actions .fl,
@@ -9449,6 +9469,13 @@ function toggleWordEnabled(w: RiskWord) {
  * 报备表比命中表少一列长文本，min-width 相应放低，窄屏下不必无谓地出横滚。
  * table-layout: fixed 是「风险描述单行截断」的前提——自动布局下长描述会把
  * 这一列一路撑宽、把其余列挤扁，ellipsis 根本不会触发。
+ *
+ * 📌 **待办（2026-10-09 登记，本轮不动）**：清单区窄到 **867px** 时（用户那台窗口就是），
+ * 容器比这条 `min-width: 1040px` 还窄，**这张表会在 `.hit-table-wrap` 里左右拖**。
+ *   · `document` 层面横向溢出仍是 0 —— 滚动条收在包裹层内，不是页面级溢出；
+ *   · **本轮一个字不动**：改它要重新权衡池行表那八列的列宽，而本仓**因为列宽压过头
+ *     把「等待时长」「结论时间」「风险管控」这类判据截没过三次**（见上面那张表的表头注释）。
+ *   · 真要动，得先在 867px 下逐列实测最长取值、再决定哪一列让宽，不能直接下调这个 min-width。
  */
 .report-table-wrap .report-table { min-width: 1040px; table-layout: fixed; }
 /*
