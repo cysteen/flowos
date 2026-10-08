@@ -39,11 +39,6 @@ export interface RiskTagEntry {
   at: string;
   /** 本次修正的理由。首次核实没有这一项 */
   amendReason?: string;
-  /**
-   * 仅 A 线条目的打标记录有：该条目由手动筛查并入监控（记录上显示「由手动筛查并入」）。
-   * 来源仍是「实时监控」，这一格只留痕。
-   */
-  viaManualScan?: boolean;
   /** 仅 A 线条目的打标记录有：这条打标由命中核实产出（记录上显示「由命中核实」），见 `RiskTagRecord.viaHitVerify` */
   viaHitVerify?: boolean;
 }
@@ -83,11 +78,6 @@ export interface TicketRiskVerification {
 export const useRiskTagStore = defineStore('riskTags', () => {
   /** 每条命中的核实历史，按时间正序；key ＝ 命中 id。数据源里带来的首次核实不在这里，见 seedEntryOf */
   const entries = ref<Record<string, RiskTagEntry[]>>({});
-  /**
-   * 手动筛查确认并入的命中。与实时命中同属一份清单，故也放这里——
-   * 留在组件内的话，工单页算工单级等级时会漏掉筛查并入的那几条，两边算出两个等级。
-   */
-  const adoptedHits = ref<RiskHit[]>([]);
 
   /**
    * **A 线打标写进来的工单级等级**（《【930】》§6.1，2026-09-10 拍板）。
@@ -128,12 +118,13 @@ export const useRiskTagStore = defineStore('riskTags', () => {
     return best;
   }
 
-  /** 全量命中 ＝ 词表实时命中 + 已并入的筛查命中。范围恒为全中心，与风险监控页一致 */
-  const allHits = computed<RiskHit[]>(() => {
-    const live = wordOnlyRiskHitsOf('all');
-    if (!adoptedHits.value.length) return live;
-    return [...live, ...adoptedHits.value];
-  });
+  /**
+   * 全量命中 ＝ 词表命中记录。范围恒为全中心，与风险监控页一致。
+   *
+   * 🔴 **手动筛查扫出来的行不在这里**（2026-10-08 裁决：取消「并入」）：
+   * 筛查是纯查询，结果不落库，故命中记录只有自动链路这一个来源。
+   */
+  const allHits = computed<RiskHit[]>(() => wordOnlyRiskHitsOf('all'));
 
   /**
    * 数据源里带来的首次核实，作为历史的第 1 条并回展示，否则修正记录会从半截开始。
@@ -206,10 +197,6 @@ export const useRiskTagStore = defineStore('riskTags', () => {
       next[hitId] = [...(next[hitId] ?? []), entry];
     });
     entries.value = next;
-  }
-
-  function adoptHits(hits: RiskHit[]) {
-    adoptedHits.value = [...adoptedHits.value, ...hits];
   }
 
   /** 某张工单的全部命中，按命中时刻正序——爬坡是一条时间线，倒着读读不出先后 */
@@ -310,7 +297,6 @@ export const useRiskTagStore = defineStore('riskTags', () => {
 
   return {
     entries,
-    adoptedHits,
     tagGrades,
     setTicketTagGrade,
     tagGradeOf,
@@ -322,7 +308,6 @@ export const useRiskTagStore = defineStore('riskTags', () => {
     isJudged,
     appendEntry,
     appendEntries,
-    adoptHits,
     hitsOfTicket,
     ticketGradeOf,
     ticketVerificationOf,

@@ -1244,7 +1244,7 @@ function enrichScannableTicket(raw: RawScannableTicket): ScannableTicket {
 
 /**
  * 存量工单语料。
- * 前 8 条与 RISK_HITS 同单号，用来演示「已在清单中的不重复入库」；
+ * 前 8 条与 RISK_HITS 同单号，用来演示「已有命中记录」那一类结果行；
  * 其余是只有手动筛查才捞得回来的存量单（当时无此词条，或已进终态）。
  */
 const RAW_SCANNABLE_TICKETS: RawScannableTicket[] = [
@@ -1347,7 +1347,7 @@ export function normalizeScanCriteria(raw: Partial<ScanCriteria> & { ticketState
 
 export interface ScanResultRow {
   hit: RiskHit;
-  /** 已在命中清单中——重复入库会把同一条记两遍，预览时单独标出并默认不勾选 */
+  /** 这条命中**已有命中记录**（同单 + 同规则）——结果里单独标出，与新扫出来的那批区分开 */
   duplicated: boolean;
 }
 
@@ -1380,17 +1380,12 @@ export interface ManualScanContext {
    * 用它扫的话，人刚新建的词条选中后一条都扫不出来，界面上看就是"筛查坏了"。
    */
   words?: RiskWord[];
-  /**
-   * 本会话已并入清单的命中。判重底表少了它，同样条件再扫一次，
-   * 已并入的行会被重新标成「新命中」并默认勾选，点并入后实际入库 0 条却报「已并入 N 条」——
-   * 一次假成功比扫不出来更伤人：它让人以为这批已经处理过了。
-   */
-  adopted?: RiskHit[];
 }
 
 /**
- * 执行一次手动筛查。**纯读、不落库**——结果先给人看，确认后才并入清单。
- * 匹配方式与实时链路一致（包含匹配），所以预览里看到的等级就是入库后的等级。
+ * 执行一次手动筛查。**纯读、不落库**——它是查询工具，结果只摆出来给人看
+ * （2026-10-08 裁决：取消「并入」，筛查不往监控里补任何条目）。
+ * 匹配方式与实时链路一致（包含匹配），故结果里的等级与命中记录上的是同一把尺。
  */
 export function runManualScan(c: ScanCriteria, ctx: ManualScanContext = {}): ScanResultRow[] {
   // 停用的词一律不参与筛查。停用是维护人给规则下的判决——「孩子」7 天命中 142 次、
@@ -1421,9 +1416,7 @@ export function runManualScan(c: ScanCriteria, ctx: ManualScanContext = {}): Sca
   // 少了它们，那些命中会退回按主词兜底，与新扫出来的同规则命中对不上。
   const ruleIdByWord = new Map((ctx.words ?? RISK_WORDS).map((w) => [w.word, w.id]));
   const existing = new Set(
-    [...RISK_HITS, ...(ctx.adopted ?? [])].map(
-      (h) => ruleKey(h.ticketNo, ruleIdByWord.get(h.word) ?? h.word),
-    ),
+    RISK_HITS.map((h) => ruleKey(h.ticketNo, ruleIdByWord.get(h.word) ?? h.word)),
   );
   const out: ScanResultRow[] = [];
   /** 本次扫描内的去重键，与 existing 同一把：一条规则在同一张单上只产出一条命中 */

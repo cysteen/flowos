@@ -778,8 +778,6 @@ watch(() => props.ticketNo, () => {
                 风险工单池 · {{ poolStatusText(poolStageStatusOf(tagEntry)) }}
               </span>
               <span v-else-if="tagRecord.result === '无风险'" class="rt-pool">不进池</span>
-              <!-- 并入痕迹记在标记记录上，不进来源（§5A.1 ④），写法与风险监控页修正弹窗一致 -->
-              <span v-if="tagRecord.viaManualScan" class="rt-pool">由手动筛查并入</span>
               <span v-if="tagRecord.viaHitVerify" class="rt-pool">由命中核实</span>
               <!-- 时刻顶到右端（2026-10-07 裁决：全页签时刻一律靠右） -->
               <span class="rk-tag-at">{{ formatOpTime(tagRecord.at) }}</span>

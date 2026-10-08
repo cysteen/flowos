@@ -42,7 +42,7 @@ import { excerptWindow, isKeywordRow } from '@/views/tickets/components/operatio
 import AppPagination from '@/components/AppPagination.vue';
 import { opsTip } from '@/mock/opsMonitorTips';
 import { useUserStore } from '@/stores/user';
-// 核实历史与筛查并入的命中都放在 store 里：工单处理页要读同一份结论（打标回传），
+// 核实历史放在 store 里：工单处理页要读同一份结论（打标回传），
 // 组件内的 ref 只在本页活着，跨页就断了。
 import { useRiskTagStore, type RiskTagEntry } from '@/stores/riskTags';
 // 风险工单池（《【930】》§5）。队列条目与风险词命中记录**分母不同、两处不可相加**（§7 撞名），
@@ -157,7 +157,7 @@ const riskTags = useRiskTagStore();
 /**
  * 四个页签，**三个分母**：
  *   · `realtime` 实时监控 —— **监控条目**（A 线）。本轮从"命中维度"改成"条目维度"，见 `QueueView`；
- *   · `scan`     手动筛查 —— 风险词命中记录（拿条件去扫存量，产出待并入的新命中）；
+ *   · `scan`     手动筛查 —— 风险词命中记录（拿条件去扫存量，**只做查询**，结果不落库）；
  *   · `judged`   命中明细 —— 风险词命中记录（事后点查 + 核实打标，词表准确率由它回填）；
  *   · `report`   风险工单池 —— **池行**（A 线打标进池的条目 + B 线报备单，N6 合一队）。
  *
@@ -325,8 +325,8 @@ function inGroup<T extends { ticketNo: string }>(rows: T[]): T[] {
 // 两个页签看的是同一条链的前后两段，不再是同一条的两份副本。
 const reportStore = useRiskPoolStore();
 /**
- * A 线队列本体。用于三件事：按两类判据补齐监控条目（`syncAutoEntries`）、
- * 手动筛查「并入清单」时补条目（`adoptScanTickets`）、命中核实回写条目（`verifyHit`）。其余取数一律走合并层 `reportStore`。
+ * A 线队列本体。用于两件事：按两类判据补齐监控条目（`syncAutoEntries`）、
+ * 命中核实回写条目（`verifyHit`）。其余取数一律走合并层 `reportStore`。
  */
 const riskQueue = useRiskQueueStore();
 /** 「升级」派生的新投诉单落这里，工单页解析时兜在静态数据源之后 */
@@ -1513,11 +1513,13 @@ interface ScanRun {
   filterName?: string;
   /** 手动筛查：完整条件摘要；实时监控：扫描范围说明 */
   criteriaText?: string;
-  /** 手动筛查 · 成功 */
+  /**
+   * 手动筛查 · 成功。
+   * 🔴 **原先还有 `adopted` / `highAdopted` 两格**（本次执行并入了几条、其中几条高危），
+   * 随「并入」这个动作一并删除（2026-10-08 裁决）：筛查只做查询，没有"并入了几条"这件事。
+   */
   total?: number;
   fresh?: number;
-  adopted?: number;
-  highAdopted?: number;
   /** 实时监控 · 成功 */
   hitCount?: number;
   openCount?: number;
@@ -1525,7 +1527,7 @@ interface ScanRun {
 
 const SCAN_RUN_LS_KEY = 'flowos-risk-scan-runs';
 /** 种子版本：变更 buildDefaultScanRuns() 时递增，强制刷新演示数据 */
-const SCAN_RUN_SEED_VERSION = 4;
+const SCAN_RUN_SEED_VERSION = 5;
 const SCAN_RUN_VERSION_KEY = 'flowos-risk-scan-runs-v';
 
 /**
@@ -1563,7 +1565,7 @@ function scanStampDaysAgo(days: number, hhmmss: string): string {
 
 /**
  * 扫库记录演示样例 —— 覆盖实时监控 / 手动筛查 × 成功 / 失败 / 异常，
- * 以及「无新增」「有新增未并入」「有新增已并入」等结果口径。
+ * 以及「扫出 N · 新命中 M」「无新增风险」两种结果口径。
  */
 function buildDefaultScanRuns(): ScanRun[] {
   return [
@@ -1584,13 +1586,13 @@ function buildDefaultScanRuns(): ScanRun[] {
     { id: 'run-seed-05', kind: 'realtime', triggerBy: '系统', startedAt: scanStampDaysAgo(1, '08:00:00'), endedAt: scanStampDaysAgo(1, '08:00:02'), status: 'failed', errorMessage: '实时扫描中断，请检查词表与连接' },
     { id: 'run-seed-06', kind: 'realtime', triggerBy: '系统', startedAt: scanStampDaysAgo(2, '18:00:00'), endedAt: scanStampDaysAgo(2, '18:00:05'), status: 'success', hitCount: 14, openCount: 9 },
     // —— 手动筛查 · 成功 ——
-    { id: 'run-seed-07', kind: 'manual', triggerBy: '郑监控', startedAt: scanStamp(170), endedAt: scanStamp(168), status: 'success', filterName: '高危词专项', total: 47, fresh: 3, adopted: 2, highAdopted: 2 },
-    { id: 'run-seed-08', kind: 'manual', triggerBy: '李文萍', startedAt: scanStamp(320), endedAt: scanStamp(316), status: 'success', total: 128, fresh: 0, adopted: 0 },
-    { id: 'run-seed-09', kind: 'manual', triggerBy: '秦督导', startedAt: scanStampDaysAgo(1, '13:28:41'), endedAt: scanStampDaysAgo(1, '13:29:06'), status: 'success', total: 2, fresh: 0, adopted: 0 },
-    { id: 'run-seed-10', kind: 'manual', triggerBy: '孙坐席', startedAt: scanStampDaysAgo(1, '16:20:44'), endedAt: scanStampDaysAgo(1, '16:24:01'), status: 'success', total: 86, fresh: 5, adopted: 4, highAdopted: 1 },
-    { id: 'run-seed-11', kind: 'manual', triggerBy: '郑监控', startedAt: scanStampDaysAgo(1, '10:15:22'), endedAt: scanStampDaysAgo(1, '10:18:55'), status: 'success', filterName: '教育产线近30天', total: 203, fresh: 7, adopted: 6, highAdopted: 2 },
-    { id: 'run-seed-12', kind: 'manual', triggerBy: '周坐席', startedAt: scanStampDaysAgo(2, '15:33:08'), endedAt: scanStampDaysAgo(2, '15:35:41'), status: 'success', total: 56, fresh: 3, adopted: 0 },
-    { id: 'run-seed-13', kind: 'manual', triggerBy: '秦督导', startedAt: scanStampDaysAgo(2, '09:12:18'), endedAt: scanStampDaysAgo(2, '09:14:52'), status: 'success', filterName: '受理一组在办', total: 34, fresh: 2, adopted: 2, highAdopted: 1 },
+    { id: 'run-seed-07', kind: 'manual', triggerBy: '郑监控', startedAt: scanStamp(170), endedAt: scanStamp(168), status: 'success', filterName: '高危词专项', total: 47, fresh: 3 },
+    { id: 'run-seed-08', kind: 'manual', triggerBy: '李文萍', startedAt: scanStamp(320), endedAt: scanStamp(316), status: 'success', total: 128, fresh: 0 },
+    { id: 'run-seed-09', kind: 'manual', triggerBy: '秦督导', startedAt: scanStampDaysAgo(1, '13:28:41'), endedAt: scanStampDaysAgo(1, '13:29:06'), status: 'success', total: 2, fresh: 0 },
+    { id: 'run-seed-10', kind: 'manual', triggerBy: '孙坐席', startedAt: scanStampDaysAgo(1, '16:20:44'), endedAt: scanStampDaysAgo(1, '16:24:01'), status: 'success', total: 86, fresh: 5 },
+    { id: 'run-seed-11', kind: 'manual', triggerBy: '郑监控', startedAt: scanStampDaysAgo(1, '10:15:22'), endedAt: scanStampDaysAgo(1, '10:18:55'), status: 'success', filterName: '教育产线近30天', total: 203, fresh: 7 },
+    { id: 'run-seed-12', kind: 'manual', triggerBy: '周坐席', startedAt: scanStampDaysAgo(2, '15:33:08'), endedAt: scanStampDaysAgo(2, '15:35:41'), status: 'success', total: 56, fresh: 3 },
+    { id: 'run-seed-13', kind: 'manual', triggerBy: '秦督导', startedAt: scanStampDaysAgo(2, '09:12:18'), endedAt: scanStampDaysAgo(2, '09:14:52'), status: 'success', filterName: '受理一组在办', total: 34, fresh: 2 },
     // —— 手动筛查 · 失败 ——
     { id: 'run-seed-14', kind: 'manual', triggerBy: '郑监控', startedAt: scanStamp(400), endedAt: scanStamp(400), status: 'failed', errorMessage: '词表服务超时，请稍后重试' },
     { id: 'run-seed-15', kind: 'manual', triggerBy: '秦督导', startedAt: scanStampDaysAgo(3, '17:05:33'), endedAt: scanStampDaysAgo(3, '17:05:34'), status: 'failed', errorMessage: '筛查执行失败，请稍后重试' },
@@ -1622,8 +1624,6 @@ function normalizeScanRun(raw: Record<string, unknown>): ScanRun {
     criteriaText: String(raw.criteriaText ?? ''),
     total: Number(raw.total ?? 0),
     fresh: Number(raw.fresh ?? 0),
-    adopted: Number(raw.adopted ?? 0),
-    highAdopted: Number(raw.highAdopted ?? 0),
   };
 }
 
@@ -1652,7 +1652,11 @@ function loadScanRuns(): ScanRun[] {
 }
 
 const scanRuns = ref<ScanRun[]>(loadScanRuns());
-const pendingManualRunId = ref<string | null>(null);
+/*
+ * 🔴 **原先这里有一个 `pendingManualRunId`**（本次手动筛查执行的记录 id）：
+ * 点「并入清单」之后要回头把并入条数写回那一条执行记录。并入取消之后没有任何回填，
+ * 执行记录在 `doScan` 里一次写完即定稿，故这个游标一并删掉。
+ */
 /**
  * 扫库记录按开始时刻倒序。数组本身只按写入顺序追加，种子里 8/26 那条排在 8/4 之后——
  * 直接取首条会把一条旧执行当成"上次执行"，这个时刻是人判断"数据新不新"的唯一依据，不能错。
@@ -1690,32 +1694,23 @@ function scanRunResultText(r: ScanRun): string {
     return `${filterTag}发现 ${r.hitCount ?? 0} · 待核实 ${r.openCount ?? 0}`;
   }
   const parts = [`扫出 ${r.total ?? 0}`, `新命中 ${r.fresh ?? 0}`];
-  if (r.adopted) parts.push(`并入 ${r.adopted}${r.highAdopted ? `（高危 ${r.highAdopted}）` : ''}`);
-  else if (r.fresh) parts.push('未并入');
-  else parts.push('无新增风险');
+  if (!r.fresh) parts.push('无新增风险');
   return filterTag + parts.join(' · ');
 }
 
 // ---- 手动批量筛查 ----
-// 选范围 + 选词 → 对存量工单跑一遍 → 结果**就在同一张命中清单里**呈现 → 人确认后并入。
+// 选范围 + 选词 → 对存量工单跑一遍 → 结果**就在同一张命中清单里**呈现。
+//
+// 🔴 **它是查询工具，不是入口**（2026-10-08 裁决）：原先结果可以勾选「并入清单」、
+// 往「待判 · 实时监控」补条目，这条路径整条取消 —— 「实时监控」那一档恒为**自动扫库**的产出。
+// 故结果态只剩"看"与"点进去"：行上工单号可点，落在该工单；看完「退出筛查」。
 //
 // 【为什么不用侧边抽屉】抽屉把结果放进另一张表，与命中清单割裂——同一批数据两套表头、
 // 两套操作。改为沿用工作台的 query-filters 就地筛选条：条件在清单上方展开，
 // 结果直接渲染进清单本体，列与交互完全一致。
-//
-// 【为什么仍保留"确认并入"】筛查是对存量的一次性扫描，「孩子」那类词一扫上百条，
-// 直接入库会把待核实队列淹没且不可逆。故结果先以「待并入」态呈现在清单里，勾选后才落。
 const scanBarOpen = computed(() => listView.value === 'scan');
 const scanning = ref(false);
 const scanResult = ref<ScanResultRow[] | null>(null);
-/** 结果里勾选要入库的行；重复项默认不勾 */
-const scanPicked = ref<Set<string>>(new Set());
-/**
- * 已确认入库的筛查命中，与实时命中并入同一份清单。
- * 放 store 而不是本组件：工单页算工单级等级时要看的是同一份清单，
- * 留在组件里的话筛查并入的那几条对工单页不存在，两边会算出两个等级。
- */
-const scanAdopted = computed(() => riskTags.adoptedHits);
 /** 清单当前是不是在展示筛查结果 */
 const inScanResult = computed(() => scanResult.value !== null);
 
@@ -1789,12 +1784,9 @@ function setListView(v: ListView) {
   if (v === 'judged' && listView.value !== 'judged') resetLedgerFilter();
   // 离开手动筛查即退出筛查结果态。
   // scanResult 是清单数据源的最高优先级分支（filteredRows 首行就判 inScanResult），
-  // 留着它的话，切到实时监控后表里躺的还是那批**尚未并入**的筛查行、
-  // 头上还挂着「结果尚未并入，勾选后确认」的横幅——页签写着实时监控，内容却是另一批数据，
-  // 而且刷新前一直如此。这与"两套状态机分叉"是同一类错，只是这次分叉在数据源上。
-  //
-  // 🔴 清的只是**尚未并入**的预览态。已点过「并入清单」的那些命中在 riskTags store 里，
-  // 它们已经是清单的一部分（scanAdopted），与筛查结果态是两回事，一条都不动。
+  // 留着它的话，切到实时监控后表里躺的还是那批筛查行、头上还挂着筛查结果条——
+  // 页签写着实时监控，内容却是另一批数据，而且刷新前一直如此。
+  // 这与"两套状态机分叉"是同一类错，只是这次分叉在数据源上。
   if (v !== 'scan' && listView.value === 'scan') exitScanResult();
   // 单工单焦点跨视图取数，切视图时若留着它，页签写着一个数而表里躺着别的一批
   clearTicketFocus();
@@ -1807,15 +1799,9 @@ function setListView(v: ListView) {
 function applyScanLive() {
   if (!scanForm.value.from || !scanForm.value.to) {
     scanResult.value = [];
-    scanPicked.value = new Set();
     return;
   }
-  const rows = runManualScan(scanForm.value, {
-    words: localWords.value,
-    adopted: scanAdopted.value,
-  });
-  scanResult.value = rows;
-  scanPicked.value = new Set(rows.filter((r) => !r.duplicated).map((r) => r.hit.id));
+  scanResult.value = runManualScan(scanForm.value, { words: localWords.value });
 }
 
 let scanLiveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1834,8 +1820,8 @@ function doScan() {
    * 建单时间区间不允许无界（PRD §8.3.1 / §9 规则 42）。
    *
    * 【为什么单挑这一个维度拦】其余八维留空的含义是"不限"，扫出来无非多几条；
-   * 时间留空却是**对全库做一次扫描**——而这个功能的产出是"新命中"，
-   * 「孩子」那类通用词一扫上百条，一次失手就把待核实队列淹没，且并入之后收不回来。
+   * 时间留空却是**对全库做一次扫描**——「孩子」那类通用词一扫上百条，
+   * 结果页当场被噪音填满，人要找的那一条反而翻不到。
    *
    * 【为什么日期控件已经不给清除、这里还要再拦一道】去掉清除按钮只挡住了鼠标那一条路：
    * 条件还会被套用筛选器、被重置逻辑、被将来任何一处新入口整体灌进来。
@@ -1851,13 +1837,11 @@ function doScan() {
   try {
     applyScanLive();
     const rows = scanResult.value ?? [];
-    const runId = `run-${Date.now()}`;
-    pendingManualRunId.value = runId;
     // 模拟扫描耗时，避免开始/结束时刻完全相同
     const elapsed = Math.max(800, Date.now() - t0);
     const endedAt = dayjs(t0 + elapsed).format('YYYY-MM-DD HH:mm:ss');
     appendScanRun({
-      id: runId,
+      id: `run-${Date.now()}`,
       kind: 'manual',
       triggerBy: user.current.name,
       startedAt,
@@ -1869,8 +1853,6 @@ function doScan() {
       criteriaText: scanSummary.value,
       total: rows.length,
       fresh: rows.filter((r) => !r.duplicated).length,
-      adopted: 0,
-      highAdopted: 0,
     });
   } catch {
     appendScanRun({
@@ -1889,68 +1871,27 @@ function doScan() {
   }
 }
 
-function toggleScanPick(id: string) {
-  const s = new Set(scanPicked.value);
-  if (s.has(id)) s.delete(id); else s.add(id);
-  scanPicked.value = s;
-}
-
-/** 已在清单中的行 id——这些在结果里置灰、不可勾，避免同一条记两遍 */
+/**
+ * **已有命中记录**的那几行的 id —— 结果里置灰标出，与新扫出来的那批区分开。
+ * 🔴 原先它还兼着"不可勾选"那一层（并入时避免同一条记两遍），
+ * 勾选与并入取消之后它只剩"标出来"这一个用处。
+ */
 const scanDupIds = computed(
   () => new Set((scanResult.value ?? []).filter((r) => r.duplicated).map((r) => r.hit.id)),
 );
 const scanFreshCount = computed(() => (scanResult.value ?? []).filter((r) => !r.duplicated).length);
 const scanDupCount = computed(() => (scanResult.value ?? []).filter((r) => r.duplicated).length);
-const scanAllPicked = computed(() => {
-  const list = (scanResult.value ?? []).filter((r) => !r.duplicated);
-  return list.length > 0 && list.every((r) => scanPicked.value.has(r.hit.id));
-});
-function toggleScanPickAll() {
-  const list = (scanResult.value ?? []).filter((r) => !r.duplicated);
-  scanPicked.value = scanAllPicked.value ? new Set() : new Set(list.map((r) => r.hit.id));
-}
 
-function adoptScan() {
-  // 并入是打标那条链的上游动作，权限与打标同源（`canRiskTag`）。按钮本就只对有权的人渲染，
-  // 这一道拦的是"绕过界面直接调进来"——与本页三处打标的写法一致，两道都要
-  if (!canRiskTag.value) { message.warning('只有客诉专员、投诉督导与管理员可以并入清单'); return; }
-  const picked = (scanResult.value ?? []).filter((r) => scanPicked.value.has(r.hit.id));
-  if (!picked.length) { message.warning('请先勾选要并入清单的命中'); return; }
-  const known = new Set(scanAdopted.value.map((h) => h.id));
-  const fresh = picked.map((r) => r.hit).filter((h) => !known.has(h.id));
-  // 先补条目、再并命中：补条目时记下「并入时刻 ＝ 进监控时刻」与「由手动筛查并入」（§5A.1 ④）；
-  // 顺序反过来的话，并命中触发的自动补齐会先按命中时刻补一条不带并入痕迹的条目
-  riskQueue.adoptScanTickets([...new Set(fresh.map((h) => h.ticketNo))], nowStamp());
-  riskTags.adoptHits(fresh);
-  // 回填到本次任务记录：结果陈述靠它
-  const runId = pendingManualRunId.value;
-  if (runId) {
-    scanRuns.value = scanRuns.value.map((r) => (
-      r.id === runId
-        ? {
-            ...r,
-            adopted: (r.adopted ?? 0) + fresh.length,
-            highAdopted: (r.highAdopted ?? 0) + fresh.filter((h) => h.level === '高').length,
-          }
-        : r
-    ));
-    persistScanRuns();
-  }
-  // 陈述实际入库条数而不是勾选条数：两者不等时（勾的已经在清单里）报勾选数就是句假话，
-  // 人会以为这批已经进队列了，回头在待核实里找不到又说不清哪儿丢的。
-  if (!fresh.length) {
-    message.info('所勾选的命中都已在清单中，本次没有新增');
-  } else {
-    message.success(`已并入 ${fresh.length} 条命中，可按等级处置`);
-  }
-  exitScanResult();
-}
+/*
+ * 🔴 **原先这里有 `scanPicked` / `scanAllPicked` / `toggleScanPick` / `toggleScanPickAll`
+ * 与 `adoptScan`**（勾选结果行 → 「并入清单」→ 补条目 + 并命中 + 回填本次执行的并入条数）。
+ * 随 2026-10-08 裁决整组删除：手动筛查只做查询，结果不落库。
+ * 结果态因此没有任何写动作，只剩"点工单号进那张单"与「退出筛查」两条出路。
+ */
 
 /** 退出筛查结果态，清单回到常规命中 */
 function exitScanResult() {
   scanResult.value = null;
-  scanPicked.value = new Set();
-  pendingManualRunId.value = null;
 }
 
 function resetScanForm() {
@@ -2117,16 +2058,13 @@ function removeSavedFilter(f: SavedScanFilter) {
 }
 
 // ---- 命中列表 ----
-const allHits = computed(() => {
-  const live = wordOnlyRiskHitsOf(scope.value);
-  if (!scanAdopted.value.length) return live;
-  return [...live, ...scanAdopted.value].sort((a, b) => b.when.localeCompare(a.when));
-});
+/*
+ * 🔴 **命中记录只有自动链路一个来源**（2026-10-08 裁决：手动筛查取消「并入」）：
+ * 原先这里要把"已并入的筛查命中"并进来、并给那几行标一枚「来自手动筛查」的徽标，
+ * 两处随并入一并删除。筛查扫出来的行只活在结果态里，不进这份清单。
+ */
+const allHits = computed(() => wordOnlyRiskHitsOf(scope.value));
 const rows = computed(() => allHits.value);
-/** 这条是不是手动筛查并进来的——列表上标一下，来源要可追 */
-function isFromScan(h: RiskHit): boolean {
-  return h.id.startsWith('scan-');
-}
 
 const GRADE_ORDER: Record<RiskLevel, number> = { 高: 0, 中: 1, 低: 2 };
 
@@ -2776,8 +2714,8 @@ function rowOfEntry(e: RiskQueueEntry): QueueRow {
  * 🔴 **在办口径**（§5A.2 / R50a）：工单进终态即从「未标记」段消失。条目对应的单在工单库与派生库里
  * 都查不到时照实留着（`fallbackTicketOf` 顶一张最小工单），不吞 —— 那是数据异常，不是终态。
  *
- * 🔴 **覆盖率由「手动筛查」兜底**：两路规则都没捞到的单，靠人拿条件去扫存量捞出来，
- * 勾选并入后补一条来源「实时监控」的条目回到这一档（`riskQueue.adoptScanTickets`）。
+ * 🔴 **「实时监控」这一档恒为自动扫库的产出**（2026-10-08 裁决）：它 ＝ **有待核实命中的未标记工单**。
+ * 手动筛查是查询工具、不往这一档补货，故**无命中记录的单不会出现在这里**。
  */
 const untaggedUniverse = computed<QueueRow[]>(() => reportStore.monitoringEntries
   .map(rowOfEntry)
@@ -2786,7 +2724,7 @@ const untaggedUniverse = computed<QueueRow[]>(() => reportStore.monitoringEntrie
     return !t || isLiveTicket(t);
   }));
 /*
- * 命中清单（并入的筛查命中）、命中核实结论与打标回写的工单级等级一变，按两类判据重补一遍条目：
+ * 命中核实结论与打标回写的工单级等级一变，按两类判据重补一遍条目：
  * 例如一条命中由「成立」改判为「误报」后工单级等级清空，这张单应当回到「未标记」。
  * store 开屏已补过一遍，这里只接会话内的变化；补的动作在 store 里，本页不另造条目。
  */
@@ -3208,8 +3146,7 @@ function onTicketRowAction(label: string, t: Ticket) {
 // 同一张单的命中相邻成组：组序沿用 `untaggedRows`（词表预设等级最重的在前），组内按命中时刻倒序，
 // 分页按组切，一组不被拆到两页。
 // 「处置」列**按命中逐行**出「风险识别」（`openTag`，与命中明细同一个弹窗、同一个 store 入口 `verifyHit`）：
-// 首次成立即给这张单打标入池，全部误报则改归或打为无风险。没有待核实命中的行（手动筛查并入、尚无命中）
-// 同样出「风险识别」，走条目打标形态那个弹窗（`openEntryTag`，待判段入口）。
+// 首次成立即给这张单打标入池，全部误报则改归或打为无风险。
 // 🔴 这张表只装**待核实**的命中（`pendingRowHits` 已滤掉 `isJudged`），故这一枚恒是首次态 ——
 // 文案与 `tagModalTitle` 都落在「风险识别」，不会出现「重新识别」。
 /** 当前是不是停在「实时监控」那一路（含它的三个子档） */
@@ -3218,7 +3155,14 @@ const kwEvidenceView = computed(() => (
   && queueView.value === 'monitoring'
   && untaggedSlice.value === 'kw'
 ));
-/** 当前页的工单组，每组带着它过了筛选的命中。没有命中的组（数据异常）照实留一行，不吞 */
+/**
+ * 当前页的工单组，每组带着它过了筛选的命中。
+ * 🔴 **这一档里每一组必有至少一条待核实命中**：入选判据就是"本单有待核实命中"
+ * （`autoSourceFor` 的 `pendingHitsOnly`），命中全核实完的单由 `verifyHit` 当场改归或打为无风险；
+ * 筛选把一组的命中全筛掉时整组也不出现（`applyUntaggedFilter`）。
+ * 故原先那条"没有命中的组照实留一行"的渲染分支已随 2026-10-08 裁决删除 —— 它只为
+ * 手动筛查并入的无命中单而留，而并入这件事已经取消。
+ */
 const kwPageGroups = computed(() => (
   kwEvidenceView.value
     ? pagedQueueRows.value.map((r) => ({ row: r, hits: kwHitsOf(r) }))
@@ -3370,7 +3314,7 @@ function rowLatestHit(r: QueueRow): RiskHit | null {
  * 「证据 / 摘要」这一格摆的是哪一种东西 —— **按来源分岔，不按"有没有命中"分岔**：
  *   · 实时监控 → **命中原话摘录**（最新一条，命中词高亮）；
  *   · 重点工单 → **工单的问题描述**（这一路本就不靠词进来，没有原话可摆）。
- * 实时监控那一路万一一条命中都没有（手动筛查并入、命中已被删），退回问题描述，不留空格。
+ * 实时监控那一路万一一条命中都没有（命中已被删这类数据异常），退回问题描述，不留空格。
  *
  * 🔴 **原先还有一支 `'report'`**（报备行摆报备单的风险描述），随「风险报备」那一档删除。
  * 来源「二线报备」的标记条目走 `'summary'`，而 `rowSummaryOf` 对这一路先取条目自己的 `desc`
@@ -3664,7 +3608,7 @@ const bulkVerdict = ref<HitVerdict | undefined>(undefined);
 const bulkVerifyLevel = ref<RiskLevel>('高');
 const bulkVerifyNote = ref('');
 const bulkVerifyHits = computed(() => bulkTargets.value.flatMap((r) => kwHitsOf(r)));
-/** 所选组里没有待核实命中的单（手动筛查并入、尚无命中）：批量识别（命中那一路）不处理，逐单走「风险识别」 */
+/** 所选组里没有待核实命中的单（这一档里不该有，兜数据异常）：批量识别（命中那一路）不处理，逐单走「风险识别」 */
 const bulkVerifySkipped = computed(() => bulkTargets.value.filter((r) => !kwHitsOf(r).length).length);
 const canSaveBulkVerify = computed(
   () => canRiskTag.value && !!bulkVerdict.value && bulkVerifyHits.value.length > 0,
@@ -4184,7 +4128,8 @@ const untaggedHigh = computed(() =>
 // 与列表当场对不上，而这一屏的全部用处就是让督导据以判断"今天该盯哪一批"。
 
 /**
- * 「今日发现」＝ 今天（自然日）新进入**监控队列**的条目数：自动纳入 + 手动筛查并入。
+ * 「今日发现」＝ 今天（自然日）新进入**监控队列**的条目数 —— 一律由**自动识别**纳入
+ * （2026-10-08 裁决：手动筛查只做查询、不往队列里补条目，故这个数里没有"人工并入"这一路）。
  * 只数 A 线条目，按进队时刻 `at` 切日；条目此刻是哪个状态（待打标 / 已入池 / 已标记无风险）都算
  * —— 这三个状态是 A 线条目的全集。二线报备不计入。
  *
@@ -4852,7 +4797,7 @@ const enabledWordCount = computed(() => enabledWords.value.length);
 /**
  * 手动筛查的风险词下拉只列启用中的。停用是维护人给这条规则下的判决——
  * 把停用词摆进选项里（哪怕标着「停用」），等于邀请人把当初停用它的理由重演一遍：
- * 「孩子」一选就是上百条噪音，而筛查结果是要并入待核实队列的。
+ * 「孩子」一选就是上百条噪音，人要找的那一条当场被埋掉。
  */
 const scanWordOptions = computed(
   () => enabledWords.value.map((w) => ({ value: w.id, label: w.word })),
@@ -5100,7 +5045,7 @@ function toggleWordEnabled(w: RiskWord) {
           <div class="dash-grid dash-grid-4">
             <div
               class="dm-cell dm-static"
-              title="当日新进入监控队列的条目数，含手动筛查并入"
+              title="当日由自动识别新进入监控队列的条目数"
             >
               <span class="dm-k">今日发现</span>
               <span class="dm-val"><span class="dm-v">{{ dailyIntake }}</span></span>
@@ -5401,19 +5346,20 @@ function toggleWordEnabled(w: RiskWord) {
                 等于在屏幕上留一个点开什么也做不了的入口。
               -->
               <!--
-                手动筛查退成**动作按钮**：它不是一份平行的清单，而是"往待判里补货"的手段。
+                手动筛查退成**动作按钮**：它不是一份平行的清单，而是一个**查询工具**。
                 点开的仍是原来那套九维筛查条件面板，能力一格没动。
 
-                🔴 **入口本身受打标权门控**（§3.5 / 验收 93：无打标权不展示）：门内的
-                「并入清单」同受这道门（`v-if="canRiskTag"` + `adoptScan()` 的运行时兜底），
-                判据同源取 `canRiskTag`，不另立一份角色表。
+                🔴 **结果只读**（2026-10-08 裁决）：原先结果可以勾选「并入清单」、补条目回「待判」，
+                这条路径整条取消 —— 「实时监控」那一档恒为自动扫库的产出。
+                🔴 **入口本身受打标权门控**（§3.5 / 验收 93：无打标权不展示），判据取 `canRiskTag`，
+                不另立一份角色表。
               -->
               <button
                 v-if="canRiskTag"
                 type="button"
                 class="row-btn scan-entry"
                 :class="{ active: listView === 'scan' }"
-                title="旁路 · 两路自动识别的兜底：实时监控 / 重点工单 都没捞到的单，靠它拿条件去扫存量捞出来；扫出的命中勾选并入清单后，由自动识别把它带进「待判」。它不是链上的一段，是往上游补货的手段"
+                title="旁路 · 存量点查：拿九维条件去扫存量工单，看哪些单上有风险词命中。它只做查询、结果不落库，点行上的工单号进那张单"
                 @click="setListView('scan')"
               >
                 <SearchOutlined :style="{ fontSize: '12px' }" />
@@ -5669,43 +5615,13 @@ function toggleWordEnabled(w: RiskWord) {
             </tr>
           </thead>
           <tbody>
+            <!--
+              🔴 **原先这里还有一支"没有待核实命中的组照实留一行"**（等级 / 风险词 / 时间写「—」、
+              命中内容写「本单暂无待核实命中」、动作走条目打标形态）。它只为**手动筛查并入**的
+              无命中单而留，随 2026-10-08 裁决一并删除：这一档恒为自动扫库的产出
+              （入选判据 ＝ 本单有待核实命中），每一组必有至少一条命中，见 `kwPageGroups`。
+            -->
             <template v-for="g in kwPageGroups" :key="g.row.id">
-              <!-- 没有待核实命中的组（手动筛查并入、尚无命中）照实留一行，不吞：左栏角标数的是工单，少一组就对不上 -->
-              <tr v-if="!g.hits.length">
-                <td v-if="showQueueSelection">
-                  <div class="hit-cb" :class="{ checked: bulkPicked.has(g.row.id) }" @click.stop="toggleBulkPick(g.row.id)">
-                    <CheckOutlined v-if="bulkPicked.has(g.row.id)" :style="{ color: '#fff', fontSize: '10px' }" />
-                  </div>
-                </td>
-                <td><span class="hit-sub">—</span></td>
-                <td><span class="hit-sub">—</span></td>
-                <td class="hit-type-cell">{{ poolTicketTypeOf(g.row) }}</td>
-                <td class="hit-ticket-cell">
-                  <button
-                    type="button"
-                    class="hit-ticket-link"
-                    :title="`${g.row.ticketNo} · ${rowTitleOf(g.row)}`"
-                    @click="openTicket(g.row.ticketNo)"
-                  >{{ rowTitleOf(g.row) }}</button>
-                </td>
-                <td class="hit-excerpt"><span class="hit-sub">本单暂无待核实命中</span></td>
-                <td class="hit-customer-cell">
-                  <span class="hit-clip-line">{{ rowCustomerOf(g.row) }}</span>
-                </td>
-                <td class="hit-handler-cell">
-                  <span class="hit-clip-line" :title="rowHandlerLine(g.row)">{{ rowHandlerLine(g.row) }}</span>
-                </td>
-                <td class="hit-when">—</td>
-                <td class="hit-act-cell">
-                  <button
-                    v-if="canRiskTag"
-                    type="button" class="row-btn row-btn-tag"
-                    title="判定这张单有没有风险、多大：高 / 中 / 低进风险工单池，无风险不进池"
-                    @click="openEntryTag(g.row, 'untagged')"
-                  >风险识别</button>
-                  <span v-else class="hit-sub" title="标记归客诉专员、投诉督导与管理员">—</span>
-                </td>
-              </tr>
               <tr v-for="(h, hi) in g.hits" :key="`${g.row.id}-${h.id}`">
                 <!--
                   类型 / 工单每行重复（不用 rowspan，避免续行列错位）。
@@ -6732,8 +6648,8 @@ function toggleWordEnabled(w: RiskWord) {
             <div class="fi fi-date">
               <span class="fl">建单时间</span>
               <!--
-                不给清除按钮：时间区间清空即"对全库扫一遍"，而扫库的产出是待并入的新命中，
-                一次范围失手就把待核实队列淹没且不可逆。这一维只允许换区间，不允许没有区间。
+                不给清除按钮：时间区间清空即"对全库扫一遍"，通用词一扫上百条，
+                结果页当场被噪音填满。这一维只允许换区间，不允许没有区间。
               -->
               <RangePicker
                 :value="scanDateRange"
@@ -6857,30 +6773,19 @@ function toggleWordEnabled(w: RiskWord) {
         </div>
       </div>
 
-      <!-- 筛查结果条：结果就在下面这张清单里，这里只给统计与并入动作 -->
+      <!--
+        筛查结果条：结果就在下面这张清单里，这里只给统计与退出。
+        🔴 **原先这一条右侧还有「全选新命中 / 已选 N / 并入清单」三件**，随 2026-10-08 裁决删除
+        （手动筛查只做查询，结果不落库）；那句"结果尚未并入，勾选后确认"的提示同去 ——
+        它指向的动作已经不存在。结果态的出路只剩两条：点行上的工单号进那张单，或「退出筛查」。
+      -->
       <div v-if="inScanResult" class="scan-banner">
         <div class="sb-stat">
           扫出 <b>{{ scanResult!.length }}</b> 条
           <span class="sr-fresh">新命中 {{ scanFreshCount }}</span>
-          <span v-if="scanDupCount" class="sr-dup">已在清单 {{ scanDupCount }}</span>
-          <span class="sb-hint">结果尚未并入，勾选后确认</span>
+          <span v-if="scanDupCount" class="sr-dup">已有命中记录 {{ scanDupCount }}</span>
         </div>
-        <!--
-          🔴 **并入那一组按打标权门控**（`canRiskTag`，与本页打标那一套同源）：
-          「并入清单」往「未标记」段补货，补进来的每一条都等着人去打标 —— 这是打标那条链
-          的上游动作，不是查看。只读的投诉督导在这儿本就没有落点，故三件一并不渲染
-          （全选 / 已选 / 并入），只留「退出筛查」这条出路；逐行的勾选框同理，见清单表。
-        -->
         <div class="sb-actions">
-          <template v-if="canRiskTag">
-            <label class="sb-all">
-              <a-checkbox :checked="scanAllPicked" @change="toggleScanPickAll" />全选新命中
-            </label>
-            <span class="sb-picked">已选 {{ scanPicked.size }}</span>
-            <button type="button" class="row-btn row-btn-solid" :disabled="!scanPicked.size" @click="adoptScan">
-              并入清单
-            </button>
-          </template>
           <button type="button" class="link-btn" @click="exitScanResult">退出筛查</button>
         </div>
       </div>
@@ -6929,8 +6834,10 @@ function toggleWordEnabled(w: RiskWord) {
       <table class="hit-table">
         <thead>
           <tr>
-            <!-- 勾选框那一列与「并入清单」同一道门（`canRiskTag`）：勾了却并不进去的勾选框没有用处 -->
-            <th v-if="inScanResult && canRiskTag" style="width: 36px"></th>
+            <!--
+              🔴 **筛查态那一列勾选框已删**（2026-10-08 裁决）：勾选只为「并入清单」而存在，
+              并入取消之后一个勾选框也没有落点，故整列（表头 + 单元格）一并去掉。
+            -->
             <th style="width: 52px">等级</th>
             <th style="width: 120px">风险词</th>
             <th style="width: 200px">工单</th>
@@ -6948,13 +6855,6 @@ function toggleWordEnabled(w: RiskWord) {
               'scan-dup': inScanResult && scanDupIds.has(h.id),
             }"
           >
-            <td v-if="inScanResult && canRiskTag">
-              <a-checkbox
-                :checked="scanPicked.has(h.id)"
-                :disabled="scanDupIds.has(h.id)"
-                @change="toggleScanPick(h.id)"
-              />
-            </td>
             <td>
               <!-- 误报没有等级，这一格就空着（—）；回落到词表预设去补一个，等于给已排除的东西重新贴上风险标 -->
               <span
@@ -6968,9 +6868,12 @@ function toggleWordEnabled(w: RiskWord) {
               <div class="track-word">「{{ h.word }}」</div>
             </td>
             <td>
+              <!--
+                🔴 **工单号在筛查结果态里同样可点**（2026-10-08 裁决的保底要求）：
+                并入取消之后这是结果列表唯一的出口 —— 查到一条，点进那张单去处理。
+              -->
               <button type="button" class="rt-no" @click="openTicket(h.ticketNo)">{{ h.ticketNo }}</button>
               <div class="hit-title">{{ h.title }}</div>
-              <div v-if="isFromScan(h)" class="hit-flag flag-scan">来自手动筛查</div>
               <!--
                 工单级的两条事实都落在工单列：同一列里读"这张单是什么、这张单现在几级、
                 这张单还有几条证据"，比把它们散到等级列与处置列更连贯。
@@ -7001,11 +6904,15 @@ function toggleWordEnabled(w: RiskWord) {
             <td>{{ h.customer }}<div class="hit-sub">{{ h.groupName }} · {{ h.assignee }}</div></td>
             <td class="hit-when">{{ h.when.slice(11) }}</td>
             <td>
-              <!-- 筛查态：这一列说明"这条会不会进清单"，处置动作等并入后再给 -->
+              <!--
+                筛查态：这一列答的是"这条命中在系统里有没有记录"——有记录的那几条
+                能在「命中明细」里查到核实结论，新扫出来的则还没有任何记录。
+                🔴 **结果态不出任何处置动作**：筛查只做查询（2026-10-08 裁决），
+                要处置就点上一列的工单号进那张单。
+              -->
               <template v-if="inScanResult">
-                <span v-if="scanDupIds.has(h.id)" class="state-chip">已在清单</span>
-                <span v-else-if="scanPicked.has(h.id)" class="state-chip sc-will">并入后待核实</span>
-                <span v-else class="state-chip sc-skip">不并入</span>
+                <span v-if="scanDupIds.has(h.id)" class="state-chip">已有命中记录</span>
+                <span v-else class="state-chip sc-will">新命中</span>
               </template>
               <div v-else class="cell-done">
                 <template v-if="isJudged(h)">
@@ -7529,8 +7436,6 @@ function toggleWordEnabled(w: RiskWord) {
               </div>
               <div class="tt-change">
                 {{ e.level ? `${e.level}危` : '无风险' }}
-                <!-- 并入痕迹记在标记记录上，不进来源列（§5A.1 ④） -->
-                <span v-if="e.viaManualScan" class="tt-role">由手动筛查并入</span>
                 <span v-if="e.viaHitVerify" class="tt-role">由命中核实</span>
               </div>
               <!--
@@ -8632,11 +8537,10 @@ function toggleWordEnabled(w: RiskWord) {
 .grade-pill-inline { padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; }
 
 .hit-flag { display: inline-block; margin-top: 4px; padding: 0 6px; border-radius: 3px; font-size: 10px; }
-.flag-scan { background: #EFF6FF; color: #1D4ED8; }
 
 /* 工单级事实：同单互见徽标 + 工单级等级提示，同处工单列 */
 .ticket-facts { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
-/* 徽标可点，故给出按钮形态与主色描边——不可点的 flag-scan 保持纯色块，两者不能长得一样 */
+/* 徽标可点，故给出按钮形态与主色描边，与同列不可点的纯文本标记区分开 */
 .flag-sib {
   border: 1px solid #C7D2FE; background: #EEF2FF; color: #4338CA;
   font-family: inherit; line-height: 16px; cursor: pointer;
@@ -9042,7 +8946,6 @@ function toggleWordEnabled(w: RiskWord) {
 .sb-stat b { font-size: 16px; color: #0f172a; }
 .sr-fresh { margin-left: 8px; padding: 0 7px; border-radius: 10px; font-size: 12px; background: #dcfce7; color: #15803d; }
 .sr-dup { margin-left: 6px; padding: 0 7px; border-radius: 10px; font-size: 12px; background: #f1f5f9; color: #64748b; }
-.sb-hint { margin-left: 10px; font-size: 12px; color: #94a3b8; }
 /* 单工单焦点条：与筛查结果条同形，靛蓝一色区分"这是收窄不是新数据" */
 .focus-banner {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -9063,13 +8966,10 @@ function toggleWordEnabled(w: RiskWord) {
 .fb-x { font-size: 13px; line-height: 1; }
 
 .sb-actions { display: inline-flex; align-items: center; gap: 12px; }
-.sb-all { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: #64748b; cursor: pointer; }
-.sb-picked { font-size: 12px; color: #64748b; }
 
 .hit-table tr.scan-dup { opacity: 0.55; }
 .state-chip { padding: 1px 8px; border-radius: 10px; font-size: 12px; background: #f1f5f9; color: #64748b; }
 .state-chip.sc-will { background: #dcfce7; color: #15803d; }
-.state-chip.sc-skip { background: #fff; color: #94a3b8; border: 1px solid #e2e8f0; }
 /* 开始筛查：主动作，与两个 link 按钮拉开层级 */
 .scan-go {
   display: inline-flex; align-items: center; justify-content: center; gap: 4px;

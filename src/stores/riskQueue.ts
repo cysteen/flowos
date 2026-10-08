@@ -74,7 +74,7 @@ export interface RiskQueueEntry {
   id: string;
   ticketNo: string;
   /**
-   * 自动识别来源两类（实时监控 / 重点工单），见 `QUEUE_SOURCES`。手动筛查并入的也写「实时监控」。
+   * 自动识别来源两类（实时监控 / 重点工单），见 `QUEUE_SOURCES`。两类都是**自动扫库**捞的。
    *
    * 🔴 **值域是 `MonitorSource` 而不是 `QueueSource`**（2026-09-29 裁决）：除那两类之外，
    * 还有**恰好一种**条目会带「二线报备」这个来源 —— 报备线的评估弹窗给出风险等级时，
@@ -82,11 +82,6 @@ export interface RiskQueueEntry {
    * 建出来即落已判段，故「未标记」段仍只有实时监控 / 重点工单两路（那条恒等式不受影响）。
    */
   source: MonitorSource;
-  /**
-   * 本条由**手动筛查并入**监控（《【930】》§5A.1 ④）。只留痕：打标时抄到标记记录上
-   * （`RiskTagRecord.viaManualScan`），不改来源、不参与归属与计数。
-   */
-  viaManualScan?: boolean;
   /** 分派给谁（客诉专员姓名）。空 ＝ 待分派。**进池之后才谈得上它** */
   assignee?: string;
   desc: string;
@@ -180,8 +175,8 @@ function autoEntry(
  *   · **投诉单** —— 客诉专员在工单处理页自行打标 → 吴投诉；
  *   · **非投诉单** —— 处理人不能打标，一律由**审核人员在监控后台打** → 两位投诉督导。
  *     （🔴 这里原来还写着"靠命中规则"：系统里没有自动打标，见 `recordTag` 里那段说明。）
- * 例外只有一处：`rr-010` 是**手动筛查并入**的投诉单（来源仍写「实时监控」，并入痕迹记在
- * `viaManualScan`），它走的是监控后台那条路而不是工单处理页，故落款是督导（与命中表里 h5 的核实人一致）。
+ * 例外只有一处：`rr-010` 这张投诉单的标记是**在监控后台打的**（它在命中表里的那条命中 h5
+ * 由郑监控核实过），走的不是工单处理页那条路，故落款是督导（与命中表里 h5 的核实人一致）。
  */
 const SEED_TAGGERS = {
   /** 郑监控 · 投诉督导 —— 监控后台的主力审核人，非投诉单那一路大多是他判的 */
@@ -425,7 +420,6 @@ const SEED: RiskQueueEntry[] = [
     id: 'rr-010',
     ticketNo: 'IFLYTS-20260731-00001',
     source: '实时监控',
-    viaManualScan: true,
     desc: '沟通记录命中风险词，已纳入实时监控。',
     at: todayStamp(110),
     status: '待分派',
@@ -434,7 +428,6 @@ const SEED: RiskQueueEntry[] = [
       note: '同一客户第二次命中高危词，已上报法务',
       ...SEED_TAGGERS.zheng,
       at: todayStamp(95),
-      viaManualScan: true,
     },
     verify: {
       verdict: '成立',
@@ -1097,9 +1090,15 @@ const SEED: RiskQueueEntry[] = [
  *     （配对 `riskReports` 的 `rr-012`）。**条数变了**：不升号的话，保质期内打开过本页的人
  *     读到的旧快照里没有这一条，于是「风险来源」列的显示词「风险报备」与报备线弹窗的
  *     改判形态在他那边一处都演不出来，而同屏的计数已经按新种子在算。
+ *   · v18 → v19：**手动筛查的「并入」整条取消**（2026-10-08 裁决：筛查只做查询，
+ *     实时监控恒为自动扫库）。条目与标记记录上的 `viaManualScan` 一并删除，
+ *     `adoptScanTickets` 这条落库路径不再存在。
+ *     🔴 **必须升号**：v18 那份里可能躺着并入生成的 `rq-scan-*` 条目 —— 它来源写「实时监控」、
+ *     却没有任何命中记录。读进来会落在「待判 · 实时监控」档里，而那一档现在只渲染带命中的组，
+ *     于是左栏角标数得到它、清单里一行都看不见。
  */
 const LS_KEY = 'flowos-risk-queue';
-const LS_VERSION = 18;
+const LS_VERSION = 19;
 
 /**
  * 缓存"新不新"的判据：取**标记时间**里最新的那一个。
@@ -1355,7 +1354,7 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
    */
   function tagSeedEntryOf(e: RiskQueueEntry): RiskTagEntry | undefined {
     if (!e.tag) return undefined;
-    const { result, note, by, byRole, at, amendReason, viaManualScan, viaHitVerify } = e.tag;
+    const { result, note, by, byRole, at, amendReason, viaHitVerify } = e.tag;
     return {
       level: isPoolLevel(result) ? result : null,
       note,
@@ -1363,7 +1362,6 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
       byRole,
       at,
       ...(amendReason ? { amendReason } : {}),
-      ...(viaManualScan ? { viaManualScan } : {}),
       ...(viaHitVerify ? { viaHitVerify } : {}),
     };
   }
@@ -1443,8 +1441,6 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
       byRole: input.byRole,
       at: input.at,
       ...(input.amendReason ? { amendReason: input.amendReason } : {}),
-      // 由手动筛查并入的条目，标记记录上标明「由手动筛查并入」（§5A.1 ④），来源列照旧写「实时监控」
-      ...(e.viaManualScan ? { viaManualScan: true } : {}),
       // 由命中核实产出的打标，记录上标明「由命中核实」（只挂在这一次的记录上）
       ...(input.viaHitVerify ? { viaHitVerify: true } : {}),
     };
@@ -1457,7 +1453,6 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
       byRole: input.byRole,
       at: input.at,
       ...(input.amendReason ? { amendReason: input.amendReason } : {}),
-      ...(e.viaManualScan ? { viaManualScan: true } : {}),
       ...(input.viaHitVerify ? { viaHitVerify: true } : {}),
     });
 
@@ -1719,7 +1714,7 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
   function syncAutoEntriesWith(fromSeed: boolean): number {
     /*
      * 先按固定次序校一遍**还没打标**的条目的归属：本单有待核实命中、条目却挂在「重点工单」
-     * （例如手动筛查并入的命中落在一张早已在监控里的投诉单上）→ 改归「实时监控」，
+     * （例如一张早已按工单属性进了监控的投诉单，后来又被词表捞出一条新命中）→ 改归「实时监控」，
      * 召回清单才列得出这几条命中。反方向（命中全部核实完）不在这里做：那要由核实的人
      * 当场决定改归还是打为无风险，见 `verifyHit`。
      */
@@ -1766,35 +1761,11 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
     return added.length;
   }
 
-  /**
-   * **手动筛查「并入清单」**：勾选并入的命中所在的单，还没有监控条目的，补一条来源「实时监控」、
-   * 进监控时刻 ＝ 并入时刻、带 `viaManualScan` 的条目（§5A.1 ④）。
-   * 已有条目的单不动（它早已在监控里，谈不上"由手动筛查并入"）；终态单、工单库里查不到的单、
-   * 已有工单级风险等级的单不补 —— 与 `syncAutoEntries` 同一套入选口径。
-   * 返回本次补了几条。
+  /*
+   * 🔴 **原先这里有一个 `adoptScanTickets`**（手动筛查「并入清单」→ 补一条来源「实时监控」、
+   * 带 `viaManualScan` 的条目）。随 2026-10-08 裁决整条删除：**手动筛查只做查询**，
+   * 结果不落库；「实时监控」这一档恒为自动扫库的产出，不再有人工并入这条入口。
    */
-  function adoptScanTickets(ticketNos: string[], at: string): number {
-    const has = new Set(entries.value.map((e) => e.ticketNo));
-    let n = 0;
-    for (const no of ticketNos) {
-      if (has.has(no)) continue;
-      const t: Ticket | undefined = TICKETS.find((x) => x.no === no) ?? useDerivedTicketStore().find(no);
-      if (!t || isTicketClosed(t.nodeStatus as TicketStatus)) continue;
-      if (tags.ticketGradeOf(no) !== null) continue;
-      entries.value.push(autoEntry({
-        id: `rq-scan-${Date.now()}-${no}`,
-        ticketNo: no,
-        source: '实时监控',
-        viaManualScan: true,
-        desc: '手动筛查命中风险词，并入实时监控，待标记。',
-        at,
-        status: '实时监控中',
-      }));
-      has.add(no);
-      n += 1;
-    }
-    return n;
-  }
 
   /**
    * 按**工单号**打标。打标弹窗是从命中侧 / 工单页点开的，那里手上只有单号，没有条目 id。
@@ -1936,7 +1907,6 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
     verifyHit,
     ensureEntryFor,
     syncAutoEntries,
-    adoptScanTickets,
     autoSourceFor,
     tagBlockReasonOf,
   };
