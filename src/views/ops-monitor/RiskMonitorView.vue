@@ -188,6 +188,8 @@ const listView = ref<ListView>('realtime');
  * `reported`（二线报备已出结论）两档**随左栏那两档一并删除** ——
  *   · **无风险不进已判**：判为无风险的离开漏斗，`已判 ＝ 全部有风险`；
  *   · **报备不在后台展示**：报备只在前台（工单工作台「风险报备池」）露出。
+ * 🔴 **已判段本轮改成在办口径**（2026-10-08 拍板）：`已判 ＝ 在办 ∧ 标注了风险等级`，
+ * 原单进终态即退出该段（哪怕条目已出结论），判据与待判段同一个 —— 见 `judgedUniverse`。
  * 两档的条目 / 报备单**数据照旧在 store 里**（`noRiskEntries` / `reports`），
  * 删掉的只是本页这两个视图与左栏那两档；页头「今日发现」「今日标记」仍照各自口径数无风险。
  *
@@ -2719,10 +2721,28 @@ function rowOfEntry(e: RiskQueueEntry): QueueRow {
  */
 const untaggedUniverse = computed<QueueRow[]>(() => reportStore.monitoringEntries
   .map(rowOfEntry)
-  .filter((r) => {
-    const t = ticketOfRow(r);
-    return !t || isLiveTicket(t);
-  }));
+  .filter(isLiveRow));
+
+/**
+ * 「已判」的**全集 ＝「全部有风险」**（未过班组筛选）＝ **标注了风险等级（高 / 中 / 低）、
+ * 且工单在办的条目**。
+ *
+ * 🔴 **本段本轮改成在办口径**（2026-10-08 拍板，用户原话「已判，在行工单 && 标注了风险等级」）。
+ * 此前它是**历史累计**：条目进段之后不因原单进终态而退出。改后两段同为在办口径，
+ * 故原单一进终态，哪怕条目**已经出过结论**也退出已判段。
+ *
+ * 🔴 **判据与待判段逐字同一个**（`isLiveRow`，不另写一份）：
+ *   · 「无风险不进已判」这条不变 —— 底表仍是 `pooledEntries`（只收打标为高 / 中 / 低的），
+ *     判为无风险的照旧离开漏斗；
+ *   · 工单库与派生库都查不到的条目**照实留着**，不吞 —— 那是数据异常，不是终态。
+ *
+ * 🔴 **本页唯一一份**：左栏已判页签 / 「全部有风险」三档 / 「按标记人」各行、
+ * 以及页头「风险工单」块的四个数，全部由它派生（见 `pooledAllCount` 那段说明），
+ * 故"页头 ≡ 左栏已判"这条恒等式在改口径之后自动成立，不需要分别再改一遍。
+ */
+const judgedUniverse = computed<RiskQueueEntry[]>(
+  () => reportStore.pooledEntries.filter(isLiveRow),
+);
 /*
  * 命中核实结论与打标回写的工单级等级一变，按两类判据重补一遍条目：
  * 例如一条命中由「成立」改判为「误报」后工单级等级清空，这张单应当回到「未标记」。
@@ -2837,8 +2857,20 @@ const untaggedStatusOptions = computed(() => untaggedTicketOptions((t) => ticket
  * 第一条不变量破了。故 `untaggedTicketRows` 对 null 的处理是"照实留在行集里、
  * 用行自己已知的信息补齐一张最小工单"，而不是 filter 掉，见那一段。
  */
-function ticketOfRow(r: QueueRow): Ticket | null {
+function ticketOfRow(r: { ticketNo: string }): Ticket | null {
   return TICKET_BY_NO.get(r.ticketNo) ?? derivedTickets.find(r.ticketNo) ?? null;
+}
+
+/**
+ * 这一行（视图行或条目）的原单**还在办**没有 —— 待判段与已判段**同取这一个判据**
+ * （2026-10-08 拍板：已判也改在办口径）。
+ *
+ * 🔴 **查不到原单一律放行**：那是数据异常、不是终态。滤掉的话这批行会悄悄从两段里消失，
+ * 而左栏角标仍数着它们 —— 行数与角标对不上是这一列的第一条不变量破了。
+ */
+function isLiveRow(r: { ticketNo: string }): boolean {
+  const t = ticketOfRow(r);
+  return !t || isLiveTicket(t);
 }
 
 /**
@@ -3365,7 +3397,7 @@ function taggerOf(e: RiskQueueEntry): string {
  * 人再也看不出该切到谁。
  */
 const taggerChips = computed(() => {
-  const base = inGroup(reportStore.pooledEntries);
+  const base = inGroup(judgedUniverse.value);
   const m = new Map<string, number>();
   base.forEach((e) => {
     const who = taggerOf(e);
@@ -3397,9 +3429,9 @@ const taggerChips = computed(() => {
 
 const queueBase = computed<QueueRow[]>(() => {
   if (queueView.value === 'monitoring') return untaggedRows.value;
-  const pooled = reportStore.pooledEntries;
-  // 🔴 **两个轴同出 `pooledEntries` 这一份行集**：按风险等级 / 按标记人
+  // 🔴 **两个轴同出 `judgedUniverse` 这一份行集**（已过在办过滤）：按风险等级 / 按标记人
   // 是同一批条目的两种看法，差别只在各自多一层收窄。
+  const pooled = judgedUniverse.value;
   // 🔴 原先还有第三个轴「按处置阶段」，已随 2026-10-07 裁决删除 ——
   // 池内阶段的真源是「评估处置工作面」那张池行表的「处置阶段」列，同一个维度不摆两处。
   const picked = tagLevelFilter.value === 'tagger'
@@ -4238,8 +4270,10 @@ function groupNameOf(ticketNo: string): string {
 // 于是已判段只剩两个轴：**按风险等级（全部有风险）** 与 **按标记人**，两者总数恒等。
 // 链路真实只有两段：还没下结论 → 已下结论。
 //
-// 🔴 **两段的数不构成递减、不可相减**：未标记是**此刻的存量**、已标记是**历史累计**，
-// 两批不相交、也没有父子关系。跑上三个月已标记必然远大于未标记，那是正常状态。
+// 🔴 **两段同为在办口径**（2026-10-08 拍板：已判也改在办）：
+// 未标记 ＝ 在办 ∧ 还没下结论、已标记 ＝ 在办 ∧ 已标注风险等级（高 / 中 / 低），
+// 判据逐字同一个（`isLiveRow`），原单一进终态两段都退出。
+// 🔴 **但两段的数仍不构成递减、不可相减**：两批**互斥**（有没有结论），没有父子关系；
 // 页签之间那枚「▸」表达的是工作流方向，不是数量关系。
 //
 // 🔴 **手动筛查与命中明细不在这一列里**：它们不是链上的一段。前者是"往「全部待判」里补货、给两路规则兜底"的动作、
@@ -4356,14 +4390,17 @@ interface RailGroup {
  *     而"同屏两个「高危」不同数"正是 2026-10-07 这一轮要治的病
  *     （被删掉的 `liveTagLevelCounts` 就是那个病例：它按工单去重取最高，与左栏天生不等）。
  * 🔴 两者都已过班组筛选（`inGroup`），故切班组时页头与左栏同进同退。
+ * 🔴 两者的底表都是 `judgedUniverse`（**已过在办过滤**，2026-10-08 拍板），
+ *     不是 `reportStore.pooledEntries` 那一整份 —— 口径只在那一个 computed 里定义一次，
+ *     页头这四个数因此跟着一起变，"页头 ≡ 左栏已判"不需要另外对账。
  */
 
-/** 已判段总数 ＝ 池内全部条目（已过班组筛选）。页头「风险工单总数」与左栏已判页签同取它 */
-const pooledAllCount = computed(() => inGroup(reportStore.pooledEntries).length);
+/** 已判段总数 ＝ 在办且已标注等级的条目（已过班组筛选）。页头「风险工单总数」与左栏已判页签同取它 */
+const pooledAllCount = computed(() => inGroup(judgedUniverse.value).length);
 
-/** 池内某一等级的条目数（已过班组筛选）。判档读现行 `tag.result`，与池内状态无关 */
+/** 已判段里某一等级的条目数（已过班组筛选）。判档读现行 `tag.result`，与池内状态无关 */
 function pooledLevelCount(lv: RiskLevel) {
-  return inGroup(reportStore.pooledEntries.filter((e) => e.tag?.result === lv)).length;
+  return inGroup(judgedUniverse.value.filter((e) => e.tag?.result === lv)).length;
 }
 
 /**
@@ -4371,7 +4408,7 @@ function pooledLevelCount(lv: RiskLevel) {
  *
  * 🔴 **分母是风险工单（＝左栏已判那一批监控条目），不是「重点工单」块那一行的全部在办工单**。
  * 同一个词「工单类型」在同屏出现两次、分母不同，两行**不可相减**；各自的 title 写死分母。
- * 🔴 **与本块另外四个数走同一批条目**（`inGroup(reportStore.pooledEntries)`，即
+ * 🔴 **与本块另外四个数走同一批条目**（`inGroup(judgedUniverse)`，即
  * `pooledAllCount` / `pooledLevelCount` 读的那一份），故 **Σ各格 ≡ 风险工单总数**
  * 由构造成立，不是事后对账凑出来的；要改口径仍然只能改那一份，不许在这里另起一条查询。
  *
@@ -4384,7 +4421,7 @@ const POOLED_TYPE_KEYS = ['咨询', '建议', '商机', '投诉'] as const;
 const POOLED_TYPE_REST = '其他';
 const pooledTicketTypeCounts = computed<Record<string, number>>(() => {
   const base: Record<string, number> = { 咨询: 0, 建议: 0, 商机: 0, 投诉: 0, [POOLED_TYPE_REST]: 0 };
-  for (const e of inGroup(reportStore.pooledEntries)) {
+  for (const e of inGroup(judgedUniverse.value)) {
     const t = poolTicketTypeOf(e);
     base[(POOLED_TYPE_KEYS as readonly string[]).includes(t) ? t : POOLED_TYPE_REST] += 1;
   }
@@ -4501,8 +4538,8 @@ const railGroups = computed<RailGroup[]>(() => {
         + '🔴 两路互斥，两路之和 ＝ 这个数（恒等号，不是约等）。'
         + '🔴 它不是"整本工单库里没人标过的单"：未标记是每张单与生俱来的默认态，'
         + '那样数出来的是全部在办单、永远清不零，真该判的那批反而被淹没。'
-        + '🔴 这个数与「已标记」那个数分属两批、不相减也不互校：那边是历史累计打过标的，'
-        + '跑久了必然比这边大，那是正常状态、不是漏损。'
+        + '🔴 这个数与「已标记」那个数分属两批、不相减也不互校：两段同为在办口径，'
+        + '差别只在有没有下过结论，两批互斥、没有父子关系。'
         // 开着筛选时被筛的那一路显示「筛后 / 全量」，斜杠后那个数仍进这个恒等式 ——
         // 数字自己把话说清楚了，这里不再补一句文字解释
         + '🔴 开着清单上那条筛选时，被筛的那一路摆成「筛后 / 全量」，斜杠后那两个数之和仍 ＝ 这个数',
@@ -4521,8 +4558,9 @@ const railGroups = computed<RailGroup[]>(() => {
       defaultKey: 'level:all',
       title: '已标记',
       segLabel: '已判',
-      title2: '【已标记】已经有**风险结论**的条目 —— 历史累计，不是此刻的存量。'
-        + '🔴 这个数与「未标记」那个数分属两批、不相减也不互校：它比那边大是正常状态。'
+      title2: '【已标记】**在办工单**上已经标注了风险等级（高 / 中 / 低）的条目 —— 此刻的存量。'
+        + '🔴 原单进终态即退出本段（与「未标记」同一道在办判据），哪怕条目已经出过结论。'
+        + '🔴 这个数与「未标记」那个数分属两批、不相减也不互校：差别在有没有下过结论，两批互斥。'
         + '这一段摆两种并列的分类：按风险等级（全部有风险）、按标记人 —— 同一批条目两个角度。'
         + '页签上的数 ＝ 全部有风险（已判 ＝ 必须标注了风险等级：高 / 中 / 低）。'
         + '🔴 高 + 中 + 低 ≡ 全部有风险 ≡ 按标记人各项之和 ≡ 页签上这个数，四处是同一批行；'
@@ -5172,13 +5210,13 @@ function toggleWordEnabled(w: RiskWord) {
         <div class="effect-pane effect-pane--report">
           <h2
             class="pane-title"
-            title="已判出风险等级（高 / 中 / 低）的监控条目 · 🔴 与左栏「已判」段恒等：总数 ≡ 左栏已判页签 ≡ 「全部有风险」，高 / 中 / 低 ≡ 左栏那三档，两处同取一个派生值，改一处必须两处一起改。判为无风险的不在这一批（不进池、离开漏斗）。🔴 本块跟着「班组」走（与左栏同进同退，恒等的必然结果）；左边「实时监控」「重点工单」两块恒为全中心、不随班组变 —— 同一排三块，分母不同，不要横着比。点任一枚进「评估处置」工作面处置这一批"
+            title="在办工单上已判出风险等级（高 / 中 / 低）的监控条目 · 🔴 与左栏「已判」段恒等：总数 ≡ 左栏已判页签 ≡ 「全部有风险」，高 / 中 / 低 ≡ 左栏那三档，两处同取一个派生值，改一处必须两处一起改。判为无风险的不在这一批（不进池、离开漏斗）；原单进终态的也不在（与左栏同一道在办判据）。🔴 本块跟着「班组」走（与左栏同进同退，恒等的必然结果）；左边「实时监控」「重点工单」两块恒为全中心、不随班组变 —— 同一排三块，分母不同，不要横着比。点任一枚进「评估处置」工作面处置这一批"
           >风险工单</h2>
           <div class="dash-grid dash-grid-4">
             <button
               type="button"
               class="dm-cell"
-              title="已判出风险等级（高 / 中 / 低）的监控条目总数 ≡ 左栏「已判」页签上那个数 ≡ 左栏「全部有风险」。点它进「评估处置」工作面 · 不限阶段"
+              title="在办工单上已判出风险等级（高 / 中 / 低）的监控条目总数 ≡ 左栏「已判」页签上那个数 ≡ 左栏「全部有风险」。点它进「评估处置」工作面 · 不限阶段"
               @click="drillPooled('all')"
             >
               <span class="dm-k">风险工单总数</span>
@@ -5245,8 +5283,8 @@ function toggleWordEnabled(w: RiskWord) {
             🔴 原先它是横贯整个工作面的一条通栏页签，为两枚按钮吃掉一整行高度、
             把右侧的表整个往下压；搬进左栏之后那一条高度全部还给了清单。
             🔴 **中间那枚「▸」表达的是工作流方向**（未标记 —打标→ 已标记），
-            **不是数量递减**：左边是此刻未打标的存量、右边是历史累计打过标的，
-            两批不相交，已标记大于未标记是正常状态。两个数不相减、不互校。
+            **不是数量递减**：两段同为在办口径（2026-10-08 拍板），差别只在有没有下过结论，
+            两批互斥、不相交。两个数不相减、不互校。
             🔴 **选中态必须与下面 `.fr-item` 的选中态分层**：它是上位开关（切阶段），
             下面是档位（切档）。两处长成一样的蓝块时，一列里上下两个蓝块，
             人分不清哪个管哪个；故这里走**白底 + 阴影浮起**的分段样式，
