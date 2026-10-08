@@ -98,7 +98,7 @@ import { TICKETS } from '@/mock/tickets';
 // 本文件再抄一份，改天业务把「普通加急」改个说法，这一列就会静默地留在旧词上。
 // `canReleaseAnyRiskReport` 是**管理员兜底释放**那一路的唯一判据，与 B 线报备池共用同一份 ——
 // 两个池的释放口径 PRD 明写「逐条同 §5.5」（§5B.4），各写一份就会各放各的权
-import { canReleaseAnyRiskReport, STATUS_GROUP, ticketStatusDisplayName, resolveTicketGroupNames, type Priority, type Ticket, type TicketType } from '@/views/tickets/types/ticket';
+import { canReleaseAnyRiskReport, isLiveTicket as isLiveTicketShared, ticketStatusDisplayName, resolveTicketGroupNames, type Priority, type Ticket, type TicketType } from '@/views/tickets/types/ticket';
 import { PRIORITY_OPTIONS } from '@/views/tickets/types/createTicket';
 // 🔴 清单表直接复用工作台那张富列表，不在本页另画一张长得像的：
 // 「重点工单」那一路的行**就是工单**，人在这一档要判的也正是工单本身
@@ -364,14 +364,14 @@ const derivedTickets = useDerivedTicketStore();
  * 「已升级投诉」是 `loadDetail` 从台账现推出来的。只读 `nodeStatus` 的话，
  * 同一张单在工单详情页是终态、在本页却还算在办，本页整条漏斗跟着算错。
  */
-function escalatedAwayOf(t: Ticket): boolean {
-  return !!t.escalatedToNo || !!derivedTickets.escalatedToNoOf(t.no);
-}
 /**
- * 🔴 **本页唯一一份"在办"判据**（待判段 / 已判段 / 评估处置工作面三处同取它，见 `isLiveRow`）。
- * 两条腿：基线 §1 的十个终态子状态，加上上面那条升级判据。
+ * 🔴 **"在办"判据只有一份，在 `types/ticket.ts`**（`isLiveTicketShared`）。
+ * 本页待判段 / 已判段 / 评估处置工作面三处同取它（见 `isLiveRow`），
+ * 页头「重点工单」那一块、以及那一块下钻到工单列表时传的 `scope=live` 也同取它 ——
+ * 卡上写 38、点进去躺着 47 这种事，根子就是各写一份。
+ * ⚠️ 原先这里另有一个 `escalatedAwayOf`，已并进那一份共用判据的第二条腿。
  */
-const isLiveTicket = (t: Ticket) => STATUS_GROUP[t.nodeStatus] !== '终态' && !escalatedAwayOf(t);
+const isLiveTicket = (t: Ticket) => isLiveTicketShared(t, derivedTickets.escalatedToNoOf);
 
 /**
  * 本块的底表 ＝ **全部在办工单**。下面两行分布同取这一份，
@@ -4942,6 +4942,34 @@ const showGroupFilter = computed(() => listView.value === 'realtime' || listView
 // 口径没丢：它本来就是左栏每一档按钮 `title` 的原文，悬停仍在。
 //
 function openTicket(no: string) { router.push(`/tickets/${no}`); }
+
+/**
+ * 页头「重点工单」块 · 优先级那四格的下钻：**落到工单列表**（查询中心「查工单」），
+ * 按"在办 ∧ 该优先级"筛，**条数与卡上的数逐个相等**（实测 P0 15 / P1 28 / P2 38 / P3 5）。
+ *
+ * 🔴 **`live: '1'` 这一维非带不可**：本块分母是"在办"（`isLiveTicket`：非终态 ∧ 未被升级带走），
+ * 而列表那边的 `status` 落到 `nodeStatus` 是**单值精确匹配**，表达不了一个状态集合减一个排除项。
+ * 只传 `priority` 的话，列表会把终态单也算进去 —— 实测 P2 卡上 38、列表 47，差的 9 条是终态。
+ * 判据两边**同取 `types/ticket.ts` 那一份 `isLiveTicket`**，不各写一份。
+ * 🔴 **不落到左栏「待判 · 重点工单」那一档**：那一档同名**不同集合**（更窄：在办 ∧ 未标注等级
+ * ∧（投诉 ∨ P0/P1），实测 P2 只有 2 条），点「38」落到写着「2」的档上，口径当场对不上。
+ * ⚠️ `scope` / `view` 两个键按本仓既有下钻写法带（见 `OpsMonitorView` / `TeamBoardView`）：
+ * `scope` 是查询中心的**数据范围**（all / team / mine），与这里的"在办"不是一件事，别混用。
+ */
+function drillFocusPriority(p: Priority) {
+  router.push({
+    path: '/query',
+    query: {
+      tab: 'tickets',
+      scope: 'all',
+      view: 'all',
+      live: '1',
+      priority: p,
+      _from: `ops.flow.focus.${p.toLowerCase()}`,
+      _label: `重点工单 · ${PRIORITY_RAIL_LABEL[p]}`,
+    },
+  });
+}
 /**
  * 弹窗内点单号跳工单页：先关弹窗并清掉目标再跳。
  * 本页在 keep-alive 里，弹窗挂在 body 上，不关的话会叠在工单页之上，回到本页时也会原样再出现。
@@ -5258,8 +5286,17 @@ function toggleWordEnabled(w: RiskWord) {
 
         <!--
           中栏 ＝ 重点工单。分母是**工单**，另外两栏一个是今日监控流量、一个是已判条目，
-          三栏并排最容易被读成一路数，故每个数各自 title 写明分母，且**整栏不可点**：
-          点出去必然落在另一个分母的清单上，数对不上比不能点更糟。
+          三栏并排最容易被读成一路数，故每个数各自 title 写明分母。
+
+          🔴 **优先级那四格可点，落到工单列表**（2026-10-09 裁决）：
+          先前整栏不可点，理由是"点出去必然落在另一个分母的清单上"。现在那条理由不成立了 ——
+          下钻带的是 `scope=live`（在办，判据取全站那一份 `isLiveTicket`，与本块同源）
+          ＋ `priority=Px`，**落地列表的条数与卡上的数逐个相等**，不再是两个分母。
+          🔴 **不落到左栏那一档**：左栏「待判 · 重点工单」同名**不同集合**（更窄：
+          在办 ∧ 未标注等级 ∧（投诉 ∨ P0/P1），实测 P2 那一档只有 2 条），
+          点「38」落到一个写着「2」的档上，正是本文件反复写死的那个坑。
+          ⚠️ 第二行「工单类型」五格**本轮不做**（业务拍板）：列表那条路由还没有「类型」这一维，
+          不为此新造一个 query 参数。两行同源同分母，哪天要做就两行一起。
 
           🔴 **块名「重点工单」与左栏来源档「重点工单」同名、不同集合**（2026-10-07 业务拍板
           「不冲突，重点工单都是在办的工单」，块名保留）：左栏那一档是**自动纳入监控的判据**、
@@ -5279,15 +5316,17 @@ function toggleWordEnabled(w: RiskWord) {
           >重点工单</h2>
           <!-- 第一行 · 优先级四维。`Priority` 只有这四个取值，故 P0 + P1 + P2 + P3 ≡ 在办工单总数 -->
           <div class="dash-grid dash-grid-4">
-            <div
+            <button
               v-for="p in HEAD_PRIORITY_KEYS"
               :key="p"
-              class="dm-cell dm-static"
+              type="button"
+              class="dm-cell"
               :title="`在办且优先级为「${PRIORITY_RAIL_LABEL[p]}」的工单数 · 本块分母 ＝ 全部在办工单；P0 + P1 + P2 + P3 ＝ 在办工单总数`"
+              @click="drillFocusPriority(p)"
             >
               <span class="dm-k">{{ PRIORITY_RAIL_LABEL[p] }}</span>
               <span class="dm-val"><span class="dm-v">{{ livePriorityCounts[p] }}</span></span>
-            </div>
+            </button>
           </div>
           <!--
             第二行 · 工单类型。业务点名的是前四类，🔴 **「刷机」第五格照常摆上**：

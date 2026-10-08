@@ -56,11 +56,15 @@ import {
 
   canTransferInQueryCenter,
 
+  isLiveTicket,
+
   queryCenterRowActions,
 
   type Ticket,
 
 } from './types/ticket';
+
+import { useDerivedTicketStore } from '@/stores/derivedTickets';
 
 import { queryCenterLocation } from '@/views/query/queryCenterRoute';
 
@@ -71,6 +75,8 @@ import { QUERY_CENTER_CREATE_ROLES } from '@/config/roles';
 import { useUserStore } from '@/stores/user';
 
 
+
+const derivedTickets = useDerivedTicketStore();
 
 const props = defineProps<{ embedded?: boolean; filtersExpanded?: boolean }>();
 
@@ -109,7 +115,25 @@ const createOpen = ref(false);
 
 const { optionalVisible, applyOptionalVisible } = useMineQueryFields();
 
-const qcFilterBar = useQueryCenterFilterBar(list.baseRows, list.query, applyOptionalVisible);
+/**
+ * 下钻带来的**范围**收窄（当前只有 `live=1` ＝ 只看在办）。
+ *
+ * 🔴 **为什么不走 `status`**：`status` 落到 `nodeStatus`，`matchMineQuery` 判的是
+ * **单值精确匹配**；而"在办"是"**非终态 ∧ 未被升级带走**"——一个状态集合减一个排除项，
+ * 任何一个 `status` 取值都表达不了。照单值传的话，页头卡上写 38、这里躺着 47。
+ * 🔴 **判据取全站那一份 `isLiveTicket`**（`types/ticket.ts`），与页头那张卡**同源**，
+ * 本页不另写一份 —— 两份迟早对不上，而对不上的那几条谁也找不出来在哪。
+ * 🔴 **chip 上的数也要跟着它走**（传进 `useQueryCenterFilterBar`）：不跟的话会出现
+ * 「全部 17」而清单里躺着 15。
+ */
+const routeScopePredicate = ref<((t: Ticket) => boolean) | null>(null);
+
+const qcFilterBar = useQueryCenterFilterBar(
+  list.baseRows,
+  list.query,
+  applyOptionalVisible,
+  routeScopePredicate,
+);
 
 
 
@@ -136,9 +160,16 @@ const emptyKind = computed<'none' | 'search' | 'filter'>(() => {
 /** chip 区：内置「全部 / 临期 / 已超时」三枚常驻，故查询中心一律渲染 */
 const showChipRow = computed(() => props.embedded);
 
-/** SLA chip 只叠加行过滤，不写进结构化筛选条件 */
+/**
+ * SLA chip 与范围收窄**叠加**后一起交给 `extraFilter`。
+ * ⚠️ 两者都走 `extraFilter` 这一个口子，各自直接赋值的话后写的那个会把前一个顶掉。
+ */
 watchEffect(() => {
-  if (props.embedded) list.extraFilter.value = qcFilterBar.slaPredicate.value;
+  const sla = props.embedded ? qcFilterBar.slaPredicate.value : null;
+  const scope = routeScopePredicate.value;
+  list.extraFilter.value = (sla || scope)
+    ? (t: Ticket) => (!sla || sla(t)) && (!scope || scope(t))
+    : null;
 });
 
 
@@ -191,7 +222,7 @@ function applyRouteQuery() {
 
   const q = route.query;
 
-  const sig = JSON.stringify([q._from, q.status, q.priority, q.assignee, q.kw, q._label]);
+  const sig = JSON.stringify([q._from, q.status, q.priority, q.assignee, q.kw, q._label, q.live]);
 
   if (sig === appliedSig) return;
 
@@ -202,6 +233,15 @@ function applyRouteQuery() {
   const hasBoard = typeof q._from === 'string' && q._from.startsWith('board.');
 
   const hasOpsFlow = typeof q._from === 'string' && q._from.startsWith('ops.flow.');
+
+
+
+  // 范围这一维独立于结构化筛选：它是行过滤，不进 `query`（进了会在筛选条上多出一个摘不掉的条件）
+  // ⚠️ 参数名用 `live`、**不占用 `scope`**：`scope` 已经是查询中心的数据范围（all / team / mine），
+  // 看板与运营监控那几条下钻都在传它，复用会把两件事挤在一个键上。
+  routeScopePredicate.value = q.live === '1'
+    ? (t: Ticket) => isLiveTicket(t, derivedTickets.escalatedToNoOf)
+    : null;
 
 
 
@@ -217,7 +257,7 @@ function applyRouteQuery() {
 
 
 
-  if (!hasBoard && !hasOpsFlow && q.status == null && q.priority == null && q.assignee == null) return;
+  if (!hasBoard && !hasOpsFlow && q.status == null && q.priority == null && q.assignee == null && q.live == null) return;
 
 
 
@@ -267,7 +307,7 @@ onMounted(applyRouteQuery);
 
 watch(
 
-  () => [route.query._from, route.query.status, route.query.priority, route.query.assignee, route.query.kw, route.query._label],
+  () => [route.query._from, route.query.status, route.query.priority, route.query.assignee, route.query.kw, route.query._label, route.query.live],
 
   () => applyRouteQuery(),
 

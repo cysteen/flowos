@@ -18,7 +18,16 @@ export function useQueryCenterFilterBar(
   baseRows: Ref<Ticket[]>,
   query: Ref<MineQueryFilter>,
   applyOptionalVisible: (v: Record<string, boolean>) => void,
+  /**
+   * 结构化筛选之外的**行过滤**（当前只有下钻带来的 `live=1` ＝ 只看在办）。
+   * 🔴 **chip 上的数必须跟着它走**：它是列表真的在用的一道过滤（`list.extraFilter`），
+   * 不跟的话会出现「全部 17」而清单里躺着 15 —— 同一屏两个数，正是本仓反复踩的那个坑。
+   * ⚠️ SLA 那两枚 chip 自己的 predicate **不**走这里：那一枚是"选中之后才生效"的，
+   * 摆在 chip 上的数本就该是"没选它时有多少条"。
+   */
+  rowFilter?: Ref<((t: Ticket) => boolean) | null>,
 ) {
+  const passesRowFilter = (t: Ticket) => !rowFilter?.value || rowFilter.value(t);
   const savedFilters = useSavedFilters();
   const activeChip = ref<string>('all');
 
@@ -46,19 +55,21 @@ export function useQueryCenterFilterBar(
     const map: Record<string, number> = {};
     for (const chip of chips.value) {
       if (chip.key === 'all') {
-        map.all = baseRows.value.filter((t) => matchMineQuery(t, query.value)).length;
+        map.all = baseRows.value.filter(
+          (t) => passesRowFilter(t) && matchMineQuery(t, query.value),
+        ).length;
         continue;
       }
       if (chip.key === 'soon' || chip.key === 'overdue') {
         const slaKey = chip.key;
         map[slaKey] = baseRows.value.filter(
-          (t) => matchSlaChip(t, slaKey) && matchMineQuery(t, query.value),
+          (t) => passesRowFilter(t) && matchSlaChip(t, slaKey) && matchMineQuery(t, query.value),
         ).length;
         continue;
       }
       const sf = savedFilters.findByChipKey(chip.key);
       map[chip.key] = sf
-        ? baseRows.value.filter((t) => matchMineQuery(t, sf.query)).length
+        ? baseRows.value.filter((t) => passesRowFilter(t) && matchMineQuery(t, sf.query)).length
         : 0;
     }
     return map;

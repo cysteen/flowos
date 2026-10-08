@@ -235,6 +235,27 @@ export const STATUS_GROUP: Record<TicketStatus, StatusGroup> = {
 };
 
 /**
+ * 「在办」判据 —— **全站唯一一份**。两条腿：
+ *   ① 基线 §1 的十个终态子状态（`STATUS_GROUP` 判「终态」）；
+ *   ② **本次会话里升级派生出去的**那一张单：落库的 `escalatedToNo`，
+ *      外加派生库现推出来的那一批（「已升级投诉」是 `loadDetail` 现推的，
+ *      只读 `nodeStatus` 的话，同一张单在工单详情页是终态、在别处却还算在办）。
+ *
+ * 🔴 **第二条腿要调用方把派生库的查询函数传进来**：这个模块是纯类型 + 纯函数，
+ * 不引 pinia store（引了就成环）。调用方一律传 `useDerivedTicketStore().escalatedToNoOf`。
+ * 🔴 **不要再抄第二份**：风险监控页那条漏斗（待判 / 已判 / 评估处置工作面）、
+ * 页头「重点工单」那一块，以及工单列表按"在办"下钻那一路，必须同取它 ——
+ * 各写一份的话，页头卡上写 38、点进去的列表躺着 47，那正是本仓反复踩过的坑。
+ */
+export function isLiveTicket(
+  t: Pick<Ticket, 'nodeStatus' | 'no' | 'escalatedToNo'>,
+  escalatedToNoOf: (no: string) => string | undefined,
+): boolean {
+  if (STATUS_GROUP[t.nodeStatus] === '终态') return false;
+  return !t.escalatedToNo && !escalatedToNoOf(t.no);
+}
+
+/**
  * 落库子状态 → **页面展示名称**（基线 §1 第三列），**25 个逐个给死值**。
  *
  * 界面文案与落库值可以不同（落库「已转出」、界面「已转售后」）；
