@@ -74,15 +74,17 @@ interface ProblemTagRow {
 
 /**
  * 筛选项排序（左→右）：
- * 第1行：维度（产品维度 | 组织维度）→ 级联（产品维度：业务类型/产品分类/产品名称；组织维度：BGBU/业务线/产品线）
+ * 第1行：维度（产品维度 | 组织维度）→ 三个联动下拉（产品维度：业务类型/产品分类/产品名称；组织维度：BGBU/业务线/产品线）
  *        | 处理组 → 是否售后 → 是否小结专用 → 状态
- * 工具条：一级/二级分类（产品维度且级联选到产品名称才出现）→ 分类名称搜索 → 查询/重置/批量/导出
+ * 工具条：一级/二级分类（产品维度且选了产品名称才出现）→ 分类名称搜索 → 查询/重置/批量/导出
  */
 type ScopeDim = 'product' | 'org';
 const emptyFilter = () => ({
   dim: 'product' as ScopeDim,
-  /** 级联已选路径：按产品＝[业务类型, 产品分类, 产品 key]；按组织＝[BGBU, 业务线, 产品线]；可停在任一级 */
-  scopePath: [] as string[],
+  /** 三级联动下拉：按产品＝业务类型 / 产品分类 / 产品 key；按组织＝BGBU / 业务线 / 产品线；各级可单独使用 */
+  scope1: undefined as string | undefined,
+  scope2: undefined as string | undefined,
+  scope3: undefined as string | undefined,
   tagL1: undefined as string | undefined,
   tagL2: undefined as string | undefined,
   tagKeyword: '',
@@ -122,7 +124,7 @@ const TAG_L3_MAP: Record<string, string[]> = {
 };
 const TEAMS = ['工单-处理', '工单-售后', '工单-二线'];
 
-/** 维度 → 级联三层对应的产品归属字段（按产品末级用产品 key，保证同名产品不串） */
+/** 维度 → 三级下拉对应的产品归属字段（按产品末级用产品 key，保证同名产品不串） */
 const SCOPE_FIELDS: Record<ScopeDim, [keyof ProductInfo, keyof ProductInfo, keyof ProductInfo]> = {
   product: ['bizType', 'prodCat', 'key'],
   org: ['bgbu', 'bizLine', 'prodLine'],
@@ -131,46 +133,44 @@ const DIM_OPTIONS = [
   { label: '产品维度', value: 'product' },
   { label: '组织维度', value: 'org' },
 ];
-const SCOPE_PLACEHOLDER: Record<ScopeDim, string> = { product: '请选择产品', org: '请选择组织' };
-
-interface ScopeOption { value: string; label: string; children?: ScopeOption[] }
-/** 由产品归属拼三层级联：按产品＝业务类型/产品分类/产品名称；按组织＝BGBU/业务线/产品线 */
-function buildScopeOptions(dim: ScopeDim): ScopeOption[] {
-  const [f1, f2, f3] = SCOPE_FIELDS[dim];
-  const root: ScopeOption[] = [];
-  const child = (list: ScopeOption[], value: string, label: string) => {
-    let hit = list.find((o) => o.value === value);
-    if (!hit) { hit = { value, label }; list.push(hit); }
-    return hit;
-  };
-  for (const p of PRODUCT_INFOS) {
-    if (!p[f1] || !p[f2] || !p[f3]) continue;
-    const n1 = child(root, p[f1], p[f1]);
-    const n2 = child((n1.children ??= []), p[f2], p[f2]);
-    child((n2.children ??= []), p[f3], f3 === 'key' ? p.name : p[f3]);
-  }
-  return root;
-}
-const SCOPE_OPTIONS: Record<ScopeDim, ScopeOption[]> = {
-  product: buildScopeOptions('product'),
-  org: buildScopeOptions('org'),
+const SCOPE_LABELS: Record<ScopeDim, [string, string, string]> = {
+  product: ['业务类型', '产品分类', '产品名称'],
+  org: ['BGBU', '业务线', '产品线'],
 };
-/** 级联路径搜索：任一级名称包含关键字即列出整条路径，不区分大小写 */
-const scopeShowSearch = {
-  filter: (input: string, path: { label?: unknown }[]) => {
-    const kw = input.trim().toLowerCase();
-    return path.some((o) => String(o.label ?? '').toLowerCase().includes(kw));
-  },
-};
+type ScopeVals = [string | undefined, string | undefined, string | undefined];
 
-function onScopeChange(v: unknown) {
-  draftFilter.scopePath = Array.isArray(v) ? v.map(String) : [];
-}
-
-function scopeMatches(p: ProductInfo, dim: ScopeDim, path: string[]) {
+/** 产品是否落在三级已选范围内：只校验已选的那几级，未选的级不限 */
+function scopeMatches(p: ProductInfo, dim: ScopeDim, vals: ScopeVals) {
   const fields = SCOPE_FIELDS[dim];
-  return path.every((v, i) => p[fields[i]] === v);
+  return vals.every((v, i) => !v || p[fields[i]] === v);
 }
+
+/** 第 level 级下拉选项：只受上级已选值收窄（只选下级时上级不回填） */
+function scopeLevelOptions(dim: ScopeDim, level: 0 | 1 | 2, vals: ScopeVals) {
+  const fields = SCOPE_FIELDS[dim];
+  const upper = vals.map((v, i) => (i < level ? v : undefined)) as ScopeVals;
+  const seen = new Map<string, string>();
+  for (const p of PRODUCT_INFOS) {
+    if (!p[fields[0]] || !p[fields[1]] || !p[fields[2]]) continue;
+    if (!scopeMatches(p, dim, upper)) continue;
+    const v = p[fields[level]];
+    if (!seen.has(v)) seen.set(v, fields[level] === 'key' ? p.name : v);
+  }
+  return [...seen].map(([value, label]) => ({ value, label }));
+}
+const draftScopeVals = (): ScopeVals => [draftFilter.scope1, draftFilter.scope2, draftFilter.scope3];
+const scopeOpts1 = computed(() => scopeLevelOptions(draftFilter.dim, 0, draftScopeVals()));
+const scopeOpts2 = computed(() => scopeLevelOptions(draftFilter.dim, 1, draftScopeVals()));
+const scopeOpts3 = computed(() => scopeLevelOptions(draftFilter.dim, 2, draftScopeVals()));
+
+/** 改上级后，已选下级不在新范围内即清空 */
+watch(
+  () => [draftFilter.dim, draftFilter.scope1, draftFilter.scope2] as const,
+  () => {
+    if (draftFilter.scope2 && !scopeOpts2.value.some((o) => o.value === draftFilter.scope2)) draftFilter.scope2 = undefined;
+    if (draftFilter.scope3 && !scopeOpts3.value.some((o) => o.value === draftFilter.scope3)) draftFilter.scope3 = undefined;
+  },
+);
 const toOpts = (items: string[]) => items.map((v) => ({ value: v, label: v }));
 /** 下拉输入搜索：按选项文字包含匹配，不区分大小写 */
 const filterByLabel = (input: string, option?: { label?: string }) =>
@@ -207,10 +207,10 @@ function productPath(key?: string): string[] {
   return key ? (PRODUCT_PATH[key] ?? []) : [];
 }
 
-/** 切换维度时清空级联已选值，两套维度不同时生效 */
+/** 切换维度时清空三级已选值，两套维度不同时生效 */
 watch(
   () => draftFilter.dim,
-  () => { draftFilter.scopePath = []; },
+  () => { draftFilter.scope1 = undefined; draftFilter.scope2 = undefined; draftFilter.scope3 = undefined; },
 );
 
 /**
@@ -312,9 +312,9 @@ function resolveTagIds(
   return out;
 }
 
-/** 按产品维度且级联选到产品名称时，才展示一级/二级分类筛选 */
+/** 按产品维度且选了产品名称时，才展示一级/二级分类筛选 */
 const scopedProductKey = computed(() =>
-  (draftFilter.dim === 'product' && draftFilter.scopePath.length === 3 ? draftFilter.scopePath[2] : undefined),
+  (draftFilter.dim === 'product' ? draftFilter.scope3 : undefined),
 );
 const showTagLevelFilters = computed(() => !!scopedProductKey.value);
 
@@ -363,7 +363,7 @@ function matchTagKeyword(keyword: string, row: ProblemTagRow) {
 }
 
 const displayRows = computed(() => allRows.value.filter((r) => {
-  if (!scopeMatches(pinfo(r.productKey), appliedFilter.dim, appliedFilter.scopePath)) return false;
+  if (!scopeMatches(pinfo(r.productKey), appliedFilter.dim, [appliedFilter.scope1, appliedFilter.scope2, appliedFilter.scope3])) return false;
   if (!matchSelect(appliedFilter.tagL1, r.tagL1)) return false;
   if (!matchSelect(appliedFilter.tagL2, r.tagL2)) return false;
   if (!matchTagKeyword(appliedFilter.tagKeyword, r)) return false;
@@ -501,7 +501,7 @@ function batchDelete() {
 }
 
 function onQuery() {
-  Object.assign(appliedFilter, { ...draftFilter, scopePath: [...draftFilter.scopePath] });
+  Object.assign(appliedFilter, { ...draftFilter });
   clearSelection();
   message.success(`查询完成，共 ${displayRows.value.length} 条`);
 }
@@ -1056,17 +1056,18 @@ function doImport(withUpdate: boolean) {
           <div class="toolbar-row">
             <div class="fi fi-scope">
               <a-segmented v-model:value="draftFilter.dim" class="scope-dim" :options="DIM_OPTIONS" />
-              <a-cascader
-                :key="draftFilter.dim"
-                :value="draftFilter.scopePath"
-                class="tb-ctl scope-cascader"
-                change-on-select
-                allow-clear
-                :show-search="scopeShowSearch"
-                :options="SCOPE_OPTIONS[draftFilter.dim]"
-                :placeholder="SCOPE_PLACEHOLDER[draftFilter.dim]"
-                @change="onScopeChange"
-              />
+              <div class="fi">
+                <span class="fl">{{ SCOPE_LABELS[draftFilter.dim][0] }}</span>
+                <a-select v-model:value="draftFilter.scope1" class="tb-ctl sel-w scope-sel-1" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="scopeOpts1" />
+              </div>
+              <div class="fi">
+                <span class="fl">{{ SCOPE_LABELS[draftFilter.dim][1] }}</span>
+                <a-select v-model:value="draftFilter.scope2" class="tb-ctl sel-w scope-sel-2" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="scopeOpts2" />
+              </div>
+              <div class="fi">
+                <span class="fl">{{ SCOPE_LABELS[draftFilter.dim][2] }}</span>
+                <a-select v-model:value="draftFilter.scope3" class="tb-ctl sel-w-lg scope-sel-3" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="scopeOpts3" />
+              </div>
             </div>
             <span class="fi-divider" />
             <div class="fi-group-attr">
@@ -1465,16 +1466,15 @@ function doImport(withUpdate: boolean) {
 .toolbar-row {
   display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; width: 100%;
 }
-/* 维度分段 + 级联：一组，紧挨、等高 */
-.fi-scope { gap: 8px; }
+/* 维度分段 + 三个联动下拉：一组，整组不拆行 */
+.fi-scope { gap: 16px; }
 .scope-dim { flex: none; padding: 2px; }
 .scope-dim :deep(.ant-segmented-item-label) {
   min-height: 26px; line-height: 26px; padding: 0 12px; font-size: 13px;
 }
-.scope-cascader { width: 300px !important; }
 /* 组间细分隔线 */
 .fi-divider { flex: none; width: 1px; height: 18px; background: #e5e7eb; }
-.fi-group-attr { display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; }
+.fi-group-attr { display: flex; align-items: center; gap: 8px 16px; flex: none; }
 /* 筛选控件统一 30px 高，与工具条按钮对齐 */
 .toolbar-row :deep(.tb-ctl.ant-select:not(.ant-select-customize-input) .ant-select-selector) {
   height: 30px !important; padding: 0 10px;
@@ -1491,6 +1491,7 @@ function doImport(withUpdate: boolean) {
 .fl { font-size: 13px; color: #6b7280; white-space: nowrap; }
 .sel-w { width: 120px !important; }
 .sel-w-sm { width: 88px !important; }
+.sel-w-lg { width: 160px !important; }
 .toolbar-row :deep(.tb-ctl.ant-select .ant-select-selector) {
   font-size: 13px; border-radius: 6px; background: #fff;
 }
