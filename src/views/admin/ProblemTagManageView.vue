@@ -26,7 +26,7 @@ const isAdmin = computed(() => !!userStore.role.adminScope);
  * 产品树五级里没有这一维，按产品叶子单独映射；未映射的产品归「其他」。
  */
 const PRODUCT_BIZ_TYPE: Record<string, string> = {
-  'p-h1': '智能硬件', 'p-h2': '智能硬件', p1: '智能硬件', p2: '智能硬件', p3: '开放平台',
+  'p-h1': '听见', 'p-h2': '听见', p1: '智能硬件', p2: '智能硬件', p3: '开放平台',
 };
 
 /** 产品叶子 → 各级归属（BGBU / 业务线 / 产品线 / 产品分类 / 业务类型），筛选、导入、导出共用 */
@@ -747,17 +747,23 @@ function parseCsv(text: string): string[][] {
 
 const todayStr = () => dayjs().format('YYYYMMDD');
 
-/** 导入模板列（顺序固定）。失败明细＝模板列 + 末列「失败原因」，可直接改完重传 */
-const TEMPLATE_COLS = [
-  '业务类型', '产品分类', '产品名称', '问题分类一级', '问题分类二级', '问题分类三级',
-  '处理组', '是否售后', '是否小结专用', '问题分类一级 ID', '问题分类二级 ID', '问题分类三级 ID',
+/**
+ * 导入模板列（业务标签表叫法）。产品大类＝产品管理的产品分类；问题一 / 二 / 三级＝问题分类一 / 二 / 三级；工单处理组＝处理组。
+ * 表头按列名识别：不看顺序，列名去首尾空格与「*」后比对，不认识的列忽略；只有缺必填列才整文件拦下。
+ * 失败明细＝模板列 + 末列「失败原因」，导出列名与模板一致，均可直接改完重传。
+ */
+const COL_NAMES = [
+  '业务类型', '产品大类', '产品名称', '问题一级', '问题二级', '问题三级',
+  '工单处理组', '是否售后', '是否小结专用', '问题一级 ID', '问题二级 ID', '问题三级 ID',
 ] as const;
+/** 必填列下标（业务类型 ~ 问题三级） */
+const REQUIRED_COL_IDX = [0, 1, 2, 3, 4, 5];
+/** 模板表头：必填列名后缀「*」 */
+const TEMPLATE_COLS = COL_NAMES.map((n, i) => (REQUIRED_COL_IDX.includes(i) ? `${n}*` : n));
 const FAIL_REASON_COL = '失败原因';
-/** 必填列下标（业务类型 ~ 问题分类三级 + 是否售后） */
-const REQUIRED_COL_IDX = [0, 1, 2, 3, 4, 5, 7];
 /** 一 / 二 / 三级 ID 列下标 */
 const ID_COL_IDX: Record<TagLevel, number> = { 1: 9, 2: 10, 3: 11 };
-const HEADER_MISMATCH_TEXT = '表头与模板不一致，请下载模板后重新填写';
+const missingColsText = (cols: string[]) => `缺少必填列：${cols.join('、')}，请下载模板核对表头`;
 
 function rowToTemplateCells(r: ProblemTagRow): string[] {
   const p = pinfo(r.productKey);
@@ -775,10 +781,9 @@ function downloadTemplate() {
 
 // —— 导出 ——
 const EXPORT_COLS = [
-  'BGBU', '业务线', '产品线', '业务类型', '产品分类', '产品名称',
-  '问题分类一级', '问题分类二级', '问题分类三级', '处理组', '是否售后', '是否小结专用', '状态',
-  '维护人', '维护时间', '问题分类一级 ID', '问题分类二级 ID', '问题分类三级 ID',
-] as const;
+  'BGBU', '业务线', '产品线', ...TEMPLATE_COLS.slice(0, 9),
+  '状态', '维护人', '维护时间', ...TEMPLATE_COLS.slice(9),
+];
 
 function rowToExportCells(r: ProblemTagRow): string[] {
   const p = pinfo(r.productKey);
@@ -813,7 +818,7 @@ const importOpen = ref(false);
 /** 每行归类：新增（路径不存在）/ 更新（路径已存在且可变字段有变化或当前停用）/ 已存在 / 失败 */
 type ImportKind = '新增' | '更新' | '已存在' | '失败';
 interface ImportLine {
-  /** 原始 12 列（模板列顺序），失败明细原样回写 */
+  /** 按列名取出的 12 列（模板列顺序），失败明细原样回写 */
   cells: string[];
   kind: ImportKind;
   reason: string;
@@ -828,8 +833,10 @@ interface ImportLine {
 }
 interface ImportResult {
   fileName: string;
-  /** 表头与模板不一致：整个文件不逐行归类，不出解析结果卡 */
+  /** 缺必填列：整个文件不逐行归类，不出解析结果卡 */
   headerOk: boolean;
+  /** 缺少的必填列名 */
+  missingCols: string[];
   lines: ImportLine[];
 }
 const importResult = ref<ImportResult | null>(null);
@@ -848,24 +855,25 @@ const importStats = computed(() => ({
 function openImport() { resetImport(); importOpen.value = true; }
 function resetImport() { importResult.value = null; importDone.value = null; }
 
-/** 表头须与模板逐字一致；允许末尾多一列「失败原因」（失败明细直接重传，该列不读取） */
-function headerMatchesTemplate(header: string[]) {
-  const cells = [...header];
-  while (cells.length && !cells[cells.length - 1].trim()) cells.pop();
-  const n = TEMPLATE_COLS.length;
-  const extraOk = cells.length === n || (cells.length === n + 1 && cells[n] === FAIL_REASON_COL);
-  return extraOk && TEMPLATE_COLS.every((c, i) => cells[i] === c);
+const normColName = (s: string) => s.trim().replace(/\*/g, '').trim();
+
+/** 表头按列名定位：返回模板各列在文件中的下标（同名列取第一个，缺列为 -1） */
+function locateColumns(header: string[]): number[] {
+  const names = header.map(normColName);
+  return COL_NAMES.map((n) => names.indexOf(n));
 }
 
 /**
  * 逐行归类。失败原因按固定顺序收集、以「；」连接：
- * 必填列为空 → 产品未找到 → 处理组 → 是否售后 → 是否小结专用 → ID 占用；
+ * 必填列为空 → 产品未找到 → 工单处理组 → 是否售后 → 是否小结专用 → ID 占用；
  * 文件内重复的行只写重复这一条。
- * 产品、一 / 二 / 三级按原文完全一致匹配（不去空格）；处理组、是否售后、是否小结专用、ID 去首尾空格。
+ * 产品、一 / 二 / 三级按原文完全一致匹配（不去空格）；工单处理组、是否售后、是否小结专用、ID 去首尾空格。
  */
 function analyzeImport(fileName: string, text: string): ImportResult {
   const [header = [], ...body] = parseCsv(text);
-  if (!headerMatchesTemplate(header)) return { fileName, headerOk: false, lines: [] };
+  const colIdx = locateColumns(header);
+  const missingCols = REQUIRED_COL_IDX.filter((i) => colIdx[i] < 0).map((i) => COL_NAMES[i]);
+  if (missingCols.length) return { fileName, headerOk: false, missingCols, lines: [] };
   const teamSet = new Set(TEAMS);
   const leafIndex = new Map(allRows.value.map((r) => [nodeKeyOf(r.productKey, [r.tagL1, r.tagL2, r.tagL3], 3), r]));
   const owners: Record<TagLevel, Map<string, string>> = {
@@ -878,7 +886,7 @@ function analyzeImport(fileName: string, text: string): ImportResult {
   body.forEach((raw, idx) => {
     if (!raw.some((c) => c.trim() !== '')) return;
     const fileRow = idx + 2;
-    const cells = TEMPLATE_COLS.map((_, i) => raw[i] ?? '');
+    const cells = colIdx.map((ci) => (ci < 0 ? '' : raw[ci] ?? ''));
     const fail = (reason: string) => {
       lines.push({ cells, kind: '失败', reason, team: '', aftersale: '否', summaryOnly: '否', ids: {} });
     };
@@ -891,9 +899,9 @@ function analyzeImport(fileName: string, text: string): ImportResult {
     const [bizType, prodCat, prodName, l1, l2, l3, teamRaw, afRaw, soRaw] = cells;
     const reasons: string[] = REQUIRED_COL_IDX
       .filter((i) => !cells[i].trim())
-      .map((i) => `${TEMPLATE_COLS[i]}为空`);
+      .map((i) => `${COL_NAMES[i]}为空`);
 
-    // 产品按 业务类型 + 产品分类 + 产品名称 完全一致匹配；三列有空时只报为空、不做匹配
+    // 产品按 业务类型 + 产品大类 + 产品名称 完全一致匹配；三列有空时只报为空、不做匹配
     const prodColsFilled = [0, 1, 2].every((i) => cells[i].trim());
     const prod = prodColsFilled
       ? PRODUCT_INFOS.find((p) => p.bizType === bizType && p.prodCat === prodCat && p.name === prodName)
@@ -901,9 +909,9 @@ function analyzeImport(fileName: string, text: string): ImportResult {
     if (prodColsFilled && !prod) reasons.push('产品未找到：请先在产品管理中新增该产品');
 
     const team = teamRaw.trim();
-    if (team && !teamSet.has(team)) reasons.push(`处理组不在枚举：${team}`);
-    const af = afRaw.trim();
-    if (af && af !== '是' && af !== '否') reasons.push('是否售后取值非法：只能填是或否');
+    if (team && !teamSet.has(team)) reasons.push(`工单处理组不在枚举：${team}`);
+    const af = afRaw.trim() || '否';
+    if (af !== '是' && af !== '否') reasons.push('是否售后取值非法：只能填是或否，或留空');
     const so = soRaw.trim() || '否';
     if (so !== '是' && so !== '否') reasons.push('是否小结专用取值非法：只能填是或否，或留空');
 
@@ -916,7 +924,7 @@ function analyzeImport(fileName: string, text: string): ImportResult {
       for (const lv of [1, 2, 3] as TagLevel[]) {
         const owner = ids[lv] ? owners[lv].get(ids[lv]) : undefined;
         if (owner && owner !== nodeKeyOf(prod.key, path, lv)) {
-          reasons.push(`${TEMPLATE_COLS[ID_COL_IDX[lv]]} 已被其他分类占用：${ids[lv]}`);
+          reasons.push(`${COL_NAMES[ID_COL_IDX[lv]]} 已被其他分类占用：${ids[lv]}`);
         }
       }
     }
@@ -938,7 +946,7 @@ function analyzeImport(fileName: string, text: string): ImportResult {
       lines.push({ ...base, kind: '已存在', reason: '已存在，无需重复导入' });
     }
   });
-  return { fileName, headerOk: true, lines };
+  return { fileName, headerOk: true, missingCols: [], lines };
 }
 
 function readImportFile(f: File) {
@@ -1354,7 +1362,7 @@ function doImport(withUpdate: boolean) {
         <a-button v-if="importDone" type="primary" @click="importOpen = false">关闭</a-button>
         <template v-else>
           <a-button @click="importOpen = false">取消</a-button>
-          <a-tooltip v-if="!importParsed" :title="importResult ? HEADER_MISMATCH_TEXT : TIP_NEED_UPLOAD">
+          <a-tooltip v-if="!importParsed" :title="importResult ? missingColsText(importResult.missingCols) : TIP_NEED_UPLOAD">
             <span class="btn-tip-wrap"><a-button type="primary" disabled>确认导入</a-button></span>
           </a-tooltip>
           <template v-else-if="importStats.updated > 0">
@@ -1392,7 +1400,7 @@ function doImport(withUpdate: boolean) {
         </label>
 
         <div v-if="!importResult" class="import-tips">首行须为表头（同模板）</div>
-        <div v-else-if="!importResult.headerOk" class="import-error">{{ HEADER_MISMATCH_TEXT }}</div>
+        <div v-else-if="!importResult.headerOk" class="import-error">{{ missingColsText(importResult.missingCols) }}</div>
 
         <div v-if="importDone" class="import-done">
           导入完成：新增 {{ importDone.added }} 条、更新 {{ importDone.updated }} 条<template v-if="importDone.failed > 0">，失败 {{ importDone.failed }} 条，可<a class="ir-dl-inline" @click.prevent="downloadImportFailures()">下载失败明细</a></template>
