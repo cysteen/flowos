@@ -1621,6 +1621,8 @@ function doImport(withUpdate: boolean) {
 /* 置灰按钮外包一层承接悬停提示（disabled 按钮自身不触发鼠标事件） */
 .btn-tip-wrap { display: inline-block; margin-inline-start: 8px; }
 .btn-tip-wrap :deep(.ant-btn[disabled]) { pointer-events: none; }
+/* 包裹层之后紧跟的按钮不再命中 antd 的 .ant-btn + .ant-btn 间距，补齐 8px */
+.btn-tip-wrap + .ant-btn { margin-inline-start: 8px; }
 .menu-tip { display: block; }
 .dropzone {
   display: flex; flex-direction: column; align-items: center; gap: 6px;
