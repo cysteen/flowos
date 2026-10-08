@@ -1069,7 +1069,6 @@ function doImport(withUpdate: boolean) {
                 <a-select v-model:value="draftFilter.scope3" class="tb-ctl sel-w-lg scope-sel-3" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="scopeOpts3" />
               </div>
             </div>
-            <span class="fi-divider" />
             <div class="fi-group-attr">
               <div class="fi">
                 <span class="fl">处理组</span>
@@ -1464,7 +1463,8 @@ function doImport(withUpdate: boolean) {
   padding: 10px 12px; border-bottom: 1px solid #f0f2f5;
 }
 .toolbar-row {
-  display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; width: 100%;
+  display: flex; align-items: center; gap: 8px 32px; flex-wrap: wrap; width: 100%;
+  overflow-x: clip;
 }
 /* 维度分段 + 三个联动下拉：一组，整组不拆行 */
 .fi-scope { gap: 16px; }
@@ -1472,9 +1472,12 @@ function doImport(withUpdate: boolean) {
 .scope-dim :deep(.ant-segmented-item-label) {
   min-height: 26px; line-height: 26px; padding: 0 12px; font-size: 13px;
 }
-/* 组间细分隔线 */
-.fi-divider { flex: none; width: 1px; height: 18px; background: #e5e7eb; }
-.fi-group-attr { display: flex; align-items: center; gap: 8px 16px; flex: none; }
+/* 组间细分隔线：画在属性组左侧间隙正中；整组换行到行首时落在行外被裁掉 */
+.fi-group-attr { position: relative; display: flex; align-items: center; gap: 8px 16px; flex: none; }
+.fi-group-attr::before {
+  content: ''; position: absolute; left: -16.5px; top: 50%; width: 1px; height: 18px;
+  transform: translateY(-50%); background: #e5e7eb;
+}
 /* 筛选控件统一 30px 高，与工具条按钮对齐 */
 .toolbar-row :deep(.tb-ctl.ant-select:not(.ant-select-customize-input) .ant-select-selector) {
   height: 30px !important; padding: 0 10px;
