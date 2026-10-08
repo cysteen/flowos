@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, computed, watch } from 'vue';
+import { ref, reactive, computed, watch, h } from 'vue';
 import { useRouter } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
 import dayjs from 'dayjs';
@@ -12,9 +12,8 @@ import {
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { stdPagination } from '@/config/adminUi';
 import {
-  PRODUCT_TREE_DATA, PRODUCT_TREE_DEFAULT_EXPANDED,
-  collectProductKeysUnder, filterProductTree, listProductNodes,
-  productTitleByKey, productMetaByKey, type ProductTreeNode,
+  PRODUCT_TREE_DATA, listProductNodes, productAncestors,
+  productTitleByKey, type ProductTreeNode,
 } from '@/mock/productTree';
 
 const router = useRouter();
@@ -22,19 +21,39 @@ const userStore = useUserStore();
 /** 删除入口（行删除 / 批量删除）仅管理员展示：三类管理员 scope 均算 */
 const isAdmin = computed(() => !!userStore.role.adminScope);
 
-const KIND_LABEL: Record<ProductTreeNode['kind'], string> = {
-  BGBU: 'BGBU', 业务线: '业务线', 产品线: '产品线', 产品分类: '分类', 产品: '产品',
+/**
+ * 产品的「业务类型」（老系统小结标签口径，导入匹配键之一）。
+ * 产品树五级里没有这一维，按产品叶子单独映射；未映射的产品归「其他」。
+ */
+const PRODUCT_BIZ_TYPE: Record<string, string> = {
+  'p-h1': '智能硬件', 'p-h2': '智能硬件', p1: '智能硬件', p2: '智能硬件', p3: '开放平台',
 };
-const KIND_CLASS: Record<ProductTreeNode['kind'], string> = {
-  BGBU: 'kind-bg', 业务线: 'kind-biz', 产品线: 'kind-line', 产品分类: 'kind-cat', 产品: 'kind-prod',
-};
+
+/** 产品叶子 → 各级归属（BGBU / 业务线 / 产品线 / 产品分类 / 业务类型），筛选、导入、导出共用 */
+interface ProductInfo {
+  key: string; name: string;
+  bgbu: string; bizLine: string; prodLine: string; prodCat: string; bizType: string;
+}
+const PRODUCT_INFOS: ProductInfo[] = listProductNodes().map((p) => {
+  const anc = productAncestors(p.key);
+  const titleOf = (kind: ProductTreeNode['kind']) => anc.find((n) => n.kind === kind)?.title ?? '';
+  return {
+    key: p.key, name: p.title,
+    bgbu: titleOf('BGBU'), bizLine: titleOf('业务线'), prodLine: titleOf('产品线'), prodCat: titleOf('产品分类'),
+    bizType: PRODUCT_BIZ_TYPE[p.key] ?? '其他',
+  };
+});
+const PRODUCT_INFO_MAP: Record<string, ProductInfo> = Object.fromEntries(PRODUCT_INFOS.map((p) => [p.key, p]));
+function pinfo(productKey: string): ProductInfo {
+  return PRODUCT_INFO_MAP[productKey] ?? {
+    key: productKey, name: productKey, bgbu: '', bizLine: '', prodLine: '', prodCat: '', bizType: '其他',
+  };
+}
 
 interface ProblemTagRow {
   key: string;
   productKey: string;
   productName: string;
-  bizType: string;
-  prodCat: string;
   tagL1: string;
   tagL2: string;
   tagL3: string;
@@ -53,52 +72,15 @@ interface ProblemTagRow {
   maintainedAt: string;
 }
 
-const treeSearch = ref('');
-const expandedKeys = ref<string[]>([...PRODUCT_TREE_DEFAULT_EXPANDED]);
-const selectedKeys = ref<string[]>([]);
-const selectedTreeKey = computed(() => selectedKeys.value[0] ?? null);
-
-/** 各产品下的问题分类条数（按 allRows 实时统计） */
-const countByProduct = computed(() => {
-  const map: Record<string, number> = {};
-  for (const r of allRows.value) map[r.productKey] = (map[r.productKey] ?? 0) + 1;
-  return map;
-});
-
-/** 递归给树节点附加 cnt（产品取自身数量，父节点汇总子孙） */
-function decorateTreeCount(nodes: ProductTreeNode[]): (ProductTreeNode & { cnt: number })[] {
-  return nodes.map((n) => {
-    const kids = n.children?.length ? decorateTreeCount(n.children) : undefined;
-    const cnt = n.kind === '产品'
-      ? (countByProduct.value[n.key] ?? 0)
-      : (kids?.reduce((s, k) => s + k.cnt, 0) ?? 0);
-    return { ...n, cnt, children: kids };
-  });
-}
-
-const visibleTree = computed(() =>
-  decorateTreeCount(filterProductTree(PRODUCT_TREE_DATA, treeSearch.value)),
-);
-
-watch(treeSearch, (kw) => {
-  if (!kw.trim()) return;
-  const keys: string[] = [];
-  function walk(nodes: ProductTreeNode[]) {
-    for (const n of nodes) {
-      keys.push(n.key);
-      if (n.children?.length) walk(n.children);
-    }
-  }
-  walk(visibleTree.value);
-  expandedKeys.value = keys;
-});
-
 /**
  * 筛选项排序（左→右）：
- * 第1行：业务类型 → 产品分类 → [产品名称+处理组] → 是否售后 → 状态
- * 工具条：一级/二级分类（需业务类型+产品分类+产品名称均已选才出现）→ 分类名称搜索 → 查询/重置/批量
+ * 第1行：BGBU → 业务线 → 产品线 → 业务类型 → 产品分类 → 产品名称 → 处理组 → 是否售后 → 是否小结专用 → 状态
+ * 工具条：一级/二级分类（需业务类型+产品分类+产品名称均已选才出现）→ 分类名称搜索 → 查询/重置/批量/导出
  */
 const emptyFilter = () => ({
+  bgbu: undefined as string | undefined,
+  bizLine: undefined as string | undefined,
+  prodLine: undefined as string | undefined,
   bizType: undefined as string | undefined,
   prodCat: undefined as string | undefined,
   prodName: undefined as string | undefined,
@@ -107,13 +89,12 @@ const emptyFilter = () => ({
   tagKeyword: '',
   team: undefined as string | undefined,
   aftersale: undefined as string | undefined,
+  summaryOnly: undefined as string | undefined,
   status: undefined as string | undefined,
 });
 const draftFilter = reactive(emptyFilter());
 const appliedFilter = reactive(emptyFilter());
 
-const BIZ_TYPES = ['消费者BG', '金融科技事业部'];
-const PROD_CATS = ['录音笔产品线', '翻译机产品线', '智能客服产品线'];
 const TAG_L1 = ['云空间', '我的文件', '相机', '网络', '账号/密码', '整机/设备', '语音翻译', '会议/会话翻译', '屏幕', '记录导出', '售后', '蓝牙', '设置/系统'];
 const TAG_L2_MAP: Record<string, string[]> = {
   '云空间': ['操作指导', '功能介绍', '软件问题'],
@@ -142,22 +123,25 @@ const TAG_L3_MAP: Record<string, string[]> = {
 };
 const TEAMS = ['工单-处理', '工单-售后', '工单-二线'];
 
-const productOptions = computed(() =>
-  listProductNodes().map((p) => {
-    const meta = productMetaByKey(p.key);
-    return { value: p.key, label: p.title, bizType: meta.bizType, prodCat: meta.prodCat };
-  }),
-);
-/** 产品名称下拉：按已选业务类型 / 产品分类收敛 */
-const prodNameSelectOpts = computed(() =>
-  productOptions.value
-    .filter((p) => {
-      if (draftFilter.bizType && p.bizType !== draftFilter.bizType) return false;
-      if (draftFilter.prodCat && p.prodCat !== draftFilter.prodCat) return false;
-      return true;
-    })
-    .map((p) => ({ value: p.label, label: p.label })),
-);
+/** 产品维度筛选字段（筛选条件键 → 产品归属字段） */
+type ProductDim = 'bgbu' | 'bizLine' | 'prodLine' | 'bizType' | 'prodCat' | 'prodName';
+const PRODUCT_DIM_FIELD: Record<ProductDim, keyof ProductInfo> = {
+  bgbu: 'bgbu', bizLine: 'bizLine', prodLine: 'prodLine', bizType: 'bizType', prodCat: 'prodCat', prodName: 'name',
+};
+const PRODUCT_DIMS = Object.keys(PRODUCT_DIM_FIELD) as ProductDim[];
+
+function productMatches(p: ProductInfo, f: Record<ProductDim, string | undefined>, skip?: ProductDim) {
+  return PRODUCT_DIMS.every((d) => d === skip || !f[d] || p[PRODUCT_DIM_FIELD[d]] === f[d]);
+}
+
+/** 产品维度下拉：按其余已选产品维度收敛（各项互相联动） */
+function productDimOpts(dim: ProductDim) {
+  const set = new Set<string>();
+  for (const p of PRODUCT_INFOS) {
+    if (productMatches(p, draftFilter, dim)) set.add(p[PRODUCT_DIM_FIELD[dim]]);
+  }
+  return [...set].filter(Boolean).map((v) => ({ value: v, label: v }));
+}
 const toOpts = (items: string[]) => items.map((v) => ({ value: v, label: v }));
 const filterByLabel = (input: string, option?: { label?: string }) =>
   String(option?.label ?? '').includes(input);
@@ -198,7 +182,7 @@ watch(
   () => draftFilter.prodName,
   (name) => {
     if (!name) return;
-    const hit = productOptions.value.find((p) => p.label === name);
+    const hit = PRODUCT_INFOS.find((p) => p.name === name);
     if (!hit) return;
     draftFilter.bizType = hit.bizType;
     draftFilter.prodCat = hit.prodCat;
@@ -247,13 +231,10 @@ const SEED_ROWS: SeedTuple[] = [
 
 const allRows = ref<ProblemTagRow[]>(SEED_ROWS.map((t, i) => {
   const [productKey, tagL1, tagL2, tagL3, team, aftersale, summaryOnly, status, tagL1Id, tagL2Id, tagL3Id, maintainer, maintainedAt] = t;
-  const meta = productMetaByKey(productKey);
   return {
     key: String(i + 1),
     productKey,
     productName: productTitleByKey(productKey),
-    bizType: meta.bizType,
-    prodCat: meta.prodCat,
     tagL1, tagL2, tagL3, team, aftersale, summaryOnly, status,
     tagL1Id, tagL2Id, tagL3Id, maintainer, maintainedAt,
   };
@@ -359,34 +340,29 @@ function matchTagKeyword(keyword: string, row: ProblemTagRow) {
   return hay.includes(kw);
 }
 
-const displayRows = computed(() => {
-  const treeProducts = collectProductKeysUnder(selectedTreeKey.value);
-  return allRows.value.filter((r) => {
-    if (selectedTreeKey.value) {
-      if (!treeProducts?.size) return false;
-      if (!treeProducts.has(r.productKey)) return false;
-    }
-    if (!matchSelect(appliedFilter.bizType, r.bizType)) return false;
-    if (!matchSelect(appliedFilter.prodCat, r.prodCat)) return false;
-    if (!matchSelect(appliedFilter.prodName, r.productName)) return false;
-    if (!matchSelect(appliedFilter.tagL1, r.tagL1)) return false;
-    if (!matchSelect(appliedFilter.tagL2, r.tagL2)) return false;
-    if (!matchTagKeyword(appliedFilter.tagKeyword, r)) return false;
-    if (!matchSelect(appliedFilter.team, r.team)) return false;
-    if (!matchSelect(appliedFilter.aftersale, r.aftersale)) return false;
-    if (!matchSelect(appliedFilter.status, r.status)) return false;
-    return true;
-  });
-});
+const displayRows = computed(() => allRows.value.filter((r) => {
+  if (!productMatches(pinfo(r.productKey), appliedFilter)) return false;
+  if (!matchSelect(appliedFilter.tagL1, r.tagL1)) return false;
+  if (!matchSelect(appliedFilter.tagL2, r.tagL2)) return false;
+  if (!matchTagKeyword(appliedFilter.tagKeyword, r)) return false;
+  if (!matchSelect(appliedFilter.team, r.team)) return false;
+  if (!matchSelect(appliedFilter.aftersale, r.aftersale)) return false;
+  if (!matchSelect(appliedFilter.summaryOnly, r.summaryOnly)) return false;
+  if (!matchSelect(appliedFilter.status, r.status)) return false;
+  return true;
+}));
 
 const cols = [
   { title: '产品名称', dataIndex: 'productName', key: 'productName', width: 180 },
-  { title: '一级分类', dataIndex: 'tagL1', key: 'tagL1', width: 88, className: 'col-cat-l1' },
-  { title: '二级分类', dataIndex: 'tagL2', key: 'tagL2', width: 88, className: 'col-cat-l2' },
-  { title: '三级分类', dataIndex: 'tagL3', key: 'tagL3', width: 140 },
-  { title: '处理组', dataIndex: 'team', key: 'team', width: 120 },
-  { title: '是否售后', dataIndex: 'aftersale', key: 'aftersale', width: 90 },
-  { title: '状态', dataIndex: 'status', key: 'status', width: 100 },
+  { title: '问题分类一级', dataIndex: 'tagL1', key: 'tagL1', width: 120 },
+  { title: '问题分类二级', dataIndex: 'tagL2', key: 'tagL2', width: 110 },
+  { title: '问题分类三级', dataIndex: 'tagL3', key: 'tagL3', width: 240 },
+  { title: '处理组', dataIndex: 'team', key: 'team', width: 110 },
+  { title: '是否售后', dataIndex: 'aftersale', key: 'aftersale', width: 86 },
+  { title: '是否小结专用', dataIndex: 'summaryOnly', key: 'summaryOnly', width: 110 },
+  { title: '状态', dataIndex: 'status', key: 'status', width: 90 },
+  { title: '维护人', dataIndex: 'maintainer', key: 'maintainer', width: 90 },
+  { title: '维护时间', dataIndex: 'maintainedAt', key: 'maintainedAt', width: 150 },
   { title: '操作', key: 'op', width: 110, fixed: 'right' as const, align: 'right' as const, className: 'col-op' },
 ];
 
@@ -413,8 +389,7 @@ function onBatch(action: string) {
   if (action === '处理组') openBatchTeam();
   else if (action === '启用') batchSetStatus('启用');
   else if (action === '停用') batchSetStatus('停用');
-  else if (action === '导出') onExport();
-  else if (action === '删除') batchDelete();
+  else if (action === '删除' && isAdmin.value) batchDelete();
 }
 
 function openBatchTeam() {
@@ -429,10 +404,12 @@ function confirmBatchTeam() {
   }
   const keys = new Set(checkedRowKeys.value);
   const team = batchTeamValue.value;
+  const stamp = stampNow();
   let n = 0;
   for (const r of allRows.value) {
     if (keys.has(r.key)) {
       r.team = team;
+      Object.assign(r, stamp);
       n += 1;
     }
   }
@@ -453,10 +430,12 @@ function batchSetStatus(status: '启用' | '停用') {
     cancelText: '取消',
     onOk: () => {
       const keySet = new Set(keys);
+      const stamp = stampNow();
       let n = 0;
       for (const r of allRows.value) {
         if (keySet.has(r.key)) {
           r.status = status;
+          Object.assign(r, stamp);
           n += 1;
         }
       }
@@ -515,8 +494,6 @@ const tagL2Map = ref<Record<string, string[]>>({ ...TAG_L2_MAP });
 const tagL3Map = ref<Record<string, string[]>>({ ...TAG_L3_MAP });
 
 const form = reactive({
-  bizType: undefined as string | undefined,
-  prodCat: undefined as string | undefined,
   productKey: undefined as string | undefined,
   tagL1: '',
   tagL2: '',
@@ -556,13 +533,6 @@ const formTagL3Opts = computed(() => {
   return mergeTagOpts(tagL3Map.value[form.tagL2] ?? [], fromRows);
 });
 
-/** 选定产品（树叶）→ 派生事业部/产品线，供提交与展示 */
-watch(() => form.productKey, (key) => {
-  if (!key || editingKey.value) return;
-  const meta = productMetaByKey(key);
-  form.bizType = meta.bizType;
-  form.prodCat = meta.prodCat;
-});
 watch(() => form.tagL1, () => {
   form.tagL2 = '';
   form.tagL3 = '';
@@ -577,34 +547,24 @@ function ensureTagOption(list: string[], val: string) {
 
 function resetForm() {
   Object.assign(form, {
-    bizType: undefined, prodCat: undefined, productKey: undefined,
+    productKey: undefined,
     tagL1: '', tagL2: '', tagL3: '',
-    team: '工单-处理', aftersale: '否', status: '启用',
+    team: '工单-处理', aftersale: '否', summaryOnly: '否', status: '启用',
   });
 }
 
 function openAdd() {
   editingKey.value = null;
   resetForm();
-  const treeProducts = collectProductKeysUnder(selectedTreeKey.value);
-  const defaultProduct = treeProducts?.size === 1 ? [...treeProducts][0] : undefined;
-  if (defaultProduct) {
-    const meta = productMetaByKey(defaultProduct);
-    form.bizType = meta.bizType;
-    form.prodCat = meta.prodCat;
-    form.productKey = defaultProduct;
-  }
   formOpen.value = true;
 }
 
 function openEditRow(row: ProblemTagRow) {
   editingKey.value = row.key;
   Object.assign(form, {
-    bizType: row.bizType,
-    prodCat: row.prodCat,
     productKey: row.productKey,
     tagL1: row.tagL1, tagL2: row.tagL2, tagL3: row.tagL3,
-    team: row.team, aftersale: row.aftersale, status: row.status,
+    team: row.team || undefined, aftersale: row.aftersale, summaryOnly: row.summaryOnly, status: row.status,
   });
   formOpen.value = true;
 }
@@ -613,8 +573,8 @@ function saveForm() {
   const tagL1 = form.tagL1.trim();
   const tagL2 = form.tagL2.trim();
   const tagL3 = form.tagL3.trim();
-  if (!form.bizType || !form.prodCat || !form.productKey || !tagL1 || !tagL2 || !tagL3 || !form.team) {
-    message.error('请完整填写业务类型、产品、三级分类与处理组');
+  if (!form.productKey || !tagL1 || !tagL2 || !tagL3) {
+    message.error('请完整填写所属产品与三级分类');
     return;
   }
   ensureTagOption(tagL1List.value, tagL1);
@@ -623,13 +583,10 @@ function saveForm() {
   if (!tagL3Map.value[tagL2]) tagL3Map.value[tagL2] = [];
   ensureTagOption(tagL3Map.value[tagL2], tagL3);
 
-  const meta = productMetaByKey(form.productKey);
   const payload: ProblemTagRow = {
     key: editingKey.value ?? String(rowSeq++),
     productKey: form.productKey,
     productName: productTitleByKey(form.productKey),
-    bizType: meta.bizType,
-    prodCat: meta.prodCat,
     tagL1, tagL2, tagL3,
     team: form.team ?? '',
     aftersale: form.aftersale,
@@ -660,6 +617,7 @@ function saveForm() {
 
 function onListStatusChange(row: ProblemTagRow, checked: boolean) {
   row.status = checked ? '启用' : '停用';
+  Object.assign(row, stampNow());
   message.success(checked ? '已启用' : '已停用');
 }
 
@@ -702,8 +660,10 @@ function confirmDelete() {
   message.success(`已删除「${row.tagL3}」${cascadeText}`);
 }
 
-function downloadCsv(filename: string, header: string, lines: string[]) {
-  const csv = `\uFEFF${header}\n${lines.join('\n')}\n`;
+/** 生成 CSV 下载：UTF-8 BOM（Excel 中文不乱码），含逗号 / 引号 / 换行的字段加引号 */
+function downloadCsv(filename: string, header: readonly string[], rows: string[][]) {
+  const lines = [header, ...rows].map((cells) => cells.map((v) => csvEscape(String(v ?? ''))).join(','));
+  const csv = `\uFEFF${lines.join('\r\n')}\r\n`;
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
   const a = document.createElement('a');
   a.href = url; a.download = filename;
@@ -711,71 +671,198 @@ function downloadCsv(filename: string, header: string, lines: string[]) {
   URL.revokeObjectURL(url);
 }
 
-function downloadTemplate() {
-  downloadCsv(
-    '问题分类导入模板.csv',
-    '产品名称,一级分类,二级分类,三级分类,处理组,是否售后,状态',
-    ['讯飞录音笔H1,云空间,操作指导,如何领取/升级云空间,工单-处理,否,启用'],
-  );
-  message.success('已下载导入模板');
-}
-
-function rowsToCsvLines(rows: ProblemTagRow[]) {
-  return rows.map((r) => [r.productName, r.tagL1, r.tagL2, r.tagL3, r.team, r.aftersale, r.status].join(','));
-}
-
-function onExport() {
-  if (!checkedRowKeys.value.length) {
-    message.warning('请先勾选要导出的记录');
-    return;
-  }
-  const rows = displayRows.value.filter((r) => checkedRowKeys.value.includes(r.key));
-  if (!rows.length) {
-    message.warning('所选记录不在当前列表中，请重新勾选');
-    checkedRowKeys.value = [];
-    return;
-  }
-  downloadCsv(
-    `问题分类导出_${new Date().toISOString().slice(0, 10)}.csv`,
-    '产品名称,一级分类,二级分类,三级分类,处理组,是否售后,状态',
-    rowsToCsvLines(rows),
-  );
-  message.success(`已导出 ${rows.length} 条`);
-}
-
-const importOpen = ref(false);
-
-interface ImportSkipRow {
-  lineNo: number;
-  kind: '重复' | '无效';
-  reason: string;
-  productName: string;
-  tagL1: string;
-  tagL2: string;
-  tagL3: string;
-  team: string;
-  aftersale: string;
-  status: string;
-  raw: string;
-}
-
-interface ImportResult {
-  fileName: string;
-  total: number;
-  dup: number;
-  invalid: number;
-  rows: ProblemTagRow[];
-  skips: ImportSkipRow[];
-}
-const importResult = ref<ImportResult | null>(null);
-const importCount = computed(() => importResult.value?.rows.length ?? 0);
-const importSkipCount = computed(() => importResult.value?.skips.length ?? 0);
-
-function openImport() { importResult.value = null; importOpen.value = true; }
-
 function csvEscape(v: string) {
   if (/[",\n\r]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
   return v;
+}
+
+/** 解析 CSV 文本为二维数组（支持 BOM、引号转义、字段内逗号与换行） */
+function parseCsv(text: string): string[][] {
+  const s = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = '';
+  let quoted = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (quoted) {
+      if (ch === '"') {
+        if (s[i + 1] === '"') { cell += '"'; i++; } else quoted = false;
+      } else cell += ch;
+      continue;
+    }
+    if (ch === '"') { quoted = true; continue; }
+    if (ch === ',') { row.push(cell); cell = ''; continue; }
+    if (ch === '\r') continue;
+    if (ch === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; continue; }
+    cell += ch;
+  }
+  if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
+  return rows;
+}
+
+const todayStr = () => dayjs().format('YYYY-MM-DD');
+
+/** 导入模板列（顺序固定；带 * 为必填）。失败明细＝模板列 + 末列「失败原因」，可直接改完重传 */
+const TEMPLATE_COLS = [
+  '业务类型*', '产品分类*', '产品名称*', '问题分类一级*', '问题分类二级*', '问题分类三级*',
+  '处理组', '是否售后*', '是否小结专用', '问题分类一级 ID', '问题分类二级 ID', '问题分类三级 ID',
+] as const;
+const FAIL_REASON_COL = '失败原因';
+/** 必填列下标（业务类型 ~ 问题分类三级 + 是否售后） */
+const REQUIRED_COL_IDX = [0, 1, 2, 3, 4, 5, 7];
+const plainColName = (c: string) => c.replace(/\*/g, '');
+
+function rowToTemplateCells(r: ProblemTagRow): string[] {
+  const p = pinfo(r.productKey);
+  return [
+    p.bizType, p.prodCat, r.productName, r.tagL1, r.tagL2, r.tagL3,
+    r.team, r.aftersale, r.summaryOnly, r.tagL1Id, r.tagL2Id, r.tagL3Id,
+  ];
+}
+
+function downloadTemplate() {
+  const sample = allRows.value.find((r) => r.status === '启用') ?? allRows.value[0];
+  downloadCsv('问题分类导入模板.csv', TEMPLATE_COLS, sample ? [rowToTemplateCells(sample)] : []);
+  message.success('已下载导入模板');
+}
+
+// —— 导出 ——
+const EXPORT_COLS = [
+  'BGBU', '业务线', '产品线', '业务类型', '产品分类', '产品名称',
+  '问题分类一级', '问题分类二级', '问题分类三级', '处理组', '是否售后', '是否小结专用', '状态',
+  '维护人', '维护时间', '问题分类一级 ID', '问题分类二级 ID', '问题分类三级 ID',
+] as const;
+
+function rowToExportCells(r: ProblemTagRow): string[] {
+  const p = pinfo(r.productKey);
+  return [
+    p.bgbu, p.bizLine, p.prodLine, p.bizType, p.prodCat, r.productName,
+    r.tagL1, r.tagL2, r.tagL3, r.team, r.aftersale, r.summaryOnly, r.status,
+    r.maintainer, r.maintainedAt, r.tagL1Id, r.tagL2Id, r.tagL3Id,
+  ];
+}
+
+const exportOpen = ref(false);
+const checkedRows = computed(() => {
+  const keys = new Set(checkedRowKeys.value);
+  return allRows.value.filter((r) => keys.has(r.key));
+});
+
+function onExport(scope: 'checked' | 'filtered') {
+  exportOpen.value = false;
+  const rows = scope === 'checked' ? checkedRows.value : displayRows.value;
+  if (!rows.length) return;
+  downloadCsv(`问题分类导出_${todayStr()}.csv`, EXPORT_COLS, rows.map(rowToExportCells));
+  message.success(`已导出 ${rows.length} 条`);
+}
+
+// —— 导入 ——
+const importOpen = ref(false);
+
+/** 每行归类：新增（路径不存在）/ 更新（路径已存在且可变字段有变化或当前停用）/ 已存在 / 失败 */
+type ImportKind = '新增' | '更新' | '已存在' | '失败';
+interface ImportLine {
+  /** 原始 12 列（模板列顺序），失败明细原样回写 */
+  cells: string[];
+  kind: ImportKind;
+  reason: string;
+  productKey?: string;
+  path?: [string, string, string];
+  team: string;
+  aftersale: '是' | '否';
+  summaryOnly: '是' | '否';
+  ids: Partial<Record<TagLevel, string>>;
+  /** 更新行命中的存量记录 */
+  targetKey?: string;
+}
+interface ImportResult {
+  fileName: string;
+  lines: ImportLine[];
+}
+const importResult = ref<ImportResult | null>(null);
+const countKind = (k: ImportKind) => importResult.value?.lines.filter((l) => l.kind === k).length ?? 0;
+const importStats = computed(() => ({
+  total: importResult.value?.lines.length ?? 0,
+  added: countKind('新增'),
+  updated: countKind('更新'),
+  existed: countKind('已存在'),
+  failed: countKind('失败'),
+}));
+
+function openImport() { importResult.value = null; importOpen.value = true; }
+
+const normHeader = (h: string) => h.replace(/[\s*＊]/g, '');
+/** 表头须与模板一致（忽略必填星号与空格）；允许末尾多一列「失败原因」（失败明细直接重传） */
+function headerMatchesTemplate(header: string[]) {
+  const cells = header.map(normHeader);
+  while (cells.length && !cells[cells.length - 1]) cells.pop();
+  const tpl = TEMPLATE_COLS.map(normHeader);
+  const extraOk = cells.length === tpl.length
+    || (cells.length === tpl.length + 1 && cells[tpl.length] === FAIL_REASON_COL);
+  return extraOk && tpl.every((c, i) => cells[i] === c);
+}
+
+function analyzeImport(fileName: string, text: string): ImportResult {
+  const [header = [], ...body] = parseCsv(text);
+  const dataRows = body.filter((r) => r.some((c) => c.trim() !== ''));
+  const headerOk = headerMatchesTemplate(header);
+  const teamSet = new Set(TEAMS);
+  const leafIndex = new Map(allRows.value.map((r) => [nodeKeyOf(r.productKey, [r.tagL1, r.tagL2, r.tagL3], 3), r]));
+  const owners: Record<TagLevel, Map<string, string>> = {
+    1: idOwners(1, allRows.value), 2: idOwners(2, allRows.value), 3: idOwners(3, allRows.value),
+  };
+  const seen = new Set<string>();
+  const lines: ImportLine[] = [];
+
+  for (const raw of dataRows) {
+    const cells = TEMPLATE_COLS.map((_, i) => raw[i] ?? '');
+    const fail = (reason: string) => {
+      lines.push({ cells, kind: '失败', reason, team: '', aftersale: '否', summaryOnly: '否', ids: {} });
+    };
+    if (!headerOk) { fail('表头与模板不一致'); continue; }
+
+    const [bizType, prodCat, prodName, l1, l2, l3, teamRaw, afRaw, soRaw, id1, id2, id3] = cells;
+    const missing = REQUIRED_COL_IDX.filter((i) => !cells[i].trim()).map((i) => plainColName(TEMPLATE_COLS[i]));
+    if (missing.length) { fail(`必填列为空：${missing.join('、')}`); continue; }
+
+    // 产品按 业务类型 + 产品分类 + 产品名称 完全匹配（空格、中英文括号均计入）
+    const prod = PRODUCT_INFOS.find((p) => p.bizType === bizType && p.prodCat === prodCat && p.name === prodName);
+    if (!prod) { fail('产品未找到：请先在产品管理中新增该产品'); continue; }
+
+    const team = teamRaw.trim();
+    if (team && !teamSet.has(team)) { fail('处理组不在枚举'); continue; }
+    const af = afRaw.trim();
+    if (af !== '是' && af !== '否') { fail('是否售后取值非法'); continue; }
+    const so = soRaw.trim() || '否';
+    if (so !== '是' && so !== '否') { fail('是否小结专用取值非法'); continue; }
+
+    const path: [string, string, string] = [l1, l2, l3];
+    const leafKey = nodeKeyOf(prod.key, path, 3);
+    if (seen.has(leafKey)) { fail('文件内重复'); continue; }
+
+    const ids: Record<TagLevel, string> = { 1: id1.trim(), 2: id2.trim(), 3: id3.trim() };
+    const idTaken = ([1, 2, 3] as TagLevel[]).some((lv) => {
+      const owner = ids[lv] ? owners[lv].get(ids[lv]) : undefined;
+      return !!owner && owner !== nodeKeyOf(prod.key, path, lv);
+    });
+    if (idTaken) { fail('老系统 ID 已被其他分类占用'); continue; }
+    seen.add(leafKey);
+
+    const base = { cells, reason: '', productKey: prod.key, path, team, aftersale: af, summaryOnly: so, ids } as const;
+    const exist = leafIndex.get(leafKey);
+    if (!exist) {
+      for (const lv of [1, 2, 3] as TagLevel[]) {
+        if (ids[lv] && !owners[lv].has(ids[lv])) owners[lv].set(ids[lv], nodeKeyOf(prod.key, path, lv));
+      }
+      lines.push({ ...base, kind: '新增' });
+    } else if (exist.team !== team || exist.aftersale !== af || exist.summaryOnly !== so || exist.status !== '启用') {
+      lines.push({ ...base, kind: '更新', targetKey: exist.key });
+    } else {
+      lines.push({ ...base, kind: '已存在', reason: '已存在，无需重复导入' });
+    }
+  }
+  return { fileName, lines };
 }
 
 function onImportFile(e: Event) {
@@ -784,100 +871,63 @@ function onImportFile(e: Event) {
   if (!f) return;
   const reader = new FileReader();
   reader.onload = () => {
-    const text = String(reader.result ?? '');
-    // 保留空行之外的数据行；行号按文件行（含表头）计，数据从第 2 行起
-    const rawLines = text.split(/\r?\n/);
-    const dataEntries: { lineNo: number; line: string }[] = [];
-    for (let i = 1; i < rawLines.length; i++) {
-      const line = rawLines[i];
-      if (!line?.trim()) continue;
-      dataEntries.push({ lineNo: i + 1, line });
-    }
-    const teamSet = new Set(TEAMS);
-    const existing = new Set(allRows.value.map((r) => `${r.productName}|${r.tagL1}|${r.tagL2}|${r.tagL3}`));
-    const seen = new Set<string>();
-    const rows: ProblemTagRow[] = [];
-    const skips: ImportSkipRow[] = [];
-
-    for (const { lineNo, line } of dataEntries) {
-      const cols = line.split(',').map((s) => (s ?? '').trim());
-      const [productName = '', tagL1 = '', tagL2 = '', tagL3 = '', team = '', aftersale = '', status = ''] = cols;
-      const base = { lineNo, productName, tagL1, tagL2, tagL3, team, aftersale, status, raw: line };
-
-      // 严格拦截：逐项校验，记录首个失败原因
-      let invalidReason = '';
-      if (cols.length < 6) invalidReason = '必填列缺失';
-      else if (!productName || !listProductNodes().find((p) => p.title === productName)) invalidReason = '产品名称未匹配产品树';
-      else if (!tagL1) invalidReason = '一级分类为空';
-      else if (!tagL2) invalidReason = '二级分类为空';
-      else if (!tagL3) invalidReason = '三级分类为空';
-      else if (!team || !teamSet.has(team)) invalidReason = '处理组不在枚举';
-      else if (aftersale !== '是' && aftersale !== '否') invalidReason = '是否售后取值非法';
-      else if (status && status !== '启用' && status !== '停用') invalidReason = '状态取值非法';
-
-      if (invalidReason) {
-        skips.push({ ...base, kind: '无效', reason: invalidReason });
-        continue;
-      }
-
-      const prod = listProductNodes().find((p) => p.title === productName)!;
-      const sig = `${productName}|${tagL1}|${tagL2}|${tagL3}`;
-      if (existing.has(sig)) {
-        skips.push({ ...base, kind: '重复', reason: '分类已存在（存量）' });
-        continue;
-      }
-      if (seen.has(sig)) {
-        skips.push({ ...base, kind: '重复', reason: '文件内重复' });
-        continue;
-      }
-      seen.add(sig);
-      const meta = productMetaByKey(prod.key);
-      rows.push({
-        key: `import-${rows.length}`,
-        productKey: prod.key,
-        productName, bizType: meta.bizType, prodCat: meta.prodCat,
-        tagL1, tagL2, tagL3, team,
-        aftersale: aftersale as '是' | '否',
-        status: (status === '停用' ? '停用' : '启用') as '启用' | '停用',
-        summaryOnly: '否', tagL1Id: '', tagL2Id: '', tagL3Id: '', ...stampNow(),
-      });
-    }
-
-    importResult.value = {
-      fileName: f.name,
-      total: dataEntries.length,
-      dup: skips.filter((s) => s.kind === '重复').length,
-      invalid: skips.filter((s) => s.kind === '无效').length,
-      rows,
-      skips,
-    };
+    importResult.value = analyzeImport(f.name, String(reader.result ?? ''));
     input.value = '';
   };
   reader.readAsText(f, 'utf-8');
 }
 
-function downloadImportSkips() {
-  const res = importResult.value;
-  if (!res?.skips.length) {
-    message.warning('没有可下载的导入明细');
-    return;
-  }
-  const header = '行号,归类,不能导入原因,产品名称,一级分类,二级分类,三级分类,处理组,是否售后,状态';
-  const lines = res.skips.map((s) =>
-    [s.lineNo, s.kind, s.reason, s.productName, s.tagL1, s.tagL2, s.tagL3, s.team, s.aftersale, s.status]
-      .map((v) => csvEscape(String(v)))
-      .join(','),
+/** 失败明细：只含失败行，列＝模板列 + 末列「失败原因」 */
+function downloadImportFailures(res: ImportResult | null = importResult.value) {
+  const fails = res?.lines.filter((l) => l.kind === '失败') ?? [];
+  if (!fails.length) return;
+  downloadCsv(
+    `问题分类导入失败明细_${todayStr()}.csv`,
+    [...TEMPLATE_COLS, FAIL_REASON_COL],
+    fails.map((l) => [...l.cells, l.reason]),
   );
-  downloadCsv(`问题分类导入明细_${new Date().toISOString().slice(0, 10)}.csv`, header, lines);
-  message.success(`已下载导入明细 ${res.skips.length} 条`);
+  message.success(`已下载失败明细 ${fails.length} 条`);
 }
 
-function doImport() {
+/** 确认导入：新增行落库；withUpdate 时更新行改写处理组 / 是否售后 / 是否小结专用并重新启用 */
+function doImport(withUpdate: boolean) {
   const res = importResult.value;
-  if (!res || !res.rows.length) { message.warning('没有可导入的记录'); return; }
-  for (const row of res.rows) allRows.value.unshift({ ...row, key: String(rowSeq++) });
+  if (!res) return;
+  const stamp = stampNow();
+  let added = 0;
+  let updated = 0;
+  for (const ln of res.lines) {
+    if (ln.kind === '新增' && ln.productKey && ln.path) {
+      const [tagL1, tagL2, tagL3] = ln.path;
+      allRows.value.unshift({
+        key: String(rowSeq++),
+        productKey: ln.productKey,
+        productName: pinfo(ln.productKey).name,
+        tagL1, tagL2, tagL3,
+        team: ln.team, aftersale: ln.aftersale, summaryOnly: ln.summaryOnly, status: '启用',
+        ...resolveTagIds(ln.productKey, ln.path, ln.ids),
+        ...stamp,
+      });
+      added += 1;
+    } else if (ln.kind === '更新' && withUpdate) {
+      const r = allRows.value.find((x) => x.key === ln.targetKey);
+      if (!r) continue;
+      Object.assign(r, { team: ln.team, aftersale: ln.aftersale, summaryOnly: ln.summaryOnly, status: '启用' }, stamp);
+      updated += 1;
+    }
+  }
   importOpen.value = false;
-  message.success(`导入完成：新增 ${res.rows.length} 条，重复跳过 ${res.dup} 条，无效跳过 ${res.invalid} 条`);
+  checkedRowKeys.value = [];
+  const failed = res.lines.filter((l) => l.kind === '失败').length;
+  const text = `导入完成：新增 ${added} 条、更新 ${updated} 条`;
+  if (!failed) { message.success(text); return; }
+  message.success({
+    content: () => h('span', [
+      `${text}；失败 ${failed} 条，可`,
+      h('a', { onClick: () => downloadImportFailures(res) }, '下载失败明细'),
+    ]),
+    duration: 6,
+  });
 }
 </script>
 
@@ -885,7 +935,7 @@ function doImport() {
   <div class="problem-tag-manage">
     <AdminPageHeader
       title="问题分类"
-      subtitle="按产品维护三级问题分类，关联处理组与是否售后；左侧产品树选中后仅展示该节点下分类。"
+      subtitle="按产品维护三级问题分类，关联处理组与是否售后。"
     >
       <template #actions>
         <a-button @click="openImport"><template #icon><ImportOutlined /></template>导入</a-button>
@@ -894,71 +944,54 @@ function doImport() {
     </AdminPageHeader>
 
     <div class="cols">
-    <div class="left">
-      <div class="panel-head">
-        <span class="p-title">产品树</span>
-        <a-input-search
-          v-model:value="treeSearch"
-          class="tree-search"
-          placeholder="搜索..."
-          allow-clear
-          size="small"
-        />
-      </div>
-      <a-tree
-        v-model:expanded-keys="expandedKeys"
-        v-model:selected-keys="selectedKeys"
-        :tree-data="visibleTree"
-        :indent="22"
-        block-node
-        class="prod-tree"
-      >
-        <template #title="node">
-          <span class="node">
-            <span class="node-name" :title="node.title">{{ node.title }}</span>
-            <span class="node-meta">
-              <span class="node-kind" :class="KIND_CLASS[node.kind as ProductTreeNode['kind']]">{{ KIND_LABEL[node.kind as ProductTreeNode['kind']] }}</span>
-              <span v-if="node.cnt > 0" class="node-cnt" title="问题分类数量">{{ node.cnt }}</span>
-            </span>
-          </span>
-        </template>
-      </a-tree>
-    </div>
-
     <div class="right body body--list">
       <div class="list-card">
         <div class="list-toolbar">
           <div class="toolbar-row">
             <div class="fi">
-              <span class="fl">事业部</span>
-              <a-select v-model:value="draftFilter.bizType" class="tb-ctl sel-w" size="small" allow-clear placeholder="全部" :options="toOpts(BIZ_TYPES)" />
+              <span class="fl">BGBU</span>
+              <a-select v-model:value="draftFilter.bgbu" class="tb-ctl sel-w-lg" size="small" allow-clear placeholder="全部" :options="productDimOpts('bgbu')" />
+            </div>
+            <div class="fi">
+              <span class="fl">业务线</span>
+              <a-select v-model:value="draftFilter.bizLine" class="tb-ctl sel-w-lg" size="small" allow-clear placeholder="全部" :options="productDimOpts('bizLine')" />
             </div>
             <div class="fi">
               <span class="fl">产品线</span>
-              <a-select v-model:value="draftFilter.prodCat" class="tb-ctl sel-w" size="small" allow-clear placeholder="全部" :options="toOpts(PROD_CATS)" />
+              <a-select v-model:value="draftFilter.prodLine" class="tb-ctl sel-w-lg" size="small" allow-clear placeholder="全部" :options="productDimOpts('prodLine')" />
             </div>
-            <div class="fi-group">
-              <div class="fi">
-                <span class="fl">产品名称</span>
-                <a-select
-                  v-model:value="draftFilter.prodName"
-                  class="tb-ctl sel-w-lg"
-                  size="small"
-                  show-search
-                  allow-clear
-                  placeholder="全部"
-                  :filter-option="filterByLabel"
-                  :options="prodNameSelectOpts"
-                />
-              </div>
-              <div class="fi">
-                <span class="fl">处理组</span>
-                <a-select v-model:value="draftFilter.team" class="tb-ctl sel-w" size="small" allow-clear placeholder="全部" :options="toOpts(TEAMS)" />
-              </div>
+            <div class="fi">
+              <span class="fl">业务类型</span>
+              <a-select v-model:value="draftFilter.bizType" class="tb-ctl sel-w" size="small" allow-clear placeholder="全部" :options="productDimOpts('bizType')" />
+            </div>
+            <div class="fi">
+              <span class="fl">产品分类</span>
+              <a-select v-model:value="draftFilter.prodCat" class="tb-ctl sel-w" size="small" allow-clear placeholder="全部" :options="productDimOpts('prodCat')" />
+            </div>
+            <div class="fi">
+              <span class="fl">产品名称</span>
+              <a-select
+                v-model:value="draftFilter.prodName"
+                class="tb-ctl sel-w-lg"
+                size="small"
+                show-search
+                allow-clear
+                placeholder="全部"
+                :filter-option="filterByLabel"
+                :options="productDimOpts('prodName')"
+              />
+            </div>
+            <div class="fi">
+              <span class="fl">处理组</span>
+              <a-select v-model:value="draftFilter.team" class="tb-ctl sel-w" size="small" allow-clear placeholder="全部" :options="toOpts(TEAMS)" />
             </div>
             <div class="fi">
               <span class="fl">是否售后</span>
               <a-select v-model:value="draftFilter.aftersale" class="tb-ctl sel-w-sm" size="small" allow-clear placeholder="全部" :options="toOpts(['是', '否'])" />
+            </div>
+            <div class="fi">
+              <span class="fl">是否小结专用</span>
+              <a-select v-model:value="draftFilter.summaryOnly" class="tb-ctl sel-w-sm" size="small" allow-clear placeholder="全部" :options="toOpts(['是', '否'])" />
             </div>
             <div class="fi">
               <span class="fl">状态</span>
@@ -1022,9 +1055,23 @@ function doImport() {
                     <a-menu-item :disabled="!hasRowSelection" @click="onBatch('处理组')">处理组</a-menu-item>
                     <a-menu-item :disabled="!hasRowSelection" @click="onBatch('启用')">启用</a-menu-item>
                     <a-menu-item :disabled="!hasRowSelection" @click="onBatch('停用')">停用</a-menu-item>
-                    <a-menu-divider />
-                    <a-menu-item :disabled="!hasRowSelection" @click="onBatch('导出')">导出</a-menu-item>
-                    <a-menu-item :disabled="!hasRowSelection" danger @click="onBatch('删除')">删除</a-menu-item>
+                    <template v-if="isAdmin">
+                      <a-menu-divider />
+                      <a-menu-item :disabled="!hasRowSelection" danger @click="onBatch('删除')">删除</a-menu-item>
+                    </template>
+                  </a-menu>
+                </template>
+              </a-dropdown>
+              <a-dropdown v-model:open="exportOpen" trigger="click" placement="bottomRight">
+                <div class="wb-toolbar__btn">
+                  <DownloadOutlined :style="{ color: '#6B7280', fontSize: '14px' }" />
+                  <span>导出</span>
+                  <DownOutlined :style="{ color: '#9CA3AF', fontSize: '12px' }" />
+                </div>
+                <template #overlay>
+                  <a-menu class="batch-menu">
+                    <a-menu-item :disabled="!checkedRows.length" @click="onExport('checked')">导出已勾选（{{ checkedRows.length }} 条）</a-menu-item>
+                    <a-menu-item :disabled="!displayRows.length" @click="onExport('filtered')">导出全部筛选结果（{{ displayRows.length }} 条）</a-menu-item>
                   </a-menu>
                 </template>
               </a-dropdown>
@@ -1040,7 +1087,7 @@ function doImport() {
           row-key="key"
           :pagination="pagination"
           size="middle"
-          :scroll="{ x: 1000, y: 'calc(100vh - 380px)' }"
+          :scroll="{ x: 1450, y: 'calc(100vh - 380px)' }"
         >
           <template #bodyCell="{ column, record }">
             <span v-if="column.key === 'productName'" class="cell-link" @click="openEditRow(record as ProblemTagRow)">
@@ -1048,6 +1095,12 @@ function doImport() {
             </span>
             <span v-else-if="column.key === 'tagL3'" class="tag-path" :title="tagPath(record as ProblemTagRow)">
               {{ (record as ProblemTagRow).tagL3 }}
+            </span>
+            <span v-else-if="column.key === 'team'" :class="{ 'cell-empty': !(record as ProblemTagRow).team }">
+              {{ (record as ProblemTagRow).team || '—' }}
+            </span>
+            <span v-else-if="column.key === 'maintainedAt'" class="cell-time">
+              {{ (record as ProblemTagRow).maintainedAt }}
             </span>
             <a-switch
               v-else-if="column.key === 'status'"
@@ -1059,7 +1112,7 @@ function doImport() {
             />
             <div v-else-if="column.key === 'op'" class="row-ops">
               <a-button type="link" size="small" @click="openEditRow(record as ProblemTagRow)">编辑</a-button>
-              <a-button type="link" size="small" danger @click="delRow(record as ProblemTagRow)">删除</a-button>
+              <a-button v-if="isAdmin" type="link" size="small" danger @click="delRow(record as ProblemTagRow)">删除</a-button>
             </div>
           </template>
           <template #emptyText>
@@ -1155,11 +1208,17 @@ function doImport() {
           />
         </a-form-item>
 
-        <a-form-item label="处理组" required>
-          <a-select v-model:value="form.team" placeholder="请选择或输入" show-search :options="toOpts(TEAMS)" />
+        <a-form-item label="处理组">
+          <a-select v-model:value="form.team" placeholder="请选择" show-search allow-clear :options="toOpts(TEAMS)" />
         </a-form-item>
         <a-form-item label="是否售后">
           <a-radio-group v-model:value="form.aftersale" button-style="solid">
+            <a-radio-button value="是">是</a-radio-button>
+            <a-radio-button value="否">否</a-radio-button>
+          </a-radio-group>
+        </a-form-item>
+        <a-form-item label="是否小结专用">
+          <a-radio-group v-model:value="form.summaryOnly" button-style="solid">
             <a-radio-button value="是">是</a-radio-button>
             <a-radio-button value="否">否</a-radio-button>
           </a-radio-group>
@@ -1218,18 +1277,23 @@ function doImport() {
     <a-modal
       v-model:open="importOpen"
       title="导入问题分类"
-      :width="560"
-      :ok-text="importResult ? `确认导入 ${importCount} 条` : '开始导入'"
-      :ok-button-props="{ disabled: importCount === 0 }"
-      cancel-text="取消"
-      @ok="doImport"
+      :width="600"
     >
+      <template #footer>
+        <a-button @click="importOpen = false">取消</a-button>
+        <a-button v-if="!importResult" type="primary" disabled>开始导入</a-button>
+        <template v-else-if="importStats.updated > 0">
+          <a-button :disabled="importStats.added === 0" @click="doImport(false)">仅导入新增 {{ importStats.added }} 条</a-button>
+          <a-button type="primary" @click="doImport(true)">导入新增并更新（{{ importStats.added }} + {{ importStats.updated }} 条）</a-button>
+        </template>
+        <a-button v-else type="primary" :disabled="importStats.added === 0" @click="doImport(false)">确认导入 {{ importStats.added }} 条</a-button>
+      </template>
       <div class="import-panel">
         <label class="dropzone">
           <InboxOutlined class="dz-ic" />
           <div class="dz-main">
             <template v-if="importResult">{{ importResult.fileName }}</template>
-            <template v-else>点击选择 Excel / CSV 文件</template>
+            <template v-else>点击选择 CSV 文件</template>
           </div>
           <div class="dz-sub">
             <template v-if="importResult">点击可重新选择文件</template>
@@ -1240,46 +1304,46 @@ function doImport() {
               </a>
             </template>
           </div>
-          <input type="file" accept=".xlsx,.xls,.csv" hidden @change="onImportFile" />
+          <input type="file" accept=".csv" hidden @change="onImportFile" />
         </label>
 
         <ul v-if="!importResult" class="import-tips">
-          <li>支持 xlsx / xls / csv，首行须为表头（同模板）</li>
-          <li>产品名称需与产品树一致；校验严格拦截，重复/无效可下载清单</li>
+          <li>支持 csv，首行须为表头（同模板）</li>
+          <li>业务类型 + 产品分类 + 产品名称需与产品管理完全一致</li>
         </ul>
 
         <div v-else class="import-result">
           <div class="ir-head">
             <div class="ir-title">解析完成</div>
             <a
-              v-if="importSkipCount > 0"
+              v-if="importStats.failed > 0"
               class="ir-dl"
-              @click.prevent="downloadImportSkips"
+              @click.prevent="downloadImportFailures()"
             >
-              <DownloadOutlined /> 下载导入明细
+              <DownloadOutlined /> 下载失败明细
             </a>
           </div>
           <div class="ir-grid">
             <div class="ir-cell">
-              <span class="ir-num">{{ importResult.total }}</span>
+              <span class="ir-num">{{ importStats.total }}</span>
               <span class="ir-label">共解析</span>
             </div>
             <div class="ir-cell">
-              <span class="ir-num dup">{{ importResult.dup }}</span>
-              <span class="ir-label">重复跳过</span>
+              <span class="ir-num ok">{{ importStats.added }}</span>
+              <span class="ir-label">新增</span>
             </div>
             <div class="ir-cell">
-              <span class="ir-num invalid">{{ importResult.invalid }}</span>
-              <span class="ir-label">无效跳过</span>
+              <span class="ir-num upd">{{ importStats.updated }}</span>
+              <span class="ir-label">更新</span>
             </div>
             <div class="ir-cell">
-              <span class="ir-num ok">{{ importCount }}</span>
-              <span class="ir-label">可导入</span>
+              <span class="ir-num dup">{{ importStats.existed }}</span>
+              <span class="ir-label">已存在</span>
             </div>
-          </div>
-          <div class="ir-hint">
-            仅导入「可导入」条目；重复与无效已严格拦截。
-            <template v-if="importSkipCount > 0">逐行原因见「下载导入明细」（共 {{ importSkipCount }} 条）。</template>
+            <div class="ir-cell">
+              <span class="ir-num invalid">{{ importStats.failed }}</span>
+              <span class="ir-label">失败</span>
+            </div>
           </div>
         </div>
       </div>
@@ -1291,58 +1355,6 @@ function doImport() {
 .problem-tag-manage { display: flex; flex-direction: column; height: 100%; min-height: 0; padding: 16px 20px; }
 .problem-tag-manage :deep(.admin-page-header) { margin-bottom: 16px; }
 .cols { display: flex; gap: 12px; flex: 1; min-height: 0; }
-
-.left {
-  width: 300px;
-  flex: none;
-  background: #fff;
-  border: 1px solid #eef0f2;
-  border-radius: 8px;
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-.panel-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex: none; }
-.p-title { font-size: 14px; font-weight: 600; color: #111827; flex: none; white-space: nowrap; }
-.tree-search { flex: 1; min-width: 0; }
-.tree-search :deep(.ant-input) { font-size: 12px; }
-.prod-tree { flex: 1; overflow: auto; font-size: 13px; }
-.node { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; }
-.node-name {
-  flex: 1; min-width: 0; font-size: 13px; color: #374151;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.node-meta { flex: none; display: inline-flex; align-items: center; gap: 4px; }
-.node-kind {
-  flex: none; padding: 0 6px; height: 20px; border-radius: 4px;
-  font-size: 12px; line-height: 20px; font-weight: 500; white-space: nowrap;
-}
-.kind-bg { background: #eff6ff; color: #2563eb; }
-.kind-biz { background: #ecfdf5; color: #059669; }
-.kind-line { background: #fff7ed; color: #ea580c; }
-.kind-cat { background: #fef2f2; color: #dc2626; }
-.kind-prod { background: #f5f3ff; color: #7c3aed; }
-.node-cnt {
-  min-width: 18px; height: 18px; padding: 0 6px; border-radius: 9px;
-  font-size: 11px; line-height: 18px; text-align: center; font-weight: 600;
-  background: #eef4ff; color: #1a6fff;
-}
-
-/* 树对齐（参考产品管理页 / Windows 资源管理器）：缩进单元 = 展开箭头列宽 = 22px */
-:deep(.prod-tree .ant-tree-treenode) { align-items: center; padding: 0; }
-:deep(.prod-tree .ant-tree-indent-unit) { width: 22px; }
-:deep(.prod-tree .ant-tree-switcher) {
-  width: 22px; flex: none; align-self: stretch;
-  display: inline-flex; align-items: center; justify-content: center;
-  margin: 0; color: #8c8c8c;
-}
-:deep(.prod-tree .ant-tree-node-content-wrapper) {
-  flex: 1; min-width: 0; padding: 4px 6px; margin: 1px 0; border-radius: 4px;
-}
-:deep(.prod-tree .ant-tree-node-content-wrapper:hover) { background: #f3f4f6; }
-:deep(.prod-tree .ant-tree-node-content-wrapper.ant-tree-node-selected) { background: #eff6ff !important; }
-:deep(.prod-tree .ant-tree-node-content-wrapper.ant-tree-node-selected .node-name) { color: #1a6fff; }
 
 .right { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
 .body--list { gap: 8px; padding: 0; }
@@ -1357,7 +1369,7 @@ function doImport() {
   padding: 6px 12px; border-bottom: 1px solid #f0f2f5;
 }
 .toolbar-row {
-  display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; width: 100%;
+  display: flex; align-items: center; gap: 6px 14px; flex-wrap: wrap; width: 100%;
 }
 .fi-group {
   display: flex; align-items: center; gap: 8px; flex: none;
@@ -1454,6 +1466,8 @@ function doImport() {
 .cell-link { color: #1a6fff; cursor: pointer; font-size: 13px; }
 .cell-link:hover { text-decoration: underline; }
 .tag-path { font-size: 13px; color: #4b5563; }
+.cell-empty { color: #9ca3af; }
+.cell-time { font-size: 12px; color: #6b7280; font-variant-numeric: tabular-nums; }
 .row-ops { display: inline-flex; align-items: center; justify-content: flex-end; flex-wrap: nowrap; white-space: nowrap; }
 .row-ops :deep(.ant-btn-link) { padding: 0 6px; height: 22px; line-height: 22px; }
 .empty-hint { padding: 24px; color: #9ca3af; }
@@ -1545,7 +1559,7 @@ function doImport() {
   font-size: 12px; font-weight: 600; color: #1a6fff; cursor: pointer; white-space: nowrap;
 }
 .ir-dl:hover { text-decoration: underline; }
-.ir-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.ir-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
 .ir-cell {
   display: flex; flex-direction: column; align-items: center; gap: 4px;
   padding: 12px 8px; border-radius: 8px; background: #f9fafb;
@@ -1554,6 +1568,7 @@ function doImport() {
 .ir-num.dup { color: #d97706; }
 .ir-num.invalid { color: #dc2626; }
 .ir-num.ok { color: #16a34a; }
+.ir-num.upd { color: #1a6fff; }
 .ir-label { font-size: 12px; color: #6b7280; }
 .ir-hint { font-size: 12px; color: #9ca3af; line-height: 1.6; }
 </style>
