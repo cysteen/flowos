@@ -136,8 +136,8 @@ export function isPooledStatus(status: PoolStatus): boolean {
 export interface ReportAssessment {
   decision: AssessDecision;
   /**
-   * 不升级 → 反馈意见；升级 → 升级说明。两个决策各自的必填文本，
-   * 用词不同故不能共用一个「备注」——反馈意见是给报备人的处理建议，
+   * 不升级 → 处理意见；升级 → 升级说明。两个决策各自的必填文本，
+   * 用词不同故不能共用一个「备注」——处理意见是给报备人的处理建议，
    * 升级说明是给新单承接人的交代。
    */
   advice: string;
@@ -642,7 +642,7 @@ export function reasonLine(r: { reason: string; category: string | null }): stri
 }
 
 /**
- * 把人填的自由文本（撤回原因 / 反馈意见）接进正文时补一个句号。
+ * 把人填的自由文本（撤回原因 / 处理意见）接进正文时补一个句号。
  * 填的人有的带句号有的不带，不收这一道，正文里会出现「原因：已恢复 该条报备…」这种粘连句。
  */
 export function asSentence(text: string): string {
