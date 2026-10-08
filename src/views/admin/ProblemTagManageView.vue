@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, computed, watch, h } from 'vue';
+import { ref, reactive, computed, watch, h, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
 import dayjs from 'dayjs';
@@ -533,11 +533,14 @@ const formTagL3Opts = computed(() => {
   return mergeTagOpts(tagL3Map.value[form.tagL2] ?? [], fromRows);
 });
 
+/** 编辑回填整条路径时不触发「改上级清空下级」 */
+let hydratingForm = false;
 watch(() => form.tagL1, () => {
+  if (hydratingForm) return;
   form.tagL2 = '';
   form.tagL3 = '';
 });
-watch(() => form.tagL2, () => { form.tagL3 = ''; });
+watch(() => form.tagL2, () => { if (!hydratingForm) form.tagL3 = ''; });
 
 function ensureTagOption(list: string[], val: string) {
   const v = val.trim();
@@ -561,6 +564,8 @@ function openAdd() {
 
 function openEditRow(row: ProblemTagRow) {
   editingKey.value = row.key;
+  hydratingForm = true;
+  nextTick(() => { hydratingForm = false; });
   Object.assign(form, {
     productKey: row.productKey,
     tagL1: row.tagL1, tagL2: row.tagL2, tagL3: row.tagL3,
@@ -1087,7 +1092,7 @@ function doImport(withUpdate: boolean) {
           row-key="key"
           :pagination="pagination"
           size="middle"
-          :scroll="{ x: 1450, y: 'calc(100vh - 380px)' }"
+          :scroll="{ x: 1450, y: 'calc(100vh - 410px)' }"
         >
           <template #bodyCell="{ column, record }">
             <span v-if="column.key === 'productName'" class="cell-link" @click="openEditRow(record as ProblemTagRow)">
