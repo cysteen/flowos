@@ -1600,7 +1600,7 @@ function scanStampDaysAgo(days: number, hhmmss: string): string {
 
 /**
  * 扫库记录演示样例 —— 覆盖实时监控 / 手动筛查 × 成功 / 失败 / 异常，
- * 以及「扫出 N · 新命中 M」「无新增风险」两种结果口径。
+ * 以及「扫出 N · 无命中记录 M」「无新增风险」两种结果口径。
  */
 function buildDefaultScanRuns(): ScanRun[] {
   return [
@@ -1728,7 +1728,12 @@ function scanRunResultText(r: ScanRun): string {
   if (r.kind === 'realtime') {
     return `${filterTag}发现 ${r.hitCount ?? 0} · 待核实 ${r.openCount ?? 0}`;
   }
-  const parts = [`扫出 ${r.total ?? 0}`, `新命中 ${r.fresh ?? 0}`];
+  // 🔴 后半截**跟着命中表状态列叫「无命中记录」**（2026-10-08 裁定），不再叫「新命中」：
+  // 「并入清单」取消之后"新"字已无所指（原指"待并入的那批"），且与左栏「今日发现」的"新"
+  // 撞口径；状态列已统一用「无命中记录」，**一个概念不能留两个词**。
+  // 🔴 这个数本身保留：扫库记录正是回看"这一次扫出了什么"的地方，它是其中唯一有信息量的一项
+  //（区别于已删掉的结果态横幅 —— 横幅与下方清单重复，日志不重复）。
+  const parts = [`扫出 ${r.total ?? 0}`, `无命中记录 ${r.fresh ?? 0}`];
   if (!r.fresh) parts.push('无新增风险');
   return filterTag + parts.join(' · ');
 }
