@@ -1914,8 +1914,6 @@ function doScan() {
 const scanDupIds = computed(
   () => new Set((scanResult.value ?? []).filter((r) => r.duplicated).map((r) => r.hit.id)),
 );
-const scanFreshCount = computed(() => (scanResult.value ?? []).filter((r) => !r.duplicated).length);
-const scanDupCount = computed(() => (scanResult.value ?? []).filter((r) => r.duplicated).length);
 
 /*
  * 🔴 **原先这里有 `scanPicked` / `scanAllPicked` / `toggleScanPick` / `toggleScanPickAll`
@@ -6845,20 +6843,17 @@ function toggleWordEnabled(w: RiskWord) {
       </div>
 
       <!--
-        筛查结果条：结果就在下面这张清单里，这里只给统计与退出。
+        筛查结果条：结果就在下面这张清单里，这一条只承载**退出**这一件事。
         🔴 **原先这一条右侧还有「全选新命中 / 已选 N / 并入清单」三件**，随 2026-10-08 裁决删除
         （手动筛查只做查询，结果不落库）；那句"结果尚未并入，勾选后确认"的提示同去 ——
         它指向的动作已经不存在。结果态的出路只剩两条：点行上的工单号进那张单，或「退出筛查」。
+        🔴 **左侧那段「扫出 N 条 / 新命中 N / 已有命中记录 N」统计也已删**（2026-10-08 复盘）：
+        条数清单末尾的「共 N 条」已经给了，两种状态逐行就在「状态」列里，统计条只是重述一遍。
+        统计去掉之后这一条不再撑成灰底横幅——留一个只装一颗按钮的空盒子比不留更难看，
+        故收成一条贴着清单上沿、右对齐的轻量行，与下方分页器的右对齐同一条轴。
       -->
       <div v-if="inScanResult" class="scan-banner">
-        <div class="sb-stat">
-          扫出 <b>{{ scanResult!.length }}</b> 条
-          <span class="sr-fresh">新命中 {{ scanFreshCount }}</span>
-          <span v-if="scanDupCount" class="sr-dup">已有命中记录 {{ scanDupCount }}</span>
-        </div>
-        <div class="sb-actions">
-          <button type="button" class="link-btn" @click="exitScanResult">退出筛查</button>
-        </div>
+        <button type="button" class="link-btn" @click="exitScanResult">退出筛查</button>
       </div>
 
       <!--
@@ -6981,9 +6976,15 @@ function toggleWordEnabled(w: RiskWord) {
                 🔴 **结果态不出任何处置动作**：筛查只做查询（2026-10-08 裁决），
                 要处置就点上一列的工单号进那张单。
               -->
+              <!--
+                两种取值**互为反面、措辞对仗**（「已有」↔「无」，后半截同为"命中记录"）：
+                同一列里一正一反，读的人不必记住哪个词对应哪种情形。
+                🔴 另一支原先叫「新命中」——那是「并入清单」时代的叫法（新＝待并入的那批），
+                并入取消之后"新"字已无所指，且与左栏「今日发现」的"新"撞口径。
+              -->
               <template v-if="inScanResult">
                 <span v-if="scanDupIds.has(h.id)" class="state-chip">已有命中记录</span>
-                <span v-else class="state-chip sc-will">新命中</span>
+                <span v-else class="state-chip sc-fresh">无命中记录</span>
               </template>
               <div v-else class="cell-done">
                 <template v-if="isJudged(h)">
@@ -9007,16 +9008,11 @@ function toggleWordEnabled(w: RiskWord) {
 .row-btn-solid { background: #1e293b; border-color: #1e293b; color: #fff; }
 .row-btn-solid:disabled { opacity: 0.45; cursor: not-allowed; }
 
-/* 筛查结果条 */
+/* 筛查结果条：只剩「退出筛查」一颗，故不再是横幅，而是清单上沿的一条右对齐轻量行 */
 .scan-banner {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  padding: 8px 12px; margin-bottom: 10px;
-  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;
+  display: flex; align-items: center; justify-content: flex-end;
+  margin-bottom: 6px;
 }
-.sb-stat { font-size: 13px; color: #334155; }
-.sb-stat b { font-size: 16px; color: #0f172a; }
-.sr-fresh { margin-left: 8px; padding: 0 7px; border-radius: 10px; font-size: 12px; background: #dcfce7; color: #15803d; }
-.sr-dup { margin-left: 6px; padding: 0 7px; border-radius: 10px; font-size: 12px; background: #f1f5f9; color: #64748b; }
 /* 单工单焦点条：与筛查结果条同形，靛蓝一色区分"这是收窄不是新数据" */
 .focus-banner {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -9036,11 +9032,15 @@ function toggleWordEnabled(w: RiskWord) {
 .fb-exit:hover { border-color: #6366F1; background: #F5F3FF; }
 .fb-x { font-size: 13px; line-height: 1; }
 
-.sb-actions { display: inline-flex; align-items: center; gap: 12px; }
-
 .hit-table tr.scan-dup { opacity: 0.55; }
 .state-chip { padding: 1px 8px; border-radius: 10px; font-size: 12px; background: #f1f5f9; color: #64748b; }
-.state-chip.sc-will { background: #dcfce7; color: #15803d; }
+/*
+ * 「无命中记录」这一支：与默认的灰底一浓一淡，走本页的强调蓝（淡底 + 同色字，
+ * 与 .vc-ok / .wt-state.on 同一套 chip 体例，只换了色相）。
+ * 🔴 不用绿：绿在本页是"成立 / 启用"那一路的颜色，挂在这里会被读成"这条没事"，
+ * 而它说的只是"系统里还没有这条记录"——一句事实，不是一个结论。
+ */
+.state-chip.sc-fresh { background: #1a6fff1a; color: #1a6fff; }
 /* 开始筛查：主动作，与两个 link 按钮拉开层级 */
 .scan-go {
   display: inline-flex; align-items: center; justify-content: center; gap: 4px;

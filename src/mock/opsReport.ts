@@ -1259,7 +1259,14 @@ const RAW_SCANNABLE_TICKETS: RawScannableTicket[] = [
   { ticketNo: 'IFLYZX-20260801-00001', title: '智能办公本笔迹延迟咨询', texts: { 沟通记录: '如果对处理结果不满意，您也可以向媒体曝光或向监管部门反映，这是您的权利。' }, when: '2026-08-04 10:52', customer: '钱伟', groupId: 'cs-1', groupName: '受理一组', assignee: '王坐席', ticketState: '在办', ticketType: '咨询', impact: '轻微', impactSource: '咨询类 · 无实质损失' },
   { ticketNo: 'IFLYTS-20260731-00001', title: '智能音箱返修超期未回寄', texts: { 催补记录: '再拖下去我就走法律途径起诉你们。' }, when: '2026-08-04 09:12', customer: '吴强', groupId: 'hardware', groupName: '硬件缺陷组', assignee: '陈坐席', ticketState: '在办', ticketType: '投诉', impact: '一般', impactSource: '流程规则投诉 · 售后维修方式不认可' },
 
-  { ticketNo: 'IFLYZX-20260729-00001', title: '学习机屏幕自燃，孩子手部灼伤', texts: { 问题描述: '孩子在写作业时屏幕突然冒烟起火，手背烫伤了，已经去医院处理。我要求你们给个说法。', 催补记录: '客户追问处理进度，情绪激动。' }, when: '2026-07-29 16:40', customer: '郭欣', groupId: 'edu', groupName: '教育支持组', assignee: '孙坐席', ticketState: '在办', ticketType: '投诉', impact: '严重', impactSource: '产品质量投诉 · 安全事故' },
+  // 🔴 这一条的**催补记录**是手动筛查里唯一一条「无命中记录」结果行的来源：
+  // 本单在 RISK_HITS 里只有一条「曝光」（h9，落在问题描述），规则「起诉」从未在本单上留下记录，
+  // 而判重键 ＝ 工单号 + **规则**，故这条 w3 命中扫得出来、却查不到任何已有记录。
+  // 没有它，默认条件扫出来的每一行都是「已有命中记录」，「状态」那一列就只剩一种取值——
+  // 另一种取值在界面上根本看不见，也就无从判断两者分不分得开。
+  // 文本里「律师」在前、「起诉」在后，取的是原文中最先出现的那个（matchedTermIn），
+  // 于是这一行顺带把"同义词命中归主词名下"也演了一遍。
+  { ticketNo: 'IFLYZX-20260729-00001', title: '学习机屏幕自燃，孩子手部灼伤', texts: { 问题描述: '孩子在写作业时屏幕突然冒烟起火，手背烫伤了，已经去医院处理。我要求你们给个说法。', 催补记录: '客户追问处理进度，情绪激动，称已委托律师，本周再没有结论就起诉。' }, when: '2026-07-29 16:40', customer: '郭欣', groupId: 'edu', groupName: '教育支持组', assignee: '孙坐席', ticketState: '在办', ticketType: '投诉', impact: '严重', impactSource: '产品质量投诉 · 安全事故' },
   // 沟通记录按真实形态存**整段多轮对话**，不是一句话。命中片段的取窗与高亮正是冲着它来的：
   // 扫库取的是整个字段，整段直出会撑爆行，人还得自己在里面找命中词在哪。
   { ticketNo: 'IFLYZX-20260726-00001', title: '翻译机固件升级后变砖', texts: { 沟通记录: '客户来电反馈翻译机升级固件后完全无法开机，已按指引长按电源键三十秒仍无任何反应。坐席说明需寄回检测，客户表示上周才寄修过一次，来回折腾半个多月，这次不接受再等。客户情绪激动，称你们再拖，我就把聊天记录发到黑猫投诉上去曝光。坐席致歉并承诺当日安排加急检测，回电时间约在明日上午。' }, when: '2026-07-26 10:15', customer: '马涛', groupId: 'cs-2', groupName: '受理二组', assignee: '李坐席', ticketState: '在办', ticketType: '投诉', impact: '一般', impactSource: '产品质量投诉 · 产品质量故障' },
