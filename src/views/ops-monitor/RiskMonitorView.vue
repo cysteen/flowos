@@ -439,24 +439,20 @@ function tagLevelCountsOf(pick: (e: RiskQueueEntry) => boolean): Record<RiskLeve
  * `tagLevelCountsOf` 本身**照旧在用**（「实时监控」块的「风险标注」走它），一个字没动。
  */
 
-/**
- * 🔴 **本页不再有「处置阶段」这个轴**（2026-10-08 裁决：业务侧没有这个定义）。
- * 工作面那一排五枚 chip（不限阶段 / 待领取 / 已领取 / 已结论 / 超时未评）与表里同名那一列
- * **整排整列删除**，表**恒摆全部条目** ＝ 原先的「不限阶段」（见 `reportAllRows`）。
- *
- * 本变量因此**恒为 `all`、没有任何置位入口**，留着只为两处仍在引用它的代码：
- *   ① 「结论」那一排 chip（升级 / 不升级 / 风险处理建议 + 仅今日），原本只在 `assessed` 下出；
- *   ② 与它配套的「已结论」专表（评估人 / 结论时刻 / 评估决策那几列）。
- * 两处的去留**待业务拍板**（能否像「监控来源」那样独立成筛选项），故本轮**只让它不出现、不删代码**。
- * ⚠️ 要恢复一个档位切换，改这一处的赋值即可；要彻底收掉，连这两处模板一并删。
- *
- * ⚠️ `unassigned` 这个键与落库值「待分派」都是**分派时代留下的词**。分派 / 改派 /
- * 批量分派整套已随第三轮拍板取消，这一档现在的含义就是"**还没人领**"，故界面一律写
- * 「待领取」。键与落库值不动：`ReportStatus` 是两条线共用的，B 线本轮不解冻，
- * 为了换个词把跨线的状态枚举改掉，代价远大于在这里说清楚。
- */
-type ReportView = 'all' | 'open' | 'unassigned' | 'assigning' | 'assessed';
-const reportView = ref<ReportView>('all');
+//
+// 🔴 **本页不再有「处置阶段」这个轴，工作面也不再有视图档**（2026-10-08 裁决）。
+// 原先这里有一个 `type ReportView` + `reportView` ref（all / open / unassigned /
+// assigning / assessed 五档），给那一排 chip 与两张表的切换用。
+//   · 那一排 chip 与表里同名那一列 —— **整排整列删**（业务侧没有「处置阶段」这个定义）；
+//   · 与 `assessed` 档配套的「已结论」专表（评估人 / 结论时刻 / 评估决策 / 派生投诉单）
+//     —— **整张删**（工作面只管处置、不兼做台账；那三项去左栏「已判」段看）；
+//   · 「结论」那一排 chip —— 改成与来源 / 原单类型 / 风险等级同层的**筛选项**（`decisionFilter`）。
+// 三处的消费端清完之后本变量再无人用，一并删掉。表**恒摆全部条目**（见 `reportAllRows`）。
+//
+// ⚠️ `unassigned` / `待分派` 这些词是**分派时代留下的**。分派 / 改派 / 批量分派整套已随
+// 第三轮拍板取消，那一态现在的含义就是"**还没人领**"，故界面一律写「待领取」；
+// 落库值不动（`ReportStatus` 是两条线共用的，B 线本轮不解冻），只在 `poolStageOf` 里译一次。
+//
 /**
  * 池行走到哪一步。取 store 的 `status`，不靠"有没有承办人"倒推。
  * 投诉单条目不经领取、没有「已领取」态（§5.4 ⑥），走 `poolStageStatusOf` 读成「待领取」。
@@ -567,16 +563,23 @@ function poolRiskSummaryOf(r: RiskPoolItem): string {
 function poolTicketTypeKeyOf(r: { ticketNo: string }): PoolTicketTypeKey {
   return poolTicketTypeOf(r) === '投诉' ? '投诉' : '非投诉';
 }
-type PoolAttr = 'source' | 'type' | 'level';
+type PoolAttr = 'source' | 'type' | 'level' | 'decision';
 /**
- * 三维池行筛选一处套用。`skip` 摘掉其中一维 —— 那一维 chip 上的数要靠"除自己之外"的底表算，
- * 让筛选影响自己那一排的数字，选中一枚之后其余几枚全变 0，人再也看不出该切到哪一枚。
+ * 四维池行筛选一处套用。`skip` 摘掉其中一维 —— 那一维自己那个筛选项上的数要靠
+ * "除自己之外"的底表算，让筛选影响自己的数字，选中一个取值之后其余几项全变 0，
+ * 人再也看不出该切到哪一项。
+ *
+ * 🔴 **「结论」是 2026-10-08 新并进来的第四维**（原先它是「已结论」档内的一个收窄，
+ * 挂在 `assessedBase` 里）。并进来之后它与另三维**同层**：按这一维筛 ＝ 整表收窄，
+ * **没出结论的行（在队那两段）整段不显示** —— 这是业务拍板的口径，不是漏了一支。
+ * 🔴 **不给「未出结论」一个取值**：取值域就是 升级 / 不升级 / 风险处理建议 三个。
  */
 function byPoolAttrs(rows: RiskPoolItem[], skip?: PoolAttr) {
   return rows.filter((r) => {
     if (skip !== 'source' && sourceFilter.value !== 'all' && r.source !== sourceFilter.value) return false;
     if (skip !== 'type' && poolTicketTypeFilter.value !== 'all' && poolTicketTypeKeyOf(r) !== poolTicketTypeFilter.value) return false;
     if (skip !== 'level' && poolLevelFilter.value !== 'all' && r.tag?.result !== poolLevelFilter.value) return false;
+    if (skip !== 'decision' && decisionFilter.value !== 'all' && decisionKindOf(r) !== decisionFilter.value) return false;
     return true;
   });
 }
@@ -655,44 +658,33 @@ function todayPrefix() {
 }
 
 /**
- * 一条已处理条目的**结论时刻 / 结论人**。
+ * 一条已处理条目的**结论时刻**。
  *
  * 🔴 **三种收口方式各写各的字段**：走评估的落 `assessment`（升级 / 不升级）、
  * 走协同处理的落 `coordination`（投诉单那一路，处理意见 + 建议事项）、
- * 走核实打标的落 `verify`。只读 `assessment` 的话，**协同过的条目会整条从"仅今日"里被筛掉**，
- * 关掉开关才出现、且评估人与时刻两格显示「—」——那正是这张表最该说清的两件事。
+ * 走核实打标的落 `verify`。只读 `assessment` 的话，**协同过的条目会整条从"仅今日"里被筛掉**。
+ * ⚠️ 原先与它成对的 `concludedByOf` / `concludedByRoleOf` 只喂「已结论」专表的「评估人」
+ * 那一格，那张表已整张删（2026-10-08 裁决：工作面只管处置、不兼做台账，那三项去左栏「已判」看），
+ * 两个函数随之删掉。
  */
 function concludedAtOf(r: RiskPoolItem) {
   return r.assessment?.at ?? r.coordination?.at ?? r.verify?.at ?? '';
 }
-function concludedByOf(r: RiskPoolItem) {
-  return r.assessment?.by ?? r.coordination?.by ?? r.verify?.by ?? '';
-}
-function concludedByRoleOf(r: RiskPoolItem) {
-  return r.assessment?.byRole ?? r.coordination?.byRole ?? r.verify?.byRole ?? '';
-}
 
-/** 已评估底表：今日开关 + 决策两个条件，**不含来源**（同上，来源 chip 的数字要靠它算） */
+/**
+ * 已结论底表：**只过「仅今日」这一个开关**。
+ * 🔴 **结论这一维不在这里过**：它 2026-10-08 并成了与来源 / 原单类型 / 风险等级同层的
+ * 第四维，统一由 `byPoolAttrs` 过（见那个函数）。两处都过的话，同一个条件过两遍，
+ * 且「结论」那个筛选项自己的计数会被自己筛掉。
+ */
 const assessedBase = computed(() => {
-  let rows = reportStore.assessedList.filter(isPoolRow);
-  if (assessedTodayOnly.value) {
-    const today = todayPrefix();
-    rows = rows.filter((r) => concludedAtOf(r).startsWith(today));
-  }
-  if (decisionFilter.value === COORD_DECISION) {
-    // 协同处理这一档判的是有没有 `coordination`，不是 `assessment` 的某个取值
-    rows = rows.filter((r) => !!r.coordination);
-  } else if (decisionFilter.value !== 'all') {
-    // 归一化后再比：B 线的种子与它自己那份缓存里仍有旧词「接管」，
-    // 直接比字面量的话，那一条在「升级」筛选下会凭空消失（见 riskShared.normalizeDecision）
-    rows = rows.filter(
-      (r) => r.assessment && normalizeDecision(r.assessment.decision) === decisionFilter.value,
-    );
-  }
-  return rows;
+  const rows = reportStore.assessedList.filter(isPoolRow);
+  if (!assessedTodayOnly.value) return rows;
+  const today = todayPrefix();
+  return rows.filter((r) => concludedAtOf(r).startsWith(today));
 });
 
-/** 已评估列表：评估时刻倒序；今日开关、决策与来源筛选都是视图内条件 */
+/** 已结论列表：结论时刻倒序；今日开关与四维筛选都是视图内条件 */
 const reportAssessedRows = computed(
   // 已评估这批的默认次序是**评估时刻倒序**，与在队两态的"提交时刻正序"不是一回事，
   // 故 tie 单独给一份：套用队列那份会让刚评完的一条排到列表末尾去。
@@ -707,10 +699,12 @@ const reportAssessedRows = computed(
 // 🔴 **不收窄的话这一屏当场自相矛盾**：一处写「待评估总数 8」、另一处写「待领取 3 · 已领取 2」，
 // 点下去落到的还是同一张表。同屏同一件事只能有一个数，这是本文件反复踩过的那个坑。
 //
-// 🔴 **原先这里还有四个按阶段分的数**（`alineUnassignedCount` / `alineAssigningCount` /
-// `alineOpenCount` / `alineStageAllCount`）和一个 `alineOverdueCount`，专给工作面那一排
-// 「处置阶段」chip 供数。**那一排已随 2026-10-08 裁决整排删除**（业务：没有"处置阶段"这个定义），
-// 五个数一并删掉——它们在别处一个消费端都没有。留下的这几个只服务「已结论」那一档。
+// 🔴 **原先这里有一串只服务筛选区那几排 chip 的计数**（`alineUnassignedCount` /
+// `alineAssigningCount` / `alineOpenCount` / `alineStageAllCount` / `alineOverdueCount`
+// 随「处置阶段」整排删；`alineAssessedList` / `alineConcludedBase` /
+// `alineConcludedTodayCount` / `alineDecisionCounts` 随「结论」那一排删）。
+// **五维全部改成了上沿工具条里的筛选项**，各项的数一律走 `byPoolAttrs` 那一套
+// "摘掉自己这一维再算"（见 `reportSourceBase` 一组），本段不再留第二份计数。
 // ⚠️ 连带消失的是 `待领取 + 已领取 + 已结论 ＝ 不限阶段 ＝ 表行数` 这条恒等式：轴没了，等式
 // 无处可对。**页头那三条（实时监控 + 重点工单 ＝ 待判段总数、风险工单四枚 ≡ 左栏已判、
 // ΣP0..P3 ＝ Σ五类）与本改动无关，照旧成立。**
@@ -718,82 +712,29 @@ const reportAssessedRows = computed(
 // 🔴 **班组这一道（`inGroup`）与表身走同一个判据，少了它说的就是假话**：清单上沿那个班组
 // 单选横跨本页每一档，表身三段各自都过了 `inGroup`（见 `reportUnassignedRows` /
 // `reportAssigningRows` / `reportAssessedRows`）。只过 `isALine` 不过班组的话，切到「受理一组」
-// 之后它仍写着全量、而它下面那张表只躺着这个组的几行 —— 另外三维（来源 / 原单类型 /
-// 风险等级，走 `inGroup(reportGroupBase)`）早就跟着班组收窄了，唯独这一处没跟。
+// 之后它仍写着全量、而它下面那张表只躺着这个组的几行 —— 另外四维（来源 / 原单类型 /
+// 风险等级 / 结论，走 `inGroup(reportGroupBase)`）早就跟着班组收窄了，唯独这一处没跟。
 // **复用 `inGroup`、不要另造一份按组反查**：组名由 `groupNameOf` 反查工单库，本页只有那一个口径。
-const alineAssessedList = computed(() => inGroup(reportStore.assessedList.filter(isPoolRow)));
 /**
- * 今日**已结论**的池行数。
- *
- * 🔴 **口径是"下过任何一种收口结论"**，不是"走过评估"：只读 `assessment` 的话，
- * 走协同处理收口的那几条整条不算数 —— 卡上写「今日已评估 3」而左栏「已结论」是 4，
- * 同一块屏上两个数对不上，而差的那一条谁也找不出来在哪。改名「今日已结论」之后
- * 口径必须跟着扩，只改名不改口径比原来更难查（标题说结论、数字只数评估）。
- * 时刻取 `concludedAtOf`：评估 / 协同 / 核实各写各的字段，那个函数是三者的唯一入口。
- */
-const alineConcludedTodayCount = computed(
-  () => alineAssessedList.value.filter(
-    (r) => concludedAtOf(r).startsWith(todayPrefix()) && decisionKindOf(r),
-  ).length,
-);
-/**
- * 这一条是**哪一种收口**；null ＝ 只补过打标、还没给出结论。
- * 🔴 上面那个数与下面三枚**共用这一个判据**，恒等式因此是构造出来的、不是碰巧对上的：
- * 换两条独立的判断去数，迟早出现"卡上 4、三枚加起来 3"，而差的那一条谁也找不出来。
+ * 这一条是**哪一种收口**；null ＝ 只补过打标、还没给出结论（也就是还在队里的那两段）。
  *
  * 🔴 **只补过打标、还没给结论的池行（只有 `verify`、没有 `assessment` / `coordination`）
- * 返回 null —— 它既不计入「今日已结论」，也不计入下面那三枚结论 chip。这是有意为之，不是漏了一种。**
- *
+ * 返回 null —— 它不属于任何一种收口。这是有意为之，不是漏了一种。**
  * 【为什么】`verify` 是打标反向派生出来的只读投影（见 `stores/riskQueue.ts`），
  * 它答的是"这条**成不成立**"，不是"这条**怎么收口**"。一条补完打标就停在那儿的行，
  * 还等着人给升级 / 不升级 / 协同 —— 把它算成一种收口，等于说这条已经处理完了。
  *
- * 【为什么两处共用这一个判据】「今日已结论」（`alineConcludedTodayCount`）与三枚 chip
- * （`alineDecisionCounts`）都拿 `decisionKindOf(r)` 非 null 当入选条件，于是
- * **「今日已结论」≡ 升级 + 不升级 + 协同 由构造成立**，不是靠事后对账对出来的。
- * 若哪天想把 verify-only 也数进「今日已结论」，改这一个函数不够——那会让卡上的数
- * 比三枚之和多出那几条，而多出的那一条谁也找不出来在哪；要动就得同时给它一枚自己的 chip。
- *
- * ⚠️ 漏斗改版之后 verify-only 在今天的数据上是**死路**（打标只决定进不进池、不再结掉条目，
- * 见 `stores/riskPool.ts` 的 `assessedList`）。真在数据上构造出来一条（旧缓存、或将来某条
- * 新入口只写了 `verify`），它会**落进「已结论」那张表**——`assessedBase` 按 `concludedAtOf`
- * 判，而那个函数兜到了 `verify.at`：表里看得见、两个数里不算数，是两件事，别当成不一致去"修"。
+ * 🔴 **「结论」那个筛选项的判据就是它**（见 `byPoolAttrs` 与 `decisionCountInView`）：
+ * 三个取值 升级 / 不升级 / 风险处理建议 **不覆盖整张表** —— 在队那两段的行一律返回 null，
+ * 不属于其中任何一个。故 `三项之和 < 全部结论`，**这是构造上的事实，不是对不上账**。
+ * 归一化后再比：B 线的种子与它自己那份缓存里仍有旧词「接管」，直接比字面量的话，
+ * 那一条在「升级」筛选下会凭空消失（见 `riskShared.normalizeDecision`）。
  */
 function decisionKindOf(r: RiskPoolItem): DecisionKey | null {
   if (r.assessment) return normalizeDecision(r.assessment.decision);
   if (r.coordination) return COORD_DECISION;
   return null;
 }
-/**
- * 「已结论」那一档的**底表** ＝ A 线已结论池行，只过「仅今日」这一个开关。
- *
- * 🔴 **它就是 `assessedBase` 摘掉 `decisionFilter` 那一条腿**，不是另一份口径：
- * 这个数是**这一档有多少条**，不能跟着档内的决策收窄一起变 —— 跟着变的话，
- * 筛到「升级」之后写「已结论 2」，而全量仍是 15，两个数当场差着 4 条，
- * 人再也看不出该摘掉哪个条件（与 `reportSourceBase` 摘掉来源那一维是同一条道理）。
- * 反过来「仅今日」必须过：它决定这一档到底躺着哪一批行，不过的话写的是全量、
- * 表里只躺着今天那几条。
- */
-const alineConcludedBase = computed(() => {
-  const rows = alineAssessedList.value;
-  if (!assessedTodayOnly.value) return rows;
-  const today = todayPrefix();
-  return rows.filter((r) => concludedAtOf(r).startsWith(today));
-});
-/**
- * 「已结论」档内三种收口各多少条。**三枚之和 ≡ 这一档的数**（verify-only 的行除外，见
- * `decisionKindOf`：它既不算一种收口，也不给自己一枚 chip）。
- * 🔴 底表取 `alineConcludedBase`、**跟着「仅今日」走**：写死今日的话，关掉开关之后
- * 「已结论 31」而三枚加起来仍是今天那 4 条，同一排上两个分母。
- */
-const alineDecisionCounts = computed(() => {
-  const base: Record<DecisionKey, number> = { 升级: 0, 不升级: 0, [COORD_DECISION]: 0 };
-  for (const r of alineConcludedBase.value) {
-    const k = decisionKindOf(r);
-    if (k) base[k] += 1;
-  }
-  return base;
-});
 
 /**
  * 班组筛选项那一枚的底表 ＝ 当前表在**除班组之外**的全部条件下的行。
@@ -801,7 +742,7 @@ const alineDecisionCounts = computed(() => {
  *
  * 🔴 **恒为三段之和**：「处置阶段」那一轴已随 2026-10-08 裁决删除，这张表不再按档分组，
  * 故这里也不再分叉。与 `reportAllRows` 同进同退：只改一处的话，表里躺着 3 行、
- * 上沿却写着「全部班组 7 / 全部来源 7」，那三个筛选项当场变成同屏的第二个数。
+ * 上沿却写着「全部班组 7 / 全部来源 7」，那几个筛选项当场变成同屏的第二个数。
  */
 const reportGroupBase = computed(() => [
   ...openBase('unassigned'),
@@ -824,11 +765,34 @@ const reportTypeBase = computed(() => byPoolAttrs(inGroup(reportGroupBase.value)
 function ticketTypeCountInView(k: PoolTicketTypeKey) {
   return reportTypeBase.value.filter((r) => poolTicketTypeKeyOf(r) === k).length;
 }
-/** 风险等级 chip 那一排的底表（摘掉风险等级这一维） */
+/** 风险等级筛选项那一枚的底表（摘掉风险等级这一维） */
 const reportLevelBase = computed(() => byPoolAttrs(inGroup(reportGroupBase.value), 'level'));
 function poolLevelCountInView(lv: RiskLevel) {
   return reportLevelBase.value.filter((r) => r.tag?.result === lv).length;
 }
+/**
+ * 结论筛选项那一枚的底表（摘掉结论这一维）。
+ * 🔴 **三个取值之和 < 「全部结论」那个数**，与另三维不同：在队那两段的行没有结论
+ * （`decisionKindOf` 返回 null），不属于任何一个取值。「全部结论（N）」里的 N 是
+ * **不按这一维收窄时表里有多少行**，与标签逐字相符；别拿三项去加它。
+ */
+const reportDecisionBase = computed(() => byPoolAttrs(inGroup(reportGroupBase.value), 'decision'));
+function decisionCountInView(k: DecisionKey) {
+  return reportDecisionBase.value.filter((r) => decisionKindOf(r) === k).length;
+}
+/**
+ * 空态里复述**当前生效的那几个筛选值**。
+ * 🔴 **不能只点名其中一个**：五维并排摆着，筛空了往往是几维叠出来的 ——
+ * 只写「不升级」会让人去摘那一个，摘完还是空的（真正把它筛空的是同时开着的「高危」）。
+ * 界面词与筛选项上的取值逐字相同，摘哪一个一目了然。
+ */
+const poolNarrowedText = computed(() => [
+  groupFilter.value,
+  sourceFilter.value,
+  poolTicketTypeFilter.value,
+  poolLevelFilter.value === 'all' ? 'all' : riskLevelText(poolLevelFilter.value),
+  decisionFilter.value === COORD_DECISION ? '风险处理建议' : decisionFilter.value,
+].filter((v) => v !== 'all').join(' · '));
 
 /**
  * 工作面那张表 ＝ 三段**按时间序首尾相接**，不重排、**恒摆全部条目**。
@@ -855,17 +819,18 @@ const reportAllRows = computed(() => [
 //
 /**
  * 工作面那张表的行 ＝ `reportAllRows`，**恒等**。
- * 🔴 **原先这里按 `reportView` 分五支**（不限阶段 / 待领取 + 已领取 / 待领取 / 已领取 / 已结论）。
- * 「处置阶段」整排 chip 已随 2026-10-08 裁决删除，档位切换没有入口了，这里收成一条直路。
+ * 🔴 **原先这里按 `reportView` 分五支**（不限阶段 / 待领取 + 已领取 / 待领取 / 已领取 / 已结论），
+ * 另有一张「已结论」专表与它配套。「处置阶段」整排 chip、那张专表与 `reportView` 本身
+ * 已随 2026-10-08 裁决一并删除，这里收成一条直路。
  * 一并删掉的是 `reportOpenRows`（`open` 档专用）、`setReportView`、`setPoolStage`、
  * `poolStageChipOn` —— 它们的消费端全在那一排上。
  */
 const reportRows = computed(() => reportAllRows.value);
 
 /**
- * 页头「风险工单」块的卡片下钻：先把工作面上的四维筛选（班组 / 来源 / 原单类型 / 风险等级）
- * 放回「全部」，再切到工作面。卡上的数不跟这几维筛选，不清的话下钻后表行数 ≠ 卡上的数。
- * 只在点卡片时清；进了工作面之后照常收窄。
+ * 页头「风险工单」块的卡片下钻：先把工作面上的五维筛选（班组 / 来源 / 原单类型 /
+ * 风险等级 / 结论）放回「全部」，再切到工作面。卡上的数不跟这几维筛选，
+ * 不清的话下钻后表行数 ≠ 卡上的数。只在点卡片时清；进了工作面之后照常收窄。
  * ⚠️ 班组筛选是本页一份共享状态（左栏各档也按它收窄），故点卡片后左栏角标同样回到全部班组口径。
  * ⚠️ **不再接视图参数**：工作面只有一张恒摆全部条目的表（见 `reportRows`）。
  */
@@ -874,6 +839,7 @@ function drillReport() {
   sourceFilter.value = 'all';
   poolTicketTypeFilter.value = 'all';
   poolLevelFilter.value = 'all';
+  decisionFilter.value = 'all';
   setListView('report');
 }
 
@@ -4726,13 +4692,19 @@ function setStage(stage: FunnelStage) {
 }
 
 /**
- * 班组 chip 那一排：底表是**当前档在除班组之外的全部条件下的行**，
- * 故选中某一组之后其余几枚的数字不变，人还看得出该切到哪一组。
+ * 班组这一维的底表 ＝ **当前这一路在除班组之外的全部条件下的行**，
+ * 故选中某一组之后其余几组的数字不变，人还看得出该切到哪一组。
  * 条数多的排前面；同数按组名排，免得同一份数据两次进来给出两个次序。
+ *
+ * 🔴 **工作面这一路要过 `byPoolAttrs`**：另外四维（来源 / 原单类型 / 风险等级 / 结论）
+ * 已经是同一行上并排的筛选项，班组不跟着它们收窄的话，筛到「风险处理建议」之后
+ * 这一行会写着「全部班组 14 · 全部来源 2 · 全部类型 2 · 全部等级 2 · 风险处理建议 2」——
+ * 同一行上第一格的分母和后面四格不是一个，读的人只能去猜哪个才是表里的行数。
+ * 班组自己不在 `byPoolAttrs` 里，故不传 `skip`，天然就是"摘掉自己这一维"。
  */
 const groupChips = computed(() => {
   const base: { ticketNo: string }[] = listView.value === 'report'
-    ? reportGroupBase.value
+    ? byPoolAttrs(reportGroupBase.value)
     : queueBase.value;
   const m = new Map<string, number>();
   base.forEach((r) => {
@@ -4756,12 +4728,12 @@ const groupFilterOptions = computed(() => [
 ]);
 
 /*
- * 「监控来源」「原单类型」两个下拉：**与「班组」同一套控件、同一副标签写法**
- * （`全部X（N）` / `取值（N）`）。2026-10-08 裁决把这两维从筛选区那两排 chip
+ * 工作面那四个下拉（监控来源 / 原单类型 / 风险等级 / 结论）：**与「班组」同一套控件、
+ * 同一副标签写法**（`全部X（N）` / `取值（N）`）。2026-10-08 裁决把四维从筛选区那几排 chip
  * 改成了与班组并排的筛选项，**筛选行为、计数口径与表的联动一个字没改** ——
- * 各项的数仍取"摘掉自己这一维"之后的底表（`reportSourceBase` / `reportTypeBase`），
+ * 各项的数一律取"摘掉自己这一维"之后的底表（`reportSourceBase` 一组），
  * 否则选中一项之后其余几项全变 0，筛选器把自己筛没了。
- * 🔴 **只在「评估处置」工作面上摆**（见模板里那两格的 `v-if`）：这两维是池行的属性，
+ * 🔴 **只在「评估处置」工作面上摆**（见模板里那四格的 `v-if`）：四维是池行的属性，
  * 这条工具条另一个落点（实时监控的「重点工单」等路）摆的不是池行。
  */
 const sourceFilterOptions = computed(() => [
@@ -4771,6 +4743,24 @@ const sourceFilterOptions = computed(() => [
 const poolTicketTypeFilterOptions = computed(() => [
   { value: 'all', label: `全部类型（${reportTypeBase.value.length}）` },
   ...POOL_TICKET_TYPE_KEYS.map((k) => ({ value: k, label: `${k}（${ticketTypeCountInView(k)}）` })),
+]);
+/**
+ * 「结论」下拉。取值域恒为三个：升级 / 不升级 / 风险处理建议。
+ * 🔴 **界面词一律写全称「风险处理建议」**：`COORD_DECISION` 那个短词只是判等用的常量键，
+ * 不要让它漏到界面上 —— 同一个取值在两处写两个名字，读的人会以为是两件事。
+ * 🔴 三项之和 < 「全部结论」，见 `reportDecisionBase` 的注释（在队两段没有结论）。
+ */
+const decisionFilterOptions = computed(() => [
+  { value: 'all', label: `全部结论（${reportDecisionBase.value.length}）` },
+  ...DECISION_KEYS.value.map((k) => ({
+    value: k,
+    label: `${k === COORD_DECISION ? '风险处理建议' : k}（${decisionCountInView(k)}）`,
+  })),
+]);
+/** 「风险等级」下拉。取值域取全站那一份 `RISK_LEVELS`，界面词走 `riskLevelText`（高危 / 中危 / 低危） */
+const poolLevelFilterOptions = computed(() => [
+  { value: 'all', label: `全部等级（${reportLevelBase.value.length}）` },
+  ...RISK_LEVELS.map((lv) => ({ value: lv, label: `${riskLevelText(lv)}（${poolLevelCountInView(lv)}）` })),
 ]);
 
 /** 左栏这一列只在漏斗的两个视图上作数；旁路的两个入口自带各自的筛选条，不套班组 */
@@ -5409,13 +5399,18 @@ function toggleWordEnabled(w: RiskWord) {
         不随条目走到哪一段而变；切档就清掉的话，人在某一组筛完切档会看到全部组，只会以为筛选失灵。
         🔴 各项的数字取的是**除自己这一维之外**的全部条件下的行数（见 groupChips / reportSourceBase）。
 
-        🔴 **「监控来源」「原单类型」并排摆在这里**（2026-10-08 裁决）：它们原先是筛选区里
-        两排 chip，与班组这一个下拉是同一类东西（单选、带计数、互不相干的几维），
-        却长着两套形态；收进这一行之后，这一屏上"筛什么"只有一处可找。
-        🔴 **控件与班组逐字同形**（`.fi` + `.fl` + `a-select.tb-ctl`，标签写法 `全部X（N）`），
-        不另起一套视觉语言。
-        ⚠️ 两维只对池行成立，故只在工作面（`listView === 'report'`）上出；
-        这条工具条的另一个落点（实时监控的「重点工单」等路）摆的不是池行。
+        🔴 **评估处置工作面的四维筛选全在这里**（2026-10-08 裁决）：监控来源 / 原单类型 /
+        风险等级 / 结论。四维原先是筛选区里几排 chip，与班组这一个下拉是同一类东西
+        （单选、带计数、互不相干的几维），却长着两套形态；收进这一行之后，
+        这一屏上"筛什么"只有一处可找，筛选区那一整块（`.section-filters`）随之撤掉。
+        🔴 **五格控件逐字同形**（`.fi` + `.fl` + `a-select.tb-ctl`，标签写法 `全部X（N）`），
+        不为了塞得下就把其中一两格换成另一种控件。
+        ⚠️ 四维只对池行成立，故只在工作面（`listView === 'report'`）上出；
+        这条工具条的另一个落点（实时监控的「重点工单」等路）只摆班组一格。
+
+        🔴 **次序即收窄的层次**：班组（谁的活）→ 监控来源（从哪儿进的池）→ 原单类型 →
+        风险等级 → 结论（走到哪一步收的口）。结论摆在末位是因为它是**唯一一个
+        取值不覆盖整表的维度**（在队那两段没有结论，见 `reportDecisionBase`）。
       -->
       <div
         v-if="showGroupFilter && !(listView === 'realtime' && queueView === 'monitoring')"
@@ -5451,6 +5446,26 @@ function toggleWordEnabled(w: RiskWord) {
                 class="tb-ctl"
                 :dropdown-match-select-width="false"
                 :options="poolTicketTypeFilterOptions"
+              />
+            </div>
+            <div v-if="listView === 'report'" class="fi">
+              <span class="fl">风险等级</span>
+              <a-select
+                v-model:value="poolLevelFilter"
+                size="small"
+                class="tb-ctl"
+                :dropdown-match-select-width="false"
+                :options="poolLevelFilterOptions"
+              />
+            </div>
+            <div v-if="listView === 'report'" class="fi">
+              <span class="fl">结论</span>
+              <a-select
+                v-model:value="decisionFilter"
+                size="small"
+                class="tb-ctl"
+                :dropdown-match-select-width="false"
+                :options="decisionFilterOptions"
               />
             </div>
           </div>
@@ -5926,139 +5941,19 @@ function toggleWordEnabled(w: RiskWord) {
         ⚠️ `待领取 + 已领取 + 已结论 ＝ 不限阶段 ＝ 表行数` 这条恒等式随那一轴一并消失，**预期之内**。
       -->
       <!--
-        「结论」那一排（升级 / 不升级 / 风险处理建议 + 仅今日）。
-        🔴 **当前不出**：它原本只在「已结论」档下出，而档位切换已随「处置阶段」整排删除，
-        `reportView` 恒为 `all`（见那个变量的注释）。能否像「监控来源」那样**独立成一个筛选项**
-        收进上沿那条工具条，**待业务拍板**；本轮只让它不出现，代码一个字不删。
+        🔴 **筛选区那一整块 chip 排（`.section-filters`）已撤**（2026-10-08 裁决）。
+        五维先后全部收进上沿那条工具条，与「班组」逐字同形：
+          · 处置阶段 —— **整排删**，业务侧没有这个定义；
+          · 监控来源 / 原单类型 / 结论 / 风险等级 —— 改成下拉筛选项。
+        连带删掉的还有「下钻收窄标」那一行（`.report-filters`）：它存在的理由是
+        "从页头卡点进来的条件得有个看得见、摘得掉的落点"，而五个筛选项本身就是
+        那个落点 —— 同一个条件在一屏上摆两处，摘哪一处都是猜。
       -->
-      <div
-        v-if="listView === 'report' && reportView === 'assessed'"
-        class="section-filters grade-filters report-source-filters"
-      >
-        <span class="rf-k" title="这一档的收口方式：评估给升级 / 不升级，投诉单那一路给风险处理建议">结论</span>
-        <button
-          type="button"
-          class="gf-chip"
-          :class="{ active: decisionFilter === 'all' }"
-          title="看全部结论"
-          @click="decisionFilter = 'all'"
-        >
-          全部<span class="gf-num">{{ alineConcludedBase.length }}</span>
-        </button>
-        <!-- 「建议」这个字面量是常量的短词（那一处只有一枚数字的宽度），chip 排上摆得开全称 -->
-        <button
-          v-for="k in DECISION_KEYS"
-          :key="k"
-          type="button"
-          class="gf-chip"
-          :class="{ active: decisionFilter === k }"
-          @click="decisionFilter = k"
-        >
-          {{ k === COORD_DECISION ? '风险处理建议' : k }}<span class="gf-num">{{ alineDecisionCounts[k] }}</span>
-        </button>
-        <span class="rf-k">时间</span>
-        <button
-          type="button"
-          class="gf-chip"
-          :class="{ active: assessedTodayOnly }"
-          :title="assessedTodayOnly
-            ? `当前只看今日结论的池行（今日已结论 ${alineConcludedTodayCount} 条）· 点一下看全部历史`
-            : `当前看全部历史结论（共 ${alineAssessedList.length} 条，其中今日已结论 ${alineConcludedTodayCount} 条）· 点一下收回今日`"
-          @click="assessedTodayOnly = !assessedTodayOnly"
-        >
-          仅今日
-        </button>
-      </div>
 
-      <!--
-        风险工单池 · 下钻收窄标。
-        🔴 **阶段不在这一行里，也不在别处了**：「处置阶段」整排 chip 已随 2026-10-08 裁决删除，
-        这一行留下的只有**收窄条件**（"我现在只看其中一部分"）。
-        ⚠️ 原先这里还有一枚「超时未评 N ×」，随 `onlyOverdue` 一并删除（那个开关没有置位入口了）。
-      -->
-      <div
-        v-if="listView === 'report' && (sourceFilter !== 'all'
-          || (reportView === 'assessed' && (assessedTodayOnly || decisionFilter !== 'all'))
-          || (reportView === 'all' && assessedTodayOnly))"
-        class="section-filters grade-filters report-filters"
-      >
-        <!--
-          下钻收窄标：从页头卡点进来的条件必须在清单旁边有一个**看得见、摘得掉**的落点。
-          没有它，人点进来只看到 2 行，会当成池子只剩 2 条。
-        -->
-        <span v-if="sourceFilter !== 'all'" class="nc-chip">
-          来源：{{ sourceFilter }}
-          <button type="button" class="nc-del" title="看全部监控来源" @click="sourceFilter = 'all'">×</button>
-        </span>
-        <!--
-          🔴 收窄标与 chip 排、与表里「评估决策」列**写同一个词**：协同那一档一律写全称
-          「风险处理建议」。`COORD_DECISION` 那个短词只是**判等用的常量键**（它存在是因为
-          「今日结论」那一格只有一枚数字的宽度），不要让它漏到这里当界面词 ——
-          同一个档在三处写两个名字，读的人会以为是两件事。
-        -->
-        <span v-if="reportView === 'assessed' && decisionFilter !== 'all'" class="nc-chip">
-          结论：{{ decisionFilter === COORD_DECISION ? '风险处理建议' : decisionFilter }}
-          <button type="button" class="nc-del" title="看全部结论（升级 / 不升级 / 风险处理建议）" @click="decisionFilter = 'all'">×</button>
-        </span>
-        <!--
-          「仅今日」默认就开着，故它也得摆出来——不摆的话，翻不到昨天的记录会被读成"昨天没人评估"。
-          摘掉它＝看全部历史，此时上方两枚决策卡（自然日口径）与表里的行数不再相等，是有意为之。
-          🔴 表恒摆全部条目，已结论那一段整段并在里头，这个默认收窄照样在起作用 ——
-          不说的话，表的行数与"池里到底有多少条"会被读成同一件事。
-        -->
-        <span
-          v-if="(reportView === 'assessed' || reportView === 'all') && assessedTodayOnly"
-          class="nc-chip"
-        >
-          已结论仅今日
-          <button type="button" class="nc-del" title="看全部历史评估记录" @click="assessedTodayOnly = false">×</button>
-        </span>
-      </div>
-
-      <!--
-        风险等级筛选（§5.4 ③）：各枚的数摘掉自己这一维再算（见 `reportLevelBase`）。
-        🔴 **「监控来源」与「原单类型」两排已不在这里**：它们随 2026-10-08 裁决改成了
-        与「班组」同形的筛选控件，收进上沿那条工具条（见 `.list-toolbar--no-actions` 那一段）。
-        筛选行为、计数口径与表的联动一个字没改 —— 换的只是控件形态。
-      -->
-      <div v-if="listView === 'report'" class="section-filters grade-filters report-source-filters">
-        <span class="rf-k">风险等级</span>
-        <button
-          type="button"
-          class="gf-chip"
-          :class="{ active: poolLevelFilter === 'all' }"
-          @click="poolLevelFilter = 'all'"
-        >
-          全部<span class="gf-num">{{ reportLevelBase.length }}</span>
-        </button>
-        <button
-          v-for="lv in RISK_LEVELS"
-          :key="lv"
-          type="button"
-          class="gf-chip"
-          :class="{ active: poolLevelFilter === lv }"
-          @click="poolLevelFilter = lv"
-        >
-          {{ riskLevelText(lv) }}<span class="gf-num">{{ poolLevelCountInView(lv) }}</span>
-        </button>
-      </div>
-
-      <!-- 风险工单池 · 空态：把当前收窄条件讲出来，否则"筛空了"会被读成"没有了" -->
+      <!-- 风险工单池 · 空态：把当前生效的筛选值逐个讲出来，否则"筛空了"会被读成"没有了" -->
       <div v-if="listView === 'report' && !reportRows.length" class="ob-empty">
-        <!-- 收窄条件必须在空态里复述，否则"筛空了"会被读成"没有了"；班组排在最前，它是最外一层 -->
-        <template v-if="groupFilter !== 'all'">「{{ groupFilter }}」当前筛选下没有池行 —— 点「全部班组」看全部</template>
-        <template v-else-if="poolTicketTypeFilter !== 'all' || poolLevelFilter !== 'all'">当前原单类型 / 风险等级筛选下没有池行 —— 换回「全部」看全部</template>
-        <template v-else-if="reportView === 'all'">
-          {{
-            sourceFilter !== 'all'
-              ? `「${sourceFilter}」当前没有进池的条目`
-              : '当前没有进池的条目 —— 标记为高 / 中 / 低才进池'
-          }}
-        </template>
-        <template v-else-if="assessedTodayOnly">
-          {{ decisionFilter === 'all' ? '今日尚无收口记录' : `今日尚无「${decisionFilter}」的收口记录` }}
-        </template>
-        <template v-else>没有符合当前条件的评估记录</template>
+        <template v-if="poolNarrowedText">「{{ poolNarrowedText }}」当前没有池行 —— 把筛选项换回「全部」看全部</template>
+        <template v-else>当前没有进池的条目 —— 标记为高 / 中 / 低才进池</template>
       </div>
 
       <!--
@@ -6067,7 +5962,7 @@ function toggleWordEnabled(w: RiskWord) {
         🔴 **没有勾选列**：批量只服务于批量分派，而分派整套已取消。
       -->
       <div v-if="listView === 'report' && reportRows.length" class="hit-table-wrap report-table-wrap">
-        <table v-if="reportView !== 'assessed'" class="hit-table report-table pool-row-table">
+        <table class="hit-table report-table pool-row-table">
           <thead>
             <tr>
               <!--
@@ -6306,117 +6201,17 @@ function toggleWordEnabled(w: RiskWord) {
           </tbody>
         </table>
 
-        <table v-else class="hit-table report-table">
-          <thead>
-            <tr>
-              <!--
-                第一格 ＝ **工单标题单元格**，列宽 264 起步（与上面池行表那一格同一条量法；删列后放到 312，见本段末）。
-                删列前列宽合计 1004（264+64+64+96+72+120+96+172+56），低于本表 min-width 1040，
-                1044 的清单区下各列还有约 4% 的余量；每一格都按**实测自然宽（含内边距）＋ 余量**给：
-                评估人 64 → 72、评估时刻 114 → 120、评估决策（「风险处理建议」）92 → 96、
-                派生投诉单（一个完整单号）166 → 172、操作（表头两字）→ 56。
-                第一格多出来的 74px 从原先各列放大后的余量里出，不再有哪一列靠省略号收尾。
-                🔴 **「原单类型」这一列已删**（2026-10-08 裁决，与池行表同一条理由）：
-                它与标题单元格第一行那枚**类型角标逐字重复**，同一个值在一行里摆两处。
-                按原单类型筛的那排 chip（全部 / 投诉 / 非投诉）**照旧在**，筛选维度一个没少。
-                腾出的 64px：「评估时刻」120 → **128**（实测 114）、「派生投诉单」172 → **180**（实测 166），
-                两格各留 14px 余量、整串时刻与整个单号一个字不切；余下 48 给第一格 264 → **312**（标题省略号收尾的那一截）。
-                列宽合计仍为 1004（312+64+96+72+128+96+180+56），不超共用 min-width 1040，1044 的清单区下不出横向滚动条。
-              -->
-              <th style="width: 312px">工单号</th>
-              <th style="width: 64px">风险等级</th>
-              <th
-                style="width: 96px"
-                class="th-sortable"
-                :class="{ on: sourceSort !== 'none' }"
-                :title="sourceSort === 'none' ? '点击按监控来源分组（同来源内仍按评估时刻倒序）' : sourceSort === 'asc' ? '点击倒序' : '点击恢复按评估时刻排'"
-                @click="cycleSourceSort"
-              >监控来源<span class="th-sort-mark">{{ sourceSort === 'asc' ? '↑' : sourceSort === 'desc' ? '↓' : '↕' }}</span></th>
-              <th style="width: 72px">评估人</th>
-              <th style="width: 128px">评估时刻</th>
-              <th style="width: 96px">评估决策</th>
-              <th style="width: 180px">派生投诉单</th>
-              <th style="width: 56px">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="r in pagedReportRows" :key="r.id">
-              <!-- 第一格 ＝ 工单标题单元格，写法与池行表那一格逐字同一套（查不到原单回退光单号） -->
-              <td>
-                <TicketTitleCell
-                  v-if="poolTicketOf(r)"
-                  :ticket="poolTicketOf(r)!"
-                  line2-wrap
-                  @click-no="openTicket($event.no)"
-                />
-                <button v-else type="button" class="rt-no" @click="openTicket(r.ticketNo)">{{ r.ticketNo }}</button>
-              </td>
-              <!-- 「原单类型」那一格已删（与上面标题单元格里的类型角标逐字重复），见表头那一段 -->
-              <td>
-                <span
-                  v-if="r.tag && isPoolLevel(r.tag.result)"
-                  class="grade-pill"
-                  :style="{ color: RISK_LEVEL_STYLE[r.tag.result].color, background: RISK_LEVEL_STYLE[r.tag.result].bg }"
-                >{{ riskLevelText(r.tag.result) }}</span>
-                <span v-else class="hit-sub">—</span>
-              </td>
-              <td><span class="src-tag" :class="{ kw: isKeywordRow(r) }">{{ r.source }}</span></td>
-              <!--
-                🔴 **两种收口方式共用这三格**：非投诉单走评估（`assessment`，升级 / 不升级）、
-                投诉单走协同处理（`coordination`，处理意见 + 建议事项）。
-                只读 `assessment` 的话，协同过的条目这三格全是「—」——而"谁在什么时候收的口"
-                恰恰是这张表存在的理由。
-              -->
-              <td>
-                {{ concludedByOf(r) || '—' }}
-                <div v-if="concludedByRoleOf(r)" class="hit-sub">{{ concludedByRoleOf(r) }}</div>
-              </td>
-              <td class="hit-when">{{ concludedAtOf(r) || '—' }}</td>
-              <td>
-                <!-- 旧词「接管」归一成「升级」再显示：B 线的种子里仍有旧值，见 normalizeDecision -->
-                <span
-                  v-if="r.assessment"
-                  class="rr-dec"
-                  :class="{ risk: normalizeDecision(r.assessment.decision) === '升级' }"
-                >
-                  {{ normalizeDecision(r.assessment.decision) }}
-                </span>
-                <span
-                  v-else-if="r.coordination"
-                  class="rr-dec"
-                  title="投诉单不做风险评估，由客诉专员给出风险处理建议：不改状态、不改处理人"
-                >风险处理建议</span>
-                <span v-else class="hit-sub">—</span>
-              </td>
-              <td>
-                <!--
-                  升级按原单类型分流（O20）：非投诉单派生一张新投诉单，落在本列；
-                  投诉单走基线 ※27「工单管控」，本单状态不变、不派生新单，本列写「工单管控」而不是「—」。
-                  「不升级」两种都没有，才是「—」。
-                -->
-                <button
-                  v-if="r.assessment?.escalatedToNo"
-                  type="button" class="rt-no"
-                  :title="`升级派生的投诉单 ${r.assessment.escalatedToNo}`"
-                  @click="openTicket(r.assessment.escalatedToNo)"
-                >{{ r.assessment.escalatedToNo }}</button>
-                <span
-                  v-else-if="r.assessment && normalizeDecision(r.assessment.decision) === '升级'"
-                  class="src-tag"
-                  title="原单已是投诉单，升级走基线 ※27「工单管控」：本单状态不变、不派生新单"
-                >工单管控</span>
-                <span v-else class="hit-sub" title="「不升级」不派生新单">—</span>
-              </td>
-              <!--
-                🔴 已评估行**没有任何操作**：评估结论提交即固化、不可修改（§9 规则 22）。
-                这里既不给「修正」也不给「重评」——要纠错走的是"再报一次"那条路，不是改旧结论。
-                沿用本页命中清单里"这一格没有可做的事"的写法（—），空白单元格会被当成渲染缺漏。
-              -->
-              <td><span class="hit-sub" title="结论提交即固化，不可修改">—</span></td>
-            </tr>
-          </tbody>
-        </table>
-
+        <!--
+          🔴 **原先这里还有第二张表：「已结论」专表**（工单号 / 风险等级 / 监控来源 / 评估人 /
+          评估时刻 / 评估决策 / 派生投诉单 / 操作 八列），只在 `reportView === 'assessed'` 那一档下出。
+          **整张删**（2026-10-08 裁决）：档位切换已随「处置阶段」整排一并删除，这个工作面
+          **只管处置、不兼做台账** —— 「评估人 / 结论时刻 / 评估决策」三项去**左栏「已判」段**看，
+          那边本来就有，信息一条不丢。
+          连带删掉的有 `concludedByOf` / `concludedByRoleOf` 两个取值函数与 `.rr-dec` 那两条样式
+          （消费端只有这张表），以及 `reportView` 本身（至此再无人用）。
+          ⚠️ 「升级派生的投诉单」仍点得到：它写在那张单自己的关联标上（`TicketTitleCell` 的
+          「升级自 〈单号〉」），不是只有这张表才看得见。
+        -->
         <div class="pager">
           <div class="pager-left">
             <span class="pager-total">共 {{ reportRows.length }} 条</span>
@@ -8243,23 +8038,14 @@ function toggleWordEnabled(w: RiskWord) {
   /* 窄屏下那条 `.fr-sep` 的竖线写法随 `.fr-sep` 本身一并删除（见上面那段说明） */
 }
 
-/* ③-b 分级筛选 chip：选中态用品牌主色（§4.6 激活），等级点取 RISK_LEVEL_STYLE */
-.grade-filters { gap: 6px 8px; }
-.gf-chip {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 3px 10px; border: 1px solid #D1D5DB; border-radius: 3px;
-  background: #fff; color: #6B7280; font-size: 12px; font-weight: 500; cursor: pointer; font-family: inherit;
-}
-.gf-chip:hover { background: #F9FAFB; border-color: #9CA3AF; color: #374151; }
-.gf-chip.active { background: #1A6FFF; border-color: #1A6FFF; color: #fff; font-weight: 600; }
-.gf-chip.active .gf-dot { box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.7); }
-.gf-chip.warn:not(.active) { border-color: #EF4444; background: #EF444422; color: #EF4444; }
-.gf-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
-.gf-num {
-  min-width: 18px; padding: 0 5px; border-radius: 8px; font-size: 11px; font-weight: 700;
-  background: rgba(0, 0, 0, 0.06); font-variant-numeric: tabular-nums;
-}
-.gf-chip.active .gf-num { background: rgba(255, 255, 255, 0.22); }
+/*
+ * 🔴 **原先这里有一组分级筛选 chip 的样式**（`.grade-filters` / `.gf-chip` / `.gf-dot` /
+ * `.gf-num`），服务工作面筛选区那几排 chip。**五维全部改成了上沿工具条里的下拉筛选项**
+ * （2026-10-08 裁决），那几排连同这组样式一并删净 —— `<style scoped>` 下它们只可能被
+ * 本文件用到，grep 过本文件模板，一处引用都不剩。
+ * ⚠️ `.section-filters` 这个容器类**保留**：页头那一行工具（`.section-filters.head-tools`）
+ * 还在用它，不是只为筛选区存在的。
+ */
 
 /* 表格 */
 .ob-empty { padding: 32px 8px; text-align: center; color: #94a3b8; font-size: 13px; }
@@ -8810,23 +8596,41 @@ function toggleWordEnabled(w: RiskWord) {
   width: auto;
 }
 /*
- * 字段区按内容排、不吃满整行：一个字段（左栏其余各档）与三个字段（评估处置工作面）
- * 共用这一条，故**不给固定列数**，各格自己占宽、放不下就换行。
- * ⚠️ 原先这里是 `max-width: min(320px, 100%)`（那时这一行上只有「班组」一个字段）。
- * 三个字段下 320px 会把后两个挤到换行、再把下拉压到装不住 `全部来源（14）` 这种标签，
- * 故改成按内容排 + 每个控件 180px（实测最长标签「全部班组（15）」约 110px，留足余量）。
+ * 字段区 ＝ **等宽轨的网格**（不是 flex 自由换行）。一个字段（左栏其余各档）与五个字段
+ * （评估处置工作面：班组 / 监控来源 / 原单类型 / 风险等级 / 结论）共用这一条。
+ *
+ * 🔴 **轨宽 184px 是按"最长那一路实测取"的，不是拍脑袋的整数**（13px 字，canvas 实测）：
+ *   · 下拉里最长的取值文字 ——「风险处理建议（2）」**112**、「技术支持组（3）」/
+ *     「硬件缺陷组（3）」**99**（班组两位数时约 106）、其余各维「全部X（14）」**93**；
+ *   · 控件 ＝ 文字 ＋ 左右内边距 7×2 ＋ 右侧箭头 18 ＋ 边框 2 ＝ 文字 + 34
+ *     ⇒ 结论 **146**、班组 **140**、来源 / 原单类型 / 风险等级 **127**；
+ *   · 标签按内容宽（12px 字）：四字「监控来源」**48**、两字「班组」「结论」**24**；
+ *   · 单格 ＝ 标签 + 8 + 控件 ⇒ 来源 / 原单类型 / 风险等级 **183**（最宽的一路）、
+ *     结论 178、班组 172 ⇒ **取 184**，最宽那一路留 1px、其余各留 6~12px。
+ *   🔴 **按"大多数够用"取 160 的话，选中「风险处理建议」那一刻就被省略号截掉**
+ *     —— 本仓在「等待时长」「结论时间」「风险管控」三列上已经踩过三次这条。
+ *
+ * 🔴 **`auto-fit` + 固定轨宽**：一行放得下几格由**容器宽度**定，与取值长短无关 ——
+ * 换行点因此是稳定的，不会随筛选结果忽上忽下；换行之后每一轨仍等宽、左边缘对齐成网格。
+ * 实测清单区 1066px 下 5 轨（5×184 + 4×8 ＝ 952）**一行放得下**；
+ * 窄到 866px 时退成 4 + 1 两行，仍是对齐的网格。**不出横向滚动条**。
+ * ⚠️ 不要改回 `1fr`：单字段那几路（左栏「已判」等）会把那一个下拉拉到整行宽。
  */
 .list-toolbar--one-line.list-toolbar--no-actions .tb-fields {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, 184px);
+  justify-content: start;
   flex: none;
-  flex-wrap: wrap;
   max-width: 100%;
-  gap: 8px 16px;
+  gap: 8px;
 }
-.list-toolbar--one-line.list-toolbar--no-actions .fi { flex: 0 0 auto; }
+.list-toolbar--one-line.list-toolbar--no-actions .fi { min-width: 0; }
+/* 标签按内容宽：轨宽固定，省下的全给控件（四字标签 48、两字 24，差出来的 24px 够结论那一格用） */
+.list-toolbar--one-line.list-toolbar--no-actions .fl { width: auto; }
 .list-toolbar--one-line.list-toolbar--no-actions .tb-ctl {
-  flex: none;
-  width: 180px !important;
+  flex: 1;
+  min-width: 0;
+  width: auto !important;
 }
 
 @media (max-width: 860px) {
@@ -9334,24 +9138,13 @@ function toggleWordEnabled(w: RiskWord) {
 
 /* ==== 风险工单池（队列 + 领取 + 评估弹窗）==== */
 
-/* 收窄标：等级 chip 那一排里混着的"当前生效条件"，故取同一个圆角与字号，
-   只在配色上与 chip 区分——chip 是可点的选择项，它是可摘的既成条件。 */
-.report-filters { align-items: center; }
-/* 来源那一排贴着三态那一排，间距收窄一点，读起来才是"同一组条件的第二层"而不是新的一块 */
-.report-source-filters { align-items: center; margin-top: -4px; }
-/* 行首的分类名：它不是可点项，故不给边框与 hover，只当标签用 */
-.rf-k { font-size: 12px; color: #6B7280; margin-right: 2px; }
-.nc-chip {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 3px 6px 3px 10px; border: 1px solid #BFDBFE; border-radius: 3px;
-  background: #EFF6FF; color: #1D4ED8; font-size: 12px; font-weight: 500;
-}
-.nc-chip.bad { border-color: #FECACA; background: #FEF2F2; color: #B91C1C; }
-.nc-del {
-  border: none; background: none; padding: 0 2px; line-height: 1;
-  color: inherit; opacity: 0.55; font-size: 13px; cursor: pointer; font-family: inherit;
-}
-.nc-del:hover { opacity: 1; }
+/*
+ * 🔴 **原先这里有筛选区那几排的样式**：`.report-filters`（下钻收窄标那一行）、
+ * `.report-source-filters`（来源 / 原单类型 / 风险等级几排的行距）、`.rf-k`（行首分类名）、
+ * `.nc-chip` / `.nc-del`（可摘的收窄标）。**五维全部改成上沿工具条里的下拉筛选项之后，
+ * 那几排与收窄标那一行一并撤掉**（2026-10-08 裁决），这组样式随之删净 ——
+ * 筛选项自己就是"当前生效条件"的落点，同一个条件不在一屏上摆两处。
+ */
 
 /*
  * 报备表比命中表少一列长文本，min-width 相应放低，窄屏下不必无谓地出横滚。
@@ -9523,8 +9316,7 @@ function toggleWordEnabled(w: RiskWord) {
 .tk-list-wrap :deep(.cell-action .act:hover) {
   background: #f9fafb;
 }
-.rr-dec { color: #374151; font-size: 12px; font-weight: 500; }
-.rr-dec.risk { color: #B91C1C; font-weight: 600; }
+/* `.rr-dec`（「评估决策」那一格的配色）随「已结论」专表整张删除，消费端只有那一张表 */
 
 /* ---- 「风险管控」弹窗（评估处置工作面与风险报备池两处共用这一个） ---- */
 .assess-form { gap: 14px !important; }
