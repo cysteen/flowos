@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, computed, watch, h, nextTick } from 'vue';
+import { ref, reactive, computed, watch, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
 import dayjs from 'dayjs';
@@ -198,35 +198,35 @@ type SeedTuple = [
   string, string, string, string, string,
 ];
 const SEED_ROWS: SeedTuple[] = [
-  ['p-h1', '云空间', '操作指导', '如何领取/升级云空间', '工单-处理', '否', '否', '启用', '110201', '2104011', '31060101', '孙系统', '2026-09-08 10:12'],
-  ['p-h1', '云空间', '功能介绍', '云空间存储大小咨询', '工单-处理', '否', '是', '启用', '110201', '2104012', '31060102', '周运营', '2026-09-26 15:40'],
-  ['p-h1', '我的文件', '功能介绍', '文件名称是否支持添加符号', '工单-处理', '否', '否', '启用', '110202', '2104013', '31060103', '孙系统', '2026-09-08 10:12'],
-  ['p-h1', '我的文件', '软件问题', '邮件分享失败', '工单-处理', '否', '否', '启用', '110202', '2104014', '31060104', '孙系统', '2026-09-08 10:12'],
-  ['p-h1', '相机', '功能介绍', '视频是否支持实时字幕', '工单-处理', '否', '否', '启用', '110203', '2104015', '31060105', '赵管理', '2026-09-15 09:31'],
-  ['p-h1', '网络', '功能介绍', '是否支持修改IP地址', '工单-处理', '否', '否', '启用', '110204', '2104016', '31060106', '孙系统', '2026-09-08 10:12'],
-  ['p-h1', '账号/密码', '操作指导', '如何退出/切换账号', '工单-处理', '否', '否', '启用', '110205', '2104017', '31060107', '周运营', '2026-10-06 11:05'],
-  ['p-h2', '云空间', '操作指导', '如何上传/查看/编辑/下载/删除文件', '工单-处理', '否', '否', '启用', '110211', '2104021', '31060201', '孙系统', '2026-09-09 14:22'],
-  ['p-h2', '云空间', '软件问题', '无法领取云空间', '工单-处理', '否', '否', '启用', '110211', '2104022', '31060202', '孙系统', '2026-09-09 14:22'],
-  ['p-h2', '我的文件', '功能介绍', '文件已上传云空间是否支持直接转写', '工单-处理', '否', '否', '启用', '110212', '2104024', '31060203', '赵管理', '2026-09-18 16:48'],
-  ['p-h2', '我的文件', '软件问题', '文件日期/时间显示异常', '工单-处理', '否', '否', '启用', '110212', '2104025', '31060204', '孙系统', '2026-09-09 14:22'],
-  ['p-h2', '云空间', '功能介绍', '导出格式咨询', '', '否', '否', '启用', '110211', '2104023', '31060205', '周运营', '2026-09-29 10:03'],
-  ['p-h2', '整机/设备', '功能介绍', '录音笔IP地址咨询', '工单-处理', '否', '是', '停用', '110213', '2104026', '31060206', '周运营', '2026-10-07 17:26'],
-  ['p1', '语音翻译', '操作指导', '如何切换男声女声', '工单-处理', '否', '否', '启用', '110221', '2104031', '31060301', '孙系统', '2026-09-10 09:15'],
-  ['p1', '语音翻译', '软件问题', '翻译结果没有语音播报', '工单-处理', '否', '否', '启用', '110221', '2104032', '31060302', '孙系统', '2026-09-10 09:15'],
-  ['p1', '会议/会话翻译', '软件问题', '翻译延迟/卡顿/反应慢', '工单-处理', '否', '否', '启用', '110222', '2104033', '31060303', '赵管理', '2026-09-22 13:37'],
-  ['p1', '屏幕', '功能异常', '显示内容异常(图标/乱码/字体/方向等)', '工单-处理', '否', '否', '启用', '110223', '2104034', '31060304', '孙系统', '2026-09-10 09:15'],
-  ['p1', '记录导出', '操作指导', '如何导出翻译记录', '工单-处理', '否', '否', '启用', '110224', '2104035', '31060305', '孙系统', '2026-09-10 09:15'],
-  ['p1', '售后', '服务申请', '维修请求', '工单-售后', '是', '否', '启用', '110225', '2104036', '31060306', '周运营', '2026-09-30 15:58'],
-  ['p1', '售后', '政策咨询', '退换货政策', '工单-售后', '是', '否', '启用', '110225', '2104037', '31060307', '周运营', '2026-09-30 15:58'],
-  ['p2', '会议/会话翻译', '软件问题', '翻译失败(服务准备中,请稍等)', '工单-处理', '否', '否', '启用', '110231', '2104041', '31060401', '孙系统', '2026-09-11 11:20'],
-  ['p2', '会议/会话翻译', '软件问题', '无法切换翻译识别模式', '工单-处理', '否', '否', '启用', '110231', '2104041', '31060402', '孙系统', '2026-09-11 11:20'],
-  ['p2', '语音翻译', '软件问题', '翻译结果没有语音播报', '工单-处理', '否', '否', '启用', '110232', '2104042', '31060403', '赵管理', '2026-09-24 10:44'],
-  ['p2', '蓝牙', '操作指导', '如何断开连接', '工单-处理', '否', '否', '启用', '110233', '2104043', '31060404', '孙系统', '2026-09-11 11:20'],
-  ['p2', '整机/设备', '信息咨询', '设备丢失', '', '否', '是', '启用', '110234', '2104044', '31060405', '周运营', '2026-10-02 09:52'],
-  ['p2', '售后', '问题反馈', '设备维修后故障仍存在', '工单-售后', '是', '否', '停用', '110235', '2104045', '31060406', '赵管理', '2026-10-05 14:09'],
-  ['p3', '账号/密码', '操作指导', '如何退出/切换账号', '工单-二线', '否', '否', '启用', '110241', '2104051', '31060501', '孙系统', '2026-09-12 16:30'],
-  ['p3', '网络', '功能介绍', '是否支持修改IP地址', '工单-二线', '否', '否', '启用', '110242', '2104052', '31060502', '孙系统', '2026-09-12 16:30'],
-  ['p3', '设置/系统', '软件问题', '加载失败/打不开/闪退', '工单-二线', '否', '否', '启用', '110243', '2104053', '31060503', '赵管理', '2026-09-25 11:18'],
+  ['p-h1', '云空间', '操作指导', '如何领取/升级云空间', '工单-处理', '否', '否', '启用', '110201', '2104011', '31060101', '孙系统', '2026-09-08 10:12:05'],
+  ['p-h1', '云空间', '功能介绍', '云空间存储大小咨询', '工单-处理', '否', '是', '启用', '110201', '2104012', '31060102', '周运营', '2026-09-26 15:40:31'],
+  ['p-h1', '我的文件', '功能介绍', '文件名称是否支持添加符号', '工单-处理', '否', '否', '启用', '110202', '2104013', '31060103', '孙系统', '2026-09-08 10:12:05'],
+  ['p-h1', '我的文件', '软件问题', '邮件分享失败', '工单-处理', '否', '否', '启用', '110202', '2104014', '31060104', '孙系统', '2026-09-08 10:12:05'],
+  ['p-h1', '相机', '功能介绍', '视频是否支持实时字幕', '工单-处理', '否', '否', '启用', '110203', '2104015', '31060105', '赵管理', '2026-09-15 09:31:47'],
+  ['p-h1', '网络', '功能介绍', '是否支持修改IP地址', '工单-处理', '否', '否', '启用', '110204', '2104016', '31060106', '孙系统', '2026-09-08 10:12:05'],
+  ['p-h1', '账号/密码', '操作指导', '如何退出/切换账号', '工单-处理', '否', '否', '启用', '110205', '2104017', '31060107', '周运营', '2026-10-06 11:05:12'],
+  ['p-h2', '云空间', '操作指导', '如何上传/查看/编辑/下载/删除文件', '工单-处理', '否', '否', '启用', '110211', '2104021', '31060201', '孙系统', '2026-09-09 14:22:38'],
+  ['p-h2', '云空间', '软件问题', '无法领取云空间', '工单-处理', '否', '否', '启用', '110211', '2104022', '31060202', '孙系统', '2026-09-09 14:22:38'],
+  ['p-h2', '我的文件', '功能介绍', '文件已上传云空间是否支持直接转写', '工单-处理', '否', '否', '启用', '110212', '2104024', '31060203', '赵管理', '2026-09-18 16:48:09'],
+  ['p-h2', '我的文件', '软件问题', '文件日期/时间显示异常', '工单-处理', '否', '否', '启用', '110212', '2104025', '31060204', '孙系统', '2026-09-09 14:22:38'],
+  ['p-h2', '云空间', '功能介绍', '导出格式咨询', '', '否', '否', '启用', '110211', '2104023', '31060205', '周运营', '2026-09-29 10:03:56'],
+  ['p-h2', '整机/设备', '功能介绍', '录音笔IP地址咨询', '工单-处理', '否', '是', '停用', '110213', '2104026', '31060206', '周运营', '2026-10-07 17:26:20'],
+  ['p1', '语音翻译', '操作指导', '如何切换男声女声', '工单-处理', '否', '否', '启用', '110221', '2104031', '31060301', '孙系统', '2026-09-10 09:15:44'],
+  ['p1', '语音翻译', '软件问题', '翻译结果没有语音播报', '工单-处理', '否', '否', '启用', '110221', '2104032', '31060302', '孙系统', '2026-09-10 09:15:44'],
+  ['p1', '会议/会话翻译', '软件问题', '翻译延迟/卡顿/反应慢', '工单-处理', '否', '否', '启用', '110222', '2104033', '31060303', '赵管理', '2026-09-22 13:37:02'],
+  ['p1', '屏幕', '功能异常', '显示内容异常(图标/乱码/字体/方向等)', '工单-处理', '否', '否', '启用', '110223', '2104034', '31060304', '孙系统', '2026-09-10 09:15:44'],
+  ['p1', '记录导出', '操作指导', '如何导出翻译记录', '工单-处理', '否', '否', '启用', '110224', '2104035', '31060305', '孙系统', '2026-09-10 09:15:44'],
+  ['p1', '售后', '服务申请', '维修请求', '工单-售后', '是', '否', '启用', '110225', '2104036', '31060306', '周运营', '2026-09-30 15:58:27'],
+  ['p1', '售后', '政策咨询', '退换货政策', '工单-售后', '是', '否', '启用', '110225', '2104037', '31060307', '周运营', '2026-09-30 15:58:27'],
+  ['p2', '会议/会话翻译', '软件问题', '翻译失败(服务准备中,请稍等)', '工单-处理', '否', '否', '启用', '110231', '2104041', '31060401', '孙系统', '2026-09-11 11:20:13'],
+  ['p2', '会议/会话翻译', '软件问题', '无法切换翻译识别模式', '工单-处理', '否', '否', '启用', '110231', '2104041', '31060402', '孙系统', '2026-09-11 11:20:13'],
+  ['p2', '语音翻译', '软件问题', '翻译结果没有语音播报', '工单-处理', '否', '否', '启用', '110232', '2104042', '31060403', '赵管理', '2026-09-24 10:44:51'],
+  ['p2', '蓝牙', '操作指导', '如何断开连接', '工单-处理', '否', '否', '启用', '110233', '2104043', '31060404', '孙系统', '2026-09-11 11:20:13'],
+  ['p2', '整机/设备', '信息咨询', '设备丢失', '', '否', '是', '启用', '110234', '2104044', '31060405', '周运营', '2026-10-02 09:52:36'],
+  ['p2', '售后', '问题反馈', '设备维修后故障仍存在', '工单-售后', '是', '否', '停用', '110235', '2104045', '31060406', '赵管理', '2026-10-05 14:09:18'],
+  ['p3', '账号/密码', '操作指导', '如何退出/切换账号', '工单-二线', '否', '否', '启用', '110241', '2104051', '31060501', '孙系统', '2026-09-12 16:30:40'],
+  ['p3', '网络', '功能介绍', '是否支持修改IP地址', '工单-二线', '否', '否', '启用', '110242', '2104052', '31060502', '孙系统', '2026-09-12 16:30:40'],
+  ['p3', '设置/系统', '软件问题', '加载失败/打不开/闪退', '工单-二线', '否', '否', '启用', '110243', '2104053', '31060503', '赵管理', '2026-09-25 11:18:24'],
 ];
 
 const allRows = ref<ProblemTagRow[]>(SEED_ROWS.map((t, i) => {
@@ -241,9 +241,9 @@ const allRows = ref<ProblemTagRow[]>(SEED_ROWS.map((t, i) => {
 }));
 let rowSeq = allRows.value.length + 1;
 
-/** 写操作留痕：操作人取当前登录用户，时刻精确到分 */
+/** 写操作留痕：操作人取当前登录用户，时刻精确到秒 */
 function stampNow() {
-  return { maintainer: userStore.name, maintainedAt: dayjs().format('YYYY-MM-DD HH:mm') };
+  return { maintainer: userStore.name, maintainedAt: dayjs().format('YYYY-MM-DD HH:mm:ss') };
 }
 
 type TagLevel = 1 | 2 | 3;
@@ -433,7 +433,8 @@ function batchSetStatus(status: '启用' | '停用') {
       const stamp = stampNow();
       let n = 0;
       for (const r of allRows.value) {
-        if (keySet.has(r.key)) {
+        // 已是目标状态的条不写入，维护人 / 维护时间不刷新
+        if (keySet.has(r.key) && r.status !== status) {
           r.status = status;
           Object.assign(r, stamp);
           n += 1;
@@ -552,7 +553,7 @@ function resetForm() {
   Object.assign(form, {
     productKey: undefined,
     tagL1: '', tagL2: '', tagL3: '',
-    team: '工单-处理', aftersale: '否', summaryOnly: '否', status: '启用',
+    team: undefined, aftersale: '否', summaryOnly: '否', status: '启用',
   });
 }
 
@@ -706,17 +707,19 @@ function parseCsv(text: string): string[][] {
   return rows;
 }
 
-const todayStr = () => dayjs().format('YYYY-MM-DD');
+const todayStr = () => dayjs().format('YYYYMMDD');
 
-/** 导入模板列（顺序固定；带 * 为必填）。失败明细＝模板列 + 末列「失败原因」，可直接改完重传 */
+/** 导入模板列（顺序固定）。失败明细＝模板列 + 末列「失败原因」，可直接改完重传 */
 const TEMPLATE_COLS = [
-  '业务类型*', '产品分类*', '产品名称*', '问题分类一级*', '问题分类二级*', '问题分类三级*',
-  '处理组', '是否售后*', '是否小结专用', '问题分类一级 ID', '问题分类二级 ID', '问题分类三级 ID',
+  '业务类型', '产品分类', '产品名称', '问题分类一级', '问题分类二级', '问题分类三级',
+  '处理组', '是否售后', '是否小结专用', '问题分类一级 ID', '问题分类二级 ID', '问题分类三级 ID',
 ] as const;
 const FAIL_REASON_COL = '失败原因';
 /** 必填列下标（业务类型 ~ 问题分类三级 + 是否售后） */
 const REQUIRED_COL_IDX = [0, 1, 2, 3, 4, 5, 7];
-const plainColName = (c: string) => c.replace(/\*/g, '');
+/** 一 / 二 / 三级 ID 列下标 */
+const ID_COL_IDX: Record<TagLevel, number> = { 1: 9, 2: 10, 3: 11 };
+const HEADER_MISMATCH_TEXT = '表头与模板不一致，请下载模板后重新填写';
 
 function rowToTemplateCells(r: ProblemTagRow): string[] {
   const p = pinfo(r.productKey);
@@ -754,10 +757,16 @@ const checkedRows = computed(() => {
   return allRows.value.filter((r) => keys.has(r.key));
 });
 
+/** 置灰悬停提示 */
+const TIP_NEED_CHECK = '请先勾选问题分类';
+const TIP_EMPTY_RESULT = '当前筛选结果为空';
+const TIP_NEED_UPLOAD = '请先上传文件';
+const TIP_NOTHING_TO_ADD = '没有可新增的条目';
+
 function onExport(scope: 'checked' | 'filtered') {
-  exportOpen.value = false;
   const rows = scope === 'checked' ? checkedRows.value : displayRows.value;
   if (!rows.length) return;
+  exportOpen.value = false;
   downloadCsv(`问题分类导出_${todayStr()}.csv`, EXPORT_COLS, rows.map(rowToExportCells));
   message.success(`已导出 ${rows.length} 条`);
 }
@@ -783,9 +792,14 @@ interface ImportLine {
 }
 interface ImportResult {
   fileName: string;
+  /** 表头与模板不一致：整个文件不逐行归类，不出解析结果卡 */
+  headerOk: boolean;
   lines: ImportLine[];
 }
 const importResult = ref<ImportResult | null>(null);
+/** 确认导入后的完成提示（弹窗留在原处，底部只剩「关闭」） */
+const importDone = ref<{ added: number; updated: number; failed: number } | null>(null);
+const importParsed = computed(() => !!importResult.value?.headerOk);
 const countKind = (k: ImportKind) => importResult.value?.lines.filter((l) => l.kind === k).length ?? 0;
 const importStats = computed(() => ({
   total: importResult.value?.lines.length ?? 0,
@@ -795,67 +809,88 @@ const importStats = computed(() => ({
   failed: countKind('失败'),
 }));
 
-function openImport() { importResult.value = null; importOpen.value = true; }
+function openImport() { resetImport(); importOpen.value = true; }
+function resetImport() { importResult.value = null; importDone.value = null; }
 
-const normHeader = (h: string) => h.replace(/[\s*＊]/g, '');
-/** 表头须与模板一致（忽略必填星号与空格）；允许末尾多一列「失败原因」（失败明细直接重传） */
+/** 表头须与模板逐字一致；允许末尾多一列「失败原因」（失败明细直接重传，该列不读取） */
 function headerMatchesTemplate(header: string[]) {
-  const cells = header.map(normHeader);
-  while (cells.length && !cells[cells.length - 1]) cells.pop();
-  const tpl = TEMPLATE_COLS.map(normHeader);
-  const extraOk = cells.length === tpl.length
-    || (cells.length === tpl.length + 1 && cells[tpl.length] === FAIL_REASON_COL);
-  return extraOk && tpl.every((c, i) => cells[i] === c);
+  const cells = [...header];
+  while (cells.length && !cells[cells.length - 1].trim()) cells.pop();
+  const n = TEMPLATE_COLS.length;
+  const extraOk = cells.length === n || (cells.length === n + 1 && cells[n] === FAIL_REASON_COL);
+  return extraOk && TEMPLATE_COLS.every((c, i) => cells[i] === c);
 }
 
+/**
+ * 逐行归类。失败原因按固定顺序收集、以「；」连接：
+ * 必填列为空 → 产品未找到 → 处理组 → 是否售后 → 是否小结专用 → ID 占用；
+ * 文件内重复的行只写重复这一条。
+ * 产品、一 / 二 / 三级按原文完全一致匹配（不去空格）；处理组、是否售后、是否小结专用、ID 去首尾空格。
+ */
 function analyzeImport(fileName: string, text: string): ImportResult {
   const [header = [], ...body] = parseCsv(text);
-  const dataRows = body.filter((r) => r.some((c) => c.trim() !== ''));
-  const headerOk = headerMatchesTemplate(header);
+  if (!headerMatchesTemplate(header)) return { fileName, headerOk: false, lines: [] };
   const teamSet = new Set(TEAMS);
   const leafIndex = new Map(allRows.value.map((r) => [nodeKeyOf(r.productKey, [r.tagL1, r.tagL2, r.tagL3], 3), r]));
   const owners: Record<TagLevel, Map<string, string>> = {
     1: idOwners(1, allRows.value), 2: idOwners(2, allRows.value), 3: idOwners(3, allRows.value),
   };
-  const seen = new Set<string>();
+  /** 同产品同路径（前六列原文）→ 第一次出现的文件行号 */
+  const firstRowOf = new Map<string, number>();
   const lines: ImportLine[] = [];
 
-  for (const raw of dataRows) {
+  body.forEach((raw, idx) => {
+    if (!raw.some((c) => c.trim() !== '')) return;
+    const fileRow = idx + 2;
     const cells = TEMPLATE_COLS.map((_, i) => raw[i] ?? '');
     const fail = (reason: string) => {
       lines.push({ cells, kind: '失败', reason, team: '', aftersale: '否', summaryOnly: '否', ids: {} });
     };
-    if (!headerOk) { fail('表头与模板不一致'); continue; }
 
-    const [bizType, prodCat, prodName, l1, l2, l3, teamRaw, afRaw, soRaw, id1, id2, id3] = cells;
-    const missing = REQUIRED_COL_IDX.filter((i) => !cells[i].trim()).map((i) => plainColName(TEMPLATE_COLS[i]));
-    if (missing.length) { fail(`必填列为空：${missing.join('、')}`); continue; }
+    const dupKey = cells.slice(0, 6).join('\u0001');
+    const firstRow = firstRowOf.get(dupKey);
+    if (firstRow !== undefined) { fail(`文件内重复：与第 ${firstRow} 行相同`); return; }
+    firstRowOf.set(dupKey, fileRow);
 
-    // 产品按 业务类型 + 产品分类 + 产品名称 完全匹配（空格、中英文括号均计入）
-    const prod = PRODUCT_INFOS.find((p) => p.bizType === bizType && p.prodCat === prodCat && p.name === prodName);
-    if (!prod) { fail('产品未找到：请先在产品管理中新增该产品'); continue; }
+    const [bizType, prodCat, prodName, l1, l2, l3, teamRaw, afRaw, soRaw] = cells;
+    const reasons: string[] = REQUIRED_COL_IDX
+      .filter((i) => !cells[i].trim())
+      .map((i) => `${TEMPLATE_COLS[i]}为空`);
+
+    // 产品按 业务类型 + 产品分类 + 产品名称 完全一致匹配；三列有空时只报为空、不做匹配
+    const prodColsFilled = [0, 1, 2].every((i) => cells[i].trim());
+    const prod = prodColsFilled
+      ? PRODUCT_INFOS.find((p) => p.bizType === bizType && p.prodCat === prodCat && p.name === prodName)
+      : undefined;
+    if (prodColsFilled && !prod) reasons.push('产品未找到：请先在产品管理中新增该产品');
 
     const team = teamRaw.trim();
-    if (team && !teamSet.has(team)) { fail('处理组不在枚举'); continue; }
+    if (team && !teamSet.has(team)) reasons.push(`处理组不在枚举：${team}`);
     const af = afRaw.trim();
-    if (af !== '是' && af !== '否') { fail('是否售后取值非法'); continue; }
+    if (af && af !== '是' && af !== '否') reasons.push('是否售后取值非法：只能填是或否');
     const so = soRaw.trim() || '否';
-    if (so !== '是' && so !== '否') { fail('是否小结专用取值非法'); continue; }
+    if (so !== '是' && so !== '否') reasons.push('是否小结专用取值非法：只能填是或否，或留空');
 
     const path: [string, string, string] = [l1, l2, l3];
-    const leafKey = nodeKeyOf(prod.key, path, 3);
-    if (seen.has(leafKey)) { fail('文件内重复'); continue; }
+    const ids: Record<TagLevel, string> = {
+      1: cells[ID_COL_IDX[1]].trim(), 2: cells[ID_COL_IDX[2]].trim(), 3: cells[ID_COL_IDX[3]].trim(),
+    };
+    const pathFilled = path.every((s) => s.trim());
+    if (prod && pathFilled) {
+      for (const lv of [1, 2, 3] as TagLevel[]) {
+        const owner = ids[lv] ? owners[lv].get(ids[lv]) : undefined;
+        if (owner && owner !== nodeKeyOf(prod.key, path, lv)) {
+          reasons.push(`${TEMPLATE_COLS[ID_COL_IDX[lv]]} 已被其他分类占用：${ids[lv]}`);
+        }
+      }
+    }
+    if (reasons.length || !prod) { fail(reasons.join('；')); return; }
 
-    const ids: Record<TagLevel, string> = { 1: id1.trim(), 2: id2.trim(), 3: id3.trim() };
-    const idTaken = ([1, 2, 3] as TagLevel[]).some((lv) => {
-      const owner = ids[lv] ? owners[lv].get(ids[lv]) : undefined;
-      return !!owner && owner !== nodeKeyOf(prod.key, path, lv);
-    });
-    if (idTaken) { fail('老系统 ID 已被其他分类占用'); continue; }
-    seen.add(leafKey);
-
-    const base = { cells, reason: '', productKey: prod.key, path, team, aftersale: af, summaryOnly: so, ids } as const;
-    const exist = leafIndex.get(leafKey);
+    const base = {
+      cells, reason: '', productKey: prod.key, path, team,
+      aftersale: af as '是' | '否', summaryOnly: so as '是' | '否', ids,
+    };
+    const exist = leafIndex.get(nodeKeyOf(prod.key, path, 3));
     if (!exist) {
       for (const lv of [1, 2, 3] as TagLevel[]) {
         if (ids[lv] && !owners[lv].has(ids[lv])) owners[lv].set(ids[lv], nodeKeyOf(prod.key, path, lv));
@@ -866,25 +901,41 @@ function analyzeImport(fileName: string, text: string): ImportResult {
     } else {
       lines.push({ ...base, kind: '已存在', reason: '已存在，无需重复导入' });
     }
-  }
-  return { fileName, lines };
+  });
+  return { fileName, headerOk: true, lines };
+}
+
+function readImportFile(f: File) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    importDone.value = null;
+    importResult.value = analyzeImport(f.name, String(reader.result ?? ''));
+  };
+  reader.readAsText(f, 'utf-8');
 }
 
 function onImportFile(e: Event) {
   const input = e.target as HTMLInputElement;
   const f = input.files?.[0];
-  if (!f) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    importResult.value = analyzeImport(f.name, String(reader.result ?? ''));
-    input.value = '';
-  };
-  reader.readAsText(f, 'utf-8');
+  input.value = '';
+  if (f) readImportFile(f);
+}
+
+function onImportDrop(e: DragEvent) {
+  const f = e.dataTransfer?.files?.[0];
+  if (f) readImportFile(f);
+}
+
+/** 已选文件时点上传区：回到上传前并清空解析结果 */
+function onDropzoneClick(e: MouseEvent) {
+  if (!importResult.value) return;
+  e.preventDefault();
+  resetImport();
 }
 
 /** 失败明细：只含失败行，列＝模板列 + 末列「失败原因」 */
-function downloadImportFailures(res: ImportResult | null = importResult.value) {
-  const fails = res?.lines.filter((l) => l.kind === '失败') ?? [];
+function downloadImportFailures() {
+  const fails = importResult.value?.lines.filter((l) => l.kind === '失败') ?? [];
   if (!fails.length) return;
   downloadCsv(
     `问题分类导入失败明细_${todayStr()}.csv`,
@@ -897,20 +948,36 @@ function downloadImportFailures(res: ImportResult | null = importResult.value) {
 /** 确认导入：新增行落库；withUpdate 时更新行改写处理组 / 是否售后 / 是否小结专用并重新启用 */
 function doImport(withUpdate: boolean) {
   const res = importResult.value;
-  if (!res) return;
+  if (!res || !res.headerOk || importDone.value) return;
   const stamp = stampNow();
   let added = 0;
   let updated = 0;
+  /** 同一文件多行新增同一层级节点：取第一个非空 ID */
+  const firstIdOf = new Map<string, string>();
+  for (const ln of res.lines) {
+    if (ln.kind !== '新增' || !ln.productKey || !ln.path) continue;
+    for (const lv of [1, 2, 3] as TagLevel[]) {
+      const nk = nodeKeyOf(ln.productKey, ln.path, lv);
+      if (ln.ids[lv] && !firstIdOf.has(nk)) firstIdOf.set(nk, ln.ids[lv]!);
+    }
+  }
   for (const ln of res.lines) {
     if (ln.kind === '新增' && ln.productKey && ln.path) {
       const [tagL1, tagL2, tagL3] = ln.path;
+      const pk = ln.productKey;
+      const path = ln.path;
+      const provided: Partial<Record<TagLevel, string>> = {};
+      for (const lv of [1, 2, 3] as TagLevel[]) {
+        const id = firstIdOf.get(nodeKeyOf(pk, path, lv));
+        if (id) provided[lv] = id;
+      }
       allRows.value.unshift({
         key: String(rowSeq++),
-        productKey: ln.productKey,
-        productName: pinfo(ln.productKey).name,
+        productKey: pk,
+        productName: pinfo(pk).name,
         tagL1, tagL2, tagL3,
         team: ln.team, aftersale: ln.aftersale, summaryOnly: ln.summaryOnly, status: '启用',
-        ...resolveTagIds(ln.productKey, ln.path, ln.ids),
+        ...resolveTagIds(pk, path, provided),
         ...stamp,
       });
       added += 1;
@@ -921,18 +988,8 @@ function doImport(withUpdate: boolean) {
       updated += 1;
     }
   }
-  importOpen.value = false;
   checkedRowKeys.value = [];
-  const failed = res.lines.filter((l) => l.kind === '失败').length;
-  const text = `导入完成：新增 ${added} 条、更新 ${updated} 条`;
-  if (!failed) { message.success(text); return; }
-  message.success({
-    content: () => h('span', [
-      `${text}；失败 ${failed} 条，可`,
-      h('a', { onClick: () => downloadImportFailures(res) }, '下载失败明细'),
-    ]),
-    duration: 6,
-  });
+  importDone.value = { added, updated, failed: res.lines.filter((l) => l.kind === '失败').length };
 }
 </script>
 
@@ -1285,16 +1342,29 @@ function doImport(withUpdate: boolean) {
       :width="600"
     >
       <template #footer>
-        <a-button @click="importOpen = false">取消</a-button>
-        <a-button v-if="!importResult" type="primary" disabled>开始导入</a-button>
-        <template v-else-if="importStats.updated > 0">
-          <a-button :disabled="importStats.added === 0" @click="doImport(false)">仅导入新增 {{ importStats.added }} 条</a-button>
-          <a-button type="primary" @click="doImport(true)">导入新增并更新（{{ importStats.added }} + {{ importStats.updated }} 条）</a-button>
+        <a-button v-if="importDone" type="primary" @click="importOpen = false">关闭</a-button>
+        <template v-else>
+          <a-button @click="importOpen = false">取消</a-button>
+          <a-tooltip v-if="!importParsed" :title="importResult ? HEADER_MISMATCH_TEXT : TIP_NEED_UPLOAD">
+            <span class="btn-tip-wrap"><a-button type="primary" disabled>确认导入</a-button></span>
+          </a-tooltip>
+          <template v-else-if="importStats.updated > 0">
+            <a-tooltip :title="importStats.added === 0 ? TIP_NOTHING_TO_ADD : undefined">
+              <span class="btn-tip-wrap">
+                <a-button :disabled="importStats.added === 0" @click="doImport(false)">仅导入新增 {{ importStats.added }} 条</a-button>
+              </span>
+            </a-tooltip>
+            <a-button type="primary" @click="doImport(true)">导入新增并更新（{{ importStats.added }} + {{ importStats.updated }} 条）</a-button>
+          </template>
+          <a-tooltip v-else :title="importStats.added === 0 ? TIP_NOTHING_TO_ADD : undefined">
+            <span class="btn-tip-wrap">
+              <a-button type="primary" :disabled="importStats.added === 0" @click="doImport(false)">确认导入 {{ importStats.added }} 条</a-button>
+            </span>
+          </a-tooltip>
         </template>
-        <a-button v-else type="primary" :disabled="importStats.added === 0" @click="doImport(false)">确认导入 {{ importStats.added }} 条</a-button>
       </template>
       <div class="import-panel">
-        <label class="dropzone">
+        <label class="dropzone" @click="onDropzoneClick" @dragover.prevent @drop.prevent="onImportDrop">
           <InboxOutlined class="dz-ic" />
           <div class="dz-main">
             <template v-if="importResult">{{ importResult.fileName }}</template>
@@ -1312,12 +1382,14 @@ function doImport(withUpdate: boolean) {
           <input type="file" accept=".csv" hidden @change="onImportFile" />
         </label>
 
-        <ul v-if="!importResult" class="import-tips">
-          <li>支持 csv，首行须为表头（同模板）</li>
-          <li>业务类型 + 产品分类 + 产品名称需与产品管理完全一致</li>
-        </ul>
+        <div v-if="!importResult" class="import-tips">首行须为表头（同模板）</div>
+        <div v-else-if="!importResult.headerOk" class="import-error">{{ HEADER_MISMATCH_TEXT }}</div>
 
-        <div v-else class="import-result">
+        <div v-if="importDone" class="import-done">
+          导入完成：新增 {{ importDone.added }} 条、更新 {{ importDone.updated }} 条<template v-if="importDone.failed > 0">，失败 {{ importDone.failed }} 条，可<a class="ir-dl-inline" @click.prevent="downloadImportFailures()">下载失败明细</a></template>
+        </div>
+
+        <div v-if="importParsed" class="import-result">
           <div class="ir-head">
             <div class="ir-title">解析完成</div>
             <a
@@ -1535,10 +1607,22 @@ function doImport(withUpdate: boolean) {
 .del-cascade-text { font-size: 12px; color: #92400e; line-height: 1.6; }
 .import-panel { display: flex; flex-direction: column; gap: 10px; }
 .import-tips {
-  margin: 0; padding: 8px 12px 8px 28px; border-radius: 8px;
+  margin: 0; padding: 8px 12px; border-radius: 8px;
   background: #f9fafb; border: 1px solid #eef0f2;
   font-size: 12px; color: #6b7280; line-height: 1.8;
 }
+.import-error { font-size: 13px; color: #dc2626; line-height: 1.6; }
+.import-done {
+  padding: 8px 12px; border-radius: 8px;
+  background: #f0fdf4; border: 1px solid #bbf7d0;
+  font-size: 13px; color: #166534; line-height: 1.6;
+}
+.ir-dl-inline { color: #1a6fff; cursor: pointer; }
+.ir-dl-inline:hover { text-decoration: underline; }
+/* 置灰按钮外包一层承接悬停提示（disabled 按钮自身不触发鼠标事件） */
+.btn-tip-wrap { display: inline-block; margin-inline-start: 8px; }
+.btn-tip-wrap :deep(.ant-btn[disabled]) { pointer-events: none; }
+.menu-tip { display: block; }
 .dropzone {
   display: flex; flex-direction: column; align-items: center; gap: 6px;
   padding: 24px; border: 1.5px dashed #d1d5db; border-radius: 10px; cursor: pointer;
