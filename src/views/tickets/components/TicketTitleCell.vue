@@ -13,8 +13,24 @@ withDefaults(
   defineProps<{
     ticket: Ticket;
     highlightMentionUnread?: boolean;
+    /**
+     * 第二行（渠道 · 单号 · 关联标 · 行尾插槽）放不下时**允许换行**，
+     * 让「已升级为 / 升级自 〈单号〉」那枚关联标**整枚掉到下一行**，而不是被单元格硬切。
+     *
+     * 🔴 **为什么是换行而不是继续裁**：关联标的正文**就是一个工单号**，与本行的单号同类。
+     * `.rel-tag` 是 `flex: none`（不收缩），被 `.title-line2 { overflow: hidden }` 切时
+     * 连省略号都不留，「已升级为 IFLYTS-20260709-00001」会切成「已升级为 IFLYTS-202」——
+     * **半个单号会被读成另一张单，比整枚不显示更糟**。换行一个字都不丢。
+     *
+     * 🔴 **为什么做成可选而不是全局默认**：开了之后那一行会变高（第二行占两行），
+     * 而**工单列表的行高节奏是另一件事**，不在本轮范围 —— 所以不给就是现状，
+     * 既有调用方（`TicketRichList.vue`）行为一格不变。
+     *
+     * 当前只有 `RiskReportPoolPanel.vue` 那一处传它。
+     */
+    line2Wrap?: boolean;
   }>(),
-  { highlightMentionUnread: false },
+  { highlightMentionUnread: false, line2Wrap: false },
 );
 
 const emit = defineEmits<{ clickNo: [ticket: Ticket] }>();
@@ -96,7 +112,7 @@ const csTagTipOverlayInner = {
           >{{ ticket.title }}</span>
           <span v-if="highlightMentionUnread && isMentionUnread(ticket)" class="unread-tag">未读</span>
         </div>
-        <div class="title-line2">
+        <div class="title-line2" :class="{ 'title-line2--wrap': line2Wrap }">
           <span class="channel">{{ ticketListSourceLabel(ticket) }}</span>
           <span class="sep">·</span>
           <span class="ticket-no" @click.stop="emit('clickNo', ticket)">{{ ticket.no }}</span>
@@ -116,6 +132,13 @@ const csTagTipOverlayInner = {
             是 `flex: 0 1 auto; min-width: 0; overflow: hidden`：宽度不够时 flex 只找得到
             它来收，收到 0 为止，里面那几枚标（各自 `flex: none` 不变形）**整段被裁切**，
             读不全的是风险标而不是单号。裁切优于缩小：缩到一半的标读不出是哪一档。
+
+            于是**不换行态（默认）**的优先级是：
+            **单号完整 ＞ 关联标完整 ＞ `.line2-extra` 先收到 0 ＞ 关联标被行尾硬切**。
+            🔴 末一档是**缺陷不是设计**：`.rel-tag` 不收缩又被 `overflow: hidden` 切，
+            连省略号都不留，半个单号会被读成另一张单（见 `line2Wrap` 那段说明）。
+            **`line2Wrap` 开着时这一档不再发生** —— 关联标不再是可裁项，整枚换到下一行；
+            可缩的**仍只有** `.line2-extra`（它若也放不下，先换行、再在自己那行里收）。
 
             不传插槽内容时下面的包裹节点不渲染，行高与既有布局一字不变
             （`RiskReportPoolPanel.vue` 那处调用不传，故完全不受影响）。
@@ -172,6 +195,19 @@ const csTagTipOverlayInner = {
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+}
+/*
+  🔴 可选换行态（prop `line2Wrap`，当前只有 `RiskReportPoolPanel.vue` 那一处传）。
+  只加 `flex-wrap: wrap` 一句就够：本行所有项（`.channel` / `.sep` / `.ticket-no`
+  / `.rel-tag`）都是 `flex: none`，flex 换行**先断行、后收缩**，于是放不下时
+  「已升级为 〈单号〉」那枚关联标**整枚换到下一行**，不再被 `overflow: hidden`
+  切成半截单号。`.line2-extra` 仍是唯一可缩项（先换行，再在自己那行里收）。
+  行距沿用本行既有的 `gap: 6px`（与 `.cell-title` 里第一行↔第二行同一个值），
+  不另设 `row-gap`。`align-items: center` 在换行态下按**每行各自**居中，照旧。
+  `overflow: hidden` 保留：换行后横向已不溢出，它只作兜底。
+*/
+.title-line2--wrap {
+  flex-wrap: wrap;
 }
 /*
   第二行行尾插槽的包裹节点 —— 本行**唯一的可缩项**（见模板里那段说明）。
