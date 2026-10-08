@@ -495,9 +495,18 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
               aria-hidden="true"
             />
             <div class="cell cell-title-wrap">
+              <!--
+                `line2Wrap`：本列（minmax(276px, 1.2fr)）装不下
+                「渠道 · 单号 · 已升级为 〈单号〉」这一整行时，让关联标整枚换到下一行。
+                🔴 不开这个开关它会被单元格硬切成「已升级为 IFLYTS-202」—— 关联标的正文
+                就是一个工单号，半截单号会被读成另一张单（详见 `TicketTitleCell.vue`
+                里 `line2Wrap` 那段说明）。**本池是目前唯一传它的调用方**：
+                换行会让那一行变高，工单列表（`TicketRichList.vue`）的行高节奏是另一件事。
+              -->
               <TicketTitleCell
                 v-if="ticketOf(r.ticketNo)"
                 :ticket="ticketOf(r.ticketNo)!"
+                line2-wrap
                 @click-no="emit('openTicket', $event.no)"
               />
               <span v-else class="plain-text" :title="`${r.ticketNo} · ${ticketTitle(r.ticketNo)}`">
@@ -811,8 +820,9 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
    * 84px 装不下，`.act` 会**从词中间折行**成「风险管 / 控」。
    * 实测两枚并排的内容宽 84px + 右内边距 12px ＝ 96px，取 104 留 8px 余量。
    * 🔴 **不要再往上加**：多出来的宽度是从两条弹性列身上拿的，而「工单 / 标题」那一列
-   * 本来就不够（第二行的「已升级为 〈单号〉」关联标按 `TicketTitleCell` 的既定优先级
-   * 被裁 —— 单号完整优先、关联标可裁），每多拿 1px 那枚标就少露 1px。
+   * 本来就不够 —— 第二行「渠道 · 单号 · 已升级为 〈单号〉」实测需 354px、实得 288px，
+   * 每多拿 1px 第二行就更早换行。（关联标**不会再被裁成半截单号**：本池那处调用传了
+   * `line2-wrap`，放不下时整枚换行，见上面模板里那段说明。换行的代价是那一行变高。）
    * `.act` 另加 `white-space: nowrap` 兜底：哪怕将来再挤，也只会整词换行，不会把动作名劈成两半。
    */
   grid-template-columns:

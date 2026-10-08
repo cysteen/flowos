@@ -141,7 +141,8 @@ const csTagTipOverlayInner = {
             可缩的**仍只有** `.line2-extra`（它若也放不下，先换行、再在自己那行里收）。
 
             不传插槽内容时下面的包裹节点不渲染，行高与既有布局一字不变
-            （`RiskReportPoolPanel.vue` 那处调用不传，故完全不受影响）。
+            （`RiskReportPoolPanel.vue` 那处调用**不传本插槽**，故本段不作用于它；
+            它只传 `line2Wrap`，那是另一回事）。
           -->
           <span v-if="$slots['line2-extra']" class="line2-extra">
             <slot name="line2-extra" :ticket="ticket" />
