@@ -6257,23 +6257,38 @@ function toggleWordEnabled(w: RiskWord) {
                 实测最宽的一种是「客户服务小程序 · IFLYTS-20260716-00002」——
                 渠道 84（`TICKET_SOURCE_OPTIONS` 里最长的就是「客户服务小程序」七字）
                 ＋ 分隔点 3 ＋ 单号 133 ＋ 两道 6px 间距 ＝ 232px，加单元格左右内边距 20 ＝ 252。
-                取 264 留 12px 余量（与「等待时长」那一列同一条理由：0 余量会偶发截断；
-                照 6 字渠道量出来的 248 对这一行只剩 0.2px 余量，等于没有余量）。
+                取 **256** 留 4px 余量（照 6 字渠道量出来的 248 对这一行只剩 0.2px，等于没有余量）。
                 第一行的标题可以省略号收尾，**状态 / 类型角标与单号一个字都不许被切**。
-                ⚠️ **多出来的 96px 从「风险摘要」那条弹性列让**（它本来就靠省略号收尾、全文挂 title）；
-                同时把本表的 min-width 一并抬 96（见 `.pool-row-table`），
-                否则定宽列合计 1056 顶穿原来那条 1040，窄屏下「风险摘要」会被压成 0 宽、整列静默消失。
+                ⚠️ **不能再收**：再窄下去「客户服务小程序」那一行的单号会被 `line2Wrap` 顶到第三行，
+                整行从 53px 长到 76px —— 省下的那点宽度换不来一行高。
+
+                ⚠️ **这 88px 是从哪腾的（全表合计必须落在清单区可视宽内，不许出横向滚动条）**：
+                删「原单类型」整列 **−64**（与标题里的类型角标逐字重复）、
+                「监控来源」96 → 88 **−8**（实测格里的来源标最宽 82、表头连箭头 70）、
+                「承办人」80 → 72 **−8**（实测最宽「吴投诉」59、表头 53；72 仍放得下四字人名）。
+                三笔合计 80，余下 8 从弹性的「风险摘要」列让。
+                定宽列合计 960 → **968**（不限阶段档九列），仍在共用的 min-width 1040 以内 ——
+                **本表不再需要自己那条 min-width**（已删），与改动前同一条下限。
               -->
-              <th style="width: 264px">工单号</th>
+              <th style="width: 256px">工单号</th>
               <!--
                 本页池行只有 A 线（`isALine`）：「报备人 / 报备原因 / 风险类型」三格对 A 线恒为占位，已删；
                 换成原单类型与风险等级两列（§5.4 ④）。
+                🔴 **「原单类型」这一列已删**（2026-10-08 裁决）：第一格换成工单标题单元格之后，
+                它与标题第一行那枚**类型角标逐字重复**（实测在表的每一行都是同一个值：投诉/投诉、咨询/咨询），
+                同一个值在一行里摆两处，占的 64px 却正是「风险摘要」最缺的那一截。
+                按原单类型筛的那排 chip（全部 / 投诉 / 非投诉）**照旧在**，筛选维度一个没少。
+                ⚠️ **「处置阶段」不连坐**：它是**池内阶段**（待领取 / 已领取 / 已结论），
+                与标题里的**工单状态**角标（处理中 / 已升级技术支持）不是一回事，两者都要留。
               -->
-              <th style="width: 64px">原单类型</th>
               <th style="width: 64px">风险等级</th>
-              <!-- 来源列可点排序：多类来源合一队之后，"先把同一类过一遍"是最常见的翻法 -->
+              <!--
+                来源列可点排序：多类来源合一队之后，"先把同一类过一遍"是最常见的翻法。
+                ⚠️ 列宽 96 → **88**：实测格里的来源标最宽 82（四字胶囊）、表头连排序箭头一起 70，
+                收这 8px 补给「风险摘要」。再收就会把来源标自己截了。
+              -->
               <th
-                style="width: 96px"
+                style="width: 88px"
                 class="th-sortable"
                 :class="{ on: sourceSort !== 'none' }"
                 :title="sourceSort === 'none' ? '点击按监控来源分组（同来源内仍按等待时长）' : sourceSort === 'asc' ? '点击倒序' : '点击恢复按等待时长排'"
@@ -6286,9 +6301,14 @@ function toggleWordEnabled(w: RiskWord) {
                 列宽 80px：三字胶囊约 50px + 单元格左右内边距 20px，68px 时被 `.report-table td` 的省略截成「待领取 …」。
               -->
               <th v-if="reportView === 'all' || reportView === 'open'" style="width: 80px">处置阶段</th>
+              <!--
+                ⚠️ 不限阶段 / 已结论两档列最多，这一格由 80 收到 **72** 补给「风险摘要」：
+                实测格里最宽的是「吴投诉」59、表头 53，72 仍放得下四字人名。
+                「已领取」那一档列少、不紧张，仍给 92。
+              -->
               <th
                 v-if="reportView === 'assigning' || reportView === 'all' || reportView === 'open'"
-                :style="reportView === 'all' || reportView === 'open' ? 'width: 80px' : 'width: 92px'"
+                :style="reportView === 'all' || reportView === 'open' ? 'width: 72px' : 'width: 92px'"
               >承办人</th>
               <th style="width: 128px">进监控时刻</th>
               <!--
@@ -6319,11 +6339,11 @@ function toggleWordEnabled(w: RiskWord) {
               -->
               <td>
                 <!--
-                  `line2Wrap`：本列 264px 装不下「渠道 · 单号 · 升级自 〈单号〉」这一整行时，
+                  `line2Wrap`：本列 256px 装不下「渠道 · 单号 · 升级自 〈单号〉」这一整行时，
                   让关联标**整枚换到下一行**。不开它会被单元格硬切成「升级自 IFLYTS-202」——
                   关联标的正文就是一个工单号，半截单号会被读成另一张单
                   （详见 `TicketTitleCell.vue` 里 `line2Wrap` 那段说明）。
-                  🔴 实测：本表有关联标的行第二行自然宽 385px，264 下**必须换行**，没有别的去处。
+                  🔴 实测：本表有关联标的行第二行自然宽 385px，256 下**必须换行**，没有别的去处。
                 -->
                 <TicketTitleCell
                   v-if="poolTicketOf(r)"
@@ -6333,7 +6353,7 @@ function toggleWordEnabled(w: RiskWord) {
                 />
                 <button v-else type="button" class="rt-no" @click="openTicket(r.ticketNo)">{{ r.ticketNo }}</button>
               </td>
-              <td><span class="src-tag">{{ poolTicketTypeOf(r) }}</span></td>
+              <!-- 「原单类型」那一格已删（与上面标题单元格里的类型角标逐字重复），见表头那一段 -->
               <td>
                 <span
                   v-if="r.tag && isPoolLevel(r.tag.result)"
@@ -6343,8 +6363,15 @@ function toggleWordEnabled(w: RiskWord) {
                 <span v-else class="hit-sub">—</span>
               </td>
               <td><span class="src-tag" :class="{ kw: isKeywordRow(r) }">{{ r.source }}</span></td>
-              <!-- 风险摘要：单行截断，全文挂 title。队列是用来挑下一条办的，不是在这里读完再判 -->
-              <td class="rr-desc" :title="poolRiskSummaryOf(r)">{{ poolRiskSummaryOf(r) }}</td>
+              <!--
+                风险摘要：**两行夹断**，全文挂 title。队列是用来挑下一条办的，不是在这里读完再判，
+                但这一列是全表唯一说明"这条为什么有风险"的地方，一行读到的是半句话。
+                🔴 **夹断必须落在里面这个 `<span>` 上，不能写在 `<td>` 上**：
+                `-webkit-line-clamp` 要配 `display: -webkit-box`，而浏览器会把 `<td>` 的 display
+                强制算回表格单元格（实测 computed 是 `flow-root`），夹断**整条失效** ——
+                文字照旧按几行排版、再被 `overflow: hidden` 从中间切开，第三行会露出半截字。
+              -->
+              <td class="rr-desc" :title="poolRiskSummaryOf(r)"><span class="rr-clamp2">{{ poolRiskSummaryOf(r) }}</span></td>
               <td v-if="reportView === 'all' || reportView === 'open'"><span class="src-tag">{{ poolStageOf(r) }}</span></td>
               <td v-if="reportView === 'assigning' || reportView === 'all' || reportView === 'open'">{{ poolAssigneeOf(r) }}</td>
               <td class="hit-when">{{ r.at }}</td>
@@ -9505,16 +9532,38 @@ function toggleWordEnabled(w: RiskWord) {
  */
 .report-table-wrap .report-table { min-width: 1040px; table-layout: fixed; }
 /*
- * 🔴 **只给池行表抬 96px**（1040 → 1136）：它的第一列从 168 加到 264（工单标题单元格），
- * 定宽列合计也就从 960 变成 1056 —— 已经顶穿上面那条 min-width，于是窄屏下
- * 唯一那条弹性列「风险摘要」会被分到 **0 宽**、整列静默消失，
- * 而"静默消失"正是这张表最不能出的一种坏法（同 `.hit-table-wrap` 那段：宁可滚）。
- * 抬 96 之后「风险摘要」在任何屏宽下都还有 80px 的下限，与改动前同一条下限。
- * ⚠️ **不抬共用的那条**：另两张 `.report-table`（已判段条目表、已收口表）第一格也换成了标题单元格，
- * 但它们没有弹性列、靠收别的定宽列把合计压在 1040 以内（1040 / 1004），共用的 min-width 一抬，
- * 它们在 1040~1136 这一段屏宽上会凭空多出一条横向滚动条。
+ * 🔴 **池行表没有自己的 min-width，走上面共用的那条 1040**。
+ * 第一列换成工单标题单元格（168 → 256）之后，多出来的 88px 全部就地腾出来了 ——
+ * 删「原单类型」整列 −64、「监控来源」96 → 88 −8、「承办人」80 → 72 −8，
+ * 定宽列合计 960 → **968**（不限阶段档九列），仍在 1040 以内。
+ * 于是这张表**不出横向滚动条**，弹性的「风险摘要」拿到的是"清单区可视宽 − 968"，
+ * 窄屏下也还有 1040 − 968 ＝ 72px 的下限，不会被压成 0 宽、整列静默消失。
  */
-.report-table-wrap .report-table.pool-row-table { min-width: 1136px; }
+/*
+ * 🔴 **「风险摘要」改成两行夹断**（只收在池行表这一张）：这一列是全表唯一说明
+ * "这条为什么有风险"的地方，而第一列换成标题单元格之后它分到的宽度只剩百来像素，
+ * 单行省略读到的是半句话。标题单元格本身已把行撑到 53px，**两行摘要落在 46px 以内、
+ * 行高一格不涨** —— 同样的宽度下可读字数翻一倍，不付任何代价。
+ * 全文照旧挂在 title 悬停上。`.rr-desc` 是两张表共用的类，故带 `.pool-row-table` 限死。
+ */
+.report-table-wrap .report-table.pool-row-table td.rr-desc {
+  white-space: normal;
+  overflow: hidden;
+}
+/*
+ * 夹断落在里面这个 span 上 —— `<td>` 的 display 会被浏览器算回表格单元格，
+ * `-webkit-line-clamp` 在它身上整条失效（详见模板里那一格的说明）。
+ * `max-height` 是第二道闸：万一哪天 `-webkit-box` 这套被弃用，也只会硬切在两行处，
+ * 不会让第三行露出半截字。
+ */
+.report-table-wrap .report-table.pool-row-table td.rr-desc .rr-clamp2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 17px;
+  max-height: 34px;
+}
 /*
  * 监控来源标：与扫库记录的 .run-kind 同一个胶囊形态（本页已有的"分类标"写法），
  * 不另造一种。关键词触发单独着色，与另两类按工单属性自动识别的来源区分开。
