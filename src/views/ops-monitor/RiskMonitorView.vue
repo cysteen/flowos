@@ -105,6 +105,14 @@ import { PRIORITY_OPTIONS } from '@/views/tickets/types/createTicket';
 // （摘要 / SLA / 状态 / 产品）。原先那两列（监控来源 ＝ 档名的复述、风险描述 ＝ 一句写死的套话）
 // 对判断没有任何信息量，停在这一档根本判不了，只能一条条点进工单。
 import TicketRichList from '@/views/tickets/components/TicketRichList.vue';
+// 🔴 池行表第一格的工单标题单元格 ＝ 工作台富列表用的**同一个共享件**，不在本页手搓一套：
+// 那一格要摆的（催 / 补 · 状态 · 类型 · 标题 · 渠道 · 单号 · 关联标）与富列表逐字同一件东西，
+// 另画一套就会在两处长出两副长相。富列表（`TicketRichList`）内部用的也是它。
+import TicketTitleCell from '@/views/tickets/components/TicketTitleCell.vue';
+// 池行只带一个单号，标题单元格要的是整张 `Ticket` —— 解析走**既有的那一个口**
+// （静态工单库 → 升级派生的那批 → null），风险那枚按钮的形态判定用的就是它，
+// 本页不另造一条查法：两条查法迟早在"某个单号查不到"那一档上给出两种结果。
+import { resolveTicketRowFor } from '@/views/tickets/composables/opActions';
 // SLA 那两行与"此刻是否超时"的口径取工作台那一份**单一真源**（已提到 utils 共用）——
 // 本页再抄一份的话，同一张单在两个页面会给出不同的 SLA 说法
 import { isSlaBreachedNow, slaFirstLine, slaResolveLine } from '@/views/tickets/utils/ticketListCells';
@@ -511,6 +519,16 @@ type PoolTicketTypeKey = '投诉' | '非投诉';
 const POOL_TICKET_TYPE_KEYS: PoolTicketTypeKey[] = ['投诉', '非投诉'];
 const poolTicketTypeFilter = ref<PoolTicketTypeKey | 'all'>('all');
 const poolLevelFilter = ref<RiskLevel | 'all'>('all');
+/**
+ * 池行对应的**整张工单**，给第一格那个标题单元格用；`null` ＝ 工单库与派生库里都查不到。
+ *
+ * 🔴 **查不到的行照旧摆光单号**（见模板里那一格的 `v-else`）：池内条目与工单库是两条线，
+ * 条目在、原单查不到这一档必须有去处 —— 丢行会让表的行数与左栏角标对不上，
+ * 报错会让整段清单白屏，而条目自己至少还知道自己是哪个单号。
+ */
+function poolTicketOf(r: { ticketNo: string }): Ticket | null {
+  return resolveTicketRowFor(r.ticketNo);
+}
 /** 原单的工单类型（咨询 / 建议 / 商机 / 投诉）。工单库与派生库两处都查；都查不到时按单号前缀判投诉与否 */
 function poolTicketTypeOf(r: { ticketNo: string }): string {
   const t = TICKET_BY_NO.get(r.ticketNo) ?? derivedTickets.find(r.ticketNo);
@@ -6212,10 +6230,23 @@ function toggleWordEnabled(w: RiskWord) {
         🔴 **没有勾选列**：批量只服务于批量分派，而分派整套已取消。
       -->
       <div v-if="listView === 'report' && reportRows.length" class="hit-table-wrap report-table-wrap">
-        <table v-if="reportView !== 'assessed'" class="hit-table report-table">
+        <table v-if="reportView !== 'assessed'" class="hit-table report-table pool-row-table">
           <thead>
             <tr>
-              <th style="width: 168px">工单号</th>
+              <!--
+                ⚠️ **列宽 264**，不是原来的 168：这一格从"一个光单号"换成**工单标题单元格**之后，
+                第二行是「渠道 · 单号」，这一行里每一项都不收缩，故列宽由**最宽的那一种渠道**定。
+                实测最宽的一种是「客户服务小程序 · IFLYTS-20260716-00002」——
+                渠道 84（`TICKET_SOURCE_OPTIONS` 里最长的就是「客户服务小程序」七字）
+                ＋ 分隔点 3 ＋ 单号 133 ＋ 两道 6px 间距 ＝ 232px，加单元格左右内边距 20 ＝ 252。
+                取 264 留 12px 余量（与「等待时长」那一列同一条理由：0 余量会偶发截断；
+                照 6 字渠道量出来的 248 对这一行只剩 0.2px 余量，等于没有余量）。
+                第一行的标题可以省略号收尾，**状态 / 类型角标与单号一个字都不许被切**。
+                ⚠️ **多出来的 96px 从「风险摘要」那条弹性列让**（它本来就靠省略号收尾、全文挂 title）；
+                同时把本表的 min-width 一并抬 96（见 `.pool-row-table`），
+                否则定宽列合计 1056 顶穿原来那条 1040，窄屏下「风险摘要」会被压成 0 宽、整列静默消失。
+              -->
+              <th style="width: 264px">工单号</th>
               <!--
                 本页池行只有 A 线（`isALine`）：「报备人 / 报备原因 / 风险类型」三格对 A 线恒为占位，已删；
                 换成原单类型与风险等级两列（§5.4 ④）。
@@ -6260,8 +6291,29 @@ function toggleWordEnabled(w: RiskWord) {
           </thead>
           <tbody>
             <tr v-for="r in pagedReportRows" :key="r.id">
+              <!--
+                第一格 ＝ **工单标题单元格**（与工作台富列表同一个共享件 `TicketTitleCell`）：
+                催 / 补 · 状态 · 类型 · 标题 · 渠道 · 单号 · 关联标。原先这一格只有一个光单号 ——
+                而人在这一列要认的是"这是哪一张单"，单号答不了，只能一条条点进去看。
+                🔴 单号仍可点、落点不变：`@click-no` 接的就是原来那个 `openTicket`。
+                🔴 **查不到原单的行回退成光单号按钮**（见 `poolTicketOf`）：这一格没有工单可摆时
+                至少还摆得出单号，不白屏、不丢行。
+              -->
               <td>
-                <button type="button" class="rt-no" @click="openTicket(r.ticketNo)">{{ r.ticketNo }}</button>
+                <!--
+                  `line2Wrap`：本列 264px 装不下「渠道 · 单号 · 升级自 〈单号〉」这一整行时，
+                  让关联标**整枚换到下一行**。不开它会被单元格硬切成「升级自 IFLYTS-202」——
+                  关联标的正文就是一个工单号，半截单号会被读成另一张单
+                  （详见 `TicketTitleCell.vue` 里 `line2Wrap` 那段说明）。
+                  🔴 实测：本表有关联标的行第二行自然宽 385px，264 下**必须换行**，没有别的去处。
+                -->
+                <TicketTitleCell
+                  v-if="poolTicketOf(r)"
+                  :ticket="poolTicketOf(r)!"
+                  line2-wrap
+                  @click-no="openTicket($event.no)"
+                />
+                <button v-else type="button" class="rt-no" @click="openTicket(r.ticketNo)">{{ r.ticketNo }}</button>
               </td>
               <td><span class="src-tag">{{ poolTicketTypeOf(r) }}</span></td>
               <td>
@@ -9420,6 +9472,16 @@ function toggleWordEnabled(w: RiskWord) {
  * 这一列一路撑宽、把其余列挤扁，ellipsis 根本不会触发。
  */
 .report-table-wrap .report-table { min-width: 1040px; table-layout: fixed; }
+/*
+ * 🔴 **只给池行表抬 96px**（1040 → 1136）：它的第一列从 168 加到 264（工单标题单元格），
+ * 定宽列合计也就从 960 变成 1056 —— 已经顶穿上面那条 min-width，于是窄屏下
+ * 唯一那条弹性列「风险摘要」会被分到 **0 宽**、整列静默消失，
+ * 而"静默消失"正是这张表最不能出的一种坏法（同 `.hit-table-wrap` 那段：宁可滚）。
+ * 抬 96 之后「风险摘要」在任何屏宽下都还有 80px 的下限，与改动前同一条下限。
+ * ⚠️ **不抬共用的那条**：另两张 `.report-table`（已判段条目表、已收口表）本轮一格不动，
+ * 共用的 min-width 一抬，它们在 1040~1136 这一段屏宽上会凭空多出一条横向滚动条。
+ */
+.report-table-wrap .report-table.pool-row-table { min-width: 1136px; }
 /*
  * 监控来源标：与扫库记录的 .run-kind 同一个胶囊形态（本页已有的"分类标"写法），
  * 不另造一种。关键词触发单独着色，与另两类按工单属性自动识别的来源区分开。
