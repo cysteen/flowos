@@ -74,16 +74,15 @@ interface ProblemTagRow {
 
 /**
  * 筛选项排序（左→右）：
- * 第1行：BGBU → 业务线 → 产品线 → 业务类型 → 产品分类 → 产品名称 → 处理组 → 是否售后 → 是否小结专用 → 状态
- * 工具条：一级/二级分类（需业务类型+产品分类+产品名称均已选才出现）→ 分类名称搜索 → 查询/重置/批量/导出
+ * 第1行：维度（按产品 | 按组织）→ 级联（按产品：业务类型/产品分类/产品名称；按组织：BGBU/业务线/产品线）
+ *        → 处理组 → 是否售后 → 是否小结专用 → 状态
+ * 工具条：一级/二级分类（按产品且级联选到产品名称才出现）→ 分类名称搜索 → 查询/重置/批量/导出
  */
+type ScopeDim = 'product' | 'org';
 const emptyFilter = () => ({
-  bgbu: undefined as string | undefined,
-  bizLine: undefined as string | undefined,
-  prodLine: undefined as string | undefined,
-  bizType: undefined as string | undefined,
-  prodCat: undefined as string | undefined,
-  prodName: undefined as string | undefined,
+  dim: 'product' as ScopeDim,
+  /** 级联已选路径：按产品＝[业务类型, 产品分类, 产品 key]；按组织＝[BGBU, 业务线, 产品线]；可停在任一级 */
+  scopePath: [] as string[],
   tagL1: undefined as string | undefined,
   tagL2: undefined as string | undefined,
   tagKeyword: '',
@@ -123,24 +122,54 @@ const TAG_L3_MAP: Record<string, string[]> = {
 };
 const TEAMS = ['工单-处理', '工单-售后', '工单-二线'];
 
-/** 产品维度筛选字段（筛选条件键 → 产品归属字段） */
-type ProductDim = 'bgbu' | 'bizLine' | 'prodLine' | 'bizType' | 'prodCat' | 'prodName';
-const PRODUCT_DIM_FIELD: Record<ProductDim, keyof ProductInfo> = {
-  bgbu: 'bgbu', bizLine: 'bizLine', prodLine: 'prodLine', bizType: 'bizType', prodCat: 'prodCat', prodName: 'name',
+/** 维度 → 级联三层对应的产品归属字段（按产品末级用产品 key，保证同名产品不串） */
+const SCOPE_FIELDS: Record<ScopeDim, [keyof ProductInfo, keyof ProductInfo, keyof ProductInfo]> = {
+  product: ['bizType', 'prodCat', 'key'],
+  org: ['bgbu', 'bizLine', 'prodLine'],
 };
-const PRODUCT_DIMS = Object.keys(PRODUCT_DIM_FIELD) as ProductDim[];
+const DIM_OPTIONS = [
+  { label: '按产品', value: 'product' },
+  { label: '按组织', value: 'org' },
+];
+const SCOPE_PLACEHOLDER: Record<ScopeDim, string> = { product: '请选择产品', org: '请选择组织' };
 
-function productMatches(p: ProductInfo, f: Record<ProductDim, string | undefined>, skip?: ProductDim) {
-  return PRODUCT_DIMS.every((d) => d === skip || !f[d] || p[PRODUCT_DIM_FIELD[d]] === f[d]);
+interface ScopeOption { value: string; label: string; children?: ScopeOption[] }
+/** 由产品归属拼三层级联：按产品＝业务类型/产品分类/产品名称；按组织＝BGBU/业务线/产品线 */
+function buildScopeOptions(dim: ScopeDim): ScopeOption[] {
+  const [f1, f2, f3] = SCOPE_FIELDS[dim];
+  const root: ScopeOption[] = [];
+  const child = (list: ScopeOption[], value: string, label: string) => {
+    let hit = list.find((o) => o.value === value);
+    if (!hit) { hit = { value, label }; list.push(hit); }
+    return hit;
+  };
+  for (const p of PRODUCT_INFOS) {
+    if (!p[f1] || !p[f2] || !p[f3]) continue;
+    const n1 = child(root, p[f1], p[f1]);
+    const n2 = child((n1.children ??= []), p[f2], p[f2]);
+    child((n2.children ??= []), p[f3], f3 === 'key' ? p.name : p[f3]);
+  }
+  return root;
+}
+const SCOPE_OPTIONS: Record<ScopeDim, ScopeOption[]> = {
+  product: buildScopeOptions('product'),
+  org: buildScopeOptions('org'),
+};
+/** 级联路径搜索：任一级名称包含关键字即列出整条路径，不区分大小写 */
+const scopeShowSearch = {
+  filter: (input: string, path: { label?: unknown }[]) => {
+    const kw = input.trim().toLowerCase();
+    return path.some((o) => String(o.label ?? '').toLowerCase().includes(kw));
+  },
+};
+
+function onScopeChange(v: unknown) {
+  draftFilter.scopePath = Array.isArray(v) ? v.map(String) : [];
 }
 
-/** 产品维度下拉：按其余已选产品维度收敛（各项互相联动） */
-function productDimOpts(dim: ProductDim) {
-  const set = new Set<string>();
-  for (const p of PRODUCT_INFOS) {
-    if (productMatches(p, draftFilter, dim)) set.add(p[PRODUCT_DIM_FIELD[dim]]);
-  }
-  return [...set].filter(Boolean).map((v) => ({ value: v, label: v }));
+function scopeMatches(p: ProductInfo, dim: ScopeDim, path: string[]) {
+  const fields = SCOPE_FIELDS[dim];
+  return path.every((v, i) => p[fields[i]] === v);
 }
 const toOpts = (items: string[]) => items.map((v) => ({ value: v, label: v }));
 /** 下拉输入搜索：按选项文字包含匹配，不区分大小写 */
@@ -178,16 +207,10 @@ function productPath(key?: string): string[] {
   return key ? (PRODUCT_PATH[key] ?? []) : [];
 }
 
-/** 选产品名称时回填业务类型 / 产品分类，保证三者与主数据一致 */
+/** 切换维度时清空级联已选值，两套维度不同时生效 */
 watch(
-  () => draftFilter.prodName,
-  (name) => {
-    if (!name) return;
-    const hit = PRODUCT_INFOS.find((p) => p.name === name);
-    if (!hit) return;
-    draftFilter.bizType = hit.bizType;
-    draftFilter.prodCat = hit.prodCat;
-  },
+  () => draftFilter.dim,
+  () => { draftFilter.scopePath = []; },
 );
 
 /**
@@ -289,19 +312,17 @@ function resolveTagIds(
   return out;
 }
 
-/** 业务类型 + 产品分类 + 产品名称均已选时，才展示一级/二级分类筛选 */
-const showTagLevelFilters = computed(() =>
-  !!(draftFilter.bizType && draftFilter.prodCat && draftFilter.prodName),
+/** 按产品维度且级联选到产品名称时，才展示一级/二级分类筛选 */
+const scopedProductKey = computed(() =>
+  (draftFilter.dim === 'product' && draftFilter.scopePath.length === 3 ? draftFilter.scopePath[2] : undefined),
 );
+const showTagLevelFilters = computed(() => !!scopedProductKey.value);
 
-/**
- * 一/二级选项数据源：按「产品名称」取该产品下已有分类（与列表同行数据同源）。
- * 显隐仍要求业务类型+产品分类+产品名称齐选；选项以产品名为准，避免三项不一致时下拉为空。
- */
+/** 一/二级选项数据源：所选产品下已有分类（与列表同行数据同源） */
 const productScopedRows = computed(() => {
-  const name = draftFilter.prodName;
-  if (!name) return [];
-  return allRows.value.filter((r) => r.productName === name);
+  const key = scopedProductKey.value;
+  if (!key) return [];
+  return allRows.value.filter((r) => r.productKey === key);
 });
 
 const filterTagL1Opts = computed(() => {
@@ -318,7 +339,7 @@ const filterTagL2Opts = computed(() => {
 });
 
 watch(
-  () => [draftFilter.bizType, draftFilter.prodCat, draftFilter.prodName] as const,
+  () => scopedProductKey.value,
   () => {
     draftFilter.tagL1 = undefined;
     draftFilter.tagL2 = undefined;
@@ -342,7 +363,7 @@ function matchTagKeyword(keyword: string, row: ProblemTagRow) {
 }
 
 const displayRows = computed(() => allRows.value.filter((r) => {
-  if (!productMatches(pinfo(r.productKey), appliedFilter)) return false;
+  if (!scopeMatches(pinfo(r.productKey), appliedFilter.dim, appliedFilter.scopePath)) return false;
   if (!matchSelect(appliedFilter.tagL1, r.tagL1)) return false;
   if (!matchSelect(appliedFilter.tagL2, r.tagL2)) return false;
   if (!matchTagKeyword(appliedFilter.tagKeyword, r)) return false;
@@ -375,10 +396,37 @@ const pagination = computed(() => stdPagination({
 }));
 
 const checkedRowKeys = ref<string[]>([]);
+/** 经表头菜单「选择全部筛选结果」选中：状态行展示；手动增减任一行即退回普通勾选 */
+const allFilteredSelected = ref(false);
+function clearSelection() {
+  checkedRowKeys.value = [];
+  allFilteredSelected.value = false;
+}
+function selectAllFiltered() {
+  checkedRowKeys.value = displayRows.value.map((r) => r.key);
+  allFilteredSelected.value = checkedRowKeys.value.length > 0;
+}
 const rowSelection = computed(() => ({
   selectedRowKeys: checkedRowKeys.value,
-  onChange: (keys: (string | number)[]) => { checkedRowKeys.value = keys as string[]; },
+  onChange: (keys: (string | number)[]) => {
+    checkedRowKeys.value = keys as string[];
+    allFilteredSelected.value = false;
+  },
+  selections: [
+    {
+      key: 'page',
+      text: '选择当前页',
+      onSelect: (pageKeys: (string | number)[]) => {
+        checkedRowKeys.value = [...(pageKeys as string[])];
+        allFilteredSelected.value = false;
+      },
+    },
+    { key: 'filtered', text: '选择全部筛选结果', onSelect: selectAllFiltered },
+    { key: 'none', text: '清空选择', onSelect: clearSelection },
+  ],
 }));
+/** 筛选条件变动即清空选择 */
+watch(() => JSON.stringify(draftFilter), clearSelection);
 const hasRowSelection = computed(() => checkedRowKeys.value.length > 0);
 const batchOpen = ref(false);
 const batchTeamOpen = ref(false);
@@ -415,7 +463,7 @@ function confirmBatchTeam() {
     }
   }
   batchTeamOpen.value = false;
-  checkedRowKeys.value = [];
+  clearSelection();
   message.success(`已将 ${n} 条的处理组更新为「${team}」`);
 }
 
@@ -439,7 +487,7 @@ function batchSetStatus(status: '启用' | '停用') {
           Object.assign(r, stamp);
         }
       }
-      checkedRowKeys.value = [];
+      clearSelection();
       message.success(`已${status} ${keys.length} 条`);
     },
   });
@@ -455,21 +503,21 @@ function batchDelete() {
     cancelText: '取消',
     onOk: () => {
       allRows.value = allRows.value.filter((r) => !keys.includes(r.key));
-      checkedRowKeys.value = [];
+      clearSelection();
       message.success(`已删除 ${keys.length} 条`);
     },
   });
 }
 
 function onQuery() {
-  Object.assign(appliedFilter, { ...draftFilter });
-  checkedRowKeys.value = [];
+  Object.assign(appliedFilter, { ...draftFilter, scopePath: [...draftFilter.scopePath] });
+  clearSelection();
   message.success(`查询完成，共 ${displayRows.value.length} 条`);
 }
 function onReset() {
   Object.assign(draftFilter, emptyFilter());
   Object.assign(appliedFilter, emptyFilter());
-  checkedRowKeys.value = [];
+  clearSelection();
 }
 
 const formLabelCol = { flex: '88px' };
@@ -750,7 +798,6 @@ function rowToExportCells(r: ProblemTagRow): string[] {
   ];
 }
 
-const exportOpen = ref(false);
 const checkedRows = computed(() => {
   const keys = new Set(checkedRowKeys.value);
   return allRows.value.filter((r) => keys.has(r.key));
@@ -758,14 +805,13 @@ const checkedRows = computed(() => {
 
 /** 置灰悬停提示 */
 const TIP_NEED_CHECK = '请先勾选问题分类';
-const TIP_EMPTY_RESULT = '当前筛选结果为空';
 const TIP_NEED_UPLOAD = '请先上传文件';
 const TIP_NOTHING_TO_ADD = '没有可新增的条目';
 
-function onExport(scope: 'checked' | 'filtered') {
-  const rows = scope === 'checked' ? checkedRows.value : displayRows.value;
+/** 导出作用于当前已选条目（含「选择全部筛选结果」跨页选中的全部） */
+function onExport() {
+  const rows = checkedRows.value;
   if (!rows.length) return;
-  exportOpen.value = false;
   downloadCsv(`问题分类导出_${todayStr()}.csv`, EXPORT_COLS, rows.map(rowToExportCells));
   message.success(`已导出 ${rows.length} 条`);
 }
@@ -987,7 +1033,7 @@ function doImport(withUpdate: boolean) {
       updated += 1;
     }
   }
-  checkedRowKeys.value = [];
+  clearSelection();
   importDone.value = { added, updated, failed: res.lines.filter((l) => l.kind === '失败').length };
 }
 </script>
@@ -1009,37 +1055,19 @@ function doImport(withUpdate: boolean) {
       <div class="list-card">
         <div class="list-toolbar">
           <div class="toolbar-row">
-            <div class="fi">
-              <span class="fl">BGBU</span>
-              <a-select v-model:value="draftFilter.bgbu" class="tb-ctl sel-w-lg" size="small" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="productDimOpts('bgbu')" />
-            </div>
-            <div class="fi">
-              <span class="fl">业务线</span>
-              <a-select v-model:value="draftFilter.bizLine" class="tb-ctl sel-w-lg" size="small" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="productDimOpts('bizLine')" />
-            </div>
-            <div class="fi">
-              <span class="fl">产品线</span>
-              <a-select v-model:value="draftFilter.prodLine" class="tb-ctl sel-w-lg" size="small" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="productDimOpts('prodLine')" />
-            </div>
-            <div class="fi">
-              <span class="fl">业务类型</span>
-              <a-select v-model:value="draftFilter.bizType" class="tb-ctl sel-w" size="small" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="productDimOpts('bizType')" />
-            </div>
-            <div class="fi">
-              <span class="fl">产品分类</span>
-              <a-select v-model:value="draftFilter.prodCat" class="tb-ctl sel-w" size="small" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="productDimOpts('prodCat')" />
-            </div>
-            <div class="fi">
-              <span class="fl">产品名称</span>
-              <a-select
-                v-model:value="draftFilter.prodName"
-                class="tb-ctl sel-w-lg"
+            <div class="fi fi-scope">
+              <a-segmented v-model:value="draftFilter.dim" class="scope-dim" size="small" :options="DIM_OPTIONS" />
+              <a-cascader
+                :key="draftFilter.dim"
+                :value="draftFilter.scopePath"
+                class="tb-ctl scope-cascader"
                 size="small"
-                show-search
+                change-on-select
                 allow-clear
-                placeholder="全部"
-                :filter-option="filterByLabel"
-                :options="productDimOpts('prodName')"
+                :show-search="scopeShowSearch"
+                :options="SCOPE_OPTIONS[draftFilter.dim]"
+                :placeholder="SCOPE_PLACEHOLDER[draftFilter.dim]"
+                @change="onScopeChange"
               />
             </div>
             <div class="fi">
@@ -1129,29 +1157,23 @@ function doImport(withUpdate: boolean) {
                   </a-menu>
                 </template>
               </a-dropdown>
-              <a-dropdown v-model:open="exportOpen" trigger="click" placement="bottomRight">
-                <div class="wb-toolbar__btn">
-                  <DownloadOutlined :style="{ color: '#6B7280', fontSize: '14px' }" />
-                  <span>导出</span>
-                  <DownOutlined :style="{ color: '#9CA3AF', fontSize: '12px' }" />
+              <a-tooltip :title="checkedRows.length ? undefined : TIP_NEED_CHECK" placement="bottomRight">
+                <div
+                  class="wb-toolbar__btn wb-toolbar__btn--export"
+                  :class="{ 'is-disabled': !checkedRows.length }"
+                  @click="onExport"
+                >
+                  <DownloadOutlined :style="{ fontSize: '14px' }" />
+                  <span>{{ checkedRows.length ? `导出（${checkedRows.length} 条）` : '导出' }}</span>
                 </div>
-                <template #overlay>
-                  <a-menu class="batch-menu">
-                    <a-menu-item key="checked" :disabled="!checkedRows.length" @click="onExport('checked')">
-                      <a-tooltip :title="checkedRows.length ? undefined : TIP_NEED_CHECK" placement="left">
-                        <span class="menu-tip">导出已勾选（{{ checkedRows.length }} 条）</span>
-                      </a-tooltip>
-                    </a-menu-item>
-                    <a-menu-item key="filtered" :disabled="!displayRows.length" @click="onExport('filtered')">
-                      <a-tooltip :title="displayRows.length ? undefined : TIP_EMPTY_RESULT" placement="left">
-                        <span class="menu-tip">导出全部筛选结果（{{ displayRows.length }} 条）</span>
-                      </a-tooltip>
-                    </a-menu-item>
-                  </a-menu>
-                </template>
-              </a-dropdown>
+              </a-tooltip>
             </div>
           </div>
+        </div>
+
+        <div v-if="allFilteredSelected" class="select-all-bar">
+          <span>已选择全部筛选结果 {{ displayRows.length }} 条</span>
+          <a class="select-all-bar__clear" @click="clearSelection">清空</a>
         </div>
 
         <div class="table-wrap">
@@ -1506,6 +1528,20 @@ function doImport(withUpdate: boolean) {
   color: #1a6fff; border-color: #bfdbfe; background: #f8fbff;
 }
 .wb-toolbar__btn--batch.is-active:hover { border-color: #1a6fff; }
+.wb-toolbar__btn--export { color: #374151; }
+.wb-toolbar__btn--export.is-disabled {
+  color: #bfbfbf; background: #f5f5f5; border-color: #d9d9d9; cursor: not-allowed;
+}
+.wb-toolbar__btn--export.is-disabled:hover { border-color: #d9d9d9; }
+.select-all-bar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 6px 12px; font-size: 13px; color: #1f2937;
+  background: #f0f6ff; border-bottom: 1px solid #dbe8ff;
+}
+.select-all-bar__clear { color: #1a6fff; cursor: pointer; }
+.fi-scope { gap: 8px; }
+.scope-dim { flex: none; }
+.scope-cascader { width: 300px !important; }
 .wb-toolbar__badge {
   min-width: 18px; height: 18px; padding: 0 5px;
   font-size: 11px; font-weight: 600; line-height: 18px; text-align: center;
