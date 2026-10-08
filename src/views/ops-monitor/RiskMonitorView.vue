@@ -281,7 +281,8 @@ const taggerExpanded = ref(false);
  * `poolAxisExpanded`），给左栏那个第三轴供选中态与展开态。**整组随该轴删除**
  * （2026-10-07 裁决）：领取逻辑未闭环，且这一轴与「评估处置工作面」那张池行表
  * 的「处置阶段」列是同一件事 —— 同一个维度摆两处，人只会去找它们为什么不一样。
- * 池内阶段仍然看得到，去**评估处置工作面**那张池行表（`poolStageOf` / 那一列照旧，一格没动）。
+ * ⚠️ 那张池行表的「处置阶段」列**也已删**（2026-10-08 裁决：业务侧没有这个定义）。
+ * 池内阶段现在只从每一行的「操作」列上读出来（`poolStageOf` 仍在，只服务那一列的分岔）。
  */
 
 /**
@@ -439,29 +440,23 @@ function tagLevelCountsOf(pick: (e: RiskQueueEntry) => boolean): Record<RiskLeve
  */
 
 /**
- * 视图内三态（N4）：待领取 / 评估中 / 已评估。
+ * 🔴 **本页不再有「处置阶段」这个轴**（2026-10-08 裁决：业务侧没有这个定义）。
+ * 工作面那一排五枚 chip（不限阶段 / 待领取 / 已领取 / 已结论 / 超时未评）与表里同名那一列
+ * **整排整列删除**，表**恒摆全部条目** ＝ 原先的「不限阶段」（见 `reportAllRows`）。
+ *
+ * 本变量因此**恒为 `all`、没有任何置位入口**，留着只为两处仍在引用它的代码：
+ *   ① 「结论」那一排 chip（升级 / 不升级 / 风险处理建议 + 仅今日），原本只在 `assessed` 下出；
+ *   ② 与它配套的「已结论」专表（评估人 / 结论时刻 / 评估决策那几列）。
+ * 两处的去留**待业务拍板**（能否像「监控来源」那样独立成筛选项），故本轮**只让它不出现、不删代码**。
+ * ⚠️ 要恢复一个档位切换，改这一处的赋值即可；要彻底收掉，连这两处模板一并删。
  *
  * ⚠️ `unassigned` 这个键与落库值「待分派」都是**分派时代留下的词**。分派 / 改派 /
  * 批量分派整套已随第三轮拍板取消，这一档现在的含义就是"**还没人领**"，故界面一律写
  * 「待领取」。键与落库值不动：`ReportStatus` 是两条线共用的，B 线本轮不解冻，
  * 为了换个词把跨线的状态枚举改掉，代价远大于在这里说清楚。
- *
- * **不做成三个页签**：它们是同一批池行的三个阶段，属**视图内条件**而非另一批数据；
- * 摆成页签还会与旁边的「命中明细」（命中，另一个分母）挨着被读串 —— 与本文件开头
- * 「先选批（页签），再筛条件」的分层是同一条规矩。
- */
-/**
- * 🔴 **`all` ＝ 工作面上的"不限阶段"**：三段按时间序首尾相接的那一张表。
- * ⚠️ 它原先还兼着左栏「按处置阶段」那一行本身的落点 —— 那一轴已随 2026-10-07 裁决删除，
- * 本档现在只由页头「超时未评」那张卡下钻（见那枚卡上的注释）与工作面自己的视图切换用到。
- */
-/**
- * `open` ＝ 待领取 + 已领取（不限在队阶段、不含已结论）＝ 页头「待评估总数」那张卡的下钻落点。
- * 与 `all` 的区别只在第三段：`all` 接已结论、`open` 不接。卡上的数是两段之和，
- * 落到单一档（`unassigned`）时表里只躺着其中一段，卡上 8、表里 5。
  */
 type ReportView = 'all' | 'open' | 'unassigned' | 'assigning' | 'assessed';
-const reportView = ref<ReportView>('open');
+const reportView = ref<ReportView>('all');
 /**
  * 池行走到哪一步。取 store 的 `status`，不靠"有没有承办人"倒推。
  * 投诉单条目不经领取、没有「已领取」态（§5.4 ⑥），走 `poolStageStatusOf` 读成「待领取」。
@@ -482,15 +477,21 @@ function poolAssigneeOf(r: RiskPoolItem): string {
  *
  * 【为什么跨三态保留】来源是条目的固有属性，不随阶段变。切态时清掉它，
  * 人在「待领取 · 重点工单」筛完切到「评估中」会看到全部来源，只会以为筛选失灵。
- * 反过来超时/决策那两个收窄是**阶段专属**的，切态时必须摘掉，见 setReportView。
+ * ⚠️ 阶段这一轴已删（2026-10-08 裁决），表恒摆全部条目，这条"跨态保留"现在无条件成立。
  */
 const sourceFilter = ref<MonitorSource | 'all'>('all');
 /** 来源排序：默认不排（队列默认按等待时长），点表头在正序/倒序/不排之间轮转 */
 const sourceSort = ref<'none' | 'asc' | 'desc'>('none');
 /** 排序序位取枚举的声明次序，不按字面量排——中文按码点排出来的次序读不出任何业务含义 */
 const SOURCE_ORDER = new Map<MonitorSource, number>(MONITOR_SOURCES.map((s, i) => [s, i]));
-/** 待领取/评估中视图内的收窄：只看超时未评的（由「超时未评」卡下钻置上）。**横跨两个在队态** */
-const onlyOverdue = ref(false);
+//
+// 🔴 **原先这里有一个 `onlyOverdue`**（"只看超时未评的"那个视图内收窄），随 2026-10-08 裁决
+// 删掉「处置阶段」整排 chip 一并删除：它唯一的置位入口就是那一排的第五枚「超时未评」，
+// 那一枚一走，这个开关再也打不开，留着就是一条恒为 false 的腿（`openBase` / `reportAllRows` /
+// `reportGroupBase` / 收窄标那一行都得为它分叉）。
+// ⚠️ **超时本身没被删**：它仍标在表里「等待时长」那一格上（`reportStore.isOverdue`，红字 +
+// 「已超处置时限」），那是**行级的催办提醒**，与"按超时筛一遍整张表"不是一件事。
+//
 /**
  * 「风险处理建议」——投诉单那一路的收口方式，**与升级 / 不升级并列的第三种结论**。
  * 🔴 它不是 `AssessDecision`（那个枚举归 store，只装评估二选一），
@@ -623,11 +624,10 @@ function isPoolRow<T extends { source: MonitorSource; ticketNo: string }>(r: T):
   return isALine(r) && isLiveRow(r);
 }
 
-/** 在队某一态的底表：只过超时这一个条件，**不含来源**（来源 chip 的数字要靠它算） */
+/** 在队某一态的底表：**不含来源 / 原单类型 / 风险等级三维**（那三个筛选项的数字要靠它算） */
 function openBase(v: 'unassigned' | 'assigning') {
   const all = v === 'unassigned' ? reportStore.unassignedQueue : reportStore.assigningQueue;
-  const rows = all.filter(isPoolRow);
-  return onlyOverdue.value ? rows.filter((r) => reportStore.isOverdue(r)) : rows;
+  return all.filter(isPoolRow);
 }
 
 /** 待领取：还没人领的那一批，客诉专员在这里自领 */
@@ -707,37 +707,20 @@ const reportAssessedRows = computed(
 // 🔴 **不收窄的话这一屏当场自相矛盾**：一处写「待评估总数 8」、另一处写「待领取 3 · 已领取 2」，
 // 点下去落到的还是同一张表。同屏同一件事只能有一个数，这是本文件反复踩过的那个坑。
 //
-// 🔴 **这几个数的消费者是「评估处置」工作面自己那一排阶段 chip**（见模板里 `setPoolStage`
-// 那一行），以及收窄标那一行的「超时未评」。
-// 【它们为什么在这儿而不在页头】页头右栏那一块原本摆着「待评估总数 / 待领取 · 已领取 /
-// 超时未评 / 今日已结论 / 今日结论三档」，整组已随块名改「风险工单」撤掉
-// （业务拍板：那一块改展示已判数据）。撤掉之后这六个数**落到工作面自己的 chip 排上**
-// （2026-10-07 裁决），道理是**分母**：摆在页头时卡数的是监控条目（含来源「二线报备」那条
-// 标记条目），而工作面这张表经 `isALine` 只收 A 线池行——同一个名字两个分母，必然对不上；
-// 摆在表的正上方，分母就是这张表自己。
-// 🔴 **不要再往页头搬，也不要另写一份计数**：下面几个 computed 与 store 的 count 一一对应
-// （差别只在多出来的 `isPoolRow` ＝ `isALine` ∧ `isLiveRow`，加上 `inGroup` 这几道），要复用先回头读本段。
+// 🔴 **原先这里还有四个按阶段分的数**（`alineUnassignedCount` / `alineAssigningCount` /
+// `alineOpenCount` / `alineStageAllCount`）和一个 `alineOverdueCount`，专给工作面那一排
+// 「处置阶段」chip 供数。**那一排已随 2026-10-08 裁决整排删除**（业务：没有"处置阶段"这个定义），
+// 五个数一并删掉——它们在别处一个消费端都没有。留下的这几个只服务「已结论」那一档。
+// ⚠️ 连带消失的是 `待领取 + 已领取 + 已结论 ＝ 不限阶段 ＝ 表行数` 这条恒等式：轴没了，等式
+// 无处可对。**页头那三条（实时监控 + 重点工单 ＝ 待判段总数、风险工单四枚 ≡ 左栏已判、
+// ΣP0..P3 ＝ Σ五类）与本改动无关，照旧成立。**
 //
-// 🔴 **班组这一道（`inGroup`）与表身走同一个判据，少了它这一排当场说假话**：清单上沿那个班组
+// 🔴 **班组这一道（`inGroup`）与表身走同一个判据，少了它说的就是假话**：清单上沿那个班组
 // 单选横跨本页每一档，表身三段各自都过了 `inGroup`（见 `reportUnassignedRows` /
 // `reportAssigningRows` / `reportAssessedRows`）。只过 `isALine` 不过班组的话，切到「受理一组」
-// 之后 chip 上仍写着全量、而它下面那张表只躺着这个组的几行 —— 同排另外三轴（来源 / 原单类型 /
-// 风险等级，走 `inGroup(reportGroupBase)`）早就跟着班组收窄了，唯独最外这一层没跟，
-// 于是 `待领取 + 已领取 + 已结论 ＝ 不限阶段 ＝ 表行数` 这条恒等式在切组后整排失真。
+// 之后它仍写着全量、而它下面那张表只躺着这个组的几行 —— 另外三维（来源 / 原单类型 /
+// 风险等级，走 `inGroup(reportGroupBase)`）早就跟着班组收窄了，唯独这一处没跟。
 // **复用 `inGroup`、不要另造一份按组反查**：组名由 `groupNameOf` 反查工单库，本页只有那一个口径。
-const alineUnassignedCount = computed(
-  () => inGroup(reportStore.unassignedQueue.filter(isPoolRow)).length,
-);
-const alineAssigningCount = computed(
-  () => inGroup(reportStore.assigningQueue.filter(isPoolRow)).length,
-);
-const alineOpenCount = computed(() => alineUnassignedCount.value + alineAssigningCount.value);
-// 🔴 「超时未评」同样跟着班组收窄，但它仍是**跨档子集、不参与那条等式**（见 `setPoolStage`）：
-// 收窄与入等式是两件事，别因为它跟着变就把它加进去。
-const alineOverdueCount = computed(
-  () => inGroup([...reportStore.unassignedQueue, ...reportStore.assigningQueue]
-    .filter((r) => isPoolRow(r) && reportStore.isOverdue(r))).length,
-);
 const alineAssessedList = computed(() => inGroup(reportStore.assessedList.filter(isPoolRow)));
 /**
  * 今日**已结论**的池行数。
@@ -785,10 +768,10 @@ function decisionKindOf(r: RiskPoolItem): DecisionKey | null {
  * 「已结论」那一档的**底表** ＝ A 线已结论池行，只过「仅今日」这一个开关。
  *
  * 🔴 **它就是 `assessedBase` 摘掉 `decisionFilter` 那一条腿**，不是另一份口径：
- * 阶段 chip 上的数是**这一档有多少条**，不能跟着档内的决策收窄一起变 —— 跟着变的话，
- * 筛到「升级」之后「已结论 2」，而上一枚「不限阶段」仍写 15，两个数当场差着 4 条，
+ * 这个数是**这一档有多少条**，不能跟着档内的决策收窄一起变 —— 跟着变的话，
+ * 筛到「升级」之后写「已结论 2」，而全量仍是 15，两个数当场差着 4 条，
  * 人再也看不出该摘掉哪个条件（与 `reportSourceBase` 摘掉来源那一维是同一条道理）。
- * 反过来「仅今日」必须过：它决定这一档到底躺着哪一批行，不过的话 chip 上写全量、
+ * 反过来「仅今日」必须过：它决定这一档到底躺着哪一批行，不过的话写的是全量、
  * 表里只躺着今天那几条。
  */
 const alineConcludedBase = computed(() => {
@@ -797,11 +780,6 @@ const alineConcludedBase = computed(() => {
   const today = todayPrefix();
   return rows.filter((r) => concludedAtOf(r).startsWith(today));
 });
-/**
- * 「不限阶段」那一枚上的数 ＝ 三段之和，**由构造等于 `待领取 + 已领取 + 已结论`**。
- * 🔴 不要改成另数一遍整表：那样迟早出现"不限阶段 15、三档加起来 14"，而差的那一条谁也找不出来。
- */
-const alineStageAllCount = computed(() => alineOpenCount.value + alineConcludedBase.value.length);
 /**
  * 「已结论」档内三种收口各多少条。**三枚之和 ≡ 这一档的数**（verify-only 的行除外，见
  * `decisionKindOf`：它既不算一种收口，也不给自己一枚 chip）。
@@ -818,38 +796,30 @@ const alineDecisionCounts = computed(() => {
 });
 
 /**
- * 班组 chip 那一排的底表 ＝ 当前态在**除班组之外**的全部条件下的行。
+ * 班组筛选项那一枚的底表 ＝ 当前表在**除班组之外**的全部条件下的行。
  * 摘出班组的道理与下面摘出来源的完全一样，见 `reportSourceBase`。
+ *
+ * 🔴 **恒为三段之和**：「处置阶段」那一轴已随 2026-10-08 裁决删除，这张表不再按档分组，
+ * 故这里也不再分叉。与 `reportAllRows` 同进同退：只改一处的话，表里躺着 3 行、
+ * 上沿却写着「全部班组 7 / 全部来源 7」，那三个筛选项当场变成同屏的第二个数。
  */
-const reportGroupBase = computed(() => {
-  if (reportView.value === 'all') {
-    // 第三段接不接，判据与 `reportAllRows` 完全一样（开着「超时未评」时整段不接）——
-    // 两处必须同进同退：只改一处的话，表里躺着 3 行、下面「全部班组 7 / 全部来源 7」，
-    // 那两排 chip 当场变成同屏的第二个数
-    return [
-      ...openBase('unassigned'),
-      ...openBase('assigning'),
-      ...(onlyOverdue.value ? [] : assessedBase.value),
-    ];
-  }
-  if (reportView.value === 'open') {
-    // 与 `reportOpenRows` 同进同退：两段在队行，不接已结论
-    return [...openBase('unassigned'), ...openBase('assigning')];
-  }
-  return reportView.value === 'assessed' ? assessedBase.value : openBase(reportView.value);
-});
+const reportGroupBase = computed(() => [
+  ...openBase('unassigned'),
+  ...openBase('assigning'),
+  ...assessedBase.value,
+]);
 
 /**
- * 来源 chip 那一排的底表 ＝ 当前态在**除来源之外**的全部条件下的行。
- * 【为什么要把来源摘出去】让来源筛选影响自己那一排的数字，选中「重点工单」之后
- * 其余几枚全变 0，人再也看不出该切到哪一枚——筛选器把自己筛没了。
- * 班组不摘：它是**另一层**筛选，选了组之后来源那一排本就该只数这个组里的条目。
+ * 来源筛选项那一枚的底表 ＝ 当前表在**除来源之外**的全部条件下的行。
+ * 【为什么要把来源摘出去】让来源筛选影响自己那一枚的数字，选中「重点工单」之后
+ * 其余几项全变 0，人再也看不出该切到哪一项——筛选器把自己筛没了。
+ * 班组不摘：它是**另一层**筛选，选了组之后来源那一枚本就该只数这个组里的条目。
  */
 const reportSourceBase = computed(() => byPoolAttrs(inGroup(reportGroupBase.value), 'source'));
 function sourceCountInView(s: MonitorSource) {
   return reportSourceBase.value.filter((r) => r.source === s).length;
 }
-/** 原单类型 chip 那一排的底表（摘掉原单类型这一维） */
+/** 原单类型筛选项那一枚的底表（摘掉原单类型这一维） */
 const reportTypeBase = computed(() => byPoolAttrs(inGroup(reportGroupBase.value), 'type'));
 function ticketTypeCountInView(k: PoolTicketTypeKey) {
   return reportTypeBase.value.filter((r) => poolTicketTypeKeyOf(r) === k).length;
@@ -861,24 +831,17 @@ function poolLevelCountInView(lv: RiskLevel) {
 }
 
 /**
- * 工作面「不限阶段」那一张表 ＝ 三段**按时间序首尾相接**，不重排。
+ * 工作面那张表 ＝ 三段**按时间序首尾相接**，不重排、**恒摆全部条目**。
  * 🔴 顺序即时间序（待领取 → 已领取 → 已结论）：这三个取值之间有先后，混排成一坨会把它抹掉。
  *
- * 🔴 **开着「超时未评」时第三段整段不接**：超时未评的判据是"**在队**且钟走过了时限"
- * （见 store 的 `isOverdue`），已结论的行按定义一条都不满足它。照接的话，从页头
- * 「超时未评 3」点进来会看到 3 条超时 + 今日已结论的那几条，卡上写 3、表里躺着七八行 ——
- * 正是本文件反复踩过的那个坑。摘掉之后行数 ≡ 卡上的数，两处同一个口径。
- * （在队两段各自的 `openBase` 已经过了同一个 `onlyOverdue`，这里只管第三段。）
+ * 🔴 **三段恒接满**：原先第三段在开着「超时未评」时整段不接，那枚 chip 已随「处置阶段」
+ * 整排删除（2026-10-08 裁决），这里不再分叉。池内阶段仍然看得到 —— 它写在每一行的
+ * 「操作」列上（能领取的行摆「领取」、已出结论的行摆只读入口，见下面那张表）。
  */
 const reportAllRows = computed(() => [
   ...reportUnassignedRows.value,
   ...reportAssigningRows.value,
-  ...(onlyOverdue.value ? [] : reportAssessedRows.value),
-]);
-/** 待领取 + 已领取：两段在队行按时间序首尾相接，与 `reportAllRows` 的前两段逐字相同 */
-const reportOpenRows = computed(() => [
-  ...reportUnassignedRows.value,
-  ...reportAssigningRows.value,
+  ...reportAssessedRows.value,
 ]);
 
 //
@@ -890,78 +853,28 @@ const reportOpenRows = computed(() => [
 // （`RiskPoolItem`），而左栏两个轴数的是监控条目（`RiskQueueEntry`）——
 // 同一批单、不同对象，列跟着不同，且「已结论」那一份带着「仅今日」的默认收窄会让合计随日期漂。
 //
-const reportRows = computed(() => {
-  if (reportView.value === 'all') return reportAllRows.value;
-  if (reportView.value === 'open') return reportOpenRows.value;
-  if (reportView.value === 'unassigned') return reportUnassignedRows.value;
-  if (reportView.value === 'assigning') return reportAssigningRows.value;
-  return reportAssessedRows.value;
-});
-
 /**
- * 切视图内三态：把**阶段专属**的收窄条件摘掉，来源筛选保留（它是条目属性，跨阶段成立）。
- * 「超时未评」横跨待领取与评估中，故在这两态之间互切时不摘；进已评估才摘。
+ * 工作面那张表的行 ＝ `reportAllRows`，**恒等**。
+ * 🔴 **原先这里按 `reportView` 分五支**（不限阶段 / 待领取 + 已领取 / 待领取 / 已领取 / 已结论）。
+ * 「处置阶段」整排 chip 已随 2026-10-08 裁决删除，档位切换没有入口了，这里收成一条直路。
+ * 一并删掉的是 `reportOpenRows`（`open` 档专用）、`setReportView`、`setPoolStage`、
+ * `poolStageChipOn` —— 它们的消费端全在那一排上。
  */
-function setReportView(v: ReportView) {
-  if (v === reportView.value) return;
-  const wasAssessed = reportView.value === 'assessed';
-  reportView.value = v;
-  // 不限阶段这一档跨越三段，两个阶段专属的收窄默认都摘掉：
-  // 留着的话，这一档上写着"三段全要"、表里却只躺着超时的那 1 条。
-  // ⚠️ 摘的是**默认**，不是"这一档不许有超时收窄"：页头「超时未评」那张卡正是落到
-  // 这一档 + 超时收窄上的，它在调用完本函数之后自己把 `onlyOverdue` 补回 true
-  // （彼时卡上的数与表里的行数一起收到 3，仍然相等）。见那枚卡上的注释。
-  if (v === 'all') {
-    onlyOverdue.value = false;
-    decisionFilter.value = 'all';
-    return;
-  }
-  if (v === 'assessed') onlyOverdue.value = false;
-  else if (wasAssessed) decisionFilter.value = 'all';
-}
+const reportRows = computed(() => reportAllRows.value);
 
 /**
- * 工作面那一排阶段 chip 的落点。五枚里**只有四枚是阶段**，第五枚「超时未评」是**跨档的标记**：
- * 它的判据是"在队且钟走过了时限"（store 的 `isOverdue`），横跨待领取与已领取两档，
- * 落点 ＝ 不限阶段 + 超时收窄（已结论的行按定义一条都不满足它，故第三段整段不接，
- * 见 `reportAllRows`）。因此 `待领取 + 已领取 + 已结论 ≡ 不限阶段`，而「超时未评」
- * **不参与这个等式**，它是前两档里的一个子集 —— 别拿它去加减。
- *
- * 🔴 **四枚阶段档一律把 `onlyOverdue` 摘掉**：`setReportView` 在这两档之间互切时有意不摘
- * （超时横跨两档，筛着切态不该失灵），但从「超时未评」这一枚点到「待领取」时，收窄留着的话
- * chip 上写 5、表里躺着 2 行 —— 同一排上标签与行数对不上，正是本文件反复踩过的那个坑。
- * `setReportView` 的早退（`v === reportView`）也靠这一行兜住：停在「超时未评」上点「不限阶段」
- * 时它整函数不执行，收窄得由本函数自己清。
- */
-function setPoolStage(k: ReportView | 'overdue') {
-  if (k === 'overdue') {
-    setReportView('all');
-    onlyOverdue.value = true;
-    return;
-  }
-  setReportView(k);
-  onlyOverdue.value = false;
-}
-/** 当前停在哪一枚上。「超时未评」优先：它一开着，表里就只有超时那几行，此刻说"停在不限阶段"是假话 */
-function poolStageChipOn(k: ReportView | 'overdue'): boolean {
-  if (onlyOverdue.value) return k === 'overdue';
-  return reportView.value === k;
-}
-
-/**
- * 页头「评估处置」块的卡片下钻：先把工作面上的四维筛选（班组 / 来源 / 原单类型 / 风险等级）
- * 放回「全部」，再切到工作面与目标视图。卡上的数不跟这几维筛选，不清的话下钻后表行数 ≠ 卡上的数。
- * 只在点卡片时清；进了工作面之后点筛选 chip 照常收窄。
+ * 页头「风险工单」块的卡片下钻：先把工作面上的四维筛选（班组 / 来源 / 原单类型 / 风险等级）
+ * 放回「全部」，再切到工作面。卡上的数不跟这几维筛选，不清的话下钻后表行数 ≠ 卡上的数。
+ * 只在点卡片时清；进了工作面之后照常收窄。
  * ⚠️ 班组筛选是本页一份共享状态（左栏各档也按它收窄），故点卡片后左栏角标同样回到全部班组口径。
- * 超时 / 结论 / 仅今日这几个视图内条件由各卡在调用之后自己补设（`setReportView` 会先摘掉阶段专属的收窄）。
+ * ⚠️ **不再接视图参数**：工作面只有一张恒摆全部条目的表（见 `reportRows`）。
  */
-function drillReport(v: ReportView) {
+function drillReport() {
   groupFilter.value = 'all';
   sourceFilter.value = 'all';
   poolTicketTypeFilter.value = 'all';
   poolLevelFilter.value = 'all';
   setListView('report');
-  setReportView(v);
 }
 
 /**
@@ -983,8 +896,8 @@ function setReportPage(page: number, size: number) {
 }
 
 // 任一视图内条件变了，底表就换了一批，页码必须回到第一页——
-// 否则「第 3 页 → 摘掉超时收窄」会停在一张恰好没有行的页上。
-watch([reportView, onlyOverdue, decisionFilter, assessedTodayOnly, sourceFilter, poolTicketTypeFilter, poolLevelFilter, sourceSort, groupFilter], () => {
+// 否则「第 3 页 → 换一个班组」会停在一张恰好没有行的页上。
+watch([decisionFilter, assessedTodayOnly, sourceFilter, poolTicketTypeFilter, poolLevelFilter, sourceSort, groupFilter], () => {
   reportPageCurrent.value = 1;
 });
 
@@ -3475,8 +3388,8 @@ const queueBase = computed<QueueRow[]>(() => {
   // 🔴 **两个轴同出 `judgedUniverse` 这一份行集**（已过在办过滤）：按风险等级 / 按标记人
   // 是同一批条目的两种看法，差别只在各自多一层收窄。
   const pooled = judgedUniverse.value;
-  // 🔴 原先还有第三个轴「按处置阶段」，已随 2026-10-07 裁决删除 ——
-  // 池内阶段的真源是「评估处置工作面」那张池行表的「处置阶段」列，同一个维度不摆两处。
+  // 🔴 原先还有第三个轴「按处置阶段」，已随 2026-10-07 裁决删除；
+  // 工作面那张池行表的同名列也已删（2026-10-08 裁决），本页再没有「处置阶段」这个维度。
   const picked = tagLevelFilter.value === 'tagger'
     ? (taggerFilter.value === 'all'
       ? pooled
@@ -3561,10 +3474,11 @@ const POOL_STATE_TEXT: Record<string, string> = {
   已评估: '已结论',
 };
 /**
- * 落库状态 → 池内阶段的界面词。**「评估处置工作面」那张池行表的「处置阶段」列与它的视图
- * 分档共用它**，故分档与行里的词逐字一致、不可能分叉 —— 两处各写一份映射，
- * 迟早出现"分档写已领取、表里写评估中"。null ＝ 不在池里（待打标 / 已标记无风险）。
- * ⚠️ 原先左栏「按处置阶段」那三档也读它，那一轴已随 2026-10-07 裁决删除。
+ * 落库状态 → 池内阶段的界面词。映射只写这一份，两处各写一份的话迟早出现
+ * "一处写已领取、另一处写评估中"。null ＝ 不在池里（待打标 / 已标记无风险）。
+ * ⚠️ 它的界面消费端已先后删完：左栏「按处置阶段」那一轴（2026-10-07 裁决）、
+ * 工作面那张池行表的「处置阶段」列（2026-10-08 裁决）。**本函数已无调用方**，
+ * 保留是因为 `POOL_STATE_TEXT` 这份映射是落库值 ↔ 界面词的唯一一处口径。
  */
 function poolStageTextOf(status: RiskPoolItem['status'] | null): string {
   if (!status) return '—';
@@ -4307,7 +4221,8 @@ function groupNameOf(ticketNo: string): string {
 // 新：`已判 ＝ 全部有风险 ＝ 高危 + 中危 + 低危 ＝ 按标记人各项之和`。
 // 删掉的三档各有各的理由：
 //   · **按处置阶段**（待领取 / 已领取 / 已结论）—— 领取逻辑未闭环，且与「评估处置工作面」
-//     那张池行表的「处置阶段」列是同一件事，同一个维度摆两处只会让人去找它们为什么不一样；
+//     那张池行表的「处置阶段」列是同一件事，同一个维度摆两处只会让人去找它们为什么不一样
+//     （⚠️ 那一列与工作面上同名的那一排 chip 后来也一并删了，2026-10-08 裁决：没有这个定义）；
 //   · **无风险** —— 判为无风险的不进已判，它离开漏斗；
 //   · **风险报备** —— 报备只在**前台**（工单工作台「风险报备池」）展示，后台不展示。
 // 于是已判段只剩两个轴：**按风险等级（全部有风险）** 与 **按标记人**，两者总数恒等。
@@ -4478,15 +4393,13 @@ const pooledTypeRowKeys = computed<string[]>(() => (
 ));
 
 /**
- * 页头「风险工单」块的下钻：进「评估处置」工作面的**不限阶段**（三段首尾相接），
+ * 页头「风险工单」块的下钻：进「评估处置」工作面（那张表三段首尾相接、恒摆全部条目），
  * 可带一个风险等级收窄 —— 那一块原本就是这个工作面的唯一入口（`drillReport` 是唯一的进法），
  * 换数之后**下钻能力照留**，否则领取 / 评估 / 协同整个工作面就进不去了。
  *
- * ⚠️ 三件事必须在 `drillReport` 之后补：
+ * ⚠️ 两件事必须在 `drillReport` 之后补：
  *   ① `assessedTodayOnly = false` —— 它默认开着，不关的话第三段只躺今天结论的那几条；
- *   ② `onlyOverdue = false` —— `setReportView` 在 `v === reportView` 时会早退，
- *      从工作面自己开着超时收窄的状态点进来，收窄会留在那儿；
- *   ③ `poolLevelFilter` —— `drillReport` 先把它放回「全部」，这里再按卡片补上。
+ *   ② `poolLevelFilter` —— `drillReport` 先把它放回「全部」，这里再按卡片补上。
  *
  * 🔴 **本块的卡不点亮 `on`**：卡上的数是**监控条目**（已判，含来源为「风险报备」的那一条），
  * 工作面那张表数的是**池行**且只收 A 线（`isALine` 把来源「二线报备」挡在外面）——
@@ -4494,18 +4407,17 @@ const pooledTypeRowKeys = computed<string[]>(() => (
  * 本块是**进工作面的入口**，不是工作面的一个筛选档。
  */
 function drillPooled(lv: RiskLevel | 'all') {
-  drillReport('all');
+  drillReport();
   assessedTodayOnly.value = false;
-  onlyOverdue.value = false;
   poolLevelFilter.value = lv;
 }
 
 /*
  * 🔴 **原先这里有一个 `pooledStageCount`**，给左栏「按处置阶段」那三档供数。
  * 随该轴删除（2026-10-07 裁决）：领取逻辑未闭环，且这一维与「评估处置工作面」那张池行表
- * 的「处置阶段」列是同一件事。
- * 判档用的 `poolStageTextOf` / `poolStageStatusOf` **照旧在用**（池行表那一列与队列分档走它们），
- * 一个字没动 —— 删的只是左栏这一路计数。
+ * 的「处置阶段」列是同一件事。那一列本身也已删（2026-10-08 裁决）。
+ * `poolStageStatusOf` **照旧在用**：store 的队列分档（待分派 / 评估中）与本页
+ * 「操作」列的按行分岔（`poolStageOf`）都走它。
  */
 
 /**
@@ -4661,8 +4573,9 @@ const railGroups = computed<RailGroup[]>(() => {
 
           ① **按处置阶段**（第三个轴，`stage:all` + 待领取 / 已领取 / 已结论 三行）——
              **领取逻辑未闭环**，且与「评估处置工作面」那张池行表的「处置阶段」列重复：
-             同一个维度摆两处，人只会去找它们为什么不一样。池内阶段仍然看得到，
-             去页头「评估处置」那一块的工作面 —— 那里本就是领取 / 评估的动作面。
+             同一个维度摆两处，人只会去找它们为什么不一样。
+             ⚠️ 那一列与工作面上同名的那一排 chip 后来也一并删了（2026-10-08 裁决：
+             业务侧没有「处置阶段」这个定义）；池内阶段现在从工作面每一行的「操作」列上读。
           ② **无风险** —— **判为无风险的不进已判**：它不进池、离开漏斗，
              左栏任何一段都不再计它、不再列它。条目照旧落库（`reportStore.noRiskEntries`），
              页头「今日发现」「今日标记」照各自口径仍然数它，只是不进这条漏斗。
@@ -4772,7 +4685,7 @@ watch(railKey, (k) => {
 
 /**
  * 当前停在漏斗的哪一段。**与 `railKey` 一样是派生值，真源仍是 `listView` / `queueView`**——
- * 🔴 顶部页签另存一个 ref 的话，页头那几枚 KPI 卡（它们直接写 `setQueueView` / `setReportView`）
+ * 🔴 顶部页签另存一个 ref 的话，页头那几枚 KPI 卡（它们直接写 `setQueueView` / `drillReport`）
  * 点下去会切了侧栏却不切页签：页签写着「待标记」，侧栏和表里躺的却是池行。
  * 本文件已经为"两套状态机分叉"付过两次账，这里不再开第二个真源。
  */
@@ -5954,89 +5867,22 @@ function toggleWordEnabled(w: RiskWord) {
       </div>
 
       <!--
-        评估处置工作面 · **自己那一排阶段 chip**（2026-10-07 裁决）。
-        这六个数原先摆在页头「评估处置」块里，那一块改名「风险工单」、改展示已判数据之后整组撤掉，
-        于是「待评估总数 / 待领取 · 已领取 / 超时未评 / 今日已结论 / 今日结论三档」全站无处可查，
-        连 `reportView` 的四档、`decisionFilter`、`onlyOverdue` 也一并失去了唯一入口。补回这一排。
-
-        🔴 **分母 ＝ 下面这张表自己**（经 `isALine` 只收 A 线的池行，并与表身同走一道 `inGroup`
-        跟着上沿那个班组单选收窄）。这正是把它从页头挪下来的理由：
-        页头那一块数的是**监控条目**（含来源「二线报备」那一条标记条目），两个分母天生差着那几条，
-        同一个名字挂在两个分母上，必然被读成"少了几条"。**两处的数不可相减**，行首的悬停里写着这句。
-        🔴 页头那四枚卡**照旧不点亮 `on`**（见 `drillPooled` 的注释）：它们是进这个工作面的入口，
-        不是这张表的筛选档；点亮等于宣称"卡上那个数就是这张表的分母"，那是假话。本轮不改。
-
-        🔴 **样式复用本页既有的那一套**（`.section-filters.grade-filters.report-source-filters`
-        + `.gf-chip` / `.gf-num`，与下面「监控来源 / 原单类型 / 风险等级」三排逐字同形），不另造一套：
-        阶段摆在最上一排是因为它是**最外一层**（"换一段来看"），下面几排是段内的收窄。
-        ⚠️ `reportView` 的 `open` 档（待领取 + 已领取）**在这一排上没有自己的 chip**：它原本是页头
-        「待评估总数」那张卡的落点，卡已撤、`listView` 进本工作面只有 `drillReport('all')` 一条路，
-        故这一档现在进不来；真要再给它一枚，得先在这里给它一个数（`alineOpenCount` 就是）。
+        🔴 **原先这里有一排五枚「处置阶段」chip**（不限阶段 / 待领取 / 已领取 / 已结论 / 超时未评）。
+        **整排已删**（2026-10-08 裁决：业务侧没有「处置阶段」这个定义），表里同名的那一列一并删，
+        这张表现在**恒摆全部条目** ＝ 原先的「不限阶段」（见 `reportAllRows`）。
+        连带删掉的有：`alineStageAllCount` / `alineOpenCount` / `alineUnassignedCount` /
+        `alineAssigningCount` / `alineOverdueCount` 五个计数，以及 `onlyOverdue` /
+        `reportOpenRows` / `setReportView` / `setPoolStage` / `poolStageChipOn`
+        —— 它们的消费端全在那一排上，别处一个都没有。
+        ⚠️ **池内阶段不是没处看了**：它写在每一行的「操作」列上（能领的摆「领取」、已出结论的
+        摆只读入口）；行级的超时催办也照旧，标在「等待时长」那一格（红字 +「已超处置时限」）。
+        ⚠️ `待领取 + 已领取 + 已结论 ＝ 不限阶段 ＝ 表行数` 这条恒等式随那一轴一并消失，**预期之内**。
       -->
-      <div v-if="listView === 'report'" class="section-filters grade-filters report-source-filters">
-        <span
-          class="rf-k"
-          :title="`本排的分母 ＝ 下面这张表自己：进池的 A 线池行、跟着当前班组收窄，当前 ${alineStageAllCount} 条。🔴 与页头「风险工单」块那个数不是同一个分母 —— 那一块数的是监控条目、含来源「二线报备」的标记条目，两处不可相减`"
-        >处置阶段</span>
-        <button
-          type="button"
-          class="gf-chip"
-          :class="{ active: poolStageChipOn('all') }"
-          :title="`三段按时间序首尾相接（待领取 → 已领取 → 已结论），共 ${alineStageAllCount} 条 ＝ 后面三枚之和`"
-          @click="setPoolStage('all')"
-        >
-          不限阶段<span class="gf-num">{{ alineStageAllCount }}</span>
-        </button>
-        <button
-          type="button"
-          class="gf-chip"
-          :class="{ active: poolStageChipOn('unassigned') }"
-          title="池内还没人领的池行，客诉专员在这里自领"
-          @click="setPoolStage('unassigned')"
-        >
-          待领取<span class="gf-num">{{ alineUnassignedCount }}</span>
-        </button>
-        <button
-          type="button"
-          class="gf-chip"
-          :class="{ active: poolStageChipOn('assigning') }"
-          title="已被人领走、等结论的池行"
-          @click="setPoolStage('assigning')"
-        >
-          已领取<span class="gf-num">{{ alineAssigningCount }}</span>
-        </button>
-        <button
-          type="button"
-          class="gf-chip"
-          :class="{ active: poolStageChipOn('assessed') }"
-          :title="assessedTodayOnly
-            ? '已出结论的池行（升级 / 不升级 / 风险处理建议）· 当前只看今日，开关在下面那一排'
-            : '已出结论的池行（升级 / 不升级 / 风险处理建议）· 当前看全部历史'"
-          @click="setPoolStage('assessed')"
-        >
-          已结论<span class="gf-num">{{ alineConcludedBase.length }}</span>
-        </button>
-        <!--
-          🔴 **第五枚不是第四个阶段，是跨档的标记**：在队且钟走过了 `assessLimitText` 仍无结论，
-          横跨待领取与已领取两档，故**不参与「前三枚之和 ＝ 不限阶段」这个等式**，别拿它去加减。
-          它的落点是「不限阶段 + 超时收窄」，此时第三段整段不接（已结论的行按定义一条都不超时，
-          见 `reportAllRows`），行数 ≡ 这枚上的数。
-          🔴 数取 `alineOverdueCount`、不取 store 的 `overdueCount`：后者两条线一起数，本页只数 A 线。
-        -->
-        <button
-          type="button"
-          class="gf-chip warn"
-          :class="{ active: poolStageChipOn('overdue') }"
-          :title="`在队超过 ${assessLimitText} 仍无结论的池行 · 横跨待领取与已领取两档，是前两枚里的一个子集，不是第四个阶段`"
-          @click="setPoolStage('overdue')"
-        >
-          超时未评<span class="gf-num">{{ alineOverdueCount }}</span>
-        </button>
-      </div>
       <!--
-        第二排 · **只在「已结论」档下出**：决策是这一档独有的属性，在队的行一条都没有结论，
-        摆出来只会是四枚 0。右端那枚「仅今日」是**开关**不是档，故与四枚决策同形但独立点选。
-        🔴 四枚之和 ≡ 上一排「已结论」那个数（见 `alineDecisionCounts` 的注释，由构造成立）。
+        「结论」那一排（升级 / 不升级 / 风险处理建议 + 仅今日）。
+        🔴 **当前不出**：它原本只在「已结论」档下出，而档位切换已随「处置阶段」整排删除，
+        `reportView` 恒为 `all`（见那个变量的注释）。能否像「监控来源」那样**独立成一个筛选项**
+        收进上沿那条工具条，**待业务拍板**；本轮只让它不出现，代码一个字不删。
       -->
       <div
         v-if="listView === 'report' && reportView === 'assessed'"
@@ -6079,30 +5925,20 @@ function toggleWordEnabled(w: RiskWord) {
 
       <!--
         风险工单池 · 下钻收窄标。
-        🔴 **三态切换（待领取 / 已领取 / 已结论）不在这一行里**：它是"换一段来看"，
-        与这一行留下的**收窄条件**（"我现在只看其中一部分"）不是一件事。
-        ⚠️ 它曾被挪到左栏做成「按处置阶段」那一轴，2026-10-07 裁决把那一轴删了 ——
-        三态现在只在本工作面内部切（见 `reportView` 与下面那张表的视图分支）。
+        🔴 **阶段不在这一行里，也不在别处了**：「处置阶段」整排 chip 已随 2026-10-08 裁决删除，
+        这一行留下的只有**收窄条件**（"我现在只看其中一部分"）。
+        ⚠️ 原先这里还有一枚「超时未评 N ×」，随 `onlyOverdue` 一并删除（那个开关没有置位入口了）。
       -->
       <div
-        v-if="listView === 'report' && (onlyOverdue || sourceFilter !== 'all'
+        v-if="listView === 'report' && (sourceFilter !== 'all'
           || (reportView === 'assessed' && (assessedTodayOnly || decisionFilter !== 'all'))
-          || (reportView === 'all' && !onlyOverdue && assessedTodayOnly))"
+          || (reportView === 'all' && assessedTodayOnly))"
         class="section-filters grade-filters report-filters"
       >
         <!--
-          下钻收窄标：从上方 KPI 卡点进来的条件必须在清单旁边有一个**看得见、摘得掉**的落点。
-          没有它，人从「超时未评 2」点进来只看到 2 行，会当成队列只剩 2 条。
-          🔴 超时横跨待领取与已领取两态，故这里给的是**两态之和**，与页头那枚卡上的数逐字相同
-          ——不是同一个数写了两遍。
-          🔴 数取 `alineOverdueCount`、**不取 store 的 `overdueCount`**：后者两条线一起数，
-          而本页从头到尾只数 A 线（见 `isALine`）。拿它的话，页头卡写 3、这枚标写 4、表里躺着 3 行，
-          同一块屏上两个数——差的那一条是回自己家（工单工作台「风险报备池」）的二线报备。
+          下钻收窄标：从页头卡点进来的条件必须在清单旁边有一个**看得见、摘得掉**的落点。
+          没有它，人点进来只看到 2 行，会当成池子只剩 2 条。
         -->
-        <span v-if="reportView !== 'assessed' && onlyOverdue" class="nc-chip bad">
-          超时未评 {{ alineOverdueCount }}
-          <button type="button" class="nc-del" title="看全部在队条目" @click="onlyOverdue = false">×</button>
-        </span>
         <span v-if="sourceFilter !== 'all'" class="nc-chip">
           来源：{{ sourceFilter }}
           <button type="button" class="nc-del" title="看全部监控来源" @click="sourceFilter = 'all'">×</button>
@@ -6120,14 +5956,11 @@ function toggleWordEnabled(w: RiskWord) {
         <!--
           「仅今日」默认就开着，故它也得摆出来——不摆的话，翻不到昨天的记录会被读成"昨天没人评估"。
           摘掉它＝看全部历史，此时上方两枚决策卡（自然日口径）与表里的行数不再相等，是有意为之。
-          🔴 不限阶段那一档也要摆：它把「已结论」整段并了进来，这个默认收窄照样在起作用，
-          不说的话，这一档的行数与"池里到底有多少条"会被读成同一件事。
-          🔴 但不限阶段**同时开着「超时未评」**时不摆：那一刻「已结论」整段根本不在表里
-          （见 reportAllRows），再摆一枚"已结论仅今日"就是在说一个当前不起作用的条件，
-          摘掉它表里也一行不多——摆着只会让人以为摘了能多看到几条。
+          🔴 表恒摆全部条目，已结论那一段整段并在里头，这个默认收窄照样在起作用 ——
+          不说的话，表的行数与"池里到底有多少条"会被读成同一件事。
         -->
         <span
-          v-if="(reportView === 'assessed' || (reportView === 'all' && !onlyOverdue)) && assessedTodayOnly"
+          v-if="(reportView === 'assessed' || reportView === 'all') && assessedTodayOnly"
           class="nc-chip"
         >
           已结论仅今日
@@ -6136,52 +5969,12 @@ function toggleWordEnabled(w: RiskWord) {
       </div>
 
       <!--
-        监控来源筛选（N6）。单独占一行而不与三态 chip 挤在一排：
-        两者是**不同的两层**——三态是这批池行走到哪一步，来源是它从哪儿进的池，
-        混成一排会让人以为"待领取"和"重点工单"是可以二选一的同级选项。
+        风险等级筛选（§5.4 ③）：各枚的数摘掉自己这一维再算（见 `reportLevelBase`）。
+        🔴 **「监控来源」与「原单类型」两排已不在这里**：它们随 2026-10-08 裁决改成了
+        与「班组」同形的筛选控件，收进上沿那条工具条（见 `.list-toolbar--no-actions` 那一段）。
+        筛选行为、计数口径与表的联动一个字没改 —— 换的只是控件形态。
       -->
       <div v-if="listView === 'report'" class="section-filters grade-filters report-source-filters">
-        <span class="rf-k">监控来源</span>
-        <button
-          type="button"
-          class="gf-chip"
-          :class="{ active: sourceFilter === 'all' }"
-          @click="sourceFilter = 'all'"
-        >
-          全部来源<span class="gf-num">{{ reportSourceBase.length }}</span>
-        </button>
-        <button
-          v-for="s in QUEUE_SOURCES"
-          :key="s"
-          type="button"
-          class="gf-chip"
-          :class="{ active: sourceFilter === s }"
-          @click="sourceFilter = s"
-        >
-          {{ s }}<span class="gf-num">{{ sourceCountInView(s) }}</span>
-        </button>
-      </div>
-      <!-- 原单类型 / 风险等级两维筛选（§5.4 ③）：与监控来源同形，各枚的数摘掉自己这一维再算 -->
-      <div v-if="listView === 'report'" class="section-filters grade-filters report-source-filters">
-        <span class="rf-k">原单类型</span>
-        <button
-          type="button"
-          class="gf-chip"
-          :class="{ active: poolTicketTypeFilter === 'all' }"
-          @click="poolTicketTypeFilter = 'all'"
-        >
-          全部<span class="gf-num">{{ reportTypeBase.length }}</span>
-        </button>
-        <button
-          v-for="k in POOL_TICKET_TYPE_KEYS"
-          :key="k"
-          type="button"
-          class="gf-chip"
-          :class="{ active: poolTicketTypeFilter === k }"
-          @click="poolTicketTypeFilter = k"
-        >
-          {{ k }}<span class="gf-num">{{ ticketTypeCountInView(k) }}</span>
-        </button>
         <span class="rf-k">风险等级</span>
         <button
           type="button"
@@ -6206,33 +5999,13 @@ function toggleWordEnabled(w: RiskWord) {
       <!-- 风险工单池 · 空态：把当前收窄条件讲出来，否则"筛空了"会被读成"没有了" -->
       <div v-if="listView === 'report' && !reportRows.length" class="ob-empty">
         <!-- 收窄条件必须在空态里复述，否则"筛空了"会被读成"没有了"；班组排在最前，它是最外一层 -->
-        <template v-if="groupFilter !== 'all'">「{{ groupFilter }}」在这一档下没有池行 —— 点「全部班组」看全部</template>
-        <template v-else-if="poolTicketTypeFilter !== 'all' || poolLevelFilter !== 'all'">当前原单类型 / 风险等级筛选下没有池行 —— 点对应的「全部」看全部</template>
+        <template v-if="groupFilter !== 'all'">「{{ groupFilter }}」当前筛选下没有池行 —— 点「全部班组」看全部</template>
+        <template v-else-if="poolTicketTypeFilter !== 'all' || poolLevelFilter !== 'all'">当前原单类型 / 风险等级筛选下没有池行 —— 换回「全部」看全部</template>
         <template v-else-if="reportView === 'all'">
           {{
-            onlyOverdue
-              ? `当前没有超过 ${assessLimitText} 仍无结论的在队条目`
-              : sourceFilter !== 'all'
-                ? `「${sourceFilter}」当前没有进池的条目`
-                : '当前没有进池的条目 —— 标记为高 / 中 / 低才进池'
-          }}
-        </template>
-        <template v-else-if="reportView === 'open'">
-          {{
-            onlyOverdue
-              ? `当前没有超过 ${assessLimitText} 仍无结论的在队条目`
-              : sourceFilter !== 'all'
-                ? `「${sourceFilter}」当前没有待领取或已领取的条目`
-                : '暂无待评估条目'
-          }}
-        </template>
-        <template v-else-if="reportView !== 'assessed'">
-          {{
-            onlyOverdue
-              ? `当前没有超时未评的${reportView === 'unassigned' ? '待领取' : '已领取'}条目`
-              : sourceFilter !== 'all'
-                ? `「${sourceFilter}」当前没有${reportView === 'unassigned' ? '待领取' : '已领取'}的条目`
-                : reportView === 'unassigned' ? '暂无待领取条目' : '暂无已领取条目'
+            sourceFilter !== 'all'
+              ? `「${sourceFilter}」当前没有进池的条目`
+              : '当前没有进池的条目 —— 标记为高 / 中 / 低才进池'
           }}
         </template>
         <template v-else-if="assessedTodayOnly">
@@ -6242,8 +6015,8 @@ function toggleWordEnabled(w: RiskWord) {
       </div>
 
       <!--
-        风险工单池队列表。在队两态（待领取 / 评估中）共用一张表：它们的列几乎相同，
-        分成两张表迟早只改一处；差异只有承办人一列，就地 v-if 掉。
+        风险工单池队列表。**一张表装全部条目**：待领取 / 已领取 / 已结论三段按时间序首尾相接
+        （见 `reportAllRows`），列对三段完全相同，按行分岔的只有「操作」那一格。
         🔴 **没有勾选列**：批量只服务于批量分派，而分派整套已取消。
       -->
       <div v-if="listView === 'report' && reportRows.length" class="hit-table-wrap report-table-wrap">
@@ -6262,12 +6035,17 @@ function toggleWordEnabled(w: RiskWord) {
                 整行从 53px 长到 76px —— 省下的那点宽度换不来一行高。
 
                 ⚠️ **这 88px 是从哪腾的（全表合计必须落在清单区可视宽内，不许出横向滚动条）**：
-                删「原单类型」整列 **−64**（与标题里的类型角标逐字重复）、
-                「监控来源」96 → 88 **−8**（实测格里的来源标最宽 82、表头连箭头 70）、
-                「承办人」80 → 72 **−8**（实测最宽「吴投诉」59、表头 53；72 仍放得下四字人名）。
-                三笔合计 80，余下 8 从弹性的「风险摘要」列让。
-                定宽列合计 960 → **968**（不限阶段档九列），仍在共用的 min-width 1040 以内 ——
-                **本表不再需要自己那条 min-width**（已删），与改动前同一条下限。
+                删「原单类型」整列 **−64**（与标题里的类型角标逐字重复），余下 24 从弹性的
+                「风险摘要」列让。
+
+                🔴 **2026-10-08 删「处置阶段」整列之后的重算（八列）**：
+                　· 腾出 **80**；
+                　· 「监控来源」88 → **96**：回到被挤之前的宽度（上一轮为了补「风险摘要」收过 8px，
+                　　格里的来源标最宽 82、表头连排序箭头 70，96 才有余量，不会在四字胶囊上压线）；
+                　· 「承办人」72 → **80**：同理回到被挤之前（最宽「吴投诉」59、表头 53，80 放得下四字人名）；
+                　· 余下 **64 全部给「风险摘要」**（它无固定宽，吃掉定宽列让出的全部余量）。
+                定宽列合计 968 → **904**，弹性列净增 64px，**不许留空洞**：fixed 布局下
+                没有固定宽的「风险摘要」把差额整截吃掉，全表仍是 100% 宽、无横向溢出。
               -->
               <th style="width: 256px">工单号</th>
               <!--
@@ -6276,18 +6054,17 @@ function toggleWordEnabled(w: RiskWord) {
                 🔴 **「原单类型」这一列已删**（2026-10-08 裁决）：第一格换成工单标题单元格之后，
                 它与标题第一行那枚**类型角标逐字重复**（实测在表的每一行都是同一个值：投诉/投诉、咨询/咨询），
                 同一个值在一行里摆两处，占的 64px 却正是「风险摘要」最缺的那一截。
-                按原单类型筛的那排 chip（全部 / 投诉 / 非投诉）**照旧在**，筛选维度一个没少。
-                ⚠️ **「处置阶段」不连坐**：它是**池内阶段**（待领取 / 已领取 / 已结论），
-                与标题里的**工单状态**角标（处理中 / 已升级技术支持）不是一回事，两者都要留。
+                按原单类型筛的那一项**照旧在**（已改成上沿工具条里的筛选控件），筛选维度一个没少。
               -->
               <th style="width: 64px">风险等级</th>
               <!--
                 来源列可点排序：多类来源合一队之后，"先把同一类过一遍"是最常见的翻法。
-                ⚠️ 列宽 96 → **88**：实测格里的来源标最宽 82（四字胶囊）、表头连排序箭头一起 70，
-                收这 8px 补给「风险摘要」。再收就会把来源标自己截了。
+                ⚠️ 列宽 **96**：格里的来源标最宽 82（四字胶囊）、表头连排序箭头一起 70。
+                上一轮曾为了补「风险摘要」收到 88（四字胶囊上只剩 4px 余量），
+                删「处置阶段」腾出 80px 之后**回到 96**，不再在这一列上压线。
               -->
               <th
-                style="width: 88px"
+                style="width: 96px"
                 class="th-sortable"
                 :class="{ on: sourceSort !== 'none' }"
                 :title="sourceSort === 'none' ? '点击按监控来源分组（同来源内仍按等待时长）' : sourceSort === 'asc' ? '点击倒序' : '点击恢复按等待时长排'"
@@ -6295,20 +6072,15 @@ function toggleWordEnabled(w: RiskWord) {
               >监控来源<span class="th-sort-mark">{{ sourceSort === 'asc' ? '↑' : sourceSort === 'desc' ? '↓' : '↕' }}</span></th>
               <th>风险摘要</th>
               <!--
-                不限阶段这一档三段混在一张表里，**必须给一列写明每行走到哪一步**：
-                否则「领取」与「评估」两个按钮在同一列里交替出现，人看不出凭什么这行能领、那行只能评。
-                列宽 80px：三字胶囊约 50px + 单元格左右内边距 20px，68px 时被 `.report-table td` 的省略截成「待领取 …」。
+                🔴 **原先这里有一列「处置阶段」（80px，池内阶段：待领取 / 已领取 / 已结论）。
+                整列已删**（2026-10-08 裁决：业务侧没有这个定义），与它同名的那一排 chip 一并删。
+                每行走到哪一步照旧看得出来 —— 「操作」列按行分岔：能领的摆「领取」、已出结论的摆只读入口。
               -->
-              <th v-if="reportView === 'all' || reportView === 'open'" style="width: 80px">处置阶段</th>
               <!--
-                ⚠️ 不限阶段 / 已结论两档列最多，这一格由 80 收到 **72** 补给「风险摘要」：
-                实测格里最宽的是「吴投诉」59、表头 53，72 仍放得下四字人名。
-                「已领取」那一档列少、不紧张，仍给 92。
+                ⚠️ 列宽 **80**：格里最宽的是「吴投诉」59、表头 53，80 放得下四字人名。
+                上一轮曾为了补「风险摘要」收到 72，删「处置阶段」腾出 80px 之后回到 80。
               -->
-              <th
-                v-if="reportView === 'assigning' || reportView === 'all' || reportView === 'open'"
-                :style="reportView === 'all' || reportView === 'open' ? 'width: 72px' : 'width: 92px'"
-              >承办人</th>
+              <th style="width: 80px">承办人</th>
               <th style="width: 128px">进监控时刻</th>
               <!--
                 ⚠️ **列宽 144**，不是 96：超时那一档的全文是「10 小时 已超处置时限」，
@@ -6371,8 +6143,8 @@ function toggleWordEnabled(w: RiskWord) {
                 文字照旧按几行排版、再被 `overflow: hidden` 从中间切开，第三行会露出半截字。
               -->
               <td class="rr-desc" :title="poolRiskSummaryOf(r)"><span class="rr-clamp2">{{ poolRiskSummaryOf(r) }}</span></td>
-              <td v-if="reportView === 'all' || reportView === 'open'"><span class="src-tag">{{ poolStageOf(r) }}</span></td>
-              <td v-if="reportView === 'assigning' || reportView === 'all' || reportView === 'open'">{{ poolAssigneeOf(r) }}</td>
+              <!-- 「处置阶段」那一格已随整列删除（2026-10-08 裁决），见表头那一段 -->
+              <td>{{ poolAssigneeOf(r) }}</td>
               <td class="hit-when">{{ r.at }}</td>
               <!--
                 🔴 超时**只标这一格，整行不变色**：队列长起来后满屏红底，
