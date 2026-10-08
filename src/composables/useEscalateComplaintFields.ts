@@ -15,7 +15,7 @@ import { COMPLAINT_L1_OPTIONS, COMPLAINT_L2_MAP } from '@/views/tickets/types/cr
  *
  * 【升级说明为什么也在这里】它是评估结论的一部分（落 `assessment.advice`）、又是派生新单
  * 问题描述的后半段，各处评估弹窗此前各自摆一个独立字段。值收在本 composable 的
- * `fields.advice` 上，选「不升级」时那格改叫「反馈意见」、由宿主弹窗自己那一格渲染，
+ * `fields.advice` 上，选「不升级」时那格改叫「处理意见」、由宿主弹窗自己那一格渲染，
  * 读写的仍是这同一个格子 —— 各处不各存一份。
  *
  * 【三处共用】风险监控页评估处置工作面、风险报备池、工单页**页头「风险管控」**
@@ -26,7 +26,7 @@ import { COMPLAINT_L1_OPTIONS, COMPLAINT_L2_MAP } from '@/views/tickets/types/cr
 export interface EscalateComplaintFieldsState {
   complaintL1: string;
   complaintL2: string;
-  /** 升级说明（选「不升级」时同一个格子在宿主弹窗里叫「反馈意见」） */
+  /** 升级说明（选「不升级」时同一个格子在宿主弹窗里叫「处理意见」） */
   advice: string;
 }
 

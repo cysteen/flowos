@@ -251,7 +251,7 @@ export function useRiskReportAssess(opts?: { level?: RiskLevelFieldsCtl }) {
 
   /**
    * 结论正文那一格。值存在 `escalateFields.fields.advice` 上，本 ref 只是个读写代理：
-   * 选「升级」时这一格由段内的「升级说明」渲染，其余情形由宿主弹窗自己那格「反馈意见」渲染，
+   * 选「升级」时这一格由段内的「升级说明」渲染，其余情形由宿主弹窗自己那格「处理意见」渲染，
    * 两处写的是同一个格子 —— 切换决策不丢字，提交路径照常从 `assessAdvice` 取值。
    */
   const assessAdvice = computed({
@@ -301,7 +301,7 @@ export function useRiskReportAssess(opts?: { level?: RiskLevelFieldsCtl }) {
     assessTarget.value = r;
     assessDecision.value = '';
     assessTried.value = false;
-    // 结论正文（升级说明 / 反馈意见）与投诉一类 / 二类同在 escalateFields，reset 一次清完
+    // 结论正文（升级说明 / 处理意见）与投诉一类 / 二类同在 escalateFields，reset 一次清完
     escalateFields.reset();
     // 风险等级段：把现行等级灌回这张单（没有就留空并转必填），见 useRiskLevelFields.reset
     opts?.level?.reset(r.ticketNo);
