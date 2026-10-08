@@ -432,17 +432,15 @@ function batchSetStatus(status: '启用' | '停用') {
     onOk: () => {
       const keySet = new Set(keys);
       const stamp = stampNow();
-      let n = 0;
       for (const r of allRows.value) {
-        // 已是目标状态的条不写入，维护人 / 维护时间不刷新
+        // 已是目标状态的条不写入，维护人 / 维护时间不刷新（仍计入成功条数）
         if (keySet.has(r.key) && r.status !== status) {
           r.status = status;
           Object.assign(r, stamp);
-          n += 1;
         }
       }
       checkedRowKeys.value = [];
-      message.success(`已${status} ${n} 条`);
+      message.success(`已${status} ${keys.length} 条`);
     },
   });
 }
@@ -451,7 +449,7 @@ function batchDelete() {
   const keys = [...checkedRowKeys.value];
   Modal.confirm({
     title: '批量删除问题分类',
-    content: `确定删除已选 ${keys.length} 条问题分类？删除后新建工单不可再选。`,
+    content: `确认删除已选 ${keys.length} 条问题分类？删除后新建工单不可再选。`,
     okText: '确认删除',
     okType: 'danger',
     cancelText: '取消',
