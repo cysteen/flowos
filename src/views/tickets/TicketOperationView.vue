@@ -54,7 +54,6 @@ import { REPORT_ASSESS_LIMIT_MIN, isOpenStatus, isPooledStatus } from '@/stores/
 import { POST_CLOSE_EDITABLE_FIELDS, isProcessTabVisible, tabWritableFor } from './types/operation';
 import { useRiskCollabStore } from '@/stores/riskCollab';
 import { useRiskHistoryStore, type RiskHistoryKind, type RiskHistoryRecord } from '@/stores/riskHistory';
-import { useRiskLevelUpdateStore } from '@/stores/riskLevelUpdates';
 import { useRiskPoolStore } from '@/stores/riskPool';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
 import type { TlAction, TlRole } from './types/ticketDetail';
@@ -181,11 +180,6 @@ const riskCollab = useRiskCollabStore();
  */
 const riskHistory = useRiskHistoryStore();
 /**
- * 工单侧「风险等级」的**更新记录**（只记回传造成的更新）。本页是它的**唯一写入点** ——
- * 回传就发生在下方那个 watch 里；读它的是「风险报备」Tab ·「风险识别」块。
- */
-const levelUpdates = useRiskLevelUpdateStore();
-/**
  * 两条线的合并层。**本页不调它的任何动作**（只读它的 `items`，见 `escalateAdviceOf`），
  * 实例化它还为触发一件事：它在初始化时把**种子里那批已有结论的条目**
  * 回填进第八类履历（`backfillSeedRiskHistory`）——
@@ -236,25 +230,18 @@ function toTlRole(byRole: string): TlRole {
  */
 
 /**
- * 本单工单级风险等级的**最近一次落款**：谁下的这个结论、什么时候下的。
+ * 本单的风险等级**有没有人判过** —— 回传敢不敢落笔全看它。
  *
- * 【为什么要它】「风险等级更新记录」的「操作人」是**下结论的那个风险处理人**，
- * 不是此刻在看工单页的人 —— 回传是在工单页上发生的写入，但那个判断不是看页的人做的，
- * 拿 `user.name` 落款就成了把别人的结论记到自己头上。
- *
- * 两个来源各取一条、按时刻取最近那一条（同一张单上打标与命中核实可能各有一次）：
+ * 两个来源，有其一即算判过：
  *   · **打标**（A 线条目的 `tag`）—— 「风险管控」弹窗四选一走的就是它，含「无风险」那一档；
  *   · **命中核实**（`verify.latest`）—— 成立 / 误报那一路。
- * 两者都为空 ＝ **没有人判过**，返回 null。
+ *
+ * 🔴 **它不是"有没有等级"**：判成「无风险」之后等级为空，但这单**是判过的** ——
+ * 「取空则清空」那条口径正要靠这个区分，见 `riskConclusion` 与下方回传 watch。
  */
-const riskGradeAuthor = computed<{ by: string; byRole: string; at: string } | null>(() => {
-  const cands: { by: string; byRole: string; at: string }[] = [];
-  riskQueue.entriesOf(ticketNo.value).forEach((e) => {
-    if (e.tag) cands.push({ by: e.tag.by, byRole: e.tag.byRole, at: e.tag.at });
-  });
-  const latest = riskMonitorVerify.value?.latest;
-  if (latest) cands.push({ by: latest.by, byRole: latest.byRole, at: latest.at });
-  return cands.sort((a, b) => b.at.localeCompare(a.at))[0] ?? null;
+const riskGradeJudged = computed(() => {
+  if (riskQueue.entriesOf(ticketNo.value).some((e) => !!e.tag)) return true;
+  return !!riskMonitorVerify.value?.latest;
 });
 
 /**
@@ -271,19 +258,17 @@ const riskConclusion = computed(() => {
    * 故等级直接问 `ticketGradeOf`（它自己已经把两个来源取过 max 了）。
    */
   const grade = riskTags.ticketGradeOf(ticketNo.value);
-  /**
-   * 本单上**有没有人下过等级结论**，以及最近那一次是谁下的。
-   *
+  /*
    * 🔴 **判空不能只看 `verify` 与 `grade`**（2026-10-08 新增）：风险处理人把本单改判成
    * 「无风险」之后 `ticketGradeOf` 回 null，「重点工单」那一路又本来就没有命中记录 ——
    * 两者皆空时整条返回 null，下面那个 watch 直接跳过，「取空则清空」便永远走不到。
-   * 故另取一次"结论的落款"：它有值就说明**有人判过**，值为 null 的那一档是「无风险」。
+   * 故再问一次"有没有人判过"：判过而没有等级的那一档，就是「无风险」。
    *
-   * 🔴 **反过来，没有落款时一个字都不许写**：那种情形（如本单只有未核实的命中）
+   * 🔴 **反过来，没人判过时一个字都不许写**：那种情形（如本单只有未核实的命中）
    * 不是"判成了无风险"，而是**没有人判过** —— 拿它去清空处理人自己填的等级就是无中生有。
    */
-  const author = riskGradeAuthor.value;
-  if (!verify && !grade && !author) return null;
+  const judged = riskGradeJudged.value;
+  if (!verify && !grade && !judged) return null;
   return {
     ticketNo: ticketNo.value,
     /*
@@ -297,7 +282,7 @@ const riskConclusion = computed(() => {
      */
     flag: grade ? ('有风险' as const) : (verify?.flag ?? null),
     grade,
-    author,
+    judged,
   };
 });
 
@@ -940,9 +925,9 @@ watch(
      * 落点（含 `riskQueue` / `riskTags` 两侧的算法）一个字未动，只有"风险处理人的结论
      * 回写到工单侧风险字段"这一下不再走棘轮。
      * 【为什么敢不回退】非投诉单的工单侧风险等级本来就是风险处理人写的，他改判成更低一档
-     * 就是他现在的结论，拿上一次的自己把这一次挡住没有道理。降级也不再是悄悄发生 ——
-     * 「风险报备」Tab ·「风险识别」块有「风险等级更新记录」兜底，旧值 → 新值 · 操作人 · 时刻
-     * 逐条累积（见下方 `levelUpdates.record`）。
+     * 就是他现在的结论，拿上一次的自己把这一次挡住没有道理。降级也不是悄悄发生 ——
+     * 门拆掉之后工单侧那一格**恒等于最新的标记结论**，那条爬坡由「风险报备」Tab ·
+     * 「风险识别」块的**标记记录**完整记着（谁、什么时候、从哪一档改到哪一档）。
      */
     if (v.flag && v.flag !== f.riskFlag) {
       patch.riskFlag = v.flag;
@@ -958,22 +943,9 @@ watch(
      *     看不见的值，自然也无须这道门。
      */
     const nextLevel: ProcessFormDraft['riskLevel'] = v.grade ?? '';
-    // 🔴 没有落款（没人判过）时一个字都不写：那不是"判成了无风险"，见 `riskConclusion`
-    if (v.author && nextLevel !== f.riskLevel) {
+    // 🔴 没人判过时一个字都不写：那不是"判成了无风险"，见 `riskConclusion`
+    if (v.judged && nextLevel !== f.riskLevel) {
       patch.riskLevel = nextLevel;
-      /*
-       * 「风险等级更新记录」（2026-10-08 用户拍板）：**只记回传造成的更新**。
-       * 处理人在「风险标记」面板自己改走的是另一条上游（第八类 ⑤「坐席在工单侧填写」），
-       * 不进这张列表。值没变不落、累积不覆盖、时刻带秒由 store 与 `opTimeNow` 各担一半。
-       */
-      levelUpdates.record({
-        ticketNo: v.ticketNo,
-        from: f.riskLevel,
-        to: nextLevel,
-        by: v.author.by,
-        byRole: v.author.byRole,
-        at: opTimeNow(),
-      });
     }
     // 步 5 的只读提示行不在这里落笔：它是风险面板（补充处理 · 风险）上的一行只读文字，
     // 由面板自己按单从 store 取（riskTags.ticketVerificationOf），不进 form、不参与必填校验。

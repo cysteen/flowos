@@ -24,7 +24,6 @@ import type { ProcessFormDraft } from '@/views/tickets/types/operation';
 // A 线自动入池的条目，见 riskReports.ts 的 `reportsOf` 说明）。
 import { useRiskReportStore } from '@/stores/riskReports';
 import { useRiskQueueStore } from '@/stores/riskQueue';
-import { useRiskLevelUpdateStore, type RiskLevelUpdate } from '@/stores/riskLevelUpdates';
 import { poolStageStatusOf } from '@/stores/riskPool';
 import {
   isOpenStatus,
@@ -58,8 +57,6 @@ const user = useUserStore();
 const reportStore = useRiskReportStore();
 const queue = useRiskQueueStore();
 const collab = useRiskCollabStore();
-/** 工单侧风险等级的更新记录（只读；唯一写入点在 `TicketOperationView` 的回传 watch 里） */
-const levelUpdateStore = useRiskLevelUpdateStore();
 const router = useRouter();
 
 /*
@@ -425,37 +422,14 @@ function tagRecordText(h: RiskTagEntry) {
   return note ? `${head} · ${note}` : head;
 }
 
-/* ---- 风险等级更新记录（2026-10-08 用户拍板）---- */
-
-/**
- * 工单侧「风险等级」被**回传**改写的历次记录，按发生次序正序（最新在末位）。
- *
- * 【与上方「标记记录」是两件事】标记记录答"风险处理人在条目上下了哪几次结论"；
- * 本记录答"**工单侧那一格**被这些结论改成了什么"。930 回传路径拆掉防回退棘轮之后
- * 等级可升可降、也可能被清空，少了这一条爬坡，处理人只会看到一个悄悄变了的值。
- *
- * 🔴 **处理人在「风险标记」面板自己改不进这里**：那一路是处理人自述，留痕归
- * 《【720】》第八类 ⑤「坐席在工单侧填写」。两条上游混进一张列表就读不出"是谁改的"。
+/*
+ * ⚠️ 这里曾有一组「风险等级更新记录」（旧值 → 新值 · 操作人 · 时刻），**已整件撤掉**
+ * （2026-10-08 用户看过真机效果后拍板：「是不是有标记记录就 ok 了，风险等级更新不需要单独记录」）。
+ * 判据：930 回传路径的三道门拆掉之后，**工单侧那一格恒等于最新的标记结论** ——
+ * 上面那份「标记记录」已经完整决定了它的历史，再记一遍是同一件事的第二本账。
+ * 🔴 **撤的只是这条记录，回传行为本身不回退**：覆盖处理人自填、可升可降、取空即清空，
+ * 落笔在 `TicketOperationView` 的回传 watch 里，一个字没动。
  */
-const levelUpdates = computed(() => levelUpdateStore.updatesOf(props.ticketNo));
-/** 折叠态摆的那一条。正序，故"最新"在**末位**（与 `latestTagRecord` 同一个口径） */
-const latestLevelUpdate = computed(() => levelUpdates.value[levelUpdates.value.length - 1] ?? null);
-/** 默认折叠、切单即收起，与「标记记录」逐字同一个做法 */
-const levelUpdatesOpen = ref(false);
-watch(() => props.ticketNo, () => { levelUpdatesOpen.value = false; });
-/**
- * 一条更新的行文：**旧值 → 新值 · 操作人 · 时刻**（时刻带秒，源值由工单页用
- * `utils/opTime.opTimeNow` 现生成，不是 `formatOpTime` 补出来的 `:00`）。
- *
- * 两个空值各有各的说法，**不能都写「—」**：旧值空 ＝ 这一格本来没有定级，
- * 新值空 ＝ 被风险处理人改判「无风险」后清掉了。写成同一个占位符，
- * 读的人分不出"第一次定级"与"等级被撤了"。
- */
-function levelUpdateText(u: RiskLevelUpdate) {
-  const from = u.from ? riskLevelText(u.from) : '未定级';
-  const to = u.to ? riskLevelText(u.to) : '已清空';
-  return `${from} → ${to} · ${u.by} · ${formatOpTime(u.at)}`;
-}
 
 /*
  * ⚠️ **块内那枚「标记 / 重新标记」按钮与它的弹窗已整块撤掉**（2026-09-29 裁决）：
@@ -487,16 +461,15 @@ const collabSectionBadge = computed(() =>
  * 判据各取本块已有的那份派生值，不另造一套（两套判据会让块头与块内各说一话）：
  *   `report` ＝ 在队那条卡 **或** 历史条（与块内空态 `!pending && !history.length` 同一个表达式的反面）；
  *   `assess` ＝ 已评估那条的结论（与块内 `v-if` 同源）；
- *   `risk`   ＝ 打标结论 **或** 命中核实结论 **或** 风险等级更新记录 ——
- *              `riskMonitorLine` 有话说就算有内容，「本单 N 条命中待核实」也是这一块要报的事；
- *              等级被回传改过（哪怕现在判成了无风险、上半没有结论行）同样算有内容；
+ *   `risk`   ＝ 打标结论 **或** 命中核实结论 —— `riskMonitorLine` 有话说就算有内容，
+ *              「本单 N 条命中待核实」也是这一块要报的事；
  *   `collab` ＝ 协同条数。
  */
 watch(() => props.ticketNo, () => {
   expanded.value = {
     report: !!pending.value || history.value.length > 0,
     assess: !!latestAssessed.value?.assessment,
-    risk: !!tagRecord.value || !!riskMonitorLine.value || levelUpdates.value.length > 0,
+    risk: !!tagRecord.value || !!riskMonitorLine.value,
     collab: collabRecords.value.length > 0,
   };
 }, { immediate: true });
@@ -838,36 +811,6 @@ watch(() => props.ticketNo, () => {
               </span>
             </div>
           </div>
-
-          <!--
-            风险等级更新记录（2026-10-08 用户拍板）：**工单侧那一格**被回传改成了什么。
-            折叠态「风险等级更新 N 次」+ 最新一条，展开出全部 —— 与上方「标记记录」同一套
-            骨架与同一组类名（`rt-history*`），两块讲的是同一条爬坡的两面，排法不另起一套。
-            🔴 **一条也要出**：它没有"上半结论行"替它说话（标记记录那一块 N ＝ 1 时
-            由 `.rk-tag-line` 代劳，故它从 2 条起才出），藏起来等于这条记录不存在。
-          -->
-          <div v-if="levelUpdates.length" class="rt-history">
-            <button
-              type="button"
-              class="rt-history-sum"
-              :aria-expanded="levelUpdatesOpen"
-              @click="levelUpdatesOpen = !levelUpdatesOpen"
-            >
-              <component
-                :is="levelUpdatesOpen ? DownOutlined : RightOutlined"
-                class="rt-history-caret"
-              />
-              <span class="rt-history-head">风险等级更新 {{ levelUpdates.length }} 次</span>
-              <span v-if="!levelUpdatesOpen && latestLevelUpdate" class="rt-history-item">
-                {{ levelUpdateText(latestLevelUpdate) }}
-              </span>
-            </button>
-            <div v-if="levelUpdatesOpen" class="rt-history-list">
-              <span v-for="(u, i) in levelUpdates" :key="i" class="rt-history-item">
-                {{ levelUpdateText(u) }}
-              </span>
-            </div>
-          </div>
         </section>
       </div>
     </OpCollapsibleSection>
@@ -903,7 +846,11 @@ watch(() => props.ticketNo, () => {
           </header>
           <p class="rc-item-opinion">{{ c.opinion }}</p>
         </article>
-        <p class="rc-foot">风险处理建议不改工单状态与处理人；建议事项挂在工单上，由当前处理人执行。</p>
+        <!--
+          ⚠️ 这里曾有一行「风险处理建议不改工单状态与处理人；建议事项挂在工单上，由当前处理人执行。」，
+          **已删**（2026-10-08 用户拍板「这个提示删除掉」）。那是**规则**，规则写在 PRD、不写在界面上 ——
+          这一块本身就不改状态、不改处理人，界面上没有任何相反的迹象，这句话是在替规则多说一遍。
+        -->
       </div>
       <div v-else class="ra-empty">
         尚无风险处理建议，请点击页头「风险管控」发起
@@ -1427,7 +1374,6 @@ watch(() => props.ticketNo, () => {
   color: #374151;
   white-space: pre-wrap;
 }
-.rc-foot { margin: 0; font-size: 11px; color: #9ca3af; line-height: 1.5; }
 
 .ra-empty {
   padding: 20px 14px;

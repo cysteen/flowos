@@ -291,9 +291,9 @@ const riskMonitorBreakdown = computed(() => {
 });
 
 /**
- * 坐席自己填过、监控没能覆盖时的差异说明。
+ * 本页取值与监控结论不一致时的差异说明。
  * 【为什么不能省】两个值不一致却只显示监控那一行，读起来就像"本页显示的就是监控结论"，
- * 而实际落在字段里的是坐席填的值——照着它做处置会做错。差在哪儿必须写出来。
+ * 而实际落在字段里的是另一个值——照着它做处置会做错。差在哪儿必须写出来。
  */
 const riskMonitorDiff = computed(() => {
   const v = riskMonitorVerify.value;
@@ -306,7 +306,13 @@ const riskMonitorDiff = computed(() => {
     parts.push(`「风险等级」本页为「${riskLevelText(props.form.riskLevel)}」，监控工单级为「${riskLevelText(v.grade)}」`);
   }
   if (!parts.length) return '';
-  return `${parts.join('；')}。本页取值以坐席填写为准，监控结论不覆盖。`;
+  /*
+   * ⚠️ 这里原来还接着一句「本页取值以坐席填写为准，监控结论不覆盖。」，**已删**
+   * （2026-10-08 用户拍板）：930 回传路径现在**按最新结论写、覆盖处理人自填**
+   * （见 `TicketOperationView` 的回传 watch），那句话与实现正好相反，
+   * 留着就是在界面上写一条假规则。规则本身写进 PRD，页面只报"两处取值不一样"这个事实。
+   */
+  return `${parts.join('；')}。`;
 });
 </script>
 
