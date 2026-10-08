@@ -103,7 +103,17 @@ defineProps<{ ctl: RiskCollabFieldsCtl }>();
 }
 .rcf-field-h > .rcf-label { flex: none; }
 .rcf-field-h > .rcf-advices { flex: 1 1 260px; min-width: 0; }
-.rcf-advices { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; }
+.rcf-advices { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 12px; }
+/*
+ * 🔴 **字号必须打到 `.ant-checkbox-wrapper` 上，写在 `.rcf-advices` 上不算数**：
+ * ant 在每个 wrapper 上显式写了 `font-size: 14px`，继承下来的 12px 被它盖掉。
+ * 字号一盖掉就连带毁掉上面那行 `align-items: baseline` —— 复选组是 flex 容器，
+ * 浏览器不拿它第一个选项的基线往外报，`baseline` 退化成"顶边对齐"，
+ * 于是 12px 的标签与 14px 的选项顶边齐、基线差 4px，看着就是没对齐。
+ * 把 wrapper 的字号与行高调成与 `.rcf-label` 同口径（12px / 1.4），
+ * 两边行盒一模一样，顶边齐即基线齐（实测差 0px），换行后也仍然齐。
+ */
+.rcf-advices :deep(.ant-checkbox-wrapper) { font-size: 12px; line-height: 1.4; }
 .rcf-err {
   margin: 0;
   font-size: 11px;
