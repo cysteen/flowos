@@ -1021,7 +1021,7 @@ const escalateFields = useEscalateComplaintFields();
 
 /**
  * 结论正文那一格。值存在 `escalateFields.fields.advice` 上，本 ref 只是个读写代理：
- * 选「升级」时这一格由段内的「升级说明」渲染，其余情形由本弹窗自己那格「反馈意见」渲染，
+ * 选「升级」时这一格由段内的「升级说明」渲染，其余情形由本弹窗自己那格「处理意见」渲染，
  * 两处写的是同一个格子 —— 切换决策不丢字，提交路径照常从 `assessAdvice` 取值。
  */
 const assessAdvice = computed({
@@ -1142,7 +1142,7 @@ function showTagCollabFor(entry: RiskQueueEntry | null, hasRisk: boolean): boole
 /**
  * 段内必填项的校验，与评估路径同一套：
  * 会派生新投诉单时整段交给共享的 `escalateFields.validate()`（投诉一类 / 二类 / 升级说明
- * 三项各自出红字）；其余情形只校验「反馈意见」那一格。
+ * 三项各自出红字）；其余情形只校验「处理意见」那一格。
  * 🔴 **决策留空时调用方根本不调它** —— 留空＝不评估，整段不参与校验。
  */
 function tagAssessFieldsOk(escalate: boolean): boolean {
@@ -1215,7 +1215,7 @@ function openAssess(r: RiskPoolItem) {
   assessTarget.value = r;
   assessDecision.value = '';
   assessTried.value = false;
-  // 结论正文（升级说明 / 反馈意见）与投诉一类 / 二类同在 escalateFields，reset 一次清完
+  // 结论正文（升级说明 / 处理意见）与投诉一类 / 二类同在 escalateFields，reset 一次清完
   escalateFields.reset();
   // 风险等级段：把现行等级灌回这张单（没有就留空并转必填），见 useRiskLevelFields.reset
   assessLevel.reset(r.ticketNo);
@@ -4022,7 +4022,7 @@ function openEntryTag(e: QueueRow, from: EntryTagFrom) {
   /*
    * 🔴 **已出结论的非投诉单：把现行结论灌回来**（2026-10-07 裁决，与「风险等级」段
    * 预置现值同一个做法）。不灌的话，人一打开看到的是一张空表 —— 既读不出"现在判的是什么"，
-   * 又会把"只改一句反馈意见"变成"把结论整个重填一遍"。
+   * 又会把"只改一句处理意见"变成"把结论整个重填一遍"。
    * 正文那一格值在 `escalateFields.fields.advice` 上（`assessAdvice` 是它的读写代理），
    * 故必须排在 `escalateFields.reset()` **之后**，否则刚灌的值当场被清掉。
    * 投诉支不灌：它的历次协同记录另有落点（`stores/riskCollab.ts`），
@@ -7478,7 +7478,7 @@ function toggleWordEnabled(w: RiskWord) {
           </div>
 
           <!--
-            结论正文那一格（「不升级」→ 反馈意见、「升级」→ 升级说明），两者写的是同一个格子。
+            结论正文那一格（「不升级」→ 处理意见、「升级」→ 升级说明），两者写的是同一个格子。
             ⚠️ 选「升级」且**要派生新单**时它并进下面那一段、改由段内的「升级说明」渲染；
             已派生过的那一路段不出，正文就回到这里（见 `showEntryTagAssessAdvice`）。
           -->
