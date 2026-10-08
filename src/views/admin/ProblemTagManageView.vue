@@ -2,6 +2,8 @@
 import { ref, reactive, computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
+import dayjs from 'dayjs';
+import { useUserStore } from '@/stores/user';
 import {
   PlusOutlined, ReloadOutlined, SearchOutlined,
   ImportOutlined, DownloadOutlined, InboxOutlined,
@@ -16,6 +18,9 @@ import {
 } from '@/mock/productTree';
 
 const router = useRouter();
+const userStore = useUserStore();
+/** 删除入口（行删除 / 批量删除）仅管理员展示：三类管理员 scope 均算 */
+const isAdmin = computed(() => !!userStore.role.adminScope);
 
 const KIND_LABEL: Record<ProductTreeNode['kind'], string> = {
   BGBU: 'BGBU', 业务线: '业务线', 产品线: '产品线', 产品分类: '分类', 产品: '产品',
@@ -33,9 +38,19 @@ interface ProblemTagRow {
   tagL1: string;
   tagL2: string;
   tagL3: string;
+  /** 处理组；空串＝未配置（走流程兜底组），列表显示「—」 */
   team: string;
   aftersale: '是' | '否';
+  /** 是否小结专用：是＝只供容联云小结使用，新建工单不可选 */
+  summaryOnly: '是' | '否';
   status: '启用' | '停用';
+  /** 问题分类一 / 二 / 三级 ID（老系统数字串；同产品同路径前缀共用同一 ID） */
+  tagL1Id: string;
+  tagL2Id: string;
+  tagL3Id: string;
+  /** 维护人 / 维护时间：任何写操作后刷新为操作人与操作时刻 */
+  maintainer: string;
+  maintainedAt: string;
 }
 
 const treeSearch = ref('');
@@ -190,38 +205,107 @@ watch(
   },
 );
 
-const allRows = ref<ProblemTagRow[]>([
-  { key: '1', productKey: 'p-h1', productName: '讯飞录音笔H1', bizType: '消费者BG', prodCat: '录音笔产品线', tagL1: '云空间', tagL2: '操作指导', tagL3: '如何领取/升级云空间', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '2', productKey: 'p-h1', productName: '讯飞录音笔H1', bizType: '消费者BG', prodCat: '录音笔产品线', tagL1: '云空间', tagL2: '功能介绍', tagL3: '云空间存储大小咨询', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '3', productKey: 'p-h1', productName: '讯飞录音笔H1', bizType: '消费者BG', prodCat: '录音笔产品线', tagL1: '我的文件', tagL2: '功能介绍', tagL3: '文件名称是否支持添加符号', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '4', productKey: 'p-h1', productName: '讯飞录音笔H1', bizType: '消费者BG', prodCat: '录音笔产品线', tagL1: '我的文件', tagL2: '软件问题', tagL3: '邮件分享失败', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '5', productKey: 'p-h1', productName: '讯飞录音笔H1', bizType: '消费者BG', prodCat: '录音笔产品线', tagL1: '相机', tagL2: '功能介绍', tagL3: '视频是否支持实时字幕', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '6', productKey: 'p-h1', productName: '讯飞录音笔H1', bizType: '消费者BG', prodCat: '录音笔产品线', tagL1: '网络', tagL2: '功能介绍', tagL3: '是否支持修改IP地址', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '7', productKey: 'p-h1', productName: '讯飞录音笔H1', bizType: '消费者BG', prodCat: '录音笔产品线', tagL1: '账号/密码', tagL2: '操作指导', tagL3: '如何退出/切换账号', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '8', productKey: 'p-h2', productName: '讯飞录音笔H2', bizType: '消费者BG', prodCat: '录音笔产品线', tagL1: '云空间', tagL2: '操作指导', tagL3: '如何上传/查看/编辑/下载/删除文件', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '9', productKey: 'p-h2', productName: '讯飞录音笔H2', bizType: '消费者BG', prodCat: '录音笔产品线', tagL1: '云空间', tagL2: '软件问题', tagL3: '无法领取云空间', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '10', productKey: 'p-h2', productName: '讯飞录音笔H2', bizType: '消费者BG', prodCat: '录音笔产品线', tagL1: '我的文件', tagL2: '功能介绍', tagL3: '文件已上传云空间是否支持直接转写', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '11', productKey: 'p-h2', productName: '讯飞录音笔H2', bizType: '消费者BG', prodCat: '录音笔产品线', tagL1: '我的文件', tagL2: '软件问题', tagL3: '文件日期/时间显示异常', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '12', productKey: 'p-h2', productName: '讯飞录音笔H2', bizType: '消费者BG', prodCat: '录音笔产品线', tagL1: '云空间', tagL2: '功能介绍', tagL3: '导出格式咨询', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '13', productKey: 'p-h2', productName: '讯飞录音笔H2', bizType: '消费者BG', prodCat: '录音笔产品线', tagL1: '整机/设备', tagL2: '功能介绍', tagL3: '录音笔IP地址咨询', team: '工单-处理', aftersale: '否', status: '停用' },
-  { key: '14', productKey: 'p1', productName: '三防翻译机', bizType: '消费者BG', prodCat: '翻译机产品线', tagL1: '语音翻译', tagL2: '操作指导', tagL3: '如何切换男声女声', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '15', productKey: 'p1', productName: '三防翻译机', bizType: '消费者BG', prodCat: '翻译机产品线', tagL1: '语音翻译', tagL2: '软件问题', tagL3: '翻译结果没有语音播报', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '16', productKey: 'p1', productName: '三防翻译机', bizType: '消费者BG', prodCat: '翻译机产品线', tagL1: '会议/会话翻译', tagL2: '软件问题', tagL3: '翻译延迟/卡顿/反应慢', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '17', productKey: 'p1', productName: '三防翻译机', bizType: '消费者BG', prodCat: '翻译机产品线', tagL1: '屏幕', tagL2: '功能异常', tagL3: '显示内容异常(图标/乱码/字体/方向等)', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '18', productKey: 'p1', productName: '三防翻译机', bizType: '消费者BG', prodCat: '翻译机产品线', tagL1: '记录导出', tagL2: '操作指导', tagL3: '如何导出翻译记录', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '19', productKey: 'p1', productName: '三防翻译机', bizType: '消费者BG', prodCat: '翻译机产品线', tagL1: '售后', tagL2: '服务申请', tagL3: '维修请求', team: '工单-售后', aftersale: '是', status: '启用' },
-  { key: '20', productKey: 'p1', productName: '三防翻译机', bizType: '消费者BG', prodCat: '翻译机产品线', tagL1: '售后', tagL2: '政策咨询', tagL3: '退换货政策', team: '工单-售后', aftersale: '是', status: '启用' },
-  { key: '21', productKey: 'p2', productName: '汉维翻译机', bizType: '消费者BG', prodCat: '翻译机产品线', tagL1: '会议/会话翻译', tagL2: '软件问题', tagL3: '翻译失败(服务准备中,请稍等)', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '22', productKey: 'p2', productName: '汉维翻译机', bizType: '消费者BG', prodCat: '翻译机产品线', tagL1: '会议/会话翻译', tagL2: '软件问题', tagL3: '无法切换翻译识别模式', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '23', productKey: 'p2', productName: '汉维翻译机', bizType: '消费者BG', prodCat: '翻译机产品线', tagL1: '语音翻译', tagL2: '软件问题', tagL3: '翻译结果没有语音播报', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '24', productKey: 'p2', productName: '汉维翻译机', bizType: '消费者BG', prodCat: '翻译机产品线', tagL1: '蓝牙', tagL2: '操作指导', tagL3: '如何断开连接', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '25', productKey: 'p2', productName: '汉维翻译机', bizType: '消费者BG', prodCat: '翻译机产品线', tagL1: '整机/设备', tagL2: '信息咨询', tagL3: '设备丢失', team: '工单-处理', aftersale: '否', status: '启用' },
-  { key: '26', productKey: 'p2', productName: '汉维翻译机', bizType: '消费者BG', prodCat: '翻译机产品线', tagL1: '售后', tagL2: '问题反馈', tagL3: '设备维修后故障仍存在', team: '工单-售后', aftersale: '是', status: '停用' },
-  { key: '27', productKey: 'p3', productName: '讯飞智能质检系统V1.0', bizType: '金融科技事业部', prodCat: '智能客服产品线', tagL1: '账号/密码', tagL2: '操作指导', tagL3: '如何退出/切换账号', team: '工单-二线', aftersale: '否', status: '启用' },
-  { key: '28', productKey: 'p3', productName: '讯飞智能质检系统V1.0', bizType: '金融科技事业部', prodCat: '智能客服产品线', tagL1: '网络', tagL2: '功能介绍', tagL3: '是否支持修改IP地址', team: '工单-二线', aftersale: '否', status: '启用' },
-  { key: '29', productKey: 'p3', productName: '讯飞智能质检系统V1.0', bizType: '金融科技事业部', prodCat: '智能客服产品线', tagL1: '设置/系统', tagL2: '软件问题', tagL3: '加载失败/打不开/闪退', team: '工单-二线', aftersale: '否', status: '启用' },
-]);
+/**
+ * 种子行：产品 key · 一/二/三级 · 处理组（空＝未配置）· 是否售后 · 是否小结专用 · 状态
+ * · 一/二/三级 ID · 维护人 · 维护时间
+ */
+type SeedTuple = [
+  string, string, string, string, string, '是' | '否', '是' | '否', '启用' | '停用',
+  string, string, string, string, string,
+];
+const SEED_ROWS: SeedTuple[] = [
+  ['p-h1', '云空间', '操作指导', '如何领取/升级云空间', '工单-处理', '否', '否', '启用', '110201', '2104011', '31060101', '孙系统', '2026-09-08 10:12'],
+  ['p-h1', '云空间', '功能介绍', '云空间存储大小咨询', '工单-处理', '否', '是', '启用', '110201', '2104012', '31060102', '周运营', '2026-09-26 15:40'],
+  ['p-h1', '我的文件', '功能介绍', '文件名称是否支持添加符号', '工单-处理', '否', '否', '启用', '110202', '2104013', '31060103', '孙系统', '2026-09-08 10:12'],
+  ['p-h1', '我的文件', '软件问题', '邮件分享失败', '工单-处理', '否', '否', '启用', '110202', '2104014', '31060104', '孙系统', '2026-09-08 10:12'],
+  ['p-h1', '相机', '功能介绍', '视频是否支持实时字幕', '工单-处理', '否', '否', '启用', '110203', '2104015', '31060105', '赵管理', '2026-09-15 09:31'],
+  ['p-h1', '网络', '功能介绍', '是否支持修改IP地址', '工单-处理', '否', '否', '启用', '110204', '2104016', '31060106', '孙系统', '2026-09-08 10:12'],
+  ['p-h1', '账号/密码', '操作指导', '如何退出/切换账号', '工单-处理', '否', '否', '启用', '110205', '2104017', '31060107', '周运营', '2026-10-06 11:05'],
+  ['p-h2', '云空间', '操作指导', '如何上传/查看/编辑/下载/删除文件', '工单-处理', '否', '否', '启用', '110211', '2104021', '31060201', '孙系统', '2026-09-09 14:22'],
+  ['p-h2', '云空间', '软件问题', '无法领取云空间', '工单-处理', '否', '否', '启用', '110211', '2104022', '31060202', '孙系统', '2026-09-09 14:22'],
+  ['p-h2', '我的文件', '功能介绍', '文件已上传云空间是否支持直接转写', '工单-处理', '否', '否', '启用', '110212', '2104024', '31060203', '赵管理', '2026-09-18 16:48'],
+  ['p-h2', '我的文件', '软件问题', '文件日期/时间显示异常', '工单-处理', '否', '否', '启用', '110212', '2104025', '31060204', '孙系统', '2026-09-09 14:22'],
+  ['p-h2', '云空间', '功能介绍', '导出格式咨询', '', '否', '否', '启用', '110211', '2104023', '31060205', '周运营', '2026-09-29 10:03'],
+  ['p-h2', '整机/设备', '功能介绍', '录音笔IP地址咨询', '工单-处理', '否', '是', '停用', '110213', '2104026', '31060206', '周运营', '2026-10-07 17:26'],
+  ['p1', '语音翻译', '操作指导', '如何切换男声女声', '工单-处理', '否', '否', '启用', '110221', '2104031', '31060301', '孙系统', '2026-09-10 09:15'],
+  ['p1', '语音翻译', '软件问题', '翻译结果没有语音播报', '工单-处理', '否', '否', '启用', '110221', '2104032', '31060302', '孙系统', '2026-09-10 09:15'],
+  ['p1', '会议/会话翻译', '软件问题', '翻译延迟/卡顿/反应慢', '工单-处理', '否', '否', '启用', '110222', '2104033', '31060303', '赵管理', '2026-09-22 13:37'],
+  ['p1', '屏幕', '功能异常', '显示内容异常(图标/乱码/字体/方向等)', '工单-处理', '否', '否', '启用', '110223', '2104034', '31060304', '孙系统', '2026-09-10 09:15'],
+  ['p1', '记录导出', '操作指导', '如何导出翻译记录', '工单-处理', '否', '否', '启用', '110224', '2104035', '31060305', '孙系统', '2026-09-10 09:15'],
+  ['p1', '售后', '服务申请', '维修请求', '工单-售后', '是', '否', '启用', '110225', '2104036', '31060306', '周运营', '2026-09-30 15:58'],
+  ['p1', '售后', '政策咨询', '退换货政策', '工单-售后', '是', '否', '启用', '110225', '2104037', '31060307', '周运营', '2026-09-30 15:58'],
+  ['p2', '会议/会话翻译', '软件问题', '翻译失败(服务准备中,请稍等)', '工单-处理', '否', '否', '启用', '110231', '2104041', '31060401', '孙系统', '2026-09-11 11:20'],
+  ['p2', '会议/会话翻译', '软件问题', '无法切换翻译识别模式', '工单-处理', '否', '否', '启用', '110231', '2104041', '31060402', '孙系统', '2026-09-11 11:20'],
+  ['p2', '语音翻译', '软件问题', '翻译结果没有语音播报', '工单-处理', '否', '否', '启用', '110232', '2104042', '31060403', '赵管理', '2026-09-24 10:44'],
+  ['p2', '蓝牙', '操作指导', '如何断开连接', '工单-处理', '否', '否', '启用', '110233', '2104043', '31060404', '孙系统', '2026-09-11 11:20'],
+  ['p2', '整机/设备', '信息咨询', '设备丢失', '', '否', '是', '启用', '110234', '2104044', '31060405', '周运营', '2026-10-02 09:52'],
+  ['p2', '售后', '问题反馈', '设备维修后故障仍存在', '工单-售后', '是', '否', '停用', '110235', '2104045', '31060406', '赵管理', '2026-10-05 14:09'],
+  ['p3', '账号/密码', '操作指导', '如何退出/切换账号', '工单-二线', '否', '否', '启用', '110241', '2104051', '31060501', '孙系统', '2026-09-12 16:30'],
+  ['p3', '网络', '功能介绍', '是否支持修改IP地址', '工单-二线', '否', '否', '启用', '110242', '2104052', '31060502', '孙系统', '2026-09-12 16:30'],
+  ['p3', '设置/系统', '软件问题', '加载失败/打不开/闪退', '工单-二线', '否', '否', '启用', '110243', '2104053', '31060503', '赵管理', '2026-09-25 11:18'],
+];
+
+const allRows = ref<ProblemTagRow[]>(SEED_ROWS.map((t, i) => {
+  const [productKey, tagL1, tagL2, tagL3, team, aftersale, summaryOnly, status, tagL1Id, tagL2Id, tagL3Id, maintainer, maintainedAt] = t;
+  const meta = productMetaByKey(productKey);
+  return {
+    key: String(i + 1),
+    productKey,
+    productName: productTitleByKey(productKey),
+    bizType: meta.bizType,
+    prodCat: meta.prodCat,
+    tagL1, tagL2, tagL3, team, aftersale, summaryOnly, status,
+    tagL1Id, tagL2Id, tagL3Id, maintainer, maintainedAt,
+  };
+}));
 let rowSeq = allRows.value.length + 1;
+
+/** 写操作留痕：操作人取当前登录用户，时刻精确到分 */
+function stampNow() {
+  return { maintainer: userStore.name, maintainedAt: dayjs().format('YYYY-MM-DD HH:mm') };
+}
+
+type TagLevel = 1 | 2 | 3;
+const ID_FIELD: Record<TagLevel, 'tagL1Id' | 'tagL2Id' | 'tagL3Id'> = { 1: 'tagL1Id', 2: 'tagL2Id', 3: 'tagL3Id' };
+
+/** 分类节点键：产品 + 路径前缀（一级 ID 归「产品+一级」，二级归「产品+一级+二级」，三级归整条路径） */
+function nodeKeyOf(productKey: string, path: string[], level: TagLevel) {
+  return [productKey, ...path.slice(0, level)].join('\u0001');
+}
+
+/** 某层级下 ID → 节点键（rows 外再叠加 extra，用于导入时文件内已登记的 ID） */
+function idOwners(level: TagLevel, rows: ProblemTagRow[]) {
+  const map = new Map<string, string>();
+  for (const r of rows) {
+    const id = r[ID_FIELD[level]];
+    if (id) map.set(id, nodeKeyOf(r.productKey, [r.tagL1, r.tagL2, r.tagL3], level));
+  }
+  return map;
+}
+
+/**
+ * 给一条路径定一 / 二 / 三级 ID：已存在的节点沿用原 ID；新节点用传入的老系统 ID，未传则取该层最大值 + 1。
+ * exceptKey：编辑时排除自身那一行。
+ */
+function resolveTagIds(
+  productKey: string, path: [string, string, string],
+  provided: Partial<Record<TagLevel, string>> = {}, exceptKey?: string,
+) {
+  const rows = allRows.value.filter((r) => r.key !== exceptKey);
+  const out = {} as Record<'tagL1Id' | 'tagL2Id' | 'tagL3Id', string>;
+  for (const level of [1, 2, 3] as TagLevel[]) {
+    const field = ID_FIELD[level];
+    const nk = nodeKeyOf(productKey, path, level);
+    const hit = level < 3
+      ? rows.find((r) => nodeKeyOf(r.productKey, [r.tagL1, r.tagL2, r.tagL3], level) === nk && r[field])
+      : undefined;
+    if (hit) { out[field] = hit[field]; continue; }
+    if (provided[level]) { out[field] = provided[level]!; continue; }
+    const max = rows.reduce((m, r) => Math.max(m, Number(r[field]) || 0), 0);
+    out[field] = String(max + 1);
+  }
+  return out;
+}
 
 /** 业务类型 + 产品分类 + 产品名称均已选时，才展示一级/二级分类筛选 */
 const showTagLevelFilters = computed(() =>
@@ -439,6 +523,7 @@ const form = reactive({
   tagL3: '',
   team: undefined as string | undefined,
   aftersale: '否' as '是' | '否',
+  summaryOnly: '否' as '是' | '否',
   status: '启用' as '启用' | '停用',
 });
 
@@ -546,10 +631,17 @@ function saveForm() {
     bizType: meta.bizType,
     prodCat: meta.prodCat,
     tagL1, tagL2, tagL3,
-    team: form.team,
+    team: form.team ?? '',
     aftersale: form.aftersale,
+    summaryOnly: form.summaryOnly,
     status: form.status,
+    ...resolveTagIds(form.productKey, [tagL1, tagL2, tagL3], {}, editingKey.value ?? undefined),
+    ...stampNow(),
   };
+  if (editingKey.value) {
+    const prev = allRows.value.find((r) => r.key === editingKey.value);
+    if (prev) payload.tagL3Id = prev.tagL3Id;
+  }
   if (editingKey.value) {
     const i = allRows.value.findIndex((r) => r.key === editingKey.value);
     if (i >= 0) allRows.value[i] = payload;
@@ -747,6 +839,7 @@ function onImportFile(e: Event) {
         tagL1, tagL2, tagL3, team,
         aftersale: aftersale as '是' | '否',
         status: (status === '停用' ? '停用' : '启用') as '启用' | '停用',
+        summaryOnly: '否', tagL1Id: '', tagL2Id: '', tagL3Id: '', ...stampNow(),
       });
     }
 
