@@ -8,7 +8,7 @@ import type { EscalateComplaintFieldsCtl } from '@/composables/useEscalateCompla
  *
  * 「升级说明」此前是各宿主弹窗各摆一个的独立字段，现已并进本段；它的值仍存在
  * `useEscalateComplaintFields` 的 `fields.advice` 上（宿主选「不升级」时同一个格子
- * 改叫「反馈意见」、由宿主自己那一格渲染），各处不各存一份。
+ * 改叫「处理意见」、由宿主自己那一格渲染），各处不各存一份。
  *
  * 🔴 **三处评估弹窗共用这一个组件**：风险监控页评估处置工作面
  * （`views/ops-monitor/RiskMonitorView.vue`）、风险报备池（`components/RiskReportPoolPanel.vue`）、

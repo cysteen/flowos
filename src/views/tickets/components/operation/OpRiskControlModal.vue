@@ -489,7 +489,7 @@ function onOk() {
           </div>
           <!--
             结论正文那一格。选「升级」（且会派生新投诉单）时它并进下面那一段、改由段内的
-            「升级说明」渲染，故本格只在**段不出**时出（写「反馈意见」，或投诉单那一支的
+            「升级说明」渲染，故本格只在**段不出**时出（写「处理意见」，或投诉单那一支的
             「升级说明」）—— 两处渲染的是同一个格子（assessAdvice 代理 escalateFields.fields.advice）。
           -->
           <div v-if="!showEscalateFields" class="op-field">
