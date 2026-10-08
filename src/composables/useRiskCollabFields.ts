@@ -183,8 +183,8 @@ export function useRiskCollabFields() {
     const tail = firstTime ? '，本单风险条目已转「已结论」' : '';
     message.success(
       picked.length
-        ? `已提交协同处理，建议事项：${collabAdviceText(picked, fields.otherAdvice)}${tail}`
-        : `已提交协同处理${tail}`,
+        ? `已提交风险处理建议，建议事项：${collabAdviceText(picked, fields.otherAdvice)}${tail}`
+        : `已提交风险处理建议${tail}`,
     );
     return true;
   }
