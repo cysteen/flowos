@@ -1,9 +1,11 @@
 import { ref, watch } from 'vue';
 import { defineStore } from 'pinia';
 import {
+  agoStamp,
   newestStampOf,
   readDailyRiskCache,
   todayPrefix,
+  todayStamp,
   writeRiskCache,
 } from '@/stores/riskShared';
 
@@ -66,28 +68,83 @@ export interface RiskCollabRecord {
  * id 对得上、不报错、界面照常显示建议标记与协同次数，只有人去核那条记录的时刻
  * 才会发现它是昨天的。**这种静默的错比崩溃难查得多**：屏幕上没有任何一处提示不对劲。
  * 12 小时保质期拦不住它（昨晚 22 点协同、今早 9 点再开只过了 11 小时），故要这一道。
+ *
+ * v2 → v3：本 store **从"没有种子"改成有种子**（见 `SEED`）。必须升号：v2 那份缓存是
+ * 空表或只含当次会话手动落的几条，读进来会把种子整批顶掉 —— 保质期内打开过本页的人
+ * 看到的仍是「尚无风险处理建议」，而文件里明明已经预置好了。
  */
 const LS_KEY = 'flowos-risk-collab';
-const LS_VERSION = 2;
+const LS_VERSION = 3;
 
 /**
  * 缓存"新不新"的判据：取协同时刻里最新的那一个。
  *
  * 【与另两条线的差别】A / B 线要挑"保证落在今天的那一类字段"（`todayStamp` 生成的打标 /
  * 结论时刻），因为它们的进队时刻里有几条是**故意留在昨天**的超时样本。
- * 本 store **没有种子**、每条记录都是真人当场落下的，`at` 一律是写入那一刻，
- * 故直接取 `at` 即可，不必绕。空表返回空串 —— 判不过就丢，而丢一份空缓存是无操作。
+ * 本 store 的记录要么是真人当场落下的（`at` ＝ 写入那一刻），要么来自 `SEED`
+ * （其中最新的那几条一律走 `todayStamp`，保证落在今天），故直接取 `at` 即可，不必绕。
+ * 空表返回空串 —— 判不过就丢，而丢一份空缓存是无操作。
  */
 function newestCollabStamp(saved: { records: RiskCollabRecord[] }): string {
   return newestStampOf((saved.records ?? []).map((r) => r.at));
 }
 
+/**
+ * 预置的协同记录。
+ *
+ * ⚠️ **本 store 原先明确"没有种子"**，理由是"预置一条等于替某个客诉专员认领了一次
+ * 他没做过的判断"。这条理由在 A 线种子落地之后**已经不成立**：`stores/riskQueue.ts` 的
+ * `rq-s14` / `rq-s20` 两条条目**自带 `coordination`**（吴投诉的协同结论，连意见原文一起写死），
+ * 名义上的"没替人认领"早就被那两条破掉了。真正的后果是两边不一致：
+ * 条目上写着已协同、工单页「风险处理建议」块却一直显示「尚无风险处理建议」——
+ * 协同记录是按**本 store**取的（`recordsOf`），而条目的 `coordination` 只留最近一次、不供那一块读。
+ * 故本常量补的是**那两条条目已经声明过的同一批记录**，不是凭空多认领一次判断。
+ *
+ * 【三条硬约束】
+ *   ① **每张单最近一条必须与条目的 `coordination` 逐字一致**（意见 / 建议事项 / 人 / 时刻）：
+ *      条目那一格存的就是"最近一次"，两处对不上就是同一件事两种说法；
+ *   ② 时刻与所挂条目用**同一个生成器**（今天那条走 `todayStamp`、昨天收口那条走 `agoStamp`），
+ *      且都晚于条目的 `at`；
+ *   ③ **只挂投诉单** —— 协同处理的类型集是「投」（基线 ※29），非投诉单那一路走报备与评估。
+ *
+ * 【为什么 rq-s14 那张单给两条】"累积不覆盖、同一张单可多次协同"这条规格
+ * （见 `marksOf` 的说明：建议事项取历次**并集**）只有在一张单上有两条以上时才看得见。
+ */
+const SEED: RiskCollabRecord[] = [
+  {
+    id: 'rc-seed-01',
+    ticketNo: 'IFLYTS-20260817-00001',
+    opinion: '先按平台投诉的答复时限倒排：今天内把换新承诺的工单记录调齐，证据不齐之前不要给客户任何新的时间点。',
+    advices: ['每日跟进'],
+    by: '吴投诉',
+    byRole: '客诉专员',
+    at: todayStamp(230),
+  },
+  {
+    // 与 `riskQueue` 的 `rq-s14.coordination` 逐字同源（最近一次）
+    id: 'rc-seed-02',
+    ticketNo: 'IFLYTS-20260817-00001',
+    opinion: '原承诺的换新时限有工单记录可查，责任在我方。客户已在公开平台发帖，须在平台答复时限内给出书面方案，并同步公关口径。',
+    advices: ['转交专员', '每日跟进'],
+    by: '吴投诉',
+    byRole: '客诉专员',
+    at: todayStamp(150),
+  },
+  {
+    // 与 `riskQueue` 的 `rq-s20.coordination` 逐字同源（昨天收的口）
+    id: 'rc-seed-03',
+    ticketNo: 'IFLYTS-20260716-00002',
+    opinion: '退款单已在财务侧排队，卡的是批次而不是审核。给客户一个确切到账日并当天回访确认，比继续解释流程有用。',
+    advices: ['每日跟进'],
+    by: '吴投诉',
+    byRole: '客诉专员',
+    at: agoStamp(1440 + 240),
+  },
+];
+
 export const useRiskCollabStore = defineStore('riskCollab', () => {
-  /**
-   * 全中心的协同记录。**没有种子**：协同是"有人做过"才存在的痕迹，
-   * 预置一条等于替某个客诉专员认领了一次他没做过的判断。
-   */
-  const records = ref<RiskCollabRecord[]>([]);
+  /** 全中心的协同记录。预置那几条见 `SEED`；读到缓存时整份由缓存覆盖 */
+  const records = ref<RiskCollabRecord[]>([...SEED]);
 
   const cached = readDailyRiskCache<{ records: RiskCollabRecord[] }>(
     LS_KEY,
@@ -95,8 +152,8 @@ export const useRiskCollabStore = defineStore('riskCollab', () => {
     newestCollabStamp,
   );
   /**
-   * 这批记录**属于哪一天**。字段名与另两条线保持一致（那边是种子生成于哪一天，
-   * 这边没有种子、指的是本次会话这批记录落在哪一天），判据因此可以完全共用。
+   * 这批记录**属于哪一天** ＝ 种子生成于哪一天（没有缓存时就是此刻这一天），
+   * 与另两条线同一个含义、同一个字段名，判据因此可以完全共用。
    * 🔴 **写回时原样带下去、不取写入那一刻**：一场跨零点的演示会在 00:03 触发一次写入，
    * 那时若按写入时刻记，昨天那批记录就被盖上今天的戳，隔夜判据从此瞎掉
    * —— 与 A / B 两条线同一处坑，三边写法必须一致。

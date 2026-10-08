@@ -1017,6 +1017,91 @@ const SEED: RiskQueueEntry[] = [
     },
   }),
 ];
+
+/**
+ * 预置的**标记记录**（改判留痕），key ＝ 条目 id。
+ *
+ * 【为什么必须有】标记记录是"累积不覆盖"这条规格唯一看得见的地方：工单页「风险识别」块
+ * 那一行 `标记记录 N 次` **只在 N > 1 时才渲染**（`OpRiskMonitorTab.vue`），
+ * 而条目种子自带的结论只折算成**一条**（见 `tagSeedEntryOf`）。于是在本常量之前，
+ * 全库没有任何一张单能让这一行出现 —— 改判留痕在原型上一次都演示不出来，
+ * 打开工单只看到一个孤零零的现行等级，读不出"从哪一级改到哪一级、谁改的、为什么改"。
+ *
+ * 🔴 **这里只写"改判之前"的那几条，现行结论不在其中**：灌进去的时候由
+ * `tagSeedEntryOf(entry)` 把条目自己的 `tag` 折成最后一条补在末尾（见 setup 末尾那段）。
+ * **不要在这里再抄一遍现行结论** —— `todayStamp` 是按"今天已过去多少分钟"压缩的，
+ * 同一个分钟数在两处分别求值会在跨分钟那一刻差出一分钟，于是现行结论行写着 08:11、
+ * 记录末条写着 08:12，同一件事两个时刻（已踩过一次）。
+ *
+ * 【两条硬约束】
+ *   ① **时刻正序、且都晚于条目的 `at`**（进监控之后才谈得上标记）、早于 `tag.at`（现行结论最后），
+ *      并与所挂条目用**同一个生成器**（今天那几条走 `todayStamp`、昨天收口那条走 `agoStamp`），
+ *      免得同一张单上时刻一半在今天一半在别的日子；
+ *   ② 改判那几条**必须带备注** —— 「修正原因」那一格 2026-09-29 已并进风险备注，
+ *      不填就等于这次改判没有理由（规格上改判时备注必填）。
+ *
+ * 【挑这三条条目的理由】三类读者各一条，缺一类就有一种形态演不出来：
+ *   · `rq-s16` —— **非投诉单**（咨询），处理人在工单页只读回看的典型，且演「升了又降回来」；
+ *   · `rq-s14` —— **投诉单**，演一路升级到高危；
+ *   · `rq-s20` —— **昨天收口**的那一条，演隔日回看（时刻走 `agoStamp`）。
+ */
+const SEED_TAG_HISTORY: { entryId: string; records: RiskTagEntry[] }[] = [
+  {
+    // IFLYZX-20260817-00005（咨询 · 非投诉）：低 → 高 →（现行）中，演「升了又降回来」
+    entryId: 'rq-s16',
+    records: [
+      {
+        level: '低',
+        note: '离线翻译漏译，客户可切在线翻译继续用，先按低危纳入。',
+        ...SEED_TAGGERS.qin,
+        at: todayStamp(328),
+      },
+      {
+        level: '高',
+        note: '改判高危：客户追问三次未得排期，明确说要向渠道经理反映，扩散面扩大。',
+        ...SEED_TAGGERS.qin,
+        at: todayStamp(324),
+      },
+    ],
+  },
+  {
+    // IFLYTS-20260817-00001（投诉）：低 → 中 →（现行）高，演一路升级
+    entryId: 'rq-s14',
+    records: [
+      {
+        level: '低',
+        note: '售后承诺未兑现，先按一般履约问题受理。',
+        ...SEED_TAGGERS.wu,
+        at: todayStamp(298),
+      },
+      {
+        level: '中',
+        note: '改判中危：客户称已在黑猫平台发起投诉，待核实原承诺记录。',
+        ...SEED_TAGGERS.wu,
+        at: todayStamp(294),
+      },
+    ],
+  },
+  {
+    // IFLYTS-20260716-00002（投诉 · 昨天收口）：高 → 中 →（现行）低，演**降级**那一路
+    entryId: 'rq-s20',
+    records: [
+      {
+        level: '高',
+        note: '退款承诺到账时间已过，客户要求确切时点，先按高危盯。',
+        ...SEED_TAGGERS.wu,
+        at: agoStamp(1440 + 315),
+      },
+      {
+        level: '中',
+        note: '改判中危：财务确认退款单已在途，仅卡批次，不存在审核驳回。',
+        ...SEED_TAGGERS.wu,
+        at: agoStamp(1440 + 308),
+      },
+    ],
+  },
+];
+
 /**
  * 本线的缓存键与格式版本。
  *
@@ -1887,6 +1972,24 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
   // 没读到缓存 ＝ 从种子初始化，这一批的进监控时刻按 `seedAutoStamps` 分布；读到缓存时补建条目已在缓存里，
   // 这一遍只补缓存之后新满足判据的单，取当前时刻
   syncAutoEntriesWith(!usedCache);
+
+  /*
+   * 预置**标记记录**（改判留痕）。见 `SEED_TAG_HISTORY` 的说明。
+   * 🔴 **每次开屏都要灌一遍**：`stores/riskTags.ts` 是纯内存、不落缓存，刷新即空；
+   * 条目本身可能来自缓存，但 id 不变，故按 id 对得上。
+   * 🔴 **已有历史的条目一条都不动**：本次会话里真人改判过的留痕优先，种子不覆盖它。
+   * 🔴 **末条由条目自己的 `tag` 折出来**（`tagSeedEntryOf`），不在种子里另抄一份 ——
+   * 抄一份就会出现"现行结论与记录末条差一分钟"那种自相矛盾，理由见 `SEED_TAG_HISTORY`。
+   */
+  SEED_TAG_HISTORY.forEach(({ entryId, records }) => {
+    const entry = entries.value.find((e) => e.id === entryId);
+    if (!entry) return;
+    if (tags.historyOf(entryId).length) return;
+    const current = tagSeedEntryOf(entry);
+    tags.appendEntries(
+      [...records, ...(current ? [current] : [])].map((entry2) => ({ hitId: entryId, entry: entry2 })),
+    );
+  });
 
   return {
     entries,
