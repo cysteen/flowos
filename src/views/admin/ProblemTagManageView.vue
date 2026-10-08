@@ -143,8 +143,9 @@ function productDimOpts(dim: ProductDim) {
   return [...set].filter(Boolean).map((v) => ({ value: v, label: v }));
 }
 const toOpts = (items: string[]) => items.map((v) => ({ value: v, label: v }));
+/** 下拉输入搜索：按选项文字包含匹配，不区分大小写 */
 const filterByLabel = (input: string, option?: { label?: string }) =>
-  String(option?.label ?? '').includes(input);
+  String(option?.label ?? '').toLowerCase().includes(input.trim().toLowerCase());
 const filterByValue = (input: string, option?: { value?: string }) =>
   String(option?.value ?? '').includes(input);
 
@@ -354,9 +355,9 @@ const displayRows = computed(() => allRows.value.filter((r) => {
 
 const cols = [
   { title: '产品名称', dataIndex: 'productName', key: 'productName', width: 180 },
-  { title: '问题分类一级', dataIndex: 'tagL1', key: 'tagL1', width: 120 },
-  { title: '问题分类二级', dataIndex: 'tagL2', key: 'tagL2', width: 110 },
-  { title: '问题分类三级', dataIndex: 'tagL3', key: 'tagL3', width: 240 },
+  { title: '问题分类一级', dataIndex: 'tagL1', key: 'tagL1', width: 120, ellipsis: true },
+  { title: '问题分类二级', dataIndex: 'tagL2', key: 'tagL2', width: 110, ellipsis: true },
+  { title: '问题分类三级', dataIndex: 'tagL3', key: 'tagL3', width: 240, ellipsis: true },
   { title: '处理组', dataIndex: 'team', key: 'team', width: 110 },
   { title: '是否售后', dataIndex: 'aftersale', key: 'aftersale', width: 86 },
   { title: '是否小结专用', dataIndex: 'summaryOnly', key: 'summaryOnly', width: 110 },
@@ -997,7 +998,7 @@ function doImport(withUpdate: boolean) {
   <div class="problem-tag-manage">
     <AdminPageHeader
       title="问题分类"
-      subtitle="按产品维护三级问题分类，关联处理组与是否售后。"
+      subtitle="按产品维护三级问题分类，关联处理组、是否售后与是否小结专用"
     >
       <template #actions>
         <a-button @click="openImport"><template #icon><ImportOutlined /></template>导入</a-button>
@@ -1012,23 +1013,23 @@ function doImport(withUpdate: boolean) {
           <div class="toolbar-row">
             <div class="fi">
               <span class="fl">BGBU</span>
-              <a-select v-model:value="draftFilter.bgbu" class="tb-ctl sel-w-lg" size="small" allow-clear placeholder="全部" :options="productDimOpts('bgbu')" />
+              <a-select v-model:value="draftFilter.bgbu" class="tb-ctl sel-w-lg" size="small" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="productDimOpts('bgbu')" />
             </div>
             <div class="fi">
               <span class="fl">业务线</span>
-              <a-select v-model:value="draftFilter.bizLine" class="tb-ctl sel-w-lg" size="small" allow-clear placeholder="全部" :options="productDimOpts('bizLine')" />
+              <a-select v-model:value="draftFilter.bizLine" class="tb-ctl sel-w-lg" size="small" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="productDimOpts('bizLine')" />
             </div>
             <div class="fi">
               <span class="fl">产品线</span>
-              <a-select v-model:value="draftFilter.prodLine" class="tb-ctl sel-w-lg" size="small" allow-clear placeholder="全部" :options="productDimOpts('prodLine')" />
+              <a-select v-model:value="draftFilter.prodLine" class="tb-ctl sel-w-lg" size="small" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="productDimOpts('prodLine')" />
             </div>
             <div class="fi">
               <span class="fl">业务类型</span>
-              <a-select v-model:value="draftFilter.bizType" class="tb-ctl sel-w" size="small" allow-clear placeholder="全部" :options="productDimOpts('bizType')" />
+              <a-select v-model:value="draftFilter.bizType" class="tb-ctl sel-w" size="small" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="productDimOpts('bizType')" />
             </div>
             <div class="fi">
               <span class="fl">产品分类</span>
-              <a-select v-model:value="draftFilter.prodCat" class="tb-ctl sel-w" size="small" allow-clear placeholder="全部" :options="productDimOpts('prodCat')" />
+              <a-select v-model:value="draftFilter.prodCat" class="tb-ctl sel-w" size="small" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="productDimOpts('prodCat')" />
             </div>
             <div class="fi">
               <span class="fl">产品名称</span>
@@ -1045,19 +1046,19 @@ function doImport(withUpdate: boolean) {
             </div>
             <div class="fi">
               <span class="fl">处理组</span>
-              <a-select v-model:value="draftFilter.team" class="tb-ctl sel-w" size="small" allow-clear placeholder="全部" :options="toOpts(TEAMS)" />
+              <a-select v-model:value="draftFilter.team" class="tb-ctl sel-w" size="small" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="toOpts(TEAMS)" />
             </div>
             <div class="fi">
               <span class="fl">是否售后</span>
-              <a-select v-model:value="draftFilter.aftersale" class="tb-ctl sel-w-sm" size="small" allow-clear placeholder="全部" :options="toOpts(['是', '否'])" />
+              <a-select v-model:value="draftFilter.aftersale" class="tb-ctl sel-w-sm" size="small" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="toOpts(['是', '否'])" />
             </div>
             <div class="fi">
               <span class="fl">是否小结专用</span>
-              <a-select v-model:value="draftFilter.summaryOnly" class="tb-ctl sel-w-sm" size="small" allow-clear placeholder="全部" :options="toOpts(['是', '否'])" />
+              <a-select v-model:value="draftFilter.summaryOnly" class="tb-ctl sel-w-sm" size="small" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="toOpts(['是', '否'])" />
             </div>
             <div class="fi">
               <span class="fl">状态</span>
-              <a-select v-model:value="draftFilter.status" class="tb-ctl sel-w-sm" size="small" allow-clear placeholder="全部" :options="toOpts(['启用', '停用'])" />
+              <a-select v-model:value="draftFilter.status" class="tb-ctl sel-w-sm" size="small" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="toOpts(['启用', '停用'])" />
             </div>
           </div>
         </div>
@@ -1114,12 +1115,18 @@ function doImport(withUpdate: boolean) {
                 </div>
                 <template #overlay>
                   <a-menu class="batch-menu">
-                    <a-menu-item :disabled="!hasRowSelection" @click="onBatch('处理组')">处理组</a-menu-item>
-                    <a-menu-item :disabled="!hasRowSelection" @click="onBatch('启用')">启用</a-menu-item>
-                    <a-menu-item :disabled="!hasRowSelection" @click="onBatch('停用')">停用</a-menu-item>
+                    <a-menu-item v-for="act in ['处理组', '启用', '停用']" :key="act" :disabled="!hasRowSelection" @click="onBatch(act)">
+                      <a-tooltip :title="hasRowSelection ? undefined : TIP_NEED_CHECK" placement="left">
+                        <span class="menu-tip">{{ act }}</span>
+                      </a-tooltip>
+                    </a-menu-item>
                     <template v-if="isAdmin">
                       <a-menu-divider />
-                      <a-menu-item :disabled="!hasRowSelection" danger @click="onBatch('删除')">删除</a-menu-item>
+                      <a-menu-item key="删除" :disabled="!hasRowSelection" danger @click="onBatch('删除')">
+                        <a-tooltip :title="hasRowSelection ? undefined : TIP_NEED_CHECK" placement="left">
+                          <span class="menu-tip">删除</span>
+                        </a-tooltip>
+                      </a-menu-item>
                     </template>
                   </a-menu>
                 </template>
@@ -1132,8 +1139,16 @@ function doImport(withUpdate: boolean) {
                 </div>
                 <template #overlay>
                   <a-menu class="batch-menu">
-                    <a-menu-item :disabled="!checkedRows.length" @click="onExport('checked')">导出已勾选（{{ checkedRows.length }} 条）</a-menu-item>
-                    <a-menu-item :disabled="!displayRows.length" @click="onExport('filtered')">导出全部筛选结果（{{ displayRows.length }} 条）</a-menu-item>
+                    <a-menu-item key="checked" :disabled="!checkedRows.length" @click="onExport('checked')">
+                      <a-tooltip :title="checkedRows.length ? undefined : TIP_NEED_CHECK" placement="left">
+                        <span class="menu-tip">导出已勾选（{{ checkedRows.length }} 条）</span>
+                      </a-tooltip>
+                    </a-menu-item>
+                    <a-menu-item key="filtered" :disabled="!displayRows.length" @click="onExport('filtered')">
+                      <a-tooltip :title="displayRows.length ? undefined : TIP_EMPTY_RESULT" placement="left">
+                        <span class="menu-tip">导出全部筛选结果（{{ displayRows.length }} 条）</span>
+                      </a-tooltip>
+                    </a-menu-item>
                   </a-menu>
                 </template>
               </a-dropdown>
@@ -1155,7 +1170,7 @@ function doImport(withUpdate: boolean) {
             <span v-if="column.key === 'productName'" class="cell-link" @click="openEditRow(record as ProblemTagRow)">
               {{ (record as ProblemTagRow).productName }}
             </span>
-            <span v-else-if="column.key === 'tagL3'" class="tag-path" :title="tagPath(record as ProblemTagRow)">
+            <span v-else-if="column.key === 'tagL3'" class="tag-path" :title="(record as ProblemTagRow).tagL3">
               {{ (record as ProblemTagRow).tagL3 }}
             </span>
             <span v-else-if="column.key === 'team'" :class="{ 'cell-empty': !(record as ProblemTagRow).team }">
@@ -1177,9 +1192,6 @@ function doImport(withUpdate: boolean) {
               <a-button v-if="isAdmin" type="link" size="small" danger @click="delRow(record as ProblemTagRow)">删除</a-button>
             </div>
           </template>
-          <template #emptyText>
-            <div class="empty-hint">没有符合条件的问题分类，可调整筛选或点击「新增」</div>
-          </template>
         </a-table>
         </div>
       </div>
@@ -1190,7 +1202,7 @@ function doImport(withUpdate: boolean) {
       v-model:open="formOpen"
       :title="editingKey ? '修改问题分类' : '新增问题分类'"
       :width="520"
-      :ok-text="editingKey ? '确定' : '确定'"
+      ok-text="保存"
       cancel-text="取消"
       destroy-on-close
       @ok="saveForm"
@@ -1214,7 +1226,7 @@ function doImport(withUpdate: boolean) {
               tree-node-filter-prop="title"
               :dropdown-style="{ maxHeight: '360px', overflow: 'auto' }"
               :disabled="!!editingKey"
-              placeholder="搜索或逐级选择产品（可按事业部 / 业务线 / 产品线 / 分类 / 产品名 任意节点搜索）"
+              placeholder="搜索或逐级选择产品"
             >
               <template #notFoundContent>
                 <div class="prod-nf">
@@ -1232,15 +1244,10 @@ function doImport(withUpdate: boolean) {
                 <span v-if="i > 0" class="prod-path-sep">/</span>{{ seg }}
               </span>
             </div>
-            <div v-else-if="!editingKey" class="prod-hint">
-              找不到产品？请到
-              <a class="prod-hint-link" @click.prevent="goProductManage">产品管理</a>
-              新增后再回来选择
-            </div>
           </div>
         </a-form-item>
 
-        <a-form-item label="一级分类" required>
+        <a-form-item label="问题分类一级" required>
           <a-auto-complete
             v-model:value="form.tagL1"
             class="cat-input-full"
@@ -1249,7 +1256,7 @@ function doImport(withUpdate: boolean) {
             :filter-option="filterByValue"
           />
         </a-form-item>
-        <a-form-item label="二级分类" required>
+        <a-form-item label="问题分类二级" required>
           <a-auto-complete
             v-model:value="form.tagL2"
             class="cat-input-full"
@@ -1259,7 +1266,7 @@ function doImport(withUpdate: boolean) {
             :filter-option="filterByValue"
           />
         </a-form-item>
-        <a-form-item label="三级分类" required>
+        <a-form-item label="问题分类三级" required>
           <a-auto-complete
             v-model:value="form.tagL3"
             class="cat-input-full"
@@ -1271,7 +1278,7 @@ function doImport(withUpdate: boolean) {
         </a-form-item>
 
         <a-form-item label="处理组">
-          <a-select v-model:value="form.team" placeholder="请选择" show-search allow-clear :options="toOpts(TEAMS)" />
+          <a-select v-model:value="form.team" placeholder="请选择处理组" show-search allow-clear :filter-option="filterByLabel" :options="toOpts(TEAMS)" />
         </a-form-item>
         <a-form-item label="是否售后">
           <a-radio-group v-model:value="form.aftersale" button-style="solid">
@@ -1283,12 +1290,6 @@ function doImport(withUpdate: boolean) {
           <a-radio-group v-model:value="form.summaryOnly" button-style="solid">
             <a-radio-button value="是">是</a-radio-button>
             <a-radio-button value="否">否</a-radio-button>
-          </a-radio-group>
-        </a-form-item>
-        <a-form-item label="状态">
-          <a-radio-group v-model:value="form.status" button-style="solid">
-            <a-radio-button value="启用">启用</a-radio-button>
-            <a-radio-button value="停用">停用</a-radio-button>
           </a-radio-group>
         </a-form-item>
       </a-form>
@@ -1303,7 +1304,7 @@ function doImport(withUpdate: boolean) {
       :ok-button-props="{ disabled: !batchTeamValue }"
       @ok="confirmBatchTeam"
     >
-      <p class="batch-team-hint">将更新已选 {{ checkedRowKeys.length }} 条问题分类的处理组，三级路径与其它字段不变。</p>
+      <p class="batch-team-hint">将更新已选 {{ checkedRowKeys.length }} 条问题分类的处理组</p>
       <a-form layout="vertical">
         <a-form-item label="处理组" required>
           <a-select
