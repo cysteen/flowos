@@ -4925,8 +4925,19 @@ const poolTicketTypeOptionKeys = computed(() => {
   }
   return seen;
 });
+/*
+ * 🔴 **`tagLabel` ＝ 选中之后回显在控件里那枚标签上的字，不带计数**（2026-10-09，
+ * 业务原话「工单类型的长度压缩下」）：下拉里要带计数（那儿才是用来挑的地方，
+ * `投诉（7）`），而选完之后标签只需答"筛的是哪一类"（`投诉`）——
+ * 计数留在标签上白占 ~54px，整格因此被迫撑到 186。
+ * 模板侧靠 `option-label-prop="tagLabel"` 取它，见那条 `v-for` 里的多选分支。
+ */
 const poolTicketTypeFilterOptions = computed(
-  () => poolTicketTypeOptionKeys.value.map((k) => ({ value: k, label: `${k}（${ticketTypeCountInView(k)}）` })),
+  () => poolTicketTypeOptionKeys.value.map((k) => ({
+    value: k,
+    label: `${k}（${ticketTypeCountInView(k)}）`,
+    tagLabel: k,
+  })),
 );
 /**
  * 「结论」下拉。取值域恒为三个：升级 / 不升级 / 风险处理建议。
@@ -4996,6 +5007,8 @@ const judgedTypeFilterOptions = computed(() => {
   return seen.map((k) => ({
     value: k,
     label: `${k}（${judgedTypeBase.value.filter((e) => poolTicketTypeOf(e) === k).length}）`,
+    // 标签不带计数，同工作面那一格（见 `poolTicketTypeFilterOptions` 上方那段）
+    tagLabel: k,
   }));
 });
 
@@ -5025,10 +5038,12 @@ const judgedTypeFilterOptions = computed(() => {
  *     与待判那两格同一套量法（见那一条筛选条上那段注释里的实测值）。
  *   · 班组「硬件缺陷组（9）」99、两位数时约 106 ⇒ **147**；
  *   · 来源「实时监控（15）」93 ⇒ **130**；
- *   · **工单类型（多选）⇒ 186**：最长标签「投诉（15）」文字 66（两字 26 ＋ 全角括号 26
- *     ＋ 两位数 14）＋ 32 ＝ 98（实测「投诉（7）」正好 91，模型对得上），
- *     ＋ `+ N ...` 53 ＋ 尾隙 4 ＝ 155，＋ 30 ⇒ **185**，取 186。
- *     ⚠️ **166 那一版实测被切**（needInner 148 / haveInner 136），不要往回收。
+ *   · **工单类型（多选）⇒ 146**：选中标签取 `tagLabel`（**不带计数**，业务「工单类型的
+ *     长度压缩下」），最宽态 ＝ 「投诉」58 ＋ `+ N ...` 53 ＋ 尾隙 4 ＝ 115，＋ 30 ⇒ **145**，取 146。
+ *     未选时显示 placeholder「全部（14）」67，也在 115 之内。
+ *     **四处「工单类型」至此同宽 146**（待判那两格本来就是这个数）。
+ *     ⚠️ 量宽史：117（单选二值）→ 186（多选、标签带计数，166 那一版实测被切
+ *     needInner 148 / haveInner 136）→ **146**（标签去掉计数，省 40px）。**不要再往回收**。
  *   · 风险等级「高危（15）」67 ⇒ **104**；
  *   · 结论「风险处理建议（2）」112 ⇒ **149**。
  * ⚠️ **只能看画面、不能信 `scrollWidth === clientWidth`**：实测那两个值相等时画面上照样有
@@ -5062,7 +5077,11 @@ interface AttrFilterCell {
   label: string;
   /** 量出来的控件宽（px），见上面那张表 */
   width: number;
-  options: { value: string; label: string }[];
+  /**
+   * `label` 是下拉里那一行的字（带计数）；`tagLabel` 是选中后回显在控件里那枚标签上的字
+   * （**不带计数**，多选格专用，模板侧 `option-label-prop="tagLabel"` 取它）。
+   */
+  options: { value: string; label: string; tagLabel?: string }[];
   /**
    * 多选那一格（当前只有「工单类型」）：`values` / `setMulti` / `placeholder` 三项同时给；
    * 单选那几格给 `value` / `set`，行为与形态一个字没变。
@@ -5107,7 +5126,7 @@ const attrFilterCells = computed<AttrFilterCell[]>(() => {
       {
         key: 'type',
         label: '工单类型',
-        width: 186,
+        width: 146,
         multiple: true,
         options: poolTicketTypeFilterOptions.value,
         values: poolTicketTypeFilter.value,
@@ -5148,7 +5167,7 @@ const attrFilterCells = computed<AttrFilterCell[]>(() => {
     {
       key: 'type',
       label: '工单类型',
-      width: 186,
+      width: 146,
       multiple: true,
       options: judgedTypeFilterOptions.value,
       values: judgedTypeFilter.value,
@@ -5881,6 +5900,11 @@ function toggleWordEnabled(w: RiskWord) {
                 （`mode="multiple" allow-clear :max-tag-count="1"`）—— 四处一个形态，
                 见 `AttrFilterCell` 上方那段。它的总数写在 `placeholder` 上，不在选项里。
               -->
+              <!--
+                🔴 `option-label-prop="tagLabel"`：下拉里那一行带计数（`投诉（7）`），
+                选中之后回显的标签**不带计数**（`投诉`）—— 业务「工单类型的长度压缩下」。
+                计数留在下拉里，那儿才是用来挑的地方；标签只答"筛的是哪一类"。
+              -->
               <a-select
                 v-if="cell.multiple"
                 :value="cell.values"
@@ -5888,6 +5912,7 @@ function toggleWordEnabled(w: RiskWord) {
                 allow-clear
                 size="small"
                 class="tb-ctl"
+                option-label-prop="tagLabel"
                 :dropdown-match-select-width="false"
                 :placeholder="cell.placeholder"
                 :max-tag-count="1"
@@ -8506,6 +8531,22 @@ function toggleWordEnabled(w: RiskWord) {
   padding: 8px 10px; border-bottom: 1px solid #E5E7EB; background: #F3F4F6;
 }
 .hit-table td { padding: 6px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+/*
+ * 🔴 **召回清单的勾选列按整单合并（`rowspan`），必须顶对齐** —— 否则看上去像
+ * "有的行有勾选框、有的行没有"（业务原话「多选框有时候有，有时候没有，是bug了吧」）。
+ *
+ * 【病因】上面那条 `vertical-align: middle` 对一个跨 N 行的 `<td>` 生效时，
+ * 勾选框被垂直居中到**整组的正中**：一单三条命中时它飘到第二条（续行）旁边，
+ * 组首行反而空着；而只有一条命中的组（`rowspan=1`）又正好对齐 ——
+ * 同屏里两种混着出现，于是读成"随机有无"。
+ * 实测默认档 15 行 / 10 组：只有 6 个落在自己那一行、4 个飘走，15 行里 5 行旁边没有勾选框。
+ *
+ * 【修法】顶对齐 + 按行高补 `padding-top`（9 ＝ (34 行高 − 16 勾选框) / 2），把它钉在组首行。
+ * 🔴 **纯 CSS、不动模板**：勾的仍是整单（`rowspan` 的语义没变），只是画在哪一行。
+ * ⚠️ 选择器带 `--kw` 限定：`tbody` 里只有勾选列带 `rowspan`（实测命中 10 个 td、
+ * `cellIndex` 全 0），其余 `.hit-table` 实例不受影响。
+ */
+.hit-table--kw tbody td[rowspan] { vertical-align: top; padding-top: 9px; }
 .hit-table tr.untagged { background: #fef2f2; }
 /*
  * 浅红底上原来的 #f1f5f9 行线几乎看不见，连续高危行会糊成一块。
@@ -9039,6 +9080,19 @@ function toggleWordEnabled(w: RiskWord) {
   min-width: 0;
   width: var(--tbw, 136px) !important;
 }
+/*
+ * 🔴 **多选格未选时那句 `全部（N）` 与同排单选格的选中值同色**（2026-10-09，业务
+ * 「风格保持一致」）。
+ * 【为什么要改】工作面 / 已判那条上五格并排写着同一句「全部（14）」，其中三格是**选中值**
+ * （`.ant-select-selection-item`，`rgba(0,0,0,.88)`），改多选的那两格是 **placeholder**
+ * （antd 默认 `rgba(0,0,0,.25)` 浅灰）—— 同一句话两种颜色，读的人会以为那两格是禁用态。
+ * ⚠️ **只收在这三条筛选条内**：placeholder 在别处（手动筛查 / 命中明细那几个多选）仍是
+ * 「还没填」的提示语，该浅灰就浅灰，不要一刀切全站。
+ */
+.list-toolbar--one-line.list-toolbar--no-actions :deep(.ant-select-selection-placeholder),
+.list-toolbar--one-line.list-toolbar--grid :deep(.ant-select-selection-placeholder) {
+  color: rgba(0, 0, 0, 0.88);
+}
 
 /*
  * 🔴 **窄窗下定死每行 4 格**（2026-10-09）：行数不再由"剩余空间够不够"决定。
@@ -9046,33 +9100,34 @@ function toggleWordEnabled(w: RiskWord) {
  * 【为什么非定死不可】清单区的宽度会**随纵向滚动条有无浮动 15px**：
  * 真正滚动的是外壳的 `.workspace-page-body`，它的滚动条占 15px，
  * 故清单区宽 ＝ 视口 − 450（有滚动条）或 视口 − 435（没有）。
- * 而工作面那条筛选条实需 **944**（＋左右内边距 12 ⇒ 要 956 的容器），恰好落在这条浮动带里：
- *   · 表 14 行、滚动条在 → 容器 1400−450 = 950 → 放不下 → 两行；
- *   · 筛到 2 行、滚动条消失 → 容器 1400−435 = 965 → 放得下 → 一行。
+ * 而工作面那条筛选条实需 **904**（＋左右内边距 12 ⇒ 要 916 的容器），恰好落在这条浮动带里：
+ *   · 表 14 行、滚动条在 → 容器 1360−450 = 910 → 放不下 → 两行；
+ *   · 筛到 2 行、滚动条消失 → 容器 1360−435 = 925 → 放得下 → 一行。
  * 于是**筛一下就从两行缩成一行，底下整张表跟着往上跳一行高**。业务拍板"窄窗接受两行"，
  * 要的是**稳定的两行**，这个跳动是缺陷、不是"接受两行"的应有之义。
  *
  * 🔴 **断点挂在视口宽上、不是容器宽**：视口**不随滚动条变**，是这里唯一拿得到的确定量。
  * 两个边界都是算出来**避开浮动带**的，不是卡在边界上凑：
- *   · 上界 **1419**（2026-10-09 第三次重算的落点）：
+ *   · 上界 **1379**（2026-10-09 第四次重算的落点）：
  *     ① 那一枚「全部（N）」把五格从 869 收到 827，上界一度算到 1299；
  *     ② 同日业务把「类型」「等级」改回四字，两个标签各 +24px ⇒ 875，上界回到 1349；
- *     ③ 同日业务再判「工单类型」改多选，那一格 117 → **186**（+69）⇒ 五格 **944**
- *        ⇒ 要 956 的容器 ⇒ 视口 ≥ 1406（有滚动条）/ ≥ 1391（没有），浮动带 [1391, 1406)。
- *        取 1420 起走自然排版，此时最窄也有 970 的容器、14px 余量 —— 1420 以上确定一行。
+ *     ③ 同日业务再判「工单类型」改多选，那一格 117 → 186 ⇒ 五格 944，上界一度到 1419；
+ *     ④ 同日业务判「工单类型的长度压缩下」⇒ 选中标签去掉计数，那一格 186 → **146**
+ *        ⇒ 五格 **904** ⇒ 要 916 的容器 ⇒ 视口 ≥ 1366（有滚动条）/ ≥ 1351（没有），
+ *        浮动带 [1351, 1366)。取 1380 起走自然排版，此时最窄也有 930 的容器、14px 余量。
  *     ⚠️ **本页常见窄窗（清单区 867 ⇒ 视口 1302~1317）落在这一档内**，走的是**稳定的两行
  *     （4 + 1）**；业务已拍板接受工作面这条两行，不再为回一行做妥协。
- *   · 下界 **1220**（由 1170 上调）：已判那条四格 688 → **757**（工单类型 +69）
- *     ⇒ 要 769 的容器；视口 1220 时容器最窄 770、余 1px 才排得下一行，
- *     **1170 已经排不下了** —— 不上调的话这一档会把已判那条顶出横向滚动条。
- *     （这一档里定死的那 4 格 ＝ 班组 + 来源 + 工单类型 + 风险等级 ＝ 757，同一个数。）
- * ⚠️ 1220 以下（本页实际窗口到不了）仍走自然换行 —— 那是"放不下就换行"，不会溢出。
+ *   · 下界 **1190**（1170 → 1220 → 1190，跟着上面那两次一起动）：已判那条四格
+ *     688 → 757 → **717** ⇒ 要 729 的容器；视口 1190 时容器最窄 740、余 11px 排得下一行。
+ *     **1170 仍然排不下**（容器 720 < 729），故不能退回 1170。
+ *     （这一档里定死的那 4 格 ＝ 班组 + 来源 + 工单类型 + 风险等级 ＝ 717，同一个数。）
+ * ⚠️ 1190 以下（本页实际窗口到不了）仍走自然换行 —— 那是"放不下就换行"，不会溢出。
  *
  * 🔴 **只收没有右侧动作区的那两条**（工作面 5 格 / 已判 4 格）：待判那两路那条带动作区
  * （查询 / 重置，自身约占 166px），定死 4 格会把那一行顶出横向滚动条。
  * 它维持自然换行 —— 实需 kw 路 789 / focus 路 567，清单区 991 下字段区可用 825，一行放得下。
  */
-@media (min-width: 1220px) and (max-width: 1419px) {
+@media (min-width: 1190px) and (max-width: 1379px) {
   .list-toolbar--one-line.list-toolbar--no-actions .tb-fields {
     display: grid;
     grid-template-columns: repeat(4, max-content);
