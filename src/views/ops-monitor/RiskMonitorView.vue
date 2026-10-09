@@ -1783,7 +1783,7 @@ function doScan() {
    * 守卫必须落在"执行"这个唯一出口上，而不是落在某一个控件上。
    */
   if (!scanForm.value.from || !scanForm.value.to) {
-    message.warning('请先选定建单时间区间的起止日期，筛查不支持不限时间');
+    message.warning('请先选定建单时间区间的起止日期，筛查不支持「全部时间」');
     return;
   }
   scanning.value = true;
@@ -1857,9 +1857,18 @@ function resetScanForm() {
 /** 条件摘要（人话）——扫完看到数字得知道是按什么扫的，筛选器 chip 的悬停说明也用它 */
 function criteriaSummaryOf(f: ScanCriteria): string {
   const parts: string[] = [];
-  parts.push(f.groupIds.length ? `${f.groupIds.length} 个班组` : '全中心');
+  // 🔴 空值一律写「全部…」（2026-10-09 裁决）。这一句没有字段标签打头，故要带上维度名
+  //（「全部班组」而不是光一个「全部」），与筛选条里"标签 + 全部"读起来是同一件事。
+  parts.push(f.groupIds.length ? `${f.groupIds.length} 个班组` : '全部班组');
   parts.push(`${f.from} 至 ${f.to}`);
-  parts.push(f.wordIds.length ? `${f.wordIds.length} 条词` : '全部启用中的词');
+  // 🔴 这两处**不写成光秃秃的「全部」**，因为留空的含义比"全部"窄，写「全部」就是报假数：
+  //   · 风险词留空 ＝ 只扫**启用中**的词（停用的不产生命中），不是词表里的全部词；
+  //     （写「全部启用词」不写「全部启用中的词」：后者在筛查条那一格量出来 91px，
+  //      而可用宽正好 91px —— 顶满即被切。前者 65px，余 26px。）
+  //   · 匹配范围留空 ＝ 回退到**每条词自身配的范围**（见 opsReport.ts `matchScopes` 那行注释
+  //     与 `c.matchScopes.length ? c.matchScopes : w.scopes`），不是六个字段全扫。
+  // 所以这两条按原样留着，别顺手"统一"成「全部风险词」「全部匹配范围」。
+  parts.push(f.wordIds.length ? `${f.wordIds.length} 条词` : '全部启用词');
   parts.push(f.matchScopes.length ? f.matchScopes.join('/') : '按词表范围');
   parts.push(f.nodeStatuses.length
     ? (f.nodeStatuses.length <= 3 ? f.nodeStatuses.join('/') : `${f.nodeStatuses.length} 个子状态`)
@@ -2224,8 +2233,9 @@ function applyLedgerFilter(list: RiskHit[]): RiskHit[] {
 /** 当前时间窗口的人话说法——空态必须把它讲出来，否则"没查到"会被当成"当时没发现" */
 const ledgerRangeText = computed(() => {
   const f = ledgerFilter.value;
-  if (!f.from && !f.to) return '不限时间';
-  const base = `${f.from || '不限'} 至 ${f.to || '不限'}`;
+  // 🔴 空值一律写「全部…」（2026-10-09 裁决）
+  if (!f.from && !f.to) return '全部时间';
+  const base = `${f.from || '全部'} 至 ${f.to || '全部'}`;
   if (!f.from || !f.to) return base;
   const span = dayjs(f.to).diff(dayjs(f.from), 'day') + 1;
   return f.to === today() ? `${base}（近 ${span} 天）` : base;
@@ -2545,7 +2555,9 @@ function tagOf(h: RiskHit): RiskLevel | null | undefined {
 function runRealtimeScan(triggerBy = '系统') {
   const t0 = Date.now();
   const startedAt = nowStamp(true);
-  const criteriaText = '全中心 · 全部启用词 · 实时增量扫描';
+  // 🔴 与手动筛查的 `criteriaSummaryOf` **落在扫描记录的同一列**（见 `criteriaText` 字段注释），
+  // 故同一个意思必须同一个词：班组写「全部班组」、词写「全部启用词」，别一列里两种说法。
+  const criteriaText = '全部班组 · 全部启用词 · 实时增量扫描';
   const endedAt = () => dayjs(t0 + Math.max(600, Date.now() - t0)).format('YYYY-MM-DD HH:mm:ss');
   try {
     const hits = wordOnlyRiskHitsOf(scope.value);
@@ -4593,7 +4605,8 @@ function untaggedSliceItems(
     depth: 0,
     expandable: true,
     expanded: open,
-    title: `${title}点它展开／收起下面的子档，行本身也可选 ＝ 这一路不限子档；`
+    // 🔴 「全部子档」原作「不限子档」（2026-10-09 清「不限」那一轮一并看齐）
+    title: `${title}点它展开／收起下面的子档，行本身也可选 ＝ 这一路全部子档；`
       + '两路互斥，实时监控 + 重点工单 ＝ 页签上那个数。',
   };
   if (!open) return [head];
@@ -6878,7 +6891,7 @@ function toggleWordEnabled(w: RiskWord) {
               <a-select
                 v-model:value="ledgerFilter.groupIds" mode="multiple" show-search allow-clear
                 size="small" class="tb-ctl"
-                :dropdown-match-select-width="false" placeholder="全中心" :max-tag-count="1"
+                :dropdown-match-select-width="false" placeholder="全部" :max-tag-count="1"
                 :options="ledgerGroupOptions" :filter-option="filterScopeOption"
                 :max-tag-placeholder="scopeTagPlaceholder"
               />
@@ -6888,7 +6901,7 @@ function toggleWordEnabled(w: RiskWord) {
               <a-select
                 v-model:value="ledgerFilter.words" mode="multiple" allow-clear
                 size="small" class="tb-ctl"
-                :dropdown-match-select-width="false" placeholder="不限" :max-tag-count="1"
+                :dropdown-match-select-width="false" placeholder="全部" :max-tag-count="1"
                 :options="ledgerWordOptions"
               />
             </div>
@@ -6897,7 +6910,7 @@ function toggleWordEnabled(w: RiskWord) {
               <a-select
                 v-model:value="ledgerFilter.taggers" mode="multiple" allow-clear
                 size="small" class="tb-ctl"
-                :dropdown-match-select-width="false" placeholder="不限" :max-tag-count="1"
+                :dropdown-match-select-width="false" placeholder="全部" :max-tag-count="1"
                 :options="ledgerTaggerOptions"
               />
             </div>
@@ -6923,7 +6936,7 @@ function toggleWordEnabled(w: RiskWord) {
                 v-model:value="scanForm.groupIds" mode="multiple" show-search allow-clear
                 size="small" class="tb-ctl"
                 :options="scopeSelectGroups" :filter-option="filterScopeOption"
-                :dropdown-match-select-width="false" placeholder="全中心" :max-tag-count="1"
+                :dropdown-match-select-width="false" placeholder="全部" :max-tag-count="1"
                 :max-tag-placeholder="scopeTagPlaceholder"
               />
             </div>
@@ -6932,7 +6945,7 @@ function toggleWordEnabled(w: RiskWord) {
               <a-select
                 v-model:value="scanForm.wordIds" mode="multiple" allow-clear
                 size="small" class="tb-ctl"
-                :dropdown-match-select-width="false" placeholder="全部启用中的词" :max-tag-count="1"
+                :dropdown-match-select-width="false" placeholder="全部启用词" :max-tag-count="1"
                 :options="scanWordOptions"
               />
             </div>
@@ -6958,13 +6971,19 @@ function toggleWordEnabled(w: RiskWord) {
               <a-select
                 v-model:value="scanForm.nodeStatuses" mode="multiple" show-search allow-clear
                 size="small" class="tb-ctl"
-                :dropdown-match-select-width="false" placeholder="不限" :max-tag-count="0"
+                :dropdown-match-select-width="false" placeholder="全部" :max-tag-count="0"
                 :max-tag-placeholder="compactTagPlaceholder"
                 :options="SCAN_NODE_STATUS_OPTIONS"
               />
             </div>
             <div class="fi">
               <span class="fl">匹配范围</span>
+              <!--
+                🔴 这一格的空值项**故意不是「全部」**（2026-10-09 清「不限」那一轮单独放过）：
+                留空不等于"六个字段全扫"，而是**回退到每条词自身配的范围**
+                （`c.matchScopes.length ? c.matchScopes : w.scopes`）。写「全部」就是报假数。
+                上面「风险词」那一格同理 —— 空值 ＝ 只扫启用中的词，故写「全部启用词」。
+              -->
               <a-select
                 v-model:value="scanForm.matchScopes" mode="multiple" allow-clear
                 size="small" class="tb-ctl"
@@ -6977,7 +6996,7 @@ function toggleWordEnabled(w: RiskWord) {
               <a-select
                 v-model:value="scanForm.ticketTypes" mode="multiple" allow-clear
                 size="small" class="tb-ctl"
-                :dropdown-match-select-width="false" placeholder="不限" :max-tag-count="1"
+                :dropdown-match-select-width="false" placeholder="全部" :max-tag-count="1"
                 :options="SCAN_TICKET_TYPES.map((t) => ({ value: t, label: t }))"
               />
             </div>
@@ -6986,7 +7005,7 @@ function toggleWordEnabled(w: RiskWord) {
               <a-select
                 v-model:value="scanForm.businessTypes" mode="multiple" allow-clear
                 size="small" class="tb-ctl"
-                :dropdown-match-select-width="false" placeholder="不限" :max-tag-count="1"
+                :dropdown-match-select-width="false" placeholder="全部" :max-tag-count="1"
                 :options="SCAN_BUSINESS_TYPES.map((t) => ({ value: t, label: t }))"
               />
             </div>
@@ -6995,7 +7014,7 @@ function toggleWordEnabled(w: RiskWord) {
               <a-select
                 v-model:value="scanForm.productCategories" mode="multiple" allow-clear
                 size="small" class="tb-ctl"
-                :dropdown-match-select-width="false" placeholder="不限" :max-tag-count="1"
+                :dropdown-match-select-width="false" placeholder="全部" :max-tag-count="1"
                 :options="SCAN_PRODUCT_CATEGORIES.map((t) => ({ value: t, label: t }))"
               />
             </div>
@@ -7004,7 +7023,7 @@ function toggleWordEnabled(w: RiskWord) {
               <a-select
                 v-model:value="scanForm.productNames" mode="multiple" allow-clear
                 size="small" class="tb-ctl"
-                :dropdown-match-select-width="false" placeholder="不限" :max-tag-count="1"
+                :dropdown-match-select-width="false" placeholder="全部" :max-tag-count="1"
                 :options="scanProductNameOptions.map((t) => ({ value: t, label: t }))"
               />
             </div>
