@@ -4551,9 +4551,9 @@ type FunnelStage = 'untagged' | 'tagged';
 
 interface RailGroup {
   stage: FunnelStage;
-  /** 无障碍与侧栏 aria 用的全称（未标记 / 已标记） */
+  /** 无障碍与侧栏 aria 用的段名（待判 / 已判） */
   title: string;
-  /** 阶段切换器上的两字简称，省左栏宽度；语义见 title + title2 */
+  /** 阶段切换器上的段名；与 title 同取值，那一段在链路上是什么见 title2 */
   segLabel: string;
   /** 阶段的悬停说明：这一段在链路上是什么、分母是什么。原先挂在组标题上，组标题删了之后挂到页签上 */
   title2: string;
@@ -4813,7 +4813,7 @@ const railGroups = computed<RailGroup[]>(() => {
           depth: 0,
           expandable: true,
           expanded: taggerExpanded.value,
-          title: '与「全部有风险」并列的另一种分类：同一批已标记条目换成按标记人看。'
+          title: '与「全部有风险」并列的另一种分类：同一批已判条目换成按标记人看。'
             + '点它展开／收起下面的标记人清单；分母与「全部有风险」同一个，只数高 / 中 / 低，不含无风险。'
             + '🔴 与「全部有风险」是同一批条目的两种看法，数天然相等、不可相加',
         },
@@ -6956,9 +6956,14 @@ function toggleWordEnabled(w: RiskWord) {
 
       <!-- 台账查询条：七维全部展开，右侧动作对齐手动筛查（查询 + 重置） -->
       <div v-if="listView === 'judged' && !ticketFocus" class="ledger-bar" @keyup.enter="applyLedgerQuery">
-        <div class="list-toolbar list-toolbar--one-line">
+        <!--
+          🔴 **字段区走「一格一宽 ＋ 允许换行」**（`--ledger`，2026-10-09 修「命中时间」被压窄）：
+          每一格的宽度写在 `--tbw` 上，数按本文件既有规则量出来（见样式区 `.list-toolbar--ledger` 那段）。
+          七格实需远超一行，故这一条**不是整栏一行**：窄窗折成 4 ＋ 3 两行，窗口够宽自己并回一行。
+        -->
+        <div class="list-toolbar list-toolbar--one-line list-toolbar--ledger">
           <div class="tb-fields">
-            <div class="fi">
+            <div class="fi" style="--tbw: 102px">
               <span class="fl">核实结果</span>
               <!-- 「待核实」与另两档同层：底表已含未核实的命中，核实打标就从这一档进 -->
               <a-select
@@ -6973,7 +6978,7 @@ function toggleWordEnabled(w: RiskWord) {
                 ]"
               />
             </div>
-            <div class="fi">
+            <div class="fi" style="--tbw: 132px">
               <span class="fl">关键词</span>
               <div class="tb-search">
                 <SearchOutlined class="tb-search-ic" />
@@ -6985,7 +6990,7 @@ function toggleWordEnabled(w: RiskWord) {
                 >
               </div>
             </div>
-            <div class="fi">
+            <div class="fi" style="--tbw: 63px">
               <span class="fl">等级</span>
               <a-select
                 v-model:value="ledgerFilter.level"
@@ -6994,7 +6999,7 @@ function toggleWordEnabled(w: RiskWord) {
                 :options="[{ value: 'all', label: '全部' }, ...GRADES.map((g) => ({ value: g, label: `${g}危` }))]"
               />
             </div>
-            <div class="fi">
+            <div class="fi" style="--tbw: 190px">
               <span class="fl">命中时间</span>
               <RangePicker
                 :value="ledgerDateRange"
@@ -7007,7 +7012,7 @@ function toggleWordEnabled(w: RiskWord) {
                 @change="onLedgerRangeChange"
               />
             </div>
-            <div class="fi">
+            <div class="fi" style="--tbw: 184px">
               <span class="fl">班组</span>
               <a-select
                 v-model:value="ledgerFilter.groupIds" mode="multiple" show-search allow-clear
@@ -7017,7 +7022,7 @@ function toggleWordEnabled(w: RiskWord) {
                 :max-tag-placeholder="scopeTagPlaceholder"
               />
             </div>
-            <div class="fi">
+            <div class="fi" style="--tbw: 172px">
               <span class="fl">风险词</span>
               <a-select
                 v-model:value="ledgerFilter.words" mode="multiple" allow-clear
@@ -7026,7 +7031,7 @@ function toggleWordEnabled(w: RiskWord) {
                 :options="ledgerWordOptions"
               />
             </div>
-            <div class="fi">
+            <div class="fi" style="--tbw: 158px">
               <span class="fl">标记人</span>
               <a-select
                 v-model:value="ledgerFilter.taggers" mode="multiple" allow-clear
@@ -9353,6 +9358,50 @@ function toggleWordEnabled(w: RiskWord) {
 .list-toolbar--one-line .tb-actions .scan-go,
 .list-toolbar--one-line .tb-actions .tb-btn {
   width: auto;
+}
+
+/*
+ * 命中明细那条台账条（七格）：**一格一宽 ＋ 允许换行**（2026-10-09）。
+ *
+ * 【修的是什么】上面那条 `--one-line .fi { flex: 1 1 0 }` 把七格**等分**：实测每格 122.4px、
+ * 控件 72.4px。其中「命中时间」是日期区间控件，光内容就要两个 `YYYY-MM-DD`
+ * （12px 字各 62）＋ 中间分隔 32 ＋ 左右内边距 12 ＝ 168px；分到 72.4px 之后，
+ * 两个日期输入各只剩 clientWidth **13px**（scrollWidth 61），画面上只看得见
+ * 「20 → 20」两个无意义的数。**等分是根因，不是哪一格写窄了。**
+ *
+ * 【为什么不并到 `--grid` 那一套】`--grid` 还连带两件只属于另三条筛选条的事：
+ *   · `padding-inline` 收到 6 —— 台账条按上面那条注是**特意不收**的（左边缘要与另三条错开）；
+ *   · 把多选的 placeholder 改成与选中值同色 —— 第九波那条注明确写了"不要一刀切到
+ *     命中明细这几个多选，那里的 placeholder 仍是『还没填』的提示语"。
+ * 故这里只借它"一格一宽 ＋ wrap"的做法，另两件一件都不带过来。
+ *
+ * 🔴 **宽度同走 `--tbw`（写在模板里），数按本文件既有规则量**（13px 字 canvas 实测）：
+ *   · 单选 ＝ 文字 ＋ 34 ＋ 3 余量 —— 核实结果「确认是风险」65 ⇒ **102**；等级「全部 / 高危」26 ⇒ **63**；
+ *   · 多选按**真的最宽态**（最长标签 ＋ `+ N ...` 53 ＋ 尾隙 4 ＋ 选择器 30，标签 ＝ 文字 ＋ 32）——
+ *     班组「硬件缺陷组」65 ⇒ **184**（与另三条那一格同宽，同一份选项同一个数）、
+ *     风险词「退一赔三」52 ⇒ **172**、标记人「郑监控」39 ⇒ **158**；
+ *   · 关键词是自绘输入框：占位「工单号 / 客户名」12px 字 84 ＋ 放大镜 14 ＋ 间隙 6 ＋
+ *     内边距 20 ＋ 边框 2 ＝ 126，取 **132**；
+ *   · 命中时间 ＝ 上面那 168 ＋ 清除叉与尾隙 22 ⇒ **190**。
+ *
+ * 🔴 七格含标签实需 1353 ＋ 六道间距 ＝ 1413，字段区实测只有 917 ⇒ **一行装不下，必须换行**
+ * （压进一行就得把六个控件各压到 ~52px，比改之前更糟）。故这一条**不再是"整栏一行"**：
+ * 字段区实测折成 **4 ＋ 3** 两行（719 / 684），右侧动作区仍竖向居中。
+ * 🔴 各格宽度是定值、与当前选中什么无关 ⇒ 换行点只由容器宽度决定，不随筛选结果忽上忽下、
+ * **不出横向滚动条**；窗口够宽时自己并回一行。
+ */
+.list-toolbar--one-line.list-toolbar--ledger .tb-fields {
+  flex-wrap: wrap;
+}
+.list-toolbar--one-line.list-toolbar--ledger .fi {
+  flex: 0 0 auto;
+}
+.list-toolbar--one-line.list-toolbar--ledger .tb-ctl,
+.list-toolbar--one-line.list-toolbar--ledger .tb-range,
+.list-toolbar--one-line.list-toolbar--ledger .tb-search {
+  flex: none;
+  min-width: 0;
+  width: var(--tbw, 136px) !important;
 }
 /*
  * 字段区 ＝ **一格一宽、按各自最长取值量出来的** flex 行（2026-10-09 改）。
