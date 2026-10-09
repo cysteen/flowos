@@ -8958,16 +8958,21 @@ function toggleWordEnabled(w: RiskWord) {
 
 .ledger-bar { margin: 2px 0 8px; }
 /*
- * 🔴 **`--no-actions` 这一支 2026-10-09 起没有使用者了**：工作面 / 已判那条补上
- * 「查询」「重置」两枚之后（业务「还缺2个按钮」），容器换成了带动作区的 `--grid`。
- * 下面这一族规则**暂留不删**：它们绝大多数本来就是 `--no-actions, --grid` 成对写的，
- * `--grid` 那一半仍在生效；真正只属于 `--no-actions` 的只有
- * 「`.tb-fields { flex: none }`」与那条窄窗 4 格媒体查询（见文件末那一段的说明）。
- * 要清的话连同那条媒体查询一起拍板，别单独删一半。
+ * 🔴 **`--no-actions` 这一支已整个清掉**（2026-10-09）：工作面 / 已判那条补上
+ * 「查询」「重置」两枚之后（业务「还缺2个按钮」），容器换成了带动作区的 `--grid`，
+ * 这个类在模板里**零引用**，留着只会误导下一个人以为还有第三种工具条形态。
+ *
+ * 【清掉的是哪些、为什么不丢样式】
+ *   · `.list-toolbar--no-actions { grid-template-columns: 1fr }` —— 它当初是用来盖掉
+ *     `.list-toolbar` 那条两列栅格的；而 `--one-line` 把容器改成了 `display: flex`，
+ *     栅格列数在 flex 容器上本就不生效，**对现存任何一条都没有作用**，整条删。
+ *   · `.list-toolbar--one-line.list-toolbar--no-actions .tb-fields { flex: none }` ——
+ *     只属于这一支；现存那几条走的是紧跟其后的 `--grid { flex: 1 1 auto }`，**不是同一个值**，
+ *     删掉它不会改变任何一条的计算值。
+ *   · 其余六处都是 `--no-actions, --grid` **逗号成对**写的，只摘掉前一支，
+ *     `--grid` 那一半**一个字没动**（含第九波那条 placeholder 配色）。
+ * ⚠️ 那条窄窗 4 格媒体查询已在第十波改挂专用类 `--fixed4`，与本次清理无关。
  */
-.list-toolbar--no-actions {
-  grid-template-columns: 1fr;
-}
 
 /* 筛选条：标签左、控件右（固定标签宽，列内对齐）；默认右侧动作竖排（手动筛查等多行字段） */
 .list-toolbar {
@@ -9191,7 +9196,6 @@ function toggleWordEnabled(w: RiskWord) {
  * 🔴 **换行点仍然只由容器宽度决定**：每一格的宽度是定值、与当前选中什么无关，
  * 故不会随筛选结果忽上忽下。**不出横向滚动条**。
  */
-.list-toolbar--one-line.list-toolbar--no-actions .tb-fields,
 .list-toolbar--one-line.list-toolbar--grid .tb-fields {
   display: flex;
   flex-wrap: wrap;
@@ -9205,12 +9209,9 @@ function toggleWordEnabled(w: RiskWord) {
  * **三条筛选条一起收**，不动「命中明细」那条台账条 —— 三条之间左边缘要对齐，
  * 只收其中一条会让人在切档时看见工具条整体左右跳。
  */
-.list-toolbar--one-line.list-toolbar--no-actions,
 .list-toolbar--one-line.list-toolbar--grid { padding-inline: 6px; }
-/* 没有右侧动作区的那一条按内容排；带动作区的那一条仍吃满左侧剩余宽（动作区自己 flex: none） */
-.list-toolbar--one-line.list-toolbar--no-actions .tb-fields { flex: none; }
+/* 带动作区的那几条吃满左侧剩余宽（动作区自己 flex: none） */
 .list-toolbar--one-line.list-toolbar--grid .tb-fields { flex: 1 1 auto; }
-.list-toolbar--one-line.list-toolbar--no-actions .fi,
 .list-toolbar--one-line.list-toolbar--grid .fi {
   flex: 0 0 auto;
   min-width: 0;
@@ -9218,10 +9219,8 @@ function toggleWordEnabled(w: RiskWord) {
   gap: 4px;
 }
 /* 标签按内容宽：省下的宽度全留给控件 */
-.list-toolbar--one-line.list-toolbar--no-actions .fl,
 .list-toolbar--one-line.list-toolbar--grid .fl { width: auto; }
 /* 🔴 `--tbw` 由模板逐格给（量出来的数）；没给的退回 136px，够「全部X（14）」那一类取值 */
-.list-toolbar--one-line.list-toolbar--no-actions .tb-ctl,
 .list-toolbar--one-line.list-toolbar--grid .tb-ctl {
   flex: none;
   min-width: 0;
@@ -9236,7 +9235,6 @@ function toggleWordEnabled(w: RiskWord) {
  * ⚠️ **只收在这三条筛选条内**：placeholder 在别处（手动筛查 / 命中明细那几个多选）仍是
  * 「还没填」的提示语，该浅灰就浅灰，不要一刀切全站。
  */
-.list-toolbar--one-line.list-toolbar--no-actions :deep(.ant-select-selection-placeholder),
 .list-toolbar--one-line.list-toolbar--grid :deep(.ant-select-selection-placeholder) {
   color: rgba(0, 0, 0, 0.88);
 }
