@@ -295,14 +295,23 @@ const taggerExpanded = ref(false);
  */
 
 /**
- * 班组筛选（单选，横跨左栏每一档）。
+ * 班组筛选（**多选**，横跨左栏每一档）。空数组 ＝ 全部，与本页别的多选格同一条口径。
  *
  * 🔴 **组不是条目自己的字段**：条目与池行上都只有工单号，组名由 `groupNameOf` 反查工单库，
  * 与页头「各处理组」那一行、工单列表「分组名称」列同一个口径，本页不另造一套分组。
  * 查不到工单的落「未归组」并照常成一档——吞掉的话各组之和会小于左栏的总数，
  * 而人正是照这一行决定"先盯哪一组"，被吞掉的那几条就再也没人管。
+ *
+ * 🔴 **三条筛选条共用这一份 state**（工作面 / 已判走 `attrFilterCells` 里那个 `group` 格，
+ * 待判两路走自己那条上的同名格）—— 只有一份真源，不写同步代码。
+ * 🔴 **它是"外层"收窄**：`inGroup` 在各维筛选之外先过一道，故各维选项的计数一律落在
+ * "过完班组之后"的集合上（班组外层、其余内层）。这条层次 2026-10-09 改多选时未变。
+ * 🔴 **改多选之后"选一个组"必须与改前单选逐项一致**（走查稿 7-18 的判据）：
+ * 切换器两段总数 / 左栏每一个条数（0 值行不吞）/ 右侧清单 三处同步收窄、清单回第 1 页、
+ * 当前段与档不变。
+ * ⚠️ **命中明细那条自己的 `ledgerFilter.groupIds` 是另一摊**（本来就是多选），不碰。
  */
-const groupFilter = ref<string>('all');
+const groupFilter = ref<string[]>([]);
 /**
  * 当前等级分档的人话说法；`all` / `tagger` 两档为空串（那两档装的是全部三个等级，
  * 说不出"某一级"），空态与收窄标据此判断要不要出这一句。
@@ -313,8 +322,9 @@ const tagLevelText = computed(() => (
     : riskLevelText(tagLevelFilter.value)
 ));
 function inGroup<T extends { ticketNo: string }>(rows: T[]): T[] {
-  if (groupFilter.value === 'all') return rows;
-  return rows.filter((r) => groupNameOf(r.ticketNo) === groupFilter.value);
+  // 空数组 ＝ 全部（多选的"全部"是清空选择，不是某个哨兵值）
+  if (!groupFilter.value.length) return rows;
+  return rows.filter((r) => groupFilter.value.includes(groupNameOf(r.ticketNo)));
 }
 
 // ==== 风险工单池（《【930】》§5，2026-09-09 第二轮拍板 N4 / N6 / N7 / O13 / O14）====
@@ -820,7 +830,8 @@ function decisionCountInView(k: DecisionKey) {
  * 界面词与筛选项上的取值逐字相同，摘哪一个一目了然。
  */
 const poolNarrowedText = computed(() => [
-  groupFilter.value,
+  // 班组也是多选：同理展开
+  ...groupFilter.value,
   sourceFilter.value,
   // 工单类型是多选：选了几个就并排写几个，一个没选 ＝ 这一维没收窄
   ...poolTicketTypeFilter.value,
@@ -867,12 +878,12 @@ const reportRows = computed(() => reportAllRows.value);
  * 页头「风险工单」块的卡片下钻：先把工作面上的五维筛选（班组 / 来源 / 工单类型 /
  * 风险等级 / 结论）放回「全部」，再切到工作面。卡上的数不跟这几维筛选，
  * 不清的话下钻后表行数 ≠ 卡上的数。只在点卡片时清；进了工作面之后照常收窄。
- * ⚠️ 工单类型是多选，它的"全部"＝ **清空选择**（空数组），不是写 `'all'`。
+ * ⚠️ 班组 / 工单类型是多选，它们的"全部"＝ **清空选择**（空数组），不是写 `'all'`。
  * ⚠️ 班组筛选是本页一份共享状态（左栏各档也按它收窄），故点卡片后左栏角标同样回到全部班组口径。
  * ⚠️ **不再接视图参数**：工作面只有一张恒摆全部条目的表（见 `reportRows`）。
  */
 function drillReport() {
-  groupFilter.value = 'all';
+  groupFilter.value = [];
   sourceFilter.value = 'all';
   poolTicketTypeFilter.value = [];
   poolLevelFilter.value = 'all';
@@ -4886,12 +4897,17 @@ const groupChips = computed(() => {
  * ⚠️ 收窄之后每一格的 `--tbw` 要**按新的最长取值重新量**（见模板里那一段）：
  * 「等级」「类型」两格原先的最长取值就是那一枚「全部X（N）」，它一短，整格就该跟着收。
  */
-/** 搜索条里的「班组」下拉：各枚数字仍取除班组之外条件下的行数（见 groupChips） */
+/**
+ * 搜索条里的「班组」下拉（**多选**）：各枚数字仍取除班组之外条件下的行数（见 `groupChips`）。
+ * 🔴 **没有「全部」那一行**：多选的"全部"＝ 清空选择，总数写在 placeholder 上
+ * （`全部（N）`，见 `attrFilterCells` 里那一格）。
+ * 🔴 `tagLabel` 不带计数（`受理一组`），与「工单类型」那一格同一条压宽做法。
+ */
 const groupFilterOptions = computed(() => [
-  { value: 'all', label: `全部（${groupChips.value.total}）` },
   ...groupChips.value.rows.map(({ group, count }) => ({
     value: group,
     label: `${group}（${count}）`,
+    tagLabel: group,
   })),
 ]);
 
@@ -5102,14 +5118,18 @@ interface AttrFilterCell {
   setMulti?: (v: string[]) => void;
 }
 const attrFilterCells = computed<AttrFilterCell[]>(() => {
-  // 班组是两路共用的那一格：同一份 state（左栏各档也按它收窄），故只写一次
+  // 班组是两路共用的那一格：同一份 state（左栏各档也按它收窄），故只写一次。
+  // 🔴 **多选**（2026-10-09，业务「支持多选呀」）：总数写在 placeholder 上，
+  // 选项里只摆组名 + 计数；选中后的标签取 `tagLabel`（不带计数），同「工单类型」那一格
   const group: AttrFilterCell = {
     key: 'group',
     label: '班组',
-    width: 147,
+    width: 184,
+    multiple: true,
     options: groupFilterOptions.value,
-    value: groupFilter.value,
-    set: (v) => { groupFilter.value = v; },
+    values: groupFilter.value,
+    placeholder: `全部（${groupChips.value.total}）`,
+    setMulti: (v) => { groupFilter.value = v; },
   };
   if (listView.value === 'report') {
     return [
@@ -5956,9 +5976,12 @@ function toggleWordEnabled(w: RiskWord) {
         <div class="list-toolbar list-toolbar--one-line list-toolbar--grid">
           <!--
             🔴 **每一格的 `--tbw` 是量出来的**（真机实测，不是估的）：
-              · 班组（单选）「硬件缺陷组（9）」99、两位数约 106 ⇒ **147**
-                （与另两条筛选条那一格同宽，同一份选项同一个数）；
-              · 优先级（单选）「P2（普通加急）」93 ⇒ **134**（实测格内可用 118，余 25）；
+              · 班组（**多选**，2026-10-09 业务「支持多选呀」）⇒ **184**
+                （与另两条筛选条那一格同宽，同一份选项同一个数）：最长组名「技术支持组」
+                5 字 65 ＋ 32 ＝ 97 ＋ `+ N ...` 53 ＋ 尾隙 4 ＝ 154，＋30 ⇒ 184。
+                ⚠️ **166 那一版实测被切**（选两个组时 needInner 141 / haveInner 136），不要往回收。
+              · 优先级（单选）「P2（普通加急）」93 ⇒ **130**（＝ 93 + 34 + 3，按规则取；
+                原先给到 134 是多留了 4px，班组加宽之后把这 4px 还回来，整条才回得到一行）；
               · 风险词（多选）⇒ **172**；工单类型（多选）⇒ **146**。
             🔴 **多选那两格 2026-10-09 第一次按"真的最宽态"量**（此前一直按"只摆一枚标签"量，
             于是一选多项 `+ N ...` 那一枚就被切）。最宽态 ＝ **最长的一枚标签 ＋ `+ N ...` ＋ 尾隙**：
@@ -5973,13 +5996,21 @@ function toggleWordEnabled(w: RiskWord) {
             ⚠️ 命中明细那条查询条有自己的「关键词」，是另一套（`ledgerFilter.keyword`），不受影响。
           -->
           <div class="tb-fields">
-            <div class="fi" style="--tbw: 147px">
+            <!--
+              🔴 **班组改多选**（2026-10-09，业务「支持多选呀」）：三条筛选条共用同一份
+              `groupFilter`，故这一格与工作面 / 已判那条上的同名格**逐字同形**
+              （多选 · allow-clear · max-tag-count 1 · 标签取 `tagLabel` 不带计数）。
+              总数写在 placeholder 上（`全部（N）`），多选的"全部"＝ 清空选择。
+            -->
+            <div class="fi" style="--tbw: 184px">
               <span class="fl">班组</span>
               <a-select
-                v-model:value="groupFilter"
-                size="small"
-                class="tb-ctl"
+                v-model:value="groupFilter" mode="multiple" allow-clear
+                size="small" class="tb-ctl"
+                option-label-prop="tagLabel"
                 :dropdown-match-select-width="false"
+                :placeholder="`全部（${groupChips.total}）`"
+                :max-tag-count="1"
                 :options="groupFilterOptions"
               />
             </div>
@@ -6029,7 +6060,7 @@ function toggleWordEnabled(w: RiskWord) {
               一并删净（grep 复验过只有这一处消费端），那一路因此与实时监控那一路**只差一个「风险词」**。
               🔴 「进监控时间」更早一轮已删：实测 11 条里只有 2 条有进监控时刻，一设区间就只剩那 2 条。
             -->
-            <div class="fi" style="--tbw: 134px">
+            <div class="fi" style="--tbw: 130px">
               <span class="fl">优先级</span>
               <a-select
                 v-if="untaggedSlice === 'kw'"
@@ -6062,7 +6093,8 @@ function toggleWordEnabled(w: RiskWord) {
       <!-- 实时监控 · 空态：把当前视图讲出来，否则"这里没东西"会被读成"系统没在扫" -->
       <div v-if="listView === 'realtime' && !queueRows.length" class="ob-empty">
         <!-- 收窄条件必须在空态里复述，否则"筛空了"会被读成"没有了" -->
-        <template v-if="groupFilter !== 'all'">「{{ groupFilter }}」在这一档下没有条目 —— 把「班组」改回「全部」看全部</template>
+        <!-- 班组是多选：选了几个就并排复述几个（`groupFilter.join`），空数组 ＝ 这一维没收窄 -->
+        <template v-if="groupFilter.length">「{{ groupFilter.join(' · ') }}」在这一档下没有条目 —— 把「班组」清空看全部</template>
         <template v-else-if="taggerFilter !== 'all'">「{{ taggerFilter }}」名下没有已标记的风险工单 —— 点左栏「按标记人」看全部</template>
         <template v-else-if="untaggedFilterDirty">当前筛选条件下没有工单 —— 点「重置」看这一路的全部</template>
         <template v-else-if="queueView === 'monitoring' && untaggedSub">这一档下没有待判的工单 —— 点上一级看这一路的全部</template>
@@ -9123,9 +9155,9 @@ function toggleWordEnabled(w: RiskWord) {
  * 【为什么非定死不可】清单区的宽度会**随纵向滚动条有无浮动 15px**：
  * 真正滚动的是外壳的 `.workspace-page-body`，它的滚动条占 15px，
  * 故清单区宽 ＝ 视口 − 450（有滚动条）或 视口 − 435（没有）。
- * 而工作面那条筛选条实需 **904**（＋左右内边距 12 ⇒ 要 916 的容器），恰好落在这条浮动带里：
- *   · 表 14 行、滚动条在 → 容器 1360−450 = 910 → 放不下 → 两行；
- *   · 筛到 2 行、滚动条消失 → 容器 1360−435 = 925 → 放得下 → 一行。
+ * 而工作面那条筛选条实需 **941**（＋左右内边距 12 ⇒ 要 953 的容器），恰好落在这条浮动带里：
+ *   · 表 14 行、滚动条在 → 容器 1395−450 = 945 → 放不下 → 两行；
+ *   · 筛到 2 行、滚动条消失 → 容器 1395−435 = 960 → 放得下 → 一行。
  * 于是**筛一下就从两行缩成一行，底下整张表跟着往上跳一行高**。业务拍板"窄窗接受两行"，
  * 要的是**稳定的两行**，这个跳动是缺陷、不是"接受两行"的应有之义。
  *
@@ -9135,22 +9167,24 @@ function toggleWordEnabled(w: RiskWord) {
  *     ① 那一枚「全部（N）」把五格从 869 收到 827，上界一度算到 1299；
  *     ② 同日业务把「类型」「等级」改回四字，两个标签各 +24px ⇒ 875，上界回到 1349；
  *     ③ 同日业务再判「工单类型」改多选，那一格 117 → 186 ⇒ 五格 944，上界一度到 1419；
- *     ④ 同日业务判「工单类型的长度压缩下」⇒ 选中标签去掉计数，那一格 186 → **146**
- *        ⇒ 五格 **904** ⇒ 要 916 的容器 ⇒ 视口 ≥ 1366（有滚动条）/ ≥ 1351（没有），
- *        浮动带 [1351, 1366)。取 1380 起走自然排版，此时最窄也有 930 的容器、14px 余量。
+ *     ④ 同日业务判「工单类型的长度压缩下」⇒ 选中标签去掉计数，那一格 186 → 146 ⇒ 五格 904，上界 1379；
+ *     ⑤ 同日业务判「班组支持多选」⇒ 那一格 147 → **184**（最长组名「技术支持组」5 字 97
+ *        ＋ `+ N ...` 53 ＋ 尾隙 4 ＝ 154，＋30；166 那一版实测被切）
+ *        ⇒ 五格 **941**（实测）⇒ 要 953 的容器 ⇒ 视口 ≥ 1403（有滚动条）/ ≥ 1388（没有），
+ *        浮动带 [1388, 1403)。取 1420 起走自然排版，此时最窄也有 970 的容器、17px 余量。
  *     ⚠️ **本页常见窄窗（清单区 867 ⇒ 视口 1302~1317）落在这一档内**，走的是**稳定的两行
  *     （4 + 1）**；业务已拍板接受工作面这条两行，不再为回一行做妥协。
- *   · 下界 **1190**（1170 → 1220 → 1190，跟着上面那两次一起动）：已判那条四格
- *     688 → 757 → **717** ⇒ 要 729 的容器；视口 1190 时容器最窄 740、余 11px 排得下一行。
- *     **1170 仍然排不下**（容器 720 < 729），故不能退回 1170。
- *     （这一档里定死的那 4 格 ＝ 班组 + 来源 + 工单类型 + 风险等级 ＝ 717，同一个数。）
- * ⚠️ 1190 以下（本页实际窗口到不了）仍走自然换行 —— 那是"放不下就换行"，不会溢出。
+ *   · 下界 **1230**（1170 → 1220 → 1190 → 1230，跟着上面几次一起动）：已判那条四格
+ *     688 → 757 → 717 → **754**（实测）⇒ 要 766 的容器；视口 1230 时容器最窄 780、
+ *     余 14px 排得下一行。**1190 已经排不下了**（容器 740 < 766），故不能退回。
+ *     （这一档里定死的那 4 格 ＝ 班组 + 来源 + 工单类型 + 风险等级 ＝ 754，同一个数。）
+ * ⚠️ 1230 以下（本页实际窗口到不了）仍走自然换行 —— 那是"放不下就换行"，不会溢出。
  *
  * 🔴 **只收没有右侧动作区的那两条**（工作面 5 格 / 已判 4 格）：待判那两路那条带动作区
  * （查询 / 重置，自身约占 166px），定死 4 格会把那一行顶出横向滚动条。
  * 它维持自然换行 —— 实需 kw 路 789 / focus 路 567，清单区 991 下字段区可用 825，一行放得下。
  */
-@media (min-width: 1190px) and (max-width: 1379px) {
+@media (min-width: 1230px) and (max-width: 1419px) {
   .list-toolbar--one-line.list-toolbar--no-actions .tb-fields {
     display: grid;
     grid-template-columns: repeat(4, max-content);
