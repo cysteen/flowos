@@ -9320,8 +9320,10 @@ function toggleWordEnabled(w: RiskWord) {
 .tb-actions .scan-go { width: 100%; }
 
 /*
- * 台账 / 未标记筛选条：整栏一行（字段横排 + 查询/重置并排）。
+ * 台账 / 待判筛选条：字段横排 + 查询/重置并排（不走 `.tb-actions` 那套竖排）。
  * 写在 `.tb-actions` 竖排规则之后，避免动作列把工具条撑到 ~80px 高。
+ * ⚠️ **"整栏一行"只对走 `--grid` 的那几条成立**：命中明细那条七格一行装不下，
+ * 已由 `--ledger` 放开换行（见下面那段），别再按"这一支必然单行"去推别处的样式。
  */
 .list-toolbar--one-line {
   display: flex;
