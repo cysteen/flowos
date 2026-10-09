@@ -13,6 +13,8 @@ import {
   RISK_REPORT_TAB,
   visiblePoolGroupsFor,
   canAssignTicket,
+  canTransferTicket,
+  currentHandlerName,
   type WorkbenchTabKey,
 } from '@/views/tickets/types/ticket';
 import { FLASH_POOL_TAB_ROLES } from '@/config/roles';
@@ -225,11 +227,16 @@ function onOpDialogConfirm(payload: Record<string, unknown>) {
 }
 
 const isPoolFamilyTab = computed(() => isPoolFamily(wb.activeTab.value));
+/** 催补待回：行内只出「领取」「调剂」，不设勾选与批量领取（PRD-02 §7⑤-B） */
+const isPoolPendingTab = computed(() => wb.activeTab.value === 'poolPending');
 const batchActions = computed(() => {
+  if (isPoolPendingTab.value) return [];
   if (isPoolFamilyTab.value) return canAssign.value ? ['领取', '指派'] : ['领取'];
   return wb.isMineTab.value ? ['调剂', '退回'] : [];
 });
-const showBatchToolbar = computed(() => wb.isMineTab.value || isPoolFamilyTab.value);
+const showBatchToolbar = computed(
+  () => wb.isMineTab.value || (isPoolFamilyTab.value && !isPoolPendingTab.value),
+);
 const structuredFilterVariant = computed<'done' | 'pool' | 'mine'>(() => {
   if (wb.isDoneTab.value) return 'done';
   if (isPoolFamilyTab.value) return 'pool';
@@ -309,8 +316,51 @@ function onAssignSubmit(p: AssignSubmitPayload) {
   message.success(`已指派 ${rows.length} 张工单给 ${p.targetName}`);
 }
 
+/**
+ * 催补待回 · 行内动作（PRD-02 §7⑤-B）：「领取」人人有；「调剂」只给二线班组长 / 投诉督导 /
+ * 三类管理员（与指派同一组角色），且行要满足 `canTransferTicket`。
+ */
+function poolPendingRowActions(t: Ticket): { label: string; primary?: boolean }[] {
+  const acts: { label: string; primary?: boolean }[] = [{ label: '领取', primary: true }];
+  if (canAssign.value && canTransferTicket(t)) acts.push({ label: '调剂' });
+  return acts;
+}
+
+/** 催补待回 · 领取：无处理人直接领；他人名下先二次确认。领取后进该单详情 */
+function takeOverPending(t: Ticket) {
+  const from = wb.poolPendingOwnerOf(t);
+  if (from !== null && from === currentHandlerName(user.roleKey, user.name)) {
+    openOperation(t);
+    return;
+  }
+  const run = () => {
+    const res = wb.takeOverPoolPending(t.id);
+    if (!res.ok) {
+      message.warning('该工单已不在催补待回');
+      return;
+    }
+    message.success(`已领取 ${t.no}`);
+    openOperation(t);
+  };
+  if (from === null) {
+    run();
+    return;
+  }
+  Modal.confirm({
+    title: '领取工单',
+    content: `该工单当前由${from}处理，领取后改由你处理，确认领取？`,
+    okText: '确认领取',
+    cancelText: '取消',
+    onOk: run,
+  });
+}
+
 // 「处理 / 详情 / 审核 / 受理」进工单操作页（PRD-03）；其余即时反馈
 function onAction(label: string, t: Ticket) {
+  if (label === '领取' && isPoolPendingTab.value) {
+    takeOverPending(t);
+    return;
+  }
   if (label === '领取' && t.type === '刷机') {
     claimFlash(t);
     return;
@@ -562,6 +612,7 @@ function onConfirmSaveFilter(name: string) {
                     ? 'pool'
                     : 'default'
             "
+            :row-actions-fn="isPoolPendingTab ? poolPendingRowActions : undefined"
             :show-appointment-column="wb.showAppointmentColumn.value"
             :extra-columns="listExtraColumns"
             :visible-columns="visibleColumns"
@@ -590,7 +641,7 @@ function onConfirmSaveFilter(name: string) {
           <div class="pager">
             <div class="pager-left">
               <span class="pager-total">共 {{ wb.total.value }} 条</span>
-              <span v-if="wb.isMineTab.value || isPoolFamilyTab" class="pager-selected">已选 {{ wb.selectedCount.value }} 项</span>
+              <span v-if="wb.isMineTab.value || (isPoolFamilyTab && !isPoolPendingTab)" class="pager-selected">已选 {{ wb.selectedCount.value }} 项</span>
             </div>
           </div>
         </template>

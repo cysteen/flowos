@@ -87,7 +87,9 @@ export function useTicketWorkbench() {
   function inPoolTabScope(t: Ticket): boolean {
     return inGroupPoolScope(t, poolGroupIdsForTicket(t, visiblePoolGroupIds.value));
   }
+  /** 催补待回数据域：915 §9.3 父域，去掉处理人为当前用户的单（那些在「我的任务」） */
   function inPoolPendingTabScope(t: Ticket): boolean {
+    if (t.assignee !== null && t.assignee === flashHandler.value) return false;
     return inPoolPendingScope(t, poolGroupIdsForTicket(t, visiblePoolGroupIds.value));
   }
   /**
@@ -447,6 +449,60 @@ export function useTicketWorkbench() {
     return { claimed, failed };
   }
   /**
+   * 催补待回 · 领取要换掉的那个人：已升级技术支持单取二线主责（处理人在三线），其余取处理人。
+   * null ＝ 无处理人（池内单）。
+   */
+  function poolPendingOwnerOf(t: Ticket): string | null {
+    if (t.nodeStatus === '已升级技术支持') {
+      return t.primaryOwner ?? (t.upgradedByMe ? WORKBENCH_HANDLER : t.assignee);
+    }
+    return t.assignee;
+  }
+  /**
+   * 催补待回 · 领取（PRD-02 §7⑤-B）。与 `claimTicket` 分开，不改池子的领取语义。
+   * - 无处理人：处理人改为本人（同池内领取）；
+   * - 他人名下：处理人改为本人，写履历「从〈原处理人〉名下领取」；
+   * - 已升级技术支持：只换二线主责（`primaryOwner`），三线处理人与状态不动。
+   * 不清催补 / 补充未读：出列只认「已联系」（915）。
+   */
+  function takeOverPoolPending(id: string): { ok: boolean; from: string | null } {
+    const t = all.value.find((x) => x.id === id);
+    if (!t || !inPoolPendingTabScope(t)) return { ok: false, from: null };
+    const me = flashHandler.value;
+    const from = poolPendingOwnerOf(t);
+    if (from === me) return { ok: true, from };
+    const at = nowMinuteStamp();
+    if (from === null) {
+      if (t.type === '刷机') return { ok: claimFlashTicket(id).ok, from };
+      const taken = takeOverReturnedTicket(t, {
+        assignee: me, how: '领取', operator: me,
+        operatorRole: mapUserRole(user.roleKey), at,
+      });
+      if (taken) {
+        Object.assign(t, taken);
+      } else {
+        t.tab = 'mine';
+        t.assignee = me;
+        t.responded = false;
+      }
+      return { ok: true, from };
+    }
+    if (t.nodeStatus === '已升级技术支持') {
+      t.primaryOwner = me;
+      t.upgradedByMe = me === WORKBENCH_HANDLER;
+    } else {
+      t.tab = 'mine';
+      t.assignee = me;
+    }
+    t.eventTimeline = [...(t.eventTimeline ?? []), {
+      id: `tl-${t.no}-takeover-${(t.eventTimeline?.length ?? 0) + 1}`,
+      category: 'node', action: 'accept', who: me, role: mapUserRole(user.roleKey),
+      how: '领取', what: `从${from}名下领取`, when: at,
+    }];
+    t.updatedAt = at;
+    return { ok: true, from };
+  }
+  /**
    * 指派（动作矩阵 §G4.5 d）：把池中「待受理」单跳过领取、直接定给人或转给组。
    *
    * - **同组内 → 到人**：单离池（`tab='mine'` + `assignee=目标人`）。指给本人时才落进
@@ -501,7 +557,7 @@ export function useTicketWorkbench() {
     selectedCount, allPageSelected, aiSuggestions, aiSummary, showAiBar,
     isDraftView, showAppointmentColumn, showSuspendColumns, isMineTab, isDoneTab, isPoolTab, usesStructuredFilter,
     setTab, setChip, setMineQuery, setDoneQuery, setStructuredQuery, saveCurrentFilter, removeSavedFilterChip, applyMineQuery, applyStructuredQuery, setMineSortRule, setSearch, toggleSelect, toggleSelectAllOnPage, clearSelection,
-    addTicket, claimTicket, claimTickets, claimFlashTicket, assignTickets, flashPoolRows, dismissAiSuggestion, ticketById,
+    addTicket, claimTicket, claimTickets, claimFlashTicket, poolPendingOwnerOf, takeOverPoolPending, assignTickets, flashPoolRows, dismissAiSuggestion, ticketById,
     removeDraft: (id: string) => draftStore.remove(id),
   };
 }

@@ -571,6 +571,11 @@ export interface Ticket {
    * 催补待回的「已升级」chip 靠它扩域，见 inPoolPendingScope()。
    */
   upgradedByMe?: boolean;
+  /**
+   * 二线主责处理人姓名（仅「已升级技术支持」单）：处理人 `assignee` 已在三线时记原二线主责。
+   * 由「催补待回」领取写入；缺省时按 `upgradedByMe`（主责＝`WORKBENCH_HANDLER`）回落，再回落 `assignee`。
+   */
+  primaryOwner?: string;
   /** 历史存在委派动作（含委派返回） */
   hasDelegateHistory?: boolean;
   /** 补充信息未知晓 */

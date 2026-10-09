@@ -347,6 +347,8 @@ const riskControlForm = computed(() => resolveRiskControlForm(user.roleKey, d.va
  */
 const primaryHandlerName = computed(() => {
   const row = TICKETS.find((x) => x.no === d.value.no);
+  // 催补待回领取换过二线主责（`primaryOwner`）时以它为准
+  if (row?.primaryOwner && row.nodeStatus === '已升级技术支持') return row.primaryOwner;
   if (row?.upgradedByMe && row.nodeStatus === '已升级技术支持') return WORKBENCH_HANDLER;
   return d.value.lastHandler ?? null;
 });
