@@ -17,7 +17,7 @@ import {
 } from '@/views/tickets/types/ticket';
 import type { TimelineEntry, TlRole } from '@/views/tickets/types/ticketDetail';
 import { AFTERSALE_INBOUND_SOURCE } from '@/views/tickets/types/createTicket';
-import { AFTERSALE_FROZEN_STATUS, AFTERSALE_SLOT_LABEL, type AftersaleSlot } from './aftersaleButtonForm';
+import { AFTERSALE_FROZEN_STATUS, type AftersaleSlot } from './aftersaleButtonForm';
 
 /**
  * `AS_ESCALATE_COMPLAINT`：售后升级投诉（③，《【1025】》§4.1）—— 客服侧新建投诉单挂客服派生位，
@@ -372,28 +372,26 @@ function applyReturned(t: Ticket, e: AftersaleEvent, dispatch: DispatchResolver)
 
 /* ---------------- 升级投诉时的关联迁移（基线 ※26 / R11，1025 R1.5-8） ---------------- */
 
-/** 原单侧「关联降级」履历（§5.3，同位内改绑；〈位名〉取客服来源位 / 客服派生位） */
+/** 原单侧「关联转出」履历（§5.3，同位内改绑；slot 参数保留、文案不再带位名） */
 export function aftersaleLinkDemotedEntry(
   input: { asNo: string; toNo: string; who: string; role: TlRole; at: string; slot?: AftersaleSlot },
 ): Omit<TimelineEntry, 'id'> {
-  const slotName = AFTERSALE_SLOT_LABEL[input.slot ?? 'source'];
   return {
     category: 'relate', action: 'relate', who: input.who, role: input.role,
-    how: '关联降级',
-    what: `售后单 ${input.asNo} 的${slotName}关联已转至工单 ${input.toNo}`,
+    how: '关联转出',
+    what: `售后单 ${input.asNo} 的关联已转至工单 ${input.toNo}`,
     when: input.at,
   };
 }
 
-/** 新单侧「关联接入」履历（§5.3） */
+/** 新单侧「关联转入」履历（§5.3） */
 export function aftersaleLinkJoinedEntry(
   input: { asNo: string; fromNo: string; who: string; role: TlRole; at: string; slot?: AftersaleSlot },
 ): Omit<TimelineEntry, 'id'> {
-  const slotName = AFTERSALE_SLOT_LABEL[input.slot ?? 'source'];
   return {
     category: 'relate', action: 'relate', who: input.who, role: input.role,
-    how: '关联接入',
-    what: `接下售后单 ${input.asNo} 的${slotName}关联（原关联工单 ${input.fromNo}）`,
+    how: '关联转入',
+    what: `已关联售后单 ${input.asNo}（由工单 ${input.fromNo} 转入）`,
     when: input.at,
   };
 }
