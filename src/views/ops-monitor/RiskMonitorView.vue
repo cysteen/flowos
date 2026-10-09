@@ -6132,7 +6132,13 @@ function toggleWordEnabled(w: RiskWord) {
             <col>
             <col style="width: 72px">
             <col style="width: 128px">
-            <col style="width: 88px">
+            <!--
+              🔴 **时间列 88 → 120**（2026-10-09 随「时间」改全格式一并重量，量法见表头那一段）。
+              ⚠️ **列宽的真源是这个 `<colgroup>`，不是 `<th style>`**：本表 `table-layout: fixed`，
+              `<col>` 的宽**压过** `<th>` 上写的宽（实测只改 th 时计算值仍是 88、文字被切，
+              `scrollWidth 103 > clientWidth 88`）。两处要一起给同一个数。
+            -->
+            <col style="width: 120px">
             <col style="width: 76px">
           </colgroup>
           <thead>
@@ -6149,7 +6155,17 @@ function toggleWordEnabled(w: RiskWord) {
               <th>命中内容</th>
               <th style="width: 72px">客户</th>
               <th style="width: 128px">处理人</th>
-              <th style="width: 60px">时间</th>
+              <!--
+                ⚠️ **列宽 120，不是 60**（2026-10-09 随「时间」改全格式一并重量）：
+                这一格由 `MM-DD HH:mm` 改成 `YYYY-MM-DD HH:mm`（业务「这改时间的风格不对，
+                应该是这个格式」，格式真源 ＝ 页头那枚 `.monitor-clock`）。
+                实测 12px 字下 `2026-10-09 10:53` **94px**（旧文案 `10-09 11:18` 才 63），
+                ＋ 单元格左右内边距 20 ＝ **114**，取 120 留 6px 余量。
+                🔴 **不要收回 96**：本文件已判那张表的「结论时间」列给 96 时被省略成
+                「2026-10-06 10:…」，**已经犯过一次**，最后给到 120 才没被切。
+                ⚠️ 加宽的 60px 由弹性的「命中内容」让（实测让后仍有 130+，表宽不变、不出横滚）。
+              -->
+              <th style="width: 120px">时间</th>
               <th style="width: 88px">操作</th>
             </tr>
           </thead>
@@ -6208,7 +6224,14 @@ function toggleWordEnabled(w: RiskWord) {
                 <td class="hit-handler-cell">
                   <span class="hit-clip-line" :title="rowHandlerLine(g.row, h)">{{ rowHandlerLine(g.row, h) }}</span>
                 </td>
-                <td class="hit-when">{{ h.when.slice(5, 10) }} {{ h.when.slice(11, 16) }}</td>
+                <!--
+                  🔴 **全格式 `YYYY-MM-DD HH:mm`**（2026-10-09，业务「这改时间的风格不对，
+                  应该是这个格式」）：原先写 `MM-DD HH:mm`，**省掉年份与那一刀分段**，
+                  与本页别处（页头 `.monitor-clock`、池行表「进监控时刻」、已判表「结论时间」、
+                  扫库记录起止）四处全格式对不上。格式真源取页头那枚 `.monitor-clock`，不自创写法。
+                  ⚠️ 列宽已随之由 60 重量到 120，见表头那一段。
+                -->
+                <td class="hit-when">{{ h.when.slice(0, 16) }}</td>
                 <td class="hit-act-cell">
                   <button
                     v-if="canRiskTag"
