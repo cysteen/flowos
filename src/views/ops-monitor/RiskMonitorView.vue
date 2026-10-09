@@ -541,9 +541,18 @@ const decisionFilter = ref<string[]>([]);
  */
 
 /**
- * 来源排序。**同来源内仍按 tie 给的次序**——队列的默认口径是等待时长
- * （§5.3 元素 ④，等最久的在最上）；按来源排一次就把它整个丢掉的话，
- * 等了三天的那条会沉到某一组的中间，再也没人看得见。故来源只做分组，不做重排。
+ * 来源排序。**只分组、不重排** —— 同来源内一律回退到 `tie` 给的次序。
+ *
+ * ⚠️ **原注释说 tie 是「等待时长」，那是过期的**：等待时长那一列 2026-10-09 已随
+ * 领取 / 释放整套撤出本工作面，本文件一处都不显示它，自然也不拿它排。
+ * **现在 tie 由各段自己给**（见三个 `sortBySource(...)` 调用点）：
+ *   · 待领取 / 已领取 —— `a.at` 正序（**进池时刻**，早的在上）；
+ *   · 已结论 —— `concludedAtOf` 倒序（**结论时刻**，刚评完的在上）。
+ *
+ * 【为什么来源只分组不重排】段内次序本身是有意义的（谁先进池 / 谁刚出结论），
+ * 按来源排一次就把它整个丢掉的话，最该先看的那条会沉到某一组的中间。
+ *
+ * 🔴 **本表一共只有「监控来源」这一列可排**，三态轮转：不排 → 正序 → 倒序 → 不排。
  */
 function sortBySource(rows: RiskPoolItem[], tie: (a: RiskPoolItem, b: RiskPoolItem) => number) {
   if (sourceSort.value === 'none') return rows;
@@ -621,8 +630,23 @@ function byPoolAttrs(rows: RiskPoolItem[], skip?: PoolAttr) {
     if (skip !== 'source' && sourceFilter.value.length && !sourceFilter.value.includes(r.source)) return false;
     // 取原单真实类型（`poolTicketTypeOf`），与待判那两路同一把尺
     if (skip !== 'type' && poolTicketTypeFilter.value.length && !poolTicketTypeFilter.value.includes(poolTicketTypeOf(r))) return false;
-    // 🔴 风险等级仍是**单选**：它与左栏那条风险等级轴同一份真源（`judgedLevelFilter` → `tagLevelFilter`），
-    // 而左栏是单选轨 —— 与「优先级」那一格同一条理由，业务已拍板不改多选
+    /*
+     * 🔴 风险等级仍是**单选**。
+     *
+     * ⚠️ **这里读的是 `poolLevelFilter`（工作面自己的 ref），与左栏那条轴毫无关系** ——
+     * 它和 `tagLevelFilter` 全文没有任何读写往来。
+     * 只有**「已判」段**那一格是左栏那条轴：`judgedLevelFilter` 是 `tagLevelFilter`
+     * 的可写 computed 代理（见那一段的定义），改它就是改左栏。
+     *
+     * 🔴 **两格都单选，但理由不是同一个，别混着说**：
+     *   · **已判**那一格 —— **结构限制**：它就是左栏那条轴本身，而左栏是单选轨，
+     *     想多选得先把左栏改掉；
+     *   · **工作面**这一格 —— **业务拍板**：它本可以做成多选（同条筛选条另外四格都是多选），
+     *     业务拍"也不改多选，与优先级一致"，是口径统一，不是做不到。
+     *
+     * 【为什么要把这段写清楚】原注释写的是"它与左栏那条轴同一份真源"，**是错的**，
+     * 而且已经害过一次：PRD 那一路照它把"工作面这一格也与左栏同源"写进了册子。
+     */
     if (skip !== 'level' && poolLevelFilter.value !== 'all' && r.tag?.result !== poolLevelFilter.value) return false;
     if (skip !== 'decision' && decisionFilter.value.length) {
       const k = decisionKindOf(r);
@@ -844,7 +868,7 @@ const poolNarrowedText = computed(() => [
   ...groupFilter.value,
   ...sourceFilter.value,
   ...poolTicketTypeFilter.value,
-  // 风险等级仍是单选（与左栏那一轴同一份真源）
+  // 风险等级仍是单选（工作面自己的 `poolLevelFilter`，**与左栏那条轴无关**，见 `byPoolAttrs` 里那段）
   poolLevelFilter.value === 'all' ? 'all' : riskLevelText(poolLevelFilter.value),
   ...decisionFilter.value.map((d) => (d === COORD_DECISION ? '风险处理建议' : d)),
 ].filter((v) => v !== 'all').join(' · '));
@@ -6725,12 +6749,18 @@ function toggleWordEnabled(w: RiskWord) {
                 ⚠️ 列宽 **96**：格里的来源标最宽 82（四字胶囊）、表头连排序箭头一起 70。
                 上一轮曾为了补「风险摘要」收到 88（四字胶囊上只剩 4px 余量），
                 删「处置阶段」腾出 80px 之后**回到 96**，不再在这一列上压线。
+
+                🔴 **下面那条 `title` 原来写的是「同来源内仍按等待时长」「点击恢复按等待时长排」，
+                是过期的**：等待时长那一列 2026-10-09 已撤出本工作面，全页一处都不显示它。
+                现在说的是实情 —— 来源**只分组不重排**，段内次序由各段自己给
+                （在队两段按进池时刻正序、已结论段按结论时刻倒序，见 `sortBySource` 上方那段）。
+                🔴 **本表可排序的列只有这一个**，三态轮转：不排 → 正序 → 倒序 → 不排。
               -->
               <th
                 style="width: 96px"
                 class="th-sortable"
                 :class="{ on: sourceSort !== 'none' }"
-                :title="sourceSort === 'none' ? '点击按监控来源分组（同来源内仍按等待时长）' : sourceSort === 'asc' ? '点击倒序' : '点击恢复按等待时长排'"
+                :title="sourceSort === 'none' ? '点击按监控来源分组（只分组，同来源内次序不变）' : sourceSort === 'asc' ? '点击倒序' : '点击取消分组，恢复原次序'"
                 @click="cycleSourceSort"
               >监控来源<span class="th-sort-mark">{{ sourceSort === 'asc' ? '↑' : sourceSort === 'desc' ? '↓' : '↕' }}</span></th>
               <th>风险摘要</th>
