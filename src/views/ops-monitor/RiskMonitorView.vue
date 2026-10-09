@@ -4939,6 +4939,136 @@ const judgedTypeFilterOptions = computed(() => [
   })),
 ]);
 
+/* ---- 两条筛选条（评估处置工作面 / 已判段）的**同一份渲染规格** ---- */
+/**
+ * 这条筛选条上的**一格**。
+ *
+ * 🔴 **两条筛选条同走这一份规格与模板里那一个 `v-for`**（2026-10-09 裁决，业务原话
+ * 「两处的搜索内容保持一致，复用的逻辑」）：原先两段的格子在模板里各写一遍
+ * （工作面五个 `div.fi` + 已判三个），形态靠人工对齐 —— 改一处漏一处就是本文件
+ * 反复踩过的"同一个控件两套写法"。现在形态、标签写法、计数口径、量宽规则只有这一处。
+ *
+ * 🔴 **"按路出维"，不是"两处都出五格"**：共用的是**实现与形态**，不是数据范围 ——
+ *   · 「结论」这一维**在已判段不成立**：已判段装的是 `RiskQueueEntry`（监控条目），
+ *     身上没有结论字段，结论落在池行 `RiskPoolItem` 的 `assessment` / `coordination` 上
+ *     （见 `judgedSourceFilter` 上方那段）。硬摆上去是四格三个零。
+ *   · 「来源」这一维**两处取值域本来就不同**（已判三个，含「二线报备」那条标记条目；
+ *     工作面经 `isALine` 把报备挡在外面、只有两个）—— 这是对的，不去强行统一。
+ *   · 故两路各给各路成立的维：工作面 班组/来源/类型/等级/结论 五格，已判 班组/来源/类型/等级 四格。
+ * 🔴 **计数口径照旧**：各维一律"摘掉自己这一维"再算，两路各按**自己的分母**
+ * （`reportSourceBase` 一组 / `judgedSourceBase` 一组）。
+ *
+ * 🔴 **`width` 就是模板里原来逐格写的那个 `--tbw`，数是量出来的**（13px 字实测，取这一格
+ * **全部选项里最长的那一个**，不是当前选中的那一个 —— 后者会让控件随选随变宽）：
+ * 单选控件宽 ＝ 文字 + 34（内边距 14 + 边框 2 + 箭头 18）再留 3px 余量。
+ *   · 班组「硬件缺陷组（9）」99、两位数时约 106 ⇒ **147**；
+ *   · 来源「实时监控（15）」93 ⇒ **130**；
+ *   · 类型「非投诉（15）」80 ⇒ **117**；
+ *   · 等级「高危（15）」67 ⇒ **104**；
+ *   · 结论「风险处理建议（2）」112 ⇒ **149**。
+ * ⚠️ **只能看画面、不能信 `scrollWidth === clientWidth`**：实测那两个值相等时画面上照样有
+ * 省略号（184px 那一版「全部来源（14」真的被切了）。量法与余量见样式里 `.list-toolbar--grid` 那一段。
+ *
+ * ⚠️ **「类型」这个词在本页有两处、同名不同义，不要去"统一"它们**：
+ *   · 这两条上的「类型」＝ **原单类型**，取值 投诉 / 非投诉；
+ *   · 待判那两路筛选条上的「类型」＝ **工单类型**，取值 咨询 / 建议 / 商机 / 投诉 / 刷机。
+ * 两者取值域完全不同、分处不同视图，是业务看过提示之后拍的板。
+ */
+interface AttrFilterCell {
+  /** `v-for` 的 key；两路同名维同键，切路时控件就地换选项而不是整格重建 */
+  key: string;
+  /** 两字标签。四字标签在窄窗下每个白占 48px，2026-10-09 已统一收成两字 */
+  label: string;
+  /** 量出来的控件宽（px），见上面那张表 */
+  width: number;
+  options: { value: string; label: string }[];
+  value: string;
+  /**
+   * 🔴 `set` 里回收各维自己的类型：这一份规格为了让两路共用一个 `v-for` 把取值域抹成
+   * `string`，各维的真源 ref 仍是各自的联合类型，故在这里**显式收回去**，不把 `any` 放进 state。
+   */
+  set: (v: string) => void;
+}
+const attrFilterCells = computed<AttrFilterCell[]>(() => {
+  // 班组是两路共用的那一格：同一份 state（左栏各档也按它收窄），故只写一次
+  const group: AttrFilterCell = {
+    key: 'group',
+    label: '班组',
+    width: 147,
+    options: groupFilterOptions.value,
+    value: groupFilter.value,
+    set: (v) => { groupFilter.value = v; },
+  };
+  if (listView.value === 'report') {
+    return [
+      group,
+      {
+        key: 'source',
+        label: '来源',
+        width: 130,
+        options: sourceFilterOptions.value,
+        value: sourceFilter.value,
+        set: (v) => { sourceFilter.value = v as MonitorSource | 'all'; },
+      },
+      {
+        key: 'type',
+        label: '类型',
+        width: 117,
+        options: poolTicketTypeFilterOptions.value,
+        value: poolTicketTypeFilter.value,
+        set: (v) => { poolTicketTypeFilter.value = v as PoolTicketTypeKey | 'all'; },
+      },
+      {
+        key: 'level',
+        label: '等级',
+        width: 104,
+        options: poolLevelFilterOptions.value,
+        value: poolLevelFilter.value,
+        set: (v) => { poolLevelFilter.value = v as RiskLevel | 'all'; },
+      },
+      // 🔴 **结论摆在末位**：它是唯一一个取值不覆盖整表的维度（在队两段没有结论，
+      // 见 `reportDecisionBase`）；前面四格的次序即收窄的层次（谁的活 → 从哪儿进池 → 原单类型 → 风险等级）
+      {
+        key: 'decision',
+        label: '结论',
+        width: 149,
+        options: decisionFilterOptions.value,
+        value: decisionFilter.value,
+        set: (v) => { decisionFilter.value = v as DecisionKey | 'all'; },
+      },
+    ];
+  }
+  return [
+    group,
+    {
+      key: 'source',
+      label: '来源',
+      width: 130,
+      options: judgedSourceFilterOptions.value,
+      value: judgedSourceFilter.value,
+      set: (v) => { judgedSourceFilter.value = v as MonitorSource | 'all'; },
+    },
+    {
+      key: 'type',
+      label: '类型',
+      width: 117,
+      options: judgedTypeFilterOptions.value,
+      value: judgedTypeFilter.value,
+      set: (v) => { judgedTypeFilter.value = v as PoolTicketTypeKey | 'all'; },
+    },
+    // 🔴 这一格**与左栏那一轴共用一份 state**（`judgedLevelFilter` 只是 `tagLevelFilter` 的代理）：
+    // 左栏点哪一档这一格就显示哪一档，反过来也成立
+    {
+      key: 'level',
+      label: '等级',
+      width: 104,
+      options: judgedLevelFilterOptions.value,
+      value: judgedLevelFilter.value,
+      set: (v) => { judgedLevelFilter.value = v as RiskLevel | 'all'; },
+    },
+  ];
+});
+
 /** 左栏这一列只在漏斗的两个视图上作数；旁路的两个入口自带各自的筛选条，不套班组 */
 const showGroupFilter = computed(() => listView.value === 'realtime' || listView.value === 'report');
 
@@ -5618,13 +5748,13 @@ function toggleWordEnabled(w: RiskWord) {
         风险等级 / 结论。四维原先是筛选区里几排 chip，与班组这一个下拉是同一类东西
         （单选、带计数、互不相干的几维），却长着两套形态；收进这一行之后，
         这一屏上"筛什么"只有一处可找，筛选区那一整块（`.section-filters`）随之撤掉。
-        🔴 **五格控件逐字同形**（`.fi` + `.fl` + `a-select.tb-ctl`，标签写法 `全部X（N）`），
-        不为了塞得下就把其中一两格换成另一种控件。
-        ⚠️ 四维只对池行成立，故只在工作面（`listView === 'report'`）上出；
-        这条工具条的另一个落点（实时监控的「重点工单」等路）只摆班组一格。
+        🔴 **每一格逐字同形**（`.fi` + `.fl` + `a-select.tb-ctl`，标签写法 `全部（N）` / `取值（N）`），
+        不为了塞得下就把其中一两格换成另一种控件 —— 形态由 `attrFilterCells` 一处给，不靠人工对齐。
+        ⚠️ 结论这一维只对池行成立，故只在工作面（`listView === 'report'`）上出；
+        这条工具条的另一个落点（待判那两路）自带另一条筛选条，不走这里。
 
-        🔴 **次序即收窄的层次**：班组（谁的活）→ 监控来源（从哪儿进的池）→ 原单类型 →
-        风险等级 → 结论（走到哪一步收的口）。结论摆在末位是因为它是**唯一一个
+        🔴 **次序即收窄的层次**：班组（谁的活）→ 来源（从哪儿进的池）→ 类型 →
+        等级 → 结论（走到哪一步收的口）。结论摆在末位是因为它是**唯一一个
         取值不覆盖整表的维度**（在队那两段没有结论，见 `reportDecisionBase`）。
       -->
       <div
@@ -5633,114 +5763,32 @@ function toggleWordEnabled(w: RiskWord) {
       >
         <div class="list-toolbar list-toolbar--one-line list-toolbar--no-actions">
           <!--
-            🔴 **每一格的 `--tbw` 是量出来的**（13px 字 canvas 实测，取这一格**全部选项里最长的那一个**，
-            不是当前选中的那一个）：班组「硬件缺陷组（9）」99、两位数时约 106 ⇒ 147；
-            来源「实时监控（15）」93 ⇒ 130；类型「非投诉（15）」80 ⇒ 117；
-            等级「高危（15）」67 ⇒ 104；结论「风险处理建议（2）」112 ⇒ 149。
-            控件宽 ＝ 文字 + 34（内边距 14 + 边框 2 + 箭头 18）再留 3px 余量。量法见样式里那一段。
-
-            🔴 **2026-10-09 第二次重量**：那一枚「全部」项收成「全部（N）」之后（见
-            `groupFilterOptions` 上方那段），来源 / 类型 / 等级三格的最长取值从
-            「全部X（15）」换成了各自真正最长的那个取值，三格 131 → 130 / 117 / 104，**共省 42px**。
-            · 班组不变：它最长的一直是组名「硬件缺陷组（9）」，不是那一枚「全部」；
-            · 结论不变：它最长的一直是「风险处理建议（2）」112，同理。
-
-            🔴 **三个四字标签 2026-10-09 收成两字**（监控来源→来源、原单类型→类型、风险等级→等级）：
-            窄窗（清单区 867px）下这一条原先是两行，而最吃宽的不是控件、是**四字标签各占 48px、
-            三个合计 144px**；收成两字省 72px。已判段那条同名三格一起改，两条形态保持一致。
-            ⚠️ **「类型」这个词在本页有两处、同名不同义，不要去"统一"它们**：
-              · 这一格（工作面）的「类型」＝ **原单类型**，取值 投诉 / 非投诉（`poolTicketTypeFilter`）；
-              · 待判「重点工单」那条筛选条上的「类型」＝ **工单类型**，取值 咨询 / 建议 / 商机 /
-                投诉 / 刷机（`untaggedFilter.types`）。
-            两者取值域完全不同、分处两个视图，是业务看过提示之后拍的板。
+            🔴 **两条筛选条（工作面 / 已判）同走这一个 `v-for`**（2026-10-09 裁决，业务原话
+            「两处的搜索内容保持一致，复用的逻辑」）：每一格的标签、宽度、选项、读写口径
+            全在 script 的 `attrFilterCells` 里逐维列着 —— 格子不再在模板里各写一遍。
+            🔴 **"按路出维"**：工作面五格（班组/来源/类型/等级/结论）· 已判四格（无「结论」，
+            那一维在监控条目上不成立）。为什么、以及每一格的宽是怎么量出来的，见 `AttrFilterCell`。
           -->
           <div class="tb-fields">
-            <div class="fi" style="--tbw: 147px">
-              <span class="fl">班组</span>
+            <div
+              v-for="cell in attrFilterCells"
+              :key="cell.key"
+              class="fi"
+              :style="{ '--tbw': `${cell.width}px` }"
+            >
+              <span class="fl">{{ cell.label }}</span>
+              <!--
+                🔴 **不用 `v-model`**：真源是各维自己那个 ref（类型各不相同），这里经
+                `cell.set` 回写 —— 规格里把取值域抹成 `string` 是为了让两路共用一个 `v-for`，
+                写回去时各维再把自己的类型收回来，不在 state 上留 `any`。
+              -->
               <a-select
-                v-model:value="groupFilter"
+                :value="cell.value"
                 size="small"
                 class="tb-ctl"
                 :dropdown-match-select-width="false"
-                :options="groupFilterOptions"
-              />
-            </div>
-            <div v-if="listView === 'report'" class="fi" style="--tbw: 130px">
-              <span class="fl">来源</span>
-              <a-select
-                v-model:value="sourceFilter"
-                size="small"
-                class="tb-ctl"
-                :dropdown-match-select-width="false"
-                :options="sourceFilterOptions"
-              />
-            </div>
-            <div v-if="listView === 'report'" class="fi" style="--tbw: 117px">
-              <span class="fl">类型</span>
-              <a-select
-                v-model:value="poolTicketTypeFilter"
-                size="small"
-                class="tb-ctl"
-                :dropdown-match-select-width="false"
-                :options="poolTicketTypeFilterOptions"
-              />
-            </div>
-            <div v-if="listView === 'report'" class="fi" style="--tbw: 104px">
-              <span class="fl">等级</span>
-              <a-select
-                v-model:value="poolLevelFilter"
-                size="small"
-                class="tb-ctl"
-                :dropdown-match-select-width="false"
-                :options="poolLevelFilterOptions"
-              />
-            </div>
-            <div v-if="listView === 'report'" class="fi" style="--tbw: 149px">
-              <span class="fl">结论</span>
-              <a-select
-                v-model:value="decisionFilter"
-                size="small"
-                class="tb-ctl"
-                :dropdown-match-select-width="false"
-                :options="decisionFilterOptions"
-              />
-            </div>
-            <!--
-              「已判」段那三格（2026-10-09 裁决：这条筛选条在已判段常驻）。
-              🔴 **与工作面那四格各存各的状态**：两段的分母不是一个（已判段数监控条目、
-              含来源「二线报备」那条标记条目；工作面只收 A 线池行），见 `judgedSourceFilter`。
-              🔴 **「风险等级」与左栏那一轴共用一份 state**（`judgedLevelFilter` 只是
-              `tagLevelFilter` 的代理）：左栏点哪一档这一格就显示哪一档，反过来也成立。
-              🔴 **「结论」这一维不出**：已判段装的是监控条目，身上没有结论字段。
-            -->
-            <div v-if="listView === 'realtime'" class="fi" style="--tbw: 130px">
-              <span class="fl">来源</span>
-              <a-select
-                v-model:value="judgedSourceFilter"
-                size="small"
-                class="tb-ctl"
-                :dropdown-match-select-width="false"
-                :options="judgedSourceFilterOptions"
-              />
-            </div>
-            <div v-if="listView === 'realtime'" class="fi" style="--tbw: 117px">
-              <span class="fl">类型</span>
-              <a-select
-                v-model:value="judgedTypeFilter"
-                size="small"
-                class="tb-ctl"
-                :dropdown-match-select-width="false"
-                :options="judgedTypeFilterOptions"
-              />
-            </div>
-            <div v-if="listView === 'realtime'" class="fi" style="--tbw: 104px">
-              <span class="fl">等级</span>
-              <a-select
-                v-model:value="judgedLevelFilter"
-                size="small"
-                class="tb-ctl"
-                :dropdown-match-select-width="false"
-                :options="judgedLevelFilterOptions"
+                :options="cell.options"
+                @update:value="(v) => cell.set(v as string)"
               />
             </div>
           </div>
