@@ -2484,6 +2484,7 @@ function openTag(h: RiskHit) {
   tagVerdict.value = cur?.verdict;
   // 风险备注每次从空开始：修正形态下它承载"为什么改"，预填上一次那条会让必填名存实亡
   tagNote.value = '';
+  tagTraceOpen.value = false;
   tagOpen.value = true;
 }
 function saveTag() {
@@ -2556,6 +2557,52 @@ function entryDiffText(prev: TagEntry, next: TagEntry): string {
   if (prev.note !== next.note) parts.push(next.note ? '风险备注已更新' : '风险备注已清空');
   return parts.join(' · ');
 }
+
+/* ---- 两处「记录」块的**一行态**（2026-10-09 裁决）---- */
+/*
+ * 🔴 **原先这两块是一整列历史，量出来占 232px**，弹窗被它顶到 668px。
+ * 用户原话「这个删掉吧，记录在工单里面有记录」，核过之后改拍**压成一行只留上一次**：
+ * 全删不行 —— 工单处理页那份正式落点（`OpRiskMonitorTab.vue` 的 `.rt-history`）
+ * 在**另一个页面**上，而本页「风险管控」弹窗里的「风险备注」是**每次从空开始的必填项**，
+ * 承载"为什么改"；同屏没有上一次的结论与理由，人就是在凭空改判。
+ *
+ * ⇒ 折中形态：**默认一行**（上次那一条）＋ **条数常驻** ＋ **「展开全部」按钮**。
+ * 【为什么用展开按钮而不是把整段历史塞进 `title`】`title` 只能看、不能选不能复制，
+ * 多于两三条就读不动，触屏上根本出不来。展开态**沿用原来那段 `<ol>` 一字未改**，
+ * 故 `.tt-*` 那一族样式全部仍在使用，没有留下死规则。备注那一截另当别论：
+ * 它在一行态里由 CSS 省略号截断，**全文挂在该行的 `title` 上**，信息不丢。
+ */
+type TraceKind = 'tag' | 'verify';
+/** 这一条改了什么。两块的算法不同：标记记录读结论本身，修正记录读与上一条的差 */
+function traceChangeText(list: TagEntry[], i: number, kind: TraceKind): string {
+  const e = list[i];
+  if (kind === 'tag') return e.level ? `${e.level}危` : '无风险';
+  if (i === 0) return `判为 ${e.verdict}${e.level ? ` · ${e.level}危` : ''}`;
+  return entryDiffText(list[i - 1], e);
+}
+/** 第几次。首次那一条两块各有各的叫法（标记 / 核实），与展开态逐字同形 */
+function traceStepText(i: number, kind: TraceKind): string {
+  if (i > 0) return `第 ${i} 次修正`;
+  return kind === 'tag' ? '首次标记' : '首次核实';
+}
+/** 一行态的正文 ＝ 上次那一条。备注接在末尾，过长由 CSS 省略、全文走 `traceAllText` 的 title */
+function traceLastLine(list: TagEntry[], kind: TraceKind): string {
+  const i = list.length - 1;
+  if (i < 0) return '';
+  const e = list[i];
+  return [traceChangeText(list, i, kind), e.by, e.byRole, e.at, e.note ? `备注：${e.note}` : '']
+    .filter(Boolean).join(' · ');
+}
+/** 悬停全文 ＝ **整段历史**，一条一行。一行态把其余几条收起来了，这里必须一条都不少 */
+function traceAllText(list: TagEntry[], kind: TraceKind): string {
+  return list
+    .map((e, i) => [traceStepText(i, kind), traceChangeText(list, i, kind), e.by, e.byRole, e.at,
+      e.note ? `备注：${e.note}` : ''].filter(Boolean).join(' · '))
+    .join('\n');
+}
+/** 两块各自的展开态。开弹窗时归零，免得上一单展开过、这一单一进来就是展开的 */
+const entryTraceOpen = ref(false);
+const tagTraceOpen = ref(false);
 /** 这条判过没有。等级可以为空（误报），判定不会，故"判过没有"只认它 */
 function isJudged(h: RiskHit): boolean {
   return !!latestEntryOf(h);
@@ -4087,6 +4134,7 @@ function openEntryTag(e: QueueRow, from: EntryTagFrom) {
     entryTagAssessDecision.value = normalizeDecision(cur.decision);
     assessAdvice.value = cur.advice ?? '';
   }
+  entryTraceOpen.value = false;
   entryTagOpen.value = true;
 }
 
@@ -7750,12 +7798,29 @@ function toggleWordEnabled(w: RiskWord) {
         -->
         <RiskCollabFields v-if="showEntryTagCollab" :ctl="entryTagCollab" />
 
-        <!-- 标记历史：它是佐证不是填写项，按信息层级排在最后。追加不覆盖，故爬坡读得出先后 -->
+        <!--
+          标记历史：它是佐证不是填写项，按信息层级排在最后。追加不覆盖，故爬坡读得出先后。
+          🔴 **默认只摆一行**（上次那一条），整列历史收进「展开全部」—— 见 `traceLastLine` 上方那段。
+          只有一条时照摆这一行、只是不给展开按钮：那一条就是"上次判了什么、为什么"，
+          正是改判时要看的同屏依据，没有它这块等于删掉。
+        -->
         <div v-if="entryTagHistory.length" class="tag-trace">
           <div class="tag-trace-head">
             标记记录<span class="tag-trace-n">{{ entryTagHistory.length }} 条</span>
+            <button
+              v-if="entryTagHistory.length > 1"
+              type="button" class="tag-trace-more"
+              @click="entryTraceOpen = !entryTraceOpen"
+            >{{ entryTraceOpen ? '收起' : '展开全部' }}</button>
           </div>
-          <ol class="tag-trace-list">
+          <div
+            v-if="!entryTraceOpen"
+            class="tt-line"
+            :title="traceAllText(entryTagHistory, 'tag')"
+          >
+            <span class="tt-step">上次</span>{{ traceLastLine(entryTagHistory, 'tag') }}
+          </div>
+          <ol v-else class="tag-trace-list">
             <li v-for="(e, i) in entryTagHistory" :key="`${e.at}-${i}`" class="tt-item">
               <div class="tt-head">
                 <span class="tt-step">{{ i === 0 ? '首次标记' : `第 ${i} 次修正` }}</span>
@@ -7938,12 +8003,29 @@ function toggleWordEnabled(w: RiskWord) {
           段连带那条"标完顺手给结论"的捷径一并取消 —— 核实打标之后条目照原路进池落「待领取」。
         -->
 
-        <!-- 改动历史：它是佐证不是填写项，按信息层级排在最后 -->
+        <!--
+          改动历史：它是佐证不是填写项，按信息层级排在最后。
+          🔴 与上面「标记记录」**同一套一行态**（默认一行 + 条数 + 展开全部），
+          但**两块的数据各走各的**（这块 `tagHistory` ＝ 命中那一路、上面 `entryTagHistory` ＝ 条目那一路），
+          只是呈现形态统一，别合并成一份。
+        -->
         <div v-if="tagHistory.length" class="tag-trace">
           <div class="tag-trace-head">
             修正记录<span class="tag-trace-n">{{ tagHistory.length }} 条</span>
+            <button
+              v-if="tagHistory.length > 1"
+              type="button" class="tag-trace-more"
+              @click="tagTraceOpen = !tagTraceOpen"
+            >{{ tagTraceOpen ? '收起' : '展开全部' }}</button>
           </div>
-          <ol class="tag-trace-list">
+          <div
+            v-if="!tagTraceOpen"
+            class="tt-line"
+            :title="traceAllText(tagHistory, 'verify')"
+          >
+            <span class="tt-step">上次</span>{{ traceLastLine(tagHistory, 'verify') }}
+          </div>
+          <ol v-else class="tag-trace-list">
             <li v-for="(e, i) in tagHistory" :key="`${e.at}-${i}`" class="tt-item">
               <div class="tt-head">
                 <span class="tt-step">{{ i === 0 ? '首次核实' : `第 ${i} 次修正` }}</span>
@@ -9663,6 +9745,35 @@ function toggleWordEnabled(w: RiskWord) {
   color: #374151;
 }
 .tag-trace-n { font-size: 11px; font-weight: 400; color: #9ca3af; }
+/* 「展开全部 / 收起」：排在条数之后、靠右，弱化成链接样，别和「保存」抢视线 */
+.tag-trace-more {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 11px;
+  color: #1a6fff;
+  cursor: pointer;
+}
+.tag-trace-more:hover { text-decoration: underline; }
+/*
+ * 一行态：整条压成单行，**超出一律省略号**，全文挂在这一行的 `title` 上。
+ * 🔴 `min-width: 0` 不能省：这一块在 flex 布局的弹窗里，不给它省略号就不生效、
+ * 长备注会把弹窗撑宽。
+ */
+.tt-line {
+  margin-top: 6px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: #374151;
+  line-height: 1.5;
+  cursor: default;
+}
+/* 一行态里的「上次」沿用 `.tt-step` 的字重与色，只补一点右间距 */
+.tt-line .tt-step { margin-right: 6px; font-size: 11px; }
 .tag-trace-list {
   margin: 8px 0 0;
   padding: 0;
