@@ -2515,10 +2515,24 @@ function saveTag() {
   );
   tagOpen.value = false;
 }
+/*
+ * 🔴 **「等待处置」原作「等待领取」**（2026-10-09 裁决，全页 7 句一起改）。
+ * 池里**没有「领取」这个动作**了（领取逻辑未闭环，那一轴 2026-10-07 已撤、
+ * 池行表的「处置阶段」列 2026-10-08 也删了），界面再写"等待领取"就是指着一个不存在的动作。
+ *
+ * 【为什么不写「等待风险评估」】因为对**投诉单是假的**：`:1262` 那条写死了
+ * 「池行按原单类型分工作面 —— 非投诉单 → 风险评估；投诉单 → 协同处理」，
+ * 而「投诉单不做风险评估」PRD 里重复写了四处。这 7 句没有一句能保证手上只有非投诉单
+ * （「重点工单」那一路本来就以投诉单为主），写成"等待风险评估"等于对一半的行报假话。
+ * 「处置」把两条支路都罩住，且与「等待领取」同为四字，布局一格不动。
+ *
+ * ⚠️ **落库状态名「待领取」照旧不动**（`poolStageOf` 把 `待分派` 映射成它）——
+ * 那是状态模型里的名字，用户看不见（「处置阶段」列已删）。改的只有露出来的这 7 句。
+ */
 /** 首次核实保存后的去向提示：命中结论之外，把工单这一侧发生了什么说出来 */
 function verifyOutcomeTip(no: string, entry: TagEntry, outcome: HitVerifyOutcome): string {
   if (outcome.kind === 'tagged') {
-    return `已核实这条命中为「成立 · ${levelText(outcome.level)}」，${no} 已标记「${levelText(outcome.level)}」并进风险工单池等待领取`;
+    return `已核实这条命中为「成立 · ${levelText(outcome.level)}」，${no} 已标记「${levelText(outcome.level)}」并进风险工单池等待处置`;
   }
   if (outcome.kind === 'rerouted') {
     return `已记为误报；${no} 已无待核实命中，改归「${outcome.source}」，仍在待判`;
@@ -3704,7 +3718,7 @@ function saveBulk() {
   }
   message.success(
     isPoolLevel(result)
-      ? `已对 ${done} 条标记「${riskLevelText(result)}」，已进风险工单池等待领取`
+      ? `已对 ${done} 条标记「${riskLevelText(result)}」，已进风险工单池等待处置`
       // 原来这一句末尾指路到「已判 · 无风险」档，随那一档删除一并去掉（2026-10-07 裁决）
       : `已将 ${done} 条判为无风险，不进池`,
   );
@@ -3768,7 +3782,7 @@ function saveBulkVerify() {
   });
   const parts = verdict === '成立'
     ? [`已核实 ${hits.length} 条命中为「成立 · ${levelText(bulkVerifyLevel.value)}」`,
-      ...(tagged ? [`${tagged} 单已标记并进风险工单池等待领取`] : [])]
+      ...(tagged ? [`${tagged} 单已标记并进风险工单池等待处置`] : [])]
     : [`已将 ${hits.length} 条命中记为误报`,
       ...(rerouted ? [`${rerouted} 单改归「重点工单」`] : []),
       ...(noRisk ? [`${noRisk} 单已标记为无风险`] : [])];
@@ -4187,9 +4201,11 @@ function saveEntryTag() {
     // 协同支的去向由 `submitTo` 自己那条提示接着说（含"已转已结论"那半句），这里只报打标
     else if (collabOk) tip = `已对 ${no} 标记「${lv}」`;
     else if (prevStatus === '评估中' || prevStatus === '已评估') tip = `已把 ${no} 的风险等级改为「${lv}」，池内处置阶段不变`;
-    else if (prevStatus === '待分派') tip = `已把 ${no} 的标记由「${prevText}」改为「${lv}」，仍在风险工单池等待领取`;
-    else if (prevStatus === '已标记无风险') tip = `已把 ${no} 改判为「${lv}」，已补进风险工单池等待领取`;
-    else tip = `已对 ${no} 标记「${lv}」，已进风险工单池等待领取`;
+    // 🔴 下面三支是**同一个 `tip` 的三个分支**，用词必须整组一致（见 `verifyOutcomeTip` 上方那段）：
+    // 只改其中两支的话，同一条 toast 会因为改判前的状态不同而一会儿说"等待处置"、一会儿说"等待领取"。
+    else if (prevStatus === '待分派') tip = `已把 ${no} 的标记由「${prevText}」改为「${lv}」，仍在风险工单池等待处置`;
+    else if (prevStatus === '已标记无风险') tip = `已把 ${no} 改判为「${lv}」，已补进风险工单池等待处置`;
+    else tip = `已对 ${no} 标记「${lv}」，已进风险工单池等待处置`;
   // 🔴 改判为无风险的那三句原来末尾都指路到「已判 · 无风险」档。那一档随 2026-10-07 裁决
   // 删除（无风险不进已判、离开漏斗），指路一并去掉；**改判为无风险即离开已判**这件事
   // 要说出来 —— 人在已判表里点的「风险管控」，改判之后那一行会从表里消失，不说一句就成了"行丢了"。
@@ -7491,7 +7507,7 @@ function toggleWordEnabled(w: RiskWord) {
           {{
             bulkResult === NO_RISK
               ? '判为无风险的不进风险工单池，也不进「已判」'
-              : '低 / 中 / 高一律进风险工单池等待领取；本批须同一结论，有分歧请分次标记'
+              : '低 / 中 / 高一律进风险工单池等待处置；本批须同一结论，有分歧请分次标记'
           }}
         </div>
 
