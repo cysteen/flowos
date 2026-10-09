@@ -1037,9 +1037,16 @@ function renderedBody(ch: NotifyChannel) {
                 />
                 <!-- 有固定取值域（枚举 / 是否）→ 下拉选，杜绝手打 -->
                 <a-select
-                  v-if="valueOptions(c.field)"
+                  v-if="valueOptions(c.field) && isSingleValue(c.op)"
+                  :value="c.value[0]" style="flex: 1"
+                  :options="valueOptions(c.field)!"
+                  placeholder="选择取值"
+                  @update:value="(v) => (c.value = v === undefined || v === null ? [] : [String(v)])"
+                />
+                <a-select
+                  v-else-if="valueOptions(c.field)"
                   v-model:value="c.value" style="flex: 1"
-                  :mode="isSingleValue(c.op) ? undefined : 'multiple'"
+                  mode="multiple"
                   :options="valueOptions(c.field)!"
                   placeholder="选择取值"
                 />

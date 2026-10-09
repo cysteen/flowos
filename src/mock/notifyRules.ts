@@ -109,8 +109,8 @@ export const DICT_APPT_TYPE = ['上门', '回访'] as const;
 export const DICT_CLOSE_REASON = ['问题已解决', '客户放弃', '重复工单', '转由其他单跟进', '其他'] as const;
 /** 优先级（同 views/tickets/types/ticket.ts · PRIORITY_LABEL） */
 export const DICT_PRIORITY = ['紧急', '重要', '普通加急', '普通'] as const;
-/** 建单方式：坐席人工建单 / 系统自动建单（接口、渠道自动生成） */
-export const DICT_CREATE_MODE = ['人工建单', '自动建单'] as const;
+/** 新单来源：生成新工单、新单首次进入工单池待领取的 5 种场景 */
+export const DICT_NEW_TICKET_SOURCE = ['新建工单', '升级投诉', '转单', '售后转客服', '售后升级投诉'] as const;
 
 export interface NotifyEvent {
   code: string;
@@ -205,15 +205,15 @@ export const NOTIFY_EVENTS: NotifyEvent[] = [
       { key: 'responseDueTime', label: '首响截止时间', type: 'datetime', templateOnly: true, desc: '必须在此时间前首次响应客户。注意与「解决截止时间」是两个字段，派工提醒用的是首响，别写串' },
     ],
     remark: '工单定下处理人的时刻。建单后、认领后、转售后、售后转入四条路径都汇到这里：对内派工提醒一条规则通吃，对客受理短信用「分派来源=建单」筛出。⚠ 待研发确认：是由工单调度引擎统一发出，还是各动作各自埋点' },
-  // 【1025】新建工单经分派规则落入工作台工单池、处于待领取时发出一次；与风险报备池的「待领取」无关
+  // 【1025】生成新工单、新单首次进入工作台工单池待领取时发出一次；与风险报备池的「待领取」无关
   { code: 'ticket.pooled', name: '工单进入工单池待领取', source: 'non-dispatch',
     payload: [...BASE,
       { key: 'groupName', label: '所在分组', type: 'string', desc: '工单进入的工单池所属的处理组。收件人「工单所在分组全体成员」按它展开' },
       { key: 'priority', label: '优先级', type: 'enum', enumValues: DICT_PRIORITY, desc: '紧急 / 重要 / 普通加急 / 普通' },
-      { key: 'createMode', label: '建单方式', type: 'enum', enumValues: DICT_CREATE_MODE, desc: '人工建单或自动建单，两种都会触发本事件' },
+      { key: 'newTicketSource', label: '新单来源', type: 'enum', enumValues: DICT_NEW_TICKET_SOURCE, desc: '新单因何生成：新建工单 / 升级投诉 / 转单 / 售后转客服 / 售后升级投诉，5 种都会触发本事件' },
       { key: 'pooledAt', label: '进池时间', type: 'datetime', templateOnly: true, desc: '工单落入工单池的时刻' },
     ],
-    remark: '新建工单经分派规则落入某分组工单池、状态为未认领时发出一次；领取、指派后不再发出' },
+    remark: '生成新工单（新建工单、升级投诉、转单、售后转客服、售后升级投诉）且新单进入某分组工单池、处于待领取时发出；每张新单只在首次进池时发一次，每单一条、不限频、不合并。已有工单再次进池（售后转回后重新派单、退回、调剂、释放等）不发出' },
   { code: 'ticket.supplement', name: '新建补充', source: 'non-dispatch',
     payload: [...BASE, { key: 'supplementType', label: '补充分类', type: 'enum', enumValues: DICT_SUPPLEMENT_TYPE, desc: '客户补充了什么性质的信息。「取消服务」这类需处理人立刻知晓，可用它作条件区分紧急度' }, { key: 'supplementContent', label: '补充内容', type: 'string', desc: '客户补充的具体信息' }],
     remark: 'no flow，需在补充接口成功后显式触发' },
@@ -499,7 +499,7 @@ export const NOTIFY_RULES: NotifyRule[] = [
       { field: 'ticketType', op: 'ne', value: ['表扬'] },
     ],
     recipients: [{ type: 'customer' }], channels: ['短信'], templates: { 短信: 'SMS_WO_ACCEPTED' }, contents: {}, enabled: true },
-  // 【1025】新建工单进入工单池待领取 → 提醒该分组全员领取
+  // 【1025】新单首次进入工单池待领取 → 提醒该分组全员领取（不加条件，5 种新单来源全发）
   { id: 'R18', name: '工单池待领取提醒', event: 'ticket.pooled', audience: 'internal',
     conditions: [], recipients: [{ type: 'groupMembers' }], channels: ['IM'], templates: { IM: 'IM_WO_POOLED' }, contents: {}, enabled: true },
   { id: 'R03', name: '组内来单（调剂）', event: 'ticket.transfer', audience: 'internal',
@@ -739,7 +739,7 @@ export const TEST_PRESETS: TestPreset[] = [
       returnFrom: '技术支持', returnReason: '需客户补充设备序列号',
       holdUntil: '2026-08-05', timeToHoldEnd: '2880', heldDays: '12', apptTime: '2026-08-02 14:00', timeToAppt: '10',
       resumeType: '到期自动解挂', dispatchFrom: '建单',
-      groupName: '受理一组', priority: '普通加急', createMode: '人工建单', pooledAt: '2026-07-28 14:22',
+      groupName: '受理一组', priority: '普通加急', newTicketSource: '新建工单', pooledAt: '2026-07-28 14:22',
       operatorId: '张三', targetUserId: '王坐席', crossGroup: '否',
       prevAssigneeId: '张三',
       delegateeIds: '陈坐席', delegateTask: '协助排查主板供电',
