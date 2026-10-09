@@ -3497,8 +3497,21 @@ function rowHandlerLine(r: QueueRow, hit?: RiskHit | null): string {
  * 条目、池行、缓存与筛选一律照旧用它，不要反过来去改那个常量。
  */
 const REPORTED_SOURCE_TEXT = '风险报备';
+/**
+ * 来源的**界面词**：落库值「二线报备」一律显示成「风险报备」，另两个原样。
+ *
+ * 🔴 **只换词、不换值**。凡是判据 / 计数 / 落库 / 缓存，一律继续用 `REPORT_SOURCE`
+ * 那个常量，**不要反过来去改常量**（理由见上方那段）。
+ * 🔴 **显示层只此一份**：表里那一列（`rowSourceText`）与**已判筛选条「来源」那一格的
+ * 选项标签**（`judgedSourceFilterOptions`，2026-10-09 用户拍「筛选条也映射成风险报备」）
+ * 都走它 —— 此前筛选条直接拿落库值当标签，于是同一屏上表里写「风险报备」、
+ * 下拉里写「二线报备」，是同一个东西的两个词。
+ */
+function sourceText(s: string): string {
+  return s === REPORT_SOURCE ? REPORTED_SOURCE_TEXT : s;
+}
 function rowSourceText(r: QueueRow): string {
-  return r.source === REPORT_SOURCE ? REPORTED_SOURCE_TEXT : r.source;
+  return sourceText(r.source);
 }
 
 /**
@@ -5116,11 +5129,18 @@ const judgedSourceBase = computed(
 const judgedTypeBase = computed(
   () => inGroup(byJudgedAttrs(judgedPicked(judgedUniverse.value), 'type')),
 );
+/*
+ * 🔴 **标签走 `sourceText`、`value` 仍是落库值**（2026-10-09 用户拍「筛选条也映射成
+ * 「风险报备」」）：此前这里直接拿 `s` 当标签，于是同一屏上**表里那一列写「风险报备」、
+ * 这个下拉里写「二线报备」** —— 同一个东西两个词。
+ * ⚠️ **`value` 一个字没动**，筛选判据（`judgedSourceFilter.includes(e.source)`）、
+ * 各档计数与恒等式一律照旧；换掉的只有 `label` 与 `tagLabel` 两处显示文字。
+ */
 const judgedSourceFilterOptions = computed(
   () => MONITOR_SOURCES.map((s) => ({
     value: s,
-    label: `${s}（${judgedSourceBase.value.filter((e) => e.source === s).length}）`,
-    tagLabel: s,
+    label: `${sourceText(s)}（${judgedSourceBase.value.filter((e) => e.source === s).length}）`,
+    tagLabel: sourceText(s),
   })),
 );
 /** 「工单类型」（多选）：取值域与计数口径同工作面那一格，底表换成已判段自己的 */
