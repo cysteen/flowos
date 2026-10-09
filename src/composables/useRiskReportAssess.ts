@@ -76,6 +76,16 @@ export function showEscalateComplaintFields(
 export const ASSESS_WITHDRAWN_TIP = '本条报备已被报备人撤回';
 /** 原单已进终态：只拦「升级」，「不升级」照常可交 */
 export const ASSESS_TICKET_ENDED_TIP = '本单已结束，无法升级';
+/**
+ * 条目已经有结论了：整个提交拦下。
+ *
+ * 🔴 **两处共用这一句，不许各写一遍**：下面 `assessSubmitBlockOf`（报备池 / 工单页头
+ * 那两个带领取态的入口）与风险监控页工作面那一处（`workbenchAssessBlockOf`，
+ * 领取已撤、靠"已出结论"接并发）说的是同一件事。
+ * 本仓已为"同值常量分家"付过账（见 `config/roles.ts` 管理员那段点名的那对双胞胎），
+ * 同一句提示两处各写一遍迟早漂成两句。
+ */
+export const ASSESS_ALREADY_CONCLUDED_TIP = '本条已有评估结论，不可重复提交';
 
 /**
  * 原单是否已进终态（基线 §1 的十个终态子状态）。
@@ -111,7 +121,7 @@ export function assessSubmitBlockOf(
   if (r.status !== '评估中' || r.assignee !== assigneeName) {
     return {
       tip: r.status === '已评估'
-        ? '本条已有评估结论，不可重复提交'
+        ? ASSESS_ALREADY_CONCLUDED_TIP
         : '本条已不在你名下的「已领取」态，请刷新后再看',
       closeModal: true,
     };
