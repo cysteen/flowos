@@ -6,6 +6,7 @@ import { FLASH_SURVEY_LINK_RE } from '@/views/tickets/types/flash';
 import type { NotifyRecord } from '@/views/tickets/types/operationTabs';
 import { formatOpTime } from '@/views/tickets/utils/opTime';
 import { useNotifyLogStore } from '@/stores/notifyLog';
+import { poolNotifySeedsOf } from '@/mock/poolNotifySeeds';
 
 const props = defineProps<{ records: NotifyRecord[] }>();
 
@@ -31,6 +32,7 @@ const ticketNo = computed(() => String(route.params.ticketNo ?? ''));
  */
 const mergedRecords = computed<NotifyRecord[]>(() => [
   ...notifyLog.recordsOf(ticketNo.value),
+  ...poolNotifySeedsOf(ticketNo.value),
   ...props.records,
 ]);
 

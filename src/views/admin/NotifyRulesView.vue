@@ -25,7 +25,7 @@ import { useUserStore } from '@/stores/user';
 import { sendTestMessage } from '@/api/notifyTestSend';
 import {
   NOTIFY_EVENTS, RULE_TEMPLATES, TEST_PRESETS,
-  SUPERIOR_CHAIN, EVENT_SOURCE_META, COND_OP_LABEL,
+  SUPERIOR_CHAIN, GROUP_MEMBERS, EVENT_SOURCE_META, COND_OP_LABEL,
   eventOf, recipientTypeOf, availableRecipients, recipientLabel, condLabel, templateVars, varsIn, templateOf,
   RECIPIENT_KIND_LABEL, BASE_FIELD_KEYS,
   FIXED_ASSIGN_OPTIONS, filterFixedAssignOption,
@@ -551,8 +551,9 @@ const testFields = computed(() => {
   r.recipients.forEach((x) => {
     const t = recipientTypeOf(x.type);
     if (t?.kind === 'field' && t.requires) need.add(t.requires);
-    // 关系函数从处理人往上溯，所以依赖处理人
-    if (t?.kind === 'relation') need.add('assigneeId');
+    // 分组全员按所在分组展开；其余关系函数从处理人往上溯，依赖处理人
+    if (t?.code === 'groupMembers') need.add('groupName');
+    else if (t?.kind === 'relation') need.add('assigneeId');
   });
   r.channels.forEach((ch) => {
     const tpl = isTemplateChannel(ch) ? templateOf(ch, r.templates[ch]) : undefined;
@@ -690,6 +691,18 @@ const resolved = computed(() => {
     const t = recipientTypeOf(r.type)!;
     if (t.kind === 'fixed') {
       return { label: recipientLabel(r), who: r.fixedValue || '（未指定）', how: '固定指派', ok: !!r.fixedValue };
+    }
+    if (t.code === 'groupMembers') {
+      const g = d.groupName;
+      const grp = g ? GROUP_MEMBERS[g] : undefined;
+      const all = grp ? [...grp.leaders, ...grp.members] : [];
+      return {
+        label: recipientLabel(r),
+        who: all.length ? all.join('、') : '—',
+        how: g ? `所在分组「${g}」全体成员（含班组长）` : '所在分组为空',
+        ok: all.length > 0,
+        err: all.length ? '' : '所在分组未填写或该组无成员，该收件人解析为空',
+      };
     }
     if (t.kind === 'relation') {
       const chain = SUPERIOR_CHAIN[d.assigneeId] ?? [];
@@ -1943,6 +1956,8 @@ function renderedBody(ch: NotifyChannel) {
   overflow: auto;
   padding: 0 20px 18px;
 }
+/* 内容超出时整体滚动，子块保持自身高度、不被压扁重叠 */
+.tm > * { flex-shrink: 0; }
 .tm-bar {
   display: flex; align-items: center; gap: 10px;
   padding: 10px 12px;

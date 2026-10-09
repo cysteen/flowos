@@ -107,6 +107,10 @@ export const DICT_RESUME_TYPE = ['到期自动解挂', '人工解除挂起'] as 
 export const DICT_APPT_TYPE = ['上门', '回访'] as const;
 /** 关闭原因。⚠ 项目内暂无统一枚举，待业务补齐后替换 */
 export const DICT_CLOSE_REASON = ['问题已解决', '客户放弃', '重复工单', '转由其他单跟进', '其他'] as const;
+/** 优先级（同 views/tickets/types/ticket.ts · PRIORITY_LABEL） */
+export const DICT_PRIORITY = ['紧急', '重要', '普通加急', '普通'] as const;
+/** 建单方式：坐席人工建单 / 系统自动建单（接口、渠道自动生成） */
+export const DICT_CREATE_MODE = ['人工建单', '自动建单'] as const;
 
 export interface NotifyEvent {
   code: string;
@@ -201,6 +205,15 @@ export const NOTIFY_EVENTS: NotifyEvent[] = [
       { key: 'responseDueTime', label: '首响截止时间', type: 'datetime', templateOnly: true, desc: '必须在此时间前首次响应客户。注意与「解决截止时间」是两个字段，派工提醒用的是首响，别写串' },
     ],
     remark: '工单定下处理人的时刻。建单后、认领后、转售后、售后转入四条路径都汇到这里：对内派工提醒一条规则通吃，对客受理短信用「分派来源=建单」筛出。⚠ 待研发确认：是由工单调度引擎统一发出，还是各动作各自埋点' },
+  // 【1025】新建工单经分派规则落入工作台工单池、处于待领取时发出一次；与风险报备池的「待领取」无关
+  { code: 'ticket.pooled', name: '工单进入工单池待领取', source: 'non-dispatch',
+    payload: [...BASE,
+      { key: 'groupName', label: '所在分组', type: 'string', desc: '工单进入的工单池所属的处理组。收件人「工单所在分组全体成员」按它展开' },
+      { key: 'priority', label: '优先级', type: 'enum', enumValues: DICT_PRIORITY, desc: '紧急 / 重要 / 普通加急 / 普通' },
+      { key: 'createMode', label: '建单方式', type: 'enum', enumValues: DICT_CREATE_MODE, desc: '人工建单或自动建单，两种都会触发本事件' },
+      { key: 'pooledAt', label: '进池时间', type: 'datetime', templateOnly: true, desc: '工单落入工单池的时刻' },
+    ],
+    remark: '新建工单经分派规则落入某分组工单池、状态为未认领时发出一次；领取、指派后不再发出' },
   { code: 'ticket.supplement', name: '新建补充', source: 'non-dispatch',
     payload: [...BASE, { key: 'supplementType', label: '补充分类', type: 'enum', enumValues: DICT_SUPPLEMENT_TYPE, desc: '客户补充了什么性质的信息。「取消服务」这类需处理人立刻知晓，可用它作条件区分紧急度' }, { key: 'supplementContent', label: '补充内容', type: 'string', desc: '客户补充的具体信息' }],
     remark: 'no flow，需在补充接口成功后显式触发' },
@@ -262,6 +275,7 @@ export const RECIPIENT_TYPES: RecipientType[] = [
   { code: 'targetUser', name: '目标处理人', kind: 'field', requires: 'targetUserId', desc: '调剂/转派的目标人' },
   { code: 'customer', name: '客户', kind: 'field', requires: 'customerPhone', desc: '工单联系人，对客消息专用' },
   { code: 'leader', name: '班组长', kind: 'relation', desc: '处理人所属班组的组长' },
+  { code: 'groupMembers', name: '工单所在分组全体成员', kind: 'relation', desc: '工单所在工单池所属处理组的全部成员与班组长，逐人发送' },
   // 能力保留：SLA 超时升级已移交 SLA 引擎，但强结、催单抄送等场景仍可能上溯层级
   { code: 'superior', name: '上级', kind: 'relation', hasLevel: true, desc: '沿组织树上溯 N 级（1=班组长 2=主管 3=二级部门经理）' },
   { code: 'fixed', name: '指定人员 / 角色', kind: 'fixed', desc: '固定指派，兜底用；可搜索用户或角色' },
@@ -485,6 +499,9 @@ export const NOTIFY_RULES: NotifyRule[] = [
       { field: 'ticketType', op: 'ne', value: ['表扬'] },
     ],
     recipients: [{ type: 'customer' }], channels: ['短信'], templates: { 短信: 'SMS_WO_ACCEPTED' }, contents: {}, enabled: true },
+  // 【1025】新建工单进入工单池待领取 → 提醒该分组全员领取
+  { id: 'R18', name: '工单池待领取提醒', event: 'ticket.pooled', audience: 'internal',
+    conditions: [], recipients: [{ type: 'groupMembers' }], channels: ['IM'], templates: { IM: 'IM_WO_POOLED' }, contents: {}, enabled: true },
   { id: 'R03', name: '组内来单（调剂）', event: 'ticket.transfer', audience: 'internal',
     conditions: [], recipients: [{ type: 'targetUser' }], channels: ['IM'], templates: { IM: 'IM_WO_DISPATCH' }, contents: {}, enabled: true },
   { id: 'R05', name: '委派提醒', event: 'ticket.delegate', audience: 'internal',
@@ -583,6 +600,11 @@ export const RULE_TEMPLATES: Record<string, RuleTemplate[]> = {
       code: 'IM_WO_DISPATCH', name: '工单派发提醒',
       subject: '【工单处理通知】您有一条工单待处理',
       body: `您好，客服系统有1条待处理工单(\${ticketNo}),工单标题为\${title},请于(\${responseDueTime})前响应客户，请尽快完成处理。\n\n系统登陆地址：${LOGIN_URL}`,
+    },
+    {
+      code: 'IM_WO_POOLED', name: '工单池待领取提醒',
+      subject: '【工单池待领取提醒】${groupName}工单池有一条工单待领取',
+      body: '工单 ${ticketNo}『${title}』已进入${groupName}工单池，请及时领取。\n优先级：${priority}｜进池时间：${pooledAt}\n\n工单详情：${deepLink}',
     },
     {
       code: 'IM_WO_CANCEL', name: '工单取消通知',
@@ -717,6 +739,7 @@ export const TEST_PRESETS: TestPreset[] = [
       returnFrom: '技术支持', returnReason: '需客户补充设备序列号',
       holdUntil: '2026-08-05', timeToHoldEnd: '2880', heldDays: '12', apptTime: '2026-08-02 14:00', timeToAppt: '10',
       resumeType: '到期自动解挂', dispatchFrom: '建单',
+      groupName: '受理一组', priority: '普通加急', createMode: '人工建单', pooledAt: '2026-07-28 14:22',
       operatorId: '张三', targetUserId: '王坐席', crossGroup: '否',
       prevAssigneeId: '张三',
       delegateeIds: '陈坐席', delegateTask: '协助排查主板供电',
@@ -765,6 +788,12 @@ export const SUPERIOR_CHAIN: Record<string, string[]> = {
   '林坐席': ['王组长', '赵管理'],
   '王坐席': ['王组长', '赵管理'],
   '陈坐席': ['王组长', '赵管理'],
+};
+
+/** 处理组成员（供「工单所在分组全体成员」解析）：班组长在前、组员在后 */
+export const GROUP_MEMBERS: Record<string, { leaders: string[]; members: string[] }> = {
+  受理一组: { leaders: ['王组长', '李组长', '张组长'], members: ['王坐席', '林坐席', '陈坐席', '张敏', '李昊', '孙杰'] },
+  受理二组: { leaders: ['林组长', '陈组长'], members: ['赵坐席', '周坐席', '吴坐席'] },
 };
 
 /* ============================ 发送评估日志（Skip Reason） ============================ */
