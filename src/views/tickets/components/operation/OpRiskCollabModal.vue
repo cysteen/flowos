@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { SafetyCertificateOutlined } from '@ant-design/icons-vue';
 import OpActionModal from './OpActionModal.vue';
 import RiskCollabFields from './RiskCollabFields.vue';
@@ -8,7 +8,7 @@ import RiskLevelFields from './RiskLevelFields.vue';
 import { makeRiskLevelFieldsView } from '@/composables/useRiskLevelFields';
 import { formatOpTime } from '@/views/tickets/utils/opTime';
 import { useRiskQueueStore } from '@/stores/riskQueue';
-import { useRiskCollabStore } from '@/stores/riskCollab';
+import { useRiskCollabStore, type RiskCollabRecord } from '@/stores/riskCollab';
 import { useRiskReportStore } from '@/stores/riskReports';
 import { useRiskTagStore } from '@/stores/riskTags';
 import { isPooledStatus } from '@/stores/riskShared';
@@ -63,7 +63,11 @@ const ctl = useRiskCollabFields();
 watch(
   () => props.open,
   (v) => {
-    if (v) ctl.reset();
+    if (v) {
+      ctl.reset();
+      // 展开态归零：上一单展开过、这一单一进来就是展开的，与标记那两块同一条规矩
+      collabTraceOpen.value = false;
+    }
   },
 );
 
@@ -170,6 +174,55 @@ const collabSummary = computed(() => {
   return `已协同 ${list.length} 次 · 最近一次 ${list[0].at}`;
 });
 
+/* ---------------- 协同记录：历次给过什么意见（2026-10-09 用户拍板「补，与标记那一路同形」） ---------------- */
+/*
+ * 🔴 **补这一块是因为这一路可多次协同、却一点历史都看不到**：上面「本单另有」那一行
+ * 只报 `已协同 N 次 · 最近一次 <时刻>`，**报数不报内容** —— 第二次协同的人看不到
+ * 上次给了什么建议，只能凭空再给一遍。记录本来就在 `stores/riskCollab.ts` 里存着
+ * （`recordsOf`），缺的只是把它摆出来。
+ *
+ * 🔴 **形态与风险监控页「标记记录 / 修正记录」两块逐字同形**（用户原话「风格保持一致」）：
+ * 默认一行（上次那一条）＋ 条数常驻 ＋ `>1 条` 才出的「展开全部」＋ 整段历史挂该行 `title`。
+ * 样式类名也照抄那两块（`.tag-trace*` / `.tt-*`）—— 两边 `<style scoped>` 各作用域，
+ * 故规则必须在本文件再写一份，**不是重复代码没清掉，是 scoped 的必然**。
+ *
+ * ⚠️ **本块只读**：`stores/riskCollab.ts` 的写入一个字没动，这里只调 `recordsOf`。
+ *
+ * 🔴 **与标记那两块的唯一一处用词差别：次条写「第 N 次协同」不写「第 N 次修正」。**
+ * 这不是没对齐 —— 协同的多次之间**不是互相修正的关系**：`riskCollab.ts:185-187`
+ * 写明「第二次协同只勾了『每日跟进』并不表示第一次的『法务协同』已经不必做了」，
+ * 建议标记取的是历次并集而非最后一次。写成「修正」等于说后一次把前一次推翻了，是错的。
+ */
+const collabHistory = computed(
+  // `recordsOf` 给的是**倒序**（最近在最上）；这里翻成正序，与标记那两块一致：
+  // 首条在最上、末条即最近一次，`.tt-item:last-child` 那条主色边才落在最近一次上
+  () => collab.recordsOf(props.ticketNo).slice().reverse(),
+);
+const collabTraceOpen = ref(false);
+/** 这一次给了什么 ＝ 建议事项（勾了「其他」的把具体建议接在后面）；一项都没勾就说只给了意见 */
+function collabWhat(r: RiskCollabRecord): string {
+  const items = r.advices.map((a) => (a === '其他' && r.otherAdvice ? `其他：${r.otherAdvice}` : a));
+  return items.length ? items.join('/') : '仅处理意见';
+}
+function collabStepText(i: number): string {
+  return i > 0 ? `第 ${i + 1} 次协同` : '首次协同';
+}
+/** 一行态的正文 ＝ 最近一次。处理意见接在末尾，过长由 CSS 省略、全文走 title */
+const collabLastLine = computed(() => {
+  const list = collabHistory.value;
+  const r = list[list.length - 1];
+  if (!r) return '';
+  return [collabWhat(r), r.by, r.byRole, r.at, r.opinion ? `意见：${r.opinion}` : '']
+    .filter(Boolean).join(' · ');
+});
+/** 悬停全文 ＝ 整段历史，一条一行。一行态把其余几条收起来了，这里必须一条都不少 */
+const collabAllText = computed(
+  () => collabHistory.value
+    .map((r, i) => [collabStepText(i), collabWhat(r), r.by, r.byRole, r.at,
+      r.opinion ? `意见：${r.opinion}` : ''].filter(Boolean).join(' · '))
+    .join('\n'),
+);
+
 function close() {
   emit('update:open', false);
 }
@@ -222,6 +275,38 @@ function onOk() {
 
       <!-- ③ 风险处理措施：三项字段走共享组件，工单页页头「风险管控」弹窗的投诉支渲染的是同一份 -->
       <RiskCollabFields :ctl="ctl" />
+
+      <!--
+        ④ 协同记录：它是佐证不是填写项，按信息层级排在最后 —— 与风险监控页
+        「标记记录 / 修正记录」两块同一个位置、同一套形态。只有一条时照摆这一行、
+        只是不给展开按钮：那一条就是"上次给了什么建议"，正是再协同时要看的同屏依据。
+      -->
+      <div v-if="collabHistory.length" class="tag-trace">
+        <div class="tag-trace-head">
+          协同记录<span class="tag-trace-n">{{ collabHistory.length }} 条</span>
+          <button
+            v-if="collabHistory.length > 1"
+            type="button" class="tag-trace-more"
+            @click="collabTraceOpen = !collabTraceOpen"
+          >{{ collabTraceOpen ? '收起' : '展开全部' }}</button>
+        </div>
+        <div v-if="!collabTraceOpen" class="tt-line" :title="collabAllText">
+          <span class="tt-step">上次</span>{{ collabLastLine }}
+        </div>
+        <ol v-else class="tag-trace-list">
+          <li v-for="(r, i) in collabHistory" :key="r.id" class="tt-item">
+            <div class="tt-head">
+              <span class="tt-step">{{ collabStepText(i) }}</span>
+              <span class="tt-by">{{ r.by }}</span>
+              <span class="tt-role">{{ r.byRole }}</span>
+              <span class="tt-at">{{ r.at }}</span>
+            </div>
+            <div class="tt-change">{{ collabWhat(r) }}</div>
+            <!-- 处理意见是这次协同的正文，没写的不占位（与标记那两块的「备注」同一条规矩） -->
+            <div v-if="r.opinion" class="tt-reason">意见：{{ r.opinion }}</div>
+          </li>
+        </ol>
+      </div>
     </div>
   </OpActionModal>
 </template>
@@ -256,4 +341,74 @@ function onOk() {
   line-height: 1.6;
   color: #6b7280;
 }
+
+/*
+ * 协同记录块。🔴 **与风险监控页「标记记录 / 修正记录」那两块逐字同一份规则** ——
+ * 两边 `<style scoped>` 各自作用域，这一份不是没清掉的重复，是 scoped 的必然。
+ * 🔴 改这里要连同 `views/ops-monitor/RiskMonitorView.vue` 里那一份一起改，
+ * 否则同一个形态在两个弹窗上会长成两样（用户点过「风格保持一致」）。
+ */
+.tag-trace {
+  padding: 10px 12px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+.tag-trace-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+}
+.tag-trace-n { font-size: 11px; font-weight: 400; color: #9ca3af; }
+/* 「展开全部 / 收起」：排在条数之后、靠右，弱化成链接样，别和「提交」抢视线 */
+.tag-trace-more {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 11px;
+  color: #1a6fff;
+  cursor: pointer;
+}
+.tag-trace-more:hover { text-decoration: underline; }
+/* 一行态：整条压成单行，超出一律省略号，全文挂在这一行的 `title` 上 */
+.tt-line {
+  margin-top: 6px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: #374151;
+  line-height: 1.5;
+  cursor: default;
+}
+.tt-line .tt-step { margin-right: 6px; font-size: 11px; }
+.tag-trace-list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tt-item { padding-left: 10px; border-left: 2px solid #e5e7eb; }
+/* 末条即最近一次，用主色标出来，免得在一串历史里认错 */
+.tt-item:last-child { border-left-color: #1a6fff; }
+.tt-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 11px;
+  color: #9ca3af;
+}
+.tt-step { font-weight: 600; color: #6b7280; }
+.tt-role { padding: 0 5px; border-radius: 8px; background: #f3f4f6; color: #6b7280; }
+.tt-at { font-variant-numeric: tabular-nums; }
+.tt-change { margin-top: 2px; font-size: 12px; color: #374151; line-height: 1.5; }
+.tt-reason { margin-top: 2px; font-size: 11px; color: #6b7280; line-height: 1.5; }
 </style>
