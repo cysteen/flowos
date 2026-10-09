@@ -67,7 +67,7 @@ interface ProblemTagRow {
   tagL1Id: string;
   tagL2Id: string;
   tagL3Id: string;
-  /** 维护人 / 维护时间：任何写操作后刷新为操作人与操作时刻 */
+  /** 更新人 / 更新时间：任何写操作后刷新为操作人与操作时刻 */
   maintainer: string;
   maintainedAt: string;
 }
@@ -89,7 +89,6 @@ const emptyFilter = () => ({
   tagL1: undefined as string | undefined,
   tagL2: undefined as string | undefined,
   tagL3: undefined as string | undefined,
-  tagKeyword: '',
   team: undefined as string | undefined,
   aftersale: undefined as string | undefined,
   summaryOnly: undefined as string | undefined,
@@ -126,6 +125,9 @@ const TAG_L3_MAP: Record<string, string[]> = {
 };
 /** 处理组：系统中已有的处理组名称；导入「工单处理组」按名称完全一致匹配本清单 */
 const TEAMS = ['工单-处理组', '售后系统组', '综合组', '受理一组', '受理二组', '硬件缺陷组', '技术支持组'];
+/** 处理组筛选专用取值「为空」：筛出处理组留空的分类；新增 / 编辑与批量改处理组不含此项 */
+const TEAM_EMPTY = '__team_empty__';
+const filterTeamOpts = [{ label: '为空', value: TEAM_EMPTY }, ...TEAMS.map((t) => ({ label: t, value: t }))];
 
 /** 维度 → 各级下拉对应的产品归属字段（末级用产品 key，保证同名产品不串）；产品维度三级、组织维度四级 */
 const SCOPE_FIELDS: Record<ScopeDim, (keyof ProductInfo)[]> = {
@@ -225,7 +227,7 @@ watch(
 
 /**
  * 种子行：产品 key · 一/二/三级 · 处理组（空＝未配置）· 是否售后 · 是否小结专用 · 状态
- * · 一/二/三级 ID · 维护人 · 维护时间
+ * · 一/二/三级 ID · 更新人 · 更新时间
  */
 type SeedTuple = [
   string, string, string, string, string, '是' | '否', '是' | '否', '启用' | '停用',
@@ -359,20 +361,12 @@ function matchSelect(val: string | undefined, field: string) {
   return !val || field === val;
 }
 
-function matchTagKeyword(keyword: string, row: ProblemTagRow) {
-  const kw = keyword.trim().toLowerCase();
-  if (!kw) return true;
-  const hay = `${row.tagL1} ${row.tagL2} ${row.tagL3} ${row.tagL1}/${row.tagL2}/${row.tagL3}`.toLowerCase();
-  return hay.includes(kw);
-}
-
 const displayRows = computed(() => allRows.value.filter((r) => {
   if (!scopeMatches(pinfo(r.productKey), appliedFilter.dim, [appliedFilter.scope1, appliedFilter.scope2, appliedFilter.scope3, appliedFilter.scope4])) return false;
   if (!matchSelect(appliedFilter.tagL1, r.tagL1)) return false;
   if (!matchSelect(appliedFilter.tagL2, r.tagL2)) return false;
   if (!matchSelect(appliedFilter.tagL3, r.tagL3)) return false;
-  if (!matchTagKeyword(appliedFilter.tagKeyword, r)) return false;
-  if (!matchSelect(appliedFilter.team, r.team)) return false;
+  if (appliedFilter.team === TEAM_EMPTY ? !!r.team : !matchSelect(appliedFilter.team, r.team)) return false;
   if (!matchSelect(appliedFilter.aftersale, r.aftersale)) return false;
   if (!matchSelect(appliedFilter.summaryOnly, r.summaryOnly)) return false;
   if (!matchSelect(appliedFilter.status, r.status)) return false;
@@ -388,8 +382,8 @@ const cols = [
   { title: '是否售后', dataIndex: 'aftersale', key: 'aftersale', width: 86 },
   { title: '是否小结专用', dataIndex: 'summaryOnly', key: 'summaryOnly', width: 110 },
   { title: '状态', dataIndex: 'status', key: 'status', width: 90 },
-  { title: '维护人', dataIndex: 'maintainer', key: 'maintainer', width: 90 },
-  { title: '维护时间', dataIndex: 'maintainedAt', key: 'maintainedAt', width: 150 },
+  { title: '更新人', dataIndex: 'maintainer', key: 'maintainer', width: 90 },
+  { title: '更新时间', dataIndex: 'maintainedAt', key: 'maintainedAt', width: 150 },
   { title: '操作', key: 'op', width: 110, fixed: 'right' as const, align: 'right' as const, className: 'col-op' },
 ];
 
@@ -477,7 +471,7 @@ function batchSetStatus(status: '启用' | '停用') {
       const keySet = new Set(keys);
       const stamp = stampNow();
       for (const r of allRows.value) {
-        // 已是目标状态的条不写入，维护人 / 维护时间不刷新（仍计入成功条数）
+        // 已是目标状态的条不写入，更新人 / 更新时间不刷新（仍计入成功条数）
         if (keySet.has(r.key) && r.status !== status) {
           r.status = status;
           Object.assign(r, stamp);
@@ -516,7 +510,7 @@ function onReset() {
   clearSelection();
 }
 
-const formLabelCol = { flex: '88px' };
+const formLabelCol = { flex: '112px' };
 const formWrapperCol = { flex: '1' };
 
 function tagPath(row: ProblemTagRow) {
@@ -787,7 +781,7 @@ function downloadTemplate() {
 // —— 导出 ——
 const EXPORT_COLS = [
   'BGBU', '业务线', '产品线', ...TEMPLATE_COLS.slice(0, 9),
-  '状态', '维护人', '维护时间', ...TEMPLATE_COLS.slice(9),
+  '状态', '更新人', '更新时间',...TEMPLATE_COLS.slice(9),
 ];
 
 function rowToExportCells(r: ProblemTagRow): string[] {
@@ -1083,80 +1077,70 @@ function doImport(withUpdate: boolean) {
               </div>
               <div class="fi">
                 <span class="fl">处理组</span>
-                <a-select v-model:value="draftFilter.team" class="tb-ctl sel-w" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="toOpts(TEAMS)" />
+                <a-select v-model:value="draftFilter.team" class="tb-ctl sel-w team-sel" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="filterTeamOpts" />
               </div>
               <div class="fi">
                 <span class="fl">是否售后</span>
                 <a-select v-model:value="draftFilter.aftersale" class="tb-ctl sel-w-sm" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="toOpts(['是', '否'])" />
               </div>
-              <div class="fi">
-                <span class="fl">是否小结专用</span>
-                <a-select v-model:value="draftFilter.summaryOnly" class="tb-ctl sel-w-sm" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="toOpts(['是', '否'])" />
-              </div>
-              <div class="fi">
-                <span class="fl">状态</span>
-                <a-select v-model:value="draftFilter.status" class="tb-ctl sel-w-sm" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="toOpts(['启用', '停用'])" />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="list-controls">
-          <div class="wb-toolbar">
-            <div class="wb-toolbar__cluster">
-              <div class="wb-toolbar__search">
-                <SearchOutlined :style="{ color: '#9CA3AF', fontSize: '14px' }" />
-                <input
-                  class="wb-toolbar__search-input"
-                  placeholder="搜索分类名称"
-                  :value="draftFilter.tagKeyword"
-                  @input="draftFilter.tagKeyword = ($event.target as HTMLInputElement).value"
-                  @keydown.enter="onQuery"
-                />
-              </div>
-              <div class="wb-toolbar__btn wb-toolbar__btn--primary" @click="onQuery">
-                <SearchOutlined :style="{ fontSize: '14px' }" />
-                <span>查询</span>
-              </div>
-              <div class="wb-toolbar__btn" @click="onReset">
-                <ReloadOutlined :style="{ color: '#6B7280', fontSize: '14px' }" />
-                <span>重置</span>
-              </div>
-              <a-dropdown v-model:open="batchOpen" trigger="click" placement="bottomRight">
-                <div class="wb-toolbar__btn wb-toolbar__btn--batch" :class="{ 'is-active': hasRowSelection }">
-                  <UnorderedListOutlined :style="{ fontSize: '14px' }" />
-                  <span>批量操作</span>
-                  <span v-if="hasRowSelection" class="wb-toolbar__badge">{{ checkedRowKeys.length }}</span>
-                  <DownOutlined :style="{ color: '#9CA3AF', fontSize: '12px' }" />
+              <!-- 是否小结专用 · 状态 · 操作区绑成一个换行单元：两项筛选不拆开，操作区始终贴在属性组最后一行右端 -->
+              <div class="fi-tail">
+                <div class="fi-tail-attrs">
+                  <div class="fi">
+                    <span class="fl">是否小结专用</span>
+                    <a-select v-model:value="draftFilter.summaryOnly" class="tb-ctl sel-w-sm" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="toOpts(['是', '否'])" />
+                  </div>
+                  <div class="fi">
+                    <span class="fl">状态</span>
+                    <a-select v-model:value="draftFilter.status" class="tb-ctl sel-w-sm" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="toOpts(['启用', '停用'])" />
+                  </div>
                 </div>
-                <template #overlay>
-                  <a-menu class="batch-menu">
-                    <a-menu-item v-for="act in ['处理组', '启用', '停用']" :key="act" :disabled="!hasRowSelection" @click="onBatch(act)">
-                      <a-tooltip :title="hasRowSelection ? undefined : TIP_NEED_CHECK" placement="left">
-                        <span class="menu-tip">{{ act }}</span>
-                      </a-tooltip>
-                    </a-menu-item>
-                    <template v-if="isAdmin">
-                      <a-menu-divider />
-                      <a-menu-item key="删除" :disabled="!hasRowSelection" danger @click="onBatch('删除')">
-                        <a-tooltip :title="hasRowSelection ? undefined : TIP_NEED_CHECK" placement="left">
-                          <span class="menu-tip">删除</span>
-                        </a-tooltip>
-                      </a-menu-item>
+                <div class="wb-toolbar fi-ops">
+                  <div class="wb-toolbar__btn wb-toolbar__btn--primary" @click="onQuery">
+                    <SearchOutlined :style="{ fontSize: '14px' }" />
+                    <span>查询</span>
+                  </div>
+                  <div class="wb-toolbar__btn" @click="onReset">
+                    <ReloadOutlined :style="{ color: '#6B7280', fontSize: '14px' }" />
+                    <span>重置</span>
+                  </div>
+                  <a-dropdown v-model:open="batchOpen" trigger="click" placement="bottomRight">
+                    <div class="wb-toolbar__btn wb-toolbar__btn--batch" :class="{ 'is-active': hasRowSelection }">
+                      <UnorderedListOutlined :style="{ fontSize: '14px' }" />
+                      <span>批量操作</span>
+                      <span v-if="hasRowSelection" class="wb-toolbar__badge">{{ checkedRowKeys.length }}</span>
+                      <DownOutlined :style="{ color: '#9CA3AF', fontSize: '12px' }" />
+                    </div>
+                    <template #overlay>
+                      <a-menu class="batch-menu">
+                        <a-menu-item v-for="act in ['处理组', '启用', '停用']" :key="act" :disabled="!hasRowSelection" @click="onBatch(act)">
+                          <a-tooltip :title="hasRowSelection ? undefined : TIP_NEED_CHECK" placement="left">
+                            <span class="menu-tip">{{ act }}</span>
+                          </a-tooltip>
+                        </a-menu-item>
+                        <template v-if="isAdmin">
+                          <a-menu-divider />
+                          <a-menu-item key="删除" :disabled="!hasRowSelection" danger @click="onBatch('删除')">
+                            <a-tooltip :title="hasRowSelection ? undefined : TIP_NEED_CHECK" placement="left">
+                              <span class="menu-tip">删除</span>
+                            </a-tooltip>
+                          </a-menu-item>
+                        </template>
+                      </a-menu>
                     </template>
-                  </a-menu>
-                </template>
-              </a-dropdown>
-              <a-tooltip :title="checkedRows.length ? undefined : TIP_NEED_CHECK" placement="bottomRight">
-                <div
-                  class="wb-toolbar__btn wb-toolbar__btn--export"
-                  :class="{ 'is-disabled': !checkedRows.length }"
-                  @click="onExport"
-                >
-                  <DownloadOutlined :style="{ fontSize: '14px' }" />
-                  <span>{{ checkedRows.length ? `导出（${checkedRows.length} 条）` : '导出' }}</span>
+                  </a-dropdown>
+                  <a-tooltip :title="checkedRows.length ? undefined : TIP_NEED_CHECK" placement="bottomRight">
+                    <div
+                      class="wb-toolbar__btn wb-toolbar__btn--export"
+                      :class="{ 'is-disabled': !checkedRows.length }"
+                      @click="onExport"
+                    >
+                      <DownloadOutlined :style="{ fontSize: '14px' }" />
+                      <span>{{ checkedRows.length ? `导出（${checkedRows.length} 条）` : '导出' }}</span>
+                    </div>
+                  </a-tooltip>
                 </div>
-              </a-tooltip>
+              </div>
             </div>
           </div>
         </div>
@@ -1169,7 +1153,7 @@ function doImport(withUpdate: boolean) {
           row-key="key"
           :pagination="pagination"
           size="middle"
-          :scroll="{ x: 1450, y: 'calc(100vh - 410px)' }"
+          :scroll="{ x: 1450, y: 'calc(100vh - 388px)' }"
         >
           <template #bodyCell="{ column, record }">
             <span v-if="column.key === 'productName'" class="cell-link" @click="openEditRow(record as ProblemTagRow)">
@@ -1206,7 +1190,7 @@ function doImport(withUpdate: boolean) {
     <a-modal
       v-model:open="formOpen"
       :title="editingKey ? '修改问题分类' : '新增问题分类'"
-      :width="520"
+      :width="640"
       ok-text="保存"
       cancel-text="取消"
       destroy-on-close
@@ -1463,7 +1447,20 @@ function doImport(withUpdate: boolean) {
 }
 /* 组间细分隔线：画在属性组左侧间隙正中；整组换行到行首时落在行外被裁掉 */
 .fi-group-attr {
-  position: relative; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; flex: none; max-width: 100%;
+  position: relative; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; flex: 1 1 100%; max-width: 100%;
+}
+/* 属性组控件收窄，使属性组与操作区（含勾选后的计数）在 1920 下同一行放下 */
+.fi-group-attr .sel-w { width: 96px !important; }
+.fi-group-attr .sel-w-lg { width: 108px !important; }
+.fi-group-attr .sel-w-sm { width: 68px !important; }
+.fi-group-attr .team-sel { width: 108px !important; }
+/* 是否小结专用 + 状态 + 操作区：一个换行单元，撑满所在行，操作区贴右 */
+.fi-tail { display: flex; align-items: center; gap: 32px; flex: 1 0 auto; }
+.fi-tail-attrs { display: flex; align-items: center; gap: 12px; flex: none; }
+.fi-ops { position: relative; margin-left: auto; }
+.fi-ops::before {
+  content: ''; position: absolute; left: -16.5px; top: 50%; width: 1px; height: 18px;
+  transform: translateY(-50%); background: #e5e7eb;
 }
 .fi-group-attr::before {
   content: ''; position: absolute; left: -16.5px; top: 50%; width: 1px; height: 18px;
@@ -1483,7 +1480,7 @@ function doImport(withUpdate: boolean) {
 }
 .fi { display: flex; align-items: center; gap: 8px; flex: none; }
 /* 问题分类一/二/三级联动：三项同行，作为属性组内的一个换行单元 */
-.fi-tag { display: flex; align-items: center; gap: 16px; flex: none; }
+.fi-tag { display: flex; align-items: center; gap: 12px; flex: none; }
 .fl { font-size: 13px; color: #6b7280; white-space: nowrap; }
 .sel-w { width: 120px !important; }
 .sel-w-sm { width: 88px !important; }
@@ -1494,30 +1491,9 @@ function doImport(withUpdate: boolean) {
 .toolbar-row :deep(.ant-select-selection-placeholder) { color: #9ca3af; }
 .toolbar-row :deep(.ant-select-selection-item) { font-weight: 400; }
 
-.list-controls {
-  padding: 6px 12px;
-  border-bottom: 1px solid #f0f2f5;
-}
 .wb-toolbar {
-  display: flex; align-items: center; justify-content: flex-end;
-  gap: 12px; width: 100%; min-width: 0;
+  display: inline-flex; align-items: center; gap: 8px; flex: none;
 }
-.wb-toolbar__cluster {
-  display: inline-flex; align-items: center; gap: 8px; flex: none; flex-shrink: 0;
-}
-.wb-toolbar__search {
-  display: flex; align-items: center; gap: 8px;
-  width: 200px; height: 30px; padding: 0 10px;
-  background: #fff; border: 1px solid #d1d5db; border-radius: 6px; box-sizing: border-box; flex: none;
-}
-.wb-toolbar__search:focus-within {
-  border-color: #1a6fff; box-shadow: 0 0 0 2px rgb(26 111 255 / 10%);
-}
-.wb-toolbar__search-input {
-  flex: 1; min-width: 0; border: none; outline: none;
-  font-size: 13px; color: #374151; background: transparent;
-}
-.wb-toolbar__search-input::placeholder { color: #9ca3af; }
 .wb-toolbar__btn {
   display: inline-flex; align-items: center; gap: 6px; height: 30px;
   padding: 0 12px; background: #fff; border: 1px solid #d1d5db; border-radius: 6px;
@@ -1552,7 +1528,10 @@ function doImport(withUpdate: boolean) {
 .table-wrap :deep(.ant-spin-container) {
   flex: 1; min-height: 0; display: flex; flex-direction: column;
 }
-.table-wrap :deep(.ant-table) { flex: 1; min-height: 0; }
+.table-wrap :deep(.ant-table) { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+/* 表体随筛选区行数自适应撑满到分页条，不靠固定 calc 高度 */
+.table-wrap :deep(.ant-table-container) { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.table-wrap :deep(.ant-table-body) { flex: 1; min-height: 0; max-height: none !important; }
 .table-wrap :deep(.ant-table-pagination) {
   flex: none; margin: 0 !important; padding: 10px 16px;
   border-top: 1px solid #f0f2f5; background: #fff;
@@ -1580,9 +1559,13 @@ function doImport(withUpdate: boolean) {
 .row-ops :deep(.ant-btn-link) { padding: 0 6px; height: 22px; line-height: 22px; }
 .empty-hint { padding: 24px; color: #9ca3af; }
 
-.tag-form :deep(.ant-form-item) { margin-bottom: 12px; }
+.tag-form { padding-top: 8px; }
+.tag-form :deep(.ant-form-item) { margin-bottom: 20px; }
+.tag-form :deep(.ant-form-item:last-child) { margin-bottom: 4px; }
 .tag-form :deep(.ant-form-item-row) { align-items: center; flex-wrap: nowrap; }
-.tag-form :deep(.ant-form-item-label) { text-align: right; padding-right: 8px; }
+/* 标签列定宽右对齐；去掉 Ant 冒号位的外边距，标签与控件间距统一由 padding 给出 16px */
+.tag-form :deep(.ant-form-item-label) { text-align: right; padding-right: 16px; }
+.tag-form :deep(.ant-form-item-label > label::after) { margin-inline: 0 !important; }
 .tag-form :deep(.ant-form-item-label > label) {
   font-size: 13px; color: #374151; height: 32px;
 }
