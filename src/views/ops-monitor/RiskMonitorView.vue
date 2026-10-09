@@ -74,7 +74,8 @@ import {
   isPooledStatus,
   normalizeDecision,
   todayStamp,
-  REPORT_ASSESS_LIMIT_MIN,
+  // 🔴 `REPORT_ASSESS_LIMIT_MIN` 那一笔已删：它只喂 `assessLimitText`，
+  // 而那一个随「等待时长」整列撤出本工作面而删除。参数本身仍是 store 与报备池那一侧的真源
   type AssessDecision,
   type MonitorSource,
   type RiskTagResult,
@@ -518,12 +519,12 @@ type DecisionKey = AssessDecision | typeof COORD_DECISION;
 const DECISION_KEYS = computed<DecisionKey[]>(() => [...ASSESS_DECISIONS, COORD_DECISION]);
 /** 已评估视图内的收窄：只看某一个结论（由「今日决策」三枚按钮下钻置上） */
 const decisionFilter = ref<DecisionKey | 'all'>('all');
-/** 时限文案取参数、不写死：它与《【815】》催办规则读同一个值（§9 规则 14） */
-const assessLimitText = computed(() =>
-  REPORT_ASSESS_LIMIT_MIN % 60 === 0
-    ? `${REPORT_ASSESS_LIMIT_MIN / 60} 小时`
-    : `${REPORT_ASSESS_LIMIT_MIN} 分钟`,
-);
+/*
+ * 🔴 **`assessLimitText` 已删**（2026-10-09）：它把处置时限（`REPORT_ASSESS_LIMIT_MIN`）
+ * 换算成「N 小时 / N 分钟」的界面词，唯一的消费端是池行表「等待时长」那一格的悬停
+ * —— 那一列已随领取 / 释放 / 等待时长整套撤出本工作面而删除，grep 复验零调用方。
+ * ⚠️ **参数本身没动**：`REPORT_ASSESS_LIMIT_MIN` 仍是 store 侧超时判定与报备池那一侧的真源。
+ */
 
 /**
  * 来源排序。**同来源内仍按 tie 给的次序**——队列的默认口径是等待时长
@@ -669,15 +670,23 @@ const reportAssigningRows = computed(
   () => sortBySource(bySource(inGroup(openBase('assigning'))), (a, b) => a.at.localeCompare(b.at)),
 );
 
-/**
- * 已评估视图**默认只看今日**（业务拍板 2026-09-09）。
+/*
+ * 🔴 **「仅今日」这个开关已整个删掉**（2026-10-09 裁决，业务原话
+ * 「分母是 已判里面的全部数据呀，与时间无关」）。
  *
- * 【为什么必须限今日】上方「评估决策」两枚卡按 **自然日** 算（PRD §7 B4 窗口＝自然日，
- * 且 `B3 = B4 两档之和` 这条恒等式靠它成立）。若列表给全量，点「升级 1」下钻，
- * 卡是今日数、表是全量表，**同一块屏上两个数对不上** —— 与本文件开头那条
- * 「标签写着一个数、表里躺着另一批」是同一个坑。要看历史，把这个开关关掉。
+ * 【它原先是什么】`assessedTodayOnly = ref(true)`，给 `assessedBase` 按自然日收窄第三段
+ * （出过结论的行）。当初（2026-09-09）设它是为了跟上方「评估决策」两枚按自然日算的卡对齐。
+ * 【为什么现在非删不可】那两枚卡连同整块「评估处置」统计早已撤掉（2026-10-07 裁决），
+ * 而筛选区整块改成上沿筛选项之后，**界面上再没有任何控件能关掉它** ——
+ * 只剩页头四枚卡下钻时偷偷置 `false`。于是同一张表有两个口径：从页头进是全量、
+ * 从别处进只剩今天；五个筛选项的「全部（N）」还都走这张被时间筛过的底表。
+ * ⇒ 这一段现在**与时间无关**，`assessedBase` 只做"是不是池行"这一道。
+ *
+ * ⚠️ `todayPrefix` **保留**：它另有六处消费端（扫库记录是否今日、页头那几个"今日"计数）。
+ * ⚠️ `concludedAtOf` **保留**：第三段仍按结论时刻倒序排。
+ * ⚠️ **报备池那一侧自己的 `assessedTodayOnly`**（`RiskReportPoolPanel`，默认关、有勾选框）
+ * 与本页无关，一个字没动。
  */
-const assessedTodayOnly = ref(true);
 function todayPrefix() {
   const d = new Date();
   const p = (n: number) => String(n).padStart(2, '0');
@@ -699,19 +708,16 @@ function concludedAtOf(r: RiskPoolItem) {
 }
 
 /**
- * 已结论底表：**只过「仅今日」这一个开关**。
- * 🔴 **结论这一维不在这里过**：它 2026-10-08 并成了与来源 / 原单类型 / 风险等级同层的
- * 第四维，统一由 `byPoolAttrs` 过（见那个函数）。两处都过的话，同一个条件过两遍，
- * 且「结论」那个筛选项自己的计数会被自己筛掉。
+ * 已结论底表：**出过结论的池行，全量、与时间无关**（2026-10-09 裁决）。
+ * 🔴 **这里一道筛都不做**：
+ *   · 时间 —— 「仅今日」已删（见上方那段）；
+ *   · 结论 —— 它 2026-10-08 并成了与来源 / 工单类型 / 风险等级同层的第四维，
+ *     统一由 `byPoolAttrs` 过。两处都过的话同一个条件过两遍，
+ *     且「结论」那个筛选项自己的计数会被自己筛掉。
  */
-const assessedBase = computed(() => {
-  const rows = reportStore.assessedList.filter(isPoolRow);
-  if (!assessedTodayOnly.value) return rows;
-  const today = todayPrefix();
-  return rows.filter((r) => concludedAtOf(r).startsWith(today));
-});
+const assessedBase = computed(() => reportStore.assessedList.filter(isPoolRow));
 
-/** 已结论列表：结论时刻倒序；今日开关与四维筛选都是视图内条件 */
+/** 已结论列表：结论时刻倒序；四维筛选是视图内条件 */
 const reportAssessedRows = computed(
   // 已评估这批的默认次序是**评估时刻倒序**，与在队两态的"提交时刻正序"不是一回事，
   // 故 tie 单独给一份：套用队列那份会让刚评完的一条排到列表末尾去。
@@ -894,7 +900,7 @@ function setReportPage(page: number, size: number) {
 
 // 任一视图内条件变了，底表就换了一批，页码必须回到第一页——
 // 否则「第 3 页 → 换一个班组」会停在一张恰好没有行的页上。
-watch([decisionFilter, assessedTodayOnly, sourceFilter, poolTicketTypeFilter, poolLevelFilter, sourceSort, groupFilter], () => {
+watch([decisionFilter, sourceFilter, poolTicketTypeFilter, poolLevelFilter, sourceSort, groupFilter], () => {
   reportPageCurrent.value = 1;
 });
 
@@ -1836,7 +1842,8 @@ function criteriaSummaryOf(f: ScanCriteria): string {
   parts.push(f.matchScopes.length ? f.matchScopes.join('/') : '按词表范围');
   parts.push(f.nodeStatuses.length
     ? (f.nodeStatuses.length <= 3 ? f.nodeStatuses.join('/') : `${f.nodeStatuses.length} 个子状态`)
-    : '不限状态');
+    // 🔴 空值一律写「全部」（2026-10-09 裁决，与三条筛选条的空值项统一）
+    : '全部状态');
   if (f.ticketTypes.length) parts.push(f.ticketTypes.join('/'));
   if (f.businessTypes.length) parts.push(f.businessTypes.join('/'));
   if (f.productCategories.length) parts.push(f.productCategories.join('/'));
@@ -3559,26 +3566,13 @@ watch([untaggedSlice, queueView, listView], () => {
 function tagResultOf(e: RiskQueueEntry): RiskTagResult | undefined {
   return e.tag?.result;
 }
-/**
- * 条目在池子里走到哪一步了 —— **界面词，与左栏「待处置」那三档逐字一致**。
- *
- * 落库值是「待分派 / 评估中 / 已评估」：`待分派` 是分派时代留下的词（分派整套已取消，
- * 这一档现在的含义就是"还没人领"）；`已评估` 收的其实是两路结论（评估 与 协同处理），
- * 而协同处理不产出评估决策，故界面词取更准的「已结论」（与工单侧 OpRiskDecision 同一个词）。
- * 🔴 同一个状态在左栏写一个词、在表里写另一个词，是这张页面最容易读串的一处，故收成这一个映射。
- * 待打标 / 已标记无风险两态不在池里，直接读状态本身。
- */
-const POOL_STATE_TEXT: Record<string, string> = {
-  待分派: '待领取',
-  评估中: '已领取',
-  已评估: '已结论',
-};
 /*
- * 🔴 **`poolStageTextOf` 已删**（2026-10-09）：它的界面消费端早已先后删完
- * （左栏「按处置阶段」那一轴 2026-10-07、池行表「处置阶段」列 2026-10-08），
- * 上一版留着它只是为了替 `POOL_STATE_TEXT` 当门面。grep 复验零调用方，整个删掉。
- * ⚠️ 上面那份 `POOL_STATE_TEXT` **保留**：它是落库值 ↔ 界面词的留痕口径；
- * 界面上现行在用的那一份是 `poolStageOf`（它按同一套对应关系现算）。
+ * 🔴 **`poolStageTextOf` 与 `POOL_STATE_TEXT` 都已删**（2026-10-09）：
+ * 前者的界面消费端早已先后删完（左栏「按处置阶段」那一轴 2026-10-07、
+ * 池行表「处置阶段」列 2026-10-08），上一版留着它只是为了替后者当门面；
+ * 后者在前者删掉之后同样零调用方。两个一并清掉，grep 复验过。
+ * ⚠️ **那套落库值 ↔ 界面词的对应关系没有丢**：现行在用的是 `poolStageOf`
+ * （待分派→待领取 / 评估中→已领取 / 已评估→已结论，同一套，就地现算）。
  *
  * 🔴 **`rowOverdue` / `rowWaitedText` 也已删**（2026-10-09）：两者的唯一消费端是
  * 工作面池行表「等待时长」那一格，随那一列一并撤掉之后 grep 复验**零调用方** ——
@@ -4519,9 +4513,11 @@ const pooledTypeRowKeys = computed<string[]>(() => (
  * 可带一个风险等级收窄 —— 那一块原本就是这个工作面的唯一入口（`drillReport` 是唯一的进法），
  * 换数之后**下钻能力照留**，否则领取 / 评估 / 协同整个工作面就进不去了。
  *
- * ⚠️ 两件事必须在 `drillReport` 之后补：
- *   ① `assessedTodayOnly = false` —— 它默认开着，不关的话第三段只躺今天结论的那几条；
- *   ② `poolLevelFilter` —— `drillReport` 先把它放回「全部」，这里再按卡片补上。
+ * ⚠️ `poolLevelFilter` 必须在 `drillReport` 之后补：那一步先把五维放回「全部」，这里再按卡片补上。
+ * ⚠️ **原先这里还有一句 `assessedTodayOnly = false`**：那个开关默认开着、界面上又没有控件能关，
+ * 于是只有这条下钻能看到全量第三段。开关已随 2026-10-09 裁决整个删除
+ * （「分母是已判里面的全部数据呀，与时间无关」），这一句随之去掉 ——
+ * **现在无论从哪儿进工作面，第三段都是全量**，不再有两个口径。
  *
  * 🔴 **本块的卡不点亮 `on`**：卡上的数是**监控条目**（已判，含来源为「风险报备」的那一条），
  * 工作面那张表数的是**池行**且只收 A 线（`isALine` 把来源「二线报备」挡在外面）——
@@ -4530,7 +4526,6 @@ const pooledTypeRowKeys = computed<string[]>(() => (
  */
 function drillPooled(lv: RiskLevel | 'all') {
   drillReport();
-  assessedTodayOnly.value = false;
   poolLevelFilter.value = lv;
 }
 
