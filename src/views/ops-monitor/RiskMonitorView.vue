@@ -5382,8 +5382,15 @@ function openTicket(no: string) { router.push(`/tickets/${no}`); }
  * 对应的那一档**（2026-10-09 裁决，业务原话「怎么跳查询中心呢？应该跳待判的重点工单」）。
  *
  * 🔴 **走的就是左栏点档位那一条路**（`setRail('untagged:focus:Px')`），不另写一份：
- * 页面上每一个通往漏斗某一段的入口都过 `setRail`，它把 `listView` / `queueView` /
- * `untaggedSlice` / `untaggedSub` 四个真源一次写齐 —— 另写一份必然漏掉其中一两个。
+ * 页面上每一个通往漏斗某一段的入口都过 `setRail`，它把**五个**真源一次写齐 ——
+ * `listView` / `queueView` / **`tagLevelFilter`** / `untaggedSlice` / `untaggedSub`。
+ * ⚠️ **原注释写的是"四个"、漏了 `tagLevelFilter`**，而那一个恰恰最容易漏：
+ * 它是左栏「已判」那条等级轴的真源，落到待判那两路时必须写回 `'all'`，
+ * 否则从「已判 · 高危」点过来会带着一个看不见的等级收窄。
+ * 另有两笔是 `setRail` **不直接写、由 watch 间接清**的，别去 `setRail` 里找：
+ *   · `taggerFilter` —— `watch(railKey)`：离开「按标记人」那一档就回 `'all'`；
+ *   · `untaggedFilter` 整条 —— `watch([untaggedSlice, queueView, listView])` 整体重置。
+ * 🔴 自己另写一份写齐的逻辑必然漏掉其中一两个，一律过 `setRail`。
  * 先把那一路展开（`untaggedOpen.focus`）：子档收起着的时候左栏不渲染它那一行，
  * 落过去会"选中了一个看不见的档"。
  *
@@ -8162,9 +8169,17 @@ function toggleWordEnabled(w: RiskWord) {
     </OpActionModal>
 
     <!--
-      协同处理弹窗（投诉单那一路的工作面）。**与工单页底栏那一枚是同一个组件**：
-      必填项、两个副作用（落第八类履历 + 挂建议标记）、"不发通知"这条口径都在组件里，
-      两个入口不会各走各的。提交后条目转「已结论」由 `riskPool.coordinate` 一处收口。
+      协同处理弹窗（投诉单那一路的工作面）。
+
+      ⚠️ **原注释写的是"与工单页底栏那一枚是同一个组件"，已过期**：工单页底栏那一枚
+      早已挪进页头，且换成了另一个组件（`operation/OpRiskControlModal.vue` 的投诉支）。
+      **`OpRiskCollabModal` 现在全仓只有本页一个使用者**（grep 复验：`import` 仅此一处），
+      改它不外溢到工单页。
+
+      🔴 **两个入口仍不会各走各的**，靠的不是"同一个弹窗组件"，而是**同一批共享件**：
+      字段与校验走 `useRiskCollabFields` + `RiskCollabFields.vue`（两处同一份），
+      落库与两个副作用（落第八类履历 + 挂建议标记）走 `riskPool.coordinate` 一处收口，
+      "不发通知"那条口径也在共享件里。提交后条目转「已结论」同样由 `coordinate` 收口。
     -->
     <OpRiskCollabModal
       v-if="collabTarget"
