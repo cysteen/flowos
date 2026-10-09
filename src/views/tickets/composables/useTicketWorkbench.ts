@@ -462,7 +462,8 @@ export function useTicketWorkbench() {
    * 催补待回 · 领取（PRD-02 §7⑤-B）。与 `claimTicket` 分开，不改池子的领取语义。
    * - 无处理人：处理人改为本人（同池内领取）；
    * - 他人名下：处理人改为本人，写履历「从〈原处理人〉名下领取」；
-   * - 已升级技术支持：只换二线主责（`primaryOwner`），三线处理人与状态不动。
+   * - 已升级技术支持：只换二线主责（`primaryOwner`），三线处理人与状态不动；
+   *   主责本就是本人时数据不变、不写履历（弹窗确认照走，由调用方负责）。
    * 不清催补 / 补充未读：出列只认「已联系」（915）。
    */
   function takeOverPoolPending(id: string): { ok: boolean; from: string | null } {

@@ -31,6 +31,7 @@ import TicketDraftList from './components/TicketDraftList.vue';
 import CreateTicketModal from './components/CreateTicketModal.vue';
 import SaveFilterModal from './components/SaveFilterModal.vue';
 import OpActionDialogs from './components/OpActionDialogs.vue';
+import OpActionModal from './components/operation/OpActionModal.vue';
 import AssignModal, {
   type AssignSubmitPayload,
   type AssignTicket,
@@ -326,33 +327,48 @@ function poolPendingRowActions(t: Ticket): { label: string; primary?: boolean }[
   return acts;
 }
 
-/** 催补待回 · 领取：无处理人直接领；他人名下先二次确认。领取后进该单详情 */
+/** 催补待回 · 「领取工单」确认弹窗的数据（他人名下 / 已升级单二线主责含本人） */
+const takeoverOpen = ref(false);
+const takeoverTicket = ref<Ticket | null>(null);
+const takeoverFrom = ref('');
+const takeoverEscalated = computed(() => takeoverTicket.value?.nodeStatus === '已升级技术支持');
+const takeoverMe = computed(() => currentHandlerName(user.roleKey, user.name));
+
+function runTakeOverPending(t: Ticket) {
+  const res = wb.takeOverPoolPending(t.id);
+  if (!res.ok) {
+    message.warning('该工单已不在催补待回');
+    return;
+  }
+  // 主责本就是本人：数据不变，不弹「已领取」
+  if (res.from !== takeoverMe.value) message.success(`已领取 ${t.no}`);
+  openOperation(t);
+}
+
+/**
+ * 催补待回 · 领取：无处理人直接领；他人名下、或已升级单（二线主责含本人）先二次确认。
+ * 领取后进该单详情。
+ */
 function takeOverPending(t: Ticket) {
   const from = wb.poolPendingOwnerOf(t);
-  if (from !== null && from === currentHandlerName(user.roleKey, user.name)) {
+  const escalated = t.nodeStatus === '已升级技术支持';
+  if (from !== null && from === takeoverMe.value && !escalated) {
     openOperation(t);
     return;
   }
-  const run = () => {
-    const res = wb.takeOverPoolPending(t.id);
-    if (!res.ok) {
-      message.warning('该工单已不在催补待回');
-      return;
-    }
-    message.success(`已领取 ${t.no}`);
-    openOperation(t);
-  };
   if (from === null) {
-    run();
+    runTakeOverPending(t);
     return;
   }
-  Modal.confirm({
-    title: '领取工单',
-    content: `该工单当前由${from}处理，领取后改由你处理，确认领取？`,
-    okText: '确认领取',
-    cancelText: '取消',
-    onOk: run,
-  });
+  takeoverTicket.value = t;
+  takeoverFrom.value = from;
+  takeoverOpen.value = true;
+}
+
+function onTakeoverOk() {
+  const t = takeoverTicket.value;
+  takeoverOpen.value = false;
+  if (t) runTakeOverPending(t);
 }
 
 // 「处理 / 详情 / 审核 / 受理」进工单操作页（PRD-03）；其余即时反馈
@@ -683,6 +699,34 @@ function onConfirmSaveFilter(name: string) {
       :return-count="opReturnCount"
       @confirm="onOpDialogConfirm"
     />
+
+    <OpActionModal
+      v-model:open="takeoverOpen"
+      title="领取工单"
+      :width="460"
+      ok-text="确认领取"
+      cancel-text="取消"
+      @ok="onTakeoverOk"
+    >
+      <div v-if="takeoverTicket" class="tko">
+        <div class="tko-head" :title="`${takeoverTicket.no} · ${takeoverTicket.title}`">
+          {{ takeoverTicket.no }} · {{ takeoverTicket.title }}
+        </div>
+        <div class="tko-kv">
+          <span class="tko-k">当前处理人</span>
+          <span class="tko-v">{{ takeoverFrom }}<span v-if="takeoverEscalated" class="tko-note">（二线主责）</span></span>
+        </div>
+        <div class="tko-kv">
+          <span class="tko-k">领取后处理人</span>
+          <span class="tko-v">{{ takeoverMe }}</span>
+        </div>
+        <div class="tko-foot">
+          {{ takeoverEscalated
+            ? '领取后由你担任二线主责，三线处理不受影响。'
+            : '领取后工单进入你的处理队列，原处理人将不再处理此单。' }}
+        </div>
+      </div>
+    </OpActionModal>
   </div>
 </template>
 
@@ -760,4 +804,18 @@ function onConfirmSaveFilter(name: string) {
   font-size: 13px;
   color: #9ca3af;
 }
+.tko { display: flex; flex-direction: column; gap: 12px; }
+.tko-head {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tko-kv { display: flex; align-items: baseline; gap: 12px; }
+.tko-k { flex: none; width: 84px; font-size: 13px; color: #6b7280; text-align: left; }
+.tko-v { flex: 1; min-width: 0; font-size: 14px; color: #111827; }
+.tko-note { margin-left: 4px; font-size: 12px; color: #9ca3af; }
+.tko-foot { font-size: 12px; color: #9ca3af; line-height: 1.5; }
 </style>
