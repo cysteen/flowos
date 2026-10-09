@@ -387,7 +387,10 @@ const cols = [
   { title: '操作', key: 'op', width: 110, fixed: 'right' as const, align: 'right' as const, className: 'col-op' },
 ];
 
+const currentPage = ref(1);
 const pagination = computed(() => stdPagination({
+  current: currentPage.value,
+  onChange: (page: number) => { currentPage.value = page; },
   pageSize: 20,
   total: displayRows.value.length,
   hideOnSinglePage: false,
@@ -501,12 +504,14 @@ function batchDelete() {
 
 function onQuery() {
   Object.assign(appliedFilter, { ...draftFilter });
+  currentPage.value = 1;
   clearSelection();
   message.success(`查询完成，共 ${displayRows.value.length} 条`);
 }
 function onReset() {
   Object.assign(draftFilter, emptyFilter());
   Object.assign(appliedFilter, emptyFilter());
+  currentPage.value = 1;
   clearSelection();
 }
 
