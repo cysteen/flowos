@@ -130,6 +130,11 @@ export const AFTERSALE_CLOSE_REASON = '售后已完成';
 const AFTERSALE_ACTOR_ROLE: TlRole = '系统';
 const AFTERSALE_ACTOR = '售后系统';
 
+/** 售后发起建出的单（③④）的建单人：取建单那条履历的售后侧操作人（即事件 operator） */
+export function aftersaleInboundOperator(t?: Pick<Ticket, 'eventTimeline'>): string | undefined {
+  return t?.eventTimeline?.find((x) => x.role === AFTERSALE_ACTOR_ROLE && !!x.who && x.who !== AFTERSALE_ACTOR)?.who;
+}
+
 function eventKey(e: AftersaleEvent): string {
   return e.eventId ?? `${e.asNo}:${e.type}:${e.at}`;
 }

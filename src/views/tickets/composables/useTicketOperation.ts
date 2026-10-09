@@ -30,8 +30,7 @@ import {
   applyOpAction, isAftersaleInbound, mapUserRole, nowWhen, pushEntry,
   type OpActionPayload, type SuspendInfo, type TicketOpState,
 } from './opActions';
-import { isAftersaleChainTicket, migrateAftersaleLink } from './aftersaleEvents';
-import { AFTERSALE_INBOUND_LABEL } from './aftersaleButtonForm';
+import { aftersaleInboundOperator, isAftersaleChainTicket, migrateAftersaleLink } from './aftersaleEvents';
 
 /**
  * 同一售后单另一位上的活跃客服单（《【1025】》§5.2 / §5.4）：本单在来源位就找派生位，反之亦然。
@@ -394,10 +393,11 @@ export function useTicketOperation() {
           resultCount: t.aftersaleResultCount ?? 0,
         };
       }
-      // 售后转入的单页头「建单人」显示「售后转入」（§4.1 / §4.3）
-      if (isAftersaleInbound(base)) {
-        base.builder = AFTERSALE_INBOUND_LABEL;
-        base.builderShort = AFTERSALE_INBOUND_LABEL;
+      // 售后转入的单页头「建单人」显示售后侧操作人（§4.1 / §4.3）
+      const asOperator = isAftersaleInbound(base) ? aftersaleInboundOperator(t) : undefined;
+      if (asOperator) {
+        base.builder = asOperator;
+        base.builderShort = asOperator;
       }
       // 建单时间取工单行（售后转入＝事件到达建单的时刻），与履历首条「创建工单」一致，不落样例时刻
       if ((isAftersaleInbound(base) || isAftersaleChainTicket(t)) && t.createdAt) {

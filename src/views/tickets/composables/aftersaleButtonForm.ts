@@ -41,9 +41,6 @@ export function slotOfRelation(r: AftersaleRelation): AftersaleSlot {
   return r === 'source' ? 'source' : 'derived';
 }
 
-/** ③ ④ 建出的新单：来源类型的页面名称，页头「建单人」同显此名（§4.1 / §4.3） */
-export const AFTERSALE_INBOUND_LABEL = '售后转入';
-
 /* ---------------- §5.4 售后状态三档 ---------------- */
 
 /** 售后单因升级投诉冻结时，客服侧收到的售后状态值（映射表以售后侧为准） */

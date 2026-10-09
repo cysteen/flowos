@@ -34,11 +34,12 @@ const CreateTicketModal = defineAsyncComponent(() => import('./components/Create
 import type { SmsTemplateKind } from '@/mock/notifyTemplates';
 import { useTicketOperation } from './composables/useTicketOperation';
 import { FEISHU_ESCALATE_CHANNEL, mapUserRole, pushEntry, isAftersaleSettled } from './composables/opActions';
-import { aftersaleLinkJoinedEntry, applyAftersaleResult, isAftersaleChainTicket } from './composables/aftersaleEvents';
+import { AFTERSALE_INBOUND_SOURCE, normalizeTicketSource } from './types/createTicket';
+import { aftersaleInboundOperator, aftersaleLinkJoinedEntry, applyAftersaleResult, isAftersaleChainTicket } from './composables/aftersaleEvents';
 import { submitAftersaleResult } from '@/api/aftersaleResult';
 import OpAftersaleResultModal from './components/operation/OpAftersaleResultModal.vue';
 import {
-  AFTERSALE_INBOUND_LABEL, aftersaleStatusTier, aftersaleTierStyle, resolveAftersaleButtonForm,
+  aftersaleStatusTier, aftersaleTierStyle, resolveAftersaleButtonForm,
 } from './composables/aftersaleButtonForm';
 import { useProcessForm } from './composables/useProcessForm';
 import { useOperationTabs } from './composables/useOperationTabs';
@@ -1886,7 +1887,8 @@ function syncSuccessionCard() {
     typeColor: '#1A6FFF',
     createdAt: peer.createdAt ?? '',
     createdAtFull: peer.createdAt ?? '',
-    builder: AFTERSALE_INBOUND_LABEL,
+    builder: (normalizeTicketSource(peer.ticketSource) === AFTERSALE_INBOUND_SOURCE
+      ? aftersaleInboundOperator(peer) : peer.eventTimeline?.[0]?.who) ?? '—',
     demand: peer.problemDesc ?? '',
     succession: row.succeedsFromNo ? 'from' : 'to',
   });
