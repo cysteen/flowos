@@ -726,7 +726,7 @@ const reportAssessedRows = computed(
  *
  * 🔴 **「结论」那个筛选项的判据就是它**（见 `byPoolAttrs` 与 `decisionCountInView`）：
  * 三个取值 升级 / 不升级 / 风险处理建议 **不覆盖整张表** —— 在队那两段的行一律返回 null，
- * 不属于其中任何一个。故 `三项之和 < 全部结论`，**这是构造上的事实，不是对不上账**。
+ * 不属于其中任何一个。故 `三项之和 < 那一枚「全部（N）」`，**这是构造上的事实，不是对不上账**。
  * 归一化后再比：B 线的种子与它自己那份缓存里仍有旧词「接管」，直接比字面量的话，
  * 那一条在「升级」筛选下会凭空消失（见 `riskShared.normalizeDecision`）。
  */
@@ -742,7 +742,7 @@ function decisionKindOf(r: RiskPoolItem): DecisionKey | null {
  *
  * 🔴 **恒为三段之和**：「处置阶段」那一轴已随 2026-10-08 裁决删除，这张表不再按档分组，
  * 故这里也不再分叉。与 `reportAllRows` 同进同退：只改一处的话，表里躺着 3 行、
- * 上沿却写着「全部班组 7 / 全部来源 7」，那几个筛选项当场变成同屏的第二个数。
+ * 上沿那几格却写着「班组 全部（7）／来源 全部（7）」，筛选项当场变成同屏的第二个数。
  */
 const reportGroupBase = computed(() => [
   ...openBase('unassigned'),
@@ -772,8 +772,8 @@ function poolLevelCountInView(lv: RiskLevel) {
 }
 /**
  * 结论筛选项那一枚的底表（摘掉结论这一维）。
- * 🔴 **三个取值之和 < 「全部结论」那个数**，与另三维不同：在队那两段的行没有结论
- * （`decisionKindOf` 返回 null），不属于任何一个取值。「全部结论（N）」里的 N 是
+ * 🔴 **三个取值之和 < 那一枚「全部（N）」**，与另三维不同：在队那两段的行没有结论
+ * （`decisionKindOf` 返回 null），不属于任何一个取值。「全部（N）」里的 N 是
  * **不按这一维收窄时表里有多少行**，与标签逐字相符；别拿三项去加它。
  */
 const reportDecisionBase = computed(() => byPoolAttrs(inGroup(reportGroupBase.value), 'decision'));
@@ -2681,7 +2681,7 @@ const judgedUniverse = computed<RiskQueueEntry[]>(
  *
  * 🔴 **「结论」这一维不出**（2026-10-09 裁决）：已判段装的是 `RiskQueueEntry`（监控条目），
  * 身上**没有结论字段** —— 结论落在池行 `RiskPoolItem` 的 `assessment` / `coordination` 上。
- * 摆上去会是「全部结论 15 / 升级 0 / 不升级 0 / 风险处理建议 0」那种四格三个零。
+ * 摆上去会是「全部（15）/ 升级（0）/ 不升级（0）/ 风险处理建议（0）」那种四项三个零。
  */
 const judgedSourceFilter = ref<MonitorSource | 'all'>('all');
 const judgedTypeFilter = ref<PoolTicketTypeKey | 'all'>('all');
@@ -4819,7 +4819,7 @@ function setStage(stage: FunnelStage) {
  *
  * 🔴 **工作面这一路要过 `byPoolAttrs`**：另外四维（来源 / 原单类型 / 风险等级 / 结论）
  * 已经是同一行上并排的筛选项，班组不跟着它们收窄的话，筛到「风险处理建议」之后
- * 这一行会写着「全部班组 14 · 全部来源 2 · 全部类型 2 · 全部等级 2 · 风险处理建议 2」——
+ * 这一行会写着「班组 全部（14）· 来源 全部（2）· 类型 全部（2）· 等级 全部（2）· 结论 风险处理建议（2）」——
  * 同一行上第一格的分母和后面四格不是一个，读的人只能去猜哪个才是表里的行数。
  * 班组自己不在 `byPoolAttrs` 里，故不传 `skip`，天然就是"摘掉自己这一维"。
  */
@@ -4839,9 +4839,17 @@ const groupChips = computed(() => {
   };
 });
 
+/*
+ * 🔴 **各维那一枚「全部」项只写「全部（N）」**（2026-10-09 裁决，业务原话「框框里保留
+ * 全部(数量) 即可，宽度可以减小」）：维名已经写在这一格左边的标签上（班组 / 来源 /
+ * 类型 / 等级 / 结论），控件里再写一遍「全部班组」是同一个词在同一格里说两遍，
+ * 白占 52px 宽。**其余取值一个字不改**（`实时监控（2）` / `高危（5）` / `风险处理建议（2）`）。
+ * ⚠️ 收窄之后每一格的 `--tbw` 要**按新的最长取值重新量**（见模板里那一段）：
+ * 「等级」「类型」两格原先的最长取值就是那一枚「全部X（N）」，它一短，整格就该跟着收。
+ */
 /** 搜索条里的「班组」下拉：各枚数字仍取除班组之外条件下的行数（见 groupChips） */
 const groupFilterOptions = computed(() => [
-  { value: 'all', label: `全部班组（${groupChips.value.total}）` },
+  { value: 'all', label: `全部（${groupChips.value.total}）` },
   ...groupChips.value.rows.map(({ group, count }) => ({
     value: group,
     label: `${group}（${count}）`,
@@ -4858,21 +4866,21 @@ const groupFilterOptions = computed(() => [
  * 这条工具条另一个落点（实时监控的「重点工单」等路）摆的不是池行。
  */
 const sourceFilterOptions = computed(() => [
-  { value: 'all', label: `全部来源（${reportSourceBase.value.length}）` },
+  { value: 'all', label: `全部（${reportSourceBase.value.length}）` },
   ...QUEUE_SOURCES.map((s) => ({ value: s, label: `${s}（${sourceCountInView(s)}）` })),
 ]);
 const poolTicketTypeFilterOptions = computed(() => [
-  { value: 'all', label: `全部类型（${reportTypeBase.value.length}）` },
+  { value: 'all', label: `全部（${reportTypeBase.value.length}）` },
   ...POOL_TICKET_TYPE_KEYS.map((k) => ({ value: k, label: `${k}（${ticketTypeCountInView(k)}）` })),
 ]);
 /**
  * 「结论」下拉。取值域恒为三个：升级 / 不升级 / 风险处理建议。
  * 🔴 **界面词一律写全称「风险处理建议」**：`COORD_DECISION` 那个短词只是判等用的常量键，
  * 不要让它漏到界面上 —— 同一个取值在两处写两个名字，读的人会以为是两件事。
- * 🔴 三项之和 < 「全部结论」，见 `reportDecisionBase` 的注释（在队两段没有结论）。
+ * 🔴 三项之和 < 那一枚「全部（N）」，见 `reportDecisionBase` 的注释（在队两段没有结论）。
  */
 const decisionFilterOptions = computed(() => [
-  { value: 'all', label: `全部结论（${reportDecisionBase.value.length}）` },
+  { value: 'all', label: `全部（${reportDecisionBase.value.length}）` },
   ...DECISION_KEYS.value.map((k) => ({
     value: k,
     label: `${k === COORD_DECISION ? '风险处理建议' : k}（${decisionCountInView(k)}）`,
@@ -4880,7 +4888,7 @@ const decisionFilterOptions = computed(() => [
 ]);
 /** 「风险等级」下拉。取值域取全站那一份 `RISK_LEVELS`，界面词走 `riskLevelText`（高危 / 中危 / 低危） */
 const poolLevelFilterOptions = computed(() => [
-  { value: 'all', label: `全部等级（${reportLevelBase.value.length}）` },
+  { value: 'all', label: `全部（${reportLevelBase.value.length}）` },
   ...RISK_LEVELS.map((lv) => ({ value: lv, label: `${riskLevelText(lv)}（${poolLevelCountInView(lv)}）` })),
 ]);
 
@@ -4889,7 +4897,7 @@ const poolLevelFilterOptions = computed(() => [
  * 「风险等级」那一格 ＝ **左栏那一轴的代理，不是第二份状态**。
  * 真源只有 `tagLevelFilter` 一个：左栏点「高危」这一格就显示「高危」，
  * 在这一格改成「中危」左栏当场亮到「中危」—— 一份 state、两个视图，不会漂。
- * 🔴 `tagger`（按标记人）**读成「全部等级」**：那一档与「全部有风险」是同一批行的两种看法，
+ * 🔴 `tagger`（按标记人）**读成这一格的「全部」**：那一档与「全部有风险」是同一批行的两种看法，
  * 等级上本来就没有收窄。反过来在这一格选一个等级会把左栏从「按标记人」切到那一档 ——
  * 两者互斥（见 `tagLevelFilter` 的注释），这正是互斥该有的样子。
  */
@@ -4901,7 +4909,7 @@ const judgedLevelFilter = computed<RiskLevel | 'all'>({
 });
 /** 🔴 计数**直接取左栏那几档读的同两个函数**，不另算一份 —— 同一个数不在两处各算一遍 */
 const judgedLevelFilterOptions = computed(() => [
-  { value: 'all', label: `全部等级（${pooledAllCountHit.value}）` },
+  { value: 'all', label: `全部（${pooledAllCountHit.value}）` },
   ...RISK_LEVELS.map((lv) => ({ value: lv, label: `${riskLevelText(lv)}（${pooledLevelCountHit(lv)}）` })),
 ]);
 /**
@@ -4917,14 +4925,14 @@ const judgedTypeBase = computed(
   () => inGroup(byJudgedAttrs(judgedPicked(judgedUniverse.value), 'type')),
 );
 const judgedSourceFilterOptions = computed(() => [
-  { value: 'all', label: `全部来源（${judgedSourceBase.value.length}）` },
+  { value: 'all', label: `全部（${judgedSourceBase.value.length}）` },
   ...MONITOR_SOURCES.map((s) => ({
     value: s,
     label: `${s}（${judgedSourceBase.value.filter((e) => e.source === s).length}）`,
   })),
 ]);
 const judgedTypeFilterOptions = computed(() => [
-  { value: 'all', label: `全部类型（${judgedTypeBase.value.length}）` },
+  { value: 'all', label: `全部（${judgedTypeBase.value.length}）` },
   ...POOL_TICKET_TYPE_KEYS.map((k) => ({
     value: k,
     label: `${k}（${judgedTypeBase.value.filter((e) => poolTicketTypeKeyOf(e) === k).length}）`,
@@ -5627,8 +5635,15 @@ function toggleWordEnabled(w: RiskWord) {
           <!--
             🔴 **每一格的 `--tbw` 是量出来的**（13px 字 canvas 实测，取这一格**全部选项里最长的那一个**，
             不是当前选中的那一个）：班组「硬件缺陷组（9）」99、两位数时约 106 ⇒ 147；
-            来源 / 类型 / 等级「全部X（15）」93 ⇒ 131；结论「风险处理建议（2）」112 ⇒ 149。
+            来源「实时监控（15）」93 ⇒ 130；类型「非投诉（15）」80 ⇒ 117；
+            等级「高危（15）」67 ⇒ 104；结论「风险处理建议（2）」112 ⇒ 149。
             控件宽 ＝ 文字 + 34（内边距 14 + 边框 2 + 箭头 18）再留 3px 余量。量法见样式里那一段。
+
+            🔴 **2026-10-09 第二次重量**：那一枚「全部」项收成「全部（N）」之后（见
+            `groupFilterOptions` 上方那段），来源 / 类型 / 等级三格的最长取值从
+            「全部X（15）」换成了各自真正最长的那个取值，三格 131 → 130 / 117 / 104，**共省 42px**。
+            · 班组不变：它最长的一直是组名「硬件缺陷组（9）」，不是那一枚「全部」；
+            · 结论不变：它最长的一直是「风险处理建议（2）」112，同理。
 
             🔴 **三个四字标签 2026-10-09 收成两字**（监控来源→来源、原单类型→类型、风险等级→等级）：
             窄窗（清单区 867px）下这一条原先是两行，而最吃宽的不是控件、是**四字标签各占 48px、
@@ -5650,7 +5665,7 @@ function toggleWordEnabled(w: RiskWord) {
                 :options="groupFilterOptions"
               />
             </div>
-            <div v-if="listView === 'report'" class="fi" style="--tbw: 131px">
+            <div v-if="listView === 'report'" class="fi" style="--tbw: 130px">
               <span class="fl">来源</span>
               <a-select
                 v-model:value="sourceFilter"
@@ -5660,7 +5675,7 @@ function toggleWordEnabled(w: RiskWord) {
                 :options="sourceFilterOptions"
               />
             </div>
-            <div v-if="listView === 'report'" class="fi" style="--tbw: 131px">
+            <div v-if="listView === 'report'" class="fi" style="--tbw: 117px">
               <span class="fl">类型</span>
               <a-select
                 v-model:value="poolTicketTypeFilter"
@@ -5670,7 +5685,7 @@ function toggleWordEnabled(w: RiskWord) {
                 :options="poolTicketTypeFilterOptions"
               />
             </div>
-            <div v-if="listView === 'report'" class="fi" style="--tbw: 131px">
+            <div v-if="listView === 'report'" class="fi" style="--tbw: 104px">
               <span class="fl">等级</span>
               <a-select
                 v-model:value="poolLevelFilter"
@@ -5698,7 +5713,7 @@ function toggleWordEnabled(w: RiskWord) {
               `tagLevelFilter` 的代理）：左栏点哪一档这一格就显示哪一档，反过来也成立。
               🔴 **「结论」这一维不出**：已判段装的是监控条目，身上没有结论字段。
             -->
-            <div v-if="listView === 'realtime'" class="fi" style="--tbw: 131px">
+            <div v-if="listView === 'realtime'" class="fi" style="--tbw: 130px">
               <span class="fl">来源</span>
               <a-select
                 v-model:value="judgedSourceFilter"
@@ -5708,7 +5723,7 @@ function toggleWordEnabled(w: RiskWord) {
                 :options="judgedSourceFilterOptions"
               />
             </div>
-            <div v-if="listView === 'realtime'" class="fi" style="--tbw: 131px">
+            <div v-if="listView === 'realtime'" class="fi" style="--tbw: 117px">
               <span class="fl">类型</span>
               <a-select
                 v-model:value="judgedTypeFilter"
@@ -5718,7 +5733,7 @@ function toggleWordEnabled(w: RiskWord) {
                 :options="judgedTypeFilterOptions"
               />
             </div>
-            <div v-if="listView === 'realtime'" class="fi" style="--tbw: 131px">
+            <div v-if="listView === 'realtime'" class="fi" style="--tbw: 104px">
               <span class="fl">等级</span>
               <a-select
                 v-model:value="judgedLevelFilter"
@@ -5874,7 +5889,7 @@ function toggleWordEnabled(w: RiskWord) {
       <!-- 实时监控 · 空态：把当前视图讲出来，否则"这里没东西"会被读成"系统没在扫" -->
       <div v-if="listView === 'realtime' && !queueRows.length" class="ob-empty">
         <!-- 收窄条件必须在空态里复述，否则"筛空了"会被读成"没有了" -->
-        <template v-if="groupFilter !== 'all'">「{{ groupFilter }}」在这一档下没有条目 —— 点「全部班组」看全部</template>
+        <template v-if="groupFilter !== 'all'">「{{ groupFilter }}」在这一档下没有条目 —— 把「班组」改回「全部」看全部</template>
         <template v-else-if="taggerFilter !== 'all'">「{{ taggerFilter }}」名下没有已标记的风险工单 —— 点左栏「按标记人」看全部</template>
         <template v-else-if="untaggedFilterDirty">当前筛选条件下没有工单 —— 点「重置」看这一路的全部</template>
         <template v-else-if="queueView === 'monitoring' && untaggedSub">这一档下没有待判的工单 —— 点上一级看这一路的全部</template>
@@ -8958,27 +8973,30 @@ function toggleWordEnabled(w: RiskWord) {
  * 【为什么非定死不可】清单区的宽度会**随纵向滚动条有无浮动 15px**：
  * 真正滚动的是外壳的 `.workspace-page-body`，它的滚动条占 15px，
  * 故清单区宽 ＝ 视口 − 450（有滚动条）或 视口 − 435（没有）。
- * 而工作面那条筛选条实需 **869**（＋左右内边距 12 ⇒ 要 881 的容器），恰好落在这条浮动带里：
- *   · 表 14 行、滚动条在 → 容器 870 → 放不下 → 两行；
- *   · 筛到 2 行、滚动条消失 → 容器 885 → 放得下 → 一行。
+ * 而工作面那条筛选条实需 **827**（＋左右内边距 12 ⇒ 要 839 的容器），恰好落在这条浮动带里：
+ *   · 表 14 行、滚动条在 → 容器 1280−450 = 830 → 放不下 → 两行；
+ *   · 筛到 2 行、滚动条消失 → 容器 1280−435 = 845 → 放得下 → 一行。
  * 于是**筛一下就从两行缩成一行，底下整张表跟着往上跳一行高**。业务拍板"窄窗接受两行"，
  * 要的是**稳定的两行**，这个跳动是缺陷、不是"接受两行"的应有之义。
  *
  * 🔴 **断点挂在视口宽上、不是容器宽**：视口**不随滚动条变**，是这里唯一拿得到的确定量。
  * 两个边界都是算出来**避开浮动带**的，不是卡在边界上凑：
- *   · 上界 **1349**：工作面那条要 881 的容器 ⇒ 视口 ≥ 1331（有滚动条）/ ≥ 1316（没有），
- *     浮动带是 [1316, 1331)。取 1350 起走自然排版，此时最窄也有 900 的容器、19px 余量，
- *     两种滚动条状态都放得下一行 —— 1350 以上确定一行。
- *   · 下界 **1170**：已判那条四格需 682 ⇒ 要 694 的容器；视口 1170 时容器最窄 720、
- *     余 26px，四格**确定**排得下一行。再往下定死 4 格会把它顶出横向滚动条，故不入这一档。
- * ⚠️ 1170 以下（本页实际窗口到不了）仍走自然换行；已判那条在视口 [1129, 1144) 另有一条
- * 同源的 15px 浮动带，**那是滚动条的物理、不是本规则引入的**，本轮不处理。
+ *   · 上界 **1299**（2026-10-09 由 1349 重算下来）：那一枚「全部（N）」收窄之后五格实需
+ *     827（原 869）⇒ 要 839 的容器 ⇒ 视口 ≥ 1289（有滚动条）/ ≥ 1274（没有），
+ *     浮动带收到 [1274, 1289)。取 1300 起走自然排版，此时最窄也有 850 的容器、11px 余量，
+ *     两种滚动条状态都放得下一行 —— 1300 以上确定一行。
+ *     ⚠️ **这一档仍然需要**：浮动带没有消失，只是整体左移了 50px；本页常见窄窗（清单区 867）
+ *     已经落在 1300 以上，那边现在走的是自然的一行。
+ *   · 下界 **1170**：已判那条四格由 682 收到 **640** ⇒ 要 652 的容器；视口 1170 时容器最窄 720、
+ *     余 68px，四格**确定**排得下一行。再往下定死 4 格会把它顶出横向滚动条，故不入这一档。
+ * ⚠️ 1170 以下（本页实际窗口到不了）仍走自然换行；已判那条自己的那条 15px 浮动带随本次收窄
+ * 一并左移（四格 652 ⇒ [1087, 1102)），**那是滚动条的物理、不是本规则引入的**，本轮不处理。
  *
  * 🔴 **只收没有右侧动作区的那两条**（工作面 5 格 / 已判 4 格）：「待判 · 重点工单」那条
  * 带动作区、七格里有两个多选（产品 196、当前状态 206），定死 4 格会把那一行顶出横向滚动条。
  * 它维持自然换行、行为一个字不动。
  */
-@media (min-width: 1170px) and (max-width: 1349px) {
+@media (min-width: 1170px) and (max-width: 1299px) {
   .list-toolbar--one-line.list-toolbar--no-actions .tb-fields {
     display: grid;
     grid-template-columns: repeat(4, max-content);
