@@ -496,8 +496,9 @@ function poolStageOf(r: RiskPoolItem): '待领取' | '已领取' | '已结论' {
  * 【为什么跨三态保留】来源是条目的固有属性，不随阶段变。切态时清掉它，
  * 人在「待领取 · 重点工单」筛完切到「评估中」会看到全部来源，只会以为筛选失灵。
  * ⚠️ 阶段这一轴已删（2026-10-08 裁决），表恒摆全部条目，这条"跨态保留"现在无条件成立。
+ * 🔴 **2026-10-09 改多选**（业务「支持多选」）：`string[]`，空数组 ＝ 全部。
  */
-const sourceFilter = ref<MonitorSource | 'all'>('all');
+const sourceFilter = ref<string[]>([]);
 /** 来源排序：默认不排（队列默认按等待时长），点表头在正序/倒序/不排之间轮转 */
 const sourceSort = ref<'none' | 'asc' | 'desc'>('none');
 /** 排序序位取枚举的声明次序，不按字面量排——中文按码点排出来的次序读不出任何业务含义 */
@@ -527,8 +528,11 @@ const COORD_DECISION = '建议' as const;
 type DecisionKey = AssessDecision | typeof COORD_DECISION;
 /** 三枚决策：升级 / 不升级 来自 store 的枚举，协同是本页并列的第三种收口 */
 const DECISION_KEYS = computed<DecisionKey[]>(() => [...ASSESS_DECISIONS, COORD_DECISION]);
-/** 已评估视图内的收窄：只看某一个结论（由「今日决策」三枚按钮下钻置上） */
-const decisionFilter = ref<DecisionKey | 'all'>('all');
+/**
+ * 已评估视图内的收窄：只看某几个结论。
+ * 🔴 **2026-10-09 改多选**（业务「支持多选」）：`string[]`，空数组 ＝ 全部。
+ */
+const decisionFilter = ref<string[]>([]);
 /*
  * 🔴 **`assessLimitText` 已删**（2026-10-09）：它把处置时限（`REPORT_ASSESS_LIMIT_MIN`）
  * 换算成「N 小时 / N 分钟」的界面词，唯一的消费端是池行表「等待时长」那一格的悬停
@@ -613,11 +617,17 @@ type PoolAttr = 'source' | 'type' | 'level' | 'decision';
  */
 function byPoolAttrs(rows: RiskPoolItem[], skip?: PoolAttr) {
   return rows.filter((r) => {
-    if (skip !== 'source' && sourceFilter.value !== 'all' && r.source !== sourceFilter.value) return false;
-    // 多选：空数组 ＝ 不收窄；取原单真实类型（`poolTicketTypeOf`），与待判那两路同一把尺
+    // 多选三维：空数组 ＝ 不收窄
+    if (skip !== 'source' && sourceFilter.value.length && !sourceFilter.value.includes(r.source)) return false;
+    // 取原单真实类型（`poolTicketTypeOf`），与待判那两路同一把尺
     if (skip !== 'type' && poolTicketTypeFilter.value.length && !poolTicketTypeFilter.value.includes(poolTicketTypeOf(r))) return false;
+    // 🔴 风险等级仍是**单选**：它与左栏那条风险等级轴同一份真源（`judgedLevelFilter` → `tagLevelFilter`），
+    // 而左栏是单选轨 —— 与「优先级」那一格同一条理由，业务已拍板不改多选
     if (skip !== 'level' && poolLevelFilter.value !== 'all' && r.tag?.result !== poolLevelFilter.value) return false;
-    if (skip !== 'decision' && decisionFilter.value !== 'all' && decisionKindOf(r) !== decisionFilter.value) return false;
+    if (skip !== 'decision' && decisionFilter.value.length) {
+      const k = decisionKindOf(r);
+      if (!k || !decisionFilter.value.includes(k)) return false;
+    }
     return true;
   });
 }
@@ -830,13 +840,13 @@ function decisionCountInView(k: DecisionKey) {
  * 界面词与筛选项上的取值逐字相同，摘哪一个一目了然。
  */
 const poolNarrowedText = computed(() => [
-  // 班组也是多选：同理展开
+  // 四维多选（班组 / 来源 / 工单类型 / 结论）：选了几个就并排写几个，一个没选 ＝ 这一维没收窄
   ...groupFilter.value,
-  sourceFilter.value,
-  // 工单类型是多选：选了几个就并排写几个，一个没选 ＝ 这一维没收窄
+  ...sourceFilter.value,
   ...poolTicketTypeFilter.value,
+  // 风险等级仍是单选（与左栏那一轴同一份真源）
   poolLevelFilter.value === 'all' ? 'all' : riskLevelText(poolLevelFilter.value),
-  decisionFilter.value === COORD_DECISION ? '风险处理建议' : decisionFilter.value,
+  ...decisionFilter.value.map((d) => (d === COORD_DECISION ? '风险处理建议' : d)),
 ].filter((v) => v !== 'all').join(' · '));
 
 /**
@@ -884,10 +894,10 @@ const reportRows = computed(() => reportAllRows.value);
  */
 function drillReport() {
   groupFilter.value = [];
-  sourceFilter.value = 'all';
+  sourceFilter.value = [];
   poolTicketTypeFilter.value = [];
   poolLevelFilter.value = 'all';
-  decisionFilter.value = 'all';
+  decisionFilter.value = [];
   setListView('report');
 }
 
@@ -2703,19 +2713,20 @@ const judgedUniverse = computed<RiskQueueEntry[]>(
  * 身上**没有结论字段** —— 结论落在池行 `RiskPoolItem` 的 `assessment` / `coordination` 上。
  * 摆上去会是「全部（15）/ 升级（0）/ 不升级（0）/ 风险处理建议（0）」那种四项三个零。
  */
-const judgedSourceFilter = ref<MonitorSource | 'all'>('all');
+/** 🔴 **2026-10-09 改多选**（业务「支持多选」）：`string[]`，空数组 ＝ 全部 */
+const judgedSourceFilter = ref<string[]>([]);
 /** 🔴 **多选、取值 ＝ 原单真实工单类型**（2026-10-09 改判，与工作面那一格合成同一维） */
 const judgedTypeFilter = ref<string[]>([]);
 /** 两维一处套用；`skip` 摘掉其中一维 —— 那一维自己的计数要靠"除自己之外"的底表算 */
 function byJudgedAttrs(rows: RiskQueueEntry[], skip?: 'source' | 'type') {
   return rows.filter((e) => {
-    if (skip !== 'source' && judgedSourceFilter.value !== 'all' && e.source !== judgedSourceFilter.value) return false;
+    if (skip !== 'source' && judgedSourceFilter.value.length && !judgedSourceFilter.value.includes(e.source)) return false;
     if (skip !== 'type' && judgedTypeFilter.value.length && !judgedTypeFilter.value.includes(poolTicketTypeOf(e))) return false;
     return true;
   });
 }
 const judgedAttrDirty = computed(
-  () => judgedSourceFilter.value !== 'all' || judgedTypeFilter.value.length > 0,
+  () => judgedSourceFilter.value.length > 0 || judgedTypeFilter.value.length > 0,
 );
 /** 已判段过了那两维之后的全集。左栏各档与表身**同走它**，两处不会分叉 */
 const judgedFilteredUniverse = computed(() => byJudgedAttrs(judgedUniverse.value));
@@ -4920,10 +4931,9 @@ const groupFilterOptions = computed(() => [
  * 🔴 **只在「评估处置」工作面上摆**（见模板里那四格的 `v-if`）：四维是池行的属性，
  * 这条工具条另一个落点（实时监控的「重点工单」等路）摆的不是池行。
  */
-const sourceFilterOptions = computed(() => [
-  { value: 'all', label: `全部（${reportSourceBase.value.length}）` },
-  ...QUEUE_SOURCES.map((s) => ({ value: s, label: `${s}（${sourceCountInView(s)}）` })),
-]);
+const sourceFilterOptions = computed(
+  () => QUEUE_SOURCES.map((s) => ({ value: s, label: `${s}（${sourceCountInView(s)}）`, tagLabel: s })),
+);
 /**
  * 「工单类型」下拉（多选）。
  * 🔴 **取值域从本路真出现过的类型派生**，不写死常量 —— 与待判那两路的
@@ -4961,13 +4971,12 @@ const poolTicketTypeFilterOptions = computed(
  * 不要让它漏到界面上 —— 同一个取值在两处写两个名字，读的人会以为是两件事。
  * 🔴 三项之和 < 那一枚「全部（N）」，见 `reportDecisionBase` 的注释（在队两段没有结论）。
  */
-const decisionFilterOptions = computed(() => [
-  { value: 'all', label: `全部（${reportDecisionBase.value.length}）` },
-  ...DECISION_KEYS.value.map((k) => ({
-    value: k,
-    label: `${k === COORD_DECISION ? '风险处理建议' : k}（${decisionCountInView(k)}）`,
-  })),
-]);
+const decisionFilterOptions = computed(
+  () => DECISION_KEYS.value.map((k) => {
+    const text = k === COORD_DECISION ? '风险处理建议' : k;
+    return { value: k, label: `${text}（${decisionCountInView(k)}）`, tagLabel: text };
+  }),
+);
 /** 「风险等级」下拉。取值域取全站那一份 `RISK_LEVELS`，界面词走 `riskLevelText`（高危 / 中危 / 低危） */
 const poolLevelFilterOptions = computed(() => [
   { value: 'all', label: `全部（${reportLevelBase.value.length}）` },
@@ -5006,13 +5015,13 @@ const judgedSourceBase = computed(
 const judgedTypeBase = computed(
   () => inGroup(byJudgedAttrs(judgedPicked(judgedUniverse.value), 'type')),
 );
-const judgedSourceFilterOptions = computed(() => [
-  { value: 'all', label: `全部（${judgedSourceBase.value.length}）` },
-  ...MONITOR_SOURCES.map((s) => ({
+const judgedSourceFilterOptions = computed(
+  () => MONITOR_SOURCES.map((s) => ({
     value: s,
     label: `${s}（${judgedSourceBase.value.filter((e) => e.source === s).length}）`,
+    tagLabel: s,
   })),
-]);
+);
 /** 「工单类型」（多选）：取值域与计数口径同工作面那一格，底表换成已判段自己的 */
 const judgedTypeFilterOptions = computed(() => {
   const seen: string[] = [];
@@ -5134,13 +5143,16 @@ const attrFilterCells = computed<AttrFilterCell[]>(() => {
   if (listView.value === 'report') {
     return [
       group,
+      // 🔴 **多选**（2026-10-09）：取值域两个四字来源，最长标签 52+32=84 ＋53＋4 ＝ 141 ⇒ 171
       {
         key: 'source',
         label: '来源',
-        width: 130,
+        width: 171,
+        multiple: true,
         options: sourceFilterOptions.value,
-        value: sourceFilter.value,
-        set: (v) => { sourceFilter.value = v as MonitorSource | 'all'; },
+        values: sourceFilter.value,
+        placeholder: `全部（${reportSourceBase.value.length}）`,
+        setMulti: (v) => { sourceFilter.value = v; },
       },
       // 🔴 **多选**（2026-10-09 改判）：总数写在 placeholder 上，选项里只摆取值 + 计数
       {
@@ -5163,25 +5175,31 @@ const attrFilterCells = computed<AttrFilterCell[]>(() => {
       },
       // 🔴 **结论摆在末位**：它是唯一一个取值不覆盖整表的维度（在队两段没有结论，
       // 见 `reportDecisionBase`）；前面四格的次序即收窄的层次（谁的活 → 从哪儿进池 → 工单类型 → 风险等级）
+      // 🔴 **多选**（2026-10-09）：最长标签「风险处理建议」6 字 78+32=110 ＋53＋4 ＝ 167 ⇒ 197
       {
         key: 'decision',
         label: '结论',
-        width: 149,
+        width: 197,
+        multiple: true,
         options: decisionFilterOptions.value,
-        value: decisionFilter.value,
-        set: (v) => { decisionFilter.value = v as DecisionKey | 'all'; },
+        values: decisionFilter.value,
+        placeholder: `全部（${reportDecisionBase.value.length}）`,
+        setMulti: (v) => { decisionFilter.value = v; },
       },
     ];
   }
   return [
     group,
+    // 🔴 **多选**，与工作面那一格逐字同形（取值域三个四字来源，含「二线报备」）
     {
       key: 'source',
       label: '来源',
-      width: 130,
+      width: 171,
+      multiple: true,
       options: judgedSourceFilterOptions.value,
-      value: judgedSourceFilter.value,
-      set: (v) => { judgedSourceFilter.value = v as MonitorSource | 'all'; },
+      values: judgedSourceFilter.value,
+      placeholder: `全部（${judgedSourceBase.value.length}）`,
+      setMulti: (v) => { judgedSourceFilter.value = v; },
     },
     // 🔴 **多选**，与工作面那一格逐字同形（2026-10-09 改判）
     {
@@ -5206,6 +5224,45 @@ const attrFilterCells = computed<AttrFilterCell[]>(() => {
     },
   ];
 });
+
+/* ---- 这一条（工作面 / 已判）右侧那两枚按钮（2026-10-09，业务「还缺2个按钮」） ---- */
+/**
+ * 这一条上动过没有 —— 「重置」那枚的禁用判据。
+ * 🔴 **按当前这一路数**：工作面五维、已判四维（无「结论」）。班组是三条共用的外层 state，
+ * 但人点的是"这一条的重置"，故**它也算进来、也一并清**。
+ */
+const poolFilterDirty = computed(() => {
+  if (groupFilter.value.length) return true;
+  if (listView.value === 'report') {
+    return !!sourceFilter.value.length || !!poolTicketTypeFilter.value.length
+      || poolLevelFilter.value !== 'all' || !!decisionFilter.value.length;
+  }
+  // 已判：风险等级那一格是左栏那一轴的代理，它"动过没有"由左栏自己表达，不进这个判据
+  return !!judgedSourceFilter.value.length || !!judgedTypeFilter.value.length;
+});
+/**
+ * 「查询」：与待判那条**同一个语义** —— 条件是**实时生效**的，这枚只把页码收回第一页。
+ * 【为什么还要这枚】多选一次勾好几个取值，行数会掉得很快；不收页码就会停在一张空页上，
+ * 人只会以为筛没了。两条表各收各的页码。
+ */
+function applyPoolQuery() {
+  reportPageCurrent.value = 1;
+  queuePageCurrent.value = 1;
+}
+/** 「重置」：把这一条上的全部维度清空（**班组一并清**，见 `poolFilterDirty`） */
+function resetPoolFilter() {
+  groupFilter.value = [];
+  if (listView.value === 'report') {
+    sourceFilter.value = [];
+    poolTicketTypeFilter.value = [];
+    poolLevelFilter.value = 'all';
+    decisionFilter.value = [];
+  } else {
+    judgedSourceFilter.value = [];
+    judgedTypeFilter.value = [];
+  }
+  applyPoolQuery();
+}
 
 /** 左栏这一列只在漏斗的两个视图上作数；旁路的两个入口自带各自的筛选条，不套班组 */
 const showGroupFilter = computed(() => listView.value === 'realtime' || listView.value === 'report');
@@ -5896,13 +5953,16 @@ function toggleWordEnabled(w: RiskWord) {
         v-if="showGroupFilter && !(listView === 'realtime' && queueView === 'monitoring')"
         class="ledger-bar"
       >
-        <div class="list-toolbar list-toolbar--one-line list-toolbar--no-actions">
+        <div class="list-toolbar list-toolbar--one-line list-toolbar--grid">
           <!--
             🔴 **两条筛选条（工作面 / 已判）同走这一个 `v-for`**（2026-10-09 裁决，业务原话
             「两处的搜索内容保持一致，复用的逻辑」）：每一格的标签、宽度、选项、读写口径
             全在 script 的 `attrFilterCells` 里逐维列着 —— 格子不再在模板里各写一遍。
-            🔴 **"按路出维"**：工作面五格（班组/来源/类型/等级/结论）· 已判四格（无「结论」，
-            那一维在监控条目上不成立）。为什么、以及每一格的宽是怎么量出来的，见 `AttrFilterCell`。
+            🔴 **"按路出维"**：工作面五格（班组/来源/工单类型/风险等级/结论）· 已判四格
+            （无「结论」，那一维在监控条目上不成立）。为什么、以及每一格的宽是怎么量出来的，
+            见 `AttrFilterCell`。
+            🔴 **容器由 `--no-actions` 换成 `--grid`**（2026-10-09，业务「还缺2个按钮」）：
+            这一条补了右侧动作区（查询 / 重置），与待判那条走同一支排版。
           -->
           <div class="tb-fields">
             <div
@@ -5949,6 +6009,29 @@ function toggleWordEnabled(w: RiskWord) {
                 @update:value="(v) => cell.set?.(v as string)"
               />
             </div>
+          </div>
+          <!--
+            🔴 **「查询」「重置」两枚**（2026-10-09，业务「还缺2个按钮」，并指了待判那条的
+            `button.scan-go` 作参照）：类名、尺寸、图标与那一条**逐字一致**，不另起一套。
+            ⚠️ 「查询」与待判那条同一个语义 —— **条件是实时生效的**，这枚只把页码收回第一页
+            （见 `applyPoolQuery`）；多选格一次勾好几个，不收页码会停在一张空页上。
+            🔴 **裁决要的是"计数落在已应用条件上（勾了还没查、数不先跳）"，本轮没做到**：
+            那需要给这五维各加一份"待提交草稿"再由「查询」拷进生效态，而其中两维做不到 ——
+            ① **班组**是三条筛选条共用的同一份 state（待判那条是实时生效的，给它加草稿
+               会让同一个 state 在两条上行为不同，或者被迫拆成两份真源）；
+            ② **风险等级**是左栏那条轴的代理（`judgedLevelFilter` → `tagLevelFilter`），
+               延迟生效会让左栏高亮与这一格当场对不上。
+            ⇒ 这是**裁决与既有口径的冲突**，已如实回报、等拍板，不自行取舍。
+            🔴 「重置」把**这一条上的全部维度**清空，**班组也一并清**（它虽是三条共用的外层
+            state，但人点的是"这一条的重置"，留着它等于重置了个寂寞）。
+          -->
+          <div class="tb-actions">
+            <button type="button" class="scan-go" @click="applyPoolQuery">
+              <SearchOutlined />查询
+            </button>
+            <button type="button" class="tb-btn" :disabled="!poolFilterDirty" @click="resetPoolFilter">
+              <ReloadOutlined /><span>重置</span>
+            </button>
           </div>
         </div>
       </div>
@@ -8868,10 +8951,12 @@ function toggleWordEnabled(w: RiskWord) {
 
 .ledger-bar { margin: 2px 0 8px; }
 /*
- * 这条工具条**没有右侧动作区**（班组 / 监控来源 / 原单类型 三个筛选项都是选完即生效、
- * 不需要「查询」按钮），故收掉 `.list-toolbar` 的第二列。
- * ⚠️ 类名原先叫 `--group-only`（那时这一行上只有「班组」一个字段）。2026-10-08 把
- * 「监控来源」「原单类型」两维收进来之后那个名字已不准，改按"没有动作区"这个真实差异命名。
+ * 🔴 **`--no-actions` 这一支 2026-10-09 起没有使用者了**：工作面 / 已判那条补上
+ * 「查询」「重置」两枚之后（业务「还缺2个按钮」），容器换成了带动作区的 `--grid`。
+ * 下面这一族规则**暂留不删**：它们绝大多数本来就是 `--no-actions, --grid` 成对写的，
+ * `--grid` 那一半仍在生效；真正只属于 `--no-actions` 的只有
+ * 「`.tb-fields { flex: none }`」与那条窄窗 4 格媒体查询（见文件末那一段的说明）。
+ * 要清的话连同那条媒体查询一起拍板，别单独删一半。
  */
 .list-toolbar--no-actions {
   grid-template-columns: 1fr;
@@ -9183,6 +9268,16 @@ function toggleWordEnabled(w: RiskWord) {
  * 🔴 **只收没有右侧动作区的那两条**（工作面 5 格 / 已判 4 格）：待判那两路那条带动作区
  * （查询 / 重置，自身约占 166px），定死 4 格会把那一行顶出横向滚动条。
  * 它维持自然换行 —— 实需 kw 路 789 / focus 路 567，清单区 991 下字段区可用 825，一行放得下。
+ *
+ * 🔴🔴 **本规则 2026-10-09 起"空转"：选择器挂的是 `--no-actions`，而工作面 / 已判那条
+ * 补了「查询」「重置」之后已经换成带动作区的 `--grid`，这条媒体查询现在匹配不到任何元素。**
+ * 【后果】那条"窄窗稳定 4+1、不随滚动条跳"的保证**随之失效**：它现在与待判那条一样走
+ * 自然换行，而自然换行正好会被清单区 ±15px 的滚动条浮动带翻来覆去（上面那段讲的就是这个病）。
+ * 【为什么没有顺手把选择器改成 `--grid`】`--grid` 同时是**待判那条**，而上一段写得很清楚：
+ * 那一条带动作区、定死 4 格会把它顶出横向滚动条 —— 一改就把病挪到另一条上。
+ * 【要修的话】得给这两条单起一个类（如 `--fixed4`）再挂上来，这是新口径、**等拍板**。
+ * 本轮按"遇到裁决没覆盖的前提先如实回报"处理：规则原样留着、不删不改选择器。
+ * ⚠️ 下面那几个数（941 / 754 / 1230 / 1419）是**本轮实测**的，规则一旦重新挂上就能直接用。
  */
 @media (min-width: 1230px) and (max-width: 1419px) {
   .list-toolbar--one-line.list-toolbar--no-actions .tb-fields {
