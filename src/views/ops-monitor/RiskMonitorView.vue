@@ -81,10 +81,12 @@ import {
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
 // 评估弹窗的两处口径与工单页那个入口**共用同一份实现**：
 // `deriveEscalatedComplaint` 是「升级」派生的完整落地，
-// 提交前重查（`assessSubmitBlockOf`）与原单终态判据（`isRiskTicketEnded`）
+// 提交前重查（`tagAssessSubmitBlockOf`）与原单终态判据（`isRiskTicketEnded`）
 // 与报备池、工单页的评估入口共用，各处行为一致
+// 🔴 **工作面那一处不再 import `assessSubmitBlockOf`**（2026-10-09）：那一份要的是
+// 「条目仍为本人名下的「已领取」态」，而本工作面的领取整套已撤，那道判据恒不成立。
+// 它**仍是报备池与工单页头两处的判据**，共享文件一个字没动，见 `workbenchAssessBlockOf`。
 import {
-  assessSubmitBlockOf,
   deriveEscalatedComplaint,
   isRiskTicketEnded,
   nextEscalatedNoOf,
@@ -463,10 +465,13 @@ function poolStageOf(r: RiskPoolItem): '待领取' | '已领取' | '已结论' {
   if (status === '评估中') return '已领取';
   return '已结论';
 }
-/** 承办人一格：待领取的行不显示承办人（投诉单条目残留的承办人不作数） */
-function poolAssigneeOf(r: RiskPoolItem): string {
-  return poolStageOf(r) === '待领取' ? '—' : (r.assignee ?? '—');
-}
+/*
+ * 🔴 **原先这里有一个 `poolAssigneeOf`**（池行表「承办人」那一格的取值：待领取的行写「—」，
+ * 其余读 `r.assignee`）。随**那一列整个删除**一并删（2026-10-09 裁决）：
+ * 承办人的值就是**领取人**，而本工作面的领取整套已撤，源没了。
+ * ⚠️ `r.assignee` 这个字段本身照旧在写（`assessOnTag` 把空着的补成结论人、`coordinate` 同理），
+ * 报备池那一侧也照旧有自己的承办人一列 —— 删的只是本表这一格。
+ */
 
 /**
  * 监控来源筛选（N6：来源是池行的一个属性、不是另一批数据）。
@@ -485,8 +490,9 @@ const SOURCE_ORDER = new Map<MonitorSource, number>(MONITOR_SOURCES.map((s, i) =
 // 删掉「处置阶段」整排 chip 一并删除：它唯一的置位入口就是那一排的第五枚「超时未评」，
 // 那一枚一走，这个开关再也打不开，留着就是一条恒为 false 的腿（`openBase` / `reportAllRows` /
 // `reportGroupBase` / 收窄标那一行都得为它分叉）。
-// ⚠️ **超时本身没被删**：它仍标在表里「等待时长」那一格上（`reportStore.isOverdue`，红字 +
-// 「已超处置时限」），那是**行级的催办提醒**，与"按超时筛一遍整张表"不是一件事。
+// ⚠️ **工作面那一列「等待时长」也已删**（2026-10-09 裁决：等待时长 / 领取 / 释放是
+// 风险报备池那一套）。超时这件事在**报备池**那一侧照旧（`RiskReportPoolPanel` 自己那一列），
+// store 的 `isOverdue` 也照旧在用（左栏条目表走 `rowOverdue` / `rowWaitedText`）。
 //
 /**
  * 「风险处理建议」——投诉单那一路的收口方式，**与升级 / 不升级并列的第三种结论**。
@@ -799,8 +805,10 @@ const poolNarrowedText = computed(() => [
  * 🔴 顺序即时间序（待领取 → 已领取 → 已结论）：这三个取值之间有先后，混排成一坨会把它抹掉。
  *
  * 🔴 **三段恒接满**：原先第三段在开着「超时未评」时整段不接，那枚 chip 已随「处置阶段」
- * 整排删除（2026-10-08 裁决），这里不再分叉。池内阶段仍然看得到 —— 它写在每一行的
- * 「操作」列上（待领取摆「领取」、已领取摆「风险管控」+「释放」、已结论两枚都不摆）。
+ * 整排删除（2026-10-08 裁决），这里不再分叉。
+ * ⚠️ **池内阶段在界面上现在只分"出过结论没有"两档**（2026-10-09 裁决：领取整套撤掉）——
+ * 「操作」列未出结论的摆一枚「风险管控」、已结论写「—」。待领取 / 已领取两态仍在落库里，
+ * 界面不再据此分岔。
  */
 const reportAllRows = computed(() => [
   ...reportUnassignedRows.value,
@@ -1088,9 +1096,10 @@ function commitTagAssess(ticketNo: string, decision: AssessDecision): string {
 }
 
 function openAssess(r: RiskPoolItem) {
-  // 没人领过的条目谈不上"谁给的结论"（store 的 assess 也会拦），
-  // 但拦在这里才说得出为什么——按钮本就只对「评估中」渲染，这道是兜底。
-  if (r.status !== '评估中') { message.warning('该条目还没有人领取，请先领取再评估'); return; }
+  // 🔴 门禁与按钮同一个判据（`canAssessRow`：角色 + 未出结论），按钮本就只对它渲染，
+  // 这道是兜底。**原先这里拦的是"还没有人领取"** —— 领取整套已撤（2026-10-09 裁决），
+  // 那句提示会让人去找一个不存在的「领取」按钮。
+  if (!canAssessRow(r)) { message.warning('本条已有评估结论，或你没有风险评估权'); return; }
   assessTarget.value = r;
   assessDecision.value = '';
   assessTried.value = false;
@@ -1142,13 +1151,56 @@ function doClaim(r: RiskPoolItem) {
 }
 
 /**
- * 这一条能不能由**当前登录的人**给结论。
- * 【为什么按人而不只按角色】评估结论是提交即固化的（§9 规则 22），
- * 落款写的是承办人的名字；不是承办人却能点开提交，等于替别人签了字。
- * 督导看得见这一列，但这里恒为 false ——「可见但不出动作」就是靠它落地的。
+ * 这一条能不能由**当前登录的人**在工作面上给结论 —— **按角色**（2026-10-09 裁决）。
+ *
+ * 🔴 **原先是"本人名下的「已领取」态"**（`r.status === '评估中' && r.assignee === user.name`，
+ * PRD §5.4 / §9 规则 22 的领取门）。业务判「等待时长、领取、释放是风险报备池的逻辑，
+ * 你这是搞混了吧」，领取在本工作面整套撤掉 —— 那道门的前提（有人领过、落款写的是他的名字）
+ * 随之不成立，留着等于**谁都评不了**（没人领过，恒 false）。
+ * ⇒ 改成：**有风险评估权的角色对尚未出结论的条目都能评**。
+ *
+ * 🔴 **角色判据取仓里现成那一份、不另写**：`canClaim` ＝ `REPORT_CLAIM_ROLES`
+ * ＝ 客诉专员 + 三个管理员 scope，正是 v1.24 拍板的「领取 / 风险评估 / 协同处理三件事
+ * 客诉专员与管理员同权」那一份（见 `config/roles.ts` 管理员那段的说明，
+ * 以及 B 线那一侧同源的 `canClaimRiskReport`）。投诉督导不在其中 ——
+ * 他在池子里**可见但不出动作**，这一条口径一个字没改。
+ *
+ * 🔴 **状态这一道还在、只换了判据**：只收**进了池、还没出结论**的那两态（待分派 / 评估中），
+ * 与 store 侧 `assessOnTag` 的门禁（`isPooledStatus` + 本页这道"未出结论"）对齐。
+ * 已出结论的行在模板里走另一支、写「—」。
+ *
+ * ⚠️ **并发不靠这道门接**：撤掉领取之后两个客诉专员可能同时打开同一条，
+ * 拦在**提交前重查**那一处（`workbenchAssessBlockOf`：已出结论 ⇒ 整次提交拦下）。
  */
 function canAssessRow(r: RiskPoolItem) {
-  return canClaim.value && r.status === '评估中' && r.assignee === user.name;
+  return canClaim.value && (r.status === '待分派' || r.status === '评估中');
+}
+
+/**
+ * 工作面这一处**提交结论前的重查**（§5.6 校验末两条 / §9 规则 29）。
+ *
+ * 🔴 **并发拦截的判据 2026-10-09 换了一条**：原先走共享的 `assessSubmitBlockOf`，
+ * 它要的是「条目仍为本人名下的「已领取」态」—— 领取撤掉之后那一条恒不成立，
+ * 每一次提交都会被拦成"本条已不在你名下的「已领取」态"。
+ * ⇒ 换成 **「该条目已出结论 ⇒ 整次提交拦下」**：领取原本同时起"占住这条、
+ * 别人看得见承办人"的作用，撤掉之后两个客诉专员可能同时评同一条，这一道替它接住并发。
+ *
+ * 🔴 **只换本页工作面这一处**：报备池与工单页头那两个评估入口各自的领取态还在，
+ * 它们照旧走共享的 `assessSubmitBlockOf`，**一个字没动**。
+ * 🔴 **其余三条判据仍取共享那一份实现**（`tagAssessSubmitBlockOf`：条目还在不在 /
+ * 已被报备人撤回 / 原单已进终态只拦「升级」），本页不另写一遍。
+ */
+function workbenchAssessBlockOf(
+  r: RiskPoolItem,
+  decision: AssessDecision | '',
+): { tip: string; closeModal: boolean } {
+  // 🔴 读 store 里的**现值**：弹窗手上那份 `assessTarget` 是打开那一刻的引用
+  const cur = reportStore.findById(r.id);
+  // 提示语取共享那一份 `assessSubmitBlockOf` 里的原话，不另起一种写法
+  if (cur && cur.status === '已评估') {
+    return { tip: '本条已有评估结论，不可重复提交', closeModal: true };
+  }
+  return tagAssessSubmitBlockOf(r.id, decision, r.ticketNo);
 }
 
 /* ---- 释放：把**已领取**的条目退回池子（《【930】》PRD §5.4 元素 ⑩a / §5.5 / §5B.4）---- */
@@ -1339,8 +1391,8 @@ function confirmAssess() {
   const levelOk = assessLevel.validate();
   if (!assessValid.value || !assessDecision.value || !escalateFieldsOk || !levelOk) return;
   // 提交前按 id 回 store 重查（§5.6 / §9 规则 29）：已撤回整次拦下、原单已终态只拦「升级」、
-  // 条目已不在本人名下拦下。与另外两个评估入口同一个判据
-  const block = assessSubmitBlockOf(target.id, assessDecision.value, user.name);
+  // 🔴 **已出结论整次拦下** —— 领取撤掉之后这一道接住并发，见 `workbenchAssessBlockOf`
+  const block = workbenchAssessBlockOf(target, assessDecision.value);
   if (block.tip) {
     message.warning(block.tip);
     if (block.closeModal) assessOpen.value = false;
@@ -1376,7 +1428,17 @@ function confirmAssess() {
     });
   }
 
-  reportStore.assess(target.id, {
+  /*
+   * 🔴 **落库口由 `assess` 换成 `assessOnTag`**（2026-10-09，领取撤掉的必然推论）：
+   * store 的 `assess` 门禁写死「只收「评估中」」—— 它配的就是"先领取再评估"那一路。
+   * 本工作面不再有领取，行一直停在「待分派」，`assess` 会**一声不响地什么都不写**。
+   * `assessOnTag` 收的正是"进了池、还没出结论"那两态（待分派 / 评估中），
+   * 并把 `assignee` 空着的条目补成结论人 —— 「已结论」的行照旧答得上"谁给的结论"。
+   * 🔴 **两条路径的产物逐字相同**（同走 `applyAssessment`：状态迁移 + assessment +
+   * 第八类履历 + `risk.report.assessed` 通知），故这不是换了一套落库，是换了那道门。
+   * ⚠️ **store 侧 `assess` / `claim` / `release` 一个字没动**：报备池与工单页头那两处还在用。
+   */
+  const ok = reportStore.assessOnTag(target.id, {
     decision: assessDecision.value,
     advice: assessAdvice.value.trim(),
     // 只有派生这一路有新单号；不派生时不写这个字段，
@@ -1386,6 +1448,8 @@ function confirmAssess() {
     byRole: user.role.name,
     at: nowStamp(),
   });
+  // 走到这里只有一种可能：上面那道重查之后条目又被挪走了。提示与重查那一处同一句
+  if (!ok) { message.warning('该条目已不在风险池中，请刷新后再看'); return; }
 
   assessOpen.value = false;
   if (escalatedToNo) {
@@ -6351,9 +6415,9 @@ function toggleWordEnabled(w: RiskWord) {
         `alineAssigningCount` / `alineOverdueCount` 五个计数，以及 `onlyOverdue` /
         `reportOpenRows` / `setReportView` / `setPoolStage` / `poolStageChipOn`
         —— 它们的消费端全在那一排上，别处一个都没有。
-        ⚠️ **池内阶段不是没处看了**：它写在每一行的「操作」列上（待领取摆「领取」、已领取摆
-        「风险管控」+「释放」、已结论两枚都不摆），以及「承办人」那一格有没有名字；
-        行级的超时催办也照旧，标在「等待时长」那一格（红字 +「已超处置时限」）。
+        ⚠️ **池内阶段在本表只剩"出过结论没有"两档**（2026-10-09 裁决：领取 / 释放 / 等待时长
+        整套撤出本工作面，归风险报备池）：「操作」列未出结论的摆一枚「风险管控」、已结论写「—」。
+        「承办人」「等待时长」两列一并删，行级超时催办改只在**报备池**那一侧看。
         ⚠️ `待领取 + 已领取 + 已结论 ＝ 不限阶段 ＝ 表行数` 这条恒等式随那一轴一并消失，**预期之内**。
       -->
       <!--
@@ -6404,6 +6468,20 @@ function toggleWordEnabled(w: RiskWord) {
                 　· 余下 **64 全部给「风险摘要」**（它无固定宽，吃掉定宽列让出的全部余量）。
                 定宽列合计 968 → **904**，弹性列净增 64px，**不许留空洞**：fixed 布局下
                 没有固定宽的「风险摘要」把差额整截吃掉，全表仍是 100% 宽、无横向溢出。
+
+                🔴 **2026-10-09 删「等待时长」「承办人」两列之后的重算（八列 → 六列）**：
+                业务原话「等待时长、领取、释放是风险报备池的逻辑，你这是搞混了吧」——
+                本工作面不再有领取，故「承办人」没有源（它的值就是领取人）、「等待时长」
+                （处置时限自进入实时监控起算）同属报备池那一套。
+                　· 「等待时长」−144、「承办人」−80，腾出 **224**；
+                　· 「操作」136 → **88**：这一格现在只剩一枚「风险管控」，
+                　　11px 字四字 44 ＋ 按钮内边距边框 18 ＝ 62，加单元格左右内边距 20 ＝ 82，88 留 6px 余量
+                　　（136 是当年为「风险管控」+「释放」两枚量的，一枚用不了那么宽）；
+                　· 余下 **272 全部给「风险摘要」**（同上，弹性列吃掉全部余量）。
+                定宽列合计 904 → **632**，弹性列净增 272px，**不留空洞、不出横向滚动条**。
+                ⚠️ 「超时」这件事在本表随「等待时长」一并消失；它在**报备池**那一侧照旧
+                （`RiskReportPoolPanel` 自己那一列，一格未动），store 的 `isOverdue` 也照旧在用
+                （左栏条目表走 `rowOverdue` / `rowWaitedText`）。
               -->
               <th style="width: 256px">工单号</th>
               <!--
@@ -6436,25 +6514,23 @@ function toggleWordEnabled(w: RiskWord) {
                 「风险管控」+「释放」、已结论两枚都不摆），「承办人」那一格也只有领过的行才有名字。
               -->
               <!--
-                ⚠️ 列宽 **80**：格里最宽的是「吴投诉」59、表头 53，80 放得下四字人名。
-                上一轮曾为了补「风险摘要」收到 72，删「处置阶段」腾出 80px 之后回到 80。
+                🔴 **「承办人」整列已删**（2026-10-09 裁决）：它的值就是**领取人**，
+                而本工作面的领取整套已撤（业务：领取 / 释放 / 等待时长是风险报备池的逻辑），
+                源没了，这一列在每一行都只能写「—」。
+                ⚠️ "谁给的结论"没丢：结论人写在左栏「已判」段那一侧，池行表不兼做台账。
               -->
-              <th style="width: 80px">承办人</th>
               <th style="width: 128px">进监控时刻</th>
               <!--
-                ⚠️ **列宽 144**，不是 96：超时那一档的全文是「10 小时 已超处置时限」，
-                给 96 会被 `.report-table td` 的省略截成「10 小时 …」—— 被截掉的恰好是
-                「已超处置时限」这个判据本身，剩下的「10 小时」看不出超没超。
-                ⚠️ **不要收回到 136**：两位数小时（`waitedText` 的上限是「23 小时」）在 136 下
-                右边缘余量恰好是 0px，实测仍会偶发截成省略号。144 留 8px 余量。
-                多出的宽度从「风险摘要」让（那一列无固定宽、本来就靠省略号收尾）。
+                🔴 **「等待时长」整列已删**（2026-10-09 裁决，同上）：它数的是"进池多久还没人处置"，
+                配的是报备池那一套领取 / 超时催办；**报备池那一列一格未动**。
               -->
-              <th style="width: 144px">等待时长</th>
               <!--
-                已领取行现在是**两枚按钮**（处置 +「释放」，§5.4 元素 ⑥ ⑩a），
-                88px 装不下「协同处理」+「释放」，故放宽；多出来的宽度从「风险描述」那一列让。
+                ⚠️ 列宽 **88**：这一格现在只剩一枚「风险管控」（见下面那一格的说明）。
+                11px 字四字 44 ＋ 按钮内边距边框 18 ＝ 62，加单元格左右内边距 20 ＝ 82，88 留 6px 余量。
+                ⚠️ **不要再收**：82 是"刚刚好"，`.report-table td` 带省略号，收到 82 以下
+                会把「风险管控」切成「风险管…」——本仓在这一列上已经栽过。
               -->
-              <th style="width: 136px">操作</th>
+              <th style="width: 88px">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -6503,44 +6579,29 @@ function toggleWordEnabled(w: RiskWord) {
               -->
               <td class="rr-desc" :title="poolRiskSummaryOf(r)"><span class="rr-clamp2">{{ poolRiskSummaryOf(r) }}</span></td>
               <!-- 「处置阶段」那一格已随整列删除（2026-10-08 裁决），见表头那一段 -->
-              <td>{{ poolAssigneeOf(r) }}</td>
+              <!-- 「承办人」「等待时长」两格已随整列删除（2026-10-09 裁决），见表头那两段 -->
               <td class="hit-when">{{ r.at }}</td>
-              <!--
-                🔴 超时**只标这一格，整行不变色**：队列长起来后满屏红底，
-                反而看不出到底哪几条超了——红色只有稀缺时才是警报。
-                A 线等待时长从**进入实时监控时刻**起算、不从领取时刻（N5）。
-              -->
-              <td
-                class="hit-when rr-waited"
-                :class="{ over: reportStore.isOverdue(r) }"
-                :title="`处置时限 ${assessLimitText}，自进入实时监控起算`"
-              >
-                {{ waitedText(r.at) }}
-                <span v-if="reportStore.isOverdue(r)" class="rr-overdue-tag">已超处置时限</span>
-              </td>
               <td>
                 <!--
-                  待领取 · **只有「领取」这一个动作**（分派 / 改派 / 批量分派整套已取消）。
-                  投诉督导在这一列**看得见、点不动**：他本轮已去权，只看数据。
-                -->
-                <!--
+                  🔴 **这一格只剩一枚「风险管控」**（2026-10-09 裁决，业务原话
+                  「操作栏目，只有风险管控呀，没有领取 释放啥的」「等待时长、领取、释放是
+                  风险报备池的逻辑，你这是搞混了吧」）：「领取」「释放」两枚整个撤掉。
+                  ⚠️ 报备池那一侧（`RiskReportPoolPanel`）的领取 / 释放一格未动 ——
+                  那个池自己的领取态还在，两处本来就不是同一摊。
+
+                  🔴 **门禁改成"按角色"**：有风险评估权的角色（客诉专员 + 管理员，判据取
+                  仓里现成那一份 `REPORT_CLAIM_ROLES` ＝ `canClaim`）对**尚未出结论**的条目
+                  都能评 —— 原先那道"须为本人名下的「已领取」态"随领取一并撤。
+                  并发由**提交前重查**接住（见 `workbenchAssessBlockOf`），不靠占位。
+
                   🔴 **按行自己走到哪一步判**：这张表三段混在一起、恒摆全部条目，
-                  照整张表的状态判的话，已结论的行也会长出一枚「评估」按钮。
-                  🔴 这也是删掉「处置阶段」那一列之后，**池内阶段仍然读得出来**的那一处。
-                -->
-                <!--
-                  🔴 **先按原单类型分工作面，再按走到哪一步分动作**（《【930】》§2 摘要表 ·
-                  §5.2 两处「投诉单不做风险评估」· §9 池内分工作面 —— 同一条口径 PRD 写死了四处）：
-                  **投诉单 → 协同处理**，**非投诉单 → 风险评估**。
-                  此前两类一律出「评估」，投诉单点开是升级 / 不升级弹窗 ——
-                  而"升不升级成投诉单"对一张已经是投诉单的单根本不成立。
-                  协同不必先领取、已结论也可再协同（§5C.1 次数行），故它不进下面那三档分支。
-                -->
-                <!--
-                  🔴 **「释放」摆在处置按钮右边，两类工作面都有**（§5.4 元素 ⑥ ⑩a：
-                  已领取行 ＝ 处置按钮 +「释放」）：两类工作面的处置按钮都叫「风险管控」
-                  （入口名 ＝ 弹窗名），但**退回池子这件事与原单类型无关** ——
-                  只与"这条在不在人手上"有关。判据统一走 `canReleaseRow`（三道：角色 / 状态 / 人）。
+                  照整张表的状态判的话，已结论的行也会长出一枚按钮。
+
+                  🔴 **先按原单类型分工作面**（《【930】》§2 摘要表 · §5.2 两处「投诉单不做风险评估」·
+                  §9 池内分工作面 —— 同一条口径 PRD 写死了四处）：
+                  **投诉单 → 协同处理**，**非投诉单 → 风险评估**，两类的入口名都叫「风险管控」
+                  （入口名 ＝ 弹窗名）。协同可多次、已结论也可再协同（§5C.1 次数行），
+                  故投诉单那一支不受"已出结论"那道门约束。
                 -->
                 <template v-if="isComplaintTicket(r.ticketNo)">
                   <button
@@ -6549,14 +6610,8 @@ function toggleWordEnabled(w: RiskWord) {
                     title="投诉单不做风险评估，走风险处理建议：给处理意见 + 建议事项；工单状态与处理人均不变"
                     @click="openCollab(r)"
                   >风险管控</button>
-                  <button
-                    v-if="canReleaseRow(r)"
-                    type="button" class="row-btn row-btn-amend"
-                    title="把这一条退回「待领取」，由客诉专员或管理员重新领取；须填释放原因，等待时长不重新计时"
-                    @click="openRelease(r)"
-                  >释放</button>
                   <span
-                    v-if="!canClaim"
+                    v-else
                     class="hit-sub"
                     title="协同处理归客诉专员与管理员；本视角只读"
                   >—</span>
@@ -6564,24 +6619,12 @@ function toggleWordEnabled(w: RiskWord) {
                 <template v-else-if="poolStageOf(r) === '已结论'">
                   <span
                     class="hit-sub"
-                    title="评估结论提交即固化，不可修改"
-                  >—</span>
-                </template>
-                <template v-else-if="poolStageOf(r) === '待领取'">
-                  <button
-                    v-if="canClaim"
-                    type="button" class="row-btn row-btn-tag"
-                    title="领取这一条，转「已领取」并打开工单详情做评估"
-                    @click="doClaim(r)"
-                  >领取</button>
-                  <span
-                    v-else
-                    class="hit-sub"
-                    title="领取与评估归客诉专员与管理员；本视角只读"
+                    title="本条已有评估结论"
                   >—</span>
                 </template>
                 <!--
-                  评估中：给结论的只能是**这一条的承办人本人**（结论提交即固化，落款写的是他的名字）。
+                  尚未出结论的非投诉单（待领取 / 已领取两态合为一支 —— 领取撤掉之后
+                  这两态在界面上不再分岔）：有评估权就出「风险管控」。
                 -->
                 <template v-else>
                   <button
@@ -6590,26 +6633,11 @@ function toggleWordEnabled(w: RiskWord) {
                     title="给出评估结论：升级 / 不升级"
                     @click="openAssess(r)"
                   >风险管控</button>
-                  <!--
-                    🔴 **管理员在这一格只出「释放」、不出「评估」**（与 B 线报备池同形）：
-                    结论要由**承办的那个人**给（`canAssessRow` 判的就是 `assignee === 本人`），
-                    管理员越过他直接评，等于替一个已经在读材料的人签了字；
-                    但承办人休假 / 离岗时那一条不能锁死在池子里，故释放这一路给他兜底。
-                  -->
-                  <button
-                    v-if="canReleaseRow(r)"
-                    type="button" class="row-btn row-btn-amend"
-                    title="把这一条退回「待领取」，由客诉专员或管理员重新领取；须填释放原因，等待时长不重新计时"
-                    @click="openRelease(r)"
-                  >释放</button>
-                  <!--
-                    🔴 **操作列恒在、无动作时写「—」**（§5.4 元素 ⑨）。这里不能再用 v-else ——
-                    同一格现在可能出两枚按钮，占位只在**两枚都不出**时才该出现。
-                  -->
+                  <!-- 🔴 **操作列恒在、无动作时写「—」**（§5.4 元素 ⑨） -->
                   <span
-                    v-if="!canAssessRow(r) && !canReleaseRow(r)"
+                    v-else
                     class="hit-sub"
-                    :title="`承办人 ${r.assignee ?? '—'} · 结论由承办人本人给出`"
+                    title="风险评估归客诉专员与管理员；本视角只读"
                   >—</span>
                 </template>
               </td>
@@ -7893,9 +7921,11 @@ function toggleWordEnabled(w: RiskWord) {
 
     <!--
       🔴 **分派弹窗已删**（业务第三轮拍板取消分派 / 改派 / 批量分派整套）。
-      池内只剩「领取」，它不需要弹窗——领取的对象就是当前这一行、承办人就是当前登录的人，
-      没有任何一项要人填。为一个无参动作留一个确认弹窗，只是多一次点击。
-      ⚠️ 「**释放**」相反：它**必填释放原因**（§5.5 ④），故有上面那个弹窗。
+      🔴 **2026-10-09：领取 / 释放两个动作已从本工作面的「操作」列撤掉**（业务：
+      等待时长 / 领取 / 释放是风险报备池的逻辑）。上面那个释放弹窗与
+      `openRelease` / `confirmRelease` / `canReleaseRow` / `doClaim` **本轮原样留着、
+      此刻没有入口点得到** —— 落库路径（store 的 `claim` / `release` / 承办人字段）
+      报备池那一侧还在用，去留待定，本轮只撤本工作面的界面与门禁，不删任何一条通路。
     -->
   </div>
 </template>
@@ -9717,9 +9747,10 @@ function toggleWordEnabled(w: RiskWord) {
 /* 定宽列里的工单号 / 人名不能被撑破，超出即省略，全值挂在 title 上 */
 .report-table td { overflow: hidden; text-overflow: ellipsis; }
 /*
- * 已领取行的操作格现在是两枚按钮（处置 +「释放」，§5.4 元素 ⑥ ⑩a）。
- * Vue 的 `whitespace: condense` 会把两个元素之间那个带换行的空白节点整个抹掉，
- * 两枚按钮会**贴死在一起**；故显式给间距，不靠模板里的换行。
+ * 同一格里两枚按钮之间的间距：Vue 的 `whitespace: condense` 会把两个元素之间那个带换行的
+ * 空白节点整个抹掉，不显式给间距的话两枚会**贴死在一起**。
+ * ⚠️ **2026-10-09 起本表的操作格只剩一枚「风险管控」**（领取 / 释放两枚已撤），
+ * 这条规则此刻不起作用；留着是因为它收的是"本表的操作格"这件事，不是某一组按钮。
  * ⚠️ 只收在本表内：命中明细那张表的次按钮（`.row-btn-amend`）是既有形状，本轮不动它。
  */
 .report-table .row-btn + .row-btn { margin-left: 6px; }
