@@ -1067,10 +1067,19 @@ function doImport(withUpdate: boolean) {
               <a-select v-if="draftFilter.dim === 'org'" v-model:value="draftFilter.scope4" class="tb-ctl sel-w-lg scope-sel-4" show-search allow-clear :placeholder="SCOPE_LABELS[draftFilter.dim][3]" :filter-option="filterByLabel" :options="scopeOpts4" />
             </div>
             <div class="fi-group-attr">
-              <div class="fi fi-tag">
-                <a-select v-model:value="draftFilter.tagL1" class="tb-ctl sel-w tag-sel-1" show-search allow-clear placeholder="问题分类一级" :filter-option="filterByLabel" :options="filterTagL1Opts" />
-                <a-select v-model:value="draftFilter.tagL2" class="tb-ctl sel-w tag-sel-2" show-search allow-clear placeholder="问题分类二级" :filter-option="filterByLabel" :options="filterTagL2Opts" />
-                <a-select v-model:value="draftFilter.tagL3" class="tb-ctl sel-w-lg tag-sel-3" show-search allow-clear placeholder="问题分类三级" :filter-option="filterByLabel" :options="filterTagL3Opts" :dropdown-match-select-width="false" />
+              <div class="fi-tag">
+                <div class="fi">
+                  <span class="fl">问题分类一级</span>
+                  <a-select v-model:value="draftFilter.tagL1" class="tb-ctl sel-w tag-sel-1" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="filterTagL1Opts" />
+                </div>
+                <div class="fi">
+                  <span class="fl">问题分类二级</span>
+                  <a-select v-model:value="draftFilter.tagL2" class="tb-ctl sel-w tag-sel-2" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="filterTagL2Opts" />
+                </div>
+                <div class="fi">
+                  <span class="fl">问题分类三级</span>
+                  <a-select v-model:value="draftFilter.tagL3" class="tb-ctl sel-w-lg tag-sel-3" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="filterTagL3Opts" :dropdown-match-select-width="false" />
+                </div>
               </div>
               <div class="fi">
                 <span class="fl">处理组</span>
@@ -1473,6 +1482,8 @@ function doImport(withUpdate: boolean) {
   padding: 2px 8px; border-radius: 6px; background: #f9fafb;
 }
 .fi { display: flex; align-items: center; gap: 8px; flex: none; }
+/* 问题分类一/二/三级联动：三项同行，作为属性组内的一个换行单元 */
+.fi-tag { display: flex; align-items: center; gap: 16px; flex: none; }
 .fl { font-size: 13px; color: #6b7280; white-space: nowrap; }
 .sel-w { width: 120px !important; }
 .sel-w-sm { width: 88px !important; }
