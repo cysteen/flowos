@@ -104,7 +104,8 @@ import { TICKETS } from '@/mock/tickets';
 // 与 B 线报备池共用同一份 —— 本页原先自带一份同值的局部数组，2026-10-09 换成引它（见 `canClaim`）
 // 🔴 `canReleaseAnyRiskReport` 那一笔 import 已随释放整套撤出本工作面而删除；
 // 它仍是报备池那一侧管理员兜底释放的判据，`types/ticket.ts` 一个字没动
-import { canClaimRiskReport, isLiveTicket as isLiveTicketShared, ticketStatusDisplayName, resolveTicketGroupNames, type Priority, type Ticket, type TicketType } from '@/views/tickets/types/ticket';
+// 🔴 `ticketStatusDisplayName` 那一笔已删：它只服务待判筛选条那格「当前状态」，整格已撤
+import { canClaimRiskReport, isLiveTicket as isLiveTicketShared, resolveTicketGroupNames, type Priority, type Ticket, type TicketType } from '@/views/tickets/types/ticket';
 import { PRIORITY_OPTIONS } from '@/views/tickets/types/createTicket';
 // 🔴 清单表直接复用工作台那张富列表，不在本页另画一张长得像的：
 // 「重点工单」那一路的行**就是工单**，人在这一档要判的也正是工单本身
@@ -121,7 +122,8 @@ import TicketTitleCell from '@/views/tickets/components/TicketTitleCell.vue';
 import { resolveTicketRowFor } from '@/views/tickets/composables/opActions';
 // SLA 那两行与"此刻是否超时"的口径取工作台那一份**单一真源**（已提到 utils 共用）——
 // 本页再抄一份的话，同一张单在两个页面会给出不同的 SLA 说法
-import { isSlaBreachedNow, slaFirstLine, slaResolveLine } from '@/views/tickets/utils/ticketListCells';
+// 🔴 `isSlaBreachedNow` 那一笔已删：它只服务待判筛选条那格「SLA」，整格已撤
+import { slaFirstLine, slaResolveLine } from '@/views/tickets/utils/ticketListCells';
 import { getOpsScopeSelectGroups, type OpsScope } from '@/mock/opsMonitor';
 import {
   RISK_LEVEL_STYLE,
@@ -2741,7 +2743,9 @@ function untaggedSliceRows(slice: UntaggedSlice): QueueRow[] {
 // 这一段要的只是**在当前这一路里把范围收窄**，故只补一条筛选条。
 //
 // 🔴 **字段随当前这一路而变**：风险词只有「实时监控」那一路有（「重点工单」那一路的行就是工单，
-// 没有词可筛）；产品 / 当前状态 / SLA 只有「重点工单」那一路有；**工单类型与优先级两路都有**。
+// 没有词可筛）；**工单类型与优先级两路都有**。两路的格子因此是：
+//   · 实时监控 —— 班组 / 风险词 / 工单类型 / 优先级；
+//   · 重点工单 —— 班组 / 工单类型 / 优先级。
 // 🔴 「实时监控」那一路的风险词**作用在命中上**（行 ＝ 一条召回），一组里命中全被筛掉的工单整组不出现。
 //
 // 🔴 **不重复左栏与搜索条「班组」已经承担的收窄**（加进去就是同一件事两个入口）：
@@ -2754,16 +2758,16 @@ function untaggedSliceRows(slice: UntaggedSlice): QueueRow[] {
 // 一屏之内看得完），按单号点查的场合走右上角「手动筛查」或工单列表，不在这条筛选条上。
 // 连带 `rowMatchesKeyword` 一并删掉 —— 它只有这一处消费端（命中明细那条查询条有自己的
 // `ledgerFilter.keyword`，是另一套，不受影响）。
+//
+// 🔴 **「产品」「当前状态」「SLA」三格 2026-10-09 整格删除**（业务原话「SLA去掉」
+// 「这三个选去掉」）：它们只在「重点工单」那一路出过。连同 `untaggedFilter.products` /
+// `statuses` / `sla` 三个字段、`untaggedProductOptions` / `untaggedStatusOptions`
+// 两个取值派生，以及顶部 `isSlaBreachedNow` / `ticketStatusDisplayName` 两笔 import
+// 一并删净 —— 删前 grep 复验过：这三维在本文件只有那一条筛选条一个消费端
+// （命中明细那条查询条的 `ledgerFilter` 是另一摊，不受影响）。
 interface UntaggedFilter {
   /** 只有「实时监控」这一路用得到：命中的规则主词（与命中明细同一口径，取 `RiskHit.word`） */
   words: string[];
-  /* ---- 以下三维只有「重点工单」那一路用得到：那一路的行就是工单 ---- */
-  /** 产品（多选，从这一路真出现过的产品派生） */
-  products: string[];
-  /** 当前状态（多选，取工单列表那一列的展示名，与表里那一格逐字同源） */
-  statuses: string[];
-  /** SLA：`all` 不限 / `over` 已超时 / `ok` 未超时。判据取工作台那一份 `isSlaBreachedNow` */
-  sla: 'all' | 'over' | 'ok';
   /**
    * 工单类型（多选，从**当前这一路**真出现过的类型派生 —— 选了必有结果）。
    * 🔴 **两路都出这一维**（2026-10-09 裁决，业务原话「新增工单类型、优先级」）：
@@ -2789,7 +2793,7 @@ interface UntaggedFilter {
  * 给一个默认窗口反而会让左栏角标与表行数在人什么都没筛的时候就对不上。
  */
 function defaultUntaggedFilter(): UntaggedFilter {
-  return { words: [], products: [], statuses: [], types: [], sla: 'all', priority: '' };
+  return { words: [], types: [], priority: '' };
 }
 const untaggedFilter = ref<UntaggedFilter>(defaultUntaggedFilter());
 
@@ -2808,9 +2812,9 @@ const untaggedWordOptions = computed(() => {
 });
 
 /**
- * 「产品」「当前状态」两个下拉的取值：同上，**从当前这一路真出现过的值派生**，选了必有结果。
- * 状态取 `ticketStatusDisplayName` —— 与表里那一格显示的是同一个词，
- * 各写各的话会出现"下拉里选的词，表里一个都找不到"。
+ * 工单维度那几个下拉的取值：**从当前这一路真出现过的值派生**，选了必有结果。
+ * 🔴 现在只剩「工单类型」「优先级」两个消费端 —— 「产品」「当前状态」两个派生
+ * 已随那两格一并删除（2026-10-09）。
  */
 function untaggedTicketOptions(pick: (t: Ticket) => string) {
   const seen: string[] = [];
@@ -2821,8 +2825,6 @@ function untaggedTicketOptions(pick: (t: Ticket) => string) {
   }
   return seen.map((v) => ({ value: v, label: v }));
 }
-const untaggedProductOptions = computed(() => untaggedTicketOptions((t) => t.product));
-const untaggedStatusOptions = computed(() => untaggedTicketOptions((t) => ticketStatusDisplayName(t)));
 /**
  * 「类型」下拉的取值：同上，从**当前这一路**真出现过的工单类型派生 —— 选了必有结果。
  * 🔴 两路共用这一个 computed（`untaggedTicketOptions` 读的就是当前这一路），
@@ -2910,18 +2912,8 @@ function applyUntaggedFilter(list: QueueRow[], slice: UntaggedSlice): QueueRow[]
     if (!f.words.length) return byAttrs;
     return byAttrs.filter((r) => kwHitsOf(r).length > 0);
   }
-  const { products, statuses, sla } = f;
-  if (!products.length && !statuses.length && sla === 'all') return byAttrs;
-  return byAttrs.filter((r) => {
-    const t = ticketOfRow(r);
-    // 🔴 查不到工单的行，在这几维上**一律放行**而不是筛掉：它不是"不匹配"，
-    // 是"这一维答不上来"。筛掉的话，人按产品收窄一次就再也看不到这批数据异常的行了。
-    if (!t) return true;
-    if (products.length && !products.includes(t.product)) return false;
-    if (statuses.length && !statuses.includes(ticketStatusDisplayName(t))) return false;
-    if (sla !== 'all' && isSlaBreachedNow(t) !== (sla === 'over')) return false;
-    return true;
-  });
+  // 「重点工单」那一路现在只剩工单类型这一维（优先级归左栏子档），上面那一行已经筛完
+  return byAttrs;
 }
 
 /**
@@ -2933,8 +2925,9 @@ function applyUntaggedFilter(list: QueueRow[], slice: UntaggedSlice): QueueRow[]
  */
 function untaggedFilterDirtyOf(slice: UntaggedSlice): boolean {
   const f = untaggedFilter.value;
+  // 实时监控多一个「风险词」；「优先级」那一维只有这一路走本条筛选条（另一路绑左栏子档）
   if (slice === 'kw') return !!f.words.length || !!f.types.length || !!f.priority;
-  return !!f.products.length || !!f.statuses.length || !!f.types.length || f.sla !== 'all';
+  return !!f.types.length;
 }
 const untaggedFilterDirty = computed(() => untaggedFilterDirtyOf(untaggedSlice.value));
 
@@ -2995,7 +2988,9 @@ const PRIORITY_RAIL_LABEL = Object.fromEntries(
  * （`untaggedFilter.priority`）、不碰 `untaggedSub`，见 `untaggedKwPriorityOptions`。
  */
 const untaggedPriorityOptions = computed(() => [
-  { value: '', label: '不限' },
+  // 🔴 空值项一律写「全部」（2026-10-09 裁决，业务原话把「不限」统一成「全部」）：
+  // 三条筛选条的空值项写法要一致 —— 另两条带计数、写「全部（N）」，这一条不带数、写「全部」
+  { value: '', label: '全部' },
   ...UNTAGGED_SUB_KEYS.focus.map((k) => ({
     value: k,
     label: PRIORITY_RAIL_LABEL[k as Priority] ?? k,
@@ -3013,7 +3008,8 @@ const untaggedPriorityOptions = computed(() => [
  * 🔴 **不摆数**：与另一路那一格、以及同条上的多选格逐字同形（都不带数）。
  */
 const untaggedKwPriorityOptions = computed(() => [
-  { value: '', label: '不限' },
+  // 空值项写法同上一格：三条筛选条一致
+  { value: '', label: '全部' },
   ...untaggedTicketOptions((t) => t.priority)
     .sort((a, b) => (PRIORITY_RANK[a.value] ?? RANK_UNKNOWN) - (PRIORITY_RANK[b.value] ?? RANK_UNKNOWN))
     .map(({ value }) => ({ value, label: PRIORITY_RAIL_LABEL[value as Priority] ?? value })),
@@ -5001,10 +4997,20 @@ const judgedTypeFilterOptions = computed(() => [
  * ⚠️ **只能看画面、不能信 `scrollWidth === clientWidth`**：实测那两个值相等时画面上照样有
  * 省略号（184px 那一版「全部来源（14」真的被切了）。量法与余量见样式里 `.list-toolbar--grid` 那一段。
  *
- * ⚠️ **「类型」这个词在本页有两处、同名不同义，不要去"统一"它们**：
- *   · 这两条上的「类型」＝ **原单类型**，取值 投诉 / 非投诉；
- *   · 待判那两路筛选条上的「类型」＝ **工单类型**，取值 咨询 / 建议 / 商机 / 投诉 / 刷机。
- * 两者取值域完全不同、分处不同视图，是业务看过提示之后拍的板。
+ * 🔴 **「工单类型」这四个字在本页有两处、同名不同义，不许去"统一"它们**（2026-10-09
+ * 业务拍板把两处的标签都写成「工单类型」，看过提示之后仍这么定）：
+ *   · **这两条（工作面 / 已判）上的「工单类型」＝ 原单类型**，取值 **投诉 / 非投诉**
+ *     （`poolTicketTypeFilter` / `judgedTypeFilter`，判的是"这条风险的原单是不是投诉单"，
+ *     它决定走风险评估还是协同处理）；
+ *   · **待判那两路上的「工单类型」＝ 工单类型本身**，取值 **咨询 / 建议 / 商机 / 投诉 / 刷机**
+ *     （`untaggedFilter.types`）。
+ * 两者取值域完全不同、分处不同视图，**不是同一维**；去"统一"会把两条互不相干的口径搅成一条。
+ *
+ * ⚠️ **四字标签是 2026-10-09 改回来的**：之前为窄窗省 72px 把三个四字标签收成两字
+ * （监控来源→来源、原单类型→类型、风险等级→等级），业务判「类型」「等级」两个字
+ * 说不清是谁的类型、谁的等级，**改回「工单类型」「风险等级」**；「来源」保持两字
+ * （这一屏只有这一处来源，不会读串）。多出来的 48px 由那一枚「全部（N）」省下的
+ * 42px 顶掉大半，重算之后仍是宽窗一行（见下面那张宽度表与样式里那条媒体查询）。
  */
 interface AttrFilterCell {
   /** `v-for` 的 key；两路同名维同键，切路时控件就地换选项而不是整格重建 */
@@ -5044,7 +5050,7 @@ const attrFilterCells = computed<AttrFilterCell[]>(() => {
       },
       {
         key: 'type',
-        label: '类型',
+        label: '工单类型',
         width: 117,
         options: poolTicketTypeFilterOptions.value,
         value: poolTicketTypeFilter.value,
@@ -5052,7 +5058,7 @@ const attrFilterCells = computed<AttrFilterCell[]>(() => {
       },
       {
         key: 'level',
-        label: '等级',
+        label: '风险等级',
         width: 104,
         options: poolLevelFilterOptions.value,
         value: poolLevelFilter.value,
@@ -5082,7 +5088,7 @@ const attrFilterCells = computed<AttrFilterCell[]>(() => {
     },
     {
       key: 'type',
-      label: '类型',
+      label: '工单类型',
       width: 117,
       options: judgedTypeFilterOptions.value,
       value: judgedTypeFilter.value,
@@ -5092,7 +5098,7 @@ const attrFilterCells = computed<AttrFilterCell[]>(() => {
     // 左栏点哪一档这一格就显示哪一档，反过来也成立
     {
       key: 'level',
-      label: '等级',
+      label: '风险等级',
       width: 104,
       options: judgedLevelFilterOptions.value,
       value: judgedLevelFilter.value,
@@ -5839,20 +5845,29 @@ function toggleWordEnabled(w: RiskWord) {
       >
         <!--
           🔴 **字段区走与工作面那条同一套"一格一宽"排版**（`--grid`，2026-10-09）：
-          原来那套 flex 等分会把每格压到 120 来像素、「当前状态」这种四字标签 + 多选标签当场换行。
-          两条筛选条一套排版。撤掉「关键词」之后：实时监控 班组/风险词/类型/优先级 **四格**，
-          重点工单 班组/优先级/类型/产品/当前状态/SLA **六格**。
+          原来那套 flex 等分会把每格压到 120 来像素、四字标签 + 多选标签当场换行。
+          三条筛选条一套排版。撤掉「关键词」与「产品 / 当前状态 / SLA」之后：
+          实时监控 **班组 / 风险词 / 工单类型 / 优先级**（四格），
+          重点工单 **班组 / 工单类型 / 优先级**（三格）—— 两路只差一个「风险词」。
         -->
         <div class="list-toolbar list-toolbar--one-line list-toolbar--grid">
           <!--
-            🔴 **每一格的 `--tbw` 是量出来的**（13px 字 canvas 实测，取这一格全部选项里最长的那一个）：
-            班组「硬件缺陷组（9）」99（两位数约 106）⇒ 147（与另两条筛选条那一格同宽，同一份选项同一个数）；
-            风险词（多选）最长主词 ⇒ 150；优先级「P2（普通加急）」93 ⇒ 134；
-            类型（多选）最长标签「投诉」26 ⇒ 92；产品（多选）「智能录音笔 SR302」105 ⇒ 166；
-            当前状态（多选）「已升级技术支持」91 ⇒ 152；SLA「已超时」39 ⇒ 80。量法见样式里那一段。
-            🔴 **「关键词」那一格 2026-10-09 整格删除**（业务原话「关键词去掉」）：两路一起撤，
-            省 190px；连带 `untaggedFilter.keyword` 与 `rowMatchesKeyword` 一并删掉。
-            命中明细那条查询条有自己的「关键词」，是另一套（`ledgerFilter.keyword`），不受影响。
+            🔴 **每一格的 `--tbw` 是量出来的**（真机实测，不是估的）：
+              · 班组（单选）「硬件缺陷组（9）」99、两位数约 106 ⇒ **147**
+                （与另两条筛选条那一格同宽，同一份选项同一个数）；
+              · 优先级（单选）「P2（普通加急）」93 ⇒ **134**（实测格内可用 118，余 25）；
+              · 风险词（多选）⇒ **172**；工单类型（多选）⇒ **146**。
+            🔴 **多选那两格 2026-10-09 第一次按"真的最宽态"量**（此前一直按"只摆一枚标签"量，
+            于是一选多项 `+ N ...` 那一枚就被切）。最宽态 ＝ **最长的一枚标签 ＋ `+ N ...` ＋ 尾隙**：
+              · 标签宽 ＝ 文字 ＋ 32（标签自己的内边距与关闭叉，实测「曝光」58、「12315」67）；
+              · `+ N ...` 实测 **53**，尾隙 **4**；控件宽 ＝ 上述之和 ＋ 30（选择器内边距 + 箭头）。
+              ⇒ 风险词「投诉到底」52+32=84 → 84+53+4=141 ⇒ **171**，取 172；
+                 工单类型「投诉」26+32=58 → 58+53+4=115 ⇒ **145**，取 146。
+            🔴 **这一次量得起，是因为腾出了地方**：「关键词」（2026-10-09 业务「关键词去掉」）
+            与「产品 / 当前状态 / SLA」三格（业务「SLA去掉」「这三个选去掉」）先后整格删除，
+            两路因此只差一个「风险词」。实测本条 kw 路实需 **789**、focus 路 **567**，
+            清单区 991 时字段区可用 825 ⇒ **一行**。
+            ⚠️ 命中明细那条查询条有自己的「关键词」，是另一套（`ledgerFilter.keyword`），不受影响。
           -->
           <div class="tb-fields">
             <div class="fi" style="--tbw: 147px">
@@ -5866,107 +5881,68 @@ function toggleWordEnabled(w: RiskWord) {
               />
             </div>
             <!--
-              「实时监控」这一路：风险词 / 类型 / 优先级。
-              🔴 风险词只有这一路有：「重点工单」那一路的行是工单，压根不产生命中。
+              风险词只有「实时监控」这一路有：「重点工单」那一路的行是工单，压根不产生命中。
               控件与命中明细那条同形（取规则主词）。
-              🔴 **「类型」「优先级」两格 2026-10-09 补进这一路**（业务原话「新增工单类型、优先级」）：
-                · 「类型」与另一路那一格**共用同一个 computed**（`untaggedTypeOptions` 读的就是
-                  当前这一路），取值从这一路真出现过的类型派生 —— 选了必有结果；
-                · 「优先级」绑的是**这一路自己的一维**（`untaggedFilter.priority`），
-                  🔴 **不是 `untaggedSub`** —— 这一路的子档取值域是 高 / 中 / 低风险，
-                  把 P0~P3 写进去会串台（见 `untaggedKwPriorityOptions`）。
-              ⚠️ **「类型」这个词在本页同名不同义**：这里是**工单类型**（咨询 / 建议 / 商机 /
-              投诉 / 刷机）；工作面与已判那条上的「类型」是**原单类型**（投诉 / 非投诉）。
             -->
-            <template v-if="untaggedSlice === 'kw'">
-              <div class="fi" style="--tbw: 150px">
-                <span class="fl">风险词</span>
-                <a-select
-                  v-model:value="untaggedFilter.words" mode="multiple" allow-clear
-                  size="small" class="tb-ctl"
-                  :dropdown-match-select-width="false" placeholder="不限" :max-tag-count="1"
-                  :options="untaggedWordOptions"
-                />
-              </div>
-              <div class="fi" style="--tbw: 92px">
-                <span class="fl">类型</span>
-                <a-select
-                  v-model:value="untaggedFilter.types" mode="multiple" allow-clear
-                  size="small" class="tb-ctl"
-                  :dropdown-match-select-width="false" placeholder="不限" :max-tag-count="1"
-                  :options="untaggedTypeOptions"
-                />
-              </div>
-              <div class="fi" style="--tbw: 134px">
-                <span class="fl">优先级</span>
-                <a-select
-                  v-model:value="untaggedFilter.priority"
-                  size="small" class="tb-ctl"
-                  :dropdown-match-select-width="false"
-                  :options="untaggedKwPriorityOptions"
-                />
-              </div>
-            </template>
+            <div v-if="untaggedSlice === 'kw'" class="fi" style="--tbw: 172px">
+              <span class="fl">风险词</span>
+              <a-select
+                v-model:value="untaggedFilter.words" mode="multiple" allow-clear
+                size="small" class="tb-ctl"
+                :dropdown-match-select-width="false" placeholder="全部" :max-tag-count="1"
+                :options="untaggedWordOptions"
+              />
+            </div>
             <!--
-              「重点工单」那一路的行就是工单，故筛的是工单自己的维度 ——
-              产品 / 当前状态 / SLA 三维沿用原「投诉单」「重要紧急」两路的那一套，一格没动。
-              🔴 「进监控时间」已删：实测 11 条里只有 2 条有进监控时刻，一设区间就只剩那 2 条。
-              🔴 「优先级」这一格 ＝ **左栏那四档本身**（直接绑 `untaggedSub`，一份 state
-              两个视图），不摆数，见 `untaggedPriorityOptions` —— 与上面那一路的同名格
-              **同形、不同真源**，两处互不读写对方。
-              🔴 「类型」与上面那一路共用同一个 computed，见那一段。
+              「工单类型」**两路共用这一格**（同一个 `untaggedFilter.types`、同一个
+              `untaggedTypeOptions`，后者读的就是当前这一路，取值从这一路真出现过的类型派生
+              —— 选了必有结果），故不分支、只写一次。
+              🔴 **「工单类型」这四个字在本页有两处、同名不同义，不许去"统一"它们**：
+                · **这一格（待判两路）＝ 工单类型**，取值 咨询 / 建议 / 商机 / 投诉 / 刷机
+                  （`untaggedFilter.types`，工单自己的类型）；
+                · **工作面 / 已判那条上的同名格 ＝ 原单类型**，取值 **投诉 / 非投诉**
+                  （`poolTicketTypeFilter` / `judgedTypeFilter`，判的是"这条风险的原单是不是投诉单"）。
+              两者取值域完全不同、分处不同视图，**是业务看过提示之后拍的板**。
             -->
-            <template v-else>
-              <div class="fi" style="--tbw: 134px">
-                <span class="fl">优先级</span>
-                <a-select
-                  v-model:value="untaggedSub"
-                  size="small" class="tb-ctl"
-                  :dropdown-match-select-width="false"
-                  :options="untaggedPriorityOptions"
-                />
-              </div>
-              <div class="fi" style="--tbw: 92px">
-                <span class="fl">类型</span>
-                <a-select
-                  v-model:value="untaggedFilter.types" mode="multiple" allow-clear
-                  size="small" class="tb-ctl"
-                  :dropdown-match-select-width="false" placeholder="不限" :max-tag-count="1"
-                  :options="untaggedTypeOptions"
-                />
-              </div>
-              <div class="fi" style="--tbw: 166px">
-                <span class="fl">产品</span>
-                <a-select
-                  v-model:value="untaggedFilter.products" mode="multiple" allow-clear show-search
-                  size="small" class="tb-ctl"
-                  :dropdown-match-select-width="false" placeholder="不限" :max-tag-count="1"
-                  :options="untaggedProductOptions"
-                />
-              </div>
-              <div class="fi" style="--tbw: 152px">
-                <span class="fl">当前状态</span>
-                <a-select
-                  v-model:value="untaggedFilter.statuses" mode="multiple" allow-clear
-                  size="small" class="tb-ctl"
-                  :dropdown-match-select-width="false" placeholder="不限" :max-tag-count="1"
-                  :options="untaggedStatusOptions"
-                />
-              </div>
-              <div class="fi" style="--tbw: 80px">
-                <span class="fl">SLA</span>
-                <a-select
-                  v-model:value="untaggedFilter.sla"
-                  size="small" class="tb-ctl"
-                  :dropdown-match-select-width="false"
-                  :options="[
-                    { value: 'all', label: '不限' },
-                    { value: 'over', label: '已超时' },
-                    { value: 'ok', label: '未超时' },
-                  ]"
-                />
-              </div>
-            </template>
+            <div class="fi" style="--tbw: 146px">
+              <span class="fl">工单类型</span>
+              <a-select
+                v-model:value="untaggedFilter.types" mode="multiple" allow-clear
+                size="small" class="tb-ctl"
+                :dropdown-match-select-width="false" placeholder="全部" :max-tag-count="1"
+                :options="untaggedTypeOptions"
+              />
+            </div>
+            <!--
+              「优先级」**两路同形、不同真源**，这是本条上唯一一处按路分叉的地方：
+                · 实时监控 —— 绑**这一路自己的一维** `untaggedFilter.priority`，
+                  🔴 **不是 `untaggedSub`**：这一路的子档取值域是 高 / 中 / 低风险，
+                  把 P0~P3 写进去会串台（见 `untaggedKwPriorityOptions`）；
+                · 重点工单 —— 直接绑**左栏那四档本身** `untaggedSub`（一份 state 两个视图），
+                  见 `untaggedPriorityOptions`。
+              两处互不读写对方。
+              🔴 **「产品」「当前状态」「SLA」三格 2026-10-09 整格删除**（业务原话「SLA去掉」
+              「这三个选去掉」）：三维只在「重点工单」那一路出过，连同它们的 state 与取值派生
+              一并删净（grep 复验过只有这一处消费端），那一路因此与实时监控那一路**只差一个「风险词」**。
+              🔴 「进监控时间」更早一轮已删：实测 11 条里只有 2 条有进监控时刻，一设区间就只剩那 2 条。
+            -->
+            <div class="fi" style="--tbw: 134px">
+              <span class="fl">优先级</span>
+              <a-select
+                v-if="untaggedSlice === 'kw'"
+                v-model:value="untaggedFilter.priority"
+                size="small" class="tb-ctl"
+                :dropdown-match-select-width="false"
+                :options="untaggedKwPriorityOptions"
+              />
+              <a-select
+                v-else
+                v-model:value="untaggedSub"
+                size="small" class="tb-ctl"
+                :dropdown-match-select-width="false"
+                :options="untaggedPriorityOptions"
+              />
+            </div>
           </div>
           <div class="tb-actions">
             <button type="button" class="scan-go" @click="applyUntaggedQuery">
@@ -8928,7 +8904,7 @@ function toggleWordEnabled(w: RiskWord) {
 /*
  * 字段区 ＝ **一格一宽、按各自最长取值量出来的** flex 行（2026-10-09 改）。
  * 三条筛选条共用这一套：评估处置工作面（5 格）· 已判段（4 格）· 待判那两路
- * （实时监控 4 格 / 重点工单 6 格，外加两枚按钮）。
+ * （实时监控 4 格 / 重点工单 3 格，外加两枚按钮）。
  *
  * 🔴 **原先是等宽轨网格 `repeat(auto-fit, 200px)`，改掉了**：各维最长取值差着一倍
  * （`SLA` 那一格最长「已超时」39px，`产品` 那一格「智能录音笔 SR302」105px），
@@ -8992,30 +8968,34 @@ function toggleWordEnabled(w: RiskWord) {
  * 【为什么非定死不可】清单区的宽度会**随纵向滚动条有无浮动 15px**：
  * 真正滚动的是外壳的 `.workspace-page-body`，它的滚动条占 15px，
  * 故清单区宽 ＝ 视口 − 450（有滚动条）或 视口 − 435（没有）。
- * 而工作面那条筛选条实需 **827**（＋左右内边距 12 ⇒ 要 839 的容器），恰好落在这条浮动带里：
- *   · 表 14 行、滚动条在 → 容器 1280−450 = 830 → 放不下 → 两行；
- *   · 筛到 2 行、滚动条消失 → 容器 1280−435 = 845 → 放得下 → 一行。
+ * 而工作面那条筛选条实需 **875**（＋左右内边距 12 ⇒ 要 887 的容器），恰好落在这条浮动带里：
+ *   · 表 14 行、滚动条在 → 容器 1330−450 = 880 → 放不下 → 两行；
+ *   · 筛到 2 行、滚动条消失 → 容器 1330−435 = 895 → 放得下 → 一行。
  * 于是**筛一下就从两行缩成一行，底下整张表跟着往上跳一行高**。业务拍板"窄窗接受两行"，
  * 要的是**稳定的两行**，这个跳动是缺陷、不是"接受两行"的应有之义。
  *
  * 🔴 **断点挂在视口宽上、不是容器宽**：视口**不随滚动条变**，是这里唯一拿得到的确定量。
  * 两个边界都是算出来**避开浮动带**的，不是卡在边界上凑：
- *   · 上界 **1299**（2026-10-09 由 1349 重算下来）：那一枚「全部（N）」收窄之后五格实需
- *     827（原 869）⇒ 要 839 的容器 ⇒ 视口 ≥ 1289（有滚动条）/ ≥ 1274（没有），
- *     浮动带收到 [1274, 1289)。取 1300 起走自然排版，此时最窄也有 850 的容器、11px 余量，
- *     两种滚动条状态都放得下一行 —— 1300 以上确定一行。
- *     ⚠️ **这一档仍然需要**：浮动带没有消失，只是整体左移了 50px；本页常见窄窗（清单区 867）
- *     已经落在 1300 以上，那边现在走的是自然的一行。
- *   · 下界 **1170**：已判那条四格由 682 收到 **640** ⇒ 要 652 的容器；视口 1170 时容器最窄 720、
- *     余 68px，四格**确定**排得下一行。再往下定死 4 格会把它顶出横向滚动条，故不入这一档。
- * ⚠️ 1170 以下（本页实际窗口到不了）仍走自然换行；已判那条自己的那条 15px 浮动带随本次收窄
- * 一并左移（四格 652 ⇒ [1087, 1102)），**那是滚动条的物理、不是本规则引入的**，本轮不处理。
+ *   · 上界 **1349**（2026-10-09 两次重算之后的落点）：
+ *     ① 那一枚「全部（N）」把五格从 869 收到 827，上界一度算到 1299；
+ *     ② 同日业务把「类型」「等级」改回四字「工单类型」「风险等级」，两个标签各 +24px，
+ *        五格回到 **875** ⇒ 要 887 的容器 ⇒ 视口 ≥ 1337（有滚动条）/ ≥ 1322（没有），
+ *        浮动带 [1322, 1337)。取 1350 起走自然排版，此时最窄也有 900 的容器、13px 余量，
+ *        两种滚动条状态都放得下一行 —— 1350 以上确定一行。
+ *     ⚠️ **本页常见窄窗（清单区 867 ⇒ 视口 1302~1317）落在这一档内**，走的是**稳定的两行
+ *     （4 + 1）**；这正是业务拍板"窄窗接受两行"要的样子，不是退步。
+ *   · 下界 **1170**：已判那条四格由 682 → 640（全部（N））→ **688**（标签改回四字）
+ *     ⇒ 要 700 的容器；视口 1170 时容器最窄 720、余 20px，四格**确定**排得下一行。
+ *     再往下定死 4 格会把它顶出横向滚动条，故不入这一档。
+ *     （这一档里定死的那 4 格 ＝ 班组 + 来源 + 工单类型 + 风险等级 ＝ 688，同样落在 708 之内。）
+ * ⚠️ 1170 以下（本页实际窗口到不了）仍走自然换行；已判那条自己的那条 15px 浮动带
+ * （四格 700 ⇒ [1135, 1150)）**是滚动条的物理、不是本规则引入的**，本轮不处理。
  *
- * 🔴 **只收没有右侧动作区的那两条**（工作面 5 格 / 已判 4 格）：「待判 · 重点工单」那条
- * 带动作区、六格里有两个多选（产品 194、当前状态 204），定死 4 格会把那一行顶出横向滚动条。
- * 它维持自然换行、行为一个字不动。
+ * 🔴 **只收没有右侧动作区的那两条**（工作面 5 格 / 已判 4 格）：待判那两路那条带动作区
+ * （查询 / 重置，自身约占 166px），定死 4 格会把那一行顶出横向滚动条。
+ * 它维持自然换行 —— 实需 kw 路 789 / focus 路 567，清单区 991 下字段区可用 825，一行放得下。
  */
-@media (min-width: 1170px) and (max-width: 1299px) {
+@media (min-width: 1170px) and (max-width: 1349px) {
   .list-toolbar--one-line.list-toolbar--no-actions .tb-fields {
     display: grid;
     grid-template-columns: repeat(4, max-content);
