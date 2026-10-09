@@ -543,12 +543,21 @@ function cycleSourceSort() {
 }
 
 /**
- * 池行表的另两维筛选（《【930】》§5.4 ③）：**原单类型**（投诉 / 非投诉）与**风险等级**（高 / 中 / 低）。
+ * 池行表的另两维筛选（《【930】》§5.4 ③）：**工单类型**与**风险等级**（高 / 中 / 低）。
  * 与监控来源一样是池行的固有属性，跨阶段保留。
+ *
+ * 🔴 **「工单类型」2026-10-09 改判**（业务原话「都修改为 工单类型，支持多选」）：
+ * 这一维原先是 `PoolTicketTypeKey = '投诉' | '非投诉'` 的**单选二值**，判的是"原单是不是投诉单"；
+ * 现在与待判那两路**合成同一维** —— 同取值域（咨询 / 建议 / 商机 / 投诉 / 刷机，
+ * 走 `poolTicketTypeOf` 取原单真实类型）、同形态（多选）。空数组 ＝ 不收窄。
+ * 连同 `PoolTicketTypeKey` / `POOL_TICKET_TYPE_KEYS` / `poolTicketTypeKeyOf`
+ * 三个只为那个二值域存在的符号一并删除（grep 复验过：除这两个筛选器外无人用）。
+ *
+ * 🔴 **这不动业务分岔**：「这张单是不是投诉单」那条线走的一直是 `isComplaintTicket`
+ * （操作列投诉支 / 非投诉支、升级派生、协同按钮共六处），与本维**从来不是同一个判据**，
+ * 本轮一个字没碰。
  */
-type PoolTicketTypeKey = '投诉' | '非投诉';
-const POOL_TICKET_TYPE_KEYS: PoolTicketTypeKey[] = ['投诉', '非投诉'];
-const poolTicketTypeFilter = ref<PoolTicketTypeKey | 'all'>('all');
+const poolTicketTypeFilter = ref<string[]>([]);
 const poolLevelFilter = ref<RiskLevel | 'all'>('all');
 /**
  * 池行对应的**整张工单**，给第一格那个标题单元格用；`null` ＝ 工单库与派生库里都查不到。
@@ -574,9 +583,12 @@ function poolRiskSummaryOf(r: RiskPoolItem): string {
   const t = TICKET_BY_NO.get(r.ticketNo) ?? derivedTickets.find(r.ticketNo);
   return t?.problemDesc || t?.title || r.desc || '—';
 }
-function poolTicketTypeKeyOf(r: { ticketNo: string }): PoolTicketTypeKey {
-  return poolTicketTypeOf(r) === '投诉' ? '投诉' : '非投诉';
-}
+/*
+ * 🔴 **`poolTicketTypeKeyOf` 已删**（2026-10-09）：它把原单真实类型压成「投诉 / 非投诉」二值，
+ * 只为那个二值筛选项存在。「工单类型」改成五取值多选之后，两个筛选器都直接读
+ * `poolTicketTypeOf`，它再无调用方（grep 复验）。
+ * ⚠️ 想判"是不是投诉单"的地方一直走 `isComplaintTicket`，不是这一个，**那六处未动**。
+ */
 type PoolAttr = 'source' | 'type' | 'level' | 'decision';
 /**
  * 四维池行筛选一处套用。`skip` 摘掉其中一维 —— 那一维自己那个筛选项上的数要靠
@@ -591,7 +603,8 @@ type PoolAttr = 'source' | 'type' | 'level' | 'decision';
 function byPoolAttrs(rows: RiskPoolItem[], skip?: PoolAttr) {
   return rows.filter((r) => {
     if (skip !== 'source' && sourceFilter.value !== 'all' && r.source !== sourceFilter.value) return false;
-    if (skip !== 'type' && poolTicketTypeFilter.value !== 'all' && poolTicketTypeKeyOf(r) !== poolTicketTypeFilter.value) return false;
+    // 多选：空数组 ＝ 不收窄；取原单真实类型（`poolTicketTypeOf`），与待判那两路同一把尺
+    if (skip !== 'type' && poolTicketTypeFilter.value.length && !poolTicketTypeFilter.value.includes(poolTicketTypeOf(r))) return false;
     if (skip !== 'level' && poolLevelFilter.value !== 'all' && r.tag?.result !== poolLevelFilter.value) return false;
     if (skip !== 'decision' && decisionFilter.value !== 'all' && decisionKindOf(r) !== decisionFilter.value) return false;
     return true;
@@ -774,10 +787,10 @@ const reportSourceBase = computed(() => byPoolAttrs(inGroup(reportGroupBase.valu
 function sourceCountInView(s: MonitorSource) {
   return reportSourceBase.value.filter((r) => r.source === s).length;
 }
-/** 原单类型筛选项那一枚的底表（摘掉原单类型这一维） */
+/** 工单类型筛选项那一枚的底表（摘掉工单类型这一维） */
 const reportTypeBase = computed(() => byPoolAttrs(inGroup(reportGroupBase.value), 'type'));
-function ticketTypeCountInView(k: PoolTicketTypeKey) {
-  return reportTypeBase.value.filter((r) => poolTicketTypeKeyOf(r) === k).length;
+function ticketTypeCountInView(k: string) {
+  return reportTypeBase.value.filter((r) => poolTicketTypeOf(r) === k).length;
 }
 /** 风险等级筛选项那一枚的底表（摘掉风险等级这一维） */
 const reportLevelBase = computed(() => byPoolAttrs(inGroup(reportGroupBase.value), 'level'));
@@ -803,7 +816,8 @@ function decisionCountInView(k: DecisionKey) {
 const poolNarrowedText = computed(() => [
   groupFilter.value,
   sourceFilter.value,
-  poolTicketTypeFilter.value,
+  // 工单类型是多选：选了几个就并排写几个，一个没选 ＝ 这一维没收窄
+  ...poolTicketTypeFilter.value,
   poolLevelFilter.value === 'all' ? 'all' : riskLevelText(poolLevelFilter.value),
   decisionFilter.value === COORD_DECISION ? '风险处理建议' : decisionFilter.value,
 ].filter((v) => v !== 'all').join(' · '));
@@ -844,16 +858,17 @@ const reportAllRows = computed(() => [
 const reportRows = computed(() => reportAllRows.value);
 
 /**
- * 页头「风险工单」块的卡片下钻：先把工作面上的五维筛选（班组 / 来源 / 原单类型 /
+ * 页头「风险工单」块的卡片下钻：先把工作面上的五维筛选（班组 / 来源 / 工单类型 /
  * 风险等级 / 结论）放回「全部」，再切到工作面。卡上的数不跟这几维筛选，
  * 不清的话下钻后表行数 ≠ 卡上的数。只在点卡片时清；进了工作面之后照常收窄。
+ * ⚠️ 工单类型是多选，它的"全部"＝ **清空选择**（空数组），不是写 `'all'`。
  * ⚠️ 班组筛选是本页一份共享状态（左栏各档也按它收窄），故点卡片后左栏角标同样回到全部班组口径。
  * ⚠️ **不再接视图参数**：工作面只有一张恒摆全部条目的表（见 `reportRows`）。
  */
 function drillReport() {
   groupFilter.value = 'all';
   sourceFilter.value = 'all';
-  poolTicketTypeFilter.value = 'all';
+  poolTicketTypeFilter.value = [];
   poolLevelFilter.value = 'all';
   decisionFilter.value = 'all';
   setListView('report');
@@ -2671,17 +2686,18 @@ const judgedUniverse = computed<RiskQueueEntry[]>(
  * 摆上去会是「全部（15）/ 升级（0）/ 不升级（0）/ 风险处理建议（0）」那种四项三个零。
  */
 const judgedSourceFilter = ref<MonitorSource | 'all'>('all');
-const judgedTypeFilter = ref<PoolTicketTypeKey | 'all'>('all');
+/** 🔴 **多选、取值 ＝ 原单真实工单类型**（2026-10-09 改判，与工作面那一格合成同一维） */
+const judgedTypeFilter = ref<string[]>([]);
 /** 两维一处套用；`skip` 摘掉其中一维 —— 那一维自己的计数要靠"除自己之外"的底表算 */
 function byJudgedAttrs(rows: RiskQueueEntry[], skip?: 'source' | 'type') {
   return rows.filter((e) => {
     if (skip !== 'source' && judgedSourceFilter.value !== 'all' && e.source !== judgedSourceFilter.value) return false;
-    if (skip !== 'type' && judgedTypeFilter.value !== 'all' && poolTicketTypeKeyOf(e) !== judgedTypeFilter.value) return false;
+    if (skip !== 'type' && judgedTypeFilter.value.length && !judgedTypeFilter.value.includes(poolTicketTypeOf(e))) return false;
     return true;
   });
 }
 const judgedAttrDirty = computed(
-  () => judgedSourceFilter.value !== 'all' || judgedTypeFilter.value !== 'all',
+  () => judgedSourceFilter.value !== 'all' || judgedTypeFilter.value.length > 0,
 );
 /** 已判段过了那两维之后的全集。左栏各档与表身**同走它**，两处不会分叉 */
 const judgedFilteredUniverse = computed(() => byJudgedAttrs(judgedUniverse.value));
@@ -4897,10 +4913,26 @@ const sourceFilterOptions = computed(() => [
   { value: 'all', label: `全部（${reportSourceBase.value.length}）` },
   ...QUEUE_SOURCES.map((s) => ({ value: s, label: `${s}（${sourceCountInView(s)}）` })),
 ]);
-const poolTicketTypeFilterOptions = computed(() => [
-  { value: 'all', label: `全部（${reportTypeBase.value.length}）` },
-  ...POOL_TICKET_TYPE_KEYS.map((k) => ({ value: k, label: `${k}（${ticketTypeCountInView(k)}）` })),
-]);
+/**
+ * 「工单类型」下拉（多选）。
+ * 🔴 **取值域从本路真出现过的类型派生**，不写死常量 —— 与待判那两路的
+ * `untaggedTypeOptions` 同一条 idiom（"选了必有结果"）。次序按**本路首次出现**的先后，
+ * 不另排：同一批数据两次进来要给出同一个次序。
+ * 🔴 **计数照旧"摘掉自己这一维"**（底表 `reportTypeBase`），不然选中一项之后其余几项全变 0。
+ * ⚠️ **总数不在选项里**：多选的"全部"＝ 清空选择、不是一行可选项，
+ * 故 `全部（N）` 挪到 placeholder（见 `attrFilterCells` 里这一格的 `placeholder`）。
+ */
+const poolTicketTypeOptionKeys = computed(() => {
+  const seen: string[] = [];
+  for (const r of reportTypeBase.value) {
+    const k = poolTicketTypeOf(r);
+    if (k && !seen.includes(k)) seen.push(k);
+  }
+  return seen;
+});
+const poolTicketTypeFilterOptions = computed(
+  () => poolTicketTypeOptionKeys.value.map((k) => ({ value: k, label: `${k}（${ticketTypeCountInView(k)}）` })),
+);
 /**
  * 「结论」下拉。取值域恒为三个：升级 / 不升级 / 风险处理建议。
  * 🔴 **界面词一律写全称「风险处理建议」**：`COORD_DECISION` 那个短词只是判等用的常量键，
@@ -4959,13 +4991,18 @@ const judgedSourceFilterOptions = computed(() => [
     label: `${s}（${judgedSourceBase.value.filter((e) => e.source === s).length}）`,
   })),
 ]);
-const judgedTypeFilterOptions = computed(() => [
-  { value: 'all', label: `全部（${judgedTypeBase.value.length}）` },
-  ...POOL_TICKET_TYPE_KEYS.map((k) => ({
+/** 「工单类型」（多选）：取值域与计数口径同工作面那一格，底表换成已判段自己的 */
+const judgedTypeFilterOptions = computed(() => {
+  const seen: string[] = [];
+  for (const e of judgedTypeBase.value) {
+    const k = poolTicketTypeOf(e);
+    if (k && !seen.includes(k)) seen.push(k);
+  }
+  return seen.map((k) => ({
     value: k,
-    label: `${k}（${judgedTypeBase.value.filter((e) => poolTicketTypeKeyOf(e) === k).length}）`,
-  })),
-]);
+    label: `${k}（${judgedTypeBase.value.filter((e) => poolTicketTypeOf(e) === k).length}）`,
+  }));
+});
 
 /* ---- 两条筛选条（评估处置工作面 / 已判段）的**同一份渲染规格** ---- */
 /**
@@ -4988,44 +5025,64 @@ const judgedTypeFilterOptions = computed(() => [
  *
  * 🔴 **`width` 就是模板里原来逐格写的那个 `--tbw`，数是量出来的**（13px 字实测，取这一格
  * **全部选项里最长的那一个**，不是当前选中的那一个 —— 后者会让控件随选随变宽）：
- * 单选控件宽 ＝ 文字 + 34（内边距 14 + 边框 2 + 箭头 18）再留 3px 余量。
+ *   · **单选**控件宽 ＝ 文字 + 34（内边距 14 + 边框 2 + 箭头 18）再留 3px 余量；
+ *   · **多选**控件宽 ＝ 最长标签（文字 + 32）＋ `+ N ...`（53）＋ 尾隙（4）＋ 30，
+ *     与待判那两格同一套量法（见那一条筛选条上那段注释里的实测值）。
  *   · 班组「硬件缺陷组（9）」99、两位数时约 106 ⇒ **147**；
  *   · 来源「实时监控（15）」93 ⇒ **130**；
- *   · 类型「非投诉（15）」80 ⇒ **117**；
- *   · 等级「高危（15）」67 ⇒ **104**；
+ *   · **工单类型（多选）**最长标签「投诉（12）」⇒ 见下面那一格的 `width`；
+ *   · 风险等级「高危（15）」67 ⇒ **104**；
  *   · 结论「风险处理建议（2）」112 ⇒ **149**。
  * ⚠️ **只能看画面、不能信 `scrollWidth === clientWidth`**：实测那两个值相等时画面上照样有
  * 省略号（184px 那一版「全部来源（14」真的被切了）。量法与余量见样式里 `.list-toolbar--grid` 那一段。
  *
- * 🔴 **「工单类型」这四个字在本页有两处、同名不同义，不许去"统一"它们**（2026-10-09
- * 业务拍板把两处的标签都写成「工单类型」，看过提示之后仍这么定）：
- *   · **这两条（工作面 / 已判）上的「工单类型」＝ 原单类型**，取值 **投诉 / 非投诉**
- *     （`poolTicketTypeFilter` / `judgedTypeFilter`，判的是"这条风险的原单是不是投诉单"，
- *     它决定走风险评估还是协同处理）；
- *   · **待判那两路上的「工单类型」＝ 工单类型本身**，取值 **咨询 / 建议 / 商机 / 投诉 / 刷机**
- *     （`untaggedFilter.types`）。
- * 两者取值域完全不同、分处不同视图，**不是同一维**；去"统一"会把两条互不相干的口径搅成一条。
+ * 🔴 **「工单类型」四处已统一成同一维**（2026-10-09 改判，业务原话「都修改为 工单类型，
+ * 支持多选」）—— **推翻 10-08 那条"同名不同义、不许统一"**：
+ *   · 四处（工作面 / 已判 / 待判实时监控 / 待判重点工单）**同取值域**：原单真实工单类型
+ *     咨询 / 建议 / 商机 / 投诉 / 刷机（工作面与已判走 `poolTicketTypeOf`，
+ *     待判两路走 `untaggedTicketOptions`，都是"从本路真出现过的类型派生"）；
+ *   · 四处**同形态**：多选、`allow-clear`、`:max-tag-count="1"`，空 ＝ 不收窄。
+ *   · 工作面 / 已判这两格**保留计数**（`咨询（3）`），总数写在 placeholder 上
+ *     （`全部（N）`）—— 多选的"全部"是清空选择，不是下拉里的一行。
+ *     待判那两格本来就不摆数，placeholder 保持 `全部`。
+ * ⚠️ **原先这两格筛的是「投诉 / 非投诉」二值**（`PoolTicketTypeKey`），已随本次改判删除。
+ * 🔴 **"是不是投诉单"那条业务分岔没有跟着变**：它一直走 `isComplaintTicket`（六处），
+ * 与本维不是同一个判据，本轮一个字没碰。
  *
  * ⚠️ **四字标签是 2026-10-09 改回来的**：之前为窄窗省 72px 把三个四字标签收成两字
  * （监控来源→来源、原单类型→类型、风险等级→等级），业务判「类型」「等级」两个字
  * 说不清是谁的类型、谁的等级，**改回「工单类型」「风险等级」**；「来源」保持两字
- * （这一屏只有这一处来源，不会读串）。多出来的 48px 由那一枚「全部（N）」省下的
- * 42px 顶掉大半，重算之后仍是宽窗一行（见下面那张宽度表与样式里那条媒体查询）。
+ * （这一屏只有这一处来源，不会读串）。重算后的边界见样式里那条媒体查询。
  */
 interface AttrFilterCell {
   /** `v-for` 的 key；两路同名维同键，切路时控件就地换选项而不是整格重建 */
   key: string;
-  /** 两字标签。四字标签在窄窗下每个白占 48px，2026-10-09 已统一收成两字 */
+  /**
+   * 标签。**两字与四字并存**：「班组」「来源」「结论」两字；「工单类型」「风险等级」四字
+   * （2026-10-09 业务判两字说不清是谁的类型 / 谁的等级，改回四字）。宽度已按此重算。
+   */
   label: string;
   /** 量出来的控件宽（px），见上面那张表 */
   width: number;
   options: { value: string; label: string }[];
-  value: string;
   /**
-   * 🔴 `set` 里回收各维自己的类型：这一份规格为了让两路共用一个 `v-for` 把取值域抹成
-   * `string`，各维的真源 ref 仍是各自的联合类型，故在这里**显式收回去**，不把 `any` 放进 state。
+   * 多选那一格（当前只有「工单类型」）：`values` / `setMulti` / `placeholder` 三项同时给；
+   * 单选那几格给 `value` / `set`，行为与形态一个字没变。
    */
-  set: (v: string) => void;
+  multiple?: boolean;
+  /** 单选格的当前值 */
+  value?: string;
+  /** 多选格的当前值 */
+  values?: string[];
+  /** 多选格的占位：总数写在这里（`全部（N）`），因为"全部"在多选里是清空、不是一行选项 */
+  placeholder?: string;
+  /**
+   * 🔴 `set` / `setMulti` 里回收各维自己的类型：这一份规格为了让两路共用一个 `v-for`
+   * 把取值域抹成 `string`，各维的真源 ref 仍是各自的联合类型，故在这里**显式收回去**，
+   * 不把 `any` 放进 state。
+   */
+  set?: (v: string) => void;
+  setMulti?: (v: string[]) => void;
 }
 const attrFilterCells = computed<AttrFilterCell[]>(() => {
   // 班组是两路共用的那一格：同一份 state（左栏各档也按它收窄），故只写一次
@@ -5048,13 +5105,16 @@ const attrFilterCells = computed<AttrFilterCell[]>(() => {
         value: sourceFilter.value,
         set: (v) => { sourceFilter.value = v as MonitorSource | 'all'; },
       },
+      // 🔴 **多选**（2026-10-09 改判）：总数写在 placeholder 上，选项里只摆取值 + 计数
       {
         key: 'type',
         label: '工单类型',
-        width: 117,
+        width: 166,
+        multiple: true,
         options: poolTicketTypeFilterOptions.value,
-        value: poolTicketTypeFilter.value,
-        set: (v) => { poolTicketTypeFilter.value = v as PoolTicketTypeKey | 'all'; },
+        values: poolTicketTypeFilter.value,
+        placeholder: `全部（${reportTypeBase.value.length}）`,
+        setMulti: (v) => { poolTicketTypeFilter.value = v; },
       },
       {
         key: 'level',
@@ -5065,7 +5125,7 @@ const attrFilterCells = computed<AttrFilterCell[]>(() => {
         set: (v) => { poolLevelFilter.value = v as RiskLevel | 'all'; },
       },
       // 🔴 **结论摆在末位**：它是唯一一个取值不覆盖整表的维度（在队两段没有结论，
-      // 见 `reportDecisionBase`）；前面四格的次序即收窄的层次（谁的活 → 从哪儿进池 → 原单类型 → 风险等级）
+      // 见 `reportDecisionBase`）；前面四格的次序即收窄的层次（谁的活 → 从哪儿进池 → 工单类型 → 风险等级）
       {
         key: 'decision',
         label: '结论',
@@ -5086,13 +5146,16 @@ const attrFilterCells = computed<AttrFilterCell[]>(() => {
       value: judgedSourceFilter.value,
       set: (v) => { judgedSourceFilter.value = v as MonitorSource | 'all'; },
     },
+    // 🔴 **多选**，与工作面那一格逐字同形（2026-10-09 改判）
     {
       key: 'type',
       label: '工单类型',
-      width: 117,
+      width: 166,
+      multiple: true,
       options: judgedTypeFilterOptions.value,
-      value: judgedTypeFilter.value,
-      set: (v) => { judgedTypeFilter.value = v as PoolTicketTypeKey | 'all'; },
+      values: judgedTypeFilter.value,
+      placeholder: `全部（${judgedTypeBase.value.length}）`,
+      setMulti: (v) => { judgedTypeFilter.value = v; },
     },
     // 🔴 这一格**与左栏那一轴共用一份 state**（`judgedLevelFilter` 只是 `tagLevelFilter` 的代理）：
     // 左栏点哪一档这一格就显示哪一档，反过来也成立
@@ -5814,16 +5877,33 @@ function toggleWordEnabled(w: RiskWord) {
               <span class="fl">{{ cell.label }}</span>
               <!--
                 🔴 **不用 `v-model`**：真源是各维自己那个 ref（类型各不相同），这里经
-                `cell.set` 回写 —— 规格里把取值域抹成 `string` 是为了让两路共用一个 `v-for`，
-                写回去时各维再把自己的类型收回来，不在 state 上留 `any`。
+                `cell.set` / `cell.setMulti` 回写 —— 规格里把取值域抹成 `string` 是为了让两路
+                共用一个 `v-for`，写回去时各维再把自己的类型收回来，不在 state 上留 `any`。
+                🔴 **多选那一格（工单类型）与待判那两条上的同名格逐字同形**
+                （`mode="multiple" allow-clear :max-tag-count="1"`）—— 四处一个形态，
+                见 `AttrFilterCell` 上方那段。它的总数写在 `placeholder` 上，不在选项里。
               -->
               <a-select
+                v-if="cell.multiple"
+                :value="cell.values"
+                mode="multiple"
+                allow-clear
+                size="small"
+                class="tb-ctl"
+                :dropdown-match-select-width="false"
+                :placeholder="cell.placeholder"
+                :max-tag-count="1"
+                :options="cell.options"
+                @update:value="(v) => cell.setMulti?.((v ?? []) as string[])"
+              />
+              <a-select
+                v-else
                 :value="cell.value"
                 size="small"
                 class="tb-ctl"
                 :dropdown-match-select-width="false"
                 :options="cell.options"
-                @update:value="(v) => cell.set(v as string)"
+                @update:value="(v) => cell.set?.(v as string)"
               />
             </div>
           </div>
@@ -5897,12 +5977,12 @@ function toggleWordEnabled(w: RiskWord) {
               「工单类型」**两路共用这一格**（同一个 `untaggedFilter.types`、同一个
               `untaggedTypeOptions`，后者读的就是当前这一路，取值从这一路真出现过的类型派生
               —— 选了必有结果），故不分支、只写一次。
-              🔴 **「工单类型」这四个字在本页有两处、同名不同义，不许去"统一"它们**：
-                · **这一格（待判两路）＝ 工单类型**，取值 咨询 / 建议 / 商机 / 投诉 / 刷机
-                  （`untaggedFilter.types`，工单自己的类型）；
-                · **工作面 / 已判那条上的同名格 ＝ 原单类型**，取值 **投诉 / 非投诉**
-                  （`poolTicketTypeFilter` / `judgedTypeFilter`，判的是"这条风险的原单是不是投诉单"）。
-              两者取值域完全不同、分处不同视图，**是业务看过提示之后拍的板**。
+              🔴 **本页四处「工单类型」已是同一维**（2026-10-09 改判，业务原话「都修改为
+              工单类型，支持多选」，**推翻 10-08 那条"同名不同义、不许统一"**）：
+              这一格与工作面 / 已判那两格**同取值域**（咨询 / 建议 / 商机 / 投诉 / 刷机，
+              都从本路真出现过的类型派生）、**同形态**（多选 · allow-clear · max-tag-count 1）。
+              唯一的差别是那两格**带计数**（`咨询（3）`、总数在 placeholder 上写 `全部（N）`），
+              这一格不摆数、placeholder 只写 `全部` —— 待判这一段本来就不在筛选项上摆数。
             -->
             <div class="fi" style="--tbw: 146px">
               <span class="fl">工单类型</span>
