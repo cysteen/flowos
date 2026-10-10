@@ -164,19 +164,20 @@ const riskTags = useRiskTagStore();
 // **一块屏上同一件事只能有一个真源**，两套状态机不管同步得多勤，都会在某条路径上分叉；
 // 故合并成 listView 这一个。本文件后面每一处"chip 上的数字取过筛后的行数"都是这条的推论。
 /**
- * 四个页签，**三个分母**：
+ * 三个页签，**两个分母**：
  *   · `realtime` 实时监控 —— **监控条目**（A 线）。本轮从"命中维度"改成"条目维度"，见 `QueueView`；
  *   · `scan`     手动筛查 —— 风险词命中记录（拿条件去扫存量，**只做查询**，结果不落库）；
- *   · `judged`   命中明细 —— 风险词命中记录（事后点查 + 核实打标，词表准确率由它回填）；
- *   · `report`   风险工单池 —— **池行**（A 线打标进池的条目 + B 线报备单，N6 合一队）。
+ *   · `judged`   命中明细 —— 风险词命中记录（事后点查 + 核实打标，词表准确率由它回填）。
  *
- * 🔴 **三个分母两两不可相加**：一张单可以被三条词命中、也可以既有条目又有报备。
+ * 🔴 **两个分母不可相加**：一张单可以被三条词命中、也可以既有条目又有报备。
  * 每一处并排摆出的数字都在 title 里写明自己的分母，界面上不做互校、不相减。
  *
- * 【为什么变量名仍叫 report】改名要动本文件几十处引用，而并行还有别的路在改别的文件；
- * 名字与页签标题的偏差在这条注释里说清即可，静默漏改一处取到 undefined 的代价大得多。
+ * 🔴 **原先还有第四个取值 `report`（「评估处置工作面」，装池行）。整个删除**（2026-10-10 裁决）：
+ * 那个工作面只有一个入口（页头「风险工单」四枚卡），而它数的是**池行**、四枚卡数的是
+ * **监控条目**，两个分母天生不等；四枚卡改落左栏「已判」段之后落点与分母同一个，
+ * 工作面连同它的五维筛选、那张六列池行表与行内「风险管控」入口一并删净。
  */
-type ListView = 'realtime' | 'scan' | 'judged' | 'report';
+type ListView = 'realtime' | 'scan' | 'judged';
 /** 清单唯一的视图状态：页签与可点 KPI 卡全读写它 */
 const listView = ref<ListView>('realtime');
 
@@ -908,46 +909,17 @@ const reportAllRows = computed(() => [
  */
 const reportRows = computed(() => reportAllRows.value);
 
-/**
- * 页头「风险工单」块的卡片下钻：先把工作面上的五维筛选（班组 / 来源 / 工单类型 /
- * 风险等级 / 结论）放回「全部」，再切到工作面。卡上的数不跟这几维筛选，
- * 不清的话下钻后表行数 ≠ 卡上的数。只在点卡片时清；进了工作面之后照常收窄。
- * ⚠️ 班组 / 工单类型是多选，它们的"全部"＝ **清空选择**（空数组），不是写 `'all'`。
- * ⚠️ 班组筛选是本页一份共享状态（左栏各档也按它收窄），故点卡片后左栏角标同样回到全部班组口径。
- * ⚠️ **不再接视图参数**：工作面只有一张恒摆全部条目的表（见 `reportRows`）。
+/*
+ * 🔴 **`drillReport` 已删**（2026-10-10）：它是本页唯一一处 `setListView('report')`，
+ * 随「评估处置工作面」整个取消一并删除。页头「风险工单」四格现在下钻到
+ * **左栏「已判」段**（见 `drillPooled`），那四个数与已判段恒等。
+ * 一并删掉的还有它清的那四维（`sourceFilter` / `poolTicketTypeFilter` /
+ * `poolLevelFilter` / `decisionFilter`，工作面专用）与池行表自己的翻页状态
+ * （`reportPageCurrent` / `reportPageSize` / `pagedReportRows` / `setReportPage`
+ * 以及那个把它收回第一页的 watch）。
+ * ⚠️ `groupFilter` **不在其中**：它是三条筛选条共用的那一份，已判段照它收窄，
+ * 故下钻仍要清它，这一笔留在 `drillPooled` 里。
  */
-function drillReport() {
-  groupFilter.value = [];
-  sourceFilter.value = [];
-  poolTicketTypeFilter.value = [];
-  poolLevelFilter.value = 'all';
-  decisionFilter.value = [];
-  setListView('report');
-}
-
-/**
- * 风险工单池自己的翻页状态，**不与命中清单的 hitPageCurrent 共用**。
- * 两张表的行数各走各的（命中记录 vs 报备单），共用一个页码时
- * 「在命中清单翻到第 3 页 → 切到风险工单池」会看到一张空表，人只会以为池子清空了。
- */
-const reportPageCurrent = ref(1);
-const reportPageSize = ref(10);
-
-const pagedReportRows = computed(() => {
-  const start = (reportPageCurrent.value - 1) * reportPageSize.value;
-  return reportRows.value.slice(start, start + reportPageSize.value);
-});
-
-function setReportPage(page: number, size: number) {
-  reportPageCurrent.value = page;
-  reportPageSize.value = size;
-}
-
-// 任一视图内条件变了，底表就换了一批，页码必须回到第一页——
-// 否则「第 3 页 → 换一个班组」会停在一张恰好没有行的页上。
-watch([decisionFilter, sourceFilter, poolTicketTypeFilter, poolLevelFilter, sourceSort, groupFilter], () => {
-  reportPageCurrent.value = 1;
-});
 
 /*
  * 🔴 **`waitedText` 已删**（2026-10-09）：等待时长整套撤出本工作面（业务：那是风险报备池
@@ -4644,24 +4616,34 @@ const pooledTypeRowKeys = computed<string[]>(() => (
 ));
 
 /**
- * 页头「风险工单」块的下钻：进「评估处置」工作面（那张表三段首尾相接、恒摆全部条目），
- * 可带一个风险等级收窄 —— 那一块原本就是这个工作面的唯一入口（`drillReport` 是唯一的进法），
- * 换数之后**下钻能力照留**，否则领取 / 评估 / 协同整个工作面就进不去了。
+ * 页头「风险工单」块的下钻：**落到左栏「已判」段**对应的那一档（2026-10-10 裁决）。
  *
- * ⚠️ `poolLevelFilter` 必须在 `drillReport` 之后补：那一步先把五维放回「全部」，这里再按卡片补上。
- * ⚠️ **原先这里还有一句 `assessedTodayOnly = false`**：那个开关默认开着、界面上又没有控件能关，
- * 于是只有这条下钻能看到全量第三段。开关已随 2026-10-09 裁决整个删除
- * （「分母是已判里面的全部数据呀，与时间无关」），这一句随之去掉 ——
- * **现在无论从哪儿进工作面，第三段都是全量**，不再有两个口径。
+ * 🔴 **原先落到「评估处置」工作面**（`drillReport` → `setListView('report')`）。那个工作面
+ * 整个取消之后，这四枚卡改落已判段 —— 它们数的就是已判那一批条目
+ * （`pooledAllCount` / `pooledLevelCount`，见页头那一块的注释），落点与分母至此同一个。
  *
- * 🔴 **本块的卡不点亮 `on`**：卡上的数是**监控条目**（已判，含来源为「风险报备」的那一条），
- * 工作面那张表数的是**池行**且只收 A 线（`isALine` 把来源「二线报备」挡在外面）——
- * 两个数天生差着那几条。点亮 `on` 等于宣称"这个数就是这张表的分母"，那是假话；
- * 本块是**进工作面的入口**，不是工作面的一个筛选档。
+ * 🔴 **等级写 `tagLevelFilter`，不是工作面那个 `poolLevelFilter`**（后者已随工作面删除）：
+ * 左栏那条轴是真源，已判段筛选条上的「风险等级」那一格只是它的可写代理
+ * （`judgedLevelFilter`）。写错一边的话，左栏高亮与表里的行当场对不上。
+ * 🔴 **走的就是左栏点档位那一条路**（`setRail`），不另写一份写齐的逻辑：
+ * 它把 `listView` / `queueView` / `tagLevelFilter` 一次写齐，页面上每一个通往
+ * 漏斗某一段的入口都过它（同 `drillFocusPriority`）。
+ *
+ * 🔴 **左栏对应档位现在点亮 `on`**，这是本轮有意改变的行为：原先"一律不点亮"的理由是
+ * "卡上的数不是那张表的分母"（卡数监控条目、工作面那张表数池行且只收 A 线）；
+ * 落点换成已判段之后，**页头四数与已判恒等**，点亮才是实话。
+ * 总数那一枚点亮「全部有风险」，高 / 中 / 低三枚点亮对应那一档。
+ *
+ * ⚠️ **其余几维一并清空**，与原先"下钻时把别的维放回全部"的语义一致：
+ * `groupFilter`（三条筛选条共用的那一份，已判段照它收窄）与已判段自己的
+ * `judgedSourceFilter` / `judgedTypeFilter`。不清的话下钻后表行数 ≠ 卡上的数。
+ * ⚠️ 两者都是多选，它们的"全部"＝ **清空选择**（空数组），不是写 `'all'`。
  */
 function drillPooled(lv: RiskLevel | 'all') {
-  drillReport();
-  poolLevelFilter.value = lv;
+  groupFilter.value = [];
+  judgedSourceFilter.value = [];
+  judgedTypeFilter.value = [];
+  setRail(lv === 'all' ? 'level:all' : (`level:${lv}` as RailKey));
 }
 
 /*
@@ -4880,12 +4862,10 @@ const railKey = computed<RailKey | null>(() => {
     }
     return tagLevelFilter.value === 'all' ? 'level:all' : (`level:${tagLevelFilter.value}` as RailKey);
   }
-  // 🔴 **「评估处置」工作面不点亮左栏任何一档**（`listView === 'report'`）。
-  // 它与手动筛查 / 命中明细同一类：**动作的工作面，不是漏斗的一档**——
-  // 领取 / 评估 / 协同都在那儿，进出走页头「评估处置」那一块。
-  // 上一版它借「按处置阶段」那几档当选中态，于是同一组键指着两张不同的表
-  // （左栏点进去是条目表、页头卡点进去是池行表），行数与列都对不上 ——
-  // 那正是"两套状态机分叉"。硬点亮一档才是假话，不点亮不是缺陷。
+  // 手动筛查 / 命中明细这两个旁路入口不在漏斗上，一档都不点亮。
+  // 🔴 **「评估处置」工作面那一支已随该视图整个删除**（2026-10-10）：它原先也走这个
+  // `return null`（动作的工作面、不是漏斗的一档）。页头「风险工单」四格现在下钻到
+  // 已判段，**对应档位点亮 `on`** —— 四数与已判恒等，点亮是实话（见 `drillPooled`）。
   return null;
 });
 
@@ -4952,8 +4932,7 @@ watch(railKey, (k) => {
  * 本文件已经为"两套状态机分叉"付过两次账，这里不再开第二个真源。
  */
 const stageOfView = computed<FunnelStage | null>(() => {
-  // 池行（listView='report'）也属「已标记」：它装的是这一段条目进池之后的处置，不是第三段
-  if (listView.value === 'report') return 'tagged';
+  // 🔴 **原先这里有一支把工作面（listView='report'）读成「已标记」**，随该视图删除一并删
   if (listView.value === 'realtime') return queueView.value === 'monitoring' ? 'untagged' : 'tagged';
   // 手动筛查 / 命中明细是旁路，不在漏斗的任何一段上
   return null;
@@ -4992,16 +4971,13 @@ function setStage(stage: FunnelStage) {
  * 故选中某一组之后其余几组的数字不变，人还看得出该切到哪一组。
  * 条数多的排前面；同数按组名排，免得同一份数据两次进来给出两个次序。
  *
- * 🔴 **工作面这一路要过 `byPoolAttrs`**：另外四维（来源 / 原单类型 / 风险等级 / 结论）
- * 已经是同一行上并排的筛选项，班组不跟着它们收窄的话，筛到「风险处理建议」之后
- * 这一行会写着「班组 全部（14）· 来源 全部（2）· 类型 全部（2）· 等级 全部（2）· 结论 风险处理建议（2）」——
- * 同一行上第一格的分母和后面四格不是一个，读的人只能去猜哪个才是表里的行数。
- * 班组自己不在 `byPoolAttrs` 里，故不传 `skip`，天然就是"摘掉自己这一维"。
+ * 🔴 **原先这里按视图分两支**：工作面那一路走 `byPoolAttrs(reportGroupBase)`，
+ * 另一路走 `queueBase`。工作面随 2026-10-10 裁决整个删除，这里收成一条直路。
+ * 规矩没变：同一行上第一格的分母必须与后面几格、与表里的行数是同一个，
+ * 否则读的人只能去猜哪个才作数。
  */
 const groupChips = computed(() => {
-  const base: { ticketNo: string }[] = listView.value === 'report'
-    ? byPoolAttrs(reportGroupBase.value)
-    : queueBase.value;
+  const base: { ticketNo: string }[] = queueBase.value;
   const m = new Map<string, number>();
   base.forEach((r) => {
     const g = groupNameOf(r.ticketNo);
@@ -5248,7 +5224,7 @@ interface AttrFilterCell {
   setMulti?: (v: string[]) => void;
 }
 const attrFilterCells = computed<AttrFilterCell[]>(() => {
-  // 班组是两路共用的那一格：同一份 state（左栏各档也按它收窄），故只写一次。
+  // 班组这一格与待判那条筛选条共用同一份 state（左栏各档也按它收窄），故只写一次。
   // 🔴 **多选**（2026-10-09，业务「支持多选呀」）：总数写在 placeholder 上，
   // 选项里只摆组名 + 计数；选中后的标签取 `tagLabel`（不带计数），同「工单类型」那一格
   const group: AttrFilterCell = {
@@ -5261,57 +5237,16 @@ const attrFilterCells = computed<AttrFilterCell[]>(() => {
     placeholder: `全部（${groupChips.value.total}）`,
     setMulti: (v) => { groupFilter.value = v; },
   };
-  if (listView.value === 'report') {
-    return [
-      group,
-      // 🔴 **多选**（2026-10-09）：取值域两个四字来源，最长标签 52+32=84 ＋53＋4 ＝ 141 ⇒ 171
-      {
-        key: 'source',
-        label: '来源',
-        width: 171,
-        multiple: true,
-        options: sourceFilterOptions.value,
-        values: sourceFilter.value,
-        placeholder: `全部（${reportSourceBase.value.length}）`,
-        setMulti: (v) => { sourceFilter.value = v; },
-      },
-      // 🔴 **多选**（2026-10-09 改判）：总数写在 placeholder 上，选项里只摆取值 + 计数
-      {
-        key: 'type',
-        label: '工单类型',
-        width: 146,
-        multiple: true,
-        options: poolTicketTypeFilterOptions.value,
-        values: poolTicketTypeFilter.value,
-        placeholder: `全部（${reportTypeBase.value.length}）`,
-        setMulti: (v) => { poolTicketTypeFilter.value = v; },
-      },
-      {
-        key: 'level',
-        label: '风险等级',
-        width: 104,
-        options: poolLevelFilterOptions.value,
-        value: poolLevelFilter.value,
-        set: (v) => { poolLevelFilter.value = v as RiskLevel | 'all'; },
-      },
-      // 🔴 **结论摆在末位**：它是唯一一个取值不覆盖整表的维度（在队两段没有结论，
-      // 见 `reportDecisionBase`）；前面四格的次序即收窄的层次（谁的活 → 从哪儿进池 → 工单类型 → 风险等级）
-      // 🔴 **多选**（2026-10-09）：最长标签「风险处理建议」6 字 78+32=110 ＋53＋4 ＝ 167 ⇒ 197
-      {
-        key: 'decision',
-        label: '结论',
-        width: 197,
-        multiple: true,
-        options: decisionFilterOptions.value,
-        values: decisionFilter.value,
-        placeholder: `全部（${reportDecisionBase.value.length}）`,
-        setMulti: (v) => { decisionFilter.value = v; },
-      },
-    ];
-  }
+  /*
+   * 🔴 **工作面那一支（五格：班组 / 来源 / 工单类型 / 风险等级 / 结论）已删**（2026-10-10，
+   * 「评估处置工作面」整个取消）。这份规格与模板里那一个 `v-for` **一个字没动**：
+   * 它当初是为"两条筛选条同一份实现"立的，现在只剩已判段这一路在走，形态与量宽照旧。
+   * ⚠️ 「结论」这一维**随工作面一并消失**：它只对池行成立，已判段装的是监控条目、
+   * 身上没有结论字段（硬摆上去是一格三个零），本轮不补。
+   */
   return [
     group,
-    // 🔴 **多选**，与工作面那一格逐字同形（取值域三个四字来源，含「二线报备」）
+    // 🔴 **多选**（取值域三个四字来源，含「二线报备」）：最长标签 52+32=84 ＋53＋4 ＝ 141 ⇒ 171
     {
       key: 'source',
       label: '来源',
@@ -5346,47 +5281,44 @@ const attrFilterCells = computed<AttrFilterCell[]>(() => {
   ];
 });
 
-/* ---- 这一条（工作面 / 已判）右侧那两枚按钮（2026-10-09，业务「还缺2个按钮」） ---- */
+/* ---- 「已判」段这一条右侧那两枚按钮（2026-10-09，业务「还缺2个按钮」） ---- */
 /**
  * 这一条上动过没有 —— 「重置」那枚的禁用判据。
- * 🔴 **按当前这一路数**：工作面五维、已判四维（无「结论」）。班组是三条共用的外层 state，
- * 但人点的是"这一条的重置"，故**它也算进来、也一并清**。
+ * 🔴 **原先按视图分两支**（工作面五维 / 已判四维），工作面随 2026-10-10 裁决删除，
+ * 只剩已判这一路。班组是三条筛选条共用的外层 state，但人点的是"这一条的重置"，
+ * 故**它也算进来、也一并清**。
+ * ⚠️ 已判段的「风险等级」那一格是左栏那一轴的代理，它"动过没有"由左栏自己表达，不进这个判据。
  */
 const poolFilterDirty = computed(() => {
   if (groupFilter.value.length) return true;
-  if (listView.value === 'report') {
-    return !!sourceFilter.value.length || !!poolTicketTypeFilter.value.length
-      || poolLevelFilter.value !== 'all' || !!decisionFilter.value.length;
-  }
-  // 已判：风险等级那一格是左栏那一轴的代理，它"动过没有"由左栏自己表达，不进这个判据
   return !!judgedSourceFilter.value.length || !!judgedTypeFilter.value.length;
 });
 /**
  * 「查询」：与待判那条**同一个语义** —— 条件是**实时生效**的，这枚只把页码收回第一页。
  * 【为什么还要这枚】多选一次勾好几个取值，行数会掉得很快；不收页码就会停在一张空页上，
- * 人只会以为筛没了。两条表各收各的页码。
+ * 人只会以为筛没了。
+ * 🔴 **只收 `queuePageCurrent` 这一个**：原先这里还写着池行表自己的 `reportPageCurrent`，
+ * 那张表随工作面一并删除。已判段那张条目表走的就是 `queuePageCurrent`（见它的分页条）。
  */
 function applyPoolQuery() {
-  reportPageCurrent.value = 1;
   queuePageCurrent.value = 1;
 }
 /** 「重置」：把这一条上的全部维度清空（**班组一并清**，见 `poolFilterDirty`） */
 function resetPoolFilter() {
   groupFilter.value = [];
-  if (listView.value === 'report') {
-    sourceFilter.value = [];
-    poolTicketTypeFilter.value = [];
-    poolLevelFilter.value = 'all';
-    decisionFilter.value = [];
-  } else {
-    judgedSourceFilter.value = [];
-    judgedTypeFilter.value = [];
-  }
+  judgedSourceFilter.value = [];
+  judgedTypeFilter.value = [];
   applyPoolQuery();
 }
 
-/** 左栏这一列只在漏斗的两个视图上作数；旁路的两个入口自带各自的筛选条，不套班组 */
-const showGroupFilter = computed(() => listView.value === 'realtime' || listView.value === 'report');
+/**
+ * 左栏这一列只在「实时监控」这一个视图上作数；旁路的两个入口（手动筛查 / 命中明细）
+ * 自带各自的筛选条，不套班组。
+ * 🔴 **原先是 `realtime || report`**，工作面随 2026-10-10 裁决删除，只剩前一支。
+ * ⚠️ 模板里那个 `v-if` 还叠着一道"不是待判段"（待判另有自己那条筛选条），
+ * 两道合起来 ＝ **只在已判段出这一条**，与改前逐字等价。
+ */
+const showGroupFilter = computed(() => listView.value === 'realtime');
 
 //
 // 🔴 **原先这里有一个 `currentRail`**，用来在清单正上方复述"当前是哪一段的哪一档"
@@ -5822,30 +5754,28 @@ function toggleWordEnabled(w: RiskWord) {
 
           🔴 **块名由「评估处置」改成「风险工单」，块内六个数整组撤掉**（2026-10-07 裁决）：
           待评估总数 / 待领取 · 已领取 / 超时未评 / 今日已结论 / 今日结论（升级 · 不升级 · 建议）
-          全部不要，**也不搬到别处** —— 它们的真源是下面那个「评估处置」工作面与它自己的
-          三枚下钻卡，那一面连同池行表一格没动，下钻进去照样找得到。
+          全部不要，**也不搬到别处**。
           【为什么】业务指着这一块判「这个数据调整下，展示已判的数据，比如风险工单总单、高中低分布」。
           块名跟着它数的东西走：它现在数的是**已判出等级的风险工单**，不再是池行的处置进度。
           块名不叫「已判」—— 那是左栏的段名，两处用同一个词会立刻被读成同一个控件。
 
-          🔴 **下钻能力照留**：这一块原本是「评估处置」工作面的**唯一入口**
-          （`drillReport` 是本页唯一一处 `setListView('report')`）。四枚卡仍然点得动、
-          仍然进那个工作面，只是换了显示的数；不留的话领取 / 评估 / 协同整个工作面就再也进不去了。
-          🔴 **四枚卡一律不点亮 `on`**：卡上数的是**监控条目**（已判，含来源为「风险报备」的那一条），
-          工作面那张表数的是**池行**且只收 A 线（`isALine` 把来源「二线报备」挡在外面），
-          两个数天生差着那几条。点亮 `on` 等于宣称"这个数就是这张表的分母"，那是假话。
-          本块是**进工作面的入口**，不是工作面的一个筛选档。详见 `drillPooled` 的注释。
+          🔴 **四枚卡的下钻落在左栏「已判」段**（2026-10-10 裁决）：原先落到「评估处置」
+          工作面（这一块是它的唯一入口），那个工作面已整个取消。
+          🔴 **落到已判之后四枚卡点亮左栏对应档位 `on`**，这是本轮有意改变的行为：
+          原先"一律不点亮"的理由是"卡上的数不是那张表的分母"（卡数监控条目、工作面那张表
+          数池行且只收 A 线，两个数天生差着几条）；现在**页头四数与已判恒等**，点亮才是实话。
+          总数那一枚点亮「全部有风险」，高 / 中 / 低三枚点亮对应那一档。详见 `drillPooled`。
         -->
         <div class="effect-pane effect-pane--report">
           <h2
             class="pane-title"
-            title="在办工单上已判出风险等级（高 / 中 / 低）的监控条目 · 🔴 与左栏「已判」段恒等：总数 ≡ 左栏已判页签 ≡ 「全部有风险」，高 / 中 / 低 ≡ 左栏那三档，两处同取一个派生值，改一处必须两处一起改。判为无风险的不在这一批（不进池、离开漏斗）；原单进终态的也不在（与左栏同一道在办判据）。🔴 本块跟着「班组」走（与左栏同进同退，恒等的必然结果）；左边「实时监控」「重点工单」两块恒为全中心、不随班组变 —— 同一排三块，分母不同，不要横着比。点任一枚进「评估处置」工作面处置这一批"
+            title="在办工单上已判出风险等级（高 / 中 / 低）的监控条目 · 🔴 与左栏「已判」段恒等：总数 ≡ 左栏已判页签 ≡ 「全部有风险」，高 / 中 / 低 ≡ 左栏那三档，两处同取一个派生值，改一处必须两处一起改。判为无风险的不在这一批（不进池、离开漏斗）；原单进终态的也不在（与左栏同一道在办判据）。🔴 本块跟着「班组」走（与左栏同进同退，恒等的必然结果）；左边「实时监控」「重点工单」两块恒为全中心、不随班组变 —— 同一排三块，分母不同，不要横着比。点任一枚落到左栏「已判」段看这一批"
           >风险工单</h2>
           <div class="dash-grid dash-grid-4">
             <button
               type="button"
               class="dm-cell"
-              title="在办工单上已判出风险等级（高 / 中 / 低）的监控条目总数 ≡ 左栏「已判」页签上那个数 ≡ 左栏「全部有风险」。点它进「评估处置」工作面"
+              title="在办工单上已判出风险等级（高 / 中 / 低）的监控条目总数 ≡ 左栏「已判」页签上那个数 ≡ 左栏「全部有风险」。点它落到左栏「已判 · 全部有风险」"
               @click="drillPooled('all')"
             >
               <span class="dm-k">风险工单总数</span>
@@ -5857,7 +5787,7 @@ function toggleWordEnabled(w: RiskWord) {
               type="button"
               class="dm-cell"
               :class="{ hot: lv === '高' && pooledLevelCount(lv) > 0 }"
-              :title="`判为${riskLevelText(lv)}的监控条目数 ≡ 左栏已判段「${riskLevelText(lv)}」那一档（同一个派生值，两处恒等）。点它进「评估处置」工作面并收窄到${riskLevelText(lv)}`"
+              :title="`判为${riskLevelText(lv)}的监控条目数 ≡ 左栏已判段「${riskLevelText(lv)}」那一档（同一个派生值，两处恒等）。点它落到左栏已判段「${riskLevelText(lv)}」那一档`"
               @click="drillPooled(lv)"
             >
               <span class="dm-k">{{ riskLevelText(lv) }}</span>
@@ -6062,20 +5992,17 @@ function toggleWordEnabled(w: RiskWord) {
         班组筛选（单选）。它是**另一层**：左栏选的是"链上哪一段"，这条工具条选的是
         "这一段里哪一个组的活"。横跨左栏每一档不清空 —— 组是工单的固有属性，
         不随条目走到哪一段而变；切档就清掉的话，人在某一组筛完切档会看到全部组，只会以为筛选失灵。
-        🔴 各项的数字取的是**除自己这一维之外**的全部条件下的行数（见 groupChips / reportSourceBase）。
+        🔴 各项的数字取的是**除自己这一维之外**的全部条件下的行数（见 groupChips / judgedSourceBase）。
 
-        🔴 **评估处置工作面的四维筛选全在这里**（2026-10-08 裁决）：监控来源 / 原单类型 /
-        风险等级 / 结论。四维原先是筛选区里几排 chip，与班组这一个下拉是同一类东西
-        （单选、带计数、互不相干的几维），却长着两套形态；收进这一行之后，
-        这一屏上"筛什么"只有一处可找，筛选区那一整块（`.section-filters`）随之撤掉。
+        🔴 **这一条现在只在「已判」段上出**（2026-10-10 裁决：「评估处置工作面」整个取消）。
+        四格：班组 / 来源 / 工单类型 / 风险等级。
+        ⚠️ **第五格「结论」随工作面一并消失**：它只对池行成立，已判段装的是监控条目、
+        身上没有结论字段，硬摆上去是一格三个零。
         🔴 **每一格逐字同形**（`.fi` + `.fl` + `a-select.tb-ctl`，标签写法 `全部（N）` / `取值（N）`），
         不为了塞得下就把其中一两格换成另一种控件 —— 形态由 `attrFilterCells` 一处给，不靠人工对齐。
-        ⚠️ 结论这一维只对池行成立，故只在工作面（`listView === 'report'`）上出；
-        这条工具条的另一个落点（待判那两路）自带另一条筛选条，不走这里。
+        ⚠️ 这条工具条的另一个落点（待判那两路）自带另一条筛选条，不走这里。
 
-        🔴 **次序即收窄的层次**：班组（谁的活）→ 来源（从哪儿进的池）→ 类型 →
-        等级 → 结论（走到哪一步收的口）。结论摆在末位是因为它是**唯一一个
-        取值不覆盖整表的维度**（在队那两段没有结论，见 `reportDecisionBase`）。
+        🔴 **次序即收窄的层次**：班组（谁的活）→ 来源（从哪儿进的）→ 工单类型 → 风险等级。
       -->
       <div
         v-if="showGroupFilter && !(listView === 'realtime' && queueView === 'monitoring')"
@@ -6089,12 +6016,12 @@ function toggleWordEnabled(w: RiskWord) {
         -->
         <div class="list-toolbar list-toolbar--one-line list-toolbar--grid list-toolbar--fixed4">
           <!--
-            🔴 **两条筛选条（工作面 / 已判）同走这一个 `v-for`**（2026-10-09 裁决，业务原话
-            「两处的搜索内容保持一致，复用的逻辑」）：每一格的标签、宽度、选项、读写口径
-            全在 script 的 `attrFilterCells` 里逐维列着 —— 格子不再在模板里各写一遍。
-            🔴 **"按路出维"**：工作面五格（班组/来源/工单类型/风险等级/结论）· 已判四格
-            （无「结论」，那一维在监控条目上不成立）。为什么、以及每一格的宽是怎么量出来的，
-            见 `AttrFilterCell`。
+            🔴 **格子不在模板里逐个写**（2026-10-09 裁决，业务原话「两处的搜索内容保持一致，
+            复用的逻辑」）：每一格的标签、宽度、选项、读写口径全在 script 的
+            `attrFilterCells` 里逐维列着。
+            ⚠️ **这一份规格原先服务两条筛选条（工作面 / 已判）**，工作面随 2026-10-10 裁决
+            删除，现在只剩已判这一路的四格（班组 / 来源 / 工单类型 / 风险等级）。
+            每一格的宽是怎么量出来的，见 `AttrFilterCell`。
             🔴 **容器由 `--no-actions` 换成 `--grid`**（2026-10-09，业务「还缺2个按钮」）：
             这一条补了右侧动作区（查询 / 重置），与待判那条走同一支排版。
           -->
@@ -6108,7 +6035,7 @@ function toggleWordEnabled(w: RiskWord) {
               <span class="fl">{{ cell.label }}</span>
               <!--
                 🔴 **不用 `v-model`**：真源是各维自己那个 ref（类型各不相同），这里经
-                `cell.set` / `cell.setMulti` 回写 —— 规格里把取值域抹成 `string` 是为了让两路
+                `cell.set` / `cell.setMulti` 回写 —— 规格里把取值域抹成 `string` 是为了让各维
                 共用一个 `v-for`，写回去时各维再把自己的类型收回来，不在 state 上留 `any`。
                 🔴 **多选那一格（工单类型）与待判那两条上的同名格逐字同形**
                 （`mode="multiple" allow-clear :max-tag-count="1"`）—— 四处一个形态，
@@ -6150,8 +6077,8 @@ function toggleWordEnabled(w: RiskWord) {
             ⚠️ 「查询」与待判那条同一个语义 —— **条件是实时生效的**，这枚只把页码收回第一页
             （见 `applyPoolQuery`）；多选格一次勾好几个，不收页码会停在一张空页上。
             🔴 **裁决要的是"计数落在已应用条件上（勾了还没查、数不先跳）"，本轮没做到**：
-            那需要给这五维各加一份"待提交草稿"再由「查询」拷进生效态，而其中两维做不到 ——
-            ① **班组**是三条筛选条共用的同一份 state（待判那条是实时生效的，给它加草稿
+            那需要给这四维各加一份"待提交草稿"再由「查询」拷进生效态，而其中两维做不到 ——
+            ① **班组**是两条筛选条共用的同一份 state（待判那条是实时生效的，给它加草稿
                会让同一个 state 在两条上行为不同，或者被迫拆成两份真源）；
             ② **风险等级**是左栏那条轴的代理（`judgedLevelFilter` → `tagLevelFilter`），
                延迟生效会让左栏高亮与这一格当场对不上。
