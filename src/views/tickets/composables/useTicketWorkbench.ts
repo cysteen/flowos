@@ -472,8 +472,11 @@ export function useTicketWorkbench() {
   function takeOverPoolPending(id: string, groupName?: string): { ok: boolean; from: string | null } {
     const t = all.value.find((x) => x.id === id);
     if (!t || !inPoolPendingTabScope(t)) return { ok: false, from: null };
+    // 先写班组再换人：刷机单的领取由刷机服务落缓存，班组须在它落缓存之前写上；领取失败则还原
+    const prevGroupNames = t.groupNames;
+    if (groupName) setProcessingGroup(t, groupName);
     const res = takeOverPoolPendingOwner(t);
-    if (res.ok && groupName) setProcessingGroup(t, groupName);
+    if (!res.ok) t.groupNames = prevGroupNames;
     return res;
   }
   /** 把处理组（`groupNames` 首项）改成 `groupName`；与当前相同时不动 */
