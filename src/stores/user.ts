@@ -83,6 +83,8 @@ export const useUserStore = defineStore('user', () => {
   const role = computed<RoleDef>(() => ROLES[current.value.roleKey]);
   /** 当前分岗（仅二线专员有意义）：用户属性优先，缺省回落到角色定义 */
   const post = computed<AgentPost | undefined>(() => current.value.post ?? role.value.post);
+  /** 当前用户所在的全部班组（处理组名） */
+  const groups = computed<string[]>(() => current.value.groups ?? []);
   /**
    * 可见菜单 = 角色菜单 ∩ 分岗裁剪。
    *
@@ -191,6 +193,7 @@ export const useUserStore = defineStore('user', () => {
     roleKey,
     role,
     post,
+    groups,
     visibleMenus,
     hiddenTabs,
     hasAdminEntry,

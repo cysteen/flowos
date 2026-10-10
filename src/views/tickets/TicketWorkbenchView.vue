@@ -15,6 +15,7 @@ import {
   canAssignTicket,
   canTransferTicket,
   currentHandlerName,
+  resolveTicketGroupNames,
   type WorkbenchTabKey,
 } from '@/views/tickets/types/ticket';
 import { FLASH_POOL_TAB_ROLES } from '@/config/roles';
@@ -327,48 +328,50 @@ function poolPendingRowActions(t: Ticket): { label: string; primary?: boolean }[
   return acts;
 }
 
-/** 催补待回 · 「领取工单」确认弹窗的数据（他人名下 / 已升级单二线主责含本人） */
+/** 催补待回 · 「领取工单」确认弹窗的数据（领取一律先弹窗：换人换组） */
 const takeoverOpen = ref(false);
 const takeoverTicket = ref<Ticket | null>(null);
-const takeoverFrom = ref('');
+const takeoverFrom = ref<string | null>(null);
 const takeoverEscalated = computed(() => takeoverTicket.value?.nodeStatus === '已升级技术支持');
 const takeoverMe = computed(() => currentHandlerName(user.roleKey, user.name));
+/** 工单当前所在班组（处理组＝分组名称首项） */
+const takeoverCurGroup = ref<string | null>(null);
+/** 领取后班组：选项＝当前用户所在的全部班组 */
+const takeoverGroup = ref<string | undefined>(undefined);
+const takeoverGroupOptions = computed(() => user.groups.map((g) => ({ value: g, label: g })));
 
-function runTakeOverPending(t: Ticket) {
-  const res = wb.takeOverPoolPending(t.id);
+function runTakeOverPending(t: Ticket, groupName?: string) {
+  const res = wb.takeOverPoolPending(t.id, groupName);
   if (!res.ok) {
     message.warning('该工单已不在催补待回');
     return;
   }
-  // 主责本就是本人：数据不变，不弹「已领取」
+  // 主责本就是本人：处理人不变，不弹「已领取」
   if (res.from !== takeoverMe.value) message.success(`已领取 ${t.no}`);
   openOperation(t);
 }
 
 /**
- * 催补待回 · 领取：无处理人直接领；他人名下、或已升级单（二线主责含本人）先二次确认。
- * 领取后进该单详情。
+ * 催补待回 · 领取：无处理人、他人名下、已升级单（二线主责）一律先弹「领取工单」确认。
+ * 领取后班组默认＝工单当前班组；当前用户不在该组时取用户所在班组的第一个。
+ * 确认后处理人＝本人、处理组＝所选班组，进该单详情。
  */
 function takeOverPending(t: Ticket) {
-  const from = wb.poolPendingOwnerOf(t);
-  const escalated = t.nodeStatus === '已升级技术支持';
-  if (from !== null && from === takeoverMe.value && !escalated) {
-    openOperation(t);
-    return;
-  }
-  if (from === null) {
-    runTakeOverPending(t);
-    return;
-  }
+  const cur = resolveTicketGroupNames(t)[0] ?? null;
+  const mine = user.groups;
   takeoverTicket.value = t;
-  takeoverFrom.value = from;
+  takeoverFrom.value = wb.poolPendingOwnerOf(t);
+  takeoverCurGroup.value = cur;
+  takeoverGroup.value = cur && mine.includes(cur) ? cur : (mine[0] ?? cur ?? undefined);
   takeoverOpen.value = true;
 }
 
 function onTakeoverOk() {
   const t = takeoverTicket.value;
+  const g = takeoverGroup.value;
+  if (!t || !g) return;
   takeoverOpen.value = false;
-  if (t) runTakeOverPending(t);
+  runTakeOverPending(t, g);
 }
 
 // 「处理 / 详情 / 审核 / 受理」进工单操作页（PRD-03）；其余即时反馈
@@ -706,6 +709,7 @@ function onConfirmSaveFilter(name: string) {
       :width="460"
       ok-text="确认领取"
       cancel-text="取消"
+      :ok-disabled="!takeoverGroup"
       @ok="onTakeoverOk"
     >
       <div v-if="takeoverTicket" class="tko">
@@ -714,11 +718,24 @@ function onConfirmSaveFilter(name: string) {
         </div>
         <div class="tko-kv">
           <span class="tko-k">当前处理人</span>
-          <span class="tko-v">{{ takeoverFrom }}<span v-if="takeoverEscalated" class="tko-note">（二线主责）</span></span>
+          <span class="tko-v">{{ takeoverFrom ?? '—' }}<span v-if="takeoverEscalated && takeoverFrom" class="tko-note">（二线主责）</span></span>
+        </div>
+        <div class="tko-kv">
+          <span class="tko-k">当前班组</span>
+          <span class="tko-v">{{ takeoverCurGroup ?? '—' }}</span>
         </div>
         <div class="tko-kv">
           <span class="tko-k">领取后处理人</span>
           <span class="tko-v">{{ takeoverMe }}</span>
+        </div>
+        <div class="tko-kv tko-kv-ctl">
+          <span class="tko-k">领取后班组</span>
+          <a-select
+            v-model:value="takeoverGroup"
+            class="tko-select"
+            :options="takeoverGroupOptions"
+            :allow-clear="false"
+          />
         </div>
         <div class="tko-foot">
           {{ takeoverEscalated
@@ -817,5 +834,7 @@ function onConfirmSaveFilter(name: string) {
 .tko-k { flex: none; width: 84px; font-size: 13px; color: #6b7280; text-align: left; }
 .tko-v { flex: 1; min-width: 0; font-size: 14px; color: #111827; }
 .tko-note { margin-left: 4px; font-size: 12px; color: #9ca3af; }
+.tko-kv-ctl { align-items: center; }
+.tko-select { flex: 1; min-width: 0; }
 .tko-foot { font-size: 12px; color: #9ca3af; line-height: 1.5; }
 </style>

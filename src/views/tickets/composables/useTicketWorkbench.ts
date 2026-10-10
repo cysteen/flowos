@@ -42,6 +42,7 @@ import {
   inMineTaskScope,
   isWorkbenchSearchTab,
   poolGroupIdsForTicket,
+  resolveTicketGroupNames,
   slaUrgencyCompare,
   visiblePoolGroupsFor,
   WORKBENCH_HANDLER,
@@ -465,10 +466,24 @@ export function useTicketWorkbench() {
    * - 已升级技术支持：只换二线主责（`primaryOwner`），三线处理人与状态不动；
    *   主责本就是本人时数据不变、不写履历（弹窗确认照走，由调用方负责）。
    * 不清催补 / 补充未读：出列只认「已联系」（915）。
+   * `groupName`：弹窗「领取后班组」所选，领取成功后写成本单处理组（`groupNames` 首项），
+   * 其余路由分组名原样保留。
    */
-  function takeOverPoolPending(id: string): { ok: boolean; from: string | null } {
+  function takeOverPoolPending(id: string, groupName?: string): { ok: boolean; from: string | null } {
     const t = all.value.find((x) => x.id === id);
     if (!t || !inPoolPendingTabScope(t)) return { ok: false, from: null };
+    const res = takeOverPoolPendingOwner(t);
+    if (res.ok && groupName) setProcessingGroup(t, groupName);
+    return res;
+  }
+  /** 把处理组（`groupNames` 首项）改成 `groupName`；与当前相同时不动 */
+  function setProcessingGroup(t: Ticket, groupName: string) {
+    const names = resolveTicketGroupNames(t);
+    if (names[0] === groupName) return;
+    t.groupNames = [groupName, ...names.slice(1).filter((n) => n !== groupName)];
+  }
+  function takeOverPoolPendingOwner(t: Ticket): { ok: boolean; from: string | null } {
+    const id = t.id;
     const me = flashHandler.value;
     const from = poolPendingOwnerOf(t);
     if (from === me) return { ok: true, from };
