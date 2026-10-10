@@ -239,9 +239,9 @@ export const NOTIFY_EVENTS: NotifyEvent[] = [
 ];
 
 export const EVENT_SOURCE_META: Record<EventSource, { label: string; color: string; desc: string }> = {
-  dispatch: { label: '工单动作', color: 'blue', desc: '经 WoActionServiceImpl.dispatch，对应后端动作枚举' },
-  'non-dispatch': { label: '独立埋点', color: 'orange', desc: '不经 dispatch，需在各自接口成功后显式触发' },
-  approval: { label: '审批阶段', color: 'purple', desc: '审批流的提交/通过/驳回，动作枚举中为动作的阶段' },
+  dispatch: { label: '工单动作', color: 'blue', desc: '处理人在工单上执行操作时发出' },
+  'non-dispatch': { label: '系统事件', color: 'orange', desc: '工单上发生的非操作类事件，如分派、进池、客户补充、催单、评论 @' },
+  approval: { label: '审批阶段', color: 'purple', desc: '挂起、关闭、强结审批的提交、通过、驳回' },
   timer: { label: '状态定扫', color: 'gold', desc: '每日定时扫描处于特定状态的工单，各发一次事件；发不发由规则条件决定' },
 };
 
