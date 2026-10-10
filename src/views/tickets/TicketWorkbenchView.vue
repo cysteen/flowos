@@ -706,7 +706,7 @@ function onConfirmSaveFilter(name: string) {
     <OpActionModal
       v-model:open="takeoverOpen"
       title="领取工单"
-      :width="460"
+      :width="520"
       ok-text="确认领取"
       cancel-text="取消"
       :ok-disabled="!takeoverGroup"
@@ -716,26 +716,31 @@ function onConfirmSaveFilter(name: string) {
         <div class="tko-head" :title="`${takeoverTicket.no} · ${takeoverTicket.title}`">
           {{ takeoverTicket.no }} · {{ takeoverTicket.title }}
         </div>
-        <div class="tko-kv">
-          <span class="tko-k">当前处理人</span>
-          <span class="tko-v">{{ takeoverFrom ?? '—' }}<span v-if="takeoverEscalated && takeoverFrom" class="tko-note">（二线主责）</span></span>
-        </div>
-        <div class="tko-kv">
-          <span class="tko-k">当前班组</span>
-          <span class="tko-v">{{ takeoverCurGroup ?? '—' }}</span>
-        </div>
-        <div class="tko-kv">
-          <span class="tko-k">领取后处理人</span>
-          <span class="tko-v">{{ takeoverMe }}</span>
-        </div>
-        <div class="tko-kv tko-kv-ctl">
-          <span class="tko-k">领取后班组</span>
-          <a-select
-            v-model:value="takeoverGroup"
-            class="tko-select"
-            :options="takeoverGroupOptions"
-            :allow-clear="false"
-          />
+        <div class="tko-grid">
+          <div class="tko-kv">
+            <span class="tko-k">当前处理人</span>
+            <span
+              class="tko-v"
+              :title="`${takeoverFrom ?? '—'}${takeoverEscalated && takeoverFrom ? '（二线主责）' : ''}`"
+            >{{ takeoverFrom ?? '—' }}<span v-if="takeoverEscalated && takeoverFrom" class="tko-note">（二线主责）</span></span>
+          </div>
+          <div class="tko-kv">
+            <span class="tko-k">当前班组</span>
+            <span class="tko-v" :title="takeoverCurGroup ?? '—'">{{ takeoverCurGroup ?? '—' }}</span>
+          </div>
+          <div class="tko-kv">
+            <span class="tko-k">领取后处理人</span>
+            <span class="tko-v" :title="takeoverMe">{{ takeoverMe }}</span>
+          </div>
+          <div class="tko-kv tko-kv-ctl">
+            <span class="tko-k">领取后班组</span>
+            <a-select
+              v-model:value="takeoverGroup"
+              class="tko-select"
+              :options="takeoverGroupOptions"
+              :allow-clear="false"
+            />
+          </div>
         </div>
         <div class="tko-foot">
           {{ takeoverEscalated
@@ -830,11 +835,26 @@ function onConfirmSaveFilter(name: string) {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.tko-kv { display: flex; align-items: baseline; gap: 12px; }
-.tko-k { flex: none; width: 84px; font-size: 13px; color: #6b7280; text-align: left; }
-.tko-v { flex: 1; min-width: 0; font-size: 14px; color: #111827; }
+/* 两行两列：每格「键 + 值」，四轨网格让左右两列的键、值各自对齐 */
+.tko-grid {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content minmax(0, 1fr);
+  column-gap: 12px;
+  row-gap: 12px;
+  align-items: center;
+}
+.tko-kv { display: contents; }
+.tko-kv:nth-child(even) > .tko-k { padding-left: 12px; }
+.tko-k { font-size: 13px; color: #6b7280; text-align: left; white-space: nowrap; }
+.tko-v {
+  min-width: 0;
+  font-size: 14px;
+  color: #111827;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .tko-note { margin-left: 4px; font-size: 12px; color: #9ca3af; }
-.tko-kv-ctl { align-items: center; }
-.tko-select { flex: 1; min-width: 0; }
+.tko-select { width: 100%; min-width: 0; }
 .tko-foot { font-size: 12px; color: #9ca3af; line-height: 1.5; }
 </style>
