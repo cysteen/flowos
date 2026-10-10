@@ -142,7 +142,12 @@ function pickBatch(action: string, selectedCount: number) {
                 :disabled="selectedCount <= 0 || !!batchTip(action)"
                 @click="pickBatch(action, selectedCount)"
               >
-                <a-tooltip v-if="batchTip(action)" :title="batchTip(action)" placement="left">
+                <a-tooltip
+                  v-if="batchTip(action)"
+                  :title="batchTip(action)"
+                  placement="left"
+                  :overlay-style="{ maxWidth: 'none', whiteSpace: 'nowrap' }"
+                >
                   <span class="batch-menu__label">{{ action }}</span>
                 </a-tooltip>
                 <template v-else>{{ action }}</template>
