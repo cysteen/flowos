@@ -114,6 +114,12 @@ const props = withDefaults(
      */
     columnWidths?: Record<string, number>;
     /**
+     * 本实例**独立的**列宽记忆键（localStorage）。不传时行为不变。
+     * 传了：恢复拖拽把手（附加列也带），列宽以 `columnWidths` / 附加列 `width` 为默认值，
+     * 拖动结果只写这把键，不碰工作台那份全局列宽记忆。刷机池页签用。
+     */
+    columnWidthsStorageKey?: string;
+    /**
      * 操作列前插入 `1fr` 空白列，表宽不足一屏时把「操作」贴到可视区右缘（风险监控左栏占宽时用）。
      */
     flexBeforeAction?: boolean;
@@ -315,27 +321,44 @@ const MIN_COL_WIDTH: Record<string, number> = {
 const DEFAULT_MIN_COL_WIDTH = 56;
 const COL_WIDTH_LS_KEY = 'flowos-ticket-column-widths';
 
+/** 独立记忆键实例的默认列宽：全局默认 ← 调用方 `columnWidths` ← 附加列 `width` */
+function ownDefaultWidths(): Record<string, number> {
+  const base: Record<string, number> = { ...DEFAULT_COL_WIDTH, ...(props.columnWidths ?? {}) };
+  for (const c of props.extraColumns ?? []) base[c.key] = c.width ?? 96;
+  return base;
+}
+
 function loadColWidths(): Record<string, number> {
+  const ownKey = props.columnWidthsStorageKey;
+  const defaults = ownKey ? ownDefaultWidths() : DEFAULT_COL_WIDTH;
   try {
-    const raw = localStorage.getItem(COL_WIDTH_LS_KEY);
-    if (!raw) return { ...DEFAULT_COL_WIDTH };
+    const raw = localStorage.getItem(ownKey ?? COL_WIDTH_LS_KEY);
+    if (!raw) return { ...defaults };
     const parsed = JSON.parse(raw) as Record<string, number>;
-    return { ...DEFAULT_COL_WIDTH, ...parsed };
+    return { ...defaults, ...parsed };
   } catch {
-    return { ...DEFAULT_COL_WIDTH };
+    return { ...defaults };
   }
 }
 
 const colWidths = ref<Record<string, number>>(loadColWidths());
 const resizing = ref<{ key: string; startX: number; startW: number } | null>(null);
 
-/** 传了 `columnWidths` 的实例不参与全局列宽记忆，故也不出拖拽把手（见那个 prop） */
-const resizable = computed(() => !props.columnWidths);
+/** 传了 `columnWidths` 的实例不参与全局列宽记忆，故也不出拖拽把手（见那个 prop）；带独立记忆键的除外 */
+const resizable = computed(() => !props.columnWidths || !!props.columnWidthsStorageKey);
+/** 附加列只在独立记忆键实例上给把手：其 key 不能混进工作台那份全局列宽缓存 */
+const extraResizable = computed(() => !!props.columnWidthsStorageKey);
 
 function colWidthPx(key: string): string {
   const fixed = props.columnWidths?.[key];
-  if (fixed != null) return `${fixed}px`;
+  if (fixed != null && !props.columnWidthsStorageKey) return `${fixed}px`;
   return `${colWidths.value[key] ?? DEFAULT_COL_WIDTH[key] ?? 88}px`;
+}
+
+/** 附加列宽：带独立记忆键时取记忆值，否则照旧取调用方给的 `width` */
+function extraColWidthPx(c: { key: string; width?: number }): string {
+  if (props.columnWidthsStorageKey) return `${colWidths.value[c.key] ?? c.width ?? 96}px`;
+  return `${c.width ?? 96}px`;
 }
 
 function minColWidth(key: string): number {
@@ -343,7 +366,7 @@ function minColWidth(key: string): number {
 }
 
 function saveColWidths() {
-  localStorage.setItem(COL_WIDTH_LS_KEY, JSON.stringify(colWidths.value));
+  localStorage.setItem(props.columnWidthsStorageKey ?? COL_WIDTH_LS_KEY, JSON.stringify(colWidths.value));
 }
 
 function onResizeMove(e: MouseEvent) {
@@ -390,11 +413,11 @@ const gridTemplateColumns = computed(() => {
   parts.push(colWidthPx('title'));
   for (const key of orderedCols.value) {
     parts.push(colWidthPx(key));
-    for (const c of extraColsAfter(key)) parts.push(`${c.width ?? 96}px`);
+    for (const c of extraColsAfter(key)) parts.push(extraColWidthPx(c));
   }
   if (props.showAppointmentColumn) parts.push(colWidthPx('appointment'));
   // 未锚定的附加列坐在预约倒计时之后、操作之前：操作恒在最右，这一条是这张表的既有约定
-  for (const c of tailExtraCols.value) parts.push(`${c.width ?? 96}px`);
+  for (const c of tailExtraCols.value) parts.push(extraColWidthPx(c));
   if (props.flexBeforeAction && showActionColumn.value) parts.push('1fr');
   if (showActionColumn.value) parts.push(colWidthPx('action'));
   return parts.join(' ');
@@ -485,8 +508,19 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
                 @mousedown="onResizeStart($event, colKey)"
               />
             </div>
-            <div v-for="col in extraColsAfter(colKey)" :key="`th-x-${col.key}`" class="th th-cell">
+            <div
+              v-for="col in extraColsAfter(colKey)"
+              :key="`th-x-${col.key}`"
+              class="th th-cell"
+              :class="{ 'th-cell--resizable': extraResizable }"
+            >
               <span class="th-label">{{ col.label }}</span>
+              <span
+                v-if="extraResizable"
+                class="col-resize-handle"
+                :class="{ 'is-active': resizing?.key === col.key }"
+                @mousedown="onResizeStart($event, col.key)"
+              />
             </div>
           </template>
           <div
@@ -508,8 +542,14 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
             把外来 key 混进去会让工作台的列宽缓存里长出一批它永远用不到的键。
           -->
           <template v-for="col in tailExtraCols" :key="`th-x-${col.key}`">
-            <div class="th th-cell">
+            <div class="th th-cell" :class="{ 'th-cell--resizable': extraResizable }">
               <span class="th-label">{{ col.label }}</span>
+              <span
+                v-if="extraResizable"
+                class="col-resize-handle"
+                :class="{ 'is-active': resizing?.key === col.key }"
+                @mousedown="onResizeStart($event, col.key)"
+              />
             </div>
           </template>
           <div
