@@ -6483,7 +6483,7 @@ function toggleWordEnabled(w: RiskWord) {
                   v-if="ticketGradeHint(h)"
                   class="ticket-grade-note"
                   :style="{ color: RISK_LEVEL_STYLE[ticketGradeHint(h)!].color }"
-                  title="工单级风险等级 ＝ 该单已标记条目与已核实成立的命中取最高；同一条改判以最新结论为准"
+                  title="工单级风险等级 ＝ 该单各条结论里最高的一档"
                 >本单当前 <b>{{ ticketGradeHint(h) }}</b> 危</div>
               </div>
             </td>
