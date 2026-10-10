@@ -6,9 +6,10 @@ import type { RiskCollabFieldsCtl } from '@/composables/useRiskCollabFields';
  *「其他」的具体建议（勾了「其他」时条件必填）。
  *
  * 🔴 **两处共用这一个组件**：工单处理页页头「风险管控」弹窗的投诉支
- * （`OpRiskControlModal.vue`）与风险工单池的协同处理弹窗（`OpRiskCollabModal.vue`）。
- * 字段、顺序、占位文案与红字提示只在这里改；风险监控页「风险管控」弹窗下半的投诉支
- * 随后也接这一份。
+ * （`OpRiskControlModal.vue`）与风险监控页「风险管控」弹窗下半的投诉支（已判段条目表那一枚）。
+ * 字段、顺序、占位文案与红字提示只在这里改。
+ * ⚠️ **原先还有一处「风险工单池的协同处理弹窗」**（`OpRiskCollabModal.vue`）——
+ * 它挂在风险监控页的「评估处置工作面」上，那个视图 2026-10-10 整个取消，弹窗随之删除。
  *
  * 取值域与校验全在 `composables/useRiskCollabFields.ts`，本组件只渲染：
  * `ctl` 是那个 composable 的实例 —— 每处**只持一份**。

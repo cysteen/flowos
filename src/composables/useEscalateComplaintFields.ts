@@ -18,9 +18,13 @@ import { COMPLAINT_L1_OPTIONS, COMPLAINT_L2_MAP } from '@/views/tickets/types/cr
  * `fields.advice` 上，选「不升级」时那格改叫「处理意见」、由宿主弹窗自己那一格渲染，
  * 读写的仍是这同一个格子 —— 各处不各存一份。
  *
- * 【三处共用】风险监控页评估处置工作面、风险报备池、工单页**页头「风险管控」**
- * 三处评估弹窗都调本 composable + `EscalateComplaintFields.vue`，
+ * 【三处共用】风险报备池、工单页**页头「风险管控」**、风险监控页**已判段那枚
+ * 「风险管控」弹窗的评估支** —— 三处都调本 composable + `EscalateComplaintFields.vue`，
  * 字段、级联与校验只此一份。
+ * ⚠️ **"三处"这个数 2026-10-10 没有变，但第一条换了落点**：原先那一处写的是
+ * 「风险监控页评估处置工作面」，那个视图整个取消；而风险监控页**仍有一处在用** ——
+ * 它与被删那个弹窗本来就共用同一份 `escalateFields` 实例（同文件内一个实例喂两个弹窗），
+ * 故按文件数仍是三处。**改数之前先 grep，不要照"删了一个视图就减一"推**。
  */
 
 export interface EscalateComplaintFieldsState {

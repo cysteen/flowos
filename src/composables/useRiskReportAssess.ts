@@ -92,7 +92,10 @@ export const ASSESS_ALREADY_CONCLUDED_TIP = '本条已有评估结论，不可�
  *
  * 取数与工单处理页 `useTicketOperation.loadDetail` 同一条链：静态工单库 → 运行时派生单，
  * 叠上本次会话的升级台账（`derivedTickets.escalatedToNoOf`）与停表单（列表 SLA 摘要为「—」）。
- * 三处评估弹窗（风险监控页评估处置工作面 / 风险报备池 / 工单页页头「风险管控」）都调它，判据只此一份。
+ * 两处评估弹窗（风险报备池 / 工单页页头「风险管控」）都调它，判据只此一份。
+ * ⚠️ **原先写的是三处**，第三处是风险监控页的「评估处置工作面」—— 那个视图
+ * 2026-10-10 整个取消。⚠️ 风险监控页**仍在调它**，只是落点换了：已判段那枚
+ * 「风险管控」弹窗提交投诉支之前的终态拦截（`saveEntryTag` 里那一道）走的就是本函数。
  */
 export function isRiskTicketEnded(ticketNo: string): boolean {
   const derived = useDerivedTicketStore();
@@ -230,9 +233,12 @@ export function deriveEscalatedComplaint(input: {
  * `opts.level` ＝「风险管控」弹窗统一后补进来的**风险等级段**（`useRiskLevelFields` 的实例）。
  * 传了它，`openAssess` 会顺手把段重置到这张单上、`confirmAssess` 会在落评估结论**之前**
  * 先校验并落这一段（走 `recordTagFor` 那条与标记同一的入口）。
- * 🔴 **不传就整段不存在**。三处接本 composable 的入口一律传：风险监控页评估处置工作面、
- * 风险报备池、工单处理页页头「风险管控」的**非投诉支**（2026-09-29 拍板"页头这一支也出
+ * 🔴 **不传就整段不存在**。两处接本 composable 的入口一律传：风险报备池、
+ * 工单处理页页头「风险管控」的**非投诉支**（2026-09-29 拍板"页头这一支也出
  * 等级段，与报备池同源"：同一张报备单从哪个入口评，定级这件事都得做）。
+ * ⚠️ **原先是三处**，第三处是风险监控页的「评估处置工作面」—— 那个视图 2026-10-10
+ * 整个取消，它那个 `useRiskLevelFields` 真实例（`assessLevel`）随之删除。
+ * **本 composable 一个字没动**，风险监控页现在不再接它（已判段那枚弹窗有自己的落库路径）。
  * 页头那个弹窗的**投诉支**另有一份自持的风险等级段，但它走 `props.open`、从不经过
  * `openAssess`，两段不会同时出现。
  */

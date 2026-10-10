@@ -638,13 +638,17 @@ function todayPrefix() {
  * ⚠️ **风险等级那一段本身没消失**：已判段那枚「风险管控」弹窗走 `entryTagLevelView`
  * （`makeRiskLevelFieldsView` 包的薄适配器），渲染仍是共享组件 `RiskLevelFields`。
  *
- * 🔴 **`assessDecision` 没删，但它现在零调用方** —— 它在"共享件、不许碰"那张清单上，
- * 按规矩停下报了上游、没有顺手删。实测它的全部消费端（`missAssessDecision` /
- * `assessValid` / `assessAdviceLabel` / `assessAdvicePlaceholder` / `showEscalateFields` /
- * `confirmAssess` / 弹窗模板）都在本轮被删，已判段那一路用的是自己那份
- * `entryTagAssessDecision`，与本 ref 没有任何读写往来。**要清的话连 `assessOkText` 一起。**
+ * 🔴 **`assessDecision` 与 `assessOkText` 也一并删掉了**（2026-10-10 第六笔）：
+ * 前者是那个弹窗的「评估决策」二选一真源，后者是它主按钮的文案
+ * （升级 →「确认升级」/ 其余 →「提交结论」）。它们的全部消费端
+ * （`missAssessDecision` / `assessValid` / `assessAdviceLabel` / `assessAdvicePlaceholder` /
+ * `showEscalateFields` / `confirmAssess` / 弹窗模板的 `a-radio-group` 与 `:ok-text`）
+ * 随弹窗同批删除，删前 grep 复验**本文件零调用方**。
+ * ⚠️ **本页已判段那一路用的是自己那份 `entryTagAssessDecision`**，与被删的 ref 从无读写往来。
+ * ⚠️ **同名的那一对在 `useRiskReportAssess` 里**（它自己 export 的 `assessDecision` /
+ * `assessOkText`，消费端是风险报备池 `RiskReportPoolPanel` 与工单页页头 `OpRiskControlModal`）
+ * —— 与本页这两个**只是同名、不是同一份**，那一对一个字没动。
  */
-const assessDecision = ref<AssessDecision | ''>('');
 
 /**
  * 「投诉工单专属字段」段落（投诉一类 / 二类 / 升级说明三项）：状态与校验走共享
@@ -672,11 +676,6 @@ const assessAdvice = computed({
  * `entryTagAssessAdviceLabel` / `entryTagAssessAdvicePlaceholder` /
  * `showEntryTagAssessEscalate`），一个字没动 —— 要改文案改那一份。
  */
-
-/** 弹窗主按钮：决策＝升级 →「确认升级」，未选或「不升级」→「提交结论」 */
-// 🔴 **零调用方**（唯一消费端是被删掉的那个弹窗的 `ok-text`）。与 `assessDecision` 同因
-// 列在"共享件不许碰"清单上而留下，已报上游等拍 —— 两个要清就一起清。
-const assessOkText = computed(() => (assessDecision.value === '升级' ? '确认升级' : '提交结论'));
 
 /* ============ 「风险管控」弹窗（已判段条目表那一枚）下半的「风险处理措施」段 ============ */
 //
@@ -837,9 +836,9 @@ function commitTagAssess(ticketNo: string, decision: AssessDecision): string {
 /*
  * 🔴 **`openAssess` 已删**（2026-10-10，「评估处置工作面」整个取消）：它是评估弹窗的
  * 唯一打开入口，挂在池行表「操作」列那枚「风险管控」上（非投诉单那一支）。
- * ⚠️ **弹窗本体与 `confirmAssess` 没有删**：它们与打标弹窗下半段共用同一套字段与落库口
- * （`escalateFields` / `assessDecision` / `assessAdvice` / `assessOkText` / `assessOnTag`），
- * 本轮范围内不动那一摊 —— 故弹窗此刻在本页**没有入口**，这是已知遗留、不是漏改。
+ * ⚠️ **弹窗本体、`confirmAssess` 与它自己那套字段逻辑随后一并删净**（同日第五 / 第六笔）。
+ * 真正与已判段那枚弹窗**共用**的只有 `escalateFields` / `assessAdvice` / `assessOnTag`
+ * 三个（外加 `useRiskCollabFields` / `submitTo` 走投诉支），它们照旧有活调用方、一个字没动。
  */
 
 // ---- 本工作面的动作权 ----
@@ -7281,11 +7280,13 @@ function toggleWordEnabled(w: RiskWord) {
       （非投诉单 → 评估结论、投诉单 → 协同处理），而那张表与那个视图已整个取消 ⇒
       `openAssess` / `openCollab` 一走，这两块**再没有任何打开入口**，留着就是死 UI。
       连同删净的有：`assessOpen` / `assessTarget` / `assessSubtitle` / `assessLevel` /
-      `assessTried` / `confirmAssess`、它自己那套字段逻辑（`assessValid` /
-      `assessAdviceLabel` / `assessAdvicePlaceholder` / `missAssessDecision` /
-      `missAssessAdvice` / `showEscalateFields`）、提交前重查 `workbenchAssessBlockOf`、
-      `collabOpen` / `collabTarget`，以及 `RiskAssessSheet` / `OpRiskCollabModal` /
-      `useRiskLevelFields` 三笔随之变空的 import。
+      `assessTried` / `assessDecision` / `assessOkText` / `confirmAssess`、它自己那套字段逻辑
+      （`assessValid` / `assessAdviceLabel` / `assessAdvicePlaceholder` /
+      `missAssessDecision` / `missAssessAdvice` / `showEscalateFields`）、
+      提交前重查 `workbenchAssessBlockOf`、`collabOpen` / `collabTarget`，
+      以及 `RiskAssessSheet` / `OpRiskCollabModal` / `useRiskLevelFields` /
+      `ASSESS_ALREADY_CONCLUDED_TIP` / `isKeywordRow` 五笔随之变空的 import、
+      还有 `.assess-form` 那一条样式。
 
       ⚠️ **「风险管控」这件事本身没消失，三个入口照旧**：
         · 本页已判段那张表每一行的「风险管控」（`openEntryTag`，下半段按原单类型分叉成
