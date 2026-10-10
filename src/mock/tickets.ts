@@ -153,7 +153,9 @@ function buildAftersaleSeeds() {
       asTitle: '智能录音笔 SR302 充电故障寄修检测', asServiceType: '寄修检测',
     }),
   });
-  const t33 = pair.rows[0];
+  // 1025 催补待回：转售后前已被客户催单、坐席已知晓未联系 →「已转出」仍留在催补待回，行内「调剂」置灰。
+  // 补在升级投诉事件之后：groupId 不进派生投诉单的分派；分组名仍取 TICKET_GROUP_NAMES.t33。
+  const t33: Ticket = { ...pair.rows[0], groupId: 'hardware', hasDunning: true, dunningUnread: false };
   seeds.push(claimSeed(pair.created, '王坐席', '2026-09-28 12:05'));
 
   // 同位降级：同一售后单先后由售后转咨询、售后升级投诉建出两张客服单（客服派生位）
@@ -585,23 +587,6 @@ const BASE_TICKETS: Ticket[] = [
   AS_SEEDS.t33,
   // 1025 客服⇄售后互转：① 关联售后 / ③ 售后升级投诉转入 / ④ 售后转咨询转入 / 同位降级 / 承接
   ...AS_SEEDS.seeds,
-  // 1025 催补待回：客户催单后坐席转售后、尚未联系客户 →「已转出」仍留在催补待回，行内「调剂」置灰
-  {
-    id: 'pp-x1', no: 'IFLYZX-20261008-00021', type: '咨询', channel: '电话',
-    title: '智能音箱 X1 无法开机，申请寄修', smartMarks: [],
-    customer: '鲁宁', vip: false, product: '智能音箱 X1',
-    nodeStatus: '已转出', nodeStep: 4, nodeTotal: 5, priority: 'P2',
-    slaText: '04:20:00', slaSub: '充足', slaState: 'ok', slaMinutes: 260,
-    assignee: '陈坐席', tab: 'mine', groupId: 'line1', responded: true,
-    linkedAftersaleNo: 'AS-20261008-41320', linkedAftersaleServiceType: '寄修检测', linkedAftersaleStatus: '待接单',
-    customerPhone: '13500006021', sn: 'SN-X1-41320', productCategory: '智能硬件',
-    createdAt: '2026-10-08 09:20', updatedAt: '2026-10-08 10:45',
-    hasDunning: true, dunningUnread: true,
-    eventTimeline: [{
-      id: 'as-IFLYZX-20261008-00021-transfer', category: 'node', action: 'transfer', who: '陈坐席', role: '二线专员',
-      how: '转售后', what: '售后单 AS-20261008-41320 · 寄修检测', when: '2026-10-08 10:45',
-    }],
-  },
 
   // ================================================================
   // 补充与催单（830）演示单 —— 共 9 张。
@@ -1522,7 +1507,6 @@ const TICKET_GROUP_NAMES: Record<string, string[]> = {
   'fd-d10': ['受理一组'],
   'rk-5': ['受理一组'],
   'rk-9': ['受理一组'],
-  'pp-x1': ['受理一组'],
 
   // ---- 受理二组：跨组调剂转入、翻译机与账务类 ----
   't-feishu': ['受理二组'],
