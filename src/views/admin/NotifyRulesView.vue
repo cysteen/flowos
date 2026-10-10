@@ -401,9 +401,7 @@ function tplBody(ch: NotifyChannel) {
 }
 /** 模板通道：折叠摘要——IM 优先露标题 */
 function tplSummary(ch: NotifyChannel) {
-  const sub = tplSubject(ch);
   const body = tplBody(ch);
-  if (sub) return sub;
   return body.replace(/\s+/g, ' ').slice(0, 48) + (body.length > 48 ? '…' : '');
 }
 /** 该模板被多少条规则引用——说明为什么不能在规则里改 */
