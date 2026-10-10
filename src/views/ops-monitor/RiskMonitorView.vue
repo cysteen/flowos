@@ -4248,8 +4248,9 @@ function untaggedSliceItems(
     depth: 0,
     expandable: true,
     expanded: open,
-    // 🔴 「全部子档」原作「不限子档」（2026-10-09 清「不限」那一轮一并看齐）
-    title: `${title}点它展开／收起子档`,
+    // 🔴 **不在这里写"点它展开／收起子档"**（2026-10-10 裁决）：展开态由行上的
+    // caret（▶ / ▼）表达，悬停再写一遍是解释性提示，本项目明令不加。
+    title,
   };
   if (!open) return [head];
   return [
@@ -4290,9 +4291,9 @@ const railGroups = computed<RailGroup[]>(() => {
       title2: '【待判】自动识别捞到、还没有人给过结论的在办工单；一单多命中按一单计',
       items: [
         ...untaggedSliceItems('kw', '实时监控',
-          '预警词捞进来的那一路，按预设风险等级分档；'),
+          '预警词捞进来的那一路，按预设风险等级分档'),
         ...untaggedSliceItems('focus', '重点工单',
-          '在办的投诉类或 P0 / P1 工单，按优先级分档；'),
+          '在办的投诉类或 P0 / P1 工单，按优先级分档'),
       ],
     },
     {
@@ -4339,7 +4340,7 @@ const railGroups = computed<RailGroup[]>(() => {
           depth: 0,
           expandable: true,
           expanded: taggerExpanded.value,
-          title: '按标记人看这一段的同一批条目；点它展开／收起标记人清单',
+          title: '按标记人看这一段的同一批条目',
         },
         ...(taggerExpanded.value
           ? taggerChips.value.rows.map((t) => ({
@@ -5259,7 +5260,7 @@ function toggleWordEnabled(w: RiskWord) {
         <div class="effect-pane effect-pane--report">
           <h2
             class="pane-title"
-            title="在办工单上已判出风险等级（高 / 中 / 低）的监控条目 · 本块跟着「班组」走"
+            title="在办工单上已判出风险等级（高 / 中 / 低）的监控条目"
           >风险工单</h2>
           <div class="dash-grid dash-grid-4">
             <button
