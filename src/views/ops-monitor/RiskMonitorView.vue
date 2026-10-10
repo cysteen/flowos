@@ -50,9 +50,11 @@ import { useRiskTagStore, type RiskTagEntry } from '@/stores/riskTags';
 // 故各走各的 store，本页只是把两块工作面并在一屏。
 // 池是两条线（A 线自动入池 / B 线二线报备）合并后的那一个工作面，故读的是合并层 riskPool；
 // 枚举与时限等两线共用的口径在 riskShared，两条线各自的模型在各自的 store 里。
+// 🔴 `poolStageStatusOf` 那一笔已删（2026-10-10）：它只喂 `poolStageOf`，
+// 而那一个随「评估处置工作面」整个取消而删除。store 侧那个函数本身一个字没动，
+// 报备池与工单页「风险报备」Tab 照旧在读它
 import {
   isComplaintPoolTicket,
-  poolStageStatusOf,
   useRiskPoolStore,
   type RiskPoolItem,
 } from '@/stores/riskPool';
@@ -67,7 +69,6 @@ import {
   ASSESS_DECISIONS,
   MONITOR_SOURCES,
   NO_RISK,
-  QUEUE_SOURCES,
   REPORT_SOURCE,
   RISK_TAG_RESULTS,
   isPoolLevel,
@@ -76,6 +77,8 @@ import {
   todayStamp,
   // 🔴 `REPORT_ASSESS_LIMIT_MIN` 那一笔已删：它只喂 `assessLimitText`，
   // 而那一个随「等待时长」整列撤出本工作面而删除。参数本身仍是 store 与报备池那一侧的真源
+  // 🔴 `QUEUE_SOURCES` 那一笔已删（2026-10-10）：它只喂工作面「监控来源」那一格的取值域，
+  // 随该视图整个取消而删除。已判段那一格走的是 `MONITOR_SOURCES`（三个取值，含「二线报备」）
   type AssessDecision,
   type MonitorSource,
   type RiskTagResult,
@@ -460,130 +463,25 @@ function tagLevelCountsOf(pick: (e: RiskQueueEntry) => boolean): Record<RiskLeve
  */
 
 //
-// 🔴 **本页不再有「处置阶段」这个轴，工作面也不再有视图档**（2026-10-08 裁决）。
-// 原先这里有一个 `type ReportView` + `reportView` ref（all / open / unassigned /
-// assigning / assessed 五档），给那一排 chip 与两张表的切换用。
-//   · 那一排 chip 与表里同名那一列 —— **整排整列删**（业务侧没有「处置阶段」这个定义）；
-//   · 与 `assessed` 档配套的「已结论」专表（评估人 / 结论时刻 / 评估决策 / 派生投诉单）
-//     —— **整张删**（工作面只管处置、不兼做台账；那三项去左栏「已判」段看）；
-//   · 「结论」那一排 chip —— 改成与来源 / 原单类型 / 风险等级同层的**筛选项**（`decisionFilter`）。
-// 三处的消费端清完之后本变量再无人用，一并删掉。表**恒摆全部条目**（见 `reportAllRows`）。
+// 🔴 **「评估处置工作面」这个视图已整个取消**（2026-10-10 裁决），它私有的那一整套随之删净。
+// 本段原先装的是：
+//   · `poolStageOf` —— 把落库状态（待分派 / 评估中 / 已评估）译成界面词（待领取 /
+//     已领取 / 已结论），唯一的消费端是池行表「操作」列的按行分岔。
+//     ⚠️ 落库值与 store 侧 `poolStageStatusOf` **一个字没动**：报备池与工单页
+//     「风险报备」Tab 照旧在读它，`ReportStatus` 本来就是两条线共用的；
+//   · `sourceFilter` / `sourceSort` / `SOURCE_ORDER` —— 「监控来源」那一维的筛选与
+//     那一列的三态排序。**已判段那张表没有可排序的列，本轮不补**（业务拍板，接受丢失）。
+// ⚠️ 更早几轮的墓碑（`ReportView` / `reportView` 五档 / `poolAssigneeOf`）一并收口到这里。
+//   · `sortBySource` / `cycleSourceSort` —— 那一列的排序实现与三态轮转手势；
+//   · `poolTicketTypeFilter` / `poolLevelFilter` / `decisionFilter` 另三维筛选，连同
+//     `COORD_DECISION` / `DecisionKey` / `DECISION_KEYS`（「结论」那一维的取值域：
+//     升级 / 不升级 / 风险处理建议）。
+// 🔴 **等级那一维不要再去找 `poolLevelFilter`**：已判段那一格的真源是左栏那条轴
+// （`tagLevelFilter`，筛选条上经 `judgedLevelFilter` 代理），与被删掉的那个 ref 从无往来。
+// ⚠️ 更早几轮的墓碑（`onlyOverdue` / `assessLimitText` / `PoolTicketTypeKey` 一族）同此。
+// ⚠️ **`REPORT_ASSESS_LIMIT_MIN` 与 store 的 `isOverdue` / `waitedMinutes` 一个字没动**：
+// 超时这件事在报备池（`RiskReportPoolPanel`）与工单页「风险报备」Tab 那两侧照旧。
 //
-// ⚠️ `unassigned` / `待分派` 这些词是**分派时代留下的**。分派 / 改派 / 批量分派整套已随
-// 第三轮拍板取消，那一态现在的含义就是"**还没人领**"，故界面一律写「待领取」；
-// 落库值不动（`ReportStatus` 是两条线共用的，B 线本轮不解冻），只在 `poolStageOf` 里译一次。
-//
-/**
- * 池行走到哪一步。取 store 的 `status`，不靠"有没有承办人"倒推。
- * 投诉单条目不经领取、没有「已领取」态（§5.4 ⑥），走 `poolStageStatusOf` 读成「待领取」。
- */
-function poolStageOf(r: RiskPoolItem): '待领取' | '已领取' | '已结论' {
-  const status = poolStageStatusOf(r);
-  if (status === '待分派') return '待领取';
-  if (status === '评估中') return '已领取';
-  return '已结论';
-}
-/*
- * 🔴 **原先这里有一个 `poolAssigneeOf`**（池行表「承办人」那一格的取值：待领取的行写「—」，
- * 其余读 `r.assignee`）。随**那一列整个删除**一并删（2026-10-09 裁决）：
- * 承办人的值就是**领取人**，而本工作面的领取整套已撤，源没了。
- * ⚠️ `r.assignee` 这个字段本身照旧在写（`assessOnTag` 把空着的补成结论人、`coordinate` 同理），
- * 报备池那一侧也照旧有自己的承办人一列 —— 删的只是本表这一格。
- */
-
-/**
- * 监控来源筛选（N6：来源是池行的一个属性、不是另一批数据）。
- *
- * 【为什么跨三态保留】来源是条目的固有属性，不随阶段变。切态时清掉它，
- * 人在「待领取 · 重点工单」筛完切到「评估中」会看到全部来源，只会以为筛选失灵。
- * ⚠️ 阶段这一轴已删（2026-10-08 裁决），表恒摆全部条目，这条"跨态保留"现在无条件成立。
- * 🔴 **2026-10-09 改多选**（业务「支持多选」）：`string[]`，空数组 ＝ 全部。
- */
-const sourceFilter = ref<string[]>([]);
-/** 来源排序：默认不排（队列默认按等待时长），点表头在正序/倒序/不排之间轮转 */
-const sourceSort = ref<'none' | 'asc' | 'desc'>('none');
-/** 排序序位取枚举的声明次序，不按字面量排——中文按码点排出来的次序读不出任何业务含义 */
-const SOURCE_ORDER = new Map<MonitorSource, number>(MONITOR_SOURCES.map((s, i) => [s, i]));
-//
-// 🔴 **原先这里有一个 `onlyOverdue`**（"只看超时未评的"那个视图内收窄），随 2026-10-08 裁决
-// 删掉「处置阶段」整排 chip 一并删除：它唯一的置位入口就是那一排的第五枚「超时未评」，
-// 那一枚一走，这个开关再也打不开，留着就是一条恒为 false 的腿（`openBase` / `reportAllRows` /
-// `reportGroupBase` / 收窄标那一行都得为它分叉）。
-// ⚠️ **工作面那一列「等待时长」也已删**（2026-10-09 裁决：等待时长 / 领取 / 释放是
-// 风险报备池那一套）。**本文件此刻一处都不显示等待时长 / 超时**：`rowOverdue` /
-// `rowWaitedText` / `waitedText` 与 `.rr-waited` / `.rr-overdue-tag` 全部随那一列删净。
-// 超时这件事在**报备池**（`RiskReportPoolPanel` 自己那一列）与工单页「风险报备」Tab
-// （`OpRiskMonitorTab`）照旧；store 的 `isOverdue` / `waitedMinutes` 由那两处在用。
-//
-/**
- * 「风险处理建议」——投诉单那一路的收口方式，**与升级 / 不升级并列的第三种结论**。
- * 🔴 它不是 `AssessDecision`（那个枚举归 store，只装评估二选一），
- * 故本页自己给它一个字面量，与那两枚摆在同一排上读。
- * 不摆出来的话，「今日已结论」与下面几枚决策之和会差一条，而那一条谁也找不出来在哪。
- *
- * 🔴 **字面量取短词「建议」**：它同时是那一排指标的**显示文案**，而那一格只有一枚数字的宽度，
- * 摆全称会把「升级 / 不升级」两枚挤到换行。判等一律用本常量，不要再写字面量 ——
- * 界面词再改一次时，改这一处就够。
- */
-const COORD_DECISION = '建议' as const;
-type DecisionKey = AssessDecision | typeof COORD_DECISION;
-/** 三枚决策：升级 / 不升级 来自 store 的枚举，协同是本页并列的第三种收口 */
-const DECISION_KEYS = computed<DecisionKey[]>(() => [...ASSESS_DECISIONS, COORD_DECISION]);
-/**
- * 已评估视图内的收窄：只看某几个结论。
- * 🔴 **2026-10-09 改多选**（业务「支持多选」）：`string[]`，空数组 ＝ 全部。
- */
-const decisionFilter = ref<string[]>([]);
-/*
- * 🔴 **`assessLimitText` 已删**（2026-10-09）：它把处置时限（`REPORT_ASSESS_LIMIT_MIN`）
- * 换算成「N 小时 / N 分钟」的界面词，唯一的消费端是池行表「等待时长」那一格的悬停
- * —— 那一列已随领取 / 释放 / 等待时长整套撤出本工作面而删除，grep 复验零调用方。
- * ⚠️ **参数本身没动**：`REPORT_ASSESS_LIMIT_MIN` 仍是 store 侧超时判定与报备池那一侧的真源。
- */
-
-/**
- * 来源排序。**只分组、不重排** —— 同来源内一律回退到 `tie` 给的次序。
- *
- * ⚠️ **原注释说 tie 是「等待时长」，那是过期的**：等待时长那一列 2026-10-09 已随
- * 领取 / 释放整套撤出本工作面，本文件一处都不显示它，自然也不拿它排。
- * **现在 tie 由各段自己给**（见三个 `sortBySource(...)` 调用点）：
- *   · 待领取 / 已领取 —— `a.at` 正序（**进池时刻**，早的在上）；
- *   · 已结论 —— `concludedAtOf` 倒序（**结论时刻**，刚评完的在上）。
- *
- * 【为什么来源只分组不重排】段内次序本身是有意义的（谁先进池 / 谁刚出结论），
- * 按来源排一次就把它整个丢掉的话，最该先看的那条会沉到某一组的中间。
- *
- * 🔴 **本表一共只有「监控来源」这一列可排**，三态轮转：不排 → 正序 → 倒序 → 不排。
- */
-function sortBySource(rows: RiskPoolItem[], tie: (a: RiskPoolItem, b: RiskPoolItem) => number) {
-  if (sourceSort.value === 'none') return rows;
-  const dir = sourceSort.value === 'asc' ? 1 : -1;
-  return [...rows].sort((a, b) => {
-    const d = ((SOURCE_ORDER.get(a.source) ?? 0) - (SOURCE_ORDER.get(b.source) ?? 0)) * dir;
-    return d !== 0 ? d : tie(a, b);
-  });
-}
-function cycleSourceSort() {
-  sourceSort.value = sourceSort.value === 'none' ? 'asc' : sourceSort.value === 'asc' ? 'desc' : 'none';
-}
-
-/**
- * 池行表的另两维筛选（《【930】》§5.4 ③）：**工单类型**与**风险等级**（高 / 中 / 低）。
- * 与监控来源一样是池行的固有属性，跨阶段保留。
- *
- * 🔴 **「工单类型」2026-10-09 改判**（业务原话「都修改为 工单类型，支持多选」）：
- * 这一维原先是 `PoolTicketTypeKey = '投诉' | '非投诉'` 的**单选二值**，判的是"原单是不是投诉单"；
- * 现在与待判那两路**合成同一维** —— 同取值域（咨询 / 建议 / 商机 / 投诉 / 刷机，
- * 走 `poolTicketTypeOf` 取原单真实类型）、同形态（多选）。空数组 ＝ 不收窄。
- * 连同 `PoolTicketTypeKey` / `POOL_TICKET_TYPE_KEYS` / `poolTicketTypeKeyOf`
- * 三个只为那个二值域存在的符号一并删除（grep 复验过：除这两个筛选器外无人用）。
- *
- * 🔴 **这不动业务分岔**：「这张单是不是投诉单」那条线走的一直是 `isComplaintTicket`
- * （操作列投诉支 / 非投诉支、升级派生、协同按钮共六处），与本维**从来不是同一个判据**，
- * 本轮一个字没碰。
- */
-const poolTicketTypeFilter = ref<string[]>([]);
-const poolLevelFilter = ref<RiskLevel | 'all'>('all');
 /**
  * 池行对应的**整张工单**，给第一格那个标题单元格用；`null` ＝ 工单库与派生库里都查不到。
  *
@@ -599,66 +497,18 @@ function poolTicketTypeOf(r: { ticketNo: string }): string {
   const t = TICKET_BY_NO.get(r.ticketNo) ?? derivedTickets.find(r.ticketNo);
   return t?.type ?? (isComplaintTicket(r.ticketNo) ? '投诉' : '—');
 }
-/**
- * 池行的「风险摘要」：风险备注（标记人为什么判这个等级）；没填备注时退回工单的问题描述 / 标题。
- * 不取条目 `desc` —— 那是入队套话（「投诉类工单自动纳入实时监控」），答不了"风险是什么"。
- */
-function poolRiskSummaryOf(r: RiskPoolItem): string {
-  if (r.tag?.note) return r.tag.note;
-  const t = TICKET_BY_NO.get(r.ticketNo) ?? derivedTickets.find(r.ticketNo);
-  return t?.problemDesc || t?.title || r.desc || '—';
-}
 /*
- * 🔴 **`poolTicketTypeKeyOf` 已删**（2026-10-09）：它把原单真实类型压成「投诉 / 非投诉」二值，
- * 只为那个二值筛选项存在。「工单类型」改成五取值多选之后，两个筛选器都直接读
- * `poolTicketTypeOf`，它再无调用方（grep 复验）。
- * ⚠️ 想判"是不是投诉单"的地方一直走 `isComplaintTicket`，不是这一个，**那六处未动**。
+ * 🔴 **`poolRiskSummaryOf` / `PoolAttr` / `byPoolAttrs` / `bySource` 已删**（2026-10-10，
+ * 「评估处置工作面」整个取消）：
+ *   · `poolRiskSummaryOf` —— 池行表「风险摘要」那一列的取值（风险备注，没填时退回
+ *     工单的问题描述 / 标题）。**已判段那张表不补这一列**（业务拍板，接受丢失）；
+ *   · `byPoolAttrs` 一族 —— 工作面那四维筛选（来源 / 原单类型 / 风险等级 / 结论）的
+ *     一处套用，`skip` 摘掉其中一维给那一维自己的计数算底表。
+ *     ⚠️ 已判段那条筛选条有自己的同形实现（`byJudgedAttrs` + `judgedSourceBase` 一组），
+ *     那一套**一个字没动**。
+ * ⚠️ 更早一轮的 `poolTicketTypeKeyOf` 墓碑同此；"是不是投诉单"那条线一直走
+ * `isComplaintTicket`（六处），与这些筛选维从来不是同一个判据，本轮一个字没碰。
  */
-type PoolAttr = 'source' | 'type' | 'level' | 'decision';
-/**
- * 四维池行筛选一处套用。`skip` 摘掉其中一维 —— 那一维自己那个筛选项上的数要靠
- * "除自己之外"的底表算，让筛选影响自己的数字，选中一个取值之后其余几项全变 0，
- * 人再也看不出该切到哪一项。
- *
- * 🔴 **「结论」是 2026-10-08 新并进来的第四维**（原先它是「已结论」档内的一个收窄，
- * 挂在 `assessedBase` 里）。并进来之后它与另三维**同层**：按这一维筛 ＝ 整表收窄，
- * **没出结论的行（在队那两段）整段不显示** —— 这是业务拍板的口径，不是漏了一支。
- * 🔴 **不给「未出结论」一个取值**：取值域就是 升级 / 不升级 / 风险处理建议 三个。
- */
-function byPoolAttrs(rows: RiskPoolItem[], skip?: PoolAttr) {
-  return rows.filter((r) => {
-    // 多选三维：空数组 ＝ 不收窄
-    if (skip !== 'source' && sourceFilter.value.length && !sourceFilter.value.includes(r.source)) return false;
-    // 取原单真实类型（`poolTicketTypeOf`），与待判那两路同一把尺
-    if (skip !== 'type' && poolTicketTypeFilter.value.length && !poolTicketTypeFilter.value.includes(poolTicketTypeOf(r))) return false;
-    /*
-     * 🔴 风险等级仍是**单选**。
-     *
-     * ⚠️ **这里读的是 `poolLevelFilter`（工作面自己的 ref），与左栏那条轴毫无关系** ——
-     * 它和 `tagLevelFilter` 全文没有任何读写往来。
-     * 只有**「已判」段**那一格是左栏那条轴：`judgedLevelFilter` 是 `tagLevelFilter`
-     * 的可写 computed 代理（见那一段的定义），改它就是改左栏。
-     *
-     * 🔴 **两格都单选，但理由不是同一个，别混着说**：
-     *   · **已判**那一格 —— **结构限制**：它就是左栏那条轴本身，而左栏是单选轨，
-     *     想多选得先把左栏改掉；
-     *   · **工作面**这一格 —— **业务拍板**：它本可以做成多选（同条筛选条另外四格都是多选），
-     *     业务拍"也不改多选，与优先级一致"，是口径统一，不是做不到。
-     *
-     * 【为什么要把这段写清楚】原注释写的是"它与左栏那条轴同一份真源"，**是错的**，
-     * 而且已经害过一次：PRD 那一路照它把"工作面这一格也与左栏同源"写进了册子。
-     */
-    if (skip !== 'level' && poolLevelFilter.value !== 'all' && r.tag?.result !== poolLevelFilter.value) return false;
-    if (skip !== 'decision' && decisionFilter.value.length) {
-      const k = decisionKindOf(r);
-      if (!k || !decisionFilter.value.includes(k)) return false;
-    }
-    return true;
-  });
-}
-function bySource(rows: RiskPoolItem[]) {
-  return byPoolAttrs(rows);
-}
 
 /**
  * **本页的池行只数 A 线**（业务拍板 · 两条线各有各的家）。
@@ -685,35 +535,14 @@ function isALine<T extends { source: MonitorSource }>(r: T): boolean {
   return r.source !== REPORT_SOURCE;
 }
 
-/**
- * **本工作面池行的入选判据 ＝ A 线 ∧ 原单在办**。
- *
- * 🔴 **在办这一道走的是全页唯一那份 `isLiveRow`**（＝ `ticketOfRow` + `isLiveTicket`），
- * 与左栏待判段 / 已判段逐字同一个，不另写一份：三处分叉的话，同一张已进终态的单
- * 会从左栏退出、却还躺在这张处置表里等人领 —— 一屏之内两种在办口径。
- * 🔴 工单库与派生库都查不到的行**照实留着**（`isLiveRow` 对 null 放行），不吞：那是数据异常、不是终态。
- *
- * 下面六处取数（在队两段的底表、已结论底表，以及与它们一一对应的四个计数）全部过这一道，
- * 故 `待领取 + 已领取 + 已结论 ＝ 不限阶段 ＝ 表行数` 这条恒等式在改口径之后自动成立。
+/*
+ * 🔴 **`isPoolRow` / `openBase` / `reportUnassignedRows` / `reportAssigningRows` 已删**
+ * （2026-10-10，「评估处置工作面」整个取消）：它们是那张池行表前两段（待领取 / 已领取）
+ * 的底表与入选判据（＝ A 线 ∧ 原单在办）。
+ * ⚠️ **`isALine` 与全页唯一那份 `isLiveRow` 都保留**：前者另有三处消费端（页头与左栏
+ * 几个派生值），后者是待判段 / 已判段共用的在办判据 —— 本轮一个字没动。
+ * ⚠️ store 侧 `unassignedQueue` / `assigningQueue` 同样没动：报备池那一侧在读它们。
  */
-function isPoolRow<T extends { source: MonitorSource; ticketNo: string }>(r: T): boolean {
-  return isALine(r) && isLiveRow(r);
-}
-
-/** 在队某一态的底表：**不含来源 / 原单类型 / 风险等级三维**（那三个筛选项的数字要靠它算） */
-function openBase(v: 'unassigned' | 'assigning') {
-  const all = v === 'unassigned' ? reportStore.unassignedQueue : reportStore.assigningQueue;
-  return all.filter(isPoolRow);
-}
-
-/** 待领取：还没人领的那一批，客诉专员在这里自领 */
-const reportUnassignedRows = computed(
-  () => sortBySource(bySource(inGroup(openBase('unassigned'))), (a, b) => a.at.localeCompare(b.at)),
-);
-/** 已领取：已被人领走、等结论 */
-const reportAssigningRows = computed(
-  () => sortBySource(bySource(inGroup(openBase('assigning'))), (a, b) => a.at.localeCompare(b.at)),
-);
 
 /*
  * 🔴 **「仅今日」这个开关已整个删掉**（2026-10-09 裁决，业务原话
@@ -728,7 +557,6 @@ const reportAssigningRows = computed(
  * ⇒ 这一段现在**与时间无关**，`assessedBase` 只做"是不是池行"这一道。
  *
  * ⚠️ `todayPrefix` **保留**：它另有六处消费端（扫库记录是否今日、页头那几个"今日"计数）。
- * ⚠️ `concludedAtOf` **保留**：第三段仍按结论时刻倒序排。
  * ⚠️ **报备池那一侧自己的 `assessedTodayOnly`**（`RiskReportPoolPanel`，默认关、有勾选框）
  * 与本页无关，一个字没动。
  */
@@ -743,182 +571,45 @@ function todayPrefix() {
  *
  * 🔴 **三种收口方式各写各的字段**：走评估的落 `assessment`（升级 / 不升级）、
  * 走协同处理的落 `coordination`（投诉单那一路，处理意见 + 建议事项）、
- * 走核实打标的落 `verify`。只读 `assessment` 的话，**协同过的条目会整条从"仅今日"里被筛掉**。
- * ⚠️ 原先与它成对的 `concludedByOf` / `concludedByRoleOf` 只喂「已结论」专表的「评估人」
- * 那一格，那张表已整张删（2026-10-08 裁决：工作面只管处置、不兼做台账，那三项去左栏「已判」看），
- * 两个函数随之删掉。
+ * 走核实打标的落 `verify`。只读 `assessment` 的话，**协同过的条目会整条漏掉**。
+ * ⚠️ **本函数此刻在本页没有调用方**（2026-10-10）：它唯一的消费端是池行表第三段
+ * 「已结论」的排序（结论时刻倒序），那张表随「评估处置工作面」整个删除。
+ * **留着不删**：三种收口各写哪个字段这件事只有这一处写明，重做任何"按结论时刻排"
+ * 的清单都得照它来，而重写一遍必然只读 `assessment`（这个坑本文件已经栽过一次）。
  */
 function concludedAtOf(r: RiskPoolItem) {
   return r.assessment?.at ?? r.coordination?.at ?? r.verify?.at ?? '';
 }
 
-/**
- * 已结论底表：**出过结论的池行，全量、与时间无关**（2026-10-09 裁决）。
- * 🔴 **这里一道筛都不做**：
- *   · 时间 —— 「仅今日」已删（见上方那段）；
- *   · 结论 —— 它 2026-10-08 并成了与来源 / 工单类型 / 风险等级同层的第四维，
- *     统一由 `byPoolAttrs` 过。两处都过的话同一个条件过两遍，
- *     且「结论」那个筛选项自己的计数会被自己筛掉。
+/*
+ * 🔴 **工作面第三段与那五个筛选项计数的整段已删**（2026-10-10，该视图整个取消）：
+ *   · `assessedBase` / `reportAssessedRows` —— 「已结论」那一段的底表与列表
+ *     （结论时刻倒序，走 `concludedAtOf`）；
+ *   · `decisionKindOf` —— 一条池行是哪一种收口（升级 / 不升级 / 风险处理建议，
+ *     只补过打标的返回 null）；
+ *   · `reportGroupBase` / `reportSourceBase` / `sourceCountInView` / `reportTypeBase` /
+ *     `ticketTypeCountInView` / `reportLevelBase` / `poolLevelCountInView` /
+ *     `reportDecisionBase` / `decisionCountInView` —— 那五格筛选项各自
+ *     "摘掉自己这一维再算"的底表与计数。
+ * ⚠️ **已判段那条筛选条的同形一套（`judgedSourceBase` / `judgedTypeBase` 与它们的
+ * options）一个字没动**，计数口径照旧"摘掉自己这一维"。
+ * ⚠️ store 侧 `assessedList` 没动：报备池那一侧在读它。
+ * ⚠️ 页头那三条恒等式（实时监控 + 重点工单 ＝ 待判段总数、风险工单四枚 ≡ 左栏已判、
+ * ΣP0..P3 ＝ Σ五类）与本改动无关，照旧成立。
  */
-const assessedBase = computed(() => reportStore.assessedList.filter(isPoolRow));
-
-/** 已结论列表：结论时刻倒序；四维筛选是视图内条件 */
-const reportAssessedRows = computed(
-  // 已评估这批的默认次序是**评估时刻倒序**，与在队两态的"提交时刻正序"不是一回事，
-  // 故 tie 单独给一份：套用队列那份会让刚评完的一条排到列表末尾去。
-  () => sortBySource(
-    bySource(inGroup(assessedBase.value)),
-    (a, b) => concludedAtOf(b).localeCompare(concludedAtOf(a)),
-  ),
-);
-
-/* ---- A 线池行的几个计数：一并收窄到 A 线 ∧ 原单在办 ∧ 当前班组（口径与 store 那几个 count 逐条对齐，差别就是多出来的这三道）---- */
-//
-// 🔴 **不收窄的话这一屏当场自相矛盾**：一处写「待评估总数 8」、另一处写「待领取 3 · 已领取 2」，
-// 点下去落到的还是同一张表。同屏同一件事只能有一个数，这是本文件反复踩过的那个坑。
-//
-// 🔴 **原先这里有一串只服务筛选区那几排 chip 的计数**（`alineUnassignedCount` /
-// `alineAssigningCount` / `alineOpenCount` / `alineStageAllCount` / `alineOverdueCount`
-// 随「处置阶段」整排删；`alineAssessedList` / `alineConcludedBase` /
-// `alineConcludedTodayCount` / `alineDecisionCounts` 随「结论」那一排删）。
-// **五维全部改成了上沿工具条里的筛选项**，各项的数一律走 `byPoolAttrs` 那一套
-// "摘掉自己这一维再算"（见 `reportSourceBase` 一组），本段不再留第二份计数。
-// ⚠️ 连带消失的是 `待领取 + 已领取 + 已结论 ＝ 不限阶段 ＝ 表行数` 这条恒等式：轴没了，等式
-// 无处可对。**页头那三条（实时监控 + 重点工单 ＝ 待判段总数、风险工单四枚 ≡ 左栏已判、
-// ΣP0..P3 ＝ Σ五类）与本改动无关，照旧成立。**
-//
-// 🔴 **班组这一道（`inGroup`）与表身走同一个判据，少了它说的就是假话**：清单上沿那个班组
-// 单选横跨本页每一档，表身三段各自都过了 `inGroup`（见 `reportUnassignedRows` /
-// `reportAssigningRows` / `reportAssessedRows`）。只过 `isALine` 不过班组的话，切到「受理一组」
-// 之后它仍写着全量、而它下面那张表只躺着这个组的几行 —— 另外四维（来源 / 原单类型 /
-// 风险等级 / 结论，走 `inGroup(reportGroupBase)`）早就跟着班组收窄了，唯独这一处没跟。
-// **复用 `inGroup`、不要另造一份按组反查**：组名由 `groupNameOf` 反查工单库，本页只有那一个口径。
-/**
- * 这一条是**哪一种收口**；null ＝ 只补过打标、还没给出结论（也就是还在队里的那两段）。
- *
- * 🔴 **只补过打标、还没给结论的池行（只有 `verify`、没有 `assessment` / `coordination`）
- * 返回 null —— 它不属于任何一种收口。这是有意为之，不是漏了一种。**
- * 【为什么】`verify` 是打标反向派生出来的只读投影（见 `stores/riskQueue.ts`），
- * 它答的是"这条**成不成立**"，不是"这条**怎么收口**"。一条补完打标就停在那儿的行，
- * 还等着人给升级 / 不升级 / 协同 —— 把它算成一种收口，等于说这条已经处理完了。
- *
- * 🔴 **「结论」那个筛选项的判据就是它**（见 `byPoolAttrs` 与 `decisionCountInView`）：
- * 三个取值 升级 / 不升级 / 风险处理建议 **不覆盖整张表** —— 在队那两段的行一律返回 null，
- * 不属于其中任何一个。故 `三项之和 < 那一枚「全部（N）」`，**这是构造上的事实，不是对不上账**。
- * 归一化后再比：B 线的种子与它自己那份缓存里仍有旧词「接管」，直接比字面量的话，
- * 那一条在「升级」筛选下会凭空消失（见 `riskShared.normalizeDecision`）。
- */
-function decisionKindOf(r: RiskPoolItem): DecisionKey | null {
-  if (r.assessment) return normalizeDecision(r.assessment.decision);
-  if (r.coordination) return COORD_DECISION;
-  return null;
-}
-
-/**
- * 班组筛选项那一枚的底表 ＝ 当前表在**除班组之外**的全部条件下的行。
- * 摘出班组的道理与下面摘出来源的完全一样，见 `reportSourceBase`。
- *
- * 🔴 **恒为三段之和**：「处置阶段」那一轴已随 2026-10-08 裁决删除，这张表不再按档分组，
- * 故这里也不再分叉。与 `reportAllRows` 同进同退：只改一处的话，表里躺着 3 行、
- * 上沿那几格却写着「班组 全部（7）／来源 全部（7）」，筛选项当场变成同屏的第二个数。
- */
-const reportGroupBase = computed(() => [
-  ...openBase('unassigned'),
-  ...openBase('assigning'),
-  ...assessedBase.value,
-]);
-
-/**
- * 来源筛选项那一枚的底表 ＝ 当前表在**除来源之外**的全部条件下的行。
- * 【为什么要把来源摘出去】让来源筛选影响自己那一枚的数字，选中「重点工单」之后
- * 其余几项全变 0，人再也看不出该切到哪一项——筛选器把自己筛没了。
- * 班组不摘：它是**另一层**筛选，选了组之后来源那一枚本就该只数这个组里的条目。
- */
-const reportSourceBase = computed(() => byPoolAttrs(inGroup(reportGroupBase.value), 'source'));
-function sourceCountInView(s: MonitorSource) {
-  return reportSourceBase.value.filter((r) => r.source === s).length;
-}
-/** 工单类型筛选项那一枚的底表（摘掉工单类型这一维） */
-const reportTypeBase = computed(() => byPoolAttrs(inGroup(reportGroupBase.value), 'type'));
-function ticketTypeCountInView(k: string) {
-  return reportTypeBase.value.filter((r) => poolTicketTypeOf(r) === k).length;
-}
-/** 风险等级筛选项那一枚的底表（摘掉风险等级这一维） */
-const reportLevelBase = computed(() => byPoolAttrs(inGroup(reportGroupBase.value), 'level'));
-function poolLevelCountInView(lv: RiskLevel) {
-  return reportLevelBase.value.filter((r) => r.tag?.result === lv).length;
-}
-/**
- * 结论筛选项那一枚的底表（摘掉结论这一维）。
- * 🔴 **三个取值之和 < 那一枚「全部（N）」**，与另三维不同：在队那两段的行没有结论
- * （`decisionKindOf` 返回 null），不属于任何一个取值。「全部（N）」里的 N 是
- * **不按这一维收窄时表里有多少行**，与标签逐字相符；别拿三项去加它。
- */
-const reportDecisionBase = computed(() => byPoolAttrs(inGroup(reportGroupBase.value), 'decision'));
-function decisionCountInView(k: DecisionKey) {
-  return reportDecisionBase.value.filter((r) => decisionKindOf(r) === k).length;
-}
-/**
- * 空态里复述**当前生效的那几个筛选值**。
- * 🔴 **不能只点名其中一个**：五维并排摆着，筛空了往往是几维叠出来的 ——
- * 只写「不升级」会让人去摘那一个，摘完还是空的（真正把它筛空的是同时开着的「高危」）。
- * 界面词与筛选项上的取值逐字相同，摘哪一个一目了然。
- */
-const poolNarrowedText = computed(() => [
-  // 四维多选（班组 / 来源 / 工单类型 / 结论）：选了几个就并排写几个，一个没选 ＝ 这一维没收窄
-  ...groupFilter.value,
-  ...sourceFilter.value,
-  ...poolTicketTypeFilter.value,
-  // 风险等级仍是单选（工作面自己的 `poolLevelFilter`，**与左栏那条轴无关**，见 `byPoolAttrs` 里那段）
-  poolLevelFilter.value === 'all' ? 'all' : riskLevelText(poolLevelFilter.value),
-  ...decisionFilter.value.map((d) => (d === COORD_DECISION ? '风险处理建议' : d)),
-].filter((v) => v !== 'all').join(' · '));
-
-/**
- * 工作面那张表 ＝ 三段**按时间序首尾相接**，不重排、**恒摆全部条目**。
- * 🔴 顺序即时间序（待领取 → 已领取 → 已结论）：这三个取值之间有先后，混排成一坨会把它抹掉。
- *
- * 🔴 **三段恒接满**：原先第三段在开着「超时未评」时整段不接，那枚 chip 已随「处置阶段」
- * 整排删除（2026-10-08 裁决），这里不再分叉。
- * ⚠️ **池内阶段在界面上现在只分"出过结论没有"两档**（2026-10-09 裁决：领取整套撤掉）——
- * 「操作」列未出结论的摆一枚「风险管控」、已结论写「—」。待领取 / 已领取两态仍在落库里，
- * 界面不再据此分岔。
- */
-const reportAllRows = computed(() => [
-  ...reportUnassignedRows.value,
-  ...reportAssigningRows.value,
-  ...reportAssessedRows.value,
-]);
-
-//
-// 🔴 **左栏那条「按处置阶段」的轴已不存在了**（2026-10-07 裁决：领取逻辑未闭环，
-// 且与本工作面这张池行表的「处置阶段」列重复）。本文件曾为它先后留下两段墓碑注释
-// （`poolStageTotal` / `poolStageCounts` 那一对，和后来同源重做的 `pooledStageCount`），
-// 两段一并收口到这里：**池内阶段只在这张池行表上看**，左栏不再有第二处。
-// 当年那对函数之所以必须废掉，原因仍然成立、且值得记着：它们数的是本工作面的池行
-// （`RiskPoolItem`），而左栏两个轴数的是监控条目（`RiskQueueEntry`）——
-// 同一批单、不同对象，列跟着不同，且「已结论」那一份带着「仅今日」的默认收窄会让合计随日期漂。
-//
-/**
- * 工作面那张表的行 ＝ `reportAllRows`，**恒等**。
- * 🔴 **原先这里按 `reportView` 分五支**（不限阶段 / 待领取 + 已领取 / 待领取 / 已领取 / 已结论），
- * 另有一张「已结论」专表与它配套。「处置阶段」整排 chip、那张专表与 `reportView` 本身
- * 已随 2026-10-08 裁决一并删除，这里收成一条直路。
- * 一并删掉的是 `reportOpenRows`（`open` 档专用）、`setReportView`、`setPoolStage`、
- * `poolStageChipOn` —— 它们的消费端全在那一排上。
- */
-const reportRows = computed(() => reportAllRows.value);
 
 /*
- * 🔴 **`drillReport` 已删**（2026-10-10）：它是本页唯一一处 `setListView('report')`，
- * 随「评估处置工作面」整个取消一并删除。页头「风险工单」四格现在下钻到
- * **左栏「已判」段**（见 `drillPooled`），那四个数与已判段恒等。
- * 一并删掉的还有它清的那四维（`sourceFilter` / `poolTicketTypeFilter` /
- * `poolLevelFilter` / `decisionFilter`，工作面专用）与池行表自己的翻页状态
- * （`reportPageCurrent` / `reportPageSize` / `pagedReportRows` / `setReportPage`
- * 以及那个把它收回第一页的 watch）。
- * ⚠️ `groupFilter` **不在其中**：它是三条筛选条共用的那一份，已判段照它收窄，
+ * 🔴 **工作面那张表本身与它的下钻、空态、翻页也已删**（2026-10-10）：
+ *   · `poolNarrowedText` —— 空态里复述当前生效的那几个筛选值；
+ *   · `reportAllRows` / `reportRows` —— 三段按时间序首尾相接的那张表的行；
+ *   · `drillReport` —— 本页唯一一处 `setListView('report')`；页头「风险工单」四格
+ *     现在下钻到**左栏「已判」段**（见 `drillPooled`），那四个数与已判段恒等；
+ *   · `reportPageCurrent` / `reportPageSize` / `pagedReportRows` / `setReportPage`
+ *     与那个把页码收回第一页的 watch —— 池行表自己的翻页状态。
+ * ⚠️ `groupFilter` **不随之删**：它是待判 / 已判两条筛选条共用的那一份，已判段照它收窄，
  * 故下钻仍要清它，这一笔留在 `drillPooled` 里。
+ * ⚠️ 更早几轮的墓碑（左栏「按处置阶段」那条轴、`reportView` 五档与 `reportOpenRows` /
+ * `setReportView` / `setPoolStage` / `poolStageChipOn` 一族）一并收口到这里。
  */
 
 /*
@@ -1138,20 +829,13 @@ function commitTagAssess(ticketNo: string, decision: AssessDecision): string {
   return escalate ? '并直接给出结论：升级' : '并直接给出结论：不升级';
 }
 
-function openAssess(r: RiskPoolItem) {
-  // 🔴 门禁与按钮同一个判据（`canAssessRow`：角色 + 未出结论），按钮本就只对它渲染，
-  // 这道是兜底。**原先这里拦的是"还没有人领取"** —— 领取整套已撤（2026-10-09 裁决），
-  // 那句提示会让人去找一个不存在的「领取」按钮。
-  if (!canAssessRow(r)) { message.warning('本条已有评估结论，或你没有风险评估权'); return; }
-  assessTarget.value = r;
-  assessDecision.value = '';
-  assessTried.value = false;
-  // 结论正文（升级说明 / 处理意见）与投诉一类 / 二类同在 escalateFields，reset 一次清完
-  escalateFields.reset();
-  // 风险等级段：把现行等级灌回这张单（没有就留空并转必填），见 useRiskLevelFields.reset
-  assessLevel.reset(r.ticketNo);
-  assessOpen.value = true;
-}
+/*
+ * 🔴 **`openAssess` 已删**（2026-10-10，「评估处置工作面」整个取消）：它是评估弹窗的
+ * 唯一打开入口，挂在池行表「操作」列那枚「风险管控」上（非投诉单那一支）。
+ * ⚠️ **弹窗本体与 `confirmAssess` 没有删**：它们与打标弹窗下半段共用同一套字段与落库口
+ * （`escalateFields` / `assessDecision` / `assessAdvice` / `assessOkText` / `assessOnTag`），
+ * 本轮范围内不动那一摊 —— 故弹窗此刻在本页**没有入口**，这是已知遗留、不是漏改。
+ */
 
 // ---- 本工作面的动作权 ----
 //
@@ -1177,36 +861,11 @@ function openAssess(r: RiskPoolItem) {
  * ⚠️ **不要改用 `canTagRiskOnTicketPage`**（那一份只含客诉专员、没有管理员，还掺着
  * 工单类型与来源两维）；也**不是 `canReleaseAnyRiskReport`**（那只是管理员兜底释放）。
  *
- * 消费端三处：`canAssessRow`（工作面评估）· `canAssessOnTag`（打标弹窗里出不出结论段）·
- * 模板里投诉单那一支的「风险管控」（协同处理）。
+ * 消费端两处：`canAssessOnTag`（打标弹窗里出不出结论段）· `canRiskTag` 那一路。
+ * ⚠️ **原先还有第三处 `canAssessRow`**（工作面池行表那枚「风险管控」的门禁），
+ * 随该视图删除一并删（2026-10-10）。
  */
 const canClaim = computed(() => canClaimRiskReport(user.roleKey));
-
-/**
- * 这一条能不能由**当前登录的人**在工作面上给结论 —— **按角色**（2026-10-09 裁决）。
- *
- * 🔴 **原先是"本人名下的「已领取」态"**（`r.status === '评估中' && r.assignee === user.name`，
- * PRD §5.4 / §9 规则 22 的领取门）。业务判「等待时长、领取、释放是风险报备池的逻辑，
- * 你这是搞混了吧」，领取在本工作面整套撤掉 —— 那道门的前提（有人领过、落款写的是他的名字）
- * 随之不成立，留着等于**谁都评不了**（没人领过，恒 false）。
- * ⇒ 改成：**有风险评估权的角色对尚未出结论的条目都能评**。
- *
- * 🔴 **角色判据取仓里现成那一份、不另写**：`canClaim` ＝ 全站共享的
- * `canClaimRiskReport`（客诉专员 + 三个管理员 scope），正是 v1.24 拍板的
- * 「领取 / 风险评估 / 协同处理三件事客诉专员与管理员同权」那一份
- * （见 `config/roles.ts` 管理员那段的说明）。投诉督导不在其中 ——
- * 他在池子里**可见但不出动作**，这一条口径一个字没改。
- *
- * 🔴 **状态这一道还在、只换了判据**：只收**进了池、还没出结论**的那两态（待分派 / 评估中），
- * 与 store 侧 `assessOnTag` 的门禁（`isPooledStatus` + 本页这道"未出结论"）对齐。
- * 已出结论的行在模板里走另一支、写「—」。
- *
- * ⚠️ **并发不靠这道门接**：撤掉领取之后两个客诉专员可能同时打开同一条，
- * 拦在**提交前重查**那一处（`workbenchAssessBlockOf`：已出结论 ⇒ 整次提交拦下）。
- */
-function canAssessRow(r: RiskPoolItem) {
-  return canClaim.value && (r.status === '待分派' || r.status === '评估中');
-}
 
 /**
  * 工作面这一处**提交结论前的重查**（§5.6 校验末两条 / §9 规则 29）。
@@ -1271,19 +930,14 @@ function workbenchAssessBlockOf(
  */
 const collabOpen = ref(false);
 const collabTarget = ref<RiskPoolItem | null>(null);
-function openCollab(r: RiskPoolItem) {
-  if (!canClaim.value) {
-    message.warning('协同处理归客诉专员与管理员');
-    return;
-  }
-  // 本单已进终态时拦下（§5C.2），与工单页底栏那条路同一口径；终态判据与评估入口共用
-  if (isRiskTicketEnded(r.ticketNo)) {
-    message.warning('本单已结束，无法协同处理');
-    return;
-  }
-  collabTarget.value = r;
-  collabOpen.value = true;
-}
+/*
+ * 🔴 **`openCollab` 已删**（2026-10-10，「评估处置工作面」整个取消）：它是协同弹窗的
+ * 唯一打开入口，挂在池行表「操作」列那枚「风险管控」上（投诉单那一支），
+ * 门禁两道（角色 `canClaim` + 原单未进终态 `isRiskTicketEnded`）。
+ * ⚠️ **弹窗本体没有删**（它与打标弹窗下半段共用 `useRiskCollabFields` / `submitTo`），
+ * 故此刻在本页**没有入口**，这是已知遗留、不是漏改。
+ * ⚠️ 协同处理这件事本身没消失：工单页底栏那一枚「协同处理」一个字没动。
+ */
 
 /**
  * 评估弹窗的**副标题 ＝ 来源 · 单号**（与工单页页头「风险管控」弹窗逐字同形）。
@@ -5013,67 +4667,15 @@ const groupFilterOptions = computed(() => [
 ]);
 
 /*
- * 工作面那四个下拉（监控来源 / 原单类型 / 风险等级 / 结论）：**与「班组」同一套控件、
- * 同一副标签写法**（`全部X（N）` / `取值（N）`）。2026-10-08 裁决把四维从筛选区那几排 chip
- * 改成了与班组并排的筛选项，**筛选行为、计数口径与表的联动一个字没改** ——
- * 各项的数一律取"摘掉自己这一维"之后的底表（`reportSourceBase` 一组），
- * 否则选中一项之后其余几项全变 0，筛选器把自己筛没了。
- * 🔴 **只在「评估处置」工作面上摆**（见模板里那四格的 `v-if`）：四维是池行的属性，
- * 这条工具条另一个落点（实时监控的「重点工单」等路）摆的不是池行。
+ * 🔴 **工作面那四个下拉的选项源已删**（2026-10-10，该视图整个取消）：
+ * `sourceFilterOptions`（监控来源）· `poolTicketTypeOptionKeys` / `poolTicketTypeFilterOptions`
+ * （原单类型）· `poolLevelFilterOptions`（风险等级）· `decisionFilterOptions`（结论）。
+ * ⚠️ **已判段那几格的同形实现（下面这一段）一个字没动**：同一套控件、同一副标签写法
+ * （下拉里 `取值（N）`、选中后的 `tagLabel` 不带计数、总数写在 placeholder 上），
+ * 计数一律"摘掉自己这一维"再算。要改形态仍然只改那一处，不要在这里重开一份。
  */
-const sourceFilterOptions = computed(
-  () => QUEUE_SOURCES.map((s) => ({ value: s, label: `${s}（${sourceCountInView(s)}）`, tagLabel: s })),
-);
-/**
- * 「工单类型」下拉（多选）。
- * 🔴 **取值域从本路真出现过的类型派生**，不写死常量 —— 与待判那两路的
- * `untaggedTypeOptions` 同一条 idiom（"选了必有结果"）。次序按**本路首次出现**的先后，
- * 不另排：同一批数据两次进来要给出同一个次序。
- * 🔴 **计数照旧"摘掉自己这一维"**（底表 `reportTypeBase`），不然选中一项之后其余几项全变 0。
- * ⚠️ **总数不在选项里**：多选的"全部"＝ 清空选择、不是一行可选项，
- * 故 `全部（N）` 挪到 placeholder（见 `attrFilterCells` 里这一格的 `placeholder`）。
- */
-const poolTicketTypeOptionKeys = computed(() => {
-  const seen: string[] = [];
-  for (const r of reportTypeBase.value) {
-    const k = poolTicketTypeOf(r);
-    if (k && !seen.includes(k)) seen.push(k);
-  }
-  return seen;
-});
-/*
- * 🔴 **`tagLabel` ＝ 选中之后回显在控件里那枚标签上的字，不带计数**（2026-10-09，
- * 业务原话「工单类型的长度压缩下」）：下拉里要带计数（那儿才是用来挑的地方，
- * `投诉（7）`），而选完之后标签只需答"筛的是哪一类"（`投诉`）——
- * 计数留在标签上白占 ~54px，整格因此被迫撑到 186。
- * 模板侧靠 `option-label-prop="tagLabel"` 取它，见那条 `v-for` 里的多选分支。
- */
-const poolTicketTypeFilterOptions = computed(
-  () => poolTicketTypeOptionKeys.value.map((k) => ({
-    value: k,
-    label: `${k}（${ticketTypeCountInView(k)}）`,
-    tagLabel: k,
-  })),
-);
-/**
- * 「结论」下拉。取值域恒为三个：升级 / 不升级 / 风险处理建议。
- * 🔴 **界面词一律写全称「风险处理建议」**：`COORD_DECISION` 那个短词只是判等用的常量键，
- * 不要让它漏到界面上 —— 同一个取值在两处写两个名字，读的人会以为是两件事。
- * 🔴 三项之和 < 那一枚「全部（N）」，见 `reportDecisionBase` 的注释（在队两段没有结论）。
- */
-const decisionFilterOptions = computed(
-  () => DECISION_KEYS.value.map((k) => {
-    const text = k === COORD_DECISION ? '风险处理建议' : k;
-    return { value: k, label: `${text}（${decisionCountInView(k)}）`, tagLabel: text };
-  }),
-);
-/** 「风险等级」下拉。取值域取全站那一份 `RISK_LEVELS`，界面词走 `riskLevelText`（高危 / 中危 / 低危） */
-const poolLevelFilterOptions = computed(() => [
-  { value: 'all', label: `全部（${reportLevelBase.value.length}）` },
-  ...RISK_LEVELS.map((lv) => ({ value: lv, label: `${riskLevelText(lv)}（${poolLevelCountInView(lv)}）` })),
-]);
 
-/* ---- 「已判」段那条筛选条的四格（2026-10-09 裁决）。班组那一格与工作面共用，另三格在这里 ---- */
+/* ---- 「已判」段那条筛选条的四格（2026-10-09 裁决）。班组那一格与待判那条共用，另三格在这里 ---- */
 /**
  * 「风险等级」那一格 ＝ **左栏那一轴的代理，不是第二份状态**。
  * 真源只有 `tagLevelFilter` 一个：左栏点「高危」这一格就显示「高危」，
