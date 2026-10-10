@@ -2836,7 +2836,7 @@ function toggleTicketPick(ticketId: string) {
  * 🔴 走 `columnWidths` 这个 prop 而不是去改工作台的默认值：那份默认是全局 localStorage，
  * 改了会把工作台的列一起改窄。传了它的实例同时也不出拖拽把手 —— 在这里拖窄一列
  * 会写回那份全局记忆，工作台跟着变。
- * 合计 ＝ 16 + 200 + 168 + 100 + 46 + 76 + 96 + 88 + 108 + 88 + 120 + 120 + 1fr + 132。
+ * 合计以本常量各列之和为准（另加勾选列、1fr 填充列）。
  */
 const TICKET_LIST_COL_WIDTHS: Record<string, number> = {
   title: 200,
