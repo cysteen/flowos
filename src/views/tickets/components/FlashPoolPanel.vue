@@ -5,11 +5,14 @@
  * 数据＝一线刷机池中未认领的刷机单（取数与排序在 `useTicketWorkbench.flashPoolRows`，按进池时间正序）；
  * 列：单号 / 标题 · 转人工原因 · 失败原因 · 产品型号 · 进池时间 · SLA · 操作「领取」。
  * 表格复用 `TicketRichList`：列目录列全部关掉，其余列走附加列插槽，SLA 两行口径与工单列表同源。
+ * 视觉与工作台其他页签对齐：搜索框照 `TicketToolbar` 同款，SLA / 产品格照列表同款样式，
+ * 列宽可拖（独立记忆键，不碰工作台的全局列宽），操作列贴右。
  */
 import { computed, ref } from 'vue';
+import { SearchOutlined } from '@ant-design/icons-vue';
 import TicketRichList from './TicketRichList.vue';
 import { TICKET_LIST_COLUMN_KEYS } from '@/views/tickets/composables/ticketListColumnCatalog';
-import { slaFirstLine, slaResolveLine } from '@/views/tickets/utils/ticketListCells';
+import { isFlashSlaIdle, slaFirstLine, slaResolveLine } from '@/views/tickets/utils/ticketListCells';
 import { flashFailCellText, flashHandoffCellText } from '@/views/tickets/utils/flashPoolCells';
 import { useFlashStore } from '@/stores/flash';
 import type { Ticket } from '@/views/tickets/types/ticket';
@@ -42,8 +45,9 @@ const EXTRA_COLUMNS = [
   { key: 'flashSla', label: 'SLA', width: 120 },
 ];
 
-/** 本实例固定列宽，不参与工作台列宽记忆 */
+/** 本实例默认列宽；拖动结果只记在 `COLUMN_WIDTHS_KEY` 下，不参与工作台列宽记忆 */
 const COLUMN_WIDTHS = { title: 360, action: 96 };
+const COLUMN_WIDTHS_KEY = 'flowos-flash-pool-column-widths';
 
 function rowActions() {
   return [{ label: '领取', primary: true }];
@@ -58,6 +62,7 @@ function onAction(label: string, t: Ticket) {
   <div class="flash-pool">
     <div class="flash-pool__bar">
       <div class="flash-pool__search">
+        <SearchOutlined :style="{ color: '#9CA3AF', fontSize: '14px' }" />
         <input v-model="search" class="flash-pool__input" placeholder="工单号 / 手机号" />
       </div>
     </div>
@@ -69,6 +74,8 @@ function onAction(label: string, t: Ticket) {
         :visible-columns="HIDDEN_CATALOG"
         :extra-columns="EXTRA_COLUMNS"
         :column-widths="COLUMN_WIDTHS"
+        :column-widths-storage-key="COLUMN_WIDTHS_KEY"
+        flex-before-action
         :row-actions-fn="rowActions"
         :empty-kind="search.trim() ? 'search' : 'none'"
         @action="onAction"
@@ -76,21 +83,24 @@ function onAction(label: string, t: Ticket) {
         @click-no="emit('open', $event)"
       >
         <template #cell-flashHandoff="{ ticket }">
-          <span class="fp-text">{{ flashHandoffCellText(ticket) }}</span>
+          <span class="fp-text" :title="flashHandoffCellText(ticket)">{{ flashHandoffCellText(ticket) }}</span>
         </template>
         <template #cell-flashFail="{ ticket }">
           <span class="fp-text" :title="flashFailCellText(ticket)">{{ flashFailCellText(ticket) }}</span>
         </template>
         <template #cell-flashModel="{ ticket }">
-          <span class="fp-text" :title="ticket.flash?.info.productModel">{{ ticket.flash?.info.productModel || '—' }}</span>
+          <span class="fp-product" :title="ticket.flash?.info.productModel">{{ ticket.flash?.info.productModel || '—' }}</span>
         </template>
         <template #cell-flashPoolAt="{ ticket }">
-          <span class="fp-time">{{ flash.poolEnteredAtOf(ticket.no).slice(0, 16) || '—' }}</span>
+          <span class="fp-text">{{ flash.poolEnteredAtOf(ticket.no).slice(0, 16) || '—' }}</span>
         </template>
         <template #cell-flashSla="{ ticket }">
-          <span class="fp-sla">
-            <span :style="{ color: slaResolveLine(ticket).color }">解决：{{ slaResolveLine(ticket).text }}</span>
-            <span :style="{ color: slaFirstLine(ticket).color }">首响：{{ slaFirstLine(ticket).text }}</span>
+          <span v-if="isFlashSlaIdle(ticket)" class="fp-sla">
+            <span class="fp-sla-line" :style="{ color: slaResolveLine(ticket).color }">—</span>
+          </span>
+          <span v-else class="fp-sla">
+            <span class="fp-sla-line" :style="{ color: slaResolveLine(ticket).color }">解决：{{ slaResolveLine(ticket).text }}</span>
+            <span class="fp-sla-line" :style="{ color: slaFirstLine(ticket).color }">首响：{{ slaFirstLine(ticket).text }}</span>
           </span>
         </template>
       </TicketRichList>
@@ -114,15 +124,23 @@ function onAction(label: string, t: Ticket) {
   display: flex;
   justify-content: flex-end;
 }
+/* 搜索框：照 TicketToolbar 的 .wb-toolbar__search 同款 */
 .flash-pool__search {
   display: flex;
   align-items: center;
-  width: 240px;
-  height: 32px;
+  gap: 8px;
+  width: 220px;
+  height: 36px;
   padding: 0 10px;
   background: #fff;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #d1d5db;
   border-radius: 6px;
+  box-sizing: border-box;
+  flex: none;
+}
+.flash-pool__search:focus-within {
+  border-color: #1a6fff;
+  box-shadow: 0 0 0 2px rgb(26 111 255 / 10%);
 }
 .flash-pool__input {
   flex: 1;
@@ -130,8 +148,11 @@ function onAction(label: string, t: Ticket) {
   border: none;
   outline: none;
   font-size: 13px;
-  color: #111827;
+  color: #374151;
   background: transparent;
+}
+.flash-pool__input::placeholder {
+  color: #9ca3af;
 }
 .flash-pool__card {
   background: #fff;
@@ -146,6 +167,7 @@ function onAction(label: string, t: Ticket) {
 .flash-pool__pager {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   padding: 12px 20px;
   border-top: 1px solid #e5e7eb;
   flex: none;
@@ -154,20 +176,34 @@ function onAction(label: string, t: Ticket) {
   font-size: 13px;
   color: #6b7280;
 }
+/* 普通文本格：照列表 .plain-text */
 .fp-text {
+  font-size: 12px;
+  color: #374151;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.fp-time {
-  font-variant-numeric: tabular-nums;
+/* 产品型号：照列表「产品」列 .product-name */
+.fp-product {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* SLA 两行：照列表 .cell-sla / .sla-line */
 .fp-sla {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  align-items: flex-start;
+}
+.fp-sla-line {
   font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
   white-space: nowrap;
 }
 </style>
