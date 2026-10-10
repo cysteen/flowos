@@ -585,6 +585,23 @@ const BASE_TICKETS: Ticket[] = [
   AS_SEEDS.t33,
   // 1025 客服⇄售后互转：① 关联售后 / ③ 售后升级投诉转入 / ④ 售后转咨询转入 / 同位降级 / 承接
   ...AS_SEEDS.seeds,
+  // 1025 催补待回：客户催单后坐席转售后、尚未联系客户 →「已转出」仍留在催补待回，行内「调剂」置灰
+  {
+    id: 'pp-x1', no: 'IFLYZX-20261008-00021', type: '咨询', channel: '电话',
+    title: '智能音箱 X1 无法开机，申请寄修', smartMarks: [],
+    customer: '鲁宁', vip: false, product: '智能音箱 X1',
+    nodeStatus: '已转出', nodeStep: 4, nodeTotal: 5, priority: 'P2',
+    slaText: '04:20:00', slaSub: '充足', slaState: 'ok', slaMinutes: 260,
+    assignee: '陈坐席', tab: 'mine', groupId: 'line1', responded: true,
+    linkedAftersaleNo: 'AS-20261008-41320', linkedAftersaleServiceType: '寄修检测', linkedAftersaleStatus: '待接单',
+    customerPhone: '13500006021', sn: 'SN-X1-41320', productCategory: '智能硬件',
+    createdAt: '2026-10-08 09:20', updatedAt: '2026-10-08 10:45',
+    hasDunning: true, dunningUnread: true,
+    eventTimeline: [{
+      id: 'as-IFLYZX-20261008-00021-transfer', category: 'node', action: 'transfer', who: '陈坐席', role: '二线专员',
+      how: '转售后', what: '售后单 AS-20261008-41320 · 寄修检测', when: '2026-10-08 10:45',
+    }],
+  },
 
   // ================================================================
   // 补充与催单（830）演示单 —— 共 9 张。
@@ -1505,6 +1522,7 @@ const TICKET_GROUP_NAMES: Record<string, string[]> = {
   'fd-d10': ['受理一组'],
   'rk-5': ['受理一组'],
   'rk-9': ['受理一组'],
+  'pp-x1': ['受理一组'],
 
   // ---- 受理二组：跨组调剂转入、翻译机与账务类 ----
   't-feishu': ['受理二组'],

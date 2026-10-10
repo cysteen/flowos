@@ -321,10 +321,21 @@ function onAssignSubmit(p: AssignSubmitPayload) {
 /**
  * 催补待回 · 行内动作（PRD-02 §7⑤-B）：「领取」人人有；「调剂」只给二线班组长 / 投诉督导 /
  * 三类管理员（与指派同一组角色），且行要满足 `canTransferTicket`。
+ * 已转出（非诉单转售后、等待售后回传）的单不支持调剂：「调剂」置灰，悬停出提示。
  */
-function poolPendingRowActions(t: Ticket): { label: string; primary?: boolean }[] {
-  const acts: { label: string; primary?: boolean }[] = [{ label: '领取', primary: true }];
-  if (canAssign.value && canTransferTicket(t)) acts.push({ label: '调剂' });
+function poolPendingRowActions(
+  t: Ticket,
+): { label: string; primary?: boolean; disabled?: boolean; tip?: string }[] {
+  const acts: { label: string; primary?: boolean; disabled?: boolean; tip?: string }[] = [
+    { label: '领取', primary: true },
+  ];
+  if (canAssign.value && canTransferTicket(t)) {
+    acts.push(
+      t.nodeStatus === '已转出'
+        ? { label: '调剂', disabled: true, tip: '工单已转出，不支持调剂' }
+        : { label: '调剂' },
+    );
+  }
   return acts;
 }
 

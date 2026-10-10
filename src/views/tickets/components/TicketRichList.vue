@@ -76,7 +76,7 @@ const props = withDefaults(
      * （受理 / 处理 / 调剂 / 领取 / 退回…），它们是工作台的动词。风险监控页要挂的是
      * 「核实打标」—— 那是风险侧的动词，塞进那个枚举等于让工单侧的类型去背风险侧的流程。
      */
-    rowActionsFn?: (t: Ticket) => { label: string; primary?: boolean }[];
+    rowActionsFn?: (t: Ticket) => { label: string; primary?: boolean; disabled?: boolean; tip?: string }[];
     /**
      * 调用方自带的**附加列**：本组件列目录（`ticketListColumnCatalog`）里没有、
      * 且只有那一处用得到的列。单元格内容走同名具名插槽 `#cell-<key>`。
@@ -235,7 +235,12 @@ const emit = defineEmits<{
   clearFilters: [];
 }>();
 
-function actionsFor(t: Ticket) {
+/** 调用方自带动作可带置灰与悬停提示；variant 映射出的动作没有这两项，一律可点 */
+type RowAct = { label: string; primary?: boolean; disabled?: boolean; tip?: string };
+const actDisabled = (a: RowAct) => a.disabled === true;
+const actTip = (a: RowAct) => a.tip;
+
+function actionsFor(t: Ticket): RowAct[] {
   // 调用方自带动作时整个接管，下面那套 variant 映射一个字没动（见 `rowActionsFn`）
   if (props.rowActionsFn) return props.rowActionsFn(t);
   // 刷机单（池页签除外）：行内操作按刷机门控的视角裁剪（930 教育刷机单 §5.5 / §9.4，M34）；老四类不经过这里
@@ -729,14 +734,19 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
 
       <!-- 操作 -->
       <div v-if="showActionColumn" class="col-action cell-action">
-        <span
-          v-for="a in actionsFor(t)"
-          :key="a.label"
-          class="act"
-          :style="{ color: a.primary ? '#1A6FFF' : '#6B7280' }"
-          @click.stop="emit('action', a.label, t)"
-          >{{ a.label }}</span
-        >
+        <template v-for="a in actionsFor(t)" :key="a.label">
+          <!-- 置灰动作：外包一层 span 承接悬停提示，点击不派发 -->
+          <a-tooltip v-if="actDisabled(a)" :title="actTip(a)">
+            <span class="act act-disabled" aria-disabled="true" @click.stop>{{ a.label }}</span>
+          </a-tooltip>
+          <span
+            v-else
+            class="act"
+            :style="{ color: a.primary ? '#1A6FFF' : '#6B7280' }"
+            @click.stop="emit('action', a.label, t)"
+            >{{ a.label }}</span
+          >
+        </template>
       </div>
       </div>
     </div>
@@ -1226,6 +1236,7 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
 /* 操作 */
 .cell-action { display: flex; align-items: center; gap: 12px; }
 .act { font-size: 13px; font-weight: 500; cursor: pointer; }
+.act-disabled { color: #d1d5db; cursor: not-allowed; }
 
 .empty {
   padding: 64px 0;
