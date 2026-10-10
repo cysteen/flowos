@@ -19,17 +19,22 @@ import dayjs, { type Dayjs } from 'dayjs';
 import { ReloadOutlined, SearchOutlined, SettingOutlined, HistoryOutlined, CheckOutlined, UnorderedListOutlined, DownOutlined, TagsOutlined, SafetyCertificateOutlined, SaveOutlined, FilterOutlined } from '@ant-design/icons-vue';
 import MetricTipIcon from '@/components/MetricTipIcon.vue';
 import OpActionModal from '@/views/tickets/components/operation/OpActionModal.vue';
-// 协同处理弹窗与工单页底栏那一枚**共用同一个组件**：投诉单在池里与在工单上做的是同一件事，
-// 抄第二份的下场是两个入口的必填项、副作用与履历行文各走各的（本项目在「派生说明行」上刚栽过）
-import OpRiskCollabModal from '@/views/tickets/components/operation/OpRiskCollabModal.vue';
-// 评估弹窗第一区块（入池依据 / 报备信息 + 释放记录）与工单页 OpRiskControlModal 共用一个组件；
-// 命中原话取窗 `excerptWindow`、实时监控来源判断 `isKeywordRow` 与附件下载同一个共享文件（本页命中清单 / 打标弹窗也读它）
-import RiskAssessSheet from '@/views/tickets/components/operation/RiskAssessSheet.vue';
-// 风险等级四选一 + 风险备注：**六处「风险管控」弹窗共用同一份呈现**（2026-09-29 裁决）。
-// 评估处置工作面走真实例 `useRiskLevelFields`（落库 recordTagFor）；条目打标与命中那一路
-// 两个形态各有既有状态与落库路径，用 `makeRiskLevelFieldsView` 包一层薄适配器交给同一个组件渲染。
+// 🔴 `OpRiskCollabModal` 那一笔已删（2026-10-10）：它只给工作面那个协同处理弹窗用，
+// 随「评估处置工作面」整个取消而删除。**组件文件本身没动**，不过本页删掉之后它在全仓
+// 再无使用者（原注释写的"与工单页底栏那一枚共用"早已过期：那一枚挪进页头、换成了
+// `OpRiskControlModal` 的投诉支）。投诉支的字段与落库仍走共享件 `useRiskCollabFields`
+// 🔴 `RiskAssessSheet` 那一笔已删（2026-10-10）：它是工作面那个评估弹窗的第一区块
+// （入池依据 / 报备信息 + 释放记录），随该弹窗删除；工单页 `OpRiskControlModal` 那一侧照旧用它
+// 命中原话取窗 `excerptWindow` 与附件下载同一个共享文件（本页命中清单 / 打标弹窗也读它）
+// 🔴 `isKeywordRow` 那一笔已删（2026-10-10）：它只给池行表「监控来源」那一格判色，
+// 随那张表删除之后 grep 复验零调用方（已判段那张表走的是 `rowSourceText`，不是它）
+// 风险等级四选一 + 风险备注：**四处「风险管控」弹窗共用同一份呈现、且一律可编辑**
+// （2026-09-29 裁决；2026-10-10 随工作面取消由六处重数成四处，见 `useRiskLevelFields` 文件头）。
+// 🔴 `useRiskLevelFields`（真实例、落库 recordTagFor）那一笔已删（2026-10-10）：
+// 它只喂工作面评估弹窗的 `assessLevel`。本页剩下的那两枚弹窗各有既有状态与落库路径，
+// 用 `makeRiskLevelFieldsView` 包一层薄适配器交给同一个组件渲染。
 import RiskLevelFields from '@/views/tickets/components/operation/RiskLevelFields.vue';
-import { makeRiskLevelFieldsView, useRiskLevelFields } from '@/composables/useRiskLevelFields';
+import { makeRiskLevelFieldsView } from '@/composables/useRiskLevelFields';
 // 选「升级」后那一段投诉专属建单要素（投诉一类 / 二类）：与工单页底栏、风险报备池两个评估入口
 // **共用同一个组件**，字段、级联与校验全在 `useEscalateComplaintFields`，本页不另写一份
 import EscalateComplaintFields from '@/views/tickets/components/operation/EscalateComplaintFields.vue';
@@ -39,7 +44,7 @@ import { useEscalateComplaintFields } from '@/composables/useEscalateComplaintFi
 // 落库（`submitTo`）全在 `useRiskCollabFields` 里，本页不另写一套
 import RiskCollabFields from '@/views/tickets/components/operation/RiskCollabFields.vue';
 import { useRiskCollabFields } from '@/composables/useRiskCollabFields';
-import { excerptWindow, isKeywordRow } from '@/views/tickets/components/operation/riskAssessSheet';
+import { excerptWindow } from '@/views/tickets/components/operation/riskAssessSheet';
 import AppPagination from '@/components/AppPagination.vue';
 import { opsTip } from '@/mock/opsMonitorTips';
 import { useUserStore } from '@/stores/user';
@@ -84,15 +89,17 @@ import {
   type RiskTagResult,
 } from '@/stores/riskShared';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
-// 评估弹窗的两处口径与工单页那个入口**共用同一份实现**：
+// 「风险管控」弹窗那几处口径与工单页那个入口**共用同一份实现**：
 // `deriveEscalatedComplaint` 是「升级」派生的完整落地，
 // 提交前重查（`tagAssessSubmitBlockOf`）与原单终态判据（`isRiskTicketEnded`）
 // 与报备池、工单页的评估入口共用，各处行为一致
-// 🔴 **工作面那一处不再 import `assessSubmitBlockOf`**（2026-10-09）：那一份要的是
-// 「条目仍为本人名下的「已领取」态」，而本工作面的领取整套已撤，那道判据恒不成立。
-// 它**仍是报备池与工单页头两处的判据**，共享文件一个字没动，见 `workbenchAssessBlockOf`。
+// 🔴 **本页不 import `assessSubmitBlockOf`**（2026-10-09）：那一份要的是「条目仍为
+// 本人名下的「已领取」态」，而领取整套早已撤出本页，那道判据恒不成立。
+// 它**仍是报备池与工单页头两处的判据**，共享文件一个字没动。
+// 🔴 `ASSESS_ALREADY_CONCLUDED_TIP` 那一笔已删（2026-10-10）：它只喂工作面评估弹窗
+// 提交前重查里"已出结论 ⇒ 整次拦下"那一句，随 `workbenchAssessBlockOf` 一并删除。
+// **常量本身没动**，报备池与工单页头那两处仍在读它
 import {
-  ASSESS_ALREADY_CONCLUDED_TIP,
   deriveEscalatedComplaint,
   isRiskTicketEnded,
   nextEscalatedNoOf,
@@ -568,20 +575,23 @@ function todayPrefix() {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-/**
- * 一条已处理条目的**结论时刻**。
+/*
+ * 🔴 **`concludedAtOf` 已删**（2026-10-10）：它取一条已处理池行的**结论时刻**，
+ * 唯一的消费端是池行表第三段「已结论」的排序（结论时刻倒序），
+ * 那张表随「评估处置工作面」整个删除之后 grep 复验零调用方。
  *
- * 🔴 **三种收口方式各写各的字段**：走评估的落 `assessment`（升级 / 不升级）、
+ * 🔴 **但它写明的那条口径必须留下来，重做任何"按结论时刻排 / 算"的清单都得照它来**：
+ * ```
+ * r.assessment?.at ?? r.coordination?.at ?? r.verify?.at ?? ''
+ * ```
+ * **三种收口方式各写各的字段**：走评估的落 `assessment`（升级 / 不升级）、
  * 走协同处理的落 `coordination`（投诉单那一路，处理意见 + 建议事项）、
- * 走核实打标的落 `verify`。只读 `assessment` 的话，**协同过的条目会整条漏掉**。
- * ⚠️ **本函数此刻在本页没有调用方**（2026-10-10）：它唯一的消费端是池行表第三段
- * 「已结论」的排序（结论时刻倒序），那张表随「评估处置工作面」整个删除。
- * **留着不删**：三种收口各写哪个字段这件事只有这一处写明，重做任何"按结论时刻排"
- * 的清单都得照它来，而重写一遍必然只读 `assessment`（这个坑本文件已经栽过一次）。
+ * 走核实打标的落 `verify`。
+ * ⚠️ **只读 `assessment` 的话，协同过的条目会整条漏掉** —— 本文件为这个坑栽过一次，
+ * 重写一遍几乎必然只读第一个字段。要再用就把上面那行照抄回来，不要凭印象重写。
+ * ⚠️ 已判段那张表的「结论时间」列走的是另一份（`rowConclusionAt`，对象是监控条目
+ * `RiskQueueEntry`、不是池行 `RiskPoolItem`），与本函数不是同一回事、一个字没动。
  */
-function concludedAtOf(r: RiskPoolItem) {
-  return r.assessment?.at ?? r.coordination?.at ?? r.verify?.at ?? '';
-}
 
 /*
  * 🔴 **工作面第三段与那五个筛选项计数的整段已删**（2026-10-10，该视图整个取消）：
@@ -621,18 +631,20 @@ function concludedAtOf(r: RiskPoolItem) {
  * store 的 `waitedMinutes` 也一个字没动。
  */
 
-// ---- 评估弹窗（§5.4）----
-const assessOpen = ref(false);
-const assessTarget = ref<RiskPoolItem | null>(null);
-const assessDecision = ref<AssessDecision | ''>('');
-const assessTried = ref(false);
-/**
- * 评估弹窗的**风险等级段**（2026-09-29「风险管控」弹窗全站统一）。
- * 此前本弹窗只有评估决策，而同名弹窗在标记那三处都有这一段 —— 同一个弹窗名两种内容。
- * 与工单工作台风险报备池那一处共用 `useRiskLevelFields` / `RiskLevelFields`：
- * 落库走 `recordTagFor` 那条与标记同一的入口（写工单级等级、条目进风险工单池）。
+/*
+ * 🔴 **工作面那个评估弹窗的状态已删**（2026-10-10，弹窗整块随「评估处置工作面」删除）：
+ * `assessOpen` / `assessTarget` / `assessTried`，以及它的「风险等级段」实例
+ * `assessLevel`（`useRiskLevelFields` 真实例，落库走 `recordTagFor`）。
+ * ⚠️ **风险等级那一段本身没消失**：已判段那枚「风险管控」弹窗走 `entryTagLevelView`
+ * （`makeRiskLevelFieldsView` 包的薄适配器），渲染仍是共享组件 `RiskLevelFields`。
+ *
+ * 🔴 **`assessDecision` 没删，但它现在零调用方** —— 它在"共享件、不许碰"那张清单上，
+ * 按规矩停下报了上游、没有顺手删。实测它的全部消费端（`missAssessDecision` /
+ * `assessValid` / `assessAdviceLabel` / `assessAdvicePlaceholder` / `showEscalateFields` /
+ * `confirmAssess` / 弹窗模板）都在本轮被删，已判段那一路用的是自己那份
+ * `entryTagAssessDecision`，与本 ref 没有任何读写往来。**要清的话连 `assessOkText` 一起。**
  */
-const assessLevel = useRiskLevelFields();
+const assessDecision = ref<AssessDecision | ''>('');
 
 /**
  * 「投诉工单专属字段」段落（投诉一类 / 二类 / 升级说明三项）：状态与校验走共享
@@ -651,29 +663,20 @@ const assessAdvice = computed({
   set: (v: string) => { escalateFields.fields.advice = v; },
 });
 
-const missAssessDecision = computed(() => assessTried.value && !assessDecision.value);
-const missAssessAdvice = computed(() => assessTried.value && !assessAdvice.value.trim());
-const assessValid = computed(() => !!assessDecision.value && !!assessAdvice.value.trim());
+/*
+ * 🔴 **工作面那个评估弹窗自己那套字段逻辑已删**（2026-10-10，随弹窗整块删除）：
+ * `missAssessDecision` / `missAssessAdvice`（点了才校验、缺项在字段下方出红字）、
+ * `assessValid`、`assessAdviceLabel` / `assessAdvicePlaceholder`（按决策换标签与占位）、
+ * `showEscalateFields`（投诉专属字段段的显隐，判据是共享的 `showEscalateComplaintFields`）。
+ * ⚠️ **已判段那枚弹窗有自己一份逐字同形的**（`missEntryTagAssessAdvice` /
+ * `entryTagAssessAdviceLabel` / `entryTagAssessAdvicePlaceholder` /
+ * `showEntryTagAssessEscalate`），一个字没动 —— 要改文案改那一份。
+ */
 
-/** 二选一决策各自必填文本的标签 */
-const assessAdviceLabel = computed(() =>
-  assessDecision.value === '升级' ? '升级说明' : '处理意见',
-);
-const assessAdvicePlaceholder = computed(() => {
-  switch (assessDecision.value) {
-    case '不升级': return '告知报备人为什么不升级、可以怎么继续处理…';
-    case '升级': return '写清升级理由与后续处置安排…';
-    default: return '';
-  }
-});
-
-/** 弹窗主按钮：决策＝升级 →「确认升级」，未选或「不升级」→「提交结论」（三处评估弹窗一致） */
+/** 弹窗主按钮：决策＝升级 →「确认升级」，未选或「不升级」→「提交结论」 */
+// 🔴 **零调用方**（唯一消费端是被删掉的那个弹窗的 `ok-text`）。与 `assessDecision` 同因
+// 列在"共享件不许碰"清单上而留下，已报上游等拍 —— 两个要清就一起清。
 const assessOkText = computed(() => (assessDecision.value === '升级' ? '确认升级' : '提交结论'));
-
-/** 整段的显隐判据同样是共享的 `showEscalateComplaintFields`，本页不自判一遍 */
-const showEscalateFields = computed(() =>
-  showEscalateComplaintFields(assessDecision.value, assessTarget.value?.ticketNo),
-);
 
 /* ============ 「风险管控」弹窗（已判段条目表那一枚）下半的「风险处理措施」段 ============ */
 //
@@ -869,32 +872,17 @@ function commitTagAssess(ticketNo: string, decision: AssessDecision): string {
  */
 const canClaim = computed(() => canClaimRiskReport(user.roleKey));
 
-/**
- * 工作面这一处**提交结论前的重查**（§5.6 校验末两条 / §9 规则 29）。
- *
- * 🔴 **并发拦截的判据 2026-10-09 换了一条**：原先走共享的 `assessSubmitBlockOf`，
- * 它要的是「条目仍为本人名下的「已领取」态」—— 领取撤掉之后那一条恒不成立，
- * 每一次提交都会被拦成"本条已不在你名下的「已领取」态"。
- * ⇒ 换成 **「该条目已出结论 ⇒ 整次提交拦下」**：领取原本同时起"占住这条、
- * 别人看得见承办人"的作用，撤掉之后两个客诉专员可能同时评同一条，这一道替它接住并发。
- *
- * 🔴 **只换本页工作面这一处**：报备池与工单页头那两个评估入口各自的领取态还在，
- * 它们照旧走共享的 `assessSubmitBlockOf`，**一个字没动**。
- * 🔴 **其余三条判据仍取共享那一份实现**（`tagAssessSubmitBlockOf`：条目还在不在 /
- * 已被报备人撤回 / 原单已进终态只拦「升级」），本页不另写一遍。
+/*
+ * 🔴 **`workbenchAssessBlockOf` 已删**（2026-10-10）：它是工作面那个评估弹窗
+ * **提交结论前的重查**（§5.6 校验末两条 / §9 规则 29）—— 判据是"该条目已出结论 ⇒
+ * 整次提交拦下"（撤掉领取之后拿它接并发），其余三条走共享的 `tagAssessSubmitBlockOf`。
+ * 唯一的调用方是 `confirmAssess`，随弹窗一并删除之后 **grep 复验零调用方**。
+ * ⚠️ **共享那一份 `tagAssessSubmitBlockOf` 一个字没动**：已判段那枚弹窗的评估支
+ * （条目还在不在 / 已被报备人撤回 / 原单已进终态只拦「升级」）照旧走它；
+ * 报备池与工单页头那两个入口各自的 `assessSubmitBlockOf` 同样没动。
+ * ⚠️ **`ASSESS_ALREADY_CONCLUDED_TIP` 这条提示语在本页因此不再用到**：
+ * 它是共享常量，报备池与工单页那两处仍在读。
  */
-function workbenchAssessBlockOf(
-  r: RiskPoolItem,
-  decision: AssessDecision | '',
-): { tip: string; closeModal: boolean } {
-  // 🔴 读 store 里的**现值**：弹窗手上那份 `assessTarget` 是打开那一刻的引用
-  const cur = reportStore.findById(r.id);
-  // 🔴 提示语取共享那一份常量，**不在本页抄一句**（同值常量分家必漂，本仓付过账）
-  if (cur && cur.status === '已评估') {
-    return { tip: ASSESS_ALREADY_CONCLUDED_TIP, closeModal: true };
-  }
-  return tagAssessSubmitBlockOf(r.id, decision, r.ticketNo);
-}
 
 /*
  * 🔴 **「释放」整套已从本工作面撤掉**（2026-10-09 裁决，与「领取」同一条：
@@ -909,57 +897,26 @@ function workbenchAssessBlockOf(
  *     `canReleaseAnyRiskReport` / 释放按钮 / 释放弹窗 / 承办人列 / 「已等待」列全在；
  *   · store 侧 `riskPool.release`、条目上的 `releases` 留痕、`RiskReleaseRecord`
  *     同样一个字没动，报备池与工单页那几处仍在读写；
- *   · **释放记录**在本页照旧看得见：评估弹窗第一区块（与工单页 `OpRiskControlModal`
- *     共用的 `RiskAssessSheet`）会把 `releases` 逐条列出来。
+ *   · **释放记录**在本页照旧看得见：已判段那枚「风险管控」弹窗里（共享件
+ *     `RiskAssessSheet` 在工单页 `OpRiskControlModal` 那一侧）会把 `releases` 逐条列出来。
  */
 
-/* ---- 协同处理：**投诉单那一路的工作面**（《【930】》§5.2 / §5C，基线 ※29）---- */
-
-/**
- * 🔴 **池行按原单类型分工作面**：非投诉单 → 风险评估（升级 / 不升级）；
- * 投诉单 → **协同处理**（处理意见 + 建议事项）。
- *
- * 【为什么必须分】"升不升级成投诉单"对一张已经是投诉单的单**是个不成立的问题**——
- * PRD 在四处重复写死了这条（§2 摘要表 / §5.2 两处「投诉单不做风险评估」/ §9 池内分工作面），
- * 而本页此前对两类一律出「评估」，等于把投诉单送进一个它答不了的弹窗。
- *
- * 【为什么不要求先「领取」】协同不改工单、不占承办人这一格（`coordinate` 只在首次时
- * 顺手补 `assignee`），投诉单那一路本来就没有领取这一步 —— 工单页底栏那一枚
- * 「协同处理」按钮的出现条件也只是"本单是投诉单且在池里"，两处判据保持一致。
- *
- * 【为什么已结论的行也照给】同一张投诉单**可多次协同**（§5C.1 次数行），
- * 条目转「已结论」只表示它不再回待处理队列，不表示这张单不能再给意见。
- */
-const collabOpen = ref(false);
-const collabTarget = ref<RiskPoolItem | null>(null);
 /*
- * 🔴 **`openCollab` 已删**（2026-10-10，「评估处置工作面」整个取消）：它是协同弹窗的
- * 唯一打开入口，挂在池行表「操作」列那枚「风险管控」上（投诉单那一支），
- * 门禁两道（角色 `canClaim` + 原单未进终态 `isRiskTicketEnded`）。
- * ⚠️ **弹窗本体没有删**（它与打标弹窗下半段共用 `useRiskCollabFields` / `submitTo`），
- * 故此刻在本页**没有入口**，这是已知遗留、不是漏改。
- * ⚠️ 协同处理这件事本身没消失：工单页底栏那一枚「协同处理」一个字没动。
- */
-
-/**
- * 评估弹窗的**副标题 ＝ 来源 · 单号**（与工单页页头「风险管控」弹窗逐字同形）。
- * 来源取条目自带的身份标 `source`（实时监控 / 重点工单 / 二线报备），不另造词；
- * 取不到条目时给空串，`OpActionModal` 的副标题位自动不出。
+ * 🔴 **协同处理弹窗那一摊已删**（2026-10-10，随「评估处置工作面」整个取消）：
+ * `collabOpen` / `collabTarget` 与 `openCollab`（唯一打开入口，挂在池行表「操作」列
+ * 那枚「风险管控」的投诉支上，门禁两道：角色 `canClaim` + 原单未进终态 `isRiskTicketEnded`），
+ * 以及模板里那块 `OpRiskCollabModal`。
  *
- * 🔴 弹窗第一区块**按同一个 `source` 分两种**（PRD §5.3.2，判据在 `RiskAssessSheet` 里，
- * 本页不再自判一遍）：
- * · A 线（风险工单池里的条目）→「**入池依据**」：风险等级 / 标记人 / 标记时间 /
- *   风险备注 / 命中原话。这一组就是它被送来评估的全部理由。
- * · B 线（二线报备单）→「**报备信息**」：报备人 / 报备原因 / 风险类型 / 风险描述 / 附件。
+ * ⚠️ **「池行按原单类型分工作面」这条口径没有变**（《【930】》§2 摘要表 / §5.2 两处
+ * 「投诉单不做风险评估」/ §9，PRD 写死四处）：**非投诉单 → 评估结论、投诉单 → 协同处理**。
+ * 它现在由**已判段那枚「风险管控」弹窗的下半段**承担（`showEntryTagAssess` 走评估支、
+ * `showEntryTagCollab` 走投诉支），字段与落库是同一批共享件
+ * （`useRiskCollabFields` / `submitTo` / `riskPool.coordinate`）。
+ * ⚠️ 同一张投诉单**可多次协同**、已结论也可再给意见（§5C.1 次数行）—— 那条仍在共享件里。
  *
- * 【为什么必须分】两条线此前共用一张「报备信息」卡，A 线条目在「报备人」「原因」两格里
- * 显示的是 `riskQueue.autoEntry()` 补的**恒定占位**（系统（系统） / 其他）——A 线全程
- * 没有"报备人"这个角色，条目是系统捞进来的。占位摆在评估人面前，读起来像"有人报过一次
- * 却什么都没填"；而真正的入池理由（打标那一组）反倒缩在卡体里的一个子块。
+ * 🔴 **`assessSubtitle` 一并删**：它是那个弹窗的副标题（来源 · 单号）。
+ * 已判段那枚弹窗有自己一份逐字同形的副标题，一个字没动。
  */
-const assessSubtitle = computed(
-  () => (assessTarget.value ? `${assessTarget.value.source} · ${assessTarget.value.ticketNo}` : ''),
-);
 
 /**
  * 「升级」派生出的新投诉单号（N2）。
@@ -994,90 +951,20 @@ function isComplaintTicket(ticketNo: string) {
   return isComplaintPoolTicket(ticketNo);
 }
 
-function confirmAssess() {
-  assessTried.value = true;
-  const target = assessTarget.value;
-  if (!target) return;
-  /*
-   * 会派生新投诉单 → 段内三项（投诉一类 / 二类 / 升级说明）的必填校验**先跑**，缺项的红字
-   * 才落得到字段下方。放在 `assessValid` 之后的话，升级说明空着会在那一句直接 return，
-   * 而它此时正藏在段内，屏幕上一句红字都不会出。与另外两个评估入口同一份 validate。
-   */
-  const escalateFieldsOk = !showEscalateFields.value || escalateFields.validate();
-  // 风险等级段的校验与上面几项**同批跑**（不短路），缺项的红字才能一屏全出
-  const levelOk = assessLevel.validate();
-  if (!assessValid.value || !assessDecision.value || !escalateFieldsOk || !levelOk) return;
-  // 提交前按 id 回 store 重查（§5.6 / §9 规则 29）：已撤回整次拦下、原单已终态只拦「升级」、
-  // 🔴 **已出结论整次拦下** —— 领取撤掉之后这一道接住并发，见 `workbenchAssessBlockOf`
-  const block = workbenchAssessBlockOf(target, assessDecision.value);
-  if (block.tip) {
-    message.warning(block.tip);
-    if (block.closeModal) assessOpen.value = false;
-    return;
-  }
+/*
+ * 🔴 **`confirmAssess` 已删**（2026-10-10，随工作面那个评估弹窗整块删除）。它做的是：
+ * 段内必填先跑 → 风险等级段同批校验（不短路，红字一屏全出）→ 提交前重查
+ * （`workbenchAssessBlockOf`）→ 风险等级先落、评估结论后落 → 「升级」且非投诉单时
+ * 走 `deriveEscalatedComplaint` 真造一张新投诉单 → `assessOnTag` 落结论 → 三句分叉提示。
+ *
+ * ⚠️ **这条链路一条都没丢，它在已判段那枚「风险管控」弹窗的提交路径上**
+ * （`saveEntryTag` 的评估支 + `commitTagAssess`）：同一份 `escalateFields`、同一个
+ * `deriveEscalatedComplaint`、同一个 `nextEscalatedNo`、同一个落库口 `assessOnTag`
+ * （产物逐字相同，同走 store 的 `applyAssessment`：状态迁移 + assessment + 第八类履历
+ * + `risk.report.assessed` 通知）。
+ * ⚠️ **store 侧 `assess` / `claim` / `release` 一个字没动**：报备池与工单页头那两处还在用。
+ */
 
-  /*
-   * 风险等级先落、评估结论后落（与页头「风险管控」那一支"先上半后下半"同序）。
-   * 🔴 被 store 挡下就整次中止：等级没写进去还接着落评估结论，得到的是一条
-   * "有结论、没等级"的条目 —— 它在左栏两个轴上一档都归不进去。
-   */
-  if (!assessLevel.submit()) return;
-
-  const escalate = assessDecision.value === '升级';
-  const derive = escalate && !isComplaintTicket(target.ticketNo);
-  const escalatedToNo = derive ? nextEscalatedNo() : undefined;
-
-  /*
-   * 派生要**真的造出一张单**，不能只发一个号：队列与工单页都能点这个号，
-   * 只发号的话点开落的是静默回退的演示单——看到的是另一个客户的另一张投诉，
-   * 而 PRD 写的是「新单全量继承本单信息」。
-   */
-  if (escalatedToNo) {
-    // 造新单 + 记原单升级台账 + 让新单按来源② 回流「未标记 · 投诉单」，
-    // 三件事绑在 `deriveEscalatedComplaint` 一处，与工单页那个评估入口共用
-    deriveEscalatedComplaint({
-      fromNo: target.ticketNo,
-      no: escalatedToNo,
-      assignee: user.name,
-      reason: assessAdvice.value.trim(),
-      // 评估弹窗里补齐的投诉一类 / 二类随派生动作写到新单上
-      complaint: escalateFields.payload(),
-    });
-  }
-
-  /*
-   * 🔴 **落库口由 `assess` 换成 `assessOnTag`**（2026-10-09，领取撤掉的必然推论）：
-   * store 的 `assess` 门禁写死「只收「评估中」」—— 它配的就是"先领取再评估"那一路。
-   * 本工作面不再有领取，行一直停在「待分派」，`assess` 会**一声不响地什么都不写**。
-   * `assessOnTag` 收的正是"进了池、还没出结论"那两态（待分派 / 评估中），
-   * 并把 `assignee` 空着的条目补成结论人 —— 「已结论」的行照旧答得上"谁给的结论"。
-   * 🔴 **两条路径的产物逐字相同**（同走 `applyAssessment`：状态迁移 + assessment +
-   * 第八类履历 + `risk.report.assessed` 通知），故这不是换了一套落库，是换了那道门。
-   * ⚠️ **store 侧 `assess` / `claim` / `release` 一个字没动**：报备池与工单页头那两处还在用。
-   */
-  const ok = reportStore.assessOnTag(target.id, {
-    decision: assessDecision.value,
-    advice: assessAdvice.value.trim(),
-    // 只有派生这一路有新单号；不派生时不写这个字段，
-    // 否则列表那格会渲染出一个点不开的空单号
-    ...(escalatedToNo ? { escalatedToNo } : {}),
-    by: user.name,
-    byRole: user.role.name,
-    at: nowStamp(),
-  });
-  // 走到这里只有一种可能：上面那道重查之后条目又被挪走了。提示与重查那一处同一句
-  if (!ok) { message.warning('该条目已不在风险池中，请刷新后再看'); return; }
-
-  assessOpen.value = false;
-  if (escalatedToNo) {
-    message.success(`已升级，已派生投诉单 ${escalatedToNo}`);
-  } else if (escalate) {
-    // 基线 ※29：结论这条语义上的「接管 / 接手」整体作废，只说这个动作实际做了什么
-    message.success(`已升级 ${target.ticketNo}，请在工单上执行「工单管控」把本单转到自己名下`);
-  } else {
-    message.success('已提交结论：不升级');
-  }
-}
 /** 命中明细才需要查询条：只有这批记录会被事后点查 */
 const inLedger = computed(() => listView.value === 'judged');
 const scope = computed<OpsScope>(() => 'all');
@@ -2107,7 +1994,8 @@ const canSaveTag = computed(() => {
  *
  * 首次打开它叫「风险识别」、已有结论再打开叫「重新识别」，两态答的都只是
  * "这条命中成不成立、风险多大、风险备注写什么"。处置怎么做归「风险管控」那一类弹窗
- * （已判段条目表 / 评估处置工作面 / 风险报备池 / 工单页页头），本弹窗一概不承载。
+ * （已判段条目表 / 风险报备池 / 工单页页头 —— 原先还有一处「评估处置工作面」，
+ * 该视图 2026-10-10 整个取消），本弹窗一概不承载。
  *
  * 随段一并去掉的是"标完顺手给结论、条目直接落「已结论」"那条捷径：核实打标之后
  * 条目照原路进池落「待领取」，结论另起一步。只为那条捷径存在的状态与判据
@@ -3567,8 +3455,9 @@ function pickEntryTagResult(r: RiskTagResult) {
 }
 
 /**
- * 「风险等级 + 风险备注」那一段交给**六处共用**的 `RiskLevelFields` 渲染
- * （2026-09-29 裁决「风险等级段收敛成一份共享件、一种呈现」）。
+ * 「风险等级 + 风险备注」那一段交给**四处共用**的 `RiskLevelFields` 渲染
+ * （2026-09-29 裁决「风险等级段收敛成一份共享件、一种呈现」；
+ * 2026-10-10 随「评估处置工作面」取消由六处重数成四处，四处一律可编辑）。
  *
  * 🔴 **只是把既有状态包一层给组件看**：本形态是对**具体条目**做的事，落库走
  * `saveEntryTag` 里那条既有路径（不是 `recordTagFor(ticketNo)`），state、校验与写库一格未动。
@@ -4741,7 +4630,7 @@ const judgedTypeFilterOptions = computed(() => {
   }));
 });
 
-/* ---- 两条筛选条（评估处置工作面 / 已判段）的**同一份渲染规格** ---- */
+/* ---- 「已判」段那条筛选条的**渲染规格**（原先是工作面 / 已判两条共用这一份） ---- */
 /**
  * 这条筛选条上的**一格**。
  *
@@ -4972,10 +4861,10 @@ function drillFocusPriority(p: Priority) {
  * 弹窗内点单号跳工单页：先关弹窗并清掉目标再跳。
  * 本页在 keep-alive 里，弹窗挂在 body 上，不关的话会叠在工单页之上，回到本页时也会原样再出现。
  * 表格行里的单号仍走 `openTicket`。
+ * ⚠️ **原先这里还关着工作面那个评估弹窗**（`assessOpen` / `assessTarget`），
+ * 随该弹窗整块删除一并去掉（2026-10-10）；现在要关的就是本页剩下的那两个弹窗。
  */
 function openTicketFromModal(no: string) {
-  assessOpen.value = false;
-  assessTarget.value = null;
   entryTagOpen.value = false;
   entryTagTarget.value = null;
   tagOpen.value = false;
@@ -7387,106 +7276,27 @@ function toggleWordEnabled(w: RiskWord) {
     </OpActionModal>
 
     <!--
-      风险管控 · 评估结论（《【930】》§5.4）。
-      🔴 **标题恒为「风险管控」+ 副标题「来源 · 单号」**（2026-09-29 裁决）：与工单页页头
-      那一枚逐字同形。原来那个按来路二选一的标题（「风险评估」/「评估报备」）已取消 ——
-      同一个弹窗在两条线上各叫一个名字，说"去评估"没人知道指的是哪一处。
-      主按钮**不做 disabled**：报备信息一屏读完就要下结论，按钮灰着不说为什么，
-      人只能逐项试探哪里没填。故点了就校验、缺哪项在哪项下面出红字（missAssess* 一组）。
+      🔴 **「风险管控 · 评估结论」弹窗与「协同处理」弹窗两块已整个删除**（2026-10-10）。
+      它们是「评估处置工作面」池行表「操作」列那枚「风险管控」的两个落点
+      （非投诉单 → 评估结论、投诉单 → 协同处理），而那张表与那个视图已整个取消 ⇒
+      `openAssess` / `openCollab` 一走，这两块**再没有任何打开入口**，留着就是死 UI。
+      连同删净的有：`assessOpen` / `assessTarget` / `assessSubtitle` / `assessLevel` /
+      `assessTried` / `confirmAssess`、它自己那套字段逻辑（`assessValid` /
+      `assessAdviceLabel` / `assessAdvicePlaceholder` / `missAssessDecision` /
+      `missAssessAdvice` / `showEscalateFields`）、提交前重查 `workbenchAssessBlockOf`、
+      `collabOpen` / `collabTarget`，以及 `RiskAssessSheet` / `OpRiskCollabModal` /
+      `useRiskLevelFields` 三笔随之变空的 import。
+
+      ⚠️ **「风险管控」这件事本身没消失，三个入口照旧**：
+        · 本页已判段那张表每一行的「风险管控」（`openEntryTag`，下半段按原单类型分叉成
+          评估结论 / 协同处理两支，字段与落库与被删的这两块**是同一批共享件**）；
+        · 工单页页头那一枚（`OpRiskControlModal`）；
+        · 风险报备池（`RiskReportPoolPanel`）自己那一摊。
+      ⚠️ 共享件一个没动、且都还有活调用方（删后逐个 grep 复验）：`escalateFields` /
+      `assessAdvice` / `useRiskCollabFields` / `submitTo` / `assessOnTag` /
+      `EscalateComplaintFields` / `RiskLevelFields` / `showEscalateComplaintFields` /
+      `ASSESS_DECISIONS` —— 它们现在的消费端是已判段那枚弹窗。
     -->
-    <OpActionModal
-      :open="assessOpen"
-      title="风险管控"
-      :subtitle="assessSubtitle"
-      :icon="SafetyCertificateOutlined"
-      tone="primary"
-      :width="600"
-      :ok-text="assessOkText"
-      @update:open="assessOpen = $event"
-      @ok="confirmAssess"
-    >
-      <div v-if="assessTarget" class="op-form assess-form">
-        <!--
-          ① 第一区块：**按原单来路分两种**（PRD §5.3.2，A 线「入池依据」/ B 线「报备信息」），
-          与工单页 OpRiskControlModal 共用 RiskAssessSheet，字段、出现条件与样式只在那一处改。
-        -->
-        <RiskAssessSheet :target="assessTarget" />
-
-        <!--
-          ② 风险等级：各处入口同一段，共用 RiskLevelFields（2026-09-29 裁决；
-          入口名 2026-10-07 拆成三类，这一段不随名字分叉）。
-          已有等级预置可改（改了即改判、风险备注转必填），本来没有则必填；
-          本单还推不出监控来源时整段不出（见 ctl.visible）。
-        -->
-        <RiskLevelFields :ctl="assessLevel" />
-
-        <!-- ③ 风险处理措施：二选一决策 + 必填说明。段名六处同名（2026-09-29 追加裁决） -->
-        <section class="assess-block assess-block-form">
-          <h4 class="assess-block-title">风险处理措施</h4>
-
-          <!--
-            决策**二选一**：升级 / 不升级。「升级」只指**转投诉单**（走 830 第一跳派生），
-            **不含升三线**；旧词「接管」整个作废，见 riskShared 的 ASSESS_DECISIONS。
-            🔴 这里既没有「风险等级」也没有「关联投诉单号」——
-            二选一之后没有"确认有风险 + 定级"这一档，评估不再产出等级、不再往工单回传；
-            而「关联已有投诉单」这一档随 O11 一并作废（报上来评估侧答不了它）。
-          -->
-          <div class="op-field assess-dec-field">
-            <div class="op-field-h assess-dec-row">
-              <div class="op-label req">评估决策</div>
-              <a-radio-group v-model:value="assessDecision" class="assess-dec-inline">
-                <a-radio v-for="d in ASSESS_DECISIONS" :key="d" :value="d">{{ d }}</a-radio>
-              </a-radio-group>
-            </div>
-            <div v-if="missAssessDecision" class="assess-err assess-dec-foot">请先选择一个评估决策</div>
-          </div>
-
-          <!--
-            结论正文那一格。选「升级」（且会派生新投诉单）时它并进下面那一段、改由段内的
-            「升级说明」渲染，故本格只在**段不出**时出；两处渲染的是同一个格子
-            （assessAdvice 代理 escalateFields.fields.advice）。
-          -->
-          <div v-if="!showEscalateFields" class="op-field">
-            <div class="op-label req">{{ assessAdviceLabel || '处理意见' }}</div>
-            <a-textarea
-              v-model:value="assessAdvice"
-              :rows="3"
-              :placeholder="assessAdvicePlaceholder || '请先选择评估决策'"
-            />
-            <div v-if="missAssessAdvice" class="assess-err">请填写{{ assessAdviceLabel || '处理意见' }}</div>
-          </div>
-
-          <!--
-            投诉工单专属字段：选「升级」（且会派生新投诉单）时才出。
-            投诉一类 / 二类 / 升级说明三项、均必填；切到「不升级」整段隐藏、已填值保留。
-            组件与状态和工单页底栏、风险报备池两个评估入口共用，本页不另写一份字段表。
-            🔴 它在**本段 `<section>` 之内**（六处一致，2026-09-30 裁决）：它填的是本段
-            「升级」这一档的要素，摆到段外会读成与「风险处理措施」并列的第四段。
-          -->
-          <EscalateComplaintFields v-if="showEscalateFields" :ctl="escalateFields" />
-        </section>
-      </div>
-    </OpActionModal>
-
-    <!--
-      协同处理弹窗（投诉单那一路的工作面）。
-
-      ⚠️ **原注释写的是"与工单页底栏那一枚是同一个组件"，已过期**：工单页底栏那一枚
-      早已挪进页头，且换成了另一个组件（`operation/OpRiskControlModal.vue` 的投诉支）。
-      **`OpRiskCollabModal` 现在全仓只有本页一个使用者**（grep 复验：`import` 仅此一处），
-      改它不外溢到工单页。
-
-      🔴 **两个入口仍不会各走各的**，靠的不是"同一个弹窗组件"，而是**同一批共享件**：
-      字段与校验走 `useRiskCollabFields` + `RiskCollabFields.vue`（两处同一份），
-      落库与两个副作用（落第八类履历 + 挂建议标记）走 `riskPool.coordinate` 一处收口，
-      "不发通知"那条口径也在共享件里。提交后条目转「已结论」同样由 `coordinate` 收口。
-    -->
-    <OpRiskCollabModal
-      v-if="collabTarget"
-      v-model:open="collabOpen"
-      :ticket-no="collabTarget.ticketNo"
-      :ticket-title="TICKET_BY_NO.get(collabTarget.ticketNo)?.title ?? derivedTickets.find(collabTarget.ticketNo)?.title"
-    />
 
     <!--
       🔴 **分派弹窗已删**（业务第三轮拍板取消分派 / 改派 / 批量分派整套）。
@@ -9493,8 +9303,13 @@ function toggleWordEnabled(w: RiskWord) {
 }
 /* `.rr-dec`（「评估决策」那一格的配色）随「已结论」专表整张删除，消费端只有那一张表 */
 
-/* ---- 「风险管控」弹窗（评估处置工作面与风险报备池两处共用这一个） ---- */
-.assess-form { gap: 14px !important; }
+/* ---- 「风险管控」弹窗下半的「风险处理措施」段（已判段那枚弹窗在用） ---- */
+/*
+ * 🔴 `.assess-form` 已删（2026-10-10）：它是工作面那个评估弹窗**整个表单**的外壳
+ * （`.op-form.assess-form`），随该弹窗整块删除，grep 复验零引用。
+ * ⚠️ 下面这一族（`.assess-block` / `-title` / `-form` / `.assess-dec-*` / `.assess-err`）
+ * **一条都没删**：已判段那枚「风险管控」弹窗的「风险处理措施」段在用它们。
+ */
 .assess-block { display: flex; flex-direction: column; gap: 10px; }
 .assess-block-title {
   margin: 0;
