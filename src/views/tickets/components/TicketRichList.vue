@@ -917,7 +917,11 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
   right: 0;
   width: 14px;
   height: 100%;
-  transform: translateX(50%);
+  /*
+   * 把手整体收在本列右缘之内（不再 translateX(50%) 跨进下一列）：下一列表头文字左缘＝分界线，
+   * 跨过去会压住列名首字。本列表头右内边距 12px ＋ 标签右内边距 4px ＝ 16px ≥ 把手宽 14px，
+   * 也压不到本列自己的列名。分隔线贴在分界线上（::after right: 0）。
+   */
   cursor: col-resize;
   z-index: 2;
   touch-action: none;
@@ -931,7 +935,7 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
   position: absolute;
   top: 6px;
   bottom: 6px;
-  right: 6px;
+  right: 0;
   width: 1px;
   background: #e5e7eb;
   border-radius: 1px;
@@ -987,7 +991,7 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
 .col-resize-handle.is-active::after {
   background: #1a6fff;
   width: 2px;
-  right: 5px;
+  right: 0;
 }
 .rich-list--resizing {
   cursor: col-resize;
@@ -1359,10 +1363,17 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
 .col-title { left: var(--sticky-title-left, 0px); }
 .col-action { right: 0; }
 
-/* 表头要压住同列滚上来的数据行 */
+/*
+ * 表头要压住同列滚上来的数据行。
+ * 🔴 `position: sticky` 在这里再写一遍：上面 scoped 块里的 `.th-cell--resizable[data-v]`
+ * （position: relative）特异度高于本块的单类 `.col-title`，会把表头这几列打回 relative ——
+ * relative 照样吃 `left: 16px`（有勾选列时），「工单 / 标题」表头整格右移 16px，
+ * 压住「优先级」列名首字。双类选择器与之同特异度、书写在后，sticky 才落得下来。
+ */
 .th-cell.cell-cb,
 .th-cell.col-title,
 .th-cell.col-action {
+  position: sticky;
   z-index: 2;
 }
 
