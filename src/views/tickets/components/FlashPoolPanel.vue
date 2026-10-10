@@ -39,14 +39,14 @@ const HIDDEN_CATALOG = Object.fromEntries(TICKET_LIST_COLUMN_KEYS.map((k) => [k,
 
 const EXTRA_COLUMNS = [
   { key: 'flashHandoff', label: '转人工原因', width: 120 },
-  { key: 'flashFail', label: '失败原因', width: 200 },
+  { key: 'flashFail', label: '失败原因', width: 230 },
   { key: 'flashModel', label: '产品型号', width: 210 },
   { key: 'flashPoolAt', label: '进池时间', width: 140 },
   { key: 'flashSla', label: 'SLA', width: 120 },
 ];
 
 /** 本实例默认列宽；拖动结果只记在 `COLUMN_WIDTHS_KEY` 下，不参与工作台列宽记忆 */
-const COLUMN_WIDTHS = { title: 360, action: 96 };
+const COLUMN_WIDTHS = { title: 380, action: 96 };
 const COLUMN_WIDTHS_KEY = 'flowos-flash-pool-column-widths';
 
 function rowActions() {
