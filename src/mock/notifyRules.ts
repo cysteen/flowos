@@ -602,7 +602,7 @@ export const RULE_TEMPLATES: Record<string, RuleTemplate[]> = {
     {
       code: 'IM_WO_POOLED', name: '工单池待领取提醒',
       subject: '【工单池待领取提醒】您组内有一条工单待领取',
-      body: '您组内有一条待领取工单（${ticketNo}），请尽快领取处理。\n\n系统登陆地址：${loginUrl}',
+      body: '您组内来了一条新工单（${ticketNo}），请尽快领取处理。\n\n系统登陆地址：${loginUrl}',
     },
     {
       code: 'IM_WO_CANCEL', name: '工单取消通知',
