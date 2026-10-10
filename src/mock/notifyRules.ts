@@ -109,8 +109,6 @@ export const DICT_APPT_TYPE = ['上门', '回访'] as const;
 export const DICT_CLOSE_REASON = ['问题已解决', '客户放弃', '重复工单', '转由其他单跟进', '其他'] as const;
 /** 优先级（同 views/tickets/types/ticket.ts · PRIORITY_LABEL） */
 export const DICT_PRIORITY = ['紧急', '重要', '普通加急', '普通'] as const;
-/** 新单来源：生成新工单、新单首次进入工单池待领取的 5 种场景 */
-export const DICT_NEW_TICKET_SOURCE = ['新建工单', '升级投诉', '转单', '售后转客服', '售后升级投诉'] as const;
 
 export interface NotifyEvent {
   code: string;
@@ -210,7 +208,6 @@ export const NOTIFY_EVENTS: NotifyEvent[] = [
     payload: [...BASE,
       { key: 'groupName', label: '所在分组', type: 'string', desc: '工单进入的工单池所属的处理组。收件人「工单所在分组全体成员」按它展开' },
       { key: 'priority', label: '优先级', type: 'enum', enumValues: DICT_PRIORITY, desc: '紧急 / 重要 / 普通加急 / 普通' },
-      { key: 'newTicketSource', label: '新单来源', type: 'enum', enumValues: DICT_NEW_TICKET_SOURCE, desc: '新单因何生成：新建工单 / 升级投诉 / 转单 / 售后转客服 / 售后升级投诉，5 种都会触发本事件' },
       { key: 'pooledAt', label: '进池时间', type: 'datetime', templateOnly: true, desc: '工单落入工单池的时刻' },
     ],
     remark: '生成新工单（新建工单、升级投诉、转单、售后转客服、售后升级投诉）且新单进入某分组工单池、处于待领取时发出；每张新单只在首次进池时发一次，每单一条、不限频、不合并。已有工单再次进池（售后转回后重新派单、退回、调剂、释放等）不发出' },
@@ -739,7 +736,7 @@ export const TEST_PRESETS: TestPreset[] = [
       returnFrom: '技术支持', returnReason: '需客户补充设备序列号',
       holdUntil: '2026-08-05', timeToHoldEnd: '2880', heldDays: '12', apptTime: '2026-08-02 14:00', timeToAppt: '10',
       resumeType: '到期自动解挂', dispatchFrom: '建单',
-      groupName: '受理一组', priority: '普通加急', newTicketSource: '新建工单', pooledAt: '2026-07-28 14:22',
+      groupName: '受理一组', priority: '普通加急', pooledAt: '2026-07-28 14:22',
       operatorId: '张三', targetUserId: '王坐席', crossGroup: '否',
       prevAssigneeId: '张三',
       delegateeIds: '陈坐席', delegateTask: '协助排查主板供电',
