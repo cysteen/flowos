@@ -1,0 +1,1 @@
+var e=[`高`,`中`,`低`],t={高:{color:`#EF4444`,bg:`#EF444422`},中:{color:`#F59E0B`,bg:`#F59E0B22`},低:{color:`#6B7280`,bg:`#F3F4F6`}};function n(e){return e?`${e}危`:`无等级`}var r=e.map(e=>({label:n(e),value:e}));export{n as i,r as n,t as r,e as t};

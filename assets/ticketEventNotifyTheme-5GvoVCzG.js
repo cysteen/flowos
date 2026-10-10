@@ -1,0 +1,1 @@
+var e={surface:`#ffffff`,border:`#e5e7eb`,shadow:`0 4px 16px rgba(15, 23, 42, 0.08)`,text:{title:`#111827`,meta:`#6b7280`,body:`#374151`,muted:`#9ca3af`},urge:{accent:`#d97706`,iconBg:`#fffbeb`,icon:`#d97706`},supplement:{accent:`#1a6fff`,iconBg:`#eff6ff`,icon:`#1a6fff`}};export{e as t};
