@@ -16,9 +16,8 @@ export const POOL_NOTIFY_SEEDS: Record<string, NotifyRecord[]> = {
       channel: 'IM',
       status: '未读',
       content:
-        '工单 IFLYZX-20260610-00011『智能音箱无法连接 WiFi』已进入受理一组工单池，请及时领取。\n'
-        + '优先级：普通加急｜进池时间：2026-06-10 09:12\n\n'
-        + '工单详情：https://xfkf.iflytek.com/t/IFLYZX-20260610-00011',
+        '您组内有一条待领取工单（IFLYZX-20260610-00011），请尽快领取处理。\n\n'
+        + '系统登陆地址：http://xfkf.iflytek.com/ngs/SSOVerifyLogin',
     },
   ],
 };

@@ -209,6 +209,7 @@ export const NOTIFY_EVENTS: NotifyEvent[] = [
       { key: 'groupName', label: '所在分组', type: 'string', desc: '工单进入的工单池所属的处理组。收件人「工单所在分组全体成员」按它展开' },
       { key: 'priority', label: '优先级', type: 'enum', enumValues: DICT_PRIORITY, desc: '紧急 / 重要 / 普通加急 / 普通' },
       { key: 'pooledAt', label: '进池时间', type: 'datetime', templateOnly: true, desc: '工单落入工单池的时刻' },
+      { key: 'loginUrl', label: '系统登陆地址', type: 'string', templateOnly: true, desc: '客服系统登陆地址，写进正文供收件人登陆领取' },
     ],
     remark: '生成新工单（新建工单、升级投诉、转单、售后转客服、售后升级投诉）且新单进入某分组工单池、处于待领取时发出；每张新单只在首次进池时发一次，每单一条、不限频、不合并。已有工单再次进池（售后转回后重新派单、退回、调剂、释放等）不发出' },
   { code: 'ticket.supplement', name: '新建补充', source: 'non-dispatch',
@@ -600,8 +601,8 @@ export const RULE_TEMPLATES: Record<string, RuleTemplate[]> = {
     },
     {
       code: 'IM_WO_POOLED', name: '工单池待领取提醒',
-      subject: '【工单池待领取提醒】${groupName}工单池有一条工单待领取',
-      body: '工单 ${ticketNo}『${title}』已进入${groupName}工单池，请及时领取。\n优先级：${priority}｜进池时间：${pooledAt}\n\n工单详情：${deepLink}',
+      subject: '【工单池待领取提醒】您组内有一条工单待领取',
+      body: '您组内有一条待领取工单（${ticketNo}），请尽快领取处理。\n\n系统登陆地址：${loginUrl}',
     },
     {
       code: 'IM_WO_CANCEL', name: '工单取消通知',
@@ -736,7 +737,7 @@ export const TEST_PRESETS: TestPreset[] = [
       returnFrom: '技术支持', returnReason: '需客户补充设备序列号',
       holdUntil: '2026-08-05', timeToHoldEnd: '2880', heldDays: '12', apptTime: '2026-08-02 14:00', timeToAppt: '10',
       resumeType: '到期自动解挂', dispatchFrom: '建单',
-      groupName: '受理一组', priority: '普通加急', pooledAt: '2026-07-28 14:22',
+      groupName: '受理一组', priority: '普通加急', pooledAt: '2026-07-28 14:22', loginUrl: LOGIN_URL,
       operatorId: '张三', targetUserId: '王坐席', crossGroup: '否',
       prevAssigneeId: '张三',
       delegateeIds: '陈坐席', delegateTask: '协助排查主板供电',
