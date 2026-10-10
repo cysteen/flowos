@@ -5136,7 +5136,7 @@ function toggleWordEnabled(w: RiskWord) {
         <div class="effect-pane effect-pane--monitor">
           <h2
             class="pane-title"
-            title="今日监控运行情况，按自然日统计 · 口径恒为全中心，不随「班组」变（右边「风险工单」那一块跟着班组走，三块分母不同、不要横着比）"
+            title="今日监控运行情况，按自然日统计"
           >实时监控</h2>
           <div class="dash-grid dash-grid-4">
             <div
@@ -5148,21 +5148,21 @@ function toggleWordEnabled(w: RiskWord) {
             </div>
             <div
               class="dm-cell dm-static"
-              title="今日跑过的实时扫描轮次 —— 手动筛查是人发起的旁路，不计在内。点右上角「扫库记录」看每一轮扫了什么"
+              title="今日跑过的实时扫描轮次 —— 手动筛查是人发起的旁路，不计在内"
             >
               <span class="dm-k">扫描批次</span>
               <span class="dm-val"><span class="dm-v">{{ scanRunsToday.length }}</span></span>
             </div>
             <div
               class="dm-cell dm-static"
-              title="今日产生的风险词命中记录条数。🔴 分母是命中不是条目：一张单可以被三条词命中，两个数不可相加；也不是右上角「命中明细」那个数 —— 那枚数的是全量命中记录"
+              title="今日产生的风险词命中记录条数 · 计数单位是命中、不是工单"
             >
               <span class="dm-k">命中记录</span>
               <span class="dm-val"><span class="dm-v">{{ hitsToday }}</span></span>
             </div>
             <div
               class="dm-cell dm-static"
-              title="今日下过结论的条目数，含判为无风险的那一批 —— 判无风险同样是一次结论，不算进来就看不出今天判了多少活"
+              title="今日下过结论的条目数，含判为无风险的那一批"
             >
               <span class="dm-k">今日标记</span>
               <span class="dm-val"><span class="dm-v">{{ taggedToday }}</span></span>
@@ -5209,7 +5209,7 @@ function toggleWordEnabled(w: RiskWord) {
         <div class="effect-pane effect-pane--ticket">
           <h2
             class="pane-title"
-            title="在办工单的两维分布（优先级 / 工单类型）· 🔴 本块分母 ＝ 全部在办工单（终态单不计），口径恒为全中心、不随「班组」变（右边「风险工单」那一块跟着班组走）。🔴 与左栏来源档「重点工单」同名、不是同一个集合：左栏那一档是自动纳入监控的判据，更窄 —— 在办 ∧（投诉 ∨ P0 / P1）。与左栏监控条目、右栏已判条目均不可相加"
+            title="在办工单的两维分布（优先级 / 工单类型）· 分母 ＝ 全部在办工单"
           >重点工单</h2>
           <!-- 第一行 · 优先级四维。`Priority` 只有这四个取值，故 P0 + P1 + P2 + P3 ≡ 在办工单总数 -->
           <div class="dash-grid dash-grid-4">
@@ -5218,7 +5218,7 @@ function toggleWordEnabled(w: RiskWord) {
               :key="p"
               type="button"
               class="dm-cell"
-              :title="`在办且优先级为「${PRIORITY_RAIL_LABEL[p]}」的工单数 · 本块分母 ＝ 全部在办工单；P0 + P1 + P2 + P3 ＝ 在办工单总数`"
+              :title="`在办且优先级为「${PRIORITY_RAIL_LABEL[p]}」的工单数`"
               @click="drillFocusPriority(p)"
             >
               <span class="dm-k">{{ PRIORITY_RAIL_LABEL[p] }}</span>
@@ -5234,13 +5234,13 @@ function toggleWordEnabled(w: RiskWord) {
           <div class="dash-links">
             <span
               class="dash-links-k"
-              title="同一个分母（全部在办工单）换一维看：按工单类型计。🔴 五类之和 ≡ 上面 P0 + P1 + P2 + P3 ≡ 在办工单总数 —— 工单类型这一维就是这五个取值，没有落不进格的单"
+              title="同一批在办工单换一维看：按工单类型计"
             >工单类型</span>
             <span
               v-for="tt in HEAD_TICKET_TYPES"
               :key="tt"
               class="dl-item dl-static"
-              :title="`在办的「${tt}」类工单数 · 本块分母 ＝ 全部在办工单（与下方「风险工单」块那一行的「工单类型」不是同一个分母，两处不可相减）`"
+              :title="`在办的「${tt}」类工单数 · 分母 ＝ 全部在办工单`"
             >
               {{ tt }}<b>{{ liveTicketTypeCounts[tt] }}</b>
             </span>
@@ -5276,13 +5276,13 @@ function toggleWordEnabled(w: RiskWord) {
         <div class="effect-pane effect-pane--report">
           <h2
             class="pane-title"
-            title="在办工单上已判出风险等级（高 / 中 / 低）的监控条目 · 🔴 与左栏「已判」段恒等：总数 ≡ 左栏已判页签 ≡ 「全部有风险」，高 / 中 / 低 ≡ 左栏那三档，两处同取一个派生值，改一处必须两处一起改。判为无风险的不在这一批（不进池、离开漏斗）；原单进终态的也不在（与左栏同一道在办判据）。🔴 本块跟着「班组」走（与左栏同进同退，恒等的必然结果）；左边「实时监控」「重点工单」两块恒为全中心、不随班组变 —— 同一排三块，分母不同，不要横着比。点任一枚落到左栏「已判」段看这一批"
+            title="在办工单上已判出风险等级（高 / 中 / 低）的监控条目 · 本块跟着「班组」走"
           >风险工单</h2>
           <div class="dash-grid dash-grid-4">
             <button
               type="button"
               class="dm-cell"
-              title="在办工单上已判出风险等级（高 / 中 / 低）的监控条目总数 ≡ 左栏「已判」页签上那个数 ≡ 左栏「全部有风险」。点它落到左栏「已判 · 全部有风险」"
+              title="在办工单上已判出风险等级（高 / 中 / 低）的监控条目总数"
               @click="drillPooled('all')"
             >
               <span class="dm-k">风险工单总数</span>
@@ -5294,7 +5294,7 @@ function toggleWordEnabled(w: RiskWord) {
               type="button"
               class="dm-cell"
               :class="{ hot: lv === '高' && pooledLevelCount(lv) > 0 }"
-              :title="`判为${riskLevelText(lv)}的监控条目数 ≡ 左栏已判段「${riskLevelText(lv)}」那一档（同一个派生值，两处恒等）。点它落到左栏已判段「${riskLevelText(lv)}」那一档`"
+              :title="`判为${riskLevelText(lv)}的监控条目数`"
               @click="drillPooled(lv)"
             >
               <span class="dm-k">{{ riskLevelText(lv) }}</span>
@@ -5311,15 +5311,15 @@ function toggleWordEnabled(w: RiskWord) {
           <div class="dash-links">
             <span
               class="dash-links-k"
-              title="同一批风险工单（＝左栏「已判」那一批监控条目）换一维看：按原单的工单类型计。🔴 各格之和 ≡ 左边「风险工单总数」。🔴 分母是风险工单、不是全部在办工单 —— 与上面「重点工单」块那一行的「工单类型」不是同一个集合，两处不可相减"
+              title="同一批风险工单换一维看：按原单的工单类型计"
             >工单类型</span>
             <span
               v-for="tt in pooledTypeRowKeys"
               :key="tt"
               class="dl-item dl-static"
               :title="tt === POOLED_TYPE_REST
-                ? '原单类型落在四类之外（刷机），或原单已查不到的那几条 —— 不吞，吞掉的话各格之和会小于风险工单总数'
-                : `原单类型为「${tt}」的风险工单数 · 分母 ＝ 风险工单（已判那一批），不是全部在办工单`"
+                ? '原单类型落在四类之外（刷机），或原单已查不到的那几条'
+                : `原单类型为「${tt}」的风险工单数 · 分母 ＝ 风险工单`"
             >
               {{ tt }}<b>{{ pooledTicketTypeCounts[tt] }}</b>
             </span>
@@ -5463,7 +5463,7 @@ function toggleWordEnabled(w: RiskWord) {
                 type="button"
                 class="row-btn scan-entry"
                 :class="{ active: listView === 'scan' }"
-                title="旁路 · 存量点查：拿九维条件去扫存量工单，看哪些单上有风险词命中。它只做查询、结果不落库，点行上的工单号进那张单"
+                title="旁路 · 存量点查：按九维条件扫存量工单的风险词命中，只查询、不落库"
                 @click="setListView('scan')"
               >
                 <SearchOutlined :style="{ fontSize: '12px' }" />
@@ -5480,7 +5480,7 @@ function toggleWordEnabled(w: RiskWord) {
                 type="button"
                 class="row-btn scan-entry"
                 :class="{ active: listView === 'judged' }"
-                title="旁路 · 风险词命中记录的全量明细：待核实 / 成立 / 误报三类都在，供事后点查与核实，词表准确率由它回填。分母是全部命中记录（含已标记工单上的，不是工单、也不是监控条目），与左栏条目不可相加；左栏「实时监控」只列其中尚未标记工单上的那部分"
+                title="旁路 · 风险词命中记录的全量明细：待核实 / 成立 / 误报三类都在"
                 @click="setListView('judged')"
               >
                 <TagsOutlined :style="{ fontSize: '12px' }" />
