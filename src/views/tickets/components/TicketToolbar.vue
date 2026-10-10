@@ -14,6 +14,11 @@ import {
   TICKET_LIST_FIXED_COLUMN_DEFS,
   ticketListColumnLabel,
 } from '@/views/tickets/composables/ticketListColumnCatalog';
+import {
+  DISABLED_TIP_COLOR,
+  DISABLED_TIP_OVERLAY_INNER_STYLE,
+  DISABLED_TIP_OVERLAY_STYLE,
+} from '@/views/tickets/types/ticket';
 
 const props = withDefaults(
   defineProps<{
@@ -146,7 +151,9 @@ function pickBatch(action: string, selectedCount: number) {
                   v-if="batchTip(action)"
                   :title="batchTip(action)"
                   placement="left"
-                  :overlay-style="{ maxWidth: 'none', whiteSpace: 'nowrap' }"
+                  :color="DISABLED_TIP_COLOR"
+                  :overlay-style="DISABLED_TIP_OVERLAY_STYLE"
+                  :overlay-inner-style="DISABLED_TIP_OVERLAY_INNER_STYLE"
                 >
                   <span class="batch-menu__label">{{ action }}</span>
                 </a-tooltip>

@@ -22,6 +22,9 @@ import {
 import { flashListRowActions } from '@/views/tickets/composables/flashGate';
 import {
   currentHandlerName,
+  DISABLED_TIP_COLOR,
+  DISABLED_TIP_OVERLAY_INNER_STYLE,
+  DISABLED_TIP_OVERLAY_STYLE,
   handlerGroupOf,
   doneRowActions,
   isMentionUnread,
@@ -737,7 +740,13 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
       <div v-if="showActionColumn" class="col-action cell-action">
         <template v-for="a in actionsFor(t)" :key="a.label">
           <!-- 置灰动作：外包一层 span 承接悬停提示，点击不派发 -->
-          <a-tooltip v-if="actDisabled(a)" :title="actTip(a)">
+          <a-tooltip
+            v-if="actDisabled(a)"
+            :title="actTip(a)"
+            :color="DISABLED_TIP_COLOR"
+            :overlay-style="DISABLED_TIP_OVERLAY_STYLE"
+            :overlay-inner-style="DISABLED_TIP_OVERLAY_INNER_STYLE"
+          >
             <span class="act act-disabled" aria-disabled="true" @click.stop>{{ a.label }}</span>
           </a-tooltip>
           <span

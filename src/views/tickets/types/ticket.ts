@@ -1469,6 +1469,22 @@ export const TRANSFERRED_OUT_TRANSFER_TIP = '工单已转出，不支持调剂';
 /** 批量「调剂」：所选含已转出单时置灰的悬停提示 */
 export const TRANSFERRED_OUT_BATCH_TRANSFER_TIP = '所选工单含已转出工单，不支持调剂';
 
+/**
+ * 置灰动作悬停提示的浮层样式：与首页 KPI「?」提示同款暖黄（`MetricTipIcon`）。
+ * 用法：`<a-tooltip :color="DISABLED_TIP_COLOR" :overlay-style="DISABLED_TIP_OVERLAY_STYLE"
+ * :overlay-inner-style="DISABLED_TIP_OVERLAY_INNER_STYLE">`；`color` 同时决定箭头颜色。
+ * 外层 maxWidth 必须一并放宽，antd 的 .ant-tooltip 默认 250px。
+ */
+export const DISABLED_TIP_COLOR = '#fffbeb';
+export const DISABLED_TIP_OVERLAY_STYLE = { maxWidth: '340px' };
+export const DISABLED_TIP_OVERLAY_INNER_STYLE = {
+  maxWidth: '340px',
+  color: '#713f12',
+  fontSize: '12px',
+  lineHeight: '1.6',
+  padding: '10px 12px',
+};
+
 /** 列表行内动作描述：`disabled` 时置灰、点击不派发，`tip` 为悬停提示 */
 export interface RowActionDesc {
   label: string;
