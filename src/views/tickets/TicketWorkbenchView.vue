@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
+import { UserSwitchOutlined } from '@ant-design/icons-vue';
 import { useUserStore } from '@/stores/user';
 import TicketTabs from './components/TicketTabs.vue';
 import RiskReportPoolPanel from './components/RiskReportPoolPanel.vue';
@@ -717,43 +718,51 @@ function onConfirmSaveFilter(name: string) {
     <OpActionModal
       v-model:open="takeoverOpen"
       title="领取工单"
-      :width="520"
+      :icon="UserSwitchOutlined"
+      tone="primary"
+      ok-tone="primary"
+      :width="480"
       ok-text="确认领取"
       cancel-text="取消"
       :ok-disabled="!takeoverGroup"
       @ok="onTakeoverOk"
     >
-      <div v-if="takeoverTicket" class="tko">
-        <div class="tko-head" :title="`${takeoverTicket.no} · ${takeoverTicket.title}`">
-          {{ takeoverTicket.no }} · {{ takeoverTicket.title }}
+      <div v-if="takeoverTicket" class="op-form">
+        <div class="op-box">
+          <div class="tko-ticket" :title="`${takeoverTicket.no} · ${takeoverTicket.title}`">
+            {{ takeoverTicket.no }} · {{ takeoverTicket.title }}
+          </div>
         </div>
-        <div class="tko-grid">
-          <div class="tko-kv">
-            <span class="tko-k">当前处理人</span>
-            <span
-              class="tko-v"
+        <div class="op-field-row">
+          <div class="op-field">
+            <div class="op-label">当前处理人</div>
+            <div
+              class="tko-ro"
               :title="`${takeoverFrom ?? '—'}${takeoverEscalated && takeoverFrom ? '（二线主责）' : ''}`"
-            >{{ takeoverFrom ?? '—' }}<span v-if="takeoverEscalated && takeoverFrom" class="tko-note">（二线主责）</span></span>
+            >{{ takeoverFrom ?? '—' }}<span v-if="takeoverEscalated && takeoverFrom" class="tko-note">（二线主责）</span></div>
           </div>
-          <div class="tko-kv">
-            <span class="tko-k">当前班组</span>
-            <span class="tko-v" :title="takeoverCurGroup ?? '—'">{{ takeoverCurGroup ?? '—' }}</span>
+          <div class="op-field">
+            <div class="op-label">当前班组</div>
+            <div class="tko-ro" :title="takeoverCurGroup ?? '—'">{{ takeoverCurGroup ?? '—' }}</div>
           </div>
-          <div class="tko-kv">
-            <span class="tko-k">领取后处理人</span>
-            <span class="tko-v" :title="takeoverMe">{{ takeoverMe }}</span>
+        </div>
+        <div class="op-field-row">
+          <div class="op-field">
+            <div class="op-label">领取后处理人</div>
+            <div class="tko-ro" :title="takeoverMe">{{ takeoverMe }}</div>
           </div>
-          <div class="tko-kv tko-kv-ctl">
-            <span class="tko-k">领取后班组</span>
+          <div class="op-field">
+            <div class="op-label req">领取后班组</div>
             <a-select
               v-model:value="takeoverGroup"
               class="tko-select"
+              style="width: 100%"
               :options="takeoverGroupOptions"
               :allow-clear="false"
             />
           </div>
         </div>
-        <div class="tko-foot">
+        <div class="op-hint">
           {{ takeoverEscalated
             ? '领取后由你担任二线主责，三线处理不受影响。'
             : '领取后工单进入你的处理队列，原处理人将不再处理此单。' }}
@@ -837,35 +846,23 @@ function onConfirmSaveFilter(name: string) {
   font-size: 13px;
   color: #9ca3af;
 }
-.tko { display: flex; flex-direction: column; gap: 12px; }
-.tko-head {
-  font-size: 14px;
+/* 领取工单弹窗：信息块里的工单号·标题；只读值与下拉同高，左右两格对齐 */
+.tko-ticket {
+  font-size: 13px;
   font-weight: 600;
   color: #111827;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* 两行两列：每格「键 + 值」，四轨网格让左右两列的键、值各自对齐 */
-.tko-grid {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr) max-content minmax(0, 1fr);
-  column-gap: 12px;
-  row-gap: 12px;
-  align-items: center;
-}
-.tko-kv { display: contents; }
-.tko-kv:nth-child(even) > .tko-k { padding-left: 12px; }
-.tko-k { font-size: 13px; color: #6b7280; text-align: left; white-space: nowrap; }
-.tko-v {
+.tko-ro {
   min-width: 0;
   font-size: 14px;
+  line-height: 32px;
   color: #111827;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .tko-note { margin-left: 4px; font-size: 12px; color: #9ca3af; }
-.tko-select { width: 100%; min-width: 0; }
-.tko-foot { font-size: 12px; color: #9ca3af; line-height: 1.5; }
 </style>
