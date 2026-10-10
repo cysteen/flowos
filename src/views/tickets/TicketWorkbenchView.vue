@@ -749,34 +749,24 @@ function onConfirmSaveFilter(name: string) {
             {{ takeoverTicket.no }} · {{ takeoverTicket.title }}
           </div>
         </div>
-        <div class="op-field-row">
-          <div class="op-field">
-            <div class="op-label">当前处理人</div>
-            <div
-              class="tko-ro"
-              :title="`${takeoverFrom ?? '—'}${takeoverEscalated && takeoverFrom ? '（二线主责）' : ''}`"
-            >{{ takeoverFrom ?? '—' }}<span v-if="takeoverEscalated && takeoverFrom" class="tko-note">（二线主责）</span></div>
-          </div>
-          <div class="op-field">
-            <div class="op-label">当前处理组</div>
-            <div class="tko-ro" :title="takeoverCurGroup ?? '—'">{{ takeoverCurGroup ?? '—' }}</div>
-          </div>
-        </div>
-        <div class="op-field-row">
-          <div class="op-field">
-            <div class="op-label">领取后处理人</div>
-            <div class="tko-ro" :title="takeoverMe">{{ takeoverMe }}</div>
-          </div>
-          <div class="op-field">
-            <div class="op-label req">领取后处理组</div>
-            <a-select
-              v-model:value="takeoverGroup"
-              class="tko-select"
-              style="width: 100%"
-              :options="takeoverGroupOptions"
-              :allow-clear="false"
-            />
-          </div>
+        <!-- 两行每行两格，每格字段名与值同一行；四列网格：左右两列字段名各自按本列最长者定宽，值左缘对齐 -->
+        <div class="tko-kv">
+          <div class="op-label">当前处理人</div>
+          <div
+            class="tko-ro"
+            :title="`${takeoverFrom ?? '—'}${takeoverEscalated && takeoverFrom ? '（二线主责）' : ''}`"
+          >{{ takeoverFrom ?? '—' }}<span v-if="takeoverEscalated && takeoverFrom" class="tko-note">（二线主责）</span></div>
+          <div class="op-label">当前处理组</div>
+          <div class="tko-ro" :title="takeoverCurGroup ?? '—'">{{ takeoverCurGroup ?? '—' }}</div>
+          <div class="op-label">领取后处理人</div>
+          <div class="tko-ro" :title="takeoverMe">{{ takeoverMe }}</div>
+          <div class="op-label req">领取后处理组</div>
+          <a-select
+            v-model:value="takeoverGroup"
+            class="tko-select"
+            :options="takeoverGroupOptions"
+            :allow-clear="false"
+          />
         </div>
         <div class="op-hint">
           {{ takeoverEscalated
@@ -862,7 +852,22 @@ function onConfirmSaveFilter(name: string) {
   font-size: 13px;
   color: #9ca3af;
 }
-/* 领取工单弹窗：信息块里的工单号·标题；只读值与下拉同高，左右两格对齐 */
+/* 领取工单弹窗：字段名与值同一行，垂直居中；只读值与下拉同高 32px */
+.tko-kv {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr);
+  column-gap: 10px;
+  row-gap: 12px;
+  align-items: center;
+}
+.tko-kv > .op-label {
+  white-space: nowrap;
+}
+.tko-kv > .tko-select {
+  width: 100%;
+  min-width: 0;
+}
+/* 信息块里的工单号·标题 */
 .tko-ticket {
   font-size: 13px;
   font-weight: 600;
