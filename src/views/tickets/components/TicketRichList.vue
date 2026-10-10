@@ -235,7 +235,7 @@ const emit = defineEmits<{
   clearFilters: [];
 }>();
 
-/** 调用方自带动作可带置灰与悬停提示；variant 映射出的动作没有这两项，一律可点 */
+/** 动作可带置灰与悬停提示（调用方自带动作、我的任务已转出单的「调剂」）；不带时可点 */
 type RowAct = { label: string; primary?: boolean; disabled?: boolean; tip?: string };
 const actDisabled = (a: RowAct) => a.disabled === true;
 const actTip = (a: RowAct) => a.tip;
@@ -245,7 +245,7 @@ function actionsFor(t: Ticket): RowAct[] {
   if (props.rowActionsFn) return props.rowActionsFn(t);
   // 刷机单（池页签除外）：行内操作按刷机门控的视角裁剪（930 教育刷机单 §5.5 / §9.4，M34）；老四类不经过这里
   if (t.type === '刷机' && t.flash && props.variant !== 'pool') {
-    const base = props.variant === 'mine' ? mineRowActions()
+    const base = props.variant === 'mine' ? mineRowActions(t)
       : props.variant === 'done' ? doneRowActions()
         : props.variant === 'mention' ? mentionRowActions()
           : rowActions(t);
@@ -258,7 +258,8 @@ function actionsFor(t: Ticket): RowAct[] {
       assigneeGroupId: handlerGroupOf(t.assignee)?.id,
     });
   }
-  if (props.variant === 'mine') return mineRowActions();
+  // 已转出的单「调剂」置灰并带悬停提示（判据在 mineRowActions）
+  if (props.variant === 'mine') return mineRowActions(t);
   if (props.variant === 'done') return doneRowActions();
   if (props.variant === 'mention') return mentionRowActions();
   if (props.variant === 'pool') return poolRowActions(user.roleKey);

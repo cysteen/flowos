@@ -1456,15 +1456,42 @@ export function canTransferTicket(t: Ticket): boolean {
 }
 
 /**
+ * 已转出：非诉单（咨询 / 建议 / 商机）转售后后等待售后回传；售后关单或转回客服后即不再是已转出。
+ * 已转出的单**不支持调剂**——各列表调剂入口（查询中心行内、我的任务行内、催补待回行内、批量调剂）
+ * 一律**置灰 + 悬停提示**，不隐藏。判据只读子状态，不动 `canTransferTicket` 的出不出语义。
+ */
+export function isTransferredOut(t: Pick<Ticket, 'nodeStatus'>): boolean {
+  return t.nodeStatus === '已转出';
+}
+
+/** 已转出单行内「调剂」置灰的悬停提示 */
+export const TRANSFERRED_OUT_TRANSFER_TIP = '工单已转出，不支持调剂';
+/** 批量「调剂」：所选含已转出单时置灰的悬停提示 */
+export const TRANSFERRED_OUT_BATCH_TRANSFER_TIP = '所选工单含已转出工单，不支持调剂';
+
+/** 列表行内动作描述：`disabled` 时置灰、点击不派发，`tip` 为悬停提示 */
+export interface RowActionDesc {
+  label: string;
+  primary?: boolean;
+  disabled?: boolean;
+  tip?: string;
+}
+
+/**
  * 查询中心 · 行内动作。整列由 `canTransferInQueryCenter` 决定出不出，
  * 逐行再按状态判可用性；不可用的行返回空数组（该格显示为空，不出一颗点不动的按钮）。
+ * 已转出的单「调剂」照出但置灰，悬停提示 `TRANSFERRED_OUT_TRANSFER_TIP`。
  */
 export function queryCenterRowActions(
   t: Ticket,
   roleKey?: string,
-): { label: string; primary?: boolean }[] {
+): RowActionDesc[] {
   if (!canTransferInQueryCenter(roleKey)) return [];
-  return canTransferTicket(t) ? [{ label: '调剂', primary: true }] : [];
+  if (!canTransferTicket(t)) return [];
+  if (isTransferredOut(t)) {
+    return [{ label: '调剂', primary: true, disabled: true, tip: TRANSFERRED_OUT_TRANSFER_TIP }];
+  }
+  return [{ label: '调剂', primary: true }];
 }
 
 /**
@@ -1490,10 +1517,15 @@ export function doneRowActions(): { label: string; primary?: boolean }[] {
   return [];
 }
 
-/** 我的任务 · 行内动作（PRD-02 v1.2：转办 / 退回） */
-export function mineRowActions(): { label: string; primary?: boolean }[] {
+/**
+ * 我的任务 · 行内动作（PRD-02 v1.2：转办 / 退回）。
+ * 传入工单且其已转出时，「调剂」置灰并带悬停提示；不传时行为不变。
+ */
+export function mineRowActions(t?: Pick<Ticket, 'nodeStatus'>): RowActionDesc[] {
   return [
-    { label: '调剂', primary: true },
+    t && isTransferredOut(t)
+      ? { label: '调剂', primary: true, disabled: true, tip: TRANSFERRED_OUT_TRANSFER_TIP }
+      : { label: '调剂', primary: true },
     { label: '退回' },
   ];
 }
