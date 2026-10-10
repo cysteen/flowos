@@ -15,6 +15,9 @@ import {
   visiblePoolGroupsFor,
   canAssignTicket,
   canTransferTicket,
+  isTransferredOut,
+  TRANSFERRED_OUT_TRANSFER_TIP,
+  TRANSFERRED_OUT_BATCH_TRANSFER_TIP,
   currentHandlerName,
   resolveTicketGroupNames,
   type WorkbenchTabKey,
@@ -237,6 +240,17 @@ const batchActions = computed(() => {
   if (isPoolFamilyTab.value) return canAssign.value ? ['领取', '指派'] : ['领取'];
   return wb.isMineTab.value ? ['调剂', '退回'] : [];
 });
+/** 批量调剂：所选工单含已转出单时置灰并悬停提示；不含时照常 */
+const batchDisabledTips = computed<Record<string, string>>(() => {
+  const tips: Record<string, string> = {};
+  if (!wb.isMineTab.value) return tips;
+  const hasOut = [...wb.selectedIds.value].some((id) => {
+    const t = wb.ticketById(id);
+    return !!t && isTransferredOut(t);
+  });
+  if (hasOut) tips['调剂'] = TRANSFERRED_OUT_BATCH_TRANSFER_TIP;
+  return tips;
+});
 const showBatchToolbar = computed(
   () => wb.isMineTab.value || (isPoolFamilyTab.value && !isPoolPendingTab.value),
 );
@@ -332,8 +346,8 @@ function poolPendingRowActions(
   ];
   if (canAssign.value && canTransferTicket(t)) {
     acts.push(
-      t.nodeStatus === '已转出'
-        ? { label: '调剂', disabled: true, tip: '工单已转出，不支持调剂' }
+      isTransferredOut(t)
+        ? { label: '调剂', disabled: true, tip: TRANSFERRED_OUT_TRANSFER_TIP }
         : { label: '调剂' },
     );
   }
@@ -449,6 +463,7 @@ function onBatch(action: string) {
     wb.clearSelection();
     return;
   }
+  if (action === '调剂' && batchDisabledTips.value['调剂']) return;
   if (action === '调剂' || action === '退回') {
     const picked = [...wb.selectedIds.value]
       .map((id) => wb.ticketById(id))
@@ -599,6 +614,7 @@ function onConfirmSaveFilter(name: string) {
           :show-create="!wb.isDoneTab.value"
           :show-batch="showBatchToolbar"
           :batch-actions="batchActions"
+          :batch-disabled-tips="batchDisabledTips"
           :visible-columns="visibleColumns"
           :column-order="columnOrder"
           :show-filter-toggle="wb.usesStructuredFilter.value"

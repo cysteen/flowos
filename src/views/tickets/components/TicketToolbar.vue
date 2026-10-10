@@ -24,6 +24,8 @@ const props = withDefaults(
     showCreate?: boolean;
     showBatch?: boolean;
     batchActions?: string[];
+    /** 批量动作置灰：动作名 → 悬停提示；命中的项置灰、点击不派发 */
+    batchDisabledTips?: Record<string, string>;
     visibleColumns?: Record<string, boolean>;
     columnOrder?: string[];
     hideAssigneeColumn?: boolean;
@@ -37,6 +39,7 @@ const props = withDefaults(
     showSearch: true,
     showCreate: true,
     batchActions: () => ['调剂', '退回'],
+    batchDisabledTips: () => ({}),
     showFilterToggle: false,
     filterExpanded: false,
   },
@@ -55,8 +58,13 @@ const emit = defineEmits<{
 const columnSettingsOpen = ref(false);
 const batchOpen = ref(false);
 
+function batchTip(action: string): string | undefined {
+  return props.selectedCount > 0 ? props.batchDisabledTips[action] : undefined;
+}
+
 function pickBatch(action: string, selectedCount: number) {
   if (selectedCount <= 0) return;
+  if (batchTip(action)) return;
   batchOpen.value = false;
   emit('batch', action);
 }
@@ -131,10 +139,13 @@ function pickBatch(action: string, selectedCount: number) {
               <a-menu-item
                 v-for="action in batchActions"
                 :key="action"
-                :disabled="selectedCount <= 0"
+                :disabled="selectedCount <= 0 || !!batchTip(action)"
                 @click="pickBatch(action, selectedCount)"
               >
-                {{ action }}
+                <a-tooltip v-if="batchTip(action)" :title="batchTip(action)" placement="left">
+                  <span class="batch-menu__label">{{ action }}</span>
+                </a-tooltip>
+                <template v-else>{{ action }}</template>
               </a-menu-item>
             </template>
             <a-menu-item v-else disabled>
@@ -268,6 +279,9 @@ function pickBatch(action: string, selectedCount: number) {
 }
 .wb-toolbar__btn--batch.is-active:hover {
   border-color: #1a6fff;
+}
+.batch-menu__label {
+  display: block;
 }
 .wb-toolbar__badge {
   min-width: 18px;
