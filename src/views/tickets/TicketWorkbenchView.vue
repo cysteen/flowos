@@ -360,9 +360,9 @@ const takeoverTicket = ref<Ticket | null>(null);
 const takeoverFrom = ref<string | null>(null);
 const takeoverEscalated = computed(() => takeoverTicket.value?.nodeStatus === '已升级技术支持');
 const takeoverMe = computed(() => currentHandlerName(user.roleKey, user.name));
-/** 工单当前所在班组（处理组＝分组名称首项） */
+/** 当前处理组：工单当前归属的处理组（＝分组名称首项） */
 const takeoverCurGroup = ref<string | null>(null);
-/** 领取后班组：选项＝当前用户所在的全部班组 */
+/** 领取后处理组：选项＝当前用户所在的全部班组 */
 const takeoverGroup = ref<string | undefined>(undefined);
 const takeoverGroupOptions = computed(() => user.groups.map((g) => ({ value: g, label: g })));
 
@@ -379,8 +379,8 @@ function runTakeOverPending(t: Ticket, groupName?: string) {
 
 /**
  * 催补待回 · 领取：无处理人、他人名下、已升级单（二线主责）一律先弹「领取工单」确认。
- * 领取后班组默认＝工单当前班组；当前用户不在该组时取用户所在班组的第一个。
- * 确认后处理人＝本人、处理组＝所选班组，进该单详情。
+ * 领取后处理组默认＝工单当前处理组；当前用户不在该组时取用户所在班组的第一个。
+ * 确认后处理人＝本人、处理组＝所选处理组，进该单详情。
  */
 function takeOverPending(t: Ticket) {
   const cur = resolveTicketGroupNames(t)[0] ?? null;
@@ -737,7 +737,7 @@ function onConfirmSaveFilter(name: string) {
       :icon="UserSwitchOutlined"
       tone="primary"
       ok-tone="primary"
-      :width="480"
+      :width="440"
       ok-text="确认领取"
       cancel-text="取消"
       :ok-disabled="!takeoverGroup"
@@ -758,7 +758,7 @@ function onConfirmSaveFilter(name: string) {
             >{{ takeoverFrom ?? '—' }}<span v-if="takeoverEscalated && takeoverFrom" class="tko-note">（二线主责）</span></div>
           </div>
           <div class="op-field">
-            <div class="op-label">当前班组</div>
+            <div class="op-label">当前处理组</div>
             <div class="tko-ro" :title="takeoverCurGroup ?? '—'">{{ takeoverCurGroup ?? '—' }}</div>
           </div>
         </div>
@@ -768,7 +768,7 @@ function onConfirmSaveFilter(name: string) {
             <div class="tko-ro" :title="takeoverMe">{{ takeoverMe }}</div>
           </div>
           <div class="op-field">
-            <div class="op-label req">领取后班组</div>
+            <div class="op-label req">领取后处理组</div>
             <a-select
               v-model:value="takeoverGroup"
               class="tko-select"
