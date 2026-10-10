@@ -2842,7 +2842,7 @@ const TICKET_LIST_COL_WIDTHS: Record<string, number> = {
   title: 200,
   summary: 168,
   sla: 100,
-  priority: 46,
+  priority: 56,
   customer: 76,
   product: 96,
   node: 88,
