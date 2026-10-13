@@ -8,7 +8,6 @@ import { useUserStore } from '@/stores/user';
 import TicketTabs from './components/TicketTabs.vue';
 import RiskReportPoolPanel from './components/RiskReportPoolPanel.vue';
 import { TICKET_LIST_COLUMN_KEYS } from '@/views/tickets/composables/ticketListColumnCatalog';
-import { isFlashSlaIdle, slaFirstLine, slaResolveLine } from './utils/ticketListCells';
 import { useFlashStore } from '@/stores/flash';
 import {
   FLASH_POOL_TAB,
@@ -159,7 +158,6 @@ const FLASH_POOL_EXTRA_COLUMNS = [
   { key: 'flashFail', label: '失败原因', width: 230 },
   { key: 'flashModel', label: '产品名称', width: 210 },
   { key: 'flashPoolAt', label: '进池时间', width: 140 },
-  { key: 'flashSla', label: 'SLA', width: 120 },
 ];
 const FLASH_POOL_COLUMN_WIDTHS = { title: 380, action: 96 };
 const FLASH_POOL_COLUMN_WIDTHS_KEY = 'flowos-flash-pool-column-widths';
@@ -777,15 +775,6 @@ function onConfirmSaveFilter(name: string) {
             <template #cell-flashPoolAt="{ ticket }">
               <span class="flash-plain">{{ flashStore.poolEnteredAtOf(ticket.no).slice(0, 16) || '—' }}</span>
             </template>
-            <template #cell-flashSla="{ ticket }">
-              <div v-if="isFlashSlaIdle(ticket)" class="flash-sla">
-                <span class="flash-sla-line" :style="{ color: slaResolveLine(ticket).color }">—</span>
-              </div>
-              <div v-else class="flash-sla">
-                <span class="flash-sla-line" :style="{ color: slaResolveLine(ticket).color }">解决：{{ slaResolveLine(ticket).text }}</span>
-                <span class="flash-sla-line" :style="{ color: slaFirstLine(ticket).color }">首响：{{ slaFirstLine(ticket).text }}</span>
-              </div>
-            </template>
           </TicketRichList>
           <div class="pager">
             <div class="pager-left">
@@ -983,18 +972,6 @@ function onConfirmSaveFilter(name: string) {
   color: #111827;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.flash-sla {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  align-items: flex-start;
-}
-.flash-sla-line {
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 18px;
   white-space: nowrap;
 }
 .table-card {
