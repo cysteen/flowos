@@ -642,12 +642,12 @@ export const useFlashStore = defineStore('flash', () => {
   /* ---------------- 校验 ---------------- */
 
   /** 建单校验（D15）：SN与学生账号一致 → 毕业生身份。校验接口不可用单独返回（M43） */
-  function verify(info: Pick<FlashInfo, 'sn' | 'studentAccount' | 'schoolId'>): VerifyResult {
+  function verify(info: Pick<FlashInfo, 'sn' | 'studentAccount' | 'studentName' | 'schoolId'>): VerifyResult {
     const device = findMdmDevice(info.sn);
     if (device?.verifyApi === '不可用') return { ok: false, unavailable: true, result: FLASH_VERIFY_NOT_RUN };
     // 两项都比，结论各自保留；两项都不通过时细分取「SN与学生账号不一致」（先比设备再比身份，M50）
     const snOk = !!device && device.studentAccount === info.studentAccount.trim();
-    const gradOk = isGraduate(info.schoolId, info.studentAccount);
+    const gradOk = isGraduate(info.schoolId, info.studentAccount, info.studentName ?? '');
     const result: FlashVerifyResult = {
       status: '已校验',
       snAccountMatch: snOk ? '通过' : '不通过',

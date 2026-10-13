@@ -1,6 +1,6 @@
 /**
  * 毕业名单（2026 届）—— 建单校验「毕业生身份」的比对底数（930 教育刷机单 D15 / M42）。
- * 按**学校库 ID + 学生账号**精确匹配，学校库见 `mock/schools.ts`。
+ * 按**学校库 ID + 学生账号 + 学生姓名**精确匹配，学校库见 `mock/schools.ts`。
  */
 export interface GraduateRecord {
   /** 学校库 ID */
@@ -44,8 +44,11 @@ export const GRADUATE_ROSTER: GraduateRecord[] = [
   { schoolId: 'SCH-341502-001', studentAccount: 'la1z2023s1107', studentName: '孙雨桐', graduateYear: 2026 },
 ];
 
-/** 是否在毕业名单内（学校库 ID + 学生账号精确匹配） */
-export function isGraduate(schoolId: string, studentAccount: string): boolean {
+/** 是否在毕业名单内（学校库 ID + 学生账号 + 学生姓名三项精确匹配，PRD §2.2） */
+export function isGraduate(schoolId: string, studentAccount: string, studentName: string): boolean {
   const acc = studentAccount.trim();
-  return GRADUATE_ROSTER.some((g) => g.schoolId === schoolId && g.studentAccount === acc);
+  const name = studentName.trim();
+  return GRADUATE_ROSTER.some(
+    (g) => g.schoolId === schoolId && g.studentAccount === acc && g.studentName === name,
+  );
 }
