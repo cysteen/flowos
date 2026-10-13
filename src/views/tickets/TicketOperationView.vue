@@ -1587,6 +1587,13 @@ function pushAttachmentHistory(
   );
 }
 
+function onAttachmentTabUpload(files: { name: string; size: number }[]) {
+  pushAttachmentHistory(
+    files.map((f) => ({ name: f.name, size: formatFileSize(f.size) })),
+    `${user.name || '当前坐席'}(${mapUserRole(user.roleKey)})`,
+  );
+}
+
 /** 结案后备注新增的附件同步进「附件历史」（只追加；移除附件不删历史记录） */
 function syncClosingNoteAttachmentsToHistory(names: string[]) {
   pushAttachmentHistory(
@@ -2568,6 +2575,7 @@ watch(
           @feishu-activate="onFeishuActivate"
           @feishu-retry="onFeishuRetry"
           @dunning="dunningModalOpen = true"
+          @attachment-upload="onAttachmentTabUpload"
         >
           <template v-if="isFlash && d.flash" #process-top>
             <OpFlashResultCard :flash="d.flash" />

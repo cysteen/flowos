@@ -18,6 +18,7 @@ import {
   isRegulatorComplaintPlatform,
   visibleProcessTabs,
   tabWritableFor,
+  tabAttachmentUploadEnabled,
   deriveAppointmentNeeded,
   type ProcessTabKey,
 } from '@/views/tickets/types/operation';
@@ -102,6 +103,7 @@ const emit = defineEmits<{
   'feishu-retry': [];
   dunning: [];
   closingNoteFilesAdded: [files: { name: string; size: number }[]];
+  'attachment-upload': [files: { name: string; size: number }[]];
 }>();
 
 const user = useUserStore();
@@ -143,6 +145,13 @@ const activeTabReadonly = computed(
   () => !!props.readonly
     || !(props.tabWritableOverride?.[activeTab.value] ?? tabWritableFor(activeTab.value, user.roleKey)),
 );
+
+/** 「坐席上传」子页签的上传栏：独立于 #50 Tab 只读，与工单处理写权（及刷机覆盖）对齐 */
+const attachmentUploadEnabled = computed(() => {
+  if (props.readonly) return false;
+  if (user.roleKey === 'qa') return true;
+  return props.tabWritableOverride?.process ?? tabAttachmentUploadEnabled(user.roleKey);
+});
 
 /** 工单类型变化后，若当前 Tab 已被该类型隐藏，回退到「工单处理」。 */
 watch(visibleTabs, (tabs) => {
@@ -307,7 +316,8 @@ defineExpose({ switchTab });
         v-else-if="activeTab === 'attachments'"
         :records="tabData.attachmentHistory"
         :links="tabData.attachmentLinks"
-        :readonly="activeTabReadonly"
+        :readonly="!attachmentUploadEnabled"
+        @upload="emit('attachment-upload', $event)"
       />
 
       <OpCustomerHistoryTab
@@ -385,7 +395,7 @@ defineExpose({ switchTab });
 .tab-content.is-readonly :deep(.add-btn),
 .tab-content.is-readonly :deep(.attach-trigger),
 .tab-content.is-readonly :deep(.attach-remove),
-.tab-content.is-readonly :deep(.upload-btn),
+.tab-content.is-readonly :deep(.upload-btn:not(.tko-upload-btn)),
 .tab-content.is-readonly :deep(.fs-retry),
 .tab-content.is-readonly :deep(.fs-sheet-actions .action-btn) {
   display: none;

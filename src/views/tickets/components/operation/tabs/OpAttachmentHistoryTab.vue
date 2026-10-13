@@ -16,10 +16,14 @@ const props = defineProps<{
   links: AttachmentLinkRecord[];
   /**
    * 本 Tab 对当前角色只读。矩阵 #50「附件历史」**九格全「只读」**，原话是
-   * 「查看/下载保留，**上传入口在处理表单区**」—— 故这条「上传附件」栏在只读态整条不出，
-   * 上传走「工单处理」Tab 的处理表单区。查看/下载不受影响。
+   * 「查看/下载保留」；「上传附件」栏在 #50 Tab 只读时仍可出（见 tabAttachmentUploadEnabled），
+   * 只读角色 / 整页只读时不出。处理表单区上传与此处写入同一路径。
    */
   readonly?: boolean;
+}>();
+
+const emit = defineEmits<{
+  upload: [files: { name: string; size: number }[]];
 }>();
 
 type SubTab = 'files' | 'links';
@@ -49,9 +53,10 @@ function openUpload() {
 function onFilesSelected(e: Event) {
   if (props.readonly) return;
   const input = e.target as HTMLInputElement;
-  const names = Array.from(input.files ?? []).map((f) => f.name);
-  if (!names.length) return;
-  message.success(`已选择 ${names.length} 个附件（原型演示）`);
+  const picked = Array.from(input.files ?? []);
+  if (!picked.length) return;
+  emit('upload', picked.map((f) => ({ name: f.name, size: f.size })));
+  message.success(`已上传 ${picked.length} 个附件`);
   input.value = '';
 }
 
@@ -89,28 +94,26 @@ function openLinkFiles(link: AttachmentLinkRecord) {
 
 <template>
   <div class="attach-tab">
-    <div class="sub-tabs" role="tablist">
-      <button
-        v-for="t in SUB_TABS"
-        :key="t.key"
-        type="button"
-        role="tab"
-        class="sub-tab"
-        :class="{ on: subTab === t.key }"
-        :aria-selected="subTab === t.key"
-        @click="subTab = t.key"
-      >
-        {{ t.label }}
-      </button>
-    </div>
-
-    <template v-if="subTab === 'files'">
-      <div v-if="!readonly" class="upload-bar">
-        <button type="button" class="upload-btn" @click="openUpload">
-          <span class="upload-icon" aria-hidden="true">📎</span>
+    <div class="attach-toolbar">
+      <div class="sub-tabs" role="tablist">
+        <button
+          v-for="t in SUB_TABS"
+          :key="t.key"
+          type="button"
+          role="tab"
+          class="sub-tab"
+          :class="{ on: subTab === t.key }"
+          :aria-selected="subTab === t.key"
+          @click="subTab = t.key"
+        >
+          {{ t.label }}
+        </button>
+      </div>
+      <div v-if="subTab === 'files' && !readonly" class="upload-bar">
+        <span class="upload-hint">支持上传图片、文档、压缩包等，单个文件不超过 200MB</span>
+        <button type="button" class="upload-btn tko-upload-btn" @click="openUpload">
           上传附件
         </button>
-        <span class="upload-hint">支持上传图片、文档、压缩包等，单个文件不超过 200MB</span>
         <input
           ref="fileInput"
           type="file"
@@ -119,7 +122,9 @@ function openLinkFiles(link: AttachmentLinkRecord) {
           @change="onFilesSelected"
         />
       </div>
+    </div>
 
+    <template v-if="subTab === 'files'">
       <div class="table-wrap">
         <table class="attach-table">
           <thead>
@@ -217,9 +222,18 @@ function openLinkFiles(link: AttachmentLinkRecord) {
   font-family: inherit;
 }
 
+.attach-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-height: 32px;
+}
+
 .sub-tabs {
   display: inline-flex;
-  align-self: flex-start;
+  flex: none;
   padding: 2px;
   background: #f3f4f6;
   border-radius: 6px;
@@ -250,39 +264,47 @@ function openLinkFiles(link: AttachmentLinkRecord) {
 .upload-bar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  margin-left: auto;
 }
 
 .upload-btn {
+  flex: none;
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  font-size: 13px;
+  justify-content: center;
+  height: 25px;
+  padding: 0 12px;
+  font-size: 12px;
   font-weight: 600;
+  line-height: 1;
   color: #1a6fff;
   background: #fff;
-  border: 1.5px solid #93c5fd;
-  border-radius: 6px;
+  border: 1px solid #93c5fd;
+  border-radius: 4px;
   cursor: pointer;
   font-family: inherit;
-  box-shadow: 0 1px 2px rgba(26, 111, 255, 0.1);
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.08);
 }
 .upload-btn:hover {
   background: #eff6ff;
   border-color: #1a6fff;
 }
 
-.upload-icon {
-  font-size: 14px;
-  line-height: 1;
-}
-
 .upload-hint {
+  flex: 1;
+  min-width: 0;
   font-size: 12px;
   color: #9ca3af;
   line-height: 1.4;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .file-input {

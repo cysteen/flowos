@@ -37,16 +37,23 @@ const props = withDefaults(
     hideGroupNamesColumn?: boolean;
     showFilterToggle?: boolean;
     filterExpanded?: boolean;
+    /** 左侧「SLA 紧急度优先」提示条 */
+    showSort?: boolean;
+    /** 列设置入口（刷机池等固定列场景可关） */
+    showColumnSettings?: boolean;
   }>(),
   {
     search: '',
     searchPlaceholder: '搜索工单号、手机号、SN、产品…',
     showSearch: true,
     showCreate: true,
+    showBatch: true,
     batchActions: () => ['调剂', '退回'],
     batchDisabledTips: () => ({}),
     showFilterToggle: false,
     filterExpanded: false,
+    showSort: true,
+    showColumnSettings: true,
   },
 );
 
@@ -77,12 +84,12 @@ function pickBatch(action: string, selectedCount: number) {
 
 <template>
   <div class="wb-toolbar">
-    <div class="wb-toolbar__sort smart">
+    <div v-if="showSort" class="wb-toolbar__sort smart">
       <ThunderboltOutlined :style="{ fontSize: '14px', color: '#1A6FFF' }" />
       <span class="wb-toolbar__sort-text">SLA 紧急度优先</span>
     </div>
 
-    <div class="wb-toolbar__cluster">
+    <div class="wb-toolbar__cluster" :class="{ 'wb-toolbar__cluster--solo': !showSort }">
       <div
         v-if="showSearch"
         class="wb-toolbar__search"
@@ -107,21 +114,23 @@ function pickBatch(action: string, selectedCount: number) {
         <DownOutlined v-else :style="{ fontSize: '11px', color: '#9CA3AF' }" />
       </div>
 
-      <div class="wb-toolbar__btn" @click="columnSettingsOpen = true">
-        <SettingOutlined :style="{ color: '#6B7280', fontSize: '14px' }" />
-        <span>列设置</span>
-      </div>
-      <TicketColumnSettings
-        v-model:open="columnSettingsOpen"
-        :visible-columns="visibleColumns ?? {}"
-        :column-order="columnOrder"
-        :column-defs="TICKET_LIST_COLUMN_CATALOG"
-        :fixed-column-defs="TICKET_LIST_FIXED_COLUMN_DEFS"
-        :resolve-label="ticketListColumnLabel"
-        @set-visible="(key, visible) => emit('setColumnVisible', key, visible)"
-        @reorder="(fromKey, toKey) => emit('reorderColumn', fromKey, toKey)"
-        @reset="emit('resetColumns')"
-      />
+      <template v-if="showColumnSettings">
+        <div class="wb-toolbar__btn" @click="columnSettingsOpen = true">
+          <SettingOutlined :style="{ color: '#6B7280', fontSize: '14px' }" />
+          <span>列设置</span>
+        </div>
+        <TicketColumnSettings
+          v-model:open="columnSettingsOpen"
+          :visible-columns="visibleColumns ?? {}"
+          :column-order="columnOrder"
+          :column-defs="TICKET_LIST_COLUMN_CATALOG"
+          :fixed-column-defs="TICKET_LIST_FIXED_COLUMN_DEFS"
+          :resolve-label="ticketListColumnLabel"
+          @set-visible="(key, visible) => emit('setColumnVisible', key, visible)"
+          @reorder="(fromKey, toKey) => emit('reorderColumn', fromKey, toKey)"
+          @reset="emit('resetColumns')"
+        />
+      </template>
 
       <a-dropdown
         v-if="showBatch !== false"
@@ -184,10 +193,12 @@ function pickBatch(action: string, selectedCount: number) {
   min-width: 0;
 }
 .wb-toolbar__sort {
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
+  height: 36px;
+  padding: 0 12px;
   background: #f3f4f6;
   border: 1px solid #e5e7eb;
   border-radius: 6px;
@@ -209,11 +220,21 @@ function pickBatch(action: string, selectedCount: number) {
   color: #1a6fff;
 }
 .wb-toolbar__cluster {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.wb-toolbar__cluster--solo {
+  margin-left: auto;
+}
+.wb-toolbar__cluster :deep(.ant-dropdown-trigger) {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
   flex: none;
-  flex-shrink: 0;
 }
 .wb-toolbar__search {
   display: flex;
@@ -245,28 +266,38 @@ function pickBatch(action: string, selectedCount: number) {
   color: #9ca3af;
 }
 .wb-toolbar__create {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
   font-size: 13px;
   font-weight: 600;
   color: #fff;
   background: #1a6fff;
   border: none;
   border-radius: 8px;
-  padding: 8px 16px;
+  padding: 0 16px;
   cursor: pointer;
   white-space: nowrap;
+  flex: none;
 }
 .wb-toolbar__create:hover {
   background: #0f4fcc;
 }
 .wb-toolbar__btn {
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  padding: 7px 12px;
+  height: 36px;
+  padding: 0 12px;
   background: #fff;
   border: 1px solid #d1d5db;
   border-radius: 6px;
   font-size: 13px;
+  line-height: 1;
   color: #374151;
   cursor: pointer;
   user-select: none;
@@ -296,6 +327,7 @@ function pickBatch(action: string, selectedCount: number) {
   display: block;
 }
 .wb-toolbar__badge {
+  flex: none;
   min-width: 18px;
   height: 18px;
   padding: 0 5px;

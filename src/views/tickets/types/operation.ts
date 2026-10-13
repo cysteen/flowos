@@ -416,7 +416,7 @@ const TAB_ROLE_WRITABLE: Record<ProcessTabKey, readonly RoleKey[]> = {
   notify: [],
   // #49 调研记录：九格全「只读」——回访调研结果留痕
   survey: [],
-  // #50 附件历史：九格全「只读」——查看/下载保留，**上传入口在处理表单区**，不在本 Tab
+  // #50 附件历史：九格全「只读」——Tab 内不做记录编辑；「上传附件」栏仍在「坐席上传」子页签（PRD §5.1）
   attachments: [],
   // #51 客户历史工单：九格全「只读」
   customerHistory: [],
@@ -433,6 +433,15 @@ const TAB_ROLE_WRITABLE: Record<ProcessTabKey, readonly RoleKey[]> = {
  */
 export function tabWritableFor(tabKey: ProcessTabKey, roleKey: RoleKey): boolean {
   return TAB_ROLE_WRITABLE[tabKey].includes(roleKey);
+}
+
+/**
+ * 「附件历史 · 坐席上传」是否出「上传附件」栏（与 Tab 矩阵 #50「只读」不矛盾：只读指 Tab 内不改历史行）。
+ * 质检（基线 §3.1）在此 Tab 可手工上传；其余角色与「工单处理」Tab 写权同形。
+ */
+export function tabAttachmentUploadEnabled(roleKey: RoleKey): boolean {
+  if (roleKey === 'qa') return true;
+  return tabWritableFor('process', roleKey);
 }
 
 export type SupplementChip = 'complaint' | 'risk' | 'appointment' | 'quality' | 'external';

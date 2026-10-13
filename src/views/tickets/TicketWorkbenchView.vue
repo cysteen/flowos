@@ -6,7 +6,9 @@ import { UserSwitchOutlined } from '@ant-design/icons-vue';
 import { useUserStore } from '@/stores/user';
 import TicketTabs from './components/TicketTabs.vue';
 import RiskReportPoolPanel from './components/RiskReportPoolPanel.vue';
-import FlashPoolPanel from './components/FlashPoolPanel.vue';
+import { TICKET_LIST_COLUMN_KEYS } from '@/views/tickets/composables/ticketListColumnCatalog';
+import { isFlashSlaIdle, slaFirstLine, slaResolveLine } from './utils/ticketListCells';
+import { useFlashStore } from '@/stores/flash';
 import {
   FLASH_POOL_TAB,
   isPoolFamily,
@@ -53,6 +55,7 @@ import type { Ticket } from './types/ticket';
 const user = useUserStore();
 const router = useRouter();
 const wb = useTicketWorkbench();
+const flashStore = useFlashStore();
 const headerTabCounts = wb.headerTabCounts;
 const riskReports = useRiskReportStore();
 
@@ -147,6 +150,89 @@ function claimFlash(t: Ticket) {
   if (res.ok) message.success(res.message);
   else if (res.message) message.warning(res.message);
 }
+
+/** 刷机池 · 固定列（§9.2），与独立页签列表共用同一套工具行 / 表格壳 */
+const FLASH_POOL_HIDDEN_COLUMNS = Object.fromEntries(TICKET_LIST_COLUMN_KEYS.map((k) => [k, false]));
+const FLASH_POOL_EXTRA_COLUMNS = [
+  { key: 'flashHandoff', label: '转人工原因', width: 120 },
+  { key: 'flashFail', label: '失败原因', width: 230 },
+  { key: 'flashModel', label: '产品型号', width: 210 },
+  { key: 'flashPoolAt', label: '进池时间', width: 140 },
+  { key: 'flashSla', label: 'SLA', width: 120 },
+];
+const FLASH_POOL_COLUMN_WIDTHS = { title: 380, action: 96 };
+const FLASH_POOL_COLUMN_WIDTHS_KEY = 'flowos-flash-pool-column-widths';
+
+const flashSearch = ref('');
+const flashSelectedIds = ref(new Set<string>());
+
+const flashPoolFiltered = computed(() => {
+  const kw = flashSearch.value.trim().toLowerCase();
+  const rows = wb.flashPoolRows.value;
+  if (!kw) return rows;
+  return rows.filter(
+    (t) => t.no.toLowerCase().includes(kw) || (t.customerPhone ?? '').toLowerCase().includes(kw),
+  );
+});
+
+const flashSelectedCount = computed(() => flashSelectedIds.value.size);
+
+const flashAllPageSelected = computed(() => {
+  const rows = flashPoolFiltered.value;
+  if (!rows.length) return false;
+  return rows.every((t) => flashSelectedIds.value.has(t.id));
+});
+
+function clearFlashSelection() {
+  flashSelectedIds.value = new Set();
+}
+
+function toggleFlashSelect(id: string) {
+  const next = new Set(flashSelectedIds.value);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  flashSelectedIds.value = next;
+}
+
+function toggleFlashSelectAllOnPage() {
+  const rows = flashPoolFiltered.value;
+  const next = new Set(flashSelectedIds.value);
+  if (flashAllPageSelected.value) rows.forEach((t) => next.delete(t.id));
+  else rows.forEach((t) => next.add(t.id));
+  flashSelectedIds.value = next;
+}
+
+function flashPoolRowActions() {
+  return [{ label: '领取', primary: true }];
+}
+
+function onToolbarSearch(v: string) {
+  if (flashPoolTabOpen.value) flashSearch.value = v;
+  else wb.setSearch(v);
+}
+
+const toolbarSearch = computed(() =>
+  flashPoolTabOpen.value ? flashSearch.value : wb.searchText.value,
+);
+const toolbarSelectedCount = computed(() =>
+  flashPoolTabOpen.value ? flashSelectedCount.value : wb.selectedCount.value,
+);
+const toolbarShowBatch = computed(
+  () => flashPoolTabOpen.value || showBatchToolbar.value,
+);
+const toolbarBatchActions = computed(() =>
+  flashPoolTabOpen.value ? ['领取'] : batchActions.value,
+);
+
+watch(flashPoolTabOpen, (open) => {
+  if (open) {
+    wb.clearSelection();
+    clearFlashSelection();
+  } else {
+    flashSearch.value = '';
+    clearFlashSelection();
+  }
+});
 
 /** 报备池行内点工单号：与列表点单号同一个去处（工单操作页） */
 function openTicketByNo(no: string) {
@@ -445,6 +531,24 @@ function onClickCustomer(t: Ticket) {
   message.info(`查看客户「${t.customer}」详情卡`);
 }
 function onBatch(action: string) {
+  if (flashPoolTabOpen.value) {
+    if (action !== '领取') return;
+    const ids = [...flashSelectedIds.value];
+    if (!ids.length) {
+      message.info('请先勾选要领取的工单');
+      return;
+    }
+    let claimed = 0;
+    let failed = 0;
+    for (const id of ids) {
+      if (wb.claimFlashTicket(id).ok) claimed++;
+      else failed++;
+    }
+    if (claimed > 0) message.success(`已领取 ${claimed} 单`);
+    if (failed > 0) message.warning(`${failed} 单领取失败或已被他人领取`);
+    clearFlashSelection();
+    return;
+  }
   if (action === '指派') {
     openAssign([...wb.selectedIds.value]);
     return;
@@ -574,14 +678,9 @@ function onConfirmSaveFilter(name: string) {
       <RiskReportPoolPanel @open-ticket="openTicketByNo" />
     </div>
 
-    <!-- 刷机池：一线刷机池未认领的刷机单，列与排序固定（§9.2） -->
-    <div v-else-if="flashPoolTabOpen" class="workbench-body">
-      <FlashPoolPanel :rows="wb.flashPoolRows.value" @claim="claimFlash" @open="openOperation" />
-    </div>
-
     <div v-else class="workbench-body">
       <!-- ② chips 筛选（催补待回等 Tab 有子筛选时展示） -->
-      <div v-if="!isDraftView && wb.activeChips.value.length" class="filter-row-unified">
+      <div v-if="!flashPoolTabOpen && !isDraftView && wb.activeChips.value.length" class="filter-row-unified">
         <TicketFilterBar
           :active-chip="wb.activeChip.value"
           :chip-counts="wb.chipCounts.value"
@@ -593,9 +692,9 @@ function onConfirmSaveFilter(name: string) {
       </div>
 
       <!-- ③ 列表控制区：工具行固定在此（各 Tab 搜索栏对齐）；筛选面板向上展开 -->
-      <div v-if="!isDraftView" class="list-controls">
+      <div v-if="flashPoolTabOpen || !isDraftView" class="list-controls">
         <TicketMineQueryBar
-          v-if="wb.usesStructuredFilter.value && structuredFilterExpanded"
+          v-if="!flashPoolTabOpen && wb.usesStructuredFilter.value && structuredFilterExpanded"
           :expanded="true"
           :model-value="wb.structuredQuery.value"
           :variant="structuredFilterVariant"
@@ -608,19 +707,20 @@ function onConfirmSaveFilter(name: string) {
         />
 
         <TicketToolbar
-          :selected-count="wb.selectedCount.value"
-          :search="wb.searchText.value"
+          :selected-count="toolbarSelectedCount"
+          :search="toolbarSearch"
           search-placeholder="工单号 / 手机号"
-          :show-create="!wb.isDoneTab.value"
-          :show-batch="showBatchToolbar"
-          :batch-actions="batchActions"
-          :batch-disabled-tips="batchDisabledTips"
+          :show-create="!flashPoolTabOpen && !wb.isDoneTab.value"
+          :show-batch="toolbarShowBatch"
+          :batch-actions="toolbarBatchActions"
+          :batch-disabled-tips="flashPoolTabOpen ? {} : batchDisabledTips"
           :visible-columns="visibleColumns"
           :column-order="columnOrder"
-          :show-filter-toggle="wb.usesStructuredFilter.value"
+          :show-filter-toggle="!flashPoolTabOpen && wb.usesStructuredFilter.value"
           :filter-expanded="structuredFilterExpanded"
+          :show-column-settings="true"
           @batch="onBatch"
-          @update:search="wb.setSearch"
+          @update:search="onToolbarSearch"
           @create="openCreate"
           @toggle-filter="structuredFilterExpanded = !structuredFilterExpanded"
           @set-column-visible="setColumnVisible"
@@ -631,7 +731,7 @@ function onConfirmSaveFilter(name: string) {
 
       <!-- ④ AI 建议条（仅我的任务；置于工具行之下，避免顶挤搜索栏） -->
       <AiSuggestionBar
-        v-if="wb.showAiBar.value && !isDraftView"
+        v-if="!flashPoolTabOpen && wb.showAiBar.value && !isDraftView"
         :summary="wb.aiSummary.value"
         @view="openAiDrawer"
         @close="wb.aiBarVisible.value = false"
@@ -645,6 +745,54 @@ function onConfirmSaveFilter(name: string) {
           @open="editDraft"
           @remove="removeDraft"
         />
+        <template v-else-if="flashPoolTabOpen">
+          <TicketRichList
+            :rows="flashPoolFiltered"
+            :selected-ids="flashSelectedIds"
+            :all-page-selected="flashAllPageSelected"
+            variant="pool"
+            :row-actions-fn="flashPoolRowActions"
+            :visible-columns="FLASH_POOL_HIDDEN_COLUMNS"
+            :extra-columns="FLASH_POOL_EXTRA_COLUMNS"
+            :column-widths="FLASH_POOL_COLUMN_WIDTHS"
+            :column-widths-storage-key="FLASH_POOL_COLUMN_WIDTHS_KEY"
+            flex-before-action
+            :empty-kind="flashSearch.trim() ? 'search' : 'none'"
+            @toggle="toggleFlashSelect"
+            @toggle-all="toggleFlashSelectAllOnPage"
+            @action="onAction"
+            @open="openOperation"
+            @click-no="onClickNo"
+          >
+            <template #cell-flashHandoff="{ ticket }">
+              <span class="flash-cell" :title="flashHandoffCellText(ticket)">{{ flashHandoffCellText(ticket) }}</span>
+            </template>
+            <template #cell-flashFail="{ ticket }">
+              <span class="flash-cell" :title="flashFailCellText(ticket)">{{ flashFailCellText(ticket) }}</span>
+            </template>
+            <template #cell-flashModel="{ ticket }">
+              <span class="flash-product" :title="ticket.flash?.info.productModel">{{ ticket.flash?.info.productModel || '—' }}</span>
+            </template>
+            <template #cell-flashPoolAt="{ ticket }">
+              <span class="flash-plain">{{ flashStore.poolEnteredAtOf(ticket.no).slice(0, 16) || '—' }}</span>
+            </template>
+            <template #cell-flashSla="{ ticket }">
+              <div v-if="isFlashSlaIdle(ticket)" class="flash-sla">
+                <span class="flash-sla-line" :style="{ color: slaResolveLine(ticket).color }">—</span>
+              </div>
+              <div v-else class="flash-sla">
+                <span class="flash-sla-line" :style="{ color: slaResolveLine(ticket).color }">解决：{{ slaResolveLine(ticket).text }}</span>
+                <span class="flash-sla-line" :style="{ color: slaFirstLine(ticket).color }">首响：{{ slaFirstLine(ticket).text }}</span>
+              </div>
+            </template>
+          </TicketRichList>
+          <div class="pager">
+            <div class="pager-left">
+              <span class="pager-total">共 {{ flashPoolFiltered.length }} 条</span>
+              <span class="pager-selected">已选 {{ flashSelectedCount }} 项</span>
+            </div>
+          </div>
+        </template>
         <template v-else>
           <TicketRichList
             :rows="wb.paged.value"
@@ -821,6 +969,33 @@ function onConfirmSaveFilter(name: string) {
 }
 .suspend-time { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .flash-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flash-plain {
+  font-size: 12px;
+  color: #374151;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.flash-product {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.flash-sla {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+}
+.flash-sla-line {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+}
 .table-card {
   background: #fff;
   border: 1px solid #e5e7eb;
