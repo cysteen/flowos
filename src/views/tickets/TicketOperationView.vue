@@ -2635,7 +2635,6 @@ watch(
       :risk-forbidden-tip="riskForbiddenTip"
       :flash-view="flashView"
       :flash-stage="flashStage"
-      :flash-l1-repush-count="d.flash?.state.l1RepushCount ?? 0"
       :flash-is-initiator="flashIsInitiator"
       :flash-has-forwarder="flashHasForwarder"
       :flash-forward-tip="flashForwardTip"

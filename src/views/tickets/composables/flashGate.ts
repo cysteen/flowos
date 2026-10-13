@@ -10,7 +10,7 @@
  * 同一按钮命中多条悬停原因时，取原因表中靠前的一条。
  */
 import { isTicketClosed, type TicketStatus } from '@/views/tickets/types/ticket';
-import { FLASH_L1_REPUSH_LIMIT, FLASH_TIP_AUTO_FLASHING, FLASH_TIP_L1_REPUSH_EXHAUSTED, type FlashPoolKey } from '@/views/tickets/types/flash';
+import { FLASH_TIP_AUTO_FLASHING, type FlashPoolKey } from '@/views/tickets/types/flash';
 import { NO_AFTERSALE_TIP } from './opActionRegistry';
 
 /* ------------------------------------------------------------------ */
@@ -107,11 +107,10 @@ export const FLASH_GATE_TIPS = {
   /** 6 */ survey: '工单回访中，撤回下送后可操作',
   /** 7 */ unclaimed: '本单尚未认领，领取后可操作',
   /** 8 */ unclaimedRisk: '本单尚未认领，领取后可发起报备',
-  /** 9 */ l1RepushExhausted: FLASH_TIP_L1_REPUSH_EXHAUSTED,
-  /** 10 */ withdrawNotForwarder: '只能撤回本人发起的下送',
-  /** 11 */ withdrawNotApplicant: '只能撤回本人发起的申请',
-  /** 12 */ withdrawNone: '当前无可撤回的操作',
-  /** 13 */ noAftersale: NO_AFTERSALE_TIP,
+  /** 9 */ withdrawNotForwarder: '只能撤回本人发起的下送',
+  /** 10 */ withdrawNotApplicant: '只能撤回本人发起的申请',
+  /** 11 */ withdrawNone: '当前无可撤回的操作',
+  /** 12 */ noAftersale: NO_AFTERSALE_TIP,
 } as const;
 
 /** 子状态类原因（1–8），按原因表顺序；`withdraw` 时跳过 4、6（撤回在审核中 / 调研中另判） */
@@ -179,8 +178,6 @@ export interface FlashGateResult {
 export interface FlashBarGateCtx {
   view: FlashView;
   stage: FlashStage;
-  /** 本单一线重推次数 */
-  l1RepushCount: number;
   /** 当前用户是否本次下送 / 申请的发起人（撤回用） */
   isInitiator: boolean;
   /** 调研中：本单有没有下送发起人（自动刷机成功直进回访的单没有，M99） */
@@ -203,9 +200,6 @@ export function flashButtonGate(key: FlashBarKey, ctx: FlashBarGateCtx): FlashGa
   }
   if (!AVAILABLE_STAGES[key].includes(stage)) {
     return { forbidden: true, tip: stageTip(stage, { risk: key === '风险报备' }) };
-  }
-  if (key === '重推' && ctx.view === 'l1' && ctx.l1RepushCount >= FLASH_L1_REPUSH_LIMIT) {
-    return { forbidden: true, tip: FLASH_GATE_TIPS.l1RepushExhausted };
   }
   if (key === '转售后' && !ctx.afterSaleEnabled) {
     return { forbidden: true, tip: FLASH_GATE_TIPS.noAftersale };

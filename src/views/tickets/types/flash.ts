@@ -5,11 +5,9 @@
  * 不在各自文件里另写一份。取值可被后台「刷机配置」覆盖的（机型 / 刷机原因 / 失败原因 /
  * 回传超时时长），这里给的是出厂值，运行时读 `stores/flashConfig.ts`。
  *
- * 本文件只放**常量、类型与纯函数**，不依赖 Pinia / 工单库，任何模块都可以放心引用
- * （工作日判定读 SLA 工作日历 `config/slaCalendars.ts`）。
+ * 本文件只放**常量、类型与纯函数**，不依赖 Pinia / 工单库，任何模块都可以放心引用。
  */
 import type { TlRole } from '@/views/tickets/types/ticketDetail';
-import { CAL_STANDARD, slaCalendars } from '@/config/slaCalendars';
 
 /** 刷机单的工单类型：刷机单＝咨询单 + 建单时写入的「刷机单」标识（1013 A1） */
 export const FLASH_TICKET_TYPE = '咨询' as const;
@@ -113,7 +111,6 @@ export const FLASH_HANDOFF_REASONS = [
   '接收失败',
   '推送异常',
   '一线升级',
-  '一线重推失败',
   '回访未解决',
   '回访期间客户催补',
 ] as const;
@@ -155,12 +152,9 @@ export function flashResultOptions(line: FlashLine): FlashResult[] {
     && (line === '一线' ? r !== FLASH_RESULT_AFTERSALE : r !== FLASH_RESULT_ESCALATE_L2));
 }
 
-/** 存量数据里的旧取值，读出时按 `normalizeFlashResult` 归到现行取值 */
-export type FlashLegacyResult = '已线下登记推送';
-
+/** 处理结果取值校验：不在现行取值全集内的一律按未选。存量旧取值只在读缓存时迁移一次（`stores/flash.ts`） */
 export function normalizeFlashResult(v: string | undefined | null): FlashResult | '' {
   if (!v) return '';
-  if (v === '已线下登记推送') return FLASH_RESULT_OFFLINE;
   return (FLASH_RESULTS as readonly string[]).includes(v) ? (v as FlashResult) : '';
 }
 
@@ -168,51 +162,6 @@ export function normalizeFlashResult(v: string | undefined | null): FlashResult 
 export const FLASH_TIP_OFFLINE_FORWARD = '已线下登记，待产线推送后改为「已线下登记、已推送」再下送';
 /** 下送确认：处理结果为「升级二线」（A18） */
 export const FLASH_ESCALATE_CONFIRM_TEXT = '工单将转入二线继续处理';
-
-/** 平峰批推时刻：工作日当日 / 次一工作日 17:00；非工作日登记顺延到下一工作日 10:00（M31） */
-export const FLASH_BATCH_PUSH_HOUR = 17;
-export const FLASH_WEEKEND_RESUME_HOUR = 10;
-
-/**
- * 工作日判定。取 SLA 工作日历「标准工作日历」的周表（`config/slaCalendars.ts`，周一至周五上班）；
- * 该日历只有周表、没有节假日表，故法定节假日暂不识别，只按周表判；接入节假日表后改这一处即可。
- */
-export function isFlashWorkday(d: Date): boolean {
-  const cal = slaCalendars.find((c) => c.name === CAL_STANDARD);
-  const names = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-  const row = cal?.workDays.find((w) => w.day === names[d.getDay()]);
-  return row ? row.on : d.getDay() !== 0 && d.getDay() !== 6;
-}
-
-/** 从 `d` 当天（含）起的第一个工作日 `hour:00` */
-function workdayAt(d: Date, hour: number, fromNextDay: boolean): Date {
-  const r = new Date(d.getFullYear(), d.getMonth(), d.getDate() + (fromNextDay ? 1 : 0), hour, 0, 0, 0);
-  for (let i = 0; i < 31 && !isFlashWorkday(r); i += 1) r.setDate(r.getDate() + 1);
-  return r;
-}
-
-/**
- * 线下登记后 SLA **恢复计时时刻**（M31 / M49）：
- * - 工作日 17:00 **前**登记 → 当日 17:00；
- * - 工作日 17:00 **及以后**（17:00 整点算「17:00 后」）→ 下一工作日 17:00；
- * - 非工作日（周末或节假日）登记 → 一律下一个工作日 10:00（M66）；
- * - 「下一工作日」按 SLA 工作日历判定（`isFlashWorkday`）；
- * - 算出的恢复时刻**早于当前时刻**时返回 `null`，表示不暂停。
- *
- * 入参接受 `Date` 或 `YYYY-MM-DD HH:mm(:ss)` 字符串。
- */
-export function offlineBatchResumeAt(registeredAt: Date | string, now: Date | number = Date.now()): Date | null {
-  const d = typeof registeredAt === 'string' ? parseFlashStamp(registeredAt) : new Date(registeredAt);
-  let resume: Date;
-  if (!isFlashWorkday(d)) {
-    resume = workdayAt(d, FLASH_WEEKEND_RESUME_HOUR, true);
-  } else {
-    const cutoff = new Date(d.getFullYear(), d.getMonth(), d.getDate(), FLASH_BATCH_PUSH_HOUR, 0, 0, 0);
-    resume = d.getTime() < cutoff.getTime() ? cutoff : workdayAt(d, FLASH_BATCH_PUSH_HOUR, true);
-  }
-  const nowMs = typeof now === 'number' ? now : now.getTime();
-  return resume.getTime() < nowMs ? null : resume;
-}
 
 /* ------------------------------------------------------------------ */
 /* 池（M15 / M8′）                                                      */
@@ -243,10 +192,6 @@ export const FLASH_POOLS: Record<FlashPoolKey, FlashPoolMeta> = {
 /* 数值参数                                                             */
 /* ------------------------------------------------------------------ */
 
-/**
- * 重推次数上限：一线、二线都不限次（1013 A14）。取值为无穷大，仅供尚未清理的门控读取。
- */
-export const FLASH_L1_REPUSH_LIMIT = Number.POSITIVE_INFINITY;
 /** 推送接口同步报错后的自动重试次数（M10） */
 export const FLASH_PUSH_AUTO_RETRY = 1;
 /** 推送后出回传结果的时长（D22：十几秒） */
@@ -353,14 +298,10 @@ export interface FlashState {
   failL2?: FlashFailL2;
   /** 推送次数（含建单首推与人工重推，不含接口报错的自动重试） */
   pushCount: number;
-  /** 一线重推次数（只计数，不限次） */
-  l1RepushCount: number;
   /** 转人工原因（最近一次进池的缘由） */
   handoffReason?: FlashHandoffReason;
-  /** 存量数据的线下登记时间；处理页不再填写、不再写入 */
-  offlineRegisteredAt?: string;
-  /** 处理结果（下送必填）；读出一律经 `normalizeFlashResult` */
-  result?: FlashResult | FlashLegacyResult;
+  /** 处理结果（下送必填） */
+  result?: FlashResult;
   /** 关联投诉单号（弱关联，两单各自流转，1013 A21 / B5），时间正序 */
   linkedComplaintNos?: string[];
   /** 归属池（未进过人工池为空） */
@@ -372,11 +313,6 @@ export interface FlashState {
   surveyConcluded: boolean;
   /** 谁建的单（D12 落池判据） */
   creator: FlashCreator;
-  /**
-   * SLA 暂停至（YYYY-MM-DD HH:mm）：线下登记后等待批推，早于该时刻 SLA 暂停（M31）；
-   * 暂停期间处理人发起下送 / 升级二线 / 重推即清空、立即恢复计时。
-   */
-  slaPausedUntil?: string;
   /**
    * 迟到回传时间：回传超时转人工之后才收到的「接收成功」时刻（M11 / M48）。
    * 只写履历、有处理人时站内通知处理人，不改状态、不发成功短信。
@@ -399,22 +335,23 @@ export interface FlashState {
   /** 用户回访评价（M86）：提交即记为已产生回访结论，一张单只评价一次 */
   survey?: FlashSurveyFeedback;
   /**
-   * SLA 起算时间（YYYY-MM-DD HH:mm，PRD §4.3 / M88）：本单首次进入人工池的时刻，以最早一次为准，
-   * 此后再次进池、升级二线不改写；首推「自动刷机中」、自动刷机成功直进回访的单为空。
+   * SLA 起算时间（YYYY-MM-DD HH:mm，PRD §4.3 / M88，1013 A26）：本单首次进入教育刷机处理组池的时刻
+   * （转人工进池或一线升级二线），以最早一次为准，此后再次进池不改写；
+   * 一线刷机池、一线名下、首推「自动刷机中」、自动刷机成功直进回访的单为空。
    */
   slaStartedAt?: string;
   /**
    * 累计停钟毫秒（PRD §4.3，D-01 账本）：已结束的各段停钟之和，默认 0。
    * 记「累计毫秒」而不是分段区间：读取 O(1)（页头每秒重算），撤回下送只要不动它剩余天然接续，
-   * 缓存体积恒定。哪一段停的由处理履历（`slaPause` / `slaResume`）负责，账本不留第二真源。
+   * 缓存体积恒定。
    */
   slaPausedAccumMs?: number;
   /**
    * 当前这一段停钟的起点（YYYY-MM-DD HH:mm:ss）。有值即停钟中——**停钟判据以它为准**：
-   * 重推「自动刷机中」、线下登记待批推、调研中、已转出都写它，恢复时并入 `slaPausedAccumMs` 后清空。
+   * 重推「自动刷机中」、调研中、已转出等停钟时写它，恢复时并入 `slaPausedAccumMs` 后清空。
    */
   slaPausedSince?: string;
-  /** 终态关钟时刻（YYYY-MM-DD HH:mm:ss）：结案 / 关闭 / 强结 / 升级投诉等收口时写入，写入后钟不再走 */
+  /** 终态关钟时刻（YYYY-MM-DD HH:mm:ss）：结案 / 关闭 / 强结 / 取消等收口时写入，写入后钟不再走 */
   slaStoppedAt?: string;
   /** 关钟结论：met=时限内收口 / breached=超时后收口 / void=中止（升级、转出、取消，无达标结论） */
   slaOutcome?: 'met' | 'breached' | 'void';
@@ -502,14 +439,14 @@ export function flashRunInitiator(run: Pick<FlashRun, 'by' | 'line'>): string {
 /**
  * 用户侧进度（M2 / M29：提报页在途提示与按单号查进度；PRD §2.5 进度映射）：
  * 自动刷机中 → 处理中 · 自动刷机中；未认领 / 待响应 / 处理中 / 已挂起 / 已委派 / 已转出 / 审核中 → 处理中 · 人工处理中；
- * 调研中 → 待回访；终态 → 已完成。
+ * 调研中 → 待回访；终态（已结案 / 已关闭 / 已强结 / 已取消）→ 已完成。刷机单不转单、关联投诉不改本单状态（1013 A21 / B2）。
  */
 export type FlashProgressStage = '自动刷机中' | '人工处理中' | '待回访' | '已完成';
 
 export function flashProgressStage(status: string): FlashProgressStage {
   if (status === '自动刷机中') return '自动刷机中';
   if (status === '调研中') return '待回访';
-  if (['已结案', '已关闭', '已强结', '已取消', '直接结案', '已升级投诉', '已升级外投', '已转咨询', '已转建议', '已转商机'].includes(status)) {
+  if (['已结案', '已关闭', '已强结', '已取消', '直接结案'].includes(status)) {
     return '已完成';
   }
   return '人工处理中';
@@ -535,8 +472,6 @@ export function flashTipInflight(inflightNo: string): string {
 }
 /** 在途查询不可用（M43） */
 export const FLASH_TIP_SYSTEM_BUSY = '系统繁忙，请稍后再提交';
-/** 仅供尚未清理的门控读取；一线不限次后不会再命中 */
-export const FLASH_TIP_L1_REPUSH_EXHAUSTED = '';
 /** 非自研机型不可线上推送（M18） */
 export const FLASH_TIP_NON_SELF_DEVELOPED = '该机型不支持线上推送，请线下登记';
 /** 重推时刷机原因非毕业（M44） */
@@ -576,7 +511,7 @@ export const FLASH_TIP_VERIFY_UNAVAILABLE = '建单校验暂不可用，请稍�
 export const FLASH_TIP_REPUSH_STATE = '当前工单状态不可重新推送';
 /** 当前状态不可修改刷机信息（M52：待响应、处理中可改） */
 export const FLASH_TIP_EDIT_STATE = '当前工单状态不可修改刷机信息';
-/** 自动刷机中的冻结原因（PRD §3.1 / §5.5：底栏置灰、页头升级投诉置灰、「修改刷机信息」置灰的悬停原因） */
+/** 自动刷机中的冻结原因（PRD §3.1 / §5.5：底栏置灰、取消工单置灰、「修改刷机信息」置灰的悬停原因） */
 export const FLASH_TIP_AUTO_FLASHING = '自动刷机进行中，回传结果后再操作';
 
 /* ------------------------------------------------------------------ */
@@ -631,7 +566,6 @@ export const FLASH_TL = {
   returnSuccess: '回传结果：接收成功',
   /** `reasonText` ＝ 失败原因展示文案「接收失败 · 〈二级〉」 */
   returnFail: (reasonText: string) => `回传结果：${reasonText}`,
-  repushSuccess: (handler: string) => `重推成功，交回 ${handler}`,
   /** 重新推送接收成功：系统写入处理结果并转入回访（B1） */
   repushSuccessSurvey: (result: string) => `重推成功，处理结果：${result}，自动进入回访`,
   /** 重新推送接收成功、本单已有回访结论：直接结案（B1） */
@@ -649,9 +583,6 @@ export const FLASH_TL = {
   offlineRegister: (time: string) => `已线下登记，${time}`,
   /** 改为「已线下登记、已推送」并保存时追加进处理记录的一行（A16） */
   offlinePushed: '产线已推送',
-  slaPause: (until: string) => `SLA 暂停至 ${until} · 线下登记`,
-  /** `cause` ＝ 到达暂停截止时刻 / 下送 / 升级二线 / 重新推送 / 转售后 / 申请挂起 / 委派 / 关闭工单 / 强结 / 调剂 / 撤回 / 处理结果变更 / 线下登记时间变更 */
-  slaResume: (cause: string) => `SLA 恢复计时 · ${cause}`,
   /** 升级二线（A18）：「升级至教育刷机处理组」＋ 最近一条处理记录 */
   escalateL2: (record?: string) =>
     `升级至教育刷机处理组${record?.trim() ? `；处理记录：${record.trim()}` : ''}`,
@@ -708,7 +639,6 @@ export const FLASH_NOTIFY_EVENTS = {
   success: 'ticket.flash.succeeded',
   handoff: 'ticket.flash.handoff',
   repushResult: 'ticket.flash.repush.returned',
-  l1RepushFailGroup: 'ticket.flash.repush.l1failed',
   escalateL2: 'ticket.flash.escalated',
   lateSuccess: 'ticket.flash.late.succeeded',
   survey: 'ticket.survey.sent',

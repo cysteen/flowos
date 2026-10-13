@@ -126,7 +126,7 @@ const L1_NO_SLA = { slaText: '—', slaSub: '未计时', slaState: 'ok', slaMinu
 /** 缺省按「建单校验两项均通过」；未跑校验的（特殊情况）显式传「未校验」 */
 function state(creator: FlashCreator, p: Partial<FlashState>): FlashState {
   return {
-    outcome: '未推送', pushCount: 0, l1RepushCount: 0, surveyConcluded: false, creator,
+    outcome: '未推送', pushCount: 0, surveyConcluded: false, creator,
     verifyResult: VERIFY_PASS,
     ...p,
   };
@@ -522,7 +522,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
     ]);
   }
 
-  // ⑫ 一线处理中 · 一线重推失败，交回发起人（未开机两次；1013 A14：不进教育刷机处理组池）
+  // ⑫ 一线处理中 · 一线重新推送仍接收失败，交回发起人（未开机两次；1013 A14 / B1：不进教育刷机处理组池）
   {
     const info = infoOf('XFS20240600789', 'SCH-340104-050', '毕业');
     const at = '2026-09-15 07:19:58';
@@ -537,7 +537,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       nodeStatus: '处理中', assignee: '刘一线', tab: 'mine', responded: true, nodeStep: 2,
       ...L1_NO_SLA,
       flashState: state('用户提报', {
-        outcome: '接收失败', failL1: '接收失败', failL2: '未开机', pushCount: 2, l1RepushCount: 1,
+        outcome: '接收失败', failL1: '接收失败', failL2: '未开机', pushCount: 2,
         handoffReason: '接收失败', pool: 'l1', handoffSmsSent: true,
       }),
       runs: [
@@ -761,7 +761,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       nodeStatus: '调研中', assignee: '刘一线', tab: 'mine', responded: true, nodeStep: 4,
       slaText: '—', slaSub: '调研中', slaState: 'ok', slaMinutes: 9999,
       flashState: state('用户提报', {
-        outcome: '接收成功', pushCount: 2, l1RepushCount: 1,
+        outcome: '接收成功', pushCount: 2,
         handoffReason: '接收失败', pool: 'l1', handoffSmsSent: true,
         result: '已线上刷机成功',
         surveySentAt: addSec(forwarded, 1),

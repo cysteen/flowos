@@ -785,7 +785,7 @@ export const useFlashStore = defineStore('flash', () => {
       flash: {
         info,
         state: {
-          outcome: '未推送', pushCount: 0, l1RepushCount: 0, surveyConcluded: false, creator,
+          outcome: '未推送', pushCount: 0, surveyConcluded: false, creator,
           slaPausedAccumMs: 0,
           verifyResult: evaluation.verifyResult ?? FLASH_VERIFY_NOT_RUN,
         },
@@ -843,9 +843,8 @@ export const useFlashStore = defineStore('flash', () => {
       return { ok: false, message: FLASH_TIP_NON_SELF_DEVELOPED };
     }
     const first = r.flash.runs.length === 0;
+    // 1013 A14：一线、二线重推都不限次
     const l1 = !first && isFrontlineActor(by);
-    // 1013 A14：一线不限次，只计数
-    if (l1) r.flash.state.l1RepushCount += 1;
     pushInternal(r, first ? SYSTEM : by, first ? '建单首推' : l1 ? '一线重推' : '二线重推', Date.now());
     persist();
     return { ok: true, message: '已推送刷机包，等待硬件平台回传' };
@@ -892,7 +891,6 @@ export const useFlashStore = defineStore('flash', () => {
     r.flash.info = next;
     Object.assign(r, { sn: next.sn, product: next.productModel });
     r.flash.state.verifyResult = v.result;
-    if (l1) r.flash.state.l1RepushCount += 1;
     // PRD §11.2：同一次重推依次落「修改刷机信息」（有改动时）、「重新推送」
     if (diff.length) {
       log(ticketNo, now, {
@@ -1222,7 +1220,6 @@ export const useFlashStore = defineStore('flash', () => {
       }
     }
     st.result = input.result || undefined;
-    st.offlineRegisteredAt = undefined;
     if (r.nodeStatus === '待响应') Object.assign(r, { nodeStatus: '处理中', responded: true });
     r.updatedAt = flashMinuteStamp(now);
     bump(ticketNo);
@@ -1282,7 +1279,6 @@ export const useFlashStore = defineStore('flash', () => {
     const st = r.flash.state;
     const now = Date.now();
     st.result = result;
-    st.offlineRegisteredAt = undefined;
     if (st.surveyConcluded) {
       stopClock(r, now);
       Object.assign(r, {
@@ -1542,11 +1538,21 @@ export const useFlashStore = defineStore('flash', () => {
 
   /* ---------------- 初始化：读缓存 → 对账 → 起对账钟 ---------------- */
 
+  /**
+   * 缓存迁移（读缓存的唯一入口，`hydrate` 与 `syncFromOtherTab` 共用）：存量处理结果旧取值「已线下登记推送」
+   * 归到现行取值「已线下登记」。旧值只在这里出现，别处一律按现行取值读写。
+   */
+  function migrateCachedTicket(saved: Ticket): Ticket {
+    const st = saved.flash?.state as { result?: string } | undefined;
+    if (st?.result === '已线下登记推送') st.result = FLASH_RESULT_OFFLINE;
+    return saved;
+  }
+
   function hydrate() {
     const cachedTickets = readFlashCache<TicketsCache>(FLASH_LS_KEYS.tickets);
     const cachedTl = readFlashCache<TimelineCache>(FLASH_LS_KEYS.timeline);
     if (cachedTickets && cachedTl && Array.isArray(cachedTickets.tickets)) {
-      for (const saved of cachedTickets.tickets) {
+      for (const saved of cachedTickets.tickets.map(migrateCachedTicket)) {
         const existing = rawOf(saved.no);
         if (existing) {
           // 快照是整单：种子上有、快照里已没有的字段（被清空的）一并去掉
@@ -1649,7 +1655,7 @@ export const useFlashStore = defineStore('flash', () => {
     const cachedTickets = readFlashCache<TicketsCache>(FLASH_LS_KEYS.tickets);
     const cachedTl = readFlashCache<TimelineCache>(FLASH_LS_KEYS.timeline);
     if (!cachedTickets || !cachedTl || !Array.isArray(cachedTickets.tickets)) return;
-    for (const saved of cachedTickets.tickets) {
+    for (const saved of cachedTickets.tickets.map(migrateCachedTicket)) {
       const existing = rawOf(saved.no);
       if (existing) {
         const r = reactive(existing) as unknown as Record<string, unknown>;

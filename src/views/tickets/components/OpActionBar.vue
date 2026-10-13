@@ -106,8 +106,6 @@ const props = defineProps<{
   flashView?: FlashView | null;
   /** 刷机单子状态列（表二的列） */
   flashStage?: FlashStage;
-  /** 本单一线重推次数（只计数，不限次） */
-  flashL1RepushCount?: number;
   /** 当前用户是否本次下送 / 申请的发起人（撤回） */
   flashIsInitiator?: boolean;
   /** 调研中本单有无下送发起人（撤回悬停原因取值，M99） */
@@ -435,7 +433,6 @@ function flashItem(k: FlashBarSlot): BarItem | null {
     : flashButtonGate(k, {
       view: props.flashView ?? 'l2',
       stage,
-      l1RepushCount: props.flashL1RepushCount ?? 0,
       isInitiator: !!props.flashIsInitiator,
       hasForwarder: props.flashHasForwarder,
       afterSaleEnabled: props.afterSaleEnabled,
