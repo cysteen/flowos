@@ -716,6 +716,7 @@ function onConfirmSaveFilter(name: string) {
           :visible-columns="visibleColumns"
           :column-order="columnOrder"
           :show-filter-toggle="!flashPoolTabOpen && wb.usesStructuredFilter.value"
+          :show-sort="!flashPoolTabOpen"
           :filter-expanded="structuredFilterExpanded"
           :show-column-settings="true"
           @batch="onBatch"
