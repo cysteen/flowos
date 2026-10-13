@@ -70,6 +70,14 @@ function onFlashSupportedChange(p: Product, checked: boolean) {
   flashConfig.setProductFlashSupported(p.name, checked, p.prodcat);
   message.success(checked ? '已开启支持刷机' : '已关闭支持刷机');
 }
+/** 「自研 · 支持线上自助推送」（1013 B7）：与「是否支持刷机」同页维护，未支持刷机时不可改 */
+function selfDeveloped(p: Product): boolean {
+  return flashConfig.isSelfDeveloped(p.name);
+}
+function onSelfDevelopedChange(p: Product, checked: boolean) {
+  flashConfig.setProductSelfDeveloped(p.name, checked, p.prodcat);
+  message.success(checked ? '已开启自研 · 支持线上自助推送' : '已关闭自研 · 支持线上自助推送');
+}
 
 const cols = [
   { title: '产品名称', dataIndex: 'name', key: 'name', width: 200 },
@@ -79,6 +87,7 @@ const cols = [
   { title: '业务分类', dataIndex: 'bizcat', key: 'bizcat', width: 110 },
   { title: '产品分类', dataIndex: 'prodcat', key: 'prodcat', width: 150 },
   { title: '是否支持刷机', key: 'flash', width: 110 },
+  { title: '自研 · 支持线上自助推送', key: 'selfDev', width: 180 },
   { title: '操作', key: 'op', width: 80, fixed: 'right' as const },
 ];
 
@@ -94,15 +103,18 @@ const pagination = stdPagination({ pageSize: 20, total: 1796 });
 const editOpen = ref(false);
 const editing = ref<Product | null>(null);
 const editFlash = ref(false);
+const editSelfDev = ref(false);
 function onEdit(p: Product) {
   editing.value = p;
   editFlash.value = flashSupported(p);
+  editSelfDev.value = selfDeveloped(p);
   editOpen.value = true;
 }
 function onEditSave() {
   const p = editing.value;
   if (!p) return;
   if (editFlash.value !== flashSupported(p)) flashConfig.setProductFlashSupported(p.name, editFlash.value, p.prodcat);
+  if (editFlash.value && editSelfDev.value !== selfDeveloped(p)) flashConfig.setProductSelfDeveloped(p.name, editSelfDev.value, p.prodcat);
   editOpen.value = false;
   message.success('产品已更新');
 }
@@ -183,7 +195,7 @@ function goRdMapping() { router.push('/admin/product-rd-mapping'); }
           :row-selection="rowSelection"
           :pagination="pagination"
           size="middle"
-          :scroll="{ x: 1070 }"
+          :scroll="{ x: 1250 }"
           row-key="key"
         >
           <template #bodyCell="{ column, record }">
@@ -200,6 +212,14 @@ function goRdMapping() { router.push('/admin/product-rd-mapping'); }
                 @change="(v: unknown) => onFlashSupportedChange(record as Product, !!v)"
               />
             </template>
+            <template v-else-if="column.key === 'selfDev'">
+              <a-switch
+                size="small"
+                :checked="selfDeveloped(record as Product)"
+                :disabled="!flashSupported(record as Product)"
+                @change="(v: unknown) => onSelfDevelopedChange(record as Product, !!v)"
+              />
+            </template>
             <template v-else-if="column.key === 'op'">
               <a-button type="text" size="small" class="op-edit" @click="onEdit(record as Product)">
                 <EditOutlined />
@@ -212,11 +232,17 @@ function goRdMapping() { router.push('/admin/product-rd-mapping'); }
     </div>
 
     <a-modal v-model:open="editOpen" title="编辑产品" :width="480" ok-text="保存" cancel-text="取消" @ok="onEditSave">
-      <a-form v-if="editing" layout="horizontal" :label-col="{ style: { width: '96px' } }" class="edit-form">
+      <a-form v-if="editing" layout="horizontal" :label-col="{ style: { width: '168px' } }" class="edit-form">
         <a-form-item label="产品名称"><a-input :value="editing.name" disabled /></a-form-item>
         <a-form-item label="产品分类"><a-input :value="editing.prodcat" disabled /></a-form-item>
         <a-form-item label="是否支持刷机">
           <a-radio-group v-model:value="editFlash" button-style="solid">
+            <a-radio-button :value="true">是</a-radio-button>
+            <a-radio-button :value="false">否</a-radio-button>
+          </a-radio-group>
+        </a-form-item>
+        <a-form-item label="自研 · 支持线上自助推送">
+          <a-radio-group v-model:value="editSelfDev" button-style="solid" :disabled="!editFlash">
             <a-radio-button :value="true">是</a-radio-button>
             <a-radio-button :value="false">否</a-radio-button>
           </a-radio-group>

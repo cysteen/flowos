@@ -143,6 +143,24 @@ export const useFlashConfigStore = defineStore('flashConfig', () => {
     });
   }
 
+  /**
+   * 产品管理页切换「自研 · 支持线上自助推送」（1013 B7）。表内没有的产品补一条（「是否支持刷机」保持关闭）。
+   */
+  function setProductSelfDeveloped(model: string, selfDeveloped: boolean, category?: string): void {
+    const name = model.trim();
+    if (!name) return;
+    const hit = modelOf(name);
+    if (hit) {
+      hit.selfDeveloped = selfDeveloped;
+      return;
+    }
+    const brand = name.startsWith('联想') ? '联想' : name.startsWith('华为') ? '华为' : '科大讯飞';
+    models.value.push({
+      id: `FM-${Date.now()}`, model: name, category: category || FLASH_PRODUCT_CATEGORY, brand,
+      selfDeveloped, enabled: false, minRomVersion: '',
+    });
+  }
+
   /* ---------------- 问题分类「是否刷机」（1013 N2） ---------------- */
 
   /** 问题分类条目「是否刷机」是否开启 */
@@ -280,7 +298,7 @@ export const useFlashConfigStore = defineStore('flashConfig', () => {
   return {
     models, flashTags, reasons, failReasons, returnTimeoutMin,
     modelOf, isSupportedModel, isSelfDeveloped, enabledModels, upsertModel, removeModel,
-    setProductFlashSupported, isFlashTag, replaceFlashTags, isFlashScene,
+    setProductFlashSupported, setProductSelfDeveloped, isFlashTag, replaceFlashTags, isFlashScene,
     enabledReasons, addReason, renameReason, setReasonEnabled,
     setFailReasonLabel, setFailReasonEnabled, isFailL2Enabled, failReasonText,
     setReturnTimeoutMin, resetToFactory,

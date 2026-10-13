@@ -276,7 +276,7 @@ export interface FlashActor {
 
 /** 刷机信息（建单填、处理页可改后重推） */
 export interface FlashInfo {
-  /** 产品型号（取「支持刷机机型」） */
+  /** 产品名称（产品管理「是否支持刷机」开启的产品；用户提报按型号选） */
   productModel: string;
   /** 设备SN */
   sn: string;
@@ -516,7 +516,7 @@ export interface TicketFlash {
 /* 产品文案（拦截提示 / 短信 / 站内通知）                                 */
 /* ------------------------------------------------------------------ */
 
-/** A1：机型不在「支持刷机机型」 */
+/** A1：产品「是否支持刷机」未开启（用户提报拦截） */
 export const FLASH_TIP_MODEL_UNSUPPORTED = '该机型暂不支持刷机申请，请核对产品型号';
 /** A2：同 SN 存在在途刷机单（M2；重推改 SN 撞在途单同文案，M44） */
 export function flashTipInflight(inflightNo: string): string {

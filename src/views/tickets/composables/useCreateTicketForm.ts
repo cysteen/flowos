@@ -300,8 +300,12 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     (phone) => { if (phone?.trim()) flashPhoneError.value = ''; },
   );
 
+  // 取消命中（换了产品或问题分类）即切回普通咨询表单，刷机信息卡已填的值清空（1013 B6）
   watch(isFlashType, (on) => {
-    if (!on) clearFlashErrors();
+    if (!on) {
+      form.flash = defaultCreateTicketFlashForm();
+      clearFlashErrors();
+    }
     syncTitle();
   });
 

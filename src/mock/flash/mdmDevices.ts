@@ -16,7 +16,7 @@ export type MdmOnlineState = '在线' | '未开机' | '未联网';
 
 export interface MdmDevice {
   sn: string;
-  /** 产品型号，与「支持刷机机型」同名 */
+  /** 产品型号，与支持刷机产品的产品名称同名 */
   model: string;
   /** MDM 绑定的学生账号 */
   studentAccount: string;
