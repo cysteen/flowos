@@ -3,7 +3,7 @@
 
 import type { BusinessType, CreateFormTicketType, TicketSource } from '@/views/tickets/types/createTicket';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
-import { FLASH_POOLS, isFlashTicket, type TicketFlash } from '@/views/tickets/types/flash';
+import { FLASH_POOLS, FLASH_TIP_AUTO_FLASHING, isFlashTicket, type TicketFlash } from '@/views/tickets/types/flash';
 import { readSla, slaStateOf } from '@/views/tickets/utils/slaClock';
 
 /**
@@ -1507,6 +1507,34 @@ export function queryCenterRowActions(
 ): RowActionDesc[] {
   if (!canTransferInQueryCenter(roleKey)) return [];
   if (!canTransferTicket(t)) return [];
+  if (isFlashTicket(t)) return flashQueryCenterRowActions(t, roleKey);
+  // 工单运营：池内未认领单「指派」到人，已有处理人的单「调剂」（1130 刷机单走查定稿：调剂、指派在查询中心办理）
+  if (roleKey === 'ops-monitor' && t.tab === 'pool' && t.assignee === null) {
+    return [{ label: '指派', primary: true }];
+  }
+  if (isTransferredOut(t)) {
+    return [{ label: '调剂', primary: true, disabled: true, tip: TRANSFERRED_OUT_TRANSFER_TIP }];
+  }
+  return [{ label: '调剂', primary: true }];
+}
+
+/**
+ * 查询中心 · 刷机单行内动作（1130 PRD §4.2 / §9.4）：只给工单运营。
+ * - 教育刷机处理组池未认领单：「指派」；一线刷机池未认领单：「调剂」（一线刷机池不指派）；
+ * - 已有处理人的单：「调剂」；自动刷机中置灰，已转出置灰；
+ * - 无处理人且不在池内（首推自动刷机中、首推成功直进调研中）：不出。
+ */
+function flashQueryCenterRowActions(t: Ticket, roleKey?: string): RowActionDesc[] {
+  if (roleKey !== 'ops-monitor') return [];
+  if (t.assignee === null || t.assignee === undefined) {
+    if (t.nodeStatus !== '未认领') return [];
+    return t.flash?.state.pool === 'l2'
+      ? [{ label: '指派', primary: true }]
+      : [{ label: '调剂', primary: true }];
+  }
+  if (t.nodeStatus === '自动刷机中') {
+    return [{ label: '调剂', primary: true, disabled: true, tip: FLASH_TIP_AUTO_FLASHING }];
+  }
   if (isTransferredOut(t)) {
     return [{ label: '调剂', primary: true, disabled: true, tip: TRANSFERRED_OUT_TRANSFER_TIP }];
   }

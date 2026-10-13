@@ -14,7 +14,7 @@ import {
   FLASH_RETURN_DELAY_MS, FLASH_TIP_MODEL_UNSUPPORTED, FLASH_TIP_PRODUCT_UNSUPPORTED,
   FLASH_RESULT_ONLINE_SUCCESS, FLASH_RESULT_OFFLINE_PUSHED, normalizeFlashResult,
   FLASH_TIP_NON_SELF_DEVELOPED, FLASH_TIP_REASON_NOT_GRADUATE_L1, FLASH_TIP_REASON_NOT_GRADUATE_L2,
-  FLASH_TIP_EDIT_STATE, FLASH_TIP_REPUSH_STATE, FLASH_TIP_SYSTEM_BUSY, FLASH_TIP_VERIFY_UNAVAILABLE,
+  FLASH_TIP_AUTO_FLASHING, FLASH_TIP_EDIT_STATE, FLASH_TIP_REPUSH_STATE, FLASH_TIP_SYSTEM_BUSY, FLASH_TIP_VERIFY_UNAVAILABLE,
   FLASH_VERIFY_NOT_RUN, FLASH_TL, FLASH_NOTICE, FLASH_RESULT_OFFLINE, FLASH_TOAST,
   FLASH_CS_NOTICE, FLASH_SURVEY_TIMEOUT_HOURS, FLASH_PRODUCT_CATEGORY, FLASH_TAG_L1, FLASH_TAG_L2,
   FLASH_TAG_L3_USER_REPORT, FLASH_TICKET_TYPE,
@@ -1507,6 +1507,69 @@ export const useFlashStore = defineStore('flash', () => {
     return { ok: true, message: `已领取 ${ticketNo}` };
   }
 
+  /**
+   * 查询中心「指派」（工单运营，§4.2）：教育刷机处理组池未认领且无处理人才可指派；
+   * 落点同领取（子状态「待响应」、处理人＝被指派人、进「我的任务」），写履历「指派」。不改 SLA、不动归属池。
+   */
+  function assignFromPool(ticketNo: string, target: string, by: FlashActor): FlashActionResult {
+    const r = rowOf(ticketNo);
+    if (!r?.flash) return { ok: false, message: FLASH_TIP_REPUSH_STATE };
+    if (r.assignee) return { ok: false, message: `该工单已被 ${r.assignee} 领取` };
+    if (r.nodeStatus !== '未认领' || r.flash.state.pool !== 'l2') return { ok: false, message: '当前工单状态不可指派' };
+    const now = Date.now();
+    Object.assign(r, {
+      nodeStatus: '待响应',
+      assignee: target,
+      tab: 'mine',
+      responded: false,
+      updatedAt: flashMinuteStamp(now),
+    });
+    log(ticketNo, now, {
+      category: 'node', action: 'accept', who: by.name, role: by.role, how: '指派',
+      what: `指派给 ${target}。`,
+    });
+    bump(ticketNo);
+    persist();
+    return { ok: true, message: `已将 ${ticketNo} 指派给 ${target}` };
+  }
+
+  /**
+   * 查询中心「调剂」（工单运营，§4.2）：同组内＝换处理人（一线刷机池未认领单调剂到人后转「待响应」），
+   * 其余子状态不变；跨组＝转回池内未认领、不指定处理人。自动刷机中不可调剂。不改 SLA。
+   */
+  function transferOwner(
+    ticketNo: string,
+    by: FlashActor,
+    p: { scope: 'same' | 'cross'; target: string; reason: string },
+  ): FlashActionResult {
+    const r = rowOf(ticketNo);
+    if (!r?.flash) return { ok: false, message: FLASH_TIP_REPUSH_STATE };
+    if (r.nodeStatus === '自动刷机中') return { ok: false, message: FLASH_TIP_AUTO_FLASHING };
+    const now = Date.now();
+    const reason = p.reason || '—';
+    if (p.scope === 'cross') {
+      Object.assign(r, { nodeStatus: '未认领', assignee: null, tab: 'pool', updatedAt: flashMinuteStamp(now) });
+      log(ticketNo, now, {
+        category: 'node', action: 'transfer', who: by.name, role: by.role, how: '跨组调剂',
+        what: `跨组调剂至「${p.target}」（转入该组工单池待领取，不指定处理人）。原因：${reason}`,
+      });
+    } else {
+      const fromPool = !r.assignee && r.nodeStatus === '未认领';
+      Object.assign(r, {
+        assignee: p.target,
+        ...(fromPool ? { nodeStatus: '待响应', tab: 'mine', responded: false } : {}),
+        updatedAt: flashMinuteStamp(now),
+      });
+      log(ticketNo, now, {
+        category: 'node', action: 'transfer', who: by.name, role: by.role, how: '调剂',
+        what: `调剂至 ${p.target}（处理人变更）。原因：${reason}`,
+      });
+    }
+    bump(ticketNo);
+    persist();
+    return { ok: true, message: `已将 ${ticketNo} 调剂至 ${p.target}` };
+  }
+
   /** 对账：到点的推送出回传结果。返回本次结算的单数 */
   function settleDue(now: number = Date.now()): number {
     let settled = 0;
@@ -1758,5 +1821,7 @@ export const useFlashStore = defineStore('flash', () => {
     creatorNameOf,
     poolEnteredAtOf,
     claimFromPool,
+    assignFromPool,
+    transferOwner,
   };
 });

@@ -24,7 +24,20 @@ import SaveFilterModal from './components/SaveFilterModal.vue';
 
 import OpActionDialogs from './components/OpActionDialogs.vue';
 
-import type { TransferPayload } from './composables/opActions';
+import { mapUserRole, type TransferPayload } from './composables/opActions';
+
+import { takeOverReturnedTicket } from './composables/aftersaleEvents';
+
+import AssignModal, {
+  type AssignSubmitPayload,
+  type AssignTicket,
+} from '@/views/team-board/components/AssignModal.vue';
+
+import { TEAM_MEMBERS } from '@/mock/teamBoard';
+
+import { useFlashStore } from '@/stores/flash';
+
+import { flashMinuteStamp, isFlashTicket, type FlashActor } from './types/flash';
 
 import { useTicketList } from './composables/useTicketList';
 
@@ -77,6 +90,8 @@ import { useUserStore } from '@/stores/user';
 
 
 const derivedTickets = useDerivedTicketStore();
+
+const flashStore = useFlashStore();
 
 const props = defineProps<{ embedded?: boolean; filtersExpanded?: boolean }>();
 
@@ -372,13 +387,121 @@ function onOpDialogConfirm(payload: Record<string, unknown>) {
   if (!t || payload.type !== '调剂') return;
 
   // 候选项形如「张三 受理一组」，落库只取姓名 —— 与工作台 onOpDialogConfirm 同一套解析
-  const name = (payload.data as TransferPayload).target.split(' ')[0];
+  const data = payload.data as TransferPayload;
+
+  const name = data.target.split(' ')[0];
+
+  // 刷机单：走刷机服务落库（子状态、履历、刷机缓存），见 1130 PRD §4.2
+
+  if (isFlashTicket(t)) {
+
+    const res = flashStore.transferOwner(t.no, queryActor(), { scope: data.scope, target: name, reason: data.reason });
+
+    if (res.ok) message.success(res.message);
+
+    else message.warning(res.message);
+
+    return;
+
+  }
 
   t.assignee = name;
 
   t.myTransferAction = true;
 
   message.success(`已将 ${t.no} 调剂至 ${name}`);
+
+}
+
+/*
+ * —— 查询中心行内「指派」——
+ * 工单运营把池内未认领单直接指给本组成员（1130 刷机单走查定稿：调剂、指派在查询中心办理）。
+ * 弹窗复用工作台 / 班组看板那只 `AssignModal`，只开同组内；落库口径与工作台 `assignTickets` 同源。
+ */
+
+const assignOpen = ref(false);
+
+const assignTicketRow = ref<Ticket | null>(null);
+
+const assignRef = ref<InstanceType<typeof AssignModal> | null>(null);
+
+const assignTicketsForModal = computed<AssignTicket[]>(() => {
+
+  const t = assignTicketRow.value;
+
+  if (!t) return [];
+
+  return [{
+
+    id: t.id, no: t.no, customer: t.customer, type: t.type, priority: t.priority,
+
+    slaLeftMin: t.slaMinutes, createdAt: t.createdAt ?? '',
+
+  }];
+
+});
+
+function queryActor(): FlashActor {
+
+  return { name: user.name || '工单运营', role: mapUserRole(user.roleKey) };
+
+}
+
+function onAssignSubmit(p: AssignSubmitPayload) {
+
+  const t = assignTicketRow.value;
+
+  if (!t) return;
+
+  if (isFlashTicket(t)) {
+
+    const res = flashStore.assignFromPool(t.no, p.targetName, queryActor());
+
+    if (!res.ok) {
+
+      assignRef.value?.applyResults([{ id: t.id, ok: false, reason: res.message }]);
+
+      return;
+
+    }
+
+  } else {
+
+    if (t.tab !== 'pool' || t.assignee !== null) {
+
+      assignRef.value?.applyResults([{ id: t.id, ok: false, reason: t.assignee ? `已被 ${t.assignee} 领取` : '工单已不在池内' }]);
+
+      return;
+
+    }
+
+    const taken = takeOverReturnedTicket(t, {
+
+      assignee: p.targetName, how: '指派', operator: queryActor().name,
+
+      operatorRole: queryActor().role, at: flashMinuteStamp(Date.now()),
+
+    });
+
+    if (taken) Object.assign(t, taken);
+
+    else {
+
+      t.tab = 'mine';
+
+      t.assignee = p.targetName;
+
+      t.responded = false;
+
+    }
+
+  }
+
+  assignOpen.value = false;
+
+  assignTicketRow.value = null;
+
+  message.success(`已指派 1 张工单给 ${p.targetName}`);
 
 }
 
@@ -389,6 +512,16 @@ function onAction(label: string, t: Ticket) {
     opTransferTicket.value = t;
 
     opDialogOpen.value = true;
+
+    return;
+
+  }
+
+  if (label === '指派') {
+
+    assignTicketRow.value = t;
+
+    assignOpen.value = true;
 
     return;
 
@@ -747,6 +880,17 @@ function onClearFilters() {
       :return-count="0"
       :group-id="opTransferTicket?.groupId"
       @confirm="onOpDialogConfirm"
+    />
+
+    <AssignModal
+      v-if="canTransfer"
+      ref="assignRef"
+      v-model:open="assignOpen"
+      :preselected-ids="assignTicketRow ? [assignTicketRow.id] : []"
+      :candidates="TEAM_MEMBERS"
+      :tickets="assignTicketsForModal"
+      :can-cross-team="false"
+      @submit="onAssignSubmit"
     />
 
   </div>
