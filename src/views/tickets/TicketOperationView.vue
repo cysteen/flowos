@@ -1655,14 +1655,9 @@ function onFlashSave(): boolean {
   return true;
 }
 
-/** 线下登记暂停期间执行即恢复计时的通用动作 → 履历里的动作名（PRD §4.3 / §11.2） */
-const FLASH_RESUME_CAUSE: Record<string, string> = {
-  挂起: '申请挂起', 委派: '委派', 关闭工单: '关闭工单', 强结: '强结', 调剂: '调剂',
-};
-
 /**
  * 刷机单底栏动作（PRD §5.5 / §7.3 / §8）：下送、转售后走刷机服务落工单库；其余沿用通用动作，
- * 暂停期内先恢复计时，执行后把子状态同步回工单库。返回 true ＝ 已接管。
+ * 执行后把子状态同步回工单库。返回 true ＝ 已接管。
  */
 function onFlashAction(payload: Record<string, unknown>): boolean {
   const no = d.value.no;
@@ -1700,10 +1695,7 @@ function onFlashAction(payload: Record<string, unknown>): boolean {
     message.success(res.message);
     return true;
   }
-  // 线下登记暂停的恢复计时**放在动作成功之后**：动作本身抛错时不能把停钟放走
-  // （否则单没流转、钟先跑了，还留下一条「SLA 恢复计时」的账）
   dispatch(payload);
-  if (FLASH_RESUME_CAUSE[type]) flashStore.resumeSlaPause(no, FLASH_RESUME_CAUSE[type]);
   // 委派 / 撤销委派 / 协办回送：通用动作只改 `delegateInfo`，子状态由这里落库
   // （基线 §1 「已委派」子状态 · PRD §5.5 表二），页头徽章与查询中心才跟着走、重开也在
   if (type === '委派') d.value.status = '已委派';
@@ -1735,7 +1727,6 @@ function onWithdraw() {
         else message.warning(res.message);
         return;
       }
-      flashStore.resumeSlaPause(no, '撤回');
       dispatch({ type: '撤回' });
       d.value.status = '处理中';
       flashStore.syncStatus(no, '处理中');

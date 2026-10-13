@@ -25,7 +25,7 @@ import {
   type FlashInfo, type FlashPoolKey, type FlashProgressStage, type FlashPushTrigger, type FlashReasonName,
   type FlashResult, type FlashRun, type FlashState, type FlashVerifyResult, type TicketFlash,
 } from '@/views/tickets/types/flash';
-import { formatSlaClock, readFlashSla, slaStateOf } from '@/views/tickets/utils/slaClock';
+import { formatSlaClock, isFlashSlaCounted, readFlashSla, slaStateOf } from '@/views/tickets/utils/slaClock';
 import { templateOf } from '@/mock/notifyRules';
 import { useNotifyLogStore } from './notifyLog';
 import { useFlashConfigStore } from './flashConfig';
@@ -337,19 +337,19 @@ export const useFlashStore = defineStore('flash', () => {
     });
   }
 
-  /** 线下登记暂停是否仍在生效 */
-  function pausedAt(st: FlashState, at: number): boolean {
-    return !!st.slaPausedUntil && parseFlashStamp(st.slaPausedUntil).getTime() > at;
-  }
-
   /* ---------------- SLA 账本（PRD §4.3，D-01：账本是唯一真源） ---------------- */
+
+  /** 不计 SLA 的单（一线刷机池、一线名下、从未进过教育刷机处理组池）在工单行上的 SLA 摘要（1013 A26） */
+  const SLA_IDLE_ROW = { slaText: '—', slaSub: '未计时', slaState: 'ok', slaMinutes: 9999 } as const;
 
   /**
    * 工单行 SLA 摘要字段的**投影**。真源是账本（`FlashState` 上那几个时刻），这里只在每次记账后
    * 把读数落回 `slaText/slaSub/slaState/slaMinutes`，供尚未接账本的展示位（个人门户待办等）取用。
    * 刷机单的列表格、排序键与处理页页头都直接读账本，不读这几个字段。
+   * 一线不计 SLA（1013 A26）：只有进过教育刷机处理组池、已起算的单才写读数，与显示层 `isFlashSlaCounted` 同一判据。
    */
   function syncSlaRow(r: Ticket, at: number, pauseReason?: string) {
+    if (!isFlashSlaCounted(r.flash!.state)) return;
     const read = readFlashSla(r.flash!.state, at);
     if (!read || read.status === 'stopped') return;
     if (read.status === 'paused') {
@@ -394,22 +394,16 @@ export const useFlashStore = defineStore('flash', () => {
   }
 
   /**
-   * 线下登记暂停期间的恢复（PRD §4.3 / M73）：清空「SLA 暂停至」、把这一段并入账本；
-   * 暂停仍在生效时记「SLA 恢复计时 · 〈原因〉」。返回是否确有一段生效中的暂停被恢复。
+   * SLA 起算（PRD §4.3 / M88，1013 A26）：本单**首次进入教育刷机处理组池**时写入「SLA 起算时间」，
+   * 此后再次进池不改写；一线刷机池、一线名下不起算。首响从起算时刻重新计。
    */
-  function resumePause(r: Ticket, cause: string, at: number): boolean {
+  function startSlaIfL2(r: Ticket, at: number) {
     const st = r.flash!.state;
-    if (!st.slaPausedUntil) return false;
-    const active = pausedAt(st, at);
-    st.slaPausedUntil = undefined;
-    if (active) {
-      resumeClock(r, at);
-      log(r.no, at, {
-        category: 'sla', action: 'hold', who: '系统', role: '系统', how: 'SLA 恢复',
-        what: FLASH_TL.slaResume(cause),
-      });
-    }
-    return active;
+    if (st.pool !== 'l2' || st.slaStartedAt) return;
+    st.slaStartedAt = flashMinuteStamp(at);
+    st.slaPausedAccumMs = 0;
+    st.slaPausedSince = undefined;
+    r.responded = false;
   }
 
   function toHandler(r: Ticket, run: FlashRun, at: number) {
@@ -425,7 +419,8 @@ export const useFlashStore = defineStore('flash', () => {
 
   /**
    * 转入人工池。`sms` 只对自动环节首次转人工为 true（M14 / M37：每单一条，已发过不再发）。
-   * SLA：首次进池起算，此后再次进池接着跑（停钟中的先恢复），一律不重置（PRD §4.3 / M16 / D18）。
+   * SLA（1013 A26）：进一线刷机池不起算；首次进教育刷机处理组池起算，此后再次进池接着跑（停钟中的先恢复），
+   * 一律不重置（PRD §4.3 / M16 / D18）。
    */
   function handoff(
     r: Ticket,
@@ -446,15 +441,10 @@ export const useFlashStore = defineStore('flash', () => {
     });
     st.pool = pool;
     st.handoffReason = reason;
-    st.slaPausedUntil = undefined;
-    // PRD §4.3 / M88：首次进入人工池写入「SLA 起算时间」，此后再次进池不改写
-    if (!st.slaStartedAt) {
-      st.slaStartedAt = flashMinuteStamp(at);
-      st.slaPausedAccumMs = st.slaPausedAccumMs ?? 0;
-      r.responded = false;
-    }
+    startSlaIfL2(r, at);
     resumeClock(r, at);
-    syncSlaRow(r, at);
+    if (isFlashSlaCounted(st)) syncSlaRow(r, at);
+    else Object.assign(r, SLA_IDLE_ROW);
     log(r.no, at, {
       category: 'node', action: 'flashHandoff', who: '系统', role: '系统', how: '转人工',
       what: FLASH_TL.handoff(reason, meta.label),
@@ -490,18 +480,8 @@ export const useFlashStore = defineStore('flash', () => {
     st.outcome = '等待回传';
     st.failL1 = undefined;
     st.failL2 = undefined;
-    // M31：暂停期间发起重推即恢复计时
-    st.slaPausedUntil = undefined;
-    Object.assign(r, {
-      nodeStatus: '自动刷机中',
-      slaText: '已暂停',
-      slaSub: '自动刷机中',
-      slaState: 'paused',
-      slaMinutes: 9999,
-      updatedAt: flashMinuteStamp(at),
-    });
-    // 重推「自动刷机中」整段停钟（PRD §4.3）：线下登记暂停期内先把那一段结掉，再起本段
-    resumeClock(r, at);
+    Object.assign(r, { nodeStatus: '自动刷机中', updatedAt: flashMinuteStamp(at) });
+    // 已在教育刷机处理组池起算的单：重推「自动刷机中」整段停钟（PRD §4.3）；一线与未起算的单不计时
     pauseClock(r, at, '自动刷机中');
     // PRD §11.2：首推落「自动推送」（系统）；人工重推落「重新推送」（发起人），不另落「自动推送」
     if (trigger === '建单首推') {
@@ -913,8 +893,6 @@ export const useFlashStore = defineStore('flash', () => {
     Object.assign(r, { sn: next.sn, product: next.productModel });
     r.flash.state.verifyResult = v.result;
     if (l1) r.flash.state.l1RepushCount += 1;
-    // PRD §4.3：线下登记暂停期内先恢复计时，随后进「自动刷机中」停钟
-    resumePause(r, '重新推送', now);
     // PRD §11.2：同一次重推依次落「修改刷机信息」（有改动时）、「重新推送」
     if (diff.length) {
       log(ticketNo, now, {
@@ -995,7 +973,7 @@ export const useFlashStore = defineStore('flash', () => {
    * 记回访结论（PRD §8「回访结论去向」/ M58 / M86）：只在「调研中」且未评价过时可记，置位「已产生回访结论」。
    * - 已解决 → 「已结案」，处理人不变，SLA 结束；履历「回访：已解决」+「结案」。
    * - 未解决 → 教育刷机处理组池「未认领」、处理人清空，转人工原因「回访未解决」；
-   *   SLA：从未进过人工池（自动刷机成功直进回访）的此刻起算，其余按下送前的摘要接着跑；不发转人工短信（M47）。
+   *   SLA：从未进过教育刷机处理组池的此刻起算，其余按下送前的摘要接着跑；不发转人工短信（M47）。
    */
   function recordSurveyConclusion(
     ticketNo: string,
@@ -1030,7 +1008,7 @@ export const useFlashStore = defineStore('flash', () => {
         category: 'node', action: 'resolved', who: '系统', role: '系统', how: '结案', what: FLASH_TL.surveySolvedClosed,
       });
     } else {
-      // 已起算的单接着跑（「调研中」那段停钟在 handoff 里结掉）；自动刷机成功直进回访的单从进池时刻起算
+      // 已起算的单接着跑（「调研中」那段停钟在 handoff 里结掉）；未起算的单从进教育刷机处理组池时刻起算
       handoff(r, 'l2', '回访未解决', now + 1);
     }
     bump(ticketNo);
@@ -1059,7 +1037,7 @@ export const useFlashStore = defineStore('flash', () => {
   /**
    * 客户侧催单 / 新建补充（PRD §3.1 / §4.1 第 10 行 / §8「调研中催补拉回」/ §11.1，M9 / M27 / M33 / M41 / M47 / M75）。
    * - 调研中 ∧ 有处理人：撤回本次下送，回该处理人「处理中」，SLA 按下送前摘要接着跑，站内通知处理人；
-   * - 调研中 ∧ 无处理人：进一线刷机池「未认领」，转人工原因「回访期间客户催补」，SLA 从进池时刻起算，
+   * - 调研中 ∧ 无处理人：进一线刷机池「未认领」，转人工原因「回访期间客户催补」，一线不计 SLA（1013 A26），
    *   通知归属组一线刷机池；不发转人工短信；
    * - 自动刷机中：不拉回，有处理人通知处理人、无处理人通知一线刷机池。
    * 两种拉回都不置「已产生回访结论」，再下送照常进「调研中」（M58）。其余子状态不在此处理，返回 `pulled: false`。
@@ -1114,7 +1092,6 @@ export const useFlashStore = defineStore('flash', () => {
       });
       notify(`${handler}(处理人)`);
     } else {
-      // 单上从未计时（slaText「—」）→ 转池时从进池时刻起算
       transferToPool(ticketNo, 'l1', '回访期间客户催补');
       notify(FLASH_POOLS.l1.label);
     }
@@ -1125,7 +1102,8 @@ export const useFlashStore = defineStore('flash', () => {
 
   /**
    * 人工侧转池（升级二线 / 回访未解决 / 回访期间客户催补等，由处理页动作接入）。
-   * 不发转人工短信（M37 / M47：只有自动环节转人工发）；SLA：单上已有在走的钟续算，从未计时的从进池时刻起算（M16 / M41）。
+   * 不发转人工短信（M37 / M47：只有自动环节转人工发）；SLA：单上已有在走的钟续算，
+   * 未起算的进教育刷机处理组池时起算、进一线刷机池不起算（M16 / M41，1013 A26）。
    */
   function transferToPool(ticketNo: string, pool: FlashPoolKey, reason: FlashHandoffReason): FlashActionResult {
     const r = rowOf(ticketNo);
@@ -1143,14 +1121,13 @@ export const useFlashStore = defineStore('flash', () => {
    * 升级二线（1013 A18：一线处理结果选「升级二线」、下送时确认后执行，不填说明）：
    * 子状态回「未认领」、处理人清空、进教育刷机处理组池，转人工原因「一线升级」；处理结果清空交二线重选；
    * 履历记「升级二线」（带最近一条处理记录）；站内通知归属组；不发转人工短信。
-   * 进池时间取本条履历（工作台 `poolEnteredAtOf`）。
+   * 进池时间取本条履历（工作台 `poolEnteredAtOf`）；「SLA 起算时间」为空时写入升级时刻（1013 A26）。
    */
   function escalateToL2(ticketNo: string, by: FlashActor, record?: string): FlashActionResult {
     const r = rowOf(ticketNo);
     if (!r?.flash || !EDITABLE_STATUSES.includes(r.nodeStatus)) return { ok: false, message: FLASH_TIP_REPUSH_STATE };
     const now = Date.now();
     const st = r.flash.state;
-    resumePause(r, '升级二线', now);
     st.result = undefined;
     const meta = FLASH_POOLS.l2;
     Object.assign(r, {
@@ -1164,6 +1141,9 @@ export const useFlashStore = defineStore('flash', () => {
     });
     st.pool = 'l2';
     st.handoffReason = '一线升级';
+    // 一线不计 SLA（1013 A26）：升级进教育刷机处理组池即起算，首响、解决两只钟都从此刻开始
+    startSlaIfL2(r, now);
+    syncSlaRow(r, now);
     log(ticketNo, now + 1, {
       category: 'node', action: 'escalate', who: by.name, role: by.role, how: '升级二线',
       what: FLASH_TL.escalateL2(record),
@@ -1263,21 +1243,6 @@ export const useFlashStore = defineStore('flash', () => {
   }
 
   /**
-   * 暂停期间做改变子状态或处理人的动作（申请挂起 / 委派 / 关闭工单 / 强结 / 调剂 等，PRD §4.3 / M73）：
-   * 动作执行时刻恢复计时。下送 / 升级二线 / 重推 / 转售后 / 撤回在各自动作内已处理，不必再调。
-   */
-  function resumeSlaPause(ticketNo: string, cause: string): boolean {
-    const r = rowOf(ticketNo);
-    if (!r?.flash) return false;
-    const hit = resumePause(r, cause, Date.now());
-    if (hit) {
-      bump(ticketNo);
-      persist();
-    }
-    return hit;
-  }
-
-  /**
    * 通用动作侧的 SLA 记账入口（PRD §4.3）。处理页那几条沿用现有实现的动作
    * （提交审核冻结 / 驳回续走 / 解除挂起 / 结案关闭强结取消）改的是页面上的钟对象；
    * 刷机单的钟在账本里，由这三个入口落回账本，页头与列表随之一起变。
@@ -1310,14 +1275,12 @@ export const useFlashStore = defineStore('flash', () => {
    * 下送（PRD §5.5「下送确认」/ §8 / M26 / M58）：
    * - 本单已产生过回访结论 → 跳过回访直接「已结案」，不发调研短信，履历「下送（已回访过，直接结案）」；
    * - 否则 → 进「调研中」，处理人为下送人，记下送发起人（X30），发调研短信（写通知记录）。
-   * 暂停期内先恢复计时。
    */
   function forward(ticketNo: string, by: FlashActor, result: FlashResult): FlashActionResult {
     const r = rowOf(ticketNo);
     if (!r?.flash || isTicketClosed(r.nodeStatus)) return { ok: false, message: FLASH_TIP_REPUSH_STATE };
     const st = r.flash.state;
     const now = Date.now();
-    resumePause(r, '下送', now);
     st.result = result;
     st.offlineRegisteredAt = undefined;
     if (st.surveyConcluded) {
@@ -1378,15 +1341,13 @@ export const useFlashStore = defineStore('flash', () => {
   }
 
   /**
-   * 转售后（二线，PRD §7.3）：子状态「已转出」、客服侧冻结；暂停期内先恢复计时。
+   * 转售后（二线，PRD §7.3）：子状态「已转出」、客服侧冻结、SLA 停钟。
    * 履历与关联售后单号由处理页的转售后弹窗给出（`what` 为弹窗组好的正文）。
    */
   function transferAftersale(ticketNo: string, by: FlashActor, asNo: string, what: string): FlashActionResult {
     const r = rowOf(ticketNo);
     if (!r?.flash || !EDITABLE_STATUSES.includes(r.nodeStatus)) return { ok: false, message: FLASH_TIP_REPUSH_STATE };
-    const st = r.flash.state;
     const now = Date.now();
-    resumePause(r, '转售后', now);
     // 已转出：客服侧冻结，SLA 停钟；售后唤起回原处理人时剩余接续（PRD §7.3）
     pauseClock(r, now, '已转出');
     Object.assign(r, {
@@ -1519,21 +1480,6 @@ export const useFlashStore = defineStore('flash', () => {
   function settleDue(now: number = Date.now()): number {
     let settled = 0;
     for (const t of TICKETS) {
-      // PRD §4.3 / §11.2：线下登记暂停到点自动恢复，记「SLA 恢复计时 · 到达暂停截止时刻」
-      const until = isFlashTicket(t) ? t.flash?.state.slaPausedUntil : undefined;
-      if (until && parseFlashStamp(until).getTime() <= now) {
-        const r = reactive(t);
-        const at = parseFlashStamp(until).getTime();
-        r.flash!.state.slaPausedUntil = undefined;
-        // 恢复时刻取「SLA 暂停至」本身，不能取 now —— 取 now 会把到点之后这段也当成停钟多扣
-        resumeClock(r, at);
-        log(r.no, at, {
-          category: 'sla', action: 'hold', who: '系统', role: '系统', how: 'SLA 恢复',
-          what: FLASH_TL.slaResume('到达暂停截止时刻'),
-        });
-        bump(r.no);
-        settled += 1;
-      }
       // PRD §8 / M26′：调研超时未评价 → 自动结案（时刻取调研短信发出时刻 + 调研超时时长）
       if (isFlashTicket(t) && t.flash && t.nodeStatus === '调研中' && !t.flash.state.survey) {
         const sentAt = t.flash.state.surveySentAt ?? t.updatedAt;
@@ -1622,13 +1568,17 @@ export const useFlashStore = defineStore('flash', () => {
   }
 
   /**
-   * 「SLA 起算时间」补齐（PRD §4.3 / M88）：种子单进池发生在页面打开之前，按履历里最早一条「转人工」事件的时刻写入；
-   * 从未进过人工池的单保持为空。
+   * 「SLA 起算时间」补齐（PRD §4.3 / M88，1013 A26）：种子单进池发生在页面打开之前，按履历里最早一条
+   * **进入教育刷机处理组池**的事件（转人工 → 教育刷机处理组池 / 升级二线）的时刻写入；
+   * 只进过一线刷机池、从未进过人工池的单保持为空。
    */
   function backfillSlaStartedAt() {
+    const toL2 = `→ ${FLASH_POOLS.l2.label}`;
     for (const t of TICKETS) {
-      if (!isFlashTicket(t) || !t.flash || t.flash.state.slaStartedAt) continue;
-      const first = timelineOf(t.no).find((e) => e.action === 'flashHandoff');
+      if (!isFlashTicket(t) || !t.flash || t.flash.state.slaStartedAt || t.flash.state.pool !== 'l2') continue;
+      const first = timelineOf(t.no).find(
+        (e) => (e.action === 'flashHandoff' && e.what.endsWith(toL2)) || (e.action === 'escalate' && e.how === '升级二线'),
+      );
       if (first) t.flash.state.slaStartedAt = first.when.slice(0, 16);
     }
   }
@@ -1754,7 +1704,6 @@ export const useFlashStore = defineStore('flash', () => {
     linkComplaint,
     flashNoLinkedTo,
     saveProcess,
-    resumeSlaPause,
     holdSla,
     resumeSla,
     stopSla,

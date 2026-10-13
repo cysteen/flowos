@@ -120,7 +120,7 @@ function ledger(
   };
 }
 
-/** 一线不计 SLA（1013 A26）：一线刷机池 / 一线名下的单，列表行上的 SLA 摘要 */
+/** 不计 SLA 的单（1013 A26：一线刷机池、一线名下、首推自动刷机中），列表行上的 SLA 摘要；与刷机服务写入的同值 */
 const L1_NO_SLA = { slaText: '—', slaSub: '未计时', slaState: 'ok', slaMinutes: 9999 } as const;
 
 /** 缺省按「建单校验两项均通过」；未跑校验的（特殊情况）显式传「未校验」 */
@@ -259,7 +259,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       info, creator: '用户提报', customer: '胡建国', phone: '13956011215',
       createdAt: created.slice(0, 16), updatedAt: pushed.slice(0, 16),
       nodeStatus: '自动刷机中', assignee: null, tab: 'mine', nodeStep: 2,
-      slaText: '已暂停', slaSub: '自动刷机中', slaState: 'paused', slaMinutes: 9999,
+      ...L1_NO_SLA,
       flashState: state('用户提报', { outcome: '等待回传', pushCount: 1 }),
       runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '等待回传' })],
     }), [
@@ -277,7 +277,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       info, creator: '用户提报', customer: '程丽', phone: '13856022318',
       createdAt: created.slice(0, 16), updatedAt: pushed.slice(0, 16),
       nodeStatus: '自动刷机中', assignee: null, tab: 'mine',
-      slaText: '已暂停', slaSub: '自动刷机中', slaState: 'paused', slaMinutes: 9999,
+      ...L1_NO_SLA,
       flashState: state('用户提报', { outcome: '等待回传', pushCount: 1 }),
       runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '等待回传' })],
     }), [
