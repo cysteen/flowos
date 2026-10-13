@@ -9,7 +9,7 @@ import {
   ReloadOutlined, DownOutlined,
 } from '@ant-design/icons-vue';
 import {
-  FLASH_GATE_TIPS, FLASH_L2_MORE_ORDER,
+  FLASH_GATE_TIPS, FLASH_L1_BAR_ORDER, FLASH_L2_BAR_ORDER, FLASH_L2_MORE_ORDER,
   flashBarLabel, flashButtonGate, type FlashBarKey, type FlashStage, type FlashView,
 } from '../composables/flashGate';
 import OpActionDialogs from './OpActionDialogs.vue';
@@ -399,44 +399,20 @@ const isFlashBar = computed(
   () => !!props.isFlash && (props.flashView === 'l1' || props.flashView === 'l2' || props.flashView === 'claim'),
 );
 
-/**
- * 刷机单底栏顺序（1013 A15 / A19 / B2）：
- * - 一线：保存 · 下送 · 撤回 —— 去向由处理结果决定，推送只从修改刷机信息弹窗发起，升级二线是处理结果之一；
- * - 二线：保存 · 下送 · 升级 · 转售后 · 更多 —— 与咨询单一致（升级＝三线技术支持 / 产研 / 同步飞书），不出转单。
- */
-type FlashBarSlot = FlashBarKey | '升级';
-const FLASH_L1_ORDER: readonly FlashBarSlot[] = ['下送', '撤回'];
-const FLASH_L2_ORDER: readonly FlashBarSlot[] = ['下送', '升级', '转售后'];
-const FLASH_L2_MORE: readonly FlashBarSlot[] = FLASH_L2_MORE_ORDER;
-
-/** 「升级」位按子状态取值：待响应 / 处理中可用，其余子状态沿用刷机门控的悬停原因 */
-const FLASH_STAGE_TIP: Partial<Record<FlashStage, string>> = {
-  自动刷机中: FLASH_GATE_TIPS.autoFlashing,
-  已转出: FLASH_GATE_TIPS.transferred,
-  已委派: FLASH_GATE_TIPS.delegated,
-  审核中: FLASH_GATE_TIPS.review,
-  已挂起: FLASH_GATE_TIPS.suspended,
-  调研中: FLASH_GATE_TIPS.survey,
-  未认领: FLASH_GATE_TIPS.unclaimed,
-};
-
-function flashItem(k: FlashBarSlot): BarItem | null {
+/** 刷机单底栏顺序（1013 A15 / A19 / B2）：真源在 `flashGate.ts` 的 FLASH_L1 / L2 BAR_ORDER 与 FLASH_L2_MORE_ORDER */
+function flashItem(k: FlashBarKey): BarItem | null {
   const stage = props.flashStage ?? '处理中';
-  const def = actionMap.value.get(k as OpActionType);
+  const def = actionMap.value.get(k);
   if (!def) return null;
   // 风险报备限本单主责处理人（出现条件由工单页算）
   if (k === '风险报备' && !props.showRiskReport) return null;
-  const gate = k === '升级'
-    ? (stage === '待响应' || stage === '处理中'
-      ? { forbidden: false, tip: undefined as string | undefined }
-      : { forbidden: true, tip: FLASH_STAGE_TIP[stage] })
-    : flashButtonGate(k, {
-      view: props.flashView ?? 'l2',
-      stage,
-      isInitiator: !!props.flashIsInitiator,
-      hasForwarder: props.flashHasForwarder,
-      afterSaleEnabled: props.afterSaleEnabled,
-    });
+  const gate = flashButtonGate(k, {
+    view: props.flashView ?? 'l2',
+    stage,
+    isInitiator: !!props.flashIsInitiator,
+    hasForwarder: props.flashHasForwarder,
+    afterSaleEnabled: props.afterSaleEnabled,
+  });
   let forbidden = gate.forbidden;
   let tip = gate.tip;
   if (!forbidden && k === '升级' && feishuEscalateBlocked.value) {
@@ -455,16 +431,16 @@ function flashItem(k: FlashBarSlot): BarItem | null {
   let icon = def.icon;
   if (k === '挂起' && stage === '已挂起') { key = '恢复'; icon = 'PlayCircleOutlined'; }
   if (k === '委派' && stage === '已委派') { key = '撤销委派'; icon = 'UndoOutlined'; }
-  const label = k === '升级' ? def.label : flashBarLabel(k, stage);
+  const label = flashBarLabel(k, stage);
   return { key, label, icon, danger: def.danger, forbidden, forbiddenTip: tip };
 }
 
 const flashPrimaryItems = computed<BarItem[]>(() => {
-  const order = props.flashView === 'l1' ? FLASH_L1_ORDER : props.flashView === 'l2' ? FLASH_L2_ORDER : [];
+  const order = props.flashView === 'l1' ? FLASH_L1_BAR_ORDER : props.flashView === 'l2' ? FLASH_L2_BAR_ORDER : [];
   return order.map(flashItem).filter((x): x is BarItem => !!x);
 });
 const flashMoreItems = computed<BarItem[]>(() =>
-  (props.flashView === 'l2' ? FLASH_L2_MORE : []).map(flashItem).filter((x): x is BarItem => !!x),
+  (props.flashView === 'l2' ? FLASH_L2_MORE_ORDER : []).map(flashItem).filter((x): x is BarItem => !!x),
 );
 const isFlashClaim = computed(() => !!props.isFlash && props.flashView === 'claim');
 /** 客诉专员在刷机单上只读工单内容（M94 / M102）：底栏不出「保存」，只留风险那一枚 */

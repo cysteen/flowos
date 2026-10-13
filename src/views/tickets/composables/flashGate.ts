@@ -6,7 +6,8 @@
  * 刷机信息区块头「修改刷机信息」都只问这里，不各写一套判据。四类老工单不经过本模块。
  *
  * 判定两道（§5.5 首段）：先定**视角**（角色 × 本单处理人 / 池，`resolveFlashView`），再按**子状态**逐格取值
- * （`flashButtonGate` / `flashEscalateComplaintGate`）；任一道「不展示」即不渲染，其余任一道「置灰」即置灰。
+ * （`flashButtonGate`）；任一道「不展示」即不渲染，其余任一道「置灰」即置灰。
+ * 页头「关联投诉」是弱关联，不受子状态影响，只在终态置灰（1013 B5），门控在处理页。
  * 同一按钮命中多条悬停原因时，取原因表中靠前的一条。
  */
 import { isTicketClosed, type TicketStatus } from '@/views/tickets/types/ticket';
@@ -79,13 +80,12 @@ export function resolveFlashView(i: FlashViewInput): FlashView {
 
 export type FlashStage =
   | '未认领' | '待响应' | '处理中' | '自动刷机中' | '调研中' | '审核中'
-  | '已挂起' | '已委派' | '已转出' | '终态' | '已升级投诉';
+  | '已挂起' | '已委派' | '已转出' | '终态';
 
 const REVIEW_STATUSES = ['申请挂起中', '申请关闭中', '申请强结中', '业务动作审核中'];
 
 /** 子状态 → 表二的列。委派中（`delegateInfo` 在）按「已委派」列取值 */
 export function flashStageOf(status: string, delegating = false): FlashStage {
-  if (status === '已升级投诉' || status === '已升级外投') return '已升级投诉';
   if (isTicketClosed(status as TicketStatus)) return '终态';
   if (delegating || status === '已委派') return '已委派';
   if (REVIEW_STATUSES.includes(status)) return '审核中';
@@ -95,7 +95,7 @@ export function flashStageOf(status: string, delegating = false): FlashStage {
 }
 
 /* ------------------------------------------------------------------ */
-/* 悬停原因（PRD §5.5 置灰悬停原因表 1–13，逐字）                         */
+/* 悬停原因（PRD §5.5 置灰悬停原因表 1–12，逐字）                         */
 /* ------------------------------------------------------------------ */
 
 export const FLASH_GATE_TIPS = {
@@ -131,21 +131,24 @@ function stageTip(stage: FlashStage, opts: { withdraw?: boolean; risk?: boolean 
 /* 底栏按钮（表一 × 表二）                                               */
 /* ------------------------------------------------------------------ */
 
-/** 刷机单底栏按钮键（底栏展示顺序见下方两个 ORDER） */
+/** 刷机单底栏按钮键（底栏展示顺序见下方几个 ORDER） */
 export type FlashBarKey =
-  | '下送' | '重推' | '升级二线' | '转售后' | '撤回'
+  | '下送' | '升级' | '转售后' | '撤回'
   | '挂起' | '委派' | '调剂' | '关闭工单' | '强结' | '风险报备';
 
-/** 一线视角底栏顺序：保存 · 下送 · 重新推送 · 升级二线 · 撤回（「保存」由底栏常驻） */
-export const FLASH_L1_BAR_ORDER: readonly FlashBarKey[] = ['下送', '重推', '升级二线', '撤回'];
-/** 二线视角底栏顺序：保存 · 下送 · 重新推送 · 转售后 · 更多 */
-export const FLASH_L2_BAR_ORDER: readonly FlashBarKey[] = ['下送', '重推', '转售后'];
+/**
+ * 一线视角底栏顺序：保存 · 下送 · 撤回（「保存」由底栏常驻，1013 A15）。
+ * 推送只从修改刷机信息弹窗发起（A12 / B1），升级二线是处理结果之一、下送时确认（A18），都不占底栏按钮。
+ */
+export const FLASH_L1_BAR_ORDER: readonly FlashBarKey[] = ['下送', '撤回'];
+/** 二线视角底栏顺序：保存 · 下送 · 升级 · 转售后 · 更多 —— 与咨询单一致（升级＝三线技术支持 / 产研 / 同步飞书，1013 B2），不出转单 */
+export const FLASH_L2_BAR_ORDER: readonly FlashBarKey[] = ['下送', '升级', '转售后'];
 /** 二线视角「更多」内顺序：申请挂起 · 委派 · 调剂 · 关闭工单 · 强结 · 风险报备 · 撤回 */
 export const FLASH_L2_MORE_ORDER: readonly FlashBarKey[] = ['挂起', '委派', '调剂', '关闭工单', '强结', '风险报备', '撤回'];
 
 /** 按钮文案（「挂起」「委派」位在已挂起 / 已委派列切换为解除挂起 / 撤销委派，见 `flashBarLabel`） */
 const FLASH_BAR_LABEL: Record<FlashBarKey, string> = {
-  下送: '下送', 重推: '重新推送', 升级二线: '升级二线', 转售后: '转售后', 撤回: '撤回',
+  下送: '下送', 升级: '升级', 转售后: '转售后', 撤回: '撤回',
   挂起: '申请挂起', 委派: '委派', 调剂: '调剂', 关闭工单: '关闭工单', 强结: '强结', 风险报备: '风险报备',
 };
 
@@ -158,8 +161,7 @@ export function flashBarLabel(key: FlashBarKey, stage: FlashStage): string {
 /** 表二各按钮「可用」的列 */
 const AVAILABLE_STAGES: Record<FlashBarKey, readonly FlashStage[]> = {
   下送: ['待响应', '处理中', '已委派'],
-  重推: ['待响应', '处理中'],
-  升级二线: ['待响应', '处理中'],
+  升级: ['待响应', '处理中'],
   转售后: ['待响应', '处理中'],
   撤回: ['调研中', '审核中'],
   挂起: ['待响应', '处理中', '已挂起'],
@@ -186,7 +188,7 @@ export interface FlashBarGateCtx {
   afterSaleEnabled: boolean;
 }
 
-/** 单个底栏按钮在当前视角 × 子状态下的取值（渲染与否由视角与「重新推送」机型判定先行决定） */
+/** 单个底栏按钮在当前视角 × 子状态下的取值（渲染与否由视角先行决定） */
 export function flashButtonGate(key: FlashBarKey, ctx: FlashBarGateCtx): FlashGateResult {
   const { stage } = ctx;
   if (key === '撤回') {
@@ -215,20 +217,8 @@ export function flashButtonGate(key: FlashBarKey, ctx: FlashBarGateCtx): FlashGa
 export function flashEditInfoGate(view: FlashView, stage: FlashStage, isHandler: boolean): FlashGateResult | null {
   if (view !== 'l1' && view !== 'l2') return null;
   if (view === 'l2' && !isHandler) return null;
-  if (stage === '未认领' || stage === '终态' || stage === '已升级投诉') return null;
+  if (stage === '未认领' || stage === '终态') return null;
   if (stage === '待响应' || stage === '处理中') return { forbidden: false };
-  return { forbidden: true, tip: stageTip(stage) };
-}
-
-/* ------------------------------------------------------------------ */
-/* 页头「升级投诉」（表二「升级投诉（头部）」行）                              */
-/* ------------------------------------------------------------------ */
-
-/** 置灰与否 + 原因；「已升级投诉」列不展示由整页接管锁收掉，这里不另判 */
-export function flashEscalateComplaintGate(stage: FlashStage): FlashGateResult {
-  if (stage === '待响应' || stage === '处理中' || stage === '终态' || stage === '已升级投诉') return { forbidden: false };
-  // M100：调研中另给撤回下送与新建补充两条出路
-  if (stage === '调研中') return { forbidden: true, tip: FLASH_TIP_SURVEY_ESCALATE_COMPLAINT };
   return { forbidden: true, tip: stageTip(stage) };
 }
 
@@ -240,7 +230,7 @@ export function flashEscalateComplaintGate(stage: FlashStage): FlashGateResult {
  * 刷机单列表行内操作：按与处理页同一道视角判定裁剪通用行内动作（PRD §5.5 表一 / 表二、§9.4，M34）。
  * - 只读查看、待领取、其他视角不出任何行内操作（领取只在池页签，池页签不走本函数）；
  * - 「退回」「调剂」「挂起」刷机单一律不在行内出：刷机单的流转动作统一在工单处理页办理，
- *   经刷机服务写履历、恢复线下登记暂停（M117）；
+ *   经刷机服务写履历、同步子状态（M117）；
  * - 进处理页类动作（处理 / 详情 / 审核 / 受理 / 恢复）在一线、二线视角保留。
  */
 export function flashListRowActions<T extends { label: string }>(
@@ -252,12 +242,9 @@ export function flashListRowActions<T extends { label: string }>(
   return base.filter((a) => a.label !== '退回' && a.label !== '调剂' && a.label !== '挂起');
 }
 
-/** 调研中「升级投诉」置灰悬停原因（M100） */
-export const FLASH_TIP_SURVEY_ESCALATE_COMPLAINT = '工单回访中，撤回下送或新建补充后可操作';
-
 /**
- * 页头按钮的视角裁剪（§5.5「只读查看」行）：只读查看时一线坐席出催单 / 新建补充 / 升级投诉，
- * 二线（专员 / 班组长等）只出新建补充；管理员照二线视角（升级投诉按表二置灰）。取消工单刷机单一律不出（M6）。
+ * 页头「关联投诉」的视角裁剪（§5.5「只读查看」行）：只读查看时一线坐席出催单 / 新建补充 / 关联投诉，
+ * 二线（专员 / 班组长等）只出新建补充；管理员照二线视角。取消工单的角色与门控沿用咨询单（1013 B4），不在此判。
  */
 export function flashHeaderEscalateVisible(view: FlashView, roleKey: string): boolean {
   if (view !== 'readonly') return true;

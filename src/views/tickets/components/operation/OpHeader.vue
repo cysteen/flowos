@@ -69,8 +69,8 @@ const props = defineProps<{
   /** 转单三态：业务转至新单，表头收束为只读提示 + 前往新单 */
   supersededBy?: TicketRelation | null;
   /**
-   * 刷机单「升级投诉」的子状态门控（930 教育刷机单 PRD §5.5 表二，见 `flashEscalateComplaintGate`）：
-   * 置灰时覆盖阶层判定的取值与原因（如自动刷机中「自动刷机进行中，回传结果后再操作」）。老工单不传。
+   * 刷机单「关联投诉」的门控（1013 B5，由处理页 `flashLinkGate` 给）：弱关联不受子状态影响，
+   * 只在终态置灰，置灰时覆盖阶层判定的取值与原因。老工单不传。
    */
   escalateGate?: { forbidden: boolean; tip?: string } | null;
   /**
