@@ -1,3 +1,5 @@
+import { FLASH_MODEL_SEED } from '@/mock/flash/models';
+
 /** 产品树 mock：BGBU → 业务线 → 产品线 → 产品分类 → 产品（五级，与产品管理页共用） */
 export interface ProductTreeNode {
   key: string;
@@ -64,6 +66,26 @@ export const PRODUCT_TREE_DATA: ProductTreeNode[] = [
       },
     ],
   },
+  {
+    // 智慧课堂学生平板（产品「是否支持刷机」的数据行，1013 N1；产品分类与建单页同为「学习硬件」）
+    key: 'bg-edu', title: '教育事业群', kind: 'BGBU',
+    children: [
+      {
+        key: 'yx-class', title: '智慧课堂业务线', kind: '业务线',
+        children: [
+          {
+            key: 'px-tablet', title: '学生平板产品线', kind: '产品线',
+            children: [
+              {
+                key: 'fl-tablet', title: '学习硬件', kind: '产品分类',
+                children: FLASH_MODEL_SEED.map((m) => ({ key: `p-edu-${m.id}`, title: m.model, kind: '产品' as const })),
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  },
 ];
 
 export const PRODUCT_TREE_KIND_COLOR: Record<ProductTreeNode['kind'], string> = {
@@ -73,6 +95,7 @@ export const PRODUCT_TREE_KIND_COLOR: Record<ProductTreeNode['kind'], string> = 
 export const PRODUCT_TREE_DEFAULT_EXPANDED = [
   'bg-consumer', 'yx-hw', 'px-rec', 'fl-rec', 'px-trans', 'fl-trans',
   'bg-fin', 'yx-ops', 'px-cs', 'fl-qc',
+  'bg-edu', 'yx-class', 'px-tablet', 'fl-tablet',
 ];
 
 function walk(nodes: ProductTreeNode[], fn: (n: ProductTreeNode) => void) {

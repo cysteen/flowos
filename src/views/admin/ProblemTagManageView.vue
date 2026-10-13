@@ -15,6 +15,8 @@ import {
   PRODUCT_TREE_DATA, listProductNodes, productAncestors,
   productTitleByKey, type ProductTreeNode,
 } from '@/mock/productTree';
+import { FLASH_MODEL_SEED } from '@/mock/flash/models';
+import { flashTagKey, useFlashConfigStore } from '@/stores/flashConfig';
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -27,6 +29,7 @@ const isAdmin = computed(() => !!userStore.role.adminScope);
  */
 const PRODUCT_BIZ_TYPE: Record<string, string> = {
   'p-h1': '听见', 'p-h2': '听见', p1: '智能硬件', p2: '智能硬件', p3: '开放平台',
+  ...Object.fromEntries(FLASH_MODEL_SEED.map((m) => [`p-edu-${m.id}`, '教育'])),
 };
 
 /** 产品叶子 → 各级归属（BGBU / 业务线 / 产品线 / 产品分类 / 业务类型），筛选、导入、导出共用 */
@@ -62,6 +65,8 @@ interface ProblemTagRow {
   aftersale: '是' | '否';
   /** 是否小结专用：是＝只供容联云小结使用，新建工单不可选 */
   summaryOnly: '是' | '否';
+  /** 是否刷机（1013 N2）：是＝本产品选本分类建单即识别为刷机单（还须产品「是否支持刷机」开启） */
+  flash: '是' | '否';
   status: '启用' | '停用';
   /** 问题分类一 / 二 / 三级 ID（老系统数字串；同产品同路径前缀共用同一 ID） */
   tagL1Id: string;
@@ -75,7 +80,7 @@ interface ProblemTagRow {
 /**
  * 筛选项排序（左→右）：
  * 第1行：维度（产品维度 | 组织维度）→ 联动下拉（产品维度：业务类型/产品分类/产品名称；组织维度：BGBU/业务线/产品线/产品名称）
- *        | 问题分类一级 → 二级 → 三级 → 处理组 → 是否售后 → 是否小结专用 → 状态
+ *        | 问题分类一级 → 二级 → 三级 → 处理组 → 是否售后 → 是否小结专用 → 是否刷机 → 状态
  * 工具条：分类名称搜索 → 查询/重置/批量/导出
  */
 type ScopeDim = 'product' | 'org';
@@ -92,6 +97,7 @@ const emptyFilter = () => ({
   team: undefined as string | undefined,
   aftersale: undefined as string | undefined,
   summaryOnly: undefined as string | undefined,
+  flash: undefined as string | undefined,
   status: undefined as string | undefined,
 });
 const draftFilter = reactive(emptyFilter());
@@ -118,7 +124,7 @@ const TAG_L3_MAP: Record<string, string[]> = {
   '功能介绍': ['云空间存储大小咨询', '文件名称是否支持添加符号', '视频是否支持实时字幕', '是否支持修改IP地址', '文件已上传云空间是否支持直接转写', '导出格式咨询', '录音笔IP地址咨询'],
   '软件问题': ['邮件分享失败', '无法领取云空间', '文件日期/时间显示异常', '翻译结果没有语音播报', '翻译延迟/卡顿/反应慢', '翻译失败(服务准备中,请稍等)', '无法切换翻译识别模式', '加载失败/打不开/闪退'],
   '功能异常': ['显示内容异常(图标/乱码/字体/方向等)'],
-  '服务申请': ['维修请求'],
+  '服务申请': ['维修请求', '自助刷机', '刷原生系统'],
   '政策咨询': ['退换货政策'],
   '信息咨询': ['设备丢失'],
   '问题反馈': ['设备维修后故障仍存在'],
@@ -263,19 +269,41 @@ const SEED_ROWS: SeedTuple[] = [
   ['p3', '账号/密码', '操作指导', '如何退出/切换账号', '技术支持组', '否', '否', '启用', '110241', '2104051', '31060501', '孙系统', '2026-09-12 16:30:40'],
   ['p3', '网络', '功能介绍', '是否支持修改IP地址', '技术支持组', '否', '否', '启用', '110242', '2104052', '31060502', '孙系统', '2026-09-12 16:30:40'],
   ['p3', '设置/系统', '软件问题', '加载失败/打不开/闪退', '技术支持组', '否', '否', '启用', '110243', '2104053', '31060503', '赵管理', '2026-09-25 11:18:24'],
+  // 智慧课堂学生平板：售后 → 服务申请 → 自助刷机 / 刷原生系统（「是否刷机」默认开启，1013 N2）
+  ...FLASH_MODEL_SEED.flatMap((m, i): SeedTuple[] => ['自助刷机', '刷原生系统'].map((l3, j): SeedTuple => [
+    `p-edu-${m.id}`, '售后', '服务申请', l3, '', '否', '否', '启用',
+    String(110301 + i), String(2104101 + i), String(31060701 + i * 2 + j), '周运营', '2026-10-13 16:20:00',
+  ])),
 ];
+
+/**
+ * 「是否刷机」开关值存刷机配置（`stores/flashConfig.ts`），建单识别读同一份（1013 A2 / N2）：
+ * 种子行按配置回显；本页任何写操作后把当前开启的条目整体写回配置。
+ */
+const flashConfig = useFlashConfigStore();
 
 const allRows = ref<ProblemTagRow[]>(SEED_ROWS.map((t, i) => {
   const [productKey, tagL1, tagL2, tagL3, team, aftersale, summaryOnly, status, tagL1Id, tagL2Id, tagL3Id, maintainer, maintainedAt] = t;
+  const productName = productTitleByKey(productKey);
   return {
     key: String(i + 1),
     productKey,
-    productName: productTitleByKey(productKey),
-    tagL1, tagL2, tagL3, team, aftersale, summaryOnly, status,
+    productName,
+    tagL1, tagL2, tagL3, team, aftersale, summaryOnly,
+    flash: flashConfig.isFlashTag(productName, tagL1, tagL2, tagL3) ? '是' : '否',
+    status,
     tagL1Id, tagL2Id, tagL3Id, maintainer, maintainedAt,
   };
 }));
 let rowSeq = allRows.value.length + 1;
+
+watch(
+  allRows,
+  (rows) => flashConfig.replaceFlashTags(
+    rows.filter((r) => r.flash === '是').map((r) => flashTagKey(r.productName, r.tagL1, r.tagL2, r.tagL3)),
+  ),
+  { deep: true },
+);
 
 /** 写操作留痕：操作人取当前登录用户，时刻精确到秒 */
 function stampNow() {
@@ -369,6 +397,7 @@ const displayRows = computed(() => allRows.value.filter((r) => {
   if (appliedFilter.team === TEAM_EMPTY ? !!r.team : !matchSelect(appliedFilter.team, r.team)) return false;
   if (!matchSelect(appliedFilter.aftersale, r.aftersale)) return false;
   if (!matchSelect(appliedFilter.summaryOnly, r.summaryOnly)) return false;
+  if (!matchSelect(appliedFilter.flash, r.flash)) return false;
   if (!matchSelect(appliedFilter.status, r.status)) return false;
   return true;
 }));
@@ -381,6 +410,7 @@ const cols = [
   { title: '处理组', dataIndex: 'team', key: 'team', width: 110 },
   { title: '是否售后', dataIndex: 'aftersale', key: 'aftersale', width: 86 },
   { title: '是否小结专用', dataIndex: 'summaryOnly', key: 'summaryOnly', width: 110 },
+  { title: '是否刷机', dataIndex: 'flash', key: 'flash', width: 86 },
   { title: '状态', dataIndex: 'status', key: 'status', width: 90 },
   { title: '更新人', dataIndex: 'maintainer', key: 'maintainer', width: 90 },
   { title: '更新时间', dataIndex: 'maintainedAt', key: 'maintainedAt', width: 150 },
@@ -544,6 +574,7 @@ const form = reactive({
   team: undefined as string | undefined,
   aftersale: '否' as '是' | '否',
   summaryOnly: '否' as '是' | '否',
+  flash: '否' as '是' | '否',
   status: '启用' as '启用' | '停用',
 });
 
@@ -595,7 +626,7 @@ function resetForm() {
   Object.assign(form, {
     productKey: undefined,
     tagL1: '', tagL2: '', tagL3: '',
-    team: undefined, aftersale: '否', summaryOnly: '否', status: '启用',
+    team: undefined, aftersale: '否', summaryOnly: '否', flash: '否', status: '启用',
   });
 }
 
@@ -612,7 +643,7 @@ function openEditRow(row: ProblemTagRow) {
   Object.assign(form, {
     productKey: row.productKey,
     tagL1: row.tagL1, tagL2: row.tagL2, tagL3: row.tagL3,
-    team: row.team || undefined, aftersale: row.aftersale, summaryOnly: row.summaryOnly, status: row.status,
+    team: row.team || undefined, aftersale: row.aftersale, summaryOnly: row.summaryOnly, flash: row.flash, status: row.status,
   });
   formOpen.value = true;
 }
@@ -639,6 +670,7 @@ function saveForm() {
     team: form.team ?? '',
     aftersale: form.aftersale,
     summaryOnly: form.summaryOnly,
+    flash: form.flash,
     status: form.status,
     ...resolveTagIds(form.productKey, [tagL1, tagL2, tagL3], {}, editingKey.value ?? undefined),
     ...stampNow(),
@@ -758,7 +790,7 @@ const todayStr = () => dayjs().format('YYYYMMDD');
  */
 const COL_NAMES = [
   '业务类型', '产品大类', '产品名称', '问题一级', '问题二级', '问题三级',
-  '工单处理组', '是否售后', '是否小结专用', '问题一级 ID', '问题二级 ID', '问题三级 ID',
+  '工单处理组', '是否售后', '是否小结专用', '是否刷机', '问题一级 ID', '问题二级 ID', '问题三级 ID',
 ] as const;
 /** 必填列下标（业务类型 ~ 问题三级） */
 const REQUIRED_COL_IDX = [0, 1, 2, 3, 4, 5];
@@ -766,14 +798,14 @@ const REQUIRED_COL_IDX = [0, 1, 2, 3, 4, 5];
 const TEMPLATE_COLS = COL_NAMES.map((n, i) => (REQUIRED_COL_IDX.includes(i) ? `${n}*` : n));
 const FAIL_REASON_COL = '失败原因';
 /** 一 / 二 / 三级 ID 列下标 */
-const ID_COL_IDX: Record<TagLevel, number> = { 1: 9, 2: 10, 3: 11 };
+const ID_COL_IDX: Record<TagLevel, number> = { 1: 10, 2: 11, 3: 12 };
 const missingColsText = (cols: string[]) => `缺少必填列：${cols.join('、')}，请下载模板核对表头`;
 
 function rowToTemplateCells(r: ProblemTagRow): string[] {
   const p = pinfo(r.productKey);
   return [
     p.bizType, p.prodCat, r.productName, r.tagL1, r.tagL2, r.tagL3,
-    r.team, r.aftersale, r.summaryOnly, r.tagL1Id, r.tagL2Id, r.tagL3Id,
+    r.team, r.aftersale, r.summaryOnly, r.flash, r.tagL1Id, r.tagL2Id, r.tagL3Id,
   ];
 }
 
@@ -785,15 +817,15 @@ function downloadTemplate() {
 
 // —— 导出 ——
 const EXPORT_COLS = [
-  'BGBU', '业务线', '产品线', ...TEMPLATE_COLS.slice(0, 9),
-  '状态', '更新人', '更新时间',...TEMPLATE_COLS.slice(9),
+  'BGBU', '业务线', '产品线', ...TEMPLATE_COLS.slice(0, 10),
+  '状态', '更新人', '更新时间',...TEMPLATE_COLS.slice(10),
 ];
 
 function rowToExportCells(r: ProblemTagRow): string[] {
   const p = pinfo(r.productKey);
   return [
     p.bgbu, p.bizLine, p.prodLine, p.bizType, p.prodCat, r.productName,
-    r.tagL1, r.tagL2, r.tagL3, r.team, r.aftersale, r.summaryOnly, r.status,
+    r.tagL1, r.tagL2, r.tagL3, r.team, r.aftersale, r.summaryOnly, r.flash, r.status,
     r.maintainer, r.maintainedAt, r.tagL1Id, r.tagL2Id, r.tagL3Id,
   ];
 }
@@ -822,7 +854,7 @@ const importOpen = ref(false);
 /** 每行归类：新增（路径不存在）/ 更新（路径已存在且可变字段有变化或当前停用）/ 已存在 / 失败 */
 type ImportKind = '新增' | '更新' | '已存在' | '失败';
 interface ImportLine {
-  /** 按列名取出的 12 列（模板列顺序），失败明细原样回写 */
+  /** 按列名取出的 13 列（模板列顺序），失败明细原样回写 */
   cells: string[];
   kind: ImportKind;
   reason: string;
@@ -831,6 +863,7 @@ interface ImportLine {
   team: string;
   aftersale: '是' | '否';
   summaryOnly: '是' | '否';
+  flash: '是' | '否';
   ids: Partial<Record<TagLevel, string>>;
   /** 更新行命中的存量记录 */
   targetKey?: string;
@@ -869,9 +902,9 @@ function locateColumns(header: string[]): number[] {
 
 /**
  * 逐行归类。失败原因按固定顺序收集、以「；」连接：
- * 必填列为空 → 产品未找到 → 工单处理组 → 是否售后 → 是否小结专用 → ID 占用；
+ * 必填列为空 → 产品未找到 → 工单处理组 → 是否售后 → 是否小结专用 → 是否刷机 → ID 占用；
  * 文件内重复的行只写重复这一条。
- * 产品、一 / 二 / 三级按原文完全一致匹配（不去空格）；工单处理组、是否售后、是否小结专用、ID 去首尾空格。
+ * 产品、一 / 二 / 三级按原文完全一致匹配（不去空格）；工单处理组、是否售后、是否小结专用、是否刷机、ID 去首尾空格。
  */
 function analyzeImport(fileName: string, text: string): ImportResult {
   const [header = [], ...body] = parseCsv(text);
@@ -892,7 +925,7 @@ function analyzeImport(fileName: string, text: string): ImportResult {
     const fileRow = idx + 2;
     const cells = colIdx.map((ci) => (ci < 0 ? '' : raw[ci] ?? ''));
     const fail = (reason: string) => {
-      lines.push({ cells, kind: '失败', reason, team: '', aftersale: '否', summaryOnly: '否', ids: {} });
+      lines.push({ cells, kind: '失败', reason, team: '', aftersale: '否', summaryOnly: '否', flash: '否', ids: {} });
     };
 
     const dupKey = cells.slice(0, 6).join('\u0001');
@@ -900,7 +933,7 @@ function analyzeImport(fileName: string, text: string): ImportResult {
     if (firstRow !== undefined) { fail(`文件内重复：与第 ${firstRow} 行相同`); return; }
     firstRowOf.set(dupKey, fileRow);
 
-    const [bizType, prodCat, prodName, l1, l2, l3, teamRaw, afRaw, soRaw] = cells;
+    const [bizType, prodCat, prodName, l1, l2, l3, teamRaw, afRaw, soRaw, flRaw] = cells;
     const reasons: string[] = REQUIRED_COL_IDX
       .filter((i) => !cells[i].trim())
       .map((i) => `${COL_NAMES[i]}为空`);
@@ -918,6 +951,8 @@ function analyzeImport(fileName: string, text: string): ImportResult {
     if (af !== '是' && af !== '否') reasons.push('是否售后取值非法：只能填是或否，或留空');
     const so = soRaw.trim() || '否';
     if (so !== '是' && so !== '否') reasons.push('是否小结专用取值非法：只能填是或否，或留空');
+    const fl = flRaw.trim() || '否';
+    if (fl !== '是' && fl !== '否') reasons.push('是否刷机取值非法：只能填是或否，或留空');
 
     const path: [string, string, string] = [l1, l2, l3];
     const ids: Record<TagLevel, string> = {
@@ -936,7 +971,7 @@ function analyzeImport(fileName: string, text: string): ImportResult {
 
     const base = {
       cells, reason: '', productKey: prod.key, path, team,
-      aftersale: af as '是' | '否', summaryOnly: so as '是' | '否', ids,
+      aftersale: af as '是' | '否', summaryOnly: so as '是' | '否', flash: fl as '是' | '否', ids,
     };
     const exist = leafIndex.get(nodeKeyOf(prod.key, path, 3));
     if (!exist) {
@@ -944,7 +979,7 @@ function analyzeImport(fileName: string, text: string): ImportResult {
         if (ids[lv] && !owners[lv].has(ids[lv])) owners[lv].set(ids[lv], nodeKeyOf(prod.key, path, lv));
       }
       lines.push({ ...base, kind: '新增' });
-    } else if (exist.team !== team || exist.aftersale !== af || exist.summaryOnly !== so || exist.status !== '启用') {
+    } else if (exist.team !== team || exist.aftersale !== af || exist.summaryOnly !== so || exist.flash !== fl || exist.status !== '启用') {
       lines.push({ ...base, kind: '更新', targetKey: exist.key });
     } else {
       lines.push({ ...base, kind: '已存在', reason: '已存在，无需重复导入' });
@@ -993,7 +1028,7 @@ function downloadImportFailures() {
   message.success(`已下载失败明细 ${fails.length} 条`);
 }
 
-/** 确认导入：新增行落库；withUpdate 时更新行改写处理组 / 是否售后 / 是否小结专用并重新启用 */
+/** 确认导入：新增行落库；withUpdate 时更新行改写处理组 / 是否售后 / 是否小结专用 / 是否刷机并重新启用 */
 function doImport(withUpdate: boolean) {
   const res = importResult.value;
   if (!res || !res.headerOk || importDone.value) return;
@@ -1024,7 +1059,7 @@ function doImport(withUpdate: boolean) {
         productKey: pk,
         productName: pinfo(pk).name,
         tagL1, tagL2, tagL3,
-        team: ln.team, aftersale: ln.aftersale, summaryOnly: ln.summaryOnly, status: '启用',
+        team: ln.team, aftersale: ln.aftersale, summaryOnly: ln.summaryOnly, flash: ln.flash, status: '启用',
         ...resolveTagIds(pk, path, provided),
         ...stamp,
       });
@@ -1032,7 +1067,7 @@ function doImport(withUpdate: boolean) {
     } else if (ln.kind === '更新' && withUpdate) {
       const r = allRows.value.find((x) => x.key === ln.targetKey);
       if (!r) continue;
-      Object.assign(r, { team: ln.team, aftersale: ln.aftersale, summaryOnly: ln.summaryOnly, status: '启用' }, stamp);
+      Object.assign(r, { team: ln.team, aftersale: ln.aftersale, summaryOnly: ln.summaryOnly, flash: ln.flash, status: '启用' }, stamp);
       updated += 1;
     }
   }
@@ -1045,7 +1080,7 @@ function doImport(withUpdate: boolean) {
   <div class="problem-tag-manage">
     <AdminPageHeader
       title="问题分类"
-      subtitle="按产品维护三级问题分类，关联处理组、是否售后与是否小结专用"
+      subtitle="按产品维护三级问题分类，关联处理组、是否售后、是否小结专用与是否刷机"
     >
       <template #actions>
         <a-button @click="openImport"><template #icon><ImportOutlined /></template>导入</a-button>
@@ -1088,12 +1123,16 @@ function doImport(withUpdate: boolean) {
                 <span class="fl">是否售后</span>
                 <a-select v-model:value="draftFilter.aftersale" class="tb-ctl sel-w-sm" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="toOpts(['是', '否'])" />
               </div>
-              <!-- 是否小结专用 · 状态 · 操作区绑成一个换行单元：两项筛选不拆开，操作区始终贴在属性组最后一行右端 -->
+              <!-- 是否小结专用 · 是否刷机 · 状态 · 操作区绑成一个换行单元：三项筛选不拆开，操作区始终贴在属性组最后一行右端 -->
               <div class="fi-tail">
                 <div class="fi-tail-attrs">
                   <div class="fi">
                     <span class="fl">是否小结专用</span>
                     <a-select v-model:value="draftFilter.summaryOnly" class="tb-ctl sel-w-sm" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="toOpts(['是', '否'])" />
+                  </div>
+                  <div class="fi">
+                    <span class="fl">是否刷机</span>
+                    <a-select v-model:value="draftFilter.flash" class="tb-ctl sel-w-sm" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="toOpts(['是', '否'])" />
                   </div>
                   <div class="fi">
                     <span class="fl">状态</span>
@@ -1282,6 +1321,12 @@ function doImport(withUpdate: boolean) {
         </a-form-item>
         <a-form-item label="是否小结专用">
           <a-radio-group v-model:value="form.summaryOnly" button-style="solid">
+            <a-radio-button value="是">是</a-radio-button>
+            <a-radio-button value="否">否</a-radio-button>
+          </a-radio-group>
+        </a-form-item>
+        <a-form-item label="是否刷机">
+          <a-radio-group v-model:value="form.flash" button-style="solid">
             <a-radio-button value="是">是</a-radio-button>
             <a-radio-button value="否">否</a-radio-button>
           </a-radio-group>

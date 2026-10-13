@@ -12,6 +12,8 @@ import {
   PRODUCT_TREE_DATA, PRODUCT_TREE_DEFAULT_EXPANDED, filterProductTree,
   type ProductTreeNode,
 } from '@/mock/productTree';
+import { FLASH_MODEL_SEED } from '@/mock/flash/models';
+import { useFlashConfigStore } from '@/stores/flashConfig';
 
 const KIND_LABEL: Record<ProductTreeNode['kind'], string> = {
   BGBU: 'BGBU', 业务线: '业务线', 产品线: '产品线', 产品分类: '分类', 产品: '产品',
@@ -49,7 +51,25 @@ const products = ref<Product[]>([
   { key: '4', name: '讯飞阅读器Cube2(…', bgbu: '消费者事业群', bizline: '合肥讯飞读…', prodline: '合肥讯飞读…', bizcat: '其他', prodcat: '智能办公系列' },
   { key: '5', name: '飞鱼星APE5400', bgbu: '教育事业群', bizline: '大课堂产品线', prodline: '课堂产品线', bizcat: '教育', prodcat: '服务器' },
   { key: '6', name: '智慧黑板显示终端B…', bgbu: '教育事业群', bizline: '大课堂产品线', prodline: '智慧窗产品线', bizcat: '教育', prodcat: '智慧大屏系列' },
+  // 智慧课堂学生平板（与产品树「教育事业群 → 智慧课堂业务线 → 学生平板产品线 → 学习硬件」同一批产品）
+  ...FLASH_MODEL_SEED.map((m) => ({
+    key: `edu-${m.id}`, name: m.model, bgbu: '教育事业群', bizline: '智慧课堂业务线',
+    prodline: '学生平板产品线', bizcat: '教育', prodcat: m.category,
+  })),
 ]);
+
+/**
+ * 「是否支持刷机」（1013 N1）：刷机单识别依据之一（产品支持刷机 ∧ 问题分类是否刷机，A2）。
+ * 取代原刷机配置「支持刷机机型」，开关值落刷机配置 store，建单与用户提报即时生效。
+ */
+const flashConfig = useFlashConfigStore();
+function flashSupported(p: Product): boolean {
+  return flashConfig.isSupportedModel(p.name);
+}
+function onFlashSupportedChange(p: Product, checked: boolean) {
+  flashConfig.setProductFlashSupported(p.name, checked, p.prodcat);
+  message.success(checked ? '已开启支持刷机' : '已关闭支持刷机');
+}
 
 const cols = [
   { title: '产品名称', dataIndex: 'name', key: 'name', width: 200 },
@@ -58,6 +78,7 @@ const cols = [
   { title: '产品线', dataIndex: 'prodline', key: 'prodline', width: 130 },
   { title: '业务分类', dataIndex: 'bizcat', key: 'bizcat', width: 110 },
   { title: '产品分类', dataIndex: 'prodcat', key: 'prodcat', width: 150 },
+  { title: '是否支持刷机', key: 'flash', width: 110 },
   { title: '操作', key: 'op', width: 80, fixed: 'right' as const },
 ];
 
@@ -69,7 +90,22 @@ const rowSelection = computed(() => ({
 
 const pagination = stdPagination({ pageSize: 20, total: 1796 });
 
-function onEdit(p: Product) { message.info(`编辑产品：${p.name}`); }
+/** 编辑产品：本期只开放「是否支持刷机」一项可改，其余为产品主数据只读 */
+const editOpen = ref(false);
+const editing = ref<Product | null>(null);
+const editFlash = ref(false);
+function onEdit(p: Product) {
+  editing.value = p;
+  editFlash.value = flashSupported(p);
+  editOpen.value = true;
+}
+function onEditSave() {
+  const p = editing.value;
+  if (!p) return;
+  if (editFlash.value !== flashSupported(p)) flashConfig.setProductFlashSupported(p.name, editFlash.value, p.prodcat);
+  editOpen.value = false;
+  message.success('产品已更新');
+}
 function onCreate() { message.info('新建产品'); }
 function goRdMapping() { router.push('/admin/product-rd-mapping'); }
 </script>
@@ -147,7 +183,7 @@ function goRdMapping() { router.push('/admin/product-rd-mapping'); }
           :row-selection="rowSelection"
           :pagination="pagination"
           size="middle"
-          :scroll="{ x: 960 }"
+          :scroll="{ x: 1070 }"
           row-key="key"
         >
           <template #bodyCell="{ column, record }">
@@ -156,6 +192,13 @@ function goRdMapping() { router.push('/admin/product-rd-mapping'); }
             </template>
             <template v-else-if="column.key === 'prodcat'">
               <a class="cell-link">{{ (record as Product).prodcat }}</a>
+            </template>
+            <template v-else-if="column.key === 'flash'">
+              <a-switch
+                size="small"
+                :checked="flashSupported(record as Product)"
+                @change="(v: unknown) => onFlashSupportedChange(record as Product, !!v)"
+              />
             </template>
             <template v-else-if="column.key === 'op'">
               <a-button type="text" size="small" class="op-edit" @click="onEdit(record as Product)">
@@ -167,6 +210,19 @@ function goRdMapping() { router.push('/admin/product-rd-mapping'); }
       </div>
     </div>
     </div>
+
+    <a-modal v-model:open="editOpen" title="编辑产品" :width="480" ok-text="保存" cancel-text="取消" @ok="onEditSave">
+      <a-form v-if="editing" layout="horizontal" :label-col="{ style: { width: '96px' } }" class="edit-form">
+        <a-form-item label="产品名称"><a-input :value="editing.name" disabled /></a-form-item>
+        <a-form-item label="产品分类"><a-input :value="editing.prodcat" disabled /></a-form-item>
+        <a-form-item label="是否支持刷机">
+          <a-radio-group v-model:value="editFlash" button-style="solid">
+            <a-radio-button :value="true">是</a-radio-button>
+            <a-radio-button :value="false">否</a-radio-button>
+          </a-radio-group>
+        </a-form-item>
+      </a-form>
+    </a-modal>
   </div>
 </template>
 
