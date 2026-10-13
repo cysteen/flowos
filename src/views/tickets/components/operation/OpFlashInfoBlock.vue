@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 刷机单「工单处理」Tab 第二块：刷机信息（只读区块，PRD §5.3 / 页面规格 P4、P0′-12）。
- * 区块内无输入控件；区块头右侧：`actions` 插槽（「修改刷机信息」按钮位）＋ 外链「保障中心 · 学校管理」。
+ * 区块内无输入控件；区块头右侧：`actions` 插槽（「修改刷机信息」按钮位）＋ 外链「MDM 平台」「保障中心 · 学校管理」。
  */
 import { computed } from 'vue';
 import { ExportOutlined, MobileOutlined } from '@ant-design/icons-vue';
@@ -14,8 +14,6 @@ import { snPlateDataUri } from '@/views/tickets/utils/flashSnPlate';
 const props = defineProps<{
   /** 刷机信息 */
   info: FlashInfo;
-  /** 产品分类（产品字段两级：产品分类 + 产品名称，1013 A4） */
-  productCategory?: string;
 }>();
 
 const EMPTY = '—';
@@ -27,7 +25,6 @@ const fields = computed<Field[]>(() => {
   const i = props.info;
   const L = FLASH_FIELD_LABELS;
   return [
-    { label: L.productCategory, value: v(props.productCategory) },
     { label: L.productName, value: v(i.productModel) },
     { label: L.sn, value: v(i.sn) },
     { label: L.studentAccount, value: v(i.studentAccount) },
@@ -49,6 +46,9 @@ const photos = computed(() => props.info.snPhotos.map((name) => ({ name, src: sn
       <span class="fi-title"><MobileOutlined class="fi-icon" />刷机信息</span>
       <div class="fi-head-right">
         <slot name="actions" />
+        <a class="fi-link" :href="flashExternalUrl('mdm', info.sn)" target="_blank" rel="noopener noreferrer">
+          {{ FLASH_EXTERNAL_LINKS.mdm.label }}<ExportOutlined />
+        </a>
         <a class="fi-link" :href="flashExternalUrl('schoolAdmin')" target="_blank" rel="noopener noreferrer">
           {{ FLASH_EXTERNAL_LINKS.schoolAdmin.label }}<ExportOutlined />
         </a>

@@ -2575,7 +2575,7 @@ watch(
           <template v-if="isFlash && d.flash" #process-top>
             <OpFlashResultCard :flash="d.flash" />
             <!-- 区块头「修改刷机信息」按钮（PRD §5.3）走 OpFlashInfoBlock 的 #actions 插槽，排在外链左侧 -->
-            <OpFlashInfoBlock :info="d.flash.info" :product-category="d.product.category">
+            <OpFlashInfoBlock :info="d.flash.info">
               <template v-if="flashEditInfo" #actions>
                 <button
                   type="button"

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 刷机单「工单处理」Tab 第一块：自动刷机结果（只读卡，PRD §5.2 / 页面规格 P4、P0-11、P0′-14）。
- * 卡上无操作按钮；卡头右侧外链「智能硬件平台」「MDM 平台」（1013 A24）。
+ * 卡上无操作按钮；卡头右侧外链「智能硬件平台」（「MDM 平台」在刷机信息区块头，PRD §5.3）。
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { ExportOutlined, ThunderboltOutlined } from '@ant-design/icons-vue';
@@ -72,7 +72,6 @@ const runRows = computed(() => [...props.flash.runs].reverse().map((r) => ({
 })));
 
 const hardwareUrl = computed(() => flashExternalUrl('hardwarePlatform', props.flash.info.sn));
-const mdmUrl = computed(() => flashExternalUrl('mdm', props.flash.info.sn));
 </script>
 
 <template>
@@ -82,9 +81,6 @@ const mdmUrl = computed(() => flashExternalUrl('mdm', props.flash.info.sn));
       <div class="fr-links">
         <a class="fr-link" :href="hardwareUrl" target="_blank" rel="noopener noreferrer">
           {{ FLASH_EXTERNAL_LINKS.hardwarePlatform.label }}<ExportOutlined />
-        </a>
-        <a class="fr-link" :href="mdmUrl" target="_blank" rel="noopener noreferrer">
-          {{ FLASH_EXTERNAL_LINKS.mdm.label }}<ExportOutlined />
         </a>
       </div>
     </header>

@@ -88,14 +88,44 @@ watch(
 
 const versionLocked = computed(() => props.info.versionBackfilled);
 
+/** 产品所属的产品分类（产品字段两级：产品分类 + 产品名称，PRD §5.6） */
+const categoryOf = (model: string) => config.modelOf(model)?.category ?? '';
+const draftCategory = ref('');
+const categoryError = ref('');
+watch(
+  () => props.open,
+  (v) => {
+    if (!v) return;
+    draftCategory.value = categoryOf(props.info.productModel);
+    categoryError.value = '';
+  },
+  { immediate: true },
+);
+
+/** 产品分类下拉：已开启「是否支持刷机」的产品所在分类；本单原产品的分类保留 */
+const categoryOptions = computed(() => {
+  const cats = new Set(config.enabledModels().map((m) => m.category).filter(Boolean));
+  const originCat = categoryOf(original.value.productModel);
+  if (originCat) cats.add(originCat);
+  return [...cats].map((c) => ({ value: c, label: c }));
+});
+function onCategoryChange(v: unknown) {
+  draftCategory.value = v == null ? '' : String(v);
+  if (categoryOf(draft.productModel) !== draftCategory.value) draft.productModel = '';
+}
+
 /**
- * 产品名称下拉只列支持刷机的产品；本单原产品已不支持刷机时保留原值一项，标「已停用」且不可再选（M101 / PRD §5.8）：
+ * 产品名称下拉只列所选分类下支持刷机的产品；本单原产品已不支持刷机时显示原值、不可再选（M101 / PRD §5.8）：
  * 不改产品可直接保存，改产品只能选支持刷机的产品。
  */
 const modelOptions = computed(() => {
-  const opts: { value: string; label: string; disabled?: boolean }[] = config.enabledModels().map((m) => ({ value: m.model, label: m.model }));
+  const opts: { value: string; label: string; disabled?: boolean }[] = config.enabledModels()
+    .filter((m) => !draftCategory.value || m.category === draftCategory.value)
+    .map((m) => ({ value: m.model, label: m.model }));
   const origin = original.value.productModel;
-  if (origin && !config.isSupportedModel(origin)) opts.unshift({ value: origin, label: `${origin}（已停用）`, disabled: true });
+  if (origin && !config.isSupportedModel(origin) && (!draftCategory.value || categoryOf(origin) === draftCategory.value)) {
+    opts.unshift({ value: origin, label: origin, disabled: true });
+  }
   return opts;
 });
 /** 所选产品为自研机型（支持线上自助推送）：主按钮「重新推送」，否则「保存」（B8） */
@@ -168,6 +198,8 @@ const REQUIRED: { key: FieldKey; label: string; select: boolean }[] = [
 
 function onSubmit() {
   let missing = false;
+  categoryError.value = draftCategory.value ? '' : `请选择${L.productCategory}`;
+  if (categoryError.value) missing = true;
   REQUIRED.forEach(({ key, label, select }) => {
     if (!String(draft[key] ?? '').trim()) {
       errors[key] = select ? `请选择${label}` : `请填写${label}`;
@@ -223,6 +255,20 @@ const inflightHref = computed(() => (tipParts.value?.no ? router.resolve(`/ticke
   >
     <div class="fe-body">
       <div class="fe-grid">
+        <div class="fe-field">
+          <label class="fe-label"><span class="req">*</span>{{ L.productCategory }}</label>
+          <div class="fe-control">
+            <FormSelect
+              :value="draftCategory || undefined"
+              class="fe-input"
+              placeholder="请选择"
+              :status="categoryError ? 'error' : ''"
+              :options="categoryOptions"
+              @update:value="(v) => { onCategoryChange(v); categoryError = ''; }"
+            />
+            <div v-if="categoryError" class="fe-error">{{ categoryError }}</div>
+          </div>
+        </div>
         <div class="fe-field">
           <label class="fe-label"><span class="req">*</span>{{ L.productName }}</label>
           <div class="fe-control">
