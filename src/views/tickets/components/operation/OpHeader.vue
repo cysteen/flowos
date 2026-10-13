@@ -137,12 +137,7 @@ const isTransferredOut = computed(() => /已转出/.test(props.detail.status));
  * **同时生效**，任一不通过即不展示。
  * 终态只留补充；草稿 / 已转出 / 直接结案 / 已取消 两枚都不给。
  */
-const csAvail = computed(() => {
-  const avail = csEntryAvailability(props.detail.status as TicketStatus);
-  // 刷机单「已取消」与已结案同列：新建补充可用（PRD §5.5 表二终态列、R152）
-  if (isFlashTicket(props.detail) && props.detail.status === '已取消') return { ...avail, supplement: true };
-  return avail;
-});
+const csAvail = computed(() => csEntryAvailability(props.detail.status as TicketStatus));
 const showSupplement = computed(() => props.canSupplement && csAvail.value.supplement);
 const showDunning = computed(() => props.canDunning && csAvail.value.dunning);
 
