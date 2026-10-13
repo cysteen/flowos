@@ -18,19 +18,19 @@ const complaintPlatforms = computed(
   () => (props.detail.complaint?.platforms ?? []).filter((p) => p.platform),
 );
 
-/** 刷机只读块：产品型号 / 设备SN / 学生账号 / 学校名称 / 刷机原因 / 建单入口 */
+/** 刷机只读块：产品名称 / 设备SN / 学生账号 / 学校名称 / 刷机原因 / 工单来源（1013 A4 / A8） */
 const flashRows = computed(() => {
   const f = isFlashTicket(props.detail) ? props.detail.flash : undefined;
   if (!f) return [];
   const L = FLASH_FIELD_LABELS;
   const val = (s?: string) => (s && s.trim() ? s : '—');
   return [
-    { k: L.productModel, v: val(f.info.productModel) },
+    { k: L.productName, v: val(f.info.productModel) },
     { k: L.sn, v: val(f.info.sn) },
     { k: L.studentAccount, v: val(f.info.studentAccount) },
     { k: L.schoolName, v: val(f.info.schoolName) },
     { k: L.reason, v: val(f.info.reason) },
-    { k: '建单入口', v: val(f.state.creator) },
+    { k: '工单来源', v: val(ticketSourceDisplayLabel(props.detail.source)) },
   ];
 });
 </script>

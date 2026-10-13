@@ -10,8 +10,9 @@ import { isGraduate } from '@/mock/flash/graduates';
 import { findSchoolById } from '@/mock/schools';
 import { makeTicketNo } from '@/constants/ticketNo';
 import {
-  FLASH_FIELD_LABELS, FLASH_INFO_FIELD_LABELS, FLASH_L1_REPUSH_LIMIT, FLASH_NOTIFY_EVENTS, FLASH_POOLS, FLASH_REASON_AUTO,
-  FLASH_RETURN_DELAY_MS, FLASH_TIP_L1_REPUSH_EXHAUSTED, FLASH_TIP_MODEL_UNSUPPORTED,
+  FLASH_FIELD_LABELS, FLASH_INFO_FIELD_LABELS, FLASH_NOTIFY_EVENTS, FLASH_POOLS, FLASH_REASON_AUTO,
+  FLASH_RETURN_DELAY_MS, FLASH_TIP_MODEL_UNSUPPORTED,
+  FLASH_RESULT_ONLINE_SUCCESS, FLASH_RESULT_OFFLINE_PUSHED, normalizeFlashResult,
   FLASH_TIP_NON_SELF_DEVELOPED, FLASH_TIP_REASON_NOT_GRADUATE_L1, FLASH_TIP_REASON_NOT_GRADUATE_L2,
   FLASH_TIP_EDIT_STATE, FLASH_TIP_REPUSH_STATE, FLASH_TIP_SYSTEM_BUSY, FLASH_TIP_VERIFY_UNAVAILABLE,
   FLASH_VERIFY_NOT_RUN, FLASH_TL, FLASH_NOTICE, FLASH_RESULT_OFFLINE, FLASH_TOAST,
@@ -19,7 +20,7 @@ import {
   FLASH_TAG_L3_USER_REPORT, FLASH_TICKET_TYPE,
   flashTicketTitle, withFlashTitlePrefix, isFlashTicket, flashMinuteStamp, flashProgressStage, flashSmsHandoff, flashSmsSuccess, flashSmsSurvey, flashStamp,
   flashTipInflight, flashTipRequired, flashTipVerifyFailed, isFrontlineActor,
-  offlineBatchResumeAt, parseFlashStamp, validateOfflineRegisteredAt,
+  parseFlashStamp,
   type FlashActor, type FlashCreator, type FlashFailL1, type FlashFailL2, type FlashHandoffReason,
   type FlashInfo, type FlashPoolKey, type FlashProgressStage, type FlashPushTrigger, type FlashReasonName,
   type FlashResult, type FlashRun, type FlashState, type FlashVerifyResult, type TicketFlash,
@@ -225,7 +226,9 @@ export const useFlashStore = defineStore('flash', () => {
   }
 
   function persist() {
-    const tickets = TICKETS.filter((t) => isFlashTicket(t) && t.flash).map((t) => toRaw(t));
+    // 刷机单 + 与之弱关联的投诉单（关联投诉新建的单只在运行时工单库里，随刷机缓存一起落）
+    const linked = new Set(TICKETS.flatMap((t) => (isFlashTicket(t) ? t.flash?.state.linkedComplaintNos ?? [] : [])));
+    const tickets = TICKETS.filter((t) => (isFlashTicket(t) && t.flash) || linked.has(t.no)).map((t) => toRaw(t));
     writeFlashCache(FLASH_LS_KEYS.tickets, { tickets } satisfies TicketsCache);
     writeFlashCache(FLASH_LS_KEYS.timeline, { timelines: timelines.value, seq: tlSeq } satisfies TimelineCache);
   }
@@ -544,17 +547,43 @@ export const useFlashStore = defineStore('flash', () => {
       // PRD §8 入口「自动刷机成功」：发成功短信后进「调研中」，发调研短信（§11.1）
       sendSurveySms(r, at + 2000);
     } else {
-      // M19：人工重推成功回原处理人「处理中」，由处理人联系确认后下送；M32 同样发成功短信
-      toHandler(r, run, at);
+      // 1013 B1：重新推送接收成功 → 系统写入「刷机成功」类处理结果，转入回访（处理人保持发起时的处理人）；
+      // 本单已有回访结论的直接结案（一张单最多回访一次）。M32 同样发成功短信
+      const handler = run.handlerAtPush ?? r.assignee ?? run.by;
+      const result = FLASH_RESULT_ONLINE_SUCCESS;
+      // 「自动刷机中」那段停钟先结掉，再按去向收口或另起「调研中」停钟
+      resumeClock(r, at);
+      st.result = result;
+      st.forwardedBy = undefined;
       log(r.no, at, {
         category: 'node', action: 'flashSuccess', who: '系统', role: '系统', how: '回传结果',
         what: FLASH_TL.returnSuccess,
       });
-      log(r.no, at, {
-        category: 'node', action: 'flashSuccess', who: '系统', role: '系统', how: '回传结果',
-        what: FLASH_TL.repushSuccess(r.assignee ?? ''),
-      });
       sms(r, at + 1000, 'success');
+      if (st.surveyConcluded) {
+        stopClock(r, at);
+        Object.assign(r, {
+          nodeStatus: '已结案', nodeStep: 5, tab: 'mine', assignee: handler,
+          slaText: '—', slaSub: '已结案', slaState: 'ok', slaMinutes: 9999,
+          updatedAt: flashMinuteStamp(at),
+        });
+        log(r.no, at + 1, {
+          category: 'node', action: 'resolved', who: '系统', role: '系统', how: '回传结果',
+          what: FLASH_TL.repushSuccessClosed(result),
+        });
+      } else {
+        Object.assign(r, {
+          nodeStatus: '调研中', nodeStep: 4, tab: 'mine', assignee: handler,
+          slaText: '—', slaSub: '调研中', slaState: 'ok', slaMinutes: 9999,
+          updatedAt: flashMinuteStamp(at),
+        });
+        pauseClock(r, at, '调研中');
+        log(r.no, at + 1, {
+          category: 'node', action: 'resolved', who: '系统', role: '系统', how: '回传结果',
+          what: FLASH_TL.repushSuccessSurvey(result),
+        });
+        sendSurveySms(r, at + 2000);
+      }
       notifyRepushInitiator(r, run, FLASH_NOTICE.repushSuccess(r.no));
     }
     bump(r.no);
@@ -591,13 +620,8 @@ export const useFlashStore = defineStore('flash', () => {
     if (run.trigger === '建单首推') {
       // M8′：自动环节失败一律进一线刷机池；首次转人工发短信（M37）
       handoff(r, 'l1', l1, at + 1000, { sms: true });
-    } else if (run.trigger === '一线重推') {
-      // D13：一线重推后再失败 → 二线池；M38：通知归属组
-      handoff(r, 'l2', '一线重推失败', at + 1000);
-      notifyRepushInitiator(r, run, FLASH_NOTICE.repushFail(r.no, reasonText), banner);
-      notifyGroup(r, 'l2', FLASH_NOTIFY_EVENTS.l1RepushFailGroup, '一线重推失败进池', FLASH_NOTICE.l1RepushFailToGroup(r.no));
     } else {
-      // D16：二线重推后失败 → 回原二线处理人；M38：通知本人
+      // 1013 B1 / A14：一线、二线重推失败一律交回发起时的处理人（不自动进二线池）；M38：通知本人
       toHandler(r, run, at);
       log(r.no, at + 1000, {
         category: 'node', action: 'flashHandoff', who: '系统', role: '系统', how: '转人工',
@@ -840,9 +864,7 @@ export const useFlashStore = defineStore('flash', () => {
     }
     const first = r.flash.runs.length === 0;
     const l1 = !first && isFrontlineActor(by);
-    if (l1 && r.flash.state.l1RepushCount >= FLASH_L1_REPUSH_LIMIT) {
-      return { ok: false, message: FLASH_TIP_L1_REPUSH_EXHAUSTED };
-    }
+    // 1013 A14：一线不限次，只计数
     if (l1) r.flash.state.l1RepushCount += 1;
     pushInternal(r, first ? SYSTEM : by, first ? '建单首推' : l1 ? '一线重推' : '二线重推', Date.now());
     persist();
@@ -850,11 +872,11 @@ export const useFlashStore = defineStore('flash', () => {
   }
 
   /**
-   * 修改刷机信息并重新推送（M18 / M36 / M44）。先同步判定，任一不通过即返回提示，
-   * **不推送、不计一线重推次数、不改状态**：
-   * 状态可重推 → 机型支持且自研 → 一线次数未用完 → 刷机原因为毕业 → 改后 SN 无其他在途单 → 建单校验通过。
-   * 全部通过即视为推送已发出（M69）：落库、写履历、推送次数与一线重推次数 +1；
-   * 之后推送接口报错、自动重试 1 次仍失败，按重推失败的去向落点（一线 → 二线池，二线 → 回原处理人）。
+   * 修改刷机信息并重新推送（1013 A12 / B1：修改刷机信息弹窗「重新推送」是唯一的推送入口；M36 / M44）。
+   * 先同步判定，任一不通过即返回提示，**不推送、不改状态**：
+   * 状态可重推 → 机型支持且自研 → 刷机原因为毕业 → 改后 SN 无其他在途单 → 建单校验通过。一线、二线都不限次（A14）。
+   * 全部通过即视为推送已发出（M69）：落库、写履历、推送次数 +1（一线另计一线重推次数）；
+   * 回传接收成功 → 写入「刷机成功」类处理结果并转入回访；失败（含推送接口报错重试仍失败）→ 交回发起时的处理人。
    */
   function repush(ticketNo: string, by: FlashActor, changes: FlashInfoChanges = {}): FlashActionResult {
     const r = rowOf(ticketNo);
@@ -863,9 +885,6 @@ export const useFlashStore = defineStore('flash', () => {
     const prev = r.flash.info;
     const next = mergeInfo(prev, changes);
     const l1 = isFrontlineActor(by);
-    if (l1 && r.flash.state.l1RepushCount >= FLASH_L1_REPUSH_LIMIT) {
-      return { ok: false, message: FLASH_TIP_L1_REPUSH_EXHAUSTED };
-    }
 
     // M79 提交判定顺序（第 1 条必填由弹窗在字段下方判）：未启用机型 → 非自研 → 刷机原因非毕业 →
     // 在途查询不可用 → 设备SN在途 → 建单校验接口不可用 → SN与学生账号不一致 → 非毕业生身份；命中即止
@@ -909,7 +928,7 @@ export const useFlashStore = defineStore('flash', () => {
       const run = r.flash.runs[r.flash.runs.length - 1];
       fail(r, run, '推送异常', '接口异常', now + 1500, { banner: false });
       persist();
-      return { ok: true, code: 'pushError', message: l1 ? FLASH_TOAST.repushPushErrorL1 : FLASH_TOAST.repushPushErrorL2 };
+      return { ok: true, code: 'pushError', message: FLASH_TOAST.repushPushError };
     }
     persist();
     return { ok: true, code: 'pushed', message: FLASH_TOAST.repushed };
@@ -1121,16 +1140,18 @@ export const useFlashStore = defineStore('flash', () => {
   }
 
   /**
-   * 升级二线（PRD §5.7 / M16）：子状态回「未认领」、处理人清空、进教育刷机处理组池，转人工原因「一线升级」；
-   * SLA 接着跑不重置，线下登记暂停期内先恢复计时；履历记「升级二线」（升级说明全文 + 已做排查）；
-   * 站内通知归属组；不发转人工短信。进池时间取本条履历（工作台 `poolEnteredAtOf`）。
+   * 升级二线（1013 A18：一线处理结果选「升级二线」、下送时确认后执行，不填说明）：
+   * 子状态回「未认领」、处理人清空、进教育刷机处理组池，转人工原因「一线升级」；处理结果清空交二线重选；
+   * 履历记「升级二线」（带最近一条处理记录）；站内通知归属组；不发转人工短信。
+   * 进池时间取本条履历（工作台 `poolEnteredAtOf`）。
    */
-  function escalateToL2(ticketNo: string, by: FlashActor, note: string, checks: readonly string[]): FlashActionResult {
+  function escalateToL2(ticketNo: string, by: FlashActor, record?: string): FlashActionResult {
     const r = rowOf(ticketNo);
     if (!r?.flash || !EDITABLE_STATUSES.includes(r.nodeStatus)) return { ok: false, message: FLASH_TIP_REPUSH_STATE };
     const now = Date.now();
     const st = r.flash.state;
     resumePause(r, '升级二线', now);
+    st.result = undefined;
     const meta = FLASH_POOLS.l2;
     Object.assign(r, {
       nodeStatus: '未认领',
@@ -1145,7 +1166,7 @@ export const useFlashStore = defineStore('flash', () => {
     st.handoffReason = '一线升级';
     log(ticketNo, now + 1, {
       category: 'node', action: 'escalate', who: by.name, role: by.role, how: '升级二线',
-      what: FLASH_TL.escalateL2(note.trim(), checks),
+      what: FLASH_TL.escalateL2(record),
     });
     notifyGroup(r, 'l2', FLASH_NOTIFY_EVENTS.escalateL2, '升级二线进池', FLASH_NOTICE.escalatedToGroup(r.no));
     bump(ticketNo);
@@ -1154,91 +1175,74 @@ export const useFlashStore = defineStore('flash', () => {
   }
 
   /**
-   * 升级投诉落终态（PRD §7.4）：原单「已升级投诉」、SLA 停表、记下派生出的新投诉单号，
-   * 履历记一条关联事件。**工单行是刷机单状态的真源** —— 升级只改当页详情的话，
-   * `applyFlashRow` 会拿工单行的子状态把它覆写回去，刷新更是原样回滚。
-   *
-   * 落库与新投诉单本体（`stores/derivedTickets.ts`）由调用方在同一次点击内成对落。
+   * 关联投诉（1013 A21 / B5）：新建的投诉单与本刷机单**弱关联**，两单各自流转 ——
+   * 本单子状态、处理人、SLA 都不变，不落终态；新投诉单进工单库（随刷机缓存一起落），两单履历各记一条。
+   * 门控（只在本单已结案 / 已关闭时置灰）由处理页判。
    */
-  function markEscalatedComplaint(
-    ticketNo: string,
-    newNo: string,
-    by: FlashActor,
-    note: string,
-  ): FlashActionResult {
+  function linkComplaint(ticketNo: string, complaint: Ticket, by: FlashActor): FlashActionResult {
     const r = rowOf(ticketNo);
     if (!r?.flash) return { ok: false, message: FLASH_TIP_REPUSH_STATE };
     const now = Date.now();
-    stopClock(r, now, true); // 升级派生 = 中止停表，钟被掐断，无达标结论
-    Object.assign(r, {
-      nodeStatus: '已升级投诉',
-      nodeStep: 5,
-      tab: 'mine',
-      escalatedToNo: newNo,
-      slaText: '—', slaSub: '已升级投诉·停表', slaState: 'ok', slaMinutes: 9999,
-      updatedAt: flashMinuteStamp(now),
-    });
-    const trimmed = note.trim();
+    const st = r.flash.state;
+    if (!TICKETS.some((t) => t.no === complaint.no)) {
+      complaint.eventTimeline = [
+        ...(complaint.eventTimeline ?? []),
+        {
+          id: `flash-link-${complaint.no}`, category: 'relate', action: 'relate',
+          who: by.name, role: by.role, how: '关联投诉', when: flashStamp(now),
+          what: FLASH_TL.linkedFromFlash(ticketNo),
+        },
+      ];
+      TICKETS.push(complaint);
+    }
+    st.linkedComplaintNos = [...(st.linkedComplaintNos ?? []).filter((n) => n !== complaint.no), complaint.no];
+    r.updatedAt = flashMinuteStamp(now);
     log(ticketNo, now, {
-      category: 'relate', action: 'relate', who: by.name, role: by.role, how: '升级投诉',
-      what: `本单升级为投诉单 ${newNo}，原单转入「已升级投诉」，SLA 停表。${trimmed ? `升级原因：${trimmed}` : ''}`,
+      category: 'relate', action: 'relate', who: by.name, role: by.role, how: '关联投诉',
+      what: FLASH_TL.linkComplaint(complaint.no),
+      relatedTicket: {
+        no: complaint.no, title: complaint.title, type: '投诉', typeColor: '#EF4444',
+        status: complaint.nodeStatus, statusColor: '#1A6FFF', builder: by.name, createdAt: flashMinuteStamp(now),
+      },
     });
     bump(ticketNo);
     persist();
-    return { ok: true, message: `已升级投诉，新投诉单 ${newNo}` };
+    return { ok: true, message: FLASH_TOAST.linkedComplaint(complaint.no) };
+  }
+
+  /** 与刷机单弱关联的投诉单：投诉单号 → 刷机单号 */
+  function flashNoLinkedTo(complaintNo: string): string | undefined {
+    return TICKETS.find((t) => isFlashTicket(t) && t.flash?.state.linkedComplaintNos?.includes(complaintNo))?.no;
   }
 
   /**
-   * 处理表单保存（PRD §5.4 / §4.3 / M31 / M35 / M49 / M57 / M66 / M73）。
-   * - 处理结果＝已线下登记推送：首次保存或改了线下登记时间 → 履历「线下登记」＋ 返回要追加进处理记录的一行；
-   *   按登记时间算恢复时刻：未过去 → 写「SLA 暂停至」并记「SLA 暂停」；已过去 → 不暂停（原本暂停中则立即恢复）。
-   * - 处理结果改为其他值：暂停期内立即恢复计时。
+   * 处理表单保存（1013 A16）：处理结果按现值落库，**不暂停 SLA**。
+   * - 改为「已线下登记」：处理记录追加「已线下登记，〈保存时刻〉」，履历记「线下登记」，单留在本人名下；
+   * - 改为「已线下登记、已推送」：处理记录追加「产线已推送」；
    * - 待响应首次保存转「处理中」（PRD §7.1）。
    */
   function saveProcess(
     ticketNo: string,
     by: FlashActor,
-    input: { result: FlashResult | ''; offlineRegisteredAt: string },
+    input: { result: FlashResult | '' },
   ): FlashActionResult & { appendRecord?: string } {
     const r = rowOf(ticketNo);
     if (!r?.flash) return { ok: false, message: FLASH_TIP_EDIT_STATE };
     const st = r.flash.state;
     const now = Date.now();
+    const prev = normalizeFlashResult(st.result);
     let appendRecord: string | undefined;
-    if (input.result === FLASH_RESULT_OFFLINE) {
-      const at = input.offlineRegisteredAt.trim();
-      const future = at ? validateOfflineRegisteredAt(at, now) : null;
-      if (!at || future) return { ok: false, message: future ?? '' };
-      const changed = st.result !== FLASH_RESULT_OFFLINE || st.offlineRegisteredAt !== at;
-      if (changed) {
-        appendRecord = FLASH_TL.offlineRegister(at);
+    if (input.result && input.result !== prev) {
+      if (input.result === FLASH_RESULT_OFFLINE) appendRecord = FLASH_TL.offlineRegister(flashMinuteStamp(now));
+      else if (input.result === FLASH_RESULT_OFFLINE_PUSHED) appendRecord = FLASH_TL.offlinePushed;
+      if (appendRecord) {
         log(ticketNo, now, {
           category: 'handle', action: 'handle', who: by.name, role: by.role, how: '线下登记', what: appendRecord,
         });
-        const resume = offlineBatchResumeAt(at, now);
-        if (resume) {
-          const until = flashMinuteStamp(resume);
-          // M89：同一轮登记改了时间、但重算的恢复时刻未变且暂停仍在生效 → 不另记「SLA 暂停」
-          const sameRound = st.result === FLASH_RESULT_OFFLINE && st.slaPausedUntil === until && pausedAt(st, now);
-          st.slaPausedUntil = until;
-          pauseClock(r, now, '线下登记待批推');
-          if (!sameRound) {
-            log(ticketNo, now + 1, {
-              category: 'sla', action: 'hold', who: '系统', role: '系统', how: 'SLA 暂停',
-              what: FLASH_TL.slaPause(until),
-            });
-          }
-        } else {
-          resumePause(r, '线下登记时间变更', now + 1);
-        }
       }
-      st.result = FLASH_RESULT_OFFLINE;
-      st.offlineRegisteredAt = at;
-    } else {
-      if (st.result === FLASH_RESULT_OFFLINE) resumePause(r, '处理结果变更', now);
-      st.result = input.result || undefined;
-      st.offlineRegisteredAt = undefined;
     }
+    st.result = input.result || undefined;
+    st.offlineRegisteredAt = undefined;
     if (r.nodeStatus === '待响应') Object.assign(r, { nodeStatus: '处理中', responded: true });
     r.updatedAt = flashMinuteStamp(now);
     bump(ticketNo);
@@ -1315,7 +1319,7 @@ export const useFlashStore = defineStore('flash', () => {
     const now = Date.now();
     resumePause(r, '下送', now);
     st.result = result;
-    if (result !== FLASH_RESULT_OFFLINE) st.offlineRegisteredAt = undefined;
+    st.offlineRegisteredAt = undefined;
     if (st.surveyConcluded) {
       stopClock(r, now);
       Object.assign(r, {
@@ -1747,7 +1751,8 @@ export const useFlashStore = defineStore('flash', () => {
     // 处理页（M4b-2）
     liveNotices,
     escalateToL2,
-    markEscalatedComplaint,
+    linkComplaint,
+    flashNoLinkedTo,
     saveProcess,
     resumeSlaPause,
     holdSla,

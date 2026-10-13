@@ -25,7 +25,7 @@ import {
   isAppointmentFilled,
 } from '@/views/tickets/types/operation';
 import { isComplaintCategoryComplete } from '@/views/tickets/types/createTicket';
-import { FLASH_RESULTS, FLASH_RESULT_OFFLINE } from '@/views/tickets/types/flash';
+import { FLASH_RESULT_ONLINE_SUCCESS, flashResultOptions as flashResultOptions0 } from '@/views/tickets/types/flash';
 import { useUserStore } from '@/stores/user';
 
 const props = defineProps<{
@@ -73,8 +73,8 @@ const props = defineProps<{
    * （`riskFlag` / `riskLevel` / `riskDescription`）是处理人自述，按「角色 ∧ 本人」写。
    */
   isPrimaryHandler?: boolean;
-  /** 刷机单处理表单的字段下方提示（处理结果 / 线下登记时间，930 PRD §5.4） */
-  flashErrors?: { flashResult?: string; flashOfflineAt?: string };
+  /** 刷机单处理表单的字段下方提示（处理结果，PRD §5.4） */
+  flashErrors?: { flashResult?: string };
 }>();
 
 const emit = defineEmits<{
@@ -100,18 +100,20 @@ const isConsult = computed(() => props.ticketType === '咨询' && !props.isFlash
 const isSuggest = computed(() => props.ticketType === '建议');
 const isLead = computed(() => props.ticketType === '商机');
 /**
- * 刷机单（930 教育刷机单 PRD §5.4）：「处理记录」区出「处理结果」下拉 +（已线下登记推送时）「线下登记时间」+ 处理记录正文。
- * 一线视角不含「已转售后」。
+ * 刷机单（1013 A15 / A16 / A18，PRD §5.4）：「处理记录」区出「处理结果」下拉 + 处理记录正文。
+ * 下拉按视角取人工可选项：一线有「升级二线」、二线有「已转售后」；「已线上刷机成功」由系统写入，
+ * 不在下拉里出，本单已是该值时只回显。
  */
 const isFlash = computed(() => !!props.isFlash);
 const user = useUserStore();
-const flashResultOptions = computed(() => FLASH_RESULTS
-  .filter((r) => user.roleKey !== 'agent-l1' || r !== '已转售后')
-  .map((r) => ({ label: r, value: r })));
-const showFlashOfflineAt = computed(() => props.form.flashResult === FLASH_RESULT_OFFLINE);
+const flashResultOptions = computed(() => {
+  const opts: string[] = flashResultOptions0(user.roleKey === 'agent-l1' ? '一线' : '二线');
+  const cur = props.form.flashResult;
+  if (cur && !opts.includes(cur)) opts.unshift(cur);
+  return opts.map((r) => ({ label: r, value: r, disabled: r === FLASH_RESULT_ONLINE_SUCCESS }));
+});
 function onFlashResultChange(v: unknown) {
-  const next = v == null ? '' : String(v);
-  patch({ flashResult: next, flashOfflineAt: next === FLASH_RESULT_OFFLINE ? props.form.flashOfflineAt : '' });
+  patch({ flashResult: v == null ? '' : String(v) });
 }
 /** 投诉渠道 chip：建单登记了平台，或来源为内投/外投渠道（PRD：投诉渠道记录） */
 const showComplaintChannel = computed(() => {
@@ -284,20 +286,6 @@ function chipActiveClass(key: SupplementChip): string {
             @update:value="onFlashResultChange"
           />
           <div v-if="flashErrors?.flashResult" class="flash-err">{{ flashErrors.flashResult }}</div>
-        </div>
-        <div v-if="showFlashOfflineAt" class="field inline">
-          <label><span class="req">*</span>线下登记时间</label>
-          <a-date-picker
-            :value="form.flashOfflineAt || undefined"
-            show-time
-            format="YYYY-MM-DD HH:mm"
-            value-format="YYYY-MM-DD HH:mm"
-            placeholder="请选择线下登记时间"
-            style="width: 100%"
-            :status="flashErrors?.flashOfflineAt ? 'error' : ''"
-            @update:value="(v: unknown) => patch({ flashOfflineAt: typeof v === 'string' ? v : '' })"
-          />
-          <div v-if="flashErrors?.flashOfflineAt" class="flash-err">{{ flashErrors.flashOfflineAt }}</div>
         </div>
       </div>
       <OpRecordFields

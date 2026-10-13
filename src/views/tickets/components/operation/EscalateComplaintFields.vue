@@ -22,7 +22,15 @@ import type { EscalateComplaintFieldsCtl } from '@/composables/useEscalateCompla
  * 样式**自带、不依赖外层**：各宿主弹窗的类名各不相同（.op-field / .assess-* / .af-*），
  * 借外层的类会让同一段字段在三处长得不一样。
  */
-defineProps<{ ctl: EscalateComplaintFieldsCtl }>();
+withDefaults(defineProps<{
+  ctl: EscalateComplaintFieldsCtl;
+  /** 结论正文的栏名（刷机单「关联投诉」那一档写「关联说明」，1013 A22） */
+  adviceLabel?: string;
+  advicePlaceholder?: string;
+}>(), {
+  adviceLabel: '升级说明',
+  advicePlaceholder: '写清升级理由与后续处置安排…',
+});
 </script>
 
 <template>
@@ -57,11 +65,11 @@ defineProps<{ ctl: EscalateComplaintFieldsCtl }>();
 
     <!-- 升级说明：段内最后一项，必填。整行占满，不进上面那张两列栅格 -->
     <div class="ecf-field">
-      <label class="ecf-label"><span class="ecf-req">*</span>升级说明</label>
+      <label class="ecf-label"><span class="ecf-req">*</span>{{ adviceLabel }}</label>
       <a-textarea
         v-model:value="ctl.fields.advice"
         :rows="3"
-        placeholder="写清升级理由与后续处置安排…"
+        :placeholder="advicePlaceholder"
       />
       <p v-if="ctl.errors.advice" class="ecf-err">{{ ctl.errors.advice }}</p>
     </div>

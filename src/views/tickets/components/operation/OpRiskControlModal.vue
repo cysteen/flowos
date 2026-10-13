@@ -13,7 +13,7 @@ import RiskCollabFields from './RiskCollabFields.vue';
 // 非投诉支走真实例 `useRiskLevelFields`（落库 recordTagFor）；投诉支上半各有既有状态与落库路径，
 // 用 `makeRiskLevelFieldsView` 包一层薄适配器交给同一个组件渲染。
 import RiskLevelFields from './RiskLevelFields.vue';
-import { useRiskReportAssess } from '@/composables/useRiskReportAssess';
+import { assessDecisionLabel, useRiskReportAssess } from '@/composables/useRiskReportAssess';
 import { makeRiskLevelFieldsView, useRiskLevelFields } from '@/composables/useRiskLevelFields';
 import { useRiskCollabFields } from '@/composables/useRiskCollabFields';
 import { useRiskPoolStore } from '@/stores/riskPool';
@@ -34,6 +34,7 @@ import {
   adviceLabelOf,
   advicePlaceholderOf,
   decisionText,
+  isEscalateDecision,
 } from './OpRiskDecision';
 import { canTagRiskOnTicketPage } from '@/views/tickets/composables/opActionRegistry';
 
@@ -114,6 +115,7 @@ const {
   missAssessDecision,
   missAssessAdvice,
   assessOkText,
+  assessFlash,
   escalateFields,
   showEscalateFields,
   openAssess,
@@ -196,8 +198,11 @@ watch(assessOpen, (v) => {
   if (!v && props.open && !isComplaint.value) emit('update:open', false);
 });
 
-const adviceLabel = computed(() => adviceLabelOf(assessDecision.value));
-const advicePlaceholder = computed(() => advicePlaceholderOf(assessDecision.value));
+// 刷机单「升级」那一档叫「关联投诉」，结论正文栏随之叫「关联说明」（1013 A22）
+const adviceLabel = computed(() => (assessFlash.value && isEscalateDecision(assessDecision.value) ? '关联说明' : adviceLabelOf(assessDecision.value)));
+const advicePlaceholder = computed(() => (assessFlash.value && isEscalateDecision(assessDecision.value)
+  ? '写清关联投诉的理由与后续处置安排…'
+  : advicePlaceholderOf(assessDecision.value)));
 
 /* ---------------- 投诉支上半：风险等级（标记 / 改判） ---------------- */
 
@@ -482,7 +487,7 @@ function onOk() {
               <div class="op-label req">评估决策</div>
               <a-radio-group v-model:value="assessDecision" class="ticket-assess-dec-inline">
                 <!-- 值取 store 的枚举、字取界面词：改词与改枚举不是同一次改动，见 OpRiskDecision.ts -->
-                <a-radio v-for="d in ASSESS_DECISIONS" :key="d" :value="d">{{ decisionText(d) }}</a-radio>
+                <a-radio v-for="d in ASSESS_DECISIONS" :key="d" :value="d">{{ assessFlash ? assessDecisionLabel(d, true) : decisionText(d) }}</a-radio>
               </a-radio-group>
             </div>
             <div v-if="missAssessDecision" class="ticket-assess-err ticket-assess-foot">请先选择一个评估决策</div>
@@ -508,7 +513,12 @@ function onOk() {
             🔴 它在**本段 `<section>` 之内**（六处一致，2026-09-30 裁决）：它填的是本段
             「升级」这一档的要素，摆到段外会读成与「风险处理措施」并列的另一段。
           -->
-          <EscalateComplaintFields v-if="showEscalateFields" :ctl="escalateFields" />
+          <EscalateComplaintFields
+            v-if="showEscalateFields"
+            :ctl="escalateFields"
+            :advice-label="adviceLabel"
+            :advice-placeholder="advicePlaceholder"
+          />
         </section>
       </template>
     </div>

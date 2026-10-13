@@ -88,7 +88,7 @@ const props = defineProps<{
    */
   tabWritableOverride?: Partial<Record<ProcessTabKey, boolean>>;
   /** 刷机单处理表单字段下方提示（透传给处理表单，930 PRD §5.4） */
-  flashErrors?: { flashResult?: string; flashOfflineAt?: string };
+  flashErrors?: { flashResult?: string };
 }>();
 
 const emit = defineEmits<{

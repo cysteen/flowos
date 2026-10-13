@@ -428,6 +428,94 @@ export function buildEscalatePrefill(detail: TicketDetailMeta): CreateTicketPref
   };
 }
 
+/* ------------------------------------------------------------------ */
+/* 刷机单「关联投诉」（1013 A21 / B5）                                   */
+/* ------------------------------------------------------------------ */
+
+/** 刷机单页头那一枚的文案 */
+export const FLASH_LINK_COMPLAINT_LABEL = '关联投诉';
+
+/**
+ * 刷机单「关联投诉」门控（B5）：弱关联，不受自动刷机中、调研中等状态影响；
+ * **只在终态（已结案 / 已关闭 / 已强结 / 已取消）置灰**。返回 null ＝ 可用。
+ */
+export const FLASH_LINK_COMPLAINT_ENDED_TIP = '工单已结束，不能关联投诉';
+export function flashLinkComplaintBlockTip(status: string): string | null {
+  return isTicketTerminated(status) ? FLASH_LINK_COMPLAINT_ENDED_TIP : null;
+}
+
+/**
+ * 刷机单「关联投诉」的建单预填（B5）：新建一张投诉单，预填客户信息与产品（产品分类 + 产品名称），
+ * 问题分类留空由坐席选。不走「升级投诉」那一支 —— 建单页不出「升级自原单」，提交后原单状态不变。
+ */
+export function buildFlashLinkComplaintPrefill(detail: TicketDetailMeta): CreateTicketPrefill {
+  const phone = detail.customer.contacts.find((c) => c.type === 'phone')?.value ?? '';
+  return {
+    ...flashPrefillPart(detail, phone),
+    mode: 'normal',
+    customerName: detail.customer.name,
+    customerPhone: phone,
+    vip: detail.customer.types.some((t) => t.includes('VIP')),
+    product: detail.product.name,
+    sn: detail.product.sn,
+    channel: CHANNEL_MAP[detail.channel] ?? '在线客服',
+    formTicketType: '投诉',
+    priority: mapPriority(detail.priority),
+    businessType: detail.businessType,
+    businessLine: detail.businessLine,
+    expectTime: detail.expectedResolve,
+    desc: `关联刷机单 ${detail.no}`,
+  };
+}
+
+/**
+ * 风险评估结论「关联投诉」（1013 A22）由系统新建的投诉单：客户与产品取刷机单，刷机字段组不带过去；
+ * 处理人＝评估人。与原单只做弱关联（不写升级链），原单照常流转。
+ */
+export function buildFlashLinkedComplaint(
+  origin: Ticket,
+  input: { no: string; assignee: string; reason: string; now?: Date },
+  overrides?: Partial<Ticket>,
+): Ticket {
+  const now = input.now ?? new Date();
+  const stamp = formatStamp(now);
+  return {
+    id: `link-${input.no}`,
+    no: input.no,
+    type: '投诉',
+    complaintType: '投诉',
+    channel: origin.channel,
+    ticketSource: origin.ticketSource,
+    title: ['投诉', origin.product].filter(Boolean).join(' · '),
+    smartMarks: [],
+    customer: origin.customer,
+    customerPhone: origin.customerPhone,
+    vip: origin.vip,
+    product: origin.product,
+    productCategory: origin.productCategory,
+    sn: origin.sn,
+    businessType: origin.businessType,
+    problemL1: '',
+    problemL2: '',
+    problemL3: '',
+    nodeStatus: '处理中',
+    nodeStep: 1,
+    nodeTotal: 5,
+    priority: origin.priority,
+    slaText: '04:00:00',
+    slaSub: '距超时',
+    slaState: 'ok',
+    slaMinutes: 240,
+    assignee: input.assignee,
+    tab: 'mine',
+    responded: false,
+    problemDesc: [`关联刷机单 ${origin.no}`, input.reason.trim()].filter(Boolean).join('\n'),
+    createdAt: stamp,
+    updatedAt: stamp,
+    ...overrides,
+  };
+}
+
 function formatStamp(d: Date): string {
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;

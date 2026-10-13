@@ -9,7 +9,7 @@ import {
   ReloadOutlined, DownOutlined,
 } from '@ant-design/icons-vue';
 import {
-  FLASH_GATE_TIPS, FLASH_L1_BAR_ORDER, FLASH_L2_BAR_ORDER, FLASH_L2_MORE_ORDER,
+  FLASH_GATE_TIPS, FLASH_L2_MORE_ORDER,
   flashBarLabel, flashButtonGate, type FlashBarKey, type FlashStage, type FlashView,
 } from '../composables/flashGate';
 import OpActionDialogs from './OpActionDialogs.vue';
@@ -106,16 +106,16 @@ const props = defineProps<{
   flashView?: FlashView | null;
   /** 刷机单子状态列（表二的列） */
   flashStage?: FlashStage;
-  /** 「重新推送」是否渲染：本单产品型号为启用中的自研机型（非自研、已停用不渲染，M74） */
-  flashRepushShown?: boolean;
-  /** 本单一线重推次数 */
+  /** 本单一线重推次数（只计数，不限次） */
   flashL1RepushCount?: number;
   /** 当前用户是否本次下送 / 申请的发起人（撤回） */
   flashIsInitiator?: boolean;
   /** 调研中本单有无下送发起人（撤回悬停原因取值，M99） */
   flashHasForwarder?: boolean;
-  /** 刷机单下送必填校验不通过的提示（空＝通过，PRD §5.4「下送必填校验」） */
+  /** 刷机单下送必填校验不通过的提示（空＝通过，PRD §5.4「下送必填校验」；含「已线下登记」拦截） */
   flashForwardTip?: string;
+  /** 处理结果＝升级二线（一线）：下送改为「升级二线确认」，确认后进教育刷机处理组池（1013 A18） */
+  flashForwardEscalate?: boolean;
   /** 刷机单下送确认弹窗主按钮文案（本单已产生过回访结论＝「下送并结案」，PRD §5.5） */
   flashForwardOkText?: string;
 }>();
@@ -134,9 +134,7 @@ const emit = defineEmits<{
     desc: string;
     attachments: string[];
   }];
-  /** 刷机单「重新推送」：弹窗与落库由处理页接（PRD §5.6） */
-  flashRepush: [];
-  /** 刷机单「升级二线」：弹窗与落库由处理页接（PRD §5.7） */
+  /** 刷机单下送且处理结果＝升级二线：确认弹窗与落库由处理页接（1013 A18） */
   flashEscalate: [];
   /** 刷机单池中未认领：领取（PRD §4.2） */
   claim: [];
@@ -403,30 +401,51 @@ const isFlashBar = computed(
   () => !!props.isFlash && (props.flashView === 'l1' || props.flashView === 'l2' || props.flashView === 'claim'),
 );
 
-const FLASH_FALLBACK_ICON: Partial<Record<FlashBarKey, string>> = { 重推: 'ReloadOutlined', 升级二线: 'RiseOutlined' };
+/**
+ * 刷机单底栏顺序（1013 A15 / A19 / B2）：
+ * - 一线：保存 · 下送 · 撤回 —— 去向由处理结果决定，推送只从修改刷机信息弹窗发起，升级二线是处理结果之一；
+ * - 二线：保存 · 下送 · 升级 · 转售后 · 更多 —— 与咨询单一致（升级＝三线技术支持 / 产研 / 同步飞书），不出转单。
+ */
+type FlashBarSlot = FlashBarKey | '升级';
+const FLASH_L1_ORDER: readonly FlashBarSlot[] = ['下送', '撤回'];
+const FLASH_L2_ORDER: readonly FlashBarSlot[] = ['下送', '升级', '转售后'];
+const FLASH_L2_MORE: readonly FlashBarSlot[] = FLASH_L2_MORE_ORDER;
 
-function flashItem(k: FlashBarKey): BarItem | null {
+/** 「升级」位按子状态取值：待响应 / 处理中可用，其余子状态沿用刷机门控的悬停原因 */
+const FLASH_STAGE_TIP: Partial<Record<FlashStage, string>> = {
+  自动刷机中: FLASH_GATE_TIPS.autoFlashing,
+  已转出: FLASH_GATE_TIPS.transferred,
+  已委派: FLASH_GATE_TIPS.delegated,
+  审核中: FLASH_GATE_TIPS.review,
+  已挂起: FLASH_GATE_TIPS.suspended,
+  调研中: FLASH_GATE_TIPS.survey,
+  未认领: FLASH_GATE_TIPS.unclaimed,
+};
+
+function flashItem(k: FlashBarSlot): BarItem | null {
   const stage = props.flashStage ?? '处理中';
   const def = actionMap.value.get(k as OpActionType);
-  if (k === '重推') {
-    if (!props.flashRepushShown) return null;
-  } else if (k === '升级二线') {
-    if (props.flashView !== 'l1') return null;
-  } else if (!def) {
-    return null;
-  }
+  if (!def) return null;
   // 风险报备限本单主责处理人（出现条件由工单页算）
   if (k === '风险报备' && !props.showRiskReport) return null;
-  const gate = flashButtonGate(k, {
-    view: props.flashView ?? 'l2',
-    stage,
-    l1RepushCount: props.flashL1RepushCount ?? 0,
-    isInitiator: !!props.flashIsInitiator,
-    hasForwarder: props.flashHasForwarder,
-    afterSaleEnabled: props.afterSaleEnabled,
-  });
+  const gate = k === '升级'
+    ? (stage === '待响应' || stage === '处理中'
+      ? { forbidden: false, tip: undefined as string | undefined }
+      : { forbidden: true, tip: FLASH_STAGE_TIP[stage] })
+    : flashButtonGate(k, {
+      view: props.flashView ?? 'l2',
+      stage,
+      l1RepushCount: props.flashL1RepushCount ?? 0,
+      isInitiator: !!props.flashIsInitiator,
+      hasForwarder: props.flashHasForwarder,
+      afterSaleEnabled: props.afterSaleEnabled,
+    });
   let forbidden = gate.forbidden;
   let tip = gate.tip;
+  if (!forbidden && k === '升级' && feishuEscalateBlocked.value) {
+    forbidden = true;
+    tip = '已升级产研反馈，请在「产研反馈」Tab 催单或二次激活';
+  }
   if (!forbidden && k === '风险报备' && props.riskReportPending) {
     forbidden = true;
     tip = props.riskForbiddenTip || RISK_FORBIDDEN_FALLBACK;
@@ -436,18 +455,19 @@ function flashItem(k: FlashBarKey): BarItem | null {
     tip = props.aftersaleForm.tip;
   }
   let key: OpActionType = k;
-  let icon = def?.icon ?? FLASH_FALLBACK_ICON[k] ?? 'ArrowRightOutlined';
+  let icon = def.icon;
   if (k === '挂起' && stage === '已挂起') { key = '恢复'; icon = 'PlayCircleOutlined'; }
   if (k === '委派' && stage === '已委派') { key = '撤销委派'; icon = 'UndoOutlined'; }
-  return { key, label: flashBarLabel(k, stage), icon, danger: def?.danger, forbidden, forbiddenTip: tip };
+  const label = k === '升级' ? def.label : flashBarLabel(k, stage);
+  return { key, label, icon, danger: def.danger, forbidden, forbiddenTip: tip };
 }
 
 const flashPrimaryItems = computed<BarItem[]>(() => {
-  const order = props.flashView === 'l1' ? FLASH_L1_BAR_ORDER : props.flashView === 'l2' ? FLASH_L2_BAR_ORDER : [];
+  const order = props.flashView === 'l1' ? FLASH_L1_ORDER : props.flashView === 'l2' ? FLASH_L2_ORDER : [];
   return order.map(flashItem).filter((x): x is BarItem => !!x);
 });
 const flashMoreItems = computed<BarItem[]>(() =>
-  (props.flashView === 'l2' ? FLASH_L2_MORE_ORDER : []).map(flashItem).filter((x): x is BarItem => !!x),
+  (props.flashView === 'l2' ? FLASH_L2_MORE : []).map(flashItem).filter((x): x is BarItem => !!x),
 );
 const isFlashClaim = computed(() => !!props.isFlash && props.flashView === 'claim');
 /** 客诉专员在刷机单上只读工单内容（M94 / M102）：底栏不出「保存」，只留风险那一枚 */
@@ -465,9 +485,8 @@ function saveDraft() {
 
 function run(action: OpActionType | '转单') {
   if (isTerminal.value || isTransferred.value) return;
-  // 刷机单专属两枚：只把点击抛给处理页（弹窗与落库在处理页接）
-  if (action === '重推') return emit('flashRepush');
-  if (action === '升级二线') return emit('flashEscalate');
+
+
   if (action === '转单') {
     emit('transferTicket');
     return;
@@ -517,12 +536,13 @@ function run(action: OpActionType | '转单') {
       forwardModalOpen.value = true;
       return;
     }
-    // 刷机单：校验处理结果 / 线下登记时间（PRD §5.4），不校验问题原因
+    // 刷机单：按处理结果判（PRD §5.4），不校验问题原因
     if (props.isFlash) {
       if (props.flashForwardTip) {
         message.warning(props.flashForwardTip);
         return;
       }
+      if (props.flashForwardEscalate) return emit('flashEscalate');
       forwardModalOpen.value = true;
       return;
     }

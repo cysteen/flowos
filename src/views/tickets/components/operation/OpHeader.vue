@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed } from 'vue';
 import { message } from 'ant-design-vue';
-import { FLASH_MARK_LABEL, isFlashTicket, parseFlashStamp } from '@/views/tickets/types/flash';
+import { FLASH_MARK_LABEL, isFlashTicket } from '@/views/tickets/types/flash';
 import { useUserStore } from '@/stores/user';
 import { CopyOutlined, FlagOutlined } from '@ant-design/icons-vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
@@ -74,6 +74,13 @@ const props = defineProps<{
    */
   escalateGate?: { forbidden: boolean; tip?: string } | null;
   /**
+   * 刷机单：这一枚是「关联投诉」（1013 A21 / B5）—— 新建投诉单与本单弱关联、本单状态不变，
+   * 可用性只看 `escalateGate`（终态置灰），不走升级投诉的阶层 / 委派判定。
+   */
+  linkComplaint?: boolean;
+  /** 「取消工单」置灰原因（刷机单自动刷机中，PRD §5.5）；空＝不因此置灰 */
+  cancelBlockedTip?: string;
+  /**
    * 标题行的两枚风险状态标（《【930】》§5A.3 / §3.2）。**判据不在本组件算** ——
    * 整套由 TicketOperationView 的 `titleRiskGrade` / `titleRiskReporting` 给，
    * 那两条又复用工单列表行内标的同源读口（`riskTags.ticketGradeOf` /
@@ -106,12 +113,14 @@ const DELEGATE_LOCK_TIP = '工单委派中，协办完成后可操作';
 const user = useUserStore();
 const escalateVerdict = computed(() => buildEscalateVerdict(props.detail, user.roleKey));
 // 升级投诉的可用性：整页锁死 / 委派中 / 阶层判定（一线在非投诉单上可升，见 815 §3.3）
-const escalateDisabled = computed(
-  () => props.readonly || !!props.escalateGate?.forbidden || delegateLocked.value || !escalateVerdict.value.entryEnabled,
-);
+const escalateDisabled = computed(() => {
+  if (props.linkComplaint) return props.readonly || !!props.escalateGate?.forbidden;
+  return props.readonly || !!props.escalateGate?.forbidden || delegateLocked.value || !escalateVerdict.value.entryEnabled;
+});
 const escalateTip = computed(() => {
   if (props.readonly) return READONLY_TIP;
   if (props.escalateGate?.forbidden) return props.escalateGate.tip;
+  if (props.linkComplaint) return undefined;
   if (delegateLocked.value) return DELEGATE_LOCK_TIP;
   return escalateVerdict.value.entryTip;
 });
@@ -155,19 +164,6 @@ function onLinkAftersaleClick() {
   emit('action', shape === 'returnResult' ? '回传处理结果' : shape === 'activate' ? '激活售后单' : '关联售后');
 }
 
-/**
- * 刷机单线下登记暂停期间，SLA 区显示「SLA 暂停至 〈年-月-日 时:分〉」；恢复计时后不显示（PRD §5.1 / §4.3）。
- * 到点自动消失：每 30 秒对一次钟。
- */
-const clockNow = ref(Date.now());
-let clockTimer: number | undefined;
-onMounted(() => { clockTimer = window.setInterval(() => { clockNow.value = Date.now(); }, 30_000); });
-onBeforeUnmount(() => window.clearInterval(clockTimer));
-const flashSlaPausedUntil = computed(() => {
-  const until = isFlashTicket(props.detail) ? props.detail.flash?.state.slaPausedUntil : undefined;
-  if (!until) return '';
-  return parseFlashStamp(until).getTime() > clockNow.value ? until.slice(0, 16) : '';
-});
 
 /**
  * 刷机单 SLA 区（PRD §4.3 / M88 / M103）：悬停显示「SLA 起算 〈年-月-日 时:分〉」，未起算显示「未起算」；
@@ -338,7 +334,6 @@ function priorityHex(p: string): string {
     <div class="oh-right">
       <span v-if="flashSlaIdle" class="sla-idle" :title="flashSlaStartText">—</span>
       <OpSlaBar v-else :detail="detail" :start-text="flashSlaStartText" />
-      <span v-if="flashSlaPausedUntil" class="sla-paused-until">SLA 暂停至 {{ flashSlaPausedUntil }}</span>
       <OpSupersededBanner
         v-if="supersededBy"
         :by="supersededBy"
@@ -355,8 +350,8 @@ function priorityHex(p: string): string {
           class="action-btn"
           :disabled="escalateDisabled"
           :title="escalateTip"
-          @click="emit('action', '升级投诉')"
-        >升级投诉</button>
+          @click="emit('action', linkComplaint ? '关联投诉' : '升级投诉')"
+        >{{ linkComplaint ? '关联投诉' : '升级投诉' }}</button>
         <!--
           「关联售后」位（§5.1）：建单形态「关联售后」/ 回传形态「回传处理结果」/ 置灰；
           有活跃关联时 hover 出售后单卡片：状态可见、工单号可点跳售后系统操作
@@ -441,8 +436,8 @@ function priorityHex(p: string): string {
           v-if="canCancelTicket && !isTerminal"
           type="button"
           class="action-btn action-btn--danger"
-          :disabled="readonly || delegateLocked"
-          :title="readonly ? READONLY_TIP : (delegateLocked ? DELEGATE_LOCK_TIP : undefined)"
+          :disabled="readonly || delegateLocked || !!cancelBlockedTip"
+          :title="readonly ? READONLY_TIP : (delegateLocked ? DELEGATE_LOCK_TIP : cancelBlockedTip)"
           @click="emit('action', '取消工单')"
         >取消工单</button>
       </div>
@@ -600,13 +595,6 @@ function priorityHex(p: string): string {
 .sla-idle {
   flex: none; min-width: 24px; text-align: center; cursor: default;
   font-size: 14px; font-weight: 600; line-height: 22px; color: #6b7280;
-}
-.sla-paused-until {
-  flex: none; white-space: nowrap;
-  font-size: 12px; font-weight: 600; line-height: 22px;
-  padding: 0 8px; border-radius: 4px;
-  color: #4b5563; background: #f3f4f6;
-  font-variant-numeric: tabular-nums;
 }
 .oh-actions { display: flex; align-items: center; gap: 6px; flex: none; }
 .action-btn {

@@ -120,37 +120,58 @@ export const FLASH_HANDOFF_REASONS = [
 export type FlashHandoffReason = (typeof FLASH_HANDOFF_REASONS)[number];
 
 /* ------------------------------------------------------------------ */
-/* 处理结果（M20）与线下登记（D11 / M31 / M35）                          */
+/* 处理结果（1013 A15 / A16 / A18 / B1，暂行清单）                       */
 /* ------------------------------------------------------------------ */
 
+/**
+ * 处理结果取值全集。「已线上刷机成功」只由系统在重新推送接收成功时写入（B1），不在下拉里出；
+ * 其余为人工可选项，按视角取 `flashResultOptions`。完整清单以业务提供为准。
+ */
 export const FLASH_RESULTS = [
   '已线上刷机成功',
-  '已线下登记推送',
+  '已线下登记',
+  '已线下登记、已推送',
+  '升级二线',
   '婉拒',
   '已转售后',
   '联系不上用户',
   '用户放弃',
 ] as const;
 export type FlashResult = (typeof FLASH_RESULTS)[number];
-/** 选中即须填「线下登记时间」，保存后 SLA 暂停至批推时刻（D11 / M31） */
-export const FLASH_RESULT_OFFLINE: FlashResult = '已线下登记推送';
+/** 系统写入的「刷机成功」类处理结果（推送接收成功，B1） */
+export const FLASH_RESULT_ONLINE_SUCCESS: FlashResult = '已线上刷机成功';
+/** 只完成线下登记、产线未推送：只能保存，留在本人名下（A16） */
+export const FLASH_RESULT_OFFLINE: FlashResult = '已线下登记';
+/** 产线已推送：可下送进回访（A16） */
+export const FLASH_RESULT_OFFLINE_PUSHED: FlashResult = '已线下登记、已推送';
+/** 一线专用：下送时二次确认后进教育刷机处理组池（A18） */
+export const FLASH_RESULT_ESCALATE_L2: FlashResult = '升级二线';
+/** 二线专用 */
+export const FLASH_RESULT_AFTERSALE: FlashResult = '已转售后';
 
-/**
- * 保存「已线下登记推送」时系统自动追加到处理记录的一行（M35）。`{time}` ＝ 线下登记时间。
- * 用 `flashOfflineRegisterRecord(time)` 取成品文案，不要在调用处自己拼。
- */
-export const FLASH_OFFLINE_REGISTER_RECORD_TEMPLATE = '已线下登记推送，登记时间 {time}';
-
-export function flashOfflineRegisterRecord(time: string): string {
-  return FLASH_OFFLINE_REGISTER_RECORD_TEMPLATE.replace('{time}', time);
+/** 处理结果下拉的人工可选项：一线有「升级二线」无「已转售后」，二线反之 */
+export function flashResultOptions(line: FlashLine): FlashResult[] {
+  return FLASH_RESULTS.filter((r) => r !== FLASH_RESULT_ONLINE_SUCCESS
+    && (line === '一线' ? r !== FLASH_RESULT_AFTERSALE : r !== FLASH_RESULT_ESCALATE_L2));
 }
+
+/** 存量数据里的旧取值，读出时按 `normalizeFlashResult` 归到现行取值 */
+export type FlashLegacyResult = '已线下登记推送';
+
+export function normalizeFlashResult(v: string | undefined | null): FlashResult | '' {
+  if (!v) return '';
+  if (v === '已线下登记推送') return FLASH_RESULT_OFFLINE;
+  return (FLASH_RESULTS as readonly string[]).includes(v) ? (v as FlashResult) : '';
+}
+
+/** 下送拦截：处理结果为「已线下登记」（A15） */
+export const FLASH_TIP_OFFLINE_FORWARD = '已线下登记，待产线推送后改为「已线下登记、已推送」再下送';
+/** 下送确认：处理结果为「升级二线」（A18） */
+export const FLASH_ESCALATE_CONFIRM_TEXT = '工单将转入二线继续处理';
 
 /** 平峰批推时刻：工作日当日 / 次一工作日 17:00；非工作日登记顺延到下一工作日 10:00（M31） */
 export const FLASH_BATCH_PUSH_HOUR = 17;
 export const FLASH_WEEKEND_RESUME_HOUR = 10;
-
-/** 线下登记时间晚于当前时刻的提示（M49） */
-export const FLASH_TIP_OFFLINE_TIME_IN_FUTURE = '线下登记时间不能晚于当前时间';
 
 /**
  * 工作日判定。取 SLA 工作日历「标准工作日历」的周表（`config/slaCalendars.ts`，周一至周五上班）；
@@ -170,13 +191,6 @@ function workdayAt(d: Date, hour: number, fromNextDay: boolean): Date {
   return r;
 }
 
-/** 线下登记时间校验（M49）：晚于当前时刻返回提示，否则返回 null */
-export function validateOfflineRegisteredAt(registeredAt: Date | string, now: Date | number = Date.now()): string | null {
-  const d = typeof registeredAt === 'string' ? parseFlashStamp(registeredAt) : new Date(registeredAt);
-  const nowMs = typeof now === 'number' ? now : now.getTime();
-  return d.getTime() > nowMs ? FLASH_TIP_OFFLINE_TIME_IN_FUTURE : null;
-}
-
 /**
  * 线下登记后 SLA **恢复计时时刻**（M31 / M49）：
  * - 工作日 17:00 **前**登记 → 当日 17:00；
@@ -185,7 +199,7 @@ export function validateOfflineRegisteredAt(registeredAt: Date | string, now: Da
  * - 「下一工作日」按 SLA 工作日历判定（`isFlashWorkday`）；
  * - 算出的恢复时刻**早于当前时刻**时返回 `null`，表示不暂停。
  *
- * 入参接受 `Date` 或 `YYYY-MM-DD HH:mm(:ss)` 字符串。登记时间是否晚于当前时刻另用 `validateOfflineRegisteredAt` 校验。
+ * 入参接受 `Date` 或 `YYYY-MM-DD HH:mm(:ss)` 字符串。
  */
 export function offlineBatchResumeAt(registeredAt: Date | string, now: Date | number = Date.now()): Date | null {
   const d = typeof registeredAt === 'string' ? parseFlashStamp(registeredAt) : new Date(registeredAt);
@@ -199,13 +213,6 @@ export function offlineBatchResumeAt(registeredAt: Date | string, now: Date | nu
   const nowMs = typeof now === 'number' ? now : now.getTime();
   return resume.getTime() < nowMs ? null : resume;
 }
-
-/* ------------------------------------------------------------------ */
-/* 升级二线「已做排查」（M16）                                          */
-/* ------------------------------------------------------------------ */
-
-export const FLASH_ESCALATE_CHECKS = ['已重推', '已线下登记', '已指导开机联网', '已联系学校', '其他'] as const;
-export type FlashEscalateCheck = (typeof FLASH_ESCALATE_CHECKS)[number];
 
 /* ------------------------------------------------------------------ */
 /* 池（M15 / M8′）                                                      */
@@ -236,8 +243,10 @@ export const FLASH_POOLS: Record<FlashPoolKey, FlashPoolMeta> = {
 /* 数值参数                                                             */
 /* ------------------------------------------------------------------ */
 
-/** 一线每单重推次数上限（D13）；二线不限（D16） */
-export const FLASH_L1_REPUSH_LIMIT = 1;
+/**
+ * 重推次数上限：一线、二线都不限次（1013 A14）。取值为无穷大，仅供尚未清理的门控读取。
+ */
+export const FLASH_L1_REPUSH_LIMIT = Number.POSITIVE_INFINITY;
 /** 推送接口同步报错后的自动重试次数（M10） */
 export const FLASH_PUSH_AUTO_RETRY = 1;
 /** 推送后出回传结果的时长（D22：十几秒） */
@@ -344,14 +353,16 @@ export interface FlashState {
   failL2?: FlashFailL2;
   /** 推送次数（含建单首推与人工重推，不含接口报错的自动重试） */
   pushCount: number;
-  /** 一线重推次数（上限 FLASH_L1_REPUSH_LIMIT） */
+  /** 一线重推次数（只计数，不限次） */
   l1RepushCount: number;
   /** 转人工原因（最近一次进池的缘由） */
   handoffReason?: FlashHandoffReason;
-  /** 线下登记时间（处理页保存「已线下登记推送」时写入，M35） */
+  /** 存量数据的线下登记时间；处理页不再填写、不再写入 */
   offlineRegisteredAt?: string;
-  /** 处理结果（下送必填，M20） */
-  result?: FlashResult;
+  /** 处理结果（下送必填）；读出一律经 `normalizeFlashResult` */
+  result?: FlashResult | FlashLegacyResult;
+  /** 关联投诉单号（弱关联，两单各自流转，1013 A21 / B5），时间正序 */
+  linkedComplaintNos?: string[];
   /** 归属池（未进过人工池为空） */
   pool?: FlashPoolKey;
   /**
@@ -524,8 +535,8 @@ export function flashTipInflight(inflightNo: string): string {
 }
 /** 在途查询不可用（M43） */
 export const FLASH_TIP_SYSTEM_BUSY = '系统繁忙，请稍后再提交';
-/** 一线重推次数用尽（M18） */
-export const FLASH_TIP_L1_REPUSH_EXHAUSTED = '一线重推次数已用完，请线下登记或升级二线';
+/** 仅供尚未清理的门控读取；一线不限次后不会再命中 */
+export const FLASH_TIP_L1_REPUSH_EXHAUSTED = '';
 /** 非自研机型不可线上推送（M18） */
 export const FLASH_TIP_NON_SELF_DEVELOPED = '该机型不支持线上推送，请线下登记';
 /** 重推时刷机原因非毕业（M44） */
@@ -537,21 +548,18 @@ export function flashTipVerifyFailed(l2: FlashFailL2): string {
     ? 'SN与学生账号不一致，请核实后再推送'
     : '未查询到该学生的毕业生身份，请核实后再推送';
 }
-/** 升级二线弹窗：升级说明为空（PRD §5.7） */
-export const FLASH_TIP_ESCALATE_NOTE_REQUIRED = '请填写升级说明';
 /** 处理表单 · 下送必填（PRD §5.4） */
 export const FLASH_TIP_RESULT_REQUIRED = '请选择处理结果';
-export const FLASH_TIP_OFFLINE_TIME_REQUIRED = '请填写线下登记时间';
 
 /** Toast（PRD §5.5 / §5.6 / §5.7 / §5.8，逐字） */
 export const FLASH_TOAST = {
   repushed: '已重新推送',
-  repushPushErrorL1: '刷机推送未成功，已转入教育刷机处理组',
-  repushPushErrorL2: '刷机推送未成功，请稍后重试或线下登记',
+  repushPushError: '刷机推送未成功，请稍后重试或线下登记',
   infoSaved: '已保存修改',
   escalatedL2: '已升级至教育刷机处理组',
   forwarded: '已下送，工单进入「调研中」',
   forwardClosed: '已结案',
+  linkedComplaint: (no: string) => `已关联投诉单 ${no}`,
 } as const;
 
 /** 站内通知文案（M67 / PRD §11.1，逐字） */
@@ -559,7 +567,6 @@ export const FLASH_NOTICE = {
   repushSuccess: (no: string) => `${no}重推结果：接收成功`,
   /** `reasonText` ＝「〈一级失败原因〉 · 〈二级失败原因〉」 */
   repushFail: (no: string, reasonText: string) => `${no}重推结果：${reasonText}`,
-  l1RepushFailToGroup: (no: string) => `${no}一线重推失败，已进入教育刷机处理组池`,
   escalatedToGroup: (no: string) => `${no}已升级至教育刷机处理组，待领取`,
   lateSuccess: (no: string) => `${no}收到迟到回传：接收成功`,
 } as const;
@@ -579,8 +586,8 @@ export const FLASH_TIP_AUTO_FLASHING = '自动刷机进行中，回传结果后�
 export const FLASH_EXTERNAL_LINKS = {
   /** 智能硬件平台（自动刷机结果卡卡头）：按 SN 查推送与回传 */
   hardwarePlatform: { label: '智能硬件平台', url: 'https://hwp.iflytek.com/device/push-records' },
-  /** MDM 后台（刷机信息区块头） */
-  mdm: { label: 'MDM 后台', url: 'https://mdm.iflytek.com/console/devices' },
+  /** MDM 平台（自动刷机结果卡卡头，1013 A24） */
+  mdm: { label: 'MDM 平台', url: 'https://mdm.iflytek.com/console/devices' },
   /** 保障中心 · 学校管理（刷机信息区块头） */
   schoolAdmin: { label: '保障中心 · 学校管理', url: 'https://bzzx.iflytek.com/school/manage' },
 } as const;
@@ -625,6 +632,10 @@ export const FLASH_TL = {
   /** `reasonText` ＝ 失败原因展示文案「接收失败 · 〈二级〉」 */
   returnFail: (reasonText: string) => `回传结果：${reasonText}`,
   repushSuccess: (handler: string) => `重推成功，交回 ${handler}`,
+  /** 重新推送接收成功：系统写入处理结果并转入回访（B1） */
+  repushSuccessSurvey: (result: string) => `重推成功，处理结果：${result}，自动进入回访`,
+  /** 重新推送接收成功、本单已有回访结论：直接结案（B1） */
+  repushSuccessClosed: (result: string) => `重推成功，处理结果：${result}，已回访过，直接结案`,
   lateSuccess: '回传结果（迟到）：接收成功，子状态未变更',
   /** `reasonText` ＝「推送异常 · 接口异常」 */
   pushApiError: (reasonText: string) => `${reasonText}（已自动重试 1 次）`,
@@ -634,13 +645,20 @@ export const FLASH_TL = {
   handoff: (reason: FlashHandoffReason, poolLabel: string) => `转人工 · ${reason} → ${poolLabel}`,
   repushFailBack: (handler: string) => `重推失败 · 交回 ${handler}`,
   editInfo: '修改刷机信息',
-  offlineRegister: (time: string) => flashOfflineRegisterRecord(time),
+  /** 保存「已线下登记」时追加进处理记录的一行（A16），`time` ＝ 保存时刻 */
+  offlineRegister: (time: string) => `已线下登记，${time}`,
+  /** 改为「已线下登记、已推送」并保存时追加进处理记录的一行（A16） */
+  offlinePushed: '产线已推送',
   slaPause: (until: string) => `SLA 暂停至 ${until} · 线下登记`,
   /** `cause` ＝ 到达暂停截止时刻 / 下送 / 升级二线 / 重新推送 / 转售后 / 申请挂起 / 委派 / 关闭工单 / 强结 / 调剂 / 撤回 / 处理结果变更 / 线下登记时间变更 */
   slaResume: (cause: string) => `SLA 恢复计时 · ${cause}`,
-  /** 升级二线：「升级至教育刷机处理组」；升级说明全文；已做排查逐项 */
-  escalateL2: (note: string, checks: readonly string[]) =>
-    `升级至教育刷机处理组；升级说明：${note}${checks.length ? `；已做排查：${checks.join('、')}` : ''}`,
+  /** 升级二线（A18）：「升级至教育刷机处理组」＋ 最近一条处理记录 */
+  escalateL2: (record?: string) =>
+    `升级至教育刷机处理组${record?.trim() ? `；处理记录：${record.trim()}` : ''}`,
+  /** 关联投诉（A21 / B5）：两单各自流转，本单状态不变 */
+  linkComplaint: (no: string) => `关联投诉单 ${no}，两单各自流转，本单状态不变`,
+  /** 投诉单侧（A21） */
+  linkedFromFlash: (no: string) => `关联刷机单 ${no}`,
   forward: (result: string) => `下送；处理结果：${result}`,
   forwardClosed: (result: string) => `下送（已回访过，直接结案）；处理结果：${result}`,
   withdrawForward: '撤回本次下送，回到处理中',
@@ -724,7 +742,7 @@ export function parseFlashStamp(s: string): Date {
   return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]), Number(m[6] ?? 0));
 }
 
-/** 人工角色是不是一线（一线重推限次、失败进二线池） */
+/** 人工角色是不是一线（推送记录发起方线别、一线 / 二线重推的触发方式） */
 export function isFrontlineActor(actor: FlashActor): boolean {
   return actor.role === '一线坐席';
 }

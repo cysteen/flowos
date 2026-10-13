@@ -25,6 +25,7 @@ import { useRiskQueueStore } from '@/stores/riskQueue';
 import type { RiskLevelFieldsCtl } from '@/composables/useRiskLevelFields';
 import { TICKETS } from '@/mock/tickets';
 import { isTicketClosed } from '@/views/tickets/types/ticket';
+import { buildFlashLinkedComplaint } from '@/views/tickets/composables/complaintEscalation';
 
 function nowStamp(): string {
   const d = new Date();
@@ -206,26 +207,41 @@ export function deriveEscalatedComplaint(input: {
   complaint?: EscalateComplaintPayload;
 }) {
   const { complaint, ...base } = input;
-  const derived = useDerivedTicketStore().deriveComplaint(
-    base,
-    undefined,
-    complaint ? escalateComplaintOverrides(complaint) : undefined,
-  );
+  const overrides = complaint ? escalateComplaintOverrides(complaint) : undefined;
+  // 刷机原单（1013 A22）：评估结论「关联投诉」＝新建投诉单与刷机单**弱关联**，两单各自流转 ——
+  // 不写升级台账（写了原单就成了"已被接管"的终态），原单子状态、处理人、SLA 都不变
+  const origin = TICKETS.find((t) => t.no === input.fromNo);
+  if (origin && isFlashTicket(origin)) {
+    const user = useUserStore();
+    const linked = buildFlashLinkedComplaint(
+      origin,
+      { no: input.no, assignee: input.assignee || user.name, reason: input.reason },
+      overrides,
+    );
+    useFlashStore().linkComplaint(
+      input.fromNo,
+      linked,
+      { name: input.assignee || user.name, role: mapUserRole(user.roleKey) },
+    );
+    useRiskQueueStore().ensureEntryFor(input.no);
+    return linked;
+  }
+  const derived = useDerivedTicketStore().deriveComplaint(base, undefined, overrides);
   if (!derived) return derived;
   useRiskQueueStore().ensureEntryFor(input.no);
-  // ③ 刷机原单（930）的状态真源是工单行：终态要写回去，否则页头仍是「待响应」、底栏仍可操作，
-  //    刷新更是原样回滚。老工单四类的原单侧仍由升级台账 `escalations` 承载，不走这一支。
-  const origin = TICKETS.find((t) => t.no === input.fromNo);
-  if (isFlashTicket(origin)) {
-    const user = useUserStore();
-    useFlashStore().markEscalatedComplaint(
-      input.fromNo,
-      input.no,
-      { name: input.assignee || user.name, role: mapUserRole(user.roleKey) },
-      input.reason,
-    );
-  }
   return derived;
+}
+
+/** 原单是刷机单：评估决策「升级」那一档在刷机单上叫「关联投诉」（1013 A22） */
+export function isFlashAssessTarget(ticketNo?: string): boolean {
+  return !!ticketNo && isFlashTicket(TICKETS.find((t) => t.no === ticketNo));
+}
+
+/** 评估决策的界面词：刷机单上「升级」写作「关联投诉」，其余沿用 `decisionText` 口径 */
+export function assessDecisionLabel(decision: AssessDecision | '', flash: boolean): string {
+  if (!decision) return '';
+  if (flash && decision !== '不升级') return '关联投诉';
+  return decision === '不升级' ? '不升级' : '升级';
 }
 
 /**
@@ -280,19 +296,26 @@ export function useRiskReportAssess(opts?: { level?: RiskLevelFieldsCtl }) {
   const missAssessAdvice = computed(() => assessTried.value && !assessAdvice.value.trim());
   const assessValid = computed(() => !!assessDecision.value && !!assessAdvice.value.trim());
 
-  const assessAdviceLabel = computed(() =>
-    assessDecision.value === '升级' ? '升级说明' : '处理意见',
-  );
+  /** 评估对象是刷机单：「升级」那一档落为「关联投诉」（1013 A22） */
+  const assessFlash = computed(() => isFlashAssessTarget(assessTarget.value?.ticketNo));
+
+  const assessAdviceLabel = computed(() => {
+    if (assessDecision.value !== '升级') return '处理意见';
+    return assessFlash.value ? '关联说明' : '升级说明';
+  });
   const assessAdvicePlaceholder = computed(() => {
     switch (assessDecision.value) {
       case '不升级': return '写清为什么不必升级、原单建议怎么处理…';
-      case '升级': return '写清升级理由与后续处置安排…';
+      case '升级': return assessFlash.value ? '写清关联投诉的理由与后续处置安排…' : '写清升级理由与后续处置安排…';
       default: return '请先选择评估决策';
     }
   });
 
-  /** 弹窗主按钮：决策＝升级 →「确认升级」，未选或「不升级」→「提交结论」（三处评估弹窗一致） */
-  const assessOkText = computed(() => (assessDecision.value === '升级' ? '确认升级' : '提交结论'));
+  /** 弹窗主按钮：决策＝升级 →「确认升级」（刷机单「确认关联投诉」），未选或「不升级」→「提交结论」 */
+  const assessOkText = computed(() => {
+    if (assessDecision.value !== '升级') return '提交结论';
+    return assessFlash.value ? '确认关联投诉' : '确认升级';
+  });
 
   function nextEscalatedNo(): string {
     return nextEscalatedNoOf(reportStore.reports);
@@ -381,7 +404,9 @@ export function useRiskReportAssess(opts?: { level?: RiskLevelFieldsCtl }) {
     });
 
     assessOpen.value = false;
-    if (escalatedToNo) {
+    if (escalatedToNo && isFlashAssessTarget(target.ticketNo)) {
+      message.success(`已关联投诉单 ${escalatedToNo}`);
+    } else if (escalatedToNo) {
       message.success(`已升级，已派生投诉单 ${escalatedToNo}`);
     } else if (escalate) {
       // 基线 ※29：结论这条语义上的「接管 / 接手」整体作废，只说这个动作实际做了什么
@@ -402,6 +427,7 @@ export function useRiskReportAssess(opts?: { level?: RiskLevelFieldsCtl }) {
     assessAdviceLabel,
     assessAdvicePlaceholder,
     assessOkText,
+    assessFlash,
     escalateFields,
     showEscalateFields,
     openAssess,

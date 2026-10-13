@@ -1,15 +1,16 @@
 <script setup lang="ts">
 /**
- * 刷机单 · 「修改刷机信息并重新推送」与「修改刷机信息」两个弹窗（930 教育刷机单 PRD §5.6 / §5.8，M52 / M53 / M63 / M70 / M78–M80）。
- * 两者字段、「本次修改」列表同源，只差标题、主按钮与提交动作（由处理页经 `submitter` 交给刷机服务）。
+ * 刷机单 · 「修改刷机信息」弹窗（1013 A12 / B1 / B8，PRD §5.6 / §5.8，M52 / M53 / M63 / M70 / M78–M80）。
+ * 所有机型只有这一个入口；底部按钮按弹窗里**所选的产品**取值，改选产品随即切换：
+ * 自研机型（支持线上自助推送）为「取消 / 重新推送」，提交即推送（唯一的推送入口）；其他机型为「取消 / 保存」，只保存不推送。
  *
- * - 9 个字段按本单当前值预填；产品型号下拉只列启用机型；ROM版本 / MDM版本有 MDM 回填值时只读。
+ * - 9 个字段按本单当前值预填；产品名称下拉只列支持刷机的产品；ROM版本 / MDM版本有 MDM 回填值时只读。
  * - 提交先判必填（字段下方红字），其余拦截与校验结果由刷机服务返回，显示在按钮上方行内红字；
  *   不通过时弹窗不关、已填内容保留。
  */
 import { computed, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { EditOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons-vue';
+import { EditOutlined, PlusOutlined } from '@ant-design/icons-vue';
 import type { UploadFile } from 'ant-design-vue';
 import OpActionModal from './OpActionModal.vue';
 import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue';
@@ -21,11 +22,9 @@ import { snPlateDataUri } from '@/views/tickets/utils/flashSnPlate';
 
 const props = defineProps<{
   open: boolean;
-  /** repush ＝ 修改刷机信息并重新推送；edit ＝ 修改刷机信息（不推送） */
-  mode: 'repush' | 'edit';
   info: FlashInfo;
-  /** 提交：交给刷机服务，返回拦截 / 校验结论 */
-  submitter: (changes: FlashInfoChanges) => FlashActionResult;
+  /** 提交：交给刷机服务，返回拦截 / 校验结论。`push` ＝ 所选产品为自研机型，走重新推送 */
+  submitter: (changes: FlashInfoChanges, push: boolean) => FlashActionResult;
 }>();
 
 const emit = defineEmits<{
@@ -90,8 +89,8 @@ watch(
 const versionLocked = computed(() => props.info.versionBackfilled);
 
 /**
- * 产品型号下拉只列启用机型；本单原机型已停用时保留原值一项，标「已停用」且不可再选（M101 / PRD §5.8）：
- * 不改型号可直接保存，改型号只能选启用中的机型。
+ * 产品名称下拉只列支持刷机的产品；本单原产品已不支持刷机时保留原值一项，标「已停用」且不可再选（M101 / PRD §5.8）：
+ * 不改产品可直接保存，改产品只能选支持刷机的产品。
  */
 const modelOptions = computed(() => {
   const opts: { value: string; label: string; disabled?: boolean }[] = config.enabledModels().map((m) => ({ value: m.model, label: m.model }));
@@ -99,6 +98,9 @@ const modelOptions = computed(() => {
   if (origin && !config.isSupportedModel(origin)) opts.unshift({ value: origin, label: `${origin}（已停用）`, disabled: true });
   return opts;
 });
+/** 所选产品为自研机型（支持线上自助推送）：主按钮「重新推送」，否则「保存」（B8） */
+const pushable = computed(() => config.isSupportedModel(draft.productModel) && config.isSelfDeveloped(draft.productModel));
+
 const reasonOptions = computed(() => config.enabledReasons().map((r) => ({ value: r, label: r })));
 const schoolOptions = SCHOOL_LIBRARY.map((s) => ({ value: s.id, label: s.name }));
 
@@ -139,7 +141,7 @@ const dash = (s: string) => (s && s.trim() ? s.trim() : '—');
 const changeLines = computed<string[]>(() => {
   const o = original.value;
   const rows: [string, string, string][] = [
-    [L.productModel, o.productModel, draft.productModel],
+    [L.productName, o.productModel, draft.productModel],
     [L.sn, o.sn, draft.sn.trim().toUpperCase()],
     [L.studentAccount, o.studentAccount, draft.studentAccount.trim()],
     [L.studentName, o.studentName, draft.studentName.trim()],
@@ -156,7 +158,7 @@ const changeLines = computed<string[]>(() => {
 });
 
 const REQUIRED: { key: FieldKey; label: string; select: boolean }[] = [
-  { key: 'productModel', label: L.productModel, select: true },
+  { key: 'productModel', label: L.productName, select: true },
   { key: 'sn', label: L.sn, select: false },
   { key: 'studentAccount', label: L.studentAccount, select: false },
   { key: 'studentName', label: L.studentName, select: false },
@@ -189,7 +191,7 @@ function onSubmit() {
     romVersion: draft.romVersion.trim(),
     mdmVersion: draft.mdmVersion.trim(),
     snPhotos: [...draft.snPhotos],
-  });
+  }, pushable.value);
   if (!res.ok) {
     bottomTip.value = { text: res.message, inflightNo: res.inflightNo };
     return;
@@ -212,9 +214,9 @@ const inflightHref = computed(() => (tipParts.value?.no ? router.resolve(`/ticke
 <template>
   <OpActionModal
     :open="open"
-    :title="mode === 'repush' ? '修改刷机信息并重新推送' : '修改刷机信息'"
-    :icon="mode === 'repush' ? ReloadOutlined : EditOutlined"
-    :ok-text="mode === 'repush' ? '重新推送' : '保存修改'"
+    title="修改刷机信息"
+    :icon="EditOutlined"
+    :ok-text="pushable ? '重新推送' : '保存'"
     :width="760"
     @update:open="emit('update:open', $event)"
     @ok="onSubmit"
@@ -222,7 +224,7 @@ const inflightHref = computed(() => (tipParts.value?.no ? router.resolve(`/ticke
     <div class="fe-body">
       <div class="fe-grid">
         <div class="fe-field">
-          <label class="fe-label"><span class="req">*</span>{{ L.productModel }}</label>
+          <label class="fe-label"><span class="req">*</span>{{ L.productName }}</label>
           <div class="fe-control">
             <FormSelect
               :value="draft.productModel || undefined"

@@ -406,6 +406,15 @@ export function useTicketOperation() {
         base.createdAtFull = t.createdAt;
       }
       if (t.flash) applyFlashRow(base, t);
+      // 与刷机单弱关联的投诉单（1013 A21）：关联卡指回刷机单
+      const flashNo = t.type === '投诉' ? flash.flashNoLinkedTo(t.no) : undefined;
+      if (flashNo) {
+        const src = TICKETS.find((x) => x.no === flashNo);
+        base.linkedRecords = [
+          ...base.linkedRecords,
+          { no: flashNo, title: src?.title ?? flashNo, tag: '关联刷机单', meta: `${(t.createdAt ?? '').slice(5, 16)} 关联` },
+        ];
+      }
       if (t.problemDesc?.trim()) {
         base.demand = t.problemDesc.trim();
       }
@@ -472,9 +481,11 @@ export function useTicketOperation() {
     base.businessLine = '教育业务线';
     base.attachments = [];
     base.product.name = f.info.productModel;
+    if (t.productCategory) base.product.category = t.productCategory;
     base.product.sn = f.info.sn;
     base.product.tags = [];
-    base.product.issueTags = ['刷机申请', f.info.reason];
+    // 问题标签取工单行上的问题分类三级（1013 A5）
+    base.product.issueTags = [t.problemL1, t.problemL2, t.problemL3].filter((s): s is string => !!s?.trim());
     const phone = (t.customerPhone ?? '').replace(/^(\d{3})(\d{4})(\d{4})$/, '$1 $2 $3');
     base.customer = {
       name: t.customer,
@@ -570,6 +581,17 @@ export function useTicketOperation() {
     base.groupNames = t.groupNames;
     base.isFlash = isFlashTicket(t);
     base.flash = JSON.parse(JSON.stringify(t.flash)) as TicketFlash;
+    // 关联投诉（弱关联，1013 A21）：关联卡按刷机字段组上的投诉单号重建，两单各自流转
+    const linkedNos = t.flash?.state.linkedComplaintNos ?? [];
+    if (linkedNos.length) {
+      base.linkedRecords = [
+        ...base.linkedRecords.filter((r) => r.tag !== '关联投诉'),
+        ...linkedNos.map((no) => {
+          const c = TICKETS.find((x) => x.no === no);
+          return { no, title: c?.title ?? no, tag: '关联投诉', meta: `${(c?.createdAt ?? '').slice(5, 16)} 关联` };
+        }),
+      ];
+    }
     // 已升级派生走了的单：终态与只读态由 `t.escalatedToNo` 那一支判定（见上）。
     // 工单行的子状态还停在在办态时**不能拿它覆写回去** —— 那正是「已升级投诉」被写回
     // 「待响应」、底栏跟着放出来的由来；已写到终态的照常同步。

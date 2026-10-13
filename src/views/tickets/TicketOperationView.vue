@@ -25,8 +25,8 @@ import OpFlashInfoBlock from './components/operation/OpFlashInfoBlock.vue';
 import OpFlashInfoEditModal from './components/operation/OpFlashInfoEditModal.vue';
 import OpFlashEscalateModal from './components/operation/OpFlashEscalateModal.vue';
 import {
-  FLASH_RESULT_OFFLINE, FLASH_TIP_OFFLINE_TIME_REQUIRED, FLASH_TIP_RESULT_REQUIRED,
-  FLASH_POOLS, isFlashTicket, validateOfflineRegisteredAt, type FlashActor, type FlashEscalateCheck, type FlashResult,
+  FLASH_RESULT_ESCALATE_L2, FLASH_RESULT_OFFLINE, FLASH_TIP_OFFLINE_FORWARD, FLASH_TIP_RESULT_REQUIRED,
+  FLASH_POOLS, isFlashTicket, normalizeFlashResult, type FlashActor, type FlashResult,
 } from './types/flash';
 import { typeSampleKey } from '@/mock/ticketTypeSamples';
 import type { FlashActionResult, FlashInfoChanges } from '@/stores/flash';
@@ -64,13 +64,14 @@ import { buildChildTicketPrefill, buildReopenTicketPrefill } from './composables
 import {
   buildEscalatePrefill, buildEscalateVerdict, buildEscalatedTicket, escalateTargetLabel,
   isTicketTerminated, resolveEscalateOutcome, summarizeEscalateInput, type EscalateInput,
+  buildFlashLinkComplaintPrefill, flashLinkComplaintBlockTip,
 } from './composables/complaintEscalation';
 import {
   ESCALATE_VIA_HANDLER_REPORT_TIP, escalateComplaintBlockTip,
   resolveRiskBarForm, resolveRiskControlForm, canTagRiskOnTicketPage, NO_AFTERSALE_LINK_TIP,
 } from './composables/opActionRegistry';
 import {
-  flashEditInfoGate, flashEscalateComplaintGate, flashHeaderEscalateVisible, flashStageOf, resolveFlashView,
+  flashEditInfoGate, flashHeaderEscalateVisible, flashStageOf, resolveFlashView,
   FLASH_GATE_TIPS, type FlashView,
 } from './composables/flashGate';
 import { useFlashStore } from '@/stores/flash';
@@ -383,17 +384,19 @@ const flashView = computed<FlashView | null>(() => {
 });
 /** 表二的列 */
 const flashStage = computed(() => flashStageOf(d.value.status, !!d.value.delegateInfo));
-/** 「重新推送」渲染：本单产品型号为启用中的自研机型（非自研、已停用不渲染，M74） */
-const flashRepushShown = computed(() => {
-  const model = d.value.flash?.info.productModel ?? '';
-  return flashConfig.isSupportedModel(model) && flashConfig.isSelfDeveloped(model);
-});
 /** 刷机信息区块头「修改刷机信息」：null ＝ 不出 */
 const flashEditInfo = computed(() =>
   (flashView.value ? flashEditInfoGate(flashView.value, flashStage.value, isPrimaryHandler.value) : null),
 );
-/** 页头「升级投诉」子状态门控 */
-const flashEscalateGate = computed(() => (isFlash.value ? flashEscalateComplaintGate(flashStage.value) : null));
+/**
+ * 页头「关联投诉」门控（1013 A21 / B5）：弱关联，不受自动刷机中、调研中等子状态影响，只在终态置灰。
+ * 老工单不传，页头沿用「升级投诉」的判定。
+ */
+const flashLinkGate = computed(() => {
+  if (!isFlash.value) return null;
+  const tip = flashLinkComplaintBlockTip(d.value.status);
+  return tip ? { forbidden: true, tip } : { forbidden: false };
+});
 /** 逐 Tab 写权覆盖：一线处理人放开「工单处理」「联系记录」；待领取 / 只读查看各写 Tab 只读 */
 const flashTabWritable = computed<Partial<Record<ProcessTabKey, boolean>> | undefined>(() => {
   if (!flashView.value) return undefined;
@@ -424,27 +427,25 @@ function flashActor(): FlashActor {
   return { name: currentHandlerName(user.roleKey, user.name), role: mapUserRole(user.roleKey) };
 }
 
-/* ---- 刷机单三枚按钮的弹窗（重新推送 PRD §5.6、升级二线 §5.7、修改刷机信息 §5.8） ---- */
+/* ---- 修改刷机信息弹窗（PRD §5.6 / §5.8）与升级二线确认（§5.7） ---- */
 
 const flashInfoModalOpen = ref(false);
-const flashInfoModalMode = ref<'repush' | 'edit'>('repush');
 const flashEscalateOpen = ref(false);
 
-function onFlashRepush() {
-  flashInfoModalMode.value = 'repush';
-  flashInfoModalOpen.value = true;
-}
+/** 下送且处理结果＝升级二线：先出确认（1013 A18） */
 function onFlashEscalateL2() {
   flashEscalateOpen.value = true;
 }
 function onFlashEditInfo() {
-  flashInfoModalMode.value = 'edit';
   flashInfoModalOpen.value = true;
 }
 
-/** 两个刷机信息弹窗的提交：重推走 `repush`（判定 + 校验 + 推送），修改走 `saveFlashInfo`（只存不推） */
-function flashInfoSubmitter(changes: FlashInfoChanges): FlashActionResult {
-  return flashInfoModalMode.value === 'repush'
+/**
+ * 修改刷机信息弹窗的提交（1013 A12 / B1 / B8）：所选产品为自研机型 → 「重新推送」（判定 + 校验 + 推送，唯一的推送入口）；
+ * 其他机型 → 「保存」（只存不推）。
+ */
+function flashInfoSubmitter(changes: FlashInfoChanges, push: boolean): FlashActionResult {
+  return push
     ? flashStore.repush(d.value.no, flashActor(), changes)
     : flashStore.saveFlashInfo(d.value.no, flashActor(), changes);
 }
@@ -454,10 +455,18 @@ function onFlashInfoDone(res: FlashActionResult) {
   else message.success(res.message);
 }
 
-function onFlashEscalateSubmit(payload: { note: string; checks: FlashEscalateCheck[] }) {
-  const res = flashStore.escalateToL2(d.value.no, flashActor(), payload.note, payload.checks);
-  if (res.ok) message.success(res.message);
-  else message.warning(res.message);
+/** 升级二线确认后：进教育刷机处理组池，履历带最近一条处理记录（1013 A18） */
+function onFlashEscalateSubmit() {
+  // 最近一条处理记录：取处理记录正文的最后一行
+  const record = (form.value.processResult ?? '').trim().split('\n').filter((s) => s.trim()).pop();
+  const res = flashStore.escalateToL2(d.value.no, flashActor(), record);
+  if (res.ok) {
+    form.value = { ...form.value, flashResult: '' };
+    processBaseline = snapshotProcess();
+    message.success(res.message);
+  } else {
+    message.warning(res.message);
+  }
 }
 
 /**
@@ -489,24 +498,25 @@ const flashIsInitiator = computed(() => {
 /** 调研中本单有无下送发起人：自动刷机成功直进回访的单没有，撤回悬停「当前无可撤回的操作」（M99） */
 const flashHasForwarder = computed(() => !!d.value.flash?.state.forwardedBy);
 
-/** 刷机单下送必填校验（PRD §5.4）：空串＝通过 */
+/** 刷机单下送校验（PRD §5.4 / 1013 A15）：未选处理结果、「已线下登记」拦下；空串＝通过 */
 const flashForwardTip = computed(() => {
   if (!isFlash.value) return '';
   const f = form.value;
   if (!f.flashResult) return FLASH_TIP_RESULT_REQUIRED;
-  if (f.flashResult === FLASH_RESULT_OFFLINE) {
-    if (!f.flashOfflineAt) return FLASH_TIP_OFFLINE_TIME_REQUIRED;
-    return validateOfflineRegisteredAt(f.flashOfflineAt) ?? '';
-  }
+  if (f.flashResult === FLASH_RESULT_OFFLINE) return FLASH_TIP_OFFLINE_FORWARD;
   return '';
 });
+/** 处理结果＝升级二线（仅一线）：下送改走升级二线确认（1013 A18） */
+const flashForwardEscalate = computed(
+  () => isFlash.value && flashView.value === 'l1' && form.value.flashResult === FLASH_RESULT_ESCALATE_L2,
+);
 /** 下送确认主按钮：本单已产生过回访结论＝「下送并结案」（M58） */
 const flashForwardOkText = computed(() => (d.value.flash?.state.surveyConcluded ? '下送并结案' : '确认下送'));
 
 /** 处理表单刷机字段的字段下方提示（保存时判，改动即清） */
-const flashFormErrors = ref<{ flashResult?: string; flashOfflineAt?: string }>({});
+const flashFormErrors = ref<{ flashResult?: string }>({});
 watch(
-  () => [form.value.flashResult, form.value.flashOfflineAt],
+  () => form.value.flashResult,
   () => { flashFormErrors.value = {}; },
 );
 
@@ -1146,12 +1156,11 @@ const customerEntryLocked = computed(
  * - 新建补充：除工单运营 / 质检外都给（※21a 0826 放开）；催单：一线唯一
  */
 const headerRoleGate = computed(() => headerActionsByRole(user.roleKey));
-// 技术支持不涉及刷机单：查询中心打开刷机单只读查看，页头不出新建补充（M92 / M104）；
-// 刷机单已升级投诉 / 已升级外投不出任何催补按钮（M110，催单另由状态门控收掉）
+// 技术支持不涉及刷机单：查询中心打开刷机单只读查看，页头不出新建补充（M92 / M104）
 const canSupplement = computed(() => headerRoleGate.value.supplement
-  && !(isFlash.value && (user.roleKey === 'tech-support' || ['已升级投诉', '已升级外投'].includes(d.value.status))));
+  && !(isFlash.value && user.roleKey === 'tech-support'));
 const canDunning = computed(() => headerRoleGate.value.dunning);
-// 刷机单只读查看：二线只出新建补充，一线出催单 / 新建补充 / 升级投诉（M71 / M83）
+// 刷机单只读查看：二线只出新建补充，一线出催单 / 新建补充 / 关联投诉（M71 / M83）
 const canEscalateComplaint = computed(
   () => headerRoleGate.value.escalateComplaint
     && (!flashView.value || flashHeaderEscalateVisible(flashView.value, user.roleKey)),
@@ -1176,10 +1185,12 @@ const escalateReportFirstTip = computed(() => {
   return riskReportButtonShown.value ? tip : ESCALATE_VIA_HANDLER_REPORT_TIP;
 });
 const canLinkAftersale = computed(() => headerRoleGate.value.linkAftersale);
-// 刷机单不提供取消工单（M6）
+// 刷机单取消工单的角色与门控沿用咨询单（1013 B4）
 // 售后转回重派后仍「未认领」的回流单：一线坐席不展示取消（1025 口径定稿 §4-6a）
-const canCancelTicket = computed(() => headerRoleGate.value.cancelTicket && !isFlash.value
+const canCancelTicket = computed(() => headerRoleGate.value.cancelTicket
   && !(d.value.returnedFromAftersale && ticketUnclaimed.value));
+/** 刷机单「自动刷机中」取消工单置灰（PRD §5.5） */
+const cancelBlockedTip = computed(() => (isFlash.value && d.value.status === '自动刷机中' ? FLASH_GATE_TIPS.autoFlashing : undefined));
 
 /**
  * 底部流转操作栏隐藏：只读态，**或原单已是终态**——
@@ -1253,6 +1264,9 @@ function openRelation(rel: TicketRelation) {
 // —— 升级投诉：判定弹窗 → 建投诉新单 → 关原单 + 双向关联（《【815】关联投诉 PRD》）——
 const escalateModalOpen = ref(false);
 const escalateInput = ref<EscalateInput | null>(null);
+/** 建单弹窗正在为刷机单「关联投诉」建单：提交后走弱关联，不走升级投诉 */
+const flashLinkPending = ref(false);
+watch(createOpen, (v) => { if (!v) flashLinkPending.value = false; });
 
 /**
  * 升级投诉入口分流（PRD §4.2，判据＝**是否跨工单类型**）：
@@ -1336,50 +1350,22 @@ function finishEscalate(ticket: Ticket, targetLabel: string, processAfter?: bool
       ],
     });
   }
-  // 刷机单（930）：新单先进运行时工单库再 dispatch。建单页产出的只是个临时对象，
-  // 不落库的话点关联卡进新单号解析不到，页面会静默回退成演示单。老工单四类照旧不落。
-  if (isFlash.value && createPrefill.value?.mode === 'escalate') {
-    const derived = derivedTickets.deriveComplaint(
-      { fromNo: d.value.no, no: ticket.no, assignee: ticket.assignee ?? user.name, reason: note },
-      undefined,
-      {
-        title: ticket.title,
-        type: ticket.type,
-        channel: ticket.channel,
-        product: ticket.product,
-        priority: ticket.priority,
-        customer: ticket.customer,
-        vip: ticket.vip,
-        smartMarks: ticket.smartMarks,
-        closureMode: ticket.closureMode,
-        nodeStatus: ticket.nodeStatus,
-        nodeStep: ticket.nodeStep,
-        nodeTotal: ticket.nodeTotal,
-        slaText: ticket.slaText,
-        slaSub: ticket.slaSub,
-        slaState: ticket.slaState,
-        slaMinutes: ticket.slaMinutes,
-        tab: ticket.tab,
-        problemDesc: createPrefill.value?.desc?.trim()
-          || note.trim()
-          || `【升级投诉·原单 ${d.value.no}】${d.value.type} → ${targetLabel}`,
-      },
-    );
-    if (!derived) {
-      console.warn(`[TicketOperationView] 原单 ${d.value.no} 不在工单数据源中，升级投诉未落库`);
-    }
-  }
   addEscalatedComplaint(ticket, targetLabel, note);
   syncEscalatedRelatedCard(ticket, targetLabel);
   dispatch({ type: '升级投诉', data: { target: targetLabel, newNo: ticket.no, note } });
-  // 刷机单：终态写回工单行（子状态 + 停表 + 关联新单号），否则刷新即回滚
-  if (isFlash.value) flashStore.markEscalatedComplaint(d.value.no, ticket.no, flashActor(), note);
   escalateInput.value = null;
   if (!processAfter) processTabsRef.value?.switchTab('related');
 }
 
 function onTicketCreated(ticket: Ticket, processAfter?: boolean) {
-  if (createPrefill.value?.mode === 'child') addChildTicket(ticket);
+  // 刷机单「关联投诉」（1013 A21 / B5）：新投诉单与本单弱关联，本单状态不变
+  if (flashLinkPending.value) {
+    flashLinkPending.value = false;
+    const res = flashStore.linkComplaint(d.value.no, ticket, flashActor());
+    if (res.ok) message.success(res.message);
+    if (!processAfter) processTabsRef.value?.switchTab('related');
+  }
+  else if (createPrefill.value?.mode === 'child') addChildTicket(ticket);
   else if (createPrefill.value?.mode === 'reopen') addReopenTicket(ticket);
   // 分支 A：建单页提交即完成升级——关原单 + 双向关联 + 写履历
   else if (createPrefill.value?.mode === 'escalate') finishEscalate(ticket, '投诉', processAfter);
@@ -1456,9 +1442,8 @@ function isFeishuEscalate(payload: Record<string, unknown>): boolean {
 const BASE_PROCESS_FIELDS: { key: keyof ProcessFormDraft; label: string }[] = [
   { key: 'problemCause', label: '问题原因' },
   { key: 'processResult', label: '处理结果' },
-  // 刷机单处理表单（930 PRD §5.4）：处理结果下拉、线下登记时间；四类老工单恒为空，不产生差异
+  // 刷机单处理表单（PRD §5.4）：处理结果下拉；四类老工单恒为空，不产生差异
   { key: 'flashResult', label: '处理结果' },
-  { key: 'flashOfflineAt', label: '线下登记时间' },
   { key: 'serviceType', label: '服务类型' },
   { key: 'serviceMethod', label: '服务方式' },
   { key: 'conclusion', label: '问题解决结论' },
@@ -1497,13 +1482,13 @@ watch(ticketNo, () => {
   processBaseline = snapshotProcess();
   riskLevelBaseline = form.value.riskLevel;
 });
-// 刷机单：处理结果 / 线下登记时间按工单库回填表单（切单时），并以之为变更基线
+// 刷机单：处理结果按工单库回填表单（切单时），并以之为变更基线
 watch(
   [() => d.value.no, isFlash],
   () => {
     if (!isFlash.value) return;
     const st = d.value.flash?.state;
-    form.value = { ...form.value, flashResult: st?.result ?? '', flashOfflineAt: st?.offlineRegisteredAt ?? '' };
+    form.value = { ...form.value, flashResult: normalizeFlashResult(st?.result) };
     processBaseline = snapshotProcess();
   },
   { immediate: true },
@@ -1640,25 +1625,16 @@ function buildProcessLog() {
 }
 
 /**
- * 刷机单保存的附加动作（PRD §5.4 / §4.3）：先校验线下登记时间（字段下方提示），再交刷机服务落处理结果、
- * 线下登记与 SLA 暂停 / 恢复；首次保存或改了登记时间时，把系统追加的那一行并进「处理记录」。
- * 返回 false ＝ 拦下、不保存。
+ * 刷机单保存的附加动作（PRD §5.4 / 1013 A16）：交刷机服务落处理结果；改为「已线下登记」或
+ * 「已线下登记、已推送」时，把系统追加的那一行并进「处理记录」。返回 false ＝ 拦下、不保存。
  */
 function onFlashSave(): boolean {
   const f = form.value;
-  if (f.flashResult === FLASH_RESULT_OFFLINE) {
-    const tip = !f.flashOfflineAt ? FLASH_TIP_OFFLINE_TIME_REQUIRED : validateOfflineRegisteredAt(f.flashOfflineAt);
-    if (tip) {
-      flashFormErrors.value = { flashOfflineAt: tip };
-      return false;
-    }
-  }
   const res = flashStore.saveProcess(d.value.no, flashActor(), {
     result: (f.flashResult ?? '') as FlashResult | '',
-    offlineRegisteredAt: f.flashOfflineAt ?? '',
   });
   if (!res.ok) {
-    if (res.message) flashFormErrors.value = { flashOfflineAt: res.message };
+    if (res.message) message.warning(res.message);
     return false;
   }
   if (res.appendRecord) {
@@ -2301,6 +2277,11 @@ function formatCancelReason(reason: string, remark: string) {
 
 function onCancelSubmit(payload: { reason: string; remark: string }) {
   dispatch({ type: '取消工单', reason: formatCancelReason(payload.reason, payload.remark) });
+  // 刷机单（1013 B4）：子状态写回工单库、SLA 中止停表，刷新与工作台读到同一个状态
+  if (isFlash.value) {
+    flashStore.stopSla(d.value.no, true);
+    flashStore.syncStatus(d.value.no, d.value.status, { clearAssignee: false });
+  }
 }
 
 /**
@@ -2401,6 +2382,15 @@ function onHeaderAction(name: string) {
       }
       openEscalate();
       break;
+    case '关联投诉': // 刷机单（1013 A21 / B5）：打开新建投诉单，预填客户与产品，提交后与本单弱关联
+      if (flashLinkGate.value?.forbidden) {
+        message.warning(flashLinkGate.value.tip ?? '');
+        return;
+      }
+      createPrefill.value = buildFlashLinkComplaintPrefill(d.value);
+      flashLinkPending.value = true;
+      createOpen.value = true;
+      break;
     case '关联售后': // 投诉工单：独立动作（1025），打开售后建单弹窗，提交落 applyOpAction 的「关联售后」分支
       openLinkAftersale();
       break;
@@ -2487,7 +2477,9 @@ watch(
       :risk-control-tip="riskControlTip"
       :customer-entry-locked="customerEntryLocked"
       :superseded-by="supersededBy"
-      :escalate-gate="flashEscalateGate"
+      :escalate-gate="flashLinkGate"
+      :link-complaint="isFlash"
+      :cancel-blocked-tip="cancelBlockedTip"
       :risk-grade="titleRiskGrade"
       :risk-reporting="titleRiskReporting"
       @action="onHeaderAction"
@@ -2580,8 +2572,8 @@ watch(
         >
           <template v-if="isFlash && d.flash" #process-top>
             <OpFlashResultCard :flash="d.flash" />
-            <!-- 区块头「修改刷机信息」按钮（PRD §5.3）走 OpFlashInfoBlock 的 #actions 插槽，排在两条外链左侧 -->
-            <OpFlashInfoBlock :info="d.flash.info">
+            <!-- 区块头「修改刷机信息」按钮（PRD §5.3）走 OpFlashInfoBlock 的 #actions 插槽，排在外链左侧 -->
+            <OpFlashInfoBlock :info="d.flash.info" :product-category="d.product.category">
               <template v-if="flashEditInfo" #actions>
                 <button
                   type="button"
@@ -2641,13 +2633,12 @@ watch(
       :risk-forbidden-tip="riskForbiddenTip"
       :flash-view="flashView"
       :flash-stage="flashStage"
-      :flash-repush-shown="flashRepushShown"
       :flash-l1-repush-count="d.flash?.state.l1RepushCount ?? 0"
       :flash-is-initiator="flashIsInitiator"
       :flash-has-forwarder="flashHasForwarder"
       :flash-forward-tip="flashForwardTip"
+      :flash-forward-escalate="flashForwardEscalate"
       :flash-forward-ok-text="flashForwardOkText"
-      @flash-repush="onFlashRepush"
       @flash-escalate="onFlashEscalateL2"
       @claim="onFlashClaim"
       @action="onAction"
@@ -2725,7 +2716,6 @@ watch(
     <OpFlashInfoEditModal
       v-if="isFlash && d.flash"
       v-model:open="flashInfoModalOpen"
-      :mode="flashInfoModalMode"
       :info="d.flash.info"
       :submitter="flashInfoSubmitter"
       @done="onFlashInfoDone"
