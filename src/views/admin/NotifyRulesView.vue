@@ -36,7 +36,7 @@ import {
 } from '@/mock/notifyRules';
 
 const router = useRouter();
-const CHANNELS: NotifyChannel[] = ['IM', '短信', '邮件', '站内信'];
+const CHANNELS: NotifyChannel[] = ['IM', '短信', '邮件', '站内信', '容联云留言弹窗'];
 
 // 规则数据放 store：切走再回来，编辑结果仍在。对内与对客规则同一套编辑方式，不分入口
 const { rules } = storeToRefs(useNotifyRuleStore());
@@ -588,6 +588,7 @@ const ADDR_META: Record<NotifyChannel, { label: string; ph: string }> = {
   短信: { label: '手机号', ph: '填写接收短信的手机号' },
   邮件: { label: '邮箱', ph: '填写接收邮件的邮箱地址' },
   站内信: { label: '系统账号', ph: '填写接收站内信的系统账号' },
+  容联云留言弹窗: { label: '容联云坐席工号', ph: '填写接收留言弹窗的容联云坐席工号' },
 };
 function defaultAddr(ch: NotifyChannel) {
   // 默认发给测试人自己——最安全的默认值
@@ -1124,7 +1125,7 @@ function renderedBody(ch: NotifyChannel) {
         <section class="sec">
           <header class="sec-head">
             发送内容
-            <a-tooltip title="IM / 短信从消息中心选模板；邮件 / 站内信在本规则内撰写。短信签名由渠道拼接，勿写入正文。">
+            <a-tooltip title="IM / 短信从消息中心选模板；邮件 / 站内信 / 容联云留言弹窗在本规则内撰写。短信签名由渠道拼接，勿写入正文。">
               <QuestionCircleOutlined class="sec-help" />
             </a-tooltip>
           </header>

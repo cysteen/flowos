@@ -65,8 +65,8 @@ export interface EventField {
 }
 
 /* ---- 枚举字典：与项目既有字典同源，改一处即全局生效 ---- */
-/** 工单类型（含表扬，表扬不建单但用于抑制判定） */
-export const DICT_TICKET_TYPE = ['投诉', '建议', '商机', '咨询', '刷机', '表扬'] as const;
+/** 工单类型（含表扬，表扬不建单但用于抑制判定）。刷机单的类型是咨询，按「是否刷机单」区分 */
+export const DICT_TICKET_TYPE = ['投诉', '建议', '商机', '咨询', '表扬'] as const;
 /** 工单来源 */
 export const DICT_SOURCE = ['电话', 'IM', '内投渠道', '外投渠道', '客户服务小程序', '售后系统'] as const;
 /** 业务分类 */
@@ -125,7 +125,8 @@ export interface NotifyEvent {
 const BASE: EventField[] = [
   { key: 'ticketNo', label: '工单号', type: 'string', desc: '工单唯一编号，几乎所有模板都以它开头，便于收件人一眼定位是哪张单' },
   { key: 'title', label: '工单标题', type: 'string', desc: '建单时填写的问题概述' },
-  { key: 'ticketType', label: '工单类型', type: 'enum', enumValues: DICT_TICKET_TYPE, desc: '投诉 / 建议 / 商机 / 咨询 / 刷机 / 表扬。常用作条件，把不同类型分流到不同规则' },
+  { key: 'ticketType', label: '工单类型', type: 'enum', enumValues: DICT_TICKET_TYPE, desc: '投诉 / 建议 / 商机 / 咨询 / 表扬。常用作条件，把不同类型分流到不同规则' },
+  { key: 'isFlash', label: '是否刷机单', type: 'boolean', desc: '建单时写入的刷机单标识，刷机单的工单类型为咨询。需要把刷机单与普通咨询单分开通知时用它作条件' },
   { key: 'source', label: '工单来源', type: 'enum', enumValues: DICT_SOURCE, desc: '客户从哪个渠道来的。对客短信的抑制条件主要靠它' },
   { key: 'bizType', label: '业务分类', type: 'enum', enumValues: DICT_BIZ_TYPE, desc: '工单归属的业务线。常用作条件，按业务线区分通知策略' },
   { key: 'productName', label: '产品名称', type: 'string', desc: '工单关联的产品型号，来自产品主数据。模板中常用于区分不同产品的通知文案' },
@@ -209,7 +210,7 @@ export const NOTIFY_EVENTS: NotifyEvent[] = [
       { key: 'pooledAt', label: '进池时间', type: 'datetime', templateOnly: true, desc: '工单落入工单池的时刻' },
       { key: 'loginUrl', label: '系统登陆地址', type: 'string', templateOnly: true, desc: '客服系统登陆地址，写进正文供收件人登陆领取' },
     ],
-    remark: '新工单首次进入分组工单池待领取时发出，每单一条；已有工单再次进池不发出。' },
+    remark: '新工单首次进入分组工单池待领取时发出，每单一条；已有工单再次进池不发出。刷机单每次到组（进入一线刷机池、教育刷机处理组池）都发出。' },
   { code: 'ticket.supplement', name: '新建补充', source: 'non-dispatch',
     payload: [...BASE, { key: 'supplementType', label: '补充分类', type: 'enum', enumValues: DICT_SUPPLEMENT_TYPE, desc: '客户补充了什么性质的信息。「取消服务」这类需处理人立刻知晓，可用它作条件区分紧急度' }, { key: 'supplementContent', label: '补充内容', type: 'string', desc: '客户补充的具体信息' }],
     remark: '客户补充工单信息时发出。' },
@@ -352,12 +353,12 @@ export function filterFixedAssignOption(
 
 /* ============================ 通知规则 ============================ */
 
-export type NotifyChannel = 'IM' | '短信' | '邮件' | '站内信';
+export type NotifyChannel = 'IM' | '短信' | '邮件' | '站内信' | '容联云留言弹窗';
 
 /** 走模板库的通道：规则里只能选模板，内容去「消息中心」改 */
 export const TEMPLATE_CHANNELS: NotifyChannel[] = ['IM', '短信'];
 /** 走内联编辑器的通道：正文写在规则里 */
-export const EDITOR_CHANNELS: NotifyChannel[] = ['邮件', '站内信'];
+export const EDITOR_CHANNELS: NotifyChannel[] = ['邮件', '站内信', '容联云留言弹窗'];
 export const isTemplateChannel = (c: NotifyChannel) => TEMPLATE_CHANNELS.includes(c);
 export type CondOp = 'eq' | 'ne' | 'in' | 'nin' | 'gt' | 'gte' | 'lt' | 'lte' | 'every';
 
@@ -495,9 +496,20 @@ export const NOTIFY_RULES: NotifyRule[] = [
       { field: 'ticketType', op: 'ne', value: ['表扬'] },
     ],
     recipients: [{ type: 'customer' }], channels: ['短信'], templates: { 短信: 'SMS_WO_ACCEPTED' }, contents: {}, enabled: true },
-  // 【1025】新单首次进入工单池待领取 → 提醒该分组全员领取（不加条件，5 种新单来源全发）
+  // 【1025】新单首次进入工单池待领取 → 提醒该分组全员领取（5 种新单来源全发；刷机单走 R19）
   { id: 'R18', name: '工单池待领取提醒', event: 'ticket.pooled', audience: 'internal',
-    conditions: [], recipients: [{ type: 'groupMembers' }], channels: ['IM'], templates: { IM: 'IM_WO_POOLED' }, contents: {}, enabled: true },
+    conditions: [{ field: 'isFlash', op: 'eq', value: ['否'] }],
+    recipients: [{ type: 'groupMembers' }], channels: ['IM'], templates: { IM: 'IM_WO_POOLED' }, contents: {}, enabled: true },
+  // 【1130】刷机单到组 → 通知全组（1013 A27）：容联云留言弹窗；可另勾 IM（i讯飞消息）
+  { id: 'R19', name: '刷机单到组提醒', event: 'ticket.pooled', audience: 'internal',
+    conditions: [{ field: 'isFlash', op: 'eq', value: ['是'] }],
+    recipients: [{ type: 'groupMembers' }], channels: ['容联云留言弹窗'], templates: {},
+    contents: {
+      容联云留言弹窗: {
+        body: '${groupName}来了一条刷机单（${ticketNo}），请尽快领取处理。',
+      },
+    },
+    enabled: true },
   { id: 'R03', name: '组内来单（调剂）', event: 'ticket.transfer', audience: 'internal',
     conditions: [], recipients: [{ type: 'targetUser' }], channels: ['IM'], templates: { IM: 'IM_WO_DISPATCH' }, contents: {}, enabled: true },
   { id: 'R05', name: '委派提醒', event: 'ticket.delegate', audience: 'internal',
@@ -726,7 +738,7 @@ export const TEST_PRESETS: TestPreset[] = [
   {
     id: 'P1', label: '典型对内场景 · 热线来源 · 咨询单',
     data: {
-      ticketNo: 'IFLYZX-20260728-00004', title: '扫地机器人无法开机', ticketType: '咨询',
+      ticketNo: 'IFLYZX-20260728-00004', title: '扫地机器人无法开机', ticketType: '咨询', isFlash: '否',
       source: '电话', bizType: '智能硬件', productName: '扫地机器人R2', customerName: '孙权', customerPhone: '138****2046',
       assigneeId: '林坐席', creatorId: '张三',
       responseDueTime: '2026-07-28 16:30',
@@ -755,7 +767,7 @@ export const TEST_PRESETS: TestPreset[] = [
   {
     id: 'P2', label: '对客抑制场景 · 内投渠道 · 投诉单',
     data: {
-      ticketNo: 'IFLYZX-20260728-00005', title: '投诉客服响应慢', ticketType: '投诉',
+      ticketNo: 'IFLYZX-20260728-00005', title: '投诉客服响应慢', ticketType: '投诉', isFlash: '否',
       source: '内投渠道', bizType: '教育', productName: '学习机 T20', customerName: '刘备', customerPhone: '139****8821',
       assigneeId: '陈坐席', creatorId: '张三',
       responseDueTime: '2026-07-28 15:00',
@@ -766,12 +778,22 @@ export const TEST_PRESETS: TestPreset[] = [
   {
     id: 'P3', label: '对客抑制场景 · 无线音乐业务 · 建议单',
     data: {
-      ticketNo: 'IFLYZX-20260728-00006', title: '希望增加歌单导入', ticketType: '建议',
+      ticketNo: 'IFLYZX-20260728-00006', title: '希望增加歌单导入', ticketType: '建议', isFlash: '否',
       source: '客户服务小程序', bizType: '无线音乐', productName: '讯飞智能耳机', customerName: '曹操', customerPhone: '137****5510',
       assigneeId: '王坐席', creatorId: '王组长', isSuggestion: '是',
       responseDueTime: '2026-07-29 10:00',
       dispatchFrom: '建单',
       deepLink: 'https://xfkf.iflytek.com/t/90003',
+    },
+  },
+  {
+    id: 'P4', label: '刷机单到组 · 一线升级进教育刷机处理组',
+    data: {
+      ticketNo: 'IFLYZX-20260915-00011', title: '刷机 · 讯飞智慧课堂学生平板 X3 Pro · 自助刷机 · 客户服务小程序', ticketType: '咨询', isFlash: '是',
+      source: '客户服务小程序', bizType: '教育', productName: '讯飞智慧课堂学生平板 X3 Pro', customerName: '沈建', customerPhone: '135****6419',
+      creatorId: '沈建', dispatchFrom: '建单',
+      groupName: '教育刷机处理组', priority: '普通', pooledAt: '2026-09-15 08:05', loginUrl: LOGIN_URL,
+      deepLink: 'https://xfkf.iflytek.com/t/90004',
     },
   },
 ];
@@ -790,6 +812,8 @@ export const SUPERIOR_CHAIN: Record<string, string[]> = {
 export const GROUP_MEMBERS: Record<string, { leaders: string[]; members: string[] }> = {
   受理一组: { leaders: ['王组长', '李组长', '张组长'], members: ['王坐席', '林坐席', '陈坐席', '张敏', '李昊', '孙杰'] },
   受理二组: { leaders: ['林组长', '陈组长'], members: ['赵坐席', '周坐席', '吴坐席'] },
+  一线客服组: { leaders: ['王芳'], members: ['刘一线', '陈静', '吴婷'] },
+  教育刷机处理组: { leaders: ['王组长'], members: ['王坐席', '张敏'] },
 };
 
 /* ============================ 发送评估日志（Skip Reason） ============================ */
