@@ -2,7 +2,7 @@
  * 教育刷机单 · 本地缓存（930 教育刷机单）。写法参照 `stores/riskShared.ts`：**保质期 + 版本闸**。
  *
  * - 保质期：超过 `FLASH_STALE_MS` 的缓存整份丢弃、回到种子（种子里的推送时刻按打开页面时刻倒推，
- *   隔夜续用会让「自动刷机中」「线下登记暂停」这些与时刻相关的样本全部失真）。
+ *   隔夜续用会让「自动刷机中」「调研超时」这些与时刻相关的样本全部失真）。
  * - 版本闸：缓存里的 `v` 与 `FLASH_CACHE_VERSION` 不一致即丢弃。**改了种子或数据形状就升版本号**。
  *
  * 🔴 **键名全部登记在 `FLASH_LS_KEYS`**，走查清库时按它逐个删除（或调 `clearFlashCache()`），
@@ -22,7 +22,7 @@ export const FLASH_LS_KEYS = {
 export type FlashLsKey = (typeof FLASH_LS_KEYS)[keyof typeof FLASH_LS_KEYS];
 
 /** 缓存版本。种子或数据形状变更时 +1 */
-export const FLASH_CACHE_VERSION = 7;
+export const FLASH_CACHE_VERSION = 8;
 
 /** 保质期：12 小时（与风险两条线 `RISK_STALE_MS` 同口径） */
 export const FLASH_STALE_MS = 12 * 60 * 60 * 1000;
