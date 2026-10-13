@@ -1243,12 +1243,20 @@ export const useFlashStore = defineStore('flash', () => {
    * 通用动作侧的 SLA 记账入口（PRD §4.3）。处理页那几条沿用现有实现的动作
    * （提交审核冻结 / 驳回续走 / 解除挂起 / 结案关闭强结取消）改的是页面上的钟对象；
    * 刷机单的钟在账本里，由这三个入口落回账本，页头与列表随之一起变。
+   *
+   * 🔴 通知处理页重读（`bump`）**推迟到本轮动作结束之后**：这三个入口是在通用动作执行到一半时调的
+   * （子状态已改、尚未经 `syncStatus` 落回工单库），此时立刻 bump，处理页会按工单库里的旧子状态把
+   * 刚改的子状态覆写回去（技术支持「退回」后仍停在「已升级技术支持」即由此而来）。
    */
+  function bumpAfterAction(ticketNo: string) {
+    queueMicrotask(() => bump(ticketNo));
+  }
+
   function holdSla(ticketNo: string, reason: string): void {
     const r = rowOf(ticketNo);
     if (!r?.flash) return;
     pauseClock(r, Date.now(), reason);
-    bump(ticketNo);
+    bumpAfterAction(ticketNo);
     persist();
   }
 
@@ -1256,7 +1264,7 @@ export const useFlashStore = defineStore('flash', () => {
     const r = rowOf(ticketNo);
     if (!r?.flash) return;
     resumeClock(r, Date.now());
-    bump(ticketNo);
+    bumpAfterAction(ticketNo);
     persist();
   }
 
@@ -1264,7 +1272,7 @@ export const useFlashStore = defineStore('flash', () => {
     const r = rowOf(ticketNo);
     if (!r?.flash) return;
     stopClock(r, Date.now(), voidStop);
-    bump(ticketNo);
+    bumpAfterAction(ticketNo);
     persist();
   }
 
