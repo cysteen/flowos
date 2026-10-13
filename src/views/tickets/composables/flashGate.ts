@@ -25,9 +25,11 @@ import { NO_AFTERSALE_TIP } from './opActionRegistry';
  * - `claim` 池中未认领、当前角色可领取（一线坐席 × 一线刷机池、二线专员 × 教育刷机处理组池）：只出领取入口；
  * - `readonly` 只读查看：数据范围外的单（他人名下、其他池、无处理人的自动刷机中 / 调研中、本人建的单等），
  *   以及不可领取角色打开的未认领单；
- * - `other` 客诉专员：底栏只出「风险评估」形态（PRD §5.5「其他」行）。
+ * - `other` 客诉专员：底栏只出「风险评估」形态（PRD §5.5「其他」行）；
+ * - `tech` 技术支持接手二线「升级 · 三线技术支持」的单（子状态「已升级技术支持」）：视图与动作沿用咨询单，
+ *   可处理、可退回；其余刷机单对技术支持只读。
  */
-export type FlashView = 'l1' | 'l2' | 'claim' | 'readonly' | 'other';
+export type FlashView = 'l1' | 'l2' | 'claim' | 'readonly' | 'other' | 'tech';
 
 const FLASH_ADMIN_ROLES = new Set(['system-admin', 'ops-admin', 'tenant-admin']);
 
@@ -67,6 +69,9 @@ export function resolveFlashView(i: FlashViewInput): FlashView {
       return 'readonly';
     case 'complaint-handler':
       return 'other';
+    case 'tech-support':
+      // 只有升级到技术支持组的单放开（1013 B2：二线升级与咨询单一致）
+      return i.status === '已升级技术支持' ? 'tech' : 'readonly';
     default:
       // 管理员全租户：未认领单不出流转动作（X26），其余走二线视角
       if (FLASH_ADMIN_ROLES.has(i.roleKey)) return i.status === '未认领' ? 'readonly' : 'l2';
@@ -231,14 +236,14 @@ export function flashEditInfoGate(view: FlashView, stage: FlashStage, isHandler:
  * - 只读查看、待领取、其他视角不出任何行内操作（领取只在池页签，池页签不走本函数）；
  * - 「退回」「调剂」「挂起」刷机单一律不在行内出：刷机单的流转动作统一在工单处理页办理，
  *   经刷机服务写履历、同步子状态（M117）；
- * - 进处理页类动作（处理 / 详情 / 审核 / 受理 / 恢复）在一线、二线视角保留。
+ * - 进处理页类动作（处理 / 详情 / 审核 / 受理 / 恢复）在一线、二线视角与技术支持接手的升级单上保留。
  */
 export function flashListRowActions<T extends { label: string }>(
   base: readonly T[],
   i: FlashViewInput,
 ): T[] {
   const view = resolveFlashView(i);
-  if (view !== 'l1' && view !== 'l2') return [];
+  if (view !== 'l1' && view !== 'l2' && view !== 'tech') return [];
   return base.filter((a) => a.label !== '退回' && a.label !== '调剂' && a.label !== '挂起');
 }
 

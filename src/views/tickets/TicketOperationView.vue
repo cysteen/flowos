@@ -1156,9 +1156,9 @@ const customerEntryLocked = computed(
  * - 新建补充：除工单运营 / 质检外都给（※21a 0826 放开）；催单：一线唯一
  */
 const headerRoleGate = computed(() => headerActionsByRole(user.roleKey));
-// 技术支持不涉及刷机单：查询中心打开刷机单只读查看，页头不出新建补充（M92 / M104）
+// 技术支持只接手升级到本组的刷机单（沿用咨询单）；其余刷机单只读查看，页头不出新建补充（M92 / M104）
 const canSupplement = computed(() => headerRoleGate.value.supplement
-  && !(isFlash.value && user.roleKey === 'tech-support'));
+  && !(isFlash.value && user.roleKey === 'tech-support' && flashView.value !== 'tech'));
 const canDunning = computed(() => headerRoleGate.value.dunning);
 // 刷机单只读查看：二线只出新建补充，一线出催单 / 新建补充 / 关联投诉（M71 / M83）
 const canEscalateComplaint = computed(
