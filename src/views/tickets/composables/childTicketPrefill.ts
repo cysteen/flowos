@@ -17,8 +17,6 @@ const CHILD_FORM_TYPE_HINT: Record<string, CreateFormTicketType> = {
   建议: '咨询',
   商机: '咨询',
   咨询: '咨询',
-  // 刷机单的子单多为用户就同一台设备另提的咨询（930 教育刷机单）
-  刷机: '咨询',
 };
 
 function mapPriority(p: string): Priority {

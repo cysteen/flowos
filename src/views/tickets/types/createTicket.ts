@@ -1,12 +1,13 @@
 import { PRIORITY_LABEL } from '@/views/tickets/types/ticket';
 import type { Channel, ClosureMode, Priority, TicketType } from '@/views/tickets/types/ticket';
 import type { RoleKey } from '@/config/roles';
+import { FLASH_MODEL_SEED } from '@/mock/flash/models';
 
 /**
  * 新建弹窗工单类型（对齐 .pen V6xQCz 等画板）。
- * 五类（含刷机，见 930 教育刷机单 D1）：刷机是独立工单类型，常量与字段组见 `types/flash.ts`。
+ * 四类。刷机单的工单类型是咨询，另带「刷机单」标识（1013 A1），常量与字段组见 `types/flash.ts`。
  */
-export type CreateFormTicketType = '投诉' | '建议' | '商机' | '咨询' | '刷机';
+export type CreateFormTicketType = '投诉' | '建议' | '商机' | '咨询';
 
 export type BusinessType =
   | '无线音乐'
@@ -223,11 +224,10 @@ export interface CreateTicketFormState {
 
 /**
  * 新建工单 · 「刷机信息」卡表单（930 教育刷机单 PRD §2.2 / §2.4）。
- * 字段名、枚举与判定一律取 `types/flash.ts` 与 `stores/flash.ts`；联系手机号取客户信息区，不在本卡。
+ * 字段名、枚举与判定一律取 `types/flash.ts` 与 `stores/flash.ts`；联系手机号取客户信息区，不在本卡；
+ * 产品取「产品问题」卡的产品分类 + 产品名称（1013 A4），不在本卡。
  */
 export interface CreateTicketFlashForm {
-  /** 产品型号（后台「支持刷机机型」启用项） */
-  productModel: string;
   /** 设备SN */
   sn: string;
   /** 学生账号 */
@@ -247,11 +247,10 @@ export interface CreateTicketFlashForm {
 }
 
 /** 「刷机信息」卡里参与必填提示的字段 */
-export type CreateTicketFlashField = 'productModel' | 'sn' | 'studentAccount' | 'studentName' | 'schoolId' | 'reason';
+export type CreateTicketFlashField = 'sn' | 'studentAccount' | 'studentName' | 'schoolId' | 'reason';
 
 export function defaultCreateTicketFlashForm(): CreateTicketFlashForm {
   return {
-    productModel: '',
     sn: '',
     studentAccount: '',
     studentName: '',
@@ -275,12 +274,13 @@ export const BUSINESS_TYPES: BusinessType[] = [
   '政法',
   '其他',
 ];
-export const CREATE_TICKET_TYPES: CreateFormTicketType[] = ['投诉', '建议', '商机', '咨询', '刷机'];
+export const CREATE_TICKET_TYPES: CreateFormTicketType[] = ['投诉', '建议', '商机', '咨询'];
 
 export const PRODUCT_CATEGORIES = ['智能硬件', '学习硬件', '软件服务'];
 export const PRODUCT_NAMES: Record<string, string[]> = {
   智能硬件: ['学习机 T20', '智能音箱 X1', '扫地机器人 R2'],
-  学习硬件: ['学习机 T20', '学习机 X3 Pro'],
+  // 学习硬件含智慧课堂学生平板（产品管理「是否支持刷机」的产品，1013 A4 / N1）
+  学习硬件: ['学习机 T20', '学习机 X3 Pro', ...FLASH_MODEL_SEED.map((m) => m.model)],
   软件服务: ['智学网会员', '讯飞听见'],
 };
 
@@ -288,6 +288,8 @@ export const PROBLEM_TREE: Record<string, Record<string, string[]>> = {
   功能异常: { 播放问题: ['在线播放', '无法播放'], 触控问题: ['触摸失灵', '误触'] },
   设备故障: { 无法开机: ['黑屏', '无响应'], 网络: ['WiFi 连不上', '蓝牙断连'] },
   账号问题: { 登录: ['验证码失败', '密码错误'], 权益: ['会员失效', '订单未同步'] },
+  // 售后 → 服务申请 → 自助刷机 / 刷原生系统：问题分类「是否刷机」默认开启的两项（1013 A5 / N2）
+  售后: { 服务申请: ['维修请求', '自助刷机', '刷原生系统'], 政策咨询: ['退换货政策'] },
 };
 
 /** 建单下拉按 P3 → P0 倒序：默认落在最低档，高优先级需坐席主动选 */

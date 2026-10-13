@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isFlashTicket } from '@/views/tickets/types/flash';
 import { computed } from 'vue';
 import { RightOutlined } from '@ant-design/icons-vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
@@ -19,7 +20,7 @@ const complaintPlatforms = computed(
 
 /** 刷机只读块：产品型号 / 设备SN / 学生账号 / 学校名称 / 刷机原因 / 建单入口 */
 const flashRows = computed(() => {
-  const f = props.detail.type === '刷机' ? props.detail.flash : undefined;
+  const f = isFlashTicket(props.detail) ? props.detail.flash : undefined;
   if (!f) return [];
   const L = FLASH_FIELD_LABELS;
   const val = (s?: string) => (s && s.trim() ? s : '—');

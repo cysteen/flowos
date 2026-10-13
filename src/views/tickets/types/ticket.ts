@@ -3,7 +3,7 @@
 
 import type { BusinessType, CreateFormTicketType, TicketSource } from '@/views/tickets/types/createTicket';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
-import { FLASH_POOLS, FLASH_TICKET_TYPE, type TicketFlash } from '@/views/tickets/types/flash';
+import { FLASH_POOLS, isFlashTicket, type TicketFlash } from '@/views/tickets/types/flash';
 import { readSla, slaStateOf } from '@/views/tickets/utils/slaClock';
 
 /**
@@ -678,7 +678,13 @@ export interface Ticket {
    */
   escalatedToNo?: string;
   /**
-   * 刷机单字段组（仅 `type === '刷机'` 有值，930 教育刷机单）：刷机信息 + 自动刷机状态 + 推送记录。
+   * 「刷机单」标识（1013 A1）：刷机单的工单类型是咨询，靠本标识区分。
+   * 建单时由刷机服务写入（产品支持刷机 ∧ 问题分类是否刷机），此后不可修改。
+   * 读取一律走 `isFlashTicket(t)`（types/flash.ts），不要再按类型 / 单号 / 标题判断。
+   */
+  isFlash?: boolean;
+  /**
+   * 刷机单字段组（仅刷机单有值，见 `isFlash`）：刷机信息 + 自动刷机状态 + 推送记录。
    * 列表与处理页读同一份；写口只有刷机服务 `stores/flash.ts`。
    */
   flash?: TicketFlash;
@@ -741,9 +747,10 @@ export const TYPE_COLOR: Record<TicketType, string> = {
   建议: '#10B981',
   商机: '#F59E0B',
   咨询: '#1A6FFF',
-  // 刷机（930 教育刷机单）：靛紫，与投诉红 / 建议绿 / 商机橙 / 咨询蓝拉开
-  刷机: '#7C3AED',
 };
+
+/** 「刷机」标识色（1013 A1：刷机单类型徽章为「咨询」，旁边另挂「刷机」标识） */
+export const FLASH_MARK_COLOR = '#7C3AED';
 
 export const SMART_MARK_COLOR: Record<SmartMark, string> = {
   升级: '#EF4444',
@@ -1068,14 +1075,14 @@ export function visiblePoolGroupsFor(roleKey: string): PoolGroupMeta[] {
  * 某张单在「工单池 / 催补待回」里适用的可见分组：
  * 刷机单去掉一线刷机池（它只在一线坐席的「刷机池」页签里出现，二线专员 / 二线班组长都看不到，M72）。
  */
-export function poolGroupIdsForTicket(t: Pick<Ticket, 'type'>, groupIds: string[]): string[] {
-  return t.type === '刷机' ? groupIds.filter((id) => id !== FLASH_L1_GROUP_ID) : groupIds;
+export function poolGroupIdsForTicket(t: Pick<Ticket, 'isFlash'>, groupIds: string[]): string[] {
+  return isFlashTicket(t) ? groupIds.filter((id) => id !== FLASH_L1_GROUP_ID) : groupIds;
 }
 
 /** 一线刷机池（未认领）：一线坐席「刷机池」页签的数据域（§9.2） */
 export function inFlashL1PoolScope(t: Ticket): boolean {
   return (
-    t.type === '刷机'
+    isFlashTicket(t)
     && t.flash?.state.pool === 'l1'
     && t.nodeStatus === '未认领'
     && t.assignee === null
@@ -1091,7 +1098,7 @@ const FLASH_MINE_CREATOR_ROLES = new Set(['agent-l1', 'agent-l2']);
  * `creatorName` 由调用方按刷机履历取（建单事件的操作人）。
  */
 export function inFlashMineScope(t: Ticket, roleKey: string, handler: string, creatorName?: string): boolean {
-  if (t.type !== '刷机' || t.archived || t.isDraft) return false;
+  if (!isFlashTicket(t) || t.archived || t.isDraft) return false;
   if (t.tab === 'mine' && t.assignee === handler) return true;
   return FLASH_MINE_CREATOR_ROLES.has(roleKey) && !!creatorName && creatorName === handler;
 }
@@ -1101,7 +1108,7 @@ export function resolveTicketGroupNames(t: Ticket): string[] {
   if (t.groupNames?.length) return t.groupNames;
   // 930 教育刷机单 §4.2：刷机单的分组取本单归属刷机池的组名，不按「业务线＋工单类型」兜底；
   // 未进池的单（首推「自动刷机中」、自动刷机成功直进「调研中」）归一线刷机池＝一线客服组。
-  if (t.type === FLASH_TICKET_TYPE) {
+  if (isFlashTicket(t)) {
     return [FLASH_POOLS[t.flash?.state.pool ?? 'l1'].groupName];
   }
   const names: string[] = [];
@@ -1112,7 +1119,6 @@ export function resolveTicketGroupNames(t: Ticket): string[] {
       投诉: '投诉',
       建议: '建议',
       商机: '商机',
-      刷机: '刷机',
     };
     names.push(`${biz}${typeSuffix[t.type] ?? t.type}`);
   }
@@ -1586,7 +1592,7 @@ export function rowActions(t: Ticket): { label: string; primary?: boolean }[] {
  * 老四类一字不动，继续读工单行上的 `slaState`。
  */
 export function matchSlaChip(t: Ticket, key: 'soon' | 'overdue'): boolean {
-  if (t.type === '刷机') {
+  if (isFlashTicket(t)) {
     if (!readSla(t)) return false;
     return slaSortKey(t).group === (key === 'overdue' ? 0 : 1);
   }

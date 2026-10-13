@@ -1,3 +1,4 @@
+import { isFlashTicket } from '@/views/tickets/types/flash';
 import { computed, ref } from 'vue';
 import { buildAiSuggestions } from '@/mock/aiSuggestions';
 import { TICKETS } from '@/mock/tickets';
@@ -98,11 +99,11 @@ export function useTicketWorkbench() {
    * 一线坐席 / 二线专员的刷机单按本人已领 + 本人建取（§9.4 / M71），其余角色的刷机单沿用老口径。
    */
   function inMineTabScope(t: Ticket): boolean {
-    if (t.type === '刷机' && (user.roleKey === 'agent-l1' || user.roleKey === 'agent-l2')) {
+    if (isFlashTicket(t) && (user.roleKey === 'agent-l1' || user.roleKey === 'agent-l2')) {
       return inFlashMineScope(t, user.roleKey, flashHandler.value, flash.creatorNameOf(t.no));
     }
     // 其余角色的刷机单只按「处理人为本人」取，不沿用老四类的演示处理人（技术支持不涉及刷机单，§9.4 / R113）
-    if (t.type === '刷机') return inFlashMineScope(t, user.roleKey, flashHandler.value);
+    if (isFlashTicket(t)) return inFlashMineScope(t, user.roleKey, flashHandler.value);
     return inMineTaskScope(t, WORKBENCH_HANDLER);
   }
 
@@ -423,7 +424,7 @@ export function useTicketWorkbench() {
   /** 领取本组工单池中的工单 → 转入我的任务 */
   function claimTicket(id: string): boolean {
     const t = all.value.find((x) => x.id === id);
-    if (t?.type === '刷机') return claimFlashTicket(id).ok;
+    if (isFlashTicket(t)) return claimFlashTicket(id).ok;
     if (!t || t.tab !== 'pool' || t.assignee !== null) return false;
     // 售后转回重派的回流单：直落「处理中」、首响不重计（1025 D10，只对这条链路开例外）
     const taken = takeOverReturnedTicket(t, {
@@ -492,7 +493,7 @@ export function useTicketWorkbench() {
     if (from === me) return { ok: true, from };
     const at = nowMinuteStamp();
     if (from === null) {
-      if (t.type === '刷机') return { ok: claimFlashTicket(id).ok, from };
+      if (isFlashTicket(t)) return { ok: claimFlashTicket(id).ok, from };
       const taken = takeOverReturnedTicket(t, {
         assignee: me, how: '领取', operator: me,
         operatorRole: mapUserRole(user.roleKey), at,

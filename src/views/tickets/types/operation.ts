@@ -625,7 +625,6 @@ const SAME_TYPE_STAT_LABEL: Record<string, string> = {
   建议: '建议单',
   商机: '商机单',
   咨询: '咨询单',
-  刷机: '刷机单',
 };
 
 export function insightSameTypeLabel(ticketType: string): string {

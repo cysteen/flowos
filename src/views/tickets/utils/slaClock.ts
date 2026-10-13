@@ -14,7 +14,7 @@
 
 import type { SlaClock } from '@/mock/ticketDetail';
 import type { FlashState, TicketFlash } from '@/views/tickets/types/flash';
-import { parseFlashStamp } from '@/views/tickets/types/flash';
+import { isFlashTicket, parseFlashStamp } from '@/views/tickets/types/flash';
 import type { SlaState, Ticket } from '@/views/tickets/types/ticket';
 
 /**
@@ -22,8 +22,8 @@ import type { SlaState, Ticket } from '@/views/tickets/types/ticket';
  * 两处画的是同一张单的同一只钟，取数入口只留这一个。
  */
 export interface SlaClockSource {
-  /** 工单类型；处理页详情上是裸字符串，故此处放宽为 string */
-  type: string;
+  /** 「刷机单」标识（1013 A1）：刷机单按它分流，不看工单类型 */
+  isFlash?: boolean;
   flash?: TicketFlash;
   /** 是否已首响；缺省按子状态推（未认领 / 待响应 = 未响） */
   responded?: boolean;
@@ -98,7 +98,7 @@ export function readFlashSla(st: FlashState, now: number = Date.now()): SlaReadi
  * 调用方转调现有实现。
  */
 export function readSla(t: SlaClockSource, now: number = Date.now()): SlaReading | null {
-  if (t.type !== '刷机' || !t.flash) return null;
+  if (!isFlashTicket(t) || !t.flash) return null;
   return readFlashSla(t.flash.state, now);
 }
 

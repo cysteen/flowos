@@ -1,3 +1,4 @@
+import { isFlashTicket } from '@/views/tickets/types/flash';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import { makeTicketNo } from '@/constants/ticketNo';
 import type { Channel, CreateTicketPrefill, Priority, Ticket } from '@/views/tickets/types/ticket';
@@ -382,7 +383,7 @@ function realValue(v: string | undefined): string | undefined {
  * - 问题三级分类：刷机在问题树上没有可映射路径，**预填为空且保持必填**，由坐席显式选（PRD §6.3）。
  */
 function flashPrefillPart(detail: TicketDetailMeta, phone: string): Partial<CreateTicketPrefill> {
-  if (detail.type !== '刷机') return {};
+  if (!isFlashTicket(detail)) return {};
   const digits = phone.replace(/\D/g, '');
   return {
     customerId: `cust-${digits || detail.no}`,

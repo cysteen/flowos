@@ -174,6 +174,8 @@ export interface TicketDetailMeta {
    * 期间锁定「下送/委派/调剂/关闭工单/强结」等流转与终结类动作，协办完成或撤销后解锁。
    */
   delegateInfo?: DelegateInfo | null;
+  /** 「刷机单」标识（1013 A1，取自工单行 `Ticket.isFlash`；读取走 `isFlashTicket`） */
+  isFlash?: boolean;
   /**
    * 刷机单字段组（仅刷机单有值，930 教育刷机单）：刷机信息 `info` · 自动刷机状态 `state` · 推送记录 `runs`。
    * 取自工单库那一行（`Ticket.flash`），写口只有刷机服务 `stores/flash.ts`。

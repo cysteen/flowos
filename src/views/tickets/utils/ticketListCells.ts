@@ -1,3 +1,4 @@
+import { isFlashTicket } from '@/views/tickets/types/flash';
 import type { Ticket } from '@/views/tickets/types/ticket';
 import { isFirstResponded, isSlaPaused, resolveTicketGroupNames, SLA_COLOR } from '@/views/tickets/types/ticket';
 import { resolveCurrentFlowNode, resolvePreviousFlowNode } from '@/views/tickets/utils/ticketFlowNodes';
@@ -128,7 +129,7 @@ export function isSlaVoidStop(t: Ticket): boolean {
  * 自动刷机成功直进回访）或「调研中」，列表 SLA 列显示「—」，与处理页页头同一口径。老四类恒为 false。
  */
 export function isFlashSlaIdle(t: Ticket): boolean {
-  if (t.type !== '刷机' || !t.flash) return false;
+  if (!isFlashTicket(t) || !t.flash) return false;
   return !t.flash.state.slaStartedAt || t.nodeStatus === '调研中';
 }
 

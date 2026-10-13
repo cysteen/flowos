@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isFlashTicket } from '@/views/tickets/types/flash';
 import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
@@ -492,7 +493,7 @@ function onAction(label: string, t: Ticket) {
     takeOverPending(t);
     return;
   }
-  if (label === '领取' && t.type === '刷机') {
+  if (label === '领取' && isFlashTicket(t)) {
     claimFlash(t);
     return;
   }
@@ -573,7 +574,7 @@ function onBatch(action: string) {
       .map((id) => wb.ticketById(id))
       .filter((t): t is Ticket => !!t);
     // 刷机单的流转动作统一在工单处理页办理（M116 / M117），批量调剂 / 退回跳过刷机单
-    const tickets = picked.filter((t) => t.type !== '刷机');
+    const tickets = picked.filter((t) => !isFlashTicket(t));
     const skipped = picked.length - tickets.length;
     if (skipped > 0) {
       message.warning(`已跳过 ${skipped} 张刷机单，刷机单请在工单处理页操作`);

@@ -49,10 +49,10 @@ export const AFTERSALE_TRANSFER_HIDDEN_ROLES = ['tech-support', 'agent-l1', 'ops
 const ALL: TicketType[] = ['投诉', '咨询', '建议', '商机'];
 const NO_LEAD: TicketType[] = ['投诉', '咨询', '建议']; // 商机不支持
 /**
- * 风险报备 / 风险评估两形态：咨 建 商（基线 §4「风险报备」行，与 risk Tab 类型集同源）+ 刷机。
- * 刷机单开放风险报备（930 教育刷机单 D17）：二线在刷机单上升级投诉走 ※8a「先报备」；**基线待同步项**。
+ * 风险报备 / 风险评估两形态：咨 建 商（基线 §4「风险报备」行，与 risk Tab 类型集同源）。
+ * 刷机单的工单类型是咨询（1013 A1），随咨询单在内（930 D17 / 1013 A22 保留风险报备）。
  */
-const RISK_REPORT_TYPES: TicketType[] = ['咨询', '建议', '商机', '刷机'];
+const RISK_REPORT_TYPES: TicketType[] = ['咨询', '建议', '商机'];
 /** 协同处理形态：**仅投诉单**（基线 §4「协同处理」行）。与上一行在类型维正好互补 */
 const RISK_COLLAB_TYPES: TicketType[] = ['投诉'];
 /**
@@ -97,9 +97,9 @@ const FLASH_VIEW_ACTION_KEYS: Record<FlashView, readonly OpActionType[]> = {
   readonly: [],
 };
 
-/** 该动作在该工单类型上是否在类型集内：刷机单走单列的 FLASH_ACTION_KEYS（再过视角），其余四类走各动作的 types */
-function actionTypeAllowed(a: ActionDef, ticketType: string, flashView?: FlashView): boolean {
-  if (ticketType === '刷机') {
+/** 该动作在该工单类型上是否在类型集内：刷机单（按「刷机单」标识）走单列的 FLASH_ACTION_KEYS（再过视角），其余四类走各动作的 types */
+function actionTypeAllowed(a: ActionDef, ticketType: string, flashView?: FlashView, isFlash?: boolean): boolean {
+  if (isFlash) {
     return FLASH_ACTION_KEYS.includes(a.key) && (!flashView || FLASH_VIEW_ACTION_KEYS[flashView].includes(a.key));
   }
   return a.types.includes(ticketType as TicketType);
@@ -314,6 +314,8 @@ export interface ActionCtx {
    * 四类老工单不传、不读，底栏取值与改前一致。
    */
   flashView?: FlashView;
+  /** 「刷机单」标识（1013 A1：刷机单类型为咨询，按标识走刷机动作集） */
+  isFlash?: boolean;
 }
 
 /**
@@ -336,7 +338,7 @@ export function availableActions(ctx: ActionCtx): ActionDef[] {
     .filter((a): a is ActionDef => !!a)
     .filter(
       (a) =>
-        actionTypeAllowed(a, ctx.ticketType, ctx.flashView)
+        actionTypeAllowed(a, ctx.ticketType, ctx.flashView, ctx.isFlash)
         // 风险那一枚的类型集随形态现算（协同形态只给投诉），刷机单上同样要过形态的类型集
         && (a.key !== '风险报备' || a.types.includes(ctx.ticketType as TicketType))
         && !a.hiddenRoles?.includes(roleKey)

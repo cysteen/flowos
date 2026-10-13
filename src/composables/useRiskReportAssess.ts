@@ -1,3 +1,4 @@
+import { isFlashTicket } from '@/views/tickets/types/flash';
 import { computed, ref } from 'vue';
 import { message } from 'ant-design-vue';
 import { useUserStore } from '@/stores/user';
@@ -215,7 +216,7 @@ export function deriveEscalatedComplaint(input: {
   // ③ 刷机原单（930）的状态真源是工单行：终态要写回去，否则页头仍是「待响应」、底栏仍可操作，
   //    刷新更是原样回滚。老工单四类的原单侧仍由升级台账 `escalations` 承载，不走这一支。
   const origin = TICKETS.find((t) => t.no === input.fromNo);
-  if (origin?.type === '刷机') {
+  if (isFlashTicket(origin)) {
     const user = useUserStore();
     useFlashStore().markEscalatedComplaint(
       input.fromNo,

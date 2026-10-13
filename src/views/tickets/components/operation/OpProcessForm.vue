@@ -32,6 +32,8 @@ const props = defineProps<{
   form: ProcessFormDraft;
   /** 工单类型：投诉=完整表单；咨询/建议/商机=精简复用 */
   ticketType: string;
+  /** 「刷机单」标识（1013 A1：刷机单类型为咨询，按标识出刷机处理表单） */
+  isFlash?: boolean;
   expandedSections: Record<SectionKey, boolean>;
   activeChip: SupplementChip;
   filledSupplementCount: number;
@@ -94,14 +96,14 @@ const leadNoDisabled = computed(() => (
 ));
 
 const isComplaint = computed(() => props.ticketType === '投诉');
-const isConsult = computed(() => props.ticketType === '咨询');
+const isConsult = computed(() => props.ticketType === '咨询' && !props.isFlash);
 const isSuggest = computed(() => props.ticketType === '建议');
 const isLead = computed(() => props.ticketType === '商机');
 /**
  * 刷机单（930 教育刷机单 PRD §5.4）：「处理记录」区出「处理结果」下拉 +（已线下登记推送时）「线下登记时间」+ 处理记录正文。
  * 一线视角不含「已转售后」。
  */
-const isFlash = computed(() => props.ticketType === '刷机');
+const isFlash = computed(() => !!props.isFlash);
 const user = useUserStore();
 const flashResultOptions = computed(() => FLASH_RESULTS
   .filter((r) => user.roleKey !== 'agent-l1' || r !== '已转售后')

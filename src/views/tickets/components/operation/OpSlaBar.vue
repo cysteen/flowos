@@ -47,7 +47,7 @@ const clockSource = computed<SlaClockSource>(() => {
   // ——它与列表那一格同走 `isFirstResponded(t)`，两处才不会一个说「已达标」一个还在倒计时
   const first = props.detail.slaClocks.find((c) => c.kind === 'first');
   return {
-    type: props.detail.type,
+    isFlash: props.detail.isFlash,
     flash: props.detail.flash,
     nodeStatus: props.detail.status,
     responded: first ? first.phase === 'stopped' : undefined,

@@ -1,3 +1,4 @@
+import { isFlashTicket } from '@/views/tickets/types/flash';
 import type { TlRole, TimelineEntry, TimelineFieldChange } from '@/views/tickets/types/ticketDetail';
 import { TICKET_DETAIL } from '@/mock/ticketDetail';
 import type { TicketDetailMeta, FeishuRecord, LinkedAftersale } from '@/mock/ticketDetail';
@@ -584,7 +585,7 @@ function nowCloseTime(): string {
  * 否则页头钟停了、列表那一格还在走。老四类返回 `null`，一行不动。
  */
 function flashTicketNo(detail: TicketDetailMeta): string | null {
-  return detail.type === '刷机' && detail.flash ? detail.no : null;
+  return isFlashTicket(detail) && detail.flash ? detail.no : null;
 }
 
 /**

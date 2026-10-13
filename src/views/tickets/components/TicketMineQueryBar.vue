@@ -222,6 +222,7 @@ const nodeStatusOptions = computed(() =>
 
 const businessTypeOptions = computed(() => toStrOpts(BUSINESS_TYPES));
 const ticketTypeOptions = computed(() => toStrOpts(CREATE_TICKET_TYPES));
+const flashMarkOptions = toStrOpts(['是', '否']);
 const ticketSourceOptions = computed(() => toStrOpts(TICKET_SOURCE_OPTIONS));
 const productCategoryOptions = computed(() => toStrOpts(PRODUCT_CATEGORIES));
 const productNameSelectOptions = computed(() => toStrOpts(productNameOptions.value));
@@ -365,6 +366,15 @@ const problemL3SelectOptions = computed(() => toStrOpts(problemL3Options.value))
               :model-value="modelValue.ticketType"
               :options="ticketTypeOptions"
               @update:model-value="patch('ticketType', $event as MineQueryFilter['ticketType'])"
+            />
+          </label>
+
+          <label v-else-if="f.key === 'flashMark'" class="filter-item">
+            <span class="fi-label">{{ fieldLabel('flashMark') }}</span>
+            <MineFilterSelect
+              :model-value="modelValue.flashMark"
+              :options="flashMarkOptions"
+              @update:model-value="patch('flashMark', $event as MineQueryFilter['flashMark'])"
             />
           </label>
 

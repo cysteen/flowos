@@ -33,16 +33,17 @@ import {
 import {
   FLASH_FIELD_LABELS,
   FLASH_TICKET_TYPE,
+  flashTicketTitle,
   type FlashActor,
   type FlashCreator,
 } from '@/views/tickets/types/flash';
 import { findSchoolById } from '@/mock/schools';
 import { useUserStore } from '@/stores/user';
+import { useFlashConfigStore } from '@/stores/flashConfig';
 import { mapUserRole } from '@/views/tickets/composables/opActions';
 
 /** 「刷机信息」卡必填项：字段 → 展示名 + 提示动词（输入类「请填写」、选择类「请选择」，PRD §2.3 第 1 条） */
 const FLASH_REQUIRED_FIELDS: { field: CreateTicketFlashField; label: string; verb: '请填写' | '请选择' }[] = [
-  { field: 'productModel', label: FLASH_FIELD_LABELS.productModel, verb: '请选择' },
   { field: 'sn', label: FLASH_FIELD_LABELS.sn, verb: '请填写' },
   { field: 'studentAccount', label: FLASH_FIELD_LABELS.studentAccount, verb: '请填写' },
   { field: 'studentName', label: FLASH_FIELD_LABELS.studentName, verb: '请填写' },
@@ -166,12 +167,19 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       (form.ticketSource === '内投渠道' || form.ticketSource === '外投渠道'),
   );
 
-  /* ---------------- 刷机单（930 教育刷机单 PRD §2.3 / §2.4） ---------------- */
+  /* ---------------- 刷机单（930 教育刷机单 PRD §2.3 / §2.4；1013 A1–A4） ---------------- */
 
-  const isFlashType = computed(() => form.ticketType === FLASH_TICKET_TYPE);
+  const flashConfig = useFlashConfigStore();
+  /**
+   * 刷机单识别（1013 A2）：所选产品「是否支持刷机」开启 ∧ 所选问题分类「是否刷机」开启。
+   * 命中即切到刷机接单表单：类型专属区块换成「刷机信息」卡，工单类型固定咨询、业务分类固定教育。
+   */
+  const isFlashType = computed(() => flashConfig.isFlashScene(
+    form.productName, form.problemL1, form.problemL2, form.problemL3,
+  ));
   /** 「刷机信息」卡字段下方的必填提示 */
   const flashErrors = reactive<Record<CreateTicketFlashField, string>>({
-    productModel: '', sn: '', studentAccount: '', studentName: '', schoolId: '', reason: '',
+    sn: '', studentAccount: '', studentName: '', schoolId: '', reason: '',
   });
   /** 客户信息区手机号字段下方的必填提示 */
   const flashPhoneError = ref('');
@@ -198,7 +206,12 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   function flashInput(): FlashCreateInput {
     const f = form.flash;
     return {
-      productModel: f.productModel ?? '',
+      // 产品两级取「产品问题」卡的产品分类 + 产品名称；问题分类取所选三级（1013 A4 / A5）
+      productModel: form.productName ?? '',
+      productCategory: form.productCategory,
+      problemL1: form.problemL1,
+      problemL2: form.problemL2,
+      problemL3: form.problemL3,
       sn: f.sn ?? '',
       studentAccount: f.studentAccount ?? '',
       studentName: f.studentName ?? '',
@@ -223,6 +236,10 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       vip: form.customer?.vip ?? false,
       channel,
       ticketSource: form.ticketSource,
+      priority: form.priority,
+      // 标题由刷机服务强制加「刷机」前缀（1013 A3）
+      title: form.title,
+      problemDesc: form.description.trim() || undefined,
     };
   }
 
@@ -283,21 +300,28 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     (phone) => { if (phone?.trim()) flashPhoneError.value = ''; },
   );
 
-  watch(
-    () => form.ticketType,
-    (t) => { if (t !== FLASH_TICKET_TYPE) clearFlashErrors(); },
-  );
+  watch(isFlashType, (on) => {
+    if (!on) clearFlashErrors();
+    syncTitle();
+  });
 
-  // 刷机单业务分类固定「教育」（PRD §2.4），控件锁定，与落库一致（预填 / 草稿恢复同样收口）
+  // 刷机单：工单类型固定咨询（1013 A1）、业务分类固定「教育」（PRD §2.4），两个控件锁定，与落库一致（预填 / 草稿恢复同样收口）
   watch(
-    () => [form.ticketType, form.businessType] as const,
-    ([t, b]) => { if (t === FLASH_TICKET_TYPE && b !== '教育') form.businessType = '教育'; },
+    () => [isFlashType.value, form.ticketType, form.businessType] as const,
+    ([on, t, b]) => {
+      if (!on) return;
+      if (t !== FLASH_TICKET_TYPE) form.ticketType = FLASH_TICKET_TYPE;
+      if (b !== '教育') form.businessType = '教育';
+    },
     { immediate: true },
   );
 
   function syncTitle() {
     if (form.titleManual) return;
-    form.title = buildAutoTitle(form.productName, form.problemL3, form.ticketSource);
+    // 刷机单标题强制前缀「刷机」（1013 A3）
+    form.title = isFlashType.value
+      ? flashTicketTitle(form.productName, form.problemL3, form.ticketSource)
+      : buildAutoTitle(form.productName, form.problemL3, form.ticketSource);
   }
 
   function reset() {
@@ -511,7 +535,6 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
      *
      * 表单联动已把这个组合挡在前面，本条是兜底：真正要防的是**不走本表单的入口**
      * ——接口建单、批量导入、容联云建单，那些地方绕不过服务端校验，只做前端联动等于没防。
-     * 刷机单尚未上线，不纳入本规则。
      */
     const RULED = ['建议', '商机', '咨询'];
     if (

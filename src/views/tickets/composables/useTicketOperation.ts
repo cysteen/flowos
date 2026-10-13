@@ -1,3 +1,4 @@
+import { isFlashTicket } from '@/views/tickets/types/flash';
 import { ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
@@ -12,7 +13,7 @@ import { useFlashStore } from '@/stores/flash';
 import { findSchoolById } from '@/mock/schools';
 import type { Ticket, Channel, TicketType, Priority, TicketStatus } from '@/views/tickets/types/ticket';
 import { TICKETS } from '@/mock/tickets';
-import { TYPE_SAMPLES } from '@/mock/ticketTypeSamples';
+import { TYPE_SAMPLES, typeSampleKey } from '@/mock/ticketTypeSamples';
 import { useUserStore } from '@/stores/user';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
 import {
@@ -411,7 +412,7 @@ export function useTicketOperation() {
       base.latestHandling = ticketLatestHandlingItems(t);
     }
     // 按类型覆盖概要（无工单级文案时回退类型样例）
-    const sample = TYPE_SAMPLES[base.type]?.detail;
+    const sample = TYPE_SAMPLES[typeSampleKey(base)]?.detail;
     if (!t?.problemDesc?.trim() && sample?.demand) base.demand = sample.demand;
     if (sample?.insight) base.insight = sample.insight;
     if (sample?.aiInsight) base.aiInsight = sample.aiInsight;
@@ -492,7 +493,7 @@ export function useTicketOperation() {
       complaint: { ...base.insightDetails.complaint, rows: [] },
       recent30: { ...base.insightDetails.recent30, rows: [selfRow] },
     };
-    const similar = TICKETS.find((x) => x.type === '刷机' && x.no !== t.no && x.nodeStatus === '已结案');
+    const similar = TICKETS.find((x) => isFlashTicket(x) && x.no !== t.no && x.nodeStatus === '已结案');
     base.similarTicket = similar
       ? { no: similar.no, title: similar.title, similarity: '相似 90%·已解决', solution: '方案：自动刷机接收成功，回访确认已解决' }
       : base.similarTicket;
@@ -567,6 +568,7 @@ export function useTicketOperation() {
     base.lastHandler = t.assignee;
     base.groupId = t.groupId;
     base.groupNames = t.groupNames;
+    base.isFlash = isFlashTicket(t);
     base.flash = JSON.parse(JSON.stringify(t.flash)) as TicketFlash;
     // 已升级派生走了的单：终态与只读态由 `t.escalatedToNo` 那一支判定（见上）。
     // 工单行的子状态还停在在办态时**不能拿它覆写回去** —— 那正是「已升级投诉」被写回

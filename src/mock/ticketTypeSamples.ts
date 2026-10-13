@@ -6,7 +6,7 @@
 import type { OperationTabData } from '@/views/tickets/types/operationTabs';
 import type { ProcessFormDraft, InsightStats, AiTicketInsight } from '@/views/tickets/types/operation';
 
-const C = { 投诉: '#EF4444', 建议: '#10B981', 商机: '#F59E0B', 咨询: '#1A6FFF', 刷机: '#7C3AED' };
+const C = { 投诉: '#EF4444', 建议: '#10B981', 商机: '#F59E0B', 咨询: '#1A6FFF' };
 const bg = (hex: string) => `${hex}1F`;
 
 export interface TypeDetailOverride {
@@ -19,6 +19,14 @@ export interface TicketTypeSample {
   detail?: TypeDetailOverride;
   processDraft?: Partial<ProcessFormDraft>;
   tabData?: Partial<OperationTabData>;
+}
+
+/** 刷机单样例的键（刷机单类型为咨询、带「刷机单」标识，1013 A1；样例按标识取，不按类型） */
+export const FLASH_SAMPLE_KEY = '刷机';
+
+/** 取样例键：刷机单取刷机样例，其余按工单类型 */
+export function typeSampleKey(d: { type: string; isFlash?: boolean }): string {
+  return d.isFlash ? FLASH_SAMPLE_KEY : d.type;
 }
 
 export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
@@ -265,7 +273,7 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
     },
   },
 
-  // ===================== 刷机（930 教育刷机单） =====================
+  // ===================== 刷机单（930 教育刷机单；键见 FLASH_SAMPLE_KEY） =====================
   // 刷机单的推送记录、履历、短信通知按单取自刷机服务（stores/flash.ts），这里只给类型级的概要与空白 Tab，
   // 避免缺键时回落到投诉样例、在刷机单上显示投诉单的沟通与通知记录
   刷机: {

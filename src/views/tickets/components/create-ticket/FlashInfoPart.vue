@@ -1,8 +1,9 @@
 <script setup lang="ts">
 /**
  * 新建工单 · 「刷机信息」卡（930 教育刷机单 P1 / PRD §2.2 / §2.4）。
- * 9 个字段；选项取后台「刷机配置」启用项（`useFlashConfigStore`）与学校库（`SCHOOL_LIBRARY`）。
- * 联系手机号取客户信息区，不在本卡；结案方式固定「正常流程」，不出控件。
+ * 8 个字段；刷机原因取后台「刷机配置」启用项（`useFlashConfigStore`），学校取学校库（`SCHOOL_LIBRARY`）。
+ * 产品取「产品问题」卡的产品分类 + 产品名称（1013 A4），联系手机号取客户信息区，均不在本卡；
+ * 结案方式固定「正常流程」，不出控件。
  */
 import { computed, ref, watch } from 'vue';
 import { PlusOutlined } from '@ant-design/icons-vue';
@@ -21,7 +22,6 @@ defineProps<{
 
 const config = useFlashConfigStore();
 
-const modelOptions = computed(() => config.enabledModels().map((m) => ({ value: m.model, label: m.model })));
 const reasonOptions = computed(() => config.enabledReasons().map((r) => ({ value: r, label: r })));
 const schoolOptions = SCHOOL_LIBRARY.map((s) => ({ value: s.id, label: s.name }));
 
@@ -38,7 +38,7 @@ function syncPhotoListFromForm() {
 watch(() => info.value.snPhotos, syncPhotoListFromForm, { immediate: true, deep: true });
 
 /** 下拉空值按 undefined 交给 a-select，才会显示「请选择」 */
-function setSelect(key: 'productModel' | 'schoolId' | 'reason', v: unknown) {
+function setSelect(key: 'schoolId' | 'reason', v: unknown) {
   info.value[key] = v == null ? '' : String(v);
 }
 
@@ -56,21 +56,6 @@ function onPhotoChange({ fileList }: { fileList: UploadFile[] }) {
 <template>
   <CreateTicketPartCard title="刷机信息" :body-gap="8">
     <div class="fi-grid">
-      <div class="fi-field">
-        <label class="fi-label"><span class="req">*</span>{{ L.productModel }}</label>
-        <div class="fi-control">
-          <FormSelect
-            :value="info.productModel || undefined"
-            @update:value="(v) => setSelect('productModel', v)"
-            class="fi-input"
-            placeholder="请选择"
-            :status="errors.productModel ? 'error' : ''"
-            :options="modelOptions"
-            :dropdown-match-select-width="false"
-          />
-          <div v-if="errors.productModel" class="fi-error">{{ errors.productModel }}</div>
-        </div>
-      </div>
       <div class="fi-field">
         <label class="fi-label"><span class="req">*</span>{{ L.sn }}</label>
         <div class="fi-control">

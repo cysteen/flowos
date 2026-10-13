@@ -28,6 +28,8 @@ const props = defineProps<{
   ticketNo: string;
   ticketTitle: string;
   ticketType: string;
+  /** 「刷机单」标识（1013 A1：刷机单类型为咨询，刷机底栏按标识判，不看类型） */
+  isFlash?: boolean;
   /**
    * 结案方式（基线 §1「结案方式」小节），与工单类型正交。
    * 「直接结案」的单动作集极简 —— 不下送、不升级、不挂起、不转派，见 availableActions。
@@ -210,8 +212,9 @@ const actions = computed(() =>
   availableActions({
     ticketType: props.ticketType,
     closureMode: props.closureMode,
+    isFlash: !!props.isFlash,
     // 刷机单按视角收一道（表一）；老工单不传，取值与改前一致
-    ...(props.ticketType === '刷机' && props.flashView ? { flashView: props.flashView } : {}),
+    ...(!!props.isFlash && props.flashView ? { flashView: props.flashView } : {}),
   }),
 );
 
@@ -277,7 +280,7 @@ const barActions = computed<BarItem[]>(() => {
       const def = key === '转单' ? null : actionMap.value.get(key);
       if (key !== '转单' && !def) continue;
       // 刷机单不出「转单」（M25，任何角色、任何子状态）
-      if (key === '转单' && props.ticketType === '刷机') continue;
+      if (key === '转单' && props.isFlash) continue;
       if (key === '退回' && !props.atTechSupport) continue;
       // 报备形态只给本单主责处理人：不是主责处理人的，冻结态下也不展示
       // （底栏这一格只会是报备形态，判定已在 resolveRiskBarForm 收口）
@@ -308,7 +311,7 @@ const barActions = computed<BarItem[]>(() => {
     if (isDelegating.value && DELEGATE_LOCKED.includes(key)) {
       const locked = key === '转单' ? null : actionMap.value.get(key);
       if (key !== '转单' && !locked) continue;
-      if (key === '转单' && props.ticketType === '刷机') continue;
+      if (key === '转单' && props.isFlash) continue;
       items.push({
         key,
         label: locked?.label ?? '转单',
@@ -397,7 +400,7 @@ const barActions = computed<BarItem[]>(() => {
 
 /** 走刷机单底栏：一线 / 二线视角与可领取。客诉专员（other）仍走上面的原路径（只剩风险那一枚） */
 const isFlashBar = computed(
-  () => props.ticketType === '刷机' && (props.flashView === 'l1' || props.flashView === 'l2' || props.flashView === 'claim'),
+  () => !!props.isFlash && (props.flashView === 'l1' || props.flashView === 'l2' || props.flashView === 'claim'),
 );
 
 const FLASH_FALLBACK_ICON: Partial<Record<FlashBarKey, string>> = { 重推: 'ReloadOutlined', 升级二线: 'RiseOutlined' };
@@ -446,9 +449,9 @@ const flashPrimaryItems = computed<BarItem[]>(() => {
 const flashMoreItems = computed<BarItem[]>(() =>
   (props.flashView === 'l2' ? FLASH_L2_MORE_ORDER : []).map(flashItem).filter((x): x is BarItem => !!x),
 );
-const isFlashClaim = computed(() => props.ticketType === '刷机' && props.flashView === 'claim');
+const isFlashClaim = computed(() => !!props.isFlash && props.flashView === 'claim');
 /** 客诉专员在刷机单上只读工单内容（M94 / M102）：底栏不出「保存」，只留风险那一枚 */
-const hideFlashSave = computed(() => props.ticketType === '刷机' && props.flashView === 'other');
+const hideFlashSave = computed(() => !!props.isFlash && props.flashView === 'other');
 
 function onFlashMoreClick(info: { key: string | number }) {
   const item = flashMoreItems.value.find((x) => x.key === String(info.key));
@@ -515,7 +518,7 @@ function run(action: OpActionType | '转单') {
       return;
     }
     // 刷机单：校验处理结果 / 线下登记时间（PRD §5.4），不校验问题原因
-    if (props.ticketType === '刷机') {
+    if (props.isFlash) {
       if (props.flashForwardTip) {
         message.warning(props.flashForwardTip);
         return;
@@ -747,7 +750,7 @@ defineExpose({ openEscalate, openAftersale, openActivate });
     :ticket-title="ticketTitle"
     :back-to-delegator="isDelegating"
     :delegate-targets="delegateTargets"
-    :ok-text="ticketType === '刷机' && !isDelegating ? flashForwardOkText : undefined"
+    :ok-text="isFlash && !isDelegating ? flashForwardOkText : undefined"
     @confirm="onForwardConfirm"
   />
 

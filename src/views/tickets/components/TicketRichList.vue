@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isFlashTicket } from '@/views/tickets/types/flash';
 import { CheckOutlined } from '@ant-design/icons-vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, ref, watch } from 'vue';
 import { RISK_LEVEL_STYLE, riskLevelText, type RiskLevel } from '@/config/risk';
@@ -253,7 +254,7 @@ function actionsFor(t: Ticket): RowAct[] {
   // 调用方自带动作时整个接管，下面那套 variant 映射一个字没动（见 `rowActionsFn`）
   if (props.rowActionsFn) return props.rowActionsFn(t);
   // 刷机单（池页签除外）：行内操作按刷机门控的视角裁剪（930 教育刷机单 §5.5 / §9.4，M34）；老四类不经过这里
-  if (t.type === '刷机' && t.flash && props.variant !== 'pool') {
+  if (isFlashTicket(t) && t.flash && props.variant !== 'pool') {
     const base = props.variant === 'mine' ? mineRowActions(t)
       : props.variant === 'done' ? doneRowActions()
         : props.variant === 'mention' ? mentionRowActions()

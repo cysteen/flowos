@@ -11,8 +11,45 @@
 import type { TlRole } from '@/views/tickets/types/ticketDetail';
 import { CAL_STANDARD, slaCalendars } from '@/config/slaCalendars';
 
-/** 工单类型名（D1：第 5 类工单类型） */
-export const FLASH_TICKET_TYPE = '刷机' as const;
+/** 刷机单的工单类型：刷机单＝咨询单 + 建单时写入的「刷机单」标识（1013 A1） */
+export const FLASH_TICKET_TYPE = '咨询' as const;
+
+/** 刷机单标识的展示名（类型徽章旁的标识、查询筛选项） */
+export const FLASH_MARK_LABEL = '刷机';
+
+/**
+ * 是否刷机单 —— **全仓唯一判据**（1013 A1）：读工单上的 `isFlash` 标识。
+ * 标识在建单时按「产品支持刷机 ∧ 问题分类是否刷机」写入，此后不随配置变化、不可修改；
+ * 不要再用工单类型、单号前缀或标题判断刷机单。
+ */
+export function isFlashTicket(t: { isFlash?: boolean } | null | undefined): boolean {
+  return t?.isFlash === true;
+}
+
+/** 刷机单标题前缀（1013 A3：强制加在标题最前） */
+export const FLASH_TITLE_PREFIX = '刷机';
+
+/** 刷机单标题：「刷机 · 〈产品名称〉 · 〈问题三级〉 · 〈工单来源〉」，空段跳过 */
+export function flashTicketTitle(productName: string, problemL3?: string, source?: string): string {
+  return [FLASH_TITLE_PREFIX, productName, problemL3, source].filter((s) => !!s?.trim()).join(' · ');
+}
+
+/** 标题补前缀：已以「刷机」开头的原样返回 */
+export function withFlashTitlePrefix(title: string): string {
+  const t = title.trim();
+  if (t.startsWith(FLASH_TITLE_PREFIX)) return t;
+  return t ? `${FLASH_TITLE_PREFIX} · ${t}` : FLASH_TITLE_PREFIX;
+}
+
+/** 支持刷机产品所在的产品分类（产品字段两级：产品分类 + 产品名称，1013 A4） */
+export const FLASH_PRODUCT_CATEGORY = '学习硬件';
+
+/** 刷机问题分类路径（1013 A5）：售后 → 服务申请 → 自助刷机 / 刷原生系统 */
+export const FLASH_TAG_L1 = '售后';
+export const FLASH_TAG_L2 = '服务申请';
+export const FLASH_TAG_L3S = ['自助刷机', '刷原生系统'] as const;
+/** 用户提报（小程序）自动匹配的问题三级 */
+export const FLASH_TAG_L3_USER_REPORT = '自助刷机';
 
 /* ------------------------------------------------------------------ */
 /* 刷机原因（M3）                                                       */
@@ -390,6 +427,8 @@ export const FLASH_SURVEY_TIMEOUT_HOURS = 72;
 /** 刷机单字段展示名（统一口径：建单表单、处理页、用户提报页、履历字段 diff 都用这一份） */
 export const FLASH_FIELD_LABELS = {
   productModel: '产品型号',
+  productCategory: '产品分类',
+  productName: '产品名称',
   sn: '设备SN',
   studentAccount: '学生账号',
   studentName: '学生姓名',

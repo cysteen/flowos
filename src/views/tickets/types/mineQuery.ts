@@ -4,6 +4,7 @@ import type { Priority, SlaFilterKey, Ticket, TicketType } from '@/views/tickets
 import { matchSlaFilters, resolveTicketGroupNames } from '@/views/tickets/types/ticket';
 import type { BusinessType, TicketSource } from '@/views/tickets/types/createTicket';
 import { prototypeDayEnd } from '@/config/prototypeDate';
+import { isFlashTicket } from '@/views/tickets/types/flash';
 
 /** 结构化筛选 · 时间快捷选项 */
 export type MineTimePreset = '' | '7d' | '30d' | '90d' | 'custom';
@@ -38,6 +39,8 @@ export interface MineQueryFilter {
   assignee: string;
   businessType: string;
   ticketType: '' | TicketType;
+  /** 刷机单标识（1013 A1）：是 / 否；空=不过滤 */
+  flashMark: '' | '是' | '否';
   ticketSource: '' | TicketSource;
   /** SLA · 多选，或关系；空=不过滤。判据见 `matchSlaFilter` */
   sla: SlaFilterKey[];
@@ -63,6 +66,7 @@ export const EMPTY_MINE_QUERY = (): MineQueryFilter => ({
   assignee: '',
   businessType: '',
   ticketType: '',
+  flashMark: '',
   ticketSource: '',
   sla: [],
   problemL1: '',
@@ -232,6 +236,7 @@ export function matchMineQuery(t: Ticket, q: MineQueryFilter): boolean {
   }
   if (q.businessType && t.businessType !== q.businessType) return false;
   if (q.ticketType && t.type !== q.ticketType) return false;
+  if (q.flashMark && isFlashTicket(t) !== (q.flashMark === '是')) return false;
   if (q.ticketSource) {
     const src = t.ticketSource ?? (t.channel === '电话' ? '电话' : t.channel);
     if (src !== q.ticketSource) return false;
@@ -271,6 +276,7 @@ export function hasMineQuery(q: MineQueryFilter): boolean {
     || q.assignee
     || q.businessType
     || q.ticketType
+    || q.flashMark
     || q.ticketSource
     || q.sla?.length
     || q.problemL1

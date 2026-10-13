@@ -214,6 +214,7 @@ defineExpose({ switchTab });
         v-if="activeTab === 'process'"
         :form="form"
         :ticket-type="detail.type"
+        :is-flash="detail.isFlash"
         :expanded-sections="expandedSections"
         :active-chip="activeChip"
         :filled-supplement-count="filledSupplementCount"

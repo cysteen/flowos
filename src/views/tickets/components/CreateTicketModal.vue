@@ -228,19 +228,13 @@ function onCreate(processAfter = false) {
   reset();
 }
 
-/** 刷机单草稿标题：与建单后的工单标题同口径（〈刷机原因〉刷机申请 · 〈产品型号〉） */
-function flashDraftTitle(): string {
-  const { reason, productModel } = form.flash;
-  if (!reason && !productModel) return '';
-  return [`${reason}刷机申请`, productModel].filter(Boolean).join(' · ');
-}
-
 function onDraft() {
   const id = activeDraftId.value || 'draft-' + Date.now();
   activeDraftId.value = id;
   draftStore.save({
     id,
-    title: (isFlashType.value ? flashDraftTitle() : form.title) || '未命名草稿',
+    // 刷机单标题已随产品与问题分类同步为「刷机 · …」（1013 A3）
+    title: form.title || '未命名草稿',
     typeLabel: form.ticketType || '工单',
     customerName: form.customer?.name || '未选择客户',
     savedAt: new Date().toLocaleString('zh-CN', { hour12: false }),
@@ -300,10 +294,9 @@ watch(
  */
 const HIGH_PRIORITIES: Priority[] = ['P0', 'P1'];
 const LOW_PRIORITIES: Priority[] = ['P2', 'P3'];
-/** 刷机单尚未上线，不纳入本规则 */
 const RULED_TYPES: CreateFormTicketType[] = ['投诉', '建议', '商机', '咨询'];
 
-/** 该工单类型允许的优先级；null = 不限（投诉单与刷机单） */
+/** 该工单类型允许的优先级；null = 不限（投诉单） */
 function prioritiesFor(type: CreateFormTicketType | ''): Priority[] | null {
   if (!type || type === '投诉' || !RULED_TYPES.includes(type)) return null;
   return LOW_PRIORITIES;
@@ -413,6 +406,7 @@ watch(
               class="inline-control field-control"
               size="middle"
               allow-clear
+              :disabled="isFlashType"
               :status="errors.ticketType ? 'error' : ''"
               :options="ticketTypeOptions"
             />
@@ -519,8 +513,11 @@ watch(
         </div>
       </CreateTicketPartCard>
 
-      <!-- ③ 产品问题（对齐 .pen BaY72 / OKN77）；刷机单的产品与设备信息在「刷机信息」卡 -->
-      <CreateTicketPartCard v-if="!isFlashType" title="产品问题">
+      <!--
+        ③ 产品问题（对齐 .pen BaY72 / OKN77）。刷机单同样在这里选产品分类 + 产品名称与问题分类（1013 A4 / A5），
+        两者命中「支持刷机」∧「是否刷机」即切到刷机接单表单；设备SN改在「刷机信息」卡填
+      -->
+      <CreateTicketPartCard title="产品问题">
         <div class="product-body">
           <div class="row-3">
             <div class="inline-field">
@@ -548,7 +545,7 @@ watch(
                 @change="onProductNameChange"
               />
             </div>
-            <div class="inline-field">
+            <div v-if="!isFlashType" class="inline-field">
               <label class="inline-label xl">设备SN</label>
               <a-input
                 v-model:value="form.deviceSn"
@@ -615,7 +612,7 @@ watch(
 
           <!-- 问题描述篇幅长，整行收尾 -->
           <div class="inline-field desc-field">
-            <label class="inline-label xl"><span class="req">*</span>问题描述</label>
+            <label class="inline-label xl"><span v-if="!isFlashType" class="req">*</span>问题描述</label>
             <a-textarea
               v-model:value="form.description"
               class="inline-control field-control"
@@ -781,11 +778,11 @@ watch(
         </template>
       </CreateTicketPartCard>
 
-      <!-- ④′ 刷机专属：「刷机信息」卡（930 教育刷机单 PRD §2.4） -->
+      <!-- ④′ 刷机专属：「刷机信息」卡（930 教育刷机单 PRD §2.4；1013 A2 识别后切入） -->
       <FlashInfoPart v-if="isFlashType" v-model:info="form.flash" :errors="flashErrors" />
 
-      <!-- ⑤ 工单标题（无分区大标题，对齐 SlSwt）；刷机单标题由系统按刷机原因与产品型号生成 -->
-      <CreateTicketPartCard v-if="!isFlashType" compact>
+      <!-- ⑤ 工单标题（无分区大标题，对齐 SlSwt）；刷机单标题强制前缀「刷机」（1013 A3） -->
+      <CreateTicketPartCard compact>
         <div class="inline-field">
           <label class="inline-label title-label">工单标题</label>
           <a-input

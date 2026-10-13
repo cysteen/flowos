@@ -8,15 +8,16 @@ import { FLASH_SEEDS } from '@/mock/flash/seedTickets';
 import { findMdmDevice, type MdmDevice } from '@/mock/flash/mdmDevices';
 import { isGraduate } from '@/mock/flash/graduates';
 import { findSchoolById } from '@/mock/schools';
-import { makeTicketNo, TICKET_NO_PREFIX } from '@/constants/ticketNo';
+import { makeTicketNo } from '@/constants/ticketNo';
 import {
   FLASH_FIELD_LABELS, FLASH_INFO_FIELD_LABELS, FLASH_L1_REPUSH_LIMIT, FLASH_NOTIFY_EVENTS, FLASH_POOLS, FLASH_REASON_AUTO,
   FLASH_RETURN_DELAY_MS, FLASH_TIP_L1_REPUSH_EXHAUSTED, FLASH_TIP_MODEL_UNSUPPORTED,
   FLASH_TIP_NON_SELF_DEVELOPED, FLASH_TIP_REASON_NOT_GRADUATE_L1, FLASH_TIP_REASON_NOT_GRADUATE_L2,
   FLASH_TIP_EDIT_STATE, FLASH_TIP_REPUSH_STATE, FLASH_TIP_SYSTEM_BUSY, FLASH_TIP_VERIFY_UNAVAILABLE,
   FLASH_VERIFY_NOT_RUN, FLASH_TL, FLASH_NOTICE, FLASH_RESULT_OFFLINE, FLASH_TOAST,
-  FLASH_CS_NOTICE, FLASH_SURVEY_TIMEOUT_HOURS,
-  flashMinuteStamp, flashProgressStage, flashSmsHandoff, flashSmsSuccess, flashSmsSurvey, flashStamp,
+  FLASH_CS_NOTICE, FLASH_SURVEY_TIMEOUT_HOURS, FLASH_PRODUCT_CATEGORY, FLASH_TAG_L1, FLASH_TAG_L2,
+  FLASH_TAG_L3_USER_REPORT, FLASH_TICKET_TYPE,
+  flashTicketTitle, withFlashTitlePrefix, isFlashTicket, flashMinuteStamp, flashProgressStage, flashSmsHandoff, flashSmsSuccess, flashSmsSurvey, flashStamp,
   flashTipInflight, flashTipRequired, flashTipVerifyFailed, isFrontlineActor,
   offlineBatchResumeAt, parseFlashStamp, validateOfflineRegisteredAt,
   type FlashActor, type FlashCreator, type FlashFailL1, type FlashFailL2, type FlashHandoffReason,
@@ -50,7 +51,14 @@ import { FLASH_LS_KEYS, readFlashCache, writeFlashCache } from './flashCache';
 
 /** 建单 / 校验入参（刷机信息） */
 export interface FlashCreateInput {
+  /** 产品名称（坐席建单取「产品问题」卡的产品名称；用户提报取所报型号，1013 A4） */
   productModel: string;
+  /** 产品分类；缺省（用户提报只报型号）由系统按产品带出（1013 A4） */
+  productCategory?: string;
+  /** 问题分类三级；缺省（用户提报）按「售后 → 服务申请 → 自助刷机」写入（1013 A5） */
+  problemL1?: string;
+  problemL2?: string;
+  problemL3?: string;
   sn: string;
   studentAccount: string;
   studentName: string;
@@ -77,6 +85,10 @@ export interface FlashTicketBase {
   channel?: Channel;
   priority?: Priority;
   ticketSource?: string;
+  /** 坐席建单时的工单标题；缺省按「刷机 · 产品名称 · 问题三级 · 工单来源」生成，均强制前缀「刷机」（1013 A3） */
+  title?: string;
+  /** 坐席填写的问题描述；缺省由系统按刷机信息生成 */
+  problemDesc?: string;
 }
 
 export interface FlashEvaluationBlocked {
@@ -171,7 +183,7 @@ export const useFlashStore = defineStore('flash', () => {
   /** 工单库里的刷机单（响应式代理，写入会刷新已打开的列表） */
   function rowOf(no: string): Ticket | undefined {
     const t = rawOf(no);
-    return t?.type === '刷机' && t.flash ? reactive(t) : undefined;
+    return t && isFlashTicket(t) && t.flash ? reactive(t) : undefined;
   }
 
   function flashOf(no: string): TicketFlash | undefined {
@@ -191,7 +203,7 @@ export const useFlashStore = defineStore('flash', () => {
     const key = sn.trim().toUpperCase();
     if (!key) return undefined;
     return TICKETS.find(
-      (t) => t.type === '刷机'
+      (t) => isFlashTicket(t)
         && t.no !== excludeNo
         // M51：草稿未提交、不算在途
         && !t.isDraft && t.nodeStatus !== '草稿'
@@ -203,7 +215,7 @@ export const useFlashStore = defineStore('flash', () => {
   /** 用户侧进度（M2 / M29） */
   function progressStageOf(no: string): FlashProgressStage | undefined {
     const t = rawOf(no);
-    return t?.type === '刷机' ? flashProgressStage(t.nodeStatus) : undefined;
+    return t && isFlashTicket(t) ? flashProgressStage(t.nodeStatus) : undefined;
   }
 
   /* ---------------- 写：公共 ---------------- */
@@ -213,7 +225,7 @@ export const useFlashStore = defineStore('flash', () => {
   }
 
   function persist() {
-    const tickets = TICKETS.filter((t) => t.type === '刷机' && t.flash).map((t) => toRaw(t));
+    const tickets = TICKETS.filter((t) => isFlashTicket(t) && t.flash).map((t) => toRaw(t));
     writeFlashCache(FLASH_LS_KEYS.tickets, { tickets } satisfies TicketsCache);
     writeFlashCache(FLASH_LS_KEYS.timeline, { timelines: timelines.value, seq: tlSeq } satisfies TimelineCache);
   }
@@ -686,11 +698,12 @@ export const useFlashStore = defineStore('flash', () => {
 
   function nextNo(now: number): string {
     const d = new Date(now);
-    const probe = makeTicketNo('刷机', 1, d).slice(0, -5);
+    // 刷机单沿用咨询单号（1013 A1）：与当日咨询单共用一个自增号段
+    const probe = makeTicketNo(FLASH_TICKET_TYPE, 1, d).slice(0, -5);
     const max = TICKETS
       .filter((t) => t.no.startsWith(probe))
       .reduce((m, t) => Math.max(m, Number(t.no.slice(-5)) || 0), 0);
-    return makeTicketNo('刷机', max + 1, d);
+    return makeTicketNo(FLASH_TICKET_TYPE, max + 1, d);
   }
 
   /**
@@ -721,20 +734,34 @@ export const useFlashStore = defineStore('flash', () => {
       versionBackfilled: evaluation.backfill.backfilled,
       snPhotos: [...(input.snPhotos ?? [])],
     };
+    const ticketSource = base.ticketSource ?? (byUser ? '客户服务小程序' : '电话');
+    // 问题分类：坐席建单取所选三级；用户提报自动匹配「售后 → 服务申请 → 自助刷机」（1013 A5）
+    const problemL1 = input.problemL1 || FLASH_TAG_L1;
+    const problemL2 = input.problemL2 || FLASH_TAG_L2;
+    const problemL3 = input.problemL3 || FLASH_TAG_L3_USER_REPORT;
     const raw: Ticket = {
       id: `flash-${no}`,
       no,
-      type: '刷机',
+      // 刷机单＝咨询单 + 不可改的「刷机单」标识（1013 A1）
+      type: FLASH_TICKET_TYPE,
+      isFlash: true,
       channel: base.channel ?? (byUser ? '小程序' : '电话'),
-      ticketSource: base.ticketSource ?? (byUser ? '客户服务小程序' : '电话'),
-      title: `${info.reason}刷机申请 · ${info.productModel}`,
+      ticketSource,
+      // 标题强制前缀「刷机」（1013 A3）
+      title: base.title?.trim()
+        ? withFlashTitlePrefix(base.title)
+        : flashTicketTitle(info.productModel, problemL3, ticketSource),
       smartMarks: [],
       customer: base.customer,
       vip: base.vip ?? false,
       customerPhone: base.customerPhone ?? input.contactPhone.trim(),
       sn: info.sn,
       product: info.productModel,
-      productCategory: '学习硬件',
+      // 产品两级：用户提报只报型号，分类由系统按产品带出（1013 A4）
+      productCategory: input.productCategory || config.modelOf(info.productModel)?.category || FLASH_PRODUCT_CATEGORY,
+      problemL1,
+      problemL2,
+      problemL3,
       businessType: '教育',
       nodeStatus: '未认领',
       nodeStep: 1,
@@ -749,7 +776,8 @@ export const useFlashStore = defineStore('flash', () => {
       responded: false,
       createdAt: flashMinuteStamp(now),
       updatedAt: flashMinuteStamp(now),
-      problemDesc: `学生${info.studentName}（账号 ${info.studentAccount}，${info.schoolName}）申请刷机，刷机原因：${info.reason}。设备 SN ${info.sn}。`,
+      problemDesc: base.problemDesc
+        ?? `学生${info.studentName}（账号 ${info.studentAccount}，${info.schoolName}）申请刷机，刷机原因：${info.reason}。设备 SN ${info.sn}。`,
       flash: {
         info,
         state: {
@@ -939,7 +967,7 @@ export const useFlashStore = defineStore('flash', () => {
    */
   function surveyGateOf(no: string): 'notFound' | 'evaluated' | 'unavailable' | 'open' {
     const t = rawOf(no);
-    if (!t || t.type !== '刷机' || !t.flash || t.isDraft || t.nodeStatus === '草稿') return 'notFound';
+    if (!t || !isFlashTicket(t) || !t.flash || t.isDraft || t.nodeStatus === '草稿') return 'notFound';
     if (t.flash.state.survey) return 'evaluated';
     return t.nodeStatus === '调研中' ? 'open' : 'unavailable';
   }
@@ -1488,7 +1516,7 @@ export const useFlashStore = defineStore('flash', () => {
     let settled = 0;
     for (const t of TICKETS) {
       // PRD §4.3 / §11.2：线下登记暂停到点自动恢复，记「SLA 恢复计时 · 到达暂停截止时刻」
-      const until = t.type === '刷机' ? t.flash?.state.slaPausedUntil : undefined;
+      const until = isFlashTicket(t) ? t.flash?.state.slaPausedUntil : undefined;
       if (until && parseFlashStamp(until).getTime() <= now) {
         const r = reactive(t);
         const at = parseFlashStamp(until).getTime();
@@ -1503,7 +1531,7 @@ export const useFlashStore = defineStore('flash', () => {
         settled += 1;
       }
       // PRD §8 / M26′：调研超时未评价 → 自动结案（时刻取调研短信发出时刻 + 调研超时时长）
-      if (t.type === '刷机' && t.flash && t.nodeStatus === '调研中' && !t.flash.state.survey) {
+      if (isFlashTicket(t) && t.flash && t.nodeStatus === '调研中' && !t.flash.state.survey) {
         const sentAt = t.flash.state.surveySentAt ?? t.updatedAt;
         const due = sentAt ? parseFlashStamp(sentAt).getTime() + FLASH_SURVEY_TIMEOUT_HOURS * 3_600_000 : NaN;
         if (due <= now) {
@@ -1512,7 +1540,7 @@ export const useFlashStore = defineStore('flash', () => {
         }
         continue;
       }
-      if (t.type !== '刷机' || !t.flash || t.nodeStatus !== '自动刷机中') continue;
+      if (!isFlashTicket(t) || !t.flash || t.nodeStatus !== '自动刷机中') continue;
       const r = reactive(t);
       const run = [...r.flash!.runs].reverse().find((x) => x.result === '等待回传');
       if (!run) continue;
@@ -1595,7 +1623,7 @@ export const useFlashStore = defineStore('flash', () => {
    */
   function backfillSlaStartedAt() {
     for (const t of TICKETS) {
-      if (t.type !== '刷机' || !t.flash || t.flash.state.slaStartedAt) continue;
+      if (!isFlashTicket(t) || !t.flash || t.flash.state.slaStartedAt) continue;
       const first = timelineOf(t.no).find((e) => e.action === 'flashHandoff');
       if (first) t.flash.state.slaStartedAt = first.when.slice(0, 16);
     }
@@ -1608,7 +1636,7 @@ export const useFlashStore = defineStore('flash', () => {
   function backfillSurveySms() {
     const notifyLog = useNotifyLogStore();
     for (const t of TICKETS) {
-      const sentAt = t.type === '刷机' ? t.flash?.state.surveySentAt : undefined;
+      const sentAt = isFlashTicket(t) ? t.flash?.state.surveySentAt : undefined;
       if (!sentAt) continue;
       if (notifyLog.records.some((x) => x.ticketNo === t.no && x.event === FLASH_NOTIFY_EVENTS.survey)) continue;
       const rec = notifyLog.emit({
@@ -1633,7 +1661,7 @@ export const useFlashStore = defineStore('flash', () => {
   function backfillSeedSms() {
     const notifyLog = useNotifyLogStore();
     for (const t of TICKETS) {
-      if (t.type !== '刷机' || !t.flash) continue;
+      if (!isFlashTicket(t) || !t.flash) continue;
       const smsEntries = timelineOf(t.no).filter((e) => e.category === 'comm' && e.action === 'sms');
       if (!smsEntries.length) continue;
       const kinds = [
@@ -1737,6 +1765,3 @@ export const useFlashStore = defineStore('flash', () => {
     claimFromPool,
   };
 });
-
-/** 单号前缀（供按单号查进度时判断是否刷机单） */
-export const FLASH_NO_PREFIX = TICKET_NO_PREFIX['刷机'];

@@ -26,8 +26,9 @@ import OpFlashInfoEditModal from './components/operation/OpFlashInfoEditModal.vu
 import OpFlashEscalateModal from './components/operation/OpFlashEscalateModal.vue';
 import {
   FLASH_RESULT_OFFLINE, FLASH_TIP_OFFLINE_TIME_REQUIRED, FLASH_TIP_RESULT_REQUIRED,
-  FLASH_POOLS, validateOfflineRegisteredAt, type FlashActor, type FlashEscalateCheck, type FlashResult,
+  FLASH_POOLS, isFlashTicket, validateOfflineRegisteredAt, type FlashActor, type FlashEscalateCheck, type FlashResult,
 } from './types/flash';
+import { typeSampleKey } from '@/mock/ticketTypeSamples';
 import type { FlashActionResult, FlashInfoChanges } from '@/stores/flash';
 // 建单弹窗仅在「转单/重开」时用，按需异步加载，不阻塞操作页首屏
 const CreateTicketModal = defineAsyncComponent(() => import('./components/CreateTicketModal.vue'));
@@ -91,8 +92,8 @@ const {
 const {
   form, activeChip, expandedSections, filledSupplementCount,
   toggleSection, selectChip,
-} = useProcessForm(() => d.value.type, () => d.value.no);
-const { tabData } = useOperationTabs(() => d.value.type, () => d.value.no);
+} = useProcessForm(() => typeSampleKey(d.value), () => d.value.no);
+const { tabData } = useOperationTabs(() => typeSampleKey(d.value), () => d.value.no);
 const {
   toasts: liveToasts,
   push: pushLiveToast,
@@ -105,9 +106,9 @@ const pageActive = ref(false);
 
 /**
  * 刷机单（930 教育刷机单）：「工单处理」Tab 顶部出「自动刷机结果」卡与「刷机信息」区块（PRD §5.1）。
- * 判据＝类型为刷机且带刷机字段组；四类老工单恒为 false，页面不变。
+ * 判据＝「刷机单」标识且带刷机字段组（1013 A1）；其余工单恒为 false，页面不变。
  */
-const isFlash = computed(() => d.value.type === '刷机' && !!d.value.flash);
+const isFlash = computed(() => isFlashTicket(d.value) && !!d.value.flash);
 
 const ticketNo = computed(() => (route.params.ticketNo as string) || d.value.no);
 const processTabsRef = ref<InstanceType<typeof OpProcessTabs> | null>(null);
@@ -2615,6 +2616,7 @@ watch(
       :ticket-no="ticketNo"
       :ticket-title="d.title"
       :ticket-type="d.type"
+      :is-flash="isFlash"
       :closure-mode="d.closureMode"
       :after-sale-enabled="d.product.afterSaleEnabled"
       :op-state="opState"

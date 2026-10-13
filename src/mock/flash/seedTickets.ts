@@ -12,7 +12,9 @@
  */
 import type { Ticket } from '@/views/tickets/types/ticket';
 import type { TimelineEntry, TlAction, TlCategory, TlRole } from '@/views/tickets/types/ticketDetail';
+import { TICKET_NO_PREFIX } from '@/constants/ticketNo';
 import {
+  FLASH_PRODUCT_CATEGORY, FLASH_TAG_L1, FLASH_TAG_L2, FLASH_TAG_L3_USER_REPORT, FLASH_TICKET_TYPE, flashTicketTitle,
   FLASH_POOLS, FLASH_RETURN_TIMEOUT_DEFAULT_MIN, FLASH_TL, flashFailReasonText, flashMinuteStamp, flashSmsHandoff,
   flashSmsSuccess, flashSmsSurvey, flashStamp, offlineBatchResumeAt, parseFlashStamp,
   type FlashCreator, type FlashFailL1, type FlashFailL2, type FlashHandoffReason, type FlashInfo, type FlashPoolKey,
@@ -30,7 +32,8 @@ export interface FlashSeedBundle {
 }
 
 const DAY = '20260915';
-const no = (n: number) => `IFLYSH-${DAY}-${String(n).padStart(5, '0')}`;
+/** 刷机单沿用咨询单号（1013 A1） */
+const no = (n: number) => `${TICKET_NO_PREFIX[FLASH_TICKET_TYPE]}-${DAY}-${String(n).padStart(5, '0')}`;
 
 /** 按 SN 从底数组装刷机信息；`account` 覆盖提报时填写的学生账号（校验不一致的场景） */
 function infoOf(
@@ -158,20 +161,26 @@ function row(
   const { info, creator, customer, phone, flashState, runs, ...rest } = p;
   const byUser = creator === '用户提报';
   const pool: FlashPoolKey | undefined = flashState.pool;
+  const ticketSource = byUser ? '客户服务小程序' : '电话';
   return {
     id: `flash-${n}`,
     no: no(n),
-    type: '刷机',
+    // 刷机单＝咨询单 + 「刷机单」标识（1013 A1）
+    type: FLASH_TICKET_TYPE,
+    isFlash: true,
     channel: byUser ? '小程序' : '电话',
-    ticketSource: byUser ? '客户服务小程序' : '电话',
-    title: `${info.reason}刷机申请 · ${info.productModel}`,
+    ticketSource,
+    title: flashTicketTitle(info.productModel, FLASH_TAG_L3_USER_REPORT, ticketSource),
     smartMarks: [],
     customer,
     vip: false,
     customerPhone: phone,
     sn: info.sn,
     product: info.productModel,
-    productCategory: '学习硬件',
+    productCategory: FLASH_PRODUCT_CATEGORY,
+    problemL1: FLASH_TAG_L1,
+    problemL2: FLASH_TAG_L2,
+    problemL3: FLASH_TAG_L3_USER_REPORT,
     businessType: '教育',
     priority: 'P2',
     nodeStep: 2,

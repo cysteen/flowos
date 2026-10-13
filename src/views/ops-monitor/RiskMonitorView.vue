@@ -423,22 +423,17 @@ const livePriorityCounts = computed<Record<Priority, number>>(() => {
 });
 
 /**
- * 第二行 · **工单类型**。业务点名的是前四类（咨询 / 建议 / 商机 / 投诉）。
+ * 第二行 · **工单类型**：咨询 / 建议 / 商机 / 投诉四类。
  *
- * 🔴 **「刷机」作为第五格照常摆上**（2026-10-07 补）：工单类型这一维在建单侧**就是五个取值**
- * （`CreateFormTicketType`），只摆四类的话这一行之和会比上面那行少掉在办的刷机单 ——
- * 实测 ΣP0..P3 ＝ 92、Σ四类 ＝ 74，**同一块卡里两行差着 18 而没有任何说明，
- * 读的人只会以为其中一处坏了**。两行本来就同分母（都取 `liveTickets` ＝ 全部在办工单），
- * 差额纯粹是"类型这一维的第五个取值没摆出来"。摆上之后
- * **Σ五类 ≡ ΣP0..P3 ≡ 在办工单总数**，两行肉眼可验。
- * 🔴 差额如实摆出来、不吞也不凑：吞掉的话差的那十几条谁也找不出来在哪。
+ * 刷机单的工单类型是咨询（1013 A1），计入「咨询」格，
+ * 故 **Σ四类 ≡ ΣP0..P3 ≡ 在办工单总数**，两行同分母（都取 `liveTickets` ＝ 全部在办工单），肉眼可验。
  *
  * `Record<TicketType, number>` 这一笔是**编译期的穷举保证**：将来枚举多一个取值，
  * 这里会直接编译不过，而不是静默地又少掉一格。
  */
-const HEAD_TICKET_TYPES = ['咨询', '建议', '商机', '投诉', '刷机'] as const satisfies readonly TicketType[];
+const HEAD_TICKET_TYPES = ['咨询', '建议', '商机', '投诉'] as const satisfies readonly TicketType[];
 const liveTicketTypeCounts = computed<Record<TicketType, number>>(() => {
-  const base: Record<TicketType, number> = { 咨询: 0, 建议: 0, 商机: 0, 投诉: 0, 刷机: 0 };
+  const base: Record<TicketType, number> = { 咨询: 0, 建议: 0, 商机: 0, 投诉: 0 };
   for (const t of liveTickets.value) base[t.type] += 1;
   return base;
 });

@@ -1,3 +1,4 @@
+import { isFlashTicket } from '@/views/tickets/types/flash';
 import { prototypeDayEnd } from '@/config/prototypeDate';
 import { BUSINESS_TYPES } from '@/views/tickets/types/createTicket';
 import { allProductNames } from '@/views/tickets/types/mineQuery';
@@ -72,7 +73,7 @@ export const QUERY_SLA_OPTIONS = [
   { value: 'paused', label: '挂起中' },
 ] as const;
 
-export const QUERY_TYPE_OPTIONS: TicketType[] = ['投诉', '建议', '商机', '咨询', '刷机'];
+export const QUERY_TYPE_OPTIONS: TicketType[] = ['投诉', '建议', '商机', '咨询'];
 
 export const QUERY_CHANNEL_OPTIONS = ['在线客服', '电话', '邮件', '小程序', 'APP'] as const;
 
@@ -178,11 +179,11 @@ function matchStatus(t: Ticket, status: string): boolean {
   // 两行的结论文案（930 教育刷机单 PRD §4.3 同源清单⑤，D-10）—— 筛出来的行与它自己
   // 那一格显示的颜色永远一致。老四类一字不动，继续读工单行上的扁平快照。
   if (status === 'firstResponseOverdue') {
-    if (t.type === '刷机') return isFirstRespBreachedNow(t);
+    if (isFlashTicket(t)) return isFirstRespBreachedNow(t);
     return !isFirstResponded(t) && t.slaState === 'overdue';
   }
   if (status === 'resolutionOverdue') {
-    if (t.type === '刷机') return isResolveBreachedNow(t);
+    if (isFlashTicket(t)) return isResolveBreachedNow(t);
     const resolveState = isFirstResponded(t) ? t.slaState : t.resolveSlaState;
     return resolveState === 'overdue';
   }

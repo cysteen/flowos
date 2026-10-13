@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { message } from 'ant-design-vue';
-import { parseFlashStamp } from '@/views/tickets/types/flash';
+import { FLASH_MARK_LABEL, isFlashTicket, parseFlashStamp } from '@/views/tickets/types/flash';
 import { useUserStore } from '@/stores/user';
 import { CopyOutlined, FlagOutlined } from '@ant-design/icons-vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import {
-  PRIORITY_COLOR, softBg, csEntryAvailability, statusDisplayName, AUTO_FLASH_STATUS_HEX,
+  FLASH_MARK_COLOR, PRIORITY_COLOR, softBg, csEntryAvailability, statusDisplayName, AUTO_FLASH_STATUS_HEX,
   type Priority, type TicketStatus,
 } from '@/views/tickets/types/ticket';
 import OpSlaBar from './OpSlaBar.vue';
@@ -164,7 +164,7 @@ let clockTimer: number | undefined;
 onMounted(() => { clockTimer = window.setInterval(() => { clockNow.value = Date.now(); }, 30_000); });
 onBeforeUnmount(() => window.clearInterval(clockTimer));
 const flashSlaPausedUntil = computed(() => {
-  const until = props.detail.type === '刷机' ? props.detail.flash?.state.slaPausedUntil : undefined;
+  const until = isFlashTicket(props.detail) ? props.detail.flash?.state.slaPausedUntil : undefined;
   if (!until) return '';
   return parseFlashStamp(until).getTime() > clockNow.value ? until.slice(0, 16) : '';
 });
@@ -173,16 +173,16 @@ const flashSlaPausedUntil = computed(() => {
  * 刷机单 SLA 区（PRD §4.3 / M88 / M103）：悬停显示「SLA 起算 〈年-月-日 时:分〉」，未起算显示「未起算」；
  * 从未起算（首推自动刷机中、自动刷机成功直进回访）或调研中不计时，SLA 区显示「—」，不画暂停钟。
  */
-const isFlashTicket = computed(() => props.detail.type === '刷机' && !!props.detail.flash);
+const isFlashDetail = computed(() => isFlashTicket(props.detail) && !!props.detail.flash);
 const flashSlaStartText = computed(() => {
-  if (!isFlashTicket.value) return undefined;
+  if (!isFlashDetail.value) return undefined;
   const at = props.detail.flash?.state.slaStartedAt;
   return at ? `SLA 起算 ${at.slice(0, 16)}` : '未起算';
 });
 // 「未起算」与「调研中」都不计时：SLA 区显示「—」，不画钟。判据取 `readSla` —— 与列表那一格同一份计算
 const flashSlaIdle = computed(
-  () => isFlashTicket.value
-    && (!readSla({ type: props.detail.type, flash: props.detail.flash }) || props.detail.status === '调研中'),
+  () => isFlashDetail.value
+    && (!readSla({ isFlash: props.detail.isFlash, flash: props.detail.flash }) || props.detail.status === '调研中'),
 );
 
 const metaTitle = computed(
@@ -280,6 +280,8 @@ function priorityHex(p: string): string {
             <span class="badge-dot" :style="{ background: statusHex(detail.status) }" />{{ statusText }}
           </span>
           <span class="badge badge-neutral">{{ detail.type }}</span>
+          <!-- 「刷机」标识（1013 A1）：刷机单类型为咨询，类型徽章旁另挂标识 -->
+          <span v-if="isFlashTicket(detail)" class="badge" :style="tagStyle(FLASH_MARK_COLOR)">{{ FLASH_MARK_LABEL }}</span>
           <span class="badge" :style="tagStyle(priorityHex(detail.priority))">
             <FlagOutlined />{{ detail.priority }}
           </span>

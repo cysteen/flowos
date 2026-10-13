@@ -11,7 +11,7 @@
 
 /** 刷机相关 localStorage 键（统一前缀 `flowos-flash-`） */
 export const FLASH_LS_KEYS = {
-  /** 后台「刷机配置」：支持刷机机型 / 刷机原因 / 失败原因 / 回传超时时长 */
+  /** 刷机配置：产品是否支持刷机 / 问题分类是否刷机 / 刷机原因 / 失败原因 / 回传超时时长 */
   config: 'flowos-flash-config',
   /** 刷机单工单快照（种子单的最新状态 + 运行时新建的刷机单） */
   tickets: 'flowos-flash-tickets',
@@ -22,7 +22,7 @@ export const FLASH_LS_KEYS = {
 export type FlashLsKey = (typeof FLASH_LS_KEYS)[keyof typeof FLASH_LS_KEYS];
 
 /** 缓存版本。种子或数据形状变更时 +1 */
-export const FLASH_CACHE_VERSION = 6;
+export const FLASH_CACHE_VERSION = 7;
 
 /** 保质期：12 小时（与风险两条线 `RISK_STALE_MS` 同口径） */
 export const FLASH_STALE_MS = 12 * 60 * 60 * 1000;
