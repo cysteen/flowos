@@ -500,7 +500,8 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
     add(row(11, {
       info, creator: '用户提报', customer: '沈建', phone: '13505536419',
       createdAt: at.slice(0, 16), updatedAt: esc.slice(0, 16),
-      nodeStatus: '未认领', assignee: null, tab: 'pool', responded: true, nodeStep: 2,
+      // 一线不计 SLA：进教育刷机处理组池才起算，首响钟从进池时刻开始（1013 A26）
+      nodeStatus: '未认领', assignee: null, tab: 'pool', responded: false, nodeStep: 2,
       slaText: '02:15:00', slaSub: '距超时', slaState: 'ok', slaMinutes: 135,
       upgradeCount: 1,
       flashState: state('用户提报', {
