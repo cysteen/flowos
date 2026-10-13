@@ -174,7 +174,9 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
    * 刷机单识别（1013 A2）：所选产品「是否支持刷机」开启 ∧ 所选问题分类「是否刷机」开启。
    * 命中即切到刷机接单表单：类型专属区块换成「刷机信息」卡，工单类型固定咨询、业务分类固定教育。
    */
-  const isFlashType = computed(() => flashConfig.isFlashScene(
+  /** 入口固定了工单类型（升级投诉 / 刷机单关联投诉）：不做刷机单识别（预填 `noFlashScene`） */
+  const flashSceneOff = ref(false);
+  const isFlashType = computed(() => !flashSceneOff.value && flashConfig.isFlashScene(
     form.productName, form.problemL1, form.problemL2, form.problemL3,
   ));
   /** 「刷机信息」卡字段下方的必填提示 */
@@ -331,6 +333,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
 
   function reset() {
     Object.assign(form, defaultForm());
+    flashSceneOff.value = false;
     syncTitle();
     snVerified.value = true;
     assignAdopted.value = false;
@@ -359,6 +362,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
 
   function fillPrefill(p: CreateTicketPrefill) {
     reset();
+    flashSceneOff.value = !!p.noFlashScene;
     form.ticketType = p.formTicketType ?? (p.mode === 'child' ? '咨询' : '投诉');
     form.ticketSource = (
       p.ticketSource

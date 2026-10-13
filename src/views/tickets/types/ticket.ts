@@ -709,6 +709,8 @@ export interface CreateTicketPrefill {
   type?: TicketType;
   /** 新建弹窗表单工单类型（投诉/建议/商机/咨询） */
   formTicketType?: CreateFormTicketType;
+  /** 本次建单的工单类型由入口固定（升级投诉 / 刷机单关联投诉建投诉单）：不做刷机单识别，选到刷机问题分类也不切刷机表单 */
+  noFlashScene?: boolean;
   priority?: Priority;
   /** 投诉类型（建单页独立可选） */
   complaintType?: string;
