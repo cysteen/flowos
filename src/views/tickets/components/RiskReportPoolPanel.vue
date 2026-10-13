@@ -33,7 +33,7 @@ import { useRiskReportStore, type RiskReport } from '@/stores/riskReports';
 // 并置 `assessArrivalTicket`（工单详情页据此自动开评估弹窗）。
 // 直接改状态做不到这两件事，而留痕正是这条队列的凭据。
 import { isComplaintPoolTicket, useRiskPoolStore } from '@/stores/riskPool';
-import { useRiskReportAssess } from '@/composables/useRiskReportAssess';
+import { assessDecisionLabel, isFlashAssessTarget, useRiskReportAssess } from '@/composables/useRiskReportAssess';
 // 风险等级四选一 + 风险备注：与风险监控页评估处置工作面共用同一份（落库走 recordTagFor）
 import { useRiskLevelFields } from '@/composables/useRiskLevelFields';
 import RiskLevelFields from './operation/RiskLevelFields.vue';
@@ -657,7 +657,7 @@ function releasesOf(r: { releases?: RiskReleaseRecord[] }) {
           <div class="af-field">
             <span class="af-label req">评估决策</span>
             <a-radio-group v-model:value="assessDecision" class="af-decisions">
-              <a-radio v-for="d in ASSESS_DECISIONS" :key="d" :value="d">{{ d }}</a-radio>
+              <a-radio v-for="d in ASSESS_DECISIONS" :key="d" :value="d">{{ assessDecisionLabel(d, isFlashAssessTarget(assessTarget.ticketNo)) }}</a-radio>
             </a-radio-group>
           </div>
           <p v-if="missAssessDecision" class="af-err">请先选择一个评估决策</p>

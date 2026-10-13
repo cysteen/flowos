@@ -100,7 +100,9 @@ import { useDerivedTicketStore } from '@/stores/derivedTickets';
 // 提交前重查里"已出结论 ⇒ 整次拦下"那一句，随 `workbenchAssessBlockOf` 一并删除。
 // **常量本身没动**，报备池与工单页头那两处仍在读它
 import {
+  assessDecisionLabel,
   deriveEscalatedComplaint,
+  isFlashAssessTarget,
   isRiskTicketEnded,
   nextEscalatedNoOf,
   showEscalateComplaintFields,
@@ -4147,7 +4149,8 @@ function pooledLevelCountHit(lv: RiskLevel) {
  * 由构造成立，不是事后对账凑出来的；要改口径仍然只能改那一份，不许在这里另起一条查询。
  *
  * 原单类型取 `poolTicketTypeOf` —— 池行表「原单类型」那一列同一个口径（工单库 + 派生库两处查）。
- * ⚠️ 查不到原单、或原单类型落在四类之外（刷机）的条目收进「其他」一格，**不吞**：
+ * 刷机单的工单类型是咨询（1013 A1），计入「咨询」格。
+ * ⚠️ 查不到原单的条目收进「其他」一格，**不吞**：
  * 吞掉的话各格之和会小于总数，而差的那几条谁也找不出来在哪。
  * 「其他」为 0 时整格不出现 —— 它是**余额**不是一个档，摆一个恒为 0 的格只会让人去找它是什么。
  */
@@ -4660,7 +4663,7 @@ const judgedTypeFilterOptions = computed(() => {
  * 🔴 **「工单类型」四处已统一成同一维**（2026-10-09 改判，业务原话「都修改为 工单类型，
  * 支持多选」）—— **推翻 10-08 那条"同名不同义、不许统一"**：
  *   · 四处（工作面 / 已判 / 待判实时监控 / 待判重点工单）**同取值域**：原单真实工单类型
- *     咨询 / 建议 / 商机 / 投诉 / 刷机（工作面与已判走 `poolTicketTypeOf`，
+ *     咨询 / 建议 / 商机 / 投诉（刷机单按工单类型计入咨询；工作面与已判走 `poolTicketTypeOf`，
  *     待判两路走 `untaggedTicketOptions`，都是"从本路真出现过的类型派生"）；
  *   · 四处**同形态**：多选、`allow-clear`、`:max-tag-count="1"`，空 ＝ 不收窄。
  *   · 工作面 / 已判这两格**保留计数**（`咨询（3）`），总数写在 placeholder 上
@@ -5205,10 +5208,9 @@ function toggleWordEnabled(w: RiskWord) {
             </button>
           </div>
           <!--
-            第二行 · 工单类型。业务点名的是前四类，🔴 **「刷机」第五格照常摆上**：
-            两行本就同分母（都取 `liveTickets`），少摆一格会让两行之和差着在办的刷机单，
-            一块卡里两行对不上又没有说明，读的人只会以为其中一处坏了。
-            摆上之后 Σ五类 ≡ ΣP0..P3 ≡ 在办工单总数，肉眼可验。
+            第二行 · 工单类型：咨询 / 建议 / 商机 / 投诉四类。刷机单的工单类型是咨询（1013 A1），
+            按「刷机单」标识计入「咨询」格，不另摆一格。
+            两行同分母（都取 `liveTickets`），Σ四类 ≡ ΣP0..P3 ≡ 在办工单总数，肉眼可验。
           -->
           <div class="dash-links">
             <span
@@ -5297,7 +5299,7 @@ function toggleWordEnabled(w: RiskWord) {
               :key="tt"
               class="dl-item dl-static"
               :title="tt === POOLED_TYPE_REST
-                ? '原单类型落在四类之外（刷机），或原单已查不到的那几条'
+                ? '原单已查不到的那几条'
                 : `原单类型为「${tt}」的风险工单数 · 分母 ＝ 风险工单`"
             >
               {{ tt }}<b>{{ pooledTicketTypeCounts[tt] }}</b>
@@ -5664,7 +5666,7 @@ function toggleWordEnabled(w: RiskWord) {
               —— 选了必有结果），故不分支、只写一次。
               🔴 **本页四处「工单类型」已是同一维**（2026-10-09 改判，业务原话「都修改为
               工单类型，支持多选」，**推翻 10-08 那条"同名不同义、不许统一"**）：
-              这一格与工作面 / 已判那两格**同取值域**（咨询 / 建议 / 商机 / 投诉 / 刷机，
+              这一格与工作面 / 已判那两格**同取值域**（咨询 / 建议 / 商机 / 投诉，刷机单计入咨询，
               都从本路真出现过的类型派生）、**同形态**（多选 · allow-clear · max-tag-count 1）。
               唯一的差别是那两格**带计数**（`咨询（3）`、总数在 placeholder 上写 `全部（N）`），
               这一格不摆数、placeholder 只写 `全部` —— 待判这一段本来就不在筛选项上摆数。
@@ -6978,7 +6980,7 @@ function toggleWordEnabled(w: RiskWord) {
                   :value="d"
                   :disabled="d === '不升级' && entryTagNoDowngradeLocked"
                   :title="d === '不升级' && entryTagNoDowngradeLocked ? entryTagNoDowngradeTip : undefined"
-                >{{ d }}</a-radio>
+                >{{ assessDecisionLabel(d, isFlashAssessTarget(entryTagTarget.ticketNo)) }}</a-radio>
               </a-radio-group>
             </div>
             <div v-if="entryTagNoDowngradeLocked" class="tag-form-foot assess-dec-foot">
