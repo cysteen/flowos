@@ -549,7 +549,7 @@ export const useFlashStore = defineStore('flash', () => {
         });
         log(r.no, at + 1, {
           category: 'node', action: 'resolved', who: '系统', role: '系统', how: '回传结果',
-          what: FLASH_TL.repushSuccessClosed(result),
+          what: FLASH_TL.repushSuccessClosed,
         });
       } else {
         Object.assign(r, {
@@ -560,7 +560,7 @@ export const useFlashStore = defineStore('flash', () => {
         pauseClock(r, at, '调研中');
         log(r.no, at + 1, {
           category: 'node', action: 'resolved', who: '系统', role: '系统', how: '回传结果',
-          what: FLASH_TL.repushSuccessSurvey(result),
+          what: FLASH_TL.repushSuccessSurvey,
         });
         sendSurveySms(r, at + 2000);
       }
@@ -798,7 +798,7 @@ export const useFlashStore = defineStore('flash', () => {
       category: 'node', action: 'create', who: by.name, role: by.role,
       how: '建单',
       what: FLASH_TL.create(
-        creator,
+        ticketSource,
         r.flash!.state.verifyResult,
         evaluation.route === 'pool' ? { handoff: evaluation.handoffReason! } : { auto: true },
       ),

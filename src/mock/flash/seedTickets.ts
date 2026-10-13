@@ -149,6 +149,10 @@ function tl(
 
 const addSec = (stamp: string, sec: number) => flashStamp(parseFlashStamp(stamp).getTime() + sec * 1000);
 
+/** 工单来源（沿用现有工单来源口径）：用户提报 / 坐席代建（种子单代建均为电话受理） */
+const USER_SOURCE = '客户服务小程序';
+const AGENT_SOURCE = '电话';
+
 /** 列表行公共字段 */
 function row(
   n: number,
@@ -167,7 +171,7 @@ function row(
   const { info, creator, customer, phone, flashState, runs, ...rest } = p;
   const byUser = creator === '用户提报';
   const pool: FlashPoolKey | undefined = flashState.pool;
-  const ticketSource = byUser ? '客户服务小程序' : '电话';
+  const ticketSource = byUser ? USER_SOURCE : AGENT_SOURCE;
   return {
     id: `flash-${n}`,
     no: no(n),
@@ -204,10 +208,10 @@ type SeedDest = { auto: true } | { handoff: FlashHandoffReason };
 
 /** 「用户提报」建单履历（PRD §11.2「建单」；操作人沿用提报用户，X4） */
 function createdByUser(when: string, customer: string, verify: FlashVerifyResult, dest: SeedDest): TimelineEntry {
-  return tl(when, 'node', 'create', customer, '客户', '建单', FLASH_TL.create('用户提报', verify, dest));
+  return tl(when, 'node', 'create', customer, '客户', '建单', FLASH_TL.create(USER_SOURCE, verify, dest));
 }
-function createdByAgent(when: string, agent: string, role: TlRole, creator: FlashCreator, verify: FlashVerifyResult, dest: SeedDest): TimelineEntry {
-  return tl(when, 'node', 'create', agent, role, '建单', FLASH_TL.create(creator, verify, dest));
+function createdByAgent(when: string, agent: string, role: TlRole, _creator: FlashCreator, verify: FlashVerifyResult, dest: SeedDest): TimelineEntry {
+  return tl(when, 'node', 'create', agent, role, '建单', FLASH_TL.create(AGENT_SOURCE, verify, dest));
 }
 function pushEntry(when: string, seq: number): TimelineEntry {
   return tl(when, 'node', 'flashPush', '系统', '系统', '自动推送', FLASH_TL.autoPush(seq));
@@ -781,7 +785,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       repushEntry(repushed, 2, '刘一线', '一线坐席'),
       // 与刷机服务 `succeed()` 同序同文：回传结果 → 系统写处理结果并转入回访 → 成功短信 → 调研短信
       returnOk(back2),
-      tl(back2, 'node', 'resolved', '系统', '系统', '回传结果', FLASH_TL.repushSuccessSurvey(FLASH_RESULT_ONLINE_SUCCESS)),
+      tl(back2, 'node', 'resolved', '系统', '系统', '回传结果', FLASH_TL.repushSuccessSurvey),
       smsEntry(addSec(back2, 1), '13856071966', flashSmsSuccess(no(19), info.sn)),
       smsEntry(addSec(back2, 2), '13856071966', flashSmsSurvey(no(19))),
     ]);

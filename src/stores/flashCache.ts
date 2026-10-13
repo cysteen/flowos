@@ -25,8 +25,9 @@ export type FlashLsKey = (typeof FLASH_LS_KEYS)[keyof typeof FLASH_LS_KEYS];
  * 缓存版本。种子或数据形状变更时 +1。
  * v9：刷机字段组去掉 slaPausedUntil / offlineRegisteredAt / l1RepushCount，新增 linkedComplaintNos；
  * 一线不计 SLA 后种子单的 SLA 起算与摘要随之变化。
+ * v10：种子单履历「建单」改记工单来源、重推成功与短信落款对齐 PRD 文案。
  */
-export const FLASH_CACHE_VERSION = 9;
+export const FLASH_CACHE_VERSION = 10;
 
 /** 保质期：12 小时（与风险两条线 `RISK_STALE_MS` 同口径） */
 export const FLASH_STALE_MS = 12 * 60 * 60 * 1000;

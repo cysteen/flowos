@@ -559,10 +559,11 @@ export function flashElapsedText(ms: number): string {
 
 /** 处理履历正文（PRD §11.2 逐字） */
 export const FLASH_TL = {
-  create(creator: FlashCreator, verify: FlashVerifyResult, dest: { auto: true } | { handoff: FlashHandoffReason }): string {
+  /** `source` ＝ 工单来源（沿用现有工单来源口径） */
+  create(source: string, verify: FlashVerifyResult, dest: { auto: true } | { handoff: FlashHandoffReason }): string {
     const v = verify.status === '未校验' ? '建单校验：未校验' : flashVerifyText(verify);
     const d = 'auto' in dest ? '进入自动刷机中' : `转人工原因：${dest.handoff}`;
-    return `创建刷机单 · ${creator}；${v}；${d}`;
+    return `创建刷机单 · ${source}；${v}；${d}`;
   },
   autoPush: (seq: number) => `推送刷机包 · 第 ${seq} 次推送 · 发起方：系统`,
   repush: (seq: number, run: Pick<FlashRun, 'by' | 'line'>) => `重新推送 · 第 ${seq} 次推送 · 发起方：${flashRunInitiator(run)}`,
@@ -570,9 +571,9 @@ export const FLASH_TL = {
   /** `reasonText` ＝ 失败原因展示文案「接收失败 · 〈二级〉」 */
   returnFail: (reasonText: string) => `回传结果：${reasonText}`,
   /** 重新推送接收成功：系统写入处理结果并转入回访（B1） */
-  repushSuccessSurvey: (result: string) => `重推成功，处理结果：${result}，自动进入回访`,
+  repushSuccessSurvey: '重推成功，自动进入回访',
   /** 重新推送接收成功、本单已有回访结论：直接结案（B1） */
-  repushSuccessClosed: (result: string) => `重推成功，处理结果：${result}，已回访过，直接结案`,
+  repushSuccessClosed: '重推成功（已回访过，直接结案）',
   lateSuccess: '回传结果（迟到）：接收成功，子状态未变更',
   /** `reasonText` ＝「推送异常 · 接口异常」 */
   pushApiError: (reasonText: string) => `${reasonText}（已自动重试 1 次）`,
@@ -590,7 +591,7 @@ export const FLASH_TL = {
   escalateL2: (record?: string) =>
     `升级至教育刷机处理组${record?.trim() ? `；处理记录：${record.trim()}` : ''}`,
   /** 关联投诉（A21 / B5）：两单各自流转，本单状态不变 */
-  linkComplaint: (no: string) => `关联投诉单 ${no}，两单各自流转，本单状态不变`,
+  linkComplaint: (no: string) => `关联投诉单 ${no}`,
   /** 投诉单侧（A21） */
   linkedFromFlash: (no: string) => `关联刷机单 ${no}`,
   forward: (result: string) => `下送；处理结果：${result}`,
@@ -612,7 +613,7 @@ export function snTail(sn: string): string {
 
 /** 刷机成功短信（M14 / M32，暂行文案） */
 export function flashSmsSuccess(no: string, sn: string): string {
-  return `【科大讯飞】您的设备（SN尾号${snTail(sn)}）刷机包已推送成功，请保持设备开机并连接网络完成刷机。如有疑问请致电400热线，工单号：${no}。`;
+  return `【讯飞客服】您的设备（SN尾号${snTail(sn)}）刷机包已推送成功，请保持设备开机并连接网络完成刷机。如有疑问请致电400热线，工单号：${no}。`;
 }
 /** 转人工短信（PRD §3.4 / §11.1，逐字） */
 export function flashSmsHandoff(_no: string): string {
@@ -628,7 +629,7 @@ export const FLASH_SURVEY_LINK_RE = /(\/m\/flash\/survey\?no=[A-Za-z0-9-]+)/;
 
 /** 调研短信（PRD §8 / M86：含评价链接） */
 export function flashSmsSurvey(no: string): string {
-  return `【科大讯飞】您的刷机申请已处理，请点击链接评价本次服务：${flashSurveyPath(no)}。工单号：${no}。`;
+  return `【讯飞客服】您的刷机申请已处理，请点击链接评价本次服务：${flashSurveyPath(no)}。工单号：${no}。`;
 }
 
 /** 催单 / 新建补充站内通知（PRD §11.1：沿用现有催补通知文案） */
