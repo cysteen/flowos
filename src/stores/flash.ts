@@ -11,7 +11,7 @@ import { findSchoolById } from '@/mock/schools';
 import { makeTicketNo } from '@/constants/ticketNo';
 import {
   FLASH_FIELD_LABELS, FLASH_INFO_FIELD_LABELS, FLASH_NOTIFY_EVENTS, FLASH_POOLS, FLASH_REASON_AUTO,
-  FLASH_RETURN_DELAY_MS, FLASH_TIP_MODEL_UNSUPPORTED,
+  FLASH_RETURN_DELAY_MS, FLASH_TIP_MODEL_UNSUPPORTED, FLASH_TIP_PRODUCT_UNSUPPORTED,
   FLASH_RESULT_ONLINE_SUCCESS, FLASH_RESULT_OFFLINE_PUSHED, normalizeFlashResult,
   FLASH_TIP_NON_SELF_DEVELOPED, FLASH_TIP_REASON_NOT_GRADUATE_L1, FLASH_TIP_REASON_NOT_GRADUATE_L2,
   FLASH_TIP_EDIT_STATE, FLASH_TIP_REPUSH_STATE, FLASH_TIP_SYSTEM_BUSY, FLASH_TIP_VERIFY_UNAVAILABLE,
@@ -643,7 +643,7 @@ export const useFlashStore = defineStore('flash', () => {
     const missing = missingRequired(input, creator);
     if (missing.length) return { kind: 'blocked', code: 'required', message: flashTipRequired(missing), missing };
     if (!config.isSupportedModel(input.productModel)) {
-      return { kind: 'blocked', code: 'A1', message: FLASH_TIP_MODEL_UNSUPPORTED };
+      return { kind: 'blocked', code: 'A1', message: creator === '用户提报' ? FLASH_TIP_MODEL_UNSUPPORTED : FLASH_TIP_PRODUCT_UNSUPPORTED };
     }
     let inflight: Ticket | undefined;
     try {
@@ -684,11 +684,11 @@ export const useFlashStore = defineStore('flash', () => {
     return { kind: 'create', route: 'auto', initialStatus: '自动刷机中', verifyResult: v.result, selfDeveloped, backfill };
   }
 
-  /** 必填缺项（M4 / M46）：设备SN照片仅用户提报必传 */
+  /** 必填缺项（M4 / M46）：设备SN照片仅用户提报必传；产品字段用户提报叫「产品型号」、坐席侧叫「产品名称」（1013 A4） */
   function missingRequired(input: FlashCreateInput, creator: FlashCreator): string[] {
     const L = FLASH_FIELD_LABELS;
     const checks: [boolean, string][] = [
-      [!input.productModel?.trim(), L.productModel],
+      [!input.productModel?.trim(), creator === '用户提报' ? L.productModel : L.productName],
       [!input.sn?.trim(), L.sn],
       [!input.studentAccount?.trim(), L.studentAccount],
       [!input.studentName?.trim(), L.studentName],
@@ -854,7 +854,7 @@ export const useFlashStore = defineStore('flash', () => {
    * 修改刷机信息并重新推送（1013 A12 / B1：修改刷机信息弹窗「重新推送」是唯一的推送入口；M36 / M44）。
    * 先同步判定，任一不通过即返回提示，**不推送、不改状态**：
    * 状态可重推 → 机型支持且自研 → 刷机原因为毕业 → 改后 SN 无其他在途单 → 建单校验通过。一线、二线都不限次（A14）。
-   * 全部通过即视为推送已发出（M69）：落库、写履历、推送次数 +1（一线另计一线重推次数）；
+   * 全部通过即视为推送已发出（M69）：落库、写履历、推送次数 +1；
    * 回传接收成功 → 写入「刷机成功」类处理结果并转入回访；失败（含推送接口报错重试仍失败）→ 交回发起时的处理人。
    */
   function repush(ticketNo: string, by: FlashActor, changes: FlashInfoChanges = {}): FlashActionResult {
@@ -867,7 +867,7 @@ export const useFlashStore = defineStore('flash', () => {
 
     // M79 提交判定顺序（第 1 条必填由弹窗在字段下方判）：未启用机型 → 非自研 → 刷机原因非毕业 →
     // 在途查询不可用 → 设备SN在途 → 建单校验接口不可用 → SN与学生账号不一致 → 非毕业生身份；命中即止
-    if (!config.isSupportedModel(next.productModel)) return { ok: false, message: FLASH_TIP_MODEL_UNSUPPORTED };
+    if (!config.isSupportedModel(next.productModel)) return { ok: false, message: FLASH_TIP_PRODUCT_UNSUPPORTED };
     if (!config.isSelfDeveloped(next.productModel)) return { ok: false, message: FLASH_TIP_NON_SELF_DEVELOPED };
     if (next.reason !== FLASH_REASON_AUTO) {
       return { ok: false, message: l1 ? FLASH_TIP_REASON_NOT_GRADUATE_L1 : FLASH_TIP_REASON_NOT_GRADUATE_L2 };

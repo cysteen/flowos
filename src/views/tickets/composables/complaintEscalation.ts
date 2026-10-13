@@ -375,12 +375,12 @@ function realValue(v: string | undefined): string | undefined {
 }
 
 /**
- * 刷机单（930）升级投诉的**增量预填**：老工单四类不走这一支，预填内容一字不变。
+ * 刷机单「关联投诉」新建投诉单的**增量预填**（1013 A21 / B5）：老工单四类不走这一支，预填内容一字不变。
  *
  * - 客户档案：标识 / 地区 / 地址 / 客户类型随原单带入，客户卡与搜索框同一个人；
  *   标识按联系手机号合成——刷机单的客户来自工单行而非客户档案库，没有档案 id 可带。
  * - 产品分类：与产品名成对带入，否则产品名留在原分类的取值域外。
- * - 问题三级分类：刷机在问题树上没有可映射路径，**预填为空且保持必填**，由坐席显式选（PRD §6.3）。
+ * - 问题三级分类：投诉单的问题分类由坐席选择，**预填为空且保持必填**（1013 B5）。
  */
 function flashPrefillPart(detail: TicketDetailMeta, phone: string): Partial<CreateTicketPrefill> {
   if (!isFlashTicket(detail)) return {};

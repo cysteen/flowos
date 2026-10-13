@@ -126,7 +126,7 @@ function buildSlaClocks(t: Ticket): SlaClock[] {
     solve.stopOutcome = t.solveBreached ? 'breached' : isSlaVoidStop(t) ? 'void' : 'met';
     if (t.solveBreached) solve.remainSec = -1800;
   } else if (isSlaPaused(t)) {
-    // 挂起 / 自动刷机中 / 线下登记待批推（930 D18 / M31）：在走的钟冻结（剩余保留、可恢复续算）
+    // 挂起 / 自动刷机中（930 D18）：在走的钟冻结（剩余保留、可恢复续算）
     solve.phase = 'paused';
     solve.remainSec = 2 * 3600;
     solve.totalSec = 8 * 3600;
@@ -496,8 +496,8 @@ export function useTicketOperation() {
       address: '—',
     };
     base.agent = null;
-    // 客户全景下钻：本客户名下只有这一张刷机单
-    const selfRow = { cells: [t.no, '刷机', createdAt, t.nodeStatus, t.nodeStatus], ticketNo: t.no };
+    // 客户全景下钻：本客户名下只有这一张刷机单；类型列取工单类型（刷机单＝咨询，1013 A1）
+    const selfRow = { cells: [t.no, t.type, createdAt, t.nodeStatus, t.nodeStatus], ticketNo: t.no };
     base.insightDetails = {
       contact: { ...base.insightDetails.contact, rows: [] },
       history: { ...base.insightDetails.history, rows: [selfRow] },

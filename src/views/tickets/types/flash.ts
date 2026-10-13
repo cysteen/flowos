@@ -390,7 +390,8 @@ export const FLASH_FIELD_LABELS = {
 
 /** 刷机信息里参与改动登记的字段（重推改动项、履历字段 diff） */
 export const FLASH_INFO_FIELD_LABELS: Record<Exclude<keyof FlashInfo, 'versionBackfilled' | 'schoolId'>, string> = {
-  productModel: FLASH_FIELD_LABELS.productModel,
+  // 处理页口径：产品字段为「产品分类 + 产品名称」两级（1013 A4）；「产品型号」只留在用户提报页
+  productModel: FLASH_FIELD_LABELS.productName,
   sn: FLASH_FIELD_LABELS.sn,
   studentAccount: FLASH_FIELD_LABELS.studentAccount,
   studentName: FLASH_FIELD_LABELS.studentName,
@@ -466,6 +467,8 @@ export interface TicketFlash {
 
 /** A1：产品「是否支持刷机」未开启（用户提报拦截） */
 export const FLASH_TIP_MODEL_UNSUPPORTED = '该机型暂不支持刷机申请，请核对产品型号';
+/** 同一拦截落在坐席侧（新建工单、修改刷机信息弹窗）：产品字段叫「产品名称」（1013 A4，PRD §2.3 / §5.6） */
+export const FLASH_TIP_PRODUCT_UNSUPPORTED = '该产品暂不支持刷机申请，请核对产品名称';
 /** A2：同 SN 存在在途刷机单（M2；重推改 SN 撞在途单同文案，M44） */
 export function flashTipInflight(inflightNo: string): string {
   return `该设备已有在途刷机单 ${inflightNo}，请勿重复提交`;
@@ -473,7 +476,7 @@ export function flashTipInflight(inflightNo: string): string {
 /** 在途查询不可用（M43） */
 export const FLASH_TIP_SYSTEM_BUSY = '系统繁忙，请稍后再提交';
 /** 非自研机型不可线上推送（M18） */
-export const FLASH_TIP_NON_SELF_DEVELOPED = '该机型不支持线上推送，请线下登记';
+export const FLASH_TIP_NON_SELF_DEVELOPED = '该产品不支持线上推送，请线下登记';
 /** 重推时刷机原因非毕业（M44） */
 export const FLASH_TIP_REASON_NOT_GRADUATE_L1 = '刷机原因不是毕业，请升级二线处理';
 export const FLASH_TIP_REASON_NOT_GRADUATE_L2 = '刷机原因不是毕业，请线下登记或婉拒';
