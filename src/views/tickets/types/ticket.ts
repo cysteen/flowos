@@ -400,19 +400,12 @@ export function isEscalatedStatus(status: TicketStatus): boolean {
 export type SlaState = 'ok' | 'soon' | 'overdue' | 'paused';
 
 /**
- * SLA **停钟判据**：挂起 ∨ 自动刷机中 ∨ 线下登记后等待批推（930 教育刷机单 D18 / M17 / M31）。
+ * SLA **停钟判据**：挂起 ∨ 自动刷机中（930 教育刷机单 D18 / M17）。线下登记期间不停钟（1013 A17）。
  * - 挂起：列表行 `slaState === 'paused'`（原判据）；
- * - 自动刷机中：推送后等待回传的整段不计时，按子状态判，数据侧漏写 `slaState` 时也停得住；
- * - 线下登记：刷机单 `flash.state.slaPausedUntil` 晚于当前时刻即暂停，到批推时刻自动恢复
- *   （暂停至时刻由 `offlineBatchResumeAt` 算，见 types/flash.ts）。
+ * - 自动刷机中：推送后等待回传的整段不计时，按子状态判，数据侧漏写 `slaState` 时也停得住。
  */
-export function isSlaPaused(
-  t: Pick<Ticket, 'slaState' | 'nodeStatus' | 'flash'>,
-  now: number = Date.now(),
-): boolean {
-  if (t.slaState === 'paused' || t.nodeStatus === '自动刷机中') return true;
-  const until = t.flash?.state.slaPausedUntil;
-  return !!until && now < new Date(until.replace(' ', 'T')).getTime();
+export function isSlaPaused(t: Pick<Ticket, 'slaState' | 'nodeStatus'>): boolean {
+  return t.slaState === 'paused' || t.nodeStatus === '自动刷机中';
 }
 
 export interface Ticket {
@@ -826,6 +819,8 @@ export function slaSortKey(t: Ticket): { group: number; minutes: number } {
       .sort((a, b) => SLA_STATE_RANK[a.state] - SLA_STATE_RANK[b.state] || a.minutes - b.minutes)[0];
     return { group: SLA_STATE_RANK[worst.state], minutes: worst.minutes };
   }
+  // 刷机单未计 SLA（一线、未进教育刷机处理组池，1013 A26）：无活跃钟，与终态同组
+  if (isFlashTicket(t)) return { group: 4, minutes: Number.MAX_SAFE_INTEGER };
   if (t.slaText === '—') return { group: 4, minutes: Number.MAX_SAFE_INTEGER }; // 终态：无活跃钟
   if (isSlaPaused(t)) return { group: 3, minutes: Number.MAX_SAFE_INTEGER }; // 挂起 / 自动刷机中：冻结置底
   // 活跃钟集合：扁平摘要（已响=解决钟 / 未响=首响钟）+ 未响时的解决钟独立字段
@@ -1605,7 +1600,7 @@ export function matchSlaChip(t: Ticket, key: 'soon' | 'overdue'): boolean {
  * 与 `matchSlaChip` 的区别：chip 只看「最急钟」的扁平结论，这里把**两只钟拆开**判 ——
  * 首响钟与解决钟各自出状态，一张单可同时命中「首响超时」与「解决临期」。
  *
- * 作用域：**只管在办且钟在走的单**。挂起（含自动刷机中 / 线下登记待批推）与终态单
+ * 作用域：**只管在办且钟在走的单**。挂起（含自动刷机中）与终态单
  * 钟已停表，不落任何一个值 —— 它们从状态筛选去找，不占 SLA 的口径。
  *
  * 「首响超时」取**超过就算**：现在还欠着首响且已超的、以及已经响了但响的时候就超了的
@@ -1649,6 +1644,8 @@ function ticketSlaClocks(t: Ticket): TicketSlaClocks {
       firstBreached,
     };
   }
+  // 刷机单未计 SLA（一线、未进教育刷机处理组池，1013 A26）：无钟，不落任何筛选值
+  if (isFlashTicket(t)) return STOPPED_CLOCKS;
 
   if (t.slaText === '—' || isSlaPaused(t)) return STOPPED_CLOCKS;
 

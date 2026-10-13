@@ -31,9 +31,9 @@ export interface SlaClockSource {
   firstRespBreached?: boolean;
 }
 
-/** 解决时限（PRD §4.3「暂行同咨询单」：8 小时） */
+/** 解决时限（1013 A25：沿用咨询单，8 小时） */
 export const FLASH_SLA_LIMIT_MS = 8 * 3_600_000;
-/** 首响时限（暂行同咨询单：30 分钟） */
+/** 首响时限（沿用咨询单：30 分钟） */
 export const FLASH_SLA_FIRST_LIMIT_MS = 30 * 60_000;
 /** 临期阈值：剩余 ≤ 30 分钟转橙（与处理页表盘既有 warnSec 同值） */
 export const FLASH_SLA_WARN_MS = 30 * 60_000;
@@ -94,11 +94,20 @@ export function readFlashSla(st: FlashState, now: number = Date.now()): SlaReadi
 }
 
 /**
- * 分流入口：**刷机单且已起算**才有账本读数；其余（老四类、未起算的刷机单）返回 `null`，
- * 调用方转调现有实现。
+ * 刷机单是否计 SLA（1013 A26）：一线不计 SLA，本单进入过教育刷机处理组池才计。
+ * 归属池只会从一线刷机池走向教育刷机处理组池，不会回流，故以归属池为判据。
+ */
+export function isFlashSlaCounted(st: Pick<FlashState, 'pool' | 'slaStartedAt'>): boolean {
+  return st.pool === 'l2' && !!st.slaStartedAt;
+}
+
+/**
+ * 分流入口：**刷机单且已在教育刷机处理组池起算**才有账本读数；其余（老四类、一线刷机池 /
+ * 一线名下、未起算的刷机单）返回 `null`，调用方转调现有实现或显示「—」。
  */
 export function readSla(t: SlaClockSource, now: number = Date.now()): SlaReading | null {
   if (!isFlashTicket(t) || !t.flash) return null;
+  if (!isFlashSlaCounted(t.flash.state)) return null;
   return readFlashSla(t.flash.state, now);
 }
 

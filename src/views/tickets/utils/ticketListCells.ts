@@ -2,7 +2,7 @@ import { isFlashTicket } from '@/views/tickets/types/flash';
 import type { Ticket } from '@/views/tickets/types/ticket';
 import { isFirstResponded, isSlaPaused, resolveTicketGroupNames, SLA_COLOR } from '@/views/tickets/types/ticket';
 import { resolveCurrentFlowNode, resolvePreviousFlowNode } from '@/views/tickets/utils/ticketFlowNodes';
-import { formatSlaRemain, readSla, slaStateOf, type SlaReading } from '@/views/tickets/utils/slaClock';
+import { formatSlaRemain, isFlashSlaCounted, readSla, slaStateOf, type SlaReading } from '@/views/tickets/utils/slaClock';
 
 export function formatStartDate(t: Ticket): string {
   if (!t.createdAt) return '—';
@@ -125,12 +125,13 @@ export function isSlaVoidStop(t: Ticket): boolean {
 }
 
 /**
- * 刷机单 SLA 不计时（930 教育刷机单 PRD §4.3 / §9.2，M88 / M103）：从未起算（首推「自动刷机中」、
- * 自动刷机成功直进回访）或「调研中」，列表 SLA 列显示「—」，与处理页页头同一口径。老四类恒为 false。
+ * 刷机单 SLA 不计时（1013 A26）：一线不计 SLA（一线刷机池、一线名下），从未进过教育刷机处理组池
+ * （首推「自动刷机中」、自动刷机成功直进回访）或「调研中」，列表 SLA 列显示「—」，与处理页页头同一口径。
+ * 老四类恒为 false。
  */
 export function isFlashSlaIdle(t: Ticket): boolean {
   if (!isFlashTicket(t) || !t.flash) return false;
-  return !t.flash.state.slaStartedAt || t.nodeStatus === '调研中';
+  return !isFlashSlaCounted(t.flash.state) || t.nodeStatus === '调研中';
 }
 
 const IDLE_LINE: SlaLine = { text: '—', color: SLA_COLOR.paused };
@@ -162,7 +163,7 @@ export function slaResolveLine(t: Ticket, now: number = Date.now()): SlaLine {
     if (t.solveBreached) return BREACHED_LINE;
     return isSlaVoidStop(t) ? VOID_LINE : MET_LINE;
   }
-  // 刷机单停钟（自动刷机中 / 线下登记待批推，930 D18 / M31）：挂起单仍走下方原逻辑
+  // 停钟（自动刷机中）：挂起单仍走下方原逻辑
   if (t.slaState !== 'paused' && isSlaPaused(t)) return { text: '已暂停', color: SLA_COLOR.paused };
   if (!isFirstResponded(t) && t.resolveSlaText) {
     return { text: slaShort(t.resolveSlaText), color: SLA_COLOR[t.resolveSlaState ?? 'ok'] };
