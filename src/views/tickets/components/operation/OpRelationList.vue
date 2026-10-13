@@ -60,6 +60,8 @@ const emit = defineEmits<{ open: [rel: TicketRelation] }>();
 .rel-arrow.k-child { color: #1a6fff; background: #eff6ff; }
 .rel-arrow.k-reopen { color: #dc2626; background: #fef2f2; }
 .rel-arrow.k-following { color: #059669; background: #ecfdf5; }
+.rel-arrow.k-linkedComplaint,
+.rel-arrow.k-linkedFlash { color: #b45309; background: #fff7ed; }
 .rel-body { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .rel-line1 { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .rel-label { flex: none; font-size: 12px; color: #6b7280; }

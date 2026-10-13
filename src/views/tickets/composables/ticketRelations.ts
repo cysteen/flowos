@@ -32,7 +32,11 @@ export type RelationKind =
   /** Reopen 承接单 */
   | 'reopen'
   /** 本单从属跟跑于某主导单 */
-  | 'following';
+  | 'following'
+  /** 刷机单「关联投诉」新建的投诉单（弱关联，两单各自流转，1013 A21 / B5） */
+  | 'linkedComplaint'
+  /** 投诉单侧：与本单弱关联的刷机单 */
+  | 'linkedFlash';
 
 export interface TicketRelation {
   kind: RelationKind;
@@ -55,6 +59,8 @@ const META: Record<RelationKind, { label: string; arrow: string }> = {
   child: { label: '转单子单', arrow: '⊕' },
   reopen: { label: 'Reopen', arrow: '↻' },
   following: { label: '跟随主导单', arrow: '⇢' },
+  linkedComplaint: { label: '关联投诉', arrow: '⇄' },
+  linkedFlash: { label: '关联刷机单', arrow: '⇄' },
 };
 
 function rel(kind: RelationKind, no: string, extra: Partial<TicketRelation> = {}): TicketRelation {
@@ -68,11 +74,27 @@ function rel(kind: RelationKind, no: string, extra: Partial<TicketRelation> = {}
  * - 父：`escalatedFromNo`（升级自）或 `followingNo`（跟随主导单），取先命中的一个；
  * - 子：升级派生单 / 关联售后单 / 转单子单 / Reopen 承接单，取先命中的一个。
  * 出现多条只可能是脏数据，这里按优先级截断，不把"关联 3"这种不可能的数字露给坐席。
+ *
+ * **弱关联不占父 / 子位**：刷机单「关联投诉」与投诉单之间是平行关系、两单各自流转（1013 A21 / B5），
+ * 不受 1:1 约束，逐条追加在父 / 子之后；刷机单显示「关联投诉」，投诉单显示「关联刷机单」。
  */
 export function buildTicketRelations(detail: TicketDetailMeta): TicketRelation[] {
   const parent = resolveParent(detail);
   const child = resolveChild(detail);
-  return [parent, child].filter((r): r is TicketRelation => !!r);
+  return [parent, child, ...resolveWeakLinks(detail)].filter((r): r is TicketRelation => !!r);
+}
+
+/** 弱关联（关联投诉 / 关联刷机单）：取关联卡上按标签登记的那几条，同单号去重 */
+function resolveWeakLinks(detail: TicketDetailMeta): TicketRelation[] {
+  const seen = new Set<string>();
+  const out: TicketRelation[] = [];
+  for (const r of detail.linkedRecords ?? []) {
+    const kind: RelationKind | null = r.tag === '关联投诉' ? 'linkedComplaint' : r.tag === '关联刷机单' ? 'linkedFlash' : null;
+    if (!kind || seen.has(r.no)) continue;
+    seen.add(r.no);
+    out.push(rel(kind, r.no, { title: r.title }));
+  }
+  return out;
 }
 
 /** 父方向：本单从哪来（最多一个） */
