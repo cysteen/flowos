@@ -26,7 +26,7 @@ import {
   type FlashResult, type FlashRun, type FlashState, type FlashVerifyResult, type TicketFlash,
 } from '@/views/tickets/types/flash';
 import { formatSlaClock, isFlashSlaCounted, readFlashSla, slaStateOf } from '@/views/tickets/utils/slaClock';
-import { templateOf } from '@/mock/notifyRules';
+import { LOGIN_URL, templateOf } from '@/mock/notifyRules';
 import { useNotifyLogStore } from './notifyLog';
 import { useFlashConfigStore } from './flashConfig';
 import { FLASH_LS_KEYS, readFlashCache, writeFlashCache } from './flashCache';
@@ -310,6 +310,8 @@ export const useFlashStore = defineStore('flash', () => {
       title,
       receivers: [FLASH_POOLS[pool].groupName],
       content: text,
+      // 到组类通知走容联云留言弹窗（PRD §11.1）
+      channel: '容联云留言弹窗',
     });
   }
 
@@ -453,6 +455,31 @@ export const useFlashStore = defineStore('flash', () => {
       st.handoffSmsSent = true;
       sms(r, at + 1000, 'handoff');
     }
+    // 到组通知（PRD §11.1 / 1013 B14）：每次进池都通知全组，同一张单再次进池照发；
+    // 调研中催补进一线刷机池（分派表第 10 行）走催补通知，不另发；升级二线进池另有专用文案（escalateToL2）
+    if (reason !== '回访期间客户催补') notifyPoolArrival(r, pool);
+  }
+
+  /**
+   * 到组通知：一线刷机池发持有容联云刷机角色的一线坐席，教育刷机处理组池发全组；
+   * 渠道为容联云留言弹窗，文案沿用咨询单到组通知（「工单池待领取提醒」模板）。
+   */
+  function notifyPoolArrival(r: Ticket, pool: FlashPoolKey) {
+    const meta = FLASH_POOLS[pool];
+    const receiver = pool === 'l1' ? meta.label : meta.groupName;
+    const body = (templateOf('IM', 'IM_WO_POOLED')?.body ?? '')
+      .replace('${groupName}', receiver)
+      .replace('${ticketNo}', r.no)
+      .replace('${loginUrl}', LOGIN_URL);
+    useNotifyLogStore().emit({
+      ticketNo: r.no,
+      event: 'ticket.pooled',
+      kind: 'group',
+      title: '到组通知',
+      receivers: [receiver],
+      content: body,
+      channel: '容联云留言弹窗',
+    });
   }
 
   function pushInternal(r: Ticket, by: FlashActor, trigger: FlashPushTrigger, at: number) {

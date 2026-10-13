@@ -506,7 +506,8 @@ export const NOTIFY_RULES: NotifyRule[] = [
     recipients: [{ type: 'groupMembers' }], channels: ['容联云留言弹窗'], templates: {},
     contents: {
       容联云留言弹窗: {
-        body: '${groupName}来了一条刷机单（${ticketNo}），请尽快领取处理。',
+        // 文案沿用咨询单到组通知（IM_WO_POOLED，PRD §11.1）
+        body: '您所在的${groupName}来了一条新工单（${ticketNo}），请尽快领取处理。\n\n系统登陆地址：${loginUrl}',
       },
     },
     enabled: true },
@@ -589,7 +590,7 @@ export const NOTIFY_RULES: NotifyRule[] = [
 ];
 
 /** 客服系统统一登陆地址，各模板正文末尾引用 */
-const LOGIN_URL = 'http://xfkf.iflytek.com/ngs/SSOVerifyLogin';
+export const LOGIN_URL = 'http://xfkf.iflytek.com/ngs/SSOVerifyLogin';
 
 /* ============================ 模板库 ============================ */
 
