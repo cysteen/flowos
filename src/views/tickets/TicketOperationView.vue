@@ -72,7 +72,7 @@ import {
 } from './composables/opActionRegistry';
 import {
   flashEditInfoGate, flashHeaderEscalateVisible, flashStageOf, resolveFlashView,
-  FLASH_GATE_TIPS, type FlashView,
+  FLASH_ADMIN_ROLE_KEYS, FLASH_GATE_TIPS, type FlashView,
 } from './composables/flashGate';
 import { useFlashStore } from '@/stores/flash';
 import { useFlashConfigStore } from '@/stores/flashConfig';
@@ -1187,8 +1187,11 @@ const escalateReportFirstTip = computed(() => {
 const canLinkAftersale = computed(() => headerRoleGate.value.linkAftersale);
 // 刷机单取消工单的角色与门控沿用咨询单（1013 B4）
 // 售后转回重派后仍「未认领」的回流单：一线坐席不展示取消（1025 口径定稿 §4-6a）
+// 刷机单只读查看与客诉专员：页头只出催单 / 新建补充 / 关联投诉，不出取消工单；管理员照二线视角（PRD §5.5「只读查看」「其他」行）
 const canCancelTicket = computed(() => headerRoleGate.value.cancelTicket
-  && !(d.value.returnedFromAftersale && ticketUnclaimed.value));
+  && !(d.value.returnedFromAftersale && ticketUnclaimed.value)
+  && !(isFlash.value && (flashView.value === 'other'
+    || (flashView.value === 'readonly' && !FLASH_ADMIN_ROLE_KEYS.has(user.roleKey)))));
 /** 刷机单「自动刷机中」取消工单置灰（PRD §5.5） */
 const cancelBlockedTip = computed(() => (isFlash.value && d.value.status === '自动刷机中' ? FLASH_GATE_TIPS.autoFlashing : undefined));
 

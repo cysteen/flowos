@@ -159,7 +159,7 @@ export function normalizeFlashResult(v: string | undefined | null): FlashResult 
 }
 
 /** 下送拦截：处理结果为「已线下登记」（A15） */
-export const FLASH_TIP_OFFLINE_FORWARD = '已线下登记，待产线推送后改为「已线下登记、已推送」再下送';
+export const FLASH_TIP_OFFLINE_FORWARD = '已线下登记，待产线推送后改为『已线下登记、已推送』再下送';
 /** 下送确认：处理结果为「升级二线」（A18） */
 export const FLASH_ESCALATE_CONFIRM_TEXT = '工单将转入二线继续处理';
 

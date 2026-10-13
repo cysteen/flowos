@@ -237,9 +237,10 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       channel,
       ticketSource: form.ticketSource,
       priority: form.priority,
-      // 标题由刷机服务强制加「刷机」前缀（1013 A3）
-      title: form.title,
-      problemDesc: form.description.trim() || undefined,
+      // 刷机单不出「工单标题」卡，标题由刷机服务按「刷机 · 产品名称 · 问题分类第三级 · 工单来源」生成（PRD §2.4）
+      title: undefined,
+      // 问题描述由系统按刷机信息生成（PRD §2.4），不取表单
+      problemDesc: undefined,
     };
   }
 

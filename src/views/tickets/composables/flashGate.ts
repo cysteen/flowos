@@ -32,6 +32,8 @@ import { NO_AFTERSALE_TIP } from './opActionRegistry';
 export type FlashView = 'l1' | 'l2' | 'claim' | 'readonly' | 'other' | 'tech';
 
 const FLASH_ADMIN_ROLES = new Set(['system-admin', 'ops-admin', 'tenant-admin']);
+/** 管理员三档（全租户、未认领以外的单走二线视角） */
+export const FLASH_ADMIN_ROLE_KEYS: ReadonlySet<string> = FLASH_ADMIN_ROLES;
 
 export interface FlashViewInput {
   roleKey: string;

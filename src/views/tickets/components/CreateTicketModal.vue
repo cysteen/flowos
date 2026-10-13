@@ -611,8 +611,8 @@ watch(
           </div>
 
           <!-- 问题描述篇幅长，整行收尾 -->
-          <div class="inline-field desc-field">
-            <label class="inline-label xl"><span v-if="!isFlashType" class="req">*</span>问题描述</label>
+          <div v-if="!isFlashType" class="inline-field desc-field">
+            <label class="inline-label xl"><span class="req">*</span>问题描述</label>
             <a-textarea
               v-model:value="form.description"
               class="inline-control field-control"
@@ -781,8 +781,8 @@ watch(
       <!-- ④′ 刷机专属：「刷机信息」卡（930 教育刷机单 PRD §2.4；1013 A2 识别后切入） -->
       <FlashInfoPart v-if="isFlashType" v-model:info="form.flash" :errors="flashErrors" />
 
-      <!-- ⑤ 工单标题（无分区大标题，对齐 SlSwt）；刷机单标题强制前缀「刷机」（1013 A3） -->
-      <CreateTicketPartCard compact>
+      <!-- ⑤ 工单标题（无分区大标题，对齐 SlSwt）；刷机单隐藏本卡，标题由系统生成（PRD §2.4） -->
+      <CreateTicketPartCard v-if="!isFlashType" compact>
         <div class="inline-field">
           <label class="inline-label title-label">工单标题</label>
           <a-input
