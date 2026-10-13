@@ -1493,6 +1493,17 @@ watch(
   },
   { immediate: true },
 );
+// 系统改写处理结果（重新推送接收成功写入「已线上刷机成功」、升级二线清空）时同步回表单
+watch(
+  () => d.value.flash?.state.result,
+  (v) => {
+    if (!isFlash.value) return;
+    const next = normalizeFlashResult(v);
+    if (form.value.flashResult === next) return;
+    form.value = { ...form.value, flashResult: next };
+    processBaseline = snapshotProcess();
+  },
+);
 
 /**
  * 第八类 ⑤「风险等级变更」的**第二个上游 —— 坐席在工单侧填写**（《【720】》§4.4 ⑤：
