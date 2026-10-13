@@ -18,7 +18,7 @@ import type { TimelineEntry, TlAction, TlCategory, TlRole } from '@/views/ticket
 import { TICKET_NO_PREFIX } from '@/constants/ticketNo';
 import {
   FLASH_PRODUCT_CATEGORY, FLASH_TAG_L1, FLASH_TAG_L2, FLASH_TAG_L3_USER_REPORT, FLASH_TICKET_TYPE, flashTicketTitle,
-  FLASH_POOLS, FLASH_RESULT_OFFLINE, FLASH_RETURN_TIMEOUT_DEFAULT_MIN, FLASH_TL, flashFailReasonText, flashMinuteStamp,
+  FLASH_POOLS, FLASH_RESULT_OFFLINE, FLASH_RESULT_ONLINE_SUCCESS, FLASH_RETURN_TIMEOUT_DEFAULT_MIN, FLASH_TL, flashFailReasonText, flashMinuteStamp,
   flashSmsHandoff, flashSmsSuccess, flashSmsSurvey, flashStamp, parseFlashStamp,
   type FlashCreator, type FlashFailL1, type FlashFailL2, type FlashHandoffReason, type FlashInfo, type FlashPoolKey,
   type FlashReason, type FlashRun, type FlashRunResult, type FlashState, type FlashPushTrigger,
@@ -763,7 +763,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       flashState: state('用户提报', {
         outcome: '接收成功', pushCount: 2,
         handoffReason: '接收失败', pool: 'l1', handoffSmsSent: true,
-        result: '已线上刷机成功',
+        result: FLASH_RESULT_ONLINE_SUCCESS,
         surveySentAt: addSec(forwarded, 1),
       }),
       runs: [
@@ -779,10 +779,11 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       acceptEntry(claim, '刘一线', '一线坐席'),
       handleEntry(addSec(repushed, -90), '刘一线', '一线坐席', '已电话联系用户周建平，指导平板连接家庭 WiFi，设备已在线，准备重新推送。'),
       repushEntry(repushed, 2, '刘一线', '一线坐席'),
+      // 与刷机服务 `succeed()` 同序同文：回传结果 → 系统写处理结果并转入回访 → 成功短信 → 调研短信
       returnOk(back2),
+      tl(back2, 'node', 'resolved', '系统', '系统', '回传结果', FLASH_TL.repushSuccessSurvey(FLASH_RESULT_ONLINE_SUCCESS)),
       smsEntry(addSec(back2, 1), '13856071966', flashSmsSuccess(no(19), info.sn)),
-      tl(forwarded, 'node', 'resolved', '系统', '系统', '转入回访', '重推接收成功；处理结果：已线上刷机成功；转入回访'),
-      smsEntry(addSec(forwarded, 1), '13856071966', flashSmsSurvey(no(19))),
+      smsEntry(addSec(back2, 2), '13856071966', flashSmsSurvey(no(19))),
     ]);
   }
 
