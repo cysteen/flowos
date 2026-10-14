@@ -1514,6 +1514,43 @@ watch(
   },
   { immediate: true },
 );
+/**
+ * 表单回放「最新一次保存的值」：刷新后表单与速览带「最新处理」、处理履历一致。
+ * - 普通单：取处理履历缓存（stores/handleLog）里各次保存的字段变更，按先后覆盖到 Tab① 表单与技术支持 Tab；
+ * - 刷机单：取刷机履历里的保存登记（刷机处理结论 / 刷机处理记录以刷机字段组为准，不在此回放）；
+ *   种子里二线的处理条目只有正文，正文即处理结果。
+ * 没有保存记录的单仍走种子预填。
+ */
+const PROCESS_FIELD_KEY = new Map(BASE_PROCESS_FIELDS.map((f) => [f.label, f.key]));
+const FLASH_STATE_FIELDS = new Set(['刷机处理结论', '刷机处理记录']);
+function replaySavedProcess() {
+  const saved = isFlash.value
+    ? flashStore.timelineOf(d.value.no).filter((e) => e.category === 'handle')
+    : handleLogStore.entriesOf(d.value.no);
+  if (!saved.length) return;
+  const next: Record<string, unknown> = { ...form.value };
+  let tech: string | undefined;
+  for (const e of saved) {
+    if (!e.changes?.length) {
+      if (isFlash.value && e.how === '工单处理' && e.role !== '一线坐席' && e.what?.trim()) next.processResult = e.what.trim();
+      continue;
+    }
+    for (const c of e.changes) {
+      const v = c.to === '（已清空）' ? '' : (c.to ?? '');
+      if (c.field === TECH_RESULT_FIELD) tech = v;
+      if (isFlash.value && FLASH_STATE_FIELDS.has(c.field)) continue;
+      const key = PROCESS_FIELD_KEY.get(c.field);
+      if (key) next[key] = v;
+    }
+  }
+  form.value = next as unknown as ProcessFormDraft;
+  if (tech !== undefined) {
+    tabData.value = { ...tabData.value, techDraft: { ...tabData.value.techDraft, processResult: tech } };
+  }
+  processBaseline = snapshotProcess();
+}
+watch(() => d.value.no, replaySavedProcess, { immediate: true, flush: 'post' });
+
 // 系统改写刷机处理结论 / 刷机处理记录（重新推送接收成功写入「已线上刷机成功」、升级二线落库）时同步回表单
 watch(
   () => [d.value.flash?.state.result, d.value.flash?.state.record] as const,
@@ -1797,7 +1834,8 @@ function onAction(payload: Record<string, unknown>) {
       return;
     }
     if (isFlash.value && !onFlashSave()) return;
-    dispatch({ type: '保存草稿', process: log });
+    // 刷机单：改为线下登记时保存会往刷机处理记录追加一行，登记取追加后的值，与表单、刷机字段组一致
+    dispatch({ type: '保存草稿', process: isFlash.value ? buildProcessLog() : log });
     // 风险等级落第八类、不落「工单处理」的字段 diff，故与 log 分开走，见 `recordAgentRiskLevelChange`
     recordAgentRiskLevelChange();
     if (log || isFlash.value) processBaseline = snapshotProcess(); // 登记后更新基线，下次 diff 以此为准
