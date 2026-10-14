@@ -263,6 +263,7 @@ defineExpose({ switchTab });
         :confirm-at="detail.xiaozhi?.confirmAt"
         :confirm-by="detail.xiaozhi?.confirmBy"
         :rd-return-count="detail.xiaozhi?.rdReturnCount"
+        :xiaozhi-mode="isXiaozhi"
         @activate="emit('feishu-activate', $event)"
         @retry="emit('feishu-retry')"
         @dunning="emit('dunning')"

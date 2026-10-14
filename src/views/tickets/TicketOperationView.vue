@@ -1442,8 +1442,16 @@ function nowFullText(): string {
   return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())} ${p(dt.getHours())}:${p(dt.getMinutes())}`;
 }
 
-/** 升级到飞书项目入口：所有工单均开放（不再限消费者BG） */
-const feishuEligible = computed(() => true);
+/**
+ * 升级到飞书项目入口：所有工单均开放（不再限消费者BG）—— **小智单除外**（1130 一·补 B10）。
+ *
+ * 🔴 B10 是「升级只保留**产研一个**目标」。只在 `escalateChannelOptions` 里砍掉技术支持那档
+ * 还不够：这个常真的 `feishuEligible` 会把「飞书项目 · 产研反馈单」也插进去，
+ * 于是小智单上仍有**两个**产研目标，而且 `resetForms` 会把它选成默认值 ——
+ * 小智单整条产研链路（产品模块 → 接收人、产研单标题、办结回传）都按 TPD 的字典走（W2 / W3），
+ * 默认落飞书那档等于默认走一条对不上接收人的路。
+ */
+const feishuEligible = computed(() => !isXiaozhi.value);
 
 /** 转售后上下文：投诉分流 + 客户/产品预填 + 已有关联售后单（有关联则封口，按是否结案给不同提示） */
 const aftersaleContext = computed(() => ({

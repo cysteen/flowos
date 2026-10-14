@@ -57,6 +57,12 @@ const props = defineProps<{
   confirmBy?: string;
   /** 已回传产研「未解决」的次数（一·补 B8：循环不封顶，但记次数） */
   rdReturnCount?: number;
+  /**
+   * 小智单模式（1130 D1）。只影响**时间线节点的标签用词** ——
+   * 小智链路复用了 `push` / `result` / `feedback` 三个记录档，但它们在小智单上的含义
+   * 与消费者BG飞书单不同，照 `KIND_META` 的通用词渲染会写出「关单」这种与本单开 / 结对打的标签。
+   */
+  xiaozhiMode?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -150,6 +156,15 @@ const statusMeta = computed(() => {
   if (props.syncState === 'failed') {
     return { label: '关联失败', tone: 'danger' as const };
   }
+  /**
+   * 🔴 小智单待校代确认期间，这枚胶囊**不能写「已结案」**（1130 一·补 B5）：
+   * 产研那张反馈单确实结了，但**本单还开着**（「已升级产研」）。在这个系统里「结案」
+   * 专指工单关闭，胶囊写「已结案」会和页头的「已升级产研」对打，让人以为单子已经关了。
+   * 故这一档单独出「产研已办结」—— 说的是产研那边的事，不碰本单的开 / 结。
+   */
+  if (props.syncState === 'closed' && props.confirmState === '未确认') {
+    return { label: '产研已办结', tone: 'feedback' as const };
+  }
   if (props.syncState === 'closed') {
     return { label: '已结案', tone: 'done' as const };
   }
@@ -194,6 +209,23 @@ const KIND_META: Record<FeishuRecord['kind'], { icon: unknown; color: string; ta
   activate: { icon: ThunderboltOutlined, color: '#f59e0b', tag: '二次激活' },
   dunning: { icon: BellOutlined, color: '#d97706', tag: '催单' },
 };
+
+/**
+ * 时间线节点的标签用词。消费者BG飞书单照 `KIND_META` 原样出；
+ * 小智单上这三个档的含义不同，按记录本身的身份改词（1130 一·补 B5 / B8 / T1）：
+ * - `result`（产研办结）→ **不能写「关单」**，产研办结不关本单；
+ * - `push` 里的「系统自动回传」→ 不是建关联，是校代确认未解决后系统打回去那一笔；
+ * - `feedback` 里的驳回留痕 → 标出「产研驳回」，否则混在「预反馈」里看不出来（T1 信息不丢）。
+ * 颜色一律沿用 `KIND_META`，只换文字。
+ */
+function tagOf(rec: FeishuRecord): string {
+  const base = KIND_META[rec.kind].tag;
+  if (!props.xiaozhiMode) return base;
+  if (rec.kind === 'result') return '产研办结';
+  if (rec.kind === 'push' && rec.title.includes('自动回传')) return '回传产研';
+  if (rec.kind === 'feedback' && rec.title.includes('驳回')) return '产研驳回';
+  return base;
+}
 
 function onActivate() {
   if (props.readonly || !activateEnabled.value) return;
@@ -348,7 +380,7 @@ function onDunning() {
               class="fs-item-tag"
               :style="{ color: KIND_META[rec.kind].color, background: `${KIND_META[rec.kind].color}14` }"
             >
-              {{ KIND_META[rec.kind].tag }}
+              {{ tagOf(rec) }}
             </span>
             <span class="fs-item-title">{{ rec.title }}</span>
             <span class="fs-item-side" :class="{ downstream: rec.side === '产研侧' }">{{ rec.side }}</span>
