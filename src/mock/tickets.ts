@@ -1430,7 +1430,6 @@ const TICKET_FORM_FIELDS: Record<
     problemL1: string;
     problemL2: string;
     problemL3: string;
-    resolveTimeRemark: string;
   }
 > = {
   t1: {
@@ -1438,28 +1437,24 @@ const TICKET_FORM_FIELDS: Record<
     problemL1: '功能异常',
     problemL2: '播放问题',
     problemL3: '在线播放',
-    resolveTimeRemark: '希望今日内恢复播放',
   },
   t2: {
     businessType: '学习机',
     problemL1: '设备故障',
     problemL2: '无法开机',
     problemL3: '无响应',
-    resolveTimeRemark: '明日 12:00 前上门',
   },
   t5: {
     businessType: '学习机',
     problemL1: '功能异常',
     problemL2: '播放问题',
     problemL3: '无法播放',
-    resolveTimeRemark: '3 个工作日内退款',
   },
   t6: {
     businessType: '学习机',
     problemL1: '设备故障',
     problemL2: '网络',
     problemL3: 'WiFi 连不上',
-    resolveTimeRemark: '预约周六上午上门',
   },
 };
 

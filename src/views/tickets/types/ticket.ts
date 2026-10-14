@@ -450,8 +450,6 @@ export interface Ticket {
   problemL1?: string;
   problemL2?: string;
   problemL3?: string;
-  /** 解决时间备注 */
-  resolveTimeRemark?: string;
   /** 产品分类（筛选） */
   productCategory?: string;
   /** 产品线（五级产品体系 · 查询筛选） */
