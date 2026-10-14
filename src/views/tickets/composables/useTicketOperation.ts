@@ -444,6 +444,7 @@ export function useTicketOperation() {
       if (!t.flash) applyChainOwnProfile(base, t);
     }
     if (t?.flash) applyFlashOverview(base, t);
+    if (t && isXiaozhiTicket(t)) applyXiaozhiOverview(base, t);
     detail.value = base;
     if (t?.flash) projectFlashTimeline(t.no, true);
     // 小智单：履历以小智链路为准（建单 / 自动流转 / 回传），不沿用类型样例履历
@@ -638,6 +639,65 @@ export function useTicketOperation() {
     base.feishuFeedbackNo = t.xiaozhi?.rdFeedbackNo;
     base.status = t.nodeStatus;
     if (isTicketClosed(t.nodeStatus)) opState.value = 'closed';
+  }
+
+  /**
+   * 小智单的页头 / 速览带 / 侧栏取值与小智种子单自洽（形制同 `applyFlashOverview`）：
+   * 建单人取小智履历的建单操作人、建单时间取工单行、业务分类取工单行（教育，D4）、
+   * 产品与问题分类取工单行、工单来源 IM（D24）—— 不沿用类型样例的台账，
+   * 否则页头会出现「建单人：李一线 / 业务分类：学习机」这类与本单对不上的取值。
+   */
+  function applyXiaozhiOverview(base: TicketDetailMeta, t: Ticket) {
+    const creatorName = xiaozhi.timelineOf(t.no).find((e) => e.action === 'create')?.who ?? '—';
+    const createdAt = t.createdAt ?? '';
+    base.builder = creatorName;
+    base.builderShort = creatorName;
+    base.createdAt = createdAt;
+    base.createdAtFull = createdAt;
+    base.issueOccurredAt = createdAt;
+    base.expectedResolve = '—';
+    base.businessType = t.businessType ?? '教育';
+    base.businessLine = '教育业务线';
+    base.attachments = [];
+    base.product.name = t.product ?? '';
+    if (t.productCategory) base.product.category = t.productCategory;
+    base.product.sn = t.sn ?? '';
+    base.product.tags = [];
+    base.product.issueTags = [t.problemL1, t.problemL2, t.problemL3].filter((s): s is string => !!s?.trim());
+    const phone = (t.customerPhone ?? '').replace(/^(\d{3})(\d{4})(\d{4})$/, '$1 $2 $3');
+    base.customer = {
+      name: t.customer,
+      types: ['G个人用户'],
+      gender: '—',
+      contacts: phone ? [{ type: 'phone', value: phone }] : [],
+      region: '—',
+      address: '—',
+    };
+    base.agent = null;
+    const selfRow = { cells: [t.no, t.type, createdAt, t.nodeStatus, t.nodeStatus], ticketNo: t.no };
+    base.insightDetails = {
+      contact: { ...base.insightDetails.contact, rows: [] },
+      history: { ...base.insightDetails.history, rows: [selfRow] },
+      complaint: { ...base.insightDetails.complaint, rows: [] },
+      recent30: { ...base.insightDetails.recent30, rows: [selfRow] },
+    };
+    base.knowledge = ['小智工单处理指引', '产研问题单提交要素与驳回常见原因'];
+    base.aiSummary = t.problemDesc ?? t.title;
+    base.aiInsight = {
+      customerBrief: '教育用户（校代 / 渠道商），经小智在线进线',
+      ticketBrief: t.title,
+      suggestion: t.xiaozhi?.rdRejected ? '补充产研要求的材料后二次提交产研' : '按产研反馈进度跟进',
+    };
+    base.latestHandling = xiaozhiLatestHandling(t.no);
+  }
+
+  /** 「最新处理」取小智履历里的处理登记，不落类型样例 */
+  function xiaozhiLatestHandling(no: string): TicketDetailMeta['latestHandling'] {
+    return xiaozhi.timelineOf(no)
+      .filter((e) => e.category === 'handle' || e.category === 'node')
+      .slice(-2)
+      .reverse()
+      .map((e) => ({ who: e.who, role: e.role, action: e.how, when: e.when, text: e.what }));
   }
 
   /**

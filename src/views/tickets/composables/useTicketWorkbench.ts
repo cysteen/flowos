@@ -1,4 +1,6 @@
 import { isFlashTicket } from '@/views/tickets/types/flash';
+import { isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
+import { useXiaozhiStore } from '@/stores/xiaozhi';
 import { computed, ref } from 'vue';
 import { buildAiSuggestions } from '@/mock/aiSuggestions';
 import { TICKETS } from '@/mock/tickets';
@@ -75,6 +77,8 @@ export function useTicketWorkbench() {
 
   const user = useUserStore();
   const flash = useFlashStore();
+  // 小智种子单的履历与缓存（种子单本身已随 XIAOZHI_SEEDS 并入 TICKETS）
+  useXiaozhiStore().hydrate();
 
   /**
    * 工单池 / 催补待回的可见分组按角色取（930 教育刷机单 M72）：
@@ -104,6 +108,9 @@ export function useTicketWorkbench() {
     }
     // 其余角色的刷机单只按「处理人为本人」取，不沿用老四类的演示处理人（技术支持不涉及刷机单，§9.4 / R113）
     if (isFlashTicket(t)) return inFlashMineScope(t, user.roleKey, flashHandler.value);
+    // 小智单（1130 D21：进池自己领）按**当前登录人**取，不沿用老四类的演示处理人 ——
+    // 否则小智坐席名下的单落不进「我的任务」，领了也看不见
+    if (isXiaozhiTicket(t)) return inMineTaskScope(t, flashHandler.value);
     return inMineTaskScope(t, WORKBENCH_HANDLER);
   }
 
