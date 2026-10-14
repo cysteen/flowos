@@ -25,8 +25,10 @@ export type XiaozhiLsKey = (typeof XIAOZHI_LS_KEYS)[keyof typeof XIAOZHI_LS_KEYS
  *   `rdResubmitCount` 去掉（T1 驳回链路不实现），新增 `settledAt` / `confirmState` /
  *   `confirmAt` / `confirmBy` / `rdReturnCount`（B5 / B7 / B8）。**形状变了必须升版**：
  *   v1 的缓存里 `rdSync` 还可能是已删掉的 `'rejected'`，不丢弃就会渲染出一个不存在的状态档。
+ * - v3：一·补 B24 新增工单层 `frontlineAccount`（提报人确认凭据，建单必填）。
+ *   v2 的缓存里这一项是空的 —— 不丢弃的话，旧快照里的单看起来就像「违反了必填规则还建出来了」。
  */
-export const XIAOZHI_CACHE_VERSION = 2;
+export const XIAOZHI_CACHE_VERSION = 3;
 
 /** 保质期：12 小时（与刷机 / 风险两条线同口径） */
 export const XIAOZHI_STALE_MS = 12 * 60 * 60 * 1000;

@@ -404,6 +404,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
    */
   const xiaozhiErrors = reactive<Record<CreateTicketXiaozhiField, string>>({
     rdModule: '',
+    frontlineAccount: '',
   });
 
   function clearXiaozhiErrors() {
@@ -482,6 +483,10 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     if (result.kind === 'blocked') {
       if (result.missing.includes('rdModule')) {
         xiaozhiErrors.rdModule = XIAOZHI_TIP.rdModuleRequired;
+      }
+      // 一·补 B24：无条件必填，两个出口都可能命中
+      if (result.missing.includes('frontlineAccount')) {
+        xiaozhiErrors.frontlineAccount = XIAOZHI_TIP.frontlineAccountRequired;
       }
       // 没配产研接收人：接收人是产品模块带出来的，故提示也落在产品模块那一栏下方
       if (result.reason === 'receiverMissing') {

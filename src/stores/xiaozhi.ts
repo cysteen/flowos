@@ -91,7 +91,7 @@ export interface XiaozhiActor {
 export interface XiaozhiCreateBlocked {
   kind: 'blocked';
   /** 缺哪几项（字段键） */
-  missing: 'rdModule'[];
+  missing: ('rdModule' | 'frontlineAccount')[];
   /** 非必填类拦截的原因 */
   reason?: 'receiverMissing';
 }
@@ -240,16 +240,25 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
 
   /**
    * 建单校验（PRD §2）。问题分类那一道在通用咨询表单里（一·补 B15），由 `validate()` 管，
-   * 不在这里重复判。小智专属的三条，**只在「创建并流转」那条路上才判**：
-   * ① 要选产品模块（W2）；
-   * ② 🔴 **该产品模块必须配了产研接收人** —— 接收人是由产品模块带出、不可改的，
-   *    缺了它推出去产研也不知道派给谁，故在建单侧就拦（原先这条分支整个没有）；
-   * ③ 产研平台可用性**不在这里判** —— 它不是「不许建单」，而是「建单成功但不流转」，
-   *    见 `createXiaozhiTicket` 里的 `platformDown` 分支。拦截与降级是两回事，别混成一条。
+   * 不在这里重复判。
+   *
+   * 🔴 **两档必填，条件不同，别写混**：
+   * - **一线人员域账号：无条件必填**（一·补 B24）—— 它是提报人登录小智工单应用做
+   *   「是否解决」确认的凭据（B6），**与走不走产研无关**，故「创建」与「创建并流转」
+   *   两个出口都判。老系统是按「有没有这个账号」分流（没有就拿到办结状态直接关单），
+   *   本轮**不补那条分流分支**，改为从源头必填；
+   * - **产品模块：条件必填** —— 只在 `escalate`（创建并流转）时要，走产研才用得上。
+   *
+   * 另两条：
+   * - 该产品模块必须配了产研接收人（接收人由产品模块带出、不可改，缺了推出去产研也不知道派给谁）；
+   * - 产研平台可用性**不在这里判** —— 它不是「不许建单」，而是「建单成功但不流转」，
+   *   见 `createXiaozhiTicket` 里的 `platformDown` 分支。拦截与降级是两回事，别混成一条。
    */
   function evaluateCreate(input: XiaozhiCreateInput, escalate: boolean): XiaozhiCreateBlocked | { kind: 'create' } {
-    const missing: 'rdModule'[] = [];
+    const missing: ('rdModule' | 'frontlineAccount')[] = [];
     const picked = input.rdModule?.trim() ?? '';
+    // 无条件那一条放在前面：它与 escalate 无关
+    if (!input.frontlineAccount?.trim()) missing.push('frontlineAccount');
     if (escalate && !picked) missing.push('rdModule');
     if (missing.length) return { kind: 'blocked', missing };
     if (escalate && picked && !xiaozhiHasReceiver(picked)) {
@@ -285,6 +294,8 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     const now = Date.now();
     const no = nextNo(now);
     const xiaozhi: TicketXiaozhi = {
+      // 一·补 B24：提报人确认凭据，**两条路都落**（走「创建」的单没有 rd，凭据一样要留）
+      frontlineAccount: input.frontlineAccount.trim(),
       rdSync: 'none',
       rdRecords: [],
       rdReturnCount: 0,

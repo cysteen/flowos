@@ -258,9 +258,11 @@ export interface CreateTicketXiaozhiForm {
 
 /**
  * 「小智工单信息」卡里参与必填提示的字段。
- * 只剩产品模块 —— 问题分类走通用级联控件、恒有值，不需要必填提示（一·补 B15）。
+ * - `rdModule`：**条件必填** —— 只在「创建并流转」那条路上要（走产研才用得上）；
+ * - `frontlineAccount`：**无条件必填**（一·补 B24）—— 它是提报人确认链路的凭据，两个出口都要。
+ * 问题分类走通用级联控件、恒有值，不需要必填提示（一·补 B15）。
  */
-export type CreateTicketXiaozhiField = 'rdModule';
+export type CreateTicketXiaozhiField = 'rdModule' | 'frontlineAccount';
 
 export function defaultCreateTicketXiaozhiForm(): CreateTicketXiaozhiForm {
   return {

@@ -91,7 +91,17 @@ function rd(
   return { id: `xz-rd-seed-${rdSeq}`, kind, title, content, who, side, when, ...extra };
 }
 
-function rdInfo(module: string, priority: XiaozhiRdPriority, frontlineAccount = 'tanxiaozhi'): XiaozhiRdInfo {
+/**
+ * 一线人员域账号（一·补 B24：**建单必填**，六张种子一张不落）。
+ * 它是提报人登录小智工单应用做确认的凭据（B6），故**每张单一个**、不共用 ——
+ * 六张单的提报人本来就是六个不同的人，共用一个账号等于说他们是同一个人。
+ */
+const FRONTLINE_ACCOUNTS: Record<number, string> = {
+  1: 'lixiaodai', 2: 'wangxiaodai', 3: 'chenxiaodai',
+  4: 'lixiaodai', 5: 'zhaoxiaodai', 6: 'zhouxiaodai',
+};
+
+function rdInfo(module: string, priority: XiaozhiRdPriority, frontlineAccount: string): XiaozhiRdInfo {
   return {
     module,
     receiver: xiaozhiReceiverOf(module),
@@ -171,7 +181,7 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
     ...XIAOZHI_SLA_IDLE,
     createdAt: '2026-09-18 09:42',
     updatedAt: '2026-09-18 10:20',
-    xiaozhi: { rdSync: 'none', rdRecords: [], rdReturnCount: 0 },
+    xiaozhi: { frontlineAccount: FRONTLINE_ACCOUNTS[1], rdSync: 'none', rdRecords: [], rdReturnCount: 0 },
   });
   tickets.push(t1);
   timelines[t1.no] = [
@@ -181,7 +191,7 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
   ];
 
   /* ② 直通产研待回传：「创建并流转」→ 系统自动流转，本单「已升级产研」、处理人不转移（D6） */
-  const rd2 = rdInfo('智批改', '普通加急');
+  const rd2 = rdInfo('智批改', '普通加急', FRONTLINE_ACCOUNTS[2]);
   const t2 = row(2, {
     title: '智批改 · 批阅任务未下发 · IM',
     customer: '阜阳一中 · 王校代',
@@ -200,6 +210,7 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
     createdAt: '2026-09-18 11:05',
     updatedAt: '2026-09-18 11:06',
     xiaozhi: {
+      frontlineAccount: FRONTLINE_ACCOUNTS[2],
       rd: rd2,
       rdSync: 'synced',
       rdFeedbackNo: 'TPD-20260918-2041',
@@ -225,7 +236,7 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
    * ③ 产研已办结 · **待校代确认**（一·补 B5）：办结**不关单**，本单状态仍是「已升级产研」。
    * 时刻相对装载时刻取（办结在 20 小时前），好停在 `XIAOZHI_CONFIRM_TIMEOUT_DAYS` 之内不被 B7 结掉。
    */
-  const rd3 = rdInfo('智能阅卷', '紧急');
+  const rd3 = rdInfo('智能阅卷', '紧急', FRONTLINE_ACCOUNTS[3]);
   const t3Created = nowMs - 26 * HOUR;
   const t3Settled = nowMs - 20 * HOUR;
   const t3Solution = '成绩同步任务重跑后两个班已补齐，根因为任务分片超时。';
@@ -247,6 +258,7 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
     createdAt: stamp(t3Created).slice(0, 16),
     updatedAt: stamp(t3Settled).slice(0, 16),
     xiaozhi: {
+      frontlineAccount: FRONTLINE_ACCOUNTS[3],
       rd: rd3,
       // `closed` ＝ 产研那张反馈单结了，不是本单结了
       rdSync: 'closed',
@@ -284,7 +296,7 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
    * 🔴 本单是**人工跟进过**的（领取、处理登记、人工升级产研都有），处理人仍**统一改系统**
    * （一·补 B9 扩大 B2 的覆盖范围）—— 关单那一下是系统做的，不保留原处理人谭小智。
    */
-  const rd4 = rdInfo('智批改', '重要');
+  const rd4 = rdInfo('智批改', '重要', FRONTLINE_ACCOUNTS[4]);
   const t4Solution = '批阅服务线程池耗尽导致任务堆积，已扩容并重跑，批阅结果已返回。';
   const t4 = row(4, {
     title: '智批改 · 批阅结果长时间未返回 · IM',
@@ -304,6 +316,7 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
     createdAt: '2026-09-17 09:12',
     updatedAt: '2026-09-18 10:05',
     xiaozhi: {
+      frontlineAccount: FRONTLINE_ACCOUNTS[4],
       rd: rd4,
       rdSync: 'closed',
       rdFeedbackNo: 'TPD-20260917-1832',
@@ -351,7 +364,7 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
    * 现在等产研第三次办结。🔴 整条链路**没有「二次提交产研」按钮** —— 回传是系统动作（B5），
    * 确认循环**不封顶**，靠这个次数让反复打回的单看得见（B8）。
    */
-  const rd5 = rdInfo('扫描', '普通');
+  const rd5 = rdInfo('扫描', '普通', FRONTLINE_ACCOUNTS[5]);
   const t5 = row(5, {
     title: '扫描 · 答题卡识别偏移 · IM',
     customer: '滁州三中 · 赵校代',
@@ -371,6 +384,7 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
     createdAt: '2026-09-18 08:30',
     updatedAt: '2026-09-21 09:40',
     xiaozhi: {
+      frontlineAccount: FRONTLINE_ACCOUNTS[5],
       rd: rd5,
       // 已回传、等产研再办结，故回到 synced；办结结果与确认状态随之清空
       rdSync: 'synced',
@@ -423,7 +437,7 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
    * 不在种子里写死。这样页面上看到的「已结案 + 超时履历」是**规则真跑出来的**，
    * 规则哪天改了数，这张单跟着变。形制照刷机种子 ⑲。
    */
-  const rd6 = rdInfo('组卷与题库', '普通加急');
+  const rd6 = rdInfo('组卷与题库', '普通加急', FRONTLINE_ACCOUNTS[6]);
   const t6Created = nowMs - (XIAOZHI_CONFIRM_TIMEOUT_DAYS + 1) * DAY_MS - 6 * HOUR;
   const t6Settled = nowMs - (XIAOZHI_CONFIRM_TIMEOUT_DAYS + 1) * DAY_MS;
   const t6Solution = '题库检索索引重建完成，组卷筛选已恢复正常。';
@@ -444,6 +458,7 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
     createdAt: stamp(t6Created).slice(0, 16),
     updatedAt: stamp(t6Settled).slice(0, 16),
     xiaozhi: {
+      frontlineAccount: FRONTLINE_ACCOUNTS[6],
       rd: rd6,
       rdSync: 'closed',
       rdFeedbackNo: 'TPD-20260916-1120',
