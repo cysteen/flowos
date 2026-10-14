@@ -54,13 +54,19 @@ export const AFTERSALE_INBOUND_SOURCE: TicketSource = '售后系统';
 export const RESTRICTED_TICKET_SOURCES: TicketSource[] = ['内投渠道', '外投渠道'];
 
 /**
- * 选不到内投 / 外投渠道的角色：**只有一线坐席**（同上 §二）。
+ * 选不到内投 / 外投渠道的角色：**一线坐席 + 小智坐席**（同上 §二；小智坐席见 1130 一·补 B4）。
+ *
+ * 【判据】内投 / 外投是**升诉阶梯的产物**（《【830】升级投诉》升阶两跳、第二跳才走内投 → 外投，
+ * 且「外投只能由二线专员发起」）。接进线的坐席直接把来源选成内投 / 外投，等于绕过整条阶梯。
+ * 小智坐席与一线坐席**平级、同样在接进线**（1130 D20 / D24 来源统一记 IM），故一并挡掉。
+ * ⚠️ 对小智工单本身无影响 —— 小智单的来源锁死 IM（D24）、下拉本就置灰；
+ * 这条收的是**小智坐席走通用「新建工单」入口建普通单**那条路。
  *
  * 是黑名单不是白名单 —— 二线专员、技术支持、班组长、客诉专员、投诉督导、运营等一律不受限。
  * 白名单写法会把二线专员也挡掉，而「外投只能由二线专员发起」是 815/730 的既有口径
  * （见 composables/complaintEscalation.ts），挡掉即等于废了那条路径。
  */
-export const TICKET_SOURCE_DENY_ROLES: RoleKey[] = ['agent-l1'];
+export const TICKET_SOURCE_DENY_ROLES: RoleKey[] = ['agent-l1', 'xiaozhi-agent'];
 
 /** 某来源是否属于内投 / 外投（先归一化存量别名「内投」「外投」） */
 export function isRestrictedTicketSource(source?: string): boolean {
