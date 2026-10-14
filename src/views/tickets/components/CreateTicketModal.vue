@@ -853,10 +853,15 @@ watch(
         <button type="button" class="btn-primary" :disabled="submitting" @click="onCreate(false)">
           创建
         </button>
-        <button type="button" class="btn-ghost" :disabled="submitting" @click="onCreate(true)">
+        <!--
+          小智单底栏**只留「创建 / 创建并流转」两枚**（一·补 B11）：
+          「创建并处理」是沿用通用单带进来的第三枚，小智只有「落池自领」与「直通产研」两条路径（D5），
+          多一枚就是多一条口径上不存在的路。非小智单照旧三枚，行为未变。
+        -->
+        <button v-if="!isXiaozhiType" type="button" class="btn-ghost" :disabled="submitting" @click="onCreate(true)">
           创建并处理
         </button>
-        <!-- 小智专属第三枚（1130 D5）：落工单池留记录后由系统自动流转推产研，非小智单不出 -->
+        <!-- 小智第二枚（1130 D5）：落工单池留记录后由系统自动流转推产研，非小智单不出 -->
         <button
           v-if="isXiaozhiType"
           type="button"

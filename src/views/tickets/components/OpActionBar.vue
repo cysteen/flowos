@@ -743,6 +743,7 @@ defineExpose({ openEscalate, openAftersale, openActivate });
     :group-names="groupNames"
     :group-id="groupId"
     :last-handler="lastHandler"
+    :is-xiaozhi="isXiaozhi"
     @confirm="onDialogConfirm"
   />
 

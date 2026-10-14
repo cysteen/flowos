@@ -14,7 +14,7 @@ import type { SuspendInfo, OpActionType, AftersaleContext, AftersalePayload } fr
 import {
   TRANSFER_TARGETS_SAME, TRANSFER_TARGET_GROUPS, CROSS_GROUP_TRANSFER_ROLES,
   DELEGATE_TARGETS, REVIEWERS, FORCE_CLOSE_REASONS, APPROVERS,
-  SUSPEND_REASONS, ESCALATE_CHANNELS, ESCALATE_GROUPS, ESCALATE_MEMBERS,
+  SUSPEND_REASONS, ESCALATE_CHANNELS, ESCALATE_CHANNEL_TPD, ESCALATE_GROUPS, ESCALATE_MEMBERS,
   FEISHU_SPACES, CLOSE_REASONS,
   RESUME_REASONS, RETURN_REASONS, MAX_RETURN_COUNT,
   DELEGATE_GROUPS, FEISHU_ESCALATE_CHANNEL, FEISHU_FEEDBACK_CATEGORIES,
@@ -43,6 +43,8 @@ const props = defineProps<{
   groupNames?: string[];
   groupId?: string;
   lastHandler?: string | null;
+  /** 「小智工单」标识（1130 D1）：升级通道只出产研一个（一·补 B10） */
+  isXiaozhi?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -133,9 +135,16 @@ function filterMemberOption(input: string, option?: { label?: string; value?: st
   return text.toLowerCase().includes(q);
 }
 
-/** 升级通道选项：消费者BG工单把「飞书项目」置顶；飞书已结案时该通道禁用 */
+/**
+ * 升级通道选项：消费者BG工单把「飞书项目」置顶；飞书已结案时该通道禁用。
+ *
+ * 🔴 **小智单只出产研一个目标**（1130 一·补 B10，**推翻 D15**）：本轮不做技术支持路径，
+ * 故「二线技术支持组」这档在小智单上整个不出。留下的是 `ESCALATE_CHANNEL_TPD` ——
+ * 小智单整条产研链路（产品模块 → 接收人、产研单标题、办结回传）都是按 TPD 的字典走的（W2 / W3），
+ * 给它「RDM 产研系统」这档选了也无处落接收人。通用单的通道全集未变。
+ */
 const escalateChannelOptions = computed(() => {
-  const base = [...ESCALATE_CHANNELS];
+  const base = props.isXiaozhi ? [ESCALATE_CHANNEL_TPD] : [...ESCALATE_CHANNELS];
   const list = props.feishuEligible ? [FEISHU_ESCALATE_CHANNEL, ...base] : base;
   const feishuClosed = props.feishuSync === 'closed';
   return list.map((c) => ({
@@ -274,7 +283,10 @@ function resetForms() {
   suspend.approvalGroup = defaultApprovalGroup();
   // 飞书已结案：不可再选飞书通道，默认落到其他升级通道
   const canFeishuEscalate = props.feishuEligible && props.feishuSync !== 'closed';
-  escalate.channel = canFeishuEscalate ? FEISHU_ESCALATE_CHANNEL : ESCALATE_CHANNELS[0];
+  // 小智单的默认值必须跟着 B10 收窄后的选项走 —— 落 ESCALATE_CHANNELS[0]（二线技术支持组）
+  // 会得到一个不在选项里的初值，下拉显示空白、提交出去又是个不该存在的目标
+  const fallbackChannel = props.isXiaozhi ? ESCALATE_CHANNEL_TPD : ESCALATE_CHANNELS[0];
+  escalate.channel = canFeishuEscalate ? FEISHU_ESCALATE_CHANNEL : fallbackChannel;
   escalate.group = ESCALATE_GROUPS[0];
   escalate.member = ESCALATE_MEMBERS[0];
   escalate.detail = '';
