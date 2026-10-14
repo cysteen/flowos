@@ -394,7 +394,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   /**
    * 小智单识别（D1 / D3）：**由入口置位**（预填 `xiaozhiScene`），不按产品 / 问题分类识别。
    * D2「按技能组判身份」是容联云 / UAP 侧的事（W7），工单系统侧只落结果 ——
-   * 入口「一键创建小智工单」只对小智坐席渲染（`XIAOZHI_CREATE_ROLES`）。
+   * 入口「新建小智工单」只对小智坐席渲染（`XIAOZHI_CREATE_ROLES`）。
    */
   const isXiaozhiType = computed(() => prefill()?.xiaozhiScene === true);
 

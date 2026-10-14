@@ -27,7 +27,7 @@ const props = withDefaults(
     searchPlaceholder?: string;
     showSearch?: boolean;
     showCreate?: boolean;
-    /** 「一键创建小智工单」是否渲染（1130 D3：两枚按钮并存，仅小智技能组可见） */
+    /** 「新建小智工单」是否渲染（1130 D3：两枚按钮并存，仅小智技能组可见） */
     showXiaozhiCreate?: boolean;
     showBatch?: boolean;
     batchActions?: string[];
@@ -180,13 +180,19 @@ function pickBatch(action: string, selectedCount: number) {
         </template>
       </a-dropdown>
 
+      <!--
+        小智建单入口（1130 D3）。按钮名「**新建小智工单**」照一·补 B22
+        （原名「一键创建小智工单」）—— 与右侧通用「新建工单」并列、同体例。
+        🔴 **全仓只有这一处渲染这个名字**，其余同名出现都是注释；改名时一并改准，
+        不然下一个人照注释 grep「一键创建」会找不到按钮本体。
+      -->
       <button
         v-if="showXiaozhiCreate"
         type="button"
         class="wb-toolbar__create wb-toolbar__create--xiaozhi"
         @click="emit('createXiaozhi')"
       >
-        一键创建小智工单
+        新建小智工单
       </button>
       <button v-if="showCreate" type="button" class="wb-toolbar__create" @click="emit('create')">
         新建工单
@@ -297,7 +303,7 @@ function pickBatch(action: string, selectedCount: number) {
 .wb-toolbar__create:hover {
   background: #0f4fcc;
 }
-/* 「一键创建小智工单」（1130 D3）：与通用「新建工单」并列，走小智标识色以示两条入口 */
+/* 「新建小智工单」（1130 D3 / 一·补 B22）：与通用「新建工单」并列，走小智标识色以示两条入口 */
 .wb-toolbar__create--xiaozhi {
   background: #0d9488;
 }

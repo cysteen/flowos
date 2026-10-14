@@ -248,7 +248,7 @@ const {
 const createOpen = ref(false);
 /** 建单弹窗预填：小智入口置 `xiaozhiScene`，通用入口为 null */
 const createPrefill = ref<CreateTicketPrefill | null>(null);
-/** 「一键创建小智工单」只对小智坐席渲染（1130 D3 / W7：技能组判身份在容联云侧） */
+/** 「新建小智工单」只对小智坐席渲染（1130 D3 / W7：技能组判身份在容联云侧） */
 const canCreateXiaozhi = computed(() => XIAOZHI_CREATE_ROLES.includes(user.roleKey));
 const aiDrawerOpen = ref(false);
 const aiDrawerFilter = ref<AiSuggestionFilter>('all');
@@ -362,7 +362,7 @@ const editingDraftId = ref<string | null>(null);
 const isDraftView = computed(() => wb.isDraftView.value);
 function openCreate() { editingDraftId.value = null; createPrefill.value = null; createOpen.value = true; }
 /**
- * 「一键创建小智工单」（1130 小智工单 D3）：与通用「新建工单」两枚并存。
+ * 「新建小智工单」（1130 小智工单 D3；按钮名照一·补 B22）：与通用「新建工单」两枚并存。
  * 入口置位 `xiaozhiScene`，建单弹窗据此切小智表单（工单类型锁咨询、业务分类锁教育、来源锁 IM）。
  * 按技能组判身份是容联云 / UAP 侧的事（W7），这里只落结果 —— 入口对哪些角色渲染见 `XIAOZHI_CREATE_ROLES`。
  */
