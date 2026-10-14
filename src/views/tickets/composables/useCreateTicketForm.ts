@@ -32,6 +32,9 @@ import {
 } from '@/stores/flash';
 import {
   FLASH_FIELD_LABELS,
+  FLASH_TAG_L1,
+  FLASH_TAG_L2,
+  FLASH_TAG_L3S,
   FLASH_TICKET_TYPE,
   flashTicketTitle,
   type FlashActor,
@@ -136,15 +139,70 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     complaintType: false,
   });
 
-  const problemL1Options = computed(() => Object.keys(PROBLEM_TREE));
+  const flashConfig = useFlashConfigStore();
+  /**
+   * 问题分类按产品维护（1014）：刷机分类（售后 → 服务申请 → 自助刷机 / 刷原生系统）
+   * 只对「是否支持刷机」开启、且该分类「是否刷机」开启的产品出现；其余分类各产品共用。
+   * 读刷机配置的响应式状态，后台开关一改，建单下拉随即联动。
+   */
+  const productProblemTree = computed<Record<string, Record<string, string[]>>>(() => {
+    const product = form.productName ?? '';
+    const tree: Record<string, Record<string, string[]>> = {};
+    for (const [l1, l2Map] of Object.entries(PROBLEM_TREE)) {
+      const l2Out: Record<string, string[]> = {};
+      for (const [l2, l3s] of Object.entries(l2Map)) {
+        const kept = l3s.filter((l3) => {
+          const isFlashPath = l1 === FLASH_TAG_L1 && l2 === FLASH_TAG_L2
+            && (FLASH_TAG_L3S as readonly string[]).includes(l3);
+          return !isFlashPath || flashConfig.isFlashScene(product, l1, l2, l3);
+        });
+        if (kept.length) l2Out[l2] = kept;
+      }
+      if (Object.keys(l2Out).length) tree[l1] = l2Out;
+    }
+    return tree;
+  });
+  const problemL1Options = computed(() => Object.keys(productProblemTree.value));
   const problemL2Options = computed(() =>
-    form.problemL1 ? Object.keys(PROBLEM_TREE[form.problemL1] ?? {}) : [],
+    form.problemL1 ? Object.keys(productProblemTree.value[form.problemL1] ?? {}) : [],
   );
   const problemL3Options = computed(() =>
     form.problemL1 && form.problemL2
-      ? (PROBLEM_TREE[form.problemL1]?.[form.problemL2] ?? [])
+      ? (productProblemTree.value[form.problemL1]?.[form.problemL2] ?? [])
       : [],
   );
+
+  /**
+   * 换产品（或后台开关改了）后，已选的一 / 二 / 三级不在新选项里即回落：
+   * 一级不在 → 回默认一级及其首项；二级不在 → 本一级首项；三级不在 → 本二级首项。
+   * 空值（预填显式清空、由坐席补选）不回落。
+   */
+  function fallbackProblem() {
+    const tree = productProblemTree.value;
+    // 只回落「问题分类里有、但本产品下没有」的选中值；落不到问题分类上的预填值原样保留
+    const full = PROBLEM_TREE[form.problemL1];
+    if (!form.problemL1 || !full) return;
+    if (!tree[form.problemL1]) {
+      const def = defaultForm();
+      const l1 = tree[def.problemL1] ? def.problemL1 : (Object.keys(tree)[0] ?? '');
+      const l2 = Object.keys(tree[l1] ?? {})[0] ?? '';
+      form.problemL1 = l1;
+      form.problemL2 = l2;
+      form.problemL3 = tree[l1]?.[l2]?.[0] ?? '';
+      return;
+    }
+    const l2Map = tree[form.problemL1];
+    if (form.problemL2 && full[form.problemL2] && !l2Map[form.problemL2]) {
+      form.problemL2 = Object.keys(l2Map)[0] ?? '';
+      form.problemL3 = l2Map[form.problemL2]?.[0] ?? '';
+      return;
+    }
+    const l3s = l2Map[form.problemL2] ?? [];
+    if (form.problemL3 && full[form.problemL2]?.includes(form.problemL3) && !l3s.includes(form.problemL3)) {
+      form.problemL3 = l3s[0] ?? '';
+    }
+  }
+  watch(productProblemTree, fallbackProblem);
   const productNameOptions = computed(
     () => PRODUCT_NAMES[form.productCategory] ?? [],
   );
@@ -169,7 +227,6 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
 
   /* ---------------- 刷机单（930 教育刷机单 PRD §2.3 / §2.4；1013 A1–A4） ---------------- */
 
-  const flashConfig = useFlashConfigStore();
   /**
    * 刷机单识别（1013 A2）：所选产品「是否支持刷机」开启 ∧ 所选问题分类「是否刷机」开启。
    * 命中即切到刷机接单表单：类型专属区块换成「刷机信息」卡，工单类型固定咨询、业务分类固定教育。
@@ -443,14 +500,15 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   }
 
   function onProblemL1Change() {
-    const l2 = Object.keys(PROBLEM_TREE[form.problemL1] ?? {})[0] ?? '';
+    const tree = productProblemTree.value;
+    const l2 = Object.keys(tree[form.problemL1] ?? {})[0] ?? '';
     form.problemL2 = l2;
-    form.problemL3 = PROBLEM_TREE[form.problemL1]?.[l2]?.[0] ?? '';
+    form.problemL3 = tree[form.problemL1]?.[l2]?.[0] ?? '';
     syncTitle();
   }
 
   function onProblemL2Change() {
-    form.problemL3 = PROBLEM_TREE[form.problemL1]?.[form.problemL2]?.[0] ?? '';
+    form.problemL3 = productProblemTree.value[form.problemL1]?.[form.problemL2]?.[0] ?? '';
     syncTitle();
   }
 
