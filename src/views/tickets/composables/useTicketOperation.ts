@@ -16,6 +16,7 @@ import { TICKETS } from '@/mock/tickets';
 import { TYPE_SAMPLES, typeSampleKey } from '@/mock/ticketTypeSamples';
 import { useUserStore } from '@/stores/user';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
+import { useHandleLogStore } from '@/stores/handleLog';
 import {
   ticketLatestHandlingItems,
   ticketProductIssue,
@@ -161,6 +162,7 @@ export function useTicketOperation() {
   const route = useRoute();
   const derivedTickets = useDerivedTicketStore();
   const flash = useFlashStore();
+  const handleLog = useHandleLogStore();
   const detail = ref<TicketDetailMeta>(JSON.parse(JSON.stringify(TICKET_DETAIL)));
   const timeline = ref<TimelineEntry[]>([...TIMELINE]);
   const opState = ref<TicketOpState>('processing');
@@ -446,8 +448,10 @@ export function useTicketOperation() {
       // 客服⇄售后链路上的单（1025）：履历只取本单自己的事件，不沿用样例单的履历，
       // 否则别的单的「升级售后」「升级投诉」等样例条目会混进来，与本单的关联位自相矛盾
       // （含关联已被同位降级 / 迁走、只剩售后履历的旧单：履历条目 id 以 `as-` 起头，见 aftersaleEvents.ts）
+      // 处理表单保存落下的「工单处理」履历（刷新后仍在，见 stores/handleLog.ts）
+      const saved = t ? handleLog.entriesOf(t.no) : [];
       if (t && (isAftersaleChainTicket(t) || entries.some((e) => e.id.startsWith('as-')))) {
-        const own = entries.map((e) => ({ ...e }));
+        const own = [...entries, ...saved].map((e) => ({ ...e }));
         const hasCreate = own.some((e) => e.action === 'create');
         timeline.value = hasCreate || !t.createdAt ? own : [{
           id: `tl-${t.no}-create`, category: 'node', action: 'create', who: '系统', role: '系统', systemActor: true,
@@ -456,7 +460,7 @@ export function useTicketOperation() {
         return;
       }
       const seen = new Set(timeline.value.map((e) => e.id));
-      entries.forEach((e) => { if (!seen.has(e.id)) timeline.value.push({ ...e }); });
+      [...entries, ...saved].forEach((e) => { if (!seen.has(e.id)) timeline.value.push({ ...e }); });
     }
   }
 
@@ -640,12 +644,15 @@ export function useTicketOperation() {
       draftSavedAt.value = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
       // 保存并登记：若已填写处理内容，追加一条「处理登记」进处理履历
       if (payload.process?.summary) {
-        pushEntry(timeline.value, {
+        const handle: Omit<TimelineEntry, 'id' | 'when'> = {
           category: 'handle', action: 'handle', who: operator, role,
           how: '工单处理', what: payload.process.summary,
           attachment: payload.process.attachment,
           changes: payload.process.changes,
-        });
+        };
+        // 持久化：刷机单写进刷机履历（随刷机缓存落库，处理页经版本号重投影）；其余单落处理履历缓存
+        if (detail.value.isFlash) flash.logProcess(detail.value.no, { name: operator, role }, handle);
+        else handleLog.append(detail.value.no, pushEntry(timeline.value, handle));
         message.success('已保存并登记处理进展');
       } else {
         message.success('已保存，可稍后继续处理');

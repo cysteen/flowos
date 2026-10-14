@@ -76,6 +76,8 @@ import {
   FLASH_ADMIN_ROLE_KEYS, FLASH_GATE_TIPS, type FlashView,
 } from './composables/flashGate';
 import { useFlashStore } from '@/stores/flash';
+import { useHandleLogStore } from '@/stores/handleLog';
+import type { TimelineEntry } from './types/ticketDetail';
 import { useFlashConfigStore } from '@/stores/flashConfig';
 import { resolveSupersededBy, type TicketRelation } from './composables/ticketRelations';
 import type { CreateTicketPrefill, Ticket } from './types/ticket';
@@ -365,6 +367,7 @@ const isPrimaryHandler = computed(
 /* ---------------- 刷机单门控（930 教育刷机单 PRD §5.5 / §1.2 / §9.4，判据见 composables/flashGate.ts） ---------------- */
 
 const flashStore = useFlashStore();
+const handleLogStore = useHandleLogStore();
 const flashConfig = useFlashConfigStore();
 
 /**
@@ -1779,12 +1782,15 @@ function onAction(payload: Record<string, unknown>) {
         message.info('内容未变更，无需保存');
         return;
       }
-      pushEntry(timeline.value, {
+      const postCloseEntry: Omit<TimelineEntry, 'id' | 'when'> = {
         category: 'handle', action: 'handle', who: user.name || '当前坐席', role: mapUserRole(user.roleKey),
         how: '结案后补充',
         what: `更新${[...new Set(log.changes.map((c) => c.field))].join('、')}`,
         changes: log.changes,
-      });
+      };
+      // 与「工单处理」登记同一套持久化：刷机单进刷机履历，其余单进处理履历缓存
+      if (isFlash.value) flashStore.logProcess(d.value.no, flashActor(), postCloseEntry);
+      else handleLogStore.append(d.value.no, pushEntry(timeline.value, postCloseEntry));
       syncClosingNoteAttachmentsToHistory(closingNoteAttachmentDiff().added);
       processBaseline = snapshotProcess();
       message.success('已保存，变更已记入处理履历');
