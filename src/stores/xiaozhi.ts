@@ -390,6 +390,14 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     const now = Date.now();
     r.nodeStatus = '处理中';
     r.assignee = actor.name;
+    /**
+     * 🔴 **`tab` 必须从 `pool` 翻到 `mine`**（与刷机 `claimFromPool` 同一步）：
+     * 工单池页签的数据域是 `inGroupPoolScope`（tab==='pool' ∧ 无处理人），
+     * 我的任务是 `inMineTaskScope`（**tab==='mine'** ∧ 处理人是我）——
+     * 不翻这一下，领完的单从池里消失、又进不了我的任务，**两个页签都看不到它**。
+     * 之前七张种子生来就是 `mine`，把这一步的缺失盖住了。
+     */
+    r.tab = 'mine';
     r.responded = true;
     r.updatedAt = xiaozhiMinuteStamp(now);
     log(no, now, {

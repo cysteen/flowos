@@ -1,14 +1,15 @@
 /**
  * 小智工单 · 工单库在办 / 已办样本（1130 小智工单）。
  *
- * 七张，覆盖各条路径（D5 / D21 / 一·补 B5 / B7 / B8 / B9 / PRD §5.4）：
+ * 八张，覆盖各条路径（D5 / D21 / 一·补 B5 / B7 / B8 / B9 / B24 / PRD §5.4）：
  * ① 人工跟进中（进池已领、小智坐席在办）；
  * ② 直通产研待回传（「创建并流转」→ 系统自动流转，本单「已升级产研」、处理人不转移，D6）；
  * ③ 产研已办结 · **待校代确认**（B5：办结**不关单**，状态仍「已升级产研」）；
  * ④ 校代**确认已解决** → 关单 + 下送调研，处理人统一改系统（B5① / B9）；
  * ⑤ 校代**确认未解决** → 状态不动，系统自动回传产研，记「第 N 次回传产研」（B5② / B8）；
  * ⑥ **超 N 天未确认** → 装载时判「视为已解决」，自动结案 + 下送调研（B7）；
- * ⑦ 人工跟进中 · **已自查一轮、尚未升级** —— 「人工升级 · 产研」的演示入口（PRD §5.4）。
+ * ⑦ 人工跟进中 · **已自查一轮、尚未升级** —— 「人工升级 · 产研」的演示入口（PRD §5.4）；
+ * ⑧ **未认领** —— 躺在工单池里等人领，「领取 → 处理中」那一步的演示入口（D21）。
  *
  * 🔴 **校代确认只由种子体现，页面上没有「模拟确认」按钮** —— 确认动作发生在小智工单应用里
  * （B6），工单系统侧只接结果，原型没有校代端。③④⑤ 正是「未确认 / 确认是 / 确认否」三种结果。
@@ -99,7 +100,7 @@ function rd(
  */
 const FRONTLINE_ACCOUNTS: Record<number, string> = {
   1: 'lixiaodai', 2: 'wangxiaodai', 3: 'chenxiaodai',
-  4: 'lixiaodai', 5: 'zhaoxiaodai', 6: 'zhouxiaodai', 7: 'sunxiaodai',
+  4: 'lixiaodai', 5: 'zhaoxiaodai', 6: 'zhouxiaodai', 7: 'sunxiaodai', 8: 'wuxiaodai',
 };
 
 function rdInfo(module: string, priority: XiaozhiRdPriority, frontlineAccount: string): XiaozhiRdInfo {
@@ -525,6 +526,46 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
     tl('2026-09-19 10:21:36', 'node', 'accept', AGENT, AGENT_ROLE, '领取', `${AGENT} 从${XIAOZHI_POOL_GROUP_NAME}工单池领取本单。`),
     tl('2026-09-19 11:35:02', 'handle', 'handle', AGENT, AGENT_ROLE, '工单处理',
       '已核对评卷端打分记录与成绩单数据：评卷侧有分、成绩单侧缺失，判定为回传链路问题，自查无法解决，准备转产研。'),
+  ];
+
+  /**
+   * ⑧ **未认领** —— 刚从 IM 建进来、还没人领，躺在「小智工单处理组」池里（D21：一个大组、进池自己领）。
+   *
+   * 🔴 **为什么必须有这一张**：①–⑦ 没有一张是「未认领」，于是**「领取」这一步在原型上
+   * 演示不出来** —— 链路本身是通的（`claimFromPool`），但没有可领的单，盘点时自然会得出
+   * 「小智工单到不了处理中」的结论。
+   * 它同时是对读 #2（底栏「领取」在小智单上不渲染）与 #18（未认领时「保存」不置灰）
+   * 两处修复的回归用例 —— 那两条就得靠一张未认领的单才验得到。
+   *
+   * 走的是「创建」那条路（D5 落池自领）：无 `rd`、`rdSync: 'none'`、**处理人为空**。
+   * ⚠️ `tab: 'pool'` 是进工单池页签的判据（`inGroupPoolScope` 要 tab/assignee/groupId 三者齐），
+   * 与前七张的 `tab: 'mine'` 不同，不是写错。
+   * ⚠️ `responded: false` —— 还没人接手，谈不上已响应。
+   * ⚠️ 「一线人员域账号」照样有值：B24 是建单必填，**种子不能自己违规**。
+   */
+  const t8 = row(8, {
+    title: '扫描 · 答题卡批量导入中断 · IM',
+    customer: '六安三中 · 吴校代',
+    phone: '13905510008',
+    productCategory: '软件服务',
+    productName: '智学网会员',
+    problemL1: '功能异常',
+    problemL2: '播放问题',
+    problemL3: '无法播放',
+    problemDesc: '批量导入答题卡扫描件时进度条卡在 60% 后中断，重试两次仍然中断，尚未有人跟进。',
+    nodeStatus: '未认领',
+    assignee: null,
+    tab: 'pool',
+    responded: false,
+    nodeStep: 1,
+    ...XIAOZHI_SLA_IDLE,
+    createdAt: '2026-09-19 14:06',
+    updatedAt: '2026-09-19 14:06',
+    xiaozhi: { frontlineAccount: FRONTLINE_ACCOUNTS[8], rdSync: 'none', rdRecords: [], rdReturnCount: 0 },
+  });
+  tickets.push(t8);
+  timelines[t8.no] = [
+    tl('2026-09-19 14:06:28', 'node', 'create', AGENT, AGENT_ROLE, '建单', XIAOZHI_TL.create(XIAOZHI_TICKET_SOURCE)),
   ];
 
   return { tickets, timelines };
