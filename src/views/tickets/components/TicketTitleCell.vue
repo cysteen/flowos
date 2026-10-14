@@ -8,7 +8,7 @@ import {
   type Ticket,
 } from '@/views/tickets/types/ticket';
 import { ticketListSourceLabel } from '@/views/tickets/types/createTicket';
-import { FLASH_MARK_LABEL, isFlashTicket } from '@/views/tickets/types/flash';
+import { FLASH_BADGE_LABEL, isFlashTicket } from '@/views/tickets/types/flash';
 
 withDefaults(
   defineProps<{
@@ -106,8 +106,8 @@ const csTagTipOverlayInner = {
             :style="statusStyle(ticket.nodeStatus)"
             :title="ticketStatusDisplayName(ticket)"
           >{{ ticketStatusDisplayName(ticket) }}</span>
-          <span class="tag">{{ ticket.type }}</span>
-          <span v-if="isFlashTicket(ticket)" class="tag tag--flash">{{ FLASH_MARK_LABEL }}</span>
+          <span v-if="isFlashTicket(ticket)" class="tag tag--flash">{{ FLASH_BADGE_LABEL }}</span>
+          <span v-else class="tag">{{ ticket.type }}</span>
           <span
             class="title-text"
             :class="{ unread: highlightMentionUnread && isMentionUnread(ticket) }"
@@ -155,8 +155,8 @@ const csTagTipOverlayInner = {
         <div class="title-pop">
           <div class="tp-head">
             <span class="status-tag" :style="statusStyle(ticket.nodeStatus)">{{ ticketStatusDisplayName(ticket) }}</span>
-            <span class="tag">{{ ticket.type }}</span>
-            <span v-if="isFlashTicket(ticket)" class="tag tag--flash">{{ FLASH_MARK_LABEL }}</span>
+            <span v-if="isFlashTicket(ticket)" class="tag tag--flash">{{ FLASH_BADGE_LABEL }}</span>
+            <span v-else class="tag">{{ ticket.type }}</span>
           </div>
           <div class="tp-title">{{ ticket.title }}</div>
           <div class="tp-meta">{{ ticketListSourceLabel(ticket) }} · {{ ticket.no }}</div>
@@ -247,7 +247,7 @@ const csTagTipOverlayInner = {
   background: #f3f4f6;
   flex: none;
 }
-/* 「刷机」标识（1013 A1）：色值同 FLASH_MARK_COLOR */
+/* 刷机单徽标「刷机单」（1014，取代「咨询」+「刷机」并排）：色值同 FLASH_MARK_COLOR */
 .tag--flash { color: #7c3aed; background: #f5f3ff; }
 .title-text {
   flex: 1;

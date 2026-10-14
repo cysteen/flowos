@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { message } from 'ant-design-vue';
-import { FLASH_MARK_LABEL, isFlashTicket } from '@/views/tickets/types/flash';
+import { FLASH_BADGE_LABEL, isFlashTicket } from '@/views/tickets/types/flash';
 import { useUserStore } from '@/stores/user';
 import { CopyOutlined, FlagOutlined } from '@ant-design/icons-vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
@@ -275,9 +275,9 @@ function priorityHex(p: string): string {
           >
             <span class="badge-dot" :style="{ background: statusHex(detail.status) }" />{{ statusText }}
           </span>
-          <span class="badge badge-neutral">{{ detail.type }}</span>
-          <!-- 「刷机」标识（1013 A1）：刷机单类型为咨询，类型徽章旁另挂标识 -->
-          <span v-if="isFlashTicket(detail)" class="badge" :style="tagStyle(FLASH_MARK_COLOR)">{{ FLASH_MARK_LABEL }}</span>
+          <!-- 刷机单（类型仍为咨询）只出一枚紫色「刷机单」徽标，不再并排出「咨询」（1014） -->
+          <span v-if="isFlashTicket(detail)" class="badge" :style="tagStyle(FLASH_MARK_COLOR)">{{ FLASH_BADGE_LABEL }}</span>
+          <span v-else class="badge badge-neutral">{{ detail.type }}</span>
           <span class="badge" :style="tagStyle(priorityHex(detail.priority))">
             <FlagOutlined />{{ detail.priority }}
           </span>
