@@ -55,7 +55,7 @@ const props = defineProps<{
    * 「工单处理」**这个 Tab** 对当前角色只读（矩阵 #41：① ⑦ ⑧ 只读、⑥ 条件可用暂按不可写）。
    *
    * 只是 Tab 级一档，**不是**本区逐字段的角色判据 —— 矩阵 #35–40 给处理表单区六行分别列了
-   * 九列取值（例如「服务与结论」④ 三线不给、「建单规范 check」① ④ 不给），那套逐字段判据另议。
+   * 九列取值（例如「服务与结论」④ 三线不给），那套逐字段判据另议。
    */
   readonly?: boolean;
   /**
@@ -188,24 +188,23 @@ const serviceMethodOptions = computed(() => {
   const methods = SERVICE_TYPE_TO_METHODS[props.form.serviceType] ?? [];
   return methods.map((v) => ({ label: v, value: v }));
 });
-// 补充处理 chip：投诉=投诉分类/风险/建单规范；咨询/建议/商机=建单规范。
+// 补充处理 chip：只有投诉单有（投诉定性 / 投诉渠道 / 风险标记）；咨询 / 建议 / 商机不出补充处理区。
 // 预约已迁出为独立「预约」Tab（处理履历之后），不再作为补充处理 chip。
 const supplementChips = computed<{ key: SupplementChip; label: string }[]>(() => {
-  if (!isComplaint.value) return [{ key: 'quality', label: '建单规范' }];
+  if (!isComplaint.value) return [];
   const chips: { key: SupplementChip; label: string }[] = [
     { key: 'complaint', label: '投诉定性' },
     { key: 'risk', label: '风险标记' },
-    { key: 'quality', label: '建单规范' },
   ];
   if (showComplaintChannel.value) chips.splice(1, 0, { key: 'external', label: '投诉渠道' });
   return chips;
 });
 
-/** activeChip 不在当前类型 chip 集合时（如全局默认 complaint 用于咨询）兜底到首个 chip */
+/** activeChip 不在当前类型 chip 集合时兜底到首个 chip */
 const effectiveChip = computed<SupplementChip>(() =>
   supplementChips.value.some((c) => c.key === props.activeChip)
     ? props.activeChip
-    : supplementChips.value[0].key,
+    : (supplementChips.value[0]?.key ?? 'complaint'),
 );
 
 function complaintCategoryFilled(f: ProcessFormDraft): boolean {
@@ -230,7 +229,6 @@ function isChipFilled(key: SupplementChip): boolean {
       return !!f.riskFlag;
     }
     case 'appointment': return deriveAppointmentNeeded(f.appointmentRecords) && isAppointmentFilled(f.appointmentRecords);
-    case 'quality': return f.qualityIsStandard || !!(f.qualityIssueCat1 && f.qualityIssueCat2);
     default: return false;
   }
 }
@@ -255,7 +253,6 @@ function chipActiveClass(key: SupplementChip): string {
     external: 'active-external',
     risk: 'active-risk',
     appointment: 'active-appointment',
-    quality: 'active-quality',
   };
   return map[key];
 }
@@ -427,9 +424,9 @@ function chipActiveClass(key: SupplementChip): string {
       </OpCollapsibleSection>
     </template>
 
-    <!-- ===== 补充处理（四类型通用：预约 + 建单规范；投诉另含投诉分类 / 风险） ===== -->
+    <!-- ===== 补充处理（只有投诉单：投诉定性 / 投诉渠道 / 风险标记） ===== -->
     <OpCollapsibleSection
-      v-if="!isFlash"
+      v-if="supplementChips.length"
       title="补充处理"
       :icon="AppstoreOutlined"
       :badge="supplementBadge"
@@ -577,8 +574,7 @@ function chipActiveClass(key: SupplementChip): string {
 .chip.need-fill.active,
 .chip.need-fill.active-external,
 .chip.need-fill.active-risk,
-.chip.need-fill.active-appointment,
-.chip.need-fill.active-quality {
+.chip.need-fill.active-appointment {
   /* 选中态交给 .active*，不再叠加大红描边 */
   box-shadow: none;
 }
@@ -609,10 +605,6 @@ function chipActiveClass(key: SupplementChip): string {
   font-weight: 600;
 }
 .chip.active-appointment {
-  border-color: #1a6fff; background: #eff6ff; color: #1a6fff;
-  font-weight: 600;
-}
-.chip.active-quality {
   border-color: #1a6fff; background: #eff6ff; color: #1a6fff;
   font-weight: 600;
 }

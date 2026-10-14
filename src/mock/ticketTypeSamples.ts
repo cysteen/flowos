@@ -48,7 +48,6 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
       problemCause: '客户咨询学习机 T20 连接家庭 WiFi 与账号登录方法，一线初步引导未完成。',
       processResult: '已远程指导完成 WiFi 配置与账号登录，功能正常，客户表示已掌握。',
       processResultAttachments: [],
-      qualityIsStandard: true,
     },
     tabData: {
       currentFlowNode: '工单处理',
@@ -137,7 +136,6 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
       problemCause: '客户咨询开放平台企业版 API 限流(429)与扩容方案，表达采购扩容意向。',
       processResult: '已记录扩容需求与预算区间，转商务团队跟进报价与合同。',
       processResultAttachments: [],
-      qualityIsStandard: true,
       leadCategory: '录音笔商机',
       leadStage: 'toSales',
       leadNo: 'OPP-20260610-002',
@@ -217,7 +215,6 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
       problemCause: '客户建议智能门锁 L1 增加临时密码 / 访客分享功能。',
       processResult: '已记录产品建议并提交产品组评估，纳入需求池跟踪。',
       processResultAttachments: [],
-      qualityIsStandard: true,
       suggestAccepted: false,
     },
     tabData: {
@@ -293,7 +290,6 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
       problemCause: '',
       processResult: '',
       processResultAttachments: [],
-      qualityIsStandard: true,
     },
     tabData: {
       currentFlowNode: '工单处理',

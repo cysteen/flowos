@@ -199,11 +199,6 @@ export interface ProcessFormDraft {
   appointmentNeeded: boolean;
   /** 预约回访记录（每条一个预约时间点） */
   appointmentRecords: AppointmentRecord[];
-  qualityIsStandard: boolean;
-  /** 不规范原因（一级） */
-  qualityIssueCat1: string;
-  /** 不规范分类（联动原因） */
-  qualityIssueCat2: string;
   /** 建议专属 · 是否采纳（建议服务结论；默认否，无下级字段） */
   suggestAccepted: boolean;
   /** 商机专属 · 商机归类 */
@@ -230,7 +225,6 @@ export type SectionKey =
   | 'service'
   | 'supplement'
   | 'external'
-  | 'quality'
   | 'suggest'
   | 'lead'
   | 'appointment'
@@ -442,41 +436,7 @@ export function tabAttachmentUploadEnabled(roleKey: RoleKey): boolean {
   return tabWritableFor('process', roleKey);
 }
 
-export type SupplementChip = 'complaint' | 'risk' | 'appointment' | 'quality' | 'external';
-
-/** 建单不规范 · 不规范原因（一级） */
-export const QUALITY_ISSUE_L1_OPTIONS = [
-  '标签类型选择有误',
-  '建单信息有误',
-  '建单要素不完整',
-  '未按已知流程和知识处理',
-  '重复建单',
-  '关联工单建单问题',
-] as const;
-
-/** 建单不规范 · 不规范分类（按原因联动） */
-export const QUALITY_ISSUE_L2_MAP: Record<string, string[]> = {
-  标签类型选择有误: [
-    '优先级勾选有误',
-    '呼入类型勾选有误',
-    '投诉标签勾选有误',
-    '产品名称勾选有误',
-    '问题分类勾选有误',
-  ],
-  建单信息有误: ['用户信息有误', '问题描述有误', '预处理描述不清晰'],
-  建单要素不完整: ['必要建单信息不完整', '附件信息提供不完整'],
-  未按已知流程和知识处理: ['预处理不足', '预处理错误', '已知方案场景拦截不足'],
-  重复建单: ['重复建单'],
-  关联工单建单问题: ['非关联场景建关联', '关联单场景未建关联'],
-};
-
-/** 全部不规范分类（未选原因时展示） */
-export const QUALITY_ISSUE_L2_ALL_OPTIONS = Object.values(QUALITY_ISSUE_L2_MAP).flat();
-
-/** 不规范分类 → 不规范原因（反向联动） */
-export const QUALITY_ISSUE_L2_TO_L1: Record<string, string> = Object.fromEntries(
-  Object.entries(QUALITY_ISSUE_L2_MAP).flatMap(([l1, l2s]) => l2s.map((l2) => [l2, l1])),
-);
+export type SupplementChip = 'complaint' | 'risk' | 'appointment' | 'external';
 
 /** 服务类型（先选，驱动服务方式级联） */
 export const SERVICE_TYPE_OPTIONS = [

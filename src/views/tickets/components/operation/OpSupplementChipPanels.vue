@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue';
 import OpTextareaAttach from './shared/OpTextareaAttach.vue';
-import OpQualityStandardFields from './OpQualityStandardFields.vue';
 import OpChannelTable from './OpChannelTable.vue';
 import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue';
 import { useRiskTagStore } from '@/stores/riskTags';
@@ -11,8 +10,6 @@ import type { ProcessFormDraft, RiskFlag, RiskLevel, SupplementChip } from '@/vi
 import {
   RISK_FLAG_OPTIONS,
   RISK_LEVEL_SELECT_OPTIONS,
-  QUALITY_ISSUE_L2_MAP,
-  QUALITY_ISSUE_L2_TO_L1,
   complaintMarkOptions,
   COMPLAINT_MARK_REGULATOR_OPTIONS,
   BACKEND_PUSH_OPTIONS,
@@ -179,27 +176,6 @@ function onRiskLevelChange(v: string | number | string[] | undefined) {
 
 function onComplaintCat1Change(v: string | number | string[] | undefined) {
   update({ complaintCat1: String(v ?? ''), complaintCat2: '', complaintCat3: '', complainedRole: [] });
-}
-
-function onQualityCat1Change(v: string | number | string[] | undefined) {
-  const cat1 = String(v ?? '');
-  const allowed = cat1 ? (QUALITY_ISSUE_L2_MAP[cat1] ?? []) : null;
-  const cat2 = props.form.qualityIssueCat2;
-  const keepCat2 = allowed ? allowed.includes(cat2) : !!cat2;
-  update({
-    qualityIssueCat1: cat1,
-    qualityIssueCat2: keepCat2 ? cat2 : '',
-  });
-}
-
-function onQualityCat2Change(v: string | number | string[] | undefined) {
-  const cat2 = String(v ?? '');
-  if (!cat2) {
-    update({ qualityIssueCat2: '' });
-    return;
-  }
-  const cat1 = props.form.qualityIssueCat1 || QUALITY_ISSUE_L2_TO_L1[cat2] || '';
-  update({ qualityIssueCat1: cat1, qualityIssueCat2: cat2 });
 }
 
 function onComplaintCat2Change(v: string | number | string[] | undefined) {
@@ -510,22 +486,6 @@ const riskMonitorDiff = computed(() => {
       </div>
     </a-config-provider>
   </div>
-
-  <!-- 建单是否规范 -->
-  <div v-else class="chip-panel panel-quality">
-    <OpQualityStandardFields
-      compact
-      :is-standard="form.qualityIsStandard"
-      :issue-cat1="form.qualityIssueCat1"
-      :issue-cat2="form.qualityIssueCat2"
-      @update:is-standard="(v) => update({
-        qualityIsStandard: v,
-        ...(v ? { qualityIssueCat1: '', qualityIssueCat2: '' } : {}),
-      })"
-      @update:issue-cat1="onQualityCat1Change"
-      @update:issue-cat2="onQualityCat2Change"
-    />
-  </div>
 </template>
 
 <style scoped>
@@ -626,8 +586,7 @@ const riskMonitorDiff = computed(() => {
   border-radius: 4px;
   border: 1px dashed #fca5a5;
 }
-.panel-neutral,
-.panel-quality {
+.panel-neutral {
   background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px;
 }
 .panel-head { display: flex; flex-direction: column; gap: 2px; }

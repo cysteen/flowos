@@ -17,9 +17,6 @@ function complaintCategoryFilled(f: ProcessFormDraft): boolean {
 function buildDraft(type: string, ticketNo?: string): ProcessFormDraft {
   const draft: ProcessFormDraft = {
     ...DEFAULT_PROCESS_DRAFT,
-    qualityIsStandard: true,
-    qualityIssueCat1: '',
-    qualityIssueCat2: '',
     ...(TYPE_SAMPLES[type]?.processDraft ?? {}),
   };
   const row = ticketNo ? TICKETS.find((x) => x.no === ticketNo) : undefined;
@@ -47,7 +44,6 @@ function countFilledSupplements(form: ProcessFormDraft): number {
   } else if (form.riskFlag) {
     n += 1;
   }
-  if (form.qualityIsStandard || (form.qualityIssueCat1 && form.qualityIssueCat2)) n += 1;
   return n;
 }
 
@@ -63,7 +59,6 @@ export function useProcessForm(getType: () => string, getNo?: () => string) {
     service: true,
     supplement: true,
     external: false,
-    quality: true,
     suggest: true,
     lead: true,
     appointment: true,
@@ -79,18 +74,6 @@ export function useProcessForm(getType: () => string, getNo?: () => string) {
   function selectChip(chip: SupplementChip) {
     activeChip.value = chip;
     expandedSections.value.supplement = true;
-    if (
-      chip === 'quality'
-      && !form.value.qualityIssueCat1
-      && !form.value.qualityIssueCat2
-    ) {
-      form.value = {
-        ...form.value,
-        qualityIsStandard: true,
-        qualityIssueCat1: '',
-        qualityIssueCat2: '',
-      };
-    }
   }
 
   return {
