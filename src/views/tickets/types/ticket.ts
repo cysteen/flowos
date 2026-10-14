@@ -4,6 +4,7 @@
 import type { BusinessType, CreateFormTicketType, TicketSource } from '@/views/tickets/types/createTicket';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 import { FLASH_POOLS, FLASH_TIP_AUTO_FLASHING, isFlashTicket, type TicketFlash } from '@/views/tickets/types/flash';
+import type { TicketXiaozhi } from '@/views/tickets/types/xiaozhi';
 import { readSla, slaStateOf } from '@/views/tickets/utils/slaClock';
 
 /**
@@ -679,6 +680,17 @@ export interface Ticket {
    * 列表与处理页读同一份；写口只有刷机服务 `stores/flash.ts`。
    */
   flash?: TicketFlash;
+  /**
+   * 「小智工单」标识（1130 小智工单 D1）：小智工单的工单类型是咨询，靠本标识区分。
+   * 建单时由小智建单入口写入，此后不可修改。
+   * 读取一律走 `isXiaozhiTicket(t)`（types/xiaozhi.ts），不要再按类型 / 单号 / 标题判断。
+   */
+  isXiaozhi?: boolean;
+  /**
+   * 小智单字段组（仅小智单有值，见 `isXiaozhi`）：问题类别 + 产研流转信息 + 驳回标记。
+   * 列表与处理页读同一份；写口只有小智服务 `stores/xiaozhi.ts`。
+   */
+  xiaozhi?: TicketXiaozhi;
 }
 
 /** 新建工单弹窗预填（子单 / reopen 场景从原单继承客户/产品/渠道等） */

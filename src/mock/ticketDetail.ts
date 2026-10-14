@@ -5,6 +5,7 @@ import type {
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 import type { ClosureMode } from '@/views/tickets/types/ticket';
 import type { TicketFlash } from '@/views/tickets/types/flash';
+import type { TicketXiaozhi } from '@/views/tickets/types/xiaozhi';
 
 // 工单操作页 Mock（样例 = 设计稿 IFLYTS-20260610-00002 · P-工单处理 定稿）。
 
@@ -181,6 +182,13 @@ export interface TicketDetailMeta {
    * 取自工单库那一行（`Ticket.flash`），写口只有刷机服务 `stores/flash.ts`。
    */
   flash?: TicketFlash;
+  /** 「小智工单」标识（1130 D1，取自工单行 `Ticket.isXiaozhi`；读取走 `isXiaozhiTicket`） */
+  isXiaozhi?: boolean;
+  /**
+   * 小智单字段组（仅小智单有值，1130 小智工单）：问题类别 + 产研流转信息 + 驳回标记。
+   * 取自工单库那一行（`Ticket.xiaozhi`），写口只有小智服务 `stores/xiaozhi.ts`。
+   */
+  xiaozhi?: TicketXiaozhi;
 }
 
 /** 委派中信息（协办完成或撤销委派后清空） */
