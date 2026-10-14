@@ -453,8 +453,6 @@ export function useTicketOperation() {
           id: `tl-${t.no}-create`, category: 'node', action: 'create', who: '系统', role: '系统', systemActor: true,
           how: '创建工单', what: `客户经${t.channel}渠道反馈问题，系统生成工单。`, when: t.createdAt,
         }, ...own];
-        // 「最新处理」同样取本单履历，不落类型样例的处理人与处理结果
-        detail.value.latestHandling = ownLatestHandling(timeline.value);
         return;
       }
       const seen = new Set(timeline.value.map((e) => e.id));
@@ -464,7 +462,7 @@ export function useTicketOperation() {
 
   /**
    * 刷机单的页头 / 速览带 / 侧栏取值与刷机种子单自洽（X5 / X7）：建单人取刷机履历的建单操作人，
-   * 建单时间取工单行，客户与产品取工单行与刷机信息，「最新处理」取刷机履历，不沿用投诉样例的台账。
+   * 建单时间取工单行，客户与产品取工单行与刷机信息，不沿用投诉样例的台账。
    */
   function applyFlashOverview(base: TicketDetailMeta, t: Ticket) {
     const f = t.flash!;
@@ -517,7 +515,6 @@ export function useTicketOperation() {
         : `${f.info.reason}刷机申请，按自动刷机结果跟进`,
       suggestion: '核对刷机信息与失败原因后处理',
     };
-    base.latestHandling = flashLatestHandling(t.no);
   }
 
   /**
@@ -551,24 +548,6 @@ export function useTicketOperation() {
       supplementReadCount: 0,
       relatedCount: (t.linkedAftersaleNo || t.aftersaleOriginNo ? 1 : 0) + (t.succeedsFromNo || t.succeededByNo ? 1 : 0),
     };
-  }
-
-  /** 「最新处理」：本单履历里最近的处理事件（不含沟通、时效、评价类），新在上，最多 3 条 */
-  function ownLatestHandling(entries: TimelineEntry[]): TicketDetailMeta['latestHandling'] {
-    return entries
-      .filter((e) => !['comm', 'sla', 'praise'].includes(e.category))
-      .slice(-3)
-      .reverse()
-      .map((e) => ({ who: e.who, role: e.role, action: e.how, when: e.when.slice(5, 16), text: e.what }));
-  }
-
-  /** 「最新处理」：刷机履历里最近的处理事件（不含短信），新在上，最多 3 条 */
-  function flashLatestHandling(no: string): TicketDetailMeta['latestHandling'] {
-    return flash.timelineOf(no)
-      .filter((e) => e.category !== 'comm')
-      .slice(-3)
-      .reverse()
-      .map((e) => ({ who: e.who, role: e.role, action: e.how, when: e.when.slice(5, 16), text: e.what }));
   }
 
   /**
@@ -647,7 +626,6 @@ export function useTicketOperation() {
       if (!t?.flash) return;
       applyFlashRow(detail.value, t);
       detail.value.slaClocks = flashSlaClocks(t) ?? buildSlaClocks(t);
-      detail.value.latestHandling = flashLatestHandling(t.no);
       projectFlashTimeline(t.no);
     },
   );

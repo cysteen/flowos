@@ -46,7 +46,8 @@ import { useProcessForm } from './composables/useProcessForm';
 import { useOperationTabs } from './composables/useOperationTabs';
 import { useTicketLiveNotify } from './composables/useTicketLiveNotify';
 import { formatTicketRecordWho, MOCK_FIRST_LINE_AGENTS } from './utils/ticketRecordWho';
-import { mergeDraftIntoLatestHandling } from './utils/ticketOverview';
+import { LATEST_HANDLING_ACTION, TECH_RESULT_FIELD, latestResultsFromTimeline } from './utils/ticketOverview';
+import type { LatestHandlingItem } from './types/operation';
 import { opTimeNow } from './utils/opTime';
 import { TICKETS } from '@/mock/tickets';
 import { useRiskTagStore } from '@/stores/riskTags';
@@ -1479,6 +1480,8 @@ function snapshotProcess(): Record<string, string> {
   for (const { key } of PROCESS_FIELDS_PROXY()) snap[key] = String(f[key] ?? '').trim();
   snap.__att = String([...(f.processResultAttachments ?? []), ...(f.problemCauseAttachments ?? []), ...(f.flashRecordAttachments ?? [])].length);
   snap.__cnAtt = JSON.stringify(f.closingNoteAttachments ?? []);
+  // 技术支持 Tab 的处理结果随同一个「保存」落库，记入处理履历（速览带「最新处理」据此取处理人与时间）
+  snap.__tech = (tabData.value.techDraft?.processResult ?? '').trim();
   return snap;
 }
 
@@ -1631,6 +1634,13 @@ function buildProcessLog() {
       continue;
     }
     changes.push(before ? { field: label, kind: '修改', from: before, to: after } : { field: label, kind: '补充', to: after });
+  }
+  const techBefore = processBaseline.__tech ?? '';
+  const techAfter = (tabData.value.techDraft?.processResult ?? '').trim();
+  if (techAfter && techAfter !== techBefore) {
+    changes.push(techBefore
+      ? { field: TECH_RESULT_FIELD, kind: '修改', from: techBefore, to: techAfter }
+      : { field: TECH_RESULT_FIELD, kind: '补充', to: techAfter });
   }
   const attArr = [...(f.processResultAttachments ?? []), ...(f.problemCauseAttachments ?? []), ...(f.flashRecordAttachments ?? [])];
   const attAdded = attArr.length - Number(processBaseline.__att ?? '0');
@@ -2453,33 +2463,28 @@ function updateTabData(next: OperationTabData) {
   tabData.value = next;
 }
 
-/** 处理表单 / 技术支持「处理结果」→ 速览带「最新处理」及时回写 */
-function syncLatestHandlingFromDrafts() {
-  d.value.latestHandling = mergeDraftIntoLatestHandling(d.value.latestHandling, {
-    // 刷机单一线：最新处理取刷机处理记录（1014）
-    processResult: flashFormLine.value === 'l1' ? (form.value.flashRecord ?? '') : form.value.processResult,
-    techProcessResult: tabData.value.techDraft.processResult,
-    processWho: user.name || '当前坐席',
-    processRole: mapUserRole(user.roleKey),
-    techWho: '技术支持',
-  });
-  // 同步列表行预览文案
-  const listTicket = TICKETS.find((t) => t.no === d.value.no);
-  if (listTicket) {
-    listTicket.latestHandling = d.value.latestHandling[0]?.text ?? '';
-  }
-}
-
+/**
+ * 速览带「最新处理」：取处理履历里最近一次保存的处理结果（刷机单一线含刷机处理记录）与技术支持处理结果，
+ * 处理人、时间随履历条目；领取、升级、流转等事件不进这张卡。
+ */
+const latestResults = computed(() => latestResultsFromTimeline(timeline.value));
 watch(
-  [
-    () => form.value.processResult,
-    () => form.value.flashRecord,
-    () => tabData.value.techDraft.processResult,
-    () => d.value.no,
-  ],
-  () => syncLatestHandlingFromDrafts(),
+  latestResults,
+  ({ process, tech }) => {
+    const items: LatestHandlingItem[] = [];
+    if (process) items.push({ ...process, action: LATEST_HANDLING_ACTION.PROCESS, source: 'process' });
+    if (tech) items.push({ ...tech, action: LATEST_HANDLING_ACTION.TECH, source: 'tech' });
+    d.value.latestHandling = items;
+    // 同步列表行预览文案
+    const listTicket = TICKETS.find((t) => t.no === d.value.no);
+    if (listTicket && process) listTicket.latestHandling = process.text;
+  },
   { immediate: true },
 );
+// 切单后技术支持 Tab 按新单重建，变更基线跟着取新单的值（post：等 Tab 数据重建完）
+watch(() => d.value.no, () => {
+  processBaseline.__tech = (tabData.value.techDraft?.processResult ?? '').trim();
+}, { flush: 'post' });
 </script>
 
 <template>

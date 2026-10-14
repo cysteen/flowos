@@ -307,4 +307,11 @@ watch(expandedCol, (v) => emit('expand-change', v !== null), { immediate: true }
   color: #111827;
 }
 .ob-empty { font-size: 12px; color: #9ca3af; }
+/* 最新处理：正文过长截断，⤢ 放大后看全文 */
+.ob-handle:not(.expanded) .hi-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 </style>
