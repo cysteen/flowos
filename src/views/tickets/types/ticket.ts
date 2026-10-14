@@ -1079,6 +1079,8 @@ export function inFlashL1PoolScope(t: Ticket): boolean {
   return (
     isFlashTicket(t)
     && t.flash?.state.pool === 'l1'
+    // 跨组调剂到别组后归属组已改（1014）：不再留在一线刷机池
+    && (!t.groupId || t.groupId === FLASH_L1_GROUP_ID)
     && t.nodeStatus === '未认领'
     && t.assignee === null
     && !t.archived

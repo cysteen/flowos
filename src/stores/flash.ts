@@ -1557,10 +1557,12 @@ export const useFlashStore = defineStore('flash', () => {
     const now = Date.now();
     const reason = p.reason || '—';
     if (p.scope === 'cross') {
+      // 归属组改为目标组：进目标组工单池（通用「工单池」按 groupId 取数，1014）；
+      // 目标组不在工单池分组里时记一个只属于该组的 id，不落回原组的池
       const group = POOL_GROUPS.find((g) => g.label === p.target);
       Object.assign(r, {
         nodeStatus: '未认领', assignee: null, tab: 'pool', groupNames: [p.target],
-        ...(group ? { groupId: group.id } : {}),
+        groupId: group?.id ?? `xfer:${p.target}`,
         updatedAt: flashMinuteStamp(now),
       });
       log(ticketNo, now, {
