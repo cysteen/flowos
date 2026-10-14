@@ -477,7 +477,7 @@ export const FLASH_TIP_SYSTEM_BUSY = '系统繁忙，请稍后再提交';
 export const FLASH_TIP_NON_SELF_DEVELOPED = '该产品不支持线上推送，请线下登记';
 /** 重推时刷机原因非毕业（M44） */
 export const FLASH_TIP_REASON_NOT_GRADUATE_L1 = '刷机原因不是毕业，请升级二线处理';
-export const FLASH_TIP_REASON_NOT_GRADUATE_L2 = '刷机原因不是毕业，请线下登记或婉拒';
+export const FLASH_TIP_REASON_NOT_GRADUATE_L2 = '刷机原因不是毕业，请线下登记';
 /** 重推前建单校验不通过（M36 / PRD §5.6 提交判定第 8、9 条，逐字） */
 export function flashTipVerifyFailed(l2: FlashFailL2): string {
   return l2 === 'SN与学生账号不一致'
