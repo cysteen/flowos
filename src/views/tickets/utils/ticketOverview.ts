@@ -62,8 +62,10 @@ export interface LatestResultBlock {
   text: string;
 }
 
-/** 处理表单里算「处理结果」的字段（刷机单一线的刷机处理记录同样计入） */
-const PROCESS_RESULT_FIELDS = ['处理结果', '刷机处理记录'];
+/** 处理表单里算「处理结果」的字段 */
+const PROCESS_RESULT_FIELDS = ['处理结果'];
+/** 刷机单一线处理表单的两项（刷机处理记录 / 刷机处理结论），在「最新处理」卡单列一块 */
+const FLASH_RECORD_FIELDS = ['刷机处理记录', '刷机处理结论'];
 /** 技术支持 Tab 的处理结果，保存时以此字段名记入处理履历 */
 export const TECH_RESULT_FIELD = '技术支持处理结果';
 
@@ -72,32 +74,70 @@ function resultTextOf(e: TimelineEntry, fields: string[]): string | undefined {
   return hit?.to?.trim() || undefined;
 }
 
+function blockAt(e: TimelineEntry): Omit<LatestResultBlock, 'text'> {
+  return { who: e.who, role: e.role, when: e.when.length > 16 ? e.when.slice(0, 16) : e.when };
+}
+
+/** 刷机单一线的处理条目：带刷机两项的字段变更，或正文即刷机处理记录的「工单处理」条目（无字段变更） */
+function isFlashRecordEntry(e: TimelineEntry): boolean {
+  if (e.category !== 'handle') return false;
+  if (e.changes?.length) return e.changes.some((c) => FLASH_RECORD_FIELDS.includes(c.field));
+  return e.how === '工单处理' && e.role === '一线坐席';
+}
+
 /**
  * 「最新处理」卡：取处理履历里最近一次保存的处理结果与技术支持处理结果。
- * 只认「工单处理」类条目上的字段变更（处理人、时间随条目落库）；
- * 刷机单一线的处理条目正文即刷机处理记录（无字段变更），按正文计入。
+ * 只认「工单处理」类条目上的字段变更（处理人、时间随条目落库）；无字段变更的「工单处理」条目按正文计入。
+ * 刷机单（`flash`）一线的刷机处理记录另成一块（见 `latestFlashRecordFrom`），不计入处理结果。
  * 领取、升级、流转等事件不在此列。
  */
-export function latestResultsFromTimeline(entries: TimelineEntry[]): {
+export function latestResultsFromTimeline(entries: TimelineEntry[], flash = false): {
   process: LatestResultBlock | null;
   tech: LatestResultBlock | null;
 } {
   let process: LatestResultBlock | null = null;
   let tech: LatestResultBlock | null = null;
+  const processFields = flash ? PROCESS_RESULT_FIELDS : [...PROCESS_RESULT_FIELDS, '刷机处理记录'];
   for (let i = entries.length - 1; i >= 0 && (!process || !tech); i--) {
     const e = entries[i];
     if (e.category !== 'handle') continue;
-    const at = { who: e.who, role: e.role, when: e.when.length > 16 ? e.when.slice(0, 16) : e.when };
+    const at = blockAt(e);
     if (!tech) {
       const t = resultTextOf(e, [TECH_RESULT_FIELD]);
       if (t) tech = { ...at, text: t };
     }
-    if (!process) {
+    if (!process && !(flash && isFlashRecordEntry(e) && !resultTextOf(e, PROCESS_RESULT_FIELDS))) {
       const p = e.changes?.length
-        ? resultTextOf(e, PROCESS_RESULT_FIELDS)
+        ? resultTextOf(e, processFields)
         : (e.how === '工单处理' ? e.what?.trim() : undefined);
       if (p) process = { ...at, text: p };
     }
   }
   return { process, tech };
+}
+
+/** 「最新处理」卡 · 刷机处理记录块：正文与刷机处理结论取工单库现值，处理人、时间取最近一次落库的履历条目 */
+export interface FlashRecordBlock extends LatestResultBlock {
+  /** 刷机处理结论（标签） */
+  result: string;
+}
+
+/**
+ * 刷机处理记录块（刷机单）：刷机处理记录与刷机处理结论都为空时不出。
+ * 处理人、时间取最近一条一线处理条目；一线以「升级二线」下送时随升级条目落库，同样计入。
+ */
+export function latestFlashRecordFrom(
+  entries: TimelineEntry[],
+  state: { record?: string; result?: string } | undefined,
+): FlashRecordBlock | null {
+  const text = state?.record?.trim() ?? '';
+  const result = state?.result?.trim() ?? '';
+  if (!text && !result) return null;
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const e = entries[i];
+    if (isFlashRecordEntry(e) || (e.action === 'escalate' && e.how === '升级二线')) {
+      return { ...blockAt(e), text, result };
+    }
+  }
+  return { who: '', role: '一线坐席', when: '', text, result };
 }

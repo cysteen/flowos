@@ -2,13 +2,23 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import OpStatGrid from './OpStatGrid.vue';
 import OpAiInsight from './OpAiInsight.vue';
+import OpFlashResultCard from './OpFlashResultCard.vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import type { InsightAction } from '@/views/tickets/types/operation';
-import { resolveLatestHandlingAction } from '@/views/tickets/utils/ticketOverview';
+import type { TicketFlash } from '@/views/tickets/types/flash';
+import { resolveLatestHandlingAction, type FlashRecordBlock } from '@/views/tickets/utils/ticketOverview';
 
 type OverviewCol = 'desc' | 'stat' | 'handle';
 
-defineProps<{ detail: TicketDetailMeta }>();
+defineProps<{
+  detail: TicketDetailMeta;
+  /**
+   * 刷机单（PRD §5.2）：「最新处理」卡依次出 自动刷机结果 · 刷机处理记录 · 最新处理结果 · 技术支持最新处理结果，
+   * 无内容的块不出。四类老工单不传，卡片与改前一致。
+   */
+  flash?: TicketFlash;
+  flashRecord?: FlashRecordBlock | null;
+}>();
 const emit = defineEmits<{ select: [action: InsightAction]; 'expand-change': [expanded: boolean] }>();
 
 const expandedCol = ref<OverviewCol | null>(null);
@@ -91,7 +101,7 @@ watch(expandedCol, (v) => emit('expand-change', v !== null), { immediate: true }
 
     <!-- ③ 最新处理 -->
     <div class="ob-cell">
-      <section class="ob-col ob-handle" :class="{ expanded: expandedCol === 'handle' }">
+      <section class="ob-col ob-handle" :class="{ expanded: expandedCol === 'handle', 'is-flash': flash }">
         <div class="ob-head">
           <span class="ob-title"><i class="ob-bar" />最新处理</span>
           <button
@@ -105,7 +115,19 @@ watch(expandedCol, (v) => emit('expand-change', v !== null), { immediate: true }
           </button>
         </div>
         <div class="ob-body">
-          <div v-if="!detail.latestHandling.length" class="ob-empty">暂无处理记录</div>
+          <template v-if="flash">
+            <OpFlashResultCard :flash="flash" :expanded="expandedCol === 'handle'" />
+            <div v-if="flashRecord" class="handle-item">
+              <div class="hi-meta">
+                <span v-if="flashRecord.who" class="hi-who">{{ flashRecord.who }}</span>
+                <span class="hi-action">刷机处理记录</span>
+                <span v-if="flashRecord.result" class="hi-tag">{{ flashRecord.result }}</span>
+                <span v-if="flashRecord.when" class="hi-when">{{ flashRecord.when }}</span>
+              </div>
+              <div v-if="flashRecord.text" class="hi-text hi-pre">{{ flashRecord.text }}</div>
+            </div>
+          </template>
+          <div v-else-if="!detail.latestHandling.length" class="ob-empty">暂无处理记录</div>
           <div v-for="(h, i) in detail.latestHandling" :key="i" class="handle-item">
             <div class="hi-meta">
               <span class="hi-who">{{ h.who }}</span>
@@ -313,5 +335,12 @@ watch(expandedCol, (v) => emit('expand-change', v !== null), { immediate: true }
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+/* 刷机单「最新处理」卡块数多（最多四块），每块正文收到两行 */
+.ob-handle.is-flash:not(.expanded) .hi-text { -webkit-line-clamp: 2; }
+.hi-pre { white-space: pre-line; }
+.hi-tag {
+  font-size: 11px; line-height: 18px; color: #1d4ed8; background: #eff6ff;
+  border: 1px solid #bfdbfe; border-radius: 4px; padding: 0 6px; white-space: nowrap;
 }
 </style>
