@@ -103,7 +103,8 @@ const isComplaint = computed(() => props.ticketType === '投诉');
 /**
  * 刷机单（1013 A15 / A16 / A18；1014，PRD §5.4）：
  * - 一线：「处理记录」区出「刷机处理结论」下拉 + 「刷机处理记录」正文；「已线上刷机成功」由系统写入，不在下拉里出，本单已是该值时只回显；
- * - 二线（含三线技术支持）：按普通咨询单出问题原因、处理结果、服务与结论；一线两项只读展示。
+ * - 二线（含三线技术支持）：按普通咨询单出问题原因、处理结果、服务与结论；一线两项不在表单里出，
+ *   在速览带「最新处理」卡的「刷机处理记录」块查看（PRD §5.2）。
  */
 const isFlash = computed(() => !!props.isFlash);
 const isFlashL1 = computed(() => isFlash.value && props.flashLine !== 'l2');
@@ -302,18 +303,6 @@ function chipActiveClass(key: SupplementChip): string {
             @update:model-value="(v: string) => patch({ flashRecord: v })"
             @update:attachments="(v: string[]) => patch({ flashRecordAttachments: v })"
           />
-        </div>
-      </template>
-      <template v-else-if="isFlashL2">
-        <div class="flash-ro">
-          <div class="flash-ro-row">
-            <span class="flash-ro-label">刷机处理结论</span>
-            <span class="flash-ro-value">{{ form.flashResult || '—' }}</span>
-          </div>
-          <div class="flash-ro-row">
-            <span class="flash-ro-label">刷机处理记录</span>
-            <span class="flash-ro-value flash-ro-text">{{ form.flashRecord?.trim() || '—' }}</span>
-          </div>
         </div>
       </template>
       <OpRecordFields
@@ -558,14 +547,6 @@ function chipActiveClass(key: SupplementChip): string {
 .field-row--lead { align-items: flex-start; flex-wrap: nowrap; }
 .field-row--flash { align-items: flex-start; margin-bottom: 10px; }
 .flash-err { font-size: 12px; line-height: 18px; color: #ef4444; }
-.flash-ro {
-  display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px;
-  padding: 10px 12px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px;
-}
-.flash-ro-row { display: flex; gap: 12px; font-size: 12px; line-height: 20px; }
-.flash-ro-label { flex: none; width: 84px; font-weight: 600; color: #374151; }
-.flash-ro-value { flex: 1; min-width: 0; color: #111827; }
-.flash-ro-text { white-space: pre-wrap; word-break: break-word; }
 .field-row .field.inline { flex: 1 1 0; min-width: 0; }
 .field-row--service { align-items: flex-start; flex-wrap: nowrap; }
 .field-row--service .field.inline { flex: 1 1 0; min-width: 0; }

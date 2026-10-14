@@ -124,7 +124,7 @@ export interface FlashRecordBlock extends LatestResultBlock {
 
 /**
  * 刷机处理记录块（刷机单）：刷机处理记录与刷机处理结论都为空时不出。
- * 处理人、时间取最近一条一线处理条目；一线以「升级二线」下送时随升级条目落库，同样计入。
+ * 处理人、时间取最近一次保存刷机处理记录的那条一线处理条目（升级二线等流转事件不计）。
  */
 export function latestFlashRecordFrom(
   entries: TimelineEntry[],
@@ -135,7 +135,7 @@ export function latestFlashRecordFrom(
   if (!text && !result) return null;
   for (let i = entries.length - 1; i >= 0; i--) {
     const e = entries[i];
-    if (isFlashRecordEntry(e) || (e.action === 'escalate' && e.how === '升级二线')) {
+    if (isFlashRecordEntry(e)) {
       return { ...blockAt(e), text, result };
     }
   }
