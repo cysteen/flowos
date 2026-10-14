@@ -551,7 +551,8 @@ function priorityHex(p: string): string {
   line-height: 1.3;
 }
 .meta-text {
-  flex: 1;
+  /* 只收缩不撑开：复制按钮紧跟单号，不被推到行尾 */
+  flex: 0 1 auto;
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
