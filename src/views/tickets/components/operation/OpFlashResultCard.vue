@@ -87,10 +87,6 @@ const hardwareUrl = computed(() => flashExternalUrl('hardwarePlatform', props.fl
       </a>
     </div>
 
-    <div v-if="state.lateSuccessAt" class="fr-late">
-      超时后收到回传：接收成功 {{ state.lateSuccessAt.slice(0, 16) }}
-    </div>
-
     <!-- 收起：一段摘要，超长截断 -->
     <div v-if="!expanded" class="fr-brief">
       <template v-if="pushed">
@@ -186,11 +182,6 @@ const hardwareUrl = computed(() => flashExternalUrl('hardwarePlatform', props.fl
   font-size: 12px; color: #1a6fff; white-space: nowrap;
 }
 .fr-link:hover { text-decoration: underline; }
-.fr-late {
-  align-self: flex-start;
-  padding: 0 8px; font-size: 12px; font-weight: 600; line-height: 20px;
-  color: #047857; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 4px;
-}
 .fr-brief {
   font-size: 12px; line-height: 1.6; color: #374151;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;

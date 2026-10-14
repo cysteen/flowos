@@ -315,7 +315,7 @@ export interface FlashState {
    * 迟到回传时间：回传超时转人工之后才收到的「接收成功」时刻（M11 / M48）。
    * 只写履历、有处理人时站内通知处理人，不改状态、不发成功短信。
    */
-  lateSuccessAt?: string;
+  lateSuccessAt?: string; // 只落库，页面不展示（迟到回传只记处理履历与站内通知，1014 用户拍板）
   /** 建单校验结果：两项各自通过 / 不通过；特殊情况、校验接口不可用为「未校验」（M50） */
   verifyResult: FlashVerifyResult;
   /** 已发转人工短信（M37：每单只发一次，首次转人工时发） */
