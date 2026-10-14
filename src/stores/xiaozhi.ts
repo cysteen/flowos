@@ -166,10 +166,15 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     r.xiaozhi!.rdRecords = [...list, { id: `xz-rd-${r.no}-${rdSeq}`, ...rec }];
   }
 
-  function notify(r: Ticket, kind: 'group' | 'upgrade' | 'return' | 'accepted', title: string, content: string, receivers: (string | null | undefined)[]) {
-    useNotifyLogStore().emit({
-      ticketNo: r.no, event: `ticket.xiaozhi.${kind}`, kind, title, receivers, content,
-    });
+  function notify(
+    r: Ticket,
+    kind: 'group' | 'upgrade' | 'return' | 'accepted',
+    title: string,
+    content: string,
+    receivers: (string | null | undefined)[],
+    event = `ticket.xiaozhi.${kind}`,
+  ) {
+    useNotifyLogStore().emit({ ticketNo: r.no, event, kind, title, receivers, content });
   }
 
   /* ---------------- 种子与缓存装载 ---------------- */
@@ -294,12 +299,21 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
       category: 'node', action: 'create', who: actor.name, role: actor.role,
       how: '建单', what: XIAOZHI_TL.create(XIAOZHI_TICKET_SOURCE),
     });
-    notify(r, 'group', '新单待领取', XIAOZHI_NOTICE.pooled(no), [XIAOZHI_POOL_GROUP_NAME]);
     // 「创建并流转」：落池生成记录后由系统自动流转，不靠人领、不靠定时任务扫（D6）
     if (escalate) {
+      /**
+       * 🔴 **直通产研的单不发「待领取」提醒**（D6 + 通知规则 R18 的 `rdDirect` 条件）：
+       * 池里留的是**记录**不是待领任务，处理人是系统（一·补 B2），没有人该去领它。
+       * 发了就是叫整组去领一张领不了、也不该领的单。
+       */
       r.xiaozhi!.rd = buildRdInfo(input);
       escalateToRd(no, { name: '系统', role: '系统' }, true);
     } else {
+      // 人工跟进那条路：新单进池待领取，提醒本组全员（D21 一个大组、进池自己领）
+      notify(
+        r, 'group', '新单待领取', XIAOZHI_NOTICE.pooled(no),
+        [XIAOZHI_POOL_GROUP_NAME], 'ticket.pooled',
+      );
       bump(no);
       persist();
     }
