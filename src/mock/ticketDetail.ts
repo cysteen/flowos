@@ -482,6 +482,9 @@ export const TICKET_DETAIL: TicketDetailMeta = {
   feishuRecords: [],
 };
 
+/** 样例履历里那条「工单处理」种子的 id（四类型共用，处理结果按类型对齐表单预填） */
+export const SAMPLE_HANDLE_ENTRY_ID = 'eh1';
+
 export const TIMELINE: TimelineEntry[] = [
   {
     id: 'e1', category: 'node', action: 'create', who: '系统', role: '系统',
@@ -544,13 +547,14 @@ export const TIMELINE: TimelineEntry[] = [
     what: '原处理人王二线今日休假，改派至李二线继续跟进。',
   },
   {
-    id: 'eh1', category: 'handle', action: 'handle', who: '王坐席', role: '二线专员',
+    // 正文与 Tab① 表单预填（DEFAULT_PROCESS_DRAFT）一致；咨询 / 商机 / 建议单载入时按各自样例对齐（useTicketOperation）
+    id: SAMPLE_HANDLE_ENTRY_ID, category: 'handle', action: 'handle', who: '王坐席', role: '二线专员',
     how: '工单处理', when: '今天 15:10',
     what: '登记处理进展（补充 2 项）',
     attachment: '固件升级日志.txt',
     changes: [
-      { field: '问题原因', kind: '补充', to: '固件 v2.4 在线歌单调度模块缺陷' },
-      { field: '处理结果', kind: '补充', to: '远程降级至 v2.3.1 并清理歌单缓存，复测 30 分钟未再复现' },
+      { field: '问题原因', kind: '补充', to: '在线歌单播放时频繁跳歌，重启无效；客户情绪偏急，已催单 3 次。' },
+      { field: '处理结果', kind: '补充', to: '已远程升级固件至 v2.3.1 并复测 30 分钟，跳歌问题未再复现。' },
     ],
   },
   {

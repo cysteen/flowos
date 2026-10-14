@@ -649,6 +649,12 @@ const BASE_TICKETS: Ticket[] = [
     customerPhone: '13711112222', sn: 'SN-T20-830131', productCategory: '智能硬件',
     createdAt: '2026-08-15 09:00', updatedAt: '2026-08-17 08:00',
     responded: true, upgradedByMe: true, hasDunning: true,
+    // 技术支持处理结果的种子登记（速览带「最新处理」技术支持那一块）：正文与「技术支持处理」Tab 预填一致
+    eventTimeline: [{
+      id: 'tech-IFLYTS-20260817-00004-1', category: 'handle', action: 'handle', who: '赵三线', role: '技术支持',
+      how: '工单处理', what: '登记处理进展（补充 1 项）', when: '2026-08-17 08:00',
+      changes: [{ field: '技术支持处理结果', kind: '补充', to: '建议降级至 v2.3.1 固件，清理在线歌单缓存后复测 30 分钟未再复现。' }],
+    }],
   },
   // D6 已升级产研（基线 §1 ※14a）：不拉回；**处理人未转移**，通知仍落二线。与 D5 成对，
   // 依据基线 §1「一跳一态」，两类升级各占一个子状态，不再靠 escalateTarget 字段区分

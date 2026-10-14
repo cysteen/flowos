@@ -2,7 +2,7 @@ import { isFlashTicket } from '@/views/tickets/types/flash';
 import { ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
-import { TICKET_DETAIL, TIMELINE, productHasAfterSaleService } from '@/mock/ticketDetail';
+import { TICKET_DETAIL, TIMELINE, SAMPLE_HANDLE_ENTRY_ID, productHasAfterSaleService } from '@/mock/ticketDetail';
 import type { TicketDetailMeta, ChildTicket, SlaClock } from '@/mock/ticketDetail';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 import type { TicketFlash } from '@/views/tickets/types/flash';
@@ -459,9 +459,27 @@ export function useTicketOperation() {
         }, ...own];
         return;
       }
+      alignSampleHandleEntry(typeSampleKey(base));
       const seen = new Set(timeline.value.map((e) => e.id));
       [...entries, ...saved].forEach((e) => { if (!seen.has(e.id)) timeline.value.push({ ...e }); });
     }
+  }
+
+  /**
+   * 样例履历里那条「工单处理」种子（`SAMPLE_HANDLE_ENTRY_ID`）是四类型共用的，
+   * 其问题原因 / 处理结果按本单类型的表单预填对齐 —— 「最新处理」卡与 Tab① 表单同一段文字。
+   */
+  function alignSampleHandleEntry(key: string) {
+    const draft = TYPE_SAMPLES[key]?.processDraft;
+    if (!draft) return;
+    timeline.value = timeline.value.map((e) => (e.id !== SAMPLE_HANDLE_ENTRY_ID ? e : {
+      ...e,
+      changes: e.changes?.map((c) => {
+        if (c.field === '处理结果' && draft.processResult) return { ...c, to: draft.processResult };
+        if (c.field === '问题原因' && draft.problemCause) return { ...c, to: draft.problemCause };
+        return c;
+      }),
+    }));
   }
 
   /**
