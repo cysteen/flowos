@@ -719,6 +719,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       handoffEntry(addSec(back, 1), '接收失败', 'l1'),
       smsEntry(addSec(back, 2), '13966713907', flashSmsHandoff(no(17))),
       acceptEntry(claim1, '刘一线', '一线坐席'),
+      handleEntry(addSec(esc, -110), '刘一线', '一线坐席', '已指导用户开机联网，设备系统版本过低无法在线升级。'),
       escalateEntry(esc, '刘一线', '已指导用户开机联网，设备系统版本过低无法在线升级。'),
       acceptEntry(claim2, '王坐席', '二线专员'),
       handleEntry(addSec(repushed, -300), '王坐席', '二线专员', '已在工单刷机问题沟通群反馈，硬件平台下发兼容刷机包，准备重新推送。'),
