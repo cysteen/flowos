@@ -2516,7 +2516,11 @@ const latestResults = computed(() => latestResultsFromTimeline(timeline.value, i
 const latestFlashRecord = computed(() => {
   if (!isFlash.value) return null;
   const st = d.value.flash?.state;
-  return latestFlashRecordFrom(timeline.value, st ? { record: st.record, result: normalizeFlashResult(st.result) } : undefined);
+  return latestFlashRecordFrom(
+    timeline.value,
+    st ? { record: st.record, result: normalizeFlashResult(st.result) } : undefined,
+    TICKETS.find((t) => t.no === d.value.no)?.assignee,
+  );
 });
 watch(
   [latestResults, latestFlashRecord],
