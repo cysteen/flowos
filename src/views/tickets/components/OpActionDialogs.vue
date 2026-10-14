@@ -43,6 +43,8 @@ const props = defineProps<{
   groupNames?: string[];
   groupId?: string;
   lastHandler?: string | null;
+  /** 调剂候选人限定（刷机单：本单当前所在组的成员）；传入即只出同组内、不出跨组 */
+  transferCandidates?: string[];
 }>();
 
 const emit = defineEmits<{
@@ -62,17 +64,21 @@ const transfer = reactive({ scope: 'same' as 'same' | 'cross', target: TRANSFER_
  */
 const canCrossGroup = computed(() => CROSS_GROUP_TRANSFER_ROLES.includes(user.roleKey));
 
+/** 候选人被限定（刷机单）：只同组内 */
+const sameGroupOnly = computed(() => !!props.transferCandidates);
+const sameTargets = computed(() => props.transferCandidates ?? TRANSFER_TARGETS_SAME);
+
 const transferToGroup = computed(() => transfer.scope === 'cross');
 
 /** 同组内→选人；跨组→选组（不指定组内的人） */
 const transferTargetOptions = computed(() =>
-  (transferToGroup.value ? TRANSFER_TARGET_GROUPS : TRANSFER_TARGETS_SAME)
+  (transferToGroup.value ? TRANSFER_TARGET_GROUPS : sameTargets.value)
     .map((t) => ({ value: t, label: t })),
 );
 
 /** 切换范围后重置为新候选首项，避免残留上一范围的目标 */
 watch(() => transfer.scope, (scope) => {
-  transfer.target = scope === 'same' ? TRANSFER_TARGETS_SAME[0] : TRANSFER_TARGET_GROUPS[0];
+  transfer.target = scope === 'same' ? sameTargets.value[0] : TRANSFER_TARGET_GROUPS[0];
 });
 let delegateTaskSeq = 0;
 function createDelegateTask(name = '', task = '') {
@@ -264,7 +270,7 @@ function defaultApprovalGroup() {
 }
 
 function resetForms() {
-  transfer.scope = 'same'; transfer.target = TRANSFER_TARGETS_SAME[0]; transfer.reason = '';
+  transfer.scope = 'same'; transfer.target = sameTargets.value[0] ?? ''; transfer.reason = '';
   delegate.mode = 'person';
   resetDelegateTasks();
   delegate.group = DELEGATE_GROUPS[0];
@@ -420,7 +426,7 @@ function onOk() {
   >
     <!-- 调剂 -->
     <div v-if="action === '调剂'" class="op-form">
-      <div class="op-field">
+      <div v-if="!sameGroupOnly" class="op-field">
         <div class="op-label req">调剂范围</div>
         <a-radio-group v-model:value="transfer.scope">
           <a-radio value="same">同组内（调剂到人）</a-radio>

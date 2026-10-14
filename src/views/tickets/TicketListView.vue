@@ -33,7 +33,7 @@ import AssignModal, {
   type AssignTicket,
 } from '@/views/team-board/components/AssignModal.vue';
 
-import { TEAM_MEMBERS } from '@/mock/teamBoard';
+import { TEAM_MEMBERS, type MemberRow } from '@/mock/teamBoard';
 
 import { useFlashStore } from '@/stores/flash';
 
@@ -395,7 +395,7 @@ function onOpDialogConfirm(payload: Record<string, unknown>) {
 
   if (isFlashTicket(t)) {
 
-    const res = flashStore.transferOwner(t.no, queryActor(), { scope: data.scope, target: name, reason: data.reason });
+    const res = flashStore.transferOwner(t.no, queryActor(), { target: name, reason: data.reason });
 
     if (res.ok) message.success(res.message);
 
@@ -439,6 +439,21 @@ const assignTicketsForModal = computed<AssignTicket[]>(() => {
 
   }];
 
+});
+
+/** 刷机单调剂候选：本单当前所在组的成员（1014）；非刷机单不限定 */
+const opTransferCandidates = computed(() => {
+  const t = opTransferTicket.value;
+  return t && isFlashTicket(t) ? flashStore.groupCandidates(t.no) : undefined;
+});
+
+/** 指派候选：刷机单限本单当前所在组的成员（1014），非刷机单沿用班组名册 */
+const assignCandidates = computed<MemberRow[]>(() => {
+  const t = assignTicketRow.value;
+  if (!t || !isFlashTicket(t)) return TEAM_MEMBERS;
+  return flashStore.groupCandidates(t.no).map((name, i) => TEAM_MEMBERS.find((m) => m.name === name) ?? {
+    ...TEAM_MEMBERS[0], id: `fg${i + 1}`, name, online: '在线', workload: 0, loadLevel: '空闲',
+  });
 });
 
 function queryActor(): FlashActor {
@@ -879,6 +894,7 @@ function onClearFilters() {
       :suspend-info="null"
       :return-count="0"
       :group-id="opTransferTicket?.groupId"
+      :transfer-candidates="opTransferCandidates"
       @confirm="onOpDialogConfirm"
     />
 
@@ -887,7 +903,7 @@ function onClearFilters() {
       ref="assignRef"
       v-model:open="assignOpen"
       :preselected-ids="assignTicketRow ? [assignTicketRow.id] : []"
-      :candidates="TEAM_MEMBERS"
+      :candidates="assignCandidates"
       :tickets="assignTicketsForModal"
       :can-cross-team="false"
       @submit="onAssignSubmit"
