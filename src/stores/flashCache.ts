@@ -27,8 +27,9 @@ export type FlashLsKey = (typeof FLASH_LS_KEYS)[keyof typeof FLASH_LS_KEYS];
  * 一线不计 SLA 后种子单的 SLA 起算与摘要随之变化。
  * v10：种子单履历「建单」改记工单来源、重推成功与短信落款对齐 PRD 文案。
  * v11：刷机字段组新增 record（刷机处理记录）；一线升级二线的种子单带刷机处理结论与刷机处理记录（1014）。
+ * v12：种子单刷机处理记录 / 刷机处理结论与履历里最新一次保存对齐（⑦ ⑫ ⑭ ⑰ ⑲）；⑭ 补「线下登记」条目。
  */
-export const FLASH_CACHE_VERSION = 11;
+export const FLASH_CACHE_VERSION = 12;
 
 /** 保质期：12 小时（与风险两条线 `RISK_STALE_MS` 同口径） */
 export const FLASH_STALE_MS = 12 * 60 * 60 * 1000;
