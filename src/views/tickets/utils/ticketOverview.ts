@@ -126,7 +126,7 @@ export interface FlashRecordBlock extends LatestResultBlock {
 /**
  * 刷机处理记录块（刷机单）：刷机处理记录与刷机处理结论都为空时不出。
  * 处理人、时间取最近一次保存刷机处理记录的那条一线处理条目（升级二线等流转事件不计）；
- * 刷机处理结论由系统写入（回传「接收成功」写「已线上刷机成功」）且晚于一线保存时，处理人为「系统」、时间取系统写入时刻。
+ * 一线从未保存过、刷机处理结论由系统写入（回传「接收成功」写「已线上刷机成功」）时，处理人为「系统」、时间取系统写入时刻。
  */
 export function latestFlashRecordFrom(
   entries: TimelineEntry[],
@@ -135,13 +135,16 @@ export function latestFlashRecordFrom(
   const text = state?.record?.trim() ?? '';
   const result = state?.result?.trim() ?? '';
   if (!text && !result) return null;
-  const systemWritten = result === FLASH_RESULT_ONLINE_SUCCESS;
   for (let i = entries.length - 1; i >= 0; i--) {
     const e = entries[i];
-    const isSystemWrite = systemWritten && e.action === 'flashSuccess' && e.what !== FLASH_TL.lateSuccess;
-    if (isSystemWrite) return { ...blockAt(e), who: '系统', role: '系统', text, result };
-    if (isFlashRecordEntry(e)) {
-      return { ...blockAt(e), text, result };
+    if (isFlashRecordEntry(e)) return { ...blockAt(e), text, result };
+  }
+  if (result === FLASH_RESULT_ONLINE_SUCCESS) {
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const e = entries[i];
+      if (e.action === 'flashSuccess' && e.what !== FLASH_TL.lateSuccess) {
+        return { ...blockAt(e), who: '系统', role: '系统', text, result };
+      }
     }
   }
   return { who: '', role: '一线坐席', when: '', text, result };
