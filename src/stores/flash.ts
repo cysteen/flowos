@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { reactive, ref, toRaw } from 'vue';
 import type { Channel, Priority, Ticket } from '@/views/tickets/types/ticket';
-import { isTicketClosed } from '@/views/tickets/types/ticket';
+import { POOL_GROUPS, isTicketClosed } from '@/views/tickets/types/ticket';
 import type { TimelineEntry, TimelineFieldChange } from '@/views/tickets/types/ticketDetail';
 import { TICKETS } from '@/mock/tickets';
 import { FLASH_SEEDS } from '@/mock/flash/seedTickets';
@@ -26,7 +26,7 @@ import {
   type FlashResult, type FlashRun, type FlashState, type FlashVerifyResult, type TicketFlash,
 } from '@/views/tickets/types/flash';
 import { formatSlaClock, isFlashSlaCounted, readFlashSla, slaStateOf } from '@/views/tickets/utils/slaClock';
-import { GROUP_MEMBERS, LOGIN_URL, templateOf } from '@/mock/notifyRules';
+import { LOGIN_URL, templateOf } from '@/mock/notifyRules';
 import { useNotifyLogStore } from './notifyLog';
 import { useFlashConfigStore } from './flashConfig';
 import { FLASH_LS_KEYS, readFlashCache, writeFlashCache } from './flashCache';
@@ -1508,18 +1508,7 @@ export const useFlashStore = defineStore('flash', () => {
   }
 
   /**
-   * 查询中心调剂 / 指派的候选人（1014）：只列本单当前所在组的成员——
-   * 一线刷机池＝持有容联云刷机角色的一线坐席，教育刷机处理组＝该组组员。不出别组的人。
-   */
-  function groupCandidates(ticketNo: string): string[] {
-    const r = rowOf(ticketNo);
-    if (!r?.flash) return [];
-    const pool: FlashPoolKey = r.flash.state.pool ?? 'l1';
-    return [...(GROUP_MEMBERS[FLASH_POOLS[pool].groupName]?.members ?? [])];
-  }
-
-  /**
-   * 查询中心「指派」（工单运营，§4.2）：教育刷机处理组池未认领且无处理人才可指派，对象限本组成员；
+   * 查询中心「指派」（工单运营，§4.2）：教育刷机处理组池未认领且无处理人才可指派；
    * 落点同领取（子状态「待响应」、处理人＝被指派人、进「我的任务」），写履历「指派」。不改 SLA、不动归属池。
    */
   function assignFromPool(ticketNo: string, target: string, by: FlashActor): FlashActionResult {
@@ -1527,7 +1516,6 @@ export const useFlashStore = defineStore('flash', () => {
     if (!r?.flash) return { ok: false, message: FLASH_TIP_REPUSH_STATE };
     if (r.assignee) return { ok: false, message: `该工单已被 ${r.assignee} 领取` };
     if (r.nodeStatus !== '未认领' || r.flash.state.pool !== 'l2') return { ok: false, message: '当前工单状态不可指派' };
-    if (!groupCandidates(ticketNo).includes(target)) return { ok: false, message: '只能指派给本组成员' };
     const now = Date.now();
     Object.assign(r, {
       nodeStatus: '待响应',
@@ -1546,32 +1534,44 @@ export const useFlashStore = defineStore('flash', () => {
   }
 
   /**
-   * 查询中心「调剂」（工单运营，§4.2；1014）：对象限本单当前所在组的成员（`groupCandidates`），不跨组。
-   * 调剂后进对方名下：未认领 / 待响应 / 处理中的单子状态为「处理中」；其余子状态（调研中、已挂起等）不变。
-   * 归属组不变、不改 SLA。自动刷机中不可调剂。
+   * 查询中心「调剂」（工单运营，§4.2；1014 沿用通用调剂规则）：
+   * 本组＝进对方名下，未认领 / 待响应 / 处理中转「处理中」，其余子状态不变；
+   * 跨组＝转入目标组工单池「未认领」、不指定处理人，归属组改为目标组。自动刷机中不可调剂。不改 SLA。
    */
   function transferOwner(
     ticketNo: string,
     by: FlashActor,
-    p: { target: string; reason: string },
+    p: { scope: 'same' | 'cross'; target: string; reason: string },
   ): FlashActionResult {
     const r = rowOf(ticketNo);
     if (!r?.flash) return { ok: false, message: FLASH_TIP_REPUSH_STATE };
     if (r.nodeStatus === '自动刷机中') return { ok: false, message: FLASH_TIP_AUTO_FLASHING };
-    if (!groupCandidates(ticketNo).includes(p.target)) return { ok: false, message: '只能调剂给本组成员' };
     const now = Date.now();
     const reason = p.reason || '—';
-    const toHandling = r.nodeStatus === '未认领' || r.nodeStatus === '待响应' || r.nodeStatus === '处理中';
-    Object.assign(r, {
-      assignee: p.target,
-      tab: 'mine',
-      ...(toHandling ? { nodeStatus: '处理中' } : {}),
-      updatedAt: flashMinuteStamp(now),
-    });
-    log(ticketNo, now, {
-      category: 'node', action: 'transfer', who: by.name, role: by.role, how: '调剂',
-      what: `调剂至 ${p.target}（处理人变更）。原因：${reason}`,
-    });
+    if (p.scope === 'cross') {
+      const group = POOL_GROUPS.find((g) => g.label === p.target);
+      Object.assign(r, {
+        nodeStatus: '未认领', assignee: null, tab: 'pool', groupNames: [p.target],
+        ...(group ? { groupId: group.id } : {}),
+        updatedAt: flashMinuteStamp(now),
+      });
+      log(ticketNo, now, {
+        category: 'node', action: 'transfer', who: by.name, role: by.role, how: '跨组调剂',
+        what: `跨组调剂至「${p.target}」（转入该组工单池待领取，不指定处理人）。原因：${reason}`,
+      });
+    } else {
+      const toHandling = r.nodeStatus === '未认领' || r.nodeStatus === '待响应' || r.nodeStatus === '处理中';
+      Object.assign(r, {
+        assignee: p.target,
+        tab: 'mine',
+        ...(toHandling ? { nodeStatus: '处理中' } : {}),
+        updatedAt: flashMinuteStamp(now),
+      });
+      log(ticketNo, now, {
+        category: 'node', action: 'transfer', who: by.name, role: by.role, how: '调剂',
+        what: `调剂至 ${p.target}（处理人变更）。原因：${reason}`,
+      });
+    }
     bump(ticketNo);
     persist();
     return { ok: true, message: `已将 ${ticketNo} 调剂至 ${p.target}` };
@@ -1830,6 +1830,5 @@ export const useFlashStore = defineStore('flash', () => {
     claimFromPool,
     assignFromPool,
     transferOwner,
-    groupCandidates,
   };
 });
