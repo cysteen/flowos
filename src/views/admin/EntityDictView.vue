@@ -21,7 +21,6 @@ const fieldMap: Record<string, Field[]> = reactive({
   process: [
     { key: 'problem_cause', name: '问题原因', type: '多行文本', constraint: '结案前必填', refs: 4, status: '启用' },
     { key: 'process_result', name: '处理结果', type: '多行文本', constraint: '结案前必填', refs: 4, status: '启用' },
-    { key: 'build_standard', name: '建单是否规范', type: '单选', constraint: '是/否', refs: 4, status: '启用' },
     { key: 'service_method', name: '服务方式', type: '下拉', constraint: '关键词搜索', refs: 1, status: '启用' },
     { key: 'conclusion', name: '解决结论', type: '单选', constraint: '已解决/未解决…', refs: 1, status: '启用' },
     { key: 'service_solution', name: '解决方案', type: '下拉', constraint: '结论=服务方案解决时', refs: 1, status: '启用' },
