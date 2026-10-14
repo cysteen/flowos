@@ -474,7 +474,6 @@ export function useTicketOperation() {
     base.createdAt = createdAt;
     base.createdAtFull = createdAt;
     base.issueOccurredAt = createdAt;
-    base.expectedResolve = '—';
     base.businessType = t.businessType ?? '教育';
     base.businessLine = '教育业务线';
     base.attachments = [];

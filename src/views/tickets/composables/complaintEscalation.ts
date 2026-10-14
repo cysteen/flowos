@@ -420,7 +420,6 @@ export function buildEscalatePrefill(detail: TicketDetailMeta): CreateTicketPref
     priority: mapPriority(detail.priority),
     businessType: detail.businessType,
     businessLine: detail.businessLine,
-    expectTime: detail.expectedResolve,
     desc: [
       `【升级投诉·原单 ${detail.no}】${detail.type}（非投诉） → 投诉`,
       '',
@@ -465,7 +464,6 @@ export function buildFlashLinkComplaintPrefill(detail: TicketDetailMeta): Create
     priority: mapPriority(detail.priority),
     businessType: detail.businessType,
     businessLine: detail.businessLine,
-    expectTime: detail.expectedResolve,
     desc: `关联刷机单 ${detail.no}`,
   };
 }

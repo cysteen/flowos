@@ -107,7 +107,6 @@ export interface TicketDetailMeta {
   businessType: string;
   businessLine: string;
   issueOccurredAt: string;
-  expectedResolve: string;
   /** 产品&问题（产品分类路径 + 问题分类路径，对齐参考稿 desc-box） */
   productIssue: string;
   demand: string;
@@ -307,7 +306,6 @@ export const TICKET_DETAIL: TicketDetailMeta = {
   businessType: '学习机',
   businessLine: '学习机业务线',
   issueOccurredAt: '2026-06-18 14:30',
-  expectedResolve: '今日 18:00',
   productIssue: '智能音箱系列-讯飞X1音箱-功能异常/在线播放/歌曲跳过',
   demand:
     '使用无线音箱播放在线音乐时，频繁出现自动跳过当前歌曲的情况，重启后仍复现，影响正常使用，要求尽快解决。',

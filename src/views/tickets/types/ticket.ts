@@ -729,7 +729,6 @@ export interface CreateTicketPrefill {
   problemL2?: string;
   problemL3?: string;
   desc?: string;
-  expectTime?: string;
 }
 
 // ---- 配色映射 ----

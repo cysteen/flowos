@@ -197,7 +197,6 @@ export interface CreateTicketFormState {
   description: string;
   title: string;
   titleManual: boolean;
-  expectTime: string;
   /** 投诉专属 */
   complaintType: string;
   /**
