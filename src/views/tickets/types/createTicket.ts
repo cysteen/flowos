@@ -2,6 +2,7 @@ import { PRIORITY_LABEL } from '@/views/tickets/types/ticket';
 import type { Channel, ClosureMode, Priority, TicketType } from '@/views/tickets/types/ticket';
 import type { RoleKey } from '@/config/roles';
 import { FLASH_MODEL_SEED } from '@/mock/flash/models';
+import { XIAOZHI_RD_PRIORITY_DEFAULT, type XiaozhiRdPriority } from '@/views/tickets/types/xiaozhi';
 
 /**
  * 新建弹窗工单类型（对齐 .pen V6xQCz 等画板）。
@@ -218,6 +219,47 @@ export interface CreateTicketFormState {
   suggestL2: string;
   /** 刷机专属：「刷机信息」卡（930 教育刷机单 P1 / PRD §2.4） */
   flash: CreateTicketFlashForm;
+  /** 小智专属：「小智工单信息」卡（1130 小智工单 D1 / D27） */
+  xiaozhi: CreateTicketXiaozhiForm;
+}
+
+/**
+ * 新建工单 · 「小智工单信息」卡（1130 小智工单 D27：**最大限度复用通用咨询表单**，
+ * 只把确有差异的小智专属要素收在本卡）。
+ *
+ * 相对 toC 在线小结，小智只多出「问题类别」与「是否流转研发」两项（03 二·附）：
+ * 前者落成本卡的必填项；后者由底栏「创建并流转」按钮表达，不作字段（D5）。
+ * 其余小结字段（话务性质 / 知识反馈 / 建单要素模版 / 三方售后工单号 / 帐号 / 密码）
+ * 属在线系统、与 toC 在线共用，本轮不迁入；产品两级、问题分级、来电描述、SN 号
+ * 一律取通用咨询单的既有字段（D27）。
+ *
+ * 产研流转要素（产品模块 / 接收人 / 产研优先级 / 一线人员域账号 / 附件）取老系统
+ * 「创建TPD工单」弹窗现状；接收人由产品模块带出、只读（W2）。
+ */
+export interface CreateTicketXiaozhiForm {
+  /** 问题类别（必填，值域待业务确认 W1） */
+  problemCategory: string;
+  /** 产品模块（走产研必填，W2） */
+  rdModule: string;
+  /** 产研优先级（四档，照弹窗现状） */
+  rdPriority: XiaozhiRdPriority;
+  /** 一线人员域账号（选填） */
+  frontlineAccount: string;
+  /** 附件（文件名，选填） */
+  attachments: string[];
+}
+
+/** 「小智工单信息」卡里参与必填提示的字段 */
+export type CreateTicketXiaozhiField = 'problemCategory' | 'rdModule';
+
+export function defaultCreateTicketXiaozhiForm(): CreateTicketXiaozhiForm {
+  return {
+    problemCategory: '',
+    rdModule: '',
+    rdPriority: XIAOZHI_RD_PRIORITY_DEFAULT,
+    frontlineAccount: '',
+    attachments: [],
+  };
 }
 
 /**

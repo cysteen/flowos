@@ -128,7 +128,9 @@ const roles: ListConfig = {
     { no: 'R007', name: '工单运营', type: '内置', roleKey: 'ops-monitor', sort: 7, status: '启用', remark: '不办单，调剂/指派 + 看板 + 大盘', createdAt: '2026-05-01 00:00' },
     { no: 'R008', name: '质检', type: '内置', roleKey: 'qa', sort: 8, status: '启用', remark: '全租户只读 + 查询中心', createdAt: '2026-05-01 00:00' },
     { no: 'R009', name: '一线坐席', type: '内置', roleKey: 'agent-l1', sort: 9, status: '启用', remark: '接进线、建单、催单，不办单', createdAt: '2026-05-01 00:00' },
-    { no: 'R010', name: '售后回访专员', type: '自定义', roleKey: 'aftersale-revisit', sort: 10, status: '启用', remark: '满意度回访', createdAt: '2026-05-26 10:30' },
+    // 1130 小智工单 D20：与一线坐席平级，一线催补 / 取消 + 二线转单 / 挂起 / 下送合一
+    { no: 'R010', name: '小智坐席', type: '内置', roleKey: 'xiaozhi-agent', sort: 10, status: '启用', remark: '小智工单接单到结案，含催补 / 取消与转单 / 挂起 / 下送', createdAt: '2026-10-14 00:00' },
+    { no: 'R011', name: '售后回访专员', type: '自定义', roleKey: 'aftersale-revisit', sort: 11, status: '启用', remark: '满意度回访', createdAt: '2026-05-26 10:30' },
   ],
 };
 

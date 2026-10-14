@@ -9,6 +9,7 @@ import {
 } from '@/views/tickets/types/ticket';
 import { ticketListSourceLabel } from '@/views/tickets/types/createTicket';
 import { FLASH_MARK_LABEL, isFlashTicket } from '@/views/tickets/types/flash';
+import { XIAOZHI_MARK_LABEL, isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
 
 withDefaults(
   defineProps<{
@@ -108,6 +109,7 @@ const csTagTipOverlayInner = {
           >{{ ticketStatusDisplayName(ticket) }}</span>
           <span class="tag">{{ ticket.type }}</span>
           <span v-if="isFlashTicket(ticket)" class="tag tag--flash">{{ FLASH_MARK_LABEL }}</span>
+          <span v-if="isXiaozhiTicket(ticket)" class="tag tag--xiaozhi">{{ XIAOZHI_MARK_LABEL }}</span>
           <span
             class="title-text"
             :class="{ unread: highlightMentionUnread && isMentionUnread(ticket) }"
@@ -157,6 +159,7 @@ const csTagTipOverlayInner = {
             <span class="status-tag" :style="statusStyle(ticket.nodeStatus)">{{ ticketStatusDisplayName(ticket) }}</span>
             <span class="tag">{{ ticket.type }}</span>
             <span v-if="isFlashTicket(ticket)" class="tag tag--flash">{{ FLASH_MARK_LABEL }}</span>
+            <span v-if="isXiaozhiTicket(ticket)" class="tag tag--xiaozhi">{{ XIAOZHI_MARK_LABEL }}</span>
           </div>
           <div class="tp-title">{{ ticket.title }}</div>
           <div class="tp-meta">{{ ticketListSourceLabel(ticket) }} · {{ ticket.no }}</div>
@@ -249,6 +252,8 @@ const csTagTipOverlayInner = {
 }
 /* 「刷机」标识（1013 A1）：色值同 FLASH_MARK_COLOR */
 .tag--flash { color: #7c3aed; background: #f5f3ff; }
+/* 「小智」标识（1130 D1）：色值同 XIAOZHI_MARK_COLOR */
+.tag--xiaozhi { color: #0d9488; background: #f0fdfa; }
 .title-text {
   flex: 1;
   min-width: 0;

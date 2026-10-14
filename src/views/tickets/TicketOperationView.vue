@@ -28,6 +28,8 @@ import {
   FLASH_RESULT_ESCALATE_L2, FLASH_RESULT_OFFLINE, FLASH_TIP_OFFLINE_FORWARD, FLASH_TIP_RESULT_REQUIRED,
   FLASH_POOLS, isFlashTicket, normalizeFlashResult, type FlashActor, type FlashResult,
 } from './types/flash';
+import { XIAOZHI_TOAST, isXiaozhiTicket } from './types/xiaozhi';
+import { useXiaozhiStore } from '@/stores/xiaozhi';
 import { typeSampleKey } from '@/mock/ticketTypeSamples';
 import type { FlashActionResult, FlashInfoChanges } from '@/stores/flash';
 // 建单弹窗仅在「转单/重开」时用，按需异步加载，不阻塞操作页首屏
@@ -110,6 +112,12 @@ const pageActive = ref(false);
  * 判据＝「刷机单」标识且带刷机字段组（1013 A1）；其余工单恒为 false，页面不变。
  */
 const isFlash = computed(() => isFlashTicket(d.value) && !!d.value.flash);
+
+/**
+ * 小智工单（1130 小智工单 D1）：处理页、处理表单、动作集一律沿用通用咨询单（D27），
+ * 本标识只用来①关风险报备三个界面位（D18）、②底栏走小智动作集（D16）、③驳回后开二次提交（D8）。
+ */
+const isXiaozhi = computed(() => isXiaozhiTicket(d.value));
 
 const ticketNo = computed(() => (route.params.ticketNo as string) || d.value.no);
 const processTabsRef = ref<InstanceType<typeof OpProcessTabs> | null>(null);
@@ -331,10 +339,12 @@ const canTagRisk = computed(
   () => canTagRiskOnTicketPage(d.value.type, user.roleKey, riskTagBlockReason.value),
 );
 
-/** 底栏那一格取到的形态：只剩 `report` 一种；null ＝ 底栏这一格不给 */
-const riskBarForm = computed(() => resolveRiskBarForm(user.roleKey, d.value.type)?.form ?? null);
+/** 底栏那一格取到的形态：只剩 `report` 一种；null ＝ 底栏这一格不给。小智单恒为 null（1130 D18） */
+const riskBarForm = computed(() => resolveRiskBarForm(user.roleKey, d.value.type, isXiaozhi.value)?.form ?? null);
 /** 页头「风险管控」取到的形态：`assess`（非投诉单）/ `collab`（投诉单）；null ＝ 整枚不出 */
-const riskControlForm = computed(() => resolveRiskControlForm(user.roleKey, d.value.type)?.form ?? null);
+const riskControlForm = computed(
+  () => resolveRiskControlForm(user.roleKey, d.value.type, isXiaozhi.value)?.form ?? null,
+);
 
 /**
  * 本单的**主责处理人**（基线 ※14 / ※14a / ※1）：工单当前处理人；
@@ -365,6 +375,23 @@ const isPrimaryHandler = computed(
 
 const flashStore = useFlashStore();
 const flashConfig = useFlashConfigStore();
+
+/* ---------------- 小智单（1130 小智工单 D8：驳回后二次提交产研） ---------------- */
+
+const xiaozhiStore = useXiaozhiStore();
+
+/**
+ * 「二次提交产研」：驳回回传后本单落驳回标记，允许再提交一次（D8）。
+ * 推的仍是已有的 TPD 通道，不新增通道；提交后回到「已升级产研」。
+ */
+function onXiaozhiResubmit() {
+  const ok = xiaozhiStore.resubmitToRd(d.value.no, {
+    name: currentHandlerName(user.roleKey, user.name),
+    role: mapUserRole(user.roleKey),
+  });
+  if (!ok) return;
+  message.success(XIAOZHI_TOAST.resubmitted);
+}
 
 /**
  * 当前登录人在本刷机单上的视角：一线 / 二线 / 可领取 / 只读查看 / 客诉专员。四类老工单为 null。
@@ -2590,6 +2617,7 @@ watch(
           @mark-read="onMarkRecordRead"
           @feishu-activate="onFeishuActivate"
           @feishu-retry="onFeishuRetry"
+          @xiaozhi-resubmit="onXiaozhiResubmit"
           @dunning="dunningModalOpen = true"
           @attachment-upload="onAttachmentTabUpload"
         >
@@ -2632,6 +2660,7 @@ watch(
       :ticket-title="d.title"
       :ticket-type="d.type"
       :is-flash="isFlash"
+      :is-xiaozhi="isXiaozhi"
       :closure-mode="d.closureMode"
       :after-sale-enabled="d.product.afterSaleEnabled"
       :op-state="opState"

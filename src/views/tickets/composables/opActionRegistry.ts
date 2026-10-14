@@ -44,7 +44,11 @@ export interface ActionDef {
  * 「转售后」不展示的角色（基线 §4 行 332 + ※12a，1025 需求分析表 R1.2-2）：
  * 技术支持不参与结案与流转；一线坐席转二线后由二线判断；工单运营 / 质检只读。
  */
-export const AFTERSALE_TRANSFER_HIDDEN_ROLES = ['tech-support', 'agent-l1', 'ops-monitor', 'qa'] as const;
+export const AFTERSALE_TRANSFER_HIDDEN_ROLES = [
+  'tech-support', 'agent-l1', 'ops-monitor', 'qa',
+  // 1130 小智工单 D18：不涉及转售后（硬件问题直接让客户找售后，没有转售后流程）
+  'xiaozhi-agent',
+] as const;
 
 const ALL: TicketType[] = ['投诉', '咨询', '建议', '商机'];
 const NO_LEAD: TicketType[] = ['投诉', '咨询', '建议']; // 商机不支持
@@ -100,11 +104,42 @@ const FLASH_VIEW_ACTION_KEYS: Record<FlashView, readonly OpActionType[]> = {
   readonly: [],
 };
 
-/** 该动作在该工单类型上是否在类型集内：刷机单（按「刷机单」标识）走单列的 FLASH_ACTION_KEYS（再过视角），其余四类走各动作的 types */
-function actionTypeAllowed(a: ActionDef, ticketType: string, flashView?: FlashView, isFlash?: boolean): boolean {
+/**
+ * **小智单动作类型集**（1130 小智工单 D16 / D18 + 一·补 B3，照刷机单的 `FLASH_ACTION_KEYS` 成例单列）。
+ *
+ * - 给：D16「动作集＝通用咨询全集」里**不走审批**的那些 —— 下送、升级、调剂、委派、转单、撤回、退回；
+ *   「升级」这一枚含**升级技术支持**，D15 明确这条口子要留（升级研发走 TPD、升级技术支持走工单系统）；
+ *   「指派」不在操作页底栏（基线 §2「不在操作页的动作」），不在本表登记；
+ *   取消工单在页头（角色门控见 `headerActionsByRole`，D20a 起含小智坐席）。
+ * - **不给 · 审批类**（一·补 B3：小智工单不走审批，因为处理人是系统）：
+ *   **申请挂起 / 解除挂起**（同占「挂起」一格）、**关闭工单**、**强结** —— 四枚都走审批或与审批成对。
+ *   小智单的出口因此只剩：结案（下送）、取消工单、转单、升级。
+ * - **不给 · D18 不涉及**：**风险报备**、**转售后**。
+ *
+ * ⚠️ **「风险报备」必须在这张清单里缺席**：`actionTypeAllowed` 对标识单**绕开 `types`**，
+ * 只认本清单 —— 光改 `RISK_REPORT_TYPES`（咨 建 商）对小智单不起作用，因为小智单的
+ * 工单类型就是咨询、而类型维那一道根本没跑到。
+ */
+export const XIAOZHI_ACTION_KEYS: readonly OpActionType[] = [
+  '下送', '升级', '调剂', '委派', '转单', '撤回', '退回',
+];
+
+/**
+ * 该动作在该工单类型上是否在类型集内。
+ * 刷机单（按「刷机单」标识）走单列的 `FLASH_ACTION_KEYS`（再过视角）、
+ * 小智单（按「小智工单」标识）走单列的 `XIAOZHI_ACTION_KEYS`，其余四类走各动作的 `types`。
+ */
+function actionTypeAllowed(
+  a: ActionDef,
+  ticketType: string,
+  flashView?: FlashView,
+  isFlash?: boolean,
+  isXiaozhi?: boolean,
+): boolean {
   if (isFlash) {
     return FLASH_ACTION_KEYS.includes(a.key) && (!flashView || FLASH_VIEW_ACTION_KEYS[flashView].includes(a.key));
   }
+  if (isXiaozhi) return XIAOZHI_ACTION_KEYS.includes(a.key);
   return a.types.includes(ticketType as TicketType);
 }
 
@@ -251,7 +286,19 @@ const RISK_REPORT_ROLES = ['agent-l2', 'team-leader'];
  */
 const RISK_BY_TYPE_ROLES = ['complaint-handler', 'system-admin', 'ops-admin', 'tenant-admin'];
 
-export function resolveRiskActionForm(roleKey: string, ticketType: string): RiskActionFormDef | null {
+export function resolveRiskActionForm(
+  roleKey: string,
+  ticketType: string,
+  isXiaozhi?: boolean,
+): RiskActionFormDef | null {
+  /**
+   * 🔴 **小智单一律判不出形态**（1130 小智工单 D18：不涉及风险报备）。
+   * 这一道放在最前面，一次关掉**底栏「风险报备」与页头「风险管控」两个界面位** ——
+   * 两个位都从本函数筛自己那一半（见 `resolveRiskBarForm` / `resolveRiskControlForm`），
+   * 在源头返 null 比在两处各写一遍判据少一条分家的缝。
+   * Tab 条上那一枚另有一道，见 `visibleProcessTabs` 的 `isXiaozhi`。
+   */
+  if (isXiaozhi) return null;
   if (RISK_REPORT_ROLES.includes(roleKey)) return REPORT_FORM;
   if (!RISK_BY_TYPE_ROLES.includes(roleKey)) return null;
   // 第一维：原单类型。投诉单上"升不升级成投诉"是个不成立的问题，两个角色都只做协同
@@ -265,8 +312,12 @@ export function resolveRiskActionForm(roleKey: string, ticketType: string): Risk
  * **底部操作条**那一格取到的形态：只剩报备一种。
  * `assess` / `collab` 两支已挪到页头「风险管控」，底栏判出它们时整枚不给。
  */
-export function resolveRiskBarForm(roleKey: string, ticketType: string): RiskActionFormDef | null {
-  const f = resolveRiskActionForm(roleKey, ticketType);
+export function resolveRiskBarForm(
+  roleKey: string,
+  ticketType: string,
+  isXiaozhi?: boolean,
+): RiskActionFormDef | null {
+  const f = resolveRiskActionForm(roleKey, ticketType, isXiaozhi);
   return f?.form === 'report' ? f : null;
 }
 
@@ -274,8 +325,12 @@ export function resolveRiskBarForm(roleKey: string, ticketType: string): RiskAct
  * **页头右上角「风险管控」**那一枚取到的形态：`assess`（非投诉单）或 `collab`（投诉单）。
  * 判不出这两支即整枚不出 —— 报备形态留在底栏，不在页头开第二个入口。
  */
-export function resolveRiskControlForm(roleKey: string, ticketType: string): RiskActionFormDef | null {
-  const f = resolveRiskActionForm(roleKey, ticketType);
+export function resolveRiskControlForm(
+  roleKey: string,
+  ticketType: string,
+  isXiaozhi?: boolean,
+): RiskActionFormDef | null {
+  const f = resolveRiskActionForm(roleKey, ticketType, isXiaozhi);
   return f && f.form !== 'report' ? f : null;
 }
 
@@ -319,6 +374,8 @@ export interface ActionCtx {
   flashView?: FlashView;
   /** 「刷机单」标识（1013 A1：刷机单类型为咨询，按标识走刷机动作集） */
   isFlash?: boolean;
+  /** 「小智工单」标识（1130 D1：小智单类型为咨询，按标识走小智动作集） */
+  isXiaozhi?: boolean;
 }
 
 /**
@@ -331,7 +388,7 @@ export function availableActions(ctx: ActionCtx): ActionDef[] {
   const direct = isDirectClosure(ctx.closureMode);
   const roleKey = ctx.roleKey ?? useUserStore().roleKey;
   // 底栏只认报备形态：评估 / 协同两支在页头「风险管控」上，不在这一排
-  const riskForm = resolveRiskBarForm(roleKey, ctx.ticketType);
+  const riskForm = resolveRiskBarForm(roleKey, ctx.ticketType, ctx.isXiaozhi);
   return ACTION_DEFS
     .map((a) => {
       if (a.key !== '风险报备') return a;
@@ -341,7 +398,7 @@ export function availableActions(ctx: ActionCtx): ActionDef[] {
     .filter((a): a is ActionDef => !!a)
     .filter(
       (a) =>
-        actionTypeAllowed(a, ctx.ticketType, ctx.flashView, ctx.isFlash)
+        actionTypeAllowed(a, ctx.ticketType, ctx.flashView, ctx.isFlash, ctx.isXiaozhi)
         // 风险那一枚的类型集随形态现算（协同形态只给投诉），刷机单上同样要过形态的类型集
         && (a.key !== '风险报备' || a.types.includes(ctx.ticketType as TicketType))
         && !a.hiddenRoles?.includes(roleKey)

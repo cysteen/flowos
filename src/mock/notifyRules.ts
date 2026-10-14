@@ -127,6 +127,7 @@ const BASE: EventField[] = [
   { key: 'title', label: '工单标题', type: 'string', desc: '建单时填写的问题概述' },
   { key: 'ticketType', label: '工单类型', type: 'enum', enumValues: DICT_TICKET_TYPE, desc: '投诉 / 建议 / 商机 / 咨询 / 表扬。常用作条件，把不同类型分流到不同规则' },
   { key: 'isFlash', label: '是否刷机单', type: 'boolean', desc: '建单时写入的刷机单标识，刷机单的工单类型为咨询。需要把刷机单与普通咨询单分开通知时用它作条件' },
+  { key: 'isXiaozhi', label: '是否小智工单', type: 'boolean', desc: '建单时写入的小智工单标识，小智工单的工单类型也是咨询。需要把小智工单与普通咨询单分开通知时用它作条件' },
   { key: 'source', label: '工单来源', type: 'enum', enumValues: DICT_SOURCE, desc: '客户从哪个渠道来的。对客短信的抑制条件主要靠它' },
   { key: 'bizType', label: '业务分类', type: 'enum', enumValues: DICT_BIZ_TYPE, desc: '工单归属的业务线。常用作条件，按业务线区分通知策略' },
   { key: 'productName', label: '产品名称', type: 'string', desc: '工单关联的产品型号，来自产品主数据。模板中常用于区分不同产品的通知文案' },

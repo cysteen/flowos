@@ -52,6 +52,8 @@ export type TlAction =
 export type TlRole =
   | '客户'
   | '一线坐席'
+  /** 1130 小智工单 D20：与一线坐席平级的新角色 */
+  | '小智坐席'
   | '二线专员'
   | '技术支持'
   | '二线班组长'
@@ -192,6 +194,7 @@ export const CATEGORY_META: Record<TlCategory, { color: string; bg: string; labe
 export const ROLE_BADGE: Record<TlRole, string> = {
   客户: '#6B7280',
   一线坐席: '#2563EB',
+  小智坐席: '#0D9488',
   二线专员: '#7C3AED',
   技术支持: '#4F46E5',
   二线班组长: '#0D9488',

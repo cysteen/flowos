@@ -15,6 +15,7 @@
 // 只在演示切换器 / 登录账号表里用 `adminScopeLabel` 区分。
 export type RoleKey =
   | 'agent-l1'
+  | 'xiaozhi-agent'
   | 'agent-l2'
   | 'tech-support'
   | 'team-leader'
@@ -123,6 +124,27 @@ export const ROLES: Record<RoleKey, RoleDef> = {
     hiddenTabs: ['done', 'pool', 'poolPending', 'riskReport', 'review'],
     hasAdminEntry: false,
     frontline: true,
+  },
+  /**
+   * ①′ 小智坐席（1130 小智工单 D20，**与一线坐席平级**，不做成二线专员的分岗属性）。
+   *
+   * 一个角色内含**一线的催补 / 取消权限 + 二线的转单 / 挂起 / 下送 / 领取权限**，
+   * 不引入一人多角色 —— 小智坐席既要在 IM 上接进线建单、也要自己把单办到结案。
+   * 故 **不置 `frontline`**：置了底栏流转动作整条不出，它就办不了单。
+   *
+   * 页签：工单池（进池自己领，D21）与「催补待回」照给；**「风险报备池」不给**（D18 不涉及风险报备），
+   * 「待审核」不给（不参与审批）。
+   *
+   * 不给的四件（D18 / D20）：风险报备、转售后、审批、工单管控 ——
+   * 前两件在动作侧由 `XIAOZHI_ACTION_KEYS` 与 `AFTERSALE_TRANSFER_HIDDEN_ROLES` 收，
+   * 审批不进 `APPROVAL_ACTION_ROLES`，工单管控不置 `writableAfterTakeover`。
+   */
+  'xiaozhi-agent': {
+    key: 'xiaozhi-agent',
+    name: '小智坐席',
+    menus: ['home', 'tickets', 'query-center'],
+    hiddenTabs: ['riskReport', 'review'],
+    hasAdminEntry: false,
   },
   /**
    * ② 二线专员（原「客服 · 二线技术顾问」+「售后 · 二线技术顾问」两个角色合并）：处理派到自己头上的单。
@@ -308,12 +330,13 @@ export function roleOptionLabel(key: RoleKey): string {
   return ROLES[key].adminScopeLabel ?? ROLES[key].name;
 }
 
-/** 顶栏「切换演示角色」分组选项（9 角色，管理员展开成三个 adminScope） */
+/** 顶栏「切换演示角色」分组选项（10 角色，管理员展开成三个 adminScope） */
 export const ROLE_OPTION_GROUPS = [
   {
     label: '坐席与班组',
     options: [
       { label: roleOptionLabel('agent-l1'), value: 'agent-l1' as RoleKey },
+      { label: roleOptionLabel('xiaozhi-agent'), value: 'xiaozhi-agent' as RoleKey },
       { label: roleOptionLabel('agent-l2'), value: 'agent-l2' as RoleKey },
       { label: roleOptionLabel('tech-support'), value: 'tech-support' as RoleKey },
       { label: roleOptionLabel('team-leader'), value: 'team-leader' as RoleKey },
@@ -351,6 +374,8 @@ export const ROLE_OPTION_GROUPS = [
  * 故这里只管**是否显示**，置灰要等管控态判据补齐再加。
  */
 export const CTI_BAR_ROLES: RoleKey[] = [
+  // 小智坐席在 IM 上接进线（来源统一记 IM，D24），与二线同档给话务条
+  'xiaozhi-agent',
   'agent-l2', 'tech-support', 'team-leader',
   'complaint-handler', 'complaint-supervisor',
   'ops-admin', 'tenant-admin', 'system-admin',
@@ -413,6 +438,7 @@ export const APPROVAL_ACTION_ROLES: RoleKey[] = [
  * 进得来的角色（含工单运营与质检）**全给**，故无需白名单。
  */
 export const QUERY_CENTER_CREATE_ROLES: RoleKey[] = [
+  'xiaozhi-agent',
   'agent-l2', 'tech-support', 'team-leader',
   'complaint-handler', 'complaint-supervisor',
   'system-admin', 'ops-admin', 'tenant-admin',
@@ -424,6 +450,15 @@ export const QUERY_CENTER_CREATE_ROLES: RoleKey[] = [
  * 故单列白名单，工作台把它并进隐藏页签。
  */
 export const FLASH_POOL_TAB_ROLES: RoleKey[] = ['agent-l1'];
+
+/**
+ * 「一键创建小智工单」入口对哪些角色渲染（1130 小智工单 D3）。
+ *
+ * D3 的原话是「**仅具备小智技能组的人可见**」。按技能组判身份是**容联云 / UAP 侧**的事
+ * （W7，对外依赖），工单系统侧只落结果 —— 即这枚入口只给小智坐席这一个角色。
+ * 通用入口「新建工单」不受影响，两枚按钮并存。
+ */
+export const XIAOZHI_CREATE_ROLES: RoleKey[] = ['xiaozhi-agent'];
 
 export const ALL_ROLE_KEYS = Object.keys(ROLES) as RoleKey[];
 

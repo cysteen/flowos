@@ -27,6 +27,8 @@ const props = withDefaults(
     searchPlaceholder?: string;
     showSearch?: boolean;
     showCreate?: boolean;
+    /** 「一键创建小智工单」是否渲染（1130 D3：两枚按钮并存，仅小智技能组可见） */
+    showXiaozhiCreate?: boolean;
     showBatch?: boolean;
     batchActions?: string[];
     /** 批量动作置灰：动作名 → 悬停提示；命中的项置灰、点击不派发 */
@@ -47,6 +49,7 @@ const props = withDefaults(
     searchPlaceholder: '搜索工单号、手机号、SN、产品…',
     showSearch: true,
     showCreate: true,
+    showXiaozhiCreate: false,
     showBatch: true,
     batchActions: () => ['调剂', '退回'],
     batchDisabledTips: () => ({}),
@@ -61,6 +64,7 @@ const emit = defineEmits<{
   batch: [action: string];
   'update:search': [v: string];
   create: [];
+  createXiaozhi: [];
   'toggle-filter': [];
   setColumnVisible: [key: string, visible: boolean];
   reorderColumn: [fromKey: string, toKey: string];
@@ -176,6 +180,14 @@ function pickBatch(action: string, selectedCount: number) {
         </template>
       </a-dropdown>
 
+      <button
+        v-if="showXiaozhiCreate"
+        type="button"
+        class="wb-toolbar__create wb-toolbar__create--xiaozhi"
+        @click="emit('createXiaozhi')"
+      >
+        一键创建小智工单
+      </button>
       <button v-if="showCreate" type="button" class="wb-toolbar__create" @click="emit('create')">
         新建工单
       </button>
@@ -284,6 +296,13 @@ function pickBatch(action: string, selectedCount: number) {
 }
 .wb-toolbar__create:hover {
   background: #0f4fcc;
+}
+/* 「一键创建小智工单」（1130 D3）：与通用「新建工单」并列，走小智标识色以示两条入口 */
+.wb-toolbar__create--xiaozhi {
+  background: #0d9488;
+}
+.wb-toolbar__create--xiaozhi:hover {
+  background: #0f766e;
 }
 .wb-toolbar__btn {
   box-sizing: border-box;

@@ -15,6 +15,7 @@ export type MineFilterFieldKey =
   | 'businessType'
   | 'ticketType'
   | 'flashMark'
+  | 'xiaozhiMark'
   | 'ticketSource'
   | 'problemL1'
   | 'problemL2'
@@ -41,6 +42,8 @@ export const MINE_FILTER_FIELD_DEFS: MineFilterFieldDef[] = [
   { key: 'ticketType', label: '工单类型', defaultVisible: true },
   // 刷机单标识（1013 A1：刷机单类型为咨询，按标识筛选）
   { key: 'flashMark', label: '刷机单' },
+  // 小智工单标识（1130 D1：小智单类型为咨询，按标识筛选）
+  { key: 'xiaozhiMark', label: '小智工单' },
   { key: 'businessType', label: '业务分类', defaultVisible: true },
   { key: 'productCategory', label: '产品分类', fixed: true },
   { key: 'productName', label: '产品名称', fixed: true },

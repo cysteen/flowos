@@ -236,14 +236,23 @@ export interface LinkedAftersale {
   resultCount?: number;
 }
 
-/** 飞书关联进度（与 PRD §3.2 feishuSync 一致） */
-export type FeishuSyncState = 'none' | 'failed' | 'synced' | 'feedback' | 'closed';
+/**
+ * 产研关联进度（与 PRD §3.2 feishuSync 一致）。
+ *
+ * ⚠️ `failed` 是「**关联失败**」（推单没推成），与 1130 小智工单的 `rejected`
+ * 「**产研驳回**」（推成了、产研看过后退回）语义不同，**不要互相复用**：
+ * 前者要重试推送，后者按 D8 落驳回标记、允许二次提交产研。
+ */
+export type FeishuSyncState = 'none' | 'failed' | 'synced' | 'feedback' | 'rejected' | 'closed';
 
 /** 「产研反馈」Tab 时间线一条 */
 export interface FeishuRecord {
   id: string;
-  /** push=建关联 / fail=关联失败 / feedback=预反馈 / result=关单 / activate=二次激活 / dunning=可选催单提醒 */
-  kind: 'push' | 'fail' | 'feedback' | 'result' | 'activate' | 'dunning';
+  /**
+   * push=建关联 / fail=关联失败 / feedback=预反馈 / result=关单 / activate=二次激活 /
+   * dunning=可选催单提醒 / reject=产研驳回（1130 D8）/ resubmit=二次提交产研（1130 D8）
+   */
+  kind: 'push' | 'fail' | 'feedback' | 'result' | 'activate' | 'dunning' | 'reject' | 'resubmit';
   title: string;
   content: string;
   /** 操作方名称 */

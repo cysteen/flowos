@@ -4,7 +4,9 @@
 import type { BusinessType, CreateFormTicketType, TicketSource } from '@/views/tickets/types/createTicket';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 import { FLASH_POOLS, FLASH_TIP_AUTO_FLASHING, isFlashTicket, type TicketFlash } from '@/views/tickets/types/flash';
-import type { TicketXiaozhi } from '@/views/tickets/types/xiaozhi';
+import {
+  XIAOZHI_POOL_GROUP_ID, XIAOZHI_POOL_GROUP_NAME, type TicketXiaozhi,
+} from '@/views/tickets/types/xiaozhi';
 import { readSla, slaStateOf } from '@/views/tickets/utils/slaClock';
 
 /**
@@ -721,6 +723,12 @@ export interface CreateTicketPrefill {
   formTicketType?: CreateFormTicketType;
   /** 本次建单的工单类型由入口固定（升级投诉 / 刷机单关联投诉建投诉单）：不做刷机单识别，选到刷机问题分类也不切刷机表单 */
   noFlashScene?: boolean;
+  /**
+   * 本次建单走**小智工单入口**（1130 D1 / D3）：切小智表单，工单类型锁「咨询」、
+   * 业务分类锁「教育」、工单来源锁「IM」，并在底栏多出「创建并流转」一枚。
+   * 由入口置位，不按产品 / 问题分类识别。
+   */
+  xiaozhiScene?: boolean;
   priority?: Priority;
   /** 投诉类型（建单页独立可选） */
   complaintType?: string;
@@ -756,6 +764,9 @@ export const TYPE_COLOR: Record<TicketType, string> = {
 
 /** 「刷机」标识色（1013 A1：刷机单类型徽章为「咨询」，旁边另挂「刷机」标识） */
 export const FLASH_MARK_COLOR = '#7C3AED';
+
+/** 「小智」标识色（1130 D1：小智单类型徽章为「咨询」，旁边另挂「小智」标识） */
+export const XIAOZHI_MARK_COLOR = '#0D9488';
 
 export const SMART_MARK_COLOR: Record<SmartMark, string> = {
   升级: '#EF4444',
@@ -1029,6 +1040,8 @@ export const POOL_GROUPS: PoolGroupMeta[] = [
   { id: 'hardware', label: '硬件缺陷组' },
   // 930 教育刷机单 M15：二线「教育刷机处理组池」。一线刷机池复用 line1（一线客服组），见 types/flash.ts FLASH_POOLS
   { id: 'edu-flash', label: '教育刷机处理组' },
+  // 1130 小智工单 D21：一个大组、进池自己领，不按产品 / 优先级细分、不直派到个人
+  { id: XIAOZHI_POOL_GROUP_ID, label: XIAOZHI_POOL_GROUP_NAME },
 ];
 
 /**
@@ -1043,6 +1056,8 @@ const HANDLER_GROUP: Record<string, string> = {
   // 930 教育刷机单：一线刷机池的一线坐席、教育刷机处理组的二线专员
   刘一线: 'line1',
   许文静: 'edu-flash',
+  // 1130 小智工单：小智工单处理组的小智坐席
+  谭小智: XIAOZHI_POOL_GROUP_ID,
 };
 
 /** 处理人所在分组；不在名册内返回 undefined（按无权处理，fail-closed） */
@@ -1070,12 +1085,22 @@ const FLASH_L1_GROUP_ID = 'line1';
 const EDU_FLASH_POOL_ROLES = new Set(['agent-l2', 'team-leader', 'system-admin', 'ops-admin', 'tenant-admin']);
 
 /**
+ * 「工单池 / 催补待回」里能看到小智工单处理组的角色（1130 D20 / D21）：
+ * 小智坐席（本组成员，进池自己领）、二线班组长（管辖该组）、管理员（沿用基线）。
+ */
+const XIAOZHI_POOL_ROLES = new Set(['xiaozhi-agent', 'team-leader', 'system-admin', 'ops-admin', 'tenant-admin']);
+
+/**
  * 按角色取「工单池 / 催补待回」的可见分组。
  * 四类老工单的分组（一线客服组 / 二线技术支持组 / 硬件缺陷组）维持演示态全给，计数不变；
- * 教育刷机处理组只给 `EDU_FLASH_POOL_ROLES`。
+ * 教育刷机处理组只给 `EDU_FLASH_POOL_ROLES`、小智工单处理组只给 `XIAOZHI_POOL_ROLES`。
  */
 export function visiblePoolGroupsFor(roleKey: string): PoolGroupMeta[] {
-  return POOL_GROUPS.filter((g) => g.id !== EDU_FLASH_GROUP_ID || EDU_FLASH_POOL_ROLES.has(roleKey));
+  return POOL_GROUPS.filter((g) => {
+    if (g.id === EDU_FLASH_GROUP_ID) return EDU_FLASH_POOL_ROLES.has(roleKey);
+    if (g.id === XIAOZHI_POOL_GROUP_ID) return XIAOZHI_POOL_ROLES.has(roleKey);
+    return true;
+  });
 }
 
 /**
@@ -1243,15 +1268,22 @@ export function headerActionsByRole(roleKey: string): {
   const canWorkTicket = !['ops-monitor', 'qa'].includes(roleKey);
   const isL1 = roleKey === 'agent-l1';
   const isTechSupport = roleKey === 'tech-support';
+  /**
+   * 小智坐席（1130 D20）：一线的**催单 / 取消 / 新建补充**三枚给上；
+   * **升级投诉不给**（D19：人员投诉走通用投诉流程、与小智工单不做关联）；
+   * **关联售后不给**（D18：不涉及转售后、硬件问题直接让客户找售后）。
+   */
+  const isXiaozhi = roleKey === 'xiaozhi-agent';
   return {
-    escalateComplaint: canWorkTicket && !isTechSupport,
+    escalateComplaint: canWorkTicket && !isTechSupport && !isXiaozhi,
     // 投诉单上一线另按阶层置灰（※8），那是类型门控、不在本函数。
     // 关联售后：一线坐席 / 工单运营 / 质检不展示，**技术支持可用**（基线 §4 行 320；
     // 1025 需求分析表角色表「技术支持 ✅ 关联售后」，与转售后的「技术支持不展示」分开取值）
-    linkAftersale: canWorkTicket && !isL1,
+    linkAftersale: canWorkTicket && !isL1 && !isXiaozhi,
     supplement: canWorkTicket,
-    dunning: isL1,
-    cancelTicket: isL1,
+    // 催单 / 取消工单：基线原写「一线坐席唯一」，1130 D20a 起改为「一线坐席 + 小智坐席」
+    dunning: isL1 || isXiaozhi,
+    cancelTicket: isL1 || isXiaozhi,
   };
 }
 

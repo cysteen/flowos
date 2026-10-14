@@ -6,6 +6,7 @@
  *
  * 本文件只放**常量、类型与纯函数**，不依赖 Pinia / 工单库，任何模块都可以放心引用。
  */
+import type { FeishuRecord, FeishuSyncState } from '@/mock/ticketDetail';
 
 /** 小智工单的工单类型：小智工单＝咨询单 + 建单时写入的「小智工单」标识（D1） */
 export const XIAOZHI_TICKET_TYPE = '咨询' as const;
@@ -31,6 +32,22 @@ export const XIAOZHI_TICKET_SOURCE = 'IM' as const;
 /** 分派：一个大组、进池自己领（D21），不按产品 / 优先级细分、不直派到个人 */
 export const XIAOZHI_POOL_GROUP_NAME = '小智工单处理组';
 export const XIAOZHI_POOL_GROUP_ID = 'xiaozhi';
+
+/**
+ * 「创建并流转」那一支的处理人（一·补 B2）：**系统**，不是建单人。
+ * 工单池里留的是记录不是待领任务，不经领取直接到「已升级产研」；
+ * 自动关单时也落它，不让处理人悬空（D10）。
+ */
+export const XIAOZHI_SYSTEM_HANDLER = '系统';
+
+/**
+ * 小智工单**不纳入 SLA 考核**（一·补 B1）：不起响应 / 解决时效、处理页不出 SLA 条、
+ * 列表 SLA 列置空。故**不单配工作日历、不加 SLA 策略** —— 原 D22 / D23 的「单配日历 +
+ * 时限放宽」随之作废。业务侧仍在确认，本标识判定保留、只是不驱动 SLA。
+ */
+export const XIAOZHI_SLA_EXEMPT = true;
+/** 不计 SLA 的单在列表 / 页头上的 SLA 摘要（与刷机单一线不计 SLA 同一套写法） */
+export const XIAOZHI_SLA_IDLE = { slaText: '—', slaSub: '未计时', slaState: 'ok', slaMinutes: 9999 } as const;
 
 /* ------------------------------------------------------------------ */
 /* 建单要素（W1：业务侧尚未正式产出，以通用咨询单字段为底叠加）              */
@@ -263,8 +280,23 @@ export interface TicketXiaozhi {
   problemCategory: XiaozhiProblemCategory;
   /** 产研流转信息（走过产研的单才有值） */
   rd?: XiaozhiRdInfo;
+  /**
+   * 产研关联进度。复用「产研反馈」Tab 的那一套取值（`FeishuSyncState`），
+   * 其中 `rejected` 是 1130 新增的「产研驳回」—— 与 `failed`「关联失败」语义不同（D8）。
+   */
+  rdSync?: FeishuSyncState;
+  /** 「产研反馈」Tab 时间线（推单 / 中间态 / 驳回 / 二次提交 / 办结） */
+  rdRecords?: FeishuRecord[];
+  /** 产研单号（推成后回传） */
+  rdFeedbackNo?: string;
   /** 本单已被产研驳回、可二次提交（D8） */
   rdRejected?: boolean;
   /** 已二次提交产研的次数（0 ＝ 未二次提交过） */
   rdResubmitCount?: number;
+  /** 办结回传的分叉：问题类 / 需求类（W8） */
+  rdSolutionType?: XiaozhiSolutionType;
+  /** 办结回传 · 问题类字段（W8：有值才显示） */
+  rdIssueResult?: XiaozhiIssueResult;
+  /** 办结回传 · 需求类字段（W8：有值才显示） */
+  rdDemandResult?: XiaozhiDemandResult;
 }

@@ -30,6 +30,8 @@ const props = defineProps<{
   ticketType: string;
   /** 「刷机单」标识（1013 A1：刷机单类型为咨询，刷机底栏按标识判，不看类型） */
   isFlash?: boolean;
+  /** 「小智工单」标识（1130 D1：小智单类型为咨询，小智底栏按标识判，不看类型） */
+  isXiaozhi?: boolean;
   /**
    * 结案方式（基线 §1「结案方式」小节），与工单类型正交。
    * 「直接结案」的单动作集极简 —— 不下送、不升级、不挂起、不转派，见 availableActions。
@@ -213,6 +215,8 @@ const actions = computed(() =>
     ticketType: props.ticketType,
     closureMode: props.closureMode,
     isFlash: !!props.isFlash,
+    // 小智单走单列的 XIAOZHI_ACTION_KEYS（1130 D16 / D18：不登记风险报备与转售后）
+    isXiaozhi: !!props.isXiaozhi,
     // 刷机单按视角收一道（表一）；老工单不传，取值与改前一致
     ...(!!props.isFlash && props.flashView ? { flashView: props.flashView } : {}),
   }),

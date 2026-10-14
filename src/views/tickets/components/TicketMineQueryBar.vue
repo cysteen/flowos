@@ -223,6 +223,8 @@ const nodeStatusOptions = computed(() =>
 const businessTypeOptions = computed(() => toStrOpts(BUSINESS_TYPES));
 const ticketTypeOptions = computed(() => toStrOpts(CREATE_TICKET_TYPES));
 const flashMarkOptions = toStrOpts(['是', '否']);
+/** 小智工单标识筛选（1130 D1）：与刷机单标识同一套是 / 否选项 */
+const xiaozhiMarkOptions = flashMarkOptions;
 const ticketSourceOptions = computed(() => toStrOpts(TICKET_SOURCE_OPTIONS));
 const productCategoryOptions = computed(() => toStrOpts(PRODUCT_CATEGORIES));
 const productNameSelectOptions = computed(() => toStrOpts(productNameOptions.value));
@@ -375,6 +377,15 @@ const problemL3SelectOptions = computed(() => toStrOpts(problemL3Options.value))
               :model-value="modelValue.flashMark"
               :options="flashMarkOptions"
               @update:model-value="patch('flashMark', $event as MineQueryFilter['flashMark'])"
+            />
+          </label>
+
+          <label v-else-if="f.key === 'xiaozhiMark'" class="filter-item">
+            <span class="fi-label">{{ fieldLabel('xiaozhiMark') }}</span>
+            <MineFilterSelect
+              :model-value="modelValue.xiaozhiMark"
+              :options="xiaozhiMarkOptions"
+              @update:model-value="patch('xiaozhiMark', $event as MineQueryFilter['xiaozhiMark'])"
             />
           </label>
 

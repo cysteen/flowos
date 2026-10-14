@@ -2,11 +2,12 @@
 import { computed } from 'vue';
 import { message } from 'ant-design-vue';
 import { FLASH_MARK_LABEL, isFlashTicket } from '@/views/tickets/types/flash';
+import { XIAOZHI_MARK_LABEL, isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
 import { useUserStore } from '@/stores/user';
 import { CopyOutlined, FlagOutlined } from '@ant-design/icons-vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import {
-  FLASH_MARK_COLOR, PRIORITY_COLOR, softBg, csEntryAvailability, statusDisplayName, AUTO_FLASH_STATUS_HEX,
+  FLASH_MARK_COLOR, XIAOZHI_MARK_COLOR, PRIORITY_COLOR, softBg, csEntryAvailability, statusDisplayName, AUTO_FLASH_STATUS_HEX,
   type Priority, type TicketStatus,
 } from '@/views/tickets/types/ticket';
 import OpSlaBar from './OpSlaBar.vue';
@@ -170,6 +171,8 @@ function onLinkAftersaleClick() {
  * 从未起算（首推自动刷机中、自动刷机成功直进回访）或调研中不计时，SLA 区显示「—」，不画暂停钟。
  */
 const isFlashDetail = computed(() => isFlashTicket(props.detail) && !!props.detail.flash);
+/** 「小智工单」标识（1130 D1）：驱动页头标识徽章与「不出 SLA 条」（一·补 B1） */
+const isXiaozhiDetail = computed(() => isXiaozhiTicket(props.detail));
 const flashSlaStartText = computed(() => {
   if (!isFlashDetail.value) return undefined;
   const at = props.detail.flash?.state.slaStartedAt;
@@ -278,6 +281,8 @@ function priorityHex(p: string): string {
           <span class="badge badge-neutral">{{ detail.type }}</span>
           <!-- 「刷机」标识（1013 A1）：刷机单类型为咨询，类型徽章旁另挂标识 -->
           <span v-if="isFlashTicket(detail)" class="badge" :style="tagStyle(FLASH_MARK_COLOR)">{{ FLASH_MARK_LABEL }}</span>
+          <!-- 「小智」标识（1130 D1）：小智单类型为咨询，同位另挂标识 -->
+          <span v-if="isXiaozhiDetail" class="badge" :style="tagStyle(XIAOZHI_MARK_COLOR)">{{ XIAOZHI_MARK_LABEL }}</span>
           <span class="badge" :style="tagStyle(priorityHex(detail.priority))">
             <FlagOutlined />{{ detail.priority }}
           </span>
@@ -331,8 +336,11 @@ function priorityHex(p: string): string {
       </div>
     </div>
     <div class="oh-right">
-      <span v-if="flashSlaIdle" class="sla-idle" :title="flashSlaStartText">—</span>
-      <OpSlaBar v-else :detail="detail" :start-text="flashSlaStartText" />
+      <!-- 小智工单不纳入 SLA 考核（1130 一·补 B1）：整条 SLA 条不出，不画钟也不留「—」 -->
+      <template v-if="!isXiaozhiDetail">
+        <span v-if="flashSlaIdle" class="sla-idle" :title="flashSlaStartText">—</span>
+        <OpSlaBar v-else :detail="detail" :start-text="flashSlaStartText" />
+      </template>
       <OpSupersededBanner
         v-if="supersededBy"
         :by="supersededBy"

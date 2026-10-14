@@ -10,6 +10,9 @@ import {
   isFirstResponded, isSlaPaused, isTicketClosed, resolveStoppedClockStatus, statusDisplayName,
 } from '@/views/tickets/types/ticket';
 import { useFlashStore } from '@/stores/flash';
+import { useXiaozhiStore } from '@/stores/xiaozhi';
+import { isXiaozhiTicket, type TicketXiaozhi } from '@/views/tickets/types/xiaozhi';
+import type { FeishuRecord } from '@/mock/ticketDetail';
 import { findSchoolById } from '@/mock/schools';
 import type { Ticket, Channel, TicketType, Priority, TicketStatus } from '@/views/tickets/types/ticket';
 import { TICKETS } from '@/mock/tickets';
@@ -161,6 +164,8 @@ export function useTicketOperation() {
   const route = useRoute();
   const derivedTickets = useDerivedTicketStore();
   const flash = useFlashStore();
+  const xiaozhi = useXiaozhiStore();
+  xiaozhi.hydrate();
   const detail = ref<TicketDetailMeta>(JSON.parse(JSON.stringify(TICKET_DETAIL)));
   const timeline = ref<TimelineEntry[]>([...TIMELINE]);
   const opState = ref<TicketOpState>('processing');
@@ -406,6 +411,7 @@ export function useTicketOperation() {
         base.createdAtFull = t.createdAt;
       }
       if (t.flash) applyFlashRow(base, t);
+      if (isXiaozhiTicket(t)) applyXiaozhiRow(base, t);
       // 与刷机单弱关联的投诉单（1013 A21）：关联卡指回刷机单
       const flashNo = t.type === '投诉' ? flash.flashNoLinkedTo(t.no) : undefined;
       if (flashNo) {
@@ -440,6 +446,8 @@ export function useTicketOperation() {
     if (t?.flash) applyFlashOverview(base, t);
     detail.value = base;
     if (t?.flash) projectFlashTimeline(t.no, true);
+    // 小智单：履历以小智链路为准（建单 / 自动流转 / 回传），不沿用类型样例履历
+    else if (t && isXiaozhiTicket(t)) projectXiaozhiTimeline(t.no, true);
     // 售后回传 / 关联迁移写在工单行上的履历（aftersaleEvents.ts），并入本页履历
     else {
       const entries = eventTimelineOverride ?? t?.eventTimeline ?? [];
@@ -613,6 +621,39 @@ export function useTicketOperation() {
   }
 
   /**
+   * 小智单的产研链路映射进详情（1130 小智工单 D6 / D8 / D9）。
+   *
+   * 「产研反馈」Tab 复用的是 `feishuSync` / `feishuRecords` 那一套（05 原型落点 §三），
+   * 故小智单的 `rdSync` / `rdRecords` 在这里投到同一对字段上 —— Tab 组件不必认两套数据源。
+   * 其中 `rejected`（产研驳回，D8）是本轮新增的取值，与 `failed`「关联失败」语义不同。
+   */
+  function applyXiaozhiRow(base: TicketDetailMeta, t: Ticket) {
+    base.lastHandler = t.assignee;
+    base.groupId = t.groupId;
+    base.groupNames = t.groupNames;
+    base.isXiaozhi = true;
+    base.xiaozhi = JSON.parse(JSON.stringify(t.xiaozhi)) as TicketXiaozhi;
+    base.feishuSync = t.xiaozhi?.rdSync ?? 'none';
+    base.feishuRecords = JSON.parse(JSON.stringify(t.xiaozhi?.rdRecords ?? [])) as FeishuRecord[];
+    base.feishuFeedbackNo = t.xiaozhi?.rdFeedbackNo;
+    base.status = t.nodeStatus;
+    if (isTicketClosed(t.nodeStatus)) opState.value = 'closed';
+  }
+
+  /**
+   * 小智链路履历投影进本页时间线（记录源 `stores/xiaozhi.ts`）。按条目 id 幂等，形制同刷机。
+   */
+  function projectXiaozhiTimeline(no: string, reset = false) {
+    const entries = xiaozhi.timelineOf(no).map((e) => (e.role === '系统' ? { ...e, systemActor: true } : { ...e }));
+    if (reset) {
+      timeline.value = entries;
+      return;
+    }
+    const seen = new Set(timeline.value.map((e) => e.id));
+    entries.forEach((e) => { if (!seen.has(e.id)) timeline.value.push(e); });
+  }
+
+  /**
    * 刷机链路履历投影进本页时间线（记录源 `stores/flash.ts`）。按条目 id 幂等：
    * 首次打开刷机单时以刷机履历为准（不沿用其他类型的样例履历），之后只追加新条目。
    */
@@ -649,6 +690,17 @@ export function useTicketOperation() {
       detail.value.slaClocks = flashSlaClocks(t) ?? buildSlaClocks(t);
       detail.value.latestHandling = flashLatestHandling(t.no);
       projectFlashTimeline(t.no);
+    },
+  );
+
+  // 小智服务写回工单库后（自动流转、产研回传、二次提交），本页同步状态与履历，不整页重载
+  watch(
+    () => xiaozhi.revisionOf(detail.value.no),
+    () => {
+      const t = TICKETS.find((x) => x.no === detail.value.no);
+      if (!t || !isXiaozhiTicket(t)) return;
+      applyXiaozhiRow(detail.value, t);
+      projectXiaozhiTimeline(t.no);
     },
   );
   const draftSavedAt = ref<string | null>(null);
