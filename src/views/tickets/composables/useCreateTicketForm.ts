@@ -398,9 +398,12 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
    */
   const isXiaozhiType = computed(() => prefill()?.xiaozhiScene === true);
 
-  /** 「小智工单信息」卡字段下方的必填提示 */
+  /**
+   * 「小智工单信息」卡字段下方的必填提示。
+   * 只剩产品模块一项 —— 问题类别已并回通用问题分类（一·补 B15），由那组级联控件自己保证有值。
+   */
   const xiaozhiErrors = reactive<Record<CreateTicketXiaozhiField, string>>({
-    problemCategory: '', rdModule: '',
+    rdModule: '',
   });
 
   function clearXiaozhiErrors() {
@@ -437,7 +440,6 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   function xiaozhiInput(): XiaozhiCreateInput {
     const f = form.xiaozhi;
     return {
-      problemCategory: f.problemCategory ?? '',
       rdModule: f.rdModule ?? '',
       rdPriority: f.rdPriority,
       frontlineAccount: f.frontlineAccount ?? '',
@@ -474,9 +476,6 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     const store = useXiaozhiStore();
     const result = store.createXiaozhiTicket(xiaozhiInput(), xiaozhiBase(), xiaozhiActor(), escalate);
     if (result.kind === 'blocked') {
-      if (result.missing.includes('problemCategory')) {
-        xiaozhiErrors.problemCategory = XIAOZHI_TIP.problemCategoryRequired;
-      }
       if (result.missing.includes('rdModule')) {
         xiaozhiErrors.rdModule = XIAOZHI_TIP.rdModuleRequired;
       }

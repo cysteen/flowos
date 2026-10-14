@@ -185,7 +185,7 @@ export interface TicketDetailMeta {
   /** 「小智工单」标识（1130 D1，取自工单行 `Ticket.isXiaozhi`；读取走 `isXiaozhiTicket`） */
   isXiaozhi?: boolean;
   /**
-   * 小智单字段组（仅小智单有值，1130 小智工单）：问题类别 + 产研流转信息 + 驳回标记。
+   * 小智单字段组（仅小智单有值，1130 小智工单）：产研流转信息 + 办结结果 + 校代确认状态。
    * 取自工单库那一行（`Ticket.xiaozhi`），写口只有小智服务 `stores/xiaozhi.ts`。
    */
   xiaozhi?: TicketXiaozhi;
@@ -239,20 +239,21 @@ export interface LinkedAftersale {
 /**
  * 产研关联进度（与 PRD §3.2 feishuSync 一致）。
  *
- * ⚠️ `failed` 是「**关联失败**」（推单没推成），与 1130 小智工单的 `rejected`
- * 「**产研驳回**」（推成了、产研看过后退回）语义不同，**不要互相复用**：
- * 前者要重试推送，后者按 D8 落驳回标记、允许二次提交产研。
+ * ⚠️ 1130 小智工单**没有往这里加取值**：TPD 的「产研驳回」本轮只写处理履历、
+ * 不驱动状态（待沟通项 T1），故不需要一档 `rejected`；产研办结落 `closed`，
+ * 但那只说明**产研那张反馈单**结了，本单还要等校代确认才关（一·补 B5）。
  */
-export type FeishuSyncState = 'none' | 'failed' | 'synced' | 'feedback' | 'rejected' | 'closed';
+export type FeishuSyncState = 'none' | 'failed' | 'synced' | 'feedback' | 'closed';
 
 /** 「产研反馈」Tab 时间线一条 */
 export interface FeishuRecord {
   id: string;
   /**
-   * push=建关联 / fail=关联失败 / feedback=预反馈 / result=关单 / activate=二次激活 /
-   * dunning=可选催单提醒 / reject=产研驳回（1130 D8）/ resubmit=二次提交产研（1130 D8）
+   * push=建关联（1130 小智单的「系统自动回传产研」也落它）/ fail=关联失败 /
+   * feedback=预反馈（1130 小智单的产研中间态、驳回留痕都落它）/ result=关单 /
+   * activate=二次激活 / dunning=可选催单提醒
    */
-  kind: 'push' | 'fail' | 'feedback' | 'result' | 'activate' | 'dunning' | 'reject' | 'resubmit';
+  kind: 'push' | 'fail' | 'feedback' | 'result' | 'activate' | 'dunning';
   title: string;
   content: string;
   /** 操作方名称 */

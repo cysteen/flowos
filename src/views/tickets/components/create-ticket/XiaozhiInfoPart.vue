@@ -1,11 +1,14 @@
 <script setup lang="ts">
 /**
- * 新建工单 · 「小智工单信息」卡（1130 小智工单 D5 / D27 / W1 / W2）。
+ * 新建工单 · 「小智工单信息」卡（1130 小智工单 D5 / D27 / W2 / 一·补 B15）。
  *
- * D27 口径是**最大限度复用通用咨询表单**，故本卡只放确有差异的小智专属要素：
- * - 问题类别：相对 toC 在线小结，小智只多出「问题类别」与「是否流转研发」两项（03 二·附），
- *   后者由底栏「创建并流转」按钮表达、不作字段；
- * - 产研流转信息：取老系统「创建TPD工单」弹窗现状五项，接收人由产品模块带出、只读（W2）。
+ * D27 口径是**最大限度复用通用咨询表单**，故本卡只放确有差异的小智专属要素 ——
+ * 实际就只剩**产研流转信息**一组：取老系统「创建TPD工单」弹窗现状五项，
+ * 接收人由产品模块带出、只读（W2）。
+ *
+ * 🔴 **本卡没有「问题类别」控件**（一·补 B15）：问题类别就是咨询单的问题分类一 / 二 / 三级，
+ * 填在通用咨询表单的「产品问题」卡里。在这儿再放一个「问题类别」下拉，等于同一件事
+ * 在一张弹窗上问两遍，且两份值域永远对不齐。
  *
  * 产品两级、问题分级、来电描述、SN 号一律用通用咨询单的既有字段，不在本卡重复。
  */
@@ -13,7 +16,7 @@ import { computed } from 'vue';
 import { PlusOutlined } from '@ant-design/icons-vue';
 import type { UploadFile } from 'ant-design-vue';
 import {
-  XIAOZHI_FIELD_LABELS as L, XIAOZHI_PROBLEM_CATEGORIES, XIAOZHI_RD_MODULES, XIAOZHI_RD_PRIORITIES,
+  XIAOZHI_FIELD_LABELS as L, XIAOZHI_RD_MODULES, XIAOZHI_RD_PRIORITIES,
   xiaozhiReceiverOf,
 } from '@/views/tickets/types/xiaozhi';
 import type { CreateTicketXiaozhiField, CreateTicketXiaozhiForm } from '@/views/tickets/types/createTicket';
@@ -25,7 +28,6 @@ defineProps<{
   errors: Record<CreateTicketXiaozhiField, string>;
 }>();
 
-const categoryOptions = XIAOZHI_PROBLEM_CATEGORIES.map((v) => ({ value: v, label: v }));
 const moduleOptions = XIAOZHI_RD_MODULES.map((m) => ({ value: m.name, label: m.name }));
 const priorityOptions = XIAOZHI_RD_PRIORITIES.map((v) => ({ value: v, label: v }));
 
@@ -37,7 +39,7 @@ const attachmentList = computed<UploadFile[]>(() =>
 );
 
 /** 下拉空值按 undefined 交给 a-select，才会显示「请选择」 */
-function setSelect(key: 'problemCategory' | 'rdModule', v: unknown) {
+function setSelect(key: 'rdModule', v: unknown) {
   info.value[key] = v == null ? '' : String(v);
 }
 
@@ -52,23 +54,6 @@ function onAttachmentChange({ fileList }: { fileList: UploadFile[] }) {
 
 <template>
   <CreateTicketPartCard title="小智工单信息" :body-gap="8">
-    <div class="xz-grid">
-      <div class="xz-field">
-        <label class="xz-label"><span class="req">*</span>{{ L.problemCategory }}</label>
-        <div class="xz-control">
-          <FormSelect
-            class="xz-input"
-            :value="info.problemCategory || undefined"
-            placeholder="请选择"
-            :status="errors.problemCategory ? 'error' : ''"
-            :options="categoryOptions"
-            @update:value="(v) => setSelect('problemCategory', v)"
-          />
-          <div v-if="errors.problemCategory" class="xz-error">{{ errors.problemCategory }}</div>
-        </div>
-      </div>
-    </div>
-
     <div class="xz-sub">流转产研</div>
     <div class="xz-grid">
       <div class="xz-field">

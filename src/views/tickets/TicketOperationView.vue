@@ -28,8 +28,7 @@ import {
   FLASH_RESULT_ESCALATE_L2, FLASH_RESULT_OFFLINE, FLASH_TIP_OFFLINE_FORWARD, FLASH_TIP_RESULT_REQUIRED,
   FLASH_POOLS, isFlashTicket, normalizeFlashResult, type FlashActor, type FlashResult,
 } from './types/flash';
-import { XIAOZHI_TOAST, isXiaozhiTicket } from './types/xiaozhi';
-import { useXiaozhiStore } from '@/stores/xiaozhi';
+import { isXiaozhiTicket } from './types/xiaozhi';
 import { typeSampleKey } from '@/mock/ticketTypeSamples';
 import type { FlashActionResult, FlashInfoChanges } from '@/stores/flash';
 // 建单弹窗仅在「转单/重开」时用，按需异步加载，不阻塞操作页首屏
@@ -115,7 +114,10 @@ const isFlash = computed(() => isFlashTicket(d.value) && !!d.value.flash);
 
 /**
  * 小智工单（1130 小智工单 D1）：处理页、处理表单、动作集一律沿用通用咨询单（D27），
- * 本标识只用来①关风险报备三个界面位（D18）、②底栏走小智动作集（D16）、③驳回后开二次提交（D8）。
+ * 本标识只用来①关风险报备三个界面位（D18）、②底栏走小智动作集（D16）、
+ * ③把「升级」的目标收到产研一个（一·补 B10：本轮不做技术支持路径）。
+ *
+ * ⚠️ 原先还有一条「④驳回后开二次提交」—— **已随 B5 / T1 去掉**，本页在小智单上没有写入口了。
  */
 const isXiaozhi = computed(() => isXiaozhiTicket(d.value));
 
@@ -376,22 +378,16 @@ const isPrimaryHandler = computed(
 const flashStore = useFlashStore();
 const flashConfig = useFlashConfigStore();
 
-/* ---------------- 小智单（1130 小智工单 D8：驳回后二次提交产研） ---------------- */
-
-const xiaozhiStore = useXiaozhiStore();
-
 /**
- * 「二次提交产研」：驳回回传后本单落驳回标记，允许再提交一次（D8）。
- * 推的仍是已有的 TPD 通道，不新增通道；提交后回到「已升级产研」。
+ * 小智单的产研链路**在本页没有写入口**（1130 一·补 B5 / 待沟通项 T1）。
+ *
+ * - 产研办结后要不要关单，由**校代**在小智工单应用里确认（B5），确认未解决后的回传是
+ *   **系统动作** —— 故这里**没有「二次提交产研」按钮**，也不要再加回来；
+ * - TPD 的「产研驳回」本轮只写处理履历、不驱动状态、无按钮（T1 待沟通）。
+ *
+ * 两条链路的写口都在小智服务 `stores/xiaozhi.ts`（`receiveReporterConfirm` /
+ * `receiveRdReject`），由接口层调用，本页只读结果。
  */
-function onXiaozhiResubmit() {
-  const ok = xiaozhiStore.resubmitToRd(d.value.no, {
-    name: currentHandlerName(user.roleKey, user.name),
-    role: mapUserRole(user.roleKey),
-  });
-  if (!ok) return;
-  message.success(XIAOZHI_TOAST.resubmitted);
-}
 
 /**
  * 当前登录人在本刷机单上的视角：一线 / 二线 / 可领取 / 只读查看 / 客诉专员。四类老工单为 null。
@@ -2620,7 +2616,6 @@ watch(
           @mark-read="onMarkRecordRead"
           @feishu-activate="onFeishuActivate"
           @feishu-retry="onFeishuRetry"
-          @xiaozhi-resubmit="onXiaozhiResubmit"
           @dunning="dunningModalOpen = true"
           @attachment-upload="onAttachmentTabUpload"
         >

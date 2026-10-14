@@ -622,11 +622,13 @@ export function useTicketOperation() {
   }
 
   /**
-   * 小智单的产研链路映射进详情（1130 小智工单 D6 / D8 / D9）。
+   * 小智单的产研链路映射进详情（1130 小智工单 D6 / 一·补 B5）。
    *
    * 「产研反馈」Tab 复用的是 `feishuSync` / `feishuRecords` 那一套（05 原型落点 §三），
    * 故小智单的 `rdSync` / `rdRecords` 在这里投到同一对字段上 —— Tab 组件不必认两套数据源。
-   * 其中 `rejected`（产研驳回，D8）是本轮新增的取值，与 `failed`「关联失败」语义不同。
+   *
+   * ⚠️ `rdSync = 'closed'` 只说明**产研那张反馈单**办结了，**本单可能还没结** ——
+   * 要等校代确认（B5）。故本单的开 / 结一律看 `nodeStatus`，不要拿 `feishuSync` 反推。
    */
   function applyXiaozhiRow(base: TicketDetailMeta, t: Ticket) {
     base.lastHandler = t.assignee;
@@ -681,12 +683,15 @@ export function useTicketOperation() {
       complaint: { ...base.insightDetails.complaint, rows: [] },
       recent30: { ...base.insightDetails.recent30, rows: [selfRow] },
     };
-    base.knowledge = ['小智工单处理指引', '产研问题单提交要素与驳回常见原因'];
+    base.knowledge = ['小智工单处理指引', '产研问题单提交要素与办结确认流程'];
     base.aiSummary = t.problemDesc ?? t.title;
     base.aiInsight = {
       customerBrief: '教育用户（校代 / 渠道商），经小智在线进线',
       ticketBrief: t.title,
-      suggestion: t.xiaozhi?.rdRejected ? '补充产研要求的材料后二次提交产研' : '按产研反馈进度跟进',
+      // 待校代确认期间本单仍在「已升级产研」，但该跟进的是确认而不是产研（一·补 B5）
+      suggestion: t.xiaozhi?.confirmState === '未确认'
+        ? '产研已办结，待校代确认是否解决'
+        : '按产研反馈进度跟进',
     };
     base.latestHandling = xiaozhiLatestHandling(t.no);
   }
@@ -753,7 +758,7 @@ export function useTicketOperation() {
     },
   );
 
-  // 小智服务写回工单库后（自动流转、产研回传、二次提交），本页同步状态与履历，不整页重载
+  // 小智服务写回工单库后（自动流转、产研回传、校代确认、超时自动结案），本页同步状态与履历，不整页重载
   watch(
     () => xiaozhi.revisionOf(detail.value.no),
     () => {

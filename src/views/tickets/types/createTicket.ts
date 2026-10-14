@@ -233,18 +233,19 @@ export interface CreateTicketFormState {
  * 新建工单 · 「小智工单信息」卡（1130 小智工单 D27：**最大限度复用通用咨询表单**，
  * 只把确有差异的小智专属要素收在本卡）。
  *
- * 相对 toC 在线小结，小智只多出「问题类别」与「是否流转研发」两项（03 二·附）：
- * 前者落成本卡的必填项；后者由底栏「创建并流转」按钮表达，不作字段（D5）。
+ * 🔴 **本卡里没有「问题类别」**（一·补 B15）：问题类别就是咨询单的问题分类一 / 二 / 三级，
+ * 走通用咨询表单那组级联控件（`problemL1 / L2 / L3`），不是小智专属新字段、不另起控件。
+ * 相对 toC 在线小结，小智真正多出来的只有「是否流转研发」一项，由底栏「创建并流转」按钮
+ * 表达、不作字段（D5）。
+ *
  * 其余小结字段（话务性质 / 知识反馈 / 建单要素模版 / 三方售后工单号 / 帐号 / 密码）
  * 属在线系统、与 toC 在线共用，本轮不迁入；产品两级、问题分级、来电描述、SN 号
  * 一律取通用咨询单的既有字段（D27）。
  *
- * 产研流转要素（产品模块 / 接收人 / 产研优先级 / 一线人员域账号 / 附件）取老系统
- * 「创建TPD工单」弹窗现状；接收人由产品模块带出、只读（W2）。
+ * 故本卡实际只剩产研流转要素（产品模块 / 接收人 / 产研优先级 / 一线人员域账号 / 附件），
+ * 取老系统「创建TPD工单」弹窗现状；接收人由产品模块带出、只读（W2）。
  */
 export interface CreateTicketXiaozhiForm {
-  /** 问题类别（必填，值域待业务确认 W1） */
-  problemCategory: string;
   /** 产品模块（走产研必填，W2） */
   rdModule: string;
   /** 产研优先级（四档，照弹窗现状） */
@@ -255,12 +256,14 @@ export interface CreateTicketXiaozhiForm {
   attachments: string[];
 }
 
-/** 「小智工单信息」卡里参与必填提示的字段 */
-export type CreateTicketXiaozhiField = 'problemCategory' | 'rdModule';
+/**
+ * 「小智工单信息」卡里参与必填提示的字段。
+ * 只剩产品模块 —— 问题分类走通用级联控件、恒有值，不需要必填提示（一·补 B15）。
+ */
+export type CreateTicketXiaozhiField = 'rdModule';
 
 export function defaultCreateTicketXiaozhiForm(): CreateTicketXiaozhiForm {
   return {
-    problemCategory: '',
     rdModule: '',
     rdPriority: XIAOZHI_RD_PRIORITY_DEFAULT,
     frontlineAccount: '',

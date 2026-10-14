@@ -393,7 +393,8 @@ const TAB_ROLE_WRITABLE: Record<ProcessTabKey, readonly RoleKey[]> = {
   // 小智坐席（1130 D20）：它要把单办到结案，处理 Tab 必须可写
   process: ['xiaozhi-agent', 'agent-l2', 'tech-support', 'team-leader', 'complaint-supervisor', ...MATRIX_ADMIN_ROLES],
   // 行 56 同步飞书：① 无 ② 可用 ③ 可用 ④ 无 ⑤ 可用 ⑥ 条件可用 ⑦ 无 ⑧ 无 ⑨ 可用
-  // 小智坐席：催产研、驳回后二次提交都在这个 Tab 上做（1130 D8）
+  // 小智坐席：催产研在这个 Tab 上做。⚠️ 这里**没有「二次提交产研」** —— 产研办结后由校代确认，
+  // 确认未解决的回传是系统动作（1130 一·补 B5）；TPD 驳回本轮只留痕不给动作（T1）。
   feishu: ['xiaozhi-agent', 'agent-l2', 'team-leader', 'complaint-supervisor', ...MATRIX_ADMIN_ROLES],
   // #42 技术支持处理：① 只读 ② 无 ③ 无 ④ 可用 ⑤ 可用 ⑥ 无 ⑦ 无 ⑧ 只读 ⑨ 可用
   tech: ['tech-support', 'team-leader', 'complaint-supervisor', ...MATRIX_ADMIN_ROLES],

@@ -689,7 +689,7 @@ export interface Ticket {
    */
   isXiaozhi?: boolean;
   /**
-   * 小智单字段组（仅小智单有值，见 `isXiaozhi`）：问题类别 + 产研流转信息 + 驳回标记。
+   * 小智单字段组（仅小智单有值，见 `isXiaozhi`）：产研流转信息 + 办结结果 + 校代确认状态。
    * 列表与处理页读同一份；写口只有小智服务 `stores/xiaozhi.ts`。
    */
   xiaozhi?: TicketXiaozhi;

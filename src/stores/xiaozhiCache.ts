@@ -20,9 +20,13 @@ export type XiaozhiLsKey = (typeof XIAOZHI_LS_KEYS)[keyof typeof XIAOZHI_LS_KEYS
 
 /**
  * 缓存版本。种子或数据形状变更时 +1。
- * v1：小智单首版（问题类别 + 产研流转信息 + 驳回标记 + 产研反馈记录）。
+ * - v1：小智单首版（问题类别 + 产研流转信息 + 驳回标记 + 产研反馈记录）。
+ * - v2：一·补第二轮拍板。`problemCategory` 并回通用问题分类（B15）、`rdRejected` /
+ *   `rdResubmitCount` 去掉（T1 驳回链路不实现），新增 `settledAt` / `confirmState` /
+ *   `confirmAt` / `confirmBy` / `rdReturnCount`（B5 / B7 / B8）。**形状变了必须升版**：
+ *   v1 的缓存里 `rdSync` 还可能是已删掉的 `'rejected'`，不丢弃就会渲染出一个不存在的状态档。
  */
-export const XIAOZHI_CACHE_VERSION = 1;
+export const XIAOZHI_CACHE_VERSION = 2;
 
 /** 保质期：12 小时（与刷机 / 风险两条线同口径） */
 export const XIAOZHI_STALE_MS = 12 * 60 * 60 * 1000;

@@ -104,8 +104,6 @@ const emit = defineEmits<{
   'mark-read': [id: string];
   'feishu-activate': [reason: string];
   'feishu-retry': [];
-  /** 小智单驳回后二次提交产研（1130 D8） */
-  'xiaozhi-resubmit': [];
   dunning: [];
   closingNoteFilesAdded: [files: { name: string; size: number }[]];
   'attachment-upload': [files: { name: string; size: number }[]];
@@ -113,12 +111,12 @@ const emit = defineEmits<{
 
 const user = useUserStore();
 const activeTab = ref<ProcessTabKey>('process');
-/** synced / feedback / rejected / closed / failed 时展示「产研反馈」Tab */
+/** synced / feedback / closed / failed 时展示「产研反馈」Tab */
 const feishuActive = computed(() => {
   const s = props.detail.feishuSync;
   return !!s && s !== 'none';
 });
-/** 「小智工单」标识（1130 D1）：驳回后的「二次提交产研」只在小智单上出 */
+/** 「小智工单」标识（1130 D1）：本组件用它关「风险报备」Tab（D18） */
 const isXiaozhi = computed(() => isXiaozhiTicket(props.detail));
 // 按工单类型 + 当前角色过滤：技术支持处理 / 风险监控 / 预约三个 Tab 有角色黑名单，
 // 判据表在 visibleProcessTabs 内（取自权限矩阵 #41–51 取值为「无」的 6 格）；
@@ -258,14 +256,16 @@ defineExpose({ switchTab });
         :fail-reason="detail.feishuFailReason"
         :created-at="detail.createdAt"
         :readonly="activeTabReadonly"
-        :can-resubmit="isXiaozhi"
         :solution-type="detail.xiaozhi?.rdSolutionType"
         :issue-result="detail.xiaozhi?.rdIssueResult"
         :demand-result="detail.xiaozhi?.rdDemandResult"
+        :confirm-state="detail.xiaozhi?.confirmState"
+        :confirm-at="detail.xiaozhi?.confirmAt"
+        :confirm-by="detail.xiaozhi?.confirmBy"
+        :rd-return-count="detail.xiaozhi?.rdReturnCount"
         @activate="emit('feishu-activate', $event)"
         @retry="emit('feishu-retry')"
         @dunning="emit('dunning')"
-        @resubmit="emit('xiaozhi-resubmit')"
       />
 
       <OpTechProcessTab

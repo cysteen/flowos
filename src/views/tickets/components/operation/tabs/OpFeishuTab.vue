@@ -8,8 +8,9 @@ import {
 import { formatOpTime } from '@/views/tickets/utils/opTime';
 import type { FeishuRecord, FeishuSyncState } from '@/mock/ticketDetail';
 import {
+  XIAOZHI_CONFIRM_ACTOR, XIAOZHI_CONFIRM_TIMEOUT_DAYS,
   XIAOZHI_DEMAND_FIELD_LABELS, XIAOZHI_ISSUE_FIELD_LABELS, XIAOZHI_RESULT_GROUP_TITLE,
-  type XiaozhiDemandResult, type XiaozhiIssueResult, type XiaozhiSolutionType,
+  type XiaozhiConfirmState, type XiaozhiDemandResult, type XiaozhiIssueResult, type XiaozhiSolutionType,
 } from '@/views/tickets/types/xiaozhi';
 
 /** 二次激活原因枚举（对齐 PRD §7.4） */
@@ -38,24 +39,30 @@ const props = defineProps<{
    * 只读态下重新发起 / 催单 / 二次激活三个写入口不出，协同时间线照常可读。
    */
   readonly?: boolean;
-  /**
-   * 允许二次提交产研（1130 小智工单 D8）：驳回回传后本单落驳回标记，可再提交一次。
-   * 只有小智单传它；其余单不传、整枚入口不出。
-   */
-  canResubmit?: boolean;
   /** 办结回传的分叉：问题类 / 需求类（W8 暂行口径：分两组展示、有值才显示） */
   solutionType?: XiaozhiSolutionType;
   /** 办结回传 · 问题类字段 */
   issueResult?: XiaozhiIssueResult;
   /** 办结回传 · 需求类字段 */
   demandResult?: XiaozhiDemandResult;
+  /**
+   * 校代确认状态（1130 一·补 B5）。只有小智单传它 —— 产研办结**不自动关单**，
+   * 要等校代（提报人）在小智工单应用里确认是否解决，故这里只**显示**确认进度，
+   * 🔴 **没有任何按钮**：确认在小智工单应用里做，确认未解决后的回传是**系统动作**。
+   */
+  confirmState?: XiaozhiConfirmState;
+  /** 校代确认时刻 */
+  confirmAt?: string;
+  /** 确认人（超时视为已解决时为「系统」） */
+  confirmBy?: string;
+  /** 已回传产研「未解决」的次数（一·补 B8：循环不封顶，但记次数） */
+  rdReturnCount?: number;
 }>();
 
 const emit = defineEmits<{
   activate: [reason: string];
   retry: [];
   dunning: [];
-  resubmit: [];
 }>();
 
 const activateOpen = ref(false);
@@ -65,16 +72,32 @@ const noteRequired = computed(() => activateReason.value === '其他');
 const reasonOptions = FEISHU_ACTIVATE_REASONS.map((r) => ({ value: r, label: r }));
 
 const isFailed = computed(() => props.syncState === 'failed');
+
 /**
- * 产研驳回（1130 D8）。⚠️ 与 `failed`「关联失败」是两件事：
- * 关联失败是推单没推成、要重新发起；驳回是推成了、产研看过后退回，要补充后**二次提交**。
+ * 校代确认进度（1130 一·补 B5 / B7 / B8）—— **纯展示，没有按钮**。
+ *
+ * ⚠️ 不要在这里补一枚「模拟确认」或「二次提交产研」：确认动作在**小智工单应用**里由校代做（B6），
+ * 确认未解决后的回传是**系统动作不是坐席动作**（B5），原型里这两种结果由种子数据体现。
  */
-const isRejected = computed(() => props.syncState === 'rejected');
-/** 最近一条驳回回传的原因 */
-const rejectReason = computed(
-  () => [...props.records].reverse().find((r) => r.kind === 'reject')?.cause ?? '',
-);
-const resubmitTimes = computed(() => props.records.filter((r) => r.kind === 'resubmit').length);
+const confirmRow = computed<{ label: string; tone: 'wait' | 'done'; sub: string } | null>(() => {
+  if (!props.confirmState) return null;
+  if (props.confirmState === '未确认') {
+    return {
+      label: `待${XIAOZHI_CONFIRM_ACTOR}确认`,
+      tone: 'wait',
+      sub: `超 ${XIAOZHI_CONFIRM_TIMEOUT_DAYS} 天未确认视为已解决，自动结案并下送调研`,
+    };
+  }
+  const who = props.confirmBy ? `${props.confirmBy} · ` : '';
+  return {
+    label: props.confirmState,
+    tone: 'done',
+    sub: `${who}${formatOpTime(props.confirmAt) || '—'}`,
+  };
+});
+
+/** 已回传产研「未解决」的次数（B8）：0 不显示 */
+const returnTimes = computed(() => props.rdReturnCount ?? 0);
 
 /** 办结回传字段：按问题类 / 需求类取一套，**有值才显示**（W8） */
 const settleFields = computed<{ title: string; items: { label: string; text: string }[] } | null>(() => {
@@ -127,10 +150,6 @@ const statusMeta = computed(() => {
   if (props.syncState === 'failed') {
     return { label: '关联失败', tone: 'danger' as const };
   }
-  // 1130 D8：产研驳回是独立一档，不并进「关联失败」
-  if (props.syncState === 'rejected') {
-    return { label: '已驳回', tone: 'danger' as const };
-  }
   if (props.syncState === 'closed') {
     return { label: '已结案', tone: 'done' as const };
   }
@@ -156,10 +175,9 @@ const updatedAt = computed(() => {
 });
 
 
-/** 已关联产研反馈（synced/feedback/rejected/closed）→ 催单、二次激活两按钮均常驻展示 */
+/** 已关联产研反馈（synced/feedback/closed）→ 催单、二次激活两按钮均常驻展示 */
 const isAssociated = computed(() =>
-  props.syncState === 'synced' || props.syncState === 'feedback'
-  || props.syncState === 'rejected' || props.syncState === 'closed',
+  props.syncState === 'synced' || props.syncState === 'feedback' || props.syncState === 'closed',
 );
 /** 催单：处理中/已反馈（未结案）可点；已结案置灰不可催 */
 const dunningEnabled = computed(() =>
@@ -175,9 +193,6 @@ const KIND_META: Record<FeishuRecord['kind'], { icon: unknown; color: string; ta
   result: { icon: CheckCircleOutlined, color: '#10b981', tag: '关单' },
   activate: { icon: ThunderboltOutlined, color: '#f59e0b', tag: '二次激活' },
   dunning: { icon: BellOutlined, color: '#d97706', tag: '催单' },
-  // 1130 小智工单 D8：驳回与二次提交各占一格，不与「关联失败」「建关联」混用
-  reject: { icon: CloseCircleOutlined, color: '#dc2626', tag: '产研驳回' },
-  resubmit: { icon: ReloadOutlined, color: '#0d9488', tag: '二次提交' },
 };
 
 function onActivate() {
@@ -213,12 +228,6 @@ function onDunning() {
   if (props.readonly || !dunningEnabled.value) return;
   emit('dunning');
 }
-
-/** 二次提交产研（1130 D8）：仅驳回态可点 */
-function onResubmit() {
-  if (props.readonly || !isRejected.value) return;
-  emit('resubmit');
-}
 </script>
 
 <template>
@@ -235,24 +244,6 @@ function onResubmit() {
       <button v-if="!readonly" type="button" class="fs-retry" @click="onRetry">
         <ReloadOutlined />
         重新发起
-      </button>
-    </div>
-
-    <!-- 产研驳回：驳回横幅 + 二次提交入口（1130 D8，与上方「关联失败」分开） -->
-    <div v-if="isRejected" class="fs-fail-banner fs-reject-banner">
-      <div class="fs-fail-main">
-        <CloseCircleOutlined class="fs-fail-icon" />
-        <div>
-          <div class="fs-fail-title">
-            产研已驳回 · 可补充后二次提交
-            <span v-if="resubmitTimes" class="fs-reject-times">已二次提交 {{ resubmitTimes }} 次</span>
-          </div>
-          <div class="fs-fail-sub">{{ rejectReason || '产研未给出驳回原因' }}</div>
-        </div>
-      </div>
-      <button v-if="!readonly && canResubmit" type="button" class="fs-retry" @click="onResubmit">
-        <ReloadOutlined />
-        二次提交产研
       </button>
     </div>
 
@@ -325,6 +316,18 @@ function onResubmit() {
             <dd class="fs-settle-text">{{ item.text }}</dd>
           </template>
         </dl>
+      </div>
+
+      <!--
+        校代确认进度（1130 一·补 B5 / B7 / B8）：产研办结后本单**不自动关单**，等校代确认。
+        纯展示，**无按钮** —— 确认在小智工单应用里做，确认未解决后的回传是系统动作。
+      -->
+      <div v-if="confirmRow || returnTimes" class="fs-confirm">
+        <template v-if="confirmRow">
+          <span class="fs-confirm-pill" :class="`tone-${confirmRow.tone}`">{{ confirmRow.label }}</span>
+          <span class="fs-confirm-sub">{{ confirmRow.sub }}</span>
+        </template>
+        <span v-if="returnTimes" class="fs-confirm-times">已第 {{ returnTimes }} 次回传产研</span>
       </div>
     </section>
 
@@ -423,11 +426,19 @@ function onResubmit() {
 }
 .fs-retry:hover { background: #b91c1c; }
 
-/* 产研驳回横幅（1130 D8）：与「关联失败」同一套形制，按钮走小智标识色 */
-.fs-reject-banner .fs-retry { background: #0d9488; }
-.fs-reject-banner .fs-retry:hover { background: #0f766e; }
-.fs-reject-times {
-  margin-left: 8px; padding: 1px 7px; border-radius: 9px;
+/* 校代确认进度条（1130 一·补 B5 / B8）：与办结字段组同一块底，纯展示无按钮 */
+.fs-confirm {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px;
+  padding: 10px 16px 12px; border-top: 1px solid #f1f5f9;
+}
+.fs-confirm-pill {
+  flex: none; font-size: 12px; font-weight: 700; border-radius: 999px; padding: 3px 10px;
+}
+.fs-confirm-pill.tone-wait { color: #b45309; background: #fef3c7; }
+.fs-confirm-pill.tone-done { color: #047857; background: #d1fae5; }
+.fs-confirm-sub { font-size: 12px; color: #64748b; line-height: 1.5; }
+.fs-confirm-times {
+  flex: none; margin-left: auto; padding: 2px 8px; border-radius: 9px;
   font-size: 11px; font-weight: 600; color: #0f766e; background: #ccfbf1;
 }
 

@@ -34,9 +34,14 @@ export const XIAOZHI_POOL_GROUP_NAME = '小智工单处理组';
 export const XIAOZHI_POOL_GROUP_ID = 'xiaozhi';
 
 /**
- * 「创建并流转」那一支的处理人（一·补 B2）：**系统**，不是建单人。
- * 工单池里留的是记录不是待领任务，不经领取直接到「已升级产研」；
- * 自动关单时也落它，不让处理人悬空（D10）。
+ * 系统处理人：**「系统」**，不是建单人。两处都落它 ——
+ *
+ * ① 「创建并流转」那一支的处理人（一·补 B2）：工单池里留的是记录不是待领任务，
+ *    不经领取直接到「已升级产研」；
+ * ② **自动结案时的处理人（一·补 B9）**：🔴 **人工跟进过的单也一样统一改系统**，
+ *    不保留原处理人 —— 这比 B2 的覆盖范围更大。原口径只是「没有处理人时补一个、不让悬空」（D10），
+ *    B9 把它改成无条件覆盖：结案那一下是系统做的，落在那位跟进过的坐席头上，
+ *    绩效与工作量口径都会把一笔系统动作算成人做的。
  */
 export const XIAOZHI_SYSTEM_HANDLER = '系统';
 
@@ -54,12 +59,16 @@ export const XIAOZHI_SLA_IDLE = { slaText: '—', slaSub: '未计时', slaState:
 /* ------------------------------------------------------------------ */
 
 /**
- * 「问题类别」取值。相对 toC 在线小结，小智只多出「问题类别」与「是否流转研发」两项，
- * 其余小结字段属在线系统、不迁入工单系统（03 二·附）。
- * 这里给的是**现状实例值**，完整值域待业务确认（W1）。
+ * 🔴 **「问题类别」不是小智专属新字段 —— 它就是咨询单的问题分类一 / 二 / 三级**（一·补 B15）。
+ *
+ * 故本文件**不声明**问题类别枚举、建单表单也**不另起控件**：小智单的问题类别一律落在
+ * 通用咨询表单那组级联的问题分类上（`form.problemL1 / L2 / L3`），与通用咨询单同一份字典。
+ * 这是 D27「尽量复用通用咨询单」的直接延伸 —— 另起一个「问题类别」下拉等于把同一件事
+ * 在两处各维护一份值域，且两份永远对不齐。
+ *
+ * 相对 toC 在线小结，小智真正多出来的只有「是否流转研发」一项，由底栏「创建并流转」按钮
+ * 表达、不作字段（D5）。
  */
-export const XIAOZHI_PROBLEM_CATEGORIES = ['产品问题定位'] as const;
-export type XiaozhiProblemCategory = (typeof XIAOZHI_PROBLEM_CATEGORIES)[number] | (string & {});
 
 /**
  * 在线小结上的其余字段（话务性质 / 知识反馈 / 建单要素模版 / 三方售后工单号 / 帐号 / 密码）
@@ -150,14 +159,45 @@ export function defaultXiaozhiRdInfo(): XiaozhiRdInfo {
 }
 
 /* ------------------------------------------------------------------ */
-/* 产研回传（D7 / D8 / D9）                                             */
+/* 产研回传 + 校代确认（一·补 B5 / B7 / B8 / B9；T1 驳回本轮不实现）          */
 /* ------------------------------------------------------------------ */
 
 /**
- * 回传类型。只接「驳回」与「办结」两类驱动本单（D7）；
- * 「处理中」等中间态只写处理履历留痕、**不驱动本单状态**。
+ * 回传类型。三类都**只写处理履历**，驱动本单状态的只有「办结」那一笔（一·补 B5）：
+ * - 「处理中」等中间态：留痕，不驱动本单（D7 原口径，未变）；
+ * - 「驳回」：🔴 **本轮同样只留痕**（待沟通项 T1）—— TPD 的「驳回」指产研不接这单、退回来，
+ *   与 B5 的「校代确认未解决」是两回事；驳回回来之后由谁接、怎么再推，业务侧尚无口径。
+ *   接口层照常收、信息不丢，但**不驱动状态、页面上没有按钮**，与中间态同一处理方式；
+ * - 「办结」：落办结结果 + 转入**待校代确认**，本单仍留在「已升级产研」，**不自动关单**（B5）。
  */
 export type XiaozhiRdFeedbackKind = '处理中' | '驳回' | '办结';
+
+/**
+ * 🔴 **产研办结不再自动关单，改由校代（提报人）确认是否解决**（一·补 B5，**推翻 D9 / D11**）。
+ *
+ * 链路：产研办结回传 → 本单落办结结果、置「待校代确认」、**状态不动**（仍「已升级产研」）→
+ * 校代在小智工单应用里确认（B6：建单入口迁 400，确认流程保留）→
+ * - 确认「**是**」→ 关单 + 下送调研；
+ * - 确认「**否**」→ 状态仍不动，**系统自动**回传产研「未解决」，产研重新处理后再办结、再等确认。
+ *
+ * ⚠️ 「否」那一支是**系统动作不是坐席动作** —— 页面上**没有「二次提交产研」按钮**。
+ * 确认循环**不封顶**，但每轮记次数（B8，见 `TicketXiaozhi.rdReturnCount`）。
+ */
+export const XIAOZHI_CONFIRM_STATES = ['未确认', '已确认解决', '已确认未解决'] as const;
+export type XiaozhiConfirmState = (typeof XIAOZHI_CONFIRM_STATES)[number];
+
+/** 确认方的称谓（提报人＝校代 / 渠道商，调研也发给他本人，D12） */
+export const XIAOZHI_CONFIRM_ACTOR = '校代（提报人）';
+
+/**
+ * 超 N 天未确认即视为已解决，自动结案 + 下送调研（一·补 B7）。
+ *
+ * 🔴 **N ＝ 3 天是暂定值**，业务侧尚未给数（B7 原文「N 可配，具体天数由业务定」）。
+ * 取 3 天的理由：校代确认是一次「看一眼结果点个是」的轻动作，拖过一个完整工作周期
+ * （含一个周末）仍不点，再等下去也等不到；老 ITR 20241030 无此兜底，无现成值可照。
+ * 落地时这个数走后台配置项，不写死在代码里。
+ */
+export const XIAOZHI_CONFIRM_TIMEOUT_DAYS = 3;
 
 /**
  * 办结回传的两套字段（W8 暂行口径：问题类与需求类分两组展示、有值才显示）。
@@ -218,9 +258,12 @@ export const XIAOZHI_RESULT_GROUP_TITLE: Record<XiaozhiSolutionType, string> = {
 /* 字段展示名                                                           */
 /* ------------------------------------------------------------------ */
 
-/** 小智单字段展示名（统一口径：建单表单、处理页、履历字段 diff 都用这一份） */
+/**
+ * 小智单字段展示名（统一口径：建单表单、处理页、履历字段 diff 都用这一份）。
+ * ⚠️ 这里**没有「问题类别」** —— 它就是通用咨询单的问题分类一 / 二 / 三级（一·补 B15），
+ * 展示名取通用咨询表单那一份，不在本表另起。
+ */
 export const XIAOZHI_FIELD_LABELS = {
-  problemCategory: '问题类别',
   rdModule: '产品模块',
   rdReceiver: '接收人（域账号）',
   rdPriority: '产研优先级',
@@ -232,17 +275,17 @@ export const XIAOZHI_FIELD_LABELS = {
 /* 产品文案（Toast / 拦截 / 履历 / 通知）                                  */
 /* ------------------------------------------------------------------ */
 
-/** 建单必填提示（输入类「请填写」、选择类「请选择」，与通用咨询单同一口径） */
+/**
+ * 建单必填提示（输入类「请填写」、选择类「请选择」，与通用咨询单同一口径）。
+ * 问题类别那条已随 B15 去掉 —— 问题分类走通用咨询表单的级联控件，它恒有值、无须另给必填提示。
+ */
 export const XIAOZHI_TIP = {
-  problemCategoryRequired: `请选择${XIAOZHI_FIELD_LABELS.problemCategory}`,
   rdModuleRequired: `请选择${XIAOZHI_FIELD_LABELS.rdModule}`,
 } as const;
 
 export const XIAOZHI_TOAST = {
   created: (no: string) => `已创建小智工单 ${no}`,
   createdAndEscalated: (no: string) => `已创建小智工单 ${no}，已流转产研`,
-  resubmitted: '已二次提交产研',
-  closedOnResult: '已收到产研结果，工单已结案并下送调研',
 } as const;
 
 /** 处理履历正文 */
@@ -253,20 +296,36 @@ export const XIAOZHI_TL = {
   autoEscalate: (channel: string, rdTitle: string) => `系统自动流转至${channel}；产研单标题：${rdTitle}`,
   /** 中间态只写履历、不驱动本单状态（D7） */
   rdProgress: (who: string, note: string) => `产研处理中 · ${who}${note ? `；处理意见：${note}` : ''}`,
-  /** 驳回回传（D8） */
-  rdRejected: (reason: string) => `产研驳回${reason ? `；驳回原因：${reason}` : ''}，可二次提交产研`,
-  /** 二次提交产研（D8） */
-  resubmit: (channel: string) => `二次提交${channel}`,
-  /** 办结回传 → 自动关单 + 自动下送调研，不论解没解决（D9） */
-  rdSettled: (solutionType: XiaozhiSolutionType) => `产研办结回传（${solutionType}类），自动结案并下送调研`,
+  /**
+   * 驳回回传。**只留痕、不驱动状态、无按钮**（待沟通项 T1）：
+   * 本单仍留在「已升级产研」，由谁接、怎么再推等业务侧口径。
+   */
+  rdRejectedNoted: (reason: string) =>
+    `收到产研驳回回传${reason ? `；驳回原因：${reason}` : ''}。本单状态不变，驳回后续处理口径待定`,
+  /** 办结回传 → **不关单**，转入待校代确认（一·补 B5） */
+  rdSettled: (solutionType: XiaozhiSolutionType) =>
+    `产研办结回传（${solutionType}类），待${XIAOZHI_CONFIRM_ACTOR}确认是否解决`,
+  /** 校代确认「是」→ 关单 + 下送调研（B5①） */
+  confirmResolved: (who: string) => `${who}确认问题已解决，工单结案并下送调研`,
+  /** 校代确认「否」→ 状态不动，系统自动回传产研（B5② + B8 记次数） */
+  confirmUnresolved: (who: string, times: number, channel: string) =>
+    `${who}确认问题未解决，系统已自动回传${channel}「未解决」（第 ${times} 次回传产研），本单仍为「已升级产研」`,
+  /** 超 N 天未确认 → 视为已解决，自动结案 + 下送调研（B7） */
+  confirmTimeoutClosed: (days: number) =>
+    `超 ${days} 天未收到${XIAOZHI_CONFIRM_ACTOR}确认，视为已解决，自动结案并下送调研`,
 } as const;
 
 /** 站内通知 / 短信文案 */
 export const XIAOZHI_NOTICE = {
   /** 新单进工单池待领取（D21：一个大组、进池自己领） */
   pooled: (no: string) => `${no}已进入${XIAOZHI_POOL_GROUP_NAME}工单池，待领取`,
-  rdRejected: (no: string) => `${no}产研已驳回，可二次提交产研`,
-  rdSettled: (no: string) => `${no}产研已办结，工单自动结案`,
+  /** 办结回传后不关单，等校代确认（B5） */
+  rdSettled: (no: string) => `${no}产研已办结，待${XIAOZHI_CONFIRM_ACTOR}确认是否解决`,
+  /** 校代确认未解决 → 系统已自动回传产研（B5② / B8） */
+  returnedToRd: (no: string, times: number) =>
+    `${no}${XIAOZHI_CONFIRM_ACTOR}确认未解决，系统已自动回传产研（第 ${times} 次）`,
+  /** 确认解决 / 超时视为解决 → 已结案（B5① / B7） */
+  closed: (no: string) => `${no}已结案并下送调研`,
 } as const;
 
 /**
@@ -279,29 +338,40 @@ export const XIAOZHI_SURVEY_TO_REPORTER = true;
 /* 字段组                                                               */
 /* ------------------------------------------------------------------ */
 
-/** 工单上挂的小智字段组（仅小智单有值，见 `isXiaozhi`） */
+/**
+ * 工单上挂的小智字段组（仅小智单有值，见 `isXiaozhi`）。
+ *
+ * ⚠️ **没有 `problemCategory`** —— 问题类别就是工单行上的 `problemL1 / L2 / L3`（一·补 B15）。
+ */
 export interface TicketXiaozhi {
-  /** 问题类别（建单必填，W1） */
-  problemCategory: XiaozhiProblemCategory;
   /** 产研流转信息（走过产研的单才有值） */
   rd?: XiaozhiRdInfo;
   /**
-   * 产研关联进度。复用「产研反馈」Tab 的那一套取值（`FeishuSyncState`），
-   * 其中 `rejected` 是 1130 新增的「产研驳回」—— 与 `failed`「关联失败」语义不同（D8）。
+   * 产研关联进度。复用「产研反馈」Tab 的那一套取值（`FeishuSyncState`）。
+   * ⚠️ `closed` 说的是**产研那张反馈单**已办结，**不等于本单已结案** —— 本单要等校代确认（B5）。
    */
   rdSync?: FeishuSyncState;
-  /** 「产研反馈」Tab 时间线（推单 / 中间态 / 驳回 / 二次提交 / 办结） */
+  /** 「产研反馈」Tab 时间线（推单 / 中间态 / 办结 / 系统回传） */
   rdRecords?: FeishuRecord[];
   /** 产研单号（推成后回传） */
   rdFeedbackNo?: string;
-  /** 本单已被产研驳回、可二次提交（D8） */
-  rdRejected?: boolean;
-  /** 已二次提交产研的次数（0 ＝ 未二次提交过） */
-  rdResubmitCount?: number;
   /** 办结回传的分叉：问题类 / 需求类（W8） */
   rdSolutionType?: XiaozhiSolutionType;
   /** 办结回传 · 问题类字段（W8：有值才显示） */
   rdIssueResult?: XiaozhiIssueResult;
   /** 办结回传 · 需求类字段（W8：有值才显示） */
   rdDemandResult?: XiaozhiDemandResult;
+  /** 产研办结回传的时刻（`YYYY-MM-DD HH:mm:ss`）。超时视为已解决按它 + `XIAOZHI_CONFIRM_TIMEOUT_DAYS` 判（B7） */
+  settledAt?: string;
+  /** 校代确认状态（B5）。办结回传后才有值；无值 ＝ 还没走到办结 */
+  confirmState?: XiaozhiConfirmState;
+  /** 校代确认时刻 */
+  confirmAt?: string;
+  /** 确认人（校代姓名；超时视为已解决时落「系统」） */
+  confirmBy?: string;
+  /**
+   * 已回传产研「未解决」的次数（一·补 B8：确认循环不封顶，但记次数）。
+   * 0 / 无值 ＝ 还没回传过。回传是**系统动作**，不是坐席点出来的（B5）。
+   */
+  rdReturnCount?: number;
 }
