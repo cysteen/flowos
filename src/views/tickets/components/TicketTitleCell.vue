@@ -107,7 +107,12 @@ const csTagTipOverlayInner = {
             :style="statusStyle(ticket.nodeStatus)"
             :title="ticketStatusDisplayName(ticket)"
           >{{ ticketStatusDisplayName(ticket) }}</span>
-          <span class="tag">{{ ticket.type }}</span>
+          <!--
+            工单类型标。🔴 **小智单上不出**（1130 一·补 B21）：标位只留「小智」那一枚。
+            与处理页页头（`OpHeader.vue`）同一个显示口径 —— 两处不一致比都不改更糟。
+            ⚠️ 刷机单维持「咨询 + 刷机」两枚不变；本道只管显示，筛选 / 查询取数仍按类型＝咨询。
+          -->
+          <span v-if="!isXiaozhiTicket(ticket)" class="tag">{{ ticket.type }}</span>
           <span v-if="isFlashTicket(ticket)" class="tag tag--flash">{{ FLASH_MARK_LABEL }}</span>
           <span v-if="isXiaozhiTicket(ticket)" class="tag tag--xiaozhi">{{ XIAOZHI_MARK_LABEL }}</span>
           <span
@@ -157,7 +162,8 @@ const csTagTipOverlayInner = {
         <div class="title-pop">
           <div class="tp-head">
             <span class="status-tag" :style="statusStyle(ticket.nodeStatus)">{{ ticketStatusDisplayName(ticket) }}</span>
-            <span class="tag">{{ ticket.type }}</span>
+            <!-- 悬停卡头的那一组标与行内那一组同源，B21 两处一起排除小智，不然 hover 又把「咨询」抖出来 -->
+            <span v-if="!isXiaozhiTicket(ticket)" class="tag">{{ ticket.type }}</span>
             <span v-if="isFlashTicket(ticket)" class="tag tag--flash">{{ FLASH_MARK_LABEL }}</span>
             <span v-if="isXiaozhiTicket(ticket)" class="tag tag--xiaozhi">{{ XIAOZHI_MARK_LABEL }}</span>
           </div>

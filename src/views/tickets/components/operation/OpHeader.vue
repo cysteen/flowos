@@ -279,10 +279,17 @@ function priorityHex(p: string): string {
           >
             <span class="badge-dot" :style="{ background: statusHex(detail.status) }" />{{ statusText }}
           </span>
-          <span class="badge badge-neutral">{{ detail.type }}</span>
+          <!--
+            工单类型徽章。🔴 **小智单上不出**（1130 一·补 B21，用户原话「如果是小智工单，
+            就不要展示 咨询」）：徽章位只留「小智」那一枚。
+            ⚠️ **只排除小智，刷机单维持「咨询 + 刷机」两枚不变** —— B21 只针对小智。
+            ⚠️ 这只是**显示口径**：小智单的工单类型在建模上仍是「咨询」（D1），
+            筛选 / 查询 / 报表照原样取数，不受这一道影响。
+          -->
+          <span v-if="!isXiaozhiDetail" class="badge badge-neutral">{{ detail.type }}</span>
           <!-- 「刷机」标识（1013 A1）：刷机单类型为咨询，类型徽章旁另挂标识 -->
           <span v-if="isFlashTicket(detail)" class="badge" :style="tagStyle(FLASH_MARK_COLOR)">{{ FLASH_MARK_LABEL }}</span>
-          <!-- 「小智」标识（1130 D1）：小智单类型为咨询，同位另挂标识 -->
+          <!-- 「小智」标识（1130 D1）：小智单上它是**唯一**那枚类型位徽章（B21） -->
           <span v-if="isXiaozhiDetail" class="badge" :style="tagStyle(XIAOZHI_MARK_COLOR)">{{ XIAOZHI_MARK_LABEL }}</span>
           <span class="badge" :style="tagStyle(priorityHex(detail.priority))">
             <FlagOutlined />{{ detail.priority }}
