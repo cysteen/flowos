@@ -2770,6 +2770,7 @@ watch(
       :is-flash="isFlash"
       :is-xiaozhi="isXiaozhi"
       :claimable="xiaozhiClaimable"
+      :frontline-account="d.xiaozhi?.frontlineAccount"
       :closure-mode="d.closureMode"
       :after-sale-enabled="d.product.afterSaleEnabled"
       :op-state="opState"

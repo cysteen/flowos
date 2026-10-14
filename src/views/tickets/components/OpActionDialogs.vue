@@ -50,6 +50,13 @@ const props = defineProps<{
   lastHandler?: string | null;
   /** 「小智工单」标识（1130 D1）：升级通道只出产研一个（一·补 B10） */
   isXiaozhi?: boolean;
+  /**
+   * 本单的一线人员域账号（工单层 `xiaozhi.frontlineAccount`，建单时必填落下，一·补 B24）。
+   *
+   * 🔴 升级弹窗里这一项**只读带出、不可改** —— 它是**本单绑定的提报人确认凭据**（B6），
+   * 不该在升级时被改成别人；做法与「接收人由产品模块带出、只读」同一套。
+   */
+  frontlineAccount?: string;
 }>();
 
 const emit = defineEmits<{
@@ -335,7 +342,8 @@ function resetForms() {
   escalate.feedbackCategory = FEISHU_FEEDBACK_CATEGORIES[0];
   escalate.rdModule = '';
   escalate.rdPriority = XIAOZHI_RD_PRIORITY_DEFAULT;
-  escalate.frontlineAccount = '';
+  // 只读带出本单建单时落下的凭据，不是让人重填（一·补 B24）
+  escalate.frontlineAccount = props.frontlineAccount ?? '';
   escalate.attachments = [];
   syncFeishu.space = FEISHU_SPACES[0]; syncFeishu.message = '';
   resolve.solution = ''; resolve.createCallback = true;
@@ -718,9 +726,14 @@ function onOk() {
           <div class="op-label req">产研优先级</div>
           <a-radio-group v-model:value="escalate.rdPriority" :options="xiaozhiPriorityOptions" />
         </div>
+        <!--
+          一线人员域账号：**取本单建单时落下的值、只读置灰**（一·补 B24 + 用户裁决）。
+          它是本单绑定的提报人确认凭据，升级时改成别人就等于把确认权交给了另一个人。
+          没值时留空置灰（历史单可能没有），不改成可编辑 —— 真要补值应回到源头，不在这儿补。
+        -->
         <div class="op-field">
           <div class="op-label">一线人员域账号</div>
-          <a-input v-model:value="escalate.frontlineAccount" placeholder="请输入一线人员域账号" />
+          <a-input :value="escalate.frontlineAccount" disabled placeholder="由本单建单信息带出" />
         </div>
         <div class="op-field">
           <div class="op-label">附件</div>

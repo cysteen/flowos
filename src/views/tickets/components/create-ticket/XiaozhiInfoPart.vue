@@ -75,17 +75,20 @@ function onAttachmentChange({ fileList }: { fileList: UploadFile[] }) {
     </div>
 
     <!--
-      🔴 **本组三项不带必填星号**（对读 #5）：它们是**条件必填** —— 只有点「创建并流转」
-      那条路才要（走产研才用得上），点「创建」落池自领时一项都不要。
-      原先星号是**无条件**画着、校验却是条件的，星号在承诺一件代码不执行的事；
-      而这里没有任何信号能知道用户下一步要按哪一枚按钮，故**让星号跟着校验走**：
-      不画星，点「创建并流转」时缺项在字段下方出原文提示。
-      ⚠️ 反过来把校验改成无条件是不行的 —— 那会把「创建」这条路（D5 落池自领）一起挡死。
+      🔴 **本组三项是条件必填**（对读 #5）：只有点「创建并流转」那条路才要（走产研才用得上），
+      点「创建」落池自领时一项都不要。
+
+      星号**照常画**，范围由**小节标题**说清 —— 两者合起来读即「这一组在流转产研时必填」。
+      ⚠️ 不要改成「去掉星号」来迁就条件性：那是把承诺降下来，而不是把范围说清楚，
+      结果是真正必填的时候反而没有任何提示。
+      ⚠️ 也不要反过来把校验改成无条件 —— 那会把「创建」这条路（D5 落池自领）一起挡死。
+      ⚠️ 「一线人员域账号」**不在本小节内**（见卡片最前），它的星号是**无条件**必填（B24）；
+      两种必填靠**分组**区分，不靠有没有星号区分。
     -->
-    <div class="xz-sub">流转产研</div>
+    <div class="xz-sub">流转产研<span class="xz-sub-note">（流转时必填）</span></div>
     <div class="xz-grid">
       <div class="xz-field">
-        <label class="xz-label">{{ L.rdModule }}</label>
+        <label class="xz-label"><span class="req">*</span>{{ L.rdModule }}</label>
         <div class="xz-control">
           <FormSelect
             class="xz-input"
@@ -100,14 +103,14 @@ function onAttachmentChange({ fileList }: { fileList: UploadFile[] }) {
       </div>
 
       <div class="xz-field">
-        <label class="xz-label">{{ L.rdReceiver }}</label>
+        <label class="xz-label"><span class="req">*</span>{{ L.rdReceiver }}</label>
         <div class="xz-control">
           <a-input class="xz-input" :value="receiver" disabled placeholder="由产品模块带出" />
         </div>
       </div>
 
       <div class="xz-field">
-        <label class="xz-label">{{ L.rdPriority }}</label>
+        <label class="xz-label"><span class="req">*</span>{{ L.rdPriority }}</label>
         <div class="xz-control">
           <a-radio-group v-model:value="info.rdPriority" class="xz-radios" :options="priorityOptions" />
         </div>
@@ -178,6 +181,12 @@ function onAttachmentChange({ fileList }: { fileList: UploadFile[] }) {
   font-size: 12px;
   line-height: 18px;
   color: #ef4444;
+}
+/* 小节标题上的范围限定（体例同 `AssignModal` 的「指派说明（选填）」、`SlaEngineView` 的「…（选填）」） */
+.xz-sub-note {
+  margin-left: 2px;
+  font-weight: 400;
+  color: #94a3b8;
 }
 .xz-sub {
   margin-top: 4px;

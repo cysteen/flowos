@@ -42,6 +42,8 @@ const props = defineProps<{
    * 于是小智单的工单池单打开后底栏根本没有「领取」，PRD 列的 12 枚里有一枚界面上不存在。
    */
   claimable?: boolean;
+  /** 本单的一线人员域账号（一·补 B24）：只透传给升级弹窗只读带出，本组件不读它 */
+  frontlineAccount?: string;
   /**
    * 结案方式（基线 §1「结案方式」小节），与工单类型正交。
    * 「直接结案」的单动作集极简 —— 不下送、不升级、不挂起、不转派，见 availableActions。
@@ -773,6 +775,7 @@ defineExpose({ openEscalate, openAftersale, openActivate });
     :group-id="groupId"
     :last-handler="lastHandler"
     :is-xiaozhi="isXiaozhi"
+    :frontline-account="frontlineAccount"
     @confirm="onDialogConfirm"
   />
 

@@ -1,13 +1,14 @@
 /**
  * 小智工单 · 工单库在办 / 已办样本（1130 小智工单）。
  *
- * 五条路径各一张（D5 / D21 / 一·补 B5 / B7 / B8 / B9）：
+ * 七张，覆盖各条路径（D5 / D21 / 一·补 B5 / B7 / B8 / B9 / PRD §5.4）：
  * ① 人工跟进中（进池已领、小智坐席在办）；
  * ② 直通产研待回传（「创建并流转」→ 系统自动流转，本单「已升级产研」、处理人不转移，D6）；
  * ③ 产研已办结 · **待校代确认**（B5：办结**不关单**，状态仍「已升级产研」）；
  * ④ 校代**确认已解决** → 关单 + 下送调研，处理人统一改系统（B5① / B9）；
  * ⑤ 校代**确认未解决** → 状态不动，系统自动回传产研，记「第 N 次回传产研」（B5② / B8）；
- * ⑥ **超 N 天未确认** → 装载时判「视为已解决」，自动结案 + 下送调研（B7）。
+ * ⑥ **超 N 天未确认** → 装载时判「视为已解决」，自动结案 + 下送调研（B7）；
+ * ⑦ 人工跟进中 · **已自查一轮、尚未升级** —— 「人工升级 · 产研」的演示入口（PRD §5.4）。
  *
  * 🔴 **校代确认只由种子体现，页面上没有「模拟确认」按钮** —— 确认动作发生在小智工单应用里
  * （B6），工单系统侧只接结果，原型没有校代端。③④⑤ 正是「未确认 / 确认是 / 确认否」三种结果。
@@ -98,7 +99,7 @@ function rd(
  */
 const FRONTLINE_ACCOUNTS: Record<number, string> = {
   1: 'lixiaodai', 2: 'wangxiaodai', 3: 'chenxiaodai',
-  4: 'lixiaodai', 5: 'zhaoxiaodai', 6: 'zhouxiaodai',
+  4: 'lixiaodai', 5: 'zhaoxiaodai', 6: 'zhouxiaodai', 7: 'sunxiaodai',
 };
 
 function rdInfo(module: string, priority: XiaozhiRdPriority, frontlineAccount: string): XiaozhiRdInfo {
@@ -487,6 +488,43 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
       XIAOZHI_TL.autoEscalate(ESCALATE_CHANNEL_TPD, xiaozhiRdTitle(rd6.module)), { systemActor: true }),
     tl(stamp(t6Settled), 'node', 'relate', '系统', '系统', '产研回传',
       XIAOZHI_TL.rdSettled('问题'), { systemActor: true }),
+  ];
+
+  /**
+   * ⑦ 人工跟进中 · **已自查一轮、尚未升级** —— 「人工升级 · 产研」那条路（PRD §5.4 / §11.2）
+   * 的现成演示入口。
+   *
+   * 🔴 **为什么单独加一张**：①–⑥ 里能点「升级」的只有 ① 一张（其余四张已在「已升级产研」上
+   * 升级置灰、一张已结案底栏全灰），演示时很容易卡在「找不到升级按钮」。
+   * ① 是「刚领到、还没动手」的样子，这一张补的是「**自查完、该交产研了**」那一刻 ——
+   * 处理记录里已有排查结论，下一步正好点底栏「升级」。
+   * 它同时是 #8 那条链路（弹窗产研五项 → `escalateToRd` → 产研反馈 Tab）的回归用例。
+   */
+  const t7 = row(7, {
+    title: '智能阅卷 · 主观题分数回传缺失 · IM',
+    customer: '亳州五中 · 孙校代',
+    phone: '13905510007',
+    productCategory: '软件服务',
+    productName: '智学网会员',
+    problemL1: '功能异常',
+    problemL2: '播放问题',
+    problemL3: '在线播放',
+    problemDesc: '一场考试的主观题分数未回传到成绩单，已核实评卷端打分正常，疑似回传链路异常，需转产研定位。',
+    nodeStatus: '处理中',
+    assignee: AGENT,
+    tab: 'mine',
+    ...XIAOZHI_SLA_IDLE,
+    createdAt: '2026-09-19 10:08',
+    updatedAt: '2026-09-19 11:35',
+    // 未走过产研：无 rd、rdSync 为 none —— 产研反馈 Tab 此时**不出**，升级成功后才出现
+    xiaozhi: { frontlineAccount: FRONTLINE_ACCOUNTS[7], rdSync: 'none', rdRecords: [], rdReturnCount: 0 },
+  });
+  tickets.push(t7);
+  timelines[t7.no] = [
+    tl('2026-09-19 10:08:14', 'node', 'create', AGENT, AGENT_ROLE, '建单', XIAOZHI_TL.create(XIAOZHI_TICKET_SOURCE)),
+    tl('2026-09-19 10:21:36', 'node', 'accept', AGENT, AGENT_ROLE, '领取', `${AGENT} 从${XIAOZHI_POOL_GROUP_NAME}工单池领取本单。`),
+    tl('2026-09-19 11:35:02', 'handle', 'handle', AGENT, AGENT_ROLE, '工单处理',
+      '已核对评卷端打分记录与成绩单数据：评卷侧有分、成绩单侧缺失，判定为回传链路问题，自查无法解决，准备转产研。'),
   ];
 
   return { tickets, timelines };
