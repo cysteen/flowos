@@ -467,6 +467,8 @@ export interface Ticket {
   product: string;
   /** 问题描述（列表行速览） */
   problemDesc?: string;
+  /** 问题描述附件（建单时随问题描述上传，文件名列表；处理页「问题与诉求」卡问题描述下方展示） */
+  problemDescAttachments?: string[];
   /** 最新处理结果（列表行速览） */
   latestHandling?: string;
   /**

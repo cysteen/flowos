@@ -32,6 +32,8 @@ import {
   maskPhone,
 } from '@/views/tickets/types/createTicket';
 import { useCreateTicketForm } from '@/views/tickets/composables/useCreateTicketForm';
+import OpTextareaAttach from '@/views/tickets/components/operation/shared/OpTextareaAttach.vue';
+import { TICKETS } from '@/mock/tickets';
 import CreateTicketPartCard from './create-ticket/CreateTicketPartCard.vue';
 import CustomerInfoModal from './create-ticket/CustomerInfoModal.vue';
 import FormSelect from './create-ticket/FormSelect.vue';
@@ -216,6 +218,8 @@ function onCreate(processAfter = false) {
   submitting.value = true;
   const ticket = buildTicket();
   emit('created', ticket, processAfter);
+  // 新单落工单库：打开处理页取得到本单的问题描述与附件（调用方已自行落库的不重复写入）
+  if (!TICKETS.some((x) => x.no === ticket.no)) TICKETS.unshift(ticket);
   let msg = `工单 ${ticket.no} 已创建${processAfter ? '，进入处理页' : ''}`;
   if (isChildMode.value) msg = `子工单 ${ticket.no} 已创建${processAfter ? '，进入处理页' : ''}`;
   else if (isReopenMode.value) msg = `Reopen 工单 ${ticket.no} 已创建${processAfter ? '，进入处理页' : ''}`;
@@ -605,13 +609,15 @@ watch(
           <!-- 问题描述篇幅长，整行收尾 -->
           <div v-if="!isFlashType" class="inline-field desc-field">
             <label class="inline-label xl"><span class="req">*</span>问题描述</label>
-            <a-textarea
-              v-model:value="form.description"
-              class="inline-control field-control"
-              :status="errors.description ? 'error' : ''"
-              :auto-size="{ minRows: 3, maxRows: 8 }"
-              placeholder="请描述客户反馈的问题与诉求"
-            />
+            <!-- 带附件文本框：与处理页问题原因、处理结果同一组件（OpTextareaAttach），附件随工单保存 -->
+            <div class="inline-control field-control desc-attach" :class="{ 'has-error': errors.description }">
+              <OpTextareaAttach
+                v-model="form.description"
+                v-model:attachments="form.descriptionAttachments"
+                :min-input-height="60"
+                placeholder="请描述客户反馈的问题与诉求"
+              />
+            </div>
           </div>
         </div>
       </CreateTicketPartCard>
@@ -1240,6 +1246,8 @@ watch(
 /* 问题描述：整行长文本，标签与首行对齐 */
 .desc-field { align-items: flex-start; }
 .desc-field .inline-label { line-height: 32px; }
+.desc-attach { min-width: 0; }
+.desc-attach.has-error :deep(.textarea-shell) { border-color: #ff4d4f; }
 .desc-field :deep(textarea.ant-input) {
   font-size: 13px;
   padding-top: 5px;

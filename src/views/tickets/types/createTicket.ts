@@ -195,6 +195,8 @@ export interface CreateTicketFormState {
   problemL3: string;
   priority: Priority;
   description: string;
+  /** 问题描述附件（文件名列表，交互同处理页带附件文本框 OpTextareaAttach） */
+  descriptionAttachments: string[];
   title: string;
   titleManual: boolean;
   /** 投诉专属 */

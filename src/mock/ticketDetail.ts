@@ -110,6 +110,8 @@ export interface TicketDetailMeta {
   /** 产品&问题（产品分类路径 + 问题分类路径，对齐参考稿 desc-box） */
   productIssue: string;
   demand: string;
+  /** 问题描述附件（建单时上传，见 Ticket.problemDescAttachments）；无则为空 */
+  demandAttachments?: string[];
   attachments: string[];
   isExternalAppeal: boolean;
   insight: InsightStats;

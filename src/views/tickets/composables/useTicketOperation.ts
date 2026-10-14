@@ -420,6 +420,7 @@ export function useTicketOperation() {
       if (t.problemDesc?.trim()) {
         base.demand = t.problemDesc.trim();
       }
+      base.demandAttachments = t.problemDescAttachments?.length ? [...t.problemDescAttachments] : [];
       base.latestHandling = ticketLatestHandlingItems(t);
     }
     // 按类型覆盖概要（无工单级文案时回退类型样例）

@@ -71,6 +71,18 @@ watch(expandedCol, (v) => emit('expand-change', v !== null), { immediate: true }
               <span class="hi-label">问题描述</span>
             </div>
             <div class="hi-text">{{ detail.demand }}</div>
+            <!-- 问题描述附件：建单时随问题描述上传，样式同处理页带附件文本框的附件标签 -->
+            <div v-if="detail.demandAttachments?.length" class="desc-attach-chips">
+              <span v-for="f in detail.demandAttachments" :key="f" class="desc-attach-chip" :title="f">
+                <svg class="clip-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path
+                    d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                  />
+                </svg>
+                <span class="desc-attach-name">{{ f }}</span>
+              </span>
+            </div>
           </div>
         </div>
       </section>
@@ -328,6 +340,14 @@ watch(expandedCol, (v) => emit('expand-change', v !== null), { immediate: true }
   color: #111827;
 }
 .ob-empty { font-size: 12px; color: #9ca3af; }
+/* 问题描述附件标签：与 OpTextareaAttach 的附件标签同一规格 */
+.desc-attach-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.desc-attach-chip {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+  padding: 4px 8px; background: #f3f4f6; border-radius: 6px; font-size: 12px; color: #374151;
+}
+.desc-attach-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.desc-attach-chip .clip-icon { width: 14px; height: 14px; color: #6b7280; flex: none; }
 /* 最新处理：正文过长截断，⤢ 放大后看全文 */
 .ob-handle:not(.expanded) .hi-text {
   display: -webkit-box;
