@@ -5,8 +5,8 @@ import { FLASH_RESULT_ONLINE_SUCCESS, FLASH_TL } from '@/views/tickets/types/fla
 
 /** 最新处理 · 动作文案（速览带与列表 hover 共用） */
 export const LATEST_HANDLING_ACTION = {
-  PROCESS: '提交工单处理结果',
-  TECH: '提交技术支持处理结果',
+  PROCESS: '提交处理结果',
+  TECH: '技术支持处理结果',
   REGISTER: '登记工单',
 } as const;
 
@@ -75,8 +75,23 @@ function resultTextOf(e: TimelineEntry, fields: string[]): string | undefined {
   return hit?.to?.trim() || undefined;
 }
 
+/**
+ * 「最新处理」卡条目时间统一为 YYYY-MM-DD HH:mm:ss：履历里「今天 HH:mm」补今天日期，只到分钟的补「:00」，其余原样。
+ */
+export function latestWhenText(when: string): string {
+  const s = when.trim();
+  const today = /^今天\s+(\d{2}:\d{2})(:\d{2})?$/.exec(s);
+  if (today) {
+    const d = new Date();
+    const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return `${ymd} ${today[1]}${today[2] ?? ':00'}`;
+  }
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(s)) return `${s}:00`;
+  return s;
+}
+
 function blockAt(e: TimelineEntry): Omit<LatestResultBlock, 'text'> {
-  return { who: e.who, role: e.role, when: e.when.length > 16 ? e.when.slice(0, 16) : e.when };
+  return { who: e.who, role: e.role, when: latestWhenText(e.when) };
 }
 
 /** 刷机单一线的处理条目：带刷机两项的字段变更，或正文即刷机处理记录的「工单处理」条目（无字段变更） */

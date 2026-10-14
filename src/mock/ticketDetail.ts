@@ -369,7 +369,7 @@ export const TICKET_DETAIL: TicketDetailMeta = {
   },
   latestHandling: [
     {
-      who: '王坐席', role: '二线专员', action: '提交工单处理结果', when: '今天 16:30',
+      who: '王坐席', role: '二线专员', action: '提交处理结果', when: '今天 16:30',
       text: '远程升级固件至 v2.3.1 并复测 30 分钟，跳歌问题未再复现，已电话告知客户处理结果与后续观察建议。',
     },
     {

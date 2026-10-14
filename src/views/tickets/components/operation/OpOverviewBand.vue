@@ -6,7 +6,7 @@ import OpFlashResultCard from './OpFlashResultCard.vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import type { InsightAction } from '@/views/tickets/types/operation';
 import type { TicketFlash } from '@/views/tickets/types/flash';
-import { resolveLatestHandlingAction, type FlashRecordBlock } from '@/views/tickets/utils/ticketOverview';
+import { latestWhenText, resolveLatestHandlingAction, type FlashRecordBlock } from '@/views/tickets/utils/ticketOverview';
 
 type OverviewCol = 'desc' | 'stat' | 'handle';
 
@@ -120,11 +120,10 @@ watch(expandedCol, (v) => emit('expand-change', v !== null), { immediate: true }
             <div v-if="flashRecord" class="handle-item">
               <div class="hi-meta">
                 <span v-if="flashRecord.who" class="hi-who">{{ flashRecord.who }}</span>
-                <span class="hi-action">刷机处理记录</span>
-                <span v-if="flashRecord.result" class="hi-tag">{{ flashRecord.result }}</span>
+                <span class="hi-action">刷机处理记录{{ flashRecord.result ? ` · ${flashRecord.result}` : '' }}</span>
                 <span v-if="flashRecord.when" class="hi-when">{{ flashRecord.when }}</span>
               </div>
-              <div v-if="flashRecord.text" class="hi-text hi-pre">{{ flashRecord.text }}</div>
+              <div v-if="flashRecord.text" class="hi-text">{{ flashRecord.text }}</div>
             </div>
           </template>
           <div v-else-if="!detail.latestHandling.length" class="ob-empty">暂无处理记录</div>
@@ -132,7 +131,7 @@ watch(expandedCol, (v) => emit('expand-change', v !== null), { immediate: true }
             <div class="hi-meta">
               <span class="hi-who">{{ h.who }}</span>
               <span class="hi-action">{{ resolveLatestHandlingAction(h) }}</span>
-              <span class="hi-when">{{ h.when }}</span>
+              <span class="hi-when">{{ latestWhenText(h.when) }}</span>
             </div>
             <div class="hi-text">{{ h.text }}</div>
           </div>
@@ -336,11 +335,25 @@ watch(expandedCol, (v) => emit('expand-change', v !== null), { immediate: true }
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-/* 刷机单「最新处理」卡块数多（最多四块），每块正文收到两行 */
-.ob-handle.is-flash:not(.expanded) .hi-text { -webkit-line-clamp: 2; }
-.hi-pre { white-space: pre-line; }
-.hi-tag {
-  font-size: 11px; line-height: 18px; color: #1d4ed8; background: #eff6ff;
-  border: 1px solid #bfdbfe; border-radius: 4px; padding: 0 6px; white-space: nowrap;
+/*
+ * 「最新处理」卡条目样式（普通单与刷机单一致）：抬头 处理人（加粗）· 灰底动作标签 · 时间（右对齐、灰）；
+ * 正文普通字重、保留换行；条目之间只留间距，不画分隔线。
+ */
+.ob-handle .handle-item {
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-bottom: 10px;
 }
+.ob-handle .handle-item:last-child { margin-bottom: 0; }
+.ob-handle .hi-meta { gap: 8px; }
+.ob-handle .hi-action { line-height: 18px; }
+.ob-handle .hi-when { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ob-handle .hi-text,
+.ob-handle .handle-item:first-child .hi-text {
+  font-weight: 400;
+  color: #374151;
+  white-space: pre-line;
+}
+/* 刷机单「最新处理」卡条目多（最多四条），每条正文收到两行 */
+.ob-handle.is-flash:not(.expanded) .hi-text { -webkit-line-clamp: 2; }
 </style>
