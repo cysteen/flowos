@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { FLASH_BADGE_STYLE, isFlashTypeItem, ticketTypeLabel } from '@/views/tickets/utils/ticketTypeDisplay';
 import { isFlashTicket } from '@/views/tickets/types/flash';
 import { CheckOutlined } from '@ant-design/icons-vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, ref, watch } from 'vue';
@@ -680,7 +681,7 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
             </div>
             <template #content>
               <div class="summary-pop">
-                <div class="sp-title"><span class="sp-type">{{ t.type }}</span>{{ t.title }}</div>
+                <div class="sp-title"><span class="sp-type" :style="isFlashTypeItem(t) ? FLASH_BADGE_STYLE : undefined">{{ ticketTypeLabel(t) }}</span>{{ t.title }}</div>
                 <div class="sp-block">
                   <div class="hi-meta">
                     <span class="hi-label">问题描述</span>
