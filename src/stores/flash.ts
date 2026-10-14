@@ -12,7 +12,7 @@ import { makeTicketNo } from '@/constants/ticketNo';
 import {
   FLASH_FIELD_LABELS, FLASH_INFO_FIELD_LABELS, FLASH_NOTIFY_EVENTS, FLASH_POOLS, FLASH_REASON_AUTO,
   FLASH_RETURN_DELAY_MS, FLASH_TIP_MODEL_UNSUPPORTED, FLASH_TIP_PRODUCT_UNSUPPORTED,
-  FLASH_RESULT_ONLINE_SUCCESS, FLASH_RESULT_OFFLINE_PUSHED, normalizeFlashResult,
+  FLASH_RESULT_ONLINE_SUCCESS, FLASH_RESULT_OFFLINE_PUSHED, FLASH_RESULT_ESCALATE_L2, normalizeFlashResult,
   FLASH_TIP_NON_SELF_DEVELOPED, FLASH_TIP_REASON_NOT_GRADUATE_L1, FLASH_TIP_REASON_NOT_GRADUATE_L2,
   FLASH_TIP_AUTO_FLASHING, FLASH_TIP_EDIT_STATE, FLASH_TIP_REPUSH_STATE, FLASH_TIP_SYSTEM_BUSY, FLASH_TIP_VERIFY_UNAVAILABLE,
   FLASH_VERIFY_NOT_RUN, FLASH_TL, FLASH_NOTICE, FLASH_RESULT_OFFLINE, FLASH_TOAST,
@@ -1144,16 +1144,18 @@ export const useFlashStore = defineStore('flash', () => {
 
   /**
    * 升级二线（1013 A18：一线处理结果选「升级二线」、下送时确认后执行，不填说明）：
-   * 子状态回「未认领」、处理人清空、进教育刷机处理组池，转人工原因「一线升级」；处理结果清空交二线重选；
-   * 履历记「升级二线」（带最近一条处理记录）；站内通知归属组；不发转人工短信。
+   * 子状态回「未认领」、处理人清空、进教育刷机处理组池，转人工原因「一线升级」；
+   * 一线的刷机处理结论（「升级二线」）与刷机处理记录落库，二线只读展示（1014）；
+   * 履历记「升级二线」（带最近一条刷机处理记录）；站内通知归属组；不发转人工短信。
    * 进池时间取本条履历（工作台 `poolEnteredAtOf`）；「SLA 起算时间」为空时写入升级时刻（1013 A26）。
    */
-  function escalateToL2(ticketNo: string, by: FlashActor, record?: string): FlashActionResult {
+  function escalateToL2(ticketNo: string, by: FlashActor, record?: string, fullRecord?: string): FlashActionResult {
     const r = rowOf(ticketNo);
     if (!r?.flash || !EDITABLE_STATUSES.includes(r.nodeStatus)) return { ok: false, message: FLASH_TIP_REPUSH_STATE };
     const now = Date.now();
     const st = r.flash.state;
-    st.result = undefined;
+    st.result = FLASH_RESULT_ESCALATE_L2;
+    if (fullRecord !== undefined) st.record = fullRecord;
     const meta = FLASH_POOLS.l2;
     Object.assign(r, {
       nodeStatus: '未认领',
@@ -1221,15 +1223,16 @@ export const useFlashStore = defineStore('flash', () => {
   }
 
   /**
-   * 处理表单保存（1013 A16）：处理结果按现值落库，**不暂停 SLA**。
-   * - 改为「已线下登记」：处理记录追加「已线下登记，〈保存时刻〉」，履历记「线下登记」，单留在本人名下；
-   * - 改为「已线下登记、已推送」：处理记录追加「产线已推送」；
+   * 处理表单保存（1013 A16；1014）：一线的刷机处理结论、刷机处理记录按现值落库，**不暂停 SLA**；
+   * 二线不传两项（二线按咨询单处理，两项只读）。
+   * - 改为「已线下登记」：刷机处理记录追加「已线下登记，〈保存时刻〉」，履历记「线下登记」，单留在本人名下；
+   * - 改为「已线下登记、已推送」：刷机处理记录追加「产线已推送」；
    * - 待响应首次保存转「处理中」（PRD §7.1）。
    */
   function saveProcess(
     ticketNo: string,
     by: FlashActor,
-    input: { result: FlashResult | '' },
+    input: { result?: FlashResult | ''; record?: string },
   ): FlashActionResult & { appendRecord?: string } {
     const r = rowOf(ticketNo);
     if (!r?.flash) return { ok: false, message: FLASH_TIP_EDIT_STATE };
@@ -1246,7 +1249,11 @@ export const useFlashStore = defineStore('flash', () => {
         });
       }
     }
-    st.result = input.result || undefined;
+    if (input.result !== undefined) st.result = input.result || undefined;
+    if (input.record !== undefined) {
+      const cur = input.record.replace(/\s+$/, '');
+      st.record = appendRecord ? (cur ? `${cur}\n${appendRecord}` : appendRecord) : input.record;
+    }
     if (r.nodeStatus === '待响应') Object.assign(r, { nodeStatus: '处理中', responded: true });
     r.updatedAt = flashMinuteStamp(now);
     bump(ticketNo);
@@ -1308,12 +1315,13 @@ export const useFlashStore = defineStore('flash', () => {
    * - 本单已产生过回访结论 → 跳过回访直接「已结案」，不发调研短信，履历「下送（已回访过，直接结案）」；
    * - 否则 → 进「调研中」，处理人为下送人，记下送发起人（X30），发调研短信（写通知记录）。
    */
-  function forward(ticketNo: string, by: FlashActor, result: FlashResult): FlashActionResult {
+  function forward(ticketNo: string, by: FlashActor, result?: FlashResult): FlashActionResult {
     const r = rowOf(ticketNo);
     if (!r?.flash || isTicketClosed(r.nodeStatus)) return { ok: false, message: FLASH_TIP_REPUSH_STATE };
     const st = r.flash.state;
     const now = Date.now();
-    st.result = result;
+    // 一线带刷机处理结论下送；二线按咨询单下送（1014），不改一线的刷机处理结论
+    if (result) st.result = result;
     if (st.surveyConcluded) {
       stopClock(r, now);
       Object.assign(r, {

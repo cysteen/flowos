@@ -89,6 +89,8 @@ const props = defineProps<{
   tabWritableOverride?: Partial<Record<ProcessTabKey, boolean>>;
   /** 刷机单处理表单字段下方提示（透传给处理表单，930 PRD §5.4） */
   flashErrors?: { flashResult?: string };
+  /** 刷机单处理表单形态（透传给处理表单，1014）：一线 / 已在二线 */
+  flashLine?: 'l1' | 'l2';
 }>();
 
 const emit = defineEmits<{
@@ -229,6 +231,7 @@ defineExpose({ switchTab });
         :lead-no-editable="leadNoEditable"
         :is-primary-handler="isPrimaryHandler"
         :flash-errors="flashErrors"
+        :flash-line="flashLine"
         @closing-note-files-added="emit('closingNoteFilesAdded', $event)"
         @toggle-section="emit('toggleSection', $event)"
         @select-chip="emit('selectChip', $event)"

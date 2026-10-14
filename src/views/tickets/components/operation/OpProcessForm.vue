@@ -73,8 +73,13 @@ const props = defineProps<{
    * （`riskFlag` / `riskLevel` / `riskDescription`）是处理人自述，按「角色 ∧ 本人」写。
    */
   isPrimaryHandler?: boolean;
-  /** 刷机单处理表单的字段下方提示（处理结果，PRD §5.4） */
+  /** 刷机单处理表单的字段下方提示（刷机处理结论，PRD §5.4） */
   flashErrors?: { flashResult?: string };
+  /**
+   * 刷机单处理表单形态（1014）：`l1` ＝ 一线（刷机处理结论 + 刷机处理记录）；
+   * `l2` ＝ 已在二线（含三线技术支持）：按普通咨询单补齐问题原因、处理结果、服务与结论，一线两项只读展示。
+   */
+  flashLine?: 'l1' | 'l2';
 }>();
 
 const emit = defineEmits<{
@@ -96,18 +101,21 @@ const leadNoDisabled = computed(() => (
 ));
 
 const isComplaint = computed(() => props.ticketType === '投诉');
-const isConsult = computed(() => props.ticketType === '咨询' && !props.isFlash);
-const isSuggest = computed(() => props.ticketType === '建议');
-const isLead = computed(() => props.ticketType === '商机');
 /**
- * 刷机单（1013 A15 / A16 / A18，PRD §5.4）：「处理记录」区出「处理结果」下拉 + 处理记录正文。
- * 下拉按视角取人工可选项：一线有「升级二线」、二线有「已转售后」；「已线上刷机成功」由系统写入，
- * 不在下拉里出，本单已是该值时只回显。
+ * 刷机单（1013 A15 / A16 / A18；1014，PRD §5.4）：
+ * - 一线：「处理记录」区出「刷机处理结论」下拉 + 「刷机处理记录」正文；「已线上刷机成功」由系统写入，不在下拉里出，本单已是该值时只回显；
+ * - 二线（含三线技术支持）：按普通咨询单出问题原因、处理结果、服务与结论；一线两项只读展示。
  */
 const isFlash = computed(() => !!props.isFlash);
+const isFlashL1 = computed(() => isFlash.value && props.flashLine !== 'l2');
+const isFlashL2 = computed(() => isFlash.value && props.flashLine === 'l2');
+const isConsult = computed(() => props.ticketType === '咨询' && (!isFlash.value || isFlashL2.value));
+const isSuggest = computed(() => props.ticketType === '建议');
+const isLead = computed(() => props.ticketType === '商机');
 const user = useUserStore();
 const flashResultOptions = computed(() => {
-  const opts: string[] = flashResultOptions0(user.roleKey === 'agent-l1' ? '一线' : '二线');
+  // 刷机处理结论只在一线形态可选（1014）：取一线选项
+  const opts: string[] = flashResultOptions0('一线');
   const cur = props.form.flashResult;
   if (cur && !opts.includes(cur)) opts.unshift(cur);
   return opts.map((r) => ({ label: r, value: r, disabled: r === FLASH_RESULT_ONLINE_SUCCESS }));
@@ -271,22 +279,47 @@ function chipActiveClass(key: SupplementChip): string {
       :expanded="expandedSections.record"
       @toggle="emit('toggleSection', 'record')"
     >
-      <div v-if="isFlash" class="field-row field-row--flash">
-        <div class="field inline">
-          <label>处理结果</label>
-          <FormSelect
-            :value="form.flashResult || undefined"
-            :options="flashResultOptions"
-            placeholder="请选择"
-            style="width: 100%"
-            :status="flashErrors?.flashResult ? 'error' : ''"
-            @update:value="onFlashResultChange"
-          />
-          <div v-if="flashErrors?.flashResult" class="flash-err">{{ flashErrors.flashResult }}</div>
+      <template v-if="isFlashL1">
+        <div class="field-row field-row--flash">
+          <div class="field inline">
+            <label>刷机处理结论</label>
+            <FormSelect
+              :value="form.flashResult || undefined"
+              :options="flashResultOptions"
+              placeholder="请选择"
+              style="width: 100%"
+              :status="flashErrors?.flashResult ? 'error' : ''"
+              @update:value="onFlashResultChange"
+            />
+            <div v-if="flashErrors?.flashResult" class="flash-err">{{ flashErrors.flashResult }}</div>
+          </div>
         </div>
-      </div>
+        <div class="field">
+          <label>刷机处理记录</label>
+          <OpTextareaAttach
+            :model-value="form.flashRecord ?? ''"
+            :attachments="form.flashRecordAttachments ?? []"
+            :readonly="contentLocked"
+            placeholder="描述核实、联系与处理过程…"
+            @update:model-value="(v: string) => patch({ flashRecord: v })"
+            @update:attachments="(v: string[]) => patch({ flashRecordAttachments: v })"
+          />
+        </div>
+      </template>
+      <template v-else-if="isFlashL2">
+        <div class="flash-ro">
+          <div class="flash-ro-row">
+            <span class="flash-ro-label">刷机处理结论</span>
+            <span class="flash-ro-value">{{ form.flashResult || '—' }}</span>
+          </div>
+          <div class="flash-ro-row">
+            <span class="flash-ro-label">刷机处理记录</span>
+            <span class="flash-ro-value flash-ro-text">{{ form.flashRecord?.trim() || '—' }}</span>
+          </div>
+        </div>
+      </template>
       <OpRecordFields
-        :flash-mode="isFlash"
+        v-if="!isFlashL1"
         :problem-cause="form.problemCause"
         :process-result="form.processResult"
         :problem-cause-attachments="form.problemCauseAttachments"
@@ -527,6 +560,14 @@ function chipActiveClass(key: SupplementChip): string {
 .field-row--lead { align-items: flex-start; flex-wrap: nowrap; }
 .field-row--flash { align-items: flex-start; margin-bottom: 10px; }
 .flash-err { font-size: 12px; line-height: 18px; color: #ef4444; }
+.flash-ro {
+  display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px;
+  padding: 10px 12px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px;
+}
+.flash-ro-row { display: flex; gap: 12px; font-size: 12px; line-height: 20px; }
+.flash-ro-label { flex: none; width: 84px; font-weight: 600; color: #374151; }
+.flash-ro-value { flex: 1; min-width: 0; color: #111827; }
+.flash-ro-text { white-space: pre-wrap; word-break: break-word; }
 .field-row .field.inline { flex: 1 1 0; min-width: 0; }
 .field-row--service { align-items: flex-start; flex-wrap: nowrap; }
 .field-row--service .field.inline { flex: 1 1 0; min-width: 0; }

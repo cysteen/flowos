@@ -5,6 +5,7 @@ import { TYPE_SAMPLES } from '@/mock/ticketTypeSamples';
 import { TICKETS } from '@/mock/tickets';
 import { isAftersaleChainTicket } from './aftersaleEvents';
 import { isComplaintCategoryComplete } from '@/views/tickets/types/createTicket';
+import { isFlashTicket } from '@/views/tickets/types/flash';
 
 function complaintCategoryFilled(f: ProcessFormDraft): boolean {
   return isComplaintCategoryComplete(f);
@@ -20,7 +21,8 @@ function buildDraft(type: string, ticketNo?: string): ProcessFormDraft {
     ...(TYPE_SAMPLES[type]?.processDraft ?? {}),
   };
   const row = ticketNo ? TICKETS.find((x) => x.no === ticketNo) : undefined;
-  if (!isAftersaleChainTicket(row)) return draft;
+  // 刷机单（1014）：二线按咨询单填问题原因 / 处理结果，不预填咨询单样例文字
+  if (!isAftersaleChainTicket(row) && !(row && isFlashTicket(row))) return draft;
   return {
     ...draft, problemCause: '', processResult: '', problemCauseAttachments: [], processResultAttachments: [],
   };

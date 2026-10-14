@@ -430,6 +430,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       flashState: state('用户提报', {
         outcome: '接收失败', failL1: '接收失败', failL2: '未联网', pushCount: 1,
         handoffReason: '一线升级', pool: 'l2', handoffSmsSent: true,
+        result: '升级二线', record: '两次致电用户梁红均未接通，设备持续离线，一线无法跟进。',
         ...ledger(nowMs, esc, 425),
       }),
       runs: [
@@ -511,6 +512,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       flashState: state('用户提报', {
         outcome: '接收失败', failL1: '接收失败', failL2: '版本不符', pushCount: 1,
         handoffReason: '一线升级', pool: 'l2', handoffSmsSent: true,
+        result: '升级二线', record: '已致电用户沈建，设备在线但系统版本过低，用户端检查更新无可用升级包，一线无法处理。',
         ...ledger(nowMs, esc, 135),
       }),
       runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '接收失败', failL1: '接收失败', failL2: '版本不符', resultAt: back })],
@@ -608,6 +610,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       flashState: state('用户提报', {
         handoffReason: '非自研机型', pool: 'l1', handoffSmsSent: true,
         result: FLASH_RESULT_OFFLINE,
+        record: `已在线下登记表登记该设备，等待产线推送。\n已线下登记，${registered.slice(0, 16)}`,
       }),
       runs: [],
     }), [
@@ -615,7 +618,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       handoffEntry(addSec(at, 2), '非自研机型', 'l1'),
       smsEntry(addSec(at, 3), '13855205625', flashSmsHandoff(no(14))),
       acceptEntry(claim, '刘一线', '一线坐席'),
-      handleEntry(registered, '刘一线', '一线坐席', `已在线下登记表登记该设备，等待产线推送；处理结果：${FLASH_RESULT_OFFLINE}`),
+      handleEntry(registered, '刘一线', '一线坐席', `已在线下登记表登记该设备，等待产线推送；刷机处理结论：${FLASH_RESULT_OFFLINE}`),
     ]);
   }
 

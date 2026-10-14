@@ -457,11 +457,11 @@ function onFlashInfoDone(res: FlashActionResult) {
 
 /** 升级二线确认后：进教育刷机处理组池，履历带最近一条处理记录（1013 A18） */
 function onFlashEscalateSubmit() {
-  // 最近一条处理记录：取处理记录正文的最后一行
-  const record = (form.value.processResult ?? '').trim().split('\n').filter((s) => s.trim()).pop();
-  const res = flashStore.escalateToL2(d.value.no, flashActor(), record);
+  // 最近一条刷机处理记录：取刷机处理记录正文的最后一行；全文落库，二线只读展示（1014）
+  const full = form.value.flashRecord ?? '';
+  const record = full.trim().split('\n').filter((s) => s.trim()).pop();
+  const res = flashStore.escalateToL2(d.value.no, flashActor(), record, full);
   if (res.ok) {
-    form.value = { ...form.value, flashResult: '' };
     processBaseline = snapshotProcess();
     message.success(res.message);
   } else {
@@ -498,9 +498,19 @@ const flashIsInitiator = computed(() => {
 /** 调研中本单有无下送发起人：自动刷机成功直进回访的单没有，撤回悬停「当前无可撤回的操作」（M99） */
 const flashHasForwarder = computed(() => !!d.value.flash?.state.forwardedBy);
 
-/** 刷机单下送校验（PRD §5.4 / 1013 A15）：未选处理结果、「已线下登记」拦下；空串＝通过 */
+/**
+ * 刷机单处理表单形态（1014）：单子已在二线（教育刷机处理组池，含升级三线技术支持）或当前为二线 / 技术支持视角 → `l2`，
+ * 按普通咨询单补齐处理要素，一线的刷机处理结论、刷机处理记录只读；其余 → `l1`。
+ */
+const flashFormLine = computed<'l1' | 'l2' | undefined>(() => {
+  if (!isFlash.value) return undefined;
+  if (flashView.value === 'l2' || flashView.value === 'tech') return 'l2';
+  return d.value.flash?.state.pool === 'l2' ? 'l2' : 'l1';
+});
+
+/** 刷机单下送校验（PRD §5.4 / 1013 A15）：一线未选刷机处理结论、「已线下登记」拦下；二线按咨询单校验；空串＝通过 */
 const flashForwardTip = computed(() => {
-  if (!isFlash.value) return '';
+  if (!isFlash.value || flashFormLine.value === 'l2') return '';
   const f = form.value;
   if (!f.flashResult) return FLASH_TIP_RESULT_REQUIRED;
   if (f.flashResult === FLASH_RESULT_OFFLINE) return FLASH_TIP_OFFLINE_FORWARD;
@@ -513,12 +523,16 @@ const flashForwardEscalate = computed(
 /** 下送确认主按钮：本单已产生过回访结论＝「下送并结案」（M58） */
 const flashForwardOkText = computed(() => (d.value.flash?.state.surveyConcluded ? '下送并结案' : '确认下送'));
 
-/** 处理表单刷机字段的字段下方提示（保存时判，改动即清） */
+/** 处理表单刷机字段的字段下方提示（下送被拦时写入，改动即清） */
 const flashFormErrors = ref<{ flashResult?: string }>({});
 watch(
   () => form.value.flashResult,
   () => { flashFormErrors.value = {}; },
 );
+/** 一线下送因未选刷机处理结论被拦：字段下方同步出提示（PRD §5.4「下送必填校验」） */
+function onFlashForwardBlocked(tip: string) {
+  if (tip === FLASH_TIP_RESULT_REQUIRED) flashFormErrors.value = { flashResult: tip };
+}
 
 /**
  * **底栏**那一枚按钮出不出 —— 只剩报备形态这一条出现条件（基线 ※29）：
@@ -1445,8 +1459,9 @@ function isFeishuEscalate(payload: Record<string, unknown>): boolean {
 const BASE_PROCESS_FIELDS: { key: keyof ProcessFormDraft; label: string }[] = [
   { key: 'problemCause', label: '问题原因' },
   { key: 'processResult', label: '处理结果' },
-  // 刷机单处理表单（PRD §5.4）：处理结果下拉；四类老工单恒为空，不产生差异
-  { key: 'flashResult', label: '处理结果' },
+  // 刷机单处理表单（PRD §5.4）：一线的刷机处理结论、刷机处理记录；四类老工单恒为空，不产生差异
+  { key: 'flashResult', label: '刷机处理结论' },
+  { key: 'flashRecord', label: '刷机处理记录' },
   { key: 'serviceType', label: '服务类型' },
   { key: 'serviceMethod', label: '服务方式' },
   { key: 'conclusion', label: '问题解决结论' },
@@ -1455,17 +1470,14 @@ const BASE_PROCESS_FIELDS: { key: keyof ProcessFormDraft; label: string }[] = [
   { key: 'leadNo', label: '商机编号' },
   { key: 'closingNote', label: '结案后备注' },
 ];
-/** 刷机单的「处理结果」正文框在页面上叫「处理记录」，履历字段名随之 */
-const PROCESS_FIELDS_PROXY = () => BASE_PROCESS_FIELDS.map((f) => (
-  isFlash.value && f.key === 'processResult' ? { ...f, label: '处理记录' } : f
-));
+const PROCESS_FIELDS_PROXY = () => BASE_PROCESS_FIELDS;
 
 /** 处理表单快照（含各字段值 + 附件数），作为变更 diff 的基线 */
 function snapshotProcess(): Record<string, string> {
   const f = form.value;
   const snap: Record<string, string> = {};
   for (const { key } of PROCESS_FIELDS_PROXY()) snap[key] = String(f[key] ?? '').trim();
-  snap.__att = String([...(f.processResultAttachments ?? []), ...(f.problemCauseAttachments ?? [])].length);
+  snap.__att = String([...(f.processResultAttachments ?? []), ...(f.problemCauseAttachments ?? []), ...(f.flashRecordAttachments ?? [])].length);
   snap.__cnAtt = JSON.stringify(f.closingNoteAttachments ?? []);
   return snap;
 }
@@ -1485,25 +1497,26 @@ watch(ticketNo, () => {
   processBaseline = snapshotProcess();
   riskLevelBaseline = form.value.riskLevel;
 });
-// 刷机单：处理结果按工单库回填表单（切单时），并以之为变更基线
+// 刷机单：刷机处理结论、刷机处理记录按工单库回填表单（切单时），并以之为变更基线
 watch(
   [() => d.value.no, isFlash],
   () => {
     if (!isFlash.value) return;
     const st = d.value.flash?.state;
-    form.value = { ...form.value, flashResult: normalizeFlashResult(st?.result) };
+    form.value = { ...form.value, flashResult: normalizeFlashResult(st?.result), flashRecord: st?.record ?? '' };
     processBaseline = snapshotProcess();
   },
   { immediate: true },
 );
-// 系统改写处理结果（重新推送接收成功写入「已线上刷机成功」、升级二线清空）时同步回表单
+// 系统改写刷机处理结论 / 刷机处理记录（重新推送接收成功写入「已线上刷机成功」、升级二线落库）时同步回表单
 watch(
-  () => d.value.flash?.state.result,
-  (v) => {
+  () => [d.value.flash?.state.result, d.value.flash?.state.record] as const,
+  ([v, rec]) => {
     if (!isFlash.value) return;
     const next = normalizeFlashResult(v);
-    if (form.value.flashResult === next) return;
-    form.value = { ...form.value, flashResult: next };
+    const nextRec = rec ?? form.value.flashRecord ?? '';
+    if (form.value.flashResult === next && form.value.flashRecord === nextRec) return;
+    form.value = { ...form.value, flashResult: next, flashRecord: nextRec };
     processBaseline = snapshotProcess();
   },
 );
@@ -1619,7 +1632,7 @@ function buildProcessLog() {
     }
     changes.push(before ? { field: label, kind: '修改', from: before, to: after } : { field: label, kind: '补充', to: after });
   }
-  const attArr = [...(f.processResultAttachments ?? []), ...(f.problemCauseAttachments ?? [])];
+  const attArr = [...(f.processResultAttachments ?? []), ...(f.problemCauseAttachments ?? []), ...(f.flashRecordAttachments ?? [])];
   const attAdded = attArr.length - Number(processBaseline.__att ?? '0');
   if (attAdded > 0) changes.push({ field: '附件', kind: '补充', to: `新增 ${attAdded} 个（${attArr[attArr.length - 1]}）` });
   const cn = closingNoteAttachmentDiff();
@@ -1639,21 +1652,22 @@ function buildProcessLog() {
 }
 
 /**
- * 刷机单保存的附加动作（PRD §5.4 / 1013 A16）：交刷机服务落处理结果；改为「已线下登记」或
- * 「已线下登记、已推送」时，把系统追加的那一行并进「处理记录」。返回 false ＝ 拦下、不保存。
+ * 刷机单保存的附加动作（PRD §5.4 / 1013 A16；1014）：一线交刷机服务落刷机处理结论与刷机处理记录；改为「已线下登记」或
+ * 「已线下登记、已推送」时，把系统追加的那一行并进「刷机处理记录」。二线按咨询单保存，不动一线两项。返回 false ＝ 拦下、不保存。
  */
 function onFlashSave(): boolean {
   const f = form.value;
-  const res = flashStore.saveProcess(d.value.no, flashActor(), {
-    result: (f.flashResult ?? '') as FlashResult | '',
-  });
+  const l1 = flashFormLine.value !== 'l2';
+  const res = flashStore.saveProcess(d.value.no, flashActor(), l1
+    ? { result: (f.flashResult ?? '') as FlashResult | '', record: f.flashRecord ?? '' }
+    : {});
   if (!res.ok) {
     if (res.message) message.warning(res.message);
     return false;
   }
-  if (res.appendRecord) {
-    const cur = (form.value.processResult ?? '').replace(/\s+$/, '');
-    form.value = { ...form.value, processResult: cur ? `${cur}\n${res.appendRecord}` : res.appendRecord };
+  if (l1 && res.appendRecord) {
+    const cur = (form.value.flashRecord ?? '').replace(/\s+$/, '');
+    form.value = { ...form.value, flashRecord: cur ? `${cur}\n${res.appendRecord}` : res.appendRecord };
   }
   return true;
 }
@@ -1667,7 +1681,8 @@ function onFlashAction(payload: Record<string, unknown>): boolean {
   const type = payload.type as string;
   const data = (payload.data ?? {}) as Record<string, unknown>;
   if (type === '下送' && !data.backToDelegator) {
-    const res = flashStore.forward(no, flashActor(), form.value.flashResult as FlashResult);
+    // 二线按咨询单下送（1014），不带刷机处理结论
+    const res = flashStore.forward(no, flashActor(), flashFormLine.value === 'l2' ? undefined : form.value.flashResult as FlashResult);
     if (res.ok) message.success(res.message);
     else message.warning(res.message);
     return true;
@@ -2441,7 +2456,8 @@ function updateTabData(next: OperationTabData) {
 /** 处理表单 / 技术支持「处理结果」→ 速览带「最新处理」及时回写 */
 function syncLatestHandlingFromDrafts() {
   d.value.latestHandling = mergeDraftIntoLatestHandling(d.value.latestHandling, {
-    processResult: form.value.processResult,
+    // 刷机单一线：最新处理取刷机处理记录（1014）
+    processResult: flashFormLine.value === 'l1' ? (form.value.flashRecord ?? '') : form.value.processResult,
     techProcessResult: tabData.value.techDraft.processResult,
     processWho: user.name || '当前坐席',
     processRole: mapUserRole(user.roleKey),
@@ -2457,6 +2473,7 @@ function syncLatestHandlingFromDrafts() {
 watch(
   [
     () => form.value.processResult,
+    () => form.value.flashRecord,
     () => tabData.value.techDraft.processResult,
     () => d.value.no,
   ],
@@ -2563,6 +2580,7 @@ watch(
           :is-primary-handler="isPrimaryHandler"
           :tab-writable-override="flashTabWritable"
           :flash-errors="flashFormErrors"
+          :flash-line="flashFormLine"
           @toggle-section="toggleSection"
           @select-chip="selectChip"
           @update:form="updateForm"
@@ -2643,7 +2661,9 @@ watch(
       :flash-forward-tip="flashForwardTip"
       :flash-forward-escalate="flashForwardEscalate"
       :flash-forward-ok-text="flashForwardOkText"
+      :flash-consult-forward="flashFormLine === 'l2'"
       @flash-escalate="onFlashEscalateL2"
+      @flash-forward-blocked="onFlashForwardBlocked"
       @claim="onFlashClaim"
       @action="onAction"
       @cancel="cancelModalOpen = true"

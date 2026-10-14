@@ -112,10 +112,12 @@ const props = defineProps<{
   flashHasForwarder?: boolean;
   /** 刷机单下送必填校验不通过的提示（空＝通过，PRD §5.4「下送必填校验」；含「已线下登记」拦截） */
   flashForwardTip?: string;
-  /** 处理结果＝升级二线（一线）：下送改为「升级二线确认」，确认后进教育刷机处理组池（1013 A18） */
+  /** 刷机处理结论＝升级二线（一线）：下送改为「升级二线确认」，确认后进教育刷机处理组池（1013 A18） */
   flashForwardEscalate?: boolean;
   /** 刷机单下送确认弹窗主按钮文案（本单已产生过回访结论＝「下送并结案」，PRD §5.5） */
   flashForwardOkText?: string;
+  /** 刷机单已在二线（1014）：下送必填校验与咨询单一致（问题原因、处理结果），不按刷机处理结论拦 */
+  flashConsultForward?: boolean;
 }>();
 
 /** 置灰提示的兜底：调用方没给原因时至少说清"被挡住了"，不冒充一个具体理由 */
@@ -134,6 +136,8 @@ const emit = defineEmits<{
   }];
   /** 刷机单下送且处理结果＝升级二线：确认弹窗与落库由处理页接（1013 A18） */
   flashEscalate: [];
+  /** 刷机单一线下送被拦（提示原文），处理页据此在字段下方出提示 */
+  flashForwardBlocked: [tip: string];
   /** 刷机单池中未认领：领取（PRD §4.2） */
   claim: [];
 }>();
@@ -509,10 +513,11 @@ function run(action: OpActionType | '转单') {
       forwardModalOpen.value = true;
       return;
     }
-    // 刷机单：按处理结果判（PRD §5.4），不校验问题原因
-    if (props.isFlash) {
+    // 刷机单一线：按刷机处理结论判（PRD §5.4），不校验问题原因；已在二线的按咨询单校验（1014）
+    if (props.isFlash && !props.flashConsultForward) {
       if (props.flashForwardTip) {
         message.warning(props.flashForwardTip);
+        emit('flashForwardBlocked', props.flashForwardTip);
         return;
       }
       if (props.flashForwardEscalate) return emit('flashEscalate');

@@ -146,8 +146,11 @@ export function isAppointmentExpired(r: AppointmentRecord, now = dayjs()): boole
 export interface ProcessFormDraft {
   problemCause: string;
   processResult: string;
-  /** 刷机单 · 处理结果（下拉，PRD §5.4）；其他类型不出 */
+  /** 刷机单 · 刷机处理结论（一线下拉，PRD §5.4）；二线只读；其他类型不出 */
   flashResult?: string;
+  /** 刷机单 · 刷机处理记录（一线正文框，PRD §5.4）；二线只读；其他类型不出 */
+  flashRecord?: string;
+  flashRecordAttachments?: string[];
   problemCauseAttachments: string[];
   processResultAttachments: string[];
   serviceMethod: string;

@@ -300,8 +300,10 @@ export interface FlashState {
   pushCount: number;
   /** 转人工原因（最近一次进池的缘由） */
   handoffReason?: FlashHandoffReason;
-  /** 处理结果（下送必填） */
+  /** 刷机处理结论（一线下送必填；二线只读） */
   result?: FlashResult;
+  /** 刷机处理记录（一线填写，保存落库；二线只读） */
+  record?: string;
   /** 关联投诉单号（弱关联，两单各自流转，1013 A21 / B5），时间正序 */
   linkedComplaintNos?: string[];
   /** 归属池（未进过人工池为空） */
@@ -487,7 +489,7 @@ export function flashTipVerifyFailed(l2: FlashFailL2): string {
     : '未查询到该学生的毕业生身份，请核实后再推送';
 }
 /** 处理表单 · 下送必填（PRD §5.4） */
-export const FLASH_TIP_RESULT_REQUIRED = '请选择处理结果';
+export const FLASH_TIP_RESULT_REQUIRED = '请选择刷机处理结论';
 
 /** Toast（PRD §5.5 / §5.6 / §5.7 / §5.8，逐字） */
 export const FLASH_TOAST = {
@@ -587,15 +589,16 @@ export const FLASH_TL = {
   offlineRegister: (time: string) => `已线下登记，${time}`,
   /** 改为「已线下登记、已推送」并保存时追加进处理记录的一行（A16） */
   offlinePushed: '产线已推送',
-  /** 升级二线（A18）：「升级至教育刷机处理组」＋ 最近一条处理记录 */
+  /** 升级二线（A18）：「升级至教育刷机处理组」＋ 最近一条刷机处理记录 */
   escalateL2: (record?: string) =>
-    `升级至教育刷机处理组${record?.trim() ? `；处理记录：${record.trim()}` : ''}`,
+    `升级至教育刷机处理组${record?.trim() ? `；刷机处理记录：${record.trim()}` : ''}`,
   /** 关联投诉（A21 / B5）：两单各自流转，本单状态不变 */
   linkComplaint: (no: string) => `关联投诉单 ${no}`,
   /** 投诉单侧（A21） */
   linkedFromFlash: (no: string) => `关联刷机单 ${no}`,
-  forward: (result: string) => `下送；处理结果：${result}`,
-  forwardClosed: (result: string) => `下送（已回访过，直接结案）；处理结果：${result}`,
+  /** 一线带刷机处理结论；二线下送按咨询单，不带 */
+  forward: (result?: string) => (result ? `下送；刷机处理结论：${result}` : '下送'),
+  forwardClosed: (result?: string) => `下送（已回访过，直接结案）${result ? `；刷机处理结论：${result}` : ''}`,
   withdrawForward: '撤回本次下送，回到处理中',
   /** 回访评价（PRD §8「回访：已解决 / 未解决」+ 满意度与补充说明） */
   surveyFeedback: (solved: boolean, score: number, remark: string) =>
