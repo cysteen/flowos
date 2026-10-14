@@ -183,7 +183,7 @@ const flashSlaIdle = computed(
 
 const metaTitle = computed(
   () =>
-    `建单人：${props.detail.builderShort}，建单时间：${props.detail.createdAtFull}，期望解决：${props.detail.expectedResolve}，单号：${props.ticketNo}`,
+    `建单人：${props.detail.builderShort}，建单时间：${props.detail.createdAtFull}，单号：${props.ticketNo}`,
 );
 
 const emit = defineEmits<{
@@ -307,7 +307,6 @@ function priorityHex(p: string): string {
         <span class="meta-text">
           <span class="meta-k">建单人</span>：{{ detail.builderShort }}<span class="meta-sep">，</span>
           <span class="meta-k">建单时间</span>：{{ detail.createdAtFull }}<span class="meta-sep">，</span>
-          <span class="meta-k">期望解决</span>：{{ detail.expectedResolve }}<span class="meta-sep">，</span>
           <span class="meta-k">单号</span>：{{ ticketNo }}
         </span>
         <button
