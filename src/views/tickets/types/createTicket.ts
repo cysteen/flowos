@@ -195,8 +195,6 @@ export interface CreateTicketFormState {
   problemL3: string;
   priority: Priority;
   description: string;
-  /** 用户期望解决时间备注（自由文本） */
-  resolveTimeRemark: string;
   title: string;
   titleManual: boolean;
   expectTime: string;

@@ -82,7 +82,6 @@ function defaultForm(): CreateTicketFormState {
     // 与默认工单类型「投诉」配套：双向联动下投诉只能 P0/P1，取其中较低的 P1
     priority: 'P1',
     description: '在线播放频繁跳歌，重启无效，影响使用，要求尽快解决。',
-    resolveTimeRemark: '',
     title: '',
     titleManual: false,
     expectTime: '今日 18:00',

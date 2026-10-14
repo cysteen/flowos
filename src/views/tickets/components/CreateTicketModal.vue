@@ -600,14 +600,6 @@ watch(
                 placeholder="请选择问题发生时间"
               />
             </div>
-            <div class="inline-field">
-              <label class="inline-label xl">解决时间备注</label>
-              <a-input
-                v-model:value="form.resolveTimeRemark"
-                class="inline-control field-control"
-                placeholder="如：今天下班前"
-              />
-            </div>
           </div>
 
           <!-- 问题描述篇幅长，整行收尾 -->
