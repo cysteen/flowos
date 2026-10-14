@@ -388,7 +388,13 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     if (!r) return false;
     if (r.nodeStatus !== '未认领' || r.assignee) return false;
     const now = Date.now();
-    r.nodeStatus = '处理中';
+    /**
+     * 🔴 **领取落「待响应」，不是「处理中」**（基线 §1 L25 / §4 L400）：
+     * 「待响应 ＝ 认领后未保存、未打电话、未发短信、未发邮件」，领取本身**不是**响应动作。
+     * 基线对「未认领 → 待响应」只开过一个例外（L106：转售后回流被调剂/指派后直落处理中，
+     * 原文明写「例外只限这条链路」），小智不在其中。
+     */
+    r.nodeStatus = '待响应';
     r.assignee = actor.name;
     /**
      * 🔴 **`tab` 必须从 `pool` 翻到 `mine`**（与刷机 `claimFromPool` 同一步）：
@@ -398,12 +404,41 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
      * 之前七张种子生来就是 `mine`，把这一步的缺失盖住了。
      */
     r.tab = 'mine';
-    r.responded = true;
+    /**
+     * 🔴 **`responded` 保持 false**：基线 §7 L728 写明 `responded` 的判定动作集是
+     * **保存 / 电话 / 短信 / 邮件**，**领取不在其中**，且该动作集与班组看板
+     * 「24 小时联络率」的分子**逐字相同**。领取就置 true 等于伪造「已联系客户」，
+     * 会直接污染那个分子。
+     */
+    r.responded = false;
     r.updatedAt = xiaozhiMinuteStamp(now);
     log(no, now, {
       category: 'node', action: 'accept', who: actor.name, role: actor.role,
       how: '领取', what: `${actor.name} 从${XIAOZHI_POOL_GROUP_NAME}工单池领取本单。`,
     });
+    bump(no);
+    persist();
+    return true;
+  }
+
+  /**
+   * 首次响应 → 「待响应」转「处理中」（基线 §1 L25 / §7 L728）。
+   *
+   * 判定动作集 ＝ **保存 / 电话 / 短信 / 邮件**，与班组看板「24 小时联络率」的分子逐字相同，
+   * 故**不另立判定**，由调用方在那几个动作发生时调本函数；其余子状态一概不动。
+   *
+   * 🔴 **这是照刷机那一份抄的，不是新造的语义** —— `stores/flash.ts` 的
+   * `markRespondedByContact` 与 `saveProcess` 里那行 `if (nodeStatus === '待响应')` 是全仓
+   * **仅有的**实现。通用单那条路**根本没有这个驱动**（`mock/tickets.ts` 里三张「待响应」的
+   * 通用单永远停在「待响应」），所以没有「通用实现」可复用 —— 这一点已上报，
+   * 等通用那条补上后，这里应当换成调用那一份、删掉本函数。
+   */
+  function markResponded(no: string): boolean {
+    const r = rowOf(no);
+    if (!r || r.nodeStatus !== '待响应') return false;
+    r.nodeStatus = '处理中';
+    r.responded = true;
+    r.updatedAt = xiaozhiMinuteStamp(Date.now());
     bump(no);
     persist();
     return true;
@@ -721,8 +756,10 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     revisionOf,
     evaluateCreate,
     createXiaozhiTicket,
-    /** D21：从工单池领取 */
+    /** D21：从工单池领取（落「待响应」） */
     claimFromPool,
+    /** 基线 §1 / §7：保存 / 电话 / 短信 / 邮件任一发生 → 「待响应」转「处理中」 */
+    markResponded,
     escalateToRd,
     receiveRdProgress,
     /** T1：只写履历、不驱动状态。接口层能力保留，页面上无入口 */

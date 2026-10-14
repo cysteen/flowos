@@ -1916,6 +1916,9 @@ function onAction(payload: Record<string, unknown>) {
     }
     if (isFlash.value && !onFlashSave()) return;
     dispatch({ type: '保存草稿', process: log });
+    // 小智单：保存属首次响应动作集 → 「待响应」转「处理中」（基线 §1 L25 / §7 L728）。
+    // 刷机单那一下在 `flashStore.saveProcess` 里做（见 flash.ts 的 `if (nodeStatus === '待响应')`）。
+    if (isXiaozhi.value) xiaozhiStore.markResponded(d.value.no);
     // 风险等级落第八类、不落「工单处理」的字段 diff，故与 log 分开走，见 `recordAgentRiskLevelChange`
     recordAgentRiskLevelChange();
     if (log || isFlash.value) processBaseline = snapshotProcess(); // 登记后更新基线，下次 diff 以此为准
@@ -2147,6 +2150,8 @@ function syncContactedAfterOutreach() {
   if (isFlash.value && (flashView.value === 'l1' || flashView.value === 'l2')) {
     flashStore.markRespondedByContact(d.value.no);
   }
+  // 小智单同理（基线 §1 L25 / §7 L728：电话 / 短信 / 邮件属首次响应动作集）
+  if (isXiaozhi.value) xiaozhiStore.markResponded(d.value.no);
   let touchedDunning = false;
   let touchedSupplement = false;
   for (const rec of tabData.value.dunningRecords) {

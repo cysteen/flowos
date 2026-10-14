@@ -2,7 +2,7 @@
  * 小智工单 · 工单库在办 / 已办样本（1130 小智工单）。
  *
  * 八张，覆盖各条路径（D5 / D21 / 一·补 B5 / B7 / B8 / B9 / B24 / PRD §5.4）：
- * ① 人工跟进中（进池已领、小智坐席在办）；
+ * ① **待响应**（进池已领、还没动手；基线 §1 L25）；
  * ② 直通产研待回传（「创建并流转」→ 系统自动流转，本单「已升级产研」、处理人不转移，D6）；
  * ③ 产研已办结 · **待校代确认**（B5：办结**不关单**，状态仍「已升级产研」）；
  * ④ 校代**确认已解决** → 关单 + 下送调研，处理人统一改系统（B5① / B9）；
@@ -166,7 +166,14 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
   const tickets: Ticket[] = [];
   const timelines: Record<string, TimelineEntry[]> = {};
 
-  /* ① 人工跟进中：进池已领，小智坐席在办，未转产研 */
+  /**
+   * ① **待响应** —— 进池已领、**还没动手**（基线 §1 L25：认领后未保存、未打电话、未发短信、未发邮件）。
+   *
+   * ⚠️ 原先它是「处理中」且履历里带一条「工单处理」登记 —— 那两者按新口径是**自相矛盾**的：
+   * 有处理登记就说明已经响应过、该是「处理中」；要它当「待响应」的样本，就不能带那条登记。
+   * 故这张单的履历只剩**建单 + 领取**两条，`responded: false`，`updatedAt` 回到领取时刻。
+   * 「自查完、该交产研」那个场景由 ⑦ 承担（它保留处理登记、维持「处理中」）。
+   */
   const t1 = row(1, {
     title: '智批改 · 批阅结果未返回 · IM',
     customer: REPORTER,
@@ -177,19 +184,21 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
     problemL2: '播放问题',
     problemL3: '在线播放',
     problemDesc: '一场考试设置了智批改，有几题一直未批阅，需要核实批阅任务是否下发。',
-    nodeStatus: '处理中',
+    nodeStatus: '待响应',
     assignee: AGENT,
     tab: 'mine',
+    // 领取不算响应（基线 §7 L728：判定动作集＝保存 / 电话 / 短信 / 邮件）
+    responded: false,
+    nodeStep: 1,
     ...XIAOZHI_SLA_IDLE,
     createdAt: '2026-09-18 09:42',
-    updatedAt: '2026-09-18 10:20',
+    updatedAt: '2026-09-18 09:55',
     xiaozhi: { frontlineAccount: FRONTLINE_ACCOUNTS[1], rdSync: 'none', rdRecords: [], rdReturnCount: 0 },
   });
   tickets.push(t1);
   timelines[t1.no] = [
     tl('2026-09-18 09:42:10', 'node', 'create', AGENT, AGENT_ROLE, '建单', XIAOZHI_TL.create(XIAOZHI_TICKET_SOURCE)),
     tl('2026-09-18 09:55:02', 'node', 'accept', AGENT, AGENT_ROLE, '领取', `${AGENT} 从${XIAOZHI_POOL_GROUP_NAME}工单池领取本单。`),
-    tl('2026-09-18 10:20:31', 'handle', 'handle', AGENT, AGENT_ROLE, '工单处理', '已联系校代核实考试编号与题号，待确认批阅任务下发情况。'),
   ];
 
   /* ② 直通产研待回传：「创建并流转」→ 系统自动流转，本单「已升级产研」、处理人不转移（D6） */
