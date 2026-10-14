@@ -361,7 +361,8 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
     problemL1: '设备故障',
     problemL2: '网络',
     problemL3: 'WiFi 连不上',
-    problemDesc: '批量扫描答题卡出现识别偏移，产研两次办结校代都确认未解决，已第 2 次回传产研。',
+    // 次数词序照 PRD L420「已回传产研 〈N〉 次」；称谓照 B19 用「提报人」
+    problemDesc: '批量扫描答题卡出现识别偏移，产研两次办结提报人都确认未解决，已回传产研 2 次。',
     // B5②：确认未解决不改状态，本单留在「已升级产研」等产研重新处理
     nodeStatus: '已升级产研',
     assignee: XIAOZHI_SYSTEM_HANDLER,
@@ -374,7 +375,7 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
       // 已回传、等产研再办结，故回到 synced；办结结果与确认状态随之清空
       rdSync: 'synced',
       rdFeedbackNo: 'TPD-20260918-1907',
-      // B8：第 2 次回传产研
+      // B8：已回传产研 2 次
       rdReturnCount: 2,
       rdRecords: [
         rd('push', `已推送${ESCALATE_CHANNEL_TPD}`,
