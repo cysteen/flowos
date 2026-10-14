@@ -11,7 +11,7 @@ import {
 } from '@/views/tickets/types/ticket';
 import { useFlashStore } from '@/stores/flash';
 import { useXiaozhiStore } from '@/stores/xiaozhi';
-import { isXiaozhiTicket, type TicketXiaozhi } from '@/views/tickets/types/xiaozhi';
+import { XIAOZHI_CONFIRM_ACTOR, isXiaozhiTicket, type TicketXiaozhi } from '@/views/tickets/types/xiaozhi';
 import type { FeishuRecord } from '@/mock/ticketDetail';
 import { findSchoolById } from '@/mock/schools';
 import type { Ticket, Channel, TicketType, Priority, TicketStatus } from '@/views/tickets/types/ticket';
@@ -688,9 +688,9 @@ export function useTicketOperation() {
     base.aiInsight = {
       customerBrief: '教育用户（校代 / 渠道商），经小智在线进线',
       ticketBrief: t.title,
-      // 待校代确认期间本单仍在「已升级产研」，但该跟进的是确认而不是产研（一·补 B5）
+      // 待提报人确认期间本单仍在「已升级产研」，但该跟进的是确认而不是产研（一·补 B5；称谓照 B19）
       suggestion: t.xiaozhi?.confirmState === '未确认'
-        ? '产研已办结，待校代确认是否解决'
+        ? `产研已办结，待${XIAOZHI_CONFIRM_ACTOR}确认是否解决`
         : '按产研反馈进度跟进',
     };
     base.latestHandling = xiaozhiLatestHandling(t.no);

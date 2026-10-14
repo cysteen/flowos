@@ -47,7 +47,12 @@ const no = (n: number) => `${TICKET_NO_PREFIX[XIAOZHI_TICKET_TYPE]}-${DAY}-${Str
 /** 小智坐席（演示用户，见 `mock/users.ts`） */
 const AGENT = '谭小智';
 const AGENT_ROLE: TlRole = '小智坐席';
-/** 提问人（校代 / 渠道商，调研发给他本人，D12；B5 的确认也由他做） */
+/**
+ * 提报人（**称谓照一·补 B19 一律叫「提报人」**；实际人群是校代与渠道商两类）。
+ * 调研发给他本人（D12），B5 的「是否解决」确认也由他做。
+ * ⚠️ 下面几条种子的 `customer` 是**人名数据**（「李校代」「王校代」是姓 + 职务的叫法），
+ * 不是称谓用词 —— B19 管的是规格文案里怎么称呼这个角色，不是把客户名字也改掉。
+ */
 const REPORTER = '合肥八中 · 李校代';
 
 /** `YYYY-MM-DD HH:mm:ss` */
@@ -327,13 +332,16 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
     tl('2026-09-17 09:12:08', 'node', 'create', AGENT, AGENT_ROLE, '建单', XIAOZHI_TL.create(XIAOZHI_TICKET_SOURCE)),
     tl('2026-09-17 09:30:44', 'node', 'accept', AGENT, AGENT_ROLE, '领取', `${AGENT} 从${XIAOZHI_POOL_GROUP_NAME}工单池领取本单。`),
     tl('2026-09-17 10:05:19', 'handle', 'handle', AGENT, AGENT_ROLE, '工单处理', '核实批阅任务已下发但结果未回，自查无配置问题，转产研定位。'),
-    tl('2026-09-17 10:26:03', 'node', 'escalate', AGENT, AGENT_ROLE, '升级',
-      XIAOZHI_TL.autoEscalate(ESCALATE_CHANNEL_TPD, xiaozhiRdTitle(rd4.module))),
+    // 🔴 人工那条路用 `manualEscalate` + how「升级 · 产研」（PRD §11.2）。
+    // 原先这里复用了 `autoEscalate`，于是履历长成「操作人：谭小智 / 升级 /
+    // **系统自动流转至** TPD…」—— 操作人是人、正文说是系统干的，一条自相矛盾的履历。
+    tl('2026-09-17 10:26:03', 'node', 'escalate', AGENT, AGENT_ROLE, '升级 · 产研',
+      XIAOZHI_TL.manualEscalate(ESCALATE_CHANNEL_TPD, xiaozhiRdTitle(rd4.module))),
     tl('2026-09-17 16:48:20', 'node', 'relate', '系统', '系统', '产研回传', XIAOZHI_TL.rdSettled('问题'), { systemActor: true }),
     tl('2026-09-18 10:05:12', 'node', 'resolved', '系统', '系统', '自动结案',
       XIAOZHI_TL.confirmResolved(REPORTER), { systemActor: true }),
     tl('2026-09-18 10:05:13', 'comm', 'sms', '系统', '系统', '短信',
-      `已向提问人发送满意度调研短信（工单号：${no(4)}）`, { systemActor: true }),
+      XIAOZHI_TL.surveySms(no(4)), { systemActor: true }),
   ];
 
   /**
@@ -379,7 +387,7 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
             conclusion: '问题类办结',
           }),
         rd('push', `系统自动回传${ESCALATE_CHANNEL_TPD}`,
-          '滁州三中 · 赵校代确认问题未解决，系统已自动回传产研（第 1 次回传产研）',
+          '滁州三中 · 赵校代确认问题未解决，系统已自动回传产研（已回传产研 1 次）',
           '系统', '客服工单', '2026-09-20 09:18:05', { meta: 'TPD-20260918-1907' }),
         rd('result', '产研办结', '补充兼容该型号扫描仪的校准系数，已发版。',
           '王爽', '产研侧', '2026-09-21 08:52:11', {
@@ -388,7 +396,7 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
             conclusion: '问题类办结',
           }),
         rd('push', `系统自动回传${ESCALATE_CHANNEL_TPD}`,
-          '滁州三中 · 赵校代确认问题未解决，系统已自动回传产研（第 2 次回传产研）',
+          '滁州三中 · 赵校代确认问题未解决，系统已自动回传产研（已回传产研 2 次）',
           '系统', '客服工单', '2026-09-21 09:40:33', { meta: 'TPD-20260918-1907' }),
       ],
     },

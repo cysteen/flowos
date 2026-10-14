@@ -116,11 +116,12 @@ const feishuActive = computed(() => {
   const s = props.detail.feishuSync;
   return !!s && s !== 'none';
 });
-/** 「小智工单」标识（1130 D1）：本组件用它关「风险报备」Tab（D18） */
+/** 「小智工单」标识（1130 D1）：本组件用它关「风险报备」（D18）与「技术支持处理」（一·补 B10）两个 Tab */
 const isXiaozhi = computed(() => isXiaozhiTicket(props.detail));
 // 按工单类型 + 当前角色过滤：技术支持处理 / 风险监控 / 预约三个 Tab 有角色黑名单，
 // 判据表在 visibleProcessTabs 内（取自权限矩阵 #41–51 取值为「无」的 6 格）；
-// 小智单另关「风险报备」Tab（1130 D18）
+// 小智单另按**单维**关掉「风险报备」（D18）与「技术支持处理」（B10）两个 Tab ——
+// 角色黑名单只挡小智坐席自己，挡不住别的角色打开小智单
 const visibleTabs = computed(() =>
   visibleProcessTabs(props.detail.type, user.roleKey, {
     feishuActive: feishuActive.value,
@@ -264,6 +265,10 @@ defineExpose({ switchTab });
         :confirm-by="detail.xiaozhi?.confirmBy"
         :rd-return-count="detail.xiaozhi?.rdReturnCount"
         :xiaozhi-mode="isXiaozhi"
+        :ticket-no="detail.no"
+        :rd-module="detail.xiaozhi?.rd?.module"
+        :rd-receiver="detail.xiaozhi?.rd?.receiver"
+        :rd-priority="detail.xiaozhi?.rd?.priority"
         @activate="emit('feishu-activate', $event)"
         @retry="emit('feishu-retry')"
         @dunning="emit('dunning')"

@@ -37,7 +37,7 @@ import CustomerInfoModal from './create-ticket/CustomerInfoModal.vue';
 import FormSelect from './create-ticket/FormSelect.vue';
 import FlashInfoPart from './create-ticket/FlashInfoPart.vue';
 import XiaozhiInfoPart from './create-ticket/XiaozhiInfoPart.vue';
-import { XIAOZHI_MARK_LABEL, XIAOZHI_TOAST } from '@/views/tickets/types/xiaozhi';
+import { XIAOZHI_MARK_LABEL, XIAOZHI_TIP, XIAOZHI_TOAST } from '@/views/tickets/types/xiaozhi';
 import { useRouter } from 'vue-router';
 
 const props = defineProps<{
@@ -222,14 +222,22 @@ function scrollToFirstFlashError() {
  */
 function onCreateXiaozhi(escalate: boolean, processAfter = false) {
   submitting.value = true;
-  const ticket = submitXiaozhi(escalate);
+  const res = submitXiaozhi(escalate);
   submitting.value = false;
-  if (!ticket) {
+  if (!res) {
     scrollToFirstFlashError();
     return;
   }
+  const { ticket, degraded } = res;
   emit('created', ticket, processAfter);
-  message.success(
+  /**
+   * 三句分开（PRD §2）：
+   * ① 「创建」→ 已创建；② 「创建并流转」且流转成了 → 已创建并已流转产研；
+   * ③ 「创建并流转」但产研平台不可用 → **工单已创建、留在工单池**，原样出那句降级提示。
+   * ③ 用 warning 不用 success —— 它是「成了一半」，报成功会让人以为已经推给产研了。
+   */
+  if (degraded) message.warning(XIAOZHI_TIP.rdPlatformDownOnCreate);
+  else message.success(
     escalate ? XIAOZHI_TOAST.createdAndEscalated(ticket.no) : XIAOZHI_TOAST.created(ticket.no),
   );
   if (activeDraftId.value) { draftStore.remove(activeDraftId.value); activeDraftId.value = null; }

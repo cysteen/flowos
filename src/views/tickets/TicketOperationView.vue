@@ -28,14 +28,19 @@ import {
   FLASH_RESULT_ESCALATE_L2, FLASH_RESULT_OFFLINE, FLASH_TIP_OFFLINE_FORWARD, FLASH_TIP_RESULT_REQUIRED,
   FLASH_POOLS, isFlashTicket, normalizeFlashResult, type FlashActor, type FlashResult,
 } from './types/flash';
-import { isXiaozhiTicket } from './types/xiaozhi';
+import {
+  XIAOZHI_CANCELLABLE_STATUSES, XIAOZHI_TIP, isXiaozhiTicket, type XiaozhiRdPriority,
+} from './types/xiaozhi';
+import { useXiaozhiStore } from '@/stores/xiaozhi';
 import { typeSampleKey } from '@/mock/ticketTypeSamples';
 import type { FlashActionResult, FlashInfoChanges } from '@/stores/flash';
 // 建单弹窗仅在「转单/重开」时用，按需异步加载，不阻塞操作页首屏
 const CreateTicketModal = defineAsyncComponent(() => import('./components/CreateTicketModal.vue'));
 import type { SmsTemplateKind } from '@/mock/notifyTemplates';
 import { useTicketOperation } from './composables/useTicketOperation';
-import { FEISHU_ESCALATE_CHANNEL, mapUserRole, pushEntry, isAftersaleSettled } from './composables/opActions';
+import {
+  ESCALATE_CHANNEL_TPD, FEISHU_ESCALATE_CHANNEL, mapUserRole, pushEntry, isAftersaleSettled,
+} from './composables/opActions';
 import { AFTERSALE_INBOUND_SOURCE, normalizeTicketSource } from './types/createTicket';
 import { aftersaleInboundOperator, aftersaleLinkJoinedEntry, applyAftersaleResult, isAftersaleChainTicket } from './composables/aftersaleEvents';
 import { submitAftersaleResult } from '@/api/aftersaleResult';
@@ -378,14 +383,21 @@ const isPrimaryHandler = computed(
 const flashStore = useFlashStore();
 const flashConfig = useFlashConfigStore();
 
+/* ---------------- 小智单（1130 小智工单 / 一·补） ---------------- */
+
+const xiaozhiStore = useXiaozhiStore();
+
 /**
- * 小智单的产研链路**在本页没有写入口**（1130 一·补 B5 / 待沟通项 T1）。
+ * 小智单在本页有写入口的只有两枚：**领取**（D21，`onXiaozhiClaim`）与
+ * **升级 · 产研**（PRD §5.4，`onXiaozhiAction`）。
  *
- * - 产研办结后要不要关单，由**校代**在小智工单应用里确认（B5），确认未解决后的回传是
- *   **系统动作** —— 故这里**没有「二次提交产研」按钮**，也不要再加回来；
+ * **确认链路没有任何坐席入口**（一·补 B5 / 待沟通项 T1）：
+ * - 产研办结后要不要关单，由**提报人**在小智工单应用里确认（B5），确认未解决后的回传是
+ *   **系统动作** —— 故**没有「二次提交产研」按钮**，「二次激活」在小智单上也整枚不渲染，
+ *   两者都不要再加回来；
  * - TPD 的「产研驳回」本轮只写处理履历、不驱动状态、无按钮（T1 待沟通）。
  *
- * 两条链路的写口都在小智服务 `stores/xiaozhi.ts`（`receiveReporterConfirm` /
+ * 确认与驳回的写口都在小智服务 `stores/xiaozhi.ts`（`receiveReporterConfirm` /
  * `receiveRdReject`），由接口层调用，本页只读结果。
  */
 
@@ -443,6 +455,77 @@ function onFlashClaim() {
   const res = flashStore.claimFromPool(d.value.no, { name: currentHandlerName(user.roleKey, user.name), role });
   if (res.ok) message.success(res.message);
   else message.warning(res.message);
+}
+
+/**
+ * 小智单可领取（1130 PRD §1.2 / §5.3 / §6；D21「一个大组、进池自己领」）。
+ *
+ * 🔴 **判据在这里算，不在底栏组件里算** —— 底栏只拿一个布尔。条件三道：
+ * 是小智单 ∧ 本单在工单池里无人认领 ∧ 当前角色是能办小智单的（小智坐席本人）。
+ * 直通产研那批虽然状态是「已升级产研」、不是「未认领」，故 `ticketUnclaimed` 为假，
+ * 自然也不会出「领取」—— 池里留的是记录不是待领任务（一·补 B2），正合口径。
+ */
+const xiaozhiClaimable = computed(
+  () => isXiaozhi.value && ticketUnclaimed.value && user.roleKey === 'xiaozhi-agent',
+);
+
+/**
+ * 领取总入口：刷机单走刷机服务，小智单走小智服务，其余工单本就不出这枚按钮。
+ * 原先底栏的 `@claim` 直接接 `onFlashClaim` —— 加了小智那条路后必须在这里分岔，
+ * 不然小智单点「领取」会走进刷机服务、按刷机的池子判定，必然失败。
+ */
+function onClaim() {
+  if (isXiaozhi.value) {
+    onXiaozhiClaim();
+    return;
+  }
+  onFlashClaim();
+}
+
+/** 小智单领取（D21）：落处理人与「处理中」，写履历，Toast 与刷机同体例 */
+function onXiaozhiClaim() {
+  const who = currentHandlerName(user.roleKey, user.name);
+  const ok = xiaozhiStore.claimFromPool(d.value.no, { name: who, role: mapUserRole(user.roleKey) });
+  if (ok) message.success(`已领取 ${d.value.no}`);
+  else message.warning('本单已被领取或不在工单池中');
+}
+
+/**
+ * 小智单的底栏动作拦截 —— 现在只拦一枚：**升级 · 产研**（1130 PRD §5.4 / §11.2）。
+ * 返回 true ＝ 本函数已处理，`onAction` 不再往下走通用分支。
+ *
+ * 🔴 **为什么必须拦**：`escalateToRd` 原先**全仓只有 store 自己调**，人工点「升级 · 产研」
+ * 走的是通用升级分支（`opActions.ts` 的 `case '升级'`），于是三件事同时错：
+ * ① 弹窗采不到产研五项（已在 `OpActionDialogs` 补上）；
+ * ② 履历写成「升级至 TPD 技术问题单」，不是 PRD §11.2 要的「升级 · 产研（…）；产研单标题：…」；
+ * ③ 通用分支**不写 `rdSync`**，本单的 `feishuSync` 还是 `none` → `feishuActive` 为假 →
+ *    **「产研反馈」Tab 根本打不开**，人工升级产研的单看不到任何产研协同信息。
+ */
+function onXiaozhiAction(payload: Record<string, unknown>): boolean {
+  if (payload.type !== '升级') return false;
+  const data = (payload.data ?? {}) as Record<string, unknown>;
+  // 非产研通道（理论上小智单只剩产研一档，B10）交回通用分支，不在这里吞掉
+  if (!data.xiaozhiRd) return false;
+  const ok = xiaozhiStore.escalateToRd(
+    d.value.no,
+    { name: currentHandlerName(user.roleKey, user.name), role: mapUserRole(user.roleKey) },
+    false,
+    {
+      module: String(data.rdModule ?? ''),
+      receiver: String(data.rdReceiver ?? ''),
+      priority: String(data.rdPriority ?? '') as XiaozhiRdPriority,
+      frontlineAccount: String(data.frontlineAccount ?? '').trim(),
+      attachments: Array.isArray(data.attachments) ? (data.attachments as string[]) : [],
+    },
+  );
+  if (!ok) {
+    message.warning('升级产研失败，请稍后重试');
+    return true;
+  }
+  message.success(`已升级 · 产研（${ESCALATE_CHANNEL_TPD}）`);
+  // 产研协同信息都在那个 Tab 上，升完直接切过去（与飞书升级同体例）
+  processTabsRef.value?.switchTab('feishu');
+  return true;
 }
 
 /** 刷机服务的操作人：当前登录人在工单数据源里的处理人名 + 履历角色（一线坐席判一线重推） */
@@ -739,8 +822,11 @@ function onRiskReport(payload: {
  * ⚠️ 这是**入口层**那一道；根上那一道在 `OpProcessTabs.switchTab`（拒绝切到不可见 Tab），
  * 两层都要 —— 只有入口层挡不住 `?tab=risk` 深链。
  */
+// 🔴 `isXiaozhi` 必须传：本函数与 Tab 条同源，Tab 条那边小智单的 risk 是**单维**关掉的（D18）。
+// 不传就又回到「Tab 条上没有这一枚、页头却给了个按钮把正文调出来」那个绕过口 —— 这里的
+// 角色黑名单只挡得住小智坐席，二线班组长 / 管理员打开小智单照样拿得到入口。
 const canViewRiskTab = computed(
-  () => isProcessTabVisible('risk', d.value.type, user.roleKey),
+  () => isProcessTabVisible('risk', d.value.type, user.roleKey, { isXiaozhi: isXiaozhi.value }),
 );
 
 /* ==================== 标题行的两枚风险状态标（《【930】》§5A.3 / §3.2 可见性） ====================
@@ -1195,7 +1281,8 @@ const customerEntryLocked = computed(
  *   小智坐席同样在 IM 上接进线，故与一线同档
  * - 新建补充：除工单运营 / 质检外都给（※21a 0826 放开）
  */
-const headerRoleGate = computed(() => headerActionsByRole(user.roleKey));
+// 第二个参数是**单维**（1130 PRD §5.1 / §9）：小智单上不出升级投诉，与「谁在看」无关
+const headerRoleGate = computed(() => headerActionsByRole(user.roleKey, isXiaozhi.value));
 // 技术支持只接手升级到本组的刷机单（沿用咨询单）；其余刷机单只读查看，页头不出新建补充（M92 / M104）
 const canSupplement = computed(() => headerRoleGate.value.supplement
   && !(isFlash.value && user.roleKey === 'tech-support' && flashView.value !== 'tech'));
@@ -1232,8 +1319,21 @@ const canCancelTicket = computed(() => headerRoleGate.value.cancelTicket
   && !(d.value.returnedFromAftersale && ticketUnclaimed.value)
   && !(isFlash.value && (flashView.value === 'other'
     || (flashView.value === 'readonly' && !FLASH_ADMIN_ROLE_KEYS.has(user.roleKey)))));
-/** 刷机单「自动刷机中」取消工单置灰（PRD §5.5） */
-const cancelBlockedTip = computed(() => (isFlash.value && d.value.status === '自动刷机中' ? FLASH_GATE_TIPS.autoFlashing : undefined));
+/**
+ * 「取消工单」置灰原因。
+ * - 刷机单「自动刷机中」（PRD §5.5）；
+ * - 🔴 **小智单：已开始处理的状态一律置灰**（1130 一·补 B13 / PRD §5.3 表二）——
+ *   B13 是「照基线 ※5 **不放宽**，仅未认领 / 待响应可用，不为小智开专属例外」。
+ *   此前这个 computed 只认刷机单那一档，于是小智单在「处理中」「已升级产研」「调研中」上
+ *   取消按钮**可点** —— B13 整条在代码里不生效，拍的是「不放宽」，实现却比基线更宽。
+ */
+const cancelBlockedTip = computed(() => {
+  if (isFlash.value && d.value.status === '自动刷机中') return FLASH_GATE_TIPS.autoFlashing;
+  if (isXiaozhi.value && !XIAOZHI_CANCELLABLE_STATUSES.includes(d.value.status)) {
+    return XIAOZHI_TIP.cancelAfterStarted;
+  }
+  return undefined;
+});
 
 /**
  * 底部流转操作栏隐藏：只读态，**或原单已是终态**——
@@ -1822,6 +1922,8 @@ function onAction(payload: Record<string, unknown>) {
     return;
   }
   if (isFlash.value && onFlashAction(payload)) return;
+  // 小智单的「升级 · 产研」必须走小智服务（1130 PRD §5.4 / §11.2），不能落进通用升级分支
+  if (isXiaozhi.value && onXiaozhiAction(payload)) return;
   const toFeishu = isFeishuEscalate(payload);
   dispatch(payload);
   if (toFeishu) {
@@ -2667,6 +2769,7 @@ watch(
       :ticket-type="d.type"
       :is-flash="isFlash"
       :is-xiaozhi="isXiaozhi"
+      :claimable="xiaozhiClaimable"
       :closure-mode="d.closureMode"
       :after-sale-enabled="d.product.afterSaleEnabled"
       :op-state="opState"
@@ -2699,7 +2802,7 @@ watch(
       :flash-consult-forward="flashFormLine === 'l2'"
       @flash-escalate="onFlashEscalateL2"
       @flash-forward-blocked="onFlashForwardBlocked"
-      @claim="onFlashClaim"
+      @claim="onClaim"
       @action="onAction"
       @cancel="cancelModalOpen = true"
       @withdraw="onWithdraw"

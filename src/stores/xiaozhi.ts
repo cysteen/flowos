@@ -10,8 +10,9 @@ import { ESCALATE_CHANNEL_TPD } from '@/views/tickets/composables/opActions';
 import {
   XIAOZHI_BUSINESS_TYPE, XIAOZHI_CONFIRM_TIMEOUT_DAYS, XIAOZHI_NOTICE,
   XIAOZHI_POOL_GROUP_ID, XIAOZHI_POOL_GROUP_NAME,
+  XIAOZHI_RD_PLATFORM_AVAILABLE,
   XIAOZHI_SLA_IDLE, XIAOZHI_SYSTEM_HANDLER, XIAOZHI_TICKET_SOURCE, XIAOZHI_TICKET_TYPE, XIAOZHI_TL,
-  isXiaozhiTicket, xiaozhiRdTitle, xiaozhiReceiverOf,
+  isXiaozhiTicket, xiaozhiHasReceiver, xiaozhiRdTitle, xiaozhiReceiverOf,
   type TicketXiaozhi, type XiaozhiDemandResult, type XiaozhiIssueResult,
   type XiaozhiRdInfo, type XiaozhiRdPriority, type XiaozhiSolutionType,
 } from '@/views/tickets/types/xiaozhi';
@@ -80,18 +81,29 @@ export interface XiaozhiActor {
 }
 
 /**
- * 建单必填缺项。只剩产品模块一项 —— 问题分类走通用级联控件、恒有值（一·补 B15），
+ * 建单拦截。必填缺项只剩产品模块一项 —— 问题分类走通用级联控件、恒有值（一·补 B15），
  * 不再有「问题类别未选」这档拦截。
+ *
+ * `reason` 是**字段级之外**的拦截（PRD §2 的两条校验）：
+ * - `receiverMissing`：产品模块选了、但该模块没配产研接收人 → 文案落在产品模块那一栏下方；
+ * - `platformDown`：产研平台不可用 → **工单照建**，只是不流转，由调用方落池并原样提示。
  */
 export interface XiaozhiCreateBlocked {
   kind: 'blocked';
   /** 缺哪几项（字段键） */
   missing: 'rdModule'[];
+  /** 非必填类拦截的原因 */
+  reason?: 'receiverMissing';
 }
 
 export interface XiaozhiCreateOk {
   kind: 'create';
   ticket: Ticket;
+  /**
+   * 建成了但**没流转成**（产研平台不可用，PRD §2）：单子留在工单池里。
+   * 调用方据此换提示文案 —— 不能照「已流转产研」那句报喜。
+   */
+  degraded?: boolean;
 }
 
 /** 办结回传入参（W8：问题类 / 需求类两套） */
@@ -227,13 +239,23 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
   }
 
   /**
-   * 建单必填校验。小智专属的只剩一条：**走产研的要选产品模块**（W2）。
-   * 问题分类那一道在通用咨询表单里（一·补 B15），由 `validate()` 管，不在这里重复判。
+   * 建单校验（PRD §2）。问题分类那一道在通用咨询表单里（一·补 B15），由 `validate()` 管，
+   * 不在这里重复判。小智专属的三条，**只在「创建并流转」那条路上才判**：
+   * ① 要选产品模块（W2）；
+   * ② 🔴 **该产品模块必须配了产研接收人** —— 接收人是由产品模块带出、不可改的，
+   *    缺了它推出去产研也不知道派给谁，故在建单侧就拦（原先这条分支整个没有）；
+   * ③ 产研平台可用性**不在这里判** —— 它不是「不许建单」，而是「建单成功但不流转」，
+   *    见 `createXiaozhiTicket` 里的 `platformDown` 分支。拦截与降级是两回事，别混成一条。
    */
   function evaluateCreate(input: XiaozhiCreateInput, escalate: boolean): XiaozhiCreateBlocked | { kind: 'create' } {
     const missing: 'rdModule'[] = [];
-    if (escalate && !input.rdModule?.trim()) missing.push('rdModule');
-    return missing.length ? { kind: 'blocked', missing } : { kind: 'create' };
+    const picked = input.rdModule?.trim() ?? '';
+    if (escalate && !picked) missing.push('rdModule');
+    if (missing.length) return { kind: 'blocked', missing };
+    if (escalate && picked && !xiaozhiHasReceiver(picked)) {
+      return { kind: 'blocked', missing: [], reason: 'receiverMissing' };
+    }
+    return { kind: 'create' };
   }
 
   function buildRdInfo(input: XiaozhiCreateInput): XiaozhiRdInfo {
@@ -311,8 +333,17 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
       category: 'node', action: 'create', who: actor.name, role: actor.role,
       how: '建单', what: XIAOZHI_TL.create(XIAOZHI_TICKET_SOURCE),
     });
+    /**
+     * 🔴 **产研平台不可用时降级：工单照建、留在工单池、不流转**（PRD §2）。
+     *
+     * 客户的问题已经登记下来了，不能因为下游挂了就把单子也丢掉；流转那一步没成，
+     * 单子就按人工那条路落池等人领，提示 `XIAOZHI_TIP.rdPlatformDownOnCreate`
+     * 告诉坐席「稍后在工单内重新提交产研」（那就是底栏「升级 · 产研」那一枚）。
+     * 返回 `degraded: true`，由调用方决定提示用哪一句 —— store 不碰 UI。
+     */
+    const platformDown = escalate && !XIAOZHI_RD_PLATFORM_AVAILABLE;
     // 「创建并流转」：落池生成记录后由系统自动流转，不靠人领、不靠定时任务扫（D6）
-    if (escalate) {
+    if (escalate && !platformDown) {
       /**
        * 🔴 **直通产研的单不发「待领取」提醒**（D6 + 通知规则 R18 的 `rdDirect` 条件）：
        * 池里留的是**记录**不是待领任务，处理人是系统（一·补 B2），没有人该去领它。
@@ -321,6 +352,8 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
       r.xiaozhi!.rd = buildRdInfo(input);
       escalateToRd(no, { name: '系统', role: '系统' }, true);
     } else {
+      // 平台不可用那一支也走这里：单子留在池里等人领，产研要素先存着、重新提交时直接用
+      if (platformDown) r.xiaozhi!.rd = buildRdInfo(input);
       // 人工跟进那条路：新单进池待领取，提醒本组全员（D21 一个大组、进池自己领）
       notify(
         r, 'group', '新单待领取', XIAOZHI_NOTICE.pooled(no),
@@ -329,10 +362,35 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
       bump(no);
       persist();
     }
-    return { kind: 'create', ticket: r };
+    return { kind: 'create', ticket: r, degraded: platformDown };
   }
 
-  /* ---------------- 推产研（D6 / D8） ---------------- */
+  /**
+   * 从工单池领取（D21：一个大组、进池自己领）。
+   *
+   * 只对**池里真的在等人领**的单生效（「未认领」且无处理人）：
+   * 直通产研那批状态是「已升级产研」、处理人是系统（一·补 B2），池里留的是记录不是待领任务，
+   * 本函数对它返回 false —— 不靠调用方自觉。
+   */
+  function claimFromPool(no: string, actor: XiaozhiActor): boolean {
+    const r = rowOf(no);
+    if (!r) return false;
+    if (r.nodeStatus !== '未认领' || r.assignee) return false;
+    const now = Date.now();
+    r.nodeStatus = '处理中';
+    r.assignee = actor.name;
+    r.responded = true;
+    r.updatedAt = xiaozhiMinuteStamp(now);
+    log(no, now, {
+      category: 'node', action: 'accept', who: actor.name, role: actor.role,
+      how: '领取', what: `${actor.name} 从${XIAOZHI_POOL_GROUP_NAME}工单池领取本单。`,
+    });
+    bump(no);
+    persist();
+    return true;
+  }
+
+  /* ---------------- 推产研（D6 / 一·补 B10） ---------------- */
 
   function rdFeedbackNo(): string {
     const d = new Date();
@@ -351,10 +409,12 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
    * 落成建单人的话，池子里那条记录会变成一个谁都能领、领了也无事可做的待领任务。
    * 人工跟进后再转产研的那一支处理人照旧是跟进人，不被改写。
    */
-  function escalateToRd(no: string, actor: XiaozhiActor, auto = false): boolean {
+  function escalateToRd(no: string, actor: XiaozhiActor, auto = false, rd?: XiaozhiRdInfo): boolean {
     const r = rowOf(no);
     if (!r?.xiaozhi) return false;
     const now = Date.now();
+    // 人工那条路（底栏「升级 · 产研」）在弹窗里才采集产研五项，故由调用方带进来
+    if (rd) r.xiaozhi.rd = { ...rd };
     if (!r.xiaozhi.rd) return false;
     const rdTitle = xiaozhiRdTitle(r.xiaozhi.rd.module);
     r.xiaozhi.rdSync = 'synced';
@@ -374,8 +434,15 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     log(no, now, {
       category: 'node', action: 'escalate', who: actor.name, role: actor.role,
       systemActor: auto,
-      how: auto ? '系统自动流转' : '升级',
-      what: XIAOZHI_TL.autoEscalate(ESCALATE_CHANNEL_TPD, rdTitle),
+      /**
+       * 🔴 **两条路的履历不能共用一句**（PRD §11.2）：
+       * 原先人工那条也写 `autoEscalate`，于是页面上出现「操作人：谭小智 / 动作：升级 /
+       * 正文：**系统自动流转至** TPD…」—— 一条自己打自己的履历。
+       */
+      how: auto ? '系统自动流转' : '升级 · 产研',
+      what: auto
+        ? XIAOZHI_TL.autoEscalate(ESCALATE_CHANNEL_TPD, rdTitle)
+        : XIAOZHI_TL.manualEscalate(ESCALATE_CHANNEL_TPD, rdTitle),
     });
     bump(no);
     persist();
@@ -501,7 +568,7 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
    * B9 把它改成无条件覆盖 —— 办结关单这一下是系统做的，落成那位跟进过的坐席，
    * 等于把一笔系统动作记在人头上，绩效与工作量口径都会错。
    *
-   * 调研短信由**工单系统**发、发给提问人本人（D12 / D14②）；产研的「解决结果通知」短信
+   * 调研短信由**工单系统**发、发给**提报人**本人（D12 / D14②；称谓照一·补 B19）；产研的「解决结果通知」短信
    * 由 TPD 自己发（B12 保留两条），工单系统不重复发。回「未解决」不拉回（D13）。
    */
   function closeXiaozhi(r: Ticket, at: number, what: string) {
@@ -516,16 +583,16 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     });
     log(r.no, at + 1, {
       category: 'comm', action: 'sms', who: '系统', role: '系统', systemActor: true,
-      how: '短信', what: `已向提问人发送满意度调研短信（工单号：${r.no}）`,
+      how: '短信', what: XIAOZHI_TL.surveySms(r.no),
     });
     notify(r, 'accepted', '工单结案', XIAOZHI_NOTICE.closed(r.no), [XIAOZHI_POOL_GROUP_NAME]);
   }
 
   /**
-   * 校代（提报人）确认是否解决（一·补 B5）。
+   * **提报人**确认是否解决（一·补 B5；称谓照 B19，不写「校代」—— 提报对象含渠道商）。
    *
    * 🔴 **这是接口层的入口，不是页面上的按钮** —— 确认动作发生在**小智工单应用**里
-   * （B6：建单入口迁 400，查询 + 确认流程保留），工单系统侧只接结果。原型里没有校代端，
+   * （B6：建单入口迁 400，查询 + 确认流程保留），工单系统侧只接结果。原型里没有提报人端，
    * 三种结果（确认是 / 确认否 / 未确认）由种子数据体现，**页面上不造「模拟确认」按钮**。
    *
    * - `resolved = true` → 关单 + 下送调研（B5①）；
@@ -562,7 +629,8 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     pushRdRecord(r, {
       kind: 'push',
       title: `系统自动回传${ESCALATE_CHANNEL_TPD}`,
-      content: `${who}确认问题未解决，系统已自动回传产研（第 ${times} 次回传产研）`,
+      // 次数词序照 PRD L420「已回传产研 〈N〉 次」
+      content: `${who}确认问题未解决，系统已自动回传产研（已回传产研 ${times} 次）`,
       who: '系统',
       side: '客服工单',
       when: xiaozhiStamp(now),
@@ -573,7 +641,13 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
       how: '系统自动回传',
       what: XIAOZHI_TL.confirmUnresolved(who, times, ESCALATE_CHANNEL_TPD),
     });
-    notify(r, 'upgrade', '已回传产研', XIAOZHI_NOTICE.returnedToRd(no, times), [XIAOZHI_POOL_GROUP_NAME]);
+    /**
+     * 收件人＝**当前处理人 + 处理组**。
+     * 🔴 只发处理组是漏的：直通那批处理人是「系统」收不着也无妨，但**人工跟进过的单**
+     * 处理人是具体那位坐席 —— 单子被打回产研重办，最该知道的就是他，
+     * 指望他自己去翻工单池公告不是通知该有的样子。
+     */
+    notify(r, 'upgrade', '已回传产研', XIAOZHI_NOTICE.returnedToRd(no, times), [r.assignee, XIAOZHI_POOL_GROUP_NAME]);
     bump(no);
     persist();
     return true;
@@ -628,6 +702,8 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     revisionOf,
     evaluateCreate,
     createXiaozhiTicket,
+    /** D21：从工单池领取 */
+    claimFromPool,
     escalateToRd,
     receiveRdProgress,
     /** T1：只写履历、不驱动状态。接口层能力保留，页面上无入口 */

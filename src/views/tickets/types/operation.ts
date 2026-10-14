@@ -295,7 +295,10 @@ const TAB_TYPE_RESTRICTION: Partial<Record<ProcessTabKey, string[]>> = {
 const TAB_ROLE_DENY: Partial<Record<ProcessTabKey, string[]>> = {
   // 小智坐席**不在 feishu 的 deny 里**：小智单直通产研走 TPD，产研反馈 Tab 是它的主战场（1130 D6）
   feishu: ['agent-l1', 'tech-support', 'ops-monitor', 'qa'],
-  // 技术支持处理：小智坐席不接手技术侧处理（升级技术支持的口子仍在，由技术支持办，D15）
+  // 技术支持处理：小智坐席不接手技术侧处理。
+  // ⚠️ 原注释写「升级技术支持的口子仍在，由技术支持办，**D15**」—— **D15 已被一·补 B10 推翻**
+  // （本轮不做技术支持路径），该断言作废；这一行留下小智坐席只是因为它本来就不接技术侧处理。
+  // 🔴 **光靠这条角色黑名单挡不住小智单** —— 见下面 `visibleProcessTabs` 里的单维那一道。
   tech: ['agent-l2', 'complaint-handler', 'ops-monitor', 'qa', 'xiaozhi-agent'],
   // 1130 D18：小智工单不涉及风险报备，故小智坐席整个 Tab 不渲染
   risk: ['agent-l1', 'ops-monitor', 'xiaozhi-agent'],
@@ -326,6 +329,14 @@ export function visibleProcessTabs(
     // 2026-09-10 整条移除），而小智单的工单类型是咨询 —— 光在动作侧不登记「风险报备」
     // 只关掉底栏与页头两个按钮位，Tab 条上那一枚照样出得来。
     if (t.key === 'risk' && opts?.isXiaozhi) return false;
+    /**
+     * 🔴 **小智单上「技术支持处理」Tab 整个不渲染**（1130 一·补 B10 / PRD §5.1：本轮不做技术支持路径）。
+     *
+     * 与 `risk` 同病同治：`TAB_ROLE_DENY.tech` 是**角色**黑名单，只挡住小智坐席、二线专员、
+     * 客诉专员、运营、质检 —— **二线班组长 / 管理员 / 技术支持本人打开小智单时，这枚 Tab 照渲染**。
+     * B10 说的是「小智单上没有技术支持这条路」，那是**单维**，必须在这里另加一道。
+     */
+    if (t.key === 'tech' && opts?.isXiaozhi) return false;
     if (t.key === 'feishu') return !!opts?.feishuActive;
     const allow = TAB_TYPE_RESTRICTION[t.key];
     return !allow || allow.includes(ticketType);

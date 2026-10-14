@@ -113,7 +113,30 @@ export const XIAOZHI_RD_MODULES: XiaozhiRdModule[] = [
   { name: '智能阅卷', receiver: 'lyu7', productLine: '精准教学产品线' },
   { name: '扫描', receiver: 'wangshuang11', productLine: '精准教学产品线' },
   { name: '组卷与题库', receiver: 'chenwei21', productLine: '精准教学产品线' },
+  /**
+   * 🔴 **故意不配接收人的一条**，`XIAOZHI_TIP.rdReceiverMissing` 那道拦截靠它才验得到。
+   *
+   * 四个模块全配了 `receiver` 时，「该产品模块未配置产研接收人」这条分支**永远走不到** ——
+   * 等于写了也看不出来（与 `PRODUCTS_WITHOUT_AFTERSALE` 给「转售后」留反例同一个道理）。
+   * 字典本身是后台配出来的（W2），现实里新模块上线、接收人还没配就是这个样子。
+   */
+  { name: '学情分析', receiver: '', productLine: '精准教学产品线' },
 ];
+
+/**
+ * 产研平台当前可用与否。`false` 时：
+ * - 建单「创建并流转」→ **工单照建**、留在工单池，提示 `rdPlatformDownOnCreate`（PRD §2）；
+ * - 底栏「升级 · 产研」→ 本单状态不变，提示 `rdPlatformDownOnEscalate`（PRD §5.4）。
+ *
+ * 真实实现里这是调 TPD 接口的返回，不是配置项；这里留一个常量把**两条分支都接上**，
+ * 否则那两句拦截文案在全仓是零命中的死文案。
+ */
+export const XIAOZHI_RD_PLATFORM_AVAILABLE = true;
+
+/** 该产品模块配了产研接收人没有（接收人由产品模块带出、不可改，W2） */
+export function xiaozhiHasReceiver(moduleName: string): boolean {
+  return !!xiaozhiReceiverOf(moduleName).trim();
+}
 
 /** 按产品模块取接收人域账号（取不到返回空串） */
 export function xiaozhiReceiverOf(moduleName: string): string {
@@ -186,8 +209,17 @@ export type XiaozhiRdFeedbackKind = '处理中' | '驳回' | '办结';
 export const XIAOZHI_CONFIRM_STATES = ['未确认', '已确认解决', '已确认未解决'] as const;
 export type XiaozhiConfirmState = (typeof XIAOZHI_CONFIRM_STATES)[number];
 
-/** 确认方的称谓（提报人＝校代 / 渠道商，调研也发给他本人，D12） */
-export const XIAOZHI_CONFIRM_ACTOR = '校代（提报人）';
+/**
+ * 确认方的称谓 —— **一律「提报人」**（一·补 B19）。
+ *
+ * 🔴 **不写「校代」**：提报对象里除了校代**还有渠道商**（逐字稿 02:05「服务的是我们内部的
+ * 一些校代，还有叫渠道商」），写「校代」在渠道商场景下就是错的；「提报人」两者皆覆盖。
+ * 「提问人」那种叫法同样弃用 —— 三份文档原有三种叫法，收口到这一个常量，界面文案一律引它。
+ */
+export const XIAOZHI_CONFIRM_ACTOR = '提报人';
+
+/** 校代 / 渠道商做确认的地方（B6：建单入口迁 400，查询 + 确认流程保留在小智工单应用） */
+export const XIAOZHI_CONFIRM_APP = '小智工单应用';
 
 /**
  * 超 N 天未确认即视为已解决，自动结案 + 下送调研（一·补 B7）。
@@ -276,11 +308,34 @@ export const XIAOZHI_FIELD_LABELS = {
 /* ------------------------------------------------------------------ */
 
 /**
- * 建单必填提示（输入类「请填写」、选择类「请选择」，与通用咨询单同一口径）。
- * 问题类别那条已随 B15 去掉 —— 问题分类走通用咨询表单的级联控件，它恒有值、无须另给必填提示。
+ * 「取消工单」可用的子状态（一·补 B13：**照基线 ※5 不放宽**，不为小智开专属例外）。
+ * 其余状态一律置灰，悬停出 `XIAOZHI_TIP.cancelAfterStarted`。
+ */
+export const XIAOZHI_CANCELLABLE_STATUSES: readonly string[] = ['未认领', '待响应'];
+
+/**
+ * 建单必填提示（输入类「请填写」、选择类「请选择」，与通用咨询单同一口径）
+ * 与各处拦截 / 置灰悬停文案。问题类别那条已随 B15 去掉 ——
+ * 问题分类走通用咨询表单的级联控件，它恒有值、无须另给必填提示。
  */
 export const XIAOZHI_TIP = {
   rdModuleRequired: `请选择${XIAOZHI_FIELD_LABELS.rdModule}`,
+  /**
+   * 产品模块选了、但该模块没配产研接收人（W2 的字典缺项）。
+   * 接收人是**由产品模块带出、不可改**的，缺了这一项推出去产研也不知道派给谁，故在建单侧就拦。
+   */
+  rdReceiverMissing: '该产品模块未配置产研接收人，请联系管理员配置后再流转',
+  /**
+   * 建单时产研平台不可用：**工单照建**（客户的问题已经登记下来了，不能因为下游挂了就不收单），
+   * 只是流转那一步没成，单子留在工单池里等人重新提交。
+   */
+  rdPlatformDownOnCreate: '产研平台暂不可用，工单已创建并留在工单池，请稍后在工单内重新提交产研',
+  /** 人工点「升级 · 产研」时产研平台不可用（PRD §5.4）：本单状态不变，重试即可 */
+  rdPlatformDownOnEscalate: '产研平台暂不可用，请稍后重试',
+  /** 「取消工单」在已开始处理的状态上置灰（一·补 B13 / PRD §5.3 表二） */
+  cancelAfterStarted: '工单已开始处理，不可取消',
+  /** 「保存」等写动作在未认领时置灰（PRD §5.3 表一） */
+  unclaimed: '本单尚未认领，领取后可操作',
 } as const;
 
 export const XIAOZHI_TOAST = {
@@ -292,8 +347,13 @@ export const XIAOZHI_TOAST = {
 export const XIAOZHI_TL = {
   /** `source` ＝ 工单来源（统一 IM，D24） */
   create: (source: string) => `创建小智工单 · ${source}`,
-  /** 落池留记录后由系统自动流转推产研（D6） */
+  /** 落池留记录后由系统自动流转推产研（D6）—— **只给 `auto` 那一支用** */
   autoEscalate: (channel: string, rdTitle: string) => `系统自动流转至${channel}；产研单标题：${rdTitle}`,
+  /**
+   * 人工跟进后点底栏「升级 · 产研」（PRD §11.2）。
+   * ⚠️ 与 `autoEscalate` **分开两句**：操作人是坐席，正文不能写「系统自动流转」。
+   */
+  manualEscalate: (channel: string, rdTitle: string) => `升级 · 产研（${channel}）；产研单标题：${rdTitle}`,
   /** 中间态只写履历、不驱动本单状态（D7） */
   rdProgress: (who: string, note: string) => `产研处理中 · ${who}${note ? `；处理意见：${note}` : ''}`,
   /**
@@ -302,35 +362,44 @@ export const XIAOZHI_TL = {
    */
   rdRejectedNoted: (reason: string) =>
     `收到产研驳回回传${reason ? `；驳回原因：${reason}` : ''}。本单状态不变，驳回后续处理口径待定`,
-  /** 办结回传 → **不关单**，转入待校代确认（一·补 B5） */
+  /** 办结回传 → **不关单**，转入待提报人确认（一·补 B5） */
   rdSettled: (solutionType: XiaozhiSolutionType) =>
     `产研办结回传（${solutionType}类），待${XIAOZHI_CONFIRM_ACTOR}确认是否解决`,
-  /** 校代确认「是」→ 关单 + 下送调研（B5①） */
+  /** 提报人确认「是」→ 关单 + 下送调研（B5①） */
   confirmResolved: (who: string) => `${who}确认问题已解决，工单结案并下送调研`,
-  /** 校代确认「否」→ 状态不动，系统自动回传产研（B5② + B8 记次数） */
+  /**
+   * 提报人确认「否」→ 状态不动，系统自动回传产研（B5② + B8 记次数）。
+   * 次数的词序照 PRD L420「**已回传产研 〈N〉 次**」，不写「第 N 次回传产研」。
+   */
   confirmUnresolved: (who: string, times: number, channel: string) =>
-    `${who}确认问题未解决，系统已自动回传${channel}「未解决」（第 ${times} 次回传产研），本单仍为「已升级产研」`,
-  /** 超 N 天未确认 → 视为已解决，自动结案 + 下送调研（B7） */
+    `${who}确认问题未解决，系统已自动回传${channel}「未解决」（已回传产研 ${times} 次），本单仍为「已升级产研」`,
+  /**
+   * 超 N 天未确认 → 视为已解决，自动结案 + 下送调研（B7）。
+   * 这是**履历**，记的是已经发生的事，故据实写出当时生效的天数；
+   * ⚠️ 界面上的**预告性**提示不能带天数（N 待业务定），见 `XIAOZHI_TIP` 外的 Tab 文案。
+   */
   confirmTimeoutClosed: (days: number) =>
     `超 ${days} 天未收到${XIAOZHI_CONFIRM_ACTOR}确认，视为已解决，自动结案并下送调研`,
+  /** 调研短信（D12 / D14②）：发给**提报人**本人 */
+  surveySms: (no: string) => `已向${XIAOZHI_CONFIRM_ACTOR}发送满意度调研短信（工单号：${no}）`,
 } as const;
 
 /** 站内通知 / 短信文案 */
 export const XIAOZHI_NOTICE = {
   /** 新单进工单池待领取（D21：一个大组、进池自己领） */
   pooled: (no: string) => `${no}已进入${XIAOZHI_POOL_GROUP_NAME}工单池，待领取`,
-  /** 办结回传后不关单，等校代确认（B5） */
+  /** 办结回传后不关单，等提报人确认（B5） */
   rdSettled: (no: string) => `${no}产研已办结，待${XIAOZHI_CONFIRM_ACTOR}确认是否解决`,
-  /** 校代确认未解决 → 系统已自动回传产研（B5② / B8） */
+  /** 提报人确认未解决 → 系统已自动回传产研（B5② / B8），词序照 PRD L420 */
   returnedToRd: (no: string, times: number) =>
-    `${no}${XIAOZHI_CONFIRM_ACTOR}确认未解决，系统已自动回传产研（第 ${times} 次）`,
+    `${no}${XIAOZHI_CONFIRM_ACTOR}确认未解决，系统已自动回传产研（已回传产研 ${times} 次）`,
   /** 确认解决 / 超时视为解决 → 已结案（B5① / B7） */
   closed: (no: string) => `${no}已结案并下送调研`,
 } as const;
 
 /**
  * 调研短信由**工单系统**发（D14②）；产研的「解决结果通知」短信由 **TPD 自己**发（D14①），
- * 工单系统不重复发送。调研发给提问人本人（D12），回「未解决」不拉回（D13）。
+ * 工单系统不重复发送。调研发给**提报人**本人（D12；称谓照 B19），回「未解决」不拉回（D13）。
  */
 export const XIAOZHI_SURVEY_TO_REPORTER = true;
 
@@ -363,11 +432,11 @@ export interface TicketXiaozhi {
   rdDemandResult?: XiaozhiDemandResult;
   /** 产研办结回传的时刻（`YYYY-MM-DD HH:mm:ss`）。超时视为已解决按它 + `XIAOZHI_CONFIRM_TIMEOUT_DAYS` 判（B7） */
   settledAt?: string;
-  /** 校代确认状态（B5）。办结回传后才有值；无值 ＝ 还没走到办结 */
+  /** 提报人确认状态（B5；称谓照 B19）。办结回传后才有值；无值 ＝ 还没走到办结 */
   confirmState?: XiaozhiConfirmState;
-  /** 校代确认时刻 */
+  /** 提报人确认时刻 */
   confirmAt?: string;
-  /** 确认人（校代姓名；超时视为已解决时落「系统」） */
+  /** 确认人（提报人姓名；超时视为已解决时落「系统」） */
   confirmBy?: string;
   /**
    * 已回传产研「未解决」的次数（一·补 B8：确认循环不封顶，但记次数）。

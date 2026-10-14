@@ -21,6 +21,11 @@ import {
   APPROVAL_GROUP_OPTIONS,
   resolveDefaultApprovalGroup,
 } from '../composables/opActions';
+import type { UploadFile } from 'ant-design-vue';
+import {
+  XIAOZHI_RD_MODULES, XIAOZHI_RD_PLATFORM_AVAILABLE, XIAOZHI_RD_PRIORITIES,
+  XIAOZHI_RD_PRIORITY_DEFAULT, XIAOZHI_TIP, xiaozhiReceiverOf,
+} from '../types/xiaozhi';
 
 const RESUME_AT_FORMAT = 'YYYY-MM-DD HH:mm';
 
@@ -111,7 +116,38 @@ const escalate = reactive({
   member: ESCALATE_MEMBERS[0],
   detail: '',
   feedbackCategory: FEISHU_FEEDBACK_CATEGORIES[0] as string | undefined,
+  /**
+   * 小智单「升级 · 产研」的产研五项（1130 PRD §5.4）。
+   *
+   * 🔴 原先**整组都没有** —— 小智单人工升级走的是通用升级分支，弹窗里只有
+   * 「升级通道 / 目标组别 / 升级说明」，PRD 要求的产品模块 / 接收人 / 产研优先级 /
+   * 一线人员域账号 / 附件一项都采集不到，推出去的产研单等于没有收件人。
+   * 字段形制与建单弹窗的「小智工单信息」卡同源（`XiaozhiRdInfo`）。
+   */
+  rdModule: '',
+  rdPriority: XIAOZHI_RD_PRIORITY_DEFAULT as string,
+  frontlineAccount: '',
+  attachments: [] as string[],
 });
+
+/** 接收人（域账号）由产品模块带出、不可改（W2），与建单弹窗同一个读口 */
+const escalateReceiver = computed(() => xiaozhiReceiverOf(escalate.rdModule));
+const xiaozhiModuleOptions = XIAOZHI_RD_MODULES.map((m) => ({ value: m.name, label: m.name }));
+const xiaozhiPriorityOptions = XIAOZHI_RD_PRIORITIES.map((v) => ({ value: v, label: v }));
+/** 小智单走产研通道时才出那一组字段 */
+const escalateToXiaozhiRd = computed(
+  () => !!props.isXiaozhi && escalate.channel === ESCALATE_CHANNEL_TPD,
+);
+
+const escalateAttachmentList = computed<UploadFile[]>(() =>
+  escalate.attachments.map((name, i) => ({ uid: `esc-att-${i}-${name}`, name, status: 'done' })),
+);
+function onEscalateAttachmentChange({ fileList }: { fileList: UploadFile[] }) {
+  escalate.attachments = fileList.map((f) => f.name);
+}
+function beforeEscalateUpload() {
+  return false;
+}
 const syncFeishu = reactive({ space: FEISHU_SPACES[0], message: '' });
 /** 转售后上下文 & 分流判断 */
 const asCtx = computed(() => props.aftersaleContext);
@@ -166,8 +202,14 @@ const escalateGroupOptions = computed(() => {
   return groups.map((g) => ({ value: g, label: g }));
 });
 
-// 飞书项目通道无子组别，隐藏组别/人员选择
-const showEscalateGroup = computed(() => !escalateToFeishu.value && escalateGroupOptions.value.length > 0);
+/**
+ * 飞书项目通道无子组别，隐藏组别/人员选择。
+ * 🔴 **小智单也不出「目标组别」**：PRD §5.4 给的是产研五项，没有 TPD 受理组 / 跟进组这一档 ——
+ * 小智单的派发靠「产品模块 → 接收人」（W2），再选一个组是多问一道、且与接收人口径打架。
+ */
+const showEscalateGroup = computed(
+  () => !escalateToFeishu.value && !escalateToXiaozhiRd.value && escalateGroupOptions.value.length > 0,
+);
 
 const delegateGroupOptions = computed(() =>
   DELEGATE_GROUPS.map((t) => ({ value: t, label: t })),
@@ -291,6 +333,10 @@ function resetForms() {
   escalate.member = ESCALATE_MEMBERS[0];
   escalate.detail = '';
   escalate.feedbackCategory = FEISHU_FEEDBACK_CATEGORIES[0];
+  escalate.rdModule = '';
+  escalate.rdPriority = XIAOZHI_RD_PRIORITY_DEFAULT;
+  escalate.frontlineAccount = '';
+  escalate.attachments = [];
   syncFeishu.space = FEISHU_SPACES[0]; syncFeishu.message = '';
   resolve.solution = ''; resolve.createCallback = true;
   close.reason = ''; close.approvalGroup = defaultApprovalGroup(); close.note = '';
@@ -344,6 +390,16 @@ function validate(): boolean {
         message.warning('请选择问题反馈分类');
         return false;
       }
+      // 小智单「升级 · 产研」三道（1130 PRD §5.4），与建单侧同口径
+      if (escalateToXiaozhiRd.value) {
+        if (!escalate.rdModule) { message.warning(XIAOZHI_TIP.rdModuleRequired); return false; }
+        if (!escalateReceiver.value) { message.warning(XIAOZHI_TIP.rdReceiverMissing); return false; }
+        // 产研平台不可用：本单状态不变，重试即可（与建单那条「工单已创建并留在工单池」不是一句）
+        if (!XIAOZHI_RD_PLATFORM_AVAILABLE) {
+          message.warning(XIAOZHI_TIP.rdPlatformDownOnEscalate);
+          return false;
+        }
+      }
       return true;
     case '同步飞书':
       if (!syncFeishu.message.trim()) { message.warning('请填写同步内容'); return false; }
@@ -395,7 +451,11 @@ function onOk() {
       type: '挂起',
       data: { ...suspend, serviceType: props.serviceType ?? '', serviceMethod: props.serviceMethod ?? '' },
     }); break;
-    case '升级': emit('confirm', { type: '升级', data: { ...escalate } }); break;
+    // 小智单那一支额外带上「接收人」—— 它是产品模块带出来的只读值，落库要用
+    case '升级': emit('confirm', {
+      type: '升级',
+      data: { ...escalate, rdReceiver: escalateReceiver.value, xiaozhiRd: escalateToXiaozhiRd.value },
+    }); break;
     case '同步飞书': emit('confirm', { type: '同步飞书', data: { ...syncFeishu } }); break;
     case '转售后':
     case '关联售后': {
@@ -627,6 +687,51 @@ function onOk() {
       <!-- 飞书项目通道：一句说明 + 升级说明；其余建单要素后台自动带入 -->
       <template v-if="escalateToFeishu">
         <div class="op-tip op-tip-info">确认后将在飞书项目创建「客户反馈单」，并自动带入本单标题、产品、优先级等。</div>
+        <div class="op-field">
+          <div class="op-label">升级说明</div>
+          <a-textarea v-model:value="escalate.detail" :rows="2" placeholder="补充给产研的说明，如复现步骤、影响范围…" />
+        </div>
+      </template>
+
+      <!--
+        小智单 · 升级 · 产研（1130 PRD §5.4）：产研五项 —— 产品模块 / 接收人（域账号，只读）/
+        产研优先级（四档）/ 一线人员域账号（选填）/ 附件（选填）。
+        与建单弹窗「小智工单信息」卡同一组字段、同一份字典（`XIAOZHI_RD_MODULES`）。
+      -->
+      <template v-else-if="escalateToXiaozhiRd">
+        <div class="op-field-row">
+          <div class="op-field">
+            <div class="op-label req">产品模块</div>
+            <a-select
+              v-model:value="escalate.rdModule"
+              style="width:100%"
+              placeholder="请选择"
+              :options="xiaozhiModuleOptions"
+            />
+          </div>
+          <div class="op-field">
+            <div class="op-label req">接收人（域账号）</div>
+            <a-input :value="escalateReceiver" disabled placeholder="由产品模块带出" />
+          </div>
+        </div>
+        <div class="op-field">
+          <div class="op-label req">产研优先级</div>
+          <a-radio-group v-model:value="escalate.rdPriority" :options="xiaozhiPriorityOptions" />
+        </div>
+        <div class="op-field">
+          <div class="op-label">一线人员域账号</div>
+          <a-input v-model:value="escalate.frontlineAccount" placeholder="请输入一线人员域账号" />
+        </div>
+        <div class="op-field">
+          <div class="op-label">附件</div>
+          <a-upload
+            :file-list="escalateAttachmentList"
+            :before-upload="beforeEscalateUpload"
+            @change="onEscalateAttachmentChange"
+          >
+            <a-button size="small">上传附件</a-button>
+          </a-upload>
+        </div>
         <div class="op-field">
           <div class="op-label">升级说明</div>
           <a-textarea v-model:value="escalate.detail" :rows="2" placeholder="补充给产研的说明，如复现步骤、影响范围…" />

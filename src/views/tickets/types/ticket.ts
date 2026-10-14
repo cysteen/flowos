@@ -1250,8 +1250,15 @@ export function resolveStoppedClockStatus(t: Ticket): TicketStatus {
  * 判据只认 `roleKey`。此前一线额外传一个 `isFrontline` 布尔，值取自工单上的
  * `frontlineDemo` 假字段——那让带该标记的单对**所有角色**都走一线分支，
  * 门控形同虚设。一线已有 RoleKey `agent-l1`，参数随之去掉（2026-08-19）。
+ *
+ * 🔴 **`isXiaozhiTicket` 是单维，不是角色维**（1130，PRD §5.1 / §9）：
+ * 「小智单上不出升级投诉」说的是**这张单**，不是「小智坐席这个人」。原先这里只有
+ * `roleKey === 'xiaozhi-agent'` 一个判据，于是**二线班组长 / 客诉专员 / 投诉督导 / 管理员
+ * 打开小智单时，页头照出「升级投诉」** —— 角色维挡的是小智坐席自己，谁都挡不住别人。
+ * 对照正解在同一个文件外的 `resolveRiskControlForm(roleKey, type, isXiaozhi)`：它拿的是
+ * `isXiaozhiTicket(d.value)`，单维。本函数照它补上第二个参数。
  */
-export function headerActionsByRole(roleKey: string): {
+export function headerActionsByRole(roleKey: string, isXiaozhiTicket = false): {
   escalateComplaint: boolean;
   linkAftersale: boolean;
   supplement: boolean;
@@ -1269,25 +1276,34 @@ export function headerActionsByRole(roleKey: string): {
   const isL1 = roleKey === 'agent-l1';
   const isTechSupport = roleKey === 'tech-support';
   /**
-   * 小智坐席（1130 D20）：一线的**催单 / 取消 / 新建补充**三枚给上。
-   *
-   * - **升级投诉不给**（D19）：人员投诉走通用投诉流程、投诉单与小智工单不做关联；
-   *   逐字稿 51:08 问「小智工单跟人员投诉会同时吗」，答「这个概念目前没有」。
-   * - **关联售后不给**：判据是**类型限制**不是小智口径 —— 基线 §4「关联售后」行的
-   *   类型集 ＝「投」，小智单是**咨询**单，这一格本就不出现。D18「不涉及转售后」说的是
-   *   底栏那枚「转售后」（已在 `XIAOZHI_ACTION_KEYS` 里不登记），两者别混。
+   * 小智坐席（1130 D20）：一线的**催单 / 取消 / 新建补充**三枚给上 —— 这三枚是**角色维**，
+   * 判的就是「谁在看」，故用 `isXiaozhiRole`。
    */
-  const isXiaozhi = roleKey === 'xiaozhi-agent';
+  const isXiaozhiRole = roleKey === 'xiaozhi-agent';
   return {
-    escalateComplaint: canWorkTicket && !isTechSupport && !isXiaozhi,
-    // 投诉单上一线另按阶层置灰（※8），那是类型门控、不在本函数。
-    // 关联售后：一线坐席 / 工单运营 / 质检不展示，**技术支持可用**（基线 §4 行 320；
-    // 1025 需求分析表角色表「技术支持 ✅ 关联售后」，与转售后的「技术支持不展示」分开取值）
-    linkAftersale: canWorkTicket && !isL1 && !isXiaozhi,
+    /**
+     * **升级投诉：单维**（D19 + PRD §5.1 / §9「小智单上不出升级投诉」）——
+     * 人员投诉走通用投诉流程、投诉单与小智工单不做关联；逐字稿 51:08 问「小智工单跟
+     * 人员投诉会同时吗」，答「这个概念目前没有」。
+     * ⚠️ 这里**只能判单、不能判角色**：判角色只挡住小智坐席，二线班组长 / 客诉专员 /
+     * 投诉督导 / 管理员打开同一张小智单照样能点。
+     */
+    escalateComplaint: canWorkTicket && !isTechSupport && !isXiaozhiTicket,
+    /**
+     * 关联售后。真正的判据是**类型限制** —— 基线 §4「关联售后」行的类型集 ＝「投」，
+     * 小智单是**咨询**单，这一格本就不出现；D18「不涉及转售后」说的是底栏那枚「转售后」
+     * （已在 `XIAOZHI_ACTION_KEYS` 里不登记），两者别混。
+     * 单维那一道照 §5.1 补上；**角色维那一道同时留着**，因为基线从未给过小智坐席
+     * 在通用投诉单上的这一格取值，去掉它等于替基线下一个没人拍过的结论。
+     * 投诉单上一线另按阶层置灰（※8），那是类型门控、不在本函数。
+     * （基线 §4 行 320；1025 需求分析表角色表「技术支持 ✅ 关联售后」，
+     * 与转售后的「技术支持不展示」分开取值）
+     */
+    linkAftersale: canWorkTicket && !isL1 && !isXiaozhiRole && !isXiaozhiTicket,
     supplement: canWorkTicket,
     // 催单 / 取消工单：基线原写「一线坐席唯一」，1130 D20a 起改为「一线坐席 + 小智坐席」
-    dunning: isL1 || isXiaozhi,
-    cancelTicket: isL1 || isXiaozhi,
+    dunning: isL1 || isXiaozhiRole,
+    cancelTicket: isL1 || isXiaozhiRole,
   };
 }
 

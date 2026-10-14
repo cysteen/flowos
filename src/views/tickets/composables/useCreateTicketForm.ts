@@ -465,10 +465,14 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   }
 
   /**
-   * 小智单提交（D5）：`escalate=false` ＝「创建」落池自领；`escalate=true` ＝「创建并流转」，
-   * 落池留记录后由系统自动流转推产研（D6）。校验通过返回建好的单，拦截返回 null。
+   * 小智单提交（D5 / PRD §2）：`escalate=false` ＝「创建」落池自领；`escalate=true` ＝「创建并流转」，
+   * 落池留记录后由系统自动流转推产研（D6）。
+   *
+   * 返回 `null` ＝ 被拦住（必填缺项或产品模块没配接收人），提示落在字段下方；
+   * 返回工单 ＝ 建成了，`degraded` 说明「建成但没流转成」（产研平台不可用），
+   * 由弹窗换成 `rdPlatformDownOnCreate` 那句，不能照「已流转产研」报喜。
    */
-  function submitXiaozhi(escalate: boolean): Ticket | null {
+  function submitXiaozhi(escalate: boolean): { ticket: Ticket; degraded: boolean } | null {
     clearErrors();
     clearXiaozhiErrors();
     // 通用咨询单那套校验照跑（D27），小智专属字段另加一道
@@ -479,9 +483,13 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       if (result.missing.includes('rdModule')) {
         xiaozhiErrors.rdModule = XIAOZHI_TIP.rdModuleRequired;
       }
+      // 没配产研接收人：接收人是产品模块带出来的，故提示也落在产品模块那一栏下方
+      if (result.reason === 'receiverMissing') {
+        xiaozhiErrors.rdModule = XIAOZHI_TIP.rdReceiverMissing;
+      }
       return null;
     }
-    return result.ticket;
+    return { ticket: result.ticket, degraded: !!result.degraded };
   }
 
   /** 建单人：与「本人建的单」判定同一把（`currentHandlerName`） */
