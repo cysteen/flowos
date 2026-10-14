@@ -1,6 +1,7 @@
 import type { LatestHandlingItem } from '@/views/tickets/types/operation';
 import type { Ticket } from '@/views/tickets/types/ticket';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
+import { FLASH_RESULT_ONLINE_SUCCESS, FLASH_TL } from '@/views/tickets/types/flash';
 
 /** 最新处理 · 动作文案（速览带与列表 hover 共用） */
 export const LATEST_HANDLING_ACTION = {
@@ -124,7 +125,8 @@ export interface FlashRecordBlock extends LatestResultBlock {
 
 /**
  * 刷机处理记录块（刷机单）：刷机处理记录与刷机处理结论都为空时不出。
- * 处理人、时间取最近一次保存刷机处理记录的那条一线处理条目（升级二线等流转事件不计）。
+ * 处理人、时间取最近一次保存刷机处理记录的那条一线处理条目（升级二线等流转事件不计）；
+ * 刷机处理结论由系统写入（回传「接收成功」写「已线上刷机成功」）且晚于一线保存时，处理人为「系统」、时间取系统写入时刻。
  */
 export function latestFlashRecordFrom(
   entries: TimelineEntry[],
@@ -133,8 +135,11 @@ export function latestFlashRecordFrom(
   const text = state?.record?.trim() ?? '';
   const result = state?.result?.trim() ?? '';
   if (!text && !result) return null;
+  const systemWritten = result === FLASH_RESULT_ONLINE_SUCCESS;
   for (let i = entries.length - 1; i >= 0; i--) {
     const e = entries[i];
+    const isSystemWrite = systemWritten && e.action === 'flashSuccess' && e.what !== FLASH_TL.lateSuccess;
+    if (isSystemWrite) return { ...blockAt(e), who: '系统', role: '系统', text, result };
     if (isFlashRecordEntry(e)) {
       return { ...blockAt(e), text, result };
     }
