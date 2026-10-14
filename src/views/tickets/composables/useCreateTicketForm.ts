@@ -141,7 +141,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   const flashConfig = useFlashConfigStore();
   /**
    * 问题分类按产品维护（1014）：刷机分类（售后 → 服务申请 → 自助刷机 / 刷原生系统）
-   * 只对「是否支持刷机」开启、且该分类「是否刷机」开启的产品出现；其余分类各产品共用。
+   * 只对「是否支持刷机」开启的产品出现（「是否刷机」关掉照常列出，选中按普通咨询单）；其余分类各产品共用。
    * 读刷机配置的响应式状态，后台开关一改，建单下拉随即联动。
    */
   const productProblemTree = computed<Record<string, Record<string, string[]>>>(() => {
@@ -153,7 +153,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
         const kept = l3s.filter((l3) => {
           const isFlashPath = l1 === FLASH_TAG_L1 && l2 === FLASH_TAG_L2
             && (FLASH_TAG_L3S as readonly string[]).includes(l3);
-          return !isFlashPath || flashConfig.isFlashScene(product, l1, l2, l3);
+          return !isFlashPath || flashConfig.isSupportedModel(product);
         });
         if (kept.length) l2Out[l2] = kept;
       }
