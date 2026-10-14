@@ -348,7 +348,13 @@ export const STATUS_COLOR_MAP: Record<StatusTone, { color: string; bg: string }>
   auto: { color: '#0891b2', bg: '#0891b218' },
 };
 
-/** 「自动刷机中」徽章色（列表 statusTone 与操作页头 statusHex 共用） */
+/**
+ * 「自动刷机中」徽章色。
+ * ⚠️ 原注释写「列表 statusTone 与操作页头 **statusHex** 共用」—— `statusHex` 那个平行实现
+ * 已随 1130 一·补 B23 删除（操作页头改走 `statusStyle`），这里不再有第二个消费方；
+ * 本常量现在只给需要**纯色值**（而非 `{color,background}`）的地方用。
+ * 色值本身与 `STATUS_COLOR_MAP.auto` 同源，改一处要两处一起改。
+ */
 export const AUTO_FLASH_STATUS_HEX = '#0891B2';
 
 const REVIEW_STATUSES: TicketStatus[] = [

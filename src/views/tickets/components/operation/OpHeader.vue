@@ -7,7 +7,7 @@ import { useUserStore } from '@/stores/user';
 import { CopyOutlined, FlagOutlined } from '@ant-design/icons-vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import {
-  FLASH_MARK_COLOR, XIAOZHI_MARK_COLOR, PRIORITY_COLOR, softBg, csEntryAvailability, statusDisplayName, AUTO_FLASH_STATUS_HEX,
+  FLASH_MARK_COLOR, XIAOZHI_MARK_COLOR, PRIORITY_COLOR, softBg, csEntryAvailability, statusDisplayName, statusStyle,
   type Priority, type TicketStatus,
 } from '@/views/tickets/types/ticket';
 import OpSlaBar from './OpSlaBar.vue';
@@ -235,24 +235,21 @@ const relations = computed(() => buildTicketRelations(props.detail));
 const statusText = computed(() => statusDisplayName(props.detail.status));
 
 /**
- * 落库子状态 → 语义色（对齐 STATUS_TONE：进行中=橙、完成=绿、中性=灰、异常=红）。
- * ⚠️ 入参必须是**落库值**，不能传展示名 —— 「已转出」的展示名是「已转售后」，
- * 拿展示名来匹配就落不进下面的紫色分支了。
+ * 状态徽章配色 —— **直接用全仓唯一那套标准** `statusStyle()`（`types/ticket.ts`），
+ * 与工作台列表徽章（`TicketTitleCell.vue`）同一个函数、同一份色表。
+ *
+ * 🔴 **这里原先有一个叫 `statusHex` 的平行实现**（一串按先后顺序匹配的正则），
+ * 与标准**26 个状态里有 18 个取色不同** —— 最扎眼的是「已升级产研」：
+ * 它先命中 `/升级/` 拿到紫色，而标准按 `STATUS_GROUP` 判为非终态 → 橙色，
+ * 于是同一张单在详情页是紫、在工作台是橙。那个函数的注释还写着
+ * 「与列表徽章的 statusTone() 保持同一判法，同一张单两处不能一绿一灰」——
+ * 写着对齐、做的是另一套，是条**失效断言**，已随函数一并删掉。
+ *
+ * ⚠️ **入参必须是落库值 `detail.status`，不能传展示名 `statusText`**：
+ * 「已转出」的展示名是「已转售后」，拿展示名去查 `STATUS_GROUP` 查不到，会掉进 default。
+ * ⚠️ 要加新状态或改配色，**改 `statusTone()` / `STATUS_COLOR_MAP`**，不要在这里再长出第二套。
  */
-function statusHex(s: string): string {
-  // 刷机单「自动刷机中」（930 M9）：系统自动环节，与列表 statusTone('auto') 同色
-  if (s === '自动刷机中') return AUTO_FLASH_STATUS_HEX;
-  // 转单三态 / 升阶两态 / 已转出＝业务转到别的单上，用紫与关闭类终态的灰区分开
-  if (/已转咨询|已转建议|已转商机|已升级投诉|已升级外投|已转出/.test(s)) return '#7C3AED';
-  // 「已关闭」＝关闭工单审批通过，与已结案 / 直接结案同属正常收口，取绿——
-  // 与列表徽章的 statusTone() 保持同一判法，同一张单两处不能一绿一灰
-  if (/已完成|已结案|直接结案|已结单|已关闭|完成/.test(s)) return '#10B981';
-  if (/挂起|撤销|取消|终止/.test(s)) return '#6B7280';
-  if (/升级/.test(s)) return '#A855F7';
-  if (/逾期|超时|异常|驳回|失败/.test(s)) return '#EF4444';
-  if (/处理中|受理|待|审核|进行/.test(s)) return '#F59E0B';
-  return '#1A6FFF';
-}
+const statusBadge = computed(() => statusStyle(props.detail.status as TicketStatus));
 /** 淡底标签样式（颜色=语义，避免厚重实底/红色滥用） */
 function tagStyle(hex: string) {
   return { color: hex, background: softBg(hex) };
@@ -275,9 +272,9 @@ function priorityHex(p: string): string {
           <span
             v-if="!isSuperseded"
             class="badge"
-            :style="tagStyle(statusHex(detail.status))"
+            :style="statusBadge"
           >
-            <span class="badge-dot" :style="{ background: statusHex(detail.status) }" />{{ statusText }}
+            <span class="badge-dot" :style="{ background: statusBadge.color }" />{{ statusText }}
           </span>
           <!--
             工单类型徽章。🔴 **小智单上不出**（1130 一·补 B21，用户原话「如果是小智工单，
