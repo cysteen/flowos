@@ -26,7 +26,6 @@ import {
 } from '@/views/tickets/types/operation';
 import { isComplaintCategoryComplete } from '@/views/tickets/types/createTicket';
 import { FLASH_RESULT_ONLINE_SUCCESS, flashResultOptions as flashResultOptions0 } from '@/views/tickets/types/flash';
-import { useUserStore } from '@/stores/user';
 
 const props = defineProps<{
   form: ProcessFormDraft;
@@ -112,10 +111,9 @@ const isFlashL2 = computed(() => isFlash.value && props.flashLine === 'l2');
 const isConsult = computed(() => props.ticketType === '咨询' && (!isFlash.value || isFlashL2.value));
 const isSuggest = computed(() => props.ticketType === '建议');
 const isLead = computed(() => props.ticketType === '商机');
-const user = useUserStore();
 const flashResultOptions = computed(() => {
-  // 刷机处理结论只在一线形态可选（1014）：取一线选项
-  const opts: string[] = flashResultOptions0('一线');
+  // 刷机处理结论只在一线形态可选（1014）
+  const opts: string[] = flashResultOptions0();
   const cur = props.form.flashResult;
   if (cur && !opts.includes(cur)) opts.unshift(cur);
   return opts.map((r) => ({ label: r, value: r, disabled: r === FLASH_RESULT_ONLINE_SUCCESS }));

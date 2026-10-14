@@ -130,7 +130,6 @@ export const FLASH_RESULTS = [
   '已线下登记、已推送',
   '升级二线',
   '婉拒',
-  '已转售后',
   '联系不上用户',
   '用户放弃',
 ] as const;
@@ -141,15 +140,12 @@ export const FLASH_RESULT_ONLINE_SUCCESS: FlashResult = '已线上刷机成功';
 export const FLASH_RESULT_OFFLINE: FlashResult = '已线下登记';
 /** 产线已推送：可下送进回访（A16） */
 export const FLASH_RESULT_OFFLINE_PUSHED: FlashResult = '已线下登记、已推送';
-/** 一线专用：下送时二次确认后进教育刷机处理组池（A18） */
+/** 下送时二次确认后进教育刷机处理组池（A18） */
 export const FLASH_RESULT_ESCALATE_L2: FlashResult = '升级二线';
-/** 二线专用 */
-export const FLASH_RESULT_AFTERSALE: FlashResult = '已转售后';
 
-/** 处理结果下拉的人工可选项：一线有「升级二线」无「已转售后」，二线反之 */
-export function flashResultOptions(line: FlashLine): FlashResult[] {
-  return FLASH_RESULTS.filter((r) => r !== FLASH_RESULT_ONLINE_SUCCESS
-    && (line === '一线' ? r !== FLASH_RESULT_AFTERSALE : r !== FLASH_RESULT_ESCALATE_L2));
+/** 刷机处理结论下拉的人工可选项（只在一线形态出；二线按咨询单处理表单，1014） */
+export function flashResultOptions(): FlashResult[] {
+  return FLASH_RESULTS.filter((r) => r !== FLASH_RESULT_ONLINE_SUCCESS);
 }
 
 /** 处理结果取值校验：不在现行取值全集内的一律按未选。存量旧取值只在读缓存时迁移一次（`stores/flash.ts`） */

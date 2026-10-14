@@ -1404,12 +1404,11 @@ export const useFlashStore = defineStore('flash', () => {
 
   /**
    * 售后处理完唤起原单（PRD §7.1 / §7.3，售后回传接入点）：回原二线处理人「处理中」，SLA 按转出前摘要续算，
-   * 处理结果预置「已转售后」，由处理人下送。
+   * 由处理人按咨询单处理表单下送；一线的刷机处理结论不改写（1014）。
    */
   function returnFromAftersale(ticketNo: string): FlashActionResult {
     const r = rowOf(ticketNo);
     if (!r?.flash || r.nodeStatus !== '已转出') return { ok: false, message: FLASH_TIP_REPUSH_STATE };
-    const st = r.flash.state;
     const now = Date.now();
     Object.assign(r, {
       nodeStatus: '处理中', tab: 'mine',
@@ -1417,7 +1416,6 @@ export const useFlashStore = defineStore('flash', () => {
     });
     resumeClock(r, now);
     delete (r as Partial<Ticket>).linkedAftersaleNo;
-    st.result = '已转售后';
     log(ticketNo, now, {
       category: 'node', action: 'transfer', who: '系统', role: '系统', how: '售后唤起',
       what: `售后处理完成，唤起原单，回到 ${r.assignee ?? ''} 名下处理中`,
