@@ -397,6 +397,8 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       flashState: state('用户提报', {
         outcome: '接收失败', failL1: '接收失败', pushCount: 1,
         handoffReason: '接收失败', pool: 'l1', handoffSmsSent: true,
+        // 表单显示最新一次保存的值：与下方处理条目同文
+        record: '已致电用户冯涛，经智能硬件平台查询设备推送时处于离线状态；已指导用户将平板连接家庭 WiFi，用户表示晚间开机联网后回电确认。',
       }),
       runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '接收失败', failL1: '接收失败', resultAt: back })],
     }), [
@@ -545,6 +547,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       flashState: state('用户提报', {
         outcome: '接收失败', failL1: '接收失败', failL2: '未开机', pushCount: 2,
         handoffReason: '接收失败', pool: 'l1', handoffSmsSent: true,
+        record: '已电话联系用户陆明，用户称已开机，准备重新推送。',
       }),
       runs: [
         run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '接收失败', failL1: '接收失败', failL2: '未开机', resultAt: back }),
@@ -618,7 +621,9 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       handoffEntry(addSec(at, 2), '非自研机型', 'l1'),
       smsEntry(addSec(at, 3), '13855205625', flashSmsHandoff(no(14))),
       acceptEntry(claim, '刘一线', '一线坐席'),
-      handleEntry(registered, '刘一线', '一线坐席', `已在线下登记表登记该设备，等待产线推送；刷机处理结论：${FLASH_RESULT_OFFLINE}`),
+      // 与保存时同序同文：先记「线下登记」，再记本次保存的刷机处理记录（追加后的全文）
+      tl(registered, 'handle', 'handle', '刘一线', '一线坐席', '线下登记', FLASH_TL.offlineRegister(registered.slice(0, 16))),
+      handleEntry(registered, '刘一线', '一线坐席', `已在线下登记表登记该设备，等待产线推送。\n已线下登记，${registered.slice(0, 16)}`),
     ]);
   }
 
@@ -698,6 +703,8 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       flashState: state('用户提报', {
         outcome: '接收失败', failL1: '接收失败', failL2: '版本不符', pushCount: 2,
         handoffReason: '一线升级', pool: 'l2', handoffSmsSent: true,
+        // 一线升级二线时落库的刷机处理结论与刷机处理记录（与「升级二线」履历所带处理记录同文）
+        result: '升级二线', record: '已指导用户开机联网，设备系统版本过低无法在线升级。',
         // 转售后停钟：客服侧冻结，售后唤起回原处理人时剩余接续（PRD §7.3 / §4.3）
         ...ledger(nowMs, esc, 282, parseFlashStamp(toAs).getTime()),
       }),
@@ -712,6 +719,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       handoffEntry(addSec(back, 1), '接收失败', 'l1'),
       smsEntry(addSec(back, 2), '13966713907', flashSmsHandoff(no(17))),
       acceptEntry(claim1, '刘一线', '一线坐席'),
+      handleEntry(addSec(esc, -110), '刘一线', '一线坐席', '已指导用户开机联网，设备系统版本过低无法在线升级。'),
       escalateEntry(esc, '刘一线', '已指导用户开机联网，设备系统版本过低无法在线升级。'),
       acceptEntry(claim2, '王坐席', '二线专员'),
       handleEntry(addSec(repushed, -300), '王坐席', '二线专员', '已在工单刷机问题沟通群反馈，硬件平台下发兼容刷机包，准备重新推送。'),
@@ -771,6 +779,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
         outcome: '接收成功', pushCount: 2,
         handoffReason: '接收失败', pool: 'l1', handoffSmsSent: true,
         result: FLASH_RESULT_ONLINE_SUCCESS,
+        record: '已电话联系用户周建平，指导平板连接家庭 WiFi，设备已在线，准备重新推送。',
         surveySentAt: addSec(forwarded, 1),
       }),
       runs: [

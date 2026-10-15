@@ -1262,6 +1262,17 @@ export const useFlashStore = defineStore('flash', () => {
   }
 
   /**
+   * 处理表单保存的「工单处理」登记（字段级变更）记进刷机履历并落缓存：刷新后处理履历与速览带「最新处理」
+   * 仍取得到保存时的处理人与时间。一线的刷机处理记录、二线的处理结果都走这里。
+   */
+  function logProcess(ticketNo: string, by: FlashActor, partial: Omit<TimelineEntry, 'id' | 'when'>) {
+    if (!rowOf(ticketNo)?.flash) return;
+    log(ticketNo, Date.now(), { ...partial, who: by.name, role: by.role });
+    bump(ticketNo);
+    persist();
+  }
+
+  /**
    * 处理人在「待响应」外呼、发短信或发邮件（PRD §6 / §7.1 / M102）：转「处理中」，处理人不变。其余子状态不动。
    */
   function markRespondedByContact(ticketNo: string): boolean {
@@ -1823,6 +1834,7 @@ export const useFlashStore = defineStore('flash', () => {
     linkComplaint,
     flashNoLinkedTo,
     saveProcess,
+    logProcess,
     holdSla,
     resumeSla,
     stopSla,

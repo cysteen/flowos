@@ -20,7 +20,6 @@ import TicketEventToastStack from './components/operation/TicketEventToastStack.
 import OpProcessTabs from './components/operation/OpProcessTabs.vue';
 import OpSidePanel from './components/operation/OpSidePanel.vue';
 import OpActionBar from './components/OpActionBar.vue';
-import OpFlashResultCard from './components/operation/OpFlashResultCard.vue';
 import OpFlashInfoBlock from './components/operation/OpFlashInfoBlock.vue';
 import OpFlashInfoEditModal from './components/operation/OpFlashInfoEditModal.vue';
 import OpFlashEscalateModal from './components/operation/OpFlashEscalateModal.vue';
@@ -52,7 +51,8 @@ import { useProcessForm } from './composables/useProcessForm';
 import { useOperationTabs } from './composables/useOperationTabs';
 import { useTicketLiveNotify } from './composables/useTicketLiveNotify';
 import { formatTicketRecordWho, MOCK_FIRST_LINE_AGENTS } from './utils/ticketRecordWho';
-import { mergeDraftIntoLatestHandling } from './utils/ticketOverview';
+import { LATEST_HANDLING_ACTION, TECH_RESULT_FIELD, latestFlashRecordFrom, latestResultsFromTimeline } from './utils/ticketOverview';
+import type { LatestHandlingItem } from './types/operation';
 import { opTimeNow } from './utils/opTime';
 import { TICKETS } from '@/mock/tickets';
 import { useRiskTagStore } from '@/stores/riskTags';
@@ -81,6 +81,8 @@ import {
   FLASH_ADMIN_ROLE_KEYS, FLASH_GATE_TIPS, type FlashView,
 } from './composables/flashGate';
 import { useFlashStore } from '@/stores/flash';
+import { useHandleLogStore } from '@/stores/handleLog';
+import type { TimelineEntry } from './types/ticketDetail';
 import { useFlashConfigStore } from '@/stores/flashConfig';
 import { resolveSupersededBy, type TicketRelation } from './composables/ticketRelations';
 import type { CreateTicketPrefill, Ticket } from './types/ticket';
@@ -381,6 +383,7 @@ const isPrimaryHandler = computed(
 /* ---------------- 刷机单门控（930 教育刷机单 PRD §5.5 / §1.2 / §9.4，判据见 composables/flashGate.ts） ---------------- */
 
 const flashStore = useFlashStore();
+const handleLogStore = useHandleLogStore();
 const flashConfig = useFlashConfigStore();
 
 /* ---------------- 小智单（1130 小智工单 / 一·补） ---------------- */
@@ -1613,6 +1616,8 @@ function snapshotProcess(): Record<string, string> {
   for (const { key } of PROCESS_FIELDS_PROXY()) snap[key] = String(f[key] ?? '').trim();
   snap.__att = String([...(f.processResultAttachments ?? []), ...(f.problemCauseAttachments ?? []), ...(f.flashRecordAttachments ?? [])].length);
   snap.__cnAtt = JSON.stringify(f.closingNoteAttachments ?? []);
+  // 技术支持 Tab 的处理结果随同一个「保存」落库，记入处理履历（速览带「最新处理」据此取处理人与时间）
+  snap.__tech = (tabData.value.techDraft?.processResult ?? '').trim();
   return snap;
 }
 
@@ -1642,6 +1647,43 @@ watch(
   },
   { immediate: true },
 );
+/**
+ * 表单回放「最新一次保存的值」：刷新后表单与速览带「最新处理」、处理履历一致。
+ * - 普通单：取处理履历缓存（stores/handleLog）里各次保存的字段变更，按先后覆盖到 Tab① 表单与技术支持 Tab；
+ * - 刷机单：取刷机履历里的保存登记（刷机处理结论 / 刷机处理记录以刷机字段组为准，不在此回放）；
+ *   种子里二线的处理条目只有正文，正文即处理结果。
+ * 没有保存记录的单仍走种子预填。
+ */
+const PROCESS_FIELD_KEY = new Map(BASE_PROCESS_FIELDS.map((f) => [f.label, f.key]));
+const FLASH_STATE_FIELDS = new Set(['刷机处理结论', '刷机处理记录']);
+function replaySavedProcess() {
+  const saved = isFlash.value
+    ? flashStore.timelineOf(d.value.no).filter((e) => e.category === 'handle')
+    : handleLogStore.entriesOf(d.value.no);
+  if (!saved.length) return;
+  const next: Record<string, unknown> = { ...form.value };
+  let tech: string | undefined;
+  for (const e of saved) {
+    if (!e.changes?.length) {
+      if (isFlash.value && e.how === '工单处理' && e.role !== '一线坐席' && e.what?.trim()) next.processResult = e.what.trim();
+      continue;
+    }
+    for (const c of e.changes) {
+      const v = c.to === '（已清空）' ? '' : (c.to ?? '');
+      if (c.field === TECH_RESULT_FIELD) tech = v;
+      if (isFlash.value && FLASH_STATE_FIELDS.has(c.field)) continue;
+      const key = PROCESS_FIELD_KEY.get(c.field);
+      if (key) next[key] = v;
+    }
+  }
+  form.value = next as unknown as ProcessFormDraft;
+  if (tech !== undefined) {
+    tabData.value = { ...tabData.value, techDraft: { ...tabData.value.techDraft, processResult: tech } };
+  }
+  processBaseline = snapshotProcess();
+}
+watch(() => d.value.no, replaySavedProcess, { immediate: true, flush: 'post' });
+
 // 系统改写刷机处理结论 / 刷机处理记录（重新推送接收成功写入「已线上刷机成功」、升级二线落库）时同步回表单
 watch(
   () => [d.value.flash?.state.result, d.value.flash?.state.record] as const,
@@ -1765,6 +1807,13 @@ function buildProcessLog() {
       continue;
     }
     changes.push(before ? { field: label, kind: '修改', from: before, to: after } : { field: label, kind: '补充', to: after });
+  }
+  const techBefore = processBaseline.__tech ?? '';
+  const techAfter = (tabData.value.techDraft?.processResult ?? '').trim();
+  if (techAfter && techAfter !== techBefore) {
+    changes.push(techBefore
+      ? { field: TECH_RESULT_FIELD, kind: '修改', from: techBefore, to: techAfter }
+      : { field: TECH_RESULT_FIELD, kind: '补充', to: techAfter });
   }
   const attArr = [...(f.processResultAttachments ?? []), ...(f.problemCauseAttachments ?? []), ...(f.flashRecordAttachments ?? [])];
   const attAdded = attArr.length - Number(processBaseline.__att ?? '0');
@@ -1903,19 +1952,23 @@ function onAction(payload: Record<string, unknown>) {
         message.info('内容未变更，无需保存');
         return;
       }
-      pushEntry(timeline.value, {
+      const postCloseEntry: Omit<TimelineEntry, 'id' | 'when'> = {
         category: 'handle', action: 'handle', who: user.name || '当前坐席', role: mapUserRole(user.roleKey),
         how: '结案后补充',
         what: `更新${[...new Set(log.changes.map((c) => c.field))].join('、')}`,
         changes: log.changes,
-      });
+      };
+      // 与「工单处理」登记同一套持久化：刷机单进刷机履历，其余单进处理履历缓存
+      if (isFlash.value) flashStore.logProcess(d.value.no, flashActor(), postCloseEntry);
+      else handleLogStore.append(d.value.no, pushEntry(timeline.value, postCloseEntry));
       syncClosingNoteAttachmentsToHistory(closingNoteAttachmentDiff().added);
       processBaseline = snapshotProcess();
       message.success('已保存，变更已记入处理履历');
       return;
     }
     if (isFlash.value && !onFlashSave()) return;
-    dispatch({ type: '保存草稿', process: log });
+    // 刷机单：改为线下登记时保存会往刷机处理记录追加一行，登记取追加后的值，与表单、刷机字段组一致
+    dispatch({ type: '保存草稿', process: isFlash.value ? buildProcessLog() : log });
     // 小智单：保存属首次响应动作集 → 「待响应」转「处理中」（基线 §1 L25 / §7 L728）。
     // 刷机单那一下在 `flashStore.saveProcess` 里做（见 flash.ts 的 `if (nodeStatus === '待响应')`）。
     if (isXiaozhi.value) xiaozhiStore.markResponded(d.value.no);
@@ -2594,33 +2647,40 @@ function updateTabData(next: OperationTabData) {
   tabData.value = next;
 }
 
-/** 处理表单 / 技术支持「处理结果」→ 速览带「最新处理」及时回写 */
-function syncLatestHandlingFromDrafts() {
-  d.value.latestHandling = mergeDraftIntoLatestHandling(d.value.latestHandling, {
-    // 刷机单一线：最新处理取刷机处理记录（1014）
-    processResult: flashFormLine.value === 'l1' ? (form.value.flashRecord ?? '') : form.value.processResult,
-    techProcessResult: tabData.value.techDraft.processResult,
-    processWho: user.name || '当前坐席',
-    processRole: mapUserRole(user.roleKey),
-    techWho: '技术支持',
-  });
-  // 同步列表行预览文案
-  const listTicket = TICKETS.find((t) => t.no === d.value.no);
-  if (listTicket) {
-    listTicket.latestHandling = d.value.latestHandling[0]?.text ?? '';
-  }
-}
-
+/**
+ * 速览带「最新处理」：取处理履历里最近一次保存的处理结果与技术支持处理结果，
+ * 处理人、时间随履历条目；领取、升级、流转等事件不进这张卡。
+ * 刷机单另有「自动刷机结果」「刷机处理记录」两块排在前面（PRD §5.2），刷机处理记录不再并进处理结果。
+ */
+const latestResults = computed(() => latestResultsFromTimeline(timeline.value, isFlash.value));
+/** 速览带「最新处理」· 刷机处理记录块（刷机单）：正文、刷机处理结论取工单库现值 */
+const latestFlashRecord = computed(() => {
+  if (!isFlash.value) return null;
+  const st = d.value.flash?.state;
+  return latestFlashRecordFrom(
+    timeline.value,
+    st ? { record: st.record, result: normalizeFlashResult(st.result) } : undefined,
+    TICKETS.find((t) => t.no === d.value.no)?.assignee,
+  );
+});
 watch(
-  [
-    () => form.value.processResult,
-    () => form.value.flashRecord,
-    () => tabData.value.techDraft.processResult,
-    () => d.value.no,
-  ],
-  () => syncLatestHandlingFromDrafts(),
+  [latestResults, latestFlashRecord],
+  ([{ process, tech }, flashRec]) => {
+    const items: LatestHandlingItem[] = [];
+    if (process) items.push({ ...process, action: LATEST_HANDLING_ACTION.PROCESS, source: 'process' });
+    if (tech) items.push({ ...tech, action: LATEST_HANDLING_ACTION.TECH, source: 'tech' });
+    d.value.latestHandling = items;
+    // 同步列表行预览文案（刷机单取处理结果与刷机处理记录里较新的一条）
+    const listTicket = TICKETS.find((t) => t.no === d.value.no);
+    const preview = process && flashRec?.text && flashRec.when > process.when ? flashRec : (process ?? (flashRec?.text ? flashRec : null));
+    if (listTicket && preview) listTicket.latestHandling = preview.text;
+  },
   { immediate: true },
 );
+// 切单后技术支持 Tab 按新单重建，变更基线跟着取新单的值（post：等 Tab 数据重建完）
+watch(() => d.value.no, () => {
+  processBaseline.__tech = (tabData.value.techDraft?.processResult ?? '').trim();
+}, { flush: 'post' });
 </script>
 
 <template>
@@ -2684,7 +2744,13 @@ watch(
 
     <!-- 顶部通栏速览带：客户诉求 | 客户全景宫格 | 最新处理（关注信息一屏） -->
     <div class="op-overview-wrap" :class="{ elevated: overviewExpanded }">
-      <OpOverviewBand :detail="d" @select="onOverviewSelect" @expand-change="overviewExpanded = $event">
+      <OpOverviewBand
+        :detail="d"
+        :flash="isFlash ? d.flash : undefined"
+        :flash-record="latestFlashRecord"
+        @select="onOverviewSelect"
+        @expand-change="overviewExpanded = $event"
+      >
         <template #live-notify>
           <TicketEventToastStack
             v-if="pageActive"
@@ -2733,23 +2799,7 @@ watch(
           @feishu-retry="onFeishuRetry"
           @dunning="dunningModalOpen = true"
           @attachment-upload="onAttachmentTabUpload"
-        >
-          <template v-if="isFlash && d.flash" #process-top>
-            <OpFlashResultCard :flash="d.flash" />
-            <!-- 区块头「修改刷机信息」按钮（PRD §5.3）走 OpFlashInfoBlock 的 #actions 插槽，排在外链左侧 -->
-            <OpFlashInfoBlock :info="d.flash.info">
-              <template v-if="flashEditInfo" #actions>
-                <button
-                  type="button"
-                  class="flash-edit-btn"
-                  :disabled="flashEditInfo.forbidden"
-                  :title="flashEditInfo.forbidden ? flashEditInfo.tip : undefined"
-                  @click="onFlashEditInfo"
-                >修改刷机信息</button>
-              </template>
-            </OpFlashInfoBlock>
-          </template>
-        </OpProcessTabs>
+        />
       </div>
 
       <OpSidePanel
@@ -2758,7 +2808,22 @@ watch(
         :contact-actions="flashContactActions"
         @contact="onContact"
         @action="toast"
-      />
+      >
+        <!-- 刷机单侧栏首卡「刷机信息」（PRD §5.3）：标题行「修改刷机信息」按钮走 #actions 插槽，排在外链左侧 -->
+        <template v-if="isFlash && d.flash" #top>
+          <OpFlashInfoBlock :info="d.flash.info">
+            <template v-if="flashEditInfo" #actions>
+              <button
+                type="button"
+                class="flash-edit-btn"
+                :disabled="flashEditInfo.forbidden"
+                :title="flashEditInfo.forbidden ? flashEditInfo.tip : undefined"
+                @click="onFlashEditInfo"
+              >修改刷机信息</button>
+            </template>
+          </OpFlashInfoBlock>
+        </template>
+      </OpSidePanel>
     </div>
 
     <!--
@@ -2919,7 +2984,7 @@ watch(
   display: flex; flex-direction: column; height: 100%; overflow: hidden;
   background: #f9fafb;
 }
-/* 刷机信息区块头「修改刷机信息」（PRD §5.3），与区块外链同一行 */
+/* 侧栏「刷机信息」卡标题行「修改刷机信息」（PRD §5.3），与卡上外链同一行 */
 .flash-edit-btn {
   height: 24px;
   padding: 0 10px;

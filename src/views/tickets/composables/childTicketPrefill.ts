@@ -47,7 +47,6 @@ export function buildChildTicketPrefill(parent: TicketDetailMeta): CreateTicketP
     formTicketType: childFormType,
     priority: mapPriority(parent.priority),
     complaintType: parent.complaint.complaintType,
-    expectTime: parent.expectedResolve,
     desc: [
       `【子单·关联主单 ${parent.no}】`,
       `主单类型：${parentType} · 诉求：${demandShort}`,
@@ -81,7 +80,6 @@ export function buildReopenTicketPrefill(parent: TicketDetailMeta): CreateTicket
     formTicketType,
     priority: mapPriority(parent.priority),
     complaintType: parent.complaint.complaintType,
-    expectTime: parent.expectedResolve,
     desc: [
       `【Reopen·关联原单 ${parent.no}】`,
       `原单标题：${parent.title}`,

@@ -91,9 +91,9 @@ function defaultForm(): CreateTicketFormState {
     // 与默认工单类型「投诉」配套：双向联动下投诉只能 P0/P1，取其中较低的 P1
     priority: 'P1',
     description: '在线播放频繁跳歌，重启无效，影响使用，要求尽快解决。',
+    descriptionAttachments: [],
     title: '',
     titleManual: false,
-    expectTime: '今日 18:00',
     complaintType: '投诉',
     complaintPlatforms: [{ platform: '', complaintNo: '' }],
     businessLine: '学习机业务线',
@@ -585,7 +585,6 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     form.deviceSn = p.sn ?? '';
     form.description = p.desc ?? '';
     form.priority = p.priority ?? 'P1';
-    form.expectTime = p.expectTime ?? '今日 18:00';
     // 升级投诉等场景：原单信息一次性同步（只覆盖有值项，其余留默认由坐席补全）
     if (p.businessType && (BUSINESS_TYPES as string[]).includes(p.businessType)) {
       form.businessType = p.businessType as CreateTicketFormState['businessType'];
@@ -757,6 +756,8 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       customer: name,
       vip: form.customer?.vip ?? false,
       product: form.productName,
+      problemDesc: form.description.trim(),
+      problemDescAttachments: [...form.descriptionAttachments],
       // 结案方式建单时选定、此后不可改（基线 §1「结案方式」小节），故只在这里落一次
       closureMode: form.closureMode,
       nodeStatus: '未认领',

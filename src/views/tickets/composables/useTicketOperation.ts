@@ -2,7 +2,7 @@ import { isFlashTicket } from '@/views/tickets/types/flash';
 import { ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
-import { TICKET_DETAIL, TIMELINE, productHasAfterSaleService } from '@/mock/ticketDetail';
+import { TICKET_DETAIL, TIMELINE, SAMPLE_HANDLE_ENTRY_ID, productHasAfterSaleService } from '@/mock/ticketDetail';
 import type { TicketDetailMeta, ChildTicket, SlaClock } from '@/mock/ticketDetail';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 import type { TicketFlash } from '@/views/tickets/types/flash';
@@ -19,6 +19,7 @@ import { TICKETS } from '@/mock/tickets';
 import { TYPE_SAMPLES, typeSampleKey } from '@/mock/ticketTypeSamples';
 import { useUserStore } from '@/stores/user';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
+import { useHandleLogStore } from '@/stores/handleLog';
 import {
   ticketLatestHandlingItems,
   ticketProductIssue,
@@ -166,6 +167,7 @@ export function useTicketOperation() {
   const flash = useFlashStore();
   const xiaozhi = useXiaozhiStore();
   xiaozhi.hydrate();
+  const handleLog = useHandleLogStore();
   const detail = ref<TicketDetailMeta>(JSON.parse(JSON.stringify(TICKET_DETAIL)));
   const timeline = ref<TimelineEntry[]>([...TIMELINE]);
   const opState = ref<TicketOpState>('processing');
@@ -424,6 +426,7 @@ export function useTicketOperation() {
       if (t.problemDesc?.trim()) {
         base.demand = t.problemDesc.trim();
       }
+      base.demandAttachments = t.problemDescAttachments?.length ? [...t.problemDescAttachments] : [];
       base.latestHandling = ticketLatestHandlingItems(t);
     }
     // 按类型覆盖概要（无工单级文案时回退类型样例）
@@ -455,25 +458,43 @@ export function useTicketOperation() {
       // 客服⇄售后链路上的单（1025）：履历只取本单自己的事件，不沿用样例单的履历，
       // 否则别的单的「升级售后」「升级投诉」等样例条目会混进来，与本单的关联位自相矛盾
       // （含关联已被同位降级 / 迁走、只剩售后履历的旧单：履历条目 id 以 `as-` 起头，见 aftersaleEvents.ts）
+      // 处理表单保存落下的「工单处理」履历（刷新后仍在，见 stores/handleLog.ts）
+      const saved = t ? handleLog.entriesOf(t.no) : [];
       if (t && (isAftersaleChainTicket(t) || entries.some((e) => e.id.startsWith('as-')))) {
-        const own = entries.map((e) => ({ ...e }));
+        const own = [...entries, ...saved].map((e) => ({ ...e }));
         const hasCreate = own.some((e) => e.action === 'create');
         timeline.value = hasCreate || !t.createdAt ? own : [{
           id: `tl-${t.no}-create`, category: 'node', action: 'create', who: '系统', role: '系统', systemActor: true,
           how: '创建工单', what: `客户经${t.channel}渠道反馈问题，系统生成工单。`, when: t.createdAt,
         }, ...own];
-        // 「最新处理」同样取本单履历，不落类型样例的处理人与处理结果
-        detail.value.latestHandling = ownLatestHandling(timeline.value);
         return;
       }
+      alignSampleHandleEntry(typeSampleKey(base));
       const seen = new Set(timeline.value.map((e) => e.id));
-      entries.forEach((e) => { if (!seen.has(e.id)) timeline.value.push({ ...e }); });
+      [...entries, ...saved].forEach((e) => { if (!seen.has(e.id)) timeline.value.push({ ...e }); });
     }
   }
 
   /**
+   * 样例履历里那条「工单处理」种子（`SAMPLE_HANDLE_ENTRY_ID`）是四类型共用的，
+   * 其问题原因 / 处理结果按本单类型的表单预填对齐 —— 「最新处理」卡与 Tab① 表单同一段文字。
+   */
+  function alignSampleHandleEntry(key: string) {
+    const draft = TYPE_SAMPLES[key]?.processDraft;
+    if (!draft) return;
+    timeline.value = timeline.value.map((e) => (e.id !== SAMPLE_HANDLE_ENTRY_ID ? e : {
+      ...e,
+      changes: e.changes?.map((c) => {
+        if (c.field === '处理结果' && draft.processResult) return { ...c, to: draft.processResult };
+        if (c.field === '问题原因' && draft.problemCause) return { ...c, to: draft.problemCause };
+        return c;
+      }),
+    }));
+  }
+
+  /**
    * 刷机单的页头 / 速览带 / 侧栏取值与刷机种子单自洽（X5 / X7）：建单人取刷机履历的建单操作人，
-   * 建单时间取工单行，客户与产品取工单行与刷机信息，「最新处理」取刷机履历，不沿用投诉样例的台账。
+   * 建单时间取工单行，客户与产品取工单行与刷机信息，不沿用投诉样例的台账。
    */
   function applyFlashOverview(base: TicketDetailMeta, t: Ticket) {
     const f = t.flash!;
@@ -485,7 +506,6 @@ export function useTicketOperation() {
     base.createdAt = createdAt;
     base.createdAtFull = createdAt;
     base.issueOccurredAt = createdAt;
-    base.expectedResolve = '—';
     base.businessType = t.businessType ?? '教育';
     base.businessLine = '教育业务线';
     base.attachments = [];
@@ -526,7 +546,6 @@ export function useTicketOperation() {
         : `${f.info.reason}刷机申请，按自动刷机结果跟进`,
       suggestion: '核对刷机信息与失败原因后处理',
     };
-    base.latestHandling = flashLatestHandling(t.no);
   }
 
   /**
@@ -560,24 +579,6 @@ export function useTicketOperation() {
       supplementReadCount: 0,
       relatedCount: (t.linkedAftersaleNo || t.aftersaleOriginNo ? 1 : 0) + (t.succeedsFromNo || t.succeededByNo ? 1 : 0),
     };
-  }
-
-  /** 「最新处理」：本单履历里最近的处理事件（不含沟通、时效、评价类），新在上，最多 3 条 */
-  function ownLatestHandling(entries: TimelineEntry[]): TicketDetailMeta['latestHandling'] {
-    return entries
-      .filter((e) => !['comm', 'sla', 'praise'].includes(e.category))
-      .slice(-3)
-      .reverse()
-      .map((e) => ({ who: e.who, role: e.role, action: e.how, when: e.when.slice(5, 16), text: e.what }));
-  }
-
-  /** 「最新处理」：刷机履历里最近的处理事件（不含短信），新在上，最多 3 条 */
-  function flashLatestHandling(no: string): TicketDetailMeta['latestHandling'] {
-    return flash.timelineOf(no)
-      .filter((e) => e.category !== 'comm')
-      .slice(-3)
-      .reverse()
-      .map((e) => ({ who: e.who, role: e.role, action: e.how, when: e.when.slice(5, 16), text: e.what }));
   }
 
   /**
@@ -657,7 +658,8 @@ export function useTicketOperation() {
     base.createdAt = createdAt;
     base.createdAtFull = createdAt;
     base.issueOccurredAt = createdAt;
-    base.expectedResolve = '—';
+    // 「期望解决时间」字段已随 main 的 `ce5b668b` 从 `TicketDetailMeta` 整个清掉，这里原本那行
+    // `base.expectedResolve = '—'` 随之删除 —— 字段没了，置值也无处可落。
     base.businessType = t.businessType ?? '教育';
     base.businessLine = '教育业务线';
     base.attachments = [];
@@ -753,7 +755,6 @@ export function useTicketOperation() {
       if (!t?.flash) return;
       applyFlashRow(detail.value, t);
       detail.value.slaClocks = flashSlaClocks(t) ?? buildSlaClocks(t);
-      detail.value.latestHandling = flashLatestHandling(t.no);
       projectFlashTimeline(t.no);
     },
   );
@@ -780,12 +781,15 @@ export function useTicketOperation() {
       draftSavedAt.value = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
       // 保存并登记：若已填写处理内容，追加一条「处理登记」进处理履历
       if (payload.process?.summary) {
-        pushEntry(timeline.value, {
+        const handle: Omit<TimelineEntry, 'id' | 'when'> = {
           category: 'handle', action: 'handle', who: operator, role,
           how: '工单处理', what: payload.process.summary,
           attachment: payload.process.attachment,
           changes: payload.process.changes,
-        });
+        };
+        // 持久化：刷机单写进刷机履历（随刷机缓存落库，处理页经版本号重投影）；其余单落处理履历缓存
+        if (detail.value.isFlash) flash.logProcess(detail.value.no, { name: operator, role }, handle);
+        else handleLog.append(detail.value.no, pushEntry(timeline.value, handle));
         message.success('已保存并登记处理进展');
       } else {
         message.success('已保存，可稍后继续处理');

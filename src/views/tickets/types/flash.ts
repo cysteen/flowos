@@ -15,6 +15,9 @@ export const FLASH_TICKET_TYPE = '咨询' as const;
 /** 刷机单标识的展示名（类型徽章旁的标识、查询筛选项） */
 export const FLASH_MARK_LABEL = '刷机';
 
+/** 刷机单的类型徽标文案：页头、列表行、悬停浮层只出这一枚紫色徽标，不再并排出「咨询」（1014） */
+export const FLASH_BADGE_LABEL = '刷机单';
+
 /**
  * 是否刷机单 —— **全仓唯一判据**（1013 A1）：读工单上的 `isFlash` 标识。
  * 标识在建单时按「产品支持刷机 ∧ 问题分类是否刷机」写入，此后不随配置变化、不可修改；
@@ -315,7 +318,7 @@ export interface FlashState {
    * 迟到回传时间：回传超时转人工之后才收到的「接收成功」时刻（M11 / M48）。
    * 只写履历、有处理人时站内通知处理人，不改状态、不发成功短信。
    */
-  lateSuccessAt?: string;
+  lateSuccessAt?: string; // 只落库，页面不展示（迟到回传只记处理履历与站内通知，1014 用户拍板）
   /** 建单校验结果：两项各自通过 / 不通过；特殊情况、校验接口不可用为「未校验」（M50） */
   verifyResult: FlashVerifyResult;
   /** 已发转人工短信（M37：每单只发一次，首次转人工时发） */

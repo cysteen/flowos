@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { message } from 'ant-design-vue';
-import { FLASH_MARK_LABEL, isFlashTicket } from '@/views/tickets/types/flash';
+import { FLASH_BADGE_LABEL, isFlashTicket } from '@/views/tickets/types/flash';
 import { XIAOZHI_MARK_LABEL, isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
 import { useUserStore } from '@/stores/user';
 import { CopyOutlined, FlagOutlined } from '@ant-design/icons-vue';
@@ -277,17 +277,20 @@ function priorityHex(p: string): string {
             <span class="badge-dot" :style="{ background: statusBadge.color }" />{{ statusText }}
           </span>
           <!--
-            工单类型徽章。🔴 **小智单上不出**（1130 一·补 B21，用户原话「如果是小智工单，
-            就不要展示 咨询」）：徽章位只留「小智」那一枚。
-            ⚠️ **只排除小智，刷机单维持「咨询 + 刷机」两枚不变** —— B21 只针对小智。
-            ⚠️ 这只是**显示口径**：小智单的工单类型在建模上仍是「咨询」（D1），
+            类型位徽章 —— **三档互斥，恒只出一枚**：
+            · 刷机单只出紫色「刷机单」，不再并排「咨询」（1014）；
+            · 小智单只出「小智」（1130 一·补 B21，用户原话「如果是小智工单，就不要展示 咨询」）；
+            · 其余出工单类型原值。
+            两条口径在此合并：B21 落地时刷机还是「咨询 + 刷机」两枚，当时特地写了
+            「只排除小智、刷机维持两枚」；main 的 1014 把刷机也改成单枚后，那句限定作废，
+            两者变成同一形制，故收成一组 if / else-if / else。
+            ⚠️ **只是显示口径**：刷机单与小智单的工单类型在建模上都仍是「咨询」，
             筛选 / 查询 / 报表照原样取数，不受这一道影响。
+            ⚠️ 与列表行（`TicketTitleCell.vue` 行内标 + hover 卡头）同一套判法，三处一起改。
           -->
-          <span v-if="!isXiaozhiDetail" class="badge badge-neutral">{{ detail.type }}</span>
-          <!-- 「刷机」标识（1013 A1）：刷机单类型为咨询，类型徽章旁另挂标识 -->
-          <span v-if="isFlashTicket(detail)" class="badge" :style="tagStyle(FLASH_MARK_COLOR)">{{ FLASH_MARK_LABEL }}</span>
-          <!-- 「小智」标识（1130 D1）：小智单上它是**唯一**那枚类型位徽章（B21） -->
-          <span v-if="isXiaozhiDetail" class="badge" :style="tagStyle(XIAOZHI_MARK_COLOR)">{{ XIAOZHI_MARK_LABEL }}</span>
+          <span v-if="isFlashTicket(detail)" class="badge" :style="tagStyle(FLASH_MARK_COLOR)">{{ FLASH_BADGE_LABEL }}</span>
+          <span v-else-if="isXiaozhiDetail" class="badge" :style="tagStyle(XIAOZHI_MARK_COLOR)">{{ XIAOZHI_MARK_LABEL }}</span>
+          <span v-else class="badge badge-neutral">{{ detail.type }}</span>
           <span class="badge" :style="tagStyle(priorityHex(detail.priority))">
             <FlagOutlined />{{ detail.priority }}
           </span>

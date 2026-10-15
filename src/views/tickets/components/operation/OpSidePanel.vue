@@ -37,6 +37,8 @@ const showContactActions = computed(() =>
 
 <template>
   <div class="op-side">
+    <!-- 类型专属首卡（刷机单：刷机信息，PRD §5.3），排在客户信息之上，由页面按类型填入 -->
+    <slot name="top" />
     <OpCustomerCard
       :customer="detail.customer"
       :show-contact-actions="showContactActions"

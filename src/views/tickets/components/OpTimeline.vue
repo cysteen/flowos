@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { FLASH_BADGE_STYLE, isFlashTypeItem, ticketTypeLabel } from '@/views/tickets/utils/ticketTypeDisplay';
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import {
@@ -240,8 +241,8 @@ const filteredEntries = computed(() => {
               <span class="rel-mini-sep">·</span>
               <span
                 class="rel-mini-type"
-                :style="{ color: e.relatedTicket.typeColor || '#6b7280', background: softBg(e.relatedTicket.typeColor || '#6b7280') }"
-              >{{ e.relatedTicket.type }}</span>
+                :style="isFlashTypeItem(e.relatedTicket) ? FLASH_BADGE_STYLE : { color: e.relatedTicket.typeColor || '#6b7280', background: softBg(e.relatedTicket.typeColor || '#6b7280') }"
+              >{{ ticketTypeLabel(e.relatedTicket) }}</span>
               <span class="rel-mini-sep">·</span>
               <span class="rel-mini-builder">{{ e.relatedTicket.builder }}</span>
               <span v-if="e.relatedTicket.createdAt" class="rel-mini-time">{{ formatOpTime(e.relatedTicket.createdAt) }}</span>

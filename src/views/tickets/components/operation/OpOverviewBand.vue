@@ -2,13 +2,23 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import OpStatGrid from './OpStatGrid.vue';
 import OpAiInsight from './OpAiInsight.vue';
+import OpFlashResultCard from './OpFlashResultCard.vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import type { InsightAction } from '@/views/tickets/types/operation';
-import { resolveLatestHandlingAction } from '@/views/tickets/utils/ticketOverview';
+import type { TicketFlash } from '@/views/tickets/types/flash';
+import { latestWhenText, resolveLatestHandlingAction, type FlashRecordBlock } from '@/views/tickets/utils/ticketOverview';
 
 type OverviewCol = 'desc' | 'stat' | 'handle';
 
-defineProps<{ detail: TicketDetailMeta }>();
+defineProps<{
+  detail: TicketDetailMeta;
+  /**
+   * 刷机单（PRD §5.2）：「最新处理」卡依次出 自动刷机结果 · 刷机处理记录 · 最新处理结果 · 技术支持最新处理结果，
+   * 无内容的块不出。四类老工单不传，卡片与改前一致。
+   */
+  flash?: TicketFlash;
+  flashRecord?: FlashRecordBlock | null;
+}>();
 const emit = defineEmits<{ select: [action: InsightAction]; 'expand-change': [expanded: boolean] }>();
 
 const expandedCol = ref<OverviewCol | null>(null);
@@ -61,6 +71,18 @@ watch(expandedCol, (v) => emit('expand-change', v !== null), { immediate: true }
               <span class="hi-label">问题描述</span>
             </div>
             <div class="hi-text">{{ detail.demand }}</div>
+            <!-- 问题描述附件：建单时随问题描述上传，样式同处理页带附件文本框的附件标签 -->
+            <div v-if="detail.demandAttachments?.length" class="desc-attach-chips">
+              <span v-for="f in detail.demandAttachments" :key="f" class="desc-attach-chip" :title="f">
+                <svg class="clip-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path
+                    d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                  />
+                </svg>
+                <span class="desc-attach-name">{{ f }}</span>
+              </span>
+            </div>
           </div>
         </div>
       </section>
@@ -91,7 +113,7 @@ watch(expandedCol, (v) => emit('expand-change', v !== null), { immediate: true }
 
     <!-- ③ 最新处理 -->
     <div class="ob-cell">
-      <section class="ob-col ob-handle" :class="{ expanded: expandedCol === 'handle' }">
+      <section class="ob-col ob-handle" :class="{ expanded: expandedCol === 'handle', 'is-flash': flash }">
         <div class="ob-head">
           <span class="ob-title"><i class="ob-bar" />最新处理</span>
           <button
@@ -105,12 +127,23 @@ watch(expandedCol, (v) => emit('expand-change', v !== null), { immediate: true }
           </button>
         </div>
         <div class="ob-body">
-          <div v-if="!detail.latestHandling.length" class="ob-empty">暂无处理记录</div>
+          <template v-if="flash">
+            <OpFlashResultCard :flash="flash" :expanded="expandedCol === 'handle'" />
+            <div v-if="flashRecord" class="handle-item">
+              <div class="hi-meta">
+                <span v-if="flashRecord.who" class="hi-who">{{ flashRecord.who }}</span>
+                <span class="hi-action">刷机处理记录{{ flashRecord.result ? ` · ${flashRecord.result}` : '' }}</span>
+                <span v-if="flashRecord.when" class="hi-when">{{ flashRecord.when }}</span>
+              </div>
+              <div v-if="flashRecord.text" class="hi-text">{{ flashRecord.text }}</div>
+            </div>
+          </template>
+          <div v-else-if="!detail.latestHandling.length" class="ob-empty">暂无处理记录</div>
           <div v-for="(h, i) in detail.latestHandling" :key="i" class="handle-item">
             <div class="hi-meta">
               <span class="hi-who">{{ h.who }}</span>
               <span class="hi-action">{{ resolveLatestHandlingAction(h) }}</span>
-              <span class="hi-when">{{ h.when }}</span>
+              <span class="hi-when">{{ latestWhenText(h.when) }}</span>
             </div>
             <div class="hi-text">{{ h.text }}</div>
           </div>
@@ -307,4 +340,40 @@ watch(expandedCol, (v) => emit('expand-change', v !== null), { immediate: true }
   color: #111827;
 }
 .ob-empty { font-size: 12px; color: #9ca3af; }
+/* 问题描述附件标签：与 OpTextareaAttach 的附件标签同一规格 */
+.desc-attach-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.desc-attach-chip {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+  padding: 4px 8px; background: #f3f4f6; border-radius: 6px; font-size: 12px; color: #374151;
+}
+.desc-attach-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.desc-attach-chip .clip-icon { width: 14px; height: 14px; color: #6b7280; flex: none; }
+/* 最新处理：正文过长截断，⤢ 放大后看全文 */
+.ob-handle:not(.expanded) .hi-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+/*
+ * 「最新处理」卡条目样式（普通单与刷机单一致）：抬头 处理人（加粗）· 灰底动作标签 · 时间（右对齐、灰）；
+ * 正文普通字重、保留换行；条目之间只留间距，不画分隔线。
+ */
+.ob-handle .handle-item {
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-bottom: 10px;
+}
+.ob-handle .handle-item:last-child { margin-bottom: 0; }
+.ob-handle .hi-meta { gap: 8px; }
+.ob-handle .hi-action { line-height: 18px; }
+.ob-handle .hi-when { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ob-handle .hi-text,
+.ob-handle .handle-item:first-child .hi-text {
+  font-weight: 400;
+  color: #374151;
+  white-space: pre-line;
+}
+/* 刷机单「最新处理」卡条目多（最多四条），每条正文收到两行 */
+.ob-handle.is-flash:not(.expanded) .hi-text { -webkit-line-clamp: 2; }
 </style>

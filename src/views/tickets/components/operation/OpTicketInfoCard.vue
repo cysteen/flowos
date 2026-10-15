@@ -5,7 +5,6 @@ import { RightOutlined } from '@ant-design/icons-vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import { ticketSourceDisplayLabel } from '@/views/tickets/types/createTicket';
 import OpChannelTags from './OpChannelTags.vue';
-import { FLASH_FIELD_LABELS } from '@/views/tickets/types/flash';
 
 const props = defineProps<{ detail: TicketDetailMeta }>();
 
@@ -18,21 +17,8 @@ const complaintPlatforms = computed(
   () => (props.detail.complaint?.platforms ?? []).filter((p) => p.platform),
 );
 
-/** 刷机只读块：产品名称 / 设备SN / 学生账号 / 学校名称 / 刷机原因 / 工单来源（1013 A4 / A8） */
-const flashRows = computed(() => {
-  const f = isFlashTicket(props.detail) ? props.detail.flash : undefined;
-  if (!f) return [];
-  const L = FLASH_FIELD_LABELS;
-  const val = (s?: string) => (s && s.trim() ? s : '—');
-  return [
-    { k: L.productName, v: val(f.info.productModel) },
-    { k: L.sn, v: val(f.info.sn) },
-    { k: L.studentAccount, v: val(f.info.studentAccount) },
-    { k: L.schoolName, v: val(f.info.schoolName) },
-    { k: L.reason, v: val(f.info.reason) },
-    { k: '工单来源', v: val(ticketSourceDisplayLabel(props.detail.source)) },
-  ];
-});
+/** 刷机单：刷机信息（含设备SN）在侧栏首卡「刷机信息」展示（PRD §5.3），本卡不重复 */
+const flashCard = computed(() => isFlashTicket(props.detail) && !!props.detail.flash);
 </script>
 
 <template>
@@ -69,15 +55,8 @@ const flashRows = computed(() => {
       </div>
     </div>
     <div class="kv"><span class="k">问题发生时间</span><span class="v">{{ detail.issueOccurredAt }}</span></div>
-    <!-- 刷机单的设备SN在下方刷机只读块里展示，不重复 -->
-    <div v-if="!flashRows.length" class="kv"><span class="k">设备SN</span><span class="v sn">{{ detail.product.sn }}</span></div>
-
-    <!-- 刷机只读块（仅刷机单，PRD §5.1）：六项只读，值为空显示「—」 -->
-    <template v-if="flashRows.length">
-      <div class="divider" />
-      <div class="sub-title">刷机信息</div>
-      <div v-for="r in flashRows" :key="r.k" class="kv"><span class="k">{{ r.k }}</span><span class="v">{{ r.v }}</span></div>
-    </template>
+    <!-- 刷机单的设备SN在侧栏首卡「刷机信息」里展示，不重复 -->
+    <div v-if="!flashCard" class="kv"><span class="k">设备SN</span><span class="v sn">{{ detail.product.sn }}</span></div>
 
     <!-- 投诉（仅投诉单）。字段随建单页有值才出——渠道门控下未采集的字段不占位。 -->
     <template v-if="detail.type === '投诉'">
