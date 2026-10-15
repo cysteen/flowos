@@ -128,7 +128,7 @@ watch(expandedCol, (v) => emit('expand-change', v !== null), { immediate: true }
         </div>
         <div class="ob-body">
           <template v-if="flash">
-            <OpFlashResultCard :flash="flash" :expanded="expandedCol === 'handle'" />
+            <OpFlashResultCard :flash="flash" />
             <div v-if="flashRecord" class="handle-item">
               <div class="hi-meta">
                 <span v-if="flashRecord.who" class="hi-who">{{ flashRecord.who }}</span>

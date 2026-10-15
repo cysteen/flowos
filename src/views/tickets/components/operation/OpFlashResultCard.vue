@@ -2,8 +2,8 @@
 /**
  * 刷机单速览带「最新处理」卡的第一块：自动刷机结果（只读，PRD §5.2 / 页面规格 P4、P0-11、P0′-14）。
  * 块内无操作按钮；标题右侧紧挨外链「智能硬件平台」，行尾为最近一次回传 / 推送时间（「MDM 平台」在侧栏「刷机信息」卡，PRD §5.3）。
- * 收起时为一段摘要（当前结果 · 失败原因 · 转人工原因 · 推送次数 · 建单校验结果，超长截断）；
- * 卡片 ⤢ 放大后（`expanded`）逐项分行，并出推送记录表。
+ * 卡片内直接展示全部明细：逐项分行（当前结果 / 失败原因 / 转人工原因 / 推送次数 / 建单校验结果）＋ 推送记录表；
+ * 卡片收起与 ⤢ 放大展示同样内容，超出卡高时在卡内滚动。
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { ExportOutlined } from '@ant-design/icons-vue';
@@ -17,8 +17,6 @@ import {
 const props = defineProps<{
   /** 刷机字段组（工单库那一行的快照） */
   flash: TicketFlash;
-  /** 所在卡片已放大：逐项分行并出推送记录表 */
-  expanded?: boolean;
 }>();
 
 const config = useFlashConfigStore();
@@ -91,31 +89,7 @@ const hardwareUrl = computed(() => flashExternalUrl('hardwarePlatform', props.fl
       <span v-if="headTime" class="fr-when">{{ headTime }}</span>
     </div>
 
-    <!-- 收起：一段摘要，超长截断 -->
-    <div v-if="!expanded" class="fr-brief">
-      <template v-if="pushed">
-        <span class="fr-seg">
-          <span class="fr-k">当前结果</span>
-          <b class="fr-outcome" :class="`tone-${outcomeTone}`">{{ flashRunResultText(state.outcome) }}</b>
-          <span v-if="waiting" class="fr-elapsed"> · 已推送 {{ elapsedText }}</span>
-        </span>
-      </template>
-      <span v-if="failText" class="fr-seg"><span class="fr-k">失败原因</span>{{ failText }}</span>
-      <span v-if="state.handoffReason" class="fr-seg"><span class="fr-k">转人工原因</span>{{ state.handoffReason }}</span>
-      <span v-if="pushed" class="fr-seg"><span class="fr-k">推送次数</span>{{ state.pushCount }} 次</span>
-      <span class="fr-seg">
-        <span class="fr-k">建单校验结果</span>
-        <span v-if="!verify" class="fr-muted">未校验</span>
-        <template v-else>
-          <template v-for="(item, i) in verify" :key="item.label">
-            {{ item.label }}：<b :class="item.value === '通过' ? 'tone-ok' : 'tone-bad'">{{ item.value }}</b><span v-if="i < verify.length - 1">；</span>
-          </template>
-        </template>
-      </span>
-    </div>
-
-    <!-- 放大：逐项分行 + 推送记录表 -->
-    <template v-else>
+    <!-- 逐项分行 + 推送记录表：卡片内直接展示全部明细（收起与放大一致） -->
       <dl class="fr-kv">
         <div v-if="pushed" class="fr-row">
           <dt>当前结果</dt>
@@ -171,7 +145,6 @@ const hardwareUrl = computed(() => flashExternalUrl('hardwarePlatform', props.fl
           </tbody>
         </table>
       </div>
-    </template>
   </div>
 </template>
 
@@ -187,17 +160,11 @@ const hardwareUrl = computed(() => flashExternalUrl('hardwarePlatform', props.fl
 .fr-link:hover { text-decoration: underline; }
 /* 行尾时间：与「最新处理」卡条目的 .hi-when 同一规格（11px、#9ca3af、右对齐） */
 .fr-when { font-size: 11px; color: #9ca3af; margin-left: auto; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.fr-brief {
-  font-size: 12px; line-height: 1.6; color: #374151;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-}
-.fr-seg + .fr-seg::before { content: '·'; margin: 0 6px; color: #9ca3af; }
-.fr-k { color: #6b7280; margin-right: 4px; }
 .fr-kv { display: flex; flex-direction: column; gap: 4px; margin: 0; }
 .fr-row { display: flex; align-items: baseline; gap: 12px; font-size: 12px; line-height: 20px; }
 .fr-row dt { flex: none; width: 84px; color: #6b7280; }
 .fr-row dd { flex: 1; min-width: 0; margin: 0; color: #111827; }
-.fr-verify b, .fr-brief b { font-weight: 600; }
+.fr-verify b { font-weight: 600; }
 .fr-sep { color: #9ca3af; margin: 0 4px; }
 .fr-muted { color: #6b7280; }
 .fr-outcome { font-weight: 600; }
