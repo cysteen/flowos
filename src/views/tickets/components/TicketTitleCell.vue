@@ -9,6 +9,7 @@ import {
 } from '@/views/tickets/types/ticket';
 import { ticketListSourceLabel } from '@/views/tickets/types/createTicket';
 import { FLASH_BADGE_LABEL, isFlashTicket } from '@/views/tickets/types/flash';
+import { XIAOZHI_MARK_LABEL, isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
 
 withDefaults(
   defineProps<{
@@ -106,7 +107,19 @@ const csTagTipOverlayInner = {
             :style="statusStyle(ticket.nodeStatus)"
             :title="ticketStatusDisplayName(ticket)"
           >{{ ticketStatusDisplayName(ticket) }}</span>
+          <!--
+            工单类型标 —— **三档互斥，标位恒只出一枚**：
+            · 刷机单只出「刷机单」（1014）；
+            · 小智单只出「小智」（1130 一·补 B21）；
+            · 其余出工单类型原值。
+            两条口径合并于此：原先刷机是「咨询 + 刷机」两枚并排，main 的 1014 改成单枚紫标后，
+            与 B21 的小智单枚标成了同一形制，故写成一组 if / else-if / else。
+            ⚠️ **都只是显示口径** —— 工单类型字段取值（刷机单与小智单都是「咨询」）
+            与筛选 / 查询 / 报表取数一概不变。
+            ⚠️ 与处理页页头（`OpHeader.vue`）同一套判法，两处必须一起改。
+          -->
           <span v-if="isFlashTicket(ticket)" class="tag tag--flash">{{ FLASH_BADGE_LABEL }}</span>
+          <span v-else-if="isXiaozhiTicket(ticket)" class="tag tag--xiaozhi">{{ XIAOZHI_MARK_LABEL }}</span>
           <span v-else class="tag">{{ ticket.type }}</span>
           <span
             class="title-text"
@@ -155,7 +168,9 @@ const csTagTipOverlayInner = {
         <div class="title-pop">
           <div class="tp-head">
             <span class="status-tag" :style="statusStyle(ticket.nodeStatus)">{{ ticketStatusDisplayName(ticket) }}</span>
+            <!-- 悬停卡头这一组与行内那一组**同源同形**：漏改一处，hover 就会把另一套标抖出来 -->
             <span v-if="isFlashTicket(ticket)" class="tag tag--flash">{{ FLASH_BADGE_LABEL }}</span>
+            <span v-else-if="isXiaozhiTicket(ticket)" class="tag tag--xiaozhi">{{ XIAOZHI_MARK_LABEL }}</span>
             <span v-else class="tag">{{ ticket.type }}</span>
           </div>
           <div class="tp-title">{{ ticket.title }}</div>
@@ -249,6 +264,8 @@ const csTagTipOverlayInner = {
 }
 /* 刷机单徽标「刷机单」（1014，取代「咨询」+「刷机」并排）：色值同 FLASH_MARK_COLOR */
 .tag--flash { color: #7c3aed; background: #f5f3ff; }
+/* 「小智」标识（1130 D1）：色值同 XIAOZHI_MARK_COLOR */
+.tag--xiaozhi { color: #0d9488; background: #f0fdfa; }
 .title-text {
   flex: 1;
   min-width: 0;

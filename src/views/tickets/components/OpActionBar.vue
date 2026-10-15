@@ -30,6 +30,20 @@ const props = defineProps<{
   ticketType: string;
   /** 「刷机单」标识（1013 A1：刷机单类型为咨询，刷机底栏按标识判，不看类型） */
   isFlash?: boolean;
+  /** 「小智工单」标识（1130 D1：小智单类型为咨询，小智底栏按标识判，不看类型） */
+  isXiaozhi?: boolean;
+  /**
+   * 本单对当前登录人**可领取**（工单池里无人认领的单，1130 PRD §1.2 / §5.3 / §6）。
+   *
+   * 🔴 **判据不在本组件算**，由工单页给（它才知道标识 + 子状态 + 角色）—— 与
+   * `riskControlBlocked` 等几枚同形制：门控落在取值一侧，组件只管「有值就渲染」。
+   * 刷机单那条路走的是 `isFlash + flashView==='claim'`（`isFlashClaim`），本字段是**通用那条**：
+   * 原先「领取」整枚只在 `isFlashClaim` 下渲染，**是刷机专属的** ——
+   * 于是小智单的工单池单打开后底栏根本没有「领取」，PRD 列的 12 枚里有一枚界面上不存在。
+   */
+  claimable?: boolean;
+  /** 本单的一线人员域账号（一·补 B24）：只透传给升级弹窗只读带出，本组件不读它 */
+  frontlineAccount?: string;
   /**
    * 结案方式（基线 §1「结案方式」小节），与工单类型正交。
    * 「直接结案」的单动作集极简 —— 不下送、不升级、不挂起、不转派，见 availableActions。
@@ -213,6 +227,8 @@ const actions = computed(() =>
     ticketType: props.ticketType,
     closureMode: props.closureMode,
     isFlash: !!props.isFlash,
+    // 小智单走单列的 XIAOZHI_ACTION_KEYS（1130 D16 / D18：不登记风险报备与转售后）
+    isXiaozhi: !!props.isXiaozhi,
     // 刷机单按视角收一道（表一）；老工单不传，取值与改前一致
     ...(!!props.isFlash && props.flashView ? { flashView: props.flashView } : {}),
   }),
@@ -387,7 +403,7 @@ const barActions = computed<BarItem[]>(() => {
         label: def.label,
         icon: def.icon,
         forbidden: true,
-        forbiddenTip: '已升级产研反馈，请在「产研反馈」Tab 催单或二次激活',
+        forbiddenTip: escalatedTip.value,
       });
       continue;
     }
@@ -421,7 +437,7 @@ function flashItem(k: FlashBarKey): BarItem | null {
   let tip = gate.tip;
   if (!forbidden && k === '升级' && feishuEscalateBlocked.value) {
     forbidden = true;
-    tip = '已升级产研反馈，请在「产研反馈」Tab 催单或二次激活';
+    tip = escalatedTip.value;
   }
   if (!forbidden && k === '风险报备' && props.riskReportPending) {
     forbidden = true;
@@ -447,6 +463,24 @@ const flashMoreItems = computed<BarItem[]>(() =>
   (props.flashView === 'l2' ? FLASH_L2_MORE_ORDER : []).map(flashItem).filter((x): x is BarItem => !!x),
 );
 const isFlashClaim = computed(() => !!props.isFlash && props.flashView === 'claim');
+/**
+ * 待领取态（两条路合一）：刷机单的 `claim` 视角，或工单页判定的通用可领取（`claimable`，小智单走它）。
+ * 「领取」按钮出不出、「保存」置不置灰，都读这一个 —— 两处各判一次迟早分家。
+ */
+const isClaimPending = computed(() => isFlashClaim.value || !!props.claimable);
+
+/**
+ * 「升级」在已升级产研后置灰时的指路文案。
+ *
+ * 🔴 **小智单那一版去掉「或二次激活」** —— 二次激活在小智单上**整枚不渲染**
+ * （1130 一·补 B5：确认未解决由系统自动回传，不设坐席入口，PRD §5.2）。
+ * 照通用那句写就会把人指到一个在这张单上不存在的入口去。
+ * ⚠️ 通用单与刷机单仍用 `ESCALATED_TIP`，一字未动 —— 这句原先是**三处各写一份字面量**，
+ * 收口成常量时顺手全量替换最容易误伤它们，故两份分开定名、按标识取。
+ */
+const ESCALATED_TIP = '已升级产研反馈，请在「产研反馈」Tab 催单或二次激活';
+const ESCALATED_TIP_XIAOZHI = '已升级产研反馈，请在「产研反馈」Tab 催单';
+const escalatedTip = computed(() => (props.isXiaozhi ? ESCALATED_TIP_XIAOZHI : ESCALATED_TIP));
 /** 客诉专员在刷机单上只读工单内容（M94 / M102）：底栏不出「保存」，只留风险那一枚 */
 const hideFlashSave = computed(() => !!props.isFlash && props.flashView === 'other');
 
@@ -493,7 +527,7 @@ function run(action: OpActionType | '转单') {
     return emit('withdraw');
   }
   if (action === '升级' && feishuEscalateBlocked.value) {
-    message.warning('已升级产研反馈，请在「产研反馈」Tab 催单或二次激活');
+    message.warning(escalatedTip.value);
     return;
   }
   if (action === '挂起' && isSuspended.value) return;
@@ -639,9 +673,9 @@ defineExpose({ openEscalate, openAftersale, openActivate });
         v-if="!hideFlashSave"
         type="button"
         class="ab-item ab-save"
-        :class="{ forbidden: isFlashClaim }"
-        :disabled="(isTerminal && !saveOnly) || isFlashClaim"
-        :title="isFlashClaim ? FLASH_GATE_TIPS.unclaimed : undefined"
+        :class="{ forbidden: isClaimPending }"
+        :disabled="(isTerminal && !saveOnly) || isClaimPending"
+        :title="isClaimPending ? FLASH_GATE_TIPS.unclaimed : undefined"
         @click="saveDraft"
       >
         <SaveOutlined />
@@ -718,7 +752,8 @@ defineExpose({ openEscalate, openAftersale, openActivate });
         </template>
       </a-dropdown>
 
-      <button v-if="isFlashClaim && !saveOnly" type="button" class="ab-item ab-claim" @click="emit('claim')">
+      <!-- 领取：刷机 claim 视角 + 通用可领取（小智单走后者，1130 PRD §1.2 / §5.3 / §6） -->
+      <button v-if="isClaimPending && !saveOnly" type="button" class="ab-item ab-claim" @click="emit('claim')">
         <span>领取</span>
       </button>
     </div>
@@ -739,6 +774,8 @@ defineExpose({ openEscalate, openAftersale, openActivate });
     :group-names="groupNames"
     :group-id="groupId"
     :last-handler="lastHandler"
+    :is-xiaozhi="isXiaozhi"
+    :frontline-account="frontlineAccount"
     @confirm="onDialogConfirm"
   />
 

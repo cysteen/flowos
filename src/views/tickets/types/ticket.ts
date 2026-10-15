@@ -4,6 +4,9 @@
 import type { BusinessType, CreateFormTicketType, TicketSource } from '@/views/tickets/types/createTicket';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 import { FLASH_POOLS, FLASH_TIP_AUTO_FLASHING, isFlashTicket, type TicketFlash } from '@/views/tickets/types/flash';
+import {
+  XIAOZHI_POOL_GROUP_ID, XIAOZHI_POOL_GROUP_NAME, type TicketXiaozhi,
+} from '@/views/tickets/types/xiaozhi';
 import { readSla, slaStateOf } from '@/views/tickets/utils/slaClock';
 
 /**
@@ -345,7 +348,13 @@ export const STATUS_COLOR_MAP: Record<StatusTone, { color: string; bg: string }>
   auto: { color: '#0891b2', bg: '#0891b218' },
 };
 
-/** 「自动刷机中」徽章色（列表 statusTone 与操作页头 statusHex 共用） */
+/**
+ * 「自动刷机中」徽章色。
+ * ⚠️ 原注释写「列表 statusTone 与操作页头 **statusHex** 共用」—— `statusHex` 那个平行实现
+ * 已随 1130 一·补 B23 删除（操作页头改走 `statusStyle`），这里不再有第二个消费方；
+ * 本常量现在只给需要**纯色值**（而非 `{color,background}`）的地方用。
+ * 色值本身与 `STATUS_COLOR_MAP.auto` 同源，改一处要两处一起改。
+ */
 export const AUTO_FLASH_STATUS_HEX = '#0891B2';
 
 const REVIEW_STATUSES: TicketStatus[] = [
@@ -681,6 +690,17 @@ export interface Ticket {
    * 列表与处理页读同一份；写口只有刷机服务 `stores/flash.ts`。
    */
   flash?: TicketFlash;
+  /**
+   * 「小智工单」标识（1130 小智工单 D1）：小智工单的工单类型是咨询，靠本标识区分。
+   * 建单时由小智建单入口写入，此后不可修改。
+   * 读取一律走 `isXiaozhiTicket(t)`（types/xiaozhi.ts），不要再按类型 / 单号 / 标题判断。
+   */
+  isXiaozhi?: boolean;
+  /**
+   * 小智单字段组（仅小智单有值，见 `isXiaozhi`）：产研流转信息 + 办结结果 + 校代确认状态。
+   * 列表与处理页读同一份；写口只有小智服务 `stores/xiaozhi.ts`。
+   */
+  xiaozhi?: TicketXiaozhi;
 }
 
 /** 新建工单弹窗预填（子单 / reopen 场景从原单继承客户/产品/渠道等） */
@@ -711,6 +731,12 @@ export interface CreateTicketPrefill {
   formTicketType?: CreateFormTicketType;
   /** 本次建单的工单类型由入口固定（升级投诉 / 刷机单关联投诉建投诉单）：不做刷机单识别，选到刷机问题分类也不切刷机表单 */
   noFlashScene?: boolean;
+  /**
+   * 本次建单走**小智工单入口**（1130 D1 / D3）：切小智表单，工单类型锁「咨询」、
+   * 业务分类锁「教育」、工单来源锁「IM」，并在底栏多出「创建并流转」一枚。
+   * 由入口置位，不按产品 / 问题分类识别。
+   */
+  xiaozhiScene?: boolean;
   priority?: Priority;
   /** 投诉类型（建单页独立可选） */
   complaintType?: string;
@@ -745,6 +771,9 @@ export const TYPE_COLOR: Record<TicketType, string> = {
 
 /** 「刷机」标识色（1013 A1：刷机单类型徽章为「咨询」，旁边另挂「刷机」标识） */
 export const FLASH_MARK_COLOR = '#7C3AED';
+
+/** 「小智」标识色（1130 D1：小智单类型徽章为「咨询」，旁边另挂「小智」标识） */
+export const XIAOZHI_MARK_COLOR = '#0D9488';
 
 export const SMART_MARK_COLOR: Record<SmartMark, string> = {
   升级: '#EF4444',
@@ -1018,6 +1047,8 @@ export const POOL_GROUPS: PoolGroupMeta[] = [
   { id: 'hardware', label: '硬件缺陷组' },
   // 930 教育刷机单 M15：二线「教育刷机处理组池」。一线刷机池复用 line1（一线客服组），见 types/flash.ts FLASH_POOLS
   { id: 'edu-flash', label: '教育刷机处理组' },
+  // 1130 小智工单 D21：一个大组、进池自己领，不按产品 / 优先级细分、不直派到个人
+  { id: XIAOZHI_POOL_GROUP_ID, label: XIAOZHI_POOL_GROUP_NAME },
 ];
 
 /**
@@ -1032,6 +1063,8 @@ const HANDLER_GROUP: Record<string, string> = {
   // 930 教育刷机单：一线刷机池的一线坐席、教育刷机处理组的二线专员
   刘一线: 'line1',
   许文静: 'edu-flash',
+  // 1130 小智工单：小智工单处理组的小智坐席
+  谭小智: XIAOZHI_POOL_GROUP_ID,
 };
 
 /** 处理人所在分组；不在名册内返回 undefined（按无权处理，fail-closed） */
@@ -1059,12 +1092,22 @@ const FLASH_L1_GROUP_ID = 'line1';
 const EDU_FLASH_POOL_ROLES = new Set(['agent-l2', 'team-leader', 'system-admin', 'ops-admin', 'tenant-admin']);
 
 /**
+ * 「工单池 / 催补待回」里能看到小智工单处理组的角色（1130 D20 / D21）：
+ * 小智坐席（本组成员，进池自己领）、二线班组长（管辖该组）、管理员（沿用基线）。
+ */
+const XIAOZHI_POOL_ROLES = new Set(['xiaozhi-agent', 'team-leader', 'system-admin', 'ops-admin', 'tenant-admin']);
+
+/**
  * 按角色取「工单池 / 催补待回」的可见分组。
  * 四类老工单的分组（一线客服组 / 二线技术支持组 / 硬件缺陷组）维持演示态全给，计数不变；
- * 教育刷机处理组只给 `EDU_FLASH_POOL_ROLES`。
+ * 教育刷机处理组只给 `EDU_FLASH_POOL_ROLES`、小智工单处理组只给 `XIAOZHI_POOL_ROLES`。
  */
 export function visiblePoolGroupsFor(roleKey: string): PoolGroupMeta[] {
-  return POOL_GROUPS.filter((g) => g.id !== EDU_FLASH_GROUP_ID || EDU_FLASH_POOL_ROLES.has(roleKey));
+  return POOL_GROUPS.filter((g) => {
+    if (g.id === EDU_FLASH_GROUP_ID) return EDU_FLASH_POOL_ROLES.has(roleKey);
+    if (g.id === XIAOZHI_POOL_GROUP_ID) return XIAOZHI_POOL_ROLES.has(roleKey);
+    return true;
+  });
 }
 
 /**
@@ -1214,8 +1257,15 @@ export function resolveStoppedClockStatus(t: Ticket): TicketStatus {
  * 判据只认 `roleKey`。此前一线额外传一个 `isFrontline` 布尔，值取自工单上的
  * `frontlineDemo` 假字段——那让带该标记的单对**所有角色**都走一线分支，
  * 门控形同虚设。一线已有 RoleKey `agent-l1`，参数随之去掉（2026-08-19）。
+ *
+ * 🔴 **`isXiaozhiTicket` 是单维，不是角色维**（1130，PRD §5.1 / §9）：
+ * 「小智单上不出升级投诉」说的是**这张单**，不是「小智坐席这个人」。原先这里只有
+ * `roleKey === 'xiaozhi-agent'` 一个判据，于是**二线班组长 / 客诉专员 / 投诉督导 / 管理员
+ * 打开小智单时，页头照出「升级投诉」** —— 角色维挡的是小智坐席自己，谁都挡不住别人。
+ * 对照正解在同一个文件外的 `resolveRiskControlForm(roleKey, type, isXiaozhi)`：它拿的是
+ * `isXiaozhiTicket(d.value)`，单维。本函数照它补上第二个参数。
  */
-export function headerActionsByRole(roleKey: string): {
+export function headerActionsByRole(roleKey: string, isXiaozhiTicket = false): {
   escalateComplaint: boolean;
   linkAftersale: boolean;
   supplement: boolean;
@@ -1226,21 +1276,41 @@ export function headerActionsByRole(roleKey: string): {
   //   升级投诉 = 一线 + 二线专员 + 二线班组长 + 客诉专员 + 投诉督导 + 管理员
   //   新建补充 = 上面这组 + 技术支持（※21a 2026-08-26 放开）
   //   关联售后 = 升级投诉那组**去掉一线**、加上技术支持（※12a：建不建售后单由二线判断，一线转二线后由二线关联）
-  //   催单 / 取消工单 = 一线唯一
+  //   催单 / 取消工单 = 一线坐席 + 小智坐席（1130 D20a，基线原写「一线坐席唯一」）
   // 工单运营与质检两行全部不展示（前者不办单，后者纯只读）。
   // 技术支持的升级投诉格 0923 按《工单动作矩阵》§G4.4 收回；关联售后格 1025 按需求分析表恢复为可用。
   const canWorkTicket = !['ops-monitor', 'qa'].includes(roleKey);
   const isL1 = roleKey === 'agent-l1';
   const isTechSupport = roleKey === 'tech-support';
+  /**
+   * 小智坐席（1130 D20）：一线的**催单 / 取消 / 新建补充**三枚给上 —— 这三枚是**角色维**，
+   * 判的就是「谁在看」，故用 `isXiaozhiRole`。
+   */
+  const isXiaozhiRole = roleKey === 'xiaozhi-agent';
   return {
-    escalateComplaint: canWorkTicket && !isTechSupport,
-    // 投诉单上一线另按阶层置灰（※8），那是类型门控、不在本函数。
-    // 关联售后：一线坐席 / 工单运营 / 质检不展示，**技术支持可用**（基线 §4 行 320；
-    // 1025 需求分析表角色表「技术支持 ✅ 关联售后」，与转售后的「技术支持不展示」分开取值）
-    linkAftersale: canWorkTicket && !isL1,
+    /**
+     * **升级投诉：单维**（D19 + PRD §5.1 / §9「小智单上不出升级投诉」）——
+     * 人员投诉走通用投诉流程、投诉单与小智工单不做关联；逐字稿 51:08 问「小智工单跟
+     * 人员投诉会同时吗」，答「这个概念目前没有」。
+     * ⚠️ 这里**只能判单、不能判角色**：判角色只挡住小智坐席，二线班组长 / 客诉专员 /
+     * 投诉督导 / 管理员打开同一张小智单照样能点。
+     */
+    escalateComplaint: canWorkTicket && !isTechSupport && !isXiaozhiTicket,
+    /**
+     * 关联售后。真正的判据是**类型限制** —— 基线 §4「关联售后」行的类型集 ＝「投」，
+     * 小智单是**咨询**单，这一格本就不出现；D18「不涉及转售后」说的是底栏那枚「转售后」
+     * （已在 `XIAOZHI_ACTION_KEYS` 里不登记），两者别混。
+     * 单维那一道照 §5.1 补上；**角色维那一道同时留着**，因为基线从未给过小智坐席
+     * 在通用投诉单上的这一格取值，去掉它等于替基线下一个没人拍过的结论。
+     * 投诉单上一线另按阶层置灰（※8），那是类型门控、不在本函数。
+     * （基线 §4 行 320；1025 需求分析表角色表「技术支持 ✅ 关联售后」，
+     * 与转售后的「技术支持不展示」分开取值）
+     */
+    linkAftersale: canWorkTicket && !isL1 && !isXiaozhiRole && !isXiaozhiTicket,
     supplement: canWorkTicket,
-    dunning: isL1,
-    cancelTicket: isL1,
+    // 催单 / 取消工单：基线原写「一线坐席唯一」，1130 D20a 起改为「一线坐席 + 小智坐席」
+    dunning: isL1 || isXiaozhiRole,
+    cancelTicket: isL1 || isXiaozhiRole,
   };
 }
 

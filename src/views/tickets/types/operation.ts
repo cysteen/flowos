@@ -293,9 +293,15 @@ const TAB_TYPE_RESTRICTION: Partial<Record<ProcessTabKey, string[]>> = {
  * 它连风险监控菜单都撤了，工单页的风险 Tab 自然也不该出。
  */
 const TAB_ROLE_DENY: Partial<Record<ProcessTabKey, string[]>> = {
+  // 小智坐席**不在 feishu 的 deny 里**：小智单直通产研走 TPD，产研反馈 Tab 是它的主战场（1130 D6）
   feishu: ['agent-l1', 'tech-support', 'ops-monitor', 'qa'],
-  tech: ['agent-l2', 'complaint-handler', 'ops-monitor', 'qa'],
-  risk: ['agent-l1', 'ops-monitor'],
+  // 技术支持处理：小智坐席不接手技术侧处理。
+  // ⚠️ 原注释写「升级技术支持的口子仍在，由技术支持办，**D15**」—— **D15 已被一·补 B10 推翻**
+  // （本轮不做技术支持路径），该断言作废；这一行留下小智坐席只是因为它本来就不接技术侧处理。
+  // 🔴 **光靠这条角色黑名单挡不住小智单** —— 见下面 `visibleProcessTabs` 里的单维那一道。
+  tech: ['agent-l2', 'complaint-handler', 'ops-monitor', 'qa', 'xiaozhi-agent'],
+  // 1130 D18：小智工单不涉及风险报备，故小智坐席整个 Tab 不渲染
+  risk: ['agent-l1', 'ops-monitor', 'xiaozhi-agent'],
   appointment: ['agent-l1', 'tech-support'],
 };
 
@@ -313,11 +319,24 @@ const TAB_ROLE_DENY: Partial<Record<ProcessTabKey, string[]>> = {
 export function visibleProcessTabs(
   ticketType: string,
   roleKey: string,
-  opts?: { feishuActive?: boolean },
+  opts?: { feishuActive?: boolean; isXiaozhi?: boolean },
 ) {
   return PROCESS_TABS.filter((t) => {
     const deny = TAB_ROLE_DENY[t.key];
     if (deny && deny.includes(roleKey)) return false;
+    // 🔴 **小智单上「风险报备」Tab 整个不出**（1130 小智工单 D18：不涉及风险报备）。
+    // 这一道必须另加：`risk` Tab 本身**不限工单类型**（见 TAB_TYPE_RESTRICTION 上方说明，
+    // 2026-09-10 整条移除），而小智单的工单类型是咨询 —— 光在动作侧不登记「风险报备」
+    // 只关掉底栏与页头两个按钮位，Tab 条上那一枚照样出得来。
+    if (t.key === 'risk' && opts?.isXiaozhi) return false;
+    /**
+     * 🔴 **小智单上「技术支持处理」Tab 整个不渲染**（1130 一·补 B10 / PRD §5.1：本轮不做技术支持路径）。
+     *
+     * 与 `risk` 同病同治：`TAB_ROLE_DENY.tech` 是**角色**黑名单，只挡住小智坐席、二线专员、
+     * 客诉专员、运营、质检 —— **二线班组长 / 管理员 / 技术支持本人打开小智单时，这枚 Tab 照渲染**。
+     * B10 说的是「小智单上没有技术支持这条路」，那是**单维**，必须在这里另加一道。
+     */
+    if (t.key === 'tech' && opts?.isXiaozhi) return false;
     if (t.key === 'feishu') return !!opts?.feishuActive;
     const allow = TAB_TYPE_RESTRICTION[t.key];
     return !allow || allow.includes(ticketType);
@@ -336,7 +355,7 @@ export function isProcessTabVisible(
   tabKey: ProcessTabKey,
   ticketType: string,
   roleKey: string,
-  opts?: { feishuActive?: boolean },
+  opts?: { feishuActive?: boolean; isXiaozhi?: boolean },
 ): boolean {
   return visibleProcessTabs(ticketType, roleKey, opts).some((t) => t.key === tabKey);
 }
@@ -382,9 +401,12 @@ const MATRIX_ADMIN_ROLES: readonly RoleKey[] = ['system-admin', 'ops-admin', 'te
  */
 const TAB_ROLE_WRITABLE: Record<ProcessTabKey, readonly RoleKey[]> = {
   // #41 工单处理：① 只读 ② 可用 ③ 可用 ④ 可用 ⑤ 可用 ⑥ 条件可用 ⑦ 只读 ⑧ 只读 ⑨ 可用
-  process: ['agent-l2', 'tech-support', 'team-leader', 'complaint-supervisor', ...MATRIX_ADMIN_ROLES],
+  // 小智坐席（1130 D20）：它要把单办到结案，处理 Tab 必须可写
+  process: ['xiaozhi-agent', 'agent-l2', 'tech-support', 'team-leader', 'complaint-supervisor', ...MATRIX_ADMIN_ROLES],
   // 行 56 同步飞书：① 无 ② 可用 ③ 可用 ④ 无 ⑤ 可用 ⑥ 条件可用 ⑦ 无 ⑧ 无 ⑨ 可用
-  feishu: ['agent-l2', 'team-leader', 'complaint-supervisor', ...MATRIX_ADMIN_ROLES],
+  // 小智坐席：催产研在这个 Tab 上做。⚠️ 这里**没有「二次提交产研」** —— 产研办结后由提报人确认，
+  // 确认未解决的回传是系统动作（1130 一·补 B5）；TPD 驳回本轮只留痕不给动作（T1）。
+  feishu: ['xiaozhi-agent', 'agent-l2', 'team-leader', 'complaint-supervisor', ...MATRIX_ADMIN_ROLES],
   // #42 技术支持处理：① 只读 ② 无 ③ 无 ④ 可用 ⑤ 可用 ⑥ 无 ⑦ 无 ⑧ 只读 ⑨ 可用
   tech: ['tech-support', 'team-leader', 'complaint-supervisor', ...MATRIX_ADMIN_ROLES],
   // #43 风险报备：**本 Tab 整块是"发起报备"这一件事**，写动作只有一个，故只需一套判据、
@@ -403,10 +425,11 @@ const TAB_ROLE_WRITABLE: Record<ProcessTabKey, readonly RoleKey[]> = {
   appointment: ['agent-l2', 'team-leader', 'complaint-supervisor', ...MATRIX_ADMIN_ROLES],
   // #46 关联/补充/催单：① 可用 ② 可用 ③ 可用 ④ 可用 ⑤ 可用 ⑥ 条件可用 ⑦ 只读 ⑧ 只读 ⑨ 可用
   // Tab 内唯一写动作是「已知晓（标记已读）」；催单/补充记录本身任何角色都不可改不可删
-  related: ['agent-l1', 'agent-l2', 'tech-support', 'team-leader', 'complaint-supervisor', ...MATRIX_ADMIN_ROLES],
+  // 小智坐席：催单 / 补充必须支持且线上留痕（1130 D17）
+  related: ['agent-l1', 'xiaozhi-agent', 'agent-l2', 'tech-support', 'team-leader', 'complaint-supervisor', ...MATRIX_ADMIN_ROLES],
   // #47 联系记录：① 只读 ② 可用 ③ 可用 ④ 只读 ⑤ 可用 ⑥ 条件可用 ⑦ 只读 ⑧ 只读 ⑨ 可用
   // 写动作＝「标记已沟通」，属联系客户类，④ 三线不接触客户故只读
-  contact: ['agent-l2', 'team-leader', 'complaint-supervisor', ...MATRIX_ADMIN_ROLES],
+  contact: ['xiaozhi-agent', 'agent-l2', 'team-leader', 'complaint-supervisor', ...MATRIX_ADMIN_ROLES],
   // #48 通知记录：九格全「只读」——系统发出的通知留痕
   notify: [],
   // #49 调研记录：九格全「只读」——回访调研结果留痕

@@ -26,6 +26,8 @@ export interface LoginAccount {
 /** 账号 → 角色。顺序按基线 §3.0 的角色行序 */
 const ACCOUNT_ROLE_PAIRS: Array<[account: string, roleKey: RoleKey, post?: AgentPost]> = [
   ['13500001111', 'agent-l1'],
+  // 1130 小智工单 D20：小智坐席与一线坐席平级，账号行序随之排在它后面
+  ['13500002222', 'xiaozhi-agent'],
   ['13857985858', 'agent-l2', 'cs'],
   ['13600001111', 'agent-l2', 'as'],
   ['13911112222', 'tech-support'],

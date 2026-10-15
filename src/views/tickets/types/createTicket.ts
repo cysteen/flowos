@@ -2,6 +2,7 @@ import { PRIORITY_LABEL } from '@/views/tickets/types/ticket';
 import type { Channel, ClosureMode, Priority, TicketType } from '@/views/tickets/types/ticket';
 import type { RoleKey } from '@/config/roles';
 import { FLASH_MODEL_SEED } from '@/mock/flash/models';
+import { XIAOZHI_RD_PRIORITY_DEFAULT, type XiaozhiRdPriority } from '@/views/tickets/types/xiaozhi';
 
 /**
  * 新建弹窗工单类型（对齐 .pen V6xQCz 等画板）。
@@ -53,13 +54,19 @@ export const AFTERSALE_INBOUND_SOURCE: TicketSource = '售后系统';
 export const RESTRICTED_TICKET_SOURCES: TicketSource[] = ['内投渠道', '外投渠道'];
 
 /**
- * 选不到内投 / 外投渠道的角色：**只有一线坐席**（同上 §二）。
+ * 选不到内投 / 外投渠道的角色：**一线坐席 + 小智坐席**（同上 §二；小智坐席见 1130 一·补 B4）。
+ *
+ * 【判据】内投 / 外投是**升诉阶梯的产物**（《【830】升级投诉》升阶两跳、第二跳才走内投 → 外投，
+ * 且「外投只能由二线专员发起」）。接进线的坐席直接把来源选成内投 / 外投，等于绕过整条阶梯。
+ * 小智坐席与一线坐席**平级、同样在接进线**（1130 D20 / D24 来源统一记 IM），故一并挡掉。
+ * ⚠️ 对小智工单本身无影响 —— 小智单的来源锁死 IM（D24）、下拉本就置灰；
+ * 这条收的是**小智坐席走通用「新建工单」入口建普通单**那条路。
  *
  * 是黑名单不是白名单 —— 二线专员、技术支持、班组长、客诉专员、投诉督导、运营等一律不受限。
  * 白名单写法会把二线专员也挡掉，而「外投只能由二线专员发起」是 815/730 的既有口径
  * （见 composables/complaintEscalation.ts），挡掉即等于废了那条路径。
  */
-export const TICKET_SOURCE_DENY_ROLES: RoleKey[] = ['agent-l1'];
+export const TICKET_SOURCE_DENY_ROLES: RoleKey[] = ['agent-l1', 'xiaozhi-agent'];
 
 /** 某来源是否属于内投 / 外投（先归一化存量别名「内投」「外投」） */
 export function isRestrictedTicketSource(source?: string): boolean {
@@ -219,6 +226,52 @@ export interface CreateTicketFormState {
   suggestL2: string;
   /** 刷机专属：「刷机信息」卡（930 教育刷机单 P1 / PRD §2.4） */
   flash: CreateTicketFlashForm;
+  /** 小智专属：「小智工单信息」卡（1130 小智工单 D1 / D27） */
+  xiaozhi: CreateTicketXiaozhiForm;
+}
+
+/**
+ * 新建工单 · 「小智工单信息」卡（1130 小智工单 D27：**最大限度复用通用咨询表单**，
+ * 只把确有差异的小智专属要素收在本卡）。
+ *
+ * 🔴 **本卡里没有「问题类别」**（一·补 B15）：问题类别就是咨询单的问题分类一 / 二 / 三级，
+ * 走通用咨询表单那组级联控件（`problemL1 / L2 / L3`），不是小智专属新字段、不另起控件。
+ * 相对 toC 在线小结，小智真正多出来的只有「是否流转研发」一项，由底栏「创建并流转」按钮
+ * 表达、不作字段（D5）。
+ *
+ * 其余小结字段（话务性质 / 知识反馈 / 建单要素模版 / 三方售后工单号 / 帐号 / 密码）
+ * 属在线系统、与 toC 在线共用，本轮不迁入；产品两级、问题分级、来电描述、SN 号
+ * 一律取通用咨询单的既有字段（D27）。
+ *
+ * 故本卡实际只剩产研流转要素（产品模块 / 接收人 / 产研优先级 / 一线人员域账号 / 附件），
+ * 取老系统「创建TPD工单」弹窗现状；接收人由产品模块带出、只读（W2）。
+ */
+export interface CreateTicketXiaozhiForm {
+  /** 产品模块（走产研必填，W2） */
+  rdModule: string;
+  /** 产研优先级（四档，照弹窗现状） */
+  rdPriority: XiaozhiRdPriority;
+  /** 一线人员域账号（选填） */
+  frontlineAccount: string;
+  /** 附件（文件名，选填） */
+  attachments: string[];
+}
+
+/**
+ * 「小智工单信息」卡里参与必填提示的字段。
+ * - `rdModule`：**条件必填** —— 只在「创建并流转」那条路上要（走产研才用得上）；
+ * - `frontlineAccount`：**无条件必填**（一·补 B24）—— 它是提报人确认链路的凭据，两个出口都要。
+ * 问题分类走通用级联控件、恒有值，不需要必填提示（一·补 B15）。
+ */
+export type CreateTicketXiaozhiField = 'rdModule' | 'frontlineAccount';
+
+export function defaultCreateTicketXiaozhiForm(): CreateTicketXiaozhiForm {
+  return {
+    rdModule: '',
+    rdPriority: XIAOZHI_RD_PRIORITY_DEFAULT,
+    frontlineAccount: '',
+    attachments: [],
+  };
 }
 
 /**

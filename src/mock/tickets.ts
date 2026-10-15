@@ -3,6 +3,7 @@ import { resolveTicketGroupNames } from '@/views/tickets/types/ticket';
 import { mapChannelToSource } from '@/views/tickets/types/createTicket';
 import { todayStamp } from '@/stores/riskShared';
 import { FLASH_SEEDS } from './flash/seedTickets';
+import { XIAOZHI_SEEDS } from './xiaozhi/seedTickets';
 import {
   applyAftersaleEvent, applyAftersaleResult, migrateAftersaleLink, routeAftersaleEvent, takeOverReturnedTicket,
   type AftersaleEvent, type AftersaleInboundSeed,
@@ -1718,8 +1719,9 @@ function ensureTicketTimestamps(t: Ticket): Pick<Ticket, 'createdAt' | 'updatedA
   return { createdAt, updatedAt };
 }
 
-// 教育刷机单样本（930）并入同一个工单库：列表 / 处理页 / 查询中心读同一份，刷机服务 `stores/flash.ts` 写回这里
-export const TICKETS: Ticket[] = [...BASE_TICKETS, ...FLASH_SEEDS.tickets].map((t) => {
+// 教育刷机单样本（930）与小智工单样本（1130）并入同一个工单库：列表 / 处理页 / 查询中心读同一份，
+// 刷机服务 `stores/flash.ts`、小智服务 `stores/xiaozhi.ts` 写回这里
+export const TICKETS: Ticket[] = [...BASE_TICKETS, ...FLASH_SEEDS.tickets, ...XIAOZHI_SEEDS.tickets].map((t) => {
   const row = {
     ...defaultListExtras(t),
     ...t,

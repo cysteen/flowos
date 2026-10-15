@@ -38,6 +38,8 @@ import CreateTicketPartCard from './create-ticket/CreateTicketPartCard.vue';
 import CustomerInfoModal from './create-ticket/CustomerInfoModal.vue';
 import FormSelect from './create-ticket/FormSelect.vue';
 import FlashInfoPart from './create-ticket/FlashInfoPart.vue';
+import XiaozhiInfoPart from './create-ticket/XiaozhiInfoPart.vue';
+import { XIAOZHI_MARK_LABEL, XIAOZHI_TIP, XIAOZHI_TOAST } from '@/views/tickets/types/xiaozhi';
 import { useRouter } from 'vue-router';
 
 const props = defineProps<{
@@ -95,6 +97,9 @@ const {
   flashPhoneError,
   flashBlock,
   submitFlash,
+  isXiaozhiType,
+  xiaozhiErrors,
+  submitXiaozhi,
 } = useCreateTicketForm(() => props.prefill);
 
 const router = useRouter();
@@ -121,6 +126,8 @@ const modalTitle = computed(() => {
   if (isChildMode.value) return '转单';
   if (isReopenMode.value) return '重新建单';
   if (isEscalateMode.value) return '升级投诉 · 新建投诉单';
+  // 小智入口（1130 D3）：标题带标识，与通用「新建工单」区分
+  if (isXiaozhiType.value) return `新建工单 · ${XIAOZHI_MARK_LABEL}`;
   return '新建工单';
 });
 const parentMetaLabel = computed(() => {
@@ -204,12 +211,47 @@ function onCreateFlash(processAfter: boolean) {
 /** 必填提示落在字段下方；首个提示不在可视区时滚过去 */
 function scrollToFirstFlashError() {
   requestAnimationFrame(() => {
-    const el = document.querySelector('.create-ticket-modal .fi-error, .create-ticket-modal .customer-empty.error, .create-ticket-modal .cust-phone-error, .create-ticket-modal .flash-block-tip');
+    const el = document.querySelector('.create-ticket-modal .fi-error, .create-ticket-modal .xz-error, .create-ticket-modal .customer-empty.error, .create-ticket-modal .cust-phone-error, .create-ticket-modal .flash-block-tip');
     el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   });
 }
 
+/**
+ * 小智单提交（1130 小智工单 D5 / D6）：
+ * - 「创建」→ 落工单池，小智团队领单处理结案；
+ * - 「创建并流转」→ 落池留记录后由**系统自动流转**推产研，本单置「已升级产研」、处理人不转移。
+ * 校验与建单都走小智服务（`stores/xiaozhi.ts`），不走 buildTicket。
+ */
+function onCreateXiaozhi(escalate: boolean, processAfter = false) {
+  submitting.value = true;
+  const res = submitXiaozhi(escalate);
+  submitting.value = false;
+  if (!res) {
+    scrollToFirstFlashError();
+    return;
+  }
+  const { ticket, degraded } = res;
+  emit('created', ticket, processAfter);
+  /**
+   * 三句分开（PRD §2）：
+   * ① 「创建」→ 已创建；② 「创建并流转」且流转成了 → 已创建并已流转产研；
+   * ③ 「创建并流转」但产研平台不可用 → **工单已创建、留在工单池**，原样出那句降级提示。
+   * ③ 用 warning 不用 success —— 它是「成了一半」，报成功会让人以为已经推给产研了。
+   */
+  if (degraded) message.warning(XIAOZHI_TIP.rdPlatformDownOnCreate);
+  else message.success(
+    escalate ? XIAOZHI_TOAST.createdAndEscalated(ticket.no) : XIAOZHI_TOAST.created(ticket.no),
+  );
+  if (activeDraftId.value) { draftStore.remove(activeDraftId.value); activeDraftId.value = null; }
+  emit('update:open', false);
+  reset();
+}
+
 function onCreate(processAfter = false) {
+  if (isXiaozhiType.value) {
+    onCreateXiaozhi(false, processAfter);
+    return;
+  }
   if (isFlashType.value) {
     onCreateFlash(processAfter);
     return;
@@ -387,7 +429,7 @@ watch(
               v-model:value="form.businessType"
               class="inline-control field-control"
               size="middle"
-              :disabled="isFlashType"
+              :disabled="isFlashType || isXiaozhiType"
               :status="errors.businessType ? 'error' : ''"
               :options="BUSINESS_TYPES.map((v) => ({ value: v, label: v }))"
             />
@@ -410,7 +452,7 @@ watch(
               class="inline-control field-control"
               size="middle"
               allow-clear
-              :disabled="isFlashType"
+              :disabled="isFlashType || isXiaozhiType"
               :status="errors.ticketType ? 'error' : ''"
               :options="ticketTypeOptions"
             />
@@ -421,6 +463,7 @@ watch(
               v-model:value="form.ticketSource"
               class="inline-control field-control"
               size="middle"
+              :disabled="isXiaozhiType"
               :options="ticketSourceOptions"
             />
           </div>
@@ -779,6 +822,9 @@ watch(
       <!-- ④′ 刷机专属：「刷机信息」卡（930 教育刷机单 PRD §2.4；1013 A2 识别后切入） -->
       <FlashInfoPart v-if="isFlashType" v-model:info="form.flash" :errors="flashErrors" />
 
+      <!-- ④″ 小智专属：「小智工单信息」卡（1130 小智工单 D5 / D27；由小智入口切入） -->
+      <XiaozhiInfoPart v-if="isXiaozhiType" v-model:info="form.xiaozhi" :errors="xiaozhiErrors" />
+
       <!-- ⑤ 工单标题（无分区大标题，对齐 SlSwt）；刷机单隐藏本卡，标题由系统生成（PRD §2.4） -->
       <CreateTicketPartCard v-if="!isFlashType" compact>
         <div class="inline-field">
@@ -809,7 +855,7 @@ watch(
     </div>
 
     <div class="modal-footer">
-      <div v-if="!isChildMode && !isFlashType" class="footer-hint">
+      <div v-if="!isChildMode && !isFlashType && !isXiaozhiType" class="footer-hint">
         <WarningOutlined :style="{ color: '#F59E0B', fontSize: '13px' }" />
         <span v-if="isReopenMode">新建工单将自动建立 Reopen 关联，原单状态不变</span>
         <span v-else>检测到疑似重复工单 1 张，请确认</span>
@@ -821,8 +867,23 @@ watch(
         <button type="button" class="btn-primary" :disabled="submitting" @click="onCreate(false)">
           创建
         </button>
-        <button type="button" class="btn-ghost" :disabled="submitting" @click="onCreate(true)">
+        <!--
+          小智单底栏**只留「创建 / 创建并流转」两枚**（一·补 B11）：
+          「创建并处理」是沿用通用单带进来的第三枚，小智只有「落池自领」与「直通产研」两条路径（D5），
+          多一枚就是多一条口径上不存在的路。非小智单照旧三枚，行为未变。
+        -->
+        <button v-if="!isXiaozhiType" type="button" class="btn-ghost" :disabled="submitting" @click="onCreate(true)">
           创建并处理
+        </button>
+        <!-- 小智第二枚（1130 D5）：落工单池留记录后由系统自动流转推产研，非小智单不出 -->
+        <button
+          v-if="isXiaozhiType"
+          type="button"
+          class="btn-ghost"
+          :disabled="submitting"
+          @click="onCreateXiaozhi(true, false)"
+        >
+          创建并流转
         </button>
       </div>
     </div>

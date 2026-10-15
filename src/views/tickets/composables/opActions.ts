@@ -420,7 +420,12 @@ export const SUSPEND_REASONS = [
   '外部投诉/举报',
   '其他',
 ];
-export const ESCALATE_CHANNELS = ['二线技术支持组（推荐）', 'RDM 产研系统', 'TPD 技术问题单'];
+/**
+ * TPD 技术问题单通道。**1130 小智工单直接复用这一条**（D6：小智走 TPD），不新增通道；
+ * 常量化只是为了让小智链路与本表引用同一个字面量，不是另开一条。
+ */
+export const ESCALATE_CHANNEL_TPD = 'TPD 技术问题单';
+export const ESCALATE_CHANNELS = ['二线技术支持组（推荐）', 'RDM 产研系统', ESCALATE_CHANNEL_TPD];
 export const ESCALATE_GROUPS = ['硬件技术支持组', '软件技术支持组', '账号与权益组'];
 export const ESCALATE_MEMBERS = ['陈伟', '林涛', '赵敏'];
 /** 升级到飞书项目 · 问题反馈分类（对齐飞书客户反馈单） */
@@ -457,7 +462,7 @@ export function nowWhen(): string {
 }
 
 /**
- * RoleKey → 处理履历上的角色徽章文案（0830 九角色，基线 §3.0）。
+ * RoleKey → 处理履历上的角色徽章文案（0830 九角色 + 1130 小智坐席，基线 §3.0）。
  *
  * 🔴 原实现只认 `team-leader` / `agent-cs` / `agent-as` 三个 key，**其余一律返回「二线专员」**——
  * 一线坐席、技术支持、客诉专员、管理员写的履历全被冒名成二线，履历的"谁做的"这一列失真。
@@ -465,6 +470,7 @@ export function nowWhen(): string {
  */
 const ROLE_TL_LABEL: Record<RoleKey, TlRole> = {
   'agent-l1': '一线坐席',
+  'xiaozhi-agent': '小智坐席',
   'agent-l2': '二线专员',
   'tech-support': '技术支持',
   'team-leader': '二线班组长',

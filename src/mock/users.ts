@@ -17,6 +17,8 @@ const ALL_PROCESSING_GROUPS = ['受理一组', '受理二组', '硬件缺陷组'
 
 export const MOCK_USERS: Record<RoleKey, MockUser> = {
   'agent-l1': { name: '刘一线', roleKey: 'agent-l1', groups: ['受理一组'] },
+  // 1130 小智工单：小智工单处理组一个大组（D21），组名见 types/xiaozhi.ts XIAOZHI_POOL_GROUP_NAME
+  'xiaozhi-agent': { name: '谭小智', roleKey: 'xiaozhi-agent', groups: ['小智工单处理组'] },
   'agent-l2': { name: '张三', roleKey: 'agent-l2', post: 'cs', groups: ['受理一组', '受理二组'] },
   'tech-support': { name: '陈技支', roleKey: 'tech-support', groups: ['技术支持组'] },
   'team-leader': { name: '王组长', roleKey: 'team-leader', groups: ['受理一组', '受理二组'] },

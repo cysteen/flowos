@@ -24,7 +24,7 @@ import {
   resolveTicketGroupNames,
   type WorkbenchTabKey,
 } from '@/views/tickets/types/ticket';
-import { FLASH_POOL_TAB_ROLES } from '@/config/roles';
+import { FLASH_POOL_TAB_ROLES, XIAOZHI_CREATE_ROLES } from '@/config/roles';
 import { flashFailCellText, flashHandoffCellText } from './utils/flashPoolCells';
 import { useRiskReportStore } from '@/stores/riskReports';
 import AiSuggestionBar from './components/AiSuggestionBar.vue';
@@ -50,7 +50,7 @@ import { useMineQueryFields } from './composables/useMineQueryFields';
 import { hasMineQuery } from './types/mineQuery';
 import type { OpActionType, ReturnPayload, TransferPayload } from './composables/opActions';
 import { MAX_RETURN_COUNT } from './composables/opActions';
-import type { Ticket } from './types/ticket';
+import type { CreateTicketPrefill, Ticket } from './types/ticket';
 
 const user = useUserStore();
 const router = useRouter();
@@ -246,6 +246,10 @@ const {
   resetColumns,
 } = useTicketColumns();
 const createOpen = ref(false);
+/** 建单弹窗预填：小智入口置 `xiaozhiScene`，通用入口为 null */
+const createPrefill = ref<CreateTicketPrefill | null>(null);
+/** 「新建小智工单」只对小智坐席渲染（1130 D3 / W7：技能组判身份在容联云侧） */
+const canCreateXiaozhi = computed(() => XIAOZHI_CREATE_ROLES.includes(user.roleKey));
 const aiDrawerOpen = ref(false);
 const aiDrawerFilter = ref<AiSuggestionFilter>('all');
 const saveFilterModalOpen = ref(false);
@@ -356,7 +360,17 @@ watch(
 // —— 草稿 ——（非「我的任务」Tab 下「草稿」chip 选中时渲染草稿列表）
 const editingDraftId = ref<string | null>(null);
 const isDraftView = computed(() => wb.isDraftView.value);
-function openCreate() { editingDraftId.value = null; createOpen.value = true; }
+function openCreate() { editingDraftId.value = null; createPrefill.value = null; createOpen.value = true; }
+/**
+ * 「新建小智工单」（1130 小智工单 D3；按钮名照一·补 B22）：与通用「新建工单」两枚并存。
+ * 入口置位 `xiaozhiScene`，建单弹窗据此切小智表单（工单类型锁咨询、业务分类锁教育、来源锁 IM）。
+ * 按技能组判身份是容联云 / UAP 侧的事（W7），这里只落结果 —— 入口对哪些角色渲染见 `XIAOZHI_CREATE_ROLES`。
+ */
+function openCreateXiaozhi() {
+  editingDraftId.value = null;
+  createPrefill.value = { xiaozhiScene: true };
+  createOpen.value = true;
+}
 function editDraft(id: string) { editingDraftId.value = id; createOpen.value = true; }
 function removeDraft(id: string) { wb.removeDraft(id); message.success('草稿已删除'); }
 
@@ -710,6 +724,7 @@ function onConfirmSaveFilter(name: string) {
           :search="toolbarSearch"
           search-placeholder="工单号 / 手机号"
           :show-create="!flashPoolTabOpen && !wb.isDoneTab.value"
+          :show-xiaozhi-create="!flashPoolTabOpen && !wb.isDoneTab.value && canCreateXiaozhi"
           :show-batch="toolbarShowBatch"
           :batch-actions="toolbarBatchActions"
           :batch-disabled-tips="flashPoolTabOpen ? {} : batchDisabledTips"
@@ -722,6 +737,7 @@ function onConfirmSaveFilter(name: string) {
           @batch="onBatch"
           @update:search="onToolbarSearch"
           @create="openCreate"
+          @create-xiaozhi="openCreateXiaozhi"
           @toggle-filter="structuredFilterExpanded = !structuredFilterExpanded"
           @set-column-visible="setColumnVisible"
           @reorder-column="reorderColumn"
@@ -834,7 +850,12 @@ function onConfirmSaveFilter(name: string) {
       </div>
     </div>
 
-    <CreateTicketModal v-model:open="createOpen" :draft-id="editingDraftId" @created="onCreated" />
+    <CreateTicketModal
+      v-model:open="createOpen"
+      :draft-id="editingDraftId"
+      :prefill="createPrefill"
+      @created="onCreated"
+    />
 
     <AssignModal
       ref="assignRef"

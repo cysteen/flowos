@@ -5,6 +5,7 @@ import type {
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 import type { ClosureMode } from '@/views/tickets/types/ticket';
 import type { TicketFlash } from '@/views/tickets/types/flash';
+import type { TicketXiaozhi } from '@/views/tickets/types/xiaozhi';
 
 // 工单操作页 Mock（样例 = 设计稿 IFLYTS-20260610-00002 · P-工单处理 定稿）。
 
@@ -182,6 +183,13 @@ export interface TicketDetailMeta {
    * 取自工单库那一行（`Ticket.flash`），写口只有刷机服务 `stores/flash.ts`。
    */
   flash?: TicketFlash;
+  /** 「小智工单」标识（1130 D1，取自工单行 `Ticket.isXiaozhi`；读取走 `isXiaozhiTicket`） */
+  isXiaozhi?: boolean;
+  /**
+   * 小智单字段组（仅小智单有值，1130 小智工单）：产研流转信息 + 办结结果 + 校代确认状态。
+   * 取自工单库那一行（`Ticket.xiaozhi`），写口只有小智服务 `stores/xiaozhi.ts`。
+   */
+  xiaozhi?: TicketXiaozhi;
 }
 
 /** 委派中信息（协办完成或撤销委派后清空） */
@@ -229,13 +237,23 @@ export interface LinkedAftersale {
   resultCount?: number;
 }
 
-/** 飞书关联进度（与 PRD §3.2 feishuSync 一致） */
+/**
+ * 产研关联进度（与 PRD §3.2 feishuSync 一致）。
+ *
+ * ⚠️ 1130 小智工单**没有往这里加取值**：TPD 的「产研驳回」本轮只写处理履历、
+ * 不驱动状态（待沟通项 T1），故不需要一档 `rejected`；产研办结落 `closed`，
+ * 但那只说明**产研那张反馈单**结了，本单还要等校代确认才关（一·补 B5）。
+ */
 export type FeishuSyncState = 'none' | 'failed' | 'synced' | 'feedback' | 'closed';
 
 /** 「产研反馈」Tab 时间线一条 */
 export interface FeishuRecord {
   id: string;
-  /** push=建关联 / fail=关联失败 / feedback=预反馈 / result=关单 / activate=二次激活 / dunning=可选催单提醒 */
+  /**
+   * push=建关联（1130 小智单的「系统自动回传产研」也落它）/ fail=关联失败 /
+   * feedback=预反馈（1130 小智单的产研中间态、驳回留痕都落它）/ result=关单 /
+   * activate=二次激活 / dunning=可选催单提醒
+   */
   kind: 'push' | 'fail' | 'feedback' | 'result' | 'activate' | 'dunning';
   title: string;
   content: string;

@@ -2,11 +2,12 @@
 import { computed } from 'vue';
 import { message } from 'ant-design-vue';
 import { FLASH_BADGE_LABEL, isFlashTicket } from '@/views/tickets/types/flash';
+import { XIAOZHI_MARK_LABEL, isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
 import { useUserStore } from '@/stores/user';
 import { CopyOutlined, FlagOutlined } from '@ant-design/icons-vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import {
-  FLASH_MARK_COLOR, PRIORITY_COLOR, softBg, csEntryAvailability, statusDisplayName, AUTO_FLASH_STATUS_HEX,
+  FLASH_MARK_COLOR, XIAOZHI_MARK_COLOR, PRIORITY_COLOR, softBg, csEntryAvailability, statusDisplayName, statusStyle,
   type Priority, type TicketStatus,
 } from '@/views/tickets/types/ticket';
 import OpSlaBar from './OpSlaBar.vue';
@@ -26,13 +27,14 @@ const props = defineProps<{
    * **整页锁死**：本单已被新单接管（已转咨询 / 已转建议 / 已转商机）/ 只读角色（工单运营）。
    * ⚠️ **一线视角不走这条** —— 一线视角锁的是**底栏的二线流转动作**，
    * 头部这一排（升级投诉 / 关联售后 / 新建补充 / 催单 / 取消工单）**一线本来就有权限**：
-   * 升级投诉一线可升非投诉单、取消工单是一线专属、催补是一线主动作。
+   * 升级投诉一线可升非投诉单、取消工单给一线坐席 + 小智坐席（1130 D20a，基线原写「一线唯一」）、催补是一线主动作。
    * 把一线视角接到 readonly 上会把整排按钮误置灰。
    */
   readonly?: boolean;
   /**
    * 客户侧两枚（新建补充 / 催单）是否展示 —— 按角色给（PRD-915 补充与催单 §4.1）：
-   * 新建补充＝一线 + 二线专员 + 技术支持 + 二线班组长 + 客诉专员 + 投诉督导 + 管理员（※21a，0826 放开）；催单＝一线唯一；
+   * 新建补充＝一线 + 二线专员 + 技术支持 + 二线班组长 + 客诉专员 + 投诉督导 + 管理员（※21a，0826 放开）；
+   * 催单＝一线坐席 + 小智坐席（1130 D20a，基线原写「一线唯一」）；
    * 二线班组长 / 客诉专员 / 投诉督导 / 工单运营 / 质检 两枚都不展示。
    * ⚠️ 它们**不跟着 readonly 置灰**：一线视角虽然锁流转，但这两枚正是一线的主动作。
    * 真正会锁住它们的只有转单三态（单已作废）与只读角色，见 customerEntryLocked。
@@ -44,7 +46,7 @@ const props = defineProps<{
    * - 升级投诉：一线 · 二线专员 · 技术支持 · 二线班组长 · 客诉专员 · 投诉督导 · 管理员
    * - 关联售后：仅投诉单，**不给一线**（※12a，0826 收回——建不建售后单由二线判断）；技术支持可用（1025）
    *   （工单运营与质检不展示）
-   * - **取消工单：一线专属** —— 二线及以上整枚不展示
+   * - **取消工单：一线坐席 + 小智坐席**（1130 D20a，基线原写「一线唯一」）—— 二线及以上整枚不展示
    */
   canEscalateComplaint?: boolean;
   canLinkAftersale?: boolean;
@@ -170,6 +172,8 @@ function onLinkAftersaleClick() {
  * 从未起算（首推自动刷机中、自动刷机成功直进回访）或调研中不计时，SLA 区显示「—」，不画暂停钟。
  */
 const isFlashDetail = computed(() => isFlashTicket(props.detail) && !!props.detail.flash);
+/** 「小智工单」标识（1130 D1）：驱动页头标识徽章与「不出 SLA 条」（一·补 B1） */
+const isXiaozhiDetail = computed(() => isXiaozhiTicket(props.detail));
 const flashSlaStartText = computed(() => {
   if (!isFlashDetail.value) return undefined;
   const at = props.detail.flash?.state.slaStartedAt;
@@ -231,24 +235,21 @@ const relations = computed(() => buildTicketRelations(props.detail));
 const statusText = computed(() => statusDisplayName(props.detail.status));
 
 /**
- * 落库子状态 → 语义色（对齐 STATUS_TONE：进行中=橙、完成=绿、中性=灰、异常=红）。
- * ⚠️ 入参必须是**落库值**，不能传展示名 —— 「已转出」的展示名是「已转售后」，
- * 拿展示名来匹配就落不进下面的紫色分支了。
+ * 状态徽章配色 —— **直接用全仓唯一那套标准** `statusStyle()`（`types/ticket.ts`），
+ * 与工作台列表徽章（`TicketTitleCell.vue`）同一个函数、同一份色表。
+ *
+ * 🔴 **这里原先有一个叫 `statusHex` 的平行实现**（一串按先后顺序匹配的正则），
+ * 与标准**26 个状态里有 18 个取色不同** —— 最扎眼的是「已升级产研」：
+ * 它先命中 `/升级/` 拿到紫色，而标准按 `STATUS_GROUP` 判为非终态 → 橙色，
+ * 于是同一张单在详情页是紫、在工作台是橙。那个函数的注释还写着
+ * 「与列表徽章的 statusTone() 保持同一判法，同一张单两处不能一绿一灰」——
+ * 写着对齐、做的是另一套，是条**失效断言**，已随函数一并删掉。
+ *
+ * ⚠️ **入参必须是落库值 `detail.status`，不能传展示名 `statusText`**：
+ * 「已转出」的展示名是「已转售后」，拿展示名去查 `STATUS_GROUP` 查不到，会掉进 default。
+ * ⚠️ 要加新状态或改配色，**改 `statusTone()` / `STATUS_COLOR_MAP`**，不要在这里再长出第二套。
  */
-function statusHex(s: string): string {
-  // 刷机单「自动刷机中」（930 M9）：系统自动环节，与列表 statusTone('auto') 同色
-  if (s === '自动刷机中') return AUTO_FLASH_STATUS_HEX;
-  // 转单三态 / 升阶两态 / 已转出＝业务转到别的单上，用紫与关闭类终态的灰区分开
-  if (/已转咨询|已转建议|已转商机|已升级投诉|已升级外投|已转出/.test(s)) return '#7C3AED';
-  // 「已关闭」＝关闭工单审批通过，与已结案 / 直接结案同属正常收口，取绿——
-  // 与列表徽章的 statusTone() 保持同一判法，同一张单两处不能一绿一灰
-  if (/已完成|已结案|直接结案|已结单|已关闭|完成/.test(s)) return '#10B981';
-  if (/挂起|撤销|取消|终止/.test(s)) return '#6B7280';
-  if (/升级/.test(s)) return '#A855F7';
-  if (/逾期|超时|异常|驳回|失败/.test(s)) return '#EF4444';
-  if (/处理中|受理|待|审核|进行/.test(s)) return '#F59E0B';
-  return '#1A6FFF';
-}
+const statusBadge = computed(() => statusStyle(props.detail.status as TicketStatus));
 /** 淡底标签样式（颜色=语义，避免厚重实底/红色滥用） */
 function tagStyle(hex: string) {
   return { color: hex, background: softBg(hex) };
@@ -271,12 +272,24 @@ function priorityHex(p: string): string {
           <span
             v-if="!isSuperseded"
             class="badge"
-            :style="tagStyle(statusHex(detail.status))"
+            :style="statusBadge"
           >
-            <span class="badge-dot" :style="{ background: statusHex(detail.status) }" />{{ statusText }}
+            <span class="badge-dot" :style="{ background: statusBadge.color }" />{{ statusText }}
           </span>
-          <!-- 刷机单（类型仍为咨询）只出一枚紫色「刷机单」徽标，不再并排出「咨询」（1014） -->
+          <!--
+            类型位徽章 —— **三档互斥，恒只出一枚**：
+            · 刷机单只出紫色「刷机单」，不再并排「咨询」（1014）；
+            · 小智单只出「小智」（1130 一·补 B21，用户原话「如果是小智工单，就不要展示 咨询」）；
+            · 其余出工单类型原值。
+            两条口径在此合并：B21 落地时刷机还是「咨询 + 刷机」两枚，当时特地写了
+            「只排除小智、刷机维持两枚」；main 的 1014 把刷机也改成单枚后，那句限定作废，
+            两者变成同一形制，故收成一组 if / else-if / else。
+            ⚠️ **只是显示口径**：刷机单与小智单的工单类型在建模上都仍是「咨询」，
+            筛选 / 查询 / 报表照原样取数，不受这一道影响。
+            ⚠️ 与列表行（`TicketTitleCell.vue` 行内标 + hover 卡头）同一套判法，三处一起改。
+          -->
           <span v-if="isFlashTicket(detail)" class="badge" :style="tagStyle(FLASH_MARK_COLOR)">{{ FLASH_BADGE_LABEL }}</span>
+          <span v-else-if="isXiaozhiDetail" class="badge" :style="tagStyle(XIAOZHI_MARK_COLOR)">{{ XIAOZHI_MARK_LABEL }}</span>
           <span v-else class="badge badge-neutral">{{ detail.type }}</span>
           <span class="badge" :style="tagStyle(priorityHex(detail.priority))">
             <FlagOutlined />{{ detail.priority }}
@@ -331,8 +344,11 @@ function priorityHex(p: string): string {
       </div>
     </div>
     <div class="oh-right">
-      <span v-if="flashSlaIdle" class="sla-idle" :title="flashSlaStartText">—</span>
-      <OpSlaBar v-else :detail="detail" :start-text="flashSlaStartText" />
+      <!-- 小智工单不纳入 SLA 考核（1130 一·补 B1）：整条 SLA 条不出，不画钟也不留「—」 -->
+      <template v-if="!isXiaozhiDetail">
+        <span v-if="flashSlaIdle" class="sla-idle" :title="flashSlaStartText">—</span>
+        <OpSlaBar v-else :detail="detail" :start-text="flashSlaStartText" />
+      </template>
       <OpSupersededBanner
         v-if="supersededBy"
         :by="supersededBy"

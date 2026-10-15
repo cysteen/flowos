@@ -127,6 +127,7 @@ const BASE: EventField[] = [
   { key: 'title', label: '工单标题', type: 'string', desc: '建单时填写的问题概述' },
   { key: 'ticketType', label: '工单类型', type: 'enum', enumValues: DICT_TICKET_TYPE, desc: '投诉 / 建议 / 商机 / 咨询 / 表扬。常用作条件，把不同类型分流到不同规则' },
   { key: 'isFlash', label: '是否刷机单', type: 'boolean', desc: '建单时写入的刷机单标识，刷机单的工单类型为咨询。需要把刷机单与普通咨询单分开通知时用它作条件' },
+  { key: 'isXiaozhi', label: '是否小智工单', type: 'boolean', desc: '建单时写入的小智工单标识，小智工单的工单类型也是咨询。需要把小智工单与普通咨询单分开通知时用它作条件' },
   { key: 'source', label: '工单来源', type: 'enum', enumValues: DICT_SOURCE, desc: '客户从哪个渠道来的。对客短信的抑制条件主要靠它' },
   { key: 'bizType', label: '业务分类', type: 'enum', enumValues: DICT_BIZ_TYPE, desc: '工单归属的业务线。常用作条件，按业务线区分通知策略' },
   { key: 'productName', label: '产品名称', type: 'string', desc: '工单关联的产品型号，来自产品主数据。模板中常用于区分不同产品的通知文案' },
@@ -209,8 +210,9 @@ export const NOTIFY_EVENTS: NotifyEvent[] = [
       { key: 'priority', label: '优先级', type: 'enum', enumValues: DICT_PRIORITY, desc: '紧急 / 重要 / 普通加急 / 普通' },
       { key: 'pooledAt', label: '进池时间', type: 'datetime', templateOnly: true, desc: '工单落入工单池的时刻' },
       { key: 'loginUrl', label: '系统登陆地址', type: 'string', templateOnly: true, desc: '客服系统登陆地址，写进正文供收件人登陆领取' },
+      { key: 'rdDirect', label: '是否直通产研', type: 'boolean', desc: '本单落池后是否由系统自动流转给产研。为「是」时池里留的只是记录、没有人该去领它，待领取提醒要排除掉' },
     ],
-    remark: '新工单首次进入分组工单池待领取时发出，每单一条；已有工单再次进池不发出。刷机单每次到组（进入一线刷机池、教育刷机处理组池）都发出。' },
+    remark: '新工单首次进入分组工单池待领取时发出，每单一条；已有工单再次进池不发出。刷机单每次到组（进入一线刷机池、教育刷机处理组池）都发出。直通产研的单落池只留记录、随即自动流转，不发出。' },
   { code: 'ticket.supplement', name: '新建补充', source: 'non-dispatch',
     payload: [...BASE, { key: 'supplementType', label: '补充分类', type: 'enum', enumValues: DICT_SUPPLEMENT_TYPE, desc: '客户补充了什么性质的信息。「取消服务」这类需处理人立刻知晓，可用它作条件区分紧急度' }, { key: 'supplementContent', label: '补充内容', type: 'string', desc: '客户补充的具体信息' }],
     remark: '客户补充工单信息时发出。' },
@@ -497,8 +499,16 @@ export const NOTIFY_RULES: NotifyRule[] = [
     ],
     recipients: [{ type: 'customer' }], channels: ['短信'], templates: { 短信: 'SMS_WO_ACCEPTED' }, contents: {}, enabled: true },
   // 【1025】新单首次进入工单池待领取 → 提醒该分组全员领取（5 种新单来源全发；刷机单走 R19）
+  //
+  // 🔴 **「直通产研」的单排除在外**（1130 小智工单 D6）：小智单走「创建并流转」时，落池只是
+  // 留一条记录、随即由系统自动流转到「已升级产研」，**没有人该去领它**（处理人是系统，一·补 B2）。
+  // 不排除就会给小智工单处理组全员发一条「有新单待领取」，叫大家去领一张领不了也不该领的单。
+  // 走「创建」的那条人工路径 `rdDirect = 否`，照常发 —— 本条件对通用单恒为「否」，通用单行为未变。
   { id: 'R18', name: '工单池待领取提醒', event: 'ticket.pooled', audience: 'internal',
-    conditions: [{ field: 'isFlash', op: 'eq', value: ['否'] }],
+    conditions: [
+      { field: 'isFlash', op: 'eq', value: ['否'] },
+      { field: 'rdDirect', op: 'eq', value: ['否'] },
+    ],
     recipients: [{ type: 'groupMembers' }], channels: ['IM'], templates: { IM: 'IM_WO_POOLED' }, contents: {}, enabled: true },
   // 【1130】刷机单到组 → 通知全组（1013 A27）：容联云留言弹窗；可另勾 IM（i讯飞消息）
   { id: 'R19', name: '刷机单到组提醒', event: 'ticket.pooled', audience: 'internal',
@@ -739,7 +749,8 @@ export const TEST_PRESETS: TestPreset[] = [
   {
     id: 'P1', label: '典型对内场景 · 热线来源 · 咨询单',
     data: {
-      ticketNo: 'IFLYZX-20260728-00004', title: '扫地机器人无法开机', ticketType: '咨询', isFlash: '否',
+      ticketNo: 'IFLYZX-20260728-00004', title: '扫地机器人无法开机', ticketType: '咨询', isFlash: '否', isXiaozhi: '否',
+      rdDirect: '否',
       source: '电话', bizType: '智能硬件', productName: '扫地机器人R2', customerName: '孙权', customerPhone: '138****2046',
       assigneeId: '林坐席', creatorId: '张三',
       responseDueTime: '2026-07-28 16:30',
@@ -790,11 +801,24 @@ export const TEST_PRESETS: TestPreset[] = [
   {
     id: 'P4', label: '刷机单到组 · 一线升级进教育刷机处理组',
     data: {
-      ticketNo: 'IFLYZX-20260915-00011', title: '刷机 · 讯飞智慧课堂学生平板 X3 Pro · 自助刷机 · 客户服务小程序', ticketType: '咨询', isFlash: '是',
+      ticketNo: 'IFLYZX-20260915-00011', title: '刷机 · 讯飞智慧课堂学生平板 X3 Pro · 自助刷机 · 客户服务小程序', ticketType: '咨询', isFlash: '是', isXiaozhi: '否',
+      rdDirect: '否',
       source: '客户服务小程序', bizType: '教育', productName: '讯飞智慧课堂学生平板 X3 Pro', customerName: '沈建', customerPhone: '135****6419',
       creatorId: '沈建', dispatchFrom: '建单',
       groupName: '教育刷机处理组', priority: '普通', pooledAt: '2026-09-15 08:05', loginUrl: LOGIN_URL,
       deepLink: 'https://xfkf.iflytek.com/t/90004',
+    },
+  },
+  {
+    // 【1130】直通产研的小智单：落池只留记录、随即自动流转，R18「待领取提醒」应**不命中**（D6）
+    id: 'P5', label: '小智工单 · 直通产研（落池只留记录，不发待领取）',
+    data: {
+      ticketNo: 'IFLYZX-20260918-00002', title: '智批改 · 批阅任务未下发 · IM', ticketType: '咨询', isFlash: '否', isXiaozhi: '是',
+      rdDirect: '是',
+      source: 'IM', bizType: '教育', productName: '智学网会员', customerName: '阜阳一中 · 王校代', customerPhone: '139****0002',
+      assigneeId: '系统', creatorId: '谭小智', dispatchFrom: '建单',
+      groupName: '小智工单处理组', priority: '普通加急', pooledAt: '2026-09-18 11:05', loginUrl: LOGIN_URL,
+      deepLink: 'https://xfkf.iflytek.com/t/90005',
     },
   },
 ];

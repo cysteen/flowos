@@ -7,6 +7,11 @@ import {
 } from '@ant-design/icons-vue';
 import { formatOpTime } from '@/views/tickets/utils/opTime';
 import type { FeishuRecord, FeishuSyncState } from '@/mock/ticketDetail';
+import {
+  XIAOZHI_CONFIRM_ACTOR, XIAOZHI_CONFIRM_APP,
+  XIAOZHI_DEMAND_FIELD_LABELS, XIAOZHI_ISSUE_FIELD_LABELS, XIAOZHI_RESULT_GROUP_TITLE,
+  type XiaozhiConfirmState, type XiaozhiDemandResult, type XiaozhiIssueResult, type XiaozhiSolutionType,
+} from '@/views/tickets/types/xiaozhi';
 
 /** 二次激活原因枚举（对齐 PRD §7.4） */
 const FEISHU_ACTIVATE_REASONS = [
@@ -34,6 +39,41 @@ const props = defineProps<{
    * 只读态下重新发起 / 催单 / 二次激活三个写入口不出，协同时间线照常可读。
    */
   readonly?: boolean;
+  /** 办结回传的分叉：问题类 / 需求类（W8 暂行口径：分两组展示、有值才显示） */
+  solutionType?: XiaozhiSolutionType;
+  /** 办结回传 · 问题类字段 */
+  issueResult?: XiaozhiIssueResult;
+  /** 办结回传 · 需求类字段 */
+  demandResult?: XiaozhiDemandResult;
+  /**
+   * 提报人确认状态（1130 一·补 B5）。只有小智单传它 —— 产研办结**不自动关单**，
+   * 要等提报人在小智工单应用里确认是否解决，故这里只**显示**确认进度，
+   * 🔴 **没有任何按钮**：确认在小智工单应用里做，确认未解决后的回传是**系统动作**。
+   */
+  confirmState?: XiaozhiConfirmState;
+  /** 提报人确认时刻 */
+  confirmAt?: string;
+  /** 确认人（超时视为已解决时为「系统」） */
+  confirmBy?: string;
+  /** 已回传产研「未解决」的次数（一·补 B8：循环不封顶，但记次数） */
+  rdReturnCount?: number;
+  /**
+   * 小智单模式（1130 D1）。三处用到它：
+   * ① **时间线节点的标签用词** —— 小智链路复用了 `push` / `result` / `feedback` 三个记录档，
+   *    但它们在小智单上的含义与消费者BG飞书单不同，照 `KIND_META` 的通用词渲染会写出
+   *    「关单」这种与本单开 / 结对打的标签；
+   * ② **信息块按 PRD §5.2 的六项渲染**（见 `xiaozhiMeta`）；
+   * ③ **「二次激活」整枚不渲染**（一·补 B5：确认未解决由系统自动回传，不设坐席入口）。
+   */
+  xiaozhiMode?: boolean;
+  /** 本单单号（PRD §5.2 信息块第二项，小智单必传） */
+  ticketNo?: string;
+  /** 产品模块（PRD §5.2 信息块第三项） */
+  rdModule?: string;
+  /** 接收人域账号（PRD §5.2 信息块第四项，由产品模块带出） */
+  rdReceiver?: string;
+  /** 产研优先级（PRD §5.2 信息块第五项，**四档**：普通 / 普通加急 / 紧急 / 重要） */
+  rdPriority?: string;
 }>();
 
 const emit = defineEmits<{
@@ -49,6 +89,61 @@ const noteRequired = computed(() => activateReason.value === '其他');
 const reasonOptions = FEISHU_ACTIVATE_REASONS.map((r) => ({ value: r, label: r }));
 
 const isFailed = computed(() => props.syncState === 'failed');
+
+/**
+ * 提报人确认进度（1130 一·补 B5 / B7 / B8 / B19）—— **纯展示，没有按钮**。
+ *
+ * ⚠️ 不要在这里补一枚「模拟确认」或「二次提交产研」：确认动作在**小智工单应用**里由提报人做（B6），
+ * 确认未解决后的回传是**系统动作不是坐席动作**（B5），原型里这两种结果由种子数据体现。
+ *
+ * 🔴 **这句提示里不写具体天数** —— 超时天数（`XIAOZHI_CONFIRM_TIMEOUT_DAYS`）是**待业务确定的
+ * 配置项**，把「超 3 天」打到界面上，等于把一个还没定的数当成已定的规格给人看；
+ * 业务改了配置，界面这句就成了假的。履历是另一回事（记已发生的事，据实写当时的天数）。
+ */
+const confirmRow = computed<{ label: string; tone: 'wait' | 'done'; sub: string } | null>(() => {
+  if (!props.confirmState) return null;
+  if (props.confirmState === '未确认') {
+    return {
+      label: `待${XIAOZHI_CONFIRM_ACTOR}确认`,
+      tone: 'wait',
+      sub: `等待${XIAOZHI_CONFIRM_ACTOR}在${XIAOZHI_CONFIRM_APP}确认；超期未确认将视为已解决，自动结案并下送调研`,
+    };
+  }
+  const who = props.confirmBy ? `${props.confirmBy} · ` : '';
+  return {
+    label: props.confirmState,
+    tone: 'done',
+    sub: `${who}${formatOpTime(props.confirmAt) || '—'}`,
+  };
+});
+
+/**
+ * 小智单的产研反馈单信息块 —— **照 PRD §5.2 的六项**，次序一致。
+ *
+ * 通用飞书单那一行（优先级 / 负责人 / 技术支持 / 创建 / 更新）保持原样不动。
+ * 🔴 三处原先对不上 PRD：**本单单号 / 产品模块 / 接收人三项根本没渲染**；
+ * 「优先级」取的是工单优先级（P1 / P2）而 PRD 要的是**产研四档**（普通 / 普通加急 / 紧急 / 重要）；
+ * 还多一行写死的「技术支持 · 张三」—— 既是硬编码演示数据，又与 B10「本轮不做技术支持路径」相抵，
+ * 故小智单这一支整行不渲染它。
+ */
+/** 定义在 `feedbackNo` / `updatedAt` 之后（见本文件下方），此处只留出处说明 */
+
+/** 已回传产研「未解决」的次数（B8）：0 不显示 */
+const returnTimes = computed(() => props.rdReturnCount ?? 0);
+
+/** 办结回传字段：按问题类 / 需求类取一套，**有值才显示**（W8） */
+const settleFields = computed<{ title: string; items: { label: string; text: string }[] } | null>(() => {
+  if (!props.solutionType) return null;
+  const items = props.solutionType === '问题'
+    ? XIAOZHI_ISSUE_FIELD_LABELS
+      .map(({ key, label }) => ({ label, text: (props.issueResult?.[key] ?? '').trim() }))
+      .filter((x) => !!x.text)
+    : XIAOZHI_DEMAND_FIELD_LABELS
+      .map(({ key, label }) => ({ label, text: (props.demandResult?.[key] ?? '').trim() }))
+      .filter((x) => !!x.text);
+  if (!items.length) return null;
+  return { title: XIAOZHI_RESULT_GROUP_TITLE[props.solutionType], items };
+});
 
 /** 卡片上展示的反馈单号 */
 const feedbackNo = computed(
@@ -87,6 +182,15 @@ const statusMeta = computed(() => {
   if (props.syncState === 'failed') {
     return { label: '关联失败', tone: 'danger' as const };
   }
+  /**
+   * 🔴 小智单待校代确认期间，这枚胶囊**不能写「已结案」**（1130 一·补 B5）：
+   * 产研那张反馈单确实结了，但**本单还开着**（「已升级产研」）。在这个系统里「结案」
+   * 专指工单关闭，胶囊写「已结案」会和页头的「已升级产研」对打，让人以为单子已经关了。
+   * 故这一档单独出「产研已办结」—— 说的是产研那边的事，不碰本单的开 / 结。
+   */
+  if (props.syncState === 'closed' && props.confirmState === '未确认') {
+    return { label: '产研已办结', tone: 'feedback' as const };
+  }
   if (props.syncState === 'closed') {
     return { label: '已结案', tone: 'done' as const };
   }
@@ -111,17 +215,47 @@ const updatedAt = computed(() => {
   return orderedRecords.value[0]?.when || props.createdAt || '—';
 });
 
+const xiaozhiMeta = computed<{ label: string; value: string }[]>(() => [
+  { label: '产研单号', value: feedbackNo.value },
+  { label: '本单单号', value: props.ticketNo || '—' },
+  { label: '产品模块', value: props.rdModule || '—' },
+  { label: '接收人域账号', value: props.rdReceiver || '—' },
+  { label: '产研优先级', value: props.rdPriority || '—' },
+  { label: '更新时间', value: formatOpTime(updatedAt.value) },
+]);
 
 /** 已关联产研反馈（synced/feedback/closed）→ 催单、二次激活两按钮均常驻展示 */
 const isAssociated = computed(() =>
   props.syncState === 'synced' || props.syncState === 'feedback' || props.syncState === 'closed',
 );
-/** 催单：处理中/已反馈（未结案）可点；已结案置灰不可催 */
+/**
+ * 催单：处理中 / 已反馈（未结案）可点；已结案置灰不可催。
+ *
+ * 待提报人确认那一段（`closed ∧ 未确认`）落在「已结案」那侧，故**催单置灰** —— 这是对的：
+ * 产研已经把结果给出来了，球在提报人手上，催产研催不出任何东西。
+ * PRD 未覆盖这一档，置灰理由写在这儿，悬停文案由 `dunningTip` 分档给。
+ */
 const dunningEnabled = computed(() =>
   props.syncState === 'synced' || props.syncState === 'feedback',
 );
-/** 二次激活：仅已结案可点；未结案置灰 */
+const dunningTip = computed(() => {
+  if (dunningEnabled.value) return '';
+  if (props.confirmState === '未确认') return `产研已办结，待${XIAOZHI_CONFIRM_ACTOR}确认，无需催单`;
+  return '已结案，无需催单';
+});
+
+/**
+ * 二次激活：仅已结案可点；未结案置灰。
+ *
+ * 🔴 **小智单上这一枚整枚不渲染**（1130 一·补 B5，PRD §5.2）—— 见模板里 `showActivate`。
+ * 二次激活＝坐席手动重开产研单，而 B5 已把「确认未解决 → 回传产研」定成**系统动作**：
+ * 留着它就等于在系统自动回传之外，又开了一个坐席手动重开的并行入口，
+ * 两条路都能把单子推回产研，`rdReturnCount` 却只认系统那条。
+ * （原先它在待确认段**还是可点的** —— `closed ∧ 未确认` 正好落在 `closed` 这档里。）
+ */
 const activateEnabled = computed(() => props.syncState === 'closed');
+/** 「二次激活」出不出：小智单整枚不出 */
+const showActivate = computed(() => !props.xiaozhiMode);
 
 const KIND_META: Record<FeishuRecord['kind'], { icon: unknown; color: string; tag: string }> = {
   push: { icon: SendOutlined, color: '#2563eb', tag: '建关联' },
@@ -131,6 +265,23 @@ const KIND_META: Record<FeishuRecord['kind'], { icon: unknown; color: string; ta
   activate: { icon: ThunderboltOutlined, color: '#f59e0b', tag: '二次激活' },
   dunning: { icon: BellOutlined, color: '#d97706', tag: '催单' },
 };
+
+/**
+ * 时间线节点的标签用词。消费者BG飞书单照 `KIND_META` 原样出；
+ * 小智单上这三个档的含义不同，按记录本身的身份改词（1130 一·补 B5 / B8 / T1）：
+ * - `result`（产研办结）→ **不能写「关单」**，产研办结不关本单；
+ * - `push` 里的「系统自动回传」→ 不是建关联，是校代确认未解决后系统打回去那一笔；
+ * - `feedback` 里的驳回留痕 → 标出「产研驳回」，否则混在「预反馈」里看不出来（T1 信息不丢）。
+ * 颜色一律沿用 `KIND_META`，只换文字。
+ */
+function tagOf(rec: FeishuRecord): string {
+  const base = KIND_META[rec.kind].tag;
+  if (!props.xiaozhiMode) return base;
+  if (rec.kind === 'result') return '产研办结';
+  if (rec.kind === 'push' && rec.title.includes('自动回传')) return '回传产研';
+  if (rec.kind === 'feedback' && rec.title.includes('驳回')) return '产研驳回';
+  return base;
+}
 
 function onActivate() {
   if (props.readonly || !activateEnabled.value) return;
@@ -185,7 +336,7 @@ function onDunning() {
     </div>
 
     <!-- 产研反馈单：主体信息 + 状态反馈 -->
-    <section v-else class="fs-sheet" aria-label="产研反馈单主体信息">
+    <section v-if="!isFailed" class="fs-sheet" aria-label="产研反馈单主体信息">
       <header class="fs-sheet-head">
         <div class="fs-sheet-brand">
           <h3 class="fs-sheet-title">{{ feedbackName || '客户反馈单' }}</h3>
@@ -200,10 +351,12 @@ function onDunning() {
             type="button"
             class="action-btn"
             :disabled="!dunningEnabled"
-            :title="dunningEnabled ? '' : '已结案，无需催单'"
+            :title="dunningTip"
             @click="onDunning"
           >催单</button>
+          <!-- 「二次激活」在小智单上整枚不渲染（1130 一·补 B5 / PRD §5.2），不是置灰 -->
           <button
+            v-if="showActivate"
             type="button"
             class="action-btn"
             :disabled="!activateEnabled"
@@ -217,7 +370,22 @@ function onDunning() {
         </div>
       </header>
 
-      <div class="fs-sheet-meta">
+      <!--
+        信息块分两套渲染：
+        · 小智单照 PRD §5.2 的**六项**（产研单号 / 本单单号 / 产品模块 / 接收人域账号 /
+          产研优先级 / 更新时间），「产研优先级」是产研四档、不是工单 P1 / P2；
+        · 通用飞书单保持原样（优先级 / 负责人 / 技术支持 / 创建 / 更新），一字未动。
+      -->
+      <div v-if="xiaozhiMode" class="fs-sheet-meta">
+        <template v-for="(m, i) in xiaozhiMeta" :key="m.label">
+          <span v-if="i" class="fs-meta-sep" aria-hidden="true" />
+          <span class="fs-meta-pair">
+            <span class="fs-meta-label">{{ m.label }}</span>
+            <span class="fs-meta-value">{{ m.value }}</span>
+          </span>
+        </template>
+      </div>
+      <div v-else class="fs-sheet-meta">
         <span class="fs-meta-pair">
           <span class="fs-meta-label">优先级</span>
           <em class="fs-prio">{{ priority || '—' }}</em>
@@ -243,6 +411,30 @@ function onDunning() {
           <span class="fs-meta-value">{{ formatOpTime(updatedAt) }}</span>
         </span>
       </div>
+
+      <!-- 办结回传字段：问题类 / 需求类各一套，有值才显示（1130 W8） -->
+      <div v-if="settleFields" class="fs-settle">
+        <div class="fs-settle-title">{{ settleFields.title }}</div>
+        <dl class="fs-settle-list">
+          <template v-for="item in settleFields.items" :key="item.label">
+            <dt class="fs-settle-label">{{ item.label }}</dt>
+            <dd class="fs-settle-text">{{ item.text }}</dd>
+          </template>
+        </dl>
+      </div>
+
+      <!--
+        校代确认进度（1130 一·补 B5 / B7 / B8）：产研办结后本单**不自动关单**，等校代确认。
+        纯展示，**无按钮** —— 确认在小智工单应用里做，确认未解决后的回传是系统动作。
+      -->
+      <div v-if="confirmRow || returnTimes" class="fs-confirm">
+        <template v-if="confirmRow">
+          <span class="fs-confirm-pill" :class="`tone-${confirmRow.tone}`">{{ confirmRow.label }}</span>
+          <span class="fs-confirm-sub">{{ confirmRow.sub }}</span>
+        </template>
+        <!-- 词序照 PRD L420「已回传产研 〈N〉 次」 -->
+        <span v-if="returnTimes" class="fs-confirm-times">已回传产研 {{ returnTimes }} 次</span>
+      </div>
     </section>
 
     <div v-if="!records.length" class="fs-empty">暂无产研反馈协同记录</div>
@@ -262,7 +454,7 @@ function onDunning() {
               class="fs-item-tag"
               :style="{ color: KIND_META[rec.kind].color, background: `${KIND_META[rec.kind].color}14` }"
             >
-              {{ KIND_META[rec.kind].tag }}
+              {{ tagOf(rec) }}
             </span>
             <span class="fs-item-title">{{ rec.title }}</span>
             <span class="fs-item-side" :class="{ downstream: rec.side === '产研侧' }">{{ rec.side }}</span>
@@ -339,6 +531,37 @@ function onDunning() {
   color: #fff; background: #dc2626; border: none; border-radius: 7px; cursor: pointer;
 }
 .fs-retry:hover { background: #b91c1c; }
+
+/* 校代确认进度条（1130 一·补 B5 / B8）：与办结字段组同一块底，纯展示无按钮 */
+.fs-confirm {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px;
+  padding: 10px 16px 12px; border-top: 1px solid #f1f5f9;
+}
+.fs-confirm-pill {
+  flex: none; font-size: 12px; font-weight: 700; border-radius: 999px; padding: 3px 10px;
+}
+.fs-confirm-pill.tone-wait { color: #b45309; background: #fef3c7; }
+.fs-confirm-pill.tone-done { color: #047857; background: #d1fae5; }
+.fs-confirm-sub { font-size: 12px; color: #64748b; line-height: 1.5; }
+.fs-confirm-times {
+  flex: none; margin-left: auto; padding: 2px 8px; border-radius: 9px;
+  font-size: 11px; font-weight: 600; color: #0f766e; background: #ccfbf1;
+}
+
+/* 办结回传字段组（1130 W8）：问题类 / 需求类各一套，有值才显示 */
+.fs-settle {
+  padding: 10px 16px 12px;
+  border-top: 1px solid #f1f5f9;
+}
+.fs-settle-title { font-size: 12px; font-weight: 700; color: #0f766e; margin-bottom: 6px; }
+.fs-settle-list {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 10px;
+  margin: 0;
+}
+.fs-settle-label { font-size: 12px; color: #6b7280; }
+.fs-settle-text { font-size: 12px; color: #111827; margin: 0; line-height: 1.6; }
 
 /* 主体信息板：反馈单身份 + 状态反馈 */
 .fs-sheet {

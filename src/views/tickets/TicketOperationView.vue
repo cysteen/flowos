@@ -27,13 +27,19 @@ import {
   FLASH_RESULT_ESCALATE_L2, FLASH_RESULT_OFFLINE, FLASH_TIP_OFFLINE_FORWARD, FLASH_TIP_RESULT_REQUIRED,
   FLASH_POOLS, isFlashTicket, normalizeFlashResult, type FlashActor, type FlashResult,
 } from './types/flash';
+import {
+  XIAOZHI_CANCELLABLE_STATUSES, XIAOZHI_TIP, isXiaozhiTicket, type XiaozhiRdPriority,
+} from './types/xiaozhi';
+import { useXiaozhiStore } from '@/stores/xiaozhi';
 import { typeSampleKey } from '@/mock/ticketTypeSamples';
 import type { FlashActionResult, FlashInfoChanges } from '@/stores/flash';
 // 建单弹窗仅在「转单/重开」时用，按需异步加载，不阻塞操作页首屏
 const CreateTicketModal = defineAsyncComponent(() => import('./components/CreateTicketModal.vue'));
 import type { SmsTemplateKind } from '@/mock/notifyTemplates';
 import { useTicketOperation } from './composables/useTicketOperation';
-import { FEISHU_ESCALATE_CHANNEL, mapUserRole, pushEntry, isAftersaleSettled } from './composables/opActions';
+import {
+  ESCALATE_CHANNEL_TPD, FEISHU_ESCALATE_CHANNEL, mapUserRole, pushEntry, isAftersaleSettled,
+} from './composables/opActions';
 import { AFTERSALE_INBOUND_SOURCE, normalizeTicketSource } from './types/createTicket';
 import { aftersaleInboundOperator, aftersaleLinkJoinedEntry, applyAftersaleResult, isAftersaleChainTicket } from './composables/aftersaleEvents';
 import { submitAftersaleResult } from '@/api/aftersaleResult';
@@ -112,6 +118,15 @@ const pageActive = ref(false);
  * 判据＝「刷机单」标识且带刷机字段组（1013 A1）；其余工单恒为 false，页面不变。
  */
 const isFlash = computed(() => isFlashTicket(d.value) && !!d.value.flash);
+
+/**
+ * 小智工单（1130 小智工单 D1）：处理页、处理表单、动作集一律沿用通用咨询单（D27），
+ * 本标识只用来①关风险报备三个界面位（D18）、②底栏走小智动作集（D16）、
+ * ③把「升级」的目标收到产研一个（一·补 B10：本轮不做技术支持路径）。
+ *
+ * ⚠️ 原先还有一条「④驳回后开二次提交」—— **已随 B5 / T1 去掉**，本页在小智单上没有写入口了。
+ */
+const isXiaozhi = computed(() => isXiaozhiTicket(d.value));
 
 const ticketNo = computed(() => (route.params.ticketNo as string) || d.value.no);
 const processTabsRef = ref<InstanceType<typeof OpProcessTabs> | null>(null);
@@ -333,10 +348,12 @@ const canTagRisk = computed(
   () => canTagRiskOnTicketPage(d.value.type, user.roleKey, riskTagBlockReason.value),
 );
 
-/** 底栏那一格取到的形态：只剩 `report` 一种；null ＝ 底栏这一格不给 */
-const riskBarForm = computed(() => resolveRiskBarForm(user.roleKey, d.value.type)?.form ?? null);
+/** 底栏那一格取到的形态：只剩 `report` 一种；null ＝ 底栏这一格不给。小智单恒为 null（1130 D18） */
+const riskBarForm = computed(() => resolveRiskBarForm(user.roleKey, d.value.type, isXiaozhi.value)?.form ?? null);
 /** 页头「风险管控」取到的形态：`assess`（非投诉单）/ `collab`（投诉单）；null ＝ 整枚不出 */
-const riskControlForm = computed(() => resolveRiskControlForm(user.roleKey, d.value.type)?.form ?? null);
+const riskControlForm = computed(
+  () => resolveRiskControlForm(user.roleKey, d.value.type, isXiaozhi.value)?.form ?? null,
+);
 
 /**
  * 本单的**主责处理人**（基线 ※14 / ※14a / ※1）：工单当前处理人；
@@ -368,6 +385,24 @@ const isPrimaryHandler = computed(
 const flashStore = useFlashStore();
 const handleLogStore = useHandleLogStore();
 const flashConfig = useFlashConfigStore();
+
+/* ---------------- 小智单（1130 小智工单 / 一·补） ---------------- */
+
+const xiaozhiStore = useXiaozhiStore();
+
+/**
+ * 小智单在本页有写入口的只有两枚：**领取**（D21，`onXiaozhiClaim`）与
+ * **升级 · 产研**（PRD §5.4，`onXiaozhiAction`）。
+ *
+ * **确认链路没有任何坐席入口**（一·补 B5 / 待沟通项 T1）：
+ * - 产研办结后要不要关单，由**提报人**在小智工单应用里确认（B5），确认未解决后的回传是
+ *   **系统动作** —— 故**没有「二次提交产研」按钮**，「二次激活」在小智单上也整枚不渲染，
+ *   两者都不要再加回来；
+ * - TPD 的「产研驳回」本轮只写处理履历、不驱动状态、无按钮（T1 待沟通）。
+ *
+ * 确认与驳回的写口都在小智服务 `stores/xiaozhi.ts`（`receiveReporterConfirm` /
+ * `receiveRdReject`），由接口层调用，本页只读结果。
+ */
 
 /**
  * 当前登录人在本刷机单上的视角：一线 / 二线 / 可领取 / 只读查看 / 客诉专员。四类老工单为 null。
@@ -423,6 +458,77 @@ function onFlashClaim() {
   const res = flashStore.claimFromPool(d.value.no, { name: currentHandlerName(user.roleKey, user.name), role });
   if (res.ok) message.success(res.message);
   else message.warning(res.message);
+}
+
+/**
+ * 小智单可领取（1130 PRD §1.2 / §5.3 / §6；D21「一个大组、进池自己领」）。
+ *
+ * 🔴 **判据在这里算，不在底栏组件里算** —— 底栏只拿一个布尔。条件三道：
+ * 是小智单 ∧ 本单在工单池里无人认领 ∧ 当前角色是能办小智单的（小智坐席本人）。
+ * 直通产研那批虽然状态是「已升级产研」、不是「未认领」，故 `ticketUnclaimed` 为假，
+ * 自然也不会出「领取」—— 池里留的是记录不是待领任务（一·补 B2），正合口径。
+ */
+const xiaozhiClaimable = computed(
+  () => isXiaozhi.value && ticketUnclaimed.value && user.roleKey === 'xiaozhi-agent',
+);
+
+/**
+ * 领取总入口：刷机单走刷机服务，小智单走小智服务，其余工单本就不出这枚按钮。
+ * 原先底栏的 `@claim` 直接接 `onFlashClaim` —— 加了小智那条路后必须在这里分岔，
+ * 不然小智单点「领取」会走进刷机服务、按刷机的池子判定，必然失败。
+ */
+function onClaim() {
+  if (isXiaozhi.value) {
+    onXiaozhiClaim();
+    return;
+  }
+  onFlashClaim();
+}
+
+/** 小智单领取（D21）：落处理人与「处理中」，写履历，Toast 与刷机同体例 */
+function onXiaozhiClaim() {
+  const who = currentHandlerName(user.roleKey, user.name);
+  const ok = xiaozhiStore.claimFromPool(d.value.no, { name: who, role: mapUserRole(user.roleKey) });
+  if (ok) message.success(`已领取 ${d.value.no}`);
+  else message.warning('本单已被领取或不在工单池中');
+}
+
+/**
+ * 小智单的底栏动作拦截 —— 现在只拦一枚：**升级 · 产研**（1130 PRD §5.4 / §11.2）。
+ * 返回 true ＝ 本函数已处理，`onAction` 不再往下走通用分支。
+ *
+ * 🔴 **为什么必须拦**：`escalateToRd` 原先**全仓只有 store 自己调**，人工点「升级 · 产研」
+ * 走的是通用升级分支（`opActions.ts` 的 `case '升级'`），于是三件事同时错：
+ * ① 弹窗采不到产研五项（已在 `OpActionDialogs` 补上）；
+ * ② 履历写成「升级至 TPD 技术问题单」，不是 PRD §11.2 要的「升级 · 产研（…）；产研单标题：…」；
+ * ③ 通用分支**不写 `rdSync`**，本单的 `feishuSync` 还是 `none` → `feishuActive` 为假 →
+ *    **「产研反馈」Tab 根本打不开**，人工升级产研的单看不到任何产研协同信息。
+ */
+function onXiaozhiAction(payload: Record<string, unknown>): boolean {
+  if (payload.type !== '升级') return false;
+  const data = (payload.data ?? {}) as Record<string, unknown>;
+  // 非产研通道（理论上小智单只剩产研一档，B10）交回通用分支，不在这里吞掉
+  if (!data.xiaozhiRd) return false;
+  const ok = xiaozhiStore.escalateToRd(
+    d.value.no,
+    { name: currentHandlerName(user.roleKey, user.name), role: mapUserRole(user.roleKey) },
+    false,
+    {
+      module: String(data.rdModule ?? ''),
+      receiver: String(data.rdReceiver ?? ''),
+      priority: String(data.rdPriority ?? '') as XiaozhiRdPriority,
+      frontlineAccount: String(data.frontlineAccount ?? '').trim(),
+      attachments: Array.isArray(data.attachments) ? (data.attachments as string[]) : [],
+    },
+  );
+  if (!ok) {
+    message.warning('升级产研失败，请稍后重试');
+    return true;
+  }
+  message.success(`已升级 · 产研（${ESCALATE_CHANNEL_TPD}）`);
+  // 产研协同信息都在那个 Tab 上，升完直接切过去（与飞书升级同体例）
+  processTabsRef.value?.switchTab('feishu');
+  return true;
 }
 
 /** 刷机服务的操作人：当前登录人在工单数据源里的处理人名 + 履历角色（一线坐席判一线重推） */
@@ -719,8 +825,11 @@ function onRiskReport(payload: {
  * ⚠️ 这是**入口层**那一道；根上那一道在 `OpProcessTabs.switchTab`（拒绝切到不可见 Tab），
  * 两层都要 —— 只有入口层挡不住 `?tab=risk` 深链。
  */
+// 🔴 `isXiaozhi` 必须传：本函数与 Tab 条同源，Tab 条那边小智单的 risk 是**单维**关掉的（D18）。
+// 不传就又回到「Tab 条上没有这一枚、页头却给了个按钮把正文调出来」那个绕过口 —— 这里的
+// 角色黑名单只挡得住小智坐席，二线班组长 / 管理员打开小智单照样拿得到入口。
 const canViewRiskTab = computed(
-  () => isProcessTabVisible('risk', d.value.type, user.roleKey),
+  () => isProcessTabVisible('risk', d.value.type, user.roleKey, { isXiaozhi: isXiaozhi.value }),
 );
 
 /* ==================== 标题行的两枚风险状态标（《【930】》§5A.3 / §3.2 可见性） ====================
@@ -1139,7 +1248,8 @@ const supersededLocked = computed(() => !!supersededBy.value || SUPERSEDED_STATU
  *
  * ⚠️ **一线视角不在此列**（2026-08-18 修正）——它锁的是**底栏的二线流转动作**
  * （下送/升级/调剂/委派/挂起/关闭/强结），由 hideActionBar 单独管。
- * 头部那一排一线本来就有权限：**升级投诉**一线可升非投诉单、**取消工单**是一线专属、
+ * 头部那一排一线本来就有权限：**升级投诉**一线可升非投诉单、**取消工单**给一线坐席 + 小智坐席
+ * （1130 D20a，基线原写「一线唯一」）、
  * **新建补充 / 催单**是一线主动作。之前把一线视角接进来，导致整排按钮
  * 在一线视角下全被置灰、提示还错成"本单已被新单接管"。
  */
@@ -1169,10 +1279,13 @@ const customerEntryLocked = computed(
 /**
  * 客户侧两枚的角色可见性（PRD-915 补充与催单 §4.1，基线 §4 ※21a）：
  * - 新建补充：**一线 + 二线**（二线自己也联系客户，客户在电话里补的东西他就地录入）
- * - 催单：**一线唯一**（登记的是"客户来催"这个进线事件；二线是处理人，不必自己给自己记）
- * - 新建补充：除工单运营 / 质检外都给（※21a 0826 放开）；催单：一线唯一
+ * - 催单：**一线坐席 + 小智坐席**（1130 D20a，基线原写「一线唯一」）——
+ *   登记的是"客户来催"这个进线事件；二线是处理人，不必自己给自己记，
+ *   小智坐席同样在 IM 上接进线，故与一线同档
+ * - 新建补充：除工单运营 / 质检外都给（※21a 0826 放开）
  */
-const headerRoleGate = computed(() => headerActionsByRole(user.roleKey));
+// 第二个参数是**单维**（1130 PRD §5.1 / §9）：小智单上不出升级投诉，与「谁在看」无关
+const headerRoleGate = computed(() => headerActionsByRole(user.roleKey, isXiaozhi.value));
 // 技术支持只接手升级到本组的刷机单（沿用咨询单）；其余刷机单只读查看，页头不出新建补充（M92 / M104）
 const canSupplement = computed(() => headerRoleGate.value.supplement
   && !(isFlash.value && user.roleKey === 'tech-support' && flashView.value !== 'tech'));
@@ -1209,8 +1322,21 @@ const canCancelTicket = computed(() => headerRoleGate.value.cancelTicket
   && !(d.value.returnedFromAftersale && ticketUnclaimed.value)
   && !(isFlash.value && (flashView.value === 'other'
     || (flashView.value === 'readonly' && !FLASH_ADMIN_ROLE_KEYS.has(user.roleKey)))));
-/** 刷机单「自动刷机中」取消工单置灰（PRD §5.5） */
-const cancelBlockedTip = computed(() => (isFlash.value && d.value.status === '自动刷机中' ? FLASH_GATE_TIPS.autoFlashing : undefined));
+/**
+ * 「取消工单」置灰原因。
+ * - 刷机单「自动刷机中」（PRD §5.5）；
+ * - 🔴 **小智单：已开始处理的状态一律置灰**（1130 一·补 B13 / PRD §5.3 表二）——
+ *   B13 是「照基线 ※5 **不放宽**，仅未认领 / 待响应可用，不为小智开专属例外」。
+ *   此前这个 computed 只认刷机单那一档，于是小智单在「处理中」「已升级产研」「调研中」上
+ *   取消按钮**可点** —— B13 整条在代码里不生效，拍的是「不放宽」，实现却比基线更宽。
+ */
+const cancelBlockedTip = computed(() => {
+  if (isFlash.value && d.value.status === '自动刷机中') return FLASH_GATE_TIPS.autoFlashing;
+  if (isXiaozhi.value && !XIAOZHI_CANCELLABLE_STATUSES.includes(d.value.status)) {
+    return XIAOZHI_TIP.cancelAfterStarted;
+  }
+  return undefined;
+});
 
 /**
  * 底部流转操作栏隐藏：只读态，**或原单已是终态**——
@@ -1419,8 +1545,16 @@ function nowFullText(): string {
   return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())} ${p(dt.getHours())}:${p(dt.getMinutes())}`;
 }
 
-/** 升级到飞书项目入口：所有工单均开放（不再限消费者BG） */
-const feishuEligible = computed(() => true);
+/**
+ * 升级到飞书项目入口：所有工单均开放（不再限消费者BG）—— **小智单除外**（1130 一·补 B10）。
+ *
+ * 🔴 B10 是「升级只保留**产研一个**目标」。只在 `escalateChannelOptions` 里砍掉技术支持那档
+ * 还不够：这个常真的 `feishuEligible` 会把「飞书项目 · 产研反馈单」也插进去，
+ * 于是小智单上仍有**两个**产研目标，而且 `resetForms` 会把它选成默认值 ——
+ * 小智单整条产研链路（产品模块 → 接收人、产研单标题、办结回传）都按 TPD 的字典走（W2 / W3），
+ * 默认落飞书那档等于默认走一条对不上接收人的路。
+ */
+const feishuEligible = computed(() => !isXiaozhi.value);
 
 /** 转售后上下文：投诉分流 + 客户/产品预填 + 已有关联售后单（有关联则封口，按是否结案给不同提示） */
 const aftersaleContext = computed(() => ({
@@ -1835,12 +1969,17 @@ function onAction(payload: Record<string, unknown>) {
     if (isFlash.value && !onFlashSave()) return;
     // 刷机单：改为线下登记时保存会往刷机处理记录追加一行，登记取追加后的值，与表单、刷机字段组一致
     dispatch({ type: '保存草稿', process: isFlash.value ? buildProcessLog() : log });
+    // 小智单：保存属首次响应动作集 → 「待响应」转「处理中」（基线 §1 L25 / §7 L728）。
+    // 刷机单那一下在 `flashStore.saveProcess` 里做（见 flash.ts 的 `if (nodeStatus === '待响应')`）。
+    if (isXiaozhi.value) xiaozhiStore.markResponded(d.value.no);
     // 风险等级落第八类、不落「工单处理」的字段 diff，故与 log 分开走，见 `recordAgentRiskLevelChange`
     recordAgentRiskLevelChange();
     if (log || isFlash.value) processBaseline = snapshotProcess(); // 登记后更新基线，下次 diff 以此为准
     return;
   }
   if (isFlash.value && onFlashAction(payload)) return;
+  // 小智单的「升级 · 产研」必须走小智服务（1130 PRD §5.4 / §11.2），不能落进通用升级分支
+  if (isXiaozhi.value && onXiaozhiAction(payload)) return;
   const toFeishu = isFeishuEscalate(payload);
   dispatch(payload);
   if (toFeishu) {
@@ -2064,6 +2203,8 @@ function syncContactedAfterOutreach() {
   if (isFlash.value && (flashView.value === 'l1' || flashView.value === 'l2')) {
     flashStore.markRespondedByContact(d.value.no);
   }
+  // 小智单同理（基线 §1 L25 / §7 L728：电话 / 短信 / 邮件属首次响应动作集）
+  if (isXiaozhi.value) xiaozhiStore.markResponded(d.value.no);
   let touchedDunning = false;
   let touchedSupplement = false;
   for (const rec of tabData.value.dunningRecords) {
@@ -2697,6 +2838,9 @@ watch(() => d.value.no, () => {
       :ticket-title="d.title"
       :ticket-type="d.type"
       :is-flash="isFlash"
+      :is-xiaozhi="isXiaozhi"
+      :claimable="xiaozhiClaimable"
+      :frontline-account="d.xiaozhi?.frontlineAccount"
       :closure-mode="d.closureMode"
       :after-sale-enabled="d.product.afterSaleEnabled"
       :op-state="opState"
@@ -2729,7 +2873,7 @@ watch(() => d.value.no, () => {
       :flash-consult-forward="flashFormLine === 'l2'"
       @flash-escalate="onFlashEscalateL2"
       @flash-forward-blocked="onFlashForwardBlocked"
-      @claim="onFlashClaim"
+      @claim="onClaim"
       @action="onAction"
       @cancel="cancelModalOpen = true"
       @withdraw="onWithdraw"

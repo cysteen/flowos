@@ -19,7 +19,9 @@ import {
   normalizeTicketSource,
   searchCustomers,
   defaultCreateTicketFlashForm,
+  defaultCreateTicketXiaozhiForm,
   type CreateTicketFlashField,
+  type CreateTicketXiaozhiField,
 } from '@/views/tickets/types/createTicket';
 import type { Channel } from '@/views/tickets/types/ticket';
 import { currentHandlerName } from '@/views/tickets/types/ticket';
@@ -40,6 +42,13 @@ import {
   type FlashActor,
   type FlashCreator,
 } from '@/views/tickets/types/flash';
+import {
+  XIAOZHI_BUSINESS_TYPE, XIAOZHI_TICKET_SOURCE, XIAOZHI_TICKET_TYPE, XIAOZHI_TIP,
+} from '@/views/tickets/types/xiaozhi';
+import {
+  useXiaozhiStore,
+  type XiaozhiActor, type XiaozhiCreateInput, type XiaozhiTicketBase,
+} from '@/stores/xiaozhi';
 import { findSchoolById } from '@/mock/schools';
 import { useUserStore } from '@/stores/user';
 import { useFlashConfigStore } from '@/stores/flashConfig';
@@ -97,6 +106,7 @@ function defaultForm(): CreateTicketFormState {
     suggestL1: '产品体验',
     suggestL2: '功能建议',
     flash: defaultCreateTicketFlashForm(),
+    xiaozhi: defaultCreateTicketXiaozhiForm(),
   };
 }
 
@@ -379,6 +389,120 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     { immediate: true },
   );
 
+  /* ---------------- 小智工单（1130 小智工单 D1 / D3 / D5 / D24 / D27） ---------------- */
+
+  /**
+   * 小智单识别（D1 / D3）：**由入口置位**（预填 `xiaozhiScene`），不按产品 / 问题分类识别。
+   * D2「按技能组判身份」是容联云 / UAP 侧的事（W7），工单系统侧只落结果 ——
+   * 入口「新建小智工单」只对小智坐席渲染（`XIAOZHI_CREATE_ROLES`）。
+   */
+  const isXiaozhiType = computed(() => prefill()?.xiaozhiScene === true);
+
+  /**
+   * 「小智工单信息」卡字段下方的必填提示。
+   * 只剩产品模块一项 —— 问题类别已并回通用问题分类（一·补 B15），由那组级联控件自己保证有值。
+   */
+  const xiaozhiErrors = reactive<Record<CreateTicketXiaozhiField, string>>({
+    rdModule: '',
+    frontlineAccount: '',
+  });
+
+  function clearXiaozhiErrors() {
+    (Object.keys(xiaozhiErrors) as CreateTicketXiaozhiField[]).forEach((k) => { xiaozhiErrors[k] = ''; });
+  }
+
+  // 改动小智信息：已补上的字段收起必填提示
+  watch(
+    () => form.xiaozhi,
+    (f) => {
+      if (!f) return;
+      (Object.keys(xiaozhiErrors) as CreateTicketXiaozhiField[]).forEach((k) => {
+        if (xiaozhiErrors[k] && String(f[k] ?? '').trim()) xiaozhiErrors[k] = '';
+      });
+    },
+    { deep: true },
+  );
+
+  /**
+   * 小智单：工单类型锁「咨询」（D1）、业务分类锁「教育」（D4）、**工单来源锁 IM**（D24）。
+   * 三个控件置灰，与落库一致（预填 / 草稿恢复同样收口）。
+   */
+  watch(
+    () => [isXiaozhiType.value, form.ticketType, form.businessType, form.ticketSource] as const,
+    ([on, t, b, s]) => {
+      if (!on) return;
+      if (t !== XIAOZHI_TICKET_TYPE) form.ticketType = XIAOZHI_TICKET_TYPE;
+      if (b !== XIAOZHI_BUSINESS_TYPE) form.businessType = XIAOZHI_BUSINESS_TYPE;
+      if (s !== XIAOZHI_TICKET_SOURCE) form.ticketSource = XIAOZHI_TICKET_SOURCE;
+    },
+    { immediate: true },
+  );
+
+  function xiaozhiInput(): XiaozhiCreateInput {
+    const f = form.xiaozhi;
+    return {
+      rdModule: f.rdModule ?? '',
+      rdPriority: f.rdPriority,
+      frontlineAccount: f.frontlineAccount ?? '',
+      attachments: [...(f.attachments ?? [])],
+    };
+  }
+
+  function xiaozhiBase(): XiaozhiTicketBase {
+    return {
+      customer: form.customer?.name ?? '',
+      customerPhone: form.customer?.phone,
+      vip: form.customer?.vip ?? false,
+      priority: form.priority,
+      title: form.title,
+      problemDesc: form.description,
+      productCategory: form.productCategory,
+      productName: form.productName,
+      deviceSn: form.deviceSn,
+      problemL1: form.problemL1,
+      problemL2: form.problemL2,
+      problemL3: form.problemL3,
+    };
+  }
+
+  /**
+   * 小智单提交（D5 / PRD §2）：`escalate=false` ＝「创建」落池自领；`escalate=true` ＝「创建并流转」，
+   * 落池留记录后由系统自动流转推产研（D6）。
+   *
+   * 返回 `null` ＝ 被拦住（必填缺项或产品模块没配接收人），提示落在字段下方；
+   * 返回工单 ＝ 建成了，`degraded` 说明「建成但没流转成」（产研平台不可用），
+   * 由弹窗换成 `rdPlatformDownOnCreate` 那句，不能照「已流转产研」报喜。
+   */
+  function submitXiaozhi(escalate: boolean): { ticket: Ticket; degraded: boolean } | null {
+    clearErrors();
+    clearXiaozhiErrors();
+    // 通用咨询单那套校验照跑（D27），小智专属字段另加一道
+    if (!validate()) return null;
+    const store = useXiaozhiStore();
+    const result = store.createXiaozhiTicket(xiaozhiInput(), xiaozhiBase(), xiaozhiActor(), escalate);
+    if (result.kind === 'blocked') {
+      if (result.missing.includes('rdModule')) {
+        xiaozhiErrors.rdModule = XIAOZHI_TIP.rdModuleRequired;
+      }
+      // 一·补 B24：无条件必填，两个出口都可能命中
+      if (result.missing.includes('frontlineAccount')) {
+        xiaozhiErrors.frontlineAccount = XIAOZHI_TIP.frontlineAccountRequired;
+      }
+      // 没配产研接收人：接收人是产品模块带出来的，故提示也落在产品模块那一栏下方
+      if (result.reason === 'receiverMissing') {
+        xiaozhiErrors.rdModule = XIAOZHI_TIP.rdReceiverMissing;
+      }
+      return null;
+    }
+    return { ticket: result.ticket, degraded: !!result.degraded };
+  }
+
+  /** 建单人：与「本人建的单」判定同一把（`currentHandlerName`） */
+  function xiaozhiActor(): XiaozhiActor {
+    const user = useUserStore();
+    return { name: currentHandlerName(user.roleKey, user.name), role: mapUserRole(user.roleKey) };
+  }
+
   function syncTitle() {
     if (form.titleManual) return;
     // 刷机单标题强制前缀「刷机」（1013 A3）
@@ -418,7 +542,8 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
 
   function fillPrefill(p: CreateTicketPrefill) {
     reset();
-    flashSceneOff.value = !!p.noFlashScene;
+    // 小智入口同样固定了工单类型（咨询 + 小智标识，D1）：不再做刷机单识别，两套表单不打架
+    flashSceneOff.value = !!p.noFlashScene || !!p.xiaozhiScene;
     form.ticketType = p.formTicketType ?? (p.mode === 'child' ? '咨询' : '投诉');
     form.ticketSource = (
       p.ticketSource
@@ -731,5 +856,9 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     flashBlock,
     validateFlash,
     submitFlash,
+    // 小智单（1130）
+    isXiaozhiType,
+    xiaozhiErrors,
+    submitXiaozhi,
   };
 }
