@@ -2653,6 +2653,8 @@ function updateTabData(next: OperationTabData) {
  * 刷机单另有「自动刷机结果」「刷机处理记录」两块排在前面（PRD §5.2），刷机处理记录不再并进处理结果。
  */
 const latestResults = computed(() => latestResultsFromTimeline(timeline.value, isFlash.value));
+/** 速览带「最新处理」· 自动刷机结果块刷机记录表的建单校验时刻：取处理履历「建单」条目 */
+const flashVerifiedAt = computed(() => (isFlash.value ? timeline.value.find((e) => e.action === 'create')?.when ?? d.value.createdAtFull : undefined));
 /** 速览带「最新处理」· 刷机处理记录块（刷机单）：正文、刷机处理结论取工单库现值 */
 const latestFlashRecord = computed(() => {
   if (!isFlash.value) return null;
@@ -2748,6 +2750,7 @@ watch(() => d.value.no, () => {
         :detail="d"
         :flash="isFlash ? d.flash : undefined"
         :flash-record="latestFlashRecord"
+        :flash-verified-at="flashVerifiedAt"
         @select="onOverviewSelect"
         @expand-change="overviewExpanded = $event"
       >

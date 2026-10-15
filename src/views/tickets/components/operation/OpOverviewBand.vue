@@ -18,6 +18,8 @@ defineProps<{
    */
   flash?: TicketFlash;
   flashRecord?: FlashRecordBlock | null;
+  /** 刷机单建单校验时刻（自动刷机结果块刷机记录表的「建单校验」一行） */
+  flashVerifiedAt?: string;
 }>();
 const emit = defineEmits<{ select: [action: InsightAction]; 'expand-change': [expanded: boolean] }>();
 
@@ -128,7 +130,7 @@ watch(expandedCol, (v) => emit('expand-change', v !== null), { immediate: true }
         </div>
         <div class="ob-body">
           <template v-if="flash">
-            <OpFlashResultCard :flash="flash" />
+            <OpFlashResultCard :flash="flash" :verified-at="flashVerifiedAt" />
             <div v-if="flashRecord" class="handle-item">
               <div class="hi-meta">
                 <span v-if="flashRecord.who" class="hi-who">{{ flashRecord.who }}</span>
