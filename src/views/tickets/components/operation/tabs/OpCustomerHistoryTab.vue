@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { FLASH_BADGE_STYLE, isFlashTypeItem, ticketTypeLabel } from '@/views/tickets/utils/ticketTypeDisplay';
+import {
+  FLASH_BADGE_STYLE, XIAOZHI_BADGE_STYLE, isFlashTypeItem, isXiaozhiTypeItem, ticketTypeLabel,
+} from '@/views/tickets/utils/ticketTypeDisplay';
 import { computed, ref } from 'vue';
 import { message } from 'ant-design-vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -127,7 +129,7 @@ function openTicket(t: CustomerHistoryTicket) {
             {{ t.no }}<ExportOutlined v-if="isAftersale(t)" class="no-ext" />
           </button>
           <span class="sep" aria-hidden="true">·</span>
-          <span class="type-tag" :style="isFlashTypeItem(t) ? FLASH_BADGE_STYLE : { color: t.typeColor, background: t.typeBgColor }">{{ ticketTypeLabel(t) }}</span>
+          <span class="type-tag" :style="isFlashTypeItem(t) ? FLASH_BADGE_STYLE : isXiaozhiTypeItem(t) ? XIAOZHI_BADGE_STYLE : { color: t.typeColor, background: t.typeBgColor }">{{ ticketTypeLabel(t) }}</span>
           <span class="sep" aria-hidden="true">·</span>
           <span class="channel">{{ ticketListSourceLabel(t) }}</span>
         </div>

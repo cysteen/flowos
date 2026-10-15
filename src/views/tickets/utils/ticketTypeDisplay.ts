@@ -40,12 +40,10 @@ export const FLASH_BADGE_STYLE = { color: FLASH_MARK_COLOR, background: '#f5f3ff
 /**
  * 小智单徽标色（与页头、列表行「小智」徽标一致，取 `XIAOZHI_MARK_COLOR`）。
  *
- * ⚠️ **六处派生行目前并未用它** —— 那六处的写法是
- * `:style="isFlashTypeItem(t) ? FLASH_BADGE_STYLE : <该行默认类型色>"`，
- * 要让小智行也上色就必须逐处改成三元嵌套，而本次的约束是**调用方一行不改**。
- * 故现状是：小智行的**文案已对**（显示「小智」），**底色仍是该行的默认类型色**。
- * 要补色时把六处的 `:style` 改成
- * `isFlashTypeItem(t) ? FLASH_BADGE_STYLE : isXiaozhiTypeItem(t) ? XIAOZHI_BADGE_STYLE : <默认>` 即可，
- * 本常量与 `isXiaozhiTypeItem` 已备好，不必再动本文件。
+ * 各派生行的 `:style` 统一写成三元嵌套：
+ * `isFlashTypeItem(t) ? FLASH_BADGE_STYLE : isXiaozhiTypeItem(t) ? XIAOZHI_BADGE_STYLE : <该行原默认>`
+ * —— **`<该行原默认>` 各处不同，按原样保留，不要统一成一个值**
+ * （有的取 `TYPE_TONE`、有的取行上的 `typeColor`/`typeBgColor`、有的是 `undefined`，
+ * 指派弹窗那处是纯文本列、只给 `color` 不给底色）。
  */
 export const XIAOZHI_BADGE_STYLE = { color: XIAOZHI_MARK_COLOR, background: '#f0fdfa' } as const;

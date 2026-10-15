@@ -82,7 +82,9 @@ export interface AssignSubmitPayload {
 </script>
 
 <script setup lang="ts">
-import { FLASH_BADGE_STYLE, isFlashTypeItem, ticketTypeLabel } from '@/views/tickets/utils/ticketTypeDisplay';
+import {
+  FLASH_BADGE_STYLE, XIAOZHI_BADGE_STYLE, isFlashTypeItem, isXiaozhiTypeItem, ticketTypeLabel,
+} from '@/views/tickets/utils/ticketTypeDisplay';
 import { computed, nextTick, ref, watch } from 'vue';
 import { message } from 'ant-design-vue';
 import {
@@ -551,7 +553,7 @@ defineExpose({ setSubmitting, applyResults, reset });
               <a class="asg-no" @click="openTicket(t, $event)">{{ t.no }}</a>
             </div>
             <div class="c-cus asg-ellipsis">{{ t.customer }}</div>
-            <div class="c-type asg-ellipsis" :style="isFlashTypeItem(t) ? { color: FLASH_BADGE_STYLE.color } : undefined">{{ ticketTypeLabel(t) }}</div>
+            <div class="c-type asg-ellipsis" :style="isFlashTypeItem(t) ? { color: FLASH_BADGE_STYLE.color } : isXiaozhiTypeItem(t) ? { color: XIAOZHI_BADGE_STYLE.color } : undefined">{{ ticketTypeLabel(t) }}</div>
             <div class="c-pri">
               <span class="asg-pri" :style="{ color: PRIORITY_COLOR[t.priority] }">{{ t.priority }}</span>
             </div>

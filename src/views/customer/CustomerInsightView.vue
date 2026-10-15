@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { FLASH_BADGE_STYLE, isFlashTypeItem, ticketTypeLabel } from '@/views/tickets/utils/ticketTypeDisplay';
+import {
+  FLASH_BADGE_STYLE, XIAOZHI_BADGE_STYLE, isFlashTypeItem, isXiaozhiTypeItem, ticketTypeLabel,
+} from '@/views/tickets/utils/ticketTypeDisplay';
 // 客户查询（PRD-02 衍生）：只读查询页，两种查法——
 //   手机号 / 客户姓名 → 客户全景；工单号 → 该工单信息 + 其报单客户的全景。
 // 版式对齐处理页：「通栏速览（人/势/单）→ 主体 Tab」，本页只读，处理动作仍回工单处理页。
@@ -490,7 +492,7 @@ defineExpose({ runSearch });
             <span class="st-tag" :style="TONE_STYLE[hitTicket.tone]">{{ hitTicket.statusText }}</span>
             <span
               class="ty-tag"
-              :style="isFlashTypeItem(hitTicket) ? FLASH_BADGE_STYLE : { color: TYPE_TONE[hitTicket.type] ?? '#6b7280', background: (TYPE_TONE[hitTicket.type] ?? '#6b7280') + '18' }"
+              :style="isFlashTypeItem(hitTicket) ? FLASH_BADGE_STYLE : isXiaozhiTypeItem(hitTicket) ? XIAOZHI_BADGE_STYLE : { color: TYPE_TONE[hitTicket.type] ?? '#6b7280', background: (TYPE_TONE[hitTicket.type] ?? '#6b7280') + '18' }"
             >{{ ticketTypeLabel(hitTicket) }}</span>
             <span class="hit-pri">{{ hitTicket.priority }}</span>
             <h2 class="hit-title">{{ hitTicket.title }}</h2>
@@ -642,7 +644,7 @@ defineExpose({ runSearch });
                   <span class="oi-pri" :class="{ urgent: t.priority === 'P0' }">{{ t.priority }}</span>
                   <span
                     class="ty-tag"
-                    :style="isFlashTypeItem(t) ? FLASH_BADGE_STYLE : { color: TYPE_TONE[t.type] ?? '#6b7280', background: (TYPE_TONE[t.type] ?? '#6b7280') + '18' }"
+                    :style="isFlashTypeItem(t) ? FLASH_BADGE_STYLE : isXiaozhiTypeItem(t) ? XIAOZHI_BADGE_STYLE : { color: TYPE_TONE[t.type] ?? '#6b7280', background: (TYPE_TONE[t.type] ?? '#6b7280') + '18' }"
                   >{{ ticketTypeLabel(t) }}</span>
                   <h4 class="oi-title">{{ t.title }}</h4>
                 </div>
@@ -750,7 +752,7 @@ defineExpose({ runSearch });
                     {{ t.no }}<ExportOutlined v-if="t.source === '售后'" class="no-ext" />
                   </button>
                   <span class="sep">·</span>
-                  <span class="ty-tag" :style="isFlashTypeItem(t) ? FLASH_BADGE_STYLE : { color: TYPE_TONE[t.type] ?? '#6b7280', background: (TYPE_TONE[t.type] ?? '#6b7280') + '18' }">{{ ticketTypeLabel(t) }}</span>
+                  <span class="ty-tag" :style="isFlashTypeItem(t) ? FLASH_BADGE_STYLE : isXiaozhiTypeItem(t) ? XIAOZHI_BADGE_STYLE : { color: TYPE_TONE[t.type] ?? '#6b7280', background: (TYPE_TONE[t.type] ?? '#6b7280') + '18' }">{{ ticketTypeLabel(t) }}</span>
                   <span class="sep">·</span><span>{{ t.priority }}</span>
                   <span class="sep">·</span><span>{{ t.product }}</span>
                   <span class="sep">·</span><span>{{ t.channel }}</span>

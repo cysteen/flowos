@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { FLASH_BADGE_STYLE, isFlashTypeItem, ticketTypeLabel } from '@/views/tickets/utils/ticketTypeDisplay';
+import {
+  FLASH_BADGE_STYLE, XIAOZHI_BADGE_STYLE, isFlashTypeItem, isXiaozhiTypeItem, ticketTypeLabel,
+} from '@/views/tickets/utils/ticketTypeDisplay';
 import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
@@ -449,7 +451,7 @@ function openDrillTicket(no: string) {
               <span class="prio-dot" :style="{ background: t.dot }" />
               <span class="todo-no">{{ t.no }}</span>
               <span class="todo-title">{{ t.title }}</span>
-              <span class="type-tag" :style="isFlashTypeItem(t) ? FLASH_BADGE_STYLE : { color: t.typeColor, background: t.typeColor + '1F' }">{{ ticketTypeLabel(t) }}</span>
+              <span class="type-tag" :style="isFlashTypeItem(t) ? FLASH_BADGE_STYLE : isXiaozhiTypeItem(t) ? XIAOZHI_BADGE_STYLE : { color: t.typeColor, background: t.typeColor + '1F' }">{{ ticketTypeLabel(t) }}</span>
               <!--
                 SLA 摘要对齐 OpSlaBar：首响未关 → 展首响钟；首响已关 → 展整单解决钟。
                 文案：剩 / 超 / 已暂停 / 已达标 / 未达标 / 已停表；
