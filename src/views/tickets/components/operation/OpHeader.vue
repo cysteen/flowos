@@ -7,7 +7,7 @@ import { useUserStore } from '@/stores/user';
 import { CopyOutlined, FlagOutlined } from '@ant-design/icons-vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import {
-  FLASH_MARK_COLOR, XIAOZHI_MARK_COLOR, PRIORITY_COLOR, softBg, csEntryAvailability, statusDisplayName, statusStyle,
+  PRIORITY_COLOR, softBg, csEntryAvailability, statusDisplayName, statusStyle,
   type Priority, type TicketStatus,
 } from '@/views/tickets/types/ticket';
 import OpSlaBar from './OpSlaBar.vue';
@@ -278,18 +278,20 @@ function priorityHex(p: string): string {
           </span>
           <!--
             类型位徽章 —— **三档互斥，恒只出一枚**：
-            · 刷机单只出紫色「刷机单」，不再并排「咨询」（1014）；
+            · 刷机单只出「刷机单」，不再并排「咨询」（1014）；
             · 小智单只出「小智」（1130 一·补 B21，用户原话「如果是小智工单，就不要展示 咨询」）；
             · 其余出工单类型原值。
-            两条口径在此合并：B21 落地时刷机还是「咨询 + 刷机」两枚，当时特地写了
-            「只排除小智、刷机维持两枚」；main 的 1014 把刷机也改成单枚后，那句限定作废，
-            两者变成同一形制，故收成一组 if / else-if / else。
+            🔴 **三档共用 `badge badge-neutral`，不给任何类型单配颜色**（1015 B25）——
+            刷机原先走 `tagStyle(FLASH_MARK_COLOR)` 的紫、小智走 `XIAOZHI_MARK_COLOR` 的青绿，
+            与通用的中性底并排时三种样式，差别只应体现在**文案**上。
             ⚠️ **只是显示口径**：刷机单与小智单的工单类型在建模上都仍是「咨询」，
             筛选 / 查询 / 报表照原样取数，不受这一道影响。
             ⚠️ 与列表行（`TicketTitleCell.vue` 行内标 + hover 卡头）同一套判法，三处一起改。
+            ⚠️ 本条**只管类型位这一枚** —— 同一行的状态徽章（走 `statusStyle` 标准色）、
+            优先级徽章、风险标记都各有自己的配色口径，不在 B25 范围内，别顺手一起中性化。
           -->
-          <span v-if="isFlashTicket(detail)" class="badge" :style="tagStyle(FLASH_MARK_COLOR)">{{ FLASH_BADGE_LABEL }}</span>
-          <span v-else-if="isXiaozhiDetail" class="badge" :style="tagStyle(XIAOZHI_MARK_COLOR)">{{ XIAOZHI_MARK_LABEL }}</span>
+          <span v-if="isFlashTicket(detail)" class="badge badge-neutral">{{ FLASH_BADGE_LABEL }}</span>
+          <span v-else-if="isXiaozhiDetail" class="badge badge-neutral">{{ XIAOZHI_MARK_LABEL }}</span>
           <span v-else class="badge badge-neutral">{{ detail.type }}</span>
           <span class="badge" :style="tagStyle(priorityHex(detail.priority))">
             <FlagOutlined />{{ detail.priority }}

@@ -1,7 +1,5 @@
 <script setup lang="ts">
-import {
-  FLASH_BADGE_STYLE, XIAOZHI_BADGE_STYLE, isFlashTypeItem, isXiaozhiTypeItem, ticketTypeLabel,
-} from '@/views/tickets/utils/ticketTypeDisplay';
+import { ticketTypeLabel } from '@/views/tickets/utils/ticketTypeDisplay';
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
@@ -88,7 +86,7 @@ function processEntries(t: RelatedTicketCard) {
           <div class="rel-meta">
             <span class="rel-no">{{ t.no }}</span>
             <span class="sep">·</span>
-            <span class="type-tag" :style="isFlashTypeItem(t) ? FLASH_BADGE_STYLE : isXiaozhiTypeItem(t) ? XIAOZHI_BADGE_STYLE : { color: t.typeColor, background: typeBg(t) }">{{ ticketTypeLabel(t) }}</span>
+            <span class="type-tag" :style="{ color: t.typeColor, background: typeBg(t) }">{{ ticketTypeLabel(t) }}</span>
             <span class="sep">·</span>
             <span class="builder">{{ t.builder }}</span>
           </div>

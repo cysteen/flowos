@@ -112,14 +112,16 @@ const csTagTipOverlayInner = {
             · 刷机单只出「刷机单」（1014）；
             · 小智单只出「小智」（1130 一·补 B21）；
             · 其余出工单类型原值。
-            两条口径合并于此：原先刷机是「咨询 + 刷机」两枚并排，main 的 1014 改成单枚紫标后，
+            两条口径合并于此：原先刷机是「咨询 + 刷机」两枚并排，main 的 1014 改成单枚后，
             与 B21 的小智单枚标成了同一形制，故写成一组 if / else-if / else。
+            🔴 **三档共用 `.tag` 默认样式，不给任何类型单配颜色**（1015 B25）——
+            差别只在**文案**。曾经刷机走紫、小智走青绿，同一列里三种底色，看着不像一类东西。
             ⚠️ **都只是显示口径** —— 工单类型字段取值（刷机单与小智单都是「咨询」）
             与筛选 / 查询 / 报表取数一概不变。
             ⚠️ 与处理页页头（`OpHeader.vue`）同一套判法，两处必须一起改。
           -->
-          <span v-if="isFlashTicket(ticket)" class="tag tag--flash">{{ FLASH_BADGE_LABEL }}</span>
-          <span v-else-if="isXiaozhiTicket(ticket)" class="tag tag--xiaozhi">{{ XIAOZHI_MARK_LABEL }}</span>
+          <span v-if="isFlashTicket(ticket)" class="tag">{{ FLASH_BADGE_LABEL }}</span>
+          <span v-else-if="isXiaozhiTicket(ticket)" class="tag">{{ XIAOZHI_MARK_LABEL }}</span>
           <span v-else class="tag">{{ ticket.type }}</span>
           <span
             class="title-text"
@@ -169,8 +171,8 @@ const csTagTipOverlayInner = {
           <div class="tp-head">
             <span class="status-tag" :style="statusStyle(ticket.nodeStatus)">{{ ticketStatusDisplayName(ticket) }}</span>
             <!-- 悬停卡头这一组与行内那一组**同源同形**：漏改一处，hover 就会把另一套标抖出来 -->
-            <span v-if="isFlashTicket(ticket)" class="tag tag--flash">{{ FLASH_BADGE_LABEL }}</span>
-            <span v-else-if="isXiaozhiTicket(ticket)" class="tag tag--xiaozhi">{{ XIAOZHI_MARK_LABEL }}</span>
+            <span v-if="isFlashTicket(ticket)" class="tag">{{ FLASH_BADGE_LABEL }}</span>
+            <span v-else-if="isXiaozhiTicket(ticket)" class="tag">{{ XIAOZHI_MARK_LABEL }}</span>
             <span v-else class="tag">{{ ticket.type }}</span>
           </div>
           <div class="tp-title">{{ ticket.title }}</div>
@@ -262,10 +264,12 @@ const csTagTipOverlayInner = {
   background: #f3f4f6;
   flex: none;
 }
-/* 刷机单徽标「刷机单」（1014，取代「咨询」+「刷机」并排）：色值同 FLASH_MARK_COLOR */
-.tag--flash { color: #7c3aed; background: #f5f3ff; }
-/* 「小智」标识（1130 D1）：色值同 XIAOZHI_MARK_COLOR */
-.tag--xiaozhi { color: #0d9488; background: #f0fdfa; }
+/*
+ * 🔴 **工单类型标一律用 `.tag` 默认样式，不给任何类型单配颜色**（1015 B25）。
+ * 原先这里有 `.tag--flash`（紫）与 `.tag--xiaozhi`（青绿）两条，于是同一列里
+ * 「刷机单」紫底、「小智」青绿底、「投诉」默认底，三者各一套 —— 两条已删。
+ * **文案照旧区分**（刷机单 / 小智 / 投诉 / 咨询…，见 `ticketTypeLabel`），只统一样式。
+ */
 .title-text {
   flex: 1;
   min-width: 0;

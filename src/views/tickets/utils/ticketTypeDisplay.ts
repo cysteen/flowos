@@ -1,6 +1,5 @@
 import { TICKETS } from '@/mock/tickets';
 import { FLASH_BADGE_LABEL, isFlashTicket } from '@/views/tickets/types/flash';
-import { FLASH_MARK_COLOR, XIAOZHI_MARK_COLOR } from '@/views/tickets/types/ticket';
 import { XIAOZHI_MARK_LABEL, isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
 
 /**
@@ -34,16 +33,11 @@ export function ticketTypeLabel(x: TypeItem): string {
   return x.type;
 }
 
-/** 刷机单徽标色（与页头、列表行「刷机单」徽标一致） */
-export const FLASH_BADGE_STYLE = { color: FLASH_MARK_COLOR, background: '#f5f3ff' } as const;
-
 /**
- * 小智单徽标色（与页头、列表行「小智」徽标一致，取 `XIAOZHI_MARK_COLOR`）。
+ * 🔴 **本文件只管文案，不再导出任何徽标配色**（1015 B25）。
  *
- * 各派生行的 `:style` 统一写成三元嵌套：
- * `isFlashTypeItem(t) ? FLASH_BADGE_STYLE : isXiaozhiTypeItem(t) ? XIAOZHI_BADGE_STYLE : <该行原默认>`
- * —— **`<该行原默认>` 各处不同，按原样保留，不要统一成一个值**
- * （有的取 `TYPE_TONE`、有的取行上的 `typeColor`/`typeBgColor`、有的是 `undefined`，
- * 指派弹窗那处是纯文本列、只给 `color` 不给底色）。
+ * 曾经这里有 `FLASH_BADGE_STYLE`（紫）与 `XIAOZHI_BADGE_STYLE`（青绿），各派生行的 `:style`
+ * 写成三元嵌套按类型分色 —— 于是同一列里「刷机单」紫底、「小智」青绿底、「投诉」默认底。
+ * 现**工单类型标一律用该行原有的默认样式**，两个常量已删、九处 `:style` 已收回各自的默认值。
+ * ⚠️ 要再给某类工单单配颜色前先回看这条：差别应当只体现在**文案**上。
  */
-export const XIAOZHI_BADGE_STYLE = { color: XIAOZHI_MARK_COLOR, background: '#f0fdfa' } as const;
