@@ -8,9 +8,15 @@ import type { AftersaleContext, AftersalePayload } from '../../composables/opAct
 
 const props = defineProps<{ context?: AftersaleContext }>();
 
+/** 展示用的空值占位（「—」等）不是值：预填时按空处理，不写进售后单与履历 */
+const PLACEHOLDER = /^[\s—–\-－]*$/;
+function val(v?: string): string {
+  return v == null || PLACEHOLDER.test(v) ? '' : v.trim();
+}
+
 /** 拆解 "安徽省 / 合肥市 / 蜀山区" → [省,市,区] */
 function splitRegion(region?: string): [string, string, string] {
-  const parts = (region ?? '').split('/').map((s) => s.trim());
+  const parts = val(region).split('/').map((s) => val(s));
   return [parts[0] ?? '', parts[1] ?? '', parts[2] ?? ''];
 }
 
@@ -33,18 +39,18 @@ const form = reactive({
 function prefill(ctx?: AftersaleContext) {
   if (!ctx) return;
   const [p, c, d] = splitRegion(ctx.region);
-  form.customerName = ctx.customerName ?? '';
-  form.customerPhone = ctx.customerPhone ?? '';
+  form.customerName = val(ctx.customerName);
+  form.customerPhone = val(ctx.customerPhone);
   form.province = p; form.city = c; form.district = d;
-  form.address = ctx.address ?? '';
-  form.fault = ctx.fault ?? '';
-  form.productCategory = ctx.productCategory ?? '';
-  form.productName = ctx.productName ?? '';
-  form.sn = ctx.sn ?? '';
+  form.address = val(ctx.address);
+  form.fault = val(ctx.fault);
+  form.productCategory = val(ctx.productCategory);
+  form.productName = val(ctx.productName);
+  form.sn = val(ctx.sn);
   // 取件/回寄默认使用客户信息
-  form.pickName = form.backName = ctx.customerName ?? '';
-  form.pickPhone = form.backPhone = ctx.customerPhone ?? '';
-  form.pickAddress = form.backAddress = ctx.address ?? '';
+  form.pickName = form.backName = form.customerName;
+  form.pickPhone = form.backPhone = form.customerPhone;
+  form.pickAddress = form.backAddress = form.address;
 }
 prefill(props.context);
 watch(() => props.context, prefill);
