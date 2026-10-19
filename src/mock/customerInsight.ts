@@ -572,7 +572,9 @@ function fromTicket(t: Ticket): CustomerTicketRow {
     product: t.product,
     createdAt: t.createdAt ?? t.updatedAt ?? '',
     closedAt: closed ? t.updatedAt : undefined,
-    assignee: t.assignee ?? '待领取',
+    // 与查询中心处理人列同一口径（F18，`formatCurrentHandlerGroup`）：只有池里未认领的单写「待领取」，
+    // 不在池里的无主单（自动刷机中、调研中、已结案等）写「—」
+    assignee: t.assignee ?? (t.nodeStatus === '未认领' || t.tab === 'pool' ? '待领取' : '—'),
     conclusion: t.latestHandling || t.problemDesc,
     source: '客服',
     breached: t.solveBreached || t.firstRespBreached,
