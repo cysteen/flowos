@@ -9,7 +9,7 @@ import {
   ReloadOutlined,
 } from '@ant-design/icons-vue';
 import {
-  FLASH_GATE_TIPS, FLASH_L1_BAR_ORDER, FLASH_L2_BAR_ORDER,
+  FLASH_L1_BAR_ORDER, FLASH_L2_BAR_ORDER,
   flashBarLabel, flashButtonGate, type FlashBarKey, type FlashStage, type FlashView,
 } from '../composables/flashGate';
 import OpActionDialogs from './OpActionDialogs.vue';
@@ -40,7 +40,7 @@ const props = defineProps<{
    * 刷机单那条路走的是 `isFlash + flashView==='claim'`（`isFlashClaim`），本字段是**通用那条**：
    * 原先「领取」整枚只在 `isFlashClaim` 下渲染，**是刷机专属的** ——
    * 于是小智单的工单池单打开后底栏根本没有「领取」，PRD 列的 12 枚里有一枚界面上不存在。
-   * 老四类工单池里无人认领的单同样走本字段（用户 10-19）。待领取时底栏只出置灰「保存」＋「领取」，不能直接下送。
+   * 待领取时底栏只出「领取」（用户 10-19）。老四类未认领的单不走本字段：整条底栏不渲染（由工单页 `hideBar` 收）。
    */
   claimable?: boolean;
   /** 本单的一线人员域账号（一·补 B24）：只透传给升级弹窗只读带出，本组件不读它 */
@@ -682,13 +682,12 @@ defineExpose({ openEscalate, openAftersale, openActivate });
 <template>
   <div v-if="!hideBar" class="op-actionbar" :class="{ disabled: isTerminal && !saveOnly }">
     <div class="bottom-actions">
+      <!-- 待领取（刷机单 / 小智单未认领）：底栏只出「领取」，不出「保存」（用户 10-19） -->
       <button
-        v-if="!hideFlashSave"
+        v-if="!hideFlashSave && !isClaimPending"
         type="button"
         class="ab-item ab-save"
-        :class="{ forbidden: isClaimPending }"
-        :disabled="(isTerminal && !saveOnly) || isClaimPending"
-        :title="isClaimPending ? FLASH_GATE_TIPS.unclaimed : undefined"
+        :disabled="isTerminal && !saveOnly"
         @click="saveDraft"
       >
         <SaveOutlined />

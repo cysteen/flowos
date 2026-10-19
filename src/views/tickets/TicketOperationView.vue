@@ -750,7 +750,7 @@ const ticketUnclaimed = computed(() => {
 });
 /**
  * 老四类工单可领取（用户 10-19）：本单在当前角色可见的工单池里无人认领，当前角色能进工单池且不是只读角色。
- * 成立时底栏与刷机单 / 小智单待领取同形：只出置灰「保存」＋「领取」，不能直接下送。
+ * 只用于从工单池进入时的自动领取；处理页底栏不出「领取」（老四类未认领整条底栏不渲染，见 `hideActionBar`）。
  */
 const generalClaimable = computed(() => {
   if (isFlash.value || isXiaozhi.value) return false;
@@ -1435,7 +1435,10 @@ const hideActionBar = computed(
   () => (flashView.value ? flashView.value === 'readonly' && !postCloseEditable.value : isFrontlineView.value) || pageReadonly.value
     // 客诉专员在刷机单上底栏只有风险那一枚（M94 / M102）：该形态不出现时整条不出
     || (flashView.value === 'other' && !showRiskReport.value)
-    || (isTicketTerminated(d.value.status) && !postCloseEditable.value),
+    || (isTicketTerminated(d.value.status) && !postCloseEditable.value)
+    // 老四类工单未认领：底栏整条不渲染（用户 10-19「未认领，普通工单的底部不展示任务按钮」；
+    // 从工单池进入自动领取，或在工作台行内「领取」）。刷机单 / 小智单未认领底栏只出「领取」
+    || (!isFlash.value && !isXiaozhi.value && ticketUnclaimed.value),
 );
 
 /**
@@ -2923,7 +2926,7 @@ watch(
       :ticket-type="d.type"
       :is-flash="isFlash"
       :is-xiaozhi="isXiaozhi"
-      :claimable="xiaozhiClaimable || generalClaimable"
+      :claimable="xiaozhiClaimable"
       :frontline-account="d.xiaozhi?.frontlineAccount"
       :closure-mode="d.closureMode"
       :after-sale-enabled="d.product.afterSaleEnabled"
