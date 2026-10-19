@@ -57,6 +57,27 @@ export function inVisiblePool(t: Ticket | undefined, roleKey: string): boolean {
   return inGroupPoolScope(t, poolGroupIdsForTicket(t, ids));
 }
 
+/**
+ * 未认领单在处理页的共用门控（用户 10-19，F5）。三类工单（老四类 / 小智单 / 刷机单）都问这一道：
+ * - `null`：本单不是未认领，按各自规则；
+ * - `claim`：当前登录人能领取，且本类工单在处理页出「领取」（小智单、刷机单）→ 底栏只出「领取」；
+ * - `hidden`：不能领取，或本类工单处理页不出「领取」（老四类：从工单池进入自动领取 / 工作台行内领取）→ 底栏不渲染。
+ * 后两种情形处理表单一律只读（领取后才可填写）。
+ */
+export type UnclaimedGate = 'claim' | 'hidden' | null;
+
+export function unclaimedGateOf(i: {
+  /** 本单此刻未认领（无处理人、待领取） */
+  unclaimed: boolean;
+  /** 当前登录人此刻可领取本单 */
+  claimable: boolean;
+  /** 本类工单在处理页底栏出「领取」 */
+  claimOnPage: boolean;
+}): UnclaimedGate {
+  if (!i.unclaimed) return null;
+  return i.claimable && i.claimOnPage ? 'claim' : 'hidden';
+}
+
 /** 履历时刻 年-月-日 时:分 */
 function nowMinuteStamp(): string {
   const d = new Date();

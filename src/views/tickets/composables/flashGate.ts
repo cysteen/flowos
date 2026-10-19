@@ -76,10 +76,11 @@ export function resolveFlashView(i: FlashViewInput): FlashView {
       // 只有升级到技术支持组的单放开（1013 B2：二线升级与咨询单一致）
       return i.status === '已升级技术支持' ? 'tech' : 'readonly';
     default:
-      // 管理员全租户：教育刷机处理组池未认领单可在处理页领取（M170），其余未认领单不出流转动作（X26），其余走二线视角
+      // 管理员全租户：教育刷机处理组池未认领单可在处理页领取（M170）；已有处理人的单走二线视角（§5.5），
+      // 无处理人的单（未认领、自动刷机中 / 调研中无主）只读查看（X26）
       if (FLASH_ADMIN_ROLES.has(i.roleKey)) {
         if (unclaimedIn(i, 'l2')) return 'claim';
-        return i.status === '未认领' ? 'readonly' : 'l2';
+        return i.assignee ? 'l2' : 'readonly';
       }
       return 'readonly';
   }

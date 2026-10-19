@@ -56,7 +56,7 @@ import { formatTicketRecordWho, MOCK_FIRST_LINE_AGENTS } from './utils/ticketRec
 import { TECH_RESULT_FIELD, latestHandlingFrom, latestHandlingPreviewOf } from './utils/ticketOverview';
 import { opTimeNow } from './utils/opTime';
 import { TICKETS } from '@/mock/tickets';
-import { canAutoClaim, claimTicketByType, inVisiblePool, isPoolEntry, withoutPoolEntry } from './composables/poolClaim';
+import { canAutoClaim, claimTicketByType, inVisiblePool, isPoolEntry, unclaimedGateOf, withoutPoolEntry } from './composables/poolClaim';
 import { useRiskTagStore } from '@/stores/riskTags';
 import { useRiskReportStore } from '@/stores/riskReports';
 import { useRiskQueueStore } from '@/stores/riskQueue';
@@ -447,9 +447,9 @@ const flashTabWritable = computed<Partial<Record<ProcessTabKey, boolean>> | unde
   }
   return undefined;
 });
-/** 侧栏联系客户：一线处理人放出；只读查看收起；其余按角色 */
+/** 侧栏联系客户：一线处理人与待领取（PRD §5.5 表二「未认领」列可用，一线二线同值）放出；只读查看收起；其余按角色 */
 const flashContactActions = computed<'show' | 'hide' | undefined>(() => {
-  if (flashView.value === 'l1') return 'show';
+  if (flashView.value === 'l1' || flashView.value === 'claim') return 'show';
   if (flashView.value === 'readonly') return 'hide';
   return undefined;
 });
@@ -761,6 +761,21 @@ const generalClaimable = computed(() => {
 const pageClaimable = computed(
   () => flashView.value === 'claim' || xiaozhiClaimable.value || generalClaimable.value,
 );
+
+/**
+ * 未认领共用门控（F5，判据见 `poolClaim.ts` 的 `unclaimedGateOf`）：能领取的小智 / 刷机单底栏只出「领取」，
+ * 其余未认领一律不渲染底栏；两种情形处理表单都只读。刷机单只认子状态「未认领」且无处理人（无主的自动刷机中 / 调研中不在此列）。
+ */
+const unclaimedGate = computed(() => unclaimedGateOf({
+  unclaimed: isFlash.value ? d.value.status === '未认领' && !d.value.lastHandler : ticketUnclaimed.value,
+  claimable: pageClaimable.value,
+  claimOnPage: isFlash.value || isXiaozhi.value,
+}));
+/** 未认领时各写 Tab 只读（F5）；其余沿用刷机视角的逐 Tab 写权 */
+const UNCLAIMED_TAB_WRITABLE: Partial<Record<ProcessTabKey, boolean>> = {
+  process: false, contact: false, appointment: false, risk: false, feishu: false, tech: false,
+};
+const tabWritableOverride = computed(() => (unclaimedGate.value ? UNCLAIMED_TAB_WRITABLE : flashTabWritable.value));
 
 /** 底栏报备形态的未认领置灰 */
 const riskUnclaimedBlocked = computed(
@@ -1435,9 +1450,9 @@ const hideActionBar = computed(
     // 客诉专员在刷机单上底栏只有风险那一枚（M94 / M102）：该形态不出现时整条不出
     || (flashView.value === 'other' && !showRiskReport.value)
     || (isTicketTerminated(d.value.status) && !postCloseEditable.value)
-    // 老四类工单未认领：底栏整条不渲染（用户 10-19「未认领，普通工单的底部不展示任务按钮」；
-    // 从工单池进入自动领取，或在工作台行内「领取」）。刷机单 / 小智单未认领底栏只出「领取」
-    || (!isFlash.value && !isXiaozhi.value && ticketUnclaimed.value),
+    // 未认领共用门控（F5）：老四类未认领、不能领取的小智 / 刷机单，底栏整条不渲染（用户 10-19）；
+    // 能领取的小智 / 刷机单底栏只出「领取」
+    || unclaimedGate.value === 'hidden',
 );
 
 /**
@@ -2868,7 +2883,7 @@ watch(
           :post-close-editable="postCloseEditable"
           :lead-no-editable="leadNoEditable"
           :is-primary-handler="isPrimaryHandler"
-          :tab-writable-override="flashTabWritable"
+          :tab-writable-override="tabWritableOverride"
           :flash-errors="flashFormErrors"
           :flash-line="flashFormLine"
           @toggle-section="toggleSection"

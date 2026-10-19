@@ -34,10 +34,14 @@ export interface HandlerGroupCell {
   group: string;
 }
 
-/** 当前处理人 + 当前处理组（两行展示） */
+/**
+ * 当前处理人 + 当前处理组（两行展示）。无处理人时：在池里待领（子状态「未认领」或在工单池页签）写「— 待领」，
+ * 不在池里的无主单（如自动刷机成功直进的调研中、已结案）写「—」（F18）。
+ */
 export function formatCurrentHandlerGroup(t: Ticket): HandlerGroupCell {
+  const inPool = t.nodeStatus === '未认领' || t.tab === 'pool';
   return {
-    person: t.assignee ?? '— 待领',
+    person: t.assignee ?? (inPool ? '— 待领' : '—'),
     group: formatCurrentGroup(t),
   };
 }
