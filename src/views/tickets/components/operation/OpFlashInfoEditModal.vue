@@ -16,7 +16,8 @@ import OpActionModal from './OpActionModal.vue';
 import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue';
 import { useFlashConfigStore } from '@/stores/flashConfig';
 import type { FlashActionResult, FlashInfoChanges } from '@/stores/flash';
-import { SCHOOL_LIBRARY, findSchoolById } from '@/mock/schools';
+import { findSchoolById } from '@/mock/schools';
+import FlashSchoolPicker from '@/views/tickets/components/create-ticket/FlashSchoolPicker.vue';
 import { FLASH_FIELD_LABELS as L, type FlashInfo } from '@/views/tickets/types/flash';
 import { snPlateDataUri } from '@/views/tickets/utils/flashSnPlate';
 
@@ -25,6 +26,8 @@ const props = defineProps<{
   info: FlashInfo;
   /** 提交：交给刷机服务，返回拦截 / 校验结论。`push` ＝ 所选产品为自研机型，走重新推送 */
   submitter: (changes: FlashInfoChanges, push: boolean) => FlashActionResult;
+  /** 客户信息的省市区（学校检索的默认地区，10-19 C5） */
+  customerRegion?: string;
 }>();
 
 const emit = defineEmits<{
@@ -132,7 +135,6 @@ const modelOptions = computed(() => {
 const pushable = computed(() => config.isSupportedModel(draft.productModel) && config.isSelfDeveloped(draft.productModel));
 
 const reasonOptions = computed(() => config.enabledReasons().map((r) => ({ value: r, label: r })));
-const schoolOptions = SCHOOL_LIBRARY.map((s) => ({ value: s.id, label: s.name }));
 
 function setSelect(key: 'productModel' | 'schoolId' | 'reason', v: unknown) {
   draft[key] = v == null ? '' : String(v);
@@ -308,13 +310,11 @@ const inflightHref = computed(() => (tipParts.value?.no ? router.resolve(`/ticke
         <div class="fe-field">
           <label class="fe-label"><span class="req">*</span>{{ L.schoolName }}</label>
           <div class="fe-control">
-            <FormSelect
-              :value="draft.schoolId || undefined"
-              class="fe-input"
-              placeholder="请搜索或选择学校"
+            <FlashSchoolPicker
+              :school-id="draft.schoolId"
+              :default-region="customerRegion"
               :status="errors.schoolId ? 'error' : ''"
-              :options="schoolOptions"
-              @update:value="(v) => setSelect('schoolId', v)"
+              @update:school-id="(v: string) => setSelect('schoolId', v)"
             />
             <div v-if="errors.schoolId" class="fe-error">{{ errors.schoolId }}</div>
           </div>

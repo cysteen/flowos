@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 新建工单 · 「刷机单专属」卡（930 教育刷机单 P1 / PRD §2.2 / §2.4）。
- * 8 个字段；刷机原因取后台「刷机配置」启用项（`useFlashConfigStore`），学校取学校库（`SCHOOL_LIBRARY`）。
+ * 8 个字段；刷机原因取后台「刷机配置」启用项（`useFlashConfigStore`），学校按省市区检索后选择（`FlashSchoolPicker`，10-19 C5）。
  * 产品取「产品问题」卡的产品分类 + 产品名称（1013 A4），联系手机号取客户信息区，均不在本卡；
  * 结案方式固定「正常流程」，不出控件。
  */
@@ -9,21 +9,22 @@ import { computed, ref, watch } from 'vue';
 import { PlusOutlined } from '@ant-design/icons-vue';
 import type { UploadFile } from 'ant-design-vue';
 import { useFlashConfigStore } from '@/stores/flashConfig';
-import { SCHOOL_LIBRARY } from '@/mock/schools';
 import { FLASH_FIELD_LABELS as L } from '@/views/tickets/types/flash';
 import type { CreateTicketFlashField, CreateTicketFlashForm } from '@/views/tickets/types/createTicket';
 import CreateTicketPartCard from './CreateTicketPartCard.vue';
 import FormSelect from './FormSelect.vue';
+import FlashSchoolPicker from './FlashSchoolPicker.vue';
 
 const info = defineModel<CreateTicketFlashForm>('info', { required: true });
 defineProps<{
   errors: Record<CreateTicketFlashField, string>;
+  /** 客户信息的省市区（学校检索的默认地区） */
+  customerRegion?: string;
 }>();
 
 const config = useFlashConfigStore();
 
 const reasonOptions = computed(() => config.enabledReasons().map((r) => ({ value: r, label: r })));
-const schoolOptions = SCHOOL_LIBRARY.map((s) => ({ value: s.id, label: s.name }));
 
 /** 设备SN照片（1 张）：文件只在本卡预览，表单里存文件名（草稿可恢复） */
 const photoList = ref<UploadFile[]>([]);
@@ -97,13 +98,10 @@ function onPhotoChange({ fileList }: { fileList: UploadFile[] }) {
       <div class="fi-field">
         <label class="fi-label"><span class="req">*</span>{{ L.schoolName }}</label>
         <div class="fi-control">
-          <FormSelect
-            :value="info.schoolId || undefined"
-            @update:value="(v) => setSelect('schoolId', v)"
-            class="fi-input"
-            placeholder="请搜索或选择学校"
+          <FlashSchoolPicker
+            v-model:school-id="info.schoolId"
+            :default-region="customerRegion"
             :status="errors.schoolId ? 'error' : ''"
-            :options="schoolOptions"
           />
           <div v-if="errors.schoolId" class="fi-error">{{ errors.schoolId }}</div>
         </div>

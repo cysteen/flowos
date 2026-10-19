@@ -824,7 +824,7 @@ watch(
       </CreateTicketPartCard>
 
       <!-- ④′ 刷机专属：「刷机信息」卡（930 教育刷机单 PRD §2.4；1013 A2 识别后切入） -->
-      <FlashInfoPart v-if="isFlashType" v-model:info="form.flash" :errors="flashErrors" />
+      <FlashInfoPart v-if="isFlashType" v-model:info="form.flash" :errors="flashErrors" :customer-region="form.customer?.region" />
 
       <!-- ④″ 小智专属：「小智工单信息」卡（1130 小智工单 D5 / D27；由小智入口切入） -->
       <XiaozhiInfoPart v-if="isXiaozhiType" v-model:info="form.xiaozhi" :errors="xiaozhiErrors" />

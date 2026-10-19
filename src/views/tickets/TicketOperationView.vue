@@ -2954,6 +2954,7 @@ watch(() => d.value.no, () => {
       v-model:open="flashInfoModalOpen"
       :info="d.flash.info"
       :submitter="flashInfoSubmitter"
+      :customer-region="d.customer.region"
       @done="onFlashInfoDone"
     />
 
