@@ -608,12 +608,18 @@ const PROFILE_BY_PHONE = new Map(PROFILES.map((p) => [p.phone, p]));
 function liveByPhone(): Map<string, Ticket[]> {
   const map = new Map<string, Ticket[]>();
   TICKETS.forEach((t) => {
-    if (!t.customerPhone) return;
-    const arr = map.get(t.customerPhone);
+    const key = phoneKey(t.customerPhone);
+    if (!key) return;
+    const arr = map.get(key);
     if (arr) arr.push(t);
-    else map.set(t.customerPhone, [t]);
+    else map.set(key, [t]);
   });
   return map;
+}
+
+/** 号码归一为纯数字作索引键：工单上的号码可能带展示用的空格 / 横线，与档案键对不上就会拆成两个客户 */
+function phoneKey(phone: string | undefined): string {
+  return (phone ?? '').replace(/\D/g, '');
 }
 
 const ROLE_FROM_TAG: CustomerRole[] = ['记者', '老师', '校长', '自媒体'];
@@ -751,7 +757,7 @@ function toCandidate(phone: string, reason: string): CustomerCandidate | null {
 function phoneByTicketNo(no: string): { phone: string; matchedNo: string } | null {
   const key = no.trim().toUpperCase();
   const live = TICKETS.find((t) => t.no.toUpperCase() === key || t.no.endsWith(key));
-  if (live?.customerPhone) return { phone: live.customerPhone, matchedNo: live.no };
+  if (live?.customerPhone) return { phone: phoneKey(live.customerPhone), matchedNo: live.no };
   for (const [phone, rows] of Object.entries(ARCHIVE)) {
     const hit = rows.find((r) => r.no.toUpperCase() === key || r.no.endsWith(key));
     if (hit) return { phone, matchedNo: hit.no };

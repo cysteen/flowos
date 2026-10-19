@@ -112,6 +112,11 @@ function defaultForm(): CreateTicketFormState {
   };
 }
 
+/** 落库的客户号码只存数字：客户卡上是展示格式（如「138 0013 8000」），客户全景按纯数字号码归集 */
+function phoneDigits(phone: string | undefined): string | undefined {
+  return (phone ?? '').replace(/\D/g, '') || undefined;
+}
+
 export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | undefined) {
   const form = reactive<CreateTicketFormState>(defaultForm());
   const snVerified = ref(true);
@@ -302,7 +307,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       : form.ticketSource === '客户服务小程序' ? '小程序' : '电话';
     return {
       customer: form.customer?.name ?? '',
-      customerPhone: form.customer?.phone,
+      customerPhone: phoneDigits(form.customer?.phone),
       // 客户档案随单落库，处理页客户信息卡照现有工单展示（F10，与学校地区无关）
       customerGender: form.customer?.gender,
       customerRegion: form.customer?.region,
@@ -488,7 +493,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   function xiaozhiBase(): XiaozhiTicketBase {
     return {
       customer: form.customer?.name ?? '',
-      customerPhone: form.customer?.phone,
+      customerPhone: phoneDigits(form.customer?.phone),
       vip: form.customer?.vip ?? false,
       // 提交前已校验必填
       priority: form.priority as Priority,
@@ -822,7 +827,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       smartMarks: form.ticketType === '投诉' ? ['升级'] : [],
       customer: name,
       // 客户全景按手机号归集本单（D5）
-      customerPhone: form.customer?.phone || undefined,
+      customerPhone: phoneDigits(form.customer?.phone),
       vip: form.customer?.vip ?? false,
       product: form.productName,
       problemDesc: form.description.trim(),
