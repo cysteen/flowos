@@ -1428,7 +1428,7 @@ export const useFlashStore = defineStore('flash', () => {
     pauseClock(r, now, '已转出');
     Object.assign(r, {
       nodeStatus: '已转出', linkedAftersaleNo: asNo, linkedAftersaleStatus: '待接单',
-      slaText: '—', slaSub: '已转出·停表', slaState: 'ok', slaMinutes: 9999,
+      slaText: '—', slaSub: '已转售后·停表', slaState: 'ok', slaMinutes: 9999,
       updatedAt: flashMinuteStamp(now),
     });
     // 售后侧处理完成的回传按转出时刻推算（`settleDue` 到点经售后回传通道唤起原单）
@@ -1438,7 +1438,8 @@ export const useFlashStore = defineStore('flash', () => {
     });
     bump(ticketNo);
     persist();
-    return { ok: true, message: `已转售后 ${asNo}，工单转入「已转出」，等待售后处理结果` };
+    // 与咨询单转售后同一句（opActions「转售后」，D10：存储值「已转出」，界面展示名「已转售后」）
+    return { ok: true, message: `已转售后 ${asNo}，等待售后处理结果` };
   }
 
   /**

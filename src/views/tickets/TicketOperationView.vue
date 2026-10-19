@@ -1448,7 +1448,7 @@ const leadNoEditable = computed(() => (postClose.value ? postCloseEditable.value
 const hideActionBar = computed(
   // 刷机单按视角判（只读查看不渲染；一线处理人放出，D2），老工单仍按一线视角整条隐藏
   () => (flashView.value ? flashView.value === 'readonly' && !postCloseEditable.value : isFrontlineView.value) || pageReadonly.value
-    // 客诉专员在刷机单上底栏只有风险那一枚（M94 / M102）：该形态不出现时整条不出
+    // 客诉专员在刷机单上底栏只可能有「风险报备」那一枚（风险管控在页头，M153）：不出现时整条不出
     || (flashView.value === 'other' && !showRiskReport.value)
     || (isTicketTerminated(d.value.status) && !postCloseEditable.value)
     // 未认领共用门控（F5）：老四类未认领、不能领取的小智 / 刷机单，底栏整条不渲染（用户 10-19）；

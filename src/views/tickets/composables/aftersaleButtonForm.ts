@@ -11,6 +11,9 @@ import { AFTERSALE_INBOUND_SOURCE, normalizeTicketSource } from '@/views/tickets
 import { NO_AFTERSALE_LINK_TIP, NO_AFTERSALE_TIP } from './opActionRegistry';
 import { FLASH_GATE_TIPS } from './flashGate';
 
+/** 售后按钮在未认领单上的悬停提示（《【1025】售后升级投诉与结果回传》置灰提示表「未认领」行） */
+const AFTERSALE_UNCLAIMED_TIP = '本单尚未认领，领取后可操作';
+
 // 判据与 opActions 的 isAftersaleSettled 同源；此处不引 opActions，
 // 免得 mock/tickets（种子经售后回传通道生成）→ aftersaleEvents → 本模块 → opActions → mock/tickets 成环
 const AFTERSALE_SETTLED_STATUS = ['已完成', '已关闭', '已取消'];
@@ -108,7 +111,7 @@ const REVIEW_STATUSES = ['申请挂起中', '申请关闭中', '申请强结中'
 
 /** 第 0 行：工单状态落 §2.1 矩阵「置灰」列（已转出除外）时的悬停提示；不命中返回 null */
 function statusGrayTip(d: FormSubject, ctx: AftersaleButtonCtx): string | null {
-  if (d.status === '未认领' || ctx.unclaimed) return FLASH_GATE_TIPS.unclaimed;
+  if (d.status === '未认领' || ctx.unclaimed) return AFTERSALE_UNCLAIMED_TIP;
   if (d.status === '调研中') return FLASH_GATE_TIPS.survey;
   if (REVIEW_STATUSES.includes(d.status)) return FLASH_GATE_TIPS.review;
   if (d.status === '已挂起') return FLASH_GATE_TIPS.suspended;

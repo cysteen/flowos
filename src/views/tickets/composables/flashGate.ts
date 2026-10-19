@@ -25,7 +25,7 @@ import { NO_AFTERSALE_TIP } from './opActionRegistry';
  * - `claim` 池中未认领、当前角色可领取（一线坐席 × 一线刷机池、二线专员 × 教育刷机处理组池）：只出领取入口；
  * - `readonly` 只读查看：数据范围外的单（他人名下、其他池、无处理人的自动刷机中 / 调研中、本人建的单等），
  *   以及不可领取角色打开的未认领单；
- * - `other` 客诉专员：底栏只出「风险评估」形态（PRD §5.5「其他」行）；
+ * - `other` 客诉专员：只出页头「风险管控」（PRD §5.5「其他」行）；
  * - `tech` 技术支持接手二线「升级 · 三线技术支持」的单（子状态「已升级技术支持」）：视图与动作沿用咨询单，
  *   可处理、可退回；其余刷机单对技术支持只读。
  */
@@ -107,26 +107,25 @@ export function flashStageOf(status: string, delegating = false): FlashStage {
 }
 
 /* ------------------------------------------------------------------ */
-/* 悬停原因（PRD §5.5 置灰悬停原因表 1–12，逐字）                         */
+/* 悬停原因（PRD §5.5 置灰悬停原因表现行 11 条中刷机门控用到的几条，逐字）   */
+/* 未认领单底栏只出「领取」（用户 10-19），未认领类原因不再出现在刷机门控里。 */
 /* ------------------------------------------------------------------ */
 
 export const FLASH_GATE_TIPS = {
-  /** 1 */ autoFlashing: FLASH_TIP_AUTO_FLASHING,
-  /** 2 */ transferred: '工单已转出至售后，等待售后处理结果',
-  /** 3 */ delegated: '工单委派中，协办完成后可操作',
-  /** 4 */ review: '工单审核中，审批完成或撤回申请后可操作',
-  /** 5 */ suspended: '工单已挂起，解除挂起后可操作',
-  /** 6 */ survey: '工单回访中，撤回下送后可操作',
-  /** 7 */ unclaimed: '本单尚未认领，领取后可操作',
-  /** 8 */ unclaimedRisk: '本单尚未认领，领取后可发起报备',
-  /** 9 */ withdrawNotForwarder: '只能撤回本人发起的下送',
-  /** 10 */ withdrawNotApplicant: '只能撤回本人发起的申请',
-  /** 11 */ withdrawNone: '当前无可撤回的操作',
-  /** 12 */ noAftersale: NO_AFTERSALE_TIP,
+  autoFlashing: FLASH_TIP_AUTO_FLASHING,
+  transferred: '工单已转出至售后，等待售后处理结果',
+  delegated: '工单委派中，协办完成后可操作',
+  review: '工单审核中，审批完成或撤回申请后可操作',
+  suspended: '工单已挂起，解除挂起后可操作',
+  survey: '工单回访中，撤回下送后可操作',
+  withdrawNotForwarder: '只能撤回本人发起的下送',
+  withdrawNotApplicant: '只能撤回本人发起的申请',
+  withdrawNone: '当前无可撤回的操作',
+  noAftersale: NO_AFTERSALE_TIP,
 } as const;
 
-/** 子状态类原因（1–8），按原因表顺序；`withdraw` 时跳过 4、6（撤回在审核中 / 调研中另判） */
-function stageTip(stage: FlashStage, opts: { withdraw?: boolean; risk?: boolean } = {}): string | undefined {
+/** 子状态类原因，按原因表顺序；`withdraw` 时跳过审核中、调研中（撤回在这两列另判） */
+function stageTip(stage: FlashStage, opts: { withdraw?: boolean } = {}): string | undefined {
   switch (stage) {
     case '自动刷机中': return FLASH_GATE_TIPS.autoFlashing;
     case '已转出': return FLASH_GATE_TIPS.transferred;
@@ -134,7 +133,6 @@ function stageTip(stage: FlashStage, opts: { withdraw?: boolean; risk?: boolean 
     case '审核中': return opts.withdraw ? undefined : FLASH_GATE_TIPS.review;
     case '已挂起': return FLASH_GATE_TIPS.suspended;
     case '调研中': return opts.withdraw ? undefined : FLASH_GATE_TIPS.survey;
-    case '未认领': return opts.risk ? FLASH_GATE_TIPS.unclaimedRisk : FLASH_GATE_TIPS.unclaimed;
     default: return undefined;
   }
 }
@@ -214,7 +212,7 @@ export function flashButtonGate(key: FlashBarKey, ctx: FlashBarGateCtx): FlashGa
     return { forbidden: true, tip: stageTip(stage, { withdraw: true }) ?? FLASH_GATE_TIPS.withdrawNone };
   }
   if (!AVAILABLE_STAGES[key].includes(stage)) {
-    return { forbidden: true, tip: stageTip(stage, { risk: key === '风险报备' }) };
+    return { forbidden: true, tip: stageTip(stage) };
   }
   if (key === '转售后' && !ctx.afterSaleEnabled) {
     return { forbidden: true, tip: FLASH_GATE_TIPS.noAftersale };

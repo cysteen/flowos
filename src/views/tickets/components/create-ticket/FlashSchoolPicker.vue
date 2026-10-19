@@ -131,8 +131,11 @@ defineExpose({ regionText: computed(() => region.value.join(REGION_SEP)) });
 </template>
 
 <style scoped>
-/* 省市区「安徽省 / 合肥市 / 蜀山区」整段可见（D7）：地区框定宽，学校框占余下宽度 */
-.school-picker { display: flex; gap: 6px; width: 100%; min-width: 0; }
-.sp-region { flex: 0 0 220px; min-width: 0; }
-.sp-school { flex: 1 1 auto; min-width: 160px; }
+/*
+ * 省市区「安徽省 / 合肥市 / 蜀山区」与学校名整段可见（D7）：地区框至少 220px、学校框至少 180px，
+ * 一行放不下（建单弹窗刷机信息卡）时学校框换到下一行占满，不撑出横向滚动
+ */
+.school-picker { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; min-width: 0; }
+.sp-region { flex: 1 0 220px; max-width: 100%; min-width: 0; }
+.sp-school { flex: 1 1 180px; min-width: 0; }
 </style>

@@ -14,7 +14,7 @@ import { useXiaozhiStore } from '@/stores/xiaozhi';
 import { XIAOZHI_CONFIRM_ACTOR, isXiaozhiTicket, type TicketXiaozhi } from '@/views/tickets/types/xiaozhi';
 import type { FeishuRecord } from '@/mock/ticketDetail';
 import type { Ticket, Channel, TicketType, Priority, TicketStatus } from '@/views/tickets/types/ticket';
-import { TICKETS } from '@/mock/tickets';
+import { SEED_CLAIMED_TICKET_NOS, TICKETS } from '@/mock/tickets';
 import { TYPE_SAMPLES, typeSampleKey } from '@/mock/ticketTypeSamples';
 import { useUserStore } from '@/stores/user';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
@@ -464,9 +464,10 @@ export function useTicketOperation() {
       // （含关联已被同位降级 / 迁走、只剩售后履历的旧单：履历条目 id 以 `as-` 起头，见 aftersaleEvents.ts）
       // 处理表单保存落下的「工单处理」履历（刷新后仍在，见 stores/handleLog.ts）
       const saved = t ? handleLog.entriesOf(t.no) : [];
-      // 本会话里新建 / 关联建出的单（建单弹窗生成，id 以 `new-` 起头）：同样只取本单事件，不落样例履历（D3）
-      const runtimeNew = !!t && t.id.startsWith('new-');
-      if (t && (runtimeNew || isAftersaleChainTicket(t) || entries.some((e) => e.id.startsWith('as-')))) {
+      // 只有种子里已有处理人的单才并入样例履历（含样例「工单处理」条目）；待领种子单、本会话新建 / 关联建出的单
+      // 只取本单事件（D3：「最新处理」不出样例处理内容，与处理表单空白一致）
+      const ownOnly = !!t && !SEED_CLAIMED_TICKET_NOS.has(t.no);
+      if (t && (ownOnly || isAftersaleChainTicket(t) || entries.some((e) => e.id.startsWith('as-')))) {
         const own = [...entries, ...saved].map((e) => ({ ...e }));
         const hasCreate = own.some((e) => e.action === 'create');
         timeline.value = hasCreate || !t.createdAt ? own : [{

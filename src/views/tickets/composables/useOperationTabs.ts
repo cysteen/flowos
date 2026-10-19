@@ -2,7 +2,7 @@ import { ref, watch } from 'vue';
 import { OPERATION_TAB_DATA } from '@/mock/ticketOperationTabs';
 import { TICKET_DEMO_TAB_OVERRIDES } from '@/mock/ticketDemoTabOverrides';
 import { TYPE_SAMPLES } from '@/mock/ticketTypeSamples';
-import { TICKETS } from '@/mock/tickets';
+import { SEED_CLAIMED_TICKET_NOS, TICKETS } from '@/mock/tickets';
 import type { OperationTabData } from '@/views/tickets/types/operationTabs';
 import { isAftersaleChainTicket } from './aftersaleEvents';
 
@@ -34,7 +34,19 @@ function buildTabData(type: string, ticketNo?: string): OperationTabData {
   const byNo = ticketNo ? TICKET_DEMO_TAB_OVERRIDES[ticketNo] : undefined;
   if (byNo) return { ...merged, ...JSON.parse(JSON.stringify(byNo)) };
   const row = ticketNo ? TICKETS.find((x) => x.no === ticketNo) : undefined;
-  return isAftersaleChainTicket(row) ? ownTabData(merged) : merged;
+  if (isAftersaleChainTicket(row)) return ownTabData(merged);
+  // 种子里已有处理人的单之外（待领种子单、本会话新建 / 关联建出的单）：Tab 样例数据一律不落，只画本单自己的数据（D3）
+  if (ticketNo && TICKETS.some((x) => x.no === ticketNo) && !SEED_CLAIMED_TICKET_NOS.has(ticketNo)) {
+    return {
+      ...ownTabData(merged),
+      contactRecords: [],
+      notifyRecords: [],
+      surveyRecords: [],
+      attachmentHistory: [],
+      attachmentLinks: [],
+    };
+  }
+  return merged;
 }
 
 export function useOperationTabs(getType: () => string, getNo?: () => string) {
