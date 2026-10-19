@@ -59,6 +59,20 @@ const props = defineProps<{
   feishuEligible?: boolean;
   /** 飞书协同子状态：已关联（synced/feedback/closed）时底栏「升级」置灰 */
   feishuSync?: string;
+  /**
+   * 本单是**产研退回后待重新提交**的小智单（1130 一·补 B31 / B33：子状态「已退回」）。
+   *
+   * 🔴 **它是 `feishuSync` 那道置灰的例外**：`feishuSync ∈ {synced, feedback, closed}` 置灰「升级」，
+   * 拿的是"已经升过、别再升"这个**代理条件**；而「已退回」的语义恰恰是"这次升级已经结束、
+   * 允许重新提交" —— 判据用错了维度。退回后本单的 `rdSync` **保留真实值**（产研反馈 Tab 与
+   * 那几条历史记录要继续看得见，创建人正要照着它补信息），开闸改由本字段按**子状态**给。
+   *
+   * 🔴 **判据不在本组件算**（与 `claimable` 同形制）：组件只拿一个布尔，不自己去拼
+   * 「是小智单 ∧ 子状态是已退回」。也**不要**把这道例外加到通用单上 ——
+   * `feishuEscalateBlocked` 是共用门控，通用单的「已退回」是技术支持退回给处理人，
+   * 与飞书那条升级链路无关，放开即是改坏别人。
+   */
+  xiaozhiRdReturned?: boolean;
   /** 转售后上下文（投诉分流 + 预填 + 已有关联售后单） */
   aftersaleContext?: AftersaleContext;
   /**
@@ -164,11 +178,17 @@ const ICONS: Record<string, any> = {
   RollbackOutlined, TeamOutlined, WarningOutlined, ReloadOutlined,
 };
 
-/** 已成功关联产研反馈：底栏升级置灰，催单/二次激活改在「产研反馈」Tab */
+/**
+ * 已成功关联产研反馈：底栏升级置灰，催单/二次激活改在「产研反馈」Tab。
+ *
+ * **例外：产研退回后待重新提交的小智单**（1130 一·补 B31 / B33）——「已退回」说明这次升级
+ * 已经结束、正等着补料重提，不是「已经升过别再升」。见 `xiaozhiRdReturned` 的说明。
+ */
 const feishuEscalateBlocked = computed(() =>
-  props.feishuSync === 'synced'
-  || props.feishuSync === 'feedback'
-  || props.feishuSync === 'closed',
+  !props.xiaozhiRdReturned
+  && (props.feishuSync === 'synced'
+    || props.feishuSync === 'feedback'
+    || props.feishuSync === 'closed'),
 );
 
 const DIALOG_ACTIONS: OpActionType[] = [

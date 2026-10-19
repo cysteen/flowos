@@ -580,11 +580,17 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     r.nodeStatus = XIAOZHI_RD_RETURNED_STATUS;
     if (owner) r.assignee = owner;
     /**
-     * 🔴 `rdSync` 必须落回 `'none'`：底栏「升级」在 `synced / feedback / closed` 三态上是**置灰**的
-     * （`OpActionBar` 的 `feishuEscalateBlocked`）。不落回去，退回来的单就点不动
-     * 「升级 · 产研」—— 而那正是口径要他走的重新提交入口。
+     * 🔴 **`rdSync` 保留真实值，不动它**。
+     *
+     * 底栏「升级」在 `synced / feedback / closed` 三态上置灰（`OpActionBar` 的
+     * `feishuEscalateBlocked`），但那道判的是"已经升过、别再升"的**代理条件**，
+     * 而「已退回」的语义恰恰是"这次升级已经结束、等补料重提" —— 开闸应当按**子状态**给
+     * （`xiaozhiRdReturned`），不该靠把 `rdSync` 抹成 `'none'` 绕过去：
+     * 抹掉它，「产研反馈」Tab 的出现判据（`feishuSync !== 'none'`）跟着失效，
+     * **退回前提交过什么、退回原因是什么全看不见了** —— 而那正是创建人补信息要看的东西。
+     * 也**不要**写成 `'failed'`：那是「关联失败、要重推」，Tab 会另给一枚「重试」，
+     * 等于在「升级 · 产研」之外开第二个重新提交入口（B31 要求只留一个）。
      */
-    r.xiaozhi.rdSync = 'none';
     // 本人的待办：回到「我的任务」页签（判据 tab==='mine' ∧ 处理人是我）
     r.tab = 'mine';
     r.updatedAt = xiaozhiMinuteStamp(now);

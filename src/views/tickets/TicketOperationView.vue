@@ -29,7 +29,7 @@ import {
   FLASH_POOLS, isFlashTicket, normalizeFlashResult, type FlashActor, type FlashResult,
 } from './types/flash';
 import {
-  XIAOZHI_CANCELLABLE_STATUSES, XIAOZHI_TIP, XIAOZHI_TOAST,
+  XIAOZHI_CANCELLABLE_STATUSES, XIAOZHI_RD_RETURNED_STATUS, XIAOZHI_TIP, XIAOZHI_TOAST,
   isXiaozhiTicket, type XiaozhiRdPriority,
 } from './types/xiaozhi';
 import { useXiaozhiStore } from '@/stores/xiaozhi';
@@ -472,6 +472,21 @@ function onFlashClaim() {
  */
 const xiaozhiClaimable = computed(
   () => isXiaozhi.value && ticketUnclaimed.value && user.roleKey === 'xiaozhi-agent',
+);
+
+/**
+ * 本单是**产研退回后待重新提交**的小智单（1130 一·补 B31 / B33）。
+ *
+ * 底栏「升级」的那道置灰（`feishuEscalateBlocked`）判的是 `rdSync ∈ {synced, feedback, closed}`，
+ * 代理的是"已经升过、别再升"；而「已退回」的语义是"这次升级已经结束、等补料重提"，
+ * 两者方向相反。故**本单的 `rdSync` 保留真实值**（产研反馈 Tab 与历史记录继续可见，
+ * 创建人正要照着它补信息），开闸由这一枚**按子状态**给。
+ *
+ * ⚠️ 判据算在这里、底栏只拿布尔（与 `xiaozhiClaimable` 同形制）；且**只对小智单成立** ——
+ * 通用单的「已退回」是技术支持退回给处理人，与飞书那条升级链路无关，不能跟着放开。
+ */
+const xiaozhiRdReturned = computed(
+  () => isXiaozhi.value && d.value.status === XIAOZHI_RD_RETURNED_STATUS,
 );
 
 /**
@@ -2886,6 +2901,7 @@ watch(() => d.value.no, () => {
       :return-count="d.returnCount ?? 0"
       :feishu-eligible="feishuEligible"
       :feishu-sync="d.feishuSync"
+      :xiaozhi-rd-returned="xiaozhiRdReturned"
       :aftersale-context="aftersaleContext"
       :aftersale-form="transferAftersaleForm"
       :service-type="form.serviceType"
