@@ -337,6 +337,16 @@ export function visibleProcessTabs(
      * B10 说的是「小智单上没有技术支持这条路」，那是**单维**，必须在这里另加一道。
      */
     if (t.key === 'tech' && opts?.isXiaozhi) return false;
+    /**
+     * 🔴 **小智单上「调研记录」Tab 整个不渲染**（1130 一·补 B28）：小智工单**全程无调研环节** ——
+     * 不发调研短信、不进「调研中」、没有满意度评价。产研办结后对客只有一条**完成通知**
+     * （B34：有客户域账号走 IM，否则走短信），它落在「通知记录」Tab 与处理履历里，不是调研。
+     *
+     * 与 `risk` / `tech` 同病同治：`survey` 在 `TAB_ROLE_DENY` 里是空数组（九个角色全可见、只读）、
+     * `TAB_TYPE_RESTRICTION` 里也没有它（四类型均保留，2026-06-20 拍板），
+     * 故这一道**必须按「是不是小智单」单维另加**，否则 Tab 条上照样出得来、点开是一张空表。
+     */
+    if (t.key === 'survey' && opts?.isXiaozhi) return false;
     if (t.key === 'feishu') return !!opts?.feishuActive;
     const allow = TAB_TYPE_RESTRICTION[t.key];
     return !allow || allow.includes(ticketType);

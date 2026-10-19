@@ -8,11 +8,11 @@ import { XIAOZHI_SEEDS } from '@/mock/xiaozhi/seedTickets';
 import { makeTicketNo } from '@/constants/ticketNo';
 import { ESCALATE_CHANNEL_TPD } from '@/views/tickets/composables/opActions';
 import {
-  XIAOZHI_BUSINESS_TYPE, XIAOZHI_CONFIRM_TIMEOUT_DAYS, XIAOZHI_NOTICE,
+  XIAOZHI_BUSINESS_TYPE, XIAOZHI_CLOSED_STATUS, XIAOZHI_CONFIRM_TIMEOUT_DAYS, XIAOZHI_NOTICE,
   XIAOZHI_POOL_GROUP_ID, XIAOZHI_POOL_GROUP_NAME,
-  XIAOZHI_RD_PLATFORM_AVAILABLE,
+  XIAOZHI_RD_PLATFORM_AVAILABLE, XIAOZHI_RD_RETURNED_STATUS,
   XIAOZHI_SLA_IDLE, XIAOZHI_SYSTEM_HANDLER, XIAOZHI_TICKET_SOURCE, XIAOZHI_TICKET_TYPE, XIAOZHI_TL,
-  isXiaozhiTicket, xiaozhiHasReceiver, xiaozhiRdTitle, xiaozhiReceiverOf,
+  isXiaozhiTicket, xiaozhiHasReceiver, xiaozhiNoticeChannel, xiaozhiRdTitle, xiaozhiReceiverOf,
   type TicketXiaozhi, type XiaozhiDemandResult, type XiaozhiIssueResult,
   type XiaozhiRdInfo, type XiaozhiRdPriority, type XiaozhiSolutionType,
 } from '@/views/tickets/types/xiaozhi';
@@ -27,11 +27,13 @@ import { useNotifyLogStore } from './notifyLog';
  * 新建的小智单也追加进 `TICKETS`。不另起工单列表。
  *
  * 【复用】小智单＝咨询单 + 「小智工单」标识（D1），处理页、处理表单、动作集一律沿用通用咨询单（D27），
- * 本服务只管「建单 → 落池 / 自动流转产研 → 产研办结 → **校代确认** → 关单下送调研」这条小智专属链路。
+ * 本服务只管「建单 → 落池 / 自动流转产研 → 产研办结 → **完成通知** → **提报人确认** → 关闭工单」
+ * 这条小智专属链路。**全程无调研环节**（一·补 B28）。
  *
- * 🔴 **办结不等于关单**（一·补 B5，推翻 D9 / D11）：产研办结只把本单转入「待校代确认」，
- * 校代确认「是」才关单下送调研、确认「否」则系统自动回传产研，超 N 天不确认按已解决自动结案（B7）。
- * 整条确认链路**没有任何坐席按钮** —— 回传与结案都是系统动作。
+ * 🔴 **办结不等于关单**（一·补 B5，推翻 D9 / D11）：产研办结只把本单转入「待提报人确认」，
+ * 提报人确认「是」才落终态「**已关闭**」（一·补 B32：走关闭、不下送）、确认「否」则系统自动回传产研，
+ * 超 N 天不确认按已解决自动关闭（B7）。
+ * 整条确认链路**没有任何坐席按钮** —— 回传与关单都是系统动作。
  *
  * 【产研反馈】复用处理页「产研反馈」Tab（`tabs/OpFeishuTab.vue`）的那一套记录结构，
  * 推产研走已有的 TPD 通道（`ESCALATE_CHANNEL_TPD`），不新增通道。
@@ -52,7 +54,7 @@ export interface XiaozhiCreateInput {
   rdModule: string;
   /** 产研优先级 */
   rdPriority: XiaozhiRdPriority;
-  /** 一线人员域账号（选填） */
+  /** 一线人员域账号：客户（校代 / 渠道商）的讯飞域账号，选填（一·补 B29） */
   frontlineAccount: string;
   /** 附件（文件名，选填；建单取自问题描述区 descriptionAttachments） */
   attachments: string[];
@@ -84,7 +86,7 @@ export interface XiaozhiActor {
 
 /**
  * 建单拦截。必填缺项只剩产品模块一项 —— 问题分类走通用级联控件、恒有值（一·补 B15），
- * 不再有「问题类别未选」这档拦截。
+ * 一线人员域账号取客户的、客户没登记就留空，故不必填（一·补 B29）。
  *
  * `reason` 是**字段级之外**的拦截（PRD §2 的两条校验）：
  * - `receiverMissing`：产品模块选了、但该模块没配产研接收人 → 文案落在产品模块那一栏下方；
@@ -93,7 +95,7 @@ export interface XiaozhiActor {
 export interface XiaozhiCreateBlocked {
   kind: 'blocked';
   /** 缺哪几项（字段键） */
-  missing: ('rdModule' | 'frontlineAccount')[];
+  missing: 'rdModule'[];
   /** 非必填类拦截的原因 */
   reason?: 'receiverMissing';
 }
@@ -196,8 +198,9 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     content: string,
     receivers: (string | null | undefined)[],
     event = `ticket.xiaozhi.${kind}`,
+    channel?: string,
   ) {
-    useNotifyLogStore().emit({ ticketNo: r.no, event, kind, title, receivers, content });
+    useNotifyLogStore().emit({ ticketNo: r.no, event, kind, title, receivers, content, channel });
   }
 
   /* ---------------- 种子与缓存装载 ---------------- */
@@ -224,7 +227,7 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
       timelines.value = JSON.parse(JSON.stringify(XIAOZHI_SEEDS.timelines)) as Record<string, TimelineEntry[]>;
       tlSeq = 0;
     }
-    // 一·补 B7：装载时对一次「超 N 天未确认」的账，到点的就地自动结案 + 下送调研
+    // 一·补 B7 + B32：装载时对一次「超 N 天未确认」的账，到点的就地自动落「已关闭」
     settleConfirmDue();
   }
 
@@ -244,12 +247,13 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
    * 建单校验（PRD §2）。问题分类那一道在通用咨询表单里（一·补 B15），由 `validate()` 管，
    * 不在这里重复判。
    *
-   * 🔴 **两档必填，条件不同，别写混**：
-   * - **一线人员域账号：无条件必填**（一·补 B24）—— 它是提报人登录小智工单应用做
-   *   「是否解决」确认的凭据（B6），**与走不走产研无关**，故「创建」与「创建并流转」
-   *   两个出口都判。老系统是按「有没有这个账号」分流（没有就拿到办结状态直接关单），
-   *   本轮**不补那条分流分支**，改为从源头必填；
-   * - **产品模块：条件必填** —— 只在 `escalate`（创建并流转）时要，走产研才用得上。
+   * 🔴 **必填只剩产品模块一项，且是条件必填** —— 只在 `escalate`（勾了「升级 TPD」）时要，
+   * 走产研才用得上。
+   *
+   * ⚠️ **一线人员域账号不判必填**（一·补 B29，**推翻 B24**）：它取的是**客户**（校代 / 渠道商）
+   * 已登记的讯飞域账号，而客户不是人人都有 —— 判必填就等于逼建单人随手填一个，
+   * 填进去的不是提报人，确认链路（B5）反而更错。老系统按「有没有这个账号」分流那条分支
+   * 本轮同样不补。
    *
    * 另两条：
    * - 该产品模块必须配了产研接收人（接收人由产品模块带出、不可改，缺了推出去产研也不知道派给谁）；
@@ -257,10 +261,8 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
    *   见 `createXiaozhiTicket` 里的 `platformDown` 分支。拦截与降级是两回事，别混成一条。
    */
   function evaluateCreate(input: XiaozhiCreateInput, escalate: boolean): XiaozhiCreateBlocked | { kind: 'create' } {
-    const missing: ('rdModule' | 'frontlineAccount')[] = [];
+    const missing: 'rdModule'[] = [];
     const picked = input.rdModule?.trim() ?? '';
-    // 无条件那一条放在前面：它与 escalate 无关
-    if (!input.frontlineAccount?.trim()) missing.push('frontlineAccount');
     if (escalate && !picked) missing.push('rdModule');
     if (missing.length) return { kind: 'blocked', missing };
     if (escalate && picked && !xiaozhiHasReceiver(picked)) {
@@ -280,10 +282,12 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
   }
 
   /**
-   * 建小智工单。两条路径（D5）：
-   * - `escalate=false`：落工单池，由小智团队领单处理结案；
-   * - `escalate=true`：**落工单池留记录后，由系统自动流转推产研**（D6），本单置「已升级产研」、
-   *   **处理人不转移**。
+   * 建小智工单。出口只有一枚「创建」，`escalate` 来自建单弹窗「升级 TPD」勾选框（一·补 B27）：
+   * - `escalate=false`（未勾）：落工单池，由小智团队领单处理结案；
+   * - `escalate=true`（勾上）：**落工单池留记录后，由系统自动流转推产研**（D6），
+   *   本单置「已升级产研」、处理人＝系统（一·补 B2）。
+   *
+   * ⚠️ **两条分支的行为与 B27 之前逐字一致** —— B27 换的只是触发方式（勾选框取代第二枚按钮）。
    */
   function createXiaozhiTicket(
     input: XiaozhiCreateInput,
@@ -295,9 +299,24 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     if (evaluation.kind === 'blocked') return evaluation;
     const now = Date.now();
     const no = nextNo(now);
+    /**
+     * 🔴 **产研平台不可用时降级：工单照建、留在工单池、不流转**（PRD §2）。
+     *
+     * 客户的问题已经登记下来了，不能因为下游挂了就把单子也丢掉；流转那一步没成，
+     * 单子就按人工那条路落池等人领，提示 `XIAOZHI_TIP.rdPlatformDownOnCreate`
+     * 告诉坐席「稍后在工单内重新提交产研」（那就是底栏「升级 · 产研」那一枚）。
+     * 返回 `degraded: true`，由调用方决定提示用哪一句 —— store 不碰 UI。
+     *
+     * 判定提到建对象之前，是因为 `tab` 要按它取值（见下）。
+     */
+    const platformDown = escalate && !XIAOZHI_RD_PLATFORM_AVAILABLE;
+    /** 真走直通产研那一支（勾了「升级 TPD」且产研平台可用） */
+    const autoEscalate = escalate && !platformDown;
     const xiaozhi: TicketXiaozhi = {
-      // 一·补 B24：提报人确认凭据，**两条路都落**（走「创建」的单没有 rd，凭据一样要留）
+      // 一·补 B29：提报人（客户）确认凭据，**两条路都落**（未勾「升级 TPD」的单没有 rd，凭据一样要留）
       frontlineAccount: input.frontlineAccount.trim(),
+      // 一·补 B31 / B33：产研退回时要把处理人交回建单人，故建单这一下就把人记下来
+      createdBy: actor.name,
       rdSync: 'none',
       rdRecords: [],
       rdReturnCount: 0,
@@ -333,7 +352,20 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
       // 小智工单不纳入 SLA 考核（一·补 B1）：列表 SLA 列恒为空闲态
       ...XIAOZHI_SLA_IDLE,
       assignee: null,
-      tab: 'mine',
+      /**
+       * 🔴 **落池那一支的 `tab` 必须是 `'pool'`**，与种子 ⑧ 一致。
+       *
+       * 工单池页签的数据域 `inGroupPoolScope` 要 `tab === 'pool' ∧ 无处理人`
+       * （`types/ticket.ts`），我的任务 `inMineTaskScope` 要 `tab === 'mine' ∧ 处理人是我`。
+       * 原先新单一律写 `'mine'` + `assignee: null`，**两条都不满足 —— 刚建的未认领小智单
+       * 在工单池和我的任务里都看不见**，只能从查询中心翻到。领取时 `claimFromPool`
+       * 再把它翻回 `'mine'`。
+       *
+       * 直通产研那一支**维持 `'mine'` 不动**：它的处理人是系统（一·补 B2），池里留的是
+       * 记录不是待领任务，本就不该出现在任何人的工单池里等人领；它也进不了「我的任务」
+       * （处理人不是当前登录人），这正是预期 —— 那批单从查询中心与产研反馈那条路看。
+       */
+      tab: autoEscalate ? 'mine' : 'pool',
       responded: false,
       createdAt: xiaozhiMinuteStamp(now),
       updatedAt: xiaozhiMinuteStamp(now),
@@ -349,17 +381,8 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
       category: 'node', action: 'create', who: actor.name, role: actor.role,
       how: '建单', what: XIAOZHI_TL.create(XIAOZHI_TICKET_SOURCE),
     });
-    /**
-     * 🔴 **产研平台不可用时降级：工单照建、留在工单池、不流转**（PRD §2）。
-     *
-     * 客户的问题已经登记下来了，不能因为下游挂了就把单子也丢掉；流转那一步没成，
-     * 单子就按人工那条路落池等人领，提示 `XIAOZHI_TIP.rdPlatformDownOnCreate`
-     * 告诉坐席「稍后在工单内重新提交产研」（那就是底栏「升级 · 产研」那一枚）。
-     * 返回 `degraded: true`，由调用方决定提示用哪一句 —— store 不碰 UI。
-     */
-    const platformDown = escalate && !XIAOZHI_RD_PLATFORM_AVAILABLE;
-    // 「创建并流转」：落池生成记录后由系统自动流转，不靠人领、不靠定时任务扫（D6）
-    if (escalate && !platformDown) {
+    // 勾了「升级 TPD」：落池生成记录后由系统自动流转，不靠人领、不靠定时任务扫（D6 / 一·补 B27）
+    if (autoEscalate) {
       /**
        * 🔴 **直通产研的单不发「待领取」提醒**（D6 + 通知规则 R18 的 `rdDirect` 条件）：
        * 池里留的是**记录**不是待领任务，处理人是系统（一·补 B2），没有人该去领它。
@@ -536,25 +559,47 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
   }
 
   /**
-   * 产研「驳回」回传 —— 🔴 **本轮只写处理履历，不驱动本单状态、页面上也没有按钮**（待沟通项 T1）。
+   * 产研「退回」回传 —— 🔴 **本单落「已退回」，处理人交回创建人 / 最后编辑人**（一·补 B31 / B33，
+   * **关闭 T1**）。
    *
-   * TPD 状态同步接口的「驳回」指产研**不接这单、退回来**，与 B5 的「校代确认未解决」是两回事：
-   * 退回来之后由谁接、怎么再推，业务侧明确「待定，需要沟通」，故本轮不落状态机。
-   * 这里保留的是**接口层的接收能力** —— 信息照常进履历、不丢，等口径定了再接状态与动作；
-   * 处理方式与 D7 的「处理中」中间态完全一致（同走 `feedback` 记录档，不另开一档）。
+   * 产研的退回**主要用于信息补充场景，不是拒绝处理**（10-19 纪要）：退回来的单必须有人接着补，
+   * 补完**复用底栏既有的「升级 · 产研」重新提交** —— 页面上**不另造「重新提交产研」按钮**。
+   * 交回的人是**本单创建人**（建单后被编辑过的取最后编辑人），**不是 L2 组**。
+   *
+   * ⚠️ 与 B5② 的「提报人确认未解决 → 系统自动回传产研、状态不动」是**两条独立链路**，
+   * 一条是产研不收、一条是提报人不认，各走各的，不要合并。
    *
    * ⚠️ **不要**因为「看着像失败」就把它写成 `rdSync = 'failed'`：
-   * 关联失败是推单没推成、要重推；驳回是推成了被退回，重推解决不了。
+   * 关联失败是推单没推成、要重推；退回是推成了被退回来补料。这里落回 `'none'` ——
+   * 产研侧那张单已经不在办了，本单要重新推一次才会再有产研单。
    */
   function receiveRdReject(no: string, who: string, reason: string): boolean {
     const r = rowOf(no);
     if (!r?.xiaozhi) return false;
     const now = Date.now();
-    // 状态、处理人、Tab 一律不动 —— 只有记录与履历
+    // 一·补 B31：交回创建人；建单后被编辑过的取最后编辑人
+    const owner = (r.xiaozhi.lastEditor ?? r.xiaozhi.createdBy ?? '').trim();
+    r.nodeStatus = XIAOZHI_RD_RETURNED_STATUS;
+    if (owner) r.assignee = owner;
+    /**
+     * 🔴 **`rdSync` 保留真实值，不动它**。
+     *
+     * 底栏「升级」在 `synced / feedback / closed` 三态上置灰（`OpActionBar` 的
+     * `feishuEscalateBlocked`），但那道判的是"已经升过、别再升"的**代理条件**，
+     * 而「已退回」的语义恰恰是"这次升级已经结束、等补料重提" —— 开闸应当按**子状态**给
+     * （`xiaozhiRdReturned`），不该靠把 `rdSync` 抹成 `'none'` 绕过去：
+     * 抹掉它，「产研反馈」Tab 的出现判据（`feishuSync !== 'none'`）跟着失效，
+     * **退回前提交过什么、退回原因是什么全看不见了** —— 而那正是创建人补信息要看的东西。
+     * 也**不要**写成 `'failed'`：那是「关联失败、要重推」，Tab 会另给一枚「重试」，
+     * 等于在「升级 · 产研」之外开第二个重新提交入口（B31 要求只留一个）。
+     */
+    // 本人的待办：回到「我的任务」页签（判据 tab==='mine' ∧ 处理人是我）
+    r.tab = 'mine';
+    r.updatedAt = xiaozhiMinuteStamp(now);
     pushRdRecord(r, {
       kind: 'feedback',
-      title: '产研驳回回传',
-      content: reason || '产研已驳回本单（后续处理口径待定）',
+      title: '产研退回',
+      content: reason || '产研因信息不全退回本单，请补充后重新提交',
       who,
       side: '产研侧',
       when: xiaozhiStamp(now),
@@ -563,8 +608,12 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     });
     log(no, now, {
       category: 'node', action: 'relate', who: '系统', role: '系统', systemActor: true,
-      how: '产研回传', what: XIAOZHI_TL.rdRejectedNoted(reason),
+      how: '产研回传', what: XIAOZHI_TL.rdReturned(owner || '本单创建人', reason),
     });
+    notify(
+      r, 'return', '产研退回', XIAOZHI_NOTICE.returnedByRd(no, owner || '本单创建人'),
+      [owner, XIAOZHI_POOL_GROUP_NAME],
+    );
     bump(no);
     persist();
     return true;
@@ -578,9 +627,9 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
    * 校代说「未解决」就要原地回传回去（B5②），搬到别的状态再搬回来是白搬。
    * `rdSync = 'closed'` 说的是**产研那张反馈单**结了，不是本单结了，两者别混。
    *
-   * ⚠️ 这里**不发调研短信** —— 调研在关单那一刻才下送（`closeXiaozhi`）。原先 D9 把
-   * 「办结即关单即下送」焊成一笔，B5 把它拆成两步后，调研必须跟着关单走、不能跟着办结走，
-   * 否则校代还没确认、人就先收到满意度调研了。
+   * 🔴 **这里发的是「完成通知」，不是调研短信**（一·补 B28 / B34）：小智工单全程无调研环节，
+   * 产研办结后由**工单系统**发一条「已完成，请确认」，通道二选一（见 `sendCompletionNotice`）。
+   * 它必须跟着**办结**走、不能跟着关单走 —— 提报人正是收到这一条才去确认的。
    */
   function receiveRdSettle(no: string, who: string, payload: XiaozhiSettlePayload): boolean {
     const r = rowOf(no);
@@ -614,37 +663,104 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
       how: '产研回传', what: XIAOZHI_TL.rdSettled(payload.solutionType),
     });
     notify(r, 'accepted', '产研办结', XIAOZHI_NOTICE.rdSettled(no), [r.assignee, XIAOZHI_POOL_GROUP_NAME]);
+    // 一·补 B28 / B34：对客的「完成通知」由工单系统发，紧跟办结那一笔
+    sendCompletionNotice(r, now + 1);
     bump(no);
     persist();
     return true;
   }
 
   /**
-   * 关单 + 下送调研（一·补 B5① / B7 共用的一段）。
+   * 完成通知（一·补 B28 / B34）—— 🔴 **不是调研**。
+   *
+   * 小智工单全程无调研环节，产研办结后只发这一条「已完成，请确认」，由**工单系统**发
+   * （B34：通道判定依赖只存在于工单系统的客户域账号字段，产研侧拿不到，故产研那条
+   * 「解决结果通知」已提对外要求关闭）。
+   *
+   * 通道**二选一**：本单登记了客户域账号 → IM 消息；否则 → 客户手机号短信；
+   * **两者都无 → 不发**，只落一条处理履历说明没发出去 —— 不编一个收件人出来。
+   * 每发一条落一条沟通类处理履历。
+   */
+  function sendCompletionNotice(r: Ticket, at: number) {
+    const pick = xiaozhiNoticeChannel(r.xiaozhi?.frontlineAccount, r.customerPhone);
+    if (!pick) {
+      log(r.no, at, {
+        category: 'comm', action: 'sms', who: '系统', role: '系统', systemActor: true,
+        how: '完成通知', what: XIAOZHI_TL.completionNoticeSkipped(),
+      });
+      return;
+    }
+    log(r.no, at, {
+      category: 'comm', action: 'sms', who: '系统', role: '系统', systemActor: true,
+      // `how` 是履历上的徽章，走哪条通道就写哪条；`action` 只决定图标，comm 两条通道共用
+      how: pick.channel, what: XIAOZHI_TL.completionNotice(pick.channel, pick.to),
+    });
+    notify(
+      r, 'accepted', '完成通知', XIAOZHI_NOTICE.completed(r.no), [pick.to],
+      'ticket.xiaozhi.completed', pick.channel,
+    );
+  }
+
+  /**
+   * 产研那条路的关单（一·补 B5① / B7 共用的一段）。
+   *
+   * 🔴 **落「已关闭」，不是「已结案」**（一·补 B32）：小智工单关单走「关闭工单」、
+   * **不走「下送结案」**，故终态是既有子状态「已关闭」。
+   * 🔴 **不发调研**（一·补 B28）：小智工单全程无调研环节，对客只有产研办结那一刻的完成通知。
    *
    * 🔴 **处理人统一改「系统」**（一·补 B9，扩大 B2 的覆盖范围）：
    * **人工跟进过的单也一样**，不保留原处理人。原写法是 `assignee ?? 系统`（只给悬空的补一个），
    * B9 把它改成无条件覆盖 —— 办结关单这一下是系统做的，落成那位跟进过的坐席，
    * 等于把一笔系统动作记在人头上，绩效与工作量口径都会错。
-   *
-   * 调研短信由**工单系统**发、发给**提报人**本人（D12 / D14②；称谓照一·补 B19）；产研的「解决结果通知」短信
-   * 由 TPD 自己发（B12 保留两条），工单系统不重复发。回「未解决」不拉回（D13）。
    */
   function closeXiaozhi(r: Ticket, at: number, what: string) {
-    r.nodeStatus = '已结案';
+    r.nodeStatus = XIAOZHI_CLOSED_STATUS;
     r.tab = 'done';
     // 一·补 B9：统一改系统，不是「没人才补一个」
     r.assignee = XIAOZHI_SYSTEM_HANDLER;
     r.updatedAt = xiaozhiMinuteStamp(at);
     log(r.no, at, {
       category: 'node', action: 'resolved', who: '系统', role: '系统', systemActor: true,
-      how: '自动结案', what,
+      how: '自动关闭', what,
     });
-    log(r.no, at + 1, {
-      category: 'comm', action: 'sms', who: '系统', role: '系统', systemActor: true,
-      how: '短信', what: XIAOZHI_TL.surveySms(r.no),
+    notify(r, 'accepted', '工单关闭', XIAOZHI_NOTICE.closed(r.no), [XIAOZHI_POOL_GROUP_NAME]);
+  }
+
+  /**
+   * 坐席自办答完 → 点底栏「关闭工单」（一·补 B32 路径①）。
+   *
+   * 🔴 **不走关闭审批，点完直落终态「已关闭」**：通用单的「关闭工单」是提交审批、进
+   * 「申请关闭中」，小智单按例外免掉（体例照基线 §1 售后回传 `AS_CLOSED`「正常关闭、不走关闭审批」）。
+   * 🔴 **处理人保留为操作人**，不改系统 —— B9 的「统一改系统」说的是**产研办结自动关单**
+   * 那条路（关单那一下是系统做的）；这一下是坐席自己点的，记在他头上才对。
+   */
+  function closeByAgent(no: string, actor: XiaozhiActor, reason: string, note = ''): boolean {
+    const r = rowOf(no);
+    if (!r) return false;
+    const now = Date.now();
+    r.nodeStatus = XIAOZHI_CLOSED_STATUS;
+    r.tab = 'done';
+    r.assignee = actor.name;
+    r.updatedAt = xiaozhiMinuteStamp(now);
+    log(no, now, {
+      category: 'node', action: 'resolved', who: actor.name, role: actor.role,
+      how: '关闭工单', what: XIAOZHI_TL.closeByAgent(reason, note),
     });
-    notify(r, 'accepted', '工单结案', XIAOZHI_NOTICE.closed(r.no), [XIAOZHI_POOL_GROUP_NAME]);
+    notify(r, 'accepted', '工单关闭', XIAOZHI_NOTICE.closed(no), [XIAOZHI_POOL_GROUP_NAME]);
+    bump(no);
+    persist();
+    return true;
+  }
+
+  /**
+   * 记一次「本单被编辑过」（一·补 B31 / B33）：产研退回时处理人优先交回最后编辑人。
+   * 由工单页在保存处理表单那一下调用，与 `markResponded` 同一个时机。
+   */
+  function markEdited(no: string, who: string): void {
+    const r = rowOf(no);
+    if (!r?.xiaozhi || !who.trim()) return;
+    r.xiaozhi.lastEditor = who.trim();
+    persist();
   }
 
   /**
@@ -654,7 +770,7 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
    * （B6：建单入口迁 400，查询 + 确认流程保留），工单系统侧只接结果。原型里没有提报人端，
    * 三种结果（确认是 / 确认否 / 未确认）由种子数据体现，**页面上不造「模拟确认」按钮**。
    *
-   * - `resolved = true` → 关单 + 下送调研（B5①）；
+   * - `resolved = true` → 落终态「已关闭」（B5① + B32，**不下送、不调研**）；
    * - `resolved = false` → 本单**留在「已升级产研」、状态不动**，系统**自动**回传产研「未解决」
    *   （B5②：回传是系统动作不是坐席动作，故**没有「二次提交产研」按钮**），
    *   产研重新处理后再办结、再等确认。循环**不封顶**，但每轮累加 `rdReturnCount`（B8）。
@@ -713,7 +829,7 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
   }
 
   /**
-   * 超 `XIAOZHI_CONFIRM_TIMEOUT_DAYS` 天未确认 → **视为已解决**，自动结案 + 下送调研（一·补 B7）。
+   * 超 `XIAOZHI_CONFIRM_TIMEOUT_DAYS` 天未确认 → **视为已解决**，自动落「已关闭」（一·补 B7 + B32）。
    *
    * 形制照刷机单的「调研超时未评价自动结案」（`stores/flash.ts` 的 `settleDue`）：
    * 不起定时任务，**装载时按办结时刻 + N 天对一次账**，到点的就地结掉，结案时刻取到点时刻
@@ -765,9 +881,13 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     claimFromPool,
     /** 基线 §1 / §7：保存 / 电话 / 短信 / 邮件任一发生 → 「待响应」转「处理中」 */
     markResponded,
+    /** B31 / B33：记最后编辑人，产研退回时处理人优先交回给他 */
+    markEdited,
     escalateToRd,
+    /** B32 路径①：坐席自办答完点「关闭工单」→ 直落「已关闭」，不走审批 */
+    closeByAgent,
     receiveRdProgress,
-    /** T1：只写履历、不驱动状态。接口层能力保留，页面上无入口 */
+    /** B31 / B33：产研退回 → 本单落「已退回」、处理人交回创建人 / 最后编辑人 */
     receiveRdReject,
     receiveRdSettle,
     /** B5：校代确认结果入口（来自小智工单应用，非页面按钮） */

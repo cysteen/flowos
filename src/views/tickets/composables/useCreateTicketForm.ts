@@ -404,11 +404,11 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
 
   /**
    * 「小智工单信息」卡字段下方的必填提示。
-   * 只剩产品模块一项 —— 问题类别已并回通用问题分类（一·补 B15），由那组级联控件自己保证有值。
+   * 只剩产品模块一项 —— 问题类别已并回通用问题分类（一·补 B15）、一线人员域账号已改选填
+   * （一·补 B29），两者都不参与必填提示。
    */
   const xiaozhiErrors = reactive<Record<CreateTicketXiaozhiField, string>>({
     rdModule: '',
-    frontlineAccount: '',
   });
 
   function clearXiaozhiErrors() {
@@ -416,17 +416,27 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   }
 
   /**
-   * 一线人员域账号默认＝建单人登录用户名（`domainAccount`，非昵称）。
-   * `force`：打开小智建单弹窗时置 true，始终与当前登录人同步。
+   * 一线人员域账号预填 —— 🔴 **取本单所选客户（校代 / 渠道商）已登记的讯飞域账号**（一·补 B29）。
+   *
+   * 不是建单坐席的域账号：这一格是提报人登录小智工单应用做「是否解决」确认的凭据（B6），
+   * 落成建单人就等于把确认权交给了客服自己。
+   * **客户没登记域账号时留空**，不回落到任何人，由建单人手工录入或改（本字段选填）。
+   *
+   * `force`：打开小智建单弹窗 / 换客户时置 true，与所选客户重新对齐；
+   * 非 force 时只补空值，不覆盖建单人已经手工改过的内容。
    */
   function applyXiaozhiFrontlineDefault(force = false) {
     if (!isXiaozhiType.value) return;
-    const acc = useUserStore().domainAccount.trim();
-    if (!acc) return;
-    if (force || !form.xiaozhi.frontlineAccount.trim()) {
-      form.xiaozhi.frontlineAccount = acc;
-    }
+    const acc = (form.customer?.domainAccount ?? '').trim();
+    if (force) form.xiaozhi.frontlineAccount = acc;
+    else if (acc && !form.xiaozhi.frontlineAccount.trim()) form.xiaozhi.frontlineAccount = acc;
   }
+
+  /** 换客户即重新按新客户的域账号对齐（没登记的客户 → 清空，不留上一位客户的账号） */
+  watch(
+    () => form.customer?.id ?? '',
+    () => { applyXiaozhiFrontlineDefault(true); },
+  );
 
   // 改动小智信息：已补上的字段收起必填提示
   watch(
@@ -485,14 +495,19 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   }
 
   /**
-   * 小智单提交（D5 / PRD §2）：`escalate=false` ＝「创建」落池自领；`escalate=true` ＝「创建并流转」，
-   * 落池留记录后由系统自动流转推产研（D6）。
+   * 小智单提交（D5 / PRD §2）。出口只有一枚「创建」，走哪条路看「升级 TPD」勾选框（一·补 B27）：
+   * - 未勾 → 落工单池，由小智团队领单处理结案；
+   * - 勾上 → 落池留记录后由系统自动流转推产研（D6）。
+   *
+   * 🔴 **勾选状态只从表单读这一处**，不由调用方另传一个 `escalate` 参数 ——
+   * 两处各存一份状态，勾了却走了落池那条路就是必然会出现的错。
    *
    * 返回 `null` ＝ 被拦住（必填缺项或产品模块没配接收人），提示落在字段下方；
-   * 返回工单 ＝ 建成了，`degraded` 说明「建成但没流转成」（产研平台不可用），
-   * 由弹窗换成 `rdPlatformDownOnCreate` 那句，不能照「已流转产研」报喜。
+   * 返回工单 ＝ 建成了，`escalated` 说明走的是哪条路、`degraded` 说明「建成但没流转成」
+   * （产研平台不可用），由弹窗换成 `rdPlatformDownOnCreate` 那句，不能照「已流转产研」报喜。
    */
-  function submitXiaozhi(escalate: boolean): { ticket: Ticket; degraded: boolean } | null {
+  function submitXiaozhi(): { ticket: Ticket; degraded: boolean; escalated: boolean } | null {
+    const escalate = form.xiaozhi.escalateTpd === true;
     clearErrors();
     clearXiaozhiErrors();
     // 通用咨询单那套校验照跑（D27），小智专属字段另加一道
@@ -503,17 +518,13 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       if (result.missing.includes('rdModule')) {
         xiaozhiErrors.rdModule = XIAOZHI_TIP.rdModuleRequired;
       }
-      // 一·补 B24：无条件必填，两个出口都可能命中
-      if (result.missing.includes('frontlineAccount')) {
-        xiaozhiErrors.frontlineAccount = XIAOZHI_TIP.frontlineAccountRequired;
-      }
       // 没配产研接收人：接收人是产品模块带出来的，故提示也落在产品模块那一栏下方
       if (result.reason === 'receiverMissing') {
         xiaozhiErrors.rdModule = XIAOZHI_TIP.rdReceiverMissing;
       }
       return null;
     }
-    return { ticket: result.ticket, degraded: !!result.degraded };
+    return { ticket: result.ticket, degraded: !!result.degraded, escalated: escalate };
   }
 
   /** 建单人：与「本人建的单」判定同一把（`currentHandlerName`） */

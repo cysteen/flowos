@@ -4,9 +4,12 @@
  * 建单弹窗、处理页产研反馈区、后台 SLA、通知规则、查询筛选等模块**只从这里取**枚举与类型，
  * 不在各自文件里另写一份。形制照 `types/flash.ts`（同为「咨询 + 标识」建模的 1130 批次）。
  *
- * 本文件只放**常量、类型与纯函数**，不依赖 Pinia / 工单库，任何模块都可以放心引用。
+ * 本文件只放**常量、类型与读口函数**，不依赖 Pinia / 工单库，任何模块都可以放心引用。
+ * 唯一的数据依赖是后台维护的产品模块字典（`mock/xiaozhi/rdModules.ts`，一·补 B30）——
+ * 那份字典会被后台改写，故按模块取接收人 / 产品线的几个函数不是纯函数，取的是字典当下的值。
  */
 import type { FeishuRecord, FeishuSyncState } from '@/mock/ticketDetail';
+import { XIAOZHI_RD_MODULES } from '@/mock/xiaozhi/rdModules';
 
 /** 小智工单的工单类型：小智工单＝咨询单 + 建单时写入的「小智工单」标识（D1） */
 export const XIAOZHI_TICKET_TYPE = '咨询' as const;
@@ -41,7 +44,7 @@ export const XIAOZHI_POOL_GROUP_ID = 'xiaozhi';
 /**
  * 系统处理人：**「系统」**，不是建单人。两处都落它 ——
  *
- * ① 「创建并流转」那一支的处理人（一·补 B2）：工单池里留的是记录不是待领任务，
+ * ① 勾了「升级 TPD」那一支的处理人（一·补 B2）：工单池里留的是记录不是待领任务，
  *    不经领取直接到「已升级产研」；
  * ② **自动结案时的处理人（一·补 B9）**：🔴 **人工跟进过的单也一样统一改系统**，
  *    不保留原处理人 —— 这比 B2 的覆盖范围更大。原口径只是「没有处理人时补一个、不让悬空」（D10），
@@ -71,8 +74,8 @@ export const XIAOZHI_SLA_IDLE = { slaText: '—', slaSub: '未计时', slaState:
  * 这是 D27「尽量复用通用咨询单」的直接延伸 —— 另起一个「问题类别」下拉等于把同一件事
  * 在两处各维护一份值域，且两份永远对不齐。
  *
- * 相对 toC 在线小结，小智真正多出来的只有「是否流转研发」一项，由底栏「创建并流转」按钮
- * 表达、不作字段（D5）。
+ * 相对 toC 在线小结，小智真正多出来的只有「是否流转研发」一项，由「小智工单信息」卡上的
+ * 「升级 TPD」勾选框表达（一·补 B27）。
  */
 
 /**
@@ -99,38 +102,16 @@ export const XIAOZHI_RD_PRIORITIES = ['普通', '普通加急', '紧急', '重�
 export type XiaozhiRdPriority = (typeof XIAOZHI_RD_PRIORITIES)[number];
 export const XIAOZHI_RD_PRIORITY_DEFAULT: XiaozhiRdPriority = '普通';
 
-/** 产品模块一条（产研侧字典；接收人由产品模块带出、不可改，W2） */
-export interface XiaozhiRdModule {
-  /** 产品模块名 */
-  name: string;
-  /** 接收人（域账号），由产品模块带出 */
-  receiver: string;
-  /** 所属产品线（拼 TPD 单标题用，W3） */
-  productLine: string;
-}
-
 /**
- * 「产品模块 ↔ 接收人（域账号）」配置（W2：落哪个后台待确认，暂按「落工单系统后台、挂在产品管理下」）。
- * 取值照老系统现状的精准教学产品线模块划分。
+ * 「产品模块 ↔ 接收人（域账号）」配置 —— 字典本体与增删改在
+ * `mock/xiaozhi/rdModules.ts`，由后台「业务管理 → 产品模块维护」维护（一·补 B30，**关闭 W2**）。
+ * 本文件只留按模块取值的三个读口，各模块一律经这里取，不自己去遍历那份数组。
  */
-export const XIAOZHI_RD_MODULES: XiaozhiRdModule[] = [
-  { name: '智批改', receiver: 'zhangdong3', productLine: '精准教学产品线' },
-  { name: '智能阅卷', receiver: 'lyu7', productLine: '精准教学产品线' },
-  { name: '扫描', receiver: 'wangshuang11', productLine: '精准教学产品线' },
-  { name: '组卷与题库', receiver: 'chenwei21', productLine: '精准教学产品线' },
-  /**
-   * 🔴 **故意不配接收人的一条**，`XIAOZHI_TIP.rdReceiverMissing` 那道拦截靠它才验得到。
-   *
-   * 四个模块全配了 `receiver` 时，「该产品模块未配置产研接收人」这条分支**永远走不到** ——
-   * 等于写了也看不出来（与 `PRODUCTS_WITHOUT_AFTERSALE` 给「转售后」留反例同一个道理）。
-   * 字典本身是后台配出来的（W2），现实里新模块上线、接收人还没配就是这个样子。
-   */
-  { name: '学情分析', receiver: '', productLine: '精准教学产品线' },
-];
+export type { XiaozhiRdModule } from '@/mock/xiaozhi/rdModules';
 
 /**
  * 产研平台当前可用与否。`false` 时：
- * - 建单「创建并流转」→ **工单照建**、留在工单池，提示 `rdPlatformDownOnCreate`（PRD §2）；
+ * - 建单勾了「升级 TPD」→ **工单照建**、留在工单池，提示 `rdPlatformDownOnCreate`（PRD §2）；
  * - 底栏「升级 · 产研」→ 本单状态不变，提示 `rdPlatformDownOnEscalate`（PRD §5.4）。
  *
  * 真实实现里这是调 TPD 接口的返回，不是配置项；这里留一个常量把**两条分支都接上**，
@@ -170,7 +151,7 @@ export interface XiaozhiRdInfo {
   receiver: string;
   /** 产研优先级 */
   priority: XiaozhiRdPriority;
-  /** 一线人员域账号（选填） */
+  /** 一线人员域账号：**客户（校代 / 渠道商）的**讯飞域账号，选填（一·补 B29） */
   frontlineAccount: string;
   /** 附件（文件名，选填） */
   attachments: string[];
@@ -187,25 +168,27 @@ export function defaultXiaozhiRdInfo(): XiaozhiRdInfo {
 }
 
 /* ------------------------------------------------------------------ */
-/* 产研回传 + 校代确认（一·补 B5 / B7 / B8 / B9；T1 驳回本轮不实现）          */
+/* 产研回传 + 提报人确认（一·补 B5 / B7 / B8 / B9 / B31 / B33）              */
 /* ------------------------------------------------------------------ */
 
 /**
- * 回传类型。三类都**只写处理履历**，驱动本单状态的只有「办结」那一笔（一·补 B5）：
- * - 「处理中」等中间态：留痕，不驱动本单（D7 原口径，未变）；
- * - 「驳回」：🔴 **本轮同样只留痕**（待沟通项 T1）—— TPD 的「驳回」指产研不接这单、退回来，
- *   与 B5 的「校代确认未解决」是两回事；驳回回来之后由谁接、怎么再推，业务侧尚无口径。
- *   接口层照常收、信息不丢，但**不驱动状态、页面上没有按钮**，与中间态同一处理方式；
- * - 「办结」：落办结结果 + 转入**待校代确认**，本单仍留在「已升级产研」，**不自动关单**（B5）。
+ * 回传类型。三类里**驱动本单状态的有两笔**：
+ * - 「处理中」等中间态：只留痕，不驱动本单（D7 原口径，未变）；
+ * - 「退回」：🔴 本单转「**已退回**」、处理人改回**创建人 / 最后编辑人**（一·补 B31 / B33，
+ *   **关闭 T1**）。产研的退回**主要用于信息补充场景，不是拒绝处理**，故退回来的单要有人接着补，
+ *   补完复用底栏既有的「升级 · 产研」重新提交；与 B5②「提报人确认未解决由系统自动回传」
+ *   是**两条独立链路**，不可合并；
+ * - 「办结」：落办结结果 + 转入**待提报人确认**，本单仍留在「已升级产研」，**不自动关单**（B5）。
  */
-export type XiaozhiRdFeedbackKind = '处理中' | '驳回' | '办结';
+export type XiaozhiRdFeedbackKind = '处理中' | '退回' | '办结';
 
 /**
  * 🔴 **产研办结不再自动关单，改由提报人确认是否解决**（一·补 B5，**推翻 D9 / D11**；称谓照 B19）。
  *
- * 链路：产研办结回传 → 本单落办结结果、置「待校代确认」、**状态不动**（仍「已升级产研」）→
- * 校代在小智工单应用里确认（B6：建单入口迁 400，确认流程保留）→
- * - 确认「**是**」→ 关单 + 下送调研；
+ * 链路：产研办结回传 → 本单落办结结果、置「待提报人确认」、**状态不动**（仍「已升级产研」）→
+ * 工单系统发一条**完成通知**（一·补 B28 / B34：有客户域账号走 IM，否则走短信，**不是调研**）→
+ * 提报人在小智工单应用里确认（B6：建单入口迁 400，确认流程保留）→
+ * - 确认「**是**」→ 落终态「**已关闭**」（一·补 B32：走关闭、不下送、不调研）；
  * - 确认「**否**」→ 状态仍不动，**系统自动**回传产研「未解决」，产研重新处理后再办结、再等确认。
  *
  * ⚠️ 「否」那一支是**系统动作不是坐席动作** —— 页面上**没有「二次提交产研」按钮**。
@@ -227,7 +210,7 @@ export const XIAOZHI_CONFIRM_ACTOR = '提报人';
 export const XIAOZHI_CONFIRM_APP = '小智工单应用';
 
 /**
- * 超 N 天未确认即视为已解决，自动结案 + 下送调研（一·补 B7）。
+ * 超 N 天未确认即视为已解决，自动落终态「已关闭」（一·补 B7 + B32）。
  *
  * 🔴 **N ＝ 3 天是暂定值**，业务侧尚未给数（B7 原文「N 可配，具体天数由业务定」）。
  * 取 3 天的理由：校代确认是一次「看一眼结果点个是」的轻动作，拖过一个完整工作周期
@@ -301,6 +284,11 @@ export const XIAOZHI_RESULT_GROUP_TITLE: Record<XiaozhiSolutionType, string> = {
  * 展示名取通用咨询表单那一份，不在本表另起。
  */
 export const XIAOZHI_FIELD_LABELS = {
+  /**
+   * 建单出口合为一枚「创建」+ 本勾选框（一·补 B27，**推翻 B11** 的两枚按钮）：
+   * 勾上即走直通产研那条路，产研五项随勾选**动态展示**。
+   */
+  escalateTpd: '升级 TPD',
   rdModule: '产品模块',
   rdReceiver: '接收人（域账号）',
   rdPriority: '产研优先级',
@@ -322,14 +310,10 @@ export const XIAOZHI_CANCELLABLE_STATUSES: readonly string[] = ['未认领', '�
  * 建单必填提示（输入类「请填写」、选择类「请选择」，与通用咨询单同一口径）
  * 与各处拦截 / 置灰悬停文案。问题类别那条已随 B15 去掉 ——
  * 问题分类走通用咨询表单的级联控件，它恒有值、无须另给必填提示。
+ * 一线人员域账号那条已随 B29 去掉 —— 该字段取客户的域账号、客户没登记就留空，故不必填。
  */
 export const XIAOZHI_TIP = {
   rdModuleRequired: `请选择${XIAOZHI_FIELD_LABELS.rdModule}`,
-  /**
-   * 一线人员域账号必填（一·补 B24）。输入类用「请填写」，与 `rdModuleRequired` 的
-   * 「请选择」同一套体例（输入类「请填写」、选择类「请选择」）。
-   */
-  frontlineAccountRequired: `请填写${XIAOZHI_FIELD_LABELS.frontlineAccount}`,
   /**
    * 产品模块选了、但该模块没配产研接收人（W2 的字典缺项）。
    * 接收人是**由产品模块带出、不可改**的，缺了这一项推出去产研也不知道派给谁，故在建单侧就拦。
@@ -351,7 +335,30 @@ export const XIAOZHI_TIP = {
 export const XIAOZHI_TOAST = {
   created: (no: string) => `已创建小智工单 ${no}`,
   createdAndEscalated: (no: string) => `已创建小智工单 ${no}，已流转产研`,
+  /** 小智单关单走「关闭工单」、不走审批，点完直落终态（一·补 B32） */
+  closed: (no: string) => `已关闭 ${no}`,
 } as const;
+
+/**
+ * 小智工单的**终态**（一·补 B32）：走「关闭工单」落「已关闭」，**不走「下送结案」**。
+ *
+ * 🔴 **「已结案」与「直接结案」两头都不贴**（基线 §1）：
+ * 「已结案 ＝ 结案方式为正常流程的单**走完调研**后到这里」，而小智单全程无调研（一·补 B28）；
+ * 「直接结案 ＝ **从未进流程**」，而小智单要么坐席办过、要么推过产研。
+ * 「已关闭」是既有可落库子状态（基线 §1「友好沟通后关闭」），**不新造**。
+ */
+export const XIAOZHI_CLOSED_STATUS = '已关闭' as const;
+
+/**
+ * 产研退回后本单落的子状态（一·补 B31 / B33）。
+ *
+ * 产研因**信息不全**把单退回工单系统（不是拒绝处理），本单从「已升级产研」回到
+ * 「已退回」、处理人改回本单创建人（建单后被编辑过的取最后编辑人），
+ * 由他补充信息后**复用底栏既有的「升级 · 产研」重新提交** —— 不另造「重新提交产研」按钮。
+ *
+ * ⚠️ 与「提报人确认未解决」（B5②，系统自动回传、状态不动）是**两条独立链路**，不要合并。
+ */
+export const XIAOZHI_RD_RETURNED_STATUS = '已退回' as const;
 
 /** 处理履历正文 */
 export const XIAOZHI_TL = {
@@ -367,16 +374,30 @@ export const XIAOZHI_TL = {
   /** 中间态只写履历、不驱动本单状态（D7） */
   rdProgress: (who: string, note: string) => `产研处理中 · ${who}${note ? `；处理意见：${note}` : ''}`,
   /**
-   * 驳回回传。**只留痕、不驱动状态、无按钮**（待沟通项 T1）：
-   * 本单仍留在「已升级产研」，由谁接、怎么再推等业务侧口径。
+   * 产研**退回**回传（一·补 B31 / B33）：产研因信息不全把单退回来，不是拒绝处理。
+   * 本单落「已退回」、处理人改回创建人 / 最后编辑人，补充信息后复用「升级 · 产研」重新提交。
    */
-  rdRejectedNoted: (reason: string) =>
-    `收到产研驳回回传${reason ? `；驳回原因：${reason}` : ''}。本单状态不变，驳回后续处理口径待定`,
+  rdReturned: (who: string, reason: string) =>
+    `收到产研退回回传${reason ? `；退回原因：${reason}` : ''}。本单转「已退回」，处理人为 ${who}，`
+    + '请补充信息后重新提交产研',
   /** 办结回传 → **不关单**，转入待提报人确认（一·补 B5） */
   rdSettled: (solutionType: XiaozhiSolutionType) =>
     `产研办结回传（${solutionType}类），待${XIAOZHI_CONFIRM_ACTOR}确认是否解决`,
-  /** 提报人确认「是」→ 关单 + 下送调研（B5①） */
-  confirmResolved: (who: string) => `${who}确认问题已解决，工单结案并下送调研`,
+  /**
+   * 完成通知（一·补 B28 / B34）：产研办结后**由工单系统发**，**不是调研短信** ——
+   * 小智工单全程无调研环节，这一条只告知「已完成，请确认」。
+   * 通道二选一：本单登记了客户域账号 → IM 消息；否则 → 客户手机号短信。
+   */
+  completionNotice: (channel: string, to: string) =>
+    `已向${XIAOZHI_CONFIRM_ACTOR}发送完成通知（${channel}：${to}），请其在${XIAOZHI_CONFIRM_APP}确认是否解决`,
+  /** 域账号与手机号都没有：**不发**，只落一条履历留痕（B28） */
+  completionNoticeSkipped: () =>
+    `本单未登记客户域账号与联系手机号，完成通知未发出，待${XIAOZHI_CONFIRM_ACTOR}自行在${XIAOZHI_CONFIRM_APP}查询确认`,
+  /** 坐席自办答完点「关闭工单」→ 直落「已关闭」，不走审批（一·补 B32） */
+  closeByAgent: (reason: string, note: string) =>
+    `关闭工单。关闭原因：${reason}${note ? `；${note}` : ''}（小智工单不走关闭审批）`,
+  /** 提报人确认「是」→ 关闭工单（B5① + B32：走关闭、不下送、不调研） */
+  confirmResolved: (who: string) => `${who}确认问题已解决，工单关闭`,
   /**
    * 提报人确认「否」→ 状态不动，系统自动回传产研（B5② + B8 记次数）。
    * 次数的词序照 PRD L420「**已回传产研 〈N〉 次**」，不写「第 N 次回传产研」。
@@ -384,34 +405,62 @@ export const XIAOZHI_TL = {
   confirmUnresolved: (who: string, times: number, channel: string) =>
     `${who}确认问题未解决，系统已自动回传${channel}「未解决」（已回传产研 ${times} 次），本单仍为「已升级产研」`,
   /**
-   * 超 N 天未确认 → 视为已解决，自动结案 + 下送调研（B7）。
+   * 超 N 天未确认 → 视为已解决，自动关闭工单（B7 + B32）。
    * 这是**履历**，记的是已经发生的事，故据实写出当时生效的天数；
    * ⚠️ 界面上的**预告性**提示不能带天数（N 待业务定），见 `XIAOZHI_TIP` 外的 Tab 文案。
    */
   confirmTimeoutClosed: (days: number) =>
-    `超 ${days} 天未收到${XIAOZHI_CONFIRM_ACTOR}确认，视为已解决，自动结案并下送调研`,
-  /** 调研短信（D12 / D14②）：发给**提报人**本人 */
-  surveySms: (no: string) => `已向${XIAOZHI_CONFIRM_ACTOR}发送满意度调研短信（工单号：${no}）`,
+    `超 ${days} 天未收到${XIAOZHI_CONFIRM_ACTOR}确认，视为已解决，自动关闭工单`,
 } as const;
 
-/** 站内通知 / 短信文案 */
+/** 站内通知 / 对客通知文案 */
 export const XIAOZHI_NOTICE = {
   /** 新单进工单池待领取（D21：一个大组、进池自己领） */
   pooled: (no: string) => `${no}已进入${XIAOZHI_POOL_GROUP_NAME}工单池，待领取`,
   /** 办结回传后不关单，等提报人确认（B5） */
   rdSettled: (no: string) => `${no}产研已办结，待${XIAOZHI_CONFIRM_ACTOR}确认是否解决`,
+  /**
+   * 🔴 **对客的完成通知**（一·补 B28 / B34）—— 不是调研、不含满意度评价。
+   * 由**工单系统**发，通道二选一（有客户域账号走 IM，否则走短信）。
+   */
+  completed: (no: string) =>
+    `${no}您反馈的问题已完成处理，请在${XIAOZHI_CONFIRM_APP}确认是否解决`,
   /** 提报人确认未解决 → 系统已自动回传产研（B5② / B8），词序照 PRD L420 */
   returnedToRd: (no: string, times: number) =>
     `${no}${XIAOZHI_CONFIRM_ACTOR}确认未解决，系统已自动回传产研（已回传产研 ${times} 次）`,
-  /** 确认解决 / 超时视为解决 → 已结案（B5① / B7） */
-  closed: (no: string) => `${no}已结案并下送调研`,
+  /** 产研因信息不全退回 → 回到创建人 / 最后编辑人手上（B31 / B33） */
+  returnedByRd: (no: string, who: string) =>
+    `${no}产研因信息不全退回，已转「已退回」并交回 ${who}，请补充信息后重新提交产研`,
+  /** 确认解决 / 超时视为解决 / 坐席自办关闭 → 已关闭（B5① / B7 / B32） */
+  closed: (no: string) => `${no}已关闭`,
 } as const;
 
 /**
- * 调研短信由**工单系统**发（D14②）；产研的「解决结果通知」短信由 **TPD 自己**发（D14①），
- * 工单系统不重复发送。调研发给**提报人**本人（D12；称谓照 B19），回「未解决」不拉回（D13）。
+ * 🔴 **小智工单全程无调研环节**（一·补 B28，**D12 / D14 / B18 整条作废**）：
+ * 不发调研短信、不进「调研中」、没有满意度评价，处理页「调研记录」Tab 在小智单上不渲染。
+ *
+ * 取而代之的是产研办结后的一条**完成通知**，由**工单系统**发（B34，产研侧那条
+ * 「解决结果通知」已提对外要求关闭），通道由 `xiaozhiNoticeChannel()` 二选一。
  */
-export const XIAOZHI_SURVEY_TO_REPORTER = true;
+export const XIAOZHI_SURVEY_EXEMPT = true;
+
+/** 完成通知的两条通道（B28）：有客户域账号走 IM 消息，否则走客户手机号短信 */
+export const XIAOZHI_NOTICE_CHANNEL = { im: 'IM 消息', sms: '短信' } as const;
+
+/**
+ * 完成通知走哪条通道（一·补 B28，**二选一**）：
+ * 本单登记了客户域账号 → IM 消息；否则有客户手机号 → 短信；**两者都无 → 不发**，只留一条履历。
+ */
+export function xiaozhiNoticeChannel(
+  frontlineAccount?: string,
+  customerPhone?: string,
+): { channel: string; to: string } | null {
+  const account = frontlineAccount?.trim() ?? '';
+  if (account) return { channel: XIAOZHI_NOTICE_CHANNEL.im, to: account };
+  const phone = customerPhone?.trim() ?? '';
+  if (phone) return { channel: XIAOZHI_NOTICE_CHANNEL.sms, to: phone };
+  return null;
+}
 
 /* ------------------------------------------------------------------ */
 /* 字段组                                                               */
@@ -424,15 +473,29 @@ export const XIAOZHI_SURVEY_TO_REPORTER = true;
  */
 export interface TicketXiaozhi {
   /**
-   * 一线人员域账号 —— 🔴 **建单必填**（一·补 B24），**与走不走产研无关**。
+   * 一线人员域账号 —— 🔴 **取的是客户（校代 / 渠道商）的讯飞公司域账号**（一·补 B29），
+   * 不是建单坐席的；**选填**（B29 推翻 B24 的必填），**与走不走产研无关**。
    *
-   * 它是**提报人登录小智工单应用做「是否解决」确认的凭据**（B6）：没有它，办结回传后
-   * 既等不到确认、B7 的「超 N 天」兜底也只是白等 N 天。故存在**工单层**，
-   * 不是只存在 `rd` 里 —— 走「创建」落池自领那条路的单没有 `rd`，
+   * 它是**提报人登录小智工单应用做「是否解决」确认的凭据**（B6），按本单客户自动预填；
+   * 客户没登记域账号时留空 —— **不回落到建单人**，那等于把确认权交给了客服自己。
+   * 故存在**工单层**，不是只存在 `rd` 里 —— 未勾「升级 TPD」落池自领那条路的单没有 `rd`，
    * 凭据却一样要留下来。
    * `rd.frontlineAccount` 是推给产研那一笔的**载荷副本**（W2 建单要素之一），两者同源于建单表单。
    */
   frontlineAccount?: string;
+  /**
+   * 本单创建人（建单那一下的操作人）。产研退回时处理人要交回给他（一·补 B31 / B33）。
+   *
+   * 落在字段组上而不是每次去翻履历：退回是**接口层**驱动的（产研侧回传），
+   * 那条路上没有登录人、也不该依赖「履历里第一条 create 的 who」这种按次序找人的写法 ——
+   * 履历一旦补录或重排，找到的就是另一个人。
+   */
+  createdBy?: string;
+  /**
+   * 建单后最后一次编辑本单的人（保存工单处理表单即算一次编辑）。
+   * 产研退回时**优先交回给他**，没有则交回 `createdBy`（一·补 B31：创建人 / 编辑人）。
+   */
+  lastEditor?: string;
   /** 产研流转信息（走过产研的单才有值） */
   rd?: XiaozhiRdInfo;
   /**

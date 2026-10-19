@@ -60,6 +60,20 @@ const props = defineProps<{
   feishuEligible?: boolean;
   /** 飞书协同子状态：已关联（synced/feedback/closed）时底栏「升级」置灰 */
   feishuSync?: string;
+  /**
+   * 本单是**产研退回后待重新提交**的小智单（1130 一·补 B31 / B33：子状态「已退回」）。
+   *
+   * 🔴 **它是 `feishuSync` 那道置灰的例外**：`feishuSync ∈ {synced, feedback, closed}` 置灰「升级」，
+   * 拿的是"已经升过、别再升"这个**代理条件**；而「已退回」的语义恰恰是"这次升级已经结束、
+   * 允许重新提交" —— 判据用错了维度。退回后本单的 `rdSync` **保留真实值**（产研反馈 Tab 与
+   * 那几条历史记录要继续看得见，创建人正要照着它补信息），开闸改由本字段按**子状态**给。
+   *
+   * 🔴 **判据不在本组件算**（与 `claimable` 同形制）：组件只拿一个布尔，不自己去拼
+   * 「是小智单 ∧ 子状态是已退回」。也**不要**把这道例外加到通用单上 ——
+   * `feishuEscalateBlocked` 是共用门控，通用单的「已退回」是技术支持退回给处理人，
+   * 与飞书那条升级链路无关，放开即是改坏别人。
+   */
+  xiaozhiRdReturned?: boolean;
   /** 转售后上下文（投诉分流 + 预填 + 已有关联售后单） */
   aftersaleContext?: AftersaleContext;
   /**
@@ -165,11 +179,17 @@ const ICONS: Record<string, any> = {
   RollbackOutlined, TeamOutlined, WarningOutlined, ReloadOutlined,
 };
 
-/** 已成功关联产研反馈：底栏升级置灰，催单/二次激活改在「产研反馈」Tab */
+/**
+ * 已成功关联产研反馈：底栏升级置灰，催单/二次激活改在「产研反馈」Tab。
+ *
+ * **例外：产研退回后待重新提交的小智单**（1130 一·补 B31 / B33）——「已退回」说明这次升级
+ * 已经结束、正等着补料重提，不是「已经升过别再升」。见 `xiaozhiRdReturned` 的说明。
+ */
 const feishuEscalateBlocked = computed(() =>
-  props.feishuSync === 'synced'
-  || props.feishuSync === 'feedback'
-  || props.feishuSync === 'closed',
+  !props.xiaozhiRdReturned
+  && (props.feishuSync === 'synced'
+    || props.feishuSync === 'feedback'
+    || props.feishuSync === 'closed'),
 );
 
 const DIALOG_ACTIONS: OpActionType[] = [
@@ -470,14 +490,15 @@ const isClaimPending = computed(() => isFlashClaim.value || !!props.claimable);
 /**
  * 「升级」在已升级产研后置灰时的指路文案。
  *
- * 🔴 **小智单那一版去掉「或二次激活」** —— 二次激活在小智单上**整枚不渲染**
- * （1130 一·补 B5：确认未解决由系统自动回传，不设坐席入口，PRD §5.2）。
- * 照通用那句写就会把人指到一个在这张单上不存在的入口去。
+ * 🔴 **小智单那一版不再指向「产研反馈」Tab 的任何入口**：二次激活整枚不渲染
+ * （1130 一·补 B5：确认未解决由系统自动回传，不设坐席入口）、那枚催产研的催单也整枚不渲染
+ * （一·补 B36）。两个入口都没了还照通用那句写，就是把人指到这张单上不存在的地方去。
+ * 催单本身没取消 —— 走页头右上角那一枚，但那不是本提示该指的位置，故改为只说现状。
  * ⚠️ 通用单与刷机单仍用 `ESCALATED_TIP`，一字未动 —— 这句原先是**三处各写一份字面量**，
  * 收口成常量时顺手全量替换最容易误伤它们，故两份分开定名、按标识取。
  */
 const ESCALATED_TIP = '已升级产研反馈，请在「产研反馈」Tab 催单或二次激活';
-const ESCALATED_TIP_XIAOZHI = '已升级产研反馈，请在「产研反馈」Tab 催单';
+const ESCALATED_TIP_XIAOZHI = '已升级产研反馈，待产研回传后可再操作';
 const escalatedTip = computed(() => (props.isXiaozhi ? ESCALATED_TIP_XIAOZHI : ESCALATED_TIP));
 /** 客诉专员在刷机单上只读工单内容（M94 / M102）：底栏不出「保存」，只留风险那一枚 */
 const hideFlashSave = computed(() => !!props.isFlash && props.flashView === 'other');

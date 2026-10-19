@@ -22,8 +22,9 @@ import {
   resolveDefaultApprovalGroup,
 } from '../composables/opActions';
 import type { UploadFile } from 'ant-design-vue';
+import { XIAOZHI_RD_MODULES } from '@/mock/xiaozhi/rdModules';
 import {
-  XIAOZHI_RD_MODULES, XIAOZHI_RD_PLATFORM_AVAILABLE, XIAOZHI_RD_PRIORITIES,
+  XIAOZHI_RD_PLATFORM_AVAILABLE, XIAOZHI_RD_PRIORITIES,
   XIAOZHI_RD_PRIORITY_DEFAULT, XIAOZHI_TIP, xiaozhiReceiverOf,
 } from '../types/xiaozhi';
 
@@ -139,7 +140,8 @@ const escalate = reactive({
 
 /** 接收人（域账号）由产品模块带出、不可改（W2），与建单弹窗同一个读口 */
 const escalateReceiver = computed(() => xiaozhiReceiverOf(escalate.rdModule));
-const xiaozhiModuleOptions = XIAOZHI_RD_MODULES.map((m) => ({ value: m.name, label: m.name }));
+/** 产品模块取值源 ＝ 后台「产品模块维护」的配置（一·补 B30）；后台改了这里即时跟上 */
+const xiaozhiModuleOptions = computed(() => XIAOZHI_RD_MODULES.map((m) => ({ value: m.name, label: m.name })));
 const xiaozhiPriorityOptions = XIAOZHI_RD_PRIORITIES.map((v) => ({ value: v, label: v }));
 /** 小智单走产研通道时才出那一组字段 */
 const escalateToXiaozhiRd = computed(
@@ -310,6 +312,13 @@ const cfg = computed<DlgConfig>(() => {
   if (props.action === '升级' && escalateToFeishu.value) {
     return { ...base, title: '升级到飞书项目', okText: '确认升级飞书项目' };
   }
+  /**
+   * 小智单关闭**不走审批**（一·补 B32），点完直落终态「已关闭」，
+   * 故主按钮不能写「提交关闭审核」—— 文案说审批、行为没审批就是在骗操作人。
+   */
+  if (props.action === '关闭工单' && props.isXiaozhi) {
+    return { ...base, okText: '确认关闭' };
+  }
   return base;
 });
 
@@ -427,7 +436,8 @@ function validate(): boolean {
       return true;
     case '关闭工单':
       if (!close.reason) { message.warning('请选择关闭原因'); return false; }
-      if (!close.approvalGroup) { message.warning('请选择审核组'); return false; }
+      // 小智单不走关闭审批（一·补 B32）：表单里没有审核组这一栏，自然也不判它
+      if (!props.isXiaozhi && !close.approvalGroup) { message.warning('请选择审核组'); return false; }
       return true;
   }
   return true;
@@ -704,7 +714,7 @@ function onOk() {
       <!--
         小智单 · 升级 · 产研（1130 PRD §5.4）：产研五项 —— 产品模块 / 接收人（域账号，只读）/
         产研优先级（四档）/ 一线人员域账号（选填）/ 附件（选填）。
-        与建单弹窗「小智工单信息」卡同一组字段、同一份字典（`XIAOZHI_RD_MODULES`）。
+        与建单弹窗「小智工单信息」卡同一组字段、同一份字典（后台「产品模块维护」，一·补 B30）。
       -->
       <template v-else-if="escalateToXiaozhiRd">
         <div class="op-field-row">
@@ -846,7 +856,8 @@ function onOk() {
           :options="CLOSE_REASONS.map((r) => ({ value: r, label: r }))"
         />
       </div>
-      <div class="op-field">
+      <!-- 小智单不走关闭审批（一·补 B32）：审核组整栏不渲染，点完直落「已关闭」 -->
+      <div v-if="!isXiaozhi" class="op-field">
         <div class="op-label req">审核组</div>
         <a-select
           v-model:value="close.approvalGroup"
@@ -856,7 +867,11 @@ function onOk() {
       </div>
       <div class="op-field">
         <div class="op-label">备注</div>
-        <a-textarea v-model:value="close.note" :rows="3" placeholder="请补充关闭说明，供审核人判断..." />
+        <a-textarea
+          v-model:value="close.note"
+          :rows="3"
+          :placeholder="isXiaozhi ? '请补充关闭说明...' : '请补充关闭说明，供审核人判断...'"
+        />
       </div>
     </div>
   </OpActionModal>

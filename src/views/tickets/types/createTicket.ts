@@ -135,6 +135,14 @@ export interface CustomerInfo {
   school?: string;
   schoolTag?: string;
   serviceOwner?: string;
+  /**
+   * 客户在讯飞公司系统的域账号（1130 小智工单 一·补 B29）。
+   *
+   * 校代 / 渠道商用它登录小智工单应用，查询自己提报的单并确认是否解决（B6）。
+   * **不是人人都有**：没登记的客户这一项为空，建小智单时「一线人员域账号」就留空、
+   * 由建单人手工录入 —— **不回落到建单坐席的账号**，那会把确认权交到客服手里。
+   */
+  domainAccount?: string;
 }
 
 export function formatCustomerSubline(c: CustomerInfo, businessType?: string): string {
@@ -236,35 +244,46 @@ export interface CreateTicketFormState {
  *
  * 🔴 **本卡里没有「问题类别」**（一·补 B15）：问题类别就是咨询单的问题分类一 / 二 / 三级，
  * 走通用咨询表单那组级联控件（`problemL1 / L2 / L3`），不是小智专属新字段、不另起控件。
- * 相对 toC 在线小结，小智真正多出来的只有「是否流转研发」一项，由底栏「创建并流转」按钮
- * 表达、不作字段（D5）。
+ * 相对 toC 在线小结，小智真正多出来的只有「是否流转研发」一项，由本卡的「升级 TPD」
+ * 勾选框表达（一·补 B27）。
  *
  * 其余小结字段（话务性质 / 知识反馈 / 建单要素模版 / 三方售后工单号 / 帐号 / 密码）
  * 属在线系统、与 toC 在线共用，本轮不迁入；产品两级、问题分级、来电描述、SN 号
  * 一律取通用咨询单的既有字段（D27）。
  *
- * 故本卡实际只剩产研流转要素（产品模块 / 接收人 / 产研优先级 / 一线人员域账号 / 附件），
- * 取老系统「创建TPD工单」弹窗现状；接收人由产品模块带出、只读（W2）。
+ * 故本卡实际只剩「升级 TPD」勾选框 + 产研流转要素（产品模块 / 接收人 / 产研优先级 /
+ * 一线人员域账号），取老系统「创建TPD工单」弹窗现状；接收人由产品模块带出、只读（W2）。
+ * 附件是通用能力，在「产品问题」卡的问题描述里上传，不在本卡。
  */
 export interface CreateTicketXiaozhiForm {
-  /** 产品模块（走产研必填，W2） */
+  /**
+   * 升级 TPD（一·补 B27）：建单出口合为一枚「创建」，走哪条路由本勾选框决定 ——
+   * 不勾 ＝ 落工单池由小智团队领单；勾上 ＝ 落池留记录后由系统自动流转推产研。
+   * 产研四项**随本项动态展示**，不勾时整组不渲染。
+   */
+  escalateTpd: boolean;
+  /** 产品模块（勾了「升级 TPD」才必填，W2） */
   rdModule: string;
   /** 产研优先级（四档，照弹窗现状） */
   rdPriority: XiaozhiRdPriority;
-  /** 一线人员域账号（选填） */
+  /**
+   * 一线人员域账号 —— **客户（校代 / 渠道商）的**讯飞公司域账号、**选填**（一·补 B29）。
+   * 按本单所选客户自动预填其已登记的域账号；客户没登记就留空，由建单人手工录入或改。
+   */
   frontlineAccount: string;
 }
 
 /**
- * 「小智工单信息」卡里参与必填提示的字段。
- * - `rdModule`：**条件必填** —— 只在「创建并流转」那条路上要（走产研才用得上）；
- * - `frontlineAccount`：**无条件必填**（一·补 B24）—— 它是提报人确认链路的凭据，两个出口都要。
- * 问题分类走通用级联控件、恒有值，不需要必填提示（一·补 B15）。
+ * 「小智工单信息」卡里参与必填提示的字段 —— **只有产品模块一项**。
+ * `rdModule` 是**条件必填** —— 只在勾了「升级 TPD」时要（走产研才用得上，一·补 B27）。
+ * 「一线人员域账号」已由必填改选填（一·补 B29，推翻 B24），不再参与必填提示；
+ * 问题分类走通用级联控件、恒有值，同样不需要必填提示（一·补 B15）。
  */
-export type CreateTicketXiaozhiField = 'rdModule' | 'frontlineAccount';
+export type CreateTicketXiaozhiField = 'rdModule';
 
 export function defaultCreateTicketXiaozhiForm(): CreateTicketXiaozhiForm {
   return {
+    escalateTpd: false,
     rdModule: '',
     rdPriority: XIAOZHI_RD_PRIORITY_DEFAULT,
     frontlineAccount: '',
@@ -540,6 +559,8 @@ export const CUSTOMER_DIRECTORY: CustomerInfo[] = [
     school: '合肥市第一中学',
     schoolTag: '重点校',
     serviceOwner: '王明',
+    // 已登记讯飞域账号的客户：建小智单时「一线人员域账号」自动预填这一项（一·补 B29）
+    domainAccount: 'zhaomin9',
   },
   {
     id: 'c-003',
@@ -603,6 +624,7 @@ export const CUSTOMER_DIRECTORY: CustomerInfo[] = [
     gender: '女',
     region: '浙江省 / 杭州市 / 西湖区',
     address: '文三路90号',
+    domainAccount: 'zhangxiaoyu4',
   },
   {
     id: 'c-008',
@@ -663,6 +685,7 @@ export const CUSTOMER_DIRECTORY: CustomerInfo[] = [
     gender: '女',
     region: '江苏省 / 苏州市 / 工业园区',
     address: '星湖街328号',
+    domainAccount: 'sunli12',
   },
   {
     id: 'c-013',

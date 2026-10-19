@@ -27,8 +27,15 @@ export type XiaozhiLsKey = (typeof XIAOZHI_LS_KEYS)[keyof typeof XIAOZHI_LS_KEYS
  *   v1 的缓存里 `rdSync` 还可能是已删掉的 `'rejected'`，不丢弃就会渲染出一个不存在的状态档。
  * - v3：一·补 B24 新增工单层 `frontlineAccount`（提报人确认凭据，建单必填）。
  *   v2 的缓存里这一项是空的 —— 不丢弃的话，旧快照里的单看起来就像「违反了必填规则还建出来了」。
+ * - v4：一·补第六 / 七轮（B26–B34）。**种子与形状同时变了，必须升版**：
+ *   ① 终态由「已结案」改「已关闭」（B32）—— v3 的快照会把种子 ④ 按「已结案」盖回去；
+ *   ② 新增 `createdBy` / `lastEditor`（B31 / B33 产研退回要交回创建人 / 最后编辑人），
+ *      v3 的快照里两项都是空的，退回时找不到人可交；
+ *   ③ 新建的未认领单 `tab` 由 `'mine'` 改 `'pool'`，旧快照里那批仍是 `'mine'`，
+ *      照样在两个页签都看不见；
+ *   ④ 履历里的调研短信那一条已删、换成完成通知（B28），旧履历快照还留着调研那句。
  */
-export const XIAOZHI_CACHE_VERSION = 3;
+export const XIAOZHI_CACHE_VERSION = 4;
 
 /** 保质期：12 小时（与刷机 / 风险两条线同口径） */
 export const XIAOZHI_STALE_MS = 12 * 60 * 60 * 1000;

@@ -106,7 +106,8 @@ const confirmRow = computed<{ label: string; tone: 'wait' | 'done'; sub: string 
     return {
       label: `待${XIAOZHI_CONFIRM_ACTOR}确认`,
       tone: 'wait',
-      sub: `等待${XIAOZHI_CONFIRM_ACTOR}在${XIAOZHI_CONFIRM_APP}确认；超期未确认将视为已解决，自动结案并下送调研`,
+      // 一·补 B28：小智工单全程无调研；B32：关单走「关闭工单」，终态是「已关闭」
+      sub: `等待${XIAOZHI_CONFIRM_ACTOR}在${XIAOZHI_CONFIRM_APP}确认；超期未确认将视为已解决，自动关闭工单`,
     };
   }
   const who = props.confirmBy ? `${props.confirmBy} · ` : '';
@@ -243,6 +244,18 @@ const dunningTip = computed(() => {
   if (props.confirmState === '未确认') return `产研已办结，待${XIAOZHI_CONFIRM_ACTOR}确认，无需催单`;
   return '已结案，无需催单';
 });
+/**
+ * 本 Tab 里那枚「催单」出不出 —— 🔴 **小智单整枚不渲染**（1130 一·补 B36），不是置灰。
+ *
+ * 判据：这一枚催的是**产研**（点下去会往产研反馈时间线写一条「催单 · 请产研尽快跟进」），
+ * 而小智单的催单**内容不同步产研**（一·补 B26）—— 留着就是摆一个催不到产研的「催产研」。
+ * 催单本身**保留**：走页头右上角那一枚（与「新建补充」并排），口径未收窄。
+ *
+ * ⚠️ **只对小智单**：通用单那一枚照旧出、照旧可点、照旧往产研反馈时间线写 ——
+ * 那是它该做的事，别为小智把通用单一起关了。
+ * ⚠️ 门控走**工单维度**（`xiaozhiMode` 由 `isXiaozhiTicket(detail)` 给），不看登录角色。
+ */
+const showDunning = computed(() => !props.xiaozhiMode);
 
 /**
  * 二次激活：仅已结案可点；未结案置灰。
@@ -347,7 +360,9 @@ function onDunning() {
           </div>
         </div>
         <div v-if="isAssociated && !readonly" class="fs-sheet-actions">
+          <!-- 「催单」在小智单上整枚不渲染（1130 一·补 B36），不是置灰；页头那两枚催补照旧 -->
           <button
+            v-if="showDunning"
             type="button"
             class="action-btn"
             :disabled="!dunningEnabled"

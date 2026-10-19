@@ -218,30 +218,31 @@ function scrollToFirstFlashError() {
 }
 
 /**
- * 小智单提交（1130 小智工单 D5 / D6）：
- * - 「创建」→ 落工单池，小智团队领单处理结案；
- * - 「创建并流转」→ 落池留记录后由**系统自动流转**推产研，本单置「已升级产研」、处理人不转移。
+ * 小智单提交（1130 小智工单 D5 / D6）。出口只有一枚「创建」，走哪条路看「小智工单信息」卡上的
+ * 「升级 TPD」勾选框（一·补 B27）：
+ * - 未勾 → 落工单池，小智团队领单处理结案；
+ * - 勾上 → 落池留记录后由**系统自动流转**推产研，本单置「已升级产研」、处理人＝系统。
  * 校验与建单都走小智服务（`stores/xiaozhi.ts`），不走 buildTicket。
  */
-function onCreateXiaozhi(escalate: boolean, processAfter = false) {
+function onCreateXiaozhi(processAfter = false) {
   submitting.value = true;
-  const res = submitXiaozhi(escalate);
+  const res = submitXiaozhi();
   submitting.value = false;
   if (!res) {
     scrollToFirstFlashError();
     return;
   }
-  const { ticket, degraded } = res;
+  const { ticket, degraded, escalated } = res;
   emit('created', ticket, processAfter);
   /**
    * 三句分开（PRD §2）：
-   * ① 「创建」→ 已创建；② 「创建并流转」且流转成了 → 已创建并已流转产研；
-   * ③ 「创建并流转」但产研平台不可用 → **工单已创建、留在工单池**，原样出那句降级提示。
+   * ① 未勾「升级 TPD」→ 已创建；② 勾上且流转成了 → 已创建并已流转产研；
+   * ③ 勾上但产研平台不可用 → **工单已创建、留在工单池**，原样出那句降级提示。
    * ③ 用 warning 不用 success —— 它是「成了一半」，报成功会让人以为已经推给产研了。
    */
   if (degraded) message.warning(XIAOZHI_TIP.rdPlatformDownOnCreate);
   else message.success(
-    escalate ? XIAOZHI_TOAST.createdAndEscalated(ticket.no) : XIAOZHI_TOAST.created(ticket.no),
+    escalated ? XIAOZHI_TOAST.createdAndEscalated(ticket.no) : XIAOZHI_TOAST.created(ticket.no),
   );
   if (activeDraftId.value) { draftStore.remove(activeDraftId.value); activeDraftId.value = null; }
   emit('update:open', false);
@@ -250,7 +251,7 @@ function onCreateXiaozhi(escalate: boolean, processAfter = false) {
 
 function onCreate(processAfter = false) {
   if (isXiaozhiType.value) {
-    onCreateXiaozhi(false, processAfter);
+    onCreateXiaozhi(processAfter);
     return;
   }
   if (isFlashType.value) {
@@ -872,22 +873,13 @@ watch(
           创建
         </button>
         <!--
-          小智单底栏**只留「创建 / 创建并流转」两枚**（一·补 B11）：
-          「创建并处理」是沿用通用单带进来的第三枚，小智只有「落池自领」与「直通产研」两条路径（D5），
-          多一枚就是多一条口径上不存在的路。非小智单照旧三枚，行为未变。
+          小智单底栏**只留「取消 / 存草稿 / 创建」三枚**（一·补 B27，**推翻 B11** 的两枚建单按钮）：
+          「落池自领」与「直通产研」两条路径（D5）改由「小智工单信息」卡上的「升级 TPD」
+          勾选框分叉，故底栏不再有第二枚建单按钮；「创建并处理」本就不给小智单出。
+          非小智单照旧三枚，行为未变。
         -->
         <button v-if="!isXiaozhiType" type="button" class="btn-ghost" :disabled="submitting" @click="onCreate(true)">
           创建并处理
-        </button>
-        <!-- 小智第二枚（1130 D5）：落工单池留记录后由系统自动流转推产研，非小智单不出 -->
-        <button
-          v-if="isXiaozhiType"
-          type="button"
-          class="btn-ghost"
-          :disabled="submitting"
-          @click="onCreateXiaozhi(true, false)"
-        >
-          创建并流转
         </button>
       </div>
     </div>
