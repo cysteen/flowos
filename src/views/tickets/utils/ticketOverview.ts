@@ -8,6 +8,8 @@ export const LATEST_HANDLING_ACTION = {
   PROCESS: '提交处理结果',
   TECH: '技术支持处理结果',
   REGISTER: '登记工单',
+  /** 刷机单「最新处理」卡 · 刷机处理记录块 */
+  FLASH_RECORD: '提交刷机处理记录',
 } as const;
 
 /** 展示用：优先 action，否则按 source / role 推断 */

@@ -5,7 +5,12 @@ import OpAiInsight from './OpAiInsight.vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import type { InsightAction } from '@/views/tickets/types/operation';
 import type { TicketFlash } from '@/views/tickets/types/flash';
-import { latestWhenText, resolveLatestHandlingAction, type FlashRecordBlock } from '@/views/tickets/utils/ticketOverview';
+import {
+  LATEST_HANDLING_ACTION,
+  latestWhenText,
+  resolveLatestHandlingAction,
+  type FlashRecordBlock,
+} from '@/views/tickets/utils/ticketOverview';
 
 type OverviewCol = 'desc' | 'stat' | 'handle';
 
@@ -129,7 +134,7 @@ watch(expandedCol, (v) => emit('expand-change', v !== null), { immediate: true }
           <div v-if="flash && flashRecord" class="handle-item">
             <div class="hi-meta">
               <span v-if="flashRecord.who" class="hi-who">{{ flashRecord.who }}</span>
-              <span class="hi-action">刷机处理记录{{ flashRecord.result ? ` · ${flashRecord.result}` : '' }}</span>
+              <span class="hi-action">{{ LATEST_HANDLING_ACTION.FLASH_RECORD }}</span>
               <span v-if="flashRecord.when" class="hi-when">{{ flashRecord.when }}</span>
             </div>
             <div v-if="flashRecord.text" class="hi-text">{{ flashRecord.text }}</div>

@@ -2,7 +2,7 @@
 /**
  * 刷机单「工单处理」Tab 第一块：自动刷机结果（只读卡，PRD §5.2 / 页面规格 P4、P0-11、P0′-14）。
  * 卡上无操作按钮；卡头标题右侧紧挨外链「智能硬件平台」，行尾为最近一次回传 / 推送时间（「MDM 平台」在刷机信息区块头，PRD §5.3）。
- * 卡内直接展示全部明细：逐项三列排布（当前结果 / 失败原因 / 转人工原因 / 推送次数 / 建单校验结果）＋ 刷机记录表（建单校验一行 ＋ 每次推送一行，时间正序，至少一行）。
+ * 卡内直接展示全部明细：与「刷机信息」同规格的三列 label/value 网格（当前结果 / 失败原因 / 转人工原因 / 推送次数 / 建单校验结果）＋ 刷机记录表（建单校验一行 ＋ 每次推送一行，时间正序，至少一行）。
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { ExportOutlined, ThunderboltOutlined } from '@ant-design/icons-vue';
@@ -118,30 +118,30 @@ const FAIL_TEXT_ONE_COL = 12;
 
     <div class="fr-body">
       <dl class="fr-kv">
-        <div v-if="pushed" class="fr-row" :class="{ 'span-2': waiting }">
+        <div v-if="pushed" class="fr-item" :class="{ 'span-2': waiting }">
           <dt>当前结果</dt>
           <dd>
-            <span class="fr-outcome" :class="`tone-${outcomeTone}`">{{ flashRunResultText(state.outcome) }}</span>
+            <span class="fr-val" :class="`tone-${outcomeTone}`">{{ flashRunResultText(state.outcome) }}</span>
             <span v-if="waiting" class="fr-elapsed"> · 已推送 {{ elapsedText }}</span>
           </dd>
         </div>
 
-        <div v-if="failText" class="fr-row" :class="{ 'span-2': failText.length > FAIL_TEXT_ONE_COL }">
-          <dt>失败原因</dt>
-          <dd>{{ failText }}</dd>
-        </div>
-
-        <div v-if="state.handoffReason" class="fr-row">
-          <dt>转人工原因</dt>
-          <dd>{{ state.handoffReason }}</dd>
-        </div>
-
-        <div v-if="pushed" class="fr-row">
+        <div v-if="pushed" class="fr-item">
           <dt>推送次数</dt>
-          <dd>{{ state.pushCount }} 次</dd>
+          <dd><span class="fr-val">{{ state.pushCount }} 次</span></dd>
         </div>
 
-        <div class="fr-row span-2">
+        <div v-if="failText" class="fr-item" :class="{ 'span-2': failText.length > FAIL_TEXT_ONE_COL }">
+          <dt>失败原因</dt>
+          <dd><span class="fr-val">{{ failText }}</span></dd>
+        </div>
+
+        <div v-if="state.handoffReason" class="fr-item">
+          <dt>转人工原因</dt>
+          <dd><span class="fr-val">{{ state.handoffReason }}</span></dd>
+        </div>
+
+        <div class="fr-item span-3">
           <dt>建单校验结果</dt>
           <dd>
             <span v-if="!verify" class="fr-muted">未校验</span>
@@ -173,7 +173,7 @@ const FAIL_TEXT_ONE_COL = 12;
               <td class="num">{{ r.at }}</td>
               <td>{{ r.initiator }}</td>
               <td><span :class="`tone-${r.resultTone}`">{{ r.result }}</span></td>
-              <td>{{ r.fail }}</td>
+              <td class="fail-cell">{{ r.fail }}</td>
             </tr>
           </tbody>
         </table>
@@ -198,42 +198,42 @@ const FAIL_TEXT_ONE_COL = 12;
 .fr-link:hover { text-decoration: underline; }
 /* 行尾时间（11px、#9ca3af、右对齐） */
 .fr-when { font-size: 11px; color: #9ca3af; margin-left: auto; white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* 与 OpFlashInfoBlock（.fi-body / .fi-grid / .fi-item）同规格，保证 process-top 两块视觉一致 */
 .fr-body {
   display: flex; flex-direction: column; gap: 8px;
   padding: 8px 12px 10px; background: #f8fafc;
   border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;
 }
-/* 逐项三列排布，标签宽、字号、行距与下方「刷机信息」区块一致；长值（建单校验结果、较长的失败原因、自动刷机中计时）占两列 */
 .fr-kv {
   display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px 16px; margin: 0;
 }
-.fr-row { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 12px; line-height: 20px; }
-.fr-row.span-2 { grid-column: span 2; }
-.fr-row dt { flex: none; width: 72px; color: #6b7280; }
-.fr-row dd { flex: 1; min-width: 0; margin: 0; color: #111827; font-weight: 500; }
+.fr-item { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 12px; line-height: 20px; }
+.fr-item.span-2 { grid-column: span 2; }
+.fr-item.span-3 { grid-column: 1 / -1; }
+.fr-item dt { flex: none; width: 72px; color: #6b7280; }
+.fr-item dd { flex: 1; min-width: 0; margin: 0; color: #111827; }
+.fr-val { font-weight: 500; word-break: break-word; }
 .fr-verify b { font-weight: 600; }
 .fr-sep { color: #9ca3af; margin: 0 4px; }
 .fr-muted { color: #6b7280; }
-.fr-outcome { font-weight: 600; }
 .fr-elapsed { color: #6b7280; font-variant-numeric: tabular-nums; }
-.tone-ok { color: #059669; }
-.tone-bad { color: #dc2626; }
-.tone-auto { color: #7c3aed; }
-.tone-muted { color: #6b7280; }
+.tone-ok { color: #059669; font-weight: 600; }
+.tone-bad { color: #dc2626; font-weight: 600; }
+.tone-auto { color: #7c3aed; font-weight: 600; }
+.tone-muted { color: #6b7280; font-weight: 500; }
 .fr-table-wrap { overflow-x: auto; background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; }
-.fr-table-title { padding: 4px 10px; font-size: 12px; line-height: 20px; font-weight: 600; color: #374151; }
+.fr-table-title { padding: 6px 10px 0; font-size: 12px; line-height: 20px; font-weight: 600; color: #374151; }
 .fr-table { width: 100%; border-collapse: collapse; font-size: 12px; line-height: 20px; table-layout: fixed; }
 .fr-table .col-at { width: 160px; }
 .fr-table .col-initiator { width: 140px; }
 .fr-table .col-result { width: 150px; }
 .fr-table th {
-  padding: 2px 10px; text-align: left; font-weight: 600; color: #6b7280;
+  padding: 6px 10px; text-align: left; font-weight: 600; color: #6b7280;
   background: #f9fafb; border-bottom: 1px solid #e5e7eb; white-space: nowrap;
 }
-.fr-table td { padding: 2px 10px; color: #374151; border-bottom: 1px solid #f3f4f6; white-space: nowrap; }
+.fr-table td { padding: 6px 10px; color: #374151; border-bottom: 1px solid #f3f4f6; white-space: nowrap; }
 .fr-table tr:last-child td { border-bottom: none; }
 .fr-table td.num { font-variant-numeric: tabular-nums; }
-/* 失败原因列可折行：建单校验两项都不通过时不撑出横向滚动 */
-.fr-table td:last-child { white-space: normal; }
+.fr-table td.fail-cell { white-space: normal; word-break: break-word; }
 </style>

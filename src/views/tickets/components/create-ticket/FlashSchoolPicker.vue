@@ -6,7 +6,7 @@
  */
 import { computed, ref, watch } from 'vue';
 import { SCHOOL_LIBRARY, findSchoolById } from '@/mock/schools';
-import { REGION_SEP, regionToArray } from '@/views/tickets/types/createTicket';
+import { REGION_SEP, filterRegionCascader, regionToArray } from '@/views/tickets/types/createTicket';
 import FormSelect from './FormSelect.vue';
 
 const props = defineProps<{
@@ -87,14 +87,18 @@ defineExpose({ regionText: computed(() => region.value.join(REGION_SEP)) });
       class="sp-region"
       :options="regionOptions"
       change-on-select
-      placeholder="省 / 市 / 区"
+      allow-clear
+      expand-trigger="hover"
+      placeholder="输入关键词搜索，或逐级选择"
+      :show-search="{ filter: filterRegionCascader, limit: 20 }"
       :status="status"
       @update:value="onRegionChange"
     />
     <FormSelect
       :value="schoolId || undefined"
       class="sp-school"
-      placeholder="请搜索或选择学校"
+      allow-clear
+      placeholder="请搜索并选择学校"
       :disabled="!region.length"
       :status="status"
       :options="schoolOptions"

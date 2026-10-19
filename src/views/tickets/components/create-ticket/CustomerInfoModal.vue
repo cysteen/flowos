@@ -6,6 +6,7 @@ import type { BusinessType, CustomerContactType, CustomerInfo } from '@/views/ti
 import { SCHOOL_LIBRARY, type SchoolRecord } from '@/mock/schools';
 import {
   REGION_SEP,
+  filterRegionCascader,
   findPhoneOwner,
   regionToArray,
 } from '@/views/tickets/types/createTicket';
@@ -157,13 +158,6 @@ const schoolLookupWarn = ref('');
 const regionValue = ref<string[]>([]);
 function onRegionChange(val: unknown) {
   draft.region = Array.isArray(val) ? (val as string[]).join(REGION_SEP) : '';
-}
-
-/** 省市区搜索：任意一级命中即返回整条路径，忽略大小写与空格 */
-function filterRegion(input: string, path: { label?: unknown }[]): boolean {
-  const q = input.trim().toLowerCase();
-  if (!q) return true;
-  return path.some((node) => String(node.label ?? '').toLowerCase().includes(q));
 }
 
 function lookupSchool(name: string) {
@@ -384,7 +378,7 @@ function onSave() {
             :options="REGION_OPTIONS"
             placeholder="输入关键词搜索，或逐级选择"
             expand-trigger="hover"
-            :show-search="{ filter: filterRegion, limit: 20 }"
+            :show-search="{ filter: filterRegionCascader, limit: 20 }"
             @change="onRegionChange"
           />
         </div>
