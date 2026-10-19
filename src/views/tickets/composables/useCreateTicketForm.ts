@@ -848,14 +848,16 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       vip: form.customer?.vip ?? false,
       // 业务分类 / 产品 / SN / 问题分类按建单所填落工单行：处理页侧栏「工单信息」只取本单（不落样例单的台账）
       businessType: form.businessType || undefined,
-      businessLine: form.businessLine || undefined,
+      // 归属业务线 / 投诉类型只在投诉渠道字段区（showChannelComplaintFields）采集；
+      // 门控关着时表单里那份是缺省值、坐席没见过，不落库
+      businessLine: showChannelComplaintFields.value ? (form.businessLine || undefined) : undefined,
       productCategory: form.productCategory || undefined,
       sn: form.deviceSn.trim() || undefined,
       problemL1: form.problemL1 || undefined,
       problemL2: form.problemL2 || undefined,
       problemL3: form.problemL3 || undefined,
       problemOccurredAt: form.problemTime.trim() || undefined,
-      complaintType: form.ticketType === '投诉' ? (form.complaintType || undefined) : undefined,
+      complaintType: showChannelComplaintFields.value ? (form.complaintType || undefined) : undefined,
       complaintL1: form.ticketType === '投诉' ? (form.complaintL1 || undefined) : undefined,
       complaintL2: form.ticketType === '投诉' ? (form.complaintL2 || undefined) : undefined,
       product: form.productName,
