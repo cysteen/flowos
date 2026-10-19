@@ -9,6 +9,7 @@ import { useFlashStore } from '@/stores/flash';
 import type { FlashActor } from '@/views/tickets/types/flash';
 import { mapUserRole } from '@/views/tickets/composables/opActions';
 import { takeOverReturnedTicket } from '@/views/tickets/composables/aftersaleEvents';
+import { claimPoolTicket } from '@/views/tickets/composables/poolClaim';
 
 /** 履历时刻 YYYY-MM-DD HH:mm */
 function nowMinuteStamp(): string {
@@ -428,24 +429,12 @@ export function useTicketWorkbench() {
     if (!t) return { ok: false, message: '' };
     return flash.claimFromPool(t.no, flashActor());
   }
-  /** 领取本组工单池中的工单 → 转入我的任务 */
+  /** 领取本组工单池中的工单 → 转入我的任务（老四类与处理页同一套落库，见 `poolClaim.ts`） */
   function claimTicket(id: string): boolean {
     const t = all.value.find((x) => x.id === id);
     if (isFlashTicket(t)) return claimFlashTicket(id).ok;
-    if (!t || t.tab !== 'pool' || t.assignee !== null) return false;
-    // 售后转回重派的回流单：直落「处理中」、首响不重计（1025 D10，只对这条链路开例外）
-    const taken = takeOverReturnedTicket(t, {
-      assignee: WORKBENCH_HANDLER, how: '领取', operator: WORKBENCH_HANDLER,
-      operatorRole: mapUserRole(user.roleKey), at: nowMinuteStamp(),
-    });
-    if (taken) {
-      Object.assign(t, taken);
-      return true;
-    }
-    t.tab = 'mine';
-    t.assignee = WORKBENCH_HANDLER;
-    t.responded = false;
-    return true;
+    if (!t) return false;
+    return claimPoolTicket(t, WORKBENCH_HANDLER, mapUserRole(user.roleKey), nowMinuteStamp());
   }
   /** 批量领取工单池工单，返回成功/失败数量 */
   function claimTickets(ids: Iterable<string>): { claimed: number; failed: number } {
