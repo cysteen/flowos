@@ -794,6 +794,8 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       title: form.title.trim(),
       smartMarks: form.ticketType === '投诉' ? ['升级'] : [],
       customer: name,
+      // 客户全景按手机号归集本单（D5）
+      customerPhone: form.customer?.phone || undefined,
       vip: form.customer?.vip ?? false,
       product: form.productName,
       problemDesc: form.description.trim(),

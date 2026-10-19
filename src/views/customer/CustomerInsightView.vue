@@ -20,7 +20,6 @@ import {
   searchCustomers,
   detectQueryKind,
   QUERY_KIND_LABEL,
-  DEMO_SEARCH_HINTS,
   type CustomerCandidate,
   type CustomerInsight,
   type CustomerTicketRow,
@@ -433,24 +432,7 @@ defineExpose({ runSearch });
 
     <!-- 未命中 -->
     <div v-else-if="notFoundFor" class="panel none-panel">
-      <div class="none-title">未找到与「{{ notFoundFor }}」匹配的客户</div>
-      <div class="none-sub">
-        当前为演示数据，仅支持 Mock 库内已建档或有过工单的手机号/姓名/工单号/SN。
-        请确认手机号是否为完整 11 位且存在于库中。
-      </div>
-      <div class="demo-hints">
-        <span class="demo-hints-label">可试搜：</span>
-        <button
-          v-for="h in DEMO_SEARCH_HINTS"
-          :key="h.query"
-          type="button"
-          class="demo-hint-chip"
-          :title="h.tip"
-          @click="runSearch(h.query)"
-        >
-          {{ h.label }}<span class="demo-hint-q">{{ h.query }}</span>
-        </button>
-      </div>
+      <div class="none-title">未找到匹配的客户或工单</div>
     </div>
 
     <!-- 多候选 -->
@@ -961,43 +943,6 @@ defineExpose({ runSearch });
 
 .none-panel { display: flex; flex-direction: column; gap: 8px; padding: 20px; }
 .none-title { font-size: 14px; font-weight: 600; color: #374151; }
-.none-sub { font-size: 12px; color: #9ca3af; line-height: 1.6; }
-.demo-hints {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-top: 4px;
-}
-.demo-hints-label {
-  font-size: 12px;
-  color: #6b7280;
-  flex: none;
-}
-.demo-hint-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  background: #f9fafb;
-  font-size: 12px;
-  color: #374151;
-  cursor: pointer;
-  font-family: inherit;
-}
-.demo-hint-chip:hover {
-  border-color: #bfdbfe;
-  background: #eff6ff;
-  color: #1a6fff;
-}
-.demo-hint-q {
-  font-size: 11px;
-  color: #9ca3af;
-  font-variant-numeric: tabular-nums;
-}
-.demo-hint-chip:hover .demo-hint-q { color: #60a5fa; }
 
 .cand-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 .cand-row {

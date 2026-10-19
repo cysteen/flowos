@@ -596,14 +596,20 @@ function sortByCreatedDesc(a: CustomerTicketRow, b: CustomerTicketRow): number {
 
 const PROFILE_BY_PHONE = new Map(PROFILES.map((p) => [p.phone, p]));
 
-/** 工单库中出现过的手机号 → 该客户的全部在办/已办单 */
-const LIVE_BY_PHONE = new Map<string, Ticket[]>();
-TICKETS.forEach((t) => {
-  if (!t.customerPhone) return;
-  const arr = LIVE_BY_PHONE.get(t.customerPhone);
-  if (arr) arr.push(t);
-  else LIVE_BY_PHONE.set(t.customerPhone, [t]);
-});
+/**
+ * 工单库中出现过的手机号 → 该客户的全部在办/已办单。
+ * 每次查询按工单库现值重建：运行时新建的单（坐席建单、用户提报、关联建出）同样查得到。
+ */
+function liveByPhone(): Map<string, Ticket[]> {
+  const map = new Map<string, Ticket[]>();
+  TICKETS.forEach((t) => {
+    if (!t.customerPhone) return;
+    const arr = map.get(t.customerPhone);
+    if (arr) arr.push(t);
+    else map.set(t.customerPhone, [t]);
+  });
+  return map;
+}
 
 const ROLE_FROM_TAG: CustomerRole[] = ['记者', '老师', '校长', '自媒体'];
 
@@ -650,7 +656,7 @@ function riskFlagsOf(profile: CustomerProfile, rows: CustomerTicketRow[], metric
 
 /** 组装某手机号的客户全景；号码在工单库与档案中均不存在时返回 null */
 export function buildCustomerInsight(phone: string): CustomerInsight | null {
-  const live = LIVE_BY_PHONE.get(phone) ?? [];
+  const live = liveByPhone().get(phone) ?? [];
   const profile = PROFILE_BY_PHONE.get(phone) ?? (live.length ? fallbackProfile(phone, live) : null);
   if (!profile) return null;
 
@@ -719,7 +725,7 @@ export function detectQueryKind(raw: string): QueryKind {
 
 /** 全部可查客户的手机号（档案 + 工单库） */
 function allPhones(): string[] {
-  return [...new Set([...PROFILE_BY_PHONE.keys(), ...LIVE_BY_PHONE.keys()])];
+  return [...new Set([...PROFILE_BY_PHONE.keys(), ...liveByPhone().keys()])];
 }
 
 function toCandidate(phone: string, reason: string): CustomerCandidate | null {
@@ -772,10 +778,11 @@ export function searchCustomers(raw: string): CustomerSearchResult {
   if (kind === 'sn') {
     const key = q.toUpperCase();
     const out: CustomerCandidate[] = [];
+    const live = liveByPhone();
     allPhones().forEach((phone) => {
       const insight = buildCustomerInsight(phone);
       const device = insight?.profile.purchases.find((d) => d.sn?.toUpperCase().includes(key));
-      const ticket = LIVE_BY_PHONE.get(phone)?.find((t) => t.sn?.toUpperCase().includes(key));
+      const ticket = live.get(phone)?.find((t) => t.sn?.toUpperCase().includes(key));
       if (device || ticket) {
         const c = toCandidate(phone, `设备 ${device?.sn ?? ticket?.sn} 的登记客户`);
         if (c) out.push(c);
