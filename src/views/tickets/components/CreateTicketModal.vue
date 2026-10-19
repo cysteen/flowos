@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { message } from 'ant-design-vue';
 import { useTicketDraftStore } from '@/stores/ticketDrafts';
 import { useUserStore } from '@/stores/user';
@@ -100,6 +100,7 @@ const {
   isXiaozhiType,
   xiaozhiErrors,
   submitXiaozhi,
+  applyXiaozhiFrontlineDefault,
 } = useCreateTicketForm(() => props.prefill);
 
 const router = useRouter();
@@ -313,6 +314,9 @@ watch(
       syncTitle();
       activeDraftId.value = null;
     }
+    void nextTick(() => {
+      if (isXiaozhiType.value) applyXiaozhiFrontlineDefault(!draft);
+    });
   },
 );
 
@@ -652,13 +656,13 @@ watch(
           <!-- 问题描述篇幅长，整行收尾 -->
           <div v-if="!isFlashType" class="inline-field desc-field">
             <label class="inline-label xl"><span class="req">*</span>问题描述</label>
-            <!-- 带附件文本框：与处理页问题原因、处理结果同一组件（OpTextareaAttach），附件随工单保存 -->
+            <!-- 带附件文本框：与处理页问题原因、处理结果同一组件；小智单附件亦在此上传，不放在「小智工单信息」卡 -->
             <div class="inline-control field-control desc-attach" :class="{ 'has-error': errors.description }">
               <OpTextareaAttach
                 v-model="form.description"
                 v-model:attachments="form.descriptionAttachments"
                 :min-input-height="60"
-                placeholder="请描述客户反馈的问题与诉求"
+                :placeholder="isXiaozhiType ? '请描述问题与诉求，可上传截图或文档' : '请描述客户反馈的问题与诉求'"
               />
             </div>
           </div>
@@ -833,7 +837,7 @@ watch(
             v-model:value="form.title"
             class="inline-control field-control"
             :status="errors.title ? 'error' : ''"
-            placeholder="产品名称 + 问题三级 + 工单来源"
+            :placeholder="isXiaozhiType ? '小智 · 产品名称 + 问题三级 + 工单来源' : '产品名称 + 问题三级 + 工单来源'"
             @input="onTitleInput"
           />
         </div>

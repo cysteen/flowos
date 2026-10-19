@@ -44,6 +44,7 @@ import {
 } from '@/views/tickets/types/flash';
 import {
   XIAOZHI_BUSINESS_TYPE, XIAOZHI_TICKET_SOURCE, XIAOZHI_TICKET_TYPE, XIAOZHI_TIP,
+  xiaozhiTicketTitle,
 } from '@/views/tickets/types/xiaozhi';
 import {
   useXiaozhiStore,
@@ -411,6 +412,19 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     (Object.keys(xiaozhiErrors) as CreateTicketXiaozhiField[]).forEach((k) => { xiaozhiErrors[k] = ''; });
   }
 
+  /**
+   * 一线人员域账号默认＝建单人登录用户名（`domainAccount`，非昵称）。
+   * `force`：打开小智建单弹窗时置 true，始终与当前登录人同步。
+   */
+  function applyXiaozhiFrontlineDefault(force = false) {
+    if (!isXiaozhiType.value) return;
+    const acc = useUserStore().domainAccount.trim();
+    if (!acc) return;
+    if (force || !form.xiaozhi.frontlineAccount.trim()) {
+      form.xiaozhi.frontlineAccount = acc;
+    }
+  }
+
   // 改动小智信息：已补上的字段收起必填提示
   watch(
     () => form.xiaozhi,
@@ -444,7 +458,8 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       rdModule: f.rdModule ?? '',
       rdPriority: f.rdPriority,
       frontlineAccount: f.frontlineAccount ?? '',
-      attachments: [...(f.attachments ?? [])],
+      /** 与通用咨询单同源：问题描述区上传的附件；流转产研时一并带入 rd.attachments */
+      attachments: [...form.descriptionAttachments],
     };
   }
 
@@ -462,6 +477,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       problemL1: form.problemL1,
       problemL2: form.problemL2,
       problemL3: form.problemL3,
+      problemDescAttachments: [...form.descriptionAttachments],
     };
   }
 
@@ -508,7 +524,9 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     // 刷机单标题强制前缀「刷机」（1013 A3）
     form.title = isFlashType.value
       ? flashTicketTitle(form.productName, form.problemL3, form.ticketSource)
-      : buildAutoTitle(form.productName, form.problemL3, form.ticketSource);
+      : isXiaozhiType.value
+        ? xiaozhiTicketTitle(form.productName, form.problemL3, form.ticketSource)
+        : buildAutoTitle(form.productName, form.problemL3, form.ticketSource);
   }
 
   function reset() {
@@ -606,6 +624,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
         complaintNo: p.complaintNo ?? '',
       }];
     }
+    if (p.xiaozhiScene) applyXiaozhiFrontlineDefault(true);
   }
 
   function onTitleInput() {
@@ -860,5 +879,6 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     isXiaozhiType,
     xiaozhiErrors,
     submitXiaozhi,
+    applyXiaozhiFrontlineDefault,
   };
 }

@@ -253,8 +253,6 @@ export interface CreateTicketXiaozhiForm {
   rdPriority: XiaozhiRdPriority;
   /** 一线人员域账号（选填） */
   frontlineAccount: string;
-  /** 附件（文件名，选填） */
-  attachments: string[];
 }
 
 /**
@@ -270,7 +268,6 @@ export function defaultCreateTicketXiaozhiForm(): CreateTicketXiaozhiForm {
     rdModule: '',
     rdPriority: XIAOZHI_RD_PRIORITY_DEFAULT,
     frontlineAccount: '',
-    attachments: [],
   };
 }
 

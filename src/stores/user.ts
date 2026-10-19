@@ -78,6 +78,10 @@ export const useUserStore = defineStore('user', () => {
 
   const isLoggedIn = computed(() => !!session.value);
   const account = computed(() => session.value?.account ?? '');
+  /** 域账号：优先 Mock 用户配置，否则回落登录账号 */
+  const domainAccount = computed(
+    () => current.value.domainAccount?.trim() || session.value?.account?.trim() || '',
+  );
   const name = computed(() => current.value.name);
   const roleKey = computed<RoleKey>(() => current.value.roleKey);
   const role = computed<RoleDef>(() => ROLES[current.value.roleKey]);
@@ -188,6 +192,7 @@ export const useUserStore = defineStore('user', () => {
     session,
     isLoggedIn,
     account,
+    domainAccount,
     current,
     name,
     roleKey,

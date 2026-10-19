@@ -8,7 +8,6 @@ import { useUserStore } from '@/stores/user';
 import TicketTabs from './components/TicketTabs.vue';
 import RiskReportPoolPanel from './components/RiskReportPoolPanel.vue';
 import { TICKET_LIST_COLUMN_KEYS } from '@/views/tickets/composables/ticketListColumnCatalog';
-import { useFlashStore } from '@/stores/flash';
 import {
   FLASH_POOL_TAB,
   isPoolFamily,
@@ -55,7 +54,6 @@ import type { CreateTicketPrefill, Ticket } from './types/ticket';
 const user = useUserStore();
 const router = useRouter();
 const wb = useTicketWorkbench();
-const flashStore = useFlashStore();
 const headerTabCounts = wb.headerTabCounts;
 const riskReports = useRiskReportStore();
 
@@ -157,7 +155,7 @@ const FLASH_POOL_EXTRA_COLUMNS = [
   { key: 'flashHandoff', label: '转人工原因', width: 120 },
   { key: 'flashFail', label: '失败原因', width: 230 },
   { key: 'flashModel', label: '产品名称', width: 210 },
-  { key: 'flashPoolAt', label: '进池时间', width: 140 },
+  { key: 'flashPoolAt', label: '创建时间', width: 140 },
 ];
 const FLASH_POOL_COLUMN_WIDTHS = { title: 380, action: 96 };
 const FLASH_POOL_COLUMN_WIDTHS_KEY = 'flowos-flash-pool-column-widths';
@@ -790,7 +788,7 @@ function onConfirmSaveFilter(name: string) {
               <span class="flash-product" :title="ticket.flash?.info.productModel">{{ ticket.flash?.info.productModel || '—' }}</span>
             </template>
             <template #cell-flashPoolAt="{ ticket }">
-              <span class="flash-plain">{{ flashStore.poolEnteredAtOf(ticket.no).slice(0, 16) || '—' }}</span>
+              <span class="flash-plain">{{ (ticket.createdAt ?? '').slice(0, 16) || '—' }}</span>
             </template>
           </TicketRichList>
           <div class="pager">

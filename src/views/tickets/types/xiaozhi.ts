@@ -14,6 +14,11 @@ export const XIAOZHI_TICKET_TYPE = '咨询' as const;
 /** 小智工单标识的展示名（类型徽章旁的标识、查询筛选项、页头徽章） */
 export const XIAOZHI_MARK_LABEL = '小智';
 
+/** 小智工单标题：「小智 · 〈产品名称〉 · 〈问题三级〉 · 〈工单来源〉」，空段跳过（口径对齐刷机单标题） */
+export function xiaozhiTicketTitle(productName: string, problemL3?: string, source?: string): string {
+  return [XIAOZHI_MARK_LABEL, productName, problemL3, source].filter((s) => !!s?.trim()).join(' · ');
+}
+
 /**
  * 是否小智工单 —— **全仓唯一判据**（D1）：读工单上的 `isXiaozhi` 标识。
  * 标识在建单时由小智建单入口写入，此后不随配置变化、不可修改；

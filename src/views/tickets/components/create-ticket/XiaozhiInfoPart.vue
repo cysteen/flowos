@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 新建工单 · 「小智工单信息」卡（1130 小智工单 D5 / D27 / W2 / 一·补 B15）。
+ * 新建工单 · 「小智工单专属」卡（1130 小智工单 D5 / D27 / W2 / 一·补 B15）。
  *
  * D27 口径是**最大限度复用通用咨询表单**，故本卡只放确有差异的小智专属要素 ——
  * 实际就只剩**产研流转信息**一组：取老系统「创建TPD工单」弹窗现状五项，
@@ -10,11 +10,12 @@
  * 填在通用咨询表单的「产品问题」卡里。在这儿再放一个「问题类别」下拉，等于同一件事
  * 在一张弹窗上问两遍，且两份值域永远对不齐。
  *
+ * 🔴 **附件不在本卡**：与通用咨询单一致，在「产品问题」卡的「问题描述」里上传（OpTextareaAttach）。
+ *
  * 产品两级、问题分级、来电描述、SN 号一律用通用咨询单的既有字段，不在本卡重复。
  */
 import { computed } from 'vue';
-import { PlusOutlined } from '@ant-design/icons-vue';
-import type { UploadFile } from 'ant-design-vue';
+import { useUserStore } from '@/stores/user';
 import {
   XIAOZHI_FIELD_LABELS as L, XIAOZHI_RD_MODULES, XIAOZHI_RD_PRIORITIES,
   xiaozhiReceiverOf,
@@ -28,64 +29,28 @@ defineProps<{
   errors: Record<CreateTicketXiaozhiField, string>;
 }>();
 
+const user = useUserStore();
+
 const moduleOptions = XIAOZHI_RD_MODULES.map((m) => ({ value: m.name, label: m.name }));
 const priorityOptions = XIAOZHI_RD_PRIORITIES.map((v) => ({ value: v, label: v }));
 
+/** 占位提示：标明默认取建单人登录用户名（域账号） */
+const frontlinePlaceholder = computed(() => {
+  const acc = user.domainAccount.trim();
+  return acc ? `默认 ${acc}（建单人用户名）` : '请输入一线人员域账号';
+});
+
 /** 接收人（域账号）由产品模块带出，不可改（W2） */
 const receiver = computed(() => xiaozhiReceiverOf(info.value.rdModule));
-
-const attachmentList = computed<UploadFile[]>(() =>
-  (info.value.attachments ?? []).map((name, i) => ({ uid: `xz-att-${i}-${name}`, name, status: 'done' })),
-);
 
 /** 下拉空值按 undefined 交给 a-select，才会显示「请选择」 */
 function setSelect(key: 'rdModule', v: unknown) {
   info.value[key] = v == null ? '' : String(v);
 }
-
-function beforeUpload() {
-  return false;
-}
-
-function onAttachmentChange({ fileList }: { fileList: UploadFile[] }) {
-  info.value.attachments = fileList.map((f) => f.name);
-}
 </script>
 
 <template>
-  <CreateTicketPartCard title="小智工单信息" :body-gap="8">
-    <!--
-      🔴 **一线人员域账号排在最前、且是本卡唯一的无条件必填项**（一·补 B24）：
-      它与下面那组「流转产研」要素**不是一回事** —— 走「创建」落池自领的单也要它，
-      故不放进「流转产研」小节里，免得被读成「不流转就不用填」。
-    -->
-    <div class="xz-grid">
-      <div class="xz-field">
-        <label class="xz-label"><span class="req">*</span>{{ L.frontlineAccount }}</label>
-        <div class="xz-control">
-          <a-input
-            v-model:value="info.frontlineAccount"
-            class="xz-input"
-            :status="errors.frontlineAccount ? 'error' : ''"
-            placeholder="请输入一线人员域账号"
-          />
-          <div v-if="errors.frontlineAccount" class="xz-error">{{ errors.frontlineAccount }}</div>
-        </div>
-      </div>
-    </div>
-
-    <!--
-      🔴 **本组三项是条件必填**（对读 #5）：只有点「创建并流转」那条路才要（走产研才用得上），
-      点「创建」落池自领时一项都不要。
-
-      星号**照常画**，范围由**小节标题**说清 —— 两者合起来读即「这一组在流转产研时必填」。
-      ⚠️ 不要改成「去掉星号」来迁就条件性：那是把承诺降下来，而不是把范围说清楚，
-      结果是真正必填的时候反而没有任何提示。
-      ⚠️ 也不要反过来把校验改成无条件 —— 那会把「创建」这条路（D5 落池自领）一起挡死。
-      ⚠️ 「一线人员域账号」**不在本小节内**（见卡片最前），它的星号是**无条件**必填（B24）；
-      两种必填靠**分组**区分，不靠有没有星号区分。
-    -->
-    <div class="xz-sub">流转产研<span class="xz-sub-note">（流转时必填）</span></div>
+  <CreateTicketPartCard title="小智工单专属" :body-gap="8">
     <div class="xz-grid">
       <div class="xz-field">
         <label class="xz-label"><span class="req">*</span>{{ L.rdModule }}</label>
@@ -112,24 +77,28 @@ function onAttachmentChange({ fileList }: { fileList: UploadFile[] }) {
       <div class="xz-field">
         <label class="xz-label"><span class="req">*</span>{{ L.rdPriority }}</label>
         <div class="xz-control">
-          <a-radio-group v-model:value="info.rdPriority" class="xz-radios" :options="priorityOptions" />
+          <FormSelect
+            v-model:value="info.rdPriority"
+            class="xz-input"
+            size="middle"
+            placeholder="请选择"
+            :options="priorityOptions"
+          />
         </div>
       </div>
-    </div>
 
-    <div class="xz-field xz-upload">
-      <label class="xz-label">{{ L.attachments }}</label>
-      <div class="xz-control">
-        <a-upload
-          :file-list="attachmentList"
-          :before-upload="beforeUpload"
-          @change="onAttachmentChange"
-        >
-          <a-button size="small">
-            <PlusOutlined />
-            上传附件
-          </a-button>
-        </a-upload>
+      <!-- 一·补 B24：无条件必填，默认建单人登录域账号（非昵称） -->
+      <div class="xz-field">
+        <label class="xz-label"><span class="req">*</span>{{ L.frontlineAccount }}</label>
+        <div class="xz-control">
+          <a-input
+            v-model:value="info.frontlineAccount"
+            class="xz-input"
+            :status="errors.frontlineAccount ? 'error' : ''"
+            :placeholder="frontlinePlaceholder"
+          />
+          <div v-if="errors.frontlineAccount" class="xz-error">{{ errors.frontlineAccount }}</div>
+        </div>
       </div>
     </div>
   </CreateTicketPartCard>
@@ -168,34 +137,12 @@ function onAttachmentChange({ fileList }: { fileList: UploadFile[] }) {
 .xz-input.ant-input {
   min-height: 32px;
 }
-.xz-radios {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 2px 10px;
-  min-height: 32px;
-  font-size: 12px;
-}
 .xz-error {
   margin-top: 2px;
   font-size: 12px;
   line-height: 18px;
   color: #ef4444;
 }
-/* 小节标题上的范围限定（体例同 `AssignModal` 的「指派说明（选填）」、`SlaEngineView` 的「…（选填）」） */
-.xz-sub-note {
-  margin-left: 2px;
-  font-weight: 400;
-  color: #94a3b8;
-}
-.xz-sub {
-  margin-top: 4px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #0f766e;
-}
-.xz-upload { margin-top: 2px; }
-
 @media (max-width: 768px) {
   .xz-grid { grid-template-columns: 1fr; }
 }

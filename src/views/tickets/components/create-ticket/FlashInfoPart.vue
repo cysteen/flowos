@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 新建工单 · 「刷机信息」卡（930 教育刷机单 P1 / PRD §2.2 / §2.4）。
+ * 新建工单 · 「刷机单专属」卡（930 教育刷机单 P1 / PRD §2.2 / §2.4）。
  * 8 个字段；刷机原因取后台「刷机配置」启用项（`useFlashConfigStore`），学校取学校库（`SCHOOL_LIBRARY`）。
  * 产品取「产品问题」卡的产品分类 + 产品名称（1013 A4），联系手机号取客户信息区，均不在本卡；
  * 结案方式固定「正常流程」，不出控件。
@@ -54,7 +54,7 @@ function onPhotoChange({ fileList }: { fileList: UploadFile[] }) {
 </script>
 
 <template>
-  <CreateTicketPartCard title="刷机信息" :body-gap="8">
+  <CreateTicketPartCard title="刷机单专属" :body-gap="8">
     <div class="fi-grid">
       <div class="fi-field">
         <label class="fi-label"><span class="req">*</span>{{ L.sn }}</label>

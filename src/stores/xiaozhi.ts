@@ -54,7 +54,7 @@ export interface XiaozhiCreateInput {
   rdPriority: XiaozhiRdPriority;
   /** 一线人员域账号（选填） */
   frontlineAccount: string;
-  /** 附件（文件名，选填） */
+  /** 附件（文件名，选填；建单取自问题描述区 descriptionAttachments） */
   attachments: string[];
 }
 
@@ -72,6 +72,8 @@ export interface XiaozhiTicketBase {
   problemL1: string;
   problemL2: string;
   problemL3: string;
+  /** 问题描述附件（建单 OpTextareaAttach，与 Ticket.problemDescAttachments 同源） */
+  problemDescAttachments?: string[];
 }
 
 /** 建单人（履历落款） */
@@ -336,6 +338,9 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
       createdAt: xiaozhiMinuteStamp(now),
       updatedAt: xiaozhiMinuteStamp(now),
       problemDesc: base.problemDesc,
+      problemDescAttachments: base.problemDescAttachments?.length
+        ? [...base.problemDescAttachments]
+        : undefined,
       xiaozhi,
     };
     TICKETS.push(raw);
