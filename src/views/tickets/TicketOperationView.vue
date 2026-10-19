@@ -2812,7 +2812,7 @@ watch(() => d.value.no, () => {
         @contact="onContact"
         @action="toast"
       >
-        <!-- 刷机单侧栏首卡「刷机信息」（PRD §5.3）：标题行「修改刷机信息」按钮走 #actions 插槽，排在外链左侧 -->
+        <!-- 刷机单侧栏「刷机信息」卡（PRD §5.3，紧跟客户信息卡）：标题行「修改刷机信息」按钮走 #actions 插槽，排在外链左侧 -->
         <template v-if="isFlash && d.flash" #top>
           <OpFlashInfoBlock :info="d.flash.info">
             <template v-if="flashEditInfo" #actions>
