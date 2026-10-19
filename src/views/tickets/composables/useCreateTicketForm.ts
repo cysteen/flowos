@@ -8,7 +8,6 @@ import {
   type CustomerInfo,
   BUSINESS_TYPES,
   CUSTOMER_SEARCH_LIMIT,
-  MOCK_CUSTOMER,
   PROBLEM_TREE,
   PRODUCT_NAMES,
   buildAutoTitle,
@@ -603,7 +602,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       const fromOrigin = !!(p.customerId || p.customerRegion || p.customerAddress || p.customerTypes);
       form.customer = fromOrigin
         ? {
-          id: p.customerId ?? MOCK_CUSTOMER.id,
+          id: p.customerId ?? '',
           name: p.customerName,
           phone: p.customerPhone ?? '',
           vip: p.vip ?? false,
@@ -614,21 +613,33 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
           region: p.customerRegion ?? '',
           address: p.customerAddress ?? '',
         }
+        // 只带了姓名 / 手机号：其余档案字段未知，留空，不取档案库默认客户的值
         : {
-          ...MOCK_CUSTOMER,
+          id: '',
           name: p.customerName,
-          phone: p.customerPhone ?? MOCK_CUSTOMER.phone,
+          phone: p.customerPhone ?? '',
           vip: p.vip ?? false,
+          customerType: '',
+          contacts: p.customerPhone ? [{ type: '来电号码', value: p.customerPhone }] : [],
+          gender: '',
+          region: '',
+          address: '',
         };
     } else {
       form.customer = null;
     }
     // 产品分类先落、产品名后落：分类是产品名下拉的取值域，反过来会被分类联动重置
     if (p.productCategory && PRODUCT_NAMES[p.productCategory]) form.productCategory = p.productCategory;
+    // 入口只带产品名（子单 / Reopen 等）：按产品名反查所属产品分类，分类没有默认值可兜
+    else if (p.product) {
+      const cat = Object.keys(PRODUCT_NAMES).find((k) => PRODUCT_NAMES[k].includes(p.product!));
+      if (cat) form.productCategory = cat;
+    }
     form.productName = p.product ?? form.productName;
     form.deviceSn = p.sn ?? '';
     form.description = p.desc ?? '';
-    form.priority = p.priority ?? 'P1';
+    // 入口没带优先级时不预选（同新建工单默认值，D2）
+    form.priority = p.priority ?? '';
     // 升级投诉等场景：原单信息一次性同步（只覆盖有值项，其余留默认由坐席补全）
     if (p.businessType && (BUSINESS_TYPES as string[]).includes(p.businessType)) {
       form.businessType = p.businessType as CreateTicketFormState['businessType'];
@@ -851,6 +862,8 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     () => {
       if (applyingPrefill) return;
       if (!form.customer) return;
+      // 入口只带来姓名 / 手机号、未关联档案的客户（无档案 ID）：没有可重取的档案，保留原样
+      if (!form.customer.id) return;
       const latest = findCustomerById(form.customer.id);
       if (!latest) {
         clearCustomer();
