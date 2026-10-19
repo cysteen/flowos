@@ -296,6 +296,19 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     if (evaluation.kind === 'blocked') return evaluation;
     const now = Date.now();
     const no = nextNo(now);
+    /**
+     * 🔴 **产研平台不可用时降级：工单照建、留在工单池、不流转**（PRD §2）。
+     *
+     * 客户的问题已经登记下来了，不能因为下游挂了就把单子也丢掉；流转那一步没成，
+     * 单子就按人工那条路落池等人领，提示 `XIAOZHI_TIP.rdPlatformDownOnCreate`
+     * 告诉坐席「稍后在工单内重新提交产研」（那就是底栏「升级 · 产研」那一枚）。
+     * 返回 `degraded: true`，由调用方决定提示用哪一句 —— store 不碰 UI。
+     *
+     * 判定提到建对象之前，是因为 `tab` 要按它取值（见下）。
+     */
+    const platformDown = escalate && !XIAOZHI_RD_PLATFORM_AVAILABLE;
+    /** 真走直通产研那一支（勾了「升级 TPD」且产研平台可用） */
+    const autoEscalate = escalate && !platformDown;
     const xiaozhi: TicketXiaozhi = {
       // 一·补 B29：提报人（客户）确认凭据，**两条路都落**（未勾「升级 TPD」的单没有 rd，凭据一样要留）
       frontlineAccount: input.frontlineAccount.trim(),
@@ -334,7 +347,20 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
       // 小智工单不纳入 SLA 考核（一·补 B1）：列表 SLA 列恒为空闲态
       ...XIAOZHI_SLA_IDLE,
       assignee: null,
-      tab: 'mine',
+      /**
+       * 🔴 **落池那一支的 `tab` 必须是 `'pool'`**，与种子 ⑧ 一致。
+       *
+       * 工单池页签的数据域 `inGroupPoolScope` 要 `tab === 'pool' ∧ 无处理人`
+       * （`types/ticket.ts`），我的任务 `inMineTaskScope` 要 `tab === 'mine' ∧ 处理人是我`。
+       * 原先新单一律写 `'mine'` + `assignee: null`，**两条都不满足 —— 刚建的未认领小智单
+       * 在工单池和我的任务里都看不见**，只能从查询中心翻到。领取时 `claimFromPool`
+       * 再把它翻回 `'mine'`。
+       *
+       * 直通产研那一支**维持 `'mine'` 不动**：它的处理人是系统（一·补 B2），池里留的是
+       * 记录不是待领任务，本就不该出现在任何人的工单池里等人领；它也进不了「我的任务」
+       * （处理人不是当前登录人），这正是预期 —— 那批单从查询中心与产研反馈那条路看。
+       */
+      tab: autoEscalate ? 'mine' : 'pool',
       responded: false,
       createdAt: xiaozhiMinuteStamp(now),
       updatedAt: xiaozhiMinuteStamp(now),
@@ -350,17 +376,8 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
       category: 'node', action: 'create', who: actor.name, role: actor.role,
       how: '建单', what: XIAOZHI_TL.create(XIAOZHI_TICKET_SOURCE),
     });
-    /**
-     * 🔴 **产研平台不可用时降级：工单照建、留在工单池、不流转**（PRD §2）。
-     *
-     * 客户的问题已经登记下来了，不能因为下游挂了就把单子也丢掉；流转那一步没成，
-     * 单子就按人工那条路落池等人领，提示 `XIAOZHI_TIP.rdPlatformDownOnCreate`
-     * 告诉坐席「稍后在工单内重新提交产研」（那就是底栏「升级 · 产研」那一枚）。
-     * 返回 `degraded: true`，由调用方决定提示用哪一句 —— store 不碰 UI。
-     */
-    const platformDown = escalate && !XIAOZHI_RD_PLATFORM_AVAILABLE;
     // 勾了「升级 TPD」：落池生成记录后由系统自动流转，不靠人领、不靠定时任务扫（D6 / 一·补 B27）
-    if (escalate && !platformDown) {
+    if (autoEscalate) {
       /**
        * 🔴 **直通产研的单不发「待领取」提醒**（D6 + 通知规则 R18 的 `rdDirect` 条件）：
        * 池里留的是**记录**不是待领任务，处理人是系统（一·补 B2），没有人该去领它。
