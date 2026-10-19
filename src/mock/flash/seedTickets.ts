@@ -567,7 +567,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
     ]);
   }
 
-  // ⑬ 二线池 · 回访未解决（自助成功 → 回访反馈未解决）
+  // ⑬ 一线刷机池 · 回访未解决（自助成功 → 回访反馈未解决；一线未介入过，回一线刷机池，10-19 C2 / C3）
   {
     const info = infoOf('XFS30240900690', 'SCH-340111-168', '毕业');
     const at = '2026-09-15 06:29:58';
@@ -579,11 +579,10 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       info, creator: '用户提报', customer: '杜娟', phone: '13956987908',
       createdAt: at.slice(0, 16), updatedAt: survey.slice(0, 16), serviceScore: 2,
       nodeStatus: '未认领', assignee: null, tab: 'pool', nodeStep: 4,
-      slaText: '05:30:00', slaSub: '距超时', slaState: 'ok', slaMinutes: 330,
+      ...L1_NO_SLA,
       flashState: state('用户提报', {
         outcome: '接收成功', pushCount: 1, result: '已线上刷机成功', surveyConcluded: true,
-        handoffReason: '回访未解决', pool: 'l2',
-        ...ledger(nowMs, addSec(survey, 1), 330),
+        handoffReason: '回访未解决', pool: 'l1',
         surveySentAt: addSec(back, 2),
         survey: { solved: false, score: 2, remark: surveyRemark, at: survey },
       }),
@@ -595,7 +594,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       smsEntry(addSec(back, 1), '13956987908', flashSmsSuccess(no(13), info.sn)),
       smsEntry(addSec(back, 2), '13956987908', flashSmsSurvey(no(13))),
       tl(survey, 'customer', 'reply', '杜娟', '客户', '回访评价', FLASH_TL.surveyFeedback(false, 2, surveyRemark), { stars: 2 }),
-      handoffEntry(addSec(survey, 1), '回访未解决', 'l2'),
+      handoffEntry(addSec(survey, 1), '回访未解决', 'l1'),
     ]);
   }
 
@@ -800,6 +799,54 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       tl(back2, 'node', 'resolved', '系统', '系统', '回传结果', FLASH_TL.repushSuccessSurvey),
       smsEntry(addSec(back2, 1), '13856071966', flashSmsSuccess(no(19), info.sn)),
       smsEntry(addSec(back2, 2), '13856071966', flashSmsSurvey(no(19))),
+    ]);
+  }
+
+  // ⑳ 二线池 · 回访未解决（一线介入过）：首推未开机 → 一线领取、联系用户后在修改刷机信息里重新推送 → 接收成功，
+  //    系统写处理结果并转入回访 → 回访反馈未解决；一线已介入过，直接进教育刷机处理组池（10-19 C2 / C3）
+  {
+    const info = infoOf('XFS30240901020', 'SCH-341502-001', '毕业');
+    const at = '2026-09-15 05:40:10';
+    const pushed = addSec(at, 2);
+    const back = addSec(pushed, 12);
+    const claim = '2026-09-15 06:05:00';
+    const handled = '2026-09-15 06:20:00';
+    const repushed = '2026-09-15 06:21:30';
+    const back2 = addSec(repushed, 12);
+    const survey = '2026-09-15 09:30:00';
+    const surveyRemark = '刷机后开机仍提示设备未激活，学生无法登录。';
+    add(row(20, {
+      info, creator: '用户提报', customer: '孙建军', phone: '13965201020',
+      createdAt: at.slice(0, 16), updatedAt: survey.slice(0, 16), serviceScore: 2,
+      nodeStatus: '未认领', assignee: null, tab: 'pool', nodeStep: 4,
+      slaText: '06:00:00', slaSub: '距超时', slaState: 'ok', slaMinutes: 360,
+      flashState: state('用户提报', {
+        outcome: '接收成功', pushCount: 2, result: FLASH_RESULT_ONLINE_SUCCESS, surveyConcluded: true,
+        record: '已致电用户孙建军，指导开机并连接家庭 WiFi，设备已在线，准备重新推送。',
+        handoffReason: '回访未解决', pool: 'l2', handoffSmsSent: true,
+        ...ledger(nowMs, addSec(survey, 1), 360),
+        surveySentAt: addSec(back2, 2),
+        survey: { solved: false, score: 2, remark: surveyRemark, at: survey },
+      }),
+      runs: [
+        run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '接收失败', failL1: '接收失败', failL2: '未开机', resultAt: back }),
+        run({ seq: 2, trigger: '一线重推', by: '刘一线', byRole: '一线坐席', pushedAt: repushed, result: '接收成功', resultAt: back2, handlerAtPush: '刘一线' }),
+      ],
+    }), [
+      createdByUser(at, '孙建军', VERIFY_PASS, { auto: true }),
+      pushEntry(pushed, 1),
+      returnFail(back, '未开机'),
+      handoffEntry(addSec(back, 1), '接收失败', 'l1'),
+      smsEntry(addSec(back, 2), '13965201020', flashSmsHandoff(no(20))),
+      acceptEntry(claim, '刘一线', '一线坐席'),
+      handleEntry(handled, '刘一线', '一线坐席', '已致电用户孙建军，指导开机并连接家庭 WiFi，设备已在线，准备重新推送。'),
+      repushEntry(repushed, 2, '刘一线', '一线坐席'),
+      returnOk(back2),
+      tl(back2, 'node', 'resolved', '系统', '系统', '回传结果', FLASH_TL.repushSuccessSurvey),
+      smsEntry(addSec(back2, 1), '13965201020', flashSmsSuccess(no(20), info.sn)),
+      smsEntry(addSec(back2, 2), '13965201020', flashSmsSurvey(no(20))),
+      tl(survey, 'customer', 'reply', '孙建军', '客户', '回访评价', FLASH_TL.surveyFeedback(false, 2, surveyRemark), { stars: 2 }),
+      handoffEntry(addSec(survey, 1), '回访未解决', 'l2'),
     ]);
   }
 

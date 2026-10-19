@@ -995,10 +995,19 @@ export const useFlashStore = defineStore('flash', () => {
   }
 
   /**
+   * 人工是否介入过（10-19 C2「一线一轮」）：一线领取过（「一线领取过的单」口径）即算介入过；
+   * 本单已进过教育刷机处理组（SLA 已起算）或有人领取过，也按介入过处理，异常不再回一线。
+   */
+  function manuallyInvolved(r: Ticket): boolean {
+    if (r.flash?.state.slaStartedAt) return true;
+    return timelineOf(r.no).some((e) => e.action === 'accept');
+  }
+
+  /**
    * 记回访结论（PRD §8「回访结论去向」/ M58 / M86）：只在「调研中」且未评价过时可记，置位「已产生回访结论」。
    * - 已解决 → 「已结案」，处理人不变，SLA 结束；履历「回访：已解决」+「结案」。
-   * - 未解决 → 教育刷机处理组池「未认领」、处理人清空，转人工原因「回访未解决」；
-   *   SLA：从未进过教育刷机处理组池的此刻起算，其余按下送前的摘要接着跑；不发转人工短信（M47）。
+   * - 未解决（10-19 C2 / C3）→ 人工未介入过回一线刷机池，介入过进教育刷机处理组池；「未认领」、处理人清空，
+   *   转人工原因「回访未解决」；SLA：进一线刷机池不起算，进教育刷机处理组池按 handoff 规则；不发转人工短信（M47）。
    */
   function recordSurveyConclusion(
     ticketNo: string,
@@ -1032,13 +1041,14 @@ export const useFlashStore = defineStore('flash', () => {
       log(ticketNo, now + 1, {
         category: 'node', action: 'resolved', who: '系统', role: '系统', how: '结案', what: FLASH_TL.surveySolvedClosed,
       });
-    } else {
-      // 已起算的单接着跑（「调研中」那段停钟在 handoff 里结掉）；未起算的单从进教育刷机处理组池时刻起算
-      handoff(r, 'l2', '回访未解决', now + 1);
     }
+    // 一线一轮（10-19 C2 / C3）：人工未介入过 → 回一线刷机池（不计 SLA）；介入过 → 教育刷机处理组池
+    // （已起算的单接着跑，「调研中」那段停钟在 handoff 里结掉；未起算的单从进教育刷机处理组池时刻起算）
+    const pool: FlashPoolKey = manuallyInvolved(r) ? 'l2' : 'l1';
+    if (!solved) handoff(r, pool, '回访未解决', now + 1);
     bump(ticketNo);
     persist();
-    return { ok: true, message: solved ? '已结案' : `回访未解决，已转入${FLASH_POOLS.l2.label}` };
+    return { ok: true, message: solved ? '已结案' : `回访未解决，已转入${FLASH_POOLS[pool].label}` };
   }
 
   /**

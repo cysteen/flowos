@@ -93,6 +93,8 @@ export const MDM_DEVICES: MdmDevice[] = [
   // ⑲ 调研中 · 调研超时未评价，加载即自动结案：首推未联网 → 一线指导联网后在修改刷机信息弹窗里重新推送 →
   //    接收成功，系统写入处理结果「已线上刷机成功」并转入回访（1013 B1）
   dev({ sn: 'XFS20240600966', model: S20, studentAccount: 'hf50z2023s0366', romVersion: 'EDU-S20-3.2.4', mdmVersion: 'MDM 5.8.2', online: '未联网', onlineAfterContact: true }),
+  // ⑳ 二线池 · 回访未解决（一线介入过）：首推未开机 → 一线联系后重新推送成功 → 回访未解决 → 教育刷机处理组池（10-19 C2 / C3）
+  dev({ sn: 'XFS30240901020', model: S30, studentAccount: 'la1z2023s1020', romVersion: 'EDU-S30-1.4.2', mdmVersion: 'MDM 5.8.2', online: '未开机', onlineAfterContact: true }),
 
   // ---- 待提报设备（建单可走通各条链路） ----
   // 成功：自研、账号一致、毕业生、在线

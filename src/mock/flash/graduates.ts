@@ -42,6 +42,7 @@ export const GRADUATE_ROSTER: GraduateRecord[] = [
   { schoolId: 'SCH-341502-001', studentAccount: 'la1z2023s0716', studentName: '梁晨', graduateYear: 2026 },
   { schoolId: 'SCH-341502-001', studentAccount: 'la1z2023s0302', studentName: '叶知秋', graduateYear: 2026 },
   { schoolId: 'SCH-341502-001', studentAccount: 'la1z2023s1107', studentName: '孙雨桐', graduateYear: 2026 },
+  { schoolId: 'SCH-341502-001', studentAccount: 'la1z2023s1020', studentName: '孙一鸣', graduateYear: 2026 },
 ];
 
 /** 是否在毕业名单内（学校库 ID + 学生账号 + 学生姓名三项精确匹配，PRD §2.2） */
