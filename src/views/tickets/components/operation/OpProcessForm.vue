@@ -335,9 +335,9 @@ function chipActiveClass(key: SupplementChip): string {
         <div class="field inline">
           <label>服务类型</label>
           <FormSelect
-            :value="form.serviceType"
+            :value="form.serviceType || undefined"
             :options="serviceTypeOptions"
-            placeholder="请选择或搜索"
+            placeholder="请选择"
             style="width: 100%"
             @update:value="(v) => onServiceTypeChange(String(v ?? ''))"
           />
@@ -345,9 +345,9 @@ function chipActiveClass(key: SupplementChip): string {
         <div class="field inline">
           <label>服务方式</label>
           <FormSelect
-            :value="form.serviceMethod"
+            :value="form.serviceMethod || undefined"
             :options="serviceMethodOptions"
-            placeholder="请先选服务类型"
+            placeholder="请选择"
             style="width: 100%"
             @update:value="(v) => onServiceMethodChange(String(v ?? ''))"
           />
@@ -355,9 +355,9 @@ function chipActiveClass(key: SupplementChip): string {
         <div class="field inline">
           <label>问题解决结论</label>
           <FormSelect
-            :value="form.conclusion"
+            :value="form.conclusion || undefined"
             :options="conclusionOptions"
-            placeholder="请选择或搜索"
+            placeholder="请选择"
             style="width: 100%"
             @update:value="(v) => onConclusionChange(String(v ?? ''))"
           />
@@ -365,9 +365,9 @@ function chipActiveClass(key: SupplementChip): string {
         <div v-if="showServiceSolution" class="field inline">
           <label><span class="req">*</span>解决方案</label>
           <FormSelect
-            :value="form.serviceSolution"
+            :value="form.serviceSolution || undefined"
             :options="serviceSolutionOptions"
-            placeholder="请选择解决方案"
+            placeholder="请选择"
             style="width: 100%"
             @update:value="(v) => patch({ serviceSolution: String(v ?? '') })"
           />
