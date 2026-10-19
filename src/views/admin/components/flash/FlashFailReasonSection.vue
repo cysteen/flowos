@@ -1,8 +1,9 @@
 <script setup lang="ts">
 /** 刷机配置 · 失败原因（PRD §10.4）：两级表格，只改二级显示文案与启停 */
 import { computed, reactive, ref } from 'vue';
-import { message } from 'ant-design-vue';
+import { message, Modal } from 'ant-design-vue';
 import OpActionModal from '@/views/tickets/components/operation/OpActionModal.vue';
+import { toneOf } from '@/config/adminUi';
 import { useFlashConfigStore } from '@/stores/flashConfig';
 import type { FlashFailL1, FlashFailL2 } from '@/views/tickets/types/flash';
 import { FLASH_FAIL_LOCKED_L1, FLASH_FAIL_RETURN_CODES } from './flashConfigCatalog';
@@ -39,13 +40,26 @@ const cols = [
   { title: '一级原因', dataIndex: 'l1Label', key: 'l1', width: 180, customCell: (r: Row) => ({ rowSpan: r.span }) },
   { title: '二级原因', dataIndex: 'l2Label', key: 'l2' },
   { title: '平台回传码', key: 'code', width: 160 },
-  { title: '状态', key: 'status', width: 120 },
-  { title: '操作', key: 'op', width: 100 },
+  { title: '状态', key: 'status', width: 100 },
+  { title: '操作', key: 'op', width: 120 },
 ];
 
-function toggle(r: Row, v: boolean) {
+/* 启停与「刷机原因」同一规范：状态列标签、操作列「停用」危险链接 + 二次确认、「启用」直接生效 */
+function disable(r: Row) {
   if (r.locked) return;
-  if (config.setFailReasonEnabled(r.l1, r.l2, v)) message.success('已保存');
+  Modal.confirm({
+    title: `确认停用${r.l2Label}？`,
+    okText: '确认停用',
+    okType: 'danger',
+    cancelText: '取消',
+    onOk: () => {
+      if (config.setFailReasonEnabled(r.l1, r.l2, false)) message.success('已停用');
+    },
+  });
+}
+
+function enable(r: Row) {
+  if (config.setFailReasonEnabled(r.l1, r.l2, true)) message.success('已启用');
 }
 
 /* ---------------- 编辑弹窗 ---------------- */
@@ -97,18 +111,24 @@ function save() {
           <span v-else class="fc-muted">—</span>
         </template>
         <template v-else-if="column.key === 'status'">
-          <a-tooltip v-if="record.locked" :title="LOCKED_TIP">
-            <span class="fc-tip-wrap"><a-switch :checked="record.enabled" size="small" disabled /></span>
-          </a-tooltip>
-          <a-switch
-            v-else
-            :checked="record.enabled"
-            size="small"
-            @change="(v: boolean | string | number) => toggle(record as Row, !!v)"
-          />
+          <a-tag :color="toneOf(record.enabled ? '启用' : '停用')">{{ record.enabled ? '启用' : '停用' }}</a-tag>
         </template>
         <template v-else-if="column.key === 'op'">
           <a-button type="link" size="small" class="fc-act" @click="openEdit(record as Row)">编辑</a-button>
+          <a-tooltip v-if="record.locked" :title="LOCKED_TIP">
+            <span class="fc-tip-wrap">
+              <a-button type="link" size="small" class="fc-act" disabled>停用</a-button>
+            </span>
+          </a-tooltip>
+          <a-button
+            v-else-if="record.enabled"
+            type="link"
+            size="small"
+            danger
+            class="fc-act"
+            @click="disable(record as Row)"
+          >停用</a-button>
+          <a-button v-else type="link" size="small" class="fc-act" @click="enable(record as Row)">启用</a-button>
         </template>
       </template>
     </a-table>
