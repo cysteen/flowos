@@ -589,7 +589,7 @@ function fromTicket(t: Ticket): CustomerTicketRow {
 }
 
 /** 'YYYY-MM-DD hh:mm' → 天数差（相对今天）。本页所有「近 N 天」口径只经这一个函数 */
-function daysBefore(when: string, base = todayPrefix()): number {
+export function daysBefore(when: string, base = todayPrefix()): number {
   const d = new Date(when.slice(0, 10).replace(/-/g, '/'));
   const b = new Date(base.replace(/-/g, '/'));
   return Math.round((b.getTime() - d.getTime()) / 86400000);

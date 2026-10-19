@@ -144,7 +144,8 @@ export interface TicketDetailMeta {
   complaint: ComplaintInfo;
   childTickets: ChildTicket[];
   linkedRecords: LinkedRecord[];
-  similarTicket: SimilarTicket;
+  /** 相似工单推荐（AI 助手）；没有可推荐的单时为空 */
+  similarTicket?: SimilarTicket;
   knowledge: string[];
   aiSummary: string;
   /** 客户全景下方 AI 洞察 */

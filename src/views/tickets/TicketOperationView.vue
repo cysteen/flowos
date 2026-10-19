@@ -58,7 +58,7 @@ import { TECH_RESULT_FIELD, latestHandlingFrom, latestHandlingPreviewOf } from '
 import { opTimeNow } from './utils/opTime';
 import { isFlashSlaCounted } from './utils/slaClock';
 import { isTechEscalateChannel, techEscalationRowPatch, techReturnRowPatch } from './composables/techEscalation';
-import { TICKETS } from '@/mock/tickets';
+import { SEED_TICKET_NOS, TICKETS } from '@/mock/tickets';
 import { canAutoClaim, claimTicketByType, inVisiblePool, isPoolEntry, unclaimedGateOf, withoutPoolEntry } from './composables/poolClaim';
 import { useRiskTagStore } from '@/stores/riskTags';
 import { useRiskReportStore } from '@/stores/riskReports';
@@ -2465,6 +2465,9 @@ function startIncomingDemo() {
   if (isFlash.value) return;
   // 客服⇄售后链路上的单同理：补充 / 催单只画本单真实的记录（1025）
   if (isAftersaleChainTicket(TICKETS.find((x) => x.no === ticketNo.value))) return;
+  // 种子以外的单（本会话新建、关联投诉建出的单）：只有本单真实提交的补充 / 催单，不推样例进线事件
+  const no = ticketNo.value;
+  if (!SEED_TICKET_NOS.has(no) && (TICKETS.some((x) => x.no === no) || derivedTickets.find(no))) return;
 
   incomingDemoTimeout = setTimeout(() => {
     incomingDemoTimeout = null;

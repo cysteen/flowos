@@ -16,6 +16,12 @@ import type { FeishuRecord } from '@/mock/ticketDetail';
 import type { Ticket, Channel, TicketType, Priority, TicketStatus } from '@/views/tickets/types/ticket';
 import { SEED_CLAIMED_TICKET_NOS, SEED_TICKET_NOS, TICKETS } from '@/mock/tickets';
 import { TYPE_SAMPLES, typeSampleKey } from '@/mock/ticketTypeSamples';
+import { buildCustomerInsight, daysBefore, type CustomerContactRow } from '@/mock/customerInsight';
+
+/** 客户全景「联系明细」联系方式列（客户全景页联系记录的类型 → 下钻表文案） */
+const CONTACT_KIND_LABEL: Record<CustomerContactRow['kind'], string> = {
+  call: '热线', im: '在线', sms: '短信', email: '邮件',
+};
 import { useUserStore } from '@/stores/user';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
 import { useHandleLogStore } from '@/stores/handleLog';
@@ -450,8 +456,8 @@ export function useTicketOperation() {
       };
       if (!t.flash) applyChainOwnProfile(base, t);
     }
-    // 种子以外的单（新建、关联投诉建出的投诉单等）：客户信息只取本单，不并入样例客户卡
-    if (t && !t.flash && !isXiaozhiTicket(t) && !SEED_TICKET_NOS.has(t.no)) applyOwnCustomer(base, t);
+    // 种子以外的单（新建、关联投诉建出的投诉单等）：页头、侧栏、客户全景、AI 洞察只取本单，不并入样例单
+    if (t && !t.flash && !isXiaozhiTicket(t) && !SEED_TICKET_NOS.has(t.no)) applyOwnTicket(base, t);
     if (t?.flash) applyFlashOverview(base, t);
     if (t && isXiaozhiTicket(t)) applyXiaozhiOverview(base, t);
     detail.value = base;
@@ -575,6 +581,80 @@ export function useTicketOperation() {
       address: t.customerAddress ?? '—',
     };
     base.agent = null;
+  }
+
+  /**
+   * 种子以外的单（本会话新建、关联投诉 / 升级等建出的单）：除客户卡外，页头建单人 / 建单时间、
+   * 侧栏「工单信息」、客户全景计数与下钻、AI 洞察一律取本单工单行，不落样例单（TICKET_DETAIL / 类型样例）。
+   * - 建单人取本单履历首条「创建工单」的操作人，建单时间取工单行；
+   * - 客户全景按本单手机号从工单库现算（与客户全景页同一份索引）；
+   * - AI 洞察由本单字段生成，没有样例文案。
+   */
+  function applyOwnTicket(base: TicketDetailMeta, t: Ticket) {
+    applyOwnCustomer(base, t);
+    const creator = t.eventTimeline?.find((e) => e.action === 'create')?.who ?? '—';
+    const createdAt = t.createdAt ?? '—';
+    base.builder = creator;
+    base.builderShort = creator;
+    base.createdAt = createdAt;
+    base.createdAtFull = createdAt;
+    base.issueOccurredAt = t.problemOccurredAt || '—';
+    base.businessType = t.businessType || '—';
+    base.businessLine = t.businessLine || '—';
+    base.attachments = [];
+    base.product.name = t.product || '—';
+    base.product.category = t.productCategory || '—';
+    base.product.sn = t.sn || '—';
+    base.product.tags = [];
+    base.product.issueTags = [t.problemL1, t.problemL2, t.problemL3].filter((s): s is string => !!s?.trim());
+    base.demand = t.problemDesc?.trim() || t.title;
+
+    // 客户全景：按本单手机号从工单库现算；号码查不到时只计本单
+    const insight = buildCustomerInsight((t.customerPhone ?? '').replace(/\D/g, ''));
+    const ownRow = { no: t.no, type: t.type as string, createdAt: t.createdAt ?? '', statusText: statusDisplayName(t.nodeStatus) };
+    const rows = insight?.tickets.length
+      ? insight.tickets.map((r) => ({ no: r.no, type: r.type, createdAt: r.createdAt, statusText: r.statusText }))
+      : [ownRow];
+    const toRow = (r: typeof ownRow) => ({ cells: [r.no, r.type, r.createdAt, r.statusText, r.statusText], ticketNo: r.no });
+    const recent = rows.filter((r) => !!r.createdAt && daysBefore(r.createdAt) <= 30);
+    const complaints = rows.filter((r) => r.type === '投诉');
+    const contacts = insight?.contacts ?? [];
+    base.insight = {
+      contactCount: contacts.length,
+      historyCount: rows.length,
+      complaintCount: complaints.length,
+      sameTypeCount: rows.filter((r) => r.type === t.type).length,
+      recent30Count: recent.length,
+      dunningCount: 0,
+      supplementCount: 0,
+      dunningReadCount: 0,
+      supplementReadCount: 0,
+      relatedCount: base.childTickets.length + base.linkedRecords.length + (base.linkedAftersale ? 1 : 0),
+    };
+    base.insightDetails = {
+      contact: {
+        ...base.insightDetails.contact,
+        rows: contacts.map((c) => ({
+          cells: [CONTACT_KIND_LABEL[c.kind], c.when, '—', c.operator, '—', '—', '—', c.summary],
+          ...(c.ticketNo ? { ticketNo: c.ticketNo } : {}),
+        })),
+      },
+      history: { ...base.insightDetails.history, rows: rows.map(toRow) },
+      complaint: { ...base.insightDetails.complaint, rows: complaints.map(toRow) },
+      recent30: { ...base.insightDetails.recent30, rows: recent.map(toRow) },
+    };
+
+    // AI 洞察 / AI 助手：只由本单字段生成，不带样例单的相似单与知识条目
+    base.similarTicket = undefined;
+    base.knowledge = [];
+    base.aiSummary = base.demand;
+    base.aiInsight = {
+      customerBrief: rows.length > 1
+        ? `名下共 ${rows.length} 张工单${complaints.length ? `，其中投诉 ${complaints.length} 张` : ''}`
+        : '首次来单',
+      ticketBrief: `${t.type}单，${t.title}`,
+      suggestion: '核实诉求后跟进处理',
+    };
   }
 
   /**
