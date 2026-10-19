@@ -80,6 +80,8 @@ const emit = defineEmits<{
   activate: [reason: string];
   retry: [];
   dunning: [];
+  /** 原型演示入口：产研回传与提报人确认（见 `rdEventActions`），真实系统走接口 */
+  rdEvent: [kind: 'progress' | 'settle' | 'reject' | 'confirmResolved' | 'confirmUnresolved'];
 }>();
 
 const activateOpen = ref(false);
@@ -91,10 +93,11 @@ const reasonOptions = FEISHU_ACTIVATE_REASONS.map((r) => ({ value: r, label: r }
 const isFailed = computed(() => props.syncState === 'failed');
 
 /**
- * 提报人确认进度（1130 一·补 B5 / B7 / B8 / B19）—— **纯展示，没有按钮**。
+ * 提报人确认进度（1130 一·补 B5 / B7 / B8 / B19）—— **纯展示，这一块里没有按钮**。
  *
- * ⚠️ 不要在这里补一枚「模拟确认」或「二次提交产研」：确认动作在**小智工单应用**里由提报人做（B6），
- * 确认未解决后的回传是**系统动作不是坐席动作**（B5），原型里这两种结果由种子数据体现。
+ * ⚠️ 确认动作在**小智工单应用**里由提报人做（B6），确认未解决后的回传是**系统动作不是坐席动作**
+ * （B5）—— 故这一块只读。本 Tab 底部那组「产研回传」是**原型演示入口**（见 `rdEventActions`），
+ * 真实系统里那几笔由 TPD 调接口、提报人在小智工单应用点，都不经本页。
  *
  * 🔴 **这句提示里不写具体天数** —— 超时天数（`XIAOZHI_CONFIRM_TIMEOUT_DAYS`）是**待业务确定的
  * 配置项**，把「超 3 天」打到界面上，等于把一个还没定的数当成已定的规格给人看；
@@ -256,6 +259,37 @@ const dunningTip = computed(() => {
  * ⚠️ 门控走**工单维度**（`xiaozhiMode` 由 `isXiaozhiTicket(detail)` 给），不看登录角色。
  */
 const showDunning = computed(() => !props.xiaozhiMode);
+
+/**
+ * 「产研回传」—— 🔴 **原型演示入口，不是产品功能**。
+ *
+ * 真实系统里这几笔都**不经本页**：产研处理中 / 产研办结 / 产研退回由 **TPD 调工单系统的接口**
+ * 回传（`stores/xiaozhi.ts` 的 `receiveRdProgress` / `receiveRdSettle` / `receiveRdReject`），
+ * 提报人的两种确认结果由他在**小智工单应用**里点（`receiveReporterConfirm`）。
+ * 这四个写口此前**全仓零调用方**，B5 / B28 / B31 / B33 四条口径的成果在原型上演示不出来，
+ * 故在本 Tab 底部给一组可点的入口把链路接通。
+ *
+ * ⚠️ **它不进 PRD、不进截图范围**；界面上按接口事件名承载（「产研回传 · 已办结」这种），
+ * **不写「模拟 / 调试」这类字样**。
+ * ⚠️ 只在小智单上出（`xiaozhiMode`），只读态不出。
+ */
+export type RdEventKind = 'progress' | 'settle' | 'reject' | 'confirmResolved' | 'confirmUnresolved';
+
+/** 本单此刻哪几笔回传说得通：单还在产研手上才有前三笔，等确认时才有后两笔 */
+const rdEventActions = computed<{ key: RdEventKind; label: string }[]>(() => {
+  if (!props.xiaozhiMode || props.readonly) return [];
+  const list: { key: RdEventKind; label: string }[] = [];
+  if (props.syncState === 'synced' || props.syncState === 'feedback') {
+    list.push({ key: 'progress', label: '产研回传 · 处理中' });
+    list.push({ key: 'settle', label: '产研回传 · 已办结' });
+    list.push({ key: 'reject', label: '产研回传 · 退回' });
+  }
+  if (props.confirmState === '未确认') {
+    list.push({ key: 'confirmResolved', label: `${XIAOZHI_CONFIRM_ACTOR}确认 · 已解决` });
+    list.push({ key: 'confirmUnresolved', label: `${XIAOZHI_CONFIRM_ACTOR}确认 · 未解决` });
+  }
+  return list;
+});
 
 /**
  * 二次激活：仅已结案可点；未结案置灰。
@@ -526,10 +560,51 @@ function onDunning() {
         />
       </div>
     </a-modal>
+
+    <!--
+      产研回传 —— **原型演示入口**（见 `rdEventActions` 的说明）：真实系统里这几笔由 TPD 调接口、
+      提报人在小智工单应用点，都不经本页。放在 Tab 最底部、按接口事件名承载。
+    -->
+    <div v-if="rdEventActions.length" class="fs-rd-events">
+      <span class="fs-rd-events__label">产研回传</span>
+      <button
+        v-for="a in rdEventActions"
+        :key="a.key"
+        type="button"
+        class="fs-rd-events__btn"
+        @click="emit('rdEvent', a.key)"
+      >{{ a.label }}</button>
+    </div>
   </div>
 </template>
 
 <style scoped>
+/* 产研回传（原型演示入口）：低调、靠底，不与正文争视觉 */
+.fs-rd-events {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px dashed #e5e7eb;
+}
+.fs-rd-events__label {
+  font-size: 12px;
+  color: #9ca3af;
+  margin-right: 2px;
+}
+.fs-rd-events__btn {
+  height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+  color: #6b7280;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  cursor: pointer;
+}
+.fs-rd-events__btn:hover { color: #1a6fff; border-color: #bfdbfe; background: #f8fbff; }
 .fs-tab { display: flex; flex-direction: column; gap: 14px; }
 
 .fs-fail-banner {

@@ -9,7 +9,8 @@
  * ⑤ 提报人**确认未解决** → 状态不动，系统自动回传产研，记「第 N 次回传产研」（B5② / B8）；
  * ⑥ **超 N 天未确认** → 装载时判「视为已解决」，自动落「已关闭」（B7 / B32）；
  * ⑦ 人工跟进中 · **已自查一轮、尚未升级** —— 「人工升级 · 产研」的演示入口（PRD §5.4）；
- * ⑧ **未认领** —— 躺在工单池里等人领，「领取 → 处理中」那一步的演示入口（D21）。
+ * ⑧ **未认领** —— 躺在工单池里等人领，「领取 → 处理中」那一步的演示入口（D21）；
+ * ⑨ **已退回** —— 产研因信息不全退回，处理人交回建单人，等补料重新提交（B31 / B33）。
  *
  * 🔴 **校代确认只由种子体现，页面上没有「模拟确认」按钮** —— 确认动作发生在小智工单应用里
  * （B6），工单系统侧只接结果，原型没有校代端。③④⑤ 正是「未确认 / 确认是 / 确认否」三种结果。
@@ -103,6 +104,7 @@ function rd(
 const FRONTLINE_ACCOUNTS: Record<number, string> = {
   1: 'lixiaodai', 2: 'wangxiaodai', 3: 'chenxiaodai',
   4: 'lixiaodai', 5: 'zhaoxiaodai', 6: 'zhouxiaodai', 7: 'sunxiaodai', 8: 'wuxiaodai',
+  9: 'qianxiaodai',
 };
 
 function rdInfo(module: string, priority: XiaozhiRdPriority, frontlineAccount: string): XiaozhiRdInfo {
@@ -595,6 +597,63 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
   tickets.push(t8);
   timelines[t8.no] = [
     tl('2026-09-19 14:06:28', 'node', 'create', AGENT, AGENT_ROLE, '建单', XIAOZHI_TL.create(XIAOZHI_TICKET_SOURCE)),
+  ];
+
+  /**
+   * ⑨ **已退回** —— 产研因信息不全把单退回工单系统（一·补 B31 / B33）。
+   *
+   * 🔴 **为什么必须有这一张**：①–⑧ 没有一张落在「已退回」，而 B31 / B33 整条
+   * （本单转「已退回」→ 处理人交回创建人 / 最后编辑人 → 复用底栏「升级 · 产研」重新提交）
+   * 在原型上**没有可看的样本**，`receiveRdReject` 此前也零调用方。
+   *
+   * ⚠️ 处理人＝**建单人**（本单没被编辑过，故取 `createdBy`），不是系统、不是 L2 组。
+   * ⚠️ `rdSync` 保留 `'synced'` 真实值：产研反馈 Tab 与那几条历史记录要继续看得见
+   *    （创建人正要照着它补信息）；底栏「升级」的开闸改由子状态给（`xiaozhiRdPending` 的姊妹项
+   *    `xiaozhiRdReturned`），不靠把 `rdSync` 抹掉绕过。
+   * ⚠️ `tab: 'mine'` —— 它有处理人、在那个人的「我的任务」里等着补料，不在工单池。
+   */
+  const rd9 = rdInfo('智能阅卷', '普通', FRONTLINE_ACCOUNTS[9]);
+  const t9Reject = '信息不全：缺少复现步骤与评卷端日志，请补充后重新提交';
+  const t9 = row(9, {
+    title: '智能阅卷 · 评卷端打分不落库 · IM',
+    customer: '滁州二中 · 钱校代',
+    phone: '13905510009',
+    productCategory: '软件服务',
+    productName: '智学网会员',
+    problemL1: '功能异常',
+    problemL2: '播放问题',
+    problemL3: '在线播放',
+    problemDesc: '评卷端打分提交后未落库，产研以信息不全退回，待补充复现步骤与日志后重新提交。',
+    nodeStatus: '已退回',
+    assignee: AGENT,
+    tab: 'mine',
+    ...XIAOZHI_SLA_IDLE,
+    createdAt: '2026-09-19 10:12',
+    updatedAt: '2026-09-19 15:40',
+    xiaozhi: {
+      frontlineAccount: FRONTLINE_ACCOUNTS[9],
+      createdBy: AGENT,
+      rd: rd9,
+      rdSync: 'synced',
+      rdFeedbackNo: 'TPD-20260919-2210',
+      rdReturnCount: 0,
+      rdRecords: [
+        rd('push', `已推送${ESCALATE_CHANNEL_TPD}`,
+          `产研单标题：${xiaozhiRdTitle(rd9.module)}；产品模块：${rd9.module}；接收人：${rd9.receiver}；优先级：${rd9.priority}`,
+          AGENT, '客服工单', '2026-09-19 10:40:11', { meta: 'TPD-20260919-2210' }),
+        rd('feedback', '产研退回', t9Reject,
+          '张冬', '产研侧', '2026-09-19 15:40:02', { meta: 'TPD-20260919-2210', cause: t9Reject }),
+      ],
+    },
+  });
+  tickets.push(t9);
+  timelines[t9.no] = [
+    tl('2026-09-19 10:12:30', 'node', 'create', AGENT, AGENT_ROLE, '建单', XIAOZHI_TL.create(XIAOZHI_TICKET_SOURCE)),
+    tl('2026-09-19 10:25:06', 'node', 'accept', AGENT, AGENT_ROLE, '领取', `${AGENT} 从${XIAOZHI_POOL_GROUP_NAME}工单池领取本单。`),
+    tl('2026-09-19 10:40:11', 'node', 'escalate', AGENT, AGENT_ROLE, '升级 · 产研',
+      XIAOZHI_TL.manualEscalate(ESCALATE_CHANNEL_TPD, xiaozhiRdTitle(rd9.module))),
+    tl('2026-09-19 15:40:02', 'node', 'relate', '系统', '系统', '产研回传',
+      XIAOZHI_TL.rdReturned(AGENT, t9Reject), { systemActor: true }),
   ];
 
   return { tickets, timelines };
