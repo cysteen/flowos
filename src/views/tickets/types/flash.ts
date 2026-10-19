@@ -634,8 +634,8 @@ export function flashSmsSuccess(no: string, sn: string): string {
   return `【讯飞客服】您的设备（SN尾号${snTail(sn)}）刷机包已推送成功，请保持设备开机并连接网络完成刷机。如有疑问请致电400热线，工单号：${no}。`;
 }
 /** 转人工短信（PRD §3.4 / §11.1，逐字） */
-export function flashSmsHandoff(_no: string): string {
-  return '刷机申请需人工核实，客服将尽快联系';
+export function flashSmsHandoff(no: string): string {
+  return `【讯飞客服】您的刷机申请需人工核实，客服将尽快与您联系。工单号：${no}。`;
 }
 
 /** 用户侧回访评价页路径（M86） */

@@ -34,8 +34,9 @@ export type FlashLsKey = (typeof FLASH_LS_KEYS)[keyof typeof FLASH_LS_KEYS];
  * v16：⑮ 调研中改为按加载时刻倒推（不再加载即调研超时结案）；新增 ㉑ 回传无响应的稳定「自动刷机中」样本。
  * v17：⑰ SLA 摘要改用展示名「已转售后·停表」（D10），缓存里的旧快照作废。
  * v18：已转出停钟期间 SLA 摘要改为「已暂停」（PRD §4.3），⑰ 与运行时转售后同口径。
+ * v19：转人工短信文案加「【讯飞客服】」签名与工单号（PRD §3.4 / §11.1），种子履历里的旧短信作废。
  */
-export const FLASH_CACHE_VERSION = 18;
+export const FLASH_CACHE_VERSION = 19;
 
 /** 保质期：12 小时（与风险两条线 `RISK_STALE_MS` 同口径） */
 export const FLASH_STALE_MS = 12 * 60 * 60 * 1000;
