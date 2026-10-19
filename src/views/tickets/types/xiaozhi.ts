@@ -356,6 +356,29 @@ export const XIAOZHI_TOAST = {
 export const XIAOZHI_CLOSED_STATUS = '已关闭' as const;
 
 /**
+ * 本单是**直通产研留在工单池里的那条记录**（PRD §2.3「先在工单池留下记录」）。
+ *
+ * 建单时勾了「升级 TPD」的单：落池留记录 → 随即系统自动流转 → 子状态「已升级产研」、
+ * 处理人＝系统（一·补 B2 / B27）。它**该出现在「工单池」页签里**（那条记录正是给组里看的），
+ * 但它**不是待领任务** —— 有处理人、不参与领取。
+ *
+ * 🔴 **单独一道判据，不放宽通用的 `inGroupPoolScope`**：那一道要求 `assignee === null`，
+ * 那是"池内单谁看得到谁就能领"的根基，松了会让任何有处理人的单漏进别人的池子。
+ * 这里把例外收成一个**判据明确、只认小智直通那一种形态**的函数，由 `inGroupPoolScope`
+ * 显式放行，例外的边界一眼看得完。
+ *
+ * ⚠️ 它与领取互斥：`canAutoClaim`（要求「未认领」∧ 无处理人）与底栏 `xiaozhiClaimable`
+ * （要求 `ticketUnclaimed`）都判不中它，故落进池子也不会被谁领走。
+ */
+export function isXiaozhiPooledRecord(
+  t: { isXiaozhi?: boolean; nodeStatus?: string; assignee?: string | null } | null | undefined,
+): boolean {
+  return isXiaozhiTicket(t)
+    && t?.nodeStatus === '已升级产研'
+    && t?.assignee === XIAOZHI_SYSTEM_HANDLER;
+}
+
+/**
  * 小智单在「已升级产研」态上**置灰**的四枚底栏动作（PRD §5.3 表二，B5 的闸门）。
  *
  * 🔴 **这是类型维的例外**：基线 §2「已升级产研」行给通用单的是「关闭工单 / 调剂·同组 /

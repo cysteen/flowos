@@ -223,7 +223,12 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
     nodeStatus: '已升级产研',
     // 一·补 B2：勾了「升级 TPD」那一支的处理人＝系统，不经领取
     assignee: XIAOZHI_SYSTEM_HANDLER,
-    tab: 'mine',
+    /**
+     * ⚠️ `tab: 'pool'` —— 直通产研的单**在工单池页签里留着那条记录**（PRD §2.3
+     * 「先在工单池留下记录」）。它有处理人（系统）故不是待领任务，`inGroupPoolScope`
+     * 为这一种形态开了判据明确的例外（`isXiaozhiPooledRecord`），领取侧判不中它。
+     */
+    tab: 'pool',
     ...XIAOZHI_SLA_IDLE,
     createdAt: '2026-09-18 11:05',
     updatedAt: '2026-09-18 11:06',
@@ -271,7 +276,8 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
     // B5：产研办结了，本单不动 —— 产研那边还没从本单脱手，校代说「否」就要原地回传回去
     nodeStatus: '已升级产研',
     assignee: XIAOZHI_SYSTEM_HANDLER,
-    tab: 'mine',
+    // 直通产研那条记录留在工单池页签（PRD §2.3），判据见 isXiaozhiPooledRecord
+    tab: 'pool',
     ...XIAOZHI_SLA_IDLE,
     createdAt: stamp(t3Created).slice(0, 16),
     updatedAt: stamp(t3Settled).slice(0, 16),
@@ -400,7 +406,8 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
     // B5②：确认未解决不改状态，本单留在「已升级产研」等产研重新处理
     nodeStatus: '已升级产研',
     assignee: XIAOZHI_SYSTEM_HANDLER,
-    tab: 'mine',
+    // 直通产研那条记录留在工单池页签（PRD §2.3），判据见 isXiaozhiPooledRecord
+    tab: 'pool',
     ...XIAOZHI_SLA_IDLE,
     createdAt: '2026-09-18 08:30',
     updatedAt: '2026-09-21 09:40',
@@ -474,7 +481,8 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
     problemDesc: '组卷时按知识点筛题返回空结果，产研重建索引后办结，校代一直未确认。',
     nodeStatus: '已升级产研',
     assignee: XIAOZHI_SYSTEM_HANDLER,
-    tab: 'mine',
+    // 直通产研那条记录留在工单池页签（PRD §2.3）；装载时会被 B7 对账结掉、翻 'done'
+    tab: 'pool',
     ...XIAOZHI_SLA_IDLE,
     createdAt: stamp(t6Created).slice(0, 16),
     updatedAt: stamp(t6Settled).slice(0, 16),
@@ -560,8 +568,7 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
    * 两处修复的回归用例 —— 那两条就得靠一张未认领的单才验得到。
    *
    * 走的是「创建」那条路（D5 落池自领）：无 `rd`、`rdSync: 'none'`、**处理人为空**。
-   * ⚠️ `tab: 'pool'` 是进工单池页签的判据（`inGroupPoolScope` 要 tab/assignee/groupId 三者齐），
-   * 与前七张的 `tab: 'mine'` 不同，不是写错。
+   * ⚠️ `tab: 'pool'` 是进工单池页签的判据（`inGroupPoolScope` 要 tab/assignee/groupId 三者齐）。
    * ⚠️ `responded: false` —— 还没人接手，谈不上已响应。
    * ⚠️ 「一线人员域账号」照样有值：B24 是建单必填，**种子不能自己违规**。
    */

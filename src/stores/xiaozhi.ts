@@ -353,19 +353,19 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
       ...XIAOZHI_SLA_IDLE,
       assignee: null,
       /**
-       * 🔴 **落池那一支的 `tab` 必须是 `'pool'`**，与种子 ⑧ 一致。
+       * 🔴 **两条路都落 `'pool'`**。
        *
-       * 工单池页签的数据域 `inGroupPoolScope` 要 `tab === 'pool' ∧ 无处理人`
-       * （`types/ticket.ts`），我的任务 `inMineTaskScope` 要 `tab === 'mine' ∧ 处理人是我`。
-       * 原先新单一律写 `'mine'` + `assignee: null`，**两条都不满足 —— 刚建的未认领小智单
-       * 在工单池和我的任务里都看不见**，只能从查询中心翻到。领取时 `claimFromPool`
-       * 再把它翻回 `'mine'`。
+       * 工单池页签的数据域 `inGroupPoolScope` 要 `tab === 'pool'`，我的任务 `inMineTaskScope`
+       * 要 `tab === 'mine' ∧ 处理人是我`。原先新单一律写 `'mine'` + `assignee: null`，
+       * **两条都不满足 —— 刚建的小智单在工单池和我的任务里都看不见**，只能从查询中心翻到。
        *
-       * 直通产研那一支**维持 `'mine'` 不动**：它的处理人是系统（一·补 B2），池里留的是
-       * 记录不是待领任务，本就不该出现在任何人的工单池里等人领；它也进不了「我的任务」
-       * （处理人不是当前登录人），这正是预期 —— 那批单从查询中心与产研反馈那条路看。
+       * - 未勾「升级 TPD」：落池等人领，领取时 `claimFromPool` 再把它翻回 `'mine'`；
+       * - 勾了「升级 TPD」：**PRD §2.3 字面就是「先在工单池留下记录」**，那条记录本来就是
+       *   给组里看的。它有处理人（系统，一·补 B2）故**不是待领任务** —— `inGroupPoolScope`
+       *   为它开了一道判据明确的例外（`isXiaozhiPooledRecord`），而 `canAutoClaim` 与
+       *   底栏 `xiaozhiClaimable` 都要求「未认领」，判不中它，不会被谁领走。
        */
-      tab: autoEscalate ? 'mine' : 'pool',
+      tab: 'pool',
       responded: false,
       createdAt: xiaozhiMinuteStamp(now),
       updatedAt: xiaozhiMinuteStamp(now),
