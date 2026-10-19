@@ -66,17 +66,21 @@ export function resolveFlashView(i: FlashViewInput): FlashView {
       if (mine) return 'l2';
       return unclaimedIn(i, 'l2') ? 'claim' : 'readonly';
     case 'team-leader':
-      // 管辖教育刷机处理组：本组全员名下可办理；未认领单只指派（不在处理页）、一线刷机池与一线坐席名下不管（M72）
+      // 管辖教育刷机处理组：本组全员名下可办理；本组池未认领单可在处理页领取（M170，从工单池进入即自动领取）；
+      // 一线刷机池与一线坐席名下不管（M72）
       if (i.assignee && i.pool === 'l2' && i.assigneeGroupId !== FLASH_L1_GROUP_ID) return 'l2';
-      return 'readonly';
+      return unclaimedIn(i, 'l2') ? 'claim' : 'readonly';
     case 'complaint-handler':
       return 'other';
     case 'tech-support':
       // 只有升级到技术支持组的单放开（1013 B2：二线升级与咨询单一致）
       return i.status === '已升级技术支持' ? 'tech' : 'readonly';
     default:
-      // 管理员全租户：未认领单不出流转动作（X26），其余走二线视角
-      if (FLASH_ADMIN_ROLES.has(i.roleKey)) return i.status === '未认领' ? 'readonly' : 'l2';
+      // 管理员全租户：教育刷机处理组池未认领单可在处理页领取（M170），其余未认领单不出流转动作（X26），其余走二线视角
+      if (FLASH_ADMIN_ROLES.has(i.roleKey)) {
+        if (unclaimedIn(i, 'l2')) return 'claim';
+        return i.status === '未认领' ? 'readonly' : 'l2';
+      }
       return 'readonly';
   }
 }

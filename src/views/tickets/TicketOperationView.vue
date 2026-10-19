@@ -456,8 +456,7 @@ const flashContactActions = computed<'show' | 'hide' | undefined>(() => {
 
 /** 领取（PRD §4.2）：刷机服务落状态与履历，Toast「已领取 〈单号〉」 */
 function onFlashClaim() {
-  const role = user.roleKey === 'agent-l1' ? '一线坐席' : '二线专员';
-  const res = flashStore.claimFromPool(d.value.no, { name: currentHandlerName(user.roleKey, user.name), role });
+  const res = flashStore.claimFromPool(d.value.no, { name: currentHandlerName(user.roleKey, user.name), role: mapUserRole(user.roleKey) });
   if (res.ok) message.success(res.message);
   else message.warning(res.message);
 }
