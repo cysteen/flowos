@@ -819,13 +819,3 @@ export function filterSelectOption(
   const text = String(option?.label ?? option?.value ?? '');
   return text.toLowerCase().includes(input.trim().toLowerCase());
 }
-
-/** 省市区级联搜索：路径中任意一级 label 命中关键词即展示该路径（与客户信息弹窗一致） */
-export function filterRegionCascader(
-  input: string,
-  path: { label?: unknown }[],
-): boolean {
-  const q = input.trim().toLowerCase();
-  if (!q) return true;
-  return path.some((node) => String(node.label ?? '').toLowerCase().includes(q));
-}
