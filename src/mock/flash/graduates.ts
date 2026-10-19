@@ -29,6 +29,8 @@ export const GRADUATE_ROSTER: GraduateRecord[] = [
   { schoolId: 'SCH-340104-050', studentAccount: 'hf50z2023s0233', studentName: '许诺', graduateYear: 2026 },
   { schoolId: 'SCH-340104-050', studentAccount: 'hf50z2023s0520', studentName: '陆子墨', graduateYear: 2026 },
   { schoolId: 'SCH-340104-050', studentAccount: 'hf50z2023s1104', studentName: '陈可馨', graduateYear: 2026 },
+  // 合肥市第四十六中学
+  { schoolId: 'SCH-340104-046', studentAccount: 'hf46z2023s1109', studentName: '吴梓萱', graduateYear: 2026 },
   // 合肥一六八中学
   { schoolId: 'SCH-340111-168', studentAccount: 'hf168z2023s1021', studentName: '钱沐阳', graduateYear: 2026 },
   { schoolId: 'SCH-340111-168', studentAccount: 'hf168z2023s0908', studentName: '杜若溪', graduateYear: 2026 },

@@ -4,8 +4,9 @@
  * 每张单的刷机信息都取自 MDM 设备台账、毕业名单、学校库（`mock/flash/*`、`mock/schools.ts`），
  * 推送记录与履历按底数推演，与刷机服务 `stores/flash.ts` 的规则一致。
  *
- * 两张「自动刷机中」的推送时刻取**模块加载时刻**倒推：
- * 第一次打开页面后十几秒出回传结果、回传无响应那张加载即判超时。
+ * 三张「自动刷机中」的推送时刻取**模块加载时刻**倒推：
+ * ① 第一次打开页面后十几秒出回传结果；② 回传无响应、加载即判超时；㉑ 回传无响应、到回传超时时长前一直停在自动刷机中。
+ * ⑮ 调研中、⑲ 调研超时两张的调研短信时刻同样取加载时刻倒推。
  * 之后的状态由刷机服务持久化（`FLASH_LS_KEYS`），刷新页面不回到种子。
  *
  * SLA（1013 A26 / A17）：一线不计 SLA —— 一线刷机池、一线名下的单没有账本（`slaStartedAt` 为空）；
@@ -626,10 +627,10 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
     ]);
   }
 
-  // ⑮ 调研中 · 自助刷机成功（无处理人）
+  // ⑮ 调研中 · 自助刷机成功（无处理人）：建单时刻取加载时刻前 40 分钟，调研短信在调研超时时长内，打开时仍在调研中
   {
     const info = infoOf('XFS20240600823', 'SCH-341502-001', '毕业');
-    const at = '2026-09-15 08:29:58';
+    const at = flashStamp(nowMs - 40 * 60_000);
     const pushed = addSec(at, 2);
     const back = addSec(pushed, 12);
     add(row(15, {
@@ -847,6 +848,25 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       smsEntry(addSec(back2, 2), '13965201020', flashSmsSurvey(no(20))),
       tl(survey, 'customer', 'reply', '孙建军', '客户', '回访评价', FLASH_TL.surveyFeedback(false, 2, surveyRemark), { stars: 2 }),
       handoffEntry(addSec(survey, 1), '回访未解决', 'l2'),
+    ]);
+  }
+
+  // ㉑ 自动刷机中 · 回传无响应（稳定样本）：几秒前刚推送，设备始终无回传，到回传超时时长（缺省 2 小时）才转人工；
+  //    ① 十几秒即出回传结果，本单在此之前一直停在「自动刷机中」
+  {
+    const info = infoOf('XFS30240901009', 'SCH-340104-046', '毕业');
+    const created = flashStamp(nowMs - 8_000);
+    const pushed = flashStamp(nowMs - 6_000);
+    add(row(21, {
+      info, creator: '用户提报', customer: '吴海峰', phone: '13856021109',
+      createdAt: created.slice(0, 16), updatedAt: pushed.slice(0, 16),
+      nodeStatus: '自动刷机中', assignee: null, tab: 'mine', nodeStep: 2,
+      ...L1_NO_SLA,
+      flashState: state('用户提报', { outcome: '等待回传', pushCount: 1 }),
+      runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '等待回传' })],
+    }), [
+      createdByUser(created, '吴海峰', VERIFY_PASS, { auto: true }),
+      pushEntry(pushed, 1),
     ]);
   }
 

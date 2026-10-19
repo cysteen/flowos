@@ -97,6 +97,8 @@ export const MDM_DEVICES: MdmDevice[] = [
   dev({ sn: 'XFS20240600966', model: S20, studentAccount: 'hf50z2023s0366', romVersion: 'EDU-S20-3.2.4', mdmVersion: 'MDM 5.8.2', online: '未联网', onlineAfterContact: true }),
   // ⑳ 二线池 · 回访未解决（一线介入过）：首推未开机 → 一线联系后重新推送成功 → 回访未解决 → 教育刷机处理组池（10-19 C2 / C3）
   dev({ sn: 'XFS30240901020', model: S30, studentAccount: 'la1z2023s1020', romVersion: 'EDU-S30-1.4.2', mdmVersion: 'MDM 5.8.2', online: '未开机', onlineAfterContact: true }),
+  // ㉑ 自动刷机中 · 回传无响应（稳定样本）：到回传超时时长才转人工，不迟到回传
+  dev({ sn: 'XFS30240901009', model: S30, studentAccount: 'hf46z2023s1109', romVersion: 'EDU-S30-1.4.2', mdmVersion: 'MDM 5.8.2', noResponse: true }),
 
   // ---- 待提报设备（建单可走通各条链路） ----
   // 成功：自研、账号一致、毕业生、在线
