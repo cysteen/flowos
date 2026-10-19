@@ -19,7 +19,6 @@
  * 产品两级、问题分级、来电描述、SN 号一律用通用咨询单的既有字段，不在本卡重复。
  */
 import { computed } from 'vue';
-import { useUserStore } from '@/stores/user';
 import {
   XIAOZHI_FIELD_LABELS as L, XIAOZHI_RD_MODULES, XIAOZHI_RD_PRIORITIES,
   xiaozhiReceiverOf,
@@ -33,16 +32,8 @@ defineProps<{
   errors: Record<CreateTicketXiaozhiField, string>;
 }>();
 
-const user = useUserStore();
-
 const moduleOptions = XIAOZHI_RD_MODULES.map((m) => ({ value: m.name, label: m.name }));
 const priorityOptions = XIAOZHI_RD_PRIORITIES.map((v) => ({ value: v, label: v }));
-
-/** 占位提示：标明默认取建单人登录用户名（域账号） */
-const frontlinePlaceholder = computed(() => {
-  const acc = user.domainAccount.trim();
-  return acc ? `默认 ${acc}（建单人用户名）` : '请输入一线人员域账号';
-});
 
 /** 接收人（域账号）由产品模块带出，不可改（W2） */
 const receiver = computed(() => xiaozhiReceiverOf(info.value.rdModule));
@@ -95,17 +86,15 @@ function setSelect(key: 'rdModule', v: unknown) {
         </div>
       </div>
 
-      <!-- 一·补 B24：无条件必填，默认建单人登录域账号（非昵称） -->
+      <!--
+        一·补 B29：取**客户（校代 / 渠道商）**已登记的讯飞域账号，不是建单坐席的；
+        **选填** —— 客户没登记就留空，建单人可手工录入或改。必填星号与必填校验同进同退，
+        两者一并去掉（B29 推翻 B24）。
+      -->
       <div class="xz-field">
-        <label class="xz-label"><span class="req">*</span>{{ L.frontlineAccount }}</label>
+        <label class="xz-label">{{ L.frontlineAccount }}</label>
         <div class="xz-control">
-          <a-input
-            v-model:value="info.frontlineAccount"
-            class="xz-input"
-            :status="errors.frontlineAccount ? 'error' : ''"
-            :placeholder="frontlinePlaceholder"
-          />
-          <div v-if="errors.frontlineAccount" class="xz-error">{{ errors.frontlineAccount }}</div>
+          <a-input v-model:value="info.frontlineAccount" class="xz-input" placeholder="请输入" />
         </div>
       </div>
     </div>

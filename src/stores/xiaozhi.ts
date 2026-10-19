@@ -52,7 +52,7 @@ export interface XiaozhiCreateInput {
   rdModule: string;
   /** 产研优先级 */
   rdPriority: XiaozhiRdPriority;
-  /** 一线人员域账号（选填） */
+  /** 一线人员域账号：客户（校代 / 渠道商）的讯飞域账号，选填（一·补 B29） */
   frontlineAccount: string;
   /** 附件（文件名，选填；建单取自问题描述区 descriptionAttachments） */
   attachments: string[];
@@ -84,7 +84,7 @@ export interface XiaozhiActor {
 
 /**
  * 建单拦截。必填缺项只剩产品模块一项 —— 问题分类走通用级联控件、恒有值（一·补 B15），
- * 不再有「问题类别未选」这档拦截。
+ * 一线人员域账号取客户的、客户没登记就留空，故不必填（一·补 B29）。
  *
  * `reason` 是**字段级之外**的拦截（PRD §2 的两条校验）：
  * - `receiverMissing`：产品模块选了、但该模块没配产研接收人 → 文案落在产品模块那一栏下方；
@@ -93,7 +93,7 @@ export interface XiaozhiActor {
 export interface XiaozhiCreateBlocked {
   kind: 'blocked';
   /** 缺哪几项（字段键） */
-  missing: ('rdModule' | 'frontlineAccount')[];
+  missing: 'rdModule'[];
   /** 非必填类拦截的原因 */
   reason?: 'receiverMissing';
 }
@@ -244,12 +244,13 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
    * 建单校验（PRD §2）。问题分类那一道在通用咨询表单里（一·补 B15），由 `validate()` 管，
    * 不在这里重复判。
    *
-   * 🔴 **两档必填，条件不同，别写混**：
-   * - **一线人员域账号：无条件必填**（一·补 B24）—— 它是提报人登录小智工单应用做
-   *   「是否解决」确认的凭据（B6），**与走不走产研无关**，故「创建」与「创建并流转」
-   *   两个出口都判。老系统是按「有没有这个账号」分流（没有就拿到办结状态直接关单），
-   *   本轮**不补那条分流分支**，改为从源头必填；
-   * - **产品模块：条件必填** —— 只在 `escalate`（勾了「升级 TPD」）时要，走产研才用得上。
+   * 🔴 **必填只剩产品模块一项，且是条件必填** —— 只在 `escalate`（勾了「升级 TPD」）时要，
+   * 走产研才用得上。
+   *
+   * ⚠️ **一线人员域账号不判必填**（一·补 B29，**推翻 B24**）：它取的是**客户**（校代 / 渠道商）
+   * 已登记的讯飞域账号，而客户不是人人都有 —— 判必填就等于逼建单人随手填一个，
+   * 填进去的不是提报人，确认链路（B5）反而更错。老系统按「有没有这个账号」分流那条分支
+   * 本轮同样不补。
    *
    * 另两条：
    * - 该产品模块必须配了产研接收人（接收人由产品模块带出、不可改，缺了推出去产研也不知道派给谁）；
@@ -257,10 +258,8 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
    *   见 `createXiaozhiTicket` 里的 `platformDown` 分支。拦截与降级是两回事，别混成一条。
    */
   function evaluateCreate(input: XiaozhiCreateInput, escalate: boolean): XiaozhiCreateBlocked | { kind: 'create' } {
-    const missing: ('rdModule' | 'frontlineAccount')[] = [];
+    const missing: 'rdModule'[] = [];
     const picked = input.rdModule?.trim() ?? '';
-    // 无条件那一条放在前面：它与 escalate 无关
-    if (!input.frontlineAccount?.trim()) missing.push('frontlineAccount');
     if (escalate && !picked) missing.push('rdModule');
     if (missing.length) return { kind: 'blocked', missing };
     if (escalate && picked && !xiaozhiHasReceiver(picked)) {
@@ -298,7 +297,7 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     const now = Date.now();
     const no = nextNo(now);
     const xiaozhi: TicketXiaozhi = {
-      // 一·补 B24：提报人确认凭据，**两条路都落**（走「创建」的单没有 rd，凭据一样要留）
+      // 一·补 B29：提报人（客户）确认凭据，**两条路都落**（未勾「升级 TPD」的单没有 rd，凭据一样要留）
       frontlineAccount: input.frontlineAccount.trim(),
       rdSync: 'none',
       rdRecords: [],

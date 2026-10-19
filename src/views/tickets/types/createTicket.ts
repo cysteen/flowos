@@ -135,6 +135,14 @@ export interface CustomerInfo {
   school?: string;
   schoolTag?: string;
   serviceOwner?: string;
+  /**
+   * 客户在讯飞公司系统的域账号（1130 小智工单 一·补 B29）。
+   *
+   * 校代 / 渠道商用它登录小智工单应用，查询自己提报的单并确认是否解决（B6）。
+   * **不是人人都有**：没登记的客户这一项为空，建小智单时「一线人员域账号」就留空、
+   * 由建单人手工录入 —— **不回落到建单坐席的账号**，那会把确认权交到客服手里。
+   */
+  domainAccount?: string;
 }
 
 export function formatCustomerSubline(c: CustomerInfo, businessType?: string): string {
@@ -258,16 +266,20 @@ export interface CreateTicketXiaozhiForm {
   rdModule: string;
   /** 产研优先级（四档，照弹窗现状） */
   rdPriority: XiaozhiRdPriority;
-  /** 一线人员域账号（选填） */
+  /**
+   * 一线人员域账号 —— **客户（校代 / 渠道商）的**讯飞公司域账号、**选填**（一·补 B29）。
+   * 按本单所选客户自动预填其已登记的域账号；客户没登记就留空，由建单人手工录入或改。
+   */
   frontlineAccount: string;
 }
 
 /**
- * 「小智工单信息」卡里参与必填提示的字段。
+ * 「小智工单信息」卡里参与必填提示的字段 —— **只有产品模块一项**。
  * `rdModule` 是**条件必填** —— 只在勾了「升级 TPD」时要（走产研才用得上，一·补 B27）。
- * 问题分类走通用级联控件、恒有值，不需要必填提示（一·补 B15）。
+ * 「一线人员域账号」已由必填改选填（一·补 B29，推翻 B24），不再参与必填提示；
+ * 问题分类走通用级联控件、恒有值，同样不需要必填提示（一·补 B15）。
  */
-export type CreateTicketXiaozhiField = 'rdModule' | 'frontlineAccount';
+export type CreateTicketXiaozhiField = 'rdModule';
 
 export function defaultCreateTicketXiaozhiForm(): CreateTicketXiaozhiForm {
   return {
@@ -547,6 +559,8 @@ export const CUSTOMER_DIRECTORY: CustomerInfo[] = [
     school: '合肥市第一中学',
     schoolTag: '重点校',
     serviceOwner: '王明',
+    // 已登记讯飞域账号的客户：建小智单时「一线人员域账号」自动预填这一项（一·补 B29）
+    domainAccount: 'zhaomin9',
   },
   {
     id: 'c-003',
@@ -610,6 +624,7 @@ export const CUSTOMER_DIRECTORY: CustomerInfo[] = [
     gender: '女',
     region: '浙江省 / 杭州市 / 西湖区',
     address: '文三路90号',
+    domainAccount: 'zhangxiaoyu4',
   },
   {
     id: 'c-008',
@@ -670,6 +685,7 @@ export const CUSTOMER_DIRECTORY: CustomerInfo[] = [
     gender: '女',
     region: '江苏省 / 苏州市 / 工业园区',
     address: '星湖街328号',
+    domainAccount: 'sunli12',
   },
   {
     id: 'c-013',

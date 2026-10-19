@@ -170,7 +170,7 @@ export interface XiaozhiRdInfo {
   receiver: string;
   /** 产研优先级 */
   priority: XiaozhiRdPriority;
-  /** 一线人员域账号（选填） */
+  /** 一线人员域账号：**客户（校代 / 渠道商）的**讯飞域账号，选填（一·补 B29） */
   frontlineAccount: string;
   /** 附件（文件名，选填） */
   attachments: string[];
@@ -327,14 +327,10 @@ export const XIAOZHI_CANCELLABLE_STATUSES: readonly string[] = ['未认领', '�
  * 建单必填提示（输入类「请填写」、选择类「请选择」，与通用咨询单同一口径）
  * 与各处拦截 / 置灰悬停文案。问题类别那条已随 B15 去掉 ——
  * 问题分类走通用咨询表单的级联控件，它恒有值、无须另给必填提示。
+ * 一线人员域账号那条已随 B29 去掉 —— 该字段取客户的域账号、客户没登记就留空，故不必填。
  */
 export const XIAOZHI_TIP = {
   rdModuleRequired: `请选择${XIAOZHI_FIELD_LABELS.rdModule}`,
-  /**
-   * 一线人员域账号必填（一·补 B24）。输入类用「请填写」，与 `rdModuleRequired` 的
-   * 「请选择」同一套体例（输入类「请填写」、选择类「请选择」）。
-   */
-  frontlineAccountRequired: `请填写${XIAOZHI_FIELD_LABELS.frontlineAccount}`,
   /**
    * 产品模块选了、但该模块没配产研接收人（W2 的字典缺项）。
    * 接收人是**由产品模块带出、不可改**的，缺了这一项推出去产研也不知道派给谁，故在建单侧就拦。
@@ -429,11 +425,12 @@ export const XIAOZHI_SURVEY_TO_REPORTER = true;
  */
 export interface TicketXiaozhi {
   /**
-   * 一线人员域账号 —— 🔴 **建单必填**（一·补 B24），**与走不走产研无关**。
+   * 一线人员域账号 —— 🔴 **取的是客户（校代 / 渠道商）的讯飞公司域账号**（一·补 B29），
+   * 不是建单坐席的；**选填**（B29 推翻 B24 的必填），**与走不走产研无关**。
    *
-   * 它是**提报人登录小智工单应用做「是否解决」确认的凭据**（B6）：没有它，办结回传后
-   * 既等不到确认、B7 的「超 N 天」兜底也只是白等 N 天。故存在**工单层**，
-   * 不是只存在 `rd` 里 —— 走「创建」落池自领那条路的单没有 `rd`，
+   * 它是**提报人登录小智工单应用做「是否解决」确认的凭据**（B6），按本单客户自动预填；
+   * 客户没登记域账号时留空 —— **不回落到建单人**，那等于把确认权交给了客服自己。
+   * 故存在**工单层**，不是只存在 `rd` 里 —— 未勾「升级 TPD」落池自领那条路的单没有 `rd`，
    * 凭据却一样要留下来。
    * `rd.frontlineAccount` 是推给产研那一笔的**载荷副本**（W2 建单要素之一），两者同源于建单表单。
    */
