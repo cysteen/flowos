@@ -168,8 +168,8 @@ defineExpose({ getPayload });
         <div class="as-label req">省市区</div>
         <div class="as-region">
           <a-select v-model:value="form.province" :options="opt([form.province || '安徽省','北京市','上海市'])" placeholder="省" style="flex:1" :status="errs.region && !form.province ? 'error' : undefined" />
-          <a-select v-model:value="form.city" :options="opt([form.city || '合肥市','—'])" placeholder="市" style="flex:1" :status="errs.region && !form.city ? 'error' : undefined" />
-          <a-select v-model:value="form.district" :options="opt([form.district || '蜀山区','—'])" placeholder="区/县" style="flex:1" :status="errs.region && !form.district ? 'error' : undefined" />
+          <a-select v-model:value="form.city" :options="opt([form.city || '合肥市'])" placeholder="市" style="flex:1" :status="errs.region && !form.city ? 'error' : undefined" />
+          <a-select v-model:value="form.district" :options="opt([form.district || '蜀山区'])" placeholder="区/县" style="flex:1" :status="errs.region && !form.district ? 'error' : undefined" />
         </div>
         <div v-if="errs.region" class="as-err">{{ errs.region }}</div>
       </div>
