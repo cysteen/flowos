@@ -13,7 +13,6 @@ import { useFlashStore } from '@/stores/flash';
 import { useXiaozhiStore } from '@/stores/xiaozhi';
 import { XIAOZHI_CONFIRM_ACTOR, isXiaozhiTicket, type TicketXiaozhi } from '@/views/tickets/types/xiaozhi';
 import type { FeishuRecord } from '@/mock/ticketDetail';
-import { findSchoolById } from '@/mock/schools';
 import type { Ticket, Channel, TicketType, Priority, TicketStatus } from '@/views/tickets/types/ticket';
 import { TICKETS } from '@/mock/tickets';
 import { TYPE_SAMPLES, typeSampleKey } from '@/mock/ticketTypeSamples';
@@ -525,13 +524,14 @@ export function useTicketOperation() {
     // 问题标签取工单行上的问题分类三级（1013 A5）
     base.product.issueTags = [t.problemL1, t.problemL2, t.problemL3].filter((s): s is string => !!s?.trim());
     const phone = (t.customerPhone ?? '').replace(/^(\d{3})(\d{4})(\d{4})$/, '$1 $2 $3');
+    // 客户信息卡取客户档案（PRD §5.1 侧栏沿用客户信息卡，F10）；学校所在地区只在刷机信息里出现
     base.customer = {
       name: t.customer,
       types: ['G个人用户'],
-      gender: '—',
+      gender: t.customerGender ?? '—',
       contacts: phone ? [{ type: 'phone', value: phone }] : [],
-      region: findSchoolById(f.info.schoolId)?.region ?? '—',
-      address: '—',
+      region: t.customerRegion ?? '—',
+      address: t.customerAddress ?? '—',
     };
     base.agent = null;
     // 客户全景下钻：本客户名下只有这一张刷机单；类型列取工单类型（刷机单＝咨询，1013 A1）

@@ -699,8 +699,8 @@ function onConfirmSaveFilter(name: string) {
     </div>
 
     <div v-else class="workbench-body">
-      <!-- ② chips 筛选（催补待回等 Tab 有子筛选时展示） -->
-      <div v-if="!flashPoolTabOpen && !isDraftView && wb.activeChips.value.length" class="filter-row-unified">
+      <!-- ② chips 筛选（催补待回等 Tab 有子筛选时展示；草稿箱视图下照常展示，点其他 chip 回列表） -->
+      <div v-if="!flashPoolTabOpen && wb.activeChips.value.length" class="filter-row-unified">
         <TicketFilterBar
           :active-chip="wb.activeChip.value"
           :chip-counts="wb.chipCounts.value"

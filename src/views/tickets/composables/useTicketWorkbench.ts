@@ -53,9 +53,13 @@ import {
   visiblePoolGroupsFor,
   WORKBENCH_HANDLER,
   type ChipKey,
+  type ChipMeta,
   type TabKey,
   type Ticket,
 } from '@/views/tickets/types/ticket';
+
+/** 「我的任务」筛选末尾的草稿箱入口（选中后列表区换成草稿列表） */
+const DRAFT_CHIP: ChipMeta = { key: 'draft', label: '草稿箱' };
 
 function savedFilterTab(tab: TabKey): SavedFilterTab | null {
   if (tab === 'mine' || tab === 'done' || tab === 'pool') return tab;
@@ -219,8 +223,9 @@ export function useTicketWorkbench() {
   const activeChips = computed(() => {
     const builtin = chipsForTab(activeTab.value);
     const sfTab = savedFilterTab(activeTab.value);
-    if (!sfTab) return builtin;
-    return [...builtin, ...savedFilters.chipsForTab(sfTab)];
+    const chips = sfTab ? [...builtin, ...savedFilters.chipsForTab(sfTab)] : builtin;
+    // 草稿箱入口（PRD-04 §存草稿 / 630：草稿落工作台草稿箱）：「我的任务」筛选末尾，与「新建工单」同处可见（F19）
+    return activeTab.value === 'mine' ? [...chips, DRAFT_CHIP] : chips;
   });
 
   /** 与列表一致：chip 计数也叠加当前 Tab 的结构化筛选（含已办默认 30 天窗） */
@@ -237,7 +242,9 @@ export function useTicketWorkbench() {
   const chipCounts = computed<Record<string, number>>(() => {
     const map: Record<string, number> = {};
     for (const chip of activeChips.value) {
-      if (isSavedFilterChipKey(chip.key)) {
+      if (chip.key === DRAFT_CHIP.key) {
+        map[chip.key] = draftStore.drafts.length;
+      } else if (isSavedFilterChipKey(chip.key)) {
         const sf = savedFilters.findByChipKey(chip.key);
         if (sf) {
           map[chip.key] = tabRows.value.filter((t) => matchMineQuery(t, sf.query)).length;
@@ -293,7 +300,7 @@ export function useTicketWorkbench() {
   );
 
   const isDraftView = computed(
-    () => activeTab.value === 'review' && activeChip.value === 'draft',
+    () => (activeTab.value === 'mine' || activeTab.value === 'review') && activeChip.value === DRAFT_CHIP.key,
   );
   const showAppointmentColumn = computed(
     () => activeTab.value === 'mine' && activeChip.value === 'appointment',

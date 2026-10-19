@@ -63,9 +63,12 @@ const products = ref<Product[]>([
  * 产品管理只维护智慧课堂学生平板的「自研 · 支持线上自助推送」（1013 B7），开关值落刷机配置 store，建单与用户提报即时生效。
  */
 const flashConfig = useFlashConfigStore();
-/** 智慧课堂学生平板（刷机配置里有刷机属性的产品）才出「自研 · 支持线上自助推送」开关 */
+/**
+ * 该产品下有刷机类问题分类（问题分类「是否刷机」＝是，10-19 C1）才出「自研 · 支持线上自助推送」开关，
+ * 与建单、修改刷机信息弹窗同一判据（F14）；其余产品显示「—」
+ */
 function hasFlashProfile(p: Product): boolean {
-  return !!flashConfig.modelOf(p.name);
+  return flashConfig.isSupportedModel(p.name);
 }
 /** 「自研 · 支持线上自助推送」（1013 B7） */
 function selfDeveloped(p: Product): boolean {

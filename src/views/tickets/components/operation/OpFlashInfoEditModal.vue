@@ -71,11 +71,14 @@ const draft = reactive<Draft>(fromInfo(props.info));
 const errors = reactive<Partial<Record<FieldKey, string>>>({});
 const bottomTip = ref<{ text: string; inflightNo?: string } | null>(null);
 const photoList = ref<UploadFile[]>([]);
+/** 每次打开重挂学校选择器：地区与检索框按本单当前值重新预填 */
+const openSeq = ref(0);
 
 watch(
   () => props.open,
   (v) => {
     if (!v) return;
+    openSeq.value += 1;
     original.value = fromInfo(props.info);
     Object.assign(draft, fromInfo(props.info));
     (Object.keys(errors) as FieldKey[]).forEach((k) => delete errors[k]);
@@ -286,12 +289,15 @@ const inflightHref = computed(() => (tipParts.value?.no ? router.resolve(`/ticke
             <div v-if="errors.studentName" class="fe-error">{{ errors.studentName }}</div>
           </div>
         </div>
-        <div class="fe-field">
+        <!-- 学校名称占整行：省市区与学校名称完整可见（D7） -->
+        <div class="fe-field fe-school">
           <label class="fe-label"><span class="req">*</span>{{ L.schoolName }}</label>
           <div class="fe-control">
             <FlashSchoolPicker
+              :key="openSeq"
               :school-id="draft.schoolId"
               :default-region="customerRegion"
+              :search-hint="original.schoolId ? '' : info.schoolName"
               :status="errors.schoolId ? 'error' : ''"
               @update:school-id="(v: string) => setSelect('schoolId', v)"
             />
@@ -366,6 +372,7 @@ const inflightHref = computed(() => (tipParts.value?.no ? router.resolve(`/ticke
 .fe-body { display: flex; flex-direction: column; gap: 12px; }
 .fe-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; }
 .fe-field { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.fe-school { grid-column: 1 / -1; }
 .fe-label { flex: none; width: 76px; font-size: 13px; color: #374151; line-height: 32px; white-space: nowrap; }
 .req { color: #ef4444; margin-right: 2px; }
 .fe-control { flex: 1; min-width: 0; display: flex; flex-direction: column; }

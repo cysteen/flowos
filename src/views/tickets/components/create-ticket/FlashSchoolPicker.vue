@@ -13,6 +13,11 @@ const props = defineProps<{
   /** 客户信息的省市区（「省 / 市 / 区」），无学校时默认带入 */
   defaultRegion?: string;
   status?: '' | 'error';
+  /**
+   * 未选学校库条目时预填进学校检索框的文字（用户提报的学校为自由文本，F20）。
+   * 与学校库某校同名时地区跟到该校；仍须在下拉里选定学校库条目。
+   */
+  searchHint?: string;
 }>();
 
 /** 学校库 ID */
@@ -39,12 +44,26 @@ const regionOptions = computed<RegionNode[]>(() => {
   return prune(root);
 });
 
+/** 与检索提示同名的学校库条目（只用来带出地区，不代选） */
+function hintSchool() {
+  const hint = props.searchHint?.trim();
+  return hint ? SCHOOL_LIBRARY.find((s) => s.name === hint) : undefined;
+}
+
 function initialRegion(): string[] {
-  const school = schoolId.value ? findSchoolById(schoolId.value) : undefined;
+  const school = schoolId.value ? findSchoolById(schoolId.value) : hintSchool();
   return school ? regionToArray(school.region) : regionToArray(props.defaultRegion);
 }
 
 const region = ref<string[]>(initialRegion());
+/** 学校检索框里的文字：未选学校时预填检索提示，选定或清空后随输入走 */
+const schoolSearch = ref(schoolId.value ? '' : props.searchHint?.trim() ?? '');
+watch(() => props.searchHint, (v) => {
+  if (schoolId.value) return;
+  schoolSearch.value = v?.trim() ?? '';
+  const s = hintSchool();
+  if (s) region.value = regionToArray(s.region);
+});
 
 // 客户信息的省市区后填：本卡还没选地区、也没选学校时跟着带入
 watch(() => props.defaultRegion, (v) => {
@@ -75,6 +94,7 @@ function onRegionChange(v: unknown) {
 
 function onSchoolChange(v: unknown) {
   schoolId.value = v == null ? '' : String(v);
+  schoolSearch.value = '';
 }
 
 defineExpose({ regionText: computed(() => region.value.join(REGION_SEP)) });
@@ -102,13 +122,17 @@ defineExpose({ regionText: computed(() => region.value.join(REGION_SEP)) });
       :disabled="!region.length"
       :status="status"
       :options="schoolOptions"
+      :search-value="schoolSearch"
+      :title="schoolId ? findSchoolById(schoolId)?.name : undefined"
+      @search="(v: string) => (schoolSearch = v)"
       @update:value="onSchoolChange"
     />
   </div>
 </template>
 
 <style scoped>
+/* 省市区「安徽省 / 合肥市 / 蜀山区」整段可见（D7）：地区框定宽，学校框占余下宽度 */
 .school-picker { display: flex; gap: 6px; width: 100%; min-width: 0; }
-.sp-region { flex: 0 0 46%; min-width: 0; }
-.sp-school { flex: 1 1 auto; min-width: 0; }
+.sp-region { flex: 0 0 220px; min-width: 0; }
+.sp-school { flex: 1 1 auto; min-width: 160px; }
 </style>

@@ -93,6 +93,10 @@ export interface FlashTicketBase {
   problemDesc?: string;
   /** 坐席建单时随问题描述上传的附件 */
   problemDescAttachments?: string[];
+  /** 客户档案（坐席建单取客户信息区；处理页客户信息卡照现有工单展示，与学校地区无关，PRD §2.4 / §5.1） */
+  customerGender?: string;
+  customerRegion?: string;
+  customerAddress?: string;
 }
 
 export interface FlashEvaluationBlocked {
@@ -808,6 +812,9 @@ export const useFlashStore = defineStore('flash', () => {
       customer: base.customer,
       vip: base.vip ?? false,
       customerPhone: base.customerPhone ?? input.contactPhone.trim(),
+      ...(base.customerGender?.trim() ? { customerGender: base.customerGender.trim() } : {}),
+      ...(base.customerRegion?.trim() ? { customerRegion: base.customerRegion.trim() } : {}),
+      ...(base.customerAddress?.trim() ? { customerAddress: base.customerAddress.trim() } : {}),
       sn: info.sn,
       product: info.productModel,
       // 产品两级：用户提报只报型号，分类由系统按产品带出（1013 A4）

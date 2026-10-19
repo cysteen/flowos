@@ -3053,7 +3053,7 @@ watch(
       v-model:open="flashInfoModalOpen"
       :info="d.flash.info"
       :submitter="flashInfoSubmitter"
-      :customer-region="d.customer.region"
+      :customer-region="d.customer.region && d.customer.region !== '—' ? d.customer.region : undefined"
       @done="onFlashInfoDone"
     />
 
