@@ -629,6 +629,28 @@ function terminateClocks(
 }
 
 /**
+ * 首次响应收口：首响钟仍在走（或随挂起冻结）时按此刻剩余判达标 / 未达标并停表，记一条首响关钟履历；
+ * 工单行同步记为已响应。已停表的首响钟不动。
+ */
+function respondFirstClock(detail: TicketDetailMeta, timeline: TimelineEntry[]): void {
+  const row = TICKETS.find((t) => t.no === detail.no);
+  const first = detail.slaClocks.find((c) => c.kind === 'first');
+  if (first && first.phase !== 'stopped') {
+    const closedAt = nowCloseTime();
+    first.stopOutcome = first.remainSec >= 0 ? 'met' : 'breached';
+    first.closedAt = closedAt;
+    first.phase = 'stopped';
+    if (row && first.stopOutcome === 'breached') row.firstRespBreached = true;
+    pushEntry(timeline, {
+      category: 'sla', action: 'slaClose', who: '系统', role: '系统',
+      how: '首响时钟关闭', what: '', when: closedAt,
+      slaClose: { clock: '首响', closedAt },
+    });
+  }
+  if (row) row.responded = true;
+}
+
+/**
  * 提交审核/调研（下送）：冻结解决钟显示并记录提交时刻。
  * 通过→后续 terminateClocks 停表达标；驳回/退回→ reopenSolveOnReject 扣减审核时长后续走。
  * 首响钟若已达标(stopped)不动；仍在走(running)的解决钟才冻结。
@@ -958,6 +980,8 @@ export function applyOpAction(
       // 原单进「已转出」等待态——不关闭、客服侧冻结、SLA 不停钟（1025 N3），出态只由售后回传驱动
       // （AS_CLOSED → 原单正常关闭进已办；AS_RETURNED → 清空处理人重新派单，见 aftersaleEvents.ts）
       detail.status = '已转出';
+      // 转售后视为首次响应（PRD §4.3，与刷机单 `transferAftersale` 同口径）：首响钟仍在走的，此刻收口
+      respondFirstClock(detail, timeline);
       return {
         opState: 'transferred',
         suspendInfo,

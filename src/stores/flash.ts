@@ -1426,6 +1426,8 @@ export const useFlashStore = defineStore('flash', () => {
     const r = rowOf(ticketNo);
     if (!r?.flash || !EDITABLE_STATUSES.includes(r.nodeStatus)) return { ok: false, message: FLASH_TIP_REPUSH_STATE };
     const now = Date.now();
+    // 转售后视为首次响应（PRD §4.3）：首响未判的，在停钟前按此刻判达标 / 未达标
+    markFirstResponse(r, now);
     // 已转出：客服侧冻结，SLA 停钟；售后唤起回原处理人时剩余接续（PRD §7.3）
     pauseClock(r, now, '已转出');
     Object.assign(r, {
