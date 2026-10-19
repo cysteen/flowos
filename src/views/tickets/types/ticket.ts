@@ -372,7 +372,7 @@ export function statusTone(status: TicketStatus): StatusTone {
   }
   switch (status) {
     // 正常收口一族：走完流程的「已结案」、建单即结的「直接结案」、
-    // 以及审批通过后友好收口的「已关闭」（依据基线 §1）
+    // 以及审批通过后友好收口的「已关闭」（依据基线 §1；小智单按 1130 一·补 B32 免审批、同落此态）
     case '已结案':
     case '直接结案':
     case '已关闭':

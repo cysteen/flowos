@@ -312,6 +312,13 @@ const cfg = computed<DlgConfig>(() => {
   if (props.action === '升级' && escalateToFeishu.value) {
     return { ...base, title: '升级到飞书项目', okText: '确认升级飞书项目' };
   }
+  /**
+   * 小智单关闭**不走审批**（一·补 B32），点完直落终态「已关闭」，
+   * 故主按钮不能写「提交关闭审核」—— 文案说审批、行为没审批就是在骗操作人。
+   */
+  if (props.action === '关闭工单' && props.isXiaozhi) {
+    return { ...base, okText: '确认关闭' };
+  }
   return base;
 });
 
@@ -429,7 +436,8 @@ function validate(): boolean {
       return true;
     case '关闭工单':
       if (!close.reason) { message.warning('请选择关闭原因'); return false; }
-      if (!close.approvalGroup) { message.warning('请选择审核组'); return false; }
+      // 小智单不走关闭审批（一·补 B32）：表单里没有审核组这一栏，自然也不判它
+      if (!props.isXiaozhi && !close.approvalGroup) { message.warning('请选择审核组'); return false; }
       return true;
   }
   return true;
@@ -848,7 +856,8 @@ function onOk() {
           :options="CLOSE_REASONS.map((r) => ({ value: r, label: r }))"
         />
       </div>
-      <div class="op-field">
+      <!-- 小智单不走关闭审批（一·补 B32）：审核组整栏不渲染，点完直落「已关闭」 -->
+      <div v-if="!isXiaozhi" class="op-field">
         <div class="op-label req">审核组</div>
         <a-select
           v-model:value="close.approvalGroup"
@@ -858,7 +867,11 @@ function onOk() {
       </div>
       <div class="op-field">
         <div class="op-label">备注</div>
-        <a-textarea v-model:value="close.note" :rows="3" placeholder="请补充关闭说明，供审核人判断..." />
+        <a-textarea
+          v-model:value="close.note"
+          :rows="3"
+          :placeholder="isXiaozhi ? '请补充关闭说明...' : '请补充关闭说明，供审核人判断...'"
+        />
       </div>
     </div>
   </OpActionModal>
