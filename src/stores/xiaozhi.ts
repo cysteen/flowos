@@ -688,8 +688,16 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
         category: 'comm', action: 'sms', who: '系统', role: '系统', systemActor: true,
         how: '完成通知', what: XIAOZHI_TL.completionNoticeSkipped(),
       });
+      /**
+       * 🔴 **置待跟进标记**（一·补 B40）：只落一条履历是不够的 —— 履历要点开单才看得见，
+       * 这张单会静默走到超时自动关单。置上后列表行出「通」字徽标（`TicketTitleCell`），
+       * 坐席在列表上就看得见该去人工联系客户。
+       */
+      r.hasPendingNotice = true;
       return;
     }
+    // 通知发出去了：清掉可能留着的待跟进标记（重办后客户补了域账号/手机号即属此例）
+    r.hasPendingNotice = false;
     log(r.no, at, {
       category: 'comm', action: 'sms', who: '系统', role: '系统', systemActor: true,
       // `how` 是履历上的徽章，走哪条通道就写哪条；`action` 只决定图标，comm 两条通道共用
