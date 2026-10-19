@@ -6,10 +6,10 @@ import {
   PlayCircleOutlined, RiseOutlined, UndoOutlined, StopOutlined,
   ToolOutlined, CheckCircleOutlined, SaveOutlined, SwapOutlined,
   RollbackOutlined, TeamOutlined, WarningOutlined,
-  ReloadOutlined, DownOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons-vue';
 import {
-  FLASH_GATE_TIPS, FLASH_L1_BAR_ORDER, FLASH_L2_BAR_ORDER, FLASH_L2_MORE_ORDER,
+  FLASH_GATE_TIPS, FLASH_L1_BAR_ORDER, FLASH_L2_BAR_ORDER,
   flashBarLabel, flashButtonGate, type FlashBarKey, type FlashStage, type FlashView,
 } from '../composables/flashGate';
 import OpActionDialogs from './OpActionDialogs.vue';
@@ -419,7 +419,7 @@ const isFlashBar = computed(
   () => !!props.isFlash && (props.flashView === 'l1' || props.flashView === 'l2' || props.flashView === 'claim'),
 );
 
-/** 刷机单底栏顺序（1013 A15 / A19 / B2）：真源在 `flashGate.ts` 的 FLASH_L1 / L2 BAR_ORDER 与 FLASH_L2_MORE_ORDER */
+/** 刷机单底栏顺序（1013 A15 / B2）：真源在 `flashGate.ts` 的 FLASH_L1 / L2 BAR_ORDER；与咨询单同一排平铺渲染 */
 function flashItem(k: FlashBarKey): BarItem | null {
   const stage = props.flashStage ?? '处理中';
   const def = actionMap.value.get(k);
@@ -459,9 +459,6 @@ const flashPrimaryItems = computed<BarItem[]>(() => {
   const order = props.flashView === 'l1' ? FLASH_L1_BAR_ORDER : props.flashView === 'l2' ? FLASH_L2_BAR_ORDER : [];
   return order.map(flashItem).filter((x): x is BarItem => !!x);
 });
-const flashMoreItems = computed<BarItem[]>(() =>
-  (props.flashView === 'l2' ? FLASH_L2_MORE_ORDER : []).map(flashItem).filter((x): x is BarItem => !!x),
-);
 const isFlashClaim = computed(() => !!props.isFlash && props.flashView === 'claim');
 /**
  * 待领取态（两条路合一）：刷机单的 `claim` 视角，或工单页判定的通用可领取（`claimable`，小智单走它）。
@@ -483,12 +480,6 @@ const ESCALATED_TIP_XIAOZHI = '已升级产研反馈，请在「产研反馈」T
 const escalatedTip = computed(() => (props.isXiaozhi ? ESCALATED_TIP_XIAOZHI : ESCALATED_TIP));
 /** 客诉专员在刷机单上只读工单内容（M94 / M102）：底栏不出「保存」，只留风险那一枚 */
 const hideFlashSave = computed(() => !!props.isFlash && props.flashView === 'other');
-
-function onFlashMoreClick(info: { key: string | number }) {
-  const item = flashMoreItems.value.find((x) => x.key === String(info.key));
-  if (!item || item.forbidden) return;
-  run(item.key);
-}
 
 function saveDraft() {
   emit('action', { type: '保存草稿' });
@@ -729,29 +720,6 @@ defineExpose({ openEscalate, openAftersale, openActivate });
         </span>
       </a-popover>
 
-      <!-- 刷机单二线视角「更多」：申请挂起 · 委派 · 调剂 · 关闭工单 · 强结 · 风险报备 · 撤回（PRD §5.5） -->
-      <a-dropdown v-if="isFlashBar && !saveOnly && flashMoreItems.length" trigger="click" placement="topRight">
-        <button type="button" class="ab-item" :disabled="isTerminal">
-          <span>更多</span>
-          <DownOutlined />
-        </button>
-        <template #overlay>
-          <a-menu @click="onFlashMoreClick">
-            <a-menu-item
-              v-for="m in flashMoreItems"
-              :key="m.key"
-              :disabled="m.forbidden"
-              :danger="m.danger && !m.forbidden"
-            >
-              <span class="ab-more-item" :title="m.forbidden ? m.forbiddenTip : undefined">
-                <component :is="ICONS[m.icon]" />
-                <span>{{ m.label }}</span>
-              </span>
-            </a-menu-item>
-          </a-menu>
-        </template>
-      </a-dropdown>
-
       <!-- 领取：刷机 claim 视角 + 通用可领取（小智单走后者，1130 PRD §1.2 / §5.3 / §6） -->
       <button v-if="isClaimPending && !saveOnly" type="button" class="ab-item ab-claim" @click="emit('claim')">
         <span>领取</span>
@@ -926,13 +894,6 @@ defineExpose({ openEscalate, openAftersale, openActivate });
 .ab-item.ab-save.forbidden,
 .ab-item.ab-save.forbidden :deep(.anticon) {
   color: #9ca3af;
-}
-
-.ab-more-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  pointer-events: auto;
 }
 
 .ab-item.ab-claim {

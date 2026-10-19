@@ -148,10 +148,11 @@ export type FlashBarKey =
  * 推送只从修改刷机信息弹窗发起（A12 / B1），升级二线是处理结果之一、下送时确认（A18），都不占底栏按钮。
  */
 export const FLASH_L1_BAR_ORDER: readonly FlashBarKey[] = ['下送', '撤回'];
-/** 二线视角底栏顺序：保存 · 下送 · 升级 · 转售后 · 更多 —— 与咨询单一致（升级＝三线技术支持 / 产研 / 同步飞书，1013 B2），不出转单 */
-export const FLASH_L2_BAR_ORDER: readonly FlashBarKey[] = ['下送', '升级', '转售后'];
-/** 二线视角「更多」内顺序：申请挂起 · 委派 · 调剂 · 关闭工单 · 强结 · 风险报备 · 撤回 */
-export const FLASH_L2_MORE_ORDER: readonly FlashBarKey[] = ['挂起', '委派', '调剂', '关闭工单', '强结', '风险报备', '撤回'];
+/**
+ * 二线视角底栏顺序：与咨询单底栏同一排、同一顺序平铺（用户 10-19「与原咨询单的样式，保持一致」），不设「更多」；
+ * 按钮集合照 PRD §5.5：升级＝三线技术支持 / 产研 / 同步飞书（1013 B2），不出转单（M25）、退回
+ */
+export const FLASH_L2_BAR_ORDER: readonly FlashBarKey[] = ['下送', '升级', '风险报备', '转售后', '撤回', '调剂', '委派', '挂起', '关闭工单', '强结'];
 
 /** 按钮文案（「挂起」「委派」位在已挂起 / 已委派列切换为解除挂起 / 撤销委派，见 `flashBarLabel`） */
 const FLASH_BAR_LABEL: Record<FlashBarKey, string> = {
