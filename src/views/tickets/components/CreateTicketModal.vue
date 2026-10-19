@@ -654,7 +654,7 @@ watch(
           </div>
 
           <!-- 问题描述篇幅长，整行收尾 -->
-          <div v-if="!isFlashType" class="inline-field desc-field">
+          <div class="inline-field desc-field">
             <label class="inline-label xl"><span class="req">*</span>问题描述</label>
             <!-- 带附件文本框：与处理页问题原因、处理结果同一组件；小智单附件亦在此上传，不放在「小智工单信息」卡 -->
             <div class="inline-control field-control desc-attach" :class="{ 'has-error': errors.description }">

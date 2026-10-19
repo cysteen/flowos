@@ -88,8 +88,10 @@ export interface FlashTicketBase {
   ticketSource?: string;
   /** 坐席建单时的工单标题；缺省按「刷机 · 产品名称 · 问题三级 · 工单来源」生成，均强制前缀「刷机」（1013 A3） */
   title?: string;
-  /** 坐席填写的问题描述；缺省由系统按刷机信息生成 */
+  /** 坐席填写的问题描述（坐席代建必填）；用户提报缺省由系统按刷机信息生成 */
   problemDesc?: string;
+  /** 坐席建单时随问题描述上传的附件 */
+  problemDescAttachments?: string[];
 }
 
 export interface FlashEvaluationBlocked {
@@ -813,8 +815,9 @@ export const useFlashStore = defineStore('flash', () => {
       responded: false,
       createdAt: flashMinuteStamp(now),
       updatedAt: flashMinuteStamp(now),
-      problemDesc: base.problemDesc
-        ?? `学生${info.studentName}（账号 ${info.studentAccount}，${info.schoolName}）申请刷机，刷机原因：${info.reason}。设备 SN ${info.sn}。`,
+      problemDesc: base.problemDesc?.trim()
+        || `学生${info.studentName}（账号 ${info.studentAccount}，${info.schoolName}）申请刷机，刷机原因：${info.reason}。设备 SN ${info.sn}。`,
+      ...(base.problemDescAttachments?.length ? { problemDescAttachments: [...base.problemDescAttachments] } : {}),
       flash: {
         info,
         state: {
