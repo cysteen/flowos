@@ -40,6 +40,7 @@ const props = defineProps<{
    * 刷机单那条路走的是 `isFlash + flashView==='claim'`（`isFlashClaim`），本字段是**通用那条**：
    * 原先「领取」整枚只在 `isFlashClaim` 下渲染，**是刷机专属的** ——
    * 于是小智单的工单池单打开后底栏根本没有「领取」，PRD 列的 12 枚里有一枚界面上不存在。
+   * 老四类工单池里无人认领的单同样走本字段（用户 10-19）。待领取时底栏只出置灰「保存」＋「领取」，不能直接下送。
    */
   claimable?: boolean;
   /** 本单的一线人员域账号（一·补 B24）：只透传给升级弹窗只读带出，本组件不读它 */
@@ -700,7 +701,7 @@ defineExpose({ openEscalate, openAftersale, openActivate });
         状态一眼可见，工单地址可点直接跳售后系统操作（其余按钮无卡片，trigger 置空）
       -->
       <a-popover
-        v-for="a in (saveOnly ? [] : (isFlashBar ? flashPrimaryItems : barActions))"
+        v-for="a in (saveOnly || isClaimPending ? [] : (isFlashBar ? flashPrimaryItems : barActions))"
         :key="a.key"
         :trigger="showsAftersaleCard(a.key) ? 'hover' : []"
         placement="top"

@@ -57,6 +57,7 @@ import { LATEST_HANDLING_ACTION, TECH_RESULT_FIELD, latestFlashRecordFrom, lates
 import type { LatestHandlingItem } from './types/operation';
 import { opTimeNow } from './utils/opTime';
 import { TICKETS } from '@/mock/tickets';
+import { canAutoClaim, claimPoolTicket, inVisiblePool, isPoolEntry, withoutPoolEntry } from './composables/poolClaim';
 import { useRiskTagStore } from '@/stores/riskTags';
 import { useRiskReportStore } from '@/stores/riskReports';
 import { useRiskQueueStore } from '@/stores/riskQueue';
@@ -98,7 +99,7 @@ const route = useRoute();
 const router = useRouter();
 const {
   detail: d, timeline, opState, suspendInfo, draftSavedAt,
-  dispatch, confirmWithdraw, addChildTicket, addReopenTicket, addEscalatedComplaint,
+  dispatch, confirmWithdraw, addChildTicket, addReopenTicket, addEscalatedComplaint, reloadDetail,
 } = useTicketOperation();
 const {
   form, activeChip, expandedSections, filledSupplementCount,
@@ -490,7 +491,7 @@ const xiaozhiRdReturned = computed(
 );
 
 /**
- * 领取总入口：刷机单走刷机服务，小智单走小智服务，其余工单本就不出这枚按钮。
+ * 领取总入口：刷机单走刷机服务，小智单走小智服务，其余工单走工单池共用件（`poolClaim.ts`）。
  * 原先底栏的 `@claim` 直接接 `onFlashClaim` —— 加了小智那条路后必须在这里分岔，
  * 不然小智单点「领取」会走进刷机服务、按刷机的池子判定，必然失败。
  */
@@ -499,7 +500,23 @@ function onClaim() {
     onXiaozhiClaim();
     return;
   }
-  onFlashClaim();
+  if (isFlash.value) {
+    onFlashClaim();
+    return;
+  }
+  onGeneralClaim();
+}
+
+/** 老四类工单领取：落库与工作台「领取」同一套（处理人＝本人、待响应、履历「领取」），随后按新值重载本页 */
+function onGeneralClaim() {
+  const row = TICKETS.find((x) => x.no === d.value.no);
+  const ok = !!row && claimPoolTicket(row, WORKBENCH_HANDLER, mapUserRole(user.roleKey), opTimeNow().slice(0, 16));
+  if (!ok) {
+    message.warning(row?.assignee ? `该工单已被 ${row.assignee} 领取` : '该工单已不在工单池中');
+    return;
+  }
+  reloadDetail();
+  message.success(`已领取 ${d.value.no}`);
 }
 
 /** 小智单领取（D21）：落处理人与「处理中」，写履历，Toast 与刷机同体例 */
@@ -756,6 +773,21 @@ const ticketUnclaimed = computed(() => {
   if (STATUS_GROUP[d.value.status as TicketStatus] === '终态') return false;
   return !primaryHandlerName.value && !row?.assignee;
 });
+/**
+ * 老四类工单可领取（用户 10-19）：本单在当前角色可见的工单池里无人认领，当前角色能进工单池且不是只读角色。
+ * 成立时底栏与刷机单 / 小智单待领取同形：只出置灰「保存」＋「领取」，不能直接下送。
+ */
+const generalClaimable = computed(() => {
+  if (isFlash.value || isXiaozhi.value) return false;
+  if (user.hiddenTabs.includes('pool') || user.role.readonlyTickets) return false;
+  const row = TICKETS.find((x) => x.no === d.value.no);
+  return inVisiblePool(row, user.roleKey);
+});
+/** 本页此刻「待领取」：刷机单领取视角 ∨ 小智单可领取 ∨ 老四类可领取 —— 三类共用一个出口 */
+const pageClaimable = computed(
+  () => flashView.value === 'claim' || xiaozhiClaimable.value || generalClaimable.value,
+);
+
 /** 底栏报备形态的未认领置灰 */
 const riskUnclaimedBlocked = computed(
   () => riskBarForm.value === 'report' && ticketUnclaimed.value,
@@ -2732,6 +2764,31 @@ watch(
 watch(() => d.value.no, () => {
   processBaseline.__tech = (tabData.value.techDraft?.processResult ?? '').trim();
 }, { flush: 'post' });
+
+/**
+ * 从工单池进入即自动领取（用户 10-19：不区分工单类型；刷机池与其他入口不自动领取）。
+ * 三道同时成立才领：带工单池入口标记 ∧ 本单自身「未认领、在池里、处理人为空」（`canAutoClaim`）∧ 当前登录人此刻可领取。
+ * 入口标记读到即从地址栏去掉，刷新不再领；任一道不成立按原样打开（待领取视角照常出「领取」）。
+ * 进来时已被他人领走的，照手动领取的提示告知。
+ */
+watch(
+  () => [d.value.no, route.query] as const,
+  () => {
+    if (!isPoolEntry(route.query)) return;
+    void router.replace({ query: withoutPoolEntry(route.query) });
+    const row = TICKETS.find((x) => x.no === d.value.no);
+    if (!canAutoClaim(row)) {
+      const holder = row?.assignee?.trim();
+      if (holder && holder !== '系统' && holder !== WORKBENCH_HANDLER && holder !== currentHandlerName(user.roleKey, user.name)) {
+        message.warning(`该工单已被 ${holder} 领取`);
+      }
+      return;
+    }
+    if (!pageClaimable.value) return;
+    onClaim();
+  },
+  { immediate: true, flush: 'post' },
+);
 </script>
 
 <template>
@@ -2891,7 +2948,7 @@ watch(() => d.value.no, () => {
       :ticket-type="d.type"
       :is-flash="isFlash"
       :is-xiaozhi="isXiaozhi"
-      :claimable="xiaozhiClaimable"
+      :claimable="xiaozhiClaimable || generalClaimable"
       :frontline-account="d.xiaozhi?.frontlineAccount"
       :closure-mode="d.closureMode"
       :after-sale-enabled="d.product.afterSaleEnabled"

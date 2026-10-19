@@ -44,6 +44,7 @@ import AssignModal, {
 } from '@/views/team-board/components/AssignModal.vue';
 import { TEAM_MEMBERS } from '@/mock/teamBoard';
 import { useTicketWorkbench } from './composables/useTicketWorkbench';
+import { poolEntryQuery } from './composables/poolClaim';
 import { useTicketColumns } from './composables/useTicketColumns';
 import { useMineQueryFields } from './composables/useMineQueryFields';
 import { hasMineQuery } from './types/mineQuery';
@@ -372,8 +373,13 @@ function openCreateXiaozhi() {
 function editDraft(id: string) { editingDraftId.value = id; createOpen.value = true; }
 function removeDraft(id: string) { wb.removeDraft(id); message.success('草稿已删除'); }
 
+/**
+ * 打开工单处理页。从「工单池」页签打开的带工单池入口标记，处理页据此自动领取（用户 10-19，不分工单类型）；
+ * 「刷机池」页签与其余页签不带，按原样打开。
+ */
 function openOperation(t: Ticket) {
-  router.push(`/tickets/${t.no}`);
+  const fromPool = activeWorkbenchTab.value === 'pool';
+  router.push(fromPool ? { path: `/tickets/${t.no}`, query: poolEntryQuery() } : `/tickets/${t.no}`);
 }
 
 /*

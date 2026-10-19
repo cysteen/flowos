@@ -898,8 +898,13 @@ export function useTicketOperation() {
     });
   }
 
+  /** 按工单库现值重载本单（处理页内领取老四类工单后用） */
+  function reloadDetail() {
+    loadDetail(detail.value.no);
+  }
+
   return {
     detail, timeline, opState, suspendInfo, draftSavedAt,
-    dispatch, confirmWithdraw, addChildTicket, addReopenTicket, addEscalatedComplaint,
+    dispatch, confirmWithdraw, addChildTicket, addReopenTicket, addEscalatedComplaint, reloadDetail,
   };
 }
