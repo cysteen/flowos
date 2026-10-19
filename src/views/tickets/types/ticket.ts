@@ -733,7 +733,7 @@ export interface CreateTicketPrefill {
   noFlashScene?: boolean;
   /**
    * 本次建单走**小智工单入口**（1130 D1 / D3）：切小智表单，工单类型锁「咨询」、
-   * 业务分类锁「教育」、工单来源锁「IM」，并在底栏多出「创建并流转」一枚。
+   * 业务分类锁「教育」、工单来源锁「IM」，并在「小智工单信息」卡上出「升级 TPD」勾选框。
    * 由入口置位，不按产品 / 问题分类识别。
    */
   xiaozhiScene?: boolean;

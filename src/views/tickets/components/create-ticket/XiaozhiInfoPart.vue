@@ -3,8 +3,12 @@
  * 新建工单 · 「小智工单专属」卡（1130 小智工单 D5 / D27 / W2 / 一·补 B15）。
  *
  * D27 口径是**最大限度复用通用咨询表单**，故本卡只放确有差异的小智专属要素 ——
- * 实际就只剩**产研流转信息**一组：取老系统「创建TPD工单」弹窗现状五项，
+ * 实际就只剩「升级 TPD」勾选框 + 一组**产研流转信息**：取老系统「创建TPD工单」弹窗现状，
  * 接收人由产品模块带出、只读（W2）。
+ *
+ * 🔴 **产研四项随「升级 TPD」动态展示**（一·补 B27）：建单出口合为一枚「创建」，
+ * 勾上即走直通产研那条路；不勾时整组不渲染 —— 不渲染而不是置灰，因为这组字段在
+ * 「落池自领」那条路上**根本不参与**，摆在那儿置灰只会让人以为还得填。
  *
  * 🔴 **本卡没有「问题类别」控件**（一·补 B15）：问题类别就是咨询单的问题分类一 / 二 / 三级，
  * 填在通用咨询表单的「产品问题」卡里。在这儿再放一个「问题类别」下拉，等于同一件事
@@ -51,7 +55,11 @@ function setSelect(key: 'rdModule', v: unknown) {
 
 <template>
   <CreateTicketPartCard title="小智工单专属" :body-gap="8">
-    <div class="xz-grid">
+    <div class="xz-check-row">
+      <a-checkbox v-model:checked="info.escalateTpd">{{ L.escalateTpd }}</a-checkbox>
+    </div>
+
+    <div v-if="info.escalateTpd" class="xz-grid">
       <div class="xz-field">
         <label class="xz-label"><span class="req">*</span>{{ L.rdModule }}</label>
         <div class="xz-control">
@@ -105,6 +113,16 @@ function setSelect(key: 'rdModule', v: unknown) {
 </template>
 
 <style scoped>
+.xz-check-row {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+}
+.xz-check-row :deep(.ant-checkbox-wrapper) {
+  font-size: 12px;
+  font-weight: 500;
+  color: #374151;
+}
 .xz-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

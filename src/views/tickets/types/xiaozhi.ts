@@ -41,7 +41,7 @@ export const XIAOZHI_POOL_GROUP_ID = 'xiaozhi';
 /**
  * 系统处理人：**「系统」**，不是建单人。两处都落它 ——
  *
- * ① 「创建并流转」那一支的处理人（一·补 B2）：工单池里留的是记录不是待领任务，
+ * ① 勾了「升级 TPD」那一支的处理人（一·补 B2）：工单池里留的是记录不是待领任务，
  *    不经领取直接到「已升级产研」；
  * ② **自动结案时的处理人（一·补 B9）**：🔴 **人工跟进过的单也一样统一改系统**，
  *    不保留原处理人 —— 这比 B2 的覆盖范围更大。原口径只是「没有处理人时补一个、不让悬空」（D10），
@@ -71,8 +71,8 @@ export const XIAOZHI_SLA_IDLE = { slaText: '—', slaSub: '未计时', slaState:
  * 这是 D27「尽量复用通用咨询单」的直接延伸 —— 另起一个「问题类别」下拉等于把同一件事
  * 在两处各维护一份值域，且两份永远对不齐。
  *
- * 相对 toC 在线小结，小智真正多出来的只有「是否流转研发」一项，由底栏「创建并流转」按钮
- * 表达、不作字段（D5）。
+ * 相对 toC 在线小结，小智真正多出来的只有「是否流转研发」一项，由「小智工单信息」卡上的
+ * 「升级 TPD」勾选框表达（一·补 B27）。
  */
 
 /**
@@ -130,7 +130,7 @@ export const XIAOZHI_RD_MODULES: XiaozhiRdModule[] = [
 
 /**
  * 产研平台当前可用与否。`false` 时：
- * - 建单「创建并流转」→ **工单照建**、留在工单池，提示 `rdPlatformDownOnCreate`（PRD §2）；
+ * - 建单勾了「升级 TPD」→ **工单照建**、留在工单池，提示 `rdPlatformDownOnCreate`（PRD §2）；
  * - 底栏「升级 · 产研」→ 本单状态不变，提示 `rdPlatformDownOnEscalate`（PRD §5.4）。
  *
  * 真实实现里这是调 TPD 接口的返回，不是配置项；这里留一个常量把**两条分支都接上**，
@@ -301,6 +301,11 @@ export const XIAOZHI_RESULT_GROUP_TITLE: Record<XiaozhiSolutionType, string> = {
  * 展示名取通用咨询表单那一份，不在本表另起。
  */
 export const XIAOZHI_FIELD_LABELS = {
+  /**
+   * 建单出口合为一枚「创建」+ 本勾选框（一·补 B27，**推翻 B11** 的两枚按钮）：
+   * 勾上即走直通产研那条路，产研五项随勾选**动态展示**。
+   */
+  escalateTpd: '升级 TPD',
   rdModule: '产品模块',
   rdReceiver: '接收人（域账号）',
   rdPriority: '产研优先级',

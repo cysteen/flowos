@@ -3,7 +3,7 @@
  *
  * 八张，覆盖各条路径（D5 / D21 / 一·补 B5 / B7 / B8 / B9 / B24 / PRD §5.4）：
  * ① **待响应**（进池已领、还没动手；基线 §1 L25）；
- * ② 直通产研待回传（「创建并流转」→ 系统自动流转，本单「已升级产研」、处理人不转移，D6）；
+ * ② 直通产研待回传（建单勾了「升级 TPD」→ 系统自动流转，本单「已升级产研」，D6 / 一·补 B27）；
  * ③ 产研已办结 · **待校代确认**（B5：办结**不关单**，状态仍「已升级产研」）；
  * ④ 校代**确认已解决** → 关单 + 下送调研，处理人统一改系统（B5① / B9）；
  * ⑤ 校代**确认未解决** → 状态不动，系统自动回传产研，记「第 N 次回传产研」（B5② / B8）；
@@ -201,7 +201,7 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
     tl('2026-09-18 09:55:02', 'node', 'accept', AGENT, AGENT_ROLE, '领取', `${AGENT} 从${XIAOZHI_POOL_GROUP_NAME}工单池领取本单。`),
   ];
 
-  /* ② 直通产研待回传：「创建并流转」→ 系统自动流转，本单「已升级产研」、处理人不转移（D6） */
+  /* ② 直通产研待回传：建单勾了「升级 TPD」→ 系统自动流转，本单「已升级产研」（D6 / 一·补 B27） */
   const rd2 = rdInfo('智批改', '普通加急', FRONTLINE_ACCOUNTS[2]);
   const t2 = row(2, {
     title: '智批改 · 批阅任务未下发 · IM',
@@ -214,7 +214,7 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
     problemL3: '无法播放',
     problemDesc: '智批改批阅任务整场未下发，影响当天阅卷进度，需产研定位。',
     nodeStatus: '已升级产研',
-    // 一·补 B2：「创建并流转」那一支的处理人＝系统，不经领取
+    // 一·补 B2：勾了「升级 TPD」那一支的处理人＝系统，不经领取
     assignee: XIAOZHI_SYSTEM_HANDLER,
     tab: 'mine',
     ...XIAOZHI_SLA_IDLE,

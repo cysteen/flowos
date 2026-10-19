@@ -249,7 +249,7 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
    *   「是否解决」确认的凭据（B6），**与走不走产研无关**，故「创建」与「创建并流转」
    *   两个出口都判。老系统是按「有没有这个账号」分流（没有就拿到办结状态直接关单），
    *   本轮**不补那条分流分支**，改为从源头必填；
-   * - **产品模块：条件必填** —— 只在 `escalate`（创建并流转）时要，走产研才用得上。
+   * - **产品模块：条件必填** —— 只在 `escalate`（勾了「升级 TPD」）时要，走产研才用得上。
    *
    * 另两条：
    * - 该产品模块必须配了产研接收人（接收人由产品模块带出、不可改，缺了推出去产研也不知道派给谁）；
@@ -280,10 +280,12 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
   }
 
   /**
-   * 建小智工单。两条路径（D5）：
-   * - `escalate=false`：落工单池，由小智团队领单处理结案；
-   * - `escalate=true`：**落工单池留记录后，由系统自动流转推产研**（D6），本单置「已升级产研」、
-   *   **处理人不转移**。
+   * 建小智工单。出口只有一枚「创建」，`escalate` 来自建单弹窗「升级 TPD」勾选框（一·补 B27）：
+   * - `escalate=false`（未勾）：落工单池，由小智团队领单处理结案；
+   * - `escalate=true`（勾上）：**落工单池留记录后，由系统自动流转推产研**（D6），
+   *   本单置「已升级产研」、处理人＝系统（一·补 B2）。
+   *
+   * ⚠️ **两条分支的行为与 B27 之前逐字一致** —— B27 换的只是触发方式（勾选框取代第二枚按钮）。
    */
   function createXiaozhiTicket(
     input: XiaozhiCreateInput,
@@ -358,7 +360,7 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
      * 返回 `degraded: true`，由调用方决定提示用哪一句 —— store 不碰 UI。
      */
     const platformDown = escalate && !XIAOZHI_RD_PLATFORM_AVAILABLE;
-    // 「创建并流转」：落池生成记录后由系统自动流转，不靠人领、不靠定时任务扫（D6）
+    // 勾了「升级 TPD」：落池生成记录后由系统自动流转，不靠人领、不靠定时任务扫（D6 / 一·补 B27）
     if (escalate && !platformDown) {
       /**
        * 🔴 **直通产研的单不发「待领取」提醒**（D6 + 通知规则 R18 的 `rdDirect` 条件）：

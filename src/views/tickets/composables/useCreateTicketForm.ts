@@ -482,14 +482,19 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   }
 
   /**
-   * 小智单提交（D5 / PRD §2）：`escalate=false` ＝「创建」落池自领；`escalate=true` ＝「创建并流转」，
-   * 落池留记录后由系统自动流转推产研（D6）。
+   * 小智单提交（D5 / PRD §2）。出口只有一枚「创建」，走哪条路看「升级 TPD」勾选框（一·补 B27）：
+   * - 未勾 → 落工单池，由小智团队领单处理结案；
+   * - 勾上 → 落池留记录后由系统自动流转推产研（D6）。
+   *
+   * 🔴 **勾选状态只从表单读这一处**，不由调用方另传一个 `escalate` 参数 ——
+   * 两处各存一份状态，勾了却走了落池那条路就是必然会出现的错。
    *
    * 返回 `null` ＝ 被拦住（必填缺项或产品模块没配接收人），提示落在字段下方；
-   * 返回工单 ＝ 建成了，`degraded` 说明「建成但没流转成」（产研平台不可用），
-   * 由弹窗换成 `rdPlatformDownOnCreate` 那句，不能照「已流转产研」报喜。
+   * 返回工单 ＝ 建成了，`escalated` 说明走的是哪条路、`degraded` 说明「建成但没流转成」
+   * （产研平台不可用），由弹窗换成 `rdPlatformDownOnCreate` 那句，不能照「已流转产研」报喜。
    */
-  function submitXiaozhi(escalate: boolean): { ticket: Ticket; degraded: boolean } | null {
+  function submitXiaozhi(): { ticket: Ticket; degraded: boolean; escalated: boolean } | null {
+    const escalate = form.xiaozhi.escalateTpd === true;
     clearErrors();
     clearXiaozhiErrors();
     // 通用咨询单那套校验照跑（D27），小智专属字段另加一道
@@ -510,7 +515,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       }
       return null;
     }
-    return { ticket: result.ticket, degraded: !!result.degraded };
+    return { ticket: result.ticket, degraded: !!result.degraded, escalated: escalate };
   }
 
   /** 建单人：与「本人建的单」判定同一把（`currentHandlerName`） */
