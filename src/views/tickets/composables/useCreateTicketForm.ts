@@ -786,7 +786,8 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   /** 单号规则见 constants/ticketNo.ts —— 前缀跟着**建单时选的工单类型**走 */
   function genNo() {
     const n = Math.floor(1 + Math.random() * 99998);
-    return makeTicketNo(form.ticketType as CreateFormTicketType, n,new Date(2026, 5, 18));
+    // 单号日期取建单当天
+    return makeTicketNo(form.ticketType as CreateFormTicketType, n, new Date());
   }
 
   function buildTicket(): Ticket {
