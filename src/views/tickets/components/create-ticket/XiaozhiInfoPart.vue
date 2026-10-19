@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 新建工单 · 「小智工单专属」卡（1130 小智工单 D5 / D27 / W2 / 一·补 B15）。
+ * 新建工单 · 「小智工单信息」卡（1130 小智工单 D5 / D27 / W2 / 一·补 B15）。
  *
  * D27 口径是**最大限度复用通用咨询表单**，故本卡只放确有差异的小智专属要素 ——
  * 实际就只剩「升级 TPD」勾选框 + 一组**产研流转信息**：取老系统「创建TPD工单」弹窗现状，
@@ -50,7 +50,7 @@ function setSelect(key: 'rdModule', v: unknown) {
 </script>
 
 <template>
-  <CreateTicketPartCard title="小智工单专属" :body-gap="8">
+  <CreateTicketPartCard title="小智工单信息" :body-gap="8">
     <div class="xz-check-row">
       <a-checkbox v-model:checked="info.escalateTpd">{{ L.escalateTpd }}</a-checkbox>
     </div>

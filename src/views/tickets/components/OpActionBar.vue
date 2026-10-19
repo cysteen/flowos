@@ -489,14 +489,15 @@ const isClaimPending = computed(() => isFlashClaim.value || !!props.claimable);
 /**
  * 「升级」在已升级产研后置灰时的指路文案。
  *
- * 🔴 **小智单那一版去掉「或二次激活」** —— 二次激活在小智单上**整枚不渲染**
- * （1130 一·补 B5：确认未解决由系统自动回传，不设坐席入口，PRD §5.2）。
- * 照通用那句写就会把人指到一个在这张单上不存在的入口去。
+ * 🔴 **小智单那一版不再指向「产研反馈」Tab 的任何入口**：二次激活整枚不渲染
+ * （1130 一·补 B5：确认未解决由系统自动回传，不设坐席入口）、那枚催产研的催单也整枚不渲染
+ * （一·补 B36）。两个入口都没了还照通用那句写，就是把人指到这张单上不存在的地方去。
+ * 催单本身没取消 —— 走页头右上角那一枚，但那不是本提示该指的位置，故改为只说现状。
  * ⚠️ 通用单与刷机单仍用 `ESCALATED_TIP`，一字未动 —— 这句原先是**三处各写一份字面量**，
  * 收口成常量时顺手全量替换最容易误伤它们，故两份分开定名、按标识取。
  */
 const ESCALATED_TIP = '已升级产研反馈，请在「产研反馈」Tab 催单或二次激活';
-const ESCALATED_TIP_XIAOZHI = '已升级产研反馈，请在「产研反馈」Tab 催单';
+const ESCALATED_TIP_XIAOZHI = '已升级产研反馈，待产研回传后可再操作';
 const escalatedTip = computed(() => (props.isXiaozhi ? ESCALATED_TIP_XIAOZHI : ESCALATED_TIP));
 /** 客诉专员在刷机单上只读工单内容（M94 / M102）：底栏不出「保存」，只留风险那一枚 */
 const hideFlashSave = computed(() => !!props.isFlash && props.flashView === 'other');
