@@ -902,11 +902,16 @@ watch(
   border-radius: 10px;
   overflow: hidden;
 }
+/* 弹窗整体不超出视口（顶距 100px + 底部留白 24px）：页头、底栏固定，中间内容区滚动 */
 :global(.create-ticket-modal .ant-modal-body) {
   padding: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 124px);
 }
 
 .modal-header {
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -964,7 +969,8 @@ watch(
   flex-direction: column;
   gap: 12px;
   padding: 12px 20px 20px 14px;
-  max-height: calc(100vh - 200px);
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
 }
 
@@ -1318,6 +1324,7 @@ watch(
   color: #ef4444;
 }
 .flash-block-tip {
+  flex: none;
   padding: 8px 20px 0 14px;
   font-size: 12px;
   line-height: 18px;
@@ -1333,6 +1340,7 @@ watch(
   text-decoration: underline;
 }
 .modal-footer {
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
