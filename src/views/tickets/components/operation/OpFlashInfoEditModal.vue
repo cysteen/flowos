@@ -167,27 +167,6 @@ async function onPhotoPreview(file: UploadFile) {
 }
 
 const schoolNameOf = (id: string) => findSchoolById(id)?.name ?? '';
-const dash = (s: string) => (s && s.trim() ? s.trim() : '—');
-
-/** 「本次修改」：与打开时相比有变化的字段，〈字段〉：〈原值〉 → 〈新值〉 */
-const changeLines = computed<string[]>(() => {
-  const o = original.value;
-  const rows: [string, string, string][] = [
-    [L.productName, o.productModel, draft.productModel],
-    [L.sn, o.sn, draft.sn.trim().toUpperCase()],
-    [L.studentAccount, o.studentAccount, draft.studentAccount.trim()],
-    [L.studentName, o.studentName, draft.studentName.trim()],
-    [L.schoolName, schoolNameOf(o.schoolId) || '', schoolNameOf(draft.schoolId)],
-    [L.reason, o.reason, draft.reason],
-    [L.romVersion, o.romVersion, draft.romVersion.trim()],
-    [L.mdmVersion, o.mdmVersion, draft.mdmVersion.trim()],
-  ];
-  const lines = rows
-    .filter(([, a, b]) => (a ?? '').trim() !== (b ?? '').trim())
-    .map(([label, a, b]) => `${label}：${dash(a)} → ${dash(b)}`);
-  if (o.snPhotos.join('|') !== draft.snPhotos.join('|')) lines.push(`${L.snPhotos}：已更换`);
-  return lines;
-});
 
 const REQUIRED: { key: FieldKey; label: string; select: boolean }[] = [
   { key: 'productModel', label: L.productName, select: true },
@@ -376,11 +355,6 @@ const inflightHref = computed(() => (tipParts.value?.no ? router.resolve(`/ticke
         </div>
       </div>
 
-      <div v-if="changeLines.length" class="fe-changes">
-        <div class="fe-changes-title">本次修改</div>
-        <div v-for="line in changeLines" :key="line" class="fe-change">{{ line }}</div>
-      </div>
-
       <div v-if="tipParts" class="fe-tip">
         {{ tipParts.before }}<a v-if="tipParts.no" :href="inflightHref" target="_blank" rel="noopener">{{ tipParts.no }}</a>{{ tipParts.after }}
       </div>
@@ -404,12 +378,6 @@ const inflightHref = computed(() => (tipParts.value?.no ? router.resolve(`/ticke
 .fe-photo :deep(.ant-upload-list-item-thumbnail img) { object-fit: cover; }
 .fe-photo-preview { display: none; }
 .fe-upload-btn { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 12px; color: #6b7280; }
-.fe-changes {
-  display: flex; flex-direction: column; gap: 4px; padding: 10px 12px;
-  background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 12px;
-}
-.fe-changes-title { font-weight: 600; color: #374151; }
-.fe-change { color: #4b5563; line-height: 1.6; }
 .fe-tip { font-size: 13px; color: #ef4444; line-height: 1.6; }
 .fe-tip a { color: #1a6fff; text-decoration: underline; }
 </style>
