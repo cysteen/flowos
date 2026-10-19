@@ -1,8 +1,9 @@
 import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { message } from 'ant-design-vue';
-import type { CreateTicketPrefill, Ticket } from '@/views/tickets/types/ticket';
+import type { CreateTicketPrefill, Priority, Ticket } from '@/views/tickets/types/ticket';
 import { makeTicketNo } from '@/constants/ticketNo';
 import {
+  type CreateFormTicketType,
   type CreateTicketFormState,
   type CustomerInfo,
   BUSINESS_TYPES,
@@ -74,24 +75,25 @@ export interface FlashSubmitBlock {
 
 function defaultForm(): CreateTicketFormState {
   return {
-    businessType: '学习机',
-    ticketType: '投诉',
+    // 业务分类、工单类型、优先级、客户、产品、问题分类、问题描述一律不预选（04 新建工单 F4.0 未定默认值），
+    // 由坐席选填；优先级与工单类型的联动见 CreateTicketModal
+    businessType: '',
+    ticketType: '',
     // 默认「正常流程」：多数单要进流程办理；直接结案是坐席当场答完才选的少数情形
     closureMode: '正常流程',
     ticketSource: '电话',
     customerQuery: '',
-    customer: { ...MOCK_CUSTOMER },
+    customer: null,
     showReporter: false,
     reporter: { name: '', phone: '', relation: '家属' },
-    productCategory: '智能硬件',
-    productName: '学习机 T20',
+    productCategory: '',
+    productName: '',
     deviceSn: '',
-    problemL1: '功能异常',
-    problemL2: '播放问题',
-    problemL3: '在线播放',
-    // 与默认工单类型「投诉」配套：双向联动下投诉只能 P0/P1，取其中较低的 P1
-    priority: 'P1',
-    description: '在线播放频繁跳歌，重启无效，影响使用，要求尽快解决。',
+    problemL1: '',
+    problemL2: '',
+    problemL3: '',
+    priority: '',
+    description: '',
     descriptionAttachments: [],
     title: '',
     titleManual: false,
@@ -305,7 +307,8 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       vip: form.customer?.vip ?? false,
       channel,
       ticketSource: form.ticketSource,
-      priority: form.priority,
+      // 提交前已校验必填
+      priority: form.priority as Priority,
       // 刷机单不出「工单标题」卡，标题由刷机服务按「刷机 · 产品名称 · 问题分类第三级 · 工单来源」生成（PRD §2.4）
       title: undefined,
       // 坐席代建的问题描述与附件取表单（PRD §2.4，用户 10-19 定）；用户提报才由系统生成
@@ -325,9 +328,12 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     errors.customer = !form.customer;
     // 问题描述必填（坐席代建，同普通咨询单）：与刷机信息必填一起提示，先于其余拦截
     errors.description = !form.description.trim();
+    // 优先级必填（「工单基础」卡同普通咨询单）
+    errors.priority = !form.priority;
+    const baseMissing = errors.description || errors.priority;
     const evaluation: FlashCreateEvaluation = useFlashStore().evaluateCreate(flashInput(), flashCreator());
-    if (evaluation.kind === 'create') return errors.description ? null : evaluation;
-    if (evaluation.code === 'required' || errors.description) {
+    if (evaluation.kind === 'create') return baseMissing ? null : evaluation;
+    if (evaluation.code === 'required' || baseMissing) {
       const missing = new Set(evaluation.missing ?? []);
       FLASH_REQUIRED_FIELDS.forEach(({ field, label, verb }) => {
         if (missing.has(label)) flashErrors[field] = `${verb}${label}`;
@@ -481,7 +487,8 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       customer: form.customer?.name ?? '',
       customerPhone: form.customer?.phone,
       vip: form.customer?.vip ?? false,
-      priority: form.priority,
+      // 提交前已校验必填
+      priority: form.priority as Priority,
       title: form.title,
       problemDesc: form.description,
       productCategory: form.productCategory,
@@ -774,7 +781,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   /** 单号规则见 constants/ticketNo.ts —— 前缀跟着**建单时选的工单类型**走 */
   function genNo() {
     const n = Math.floor(1 + Math.random() * 99998);
-    return makeTicketNo(form.ticketType, n, new Date(2026, 5, 18));
+    return makeTicketNo(form.ticketType as CreateFormTicketType, n,new Date(2026, 5, 18));
   }
 
   function buildTicket(): Ticket {
@@ -782,7 +789,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     return {
       id: 'new-' + Date.now(),
       no: genNo(),
-      type: mapFormTypeToTicketType(form.ticketType),
+      type: mapFormTypeToTicketType(form.ticketType as CreateFormTicketType),
       channel: '电话',
       title: form.title.trim(),
       smartMarks: form.ticketType === '投诉' ? ['升级'] : [],
@@ -796,7 +803,8 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       nodeStatus: '未认领',
       nodeStep: 1,
       nodeTotal: 5,
-      priority: form.priority,
+      // 提交前已校验必填
+      priority: form.priority as Priority,
       slaText: form.priority === 'P0' ? '00:15:00' : '08:00:00',
       slaSub: '距超时',
       slaState: form.priority === 'P0' ? 'soon' : 'ok',

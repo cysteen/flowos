@@ -192,8 +192,10 @@ export interface ReporterInfo {
 }
 
 export interface CreateTicketFormState {
-  businessType: BusinessType;
-  ticketType: CreateFormTicketType;
+  /** 空串＝未选（新建工单不预选，必填由校验兜） */
+  businessType: BusinessType | '';
+  /** 空串＝未选（新建工单不预选，必填由校验兜） */
+  ticketType: CreateFormTicketType | '';
   /** 内部默认「正常流程」；建单弹窗不再让坐席选结案方式 */
   closureMode: ClosureMode;
   /** 工单来源，默认电话 */
@@ -208,7 +210,8 @@ export interface CreateTicketFormState {
   problemL1: string;
   problemL2: string;
   problemL3: string;
-  priority: Priority;
+  /** 空串＝未选（新建工单不预选，必填由校验兜） */
+  priority: Priority | '';
   description: string;
   /** 问题描述附件（文件名列表，交互同处理页带附件文本框 OpTextareaAttach） */
   descriptionAttachments: string[];
