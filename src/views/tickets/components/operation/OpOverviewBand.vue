@@ -375,6 +375,4 @@ watch(expandedCol, (v) => emit('expand-change', v !== null), { immediate: true }
   color: #374151;
   white-space: pre-line;
 }
-/* 刷机单「最新处理」卡条目多（最多三条），每条正文收到两行 */
-.ob-handle.is-flash:not(.expanded) .hi-text { -webkit-line-clamp: 2; }
 </style>

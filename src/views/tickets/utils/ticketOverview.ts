@@ -1,7 +1,7 @@
 import type { LatestHandlingItem } from '@/views/tickets/types/operation';
 import type { Ticket } from '@/views/tickets/types/ticket';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
-import { FLASH_RESULT_ONLINE_SUCCESS, FLASH_TL } from '@/views/tickets/types/flash';
+import { FLASH_RESULT_ESCALATE_L2, FLASH_RESULT_ONLINE_SUCCESS, FLASH_TL } from '@/views/tickets/types/flash';
 
 /** 最新处理 · 动作文案（速览带与列表 hover 共用） */
 export const LATEST_HANDLING_ACTION = {
@@ -154,6 +154,21 @@ export function flashRecordBodyText(result: string, record: string): string {
 }
 
 /**
+ * 刷机处理结论的写入时刻：「已线上刷机成功」取最近一次回传「接收成功」（迟到回传不改结论，不算）；
+ * 「升级二线」取最近一次升级二线；其余结论随刷机处理记录一并保存，取最近一次带刷机处理结论的保存。
+ */
+function conclusionWrittenAt(entries: TimelineEntry[], result: string): string | undefined {
+  const hit = (pred: (e: TimelineEntry) => boolean) => {
+    for (let i = entries.length - 1; i >= 0; i--) if (pred(entries[i])) return latestWhenText(entries[i].when);
+    return undefined;
+  };
+  if (!result) return undefined;
+  if (result === FLASH_RESULT_ONLINE_SUCCESS) return hit((e) => e.action === 'flashSuccess' && e.what !== FLASH_TL.lateSuccess);
+  if (result === FLASH_RESULT_ESCALATE_L2) return hit((e) => e.action === 'escalate' && e.role === L1_ROLE);
+  return hit((e) => e.category === 'handle' && !!e.changes?.some((c) => c.field === '刷机处理结论'));
+}
+
+/**
  * 刷机处理记录块（刷机单）：刷机处理记录与刷机处理结论都为空时不出；抬头一定带操作人，按序兜底：
  * ① 最近一次保存刷机处理记录的一线坐席与保存时刻；
  * ② 没有 ① 时，最近一条一线动作履历（升级二线、下送、线下登记等）的操作人与时刻；
@@ -175,9 +190,20 @@ export function latestFlashRecordFrom(
     return undefined;
   };
   const saved = latest(isFlashRecordEntry);
-  if (saved) return { ...blockAt(saved), text, result };
+  if (saved) {
+    // 抬头时间取「刷机处理记录保存时刻」与「刷机处理结论写入时刻」中较晚的一个（如重推接收成功由系统写结论）
+    const block = { ...blockAt(saved), text, result };
+    const written = conclusionWrittenAt(entries, result);
+    if (written && written > block.when) block.when = written;
+    return block;
+  }
   const l1 = latest(isL1ActionEntry);
-  if (l1) return { ...blockAt(l1), text, result };
+  if (l1) {
+    const block = { ...blockAt(l1), text, result };
+    const written = conclusionWrittenAt(entries, result);
+    if (written && written > block.when) block.when = written;
+    return block;
+  }
   if (result === FLASH_RESULT_ONLINE_SUCCESS) {
     const sys = latest((e) => e.action === 'flashSuccess' && e.what !== FLASH_TL.lateSuccess);
     if (sys) return { ...blockAt(sys), who: '系统', role: '系统', text, result };
