@@ -1739,6 +1739,9 @@ export const TICKETS: Ticket[] = [...BASE_TICKETS, ...FLASH_SEEDS.tickets, ...XI
   return { ...row, ...ensureTicketTimestamps(row) };
 });
 
+/** 种子单（模块加载时的工单库）；运行时新建 / 关联建出的单不在其中 */
+export const SEED_TICKET_NOS: ReadonlySet<string> = new Set(TICKETS.map((t) => t.no));
+
 /** 种子里已有处理人的单（模块加载时的工单库）；运行时新建 / 关联建出的单、种子里的待领单不在其中 */
 export const SEED_CLAIMED_TICKET_NOS: ReadonlySet<string> = new Set(
   TICKETS.filter((t) => !!t.assignee).map((t) => t.no),

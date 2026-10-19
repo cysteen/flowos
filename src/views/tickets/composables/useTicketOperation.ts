@@ -14,7 +14,7 @@ import { useXiaozhiStore } from '@/stores/xiaozhi';
 import { XIAOZHI_CONFIRM_ACTOR, isXiaozhiTicket, type TicketXiaozhi } from '@/views/tickets/types/xiaozhi';
 import type { FeishuRecord } from '@/mock/ticketDetail';
 import type { Ticket, Channel, TicketType, Priority, TicketStatus } from '@/views/tickets/types/ticket';
-import { SEED_CLAIMED_TICKET_NOS, TICKETS } from '@/mock/tickets';
+import { SEED_CLAIMED_TICKET_NOS, SEED_TICKET_NOS, TICKETS } from '@/mock/tickets';
 import { TYPE_SAMPLES, typeSampleKey } from '@/mock/ticketTypeSamples';
 import { useUserStore } from '@/stores/user';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
@@ -450,6 +450,8 @@ export function useTicketOperation() {
       };
       if (!t.flash) applyChainOwnProfile(base, t);
     }
+    // 种子以外的单（新建、关联投诉建出的投诉单等）：客户信息只取本单，不并入样例客户卡
+    if (t && !t.flash && !isXiaozhiTicket(t) && !SEED_TICKET_NOS.has(t.no)) applyOwnCustomer(base, t);
     if (t?.flash) applyFlashOverview(base, t);
     if (t && isXiaozhiTicket(t)) applyXiaozhiOverview(base, t);
     detail.value = base;
@@ -559,10 +561,10 @@ export function useTicketOperation() {
   }
 
   /**
-   * 客服⇄售后链路上的单（1025）：右侧栏客户信息、代报人、工单信息与客户全景的本单计数取本单工单行，
-   * 不落样例单的客户档案。售后建单弹窗的联系人预填读的就是这里（《【1025】》§2.2）。
+   * 右侧栏客户信息卡只取本单工单行的客户与联系手机号，不并入样例单的客户档案与代报人。
+   * 种子以外的单（本会话新建、关联投诉 / 升级等建出的单）与客服⇄售后链路单都走这里。
    */
-  function applyChainOwnProfile(base: TicketDetailMeta, t: Ticket) {
+  function applyOwnCustomer(base: TicketDetailMeta, t: Ticket) {
     const phone = (t.customerPhone ?? '').replace(/^(\d{3})(\d{4})(\d{4})$/, '$1 $2 $3');
     base.customer = {
       name: t.customer,
@@ -573,6 +575,14 @@ export function useTicketOperation() {
       address: t.customerAddress ?? '—',
     };
     base.agent = null;
+  }
+
+  /**
+   * 客服⇄售后链路上的单（1025）：右侧栏客户信息、代报人、工单信息与客户全景的本单计数取本单工单行，
+   * 不落样例单的客户档案。售后建单弹窗的联系人预填读的就是这里（《【1025】》§2.2）。
+   */
+  function applyChainOwnProfile(base: TicketDetailMeta, t: Ticket) {
+    applyOwnCustomer(base, t);
     base.businessType = t.businessType ?? '—';
     base.businessLine = t.businessLine ?? '—';
     base.product.name = t.product;
