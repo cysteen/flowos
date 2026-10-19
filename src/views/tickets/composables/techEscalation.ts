@@ -6,6 +6,7 @@
  * - 退回（技术支持 → 二线）：回二线主责名下「处理中」，归属组还原。
  */
 import { POOL_GROUPS, type Ticket } from '@/views/tickets/types/ticket';
+import { isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
 
 /** 技术支持组工单池（「二线技术支持组」分组，所选具体技术支持组记在分组名称里） */
 export const TECH_SUPPORT_POOL_GROUP_ID = 'line2';
@@ -15,8 +16,12 @@ export function isTechEscalateChannel(channel: unknown): boolean {
   return typeof channel === 'string' && channel.includes('技术支持');
 }
 
-/** 升级 · 技术支持之后工单行要改的字段。`group` ＝ 弹窗所选的目标组别 */
+/**
+ * 升级 · 技术支持之后工单行要改的字段。`group` ＝ 弹窗所选的目标组别。
+ * 小智工单没有技术支持路径（基线 ※33）：入口在升级弹窗已不出该通道，这里再兜一道，返回空补丁、工单行不动。
+ */
 export function techEscalationRowPatch(row: Ticket, group: string | undefined, at: string): Partial<Ticket> {
+  if (isXiaozhiTicket(row)) return {};
   const pool = POOL_GROUPS.find((g) => g.id === TECH_SUPPORT_POOL_GROUP_ID)!;
   return {
     nodeStatus: '已升级技术支持',

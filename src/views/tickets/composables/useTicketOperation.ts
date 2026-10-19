@@ -815,6 +815,10 @@ export function useTicketOperation() {
       detail.value, timeline.value, opState.value, suspendInfo.value,
       payload, operator, role,
     );
+    if (result.refused) {
+      message.warning(result.message);
+      return;
+    }
     opState.value = result.opState;
     suspendInfo.value = result.suspendInfo;
     message.success(result.message);

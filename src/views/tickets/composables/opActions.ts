@@ -1,4 +1,5 @@
 import { isFlashTicket } from '@/views/tickets/types/flash';
+import { isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
 import type { TlRole, TimelineEntry, TimelineFieldChange } from '@/views/tickets/types/ticketDetail';
 import { TICKET_DETAIL } from '@/mock/ticketDetail';
 import type { TicketDetailMeta, FeishuRecord, LinkedAftersale } from '@/mock/ticketDetail';
@@ -690,7 +691,7 @@ export function applyOpAction(
   payload: OpActionPayload,
   operator: string,
   operatorRole: TlRole,
-): { opState: TicketOpState; suspendInfo: SuspendInfo | null; message: string } {
+): { opState: TicketOpState; suspendInfo: SuspendInfo | null; message: string; refused?: boolean } {
   switch (payload.type) {
     case '保存草稿':
       return { opState, suspendInfo, message: '已保存，可稍后继续处理' };
@@ -877,6 +878,10 @@ export function applyOpAction(
       // 刷机单二线的「升级」与咨询单同走本分支（1013 B2）；一线的「升级二线」是处理结果之一，
       // 由刷机服务 `stores/flash.ts` 的 `escalateToL2` 落库，不经过本分支。
       const toTech = channel.includes('技术支持');
+      // 小智工单没有技术支持路径（基线 ※33）：弹窗已不出该通道，这里再兜一道，详情与履历都不动
+      if (toTech && isXiaozhiTicket(detail)) {
+        return { opState, suspendInfo, message: '小智工单不支持升级至技术支持', refused: true };
+      }
       // 升级目标直接进状态：技术支持组 → 「已升级技术支持」（处理人转到该组池、由组员领取）；
       // RDM / TPD 等产研系统 → 「已升级产研」（服务节点，处理人仍是原二线）
       detail.status = toTech ? '已升级技术支持' : '已升级产研';
