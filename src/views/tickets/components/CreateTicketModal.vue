@@ -11,6 +11,7 @@ import {
   UserAddOutlined,
 } from '@ant-design/icons-vue';
 import type { Ticket, CreateTicketPrefill, Priority } from '@/views/tickets/types/ticket';
+import { isTicketClosed } from '@/views/tickets/types/ticket';
 import type { CreateFormTicketType } from '@/views/tickets/types/createTicket';
 import {
   BUSINESS_TYPES,
@@ -109,6 +110,22 @@ const router = useRouter();
 function ticketHref(no: string): string {
   return router.resolve(`/tickets/${no}`).href;
 }
+
+/**
+ * 疑似重复工单：工单库里同客户手机号、同产品名称、未到终态的单（发起本次建单的原单除外）。
+ * 客户或产品未选时不判。
+ */
+const duplicateTickets = computed<Ticket[]>(() => {
+  const phone = (form.customer?.phone ?? '').replace(/\s/g, '');
+  const product = form.productName;
+  if (!phone || !product) return [];
+  const parentNo = props.prefill?.parentNo;
+  return TICKETS.filter((t) => t.no !== parentNo
+    && (t.customerPhone ?? '').replace(/\s/g, '') === phone
+    && t.product === product
+    && !t.archived
+    && !isTicketClosed(t.nodeStatus));
+});
 
 /**
  * 「+ 新建客户」的联系方式预填：搜索只按联系方式，故搜索框里的原始输入必是一条联系方式。
@@ -860,10 +877,21 @@ watch(
     </div>
 
     <div class="modal-footer">
-      <div v-if="!isChildMode && !isFlashType && !isXiaozhiType" class="footer-hint">
+      <div
+        v-if="!isChildMode && !isFlashType && !isXiaozhiType && (isReopenMode || duplicateTickets.length)"
+        class="footer-hint"
+      >
         <WarningOutlined :style="{ color: '#F59E0B', fontSize: '13px' }" />
         <span v-if="isReopenMode">新建工单将自动建立 Reopen 关联，原单状态不变</span>
-        <span v-else>检测到疑似重复工单 1 张，请确认</span>
+        <span v-else>
+          检测到疑似重复工单 {{ duplicateTickets.length }} 张：<template v-for="(t, i) in duplicateTickets.slice(0, 3)" :key="t.no"
+          ><template v-if="i">、</template><a
+            class="flash-block-link"
+            :href="ticketHref(t.no)"
+            target="_blank"
+            rel="noopener"
+          >{{ t.no }}</a></template><template v-if="duplicateTickets.length > 3"> 等</template>，请确认
+        </span>
       </div>
       <div class="footer-btns">
         <button type="button" class="btn-ghost" @click="onCancel">取消</button>
@@ -1352,6 +1380,7 @@ watch(
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
   font-size: 12px;
   color: #9ca3af;
 }
