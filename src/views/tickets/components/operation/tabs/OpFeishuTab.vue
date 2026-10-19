@@ -106,7 +106,8 @@ const confirmRow = computed<{ label: string; tone: 'wait' | 'done'; sub: string 
     return {
       label: `待${XIAOZHI_CONFIRM_ACTOR}确认`,
       tone: 'wait',
-      sub: `等待${XIAOZHI_CONFIRM_ACTOR}在${XIAOZHI_CONFIRM_APP}确认；超期未确认将视为已解决，自动结案并下送调研`,
+      // 一·补 B28：小智工单全程无调研；B32：关单走「关闭工单」，终态是「已关闭」
+      sub: `等待${XIAOZHI_CONFIRM_ACTOR}在${XIAOZHI_CONFIRM_APP}确认；超期未确认将视为已解决，自动关闭工单`,
     };
   }
   const who = props.confirmBy ? `${props.confirmBy} · ` : '';
