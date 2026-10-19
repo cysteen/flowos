@@ -20,6 +20,7 @@ import TicketEventToastStack from './components/operation/TicketEventToastStack.
 import OpProcessTabs from './components/operation/OpProcessTabs.vue';
 import OpSidePanel from './components/operation/OpSidePanel.vue';
 import OpActionBar from './components/OpActionBar.vue';
+import OpFlashResultCard from './components/operation/OpFlashResultCard.vue';
 import OpFlashInfoBlock from './components/operation/OpFlashInfoBlock.vue';
 import OpFlashInfoEditModal from './components/operation/OpFlashInfoEditModal.vue';
 import OpFlashEscalateModal from './components/operation/OpFlashEscalateModal.vue';
@@ -2650,10 +2651,10 @@ function updateTabData(next: OperationTabData) {
 /**
  * 速览带「最新处理」：取处理履历里最近一次保存的处理结果与技术支持处理结果，
  * 处理人、时间随履历条目；领取、升级、流转等事件不进这张卡。
- * 刷机单另有「自动刷机结果」「刷机处理记录」两块排在前面（PRD §5.2），刷机处理记录不再并进处理结果。
+ * 刷机单另有「刷机处理记录」一块排在前面（PRD §5.2），刷机处理记录不再并进处理结果。
  */
 const latestResults = computed(() => latestResultsFromTimeline(timeline.value, isFlash.value));
-/** 速览带「最新处理」· 自动刷机结果块刷机记录表的建单校验时刻：取处理履历「建单」条目 */
+/** 「工单处理」Tab · 自动刷机结果卡刷机记录表的建单校验时刻：取处理履历「建单」条目 */
 const flashVerifiedAt = computed(() => (isFlash.value ? timeline.value.find((e) => e.action === 'create')?.when ?? d.value.createdAtFull : undefined));
 /** 速览带「最新处理」· 刷机处理记录块（刷机单）：正文、刷机处理结论取工单库现值 */
 const latestFlashRecord = computed(() => {
@@ -2750,7 +2751,6 @@ watch(() => d.value.no, () => {
         :detail="d"
         :flash="isFlash ? d.flash : undefined"
         :flash-record="latestFlashRecord"
-        :flash-verified-at="flashVerifiedAt"
         @select="onOverviewSelect"
         @expand-change="overviewExpanded = $event"
       >
@@ -2802,7 +2802,23 @@ watch(() => d.value.no, () => {
           @feishu-retry="onFeishuRetry"
           @dunning="dunningModalOpen = true"
           @attachment-upload="onAttachmentTabUpload"
-        />
+        >
+          <template v-if="isFlash && d.flash" #process-top>
+            <OpFlashResultCard :flash="d.flash" :verified-at="flashVerifiedAt" />
+            <!-- 区块头「修改刷机信息」按钮（PRD §5.3）走 OpFlashInfoBlock 的 #actions 插槽，排在外链左侧 -->
+            <OpFlashInfoBlock :info="d.flash.info">
+              <template v-if="flashEditInfo" #actions>
+                <button
+                  type="button"
+                  class="flash-edit-btn"
+                  :disabled="flashEditInfo.forbidden"
+                  :title="flashEditInfo.forbidden ? flashEditInfo.tip : undefined"
+                  @click="onFlashEditInfo"
+                >修改刷机信息</button>
+              </template>
+            </OpFlashInfoBlock>
+          </template>
+        </OpProcessTabs>
       </div>
 
       <OpSidePanel
@@ -2811,22 +2827,7 @@ watch(() => d.value.no, () => {
         :contact-actions="flashContactActions"
         @contact="onContact"
         @action="toast"
-      >
-        <!-- 刷机单侧栏「刷机信息」卡（PRD §5.3，紧跟客户信息卡）：标题行「修改刷机信息」按钮走 #actions 插槽，排在外链左侧 -->
-        <template v-if="isFlash && d.flash" #top>
-          <OpFlashInfoBlock :info="d.flash.info">
-            <template v-if="flashEditInfo" #actions>
-              <button
-                type="button"
-                class="flash-edit-btn"
-                :disabled="flashEditInfo.forbidden"
-                :title="flashEditInfo.forbidden ? flashEditInfo.tip : undefined"
-                @click="onFlashEditInfo"
-              >修改刷机信息</button>
-            </template>
-          </OpFlashInfoBlock>
-        </template>
-      </OpSidePanel>
+      />
     </div>
 
     <!--
@@ -2988,7 +2989,7 @@ watch(() => d.value.no, () => {
   display: flex; flex-direction: column; height: 100%; overflow: hidden;
   background: #f9fafb;
 }
-/* 侧栏「刷机信息」卡标题行「修改刷机信息」（PRD §5.3），与卡上外链同一行 */
+/* 刷机信息区块头「修改刷机信息」（PRD §5.3），与区块外链同一行 */
 .flash-edit-btn {
   height: 24px;
   padding: 0 10px;
