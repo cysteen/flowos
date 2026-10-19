@@ -520,9 +520,14 @@ Object.entries(AFTERSALES).forEach(([phone, rows]) => {
 
 // ---- 工单库 → 客户履历行 ----
 
-/** 终态口径与工单库一致：SLA 钟为「—」即无活跃钟 */
+/**
+ * 终态口径与工单库一致：SLA 钟为「—」即无活跃钟。
+ * 刷机单例外：一线不计 SLA（一线刷机池、一线名下、自动刷机中、调研中的 SLA 钟都是「—」），只按子状态判终态。
+ */
 function isClosedTicket(t: Ticket): boolean {
-  return t.slaText === '—' || !!t.archived;
+  if (t.archived) return true;
+  if (t.isFlash) return isTicketClosed(t.nodeStatus);
+  return t.slaText === '—';
 }
 
 function toneOf(t: Ticket): TicketTone {
