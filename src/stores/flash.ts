@@ -1078,8 +1078,8 @@ export const useFlashStore = defineStore('flash', () => {
   /**
    * 客户侧催单 / 新建补充（PRD §3.1 / §4.1 第 10 行 / §8「调研中催补拉回」/ §11.1，M9 / M27 / M33 / M41 / M47 / M75）。
    * - 调研中 ∧ 有处理人：撤回本次下送，回该处理人「处理中」，SLA 按下送前摘要接着跑，站内通知处理人；
-   * - 调研中 ∧ 无处理人：进一线刷机池「未认领」，转人工原因「回访期间客户催补」，一线不计 SLA（1013 A26），
-   *   通知归属组一线刷机池；不发转人工短信；
+   * - 调研中 ∧ 无处理人（10-19 C2 一线一轮）：人工未介入过进一线刷机池「未认领」，一线不计 SLA（1013 A26）；介入过进教育刷机处理组池「未认领」，SLA 按进池规则；
+   *   转人工原因「回访期间客户催补」，通知所进池的归属组；不发转人工短信；
    * - 自动刷机中：不拉回，有处理人通知处理人、无处理人通知一线刷机池。
    * 两种拉回都不置「已产生回访结论」，再下送照常进「调研中」（M58）。其余子状态不在此处理，返回 `pulled: false`。
    */
@@ -1133,8 +1133,10 @@ export const useFlashStore = defineStore('flash', () => {
       });
       notify(`${handler}(处理人)`);
     } else {
-      transferToPool(ticketNo, 'l1', '回访期间客户催补');
-      notify(FLASH_POOLS.l1.label);
+      // 一线一轮（10-19 C2）：人工未介入过回一线刷机池，介入过（一线领取过或进过教育刷机处理组池）进教育刷机处理组池
+      const pool: FlashPoolKey = manuallyInvolved(r) ? 'l2' : 'l1';
+      transferToPool(ticketNo, pool, '回访期间客户催补');
+      notify(pool === 'l1' ? FLASH_POOLS.l1.label : FLASH_POOLS.l2.groupName);
     }
     bump(ticketNo);
     persist();
