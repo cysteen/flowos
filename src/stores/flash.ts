@@ -6,7 +6,7 @@ import type { TimelineEntry, TimelineFieldChange } from '@/views/tickets/types/t
 import { TICKETS } from '@/mock/tickets';
 import { FLASH_SEEDS } from '@/mock/flash/seedTickets';
 import { findMdmDevice, type MdmDevice } from '@/mock/flash/mdmDevices';
-import { isGraduate } from '@/mock/flash/graduates';
+import { isGraduate, isGraduateByAccount } from '@/mock/flash/graduates';
 import { findSchoolById } from '@/mock/schools';
 import { makeTicketNo } from '@/constants/ticketNo';
 import {
@@ -641,13 +641,18 @@ export const useFlashStore = defineStore('flash', () => {
 
   /* ---------------- 校验 ---------------- */
 
-  /** 建单校验（D15）：SN与学生账号一致 → 毕业生身份。校验接口不可用单独返回（M43） */
-  function verify(info: Pick<FlashInfo, 'sn' | 'studentAccount' | 'studentName' | 'schoolId'>): VerifyResult {
+  /**
+   * 建单校验（D15）：SN与学生账号一致 → 毕业生身份。校验接口不可用单独返回（M43）。
+   * `byAccount`：用户提报（学校为自由文本，10-19 C8）按学生账号 ＋ 学生姓名判毕业生身份；坐席代建与重推按学校 ID 三项匹配。
+   */
+  function verify(info: Pick<FlashInfo, 'sn' | 'studentAccount' | 'studentName' | 'schoolId'>, byAccount = false): VerifyResult {
     const device = findMdmDevice(info.sn);
     if (device?.verifyApi === '不可用') return { ok: false, unavailable: true, result: FLASH_VERIFY_NOT_RUN };
     // 两项都比，结论各自保留；两项都不通过时细分取「SN与学生账号不一致」（先比设备再比身份，M50）
     const snOk = !!device && device.studentAccount === info.studentAccount.trim();
-    const gradOk = isGraduate(info.schoolId, info.studentAccount, info.studentName ?? '');
+    const gradOk = byAccount
+      ? isGraduateByAccount(info.studentAccount, info.studentName ?? '')
+      : isGraduate(info.schoolId, info.studentAccount, info.studentName ?? '');
     const result: FlashVerifyResult = {
       status: '已校验',
       snAccountMatch: snOk ? '通过' : '不通过',
@@ -695,7 +700,7 @@ export const useFlashStore = defineStore('flash', () => {
 
     if (input.reason !== FLASH_REASON_AUTO) return pool('l2', '特殊情况');
 
-    const v = verify(input);
+    const v = verify(input, creator === '用户提报');
     if (!v.ok && v.unavailable) return pool('l1', '推送异常', typed, '推送异常', '接口异常');
     const device = findMdmDevice(input.sn);
     const backfill = device
@@ -719,7 +724,8 @@ export const useFlashStore = defineStore('flash', () => {
       [!input.sn?.trim(), L.sn],
       [!input.studentAccount?.trim(), L.studentAccount],
       [!input.studentName?.trim(), L.studentName],
-      [!input.schoolId?.trim(), L.schoolName],
+      // 用户提报学校为自由文本（10-19 C8），坐席代建选学校落学校 ID
+      [creator === '用户提报' ? !input.schoolName?.trim() : !input.schoolId?.trim(), L.schoolName],
       [!input.reason, L.reason],
       [!input.contactPhone?.trim(), L.contactPhone],
       [creator === '用户提报' && !(input.snPhotos ?? []).length, L.snPhotos],

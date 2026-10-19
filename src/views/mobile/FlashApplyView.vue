@@ -5,7 +5,6 @@ import { CameraOutlined, CheckCircleFilled, CloseOutlined } from '@ant-design/ic
 import { useFlashStore, type FlashCreateInput, type FlashEvaluationBlocked } from '@/stores/flash';
 import { useFlashConfigStore } from '@/stores/flashConfig';
 import { MDM_DEVICES } from '@/mock/flash/mdmDevices';
-import { SCHOOL_LIBRARY } from '@/mock/schools';
 import { FLASH_FIELD_LABELS } from '@/views/tickets/types/flash';
 import FlashMobileShell from './FlashMobileShell.vue';
 import FlashProgressSteps from './FlashProgressSteps.vue';
@@ -29,7 +28,7 @@ const REQUIRED_TIP: Record<FieldKey, string> = {
   sn: `请填写${L.sn}`,
   studentAccount: `请填写${L.studentAccount}`,
   studentName: `请填写${L.studentName}`,
-  schoolName: `请选择${L.schoolName}`,
+  schoolName: `请填写${L.schoolName}`,
   reason: `请选择${L.reason}`,
   contactPhone: `请填写${L.contactPhone}`,
 };
@@ -43,14 +42,14 @@ const config = useFlashConfigStore();
 
 const modelOptions = computed(() => config.enabledModels().map((m) => ({ value: m.model, label: m.model })));
 const reasonOptions = computed(() => config.enabledReasons().map((r) => ({ value: r, label: r })));
-const schoolOptions = SCHOOL_LIBRARY.map((s) => ({ value: s.id, label: s.name }));
 
 const form = reactive({
   productModel: undefined as string | undefined,
   sn: '',
   studentAccount: '',
   studentName: '',
-  schoolId: undefined as string | undefined,
+  /** 学校名称：自由文本，工单系统不校验（10-19 C8；毕业生身份按学生账号判定） */
+  schoolName: '',
   reason: undefined as string | undefined,
   romVersion: '',
   mdmVersion: '',
@@ -70,13 +69,9 @@ watch(() => form.productModel, () => { clearError('productModel'); alert.value =
 watch(() => form.sn, () => { clearError('sn'); alert.value = null; });
 watch(() => form.studentAccount, () => clearError('studentAccount'));
 watch(() => form.studentName, () => clearError('studentName'));
-watch(() => form.schoolId, () => clearError('schoolName'));
+watch(() => form.schoolName, () => clearError('schoolName'));
 watch(() => form.reason, () => clearError('reason'));
 watch(() => form.contactPhone, () => clearError('contactPhone'));
-
-function filterSchool(input: string, option: { label?: string }) {
-  return (option.label ?? '').includes(input.trim());
-}
 
 /* ---------------- 设备SN照片 · 识别 SN ---------------- */
 
@@ -117,14 +112,13 @@ function removePhoto() {
 const resultNo = ref('');
 
 function buildInput(): FlashCreateInput {
-  const school = SCHOOL_LIBRARY.find((s) => s.id === form.schoolId);
   return {
     productModel: form.productModel ?? '',
     sn: form.sn,
     studentAccount: form.studentAccount,
     studentName: form.studentName,
-    schoolId: form.schoolId ?? '',
-    schoolName: school?.name,
+    schoolId: '',
+    schoolName: form.schoolName.trim(),
     reason: form.reason ?? '',
     romVersion: form.romVersion.trim(),
     mdmVersion: form.mdmVersion.trim(),
@@ -275,13 +269,10 @@ const { snapshot } = useFlashProgress(resultNo);
 
       <div class="fa-field" :class="{ 'has-error': errors.schoolName }">
         <label class="fa-label is-required">{{ L.schoolName }}</label>
-        <a-select
-          v-model:value="form.schoolId"
+        <a-input
+          v-model:value="form.schoolName"
           size="large"
-          placeholder="请选择"
-          show-search
-          :options="schoolOptions"
-          :filter-option="filterSchool"
+          placeholder="请输入"
           :status="errors.schoolName ? 'error' : undefined"
         />
         <div v-if="errors.schoolName" class="fa-error">{{ errors.schoolName }}</div>

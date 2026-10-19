@@ -46,6 +46,15 @@ export const GRADUATE_ROSTER: GraduateRecord[] = [
 ];
 
 /** 是否在毕业名单内（学校库 ID + 学生账号 + 学生姓名三项精确匹配，PRD §2.2） */
+/**
+ * 用户提报的毕业生身份（10-19 C8）：小程序学校为自由文本，按学生账号判定 —— 学生账号 ＋ 学生姓名匹配毕业名单，不比学校。
+ */
+export function isGraduateByAccount(studentAccount: string, studentName: string): boolean {
+  const acc = studentAccount.trim();
+  const name = studentName.trim();
+  return GRADUATE_ROSTER.some((g) => g.studentAccount === acc && g.studentName === name);
+}
+
 export function isGraduate(schoolId: string, studentAccount: string, studentName: string): boolean {
   const acc = studentAccount.trim();
   const name = studentName.trim();
