@@ -111,7 +111,7 @@ export const MDM_DEVICES: MdmDevice[] = [
   dev({ sn: 'XFS20240601006', model: S20, studentAccount: 'bb2z2023s1106', romVersion: 'EDU-S20-3.2.4', mdmVersion: 'MDM 5.8.2', verifyApi: '不可用' }),
   // 推送接口持续报错 → 自动重试 1 次仍失败 → 转人工（推送异常 · 接口异常）
   dev({ sn: 'XFS30240901007', model: S30, studentAccount: 'la1z2023s1107', romVersion: 'EDU-S30-1.4.2', mdmVersion: 'MDM 5.8.2', pushApi: '持续报错' }),
-  // 已退出支持的机型（建单即拦截 A1）
+  // 未挂刷机类问题分类的机型（坐席建单不出现刷机类分类；用户提报不判产品）
   dev({ sn: 'XFS10220900108', model: S10, studentAccount: 'hf1z2022s0108', romVersion: 'EDU-S10-4.8.2', mdmVersion: 'MDM 5.2.0' }),
 ];
 

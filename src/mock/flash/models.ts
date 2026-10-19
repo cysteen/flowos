@@ -27,7 +27,7 @@ export const FLASH_MODEL_SEED: FlashModel[] = [
   { id: 'FM-J606F', model: '联想 TB-J606F 智慧课堂定制版', category: '学习硬件', brand: '联想', selfDeveloped: false, minRomVersion: 'TB-J606F_S250118' },
   { id: 'FM-X6C6F', model: '联想 TB-X6C6F 智慧课堂定制版', category: '学习硬件', brand: '联想', selfDeveloped: false, minRomVersion: 'TB-X6C6F_S240902' },
   { id: 'FM-MPSE', model: '华为 MatePad SE 教育版', category: '学习硬件', brand: '华为', selfDeveloped: false, minRomVersion: '4.0.0.120' },
-  // 刷机类问题分类「是否刷机」出厂为否（未挂刷机类分类）：建单不出现自助刷机 / 刷原生系统，用户提报即拦截
+  // 刷机类问题分类「是否刷机」出厂为否（未挂刷机类分类）：坐席建单不出现自助刷机 / 刷原生系统
   { id: 'FM-S10', model: '讯飞智慧课堂学生平板 S10', category: '学习硬件', brand: '科大讯飞', selfDeveloped: true, minRomVersion: 'EDU-S10-5.0.0' },
 ];
 

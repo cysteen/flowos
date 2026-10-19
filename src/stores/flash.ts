@@ -11,7 +11,7 @@ import { findSchoolById } from '@/mock/schools';
 import { makeTicketNo } from '@/constants/ticketNo';
 import {
   FLASH_FIELD_LABELS, FLASH_INFO_FIELD_LABELS, FLASH_NOTIFY_EVENTS, FLASH_POOLS, FLASH_REASON_AUTO,
-  FLASH_RETURN_DELAY_MS, FLASH_TIP_MODEL_UNSUPPORTED, FLASH_TIP_PRODUCT_UNSUPPORTED,
+  FLASH_RETURN_DELAY_MS, FLASH_TIP_PRODUCT_UNSUPPORTED,
   FLASH_RESULT_ONLINE_SUCCESS, FLASH_RESULT_OFFLINE_PUSHED, FLASH_RESULT_ESCALATE_L2, normalizeFlashResult,
   FLASH_TIP_NON_SELF_DEVELOPED, FLASH_TIP_REASON_NOT_GRADUATE_L1, FLASH_TIP_REASON_NOT_GRADUATE_L2,
   FLASH_TIP_AUTO_FLASHING, FLASH_TIP_EDIT_STATE, FLASH_TIP_REPUSH_STATE, FLASH_TIP_SYSTEM_BUSY, FLASH_TIP_VERIFY_UNAVAILABLE,
@@ -667,15 +667,15 @@ export const useFlashStore = defineStore('flash', () => {
 
   /**
    * 建单判定（M1 顺序）：
-   * ① 产品未挂刷机类问题分类（10-19 C1） → 拦截 A1；② 同 SN 在途 → 拦截 A2（在途查询不可用 → 拦截「系统繁忙」，M43）；
+   * ① 坐席代建：产品未挂刷机类问题分类（10-19 C1） → 拦截 A1；用户提报不判产品（10-19 用户定：以小程序为准）；② 同 SN 在途 → 拦截 A2（在途查询不可用 → 拦截「系统繁忙」，M43）；
    * ③ 刷机原因≠毕业 → 二线池（特殊情况）；④ 建单校验：接口不可用 → 一线池（推送异常 · 接口异常，M43），
    * 不通过 → 用户提报进一线池、坐席代建进二线池（D12）；⑤ 非自研 → 一线池（M8′）；⑥ 自研 → 自动刷机中。
    */
   function evaluateCreate(input: FlashCreateInput, creator: FlashCreator): FlashCreateEvaluation {
     const missing = missingRequired(input, creator);
     if (missing.length) return { kind: 'blocked', code: 'required', message: flashTipRequired(missing), missing };
-    if (!config.isSupportedModel(input.productModel)) {
-      return { kind: 'blocked', code: 'A1', message: creator === '用户提报' ? FLASH_TIP_MODEL_UNSUPPORTED : FLASH_TIP_PRODUCT_UNSUPPORTED };
+    if (creator !== '用户提报' && !config.isSupportedModel(input.productModel)) {
+      return { kind: 'blocked', code: 'A1', message: FLASH_TIP_PRODUCT_UNSUPPORTED };
     }
     let inflight: Ticket | undefined;
     try {
@@ -1001,18 +1001,17 @@ export const useFlashStore = defineStore('flash', () => {
   }
 
   /**
-   * 人工是否介入过（10-19 C2「一线一轮」）：一线领取过（「一线领取过的单」口径）即算介入过；
-   * 本单已进过教育刷机处理组（SLA 已起算）或有人领取过，也按介入过处理，异常不再回一线。
+   * 一线是否介入过（10-19 C2「一线一轮」，用户 10-19 定）：只看一线领取过本单（「一线领取过的单」口径）；
+   * 未经一线领取直进教育刷机处理组池的单不算介入过，后续异常回一线刷机池。
    */
   function manuallyInvolved(r: Ticket): boolean {
-    if (r.flash?.state.slaStartedAt) return true;
-    return timelineOf(r.no).some((e) => e.action === 'accept');
+    return timelineOf(r.no).some((e) => e.action === 'accept' && e.role === '一线坐席');
   }
 
   /**
    * 记回访结论（PRD §8「回访结论去向」/ M58 / M86）：只在「调研中」且未评价过时可记，置位「已产生回访结论」。
    * - 已解决 → 「已结案」，处理人不变，SLA 结束；履历「回访：已解决」+「结案」。
-   * - 未解决（10-19 C2 / C3）→ 人工未介入过回一线刷机池，介入过进教育刷机处理组池；「未认领」、处理人清空，
+   * - 未解决（10-19 C2 / C3）→ 一线未领取过回一线刷机池，一线领取过进教育刷机处理组池；「未认领」、处理人清空，
    *   转人工原因「回访未解决」；SLA：进一线刷机池不起算，进教育刷机处理组池按 handoff 规则；不发转人工短信（M47）。
    */
   function recordSurveyConclusion(
@@ -1048,7 +1047,7 @@ export const useFlashStore = defineStore('flash', () => {
         category: 'node', action: 'resolved', who: '系统', role: '系统', how: '结案', what: FLASH_TL.surveySolvedClosed,
       });
     }
-    // 一线一轮（10-19 C2 / C3）：人工未介入过 → 回一线刷机池（不计 SLA）；介入过 → 教育刷机处理组池
+    // 一线一轮（10-19 C2 / C3）：一线未领取过 → 回一线刷机池（不计 SLA）；一线领取过 → 教育刷机处理组池
     // （已起算的单接着跑，「调研中」那段停钟在 handoff 里结掉；未起算的单从进教育刷机处理组池时刻起算）
     const pool: FlashPoolKey = manuallyInvolved(r) ? 'l2' : 'l1';
     if (!solved) handoff(r, pool, '回访未解决', now + 1);
@@ -1133,7 +1132,7 @@ export const useFlashStore = defineStore('flash', () => {
       });
       notify(`${handler}(处理人)`);
     } else {
-      // 一线一轮（10-19 C2）：人工未介入过回一线刷机池，介入过（一线领取过或进过教育刷机处理组池）进教育刷机处理组池
+      // 一线一轮（10-19 C2）：一线未领取过回一线刷机池，一线领取过进教育刷机处理组池
       const pool: FlashPoolKey = manuallyInvolved(r) ? 'l2' : 'l1';
       transferToPool(ticketNo, pool, '回访期间客户催补');
       notify(pool === 'l1' ? FLASH_POOLS.l1.label : FLASH_POOLS.l2.groupName);

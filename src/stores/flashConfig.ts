@@ -119,7 +119,7 @@ export const useFlashConfigStore = defineStore('flashConfig', () => {
 
   /**
    * 产品挂了刷机类问题分类（10-19 C1）：后台「问题分类」里本产品至少有一条「是否刷机」开启的分类。
-   * 不再看产品字段；建单页刷机类分类的显隐、用户提报的机型下拉与拦截、修改刷机信息弹窗的产品下拉都读这一个判据。
+   * 不再看产品字段；建单页刷机类分类的显隐、修改刷机信息弹窗的产品下拉都读这一个判据（用户提报不判产品，10-19）。
    */
   function isSupportedModel(model: string): boolean {
     const key = model.trim();
@@ -171,7 +171,7 @@ export const useFlashConfigStore = defineStore('flashConfig', () => {
     return !!modelOf(model)?.selfDeveloped;
   }
 
-  /** 建单 / 用户提报 / 修改刷机信息可选的产品：挂了刷机类问题分类的产品 */
+  /** 坐席建单 / 修改刷机信息可选的产品：挂了刷机类问题分类的产品 */
   function enabledModels(): FlashModel[] {
     return models.value.filter((m) => isSupportedModel(m.model));
   }

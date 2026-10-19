@@ -40,7 +40,8 @@ const router = useRouter();
 const flash = useFlashStore();
 const config = useFlashConfigStore();
 
-const modelOptions = computed(() => config.enabledModels().map((m) => ({ value: m.model, label: m.model })));
+// 机型清单以小程序为准，工单系统不按问题分类筛（10-19 用户定）
+const modelOptions = computed(() => config.models.map((m) => ({ value: m.model, label: m.model })));
 const reasonOptions = computed(() => config.enabledReasons().map((r) => ({ value: r, label: r })));
 
 const form = reactive({
