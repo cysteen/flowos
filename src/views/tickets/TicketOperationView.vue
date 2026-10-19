@@ -28,7 +28,8 @@ import {
   FLASH_POOLS, isFlashTicket, normalizeFlashResult, type FlashActor, type FlashResult,
 } from './types/flash';
 import {
-  XIAOZHI_CANCELLABLE_STATUSES, XIAOZHI_TIP, isXiaozhiTicket, type XiaozhiRdPriority,
+  XIAOZHI_CANCELLABLE_STATUSES, XIAOZHI_TIP, XIAOZHI_TOAST,
+  isXiaozhiTicket, type XiaozhiRdPriority,
 } from './types/xiaozhi';
 import { useXiaozhiStore } from '@/stores/xiaozhi';
 import { typeSampleKey } from '@/mock/ticketTypeSamples';
@@ -494,7 +495,7 @@ function onXiaozhiClaim() {
 }
 
 /**
- * 小智单的底栏动作拦截 —— 现在只拦一枚：**升级 · 产研**（1130 PRD §5.4 / §11.2）。
+ * 小智单的底栏动作拦截 —— 两枚：**关闭工单**（一·补 B32）与 **升级 · 产研**（PRD §5.4 / §11.2）。
  * 返回 true ＝ 本函数已处理，`onAction` 不再往下走通用分支。
  *
  * 🔴 **为什么必须拦**：`escalateToRd` 原先**全仓只有 store 自己调**，人工点「升级 · 产研」
@@ -505,6 +506,27 @@ function onXiaozhiClaim() {
  *    **「产研反馈」Tab 根本打不开**，人工升级产研的单看不到任何产研协同信息。
  */
 function onXiaozhiAction(payload: Record<string, unknown>): boolean {
+  /**
+   * 「关闭工单」**不走审批**，点完直落终态「已关闭」（一·补 B32）。
+   * 通用分支落的是「申请关闭中」+ 提交审批组，整条与小智口径相反，故必须在这里拦下。
+   */
+  if (payload.type === '关闭工单') {
+    const data = (payload.data ?? {}) as Record<string, unknown>;
+    const ok = xiaozhiStore.closeByAgent(
+      d.value.no,
+      { name: currentHandlerName(user.roleKey, user.name), role: mapUserRole(user.roleKey) },
+      String(data.reason ?? ''),
+      String(data.note ?? ''),
+    );
+    if (!ok) {
+      message.warning('关闭失败，请稍后重试');
+      return true;
+    }
+    d.value.status = '已关闭';
+    opState.value = 'closed';
+    message.success(XIAOZHI_TOAST.closed(d.value.no));
+    return true;
+  }
   if (payload.type !== '升级') return false;
   const data = (payload.data ?? {}) as Record<string, unknown>;
   // 非产研通道（理论上小智单只剩产研一档，B10）交回通用分支，不在这里吞掉
@@ -1971,7 +1993,11 @@ function onAction(payload: Record<string, unknown>) {
     dispatch({ type: '保存草稿', process: isFlash.value ? buildProcessLog() : log });
     // 小智单：保存属首次响应动作集 → 「待响应」转「处理中」（基线 §1 L25 / §7 L728）。
     // 刷机单那一下在 `flashStore.saveProcess` 里做（见 flash.ts 的 `if (nodeStatus === '待响应')`）。
-    if (isXiaozhi.value) xiaozhiStore.markResponded(d.value.no);
+    if (isXiaozhi.value) {
+      xiaozhiStore.markResponded(d.value.no);
+      // 保存＝编辑本单：产研退回时处理人优先交回最后编辑人（一·补 B31 / B33）
+      xiaozhiStore.markEdited(d.value.no, currentHandlerName(user.roleKey, user.name));
+    }
     // 风险等级落第八类、不落「工单处理」的字段 diff，故与 log 分开走，见 `recordAgentRiskLevelChange`
     recordAgentRiskLevelChange();
     if (log || isFlash.value) processBaseline = snapshotProcess(); // 登记后更新基线，下次 diff 以此为准
@@ -2462,9 +2488,16 @@ function onDunningSubmit(payload: { content: string; attachments: string[] }) {
   if (record && payload.attachments.length) {
     record.attachments = payload.attachments;
   }
-  // 已关联产研反馈：与「关联/补充/催单」同步写一条到产研反馈时间线
+  /**
+   * 已关联产研反馈：与「关联/补充/催单」同步写一条到产研反馈时间线。
+   *
+   * 🔴 **小智单不写这一条**（1130 一·补 B26）：催单与新建补充在小智单上**保留**，
+   * 但内容**不同步产研** —— 只落工单系统的工单与处理履历（上面 `onIncomingTicketEvent`
+   * 那一笔已经落了）。这条记录的 `side` 是「客服工单」、标题写「请产研尽快跟进」，
+   * 正是"把催单推给产研"的那一笔，小智单必须跳过。
+   */
   const sync = d.value.feishuSync;
-  if (sync && sync !== 'none' && sync !== 'failed') {
+  if (!isXiaozhi.value && sync && sync !== 'none' && sync !== 'failed') {
     const when = record?.when ?? formatNow();
     d.value.feishuRecords = [
       ...(d.value.feishuRecords ?? []),
