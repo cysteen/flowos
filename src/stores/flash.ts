@@ -409,6 +409,18 @@ export const useFlashStore = defineStore('flash', () => {
     st.slaPausedAccumMs = 0;
     st.slaPausedSince = undefined;
     r.responded = false;
+    if (r.firstRespBreached) r.firstRespBreached = false;
+  }
+
+  /**
+   * 首次响应（待响应 → 处理中：保存、外呼 / 短信 / 邮件，PRD §4.3 / §7.1）：首响钟已超时才响应的，
+   * 写下「首响超时」结论（F9），此后列表与页头一律「首响 未达标」，保存不重置。未起算的单不判。
+   */
+  function markFirstResponse(r: Ticket, at: number) {
+    if (r.responded) return;
+    const read = isFlashSlaCounted(r.flash!.state) ? readFlashSla(r.flash!.state, at) : null;
+    if (read && read.firstRemainMs < 0) r.firstRespBreached = true;
+    r.responded = true;
   }
 
   function toHandler(r: Ticket, run: FlashRun, at: number) {
@@ -570,6 +582,7 @@ export const useFlashStore = defineStore('flash', () => {
         what: FLASH_TL.returnSuccess,
       });
       sms(r, at + 1000, 'success');
+      // 履历按实际先后（F15）：回传成功 → 成功短信 → 进回访 / 结案 → 调研短信，各占一秒，倒序时不交错
       if (st.surveyConcluded) {
         stopClock(r, at);
         Object.assign(r, {
@@ -577,7 +590,7 @@ export const useFlashStore = defineStore('flash', () => {
           slaText: '—', slaSub: '已结案', slaState: 'ok', slaMinutes: 9999,
           updatedAt: flashMinuteStamp(at),
         });
-        log(r.no, at + 1, {
+        log(r.no, at + 2000, {
           category: 'node', action: 'resolved', who: '系统', role: '系统', how: '回传结果',
           what: FLASH_TL.repushSuccessClosed,
         });
@@ -588,11 +601,11 @@ export const useFlashStore = defineStore('flash', () => {
           updatedAt: flashMinuteStamp(at),
         });
         pauseClock(r, at, '调研中');
-        log(r.no, at + 1, {
+        log(r.no, at + 2000, {
           category: 'node', action: 'resolved', who: '系统', role: '系统', how: '回传结果',
           what: FLASH_TL.repushSuccessSurvey,
         });
-        sendSurveySms(r, at + 2000);
+        sendSurveySms(r, at + 3000);
       }
       notifyRepushInitiator(r, run, FLASH_NOTICE.repushSuccess(r.no));
     }
@@ -1111,7 +1124,7 @@ export const useFlashStore = defineStore('flash', () => {
       st.forwardedBy = undefined;
       log(ticketNo, now, {
         category: 'node', action: 'handle', who: '系统', role: '系统', how: '因客户催补，自动撤回本次下送',
-        what: FLASH_TL.csPullbackForward('处理中'),
+        what: FLASH_TL.csPullbackForward('处理中', isFlashSlaCounted(st)),
       });
       notify(`${handler}(处理人)`);
     } else {
@@ -1254,7 +1267,10 @@ export const useFlashStore = defineStore('flash', () => {
       const cur = input.record.replace(/\s+$/, '');
       st.record = appendRecord ? (cur ? `${cur}\n${appendRecord}` : appendRecord) : input.record;
     }
-    if (r.nodeStatus === '待响应') Object.assign(r, { nodeStatus: '处理中', responded: true });
+    if (r.nodeStatus === '待响应') {
+      markFirstResponse(r, now);
+      r.nodeStatus = '处理中';
+    }
     r.updatedAt = flashMinuteStamp(now);
     bump(ticketNo);
     persist();
@@ -1278,7 +1294,9 @@ export const useFlashStore = defineStore('flash', () => {
   function markRespondedByContact(ticketNo: string): boolean {
     const r = rowOf(ticketNo);
     if (!r?.flash || r.nodeStatus !== '待响应') return false;
-    Object.assign(r, { nodeStatus: '处理中', responded: true, updatedAt: flashMinuteStamp(Date.now()) });
+    const now = Date.now();
+    markFirstResponse(r, now);
+    Object.assign(r, { nodeStatus: '处理中', updatedAt: flashMinuteStamp(now) });
     bump(ticketNo);
     persist();
     return true;

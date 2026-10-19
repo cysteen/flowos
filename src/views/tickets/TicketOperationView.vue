@@ -55,6 +55,7 @@ import { useTicketLiveNotify } from './composables/useTicketLiveNotify';
 import { formatTicketRecordWho, MOCK_FIRST_LINE_AGENTS } from './utils/ticketRecordWho';
 import { TECH_RESULT_FIELD, latestHandlingFrom, latestHandlingPreviewOf } from './utils/ticketOverview';
 import { opTimeNow } from './utils/opTime';
+import { isFlashSlaCounted } from './utils/slaClock';
 import { TICKETS } from '@/mock/tickets';
 import { canAutoClaim, claimTicketByType, inVisiblePool, isPoolEntry, unclaimedGateOf, withoutPoolEntry } from './composables/poolClaim';
 import { useRiskTagStore } from '@/stores/riskTags';
@@ -67,7 +68,7 @@ import { useRiskHistoryStore, type RiskHistoryKind, type RiskHistoryRecord } fro
 import { useRiskPoolStore } from '@/stores/riskPool';
 import { useDerivedTicketStore } from '@/stores/derivedTickets';
 import type { TlAction, TlRole } from './types/ticketDetail';
-import { pullbackOnCsEvent, headerActionsByRole, handlerGroupOf, currentHandlerName, STATUS_GROUP, WORKBENCH_HANDLER, statusDisplayName, statusStyle, type TicketStatus } from './types/ticket';
+import { pullbackOnCsEvent, headerActionsByRole, handlerGroupOf, currentHandlerName, isCurrentHandler, STATUS_GROUP, WORKBENCH_HANDLER, statusDisplayName, statusStyle, type TicketStatus } from './types/ticket';
 import { buildChildTicketPrefill, buildReopenTicketPrefill } from './composables/childTicketPrefill';
 import {
   buildEscalatePrefill, buildEscalateVerdict, buildEscalatedTicket, escalateTargetLabel,
@@ -376,10 +377,9 @@ const primaryHandlerName = computed(() => {
   if (row?.upgradedByMe && row.nodeStatus === '已升级技术支持') return WORKBENCH_HANDLER;
   return d.value.lastHandler ?? null;
 });
-/** 当前登录用户是不是本单主责处理人。用户 → 工单处理人名的映射与「结案后补充」同一把（`currentHandlerName`） */
+/** 当前登录用户是不是本单主责处理人（`isCurrentHandler`：登录人姓名，二线专员另认历史样例处理人名） */
 const isPrimaryHandler = computed(
-  () => !!primaryHandlerName.value
-    && primaryHandlerName.value === currentHandlerName(user.roleKey, user.name),
+  () => isCurrentHandler(primaryHandlerName.value, user.roleKey, user.name),
 );
 
 /* ---------------- 刷机单门控（930 教育刷机单 PRD §5.5 / §1.2 / §9.4，判据见 composables/flashGate.ts） ---------------- */
@@ -616,8 +616,8 @@ watch(
   () => flashStore.liveNotices.length,
   (len, prev) => {
     if (!isFlash.value || !pageActive.value) return;
-    const me = currentHandlerName(user.roleKey, user.name);
-    const fresh = flashStore.liveNotices.slice(prev ?? len).filter((n) => n.no === d.value.no && n.to === me);
+    const fresh = flashStore.liveNotices.slice(prev ?? len)
+      .filter((n) => n.no === d.value.no && isCurrentHandler(n.to, user.roleKey, user.name));
     const last = fresh[fresh.length - 1];
     if (last) flashLiveBanner.value = { id: last.id, text: last.text };
   },
@@ -629,7 +629,7 @@ const flashIsInitiator = computed(() => {
   if (!isFlash.value) return isPrimaryHandler.value;
   if (flashStage.value === '调研中') {
     const by = d.value.flash?.state.forwardedBy;
-    return !!by && by === currentHandlerName(user.roleKey, user.name);
+    return isCurrentHandler(by, user.roleKey, user.name);
   }
   return isPrimaryHandler.value;
 });
@@ -2436,13 +2436,15 @@ function applyCsEventSideEffects(kind: 'supplement' | 'urge') {
   } else if (pull) {
     const from = d.value.status;
     d.value.status = pull.to;
+    // 刷机单 SLA 未起算（一线名下、从未进教育刷机处理组池）的不提解决钟（PRD §4.3，F16）
+    const slaCounted = !isFlash.value || (!!d.value.flash && isFlashSlaCounted(d.value.flash.state));
     pushEntry(timeline.value, {
       category: 'node',
       action: 'handle',
       who: '系统',
       role: '系统',
       how: pull.why,
-      what: `${pull.why}：${from} → ${pull.to}。SLA 解决钟接着跑，不重置。`,
+      what: `${pull.why}：${from} → ${pull.to}。${slaCounted ? 'SLA 解决钟接着跑，不重置。' : ''}`,
     });
     // 刷机单审核中 / 已挂起照基线拉回，子状态同步回工单库
     if (isFlash.value) flashStore.syncStatus(d.value.no, pull.to);

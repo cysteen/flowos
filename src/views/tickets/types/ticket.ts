@@ -1057,6 +1057,8 @@ export const POOL_GROUPS: PoolGroupMeta[] = [
  */
 const HANDLER_GROUP: Record<string, string> = {
   王坐席: 'line2',
+  // 二线专员演示账号的登录名（现场动作记它，见 `currentHandlerName`）
+  张三: 'line2',
   林坐席: 'line2',
   王组长: 'line2',
   陈坐席: 'hardware',
@@ -1073,8 +1075,28 @@ export function handlerGroupOf(name?: string | null): PoolGroupMeta | undefined 
   return id ? POOL_GROUPS.find((g) => g.id === id) : undefined;
 }
 
-/** 当前登录用户在工单数据源里的处理人名：二线专员演示账号对应 `WORKBENCH_HANDLER` */
-export function currentHandlerName(roleKey: string, userName: string): string {
+/**
+ * 当前登录人在现场动作里记的处理人名：一律取登录人姓名，与顶栏一致（F12：领取、下送、重推、保存等同一人一个名字）。
+ * 「是不是本人」的判定不直接拿它比，走 `isCurrentHandler`（要认得历史样例里的处理人名）。
+ */
+export function currentHandlerName(_roleKey: string, userName: string): string {
+  return userName;
+}
+
+/**
+ * 工单上的处理人名是不是当前登录人：登录人姓名；二线专员另认历史样例里写死的处理人 `WORKBENCH_HANDLER`
+ * （种子单的处理人保持不动，老四类「我的任务」仍按它取数）。
+ */
+export function isCurrentHandler(name: string | null | undefined, roleKey: string, userName: string): boolean {
+  if (!name) return false;
+  return name === userName || (roleKey === 'agent-l2' && name === WORKBENCH_HANDLER);
+}
+
+/**
+ * 老四类样例数据模型里的处理人名（`WORKBENCH_HANDLER` 演示口径）：只用于老四类工单的落库（领取 / 换主责），
+ * 使其仍落进按 `WORKBENCH_HANDLER` 取数的「我的任务」。刷机单、小智单记 `currentHandlerName`。
+ */
+export function legacyHandlerName(roleKey: string, userName: string): string {
   return roleKey === 'agent-l2' ? WORKBENCH_HANDLER : userName;
 }
 
@@ -1138,10 +1160,10 @@ const FLASH_MINE_CREATOR_ROLES = new Set(['agent-l1', 'agent-l2']);
  * 刷机单在「我的任务」的数据域：处理人为本人；一线坐席 / 二线专员另含本人建的单。
  * `creatorName` 由调用方按刷机履历取（建单事件的操作人）。
  */
-export function inFlashMineScope(t: Ticket, roleKey: string, handler: string, creatorName?: string): boolean {
+export function inFlashMineScope(t: Ticket, roleKey: string, userName: string, creatorName?: string): boolean {
   if (!isFlashTicket(t) || t.archived || t.isDraft) return false;
-  if (t.tab === 'mine' && t.assignee === handler) return true;
-  return FLASH_MINE_CREATOR_ROLES.has(roleKey) && !!creatorName && creatorName === handler;
+  if (t.tab === 'mine' && isCurrentHandler(t.assignee, roleKey, userName)) return true;
+  return FLASH_MINE_CREATOR_ROLES.has(roleKey) && isCurrentHandler(creatorName, roleKey, userName);
 }
 
 /** 列表「分组名称」列：优先 groupNames，否则按业务线+工单类型推断 */

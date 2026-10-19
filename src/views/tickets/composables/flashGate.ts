@@ -10,7 +10,7 @@
  * 页头「关联投诉」是弱关联，不受子状态影响，只在终态置灰（1013 B5），门控在处理页。
  * 同一按钮命中多条悬停原因时，取原因表中靠前的一条。
  */
-import { isTicketClosed, type TicketStatus } from '@/views/tickets/types/ticket';
+import { isCurrentHandler, isTicketClosed, type TicketStatus } from '@/views/tickets/types/ticket';
 import { FLASH_TIP_AUTO_FLASHING, type FlashPoolKey } from '@/views/tickets/types/flash';
 import { NO_AFTERSALE_TIP } from './opActionRegistry';
 
@@ -37,7 +37,7 @@ export const FLASH_ADMIN_ROLE_KEYS: ReadonlySet<string> = FLASH_ADMIN_ROLES;
 
 export interface FlashViewInput {
   roleKey: string;
-  /** 当前登录人在工单数据源里的处理人名（`currentHandlerName`） */
+  /** 当前登录人姓名（`currentHandlerName`）；「是不是本人」按 `isCurrentHandler` 判（认得历史样例处理人名） */
   handlerName: string;
   /** 本单处理人；无处理人为 null */
   assignee: string | null | undefined;
@@ -57,7 +57,7 @@ function unclaimedIn(i: FlashViewInput, pool: FlashPoolKey): boolean {
 }
 
 export function resolveFlashView(i: FlashViewInput): FlashView {
-  const mine = !!i.assignee && i.assignee === i.handlerName;
+  const mine = isCurrentHandler(i.assignee, i.roleKey, i.handlerName);
   switch (i.roleKey) {
     case 'agent-l1':
       if (mine) return 'l1';

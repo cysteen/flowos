@@ -21,6 +21,7 @@ import {
   TRANSFERRED_OUT_TRANSFER_TIP,
   TRANSFERRED_OUT_BATCH_TRANSFER_TIP,
   currentHandlerName,
+  isCurrentHandler,
   resolveTicketGroupNames,
   type WorkbenchTabKey,
 } from '@/views/tickets/types/ticket';
@@ -478,7 +479,7 @@ function runTakeOverPending(t: Ticket, groupName?: string) {
     return;
   }
   // 主责本就是本人：处理人不变，不弹「已领取」
-  if (res.from !== takeoverMe.value) message.success(`已领取 ${t.no}`);
+  if (!isCurrentHandler(res.from, user.roleKey, user.name)) message.success(`已领取 ${t.no}`);
   openOperation(t);
 }
 

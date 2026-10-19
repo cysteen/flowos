@@ -38,6 +38,8 @@ import {
   matchChip,
   chipsForTab,
   currentHandlerName,
+  isCurrentHandler,
+  legacyHandlerName,
   inDoneScope,
   inFlashL1PoolScope,
   inFlashMineScope,
@@ -96,7 +98,7 @@ export function useTicketWorkbench() {
   }
   /** 催补待回数据域：915 §9.3 父域，去掉处理人为当前用户的单（那些在「我的任务」） */
   function inPoolPendingTabScope(t: Ticket): boolean {
-    if (t.assignee !== null && t.assignee === flashHandler.value) return false;
+    if (isCurrentHandler(t.assignee, user.roleKey, user.name)) return false;
     return inPoolPendingScope(t, poolGroupIdsForTicket(t, visiblePoolGroupIds.value));
   }
   /**
@@ -483,9 +485,10 @@ export function useTicketWorkbench() {
   }
   function takeOverPoolPendingOwner(t: Ticket): { ok: boolean; from: string | null } {
     const id = t.id;
-    const me = flashHandler.value;
+    // 刷机单 / 小智单记登录人姓名；老四类仍按样例数据模型的处理人名落库（「我的任务」按它取数）
+    const me = isFlashTicket(t) || isXiaozhiTicket(t) ? flashHandler.value : legacyHandlerName(user.roleKey, user.name);
     const from = poolPendingOwnerOf(t);
-    if (from === me) return { ok: true, from };
+    if (isCurrentHandler(from, user.roleKey, user.name)) return { ok: true, from };
     const at = nowMinuteStamp();
     if (from === null) {
       if (isFlashTicket(t)) return { ok: claimFlashTicket(id).ok, from };
@@ -537,6 +540,14 @@ export function useTicketWorkbench() {
       const t = all.value.find((x) => x.id === id);
       if (!t || t.tab !== 'pool' || t.assignee !== null) {
         rows.push({ id, ok: false, reason: t?.assignee ? `已被 ${t.assignee} 领取` : '工单已不在池内' });
+        continue;
+      }
+      // 刷机单走刷机服务落库并写履历（与查询中心指派同一条路，§4.2），不只改列表行（F8）
+      if (isFlashTicket(t)) {
+        const res = opts.scope === 'cross-team'
+          ? flash.transferOwner(t.no, flashActor(), { scope: 'cross', target: opts.targetName, reason: '' })
+          : flash.assignFromPool(t.no, opts.targetName, flashActor());
+        rows.push(res.ok ? { id, ok: true } : { id, ok: false, reason: res.message });
         continue;
       }
       const taken = opts.scope === 'cross-team' ? null : takeOverReturnedTicket(t, {

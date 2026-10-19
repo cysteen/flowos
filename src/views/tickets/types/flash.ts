@@ -616,8 +616,12 @@ export const FLASH_TL = {
     `回访：${solved ? '已解决' : '未解决'}；满意度：${score} 星${remark ? `；补充说明：${remark}` : ''}`,
   surveySolvedClosed: '回访已解决，工单结案。',
   surveyTimeoutClosed: '调研超时未评价，自动结案',
-  /** 调研中催补拉回有处理人的单（基线 ※20，与四类工单同一口径） */
-  csPullbackForward: (to: string) => `因客户催补，自动撤回本次下送：调研中 → ${to}。SLA 解决钟接着跑，不重置。`,
+  /**
+   * 调研中催补拉回有处理人的单（基线 ※20，与四类工单同一口径）。`slaCounted`：本单 SLA 已起算才提解决钟；
+   * 一线名下、未起算的单不提 SLA（PRD §4.3「未起算的仍不计时」，F16）
+   */
+  csPullbackForward: (to: string, slaCounted: boolean) =>
+    `因客户催补，自动撤回本次下送：调研中 → ${to}。${slaCounted ? 'SLA 解决钟接着跑，不重置。' : ''}`,
 } as const;
 
 /** SN 尾号（短信里只露后四位） */
