@@ -17,7 +17,7 @@ const complaintPlatforms = computed(
   () => (props.detail.complaint?.platforms ?? []).filter((p) => p.platform),
 );
 
-/** 刷机单：刷机信息（含设备SN）在侧栏首卡「刷机信息」展示（PRD §5.3），本卡不重复 */
+/** 刷机单：刷机信息（含设备SN）在「工单处理」Tab 的「刷机信息」区块展示（PRD §5.3），本卡不重复 */
 const flashCard = computed(() => isFlashTicket(props.detail) && !!props.detail.flash);
 </script>
 
@@ -55,7 +55,7 @@ const flashCard = computed(() => isFlashTicket(props.detail) && !!props.detail.f
       </div>
     </div>
     <div class="kv"><span class="k">问题发生时间</span><span class="v">{{ detail.issueOccurredAt }}</span></div>
-    <!-- 刷机单的设备SN在侧栏首卡「刷机信息」里展示，不重复 -->
+    <!-- 刷机单的设备SN在「工单处理」Tab 的「刷机信息」区块里展示，不重复 -->
     <div v-if="!flashCard" class="kv"><span class="k">设备SN</span><span class="v sn">{{ detail.product.sn }}</span></div>
 
     <!-- 投诉（仅投诉单）。字段随建单页有值才出——渠道门控下未采集的字段不占位。 -->

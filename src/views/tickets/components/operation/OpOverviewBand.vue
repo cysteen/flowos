@@ -2,7 +2,6 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import OpStatGrid from './OpStatGrid.vue';
 import OpAiInsight from './OpAiInsight.vue';
-import OpFlashResultCard from './OpFlashResultCard.vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import type { InsightAction } from '@/views/tickets/types/operation';
 import type { TicketFlash } from '@/views/tickets/types/flash';
@@ -13,13 +12,11 @@ type OverviewCol = 'desc' | 'stat' | 'handle';
 defineProps<{
   detail: TicketDetailMeta;
   /**
-   * 刷机单（PRD §5.2）：「最新处理」卡依次出 自动刷机结果 · 刷机处理记录 · 最新处理结果 · 技术支持最新处理结果，
+   * 刷机单（PRD §5.2）：「最新处理」卡依次出 刷机处理记录 · 最新处理结果 · 技术支持最新处理结果，
    * 无内容的块不出。四类老工单不传，卡片与改前一致。
    */
   flash?: TicketFlash;
   flashRecord?: FlashRecordBlock | null;
-  /** 刷机单建单校验时刻（自动刷机结果块刷机记录表的「建单校验」一行） */
-  flashVerifiedAt?: string;
 }>();
 const emit = defineEmits<{ select: [action: InsightAction]; 'expand-change': [expanded: boolean] }>();
 
@@ -129,17 +126,14 @@ watch(expandedCol, (v) => emit('expand-change', v !== null), { immediate: true }
           </button>
         </div>
         <div class="ob-body">
-          <template v-if="flash">
-            <OpFlashResultCard :flash="flash" :verified-at="flashVerifiedAt" />
-            <div v-if="flashRecord" class="handle-item">
-              <div class="hi-meta">
-                <span v-if="flashRecord.who" class="hi-who">{{ flashRecord.who }}</span>
-                <span class="hi-action">刷机处理记录{{ flashRecord.result ? ` · ${flashRecord.result}` : '' }}</span>
-                <span v-if="flashRecord.when" class="hi-when">{{ flashRecord.when }}</span>
-              </div>
-              <div v-if="flashRecord.text" class="hi-text">{{ flashRecord.text }}</div>
+          <div v-if="flash && flashRecord" class="handle-item">
+            <div class="hi-meta">
+              <span v-if="flashRecord.who" class="hi-who">{{ flashRecord.who }}</span>
+              <span class="hi-action">刷机处理记录{{ flashRecord.result ? ` · ${flashRecord.result}` : '' }}</span>
+              <span v-if="flashRecord.when" class="hi-when">{{ flashRecord.when }}</span>
             </div>
-          </template>
+            <div v-if="flashRecord.text" class="hi-text">{{ flashRecord.text }}</div>
+          </div>
           <div v-else-if="!detail.latestHandling.length" class="ob-empty">暂无处理记录</div>
           <div v-for="(h, i) in detail.latestHandling" :key="i" class="handle-item">
             <div class="hi-meta">
@@ -376,6 +370,6 @@ watch(expandedCol, (v) => emit('expand-change', v !== null), { immediate: true }
   color: #374151;
   white-space: pre-line;
 }
-/* 刷机单「最新处理」卡条目多（最多四条），每条正文收到两行 */
+/* 刷机单「最新处理」卡条目多（最多三条），每条正文收到两行 */
 .ob-handle.is-flash:not(.expanded) .hi-text { -webkit-line-clamp: 2; }
 </style>

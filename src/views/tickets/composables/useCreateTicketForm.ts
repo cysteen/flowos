@@ -308,8 +308,9 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       priority: form.priority,
       // 刷机单不出「工单标题」卡，标题由刷机服务按「刷机 · 产品名称 · 问题分类第三级 · 工单来源」生成（PRD §2.4）
       title: undefined,
-      // 问题描述由系统按刷机信息生成（PRD §2.4），不取表单
-      problemDesc: undefined,
+      // 坐席代建的问题描述与附件取表单（PRD §2.4，用户 10-19 定）；用户提报才由系统生成
+      problemDesc: form.description.trim(),
+      problemDescAttachments: [...form.descriptionAttachments],
     };
   }
 
@@ -322,9 +323,11 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     clearErrors();
     clearFlashErrors();
     errors.customer = !form.customer;
+    // 问题描述必填（坐席代建，同普通咨询单）：与刷机信息必填一起提示，先于其余拦截
+    errors.description = !form.description.trim();
     const evaluation: FlashCreateEvaluation = useFlashStore().evaluateCreate(flashInput(), flashCreator());
-    if (evaluation.kind === 'create') return evaluation;
-    if (evaluation.code === 'required') {
+    if (evaluation.kind === 'create') return errors.description ? null : evaluation;
+    if (evaluation.code === 'required' || errors.description) {
       const missing = new Set(evaluation.missing ?? []);
       FLASH_REQUIRED_FIELDS.forEach(({ field, label, verb }) => {
         if (missing.has(label)) flashErrors[field] = `${verb}${label}`;

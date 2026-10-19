@@ -1,12 +1,11 @@
 <script setup lang="ts">
 /**
- * 刷机单速览带「最新处理」卡的第一块：自动刷机结果（只读，PRD §5.2 / 页面规格 P4、P0-11、P0′-14）。
- * 块内无操作按钮；标题右侧紧挨外链「智能硬件平台」，行尾为最近一次回传 / 推送时间（「MDM 平台」在侧栏「刷机信息」卡，PRD §5.3）。
- * 卡片内直接展示全部明细：逐项分行（当前结果 / 失败原因 / 转人工原因 / 推送次数 / 建单校验结果）＋ 刷机记录表（建单校验一行 ＋ 每次推送一行，时间正序，块在即至少一行）；
- * 卡片收起与 ⤢ 放大展示同样内容，超出卡高时在卡内滚动。
+ * 刷机单「工单处理」Tab 第一块：自动刷机结果（只读卡，PRD §5.2 / 页面规格 P4、P0-11、P0′-14）。
+ * 卡上无操作按钮；卡头标题右侧紧挨外链「智能硬件平台」，行尾为最近一次回传 / 推送时间（「MDM 平台」在刷机信息区块头，PRD §5.3）。
+ * 卡内直接展示全部明细：逐项三列排布（当前结果 / 失败原因 / 转人工原因 / 推送次数 / 建单校验结果）＋ 刷机记录表（建单校验一行 ＋ 每次推送一行，时间正序，至少一行）。
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import { ExportOutlined } from '@ant-design/icons-vue';
+import { ExportOutlined, ThunderboltOutlined } from '@ant-design/icons-vue';
 import { useFlashConfigStore } from '@/stores/flashConfig';
 import {
   FLASH_EXTERNAL_LINKS, FLASH_VERIFY_ITEM_LABELS,
@@ -102,21 +101,24 @@ const recordRows = computed(() => [
 const headTime = computed(() => (latestRun.value ? latestRun.value.resultAt ?? latestRun.value.pushedAt : ''));
 
 const hardwareUrl = computed(() => flashExternalUrl('hardwarePlatform', props.flash.info.sn));
+
+/** 失败原因超过此字数时占两列（三列网格单列约容 12 个汉字） */
+const FAIL_TEXT_ONE_COL = 12;
 </script>
 
 <template>
-  <div class="handle-item fr-block">
-    <div class="fr-meta">
-      <span class="fr-title">自动刷机结果</span>
+  <section class="fr-card">
+    <header class="fr-head">
+      <span class="fr-title"><ThunderboltOutlined class="fr-icon" />自动刷机结果</span>
       <a class="fr-link" :href="hardwareUrl" target="_blank" rel="noopener noreferrer">
         {{ FLASH_EXTERNAL_LINKS.hardwarePlatform.label }}<ExportOutlined />
       </a>
       <span v-if="headTime" class="fr-when">{{ headTime }}</span>
-    </div>
+    </header>
 
-    <!-- 逐项分行 + 刷机记录表：卡片内直接展示全部明细（收起与放大一致） -->
+    <div class="fr-body">
       <dl class="fr-kv">
-        <div v-if="pushed" class="fr-row">
+        <div v-if="pushed" class="fr-row" :class="{ 'span-2': waiting }">
           <dt>当前结果</dt>
           <dd>
             <span class="fr-outcome" :class="`tone-${outcomeTone}`">{{ flashRunResultText(state.outcome) }}</span>
@@ -124,7 +126,7 @@ const hardwareUrl = computed(() => flashExternalUrl('hardwarePlatform', props.fl
           </dd>
         </div>
 
-        <div v-if="failText" class="fr-row">
+        <div v-if="failText" class="fr-row" :class="{ 'span-2': failText.length > FAIL_TEXT_ONE_COL }">
           <dt>失败原因</dt>
           <dd>{{ failText }}</dd>
         </div>
@@ -139,7 +141,7 @@ const hardwareUrl = computed(() => flashExternalUrl('hardwarePlatform', props.fl
           <dd>{{ state.pushCount }} 次</dd>
         </div>
 
-        <div class="fr-row">
+        <div class="fr-row span-2">
           <dt>建单校验结果</dt>
           <dd>
             <span v-if="!verify" class="fr-muted">未校验</span>
@@ -157,6 +159,12 @@ const hardwareUrl = computed(() => flashExternalUrl('hardwarePlatform', props.fl
       <div class="fr-table-wrap">
         <div class="fr-table-title">刷机记录</div>
         <table class="fr-table">
+          <colgroup>
+            <col class="col-at" />
+            <col class="col-initiator" />
+            <col class="col-result" />
+            <col />
+          </colgroup>
           <thead>
             <tr><th>时间</th><th>发起方</th><th>结果</th><th>失败原因</th></tr>
           </thead>
@@ -170,25 +178,40 @@ const hardwareUrl = computed(() => flashExternalUrl('hardwarePlatform', props.fl
           </tbody>
         </table>
       </div>
-  </div>
+    </div>
+  </section>
 </template>
 
 <style scoped>
-/* 块外框（.handle-item 分隔线）由 OpOverviewBand 提供；块头与卡内其余块的「处理人」行同一字号 */
-.fr-block { display: flex; flex-direction: column; gap: 4px; }
-.fr-meta { display: flex; align-items: center; gap: 8px; }
-.fr-title { font-size: 12px; font-weight: 600; color: #111827; }
+.fr-card { display: flex; flex-direction: column; }
+.fr-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 12px; min-height: 32px;
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 8px 8px 0 0;
+}
+.fr-title { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; color: #374151; }
+.fr-icon { color: #6b7280; font-size: 14px; }
 .fr-link {
   display: inline-flex; align-items: center; gap: 4px;
   font-size: 12px; color: #1a6fff; white-space: nowrap;
 }
 .fr-link:hover { text-decoration: underline; }
-/* 行尾时间：与「最新处理」卡条目的 .hi-when 同一规格（11px、#9ca3af、右对齐） */
+/* 行尾时间（11px、#9ca3af、右对齐） */
 .fr-when { font-size: 11px; color: #9ca3af; margin-left: auto; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.fr-kv { display: flex; flex-direction: column; gap: 4px; margin: 0; }
-.fr-row { display: flex; align-items: baseline; gap: 12px; font-size: 12px; line-height: 20px; }
-.fr-row dt { flex: none; width: 84px; color: #6b7280; }
-.fr-row dd { flex: 1; min-width: 0; margin: 0; color: #111827; }
+.fr-body {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 8px 12px 10px; background: #f8fafc;
+  border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;
+}
+/* 逐项三列排布，标签宽、字号、行距与下方「刷机信息」区块一致；长值（建单校验结果、较长的失败原因、自动刷机中计时）占两列 */
+.fr-kv {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 16px; margin: 0;
+}
+.fr-row { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 12px; line-height: 20px; }
+.fr-row.span-2 { grid-column: span 2; }
+.fr-row dt { flex: none; width: 72px; color: #6b7280; }
+.fr-row dd { flex: 1; min-width: 0; margin: 0; color: #111827; font-weight: 500; }
 .fr-verify b { font-weight: 600; }
 .fr-sep { color: #9ca3af; margin: 0 4px; }
 .fr-muted { color: #6b7280; }
@@ -198,14 +221,17 @@ const hardwareUrl = computed(() => flashExternalUrl('hardwarePlatform', props.fl
 .tone-bad { color: #dc2626; }
 .tone-auto { color: #7c3aed; }
 .tone-muted { color: #6b7280; }
-.fr-table-wrap { margin-top: 4px; overflow-x: auto; background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; }
-.fr-table-title { padding: 6px 10px 0; font-size: 12px; font-weight: 600; color: #374151; }
-.fr-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.fr-table-wrap { overflow-x: auto; background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; }
+.fr-table-title { padding: 4px 10px; font-size: 12px; line-height: 20px; font-weight: 600; color: #374151; }
+.fr-table { width: 100%; border-collapse: collapse; font-size: 12px; line-height: 20px; table-layout: fixed; }
+.fr-table .col-at { width: 160px; }
+.fr-table .col-initiator { width: 140px; }
+.fr-table .col-result { width: 150px; }
 .fr-table th {
-  padding: 6px 10px; text-align: left; font-weight: 600; color: #6b7280;
+  padding: 2px 10px; text-align: left; font-weight: 600; color: #6b7280;
   background: #f9fafb; border-bottom: 1px solid #e5e7eb; white-space: nowrap;
 }
-.fr-table td { padding: 6px 10px; color: #374151; border-bottom: 1px solid #f3f4f6; white-space: nowrap; }
+.fr-table td { padding: 2px 10px; color: #374151; border-bottom: 1px solid #f3f4f6; white-space: nowrap; }
 .fr-table tr:last-child td { border-bottom: none; }
 .fr-table td.num { font-variant-numeric: tabular-nums; }
 /* 失败原因列可折行：建单校验两项都不通过时不撑出横向滚动 */

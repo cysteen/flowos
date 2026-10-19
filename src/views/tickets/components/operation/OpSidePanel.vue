@@ -43,8 +43,6 @@ const showContactActions = computed(() =>
       :ticket-id="ticketId"
       @contact="(t, v) => emit('contact', t, v)"
     />
-    <!-- 类型专属卡（刷机单：刷机信息，PRD §5.3），紧跟在客户信息卡之后，由页面按类型填入 -->
-    <slot name="top" />
     <OpAgentCard
       v-if="detail.agent"
       :agent="detail.agent"
