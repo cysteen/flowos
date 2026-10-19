@@ -82,14 +82,23 @@ function regionPrefixMatch(schoolRegion: string): boolean {
   return sel.every((p, i) => parts[i] === p);
 }
 
+/** 带着检索提示、尚未选地区时（用户提报的学校原文，F20）：在整个学校库里按原文检索，选定后地区随该校带出 */
+const searchAll = computed(() => !region.value.length && !!schoolSearch.value.trim());
 const schoolOptions = computed(() =>
-  SCHOOL_LIBRARY.filter((s) => regionPrefixMatch(s.region)).map((s) => ({ value: s.id, label: s.name })),
+  SCHOOL_LIBRARY.filter((s) => searchAll.value || regionPrefixMatch(s.region)).map((s) => ({ value: s.id, label: s.name })),
 );
 
 function onRegionChange(v: unknown) {
   region.value = Array.isArray(v) ? (v as string[]) : [];
   const school = schoolId.value ? findSchoolById(schoolId.value) : undefined;
   if (school && !regionPrefixMatch(school.region)) schoolId.value = '';
+}
+
+/** 检索框聚焦中：只有坐席在框里输入 / 清空时才改检索文字，选择器自己失焦清空时保留预填的原文 */
+const schoolFocused = ref(false);
+function onSchoolSearch(v: string) {
+  if (!v && !schoolFocused.value) return;
+  schoolSearch.value = v;
 }
 
 function onSchoolChange(v: unknown) {
@@ -119,12 +128,14 @@ defineExpose({ regionText: computed(() => region.value.join(REGION_SEP)) });
       class="sp-school"
       allow-clear
       placeholder="请搜索并选择学校"
-      :disabled="!region.length"
+      :disabled="!region.length && !searchAll"
       :status="status"
       :options="schoolOptions"
       :search-value="schoolSearch"
       :title="schoolId ? findSchoolById(schoolId)?.name : undefined"
-      @search="(v: string) => (schoolSearch = v)"
+      @search="onSchoolSearch"
+      @focus="schoolFocused = true"
+      @blur="schoolFocused = false"
       @update:value="onSchoolChange"
     />
   </div>

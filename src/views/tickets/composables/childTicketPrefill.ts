@@ -19,9 +19,10 @@ const CHILD_FORM_TYPE_HINT: Record<string, CreateFormTicketType> = {
   咨询: '咨询',
 };
 
-function mapPriority(p: string): Priority {
+/** 原单优先级带入；读不到时留空由坐席选（与新建工单默认值同一规则，D2） */
+function mapPriority(p: string): Priority | undefined {
   if (p === 'P0' || p === 'P1' || p === 'P2' || p === 'P3') return p;
-  return 'P1';
+  return undefined;
 }
 
 function firstPhone(parent: TicketDetailMeta): string {

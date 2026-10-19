@@ -247,9 +247,15 @@ const CHANNEL_MAP: Record<string, Channel> = {
   APP: 'APP',
 };
 
-function mapPriority(p: string): Priority {
+/** 原单优先级带入建单预填；读不到时留空由坐席选（与新建工单默认值同一规则，D2） */
+function prefillPriority(p: string): Priority | undefined {
   if (p === 'P0' || p === 'P1' || p === 'P2' || p === 'P3') return p;
-  return 'P1';
+  return undefined;
+}
+
+/** 系统直接建出的投诉单（不经建单页）必须有优先级：读不到原单优先级时取 P1（投诉单口径，未改） */
+function mapPriority(p: string): Priority {
+  return prefillPriority(p) ?? 'P1';
 }
 
 /** 一组投诉分类（一类+二类）。投诉分类**支持多选**：一次投诉可命中多个问题（0801） */
@@ -417,7 +423,7 @@ export function buildEscalatePrefill(detail: TicketDetailMeta): CreateTicketPref
     channel: CHANNEL_MAP[detail.channel] ?? '在线客服',
     formTicketType: '投诉',
     noFlashScene: true,
-    priority: mapPriority(detail.priority),
+    priority: prefillPriority(detail.priority),
     businessType: detail.businessType,
     businessLine: detail.businessLine,
     desc: [
@@ -453,6 +459,8 @@ export function buildFlashLinkComplaintPrefill(detail: TicketDetailMeta): Create
   return {
     ...flashPrefillPart(detail, phone),
     mode: 'normal',
+    // 来源刷机单：建单页的疑似重复提示据此排除本单（不出「升级自原单」条，那只给子单 / 重开 / 升级三种模式）
+    parentNo: detail.no,
     customerName: detail.customer.name,
     customerPhone: phone,
     vip: detail.customer.types.some((t) => t.includes('VIP')),
@@ -461,7 +469,7 @@ export function buildFlashLinkComplaintPrefill(detail: TicketDetailMeta): Create
     channel: CHANNEL_MAP[detail.channel] ?? '在线客服',
     formTicketType: '投诉',
     noFlashScene: true,
-    priority: mapPriority(detail.priority),
+    priority: prefillPriority(detail.priority),
     businessType: detail.businessType,
     businessLine: detail.businessLine,
     desc: `关联刷机单 ${detail.no}`,
