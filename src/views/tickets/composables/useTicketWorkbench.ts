@@ -9,7 +9,7 @@ import { useFlashStore } from '@/stores/flash';
 import type { FlashActor } from '@/views/tickets/types/flash';
 import { mapUserRole } from '@/views/tickets/composables/opActions';
 import { takeOverReturnedTicket } from '@/views/tickets/composables/aftersaleEvents';
-import { claimPoolTicket } from '@/views/tickets/composables/poolClaim';
+import { claimTicketByType } from '@/views/tickets/composables/poolClaim';
 
 /** 履历时刻 YYYY-MM-DD HH:mm */
 function nowMinuteStamp(): string {
@@ -429,12 +429,11 @@ export function useTicketWorkbench() {
     if (!t) return { ok: false, message: '' };
     return flash.claimFromPool(t.no, flashActor());
   }
-  /** 领取本组工单池中的工单 → 转入我的任务（老四类与处理页同一套落库，见 `poolClaim.ts`） */
+  /** 领取本组工单池中的工单 → 转入我的任务（与处理页同一个按类型分派的口子，见 `poolClaim.ts`） */
   function claimTicket(id: string): boolean {
     const t = all.value.find((x) => x.id === id);
-    if (isFlashTicket(t)) return claimFlashTicket(id).ok;
     if (!t) return false;
-    return claimPoolTicket(t, WORKBENCH_HANDLER, mapUserRole(user.roleKey), nowMinuteStamp());
+    return claimTicketByType(t, user.roleKey, user.name).ok;
   }
   /** 批量领取工单池工单，返回成功/失败数量 */
   function claimTickets(ids: Iterable<string>): { claimed: number; failed: number } {

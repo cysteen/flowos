@@ -56,7 +56,7 @@ import { LATEST_HANDLING_ACTION, TECH_RESULT_FIELD, latestFlashRecordFrom, lates
 import type { LatestHandlingItem } from './types/operation';
 import { opTimeNow } from './utils/opTime';
 import { TICKETS } from '@/mock/tickets';
-import { canAutoClaim, claimPoolTicket, inVisiblePool, isPoolEntry, withoutPoolEntry } from './composables/poolClaim';
+import { canAutoClaim, claimTicketByType, inVisiblePool, isPoolEntry, withoutPoolEntry } from './composables/poolClaim';
 import { useRiskTagStore } from '@/stores/riskTags';
 import { useRiskReportStore } from '@/stores/riskReports';
 import { useRiskQueueStore } from '@/stores/riskQueue';
@@ -454,13 +454,6 @@ const flashContactActions = computed<'show' | 'hide' | undefined>(() => {
   return undefined;
 });
 
-/** 领取（PRD §4.2）：刷机服务落状态与履历，Toast「已领取 〈单号〉」 */
-function onFlashClaim() {
-  const res = flashStore.claimFromPool(d.value.no, { name: currentHandlerName(user.roleKey, user.name), role: mapUserRole(user.roleKey) });
-  if (res.ok) message.success(res.message);
-  else message.warning(res.message);
-}
-
 /**
  * 小智单可领取（1130 PRD §1.2 / §5.3 / §6；D21「一个大组、进池自己领」）。
  *
@@ -474,40 +467,23 @@ const xiaozhiClaimable = computed(
 );
 
 /**
- * 领取总入口：刷机单走刷机服务，小智单走小智服务，其余工单走工单池共用件（`poolClaim.ts`）。
- * 原先底栏的 `@claim` 直接接 `onFlashClaim` —— 加了小智那条路后必须在这里分岔，
- * 不然小智单点「领取」会走进刷机服务、按刷机的池子判定，必然失败。
+ * 领取总入口（底栏「领取」与从工单池进入的自动领取）：按类型分派走 `poolClaim.ts` 的 `claimTicketByType`，
+ * 与工作台行内「领取」同一个口子 —— 小智单走小智服务、刷机单走刷机服务、其余走工单池共用件，
+ * 同一张单不论在哪里领，落库一致。刷机 / 小智由各自 store 的修订号驱动本页刷新；老四类按工单库现值重载。
  */
 function onClaim() {
-  if (isXiaozhi.value) {
-    onXiaozhiClaim();
-    return;
-  }
-  if (isFlash.value) {
-    onFlashClaim();
-    return;
-  }
-  onGeneralClaim();
-}
-
-/** 老四类工单领取：落库与工作台「领取」同一套（处理人＝本人、待响应、履历「领取」），随后按新值重载本页 */
-function onGeneralClaim() {
   const row = TICKETS.find((x) => x.no === d.value.no);
-  const ok = !!row && claimPoolTicket(row, WORKBENCH_HANDLER, mapUserRole(user.roleKey), opTimeNow().slice(0, 16));
-  if (!ok) {
-    message.warning(row?.assignee ? `该工单已被 ${row.assignee} 领取` : '该工单已不在工单池中');
+  if (!row) {
+    message.warning('该工单已不在工单池中');
     return;
   }
-  reloadDetail();
-  message.success(`已领取 ${d.value.no}`);
-}
-
-/** 小智单领取（D21）：落处理人与「处理中」，写履历，Toast 与刷机同体例 */
-function onXiaozhiClaim() {
-  const who = currentHandlerName(user.roleKey, user.name);
-  const ok = xiaozhiStore.claimFromPool(d.value.no, { name: who, role: mapUserRole(user.roleKey) });
-  if (ok) message.success(`已领取 ${d.value.no}`);
-  else message.warning('本单已被领取或不在工单池中');
+  const res = claimTicketByType(row, user.roleKey, user.name);
+  if (!res.ok) {
+    message.warning(res.message);
+    return;
+  }
+  if (!isFlash.value && !isXiaozhi.value) reloadDetail();
+  message.success(res.message);
 }
 
 /**
