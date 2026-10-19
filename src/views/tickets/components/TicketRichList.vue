@@ -42,7 +42,8 @@ import {
   ticketStatusDisplayName,
   type Ticket,
 } from '@/views/tickets/types/ticket';
-import { ticketLatestHandlingPreview, resolveLatestHandlingAction } from '@/views/tickets/utils/ticketOverview';
+import { latestWhenText, resolveLatestHandlingAction } from '@/views/tickets/utils/ticketOverview';
+import { useLatestHandlingPreview } from '@/views/tickets/composables/latestHandlingPreview';
 import TicketTitleCell from './TicketTitleCell.vue';
 
 const props = withDefaults(
@@ -159,6 +160,8 @@ const props = withDefaults(
  */
 
 const user = useUserStore();
+/** 「最新」格与悬停摘要：与处理页「最新处理」卡同一个取数（D4） */
+const latestPreview = useLatestHandlingPreview();
 const riskTags = useRiskTagStore();
 const riskReports = useRiskReportStore();
 const riskCollab = useRiskCollabStore();
@@ -676,7 +679,7 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
               </div>
               <div class="summary-line">
                 <span class="hi-label handle">最新</span>
-                <span class="hi-text line-clamp">{{ t.latestHandling || '暂无处理记录' }}</span>
+                <span class="hi-text line-clamp">{{ latestPreview(t)?.text || '暂无处理记录' }}</span>
               </div>
             </div>
             <template #content>
@@ -691,13 +694,13 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
                 <div class="sp-block">
                   <div class="hi-meta">
                     <span class="hi-label handle">最新处理</span>
-                    <template v-if="ticketLatestHandlingPreview(t)">
-                      <span class="hi-who">{{ ticketLatestHandlingPreview(t)!.who }}</span>
-                      <span class="hi-action">{{ resolveLatestHandlingAction(ticketLatestHandlingPreview(t)!) }}</span>
-                      <span class="hi-when">{{ ticketLatestHandlingPreview(t)!.when }}</span>
+                    <template v-if="latestPreview(t)">
+                      <span class="hi-who">{{ latestPreview(t)!.who }}</span>
+                      <span class="hi-action">{{ resolveLatestHandlingAction(latestPreview(t)!) }}</span>
+                      <span class="hi-when">{{ latestWhenText(latestPreview(t)!.when) }}</span>
                     </template>
                   </div>
-                  <div class="hi-text">{{ t.latestHandling || '暂无处理记录' }}</div>
+                  <div class="hi-text">{{ latestPreview(t)?.text || '暂无处理记录' }}</div>
                 </div>
               </div>
             </template>

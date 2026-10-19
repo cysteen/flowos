@@ -142,9 +142,15 @@ export interface FlashRecordBlock extends LatestResultBlock {
 
 const L1_ROLE = '一线坐席';
 
-/** 一线动作履历：一线坐席发起的处理或流转（升级二线、下送、线下登记、重新推送、撤回等），领取不算 */
+/** 一线动作履历：一线坐席发起的处理或流转（升级二线、下送、线下登记、重新推送、撤回等），领取、建单不算（PRD §5.2 ②） */
 function isL1ActionEntry(e: TimelineEntry): boolean {
-  return e.role === L1_ROLE && (e.category === 'handle' || e.category === 'node') && e.action !== 'accept';
+  return e.role === L1_ROLE && (e.category === 'handle' || e.category === 'node')
+    && e.action !== 'accept' && e.action !== 'create';
+}
+
+/** 刷机处理记录块正文（PRD §5.2）：首行「刷机处理结论：〈结论〉」，记录正文接在下面；只有结论时正文就是这一行 */
+export function flashRecordBodyText(result: string, record: string): string {
+  return [result ? `刷机处理结论：${result}` : '', record].filter(Boolean).join('\n');
 }
 
 /**
@@ -160,9 +166,10 @@ export function latestFlashRecordFrom(
   state: { record?: string; result?: string } | undefined,
   assignee?: string | null,
 ): FlashRecordBlock | null {
-  const text = state?.record?.trim() ?? '';
+  const record = state?.record?.trim() ?? '';
   const result = state?.result?.trim() ?? '';
-  if (!text && !result) return null;
+  if (!record && !result) return null;
+  const text = flashRecordBodyText(result, record);
   const latest = (pred: (e: TimelineEntry) => boolean) => {
     for (let i = entries.length - 1; i >= 0; i--) if (pred(entries[i])) return entries[i];
     return undefined;
@@ -178,4 +185,36 @@ export function latestFlashRecordFrom(
   const claim = latest((e) => e.role === L1_ROLE && e.action === 'accept');
   if (claim) return { ...blockAt(claim), text, result };
   return { who: assignee?.trim() || L1_ROLE, role: L1_ROLE, when: '', text, result };
+}
+
+/** 「最新处理」整卡的取数结果：刷机处理记录块（刷机单）+ 处理结果 / 技术支持处理结果 */
+export interface LatestHandlingSnapshot {
+  flashRecord: FlashRecordBlock | null;
+  items: LatestHandlingItem[];
+}
+
+/**
+ * 「最新处理」唯一取数（处理页速览带与列表「最新」格 / 悬停摘要共用，D4）：按处理履历与刷机字段组现值算，
+ * 不读保存时回写的摘要字符串。`flash` 传刷机字段组现值（刷机单）；老四类不传。
+ */
+export function latestHandlingFrom(
+  entries: TimelineEntry[],
+  flash?: { record?: string; result?: string; assignee?: string | null },
+): LatestHandlingSnapshot {
+  const { process, tech } = latestResultsFromTimeline(entries, !!flash);
+  const items: LatestHandlingItem[] = [];
+  if (process) items.push({ ...process, action: LATEST_HANDLING_ACTION.PROCESS, source: 'process' });
+  if (tech) items.push({ ...tech, action: LATEST_HANDLING_ACTION.TECH, source: 'tech' });
+  const flashRecord = flash ? latestFlashRecordFrom(entries, flash, flash.assignee) : null;
+  return { flashRecord, items };
+}
+
+/** 列表「最新」：取数结果里时间最近的一条（刷机处理记录块与处理结果比时间，无时间的排最后） */
+export function latestHandlingPreviewOf(s: LatestHandlingSnapshot): LatestHandlingItem | null {
+  const all: LatestHandlingItem[] = [...s.items];
+  if (s.flashRecord?.text) {
+    const { who, role, when, text } = s.flashRecord;
+    all.push({ who, role, when, text, action: LATEST_HANDLING_ACTION.FLASH_RECORD });
+  }
+  return all.reduce<LatestHandlingItem | null>((best, h) => (!best || h.when > best.when ? h : best), null);
 }

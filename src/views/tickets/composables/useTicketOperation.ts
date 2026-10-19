@@ -172,10 +172,15 @@ export function useTicketOperation() {
   const timeline = ref<TimelineEntry[]>([...TIMELINE]);
   const opState = ref<TicketOpState>('processing');
   const suspendInfo = ref<SuspendInfo | null>(null);
+  /** 上一次载入的工单号（区分换单与同单重载） */
+  let loadedNo = '';
 
   /** 按列表点击的工单号解析对应工单，覆盖样例 detail 的头部与类型，
    *  使处理页（Tab① 表单结构）随工单类型而变。匹配不到则回退样例。 */
   function loadDetail(no: string) {
+    // 换单（不是同一张单的重载）：本页时间线须按新单重起，见下方样例履历那一支
+    const switched = no !== loadedNo;
+    loadedNo = no;
     const base = JSON.parse(JSON.stringify(TICKET_DETAIL)) as TicketDetailMeta;
     /** 载入时现算出的履历（如升级后的关联降级），取代工单行上那份 */
     let eventTimelineOverride: TimelineEntry[] | undefined;
@@ -460,7 +465,9 @@ export function useTicketOperation() {
       // （含关联已被同位降级 / 迁走、只剩售后履历的旧单：履历条目 id 以 `as-` 起头，见 aftersaleEvents.ts）
       // 处理表单保存落下的「工单处理」履历（刷新后仍在，见 stores/handleLog.ts）
       const saved = t ? handleLog.entriesOf(t.no) : [];
-      if (t && (isAftersaleChainTicket(t) || entries.some((e) => e.id.startsWith('as-')))) {
+      // 本会话里新建 / 关联建出的单（建单弹窗生成，id 以 `new-` 起头）：同样只取本单事件，不落样例履历（D3）
+      const runtimeNew = !!t && t.id.startsWith('new-');
+      if (t && (runtimeNew || isAftersaleChainTicket(t) || entries.some((e) => e.id.startsWith('as-')))) {
         const own = [...entries, ...saved].map((e) => ({ ...e }));
         const hasCreate = own.some((e) => e.action === 'create');
         timeline.value = hasCreate || !t.createdAt ? own : [{
@@ -469,6 +476,8 @@ export function useTicketOperation() {
         }, ...own];
         return;
       }
+      // 换单即按新单重起样例履历（F11）：同一页签切单时不带上一张单的履历条目（刷机 / 小智 / 链路单已各自重置）
+      if (switched) timeline.value = [...TIMELINE];
       alignSampleHandleEntry(typeSampleKey(base));
       const seen = new Set(timeline.value.map((e) => e.id));
       [...entries, ...saved].forEach((e) => { if (!seen.has(e.id)) timeline.value.push({ ...e }); });

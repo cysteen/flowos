@@ -53,8 +53,7 @@ import { useProcessForm } from './composables/useProcessForm';
 import { useOperationTabs } from './composables/useOperationTabs';
 import { useTicketLiveNotify } from './composables/useTicketLiveNotify';
 import { formatTicketRecordWho, MOCK_FIRST_LINE_AGENTS } from './utils/ticketRecordWho';
-import { LATEST_HANDLING_ACTION, TECH_RESULT_FIELD, latestFlashRecordFrom, latestResultsFromTimeline } from './utils/ticketOverview';
-import type { LatestHandlingItem } from './types/operation';
+import { TECH_RESULT_FIELD, latestHandlingFrom, latestHandlingPreviewOf } from './utils/ticketOverview';
 import { opTimeNow } from './utils/opTime';
 import { TICKETS } from '@/mock/tickets';
 import { canAutoClaim, claimTicketByType, inVisiblePool, isPoolEntry, withoutPoolEntry } from './composables/poolClaim';
@@ -2711,29 +2710,27 @@ function updateTabData(next: OperationTabData) {
  * 处理人、时间随履历条目；领取、升级、流转等事件不进这张卡。
  * 刷机单另有「刷机处理记录」一块排在前面（PRD §5.2），刷机处理记录不再并进处理结果。
  */
-const latestResults = computed(() => latestResultsFromTimeline(timeline.value, isFlash.value));
+/** 「最新处理」整卡取数：与列表「最新」格同一个函数（`latestHandlingFrom`，D4） */
+const latestSnapshot = computed(() => {
+  const st = isFlash.value ? d.value.flash?.state : undefined;
+  return latestHandlingFrom(
+    timeline.value,
+    isFlash.value
+      ? { record: st?.record, result: normalizeFlashResult(st?.result), assignee: TICKETS.find((t) => t.no === d.value.no)?.assignee }
+      : undefined,
+  );
+});
 /** 「工单处理」Tab · 自动刷机结果卡刷机记录表的建单校验时刻：取处理履历「建单」条目 */
 const flashVerifiedAt = computed(() => (isFlash.value ? timeline.value.find((e) => e.action === 'create')?.when ?? d.value.createdAtFull : undefined));
 /** 速览带「最新处理」· 刷机处理记录块（刷机单）：正文、刷机处理结论取工单库现值 */
-const latestFlashRecord = computed(() => {
-  if (!isFlash.value) return null;
-  const st = d.value.flash?.state;
-  return latestFlashRecordFrom(
-    timeline.value,
-    st ? { record: st.record, result: normalizeFlashResult(st.result) } : undefined,
-    TICKETS.find((t) => t.no === d.value.no)?.assignee,
-  );
-});
+const latestFlashRecord = computed(() => latestSnapshot.value.flashRecord);
 watch(
-  [latestResults, latestFlashRecord],
-  ([{ process, tech }, flashRec]) => {
-    const items: LatestHandlingItem[] = [];
-    if (process) items.push({ ...process, action: LATEST_HANDLING_ACTION.PROCESS, source: 'process' });
-    if (tech) items.push({ ...tech, action: LATEST_HANDLING_ACTION.TECH, source: 'tech' });
-    d.value.latestHandling = items;
-    // 同步列表行预览文案（刷机单取处理结果与刷机处理记录里较新的一条）
+  latestSnapshot,
+  (snap) => {
+    d.value.latestHandling = snap.items;
+    // 老四类列表行的「最新」仍读工单行摘要：同步为同一份取数里最近的一条（刷机单列表直接按同一函数现算）
     const listTicket = TICKETS.find((t) => t.no === d.value.no);
-    const preview = process && flashRec?.text && flashRec.when > process.when ? flashRec : (process ?? (flashRec?.text ? flashRec : null));
+    const preview = latestHandlingPreviewOf(snap);
     if (listTicket && preview) listTicket.latestHandling = preview.text;
   },
   { immediate: true },
