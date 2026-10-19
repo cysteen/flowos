@@ -276,6 +276,19 @@ function openProgress() {
 .fs-rate--sm {
   font-size: 16px;
 }
+/* 星级：选中取设计令牌警告色，未选中取中灰描底，两态都清楚可辨 */
+.fs-rate,
+.fs-rate--sm {
+  color: #f59e0b;
+}
+.fs-rate :deep(.ant-rate-star-zero .ant-rate-star-first),
+.fs-rate :deep(.ant-rate-star-zero .ant-rate-star-second),
+.fs-rate :deep(.ant-rate-star-half .ant-rate-star-second),
+.fs-rate--sm :deep(.ant-rate-star-zero .ant-rate-star-first),
+.fs-rate--sm :deep(.ant-rate-star-zero .ant-rate-star-second),
+.fs-rate--sm :deep(.ant-rate-star-half .ant-rate-star-second) {
+  color: #d1d5db;
+}
 .fs-error {
   margin-top: 6px;
   color: #f53f3f;
