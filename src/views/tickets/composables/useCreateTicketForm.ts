@@ -841,7 +841,8 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       slaSub: '距超时',
       slaState: form.priority === 'P0' ? 'soon' : 'ok',
       slaMinutes: form.priority === 'P0' ? 15 : 480,
-      assignee: assignAdopted.value ? '王坐席' : '张三',
+      // 建单人即处理人：取当前登录人（与现场动作同一把 `currentHandlerName`，F12）
+      assignee: currentHandlerName(useUserStore().roleKey, useUserStore().name),
       tab: 'mine',
     };
   }
