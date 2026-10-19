@@ -9,11 +9,16 @@
  */
 import type { LocationQuery, LocationQueryRaw } from 'vue-router';
 import { takeOverReturnedTicket } from './aftersaleEvents';
+import { mapUserRole } from './opActions';
 import type { TlRole } from '@/views/tickets/types/ticketDetail';
 import {
-  inGroupPoolScope, poolGroupIdsForTicket, visiblePoolGroupsFor,
+  currentHandlerName, inGroupPoolScope, poolGroupIdsForTicket, visiblePoolGroupsFor, WORKBENCH_HANDLER,
   type Ticket,
 } from '@/views/tickets/types/ticket';
+import { isFlashTicket } from '@/views/tickets/types/flash';
+import { isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
+import { useFlashStore } from '@/stores/flash';
+import { useXiaozhiStore } from '@/stores/xiaozhi';
 
 const POOL_ENTRY_KEY = 'from';
 const POOL_ENTRY_VALUE = 'pool';
@@ -50,6 +55,31 @@ export function inVisiblePool(t: Ticket | undefined, roleKey: string): boolean {
   if (!t) return false;
   const ids = visiblePoolGroupsFor(roleKey).map((g) => g.id);
   return inGroupPoolScope(t, poolGroupIdsForTicket(t, ids));
+}
+
+/** 履历时刻 年-月-日 时:分 */
+function nowMinuteStamp(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/**
+ * 领取的唯一分派口：工作台行内「领取」、处理页底栏「领取」与从工单池进入的自动领取都走这里，
+ * 同一张单不论从哪里领，落库都一样。按工单类型交给已有的落库：
+ * 小智单 → 小智服务 `claimFromPool`；刷机单 → 刷机服务 `claimFromPool`；其余 → `claimPoolTicket`。
+ */
+export function claimTicketByType(t: Ticket, roleKey: string, userName: string): { ok: boolean; message: string } {
+  const role = mapUserRole(roleKey);
+  const me = currentHandlerName(roleKey, userName);
+  if (isXiaozhiTicket(t)) {
+    const ok = useXiaozhiStore().claimFromPool(t.no, { name: me, role });
+    return { ok, message: ok ? `已领取 ${t.no}` : '本单已被领取或不在工单池中' };
+  }
+  if (isFlashTicket(t)) return useFlashStore().claimFromPool(t.no, { name: me, role });
+  const ok = claimPoolTicket(t, WORKBENCH_HANDLER, role, nowMinuteStamp());
+  if (ok) return { ok, message: `已领取 ${t.no}` };
+  return { ok, message: t.assignee ? `该工单已被 ${t.assignee} 领取` : '该工单已不在工单池中' };
 }
 
 /**
