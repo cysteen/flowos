@@ -628,6 +628,11 @@ function terminateClocks(
   });
 }
 
+/** 去掉自由文本末尾的句读，供履历再拼「。」时不出「。。」 */
+export function trimEndPunct(s: string): string {
+  return s.replace(/[。．.！!？?；;，,\s]+$/, '');
+}
+
 /**
  * 首次响应收口：首响钟仍在走（或随挂起冻结）时按此刻剩余判达标 / 未达标并停表，记一条首响关钟履历；
  * 工单行同步记为已响应。已停表的首响钟不动。
@@ -864,7 +869,7 @@ export function applyOpAction(
       pushEntry(timeline, {
         category: 'node', action: 'hold', who: operator, role: operatorRole,
         how: '提交挂起申请',
-        what: `挂起原因：${reason}${note ? `；${note}` : ''}${resumeAt ? `，预计 ${resumeAt} 恢复` : ''}。`
+        what: `挂起原因：${reason}${note ? `；${trimEndPunct(note)}` : ''}${resumeAt ? `，预计 ${resumeAt} 恢复` : ''}。`
           + `服务类型/方式：${serviceType} · ${serviceMethod}。已提交 ${group} 审批，`
           + `审批通过后工单挂起、SLA 停表；审批期间 SLA 继续计时。`,
       });
@@ -1024,7 +1029,7 @@ export function applyOpAction(
         what: alreadyEnded
           ? `原单已是「${detail.status}」，跳过关闭步骤；已升级为${target}单 ${newNo}并保留双向关联。升级原因：${note}`
           : `诉求升级为${target}，已生成新投诉单 ${newNo}并双向关联，原单关闭（SLA 停表·中止）。`
-            + `升级原因：${note}。本单转为「${detail.status}」并锁定只读，后续补充/催单请在新单处理。`,
+            + `升级原因：${trimEndPunct(note)}。本单转为「${detail.status}」并锁定只读，后续补充/催单请在新单处理。`,
       });
       // 基线 ※26：已关联售后照常放行，客服来源位关联随升级迁到新投诉单（新单侧「关联接入」由建新单处写）。
       // 原单解除关联、只留「关联降级」履历，不做历史关联分组（Q5），不静默丢。

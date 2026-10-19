@@ -40,7 +40,7 @@ const CreateTicketModal = defineAsyncComponent(() => import('./components/Create
 import type { SmsTemplateKind } from '@/mock/notifyTemplates';
 import { useTicketOperation } from './composables/useTicketOperation';
 import {
-  ESCALATE_CHANNEL_TPD, FEISHU_ESCALATE_CHANNEL, mapUserRole, pushEntry, isAftersaleSettled,
+  ESCALATE_CHANNEL_TPD, FEISHU_ESCALATE_CHANNEL, mapUserRole, pushEntry, isAftersaleSettled, trimEndPunct,
 } from './composables/opActions';
 import { AFTERSALE_INBOUND_SOURCE, normalizeTicketSource } from './types/createTicket';
 import { aftersaleInboundOperator, aftersaleLinkJoinedEntry, applyAftersaleResult, isAftersaleChainTicket } from './composables/aftersaleEvents';
@@ -1945,7 +1945,7 @@ function onFlashAction(payload: Record<string, unknown>): boolean {
       p.sn ? `SN ${p.sn}` : '',
       p.fault ? `故障 ${p.fault}` : '',
     ].filter(Boolean).join(' ｜ ');
-    const what = `新建售后单 ${asNo}（${p.serviceType}·${p.serviceMethod}），与本单建立关联。${facts}。${p.detail ? `说明：${p.detail}` : ''}`;
+    const what = `新建售后单 ${asNo}（${p.serviceType}·${p.serviceMethod}），与本单建立关联。${facts ? `${trimEndPunct(facts)}。` : ''}${p.detail ? `说明：${p.detail}` : ''}`;
     const res = flashStore.transferAftersale(no, flashActor(), asNo, what, p.serviceType);
     if (!res.ok) {
       message.warning(res.message);
