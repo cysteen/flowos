@@ -95,7 +95,7 @@ function onPhotoChange({ fileList }: { fileList: UploadFile[] }) {
         </div>
       </div>
 
-      <div class="fi-field">
+      <div class="fi-field fi-school">
         <label class="fi-label"><span class="req">*</span>{{ L.schoolName }}</label>
         <div class="fi-control">
           <FlashSchoolPicker
@@ -178,6 +178,12 @@ function onPhotoChange({ fileList }: { fileList: UploadFile[] }) {
   white-space: nowrap;
   line-height: 32px;
 }
+/*
+ * 学校名称：地区框与学校框在本卡放不下一行、学校框折到第二行，整格占两行；
+ * 刷机原因顺位补进左侧第二行，左边不留空块。两框行距与卡内行距一致，第二行与刷机原因对齐
+ */
+.fi-school { grid-row: span 2; }
+.fi-school :deep(.school-picker) { row-gap: 8px; }
 .req { color: #f56c6c; margin-right: 1px; }
 .fi-control {
   flex: 1;

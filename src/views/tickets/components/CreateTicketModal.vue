@@ -600,7 +600,8 @@ watch(
                 @change="onProductCategoryChange"
               />
             </div>
-            <div class="inline-field">
+            <!-- 刷机单不出设备SN（改在「刷机信息」卡填），产品名称占满剩下两列，长产品名整段可见 -->
+            <div class="inline-field" :class="{ 'span-2': isFlashType }">
               <label class="inline-label xl"><span class="req">*</span>产品名称</label>
               <FormSelect
                 :key="form.productCategory"
@@ -1047,8 +1048,11 @@ watch(
   min-height: 32px;
 }
 .row-3.basic-row {
-  /* 业务分类 / 优先级 / 工单类型 / 工单来源 四项同一行（覆盖 .row-3 的三列） */
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  /*
+   * 业务分类 / 优先级 / 工单类型 / 工单来源 四项同一行（覆盖 .row-3 的三列）。
+   * 按各项最长取值分宽：优先级「P2（普通加急）」、工单来源「客户服务小程序」、业务分类四字、工单类型两字，弹窗常规宽度下都整段可见
+   */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 0.92fr) minmax(0, 1.27fr);
   gap: 10px;
   align-items: center;
 }
@@ -1115,6 +1119,7 @@ watch(
   grid-template-columns: repeat(3, 1fr);
   gap: 14px;
 }
+.row-3 > .span-2 { grid-column: span 2; }
 /* 服务回溯：整行长文本，标签与首行对齐 */
 .review-field { align-items: flex-start; }
 .review-field .inline-label { line-height: 32px; }
@@ -1419,5 +1424,6 @@ watch(
   .reporter-row {
     grid-template-columns: 1fr;
   }
+  .row-3 > .span-2 { grid-column: auto; }
 }
 </style>
