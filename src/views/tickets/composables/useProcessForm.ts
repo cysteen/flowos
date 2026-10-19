@@ -2,7 +2,7 @@ import { computed, ref, watch } from 'vue';
 import type { ProcessFormDraft, SupplementChip, SectionKey } from '@/views/tickets/types/operation';
 import { DEFAULT_PROCESS_DRAFT } from '@/mock/ticketDetail';
 import { TYPE_SAMPLES } from '@/mock/ticketTypeSamples';
-import { TICKETS } from '@/mock/tickets';
+import { SEED_CLAIMED_TICKET_NOS, TICKETS } from '@/mock/tickets';
 import { isAftersaleChainTicket } from './aftersaleEvents';
 import { isComplaintCategoryComplete } from '@/views/tickets/types/createTicket';
 import { isFlashTicket } from '@/views/tickets/types/flash';
@@ -11,20 +11,58 @@ function complaintCategoryFilled(f: ProcessFormDraft): boolean {
   return isComplaintCategoryComplete(f);
 }
 
+/** 空白表单：本单没有保存过的值时一律为空（已保存的值由处理页按履历回放） */
+const BLANK_PROCESS_DRAFT: ProcessFormDraft = {
+  ...DEFAULT_PROCESS_DRAFT,
+  problemCause: '',
+  processResult: '',
+  problemCauseAttachments: [],
+  processResultAttachments: [],
+  serviceMethod: '',
+  serviceType: '',
+  conclusion: '',
+  serviceSolution: '',
+  concessionPlan: '',
+  complaintCat1: '',
+  complaintCat2: '',
+  complaintCat3: '',
+  complainedRole: [],
+  complaintMark: '',
+  backendPush: '',
+  complaintNote: '',
+  complaintNoteAttachments: [],
+  platformFollowups: [],
+  complaintChannelReply: '',
+  complaintChannelReconcile: '',
+  riskFlag: '',
+  riskLevel: '',
+  riskDescription: '',
+  riskDescriptionAttachments: [],
+  appointmentNeeded: false,
+  appointmentRecords: [],
+  suggestAccepted: false,
+  leadCategory: '',
+  leadNo: '',
+  closingNote: '',
+  closingNoteAttachments: [],
+};
+
 /**
- * 按工单类型构建 Tab① 处理表单预填（投诉用 base，咨询/商机/建议用类型样例覆盖）。
- * 客服⇄售后链路上的单（1025）：问题原因 / 处理结果不预填样例文字，否则会回写进本单的「最新处理」。
+ * 按工单类型构建 Tab① 处理表单初值。
+ * - 种子样例单（已有人认领）：投诉用 base，咨询 / 商机 / 建议用类型样例覆盖，与样例履历一致；
+ * - 新建 / 关联建出的单、未认领单、刷机单、客服⇄售后链路上的单：空白，只显示本单保存过的值。
  */
 function buildDraft(type: string, ticketNo?: string): ProcessFormDraft {
-  const draft: ProcessFormDraft = {
+  const row = ticketNo ? TICKETS.find((x) => x.no === ticketNo) : undefined;
+  const blank = !!row && (
+    isFlashTicket(row)
+    || isAftersaleChainTicket(row)
+    || !SEED_CLAIMED_TICKET_NOS.has(ticketNo!)
+  );
+  if (blank) return structuredClone(BLANK_PROCESS_DRAFT);
+  return {
     ...DEFAULT_PROCESS_DRAFT,
     ...(TYPE_SAMPLES[type]?.processDraft ?? {}),
-  };
-  const row = ticketNo ? TICKETS.find((x) => x.no === ticketNo) : undefined;
-  // 刷机单（1014）：二线按咨询单填问题原因 / 处理结果，不预填咨询单样例文字
-  if (!isAftersaleChainTicket(row) && !(row && isFlashTicket(row))) return draft;
-  return {
-    ...draft, problemCause: '', processResult: '', problemCauseAttachments: [], processResultAttachments: [],
   };
 }
 
