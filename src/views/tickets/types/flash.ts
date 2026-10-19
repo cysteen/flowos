@@ -523,18 +523,18 @@ export const FLASH_TIP_AUTO_FLASHING = '自动刷机进行中，回传结果后�
 /* ------------------------------------------------------------------ */
 
 export const FLASH_EXTERNAL_LINKS = {
-  /** 智能硬件平台（自动刷机结果卡卡头）：按 SN 查推送与回传 */
-  hardwarePlatform: { label: '智能硬件平台', url: 'https://hwp.iflytek.com/device/push-records' },
-  /** MDM 平台（自动刷机结果卡卡头，1013 A24） */
-  mdm: { label: 'MDM 平台', url: 'https://mdm.iflytek.com/console/devices' },
-  /** 保障中心 · 学校管理（刷机信息区块头） */
-  schoolAdmin: { label: '保障中心 · 学校管理', url: 'https://bzzx.iflytek.com/school/manage' },
+  /** 智能硬件平台（「最新处理」卡自动刷机结果块标题右侧）：按 SN 查推送与回传；正式地址待业务提供（域账号登录） */
+  hardwarePlatform: { label: '智能硬件平台', url: 'https://hwp.iflytek.com/device/push-records', withSn: true },
+  /** MDM 平台（侧栏「刷机信息」卡标题行，1013 A24）：业务提供的正式地址，账号密码登录 */
+  mdm: { label: 'MDM 平台', url: 'https://imdm.changyan.com/mdm/index.html?from=ew#/superManager', withSn: false },
+  /** 保障中心 · 学校管理（侧栏「刷机信息」卡学校名称后）：业务提供的正式地址，域账号登录 */
+  schoolAdmin: { label: '保障中心 · 学校管理', url: 'http://support.changyan.com/school-suc', withSn: false },
 } as const;
 
-/** 外链地址：带 SN 的平台附上 `?sn=`，便于落地即定位该设备 */
+/** 外链地址：智能硬件平台附上 `?sn=` 便于落地即定位该设备；MDM 平台、保障中心用业务给的原地址 */
 export function flashExternalUrl(key: keyof typeof FLASH_EXTERNAL_LINKS, sn?: string): string {
-  const base = FLASH_EXTERNAL_LINKS[key].url;
-  return sn && key !== 'schoolAdmin' ? `${base}?sn=${encodeURIComponent(sn)}` : base;
+  const link = FLASH_EXTERNAL_LINKS[key];
+  return sn && link.withSn ? `${link.url}?sn=${encodeURIComponent(sn)}` : link.url;
 }
 
 /* ------------------------------------------------------------------ */
