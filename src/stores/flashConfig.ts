@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, watch } from 'vue';
-import { FLASH_MODEL_SEED, type FlashModel } from '@/mock/flash/models';
+import { FLASH_MODEL_SEED, FLASH_TAG_OFF_MODELS, type FlashModel } from '@/mock/flash/models';
 import {
   FLASH_FAIL_L2_NOT_RETURNED, FLASH_FAIL_REASON_TREE, FLASH_FAIL_SEPARATOR, FLASH_PRODUCT_CATEGORY, FLASH_REASON_AUTO,
   FLASH_REASONS, FLASH_RETURN_TIMEOUT_DEFAULT_MIN, FLASH_TAG_L1, FLASH_TAG_L2, FLASH_TAG_L3S,
@@ -10,10 +10,10 @@ import { FLASH_LS_KEYS, readFlashCache, writeFlashCache } from './flashCache';
 
 /**
  * 刷机相关配置（930 教育刷机单 M28 / M65；1013 N1 / N2 调整归属）：
- * - 产品「是否支持刷机」（`models`）：后台「产品管理」维护（1013 N1，取代原刷机配置「支持刷机机型」）；
+ * - 产品刷机属性（`models`：产品分类、「自研 · 支持线上自助推送」）：后台「产品管理」维护；
  * - 问题分类「是否刷机」（`flashTags`）：后台「问题分类」维护（1013 N2）；
  * - 刷机原因、失败原因、回传超时时长：后台「刷机配置」维护。
- * 刷机单识别＝产品是否支持刷机 ∧ 问题分类是否刷机（`isFlashScene`，1013 A2）。
+ * 刷机单识别只看问题分类「是否刷机」（`isFlashScene`，10-19 C1）；产品挂了「是否刷机」开启的问题分类，建单才出现刷机类分类。
  *
  * - 刷机原因：新增 / 改名 / 启停；「毕业」锁定（不可停用、不可改名）。新增的原因在建单分流时按特殊情况进二线池。
  * - 失败原因：两级结构与取值固定（刷机服务按取值判定），只能改**显示文案**与**启停**；
@@ -57,16 +57,16 @@ export interface FlashConfigSnapshot {
 }
 
 /** 缓存里的数据形状版本（与 FLASH_CACHE_VERSION 分开计：本份结构独立演进） */
-const CONFIG_SHAPE_VERSION = 3;
+const CONFIG_SHAPE_VERSION = 4;
 
 /** 问题分类条目键：产品名称 + 一 / 二 / 三级（问题分类按产品维护，与后台「问题分类」一行对应） */
 export function flashTagKey(productName: string, l1: string, l2: string, l3: string): string {
   return [productName, l1, l2, l3].map((s) => s.trim()).join('\u0001');
 }
 
-/** 出厂：支持刷机的产品 ×「售后 → 服务申请 → 自助刷机 / 刷原生系统」默认开启「是否刷机」（1013 N2） */
+/** 出厂：智慧课堂学生平板 ×「售后 → 服务申请 → 自助刷机 / 刷原生系统」默认开启「是否刷机」（1013 N2）；S10 出厂为否 */
 function factoryFlashTags(): string[] {
-  return FLASH_MODEL_SEED.flatMap((m) => FLASH_TAG_L3S.map((l3) => flashTagKey(m.model, FLASH_TAG_L1, FLASH_TAG_L2, l3)));
+  return FLASH_MODEL_SEED.filter((m) => !FLASH_TAG_OFF_MODELS.includes(m.model)).flatMap((m) => FLASH_TAG_L3S.map((l3) => flashTagKey(m.model, FLASH_TAG_L1, FLASH_TAG_L2, l3)));
 }
 
 function factory(): FlashConfigSnapshot {
@@ -109,7 +109,7 @@ export const useFlashConfigStore = defineStore('flashConfig', () => {
     { deep: true },
   );
 
-  /* ---------------- 产品「是否支持刷机」（1013 N1） ---------------- */
+  /* ---------------- 产品刷机属性 ---------------- */
 
   /** 按产品名称取；不在表内返回 undefined */
   function modelOf(model: string): FlashModel | undefined {
@@ -117,34 +117,19 @@ export const useFlashConfigStore = defineStore('flashConfig', () => {
     return models.value.find((m) => m.model === key);
   }
 
-  /** 产品「是否支持刷机」开启（在表内且开启，M1① A1） */
-  function isSupportedModel(model: string): boolean {
-    return !!modelOf(model)?.enabled;
-  }
-
   /**
-   * 产品管理页切换「是否支持刷机」。表内没有的产品开启时补一条（按非自研处理：建单后进一线刷机池）。
-   * `category` ＝ 该产品在产品管理中的产品分类。
+   * 产品挂了刷机类问题分类（10-19 C1）：后台「问题分类」里本产品至少有一条「是否刷机」开启的分类。
+   * 不再看产品字段；建单页刷机类分类的显隐、用户提报的机型下拉与拦截、修改刷机信息弹窗的产品下拉都读这一个判据。
    */
-  function setProductFlashSupported(model: string, enabled: boolean, category?: string): void {
-    const name = model.trim();
-    if (!name) return;
-    const hit = modelOf(name);
-    if (hit) {
-      hit.enabled = enabled;
-      if (category && !hit.category) hit.category = category;
-      return;
-    }
-    if (!enabled) return;
-    const brand = name.startsWith('联想') ? '联想' : name.startsWith('华为') ? '华为' : '科大讯飞';
-    models.value.push({
-      id: `FM-${Date.now()}`, model: name, category: category || FLASH_PRODUCT_CATEGORY, brand,
-      selfDeveloped: false, enabled: true, minRomVersion: '',
-    });
+  function isSupportedModel(model: string): boolean {
+    const key = model.trim();
+    if (!key) return false;
+    const prefix = `${key}\u0001`;
+    return flashTags.value.some((k) => k.startsWith(prefix));
   }
 
   /**
-   * 产品管理页切换「自研 · 支持线上自助推送」（1013 B7）。表内没有的产品补一条（「是否支持刷机」保持关闭）。
+   * 产品管理页切换「自研 · 支持线上自助推送」（1013 B7）。表内没有的产品补一条。
    */
   function setProductSelfDeveloped(model: string, selfDeveloped: boolean, category?: string): void {
     const name = model.trim();
@@ -157,7 +142,7 @@ export const useFlashConfigStore = defineStore('flashConfig', () => {
     const brand = name.startsWith('联想') ? '联想' : name.startsWith('华为') ? '华为' : '科大讯飞';
     models.value.push({
       id: `FM-${Date.now()}`, model: name, category: category || FLASH_PRODUCT_CATEGORY, brand,
-      selfDeveloped, enabled: false, minRomVersion: '',
+      selfDeveloped, minRomVersion: '',
     });
   }
 
@@ -176,9 +161,9 @@ export const useFlashConfigStore = defineStore('flashConfig', () => {
     if (next.join('\u0002') !== cur.join('\u0002')) flashTags.value = next;
   }
 
-  /** 刷机单识别（1013 A2）：产品「是否支持刷机」∧ 问题分类「是否刷机」 */
+  /** 刷机单识别（10-19 C1）：只看所选问题分类「是否刷机」（问题分类按产品维护，键里已含产品） */
   function isFlashScene(productName: string, l1: string, l2: string, l3: string): boolean {
-    return isSupportedModel(productName) && isFlashTag(productName, l1, l2, l3);
+    return isFlashTag(productName, l1, l2, l3);
   }
 
   /** 是否自研 · 支持线上自助推送 */
@@ -186,9 +171,9 @@ export const useFlashConfigStore = defineStore('flashConfig', () => {
     return !!modelOf(model)?.selfDeveloped;
   }
 
-  /** 建单下拉可选的机型（启用中） */
+  /** 建单 / 用户提报 / 修改刷机信息可选的产品：挂了刷机类问题分类的产品 */
   function enabledModels(): FlashModel[] {
-    return models.value.filter((m) => m.enabled);
+    return models.value.filter((m) => isSupportedModel(m.model));
   }
 
   function upsertModel(m: FlashModel): void {
@@ -298,7 +283,7 @@ export const useFlashConfigStore = defineStore('flashConfig', () => {
   return {
     models, flashTags, reasons, failReasons, returnTimeoutMin,
     modelOf, isSupportedModel, isSelfDeveloped, enabledModels, upsertModel, removeModel,
-    setProductFlashSupported, setProductSelfDeveloped, isFlashTag, replaceFlashTags, isFlashScene,
+    setProductSelfDeveloped, isFlashTag, replaceFlashTags, isFlashScene,
     enabledReasons, addReason, renameReason, setReasonEnabled,
     setFailReasonLabel, setFailReasonEnabled, isFailL2Enabled, failReasonText,
     setReturnTimeoutMin, resetToFactory,

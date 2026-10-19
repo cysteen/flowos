@@ -229,7 +229,7 @@ export interface FlashActor {
 
 /** 刷机信息（建单填、处理页可改后重推） */
 export interface FlashInfo {
-  /** 产品名称（产品管理「是否支持刷机」开启的产品；用户提报按型号选） */
+  /** 产品名称（挂了刷机类问题分类的产品；用户提报按型号选） */
   productModel: string;
   /** 设备SN */
   sn: string;
@@ -466,7 +466,7 @@ export interface TicketFlash {
 /* 产品文案（拦截提示 / 短信 / 站内通知）                                 */
 /* ------------------------------------------------------------------ */
 
-/** A1：产品「是否支持刷机」未开启（用户提报拦截） */
+/** A1：产品未挂刷机类问题分类（用户提报拦截，10-19 C1） */
 export const FLASH_TIP_MODEL_UNSUPPORTED = '该机型暂不支持刷机申请，请核对产品型号';
 /** 同一拦截落在坐席侧（新建工单、修改刷机信息弹窗）：产品字段叫「产品名称」（1013 A4，PRD §2.3 / §5.6） */
 export const FLASH_TIP_PRODUCT_UNSUPPORTED = '该产品暂不支持刷机申请，请核对产品名称';

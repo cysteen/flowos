@@ -67,7 +67,7 @@ export const PRODUCT_TREE_DATA: ProductTreeNode[] = [
     ],
   },
   {
-    // 智慧课堂学生平板（产品「是否支持刷机」的数据行，1013 N1；产品分类与建单页同为「学习硬件」）
+    // 智慧课堂学生平板（挂刷机类问题分类的产品，10-19 C1；产品分类与建单页同为「学习硬件」）
     key: 'bg-edu', title: '教育事业群', kind: 'BGBU',
     children: [
       {

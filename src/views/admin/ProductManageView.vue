@@ -59,18 +59,15 @@ const products = ref<Product[]>([
 ]);
 
 /**
- * 「是否支持刷机」（1013 N1）：刷机单识别依据之一（产品支持刷机 ∧ 问题分类是否刷机，A2）。
- * 取代原刷机配置「支持刷机机型」，开关值落刷机配置 store，建单与用户提报即时生效。
+ * 刷机单识别只看问题分类「是否刷机」（10-19 C1），产品管理不再有「是否支持刷机」开关。
+ * 产品管理只维护智慧课堂学生平板的「自研 · 支持线上自助推送」（1013 B7），开关值落刷机配置 store，建单与用户提报即时生效。
  */
 const flashConfig = useFlashConfigStore();
-function flashSupported(p: Product): boolean {
-  return flashConfig.isSupportedModel(p.name);
+/** 智慧课堂学生平板（刷机配置里有刷机属性的产品）才出「自研 · 支持线上自助推送」开关 */
+function hasFlashProfile(p: Product): boolean {
+  return !!flashConfig.modelOf(p.name);
 }
-function onFlashSupportedChange(p: Product, checked: boolean) {
-  flashConfig.setProductFlashSupported(p.name, checked, p.prodcat);
-  message.success(checked ? '已开启支持刷机' : '已关闭支持刷机');
-}
-/** 「自研 · 支持线上自助推送」（1013 B7）：与「是否支持刷机」同页维护，未支持刷机时不可改 */
+/** 「自研 · 支持线上自助推送」（1013 B7） */
 function selfDeveloped(p: Product): boolean {
   return flashConfig.isSelfDeveloped(p.name);
 }
@@ -86,7 +83,6 @@ const cols = [
   { title: '产品线', dataIndex: 'prodline', key: 'prodline', width: 130 },
   { title: '业务分类', dataIndex: 'bizcat', key: 'bizcat', width: 110 },
   { title: '产品分类', dataIndex: 'prodcat', key: 'prodcat', width: 150 },
-  { title: '是否支持刷机', key: 'flash', width: 110 },
   { title: '自研 · 支持线上自助推送', key: 'selfDev', width: 180 },
   { title: '操作', key: 'op', width: 80, fixed: 'right' as const },
 ];
@@ -99,22 +95,19 @@ const rowSelection = computed(() => ({
 
 const pagination = stdPagination({ pageSize: 20, total: 1796 });
 
-/** 编辑产品：本期只开放「是否支持刷机」一项可改，其余为产品主数据只读 */
+/** 编辑产品：本期只开放「自研 · 支持线上自助推送」一项可改，其余为产品主数据只读 */
 const editOpen = ref(false);
 const editing = ref<Product | null>(null);
-const editFlash = ref(false);
 const editSelfDev = ref(false);
 function onEdit(p: Product) {
   editing.value = p;
-  editFlash.value = flashSupported(p);
   editSelfDev.value = selfDeveloped(p);
   editOpen.value = true;
 }
 function onEditSave() {
   const p = editing.value;
   if (!p) return;
-  if (editFlash.value !== flashSupported(p)) flashConfig.setProductFlashSupported(p.name, editFlash.value, p.prodcat);
-  if (editFlash.value && editSelfDev.value !== selfDeveloped(p)) flashConfig.setProductSelfDeveloped(p.name, editSelfDev.value, p.prodcat);
+  if (hasFlashProfile(p) && editSelfDev.value !== selfDeveloped(p)) flashConfig.setProductSelfDeveloped(p.name, editSelfDev.value, p.prodcat);
   editOpen.value = false;
   message.success('产品已更新');
 }
@@ -205,20 +198,14 @@ function goRdMapping() { router.push('/admin/product-rd-mapping'); }
             <template v-else-if="column.key === 'prodcat'">
               <a class="cell-link">{{ (record as Product).prodcat }}</a>
             </template>
-            <template v-else-if="column.key === 'flash'">
-              <a-switch
-                size="small"
-                :checked="flashSupported(record as Product)"
-                @change="(v: unknown) => onFlashSupportedChange(record as Product, !!v)"
-              />
-            </template>
             <template v-else-if="column.key === 'selfDev'">
               <a-switch
+                v-if="hasFlashProfile(record as Product)"
                 size="small"
                 :checked="selfDeveloped(record as Product)"
-                :disabled="!flashSupported(record as Product)"
                 @change="(v: unknown) => onSelfDevelopedChange(record as Product, !!v)"
               />
+              <span v-else class="cell-empty">—</span>
             </template>
             <template v-else-if="column.key === 'op'">
               <a-button type="text" size="small" class="op-edit" @click="onEdit(record as Product)">
@@ -235,14 +222,8 @@ function goRdMapping() { router.push('/admin/product-rd-mapping'); }
       <a-form v-if="editing" layout="horizontal" :label-col="{ style: { width: '168px' } }" class="edit-form">
         <a-form-item label="产品名称"><a-input :value="editing.name" disabled /></a-form-item>
         <a-form-item label="产品分类"><a-input :value="editing.prodcat" disabled /></a-form-item>
-        <a-form-item label="是否支持刷机">
-          <a-radio-group v-model:value="editFlash" button-style="solid">
-            <a-radio-button :value="true">是</a-radio-button>
-            <a-radio-button :value="false">否</a-radio-button>
-          </a-radio-group>
-        </a-form-item>
-        <a-form-item label="自研 · 支持线上自助推送">
-          <a-radio-group v-model:value="editSelfDev" button-style="solid" :disabled="!editFlash">
+        <a-form-item v-if="hasFlashProfile(editing)" label="自研 · 支持线上自助推送">
+          <a-radio-group v-model:value="editSelfDev" button-style="solid">
             <a-radio-button :value="true">是</a-radio-button>
             <a-radio-button :value="false">否</a-radio-button>
           </a-radio-group>
@@ -326,5 +307,6 @@ function goRdMapping() { router.push('/admin/product-rd-mapping'); }
 .cell-link { color: #1a6fff; }
 .cell-link:hover { text-decoration: underline; }
 .op-edit { color: #1a6fff; }
+.cell-empty { color: #9ca3af; }
 :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; }
 </style>

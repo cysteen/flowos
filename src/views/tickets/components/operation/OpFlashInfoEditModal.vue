@@ -102,7 +102,7 @@ watch(
   { immediate: true },
 );
 
-/** 产品分类下拉：已开启「是否支持刷机」的产品所在分类；本单原产品的分类保留 */
+/** 产品分类下拉：挂了刷机类问题分类的产品所在分类；本单原产品的分类保留 */
 const categoryOptions = computed(() => {
   const cats = new Set(config.enabledModels().map((m) => m.category).filter(Boolean));
   const originCat = categoryOf(original.value.productModel);

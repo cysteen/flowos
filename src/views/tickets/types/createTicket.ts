@@ -328,7 +328,7 @@ export const CREATE_TICKET_TYPES: CreateFormTicketType[] = ['投诉', '建议', 
 export const PRODUCT_CATEGORIES = ['智能硬件', '学习硬件', '软件服务'];
 export const PRODUCT_NAMES: Record<string, string[]> = {
   智能硬件: ['学习机 T20', '智能音箱 X1', '扫地机器人 R2'],
-  // 学习硬件含智慧课堂学生平板（产品管理「是否支持刷机」的产品，1013 A4 / N1）
+  // 学习硬件含智慧课堂学生平板（挂刷机类问题分类的产品，1013 A4 / 10-19 C1）
   学习硬件: ['学习机 T20', '学习机 X3 Pro', ...FLASH_MODEL_SEED.map((m) => m.model)],
   软件服务: ['智学网会员', '讯飞听见'],
 };
