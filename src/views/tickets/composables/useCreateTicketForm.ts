@@ -818,11 +818,25 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
 
   function buildTicket(): Ticket {
     const name = form.customer?.name ?? '未知客户';
+    const no = genNo();
+    const createdAt = nowMinute();
+    const user = useUserStore();
+    // 接入渠道与工单来源照所选来源（与刷机单 `flashBase` 同一映射），不再一律记「电话」
+    const channel: Channel = form.ticketSource === 'IM'
+      ? '在线客服'
+      : form.ticketSource === '客户服务小程序' ? '小程序' : '电话';
     return {
       id: 'new-' + Date.now(),
-      no: genNo(),
+      no,
       type: mapFormTypeToTicketType(form.ticketType as CreateFormTicketType),
-      channel: '电话',
+      channel,
+      ticketSource: form.ticketSource,
+      // 履历首条「创建工单」：操作人＝建单的登录人，来源＝所选工单来源（N-06）
+      eventTimeline: [{
+        id: `tl-${no}-create`, category: 'node', action: 'create',
+        who: currentHandlerName(user.roleKey, user.name), role: mapUserRole(user.roleKey),
+        how: '创建工单', what: `客户经${form.ticketSource}反馈问题，创建工单。`, when: `${createdAt}:00`,
+      }],
       title: form.title.trim(),
       smartMarks: form.ticketType === '投诉' ? ['升级'] : [],
       customer: name,
@@ -835,8 +849,8 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       // 结案方式建单时选定、此后不可改（基线 §1「结案方式」小节），故只在这里落一次
       closureMode: form.closureMode,
       // 建单时刻：处理页页头建单时间与履历首条「创建工单」取它（D3：新单只画本单数据）
-      createdAt: nowMinute(),
-      updatedAt: nowMinute(),
+      createdAt,
+      updatedAt: createdAt,
       nodeStatus: '未认领',
       nodeStep: 1,
       nodeTotal: 5,

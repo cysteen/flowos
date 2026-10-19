@@ -1,6 +1,7 @@
 import { isFlashTicket } from '@/views/tickets/types/flash';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import { makeTicketNo } from '@/constants/ticketNo';
+import { TICKETS } from '@/mock/tickets';
 import type { Channel, CreateTicketPrefill, Priority, Ticket } from '@/views/tickets/types/ticket';
 import { AFTERSALE_INBOUND_SOURCE, CUSTOM_PLATFORM_OPTION, normalizeTicketSource } from '@/views/tickets/types/createTicket';
 
@@ -456,6 +457,7 @@ export function flashLinkComplaintBlockTip(status: string): string | null {
  */
 export function buildFlashLinkComplaintPrefill(detail: TicketDetailMeta): CreateTicketPrefill {
   const phone = detail.customer.contacts.find((c) => c.type === 'phone')?.value ?? '';
+  const originSource = TICKETS.find((t) => t.no === detail.no)?.ticketSource;
   return {
     ...flashPrefillPart(detail, phone),
     mode: 'normal',
@@ -467,6 +469,8 @@ export function buildFlashLinkComplaintPrefill(detail: TicketDetailMeta): Create
     product: detail.product.name,
     sn: detail.product.sn,
     channel: CHANNEL_MAP[detail.channel] ?? '在线客服',
+    // 工单来源照原单（如「客户服务小程序」），不由渠道反推（N-06）
+    ...(originSource ? { ticketSource: normalizeTicketSource(originSource) as CreateTicketPrefill['ticketSource'] } : {}),
     formTicketType: '投诉',
     noFlashScene: true,
     priority: prefillPriority(detail.priority),
