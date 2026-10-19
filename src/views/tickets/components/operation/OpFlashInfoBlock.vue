@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
  * 刷机单「工单处理」Tab 第二块：刷机信息（只读区块，PRD §5.3 / 页面规格 P4、P0′-12）。
- * 区块内无输入控件；区块头右侧：`actions` 插槽（「修改刷机信息」按钮位）＋ 外链「MDM 平台」「保障中心 · 学校管理」。
+ * 区块内无输入控件；区块头右侧：`actions` 插槽（「修改刷机信息」按钮位）；
+ * 外链放在用它核实的那一项后面：「MDM 平台」跟在设备SN值后，「保障中心」跟在学生账号值后。
  */
 import { computed } from 'vue';
 import { ExportOutlined, MobileOutlined } from '@ant-design/icons-vue';
@@ -19,15 +20,19 @@ const props = defineProps<{
 const EMPTY = '—';
 const v = (s?: string) => (s && s.trim() ? s : EMPTY);
 
-interface Field { key: string; label: string; value: string; backfilled?: boolean }
+/** 值后跟的外部平台外链：放在用它核实的那一项后面 */
+type LinkKey = keyof typeof FLASH_EXTERNAL_LINKS;
+interface Field { key: string; label: string; value: string; backfilled?: boolean; link?: LinkKey }
 
 const fields = computed<Field[]>(() => {
   const i = props.info;
   const L = FLASH_FIELD_LABELS;
   return [
     { key: 'productName', label: L.productName, value: v(i.productModel) },
-    { key: 'sn', label: L.sn, value: v(i.sn) },
-    { key: 'studentAccount', label: L.studentAccount, value: v(i.studentAccount) },
+    // MDM 平台：按 SN 查设备、MDM 版本与刷机开关
+    { key: 'sn', label: L.sn, value: v(i.sn), link: 'mdm' },
+    // 保障中心：查学生信息
+    { key: 'studentAccount', label: L.studentAccount, value: v(i.studentAccount), link: 'supportCenter' },
     { key: 'studentName', label: L.studentName, value: v(i.studentName) },
     { key: 'schoolName', label: L.schoolName, value: v(i.schoolName) },
     { key: 'reason', label: L.reason, value: v(i.reason) },
@@ -46,12 +51,6 @@ const photos = computed(() => props.info.snPhotos.map((name) => ({ name, src: sn
       <span class="fi-title"><MobileOutlined class="fi-icon" />刷机信息</span>
       <div class="fi-head-right">
         <slot name="actions" />
-        <a class="fi-link" :href="flashExternalUrl('mdm', info.sn)" target="_blank" rel="noopener noreferrer">
-          {{ FLASH_EXTERNAL_LINKS.mdm.label }}<ExportOutlined />
-        </a>
-        <a class="fi-link" :href="flashExternalUrl('schoolAdmin')" target="_blank" rel="noopener noreferrer">
-          {{ FLASH_EXTERNAL_LINKS.schoolAdmin.label }}<ExportOutlined />
-        </a>
       </div>
     </header>
 
@@ -62,6 +61,13 @@ const photos = computed(() => props.info.snPhotos.map((name) => ({ name, src: sn
           <dd>
             <span class="fi-val">{{ f.value }}</span>
             <span v-if="f.backfilled" class="fi-backfill">MDM 回填</span>
+            <a
+              v-if="f.link"
+              class="fi-link"
+              :href="flashExternalUrl(f.link, info.sn)"
+              target="_blank"
+              rel="noopener noreferrer"
+            >{{ FLASH_EXTERNAL_LINKS[f.link].label }}<ExportOutlined /></a>
           </dd>
         </div>
         <div class="fi-item">
@@ -111,6 +117,7 @@ const photos = computed(() => props.info.snPhotos.map((name) => ({ name, src: sn
 .fi-item dd { flex: 1; min-width: 0; margin: 0; display: flex; align-items: center; gap: 6px; }
 .fi-val { color: #111827; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fi-backfill { flex: none; font-size: 11px; color: #9ca3af; }
+.fi-item .fi-link { flex: none; }
 .fi-thumb { border-radius: 4px; object-fit: cover; cursor: zoom-in; }
 .fi-item :deep(.ant-image) { border-radius: 4px; overflow: hidden; border: 1px solid #e5e7eb; }
 </style>
