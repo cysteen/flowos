@@ -303,6 +303,10 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     return {
       customer: form.customer?.name ?? '',
       customerPhone: form.customer?.phone,
+      // 客户档案随单落库，处理页客户信息卡照现有工单展示（F10，与学校地区无关）
+      customerGender: form.customer?.gender,
+      customerRegion: form.customer?.region,
+      customerAddress: form.customer?.address,
       vip: form.customer?.vip ?? false,
       channel,
       ticketSource: form.ticketSource,
@@ -801,6 +805,12 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     return makeTicketNo(form.ticketType as CreateFormTicketType, n, new Date());
   }
 
+  function nowMinute(): string {
+    const d = new Date();
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+
   function buildTicket(): Ticket {
     const name = form.customer?.name ?? '未知客户';
     return {
@@ -819,6 +829,9 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       problemDescAttachments: [...form.descriptionAttachments],
       // 结案方式建单时选定、此后不可改（基线 §1「结案方式」小节），故只在这里落一次
       closureMode: form.closureMode,
+      // 建单时刻：处理页页头建单时间与履历首条「创建工单」取它（D3：新单只画本单数据）
+      createdAt: nowMinute(),
+      updatedAt: nowMinute(),
       nodeStatus: '未认领',
       nodeStep: 1,
       nodeTotal: 5,
