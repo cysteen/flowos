@@ -19,8 +19,9 @@
  * 产品两级、问题分级、来电描述、SN 号一律用通用咨询单的既有字段，不在本卡重复。
  */
 import { computed } from 'vue';
+import { XIAOZHI_RD_MODULES } from '@/mock/xiaozhi/rdModules';
 import {
-  XIAOZHI_FIELD_LABELS as L, XIAOZHI_RD_MODULES, XIAOZHI_RD_PRIORITIES,
+  XIAOZHI_FIELD_LABELS as L, XIAOZHI_RD_PRIORITIES,
   xiaozhiReceiverOf,
 } from '@/views/tickets/types/xiaozhi';
 import type { CreateTicketXiaozhiField, CreateTicketXiaozhiForm } from '@/views/tickets/types/createTicket';
@@ -32,7 +33,11 @@ defineProps<{
   errors: Record<CreateTicketXiaozhiField, string>;
 }>();
 
-const moduleOptions = XIAOZHI_RD_MODULES.map((m) => ({ value: m.name, label: m.name }));
+/**
+ * 产品模块取值源 ＝ 后台「产品模块维护」的配置（一·补 B30）。
+ * 写成 `computed` 而不是在 setup 里取一次快照 —— 后台新增一条，回到建单弹窗就要能选到。
+ */
+const moduleOptions = computed(() => XIAOZHI_RD_MODULES.map((m) => ({ value: m.name, label: m.name })));
 const priorityOptions = XIAOZHI_RD_PRIORITIES.map((v) => ({ value: v, label: v }));
 
 /** 接收人（域账号）由产品模块带出，不可改（W2） */

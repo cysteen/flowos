@@ -41,6 +41,7 @@ function adminViewFor(key: string) {
   if (key === 'customers') return () => import('@/views/admin/CustomerManageView.vue');
   if (key === 'products') return () => import('@/views/admin/ProductManageView.vue');
   if (key === 'product-rd-mapping') return () => import('@/views/admin/ProductRdMappingView.vue');
+  if (key === 'product-modules') return () => import('@/views/admin/XiaozhiRdModuleView.vue');
   if (key === 'problem-tags') return () => import('@/views/admin/ProblemTagManageView.vue');
   if (key === 'survey-config') return () => import('@/views/admin/SurveyConfigView.vue');
   if (key === 'survey-monitor') return () => import('@/views/admin/SurveyMonitorView.vue');

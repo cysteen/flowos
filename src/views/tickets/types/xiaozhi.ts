@@ -4,9 +4,12 @@
  * 建单弹窗、处理页产研反馈区、后台 SLA、通知规则、查询筛选等模块**只从这里取**枚举与类型，
  * 不在各自文件里另写一份。形制照 `types/flash.ts`（同为「咨询 + 标识」建模的 1130 批次）。
  *
- * 本文件只放**常量、类型与纯函数**，不依赖 Pinia / 工单库，任何模块都可以放心引用。
+ * 本文件只放**常量、类型与读口函数**，不依赖 Pinia / 工单库，任何模块都可以放心引用。
+ * 唯一的数据依赖是后台维护的产品模块字典（`mock/xiaozhi/rdModules.ts`，一·补 B30）——
+ * 那份字典会被后台改写，故按模块取接收人 / 产品线的几个函数不是纯函数，取的是字典当下的值。
  */
 import type { FeishuRecord, FeishuSyncState } from '@/mock/ticketDetail';
+import { XIAOZHI_RD_MODULES } from '@/mock/xiaozhi/rdModules';
 
 /** 小智工单的工单类型：小智工单＝咨询单 + 建单时写入的「小智工单」标识（D1） */
 export const XIAOZHI_TICKET_TYPE = '咨询' as const;
@@ -99,34 +102,12 @@ export const XIAOZHI_RD_PRIORITIES = ['普通', '普通加急', '紧急', '重�
 export type XiaozhiRdPriority = (typeof XIAOZHI_RD_PRIORITIES)[number];
 export const XIAOZHI_RD_PRIORITY_DEFAULT: XiaozhiRdPriority = '普通';
 
-/** 产品模块一条（产研侧字典；接收人由产品模块带出、不可改，W2） */
-export interface XiaozhiRdModule {
-  /** 产品模块名 */
-  name: string;
-  /** 接收人（域账号），由产品模块带出 */
-  receiver: string;
-  /** 所属产品线（拼 TPD 单标题用，W3） */
-  productLine: string;
-}
-
 /**
- * 「产品模块 ↔ 接收人（域账号）」配置（W2：落哪个后台待确认，暂按「落工单系统后台、挂在产品管理下」）。
- * 取值照老系统现状的精准教学产品线模块划分。
+ * 「产品模块 ↔ 接收人（域账号）」配置 —— 字典本体与增删改在
+ * `mock/xiaozhi/rdModules.ts`，由后台「业务管理 → 产品模块维护」维护（一·补 B30，**关闭 W2**）。
+ * 本文件只留按模块取值的三个读口，各模块一律经这里取，不自己去遍历那份数组。
  */
-export const XIAOZHI_RD_MODULES: XiaozhiRdModule[] = [
-  { name: '智批改', receiver: 'zhangdong3', productLine: '精准教学产品线' },
-  { name: '智能阅卷', receiver: 'lyu7', productLine: '精准教学产品线' },
-  { name: '扫描', receiver: 'wangshuang11', productLine: '精准教学产品线' },
-  { name: '组卷与题库', receiver: 'chenwei21', productLine: '精准教学产品线' },
-  /**
-   * 🔴 **故意不配接收人的一条**，`XIAOZHI_TIP.rdReceiverMissing` 那道拦截靠它才验得到。
-   *
-   * 四个模块全配了 `receiver` 时，「该产品模块未配置产研接收人」这条分支**永远走不到** ——
-   * 等于写了也看不出来（与 `PRODUCTS_WITHOUT_AFTERSALE` 给「转售后」留反例同一个道理）。
-   * 字典本身是后台配出来的（W2），现实里新模块上线、接收人还没配就是这个样子。
-   */
-  { name: '学情分析', receiver: '', productLine: '精准教学产品线' },
-];
+export type { XiaozhiRdModule } from '@/mock/xiaozhi/rdModules';
 
 /**
  * 产研平台当前可用与否。`false` 时：

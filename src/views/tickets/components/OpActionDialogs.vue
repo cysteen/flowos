@@ -22,8 +22,9 @@ import {
   resolveDefaultApprovalGroup,
 } from '../composables/opActions';
 import type { UploadFile } from 'ant-design-vue';
+import { XIAOZHI_RD_MODULES } from '@/mock/xiaozhi/rdModules';
 import {
-  XIAOZHI_RD_MODULES, XIAOZHI_RD_PLATFORM_AVAILABLE, XIAOZHI_RD_PRIORITIES,
+  XIAOZHI_RD_PLATFORM_AVAILABLE, XIAOZHI_RD_PRIORITIES,
   XIAOZHI_RD_PRIORITY_DEFAULT, XIAOZHI_TIP, xiaozhiReceiverOf,
 } from '../types/xiaozhi';
 
@@ -139,7 +140,8 @@ const escalate = reactive({
 
 /** 接收人（域账号）由产品模块带出、不可改（W2），与建单弹窗同一个读口 */
 const escalateReceiver = computed(() => xiaozhiReceiverOf(escalate.rdModule));
-const xiaozhiModuleOptions = XIAOZHI_RD_MODULES.map((m) => ({ value: m.name, label: m.name }));
+/** 产品模块取值源 ＝ 后台「产品模块维护」的配置（一·补 B30）；后台改了这里即时跟上 */
+const xiaozhiModuleOptions = computed(() => XIAOZHI_RD_MODULES.map((m) => ({ value: m.name, label: m.name })));
 const xiaozhiPriorityOptions = XIAOZHI_RD_PRIORITIES.map((v) => ({ value: v, label: v }));
 /** 小智单走产研通道时才出那一组字段 */
 const escalateToXiaozhiRd = computed(
@@ -704,7 +706,7 @@ function onOk() {
       <!--
         小智单 · 升级 · 产研（1130 PRD §5.4）：产研五项 —— 产品模块 / 接收人（域账号，只读）/
         产研优先级（四档）/ 一线人员域账号（选填）/ 附件（选填）。
-        与建单弹窗「小智工单信息」卡同一组字段、同一份字典（`XIAOZHI_RD_MODULES`）。
+        与建单弹窗「小智工单信息」卡同一组字段、同一份字典（后台「产品模块维护」，一·补 B30）。
       -->
       <template v-else-if="escalateToXiaozhiRd">
         <div class="op-field-row">
