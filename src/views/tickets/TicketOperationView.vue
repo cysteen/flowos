@@ -1946,7 +1946,7 @@ function onFlashAction(payload: Record<string, unknown>): boolean {
       p.fault ? `故障 ${p.fault}` : '',
     ].filter(Boolean).join(' ｜ ');
     const what = `新建售后单 ${asNo}（${p.serviceType}·${p.serviceMethod}），与本单建立关联。${facts}。${p.detail ? `说明：${p.detail}` : ''}`;
-    const res = flashStore.transferAftersale(no, flashActor(), asNo, what);
+    const res = flashStore.transferAftersale(no, flashActor(), asNo, what, p.serviceType);
     if (!res.ok) {
       message.warning(res.message);
       return true;

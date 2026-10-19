@@ -1420,7 +1420,9 @@ export const useFlashStore = defineStore('flash', () => {
    * 转售后（二线，PRD §7.3）：子状态「已转出」、客服侧冻结、SLA 停钟。
    * 履历与关联售后单号由处理页的转售后弹窗给出（`what` 为弹窗组好的正文）。
    */
-  function transferAftersale(ticketNo: string, by: FlashActor, asNo: string, what: string): FlashActionResult {
+  function transferAftersale(
+    ticketNo: string, by: FlashActor, asNo: string, what: string, serviceType?: string,
+  ): FlashActionResult {
     const r = rowOf(ticketNo);
     if (!r?.flash || !EDITABLE_STATUSES.includes(r.nodeStatus)) return { ok: false, message: FLASH_TIP_REPUSH_STATE };
     const now = Date.now();
@@ -1428,6 +1430,8 @@ export const useFlashStore = defineStore('flash', () => {
     pauseClock(r, now, '已转出');
     Object.assign(r, {
       nodeStatus: '已转出', linkedAftersaleNo: asNo, linkedAftersaleStatus: '待接单',
+      // 关联售后卡的服务类型取弹窗所选（N-04）
+      ...(serviceType ? { linkedAftersaleServiceType: serviceType } : {}),
       // 停钟期间 SLA 摘要显示「已暂停」（PRD §4.3）
       slaText: '已暂停', slaSub: '已暂停', slaState: 'paused', slaMinutes: 9999,
       updatedAt: flashMinuteStamp(now),
