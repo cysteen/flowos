@@ -523,9 +523,9 @@ export const FLASH_TIP_AUTO_FLASHING = '自动刷机进行中，回传结果后�
 export const FLASH_EXTERNAL_LINKS = {
   /** 智能硬件平台（「最新处理」卡自动刷机结果块标题右侧）：按 SN 查推送与回传；正式地址待业务提供（域账号登录） */
   hardwarePlatform: { label: '智能硬件平台', url: 'https://hwp.iflytek.com/device/push-records', withSn: true },
-  /** MDM 平台（侧栏「刷机信息」卡标题行，1013 A24）：业务提供的正式地址，账号密码登录 */
+  /** MDM 平台（「刷机信息」区块头，1013 A24）：业务提供的正式地址，账号密码登录 */
   mdm: { label: 'MDM 平台', url: 'https://imdm.changyan.com/mdm/index.html?from=ew#/superManager', withSn: false },
-  /** 保障中心 · 学校管理（侧栏「刷机信息」卡学校名称后）：业务提供的正式地址，域账号登录 */
+  /** 保障中心 · 学校管理（「刷机信息」区块头，排在 MDM 平台之后）：业务提供的正式地址，域账号登录 */
   schoolAdmin: { label: '保障中心 · 学校管理', url: 'http://support.changyan.com/school-suc', withSn: false },
 } as const;
 

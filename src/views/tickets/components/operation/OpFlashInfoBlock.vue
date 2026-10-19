@@ -1,8 +1,7 @@
 <script setup lang="ts">
 /**
  * 刷机单「工单处理」Tab 第二块：刷机信息（只读区块，PRD §5.3 / 页面规格 P4、P0′-12）。
- * 区块内无输入控件；区块头右侧：`actions` 插槽（「修改刷机信息」按钮位）＋ 外链「MDM 平台」；
- * 外链「保障中心 · 学校管理」跟在「学校名称」值后。
+ * 区块内无输入控件；区块头右侧：`actions` 插槽（「修改刷机信息」按钮位）＋ 外链「MDM 平台」「保障中心 · 学校管理」。
  */
 import { computed } from 'vue';
 import { ExportOutlined, MobileOutlined } from '@ant-design/icons-vue';
@@ -50,6 +49,9 @@ const photos = computed(() => props.info.snPhotos.map((name) => ({ name, src: sn
         <a class="fi-link" :href="flashExternalUrl('mdm', info.sn)" target="_blank" rel="noopener noreferrer">
           {{ FLASH_EXTERNAL_LINKS.mdm.label }}<ExportOutlined />
         </a>
+        <a class="fi-link" :href="flashExternalUrl('schoolAdmin')" target="_blank" rel="noopener noreferrer">
+          {{ FLASH_EXTERNAL_LINKS.schoolAdmin.label }}<ExportOutlined />
+        </a>
       </div>
     </header>
 
@@ -60,13 +62,6 @@ const photos = computed(() => props.info.snPhotos.map((name) => ({ name, src: sn
           <dd>
             <span class="fi-val">{{ f.value }}</span>
             <span v-if="f.backfilled" class="fi-backfill">MDM 回填</span>
-            <a
-              v-if="f.key === 'schoolName'"
-              class="fi-link"
-              :href="flashExternalUrl('schoolAdmin')"
-              target="_blank"
-              rel="noopener noreferrer"
-            >{{ FLASH_EXTERNAL_LINKS.schoolAdmin.label }}<ExportOutlined /></a>
           </dd>
         </div>
         <div class="fi-item">
