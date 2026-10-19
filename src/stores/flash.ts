@@ -31,6 +31,7 @@ import { useNotifyLogStore } from './notifyLog';
 import { useFlashConfigStore } from './flashConfig';
 import { FLASH_LS_KEYS, readFlashCache, writeFlashCache } from './flashCache';
 import { routeAftersaleEvent, type AftersaleEvent } from '@/views/tickets/composables/aftersaleEvents';
+import { techEscalationRowPatch, techReturnRowPatch } from '@/views/tickets/composables/techEscalation';
 
 /**
  * 教育刷机单 · 刷机服务（930 教育刷机单 D5 / D12 / D13 / D15 / D16 / D18 / D21 / D22，
@@ -1508,6 +1509,29 @@ export const useFlashStore = defineStore('flash', () => {
   }
 
   /**
+   * 二线「升级 · 三线技术支持」落工单库（1013 B2 沿用咨询单，F13）：进技术支持组工单池、二线主责记 primaryOwner；
+   * 技术支持「退回」回二线主责「处理中」、归属组回教育刷机处理组。字段改法与咨询单同一份（techEscalation.ts）。
+   * 在通用动作执行之后调用，处理页重读推迟到本轮动作结束（同 `bumpAfterAction`）。
+   */
+  function escalateToTechSupport(ticketNo: string, group?: string): void {
+    const r = rowOf(ticketNo);
+    if (!r?.flash) return;
+    Object.assign(r, techEscalationRowPatch(r, group, flashMinuteStamp(Date.now())));
+    bumpAfterAction(ticketNo);
+    persist();
+  }
+
+  function returnFromTechSupport(ticketNo: string): void {
+    const r = rowOf(ticketNo);
+    if (!r?.flash) return;
+    const meta = FLASH_POOLS.l2;
+    Object.assign(r, techReturnRowPatch(r, { groupId: meta.groupId, groupNames: [meta.groupName] }, flashMinuteStamp(Date.now())));
+    if (r.primaryOwner === undefined) delete (r as Partial<Ticket>).primaryOwner;
+    bumpAfterAction(ticketNo);
+    persist();
+  }
+
+  /**
    * 迟到回传「接收成功」（M11 / M48 / M77）：回传超时已转人工之后才收到的成功回传。
    * 写履历、记迟到回传时间；**不改状态、不发成功短信**。
    * 通知：当前处理人（有则发）；该次推送是人工重推时另发重推发起人；同一人只发一条；都没有不发。
@@ -1560,10 +1584,12 @@ export const useFlashStore = defineStore('flash', () => {
     const r = rowOf(ticketNo);
     if (!r?.flash) return { ok: false, message: FLASH_TIP_REPUSH_STATE };
     if (r.assignee) return { ok: false, message: `该工单已被 ${r.assignee} 领取` };
-    if (r.nodeStatus !== '未认领') return { ok: false, message: '当前工单状态不可领取' };
+    // 技术支持组池里的「已升级技术支持」单由技术支持领取，子状态不变（沿用咨询单，F13）
+    const techPool = r.nodeStatus === '已升级技术支持' && r.tab === 'pool';
+    if (r.nodeStatus !== '未认领' && !techPool) return { ok: false, message: '当前工单状态不可领取' };
     const now = Date.now();
     Object.assign(r, {
-      nodeStatus: '待响应',
+      nodeStatus: techPool ? r.nodeStatus : '待响应',
       assignee: by.name,
       tab: 'mine',
       responded: false,
@@ -1914,6 +1940,8 @@ export const useFlashStore = defineStore('flash', () => {
     forward,
     withdrawForward,
     transferAftersale,
+    escalateToTechSupport,
+    returnFromTechSupport,
     syncStatus,
     // 工作台（M3）
     creatorNameOf,

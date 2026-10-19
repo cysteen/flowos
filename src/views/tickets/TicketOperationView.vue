@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onActivated, onBeforeUnmount, onDeactivated, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, onActivated, onBeforeUnmount, onDeactivated, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
 import { useWorkspaceTabsStore, resolveTicketTabTitle } from '@/stores/workspaceTabs';
@@ -56,6 +56,7 @@ import { formatTicketRecordWho, MOCK_FIRST_LINE_AGENTS } from './utils/ticketRec
 import { TECH_RESULT_FIELD, latestHandlingFrom, latestHandlingPreviewOf } from './utils/ticketOverview';
 import { opTimeNow } from './utils/opTime';
 import { isFlashSlaCounted } from './utils/slaClock';
+import { isTechEscalateChannel, techEscalationRowPatch, techReturnRowPatch } from './composables/techEscalation';
 import { TICKETS } from '@/mock/tickets';
 import { canAutoClaim, claimTicketByType, inVisiblePool, isPoolEntry, unclaimedGateOf, withoutPoolEntry } from './composables/poolClaim';
 import { useRiskTagStore } from '@/stores/riskTags';
@@ -1958,14 +1959,40 @@ function onFlashAction(payload: Record<string, unknown>): boolean {
     message.success(res.message);
     return true;
   }
+  const atTechSupportBefore = d.value.status === '已升级技术支持';
   dispatch(payload);
   // 委派 / 撤销委派 / 协办回送：通用动作只改 `delegateInfo`，子状态由这里落库
   // （基线 §1 「已委派」子状态 · PRD §5.5 表二），页头徽章与查询中心才跟着走、重开也在
   if (type === '委派') d.value.status = '已委派';
   else if (type === '撤销委派' || (type === '下送' && data.backToDelegator)) d.value.status = '处理中';
+  // 升级 · 三线技术支持 / 技术支持退回：工单行按咨询单同一份口径落库（进技术支持组池 / 回二线主责，F13）
+  if (type === '升级' && isTechEscalateChannel(data.channel)) {
+    flashStore.escalateToTechSupport(no, typeof data.group === 'string' ? data.group : undefined);
+    return true;
+  }
+  if (type === '退回' && atTechSupportBefore) {
+    flashStore.returnFromTechSupport(no);
+    return true;
+  }
   const cross = type === '调剂' && data.scope === 'cross';
   flashStore.syncStatus(no, d.value.status, { clearAssignee: cross });
   return true;
+}
+
+/**
+ * 老四类「升级 · 三线技术支持」/ 技术支持「退回」的工单行落库（F13）：通用动作只改本页详情，
+ * 这里把同一笔写回工单库，单子才进技术支持组工单池、退回后回二线主责名下。
+ */
+function syncTechEscalationRow(type: string, data: Record<string, unknown>, wasAtTech: boolean) {
+  const row = TICKETS.find((x) => x.no === d.value.no);
+  if (!row) return;
+  const at = nowFullText();
+  if (type === '升级' && isTechEscalateChannel(data.channel)) {
+    Object.assign(reactive(row), techEscalationRowPatch(row, typeof data.group === 'string' ? data.group : undefined, at));
+  } else if (type === '退回' && wasAtTech) {
+    const owner = row.primaryOwner ?? row.assignee;
+    Object.assign(reactive(row), techReturnRowPatch(row, { groupId: handlerGroupOf(owner)?.id }, at));
+  }
 }
 
 /**
@@ -2047,7 +2074,9 @@ function onAction(payload: Record<string, unknown>) {
   // 小智单的「升级 · 产研」必须走小智服务（1130 PRD §5.4 / §11.2），不能落进通用升级分支
   if (isXiaozhi.value && onXiaozhiAction(payload)) return;
   const toFeishu = isFeishuEscalate(payload);
+  const wasAtTech = d.value.status === '已升级技术支持';
   dispatch(payload);
+  syncTechEscalationRow(String(payload.type), (payload.data ?? {}) as Record<string, unknown>, wasAtTech);
   if (toFeishu) {
     processTabsRef.value?.switchTab('feishu');
   }
