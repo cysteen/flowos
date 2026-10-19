@@ -115,11 +115,11 @@ export function useTicketWorkbench() {
     return inMineTaskScope(t, WORKBENCH_HANDLER);
   }
 
-  /** 一线坐席「刷机池」：一线刷机池未认领的刷机单，按创建时间正序（列表列「创建时间」同源） */
+  /** 一线坐席「刷机池」：一线刷机池未认领的刷机单，按进池时间正序（§9.2；列表列「进池时间」同源） */
   const flashPoolRows = computed(() =>
     all.value
       .filter(inFlashL1PoolScope)
-      .map((t) => ({ t, at: t.createdAt ?? '' }))
+      .map((t) => ({ t, at: flash.poolEnteredAtOf(t.no) }))
       .sort((a, b) => a.at.localeCompare(b.at))
       .map((x) => x.t),
   );
