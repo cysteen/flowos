@@ -6,7 +6,7 @@ import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 import { TICKETS } from '@/mock/tickets';
 import { XIAOZHI_SEEDS } from '@/mock/xiaozhi/seedTickets';
 import { makeTicketNo } from '@/constants/ticketNo';
-import { ESCALATE_CHANNEL_TPD } from '@/views/tickets/composables/opActions';
+import { CLOSE_REASON_RESOLVED, ESCALATE_CHANNEL_TPD } from '@/views/tickets/composables/opActions';
 import {
   XIAOZHI_BUSINESS_TYPE, XIAOZHI_CLOSED_STATUS, XIAOZHI_CONFIRM_TIMEOUT_DAYS, XIAOZHI_NOTICE,
   XIAOZHI_POOL_GROUP_ID, XIAOZHI_POOL_GROUP_NAME,
@@ -226,6 +226,23 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     } else {
       timelines.value = JSON.parse(JSON.stringify(XIAOZHI_SEEDS.timelines)) as Record<string, TimelineEntry[]>;
       tlSeq = 0;
+      /**
+       * 🔴 **种子 ④ 的关单走真实路径补跑**（`XiaozhiSeedBundle.confirmedResolved`）。
+       *
+       * 它在种子里只造到「产研已办结 · 待提报人确认」那一刻，终态由这里跑出来 ——
+       * 于是 `nodeStatus` / 处理人（B9 统一改系统）/ `closeReason`（B38「问题已解决」）/
+       * 关单履历文案**全部由真实代码产生**，不是种子里手抄的字符串。
+       * 与种子 ⑥ 的超时兜底（下面 `settleConfirmDue()`）是同一个做法。
+       *
+       * ⚠️ **只在"回到种子"这一支跑**：从缓存恢复时这张单已经是关掉的，再跑一次会被
+       * `receiveReporterConfirm` 的「已经确认过的不接」挡掉，但没必要走这一趟。
+       * ⚠️ **排在 `settleConfirmDue()` 之前**：对账是按「未确认 ∧ 办结超 N 天」扫的，
+       * 先跑确认才不会有哪天把它当成超时单结掉（④ 的办结时刻取装载前 3 小时，本就在 N 之内，
+       * 这一条是双保险）。
+       */
+      for (const { no: seedNo, who } of XIAOZHI_SEEDS.confirmedResolved) {
+        receiveReporterConfirm(seedNo, true, who);
+      }
     }
     // 一·补 B7 + B32：装载时对一次「超 N 天未确认」的账，到点的就地自动落「已关闭」
     settleConfirmDue();
@@ -353,19 +370,19 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
       ...XIAOZHI_SLA_IDLE,
       assignee: null,
       /**
-       * 🔴 **落池那一支的 `tab` 必须是 `'pool'`**，与种子 ⑧ 一致。
+       * 🔴 **两条路都落 `'pool'`**。
        *
-       * 工单池页签的数据域 `inGroupPoolScope` 要 `tab === 'pool' ∧ 无处理人`
-       * （`types/ticket.ts`），我的任务 `inMineTaskScope` 要 `tab === 'mine' ∧ 处理人是我`。
-       * 原先新单一律写 `'mine'` + `assignee: null`，**两条都不满足 —— 刚建的未认领小智单
-       * 在工单池和我的任务里都看不见**，只能从查询中心翻到。领取时 `claimFromPool`
-       * 再把它翻回 `'mine'`。
+       * 工单池页签的数据域 `inGroupPoolScope` 要 `tab === 'pool'`，我的任务 `inMineTaskScope`
+       * 要 `tab === 'mine' ∧ 处理人是我`。原先新单一律写 `'mine'` + `assignee: null`，
+       * **两条都不满足 —— 刚建的小智单在工单池和我的任务里都看不见**，只能从查询中心翻到。
        *
-       * 直通产研那一支**维持 `'mine'` 不动**：它的处理人是系统（一·补 B2），池里留的是
-       * 记录不是待领任务，本就不该出现在任何人的工单池里等人领；它也进不了「我的任务」
-       * （处理人不是当前登录人），这正是预期 —— 那批单从查询中心与产研反馈那条路看。
+       * - 未勾「升级 TPD」：落池等人领，领取时 `claimFromPool` 再把它翻回 `'mine'`；
+       * - 勾了「升级 TPD」：**PRD §2.3 字面就是「先在工单池留下记录」**，那条记录本来就是
+       *   给组里看的。它有处理人（系统，一·补 B2）故**不是待领任务** —— `inGroupPoolScope`
+       *   为它开了一道判据明确的例外（`isXiaozhiPooledRecord`），而 `canAutoClaim` 与
+       *   底栏 `xiaozhiClaimable` 都要求「未认领」，判不中它，不会被谁领走。
        */
-      tab: autoEscalate ? 'mine' : 'pool',
+      tab: 'pool',
       responded: false,
       createdAt: xiaozhiMinuteStamp(now),
       updatedAt: xiaozhiMinuteStamp(now),
@@ -688,8 +705,16 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
         category: 'comm', action: 'sms', who: '系统', role: '系统', systemActor: true,
         how: '完成通知', what: XIAOZHI_TL.completionNoticeSkipped(),
       });
+      /**
+       * 🔴 **置待跟进标记**（一·补 B40）：只落一条履历是不够的 —— 履历要点开单才看得见，
+       * 这张单会静默走到超时自动关单。置上后列表行出「通」字徽标（`TicketTitleCell`），
+       * 坐席在列表上就看得见该去人工联系客户。
+       */
+      r.hasPendingNotice = true;
       return;
     }
+    // 通知发出去了：清掉可能留着的待跟进标记（重办后客户补了域账号/手机号即属此例）
+    r.hasPendingNotice = false;
     log(r.no, at, {
       category: 'comm', action: 'sms', who: '系统', role: '系统', systemActor: true,
       // `how` 是履历上的徽章，走哪条通道就写哪条；`action` 只决定图标，comm 两条通道共用
@@ -712,12 +737,20 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
    * **人工跟进过的单也一样**，不保留原处理人。原写法是 `assignee ?? 系统`（只给悬空的补一个），
    * B9 把它改成无条件覆盖 —— 办结关单这一下是系统做的，落成那位跟进过的坐席，
    * 等于把一笔系统动作记在人头上，绩效与工作量口径都会错。
+   *
+   * 🔴 **关闭原因落「问题已解决」，并且落到结构化字段 `closeReason` 上**（一·补 B38）：
+   * 这两条路（提报人确认已解决 / 超 N 天视为已解决）语义上都是"解决了才关的"。
+   * 取值引通用常量 `CLOSE_REASON_RESOLVED`，不另起小智专属字面量；
+   * 字段形制照售后回传 `AS_CLOSED` 落「售后已完成」那条 —— 通用单的关闭弹窗目前只把
+   * 选值拼进履历文案、不落字段，小智这两条路**落字段**，让 `closeReason` 有真实值。
    */
   function closeXiaozhi(r: Ticket, at: number, what: string) {
     r.nodeStatus = XIAOZHI_CLOSED_STATUS;
     r.tab = 'done';
     // 一·补 B9：统一改系统，不是「没人才补一个」
     r.assignee = XIAOZHI_SYSTEM_HANDLER;
+    // 一·补 B38：两条自动关单路径的关闭原因都是「问题已解决」
+    r.closeReason = CLOSE_REASON_RESOLVED;
     r.updatedAt = xiaozhiMinuteStamp(at);
     log(r.no, at, {
       category: 'node', action: 'resolved', who: '系统', role: '系统', systemActor: true,
@@ -733,6 +766,8 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
    * 「申请关闭中」，小智单按例外免掉（体例照基线 §1 售后回传 `AS_CLOSED`「正常关闭、不走关闭审批」）。
    * 🔴 **处理人保留为操作人**，不改系统 —— B9 的「统一改系统」说的是**产研办结自动关单**
    * 那条路（关单那一下是系统做的）；这一下是坐席自己点的，记在他头上才对。
+   * 🔴 **关闭原因由坐席在弹窗里自己选，不预设默认值**（一·补 B38 只给自动那两条路预填）；
+   * 选什么就落什么到 `closeReason` 上，与自动那条共用同一个字段。
    */
   function closeByAgent(no: string, actor: XiaozhiActor, reason: string, note = ''): boolean {
     const r = rowOf(no);
@@ -741,6 +776,7 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     r.nodeStatus = XIAOZHI_CLOSED_STATUS;
     r.tab = 'done';
     r.assignee = actor.name;
+    r.closeReason = reason;
     r.updatedAt = xiaozhiMinuteStamp(now);
     log(no, now, {
       category: 'node', action: 'resolved', who: actor.name, role: actor.role,

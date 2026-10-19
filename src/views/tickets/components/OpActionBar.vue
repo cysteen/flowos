@@ -19,6 +19,7 @@ import OpForwardModal from './operation/OpForwardModal.vue';
 import OpAftersaleActivateModal from './operation/OpAftersaleActivateModal.vue';
 import type { SuspendInfo, OpActionType, TicketOpState, AftersaleContext } from '../composables/opActions';
 import { availableActions, NO_AFTERSALE_TIP } from '../composables/opActionRegistry';
+import { XIAOZHI_RD_PENDING_BLOCKED, XIAOZHI_TIP } from '../types/xiaozhi';
 import type { ClosureMode } from '@/views/tickets/types/ticket';
 import { MAX_RETURN_COUNT } from '../composables/opActions';
 import { activateAftersaleTicket } from '@/api/aftersaleActivate';
@@ -74,6 +75,15 @@ const props = defineProps<{
    * 与飞书那条升级链路无关，放开即是改坏别人。
    */
   xiaozhiRdReturned?: boolean;
+  /**
+   * 本单是**已推给产研、还在等提报人确认**的小智单（子状态「已升级产研」）。
+   *
+   * 成立时 `XIAOZHI_RD_PENDING_BLOCKED` 那四枚（关闭工单 / 调剂 / 委派 / 转单）**置灰**，
+   * 悬停出 `XIAOZHI_TIP.rdPendingConfirm` —— 这是 B5「确认完才关单」在界面上的闸门。
+   * 判据同样在工单页算（与 `claimable` / `xiaozhiRdReturned` 同形制），本组件只拿布尔，
+   * 且**只对小智单成立**，通用单在该态照基线的「可用」走。
+   */
+  xiaozhiRdPending?: boolean;
   /** 转售后上下文（投诉分流 + 预填 + 已有关联售后单） */
   aftersaleContext?: AftersaleContext;
   /**
@@ -342,6 +352,26 @@ const barActions = computed<BarItem[]>(() => {
       const def = actionMap.value.get(key);
       if (!def) continue;
       items.push(aftersaleBarItem(def));
+      continue;
+    }
+    /**
+     * 🔴 **小智单「已升级产研」态的四枚置灰**（1130 一·补 B5 / PRD §5.3 表二）：
+     * 关闭工单 / 调剂 / 委派 / 转单 —— 产研还在办、提报人一次没确认，这期间
+     * 既不许把单关掉、也不许把单交出去。放在委派锁之前判：两者都成立时这一句更贴本单处境。
+     * 判据只认 `xiaozhiRdPending`（工单页按「是小智单 ∧ 子状态＝已升级产研」算），通用单不受影响。
+     */
+    if (props.xiaozhiRdPending && XIAOZHI_RD_PENDING_BLOCKED.includes(key)) {
+      const def = key === '转单' ? null : actionMap.value.get(key);
+      if (key !== '转单' && !def) continue;
+      if (key === '转单' && !actionMap.value.has('转单')) continue;
+      items.push({
+        key,
+        label: def?.label ?? '转单',
+        icon: def?.icon ?? 'SwapOutlined',
+        danger: def?.danger,
+        forbidden: true,
+        forbiddenTip: XIAOZHI_TIP.rdPendingConfirm,
+      });
       continue;
     }
     // 委派中：锁定流转与终结类动作，置灰并说明原因

@@ -29,7 +29,8 @@ import {
   FLASH_POOLS, isFlashTicket, normalizeFlashResult, type FlashActor, type FlashResult,
 } from './types/flash';
 import {
-  XIAOZHI_CANCELLABLE_STATUSES, XIAOZHI_RD_RETURNED_STATUS, XIAOZHI_TIP, XIAOZHI_TOAST,
+  XIAOZHI_CANCELLABLE_STATUSES, XIAOZHI_CONFIRM_ACTOR, XIAOZHI_RD_RETURNED_STATUS,
+  XIAOZHI_TIP, XIAOZHI_TOAST,
   isXiaozhiTicket, type XiaozhiRdPriority,
 } from './types/xiaozhi';
 import { useXiaozhiStore } from '@/stores/xiaozhi';
@@ -459,13 +460,23 @@ const flashContactActions = computed<'show' | 'hide' | undefined>(() => {
  * 小智单可领取（1130 PRD §1.2 / §5.3 / §6；D21「一个大组、进池自己领」）。
  *
  * 🔴 **判据在这里算，不在底栏组件里算** —— 底栏只拿一个布尔。条件三道：
- * 是小智单 ∧ 本单在工单池里无人认领 ∧ 当前角色是能办小智单的（小智坐席本人）。
- * 直通产研那批虽然状态是「已升级产研」、不是「未认领」，故 `ticketUnclaimed` 为假，
- * 自然也不会出「领取」—— 池里留的是记录不是待领任务（一·补 B2），正合口径。
+ * 是小智单 ∧ 本单在工单池里无人认领 ∧ **本单此刻在当前角色可见的工单池里**。
+ * 直通产研那批虽然落在工单池页签里，但状态是「已升级产研」、处理人是系统，
+ * `ticketUnclaimed` 为假，故不会出「领取」—— 池里留的是记录不是待领任务（一·补 B2）。
+ *
+ * 🔴 **角色维不要写死**（基线 §4「领取」行）：原先这里是 `roleKey === 'xiaozhi-agent'`，
+ * 于是**二线班组长与管理员打开小智工单池里的未认领单，底栏根本没有「领取」** ——
+ * 而基线那一行给的是「小智坐席 可用（小智工单处理组池）/ 二线班组长 可用 / 管理员 可用」。
+ * 改走与老四类同一套数据范围机制 `inVisiblePool()`：它背后的 `XIAOZHI_POOL_ROLES`
+ * （`types/ticket.ts`）已经就是基线那一行的角色集，**角色集只此一份**，不在这里另抄一遍。
+ * 同形问题刚在刷机单上修过（`75da1225` 把刷机领取扩到二线班组长与管理员），小智这枚补上。
  */
-const xiaozhiClaimable = computed(
-  () => isXiaozhi.value && ticketUnclaimed.value && user.roleKey === 'xiaozhi-agent',
-);
+const xiaozhiClaimable = computed(() => {
+  if (!isXiaozhi.value || !ticketUnclaimed.value) return false;
+  if (user.hiddenTabs.includes('pool') || user.role.readonlyTickets) return false;
+  const row = TICKETS.find((x) => x.no === d.value.no);
+  return inVisiblePool(row, user.roleKey);
+});
 
 /**
  * 本单是**产研退回后待重新提交**的小智单（1130 一·补 B31 / B33）。
@@ -480,6 +491,20 @@ const xiaozhiClaimable = computed(
  */
 const xiaozhiRdReturned = computed(
   () => isXiaozhi.value && d.value.status === XIAOZHI_RD_RETURNED_STATUS,
+);
+
+/**
+ * 本单已推给产研、还在等提报人确认（子状态「已升级产研」）—— **B5 闸门的判据**（PRD §5.3）。
+ *
+ * 成立时底栏 `XIAOZHI_RD_PENDING_BLOCKED` 那四枚（关闭工单 / 调剂 / 委派 / 转单）置灰：
+ * 产研还在办、提报人一次没确认，这期间把单关掉就绕过了「确认完才关单」，把单交出去则
+ * 确认链路上那个"本单绑定的人"会对不上。
+ *
+ * ⚠️ **只对小智单**（带 `isXiaozhi`）：通用单在「已升级产研」态照基线 §2 的「可用」走 ——
+ * 那是二线自己决定关单，合法，不能被小智这条例外一起收掉。
+ */
+const xiaozhiRdPending = computed(
+  () => isXiaozhi.value && d.value.status === '已升级产研',
 );
 
 /**
@@ -559,6 +584,45 @@ function onXiaozhiAction(payload: Record<string, unknown>): boolean {
   // 产研协同信息都在那个 Tab 上，升完直接切过去（与飞书升级同体例）
   processTabsRef.value?.switchTab('feishu');
   return true;
+}
+
+/**
+ * 「产研回传」入口（1130 一·补 B5 / B28 / B31 / B33）—— 🔴 **原型演示入口，不是产品功能**。
+ *
+ * 真实系统里：前三笔由 **TPD 调工单系统的接口**回传，后两笔由**提报人在小智工单应用**里点，
+ * 都不经本页。小智服务里那四个写口（`receiveRdProgress` / `receiveRdSettle` /
+ * `receiveRdReject` / `receiveReporterConfirm`）此前**全仓零调用方**，四条口径的成果
+ * 在原型上演示不出来，故在「产研反馈」Tab 底部接上这一组。它不进 PRD、不进截图范围。
+ */
+function onXiaozhiRdEvent(kind: 'progress' | 'settle' | 'reject' | 'confirmResolved' | 'confirmUnresolved') {
+  const no = d.value.no;
+  const reporter = d.value.customer?.name || XIAOZHI_CONFIRM_ACTOR;
+  switch (kind) {
+    case 'progress':
+      xiaozhiStore.receiveRdProgress(no, '张冬', '已复现，定位中');
+      message.success('已记录产研回传 · 处理中');
+      break;
+    case 'settle':
+      xiaozhiStore.receiveRdSettle(no, '张冬', {
+        solutionType: '问题',
+        issue: { solution: '已定位并修复，请验证', solvedAt: opTimeNow().slice(0, 16) },
+      });
+      message.success('已记录产研回传 · 已办结');
+      break;
+    case 'reject':
+      xiaozhiStore.receiveRdReject(no, '张冬', '信息不全，请补充复现步骤与日志后重新提交');
+      message.success('已记录产研回传 · 退回');
+      break;
+    case 'confirmResolved':
+      xiaozhiStore.receiveReporterConfirm(no, true, reporter);
+      message.success(`已记录${XIAOZHI_CONFIRM_ACTOR}确认 · 已解决`);
+      break;
+    case 'confirmUnresolved':
+      xiaozhiStore.receiveReporterConfirm(no, false, reporter);
+      message.success(`已记录${XIAOZHI_CONFIRM_ACTOR}确认 · 未解决`);
+      break;
+  }
+  reloadDetail();
 }
 
 /** 刷机服务的操作人：当前登录人在工单数据源里的处理人名 + 履历角色（一线坐席判一线重推） */
@@ -2925,6 +2989,7 @@ watch(
           @open-reopen-create="openReopenCreate"
           @mark-read="onMarkRecordRead"
           @feishu-activate="onFeishuActivate"
+          @xiaozhi-rd-event="onXiaozhiRdEvent"
           @feishu-retry="onFeishuRetry"
           @dunning="dunningModalOpen = true"
           @attachment-upload="onAttachmentTabUpload"
@@ -2980,6 +3045,7 @@ watch(
       :feishu-eligible="feishuEligible"
       :feishu-sync="d.feishuSync"
       :xiaozhi-rd-returned="xiaozhiRdReturned"
+      :xiaozhi-rd-pending="xiaozhiRdPending"
       :aftersale-context="aftersaleContext"
       :aftersale-form="transferAftersaleForm"
       :service-type="form.serviceType"

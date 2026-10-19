@@ -5,7 +5,8 @@ import type { BusinessType, CreateFormTicketType, TicketSource } from '@/views/t
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 import { FLASH_POOLS, FLASH_TIP_AUTO_FLASHING, isFlashTicket, type TicketFlash } from '@/views/tickets/types/flash';
 import {
-  XIAOZHI_POOL_GROUP_ID, XIAOZHI_POOL_GROUP_NAME, type TicketXiaozhi,
+  XIAOZHI_POOL_GROUP_ID, XIAOZHI_POOL_GROUP_NAME,
+  isXiaozhiPooledRecord, type TicketXiaozhi,
 } from '@/views/tickets/types/xiaozhi';
 import { readSla, slaStateOf } from '@/views/tickets/utils/slaClock';
 
@@ -601,6 +602,17 @@ export interface Ticket {
   /** 挂起时填写的预计恢复时间（YYYY-MM-DD HH:mm，选填） */
   suspendResumeAt?: string;
   /** 存在催单记录（行标识「催」） */
+  /**
+   * **完成通知没发出去、待人工联系客户**（1130 一·补 B40）。
+   *
+   * 产研办结后工单系统要给提报人发一条完成通知，通道二选一（有客户域账号走 IM、
+   * 否则走客户手机号短信，B28）。**两者都没有**时通知发不出，本单会静默走到超时自动关单 ——
+   * 故在工单上置这一枚，列表行出「通」字徽标提示坐席跟进。
+   *
+   * ⚠️ 与 `hasDunning` / `hasSupplement` **不是一回事**：那两枚是"客户催了 / 客户补充了"，
+   * 判据进「催补待回」页签与班组看板；这一枚是"我们没通知到客户"，不进那套口径。
+   */
+  hasPendingNotice?: boolean;
   hasDunning?: boolean;
   /** 存在补充记录（行标识「补」） */
   hasSupplement?: boolean;
@@ -1443,7 +1455,18 @@ export function pullbackOnCsEvent(status: TicketStatus): { to: TicketStatus; why
  * 把这一行也改成 `return false`。
  */
 export function inGroupPoolScope(t: Ticket, visibleGroupIds?: string[]): boolean {
-  if (t.tab !== 'pool' || t.assignee !== null || t.archived) return false;
+  if (t.archived) return false;
+  /**
+   * 🔴 **唯一的"有处理人也进池"例外：小智直通产研留下的那条记录**（1130 PRD §2.3）。
+   *
+   * 勾了「升级 TPD」的单落池留记录后由系统自动流转，处理人＝系统（一·补 B2 / B27）。
+   * 那条记录本来就是给组里看的，不进池子就两个页签都看不见；但它**不是待领任务**。
+   * 判据收在 `isXiaozhiPooledRecord()` 里（只认「小智单 ∧ 已升级产研 ∧ 处理人＝系统」
+   * 这一种形态），**不放宽下面那条 `assignee !== null`** —— 那条是"池内单谁看得到谁就能领"
+   * 的根基，松了会让任何有处理人的单漏进别人的池子。领取侧不受影响：`canAutoClaim`
+   * 与底栏 `xiaozhiClaimable` 都要求「未认领」，判不中它。
+   */
+  if (t.tab !== 'pool' || (t.assignee !== null && !isXiaozhiPooledRecord(t))) return false;
   // ⚠️ **全库仅剩的一处 fail-open，只为演示态存在**：mock 里有 3 张没有 groupId 的池内单，
   // 靠这一行才显示得出来。**真实环境必须把它改成 `return false`** ——
   // 缺组的单落进任何人的组池视图都是越权，而池内单是"谁看得到谁就能领"。

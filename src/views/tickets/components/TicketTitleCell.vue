@@ -53,6 +53,15 @@ function supplementTagTip(t: Ticket): string {
   return isSupplementTagPending(t) ? '新补充 · 待联系回话' : '已补 · 已联系';
 }
 
+/** 「通」＝完成通知未发出、待人工联系客户（1130 一·补 B40） */
+function pendingNoticeTagLabel(): string {
+  return '通';
+}
+
+function pendingNoticeTagTip(): string {
+  return '完成通知未发出 · 待联系客户';
+}
+
 const csTagTipOverlayWrap = { maxWidth: '340px' };
 const csTagTipOverlayInner = {
   maxWidth: '340px',
@@ -68,6 +77,24 @@ const csTagTipOverlayInner = {
     <a-popover trigger="hover" placement="rightTop" :mouse-enter-delay="0.2">
       <div class="title-cell-inner">
         <div class="title-line1">
+          <!--
+            「通」＝完成通知没发出去、待人工联系客户（1130 一·补 B40）。
+            形制照「催」「补」两枚（同一个 `.cs-tag` 家族、同一种 tooltip），
+            判据是工单上的 `hasPendingNotice`，与催补那套口径互不相干。
+          -->
+          <a-tooltip
+            v-if="ticket.hasPendingNotice"
+            :title="pendingNoticeTagTip()"
+            placement="top"
+            :mouse-enter-delay="0.15"
+            color="#fffbeb"
+            :overlay-style="csTagTipOverlayWrap"
+            :overlay-inner-style="csTagTipOverlayInner"
+          >
+            <span class="cs-tag cs-tag--notice-pending" @click.stop>
+              {{ pendingNoticeTagLabel() }}
+            </span>
+          </a-tooltip>
           <a-tooltip
             v-if="ticket.hasDunning"
             :title="dunningTagTip(ticket)"
@@ -327,6 +354,16 @@ const csTagTipOverlayInner = {
   color: #dc2626;
   background: #fee2e2;
   border: 1px solid #ef4444;
+  font-weight: 700;
+}
+/*
+ * 「通」（完成通知未发出，一·补 B40）：取警示橙，与催补那两枚的红**区分开** ——
+ * 红那一档是"客户在等回话"，这一档是"我们还没通知到客户"，两件事别用同一个颜色说。
+ */
+.cs-tag--notice-pending {
+  color: #b45309;
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
   font-weight: 700;
 }
 .cs-tag--dunning-done,
