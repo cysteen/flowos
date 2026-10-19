@@ -542,6 +542,11 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
 
   function syncTitle() {
     if (form.titleManual) return;
+    // 产品与问题三类都没选时不拼标题（只剩工单来源一段没有意义），留空待坐席补全
+    if (!form.productName && !form.problemL3) {
+      form.title = '';
+      return;
+    }
     // 刷机单标题强制前缀「刷机」（1013 A3）
     form.title = isFlashType.value
       ? flashTicketTitle(form.productName, form.problemL3, form.ticketSource)
