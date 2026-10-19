@@ -17,6 +17,7 @@ import {
 } from '@/views/tickets/types/ticket';
 import type { TimelineEntry, TlRole } from '@/views/tickets/types/ticketDetail';
 import { AFTERSALE_INBOUND_SOURCE } from '@/views/tickets/types/createTicket';
+import { isFlashTicket } from '@/views/tickets/types/flash';
 import { AFTERSALE_FROZEN_STATUS, type AftersaleSlot } from './aftersaleButtonForm';
 
 /**
@@ -114,6 +115,12 @@ export type AftersaleEventOutcome =
   | 'created'
   /** 新建咨询单并与已结案原单建「承接」（§4.5 支二） */
   | 'succeeded'
+  /**
+   * 刷机单（教育刷机单 PRD §7.1 / §7.3）：来源位上「已转出」的刷机单，售后处理完（`AS_CLOSED`）或
+   * 转回客服（`AS_RETURNED`）一律唤起原单、回原二线处理人「处理中」，不关单、不重派。
+   * 本模块只刷卡片与幂等键，状态、SLA 与履历由刷机服务落（`stores/flash.ts` `receiveAftersaleEvent`）。
+   */
+  | 'reactivated'
   /** 本单与该售后单无关联 */
   | 'unlinked';
 
@@ -207,6 +214,14 @@ export function applyAftersaleEvent(
   if (event.type === 'AS_ESCALATE_COMPLAINT') {
     // 来源位一律不动：只把卡片刷成「冻结」（§4.1 / §5.4）
     return { ticket: { ...ticket, linkedAftersaleStatus: AFTERSALE_FROZEN_STATUS }, outcome: 'card-only' };
+  }
+  // 刷机单「已转出」：售后处理完 / 转回客服都唤起原单（教育刷机单 PRD §7.1 / §7.3），与咨询单的关单 / 重派分开
+  if (isFlashTicket(ticket) && ticket.nodeStatus === '已转出') {
+    const status = event.status ?? (event.type === 'AS_CLOSED' ? AS_DEFAULT_CLOSED_STATUS : AS_RETURNED_STATUS);
+    return {
+      ticket: { ...ticket, linkedAftersaleStatus: status, aftersaleEventIds: markHandled(ticket, event) },
+      outcome: 'reactivated',
+    };
   }
   if (event.type === 'AS_CLOSED') return applyClosed(ticket, event);
   // 来源位上的回流单（已不在「已转出」）：激活后售后再次转客服，同 §4.5；

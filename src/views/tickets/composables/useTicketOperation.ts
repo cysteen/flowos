@@ -591,6 +591,10 @@ export function useTicketOperation() {
     base.groupNames = t.groupNames;
     base.isFlash = isFlashTicket(t);
     base.flash = JSON.parse(JSON.stringify(t.flash)) as TicketFlash;
+    // 售后回传刷新的关联售后卡片状态（售后处理完唤起原单后为「已完成」，PRD §7.1）
+    if (base.linkedAftersale && t.linkedAftersaleStatus && base.linkedAftersale.no === t.linkedAftersaleNo) {
+      base.linkedAftersale = { ...base.linkedAftersale, status: t.linkedAftersaleStatus };
+    }
     // 关联投诉（弱关联，1013 A21）：关联卡按刷机字段组上的投诉单号重建，两单各自流转
     const linkedNos = t.flash?.state.linkedComplaintNos ?? [];
     if (linkedNos.length) {

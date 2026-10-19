@@ -195,6 +195,11 @@ export const FLASH_POOLS: Record<FlashPoolKey, FlashPoolMeta> = {
 export const FLASH_PUSH_AUTO_RETRY = 1;
 /** 推送后出回传结果的时长（D22：十几秒） */
 export const FLASH_RETURN_DELAY_MS = 12_000;
+/**
+ * 转售后之后售后侧处理完成、回传「售后单已关闭」的时长（PRD §7.1 / §7.3）。原型不连售后系统，
+ * 售后侧的处理时长按这一时长推算（同 MDM 回传按推送时刻推算），到点经售后回传通道唤起原单。
+ */
+export const FLASH_AFTERSALE_RETURN_DELAY_MS = 180_000;
 /** 回传超时时长出厂值（分钟，M11 暂行 2 小时；后台可改） */
 export const FLASH_RETURN_TIMEOUT_DEFAULT_MIN = 120;
 
@@ -319,6 +324,11 @@ export interface FlashState {
    * 只写履历、有处理人时站内通知处理人，不改状态、不发成功短信。
    */
   lateSuccessAt?: string; // 只落库，页面不展示（迟到回传只记处理履历与站内通知，1014 用户拍板）
+  /**
+   * 转售后后售后侧回传「售后单已关闭」的到点时刻（YYYY-MM-DD HH:mm:ss，PRD §7.1 / §7.3）：
+   * 转售后时写入，到点经售后回传通道唤起原单，唤起后清空。
+   */
+  aftersaleReturnDueAt?: string;
   /** 建单校验结果：两项各自通过 / 不通过；特殊情况、校验接口不可用为「未校验」（M50） */
   verifyResult: FlashVerifyResult;
   /** 已发转人工短信（M37：每单只发一次，首次转人工时发） */
@@ -597,6 +607,10 @@ export const FLASH_TL = {
   forward: (result?: string) => (result ? `下送；刷机处理结论：${result}` : '下送'),
   forwardClosed: (result?: string) => `下送（已回访过，直接结案）${result ? `；刷机处理结论：${result}` : ''}`,
   withdrawForward: '撤回本次下送，回到处理中',
+  /** 售后回传「售后单已关闭」（PRD §7.1 / §7.3）：售后单号 · 售后处理结果摘要 */
+  aftersaleClosed: (asNo: string, summary?: string) => [`售后单 ${asNo}`, summary?.trim() ?? ''].filter(Boolean).join(' · '),
+  /** 售后处理完唤起原单：回原二线处理人「处理中」（PRD §7.1 / §7.3） */
+  aftersaleReactivated: (handler: string) => `售后处理完成，唤起原单，回到 ${handler} 名下处理中`,
   /** 回访评价（PRD §8「回访：已解决 / 未解决」+ 满意度与补充说明） */
   surveyFeedback: (solved: boolean, score: number, remark: string) =>
     `回访：${solved ? '已解决' : '未解决'}；满意度：${score} 星${remark ? `；补充说明：${remark}` : ''}`,

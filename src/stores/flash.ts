@@ -11,7 +11,7 @@ import { findSchoolById } from '@/mock/schools';
 import { makeTicketNo } from '@/constants/ticketNo';
 import {
   FLASH_FIELD_LABELS, FLASH_INFO_FIELD_LABELS, FLASH_NOTIFY_EVENTS, FLASH_POOLS, FLASH_REASON_AUTO,
-  FLASH_RETURN_DELAY_MS, FLASH_TIP_PRODUCT_UNSUPPORTED,
+  FLASH_RETURN_DELAY_MS, FLASH_AFTERSALE_RETURN_DELAY_MS, FLASH_TIP_PRODUCT_UNSUPPORTED,
   FLASH_RESULT_ONLINE_SUCCESS, FLASH_RESULT_OFFLINE_PUSHED, FLASH_RESULT_ESCALATE_L2, normalizeFlashResult,
   FLASH_TIP_NON_SELF_DEVELOPED, FLASH_TIP_REASON_NOT_GRADUATE_L1, FLASH_TIP_REASON_NOT_GRADUATE_L2,
   FLASH_TIP_AUTO_FLASHING, FLASH_TIP_EDIT_STATE, FLASH_TIP_REPUSH_STATE, FLASH_TIP_SYSTEM_BUSY, FLASH_TIP_VERIFY_UNAVAILABLE,
@@ -30,6 +30,7 @@ import { LOGIN_URL, templateOf } from '@/mock/notifyRules';
 import { useNotifyLogStore } from './notifyLog';
 import { useFlashConfigStore } from './flashConfig';
 import { FLASH_LS_KEYS, readFlashCache, writeFlashCache } from './flashCache';
+import { routeAftersaleEvent, type AftersaleEvent } from '@/views/tickets/composables/aftersaleEvents';
 
 /**
  * 教育刷机单 · 刷机服务（930 教育刷机单 D5 / D12 / D13 / D15 / D16 / D18 / D21 / D22，
@@ -866,27 +867,6 @@ export const useFlashStore = defineStore('flash', () => {
   }
 
   /**
-   * 发起推送：状态进「自动刷机中」、推送次数 +1、写履历；约 12 秒后按底数出回传结果（`settleDue`）。
-   * 已有推送记录时按操作人判一线 / 二线重推；带信息修改的重推请走 `repush`（会先跑建单校验）。
-   */
-  function startPush(ticketNo: string, by: FlashActor): FlashActionResult {
-    const r = rowOf(ticketNo);
-    if (!r?.flash) return { ok: false, message: FLASH_TIP_REPUSH_STATE };
-    if (r.nodeStatus === '自动刷机中' || isTicketClosed(r.nodeStatus)) {
-      return { ok: false, message: FLASH_TIP_REPUSH_STATE };
-    }
-    if (!config.isSelfDeveloped(r.flash.info.productModel)) {
-      return { ok: false, message: FLASH_TIP_NON_SELF_DEVELOPED };
-    }
-    const first = r.flash.runs.length === 0;
-    // 1013 A14：一线、二线重推都不限次
-    const l1 = !first && isFrontlineActor(by);
-    pushInternal(r, first ? SYSTEM : by, first ? '建单首推' : l1 ? '一线重推' : '二线重推', Date.now());
-    persist();
-    return { ok: true, message: '已推送刷机包，等待硬件平台回传' };
-  }
-
-  /**
    * 修改刷机信息并重新推送（1013 A12 / B1：修改刷机信息弹窗「重新推送」是唯一的推送入口；M36 / M44）。
    * 先同步判定，任一不通过即返回提示，**不推送、不改状态**：
    * 状态可重推 → 机型支持且自研 → 刷机原因为毕业 → 改后 SN 无其他在途单 → 建单校验通过。一线、二线都不限次（A14）。
@@ -1421,10 +1401,12 @@ export const useFlashStore = defineStore('flash', () => {
     // 已转出：客服侧冻结，SLA 停钟；售后唤起回原处理人时剩余接续（PRD §7.3）
     pauseClock(r, now, '已转出');
     Object.assign(r, {
-      nodeStatus: '已转出', linkedAftersaleNo: asNo,
+      nodeStatus: '已转出', linkedAftersaleNo: asNo, linkedAftersaleStatus: '待接单',
       slaText: '—', slaSub: '已转出·停表', slaState: 'ok', slaMinutes: 9999,
       updatedAt: flashMinuteStamp(now),
     });
+    // 售后侧处理完成的回传按转出时刻推算（`settleDue` 到点经售后回传通道唤起原单）
+    r.flash.state.aftersaleReturnDueAt = flashStamp(now + FLASH_AFTERSALE_RETURN_DELAY_MS);
     log(ticketNo, now + 1, {
       category: 'node', action: 'transfer', who: by.name, role: by.role, how: '转售后', what,
     });
@@ -1434,10 +1416,11 @@ export const useFlashStore = defineStore('flash', () => {
   }
 
   /**
-   * 售后处理完唤起原单（PRD §7.1 / §7.3，售后回传接入点）：回原二线处理人「处理中」，SLA 按转出前摘要续算，
-   * 由处理人按咨询单处理表单下送；一线的刷机处理结论不改写（1014）。
+   * 售后处理完唤起原单（PRD §7.1 / §7.3）：回原二线处理人「处理中」，SLA 按转出前摘要续算，
+   * 由处理人按咨询单处理表单下送；一线的刷机处理结论不改写（1014）。关联售后单保留（卡片照常展示）。
+   * 只由 `receiveAftersaleEvent` 调用（售后回传通道 `routeAftersaleEvent` 判出 `reactivated` 之后）。
    */
-  function returnFromAftersale(ticketNo: string): FlashActionResult {
+  function returnFromAftersale(ticketNo: string, e: AftersaleEvent): FlashActionResult {
     const r = rowOf(ticketNo);
     if (!r?.flash || r.nodeStatus !== '已转出') return { ok: false, message: FLASH_TIP_REPUSH_STATE };
     const now = Date.now();
@@ -1446,14 +1429,40 @@ export const useFlashStore = defineStore('flash', () => {
       updatedAt: flashMinuteStamp(now),
     });
     resumeClock(r, now);
-    delete (r as Partial<Ticket>).linkedAftersaleNo;
-    log(ticketNo, now, {
+    r.flash.state.aftersaleReturnDueAt = undefined;
+    log(ticketNo, now, e.type === 'AS_CLOSED'
+      ? {
+        category: 'node', action: 'resolved', who: e.operator, role: '系统', how: '售后单已关闭',
+        what: FLASH_TL.aftersaleClosed(e.asNo, e.resultSummary),
+      }
+      : {
+        category: 'node', action: 'transfer', who: e.operator, role: '系统', how: '售后转回客服',
+        what: [`售后单 ${e.asNo}`, e.returnReason ? `转回原因：${e.returnReason}` : ''].filter(Boolean).join(' · '),
+      });
+    log(ticketNo, now + 1, {
       category: 'node', action: 'transfer', who: '系统', role: '系统', how: '售后唤起',
-      what: `售后处理完成，唤起原单，回到 ${r.assignee ?? ''} 名下处理中`,
+      what: FLASH_TL.aftersaleReactivated(r.assignee ?? ''),
     });
     bump(ticketNo);
     persist();
     return { ok: true, message: '' };
+  }
+
+  /**
+   * 售后回传落刷机单（售后回传通道的刷机分支，PRD §7.1 / §7.3）：事件先经通用路由 `routeAftersaleEvent`
+   * （幂等、刷关联售后卡片），判出 `reactivated` 再由本服务唤起原单。其余结果不动本单。
+   */
+  function receiveAftersaleEvent(e: AftersaleEvent): FlashActionResult {
+    const r = TICKETS.find((t) => isFlashTicket(t) && !!t.flash && t.linkedAftersaleNo === e.asNo);
+    if (!r) return { ok: false, message: FLASH_TIP_REPUSH_STATE };
+    const routed = routeAftersaleEvent([toRaw(r)], e);
+    if (routed.outcome !== 'reactivated') return { ok: false, message: FLASH_TIP_REPUSH_STATE };
+    const next = routed.rows[0];
+    Object.assign(reactive(r), {
+      linkedAftersaleStatus: next.linkedAftersaleStatus,
+      aftersaleEventIds: next.aftersaleEventIds,
+    });
+    return returnFromAftersale(r.no, e);
   }
 
   /**
@@ -1627,6 +1636,27 @@ export const useFlashStore = defineStore('flash', () => {
         if (due <= now) {
           closeSurveyTimeout(reactive(t), due);
           settled += 1;
+        }
+        continue;
+      }
+      // PRD §7.1 / §7.3：转售后到点，售后侧回传「售后单已关闭」→ 经售后回传通道唤起原单
+      const asDue = isFlashTicket(t) && t.flash && t.nodeStatus === '已转出' ? t.flash.state.aftersaleReturnDueAt : undefined;
+      if (asDue && t.linkedAftersaleNo) {
+        const dueMs = parseFlashStamp(asDue).getTime();
+        if (dueMs <= now && receiveAftersaleEvent({
+          type: 'AS_CLOSED', asNo: t.linkedAftersaleNo, eventId: `${t.linkedAftersaleNo}:AS_CLOSED`,
+          at: flashMinuteStamp(dueMs), operator: '售后系统', resultSummary: '售后处理完成',
+        }).ok) settled += 1;
+        continue;
+      }
+      // M11 / M48：回传超时转人工之后，硬件平台迟到回传「接收成功」（按设备底数，时刻自超时判定起推算）
+      if (isFlashTicket(t) && t.flash && t.nodeStatus !== '自动刷机中') {
+        const last = t.flash.runs[t.flash.runs.length - 1];
+        const lateMin = findMdmDevice(t.flash.info.sn)?.lateSuccessAfterMin;
+        if (last?.failL2 === '回传超时' && lateMin && last.resultAt
+          && !(t.flash.state.lateSuccessAt && t.flash.state.lateSuccessAt >= last.resultAt)) {
+          const at = parseFlashStamp(last.resultAt).getTime() + lateMin * 60_000;
+          if (at <= now && recordLateSuccess(t.no, at).ok) settled += 1;
         }
         continue;
       }
@@ -1833,21 +1863,18 @@ export const useFlashStore = defineStore('flash', () => {
     flashOf,
     timelineOf,
     revisionOf,
-    findInflightBySn,
     progressStageOf,
     // 动作
     evaluateCreate,
     createFlashTicket,
-    startPush,
     repush,
     saveFlashInfo,
     recordSurveyConclusion,
     surveyGateOf,
     onCustomerUrge,
     notifyCsEvent,
-    transferToPool,
-    recordLateSuccess,
-    settleDue,
+    // 外部回传（售后侧，PRD §7.1 / §7.3）：到点由 settleDue 经售后回传通道驱动
+    receiveAftersaleEvent,
     // 处理页（M4b-2）
     liveNotices,
     escalateToL2,
@@ -1862,7 +1889,6 @@ export const useFlashStore = defineStore('flash', () => {
     forward,
     withdrawForward,
     transferAftersale,
-    returnFromAftersale,
     syncStatus,
     // 工作台（M3）
     creatorNameOf,

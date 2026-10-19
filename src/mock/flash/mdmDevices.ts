@@ -29,6 +29,8 @@ export interface MdmDevice {
   noResponse: boolean;
   pushApi: '正常' | '报错一次' | '持续报错';
   verifyApi: '正常' | '不可用';
+  /** 回传超时转人工之后，硬件平台迟到回传「接收成功」的时长（分钟，自超时判定起算，M11 / M48）；不填＝不迟到回传 */
+  lateSuccessAfterMin?: number;
 }
 
 const S20 = '讯飞智慧课堂学生平板 S20';
@@ -105,8 +107,8 @@ export const MDM_DEVICES: MdmDevice[] = [
   dev({ sn: 'LNJ606F2403A1003', model: J606F, studentAccount: 'ahsdfz2023s1103', romVersion: 'TB-J606F_S250118', mdmVersion: 'MDM 5.6.0' }),
   // 接收失败 · 未开机（联系用户开机后重推可成功）
   dev({ sn: 'XFX3P240501004', model: X3P, studentAccount: 'hf50z2023s1104', romVersion: 'EDU-X3P-2.1.3', mdmVersion: 'MDM 5.8.1', online: '未开机', onlineAfterContact: true }),
-  // 回传无响应 → 回传超时转人工
-  dev({ sn: 'XFS30240901005', model: S30, studentAccount: 'hf168z2023s1105', romVersion: 'EDU-S30-1.4.2', mdmVersion: 'MDM 5.8.2', noResponse: true }),
+  // 回传无响应 → 回传超时转人工；转人工 10 分钟后硬件平台迟到回传「接收成功」（M11 / M48）
+  dev({ sn: 'XFS30240901005', model: S30, studentAccount: 'hf168z2023s1105', romVersion: 'EDU-S30-1.4.2', mdmVersion: 'MDM 5.8.2', noResponse: true, lateSuccessAfterMin: 10 }),
   // 建单校验接口不可用 → 进一线刷机池（推送异常 · 接口异常）
   dev({ sn: 'XFS20240601006', model: S20, studentAccount: 'bb2z2023s1106', romVersion: 'EDU-S20-3.2.4', mdmVersion: 'MDM 5.8.2', verifyApi: '不可用' }),
   // 推送接口持续报错 → 自动重试 1 次仍失败 → 转人工（推送异常 · 接口异常）

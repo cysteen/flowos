@@ -30,8 +30,9 @@ export type FlashLsKey = (typeof FLASH_LS_KEYS)[keyof typeof FLASH_LS_KEYS];
  * v12：种子单刷机处理记录 / 刷机处理结论与履历里最新一次保存对齐（⑦ ⑫ ⑭ ⑰ ⑲）；⑭ 补「线下登记」条目。
  * v13：⑰ 补一线保存刷机处理记录的履历（升级二线之前），「最新处理」卡刷机处理记录块取得到处理人与时间。
  * v14：一线一轮（10-19 C2 / C3）：⑬ 回访未解决改回一线刷机池；新增 ⑳ 一线介入过的回访未解决进教育刷机处理组池。
+ * v15：刷机字段组新增 aftersaleReturnDueAt（转售后后售后回传唤起原单的到点时刻，PRD §7.1 / §7.3）。
  */
-export const FLASH_CACHE_VERSION = 14;
+export const FLASH_CACHE_VERSION = 15;
 
 /** 保质期：12 小时（与风险两条线 `RISK_STALE_MS` 同口径） */
 export const FLASH_STALE_MS = 12 * 60 * 60 * 1000;
