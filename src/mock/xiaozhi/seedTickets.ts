@@ -5,7 +5,8 @@
  * ① **待响应**（进池已领、还没动手；基线 §1 L25）；
  * ② 直通产研待回传（建单勾了「升级 TPD」→ 系统自动流转，本单「已升级产研」，D6 / 一·补 B27）；
  * ③ 产研已办结 · **待校代确认**（B5：办结**不关单**，状态仍「已升级产研」）；
- * ④ 提报人**确认已解决** → 落「已关闭」，处理人统一改系统（B5① / B9 / B32）；
+ * ④ 提报人**确认已解决** → 落「已关闭」，处理人统一改系统（B5① / B9 / B32）
+ *   —— 种子只造到「办结待确认」，关单那一下由装载时的真实路径跑（见 `confirmedResolved`）；
  * ⑤ 提报人**确认未解决** → 状态不动，系统自动回传产研，记「第 N 次回传产研」（B5② / B8）；
  * ⑥ **超 N 天未确认** → 装载时判「视为已解决」，自动落「已关闭」（B7 / B32）；
  * ⑦ 人工跟进中 · **已自查一轮、尚未升级** —— 「人工升级 · 产研」的演示入口（PRD §5.4）；
@@ -42,6 +43,16 @@ export interface XiaozhiSeedBundle {
   tickets: Ticket[];
   /** 工单号 → 小智链路履历（时间正序） */
   timelines: Record<string, TimelineEntry[]>;
+  /**
+   * 装载时**走真实路径**补跑的「提报人确认已解决」（见种子 ④）。
+   *
+   * 🔴 **为什么不把终态直接写死在种子里**：写死的话 `closeReason` / 处理人 / 关单履历
+   * 全是手抄的字符串 —— 界面上会出现一张**关闭原因为空的已关闭工单**（B38 之后尤其刺眼），
+   * 而且口径一改种子就对不上。改成停在「办结待确认」那一刻，由 `stores/xiaozhi.ts` 的
+   * `hydrate()` 调 `receiveReporterConfirm(no, true, who)` 关掉 —— 与种子 ⑥ 的超时兜底
+   * （`settleConfirmDue()` 对账关单）同一个做法，四个字段与履历文案全部由真实代码产生。
+   */
+  confirmedResolved: { no: string; who: string }[];
 }
 
 const DAY = '20260918';
@@ -174,6 +185,8 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
   const DAY_MS = 24 * HOUR;
   const tickets: Ticket[] = [];
   const timelines: Record<string, TimelineEntry[]> = {};
+  /** 装载时走真实路径补跑的「提报人确认已解决」（见 ④ 与 `XiaozhiSeedBundle` 的说明） */
+  const confirmedResolved: { no: string; who: string }[] = [];
 
   /**
    * ① **待响应** —— 进池已领、**还没动手**（基线 §1 L25：认领后未保存、未打电话、未发短信、未发邮件）。
@@ -319,10 +332,23 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
   /**
    * ④ 提报人**确认已解决** → 落终态「已关闭」（一·补 B5① + B32：走关闭、不下送、不调研）。
    *
-   * 🔴 本单是**人工跟进过**的（领取、处理登记、人工升级产研都有），处理人仍**统一改系统**
-   * （一·补 B9 扩大 B2 的覆盖范围）—— 关单那一下是系统做的，不保留原处理人谭小智。
+   * 🔴 **种子只造到「办结待确认」那一刻，关单那一下由装载时的真实路径跑**
+   * （`confirmedResolved` → `hydrate()` 调 `receiveReporterConfirm(no, true, who)`）。
+   * 形制照种子 ⑥ 的超时兜底：**终态、处理人、关闭原因、关单履历全部由真实代码产生**，
+   * 不是种子里手抄的字符串 —— 手抄的话 `closeReason` 会是空的（界面上一张关闭原因为空的
+   * 已关闭工单），口径一改种子还会对不上。
+   *
+   * 🔴 本单是**人工跟进过**的（领取、处理登记、**人工**升级产研都有），故确认前处理人是
+   * 谭小智、`tab: 'mine'`；关单那一下 `closeXiaozhi` 把处理人**统一改系统**
+   * （一·补 B9 扩大 B2 的覆盖范围）—— 这张单正好是 B9 的样本。
+   *
+   * 时刻相对装载时刻取（办结在 3 小时前），停在 `XIAOZHI_CONFIRM_TIMEOUT_DAYS` 之内，
+   * 不会被 B7 的对账抢先当成超时结掉（装载时也先跑确认、后跑对账）。
    */
   const rd4 = rdInfo('智批改', '重要', FRONTLINE_ACCOUNTS[4]);
+  const t4Created = nowMs - 28 * HOUR;
+  const t4Escalated = t4Created + 74 * 60_000;
+  const t4Settled = nowMs - 3 * HOUR;
   const t4Solution = '批阅服务线程池耗尽导致任务堆积，已扩容并重跑，批阅结果已返回。';
   const t4 = row(4, {
     title: '智批改 · 批阅结果长时间未返回 · IM',
@@ -333,15 +359,14 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
     problemL1: '功能异常',
     problemL2: '播放问题',
     problemL3: '在线播放',
-    problemDesc: '一场考试的智批改结果长时间未返回，产研扩容重跑后恢复，提报人确认已解决。',
-    // 一·补 B32：小智工单关单走「关闭工单」、不走下送结案，终态是「已关闭」
-    nodeStatus: '已关闭',
-    // 一·补 B9：人工跟进过的单，关单时处理人也统一改系统
-    assignee: XIAOZHI_SYSTEM_HANDLER,
-    tab: 'done',
+    problemDesc: '一场考试的智批改结果长时间未返回，产研扩容重跑后恢复，等提报人确认是否解决。',
+    // 确认前：本单仍在「已升级产研」，处理人是跟进过的那位坐席（人工升级不转移处理人）
+    nodeStatus: '已升级产研',
+    assignee: AGENT,
+    tab: 'mine',
     ...XIAOZHI_SLA_IDLE,
-    createdAt: '2026-09-17 09:12',
-    updatedAt: '2026-09-18 10:05',
+    createdAt: stamp(t4Created).slice(0, 16),
+    updatedAt: stamp(t4Settled).slice(0, 16),
     xiaozhi: {
       frontlineAccount: FRONTLINE_ACCOUNTS[4],
       rd: rd4,
@@ -349,17 +374,16 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
       rdFeedbackNo: 'TPD-20260917-1832',
       rdReturnCount: 0,
       rdSolutionType: '问题',
-      rdIssueResult: { solution: t4Solution, solvedAt: '2026-09-17 16:40' },
-      settledAt: '2026-09-17 16:48:20',
-      confirmState: '已确认解决',
-      confirmAt: '2026-09-18 10:05:12',
-      confirmBy: REPORTER,
+      rdIssueResult: { solution: t4Solution, solvedAt: stamp(t4Settled - 8 * 60_000).slice(0, 16) },
+      settledAt: stamp(t4Settled),
+      // 停在「未确认」—— 装载时由 receiveReporterConfirm 推到「已确认解决」并关单
+      confirmState: '未确认',
       rdRecords: [
         rd('push', `已推送${ESCALATE_CHANNEL_TPD}`,
           `产研单标题：${xiaozhiRdTitle(rd4.module)}；产品模块：${rd4.module}；接收人：${rd4.receiver}；优先级：${rd4.priority}`,
-          AGENT, '客服工单', '2026-09-17 10:26:03', { meta: 'TPD-20260917-1832' }),
+          AGENT, '客服工单', stamp(t4Escalated), { meta: 'TPD-20260917-1832' }),
         rd('result', '产研办结', t4Solution,
-          '张冬', '产研侧', '2026-09-17 16:48:20', {
+          '张冬', '产研侧', stamp(t4Settled), {
             meta: 'TPD-20260917-1832',
             result: t4Solution,
             conclusion: '问题类办结',
@@ -369,22 +393,22 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
   });
   tickets.push(t4);
   timelines[t4.no] = [
-    tl('2026-09-17 09:12:08', 'node', 'create', AGENT, AGENT_ROLE, '建单', XIAOZHI_TL.create(XIAOZHI_TICKET_SOURCE)),
-    tl('2026-09-17 09:30:44', 'node', 'accept', AGENT, AGENT_ROLE, '领取', `${AGENT} 从${XIAOZHI_POOL_GROUP_NAME}工单池领取本单。`),
-    tl('2026-09-17 10:05:19', 'handle', 'handle', AGENT, AGENT_ROLE, '工单处理', '核实批阅任务已下发但结果未回，自查无配置问题，转产研定位。'),
+    tl(stamp(t4Created), 'node', 'create', AGENT, AGENT_ROLE, '建单', XIAOZHI_TL.create(XIAOZHI_TICKET_SOURCE)),
+    tl(stamp(t4Created + 18 * 60_000), 'node', 'accept', AGENT, AGENT_ROLE, '领取', `${AGENT} 从${XIAOZHI_POOL_GROUP_NAME}工单池领取本单。`),
+    tl(stamp(t4Created + 53 * 60_000), 'handle', 'handle', AGENT, AGENT_ROLE, '工单处理', '核实批阅任务已下发但结果未回，自查无配置问题，转产研定位。'),
     // 🔴 人工那条路用 `manualEscalate` + how「升级 · 产研」（PRD §11.2）。
     // 原先这里复用了 `autoEscalate`，于是履历长成「操作人：谭小智 / 升级 /
     // **系统自动流转至** TPD…」—— 操作人是人、正文说是系统干的，一条自相矛盾的履历。
-    tl('2026-09-17 10:26:03', 'node', 'escalate', AGENT, AGENT_ROLE, '升级 · 产研',
+    tl(stamp(t4Escalated), 'node', 'escalate', AGENT, AGENT_ROLE, '升级 · 产研',
       XIAOZHI_TL.manualEscalate(ESCALATE_CHANNEL_TPD, xiaozhiRdTitle(rd4.module))),
-    tl('2026-09-17 16:48:20', 'node', 'relate', '系统', '系统', '产研回传', XIAOZHI_TL.rdSettled('问题'), { systemActor: true }),
+    tl(stamp(t4Settled), 'node', 'relate', '系统', '系统', '产研回传', XIAOZHI_TL.rdSettled('问题'), { systemActor: true }),
     // 一·补 B28 / B34：对客只有这一条**完成通知**，不是调研短信。
     // 本单登记了客户域账号 → 走 IM 消息那条通道（没有域账号的单走短信，两者都无则不发）
-    tl('2026-09-17 16:48:21', 'comm', 'sms', '系统', '系统', XIAOZHI_NOTICE_CHANNEL.im,
+    tl(stamp(t4Settled + 1_000), 'comm', 'sms', '系统', '系统', XIAOZHI_NOTICE_CHANNEL.im,
       XIAOZHI_TL.completionNotice(XIAOZHI_NOTICE_CHANNEL.im, FRONTLINE_ACCOUNTS[4]), { systemActor: true }),
-    tl('2026-09-18 10:05:12', 'node', 'resolved', '系统', '系统', '自动关闭',
-      XIAOZHI_TL.confirmResolved(REPORTER), { systemActor: true }),
+    // ⚠️ 关单那一条**不在这里写** —— 由装载时的 receiveReporterConfirm 产生（见上）
   ];
+  confirmedResolved.push({ no: t4.no, who: REPORTER });
 
   /**
    * ⑤ 校代**确认未解决** → 状态不动，**系统自动**回传产研，记「第 N 次回传产研」（B5② / B8）。
@@ -656,7 +680,7 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
       XIAOZHI_TL.rdReturned(AGENT, t9Reject), { systemActor: true }),
   ];
 
-  return { tickets, timelines };
+  return { tickets, timelines, confirmedResolved };
 }
 
 export const XIAOZHI_SEEDS: XiaozhiSeedBundle = buildXiaozhiSeeds(Date.now());

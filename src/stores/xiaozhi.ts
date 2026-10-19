@@ -226,6 +226,23 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     } else {
       timelines.value = JSON.parse(JSON.stringify(XIAOZHI_SEEDS.timelines)) as Record<string, TimelineEntry[]>;
       tlSeq = 0;
+      /**
+       * 🔴 **种子 ④ 的关单走真实路径补跑**（`XiaozhiSeedBundle.confirmedResolved`）。
+       *
+       * 它在种子里只造到「产研已办结 · 待提报人确认」那一刻，终态由这里跑出来 ——
+       * 于是 `nodeStatus` / 处理人（B9 统一改系统）/ `closeReason`（B38「问题已解决」）/
+       * 关单履历文案**全部由真实代码产生**，不是种子里手抄的字符串。
+       * 与种子 ⑥ 的超时兜底（下面 `settleConfirmDue()`）是同一个做法。
+       *
+       * ⚠️ **只在"回到种子"这一支跑**：从缓存恢复时这张单已经是关掉的，再跑一次会被
+       * `receiveReporterConfirm` 的「已经确认过的不接」挡掉，但没必要走这一趟。
+       * ⚠️ **排在 `settleConfirmDue()` 之前**：对账是按「未确认 ∧ 办结超 N 天」扫的，
+       * 先跑确认才不会有哪天把它当成超时单结掉（④ 的办结时刻取装载前 3 小时，本就在 N 之内，
+       * 这一条是双保险）。
+       */
+      for (const { no: seedNo, who } of XIAOZHI_SEEDS.confirmedResolved) {
+        receiveReporterConfirm(seedNo, true, who);
+      }
     }
     // 一·补 B7 + B32：装载时对一次「超 N 天未确认」的账，到点的就地自动落「已关闭」
     settleConfirmDue();
