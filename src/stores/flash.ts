@@ -1428,7 +1428,8 @@ export const useFlashStore = defineStore('flash', () => {
     pauseClock(r, now, '已转出');
     Object.assign(r, {
       nodeStatus: '已转出', linkedAftersaleNo: asNo, linkedAftersaleStatus: '待接单',
-      slaText: '—', slaSub: '已转售后·停表', slaState: 'ok', slaMinutes: 9999,
+      // 停钟期间 SLA 摘要显示「已暂停」（PRD §4.3）
+      slaText: '已暂停', slaSub: '已暂停', slaState: 'paused', slaMinutes: 9999,
       updatedAt: flashMinuteStamp(now),
     });
     // 售后侧处理完成的回传按转出时刻推算（`settleDue` 到点经售后回传通道唤起原单）

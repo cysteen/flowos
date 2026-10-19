@@ -698,7 +698,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       info, creator: '用户提报', customer: '顾红梅', phone: '13966713907',
       createdAt: at.slice(0, 16), updatedAt: toAs.slice(0, 16),
       nodeStatus: '已转出', assignee: '王坐席', tab: 'mine', responded: true, nodeStep: 4,
-      slaText: '—', slaSub: '已转售后·停表', slaState: 'ok', slaMinutes: 9999,
+      slaText: '已暂停', slaSub: '已暂停', slaState: 'paused', slaMinutes: 9999,
       linkedAftersaleNo: 'AS-20260915-39021', upgradeCount: 1,
       flashState: state('用户提报', {
         outcome: '接收失败', failL1: '接收失败', failL2: '版本不符', pushCount: 2,

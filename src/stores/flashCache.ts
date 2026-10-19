@@ -33,8 +33,9 @@ export type FlashLsKey = (typeof FLASH_LS_KEYS)[keyof typeof FLASH_LS_KEYS];
  * v15：刷机字段组新增 aftersaleReturnDueAt（转售后后售后回传唤起原单的到点时刻，PRD §7.1 / §7.3）。
  * v16：⑮ 调研中改为按加载时刻倒推（不再加载即调研超时结案）；新增 ㉑ 回传无响应的稳定「自动刷机中」样本。
  * v17：⑰ SLA 摘要改用展示名「已转售后·停表」（D10），缓存里的旧快照作废。
+ * v18：已转出停钟期间 SLA 摘要改为「已暂停」（PRD §4.3），⑰ 与运行时转售后同口径。
  */
-export const FLASH_CACHE_VERSION = 17;
+export const FLASH_CACHE_VERSION = 18;
 
 /** 保质期：12 小时（与风险两条线 `RISK_STALE_MS` 同口径） */
 export const FLASH_STALE_MS = 12 * 60 * 60 * 1000;
