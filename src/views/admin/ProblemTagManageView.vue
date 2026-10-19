@@ -402,20 +402,22 @@ const displayRows = computed(() => allRows.value.filter((r) => {
   return true;
 }));
 
+// 列宽合计（含勾选列 32）＝ TABLE_SCROLL_X：1540 宽视口下整表放得下，更新人 / 更新时间不再被右侧固定的「操作」列压成一条缝
 const cols = [
-  { title: '产品名称', dataIndex: 'productName', key: 'productName', width: 180 },
-  { title: '问题分类一级', dataIndex: 'tagL1', key: 'tagL1', width: 120, ellipsis: true },
-  { title: '问题分类二级', dataIndex: 'tagL2', key: 'tagL2', width: 110, ellipsis: true },
-  { title: '问题分类三级', dataIndex: 'tagL3', key: 'tagL3', width: 240, ellipsis: true },
-  { title: '处理组', dataIndex: 'team', key: 'team', width: 110 },
-  { title: '是否售后', dataIndex: 'aftersale', key: 'aftersale', width: 86 },
-  { title: '是否小结专用', dataIndex: 'summaryOnly', key: 'summaryOnly', width: 110 },
-  { title: '是否刷机', dataIndex: 'flash', key: 'flash', width: 86 },
-  { title: '状态', dataIndex: 'status', key: 'status', width: 90 },
-  { title: '更新人', dataIndex: 'maintainer', key: 'maintainer', width: 90 },
-  { title: '更新时间', dataIndex: 'maintainedAt', key: 'maintainedAt', width: 150 },
-  { title: '操作', key: 'op', width: 110, fixed: 'right' as const, align: 'right' as const, className: 'col-op' },
+  { title: '产品名称', dataIndex: 'productName', key: 'productName', width: 150 },
+  { title: '问题分类一级', dataIndex: 'tagL1', key: 'tagL1', width: 100, ellipsis: true },
+  { title: '问题分类二级', dataIndex: 'tagL2', key: 'tagL2', width: 96, ellipsis: true },
+  { title: '问题分类三级', dataIndex: 'tagL3', key: 'tagL3', width: 160, ellipsis: true },
+  { title: '处理组', dataIndex: 'team', key: 'team', width: 100 },
+  { title: '是否售后', dataIndex: 'aftersale', key: 'aftersale', width: 80 },
+  { title: '是否小结专用', dataIndex: 'summaryOnly', key: 'summaryOnly', width: 96 },
+  { title: '是否刷机', dataIndex: 'flash', key: 'flash', width: 80 },
+  { title: '状态', dataIndex: 'status', key: 'status', width: 72 },
+  { title: '更新人', dataIndex: 'maintainer', key: 'maintainer', width: 72 },
+  { title: '更新时间', dataIndex: 'maintainedAt', key: 'maintainedAt', width: 132 },
+  { title: '操作', key: 'op', width: 96, fixed: 'right' as const, align: 'right' as const, className: 'col-op' },
 ];
+const TABLE_SCROLL_X = 32 + cols.reduce((s, c) => s + c.width, 0);
 
 const currentPage = ref(1);
 const pagination = computed(() => stdPagination({
@@ -1197,7 +1199,7 @@ function doImport(withUpdate: boolean) {
           row-key="key"
           :pagination="pagination"
           size="middle"
-          :scroll="{ x: 1450, y: 'calc(100vh - 388px)' }"
+          :scroll="{ x: TABLE_SCROLL_X, y: 'calc(100vh - 388px)' }"
         >
           <template #bodyCell="{ column, record }">
             <span v-if="column.key === 'productName'" class="cell-link" @click="openEditRow(record as ProblemTagRow)">

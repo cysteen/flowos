@@ -128,7 +128,7 @@ function backToWorkspace() {
             @click="go('/admin/approval')"
           >
             <component :is="ADMIN_APPROVAL.icon" class="nav-icon" />
-            <span v-if="!collapsed" class="nav-label nav-strike">{{ ADMIN_APPROVAL.label }}</span>
+            <span v-if="!collapsed" class="nav-label nav-muted">{{ ADMIN_APPROVAL.label }}</span>
             <span v-if="approvalBadge > 0 && !collapsed" class="nav-badge">{{ approvalBadge }}</span>
             <span v-if="approvalBadge > 0 && collapsed" class="nav-dot"></span>
           </div>
@@ -251,10 +251,12 @@ function backToWorkspace() {
   font-size: 14px;
   flex: 1;
 }
-/* 不做/不在本期范围：文字加删除线并置灰 */
-.nav-strike {
-  text-decoration: line-through;
+/* 不在本期范围的入口：按规范「文本弱」色（#9ca3af）置灰，不加删除线 */
+.nav-muted {
   color: #9ca3af;
+}
+.nav-item.active .nav-muted {
+  color: inherit;
 }
 .nav-badge {
   min-width: 18px;
