@@ -1,7 +1,9 @@
 <script setup lang="ts">
 /**
  * 刷机单「工单处理」Tab 第一块：自动刷机结果（只读卡，PRD §5.2 / 页面规格 P4、P0-11、P0′-14）。
- * 卡上无操作按钮；卡头标题右侧紧挨外链「智能硬件平台」，行尾为最近一次回传 / 推送时间（「MDM 平台」在刷机信息区块头，PRD §5.3）。
+ * 卡上无操作按钮；卡头为标题 ＋ 行尾最近一次回传 / 推送时间。外链「智能硬件平台」只在配了地址时出在标题右侧，
+ * 地址未给（`FLASH_EXTERNAL_LINKS.hardwarePlatform.url` 为空，见 PRD 附录 D 第 11 条）时不渲染；
+ * 「MDM 平台」「保障中心」在「刷机信息」区块头（OpFlashInfoBlock，PRD §5.3）。
  * 卡内直接展示全部明细：与「刷机信息」同规格的三列 label/value 网格（当前结果 / 失败原因 / 转人工原因 / 推送次数 / 建单校验结果）＋ 刷机记录表（建单校验一行 ＋ 每次推送一行，时间正序，至少一行）。
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
