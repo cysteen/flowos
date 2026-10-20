@@ -12,7 +12,8 @@ import {
   XIAOZHI_POOL_GROUP_ID, XIAOZHI_POOL_GROUP_NAME,
   XIAOZHI_RD_PLATFORM_AVAILABLE, XIAOZHI_RD_RETURNED_STATUS,
   XIAOZHI_SLA_IDLE, XIAOZHI_SYSTEM_HANDLER, XIAOZHI_TICKET_SOURCE, XIAOZHI_TICKET_TYPE, XIAOZHI_TL,
-  isXiaozhiTicket, xiaozhiHasReceiver, xiaozhiNoticeChannel, xiaozhiRdTitle, xiaozhiReceiverOf,
+  isXiaozhiTicket, resolveReporterKind, xiaozhiHasReceiver, xiaozhiNoticeChannel, xiaozhiRdTitle,
+  xiaozhiReceiverOf,
   type TicketXiaozhi, type XiaozhiDemandResult, type XiaozhiIssueResult,
   type XiaozhiRdInfo, type XiaozhiRdPriority, type XiaozhiSolutionType,
 } from '@/views/tickets/types/xiaozhi';
@@ -332,6 +333,8 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     const xiaozhi: TicketXiaozhi = {
       // 一·补 B29：提报人（客户）确认凭据，**两条路都落**（未勾「升级 TPD」的单没有 rd，凭据一样要留）
       frontlineAccount: input.frontlineAccount.trim(),
+      // PRD §2.2：提报人类型在建单这一下判一次就落单，下游只读它（见 `resolveReporterKind`）
+      reporterKind: resolveReporterKind(input.frontlineAccount),
       // 一·补 B31 / B33：产研退回时要把处理人交回建单人，故建单这一下就把人记下来
       createdBy: actor.name,
       rdSync: 'none',
@@ -699,7 +702,7 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
    * 每发一条落一条沟通类处理履历。
    */
   function sendCompletionNotice(r: Ticket, at: number) {
-    const pick = xiaozhiNoticeChannel(r.xiaozhi?.frontlineAccount, r.customerPhone);
+    const pick = xiaozhiNoticeChannel(r.xiaozhi?.frontlineAccount, r.xiaozhi?.reporterKind, r.customerPhone);
     if (!pick) {
       log(r.no, at, {
         category: 'comm', action: 'sms', who: '系统', role: '系统', systemActor: true,

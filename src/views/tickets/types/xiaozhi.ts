@@ -487,19 +487,41 @@ export const XIAOZHI_NOTICE = {
  */
 export const XIAOZHI_SURVEY_EXEMPT = true;
 
-/** 完成通知的两条通道（B28）：有客户域账号走 IM 消息，否则走客户手机号短信 */
+/** 完成通知的两条通道（B28）：提报人是域账号走 IM 消息，是手机号走短信 */
 export const XIAOZHI_NOTICE_CHANNEL = { im: 'IM 消息', sms: '短信' } as const;
+
+/** 提报人标识的取值类型（PRD §2.2「预填来源」）：容联云透传的 customerID 只会是这两种之一 */
+export type XiaozhiReporterKind = '域账号' | '手机号';
+
+/**
+ * 判别提报人标识是域账号还是手机号 —— **全系统唯一的判别点**（PRD §2.2：判别一次、多处取用）。
+ *
+ * 真实系统这一下取的是**集团 SSO 的查询结果**：查到即域账号，查不到但合手机号格式即手机号。
+ * 原型没有 SSO，本函数按格式顶上，**范围仅限这一个函数**；判别结果落到单上的 `reporterKind`，
+ * 下游（完成通知通道、提报人查单）一律读那个字段，**不再各判一次**。
+ */
+export function resolveReporterKind(value?: string): XiaozhiReporterKind | undefined {
+  const v = value?.trim() ?? '';
+  if (!v) return undefined;
+  return /^1\d{10}$/.test(v) ? '手机号' : '域账号';
+}
 
 /**
  * 完成通知走哪条通道（一·补 B28，**二选一**）：
- * 本单登记了客户域账号 → IM 消息；否则有客户手机号 → 短信；**两者都无 → 不发**，只留一条履历。
+ * 提报人是**域账号** → IM 消息；是**手机号** → 短信；
+ * 提报人为空或类型未判定 → 回落**客户手机号**短信；**都没有 → 不发**，只留一条履历（并置 B40 待跟进标记）。
+ *
+ * 🔴 **本函数不判别类型，只读 `reporterKind`。** 旧实现是「提报人非空就走 IM」——
+ * 提报人改取容联云透传的 `customerID`（可能本身就是手机号）之后，那等于把 IM 发给一个手机号。
  */
 export function xiaozhiNoticeChannel(
-  frontlineAccount?: string,
+  reporter?: string,
+  reporterKind?: XiaozhiReporterKind,
   customerPhone?: string,
 ): { channel: string; to: string } | null {
-  const account = frontlineAccount?.trim() ?? '';
-  if (account) return { channel: XIAOZHI_NOTICE_CHANNEL.im, to: account };
+  const id = reporter?.trim() ?? '';
+  if (id && reporterKind === '域账号') return { channel: XIAOZHI_NOTICE_CHANNEL.im, to: id };
+  if (id && reporterKind === '手机号') return { channel: XIAOZHI_NOTICE_CHANNEL.sms, to: id };
   const phone = customerPhone?.trim() ?? '';
   if (phone) return { channel: XIAOZHI_NOTICE_CHANNEL.sms, to: phone };
   return null;
@@ -526,6 +548,8 @@ export interface TicketXiaozhi {
    * `rd.frontlineAccount` 是推给产研那一笔的**载荷副本**（W2 建单要素之一），两者同源于建单表单。
    */
   frontlineAccount?: string;
+  /** 提报人标识是域账号还是手机号 —— 建单那一下判一次就落单，见 `resolveReporterKind` */
+  reporterKind?: XiaozhiReporterKind;
   /**
    * 本单创建人（建单那一下的操作人）。产研退回时处理人要交回给他（一·补 B31 / B33）。
    *

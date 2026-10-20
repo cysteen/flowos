@@ -35,7 +35,7 @@ import {
   XIAOZHI_NOTICE_CHANNEL,
   XIAOZHI_SLA_IDLE, XIAOZHI_SYSTEM_HANDLER,
   XIAOZHI_TICKET_SOURCE, XIAOZHI_TICKET_TYPE, XIAOZHI_TL,
-  xiaozhiRdTitle, xiaozhiReceiverOf,
+  resolveReporterKind, xiaozhiRdTitle, xiaozhiReceiverOf,
   type TicketXiaozhi, type XiaozhiRdInfo, type XiaozhiRdPriority,
 } from '@/views/tickets/types/xiaozhi';
 
@@ -680,6 +680,12 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
       XIAOZHI_TL.rdReturned(AGENT, t9Reject), { systemActor: true }),
   ];
 
+  // 种子数据同走建单那条规矩：提报人类型在数据成形这一下判一次就落单，发信处不再判（PRD §2.2）
+  for (const t of tickets) {
+    if (t.xiaozhi && t.xiaozhi.reporterKind === undefined) {
+      t.xiaozhi.reporterKind = resolveReporterKind(t.xiaozhi.frontlineAccount);
+    }
+  }
   return { tickets, timelines, confirmedResolved };
 }
 
