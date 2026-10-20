@@ -153,7 +153,7 @@ export type FlashBarKey =
 export const FLASH_L1_BAR_ORDER: readonly FlashBarKey[] = ['下送', '撤回'];
 /**
  * 二线视角底栏顺序：与咨询单底栏同一排、同一顺序平铺（用户 10-19「与原咨询单的样式，保持一致」），不设「更多」；
- * 按钮集合照 PRD §5.5：升级＝三线技术支持 / 产研 / 同步飞书（1013 B2），不出转单（M25）、退回
+ * 按钮集合照 PRD §5.5：升级＝技术支持 / 同步飞书（1013 B2；10-20 E1 去掉产研，通道收窄见 OpActionDialogs），不出转单（M25）、退回
  */
 export const FLASH_L2_BAR_ORDER: readonly FlashBarKey[] = ['下送', '升级', '风险报备', '转售后', '撤回', '调剂', '委派', '挂起', '关闭工单', '强结'];
 

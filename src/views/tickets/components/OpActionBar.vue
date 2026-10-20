@@ -794,6 +794,7 @@ defineExpose({ openEscalate, openAftersale, openActivate });
     :group-id="groupId"
     :last-handler="lastHandler"
     :is-xiaozhi="isXiaozhi"
+    :is-flash="isFlash"
     :frontline-account="frontlineAccount"
     @confirm="onDialogConfirm"
   />

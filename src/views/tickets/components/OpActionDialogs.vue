@@ -51,6 +51,8 @@ const props = defineProps<{
   lastHandler?: string | null;
   /** 「小智工单」标识（1130 D1）：升级通道只出产研一个（一·补 B10） */
   isXiaozhi?: boolean;
+  /** 「刷机单」标识（1130 刷机 PRD §5.5）：二线升级只出技术支持一个通道，不升级产研（10-20 E1） */
+  isFlash?: boolean;
   /**
    * 本单的一线人员域账号（工单层 `xiaozhi.frontlineAccount`，建单时必填落下，一·补 B24）。
    *
@@ -187,9 +189,14 @@ function filterMemberOption(input: string, option?: { label?: string; value?: st
  * 故「二线技术支持组」这档在小智单上整个不出。留下的是 `ESCALATE_CHANNEL_TPD` ——
  * 小智单整条产研链路（产品模块 → 接收人、产研单标题、办结回传）都是按 TPD 的字典走的（W2 / W3），
  * 给它「RDM 产研系统」这档选了也无处落接收人。通用单的通道全集未变。
+ *
+ * 刷机单（10-20 E1）：二线只升级技术支持，不升级产研 —— 只留「二线技术支持组」，
+ * RDM / TPD 两档不出；飞书项目产研反馈单由工单页的 `feishuEligible` 对刷机单关掉。
  */
 const escalateChannelOptions = computed(() => {
-  const base = props.isXiaozhi ? [ESCALATE_CHANNEL_TPD] : [...ESCALATE_CHANNELS];
+  const base = props.isXiaozhi
+    ? [ESCALATE_CHANNEL_TPD]
+    : props.isFlash ? [ESCALATE_CHANNELS[0]] : [...ESCALATE_CHANNELS];
   const list = props.feishuEligible ? [FEISHU_ESCALATE_CHANNEL, ...base] : base;
   const feishuClosed = props.feishuSync === 'closed';
   return list.map((c) => ({
