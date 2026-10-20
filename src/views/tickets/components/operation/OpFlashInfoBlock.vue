@@ -46,13 +46,13 @@ const photos = computed(() => props.info.snPhotos.map((name) => ({ name, src: sn
       <span class="fi-title"><MobileOutlined class="fi-icon" />刷机信息</span>
       <a
         class="fi-link"
-        :href="flashExternalUrl('mdm', info.sn)"
+        :href="flashExternalUrl('mdm')"
         target="_blank"
         rel="noopener noreferrer"
       >{{ FLASH_EXTERNAL_LINKS.mdm.label }}<ExportOutlined /></a>
       <a
         class="fi-link"
-        :href="flashExternalUrl('supportCenter', info.sn)"
+        :href="flashExternalUrl('supportCenter')"
         target="_blank"
         rel="noopener noreferrer"
       >{{ FLASH_EXTERNAL_LINKS.supportCenter.label }}<ExportOutlined /></a>

@@ -100,7 +100,7 @@ const recordRows = computed(() => [
 /** 标题行行尾时间：最近一次推送的回传 / 判定时刻，未回传取推送时刻；从未推送不出 */
 const headTime = computed(() => (latestRun.value ? latestRun.value.resultAt ?? latestRun.value.pushedAt : ''));
 
-const hardwareUrl = computed(() => flashExternalUrl('hardwarePlatform', props.flash.info.sn));
+const hardwareUrl = flashExternalUrl('hardwarePlatform');
 
 /** 失败原因超过此字数时占两列（三列网格单列约容 12 个汉字） */
 const FAIL_TEXT_ONE_COL = 12;
@@ -110,7 +110,7 @@ const FAIL_TEXT_ONE_COL = 12;
   <section class="fr-card">
     <header class="fr-head">
       <span class="fr-title"><ThunderboltOutlined class="fr-icon" />自动刷机结果</span>
-      <a class="fr-link" :href="hardwareUrl" target="_blank" rel="noopener noreferrer">
+      <a v-if="hardwareUrl" class="fr-link" :href="hardwareUrl" target="_blank" rel="noopener noreferrer">
         {{ FLASH_EXTERNAL_LINKS.hardwarePlatform.label }}<ExportOutlined />
       </a>
       <span v-if="headTime" class="fr-when">{{ headTime }}</span>
