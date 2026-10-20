@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { isFlashTicket } from '@/views/tickets/types/flash';
 import { computed, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
 import { UserSwitchOutlined } from '@ant-design/icons-vue';
 import { useUserStore } from '@/stores/user';
@@ -56,6 +56,7 @@ import type { CreateTicketPrefill, Ticket } from './types/ticket';
 
 const user = useUserStore();
 const router = useRouter();
+const route = useRoute();
 const wb = useTicketWorkbench();
 const flashStore = useFlashStore();
 const headerTabCounts = wb.headerTabCounts;
@@ -122,6 +123,18 @@ function onTabChange(tab: WorkbenchTabKey) {
   flashPoolTabActive.value = tab === FLASH_POOL_TAB;
   if (isTicketTab(tab)) wb.setTab(tab);
 }
+
+/**
+ * `?tab=flashPool` 直达「刷机池」页签：容联云工作台「刷机池」入口新开页签嵌入的落点（1130 刷机册附录 A.3）。
+ * 走 onTabChange，同一道 hiddenTabs 门控：看不到该页签的角色带此参数也不打开。
+ */
+watch(
+  () => [route.query.tab, user.roleKey] as const,
+  ([tab]) => {
+    if (tab === FLASH_POOL_TAB) onTabChange(FLASH_POOL_TAB);
+  },
+  { immediate: true },
+);
 
 /** 我的任务 ·「已挂起」追加列 */
 const SUSPEND_EXTRA_COLUMNS = [
