@@ -77,6 +77,9 @@ interface ProblemTagRow {
   maintainedAt: string;
 }
 
+/** 「是否刷机」与「是否小结专用」同为「是」时的拦截文案：弹窗保存提示与导入失败原因共用 */
+const FLASH_SUMMARY_CONFLICT = '刷机类问题分类不能设为小结专用';
+
 /**
  * 筛选项排序（左→右）：
  * 第1行：维度（产品维度 | 组织维度）→ 联动下拉（产品维度：业务类型/产品分类/产品名称；组织维度：BGBU/业务线/产品线/产品名称）
@@ -658,6 +661,11 @@ function saveForm() {
     message.error('请完整填写所属产品与三级分类');
     return;
   }
+  // 「是否刷机」与「是否小结专用」互斥（1130 刷机册 9.2 / 1025 册 3.2）
+  if (form.flash === '是' && form.summaryOnly === '是') {
+    message.error(FLASH_SUMMARY_CONFLICT);
+    return;
+  }
   ensureTagOption(tagL1List.value, tagL1);
   if (!tagL2Map.value[tagL1]) tagL2Map.value[tagL1] = [];
   ensureTagOption(tagL2Map.value[tagL1], tagL2);
@@ -955,6 +963,7 @@ function analyzeImport(fileName: string, text: string): ImportResult {
     if (so !== '是' && so !== '否') reasons.push('是否小结专用取值非法：只能填是或否，或留空');
     const fl = flRaw.trim() || '否';
     if (fl !== '是' && fl !== '否') reasons.push('是否刷机取值非法：只能填是或否，或留空');
+    if (fl === '是' && so === '是') reasons.push(FLASH_SUMMARY_CONFLICT);
 
     const path: [string, string, string] = [l1, l2, l3];
     const ids: Record<TagLevel, string> = {
