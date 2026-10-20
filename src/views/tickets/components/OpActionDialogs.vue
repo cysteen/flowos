@@ -728,7 +728,7 @@ function onOk() {
             />
           </div>
           <div class="op-field">
-            <div class="op-label req">接收人（域账号）</div>
+            <div class="op-label req">接收人</div>
             <a-input :value="escalateReceiver" disabled placeholder="由产品模块带出" />
           </div>
         </div>
@@ -742,7 +742,7 @@ function onOk() {
           没值时留空置灰（历史单可能没有），不改成可编辑 —— 真要补值应回到源头，不在这儿补。
         -->
         <div class="op-field">
-          <div class="op-label">一线人员域账号</div>
+          <div class="op-label">提报人</div>
           <a-input :value="escalate.frontlineAccount" disabled placeholder="由本单建单信息带出" />
         </div>
         <div class="op-field">

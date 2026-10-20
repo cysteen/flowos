@@ -106,6 +106,11 @@ const {
 
 const router = useRouter();
 
+/** 小智单勾「升级 TPD」时主按钮文案（一·补 B27） */
+const createPrimaryLabel = computed(() =>
+  (isXiaozhiType.value && form.xiaozhi.escalateTpd ? '创建并流转TPD' : '创建'),
+);
+
 /** 在途单号链接：新页签打开该单（PRD §2.4） */
 function ticketHref(no: string): string {
   return router.resolve(`/tickets/${no}`).href;
@@ -899,7 +904,7 @@ watch(
         <button type="button" class="btn-ghost" @click="onDraft">存草稿</button>
         <!-- 主操作是「创建」：建完回列表是常态，建完立刻处理是少数场景 -->
         <button type="button" class="btn-primary" :disabled="submitting" @click="onCreate(false)">
-          创建
+          {{ createPrimaryLabel }}
         </button>
         <!--
           小智单底栏**只留「取消 / 存草稿 / 创建」三枚**（一·补 B27，**推翻 B11** 的两枚建单按钮）：

@@ -16,6 +16,9 @@ withDefaults(
     <div v-if="title" class="part-head">
       <i class="part-bar" />
       <span class="part-title">{{ title }}</span>
+      <div v-if="$slots['head-extra']" class="part-head-extra">
+        <slot name="head-extra" />
+      </div>
     </div>
     <div v-else-if="subtitle" class="part-subhead">
       <i class="part-bar" />
@@ -46,6 +49,14 @@ withDefaults(
   display: flex;
   align-items: center;
   gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+.part-head-extra {
+  display: flex;
+  align-items: center;
+  flex: none;
+  margin-left: auto;
 }
 .part-bar {
   display: inline-block;

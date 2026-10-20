@@ -3,20 +3,9 @@
  * 新建工单 · 「小智工单信息」卡（1130 小智工单 D5 / D27 / W2 / 一·补 B15）。
  *
  * D27 口径是**最大限度复用通用咨询表单**，故本卡只放确有差异的小智专属要素 ——
- * 实际就只剩「升级 TPD」勾选框 + 一组**产研流转信息**：取老系统「创建TPD工单」弹窗现状，
- * 接收人由产品模块带出、只读（W2）。
+ * 「升级 TPD」开关在卡头，产研流转字段仅在勾选后展开。
  *
- * 🔴 **产研四项随「升级 TPD」动态展示**（一·补 B27）：建单出口合为一枚「创建」，
- * 勾上即走直通产研那条路；不勾时整组不渲染 —— 不渲染而不是置灰，因为这组字段在
- * 「落池自领」那条路上**根本不参与**，摆在那儿置灰只会让人以为还得填。
- *
- * 🔴 **本卡没有「问题类别」控件**（一·补 B15）：问题类别就是咨询单的问题分类一 / 二 / 三级，
- * 填在通用咨询表单的「产品问题」卡里。在这儿再放一个「问题类别」下拉，等于同一件事
- * 在一张弹窗上问两遍，且两份值域永远对不齐。
- *
- * 🔴 **附件不在本卡**：与通用咨询单一致，在「产品问题」卡的「问题描述」里上传（OpTextareaAttach）。
- *
- * 产品两级、问题分级、来电描述、SN 号一律用通用咨询单的既有字段，不在本卡重复。
+ * 本卡没有「问题类别」控件（一·补 B15）；附件在「产品问题」卡的问题描述里上传。
  */
 import { computed } from 'vue';
 import { XIAOZHI_RD_MODULES } from '@/mock/xiaozhi/rdModules';
@@ -33,73 +22,72 @@ defineProps<{
   errors: Record<CreateTicketXiaozhiField, string>;
 }>();
 
-/**
- * 产品模块取值源 ＝ 后台「产品模块维护」的配置（一·补 B30）。
- * 写成 `computed` 而不是在 setup 里取一次快照 —— 后台新增一条，回到建单弹窗就要能选到。
- */
 const moduleOptions = computed(() => XIAOZHI_RD_MODULES.map((m) => ({ value: m.name, label: m.name })));
 const priorityOptions = XIAOZHI_RD_PRIORITIES.map((v) => ({ value: v, label: v }));
 
-/** 接收人（域账号）由产品模块带出，不可改（W2） */
 const receiver = computed(() => xiaozhiReceiverOf(info.value.rdModule));
 
-/** 下拉空值按 undefined 交给 a-select，才会显示「请选择」 */
+/** 与卡头勾选框双向绑定；取消勾选时清空产研字段，避免隐藏项仍参与校验或提交 */
+const escalateTpd = computed({
+  get: () => info.value.escalateTpd === true,
+  set: (on: boolean) => {
+    info.value.escalateTpd = on;
+    if (!on) info.value.rdModule = '';
+  },
+});
+
 function setSelect(key: 'rdModule', v: unknown) {
   info.value[key] = v == null ? '' : String(v);
 }
 </script>
 
 <template>
-  <CreateTicketPartCard title="小智工单信息" :body-gap="8">
-    <div class="xz-check-row">
-      <a-checkbox v-model:checked="info.escalateTpd">{{ L.escalateTpd }}</a-checkbox>
-    </div>
+  <CreateTicketPartCard title="小智工单信息" :compact="!escalateTpd" :body-gap="8">
+    <template #head-extra>
+      <a-checkbox v-model:checked="escalateTpd" class="xz-head-check">{{ L.escalateTpd }}</a-checkbox>
+    </template>
 
-    <div v-if="info.escalateTpd" class="xz-grid">
-      <div class="xz-field">
-        <label class="xz-label"><span class="req">*</span>{{ L.rdModule }}</label>
-        <div class="xz-control">
-          <FormSelect
-            class="xz-input"
-            :value="info.rdModule || undefined"
-            placeholder="请选择"
-            :status="errors.rdModule ? 'error' : ''"
-            :options="moduleOptions"
-            @update:value="(v) => setSelect('rdModule', v)"
-          />
-          <div v-if="errors.rdModule" class="xz-error">{{ errors.rdModule }}</div>
+    <div v-if="escalateTpd" class="xz-rd-panel">
+      <div class="xz-grid">
+        <div class="xz-field">
+          <label class="xz-label"><span class="req">*</span>{{ L.rdModule }}</label>
+          <div class="xz-control">
+            <FormSelect
+              class="xz-input"
+              :value="info.rdModule || undefined"
+              placeholder="请选择产品模块"
+              :status="errors.rdModule ? 'error' : ''"
+              :options="moduleOptions"
+              @update:value="(v) => setSelect('rdModule', v)"
+            />
+            <div v-if="errors.rdModule" class="xz-error">{{ errors.rdModule }}</div>
+          </div>
         </div>
-      </div>
 
-      <div class="xz-field">
-        <label class="xz-label"><span class="req">*</span>{{ L.rdReceiver }}</label>
-        <div class="xz-control">
-          <a-input class="xz-input" :value="receiver" disabled placeholder="由产品模块带出" />
+        <div class="xz-field">
+          <label class="xz-label"><span class="req">*</span>{{ L.rdReceiver }}</label>
+          <div class="xz-control">
+            <a-input class="xz-input" :value="receiver" disabled placeholder="选择产品模块后自动带出" />
+          </div>
         </div>
-      </div>
 
-      <div class="xz-field">
-        <label class="xz-label"><span class="req">*</span>{{ L.rdPriority }}</label>
-        <div class="xz-control">
-          <FormSelect
-            v-model:value="info.rdPriority"
-            class="xz-input"
-            size="middle"
-            placeholder="请选择"
-            :options="priorityOptions"
-          />
+        <div class="xz-field">
+          <label class="xz-label"><span class="req">*</span>{{ L.rdPriority }}</label>
+          <div class="xz-control">
+            <FormSelect
+              v-model:value="info.rdPriority"
+              class="xz-input"
+              placeholder="请选择优先级"
+              :options="priorityOptions"
+            />
+          </div>
         </div>
-      </div>
 
-      <!--
-        一·补 B29：取**客户（校代 / 渠道商）**已登记的讯飞域账号，不是建单坐席的；
-        **选填** —— 客户没登记就留空，建单人可手工录入或改。必填星号与必填校验同进同退，
-        两者一并去掉（B29 推翻 B24）。
-      -->
-      <div class="xz-field">
-        <label class="xz-label">{{ L.frontlineAccount }}</label>
-        <div class="xz-control">
-          <a-input v-model:value="info.frontlineAccount" class="xz-input" placeholder="请输入" />
+        <div class="xz-field">
+          <label class="xz-label">{{ L.frontlineAccount }}</label>
+          <div class="xz-control">
+            <a-input v-model:value="info.frontlineAccount" class="xz-input" placeholder="提报人域账号，选填" />
+          </div>
         </div>
       </div>
     </div>
@@ -107,15 +95,20 @@ function setSelect(key: 'rdModule', v: unknown) {
 </template>
 
 <style scoped>
-.xz-check-row {
-  display: flex;
-  align-items: center;
-  min-height: 32px;
-}
-.xz-check-row :deep(.ant-checkbox-wrapper) {
+.xz-head-check :deep(.ant-checkbox + span) {
   font-size: 12px;
   font-weight: 500;
   color: #374151;
+  padding-inline-end: 0;
+}
+.xz-rd-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
 }
 .xz-grid {
   display: grid;
@@ -130,7 +123,7 @@ function setSelect(key: 'rdModule', v: unknown) {
 }
 .xz-label {
   flex: none;
-  width: 108px;
+  width: 72px;
   font-size: 12px;
   font-weight: 500;
   color: #374151;

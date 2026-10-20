@@ -289,9 +289,9 @@ export const XIAOZHI_FIELD_LABELS = {
    */
   escalateTpd: '升级 TPD',
   rdModule: '产品模块',
-  rdReceiver: '接收人（域账号）',
+  rdReceiver: '接收人',
   rdPriority: '产研优先级',
-  frontlineAccount: '一线人员域账号',
+  frontlineAccount: '提报人',
   attachments: '附件',
 } as const;
 
