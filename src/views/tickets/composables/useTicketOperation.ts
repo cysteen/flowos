@@ -518,11 +518,13 @@ export function useTicketOperation() {
     // 用户提报单页头建单人显示提报用户信息（PRD §5.1，1021）；坐席代建显示建单坐席
     const creatorName = f.state.creator === '用户提报' ? flashSubmitterName(t) : (flash.creatorNameOf(t.no) ?? '—');
     const createdAt = t.createdAt ?? '';
+    // 页面展示的时刻统一「年-月-日 时:分:秒」（1021）：取建单履历的秒级时刻，取不到回落工单行
+    const createdAtSec = flash.timelineOf(t.no).find((e) => e.action === 'create')?.when ?? createdAt;
     base.builder = creatorName;
     base.builderShort = creatorName;
     base.createdAt = createdAt;
-    base.createdAtFull = createdAt;
-    base.issueOccurredAt = createdAt;
+    base.createdAtFull = createdAtSec;
+    base.issueOccurredAt = createdAtSec;
     base.businessType = t.businessType ?? '教育';
     base.businessLine = '教育业务线';
     base.attachments = [];

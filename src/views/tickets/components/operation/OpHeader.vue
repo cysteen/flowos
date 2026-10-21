@@ -168,7 +168,7 @@ function onLinkAftersaleClick() {
 
 
 /**
- * 刷机单 SLA 区（PRD §4.3 / M88 / M103）：悬停显示「SLA 起算 〈年-月-日 时:分〉」，未起算显示「未起算」；
+ * 刷机单 SLA 区（PRD §4.3 / M88 / M103）：悬停显示「SLA 起算 〈年-月-日 时:分:秒〉」，未起算显示「未起算」；
  * 从未起算（首推自动刷机中、自动刷机成功直进回访）或调研中不计时，SLA 区显示「—」，不画暂停钟。
  */
 const isFlashDetail = computed(() => isFlashTicket(props.detail) && !!props.detail.flash);
@@ -177,7 +177,7 @@ const isXiaozhiDetail = computed(() => isXiaozhiTicket(props.detail));
 const flashSlaStartText = computed(() => {
   if (!isFlashDetail.value) return undefined;
   const at = props.detail.flash?.state.slaStartedAt;
-  return at ? `SLA 起算 ${at.slice(0, 16)}` : '未起算';
+  return at ? `SLA 起算 ${at}` : '未起算';
 });
 // 「未起算」与「调研中」都不计时：SLA 区显示「—」，不画钟。判据取 `readSla` —— 与列表那一格同一份计算
 const flashSlaIdle = computed(

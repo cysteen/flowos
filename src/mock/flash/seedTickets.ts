@@ -19,7 +19,7 @@ import type { TimelineEntry, TlAction, TlCategory, TlRole } from '@/views/ticket
 import { TICKET_NO_PREFIX } from '@/constants/ticketNo';
 import {
   FLASH_PRODUCT_CATEGORY, FLASH_TAG_L1, FLASH_TAG_L2, FLASH_TAG_L3_USER_REPORT, FLASH_TICKET_TYPE, flashTicketTitle,
-  FLASH_POOLS, FLASH_RESULT_OFFLINE, FLASH_RESULT_ONLINE_SUCCESS, FLASH_RETURN_TIMEOUT_DEFAULT_MIN, FLASH_TL, flashFailReasonText, flashMinuteStamp,
+  FLASH_POOLS, FLASH_RESULT_OFFLINE, FLASH_RESULT_ONLINE_SUCCESS, FLASH_RETURN_TIMEOUT_DEFAULT_MIN, FLASH_TL, flashFailReasonText,
   flashSmsHandoff, flashSmsSuccess, flashSmsSurvey, flashStamp, parseFlashStamp,
   type FlashCreator, type FlashFailL1, type FlashFailL2, type FlashHandoffReason, type FlashInfo, type FlashPoolKey,
   type FlashStudentType, type FlashRun, type FlashRunResult, type FlashState, type FlashPushTrigger,
@@ -139,7 +139,7 @@ function ledger(
   const anchor = pausedSinceMs ?? nowMs;
   const elapsed = (SLA_LIMIT_MIN - remainMin) * 60_000;
   return {
-    slaStartedAt: flashMinuteStamp(startMs),
+    slaStartedAt: flashStamp(startMs),
     slaPausedAccumMs: Math.max(0, anchor - startMs - elapsed),
     ...(pausedSinceMs == null ? {} : { slaPausedSince: flashStamp(pausedSinceMs) }),
   };

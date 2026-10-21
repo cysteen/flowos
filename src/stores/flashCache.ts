@@ -41,8 +41,9 @@ export type FlashLsKey = (typeof FLASH_LS_KEYS)[keyof typeof FLASH_LS_KEYS];
  * v22：建单不再校验 SN 与毕业生身份（PRD v1.27）：刷机字段组去掉 verifyResult、失败原因去掉「建单校验不通过」；
  * ③ ⑩ 改为首推接收失败进一线刷机池，⑨ 转校生改进一线刷机池；建单履历不再带校验结果。
  * v23：刷机单 SLA 不停表（PRD v1.28）：⑰ 已转出照常计时，缓存里的「已暂停」快照作废。
+ * v24：SLA 起算时间改存到秒（界面时刻统一「年-月-日 时:分:秒」，PRD v1.28）。
  */
-export const FLASH_CACHE_VERSION = 23;
+export const FLASH_CACHE_VERSION = 24;
 
 /** 保质期：12 小时（与风险两条线 `RISK_STALE_MS` 同口径） */
 export const FLASH_STALE_MS = 12 * 60 * 60 * 1000;

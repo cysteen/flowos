@@ -172,7 +172,7 @@ const FLASH_POOL_EXTRA_COLUMNS = [
   { key: 'flashHandoff', label: '转人工原因', width: 120 },
   { key: 'flashFail', label: '失败原因', width: 230 },
   { key: 'flashModel', label: '产品名称', width: 210 },
-  { key: 'flashPoolAt', label: '进池时间', width: 140 },
+  { key: 'flashPoolAt', label: '进池时间', width: 160 },
 ];
 const FLASH_POOL_COLUMN_WIDTHS = { title: 380, action: 96 };
 const FLASH_POOL_COLUMN_WIDTHS_KEY = 'flowos-flash-pool-column-widths';
@@ -810,7 +810,7 @@ function onConfirmSaveFilter(name: string) {
               <span class="flash-product" :title="ticket.flash?.info.productModel">{{ ticket.flash?.info.productModel || '—' }}</span>
             </template>
             <template #cell-flashPoolAt="{ ticket }">
-              <span class="flash-plain">{{ flashStore.poolEnteredAtOf(ticket.no).slice(0, 16) || '—' }}</span>
+              <span class="flash-plain">{{ flashStore.poolEnteredAtOf(ticket.no) || '—' }}</span>
             </template>
           </TicketRichList>
           <div class="pager">

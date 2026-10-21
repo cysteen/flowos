@@ -7,12 +7,12 @@
  * 卡内直接展示全部明细：与「刷机信息」同规格的三列 label/value 网格（当前结果 / 推送次数 / 失败原因 / 转人工原因）＋ 刷机记录表（每次推送一行，时间正序）。
  * 从未推送（特殊情况、非自研机型）的单只出转人工原因，不出刷机记录表（PRD §5.2）。
  */
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed } from 'vue';
 import { ExportOutlined, ThunderboltOutlined } from '@ant-design/icons-vue';
 import { useFlashConfigStore } from '@/stores/flashConfig';
 import {
   FLASH_EXTERNAL_LINKS,
-  flashElapsedText, flashExternalUrl, flashRunInitiator, flashRunResultText,
+  flashExternalUrl, flashRunInitiator, flashRunResultText,
   type TicketFlash,
 } from '@/views/tickets/types/flash';
 
@@ -28,24 +28,8 @@ const pushed = computed(() => state.value.pushCount >= 1);
 const latestRun = computed(() => props.flash.runs[props.flash.runs.length - 1]);
 const waiting = computed(() => pushed.value && state.value.outcome === '等待回传');
 
-/* ---- 「已推送 mm:ss」每秒刷新；回传到达或转人工后计时消失 ---- */
-const now = ref(Date.now());
-let timer: number | undefined;
-watch(
-  waiting,
-  (on) => {
-    window.clearInterval(timer);
-    timer = undefined;
-    if (on) {
-      now.value = Date.now();
-      timer = window.setInterval(() => { now.value = Date.now(); }, 1000);
-    }
-  },
-  { immediate: true },
-);
-onBeforeUnmount(() => window.clearInterval(timer));
-
-const elapsedText = computed(() => (latestRun.value ? flashElapsedText(now.value - latestRun.value.pushedAtMs) : '00:00'));
+/* ---- 「自动刷机中 · 推送时间 〈年-月-日 时:分:秒〉」：取最近一次推送时刻，不走秒（PRD §5.2，1021） ---- */
+const pushedAtText = computed(() => latestRun.value?.pushedAt ?? '');
 
 const outcomeTone = computed(() => {
   const o = state.value.outcome;
@@ -93,7 +77,7 @@ const FAIL_TEXT_ONE_COL = 12;
           <dt>当前结果</dt>
           <dd>
             <span class="fr-val" :class="`tone-${outcomeTone}`">{{ flashRunResultText(state.outcome) }}</span>
-            <span v-if="waiting" class="fr-elapsed"> · 已推送 {{ elapsedText }}</span>
+            <span v-if="waiting && pushedAtText" class="fr-elapsed"> · 推送时间 {{ pushedAtText }}</span>
           </dd>
         </div>
 

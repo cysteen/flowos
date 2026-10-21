@@ -351,7 +351,7 @@ export interface FlashState {
   /** 用户回访评价（M86）：提交即记为已产生回访结论，一张单只评价一次 */
   survey?: FlashSurveyFeedback;
   /**
-   * SLA 起算时间（YYYY-MM-DD HH:mm，PRD §4.3 / M88，1013 A26）：本单首次进入教育刷机处理组池的时刻
+   * SLA 起算时间（YYYY-MM-DD HH:mm:ss，PRD §4.3 / M88，1013 A26）：本单首次进入教育刷机处理组池的时刻
    * （转人工进池或一线升级二线），以最早一次为准，此后再次进池不改写；
    * 一线刷机池、一线名下、首推「自动刷机中」、自动刷机成功直进回访的单为空。
    */
@@ -563,12 +563,6 @@ export function flashExternalUrl(key: keyof typeof FLASH_EXTERNAL_LINKS): string
 /** 推送结果展示名：等待回传 → 自动刷机中（PRD §5.2「当前结果」与推送记录「结果」列） */
 export function flashRunResultText(result: FlashRunResult | FlashOutcome): string {
   return result === '等待回传' ? '自动刷机中' : result;
-}
-
-/** 已推送计时 `mm:ss`（分钟不封顶） */
-export function flashElapsedText(ms: number): string {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  return `${pad(Math.floor(s / 60))}:${pad(s % 60)}`;
 }
 
 /** 处理履历正文（PRD §11.2 逐字） */

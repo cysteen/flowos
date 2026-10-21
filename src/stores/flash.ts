@@ -414,7 +414,7 @@ export const useFlashStore = defineStore('flash', () => {
   function startSlaIfL2(r: Ticket, at: number) {
     const st = r.flash!.state;
     if (st.pool !== 'l2' || st.slaStartedAt) return;
-    st.slaStartedAt = flashMinuteStamp(at);
+    st.slaStartedAt = flashStamp(at);
     st.slaPausedAccumMs = 0;
     st.slaPausedSince = undefined;
     r.responded = false;
@@ -1819,7 +1819,7 @@ export const useFlashStore = defineStore('flash', () => {
       const first = timelineOf(t.no).find(
         (e) => (e.action === 'flashHandoff' && e.what.endsWith(toL2)) || (e.action === 'escalate' && e.how === '升级二线'),
       );
-      if (first) t.flash.state.slaStartedAt = first.when.slice(0, 16);
+      if (first) t.flash.state.slaStartedAt = first.when;
     }
   }
 
