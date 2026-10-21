@@ -1908,7 +1908,8 @@ function pushAttachmentHistory(
 function onAttachmentTabUpload(files: { name: string; size: number }[]) {
   pushAttachmentHistory(
     files.map((f) => ({ name: f.name, size: formatFileSize(f.size) })),
-    `${user.name || '当前坐席'}(${mapUserRole(user.roleKey)})`,
+    // 上传人只显示姓名、不带角色（1021）
+    user.name || '当前坐席',
   );
 }
 
@@ -1916,7 +1917,7 @@ function onAttachmentTabUpload(files: { name: string; size: number }[]) {
 function syncClosingNoteAttachmentsToHistory(names: string[]) {
   pushAttachmentHistory(
     names.map((name) => ({ name, size: formatFileSize(closingNoteFileSizes.get(name)) })),
-    `${user.name || '当前坐席'}(${mapUserRole(user.roleKey)})`,
+    user.name || '当前坐席',
   );
 }
 

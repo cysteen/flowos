@@ -86,7 +86,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
   supplementRecords: [
     {
       id: 's1',
-      who: '王二线(二线)',
+      who: '王二线',
       when: '今天 10:05',
       supplementType: '补充信息',
       content: '补充设备 SN 照片及相关检测材料',
@@ -97,7 +97,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
     },
     {
       id: 's2',
-      who: '张晓芸(一线)',
+      who: '张晓芸',
       when: '今天 09:50',
       supplementType: '修改信息',
       content: '补充故障录屏与歌单链接',
@@ -109,7 +109,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
   dunningRecords: [
     {
       id: 'd1',
-      who: '张晓芸(一线)',
+      who: '张晓芸',
       when: '今天 14:10',
       content: '客户二次来电催单，要求今日内反馈处理进度',
       attachments: ['催单通话录音.mp3'],
@@ -119,7 +119,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
     },
     {
       id: 'd2',
-      who: '李一线(一线)',
+      who: '李一线',
       when: '今天 10:32',
       content: '客户来电催单：什么时候能解决？',
       attachments: ['催单短信截图.png'],
@@ -306,7 +306,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       id: 'n1',
       kind: 'upgrade',
       title: '升级通知',
-      receiver: '王经理(二线主管)',
+      receiver: '王经理',
       when: '2026-06-18 09:30:12',
       channel: '站内信 + i讯飞',
       status: '已读',
@@ -396,7 +396,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       id: 'n10',
       kind: 'approval',
       title: '待审核通知',
-      receiver: '王经理(二线主管)',
+      receiver: '王经理',
       when: '2026-06-17 16:00:00',
       channel: '站内信 + i讯飞',
       status: '已读',
@@ -426,7 +426,7 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       id: 'n13',
       kind: 'risk',
       title: '风险命中通知',
-      receiver: '王经理(二线主管)',
+      receiver: '王经理',
       when: '2026-06-17 10:15:00',
       channel: '站内信 + i讯飞',
       status: '已读',
@@ -501,14 +501,14 @@ export const OPERATION_TAB_DATA: OperationTabData = {
       name: '维修报告.pdf',
       size: '450 KB',
       uploadedAt: '2026-06-18 11:05:42',
-      uploadedBy: '王坐席(二线)',
+      uploadedBy: '王坐席',
     },
     {
       id: 'a6',
       name: '固件升级日志.txt',
       size: '12 KB',
       uploadedAt: '2026-06-18 16:32:10',
-      uploadedBy: '王坐席(二线)',
+      uploadedBy: '王坐席',
     },
   ],
   attachmentLinks: [

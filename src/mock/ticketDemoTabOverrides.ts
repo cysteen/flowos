@@ -8,7 +8,7 @@ export const TICKET_DEMO_TAB_OVERRIDES: Record<string, Partial<OperationTabData>
     supplementRecords: [
       {
         id: 's830-ext',
-        who: '张晓芸(一线)',
+        who: '张晓芸',
         when: '今天 09:35',
         supplementType: COMPLAINT_SUPPLEMENT_TYPE,
         content: '客户又在黑猫平台追加投诉，补充平台截图与投诉编号',
@@ -26,7 +26,7 @@ export const TICKET_DEMO_TAB_OVERRIDES: Record<string, Partial<OperationTabData>
       },
       {
         id: 's830-info',
-        who: '王坐席(二线)',
+        who: '王坐席',
         when: '今天 08:50',
         supplementType: '补充信息',
         content: '补充客户微信号，便于平台调解联系',
