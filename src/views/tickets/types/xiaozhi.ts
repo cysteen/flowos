@@ -186,7 +186,7 @@ export type XiaozhiRdFeedbackKind = '处理中' | '退回' | '办结';
  * 🔴 **产研办结不再自动关单，改由提报人确认是否解决**（一·补 B5，**推翻 D9 / D11**；称谓照 B19）。
  *
  * 链路：产研办结回传 → 本单落办结结果、置「待提报人确认」、**状态不动**（仍「已升级产研」）→
- * 工单系统发一条**完成通知**（一·补 B28 / B34：有客户域账号走 IM，否则走短信，**不是调研**）→
+ * 工单系统发一条**完成通知**（一·补 B28 / B34：按提报人标识的类型选 IM 或短信，**不是调研**）→
  * 提报人在小智工单应用里确认（B6：建单入口迁 400，确认流程保留）→
  * - 确认「**是**」→ 落终态「**已关闭**」（一·补 B32：走关闭、不下送、不调研）；
  * - 确认「**否**」→ 状态仍不动，**系统自动**回传产研「未解决」，产研重新处理后再办结、再等确认。
@@ -429,13 +429,13 @@ export const XIAOZHI_TL = {
   /**
    * 完成通知（一·补 B28 / B34）：产研办结后**由工单系统发**，**不是调研短信** ——
    * 小智工单全程无调研环节，这一条只告知「已完成，请确认」。
-   * 通道二选一：本单登记了客户域账号 → IM 消息；否则 → 客户手机号短信。
+   * 通道按提报人标识的类型选：域账号 → IM 消息；手机号 → 短信；提报人为空 → 回落客户联系手机号短信。
    */
   completionNotice: (channel: string, to: string) =>
     `已向${XIAOZHI_CONFIRM_ACTOR}发送完成通知（${channel}：${to}），请其在${XIAOZHI_CONFIRM_APP}确认是否解决`,
-  /** 域账号与手机号都没有：**不发**，只落一条履历留痕（B28） */
+  /** 提报人标识与客户联系手机号都没有：**不发**，只落一条履历留痕（B28） */
   completionNoticeSkipped: () =>
-    `本单未登记客户域账号与联系手机号，完成通知未发出，待${XIAOZHI_CONFIRM_ACTOR}自行在${XIAOZHI_CONFIRM_APP}查询确认`,
+    `本单未登记提报人标识与客户联系手机号，完成通知未发出，待${XIAOZHI_CONFIRM_ACTOR}自行在${XIAOZHI_CONFIRM_APP}查询确认`,
   /** 坐席自办答完点「关闭工单」→ 直落「已关闭」，不走审批（一·补 B32） */
   closeByAgent: (reason: string, note: string) =>
     `关闭工单。关闭原因：${reason}${note ? `；${note}` : ''}（小智工单不走关闭审批）`,
@@ -456,26 +456,22 @@ export const XIAOZHI_TL = {
     `超 ${days} 天未收到${XIAOZHI_CONFIRM_ACTOR}确认，视为已解决，自动关闭工单`,
 } as const;
 
-/** 站内通知 / 对客通知文案 */
+/**
+ * 小智单的通知文案 —— **只剩两条**。
+ *
+ * 🔴 **产研回传一律不发站内通知**（2026-10-21 拍板，PRD §9.1 规则 5）：中间状态、办结、
+ * 退回、确认未解决、关单都不发 —— 业务侧没有提过这几条，坐席在工单上看状态与处理履历。
+ * 原先的 `rdSettled` / `returnedByRd` / `returnedToRd` / `closed` 四条随之删除，不留壳。
+ */
 export const XIAOZHI_NOTICE = {
   /** 新单进工单池待领取（D21：一个大组、进池自己领） */
   pooled: (no: string) => `${no}已进入${XIAOZHI_POOL_GROUP_NAME}工单池，待领取`,
-  /** 办结回传后不关单，等提报人确认（B5） */
-  rdSettled: (no: string) => `${no}产研已办结，待${XIAOZHI_CONFIRM_ACTOR}确认是否解决`,
   /**
    * 🔴 **对客的完成通知**（一·补 B28 / B34）—— 不是调研、不含满意度评价。
-   * 由**工单系统**发，通道二选一（有客户域账号走 IM，否则走短信）。
+   * 由**工单系统**发，通道按提报人标识的类型选（见 `xiaozhiNoticeChannel()`）。
    */
   completed: (no: string) =>
     `${no}您反馈的问题已完成处理，请在${XIAOZHI_CONFIRM_APP}确认是否解决`,
-  /** 提报人确认未解决 → 系统已自动回传产研（B5② / B8），词序照 PRD L420 */
-  returnedToRd: (no: string, times: number) =>
-    `${no}${XIAOZHI_CONFIRM_ACTOR}确认未解决，系统已自动回传产研（已回传产研 ${times} 次）`,
-  /** 产研因信息不全退回 → 回到创建人 / 最后编辑人手上（B31 / B33） */
-  returnedByRd: (no: string, who: string) =>
-    `${no}产研因信息不全退回，已转「已退回」并交回 ${who}，请补充信息后重新提交产研`,
-  /** 确认解决 / 超时视为解决 / 坐席自办关闭 → 已关闭（B5① / B7 / B32） */
-  closed: (no: string) => `${no}已关闭`,
 } as const;
 
 /**

@@ -630,10 +630,8 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
       category: 'node', action: 'relate', who: '系统', role: '系统', systemActor: true,
       how: '产研回传', what: XIAOZHI_TL.rdReturned(owner || '本单创建人', reason),
     });
-    notify(
-      r, 'return', '产研退回', XIAOZHI_NOTICE.returnedByRd(no, owner || '本单创建人'),
-      [owner, XIAOZHI_POOL_GROUP_NAME],
-    );
+    // 2026-10-21 拍板：产研回传一律不发站内通知（中间状态 / 办结 / 退回 / 确认未解决 / 关单），
+    // 坐席在工单上看状态与处理履历（PRD §9.1 规则 5）。
     bump(no);
     persist();
     return true;
@@ -682,7 +680,7 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
       category: 'node', action: 'relate', who: '系统', role: '系统', systemActor: true,
       how: '产研回传', what: XIAOZHI_TL.rdSettled(payload.solutionType),
     });
-    notify(r, 'accepted', '产研办结', XIAOZHI_NOTICE.rdSettled(no), [r.assignee, XIAOZHI_POOL_GROUP_NAME]);
+    // 办结不发站内通知（2026-10-21 拍板，PRD §9.1 规则 5）；对客那一条照发，见下。
     // 一·补 B28 / B34：对客的「完成通知」由工单系统发，紧跟办结那一笔
     sendCompletionNotice(r, now + 1);
     bump(no);
@@ -694,11 +692,12 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
    * 完成通知（一·补 B28 / B34）—— 🔴 **不是调研**。
    *
    * 小智工单全程无调研环节，产研办结后只发这一条「已完成，请确认」，由**工单系统**发
-   * （B34：通道判定依赖只存在于工单系统的客户域账号字段，产研侧拿不到，故产研那条
+   * （B34：通道判定依赖只存在于工单系统的提报人标识，产研侧拿不到，故产研那条
    * 「解决结果通知」已提对外要求关闭）。
    *
-   * 通道**二选一**：本单登记了客户域账号 → IM 消息；否则 → 客户手机号短信；
-   * **两者都无 → 不发**，只落一条处理履历说明没发出去 —— 不编一个收件人出来。
+   * 通道按**提报人标识的类型**选：域账号 → IM 消息；手机号 → 短信；
+   * 提报人为空 → 回落**本单客户联系手机号**短信；
+   * **都没有 → 不发**，只落一条处理履历说明没发出去 —— 不编一个收件人出来。
    * 每发一条落一条沟通类处理履历。
    */
   function sendCompletionNotice(r: Ticket, at: number) {
@@ -759,7 +758,7 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
       category: 'node', action: 'resolved', who: '系统', role: '系统', systemActor: true,
       how: '自动关闭', what,
     });
-    notify(r, 'accepted', '工单关闭', XIAOZHI_NOTICE.closed(r.no), [XIAOZHI_POOL_GROUP_NAME]);
+    // 关单不发站内通知（2026-10-21 拍板，PRD §9.1 规则 5）
   }
 
   /**
@@ -785,7 +784,7 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
       category: 'node', action: 'resolved', who: actor.name, role: actor.role,
       how: '关闭工单', what: XIAOZHI_TL.closeByAgent(reason, note),
     });
-    notify(r, 'accepted', '工单关闭', XIAOZHI_NOTICE.closed(no), [XIAOZHI_POOL_GROUP_NAME]);
+    // 关单不发站内通知（2026-10-21 拍板，PRD §9.1 规则 5）
     bump(no);
     persist();
     return true;
@@ -855,13 +854,9 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
       how: '系统自动回传',
       what: XIAOZHI_TL.confirmUnresolved(who, times, ESCALATE_CHANNEL_TPD),
     });
-    /**
-     * 收件人＝**当前处理人 + 处理组**。
-     * 🔴 只发处理组是漏的：直通那批处理人是「系统」收不着也无妨，但**人工跟进过的单**
-     * 处理人是具体那位坐席 —— 单子被打回产研重办，最该知道的就是他，
-     * 指望他自己去翻工单池公告不是通知该有的样子。
-     */
-    notify(r, 'upgrade', '已回传产研', XIAOZHI_NOTICE.returnedToRd(no, times), [r.assignee, XIAOZHI_POOL_GROUP_NAME]);
+    // 确认未解决、自动回传产研这一下不发站内通知（2026-10-21 拍板，PRD §9.1 规则 5）：
+    // 业务侧没有提过这几条通知，坐席在工单上看状态与处理履历。
+
     bump(no);
     persist();
     return true;
