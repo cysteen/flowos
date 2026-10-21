@@ -1374,12 +1374,14 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
  * （position: relative）特异度高于本块的单类 `.col-title`，会把表头这几列打回 relative ——
  * relative 照样吃 `left: 16px`（有勾选列时），「工单 / 标题」表头整格右移 16px，
  * 压住「优先级」列名首字。双类选择器与之同特异度、书写在后，sticky 才落得下来。
+ * z-index 须高于滚动列表头里的拖拽把手（`.col-resize-handle` z-index: 2）：同为 2 时按 DOM
+ * 次序后者在上，横滚后把手透过冻结列表头露出（「工单 / ⋮⋮题」）。
  */
 .th-cell.cell-cb,
 .th-cell.col-title,
 .th-cell.col-action {
   position: sticky;
-  z-index: 2;
+  z-index: 3;
 }
 
 /* 边界投影：仅在那一侧还有未露出的内容时出现 */
