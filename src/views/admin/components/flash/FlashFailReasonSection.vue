@@ -44,7 +44,7 @@ const cols = [
   { title: '操作', key: 'op', width: 120 },
 ];
 
-/* 启停与「刷机原因」同一规范：状态列标签、操作列「停用」危险链接 + 二次确认、「启用」直接生效 */
+/* 启停规范：状态列标签、操作列「停用」危险链接 + 二次确认、「启用」直接生效 */
 function disable(r: Row) {
   if (r.locked) return;
   Modal.confirm({

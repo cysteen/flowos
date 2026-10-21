@@ -5,7 +5,7 @@ import { CameraOutlined, CheckCircleFilled, CloseOutlined } from '@ant-design/ic
 import { useFlashStore, type FlashCreateInput, type FlashEvaluationBlocked } from '@/stores/flash';
 import { useFlashConfigStore } from '@/stores/flashConfig';
 import { MDM_DEVICES } from '@/mock/flash/mdmDevices';
-import { FLASH_FIELD_LABELS } from '@/views/tickets/types/flash';
+import { FLASH_FIELD_LABELS, FLASH_REASON_PLACEHOLDER, FLASH_STUDENT_TYPE_OPTIONS, type FlashStudentType } from '@/views/tickets/types/flash';
 import FlashMobileShell from './FlashMobileShell.vue';
 import FlashProgressSteps from './FlashProgressSteps.vue';
 import { useFlashProgress, userStageText } from './useFlashProgress';
@@ -18,18 +18,20 @@ import { useFlashProgress, userStageText } from './useFlashProgress';
 /** 小程序授权手机号 */
 const AUTHORIZED_PHONE = '13856011288';
 
-type FieldKey = 'productModel' | 'snPhotos' | 'sn' | 'studentAccount' | 'studentName' | 'schoolName' | 'reason' | 'contactPhone';
+type FieldKey = 'productModel' | 'sn' | 'studentType' | 'studentName' | 'studentAccount' | 'schoolName' | 'reason' | 'snPhotos' | 'contactPhone';
+type PhotoKey = 'snPhotos' | 'mdmPhotos';
 
 const L = FLASH_FIELD_LABELS;
 /** 选择类字段提示「请选择」，照片「请上传」，其余「请填写」（P0-3） */
 const REQUIRED_TIP: Record<FieldKey, string> = {
   productModel: `请选择${L.productModel}`,
-  snPhotos: `请上传${L.snPhotos}`,
   sn: `请填写${L.sn}`,
-  studentAccount: `请填写${L.studentAccount}`,
+  studentType: `请选择${L.studentType}`,
   studentName: `请填写${L.studentName}`,
+  studentAccount: `请填写${L.studentAccount}`,
   schoolName: `请填写${L.schoolName}`,
-  reason: `请选择${L.reason}`,
+  reason: `请填写${L.reason}`,
+  snPhotos: `请上传${L.snPhotos}`,
   contactPhone: `请填写${L.contactPhone}`,
 };
 const LABEL_TO_KEY = Object.fromEntries(
@@ -42,22 +44,25 @@ const config = useFlashConfigStore();
 
 // 机型清单以小程序为准，工单系统不按问题分类筛（10-19 用户定）
 const modelOptions = computed(() => config.models.map((m) => ({ value: m.model, label: m.model })));
-const reasonOptions = computed(() => config.enabledReasons().map((r) => ({ value: r, label: r })));
 
 const form = reactive({
   productModel: undefined as string | undefined,
   sn: '',
-  studentAccount: '',
+  studentType: undefined as FlashStudentType | undefined,
   studentName: '',
+  studentAccount: '',
   /** 学校名称：自由文本，工单系统不校验（10-19 C8；毕业生身份按学生账号判定） */
   schoolName: '',
-  reason: undefined as string | undefined,
-  romVersion: '',
-  mdmVersion: '',
+  reason: '',
   contactPhone: AUTHORIZED_PHONE,
 });
-const photo = ref<{ name: string; url: string } | null>(null);
-const fileInput = ref<HTMLInputElement | null>(null);
+/** 设备SN照片（必传）/ MDM信息图片（选传），各 1 张 */
+const photos = reactive<Record<PhotoKey, { name: string; url: string } | null>>({ snPhotos: null, mdmPhotos: null });
+const fileInputs = reactive<Record<PhotoKey, HTMLInputElement | null>>({ snPhotos: null, mdmPhotos: null });
+const PHOTO_FIELDS: { key: PhotoKey; label: string; required: boolean }[] = [
+  { key: 'snPhotos', label: L.snPhotos, required: true },
+  { key: 'mdmPhotos', label: L.mdmPhotos, required: false },
+];
 
 const errors = reactive<Partial<Record<FieldKey, string>>>({});
 const alert = ref<{ text: string; inflightNo?: string } | null>(null);
@@ -68,13 +73,14 @@ function clearError(k: FieldKey) {
 
 watch(() => form.productModel, () => { clearError('productModel'); alert.value = null; });
 watch(() => form.sn, () => { clearError('sn'); alert.value = null; });
+watch(() => form.studentType, () => clearError('studentType'));
 watch(() => form.studentAccount, () => clearError('studentAccount'));
 watch(() => form.studentName, () => clearError('studentName'));
 watch(() => form.schoolName, () => clearError('schoolName'));
 watch(() => form.reason, () => clearError('reason'));
 watch(() => form.contactPhone, () => clearError('contactPhone'));
 
-/* ---------------- 设备SN照片 · 识别 SN ---------------- */
+/* ---------------- 设备SN照片 · 识别 SN / MDM信息图片 ---------------- */
 
 /** 按 MDM 设备台账识别照片里的 SN；识别不出返回空（P0-7：不填入） */
 function recognizeSn(fileName: string): string {
@@ -85,18 +91,19 @@ function recognizeSn(fileName: string): string {
   return hit?.sn ?? '';
 }
 
-function pickPhoto() {
-  fileInput.value?.click();
+function pickPhoto(key: PhotoKey) {
+  fileInputs[key]?.click();
 }
 
-function onPhotoChange(e: Event) {
+function onPhotoChange(key: PhotoKey, e: Event) {
   const input = e.target as HTMLInputElement;
   const file = input.files?.[0];
   input.value = '';
   if (!file) return;
   const reader = new FileReader();
   reader.onload = () => {
-    photo.value = { name: file.name, url: String(reader.result ?? '') };
+    photos[key] = { name: file.name, url: String(reader.result ?? '') };
+    if (key !== 'snPhotos') return;
     clearError('snPhotos');
     const sn = recognizeSn(file.name);
     if (sn) form.sn = sn;
@@ -104,8 +111,8 @@ function onPhotoChange(e: Event) {
   reader.readAsDataURL(file);
 }
 
-function removePhoto() {
-  photo.value = null;
+function removePhoto(key: PhotoKey) {
+  photos[key] = null;
 }
 
 /* ---------------- 提交 ---------------- */
@@ -116,14 +123,14 @@ function buildInput(): FlashCreateInput {
   return {
     productModel: form.productModel ?? '',
     sn: form.sn,
+    studentType: form.studentType ?? '',
     studentAccount: form.studentAccount,
     studentName: form.studentName,
     schoolId: '',
     schoolName: form.schoolName.trim(),
-    reason: form.reason ?? '',
-    romVersion: form.romVersion.trim(),
-    mdmVersion: form.mdmVersion.trim(),
-    snPhotos: photo.value ? [photo.value.name] : [],
+    reason: form.reason.trim(),
+    snPhotos: photos.snPhotos ? [photos.snPhotos.name] : [],
+    mdmPhotos: photos.mdmPhotos ? [photos.mdmPhotos.name] : [],
     contactPhone: form.contactPhone,
   };
 }
@@ -218,22 +225,6 @@ const { snapshot } = useFlashProgress(resultNo);
         <div v-if="errors.productModel" class="fa-error">{{ errors.productModel }}</div>
       </div>
 
-      <div class="fa-field" :class="{ 'has-error': errors.snPhotos }">
-        <label class="fa-label is-required">{{ L.snPhotos }}</label>
-        <input ref="fileInput" class="fa-file" type="file" accept="image/*" @change="onPhotoChange">
-        <div v-if="photo" class="fa-photo">
-          <img :src="photo.url" :alt="L.snPhotos">
-          <button type="button" class="fa-photo__remove" aria-label="删除" @click="removePhoto">
-            <CloseOutlined />
-          </button>
-        </div>
-        <button v-else type="button" class="fa-upload" :class="{ 'is-error': errors.snPhotos }" @click="pickPhoto">
-          <CameraOutlined class="fa-upload__icon" />
-          <span>上传照片</span>
-        </button>
-        <div v-if="errors.snPhotos" class="fa-error">{{ errors.snPhotos }}</div>
-      </div>
-
       <div class="fa-field" :class="{ 'has-error': errors.sn }">
         <label class="fa-label is-required">{{ L.sn }}</label>
         <a-input
@@ -246,15 +237,16 @@ const { snapshot } = useFlashProgress(resultNo);
         <div v-if="errors.sn" class="fa-error">{{ errors.sn }}</div>
       </div>
 
-      <div class="fa-field" :class="{ 'has-error': errors.studentAccount }">
-        <label class="fa-label is-required">{{ L.studentAccount }}</label>
-        <a-input
-          v-model:value="form.studentAccount"
+      <div class="fa-field" :class="{ 'has-error': errors.studentType }">
+        <label class="fa-label is-required">{{ L.studentType }}</label>
+        <a-select
+          v-model:value="form.studentType"
           size="large"
-          placeholder="请输入"
-          :status="errors.studentAccount ? 'error' : undefined"
+          placeholder="请选择"
+          :options="FLASH_STUDENT_TYPE_OPTIONS"
+          :status="errors.studentType ? 'error' : undefined"
         />
-        <div v-if="errors.studentAccount" class="fa-error">{{ errors.studentAccount }}</div>
+        <div v-if="errors.studentType" class="fa-error">{{ errors.studentType }}</div>
       </div>
 
       <div class="fa-field" :class="{ 'has-error': errors.studentName }">
@@ -266,6 +258,17 @@ const { snapshot } = useFlashProgress(resultNo);
           :status="errors.studentName ? 'error' : undefined"
         />
         <div v-if="errors.studentName" class="fa-error">{{ errors.studentName }}</div>
+      </div>
+
+      <div class="fa-field" :class="{ 'has-error': errors.studentAccount }">
+        <label class="fa-label is-required">{{ L.studentAccount }}</label>
+        <a-input
+          v-model:value="form.studentAccount"
+          size="large"
+          placeholder="请输入"
+          :status="errors.studentAccount ? 'error' : undefined"
+        />
+        <div v-if="errors.studentAccount" class="fa-error">{{ errors.studentAccount }}</div>
       </div>
 
       <div class="fa-field" :class="{ 'has-error': errors.schoolName }">
@@ -281,11 +284,11 @@ const { snapshot } = useFlashProgress(resultNo);
 
       <div class="fa-field" :class="{ 'has-error': errors.reason }">
         <label class="fa-label is-required">{{ L.reason }}</label>
-        <a-select
+        <a-textarea
           v-model:value="form.reason"
           size="large"
-          placeholder="请选择"
-          :options="reasonOptions"
+          :rows="3"
+          :placeholder="FLASH_REASON_PLACEHOLDER"
           :status="errors.reason ? 'error' : undefined"
         />
         <div v-if="errors.reason" class="fa-error">{{ errors.reason }}</div>
@@ -293,13 +296,20 @@ const { snapshot } = useFlashProgress(resultNo);
     </section>
 
     <section class="fa-card">
-      <div class="fa-field">
-        <label class="fa-label">{{ L.romVersion }}</label>
-        <a-input v-model:value="form.romVersion" size="large" placeholder="请输入" />
-      </div>
-      <div class="fa-field">
-        <label class="fa-label">{{ L.mdmVersion }}</label>
-        <a-input v-model:value="form.mdmVersion" size="large" placeholder="请输入" />
+      <div v-for="p in PHOTO_FIELDS" :key="p.key" class="fa-field" :class="{ 'has-error': p.required && errors.snPhotos }">
+        <label class="fa-label" :class="{ 'is-required': p.required }">{{ p.label }}</label>
+        <input :ref="(el) => { fileInputs[p.key] = el as HTMLInputElement | null; }" class="fa-file" type="file" accept="image/*" @change="(e) => onPhotoChange(p.key, e)">
+        <div v-if="photos[p.key]" class="fa-photo">
+          <img :src="photos[p.key]!.url" :alt="p.label">
+          <button type="button" class="fa-photo__remove" aria-label="删除" @click="removePhoto(p.key)">
+            <CloseOutlined />
+          </button>
+        </div>
+        <button v-else type="button" class="fa-upload" :class="{ 'is-error': p.required && errors.snPhotos }" @click="pickPhoto(p.key)">
+          <CameraOutlined class="fa-upload__icon" />
+          <span>上传照片</span>
+        </button>
+        <div v-if="p.required && errors.snPhotos" class="fa-error">{{ errors.snPhotos }}</div>
       </div>
     </section>
 
