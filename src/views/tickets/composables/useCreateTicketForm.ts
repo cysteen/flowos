@@ -58,10 +58,11 @@ import { mapUserRole } from '@/views/tickets/composables/opActions';
 /** 「刷机信息」卡必填项：字段 → 展示名 + 提示动词（输入类「请填写」、选择类「请选择」，PRD §2.3 第 1 条） */
 const FLASH_REQUIRED_FIELDS: { field: CreateTicketFlashField; label: string; verb: '请填写' | '请选择' }[] = [
   { field: 'sn', label: FLASH_FIELD_LABELS.sn, verb: '请填写' },
-  { field: 'studentAccount', label: FLASH_FIELD_LABELS.studentAccount, verb: '请填写' },
+  { field: 'studentType', label: FLASH_FIELD_LABELS.studentType, verb: '请选择' },
   { field: 'studentName', label: FLASH_FIELD_LABELS.studentName, verb: '请填写' },
+  { field: 'studentAccount', label: FLASH_FIELD_LABELS.studentAccount, verb: '请填写' },
   { field: 'schoolId', label: FLASH_FIELD_LABELS.schoolName, verb: '请选择' },
-  { field: 'reason', label: FLASH_FIELD_LABELS.reason, verb: '请选择' },
+  { field: 'reason', label: FLASH_FIELD_LABELS.reason, verb: '请填写' },
 ];
 
 /** 刷机单提交拦截（显示在弹窗底栏上方）：机型不支持 / 同 SN 在途 / 在途查询不可用 */
@@ -254,7 +255,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   ));
   /** 「刷机信息」卡字段下方的必填提示 */
   const flashErrors = reactive<Record<CreateTicketFlashField, string>>({
-    sn: '', studentAccount: '', studentName: '', schoolId: '', reason: '',
+    sn: '', studentType: '', studentName: '', studentAccount: '', schoolId: '', reason: '',
   });
   /** 客户信息区手机号字段下方的必填提示 */
   const flashPhoneError = ref('');
@@ -288,14 +289,14 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       problemL2: form.problemL2,
       problemL3: form.problemL3,
       sn: f.sn ?? '',
+      studentType: f.studentType ?? '',
       studentAccount: f.studentAccount ?? '',
       studentName: f.studentName ?? '',
       schoolId: f.schoolId ?? '',
       schoolName: f.schoolId ? findSchoolById(f.schoolId)?.name : undefined,
-      reason: f.reason ?? '',
-      romVersion: (f.romVersion ?? '').trim(),
-      mdmVersion: (f.mdmVersion ?? '').trim(),
+      reason: (f.reason ?? '').trim(),
       snPhotos: [...(f.snPhotos ?? [])],
+      mdmPhotos: [...(f.mdmPhotos ?? [])],
       // 联系手机号取客户信息区的客户手机号（PRD §2.4）
       contactPhone: form.customer?.phone ?? '',
     };

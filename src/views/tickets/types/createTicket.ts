@@ -2,6 +2,7 @@ import { PRIORITY_LABEL } from '@/views/tickets/types/ticket';
 import type { Channel, ClosureMode, Priority, TicketType } from '@/views/tickets/types/ticket';
 import type { RoleKey } from '@/config/roles';
 import { FLASH_MODEL_SEED } from '@/mock/flash/models';
+import type { FlashStudentType } from '@/views/tickets/types/flash';
 import { XIAOZHI_RD_PRIORITY_DEFAULT, type XiaozhiRdPriority } from '@/views/tickets/types/xiaozhi';
 
 /**
@@ -301,35 +302,35 @@ export function defaultCreateTicketXiaozhiForm(): CreateTicketXiaozhiForm {
 export interface CreateTicketFlashForm {
   /** 设备SN */
   sn: string;
-  /** 学生账号 */
-  studentAccount: string;
+  /** 学生类型（毕业生 / 转校生；未选为空串） */
+  studentType: FlashStudentType | '';
   /** 学生姓名 */
   studentName: string;
+  /** 学生账号 */
+  studentAccount: string;
   /** 学校库 ID（学校名称可搜索下拉，存 ID） */
   schoolId: string;
-  /** 刷机原因（后台「刷机原因」启用项） */
+  /** 刷机原因（自由文本） */
   reason: string;
-  /** ROM版本（选填） */
-  romVersion: string;
-  /** MDM版本（选填） */
-  mdmVersion: string;
   /** 设备SN照片（文件名，最多 1 张，选填） */
   snPhotos: string[];
+  /** MDM信息图片（文件名，最多 1 张，选填） */
+  mdmPhotos: string[];
 }
 
 /** 「刷机信息」卡里参与必填提示的字段 */
-export type CreateTicketFlashField = 'sn' | 'studentAccount' | 'studentName' | 'schoolId' | 'reason';
+export type CreateTicketFlashField = 'sn' | 'studentType' | 'studentName' | 'studentAccount' | 'schoolId' | 'reason';
 
 export function defaultCreateTicketFlashForm(): CreateTicketFlashForm {
   return {
     sn: '',
-    studentAccount: '',
+    studentType: '',
     studentName: '',
+    studentAccount: '',
     schoolId: '',
     reason: '',
-    romVersion: '',
-    mdmVersion: '',
     snPhotos: [],
+    mdmPhotos: [],
   };
 }
 
