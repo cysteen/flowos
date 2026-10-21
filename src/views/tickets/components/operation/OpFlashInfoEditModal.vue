@@ -1,10 +1,11 @@
 <script setup lang="ts">
 /**
- * 刷机单 · 「修改刷机信息」弹窗（1013 A12 / B1 / B8，PRD §5.6 / §5.8，M52 / M53 / M63 / M70 / M78–M80）。
+ * 刷机单 · 「修改刷机信息」弹窗（1013 A12 / B1 / B8，PRD §5.6 / §5.8，M52 / M53 / M70 / M78–M80）。
  * 所有机型只有这一个入口；底部按钮按弹窗里**所选的产品**取值，改选产品随即切换：
  * 自研机型（支持线上自助推送）为「取消 / 重新推送」，提交即推送（唯一的推送入口）；其他机型为「取消 / 保存」，只保存不推送。
  *
- * - 9 个字段按本单当前值预填；产品名称下拉只列支持刷机的产品；ROM版本 / MDM版本有 MDM 回填值时只读。
+ * - 字段按本单当前值预填：产品分类 · 产品名称 · 设备SN · 学生类型 · 学生姓名 · 学生账号 · 学校名称 · 刷机原因 ·
+ *   设备SN照片 · MDM信息图片；产品名称下拉只列支持刷机的产品。
  * - 提交先判必填（字段下方红字），其余拦截与校验结果由刷机服务返回，显示在按钮上方行内红字；
  *   不通过时弹窗不关、已填内容保留。
  */
@@ -18,8 +19,11 @@ import { useFlashConfigStore } from '@/stores/flashConfig';
 import type { FlashActionResult, FlashInfoChanges } from '@/stores/flash';
 import { findSchoolById } from '@/mock/schools';
 import FlashSchoolPicker from '@/views/tickets/components/create-ticket/FlashSchoolPicker.vue';
-import { FLASH_FIELD_LABELS as L, type FlashInfo } from '@/views/tickets/types/flash';
-import { snPlateDataUri } from '@/views/tickets/utils/flashSnPlate';
+import {
+  FLASH_FIELD_LABELS as L, FLASH_REASON_PLACEHOLDER, FLASH_STUDENT_TYPE_OPTIONS,
+  type FlashInfo, type FlashStudentType,
+} from '@/views/tickets/types/flash';
+import { mdmInfoDataUri, snPlateDataUri } from '@/views/tickets/utils/flashSnPlate';
 
 const props = defineProps<{
   open: boolean;
@@ -38,31 +42,32 @@ const emit = defineEmits<{
 const router = useRouter();
 const config = useFlashConfigStore();
 
-type FieldKey = 'productModel' | 'sn' | 'studentAccount' | 'studentName' | 'schoolId' | 'reason' | 'romVersion' | 'mdmVersion';
+type FieldKey = 'productModel' | 'sn' | 'studentType' | 'studentName' | 'studentAccount' | 'schoolId' | 'reason';
+type PhotoKey = 'snPhotos' | 'mdmPhotos';
 
 interface Draft {
   productModel: string;
   sn: string;
-  studentAccount: string;
+  studentType: FlashStudentType | '';
   studentName: string;
+  studentAccount: string;
   schoolId: string;
   reason: string;
-  romVersion: string;
-  mdmVersion: string;
   snPhotos: string[];
+  mdmPhotos: string[];
 }
 
 function fromInfo(i: FlashInfo): Draft {
   return {
     productModel: i.productModel,
     sn: i.sn,
-    studentAccount: i.studentAccount,
+    studentType: i.studentType ?? '',
     studentName: i.studentName,
+    studentAccount: i.studentAccount,
     schoolId: i.schoolId,
     reason: i.reason,
-    romVersion: i.romVersion,
-    mdmVersion: i.mdmVersion,
     snPhotos: [...i.snPhotos],
+    mdmPhotos: [...(i.mdmPhotos ?? [])],
   };
 }
 
@@ -70,9 +75,16 @@ const original = ref<Draft>(fromInfo(props.info));
 const draft = reactive<Draft>(fromInfo(props.info));
 const errors = reactive<Partial<Record<FieldKey, string>>>({});
 const bottomTip = ref<{ text: string; inflightNo?: string } | null>(null);
-const photoList = ref<UploadFile[]>([]);
+const photoLists = ref<Record<PhotoKey, UploadFile[]>>({ snPhotos: [], mdmPhotos: [] });
 /** 每次打开重挂学校选择器：地区与检索框按本单当前值重新预填 */
 const openSeq = ref(0);
+
+/** 本单已存图片的缩略图（与处理页「刷机信息」区块同一张图） */
+function storedSrc(key: PhotoKey, name: string): string {
+  return key === 'snPhotos'
+    ? snPlateDataUri(props.info.sn || name)
+    : mdmInfoDataUri(props.info.sn || name, props.info.studentAccount);
+}
 
 watch(
   () => props.open,
@@ -83,16 +95,15 @@ watch(
     Object.assign(draft, fromInfo(props.info));
     (Object.keys(errors) as FieldKey[]).forEach((k) => delete errors[k]);
     bottomTip.value = null;
-    // 本单已存照片出缩略图（与处理页「刷机信息」区块同一张铭牌图），点开看大图
-    photoList.value = draft.snPhotos.map((name, i) => {
-      const src = snPlateDataUri(props.info.sn || name);
-      return { uid: `sn-${i}-${name}`, name, status: 'done', url: src, thumbUrl: src };
+    (['snPhotos', 'mdmPhotos'] as PhotoKey[]).forEach((key) => {
+      photoLists.value[key] = draft[key].map((name, i) => {
+        const src = storedSrc(key, name);
+        return { uid: `${key}-${i}-${name}`, name, status: 'done', url: src, thumbUrl: src };
+      });
     });
   },
   { immediate: true },
 );
-
-const versionLocked = computed(() => props.info.versionBackfilled);
 
 /** 产品所属的产品分类（产品字段两级：产品分类 + 产品名称，PRD §5.6） */
 const categoryOf = (model: string) => config.modelOf(model)?.category ?? '';
@@ -137,22 +148,29 @@ const modelOptions = computed(() => {
 /** 所选产品为自研机型（支持线上自助推送）：主按钮「重新推送」，否则「保存」（B8） */
 const pushable = computed(() => config.isSupportedModel(draft.productModel) && config.isSelfDeveloped(draft.productModel));
 
-const reasonOptions = computed(() => config.enabledReasons().map((r) => ({ value: r, label: r })));
-
-function setSelect(key: 'productModel' | 'schoolId' | 'reason', v: unknown) {
+function setSelect(key: 'productModel' | 'schoolId', v: unknown) {
   draft[key] = v == null ? '' : String(v);
   delete errors[key];
+}
+function setStudentType(v: unknown) {
+  draft.studentType = v == null ? '' : (String(v) as FlashStudentType);
+  delete errors.studentType;
 }
 function onInput(key: FieldKey) {
   delete errors[key];
 }
-function onPhotoChange({ fileList }: { fileList: UploadFile[] }) {
+function onPhotoChange(key: PhotoKey, { fileList }: { fileList: UploadFile[] }) {
   const list = fileList.slice(-1);
-  photoList.value = list;
-  draft.snPhotos = list.map((f) => f.name);
+  photoLists.value[key] = list;
+  draft[key] = list.map((f) => f.name);
 }
 
-/** 缩略图点开大图：已存照片取铭牌图，新选的本地图片取读出的预览 */
+const PHOTO_FIELDS: { key: PhotoKey; label: string }[] = [
+  { key: 'snPhotos', label: L.snPhotos },
+  { key: 'mdmPhotos', label: L.mdmPhotos },
+];
+
+/** 缩略图点开大图：已存图片取本单图，新选的本地图片取读出的预览 */
 const photoPreview = reactive({ open: false, src: '' });
 async function onPhotoPreview(file: UploadFile) {
   let src = file.url || file.thumbUrl || '';
@@ -174,10 +192,11 @@ const schoolNameOf = (id: string) => findSchoolById(id)?.name ?? '';
 const REQUIRED: { key: FieldKey; label: string; select: boolean }[] = [
   { key: 'productModel', label: L.productName, select: true },
   { key: 'sn', label: L.sn, select: false },
-  { key: 'studentAccount', label: L.studentAccount, select: false },
+  { key: 'studentType', label: L.studentType, select: true },
   { key: 'studentName', label: L.studentName, select: false },
+  { key: 'studentAccount', label: L.studentAccount, select: false },
   { key: 'schoolId', label: L.schoolName, select: true },
-  { key: 'reason', label: L.reason, select: true },
+  { key: 'reason', label: L.reason, select: false },
 ];
 
 function onSubmit() {
@@ -199,14 +218,14 @@ function onSubmit() {
   const res = props.submitter({
     productModel: draft.productModel,
     sn: draft.sn.trim().toUpperCase(),
-    studentAccount: draft.studentAccount.trim(),
+    studentType: draft.studentType as FlashStudentType,
     studentName: draft.studentName.trim(),
+    studentAccount: draft.studentAccount.trim(),
     schoolId: draft.schoolId,
     schoolName: schoolNameOf(draft.schoolId),
-    reason: draft.reason,
-    romVersion: draft.romVersion.trim(),
-    mdmVersion: draft.mdmVersion.trim(),
+    reason: draft.reason.trim(),
     snPhotos: [...draft.snPhotos],
+    mdmPhotos: [...draft.mdmPhotos],
   }, pushable.value);
   if (!res.ok) {
     bottomTip.value = { text: res.message, inflightNo: res.inflightNo };
@@ -276,10 +295,17 @@ const inflightHref = computed(() => (tipParts.value?.no ? router.resolve(`/ticke
           </div>
         </div>
         <div class="fe-field">
-          <label class="fe-label"><span class="req">*</span>{{ L.studentAccount }}</label>
+          <label class="fe-label"><span class="req">*</span>{{ L.studentType }}</label>
           <div class="fe-control">
-            <a-input v-model:value="draft.studentAccount" class="fe-input" placeholder="请输入学生账号" :status="errors.studentAccount ? 'error' : ''" @input="onInput('studentAccount')" />
-            <div v-if="errors.studentAccount" class="fe-error">{{ errors.studentAccount }}</div>
+            <FormSelect
+              :value="draft.studentType || undefined"
+              class="fe-input"
+              placeholder="请选择"
+              :status="errors.studentType ? 'error' : ''"
+              :options="FLASH_STUDENT_TYPE_OPTIONS"
+              @update:value="setStudentType"
+            />
+            <div v-if="errors.studentType" class="fe-error">{{ errors.studentType }}</div>
           </div>
         </div>
         <div class="fe-field">
@@ -289,8 +315,15 @@ const inflightHref = computed(() => (tipParts.value?.no ? router.resolve(`/ticke
             <div v-if="errors.studentName" class="fe-error">{{ errors.studentName }}</div>
           </div>
         </div>
+        <div class="fe-field">
+          <label class="fe-label"><span class="req">*</span>{{ L.studentAccount }}</label>
+          <div class="fe-control">
+            <a-input v-model:value="draft.studentAccount" class="fe-input" placeholder="请输入学生账号" :status="errors.studentAccount ? 'error' : ''" @input="onInput('studentAccount')" />
+            <div v-if="errors.studentAccount" class="fe-error">{{ errors.studentAccount }}</div>
+          </div>
+        </div>
         <!-- 学校名称占整行：省市区与学校名称完整可见（D7） -->
-        <div class="fe-field fe-school">
+        <div class="fe-field fe-wide">
           <label class="fe-label"><span class="req">*</span>{{ L.schoolName }}</label>
           <div class="fe-control">
             <FlashSchoolPicker
@@ -304,61 +337,47 @@ const inflightHref = computed(() => (tipParts.value?.no ? router.resolve(`/ticke
             <div v-if="errors.schoolId" class="fe-error">{{ errors.schoolId }}</div>
           </div>
         </div>
-        <div class="fe-field">
+        <div class="fe-field fe-wide">
           <label class="fe-label"><span class="req">*</span>{{ L.reason }}</label>
           <div class="fe-control">
-            <FormSelect
-              :value="draft.reason || undefined"
-              class="fe-input"
-              placeholder="请选择"
+            <a-textarea
+              v-model:value="draft.reason"
+              class="fe-input fe-textarea"
+              :rows="3"
+              :placeholder="FLASH_REASON_PLACEHOLDER"
               :status="errors.reason ? 'error' : ''"
-              :options="reasonOptions"
-              @update:value="(v) => setSelect('reason', v)"
+              @input="onInput('reason')"
             />
             <div v-if="errors.reason" class="fe-error">{{ errors.reason }}</div>
           </div>
         </div>
-        <div class="fe-field">
-          <label class="fe-label">{{ L.romVersion }}</label>
-          <div class="fe-control fe-inline">
-            <a-input v-model:value="draft.romVersion" class="fe-input" placeholder="请输入ROM版本" :disabled="versionLocked" />
-            <span v-if="versionLocked && draft.romVersion" class="fe-backfill">MDM 回填</span>
-          </div>
-        </div>
-        <div class="fe-field">
-          <label class="fe-label">{{ L.mdmVersion }}</label>
-          <div class="fe-control fe-inline">
-            <a-input v-model:value="draft.mdmVersion" class="fe-input" placeholder="请输入MDM版本" :disabled="versionLocked" />
-            <span v-if="versionLocked && draft.mdmVersion" class="fe-backfill">MDM 回填</span>
+
+        <div v-for="p in PHOTO_FIELDS" :key="p.key" class="fe-field fe-photo">
+          <label class="fe-label">{{ p.label }}</label>
+          <div class="fe-control">
+            <a-upload
+              :file-list="photoLists[p.key]"
+              list-type="picture-card"
+              accept="image/*"
+              :max-count="1"
+              :before-upload="() => false"
+              :show-upload-list="{ showPreviewIcon: true, showRemoveIcon: true }"
+              @change="onPhotoChange(p.key, $event)"
+              @preview="onPhotoPreview"
+            >
+              <div v-if="!photoLists[p.key].length" class="fe-upload-btn">
+                <PlusOutlined />
+                <span>上传</span>
+              </div>
+            </a-upload>
           </div>
         </div>
       </div>
-
-      <div class="fe-field fe-photo">
-        <label class="fe-label">{{ L.snPhotos }}</label>
-        <div class="fe-control">
-          <a-upload
-            :file-list="photoList"
-            list-type="picture-card"
-            accept="image/*"
-            :max-count="1"
-            :before-upload="() => false"
-            :show-upload-list="{ showPreviewIcon: true, showRemoveIcon: true }"
-            @change="onPhotoChange"
-            @preview="onPhotoPreview"
-          >
-            <div v-if="!photoList.length" class="fe-upload-btn">
-              <PlusOutlined />
-              <span>上传</span>
-            </div>
-          </a-upload>
-          <div class="fe-photo-preview">
-            <a-image
-              :src="photoPreview.src"
-              :preview="{ visible: photoPreview.open, src: photoPreview.src, onVisibleChange: (v: boolean) => (photoPreview.open = v) }"
-            />
-          </div>
-        </div>
+      <div class="fe-photo-preview">
+        <a-image
+          :src="photoPreview.src"
+          :preview="{ visible: photoPreview.open, src: photoPreview.src, onVisibleChange: (v: boolean) => (photoPreview.open = v) }"
+        />
       </div>
 
       <div v-if="tipParts" class="fe-tip">
@@ -372,14 +391,13 @@ const inflightHref = computed(() => (tipParts.value?.no ? router.resolve(`/ticke
 .fe-body { display: flex; flex-direction: column; gap: 12px; }
 .fe-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; }
 .fe-field { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
-.fe-school { grid-column: 1 / -1; }
-.fe-label { flex: none; width: 76px; font-size: 13px; color: #374151; line-height: 32px; white-space: nowrap; }
+.fe-wide { grid-column: 1 / -1; }
+.fe-label { flex: none; width: 84px; font-size: 13px; color: #374151; line-height: 32px; white-space: nowrap; }
 .req { color: #ef4444; margin-right: 2px; }
 .fe-control { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.fe-inline { flex-direction: row; align-items: center; gap: 6px; }
 .fe-input { width: 100%; }
+.fe-textarea { resize: none; }
 .fe-error { margin-top: 2px; font-size: 12px; line-height: 18px; color: #ef4444; }
-.fe-backfill { flex: none; font-size: 12px; color: #9ca3af; white-space: nowrap; }
 .fe-photo :deep(.ant-upload-wrapper .ant-upload.ant-upload-select),
 .fe-photo :deep(.ant-upload-list-item-container) { width: 88px !important; height: 88px !important; margin: 0 !important; }
 .fe-photo :deep(.ant-upload-list-item-thumbnail img) { object-fit: cover; }

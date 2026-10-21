@@ -19,3 +19,27 @@ export function snPlateDataUri(sn: string): string {
 </svg>`;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
+
+const xmlEscape = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
+
+/**
+ * MDM信息图片：工单上存的是上传文件名，按 SN 与学生账号绘制 MDM 设备详情截图作为缩略图与大图
+ * （图片文件由刷机系统存储）。与设备SN照片同处展示。
+ */
+export function mdmInfoDataUri(sn: string, account: string): string {
+  const rows: [string, string][] = [
+    ['设备SN', sn],
+    ['绑定账号', account || '—'],
+    ['管控状态', '已管控'],
+    ['刷机开关', '已开启'],
+  ];
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300" viewBox="0 0 480 300">
+<rect width="480" height="300" fill="#f1f5f9"/>
+<rect x="0" y="0" width="480" height="48" fill="#1e3a8a"/>
+<text x="24" y="31" font-family="Arial, sans-serif" font-size="18" fill="#ffffff" font-weight="700">MDM · 设备详情</text>
+<rect x="24" y="68" width="432" height="208" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+${rows.map(([k, val], i) => `<text x="48" y="${110 + i * 44}" font-family="Arial, sans-serif" font-size="15" fill="#64748b">${k}</text>
+<text x="160" y="${110 + i * 44}" font-family="Consolas, monospace" font-size="16" fill="#0f172a" font-weight="700">${xmlEscape(val)}</text>`).join('\n')}
+</svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}

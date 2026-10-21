@@ -9,7 +9,7 @@ import {
   FLASH_EXTERNAL_LINKS, FLASH_FIELD_LABELS, flashExternalUrl,
   type FlashInfo,
 } from '@/views/tickets/types/flash';
-import { snPlateDataUri } from '@/views/tickets/utils/flashSnPlate';
+import { mdmInfoDataUri, snPlateDataUri } from '@/views/tickets/utils/flashSnPlate';
 
 const props = defineProps<{
   /** 刷机信息 */
@@ -19,7 +19,7 @@ const props = defineProps<{
 const EMPTY = '—';
 const v = (s?: string) => (s && s.trim() ? s : EMPTY);
 
-interface Field { key: string; label: string; value: string; backfilled?: boolean }
+interface Field { key: string; label: string; value: string; wide?: boolean }
 
 const fields = computed<Field[]>(() => {
   const i = props.info;
@@ -27,17 +27,30 @@ const fields = computed<Field[]>(() => {
   return [
     { key: 'productName', label: L.productName, value: v(i.productModel) },
     { key: 'sn', label: L.sn, value: v(i.sn) },
-    { key: 'studentAccount', label: L.studentAccount, value: v(i.studentAccount) },
+    { key: 'studentType', label: L.studentType, value: v(i.studentType) },
     { key: 'studentName', label: L.studentName, value: v(i.studentName) },
+    { key: 'studentAccount', label: L.studentAccount, value: v(i.studentAccount) },
     { key: 'schoolName', label: L.schoolName, value: v(i.schoolName) },
-    { key: 'reason', label: L.reason, value: v(i.reason) },
-    { key: 'romVersion', label: L.romVersion, value: v(i.romVersion), backfilled: i.versionBackfilled && !!i.romVersion },
-    { key: 'mdmVersion', label: L.mdmVersion, value: v(i.mdmVersion), backfilled: i.versionBackfilled && !!i.mdmVersion },
+    { key: 'reason', label: L.reason, value: v(i.reason), wide: true },
   ];
 });
 
-/** 设备SN照片缩略图与大图（铭牌图，见 `utils/flashSnPlate.ts`；处理页只做查看） */
-const photos = computed(() => props.info.snPhotos.map((name) => ({ name, src: snPlateDataUri(props.info.sn || name) })));
+/** 设备SN照片 / MDM信息图片缩略图与大图（见 `utils/flashSnPlate.ts`；处理页只做查看） */
+const photoGroups = computed(() => {
+  const i = props.info;
+  return [
+    {
+      key: 'snPhotos',
+      label: FLASH_FIELD_LABELS.snPhotos,
+      items: i.snPhotos.map((name) => ({ name, src: snPlateDataUri(i.sn || name) })),
+    },
+    {
+      key: 'mdmPhotos',
+      label: FLASH_FIELD_LABELS.mdmPhotos,
+      items: (i.mdmPhotos ?? []).map((name) => ({ name, src: mdmInfoDataUri(i.sn || name, i.studentAccount) })),
+    },
+  ];
+});
 </script>
 
 <template>
@@ -63,20 +76,19 @@ const photos = computed(() => props.info.snPhotos.map((name) => ({ name, src: sn
 
     <div class="fi-body">
       <dl class="fi-grid">
-        <div v-for="f in fields" :key="f.key" class="fi-item">
+        <div v-for="f in fields" :key="f.key" class="fi-item" :class="{ 'is-wide': f.wide }">
           <dt>{{ f.label }}</dt>
           <dd>
-            <span class="fi-val">{{ f.value }}</span>
-            <span v-if="f.backfilled" class="fi-backfill">MDM 回填</span>
+            <span class="fi-val" :title="f.wide ? f.value : undefined">{{ f.value }}</span>
           </dd>
         </div>
-        <div class="fi-item">
-          <dt>{{ FLASH_FIELD_LABELS.snPhotos }}</dt>
+        <div v-for="g in photoGroups" :key="g.key" class="fi-item">
+          <dt>{{ g.label }}</dt>
           <dd>
-            <span v-if="!photos.length" class="fi-val">—</span>
+            <span v-if="!g.items.length" class="fi-val">—</span>
             <a-image-preview-group v-else>
               <a-image
-                v-for="p in photos"
+                v-for="p in g.items"
                 :key="p.name"
                 class="fi-thumb"
                 :width="56"
@@ -116,7 +128,8 @@ const photos = computed(() => props.info.snPhotos.map((name) => ({ name, src: sn
 .fi-item dt { flex: none; width: 72px; color: #6b7280; }
 .fi-item dd { flex: 1; min-width: 0; margin: 0; display: flex; align-items: center; gap: 6px; }
 .fi-val { color: #111827; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fi-backfill { flex: none; font-size: 11px; color: #9ca3af; }
+.fi-item.is-wide { grid-column: span 2; }
+.fi-item.is-wide .fi-val { white-space: normal; overflow-wrap: anywhere; }
 .fi-thumb { border-radius: 4px; object-fit: cover; cursor: zoom-in; }
 .fi-item :deep(.ant-image) { border-radius: 4px; overflow: hidden; border: 1px solid #e5e7eb; }
 </style>
