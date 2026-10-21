@@ -22,7 +22,7 @@ import {
   FLASH_POOLS, FLASH_RESULT_OFFLINE, FLASH_RESULT_ONLINE_SUCCESS, FLASH_RETURN_TIMEOUT_DEFAULT_MIN, FLASH_TL, flashFailReasonText, flashMinuteStamp,
   flashSmsHandoff, flashSmsSuccess, flashSmsSurvey, flashStamp, parseFlashStamp,
   type FlashCreator, type FlashFailL1, type FlashFailL2, type FlashHandoffReason, type FlashInfo, type FlashPoolKey,
-  type FlashReason, type FlashRun, type FlashRunResult, type FlashState, type FlashPushTrigger,
+  type FlashStudentType, type FlashRun, type FlashRunResult, type FlashState, type FlashPushTrigger,
   type FlashVerifyResult,
 } from '@/views/tickets/types/flash';
 import { findSchoolById } from '@/mock/schools';
@@ -39,30 +39,34 @@ const DAY = '20260915';
 /** 刷机单沿用咨询单号（1013 A1） */
 const no = (n: number) => `${TICKET_NO_PREFIX[FLASH_TICKET_TYPE]}-${DAY}-${String(n).padStart(5, '0')}`;
 
+/** 刷机原因（自由文本）缺省：按学生类型给一句业务说明 */
+const SEED_REASON: Record<FlashStudentType, string> = {
+  毕业生: '学生已毕业，设备需解除学校管控，恢复原生系统供个人使用',
+  转校生: '学生已转学至外校，原学校管控下的设备无法继续使用，需恢复原生系统',
+};
+
 /** 按 SN 从底数组装刷机信息；`account` 覆盖提报时填写的学生账号（校验不一致的场景） */
 function infoOf(
   sn: string,
   schoolId: string,
-  reason: FlashReason,
-  opts: { account?: string; name?: string; backfill?: boolean; photos?: boolean } = {},
+  studentType: FlashStudentType,
+  opts: { account?: string; name?: string; reason?: string; photos?: boolean; mdmPhotos?: boolean } = {},
 ): FlashInfo {
   const d = findMdmDevice(sn);
   if (!d) throw new Error(`MDM 台账缺少设备 ${sn}`);
   const account = opts.account ?? d.studentAccount;
   const grad = GRADUATE_ROSTER.find((g) => g.studentAccount === d.studentAccount);
-  const backfill = opts.backfill ?? true;
   return {
     productModel: d.model,
     sn: d.sn,
+    studentType,
     studentAccount: account,
     studentName: opts.name ?? grad?.studentName ?? '',
     schoolId,
     schoolName: findSchoolById(schoolId)?.name ?? '',
-    reason,
-    romVersion: backfill ? d.romVersion : '',
-    mdmVersion: backfill ? d.mdmVersion : '',
-    versionBackfilled: backfill,
+    reason: opts.reason ?? SEED_REASON[studentType],
     snPhotos: opts.photos === false ? [] : [`设备SN照片_${d.sn}.jpg`],
+    mdmPhotos: opts.mdmPhotos ? [`MDM信息_${d.sn}.png`] : [],
   };
 }
 
@@ -198,7 +202,7 @@ function row(
     nodeTotal: 5,
     groupId: pool ? FLASH_POOLS[pool].groupId : undefined,
     groupNames: pool ? [FLASH_POOLS[pool].groupName] : undefined,
-    problemDesc: `学生${info.studentName}（账号 ${info.studentAccount}，${info.schoolName}）申请刷机，刷机原因：${info.reason}。设备 SN ${info.sn}。`,
+    problemDesc: `${info.studentType}${info.studentName}（账号 ${info.studentAccount}，${info.schoolName}）申请刷机，刷机原因：${info.reason}。设备 SN ${info.sn}。`,
     responded: false,
     ...rest,
     flash: { info, state: flashState, runs },
@@ -257,7 +261,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
 
   // ① 自动刷机中：几秒前刚推送，打开页面十几秒后出回传结果（接收成功 → 调研中）
   {
-    const info = infoOf('XFS20240600131', 'SCH-340103-001', '毕业');
+    const info = infoOf('XFS20240600131', 'SCH-340103-001', '毕业生', { mdmPhotos: true });
     const created = flashStamp(nowMs - 6_000);
     const pushed = flashStamp(nowMs - 4_000);
     add(row(1, {
@@ -275,7 +279,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
 
   // ② 自动刷机中 · 回传无响应：推送已超过回传超时时长，加载即判「推送异常 · 回传超时」转人工
   {
-    const info = infoOf('XFS30240900218', 'SCH-340111-008', '毕业');
+    const info = infoOf('XFS30240900218', 'SCH-340111-008', '毕业生');
     const created = flashStamp(nowMs - 125 * 60_000 - 3_000);
     const pushed = flashStamp(nowMs - 125 * 60_000);
     add(row(2, {
@@ -293,7 +297,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
 
   // ③ 一线刷机池 · 建单校验不通过（用户提报）：提报账号与 MDM 绑定账号不一致
   {
-    const info = infoOf('XFS20240600377', 'SCH-340103-001', '毕业', { account: 'hf1z2023s0599', name: '唐语桐' });
+    const info = infoOf('XFS20240600377', 'SCH-340103-001', '毕业生', { account: 'hf1z2023s0599', name: '唐语桐' });
     const at = '2026-09-15 08:42:16';
     const sms = flashSmsHandoff(no(3));
     add(row(3, {
@@ -316,7 +320,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
 
   // ④ 一线刷机池 · 非自研机型（联想）
   {
-    const info = infoOf('LNJ606F2403A0912', 'SCH-340202-003', '毕业');
+    const info = infoOf('LNJ606F2403A0912', 'SCH-340202-003', '毕业生');
     const at = '2026-09-15 09:05:40';
     add(row(4, {
       info, creator: '用户提报', customer: '马骏', phone: '13966304107',
@@ -334,7 +338,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
 
   // ⑤ 一线刷机池 · 接收失败 · 未开机
   {
-    const info = infoOf('XFX3P240500452', 'SCH-340104-050', '毕业');
+    const info = infoOf('XFX3P240500452', 'SCH-340104-050', '毕业生');
     const at = '2026-09-15 09:20:08';
     const pushed = addSec(at, 2);
     const back = addSec(pushed, 12);
@@ -359,7 +363,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
 
   // ⑥ 一线刷机池 · 推送异常 · 回传超时
   {
-    const info = infoOf('XFS30240900307', 'SCH-340111-168', '毕业');
+    const info = infoOf('XFS30240900307', 'SCH-340111-168', '毕业生');
     const at = '2026-09-15 07:40:02';
     const pushed = addSec(at, 3);
     const timeout = addSec(pushed, 120 * 60);
@@ -384,7 +388,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
 
   // ⑦ 一线处理中 · 已领取、未重推（接收失败 · 原因未返回）
   {
-    const info = infoOf('XFS20240600512', 'SCH-340302-002', '毕业');
+    const info = infoOf('XFS20240600512', 'SCH-340302-002', '毕业生', { mdmPhotos: true, reason: '学生今年毕业，平板需恢复原生系统，安装个人常用应用' });
     const at = '2026-09-15 07:05:10';
     const pushed = addSec(at, 2);
     const back = addSec(pushed, 12);
@@ -416,7 +420,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
 
   // ⑧ 二线处理中 · 一线升级后二线领取（首推未联网 → 一线领取、联系不上用户 → 升级二线 → 二线领取处理）
   {
-    const info = infoOf('XFS30240900433', 'SCH-341502-001', '毕业');
+    const info = infoOf('XFS30240900433', 'SCH-341502-001', '毕业生', { reason: '学生已毕业离校，家长希望去掉学校管控后给家里其他孩子使用' });
     const at = '2026-09-15 08:10:01';
     const pushed = addSec(at, 2);
     const back = addSec(pushed, 12);
@@ -453,9 +457,9 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
     ]);
   }
 
-  // ⑨ 二线池 · 特殊情况（转校）：不跑校验、不推送
+  // ⑨ 二线池 · 特殊情况（转校生）：不跑校验、不推送
   {
-    const info = infoOf('XFS20240600645', 'SCH-340103-001', '转校', { name: '邹静怡', backfill: false });
+    const info = infoOf('XFS20240600645', 'SCH-340103-001', '转校生', { name: '邹静怡', mdmPhotos: true });
     const at = '2026-09-15 08:55:30';
     add(row(9, {
       info, creator: '用户提报', customer: '邹敏', phone: '15955116702',
@@ -475,7 +479,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
 
   // ⑩ 二线池 · 一线代建、建单校验不通过（非毕业生身份）
   {
-    const info = infoOf('XFS30240900561', 'SCH-340111-008', '毕业', { name: '韩博文', photos: false });
+    const info = infoOf('XFS30240900561', 'SCH-340111-008', '毕业生', { name: '韩博文', photos: false });
     const at = '2026-09-15 09:12:48';
     add(row(10, {
       info, creator: '一线代建', customer: '韩雪', phone: '13866107133',
@@ -499,7 +503,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
 
   // ⑪ 二线池 · 一线升级（首推接收失败 · 版本不符 → 一线领取 → 升级二线）
   {
-    const info = infoOf('XFX3P240500518', 'SCH-340202-003', '毕业');
+    const info = infoOf('XFX3P240500518', 'SCH-340202-003', '毕业生');
     const at = '2026-09-15 07:12:28';
     const pushed = addSec(at, 2);
     const back = addSec(pushed, 12);
@@ -533,7 +537,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
 
   // ⑫ 一线处理中 · 一线重新推送仍接收失败，交回发起人（未开机两次；1013 A14 / B1：不进教育刷机处理组池）
   {
-    const info = infoOf('XFS20240600789', 'SCH-340104-050', '毕业');
+    const info = infoOf('XFS20240600789', 'SCH-340104-050', '毕业生');
     const at = '2026-09-15 07:19:58';
     const pushed = addSec(at, 2);
     const back = addSec(pushed, 12);
@@ -570,7 +574,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
 
   // ⑬ 一线刷机池 · 回访未解决（自助成功 → 回访反馈未解决；一线未介入过，回一线刷机池，10-19 C2 / C3）
   {
-    const info = infoOf('XFS30240900690', 'SCH-340111-168', '毕业');
+    const info = infoOf('XFS30240900690', 'SCH-340111-168', '毕业生');
     const at = '2026-09-15 06:29:58';
     const pushed = addSec(at, 2);
     const back = addSec(pushed, 12);
@@ -601,7 +605,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
 
   // ⑭ 一线处理中 · 已线下登记、保存后留在本人名下等产线推送（非自研；1013 A16 / A17：不填登记时间、SLA 不暂停）
   {
-    const info = infoOf('LNX6C62404B0277', 'SCH-340302-002', '毕业');
+    const info = infoOf('LNX6C62404B0277', 'SCH-340302-002', '毕业生');
     const at = '2026-09-15 06:10:12';
     const claim = '2026-09-15 06:40:20';
     const registered = '2026-09-15 07:20:45';
@@ -629,7 +633,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
 
   // ⑮ 调研中 · 自助刷机成功（无处理人）：建单时刻取加载时刻前 40 分钟，调研短信在调研超时时长内，打开时仍在调研中
   {
-    const info = infoOf('XFS20240600823', 'SCH-341502-001', '毕业');
+    const info = infoOf('XFS20240600823', 'SCH-341502-001', '毕业生');
     const at = flashStamp(nowMs - 40 * 60_000);
     const pushed = addSec(at, 2);
     const back = addSec(pushed, 12);
@@ -653,7 +657,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
 
   // ⑯ 已结案（自助成功 → 回访已解决）
   {
-    const info = infoOf('XFS30240900745', 'SCH-340103-001', '毕业');
+    const info = infoOf('XFS30240900745', 'SCH-340103-001', '毕业生');
     const at = '2026-09-15 06:11:40';
     const pushed = addSec(at, 2);
     const back = addSec(pushed, 12);
@@ -684,7 +688,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
 
   // ⑰ 已转出（转售后）：版本不符 → 一线升级 → 二线重推仍失败 → 转售后
   {
-    const info = infoOf('XFX3P240500634', 'SCH-340111-008', '毕业');
+    const info = infoOf('XFX3P240500634', 'SCH-340111-008', '毕业生');
     const at = '2026-09-15 06:02:18';
     const pushed = addSec(at, 2);
     const back = addSec(pushed, 12);
@@ -732,7 +736,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
 
   // ⑱ 一线刷机池 · 回传超时转人工后迟到回传「接收成功」（M11 / M48）：状态与处理人不变，只记迟到回传时间
   {
-    const info = infoOf('XFS30240900918', 'SCH-340302-002', '毕业');
+    const info = infoOf('XFS30240900918', 'SCH-340302-002', '毕业生');
     const at = '2026-09-15 06:20:05';
     const pushed = addSec(at, 2);
     const timeout = addSec(pushed, 120 * 60);
@@ -761,7 +765,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
   //    首推未联网 → 一线领取、指导联网后在修改刷机信息里重新推送 → 接收成功，系统写处理结果并转入回访（1013 B1）；
   //    转入回访时刻取加载时刻前 73 小时
   {
-    const info = infoOf('XFS20240600966', 'SCH-340104-050', '毕业', { name: '周子涵' });
+    const info = infoOf('XFS20240600966', 'SCH-340104-050', '毕业生', { name: '周子涵' });
     const forwardAt = nowMs - 73 * 3_600_000;
     const at = flashStamp(forwardAt - 52 * 60_000 - 14_000);
     const pushed = addSec(at, 2);
@@ -806,7 +810,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
   // ⑳ 二线池 · 回访未解决（一线介入过）：首推未开机 → 一线领取、联系用户后在修改刷机信息里重新推送 → 接收成功，
   //    系统写处理结果并转入回访 → 回访反馈未解决；一线已介入过，直接进教育刷机处理组池（10-19 C2 / C3）
   {
-    const info = infoOf('XFS30240901020', 'SCH-341502-001', '毕业');
+    const info = infoOf('XFS30240901020', 'SCH-341502-001', '毕业生');
     const at = '2026-09-15 05:40:10';
     const pushed = addSec(at, 2);
     const back = addSec(pushed, 12);
@@ -854,7 +858,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
   // ㉑ 自动刷机中 · 回传无响应（稳定样本）：几秒前刚推送，设备始终无回传，到回传超时时长（缺省 2 小时）才转人工；
   //    ① 十几秒即出回传结果，本单在此之前一直停在「自动刷机中」
   {
-    const info = infoOf('XFS30240901009', 'SCH-340104-046', '毕业');
+    const info = infoOf('XFS30240901009', 'SCH-340104-046', '毕业生');
     const created = flashStamp(nowMs - 8_000);
     const pushed = flashStamp(nowMs - 6_000);
     add(row(21, {

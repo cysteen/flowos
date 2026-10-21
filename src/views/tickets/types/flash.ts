@@ -2,7 +2,7 @@
  * 教育刷机单 · 常量与字段组类型 —— **单一真源**（930 教育刷机单 D1–D23 / M1–M36）。
  *
  * 建单表单、处理页区块、用户提报页、后台配置页、工作台页签等模块**只从这里取**枚举与类型，
- * 不在各自文件里另写一份。取值可被后台「刷机配置」覆盖的（机型 / 刷机原因 / 失败原因 /
+ * 不在各自文件里另写一份。取值可被后台「刷机配置」覆盖的（机型 / 失败原因 /
  * 回传超时时长），这里给的是出厂值，运行时读 `stores/flashConfig.ts`。
  *
  * 本文件只放**常量、类型与纯函数**，不依赖 Pinia / 工单库，任何模块都可以放心引用。
@@ -53,15 +53,17 @@ export const FLASH_TAG_L3S = ['自助刷机', '刷原生系统'] as const;
 export const FLASH_TAG_L3_USER_REPORT = '自助刷机';
 
 /* ------------------------------------------------------------------ */
-/* 刷机原因（M3）                                                       */
+/* 学生类型（分流判据；刷机原因为自由文本，不参与分流）                    */
 /* ------------------------------------------------------------------ */
 
-export const FLASH_REASONS = ['毕业', '转校', '退学', '学校停用智慧课堂', '其他'] as const;
-export type FlashReason = (typeof FLASH_REASONS)[number];
-/** 工单上的刷机原因取值：出厂五项 + 后台「刷机配置」新增的原因（M65） */
-export type FlashReasonName = FlashReason | (string & {});
-/** 唯一走自动刷机的原因；其余一律按「特殊情况」进二线池（M1③ / M3） */
-export const FLASH_REASON_AUTO: FlashReason = '毕业';
+export const FLASH_STUDENT_TYPES = ['毕业生', '转校生'] as const;
+export type FlashStudentType = (typeof FLASH_STUDENT_TYPES)[number];
+/** 唯一走自动刷机的学生类型；其余一律按「特殊情况」进二线池（M1③） */
+export const FLASH_STUDENT_TYPE_AUTO: FlashStudentType = '毕业生';
+/** 学生类型下拉选项 */
+export const FLASH_STUDENT_TYPE_OPTIONS = FLASH_STUDENT_TYPES.map((v) => ({ value: v, label: v }));
+/** 刷机原因输入框占位文案 */
+export const FLASH_REASON_PLACEHOLDER = '请说明恢复原生系统的原因';
 
 /* ------------------------------------------------------------------ */
 /* 失败原因两级（M12）                                                  */
@@ -238,6 +240,8 @@ export interface FlashInfo {
   productModel: string;
   /** 设备SN */
   sn: string;
+  /** 学生类型（分流判据：毕业生走自动刷机，转校生按特殊情况进二线池） */
+  studentType: FlashStudentType;
   /** 学生账号 */
   studentAccount: string;
   /** 学生姓名 */
@@ -246,16 +250,12 @@ export interface FlashInfo {
   schoolId: string;
   /** 学校名称（学校库名称快照；学生所在学校，与客户档案上的学校不是一个字段） */
   schoolName: string;
-  /** 刷机原因 */
-  reason: FlashReasonName;
-  /** ROM 版本（选填；建单校验时按 SN 从 MDM 回填，回填值优先、只读展示，M4） */
-  romVersion: string;
-  /** MDM 版本（同上） */
-  mdmVersion: string;
-  /** ROM / MDM 版本是否为系统回填（true ＝ 回填值，只读展示） */
-  versionBackfilled: boolean;
+  /** 刷机原因（自由文本：恢复原生系统的原因） */
+  reason: string;
   /** 设备SN照片（文件名；用户提报必传、坐席代建选传） */
   snPhotos: string[];
+  /** MDM信息图片（文件名；选传） */
+  mdmPhotos: string[];
 }
 
 /** 推送记录一行 */
@@ -389,28 +389,28 @@ export const FLASH_FIELD_LABELS = {
   productCategory: '产品分类',
   productName: '产品名称',
   sn: '设备SN',
+  studentType: '学生类型',
   studentAccount: '学生账号',
   studentName: '学生姓名',
   schoolName: '学校名称',
   reason: '刷机原因',
-  romVersion: 'ROM版本',
-  mdmVersion: 'MDM版本',
   snPhotos: '设备SN照片',
+  mdmPhotos: 'MDM信息图片',
   contactPhone: '联系手机号',
 } as const;
 
-/** 刷机信息里参与改动登记的字段（重推改动项、履历字段 diff） */
-export const FLASH_INFO_FIELD_LABELS: Record<Exclude<keyof FlashInfo, 'versionBackfilled' | 'schoolId'>, string> = {
+/** 刷机信息里参与改动登记的字段（重推改动项、履历字段 diff），按表单顺序 */
+export const FLASH_INFO_FIELD_LABELS: Record<Exclude<keyof FlashInfo, 'schoolId'>, string> = {
   // 处理页口径：产品字段为「产品分类 + 产品名称」两级（1013 A4）；「产品型号」只留在用户提报页
   productModel: FLASH_FIELD_LABELS.productName,
   sn: FLASH_FIELD_LABELS.sn,
-  studentAccount: FLASH_FIELD_LABELS.studentAccount,
+  studentType: FLASH_FIELD_LABELS.studentType,
   studentName: FLASH_FIELD_LABELS.studentName,
+  studentAccount: FLASH_FIELD_LABELS.studentAccount,
   schoolName: FLASH_FIELD_LABELS.schoolName,
   reason: FLASH_FIELD_LABELS.reason,
-  romVersion: FLASH_FIELD_LABELS.romVersion,
-  mdmVersion: FLASH_FIELD_LABELS.mdmVersion,
   snPhotos: FLASH_FIELD_LABELS.snPhotos,
+  mdmPhotos: FLASH_FIELD_LABELS.mdmPhotos,
 };
 
 /** 建单必填提示（M46：必填先于机型与在途判定） */
@@ -486,9 +486,9 @@ export function flashTipInflight(inflightNo: string): string {
 export const FLASH_TIP_SYSTEM_BUSY = '系统繁忙，请稍后再提交';
 /** 非自研机型不可线上推送（M18） */
 export const FLASH_TIP_NON_SELF_DEVELOPED = '该产品不支持线上推送，请线下登记';
-/** 重推时刷机原因非毕业（M44） */
-export const FLASH_TIP_REASON_NOT_GRADUATE_L1 = '刷机原因不是毕业，请升级二线处理';
-export const FLASH_TIP_REASON_NOT_GRADUATE_L2 = '刷机原因不是毕业，请线下登记';
+/** 重推时学生类型不是毕业生（M44） */
+export const FLASH_TIP_NOT_GRADUATE_L1 = '学生类型不是毕业生，请升级二线处理';
+export const FLASH_TIP_NOT_GRADUATE_L2 = '学生类型不是毕业生，请线下登记';
 /** 重推前建单校验不通过（M36 / PRD §5.6 提交判定第 8、9 条，逐字） */
 export function flashTipVerifyFailed(l2: FlashFailL2): string {
   return l2 === 'SN与学生账号不一致'
@@ -536,7 +536,7 @@ export const FLASH_EXTERNAL_LINKS = {
    * 地址业务未给（PRD 附录 D 第 11 条），置空；空串时卡头不渲染该外链。
    */
   hardwarePlatform: { label: '智能硬件平台', url: '' },
-  /** MDM 平台（「刷机信息」区块头标题右侧，1013 A24）：查设备、MDM 版本与刷机开关；业务提供的正式地址，账号密码登录 */
+  /** MDM 平台（「刷机信息」区块头标题右侧，1013 A24）：查设备与刷机开关；业务提供的正式地址，账号密码登录 */
   mdm: { label: 'MDM 平台', url: 'https://imdm.changyan.com/mdm/index.html?from=ew#/superManager' },
   /** 保障中心（「刷机信息」区块头标题右侧，排在 MDM 平台之后）：查学生信息；业务提供的正式地址，域账号登录 */
   supportCenter: { label: '保障中心', url: 'http://support.changyan.com/school-suc' },

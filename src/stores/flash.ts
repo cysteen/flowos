@@ -10,10 +10,10 @@ import { isGraduate, isGraduateByAccount } from '@/mock/flash/graduates';
 import { findSchoolById } from '@/mock/schools';
 import { makeTicketNo } from '@/constants/ticketNo';
 import {
-  FLASH_FIELD_LABELS, FLASH_INFO_FIELD_LABELS, FLASH_NOTIFY_EVENTS, FLASH_POOLS, FLASH_REASON_AUTO,
+  FLASH_FIELD_LABELS, FLASH_INFO_FIELD_LABELS, FLASH_NOTIFY_EVENTS, FLASH_POOLS, FLASH_STUDENT_TYPE_AUTO, FLASH_STUDENT_TYPES,
   FLASH_RETURN_DELAY_MS, FLASH_AFTERSALE_RETURN_DELAY_MS, FLASH_TIP_PRODUCT_UNSUPPORTED,
   FLASH_RESULT_ONLINE_SUCCESS, FLASH_RESULT_OFFLINE_PUSHED, FLASH_RESULT_ESCALATE_L2, normalizeFlashResult,
-  FLASH_TIP_NON_SELF_DEVELOPED, FLASH_TIP_REASON_NOT_GRADUATE_L1, FLASH_TIP_REASON_NOT_GRADUATE_L2,
+  FLASH_TIP_NON_SELF_DEVELOPED, FLASH_TIP_NOT_GRADUATE_L1, FLASH_TIP_NOT_GRADUATE_L2,
   FLASH_TIP_AUTO_FLASHING, FLASH_TIP_EDIT_STATE, FLASH_TIP_REPUSH_STATE, FLASH_TIP_SYSTEM_BUSY, FLASH_TIP_VERIFY_UNAVAILABLE,
   FLASH_VERIFY_NOT_RUN, FLASH_TL, FLASH_NOTICE, FLASH_RESULT_OFFLINE, FLASH_TOAST,
   FLASH_CS_NOTICE, FLASH_SURVEY_TIMEOUT_HOURS, FLASH_PRODUCT_CATEGORY, FLASH_TAG_L1, FLASH_TAG_L2,
@@ -22,7 +22,7 @@ import {
   flashTipInflight, flashTipRequired, flashTipVerifyFailed, isFrontlineActor,
   parseFlashStamp,
   type FlashActor, type FlashCreator, type FlashFailL1, type FlashFailL2, type FlashHandoffReason,
-  type FlashInfo, type FlashPoolKey, type FlashProgressStage, type FlashPushTrigger, type FlashReasonName,
+  type FlashInfo, type FlashPoolKey, type FlashProgressStage, type FlashPushTrigger, type FlashStudentType,
   type FlashResult, type FlashRun, type FlashState, type FlashVerifyResult, type TicketFlash,
 } from '@/views/tickets/types/flash';
 import { formatSlaClock, isFlashSlaCounted, readFlashSla, slaStateOf } from '@/views/tickets/utils/slaClock';
@@ -63,18 +63,20 @@ export interface FlashCreateInput {
   problemL2?: string;
   problemL3?: string;
   sn: string;
+  /** 学生类型（非「毕业生」一律按特殊情况进二线池）；未选为空串 */
+  studentType: FlashStudentType | '';
   studentAccount: string;
   studentName: string;
   /** 学校库 ID（M42） */
   schoolId: string;
   /** 学校名称；缺省按学校库 ID 取 */
   schoolName?: string;
-  /** 刷机原因（含后台新增的原因；非「毕业」一律按特殊情况进二线池，M65） */
-  reason: FlashReasonName;
-  romVersion?: string;
-  mdmVersion?: string;
+  /** 刷机原因（自由文本） */
+  reason: string;
   /** 设备SN照片：用户提报必传、坐席代建选传（M4） */
   snPhotos?: string[];
+  /** MDM信息图片：选传 */
+  mdmPhotos?: string[];
   /** 联系手机号（必填，M4；成功短信、联系、回访用） */
   contactPhone: string;
 }
@@ -125,8 +127,6 @@ export interface FlashEvaluationCreate {
   /** 建单校验两项各自结论（跑过校验才有，M50） */
   verifyResult?: FlashVerifyResult;
   selfDeveloped: boolean;
-  /** 版本回填（M4：按 SN 从 MDM 回填，回填值优先） */
-  backfill: { romVersion: string; mdmVersion: string; backfilled: boolean };
 }
 
 export type FlashCreateEvaluation = FlashEvaluationBlocked | FlashEvaluationCreate;
@@ -151,7 +151,7 @@ export interface FlashLiveNotice {
 }
 
 /** 重推时可改的刷机信息 */
-export type FlashInfoChanges = Partial<Omit<FlashInfo, 'versionBackfilled'>>;
+export type FlashInfoChanges = Partial<FlashInfo>;
 
 /* ------------------------------------------------------------------ */
 /* 内部常量                                                             */
@@ -689,7 +689,7 @@ export const useFlashStore = defineStore('flash', () => {
   /**
    * 建单判定（M1 顺序）：
    * ① 坐席代建：产品未挂刷机类问题分类（10-19 C1） → 拦截 A1；用户提报不判产品（10-19 用户定：以小程序为准）；② 同 SN 在途 → 拦截 A2（在途查询不可用 → 拦截「系统繁忙」，M43）；
-   * ③ 刷机原因≠毕业 → 二线池（特殊情况）；④ 建单校验：接口不可用 → 一线池（推送异常 · 接口异常，M43），
+   * ③ 学生类型≠毕业生（转校生）→ 二线池（特殊情况）；④ 建单校验：接口不可用 → 一线池（推送异常 · 接口异常，M43），
    * 不通过 → 用户提报进一线池、坐席代建进二线池（D12）；⑤ 非自研 → 一线池（M8′）；⑥ 自研 → 自动刷机中。
    */
   function evaluateCreate(input: FlashCreateInput, creator: FlashCreator): FlashCreateEvaluation {
@@ -714,27 +714,22 @@ export const useFlashStore = defineStore('flash', () => {
       };
     }
     const selfDeveloped = config.isSelfDeveloped(input.productModel);
-    const typed = { romVersion: input.romVersion ?? '', mdmVersion: input.mdmVersion ?? '', backfilled: false };
-    const pool = (p: FlashPoolKey, reason: FlashHandoffReason, backfill = typed, failL1?: FlashFailL1, failL2?: FlashFailL2): FlashEvaluationCreate => ({
-      kind: 'create', route: 'pool', initialStatus: '未认领', pool: p, handoffReason: reason, failL1, failL2, selfDeveloped, backfill,
+    const pool = (p: FlashPoolKey, reason: FlashHandoffReason, failL1?: FlashFailL1, failL2?: FlashFailL2): FlashEvaluationCreate => ({
+      kind: 'create', route: 'pool', initialStatus: '未认领', pool: p, handoffReason: reason, failL1, failL2, selfDeveloped,
     });
 
-    if (input.reason !== FLASH_REASON_AUTO) return pool('l2', '特殊情况');
+    if (input.studentType !== FLASH_STUDENT_TYPE_AUTO) return pool('l2', '特殊情况');
 
     const v = verify(input, creator === '用户提报');
-    if (!v.ok && v.unavailable) return pool('l1', '推送异常', typed, '推送异常', '接口异常');
-    const device = findMdmDevice(input.sn);
-    const backfill = device
-      ? { romVersion: device.romVersion, mdmVersion: device.mdmVersion, backfilled: true }
-      : typed;
+    if (!v.ok && v.unavailable) return pool('l1', '推送异常', '推送异常', '接口异常');
     if (!v.ok) {
       return {
-        ...pool(creator === '用户提报' ? 'l1' : 'l2', '建单校验不通过', backfill, '建单校验不通过', v.failL2),
+        ...pool(creator === '用户提报' ? 'l1' : 'l2', '建单校验不通过', '建单校验不通过', v.failL2),
         verifyResult: v.result,
       };
     }
-    if (!selfDeveloped) return { ...pool('l1', '非自研机型', backfill), verifyResult: v.result };
-    return { kind: 'create', route: 'auto', initialStatus: '自动刷机中', verifyResult: v.result, selfDeveloped, backfill };
+    if (!selfDeveloped) return { ...pool('l1', '非自研机型'), verifyResult: v.result };
+    return { kind: 'create', route: 'auto', initialStatus: '自动刷机中', verifyResult: v.result, selfDeveloped };
   }
 
   /** 必填缺项（M4 / M46）：设备SN照片仅用户提报必传；产品字段用户提报叫「产品型号」、坐席侧叫「产品名称」（1013 A4） */
@@ -743,11 +738,12 @@ export const useFlashStore = defineStore('flash', () => {
     const checks: [boolean, string][] = [
       [!input.productModel?.trim(), creator === '用户提报' ? L.productModel : L.productName],
       [!input.sn?.trim(), L.sn],
-      [!input.studentAccount?.trim(), L.studentAccount],
+      [!(FLASH_STUDENT_TYPES as readonly string[]).includes(input.studentType ?? ''), L.studentType],
       [!input.studentName?.trim(), L.studentName],
+      [!input.studentAccount?.trim(), L.studentAccount],
       // 用户提报学校为自由文本（10-19 C8），坐席代建选学校落学校 ID
       [creator === '用户提报' ? !input.schoolName?.trim() : !input.schoolId?.trim(), L.schoolName],
-      [!input.reason, L.reason],
+      [!input.reason?.trim(), L.reason],
       [!input.contactPhone?.trim(), L.contactPhone],
       [creator === '用户提报' && !(input.snPhotos ?? []).length, L.snPhotos],
     ];
@@ -782,15 +778,14 @@ export const useFlashStore = defineStore('flash', () => {
     const info: FlashInfo = {
       productModel: input.productModel.trim(),
       sn: input.sn.trim().toUpperCase(),
+      studentType: input.studentType as FlashStudentType,
       studentAccount: input.studentAccount.trim(),
       studentName: input.studentName.trim(),
       schoolId: input.schoolId,
       schoolName: input.schoolName ?? findSchoolById(input.schoolId)?.name ?? '',
-      reason: input.reason,
-      romVersion: evaluation.backfill.romVersion,
-      mdmVersion: evaluation.backfill.mdmVersion,
-      versionBackfilled: evaluation.backfill.backfilled,
+      reason: input.reason.trim(),
       snPhotos: [...(input.snPhotos ?? [])],
+      mdmPhotos: [...(input.mdmPhotos ?? [])],
     };
     const ticketSource = base.ticketSource ?? (byUser ? '客户服务小程序' : '电话');
     // 问题分类：坐席建单取所选三级；用户提报自动匹配「售后 → 服务申请 → 自助刷机」（1013 A5）
@@ -838,7 +833,7 @@ export const useFlashStore = defineStore('flash', () => {
       createdAt: flashMinuteStamp(now),
       updatedAt: flashMinuteStamp(now),
       problemDesc: base.problemDesc?.trim()
-        || `学生${info.studentName}（账号 ${info.studentAccount}，${info.schoolName}）申请刷机，刷机原因：${info.reason}。设备 SN ${info.sn}。`,
+        || `${info.studentType}${info.studentName}（账号 ${info.studentAccount}，${info.schoolName}）申请刷机，刷机原因：${info.reason}。设备 SN ${info.sn}。`,
       ...(base.problemDescAttachments?.length ? { problemDescAttachments: [...base.problemDescAttachments] } : {}),
       flash: {
         info,
@@ -890,7 +885,7 @@ export const useFlashStore = defineStore('flash', () => {
   /**
    * 修改刷机信息并重新推送（1013 A12 / B1：修改刷机信息弹窗「重新推送」是唯一的推送入口；M36 / M44）。
    * 先同步判定，任一不通过即返回提示，**不推送、不改状态**：
-   * 状态可重推 → 机型支持且自研 → 刷机原因为毕业 → 改后 SN 无其他在途单 → 建单校验通过。一线、二线都不限次（A14）。
+   * 状态可重推 → 机型支持且自研 → 学生类型为毕业生 →改后 SN 无其他在途单 → 建单校验通过。一线、二线都不限次（A14）。
    * 全部通过即视为推送已发出（M69）：落库、写履历、推送次数 +1；
    * 回传接收成功 → 写入「刷机成功」类处理结果并转入回访；失败（含推送接口报错重试仍失败）→ 交回发起时的处理人。
    */
@@ -902,12 +897,12 @@ export const useFlashStore = defineStore('flash', () => {
     const next = mergeInfo(prev, changes);
     const l1 = isFrontlineActor(by);
 
-    // M79 提交判定顺序（第 1 条必填由弹窗在字段下方判）：未启用机型 → 非自研 → 刷机原因非毕业 →
+    // M79 提交判定顺序（第 1 条必填由弹窗在字段下方判）：未启用机型 → 非自研 → 学生类型不是毕业生 →
     // 在途查询不可用 → 设备SN在途 → 建单校验接口不可用 → SN与学生账号不一致 → 非毕业生身份；命中即止
     if (!config.isSupportedModel(next.productModel)) return { ok: false, message: FLASH_TIP_PRODUCT_UNSUPPORTED };
     if (!config.isSelfDeveloped(next.productModel)) return { ok: false, message: FLASH_TIP_NON_SELF_DEVELOPED };
-    if (next.reason !== FLASH_REASON_AUTO) {
-      return { ok: false, message: l1 ? FLASH_TIP_REASON_NOT_GRADUATE_L1 : FLASH_TIP_REASON_NOT_GRADUATE_L2 };
+    if (next.studentType !== FLASH_STUDENT_TYPE_AUTO) {
+      return { ok: false, message: l1 ? FLASH_TIP_NOT_GRADUATE_L1 : FLASH_TIP_NOT_GRADUATE_L2 };
     }
     let inflight: Ticket | undefined;
     try {
@@ -920,9 +915,6 @@ export const useFlashStore = defineStore('flash', () => {
     if (!v.ok) return { ok: false, message: v.unavailable ? FLASH_TIP_VERIFY_UNAVAILABLE : flashTipVerifyFailed(v.failL2) };
 
     // M53：到这里推送一定会发出，才落库与写履历
-    next.romVersion = v.device.romVersion;
-    next.mdmVersion = v.device.mdmVersion;
-    next.versionBackfilled = true;
     const diff = diffInfo(prev, next);
     const now = Date.now();
     r.flash.info = next;
@@ -950,18 +942,13 @@ export const useFlashStore = defineStore('flash', () => {
   /**
    * 修改刷机信息（M52 / M70）：检查必填 → 无变更返回 `code: 'unchanged'`（不写履历）→
    * 落库 + 写履历「修改刷机信息」（字段前后值）。**不跑建单校验、不推送、不计次**。
-   * 待响应、处理中可用，适用全部机型；已由 MDM 回填的 ROM版本 / MDM版本 只读，改动不生效（M63）。
+   * 待响应、处理中可用，适用全部机型。
    */
   function saveFlashInfo(ticketNo: string, by: FlashActor, changes: FlashInfoChanges): FlashActionResult {
     const r = rowOf(ticketNo);
     if (!r?.flash || !EDITABLE_STATUSES.includes(r.nodeStatus)) return { ok: false, message: FLASH_TIP_EDIT_STATE };
     const prev = r.flash.info;
     const next = mergeInfo(prev, changes);
-    if (prev.versionBackfilled) {
-      next.romVersion = prev.romVersion;
-      next.mdmVersion = prev.mdmVersion;
-      next.versionBackfilled = true;
-    }
     // M70：保存时检查必填（联系手机号不在刷机信息内，不在此判）；PRD §5.6 / §5.8 设备SN照片在弹窗内非必填，
     // 不论建单入口一律按坐席代建口径判
     const missing = missingRequired(
@@ -1747,7 +1734,12 @@ export const useFlashStore = defineStore('flash', () => {
   }
 
   function mergeInfo(prev: FlashInfo, changes: FlashInfoChanges): FlashInfo {
-    const next: FlashInfo = { ...prev, ...changes, snPhotos: [...(changes.snPhotos ?? prev.snPhotos)] };
+    const next: FlashInfo = {
+      ...prev,
+      ...changes,
+      snPhotos: [...(changes.snPhotos ?? prev.snPhotos)],
+      mdmPhotos: [...(changes.mdmPhotos ?? prev.mdmPhotos ?? [])],
+    };
     if (changes.sn) next.sn = changes.sn.trim().toUpperCase();
     if (changes.schoolId && !changes.schoolName) next.schoolName = findSchoolById(changes.schoolId)?.name ?? prev.schoolName;
     return next;
@@ -1759,8 +1751,8 @@ export const useFlashStore = defineStore('flash', () => {
       const from = Array.isArray(prev[k]) ? (prev[k] as string[]).join('、') : String(prev[k] ?? '');
       const to = Array.isArray(next[k]) ? (next[k] as string[]).join('、') : String(next[k] ?? '');
       if (from === to) return;
-      // PRD §5.6：设备SN照片有变化写「设备SN照片：已更换」
-      if (k === 'snPhotos') {
+      // PRD §5.6：设备SN照片 / MDM信息图片有变化写「已更换」
+      if (k === 'snPhotos' || k === 'mdmPhotos') {
         out.push({ field: FLASH_INFO_FIELD_LABELS[k], kind: '修改', from: '', to: to ? '已更换' : '—' });
         return;
       }
@@ -1778,6 +1770,16 @@ export const useFlashStore = defineStore('flash', () => {
   function migrateCachedTicket(saved: Ticket): Ticket {
     const st = saved.flash?.state as { result?: string } | undefined;
     if (st?.result === '已线下登记推送') st.result = FLASH_RESULT_OFFLINE;
+    const info = saved.flash?.info as (FlashInfo & Record<string, unknown>) | undefined;
+    if (info) {
+      if (!(FLASH_STUDENT_TYPES as readonly string[]).includes(info.studentType)) {
+        info.studentType = info.reason === '毕业' ? '毕业生' : '转校生';
+      }
+      if (!Array.isArray(info.mdmPhotos)) info.mdmPhotos = [];
+      delete info.romVersion;
+      delete info.mdmVersion;
+      delete info.versionBackfilled;
+    }
     return saved;
   }
 

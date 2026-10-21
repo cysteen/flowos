@@ -556,12 +556,12 @@ export function useTicketOperation() {
       ? { no: similar.no, title: similar.title, similarity: '相似 90%·已解决', solution: '方案：自动刷机接收成功，回访确认已解决' }
       : base.similarTicket;
     base.knowledge = ['教育刷机单处理指引', '刷机包接收失败排查（未开机 / 未联网 / 版本不符）'];
-    base.aiSummary = `学生${f.info.studentName}（${f.info.schoolName}）申请刷机，刷机原因：${f.info.reason}；设备 ${f.info.productModel}，SN ${f.info.sn}。`;
+    base.aiSummary = `${f.info.studentType}${f.info.studentName}（${f.info.schoolName}）申请刷机，刷机原因：${f.info.reason}；设备 ${f.info.productModel}，SN ${f.info.sn}。`;
     base.aiInsight = {
       customerBrief: '教育用户，首次提报刷机申请',
       ticketBrief: f.state.handoffReason
-        ? `${f.info.reason}刷机申请，转人工原因：${f.state.handoffReason}`
-        : `${f.info.reason}刷机申请，按自动刷机结果跟进`,
+        ? `${f.info.studentType}刷机申请，转人工原因：${f.state.handoffReason}`
+        : `${f.info.studentType}刷机申请，按自动刷机结果跟进`,
       suggestion: '核对刷机信息与失败原因后处理',
     };
   }

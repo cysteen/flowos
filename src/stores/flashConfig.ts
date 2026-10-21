@@ -2,8 +2,8 @@ import { defineStore } from 'pinia';
 import { ref, watch } from 'vue';
 import { FLASH_MODEL_SEED, FLASH_TAG_OFF_MODELS, type FlashModel } from '@/mock/flash/models';
 import {
-  FLASH_FAIL_L2_NOT_RETURNED, FLASH_FAIL_REASON_TREE, FLASH_FAIL_SEPARATOR, FLASH_PRODUCT_CATEGORY, FLASH_REASON_AUTO,
-  FLASH_REASONS, FLASH_RETURN_TIMEOUT_DEFAULT_MIN, FLASH_TAG_L1, FLASH_TAG_L2, FLASH_TAG_L3S,
+  FLASH_FAIL_L2_NOT_RETURNED, FLASH_FAIL_REASON_TREE, FLASH_FAIL_SEPARATOR, FLASH_PRODUCT_CATEGORY,
+  FLASH_RETURN_TIMEOUT_DEFAULT_MIN, FLASH_TAG_L1, FLASH_TAG_L2, FLASH_TAG_L3S,
   type FlashFailL1, type FlashFailL2,
 } from '@/views/tickets/types/flash';
 import { FLASH_LS_KEYS, readFlashCache, writeFlashCache } from './flashCache';
@@ -12,24 +12,14 @@ import { FLASH_LS_KEYS, readFlashCache, writeFlashCache } from './flashCache';
  * 刷机相关配置（930 教育刷机单 M28 / M65；1013 N1 / N2 调整归属）：
  * - 产品刷机属性（`models`：产品分类、「自研 · 支持线上自助推送」）：后台「产品管理」维护；
  * - 问题分类「是否刷机」（`flashTags`）：后台「问题分类」维护（1013 N2）；
- * - 刷机原因、失败原因、回传超时时长：后台「刷机配置」维护。
+ * - 失败原因、回传超时时长：后台「刷机配置」维护。
  * 刷机单识别只看问题分类「是否刷机」（`isFlashScene`，10-19 C1）；产品挂了「是否刷机」开启的问题分类，建单才出现刷机类分类。
  *
- * - 刷机原因：新增 / 改名 / 启停；「毕业」锁定（不可停用、不可改名）。新增的原因在建单分流时按特殊情况进二线池。
  * - 失败原因：两级结构与取值固定（刷机服务按取值判定），只能改**显示文案**与**启停**；
  *   二级原因停用后，对应回传显示「原因未返回」。
  *
  * 出厂值取 `mock/flash/models.ts` 与 `types/flash.ts`；改动落 `FLASH_LS_KEYS.config`。
  */
-
-export interface FlashReasonOption {
-  id: string;
-  /** 刷机原因名称（落在工单上的取值） */
-  name: string;
-  enabled: boolean;
-  /** 锁定：不可停用、不可改名（「毕业」） */
-  locked: boolean;
-}
 
 export interface FlashFailL2Option {
   /** 取值（刷机服务判定用，不可改） */
@@ -50,14 +40,13 @@ export interface FlashConfigSnapshot {
   models: FlashModel[];
   /** 问题分类「是否刷机」开启的条目（键见 `flashTagKey`：产品名称 + 三级路径） */
   flashTags: string[];
-  reasons: FlashReasonOption[];
   failReasons: FlashFailReasonOption[];
   /** 回传超时时长（分钟） */
   returnTimeoutMin: number;
 }
 
 /** 缓存里的数据形状版本（与 FLASH_CACHE_VERSION 分开计：本份结构独立演进） */
-const CONFIG_SHAPE_VERSION = 4;
+const CONFIG_SHAPE_VERSION = 5;
 
 /** 问题分类条目键：产品名称 + 一 / 二 / 三级（问题分类按产品维护，与后台「问题分类」一行对应） */
 export function flashTagKey(productName: string, l1: string, l2: string, l3: string): string {
@@ -73,12 +62,6 @@ function factory(): FlashConfigSnapshot {
   return {
     models: FLASH_MODEL_SEED.map((m) => ({ ...m })),
     flashTags: factoryFlashTags(),
-    reasons: FLASH_REASONS.map((name, i) => ({
-      id: `FR-${i + 1}`,
-      name,
-      enabled: true,
-      locked: name === FLASH_REASON_AUTO,
-    })),
     failReasons: FLASH_FAIL_REASON_TREE.map((n) => ({
       value: n.l1,
       label: n.l1,
@@ -93,16 +76,14 @@ export const useFlashConfigStore = defineStore('flashConfig', () => {
   const init = readFlashCache<FlashConfigSnapshot>(FLASH_LS_KEYS.config, CONFIG_SHAPE_VERSION) ?? factory();
   const models = ref<FlashModel[]>(init.models);
   const flashTags = ref<string[]>(init.flashTags);
-  const reasons = ref<FlashReasonOption[]>(init.reasons);
   const failReasons = ref<FlashFailReasonOption[]>(init.failReasons);
   const returnTimeoutMin = ref<number>(init.returnTimeoutMin);
 
   watch(
-    [models, flashTags, reasons, failReasons, returnTimeoutMin],
+    [models, flashTags, failReasons, returnTimeoutMin],
     () => writeFlashCache(FLASH_LS_KEYS.config, {
       models: models.value,
       flashTags: flashTags.value,
-      reasons: reasons.value,
       failReasons: failReasons.value,
       returnTimeoutMin: returnTimeoutMin.value,
     }, CONFIG_SHAPE_VERSION),
@@ -186,38 +167,6 @@ export const useFlashConfigStore = defineStore('flashConfig', () => {
     models.value = models.value.filter((m) => m.id !== id);
   }
 
-  /* ---------------- 刷机原因 ---------------- */
-
-  /** 建单下拉可选的刷机原因（启用中） */
-  function enabledReasons(): string[] {
-    return reasons.value.filter((r) => r.enabled).map((r) => r.name);
-  }
-
-  /** 新增刷机原因；重名或空名返回 false */
-  function addReason(name: string): boolean {
-    const nm = name.trim();
-    if (!nm || reasons.value.some((r) => r.name === nm)) return false;
-    reasons.value.push({ id: `FR-${Date.now()}`, name: nm, enabled: true, locked: false });
-    return true;
-  }
-
-  /** 改名；锁定项、重名、空名返回 false */
-  function renameReason(id: string, name: string): boolean {
-    const r = reasons.value.find((x) => x.id === id);
-    const nm = name.trim();
-    if (!r || r.locked || !nm || reasons.value.some((x) => x.id !== id && x.name === nm)) return false;
-    r.name = nm;
-    return true;
-  }
-
-  /** 启停；锁定项返回 false */
-  function setReasonEnabled(id: string, enabled: boolean): boolean {
-    const r = reasons.value.find((x) => x.id === id);
-    if (!r || r.locked) return false;
-    r.enabled = enabled;
-    return true;
-  }
-
   /* ---------------- 失败原因 ---------------- */
 
   function failL1Option(l1: FlashFailL1): FlashFailReasonOption | undefined {
@@ -275,16 +224,14 @@ export const useFlashConfigStore = defineStore('flashConfig', () => {
     const f = factory();
     models.value = f.models;
     flashTags.value = f.flashTags;
-    reasons.value = f.reasons;
     failReasons.value = f.failReasons;
     returnTimeoutMin.value = f.returnTimeoutMin;
   }
 
   return {
-    models, flashTags, reasons, failReasons, returnTimeoutMin,
+    models, flashTags, failReasons, returnTimeoutMin,
     modelOf, isSupportedModel, isSelfDeveloped, enabledModels, upsertModel, removeModel,
     setProductSelfDeveloped, isFlashTag, replaceFlashTags, isFlashScene,
-    enabledReasons, addReason, renameReason, setReasonEnabled,
     setFailReasonLabel, setFailReasonEnabled, isFailL2Enabled, failReasonText,
     setReturnTimeoutMin, resetToFactory,
   };

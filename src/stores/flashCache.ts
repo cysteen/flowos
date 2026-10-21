@@ -11,7 +11,7 @@
 
 /** 刷机相关 localStorage 键（统一前缀 `flowos-flash-`） */
 export const FLASH_LS_KEYS = {
-  /** 刷机配置：产品刷机属性（自研） / 问题分类是否刷机 / 刷机原因 / 失败原因 / 回传超时时长 */
+  /** 刷机配置：产品刷机属性（自研） / 问题分类是否刷机 / 失败原因 / 回传超时时长 */
   config: 'flowos-flash-config',
   /** 刷机单工单快照（种子单的最新状态 + 运行时新建的刷机单） */
   tickets: 'flowos-flash-tickets',
@@ -35,8 +35,9 @@ export type FlashLsKey = (typeof FLASH_LS_KEYS)[keyof typeof FLASH_LS_KEYS];
  * v17：⑰ SLA 摘要改用展示名「已转售后·停表」（D10），缓存里的旧快照作废。
  * v18：已转出停钟期间 SLA 摘要改为「已暂停」（PRD §4.3），⑰ 与运行时转售后同口径。
  * v19：转人工短信文案加「【讯飞客服】」签名与工单号（PRD §3.4 / §11.1），种子履历里的旧短信作废。
+ * v20：刷机信息新增学生类型（分流判据）与 MDM信息图片，刷机原因改自由文本，去掉 ROM版本 / MDM版本。
  */
-export const FLASH_CACHE_VERSION = 19;
+export const FLASH_CACHE_VERSION = 20;
 
 /** 保质期：12 小时（与风险两条线 `RISK_STALE_MS` 同口径） */
 export const FLASH_STALE_MS = 12 * 60 * 60 * 1000;
