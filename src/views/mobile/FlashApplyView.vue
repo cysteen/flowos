@@ -5,37 +5,60 @@ import { CameraOutlined, CheckCircleFilled, CloseOutlined } from '@ant-design/ic
 import { useFlashStore, type FlashCreateInput, type FlashEvaluationBlocked } from '@/stores/flash';
 import { useFlashConfigStore } from '@/stores/flashConfig';
 import { MDM_DEVICES } from '@/mock/flash/mdmDevices';
-import { FLASH_FIELD_LABELS, FLASH_REASON_PLACEHOLDER, FLASH_STUDENT_TYPE_OPTIONS, type FlashStudentType } from '@/views/tickets/types/flash';
+import {
+  FLASH_FIELD_LABELS, FLASH_STUDENT_TYPE_OPTIONS, FLASH_USER_REPORT_LABELS, FLASH_USER_TEXT_MAX,
+  type FlashStudentType,
+} from '@/views/tickets/types/flash';
 import FlashMobileShell from './FlashMobileShell.vue';
 import FlashProgressSteps from './FlashProgressSteps.vue';
 import { useFlashProgress, userStageText } from './useFlashProgress';
 
 /**
  * 用户提报页「刷机申请」与结果页（930 教育刷机单 PRD §2.5 / 页面规格 P2 · P0-1/2/3/5/6/7）。
- * 校验顺序：必填 → 机型不支持 → 同 SN 在途（查询不可用 → 系统繁忙），判定走 `evaluateCreate`，建单走 `createFlashTicket`。
+ * 字段、顺序、占位与校验按小程序接口字段（2026-10-21）：学生姓名 · 学生类型 · 学生账号 · 学校名称 ·
+ * 学习证明附件（仅转校生）· 设备信息 · 产品信息 · 设备SN · 设备SN照片 · 恢复原生系统原因；小程序不传 MDM信息图片。
+ * 校验顺序：必填 → 同 SN 在途（查询不可用 → 系统繁忙），判定走 `evaluateCreate`，建单走 `createFlashTicket`。
  */
 
 /** 小程序授权手机号 */
 const AUTHORIZED_PHONE = '13856011288';
 
-type FieldKey = 'productModel' | 'sn' | 'studentType' | 'studentName' | 'studentAccount' | 'schoolName' | 'reason' | 'snPhotos' | 'contactPhone';
-type PhotoKey = 'snPhotos' | 'mdmPhotos';
+type PhotoKey = 'studyProofPhotos' | 'productPhotos' | 'snPhotos';
+type TextKey = 'studentName' | 'studentAccount' | 'schoolName' | 'sn' | 'reason' | 'contactPhone';
+type FieldKey = TextKey | 'studentType' | 'productModel' | PhotoKey;
 
 const L = FLASH_FIELD_LABELS;
-/** 选择类字段提示「请选择」，照片「请上传」，其余「请填写」（P0-3） */
+const U = FLASH_USER_REPORT_LABELS;
+/** 提报页字段名：设备信息 / 产品信息 / 恢复原生系统原因为小程序叫法，落单后即产品名称 / 产品信息图片 / 刷机原因 */
+const LABEL: Record<FieldKey, string> = {
+  studentName: L.studentName,
+  studentType: L.studentType,
+  studentAccount: L.studentAccount,
+  schoolName: L.schoolName,
+  studyProofPhotos: L.studyProofPhotos,
+  productModel: U.productModel,
+  productPhotos: U.productPhotos,
+  sn: L.sn,
+  snPhotos: L.snPhotos,
+  reason: U.reason,
+  contactPhone: L.contactPhone,
+};
+/** 选择类字段提示「请选择」，图片「请上传」，其余「请填写」（P0-3） */
 const REQUIRED_TIP: Record<FieldKey, string> = {
-  productModel: `请选择${L.productModel}`,
-  sn: `请填写${L.sn}`,
-  studentType: `请选择${L.studentType}`,
-  studentName: `请填写${L.studentName}`,
-  studentAccount: `请填写${L.studentAccount}`,
-  schoolName: `请填写${L.schoolName}`,
-  reason: `请填写${L.reason}`,
-  snPhotos: `请上传${L.snPhotos}`,
-  contactPhone: `请填写${L.contactPhone}`,
+  studentName: `请填写${LABEL.studentName}`,
+  studentType: `请选择${LABEL.studentType}`,
+  studentAccount: `请填写${LABEL.studentAccount}`,
+  schoolName: `请填写${LABEL.schoolName}`,
+  studyProofPhotos: `请上传${LABEL.studyProofPhotos}`,
+  productModel: `请选择${LABEL.productModel}`,
+  productPhotos: `请上传${LABEL.productPhotos}`,
+  sn: `请填写${LABEL.sn}`,
+  snPhotos: `请上传${LABEL.snPhotos}`,
+  reason: `请填写${LABEL.reason}`,
+  contactPhone: `请填写${LABEL.contactPhone}`,
 };
 const LABEL_TO_KEY = Object.fromEntries(
-  (Object.keys(REQUIRED_TIP) as FieldKey[]).map((k) => [L[k], k]),
+  (Object.keys(LABEL) as FieldKey[]).map((k) => [LABEL[k], k]),
 ) as Record<string, FieldKey>;
 
 const router = useRouter();
@@ -46,23 +69,63 @@ const config = useFlashConfigStore();
 const modelOptions = computed(() => config.models.map((m) => ({ value: m.model, label: m.model })));
 
 const form = reactive({
+  studentName: '',
+  studentType: undefined as FlashStudentType | undefined,
+  studentAccount: '',
+  /** 学校名称：自由文本（不是省市区级联），工单系统不校验（10-19 C8；毕业生身份按学生账号判定） */
+  schoolName: '',
   productModel: undefined as string | undefined,
   sn: '',
-  studentType: undefined as FlashStudentType | undefined,
-  studentName: '',
-  studentAccount: '',
-  /** 学校名称：自由文本，工单系统不校验（10-19 C8；毕业生身份按学生账号判定） */
-  schoolName: '',
   reason: '',
   contactPhone: AUTHORIZED_PHONE,
 });
-/** 设备SN照片（必传）/ MDM信息图片（选传），各 1 张 */
-const photos = reactive<Record<PhotoKey, { name: string; url: string } | null>>({ snPhotos: null, mdmPhotos: null });
-const fileInputs = reactive<Record<PhotoKey, HTMLInputElement | null>>({ snPhotos: null, mdmPhotos: null });
-const PHOTO_FIELDS: { key: PhotoKey; label: string; required: boolean }[] = [
-  { key: 'snPhotos', label: L.snPhotos, required: true },
-  { key: 'mdmPhotos', label: L.mdmPhotos, required: false },
+/** 学习证明附件（转校生必传）/ 产品信息（必传）/ 设备SN照片（必传），各 1 张 */
+const photos = reactive<Record<PhotoKey, { name: string; url: string } | null>>({
+  studyProofPhotos: null, productPhotos: null, snPhotos: null,
+});
+const fileInputs = reactive<Record<PhotoKey, HTMLInputElement | null>>({
+  studyProofPhotos: null, productPhotos: null, snPhotos: null,
+});
+
+/** 学习证明附件仅学生类型为转校生时显示 */
+const needStudyProof = computed(() => form.studentType === '转校生');
+
+/** 文本输入项：长度上限（学生姓名 / 学生账号 / 学校名称最长 50 字） */
+const TEXT_MAX: Partial<Record<TextKey, number>> = {
+  studentName: FLASH_USER_TEXT_MAX,
+  studentAccount: FLASH_USER_TEXT_MAX,
+  schoolName: FLASH_USER_TEXT_MAX,
+};
+
+/** 字段次序（小程序接口字段表）：学生信息一张卡，设备信息一张卡 */
+type Row =
+  | { kind: 'text'; key: TextKey }
+  | { kind: 'textarea'; key: 'reason' }
+  | { kind: 'select'; key: 'studentType' | 'productModel' }
+  | { kind: 'photo'; key: PhotoKey };
+const STUDENT_ROWS = computed<Row[]>(() => [
+  { kind: 'text', key: 'studentName' },
+  { kind: 'select', key: 'studentType' },
+  { kind: 'text', key: 'studentAccount' },
+  { kind: 'text', key: 'schoolName' },
+  ...(needStudyProof.value ? [{ kind: 'photo', key: 'studyProofPhotos' } as Row] : []),
+]);
+const DEVICE_ROWS: Row[] = [
+  { kind: 'select', key: 'productModel' },
+  { kind: 'photo', key: 'productPhotos' },
+  { kind: 'text', key: 'sn' },
+  { kind: 'photo', key: 'snPhotos' },
+  { kind: 'textarea', key: 'reason' },
 ];
+/** 占位：文本项与学生类型「请填写」，设备信息「请选择」，恢复原生系统原因不设占位 */
+const PLACEHOLDER: Partial<Record<FieldKey, string>> = {
+  studentName: '请填写',
+  studentType: '请填写',
+  studentAccount: '请填写',
+  schoolName: '请填写',
+  productModel: '请选择',
+  sn: '请填写',
+};
 
 const errors = reactive<Partial<Record<FieldKey, string>>>({});
 const alert = ref<{ text: string; inflightNo?: string } | null>(null);
@@ -73,14 +136,18 @@ function clearError(k: FieldKey) {
 
 watch(() => form.productModel, () => { clearError('productModel'); alert.value = null; });
 watch(() => form.sn, () => { clearError('sn'); alert.value = null; });
-watch(() => form.studentType, () => clearError('studentType'));
+watch(() => form.studentType, () => { clearError('studentType'); clearError('studyProofPhotos'); });
 watch(() => form.studentAccount, () => clearError('studentAccount'));
 watch(() => form.studentName, () => clearError('studentName'));
 watch(() => form.schoolName, () => clearError('schoolName'));
 watch(() => form.reason, () => clearError('reason'));
 watch(() => form.contactPhone, () => clearError('contactPhone'));
 
-/* ---------------- 设备SN照片 · 识别 SN / MDM信息图片 ---------------- */
+function selectOptions(key: 'studentType' | 'productModel') {
+  return key === 'studentType' ? FLASH_STUDENT_TYPE_OPTIONS : modelOptions.value;
+}
+
+/* ---------------- 图片 · 设备SN照片识别 SN ---------------- */
 
 /** 按 MDM 设备台账识别照片里的 SN；识别不出返回空（P0-7：不填入） */
 function recognizeSn(fileName: string): string {
@@ -103,8 +170,8 @@ function onPhotoChange(key: PhotoKey, e: Event) {
   const reader = new FileReader();
   reader.onload = () => {
     photos[key] = { name: file.name, url: String(reader.result ?? '') };
+    clearError(key);
     if (key !== 'snPhotos') return;
-    clearError('snPhotos');
     const sn = recognizeSn(file.name);
     if (sn) form.sn = sn;
   };
@@ -126,13 +193,28 @@ function buildInput(): FlashCreateInput {
     studentType: form.studentType ?? '',
     studentAccount: form.studentAccount,
     studentName: form.studentName,
+    // 小程序学校为文本，无学校库 ID、无省市区
     schoolId: '',
     schoolName: form.schoolName.trim(),
     reason: form.reason.trim(),
     snPhotos: photos.snPhotos ? [photos.snPhotos.name] : [],
-    mdmPhotos: photos.mdmPhotos ? [photos.mdmPhotos.name] : [],
+    productPhotos: photos.productPhotos ? [photos.productPhotos.name] : [],
+    studyProofPhotos: needStudyProof.value && photos.studyProofPhotos ? [photos.studyProofPhotos.name] : [],
     contactPhone: form.contactPhone,
   };
+}
+
+/** 文本超长（输入框已限 50 字，粘贴等兜底） */
+function overLength(): boolean {
+  let over = false;
+  (Object.keys(TEXT_MAX) as TextKey[]).forEach((k) => {
+    const max = TEXT_MAX[k]!;
+    if (form[k].trim().length > max) {
+      errors[k] = `${LABEL[k]}最长${max}字`;
+      over = true;
+    }
+  });
+  return over;
 }
 
 function showBlocked(ev: FlashEvaluationBlocked) {
@@ -160,6 +242,20 @@ function showBlocked(ev: FlashEvaluationBlocked) {
 function submit() {
   const input = buildInput();
   const ev = flash.evaluateCreate(input, '用户提报');
+  // 次序：必填 → 长度上限 → 在途
+  if (ev.kind === 'blocked' && ev.code === 'required') {
+    showBlocked(ev);
+    overLength();
+    return;
+  }
+  (Object.keys(errors) as FieldKey[]).forEach(clearError);
+  if (overLength()) {
+    alert.value = null;
+    nextTick(() => {
+      document.querySelector('.fa-field.has-error')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    return;
+  }
   if (ev.kind === 'blocked') {
     showBlocked(ev);
     return;
@@ -212,104 +308,47 @@ const { snapshot } = useFlashProgress(resultNo);
       </div>
     </template>
 
-    <section class="fa-card">
-      <div class="fa-field" :class="{ 'has-error': errors.productModel }">
-        <label class="fa-label is-required">{{ L.productModel }}</label>
+    <section v-for="(rows, ci) in [STUDENT_ROWS, DEVICE_ROWS]" :key="ci" class="fa-card">
+      <div v-for="r in rows" :key="r.key" class="fa-field" :class="{ 'has-error': errors[r.key] }">
+        <label class="fa-label is-required">{{ LABEL[r.key] }}</label>
+        <a-input
+          v-if="r.kind === 'text'"
+          v-model:value="form[r.key]"
+          size="large"
+          :placeholder="PLACEHOLDER[r.key]"
+          :maxlength="TEXT_MAX[r.key]"
+          :allow-clear="r.key === 'sn'"
+          :status="errors[r.key] ? 'error' : undefined"
+        />
         <a-select
-          v-model:value="form.productModel"
+          v-else-if="r.kind === 'select'"
+          v-model:value="form[r.key]"
           size="large"
-          placeholder="请选择"
-          :options="modelOptions"
-          :status="errors.productModel ? 'error' : undefined"
+          :placeholder="PLACEHOLDER[r.key]"
+          :options="selectOptions(r.key)"
+          :status="errors[r.key] ? 'error' : undefined"
         />
-        <div v-if="errors.productModel" class="fa-error">{{ errors.productModel }}</div>
-      </div>
-
-      <div class="fa-field" :class="{ 'has-error': errors.sn }">
-        <label class="fa-label is-required">{{ L.sn }}</label>
-        <a-input
-          v-model:value="form.sn"
-          size="large"
-          placeholder="请输入"
-          allow-clear
-          :status="errors.sn ? 'error' : undefined"
-        />
-        <div v-if="errors.sn" class="fa-error">{{ errors.sn }}</div>
-      </div>
-
-      <div class="fa-field" :class="{ 'has-error': errors.studentType }">
-        <label class="fa-label is-required">{{ L.studentType }}</label>
-        <a-select
-          v-model:value="form.studentType"
-          size="large"
-          placeholder="请选择"
-          :options="FLASH_STUDENT_TYPE_OPTIONS"
-          :status="errors.studentType ? 'error' : undefined"
-        />
-        <div v-if="errors.studentType" class="fa-error">{{ errors.studentType }}</div>
-      </div>
-
-      <div class="fa-field" :class="{ 'has-error': errors.studentName }">
-        <label class="fa-label is-required">{{ L.studentName }}</label>
-        <a-input
-          v-model:value="form.studentName"
-          size="large"
-          placeholder="请输入"
-          :status="errors.studentName ? 'error' : undefined"
-        />
-        <div v-if="errors.studentName" class="fa-error">{{ errors.studentName }}</div>
-      </div>
-
-      <div class="fa-field" :class="{ 'has-error': errors.studentAccount }">
-        <label class="fa-label is-required">{{ L.studentAccount }}</label>
-        <a-input
-          v-model:value="form.studentAccount"
-          size="large"
-          placeholder="请输入"
-          :status="errors.studentAccount ? 'error' : undefined"
-        />
-        <div v-if="errors.studentAccount" class="fa-error">{{ errors.studentAccount }}</div>
-      </div>
-
-      <div class="fa-field" :class="{ 'has-error': errors.schoolName }">
-        <label class="fa-label is-required">{{ L.schoolName }}</label>
-        <a-input
-          v-model:value="form.schoolName"
-          size="large"
-          placeholder="请输入"
-          :status="errors.schoolName ? 'error' : undefined"
-        />
-        <div v-if="errors.schoolName" class="fa-error">{{ errors.schoolName }}</div>
-      </div>
-
-      <div class="fa-field" :class="{ 'has-error': errors.reason }">
-        <label class="fa-label is-required">{{ L.reason }}</label>
         <a-textarea
-          v-model:value="form.reason"
+          v-else-if="r.kind === 'textarea'"
+          v-model:value="form[r.key]"
           size="large"
           :rows="3"
-          :placeholder="FLASH_REASON_PLACEHOLDER"
-          :status="errors.reason ? 'error' : undefined"
+          :status="errors[r.key] ? 'error' : undefined"
         />
-        <div v-if="errors.reason" class="fa-error">{{ errors.reason }}</div>
-      </div>
-    </section>
-
-    <section class="fa-card">
-      <div v-for="p in PHOTO_FIELDS" :key="p.key" class="fa-field" :class="{ 'has-error': p.required && errors.snPhotos }">
-        <label class="fa-label" :class="{ 'is-required': p.required }">{{ p.label }}</label>
-        <input :ref="(el) => { fileInputs[p.key] = el as HTMLInputElement | null; }" class="fa-file" type="file" accept="image/*" @change="(e) => onPhotoChange(p.key, e)">
-        <div v-if="photos[p.key]" class="fa-photo">
-          <img :src="photos[p.key]!.url" :alt="p.label">
-          <button type="button" class="fa-photo__remove" aria-label="删除" @click="removePhoto(p.key)">
-            <CloseOutlined />
+        <template v-else>
+          <input :ref="(el) => { fileInputs[r.key] = el as HTMLInputElement | null; }" class="fa-file" type="file" accept="image/*" @change="(e) => onPhotoChange(r.key, e)">
+          <div v-if="photos[r.key]" class="fa-photo">
+            <img :src="photos[r.key]!.url" :alt="LABEL[r.key]">
+            <button type="button" class="fa-photo__remove" aria-label="删除" @click="removePhoto(r.key)">
+              <CloseOutlined />
+            </button>
+          </div>
+          <button v-else type="button" class="fa-upload" :class="{ 'is-error': errors[r.key] }" @click="pickPhoto(r.key)">
+            <CameraOutlined class="fa-upload__icon" />
+            <span>上传照片</span>
           </button>
-        </div>
-        <button v-else type="button" class="fa-upload" :class="{ 'is-error': p.required && errors.snPhotos }" @click="pickPhoto(p.key)">
-          <CameraOutlined class="fa-upload__icon" />
-          <span>上传照片</span>
-        </button>
-        <div v-if="p.required && errors.snPhotos" class="fa-error">{{ errors.snPhotos }}</div>
+        </template>
+        <div v-if="errors[r.key]" class="fa-error">{{ errors[r.key] }}</div>
       </div>
     </section>
 
