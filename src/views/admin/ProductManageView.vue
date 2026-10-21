@@ -13,7 +13,6 @@ import {
   type ProductTreeNode,
 } from '@/mock/productTree';
 import { FLASH_MODEL_SEED } from '@/mock/flash/models';
-import { useFlashConfigStore } from '@/stores/flashConfig';
 
 const KIND_LABEL: Record<ProductTreeNode['kind'], string> = {
   BGBU: 'BGBU', 业务线: '业务线', 产品线: '产品线', 产品分类: '分类', 产品: '产品',
@@ -59,26 +58,9 @@ const products = ref<Product[]>([
 ]);
 
 /**
- * 刷机单识别只看问题分类「是否刷机」（10-19 C1），产品管理不再有「是否支持刷机」开关。
- * 产品管理只维护智慧课堂学生平板的「自研 · 支持线上自助推送」（1013 B7），开关值落刷机配置 store，建单与用户提报即时生效。
+ * 刷机单识别只看问题分类「是否刷机」（10-19 C1）；是否自研机型只看自研机型表（后台维护、不设页面，PRD §9 / 附录 A.4），
+ * 产品管理不设刷机相关的列与开关。
  */
-const flashConfig = useFlashConfigStore();
-/**
- * 该产品下有刷机类问题分类（问题分类「是否刷机」＝是，10-19 C1）才出「自研 · 支持线上自助推送」开关，
- * 与建单、修改刷机信息弹窗同一判据（F14）；其余产品显示「—」
- */
-function hasFlashProfile(p: Product): boolean {
-  return flashConfig.isSupportedModel(p.name);
-}
-/** 「自研 · 支持线上自助推送」（1013 B7） */
-function selfDeveloped(p: Product): boolean {
-  return flashConfig.isSelfDeveloped(p.name);
-}
-function onSelfDevelopedChange(p: Product, checked: boolean) {
-  flashConfig.setProductSelfDeveloped(p.name, checked, p.prodcat);
-  message.success(checked ? '已开启自研 · 支持线上自助推送' : '已关闭自研 · 支持线上自助推送');
-}
-
 const cols = [
   { title: '产品名称', dataIndex: 'name', key: 'name', width: 200 },
   { title: 'BGBU', dataIndex: 'bgbu', key: 'bgbu', width: 130 },
@@ -86,7 +68,6 @@ const cols = [
   { title: '产品线', dataIndex: 'prodline', key: 'prodline', width: 130 },
   { title: '业务分类', dataIndex: 'bizcat', key: 'bizcat', width: 110 },
   { title: '产品分类', dataIndex: 'prodcat', key: 'prodcat', width: 150 },
-  { title: '自研 · 支持线上自助推送', key: 'selfDev', width: 180 },
   { title: '操作', key: 'op', width: 80, fixed: 'right' as const },
 ];
 
@@ -98,21 +79,12 @@ const rowSelection = computed(() => ({
 
 const pagination = stdPagination({ pageSize: 20, total: 1796 });
 
-/** 编辑产品：本期只开放「自研 · 支持线上自助推送」一项可改，其余为产品主数据只读 */
+/** 编辑产品：本期无可改项，产品主数据只读查看 */
 const editOpen = ref(false);
 const editing = ref<Product | null>(null);
-const editSelfDev = ref(false);
 function onEdit(p: Product) {
   editing.value = p;
-  editSelfDev.value = selfDeveloped(p);
   editOpen.value = true;
-}
-function onEditSave() {
-  const p = editing.value;
-  if (!p) return;
-  if (hasFlashProfile(p) && editSelfDev.value !== selfDeveloped(p)) flashConfig.setProductSelfDeveloped(p.name, editSelfDev.value, p.prodcat);
-  editOpen.value = false;
-  message.success('产品已更新');
 }
 function onCreate() { message.info('新建产品'); }
 function goRdMapping() { router.push('/admin/product-rd-mapping'); }
@@ -201,15 +173,6 @@ function goRdMapping() { router.push('/admin/product-rd-mapping'); }
             <template v-else-if="column.key === 'prodcat'">
               <a class="cell-link">{{ (record as Product).prodcat }}</a>
             </template>
-            <template v-else-if="column.key === 'selfDev'">
-              <a-switch
-                v-if="hasFlashProfile(record as Product)"
-                size="small"
-                :checked="selfDeveloped(record as Product)"
-                @change="(v: unknown) => onSelfDevelopedChange(record as Product, !!v)"
-              />
-              <span v-else class="cell-empty">—</span>
-            </template>
             <template v-else-if="column.key === 'op'">
               <a-button type="text" size="small" class="op-edit" @click="onEdit(record as Product)">
                 <EditOutlined />
@@ -221,17 +184,14 @@ function goRdMapping() { router.push('/admin/product-rd-mapping'); }
     </div>
     </div>
 
-    <a-modal v-model:open="editOpen" title="编辑产品" :width="480" ok-text="保存" cancel-text="取消" @ok="onEditSave">
+    <a-modal v-model:open="editOpen" title="编辑产品" :width="480">
       <a-form v-if="editing" layout="horizontal" :label-col="{ style: { width: '168px' } }" class="edit-form">
         <a-form-item label="产品名称"><a-input :value="editing.name" disabled /></a-form-item>
         <a-form-item label="产品分类"><a-input :value="editing.prodcat" disabled /></a-form-item>
-        <a-form-item v-if="hasFlashProfile(editing)" label="自研 · 支持线上自助推送">
-          <a-radio-group v-model:value="editSelfDev" button-style="solid">
-            <a-radio-button :value="true">是</a-radio-button>
-            <a-radio-button :value="false">否</a-radio-button>
-          </a-radio-group>
-        </a-form-item>
       </a-form>
+      <template #footer>
+        <a-button @click="editOpen = false">关闭</a-button>
+      </template>
     </a-modal>
   </div>
 </template>
