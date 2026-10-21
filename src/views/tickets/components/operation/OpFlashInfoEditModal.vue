@@ -2,7 +2,7 @@
 /**
  * 刷机单 · 「修改刷机信息」弹窗（1013 A12 / B1 / B8，PRD §5.6 / §5.8，M52 / M53 / M70 / M78–M80）。
  * 所有机型只有这一个入口；底部按钮按弹窗里**所选的产品**取值，改选产品随即切换：
- * 自研机型（支持线上自助推送）为「取消 / 重新推送」，提交即推送（唯一的推送入口）；其他机型为「取消 / 保存」，只保存不推送。
+ * 产品在自研机型表（PRD 附录 A.4）为「取消 / 重新推送」，校验通过即推送（唯一的推送入口）；不在表中为「取消 / 保存」，只保存不推送。
  *
  * - 字段按本单当前值预填：产品分类 · 产品名称 · 设备SN · 学生类型 · 学生姓名 · 学生账号 · 学校名称 · 刷机原因 ·
  *   设备SN照片 · MDM信息图片（小程序单另有产品信息图片、学习证明附件，带了才出）；产品名称下拉只列支持刷机的产品。
@@ -19,6 +19,7 @@ import FormSelect from '@/views/tickets/components/create-ticket/FormSelect.vue'
 import { useFlashConfigStore } from '@/stores/flashConfig';
 import type { FlashActionResult, FlashInfoChanges } from '@/stores/flash';
 import { findSchoolById } from '@/mock/schools';
+import { isSelfDevModel } from '@/mock/flash/models';
 import FlashSchoolPicker from '@/views/tickets/components/create-ticket/FlashSchoolPicker.vue';
 import {
   FLASH_FIELD_LABELS as L, FLASH_REASON_PLACEHOLDER, FLASH_STUDENT_TYPE_OPTIONS,
@@ -29,7 +30,7 @@ import { mdmInfoDataUri, productInfoDataUri, snPlateDataUri, studyProofDataUri }
 const props = defineProps<{
   open: boolean;
   info: FlashInfo;
-  /** 提交：交给刷机服务，返回拦截 / 校验结论。`push` ＝ 所选产品为自研机型，走重新推送 */
+  /** 提交：交给刷机服务，返回拦截 / 校验结论。`push` ＝ 所选产品在自研机型表，走重新推送 */
   submitter: (changes: FlashInfoChanges, push: boolean) => FlashActionResult;
   /** 客户信息的省市区（学校检索的默认地区，10-19 C5） */
   customerRegion?: string;
@@ -160,8 +161,10 @@ const modelOptions = computed(() => {
   }
   return opts;
 });
-/** 所选产品为自研机型（支持线上自助推送）：主按钮「重新推送」，否则「保存」（B8） */
-const pushable = computed(() => config.isSupportedModel(draft.productModel) && config.isSelfDeveloped(draft.productModel));
+/**
+ * 所选产品挂刷机类问题分类且在自研机型表：主按钮「重新推送」；不在表中，或本单产品已不挂刷机类问题分类且未改选：「保存」（PRD §5.6）
+ */
+const pushable = computed(() => config.isSupportedModel(draft.productModel) && isSelfDevModel(draft.productModel));
 
 function setSelect(key: 'productModel' | 'schoolId', v: unknown) {
   draft[key] = v == null ? '' : String(v);
