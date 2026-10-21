@@ -12,7 +12,7 @@ import { makeTicketNo } from '@/constants/ticketNo';
 import {
   FLASH_FIELD_LABELS, FLASH_INFO_FIELD_LABELS, FLASH_NOTIFY_EVENTS, FLASH_POOLS, FLASH_STUDENT_TYPE_AUTO, FLASH_STUDENT_TYPES,
   FLASH_RETURN_DELAY_MS, FLASH_AFTERSALE_RETURN_DELAY_MS, FLASH_TIP_PRODUCT_UNSUPPORTED,
-  FLASH_RESULT_ONLINE_SUCCESS, FLASH_RESULT_OFFLINE_PUSHED, FLASH_RESULT_ESCALATE_L2, normalizeFlashResult,
+  FLASH_RESULT_ONLINE_SUCCESS, FLASH_RESULT_ESCALATE_L2, FLASH_OFFLINE_SURVEY_DELAY_MS, normalizeFlashResult,
   FLASH_TIP_NOT_GRADUATE_L1, FLASH_TIP_NOT_GRADUATE_L2, FLASH_TIP_REPUSH_NOT_GRADUATE, FLASH_TIP_REPUSH_SN_MISMATCH,
   FLASH_TIP_AUTO_FLASHING, FLASH_TIP_EDIT_STATE, FLASH_TIP_REPUSH_STATE, FLASH_TIP_SYSTEM_BUSY, FLASH_TIP_VERIFY_UNAVAILABLE,
   FLASH_TL, FLASH_NOTICE, FLASH_RESULT_OFFLINE, FLASH_TOAST,
@@ -328,9 +328,16 @@ export const useFlashStore = defineStore('flash', () => {
    * 进「调研中」的两个入口（下送、首推自动刷机成功）都走这里。
    */
   function sendSurveySms(r: Ticket, at: number) {
-    r.flash!.state.surveySentAt = flashStamp(at);
+    const st = r.flash!.state;
+    st.surveySentAt = flashStamp(at);
+    st.surveyDueAt = undefined;
     const content = flashSmsSurvey(r.no);
-    const rec = useNotifyLogStore().emit({
+    const notifyLog = useNotifyLogStore();
+    // 延迟发送的那条（「已登记线下表格」下送时记下的计划发送）到点改为已发送，不另起一条
+    const pending = notifyLog.records.find(
+      (x) => x.ticketNo === r.no && x.event === FLASH_NOTIFY_EVENTS.survey && x.status === '待发送',
+    );
+    const rec = pending ?? notifyLog.emit({
       ticketNo: r.no,
       event: FLASH_NOTIFY_EVENTS.survey,
       kind: 'accepted',
@@ -340,11 +347,45 @@ export const useFlashStore = defineStore('flash', () => {
       channel: '短信',
       status: '已发送',
     });
-    if (rec) rec.when = flashStamp(at);
+    if (rec) {
+      rec.when = flashStamp(at);
+      rec.status = '已发送';
+    }
     log(r.no, at, {
       category: 'comm', action: 'sms', who: '系统', role: '系统', how: '短信通知',
       what: `发送至 ${r.customerPhone ?? r.customer}：${content}`,
     });
+  }
+
+  /**
+   * 「已登记线下表格」下送（PRD §5.4 / 第 7 章）：调研短信延迟 48 小时发。通知记录先落一条「待发送」，
+   * 时刻＝计划发送时间；到点由 `settleDue` 经 `sendSurveySms` 改为已发送并写履历。原型不真实发短信。
+   */
+  function scheduleSurveySms(r: Ticket, at: number) {
+    const due = at + FLASH_OFFLINE_SURVEY_DELAY_MS;
+    r.flash!.state.surveyDueAt = flashStamp(due);
+    const rec = useNotifyLogStore().emit({
+      ticketNo: r.no,
+      event: FLASH_NOTIFY_EVENTS.survey,
+      kind: 'accepted',
+      title: '调研短信',
+      receivers: [`${r.customer}(客户)`],
+      content: flashSmsSurvey(r.no),
+      channel: '短信',
+      status: '待发送',
+    });
+    if (rec) rec.when = flashStamp(due);
+  }
+
+  /** 离开「调研中」（撤回、催补拉回、进池）时，未到点的延迟调研短信作废 */
+  function cancelPendingSurvey(r: Ticket) {
+    const st = r.flash!.state;
+    if (!st.surveyDueAt) return;
+    st.surveyDueAt = undefined;
+    const pending = useNotifyLogStore().records.find(
+      (x) => x.ticketNo === r.no && x.event === FLASH_NOTIFY_EVENTS.survey && x.status === '待发送',
+    );
+    if (pending) pending.status = '已取消';
   }
 
   /* ---------------- SLA 账本（PRD §4.3，D-01：账本是唯一真源） ---------------- */
@@ -466,6 +507,7 @@ export const useFlashStore = defineStore('flash', () => {
     });
     st.pool = pool;
     st.handoffReason = reason;
+    cancelPendingSurvey(r);
     startSlaIfL2(r, at);
     resumeClock(r, at);
     if (isFlashSlaCounted(st)) syncSlaRow(r, at);
@@ -1103,6 +1145,7 @@ export const useFlashStore = defineStore('flash', () => {
       });
       // 催补拉回有处理人的单：「调研中」那段结束，剩余接着跑（PRD §4.3）
       resumeClock(r, now);
+      cancelPendingSurvey(r);
       st.forwardedBy = undefined;
       log(ticketNo, now, {
         category: 'node', action: 'handle', who: '系统', role: '系统', how: '因客户催补，自动撤回本次下送',
@@ -1218,37 +1261,21 @@ export const useFlashStore = defineStore('flash', () => {
   }
 
   /**
-   * 处理表单保存（1013 A16；1014）：一线的刷机处理结论、刷机处理记录按现值落库，**不暂停 SLA**；
-   * 二线不传两项（二线按咨询单处理，两项只读）。
-   * - 改为「已线下登记」：刷机处理记录追加「已线下登记，〈保存时刻〉」，履历记「线下登记」，单留在本人名下；
-   * - 改为「已线下登记、已推送」：刷机处理记录追加「产线已推送」；
-   * - 待响应首次保存转「处理中」（PRD §7.1）。
+   * 处理表单保存（PRD §5.4；1014）：一线的刷机处理结论、刷机处理记录按现值落库，SLA 照常计时；
+   * 二线不传两项（二线按咨询单处理，两项只读）。不追加系统文案（10-21 删线下登记保存）。
+   * 待响应首次保存转「处理中」（PRD §7.1）。
    */
   function saveProcess(
     ticketNo: string,
     by: FlashActor,
     input: { result?: FlashResult | ''; record?: string },
-  ): FlashActionResult & { appendRecord?: string } {
+  ): FlashActionResult {
     const r = rowOf(ticketNo);
     if (!r?.flash) return { ok: false, message: FLASH_TIP_EDIT_STATE };
     const st = r.flash.state;
     const now = Date.now();
-    const prev = normalizeFlashResult(st.result);
-    let appendRecord: string | undefined;
-    if (input.result && input.result !== prev) {
-      if (input.result === FLASH_RESULT_OFFLINE) appendRecord = FLASH_TL.offlineRegister(flashMinuteStamp(now));
-      else if (input.result === FLASH_RESULT_OFFLINE_PUSHED) appendRecord = FLASH_TL.offlinePushed;
-      if (appendRecord) {
-        log(ticketNo, now, {
-          category: 'handle', action: 'handle', who: by.name, role: by.role, how: '线下登记', what: appendRecord,
-        });
-      }
-    }
     if (input.result !== undefined) st.result = input.result || undefined;
-    if (input.record !== undefined) {
-      const cur = input.record.replace(/\s+$/, '');
-      st.record = appendRecord ? (cur ? `${cur}\n${appendRecord}` : appendRecord) : input.record;
-    }
+    if (input.record !== undefined) st.record = input.record;
     if (r.nodeStatus === '待响应') {
       markFirstResponse(r, now);
       r.nodeStatus = '处理中';
@@ -1256,7 +1283,7 @@ export const useFlashStore = defineStore('flash', () => {
     r.updatedAt = flashMinuteStamp(now);
     bump(ticketNo);
     persist();
-    return { ok: true, message: '', appendRecord };
+    return { ok: true, message: '' };
   }
 
   /**
@@ -1358,7 +1385,9 @@ export const useFlashStore = defineStore('flash', () => {
     log(ticketNo, now + 1, {
       category: 'node', action: 'resolved', who: by.name, role: by.role, how: '下送', what: FLASH_TL.forward(result),
     });
-    sendSurveySms(r, now + 2);
+    // 「已登记线下表格」：调研短信下送 48 小时后发（PRD §5.4）；其余下送即发
+    if (normalizeFlashResult(st.result) === FLASH_RESULT_OFFLINE) scheduleSurveySms(r, now + 2);
+    else sendSurveySms(r, now + 2);
     bump(ticketNo);
     persist();
     return { ok: true, message: FLASH_TOAST.forwarded };
@@ -1380,6 +1409,7 @@ export const useFlashStore = defineStore('flash', () => {
     });
     // 撤回下送：结掉「调研中」那段，剩余回到下送前（PRD §4.3 / R55）
     resumeClock(r, now);
+    cancelPendingSurvey(r);
     st.forwardedBy = undefined;
     log(ticketNo, now, {
       category: 'node', action: 'transfer', who: by.name, role: by.role, how: '撤回', what: FLASH_TL.withdrawForward,
@@ -1661,6 +1691,17 @@ export const useFlashStore = defineStore('flash', () => {
     for (const t of TICKETS) {
       // PRD §8 / M26′：调研超时未评价 → 自动结案（时刻取调研短信发出时刻 + 调研超时时长）
       if (isFlashTicket(t) && t.flash && t.nodeStatus === '调研中' && !t.flash.state.survey) {
+        // 「已登记线下表格」延迟发的调研短信：到点才发；未发出前不判调研超时（超时自短信发出起算）
+        const pendingDue = t.flash.state.surveyDueAt;
+        if (pendingDue) {
+          const dueMs = parseFlashStamp(pendingDue).getTime();
+          if (dueMs <= now) {
+            sendSurveySms(reactive(t), dueMs);
+            bump(t.no);
+            settled += 1;
+          }
+          continue;
+        }
         const sentAt = t.flash.state.surveySentAt ?? t.updatedAt;
         const due = sentAt ? parseFlashStamp(sentAt).getTime() + FLASH_SURVEY_TIMEOUT_HOURS * 3_600_000 : NaN;
         if (due <= now) {
@@ -1754,12 +1795,12 @@ export const useFlashStore = defineStore('flash', () => {
   /* ---------------- 初始化：读缓存 → 对账 → 起对账钟 ---------------- */
 
   /**
-   * 缓存迁移（读缓存的唯一入口，`hydrate` 与 `syncFromOtherTab` 共用）：存量处理结果旧取值「已线下登记推送」
-   * 归到现行取值「已线下登记」。旧值只在这里出现，别处一律按现行取值读写。
+   * 缓存迁移（读缓存的唯一入口，`hydrate` 与 `syncFromOtherTab` 共用）：存量处理结果旧取值
+   * 按 `FLASH_RESULT_LEGACY_MAP` 归到 10-21 五项，无对应项的清空。别处一律按现行取值读写。
    */
   function migrateCachedTicket(saved: Ticket): Ticket {
     const st = saved.flash?.state as { result?: string; verifyResult?: unknown } | undefined;
-    if (st?.result === '已线下登记推送') st.result = FLASH_RESULT_OFFLINE;
+    if (st?.result) st.result = normalizeFlashResult(st.result) || undefined;
     // 建单不再校验（v22）：旧快照上的建单校验结果一律去掉
     if (st) delete st.verifyResult;
     const info = saved.flash?.info as (FlashInfo & Record<string, unknown>) | undefined;

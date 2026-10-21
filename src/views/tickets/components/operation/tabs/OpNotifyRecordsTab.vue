@@ -66,7 +66,8 @@ function contentSegments(content: string): { text: string; href?: string }[] {
         <span class="card-meta">接收人: {{ displayReceiver(r.receiver) }} | {{ formatOpTime(r.when) }}</span>
       </div>
       <div class="content-area">
-        <div class="meta-line">通知方式: {{ r.channel }}</div>
+        <!-- 延迟发送的调研短信（刷机单「已登记线下表格」下送，PRD §5.4）：未到点为「待发送」，离开调研中作废为「已取消」 -->
+        <div class="meta-line">通知方式: {{ r.channel }}<template v-if="r.status === '待发送' || r.status === '已取消'"> · {{ r.status }}</template></div>
         <div class="content-box">
           <template v-for="(seg, i) in contentSegments(r.content)" :key="i">
             <a v-if="seg.href" class="content-link" :href="seg.href" target="_blank" rel="noopener">{{ seg.text }}</a>

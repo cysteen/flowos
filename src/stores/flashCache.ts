@@ -42,8 +42,10 @@ export type FlashLsKey = (typeof FLASH_LS_KEYS)[keyof typeof FLASH_LS_KEYS];
  * ③ ⑩ 改为首推接收失败进一线刷机池，⑨ 转校生改进一线刷机池；建单履历不再带校验结果。
  * v23：刷机单 SLA 不停表（PRD v1.28）：⑰ 已转出照常计时，缓存里的「已暂停」快照作废。
  * v24：SLA 起算时间改存到秒（界面时刻统一「年-月-日 时:分:秒」，PRD v1.28）。
+ * v25：刷机处理结论改为 10-21 五项（已登记线下表格 / 已修改信息并重新推送 / 需升级二线 / 不符合刷机条件，已婉拒 / 用户放弃刷机），
+ * 删线下登记保存追加文案；刷机字段组新增 surveyDueAt（延迟调研短信）。
  */
-export const FLASH_CACHE_VERSION = 24;
+export const FLASH_CACHE_VERSION = 25;
 
 /** 保质期：12 小时（与风险两条线 `RISK_STALE_MS` 同口径） */
 export const FLASH_STALE_MS = 12 * 60 * 60 * 1000;

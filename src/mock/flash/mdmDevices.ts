@@ -87,7 +87,7 @@ export const MDM_DEVICES: MdmDevice[] = [
   dev({ sn: 'XFS20240600789', model: S20, studentAccount: 'hf50z2023s0520', online: '未开机' }),
   // ⑬ 教育刷机处理组池 · 自助成功后回访未解决
   dev({ sn: 'XFS30240900690', model: S30, studentAccount: 'hf168z2023s0908' }),
-  // ⑭ 一线处理中 · 非自研机型，处理结果「已线下登记」留在本人名下
+  // ⑭ 一线处理中 · 非自研机型，刷机处理结论「已登记线下表格」，已保存待下送
   dev({ sn: 'LNX6C62404B0277', model: X6C6F, studentAccount: 'bb2z2023s0625' }),
   // ⑮ 调研中 · 自助刷机成功（无处理人）
   dev({ sn: 'XFS20240600823', model: S20, studentAccount: 'la1z2023s0302' }),

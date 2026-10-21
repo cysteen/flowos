@@ -155,7 +155,7 @@ export function flashRecordBodyText(result: string, record: string): string {
 
 /**
  * 刷机处理结论的写入时刻：「已线上刷机成功」取最近一次回传「接收成功」（迟到回传不改结论，不算）；
- * 「升级二线」取最近一次升级二线；其余结论随刷机处理记录一并保存，取最近一次带刷机处理结论的保存。
+ * 「需升级二线」取最近一次升级二线；其余结论随刷机处理记录一并保存，取最近一次带刷机处理结论的保存。
  */
 function conclusionWrittenAt(entries: TimelineEntry[], result: string): string | undefined {
   const hit = (pred: (e: TimelineEntry) => boolean) => {

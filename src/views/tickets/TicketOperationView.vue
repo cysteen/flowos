@@ -25,7 +25,7 @@ import OpFlashInfoBlock from './components/operation/OpFlashInfoBlock.vue';
 import OpFlashInfoEditModal from './components/operation/OpFlashInfoEditModal.vue';
 import OpFlashEscalateModal from './components/operation/OpFlashEscalateModal.vue';
 import {
-  FLASH_RESULT_ESCALATE_L2, FLASH_RESULT_OFFLINE, FLASH_TIP_OFFLINE_FORWARD, FLASH_TIP_RESULT_REQUIRED,
+  FLASH_RESULT_ESCALATE_L2, FLASH_TIP_RESULT_REQUIRED,
   FLASH_POOLS, isFlashTicket, normalizeFlashResult, type FlashActor, type FlashResult,
 } from './types/flash';
 import {
@@ -711,15 +711,12 @@ const flashFormLine = computed<'l1' | 'l2' | undefined>(() => {
   return d.value.flash?.state.pool === 'l2' ? 'l2' : 'l1';
 });
 
-/** 刷机单下送校验（PRD §5.4 / 1013 A15）：一线未选刷机处理结论、「已线下登记」拦下；二线按咨询单校验；空串＝通过 */
+/** 刷机单下送校验（PRD §5.4）：一线未选刷机处理结论拦下；二线按咨询单校验；空串＝通过 */
 const flashForwardTip = computed(() => {
   if (!isFlash.value || flashFormLine.value === 'l2') return '';
-  const f = form.value;
-  if (!f.flashResult) return FLASH_TIP_RESULT_REQUIRED;
-  if (f.flashResult === FLASH_RESULT_OFFLINE) return FLASH_TIP_OFFLINE_FORWARD;
-  return '';
+  return form.value.flashResult ? '' : FLASH_TIP_RESULT_REQUIRED;
 });
-/** 处理结果＝升级二线（仅一线）：下送改走升级二线确认（1013 A18） */
+/** 处理结果＝需升级二线（仅一线）：下送改走升级二线确认（1013 A18） */
 const flashForwardEscalate = computed(
   () => isFlash.value && flashView.value === 'l1' && form.value.flashResult === FLASH_RESULT_ESCALATE_L2,
 );
@@ -1965,8 +1962,8 @@ function buildProcessLog() {
 }
 
 /**
- * 刷机单保存的附加动作（PRD §5.4 / 1013 A16；1014）：一线交刷机服务落刷机处理结论与刷机处理记录；改为「已线下登记」或
- * 「已线下登记、已推送」时，把系统追加的那一行并进「刷机处理记录」。二线按咨询单保存，不动一线两项。返回 false ＝ 拦下、不保存。
+ * 刷机单保存的附加动作（PRD §5.4；1014）：一线交刷机服务落刷机处理结论与刷机处理记录，不追加系统文案；
+ * 二线按咨询单保存，不动一线两项。返回 false ＝ 拦下、不保存。
  */
 function onFlashSave(): boolean {
   const f = form.value;
@@ -1977,10 +1974,6 @@ function onFlashSave(): boolean {
   if (!res.ok) {
     if (res.message) message.warning(res.message);
     return false;
-  }
-  if (l1 && res.appendRecord) {
-    const cur = (form.value.flashRecord ?? '').replace(/\s+$/, '');
-    form.value = { ...form.value, flashRecord: cur ? `${cur}\n${res.appendRecord}` : res.appendRecord };
   }
   return true;
 }

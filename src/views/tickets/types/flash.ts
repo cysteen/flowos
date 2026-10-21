@@ -120,31 +120,40 @@ export const FLASH_HANDOFF_REASONS = [
 export type FlashHandoffReason = (typeof FLASH_HANDOFF_REASONS)[number];
 
 /* ------------------------------------------------------------------ */
-/* 处理结果（1013 A15 / A16 / A18 / B1，暂行清单）                       */
+/* 处理结果（PRD §5.4，10-21 定稿五项）                                  */
 /* ------------------------------------------------------------------ */
 
 /**
- * 处理结果取值全集。「已线上刷机成功」只由系统在重新推送接收成功时写入（B1），不在下拉里出；
- * 其余为人工可选项，按视角取 `flashResultOptions`。完整清单以业务提供为准。
+ * 处理结果取值全集。「已线上刷机成功」只由系统在推送接收成功时写入（B1），不在下拉里出；
+ * 其余五项为人工可选项（`flashResultOptions`）。
  */
 export const FLASH_RESULTS = [
   '已线上刷机成功',
-  '已线下登记',
-  '已线下登记、已推送',
-  '升级二线',
-  '婉拒',
-  '联系不上用户',
-  '用户放弃',
+  '已登记线下表格',
+  '已修改信息并重新推送',
+  '需升级二线',
+  '不符合刷机条件，已婉拒',
+  '用户放弃刷机',
 ] as const;
 export type FlashResult = (typeof FLASH_RESULTS)[number];
 /** 系统写入的「刷机成功」类处理结果（推送接收成功，B1） */
 export const FLASH_RESULT_ONLINE_SUCCESS: FlashResult = '已线上刷机成功';
-/** 只完成线下登记、产线未推送：只能保存，留在本人名下（A16） */
-export const FLASH_RESULT_OFFLINE: FlashResult = '已线下登记';
-/** 产线已推送：可下送进回访（A16） */
-export const FLASH_RESULT_OFFLINE_PUSHED: FlashResult = '已线下登记、已推送';
+/** 已登记线下表格：下送即进「调研中」，调研短信延迟 48 小时发（PRD §5.4 / 第 7 章） */
+export const FLASH_RESULT_OFFLINE: FlashResult = '已登记线下表格';
+/** 「已登记线下表格」下送后调研短信的延迟 */
+export const FLASH_OFFLINE_SURVEY_DELAY_MS = 48 * 3_600_000;
 /** 下送时二次确认后进教育刷机处理组池（A18） */
-export const FLASH_RESULT_ESCALATE_L2: FlashResult = '升级二线';
+export const FLASH_RESULT_ESCALATE_L2: FlashResult = '需升级二线';
+
+/** 旧取值 → 10-21 五项（读缓存 / 种子迁移用；无对应项的按未选） */
+export const FLASH_RESULT_LEGACY_MAP: Record<string, FlashResult> = {
+  已线下登记: '已登记线下表格',
+  '已线下登记、已推送': '已登记线下表格',
+  已线下登记推送: '已登记线下表格',
+  升级二线: '需升级二线',
+  婉拒: '不符合刷机条件，已婉拒',
+  用户放弃: '用户放弃刷机',
+};
 
 /** 刷机处理结论下拉的人工可选项（只在一线形态出；二线按咨询单处理表单，1014） */
 export function flashResultOptions(): FlashResult[] {
@@ -154,12 +163,11 @@ export function flashResultOptions(): FlashResult[] {
 /** 处理结果取值校验：不在现行取值全集内的一律按未选。存量旧取值只在读缓存时迁移一次（`stores/flash.ts`） */
 export function normalizeFlashResult(v: string | undefined | null): FlashResult | '' {
   if (!v) return '';
-  return (FLASH_RESULTS as readonly string[]).includes(v) ? (v as FlashResult) : '';
+  if ((FLASH_RESULTS as readonly string[]).includes(v)) return v as FlashResult;
+  return FLASH_RESULT_LEGACY_MAP[v] ?? '';
 }
 
-/** 下送拦截：处理结果为「已线下登记」（A15） */
-export const FLASH_TIP_OFFLINE_FORWARD = '已线下登记，待产线推送后改为『已线下登记、已推送』再下送';
-/** 下送确认：处理结果为「升级二线」（A18） */
+/** 下送确认：处理结果为「需升级二线」（A18） */
 export const FLASH_ESCALATE_CONFIRM_TEXT = '工单将转入二线继续处理';
 
 /* ------------------------------------------------------------------ */
@@ -348,6 +356,11 @@ export interface FlashState {
    * 调研超时未评价按它 + `FLASH_SURVEY_TIMEOUT_HOURS` 判自动结案。
    */
   surveySentAt?: string;
+  /**
+   * 延迟调研短信的计划发送时刻（YYYY-MM-DD HH:mm:ss）：结论「已登记线下表格」下送时写入＝下送时刻 + 48 小时，
+   * 发出或离开「调研中」时清空（PRD §5.4 / 第 7 章）。有值期间不判调研超时。
+   */
+  surveyDueAt?: string;
   /** 用户回访评价（M86）：提交即记为已产生回访结论，一张单只评价一次 */
   survey?: FlashSurveyFeedback;
   /**
@@ -589,10 +602,6 @@ export const FLASH_TL = {
   handoff: (reason: FlashHandoffReason, poolLabel: string) => `转人工 · ${reason} → ${poolLabel}`,
   repushFailBack: (handler: string) => `重推失败 · 交回 ${handler}`,
   editInfo: '修改刷机信息',
-  /** 保存「已线下登记」时追加进处理记录的一行（A16），`time` ＝ 保存时刻 */
-  offlineRegister: (time: string) => `已线下登记，${time}`,
-  /** 改为「已线下登记、已推送」并保存时追加进处理记录的一行（A16） */
-  offlinePushed: '产线已推送',
   /** 升级二线（A18）：「升级至教育刷机处理组」＋ 最近一条刷机处理记录 */
   escalateL2: (record?: string) =>
     `升级至教育刷机处理组${record?.trim() ? `；刷机处理记录：${record.trim()}` : ''}`,

@@ -149,9 +149,9 @@ const props = defineProps<{
   flashIsInitiator?: boolean;
   /** 调研中本单有无下送发起人（撤回悬停原因取值，M99） */
   flashHasForwarder?: boolean;
-  /** 刷机单下送必填校验不通过的提示（空＝通过，PRD §5.4「下送必填校验」；含「已线下登记」拦截） */
+  /** 刷机单下送必填校验不通过的提示（空＝通过，PRD §5.4「下送必填校验」） */
   flashForwardTip?: string;
-  /** 刷机处理结论＝升级二线（一线）：下送改为「升级二线确认」，确认后进教育刷机处理组池（1013 A18） */
+  /** 刷机处理结论＝需升级二线（一线）：下送改为「升级二线确认」，确认后进教育刷机处理组池（1013 A18） */
   flashForwardEscalate?: boolean;
   /** 刷机单下送确认弹窗主按钮文案（本单已产生过回访结论＝「下送并结案」，PRD §5.5） */
   flashForwardOkText?: string;
