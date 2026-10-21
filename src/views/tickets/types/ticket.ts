@@ -1638,7 +1638,8 @@ export function queryCenterRowActions(
 
 /**
  * 查询中心 · 刷机单行内动作（1130 PRD §4.2 / §9.4）：只给工单运营。
- * - 教育刷机处理组池未认领单：「指派」；一线刷机池未认领单：「调剂」（一线刷机池不指派）；
+ * 查询中心只有「调剂」、没有「指派」（1021）：
+ * - 池内未认领单（一线刷机池 / 教育刷机处理组池）：「调剂」；
  * - 已有处理人的单：「调剂」；自动刷机中置灰，已转出置灰；
  * - 无处理人且不在池内（首推自动刷机中、首推成功直进调研中）：不出。
  */
@@ -1646,9 +1647,7 @@ function flashQueryCenterRowActions(t: Ticket, roleKey?: string): RowActionDesc[
   if (roleKey !== 'ops-monitor') return [];
   if (t.assignee === null || t.assignee === undefined) {
     if (t.nodeStatus !== '未认领') return [];
-    return t.flash?.state.pool === 'l2'
-      ? [{ label: '指派', primary: true }]
-      : [{ label: '调剂', primary: true }];
+    return [{ label: '调剂', primary: true }];
   }
   if (t.nodeStatus === '自动刷机中') {
     return [{ label: '调剂', primary: true, disabled: true, tip: FLASH_TIP_AUTO_FLASHING }];

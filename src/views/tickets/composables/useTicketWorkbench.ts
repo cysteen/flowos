@@ -549,7 +549,7 @@ export function useTicketWorkbench() {
         rows.push({ id, ok: false, reason: t?.assignee ? `已被 ${t.assignee} 领取` : '工单已不在池内' });
         continue;
       }
-      // 刷机单走刷机服务落库并写履历（与查询中心指派同一条路，§4.2），不只改列表行（F8）
+      // 刷机单走刷机服务落库并写履历（§4.2），不只改列表行（F8）
       if (isFlashTicket(t)) {
         const res = opts.scope === 'cross-team'
           ? flash.transferOwner(t.no, flashActor(), { scope: 'cross', target: opts.targetName, reason: '' })

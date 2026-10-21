@@ -415,7 +415,7 @@ function onOpDialogConfirm(payload: Record<string, unknown>) {
 
 /*
  * —— 查询中心行内「指派」——
- * 工单运营把池内未认领单直接指给本组成员（1130 刷机单走查定稿：调剂、指派在查询中心办理）。
+ * 工单运营把池内未认领的普通工单直接指给本组成员；刷机单在查询中心只有「调剂」（1130 PRD v1.28）。
  * 弹窗复用工作台 / 班组看板那只 `AssignModal`，只开同组内；落库口径与工作台 `assignTickets` 同源。
  */
 
@@ -453,47 +453,31 @@ function onAssignSubmit(p: AssignSubmitPayload) {
 
   if (!t) return;
 
-  if (isFlashTicket(t)) {
+  if (t.tab !== 'pool' || t.assignee !== null) {
 
-    const res = flashStore.assignFromPool(t.no, p.targetName, queryActor());
+    assignRef.value?.applyResults([{ id: t.id, ok: false, reason: t.assignee ? `已被 ${t.assignee} 领取` : '工单已不在池内' }]);
 
-    if (!res.ok) {
+    return;
 
-      assignRef.value?.applyResults([{ id: t.id, ok: false, reason: res.message }]);
+  }
 
-      return;
+  const taken = takeOverReturnedTicket(t, {
 
-    }
+    assignee: p.targetName, how: '指派', operator: queryActor().name,
 
-  } else {
+    operatorRole: queryActor().role, at: flashMinuteStamp(Date.now()),
 
-    if (t.tab !== 'pool' || t.assignee !== null) {
+  });
 
-      assignRef.value?.applyResults([{ id: t.id, ok: false, reason: t.assignee ? `已被 ${t.assignee} 领取` : '工单已不在池内' }]);
+  if (taken) Object.assign(t, taken);
 
-      return;
+  else {
 
-    }
+    t.tab = 'mine';
 
-    const taken = takeOverReturnedTicket(t, {
+    t.assignee = p.targetName;
 
-      assignee: p.targetName, how: '指派', operator: queryActor().name,
-
-      operatorRole: queryActor().role, at: flashMinuteStamp(Date.now()),
-
-    });
-
-    if (taken) Object.assign(t, taken);
-
-    else {
-
-      t.tab = 'mine';
-
-      t.assignee = p.targetName;
-
-      t.responded = false;
-
-    }
+    t.responded = false;
 
   }
 

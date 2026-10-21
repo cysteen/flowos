@@ -1585,7 +1585,7 @@ export const useFlashStore = defineStore('flash', () => {
   }
 
   /**
-   * 查询中心「指派」（工单运营，§4.2）：教育刷机处理组池未认领且无处理人才可指派；
+   * 工单池「指派」（教育刷机处理组班组长 / 管理员，§4.2；查询中心不指派）：教育刷机处理组池未认领且无处理人才可指派；
    * 落点同领取（子状态「待响应」、处理人＝被指派人、进「我的任务」），写履历「指派」。不改 SLA、不动归属池。
    */
   function assignFromPool(ticketNo: string, target: string, by: FlashActor): FlashActionResult {
