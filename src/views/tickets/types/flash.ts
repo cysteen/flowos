@@ -58,7 +58,7 @@ export const FLASH_TAG_L3_USER_REPORT = '自助刷机';
 
 export const FLASH_STUDENT_TYPES = ['毕业生', '转校生'] as const;
 export type FlashStudentType = (typeof FLASH_STUDENT_TYPES)[number];
-/** 唯一走自动刷机的学生类型；其余一律按「特殊情况」进二线池（M1③） */
+/** 唯一走自动刷机的学生类型；转校生按「特殊情况」进一线刷机池（PRD §2.3 第 4 条 / §4.1 第 1 行） */
 export const FLASH_STUDENT_TYPE_AUTO: FlashStudentType = '毕业生';
 /** 学生类型下拉选项 */
 export const FLASH_STUDENT_TYPE_OPTIONS = FLASH_STUDENT_TYPES.map((v) => ({ value: v, label: v }));
@@ -70,7 +70,6 @@ export const FLASH_REASON_PLACEHOLDER = '请说明恢复原生系统的原因';
 /* ------------------------------------------------------------------ */
 
 export const FLASH_FAIL_REASON_TREE = [
-  { l1: '建单校验不通过', l2: ['SN与学生账号不一致', '非毕业生身份'] },
   { l1: '接收失败', l2: ['未开机', '未联网', '版本不符', '其他'] },
   { l1: '推送异常', l2: ['接口异常', '回传超时'] },
 ] as const;
@@ -111,7 +110,6 @@ export function flashFailReasonText(l1?: FlashFailL1 | null, l2?: FlashFailL2 | 
  */
 export const FLASH_HANDOFF_REASONS = [
   '特殊情况',
-  '建单校验不通过',
   '非自研机型',
   '接收失败',
   '推送异常',
@@ -209,7 +207,7 @@ export const FLASH_RETURN_TIMEOUT_DEFAULT_MIN = 120;
 /* 建单人 / 触发方式 / 结果枚举                                          */
 /* ------------------------------------------------------------------ */
 
-/** 谁建的单：决定校验不通过的落池（D12） */
+/** 谁建的单（用户提报 / 坐席代建：决定必填口径、建单人展示与受理短信） */
 export type FlashCreator = '用户提报' | '一线代建' | '二线代建';
 
 /** 推送触发方式 */
@@ -220,7 +218,7 @@ export type FlashRunResult = '等待回传' | '接收成功' | '接收失败' | 
 
 /**
  * 本单**当前**自动刷机结果：
- * 未推送（特殊情况 / 校验不通过 / 非自研，没有发出过推送）· 等待回传 · 接收成功 · 接收失败 · 推送异常。
+ * 未推送（特殊情况 / 非自研机型，没有发出过推送）· 等待回传 · 接收成功 · 接收失败 · 推送异常。
  */
 export type FlashOutcome = '未推送' | FlashRunResult;
 
@@ -240,14 +238,14 @@ export interface FlashInfo {
   productModel: string;
   /** 设备SN */
   sn: string;
-  /** 学生类型（分流判据：毕业生走自动刷机，转校生按特殊情况进二线池） */
+  /** 学生类型（分流判据：毕业生按自研机型表分流，转校生按特殊情况进一线刷机池） */
   studentType: FlashStudentType;
   /** 学生账号 */
   studentAccount: string;
   /** 学生姓名 */
   studentName: string;
   /**
-   * 学校库 ID（M42：坐席从学校库选，毕业名单按 ID 精确匹配，见 mock/schools.ts）。
+   * 学校库 ID（M42：坐席从学校库选，见 mock/schools.ts）。
    * 用户提报（小程序）学校为自由文本，无学校库 ID，为空串；坐席在修改刷机信息里改选学校库条目后写入。
    */
   schoolId: string;
@@ -295,6 +293,8 @@ export interface FlashRun {
    * 后台保存的新值只对之后发出的推送生效。缺省（旧数据）回落当前配置值。
    */
   returnTimeoutMin?: number;
+  /** 推送入参「设备型号」＝自研机型表的 OTA 型号（PRD 附录 A.4）；旧数据缺省 */
+  otaModel?: string;
   /** 推送发出时本单处理人（人工重推后按它回原处理人，M19 / D16） */
   handlerAtPush?: string | null;
 }
@@ -336,8 +336,6 @@ export interface FlashState {
    * 转售后时写入，到点经售后回传通道唤起原单，唤起后清空。
    */
   aftersaleReturnDueAt?: string;
-  /** 建单校验结果：两项各自通过 / 不通过；特殊情况、校验接口不可用为「未校验」（M50） */
-  verifyResult: FlashVerifyResult;
   /** 已发转人工短信（M37：每单只发一次，首次转人工时发） */
   handoffSmsSent?: boolean;
   /**
@@ -442,28 +440,6 @@ export function flashTipRequired(missing: string[]): string {
   return `请填写必填项：${missing.join('、')}`;
 }
 
-/** 建单校验单项结论 */
-export type FlashVerifyItemResult = '通过' | '不通过';
-
-/**
- * 建单校验结果（M50）：两项分别存；没跑过校验（特殊情况 / 校验接口不可用）为「未校验」。
- * 两项都不通过时失败原因细分取「SN与学生账号不一致」，两项结论仍各自保留。
- */
-export type FlashVerifyResult =
-  | { status: '未校验' }
-  | {
-    status: '已校验';
-    /** SN与学生账号一致 */
-    snAccountMatch: FlashVerifyItemResult;
-    /** 毕业生身份 */
-    graduate: FlashVerifyItemResult;
-  };
-
-export const FLASH_VERIFY_NOT_RUN: FlashVerifyResult = { status: '未校验' };
-
-/** 两项校验项名称 */
-export const FLASH_VERIFY_ITEM_LABELS = { snAccountMatch: 'SN与学生账号一致', graduate: '毕业生身份' } as const;
-
 /** 发起方线别（M59） */
 export type FlashLine = '一线' | '二线';
 
@@ -508,17 +484,13 @@ export function flashTipInflight(inflightNo: string): string {
 }
 /** 在途查询不可用（M43） */
 export const FLASH_TIP_SYSTEM_BUSY = '系统繁忙，请稍后再提交';
-/** 非自研机型不可线上推送（M18） */
-export const FLASH_TIP_NON_SELF_DEVELOPED = '该产品不支持线上推送，请线下登记';
 /** 重推时学生类型不是毕业生（M44） */
 export const FLASH_TIP_NOT_GRADUATE_L1 = '学生类型不是毕业生，请升级二线处理';
 export const FLASH_TIP_NOT_GRADUATE_L2 = '学生类型不是毕业生，请线下登记';
-/** 重推前建单校验不通过（M36 / PRD §5.6 提交判定第 8、9 条，逐字） */
-export function flashTipVerifyFailed(l2: FlashFailL2): string {
-  return l2 === 'SN与学生账号不一致'
-    ? 'SN与学生账号不一致，请核实后再推送'
-    : '未查询到该学生的毕业生身份，请核实后再推送';
-}
+/** 重推校验（MDM）：SN 不通过（PRD §5.6 提交判定第 7 条，逐字） */
+export const FLASH_TIP_REPUSH_SN_MISMATCH = 'SN与学生账号不一致，请核实后再推送';
+/** 重推校验（MDM）：毕业生不通过（PRD §5.6 提交判定第 8 条，逐字） */
+export const FLASH_TIP_REPUSH_NOT_GRADUATE = '该学生不是毕业生，请核实后再推送';
 /** 处理表单 · 下送必填（PRD §5.4） */
 export const FLASH_TIP_RESULT_REQUIRED = '请选择刷机处理结论';
 
@@ -541,8 +513,8 @@ export const FLASH_NOTICE = {
   escalatedToGroup: (no: string) => `${no}已升级至教育刷机处理组，待领取`,
   lateSuccess: (no: string) => `${no}收到迟到回传：接收成功`,
 } as const;
-/** 重推时建单校验接口不可用（M55） */
-export const FLASH_TIP_VERIFY_UNAVAILABLE = '建单校验暂不可用，请稍后重试或线下登记';
+/** 重推时 MDM 接口不可用（PRD §5.6 提交判定第 6 条，逐字） */
+export const FLASH_TIP_VERIFY_UNAVAILABLE = '校验服务暂不可用，请稍后重试或线下登记';
 /** 当前状态不可重推 */
 export const FLASH_TIP_REPUSH_STATE = '当前工单状态不可重新推送';
 /** 当前状态不可修改刷机信息（M52：待响应、处理中可改） */
@@ -580,12 +552,6 @@ export function flashRunResultText(result: FlashRunResult | FlashOutcome): strin
   return result === '等待回传' ? '自动刷机中' : result;
 }
 
-/** 建单校验结果两项分列：「SN与学生账号一致：通过；毕业生身份：通过」；未跑校验 →「未校验」 */
-export function flashVerifyText(v: FlashVerifyResult): string {
-  if (v.status === '未校验') return '未校验';
-  return `${FLASH_VERIFY_ITEM_LABELS.snAccountMatch}：${v.snAccountMatch}；${FLASH_VERIFY_ITEM_LABELS.graduate}：${v.graduate}`;
-}
-
 /** 已推送计时 `mm:ss`（分钟不封顶） */
 export function flashElapsedText(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
@@ -595,10 +561,9 @@ export function flashElapsedText(ms: number): string {
 /** 处理履历正文（PRD §11.2 逐字） */
 export const FLASH_TL = {
   /** `source` ＝ 工单来源（沿用现有工单来源口径） */
-  create(source: string, verify: FlashVerifyResult, dest: { auto: true } | { handoff: FlashHandoffReason }): string {
-    const v = verify.status === '未校验' ? '建单校验：未校验' : flashVerifyText(verify);
+  create(source: string, dest: { auto: true } | { handoff: FlashHandoffReason }): string {
     const d = 'auto' in dest ? '进入自动刷机中' : `转人工原因：${dest.handoff}`;
-    return `创建刷机单 · ${source}；${v}；${d}`;
+    return `创建刷机单 · ${source}；${d}`;
   },
   autoPush: (seq: number) => `推送刷机包 · 第 ${seq} 次推送 · 发起方：系统`,
   repush: (seq: number, run: Pick<FlashRun, 'by' | 'line'>) => `重新推送 · 第 ${seq} 次推送 · 发起方：${flashRunInitiator(run)}`,
@@ -612,7 +577,6 @@ export const FLASH_TL = {
   lateSuccess: '回传结果（迟到）：接收成功，子状态未变更',
   /** `reasonText` ＝「推送异常 · 接口异常」 */
   pushApiError: (reasonText: string) => `${reasonText}（已自动重试 1 次）`,
-  verifyApiError: (reasonText: string) => `${reasonText}（建单校验未执行）`,
   /** `reasonText` ＝「推送异常 · 回传超时」 */
   returnTimeout: (reasonText: string, hours: number) => `${reasonText}（推送后 ${hours} 小时无回传）`,
   handoff: (reason: FlashHandoffReason, poolLabel: string) => `转人工 · ${reason} → ${poolLabel}`,

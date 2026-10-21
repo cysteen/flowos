@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 import { ref, watch } from 'vue';
 import { FLASH_MODEL_SEED, FLASH_TAG_OFF_MODELS, type FlashModel } from '@/mock/flash/models';
 import {
-  FLASH_FAIL_L2_NOT_RETURNED, FLASH_FAIL_REASON_TREE, FLASH_FAIL_SEPARATOR, FLASH_PRODUCT_CATEGORY,
+  FLASH_FAIL_L2_NOT_RETURNED, FLASH_FAIL_REASON_TREE, FLASH_FAIL_SEPARATOR,
   FLASH_RETURN_TIMEOUT_DEFAULT_MIN, FLASH_TAG_L1, FLASH_TAG_L2, FLASH_TAG_L3S,
   type FlashFailL1, type FlashFailL2,
 } from '@/views/tickets/types/flash';
@@ -10,7 +10,7 @@ import { FLASH_LS_KEYS, readFlashCache, writeFlashCache } from './flashCache';
 
 /**
  * 刷机相关配置（930 教育刷机单 M28 / M65；1013 N1 / N2 调整归属）：
- * - 产品刷机属性（`models`：产品分类、「自研 · 支持线上自助推送」）：后台「产品管理」维护；
+ * - 产品刷机属性（`models`：产品分类、品牌）；是否自研机型只看自研机型表（`mock/flash/models.ts`，PRD 附录 A.4，不设页面）；
  * - 问题分类「是否刷机」（`flashTags`）：后台「问题分类」维护（1013 N2）；
  * - 失败原因、回传超时时长：后台「刷机配置」维护。
  * 刷机单识别只看问题分类「是否刷机」（`isFlashScene`，10-19 C1）；产品挂了「是否刷机」开启的问题分类，建单才出现刷机类分类。
@@ -46,7 +46,7 @@ export interface FlashConfigSnapshot {
 }
 
 /** 缓存里的数据形状版本（与 FLASH_CACHE_VERSION 分开计：本份结构独立演进） */
-const CONFIG_SHAPE_VERSION = 5;
+const CONFIG_SHAPE_VERSION = 6;
 
 /** 问题分类条目键：产品名称 + 一 / 二 / 三级（问题分类按产品维护，与后台「问题分类」一行对应） */
 export function flashTagKey(productName: string, l1: string, l2: string, l3: string): string {
@@ -109,24 +109,6 @@ export const useFlashConfigStore = defineStore('flashConfig', () => {
     return flashTags.value.some((k) => k.startsWith(prefix));
   }
 
-  /**
-   * 产品管理页切换「自研 · 支持线上自助推送」（1013 B7）。表内没有的产品补一条。
-   */
-  function setProductSelfDeveloped(model: string, selfDeveloped: boolean, category?: string): void {
-    const name = model.trim();
-    if (!name) return;
-    const hit = modelOf(name);
-    if (hit) {
-      hit.selfDeveloped = selfDeveloped;
-      return;
-    }
-    const brand = name.startsWith('联想') ? '联想' : name.startsWith('华为') ? '华为' : '科大讯飞';
-    models.value.push({
-      id: `FM-${Date.now()}`, model: name, category: category || FLASH_PRODUCT_CATEGORY, brand,
-      selfDeveloped, minRomVersion: '',
-    });
-  }
-
   /* ---------------- 问题分类「是否刷机」（1013 N2） ---------------- */
 
   /** 问题分类条目「是否刷机」是否开启 */
@@ -145,11 +127,6 @@ export const useFlashConfigStore = defineStore('flashConfig', () => {
   /** 刷机单识别（10-19 C1）：只看所选问题分类「是否刷机」（问题分类按产品维护，键里已含产品） */
   function isFlashScene(productName: string, l1: string, l2: string, l3: string): boolean {
     return isFlashTag(productName, l1, l2, l3);
-  }
-
-  /** 是否自研 · 支持线上自助推送 */
-  function isSelfDeveloped(model: string): boolean {
-    return !!modelOf(model)?.selfDeveloped;
   }
 
   /** 坐席建单 / 修改刷机信息可选的产品：挂了刷机类问题分类的产品 */
@@ -230,8 +207,8 @@ export const useFlashConfigStore = defineStore('flashConfig', () => {
 
   return {
     models, flashTags, failReasons, returnTimeoutMin,
-    modelOf, isSupportedModel, isSelfDeveloped, enabledModels, upsertModel, removeModel,
-    setProductSelfDeveloped, isFlashTag, replaceFlashTags, isFlashScene,
+    modelOf, isSupportedModel, enabledModels, upsertModel, removeModel,
+    isFlashTag, replaceFlashTags, isFlashScene,
     setFailReasonLabel, setFailReasonEnabled, isFailL2Enabled, failReasonText,
     setReturnTimeoutMin, resetToFactory,
   };

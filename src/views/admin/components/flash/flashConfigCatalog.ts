@@ -17,7 +17,7 @@ export const FLASH_FAIL_RETURN_CODES: Partial<Record<FlashFailL1, Partial<Record
 };
 
 /** 系统判定项：状态不可停用 */
-export const FLASH_FAIL_LOCKED_L1: FlashFailL1[] = ['建单校验不通过', '推送异常'];
+export const FLASH_FAIL_LOCKED_L1: FlashFailL1[] = ['推送异常'];
 
 /** 回传超时时长取值范围（小时） */
 export const FLASH_TIMEOUT_MIN_H = 1;

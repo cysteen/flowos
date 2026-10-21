@@ -1,7 +1,7 @@
 /**
  * 教育刷机单 · 工单库在办 / 已办样本（930 教育刷机单）。
  *
- * 每张单的刷机信息都取自 MDM 设备台账、毕业名单、学校库（`mock/flash/*`、`mock/schools.ts`），
+ * 每张单的刷机信息都取自 MDM 设备台账、学校库（`mock/flash/*`、`mock/schools.ts`），
  * 推送记录与履历按底数推演，与刷机服务 `stores/flash.ts` 的规则一致。
  *
  * 三张「自动刷机中」的推送时刻取**模块加载时刻**倒推：
@@ -23,11 +23,21 @@ import {
   flashSmsHandoff, flashSmsSuccess, flashSmsSurvey, flashStamp, parseFlashStamp,
   type FlashCreator, type FlashFailL1, type FlashFailL2, type FlashHandoffReason, type FlashInfo, type FlashPoolKey,
   type FlashStudentType, type FlashRun, type FlashRunResult, type FlashState, type FlashPushTrigger,
-  type FlashVerifyResult,
 } from '@/views/tickets/types/flash';
 import { findSchoolById } from '@/mock/schools';
 import { findMdmDevice } from './mdmDevices';
-import { GRADUATE_ROSTER } from './graduates';
+
+/** 种子单学生姓名（按 MDM 绑定的学生账号；提报时另填姓名的单在 `infoOf` 里显式传） */
+const SEED_STUDENT_NAMES: Record<string, string> = {
+  hf1z2023s0415: '胡子涵', hf1z2023s0811: '秦朗',
+  hf8z2023s0622: '程思远', hf8z2023s0907: '顾晓',
+  ahsdfz2023s0107: '马嘉怡', ahsdfz2023s0419: '沈可欣',
+  hf50z2023s0233: '许诺', hf50z2023s0520: '陆子墨',
+  hf46z2023s1109: '吴梓萱',
+  hf168z2023s1021: '钱沐阳', hf168z2023s0908: '杜若溪',
+  bb2z2023s0310: '冯一诺', bb2z2023s0625: '蒋天佑', bb2z2023s0418: '宋雨晴',
+  la1z2023s0716: '梁晨', la1z2023s0302: '叶知秋', la1z2023s1020: '孙一鸣',
+};
 
 export interface FlashSeedBundle {
   tickets: Ticket[];
@@ -55,13 +65,12 @@ function infoOf(
   const d = findMdmDevice(sn);
   if (!d) throw new Error(`MDM 台账缺少设备 ${sn}`);
   const account = opts.account ?? d.studentAccount;
-  const grad = GRADUATE_ROSTER.find((g) => g.studentAccount === d.studentAccount);
   return {
     productModel: d.model,
     sn: d.sn,
     studentType,
     studentAccount: account,
-    studentName: opts.name ?? grad?.studentName ?? '',
+    studentName: opts.name ?? SEED_STUDENT_NAMES[d.studentAccount] ?? '',
     schoolId,
     schoolName: findSchoolById(schoolId)?.name ?? '',
     reason: opts.reason ?? SEED_REASON[studentType],
@@ -113,8 +122,6 @@ function run(p: {
   };
 }
 
-const VERIFY_PASS: FlashVerifyResult = { status: '已校验', snAccountMatch: '通过', graduate: '通过' };
-
 /**
  * SLA 账本（PRD §4.3，D-01）。种子单的**起算时刻取履历里那条「转人工」的时刻**（R53 悬停要显示它），
  * 而本行要呈现的剩余是另一个靶子 —— 两者在写死日期的样本上隔天就对不上了。
@@ -141,11 +148,9 @@ function ledger(
 /** 不计 SLA 的单（1013 A26：一线刷机池、一线名下、首推自动刷机中），列表行上的 SLA 摘要；与刷机服务写入的同值 */
 const L1_NO_SLA = { slaText: '—', slaSub: '未计时', slaState: 'ok', slaMinutes: 9999 } as const;
 
-/** 缺省按「建单校验两项均通过」；未跑校验的（特殊情况）显式传「未校验」 */
 function state(creator: FlashCreator, p: Partial<FlashState>): FlashState {
   return {
     outcome: '未推送', pushCount: 0, surveyConcluded: false, creator,
-    verifyResult: VERIFY_PASS,
     ...p,
   };
 }
@@ -226,11 +231,11 @@ function row(
 type SeedDest = { auto: true } | { handoff: FlashHandoffReason };
 
 /** 「用户提报」建单履历（PRD §11.2「建单」；操作人沿用提报用户，X4） */
-function createdByUser(when: string, customer: string, verify: FlashVerifyResult, dest: SeedDest): TimelineEntry {
-  return tl(when, 'node', 'create', customer, '客户', '建单', FLASH_TL.create(USER_SOURCE, verify, dest));
+function createdByUser(when: string, customer: string, dest: SeedDest): TimelineEntry {
+  return tl(when, 'node', 'create', customer, '客户', '建单', FLASH_TL.create(USER_SOURCE, dest));
 }
-function createdByAgent(when: string, agent: string, role: TlRole, _creator: FlashCreator, verify: FlashVerifyResult, dest: SeedDest): TimelineEntry {
-  return tl(when, 'node', 'create', agent, role, '建单', FLASH_TL.create(AGENT_SOURCE, verify, dest));
+function createdByAgent(when: string, agent: string, role: TlRole, dest: SeedDest): TimelineEntry {
+  return tl(when, 'node', 'create', agent, role, '建单', FLASH_TL.create(AGENT_SOURCE, dest));
 }
 function pushEntry(when: string, seq: number): TimelineEntry {
   return tl(when, 'node', 'flashPush', '系统', '系统', '自动推送', FLASH_TL.autoPush(seq));
@@ -286,7 +291,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       flashState: state('用户提报', { outcome: '等待回传', pushCount: 1 }),
       runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '等待回传' })],
     }), [
-      createdByUser(created, '胡建国', VERIFY_PASS, { auto: true }),
+      createdByUser(created, '胡建国', { auto: true }),
       pushEntry(pushed, 1),
     ]);
   }
@@ -304,31 +309,34 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       flashState: state('用户提报', { outcome: '等待回传', pushCount: 1 }),
       runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '等待回传' })],
     }), [
-      createdByUser(created, '程丽', VERIFY_PASS, { auto: true }),
+      createdByUser(created, '程丽', { auto: true }),
       pushEntry(pushed, 1),
     ]);
   }
 
-  // ③ 一线刷机池 · 建单校验不通过（用户提报）：提报账号与 MDM 绑定账号不一致
+  // ③ 一线刷机池 · 首推接收失败 · 未联网（用户提报）：提报账号与 MDM 绑定账号不一致，建单不校验照常首推；
+  //    不改学生账号重推即被拦「SN与学生账号不一致」（PRD §6.1 场景 B）
   {
     const info = infoOf('XFS20240600377', 'SCH-340103-001', '毕业生', { account: 'hf1z2023s0599', name: '唐语桐' });
     const at = '2026-09-15 08:42:16';
-    const sms = flashSmsHandoff(no(3));
+    const pushed = addSec(at, 2);
+    const back = addSec(pushed, 12);
     add(row(3, {
       info, creator: '用户提报', customer: '唐伟', phone: '13705513377',
-      createdAt: at.slice(0, 16), updatedAt: at.slice(0, 16),
+      createdAt: at.slice(0, 16), updatedAt: back.slice(0, 16),
       nodeStatus: '未认领', assignee: null, tab: 'pool', nodeStep: 1,
       ...L1_NO_SLA,
       flashState: state('用户提报', {
-        failL1: '建单校验不通过', failL2: 'SN与学生账号不一致',
-        verifyResult: { status: '已校验', snAccountMatch: '不通过', graduate: '不通过' },
-        handoffReason: '建单校验不通过', pool: 'l1', handoffSmsSent: true,
+        outcome: '接收失败', failL1: '接收失败', failL2: '未联网', pushCount: 1,
+        handoffReason: '接收失败', pool: 'l1', handoffSmsSent: true,
       }),
-      runs: [],
+      runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '接收失败', failL1: '接收失败', failL2: '未联网', resultAt: back })],
     }), [
-      createdByUser(at, '唐伟', { status: '已校验', snAccountMatch: '不通过', graduate: '不通过' }, { handoff: '建单校验不通过' }),
-      handoffEntry(addSec(at, 2), '建单校验不通过', 'l1'),
-      smsEntry(addSec(at, 3), '13705513377', sms),
+      createdByUser(at, '唐伟', { auto: true }),
+      pushEntry(pushed, 1),
+      returnFail(back, '未联网'),
+      handoffEntry(addSec(back, 1), '接收失败', 'l1'),
+      smsEntry(addSec(back, 2), '13705513377', flashSmsHandoff(no(3))),
     ]);
   }
 
@@ -344,7 +352,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       flashState: state('用户提报', { handoffReason: '非自研机型', pool: 'l1', handoffSmsSent: true }),
       runs: [],
     }), [
-      createdByUser(at, '马骏', VERIFY_PASS, { handoff: '非自研机型' }),
+      createdByUser(at, '马骏', { handoff: '非自研机型' }),
       handoffEntry(addSec(at, 2), '非自研机型', 'l1'),
       smsEntry(addSec(at, 3), '13966304107', flashSmsHandoff(no(4))),
     ]);
@@ -367,7 +375,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       }),
       runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '接收失败', failL1: '接收失败', failL2: '未开机', resultAt: back })],
     }), [
-      createdByUser(at, '许志强', VERIFY_PASS, { auto: true }),
+      createdByUser(at, '许志强', { auto: true }),
       pushEntry(pushed, 1),
       returnFail(back, '未开机'),
       handoffEntry(addSec(back, 1), '接收失败', 'l1'),
@@ -392,7 +400,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       }),
       runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '推送异常', failL1: '推送异常', failL2: '回传超时', resultAt: timeout })],
     }), [
-      createdByUser(at, '钱芳', VERIFY_PASS, { auto: true }),
+      createdByUser(at, '钱芳', { auto: true }),
       pushEntry(pushed, 1),
       tl(timeout, 'node', 'flashFail', '系统', '系统', '回传超时', FLASH_TL.returnTimeout('推送异常 · 回传超时', 2)),
       handoffEntry(addSec(timeout, 1), '推送异常', 'l1'),
@@ -421,7 +429,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       }),
       runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '接收失败', failL1: '接收失败', resultAt: back })],
     }), [
-      createdByUser(at, '冯涛', VERIFY_PASS, { auto: true }),
+      createdByUser(at, '冯涛', { auto: true }),
       pushEntry(pushed, 1),
       returnFail(back),
       handoffEntry(addSec(back, 1), '接收失败', 'l1'),
@@ -458,7 +466,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
         run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '接收失败', failL1: '接收失败', failL2: '未联网', resultAt: back }),
       ],
     }), [
-      createdByUser(at, '梁红', VERIFY_PASS, { auto: true }),
+      createdByUser(at, '梁红', { auto: true }),
       pushEntry(pushed, 1),
       returnFail(back, '未联网'),
       handoffEntry(addSec(back, 1), '接收失败', 'l1'),
@@ -471,7 +479,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
     ]);
   }
 
-  // ⑨ 二线池 · 特殊情况（转校生）：不跑校验、不推送
+  // ⑨ 一线刷机池 · 特殊情况（转校生）：不推送（PRD §4.1 第 1 行）
   {
     const info = infoOf('XFS20240600645', 'SCH-340103-001', '转校生', { name: '邹静怡', studyProof: true });
     const at = '2026-09-15 08:55:30';
@@ -479,39 +487,39 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       info, creator: '用户提报', customer: '邹敏', phone: '15955116702',
       createdAt: at.slice(0, 16), updatedAt: at.slice(0, 16),
       nodeStatus: '未认领', assignee: null, tab: 'pool', nodeStep: 1,
-      slaText: '06:25:00', slaSub: '距超时', slaState: 'ok', slaMinutes: 385,
-      flashState: state('用户提报', {
-        handoffReason: '特殊情况', pool: 'l2', handoffSmsSent: true, verifyResult: { status: '未校验' }, ...ledger(nowMs, addSec(at, 2), 385),
-      }),
+      ...L1_NO_SLA,
+      flashState: state('用户提报', { handoffReason: '特殊情况', pool: 'l1', handoffSmsSent: true }),
       runs: [],
     }), [
-      createdByUser(at, '邹敏', { status: '未校验' }, { handoff: '特殊情况' }),
-      handoffEntry(addSec(at, 2), '特殊情况', 'l2'),
+      createdByUser(at, '邹敏', { handoff: '特殊情况' }),
+      handoffEntry(addSec(at, 2), '特殊情况', 'l1'),
       smsEntry(addSec(at, 3), '15955116702', flashSmsHandoff(no(9))),
     ]);
   }
 
-  // ⑩ 二线池 · 一线代建、建单校验不通过（非毕业生身份）
+  // ⑩ 一线刷机池 · 一线代建、首推接收失败 · 版本不符：建单不校验照常首推；
+  //    MDM 返回该学生未毕业（年级代码 08），重推即被拦「该学生不是毕业生」（PRD §6.1 场景 E）
   {
     const info = infoOf('XFS30240900561', 'SCH-340111-008', '毕业生', { name: '韩博文', photos: false, mdmPhotos: true });
     const at = '2026-09-15 09:12:48';
+    const pushed = addSec(at, 2);
+    const back = addSec(pushed, 12);
     add(row(10, {
       info, creator: '一线代建', customer: '韩雪', phone: '13866107133',
-      createdAt: at.slice(0, 16), updatedAt: at.slice(0, 16),
+      createdAt: at.slice(0, 16), updatedAt: back.slice(0, 16),
       nodeStatus: '未认领', assignee: null, tab: 'pool', nodeStep: 1,
-      slaText: '06:42:00', slaSub: '距超时', slaState: 'ok', slaMinutes: 402,
+      ...L1_NO_SLA,
       flashState: state('一线代建', {
-        failL1: '建单校验不通过', failL2: '非毕业生身份',
-        verifyResult: { status: '已校验', snAccountMatch: '通过', graduate: '不通过' },
-        handoffReason: '建单校验不通过', pool: 'l2', handoffSmsSent: true,
-        ...ledger(nowMs, addSec(at, 2), 402),
+        outcome: '接收失败', failL1: '接收失败', failL2: '版本不符', pushCount: 1,
+        handoffReason: '接收失败', pool: 'l1', handoffSmsSent: true,
       }),
-      runs: [],
+      runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '接收失败', failL1: '接收失败', failL2: '版本不符', resultAt: back })],
     }), [
-      createdByAgent(at, '刘一线', '一线坐席', '一线代建',
-        { status: '已校验', snAccountMatch: '通过', graduate: '不通过' }, { handoff: '建单校验不通过' }),
-      handoffEntry(addSec(at, 2), '建单校验不通过', 'l2'),
-      smsEntry(addSec(at, 3), '13866107133', flashSmsHandoff(no(10))),
+      createdByAgent(at, '刘一线', '一线坐席', { auto: true }),
+      pushEntry(pushed, 1),
+      returnFail(back, '版本不符'),
+      handoffEntry(addSec(back, 1), '接收失败', 'l1'),
+      smsEntry(addSec(back, 2), '13866107133', flashSmsHandoff(no(10))),
     ]);
   }
 
@@ -538,7 +546,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       }),
       runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '接收失败', failL1: '接收失败', failL2: '版本不符', resultAt: back })],
     }), [
-      createdByUser(at, '沈建', VERIFY_PASS, { auto: true }),
+      createdByUser(at, '沈建', { auto: true }),
       pushEntry(pushed, 1),
       returnFail(back, '版本不符'),
       handoffEntry(addSec(back, 1), '接收失败', 'l1'),
@@ -573,7 +581,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
         run({ seq: 2, trigger: '一线重推', by: '刘一线', byRole: '一线坐席', pushedAt: repushed, result: '接收失败', failL1: '接收失败', failL2: '未开机', resultAt: back2, handlerAtPush: '刘一线' }),
       ],
     }), [
-      createdByUser(at, '陆明', VERIFY_PASS, { auto: true }),
+      createdByUser(at, '陆明', { auto: true }),
       pushEntry(pushed, 1),
       returnFail(back, '未开机'),
       handoffEntry(addSec(back, 1), '接收失败', 'l1'),
@@ -607,7 +615,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       }),
       runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '接收成功', resultAt: back })],
     }), [
-      createdByUser(at, '杜娟', VERIFY_PASS, { auto: true }),
+      createdByUser(at, '杜娟', { auto: true }),
       pushEntry(pushed, 1),
       returnOk(back),
       smsEntry(addSec(back, 1), '13956987908', flashSmsSuccess(no(13), info.sn)),
@@ -635,7 +643,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       }),
       runs: [],
     }), [
-      createdByUser(at, '蒋丽', VERIFY_PASS, { handoff: '非自研机型' }),
+      createdByUser(at, '蒋丽', { handoff: '非自研机型' }),
       handoffEntry(addSec(at, 2), '非自研机型', 'l1'),
       smsEntry(addSec(at, 3), '13855205625', flashSmsHandoff(no(14))),
       acceptEntry(claim, '刘一线', '一线坐席'),
@@ -661,7 +669,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       }),
       runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '接收成功', resultAt: back })],
     }), [
-      createdByUser(at, '叶青', VERIFY_PASS, { auto: true }),
+      createdByUser(at, '叶青', { auto: true }),
       pushEntry(pushed, 1),
       returnOk(back),
       smsEntry(addSec(back, 1), '15256430302', flashSmsSuccess(no(15), info.sn)),
@@ -690,7 +698,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       }),
       runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '接收成功', resultAt: back })],
     }), [
-      createdByUser(at, '秦海', VERIFY_PASS, { auto: true }),
+      createdByUser(at, '秦海', { auto: true }),
       pushEntry(pushed, 1),
       returnOk(back),
       smsEntry(addSec(back, 1), '13721061811', flashSmsSuccess(no(16), info.sn)),
@@ -731,7 +739,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
         run({ seq: 2, trigger: '二线重推', by: '王坐席', byRole: '二线专员', pushedAt: repushed, result: '接收失败', failL1: '接收失败', failL2: '版本不符', resultAt: back2, handlerAtPush: '王坐席' }),
       ],
     }), [
-      createdByUser(at, '顾红梅', VERIFY_PASS, { auto: true }),
+      createdByUser(at, '顾红梅', { auto: true }),
       pushEntry(pushed, 1),
       returnFail(back, '版本不符'),
       handoffEntry(addSec(back, 1), '接收失败', 'l1'),
@@ -766,7 +774,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       }),
       runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '推送异常', failL1: '推送异常', failL2: '回传超时', resultAt: timeout })],
     }), [
-      createdByUser(at, '宋建华', VERIFY_PASS, { auto: true }),
+      createdByUser(at, '宋建华', { auto: true }),
       pushEntry(pushed, 1),
       tl(timeout, 'node', 'flashFail', '系统', '系统', '回传超时', FLASH_TL.returnTimeout('推送异常 · 回传超时', 2)),
       handoffEntry(addSec(timeout, 1), '推送异常', 'l1'),
@@ -805,7 +813,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
         run({ seq: 2, trigger: '一线重推', by: '刘一线', byRole: '一线坐席', pushedAt: repushed, result: '接收成功', resultAt: back2, handlerAtPush: '刘一线' }),
       ],
     }), [
-      createdByUser(at, '周建平', VERIFY_PASS, { auto: true }),
+      createdByUser(at, '周建平', { auto: true }),
       pushEntry(pushed, 1),
       returnFail(back, '未联网'),
       handoffEntry(addSec(back, 1), '接收失败', 'l1'),
@@ -852,7 +860,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
         run({ seq: 2, trigger: '一线重推', by: '刘一线', byRole: '一线坐席', pushedAt: repushed, result: '接收成功', resultAt: back2, handlerAtPush: '刘一线' }),
       ],
     }), [
-      createdByUser(at, '孙建军', VERIFY_PASS, { auto: true }),
+      createdByUser(at, '孙建军', { auto: true }),
       pushEntry(pushed, 1),
       returnFail(back, '未开机'),
       handoffEntry(addSec(back, 1), '接收失败', 'l1'),
@@ -883,7 +891,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       flashState: state('用户提报', { outcome: '等待回传', pushCount: 1 }),
       runs: [run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '等待回传' })],
     }), [
-      createdByUser(created, '吴海峰', VERIFY_PASS, { auto: true }),
+      createdByUser(created, '吴海峰', { auto: true }),
       pushEntry(pushed, 1),
     ]);
   }

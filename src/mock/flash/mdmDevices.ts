@@ -1,15 +1,16 @@
 /**
- * MDM 设备台账 —— 建单校验与自动刷机回传的比对底数（930 教育刷机单 D15 / D21 / M10 / M11 / M12 / M43）。
+ * MDM 设备台账 —— 重推校验与自动刷机回传的比对底数（PRD §5.6 重推校验 / 附录 A.4）。建单不校验 SN 与毕业生身份。
  *
- * 一台设备一行，按 SN 查：
- * - `studentAccount`：MDM 上绑定的学生账号（「SN与学生账号一致」校验）；
+ * 一台设备一行，按 SN 查；重推校验按学生账号取（`mdmStudentOf`）：
+ * - `studentAccount`：MDM 上绑定的学生账号（按学生账号返回的 SN 集合由此汇总）；
+ * - `graduatedFlag`：已毕业标记（＝2 为已毕业）；`gradeCode`：年级代码（105 全年为毕业生；09、12 仅每年 6 月 1 日至 8 月 13 日为毕业生）；
  * - `online`：推送时设备状态，决定回传「接收成功 / 接收失败 · 未开机 / 未联网」；
  * - `onlineAfterContact`：坐席联系用户开机联网后设备上线，**人工重推**时按在线计；
  * - `versionOk`：系统版本是否达标，不达标回传「接收失败 · 版本不符」；
  * - `returnsDetail`：回传是否带细分原因，不带则显示「接收失败 · 原因未返回」（M12）；
  * - `noResponse`：推送后硬件平台始终无回传，到回传超时时长转人工（M11）；
  * - `pushApi`：推送接口状态——`正常` / `报错一次`（自动重试后成功）/ `持续报错`（重试仍失败转人工，M10）；
- * - `verifyApi`：建单校验接口对该设备的响应——`不可用` 时照常建单、不推送、进一线刷机池（M43）。
+ * - `mdmApi`：MDM 校验接口对该设备 / 学生账号的响应——`不可用` 时重推被拦下（PRD §5.6 第 6 条），不推送、不计次。
  */
 export type MdmOnlineState = '在线' | '未开机' | '未联网';
 
@@ -19,13 +20,17 @@ export interface MdmDevice {
   model: string;
   /** MDM 绑定的学生账号 */
   studentAccount: string;
+  /** 已毕业标记（MDM 返回；2 ＝ 已毕业） */
+  graduatedFlag: number;
+  /** 年级代码（MDM 返回，如 09 九年级、12 高三、105） */
+  gradeCode: string;
   online: MdmOnlineState;
   onlineAfterContact: boolean;
   versionOk: boolean;
   returnsDetail: boolean;
   noResponse: boolean;
   pushApi: '正常' | '报错一次' | '持续报错';
-  verifyApi: '正常' | '不可用';
+  mdmApi: '正常' | '不可用';
   /** 回传超时转人工之后，硬件平台迟到回传「接收成功」的时长（分钟，自超时判定起算，M11 / M48）；不填＝不迟到回传 */
   lateSuccessAfterMin?: number;
 }
@@ -37,16 +42,18 @@ const J606F = '联想 TB-J606F 智慧课堂定制版';
 const X6C6F = '联想 TB-X6C6F 智慧课堂定制版';
 const S10 = '讯飞智慧课堂学生平板 S10';
 
-/** 缺省：在线、版本达标、回传带细分、接口正常 */
+/** 缺省：已毕业（已毕业标记 2、年级代码 12）、在线、版本达标、回传带细分、接口正常 */
 function dev(p: Pick<MdmDevice, 'sn' | 'model' | 'studentAccount'> & Partial<MdmDevice>): MdmDevice {
   return {
+    graduatedFlag: 2,
+    gradeCode: '12',
     online: '在线',
     onlineAfterContact: false,
     versionOk: true,
     returnsDetail: true,
     noResponse: false,
     pushApi: '正常',
-    verifyApi: '正常',
+    mdmApi: '正常',
     ...p,
   };
 }
@@ -57,8 +64,8 @@ export const MDM_DEVICES: MdmDevice[] = [
   dev({ sn: 'XFS20240600131', model: S20, studentAccount: 'hf1z2023s0415' }),
   // ② 自动刷机中 · 回传无响应：加载即判「推送异常 · 回传超时」进一线刷机池
   dev({ sn: 'XFS30240900218', model: S30, studentAccount: 'hf8z2023s0622', noResponse: true }),
-  // ③ 一线刷机池 · 建单校验不通过（提报账号与 MDM 绑定账号不一致）
-  dev({ sn: 'XFS20240600377', model: S20, studentAccount: 'hf1z2023s0588' }),
+  // ③ 一线刷机池 · 首推接收失败 · 未联网；提报账号与 MDM 绑定账号不一致（不改账号重推即「SN与学生账号不一致」）
+  dev({ sn: 'XFS20240600377', model: S20, studentAccount: 'hf1z2023s0588', online: '未联网', onlineAfterContact: true }),
   // ④ 一线刷机池 · 非自研机型
   dev({ sn: 'LNJ606F2403A0912', model: J606F, studentAccount: 'ahsdfz2023s0107' }),
   // ⑤ 一线刷机池 · 接收失败 · 未开机（联系用户开机后重新推送可成功）
@@ -66,13 +73,14 @@ export const MDM_DEVICES: MdmDevice[] = [
   // ⑥ 一线刷机池 · 首推回传超时；之后硬件平台恢复回传，设备仍未开机 → 重新推送回传「接收失败 · 未开机」
   dev({ sn: 'XFS30240900307', model: S30, studentAccount: 'hf168z2023s1021', online: '未开机' }),
   // ⑦ 一线处理中 · 接收失败 · 原因未返回（指导联网后重新推送可成功）
-  dev({ sn: 'XFS20240600512', model: S20, studentAccount: 'bb2z2023s0310', online: '未联网', returnsDetail: false, onlineAfterContact: true }),
+  //    MDM 未标已毕业、年级代码 105（全年按毕业生）
+  dev({ sn: 'XFS20240600512', model: S20, studentAccount: 'bb2z2023s0310', graduatedFlag: 1, gradeCode: '105', online: '未联网', returnsDetail: false, onlineAfterContact: true }),
   // ⑧ 二线处理中 · 一线升级二线后二线领取（首推未联网）
   dev({ sn: 'XFS30240900433', model: S30, studentAccount: 'la1z2023s0716', online: '未联网', onlineAfterContact: true }),
-  // ⑨ 教育刷机处理组池 · 特殊情况（转校）
-  dev({ sn: 'XFS20240600645', model: S20, studentAccount: 'hf1z2023s0702' }),
-  // ⑩ 教育刷机处理组池 · 一线代建、建单校验不通过（非毕业生身份）
-  dev({ sn: 'XFS30240900561', model: S30, studentAccount: 'hf8z2024s0133' }),
+  // ⑨ 一线刷机池 · 特殊情况（转校生）
+  dev({ sn: 'XFS20240600645', model: S20, studentAccount: 'hf1z2023s0702', graduatedFlag: 1, gradeCode: '11' }),
+  // ⑩ 一线刷机池 · 一线代建、首推接收失败 · 版本不符；MDM 返回未毕业、年级代码 08（重推即「该学生不是毕业生」）
+  dev({ sn: 'XFS30240900561', model: S30, studentAccount: 'hf8z2024s0133', graduatedFlag: 1, gradeCode: '08', versionOk: false }),
   // ⑪ 教育刷机处理组池 · 一线升级（首推接收失败 · 版本不符）
   dev({ sn: 'XFX3P240500518', model: X3P, studentAccount: 'ahsdfz2023s0419', versionOk: false }),
   // ⑫ 一线处理中 · 重新推送仍接收失败 · 未开机，交回发起人
@@ -100,7 +108,7 @@ export const MDM_DEVICES: MdmDevice[] = [
   // ---- 待提报设备（建单可走通各条链路） ----
   // 成功：自研、账号一致、毕业生、在线
   dev({ sn: 'XFS20240601001', model: S20, studentAccount: 'hf1z2023s1101' }),
-  // SN与学生账号不一致：MDM 绑定 hf8z2023s1102，提报时填了别的账号即不通过
+  // MDM 绑定 hf8z2023s1102：建单不校验；重推时填了别的账号即「SN与学生账号不一致」
   dev({ sn: 'XFS30240901002', model: S30, studentAccount: 'hf8z2023s1102' }),
   // 非自研机型
   dev({ sn: 'LNJ606F2403A1003', model: J606F, studentAccount: 'ahsdfz2023s1103' }),
@@ -108,8 +116,11 @@ export const MDM_DEVICES: MdmDevice[] = [
   dev({ sn: 'XFX3P240501004', model: X3P, studentAccount: 'hf50z2023s1104', online: '未开机', onlineAfterContact: true }),
   // 回传无响应 → 回传超时转人工；转人工 10 分钟后硬件平台迟到回传「接收成功」（M11 / M48）
   dev({ sn: 'XFS30240901005', model: S30, studentAccount: 'hf168z2023s1105', noResponse: true, lateSuccessAfterMin: 10 }),
-  // 建单校验接口不可用 → 进一线刷机池（推送异常 · 接口异常）
-  dev({ sn: 'XFS20240601006', model: S20, studentAccount: 'bb2z2023s1106', verifyApi: '不可用' }),
+  // MDM 校验接口不可用：重推被拦下「校验服务暂不可用」，不推送、不计次（建单照常自动刷机）
+  dev({ sn: 'XFS20240601006', model: S20, studentAccount: 'bb2z2023s1106', mdmApi: '不可用' }),
+  // 年级代码 09（九年级）、12（高三），未标已毕业：只在每年 6 月 1 日至 8 月 13 日按毕业生
+  dev({ sn: 'XFS20240601008', model: S20, studentAccount: 'hf1z2023s1108', graduatedFlag: 1, gradeCode: '09' }),
+  dev({ sn: 'XFS30240901011', model: S30, studentAccount: 'hf8z2023s1111', graduatedFlag: 1, gradeCode: '12' }),
   // 推送接口持续报错 → 自动重试 1 次仍失败 → 转人工（推送异常 · 接口异常）
   dev({ sn: 'XFS30240901007', model: S30, studentAccount: 'la1z2023s1107', pushApi: '持续报错' }),
   // 未挂刷机类问题分类的机型（坐席建单不出现刷机类分类；用户提报不判产品）
@@ -119,4 +130,41 @@ export const MDM_DEVICES: MdmDevice[] = [
 export function findMdmDevice(sn: string): MdmDevice | undefined {
   const key = sn.trim().toUpperCase();
   return MDM_DEVICES.find((d) => d.sn.toUpperCase() === key);
+}
+
+/** MDM 按学生账号返回：SN 集合、已毕业标记、年级代码（PRD 附录 A.4）；查无记录时 SN 集合为空 */
+export interface MdmStudentRecord {
+  sns: string[];
+  graduatedFlag?: number;
+  gradeCode?: string;
+}
+
+export function mdmStudentOf(studentAccount: string): MdmStudentRecord {
+  const acc = studentAccount.trim();
+  const hits = acc ? MDM_DEVICES.filter((d) => d.studentAccount === acc) : [];
+  return {
+    sns: hits.map((d) => d.sn.toUpperCase()),
+    graduatedFlag: hits[0]?.graduatedFlag,
+    gradeCode: hits[0]?.gradeCode,
+  };
+}
+
+/** MDM 校验接口对本次输入（设备SN / 学生账号）是否可用 */
+export function isMdmApiAvailable(sn: string, studentAccount: string): boolean {
+  const acc = studentAccount.trim();
+  if (findMdmDevice(sn)?.mdmApi === '不可用') return false;
+  return !MDM_DEVICES.some((d) => d.studentAccount === acc && d.mdmApi === '不可用');
+}
+
+/**
+ * 毕业生判定（PRD §5.6 重推校验）：已毕业标记＝2，或年级代码＝105 → 全年为毕业生；
+ * 年级代码 09、12 → 仅每年 6 月 1 日至 8 月 13 日（含首尾，按校验当天日期）为毕业生；其余不是。
+ */
+export function isMdmGraduate(rec: Pick<MdmStudentRecord, 'graduatedFlag' | 'gradeCode'>, on: Date): boolean {
+  if (rec.graduatedFlag === 2 || rec.gradeCode === '105') return true;
+  if (rec.gradeCode === '09' || rec.gradeCode === '12') {
+    const md = (on.getMonth() + 1) * 100 + on.getDate();
+    return md >= 601 && md <= 813;
+  }
+  return false;
 }

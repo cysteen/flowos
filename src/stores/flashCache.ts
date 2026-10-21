@@ -11,7 +11,7 @@
 
 /** 刷机相关 localStorage 键（统一前缀 `flowos-flash-`） */
 export const FLASH_LS_KEYS = {
-  /** 刷机配置：产品刷机属性（自研） / 问题分类是否刷机 / 失败原因 / 回传超时时长 */
+  /** 刷机配置：产品刷机属性 / 问题分类是否刷机 / 失败原因 / 回传超时时长 */
   config: 'flowos-flash-config',
   /** 刷机单工单快照（种子单的最新状态 + 运行时新建的刷机单） */
   tickets: 'flowos-flash-tickets',
@@ -38,8 +38,10 @@ export type FlashLsKey = (typeof FLASH_LS_KEYS)[keyof typeof FLASH_LS_KEYS];
  * v20：刷机信息新增学生类型（分流判据）与 MDM信息图片，刷机原因改自由文本，去掉 ROM版本 / MDM版本。
  * v21：刷机信息新增产品信息图片、学习证明附件（小程序接口字段）；用户提报种子单学校改为原文（无学校库 ID）、
  * 不带 MDM信息图片，⑨ 转校生带学习证明附件。
+ * v22：建单不再校验 SN 与毕业生身份（PRD v1.27）：刷机字段组去掉 verifyResult、失败原因去掉「建单校验不通过」；
+ * ③ ⑩ 改为首推接收失败进一线刷机池，⑨ 转校生改进一线刷机池；建单履历不再带校验结果。
  */
-export const FLASH_CACHE_VERSION = 21;
+export const FLASH_CACHE_VERSION = 22;
 
 /** 保质期：12 小时（与风险两条线 `RISK_STALE_MS` 同口径） */
 export const FLASH_STALE_MS = 12 * 60 * 60 * 1000;

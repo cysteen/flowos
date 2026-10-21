@@ -2,7 +2,7 @@
  * 学校库 —— 教育客户档案的学校联动与教育刷机单的「学校名称」**共用一份**（930 教育刷机单 M42）。
  *
  * - 建单客户信息（教育分类）选学校后带出学校标签与归口人：`views/tickets/components/create-ticket/CustomerInfoModal.vue`；
- * - 刷机单「学校名称」从本库选择，毕业名单（`mock/flash/graduates.ts`）按 `id` 精确匹配，不按名称匹配。
+ * - 刷机单「学校名称」从本库选择，存学校 ID 与学校名称。
  */
 export interface SchoolRecord {
   /** 学校库 ID */

@@ -5,25 +5,25 @@ import { POOL_GROUPS, isTicketClosed } from '@/views/tickets/types/ticket';
 import type { TimelineEntry, TimelineFieldChange } from '@/views/tickets/types/ticketDetail';
 import { TICKETS } from '@/mock/tickets';
 import { FLASH_SEEDS } from '@/mock/flash/seedTickets';
-import { findMdmDevice, type MdmDevice } from '@/mock/flash/mdmDevices';
-import { isGraduate, isGraduateByAccount } from '@/mock/flash/graduates';
+import { findMdmDevice, isMdmApiAvailable, isMdmGraduate, mdmStudentOf } from '@/mock/flash/mdmDevices';
+import { isSelfDevModel, selfDevModelOf } from '@/mock/flash/models';
 import { findSchoolById } from '@/mock/schools';
 import { makeTicketNo } from '@/constants/ticketNo';
 import {
   FLASH_FIELD_LABELS, FLASH_INFO_FIELD_LABELS, FLASH_NOTIFY_EVENTS, FLASH_POOLS, FLASH_STUDENT_TYPE_AUTO, FLASH_STUDENT_TYPES,
   FLASH_RETURN_DELAY_MS, FLASH_AFTERSALE_RETURN_DELAY_MS, FLASH_TIP_PRODUCT_UNSUPPORTED,
   FLASH_RESULT_ONLINE_SUCCESS, FLASH_RESULT_OFFLINE_PUSHED, FLASH_RESULT_ESCALATE_L2, normalizeFlashResult,
-  FLASH_TIP_NON_SELF_DEVELOPED, FLASH_TIP_NOT_GRADUATE_L1, FLASH_TIP_NOT_GRADUATE_L2,
+  FLASH_TIP_NOT_GRADUATE_L1, FLASH_TIP_NOT_GRADUATE_L2, FLASH_TIP_REPUSH_NOT_GRADUATE, FLASH_TIP_REPUSH_SN_MISMATCH,
   FLASH_TIP_AUTO_FLASHING, FLASH_TIP_EDIT_STATE, FLASH_TIP_REPUSH_STATE, FLASH_TIP_SYSTEM_BUSY, FLASH_TIP_VERIFY_UNAVAILABLE,
-  FLASH_VERIFY_NOT_RUN, FLASH_TL, FLASH_NOTICE, FLASH_RESULT_OFFLINE, FLASH_TOAST,
+  FLASH_TL, FLASH_NOTICE, FLASH_RESULT_OFFLINE, FLASH_TOAST,
   FLASH_CS_NOTICE, FLASH_SURVEY_TIMEOUT_HOURS, FLASH_PRODUCT_CATEGORY, FLASH_TAG_L1, FLASH_TAG_L2,
   FLASH_TAG_L3_USER_REPORT, FLASH_TICKET_TYPE, FLASH_USER_REPORT_LABELS,
   flashTicketTitle, withFlashTitlePrefix, isFlashTicket, flashMinuteStamp, flashProgressStage, flashSmsHandoff, flashSmsSuccess, flashSmsSurvey, flashStamp,
-  flashTipInflight, flashTipRequired, flashTipVerifyFailed, isFrontlineActor,
+  flashTipInflight, flashTipRequired, isFrontlineActor,
   parseFlashStamp,
-  type FlashActor, type FlashCreator, type FlashFailL1, type FlashFailL2, type FlashHandoffReason,
+  type FlashActor, type FlashCreator, type FlashFailL2, type FlashHandoffReason,
   type FlashInfo, type FlashPoolKey, type FlashProgressStage, type FlashPushTrigger, type FlashStudentType,
-  type FlashResult, type FlashRun, type FlashState, type FlashVerifyResult, type TicketFlash,
+  type FlashResult, type FlashRun, type FlashState, type TicketFlash,
 } from '@/views/tickets/types/flash';
 import { formatSlaClock, isFlashSlaCounted, readFlashSla, slaStateOf } from '@/views/tickets/utils/slaClock';
 import { LOGIN_URL, templateOf } from '@/mock/notifyRules';
@@ -63,7 +63,7 @@ export interface FlashCreateInput {
   problemL2?: string;
   problemL3?: string;
   sn: string;
-  /** 学生类型（非「毕业生」一律按特殊情况进二线池）；未选为空串 */
+  /** 学生类型（转校生按特殊情况进一线刷机池）；未选为空串 */
   studentType: FlashStudentType | '';
   studentAccount: string;
   studentName: string;
@@ -126,10 +126,7 @@ export interface FlashEvaluationCreate {
   initialStatus: '自动刷机中' | '未认领';
   pool?: FlashPoolKey;
   handoffReason?: FlashHandoffReason;
-  failL1?: FlashFailL1;
-  failL2?: FlashFailL2;
-  /** 建单校验两项各自结论（跑过校验才有，M50） */
-  verifyResult?: FlashVerifyResult;
+  /** 产品在自研机型表中（PRD 附录 A.4） */
   selfDeveloped: boolean;
 }
 
@@ -167,10 +164,8 @@ const REPUSHABLE_STATUSES = ['处理中', '待响应', '已退回'];
 /** 可修改刷机信息的子状态（M52） */
 const EDITABLE_STATUSES = ['待响应', '处理中'];
 
-type VerifyResult =
-  | { ok: true; device: MdmDevice; result: FlashVerifyResult }
-  | { ok: false; unavailable: true; result: FlashVerifyResult }
-  | { ok: false; unavailable: false; failL2: FlashFailL2; result: FlashVerifyResult };
+/** 重推校验结论：通过 / MDM 接口不可用 / 不通过（提示文案） */
+type VerifyResult = { ok: true } | { ok: false; message: string };
 
 interface TicketsCache { tickets: Ticket[] }
 interface TimelineCache { timelines: Record<string, TimelineEntry[]>; seq: number }
@@ -525,6 +520,8 @@ export const useFlashStore = defineStore('flash', () => {
       autoRetried: !!device && device.pushApi !== '正常',
       // PRD §10.5：回传超时时长按发出时的取值判定
       returnTimeoutMin: config.returnTimeoutMin,
+      // 推送入参「设备型号」＝自研机型表的 OTA 型号（PRD 附录 A.4）
+      otaModel: selfDevModelOf(f.info.productModel)?.otaModel,
     };
     f.runs.push(run);
     st.pushCount += 1;
@@ -667,34 +664,25 @@ export const useFlashStore = defineStore('flash', () => {
   /* ---------------- 校验 ---------------- */
 
   /**
-   * 建单校验（D15）：SN与学生账号一致 → 毕业生身份。校验接口不可用单独返回（M43）。
-   * `byAccount`：用户提报（学校为自由文本，10-19 C8）按学生账号 ＋ 学生姓名判毕业生身份；坐席代建与重推按学校 ID 三项匹配。
+   * 重推校验（PRD §5.6 第 6–8 条）：调 MDM 按学生账号取 SN 集合、已毕业标记与年级代码。
+   * MDM 接口不可用 → 第 6 条；SN 不在集合中（含查无记录）→ 第 7 条；毕业生不通过 → 第 8 条。两项都不通过只报第 7 条。
+   * 毕业生按校验当天日期判定（09、12 年级的 6 月 1 日至 8 月 13 日窗口）。
    */
-  function verify(info: Pick<FlashInfo, 'sn' | 'studentAccount' | 'studentName' | 'schoolId'>, byAccount = false): VerifyResult {
-    const device = findMdmDevice(info.sn);
-    if (device?.verifyApi === '不可用') return { ok: false, unavailable: true, result: FLASH_VERIFY_NOT_RUN };
-    // 两项都比，结论各自保留；两项都不通过时细分取「SN与学生账号不一致」（先比设备再比身份，M50）
-    const snOk = !!device && device.studentAccount === info.studentAccount.trim();
-    const gradOk = byAccount
-      ? isGraduateByAccount(info.studentAccount, info.studentName ?? '')
-      : isGraduate(info.schoolId, info.studentAccount, info.studentName ?? '');
-    const result: FlashVerifyResult = {
-      status: '已校验',
-      snAccountMatch: snOk ? '通过' : '不通过',
-      graduate: gradOk ? '通过' : '不通过',
-    };
-    if (!snOk) return { ok: false, unavailable: false, failL2: 'SN与学生账号不一致', result };
-    if (!gradOk) return { ok: false, unavailable: false, failL2: '非毕业生身份', result };
-    return { ok: true, device: device!, result };
+  function verify(info: Pick<FlashInfo, 'sn' | 'studentAccount'>): VerifyResult {
+    if (!isMdmApiAvailable(info.sn, info.studentAccount)) return { ok: false, message: FLASH_TIP_VERIFY_UNAVAILABLE };
+    const rec = mdmStudentOf(info.studentAccount);
+    if (!rec.sns.includes(info.sn.trim().toUpperCase())) return { ok: false, message: FLASH_TIP_REPUSH_SN_MISMATCH };
+    if (!isMdmGraduate(rec, new Date(Date.now()))) return { ok: false, message: FLASH_TIP_REPUSH_NOT_GRADUATE };
+    return { ok: true };
   }
 
   /* ---------------- 对外动作 ---------------- */
 
   /**
-   * 建单判定（M1 顺序）：
-   * ① 坐席代建：产品未挂刷机类问题分类（10-19 C1） → 拦截 A1；用户提报不判产品（10-19 用户定：以小程序为准）；② 同 SN 在途 → 拦截 A2（在途查询不可用 → 拦截「系统繁忙」，M43）；
-   * ③ 学生类型≠毕业生（转校生）→ 二线池（特殊情况）；④ 建单校验：接口不可用 → 一线池（推送异常 · 接口异常，M43），
-   * 不通过 → 用户提报进一线池、坐席代建进二线池（D12）；⑤ 非自研 → 一线池（M8′）；⑥ 自研 → 自动刷机中。
+   * 建单判定（PRD §2.3，按序命中即止）：
+   * ① 必填；② 坐席代建：产品未挂刷机类问题分类（10-19 C1） → 拦截 A1，用户提报不判产品；③ 同 SN 在途 → 拦截 A2（在途查询不可用 → 拦截「系统繁忙」）；
+   * ④ 转校生 → 一线刷机池（特殊情况）；⑤ 毕业生 ∧ 产品不在自研机型表 → 一线刷机池（非自研机型）；⑥ 毕业生 ∧ 在表 → 自动刷机中。
+   * 建单不校验 SN 与毕业生身份。
    */
   function evaluateCreate(input: FlashCreateInput, creator: FlashCreator): FlashCreateEvaluation {
     const missing = missingRequired(input, creator);
@@ -717,23 +705,14 @@ export const useFlashStore = defineStore('flash', () => {
         inflightStage: flashProgressStage(inflight.nodeStatus),
       };
     }
-    const selfDeveloped = config.isSelfDeveloped(input.productModel);
-    const pool = (p: FlashPoolKey, reason: FlashHandoffReason, failL1?: FlashFailL1, failL2?: FlashFailL2): FlashEvaluationCreate => ({
-      kind: 'create', route: 'pool', initialStatus: '未认领', pool: p, handoffReason: reason, failL1, failL2, selfDeveloped,
+    const selfDeveloped = isSelfDevModel(input.productModel);
+    const pool = (reason: FlashHandoffReason): FlashEvaluationCreate => ({
+      kind: 'create', route: 'pool', initialStatus: '未认领', pool: 'l1', handoffReason: reason, selfDeveloped,
     });
 
-    if (input.studentType !== FLASH_STUDENT_TYPE_AUTO) return pool('l2', '特殊情况');
-
-    const v = verify(input, creator === '用户提报');
-    if (!v.ok && v.unavailable) return pool('l1', '推送异常', '推送异常', '接口异常');
-    if (!v.ok) {
-      return {
-        ...pool(creator === '用户提报' ? 'l1' : 'l2', '建单校验不通过', '建单校验不通过', v.failL2),
-        verifyResult: v.result,
-      };
-    }
-    if (!selfDeveloped) return { ...pool('l1', '非自研机型'), verifyResult: v.result };
-    return { kind: 'create', route: 'auto', initialStatus: '自动刷机中', verifyResult: v.result, selfDeveloped };
+    if (input.studentType !== FLASH_STUDENT_TYPE_AUTO) return pool('特殊情况');
+    if (!selfDeveloped) return pool('非自研机型');
+    return { kind: 'create', route: 'auto', initialStatus: '自动刷机中', selfDeveloped };
   }
 
   /**
@@ -857,7 +836,6 @@ export const useFlashStore = defineStore('flash', () => {
         state: {
           outcome: '未推送', pushCount: 0, surveyConcluded: false, creator,
           slaPausedAccumMs: 0,
-          verifyResult: evaluation.verifyResult ?? FLASH_VERIFY_NOT_RUN,
         },
         runs: [],
       },
@@ -869,22 +847,12 @@ export const useFlashStore = defineStore('flash', () => {
       how: '建单',
       what: FLASH_TL.create(
         ticketSource,
-        r.flash!.state.verifyResult,
         evaluation.route === 'pool' ? { handoff: evaluation.handoffReason! } : { auto: true },
       ),
     });
     // PRD §2.5 / §11.1：坐席代建建单成功发受理短信，用户提报不发
     if (!byUser) acceptedSms(r, now + 200);
     if (evaluation.route === 'pool') {
-      r.flash!.state.failL1 = evaluation.failL1;
-      r.flash!.state.failL2 = evaluation.failL2;
-      if (evaluation.failL1 === '推送异常') {
-        // 建单校验接口不可用（M43）：PRD §11.2「推送异常 · 接口异常（建单校验未执行）」
-        log(no, now + 500, {
-          category: 'node', action: 'flashFail', who: '系统', role: '系统', how: '推送异常',
-          what: FLASH_TL.verifyApiError(config.failReasonText(evaluation.failL1, evaluation.failL2)),
-        });
-      }
       handoff(r, evaluation.pool!, evaluation.handoffReason!, now + 1000, { sms: true });
     } else {
       pushInternal(r, SYSTEM, '建单首推', now + 1000);
@@ -902,7 +870,8 @@ export const useFlashStore = defineStore('flash', () => {
   /**
    * 修改刷机信息并重新推送（1013 A12 / B1：修改刷机信息弹窗「重新推送」是唯一的推送入口；M36 / M44）。
    * 先同步判定，任一不通过即返回提示，**不推送、不改状态**：
-   * 状态可重推 → 机型支持且自研 → 学生类型为毕业生 → 改后 SN 无其他在途单 → 建单校验通过。一线、二线都不限次（A14）。
+   * 状态可重推 → 产品挂刷机类问题分类 → 学生类型为毕业生 → 改后 SN 无其他在途单 → 重推校验（MDM）通过。一线、二线都不限次（A14）。
+   * 是否走重推（产品在自研机型表）由弹窗按所选产品决定（PRD §5.6），不在本函数判。
    * 全部通过即视为推送已发出（M69）：落库、写履历、推送次数 +1；
    * 回传接收成功 → 写入「刷机成功」类处理结果并转入回访；失败（含推送接口报错重试仍失败）→ 交回发起时的处理人。
    */
@@ -914,10 +883,9 @@ export const useFlashStore = defineStore('flash', () => {
     const next = mergeInfo(prev, changes);
     const l1 = isFrontlineActor(by);
 
-    // M79 提交判定顺序（第 1 条必填由弹窗在字段下方判）：未启用机型 → 非自研 → 学生类型不是毕业生 →
-    // 在途查询不可用 → 设备SN在途 → 建单校验接口不可用 → SN与学生账号不一致 → 非毕业生身份；命中即止
+    // PRD §5.6 提交判定顺序（第 1 条必填由弹窗在字段下方判）：产品已不挂刷机类问题分类 → 学生类型不是毕业生 →
+    // 在途查询不可用 → 设备SN在途 → MDM 接口不可用 → SN 不通过 → 毕业生不通过；命中即止
     if (!config.isSupportedModel(next.productModel)) return { ok: false, message: FLASH_TIP_PRODUCT_UNSUPPORTED };
-    if (!config.isSelfDeveloped(next.productModel)) return { ok: false, message: FLASH_TIP_NON_SELF_DEVELOPED };
     if (next.studentType !== FLASH_STUDENT_TYPE_AUTO) {
       return { ok: false, message: l1 ? FLASH_TIP_NOT_GRADUATE_L1 : FLASH_TIP_NOT_GRADUATE_L2 };
     }
@@ -928,16 +896,15 @@ export const useFlashStore = defineStore('flash', () => {
       return { ok: false, message: FLASH_TIP_SYSTEM_BUSY };
     }
     if (inflight) return { ok: false, message: flashTipInflight(inflight.no), inflightNo: inflight.no };
-    // 学校只有原文、无学校库 ID 的单（小程序提报、坐席未改选学校库条目）：毕业生身份同建单口径按学生账号判定
-    const v = verify(next, !next.schoolId?.trim());
-    if (!v.ok) return { ok: false, message: v.unavailable ? FLASH_TIP_VERIFY_UNAVAILABLE : flashTipVerifyFailed(v.failL2) };
+    // 命中拦截：不推送、不计次、子状态不变，改动不落库、不写处理履历（PRD §5.6 / §10.2）
+    const v = verify(next);
+    if (!v.ok) return { ok: false, message: v.message };
 
     // M53：到这里推送一定会发出，才落库与写履历
     const diff = diffInfo(prev, next);
     const now = Date.now();
     r.flash.info = next;
     Object.assign(r, { sn: next.sn, product: next.productModel });
-    r.flash.state.verifyResult = v.result;
     // PRD §11.2：同一次重推依次落「修改刷机信息」（有改动时）、「重新推送」
     if (diff.length) {
       log(ticketNo, now, {
@@ -947,7 +914,7 @@ export const useFlashStore = defineStore('flash', () => {
     }
     pushInternal(r, by, l1 ? '一线重推' : '二线重推', now + 1000);
     // M69：推送接口同步报错、自动重试 1 次仍失败 → 算作已发出（已落库、已计次），按重推失败去向处理
-    if (v.device.pushApi === '持续报错') {
+    if (findMdmDevice(next.sn)?.pushApi === '持续报错') {
       const run = r.flash.runs[r.flash.runs.length - 1];
       fail(r, run, '推送异常', '接口异常', now + 1500, { banner: false });
       persist();
@@ -959,7 +926,7 @@ export const useFlashStore = defineStore('flash', () => {
 
   /**
    * 修改刷机信息（M52 / M70）：检查必填 → 无变更返回 `code: 'unchanged'`（不写履历）→
-   * 落库 + 写履历「修改刷机信息」（字段前后值）。**不跑建单校验、不推送、不计次**。
+   * 落库 + 写履历「修改刷机信息」（字段前后值）。**不跑重推校验、不推送、不计次**。
    * 待响应、处理中可用，适用全部机型。
    */
   function saveFlashInfo(ticketNo: string, by: FlashActor, changes: FlashInfoChanges): FlashActionResult {
@@ -1792,8 +1759,10 @@ export const useFlashStore = defineStore('flash', () => {
    * 归到现行取值「已线下登记」。旧值只在这里出现，别处一律按现行取值读写。
    */
   function migrateCachedTicket(saved: Ticket): Ticket {
-    const st = saved.flash?.state as { result?: string } | undefined;
+    const st = saved.flash?.state as { result?: string; verifyResult?: unknown } | undefined;
     if (st?.result === '已线下登记推送') st.result = FLASH_RESULT_OFFLINE;
+    // 建单不再校验（v22）：旧快照上的建单校验结果一律去掉
+    if (st) delete st.verifyResult;
     const info = saved.flash?.info as (FlashInfo & Record<string, unknown>) | undefined;
     if (info) {
       if (!(FLASH_STUDENT_TYPES as readonly string[]).includes(info.studentType)) {
