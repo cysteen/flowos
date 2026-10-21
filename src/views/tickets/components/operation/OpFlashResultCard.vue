@@ -9,10 +9,9 @@
  */
 import { computed } from 'vue';
 import { ExportOutlined, ThunderboltOutlined } from '@ant-design/icons-vue';
-import { useFlashConfigStore } from '@/stores/flashConfig';
 import {
   FLASH_EXTERNAL_LINKS,
-  flashExternalUrl, flashRunInitiator, flashRunResultText,
+  flashExternalUrl, flashFailReasonText, flashRunInitiator, flashRunResultText,
   type TicketFlash,
 } from '@/views/tickets/types/flash';
 
@@ -20,8 +19,6 @@ const props = defineProps<{
   /** 刷机字段组（工单库那一行的快照） */
   flash: TicketFlash;
 }>();
-
-const config = useFlashConfigStore();
 
 const state = computed(() => props.flash.state);
 const pushed = computed(() => state.value.pushCount >= 1);
@@ -38,7 +35,7 @@ const outcomeTone = computed(() => {
   return 'bad';
 });
 
-const failText = computed(() => config.failReasonText(state.value.failL1, state.value.failL2));
+const failText = computed(() => flashFailReasonText(state.value.failL1, state.value.failL2));
 
 /** 刷机记录：每次推送一行，时间正序，不分页；推送次数为 0 时整表不出 */
 const recordRows = computed(() => [
@@ -48,7 +45,7 @@ const recordRows = computed(() => [
     initiator: flashRunInitiator(r),
     result: flashRunResultText(r.result),
     resultTone: r.result === '等待回传' ? 'auto' : r.result === '接收成功' ? 'ok' : 'bad',
-    fail: config.failReasonText(r.failL1, r.failL2) || '—',
+    fail: flashFailReasonText(r.failL1, r.failL2) || '—',
   })),
 ]);
 

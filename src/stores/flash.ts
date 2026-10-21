@@ -15,7 +15,7 @@ import {
   FLASH_RESULT_ONLINE_SUCCESS, FLASH_RESULT_ESCALATE_L2, FLASH_OFFLINE_SURVEY_DELAY_MS, normalizeFlashResult,
   FLASH_TIP_NOT_GRADUATE_L1, FLASH_TIP_NOT_GRADUATE_L2, FLASH_TIP_REPUSH_NOT_GRADUATE, FLASH_TIP_REPUSH_SN_MISMATCH,
   FLASH_TIP_AUTO_FLASHING, FLASH_TIP_EDIT_STATE, FLASH_TIP_REPUSH_STATE, FLASH_TIP_SYSTEM_BUSY, FLASH_TIP_VERIFY_UNAVAILABLE,
-  FLASH_TL, FLASH_NOTICE, FLASH_RESULT_OFFLINE, FLASH_TOAST,
+  FLASH_TL, FLASH_NOTICE, FLASH_RESULT_OFFLINE, FLASH_RETURN_TIMEOUT_MIN, FLASH_TOAST, flashFailReasonText,
   FLASH_CS_NOTICE, FLASH_SURVEY_TIMEOUT_HOURS, FLASH_PRODUCT_CATEGORY, FLASH_TAG_L1, FLASH_TAG_L2,
   FLASH_TAG_L3_USER_REPORT, FLASH_TICKET_TYPE, FLASH_USER_REPORT_LABELS,
   flashTicketTitle, withFlashTitlePrefix, isFlashTicket, flashMinuteStamp, flashProgressStage, flashSmsHandoff, flashSmsSuccess, flashSmsSurvey, flashStamp,
@@ -564,8 +564,6 @@ export const useFlashStore = defineStore('flash', () => {
       handlerAtPush: r.assignee,
       // M10：推送接口同步报错即自动重试 1 次
       autoRetried: !!device && device.pushApi !== '正常',
-      // PRD §10.5：回传超时时长按发出时的取值判定
-      returnTimeoutMin: config.returnTimeoutMin,
       // 推送入参「设备型号」＝自研机型表的 OTA 型号（PRD 附录 A.4）
       otaModel: selfDevModelOf(f.info.productModel)?.otaModel,
     };
@@ -679,11 +677,10 @@ export const useFlashStore = defineStore('flash', () => {
     st.outcome = l1;
     st.failL1 = l1;
     st.failL2 = l2;
-    // 显示文案按后台配置（改名 / 二级停用显示「原因未返回」，M65）；落库仍存取值
-    const reasonText = config.failReasonText(l1, l2);
-    const timeoutMin = run.returnTimeoutMin ?? config.returnTimeoutMin;
+    // 显示文案按内置失败原因码表（PRD 附录 A.4）
+    const reasonText = flashFailReasonText(l1, l2);
     const what = l2 === '回传超时'
-      ? FLASH_TL.returnTimeout(reasonText, Math.round((timeoutMin / 60) * 10) / 10)
+      ? FLASH_TL.returnTimeout(reasonText, Math.round((FLASH_RETURN_TIMEOUT_MIN / 60) * 10) / 10)
       : l2 === '接口异常'
         ? FLASH_TL.pushApiError(reasonText)
         : FLASH_TL.returnFail(reasonText);
@@ -1738,8 +1735,8 @@ export const useFlashStore = defineStore('flash', () => {
       const device = findMdmDevice(r.flash!.info.sn);
       const elapsed = now - run.pushedAtMs;
       if (!device || device.noResponse) {
-        // M11：回传无响应 → 到回传超时时长转人工；时长取推送发出时的快照（PRD §10.5）
-        const timeoutMs = (run.returnTimeoutMin ?? config.returnTimeoutMin) * 60_000;
+        // M11：回传无响应 → 到回传超时时长（系统固定，PRD 附录 A.4）转人工
+        const timeoutMs = FLASH_RETURN_TIMEOUT_MIN * 60_000;
         if (elapsed < timeoutMs) continue;
         fail(r, run, '推送异常', '回传超时', run.pushedAtMs + timeoutMs);
         settled += 1;

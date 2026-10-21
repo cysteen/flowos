@@ -2,8 +2,7 @@
  * 教育刷机单 · 常量与字段组类型 —— **单一真源**（930 教育刷机单 D1–D23 / M1–M36）。
  *
  * 建单表单、处理页区块、用户提报页、后台配置页、工作台页签等模块**只从这里取**枚举与类型，
- * 不在各自文件里另写一份。取值可被后台「刷机配置」覆盖的（机型 / 失败原因 /
- * 回传超时时长），这里给的是出厂值，运行时读 `stores/flashConfig.ts`。
+ * 不在各自文件里另写一份。失败原因码表与回传超时时长为系统内置（PRD 附录 A.4），不设后台配置。
  *
  * 本文件只放**常量、类型与纯函数**，不依赖 Pinia / 工单库，任何模块都可以放心引用。
  */
@@ -76,6 +75,11 @@ export const FLASH_FAIL_REASON_TREE = [
 
 export type FlashFailL1 = (typeof FLASH_FAIL_REASON_TREE)[number]['l1'];
 export type FlashFailL2 = (typeof FLASH_FAIL_REASON_TREE)[number]['l2'][number];
+
+/** 智能硬件平台回传码（PRD 附录 A.4；只有「接收失败」下的二级原因由平台回传） */
+export const FLASH_FAIL_RETURN_CODES: Partial<Record<FlashFailL1, Partial<Record<FlashFailL2, string>>>> = {
+  接收失败: { 未开机: 'E1001', 未联网: 'E1002', 版本不符: 'E1003', 其他: 'E1099' },
+};
 
 /** 一级 → 细分选项 */
 export const FLASH_FAIL_L2_MAP: Record<FlashFailL1, readonly FlashFailL2[]> = Object.fromEntries(
@@ -208,8 +212,8 @@ export const FLASH_RETURN_DELAY_MS = 12_000;
  * 售后侧的处理时长按这一时长推算（同 MDM 回传按推送时刻推算），到点经售后回传通道唤起原单。
  */
 export const FLASH_AFTERSALE_RETURN_DELAY_MS = 180_000;
-/** 回传超时时长出厂值（分钟，M11 暂行 2 小时；后台可改） */
-export const FLASH_RETURN_TIMEOUT_DEFAULT_MIN = 120;
+/** 回传超时时长（分钟）：系统固定 2 小时（PRD 附录 A.4，M180） */
+export const FLASH_RETURN_TIMEOUT_MIN = 120;
 
 /* ------------------------------------------------------------------ */
 /* 建单人 / 触发方式 / 结果枚举                                          */
@@ -296,11 +300,6 @@ export interface FlashRun {
   resultAt?: string;
   /** 推送接口同步报错后是否已自动重试（M10） */
   autoRetried?: boolean;
-  /**
-   * 推送发出时的「回传超时时长」快照（分钟，PRD §10.5）：本次推送按它判回传超时，
-   * 后台保存的新值只对之后发出的推送生效。缺省（旧数据）回落当前配置值。
-   */
-  returnTimeoutMin?: number;
   /** 推送入参「设备型号」＝自研机型表的 OTA 型号（PRD 附录 A.4）；旧数据缺省 */
   otaModel?: string;
   /** 推送发出时本单处理人（人工重推后按它回原处理人，M19 / D16） */

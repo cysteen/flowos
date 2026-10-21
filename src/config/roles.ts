@@ -217,10 +217,10 @@ export const ROLES: Record<RoleKey, RoleDef> = {
    * `readonlyTickets` 保留：只读约束的是**工单内容**，它仍可调剂 / 指派（换处理人不动内容）。
    * 矩阵给的「管理后台 ✅ 部分（问题分类 + SLA 管理）」：SLA 管理**本轮不开**。
    *
-   * 930 教育刷机单（M82 / 偏差 X12）：后台开「工单配置 · 刷机配置」一页；
-   * 1025 问题分类管理优化 §1.2：再开「问题分类」一页（新增 / 编辑 / 导入 / 导出 / 启停 / 批量改处理组，
+   * 1025 问题分类管理优化 §1.2：后台开「问题分类」一页（新增 / 编辑 / 导入 / 导出 / 启停 / 批量改处理组，
    * 删除只给管理员 —— 页内按 `adminScope` 判，本角色无 scope 即不出删除入口）。
-   * 两页都靠 `adminItems` 白名单收口 —— 不给 `adminScope`，侧栏只出这两项，其余后台路由重定向回首项。
+   * 靠 `adminItems` 白名单收口 —— 不给 `adminScope`，侧栏只出这一项，其余后台路由重定向回首项。
+   * （原 930 教育刷机单开的「刷机配置」页已删，1130 刷机单 M180。）
    */
   'ops-monitor': {
     key: 'ops-monitor',
@@ -228,7 +228,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
     menus: ['query-center', 'team-board', 'ops-ticket-monitor'],
     hiddenTabs: ['riskReport', 'review'],
     hasAdminEntry: true,
-    adminItems: ['flash-config', 'problem-tags'],
+    adminItems: ['problem-tags'],
     readonlyTickets: true,
   },
   /**

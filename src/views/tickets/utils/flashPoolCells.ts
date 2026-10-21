@@ -1,4 +1,4 @@
-import { useFlashConfigStore } from '@/stores/flashConfig';
+import { flashFailReasonText } from '@/views/tickets/types/flash';
 import type { Ticket } from '@/views/tickets/types/ticket';
 
 /**
@@ -11,9 +11,9 @@ export function flashHandoffCellText(t: Ticket): string {
   return t.flash?.state.handoffReason ?? '—';
 }
 
-/** 失败原因：「〈一级〉 · 〈二级〉」，显示文案按后台「刷机配置」；无失败原因时「—」 */
+/** 失败原因：「〈一级〉 · 〈二级〉」，按内置失败原因码表（PRD 附录 A.4）；无失败原因时「—」 */
 export function flashFailCellText(t: Ticket): string {
   const st = t.flash?.state;
   if (!st?.failL1) return '—';
-  return useFlashConfigStore().failReasonText(st.failL1, st.failL2) || '—';
+  return flashFailReasonText(st.failL1, st.failL2) || '—';
 }

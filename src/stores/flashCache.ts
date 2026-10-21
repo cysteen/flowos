@@ -11,7 +11,7 @@
 
 /** 刷机相关 localStorage 键（统一前缀 `flowos-flash-`） */
 export const FLASH_LS_KEYS = {
-  /** 刷机配置：产品刷机属性 / 问题分类是否刷机 / 失败原因 / 回传超时时长 */
+  /** 刷机相关配置：产品刷机属性 / 问题分类是否刷机 */
   config: 'flowos-flash-config',
   /** 刷机单工单快照（种子单的最新状态 + 运行时新建的刷机单） */
   tickets: 'flowos-flash-tickets',

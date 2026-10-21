@@ -34,7 +34,6 @@ function adminViewFor(key: string) {
   if (key === 'dicts') return () => import('@/views/admin/DictManageView.vue');
   if (key === 'entity-dict') return () => import('@/views/admin/EntityDictView.vue');
   if (key === 'ticket-types') return () => import('@/views/admin/TicketTypesView.vue');
-  if (key === 'flash-config') return () => import('@/views/admin/FlashConfigView.vue');
   if (key === 'form-templates' || key === 'flow-templates') return () => import('@/views/admin/TemplateLibraryView.vue');
   if (WORKFLOW_STUB_KEYS.has(key)) return () => import('@/views/admin/WorkflowEngineView.vue');
   if (key === 'teams') return () => import('@/views/admin/UserGroupView.vue');
@@ -292,7 +291,7 @@ router.beforeEach((to) => {
   if (to.meta.adminOnly && !user.hasAdminEntry) {
     return firstMenuPath(user.visibleMenus);
   }
-  // 后台项白名单（如工单运营只开刷机配置）：白名单外的后台页一律回默认落点
+  // 后台项白名单（如工单运营只开问题分类）：白名单外的后台页一律回默认落点
   if (to.meta.adminOnly && !canAccessAdminItem(user.role, adminNavActiveKey(to.path))) {
     return adminHomePath(user.role);
   }
