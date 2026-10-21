@@ -672,23 +672,6 @@ function onFlashEscalateSubmit() {
   }
 }
 
-/**
- * 页面内站内通知条（PRD §5.6 / §11.1）：回传结果到达时，发起重推的处理人正停留在本单处理页才出现。
- * 只认本会话新到达、收件人是当前处理人、单号是本单的通知。
- */
-const flashLiveBanner = ref<{ id: number; text: string } | null>(null);
-watch(
-  () => flashStore.liveNotices.length,
-  (len, prev) => {
-    if (!isFlash.value || !pageActive.value) return;
-    const fresh = flashStore.liveNotices.slice(prev ?? len)
-      .filter((n) => n.no === d.value.no && isCurrentHandler(n.to, user.roleKey, user.name));
-    const last = fresh[fresh.length - 1];
-    if (last) flashLiveBanner.value = { id: last.id, text: last.text };
-  },
-);
-watch(ticketNo, () => { flashLiveBanner.value = null; });
-
 /** 撤回（刷机单调研中）：限本次下送发起人（X30）；审核中撤回申请沿用通用口径 */
 const flashIsInitiator = computed(() => {
   if (!isFlash.value) return isPrimaryHandler.value;
@@ -2917,13 +2900,6 @@ watch(
       这几项恰恰是"接下来要处理人做的事"，收在 Tab 里等于让人自己去翻。人不直接摘，
       工单进终态时随页头一起消失。
     -->
-    <!-- 刷机单重推结果站内通知条（PRD §5.6 / §11.1）：回传到达时发起人正停留在本单才出现 -->
-    <div v-if="isFlash && flashLiveBanner" class="risk-report-banner flash-notice-banner">
-      <span class="rrb-dot" aria-hidden="true"></span>
-      <span class="rrb-text">{{ flashLiveBanner.text }}</span>
-      <button type="button" class="rrb-link" aria-label="关闭" @click="flashLiveBanner = null">×</button>
-    </div>
-
     <div v-if="riskAdviceMarks.length" class="risk-report-banner risk-advice-banner">
       <span class="rrb-text">风险处理建议</span>
       <span v-for="a in riskAdviceMarks" :key="a" class="rrb-advice">{{ a }}</span>
@@ -3231,10 +3207,6 @@ watch(
   cursor: pointer;
 }
 .rrb-link:hover { text-decoration: underline; }
-/* 刷机单重推结果通知条：同一副骨架，蓝点 */
-.flash-notice-banner .rrb-dot { background: #1a6fff; }
-.flash-notice-banner .rrb-text { color: #1f2937; }
-.flash-notice-banner .rrb-link { font-size: 14px; color: #9ca3af; }
 /* 建议标记：一排小标，不带点 —— 它不是"等结论"的状态，是"要去做"的清单 */
 .risk-advice-banner .rrb-text { color: #9a3412; }
 .rrb-advice {

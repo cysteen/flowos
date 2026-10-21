@@ -510,16 +510,10 @@ export const NOTIFY_RULES: NotifyRule[] = [
       { field: 'rdDirect', op: 'eq', value: ['否'] },
     ],
     recipients: [{ type: 'groupMembers' }], channels: ['IM'], templates: { IM: 'IM_WO_POOLED' }, contents: {}, enabled: true },
-  // 【1130】刷机单到组 → 通知全组（1013 A27）：容联云留言弹窗；可另勾 IM（i讯飞消息）
+  // 【1130】刷机单到组 → 通知全组（1013 A27）：IM（i讯飞消息，M181），文案沿用咨询单到组通知
   { id: 'R19', name: '刷机单到组提醒', event: 'ticket.pooled', audience: 'internal',
     conditions: [{ field: 'isFlash', op: 'eq', value: ['是'] }],
-    recipients: [{ type: 'groupMembers' }], channels: ['容联云留言弹窗'], templates: {},
-    contents: {
-      容联云留言弹窗: {
-        // 文案沿用咨询单到组通知（IM_WO_POOLED，PRD §11.1）
-        body: '您所在的${groupName}来了一条新工单（${ticketNo}），请尽快领取处理。\n\n系统登陆地址：${loginUrl}',
-      },
-    },
+    recipients: [{ type: 'groupMembers' }], channels: ['IM'], templates: { IM: 'IM_WO_POOLED' }, contents: {},
     enabled: true },
   { id: 'R03', name: '组内来单（调剂）', event: 'ticket.transfer', audience: 'internal',
     conditions: [], recipients: [{ type: 'targetUser' }], channels: ['IM'], templates: { IM: 'IM_WO_DISPATCH' }, contents: {}, enabled: true },

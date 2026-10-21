@@ -343,8 +343,6 @@ export interface FlashState {
    * 转售后时写入，到点经售后回传通道唤起原单，唤起后清空。
    */
   aftersaleReturnDueAt?: string;
-  /** 已发转人工短信（M37：每单只发一次，首次转人工时发） */
-  handoffSmsSent?: boolean;
   /**
    * 本次下送的发起人（处理人名，X30 / PRD §8「下送发起人撤回」）：进「调研中」时写入，撤回、结案或拉回后清空。
    * 自动刷机成功直进回访的单为空，任何人都不能撤回。
@@ -532,9 +530,6 @@ export const FLASH_TOAST = {
 
 /** 站内通知文案（M67 / PRD §11.1，逐字） */
 export const FLASH_NOTICE = {
-  repushSuccess: (no: string) => `${no}重推结果：接收成功`,
-  /** `reasonText` ＝「〈一级失败原因〉 · 〈二级失败原因〉」 */
-  repushFail: (no: string, reasonText: string) => `${no}重推结果：${reasonText}`,
   escalatedToGroup: (no: string) => `${no}已升级至教育刷机处理组，待领取`,
   lateSuccess: (no: string) => `${no}收到迟到回传：接收成功`,
 } as const;
@@ -638,10 +633,6 @@ export function snTail(sn: string): string {
 export function flashSmsSuccess(no: string, sn: string): string {
   return `【讯飞客服】您的设备（SN尾号${snTail(sn)}）刷机包已推送成功，请保持设备开机并连接网络完成刷机。如有疑问请致电400热线，工单号：${no}。`;
 }
-/** 转人工短信（PRD §3.4 / §11.1，逐字） */
-export function flashSmsHandoff(no: string): string {
-  return `【讯飞客服】您的刷机申请需人工核实，客服将尽快与您联系。工单号：${no}。`;
-}
 
 /** 用户侧回访评价页路径（M86） */
 export function flashSurveyPath(no: string): string {
@@ -661,11 +652,9 @@ export const FLASH_CS_NOTICE = {
   supplement: { title: '补充通知', text: (no: string) => `客户补充了新信息,请及时查阅。工单号:${no}` },
 } as const;
 
-/** 通知记录的事件码（接《【815】》通知规则事件目录，M14 新增 2 个 + M38 重推结果） */
+/** 通知记录的事件码（接《【815】》通知规则事件目录；转人工短信、重推结果通知已删，M181） */
 export const FLASH_NOTIFY_EVENTS = {
   success: 'ticket.flash.succeeded',
-  handoff: 'ticket.flash.handoff',
-  repushResult: 'ticket.flash.repush.returned',
   escalateL2: 'ticket.flash.escalated',
   lateSuccess: 'ticket.flash.late.succeeded',
   survey: 'ticket.survey.sent',

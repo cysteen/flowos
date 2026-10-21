@@ -18,7 +18,7 @@ import {
   FLASH_TL, FLASH_NOTICE, FLASH_RESULT_OFFLINE, FLASH_RETURN_TIMEOUT_MIN, FLASH_TOAST, flashFailReasonText,
   FLASH_CS_NOTICE, FLASH_SURVEY_TIMEOUT_HOURS, FLASH_PRODUCT_CATEGORY, FLASH_TAG_L1, FLASH_TAG_L2,
   FLASH_TAG_L3_USER_REPORT, FLASH_TICKET_TYPE, FLASH_USER_REPORT_LABELS,
-  flashTicketTitle, withFlashTitlePrefix, isFlashTicket, flashMinuteStamp, flashProgressStage, flashSmsHandoff, flashSmsSuccess, flashSmsSurvey, flashStamp,
+  flashTicketTitle, withFlashTitlePrefix, isFlashTicket, flashMinuteStamp, flashProgressStage, flashSmsSuccess, flashSmsSurvey, flashStamp,
   flashTipInflight, flashTipRequired, isFrontlineActor,
   parseFlashStamp,
   type FlashActor, type FlashCreator, type FlashFailL2, type FlashHandoffReason,
@@ -142,15 +142,6 @@ export type FlashActionResult =
   | { ok: true; message: string; code?: 'unchanged' | 'pushed' | 'pushError' | 'closed' }
   | { ok: false; message: string; inflightNo?: string };
 
-/** 页面内站内通知条（PRD §5.6 / §11.1）：发给某个处理人的一条重推结果，处理页按收件人与单号认领 */
-export interface FlashLiveNotice {
-  id: number;
-  no: string;
-  /** 收件处理人名 */
-  to: string;
-  text: string;
-}
-
 /** 重推时可改的刷机信息 */
 export type FlashInfoChanges = Partial<FlashInfo>;
 
@@ -177,9 +168,6 @@ export const useFlashStore = defineStore('flash', () => {
   const timelines = ref<Record<string, TimelineEntry[]>>({});
   /** 工单号 → 变更版本号：处理页据此重读本单 */
   const revisions = ref<Record<string, number>>({});
-  /** 本会话内到达的重推结果通知（不落缓存：通知条只在回传到达时停留本单的处理人页面上出现） */
-  const liveNotices = ref<FlashLiveNotice[]>([]);
-  let noticeSeq = 0;
   let tlSeq = 0;
 
   /* ---------------- 读 ---------------- */
@@ -247,13 +235,14 @@ export const useFlashStore = defineStore('flash', () => {
     return entry;
   }
 
-  function sms(r: Ticket, at: number, kind: 'success' | 'handoff') {
-    const content = kind === 'success' ? flashSmsSuccess(r.no, r.flash!.info.sn) : flashSmsHandoff(r.no);
+  /** 成功短信（PRD §10.1）：发至客户联系手机号 */
+  function successSms(r: Ticket, at: number) {
+    const content = flashSmsSuccess(r.no, r.flash!.info.sn);
     useNotifyLogStore().emit({
       ticketNo: r.no,
-      event: kind === 'success' ? FLASH_NOTIFY_EVENTS.success : FLASH_NOTIFY_EVENTS.handoff,
+      event: FLASH_NOTIFY_EVENTS.success,
       kind: 'accepted',
-      title: kind === 'success' ? '刷机成功短信' : '转人工短信',
+      title: '刷机成功短信',
       receivers: [`${r.customer}(客户)`],
       content,
       channel: '短信',
@@ -267,7 +256,7 @@ export const useFlashStore = defineStore('flash', () => {
 
   /**
    * 受理短信（PRD §2.5 / §11.1）：坐席代建建单成功后发至联系手机号，文案沿用 400 渠道现行「建单受理通知」短信模板；
-   * 用户提报不发。与转人工短信、成功短信各自独立发送。
+   * 用户提报不发。与成功短信各自独立发送。
    */
   function acceptedSms(r: Ticket, at: number) {
     const body = templateOf('短信', 'SMS_WO_ACCEPTED')?.body ?? '';
@@ -289,26 +278,6 @@ export const useFlashStore = defineStore('flash', () => {
     });
   }
 
-  /**
-   * M61 / M67：重推结果站内通知**始终**发发起人（成功、失败都发）；`banner` 为 true 时
-   * 同时投递页面内通知条（回传到达时发起人正停留在本单处理页才会出现，见处理页）。
-   */
-  function notifyRepushInitiator(r: Ticket, run: FlashRun, text: string, banner = true) {
-    useNotifyLogStore().emit({
-      ticketNo: r.no,
-      event: FLASH_NOTIFY_EVENTS.repushResult,
-      kind: 'assign',
-      title: '重推结果',
-      // 接收人只显示姓名，不带角色（1021：一人常有多个角色）
-      receivers: [run.by],
-      content: text,
-    });
-    if (banner) {
-      noticeSeq += 1;
-      liveNotices.value = [...liveNotices.value, { id: noticeSeq, no: r.no, to: run.by, text }];
-    }
-  }
-
   /** 归属组站内通知（基线 ※19：无处理人发归属组） */
   function notifyGroup(r: Ticket, pool: FlashPoolKey, event: string, title: string, text: string) {
     useNotifyLogStore().emit({
@@ -318,8 +287,8 @@ export const useFlashStore = defineStore('flash', () => {
       title,
       receivers: [FLASH_POOLS[pool].groupName],
       content: text,
-      // 到组类通知走容联云留言弹窗（PRD §11.1）
-      channel: '容联云留言弹窗',
+      // 到组类通知走 IM（i讯飞消息，PRD §10.1 / M181）
+      channel: 'IM',
     });
   }
 
@@ -484,7 +453,7 @@ export const useFlashStore = defineStore('flash', () => {
   }
 
   /**
-   * 转入人工池。`sms` 只对自动环节首次转人工为 true（M14 / M37：每单一条，已发过不再发）。
+   * 转入人工池；转人工不发短信（M181）。
    * SLA（1013 A26）：进一线刷机池不起算；首次进教育刷机处理组池起算，此后再次进池接着跑（调研中挂段先结掉），
    * 一律不重置（PRD §4.3 / M16 / D18）。
    */
@@ -493,7 +462,6 @@ export const useFlashStore = defineStore('flash', () => {
     pool: FlashPoolKey,
     reason: FlashHandoffReason,
     at: number,
-    opts: { sms?: boolean } = {},
   ) {
     const st = r.flash!.state;
     const meta = FLASH_POOLS[pool];
@@ -516,10 +484,6 @@ export const useFlashStore = defineStore('flash', () => {
       category: 'node', action: 'flashHandoff', who: '系统', role: '系统', how: '转人工',
       what: FLASH_TL.handoff(reason, meta.label),
     });
-    if (opts.sms && !st.handoffSmsSent) {
-      st.handoffSmsSent = true;
-      sms(r, at + 1000, 'handoff');
-    }
     // 到组通知（PRD §11.1 / 1013 B14）：每次进池都通知全组，同一张单再次进池照发；
     // 调研中催补进一线刷机池（分派表第 10 行）走催补通知，不另发；升级二线进池另有专用文案（escalateToL2）
     if (reason !== '回访期间客户催补') notifyPoolArrival(r, pool);
@@ -527,7 +491,7 @@ export const useFlashStore = defineStore('flash', () => {
 
   /**
    * 到组通知：一线刷机池发持有容联云刷机角色的一线坐席，教育刷机处理组池发全组；
-   * 渠道为容联云留言弹窗，文案沿用咨询单到组通知（「工单池待领取提醒」模板）。
+   * 渠道为 IM（i讯飞消息，M181），文案沿用咨询单到组通知（「工单池待领取提醒」模板）。
    */
   function notifyPoolArrival(r: Ticket, pool: FlashPoolKey) {
     const meta = FLASH_POOLS[pool];
@@ -543,7 +507,7 @@ export const useFlashStore = defineStore('flash', () => {
       title: '到组通知',
       receivers: [receiver],
       content: body,
-      channel: '容联云留言弹窗',
+      channel: 'IM',
     });
   }
 
@@ -614,7 +578,7 @@ export const useFlashStore = defineStore('flash', () => {
         category: 'node', action: 'flashSuccess', who: '系统', role: '系统', how: '回传结果',
         what: FLASH_TL.returnSuccess,
       });
-      sms(r, at + 1000, 'success');
+      successSms(r, at + 1000);
       // PRD §8 入口「自动刷机成功」：发成功短信后进「调研中」，发调研短信（§11.1）
       sendSurveySms(r, at + 2000);
     } else {
@@ -629,7 +593,7 @@ export const useFlashStore = defineStore('flash', () => {
         category: 'node', action: 'flashSuccess', who: '系统', role: '系统', how: '回传结果',
         what: FLASH_TL.returnSuccess,
       });
-      sms(r, at + 1000, 'success');
+      successSms(r, at + 1000);
       // 履历按实际先后（F15）：回传成功 → 成功短信 → 进回访 / 结案 → 调研短信，各占一秒，倒序时不交错
       if (st.surveyConcluded) {
         stopClock(r, at);
@@ -655,7 +619,6 @@ export const useFlashStore = defineStore('flash', () => {
         });
         sendSurveySms(r, at + 3000);
       }
-      notifyRepushInitiator(r, run, FLASH_NOTICE.repushSuccess(r.no));
     }
     bump(r.no);
   }
@@ -666,9 +629,7 @@ export const useFlashStore = defineStore('flash', () => {
     l1: '接收失败' | '推送异常',
     l2: FlashFailL2 | undefined,
     at: number,
-    opts: { banner?: boolean } = {},
   ) {
-    const banner = opts.banner ?? true;
     const st = r.flash!.state;
     run.result = l1;
     run.failL1 = l1;
@@ -688,16 +649,15 @@ export const useFlashStore = defineStore('flash', () => {
     log(r.no, at, { category: 'node', action: 'flashFail', who: '系统', role: '系统', how, what });
 
     if (run.trigger === '建单首推') {
-      // M8′：自动环节失败一律进一线刷机池；首次转人工发短信（M37）
-      handoff(r, 'l1', l1, at + 1000, { sms: true });
+      // M8′：自动环节失败一律进一线刷机池
+      handoff(r, 'l1', l1, at + 1000);
     } else {
-      // 1013 B1 / A14：一线、二线重推失败一律交回发起时的处理人（不自动进二线池）；M38：通知本人
+      // 1013 B1 / A14：一线、二线重推失败一律交回发起时的处理人（不自动进二线池）；不另发通知（M181）
       toHandler(r, run, at);
       log(r.no, at + 1000, {
         category: 'node', action: 'flashHandoff', who: '系统', role: '系统', how: '转人工',
         what: FLASH_TL.repushFailBack(r.assignee ?? ''),
       });
-      notifyRepushInitiator(r, run, FLASH_NOTICE.repushFail(r.no, reasonText), banner);
     }
     bump(r.no);
   }
@@ -894,7 +854,7 @@ export const useFlashStore = defineStore('flash', () => {
     // PRD §2.5 / §11.1：坐席代建建单成功发受理短信，用户提报不发
     if (!byUser) acceptedSms(r, now + 200);
     if (evaluation.route === 'pool') {
-      handoff(r, evaluation.pool!, evaluation.handoffReason!, now + 1000, { sms: true });
+      handoff(r, evaluation.pool!, evaluation.handoffReason!, now + 1000);
     } else {
       pushInternal(r, SYSTEM, '建单首推', now + 1000);
       // M87 / PRD §3.3：推送接口同步报错、自动重试 1 次仍失败 → 建单时即判定转人工（推送异常 · 接口异常）
@@ -957,7 +917,7 @@ export const useFlashStore = defineStore('flash', () => {
     // M69：推送接口同步报错、自动重试 1 次仍失败 → 算作已发出（已落库、已计次），按重推失败去向处理
     if (findMdmDevice(next.sn)?.pushApi === '持续报错') {
       const run = r.flash.runs[r.flash.runs.length - 1];
-      fail(r, run, '推送异常', '接口异常', now + 1500, { banner: false });
+      fail(r, run, '推送异常', '接口异常', now + 1500);
       persist();
       return { ok: true, code: 'pushError', message: FLASH_TOAST.repushPushError };
     }
@@ -1029,7 +989,7 @@ export const useFlashStore = defineStore('flash', () => {
    * 记回访结论（PRD §8「回访结论去向」/ M58 / M86）：只在「调研中」且未评价过时可记，置位「已产生回访结论」。
    * - 已解决 → 「已结案」，处理人不变，SLA 结束；履历「回访：已解决」+「结案」。
    * - 未解决（10-19 C2 / C3）→ 一线未领取过回一线刷机池，一线领取过进教育刷机处理组池；「未认领」、处理人清空，
-   *   转人工原因「回访未解决」；SLA：进一线刷机池不起算，进教育刷机处理组池按 handoff 规则；不发转人工短信（M47）。
+   *   转人工原因「回访未解决」；SLA：进一线刷机池不起算，进教育刷机处理组池按 handoff 规则。
    */
   function recordSurveyConclusion(
     ticketNo: string,
@@ -1095,7 +1055,7 @@ export const useFlashStore = defineStore('flash', () => {
    * 客户侧催单 / 新建补充（PRD §3.1 / §4.1 第 10 行 / §8「调研中催补拉回」/ §11.1，M9 / M27 / M33 / M41 / M47 / M75）。
    * - 调研中 ∧ 有处理人：撤回本次下送，回该处理人「处理中」，SLA 按下送前摘要接着跑，站内通知处理人；
    * - 调研中 ∧ 无处理人（10-19 C2 一线一轮）：人工未介入过进一线刷机池「未认领」，一线不计 SLA（1013 A26）；介入过进教育刷机处理组池「未认领」，SLA 按进池规则；
-   *   转人工原因「回访期间客户催补」，通知所进池的归属组；不发转人工短信；
+   *   转人工原因「回访期间客户催补」，通知所进池的归属组；
    * - 自动刷机中：不拉回，有处理人通知处理人、无处理人通知一线刷机池。
    * 两种拉回都不置「已产生回访结论」，再下送照常进「调研中」（M58）。其余子状态不在此处理，返回 `pulled: false`。
    */
@@ -1162,7 +1122,7 @@ export const useFlashStore = defineStore('flash', () => {
 
   /**
    * 人工侧转池（升级二线 / 回访未解决 / 回访期间客户催补等，由处理页动作接入）。
-   * 不发转人工短信（M37 / M47：只有自动环节转人工发）；SLA：单上已有在走的钟续算，
+   * SLA：单上已有在走的钟续算，
    * 未起算的进教育刷机处理组池时起算、进一线刷机池不起算（M16 / M41，1013 A26）。
    */
   function transferToPool(ticketNo: string, pool: FlashPoolKey, reason: FlashHandoffReason): FlashActionResult {
@@ -1181,7 +1141,7 @@ export const useFlashStore = defineStore('flash', () => {
    * 升级二线（1013 A18：一线处理结果选「升级二线」、下送时确认后执行，不填说明）：
    * 子状态回「未认领」、处理人清空、进教育刷机处理组池，转人工原因「一线升级」；
    * 一线的刷机处理结论（「升级二线」）与刷机处理记录落库，二线只读展示（1014）；
-   * 履历记「升级二线」（带最近一条刷机处理记录）；站内通知归属组；不发转人工短信。
+   * 履历记「升级二线」（带最近一条刷机处理记录）；站内通知归属组。
    * 进池时间取本条履历（工作台 `poolEnteredAtOf`）；「SLA 起算时间」为空时写入升级时刻（1013 A26）。
    */
   function escalateToL2(ticketNo: string, by: FlashActor, record?: string, fullRecord?: string): FlashActionResult {
@@ -1886,10 +1846,19 @@ export const useFlashStore = defineStore('flash', () => {
   }
 
   /**
-   * 种子单的转人工短信 / 刷机成功短信补进通知记录：这两条短信在种子里发生于页面打开之前，
+   * 种子单的刷机成功短信补进通知记录：这条短信在种子里发生于页面打开之前，
    * 履历沟通类有、运行时通知记录（`stores/notifyLog.ts`）里没有，「通知记录」Tab 因此是空的。
    * 逐单按履历里那条短信的文案对上号，时刻取履历时刻；本单已有同事件记录的不补。
    */
+  /** 已删除的两类通知（转人工短信、重推结果，M181）：本地通知记录里的旧条目一并清掉 */
+  function dropRetiredNotifyRecords() {
+    const retired = new Set(['ticket.flash.handoff', 'ticket.flash.repush.returned']);
+    const notifyLog = useNotifyLogStore();
+    if (notifyLog.records.some((x) => retired.has(x.event))) {
+      notifyLog.records = notifyLog.records.filter((x) => !retired.has(x.event));
+    }
+  }
+
   function backfillSeedSms() {
     const notifyLog = useNotifyLogStore();
     for (const t of TICKETS) {
@@ -1897,7 +1866,6 @@ export const useFlashStore = defineStore('flash', () => {
       const smsEntries = timelineOf(t.no).filter((e) => e.category === 'comm' && e.action === 'sms');
       if (!smsEntries.length) continue;
       const kinds = [
-        { event: FLASH_NOTIFY_EVENTS.handoff, title: '转人工短信', content: flashSmsHandoff(t.no) },
         { event: FLASH_NOTIFY_EVENTS.success, title: '刷机成功短信', content: flashSmsSuccess(t.no, t.flash.info.sn) },
       ];
       for (const k of kinds) {
@@ -1945,6 +1913,7 @@ export const useFlashStore = defineStore('flash', () => {
   hydrate();
   settleDue();
   persist();
+  dropRetiredNotifyRecords();
   backfillSurveySms();
   backfillSeedSms();
   if (typeof window !== 'undefined') {
@@ -1974,7 +1943,6 @@ export const useFlashStore = defineStore('flash', () => {
     // 外部回传（售后侧，PRD §7.1 / §7.3）：到点由 settleDue 经售后回传通道驱动
     receiveAftersaleEvent,
     // 处理页（M4b-2）
-    liveNotices,
     escalateToL2,
     linkComplaint,
     flashNoLinkedTo,
