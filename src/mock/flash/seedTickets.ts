@@ -50,7 +50,7 @@ function infoOf(
   sn: string,
   schoolId: string,
   studentType: FlashStudentType,
-  opts: { account?: string; name?: string; reason?: string; photos?: boolean; mdmPhotos?: boolean } = {},
+  opts: { account?: string; name?: string; reason?: string; photos?: boolean; mdmPhotos?: boolean; studyProof?: boolean } = {},
 ): FlashInfo {
   const d = findMdmDevice(sn);
   if (!d) throw new Error(`MDM 台账缺少设备 ${sn}`);
@@ -67,6 +67,19 @@ function infoOf(
     reason: opts.reason ?? SEED_REASON[studentType],
     snPhotos: opts.photos === false ? [] : [`设备SN照片_${d.sn}.jpg`],
     mdmPhotos: opts.mdmPhotos ? [`MDM信息_${d.sn}.png`] : [],
+    ...(opts.studyProof ? { studyProofPhotos: [`学习证明_${account}.jpg`] } : {}),
+  };
+}
+
+/**
+ * 用户提报（小程序接口字段，2026-10-21）：学校为提报原文、无学校库 ID；带产品信息图片；不传 MDM信息图片。
+ */
+function asUserReport(info: FlashInfo): FlashInfo {
+  return {
+    ...info,
+    schoolId: '',
+    mdmPhotos: [],
+    productPhotos: [`产品信息_${info.sn}.jpg`],
   };
 }
 
@@ -173,8 +186,9 @@ function row(
   } & Pick<Ticket, 'nodeStatus' | 'assignee' | 'tab' | 'slaText' | 'slaSub' | 'slaState' | 'slaMinutes'>
     & Partial<Ticket>,
 ): Ticket {
-  const { info, creator, customer, phone, flashState, runs, ...rest } = p;
+  const { info: given, creator, customer, phone, flashState, runs, ...rest } = p;
   const byUser = creator === '用户提报';
+  const info = byUser ? asUserReport(given) : given;
   const pool: FlashPoolKey | undefined = flashState.pool;
   const ticketSource = byUser ? USER_SOURCE : AGENT_SOURCE;
   return {
@@ -261,7 +275,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
 
   // ① 自动刷机中：几秒前刚推送，打开页面十几秒后出回传结果（接收成功 → 调研中）
   {
-    const info = infoOf('XFS20240600131', 'SCH-340103-001', '毕业生', { mdmPhotos: true });
+    const info = infoOf('XFS20240600131', 'SCH-340103-001', '毕业生');
     const created = flashStamp(nowMs - 6_000);
     const pushed = flashStamp(nowMs - 4_000);
     add(row(1, {
@@ -388,7 +402,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
 
   // ⑦ 一线处理中 · 已领取、未重推（接收失败 · 原因未返回）
   {
-    const info = infoOf('XFS20240600512', 'SCH-340302-002', '毕业生', { mdmPhotos: true, reason: '学生今年毕业，平板需恢复原生系统，安装个人常用应用' });
+    const info = infoOf('XFS20240600512', 'SCH-340302-002', '毕业生', { reason: '学生今年毕业，平板需恢复原生系统，安装个人常用应用' });
     const at = '2026-09-15 07:05:10';
     const pushed = addSec(at, 2);
     const back = addSec(pushed, 12);
@@ -459,7 +473,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
 
   // ⑨ 二线池 · 特殊情况（转校生）：不跑校验、不推送
   {
-    const info = infoOf('XFS20240600645', 'SCH-340103-001', '转校生', { name: '邹静怡', mdmPhotos: true });
+    const info = infoOf('XFS20240600645', 'SCH-340103-001', '转校生', { name: '邹静怡', studyProof: true });
     const at = '2026-09-15 08:55:30';
     add(row(9, {
       info, creator: '用户提报', customer: '邹敏', phone: '15955116702',
@@ -479,7 +493,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
 
   // ⑩ 二线池 · 一线代建、建单校验不通过（非毕业生身份）
   {
-    const info = infoOf('XFS30240900561', 'SCH-340111-008', '毕业生', { name: '韩博文', photos: false });
+    const info = infoOf('XFS30240900561', 'SCH-340111-008', '毕业生', { name: '韩博文', photos: false, mdmPhotos: true });
     const at = '2026-09-15 09:12:48';
     add(row(10, {
       info, creator: '一线代建', customer: '韩雪', phone: '13866107133',

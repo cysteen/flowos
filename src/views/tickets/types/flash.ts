@@ -246,16 +246,23 @@ export interface FlashInfo {
   studentAccount: string;
   /** 学生姓名 */
   studentName: string;
-  /** 学校库 ID（M42：学校从学校库选，毕业名单按 ID 精确匹配，见 mock/schools.ts） */
+  /**
+   * 学校库 ID（M42：坐席从学校库选，毕业名单按 ID 精确匹配，见 mock/schools.ts）。
+   * 用户提报（小程序）学校为自由文本，无学校库 ID，为空串；坐席在修改刷机信息里改选学校库条目后写入。
+   */
   schoolId: string;
-  /** 学校名称（学校库名称快照；学生所在学校，与客户档案上的学校不是一个字段） */
+  /** 学校名称（有学校库 ID 时为学校库名称快照，否则为小程序提报的原文；学生所在学校，与客户档案上的学校不是一个字段） */
   schoolName: string;
-  /** 刷机原因（自由文本：恢复原生系统的原因） */
+  /** 刷机原因（自由文本；用户提报页叫「恢复原生系统原因」） */
   reason: string;
   /** 设备SN照片（文件名；用户提报必传、坐席代建选传） */
   snPhotos: string[];
-  /** MDM信息图片（文件名；选传） */
+  /** MDM信息图片（文件名；坐席选传，小程序不传） */
   mdmPhotos: string[];
+  /** 产品信息图片（文件名；小程序提报必传 1 张，坐席代建无此项；旧数据缺省按空） */
+  productPhotos?: string[];
+  /** 学习证明附件（文件名；小程序提报学生类型为转校生时必传 1 张；旧数据缺省按空） */
+  studyProofPhotos?: string[];
 }
 
 /** 推送记录一行 */
@@ -396,8 +403,23 @@ export const FLASH_FIELD_LABELS = {
   reason: '刷机原因',
   snPhotos: '设备SN照片',
   mdmPhotos: 'MDM信息图片',
+  productPhotos: '产品信息图片',
+  studyProofPhotos: '学习证明附件',
   contactPhone: '联系手机号',
 } as const;
+
+/**
+ * 用户提报页（小程序接口字段，2026-10-21）与坐席侧叫法不同的字段：落单后「恢复原生系统原因」即刷机原因、
+ * 「设备信息」即产品名称、「产品信息」即产品信息图片。必填缺项提示与提报页标签用这一份。
+ */
+export const FLASH_USER_REPORT_LABELS = {
+  productModel: '设备信息',
+  reason: '恢复原生系统原因',
+  productPhotos: '产品信息',
+} as const;
+
+/** 用户提报页文本字段长度上限（学生姓名 / 学生账号 / 学校名称） */
+export const FLASH_USER_TEXT_MAX = 50;
 
 /** 刷机信息里参与改动登记的字段（重推改动项、履历字段 diff），按表单顺序 */
 export const FLASH_INFO_FIELD_LABELS: Record<Exclude<keyof FlashInfo, 'schoolId'>, string> = {
@@ -411,6 +433,8 @@ export const FLASH_INFO_FIELD_LABELS: Record<Exclude<keyof FlashInfo, 'schoolId'
   reason: FLASH_FIELD_LABELS.reason,
   snPhotos: FLASH_FIELD_LABELS.snPhotos,
   mdmPhotos: FLASH_FIELD_LABELS.mdmPhotos,
+  productPhotos: FLASH_FIELD_LABELS.productPhotos,
+  studyProofPhotos: FLASH_FIELD_LABELS.studyProofPhotos,
 };
 
 /** 建单必填提示（M46：必填先于机型与在途判定） */

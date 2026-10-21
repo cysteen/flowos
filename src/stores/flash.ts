@@ -17,7 +17,7 @@ import {
   FLASH_TIP_AUTO_FLASHING, FLASH_TIP_EDIT_STATE, FLASH_TIP_REPUSH_STATE, FLASH_TIP_SYSTEM_BUSY, FLASH_TIP_VERIFY_UNAVAILABLE,
   FLASH_VERIFY_NOT_RUN, FLASH_TL, FLASH_NOTICE, FLASH_RESULT_OFFLINE, FLASH_TOAST,
   FLASH_CS_NOTICE, FLASH_SURVEY_TIMEOUT_HOURS, FLASH_PRODUCT_CATEGORY, FLASH_TAG_L1, FLASH_TAG_L2,
-  FLASH_TAG_L3_USER_REPORT, FLASH_TICKET_TYPE,
+  FLASH_TAG_L3_USER_REPORT, FLASH_TICKET_TYPE, FLASH_USER_REPORT_LABELS,
   flashTicketTitle, withFlashTitlePrefix, isFlashTicket, flashMinuteStamp, flashProgressStage, flashSmsHandoff, flashSmsSuccess, flashSmsSurvey, flashStamp,
   flashTipInflight, flashTipRequired, flashTipVerifyFailed, isFrontlineActor,
   parseFlashStamp,
@@ -75,8 +75,12 @@ export interface FlashCreateInput {
   reason: string;
   /** 设备SN照片：用户提报必传、坐席代建选传（M4） */
   snPhotos?: string[];
-  /** MDM信息图片：选传 */
+  /** MDM信息图片：坐席选传，小程序不传 */
   mdmPhotos?: string[];
+  /** 产品信息图片：用户提报必传 1 张 */
+  productPhotos?: string[];
+  /** 学习证明附件：用户提报学生类型为转校生时必传 1 张 */
+  studyProofPhotos?: string[];
   /** 联系手机号（必填，M4；成功短信、联系、回访用） */
   contactPhone: string;
 }
@@ -732,20 +736,28 @@ export const useFlashStore = defineStore('flash', () => {
     return { kind: 'create', route: 'auto', initialStatus: '自动刷机中', verifyResult: v.result, selfDeveloped };
   }
 
-  /** 必填缺项（M4 / M46）：设备SN照片仅用户提报必传；产品字段用户提报叫「产品型号」、坐席侧叫「产品名称」（1013 A4） */
+  /**
+   * 必填缺项（M4 / M46）。用户提报按小程序接口字段（2026-10-21）：设备SN照片、产品信息图片必传，
+   * 学生类型为转校生时学习证明附件必传；字段名取提报页叫法（设备信息 / 恢复原生系统原因 / 产品信息）。
+   * 学校名称：有学校库 ID 或有学校名称原文即算已填 —— 小程序单学校只有文本、无省市区，不因缺学校库条目被拦；
+   * 坐席建单不传原文，仍须从学校库选定。
+   */
   function missingRequired(input: FlashCreateInput, creator: FlashCreator): string[] {
     const L = FLASH_FIELD_LABELS;
+    const U = FLASH_USER_REPORT_LABELS;
+    const byUser = creator === '用户提报';
     const checks: [boolean, string][] = [
-      [!input.productModel?.trim(), creator === '用户提报' ? L.productModel : L.productName],
+      [!input.productModel?.trim(), byUser ? U.productModel : L.productName],
       [!input.sn?.trim(), L.sn],
       [!(FLASH_STUDENT_TYPES as readonly string[]).includes(input.studentType ?? ''), L.studentType],
       [!input.studentName?.trim(), L.studentName],
       [!input.studentAccount?.trim(), L.studentAccount],
-      // 用户提报学校为自由文本（10-19 C8），坐席代建选学校落学校 ID
-      [creator === '用户提报' ? !input.schoolName?.trim() : !input.schoolId?.trim(), L.schoolName],
-      [!input.reason?.trim(), L.reason],
+      [!input.schoolId?.trim() && !input.schoolName?.trim(), L.schoolName],
+      [!input.reason?.trim(), byUser ? U.reason : L.reason],
       [!input.contactPhone?.trim(), L.contactPhone],
-      [creator === '用户提报' && !(input.snPhotos ?? []).length, L.snPhotos],
+      [byUser && input.studentType === '转校生' && !(input.studyProofPhotos ?? []).length, L.studyProofPhotos],
+      [byUser && !(input.productPhotos ?? []).length, U.productPhotos],
+      [byUser && !(input.snPhotos ?? []).length, L.snPhotos],
     ];
     return checks.filter(([miss]) => miss).map(([, label]) => label);
   }
@@ -786,6 +798,11 @@ export const useFlashStore = defineStore('flash', () => {
       reason: input.reason.trim(),
       snPhotos: [...(input.snPhotos ?? [])],
       mdmPhotos: [...(input.mdmPhotos ?? [])],
+      ...(input.productPhotos?.length ? { productPhotos: [...input.productPhotos] } : {}),
+      // 学习证明附件只随转校生落单（提报页随学生类型显隐）
+      ...(input.studentType === '转校生' && input.studyProofPhotos?.length
+        ? { studyProofPhotos: [...input.studyProofPhotos] }
+        : {}),
     };
     const ticketSource = base.ticketSource ?? (byUser ? '客户服务小程序' : '电话');
     // 问题分类：坐席建单取所选三级；用户提报自动匹配「售后 → 服务申请 → 自助刷机」（1013 A5）
@@ -911,7 +928,8 @@ export const useFlashStore = defineStore('flash', () => {
       return { ok: false, message: FLASH_TIP_SYSTEM_BUSY };
     }
     if (inflight) return { ok: false, message: flashTipInflight(inflight.no), inflightNo: inflight.no };
-    const v = verify(next);
+    // 学校只有原文、无学校库 ID 的单（小程序提报、坐席未改选学校库条目）：毕业生身份同建单口径按学生账号判定
+    const v = verify(next, !next.schoolId?.trim());
     if (!v.ok) return { ok: false, message: v.unavailable ? FLASH_TIP_VERIFY_UNAVAILABLE : flashTipVerifyFailed(v.failL2) };
 
     // M53：到这里推送一定会发出，才落库与写履历
@@ -1740,6 +1758,12 @@ export const useFlashStore = defineStore('flash', () => {
       snPhotos: [...(changes.snPhotos ?? prev.snPhotos)],
       mdmPhotos: [...(changes.mdmPhotos ?? prev.mdmPhotos ?? [])],
     };
+    // 产品信息图片 / 学习证明附件：只有小程序单带，无值不落空数组（处理页无值不显示该项）
+    (['productPhotos', 'studyProofPhotos'] as const).forEach((k) => {
+      const list = changes[k] ?? prev[k] ?? [];
+      if (list.length) next[k] = [...list];
+      else delete next[k];
+    });
     if (changes.sn) next.sn = changes.sn.trim().toUpperCase();
     if (changes.schoolId && !changes.schoolName) next.schoolName = findSchoolById(changes.schoolId)?.name ?? prev.schoolName;
     return next;
@@ -1752,7 +1776,7 @@ export const useFlashStore = defineStore('flash', () => {
       const to = Array.isArray(next[k]) ? (next[k] as string[]).join('、') : String(next[k] ?? '');
       if (from === to) return;
       // PRD §5.6：设备SN照片 / MDM信息图片有变化写「已更换」
-      if (k === 'snPhotos' || k === 'mdmPhotos') {
+      if (k === 'snPhotos' || k === 'mdmPhotos' || k === 'productPhotos' || k === 'studyProofPhotos') {
         out.push({ field: FLASH_INFO_FIELD_LABELS[k], kind: '修改', from: '', to: to ? '已更换' : '—' });
         return;
       }
@@ -1776,6 +1800,13 @@ export const useFlashStore = defineStore('flash', () => {
         info.studentType = info.reason === '毕业' ? '毕业生' : '转校生';
       }
       if (!Array.isArray(info.mdmPhotos)) info.mdmPhotos = [];
+      if (!Array.isArray(info.snPhotos)) info.snPhotos = [];
+      // 产品信息图片 / 学习证明附件（2026-10-21 新增）：旧缓存没有或形状不对的按无值，不落空数组
+      (['productPhotos', 'studyProofPhotos'] as const).forEach((k) => {
+        if (info[k] !== undefined && (!Array.isArray(info[k]) || !info[k]!.length)) delete info[k];
+      });
+      if (typeof info.schoolId !== 'string') info.schoolId = '';
+      if (typeof info.schoolName !== 'string') info.schoolName = '';
       delete info.romVersion;
       delete info.mdmVersion;
       delete info.versionBackfilled;

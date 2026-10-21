@@ -36,8 +36,10 @@ export type FlashLsKey = (typeof FLASH_LS_KEYS)[keyof typeof FLASH_LS_KEYS];
  * v18：已转出停钟期间 SLA 摘要改为「已暂停」（PRD §4.3），⑰ 与运行时转售后同口径。
  * v19：转人工短信文案加「【讯飞客服】」签名与工单号（PRD §3.4 / §11.1），种子履历里的旧短信作废。
  * v20：刷机信息新增学生类型（分流判据）与 MDM信息图片，刷机原因改自由文本，去掉 ROM版本 / MDM版本。
+ * v21：刷机信息新增产品信息图片、学习证明附件（小程序接口字段）；用户提报种子单学校改为原文（无学校库 ID）、
+ * 不带 MDM信息图片，⑨ 转校生带学习证明附件。
  */
-export const FLASH_CACHE_VERSION = 20;
+export const FLASH_CACHE_VERSION = 21;
 
 /** 保质期：12 小时（与风险两条线 `RISK_STALE_MS` 同口径） */
 export const FLASH_STALE_MS = 12 * 60 * 60 * 1000;

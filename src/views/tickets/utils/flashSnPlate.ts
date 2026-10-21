@@ -43,3 +43,39 @@ ${rows.map(([k, val], i) => `<text x="48" y="${110 + i * 44}" font-family="Arial
 </svg>`;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
+
+/**
+ * 产品信息图片（小程序提报）：工单上存的是上传文件名，按产品名称与 SN 绘制设备背面铭牌照作为缩略图与大图。
+ */
+export function productInfoDataUri(productName: string, sn: string): string {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300" viewBox="0 0 480 300">
+<rect width="480" height="300" fill="#e7e5e4"/>
+<rect x="96" y="20" width="288" height="260" rx="22" fill="#27272a"/>
+<circle cx="140" cy="62" r="14" fill="#3f3f46" stroke="#52525b" stroke-width="3"/>
+<text x="240" y="150" text-anchor="middle" font-family="Arial, sans-serif" font-size="24" fill="#e4e4e7" font-weight="700">iFLYTEK</text>
+<text x="240" y="208" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" fill="#d4d4d8">${xmlEscape(productName || '—')}</text>
+<text x="240" y="232" text-anchor="middle" font-family="Consolas, monospace" font-size="12" fill="#a1a1aa">S/N ${xmlEscape(sn)}</text>
+</svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+/**
+ * 学习证明附件（小程序提报 · 转校生）：工单上存的是上传文件名，按学生姓名与学校名称绘制转学证明作为缩略图与大图。
+ */
+export function studyProofDataUri(studentName: string, schoolName: string): string {
+  const lines = [
+    `兹证明 ${studentName || '—'} 同学`,
+    `原就读于 ${schoolName || '—'}，`,
+    '现已办理转学手续。',
+    '特此证明。',
+  ];
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300" viewBox="0 0 480 300">
+<rect width="480" height="300" fill="#d6d3d1"/>
+<rect x="60" y="14" width="360" height="272" fill="#fffdf7" stroke="#e7e5e4"/>
+<text x="240" y="62" text-anchor="middle" font-family="SimSun, serif" font-size="24" fill="#1c1917" font-weight="700">转 学 证 明</text>
+${lines.map((t, i) => `<text x="92" y="${108 + i * 30}" font-family="SimSun, serif" font-size="14" fill="#292524">${xmlEscape(t)}</text>`).join('\n')}
+<circle cx="340" cy="238" r="34" fill="none" stroke="#dc2626" stroke-width="3" opacity="0.8"/>
+<text x="340" y="243" text-anchor="middle" font-family="SimSun, serif" font-size="12" fill="#dc2626" opacity="0.85">教务处</text>
+</svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
