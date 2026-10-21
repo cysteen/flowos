@@ -2835,8 +2835,6 @@ const latestSnapshot = computed(() => {
       : undefined,
   );
 });
-/** 「工单处理」Tab · 自动刷机结果卡刷机记录表的建单校验时刻：取处理履历「建单」条目 */
-const flashVerifiedAt = computed(() => (isFlash.value ? timeline.value.find((e) => e.action === 'create')?.when ?? d.value.createdAtFull : undefined));
 /** 速览带「最新处理」· 刷机处理记录块（刷机单）：正文、刷机处理结论取工单库现值 */
 const latestFlashRecord = computed(() => latestSnapshot.value.flashRecord);
 watch(
@@ -3000,7 +2998,7 @@ watch(
           @attachment-upload="onAttachmentTabUpload"
         >
           <template v-if="isFlash && d.flash" #process-top>
-            <OpFlashResultCard :flash="d.flash" :verified-at="flashVerifiedAt" />
+            <OpFlashResultCard :flash="d.flash" />
             <!-- 区块头「修改刷机信息」按钮（PRD §5.3）走 OpFlashInfoBlock 的 #actions 插槽，排在外链左侧 -->
             <OpFlashInfoBlock :info="d.flash.info">
               <template v-if="flashEditInfo" #actions>
