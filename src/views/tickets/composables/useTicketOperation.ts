@@ -832,11 +832,12 @@ export function useTicketOperation() {
    */
   function projectFlashTimeline(no: string, reset = false) {
     // 操作人为「系统」的刷机事件卡片头显示系统头像（PRD §11.2）
-    // 用户提报单的建单事件操作人显示「提报用户 · 〈姓名〉」（M85 / X22）；记录源里仍存姓名，建单人判定不受影响
-    const byUser = TICKETS.find((x) => x.no === no)?.flash?.state.creator === '用户提报';
+    // 用户提报单的建单事件操作人与页头建单人同口径（PRD §5.1 / 附录 B，1021）；记录源里仍存姓名，建单人判定不受影响
+    const row = TICKETS.find((x) => x.no === no);
+    const byUser = row?.flash?.state.creator === '用户提报';
     const entries = flash.timelineOf(no).map((e) => {
       if (e.role === '系统') return { ...e, systemActor: true };
-      if (byUser && e.action === 'create') return { ...e, who: `提报用户 · ${e.who}` };
+      if (byUser && row && e.action === 'create') return { ...e, who: flashSubmitterName(row) };
       return { ...e };
     });
     if (reset) {

@@ -15,7 +15,7 @@ import {
 import RecordingPlayer from './operation/RecordingPlayer.vue';
 import { formatOpTime } from '@/views/tickets/utils/opTime';
 import {
-  CATEGORY_META, ROLE_BADGE, softBg,
+  CATEGORY_META, softBg,
   type TlAction, type TlCategory, type TimelineEntry, type RelatedTicketBrief,
 } from '@/views/tickets/types/ticketDetail';
 
@@ -162,8 +162,8 @@ const filteredEntries = computed(() => {
 
         <div v-else class="entry-main">
           <div class="entry-top">
+            <!-- 操作人只显示姓名（系统事件为「系统」），不显示角色（1021） -->
             <span class="who">{{ e.who }}</span>
-            <span class="role-badge" :style="{ color: ROLE_BADGE[e.role], background: softBg(ROLE_BADGE[e.role]) }">{{ e.role }}</span>
             <span class="how-badge" :style="{ color: CATEGORY_META[e.category].color, background: softBg(CATEGORY_META[e.category].color) }">
               {{ e.how }}<template v-if="e.dunningTimes"> · 第{{ e.dunningTimes }}次</template>
             </span>
@@ -392,7 +392,7 @@ const filteredEntries = computed(() => {
 }
 .entry-top { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .who { font-size: 13px; font-weight: 600; color: #111827; }
-.role-badge, .how-badge {
+.how-badge {
   font-size: 10px;
   font-weight: 600;
   padding: 1px 7px;

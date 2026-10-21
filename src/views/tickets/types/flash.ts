@@ -337,7 +337,7 @@ export interface FlashState {
    * 迟到回传时间：回传超时转人工之后才收到的「接收成功」时刻（M11 / M48）。
    * 只写履历、有处理人时站内通知处理人，不改状态、不发成功短信。
    */
-  lateSuccessAt?: string; // 只落库，页面不展示（迟到回传只记处理履历与站内通知，1014 用户拍板）
+  lateSuccessAt?: string; // 只落库，页面不展示（迟到回传只记处理履历、不发通知，1021）
   /**
    * 转售后后售后侧回传「售后单已关闭」的到点时刻（YYYY-MM-DD HH:mm:ss，PRD §7.1 / §7.3）：
    * 转售后时写入，到点经售后回传通道唤起原单，唤起后清空。
@@ -528,11 +528,6 @@ export const FLASH_TOAST = {
   linkedComplaint: (no: string) => `已关联投诉单 ${no}`,
 } as const;
 
-/** 站内通知文案（M67 / PRD §11.1，逐字） */
-export const FLASH_NOTICE = {
-  escalatedToGroup: (no: string) => `${no}已升级至教育刷机处理组，待领取`,
-  lateSuccess: (no: string) => `${no}收到迟到回传：接收成功`,
-} as const;
 /** 重推时 MDM 接口不可用（PRD §5.6 提交判定第 6 条，逐字） */
 export const FLASH_TIP_VERIFY_UNAVAILABLE = '校验服务暂不可用，请稍后重试或线下登记';
 /** 当前状态不可重推 */
@@ -655,8 +650,6 @@ export const FLASH_CS_NOTICE = {
 /** 通知记录的事件码（接《【815】》通知规则事件目录；转人工短信、重推结果通知已删，M181） */
 export const FLASH_NOTIFY_EVENTS = {
   success: 'ticket.flash.succeeded',
-  escalateL2: 'ticket.flash.escalated',
-  lateSuccess: 'ticket.flash.late.succeeded',
   survey: 'ticket.survey.sent',
   /** 受理短信：沿用建单受理通知事件与模板（PRD §2.5 / §11.1） */
   accepted: 'ticket.dispatched',

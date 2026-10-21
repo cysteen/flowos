@@ -15,7 +15,7 @@ import {
   FLASH_RESULT_ONLINE_SUCCESS, FLASH_RESULT_ESCALATE_L2, FLASH_OFFLINE_SURVEY_DELAY_MS, normalizeFlashResult,
   FLASH_TIP_NOT_GRADUATE_L1, FLASH_TIP_NOT_GRADUATE_L2, FLASH_TIP_REPUSH_NOT_GRADUATE, FLASH_TIP_REPUSH_SN_MISMATCH,
   FLASH_TIP_AUTO_FLASHING, FLASH_TIP_EDIT_STATE, FLASH_TIP_REPUSH_STATE, FLASH_TIP_SYSTEM_BUSY, FLASH_TIP_VERIFY_UNAVAILABLE,
-  FLASH_TL, FLASH_NOTICE, FLASH_RESULT_OFFLINE, FLASH_RETURN_TIMEOUT_MIN, FLASH_TOAST, flashFailReasonText,
+  FLASH_TL, FLASH_RESULT_OFFLINE, FLASH_RETURN_TIMEOUT_MIN, FLASH_TOAST, flashFailReasonText,
   FLASH_CS_NOTICE, FLASH_SURVEY_TIMEOUT_HOURS, FLASH_PRODUCT_CATEGORY, FLASH_TAG_L1, FLASH_TAG_L2,
   FLASH_TAG_L3_USER_REPORT, FLASH_TICKET_TYPE, FLASH_USER_REPORT_LABELS,
   flashTicketTitle, withFlashTitlePrefix, isFlashTicket, flashMinuteStamp, flashProgressStage, flashSmsSuccess, flashSmsSurvey, flashStamp,
@@ -278,20 +278,6 @@ export const useFlashStore = defineStore('flash', () => {
     });
   }
 
-  /** 归属组站内通知（基线 ※19：无处理人发归属组） */
-  function notifyGroup(r: Ticket, pool: FlashPoolKey, event: string, title: string, text: string) {
-    useNotifyLogStore().emit({
-      ticketNo: r.no,
-      event,
-      kind: 'group',
-      title,
-      receivers: [FLASH_POOLS[pool].groupName],
-      content: text,
-      // 到组类通知走 IM（i讯飞消息，PRD §10.1 / M181）
-      channel: 'IM',
-    });
-  }
-
   /**
    * 发调研短信（PRD §8 / §11.1 / M86）：写通知记录与履历，记「调研短信发出时刻」供调研超时判定。
    * 进「调研中」的两个入口（下送、首推自动刷机成功）都走这里。
@@ -485,7 +471,7 @@ export const useFlashStore = defineStore('flash', () => {
       what: FLASH_TL.handoff(reason, meta.label),
     });
     // 到组通知（PRD §11.1 / 1013 B14）：每次进池都通知全组，同一张单再次进池照发；
-    // 调研中催补进一线刷机池（分派表第 10 行）走催补通知，不另发；升级二线进池另有专用文案（escalateToL2）
+    // 调研中催补进一线刷机池（分派表第 10 行）走催补通知，不另发；升级二线进池同走到组通知（escalateToL2）
     if (reason !== '回访期间客户催补') notifyPoolArrival(r, pool);
   }
 
@@ -1141,7 +1127,7 @@ export const useFlashStore = defineStore('flash', () => {
    * 升级二线（1013 A18：一线处理结果选「升级二线」、下送时确认后执行，不填说明）：
    * 子状态回「未认领」、处理人清空、进教育刷机处理组池，转人工原因「一线升级」；
    * 一线的刷机处理结论（「升级二线」）与刷机处理记录落库，二线只读展示（1014）；
-   * 履历记「升级二线」（带最近一条刷机处理记录）；站内通知归属组。
+   * 履历记「升级二线」（带最近一条刷机处理记录）；发到组通知（IM）。
    * 进池时间取本条履历（工作台 `poolEnteredAtOf`）；「SLA 起算时间」为空时写入升级时刻（1013 A26）。
    */
   function escalateToL2(ticketNo: string, by: FlashActor, record?: string, fullRecord?: string): FlashActionResult {
@@ -1170,7 +1156,8 @@ export const useFlashStore = defineStore('flash', () => {
       category: 'node', action: 'escalate', who: by.name, role: by.role, how: '升级二线',
       what: FLASH_TL.escalateL2(record),
     });
-    notifyGroup(r, 'l2', FLASH_NOTIFY_EVENTS.escalateL2, '升级二线进池', FLASH_NOTICE.escalatedToGroup(r.no));
+    // 升级二线进池沿用咨询单到组通知（同模板、IM，1021）
+    notifyPoolArrival(r, 'l2');
     bump(ticketNo);
     persist();
     return { ok: true, message: FLASH_TOAST.escalatedL2 };
@@ -1499,8 +1486,7 @@ export const useFlashStore = defineStore('flash', () => {
 
   /**
    * 迟到回传「接收成功」（M11 / M48 / M77）：回传超时已转人工之后才收到的成功回传。
-   * 写履历、记迟到回传时间；**不改状态、不发成功短信**。
-   * 通知：当前处理人（有则发）；该次推送是人工重推时另发重推发起人；同一人只发一条；都没有不发。
+   * 写履历、记迟到回传时间；**不改状态、不发成功短信、不发通知**（1021）。
    */
   function recordLateSuccess(ticketNo: string, at: number = Date.now()): FlashActionResult {
     const r = rowOf(ticketNo);
@@ -1511,19 +1497,6 @@ export const useFlashStore = defineStore('flash', () => {
       category: 'node', action: 'flashSuccess', who: '系统', role: '系统', how: '回传结果',
       what: FLASH_TL.lateSuccess,
     });
-    const receivers: string[] = [];
-    if (r.assignee) receivers.push(r.assignee);
-    if (run.line && run.by && !receivers.includes(run.by)) receivers.push(run.by);
-    if (receivers.length) {
-      useNotifyLogStore().emit({
-        ticketNo: r.no,
-        event: FLASH_NOTIFY_EVENTS.lateSuccess,
-        kind: 'assign',
-        title: '迟到回传提示',
-        receivers,
-        content: FLASH_NOTICE.lateSuccess(r.no),
-      });
-    }
     bump(r.no);
     persist();
     return { ok: true, message: '' };
@@ -1850,9 +1823,14 @@ export const useFlashStore = defineStore('flash', () => {
    * 履历沟通类有、运行时通知记录（`stores/notifyLog.ts`）里没有，「通知记录」Tab 因此是空的。
    * 逐单按履历里那条短信的文案对上号，时刻取履历时刻；本单已有同事件记录的不补。
    */
-  /** 已删除的两类通知（转人工短信、重推结果，M181）：本地通知记录里的旧条目一并清掉 */
+  /**
+   * 已删除的通知（转人工短信、重推结果，M181；升级二线进池专用文案、迟到回传提示，M182）：
+   * 本地通知记录里的旧条目一并清掉
+   */
   function dropRetiredNotifyRecords() {
-    const retired = new Set(['ticket.flash.handoff', 'ticket.flash.repush.returned']);
+    const retired = new Set([
+      'ticket.flash.handoff', 'ticket.flash.repush.returned', 'ticket.flash.escalated', 'ticket.flash.late.succeeded',
+    ]);
     const notifyLog = useNotifyLogStore();
     if (notifyLog.records.some((x) => retired.has(x.event))) {
       notifyLog.records = notifyLog.records.filter((x) => !retired.has(x.event));
