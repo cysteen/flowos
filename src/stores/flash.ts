@@ -299,7 +299,8 @@ export const useFlashStore = defineStore('flash', () => {
       event: FLASH_NOTIFY_EVENTS.repushResult,
       kind: 'assign',
       title: '重推结果',
-      receivers: [`${run.by}(${run.byRole})`],
+      // 接收人只显示姓名，不带角色（1021：一人常有多个角色）
+      receivers: [run.by],
       content: text,
     });
     if (banner) {

@@ -444,9 +444,21 @@ export function flashTipRequired(missing: string[]): string {
 /** 发起方线别（M59） */
 export type FlashLine = '一线' | '二线';
 
-/** 推送记录「发起方」展示：系统 / 姓名（一线）/ 姓名（二线）（M59） */
+/**
+ * 用户提报单的「建单人」展示（PRD §5.1，1021）：取本单客户名称；无客户名称取联系手机号脱敏；
+ * 都没有显示「小程序用户提报」。坐席代建不走这里（显示建单坐席姓名）。
+ */
+export function flashSubmitterName(t: { customer?: string | null; customerPhone?: string | null }): string {
+  const name = t.customer?.trim();
+  if (name) return name;
+  const digits = (t.customerPhone ?? '').replace(/\D/g, '');
+  if (digits.length >= 7) return `${digits.slice(0, 3)}****${digits.slice(-4)}`;
+  return '小程序用户提报';
+}
+
+/** 推送记录「发起方」展示：系统 / 姓名（M59；1021 起不带角色后缀，一人常有多个角色） */
 export function flashRunInitiator(run: Pick<FlashRun, 'by' | 'line'>): string {
-  return run.line ? `${run.by}（${run.line}）` : '系统';
+  return run.line ? run.by : '系统';
 }
 
 /**

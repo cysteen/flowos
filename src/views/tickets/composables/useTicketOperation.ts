@@ -1,4 +1,4 @@
-import { isFlashTicket } from '@/views/tickets/types/flash';
+import { flashSubmitterName, isFlashTicket } from '@/views/tickets/types/flash';
 import { ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
@@ -515,8 +515,8 @@ export function useTicketOperation() {
    */
   function applyFlashOverview(base: TicketDetailMeta, t: Ticket) {
     const f = t.flash!;
-    // 用户提报单页头建单人显示「用户提报」（M85 / X22）；坐席代建显示建单坐席
-    const creatorName = f.state.creator === '用户提报' ? '用户提报' : (flash.creatorNameOf(t.no) ?? '—');
+    // 用户提报单页头建单人显示提报用户信息（PRD §5.1，1021）；坐席代建显示建单坐席
+    const creatorName = f.state.creator === '用户提报' ? flashSubmitterName(t) : (flash.creatorNameOf(t.no) ?? '—');
     const createdAt = t.createdAt ?? '';
     base.builder = creatorName;
     base.builderShort = creatorName;
