@@ -151,14 +151,14 @@ const IDLE_LINE: SlaLine = { text: '—', color: SLA_COLOR.paused };
 
 /**
  * 刷机单账本读数 → 一行 SLA（D-01）。与处理页页头同走 `readSla`，只是采样频率不同，读数不分叉。
- * 停钟期间固定「已暂停」且不随停留变化（PRD §4.3 / R154）。
+ * 刷机单不停表（PRD §4.3，1021）：账本挂段只在「调研中」，显示「—」。
  */
 function flashLine(r: SlaReading, remainMs: number): SlaLine {
   if (r.status === 'stopped') {
     if (r.outcome === 'void') return VOID_LINE;
     return r.outcome === 'breached' ? BREACHED_LINE : MET_LINE;
   }
-  if (r.status === 'paused') return { text: '已暂停', color: SLA_COLOR.paused };
+  if (r.status === 'paused') return IDLE_LINE;
   return { text: formatSlaRemain(remainMs), color: SLA_COLOR[slaStateOf(remainMs)] };
 }
 
@@ -176,8 +176,6 @@ export function slaResolveLine(t: Ticket, now: number = Date.now()): SlaLine {
     if (t.solveBreached) return BREACHED_LINE;
     return isSlaVoidStop(t) ? VOID_LINE : MET_LINE;
   }
-  // 停钟（自动刷机中）：挂起单仍走下方原逻辑
-  if (t.slaState !== 'paused' && isSlaPaused(t)) return { text: '已暂停', color: SLA_COLOR.paused };
   if (!isFirstResponded(t) && t.resolveSlaText) {
     return { text: slaShort(t.resolveSlaText), color: SLA_COLOR[t.resolveSlaState ?? 'ok'] };
   }

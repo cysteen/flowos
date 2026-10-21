@@ -94,11 +94,11 @@ export function readFlashSla(st: FlashState, now: number = Date.now()): SlaReadi
 }
 
 /**
- * 刷机单是否计 SLA（1013 A26）：一线不计 SLA，本单进入过教育刷机处理组池才计。
- * 归属池只会从一线刷机池走向教育刷机处理组池，不会回流，故以归属池为判据。
+ * 刷机单是否计 SLA（1013 A26）：首次进教育刷机处理组池起算，未起算不计；
+ * 已起算的单此后不论在谁名下、在哪个池都照常计时（1021：SLA 不停表），故只以起算时刻为判据。
  */
 export function isFlashSlaCounted(st: Pick<FlashState, 'pool' | 'slaStartedAt'>): boolean {
-  return st.pool === 'l2' && !!st.slaStartedAt;
+  return !!st.slaStartedAt;
 }
 
 /**

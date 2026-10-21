@@ -146,7 +146,7 @@ export type TicketStatus =
   /**
    * 刷机单专属（930 教育刷机单 M9）：推送已发出、等硬件平台回传。分组归「处理中」；
    * 期间冻结语义同「已转出」（底栏只留保存、联系客户），催补可做但**不拉回**（同「已升级产研」）；
-   * SLA 暂停（D18，停钟判据见 `isSlaPaused`）。**基线待同步项**：基线 §1 尚无此子状态。
+   * 已起算的 SLA 照常计时（1130 PRD §4.3，1021）。**基线待同步项**：基线 §1 尚无此子状态。
    */
   | '自动刷机中'
   /** 结案方式＝**正常流程**的单走完调研后到这里（基线 §1 该行） */
@@ -406,16 +406,15 @@ export function isReviewStatus(status: TicketStatus): boolean {
 export function isEscalatedStatus(status: TicketStatus): boolean {
   return status === '已升级技术支持' || status === '已升级产研';
 }
-/** SLA 倒计时态：充足/临期/超时/暂停(挂起冻结 · 自动刷机中) */
+/** SLA 倒计时态：充足/临期/超时/暂停(挂起冻结，老四类) */
 export type SlaState = 'ok' | 'soon' | 'overdue' | 'paused';
 
 /**
- * SLA **停钟判据**：挂起 ∨ 自动刷机中（930 教育刷机单 D18 / M17）。线下登记期间不停钟（1013 A17）。
- * - 挂起：列表行 `slaState === 'paused'`（原判据）；
- * - 自动刷机中：推送后等待回传的整段不计时，按子状态判，数据侧漏写 `slaState` 时也停得住。
+ * SLA **停钟判据**（老四类）：列表行 `slaState === 'paused'`（挂起）。
+ * 刷机单不停表（1130 PRD §4.3，1021）：「自动刷机中」照常计时，不再按子状态判停。
  */
 export function isSlaPaused(t: Pick<Ticket, 'slaState' | 'nodeStatus'>): boolean {
-  return t.slaState === 'paused' || t.nodeStatus === '自动刷机中';
+  return t.slaState === 'paused';
 }
 
 export interface Ticket {
@@ -856,7 +855,8 @@ export function slaSortKey(t: Ticket): { group: number; minutes: number } {
   const led = readSla(t);
   if (led) {
     if (led.status === 'stopped') return { group: 4, minutes: Number.MAX_SAFE_INTEGER };
-    if (led.status === 'paused') return { group: 3, minutes: Number.MAX_SAFE_INTEGER };
+    // 账本挂段只出现在「调研中」（列表显示「—」）：无活跃钟，与终态同组
+    if (led.status === 'paused') return { group: 4, minutes: Number.MAX_SAFE_INTEGER };
     const remains = isFirstResponded(t) ? [led.remainMs] : [led.remainMs, led.firstRemainMs];
     const worst = remains
       .map((ms) => ({ state: slaStateOf(ms), minutes: ms / 60_000 }))
@@ -866,7 +866,7 @@ export function slaSortKey(t: Ticket): { group: number; minutes: number } {
   // 刷机单未计 SLA（一线、未进教育刷机处理组池，1013 A26）：无活跃钟，与终态同组
   if (isFlashTicket(t)) return { group: 4, minutes: Number.MAX_SAFE_INTEGER };
   if (t.slaText === '—') return { group: 4, minutes: Number.MAX_SAFE_INTEGER }; // 终态：无活跃钟
-  if (isSlaPaused(t)) return { group: 3, minutes: Number.MAX_SAFE_INTEGER }; // 挂起 / 自动刷机中：冻结置底
+  if (isSlaPaused(t)) return { group: 3, minutes: Number.MAX_SAFE_INTEGER }; // 挂起（老四类）：冻结置底
   // 活跃钟集合：扁平摘要（已响=解决钟 / 未响=首响钟）+ 未响时的解决钟独立字段
   const clocks: { state: SlaState; minutes: number }[] = [
     { state: t.slaState, minutes: t.slaMinutes },

@@ -125,8 +125,8 @@ function run(p: {
 /**
  * SLA 账本（PRD §4.3，D-01）。种子单的**起算时刻取履历里那条「转人工」的时刻**（R53 悬停要显示它），
  * 而本行要呈现的剩余是另一个靶子 —— 两者在写死日期的样本上隔天就对不上了。
- * 差额记进「累计停钟」：起算时刻照写不误，剩余按本行给定值落地，
- * 一份账本同时满足悬停的起算行与页头 / 列表的剩余读数。停钟中的单以停钟起点为锚。
+ * 差额记进账本的累计扣除毫秒：起算时刻照写不误，剩余按本行给定值落地，
+ * 一份账本同时满足悬停的起算行与页头 / 列表的剩余读数。传了挂段起点的以它为锚（仅「调研中」）。
  */
 const SLA_LIMIT_MIN = 480;
 function ledger(
@@ -724,15 +724,15 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
       info, creator: '用户提报', customer: '顾红梅', phone: '13966713907',
       createdAt: at.slice(0, 16), updatedAt: toAs.slice(0, 16),
       nodeStatus: '已转出', assignee: '王坐席', tab: 'mine', responded: true, nodeStep: 4,
-      slaText: '已暂停', slaSub: '已暂停', slaState: 'paused', slaMinutes: 9999,
+      slaText: '04:42:00', slaSub: '距超时', slaState: 'ok', slaMinutes: 282,
       linkedAftersaleNo: 'AS-20260915-39021', upgradeCount: 1,
       flashState: state('用户提报', {
         outcome: '接收失败', failL1: '接收失败', failL2: '版本不符', pushCount: 2,
         handoffReason: '一线升级', pool: 'l2', handoffSmsSent: true,
         // 一线升级二线时落库的刷机处理结论与刷机处理记录（与「升级二线」履历所带处理记录同文）
         result: '升级二线', record: '已指导用户开机联网，设备系统版本过低无法在线升级。',
-        // 转售后停钟：客服侧冻结，售后唤起回原处理人时剩余接续（PRD §7.3 / §4.3）
-        ...ledger(nowMs, esc, 282, parseFlashStamp(toAs).getTime()),
+        // 转售后：客服侧冻结，SLA 照常计时（PRD §4.3，1021）
+        ...ledger(nowMs, esc, 282),
       }),
       runs: [
         run({ seq: 1, trigger: '建单首推', pushedAt: pushed, result: '接收失败', failL1: '接收失败', failL2: '版本不符', resultAt: back }),

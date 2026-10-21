@@ -201,9 +201,8 @@ function buildDial(c: SlaClock, i: number, wholeStartMs?: number): Dial {
   if (outcome === 'met') remainText = '已达标';
   else if (outcome === 'breached') remainText = '未达标';
   else if (outcome === 'void') remainText = '已停表';
-  // 刷机单停钟 / 暂停期间固定「已暂停」、不做倒计时，与列表 SLA 列同文案（PRD §4.3 / R154）；
-  // 老四类沿用原样：显示冻结剩余，暂停态由表盘徽标标识
-  else if (vis === 'paused') remainText = ledgerClocks.value ? '已暂停' : fmtShort(rem, rem < 0);
+  // 老四类挂起：显示冻结剩余，暂停态由表盘徽标标识（刷机单不停表，PRD §4.3，1021）
+  else if (vis === 'paused') remainText = fmtShort(rem, rem < 0);
   else remainText = fmtShort(rem, vis === 'over');
 
   const pct = clamp(((c.totalSec - rem) / c.totalSec) * 100);
