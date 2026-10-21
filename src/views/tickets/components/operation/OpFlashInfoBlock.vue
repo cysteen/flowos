@@ -125,7 +125,7 @@ const photoGroups = computed(() => {
   gap: 8px 16px; margin: 0;
 }
 .fi-item { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 12px; line-height: 20px; }
-.fi-item dt { flex: none; width: 72px; color: #6b7280; }
+.fi-item dt { flex: none; min-width: 72px; color: #6b7280; white-space: nowrap; }
 .fi-item dd { flex: 1; min-width: 0; margin: 0; display: flex; align-items: center; gap: 6px; }
 .fi-val { color: #111827; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fi-item.is-wide { grid-column: span 2; }

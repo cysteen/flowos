@@ -175,7 +175,7 @@ const PHOTO_FIELDS: { key: PhotoKey; label: string }[] = [
 }
 .fi-label {
   flex: none;
-  width: 76px;
+  min-width: 76px;
   font-size: 12px;
   font-weight: 500;
   color: #374151;
