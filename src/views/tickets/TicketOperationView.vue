@@ -1433,10 +1433,24 @@ const canCancelTicket = computed(() => headerRoleGate.value.cancelTicket
  *   B13 是「照基线 ※5 **不放宽**，仅未认领 / 待响应可用，不为小智开专属例外」。
  *   此前这个 computed 只认刷机单那一档，于是小智单在「处理中」「已升级产研」「调研中」上
  *   取消按钮**可点** —— B13 整条在代码里不生效，拍的是「不放宽」，实现却比基线更宽。
+ * - 2026-10-21 起这道门控扩到**咨询单（含小智单）与刷机单**一体生效（基线 §2 / ※5）：
+ *   仅未认领 / 待响应可用，处理中及之后置灰，悬停「工单已开始处理，不可取消」。
+ *   小智单不另开一档（PRD §5.5「照基线 ※5 不放宽」）。投诉等其他类型暂不在此列。
  */
+const CANCELLABLE_STATUSES = XIAOZHI_CANCELLABLE_STATUSES;
+/**
+ * 判门控用的子状态：老四类详情的「待响应」不进页头状态（落样例的「处理中」，见 useTicketOperation
+ * ROW_GRAY_STATUSES），只在这一处回读工单行，免得待响应的咨询单被误判成已开始处理。
+ */
+const cancelGateStatus = computed(() => {
+  if (d.value.status !== '处理中') return d.value.status;
+  const row = TICKETS.find((x) => x.no === d.value.no);
+  return row && CANCELLABLE_STATUSES.includes(row.nodeStatus) ? row.nodeStatus : d.value.status;
+});
 const cancelBlockedTip = computed(() => {
   if (isFlash.value && d.value.status === '自动刷机中') return FLASH_GATE_TIPS.autoFlashing;
-  if (isXiaozhi.value && !XIAOZHI_CANCELLABLE_STATUSES.includes(d.value.status)) {
+  if ((isFlash.value || isXiaozhi.value || d.value.type === '咨询')
+    && !CANCELLABLE_STATUSES.includes(cancelGateStatus.value)) {
     return XIAOZHI_TIP.cancelAfterStarted;
   }
   return undefined;
