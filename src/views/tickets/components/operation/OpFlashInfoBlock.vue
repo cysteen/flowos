@@ -9,7 +9,7 @@ import {
   FLASH_EXTERNAL_LINKS, FLASH_FIELD_LABELS, flashExternalUrl,
   type FlashInfo,
 } from '@/views/tickets/types/flash';
-import { mdmInfoDataUri, snPlateDataUri } from '@/views/tickets/utils/flashSnPlate';
+import { mdmInfoDataUri, productInfoDataUri, snPlateDataUri, studyProofDataUri } from '@/views/tickets/utils/flashSnPlate';
 
 const props = defineProps<{
   /** 刷机信息 */
@@ -35,10 +35,13 @@ const fields = computed<Field[]>(() => {
   ];
 });
 
-/** 设备SN照片 / MDM信息图片缩略图与大图（见 `utils/flashSnPlate.ts`；处理页只做查看） */
+/**
+ * 图片缩略图与大图（见 `utils/flashSnPlate.ts`；处理页只做查看）：设备SN照片 / MDM信息图片无值显示「—」；
+ * 产品信息图片 / 学习证明附件只有小程序单带，无值不显示该项。
+ */
 const photoGroups = computed(() => {
   const i = props.info;
-  return [
+  const groups: { key: string; label: string; items: { name: string; src: string }[] }[] = [
     {
       key: 'snPhotos',
       label: FLASH_FIELD_LABELS.snPhotos,
@@ -50,6 +53,21 @@ const photoGroups = computed(() => {
       items: (i.mdmPhotos ?? []).map((name) => ({ name, src: mdmInfoDataUri(i.sn || name, i.studentAccount) })),
     },
   ];
+  if (i.productPhotos?.length) {
+    groups.push({
+      key: 'productPhotos',
+      label: FLASH_FIELD_LABELS.productPhotos,
+      items: i.productPhotos.map((name) => ({ name, src: productInfoDataUri(i.productModel, i.sn || name) })),
+    });
+  }
+  if (i.studyProofPhotos?.length) {
+    groups.push({
+      key: 'studyProofPhotos',
+      label: FLASH_FIELD_LABELS.studyProofPhotos,
+      items: i.studyProofPhotos.map((name) => ({ name, src: studyProofDataUri(i.studentName, i.schoolName) })),
+    });
+  }
+  return groups;
 });
 </script>
 

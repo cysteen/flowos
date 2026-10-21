@@ -5,7 +5,8 @@
  * 自研机型（支持线上自助推送）为「取消 / 重新推送」，提交即推送（唯一的推送入口）；其他机型为「取消 / 保存」，只保存不推送。
  *
  * - 字段按本单当前值预填：产品分类 · 产品名称 · 设备SN · 学生类型 · 学生姓名 · 学生账号 · 学校名称 · 刷机原因 ·
- *   设备SN照片 · MDM信息图片；产品名称下拉只列支持刷机的产品。
+ *   设备SN照片 · MDM信息图片（小程序单另有产品信息图片、学习证明附件，带了才出）；产品名称下拉只列支持刷机的产品。
+ * - 学校只有原文的小程序单：学校检索框按原文预填，改选学校库条目即覆盖，不改选保留原文。
  * - 提交先判必填（字段下方红字），其余拦截与校验结果由刷机服务返回，显示在按钮上方行内红字；
  *   不通过时弹窗不关、已填内容保留。
  */
@@ -23,7 +24,7 @@ import {
   FLASH_FIELD_LABELS as L, FLASH_REASON_PLACEHOLDER, FLASH_STUDENT_TYPE_OPTIONS,
   type FlashInfo, type FlashStudentType,
 } from '@/views/tickets/types/flash';
-import { mdmInfoDataUri, snPlateDataUri } from '@/views/tickets/utils/flashSnPlate';
+import { mdmInfoDataUri, productInfoDataUri, snPlateDataUri, studyProofDataUri } from '@/views/tickets/utils/flashSnPlate';
 
 const props = defineProps<{
   open: boolean;
@@ -42,8 +43,8 @@ const emit = defineEmits<{
 const router = useRouter();
 const config = useFlashConfigStore();
 
-type FieldKey = 'productModel' | 'sn' | 'studentType' | 'studentName' | 'studentAccount' | 'schoolId' | 'reason';
-type PhotoKey = 'snPhotos' | 'mdmPhotos';
+type PhotoKey = 'snPhotos' | 'mdmPhotos' | 'productPhotos' | 'studyProofPhotos';
+type FieldKey = 'productModel' | 'sn' | 'studentType' | 'studentName' | 'studentAccount' | 'schoolId' | 'reason' | PhotoKey;
 
 interface Draft {
   productModel: string;
@@ -55,6 +56,8 @@ interface Draft {
   reason: string;
   snPhotos: string[];
   mdmPhotos: string[];
+  productPhotos: string[];
+  studyProofPhotos: string[];
 }
 
 function fromInfo(i: FlashInfo): Draft {
@@ -68,23 +71,35 @@ function fromInfo(i: FlashInfo): Draft {
     reason: i.reason,
     snPhotos: [...i.snPhotos],
     mdmPhotos: [...(i.mdmPhotos ?? [])],
+    productPhotos: [...(i.productPhotos ?? [])],
+    studyProofPhotos: [...(i.studyProofPhotos ?? [])],
   };
 }
+
+const ALL_PHOTO_KEYS: PhotoKey[] = ['snPhotos', 'mdmPhotos', 'productPhotos', 'studyProofPhotos'];
 
 const original = ref<Draft>(fromInfo(props.info));
 const draft = reactive<Draft>(fromInfo(props.info));
 const errors = reactive<Partial<Record<FieldKey, string>>>({});
 const bottomTip = ref<{ text: string; inflightNo?: string } | null>(null);
-const photoLists = ref<Record<PhotoKey, UploadFile[]>>({ snPhotos: [], mdmPhotos: [] });
+const photoLists = ref<Record<PhotoKey, UploadFile[]>>({ snPhotos: [], mdmPhotos: [], productPhotos: [], studyProofPhotos: [] });
 /** 每次打开重挂学校选择器：地区与检索框按本单当前值重新预填 */
 const openSeq = ref(0);
 
 /** 本单已存图片的缩略图（与处理页「刷机信息」区块同一张图） */
 function storedSrc(key: PhotoKey, name: string): string {
-  return key === 'snPhotos'
-    ? snPlateDataUri(props.info.sn || name)
-    : mdmInfoDataUri(props.info.sn || name, props.info.studentAccount);
+  const i = props.info;
+  if (key === 'snPhotos') return snPlateDataUri(i.sn || name);
+  if (key === 'productPhotos') return productInfoDataUri(i.productModel, i.sn || name);
+  if (key === 'studyProofPhotos') return studyProofDataUri(i.studentName, i.schoolName);
+  return mdmInfoDataUri(i.sn || name, i.studentAccount);
 }
+
+/**
+ * 学校只有原文、无学校库 ID（小程序提报）：弹窗按原文预填学校检索框，坐席可改选省市区与学校库条目（选了即覆盖）；
+ * 不改选时保留原文，学校名称不判必填。
+ */
+const textSchool = computed(() => !original.value.schoolId && !!props.info.schoolName?.trim());
 
 watch(
   () => props.open,
@@ -95,7 +110,7 @@ watch(
     Object.assign(draft, fromInfo(props.info));
     (Object.keys(errors) as FieldKey[]).forEach((k) => delete errors[k]);
     bottomTip.value = null;
-    (['snPhotos', 'mdmPhotos'] as PhotoKey[]).forEach((key) => {
+    ALL_PHOTO_KEYS.forEach((key) => {
       photoLists.value[key] = draft[key].map((name, i) => {
         const src = storedSrc(key, name);
         return { uid: `${key}-${i}-${name}`, name, status: 'done', url: src, thumbUrl: src };
@@ -163,12 +178,19 @@ function onPhotoChange(key: PhotoKey, { fileList }: { fileList: UploadFile[] }) 
   const list = fileList.slice(-1);
   photoLists.value[key] = list;
   draft[key] = list.map((f) => f.name);
+  if (list.length) delete errors[key];
 }
 
-const PHOTO_FIELDS: { key: PhotoKey; label: string }[] = [
-  { key: 'snPhotos', label: L.snPhotos },
-  { key: 'mdmPhotos', label: L.mdmPhotos },
-];
+/**
+ * 图片项：设备SN照片、MDM信息图片恒有（选传）；产品信息图片、学习证明附件只在本单带了时出现（小程序单），
+ * 可查看、可更换，出现即必传。
+ */
+const PHOTO_FIELDS = computed<{ key: PhotoKey; label: string; required: boolean }[]>(() => [
+  { key: 'snPhotos', label: L.snPhotos, required: false },
+  { key: 'mdmPhotos', label: L.mdmPhotos, required: false },
+  ...(original.value.productPhotos.length ? [{ key: 'productPhotos' as const, label: L.productPhotos, required: true }] : []),
+  ...(original.value.studyProofPhotos.length ? [{ key: 'studyProofPhotos' as const, label: L.studyProofPhotos, required: true }] : []),
+]);
 
 /** 缩略图点开大图：已存图片取本单图，新选的本地图片取读出的预览 */
 const photoPreview = reactive({ open: false, src: '' });
@@ -204,8 +226,20 @@ function onSubmit() {
   categoryError.value = draftCategory.value ? '' : `请选择${L.productCategory}`;
   if (categoryError.value) missing = true;
   REQUIRED.forEach(({ key, label, select }) => {
+    if (key === 'schoolId' && textSchool.value) {
+      delete errors[key];
+      return;
+    }
     if (!String(draft[key] ?? '').trim()) {
       errors[key] = select ? `请选择${label}` : `请填写${label}`;
+      missing = true;
+    } else {
+      delete errors[key];
+    }
+  });
+  PHOTO_FIELDS.value.forEach(({ key, label, required }) => {
+    if (required && !draft[key].length) {
+      errors[key] = `请上传${label}`;
       missing = true;
     } else {
       delete errors[key];
@@ -222,10 +256,13 @@ function onSubmit() {
     studentName: draft.studentName.trim(),
     studentAccount: draft.studentAccount.trim(),
     schoolId: draft.schoolId,
-    schoolName: schoolNameOf(draft.schoolId),
+    // 选了学校库条目即覆盖；未选（小程序单保留原文）沿用本单学校名称
+    schoolName: draft.schoolId ? schoolNameOf(draft.schoolId) : props.info.schoolName,
     reason: draft.reason.trim(),
     snPhotos: [...draft.snPhotos],
     mdmPhotos: [...draft.mdmPhotos],
+    productPhotos: [...draft.productPhotos],
+    studyProofPhotos: [...draft.studyProofPhotos],
   }, pushable.value);
   if (!res.ok) {
     bottomTip.value = { text: res.message, inflightNo: res.inflightNo };
@@ -353,7 +390,7 @@ const inflightHref = computed(() => (tipParts.value?.no ? router.resolve(`/ticke
         </div>
 
         <div v-for="p in PHOTO_FIELDS" :key="p.key" class="fe-field fe-photo">
-          <label class="fe-label">{{ p.label }}</label>
+          <label class="fe-label"><span v-if="p.required" class="req">*</span>{{ p.label }}</label>
           <div class="fe-control">
             <a-upload
               :file-list="photoLists[p.key]"
@@ -370,6 +407,7 @@ const inflightHref = computed(() => (tipParts.value?.no ? router.resolve(`/ticke
                 <span>上传</span>
               </div>
             </a-upload>
+            <div v-if="errors[p.key]" class="fe-error">{{ errors[p.key] }}</div>
           </div>
         </div>
       </div>
