@@ -12,7 +12,6 @@
  */
 import { isCurrentHandler, isTicketClosed, type TicketStatus } from '@/views/tickets/types/ticket';
 import { FLASH_TIP_AUTO_FLASHING, type FlashPoolKey } from '@/views/tickets/types/flash';
-import { NO_AFTERSALE_TIP } from './opActionRegistry';
 
 /* ------------------------------------------------------------------ */
 /* 视角                                                                 */
@@ -121,7 +120,6 @@ export const FLASH_GATE_TIPS = {
   withdrawNotForwarder: '只能撤回本人发起的下送',
   withdrawNotApplicant: '只能撤回本人发起的申请',
   withdrawNone: '当前无可撤回的操作',
-  noAftersale: NO_AFTERSALE_TIP,
 } as const;
 
 /** 子状态类原因，按原因表顺序；`withdraw` 时跳过审核中、调研中（撤回在这两列另判） */
@@ -195,8 +193,6 @@ export interface FlashBarGateCtx {
   isInitiator: boolean;
   /** 调研中：本单有没有下送发起人（自动刷机成功直进回访的单没有，M99） */
   hasForwarder?: boolean;
-  /** 本单产品有售后服务（转售后用，基线 ※12） */
-  afterSaleEnabled: boolean;
 }
 
 /** 单个底栏按钮在当前视角 × 子状态下的取值（渲染与否由视角先行决定） */
@@ -214,9 +210,7 @@ export function flashButtonGate(key: FlashBarKey, ctx: FlashBarGateCtx): FlashGa
   if (!AVAILABLE_STAGES[key].includes(stage)) {
     return { forbidden: true, tip: stageTip(stage) };
   }
-  if (key === '转售后' && !ctx.afterSaleEnabled) {
-    return { forbidden: true, tip: FLASH_GATE_TIPS.noAftersale };
-  }
+  // 转售后不按基线 ※12（产品无售后服务）置灰：支持的机型一律视为有售后服务（PRD §5.5 表二）
   return { forbidden: false };
 }
 

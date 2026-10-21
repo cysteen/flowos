@@ -1693,6 +1693,7 @@ const aftersaleContext = computed(() => ({
 const transferAftersaleForm = computed(() => resolveAftersaleButtonForm(d.value, {
   position: 'transfer',
   unclaimed: ticketUnclaimed.value,
+  isFlash: isFlash.value,
 }));
 
 function isFeishuEscalate(payload: Record<string, unknown>): boolean {

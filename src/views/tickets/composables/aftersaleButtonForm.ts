@@ -100,6 +100,8 @@ export interface AftersaleButtonCtx {
   unclaimed?: boolean;
   /** 整页锁（被新单接管 / 只读角色）：给了即置灰并以此为悬停提示 */
   lockTip?: string;
+  /** 刷机单：不按基线 ※12（产品无售后服务）置灰（教育刷机单 PRD §5.5 表二） */
+  isFlash?: boolean;
 }
 
 type FormSubject = Pick<
@@ -158,8 +160,8 @@ export function resolveAftersaleButtonForm(d: FormSubject, ctx: AftersaleButtonC
   if (ctx.position === 'transfer' && d.returnedFromAftersale && la) {
     return withCard(3, 'activate', '激活售后单', true);
   }
-  // 4：产品无售后服务（只拦建单形态）
-  if (!d.product.afterSaleEnabled) {
+  // 4：产品无售后服务（只拦建单形态；刷机单不拦）
+  if (!ctx.isFlash && !d.product.afterSaleEnabled) {
     return gray(4, ctx.position === 'link' ? NO_AFTERSALE_LINK_TIP : NO_AFTERSALE_TIP);
   }
   // 5 / 6：有活跃关联 · 未结案（含冻结）/ 已结案

@@ -269,8 +269,9 @@ const actions = computed(() =>
  * 产品无售后服务 → 「转售后」**置灰 + 提示**，不是隐藏（基线 ※12）。
  * 该拦截维度是**工单数据**，不属于角色 / 状态 / 类型三维；隐藏会让坐席不知道为什么不能转，
  * 只能反复找入口。原实现在 availableActions 里把动作整个滤掉了，现改为在此呈现。
+ * 刷机单不按 ※12 置灰（支持的机型一律视为有售后服务，教育刷机单 PRD §5.5 表二）。
  */
-const noAftersaleProduct = computed(() => !props.afterSaleEnabled);
+const noAftersaleProduct = computed(() => !props.isFlash && !props.afterSaleEnabled);
 
 /**
  * 「转售后」何时用 hover 卡片代替原生 title：形态判定给了卡片（本单有活跃关联）时。
@@ -482,7 +483,6 @@ function flashItem(k: FlashBarKey): BarItem | null {
     stage,
     isInitiator: !!props.flashIsInitiator,
     hasForwarder: props.flashHasForwarder,
-    afterSaleEnabled: props.afterSaleEnabled,
   });
   let forbidden = gate.forbidden;
   let tip = gate.tip;
