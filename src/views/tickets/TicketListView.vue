@@ -26,18 +26,9 @@ import OpActionDialogs from './components/OpActionDialogs.vue';
 
 import { mapUserRole, type TransferPayload } from './composables/opActions';
 
-import { takeOverReturnedTicket } from './composables/aftersaleEvents';
-
-import AssignModal, {
-  type AssignSubmitPayload,
-  type AssignTicket,
-} from '@/views/team-board/components/AssignModal.vue';
-
-import { TEAM_MEMBERS } from '@/mock/teamBoard';
-
 import { useFlashStore } from '@/stores/flash';
 
-import { flashMinuteStamp, isFlashTicket, type FlashActor } from './types/flash';
+import { isFlashTicket, type FlashActor } from './types/flash';
 
 import { useTicketList } from './composables/useTicketList';
 
@@ -405,6 +396,15 @@ function onOpDialogConfirm(payload: Record<string, unknown>) {
 
   }
 
+  // 池内未认领单同组调剂到人即出池，与「已有处理人」的单同口径
+  if (data.scope === 'same' && t.tab === 'pool' && !t.assignee) {
+
+    t.tab = 'mine';
+
+    t.responded = false;
+
+  }
+
   t.assignee = name;
 
   t.myTransferAction = true;
@@ -413,79 +413,9 @@ function onOpDialogConfirm(payload: Record<string, unknown>) {
 
 }
 
-/*
- * —— 查询中心行内「指派」——
- * 工单运营把池内未认领的普通工单直接指给本组成员；刷机单在查询中心只有「调剂」（1130 PRD v1.28）。
- * 弹窗复用工作台 / 班组看板那只 `AssignModal`，只开同组内；落库口径与工作台 `assignTickets` 同源。
- */
-
-const assignOpen = ref(false);
-
-const assignTicketRow = ref<Ticket | null>(null);
-
-const assignRef = ref<InstanceType<typeof AssignModal> | null>(null);
-
-const assignTicketsForModal = computed<AssignTicket[]>(() => {
-
-  const t = assignTicketRow.value;
-
-  if (!t) return [];
-
-  return [{
-
-    id: t.id, no: t.no, customer: t.customer, type: t.type, priority: t.priority,
-
-    slaLeftMin: t.slaMinutes, createdAt: t.createdAt ?? '',
-
-  }];
-
-});
-
 function queryActor(): FlashActor {
 
   return { name: user.name || '工单运营', role: mapUserRole(user.roleKey) };
-
-}
-
-function onAssignSubmit(p: AssignSubmitPayload) {
-
-  const t = assignTicketRow.value;
-
-  if (!t) return;
-
-  if (t.tab !== 'pool' || t.assignee !== null) {
-
-    assignRef.value?.applyResults([{ id: t.id, ok: false, reason: t.assignee ? `已被 ${t.assignee} 领取` : '工单已不在池内' }]);
-
-    return;
-
-  }
-
-  const taken = takeOverReturnedTicket(t, {
-
-    assignee: p.targetName, how: '指派', operator: queryActor().name,
-
-    operatorRole: queryActor().role, at: flashMinuteStamp(Date.now()),
-
-  });
-
-  if (taken) Object.assign(t, taken);
-
-  else {
-
-    t.tab = 'mine';
-
-    t.assignee = p.targetName;
-
-    t.responded = false;
-
-  }
-
-  assignOpen.value = false;
-
-  assignTicketRow.value = null;
-
-  message.success(`已指派 1 张工单给 ${p.targetName}`);
 
 }
 
@@ -496,16 +426,6 @@ function onAction(label: string, t: Ticket) {
     opTransferTicket.value = t;
 
     opDialogOpen.value = true;
-
-    return;
-
-  }
-
-  if (label === '指派') {
-
-    assignTicketRow.value = t;
-
-    assignOpen.value = true;
 
     return;
 
@@ -864,17 +784,6 @@ function onClearFilters() {
       :return-count="0"
       :group-id="opTransferTicket?.groupId"
       @confirm="onOpDialogConfirm"
-    />
-
-    <AssignModal
-      v-if="canTransfer"
-      ref="assignRef"
-      v-model:open="assignOpen"
-      :preselected-ids="assignTicketRow ? [assignTicketRow.id] : []"
-      :candidates="TEAM_MEMBERS"
-      :tickets="assignTicketsForModal"
-      :can-cross-team="false"
-      @submit="onAssignSubmit"
     />
 
   </div>

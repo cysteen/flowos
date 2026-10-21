@@ -1626,10 +1626,7 @@ export function queryCenterRowActions(
   if (!canTransferInQueryCenter(roleKey)) return [];
   if (!canTransferTicket(t)) return [];
   if (isFlashTicket(t)) return flashQueryCenterRowActions(t, roleKey);
-  // 工单运营：池内未认领单「指派」到人，已有处理人的单「调剂」（1130 刷机单走查定稿：调剂、指派在查询中心办理）
-  if (roleKey === 'ops-monitor' && t.tab === 'pool' && t.assignee === null) {
-    return [{ label: '指派', primary: true }];
-  }
+  // 查询中心行内只有「调剂」、没有「指派」（1021）：池内未认领单与已有处理人的单一律「调剂」
   if (isTransferredOut(t)) {
     return [{ label: '调剂', primary: true, disabled: true, tip: TRANSFERRED_OUT_TRANSFER_TIP }];
   }
