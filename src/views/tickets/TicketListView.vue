@@ -414,7 +414,7 @@ function onOpDialogConfirm(payload: Record<string, unknown>) {
 
   }
 
-  // 个册退费单（1120 PRD 4.2）：同组内调剂走个册退费服务落库（校园经理 / 城市经理 → 待办短信；组员 → 清外部处理人）
+  // 个册退费单（1120 PRD 4.2）：同组内调剂走个册退费服务落库（校园经理 / 城市经理 → 待办通知；组员 → 清外部处理人）
   if (isRefundTicket(t) && data.scope === 'same') {
     const m = findRefundManager(name);
     const res = m

@@ -2063,7 +2063,7 @@ function onFlashAction(payload: Record<string, unknown>): boolean {
 
 /**
  * 个册退费单底栏动作（1120 PRD §5.3 / 第 4 章）：其余同咨询单。返回 true ＝ 已接管。
- * - 调剂给校园经理 / 城市经理：走个册退费服务落库（待响应 + 待办短信）；
+ * - 调剂给校园经理 / 城市经理：走个册退费服务落库（待响应 + 待办通知）；
  * - 下送：通用下送照跑（校验、履历、Toast），再由个册退费服务落「调研中」并发调研短信（不经工单运营审核）。
  */
 function onRefundAction(payload: Record<string, unknown>): boolean {
@@ -2615,8 +2615,13 @@ function applyCsEventSideEffects(kind: 'supplement' | 'urge') {
       refundStore.syncStatus(d.value.no, pull.to, { how: pull.why, what: `${pull.why}：${from} → ${pull.to}。SLA 解决钟接着跑，不重置。` });
     }
   }
-  // 个册退费单（1120 第 6 章）：外部处理人名下 / 系统退费中发催补短信（系统退费中不拉回，发最近一次提交退费的校园经理）
-  if (isRefund.value) refundStore.onCustomerUrge(d.value.no, kind);
+  // 个册退费单（1120 第 6 章）：外部处理人名下 / 系统退费中发催补通知（系统退费中不拉回，发最近一次提交退费的校园经理）
+  if (isRefund.value) {
+    const detail = kind === 'urge'
+      ? tabData.value.dunningRecords[0]?.content || '坐席发起催单'
+      : tabData.value.supplementRecords[0]?.supplementType ?? '';
+    refundStore.onCustomerUrge(d.value.no, kind, detail);
+  }
   // 刷机单落在审核中四态 / 已委派时，`onCustomerUrge` 不接管，站内催补通知在这里补发
   // （基线 ※19：收件＝当前处理人，无处理人发归属组；协办人不另发）
   if (isFlash.value && (STATUS_GROUP[statusBefore] === '审核中' || statusBefore === '已委派')) {

@@ -16,7 +16,7 @@ import {
   REFUND_POOL_GROUP_ID, REFUND_POOL_GROUP_NAME, REFUND_PRODUCT_CATEGORY, REFUND_PRODUCT_NAME,
   REFUND_STATUS_SYSTEM, REFUND_SYSTEM_HANDLER, REFUND_TAG_L1, REFUND_TAG_L2, REFUND_TAG_L3S,
   REFUND_TICKET_TYPE, REFUND_TL,
-  emptyRefundHandle, refundPooledImText, refundSurveySms, refundTodoSms, refundManagerTlRole,
+  emptyRefundHandle, refundPooledImText, refundSurveySmsText, refundTodoImText, refundManagerTlRole,
   sumRefundAmount,
   type RefundInfo, type RefundManager, type RefundRun, type RefundState, type RefundSubject, type TicketRefund,
 } from '@/views/tickets/types/refund';
@@ -50,6 +50,7 @@ const AUDITOR = '王坐席';
 const AUDITOR_ROLE: TlRole = '二线专员';
 const SOURCE = '电话';
 const L3 = REFUND_TAG_L3S[0];
+const TITLE = `${REFUND_PRODUCT_NAME} · ${L3} · ${SOURCE}`;
 
 let tlSeq = 0;
 function tl(
@@ -87,7 +88,7 @@ function row(
     isRefund: true,
     channel: '电话',
     ticketSource: SOURCE,
-    title: `${REFUND_PRODUCT_NAME} · ${L3} · ${SOURCE}`,
+    title: TITLE,
     smartMarks: [],
     customer,
     vip: false,
@@ -142,8 +143,8 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
   const tickets: Ticket[] = [];
   const notifies: RefundSeedNotify[] = [];
   const todo = (ticketNo: string, m: RefundManager, ms: number) => notifies.push({
-    ticketNo, event: 'ticket.refund.todo', kind: 'assign', status: '已发送', title: '待办短信',
-    receiver: m.name, channel: '短信', content: refundTodoSms(ticketNo), when: at(ms),
+    ticketNo, event: 'ticket.refund.todo', kind: 'assign', status: '已发送', title: '待办通知',
+    receiver: m.name, channel: 'IM', content: refundTodoImText(ticketNo, TITLE), when: at(ms),
   });
   const pooled = (ticketNo: string, ms: number) => notifies.push({
     ticketNo, event: 'ticket.pooled', kind: 'group', status: '未读', title: '到组通知',
@@ -410,7 +411,7 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
     pooled(n, startedMs);
     notifies.push({
       ticketNo: n, event: 'ticket.survey.sent', kind: 'accepted', status: '已发送', title: '调研短信',
-      receiver: '王女士(客户)', channel: '短信', content: refundSurveySms(n), when: at(fwd),
+      receiver: '王女士(客户)', channel: '短信', content: refundSurveySmsText(n, '王女士'), when: at(fwd),
     });
   }
 

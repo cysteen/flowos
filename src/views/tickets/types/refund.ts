@@ -8,6 +8,7 @@
  */
 import type { TlRole } from '@/views/tickets/types/ticketDetail';
 import { LOGIN_URL, templateOf } from '@/mock/notifyRules';
+import { SMS_TEMPLATES, fillTemplate } from '@/mock/notifyTemplates';
 
 /** 个册退费单的工单类型：咨询单 + 「个册退费」标识 */
 export const REFUND_TICKET_TYPE = '咨询' as const;
@@ -335,24 +336,38 @@ export function refundLinkComplaintDesc(no: string): string {
 /* 通知                                                                 */
 /* ------------------------------------------------------------------ */
 
-/** 移动工单 H5 地址（待办短信内的链接，打开即定位本单） */
+/** 移动工单 H5 地址（待办通知内的链接，打开即定位本单） */
 export function refundH5Path(no: string): string {
   return `/m/refund/ticket?no=${no}`;
 }
-/** 短信正文里的 H5 完整链接：客服系统统一登录地址同一域名 + H5 地址 */
+/** 通知正文里的 H5 完整链接：客服系统统一登录地址同一域名 + H5 地址 */
 export function refundH5Url(no: string): string {
   return `${new URL(LOGIN_URL).origin}${refundH5Path(no)}`;
 }
 /** 通知内容里的 H5 链接（含域名；通知记录 Tab 据此渲染为可点） */
 export const REFUND_H5_LINK_RE = /((?:https?:\/\/[^\s/]+)?\/m\/refund\/ticket\?no=[A-Za-z0-9-]+)/;
 
-export function refundTodoSms(no: string): string {
-  return `【讯飞客服】您有一张个册退费工单待处理，工单号：${no}，请登录天鹰APP工作台处理：${refundH5Url(no)}`;
+/** 外部处理人名下不计 SLA（4.3），派发提醒的响应时限按未起算填「—」 */
+const REFUND_NO_DUE = '—';
+
+/** 取 IM 模板正文，「系统登陆地址」填移动工单 H5 链接（外部处理人只在 H5 处理） */
+function refundImBody(code: string, no: string): string {
+  return (templateOf('IM', code)?.body ?? '').replace(LOGIN_URL, refundH5Url(no)).replace('${ticketNo}', no);
 }
-export function refundUrgeSms(no: string, kind: 'urge' | 'supplement'): string {
+
+/**
+ * 待办通知（校园经理 / 城市经理）：同新系统派发通知，IM 模板「工单派发提醒」IM_WO_DISPATCH；
+ * H5 转办沿用「工单委派通知」IM_WO_DELEGATE。
+ */
+export function refundTodoImText(no: string, title: string, via: 'dispatch' | 'delegate' = 'dispatch'): string {
+  if (via === 'delegate') return refundImBody('IM_WO_DELEGATE', no);
+  return refundImBody('IM_WO_DISPATCH', no).replace('${title}', title).replace('${responseDueTime}', REFUND_NO_DUE);
+}
+/** 催补通知（外部处理人）：同新系统催单 / 新建补充通知，IM 模板「工单催办通知」IM_WO_URGE /「工单补充通知」IM_WO_SUPPLEMENT */
+export function refundUrgeImText(no: string, title: string, kind: 'urge' | 'supplement', detail: string): string {
   return kind === 'urge'
-    ? `【讯飞客服】客户已催单，请优先处理个册退费工单 ${no}：${refundH5Url(no)}`
-    : `【讯飞客服】客户补充了新信息，请及时查阅个册退费工单 ${no}：${refundH5Url(no)}`;
+    ? refundImBody('IM_WO_URGE', no).replace('${title}', title).replace('${urgeContent}', detail)
+    : refundImBody('IM_WO_SUPPLEMENT', no).replace('${title}', title).replace('${supplementType}', detail);
 }
 /** 到组通知：沿用咨询单待领取通知文案（IM 模板「工单池待领取提醒」IM_WO_POOLED） */
 export function refundPooledImText(no: string): string {
@@ -361,8 +376,10 @@ export function refundPooledImText(no: string): string {
     .replace('${ticketNo}', no)
     .replace('${loginUrl}', LOGIN_URL);
 }
-export function refundSurveySms(no: string): string {
-  return `【讯飞客服】您的个册退费诉求已处理完毕，请对本次服务进行评价。工单号：${no}。`;
+/** 调研短信：沿用咨询单短信模板「满意度回访」SMS_VISIT */
+export function refundSurveySmsText(no: string, customer: string): string {
+  const tpl = SMS_TEMPLATES.find((t) => t.code === 'SMS_VISIT')?.content ?? '';
+  return fillTemplate(tpl, { no, name: customer, product: REFUND_PRODUCT_NAME, agent: '' });
 }
 
 export const REFUND_NOTIFY_EVENTS = {

@@ -14,7 +14,7 @@ import {
   REFUND_PRODUCT_CATEGORY, REFUND_PRODUCT_NAME, REFUND_RESULT_DELAY_MS, REFUND_STATUS_SYSTEM,
   REFUND_SYSTEM_HANDLER, REFUND_TICKET_TYPE, REFUND_TIP, REFUND_TL, REFUND_TOAST,
   emptyRefundHandle, inflightRefundRun, isRefundTicket, refundManagerTlRole, refundPooledImText,
-  refundSurveySms, refundTodoSms, refundUrgeSms,
+  refundSurveySmsText, refundTodoImText, refundUrgeImText,
   type RefundHandle, type RefundInfo, type RefundManager, type RefundRun, type RefundTaskStatus,
   type TicketRefund,
 } from '@/views/tickets/types/refund';
@@ -142,11 +142,11 @@ export const useRefundStore = defineStore('refund', () => {
 
   /* ---------------- 通知 ---------------- */
 
-  /** 收件人只写姓名 */
-  function todoSms(r: Ticket, m: RefundManager) {
+  /** 待办通知：IM，同新系统派发通知（H5 转办同委派通知）；收件人只写姓名 */
+  function todoIm(r: Ticket, m: RefundManager, via: 'dispatch' | 'delegate') {
     useNotifyLogStore().emit({
-      ticketNo: r.no, event: REFUND_NOTIFY_EVENTS.todo, kind: 'assign', title: '待办短信',
-      receivers: [m.name], content: refundTodoSms(r.no), channel: '短信', status: '已发送',
+      ticketNo: r.no, event: REFUND_NOTIFY_EVENTS.todo, kind: 'assign', title: '待办通知',
+      receivers: [m.name], content: refundTodoImText(r.no, r.title, via), channel: 'IM', status: '已发送',
     });
   }
 
@@ -159,7 +159,7 @@ export const useRefundStore = defineStore('refund', () => {
   }
 
   function surveySms(r: Ticket, at: number) {
-    const content = refundSurveySms(r.no);
+    const content = refundSurveySmsText(r.no, r.customer);
     useNotifyLogStore().emit({
       ticketNo: r.no, event: REFUND_NOTIFY_EVENTS.survey, kind: 'accepted', title: '调研短信',
       receivers: [`${r.customer}(客户)`], content, channel: '短信', status: '已发送',
@@ -189,14 +189,14 @@ export const useRefundStore = defineStore('refund', () => {
 
   /* ---------------- 去向 ---------------- */
 
-  function toManager(r: Ticket, m: RefundManager, at: number, status: TicketStatus = '待响应') {
+  function toManager(r: Ticket, m: RefundManager, at: number, status: TicketStatus = '待响应', via: 'dispatch' | 'delegate' = 'dispatch') {
     // 外部处理人不计入任何班组（附录 C）：名下不挂组，组列显示「—」
     Object.assign(r, {
       nodeStatus: status, assignee: m.name, tab: 'mine', responded: status !== '待响应',
       groupId: undefined, groupNames: [], updatedAt: minute(at),
     });
     r.refund!.state.manager = m;
-    todoSms(r, m);
+    todoIm(r, m, via);
   }
 
   function toPool(r: Ticket, at: number) {
@@ -382,7 +382,7 @@ export const useRefundStore = defineStore('refund', () => {
     const from = r.refund!.state.manager!;
     const now = Date.now();
     log(r, now, { category: 'node', action: 'transfer', who: from.name, role: refundManagerTlRole(from), how: '转办', what: REFUND_TL.transfer(from.name, target) });
-    toManager(r, target, now);
+    toManager(r, target, now, '待响应', 'delegate');
     commit(r);
     return { ok: true, message: '已转办' };
   }
@@ -531,10 +531,11 @@ export const useRefundStore = defineStore('refund', () => {
   }
 
   /**
-   * 催单 / 新建补充的待办短信（第 6 章）：外部处理人名下发给当前处理人；
-   * 系统退费中不拉回，发给最近一次提交退费的校园经理。其余子状态同咨询单（站内催补通知照旧）。
+   * 催单 / 新建补充的催补通知（第 6 章）：外部处理人名下发给当前处理人；
+   * 系统退费中不拉回，发给最近一次提交退费的校园经理。IM，同新系统催单 / 补充通知；
+   * `detail` 为催单内容 / 补充类型。其余子状态同咨询单。
    */
-  function onCustomerUrge(no: string, kind: 'urge' | 'supplement') {
+  function onCustomerUrge(no: string, kind: 'urge' | 'supplement', detail = '') {
     const r = rawOf(no);
     if (!r?.refund) return;
     const st = r.refund.state;
@@ -542,8 +543,8 @@ export const useRefundStore = defineStore('refund', () => {
     if (!to) return;
     useNotifyLogStore().emit({
       ticketNo: no, event: kind === 'urge' ? REFUND_NOTIFY_EVENTS.urge : REFUND_NOTIFY_EVENTS.supplement,
-      kind, title: '催补短信',
-      receivers: [to.name], content: refundUrgeSms(no, kind), channel: '短信', status: '已发送',
+      kind, title: '催补通知',
+      receivers: [to.name], content: refundUrgeImText(no, r.title, kind, detail), channel: 'IM', status: '已发送',
     });
   }
 
@@ -564,7 +565,7 @@ export const useRefundStore = defineStore('refund', () => {
         }
       }
     }
-    // 种子单的通知记录（待办短信 / 到组通知 / 调研短信）：按 id 幂等补进通知记录；
+    // 种子单的通知记录（待办通知 / 到组通知 / 调研短信）：按 id 幂等补进通知记录；
     // 已落通知记录缓存的同 id 条目按种子现值覆盖（文案、收件人、渠道随种子更新）
     const notifyLog = useNotifyLogStore();
     REFUND_SEEDS.notifies.forEach((n, i) => {

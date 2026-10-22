@@ -20,7 +20,7 @@ import { refundH5Account } from './RefundH5Identity';
 /**
  * 移动工单 H5 · 个册退费单详情与处理（1120 个册退费 PRD 5.5 / 5.4 / 3.2 / 附录 A.3；老系统 H5 平移）。
  * 基本信息 · 附件 · 工单历史 · 退费信息表单，底栏「下送 · 保存 · 转办」，全部经个册退费服务落库。
- * 身份：路由参数 `account`（单点登录带入的域账号）；待办短信链接只带单号时按本单外部处理人进入。
+ * 身份：路由参数 `account`（单点登录带入的域账号）；待办通知链接只带单号时按本单外部处理人进入。
  */
 const route = useRoute();
 const router = useRouter();
