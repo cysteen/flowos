@@ -62,6 +62,9 @@ export type TlRole =
   | '工单运营'
   | '质检'
   | '管理员'
+  /** 1120 个册退费单：外部处理人（不建账号、不进角色体系），只作履历徽章 */
+  | '校园经理'
+  | '城市经理'
   | '系统';
 
 export interface AsrLine {
@@ -203,6 +206,8 @@ export const ROLE_BADGE: Record<TlRole, string> = {
   工单运营: '#0369A1',
   质检: '#6D28D9',
   管理员: '#374151',
+  校园经理: '#0F766E',
+  城市经理: '#0F766E',
   系统: '#9CA3AF',
 };
 

@@ -15,6 +15,7 @@
 import type { SlaClock } from '@/mock/ticketDetail';
 import type { FlashState, TicketFlash } from '@/views/tickets/types/flash';
 import { isFlashTicket, parseFlashStamp } from '@/views/tickets/types/flash';
+import { isRefundTicket, type TicketRefund } from '@/views/tickets/types/refund';
 import type { SlaState, Ticket } from '@/views/tickets/types/ticket';
 
 /**
@@ -25,6 +26,9 @@ export interface SlaClockSource {
   /** 「刷机单」标识（1013 A1）：刷机单按它分流，不看工单类型 */
   isFlash?: boolean;
   flash?: TicketFlash;
+  /** 「个册退费」标识（1120）：与刷机单同一本账本口径，进教育退费审核组起算 */
+  isRefund?: boolean;
+  refund?: TicketRefund;
   /** 是否已首响；缺省按子状态推（未认领 / 待响应 = 未响） */
   responded?: boolean;
   nodeStatus?: string;
@@ -68,7 +72,10 @@ function stampMs(s?: string): number | undefined {
  * `elapsed = now − startedAt − pausedAccum − (pausedSince ? now − pausedSince : 0)`
  * 停表后钟不再走，取数时刻钉在 `stoppedAt`。
  */
-export function readFlashSla(st: FlashState, now: number = Date.now()): SlaReading | null {
+export function readFlashSla(
+  st: Pick<FlashState, 'slaStartedAt' | 'slaStoppedAt' | 'slaPausedSince' | 'slaPausedAccumMs' | 'slaOutcome'>,
+  now: number = Date.now(),
+): SlaReading | null {
   const startedAtMs = stampMs(st.slaStartedAt);
   if (startedAtMs == null) return null;
   const stoppedAtMs = stampMs(st.slaStoppedAt);
@@ -106,6 +113,10 @@ export function isFlashSlaCounted(st: Pick<FlashState, 'pool' | 'slaStartedAt'>)
  * 一线名下、未起算的刷机单）返回 `null`，调用方转调现有实现或显示「—」。
  */
 export function readSla(t: SlaClockSource, now: number = Date.now()): SlaReading | null {
+  // 个册退费单（1120 一·补 补7）：外部处理人名下、系统退费中不计；首次进教育退费审核组起算，此后不停表
+  if (isRefundTicket(t) && t.refund) {
+    return isFlashSlaCounted(t.refund.state) ? readFlashSla(t.refund.state, now) : null;
+  }
   if (!isFlashTicket(t) || !t.flash) return null;
   if (!isFlashSlaCounted(t.flash.state)) return null;
   return readFlashSla(t.flash.state, now);

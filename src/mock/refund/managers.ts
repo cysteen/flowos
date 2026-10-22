@@ -1,0 +1,66 @@
+/**
+ * 学校 → 校园经理 / 城市经理对应关系（1120 个册退费单 · PRD 附录 A.2 接口的原型数据）。
+ *
+ * 校园经理、城市经理是外部处理人（一·补 补8）：不建账号、不进角色体系，工单上只记姓名与域账号。
+ * 学校 ID 与学校库（`mock/schools.ts`）同一套。
+ */
+import { findSchoolById } from '@/mock/schools';
+import type { RefundManager } from '@/views/tickets/types/refund';
+
+const campus = (name: string, account: string): RefundManager => ({ name, account, kind: '校园经理' });
+const city = (name: string, account: string): RefundManager => ({ name, account, kind: '城市经理' });
+
+export const CAMPUS_MANAGERS = {
+  yangfan: campus('杨帆', 'fanyang3'),
+  wujing: campus('吴静', 'jingwu6'),
+  maxiao: campus('马骁', 'xiaoma2'),
+  hubin: campus('胡斌', 'binhu'),
+} as const;
+
+export const CITY_MANAGERS = {
+  chengli: city('程立', 'licheng'),
+  zhouhai: city('周海', 'haizhou5'),
+  xuhang: city('许航', 'hangxu'),
+} as const;
+
+/** 学校库 ID → 校园经理 */
+const SCHOOL_CAMPUS: Record<string, RefundManager> = {
+  'SCH-340103-001': CAMPUS_MANAGERS.yangfan, // 合肥市第一中学
+  'SCH-340111-168': CAMPUS_MANAGERS.yangfan, // 合肥一六八中学
+  'SCH-340104-050': CAMPUS_MANAGERS.wujing, // 合肥市五十中学
+  'SCH-340104-007': CAMPUS_MANAGERS.wujing, // 合肥市第七中学
+  'SCH-341502-001': CAMPUS_MANAGERS.maxiao, // 六安第一中学
+  'SCH-340302-002': CAMPUS_MANAGERS.hubin, // 蚌埠第二中学
+};
+
+/** 城市 → 城市经理（学校所在「省 / 市」）；芜湖暂无城市经理 */
+const CITY_MANAGER_BY_CITY: Record<string, RefundManager> = {
+  '安徽省 / 合肥市': CITY_MANAGERS.chengli,
+  '安徽省 / 六安市': CITY_MANAGERS.zhouhai,
+  '安徽省 / 蚌埠市': CITY_MANAGERS.xuhang,
+};
+
+/** 按学校取处理人：校园经理 → 城市经理 → 都取不到返回 undefined（进教育退费审核组池） */
+export function resolveSchoolManager(schoolId: string): RefundManager | undefined {
+  const c = SCHOOL_CAMPUS[schoolId];
+  if (c) return c;
+  const school = findSchoolById(schoolId);
+  if (!school) return undefined;
+  const cityKey = school.region.split(' / ').slice(0, 2).join(' / ');
+  return CITY_MANAGER_BY_CITY[cityKey];
+}
+
+/** 本校校园经理（审核组调剂时预选） */
+export function campusManagerOf(schoolId: string): RefundManager | undefined {
+  return SCHOOL_CAMPUS[schoolId];
+}
+
+/** 全部校园经理、城市经理（转办 / 调剂候选人） */
+export const ALL_REFUND_MANAGERS: RefundManager[] = [
+  ...Object.values(CAMPUS_MANAGERS),
+  ...Object.values(CITY_MANAGERS),
+];
+
+export function findRefundManager(name: string): RefundManager | undefined {
+  return ALL_REFUND_MANAGERS.find((m) => m.name === name);
+}

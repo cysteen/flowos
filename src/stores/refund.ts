@@ -1,0 +1,592 @@
+import { defineStore } from 'pinia';
+import { reactive, ref, toRaw } from 'vue';
+import type { Channel, Priority, Ticket, TicketStatus } from '@/views/tickets/types/ticket';
+import { isTicketClosed } from '@/views/tickets/types/ticket';
+import type { TimelineEntry, TlRole } from '@/views/tickets/types/ticketDetail';
+import { TICKETS } from '@/mock/tickets';
+import { REFUND_SEEDS } from '@/mock/refund/seedTickets';
+import { findRefundOrder } from '@/mock/refund/commodities';
+import { resolveSchoolManager } from '@/mock/refund/managers';
+import { makeTicketNo } from '@/constants/ticketNo';
+import { flashStamp, parseFlashStamp } from '@/views/tickets/types/flash';
+import {
+  REFUND_NOTIFY_EVENTS, REFUND_PENDING_STEP_MS, REFUND_POOL_GROUP_ID, REFUND_POOL_GROUP_NAME,
+  REFUND_PRODUCT_CATEGORY, REFUND_PRODUCT_NAME, REFUND_RESULT_DELAY_MS, REFUND_STATUS_SYSTEM,
+  REFUND_SYSTEM_HANDLER, REFUND_TICKET_TYPE, REFUND_TIP, REFUND_TL, REFUND_TOAST,
+  emptyRefundHandle, inflightRefundRun, isRefundTicket, refundManagerTlRole, refundPoolIm,
+  refundSurveySms, refundTodoSms, refundUrgeSms,
+  type RefundHandle, type RefundInfo, type RefundManager, type RefundRun, type RefundTaskStatus,
+  type TicketRefund,
+} from '@/views/tickets/types/refund';
+import { useNotifyLogStore } from './notifyLog';
+
+/**
+ * 个册退费单 · 个册退费服务（1120 个册退费工单 PRD 第 3–7 章）。
+ *
+ * 【数据源】个册退费单与其他工单同在工单库 `TICKETS`；本服务**只改那一份对象**（经 `reactive` 写入，
+ * 已打开的列表随之刷新），履历写在工单行的 `eventTimeline` 上（处理页按「本单自有数据」读它）。
+ *
+ * 【写口】建单派单、移动工单 H5（保存 / 下送 / 转办）、产线结果定时查询（`settleDue`）、
+ * 教育退费审核组的调剂给校园经理与下送、关联投诉。其余动作同咨询单，走处理页通用分支。
+ *
+ * 【持久化】个册退费单快照（含关联投诉建出的投诉单）落 localStorage，12 小时保质。
+ */
+
+export interface RefundActor {
+  name: string;
+  role: TlRole;
+}
+
+export type RefundActionResult = { ok: true; message: string } | { ok: false; message: string };
+
+export interface RefundCreateBase {
+  customer: string;
+  customerPhone?: string;
+  customerGender?: string;
+  customerRegion?: string;
+  customerAddress?: string;
+  vip?: boolean;
+  channel: Channel;
+  ticketSource: string;
+  priority: Priority;
+  title: string;
+  problemL1: string;
+  problemL2: string;
+  problemL3: string;
+  problemDesc: string;
+  problemDescAttachments: string[];
+}
+
+const LS_KEY = 'flowos-refund-cache';
+const CACHE_VERSION = 1;
+const STALE_MS = 12 * 60 * 60 * 1000;
+
+interface RefundCache { v: number; savedAt: number; tickets: Ticket[] }
+
+function readCache(): RefundCache | null {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return null;
+    const c = JSON.parse(raw) as RefundCache;
+    if (c?.v !== CACHE_VERSION || typeof c.savedAt !== 'number' || Date.now() - c.savedAt > STALE_MS || !Array.isArray(c.tickets)) {
+      localStorage.removeItem(LS_KEY);
+      return null;
+    }
+    return c;
+  } catch {
+    return null;
+  }
+}
+
+const minute = (ms: number) => flashStamp(ms).slice(0, 16);
+
+export const useRefundStore = defineStore('refund', () => {
+  const revisions = ref<Record<string, number>>({});
+  let tlSeq = 0;
+
+  /* ---------------- 读 ---------------- */
+
+  function rawOf(no: string): Ticket | undefined {
+    return TICKETS.find((t) => t.no === no);
+  }
+
+  /** 工单库里的个册退费单（响应式代理） */
+  function rowOf(no: string): Ticket | undefined {
+    const t = rawOf(no);
+    return t && isRefundTicket(t) && t.refund ? reactive(t) : undefined;
+  }
+
+  function revisionOf(no: string): number {
+    return revisions.value[no] ?? 0;
+  }
+
+  /** 与某投诉单弱关联的个册退费单号 */
+  function refundNoLinkedTo(complaintNo: string): string | undefined {
+    return TICKETS.find((t) => isRefundTicket(t) && t.refund?.state.linkedComplaintNos?.includes(complaintNo))?.no;
+  }
+
+  /* ---------------- 写：公共 ---------------- */
+
+  function bump(no: string) {
+    revisions.value = { ...revisions.value, [no]: revisionOf(no) + 1 };
+  }
+
+  function persist() {
+    try {
+      const linked = new Set(TICKETS.flatMap((t) => (isRefundTicket(t) ? t.refund?.state.linkedComplaintNos ?? [] : [])));
+      const tickets = TICKETS.filter((t) => (isRefundTicket(t) && t.refund) || linked.has(t.no)).map((t) => toRaw(t));
+      localStorage.setItem(LS_KEY, JSON.stringify({ v: CACHE_VERSION, savedAt: Date.now(), tickets } satisfies RefundCache));
+    } catch {
+      /* 配额超限等忽略 */
+    }
+  }
+
+  function commit(r: Ticket) {
+    persist();
+    bump(r.no);
+  }
+
+  function log(r: Ticket, at: number, partial: Omit<TimelineEntry, 'id' | 'when'>) {
+    tlSeq += 1;
+    const entry: TimelineEntry = {
+      id: `refund-${r.no}-${Date.now().toString(36)}-${tlSeq}`,
+      when: flashStamp(at),
+      ...(partial.role === '系统' ? { systemActor: true } : {}),
+      ...partial,
+    };
+    r.eventTimeline = [...(r.eventTimeline ?? []), entry];
+  }
+
+  const SYS = { who: '系统', role: '系统' as TlRole };
+
+  /* ---------------- 通知 ---------------- */
+
+  function todoSms(r: Ticket, m: RefundManager) {
+    useNotifyLogStore().emit({
+      ticketNo: r.no, event: REFUND_NOTIFY_EVENTS.todo, kind: 'assign', title: '待办短信',
+      receivers: [`${m.name}(${m.kind})`], content: refundTodoSms(r.no), channel: '短信', status: '已发送',
+    });
+  }
+
+  function poolIm(r: Ticket) {
+    useNotifyLogStore().emit({
+      ticketNo: r.no, event: REFUND_NOTIFY_EVENTS.pooled, kind: 'group', title: '到组通知',
+      receivers: [REFUND_POOL_GROUP_NAME], content: refundPoolIm(r.no), channel: 'i讯飞',
+    });
+  }
+
+  function surveySms(r: Ticket, at: number) {
+    const content = refundSurveySms(r.no);
+    useNotifyLogStore().emit({
+      ticketNo: r.no, event: REFUND_NOTIFY_EVENTS.survey, kind: 'accepted', title: '调研短信',
+      receivers: [`${r.customer}(客户)`], content, channel: '短信', status: '已发送',
+    });
+    log(r, at, { category: 'comm', action: 'sms', ...SYS, how: '短信通知', what: `发送至 ${r.customerPhone ?? r.customer}：${content}` });
+  }
+
+  /* ---------------- SLA 账本（与刷机单同名字段，读数走 readFlashSla） ---------------- */
+
+  /** 首次进入教育退费审核组起算，此后不论在谁名下都照常计时 */
+  function startSla(r: Ticket, at: number) {
+    const st = r.refund!.state;
+    if (!st.slaStartedAt) st.slaStartedAt = flashStamp(at);
+  }
+
+  function pauseSla(r: Ticket, at: number) {
+    const st = r.refund!.state;
+    if (st.slaStartedAt && !st.slaPausedSince && !st.slaStoppedAt) st.slaPausedSince = flashStamp(at);
+  }
+
+  function resumeSla(r: Ticket, at: number) {
+    const st = r.refund!.state;
+    if (!st.slaPausedSince) return;
+    st.slaPausedAccumMs = (st.slaPausedAccumMs ?? 0) + Math.max(0, at - parseFlashStamp(st.slaPausedSince).getTime());
+    st.slaPausedSince = undefined;
+  }
+
+  /* ---------------- 去向 ---------------- */
+
+  function toManager(r: Ticket, m: RefundManager, at: number, status: TicketStatus = '待响应') {
+    Object.assign(r, {
+      nodeStatus: status, assignee: m.name, tab: 'mine', responded: status !== '待响应',
+      groupId: REFUND_POOL_GROUP_ID, groupNames: [REFUND_POOL_GROUP_NAME], updatedAt: minute(at),
+    });
+    r.refund!.state.manager = m;
+    todoSms(r, m);
+  }
+
+  function toPool(r: Ticket, at: number) {
+    Object.assign(r, {
+      nodeStatus: '未认领', assignee: null, tab: 'pool', responded: false,
+      groupId: REFUND_POOL_GROUP_ID, groupNames: [REFUND_POOL_GROUP_NAME], updatedAt: minute(at),
+    });
+    r.refund!.state.manager = undefined;
+    startSla(r, at);
+    poolIm(r);
+  }
+
+  /* ---------------- 建单 ---------------- */
+
+  function nextNo(now: number): string {
+    const d = new Date(now);
+    const used = new Set(TICKETS.map((t) => t.no));
+    let seq = 900 + (TICKETS.filter((t) => isRefundTicket(t)).length % 90);
+    let n = makeTicketNo(REFUND_TICKET_TYPE, seq, d);
+    while (used.has(n)) {
+      seq += 1;
+      n = makeTicketNo(REFUND_TICKET_TYPE, seq, d);
+    }
+    return n;
+  }
+
+  /** 建个册退费单并按学校派单：校园经理 → 城市经理 → 教育退费审核组池 */
+  function createRefundTicket(info: RefundInfo, base: RefundCreateBase, actor: RefundActor): { ticket: Ticket; message: string } {
+    const now = Date.now();
+    const no = nextNo(now);
+    const r = reactive({
+      id: `refund-rt-${no}`,
+      no,
+      type: REFUND_TICKET_TYPE,
+      isRefund: true,
+      channel: base.channel,
+      ticketSource: base.ticketSource,
+      title: base.title,
+      smartMarks: [],
+      customer: base.customer,
+      vip: !!base.vip,
+      customerPhone: base.customerPhone,
+      customerGender: base.customerGender,
+      customerRegion: base.customerRegion,
+      customerAddress: base.customerAddress,
+      businessType: '教育',
+      businessLine: '教育业务线',
+      productCategory: REFUND_PRODUCT_CATEGORY,
+      product: REFUND_PRODUCT_NAME,
+      problemL1: base.problemL1,
+      problemL2: base.problemL2,
+      problemL3: base.problemL3,
+      problemDesc: base.problemDesc,
+      problemDescAttachments: base.problemDescAttachments,
+      priority: base.priority,
+      closureMode: '正常流程',
+      nodeStep: 1,
+      nodeTotal: 5,
+      nodeStatus: '待响应',
+      assignee: null,
+      tab: 'mine',
+      slaText: '08:00:00', slaSub: '充足', slaState: 'ok', slaMinutes: 480,
+      createdAt: minute(now),
+      updatedAt: minute(now),
+      feishuSync: 'none',
+      eventTimeline: [],
+      refund: { info, handle: emptyRefundHandle(info), state: {}, runs: [] } satisfies TicketRefund,
+    } as Ticket);
+    TICKETS.unshift(toRaw(r));
+    log(r, now, { category: 'node', action: 'create', who: actor.name, role: actor.role, how: '建单', what: REFUND_TL.create(base.ticketSource) });
+    const m = resolveSchoolManager(info.schoolId);
+    let message: string;
+    if (m) {
+      toManager(r, m, now);
+      log(r, now + 1, { category: 'node', action: 'transfer', ...SYS, how: '派单', what: REFUND_TL.dispatchManager(m) });
+      message = REFUND_TOAST.createdToManager(no, m.name);
+    } else {
+      toPool(r, now);
+      log(r, now + 1, { category: 'node', action: 'transfer', ...SYS, how: '派单', what: REFUND_TL.dispatchPool });
+      message = REFUND_TOAST.createdToPool(no);
+    }
+    commit(r);
+    return { ticket: rawOf(no)!, message };
+  }
+
+  /* ---------------- 移动工单 H5（校园经理 / 城市经理） ---------------- */
+
+  /** H5 当前操作人：本单的外部处理人；系统退费中为最近一次提交人 */
+  function h5ActorOf(no: string): RefundManager | undefined {
+    const st = rawOf(no)?.refund?.state;
+    return st?.manager ?? st?.lastSubmitter;
+  }
+
+  /** H5 上可操作（保存 / 下送 / 转办）：单在外部处理人名下 */
+  function h5Gate(no: string): RefundActionResult {
+    const r = rawOf(no);
+    if (!r?.refund) return { ok: false, message: '' };
+    if (r.nodeStatus === REFUND_STATUS_SYSTEM) return { ok: false, message: REFUND_TIP.h5Locked };
+    if (!r.refund.state.manager || isTicketClosed(r.nodeStatus)) return { ok: false, message: '' };
+    return { ok: true, message: '' };
+  }
+
+  function markResponded(r: Ticket) {
+    if (r.nodeStatus === '待响应') r.nodeStatus = '处理中';
+    r.responded = true;
+  }
+
+  function h5Save(no: string, handle: RefundHandle): RefundActionResult {
+    const gate = h5Gate(no);
+    if (!gate.ok) return gate;
+    const r = rowOf(no)!;
+    const m = r.refund!.state.manager!;
+    const now = Date.now();
+    r.refund!.handle = { ...structuredClone(toRaw(handle)), savedBy: m.name, savedAt: flashStamp(now) };
+    markResponded(r);
+    r.updatedAt = minute(now);
+    log(r, now, { category: 'handle', action: 'handle', who: m.name, role: refundManagerTlRole(m), how: '保存', what: REFUND_TL.save });
+    commit(r);
+    return { ok: true, message: '已保存' };
+  }
+
+  /**
+   * H5 下送：「是」→ 创建退费（产线受理进「系统退费中」/ 拒绝留本人「处理中」）；
+   * 「否」→ 教育退费审核组池。表单校验由页面先做（PRD 5.1 下送校验）。
+   */
+  function h5Forward(no: string, handle: RefundHandle): RefundActionResult {
+    const gate = h5Gate(no);
+    if (!gate.ok) return gate;
+    const r = rowOf(no)!;
+    const ref = r.refund!;
+    const m = ref.state.manager!;
+    const now = Date.now();
+    ref.handle = { ...structuredClone(toRaw(handle)), savedBy: m.name, savedAt: flashStamp(now) };
+    markResponded(r);
+    if (handle.submitRefund === '否') {
+      log(r, now, { category: 'node', action: 'transfer', who: m.name, role: refundManagerTlRole(m), how: '下送', what: REFUND_TL.forwardNo(handle.remark.trim()) });
+      toPool(r, now);
+      commit(r);
+      return { ok: true, message: '已下送' };
+    }
+    if (inflightRefundRun(ref)) return { ok: false, message: REFUND_TIP.inflight };
+    const order = findRefundOrder(handle.orderNo);
+    if (order?.createError) {
+      log(r, now, { category: 'node', action: 'handle', who: m.name, role: refundManagerTlRole(m), how: '提交退费', what: REFUND_TL.submitFail(order.createError) });
+      r.updatedAt = minute(now);
+      commit(r);
+      return { ok: false, message: REFUND_TIP.submitFailed(order.createError) };
+    }
+    const seq = ref.runs.length + 1;
+    const plan = order?.plan ?? [];
+    const finalStatus: RefundTaskStatus = plan[seq - 1] ?? plan[plan.length - 1] ?? '退费成功';
+    const run: RefundRun = {
+      id: `refund-run-${no}-${seq}-${now}`,
+      seq,
+      submittedAt: flashStamp(now),
+      submittedAtMs: now,
+      submitter: m.name,
+      submitterAccount: m.account,
+      taskId: `RT${no.slice(-5)}${String(seq).padStart(2, '0')}${String(now).slice(-6)}`,
+      items: structuredClone(toRaw(handle.subjects)),
+      status: '待审核',
+      closeAuth: handle.closeAuth === '否' ? '否' : '是',
+      ...(handle.closeAuth === '否' ? { notCloseReason: handle.notCloseReason.trim() } : {}),
+      pendingAtMs: now + REFUND_PENDING_STEP_MS,
+      settleAtMs: now + REFUND_RESULT_DELAY_MS,
+      finalStatus,
+      ...(finalStatus === '已驳回' ? { finalRejectReason: order?.rejectReason ?? '退费信息有误，请核对后重新提交' } : {}),
+    };
+    ref.runs = [...ref.runs, run];
+    ref.state.lastSubmitter = m;
+    ref.state.manager = undefined;
+    Object.assign(r, { nodeStatus: REFUND_STATUS_SYSTEM, assignee: REFUND_SYSTEM_HANDLER, updatedAt: minute(now) });
+    log(r, now, { category: 'node', action: 'handle', who: m.name, role: refundManagerTlRole(m), how: '提交退费', what: REFUND_TL.submit(run.taskId, run.items) });
+    commit(r);
+    return { ok: true, message: REFUND_TOAST.submitted };
+  }
+
+  /** H5 转办（即本系统的调剂）：转给所选校园经理 / 城市经理，「待响应」 */
+  function h5Transfer(no: string, target: RefundManager): RefundActionResult {
+    const gate = h5Gate(no);
+    if (!gate.ok) return gate;
+    const r = rowOf(no)!;
+    const from = r.refund!.state.manager!;
+    const now = Date.now();
+    log(r, now, { category: 'node', action: 'transfer', who: from.name, role: refundManagerTlRole(from), how: '转办', what: REFUND_TL.transfer(from.name, target) });
+    toManager(r, target, now);
+    commit(r);
+    return { ok: true, message: '已转办' };
+  }
+
+  /* ---------------- 产线结果定时查询 ---------------- */
+
+  function settleDue(now: number = Date.now()): number {
+    let changed = 0;
+    for (const t of TICKETS) {
+      if (!isRefundTicket(t) || !t.refund) continue;
+      const run = inflightRefundRun(t.refund);
+      if (!run || !run.settleAtMs) continue;
+      const r = reactive(t);
+      const ref = r.refund!;
+      const live = ref.runs.find((x) => x.id === run.id)!;
+      if (live.status === '待审核' && live.pendingAtMs && now >= live.pendingAtMs) {
+        live.status = '待退费';
+        live.resultAt = flashStamp(live.pendingAtMs);
+        log(r, live.pendingAtMs, { category: 'node', action: 'handle', ...SYS, how: '退费结果回写', what: REFUND_TL.result(live.taskId, '待退费') });
+        changed += 1;
+      }
+      const settleAt = run.settleAtMs;
+      if (now < settleAt) {
+        if (changed) commit(r);
+        continue;
+      }
+      const at = settleAt;
+      const fin = live.finalStatus ?? '退费成功';
+      live.status = fin;
+      live.resultAt = flashStamp(at);
+      if (fin === '已驳回') live.rejectReason = live.finalRejectReason;
+      log(r, at, { category: 'node', action: 'handle', ...SYS, how: '退费结果回写', what: REFUND_TL.result(live.taskId, fin) });
+      if (fin === '已驳回') {
+        const back = ref.state.lastSubmitter!;
+        log(r, at + 1, { category: 'node', action: 'transfer', ...SYS, how: '驳回回退', what: REFUND_TL.rejectBack(live.rejectReason ?? '', back.name) });
+        toManager(r, back, at, '处理中');
+      } else {
+        log(r, at + 1, { category: 'node', action: 'transfer', ...SYS, how: '自动下送', what: REFUND_TL.autoForward(fin) });
+        toPool(r, at);
+      }
+      changed += 1;
+      commit(r);
+    }
+    return changed;
+  }
+
+  /* ---------------- PC：教育退费审核组 ---------------- */
+
+  /** 领取（通用落库 `claimPoolTicket` 之后）：落快照、刷新处理页 */
+  function afterClaim(no: string) {
+    const r = rowOf(no);
+    if (r) commit(r);
+  }
+
+  /** 调剂给校园经理 / 城市经理（第 4 章第 5 行） */
+  function assignToManager(no: string, m: RefundManager, by: RefundActor): RefundActionResult {
+    const r = rowOf(no);
+    if (!r) return { ok: false, message: '' };
+    if (r.nodeStatus === REFUND_STATUS_SYSTEM) return { ok: false, message: REFUND_TIP.inProgress };
+    const now = Date.now();
+    log(r, now, { category: 'node', action: 'transfer', who: by.name, role: by.role, how: '调剂', what: REFUND_TL.assignManager(m) });
+    toManager(r, m, now);
+    commit(r);
+    return { ok: true, message: `已调剂给 ${m.name}` };
+  }
+
+  /** 审核组下送：进「调研中」，发调研短信（不经工单运营审核） */
+  function forwardToSurvey(no: string, by: RefundActor): RefundActionResult {
+    const r = rowOf(no);
+    if (!r) return { ok: false, message: '' };
+    const now = Date.now();
+    Object.assign(r, { nodeStatus: '调研中', updatedAt: minute(now), responded: true });
+    log(r, now, { category: 'node', action: 'transfer', who: by.name, role: by.role, how: '下送', what: REFUND_TL.forwardSurvey });
+    pauseSla(r, now);
+    surveySms(r, now + 1);
+    commit(r);
+    return { ok: true, message: '已下送，工单进入「调研中」' };
+  }
+
+  /** 通用动作改了子状态后同步回工单库（催补拉回、撤回等） */
+  function syncStatus(no: string, status: string) {
+    const r = rowOf(no);
+    if (!r || r.nodeStatus === status) return;
+    const now = Date.now();
+    if (r.nodeStatus === '调研中') resumeSla(r, now);
+    if (status === '调研中') pauseSla(r, now);
+    r.nodeStatus = status as TicketStatus;
+    r.updatedAt = minute(now);
+    commit(r);
+  }
+
+  /** 处理页「保存」落了处理登记：待响应 → 处理中 */
+  function markRespondedOnPage(no: string) {
+    const r = rowOf(no);
+    if (!r || r.responded) return;
+    markResponded(r);
+    commit(r);
+  }
+
+  /** 关联投诉（弱关联，两单各自流转，本单状态不变） */
+  function linkComplaint(no: string, complaint: Ticket, by: RefundActor): RefundActionResult {
+    const r = rowOf(no);
+    if (!r) return { ok: false, message: '' };
+    const now = Date.now();
+    r.refund!.state.linkedComplaintNos = [...(r.refund!.state.linkedComplaintNos ?? []), complaint.no];
+    log(r, now, { category: 'relate', action: 'relate', who: by.name, role: by.role, how: '关联投诉', what: REFUND_TL.linkComplaint(complaint.no) });
+    const c = rawOf(complaint.no);
+    if (c) {
+      c.eventTimeline = [...(c.eventTimeline ?? []), {
+        id: `refund-link-${complaint.no}-${now}`, category: 'relate', action: 'relate', who: by.name, role: by.role,
+        how: '关联个册退费单', what: REFUND_TL.linkedFromRefund(no), when: flashStamp(now),
+      }];
+    }
+    commit(r);
+    return { ok: true, message: `已关联投诉单 ${complaint.no}` };
+  }
+
+  /**
+   * 催单 / 新建补充的待办短信（第 6 章）：外部处理人名下发给当前处理人；
+   * 系统退费中不拉回，发给最近一次提交退费的校园经理。其余子状态同咨询单（站内催补通知照旧）。
+   */
+  function onCustomerUrge(no: string, kind: 'urge' | 'supplement') {
+    const r = rawOf(no);
+    if (!r?.refund) return;
+    const st = r.refund.state;
+    const to = r.nodeStatus === REFUND_STATUS_SYSTEM ? st.lastSubmitter : st.manager;
+    if (!to) return;
+    useNotifyLogStore().emit({
+      ticketNo: no, event: kind === 'urge' ? REFUND_NOTIFY_EVENTS.urge : REFUND_NOTIFY_EVENTS.supplement,
+      kind, title: kind === 'urge' ? '催单短信' : '补充短信',
+      receivers: [`${to.name}(${to.kind})`], content: refundUrgeSms(no, kind), channel: '短信', status: '已发送',
+    });
+  }
+
+  /* ---------------- 装载 ---------------- */
+
+  function hydrate() {
+    const cached = readCache();
+    if (cached) {
+      for (const saved of cached.tickets) {
+        const existing = rawOf(saved.no);
+        if (existing) {
+          (Object.keys(existing) as (keyof Ticket)[]).forEach((k) => {
+            if (!(k in saved)) delete (existing as unknown as Record<string, unknown>)[k];
+          });
+          Object.assign(existing, saved);
+        } else {
+          TICKETS.push(saved);
+        }
+      }
+    }
+    // 种子单的通知记录（待办短信 / 到组通知 / 调研短信）：按 id 幂等补进通知记录
+    const notifyLog = useNotifyLogStore();
+    const have = new Set(notifyLog.records.map((x) => x.id));
+    REFUND_SEEDS.notifies.forEach((n, i) => {
+      const id = `refund-seed-${n.ticketNo}-${i}`;
+      if (have.has(id)) return;
+      notifyLog.records.push({
+        id, ticketNo: n.ticketNo, event: n.event, kind: n.kind, title: n.title,
+        receiver: n.receiver, when: n.when, channel: n.channel, status: n.status, content: n.content,
+      });
+    });
+  }
+
+  function syncFromOtherTab() {
+    const cached = readCache();
+    if (!cached) return;
+    for (const saved of cached.tickets) {
+      const existing = rawOf(saved.no);
+      if (existing) {
+        const r = reactive(existing) as unknown as Record<string, unknown>;
+        Object.keys(existing).forEach((k) => { if (!(k in saved)) delete r[k]; });
+        Object.assign(r, saved);
+      } else {
+        TICKETS.push(saved);
+      }
+      bump(saved.no);
+    }
+  }
+
+  hydrate();
+  settleDue();
+  persist();
+  if (typeof window !== 'undefined') {
+    window.setInterval(() => settleDue(), 1000);
+    window.addEventListener('storage', (e) => {
+      if (e.key === LS_KEY && e.newValue) syncFromOtherTab();
+    });
+  }
+
+  return {
+    revisions,
+    rowOf,
+    revisionOf,
+    refundNoLinkedTo,
+    createRefundTicket,
+    h5ActorOf,
+    h5Gate,
+    h5Save,
+    h5Forward,
+    h5Transfer,
+    settleDue,
+    afterClaim,
+    assignToManager,
+    forwardToSurvey,
+    syncStatus,
+    markRespondedOnPage,
+    linkComplaint,
+    onCustomerUrge,
+  };
+});

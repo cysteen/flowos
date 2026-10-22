@@ -1,5 +1,6 @@
 import { isFlashTicket } from '@/views/tickets/types/flash';
 import { isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
+import { isRefundTicket } from '@/views/tickets/types/refund';
 import type { Ticket } from '@/views/tickets/types/ticket';
 import { isFirstResponded, isSlaPaused, resolveTicketGroupNames, SLA_COLOR } from '@/views/tickets/types/ticket';
 import { resolveCurrentFlowNode, resolvePreviousFlowNode } from '@/views/tickets/utils/ticketFlowNodes';
@@ -135,6 +136,10 @@ export function isSlaVoidStop(t: Ticket): boolean {
  * 老四类恒为 false。
  */
 export function isFlashSlaIdle(t: Ticket): boolean {
+  if (isRefundTicket(t) && t.refund) {
+    // 个册退费单与刷机单一线同一口径（1120 一·补 补7）：未进教育退费审核组不计时，调研中显示「—」
+    return !isFlashSlaCounted(t.refund.state) || t.nodeStatus === '调研中';
+  }
   if (!isFlashTicket(t) || !t.flash) return false;
   return !isFlashSlaCounted(t.flash.state) || t.nodeStatus === '调研中';
 }

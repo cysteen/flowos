@@ -4,6 +4,7 @@ import { mapChannelToSource } from '@/views/tickets/types/createTicket';
 import { todayStamp } from '@/stores/riskShared';
 import { FLASH_SEEDS } from './flash/seedTickets';
 import { XIAOZHI_SEEDS } from './xiaozhi/seedTickets';
+import { REFUND_SEEDS } from './refund/seedTickets';
 import {
   applyAftersaleEvent, applyAftersaleResult, migrateAftersaleLink, routeAftersaleEvent, takeOverReturnedTicket,
   type AftersaleEvent, type AftersaleInboundSeed,
@@ -1746,3 +1747,7 @@ export const SEED_TICKET_NOS: ReadonlySet<string> = new Set(TICKETS.map((t) => t
 export const SEED_CLAIMED_TICKET_NOS: ReadonlySet<string> = new Set(
   TICKETS.filter((t) => !!t.assignee).map((t) => t.no),
 );
+
+// 个册退费单样本（1120）排在两个种子单号集合之后并入：处理页、Tab、表单一律按「本单自有数据」展示，
+// 不并入类型样例；写口为个册退费服务 `stores/refund.ts`
+TICKETS.push(...REFUND_SEEDS.tickets.map((t) => ({ ...defaultListExtras(t), ...t })));

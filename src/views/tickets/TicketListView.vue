@@ -28,6 +28,8 @@ import { mapUserRole, type TransferPayload } from './composables/opActions';
 
 import { useFlashStore } from '@/stores/flash';
 
+import { useRefundStore } from '@/stores/refund';
+
 import { isFlashTicket, type FlashActor } from './types/flash';
 
 import { useTicketList } from './composables/useTicketList';
@@ -83,6 +85,9 @@ import { useUserStore } from '@/stores/user';
 const derivedTickets = useDerivedTicketStore();
 
 const flashStore = useFlashStore();
+
+// 个册退费单快照与产线结果定时查询（1120）
+useRefundStore();
 
 const props = defineProps<{ embedded?: boolean; filtersExpanded?: boolean }>();
 

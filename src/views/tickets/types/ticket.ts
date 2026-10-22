@@ -8,6 +8,10 @@ import {
   XIAOZHI_POOL_GROUP_ID, XIAOZHI_POOL_GROUP_NAME,
   isXiaozhiPooledRecord, type TicketXiaozhi,
 } from '@/views/tickets/types/xiaozhi';
+import {
+  REFUND_POOL_GROUP_ID, REFUND_POOL_GROUP_NAME, REFUND_STATUS_SYSTEM, REFUND_TIP,
+  isRefundTicket, type TicketRefund,
+} from '@/views/tickets/types/refund';
 import { readSla, slaStateOf } from '@/views/tickets/utils/slaClock';
 
 /**
@@ -149,6 +153,11 @@ export type TicketStatus =
    * 已起算的 SLA 照常计时（1130 PRD §4.3，1021）。**基线待同步项**：基线 §1 尚无此子状态。
    */
   | '自动刷机中'
+  /**
+   * 个册退费单专属（1120）：校园经理提交退费、产线受理后等结果。分组归「处理中」，处理人「系统」；
+   * 底栏冻结（只留保存），催补可做、不拉回。
+   */
+  | '系统退费中'
   /** 结案方式＝**正常流程**的单走完调研后到这里（基线 §1 该行） */
   | '已结案'
   /**
@@ -187,7 +196,7 @@ export const BASELINE_STATUSES: TicketStatus[] = [
   '草稿', '未认领', '待响应', '处理中', '调研中',
   '申请挂起中', '申请关闭中', '申请强结中', '业务动作审核中',
   '已挂起', '已升级技术支持', '已升级产研', '已升级投诉', '已升级外投',
-  '已委派', '已退回', '已转出', '自动刷机中',
+  '已委派', '已退回', '已转出', '自动刷机中', '系统退费中',
   '已结案', '已关闭', '已强结', '已转咨询', '已转建议', '已转商机', '已取消', '直接结案',
 ];
 
@@ -228,6 +237,7 @@ export const STATUS_GROUP: Record<TicketStatus, StatusGroup> = {
   已退回: '处理中',
   已转出: '处理中',
   自动刷机中: '处理中',
+  系统退费中: '处理中',
   已结案: '终态',
   已关闭: '终态',
   已强结: '终态',
@@ -288,6 +298,7 @@ export const STATUS_DISPLAY_NAME: Record<TicketStatus, string> = {
   已退回: '已退回',
   已转出: '已转售后',
   自动刷机中: '自动刷机中',
+  系统退费中: '系统退费中',
   已结案: '已结案',
   已关闭: '已关闭',
   已强结: '已强结',
@@ -368,6 +379,8 @@ const REVIEW_STATUSES: TicketStatus[] = [
  */
 export function statusTone(status: TicketStatus): StatusTone {
   if (status === '自动刷机中') return 'auto';
+  // 个册退费单「系统退费中」：同为系统自动环节、不在人手上（1120）
+  if (status === REFUND_STATUS_SYSTEM) return 'auto';
   if (STATUS_GROUP[status] !== '终态') {
     return STATUS_GROUP[status] === '初始' ? 'primary' : 'warning';
   }
@@ -714,6 +727,13 @@ export interface Ticket {
    * 列表与处理页读同一份；写口只有小智服务 `stores/xiaozhi.ts`。
    */
   xiaozhi?: TicketXiaozhi;
+  /**
+   * 「个册退费」标识（1120 个册退费工单）：个册退费单的工单类型是咨询，靠本标识区分。
+   * 读取一律走 `isRefundTicket(t)`（types/refund.ts）。
+   */
+  isRefund?: boolean;
+  /** 个册退费字段组（仅个册退费单有值）：退费信息 + 移动工单 H5 处理值 + 退费记录；写口只有 `stores/refund.ts` */
+  refund?: TicketRefund;
 }
 
 /** 新建工单弹窗预填（子单 / reopen 场景从原单继承客户/产品/渠道等） */
@@ -865,6 +885,8 @@ export function slaSortKey(t: Ticket): { group: number; minutes: number } {
   }
   // 刷机单未计 SLA（一线、未进教育刷机处理组池，1013 A26）：无活跃钟，与终态同组
   if (isFlashTicket(t)) return { group: 4, minutes: Number.MAX_SAFE_INTEGER };
+  // 个册退费单未计 SLA（外部处理人名下、系统退费中、未进教育退费审核组）：同刷机单一线不计时
+  if (isRefundTicket(t)) return { group: 4, minutes: Number.MAX_SAFE_INTEGER };
   if (t.slaText === '—') return { group: 4, minutes: Number.MAX_SAFE_INTEGER }; // 终态：无活跃钟
   if (isSlaPaused(t)) return { group: 3, minutes: Number.MAX_SAFE_INTEGER }; // 挂起（老四类）：冻结置底
   // 活跃钟集合：扁平摘要（已响=解决钟 / 未响=首响钟）+ 未响时的解决钟独立字段
@@ -1063,6 +1085,8 @@ export const POOL_GROUPS: PoolGroupMeta[] = [
   { id: 'edu-flash', label: '教育刷机处理组' },
   // 1130 小智工单 D21：一个大组、进池自己领，不按产品 / 优先级细分、不直派到个人
   { id: XIAOZHI_POOL_GROUP_ID, label: XIAOZHI_POOL_GROUP_NAME },
+  // 1120 个册退费单：兜底、退费成功 / 部分完成自动下送、校园经理选「否」下送都进本组工单池
+  { id: REFUND_POOL_GROUP_ID, label: REFUND_POOL_GROUP_NAME },
 ];
 
 /**
@@ -1142,6 +1166,8 @@ export function visiblePoolGroupsFor(roleKey: string): PoolGroupMeta[] {
   return POOL_GROUPS.filter((g) => {
     if (g.id === EDU_FLASH_GROUP_ID) return EDU_FLASH_POOL_ROLES.has(roleKey);
     if (g.id === XIAOZHI_POOL_GROUP_ID) return XIAOZHI_POOL_ROLES.has(roleKey);
+    // 教育退费审核组：二线专员、二线班组长、管理员（同教育刷机处理组）
+    if (g.id === REFUND_POOL_GROUP_ID) return EDU_FLASH_POOL_ROLES.has(roleKey);
     return true;
   });
 }
@@ -1626,6 +1652,10 @@ export function queryCenterRowActions(
   if (!canTransferInQueryCenter(roleKey)) return [];
   if (!canTransferTicket(t)) return [];
   if (isFlashTicket(t)) return flashQueryCenterRowActions(t, roleKey);
+  // 个册退费单「系统退费中」：同一时间只有一笔在途退费，调剂置灰（1120 PRD §5.4）
+  if (isRefundTicket(t) && t.nodeStatus === REFUND_STATUS_SYSTEM) {
+    return [{ label: '调剂', primary: true, disabled: true, tip: REFUND_TIP.inProgress }];
+  }
   // 查询中心行内只有「调剂」、没有「指派」（1021）：池内未认领单与已有处理人的单一律「调剂」
   if (isTransferredOut(t)) {
     return [{ label: '调剂', primary: true, disabled: true, tip: TRANSFERRED_OUT_TRANSFER_TIP }];
@@ -1731,7 +1761,7 @@ export function rowActions(t: Ticket): { label: string; primary?: boolean }[] {
  * 老四类一字不动，继续读工单行上的 `slaState`。
  */
 export function matchSlaChip(t: Ticket, key: 'soon' | 'overdue'): boolean {
-  if (isFlashTicket(t)) {
+  if (isFlashTicket(t) || isRefundTicket(t)) {
     if (!readSla(t)) return false;
     return slaSortKey(t).group === (key === 'overdue' ? 0 : 1);
   }
@@ -1790,6 +1820,7 @@ function ticketSlaClocks(t: Ticket): TicketSlaClocks {
   }
   // 刷机单未计 SLA（一线、未进教育刷机处理组池，1013 A26）：无钟，不落任何筛选值
   if (isFlashTicket(t)) return STOPPED_CLOCKS;
+  if (isRefundTicket(t)) return STOPPED_CLOCKS;
 
   if (t.slaText === '—' || isSlaPaused(t)) return STOPPED_CLOCKS;
 

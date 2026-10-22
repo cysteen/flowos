@@ -19,6 +19,8 @@ import { isFlashTicket } from '@/views/tickets/types/flash';
 import { isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
 import { useFlashStore } from '@/stores/flash';
 import { useXiaozhiStore } from '@/stores/xiaozhi';
+import { isRefundTicket } from '@/views/tickets/types/refund';
+import { useRefundStore } from '@/stores/refund';
 
 const POOL_ENTRY_KEY = 'from';
 const POOL_ENTRY_VALUE = 'pool';
@@ -99,6 +101,8 @@ export function claimTicketByType(t: Ticket, roleKey: string, userName: string):
   }
   if (isFlashTicket(t)) return useFlashStore().claimFromPool(t.no, { name: me, role });
   const ok = claimPoolTicket(t, WORKBENCH_HANDLER, role, nowMinuteStamp());
+  // 个册退费单（1120）：领取同咨询单，落库后由个册退费服务落快照
+  if (ok && isRefundTicket(t)) useRefundStore().afterClaim(t.no);
   if (ok) return { ok, message: `已领取 ${t.no}` };
   return { ok, message: t.assignee ? `该工单已被 ${t.assignee} 领取` : '该工单已不在工单池中' };
 }

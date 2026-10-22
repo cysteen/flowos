@@ -12,6 +12,8 @@ import {
 import { useFlashStore } from '@/stores/flash';
 import { useXiaozhiStore } from '@/stores/xiaozhi';
 import { XIAOZHI_CONFIRM_ACTOR, isXiaozhiTicket, type TicketXiaozhi } from '@/views/tickets/types/xiaozhi';
+import { useRefundStore } from '@/stores/refund';
+import { REFUND_STATUS_SYSTEM, isRefundTicket, type TicketRefund } from '@/views/tickets/types/refund';
 import type { FeishuRecord } from '@/mock/ticketDetail';
 import type { Ticket, Channel, TicketType, Priority, TicketStatus } from '@/views/tickets/types/ticket';
 import { SEED_CLAIMED_TICKET_NOS, SEED_TICKET_NOS, TICKETS } from '@/mock/tickets';
@@ -172,6 +174,7 @@ export function useTicketOperation() {
   const flash = useFlashStore();
   const xiaozhi = useXiaozhiStore();
   xiaozhi.hydrate();
+  const refund = useRefundStore();
   const handleLog = useHandleLogStore();
   const detail = ref<TicketDetailMeta>(JSON.parse(JSON.stringify(TICKET_DETAIL)));
   const timeline = ref<TimelineEntry[]>([...TIMELINE]);
@@ -426,6 +429,7 @@ export function useTicketOperation() {
       }
       if (t.flash) applyFlashRow(base, t);
       if (isXiaozhiTicket(t)) applyXiaozhiRow(base, t);
+      if (isRefundTicket(t) && t.refund) applyRefundRow(base, t);
       // 与刷机单弱关联的投诉单（1013 A21）：关联卡指回刷机单
       const flashNo = t.type === '投诉' ? flash.flashNoLinkedTo(t.no) : undefined;
       if (flashNo) {
@@ -433,6 +437,15 @@ export function useTicketOperation() {
         base.linkedRecords = [
           ...base.linkedRecords,
           { no: flashNo, title: src?.title ?? flashNo, tag: '关联刷机单', meta: `${(t.createdAt ?? '').slice(5, 16)} 关联` },
+        ];
+      }
+      // 与个册退费单弱关联的投诉单（1120 第 6 章）：关联卡指回个册退费单，点开只读查看退费进度
+      const refundNo = t.type === '投诉' ? refund.refundNoLinkedTo(t.no) : undefined;
+      if (refundNo) {
+        const src = TICKETS.find((x) => x.no === refundNo);
+        base.linkedRecords = [
+          ...base.linkedRecords,
+          { no: refundNo, title: src?.title ?? refundNo, tag: '关联个册退费单', meta: `${(t.createdAt ?? '').slice(5, 16)} 关联` },
         ];
       }
       if (t.problemDesc?.trim()) {
@@ -731,6 +744,33 @@ export function useTicketOperation() {
   }
 
   /**
+   * 个册退费单：工单库那一行的状态 / 处理人 / 退费字段组同步到详情（1120）。
+   * 「系统退费中」冻结语义同「已转出」（底栏只留保存）；调研中 → resolved；终态 → closed。
+   */
+  function applyRefundRow(base: TicketDetailMeta, t: Ticket) {
+    base.lastHandler = t.assignee;
+    base.groupId = t.groupId;
+    base.groupNames = t.groupNames;
+    base.isRefund = true;
+    base.refund = JSON.parse(JSON.stringify(t.refund)) as TicketRefund;
+    const linkedNos = t.refund?.state.linkedComplaintNos ?? [];
+    if (linkedNos.length) {
+      base.linkedRecords = [
+        ...base.linkedRecords.filter((r) => r.tag !== '关联投诉'),
+        ...linkedNos.map((no) => {
+          const c = TICKETS.find((x) => x.no === no);
+          return { no, title: c?.title ?? no, tag: '关联投诉', meta: `${(c?.createdAt ?? '').slice(5, 16)} 关联` };
+        }),
+      ];
+    }
+    base.status = t.nodeStatus;
+    if (t.nodeStatus === REFUND_STATUS_SYSTEM) opState.value = 'transferred';
+    else if (t.nodeStatus === '调研中') opState.value = 'resolved';
+    else if (isTicketClosed(t.nodeStatus)) opState.value = 'closed';
+    else opState.value = 'processing';
+  }
+
+  /**
    * 小智单的产研链路映射进详情（1130 小智工单 D6 / 一·补 B5）。
    *
    * 「产研反馈」Tab 复用的是 `feishuSync` / `feishuRecords` 那一套（05 原型落点 §三），
@@ -865,6 +905,16 @@ export function useTicketOperation() {
       applyFlashRow(detail.value, t);
       detail.value.slaClocks = flashSlaClocks(t) ?? buildSlaClocks(t);
       projectFlashTimeline(t.no);
+    },
+  );
+
+  // 个册退费服务写回工单库后（移动工单 H5 提交、产线结果回写、调剂、下送），本单按工单库现值重载
+  watch(
+    () => refund.revisionOf(detail.value.no),
+    () => {
+      const t = TICKETS.find((x) => x.no === detail.value.no);
+      if (!t || !isRefundTicket(t)) return;
+      loadDetail(t.no);
     },
   );
 

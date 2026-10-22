@@ -1,6 +1,7 @@
 import { isFlashTicket } from '@/views/tickets/types/flash';
 import { isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
 import { useXiaozhiStore } from '@/stores/xiaozhi';
+import { useRefundStore } from '@/stores/refund';
 import { computed, ref } from 'vue';
 import { buildAiSuggestions } from '@/mock/aiSuggestions';
 import { TICKETS } from '@/mock/tickets';
@@ -86,6 +87,8 @@ export function useTicketWorkbench() {
   const flash = useFlashStore();
   // 小智种子单的履历与缓存（种子单本身已随 XIAOZHI_SEEDS 并入 TICKETS）
   useXiaozhiStore().hydrate();
+  // 个册退费单快照与产线结果定时查询（1120）
+  useRefundStore();
 
   /**
    * 工单池 / 催补待回的可见分组按角色取（930 教育刷机单 M72）：

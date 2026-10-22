@@ -6,6 +6,7 @@ import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 import type { ClosureMode } from '@/views/tickets/types/ticket';
 import type { TicketFlash } from '@/views/tickets/types/flash';
 import type { TicketXiaozhi } from '@/views/tickets/types/xiaozhi';
+import type { TicketRefund } from '@/views/tickets/types/refund';
 
 // 工单操作页 Mock（样例 = 设计稿 IFLYTS-20260610-00002 · P-工单处理 定稿）。
 
@@ -191,6 +192,10 @@ export interface TicketDetailMeta {
    * 取自工单库那一行（`Ticket.xiaozhi`），写口只有小智服务 `stores/xiaozhi.ts`。
    */
   xiaozhi?: TicketXiaozhi;
+  /** 「个册退费」标识（1120，取自工单行 `Ticket.isRefund`；读取走 `isRefundTicket`） */
+  isRefund?: boolean;
+  /** 个册退费字段组（取自工单库那一行 `Ticket.refund`，写口只有 `stores/refund.ts`） */
+  refund?: TicketRefund;
 }
 
 /** 委派中信息（协办完成或撤销委派后清空） */
