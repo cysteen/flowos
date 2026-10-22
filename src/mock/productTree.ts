@@ -84,6 +84,21 @@ export const PRODUCT_TREE_DATA: ProductTreeNode[] = [
           },
         ],
       },
+      {
+        // 个性化学习手册（挂个册退费类问题分类的产品，1120；产品分类与建单页同为「软件服务」）
+        key: 'yx-zxw', title: '智学网业务线', kind: '业务线',
+        children: [
+          {
+            key: 'px-zxw', title: '智学网产品线', kind: '产品线',
+            children: [
+              {
+                key: 'fl-zxw-soft', title: '软件服务', kind: '产品分类',
+                children: [{ key: 'p-edu-zxw-handbook', title: '个性化学习手册', kind: '产品' }],
+              },
+            ],
+          },
+        ],
+      },
     ],
   },
 ];
@@ -95,7 +110,7 @@ export const PRODUCT_TREE_KIND_COLOR: Record<ProductTreeNode['kind'], string> = 
 export const PRODUCT_TREE_DEFAULT_EXPANDED = [
   'bg-consumer', 'yx-hw', 'px-rec', 'fl-rec', 'px-trans', 'fl-trans',
   'bg-fin', 'yx-ops', 'px-cs', 'fl-qc',
-  'bg-edu', 'yx-class', 'px-tablet', 'fl-tablet',
+  'bg-edu', 'yx-class', 'px-tablet', 'fl-tablet', 'yx-zxw', 'px-zxw', 'fl-zxw-soft',
 ];
 
 function walk(nodes: ProductTreeNode[], fn: (n: ProductTreeNode) => void) {

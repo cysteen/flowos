@@ -17,6 +17,7 @@ import {
 } from '@/mock/productTree';
 import { FLASH_MODEL_SEED } from '@/mock/flash/models';
 import { flashTagKey, useFlashConfigStore } from '@/stores/flashConfig';
+import { refundTagKey, useRefundConfigStore } from '@/stores/refundConfig';
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -30,6 +31,7 @@ const isAdmin = computed(() => !!userStore.role.adminScope);
 const PRODUCT_BIZ_TYPE: Record<string, string> = {
   'p-h1': '听见', 'p-h2': '听见', p1: '智能硬件', p2: '智能硬件', p3: '开放平台',
   ...Object.fromEntries(FLASH_MODEL_SEED.map((m) => [`p-edu-${m.id}`, '教育'])),
+  'p-edu-zxw-handbook': '教育',
 };
 
 /** 产品叶子 → 各级归属（BGBU / 业务线 / 产品线 / 产品分类 / 业务类型），筛选、导入、导出共用 */
@@ -67,6 +69,8 @@ interface ProblemTagRow {
   summaryOnly: '是' | '否';
   /** 是否刷机（1013 N2 / 10-19 C1）：是＝本产品选本分类建单即识别为刷机单（刷机单识别只看这一项） */
   flash: '是' | '否';
+  /** 是否个册退费（1120）：是＝本产品选本分类建单即识别为个册退费单 */
+  refund: '是' | '否';
   status: '启用' | '停用';
   /** 问题分类一 / 二 / 三级 ID（老系统数字串；同产品同路径前缀共用同一 ID） */
   tagL1Id: string;
@@ -79,6 +83,9 @@ interface ProblemTagRow {
 
 /** 「是否刷机」与「是否小结专用」同为「是」时的拦截文案：弹窗保存提示与导入失败原因共用 */
 const FLASH_SUMMARY_CONFLICT = '刷机类问题分类不能设为小结专用';
+/** 「是否个册退费」与「是否刷机」/「是否小结专用」同为「是」时的拦截文案（弹窗保存与导入失败原因共用） */
+const FLASH_REFUND_CONFLICT = '刷机类问题分类不能设为个册退费';
+const REFUND_SUMMARY_CONFLICT = '个册退费类问题分类不能设为小结专用';
 
 /**
  * 筛选项排序（左→右）：
@@ -101,6 +108,7 @@ const emptyFilter = () => ({
   aftersale: undefined as string | undefined,
   summaryOnly: undefined as string | undefined,
   flash: undefined as string | undefined,
+  refund: undefined as string | undefined,
   status: undefined as string | undefined,
 });
 const draftFilter = reactive(emptyFilter());
@@ -118,7 +126,7 @@ const TAG_L2_MAP: Record<string, string[]> = {
   '会议/会话翻译': ['软件问题'],
   '屏幕': ['功能异常'],
   '记录导出': ['操作指导'],
-  '售后': ['服务申请', '政策咨询', '问题反馈'],
+  '售后': ['服务申请', '政策咨询', '问题反馈', '退费申请'],
   '蓝牙': ['操作指导'],
   '设置/系统': ['软件问题'],
 };
@@ -131,6 +139,7 @@ const TAG_L3_MAP: Record<string, string[]> = {
   '政策咨询': ['退换货政策'],
   '信息咨询': ['设备丢失'],
   '问题反馈': ['设备维修后故障仍存在'],
+  '退费申请': ['个册退费'],
 };
 /** 处理组：系统中已有的处理组名称；导入「工单处理组」按名称完全一致匹配本清单 */
 const TEAMS = ['工单-处理组', '售后系统组', '综合组', '受理一组', '受理二组', '硬件缺陷组', '技术支持组'];
@@ -277,6 +286,8 @@ const SEED_ROWS: SeedTuple[] = [
     `p-edu-${m.id}`, '售后', '服务申请', l3, '', '否', '否', '启用',
     String(110301 + i), String(2104101 + i), String(31060701 + i * 2 + j), '周运营', '2026-10-13 16:20:00',
   ])),
+  // 个性化学习手册：售后 → 退费申请 → 个册退费（「是否个册退费」默认开启，1120）
+  ['p-edu-zxw-handbook', '售后', '退费申请', '个册退费', '', '否', '否', '启用', '110401', '2104201', '31060801', '周运营', '2026-10-22 10:00:00'],
 ];
 
 /**
@@ -284,6 +295,8 @@ const SEED_ROWS: SeedTuple[] = [
  * 种子行按配置回显；本页任何写操作后把当前开启的条目整体写回配置。
  */
 const flashConfig = useFlashConfigStore();
+/** 「是否个册退费」开关值存个册退费配置（`stores/refundConfig.ts`），写法同「是否刷机」 */
+const refundConfig = useRefundConfigStore();
 
 const allRows = ref<ProblemTagRow[]>(SEED_ROWS.map((t, i) => {
   const [productKey, tagL1, tagL2, tagL3, team, aftersale, summaryOnly, status, tagL1Id, tagL2Id, tagL3Id, maintainer, maintainedAt] = t;
@@ -294,6 +307,7 @@ const allRows = ref<ProblemTagRow[]>(SEED_ROWS.map((t, i) => {
     productName,
     tagL1, tagL2, tagL3, team, aftersale, summaryOnly,
     flash: flashConfig.isFlashTag(productName, tagL1, tagL2, tagL3) ? '是' : '否',
+    refund: refundConfig.isRefundTag(productName, tagL1, tagL2, tagL3) ? '是' : '否',
     status,
     tagL1Id, tagL2Id, tagL3Id, maintainer, maintainedAt,
   };
@@ -304,6 +318,13 @@ watch(
   allRows,
   (rows) => flashConfig.replaceFlashTags(
     rows.filter((r) => r.flash === '是').map((r) => flashTagKey(r.productName, r.tagL1, r.tagL2, r.tagL3)),
+  ),
+  { deep: true },
+);
+watch(
+  allRows,
+  (rows) => refundConfig.replaceRefundTags(
+    rows.filter((r) => r.refund === '是').map((r) => refundTagKey(r.productName, r.tagL1, r.tagL2, r.tagL3)),
   ),
   { deep: true },
 );
@@ -401,6 +422,7 @@ const displayRows = computed(() => allRows.value.filter((r) => {
   if (!matchSelect(appliedFilter.aftersale, r.aftersale)) return false;
   if (!matchSelect(appliedFilter.summaryOnly, r.summaryOnly)) return false;
   if (!matchSelect(appliedFilter.flash, r.flash)) return false;
+  if (!matchSelect(appliedFilter.refund, r.refund)) return false;
   if (!matchSelect(appliedFilter.status, r.status)) return false;
   return true;
 }));
@@ -415,6 +437,7 @@ const cols = [
   { title: '是否售后', dataIndex: 'aftersale', key: 'aftersale', width: 80 },
   { title: '是否小结专用', dataIndex: 'summaryOnly', key: 'summaryOnly', width: 96 },
   { title: '是否刷机', dataIndex: 'flash', key: 'flash', width: 80 },
+  { title: '是否个册退费', dataIndex: 'refund', key: 'refund', width: 96 },
   { title: '状态', dataIndex: 'status', key: 'status', width: 72 },
   { title: '更新人', dataIndex: 'maintainer', key: 'maintainer', width: 72 },
   { title: '更新时间', dataIndex: 'maintainedAt', key: 'maintainedAt', width: 132 },
@@ -580,6 +603,7 @@ const form = reactive({
   aftersale: '否' as '是' | '否',
   summaryOnly: '否' as '是' | '否',
   flash: '否' as '是' | '否',
+  refund: '否' as '是' | '否',
   status: '启用' as '启用' | '停用',
 });
 
@@ -631,7 +655,7 @@ function resetForm() {
   Object.assign(form, {
     productKey: undefined,
     tagL1: '', tagL2: '', tagL3: '',
-    team: undefined, aftersale: '否', summaryOnly: '否', flash: '否', status: '启用',
+    team: undefined, aftersale: '否', summaryOnly: '否', flash: '否', refund: '否', status: '启用',
   });
 }
 
@@ -648,7 +672,7 @@ function openEditRow(row: ProblemTagRow) {
   Object.assign(form, {
     productKey: row.productKey,
     tagL1: row.tagL1, tagL2: row.tagL2, tagL3: row.tagL3,
-    team: row.team || undefined, aftersale: row.aftersale, summaryOnly: row.summaryOnly, flash: row.flash, status: row.status,
+    team: row.team || undefined, aftersale: row.aftersale, summaryOnly: row.summaryOnly, flash: row.flash, refund: row.refund, status: row.status,
   });
   formOpen.value = true;
 }
@@ -666,6 +690,15 @@ function saveForm() {
     message.error(FLASH_SUMMARY_CONFLICT);
     return;
   }
+  // 「是否个册退费」与「是否刷机」「是否小结专用」互斥（1120）
+  if (form.refund === '是' && form.flash === '是') {
+    message.error(FLASH_REFUND_CONFLICT);
+    return;
+  }
+  if (form.refund === '是' && form.summaryOnly === '是') {
+    message.error(REFUND_SUMMARY_CONFLICT);
+    return;
+  }
   ensureTagOption(tagL1List.value, tagL1);
   if (!tagL2Map.value[tagL1]) tagL2Map.value[tagL1] = [];
   ensureTagOption(tagL2Map.value[tagL1], tagL2);
@@ -681,6 +714,7 @@ function saveForm() {
     aftersale: form.aftersale,
     summaryOnly: form.summaryOnly,
     flash: form.flash,
+    refund: form.refund,
     status: form.status,
     ...resolveTagIds(form.productKey, [tagL1, tagL2, tagL3], {}, editingKey.value ?? undefined),
     ...stampNow(),
@@ -800,7 +834,7 @@ const todayStr = () => dayjs().format('YYYYMMDD');
  */
 const COL_NAMES = [
   '业务类型', '产品大类', '产品名称', '问题一级', '问题二级', '问题三级',
-  '工单处理组', '是否售后', '是否小结专用', '是否刷机', '问题一级 ID', '问题二级 ID', '问题三级 ID',
+  '工单处理组', '是否售后', '是否小结专用', '是否刷机', '是否个册退费', '问题一级 ID', '问题二级 ID', '问题三级 ID',
 ] as const;
 /** 必填列下标（业务类型 ~ 问题三级） */
 const REQUIRED_COL_IDX = [0, 1, 2, 3, 4, 5];
@@ -808,14 +842,14 @@ const REQUIRED_COL_IDX = [0, 1, 2, 3, 4, 5];
 const TEMPLATE_COLS = COL_NAMES.map((n, i) => (REQUIRED_COL_IDX.includes(i) ? `${n}*` : n));
 const FAIL_REASON_COL = '失败原因';
 /** 一 / 二 / 三级 ID 列下标 */
-const ID_COL_IDX: Record<TagLevel, number> = { 1: 10, 2: 11, 3: 12 };
+const ID_COL_IDX: Record<TagLevel, number> = { 1: 11, 2: 12, 3: 13 };
 const missingColsText = (cols: string[]) => `缺少必填列：${cols.join('、')}，请下载模板核对表头`;
 
 function rowToTemplateCells(r: ProblemTagRow): string[] {
   const p = pinfo(r.productKey);
   return [
     p.bizType, p.prodCat, r.productName, r.tagL1, r.tagL2, r.tagL3,
-    r.team, r.aftersale, r.summaryOnly, r.flash, r.tagL1Id, r.tagL2Id, r.tagL3Id,
+    r.team, r.aftersale, r.summaryOnly, r.flash, r.refund, r.tagL1Id, r.tagL2Id, r.tagL3Id,
   ];
 }
 
@@ -827,15 +861,15 @@ function downloadTemplate() {
 
 // —— 导出 ——
 const EXPORT_COLS = [
-  'BGBU', '业务线', '产品线', ...TEMPLATE_COLS.slice(0, 10),
-  '状态', '更新人', '更新时间',...TEMPLATE_COLS.slice(10),
+  'BGBU', '业务线', '产品线', ...TEMPLATE_COLS.slice(0, 11),
+  '状态', '更新人', '更新时间',...TEMPLATE_COLS.slice(11),
 ];
 
 function rowToExportCells(r: ProblemTagRow): string[] {
   const p = pinfo(r.productKey);
   return [
     p.bgbu, p.bizLine, p.prodLine, p.bizType, p.prodCat, r.productName,
-    r.tagL1, r.tagL2, r.tagL3, r.team, r.aftersale, r.summaryOnly, r.flash, r.status,
+    r.tagL1, r.tagL2, r.tagL3, r.team, r.aftersale, r.summaryOnly, r.flash, r.refund, r.status,
     r.maintainer, r.maintainedAt, r.tagL1Id, r.tagL2Id, r.tagL3Id,
   ];
 }
@@ -864,7 +898,7 @@ const importOpen = ref(false);
 /** 每行归类：新增（路径不存在）/ 更新（路径已存在且可变字段有变化或当前停用）/ 已存在 / 失败 */
 type ImportKind = '新增' | '更新' | '已存在' | '失败';
 interface ImportLine {
-  /** 按列名取出的 13 列（模板列顺序），失败明细原样回写 */
+  /** 按列名取出的 14 列（模板列顺序），失败明细原样回写 */
   cells: string[];
   kind: ImportKind;
   reason: string;
@@ -874,6 +908,7 @@ interface ImportLine {
   aftersale: '是' | '否';
   summaryOnly: '是' | '否';
   flash: '是' | '否';
+  refund: '是' | '否';
   ids: Partial<Record<TagLevel, string>>;
   /** 更新行命中的存量记录 */
   targetKey?: string;
@@ -912,7 +947,7 @@ function locateColumns(header: string[]): number[] {
 
 /**
  * 逐行归类。失败原因按固定顺序收集、以「；」连接：
- * 必填列为空 → 产品未找到 → 工单处理组 → 是否售后 → 是否小结专用 → 是否刷机 → ID 占用；
+ * 必填列为空 → 产品未找到 → 工单处理组 → 是否售后 → 是否小结专用 → 是否刷机 → 是否个册退费 → ID 占用；
  * 文件内重复的行只写重复这一条。
  * 产品、一 / 二 / 三级按原文完全一致匹配（不去空格）；工单处理组、是否售后、是否小结专用、是否刷机、ID 去首尾空格。
  */
@@ -935,7 +970,7 @@ function analyzeImport(fileName: string, text: string): ImportResult {
     const fileRow = idx + 2;
     const cells = colIdx.map((ci) => (ci < 0 ? '' : raw[ci] ?? ''));
     const fail = (reason: string) => {
-      lines.push({ cells, kind: '失败', reason, team: '', aftersale: '否', summaryOnly: '否', flash: '否', ids: {} });
+      lines.push({ cells, kind: '失败', reason, team: '', aftersale: '否', summaryOnly: '否', flash: '否', refund: '否', ids: {} });
     };
 
     const dupKey = cells.slice(0, 6).join('\u0001');
@@ -943,7 +978,7 @@ function analyzeImport(fileName: string, text: string): ImportResult {
     if (firstRow !== undefined) { fail(`文件内重复：与第 ${firstRow} 行相同`); return; }
     firstRowOf.set(dupKey, fileRow);
 
-    const [bizType, prodCat, prodName, l1, l2, l3, teamRaw, afRaw, soRaw, flRaw] = cells;
+    const [bizType, prodCat, prodName, l1, l2, l3, teamRaw, afRaw, soRaw, flRaw, rfRaw] = cells;
     const reasons: string[] = REQUIRED_COL_IDX
       .filter((i) => !cells[i].trim())
       .map((i) => `${COL_NAMES[i]}为空`);
@@ -964,6 +999,10 @@ function analyzeImport(fileName: string, text: string): ImportResult {
     const fl = flRaw.trim() || '否';
     if (fl !== '是' && fl !== '否') reasons.push('是否刷机取值非法：只能填是或否，或留空');
     if (fl === '是' && so === '是') reasons.push(FLASH_SUMMARY_CONFLICT);
+    const rf = rfRaw.trim() || '否';
+    if (rf !== '是' && rf !== '否') reasons.push('是否个册退费取值非法：只能填是或否，或留空');
+    if (rf === '是' && fl === '是') reasons.push(FLASH_REFUND_CONFLICT);
+    if (rf === '是' && so === '是') reasons.push(REFUND_SUMMARY_CONFLICT);
 
     const path: [string, string, string] = [l1, l2, l3];
     const ids: Record<TagLevel, string> = {
@@ -982,7 +1021,7 @@ function analyzeImport(fileName: string, text: string): ImportResult {
 
     const base = {
       cells, reason: '', productKey: prod.key, path, team,
-      aftersale: af as '是' | '否', summaryOnly: so as '是' | '否', flash: fl as '是' | '否', ids,
+      aftersale: af as '是' | '否', summaryOnly: so as '是' | '否', flash: fl as '是' | '否', refund: rf as '是' | '否', ids,
     };
     const exist = leafIndex.get(nodeKeyOf(prod.key, path, 3));
     if (!exist) {
@@ -990,7 +1029,7 @@ function analyzeImport(fileName: string, text: string): ImportResult {
         if (ids[lv] && !owners[lv].has(ids[lv])) owners[lv].set(ids[lv], nodeKeyOf(prod.key, path, lv));
       }
       lines.push({ ...base, kind: '新增' });
-    } else if (exist.team !== team || exist.aftersale !== af || exist.summaryOnly !== so || exist.flash !== fl || exist.status !== '启用') {
+    } else if (exist.team !== team || exist.aftersale !== af || exist.summaryOnly !== so || exist.flash !== fl || exist.refund !== rf || exist.status !== '启用') {
       lines.push({ ...base, kind: '更新', targetKey: exist.key });
     } else {
       lines.push({ ...base, kind: '已存在', reason: '已存在，无需重复导入' });
@@ -1070,7 +1109,7 @@ function doImport(withUpdate: boolean) {
         productKey: pk,
         productName: pinfo(pk).name,
         tagL1, tagL2, tagL3,
-        team: ln.team, aftersale: ln.aftersale, summaryOnly: ln.summaryOnly, flash: ln.flash, status: '启用',
+        team: ln.team, aftersale: ln.aftersale, summaryOnly: ln.summaryOnly, flash: ln.flash, refund: ln.refund, status: '启用',
         ...resolveTagIds(pk, path, provided),
         ...stamp,
       });
@@ -1078,7 +1117,7 @@ function doImport(withUpdate: boolean) {
     } else if (ln.kind === '更新' && withUpdate) {
       const r = allRows.value.find((x) => x.key === ln.targetKey);
       if (!r) continue;
-      Object.assign(r, { team: ln.team, aftersale: ln.aftersale, summaryOnly: ln.summaryOnly, flash: ln.flash, status: '启用' }, stamp);
+      Object.assign(r, { team: ln.team, aftersale: ln.aftersale, summaryOnly: ln.summaryOnly, flash: ln.flash, refund: ln.refund, status: '启用' }, stamp);
       updated += 1;
     }
   }
@@ -1091,7 +1130,7 @@ function doImport(withUpdate: boolean) {
   <div class="problem-tag-manage">
     <AdminPageHeader
       title="问题分类"
-      subtitle="按产品维护三级问题分类，关联处理组、是否售后、是否小结专用与是否刷机"
+      subtitle="按产品维护三级问题分类，关联处理组、是否售后、是否小结专用、是否刷机与是否个册退费"
     >
       <template #actions>
         <a-button @click="openImport"><template #icon><ImportOutlined /></template>导入</a-button>
@@ -1144,6 +1183,10 @@ function doImport(withUpdate: boolean) {
                   <div class="fi">
                     <span class="fl">是否刷机</span>
                     <a-select v-model:value="draftFilter.flash" class="tb-ctl sel-w-sm" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="toOpts(['是', '否'])" />
+                  </div>
+                  <div class="fi">
+                    <span class="fl">是否个册退费</span>
+                    <a-select v-model:value="draftFilter.refund" class="tb-ctl sel-w-sm" show-search allow-clear placeholder="全部" :filter-option="filterByLabel" :options="toOpts(['是', '否'])" />
                   </div>
                   <div class="fi">
                     <span class="fl">状态</span>
@@ -1338,6 +1381,12 @@ function doImport(withUpdate: boolean) {
         </a-form-item>
         <a-form-item label="是否刷机">
           <a-radio-group v-model:value="form.flash" button-style="solid">
+            <a-radio-button value="是">是</a-radio-button>
+            <a-radio-button value="否">否</a-radio-button>
+          </a-radio-group>
+        </a-form-item>
+        <a-form-item label="是否个册退费">
+          <a-radio-group v-model:value="form.refund" button-style="solid">
             <a-radio-button value="是">是</a-radio-button>
             <a-radio-button value="否">否</a-radio-button>
           </a-radio-group>

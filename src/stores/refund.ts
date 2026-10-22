@@ -13,13 +13,12 @@ import {
   REFUND_NOTIFY_EVENTS, REFUND_PENDING_STEP_MS, REFUND_POOL_GROUP_ID, REFUND_POOL_GROUP_NAME,
   REFUND_PRODUCT_CATEGORY, REFUND_PRODUCT_NAME, REFUND_RESULT_DELAY_MS, REFUND_STATUS_SYSTEM,
   REFUND_SYSTEM_HANDLER, REFUND_TICKET_TYPE, REFUND_TIP, REFUND_TL, REFUND_TOAST,
-  emptyRefundHandle, inflightRefundRun, isRefundTicket, refundManagerTlRole, refundPoolIm,
-  refundSurveySms, refundTodoSms,
+  emptyRefundHandle, inflightRefundRun, isRefundTicket, refundManagerTlRole, refundPooledImText,
+  refundSurveySms, refundTodoSms, refundUrgeSms,
   type RefundHandle, type RefundInfo, type RefundManager, type RefundRun, type RefundTaskStatus,
   type TicketRefund,
 } from '@/views/tickets/types/refund';
 import { useNotifyLogStore } from './notifyLog';
-import { LOGIN_URL, templateOf } from '@/mock/notifyRules';
 
 /**
  * 个册退费单 · 个册退费服务（1120 个册退费工单 PRD 第 3–7 章）。
@@ -59,7 +58,8 @@ export interface RefundCreateBase {
 }
 
 const LS_KEY = 'flowos-refund-cache';
-const CACHE_VERSION = 3;
+/** v4：通知文案与收件人改版（到组通知走 IM_WO_POOLED、短信带完整 H5 链接、收件人只写姓名） */
+const CACHE_VERSION = 4;
 const STALE_MS = 12 * 60 * 60 * 1000;
 
 interface RefundCache { v: number; savedAt: number; tickets: Ticket[] }
@@ -142,24 +142,19 @@ export const useRefundStore = defineStore('refund', () => {
 
   /* ---------------- 通知 ---------------- */
 
-  /** 到组通知：沿用咨询单待领取通知文案（IM_WO_POOLED，PRD 附录 B） */
-  function pooledImText(no: string): string {
-    const body = templateOf('IM', 'IM_WO_POOLED')?.body;
-    if (!body) return refundPoolIm(no);
-    return body.replace('${groupName}', REFUND_POOL_GROUP_NAME).replace('${ticketNo}', no).replace('${loginUrl}', LOGIN_URL);
-  }
-
+  /** 收件人只写姓名 */
   function todoSms(r: Ticket, m: RefundManager) {
     useNotifyLogStore().emit({
       ticketNo: r.no, event: REFUND_NOTIFY_EVENTS.todo, kind: 'assign', title: '待办短信',
-      receivers: [`${m.name}(${m.kind})`], content: refundTodoSms(r.no), channel: '短信', status: '已发送',
+      receivers: [m.name], content: refundTodoSms(r.no), channel: '短信', status: '已发送',
     });
   }
 
+  /** 到组通知：沿用咨询单待领取通知（IM 模板 IM_WO_POOLED，渠道 IM，同刷机单 notifyPoolArrival） */
   function poolIm(r: Ticket) {
     useNotifyLogStore().emit({
       ticketNo: r.no, event: REFUND_NOTIFY_EVENTS.pooled, kind: 'group', title: '到组通知',
-      receivers: [REFUND_POOL_GROUP_NAME], content: pooledImText(r.no), channel: 'i讯飞',
+      receivers: [REFUND_POOL_GROUP_NAME], content: refundPooledImText(r.no), channel: 'IM',
     });
   }
 
@@ -548,7 +543,7 @@ export const useRefundStore = defineStore('refund', () => {
     useNotifyLogStore().emit({
       ticketNo: no, event: kind === 'urge' ? REFUND_NOTIFY_EVENTS.urge : REFUND_NOTIFY_EVENTS.supplement,
       kind, title: '催补短信',
-      receivers: [`${to.name}(${to.kind})`], content: refundTodoSms(no), channel: '短信', status: '已发送',
+      receivers: [to.name], content: refundUrgeSms(no, kind), channel: '短信', status: '已发送',
     });
   }
 
@@ -569,16 +564,18 @@ export const useRefundStore = defineStore('refund', () => {
         }
       }
     }
-    // 种子单的通知记录（待办短信 / 到组通知 / 调研短信）：按 id 幂等补进通知记录
+    // 种子单的通知记录（待办短信 / 到组通知 / 调研短信）：按 id 幂等补进通知记录；
+    // 已落通知记录缓存的同 id 条目按种子现值覆盖（文案、收件人、渠道随种子更新）
     const notifyLog = useNotifyLogStore();
-    const have = new Set(notifyLog.records.map((x) => x.id));
     REFUND_SEEDS.notifies.forEach((n, i) => {
       const id = `refund-seed-${n.ticketNo}-${i}`;
-      if (have.has(id)) return;
-      notifyLog.records.push({
+      const rec = {
         id, ticketNo: n.ticketNo, event: n.event, kind: n.kind, title: n.title,
         receiver: n.receiver, when: n.when, channel: n.channel, status: n.status, content: n.content,
-      });
+      };
+      const idx = notifyLog.records.findIndex((x) => x.id === id);
+      if (idx >= 0) Object.assign(notifyLog.records[idx], rec);
+      else notifyLog.records.push(rec);
     });
   }
 

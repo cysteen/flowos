@@ -16,7 +16,7 @@ import {
   REFUND_POOL_GROUP_ID, REFUND_POOL_GROUP_NAME, REFUND_PRODUCT_CATEGORY, REFUND_PRODUCT_NAME,
   REFUND_STATUS_SYSTEM, REFUND_SYSTEM_HANDLER, REFUND_TAG_L1, REFUND_TAG_L2, REFUND_TAG_L3S,
   REFUND_TICKET_TYPE, REFUND_TL,
-  emptyRefundHandle, refundPoolIm, refundSurveySms, refundTodoSms, refundManagerTlRole,
+  emptyRefundHandle, refundPooledImText, refundSurveySms, refundTodoSms, refundManagerTlRole,
   sumRefundAmount,
   type RefundInfo, type RefundManager, type RefundRun, type RefundState, type RefundSubject, type TicketRefund,
 } from '@/views/tickets/types/refund';
@@ -143,11 +143,11 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
   const notifies: RefundSeedNotify[] = [];
   const todo = (ticketNo: string, m: RefundManager, ms: number) => notifies.push({
     ticketNo, event: 'ticket.refund.todo', kind: 'assign', status: '已发送', title: '待办短信',
-    receiver: `${m.name}(${m.kind})`, channel: '短信', content: refundTodoSms(ticketNo), when: at(ms),
+    receiver: m.name, channel: '短信', content: refundTodoSms(ticketNo), when: at(ms),
   });
   const pooled = (ticketNo: string, ms: number) => notifies.push({
     ticketNo, event: 'ticket.pooled', kind: 'group', status: '未读', title: '到组通知',
-    receiver: REFUND_POOL_GROUP_NAME, channel: 'i讯飞', content: refundPoolIm(ticketNo), when: at(ms),
+    receiver: REFUND_POOL_GROUP_NAME, channel: 'IM', content: refundPooledImText(ticketNo), when: at(ms),
   });
 
   /* ① 校园经理待处理 */

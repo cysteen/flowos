@@ -1,4 +1,5 @@
 import { isFlashTicket } from '@/views/tickets/types/flash';
+import { isRefundTicket } from '@/views/tickets/types/refund';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import { makeTicketNo } from '@/constants/ticketNo';
 import { TICKETS } from '@/mock/tickets';
@@ -390,7 +391,8 @@ function realValue(v: string | undefined): string | undefined {
  * - 问题三级分类：投诉单的问题分类由坐席选择，**预填为空且保持必填**（1013 B5）。
  */
 function flashPrefillPart(detail: TicketDetailMeta, phone: string): Partial<CreateTicketPrefill> {
-  if (!isFlashTicket(detail)) return {};
+  // 个册退费单「关联投诉」与刷机单同一套预填（1120 第 6 章）
+  if (!isFlashTicket(detail) && !isRefundTicket(detail)) return {};
   const digits = phone.replace(/\D/g, '');
   return {
     customerId: `cust-${digits || detail.no}`,
@@ -467,7 +469,8 @@ export function buildFlashLinkComplaintPrefill(detail: TicketDetailMeta): Create
     customerPhone: phone,
     vip: detail.customer.types.some((t) => t.includes('VIP')),
     product: detail.product.name,
-    sn: detail.product.sn,
+    // 无 SN 的单（个册退费单）详情页记「—」，不带进建单页
+    sn: realValue(detail.product.sn),
     channel: CHANNEL_MAP[detail.channel] ?? '在线客服',
     // 工单来源照原单（如「客户服务小程序」），不由渠道反推（N-06）
     ...(originSource ? { ticketSource: normalizeTicketSource(originSource) as CreateTicketPrefill['ticketSource'] } : {}),

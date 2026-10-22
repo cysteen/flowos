@@ -56,7 +56,7 @@ function contentSegments(content: string): { text: string; href?: string }[] {
       // 个册退费单待办短信 / 催补短信里的移动工单 H5 链接（1120 第 7 章）：同样渲染为可点，新页签打开
       if (!REFUND_H5_LINK_RE.test(s)) return [{ text: s }];
       return s.split(REFUND_H5_LINK_RE).filter((p) => p !== '').map((p) => (
-        REFUND_H5_LINK_RE.test(p) && p.startsWith('/') ? { text: p, href: router.resolve(p).href } : { text: p }
+        REFUND_H5_LINK_RE.test(p) ? { text: p, href: router.resolve(p.replace(/^https?:\/\/[^/]+/, '')).href } : { text: p }
       ));
     });
 }

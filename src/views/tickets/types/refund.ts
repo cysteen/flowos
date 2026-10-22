@@ -7,6 +7,7 @@
  * 本文件只放**常量、类型与纯函数**，不依赖 Pinia / 工单库。
  */
 import type { TlRole } from '@/views/tickets/types/ticketDetail';
+import { LOGIN_URL, templateOf } from '@/mock/notifyRules';
 
 /** 个册退费单的工单类型：咨询单 + 「个册退费」标识 */
 export const REFUND_TICKET_TYPE = '咨询' as const;
@@ -16,7 +17,7 @@ export const REFUND_MARK_LABEL = '个册退费';
 
 /**
  * 是否个册退费单 —— **全仓唯一判据**：读工单上的 `isRefund` 标识。
- * 标识在建单时按「产品＝个性化学习手册 ∧ 问题分类是否个册退费」写入，此后不可修改。
+ * 标识在建单时按「所选产品的问题分类『是否个册退费』＝是」写入（后台问题分类维护），此后不可修改。
  */
 export function isRefundTicket(t: { isRefund?: boolean } | null | undefined): boolean {
   return t?.isRefund === true;
@@ -30,20 +31,13 @@ export function isRefundTicket(t: { isRefund?: boolean } | null | undefined): bo
 export const REFUND_PRODUCT_CATEGORY = '软件服务';
 /** 识别要求的产品 */
 export const REFUND_PRODUCT_NAME = '个性化学习手册';
-/** 「是否个册退费」＝是的问题分类：售后 → 退费申请 → 个册退费 */
+/**
+ * 「是否个册退费」出厂为是的问题分类：售后 → 退费申请 → 个册退费（种子单与出厂配置用）。
+ * 识别读后台「问题分类」的开关（`stores/refundConfig.ts`），不读这里。
+ */
 export const REFUND_TAG_L1 = '售后';
 export const REFUND_TAG_L2 = '退费申请';
 export const REFUND_TAG_L3S = ['个册退费'] as const;
-
-/** 问题分类是否为「是否个册退费」＝是的分类 */
-export function isRefundTagPath(l1: string, l2: string, l3: string): boolean {
-  return l1 === REFUND_TAG_L1 && l2 === REFUND_TAG_L2 && (REFUND_TAG_L3S as readonly string[]).includes(l3);
-}
-
-/** 个册退费单识别：产品「个性化学习手册」∧ 问题分类「是否个册退费」＝是 */
-export function isRefundScene(productName: string, l1: string, l2: string, l3: string): boolean {
-  return productName === REFUND_PRODUCT_NAME && isRefundTagPath(l1, l2, l3);
-}
 
 /* ------------------------------------------------------------------ */
 /* 子状态 / 池 / 处理人                                                  */
@@ -345,19 +339,27 @@ export function refundLinkComplaintDesc(no: string): string {
 export function refundH5Path(no: string): string {
   return `/m/refund/ticket?no=${no}`;
 }
-/** 通知内容里的 H5 链接（通知记录 Tab 据此渲染为可点） */
-export const REFUND_H5_LINK_RE = /(\/m\/refund\/ticket\?no=[A-Za-z0-9-]+)/;
+/** 短信正文里的 H5 完整链接：客服系统统一登录地址同一域名 + H5 地址 */
+export function refundH5Url(no: string): string {
+  return `${new URL(LOGIN_URL).origin}${refundH5Path(no)}`;
+}
+/** 通知内容里的 H5 链接（含域名；通知记录 Tab 据此渲染为可点） */
+export const REFUND_H5_LINK_RE = /((?:https?:\/\/[^\s/]+)?\/m\/refund\/ticket\?no=[A-Za-z0-9-]+)/;
 
 export function refundTodoSms(no: string): string {
-  return `【讯飞客服】您有一张个册退费工单待处理，工单号：${no}，请登录天鹰APP工作台处理：${refundH5Path(no)}`;
+  return `【讯飞客服】您有一张个册退费工单待处理，工单号：${no}，请登录天鹰APP工作台处理：${refundH5Url(no)}`;
 }
 export function refundUrgeSms(no: string, kind: 'urge' | 'supplement'): string {
   return kind === 'urge'
-    ? `【讯飞客服】客户已催单，请优先处理个册退费工单 ${no}：${refundH5Path(no)}`
-    : `【讯飞客服】客户补充了新信息，请及时查阅个册退费工单 ${no}：${refundH5Path(no)}`;
+    ? `【讯飞客服】客户已催单，请优先处理个册退费工单 ${no}：${refundH5Url(no)}`
+    : `【讯飞客服】客户补充了新信息，请及时查阅个册退费工单 ${no}：${refundH5Url(no)}`;
 }
-export function refundPoolIm(no: string): string {
-  return `${REFUND_POOL_GROUP_NAME}工单池有新单待领取，工单号：${no}，请及时领取处理。`;
+/** 到组通知：沿用咨询单待领取通知文案（IM 模板「工单池待领取提醒」IM_WO_POOLED） */
+export function refundPooledImText(no: string): string {
+  return (templateOf('IM', 'IM_WO_POOLED')?.body ?? '')
+    .replace('${groupName}', REFUND_POOL_GROUP_NAME)
+    .replace('${ticketNo}', no)
+    .replace('${loginUrl}', LOGIN_URL);
 }
 export function refundSurveySms(no: string): string {
   return `【讯飞客服】您的个册退费诉求已处理完毕，请对本次服务进行评价。工单号：${no}。`;

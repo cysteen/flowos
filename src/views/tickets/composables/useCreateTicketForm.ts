@@ -53,10 +53,11 @@ import {
   type XiaozhiActor, type XiaozhiCreateInput, type XiaozhiTicketBase,
 } from '@/stores/xiaozhi';
 import {
-  REFUND_FIELD_LABELS, REFUND_PRODUCT_NAME, REFUND_TICKET_TYPE, REFUND_TIP,
-  isRefundScene, isRefundTagPath, type RefundReasonCode,
+  REFUND_FIELD_LABELS, REFUND_TAG_L1, REFUND_TAG_L2, REFUND_TAG_L3S, REFUND_TICKET_TYPE, REFUND_TIP,
+  type RefundReasonCode,
 } from '@/views/tickets/types/refund';
 import { useRefundStore } from '@/stores/refund';
+import { useRefundConfigStore } from '@/stores/refundConfig';
 import { findSchoolById } from '@/mock/schools';
 import { useUserStore } from '@/stores/user';
 import { useFlashConfigStore } from '@/stores/flashConfig';
@@ -165,6 +166,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   });
 
   const flashConfig = useFlashConfigStore();
+  const refundConfig = useRefundConfigStore();
   /**
    * 问题分类按产品维护（1014）：刷机分类（售后 → 服务申请 → 自助刷机 / 刷原生系统）
    * 只对挂了刷机类问题分类的产品出现（后台「问题分类」里本产品至少一条「是否刷机」开启，10-19 C1）；其余分类各产品共用。
@@ -179,8 +181,10 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
         const kept = l3s.filter((l3) => {
           const isFlashPath = l1 === FLASH_TAG_L1 && l2 === FLASH_TAG_L2
             && (FLASH_TAG_L3S as readonly string[]).includes(l3);
-          // 个册退费分类（1120）只挂在「个性化学习手册」下
-          if (isRefundTagPath(l1, l2, l3)) return product === REFUND_PRODUCT_NAME;
+          // 个册退费分类（1120）只对挂了个册退费类问题分类的产品出现（后台「问题分类」本产品至少一条「是否个册退费」开启）
+          const isRefundPath = l1 === REFUND_TAG_L1 && l2 === REFUND_TAG_L2
+            && (REFUND_TAG_L3S as readonly string[]).includes(l3);
+          if (isRefundPath) return refundConfig.hasRefundTag(product);
           return !isFlashPath || flashConfig.isSupportedModel(product);
         });
         if (kept.length) l2Out[l2] = kept;
@@ -562,10 +566,10 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   /* ---------------- 个册退费单（1120 个册退费工单 PRD §3.1 / §3.2） ---------------- */
 
   /**
-   * 个册退费单识别：产品「个性化学习手册」∧ 问题分类「是否个册退费」＝是（同刷机单按问题分类识别）。
+   * 个册退费单识别：所选产品的问题分类「是否个册退费」＝是（后台「问题分类」维护，同刷机单按问题分类识别）。
    * 入口固定了工单类型的（升级投诉 / 关联投诉 / 小智入口）不识别。
    */
-  const isRefundType = computed(() => !flashSceneOff.value && isRefundScene(
+  const isRefundType = computed(() => !flashSceneOff.value && refundConfig.isRefundScene(
     form.productName, form.problemL1, form.problemL2, form.problemL3,
   ));
   const refundErrors = reactive<Record<CreateTicketRefundField, string>>({
