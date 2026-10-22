@@ -799,13 +799,17 @@ export function useTicketOperation() {
    * 否则页头会出现「建单人：李一线 / 业务分类：学习机」这类与本单对不上的取值。
    */
   function applyXiaozhiOverview(base: TicketDetailMeta, t: Ticket) {
-    const creatorName = xiaozhi.timelineOf(t.no).find((e) => e.action === 'create')?.who ?? '—';
+    const createEvent = xiaozhi.timelineOf(t.no).find((e) => e.action === 'create');
+    const creatorName = createEvent?.who ?? '—';
     const createdAt = t.createdAt ?? '';
+    // 页面展示的时刻统一「年-月-日 时:分:秒」（1021）：取建单履历的秒级时刻，取不到回落工单行。
+    // 工单行的 `createdAt` 只到分（种子与 `inferCreatedAtFromNo` 都是 16 位），直接拿它填页头会丢秒。
+    const createdAtSec = createEvent?.when ?? createdAt;
     base.builder = creatorName;
     base.builderShort = creatorName;
     base.createdAt = createdAt;
-    base.createdAtFull = createdAt;
-    base.issueOccurredAt = createdAt;
+    base.createdAtFull = createdAtSec;
+    base.issueOccurredAt = createdAtSec;
     // 「期望解决时间」字段已随 main 的 `ce5b668b` 从 `TicketDetailMeta` 整个清掉，这里原本那行
     // `base.expectedResolve = '—'` 随之删除 —— 字段没了，置值也无处可落。
     base.businessType = t.businessType ?? '教育';
