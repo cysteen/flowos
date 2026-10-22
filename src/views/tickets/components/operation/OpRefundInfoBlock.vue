@@ -35,12 +35,8 @@ function tone(s: string): 'ok' | 'bad' | 'auto' | 'idle' {
   return 'idle';
 }
 
-/** 处理人：外部处理人带类别；系统退费中为「系统」 */
-const handlerText = computed(() => {
-  const m = props.refund.state.manager;
-  if (m && m.name === props.handler) return `${m.name}（${m.kind}）`;
-  return v(props.handler);
-});
+/** 处理人：只显示姓名；系统退费中为「系统」 */
+const handlerText = computed(() => v(props.handler));
 
 const ownResult = computed(() => (lastRun.value ? refundOwnResultOf(lastRun.value.status) : ''));
 

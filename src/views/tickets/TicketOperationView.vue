@@ -147,6 +147,12 @@ const isXiaozhi = computed(() => isXiaozhiTicket(d.value));
 const isRefund = computed(() => isRefundTicket(d.value) && !!d.value.refund);
 const refundStore = useRefundStore();
 const refundInProgress = computed(() => isRefund.value && d.value.status === REFUND_STATUS_SYSTEM);
+/**
+ * 个册退费单只读查看（1120 PRD 5.4）：处理人是外部处理人（校园经理 / 城市经理，只在移动工单 H5 处理）
+ * 或「系统」（系统退费中）时，PC 端任何人打开都只读 —— 底栏不渲染、各写 Tab 只读（同刷机单「只读查看」）；
+ * 页头关联投诉 / 新建补充照常。教育退费审核组领取后（外部处理人已清）照常处理。
+ */
+const refundReadonlyView = computed(() => isRefund.value && (!!d.value.refund?.state.manager || refundInProgress.value));
 /** 调剂候选人：同组成员之外加全部校园经理、城市经理，按本单学校预选该校校园经理（PRD 第 4 章第 5 行） */
 const refundTransferTargets = computed(() => (isRefund.value ? ALL_REFUND_MANAGERS.map((m) => m.name) : undefined));
 const refundTransferDefault = computed(() => {
@@ -842,7 +848,7 @@ const unclaimedGate = computed(() => unclaimedGateOf({
 const UNCLAIMED_TAB_WRITABLE: Partial<Record<ProcessTabKey, boolean>> = {
   process: false, contact: false, appointment: false, risk: false, feishu: false, tech: false,
 };
-const tabWritableOverride = computed(() => (unclaimedGate.value ? UNCLAIMED_TAB_WRITABLE : flashTabWritable.value));
+const tabWritableOverride = computed(() => (unclaimedGate.value || refundReadonlyView.value ? UNCLAIMED_TAB_WRITABLE : flashTabWritable.value));
 
 /** 底栏报备形态的未认领置灰 */
 const riskUnclaimedBlocked = computed(
@@ -1447,7 +1453,9 @@ const canLinkAftersale = computed(() => headerRoleGate.value.linkAftersale);
 const canCancelTicket = computed(() => headerRoleGate.value.cancelTicket
   && !(d.value.returnedFromAftersale && ticketUnclaimed.value)
   && !(isFlash.value && (flashView.value === 'other'
-    || (flashView.value === 'readonly' && !FLASH_ADMIN_ROLE_KEYS.has(user.roleKey)))));
+    || (flashView.value === 'readonly' && !FLASH_ADMIN_ROLE_KEYS.has(user.roleKey))))
+  // 个册退费单只读查看同刷机单「只读查看」：不出取消工单，管理员照常
+  && !(refundReadonlyView.value && !FLASH_ADMIN_ROLE_KEYS.has(user.roleKey)));
 /**
  * 「取消工单」置灰原因。
  * - 刷机单「自动刷机中」（PRD §5.5）；
@@ -1523,7 +1531,9 @@ const hideActionBar = computed(
     || (isTicketTerminated(d.value.status) && !postCloseEditable.value)
     // 未认领共用门控（F5）：老四类未认领、不能领取的小智 / 刷机单，底栏整条不渲染（用户 10-19）；
     // 能领取的小智 / 刷机单底栏只出「领取」
-    || unclaimedGate.value === 'hidden',
+    || unclaimedGate.value === 'hidden'
+    // 个册退费单只读查看：外部处理人 / 系统名下，PC 底栏整条不渲染
+    || refundReadonlyView.value,
 );
 
 /**

@@ -3,7 +3,7 @@ import { isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
 import { useXiaozhiStore } from '@/stores/xiaozhi';
 import { useRefundStore } from '@/stores/refund';
 import { isRefundTicket } from '@/views/tickets/types/refund';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { buildAiSuggestions } from '@/mock/aiSuggestions';
 import { TICKETS } from '@/mock/tickets';
 import { useUserStore } from '@/stores/user';
@@ -69,7 +69,16 @@ function savedFilterTab(tab: TabKey): SavedFilterTab | null {
 }
 
 export function useTicketWorkbench() {
+  // 个册退费单快照与产线结果定时查询（1120）：须在取工单库快照之前装载 ——
+  // 本会话新建的个册退费单只在快照里，晚于下一行装载则刷新后工作台各页签都取不到它
+  const refundStore = useRefundStore();
   const all = ref<Ticket[]>([...TICKETS]);
+  // 其他页签新建的个册退费单经快照同步进工单库后，并入本工作台数据源
+  watch(() => refundStore.revisions, () => {
+    const have = new Set(all.value.map((t) => t.no));
+    const extra = TICKETS.filter((t) => isRefundTicket(t) && !have.has(t.no));
+    if (extra.length) all.value = [...extra, ...all.value];
+  });
   const draftStore = useTicketDraftStore();
   const savedFilters = useSavedFilters();
 
@@ -88,8 +97,6 @@ export function useTicketWorkbench() {
   const flash = useFlashStore();
   // 小智种子单的履历与缓存（种子单本身已随 XIAOZHI_SEEDS 并入 TICKETS）
   useXiaozhiStore().hydrate();
-  // 个册退费单快照与产线结果定时查询（1120）
-  useRefundStore();
 
   /**
    * 工单池 / 催补待回的可见分组按角色取（930 教育刷机单 M72）：

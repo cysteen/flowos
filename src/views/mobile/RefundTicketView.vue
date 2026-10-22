@@ -352,7 +352,7 @@ function confirmTransfer() {
           <li v-for="e in history" :key="e.id" class="rf-hist__item">
             <div class="rf-hist__head">
               <span class="rf-hist__how">{{ e.how }}</span>
-              <span class="rf-hist__who">{{ e.who }}<template v-if="e.role !== '系统'">（{{ e.role }}）</template></span>
+              <span class="rf-hist__who">{{ e.who }}</span>
               <span class="rf-hist__when">{{ e.when }}</span>
             </div>
             <div class="rf-hist__what">{{ e.what }}</div>
