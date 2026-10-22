@@ -11,16 +11,22 @@ export function formatStartDate(t: Ticket): string {
   return t.createdAt.slice(0, 10);
 }
 
-/** 列表日期时间（建单 / 更新） */
+/**
+ * 列表日期时间（建单 / 更新）—— **展示到秒**（1023 拍板：列表与页头、处理履历统一
+ * 「年-月-日 时:分:秒」）。原写法截到 16 位只给到分，同一张单列表与页头对不上。
+ *
+ * 只到分的值**不补「:00」**：那是编一个假秒数，还会与页头取履历的真实秒数矛盾。
+ * 取数侧已统一给到秒，这里只负责不再截断。
+ */
 export function formatListDateTime(value: string): string {
-  return value.length > 16 ? value.slice(0, 16) : value;
+  return value;
 }
 
 /** 单号缺时间字段时的展示兜底（与 mock ensureTicketTimestamps 口径一致） */
 export function inferListDateTimeFromNo(no: string): string {
   const m = no.match(/^IFLY[A-Z]{2}(\d{4})(\d{2})(\d{2})/i);
-  if (!m) return '2026-06-10 09:00';
-  return `${m[1]}-${m[2]}-${m[3]} 09:00`;
+  if (!m) return '2026-06-10 09:00:00';
+  return `${m[1]}-${m[2]}-${m[3]} 09:00:00`;
 }
 
 export function formatCurrentGroup(t: Ticket): string {

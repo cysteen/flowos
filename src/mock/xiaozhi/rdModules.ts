@@ -32,6 +32,14 @@ export interface XiaozhiRdModule {
    * 故后台新建的模块没有这一项，产研单标题退化为「Z咨询-S〈模块〉」。
    */
   productLine?: string;
+  /**
+   * 是否启用（1023 拍板「支持停用删除，停用后可删除」）。
+   *
+   * 停用的模块不再出现在建单与升级弹窗的下拉里，**已选过它的历史工单照常显示原值、
+   * 不回写不置空**（PRD §8）—— 故按名字查接收人 / 产品线的 `xiaozhiRdReceiverOf` 等
+   * **不过滤启用态**，只有下拉取值源过滤。
+   */
+  enabled: boolean;
 }
 
 /**
@@ -39,10 +47,10 @@ export interface XiaozhiRdModule {
  * 原样搬过来，现有种子单的产品模块取值不变）。
  */
 const SEED: XiaozhiRdModule[] = [
-  { code: 'PM1001', name: '智批改', receiver: 'zhangdong3', productLine: '精准教学产品线' },
-  { code: 'PM1002', name: '智能阅卷', receiver: 'lyu7', productLine: '精准教学产品线' },
-  { code: 'PM1003', name: '扫描', receiver: 'wangshuang11', productLine: '精准教学产品线' },
-  { code: 'PM1004', name: '组卷与题库', receiver: 'chenwei21', productLine: '精准教学产品线' },
+  { code: 'PM1001', name: '智批改', receiver: 'zhangdong3', productLine: '精准教学产品线', enabled: true },
+  { code: 'PM1002', name: '智能阅卷', receiver: 'lyu7', productLine: '精准教学产品线', enabled: true },
+  { code: 'PM1003', name: '扫描', receiver: 'wangshuang11', productLine: '精准教学产品线', enabled: true },
+  { code: 'PM1004', name: '组卷与题库', receiver: 'chenwei21', productLine: '精准教学产品线', enabled: true },
   /**
    * 🔴 **故意不配接收人的一条**，`XIAOZHI_TIP.rdReceiverMissing` 那道拦截靠它才验得到。
    *
@@ -50,7 +58,13 @@ const SEED: XiaozhiRdModule[] = [
    * 等于写了也看不出来（与 `PRODUCTS_WITHOUT_AFTERSALE` 给「转售后」留反例同一个道理）。
    * 字典本身是后台配出来的，现实里新模块上线、接收人还没配就是这个样子。
    */
-  { code: 'PM1005', name: '学情分析', receiver: '', productLine: '精准教学产品线' },
+  { code: 'PM1005', name: '学情分析', receiver: '', productLine: '精准教学产品线', enabled: true },
+  /**
+   * 🔴 **故意停用的一条**，同上一条的道理：五条全是启用态时，「停用的模块不出现在下拉里」
+   * 与「启用态不许删、停用后才许删」两条规则**都走不到**，等于配了看不出来。
+   * 现实里产研模块下线、字典留着不删就是这个样子。
+   */
+  { code: 'PM1006', name: '智慧课堂', receiver: 'zhaolei9', productLine: '精准教学产品线', enabled: false },
 ];
 
 /** 产品模块字典（后台「产品模块维护」的数据源，建单与升级弹窗的下拉取值源） */
@@ -64,10 +78,19 @@ export function findRdModuleByCode(code: string): XiaozhiRdModule | undefined {
   return XIAOZHI_RD_MODULES.find((m) => m.code === key);
 }
 
-/** 新增一条（编码重复时不写入，返回 false 由调用方出提示） */
+/** 下拉取值源：建单弹窗与「升级 · 产研」弹窗只给启用的模块（停用的历史取值照常显示，见 `enabled`） */
+export const enabledRdModules = (): XiaozhiRdModule[] => XIAOZHI_RD_MODULES.filter((m) => m.enabled);
+
+/** 新增一条（编码重复时不写入，返回 false 由调用方出提示）；新建的模块默认启用 */
 export function addRdModule(row: XiaozhiRdModule): boolean {
   if (findRdModuleByCode(row.code)) return false;
-  XIAOZHI_RD_MODULES.push({ ...row, code: row.code.trim(), name: row.name.trim(), receiver: row.receiver.trim() });
+  XIAOZHI_RD_MODULES.push({
+    ...row,
+    code: row.code.trim(),
+    name: row.name.trim(),
+    receiver: row.receiver.trim(),
+    enabled: true,
+  });
   return true;
 }
 
@@ -89,10 +112,24 @@ export function updateRdModule(originalCode: string, row: XiaozhiRdModule): bool
   return true;
 }
 
-/** 删一条 */
+/** 停用 / 启用一条（1023 拍板：停用是常规动作，删除要先停用） */
+export function setRdModuleEnabled(code: string, enabled: boolean): boolean {
+  const row = findRdModuleByCode(code);
+  if (!row) return false;
+  row.enabled = enabled;
+  return true;
+}
+
+/**
+ * 删一条 —— 🔴 **只许删停用的**（1023 拍板「支持停用删除，停用后可删除」）。
+ *
+ * 闸门落在字典层而不是只在页面上置灰按钮：启用中的模块正挂在建单与升级弹窗的下拉里，
+ * 删掉会让正在选它的坐席落空；要删先停用，停用那一步已经把它从下拉里摘出去了。
+ */
 export function removeRdModule(code: string): boolean {
   const idx = XIAOZHI_RD_MODULES.findIndex((m) => m.code === code);
   if (idx < 0) return false;
+  if (XIAOZHI_RD_MODULES[idx].enabled) return false;
   XIAOZHI_RD_MODULES.splice(idx, 1);
   return true;
 }

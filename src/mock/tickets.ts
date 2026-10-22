@@ -87,7 +87,7 @@ function buildAftersaleSeeds() {
     linkedAftersaleNo: 'AS-20260930-41502', linkedAftersaleServiceType: '维修', linkedAftersaleStatus: '待接单',
     customerPhone: '13700004521', sn: 'SN-R2-41502', productCategory: '智能硬件',
     problemDesc: '扫地机器人上月维修更换主板后再次无法回充，客户对维修质量不满，要求退换新机。',
-    createdAt: '2026-09-30 09:12', updatedAt: '2026-09-30 10:40', responded: true,
+    createdAt: '2026-09-30 09:12:31', updatedAt: '2026-09-30 10:40:22', responded: true,
     eventTimeline: [{
       id: 'as-IFLYTS-20260930-00031-link', category: 'node', action: 'transfer', who: '王坐席', role: '二线专员',
       how: '关联售后', what: '售后单 AS-20260930-41502 · 维修', when: '2026-09-30 10:40',
@@ -139,7 +139,7 @@ function buildAftersaleSeeds() {
     assignee: '王坐席', tab: 'mine',
     linkedAftersaleNo: 'AS-20260722-38104', linkedAftersaleServiceType: '寄修检测', linkedAftersaleStatus: '处理中',
     customerPhone: '13977778888', sn: 'SN-SR302-40915', productCategory: '智能硬件',
-    createdAt: '2026-07-22 09:40', updatedAt: '2026-07-22 11:15',
+    createdAt: '2026-07-22 09:40:13', updatedAt: '2026-07-22 11:15:56',
     // 830 演示：已转出态下催补两枚都不展示，hover 售后单号出提示去售后系统操作
     responded: true,
   };
@@ -288,7 +288,7 @@ function buildAftersaleSeeds() {
   seeds.push({
     ...migrated.from,
     escalatedToNo: u2No, tab: 'done', handledByMe: true, myUpgradeAction: true,
-    slaText: '—', slaSub: '已升级投诉·停表', slaState: 'ok', slaMinutes: 9999, updatedAt: '2026-09-24 09:30',
+    slaText: '—', slaSub: '已升级投诉·停表', slaState: 'ok', slaMinutes: 9999, updatedAt: '2026-09-24 09:30:18',
   });
   seeds.push({
     id: 'as-u2', no: u2No, type: '投诉', channel: '电话',
@@ -300,7 +300,7 @@ function buildAftersaleSeeds() {
     customerPhone: '13800004079', sn: 'SN-AIR-40790', productCategory: '智能硬件',
     problemDesc: '客户称门店与客服告知的以旧换新补贴标准不一致，要求按较高标准执行并投诉服务口径混乱。',
     escalatedFromNo: u1.no,
-    createdAt: '2026-09-24 09:30', updatedAt: '2026-09-24 09:30',
+    createdAt: '2026-09-24 09:30:18', updatedAt: '2026-09-24 09:30:18',
     ...migrated.to,
   } as Ticket);
 
@@ -314,7 +314,7 @@ function buildAftersaleSeeds() {
     assignee: '王坐席', tab: 'mine', groupId: 'line1', responded: true,
     customerPhone: '13600004408', productCategory: '会员权益',
     problemDesc: '会员到期前未收到续费提醒即被自动扣款 198 元，客户要求退款并投诉扣费规则不透明。',
-    createdAt: '2026-10-05 09:20', updatedAt: '2026-10-05 09:45',
+    createdAt: '2026-10-05 09:20:36', updatedAt: '2026-10-05 09:45:33',
   });
 
   // 投诉单（处理中、产品有售后服务、无关联）：「关联售后」可点，走售后建单弹窗（§2.2 / §2.3）
@@ -327,7 +327,7 @@ function buildAftersaleSeeds() {
     assignee: '王坐席', tab: 'mine', groupId: 'hardware', responded: true,
     customerPhone: '13900004916', sn: 'SN-X1-49160', productCategory: '智能硬件',
     problemDesc: '智能音箱购买三个月内频繁断开 WiFi，重置后仍反复出现，客户投诉并要求安排上门检修。',
-    createdAt: '2026-10-06 10:15', updatedAt: '2026-10-06 10:40',
+    createdAt: '2026-10-06 10:15:07', updatedAt: '2026-10-06 10:40:29',
     eventTimeline: [{
       id: 'as-IFLYTS-20261006-00049-claim', category: 'node', action: 'accept', who: '王坐席', role: '二线专员',
       how: '领取', what: '王坐席 从池中领取本单，进入「待响应」。', when: '2026-10-06 10:40',
@@ -344,7 +344,7 @@ function buildAftersaleSeeds() {
     assignee: '王坐席', tab: 'mine', groupId: 'hardware', responded: true,
     customerPhone: '13700005012', sn: 'SN-R2-50120', productCategory: '智能硬件',
     problemDesc: '扫地机器人左侧边刷不转动，清洁后重启仍无改善，客户咨询能否安排上门维修。',
-    createdAt: '2026-10-06 13:20', updatedAt: '2026-10-06 13:45',
+    createdAt: '2026-10-06 13:20:32', updatedAt: '2026-10-06 13:45:01',
     eventTimeline: [{
       id: 'as-IFLYZX-20261006-00050-claim', category: 'node', action: 'accept', who: '王坐席', role: '二线专员',
       how: '领取', what: '王坐席 从池中领取本单，进入「待响应」。', when: '2026-10-06 13:45',
@@ -362,7 +362,7 @@ function buildAftersaleSeeds() {
     linkedAftersaleNo: 'AS-20260925-41231', linkedAftersaleServiceType: '维修', linkedAftersaleStatus: '待接单',
     customerPhone: '13500004123', sn: 'SN-X1-41231', productCategory: '智能硬件',
     problemDesc: '智能音箱维修后播放仍有明显杂音，客户对维修质量不满，要求重新检测并补偿。',
-    createdAt: '2026-09-25 10:05', updatedAt: '2026-09-25 10:30', responded: true,
+    createdAt: '2026-09-25 10:05:35', updatedAt: '2026-09-25 10:30:15', responded: true,
     eventTimeline: [{
       id: 'as-IFLYTS-20260925-00045-link', category: 'node', action: 'transfer', who: '王坐席', role: '二线专员',
       how: '关联售后', what: '售后单 AS-20260925-41231 · 维修', when: '2026-09-25 10:30',
@@ -402,7 +402,7 @@ function buildAftersaleSeeds() {
     id: 'as-k1', no: 'IFLYZX-20260919-00046', title: '扫地机器人主刷不转，咨询上门维修',
     customer: '柯敏', product: '扫地机器人 R2', customerPhone: '13700004188', sn: 'SN-R2-41188',
     problemDesc: '扫地机器人主刷不转动，客户咨询上门维修安排。',
-    createdAt: '2026-09-19 09:10',
+    createdAt: '2026-09-19 09:10:08',
   }, 'AS-20260919-41188', '2026-09-19 09:40'), '2026-09-26 17:30');
   const k1Succ = created([k1], {
     type: 'AS_RETURNED', asNo: 'AS-20260919-41188', eventId: 'ase-41188-returned-1',
@@ -423,7 +423,7 @@ function buildAftersaleSeeds() {
     customer: '詹琪', product: '讯飞学习机 T20', customerPhone: '13600004166', sn: 'SN-T20-41166',
     productCategory: '学习硬件',
     problemDesc: '学习机充电口松动接触不良，客户咨询保修期内维修。',
-    createdAt: '2026-09-17 14:00',
+    createdAt: '2026-09-17 14:00:29',
   }, 'AS-20260917-41166', '2026-09-17 14:30'), '2026-09-24 11:00')], {
     type: 'AS_CLOSED', asNo: 'AS-20260917-41166', eventId: 'ase-41166-closed',
     at: '2026-10-02 15:10', operator: '孙师傅（售后一组）', status: '已完成',
@@ -468,7 +468,7 @@ const BASE_TICKETS: Ticket[] = [
     customerPhone: '13500001234', sn: 'SN-T10-260713', productCategory: '消费电子',
     businessType: '翻译机',
     problemDesc: '用户反馈离线中英互译在长句场景下漏译、语序错乱，在线翻译正常，疑似离线模型缺陷，需产研确认。',
-    createdAt: '2026-07-13 09:10', updatedAt: '2026-07-13 10:05',
+    createdAt: '2026-07-13 09:10:52', updatedAt: '2026-07-13 10:05:48',
     responded: true, upgradedByMe: false,
   },
   { serviceScore: 2,
@@ -480,7 +480,7 @@ const BASE_TICKETS: Ticket[] = [
     slaText: '00:42:10', slaSub: '距超时', slaState: 'soon', slaMinutes: 42,
     assignee: '王坐席', tab: 'mine',
     customerPhone: '13800138000', sn: 'SN-X1-20260301', productCategory: '智能硬件',
-    createdAt: '2026-06-10 08:12', updatedAt: '2026-06-10 14:30',
+    createdAt: '2026-06-10 08:12:23', updatedAt: '2026-06-10 14:30:08',
     // 已联系：催补后坐席已回电 → 催补待回**不收**（PRD-915 补充与催单 §10.1）
     responded: true, upgradedByMe: true, hasDunning: true, dunningContacted: true, contactedAfterUrge: true,
   },
@@ -492,7 +492,7 @@ const BASE_TICKETS: Ticket[] = [
     slaText: '已超 01:12', slaSub: '已超时', slaState: 'overdue', slaMinutes: -72,
     assignee: '王坐席', tab: 'mine',
     customerPhone: '13912345678', sn: 'SN-R2-882910', productCategory: '智能硬件',
-    createdAt: '2026-06-10 07:45', updatedAt: '2026-06-10 16:02',
+    createdAt: '2026-06-10 07:45:36', updatedAt: '2026-06-10 16:02:51',
     responded: true, hasDunning: true,
   },
   {
@@ -503,7 +503,7 @@ const BASE_TICKETS: Ticket[] = [
     slaText: '已暂停', slaSub: '挂起中', slaState: 'paused', slaMinutes: 9999,
     assignee: '王坐席', tab: 'mine',
     customerPhone: '13600001111', productCategory: '企业服务',
-    createdAt: '2026-06-09 15:20', updatedAt: '2026-06-10 10:00',
+    createdAt: '2026-06-09 15:20:18', updatedAt: '2026-06-10 10:00:23',
     responded: true, suspendedByMe: true, hasSupplement: true,
     suspendedAt: '2026-06-10 10:00', suspendResumeAt: '2026-06-12 18:00',
   },
@@ -515,7 +515,7 @@ const BASE_TICKETS: Ticket[] = [
     slaText: '01:48:30', slaSub: '距超时', slaState: 'soon', slaMinutes: 108,
     assignee: '王坐席', tab: 'mine',
     customerPhone: '13788889999', productCategory: '开放平台',
-    createdAt: '2026-06-10 09:00', updatedAt: '2026-06-10 13:15',
+    createdAt: '2026-06-10 09:00:45', updatedAt: '2026-06-10 13:15:58',
     responded: true, upgradedByMe: true, hasDelegateHistory: true, hasReturnAction: true,
   },
   { serviceScore: 5,
@@ -526,7 +526,7 @@ const BASE_TICKETS: Ticket[] = [
     slaText: '06:20:00', slaSub: '充足', slaState: 'ok', slaMinutes: 380,
     assignee: '王坐席', tab: 'mine',
     customerPhone: '15800002222', sn: 'SN-AIR-55102', productCategory: '智能硬件',
-    createdAt: '2026-06-10 11:30', updatedAt: '2026-06-10 12:05',
+    createdAt: '2026-06-10 11:30:41', updatedAt: '2026-06-10 12:05:38',
     // 已联系：催补后坐席已回电 → 催补待回**不收**（PRD-915 补充与催单 §10.1）
     responded: true, supplementUnread: true, hasSupplement: true, contactedAfterUrge: true,
   },
@@ -544,7 +544,7 @@ const BASE_TICKETS: Ticket[] = [
     resolveSlaText: '08:00:00', resolveSlaState: 'ok',
     assignee: null, tab: 'pool', groupId: 'line1',
     customerPhone: '13900008802', sn: 'SN-X1-88002', productCategory: '智能硬件',
-    createdAt: '2026-08-04 10:40', updatedAt: '2026-08-04 10:40',
+    createdAt: '2026-08-04 10:40:36', updatedAt: '2026-08-04 10:40:36',
     responded: false,
   },
   {
@@ -556,7 +556,7 @@ const BASE_TICKETS: Ticket[] = [
     resolveSlaText: '08:00:00', resolveSlaState: 'ok',
     assignee: '王坐席', tab: 'mine',
     customerPhone: '13344445555', sn: 'SN-L1-33001', productCategory: '智能硬件',
-    createdAt: '2026-06-10 13:00', updatedAt: '2026-06-10 13:00',
+    createdAt: '2026-06-10 13:00:24', updatedAt: '2026-06-10 13:00:24',
     responded: false,
     hasAppointment: true, appointmentText: '02:15:00',
   },
@@ -568,7 +568,7 @@ const BASE_TICKETS: Ticket[] = [
     slaText: '12:30:00', slaSub: '充足', slaState: 'ok', slaMinutes: 750,
     assignee: '王坐席', tab: 'mine',
     customerPhone: '18611112222', productCategory: '会员权益',
-    createdAt: '2026-06-08 10:00', updatedAt: '2026-06-09 18:40',
+    createdAt: '2026-06-08 10:00:42', updatedAt: '2026-06-09 18:40:25',
     responded: true,
   },
   {
@@ -579,7 +579,7 @@ const BASE_TICKETS: Ticket[] = [
     slaText: '00:58:00', slaSub: '距超时', slaState: 'soon', slaMinutes: 58,
     assignee: '王坐席', tab: 'mine',
     customerPhone: '13566667777', sn: 'SN-X1-20260188', productCategory: '智能硬件',
-    createdAt: '2026-06-10 10:20', updatedAt: '2026-06-10 15:50',
+    createdAt: '2026-06-10 10:20:17', updatedAt: '2026-06-10 15:50:27',
     // 未联系（缺省即未联系）→ 进催补待回
     responded: true, firstRespBreached: true, dunningUnread: true, hasDunning: true,
   },
@@ -610,7 +610,7 @@ const BASE_TICKETS: Ticket[] = [
     slaText: '00:35:00', slaSub: '距超时', slaState: 'soon', slaMinutes: 35,
     assignee: '王坐席', tab: 'mine',
     customerPhone: '13622223333', productCategory: '智能硬件',
-    createdAt: '2026-08-17 08:30', updatedAt: '2026-08-17 10:40',
+    createdAt: '2026-08-17 08:30:44', updatedAt: '2026-08-17 10:40:36',
     responded: true,
     hasDunning: true, dunningUnread: true, hasSupplement: true, supplementUnread: true,
   },
@@ -625,7 +625,7 @@ const BASE_TICKETS: Ticket[] = [
     slaText: '04:00:00', slaSub: '充足', slaState: 'ok', slaMinutes: 240,
     assignee: '王坐席', tab: 'mine',
     customerPhone: '13633334444', productCategory: '智能硬件',
-    createdAt: '2026-08-17 09:20', updatedAt: '2026-08-17 09:55',
+    createdAt: '2026-08-17 09:20:28', updatedAt: '2026-08-17 09:55:56',
     responded: true, hasDunning: true, dunningUnread: false,
   },
   // D4 调研中：提交催补 → **自动撤回本次下送** → 回处理中（代表"拉回"这一类）
@@ -637,7 +637,7 @@ const BASE_TICKETS: Ticket[] = [
     slaText: '01:30:00', slaSub: '距超时', slaState: 'soon', slaMinutes: 90,
     assignee: '王坐席', tab: 'mine',
     customerPhone: '13688889999', sn: 'SN-SR302-830101', productCategory: '智能硬件',
-    createdAt: '2026-08-16 11:00', updatedAt: '2026-08-17 09:30',
+    createdAt: '2026-08-16 11:00:02', updatedAt: '2026-08-17 09:30:33',
     responded: true,
   },
   // D5 已升级技术支持（基线 §1 ※14）：不拉回；通知**三线组员 + 抄送主责二线**。注意处理人已转到三线
@@ -649,7 +649,7 @@ const BASE_TICKETS: Ticket[] = [
     slaText: '00:20:00', slaSub: '距超时', slaState: 'soon', slaMinutes: 20,
     assignee: '赵三线', tab: 'mine',
     customerPhone: '13711112222', sn: 'SN-T20-830131', productCategory: '智能硬件',
-    createdAt: '2026-08-15 09:00', updatedAt: '2026-08-17 08:00',
+    createdAt: '2026-08-15 09:00:52', updatedAt: '2026-08-17 08:00:47',
     responded: true, upgradedByMe: true, hasDunning: true,
     // 技术支持处理结果的种子登记（速览带「最新处理」技术支持那一块）：正文与「技术支持处理」Tab 预填一致
     eventTimeline: [{
@@ -668,7 +668,7 @@ const BASE_TICKETS: Ticket[] = [
     slaText: '03:00:00', slaSub: '充足', slaState: 'ok', slaMinutes: 180,
     assignee: '王坐席', tab: 'mine', groupId: 'line2',
     customerPhone: '13722223333', sn: 'SN-T10-830141', productCategory: '消费电子',
-    createdAt: '2026-08-14 15:00', updatedAt: '2026-08-17 09:00',
+    createdAt: '2026-08-14 15:00:44', updatedAt: '2026-08-17 09:00:34',
     // hasSupplement：演示「已升级」chip 的第二种来源 —— 已升级产研（处理人仍是二线，
     // 本组分支就能取到），与 D5（已升级技术支持、靠扩域补进来）成对
     responded: true, upgradedByMe: true, hasSupplement: true,
@@ -682,7 +682,7 @@ const BASE_TICKETS: Ticket[] = [
     slaText: '05:15:00', slaSub: '充足', slaState: 'ok', slaMinutes: 315,
     assignee: '王坐席', tab: 'mine',
     customerPhone: '13733334444', productCategory: '智能硬件',
-    createdAt: '2026-08-16 09:40', updatedAt: '2026-08-17 08:20',
+    createdAt: '2026-08-16 09:40:09', updatedAt: '2026-08-17 08:20:49',
     responded: true, hasDelegateHistory: true,
   },
   // D8 已结案·无子单：点补充 → **新建一张承接子单**；再补一次仍落这张，不建第二张
@@ -694,7 +694,7 @@ const BASE_TICKETS: Ticket[] = [
     slaText: '—', slaSub: '已结案·停表', slaState: 'ok', slaMinutes: 9999,
     assignee: '王坐席', tab: 'mine', groupId: 'line2',
     customerPhone: '13766667777', productCategory: '智能硬件',
-    createdAt: '2026-08-10 09:00', updatedAt: '2026-08-16 16:00',
+    createdAt: '2026-08-10 09:00:03', updatedAt: '2026-08-16 16:00:41',
     responded: true,
   },
   // 结案后补充·商机：最后处理人与当前坐席同组（二线技术支持组）→ 商机编号 / 结案后备注可编辑，底栏只留「保存」
@@ -706,7 +706,7 @@ const BASE_TICKETS: Ticket[] = [
     slaText: '—', slaSub: '已结案·停表', slaState: 'ok', slaMinutes: 9999,
     assignee: '王坐席', tab: 'mine', groupId: 'line2',
     customerPhone: '13755550123', productCategory: '开放平台',
-    createdAt: '2026-08-12 10:20', updatedAt: '2026-08-18 15:40',
+    createdAt: '2026-08-12 10:20:25', updatedAt: '2026-08-18 15:40:16',
     responded: true,
   },
   // 结案后补充·商机：最后处理人在硬件缺陷组，与当前坐席不同组 → 两个字段只读、无底栏
@@ -718,7 +718,7 @@ const BASE_TICKETS: Ticket[] = [
     slaText: '—', slaSub: '已结案·停表', slaState: 'ok', slaMinutes: 9999,
     assignee: '陈坐席', tab: 'done', handledByMe: true, groupId: 'hardware',
     customerPhone: '13755550456', productCategory: '智能硬件',
-    createdAt: '2026-08-11 14:05', updatedAt: '2026-08-18 11:10',
+    createdAt: '2026-08-11 14:05:13', updatedAt: '2026-08-18 11:10:05',
     responded: true,
   },
   // D9 已升级外投：已有子单 → 点补充**跳子单**；本单整页冻结 + 接管横幅。
@@ -734,7 +734,7 @@ const BASE_TICKETS: Ticket[] = [
     assignee: '王坐席', tab: 'mine',
     escalatedToNo: 'IFLYZX-20260817-00010',
     customerPhone: '13777778888', sn: 'SN-T20-830191', productCategory: '智能硬件',
-    createdAt: '2026-08-13 09:00', updatedAt: '2026-08-16 11:30',
+    createdAt: '2026-08-13 09:00:22', updatedAt: '2026-08-16 11:30:01',
     responded: true,
   },
   // D10 直接结案：一次性单，催补**两枚都不给**（基线 §1 ※25）。已取消行为相同，不另造单。
@@ -748,7 +748,7 @@ const BASE_TICKETS: Ticket[] = [
     slaText: '—', slaSub: '直接结案', slaState: 'ok', slaMinutes: 9999,
     assignee: '王坐席', tab: 'mine',
     customerPhone: '13788889999', productCategory: '企业服务',
-    createdAt: '2026-08-16 10:00', updatedAt: '2026-08-16 10:05',
+    createdAt: '2026-08-16 10:00:15', updatedAt: '2026-08-16 10:05:12',
     responded: true,
   },
 
@@ -762,7 +762,7 @@ const BASE_TICKETS: Ticket[] = [
     slaText: '03:25:00', slaSub: '充足', slaState: 'ok', slaMinutes: 205,
     assignee: '陈坐席', tab: 'done', handledByMe: true, myTransferAction: true,
     customerPhone: '13700001122', sn: 'SN-P3-44102', productCategory: '智能硬件',
-    createdAt: '2026-07-13 14:00', updatedAt: '2026-08-15 09:30',
+    createdAt: '2026-07-13 14:00:39', updatedAt: '2026-08-15 09:30:27',
   },
   {
     id: 't10', no: 'IFLYZX-20260714-00001', type: '咨询', channel: '小程序',
@@ -773,7 +773,7 @@ const BASE_TICKETS: Ticket[] = [
     resolveSlaText: '16:00:00', resolveSlaState: 'ok',
     assignee: '林坐席', tab: 'done', handledByMe: true, myDelegateAction: true,
     customerPhone: '13622223333', productCategory: '企业服务',
-    createdAt: '2026-07-12 10:15', updatedAt: '2026-08-14 16:40',
+    createdAt: '2026-07-12 10:15:50', updatedAt: '2026-08-14 16:40:11',
   },
   { serviceScore: 5,
     id: 't11', no: 'IFLYSJ-20260716-00001', type: '商机', channel: '邮件',
@@ -783,7 +783,7 @@ const BASE_TICKETS: Ticket[] = [
     slaText: '00:35:00', slaSub: '距超时', slaState: 'soon', slaMinutes: 35,
     assignee: '陈坐席', tab: 'done', handledByMe: true, myUpgradeAction: true,
     customerPhone: '13588889999', productCategory: '开放平台',
-    createdAt: '2026-07-14 11:20', updatedAt: '2026-08-16 12:00',
+    createdAt: '2026-07-14 11:20:41', updatedAt: '2026-08-16 12:00:21',
   },
   {
     id: 't12', no: 'IFLYTS-20260716-00002', type: '投诉', channel: 'APP',
@@ -793,7 +793,7 @@ const BASE_TICKETS: Ticket[] = [
     slaText: '已超 00:25', slaSub: '已超时', slaState: 'overdue', slaMinutes: -25,
     assignee: '林坐席', tab: 'done', handledByMe: true, myForceCloseAction: true,
     customerPhone: '15833334444', sn: 'SN-AIR-88201', productCategory: '智能硬件',
-    createdAt: '2026-07-15 08:00', updatedAt: '2026-08-16 15:20',
+    createdAt: '2026-07-15 08:00:22', updatedAt: '2026-08-16 15:20:04',
   },
   // ⬇ 以下几张停表单的 slaSub 一律写**基线 §1 的终态子状态名**。取值按该单自带的动作标记反推：
   //   `myCloseAction`（关闭工单审批通过）→ **已关闭**（基线 §1 该行「友好沟通后关闭」）；
@@ -807,7 +807,7 @@ const BASE_TICKETS: Ticket[] = [
     slaText: '—', slaSub: '已关闭·停表', slaState: 'ok', slaMinutes: 9999,
     assignee: '陈坐席', tab: 'done', handledByMe: true, myCloseAction: true,
     customerPhone: '13944445555', sn: 'SN-R2-11002', productCategory: '智能硬件',
-    createdAt: '2026-07-07 09:30', updatedAt: '2026-08-10 17:00',
+    createdAt: '2026-07-07 09:30:15', updatedAt: '2026-08-10 17:00:18',
   },
   {
     id: 't28', no: 'IFLYTS-20260708-00002', type: '投诉', channel: '在线客服',
@@ -819,7 +819,7 @@ const BASE_TICKETS: Ticket[] = [
     assignee: '林坐席', tab: 'done', handledByMe: true,
     myTransferAction: true, myCloseAction: true,
     customerPhone: '18655556666', productCategory: '会员权益',
-    createdAt: '2026-07-05 13:00', updatedAt: '2026-08-08 18:30',
+    createdAt: '2026-07-05 13:00:51', updatedAt: '2026-08-08 18:30:43',
   },
   // ── 关闭类终态 · 两种收口原因对照（PRD §5.6.4）────────────────────────────
   // 咨询原单 → 风险报备 rr-006 挂载点；评估「升级」后派生 t40（IFLYTS-20260709-00001）
@@ -833,7 +833,7 @@ const BASE_TICKETS: Ticket[] = [
     customerPhone: '13500002222', sn: 'SN-T20-77301', productCategory: '学习硬件',
     problemDesc: '客户连续两日致电反馈屏幕漏光，明确要求"给个说法否则去平台曝光"，并已在社交平台发帖。',
     escalatedToNo: 'IFLYTS-20260709-00001',
-    createdAt: '2026-07-07 09:15', updatedAt: '2026-07-09 10:30',
+    createdAt: '2026-07-07 09:15:58', updatedAt: '2026-07-09 10:30:23',
   },
   // ① 正常关闭：**无派生子单**（有父关联：本单是别的单升级来的）。
   //    再来诉求 → 补充/催单走「基于原单建新单承接」（§5.2，同 Zendesk follow-up）。
@@ -847,7 +847,7 @@ const BASE_TICKETS: Ticket[] = [
     customerPhone: '13500002222', sn: 'SN-T20-77301', productCategory: '学习硬件',
     problemDesc: '屏幕左下角漏光，已现场更换屏幕总成并复检通过，客户确认满意。',
     escalatedFromNo: 'IFLYZX-20260707-00001', // 父关联：由咨询单升级而来
-    createdAt: '2026-07-07 10:20', updatedAt: '2026-07-09 16:45',
+    createdAt: '2026-07-07 10:20:28', updatedAt: '2026-07-09 16:45:17',
   },
   // ② 因升级投诉而关闭：**有派生子单**（已升级为外投单）→ 原单落「已升级外投」（第二跳），
   //    处理页整页只读 + 接管横幅，
@@ -864,7 +864,7 @@ const BASE_TICKETS: Ticket[] = [
     customerPhone: '13700003333', sn: 'SN-X1-55208', productCategory: '智能硬件',
     problemDesc: '维修超期 15 天未解决，客户要求赔偿并已向 12315 投诉。',
     escalatedToNo: 'IFLYTS-20260711-00002', // 已升级为外投单 → 本单被接管
-    createdAt: '2026-07-08 09:10', updatedAt: '2026-07-11 14:25',
+    createdAt: '2026-07-08 09:10:32', updatedAt: '2026-07-11 14:25:32',
   },
   // 升级派生出的外投新单（上面 t41 的去向，可从关系芯片/横幅跳到这里）
   { serviceScore: 5,
@@ -878,7 +878,7 @@ const BASE_TICKETS: Ticket[] = [
     customerPhone: '13700003333', sn: 'SN-X1-55208', productCategory: '智能硬件',
     problemDesc: '【升级投诉·原单 IFLYTS-20260711-00001】投诉 → 外投｜投诉平台：市场监管12315平台（编号 HM20260711008）｜客户要求赔偿并已向监管平台投诉。',
     escalatedFromNo: 'IFLYTS-20260711-00001',
-    createdAt: '2026-07-11 14:25', updatedAt: '2026-07-11 15:02',
+    createdAt: '2026-07-11 14:25:32', updatedAt: '2026-07-11 15:02:06',
   },
   // 非诉转售后 → 售后侧关单回传（AS_CLOSED）→ 原单正常关闭，进「已办」，行内可见关联售后单号（可跳转）
   applyAftersaleEvent({
@@ -890,7 +890,7 @@ const BASE_TICKETS: Ticket[] = [
     assignee: '陈坐席', tab: 'mine', handledByMe: true, myTransferAction: true,
     linkedAftersaleNo: 'AS-20260716-38025', linkedAftersaleServiceType: '维修',
     customerPhone: '13100002200', sn: 'SN-R2-77120', productCategory: '智能硬件',
-    createdAt: '2026-07-16 10:20', updatedAt: '2026-07-16 11:02', responded: true,
+    createdAt: '2026-07-16 10:20:26', updatedAt: '2026-07-16 11:02:23', responded: true,
   }, {
     type: 'AS_CLOSED', asNo: 'AS-20260716-38025', eventId: 'ase-38025-closed',
     at: '2026-08-12 15:05', operator: '周师傅', status: '已完成',
@@ -906,7 +906,7 @@ const BASE_TICKETS: Ticket[] = [
     assignee: '王坐席', tab: 'mine', groupId: 'hardware', myTransferAction: true,
     linkedAftersaleNo: 'AS-20260924-41163', linkedAftersaleServiceType: '维修',
     customerPhone: '13800009012', sn: 'SN-T20-90412', productCategory: '智能硬件',
-    createdAt: '2026-09-24 09:30', updatedAt: '2026-09-24 10:12', responded: true,
+    createdAt: '2026-09-24 09:30:18', updatedAt: '2026-09-24 10:12:28', responded: true,
   }, {
     type: 'AS_RETURNED', asNo: 'AS-20260924-41163', eventId: 'ase-41163-returned-1',
     at: '2026-09-25 14:20', operator: '许师傅（售后二组）',
@@ -923,7 +923,7 @@ const BASE_TICKETS: Ticket[] = [
       assignee: '林坐席', tab: 'mine', groupId: 'hardware',
       linkedAftersaleNo: 'AS-20260923-40877', linkedAftersaleServiceType: '维修',
       customerPhone: '13600007788', sn: 'SN-T10-23877', productCategory: '消费电子',
-      createdAt: '2026-09-23 16:05', updatedAt: '2026-09-23 16:40', responded: true,
+      createdAt: '2026-09-23 16:05:31', updatedAt: '2026-09-23 16:40:08', responded: true,
     }, {
       type: 'AS_RETURNED', asNo: 'AS-20260923-40877', eventId: 'ase-40877-returned-1',
       at: '2026-09-25 10:05', operator: '马师傅（售后一组）',
@@ -945,7 +945,7 @@ const BASE_TICKETS: Ticket[] = [
       assignee: '王坐席', tab: 'mine', groupId: 'hardware', myTransferAction: true,
       linkedAftersaleNo: asNo, linkedAftersaleServiceType: '维修',
       customerPhone: '13700004120', sn: 'SN-R2-41205', productCategory: '智能硬件',
-      createdAt: '2026-09-26 09:15', updatedAt: '2026-09-26 09:50', responded: true,
+      createdAt: '2026-09-26 09:15:05', updatedAt: '2026-09-26 09:50:58', responded: true,
     }], {
       type: 'AS_RETURNED', asNo, eventId: 'ase-41205-returned-1',
       at: '2026-09-27 15:10', operator: '曹师傅（售后一组）',
@@ -1072,7 +1072,7 @@ const BASE_TICKETS: Ticket[] = [
     customer: '钱伟', vip: false, product: '企业版',
     nodeStatus: '已结案', nodeStep: 5, nodeTotal: 5, priority: 'P3',
     slaText: '—', slaSub: '已结案·停表', slaState: 'ok', slaMinutes: 9999,
-    assignee: '王坐席', tab: 'mine', archived: true, updatedAt: '2025-05-28 16:30',
+    assignee: '王坐席', tab: 'mine', archived: true, updatedAt: '2025-05-28 16:30:15',
   },
   {
     id: 't22', no: 'IFLYZX-20260527-00001', type: '咨询', channel: '电话',
@@ -1080,7 +1080,7 @@ const BASE_TICKETS: Ticket[] = [
     customer: '孔明', vip: false, product: '路由器 R2',
     nodeStatus: '已结案', nodeStep: 5, nodeTotal: 5, priority: 'P2',
     slaText: '—', slaSub: '已结案·停表', slaState: 'ok', slaMinutes: 9999,
-    assignee: '陈坐席', tab: 'done', archived: true, updatedAt: '2025-05-27 11:20',
+    assignee: '陈坐席', tab: 'done', archived: true, updatedAt: '2025-05-27 11:20:36',
     handledByMe: true, myTransferAction: true,
   },
   {
@@ -1089,7 +1089,7 @@ const BASE_TICKETS: Ticket[] = [
     customer: '吕布', vip: true, customerTags: ['记者'], product: '智能音箱 X1',
     nodeStatus: '已结案', nodeStep: 5, nodeTotal: 5, priority: 'P1',
     slaText: '—', slaSub: '已结案·停表', slaState: 'ok', slaMinutes: 9999,
-    assignee: '林坐席', tab: 'done', archived: true, updatedAt: '2025-05-26 09:45',
+    assignee: '林坐席', tab: 'done', archived: true, updatedAt: '2025-05-26 09:45:33',
     handledByMe: true, myCloseAction: true,
   },
   {
@@ -1098,7 +1098,7 @@ const BASE_TICKETS: Ticket[] = [
     customer: '貂蝉', vip: false, product: '蓝牙耳机 Air',
     nodeStatus: '已结案', nodeStep: 5, nodeTotal: 5, priority: 'P2',
     slaText: '—', slaSub: '已结案·停表', slaState: 'ok', slaMinutes: 9999,
-    assignee: '王坐席', tab: 'mine', archived: true, updatedAt: '2025-05-25 14:10',
+    assignee: '王坐席', tab: 'mine', archived: true, updatedAt: '2025-05-25 14:10:28',
   },
   {
     id: 't25', no: 'IFLYJY-20260524-00001', type: '建议', channel: '电话',
@@ -1106,7 +1106,7 @@ const BASE_TICKETS: Ticket[] = [
     customer: '刘备', vip: false, product: '智能门锁 L1',
     nodeStatus: '已结案', nodeStep: 5, nodeTotal: 5, priority: 'P2',
     slaText: '—', slaSub: '已结案·停表', slaState: 'ok', slaMinutes: 9999,
-    assignee: '陈坐席', tab: 'done', archived: true, updatedAt: '2025-05-24 17:00',
+    assignee: '陈坐席', tab: 'done', archived: true, updatedAt: '2025-05-24 17:00:17',
     handledByMe: true, myDelegateAction: true,
   },
   {
@@ -1115,7 +1115,7 @@ const BASE_TICKETS: Ticket[] = [
     customer: '孙权', vip: true, customerTags: ['自媒体'], product: '开放平台',
     nodeStatus: '已结案', nodeStep: 5, nodeTotal: 5, priority: 'P1',
     slaText: '—', slaSub: '已结案·停表', slaState: 'ok', slaMinutes: 9999,
-    assignee: '林坐席', tab: 'mine', archived: true, updatedAt: '2025-05-23 10:30',
+    assignee: '林坐席', tab: 'mine', archived: true, updatedAt: '2025-05-23 10:30:04',
   },
 
   // ================================================================
@@ -1145,7 +1145,7 @@ const BASE_TICKETS: Ticket[] = [
     customerPhone: '13700003333', sn: 'SN-X1-55208', productCategory: '智能硬件',
     problemDesc: '送修 12 天仍未回寄，客户多次催问未获明确回寄时间。',
     latestHandling: '已催返修仓，等待物流回单，尚未给客户明确回寄时间。',
-    createdAt: '2026-07-27 09:15', updatedAt: '2026-07-31 10:40',
+    createdAt: '2026-07-27 09:15:04', updatedAt: '2026-07-31 10:40:55',
     responded: true, solveBreached: true, hasDunning: true,
   },
   {
@@ -1158,7 +1158,7 @@ const BASE_TICKETS: Ticket[] = [
     customerPhone: '13788889999', productCategory: '教育服务',
     problemDesc: '校级批量激活 320 台学习机全部失败，开学在即。',
     latestHandling: '已升三线定位授权服务，等待批量重发激活码。',
-    createdAt: '2026-07-26 08:30', updatedAt: '2026-07-30 09:20',
+    createdAt: '2026-07-26 08:30:51', updatedAt: '2026-07-30 09:20:48',
     responded: true, solveBreached: true, upgradedByMe: true,
   },
   {
@@ -1171,7 +1171,7 @@ const BASE_TICKETS: Ticket[] = [
     customerPhone: '13588889999', productCategory: '开放平台',
     problemDesc: '并发配额提升申请提交后三天无回复。',
     latestHandling: '申请单已流转至平台侧，暂无排期反馈。',
-    createdAt: '2026-07-28 11:00', updatedAt: '2026-07-31 09:05',
+    createdAt: '2026-07-28 11:00:44', updatedAt: '2026-07-31 09:05:02',
     responded: true, solveBreached: true,
   },
   {
@@ -1184,7 +1184,7 @@ const BASE_TICKETS: Ticket[] = [
     customerPhone: '13912345678', sn: 'SN-R2-882910', productCategory: '智能硬件',
     problemDesc: '主刷电机运转时持续金属异响，清理滚刷无改善。',
     latestHandling: '已判定需更换电机总成，配件在途未到货。',
-    createdAt: '2026-07-31 14:20', updatedAt: '2026-08-02 10:15',
+    createdAt: '2026-07-31 14:20:49', updatedAt: '2026-08-02 10:15:04',
     responded: true, solveBreached: true,
   },
   {
@@ -1197,7 +1197,7 @@ const BASE_TICKETS: Ticket[] = [
     customerPhone: '13788889999', productCategory: '开放平台',
     problemDesc: '网关间歇性返回 502，影响校端成绩同步任务。',
     latestHandling: '已升三线抓包，怀疑上游连接池耗尽，待复现。',
-    createdAt: '2026-07-31 16:40', updatedAt: '2026-08-02 08:50',
+    createdAt: '2026-07-31 16:40:29', updatedAt: '2026-08-02 08:50:32',
     responded: true, solveBreached: true, upgradedByMe: true,
   },
   {
@@ -1210,7 +1210,7 @@ const BASE_TICKETS: Ticket[] = [
     productCategory: '企业服务',
     problemDesc: '抬头开错需作废重开，财务侧迟迟未回。',
     latestHandling: '已提交财务作废申请，等待重开。',
-    createdAt: '2026-07-31 09:30', updatedAt: '2026-08-02 09:10',
+    createdAt: '2026-07-31 09:30:50', updatedAt: '2026-08-02 09:10:05',
     responded: true, solveBreached: true,
   },
 
@@ -1261,7 +1261,7 @@ const BASE_TICKETS: Ticket[] = [
     customerPhone: '13866667777', productCategory: '教育服务',
     problemDesc: '期末成绩批量导出连续三次失败，年级组无法归档成绩单。',
     latestHandling: '已复现导出超时，正在核对班级数据量上限。',
-    createdAt: '2026-08-05 16:20', updatedAt: '2026-08-06 09:05',
+    createdAt: '2026-08-05 16:20:47', updatedAt: '2026-08-06 09:05:47',
     responded: true, solveBreached: true,
   },
   {
@@ -1274,7 +1274,7 @@ const BASE_TICKETS: Ticket[] = [
     customerPhone: '13755558888', sn: 'SN-T20-660412', productCategory: '学习硬件',
     problemDesc: '升级后本地课本同步资源清空，重新下载提示无权限。',
     latestHandling: '已指导重新绑定教材版本，资源已恢复，客户确认可用。',
-    createdAt: '2026-08-06 08:40', updatedAt: '2026-08-06 10:15',
+    createdAt: '2026-08-06 08:40:45', updatedAt: '2026-08-06 10:15:36',
     responded: true,
   },
   {
@@ -1302,7 +1302,7 @@ const BASE_TICKETS: Ticket[] = [
     customerPhone: '13633334444', sn: 'SN-T10-771203', productCategory: '消费电子',
     problemDesc: '在线翻译连续超时，离线可用；同一小区多名用户反馈相同现象。',
     latestHandling: '已上报在线服务侧排查区域节点，暂无结论。',
-    createdAt: '2026-08-06 06:30', updatedAt: '2026-08-06 09:40',
+    createdAt: '2026-08-06 06:30:00', updatedAt: '2026-08-06 09:40:56',
     responded: true, solveBreached: true,
   },
   {
@@ -1315,7 +1315,7 @@ const BASE_TICKETS: Ticket[] = [
     customerPhone: '13511112222', sn: 'SN-X1-118820', productCategory: '智能硬件',
     problemDesc: '云端转写记录只剩最近三条，历史文件在 APP 内不可见。',
     latestHandling: '已提交后台找回申请，等待数据侧回捞。',
-    createdAt: '2026-08-06 08:05', updatedAt: '2026-08-06 09:30',
+    createdAt: '2026-08-06 08:05:46', updatedAt: '2026-08-06 09:30:19',
     responded: true,
   },
   {
@@ -1329,7 +1329,7 @@ const BASE_TICKETS: Ticket[] = [
     customerPhone: '13899990000', productCategory: '教育服务',
     problemDesc: '家长端两天未收到作业与成绩推送，教师端发送显示成功。',
     latestHandling: '已核对推送通道配置，怀疑第三方通道限流，待确认。',
-    createdAt: '2026-08-05 14:10', updatedAt: '2026-08-06 08:50',
+    createdAt: '2026-08-05 14:10:54', updatedAt: '2026-08-06 08:50:40',
     responded: true, solveBreached: true,
   },
 
@@ -1361,7 +1361,7 @@ const BASE_TICKETS: Ticket[] = [
     customerPhone: '13677778888', sn: 'SN-T20-903117', productCategory: '学习硬件',
     problemDesc: '以旧换新补贴承诺 15 个工作日到账，已过 28 天仍未收到。',
     latestHandling: '已向渠道核对补贴批次，暂未拿到明确到账时间。',
-    createdAt: '2026-08-05 10:20', updatedAt: '2026-08-06 09:15',
+    createdAt: '2026-08-05 10:20:25', updatedAt: '2026-08-06 09:15:54',
     responded: true, solveBreached: true, hasDunning: true,
   },
   {

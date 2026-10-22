@@ -213,8 +213,8 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
     responded: false,
     nodeStep: 1,
     ...XIAOZHI_SLA_IDLE,
-    createdAt: '2026-09-18 09:42',
-    updatedAt: '2026-09-18 09:55',
+    createdAt: '2026-09-18 09:42:10',
+    updatedAt: '2026-09-18 09:55:02',
     xiaozhi: { frontlineAccount: FRONTLINE_ACCOUNTS[1], rdSync: 'none', rdRecords: [], rdReturnCount: 0 },
   });
   tickets.push(t1);
@@ -245,8 +245,8 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
      */
     tab: 'pool',
     ...XIAOZHI_SLA_IDLE,
-    createdAt: '2026-09-18 11:05',
-    updatedAt: '2026-09-18 11:06',
+    createdAt: '2026-09-18 11:05:12',
+    updatedAt: '2026-09-18 14:30:12',
     xiaozhi: {
       frontlineAccount: FRONTLINE_ACCOUNTS[2],
       rd: rd2,
@@ -294,8 +294,8 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
     // 直通产研那条记录留在工单池页签（PRD §2.3），判据见 isXiaozhiPooledRecord
     tab: 'pool',
     ...XIAOZHI_SLA_IDLE,
-    createdAt: stamp(t3Created).slice(0, 16),
-    updatedAt: stamp(t3Settled).slice(0, 16),
+    createdAt: stamp(t3Created),
+    updatedAt: stamp(t3Settled),
     xiaozhi: {
       frontlineAccount: FRONTLINE_ACCOUNTS[3],
       rd: rd3,
@@ -304,7 +304,7 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
       rdFeedbackNo: 'TPD-20260917-1832',
       rdReturnCount: 0,
       rdSolutionType: '问题',
-      rdIssueResult: { solution: t3Solution, solvedAt: stamp(t3Settled - 8 * 60_000).slice(0, 16) },
+      rdIssueResult: { solution: t3Solution, solvedAt: stamp(t3Settled - 8 * 60_000) },
       settledAt: stamp(t3Settled),
       confirmState: '未确认',
       rdRecords: [
@@ -365,8 +365,8 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
     assignee: AGENT,
     tab: 'mine',
     ...XIAOZHI_SLA_IDLE,
-    createdAt: stamp(t4Created).slice(0, 16),
-    updatedAt: stamp(t4Settled).slice(0, 16),
+    createdAt: stamp(t4Created),
+    updatedAt: stamp(t4Settled),
     xiaozhi: {
       frontlineAccount: FRONTLINE_ACCOUNTS[4],
       rd: rd4,
@@ -374,7 +374,7 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
       rdFeedbackNo: 'TPD-20260917-1832',
       rdReturnCount: 0,
       rdSolutionType: '问题',
-      rdIssueResult: { solution: t4Solution, solvedAt: stamp(t4Settled - 8 * 60_000).slice(0, 16) },
+      rdIssueResult: { solution: t4Solution, solvedAt: stamp(t4Settled - 8 * 60_000) },
       settledAt: stamp(t4Settled),
       // 停在「未确认」—— 装载时由 receiveReporterConfirm 推到「已确认解决」并关单
       confirmState: '未确认',
@@ -435,8 +435,8 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
     // 直通产研那条记录留在工单池页签（PRD §2.3），判据见 isXiaozhiPooledRecord
     tab: 'pool',
     ...XIAOZHI_SLA_IDLE,
-    createdAt: '2026-09-18 08:30',
-    updatedAt: '2026-09-21 09:40',
+    createdAt: '2026-09-18 08:30:11',
+    updatedAt: '2026-09-21 09:40:33',
     xiaozhi: {
       frontlineAccount: FRONTLINE_ACCOUNTS[5],
       rd: rd5,
@@ -510,8 +510,8 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
     // 直通产研那条记录留在工单池页签（PRD §2.3）；装载时会被 B7 对账结掉、翻 'done'
     tab: 'pool',
     ...XIAOZHI_SLA_IDLE,
-    createdAt: stamp(t6Created).slice(0, 16),
-    updatedAt: stamp(t6Settled).slice(0, 16),
+    createdAt: stamp(t6Created),
+    updatedAt: stamp(t6Settled),
     xiaozhi: {
       frontlineAccount: FRONTLINE_ACCOUNTS[6],
       rd: rd6,
@@ -519,7 +519,7 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
       rdFeedbackNo: 'TPD-20260916-1120',
       rdReturnCount: 0,
       rdSolutionType: '问题',
-      rdIssueResult: { solution: t6Solution, solvedAt: stamp(t6Settled - 15 * 60_000).slice(0, 16) },
+      rdIssueResult: { solution: t6Solution, solvedAt: stamp(t6Settled - 15 * 60_000) },
       settledAt: stamp(t6Settled),
       confirmState: '未确认',
       rdRecords: [
@@ -571,8 +571,8 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
     assignee: AGENT,
     tab: 'mine',
     ...XIAOZHI_SLA_IDLE,
-    createdAt: '2026-09-19 10:08',
-    updatedAt: '2026-09-19 11:35',
+    createdAt: '2026-09-19 10:08:14',
+    updatedAt: '2026-09-19 11:35:02',
     // 未走过产研：无 rd、rdSync 为 none —— 产研反馈 Tab 此时**不出**，升级成功后才出现
     xiaozhi: { frontlineAccount: FRONTLINE_ACCOUNTS[7], rdSync: 'none', rdRecords: [], rdReturnCount: 0 },
   });
@@ -614,8 +614,8 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
     responded: false,
     nodeStep: 1,
     ...XIAOZHI_SLA_IDLE,
-    createdAt: '2026-09-19 14:06',
-    updatedAt: '2026-09-19 14:06',
+    createdAt: '2026-09-19 14:06:28',
+    updatedAt: '2026-09-19 14:06:28',
     xiaozhi: { frontlineAccount: FRONTLINE_ACCOUNTS[8], rdSync: 'none', rdRecords: [], rdReturnCount: 0 },
   });
   tickets.push(t8);
@@ -652,8 +652,8 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
     assignee: AGENT,
     tab: 'mine',
     ...XIAOZHI_SLA_IDLE,
-    createdAt: '2026-09-19 10:12',
-    updatedAt: '2026-09-19 15:40',
+    createdAt: '2026-09-19 10:12:30',
+    updatedAt: '2026-09-19 15:40:02',
     xiaozhi: {
       frontlineAccount: FRONTLINE_ACCOUNTS[9],
       createdBy: AGENT,

@@ -18,7 +18,7 @@ import {
   FLASH_TL, FLASH_RESULT_OFFLINE, FLASH_RETURN_TIMEOUT_MIN, FLASH_TOAST, flashFailReasonText,
   FLASH_CS_NOTICE, FLASH_SURVEY_TIMEOUT_HOURS, FLASH_PRODUCT_CATEGORY, FLASH_TAG_L1, FLASH_TAG_L2,
   FLASH_TAG_L3_USER_REPORT, FLASH_TICKET_TYPE, FLASH_USER_REPORT_LABELS,
-  flashTicketTitle, withFlashTitlePrefix, isFlashTicket, flashMinuteStamp, flashProgressStage, flashSmsSuccess, flashSmsSurvey, flashStamp,
+  flashTicketTitle, withFlashTitlePrefix, isFlashTicket, flashProgressStage, flashSmsSuccess, flashSmsSurvey, flashStamp,
   flashTipInflight, flashTipRequired, isFrontlineActor,
   parseFlashStamp,
   type FlashActor, type FlashCreator, type FlashFailL2, type FlashHandoffReason,
@@ -433,7 +433,7 @@ export const useFlashStore = defineStore('flash', () => {
       nodeStatus: '处理中',
       assignee: run.handlerAtPush ?? r.assignee,
       tab: 'mine',
-      updatedAt: flashMinuteStamp(at),
+      updatedAt: flashStamp(at),
     });
     // 回传回到人工侧：「自动刷机中」期间照常计时（PRD §4.3），这里不动账本
   }
@@ -457,7 +457,7 @@ export const useFlashStore = defineStore('flash', () => {
       tab: 'pool',
       groupId: meta.groupId,
       groupNames: [meta.groupName],
-      updatedAt: flashMinuteStamp(at),
+      updatedAt: flashStamp(at),
     });
     st.pool = pool;
     st.handoffReason = reason;
@@ -522,7 +522,7 @@ export const useFlashStore = defineStore('flash', () => {
     st.outcome = '等待回传';
     st.failL1 = undefined;
     st.failL2 = undefined;
-    Object.assign(r, { nodeStatus: '自动刷机中', updatedAt: flashMinuteStamp(at) });
+    Object.assign(r, { nodeStatus: '自动刷机中', updatedAt: flashStamp(at) });
     // 已起算的单：重推「自动刷机中」照常计时（PRD §4.3，1021）；未起算的单不计时
     // PRD §11.2：首推落「自动推送」（系统）；人工重推落「重新推送」（发起人），不另落「自动推送」
     if (trigger === '建单首推') {
@@ -557,7 +557,7 @@ export const useFlashStore = defineStore('flash', () => {
         slaSub: '自助刷机成功·未计时',
         slaState: 'ok',
         slaMinutes: 9999,
-        updatedAt: flashMinuteStamp(at),
+        updatedAt: flashStamp(at),
       });
       st.result = '已线上刷机成功';
       log(r.no, at, {
@@ -586,7 +586,7 @@ export const useFlashStore = defineStore('flash', () => {
         Object.assign(r, {
           nodeStatus: '已结案', nodeStep: 5, tab: 'mine', assignee: handler,
           slaText: '—', slaSub: '已结案', slaState: 'ok', slaMinutes: 9999,
-          updatedAt: flashMinuteStamp(at),
+          updatedAt: flashStamp(at),
         });
         log(r.no, at + 2000, {
           category: 'node', action: 'resolved', who: '系统', role: '系统', how: '回传结果',
@@ -596,7 +596,7 @@ export const useFlashStore = defineStore('flash', () => {
         Object.assign(r, {
           nodeStatus: '调研中', nodeStep: 4, tab: 'mine', assignee: handler,
           slaText: '—', slaSub: '调研中', slaState: 'ok', slaMinutes: 9999,
-          updatedAt: flashMinuteStamp(at),
+          updatedAt: flashStamp(at),
         });
         pauseClock(r, at, '调研中');
         log(r.no, at + 2000, {
@@ -813,8 +813,8 @@ export const useFlashStore = defineStore('flash', () => {
       assignee: null,
       tab: 'mine',
       responded: false,
-      createdAt: flashMinuteStamp(now),
-      updatedAt: flashMinuteStamp(now),
+      createdAt: flashStamp(now),
+      updatedAt: flashStamp(now),
       problemDesc: base.problemDesc?.trim()
         || `${info.studentType}${info.studentName}（账号 ${info.studentAccount}，${info.schoolName}）申请刷机，刷机原因：${info.reason}。设备 SN ${info.sn}。`,
       ...(base.problemDescAttachments?.length ? { problemDescAttachments: [...base.problemDescAttachments] } : {}),
@@ -942,7 +942,7 @@ export const useFlashStore = defineStore('flash', () => {
     if (!diff.length) return { ok: true, code: 'unchanged', message: '' };
     const now = Date.now();
     r.flash.info = next;
-    Object.assign(r, { sn: next.sn, product: next.productModel, updatedAt: flashMinuteStamp(now) });
+    Object.assign(r, { sn: next.sn, product: next.productModel, updatedAt: flashStamp(now) });
     log(ticketNo, now, {
       category: 'handle', action: 'handle', who: by.name, role: by.role, how: '修改刷机信息',
       what: FLASH_TL.editInfo, changes: diff,
@@ -1004,7 +1004,7 @@ export const useFlashStore = defineStore('flash', () => {
       Object.assign(r, {
         nodeStatus: '已结案', nodeStep: 5, tab: 'mine',
         slaText: '—', slaSub: '已结案', slaState: 'ok', slaMinutes: 9999,
-        updatedAt: flashMinuteStamp(now),
+        updatedAt: flashStamp(now),
       });
       log(ticketNo, now + 1, {
         category: 'node', action: 'resolved', who: '系统', role: '系统', how: '结案', what: FLASH_TL.surveySolvedClosed,
@@ -1028,7 +1028,7 @@ export const useFlashStore = defineStore('flash', () => {
     Object.assign(r, {
       nodeStatus: '已结案', nodeStep: 5, tab: 'mine',
       slaText: '—', slaSub: '已结案', slaState: 'ok', slaMinutes: 9999,
-      updatedAt: flashMinuteStamp(at),
+      updatedAt: flashStamp(at),
     });
     st.forwardedBy = undefined;
     log(r.no, at, {
@@ -1084,7 +1084,7 @@ export const useFlashStore = defineStore('flash', () => {
     if (handler) {
       Object.assign(r, {
         nodeStatus: '处理中', nodeStep: 3, tab: 'mine', responded: true,
-        updatedAt: flashMinuteStamp(now),
+        updatedAt: flashStamp(now),
       });
       // 催补拉回有处理人的单：「调研中」那段结束，剩余接着跑（PRD §4.3）
       resumeClock(r, now);
@@ -1145,7 +1145,7 @@ export const useFlashStore = defineStore('flash', () => {
       groupId: meta.groupId,
       groupNames: [meta.groupName],
       upgradeCount: (r.upgradeCount ?? 0) + 1,
-      updatedAt: flashMinuteStamp(now),
+      updatedAt: flashStamp(now),
     });
     st.pool = 'l2';
     st.handoffReason = '一线升级';
@@ -1185,13 +1185,13 @@ export const useFlashStore = defineStore('flash', () => {
       TICKETS.push(complaint);
     }
     st.linkedComplaintNos = [...(st.linkedComplaintNos ?? []).filter((n) => n !== complaint.no), complaint.no];
-    r.updatedAt = flashMinuteStamp(now);
+    r.updatedAt = flashStamp(now);
     log(ticketNo, now, {
       category: 'relate', action: 'relate', who: by.name, role: by.role, how: '关联投诉',
       what: FLASH_TL.linkComplaint(complaint.no),
       relatedTicket: {
         no: complaint.no, title: complaint.title, type: '投诉', typeColor: '#EF4444',
-        status: complaint.nodeStatus, statusColor: '#1A6FFF', builder: by.name, createdAt: flashMinuteStamp(now),
+        status: complaint.nodeStatus, statusColor: '#1A6FFF', builder: by.name, createdAt: flashStamp(now),
       },
     });
     bump(ticketNo);
@@ -1224,7 +1224,7 @@ export const useFlashStore = defineStore('flash', () => {
       markFirstResponse(r, now);
       r.nodeStatus = '处理中';
     }
-    r.updatedAt = flashMinuteStamp(now);
+    r.updatedAt = flashStamp(now);
     bump(ticketNo);
     persist();
     return { ok: true, message: '' };
@@ -1249,7 +1249,7 @@ export const useFlashStore = defineStore('flash', () => {
     if (!r?.flash || r.nodeStatus !== '待响应') return false;
     const now = Date.now();
     markFirstResponse(r, now);
-    Object.assign(r, { nodeStatus: '处理中', updatedAt: flashMinuteStamp(now) });
+    Object.assign(r, { nodeStatus: '处理中', updatedAt: flashStamp(now) });
     bump(ticketNo);
     persist();
     return true;
@@ -1308,7 +1308,7 @@ export const useFlashStore = defineStore('flash', () => {
       Object.assign(r, {
         nodeStatus: '已结案', nodeStep: 5, tab: 'mine',
         slaText: '—', slaSub: '已结案', slaState: 'ok', slaMinutes: 9999,
-        updatedAt: flashMinuteStamp(now),
+        updatedAt: flashStamp(now),
       });
       st.forwardedBy = undefined;
       log(ticketNo, now + 1, {
@@ -1324,7 +1324,7 @@ export const useFlashStore = defineStore('flash', () => {
     Object.assign(r, {
       nodeStatus: '调研中', nodeStep: 4, tab: 'mine', assignee: by.name,
       slaText: '—', slaSub: '调研中', slaState: 'ok', slaMinutes: 9999,
-      updatedAt: flashMinuteStamp(now),
+      updatedAt: flashStamp(now),
     });
     log(ticketNo, now + 1, {
       category: 'node', action: 'resolved', who: by.name, role: by.role, how: '下送', what: FLASH_TL.forward(result),
@@ -1349,7 +1349,7 @@ export const useFlashStore = defineStore('flash', () => {
     const now = Date.now();
     Object.assign(r, {
       nodeStatus: '处理中', nodeStep: 3, tab: 'mine', assignee: by.name, responded: true,
-      updatedAt: flashMinuteStamp(now),
+      updatedAt: flashStamp(now),
     });
     // 撤回下送：结掉「调研中」那段，剩余回到下送前（PRD §4.3 / R55）
     resumeClock(r, now);
@@ -1380,7 +1380,7 @@ export const useFlashStore = defineStore('flash', () => {
       nodeStatus: '已转出', linkedAftersaleNo: asNo, linkedAftersaleStatus: '待接单',
       // 关联售后卡的服务类型取弹窗所选（N-04）
       ...(serviceType ? { linkedAftersaleServiceType: serviceType } : {}),
-      updatedAt: flashMinuteStamp(now),
+      updatedAt: flashStamp(now),
     });
     syncSlaRow(r, now);
     // 售后侧处理完成的回传按转出时刻推算（`settleDue` 到点经售后回传通道唤起原单）
@@ -1405,7 +1405,7 @@ export const useFlashStore = defineStore('flash', () => {
     const now = Date.now();
     Object.assign(r, {
       nodeStatus: '处理中', tab: 'mine',
-      updatedAt: flashMinuteStamp(now),
+      updatedAt: flashStamp(now),
     });
     syncSlaRow(r, now);
     r.flash.state.aftersaleReturnDueAt = undefined;
@@ -1455,7 +1455,7 @@ export const useFlashStore = defineStore('flash', () => {
     Object.assign(r, {
       nodeStatus: status,
       ...(opts.clearAssignee ? { assignee: null, tab: 'pool' } : {}),
-      updatedAt: flashMinuteStamp(Date.now()),
+      updatedAt: flashStamp(Date.now()),
     });
     bump(ticketNo);
     persist();
@@ -1469,7 +1469,7 @@ export const useFlashStore = defineStore('flash', () => {
   function escalateToTechSupport(ticketNo: string, group?: string): void {
     const r = rowOf(ticketNo);
     if (!r?.flash) return;
-    Object.assign(r, techEscalationRowPatch(r, group, flashMinuteStamp(Date.now())));
+    Object.assign(r, techEscalationRowPatch(r, group, flashStamp(Date.now())));
     bumpAfterAction(ticketNo);
     persist();
   }
@@ -1478,7 +1478,7 @@ export const useFlashStore = defineStore('flash', () => {
     const r = rowOf(ticketNo);
     if (!r?.flash) return;
     const meta = FLASH_POOLS.l2;
-    Object.assign(r, techReturnRowPatch(r, { groupId: meta.groupId, groupNames: [meta.groupName] }, flashMinuteStamp(Date.now())));
+    Object.assign(r, techReturnRowPatch(r, { groupId: meta.groupId, groupNames: [meta.groupName] }, flashStamp(Date.now())));
     if (r.primaryOwner === undefined) delete (r as Partial<Ticket>).primaryOwner;
     bumpAfterAction(ticketNo);
     persist();
@@ -1532,7 +1532,7 @@ export const useFlashStore = defineStore('flash', () => {
       assignee: by.name,
       tab: 'mine',
       responded: false,
-      updatedAt: flashMinuteStamp(now),
+      updatedAt: flashStamp(now),
     });
     log(ticketNo, now, {
       category: 'node', action: 'accept', who: by.name, role: by.role, how: '领取',
@@ -1558,7 +1558,7 @@ export const useFlashStore = defineStore('flash', () => {
       assignee: target,
       tab: 'mine',
       responded: false,
-      updatedAt: flashMinuteStamp(now),
+      updatedAt: flashStamp(now),
     });
     log(ticketNo, now, {
       category: 'node', action: 'accept', who: by.name, role: by.role, how: '指派',
@@ -1591,7 +1591,7 @@ export const useFlashStore = defineStore('flash', () => {
       Object.assign(r, {
         nodeStatus: '未认领', assignee: null, tab: 'pool', groupNames: [p.target],
         groupId: group?.id ?? `xfer:${p.target}`,
-        updatedAt: flashMinuteStamp(now),
+        updatedAt: flashStamp(now),
       });
       log(ticketNo, now, {
         category: 'node', action: 'transfer', who: by.name, role: by.role, how: '跨组调剂',
@@ -1603,7 +1603,7 @@ export const useFlashStore = defineStore('flash', () => {
         assignee: p.target,
         tab: 'mine',
         ...(toHandling ? { nodeStatus: '处理中' } : {}),
-        updatedAt: flashMinuteStamp(now),
+        updatedAt: flashStamp(now),
       });
       log(ticketNo, now, {
         category: 'node', action: 'transfer', who: by.name, role: by.role, how: '调剂',
@@ -1646,7 +1646,7 @@ export const useFlashStore = defineStore('flash', () => {
         const dueMs = parseFlashStamp(asDue).getTime();
         if (dueMs <= now && receiveAftersaleEvent({
           type: 'AS_CLOSED', asNo: t.linkedAftersaleNo, eventId: `${t.linkedAftersaleNo}:AS_CLOSED`,
-          at: flashMinuteStamp(dueMs), operator: '售后系统', resultSummary: '售后处理完成',
+          at: flashStamp(dueMs), operator: '售后系统', resultSummary: '售后处理完成',
         }).ok) settled += 1;
         continue;
       }

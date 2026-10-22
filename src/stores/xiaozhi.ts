@@ -129,11 +129,6 @@ export function xiaozhiStamp(d: Date | number = new Date()): string {
   return `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())} ${pad(x.getHours())}:${pad(x.getMinutes())}:${pad(x.getSeconds())}`;
 }
 
-/** `YYYY-MM-DD HH:mm` */
-export function xiaozhiMinuteStamp(d: Date | number = new Date()): string {
-  return xiaozhiStamp(d).slice(0, 16);
-}
-
 export const useXiaozhiStore = defineStore('xiaozhi', () => {
   /** 工单号 → 小智履历（时间正序） */
   const timelines = ref<Record<string, TimelineEntry[]>>({});
@@ -387,8 +382,8 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
        */
       tab: 'pool',
       responded: false,
-      createdAt: xiaozhiMinuteStamp(now),
-      updatedAt: xiaozhiMinuteStamp(now),
+      createdAt: xiaozhiStamp(now),
+      updatedAt: xiaozhiStamp(now),
       problemDesc: base.problemDesc,
       problemDescAttachments: base.problemDescAttachments?.length
         ? [...base.problemDescAttachments]
@@ -459,7 +454,7 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
      * 会直接污染那个分子。
      */
     r.responded = false;
-    r.updatedAt = xiaozhiMinuteStamp(now);
+    r.updatedAt = xiaozhiStamp(now);
     log(no, now, {
       category: 'node', action: 'accept', who: actor.name, role: actor.role,
       how: '领取', what: `${actor.name} 从${XIAOZHI_POOL_GROUP_NAME}工单池领取本单。`,
@@ -486,7 +481,7 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     if (!r || r.nodeStatus !== '待响应') return false;
     r.nodeStatus = '处理中';
     r.responded = true;
-    r.updatedAt = xiaozhiMinuteStamp(Date.now());
+    r.updatedAt = xiaozhiStamp(Date.now());
     bump(no);
     persist();
     return true;
@@ -523,7 +518,7 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     r.xiaozhi.rdFeedbackNo = r.xiaozhi.rdFeedbackNo ?? rdFeedbackNo();
     r.nodeStatus = '已升级产研';
     if (auto) r.assignee = XIAOZHI_SYSTEM_HANDLER;
-    r.updatedAt = xiaozhiMinuteStamp(now);
+    r.updatedAt = xiaozhiStamp(now);
     pushRdRecord(r, {
       kind: 'push',
       title: `已推送${ESCALATE_CHANNEL_TPD}`,
@@ -615,7 +610,7 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
      */
     // 本人的待办：回到「我的任务」页签（判据 tab==='mine' ∧ 处理人是我）
     r.tab = 'mine';
-    r.updatedAt = xiaozhiMinuteStamp(now);
+    r.updatedAt = xiaozhiStamp(now);
     pushRdRecord(r, {
       kind: 'feedback',
       title: '产研退回',
@@ -661,7 +656,7 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     r.xiaozhi.confirmState = '未确认';
     r.xiaozhi.confirmAt = undefined;
     r.xiaozhi.confirmBy = undefined;
-    r.updatedAt = xiaozhiMinuteStamp(now);
+    r.updatedAt = xiaozhiStamp(now);
     const summary = payload.solutionType === '问题'
       ? payload.issue?.solution ?? ''
       : payload.demand?.solution ?? payload.demand?.evaluation ?? '';
@@ -745,18 +740,24 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
    * 取值引通用常量 `CLOSE_REASON_RESOLVED`，不另起小智专属字面量；
    * 字段形制照售后回传 `AS_CLOSED` 落「售后已完成」那条 —— 通用单的关闭弹窗目前只把
    * 选值拼进履历文案、不落字段，小智这两条路**落字段**，让 `closeReason` 有真实值。
+   *
+   * 🔴 **履历事件名由调用方给**（1023 拍板）：这两条路关单动作相同，但**是两个事件** ——
+   * 「提报人确认 · 已解决」与「超时未确认」（名字照 PRD 附录 B）。原写法两条都落「自动关闭」，
+   * 履历上分不出这单是提报人验收通过关的、还是没人理超时兜底关的，追责与统计口径都会错。
+   * 操作人两条都是**系统**：确认动作发生在小智工单应用里，工单系统只接接口结果、由系统代记
+   * （PRD 附录 B「事件来源是提报人在小智工单应用上的确认，由系统代记」）。
    */
-  function closeXiaozhi(r: Ticket, at: number, what: string) {
+  function closeXiaozhi(r: Ticket, at: number, what: string, event: string) {
     r.nodeStatus = XIAOZHI_CLOSED_STATUS;
     r.tab = 'done';
     // 一·补 B9：统一改系统，不是「没人才补一个」
     r.assignee = XIAOZHI_SYSTEM_HANDLER;
     // 一·补 B38：两条自动关单路径的关闭原因都是「问题已解决」
     r.closeReason = CLOSE_REASON_RESOLVED;
-    r.updatedAt = xiaozhiMinuteStamp(at);
+    r.updatedAt = xiaozhiStamp(at);
     log(r.no, at, {
       category: 'node', action: 'resolved', who: '系统', role: '系统', systemActor: true,
-      how: '自动关闭', what,
+      how: event, what,
     });
     // 关单不发站内通知（2026-10-21 拍板，PRD §9.1 规则 5）
   }
@@ -779,7 +780,7 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     r.tab = 'done';
     r.assignee = actor.name;
     r.closeReason = reason;
-    r.updatedAt = xiaozhiMinuteStamp(now);
+    r.updatedAt = xiaozhiStamp(now);
     log(no, now, {
       category: 'node', action: 'resolved', who: actor.name, role: actor.role,
       how: '关闭工单', what: XIAOZHI_TL.closeByAgent(reason, note),
@@ -822,7 +823,7 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     r.xiaozhi.confirmBy = who;
     if (resolved) {
       r.xiaozhi.confirmState = '已确认解决';
-      closeXiaozhi(r, now, XIAOZHI_TL.confirmResolved(who));
+      closeXiaozhi(r, now, XIAOZHI_TL.confirmResolved(who), '提报人确认 · 已解决');
       bump(no);
       persist();
       return true;
@@ -838,7 +839,7 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     r.xiaozhi.rdSolutionType = undefined;
     r.xiaozhi.rdIssueResult = undefined;
     r.xiaozhi.rdDemandResult = undefined;
-    r.updatedAt = xiaozhiMinuteStamp(now);
+    r.updatedAt = xiaozhiStamp(now);
     pushRdRecord(r, {
       kind: 'push',
       title: `系统自动回传${ESCALATE_CHANNEL_TPD}`,
@@ -882,7 +883,7 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
       r.xiaozhi!.confirmAt = xiaozhiStamp(due);
       // 超时视为已解决是系统判的，不是哪位校代点的
       r.xiaozhi!.confirmBy = XIAOZHI_SYSTEM_HANDLER;
-      closeXiaozhi(r, due, XIAOZHI_TL.confirmTimeoutClosed(XIAOZHI_CONFIRM_TIMEOUT_DAYS));
+      closeXiaozhi(r, due, XIAOZHI_TL.confirmTimeoutClosed(XIAOZHI_CONFIRM_TIMEOUT_DAYS), '超时未确认');
       bump(r.no);
       settled += 1;
     }
@@ -896,7 +897,7 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     if (!r) return;
     r.nodeStatus = status as Ticket['nodeStatus'];
     if (opts && 'assignee' in opts) r.assignee = opts.assignee ?? null;
-    r.updatedAt = xiaozhiMinuteStamp(Date.now());
+    r.updatedAt = xiaozhiStamp(Date.now());
     bump(no);
     persist();
   }

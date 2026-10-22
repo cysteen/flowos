@@ -79,8 +79,6 @@ function readCache(): RefundCache | null {
   }
 }
 
-const minute = (ms: number) => flashStamp(ms).slice(0, 16);
-
 export const useRefundStore = defineStore('refund', () => {
   const revisions = ref<Record<string, number>>({});
   let tlSeq = 0;
@@ -193,7 +191,7 @@ export const useRefundStore = defineStore('refund', () => {
     // 外部处理人不计入任何班组（附录 C）：名下不挂组，组列显示「—」
     Object.assign(r, {
       nodeStatus: status, assignee: m.name, tab: 'mine', responded: status !== '待响应',
-      groupId: undefined, groupNames: [], updatedAt: minute(at),
+      groupId: undefined, groupNames: [], updatedAt: flashStamp(at),
     });
     r.refund!.state.manager = m;
     todoIm(r, m, via);
@@ -202,7 +200,7 @@ export const useRefundStore = defineStore('refund', () => {
   function toPool(r: Ticket, at: number) {
     Object.assign(r, {
       nodeStatus: '未认领', assignee: null, tab: 'pool', responded: false,
-      groupId: REFUND_POOL_GROUP_ID, groupNames: [REFUND_POOL_GROUP_NAME], updatedAt: minute(at),
+      groupId: REFUND_POOL_GROUP_ID, groupNames: [REFUND_POOL_GROUP_NAME], updatedAt: flashStamp(at),
     });
     r.refund!.state.manager = undefined;
     startSla(r, at);
@@ -259,8 +257,8 @@ export const useRefundStore = defineStore('refund', () => {
       assignee: null,
       tab: 'mine',
       slaText: '08:00:00', slaSub: '充足', slaState: 'ok', slaMinutes: 480,
-      createdAt: minute(now),
-      updatedAt: minute(now),
+      createdAt: flashStamp(now),
+      updatedAt: flashStamp(now),
       feishuSync: 'none',
       eventTimeline: [],
       refund: { info, handle: emptyRefundHandle(info), state: {}, runs: [] } satisfies TicketRefund,
@@ -312,7 +310,7 @@ export const useRefundStore = defineStore('refund', () => {
     const now = Date.now();
     r.refund!.handle = { ...structuredClone(toRaw(handle)), savedBy: m.name, savedAt: flashStamp(now) };
     markResponded(r);
-    r.updatedAt = minute(now);
+    r.updatedAt = flashStamp(now);
     log(r, now, { category: 'handle', action: 'handle', who: m.name, role: refundManagerTlRole(m), how: '保存', what: REFUND_TL.save });
     commit(r);
     return { ok: true, message: '已保存' };
@@ -341,7 +339,7 @@ export const useRefundStore = defineStore('refund', () => {
     const order = findRefundOrder(handle.orderNo);
     if (order?.createError) {
       log(r, now, { category: 'node', action: 'handle', who: m.name, role: refundManagerTlRole(m), how: '提交退费', what: REFUND_TL.submitFail(order.createError) });
-      r.updatedAt = minute(now);
+      r.updatedAt = flashStamp(now);
       commit(r);
       return { ok: false, message: REFUND_TIP.submitFailed(order.createError) };
     }
@@ -368,7 +366,7 @@ export const useRefundStore = defineStore('refund', () => {
     ref.runs = [...ref.runs, run];
     ref.state.lastSubmitter = m;
     ref.state.manager = undefined;
-    Object.assign(r, { nodeStatus: REFUND_STATUS_SYSTEM, assignee: REFUND_SYSTEM_HANDLER, updatedAt: minute(now) });
+    Object.assign(r, { nodeStatus: REFUND_STATUS_SYSTEM, assignee: REFUND_SYSTEM_HANDLER, updatedAt: flashStamp(now) });
     log(r, now, { category: 'node', action: 'handle', who: m.name, role: refundManagerTlRole(m), how: '提交退费', what: REFUND_TL.submit(run.taskId, run.items) });
     commit(r);
     return { ok: true, message: REFUND_TOAST.submitted };
@@ -459,7 +457,7 @@ export const useRefundStore = defineStore('refund', () => {
     if (r.nodeStatus === REFUND_STATUS_SYSTEM) return { ok: false, message: REFUND_TIP.inProgress };
     const now = Date.now();
     log(r, now, { category: 'node', action: 'transfer', who: by.name, role: by.role, how: '调剂', what: `调剂给 ${name}${reason?.trim() ? `；调剂原因：${reason.trim()}` : ''}` });
-    Object.assign(r, { nodeStatus: '待响应', assignee: name, tab: 'mine', responded: false, updatedAt: minute(now) });
+    Object.assign(r, { nodeStatus: '待响应', assignee: name, tab: 'mine', responded: false, updatedAt: flashStamp(now) });
     releaseManagerOf(r);
     return { ok: true, message: `已同组内调剂至 ${name}` };
   }
@@ -481,7 +479,7 @@ export const useRefundStore = defineStore('refund', () => {
     const r = rowOf(no);
     if (!r) return { ok: false, message: '' };
     const now = Date.now();
-    Object.assign(r, { nodeStatus: '调研中', updatedAt: minute(now), responded: true });
+    Object.assign(r, { nodeStatus: '调研中', updatedAt: flashStamp(now), responded: true });
     log(r, now, { category: 'node', action: 'transfer', who: by.name, role: by.role, how: '下送', what: REFUND_TL.forwardSurvey });
     pauseSla(r, now);
     surveySms(r, now + 1);
@@ -498,7 +496,7 @@ export const useRefundStore = defineStore('refund', () => {
     if (r.nodeStatus === '调研中') resumeSla(r, now);
     if (status === '调研中') pauseSla(r, now);
     r.nodeStatus = status as TicketStatus;
-    r.updatedAt = minute(now);
+    r.updatedAt = flashStamp(now);
     commit(r);
   }
 

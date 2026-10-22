@@ -284,7 +284,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
     const pushed = flashStamp(nowMs - 4_000);
     add(row(1, {
       info, creator: '用户提报', customer: '胡建国', phone: '13956011215',
-      createdAt: created.slice(0, 16), updatedAt: pushed.slice(0, 16),
+      createdAt: created, updatedAt: pushed,
       nodeStatus: '自动刷机中', assignee: null, tab: 'mine', nodeStep: 2,
       ...L1_NO_SLA,
       flashState: state('用户提报', { outcome: '等待回传', pushCount: 1 }),
@@ -302,7 +302,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
     const pushed = flashStamp(nowMs - 125 * 60_000);
     add(row(2, {
       info, creator: '用户提报', customer: '程丽', phone: '13856022318',
-      createdAt: created.slice(0, 16), updatedAt: pushed.slice(0, 16),
+      createdAt: created, updatedAt: pushed,
       nodeStatus: '自动刷机中', assignee: null, tab: 'mine',
       ...L1_NO_SLA,
       flashState: state('用户提报', { outcome: '等待回传', pushCount: 1 }),
@@ -322,7 +322,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
     const back = addSec(pushed, 12);
     add(row(3, {
       info, creator: '用户提报', customer: '唐伟', phone: '13705513377',
-      createdAt: at.slice(0, 16), updatedAt: back.slice(0, 16),
+      createdAt: at, updatedAt: back,
       nodeStatus: '未认领', assignee: null, tab: 'pool', nodeStep: 1,
       ...L1_NO_SLA,
       flashState: state('用户提报', {
@@ -344,7 +344,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
     const at = '2026-09-15 09:05:40';
     add(row(4, {
       info, creator: '用户提报', customer: '马骏', phone: '13966304107',
-      createdAt: at.slice(0, 16), updatedAt: at.slice(0, 16),
+      createdAt: at, updatedAt: at,
       nodeStatus: '未认领', assignee: null, tab: 'pool', nodeStep: 1,
       ...L1_NO_SLA,
       flashState: state('用户提报', { handoffReason: '非自研机型', pool: 'l1' }),
@@ -363,7 +363,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
     const back = addSec(pushed, 12);
     add(row(5, {
       info, creator: '用户提报', customer: '许志强', phone: '15855170233',
-      createdAt: at.slice(0, 16), updatedAt: back.slice(0, 16),
+      createdAt: at, updatedAt: back,
       nodeStatus: '未认领', assignee: null, tab: 'pool', nodeStep: 1,
       ...L1_NO_SLA,
       flashState: state('用户提报', {
@@ -387,7 +387,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
     const timeout = addSec(pushed, 120 * 60);
     add(row(6, {
       info, creator: '用户提报', customer: '钱芳', phone: '18955102021',
-      createdAt: at.slice(0, 16), updatedAt: timeout.slice(0, 16),
+      createdAt: at, updatedAt: timeout,
       nodeStatus: '未认领', assignee: null, tab: 'pool', nodeStep: 1,
       ...L1_NO_SLA,
       flashState: state('用户提报', {
@@ -413,7 +413,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
     const handled = '2026-09-15 07:42:08';
     add(row(7, {
       info, creator: '用户提报', customer: '冯涛', phone: '13605521310',
-      createdAt: at.slice(0, 16), updatedAt: handled.slice(0, 16),
+      createdAt: at, updatedAt: handled,
       nodeStatus: '处理中', assignee: '刘一线', tab: 'mine', responded: true, nodeStep: 2,
       ...L1_NO_SLA,
       flashState: state('用户提报', {
@@ -446,7 +446,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
     const handled = '2026-09-15 09:31:52';
     add(row(8, {
       info, creator: '用户提报', customer: '梁红', phone: '13966018716',
-      createdAt: at.slice(0, 16), updatedAt: handled.slice(0, 16),
+      createdAt: at, updatedAt: handled,
       nodeStatus: '处理中', assignee: '王坐席', tab: 'mine', responded: true, nodeStep: 3,
       slaText: '07:05:00', slaSub: '距超时', slaState: 'ok', slaMinutes: 425,
       upgradeCount: 1,
@@ -478,7 +478,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
     const at = '2026-09-15 08:55:30';
     add(row(9, {
       info, creator: '用户提报', customer: '邹敏', phone: '15955116702',
-      createdAt: at.slice(0, 16), updatedAt: at.slice(0, 16),
+      createdAt: at, updatedAt: at,
       nodeStatus: '未认领', assignee: null, tab: 'pool', nodeStep: 1,
       ...L1_NO_SLA,
       flashState: state('用户提报', { handoffReason: '特殊情况', pool: 'l1' }),
@@ -498,7 +498,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
     const back = addSec(pushed, 12);
     add(row(10, {
       info, creator: '一线代建', customer: '韩雪', phone: '13866107133',
-      createdAt: at.slice(0, 16), updatedAt: back.slice(0, 16),
+      createdAt: at, updatedAt: back,
       nodeStatus: '未认领', assignee: null, tab: 'pool', nodeStep: 1,
       ...L1_NO_SLA,
       flashState: state('一线代建', {
@@ -524,7 +524,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
     const esc = '2026-09-15 08:05:33';
     add(row(11, {
       info, creator: '用户提报', customer: '沈建', phone: '13505536419',
-      createdAt: at.slice(0, 16), updatedAt: esc.slice(0, 16),
+      createdAt: at, updatedAt: esc,
       // 一线不计 SLA：进教育刷机处理组池才起算，首响钟从进池时刻开始（1013 A26）
       nodeStatus: '未认领', assignee: null, tab: 'pool', responded: false, nodeStep: 2,
       slaText: '02:15:00', slaSub: '距超时', slaState: 'ok', slaMinutes: 135,
@@ -558,7 +558,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
     const back2 = addSec(repushed, 12);
     add(row(12, {
       info, creator: '用户提报', customer: '陆明', phone: '18055128520',
-      createdAt: at.slice(0, 16), updatedAt: back2.slice(0, 16),
+      createdAt: at, updatedAt: back2,
       nodeStatus: '处理中', assignee: '刘一线', tab: 'mine', responded: true, nodeStep: 2,
       ...L1_NO_SLA,
       flashState: state('用户提报', {
@@ -593,7 +593,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
     const surveyRemark = '设备重启后仍停留在学校管控界面，无法进入个人桌面。';
     add(row(13, {
       info, creator: '用户提报', customer: '杜娟', phone: '13956987908',
-      createdAt: at.slice(0, 16), updatedAt: survey.slice(0, 16), serviceScore: 2,
+      createdAt: at, updatedAt: survey, serviceScore: 2,
       nodeStatus: '未认领', assignee: null, tab: 'pool', nodeStep: 4,
       ...L1_NO_SLA,
       flashState: state('用户提报', {
@@ -622,7 +622,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
     const registered = '2026-09-15 07:20:45';
     add(row(14, {
       info, creator: '用户提报', customer: '蒋丽', phone: '13855205625',
-      createdAt: at.slice(0, 16), updatedAt: registered.slice(0, 16),
+      createdAt: at, updatedAt: registered,
       nodeStatus: '处理中', assignee: '刘一线', tab: 'mine', responded: true, nodeStep: 3,
       ...L1_NO_SLA,
       flashState: state('用户提报', {
@@ -647,7 +647,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
     const back = addSec(pushed, 12);
     add(row(15, {
       info, creator: '用户提报', customer: '叶青', phone: '15256430302',
-      createdAt: at.slice(0, 16), updatedAt: back.slice(0, 16),
+      createdAt: at, updatedAt: back,
       nodeStatus: '调研中', assignee: null, tab: 'mine', nodeStep: 4,
       slaText: '—', slaSub: '自助刷机成功·未计时', slaState: 'ok', slaMinutes: 9999,
       flashState: state('用户提报', {
@@ -672,7 +672,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
     const survey = '2026-09-15 08:18:05';
     add(row(16, {
       info, creator: '用户提报', customer: '秦海', phone: '13721061811',
-      createdAt: at.slice(0, 16), updatedAt: survey.slice(0, 16),
+      createdAt: at, updatedAt: survey,
       nodeStatus: '已结案', assignee: null, tab: 'mine', nodeStep: 5, serviceScore: 5,
       // X28：最后处理组＝教育刷机处理组（结案后补充按该组成员判编辑权）
       groupId: FLASH_POOLS.l2.groupId, groupNames: [FLASH_POOLS.l2.groupName],
@@ -708,7 +708,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
     const toAs = '2026-09-15 09:20:31';
     add(row(17, {
       info, creator: '用户提报', customer: '顾红梅', phone: '13966713907',
-      createdAt: at.slice(0, 16), updatedAt: toAs.slice(0, 16),
+      createdAt: at, updatedAt: toAs,
       nodeStatus: '已转出', assignee: '王坐席', tab: 'mine', responded: true, nodeStep: 4,
       slaText: '04:42:00', slaSub: '距超时', slaState: 'ok', slaMinutes: 282,
       linkedAftersaleNo: 'AS-20260915-39021', upgradeCount: 1,
@@ -750,7 +750,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
     const late = '2026-09-15 08:47:32';
     add(row(18, {
       info, creator: '用户提报', customer: '宋建华', phone: '13905527418',
-      createdAt: at.slice(0, 16), updatedAt: late.slice(0, 16),
+      createdAt: at, updatedAt: late,
       nodeStatus: '未认领', assignee: null, tab: 'pool', nodeStep: 1,
       ...L1_NO_SLA,
       flashState: state('用户提报', {
@@ -782,7 +782,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
     const forwarded = flashStamp(forwardAt);
     add(row(19, {
       info, creator: '用户提报', customer: '周建平', phone: '13856071966',
-      createdAt: at.slice(0, 16), updatedAt: forwarded.slice(0, 16),
+      createdAt: at, updatedAt: forwarded,
       nodeStatus: '调研中', assignee: '刘一线', tab: 'mine', responded: true, nodeStep: 4,
       slaText: '—', slaSub: '调研中', slaState: 'ok', slaMinutes: 9999,
       flashState: state('用户提报', {
@@ -827,7 +827,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
     const surveyRemark = '刷机后开机仍提示设备未激活，学生无法登录。';
     add(row(20, {
       info, creator: '用户提报', customer: '孙建军', phone: '13965201020',
-      createdAt: at.slice(0, 16), updatedAt: survey.slice(0, 16), serviceScore: 2,
+      createdAt: at, updatedAt: survey, serviceScore: 2,
       nodeStatus: '未认领', assignee: null, tab: 'pool', nodeStep: 4,
       slaText: '06:00:00', slaSub: '距超时', slaState: 'ok', slaMinutes: 360,
       flashState: state('用户提报', {
@@ -867,7 +867,7 @@ export function buildFlashSeeds(nowMs: number): FlashSeedBundle {
     const pushed = flashStamp(nowMs - 6_000);
     add(row(21, {
       info, creator: '用户提报', customer: '吴海峰', phone: '13856021109',
-      createdAt: created.slice(0, 16), updatedAt: pushed.slice(0, 16),
+      createdAt: created, updatedAt: pushed,
       nodeStatus: '自动刷机中', assignee: null, tab: 'mine', nodeStep: 2,
       ...L1_NO_SLA,
       flashState: state('用户提报', { outcome: '等待回传', pushCount: 1 }),

@@ -22,7 +22,7 @@ import {
   resolveDefaultApprovalGroup,
 } from '../composables/opActions';
 import type { UploadFile } from 'ant-design-vue';
-import { XIAOZHI_RD_MODULES } from '@/mock/xiaozhi/rdModules';
+import { enabledRdModules } from '@/mock/xiaozhi/rdModules';
 import {
   XIAOZHI_RD_PLATFORM_AVAILABLE, XIAOZHI_RD_PRIORITIES,
   XIAOZHI_RD_PRIORITY_DEFAULT, XIAOZHI_TIP, xiaozhiReceiverOf,
@@ -153,8 +153,11 @@ const escalate = reactive({
 
 /** 接收人（域账号）由产品模块带出、不可改（W2），与建单弹窗同一个读口 */
 const escalateReceiver = computed(() => xiaozhiReceiverOf(escalate.rdModule));
-/** 产品模块取值源 ＝ 后台「产品模块维护」的配置（一·补 B30）；后台改了这里即时跟上 */
-const xiaozhiModuleOptions = computed(() => XIAOZHI_RD_MODULES.map((m) => ({ value: m.name, label: m.name })));
+/**
+ * 产品模块取值源 ＝ 后台「产品模块维护」的配置（一·补 B30）；后台改了这里即时跟上。
+ * 停用的模块不进下拉（1023 拍板，PRD §8）。
+ */
+const xiaozhiModuleOptions = computed(() => enabledRdModules().map((m) => ({ value: m.name, label: m.name })));
 const xiaozhiPriorityOptions = XIAOZHI_RD_PRIORITIES.map((v) => ({ value: v, label: v }));
 /** 小智单走产研通道时才出那一组字段 */
 const escalateToXiaozhiRd = computed(

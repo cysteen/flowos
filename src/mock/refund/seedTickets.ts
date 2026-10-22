@@ -139,7 +139,6 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
   const MIN = 60_000;
   const HOUR = 60 * MIN;
   const at = (ms: number) => flashStamp(ms);
-  const atMin = (ms: number) => flashStamp(ms).slice(0, 16);
   const tickets: Ticket[] = [];
   const notifies: RefundSeedNotify[] = [];
   const todo = (ticketNo: string, m: RefundManager, ms: number) => notifies.push({
@@ -168,7 +167,7 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
       nodeStatus: '待响应', assignee: m.name, tab: 'mine', responded: false,
       // 外部处理人名下 / 系统退费中不计入任何班组（附录 C）
       groupId: undefined, groupNames: [],
-      createdAt: atMin(c), updatedAt: atMin(c + MIN),
+      createdAt: at(c), updatedAt: at(c + MIN),
       timeline: [
         tl(at(c), 'node', 'create', AGENT, AGENT_ROLE, '建单', REFUND_TL.create(SOURCE)),
         tl(at(c + 20_000), 'node', 'transfer', '系统', '系统', '派单', REFUND_TL.dispatchManager(m)),
@@ -202,7 +201,7 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
       nodeStatus: REFUND_STATUS_SYSTEM, assignee: REFUND_SYSTEM_HANDLER, tab: 'mine',
       // 外部处理人名下 / 系统退费中不计入任何班组（附录 C）
       groupId: undefined, groupNames: [],
-      createdAt: atMin(c), updatedAt: atMin(s + 40 * MIN),
+      createdAt: at(c), updatedAt: at(s + 40 * MIN),
       timeline: [
         tl(at(c), 'node', 'create', AGENT, AGENT_ROLE, '建单', REFUND_TL.create(SOURCE)),
         tl(at(c + 15_000), 'node', 'transfer', '系统', '系统', '派单', REFUND_TL.dispatchManager(m)),
@@ -241,7 +240,7 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
       nodeStatus: '处理中', assignee: m.name, tab: 'mine',
       // 外部处理人名下 / 系统退费中不计入任何班组（附录 C）
       groupId: undefined, groupNames: [],
-      createdAt: atMin(c), updatedAt: atMin(rj),
+      createdAt: at(c), updatedAt: at(rj),
       timeline: [
         tl(at(c), 'node', 'create', AGENT, AGENT_ROLE, '建单', REFUND_TL.create(SOURCE)),
         tl(at(c + 15_000), 'node', 'transfer', '系统', '系统', '派单', REFUND_TL.dispatchManager(m)),
@@ -283,7 +282,7 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
         runs: [r1, r2],
       },
       nodeStatus: '未认领', assignee: null, tab: 'pool', responded: false,
-      createdAt: atMin(c), updatedAt: atMin(ok + 1000),
+      createdAt: at(c), updatedAt: at(ok + 1000),
       timeline: [
         tl(at(c), 'node', 'create', AGENT, AGENT_ROLE, '建单', REFUND_TL.create(SOURCE)),
         tl(at(c + 15_000), 'node', 'transfer', '系统', '系统', '派单', REFUND_TL.dispatchManager(m)),
@@ -326,7 +325,7 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
         runs: [r1],
       },
       nodeStatus: '处理中', assignee: AUDITOR, tab: 'mine',
-      createdAt: atMin(c), updatedAt: atMin(claim + 10 * MIN),
+      createdAt: at(c), updatedAt: at(claim + 10 * MIN),
       timeline: [
         tl(at(c), 'node', 'create', AGENT, AGENT_ROLE, '建单', REFUND_TL.create(SOURCE)),
         tl(at(c + 15_000), 'node', 'transfer', '系统', '系统', '派单', REFUND_TL.dispatchManager(m)),
@@ -353,7 +352,7 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
       customer: '赵先生', phone: '13955100106', info,
       refund: { handle: emptyRefundHandle(info), state: { slaStartedAt: at(c + 20_000) }, runs: [] },
       nodeStatus: '未认领', assignee: null, tab: 'pool', responded: false,
-      createdAt: atMin(c), updatedAt: atMin(c),
+      createdAt: at(c), updatedAt: at(c),
       timeline: [
         tl(at(c), 'node', 'create', AGENT, AGENT_ROLE, '建单', REFUND_TL.create(SOURCE)),
         tl(at(c + 20_000), 'node', 'transfer', '系统', '系统', '派单', REFUND_TL.dispatchPool),
@@ -395,7 +394,7 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
       },
       nodeStatus: '已结案', assignee: AUDITOR, tab: 'done',
       ...SLA_DONE,
-      createdAt: atMin(c), updatedAt: atMin(closed),
+      createdAt: at(c), updatedAt: at(closed),
       timeline: [
         tl(at(c), 'node', 'create', AGENT, AGENT_ROLE, '建单', REFUND_TL.create(SOURCE)),
         tl(at(c + 15_000), 'node', 'transfer', '系统', '系统', '派单', REFUND_TL.dispatchManager(m)),

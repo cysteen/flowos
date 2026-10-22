@@ -328,7 +328,7 @@ export const TICKET_DETAIL: TicketDetailMeta = {
   builderShort: '李一线',
   source: '外投渠道',
   createdAt: '今天 09:10',
-  createdAtFull: '2026-05-01 16:40',
+  createdAtFull: '2026-05-01 16:40:33',
   businessType: '学习机',
   businessLine: '学习机业务线',
   issueOccurredAt: '2026-06-18 14:30',

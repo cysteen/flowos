@@ -669,11 +669,6 @@ export function flashStamp(d: Date | number = new Date()): string {
   return `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())} ${pad(x.getHours())}:${pad(x.getMinutes())}:${pad(x.getSeconds())}`;
 }
 
-/** `YYYY-MM-DD HH:mm` */
-export function flashMinuteStamp(d: Date | number = new Date()): string {
-  return flashStamp(d).slice(0, 16);
-}
-
 /** 解析 `YYYY-MM-DD HH:mm(:ss)` 为本地时刻 */
 export function parseFlashStamp(s: string): Date {
   const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/.exec(s.trim());

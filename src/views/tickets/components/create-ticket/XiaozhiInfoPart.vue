@@ -8,7 +8,7 @@
  * 本卡没有「问题类别」控件（一·补 B15）；附件在「产品问题」卡的问题描述里上传。
  */
 import { computed } from 'vue';
-import { XIAOZHI_RD_MODULES } from '@/mock/xiaozhi/rdModules';
+import { enabledRdModules } from '@/mock/xiaozhi/rdModules';
 import {
   XIAOZHI_FIELD_LABELS as L, XIAOZHI_RD_PRIORITIES,
   xiaozhiReceiverOf,
@@ -22,7 +22,8 @@ defineProps<{
   errors: Record<CreateTicketXiaozhiField, string>;
 }>();
 
-const moduleOptions = computed(() => XIAOZHI_RD_MODULES.map((m) => ({ value: m.name, label: m.name })));
+// 停用的模块不进下拉（1023 拍板，PRD §8）
+const moduleOptions = computed(() => enabledRdModules().map((m) => ({ value: m.name, label: m.name })));
 const priorityOptions = XIAOZHI_RD_PRIORITIES.map((v) => ({ value: v, label: v }));
 
 const receiver = computed(() => xiaozhiReceiverOf(info.value.rdModule));
