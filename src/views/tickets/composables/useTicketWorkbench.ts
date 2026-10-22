@@ -531,6 +531,8 @@ export function useTicketWorkbench() {
       how: '领取', what: `从${from}名下领取`, when: at,
     }];
     t.updatedAt = at;
+    // 个册退费单（1120）：从校园经理 / 城市经理名下接走，清掉外部处理人并落快照
+    if (isRefundTicket(t)) useRefundStore().releaseManager(t.no);
     return { ok: true, from };
   }
   /**

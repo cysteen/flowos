@@ -30,6 +30,10 @@ import { useFlashStore } from '@/stores/flash';
 
 import { useRefundStore } from '@/stores/refund';
 
+import { isRefundTicket } from './types/refund';
+
+import { ALL_REFUND_MANAGERS, campusManagerOf, findRefundManager } from '@/mock/refund/managers';
+
 import { isFlashTicket, type FlashActor } from './types/flash';
 
 import { useTicketList } from './composables/useTicketList';
@@ -87,7 +91,7 @@ const derivedTickets = useDerivedTicketStore();
 const flashStore = useFlashStore();
 
 // 个册退费单快照与产线结果定时查询（1120）
-useRefundStore();
+const refundStore = useRefundStore();
 
 const props = defineProps<{ embedded?: boolean; filtersExpanded?: boolean }>();
 
@@ -372,6 +376,15 @@ const opDialogOpen = ref(false);
 
 const opTransferTicket = ref<Ticket | null>(null);
 
+// 个册退费单：调剂候选人加校园经理 / 城市经理，预选本校校园经理（1120 PRD 4.2）
+const opRefundTargets = computed(() => (
+  opTransferTicket.value && isRefundTicket(opTransferTicket.value) ? ALL_REFUND_MANAGERS.map((m) => m.name) : undefined
+));
+const opRefundDefault = computed(() => {
+  const t = opTransferTicket.value;
+  return t && isRefundTicket(t) && t.refund ? campusManagerOf(t.refund.info.schoolId)?.name : undefined;
+});
+
 function onOpDialogConfirm(payload: Record<string, unknown>) {
 
   const t = opTransferTicket.value;
@@ -399,6 +412,17 @@ function onOpDialogConfirm(payload: Record<string, unknown>) {
 
     return;
 
+  }
+
+  // 个册退费单（1120 PRD 4.2）：同组内调剂走个册退费服务落库（校园经理 / 城市经理 → 待办短信；组员 → 清外部处理人）
+  if (isRefundTicket(t) && data.scope === 'same') {
+    const m = findRefundManager(name);
+    const res = m
+      ? refundStore.assignToManager(t.no, m, queryActor())
+      : refundStore.assignToMember(t.no, name, queryActor(), data.reason);
+    if (res.ok) message.success(res.message);
+    else if (res.message) message.warning(res.message);
+    return;
   }
 
   // 池内未认领单同组调剂到人即出池，与「已有处理人」的单同口径
@@ -788,6 +812,8 @@ function onClearFilters() {
       :suspend-info="null"
       :return-count="0"
       :group-id="opTransferTicket?.groupId"
+      :extra-transfer-targets="opRefundTargets"
+      :default-transfer-target="opRefundDefault"
       @confirm="onOpDialogConfirm"
     />
 
