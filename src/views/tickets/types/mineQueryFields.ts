@@ -1,4 +1,5 @@
 /** 结构化筛选 · 可配置筛选项（与列设置字段对齐，+ 筛选 弹层管理） */
+import { REFUND_MARK_LABEL } from '@/views/tickets/types/refund';
 
 export type MineFilterFieldKey =
   | 'poolGroup'
@@ -16,6 +17,7 @@ export type MineFilterFieldKey =
   | 'ticketType'
   | 'flashMark'
   | 'xiaozhiMark'
+  | 'refundMark'
   | 'ticketSource'
   | 'problemL1'
   | 'problemL2'
@@ -44,6 +46,8 @@ export const MINE_FILTER_FIELD_DEFS: MineFilterFieldDef[] = [
   { key: 'flashMark', label: '刷机单' },
   // 小智工单标识（1130 D1：小智单类型为咨询，按标识筛选）
   { key: 'xiaozhiMark', label: '小智工单' },
+  // 个册退费标识（1120 PRD 第 8 章：个册退费单类型为咨询，按标识筛选）
+  { key: 'refundMark', label: REFUND_MARK_LABEL },
   { key: 'businessType', label: '业务分类', defaultVisible: true },
   { key: 'productCategory', label: '产品分类', fixed: true },
   { key: 'productName', label: '产品名称', fixed: true },

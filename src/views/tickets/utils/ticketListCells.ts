@@ -1,6 +1,6 @@
 import { isFlashTicket } from '@/views/tickets/types/flash';
 import { isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
-import { isRefundTicket } from '@/views/tickets/types/refund';
+import { REFUND_COMM_NOTE_RESULTS, isRefundTicket, refundOwnResultOf } from '@/views/tickets/types/refund';
 import type { Ticket } from '@/views/tickets/types/ticket';
 import { isFirstResponded, isSlaPaused, resolveTicketGroupNames, SLA_COLOR } from '@/views/tickets/types/ticket';
 import { resolveCurrentFlowNode, resolvePreviousFlowNode } from '@/views/tickets/utils/ticketFlowNodes';
@@ -142,6 +142,32 @@ export function isFlashSlaIdle(t: Ticket): boolean {
   }
   if (!isFlashTicket(t) || !t.flash) return false;
   return !isFlashSlaCounted(t.flash.state) || t.nodeStatus === '调研中';
+}
+
+/** 列表 SLA 列「—」的悬停文案：个册退费单未起算（1120 PRD §4.3） */
+export const REFUND_SLA_IDLE_TIP = '未起算';
+
+/**
+ * 个册退费单 SLA 未起算（外部处理人名下、系统退费中、未进过教育退费审核组）。
+ * 与 `isFlashSlaIdle` 的区别：起算后进「调研中」显示的「—」不算未起算。非个册退费单恒为 false。
+ */
+export function isRefundSlaNotStarted(t: Ticket): boolean {
+  return isRefundTicket(t) && !!t.refund && !isFlashSlaCounted(t.refund.state);
+}
+
+/**
+ * 个册退费单「需关注」命中项（1120 PRD 第 8 章 查询中心 · 特殊标识）：
+ * 沟通结果为「已联系未达成一致」「特殊原因未联系」，或我司退费结果（最近一次退费）为「已驳回」。
+ * 未命中或非个册退费单返回空数组。
+ */
+export function refundAttentionHits(t: Ticket): string[] {
+  if (!isRefundTicket(t) || !t.refund) return [];
+  const hits: string[] = [];
+  const comm = t.refund.handle.commResult;
+  if (comm && REFUND_COMM_NOTE_RESULTS.includes(comm)) hits.push(`沟通结果：${comm}`);
+  const last = t.refund.runs[t.refund.runs.length - 1];
+  if (last && refundOwnResultOf(last.status) === '已驳回') hits.push('我司退费结果：已驳回');
+  return hits;
 }
 
 /**

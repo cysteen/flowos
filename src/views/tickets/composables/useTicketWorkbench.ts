@@ -2,6 +2,7 @@ import { isFlashTicket } from '@/views/tickets/types/flash';
 import { isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
 import { useXiaozhiStore } from '@/stores/xiaozhi';
 import { useRefundStore } from '@/stores/refund';
+import { isRefundTicket } from '@/views/tickets/types/refund';
 import { computed, ref } from 'vue';
 import { buildAiSuggestions } from '@/mock/aiSuggestions';
 import { TICKETS } from '@/mock/tickets';
@@ -513,6 +514,8 @@ export function useTicketWorkbench() {
         t.assignee = me;
         t.responded = false;
       }
+      // 个册退费单（1120）：池内领取同咨询单，落库后由个册退费服务落快照（同 `claimTicketByType`）
+      if (isRefundTicket(t)) useRefundStore().afterClaim(t.no);
       return { ok: true, from };
     }
     if (t.nodeStatus === '已升级技术支持') {
@@ -574,6 +577,8 @@ export function useTicketWorkbench() {
         t.assignee = opts.targetName;
         t.responded = false;
       }
+      // 个册退费单（1120）：指派同咨询单，落库后由个册退费服务落快照
+      if (isRefundTicket(t)) useRefundStore().afterClaim(t.no);
       rows.push({ id, ok: true });
     }
     return rows;

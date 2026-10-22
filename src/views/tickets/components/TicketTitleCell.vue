@@ -10,6 +10,7 @@ import {
 import { ticketListSourceLabel } from '@/views/tickets/types/createTicket';
 import { FLASH_BADGE_LABEL, isFlashTicket } from '@/views/tickets/types/flash';
 import { XIAOZHI_MARK_LABEL, isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
+import { REFUND_MARK_LABEL, isRefundTicket } from '@/views/tickets/types/refund';
 
 withDefaults(
   defineProps<{
@@ -31,6 +32,8 @@ withDefaults(
      * 当前只有 `RiskReportPoolPanel.vue` 那一处传它。
      */
     line2Wrap?: boolean;
+    /** 「需关注」命中项（个册退费单，查询中心传）；不传或为空时不出标记 */
+    attentionHits?: string[];
   }>(),
   { highlightMentionUnread: false, line2Wrap: false },
 );
@@ -149,6 +152,7 @@ const csTagTipOverlayInner = {
           -->
           <span v-if="isFlashTicket(ticket)" class="tag">{{ FLASH_BADGE_LABEL }}</span>
           <span v-else-if="isXiaozhiTicket(ticket)" class="tag">{{ XIAOZHI_MARK_LABEL }}</span>
+          <span v-else-if="isRefundTicket(ticket)" class="tag">{{ REFUND_MARK_LABEL }}</span>
           <span v-else class="tag">{{ ticket.type }}</span>
           <span
             class="title-text"
@@ -160,6 +164,17 @@ const csTagTipOverlayInner = {
           <span class="channel">{{ ticketListSourceLabel(ticket) }}</span>
           <span class="sep">·</span>
           <span class="ticket-no" @click.stop="emit('clickNo', ticket)">{{ ticket.no }}</span>
+          <!-- 个册退费单「需关注」（1120 PRD 第 8 章 查询中心 · 特殊标识）：调用方给命中项才出，悬停逐条列出 -->
+          <a-tooltip
+            v-if="attentionHits?.length"
+            placement="top"
+            :mouse-enter-delay="0.15"
+          >
+            <template #title>
+              <div v-for="h in attentionHits" :key="h">{{ h }}</div>
+            </template>
+            <span class="attn-tag" @click.stop>需关注</span>
+          </a-tooltip>
           <span v-if="ticket.escalatedToNo" class="rel-tag rel-tag--to">已升级为 {{ ticket.escalatedToNo }}</span>
           <span v-else-if="ticket.escalatedFromNo" class="rel-tag rel-tag--from">升级自 {{ ticket.escalatedFromNo }}</span>
           <!--
@@ -200,6 +215,7 @@ const csTagTipOverlayInner = {
             <!-- 悬停卡头这一组与行内那一组**同源同形**：漏改一处，hover 就会把另一套标抖出来 -->
             <span v-if="isFlashTicket(ticket)" class="tag">{{ FLASH_BADGE_LABEL }}</span>
             <span v-else-if="isXiaozhiTicket(ticket)" class="tag">{{ XIAOZHI_MARK_LABEL }}</span>
+            <span v-else-if="isRefundTicket(ticket)" class="tag">{{ REFUND_MARK_LABEL }}</span>
             <span v-else class="tag">{{ ticket.type }}</span>
           </div>
           <div class="tp-title">{{ ticket.title }}</div>
@@ -329,6 +345,19 @@ const csTagTipOverlayInner = {
   line-height: 16px;
   padding: 0 6px;
   border-radius: 4px;
+}
+.attn-tag {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  padding: 0 6px;
+  border-radius: 4px;
+  color: #dc2626;
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  white-space: nowrap;
+  cursor: default;
 }
 .rel-tag--to { color: #7c3aed; background: #f5f3ff; border: 1px solid #ddd6fe; }
 .rel-tag--from { color: #4f46e5; background: #eef2ff; border: 1px solid #e0e7ff; }

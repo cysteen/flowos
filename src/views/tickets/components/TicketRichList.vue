@@ -16,7 +16,10 @@ import {
   formatCurrentHandlerGroup,
   formatLastHandlerGroup,
   isFlashSlaIdle,
+  isRefundSlaNotStarted,
   listCellText,
+  REFUND_SLA_IDLE_TIP,
+  refundAttentionHits,
   // SLA 那两行的口径已提到 utils 共用（风险监控页也要摆同一格），本组件改为引用，行为一字未动
   slaFirstLine,
   slaResolveLine,
@@ -599,6 +602,7 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
         <TicketTitleCell
           :ticket="t"
           :highlight-mention-unread="highlightMentionUnread"
+          :attention-hits="variant === 'query' ? refundAttentionHits(t) : undefined"
           @click-no="emit('clickNo', $event)"
         >
           <!--
@@ -730,7 +734,11 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
         </div>
 
         <div v-else-if="colKey === 'sla' && isFlashSlaIdle(t)" class="col-sla cell-sla">
-          <span class="sla-line" :style="{ color: slaResolveLine(t).color }">—</span>
+          <span
+            class="sla-line"
+            :style="{ color: slaResolveLine(t).color }"
+            :title="isRefundSlaNotStarted(t) ? REFUND_SLA_IDLE_TIP : undefined"
+          >—</span>
         </div>
         <div v-else-if="colKey === 'sla'" class="col-sla cell-sla">
           <span class="sla-line" :style="{ color: slaResolveLine(t).color }">解决：{{ slaResolveLine(t).text }}</span>

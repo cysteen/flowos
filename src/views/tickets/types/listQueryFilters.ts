@@ -1,4 +1,5 @@
 import { isFlashTicket } from '@/views/tickets/types/flash';
+import { REFUND_STATUS_SYSTEM, isRefundTicket } from '@/views/tickets/types/refund';
 import { prototypeDayEnd } from '@/config/prototypeDate';
 import { BUSINESS_TYPES } from '@/views/tickets/types/createTicket';
 import { allProductNames } from '@/views/tickets/types/mineQuery';
@@ -180,10 +181,13 @@ function matchStatus(t: Ticket, status: string): boolean {
   // 那一格显示的颜色永远一致。老四类一字不动，继续读工单行上的扁平快照。
   if (status === 'firstResponseOverdue') {
     if (isFlashTicket(t)) return isFirstRespBreachedNow(t);
+    // 个册退费单与刷机单同一本 SLA 账本（1120 一·补 补7）
+    if (isRefundTicket(t)) return isFirstRespBreachedNow(t);
     return !isFirstResponded(t) && t.slaState === 'overdue';
   }
   if (status === 'resolutionOverdue') {
     if (isFlashTicket(t)) return isResolveBreachedNow(t);
+    if (isRefundTicket(t)) return isResolveBreachedNow(t);
     const resolveState = isFirstResponded(t) ? t.slaState : t.resolveSlaState;
     return resolveState === 'overdue';
   }
@@ -193,8 +197,8 @@ function matchStatus(t: Ticket, status: string): boolean {
   // 依据基线 §1 第二列的粗粒度分组铺开子状态（升级两态、转出态各自单列）
   const map: Record<string, string[]> = {
     pending: ['未认领', '待响应'],
-    // 「自动刷机中」归「处理中」分组（930 教育刷机单 M9）
-    processing: ['处理中', '已升级技术支持', '已升级产研', '已委派', '已退回', '调研中', '自动刷机中'],
+    // 「自动刷机中」归「处理中」分组（930 教育刷机单 M9）；「系统退费中」同（1120 PRD 第 8 章）
+    processing: ['处理中', '已升级技术支持', '已升级产研', '已委派', '已退回', '调研中', '自动刷机中', REFUND_STATUS_SYSTEM],
     held: ['已挂起'],
     review: ['申请挂起中', '申请关闭中', '申请强结中', '业务动作审核中'],
   };

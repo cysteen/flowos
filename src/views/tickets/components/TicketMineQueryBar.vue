@@ -23,6 +23,7 @@ import {
 import { fieldsForVariant, type MineFilterFieldKey } from '@/views/tickets/types/mineQueryFields';
 import type { NodeStatus, PoolGroupMeta, Priority, SlaFilterKey } from '@/views/tickets/types/ticket';
 import { BASELINE_STATUSES, SLA_FILTER_OPTIONS, statusDisplayName } from '@/views/tickets/types/ticket';
+import { REFUND_STATUS_SYSTEM } from '@/views/tickets/types/refund';
 
 const RangePicker = DatePicker.RangePicker;
 
@@ -64,10 +65,11 @@ const slaOptions = SLA_FILTER_OPTIONS.map((o) => ({ value: o.value as string, la
 // value 落子状态（25 个），label 走 STATUS_DISPLAY_NAME（如「未认领」显示为「待领取」）。
 const nodeStatuses: { value: '' | NodeStatus; label: string }[] = [
   { value: '', label: '请选择' },
-  // 「自动刷机中」归「处理中」分组，选项排在「处理中」之后（930 教育刷机单 §9.1）
+  // 「自动刷机中」归「处理中」分组，选项排在「处理中」之后（930 教育刷机单 §9.1）；
+  // 「系统退费中」同归「处理中」分组，排在「自动刷机中」之后（1120 PRD 第 8 章）
   ...BASELINE_STATUSES
-    .filter((s) => s !== '自动刷机中')
-    .flatMap((s) => (s === '处理中' ? [s, '自动刷机中' as NodeStatus] : [s]))
+    .filter((s) => s !== '自动刷机中' && s !== REFUND_STATUS_SYSTEM)
+    .flatMap((s) => (s === '处理中' ? [s, '自动刷机中' as NodeStatus, REFUND_STATUS_SYSTEM as NodeStatus] : [s]))
     .map((s) => ({ value: s, label: statusDisplayName(s) })),
 ];
 
@@ -225,6 +227,8 @@ const ticketTypeOptions = computed(() => toStrOpts(CREATE_TICKET_TYPES));
 const flashMarkOptions = toStrOpts(['是', '否']);
 /** 小智工单标识筛选（1130 D1）：与刷机单标识同一套是 / 否选项 */
 const xiaozhiMarkOptions = flashMarkOptions;
+/** 个册退费标识筛选（1120 PRD 第 8 章）：同一套是 / 否选项 */
+const refundMarkOptions = flashMarkOptions;
 const ticketSourceOptions = computed(() => toStrOpts(TICKET_SOURCE_OPTIONS));
 const productCategoryOptions = computed(() => toStrOpts(PRODUCT_CATEGORIES));
 const productNameSelectOptions = computed(() => toStrOpts(productNameOptions.value));
@@ -386,6 +390,15 @@ const problemL3SelectOptions = computed(() => toStrOpts(problemL3Options.value))
               :model-value="modelValue.xiaozhiMark"
               :options="xiaozhiMarkOptions"
               @update:model-value="patch('xiaozhiMark', $event as MineQueryFilter['xiaozhiMark'])"
+            />
+          </label>
+
+          <label v-else-if="f.key === 'refundMark'" class="filter-item">
+            <span class="fi-label">{{ fieldLabel('refundMark') }}</span>
+            <MineFilterSelect
+              :model-value="modelValue.refundMark"
+              :options="refundMarkOptions"
+              @update:model-value="patch('refundMark', $event as MineQueryFilter['refundMark'])"
             />
           </label>
 

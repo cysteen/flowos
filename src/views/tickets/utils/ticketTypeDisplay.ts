@@ -1,6 +1,7 @@
 import { TICKETS } from '@/mock/tickets';
 import { FLASH_BADGE_LABEL, isFlashTicket } from '@/views/tickets/types/flash';
 import { XIAOZHI_MARK_LABEL, isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
+import { REFUND_MARK_LABEL, isRefundTicket } from '@/views/tickets/types/refund';
 
 /**
  * 界面上展示工单类型处的统一口径（1014 / 1130 一·补 B21）：
@@ -10,7 +11,7 @@ import { XIAOZHI_MARK_LABEL, isXiaozhiTicket } from '@/views/tickets/types/xiaoz
  * 展示行不一定带标识字段（客户全景、关联单、客户历史工单、首页待办、指派弹窗、履历关联卡
  * 等派生行只有单号与类型名），故**按单号回查工单库**补判。
  */
-type TypeItem = { type: string; no?: string; isFlash?: boolean; isXiaozhi?: boolean };
+type TypeItem = { type: string; no?: string; isFlash?: boolean; isXiaozhi?: boolean; isRefund?: boolean };
 
 export function isFlashTypeItem(x: TypeItem): boolean {
   if (isFlashTicket(x)) return true;
@@ -23,6 +24,12 @@ export function isXiaozhiTypeItem(x: TypeItem): boolean {
   return !!x.no && TICKETS.some((t) => t.no === x.no && isXiaozhiTicket(t));
 }
 
+/** 与 `isFlashTypeItem` 同形：个册退费单显示「个册退费」（1120 PRD 第 8 章） */
+export function isRefundTypeItem(x: TypeItem): boolean {
+  if (isRefundTicket(x)) return true;
+  return !!x.no && TICKETS.some((t) => t.no === x.no && isRefundTicket(t));
+}
+
 /**
  * 三档互斥，与列表行内标（`TicketTitleCell.vue`）、详情页页头（`OpHeader.vue`）**同一套判法**。
  * 刷机在前只是沿用既有次序 —— 一张单不可能同时是刷机单与小智单（两个标识由各自建单入口写入）。
@@ -30,6 +37,7 @@ export function isXiaozhiTypeItem(x: TypeItem): boolean {
 export function ticketTypeLabel(x: TypeItem): string {
   if (isFlashTypeItem(x)) return FLASH_BADGE_LABEL;
   if (isXiaozhiTypeItem(x)) return XIAOZHI_MARK_LABEL;
+  if (isRefundTypeItem(x)) return REFUND_MARK_LABEL;
   return x.type;
 }
 

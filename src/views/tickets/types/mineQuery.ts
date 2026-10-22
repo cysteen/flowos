@@ -6,6 +6,7 @@ import type { BusinessType, TicketSource } from '@/views/tickets/types/createTic
 import { prototypeDayEnd } from '@/config/prototypeDate';
 import { isFlashTicket } from '@/views/tickets/types/flash';
 import { isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
+import { isRefundTicket } from '@/views/tickets/types/refund';
 
 /** 结构化筛选 · 时间快捷选项 */
 export type MineTimePreset = '' | '7d' | '30d' | '90d' | 'custom';
@@ -44,6 +45,8 @@ export interface MineQueryFilter {
   flashMark: '' | '是' | '否';
   /** 小智工单标识（1130 D1）：是 / 否；空=不过滤 */
   xiaozhiMark: '' | '是' | '否';
+  /** 个册退费标识（1120 PRD 第 8 章）：是 / 否；空=不过滤 */
+  refundMark: '' | '是' | '否';
   ticketSource: '' | TicketSource;
   /** SLA · 多选，或关系；空=不过滤。判据见 `matchSlaFilter` */
   sla: SlaFilterKey[];
@@ -71,6 +74,7 @@ export const EMPTY_MINE_QUERY = (): MineQueryFilter => ({
   ticketType: '',
   flashMark: '',
   xiaozhiMark: '',
+  refundMark: '',
   ticketSource: '',
   sla: [],
   problemL1: '',
@@ -242,6 +246,7 @@ export function matchMineQuery(t: Ticket, q: MineQueryFilter): boolean {
   if (q.ticketType && t.type !== q.ticketType) return false;
   if (q.flashMark && isFlashTicket(t) !== (q.flashMark === '是')) return false;
   if (q.xiaozhiMark && isXiaozhiTicket(t) !== (q.xiaozhiMark === '是')) return false;
+  if (q.refundMark && isRefundTicket(t) !== (q.refundMark === '是')) return false;
   if (q.ticketSource) {
     const src = t.ticketSource ?? (t.channel === '电话' ? '电话' : t.channel);
     if (src !== q.ticketSource) return false;
@@ -283,6 +288,7 @@ export function hasMineQuery(q: MineQueryFilter): boolean {
     || q.ticketType
     || q.flashMark
     || q.xiaozhiMark
+    || q.refundMark
     || q.ticketSource
     || q.sla?.length
     || q.problemL1
