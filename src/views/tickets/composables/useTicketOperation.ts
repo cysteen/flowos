@@ -475,6 +475,10 @@ export function useTicketOperation() {
     if (t && !t.flash && !isXiaozhiTicket(t) && !SEED_TICKET_NOS.has(t.no)) applyOwnTicket(base, t);
     if (t?.flash) applyFlashOverview(base, t);
     if (t && isXiaozhiTicket(t)) applyXiaozhiOverview(base, t);
+    // 个册退费单页头建单时间到秒（1120，同刷机单取值）：取建单履历的秒级时刻，取不到回落工单行
+    if (t && isRefundTicket(t) && t.refund) {
+      base.createdAtFull = t.eventTimeline?.find((e) => e.action === 'create')?.when ?? base.createdAtFull;
+    }
     detail.value = base;
     if (t?.flash) projectFlashTimeline(t.no, true);
     // 小智单：履历以小智链路为准（建单 / 自动流转 / 回传），不沿用类型样例履历

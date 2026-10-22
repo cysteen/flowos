@@ -118,7 +118,7 @@ const amountText = computed(() => (info.value.refundableAmount == null ? '' : `$
         <label class="ri-label">{{ L.packages }}</label>
         <div class="ri-control">
           <div>
-            <a-button size="small" @click="onQuery">查询可退套餐</a-button>
+            <a-button @click="onQuery">查询可退套餐</a-button>
           </div>
           <div v-if="queryTip" class="ri-error">{{ queryTip }}</div>
           <div v-if="orders !== null" class="ri-orders">

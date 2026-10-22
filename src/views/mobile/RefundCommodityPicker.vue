@@ -85,7 +85,7 @@ function confirm() {
           />
           <span class="rcp-main">
             <span class="rcp-pkg">{{ g.name }}</span>
-            <span class="rcp-sub">购买时间：{{ g.purchasedAt.slice(0, 16) }}</span>
+            <span class="rcp-sub">购买时间：{{ g.purchasedAt }}</span>
           </span>
         </label>
         <label v-for="s in g.subjects" :key="keyOf(s)" class="rcp-row">
@@ -95,7 +95,7 @@ function confirm() {
           />
           <span class="rcp-main">
             <span class="rcp-sub">购买学科：{{ s.subjectName }}</span>
-            <span class="rcp-sub">可退金额：<b class="rcp-amt">¥ {{ formatRefundAmount(s.amount) }}</b></span>
+            <span class="rcp-sub">可退金额：<b class="rcp-amt">{{ formatRefundAmount(s.amount) }} 元</b></span>
           </span>
         </label>
       </div>
@@ -105,7 +105,7 @@ function confirm() {
         <a-checkbox :checked="allChecked" :indeterminate="allPartial" @change="(e: any) => toggleAll(e.target.checked)" />
         <span>全选</span>
       </label>
-      <span class="rcp-total">合计：{{ formatRefundAmount(total) }}元</span>
+      <span class="rcp-total">合计：{{ formatRefundAmount(total) }} 元</span>
       <span class="rcp-btns">
         <a-button type="primary" @click="confirm">确定</a-button>
         <a-button @click="emit('cancel')">取消</a-button>

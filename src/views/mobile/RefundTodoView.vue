@@ -31,6 +31,12 @@ const rows = computed<Ticket[]>(() => {
     .sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''));
 });
 
+/** 卡片时间：最近一条履历的秒级时刻（年-月-日 时:分:秒），无履历回落工单行 */
+function lastAt(t: Ticket): string {
+  const tl = t.eventTimeline ?? [];
+  return tl.length ? tl[tl.length - 1].when : t.updatedAt ?? '';
+}
+
 function open(no: string) {
   router.push({ path: '/m/refund/ticket', query: { no, account: account.value } });
 }
@@ -49,7 +55,7 @@ function open(no: string) {
         <span>{{ t.refund!.info.studentName }}</span>
       </div>
       <div class="rt-foot">
-        <span>{{ t.updatedAt }}</span>
+        <span>{{ lastAt(t) }}</span>
         <RightOutlined class="rt-arrow" />
       </div>
     </section>

@@ -131,13 +131,13 @@ const headTime = computed(() => (lastRun.value ? lastRun.value.resultAt ?? lastR
           </thead>
           <tbody>
             <tr v-for="r in rows" :key="r.id">
-              <td class="num">{{ r.at }}</td>
+              <td class="num at">{{ r.at }}</td>
               <td>{{ r.by }}</td>
               <td class="num">{{ r.taskId }}</td>
               <td class="wrap"><div v-for="(it, i) in r.items" :key="i">{{ it }}</div></td>
               <td><span :class="`tone-${tone(r.status)}`">{{ r.status }}</span></td>
               <td class="wrap">{{ r.reject }}</td>
-              <td class="num">{{ r.resultAt }}</td>
+              <td class="num at">{{ r.resultAt }}</td>
             </tr>
           </tbody>
         </table>
@@ -177,12 +177,13 @@ const headTime = computed(() => (lastRun.value ? lastRun.value.resultAt ?? lastR
 .tone-idle { color: #6b7280; font-weight: 600; }
 .rf-table-wrap { overflow-x: auto; background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; }
 .rf-table-title { padding: 6px 10px 0; font-size: 12px; line-height: 20px; font-weight: 600; color: #374151; }
-.rf-table { width: 100%; border-collapse: collapse; font-size: 12px; line-height: 20px; table-layout: fixed; min-width: 860px; }
-.rf-table .col-at { width: 150px; }
-.rf-table .col-by { width: 72px; }
-.rf-table .col-task { width: 150px; }
-.rf-table .col-status { width: 80px; }
-.rf-table .col-reject { width: 160px; }
+/* 定宽列合计 532（时间列日期 / 时刻两行）；最小表宽 840 → 「退费商品与金额」至少 300，一行放得下「套餐 · 学科 金额 元」 */
+.rf-table { width: 100%; border-collapse: collapse; font-size: 12px; line-height: 20px; table-layout: fixed; min-width: 840px; }
+.rf-table .col-at { width: 92px; }
+.rf-table .col-by { width: 60px; }
+.rf-table .col-task { width: 128px; }
+.rf-table .col-status { width: 64px; }
+.rf-table .col-reject { width: 96px; }
 .rf-table th {
   padding: 6px 10px; text-align: left; font-weight: 600; color: #6b7280;
   background: #f9fafb; border-bottom: 1px solid #e5e7eb; white-space: nowrap;
@@ -190,5 +191,6 @@ const headTime = computed(() => (lastRun.value ? lastRun.value.resultAt ?? lastR
 .rf-table td { padding: 6px 10px; color: #374151; border-bottom: 1px solid #f3f4f6; white-space: nowrap; vertical-align: top; }
 .rf-table tr:last-child td { border-bottom: none; }
 .rf-table td.num { font-variant-numeric: tabular-nums; }
+.rf-table td.at { white-space: normal; }
 .rf-table td.wrap { white-space: normal; word-break: break-word; }
 </style>

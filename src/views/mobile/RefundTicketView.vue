@@ -80,10 +80,8 @@ const history = computed(() => [...(ticket.value?.eventTimeline ?? [])].reverse(
 /* ---------------- 退费信息表单 ---------------- */
 
 const form = reactive<RefundHandle>(emptyRefundHandle());
-/** 退费方只有「我司」 */
-const party = ref<string | undefined>(REFUND_PARTY);
 type ErrKey = 'submitRefund' | 'commResult' | 'commNote' | 'orderNo' | 'studentCode' | 'subjects'
-  | 'reason' | 'reasonDesc' | 'party' | 'closeAuth' | 'notCloseReason';
+  | 'reason' | 'reasonDesc' | 'closeAuth' | 'notCloseReason';
 const errors = reactive<Partial<Record<ErrKey, string>>>({});
 
 function clr(k: ErrKey) {
@@ -98,7 +96,6 @@ function load() {
   const h = refund.value?.handle;
   Object.assign(form, h ? structuredClone(toRaw(h)) : emptyRefundHandle());
   form.subjects = (h?.subjects ?? []).map((s) => ({ ...toRaw(s) }));
-  party.value = REFUND_PARTY;
   clearErrors();
 }
 watch(() => [no.value, ticket.value?.nodeStatus], load, { immediate: true });
@@ -116,7 +113,6 @@ const needNotCloseReason = computed(() => form.closeAuth === '否');
 const YES_NO = [{ value: '是', label: '是' }, { value: '否', label: '否' }];
 const COMM_OPTIONS = REFUND_COMM_RESULTS.map((v) => ({ value: v, label: v }));
 const REASON_OPTIONS = REFUND_REASONS.map((r) => ({ value: r.code, label: r.label }));
-const PARTY_OPTIONS = [{ value: REFUND_PARTY, label: REFUND_PARTY }];
 
 const submitRefundModel = computed({
   get: () => form.submitRefund || undefined,
@@ -208,7 +204,6 @@ function validateForward(): boolean {
     if (!form.subjects.length) errors.subjects = '请选择退费商品';
     if (form.reason == null) errors.reason = '请选择退款原因';
     if (!form.reasonDesc.trim()) errors.reasonDesc = '请填写退款原因说明';
-    if (!party.value) errors.party = '请选择退费方';
     if (!form.closeAuth) errors.closeAuth = '请选择是否关闭权限';
     if (form.closeAuth === '否' && !form.notCloseReason.trim()) errors.notCloseReason = '请填写不关闭权限原因';
   }
@@ -461,12 +456,9 @@ function confirmTransfer() {
             </div>
           </div>
 
-          <div class="rf-row" :class="{ 'has-error': errors.party }">
-            <label class="rf-label is-required">退费方：</label>
-            <div class="rf-ctl">
-              <a-select v-model:value="party" :options="PARTY_OPTIONS" :disabled="!canAct" :status="errors.party ? 'error' : undefined" />
-              <div v-if="errors.party" class="rf-err">{{ errors.party }}</div>
-            </div>
+          <div class="rf-row">
+            <label class="rf-label">退费方：</label>
+            <div class="rf-ctl"><a-input :value="REFUND_PARTY" disabled /></div>
           </div>
 
           <div class="rf-row" :class="{ 'has-error': errors.closeAuth }">
