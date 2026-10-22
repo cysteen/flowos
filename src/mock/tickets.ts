@@ -16,12 +16,18 @@ import {
  * 与运行时同一套函数，不在这里手写状态。
  * ================================================================ */
 
-/** 'YYYY-MM-DD HH:mm' 加若干分钟 */
+/**
+ * 'YYYY-MM-DD HH:mm(:ss)' 加若干分钟，**结果带秒**（1023 口径：时刻一律到秒）。
+ *
+ * 入参现在带秒（售后事件的 `at` 已补秒），故不能再无条件拼 `:00` ——
+ * 那会拼出 `2026-09-20T10:15:36:00` 这种非法串，整条时刻变 NaN。
+ */
 function plusMinutes(at: string, min: number): string {
-  const d = new Date(`${at.replace(' ', 'T')}:00`);
+  const iso = at.replace(' ', 'T');
+  const d = new Date(iso.length > 16 ? iso : `${iso}:00`);
   d.setMinutes(d.getMinutes() + min);
   const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
 /**
@@ -90,16 +96,16 @@ function buildAftersaleSeeds() {
     createdAt: '2026-09-30 09:12:31', updatedAt: '2026-09-30 10:40:22', responded: true,
     eventTimeline: [{
       id: 'as-IFLYTS-20260930-00031-link', category: 'node', action: 'transfer', who: '王坐席', role: '二线专员',
-      how: '关联售后', what: '售后单 AS-20260930-41502 · 维修', when: '2026-09-30 10:40',
+      how: '关联售后', what: '售后单 AS-20260930-41502 · 维修', when: '2026-09-30 10:40:22',
     }],
   }, {
-    type: 'AS_PROGRESS', asNo: 'AS-20260930-41502', at: '2026-10-01 09:30', operator: '吴师傅（售后一组）', status: '处理中',
+    type: 'AS_PROGRESS', asNo: 'AS-20260930-41502', at: '2026-10-01 09:30:05', operator: '吴师傅（售后一组）', status: '处理中',
   }).ticket);
 
   // ③ 售后升级投诉转入：售后单冻结、尚未回传
   const e1 = created([], {
     type: 'AS_ESCALATE_COMPLAINT', asNo: 'AS-20260926-41288', eventId: 'ase-41288-esc',
-    at: '2026-09-26 14:05', operator: '钱师傅（售后二组）',
+    at: '2026-09-26 14:05:54', operator: '钱师傅（售后二组）',
     escalateReason: '客户对上门维修时效强烈不满，现场要求投诉处理',
     inbound: inbound({
       id: 'as-e1', no: 'IFLYTS-20260926-00032', title: '翻译机寄修超期，客户要求投诉处理',
@@ -114,7 +120,7 @@ function buildAftersaleSeeds() {
   // ③ 售后升级投诉转入：已回传过一次（首次回传 · 已解冻）
   const e2 = claimSeed(created([], {
     type: 'AS_ESCALATE_COMPLAINT', asNo: 'AS-20260927-41340', eventId: 'ase-41340-esc',
-    at: '2026-09-27 10:20', operator: '孙师傅（售后一组）',
+    at: '2026-09-27 10:20:28', operator: '孙师傅（售后一组）',
     escalateReason: '二次维修仍未修复，客户要求升级投诉',
     inbound: inbound({
       id: 'as-e2', no: 'IFLYTS-20260927-00033', title: '学习机二次维修未修复，要求升级处理',
@@ -126,7 +132,7 @@ function buildAftersaleSeeds() {
   }).created, '王坐席', '2026-09-27 10:55');
   seeds.push(applyAftersaleResult(e2, {
     conclusion: '部分解决', note: '已与客户达成换新方案，等待售后侧安排寄送新机，赔偿事项另行跟进。',
-    who: '王坐席', role: '二线专员', at: '2026-09-28 16:10', unfrozenStatus: '处理中',
+    who: '王坐席', role: '二线专员', at: '2026-09-28 16:10:04', unfrozenStatus: '处理中',
   }).ticket);
 
   // 同一张售后单挂两张客服单：来源位＝已转出的咨询单 t33，派生位＝售后升级投诉转入的投诉单
@@ -145,7 +151,7 @@ function buildAftersaleSeeds() {
   };
   const pair = created([t33Base], {
     type: 'AS_ESCALATE_COMPLAINT', asNo: 'AS-20260722-38104', eventId: 'ase-38104-esc',
-    at: '2026-09-28 11:30', operator: '赵师傅（售后三组）',
+    at: '2026-09-28 11:30:21', operator: '赵师傅（售后三组）',
     escalateReason: '寄修检测超期，客户在售后侧提出投诉',
     inbound: inbound({
       id: 'as-e3', no: 'IFLYTS-20260928-00034', title: '录音笔寄修检测超期，客户投诉',
@@ -163,7 +169,7 @@ function buildAftersaleSeeds() {
   // 同位降级：同一售后单先后由售后转咨询、售后升级投诉建出两张客服单（客服派生位）
   const d1 = created([], {
     type: 'AS_RETURNED', asNo: 'AS-20260918-40655', eventId: 'ase-40655-returned-1',
-    at: '2026-09-18 15:20', operator: '周师傅（售后二组）', status: '已关闭',
+    at: '2026-09-18 15:20:47', operator: '周师傅（售后二组）', status: '已关闭',
     returnReason: '检测无硬件故障，属使用咨询，转回客服',
     inbound: inbound({
       id: 'as-d1', no: 'IFLYZX-20260918-00035', title: '智能音箱唤醒不灵敏咨询',
@@ -175,7 +181,7 @@ function buildAftersaleSeeds() {
   const d1Claimed = claimSeed(d1.created, '王坐席', '2026-09-18 16:00');
   const d2 = created([d1Claimed], {
     type: 'AS_ESCALATE_COMPLAINT', asNo: 'AS-20260918-40655', eventId: 'ase-40655-esc',
-    at: '2026-09-20 10:15', operator: '周师傅（售后二组）',
+    at: '2026-09-20 10:15:21', operator: '周师傅（售后二组）',
     escalateReason: '客户不认可检测结论，在售后侧提出投诉',
     inbound: inbound({
       id: 'as-d2', no: 'IFLYTS-20260920-00036', title: '智能音箱检测结论争议投诉',
@@ -190,7 +196,7 @@ function buildAftersaleSeeds() {
   // ④ 售后转咨询转入：关联售后单已关闭，可激活
   seeds.push(claimSeed(created([], {
     type: 'AS_RETURNED', asNo: 'AS-20260929-41420', eventId: 'ase-41420-returned-1',
-    at: '2026-09-29 11:00', operator: '冯师傅（售后一组）', status: '已关闭',
+    at: '2026-09-29 11:00:45', operator: '冯师傅（售后一组）', status: '已关闭',
     returnReason: '配件已寄出，客户咨询安装方法，转回客服指导',
     inbound: inbound({
       id: 'as-r1', no: 'IFLYZX-20260929-00037', title: '净化器滤芯配件安装咨询',
@@ -203,7 +209,7 @@ function buildAftersaleSeeds() {
   // ④ 售后转咨询转入：关联售后单关闭已久，激活会被售后侧拒绝
   seeds.push(claimSeed(created([], {
     type: 'AS_RETURNED', asNo: 'AS-20260515-36120', eventId: 'ase-36120-returned-1',
-    at: '2026-05-18 09:40', operator: '郑师傅（售后二组）', status: '已关闭',
+    at: '2026-05-18 09:40:18', operator: '郑师傅（售后二组）', status: '已关闭',
     returnReason: '维修完成后客户咨询延保政策，转回客服答复',
     inbound: inbound({
       id: 'as-r2', no: 'IFLYZX-20260518-00038', title: '录音笔维修后延保政策咨询',
@@ -216,7 +222,7 @@ function buildAftersaleSeeds() {
   // ④ 激活后售后再次转客服：原单未结案，落原单（第 n 次）
   const r3Base = claimSeed(created([], {
     type: 'AS_RETURNED', asNo: 'AS-20260920-40712', eventId: 'ase-40712-returned-1',
-    at: '2026-09-21 09:30', operator: '何师傅（售后一组）', status: '已关闭',
+    at: '2026-09-21 09:30:53', operator: '何师傅（售后一组）', status: '已关闭',
     returnReason: '检测为网络设置问题，转回客服指导',
     inbound: inbound({
       id: 'as-r3', no: 'IFLYZX-20260921-00039', title: '学习机连不上家庭网络咨询',
@@ -228,8 +234,8 @@ function buildAftersaleSeeds() {
   }).created, '王坐席', '2026-09-21 10:05');
   let r3 = r3Base;
   for (const [i, step] of [
-    { reopenAt: '2026-09-23 14:00', returnAt: '2026-09-26 16:20', reason: '更换无线模块后仍连不上，转回客服排查路由器设置' },
-    { reopenAt: '2026-09-29 10:30', returnAt: '2026-10-02 11:15', reason: '复检硬件正常，客户路由器信道设置问题，转回客服指导' },
+    { reopenAt: '2026-09-23 14:00:14', returnAt: '2026-09-26 16:20:37', reason: '更换无线模块后仍连不上，转回客服排查路由器设置' },
+    { reopenAt: '2026-09-29 10:30:51', returnAt: '2026-10-02 11:15:38', reason: '复检硬件正常，客户路由器信道设置问题，转回客服指导' },
   ].entries()) {
     r3 = routeAftersaleEvent([r3], {
       type: 'AS_PROGRESS', asNo: 'AS-20260920-40712', at: step.reopenAt, operator: '何师傅（售后一组）', status: '待接单',
@@ -244,7 +250,7 @@ function buildAftersaleSeeds() {
   // ④ 激活后售后再次转客服：原单已结案 → 新建咨询单并与原单建「承接」
   const s1Open = claimSeed(created([], {
     type: 'AS_RETURNED', asNo: 'AS-20260910-40388', eventId: 'ase-40388-returned-1',
-    at: '2026-09-11 10:10', operator: '林师傅（售后二组）', status: '已关闭',
+    at: '2026-09-11 10:10:42', operator: '林师傅（售后二组）', status: '已关闭',
     returnReason: '耳机配对问题属使用咨询，转回客服指导',
     inbound: inbound({
       id: 'as-s1', no: 'IFLYZX-20260911-00040', title: '蓝牙耳机配对失败咨询',
@@ -255,11 +261,11 @@ function buildAftersaleSeeds() {
   }).created, '王坐席', '2026-09-11 10:40');
   const s1Settled = settleSeed(s1Open, '2026-09-15 17:20');
   const s1Reopened = routeAftersaleEvent([s1Settled], {
-    type: 'AS_PROGRESS', asNo: 'AS-20260910-40388', at: '2026-09-27 09:00', operator: '林师傅（售后二组）', status: '待接单',
+    type: 'AS_PROGRESS', asNo: 'AS-20260910-40388', at: '2026-09-27 09:00:40', operator: '林师傅（售后二组）', status: '待接单',
   }).rows[0];
   const s2 = created([s1Reopened], {
     type: 'AS_RETURNED', asNo: 'AS-20260910-40388', eventId: 'ase-40388-returned-2',
-    at: '2026-09-30 15:45', operator: '林师傅（售后二组）', status: '已关闭',
+    at: '2026-09-30 15:45:52', operator: '林师傅（售后二组）', status: '已关闭',
     returnReason: '左耳无声为固件问题，升级后客户咨询降噪设置，转回客服',
     inbound: inbound({
       id: 'as-s2', no: 'IFLYZX-20260930-00041', title: '蓝牙耳机固件升级后降噪设置咨询',
@@ -274,7 +280,7 @@ function buildAftersaleSeeds() {
   // 投诉新单的「关联售后」位为「激活售后单」；原咨询单落「已升级投诉」，只留「关联降级」履历
   const u1 = claimSeed(created([], {
     type: 'AS_RETURNED', asNo: 'AS-20260922-40790', eventId: 'ase-40790-returned-1',
-    at: '2026-09-22 14:10', operator: '彭师傅（售后二组）', status: '已关闭',
+    at: '2026-09-22 14:10:00', operator: '彭师傅（售后二组）', status: '已关闭',
     returnReason: '耳机更换后客户咨询以旧换新政策，转回客服答复',
     inbound: inbound({
       id: 'as-u1', no: 'IFLYZX-20260922-00042', title: '蓝牙耳机换新后以旧换新政策咨询',
@@ -284,7 +290,7 @@ function buildAftersaleSeeds() {
     }),
   }).created, '王坐席', '2026-09-22 14:45');
   const u2No = 'IFLYTS-20260924-00043';
-  const migrated = migrateAftersaleLink(u1, u2No, { who: '王坐席', role: '二线专员', at: '2026-09-24 09:30' });
+  const migrated = migrateAftersaleLink(u1, u2No, { who: '王坐席', role: '二线专员', at: '2026-09-24 09:30:18' });
   seeds.push({
     ...migrated.from,
     escalatedToNo: u2No, tab: 'done', handledByMe: true, myUpgradeAction: true,
@@ -330,7 +336,7 @@ function buildAftersaleSeeds() {
     createdAt: '2026-10-06 10:15:07', updatedAt: '2026-10-06 10:40:29',
     eventTimeline: [{
       id: 'as-IFLYTS-20261006-00049-claim', category: 'node', action: 'accept', who: '王坐席', role: '二线专员',
-      how: '领取', what: '王坐席 从池中领取本单，进入「待响应」。', when: '2026-10-06 10:40',
+      how: '领取', what: '王坐席 从池中领取本单，进入「待响应」。', when: '2026-10-06 10:40:29',
     }],
   });
 
@@ -347,7 +353,7 @@ function buildAftersaleSeeds() {
     createdAt: '2026-10-06 13:20:32', updatedAt: '2026-10-06 13:45:01',
     eventTimeline: [{
       id: 'as-IFLYZX-20261006-00050-claim', category: 'node', action: 'accept', who: '王坐席', role: '二线专员',
-      how: '领取', what: '王坐席 从池中领取本单，进入「待响应」。', when: '2026-10-06 13:45',
+      how: '领取', what: '王坐席 从池中领取本单，进入「待响应」。', when: '2026-10-06 13:45:01',
     }],
   });
 
@@ -365,11 +371,11 @@ function buildAftersaleSeeds() {
     createdAt: '2026-09-25 10:05:35', updatedAt: '2026-09-25 10:30:15', responded: true,
     eventTimeline: [{
       id: 'as-IFLYTS-20260925-00045-link', category: 'node', action: 'transfer', who: '王坐席', role: '二线专员',
-      how: '关联售后', what: '售后单 AS-20260925-41231 · 维修', when: '2026-09-25 10:30',
+      how: '关联售后', what: '售后单 AS-20260925-41231 · 维修', when: '2026-09-25 10:30:15',
     }],
   }, {
     type: 'AS_CLOSED', asNo: 'AS-20260925-41231', eventId: 'ase-41231-closed',
-    at: '2026-10-03 16:40', operator: '吴师傅（售后一组）', status: '已完成',
+    at: '2026-10-03 16:40:36', operator: '吴师傅（售后一组）', status: '已完成',
     resultSummary: '更换喇叭单元并复检，播放无杂音，客户签收确认。',
   }).ticket);
 
@@ -406,7 +412,7 @@ function buildAftersaleSeeds() {
   }, 'AS-20260919-41188', '2026-09-19 09:40'), '2026-09-26 17:30');
   const k1Succ = created([k1], {
     type: 'AS_RETURNED', asNo: 'AS-20260919-41188', eventId: 'ase-41188-returned-1',
-    at: '2026-10-03 10:20', operator: '钱师傅（售后二组）', status: '已关闭',
+    at: '2026-10-03 10:20:48', operator: '钱师傅（售后二组）', status: '已关闭',
     returnReason: '主刷电机正常，客户询问保养周期与耗材更换，转回客服答复',
     inbound: inbound({
       id: 'as-k1n', no: 'IFLYZX-20261003-00047', title: '扫地机器人主刷保养与耗材更换咨询',
@@ -426,14 +432,14 @@ function buildAftersaleSeeds() {
     createdAt: '2026-09-17 14:00:29',
   }, 'AS-20260917-41166', '2026-09-17 14:30'), '2026-09-24 11:00')], {
     type: 'AS_CLOSED', asNo: 'AS-20260917-41166', eventId: 'ase-41166-closed',
-    at: '2026-10-02 15:10', operator: '孙师傅（售后一组）', status: '已完成',
+    at: '2026-10-02 15:10:53', operator: '孙师傅（售后一组）', status: '已完成',
     resultSummary: '更换充电接口小板，充电测试正常，已寄回客户。',
   }).rows[0]);
 
   // t5a：售后转咨询转入（④），售后单已关闭，看板「转入」下钻按来源取到它
   const t5a = claimSeed(created([], {
     type: 'AS_RETURNED', asNo: 'AS-20260731-40217', eventId: 'ase-40217-returned-1',
-    at: '2026-08-04 09:20', operator: '陈师傅（售后一组）', status: '已关闭',
+    at: '2026-08-04 09:20:00', operator: '陈师傅（售后一组）', status: '已关闭',
     returnReason: '滤芯配件到货，客户咨询续办事项，转回客服',
     inbound: inbound({
       id: 't5a', no: 'IFLYZX-20260804-00003', title: '售后回传·配件到货续办咨询',
@@ -505,7 +511,7 @@ const BASE_TICKETS: Ticket[] = [
     customerPhone: '13600001111', productCategory: '企业服务',
     createdAt: '2026-06-09 15:20:18', updatedAt: '2026-06-10 10:00:23',
     responded: true, suspendedByMe: true, hasSupplement: true,
-    suspendedAt: '2026-06-10 10:00', suspendResumeAt: '2026-06-12 18:00',
+    suspendedAt: '2026-06-10 10:00:23', suspendResumeAt: '2026-06-12 18:00:37',
   },
   { serviceScore: 1,
     id: 't4', no: 'IFLYSJ-20260610-00006', type: '商机', channel: '邮件',
@@ -654,7 +660,7 @@ const BASE_TICKETS: Ticket[] = [
     // 技术支持处理结果的种子登记（速览带「最新处理」技术支持那一块）：正文与「技术支持处理」Tab 预填一致
     eventTimeline: [{
       id: 'tech-IFLYTS-20260817-00004-1', category: 'handle', action: 'handle', who: '赵三线', role: '技术支持',
-      how: '工单处理', what: '登记处理进展（补充 1 项）', when: '2026-08-17 08:00',
+      how: '工单处理', what: '登记处理进展（补充 1 项）', when: '2026-08-17 08:00:47',
       changes: [{ field: '技术支持处理结果', kind: '补充', to: '建议降级至 v2.3.1 固件，清理在线歌单缓存后复测 30 分钟未再复现。' }],
     }],
   },
@@ -893,7 +899,7 @@ const BASE_TICKETS: Ticket[] = [
     createdAt: '2026-07-16 10:20:26', updatedAt: '2026-07-16 11:02:23', responded: true,
   }, {
     type: 'AS_CLOSED', asNo: 'AS-20260716-38025', eventId: 'ase-38025-closed',
-    at: '2026-08-12 15:05', operator: '周师傅', status: '已完成',
+    at: '2026-08-12 15:05:45', operator: '周师傅', status: '已完成',
     resultSummary: '上门更换滚刷组件并清理主刷仓，试机运行正常，客户签字确认。',
   }).ticket,
   // 非诉转售后 → 售后转回客服（AS_RETURNED）→ 清空处理人、按分派规则落回本组工单池，尚未领取
@@ -909,7 +915,7 @@ const BASE_TICKETS: Ticket[] = [
     createdAt: '2026-09-24 09:30:18', updatedAt: '2026-09-24 10:12:28', responded: true,
   }, {
     type: 'AS_RETURNED', asNo: 'AS-20260924-41163', eventId: 'ase-41163-returned-1',
-    at: '2026-09-25 14:20', operator: '许师傅（售后二组）',
+    at: '2026-09-25 14:20:58', operator: '许师傅（售后二组）',
     returnReason: '检测为系统设置问题，非硬件故障，转回客服指导客户调整显示设置。',
   }).ticket,
   // 同上回流后已被领取：直落「处理中」、首响不重计
@@ -926,11 +932,11 @@ const BASE_TICKETS: Ticket[] = [
       createdAt: '2026-09-23 16:05:31', updatedAt: '2026-09-23 16:40:08', responded: true,
     }, {
       type: 'AS_RETURNED', asNo: 'AS-20260923-40877', eventId: 'ase-40877-returned-1',
-      at: '2026-09-25 10:05', operator: '马师傅（售后一组）',
+      at: '2026-09-25 10:05:35', operator: '马师傅（售后一组）',
       returnReason: '底座更换后客户仍反馈产品设计问题，属产品建议，转回客服登记跟进。',
     }).ticket;
     return takeOverReturnedTicket(returned, {
-      assignee: '王坐席', how: '领取', operator: '王坐席', operatorRole: '二线专员', at: '2026-09-25 10:32',
+      assignee: '王坐席', how: '领取', operator: '王坐席', operatorRole: '二线专员', at: '2026-09-25 10:32:13',
     }) ?? returned;
   })(),
   // 回流单激活售后单后，售后再次转客服：落原单（§4.3 判据第 2 条 / §4.5 支一），履历「售后再次转客服（第 2 次）」
@@ -948,19 +954,19 @@ const BASE_TICKETS: Ticket[] = [
       createdAt: '2026-09-26 09:15:05', updatedAt: '2026-09-26 09:50:58', responded: true,
     }], {
       type: 'AS_RETURNED', asNo, eventId: 'ase-41205-returned-1',
-      at: '2026-09-27 15:10', operator: '曹师傅（售后一组）',
+      at: '2026-09-27 15:10:30', operator: '曹师傅（售后一组）',
       returnReason: '检测边刷电机正常，异响为缠绕异物，转回客服指导清理。',
     }).rows[0];
     const claimed = takeOverReturnedTicket(returned, {
-      assignee: '王坐席', how: '领取', operator: '王坐席', operatorRole: '二线专员', at: '2026-09-27 15:40',
+      assignee: '王坐席', how: '领取', operator: '王坐席', operatorRole: '二线专员', at: '2026-09-27 15:40:27',
     }) ?? returned;
     // 客服侧「激活售后单」：售后单重新打开
     const reopened = routeAftersaleEvent([claimed], {
-      type: 'AS_PROGRESS', asNo, at: '2026-09-28 10:20', operator: '曹师傅（售后一组）', status: '待接单',
+      type: 'AS_PROGRESS', asNo, at: '2026-09-28 10:20:49', operator: '曹师傅（售后一组）', status: '待接单',
     }).rows[0];
     return routeAftersaleEvent([reopened], {
       type: 'AS_RETURNED', asNo, eventId: 'ase-41205-returned-2',
-      at: '2026-10-01 14:30', operator: '曹师傅（售后一组）',
+      at: '2026-10-01 14:30:31', operator: '曹师傅（售后一组）',
       returnReason: '清理后异响复现，复检硬件正常，转回客服指导更换边刷耗材。',
     }).rows[0];
   })(),
@@ -1645,7 +1651,7 @@ const TICKET_LIST_EXTRAS: Record<
     lastHandler: '王坐席',
     lastHandlerGroup: '受理一组',
     upgradeCount: 1,
-    appointmentAt: '2026-07-14 15:00',
+    appointmentAt: '2026-07-14 15:00:19',
     riskWeight: 62,
     supplementPendingCount: 0,
     supplementDoneCount: 1,
@@ -1676,7 +1682,7 @@ const TICKET_LIST_EXTRAS: Record<
     lastHandler: '王坐席',
     lastHandlerGroup: '教育支持组',
     upgradeCount: 1,
-    appointmentAt: '2026-06-12 10:00',
+    appointmentAt: '2026-06-12 10:00:25',
     riskWeight: 74,
     supplementPendingCount: 2,
     supplementDoneCount: 1,

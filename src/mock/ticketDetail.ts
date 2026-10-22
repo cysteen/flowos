@@ -331,7 +331,7 @@ export const TICKET_DETAIL: TicketDetailMeta = {
   createdAtFull: '2026-05-01 16:40:33',
   businessType: '学习机',
   businessLine: '学习机业务线',
-  issueOccurredAt: '2026-06-18 14:30',
+  issueOccurredAt: '2026-06-18 14:30:36',
   productIssue: '智能音箱系列-讯飞X1音箱-功能异常/在线播放/歌曲跳过',
   demand:
     '使用无线音箱播放在线音乐时，频繁出现自动跳过当前歌曲的情况，重启后仍复现，影响正常使用，要求尽快解决。',
@@ -448,7 +448,7 @@ export const TICKET_DETAIL: TicketDetailMeta = {
         complaintContent: '在黑猫平台发起售后投诉，称承诺回访未兑现，要求今日内回复。',
       },
     ],
-    receivedAt: '2026-06-18 15:02',
+    receivedAt: '2026-06-18 15:02:00',
     priorFeedback: '是-400',
     serviceReview: '2026-06-15 客户已致电 400 反馈同一问题，坐席承诺 48h 内回复，实际未按期回访。',
   },
