@@ -347,21 +347,16 @@ export function refundH5Url(no: string): string {
 /** 通知内容里的 H5 链接（含域名；通知记录 Tab 据此渲染为可点） */
 export const REFUND_H5_LINK_RE = /((?:https?:\/\/[^\s/]+)?\/m\/refund\/ticket\?no=[A-Za-z0-9-]+)/;
 
-/** 外部处理人名下不计 SLA（4.3），派发提醒的响应时限按未起算填「—」 */
-const REFUND_NO_DUE = '—';
-
 /** 取 IM 模板正文，「系统登陆地址」填移动工单 H5 链接（外部处理人只在 H5 处理） */
 function refundImBody(code: string, no: string): string {
   return (templateOf('IM', code)?.body ?? '').replace(LOGIN_URL, refundH5Url(no)).replace('${ticketNo}', no);
 }
 
 /**
- * 待办通知（校园经理 / 城市经理）：同新系统派发通知，IM 模板「工单派发提醒」IM_WO_DISPATCH；
- * H5 转办沿用「工单委派通知」IM_WO_DELEGATE。
+ * 待办通知（校园经理 / 城市经理）：派单、调剂、驳回回退、H5 转办一律沿用 IM 模板「工单委派通知」IM_WO_DELEGATE。
  */
-export function refundTodoImText(no: string, title: string, via: 'dispatch' | 'delegate' = 'dispatch'): string {
-  if (via === 'delegate') return refundImBody('IM_WO_DELEGATE', no);
-  return refundImBody('IM_WO_DISPATCH', no).replace('${title}', title).replace('${responseDueTime}', REFUND_NO_DUE);
+export function refundTodoImText(no: string): string {
+  return refundImBody('IM_WO_DELEGATE', no);
 }
 /** 催补通知（外部处理人）：同新系统催单 / 新建补充通知，IM 模板「工单催办通知」IM_WO_URGE /「工单补充通知」IM_WO_SUPPLEMENT */
 export function refundUrgeImText(no: string, title: string, kind: 'urge' | 'supplement', detail: string): string {

@@ -140,11 +140,11 @@ export const useRefundStore = defineStore('refund', () => {
 
   /* ---------------- 通知 ---------------- */
 
-  /** 待办通知：IM，同新系统派发通知（H5 转办同委派通知）；收件人只写姓名 */
-  function todoIm(r: Ticket, m: RefundManager, via: 'dispatch' | 'delegate') {
+  /** 待办通知：IM，同新系统委派通知；收件人只写姓名 */
+  function todoIm(r: Ticket, m: RefundManager) {
     useNotifyLogStore().emit({
       ticketNo: r.no, event: REFUND_NOTIFY_EVENTS.todo, kind: 'assign', title: '待办通知',
-      receivers: [m.name], content: refundTodoImText(r.no, r.title, via), channel: 'IM', status: '已发送',
+      receivers: [m.name], content: refundTodoImText(r.no), channel: 'IM', status: '已发送',
     });
   }
 
@@ -187,14 +187,14 @@ export const useRefundStore = defineStore('refund', () => {
 
   /* ---------------- 去向 ---------------- */
 
-  function toManager(r: Ticket, m: RefundManager, at: number, status: TicketStatus = '待响应', via: 'dispatch' | 'delegate' = 'dispatch') {
+  function toManager(r: Ticket, m: RefundManager, at: number, status: TicketStatus = '待响应') {
     // 外部处理人不计入任何班组（附录 C）：名下不挂组，组列显示「—」
     Object.assign(r, {
       nodeStatus: status, assignee: m.name, tab: 'mine', responded: status !== '待响应',
       groupId: undefined, groupNames: [], updatedAt: flashStamp(at),
     });
     r.refund!.state.manager = m;
-    todoIm(r, m, via);
+    todoIm(r, m);
   }
 
   function toPool(r: Ticket, at: number) {
@@ -380,7 +380,7 @@ export const useRefundStore = defineStore('refund', () => {
     const from = r.refund!.state.manager!;
     const now = Date.now();
     log(r, now, { category: 'node', action: 'transfer', who: from.name, role: refundManagerTlRole(from), how: '转办', what: REFUND_TL.transfer(from.name, target) });
-    toManager(r, target, now, '待响应', 'delegate');
+    toManager(r, target, now);
     commit(r);
     return { ok: true, message: '已转办' };
   }

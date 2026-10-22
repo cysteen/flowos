@@ -143,7 +143,7 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
   const notifies: RefundSeedNotify[] = [];
   const todo = (ticketNo: string, m: RefundManager, ms: number) => notifies.push({
     ticketNo, event: 'ticket.refund.todo', kind: 'assign', status: '已发送', title: '待办通知',
-    receiver: m.name, channel: 'IM', content: refundTodoImText(ticketNo, TITLE), when: at(ms),
+    receiver: m.name, channel: 'IM', content: refundTodoImText(ticketNo), when: at(ms),
   });
   const pooled = (ticketNo: string, ms: number) => notifies.push({
     ticketNo, event: 'ticket.pooled', kind: 'group', status: '未读', title: '到组通知',
