@@ -24,6 +24,12 @@ import OpFlashResultCard from './components/operation/OpFlashResultCard.vue';
 import OpFlashInfoBlock from './components/operation/OpFlashInfoBlock.vue';
 import OpFlashInfoEditModal from './components/operation/OpFlashInfoEditModal.vue';
 import OpFlashEscalateModal from './components/operation/OpFlashEscalateModal.vue';
+import OpRefundInfoBlock from './components/operation/OpRefundInfoBlock.vue';
+import {
+  REFUND_STATUS_SYSTEM, REFUND_TIP, isRefundTicket, refundLinkComplaintDesc,
+} from './types/refund';
+import { useRefundStore } from '@/stores/refund';
+import { ALL_REFUND_MANAGERS, campusManagerOf, findRefundManager } from '@/mock/refund/managers';
 import {
   FLASH_RESULT_ESCALATE_L2, FLASH_TIP_RESULT_REQUIRED,
   FLASH_POOLS, isFlashTicket, normalizeFlashResult, type FlashActor, type FlashResult,
@@ -132,6 +138,21 @@ const isFlash = computed(() => isFlashTicket(d.value) && !!d.value.flash);
  * ⚠️ 原先还有一条「④驳回后开二次提交」—— **已随 B5 / T1 去掉**，本页在小智单上没有写入口了。
  */
 const isXiaozhi = computed(() => isXiaozhiTicket(d.value));
+
+/**
+ * 个册退费单（1120）：处理页、处理表单、动作集同咨询单；本标识只用来
+ * ①「工单处理」Tab 顶部出「退费信息」区块；②「系统退费中」底栏冻结（只留保存）、取消工单置灰；
+ * ③ 页头出「关联投诉」不出「升级投诉」；④ 调剂候选人含校园经理 / 城市经理；⑤ 下送 / 调剂落库走个册退费服务。
+ */
+const isRefund = computed(() => isRefundTicket(d.value) && !!d.value.refund);
+const refundStore = useRefundStore();
+const refundInProgress = computed(() => isRefund.value && d.value.status === REFUND_STATUS_SYSTEM);
+/** 调剂候选人：同组成员之外加全部校园经理、城市经理，按本单学校预选该校校园经理（PRD 第 4 章第 5 行） */
+const refundTransferTargets = computed(() => (isRefund.value ? ALL_REFUND_MANAGERS.map((m) => m.name) : undefined));
+const refundTransferDefault = computed(() => {
+  if (!isRefund.value || !d.value.refund) return undefined;
+  return campusManagerOf(d.value.refund.info.schoolId)?.name;
+});
 
 const ticketNo = computed(() => (route.params.ticketNo as string) || d.value.no);
 const processTabsRef = ref<InstanceType<typeof OpProcessTabs> | null>(null);
@@ -435,7 +456,8 @@ const flashEditInfo = computed(() =>
  * 老工单不传，页头沿用「升级投诉」的判定。
  */
 const flashLinkGate = computed(() => {
-  if (!isFlash.value) return null;
+  // 个册退费单同刷机单：弱关联投诉，只在终态置灰（1120 第 6 章）
+  if (!isFlash.value && !isRefund.value) return null;
   const tip = flashLinkComplaintBlockTip(d.value.status);
   return tip ? { forbidden: true, tip } : { forbidden: false };
 });
@@ -1441,6 +1463,7 @@ const canCancelTicket = computed(() => headerRoleGate.value.cancelTicket
 const CANCELLABLE_STATUSES = XIAOZHI_CANCELLABLE_STATUSES;
 const cancelBlockedTip = computed(() => {
   if (isFlash.value && d.value.status === '自动刷机中') return FLASH_GATE_TIPS.autoFlashing;
+  if (refundInProgress.value) return REFUND_TIP.inProgress;
   if (!CANCELLABLE_STATUSES.includes(d.value.status)) return XIAOZHI_TIP.cancelAfterStarted;
   return undefined;
 });
@@ -1617,7 +1640,9 @@ function onTicketCreated(ticket: Ticket, processAfter?: boolean) {
   // 刷机单「关联投诉」（1013 A21 / B5）：新投诉单与本单弱关联，本单状态不变
   if (flashLinkPending.value) {
     flashLinkPending.value = false;
-    const res = flashStore.linkComplaint(d.value.no, ticket, flashActor());
+    const res = isRefund.value
+      ? refundStore.linkComplaint(d.value.no, ticket, { name: currentHandlerName(user.roleKey, user.name), role: mapUserRole(user.roleKey) })
+      : flashStore.linkComplaint(d.value.no, ticket, flashActor());
     if (res.ok) message.success(res.message);
     if (!processAfter) processTabsRef.value?.switchTab('related');
   }
@@ -2027,6 +2052,34 @@ function onFlashAction(payload: Record<string, unknown>): boolean {
 }
 
 /**
+ * 个册退费单底栏动作（1120 PRD §5.3 / 第 4 章）：其余同咨询单。返回 true ＝ 已接管。
+ * - 调剂给校园经理 / 城市经理：走个册退费服务落库（待响应 + 待办短信）；
+ * - 下送：通用下送照跑（校验、履历、Toast），再由个册退费服务落「调研中」并发调研短信（不经工单运营审核）。
+ */
+function onRefundAction(payload: Record<string, unknown>): boolean {
+  const no = d.value.no;
+  const type = payload.type as string;
+  const data = (payload.data ?? {}) as Record<string, unknown>;
+  const actor = { name: currentHandlerName(user.roleKey, user.name), role: mapUserRole(user.roleKey) };
+  if (type === '调剂' && data.scope !== 'cross') {
+    const target = String(data.target ?? '');
+    const m = findRefundManager(target);
+    const res = m
+      ? refundStore.assignToManager(no, m, actor)
+      : refundStore.assignToMember(no, target, actor, String(data.reason ?? ''));
+    if (res.ok) message.success(res.message);
+    else if (res.message) message.warning(res.message);
+    return true;
+  }
+  if (type === '下送' && !data.backToDelegator) {
+    dispatch(payload);
+    refundStore.forwardToSurvey(no, actor);
+    return true;
+  }
+  return false;
+}
+
+/**
  * 老四类「升级 · 三线技术支持」/ 技术支持「退回」的工单行落库（F13）：通用动作只改本页详情，
  * 这里把同一笔写回工单库，单子才进技术支持组工单池、退回后回二线主责名下。
  */
@@ -2047,6 +2100,20 @@ function syncTechEscalationRow(type: string, data: Record<string, unknown>, wasA
  * 四类老工单沿用通用确认。
  */
 function onWithdraw() {
+  // 个册退费单：撤回同咨询单，子状态同步回工单库（调研中挂段随之并入 SLA 账本）
+  if (isRefund.value) {
+    Modal.confirm({
+      title: '撤回操作',
+      content: '将撤回上一流转操作，工单回到上一处理节点。确定撤回？',
+      okText: '确认撤回',
+      cancelText: '取消',
+      onOk: () => {
+        dispatch({ type: '撤回' });
+        refundStore.syncStatus(d.value.no, d.value.status);
+      },
+    });
+    return;
+  }
   if (!isFlash.value) {
     confirmWithdraw();
     return;
@@ -2120,6 +2187,12 @@ function onAction(payload: Record<string, unknown>) {
   if (isFlash.value && onFlashAction(payload)) return;
   // 小智单的「升级 · 产研」必须走小智服务（1130 PRD §5.4 / §11.2），不能落进通用升级分支
   if (isXiaozhi.value && onXiaozhiAction(payload)) return;
+  // 系统退费中底栏已冻结，键盘 / 程序调用兜底给同一句（1120 PRD §5.4）
+  if (refundInProgress.value) {
+    message.warning(REFUND_TIP.inProgress);
+    return;
+  }
+  if (isRefund.value && onRefundAction(payload)) return;
   const toFeishu = isFeishuEscalate(payload);
   const wasAtTech = d.value.status === '已升级技术支持';
   dispatch(payload);
@@ -2527,7 +2600,13 @@ function applyCsEventSideEffects(kind: 'supplement' | 'urge') {
     });
     // 刷机单审核中 / 已挂起照基线拉回，子状态同步回工单库
     if (isFlash.value) flashStore.syncStatus(d.value.no, pull.to);
+    // 个册退费单调研中拉回同咨询单，子状态同步回工单库（调研中挂段随之并入账本）
+    if (isRefund.value) {
+      refundStore.syncStatus(d.value.no, pull.to, { how: pull.why, what: `${pull.why}：${from} → ${pull.to}。SLA 解决钟接着跑，不重置。` });
+    }
   }
+  // 个册退费单（1120 第 6 章）：外部处理人名下 / 系统退费中发催补短信（系统退费中不拉回，发最近一次提交退费的校园经理）
+  if (isRefund.value) refundStore.onCustomerUrge(d.value.no, kind);
   // 刷机单落在审核中四态 / 已委派时，`onCustomerUrge` 不接管，站内催补通知在这里补发
   // （基线 ※19：收件＝当前处理人，无处理人发归属组；协办人不另发）
   if (isFlash.value && (STATUS_GROUP[statusBefore] === '审核中' || statusBefore === '已委派')) {
@@ -2755,7 +2834,9 @@ function onHeaderAction(name: string) {
         message.warning(flashLinkGate.value.tip ?? '');
         return;
       }
-      createPrefill.value = buildFlashLinkComplaintPrefill(d.value);
+      createPrefill.value = isRefund.value
+        ? { ...buildFlashLinkComplaintPrefill(d.value), desc: refundLinkComplaintDesc(d.value.no) }
+        : buildFlashLinkComplaintPrefill(d.value);
       flashLinkPending.value = true;
       createOpen.value = true;
       break;
@@ -2878,7 +2959,7 @@ watch(
       :customer-entry-locked="customerEntryLocked"
       :superseded-by="supersededBy"
       :escalate-gate="flashLinkGate"
-      :link-complaint="isFlash"
+      :link-complaint="isFlash || isRefund"
       :cancel-blocked-tip="cancelBlockedTip"
       :risk-grade="titleRiskGrade"
       :risk-reporting="titleRiskReporting"
@@ -2986,6 +3067,10 @@ watch(
               </template>
             </OpFlashInfoBlock>
           </template>
+          <!-- 个册退费单（1120 PRD §5.2）：「退费信息」只读区块与退费记录表 -->
+          <template v-else-if="isRefund && d.refund" #process-top>
+            <OpRefundInfoBlock :refund="d.refund!" :handler="d.lastHandler" />
+          </template>
         </OpProcessTabs>
       </div>
 
@@ -3045,6 +3130,9 @@ watch(
       :flash-forward-escalate="flashForwardEscalate"
       :flash-forward-ok-text="flashForwardOkText"
       :flash-consult-forward="flashFormLine === 'l2'"
+      :frozen-tip="refundInProgress ? REFUND_TIP.inProgress : undefined"
+      :extra-transfer-targets="refundTransferTargets"
+      :default-transfer-target="refundTransferDefault"
       @flash-escalate="onFlashEscalateL2"
       @flash-forward-blocked="onFlashForwardBlocked"
       @claim="onClaim"

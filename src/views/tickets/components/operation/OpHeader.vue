@@ -3,6 +3,8 @@ import { computed } from 'vue';
 import { message } from 'ant-design-vue';
 import { FLASH_BADGE_LABEL, isFlashTicket } from '@/views/tickets/types/flash';
 import { XIAOZHI_MARK_LABEL, isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
+import { REFUND_MARK_LABEL, isRefundTicket } from '@/views/tickets/types/refund';
+import { isRefundTypeItem } from '@/views/tickets/utils/ticketTypeDisplay';
 import { useUserStore } from '@/stores/user';
 import { CopyOutlined, FlagOutlined } from '@ant-design/icons-vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
@@ -174,15 +176,19 @@ function onLinkAftersaleClick() {
 const isFlashDetail = computed(() => isFlashTicket(props.detail) && !!props.detail.flash);
 /** 「小智工单」标识（1130 D1）：驱动页头标识徽章与「不出 SLA 条」（一·补 B1） */
 const isXiaozhiDetail = computed(() => isXiaozhiTicket(props.detail));
+/** 个册退费单（1120 一·补 补7）：与刷机单同一本账本，进教育退费审核组起算，SLA 区同口径 */
+const isRefundDetail = computed(() => isRefundTicket(props.detail) && !!props.detail.refund);
 const flashSlaStartText = computed(() => {
-  if (!isFlashDetail.value) return undefined;
-  const at = props.detail.flash?.state.slaStartedAt;
+  if (!isFlashDetail.value && !isRefundDetail.value) return undefined;
+  const at = isRefundDetail.value ? props.detail.refund?.state.slaStartedAt : props.detail.flash?.state.slaStartedAt;
   return at ? `SLA 起算 ${at}` : '未起算';
 });
 // 「未起算」与「调研中」都不计时：SLA 区显示「—」，不画钟。判据取 `readSla` —— 与列表那一格同一份计算
 const flashSlaIdle = computed(
-  () => isFlashDetail.value
-    && (!readSla({ isFlash: props.detail.isFlash, flash: props.detail.flash }) || props.detail.status === '调研中'),
+  () => (isFlashDetail.value
+    && (!readSla({ isFlash: props.detail.isFlash, flash: props.detail.flash }) || props.detail.status === '调研中'))
+    || (isRefundDetail.value
+      && (!readSla({ isRefund: true, refund: props.detail.refund }) || props.detail.status === '调研中')),
 );
 
 const metaTitle = computed(
@@ -292,6 +298,8 @@ function priorityHex(p: string): string {
           -->
           <span v-if="isFlashTicket(detail)" class="badge badge-neutral">{{ FLASH_BADGE_LABEL }}</span>
           <span v-else-if="isXiaozhiDetail" class="badge badge-neutral">{{ XIAOZHI_MARK_LABEL }}</span>
+          <!-- 个册退费单（1120）：单枚「个册退费」，与列表行 `TicketTitleCell` 同一判法 -->
+          <span v-else-if="isRefundTypeItem(detail)" class="badge badge-neutral">{{ REFUND_MARK_LABEL }}</span>
           <span v-else class="badge badge-neutral">{{ detail.type }}</span>
           <span class="badge" :style="tagStyle(priorityHex(detail.priority))">
             <FlagOutlined />{{ detail.priority }}

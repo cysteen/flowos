@@ -308,7 +308,8 @@ export const REFUND_TOAST = {
 
 /** 处理履历正文 */
 export const REFUND_TL = {
-  create: (source: string) => `创建个册退费单 · ${source}`,
+  /** 附录 B：建单记「建单」（工单来源同咨询单另见页头） */
+  create: (_source: string) => '建单',
   dispatchManager: (m: RefundManager) => `按学校派单 → ${m.kind} ${m.name}`,
   dispatchPool: `按学校未取到校园经理、城市经理 → ${REFUND_POOL_GROUP_NAME}工单池`,
   save: '保存退费信息',
@@ -317,7 +318,12 @@ export const REFUND_TL = {
   submitFail: (msg: string) => `提交退费未成功：${msg}`,
   forwardNo: (remark: string) => `不提交退费，下送${REFUND_POOL_GROUP_NAME}${remark ? `；备注：${remark}` : ''}`,
   transfer: (from: string, to: RefundManager) => `转办：${from} → ${to.kind} ${to.name}`,
-  result: (taskId: string, s: RefundTaskStatus) => `退费结果回写 · 退费任务号 ${taskId} · ${s}`,
+  /** 附录 B：结果回写记我司退费结果；已驳回时带驳回原因（待审核 / 待退费只记产线结果） */
+  result: (taskId: string, s: RefundTaskStatus, rejectReason?: string) => {
+    const own = refundOwnResultOf(s);
+    const body = own ? `我司退费结果：${own}` : `产线结果：${s}`;
+    return `退费任务号 ${taskId} · ${body}${s === '已驳回' && rejectReason ? `；驳回原因：${rejectReason}` : ''}`;
+  },
   autoForward: (s: RefundTaskStatus) => `${s}，自动下送${REFUND_POOL_GROUP_NAME}`,
   rejectBack: (reason: string, to: string) => `已驳回，驳回原因：${reason}；退回 ${to}`,
   assignManager: (m: RefundManager) => `调剂给${m.kind} ${m.name}`,

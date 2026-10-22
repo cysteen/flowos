@@ -165,6 +165,8 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
       customer: '林女士', phone: '13955100101', info,
       refund: { handle: emptyRefundHandle(info), state, runs: [] },
       nodeStatus: '待响应', assignee: m.name, tab: 'mine', responded: false,
+      // 外部处理人名下 / 系统退费中不计入任何班组（附录 C）
+      groupId: undefined, groupNames: [],
       createdAt: atMin(c), updatedAt: atMin(c + MIN),
       timeline: [
         tl(at(c), 'node', 'create', AGENT, AGENT_ROLE, '建单', REFUND_TL.create(SOURCE)),
@@ -197,6 +199,8 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
         runs: [r1],
       },
       nodeStatus: REFUND_STATUS_SYSTEM, assignee: REFUND_SYSTEM_HANDLER, tab: 'mine',
+      // 外部处理人名下 / 系统退费中不计入任何班组（附录 C）
+      groupId: undefined, groupNames: [],
       createdAt: atMin(c), updatedAt: atMin(s + 40 * MIN),
       timeline: [
         tl(at(c), 'node', 'create', AGENT, AGENT_ROLE, '建单', REFUND_TL.create(SOURCE)),
@@ -234,12 +238,14 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
         runs: [r1],
       },
       nodeStatus: '处理中', assignee: m.name, tab: 'mine',
+      // 外部处理人名下 / 系统退费中不计入任何班组（附录 C）
+      groupId: undefined, groupNames: [],
       createdAt: atMin(c), updatedAt: atMin(rj),
       timeline: [
         tl(at(c), 'node', 'create', AGENT, AGENT_ROLE, '建单', REFUND_TL.create(SOURCE)),
         tl(at(c + 15_000), 'node', 'transfer', '系统', '系统', '派单', REFUND_TL.dispatchManager(m)),
         tl(at(s), 'node', 'handle', m.name, refundManagerTlRole(m), '提交退费', REFUND_TL.submit(r1.taskId, items)),
-        tl(at(rj), 'node', 'handle', '系统', '系统', '退费结果回写', REFUND_TL.result(r1.taskId, '已驳回')),
+        tl(at(rj), 'node', 'handle', '系统', '系统', '退费结果回写', REFUND_TL.result(r1.taskId, '已驳回', reason)),
         tl(at(rj + 1000), 'node', 'transfer', '系统', '系统', '驳回回退', REFUND_TL.rejectBack(reason, m.name)),
       ],
     }));
@@ -281,7 +287,7 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
         tl(at(c), 'node', 'create', AGENT, AGENT_ROLE, '建单', REFUND_TL.create(SOURCE)),
         tl(at(c + 15_000), 'node', 'transfer', '系统', '系统', '派单', REFUND_TL.dispatchManager(m)),
         tl(at(s1), 'node', 'handle', m.name, refundManagerTlRole(m), '提交退费', REFUND_TL.submit(r1.taskId, all)),
-        tl(at(rj), 'node', 'handle', '系统', '系统', '退费结果回写', REFUND_TL.result(r1.taskId, '已驳回')),
+        tl(at(rj), 'node', 'handle', '系统', '系统', '退费结果回写', REFUND_TL.result(r1.taskId, '已驳回', reason)),
         tl(at(rj + 1000), 'node', 'transfer', '系统', '系统', '驳回回退', REFUND_TL.rejectBack(reason, m.name)),
         tl(at(s2), 'node', 'handle', m.name, refundManagerTlRole(m), '提交退费', REFUND_TL.submit(r2.taskId, items2)),
         tl(at(ok), 'node', 'handle', '系统', '系统', '退费结果回写', REFUND_TL.result(r2.taskId, '退费成功')),
@@ -311,7 +317,8 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
       customer: '陈女士', phone: '13955100105', info,
       refund: {
         handle: {
-          ...emptyRefundHandle(info), submitRefund: '是', commResult: '已联系达成一致', subjects: items,
+          ...emptyRefundHandle(info), submitRefund: '是', commResult: '已联系未达成一致', subjects: items,
+          commNote: '家长要求生物学科一并退费，生物已交付完毕不可退，需协助沟通',
           reasonDesc: '学生转校至外省，申请退回剩余学科费用', closeAuth: '是', savedBy: m.name, savedAt: at(s),
         },
         state: { lastSubmitter: m, slaStartedAt: at(done + 1000) },

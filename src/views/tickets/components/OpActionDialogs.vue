@@ -60,6 +60,10 @@ const props = defineProps<{
    * 不该在升级时被改成别人；做法与「接收人由产品模块带出、只读」同一套。
    */
   frontlineAccount?: string;
+  /** 「同组内」调剂候选人追加项（个册退费单：校园经理 / 城市经理，1120 第 4 章第 5 行）；不传时候选人不变 */
+  extraTransferTargets?: string[];
+  /** 打开调剂弹窗时预选的处理人（个册退费单：本校校园经理）；不传时取候选首项 */
+  defaultTransferTarget?: string;
 }>();
 
 const emit = defineEmits<{
@@ -83,13 +87,20 @@ const transferToGroup = computed(() => transfer.scope === 'cross');
 
 /** 同组内→选人；跨组→选组（不指定组内的人） */
 const transferTargetOptions = computed(() =>
-  (transferToGroup.value ? TRANSFER_TARGET_GROUPS : TRANSFER_TARGETS_SAME)
+  (transferToGroup.value
+    ? TRANSFER_TARGET_GROUPS
+    : [...(props.extraTransferTargets ?? []), ...TRANSFER_TARGETS_SAME])
     .map((t) => ({ value: t, label: t })),
 );
 
+/** 同组内的缺省目标：调用方给了预选处理人用它，否则取候选首项 */
+function sameScopeDefault(): string {
+  return props.defaultTransferTarget ?? TRANSFER_TARGETS_SAME[0];
+}
+
 /** 切换范围后重置为新候选首项，避免残留上一范围的目标 */
 watch(() => transfer.scope, (scope) => {
-  transfer.target = scope === 'same' ? TRANSFER_TARGETS_SAME[0] : TRANSFER_TARGET_GROUPS[0];
+  transfer.target = scope === 'same' ? sameScopeDefault() : TRANSFER_TARGET_GROUPS[0];
 });
 let delegateTaskSeq = 0;
 function createDelegateTask(name = '', task = '') {
@@ -338,7 +349,7 @@ function defaultApprovalGroup() {
 }
 
 function resetForms() {
-  transfer.scope = 'same'; transfer.target = TRANSFER_TARGETS_SAME[0]; transfer.reason = '';
+  transfer.scope = 'same'; transfer.target = sameScopeDefault(); transfer.reason = '';
   delegate.mode = 'person';
   resetDelegateTasks();
   delegate.group = DELEGATE_GROUPS[0];

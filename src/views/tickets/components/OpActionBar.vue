@@ -157,6 +157,15 @@ const props = defineProps<{
   flashForwardOkText?: string;
   /** 刷机单已在二线（1014）：下送必填校验与咨询单一致（问题原因、处理结果），不按刷机处理结论拦 */
   flashConsultForward?: boolean;
+  /**
+   * 底栏冻结的悬停原因（个册退费单「系统退费中」，1120 PRD §5.4）：传入时整条按冻结态渲染
+   * （同「已转出」：只留保存，其余置灰），提示用这一句。不传时行为不变。
+   */
+  frozenTip?: string;
+  /** 调剂候选人追加项（个册退费单：校园经理 / 城市经理）；不传时候选人不变 */
+  extraTransferTargets?: string[];
+  /** 调剂弹窗预选的处理人（个册退费单：本校校园经理） */
+  defaultTransferTarget?: string;
 }>();
 
 /** 置灰提示的兜底：调用方没给原因时至少说清"被挡住了"，不冒充一个具体理由 */
@@ -224,8 +233,9 @@ const isSuspended = computed(() => props.opState === 'suspended');
  * 底栏流转类动作全部锁定（含再次转售后：1:1 关联已占用），只留「保存」与「联系客户」。
  * 出态只由售后回传驱动，没有任何按钮能主动离开该态。
  */
-const isTransferred = computed(() => props.opState === 'transferred');
+const isTransferred = computed(() => props.opState === 'transferred' || !!props.frozenTip);
 const TRANSFERRED_LOCK_TIP = '工单已转出至售后，等待售后处理结果';
+const lockTip = computed(() => props.frozenTip || TRANSFERRED_LOCK_TIP);
 
 /** 本单的活跃关联售后单（hover 卡片内容） */
 const linkedAftersale = computed(() => props.aftersaleContext?.existing);
@@ -334,7 +344,7 @@ const barActions = computed<BarItem[]>(() => {
       // （底栏这一格只会是报备形态，判定已在 resolveRiskBarForm 收口）
       if (key === '风险报备' && !props.showRiskReport) continue;
       // 「转售后」取形态判定（§5.1 第 5 / 6 / 7 行：置灰 + hover 卡片），其余统一说明冻结原因
-      if (key === '转售后' && def && props.aftersaleForm) {
+      if (key === '转售后' && def && props.aftersaleForm && !props.frozenTip) {
         items.push(aftersaleBarItem(def));
         continue;
       }
@@ -344,7 +354,7 @@ const barActions = computed<BarItem[]>(() => {
         icon: def?.icon ?? 'SwapOutlined',
         danger: def?.danger,
         forbidden: true,
-        forbiddenTip: TRANSFERRED_LOCK_TIP,
+        forbiddenTip: lockTip.value,
       });
       continue;
     }
@@ -796,6 +806,8 @@ defineExpose({ openEscalate, openAftersale, openActivate });
     :is-xiaozhi="isXiaozhi"
     :is-flash="isFlash"
     :frontline-account="frontlineAccount"
+    :extra-transfer-targets="extraTransferTargets"
+    :default-transfer-target="defaultTransferTarget"
     @confirm="onDialogConfirm"
   />
 

@@ -1214,6 +1214,8 @@ export function resolveTicketGroupNames(t: Ticket): string[] {
   if (isFlashTicket(t)) {
     return [FLASH_POOLS[t.flash?.state.pool ?? 'l1'].groupName];
   }
+  // 个册退费单（1120 附录 C）：外部处理人名下与「系统退费中」不计入任何班组，不按业务线兜底
+  if (isRefundTicket(t)) return [];
   const names: string[] = [];
   const biz = t.businessType?.trim();
   if (biz) {

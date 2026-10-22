@@ -14,11 +14,12 @@ import {
   REFUND_PRODUCT_CATEGORY, REFUND_PRODUCT_NAME, REFUND_RESULT_DELAY_MS, REFUND_STATUS_SYSTEM,
   REFUND_SYSTEM_HANDLER, REFUND_TICKET_TYPE, REFUND_TIP, REFUND_TL, REFUND_TOAST,
   emptyRefundHandle, inflightRefundRun, isRefundTicket, refundManagerTlRole, refundPoolIm,
-  refundSurveySms, refundTodoSms, refundUrgeSms,
+  refundSurveySms, refundTodoSms,
   type RefundHandle, type RefundInfo, type RefundManager, type RefundRun, type RefundTaskStatus,
   type TicketRefund,
 } from '@/views/tickets/types/refund';
 import { useNotifyLogStore } from './notifyLog';
+import { LOGIN_URL, templateOf } from '@/mock/notifyRules';
 
 /**
  * 个册退费单 · 个册退费服务（1120 个册退费工单 PRD 第 3–7 章）。
@@ -58,7 +59,7 @@ export interface RefundCreateBase {
 }
 
 const LS_KEY = 'flowos-refund-cache';
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 3;
 const STALE_MS = 12 * 60 * 60 * 1000;
 
 interface RefundCache { v: number; savedAt: number; tickets: Ticket[] }
@@ -141,6 +142,13 @@ export const useRefundStore = defineStore('refund', () => {
 
   /* ---------------- 通知 ---------------- */
 
+  /** 到组通知：沿用咨询单待领取通知文案（IM_WO_POOLED，PRD 附录 B） */
+  function pooledImText(no: string): string {
+    const body = templateOf('IM', 'IM_WO_POOLED')?.body;
+    if (!body) return refundPoolIm(no);
+    return body.replace('${groupName}', REFUND_POOL_GROUP_NAME).replace('${ticketNo}', no).replace('${loginUrl}', LOGIN_URL);
+  }
+
   function todoSms(r: Ticket, m: RefundManager) {
     useNotifyLogStore().emit({
       ticketNo: r.no, event: REFUND_NOTIFY_EVENTS.todo, kind: 'assign', title: '待办短信',
@@ -151,7 +159,7 @@ export const useRefundStore = defineStore('refund', () => {
   function poolIm(r: Ticket) {
     useNotifyLogStore().emit({
       ticketNo: r.no, event: REFUND_NOTIFY_EVENTS.pooled, kind: 'group', title: '到组通知',
-      receivers: [REFUND_POOL_GROUP_NAME], content: refundPoolIm(r.no), channel: 'i讯飞',
+      receivers: [REFUND_POOL_GROUP_NAME], content: pooledImText(r.no), channel: 'i讯飞',
     });
   }
 
@@ -187,9 +195,10 @@ export const useRefundStore = defineStore('refund', () => {
   /* ---------------- 去向 ---------------- */
 
   function toManager(r: Ticket, m: RefundManager, at: number, status: TicketStatus = '待响应') {
+    // 外部处理人不计入任何班组（附录 C）：名下不挂组，组列显示「—」
     Object.assign(r, {
       nodeStatus: status, assignee: m.name, tab: 'mine', responded: status !== '待响应',
-      groupId: REFUND_POOL_GROUP_ID, groupNames: [REFUND_POOL_GROUP_NAME], updatedAt: minute(at),
+      groupId: undefined, groupNames: [], updatedAt: minute(at),
     });
     r.refund!.state.manager = m;
     todoSms(r, m);
@@ -410,7 +419,7 @@ export const useRefundStore = defineStore('refund', () => {
       live.status = fin;
       live.resultAt = flashStamp(at);
       if (fin === '已驳回') live.rejectReason = live.finalRejectReason;
-      log(r, at, { category: 'node', action: 'handle', ...SYS, how: '退费结果回写', what: REFUND_TL.result(live.taskId, fin) });
+      log(r, at, { category: 'node', action: 'handle', ...SYS, how: '退费结果回写', what: REFUND_TL.result(live.taskId, fin, live.rejectReason) });
       if (fin === '已驳回') {
         const back = ref.state.lastSubmitter!;
         log(r, at + 1, { category: 'node', action: 'transfer', ...SYS, how: '驳回回退', what: REFUND_TL.rejectBack(live.rejectReason ?? '', back.name) });
@@ -430,7 +439,34 @@ export const useRefundStore = defineStore('refund', () => {
   /** 领取（通用落库 `claimPoolTicket` 之后）：落快照、刷新处理页 */
   function afterClaim(no: string) {
     const r = rowOf(no);
-    if (r) commit(r);
+    if (r) releaseManagerOf(r);
+  }
+
+  /**
+   * 单从外部处理人名下被领走 / 接走（催补待回领取等通用落库之后）：清掉外部处理人，
+   * 归属回教育退费审核组，落快照。
+   */
+  function releaseManager(no: string) {
+    const r = rowOf(no);
+    if (r) releaseManagerOf(r);
+  }
+
+  function releaseManagerOf(r: Ticket) {
+    r.refund!.state.manager = undefined;
+    if (!r.groupId) Object.assign(r, { groupId: REFUND_POOL_GROUP_ID, groupNames: [REFUND_POOL_GROUP_NAME] });
+    commit(r);
+  }
+
+  /** 同组内调剂给审核组组员（非外部处理人）：同咨询单落「待响应」，清掉外部处理人 */
+  function assignToMember(no: string, name: string, by: RefundActor, reason?: string): RefundActionResult {
+    const r = rowOf(no);
+    if (!r) return { ok: false, message: '' };
+    if (r.nodeStatus === REFUND_STATUS_SYSTEM) return { ok: false, message: REFUND_TIP.inProgress };
+    const now = Date.now();
+    log(r, now, { category: 'node', action: 'transfer', who: by.name, role: by.role, how: '调剂', what: `调剂给 ${name}${reason?.trim() ? `；调剂原因：${reason.trim()}` : ''}` });
+    Object.assign(r, { nodeStatus: '待响应', assignee: name, tab: 'mine', responded: false, updatedAt: minute(now) });
+    releaseManagerOf(r);
+    return { ok: true, message: `已同组内调剂至 ${name}` };
   }
 
   /** 调剂给校园经理 / 城市经理（第 4 章第 5 行） */
@@ -459,10 +495,11 @@ export const useRefundStore = defineStore('refund', () => {
   }
 
   /** 通用动作改了子状态后同步回工单库（催补拉回、撤回等） */
-  function syncStatus(no: string, status: string) {
+  function syncStatus(no: string, status: string, note?: { how: string; what: string }) {
     const r = rowOf(no);
     if (!r || r.nodeStatus === status) return;
     const now = Date.now();
+    if (note) log(r, now, { category: 'node', action: 'handle', ...SYS, ...note });
     if (r.nodeStatus === '调研中') resumeSla(r, now);
     if (status === '调研中') pauseSla(r, now);
     r.nodeStatus = status as TicketStatus;
@@ -485,11 +522,13 @@ export const useRefundStore = defineStore('refund', () => {
     const now = Date.now();
     r.refund!.state.linkedComplaintNos = [...(r.refund!.state.linkedComplaintNos ?? []), complaint.no];
     log(r, now, { category: 'relate', action: 'relate', who: by.name, role: by.role, how: '关联投诉', what: REFUND_TL.linkComplaint(complaint.no) });
+    // 建单弹窗在回调之后才把新单写进工单库：这里先落，关联履历与快照才有处可写
+    if (!rawOf(complaint.no)) TICKETS.unshift(complaint);
     const c = rawOf(complaint.no);
     if (c) {
       c.eventTimeline = [...(c.eventTimeline ?? []), {
         id: `refund-link-${complaint.no}-${now}`, category: 'relate', action: 'relate', who: by.name, role: by.role,
-        how: '关联个册退费单', what: REFUND_TL.linkedFromRefund(no), when: flashStamp(now),
+        how: '关联投诉', what: REFUND_TL.linkedFromRefund(no), when: flashStamp(now),
       }];
     }
     commit(r);
@@ -508,8 +547,8 @@ export const useRefundStore = defineStore('refund', () => {
     if (!to) return;
     useNotifyLogStore().emit({
       ticketNo: no, event: kind === 'urge' ? REFUND_NOTIFY_EVENTS.urge : REFUND_NOTIFY_EVENTS.supplement,
-      kind, title: kind === 'urge' ? '催单短信' : '补充短信',
-      receivers: [`${to.name}(${to.kind})`], content: refundUrgeSms(no, kind), channel: '短信', status: '已发送',
+      kind, title: '催补短信',
+      receivers: [`${to.name}(${to.kind})`], content: refundTodoSms(no), channel: '短信', status: '已发送',
     });
   }
 
@@ -582,6 +621,8 @@ export const useRefundStore = defineStore('refund', () => {
     h5Transfer,
     settleDue,
     afterClaim,
+    releaseManager,
+    assignToMember,
     assignToManager,
     forwardToSurvey,
     syncStatus,
