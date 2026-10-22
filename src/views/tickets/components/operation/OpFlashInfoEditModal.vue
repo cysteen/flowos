@@ -1,11 +1,11 @@
 <script setup lang="ts">
 /**
  * 刷机单 · 「修改刷机信息」弹窗（1013 A12 / B1 / B8，PRD §5.6 / §5.8，M52 / M53 / M70 / M78–M80）。
- * 所有机型只有这一个入口；底部按钮按弹窗里**所选的产品**取值，改选产品随即切换：
+ * 所有机型只有这一个入口；底部按钮按**本单产品**（不可改）取值：
  * 产品在自研机型表（PRD 附录 A.4）为「取消 / 重新推送」，校验通过即推送（唯一的推送入口）；不在表中为「取消 / 保存」，只保存不推送。
  *
- * - 字段按本单当前值预填：产品分类 · 产品名称 · 设备SN · 学生类型 · 学生姓名 · 学生账号 · 学校名称 · 刷机原因 ·
- *   设备SN照片 · MDM信息图片（小程序单另有产品信息图片、学习证明附件，带了才出）；产品名称下拉只列支持刷机的产品。
+ * - 字段按本单当前值预填：产品分类 · 产品名称（只读，不可改）· 设备SN · 学生类型 · 学生姓名 · 学生账号 · 学校名称 · 刷机原因 ·
+ *   设备SN照片 · MDM信息图片（小程序单另有产品信息图片、学习证明附件，带了才出）。
  * - 学校只有原文的小程序单：学校检索框按原文预填，改选学校库条目即覆盖，不改选保留原文。
  * - 提交先判必填（字段下方红字），其余拦截与校验结果由刷机服务返回，显示在按钮上方行内红字；
  *   不通过时弹窗不关、已填内容保留。
@@ -121,52 +121,14 @@ watch(
   { immediate: true },
 );
 
-/** 产品所属的产品分类（产品字段两级：产品分类 + 产品名称，PRD §5.6） */
+/** 产品分类（只读展示，随本单产品名称带出） */
 const categoryOf = (model: string) => config.modelOf(model)?.category ?? '';
-const draftCategory = ref('');
-const categoryError = ref('');
-watch(
-  () => props.open,
-  (v) => {
-    if (!v) return;
-    draftCategory.value = categoryOf(props.info.productModel);
-    categoryError.value = '';
-  },
-  { immediate: true },
-);
+const productCategoryDisplay = computed(() => categoryOf(draft.productModel || props.info.productModel));
 
-/** 产品分类下拉：挂了刷机类问题分类的产品所在分类；本单原产品的分类保留 */
-const categoryOptions = computed(() => {
-  const cats = new Set(config.enabledModels().map((m) => m.category).filter(Boolean));
-  const originCat = categoryOf(original.value.productModel);
-  if (originCat) cats.add(originCat);
-  return [...cats].map((c) => ({ value: c, label: c }));
-});
-function onCategoryChange(v: unknown) {
-  draftCategory.value = v == null ? '' : String(v);
-  if (categoryOf(draft.productModel) !== draftCategory.value) draft.productModel = '';
-}
-
-/**
- * 产品名称下拉只列所选分类下支持刷机的产品；本单原产品已不支持刷机时显示原值、不可再选（M101 / PRD §5.8）：
- * 不改产品可直接保存，改产品只能选支持刷机的产品。
- */
-const modelOptions = computed(() => {
-  const opts: { value: string; label: string; disabled?: boolean }[] = config.enabledModels()
-    .filter((m) => !draftCategory.value || m.category === draftCategory.value)
-    .map((m) => ({ value: m.model, label: m.model }));
-  const origin = original.value.productModel;
-  if (origin && !config.isSupportedModel(origin) && (!draftCategory.value || categoryOf(origin) === draftCategory.value)) {
-    opts.unshift({ value: origin, label: origin, disabled: true });
-  }
-  return opts;
-});
-/**
- * 所选产品挂刷机类问题分类且在自研机型表：主按钮「重新推送」；不在表中，或本单产品已不挂刷机类问题分类且未改选：「保存」（PRD §5.6）
- */
+/** 本单产品挂刷机类问题分类且在自研机型表：主按钮「重新推送」；否则「保存」（PRD §5.6） */
 const pushable = computed(() => config.isSupportedModel(draft.productModel) && isSelfDevModel(draft.productModel));
 
-function setSelect(key: 'productModel' | 'schoolId', v: unknown) {
+function setSelect(key: 'schoolId', v: unknown) {
   draft[key] = v == null ? '' : String(v);
   delete errors[key];
 }
@@ -186,12 +148,12 @@ function onPhotoChange(key: PhotoKey, { fileList }: { fileList: UploadFile[] }) 
 
 /**
  * 图片项：设备SN照片、MDM信息图片恒有（选传）；产品信息图片、学习证明附件只在本单带了时出现（小程序单），
- * 可查看、可更换，出现即必传。
+ * 可查看、可更换；产品信息图片选传，学习证明附件出现即必传。
  */
 const PHOTO_FIELDS = computed<{ key: PhotoKey; label: string; required: boolean }[]>(() => [
   { key: 'snPhotos', label: L.snPhotos, required: false },
   { key: 'mdmPhotos', label: L.mdmPhotos, required: false },
-  ...(original.value.productPhotos.length ? [{ key: 'productPhotos' as const, label: L.productPhotos, required: true }] : []),
+  ...(original.value.productPhotos.length ? [{ key: 'productPhotos' as const, label: L.productPhotos, required: false }] : []),
   ...(original.value.studyProofPhotos.length ? [{ key: 'studyProofPhotos' as const, label: L.studyProofPhotos, required: true }] : []),
 ]);
 
@@ -215,7 +177,6 @@ async function onPhotoPreview(file: UploadFile) {
 const schoolNameOf = (id: string) => findSchoolById(id)?.name ?? '';
 
 const REQUIRED: { key: FieldKey; label: string; select: boolean }[] = [
-  { key: 'productModel', label: L.productName, select: true },
   { key: 'sn', label: L.sn, select: false },
   { key: 'studentType', label: L.studentType, select: true },
   { key: 'studentName', label: L.studentName, select: false },
@@ -226,8 +187,6 @@ const REQUIRED: { key: FieldKey; label: string; select: boolean }[] = [
 
 function onSubmit() {
   let missing = false;
-  categoryError.value = draftCategory.value ? '' : `请选择${L.productCategory}`;
-  if (categoryError.value) missing = true;
   REQUIRED.forEach(({ key, label, select }) => {
     if (key === 'schoolId' && textSchool.value) {
       delete errors[key];
@@ -299,32 +258,15 @@ const inflightHref = computed(() => (tipParts.value?.no ? router.resolve(`/ticke
     <div class="fe-body">
       <div class="fe-grid">
         <div class="fe-field">
-          <label class="fe-label"><span class="req">*</span>{{ L.productCategory }}</label>
+          <label class="fe-label">{{ L.productCategory }}</label>
           <div class="fe-control">
-            <FormSelect
-              :value="draftCategory || undefined"
-              class="fe-input"
-              placeholder="请选择"
-              :status="categoryError ? 'error' : ''"
-              :options="categoryOptions"
-              @update:value="(v) => { onCategoryChange(v); categoryError = ''; }"
-            />
-            <div v-if="categoryError" class="fe-error">{{ categoryError }}</div>
+            <a-input class="fe-input fe-readonly" :value="productCategoryDisplay || '—'" disabled />
           </div>
         </div>
         <div class="fe-field">
-          <label class="fe-label"><span class="req">*</span>{{ L.productName }}</label>
+          <label class="fe-label">{{ L.productName }}</label>
           <div class="fe-control">
-            <FormSelect
-              :value="draft.productModel || undefined"
-              class="fe-input"
-              placeholder="请选择"
-              :status="errors.productModel ? 'error' : ''"
-              :options="modelOptions"
-              :dropdown-match-select-width="false"
-              @update:value="(v) => setSelect('productModel', v)"
-            />
-            <div v-if="errors.productModel" class="fe-error">{{ errors.productModel }}</div>
+            <a-input class="fe-input fe-readonly" :value="draft.productModel || '—'" disabled />
           </div>
         </div>
         <div class="fe-field">
@@ -437,6 +379,7 @@ const inflightHref = computed(() => (tipParts.value?.no ? router.resolve(`/ticke
 .req { color: #ef4444; margin-right: 2px; }
 .fe-control { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .fe-input { width: 100%; }
+.fe-readonly:disabled { color: #374151; background: #f9fafb; cursor: default; }
 .fe-textarea { resize: none; }
 .fe-error { margin-top: 2px; font-size: 12px; line-height: 18px; color: #ef4444; }
 .fe-photo :deep(.ant-upload-wrapper .ant-upload.ant-upload-select),
