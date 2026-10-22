@@ -1437,19 +1437,11 @@ const canCancelTicket = computed(() => headerRoleGate.value.cancelTicket
  *   悬停「工单已开始处理，不可取消」。小智单不另开一档（PRD §5.5「照基线 ※5 不放宽」）。
  *   终态由 OpHeader 的 `isTerminal` 整枚不展示，不走这条提示。
  */
+// 门控直接读 d.status：「待响应」已随 ROW_GRAY_STATUSES 进页头状态（useTicketOperation）
 const CANCELLABLE_STATUSES = XIAOZHI_CANCELLABLE_STATUSES;
-/**
- * 判门控用的子状态：老四类详情的「待响应」不进页头状态（落样例的「处理中」，见 useTicketOperation
- * ROW_GRAY_STATUSES），只在这一处回读工单行，免得待响应的咨询单被误判成已开始处理。
- */
-const cancelGateStatus = computed(() => {
-  if (d.value.status !== '处理中') return d.value.status;
-  const row = TICKETS.find((x) => x.no === d.value.no);
-  return row && CANCELLABLE_STATUSES.includes(row.nodeStatus) ? row.nodeStatus : d.value.status;
-});
 const cancelBlockedTip = computed(() => {
   if (isFlash.value && d.value.status === '自动刷机中') return FLASH_GATE_TIPS.autoFlashing;
-  if (!CANCELLABLE_STATUSES.includes(cancelGateStatus.value)) return XIAOZHI_TIP.cancelAfterStarted;
+  if (!CANCELLABLE_STATUSES.includes(d.value.status)) return XIAOZHI_TIP.cancelAfterStarted;
   return undefined;
 });
 

@@ -163,7 +163,7 @@ function buildSlaClocks(t: Ticket): SlaClock[] {
 }
 
 /** 工单行上这几种在办子状态直接同步到详情（置灰判定依赖它们） */
-const ROW_GRAY_STATUSES: TicketStatus[] = ['未认领', '调研中', '申请挂起中', '申请关闭中', '申请强结中', '业务动作审核中', '已委派'];
+const ROW_GRAY_STATUSES: TicketStatus[] = ['未认领', '待响应', '调研中', '申请挂起中', '申请关闭中', '申请强结中', '业务动作审核中', '已委派'];
 
 export function useTicketOperation() {
   const user = useUserStore();
@@ -363,8 +363,10 @@ export function useTicketOperation() {
         opState.value = 'suspended';
       } else {
         opState.value = 'processing';
-        // 未认领 / 调研中 / 审核中四态 / 已委派：页头与按钮判定取工单行子状态，
-        // 不落样例的「处理中」（《【1025】》§2.1 置灰列，验收 #3）
+        // 未认领 / 待响应 / 调研中 / 审核中四态 / 已委派：页头与按钮判定取工单行子状态，
+        // 不落样例的「处理中」（《【1025】》§2.1 置灰列，验收 #3；待响应＝基线 ※5 取消门控）。
+        // `slaText !== '—'`：停表单已在上面落成终态，不能拿行上残留的在办子状态覆写回去
+        // （刷机 / 小智单另由 applyFlashRow / applyXiaozhiRow 按工单行直写，不受此限）
         if (ROW_GRAY_STATUSES.includes(t.nodeStatus) && !t.escalatedToNo && t.slaText !== '—') base.status = t.nodeStatus;
       }
       suspendInfo.value = null;
