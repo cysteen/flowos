@@ -254,8 +254,8 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
     const c = nowMs - 3 * 24 * HOUR;
     const s1 = c + 5 * HOUR;
     const rj = c + 20 * HOUR;
-    const s2 = nowMs - 5 * HOUR;
-    const ok = nowMs - 90 * MIN;
+    const s2 = nowMs - 4 * HOUR;
+    const ok = nowMs - 20 * MIN;
     const reason = '退费学科与已交付记录不符，请核对后重新提交';
     const all = subj('2026春季个性化学习手册（高一）', 'CM-26S-G1-01', 'PO20260310021044', [['02', '数学', 128], ['03', '英语', 128], ['05', '物理', 96]]);
     const info: RefundInfo = {
@@ -335,7 +335,7 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
   /* ⑥ 兜底 · 教育退费审核组池（学校未取到校园经理、城市经理） */
   {
     const n = no(6);
-    const c = nowMs - 40 * MIN;
+    const c = nowMs - 12 * MIN;
     const items = subj('2026春季个性化学习手册（高二）', 'CM-26S-G2-03', 'PO20260306015530', [['05', '物理', 104]]);
     const info: RefundInfo = {
       schoolId: 'SCH-340202-001', schoolName: '芜湖市第一中学', schoolRegion: '安徽省 / 芜湖市 / 镜湖区',

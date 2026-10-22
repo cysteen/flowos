@@ -240,6 +240,29 @@ export interface CreateTicketFormState {
   flash: CreateTicketFlashForm;
   /** 小智专属：「小智工单信息」卡（1130 小智工单 D1 / D27） */
   xiaozhi: CreateTicketXiaozhiForm;
+  /** 个册退费专属：「退费信息」卡（1120 个册退费工单 PRD §3.1） */
+  refund: CreateTicketRefundForm;
+}
+
+/** 新建工单 · 「退费信息」卡表单（1120 PRD §3.1）；字段与文案取 `types/refund.ts` */
+export interface CreateTicketRefundForm {
+  /** 学校库 ID */
+  schoolId: string;
+  studentName: string;
+  /** 智学号（登录账号） */
+  studentCode: string;
+  orderNo: string;
+  /** 所选订单的可退金额合计；手填订单号为空 */
+  refundableAmount: number | null;
+  /** 退款原因编码 */
+  reason: number | null;
+}
+
+/** 「退费信息」卡里参与必填提示的字段 */
+export type CreateTicketRefundField = 'schoolId' | 'studentName' | 'studentCode' | 'orderNo' | 'reason';
+
+export function defaultCreateTicketRefundForm(): CreateTicketRefundForm {
+  return { schoolId: '', studentName: '', studentCode: '', orderNo: '', refundableAmount: null, reason: null };
 }
 
 /**
@@ -353,7 +376,7 @@ export const PRODUCT_NAMES: Record<string, string[]> = {
   智能硬件: ['学习机 T20', '智能音箱 X1', '扫地机器人 R2'],
   // 学习硬件含智慧课堂学生平板（挂刷机类问题分类的产品，1013 A4 / 10-19 C1）
   学习硬件: ['学习机 T20', '学习机 X3 Pro', ...FLASH_MODEL_SEED.map((m) => m.model)],
-  软件服务: ['智学网会员', '讯飞听见'],
+  软件服务: ['智学网会员', '讯飞听见', '个性化学习手册'],
 };
 
 export const PROBLEM_TREE: Record<string, Record<string, string[]>> = {
@@ -361,7 +384,7 @@ export const PROBLEM_TREE: Record<string, Record<string, string[]>> = {
   设备故障: { 无法开机: ['黑屏', '无响应'], 网络: ['WiFi 连不上', '蓝牙断连'] },
   账号问题: { 登录: ['验证码失败', '密码错误'], 权益: ['会员失效', '订单未同步'] },
   // 售后 → 服务申请 → 自助刷机 / 刷原生系统：问题分类「是否刷机」默认开启的两项（1013 A5 / N2）
-  售后: { 服务申请: ['维修请求', '自助刷机', '刷原生系统'], 政策咨询: ['退换货政策'] },
+  售后: { 服务申请: ['维修请求', '自助刷机', '刷原生系统'], 政策咨询: ['退换货政策'], 退费申请: ['个册退费'] },
 };
 
 /** 建单下拉按 P3 → P0 倒序：默认落在最低档，高优先级需坐席主动选 */

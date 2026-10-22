@@ -20,6 +20,8 @@ import {
   searchCustomers,
   defaultCreateTicketFlashForm,
   defaultCreateTicketXiaozhiForm,
+  defaultCreateTicketRefundForm,
+  type CreateTicketRefundField,
   type CreateTicketFlashField,
   type CreateTicketXiaozhiField,
 } from '@/views/tickets/types/createTicket';
@@ -50,6 +52,11 @@ import {
   useXiaozhiStore,
   type XiaozhiActor, type XiaozhiCreateInput, type XiaozhiTicketBase,
 } from '@/stores/xiaozhi';
+import {
+  REFUND_FIELD_LABELS, REFUND_PRODUCT_NAME, REFUND_TICKET_TYPE, REFUND_TIP,
+  isRefundScene, isRefundTagPath, type RefundReasonCode,
+} from '@/views/tickets/types/refund';
+import { useRefundStore } from '@/stores/refund';
 import { findSchoolById } from '@/mock/schools';
 import { useUserStore } from '@/stores/user';
 import { useFlashConfigStore } from '@/stores/flashConfig';
@@ -110,6 +117,7 @@ function defaultForm(): CreateTicketFormState {
     suggestL2: '功能建议',
     flash: defaultCreateTicketFlashForm(),
     xiaozhi: defaultCreateTicketXiaozhiForm(),
+    refund: defaultCreateTicketRefundForm(),
   };
 }
 
@@ -171,6 +179,8 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
         const kept = l3s.filter((l3) => {
           const isFlashPath = l1 === FLASH_TAG_L1 && l2 === FLASH_TAG_L2
             && (FLASH_TAG_L3S as readonly string[]).includes(l3);
+          // 个册退费分类（1120）只挂在「个性化学习手册」下
+          if (isRefundTagPath(l1, l2, l3)) return product === REFUND_PRODUCT_NAME;
           return !isFlashPath || flashConfig.isSupportedModel(product);
         });
         if (kept.length) l2Out[l2] = kept;
@@ -549,6 +559,112 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     return { name: currentHandlerName(user.roleKey, user.name), role: mapUserRole(user.roleKey) };
   }
 
+  /* ---------------- 个册退费单（1120 个册退费工单 PRD §3.1 / §3.2） ---------------- */
+
+  /**
+   * 个册退费单识别：产品「个性化学习手册」∧ 问题分类「是否个册退费」＝是（同刷机单按问题分类识别）。
+   * 入口固定了工单类型的（升级投诉 / 关联投诉 / 小智入口）不识别。
+   */
+  const isRefundType = computed(() => !flashSceneOff.value && isRefundScene(
+    form.productName, form.problemL1, form.problemL2, form.problemL3,
+  ));
+  const refundErrors = reactive<Record<CreateTicketRefundField, string>>({
+    schoolId: '', studentName: '', studentCode: '', orderNo: '', reason: '',
+  });
+  function clearRefundErrors() {
+    (Object.keys(refundErrors) as CreateTicketRefundField[]).forEach((k) => { refundErrors[k] = ''; });
+  }
+
+  // 不再满足识别条件：切回咨询单表单，退费信息卡已填的值清空
+  watch(isRefundType, (on) => {
+    if (!on) {
+      form.refund = defaultCreateTicketRefundForm();
+      clearRefundErrors();
+    }
+  });
+
+  // 工单类型固定咨询、业务分类固定教育（同刷机单）
+  watch(
+    () => [isRefundType.value, form.ticketType, form.businessType] as const,
+    ([on, t, b]) => {
+      if (!on) return;
+      if (t !== REFUND_TICKET_TYPE) form.ticketType = REFUND_TICKET_TYPE;
+      if (b !== '教育') form.businessType = '教育';
+    },
+    { immediate: true },
+  );
+
+  // 已补上的字段收起必填提示
+  watch(
+    () => form.refund,
+    (f) => {
+      if (!f) return;
+      (Object.keys(refundErrors) as CreateTicketRefundField[]).forEach((k) => {
+        if (refundErrors[k] && f[k] !== null && String(f[k] ?? '').trim()) refundErrors[k] = '';
+      });
+    },
+    { deep: true },
+  );
+
+  /** 退费信息卡校验：必填 → 字段中间含空格（PRD §3.2 校验表） */
+  function validateRefund(): boolean {
+    const baseOk = validate();
+    clearRefundErrors();
+    const f = form.refund;
+    const L = REFUND_FIELD_LABELS;
+    if (!f.schoolId) refundErrors.schoolId = `请选择${L.school}`;
+    if (!f.studentName.trim()) refundErrors.studentName = `请填写${L.studentName}`;
+    const code = f.studentCode.trim();
+    if (!code) refundErrors.studentCode = `请填写${L.studentCode}`;
+    else if (/\s/.test(code)) refundErrors.studentCode = REFUND_TIP.noSpace(L.studentCode);
+    const orderNo = f.orderNo.trim();
+    if (!orderNo) refundErrors.orderNo = `请填写${L.orderNo}`;
+    else if (/\s/.test(orderNo)) refundErrors.orderNo = REFUND_TIP.noSpace(L.orderNo);
+    if (f.reason == null) refundErrors.reason = `请选择${L.reason}`;
+    return baseOk && !Object.values(refundErrors).some(Boolean);
+  }
+
+  /** 校验通过后建个册退费单并按学校派单（走个册退费服务，不走 buildTicket） */
+  function submitRefund(): { ticket: Ticket; message: string } | null {
+    if (!validateRefund()) return null;
+    const f = form.refund;
+    const school = findSchoolById(f.schoolId);
+    const user = useUserStore();
+    const channel: Channel = form.ticketSource === 'IM'
+      ? '在线客服'
+      : form.ticketSource === '客户服务小程序' ? '小程序' : '电话';
+    return useRefundStore().createRefundTicket(
+      {
+        schoolId: f.schoolId,
+        schoolName: school?.name ?? '',
+        schoolRegion: school?.region ?? '',
+        studentName: f.studentName.trim(),
+        studentCode: f.studentCode.trim(),
+        orderNo: f.orderNo.trim(),
+        ...(f.refundableAmount != null ? { refundableAmount: f.refundableAmount } : {}),
+        reason: f.reason as RefundReasonCode,
+      },
+      {
+        customer: form.customer?.name ?? '',
+        customerPhone: phoneDigits(form.customer?.phone),
+        customerGender: form.customer?.gender || undefined,
+        customerRegion: form.customer?.region || undefined,
+        customerAddress: form.customer?.address || undefined,
+        vip: form.customer?.vip ?? false,
+        channel,
+        ticketSource: form.ticketSource,
+        priority: form.priority as Priority,
+        title: form.title.trim(),
+        problemL1: form.problemL1,
+        problemL2: form.problemL2,
+        problemL3: form.problemL3,
+        problemDesc: form.description.trim(),
+        problemDescAttachments: [...form.descriptionAttachments],
+      },
+      { name: currentHandlerName(user.roleKey, user.name), role: mapUserRole(user.roleKey) },
+    );
+  }
+
   function syncTitle() {
     if (form.titleManual) return;
     // 产品与问题三类都没选时不拼标题（只剩工单来源一段没有意义），留空待坐席补全
@@ -574,6 +690,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     editingCustomer.value = false;
     clearErrors();
     clearFlashErrors();
+    clearRefundErrors();
   }
 
   function clearErrors() {
@@ -974,5 +1091,9 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     xiaozhiErrors,
     submitXiaozhi,
     applyXiaozhiFrontlineDefault,
+    // 个册退费单（1120）
+    isRefundType,
+    refundErrors,
+    submitRefund,
   };
 }

@@ -40,6 +40,7 @@ import CustomerInfoModal from './create-ticket/CustomerInfoModal.vue';
 import FormSelect from './create-ticket/FormSelect.vue';
 import FlashInfoPart from './create-ticket/FlashInfoPart.vue';
 import XiaozhiInfoPart from './create-ticket/XiaozhiInfoPart.vue';
+import RefundInfoPart from './create-ticket/RefundInfoPart.vue';
 import { XIAOZHI_MARK_LABEL, XIAOZHI_TIP, XIAOZHI_TOAST } from '@/views/tickets/types/xiaozhi';
 import { useRouter } from 'vue-router';
 
@@ -102,6 +103,9 @@ const {
   xiaozhiErrors,
   submitXiaozhi,
   applyXiaozhiFrontlineDefault,
+  isRefundType,
+  refundErrors,
+  submitRefund,
 } = useCreateTicketForm(() => props.prefill);
 
 const router = useRouter();
@@ -231,10 +235,26 @@ function onCreateFlash(processAfter: boolean) {
   reset();
 }
 
+/** 个册退费单提交（1120 PRD §3.2）：校验、建单与按学校派单都走个册退费服务，不走 buildTicket */
+function onCreateRefund(processAfter: boolean) {
+  submitting.value = true;
+  const result = submitRefund();
+  submitting.value = false;
+  if (!result) {
+    scrollToFirstFlashError();
+    return;
+  }
+  emit('created', result.ticket, processAfter);
+  message.success(result.message);
+  if (activeDraftId.value) { draftStore.remove(activeDraftId.value); activeDraftId.value = null; }
+  emit('update:open', false);
+  reset();
+}
+
 /** 必填提示落在字段下方；首个提示不在可视区时滚过去 */
 function scrollToFirstFlashError() {
   requestAnimationFrame(() => {
-    const el = document.querySelector('.create-ticket-modal .fi-error, .create-ticket-modal .xz-error, .create-ticket-modal .customer-empty.error, .create-ticket-modal .cust-phone-error, .create-ticket-modal .flash-block-tip');
+    const el = document.querySelector('.create-ticket-modal .fi-error, .create-ticket-modal .ri-error, .create-ticket-modal .xz-error, .create-ticket-modal .customer-empty.error, .create-ticket-modal .cust-phone-error, .create-ticket-modal .flash-block-tip');
     el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   });
 }
@@ -278,6 +298,10 @@ function onCreate(processAfter = false) {
   }
   if (isFlashType.value) {
     onCreateFlash(processAfter);
+    return;
+  }
+  if (isRefundType.value) {
+    onCreateRefund(processAfter);
     return;
   }
   if (!validate()) return;
@@ -456,7 +480,7 @@ watch(
               v-model:value="form.businessType"
               class="inline-control field-control"
               size="middle"
-              :disabled="isFlashType || isXiaozhiType"
+              :disabled="isFlashType || isXiaozhiType || isRefundType"
               :status="errors.businessType ? 'error' : ''"
               :options="BUSINESS_TYPES.map((v) => ({ value: v, label: v }))"
             />
@@ -479,7 +503,7 @@ watch(
               class="inline-control field-control"
               size="middle"
               allow-clear
-              :disabled="isFlashType || isXiaozhiType"
+              :disabled="isFlashType || isXiaozhiType || isRefundType"
               :status="errors.ticketType ? 'error' : ''"
               :options="ticketTypeOptions"
             />
@@ -852,6 +876,9 @@ watch(
 
       <!-- ④″ 小智专属：「小智工单信息」卡（1130 小智工单 D5 / D27；由小智入口切入） -->
       <XiaozhiInfoPart v-if="isXiaozhiType" v-model:info="form.xiaozhi" :errors="xiaozhiErrors" />
+
+      <!-- ④‴ 个册退费专属：「退费信息」卡（1120 PRD §3.1；产品与问题分类识别后切入） -->
+      <RefundInfoPart v-if="isRefundType" v-model:info="form.refund" :errors="refundErrors" :customer-region="form.customer?.region" />
 
       <!-- ⑤ 工单标题（无分区大标题，对齐 SlSwt）；刷机单隐藏本卡，标题由系统生成（PRD §2.4） -->
       <CreateTicketPartCard v-if="!isFlashType" compact>
