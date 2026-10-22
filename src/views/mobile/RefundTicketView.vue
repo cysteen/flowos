@@ -81,7 +81,7 @@ const history = computed(() => [...(ticket.value?.eventTimeline ?? [])].reverse(
 
 const form = reactive<RefundHandle>(emptyRefundHandle());
 type ErrKey = 'submitRefund' | 'commResult' | 'commNote' | 'orderNo' | 'studentCode' | 'subjects'
-  | 'reason' | 'reasonDesc' | 'closeAuth' | 'notCloseReason';
+  | 'reason' | 'reasonDesc' | 'closeAuth' | 'notCloseReason' | 'remark';
 const errors = reactive<Partial<Record<ErrKey, string>>>({});
 
 function clr(k: ErrKey) {
@@ -109,6 +109,7 @@ watch(() => form.orderNo, (v) => {
 const showRefundFields = computed(() => form.submitRefund !== '否');
 const needCommNote = computed(() => (REFUND_COMM_NOTE_RESULTS as readonly string[]).includes(form.commResult));
 const needNotCloseReason = computed(() => form.closeAuth === '否');
+const needRemark = computed(() => form.submitRefund === '否');
 
 const YES_NO = [{ value: '是', label: '是' }, { value: '否', label: '否' }];
 const COMM_OPTIONS = REFUND_COMM_RESULTS.map((v) => ({ value: v, label: v }));
@@ -116,7 +117,7 @@ const REASON_OPTIONS = REFUND_REASONS.map((r) => ({ value: r.code, label: r.labe
 
 const submitRefundModel = computed({
   get: () => form.submitRefund || undefined,
-  set: (v: '是' | '否' | undefined) => { form.submitRefund = v ?? ''; delete errors.submitRefund; },
+  set: (v: '是' | '否' | undefined) => { form.submitRefund = v ?? ''; delete errors.submitRefund; delete errors.remark; },
 });
 const commResultModel = computed({
   get: () => form.commResult || undefined,
@@ -207,6 +208,7 @@ function validateForward(): boolean {
     if (!form.closeAuth) errors.closeAuth = '请选择是否关闭权限';
     if (form.closeAuth === '否' && !form.notCloseReason.trim()) errors.notCloseReason = '请填写不关闭权限原因';
   }
+  if (needRemark.value && !form.remark.trim()) errors.remark = '请填写备注';
   if (Object.keys(errors).length === 0) checkLength();
   if (Object.keys(errors).length === 0 && form.submitRefund === '是') {
     const q = queryRefundCommodities(refund.value!.info.schoolId, form.studentCode, form.orderNo);
@@ -494,10 +496,17 @@ function confirmTransfer() {
           </div>
         </template>
 
-        <div class="rf-row">
-          <label class="rf-label">备注：</label>
+        <div class="rf-row" :class="{ 'has-error': errors.remark }">
+          <label class="rf-label" :class="{ 'is-required': needRemark }">备注：</label>
           <div class="rf-ctl">
-            <a-textarea v-model:value="form.remark" :rows="3" :disabled="!canAct" />
+            <a-textarea
+              v-model:value="form.remark"
+              :rows="3"
+              :disabled="!canAct"
+              :status="errors.remark ? 'error' : undefined"
+              @change="clr('remark')"
+            />
+            <div v-if="errors.remark" class="rf-err">{{ errors.remark }}</div>
           </div>
         </div>
       </section>
