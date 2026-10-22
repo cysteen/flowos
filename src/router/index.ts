@@ -106,6 +106,19 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/mobile/FlashSurveyView.vue'),
     meta: { public: true, title: '服务评价' },
   },
+  // 1120 个册退费单 · 移动工单 H5（天鹰 APP 工作台，校园经理 / 城市经理；身份按路由参数 account）
+  {
+    path: '/m/refund/todo',
+    name: 'm-refund-todo',
+    component: () => import('@/views/mobile/RefundTodoView.vue'),
+    meta: { public: true, title: '待办工单' },
+  },
+  {
+    path: '/m/refund/ticket',
+    name: 'm-refund-ticket',
+    component: () => import('@/views/mobile/RefundTicketView.vue'),
+    meta: { public: true, title: '工单详情' },
+  },
   {
     path: '/',
     component: WorkspaceShell,
