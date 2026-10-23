@@ -760,44 +760,75 @@ function confirmDelete() {
   message.success(`已删除「${row.tagL3}」${cascadeText}`);
 }
 
-/** 生成 CSV 下载：UTF-8 BOM（Excel 中文不乱码），含逗号 / 引号 / 换行的字段加引号 */
-function downloadCsv(filename: string, header: readonly string[], rows: string[][]) {
-  const lines = [header, ...rows].map((cells) => cells.map((v) => csvEscape(String(v ?? ''))).join(','));
-  const csv = `\uFEFF${lines.join('\r\n')}\r\n`;
-  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+/** Excel 读写库按需加载（不进首屏包） */
+type ExcelJSModule = typeof import('exceljs');
+let excelLib: Promise<ExcelJSModule> | null = null;
+function loadExcel(): Promise<ExcelJSModule> {
+  excelLib ??= import('exceljs').then((m) => (m as unknown as { default?: ExcelJSModule }).default ?? m);
+  return excelLib;
+}
+
+const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+/** 下拉有效性覆盖的末行（第 2 行起） */
+const VALIDATION_LAST_ROW = 1000;
+/** 列下拉：col 为表头中的列下标（0 起） */
+interface ListValidation { col: number; values: readonly string[]; error: string }
+
+/** 生成 .xlsx 下载：首行表头加粗，单元格一律按文本写入；validations 给指定列第 2 ~ VALIDATION_LAST_ROW 行加下拉（允许留空） */
+async function downloadXlsx(
+  filename: string,
+  header: readonly string[],
+  rows: string[][],
+  validations: ListValidation[] = [],
+) {
+  const ExcelJS = await loadExcel();
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('问题分类');
+  ws.addRow([...header]).font = { bold: true };
+  rows.forEach((cells) => ws.addRow(cells.map((v) => String(v ?? ''))));
+  header.forEach((h, i) => {
+    const longest = Math.max(h.length, ...rows.map((r) => String(r[i] ?? '').length));
+    ws.getColumn(i + 1).width = Math.min(Math.max(longest * 2 + 2, 10), 40);
+  });
+  // 区间有效性：exceljs 运行时支持 dataValidations.add(区间, 规则)，类型声明未收录
+  const sheetDv = (ws as unknown as {
+    dataValidations: { add(range: string, dv: import('exceljs').DataValidation): void };
+  }).dataValidations;
+  validations.forEach(({ col, values, error }) => {
+    const letter = ws.getColumn(col + 1).letter;
+    sheetDv.add(`${letter}2:${letter}${VALIDATION_LAST_ROW}`, {
+      type: 'list',
+      allowBlank: true,
+      formulae: [`"${values.join(',')}"`],
+      showErrorMessage: true,
+      errorStyle: 'stop',
+      error,
+    });
+  });
+  const buf = await wb.xlsx.writeBuffer();
+  const url = URL.createObjectURL(new Blob([buf], { type: XLSX_MIME }));
   const a = document.createElement('a');
   a.href = url; a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
 }
 
-function csvEscape(v: string) {
-  if (/[",\n\r]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
-  return v;
-}
+const NOT_XLSX_TEXT = '请上传 Excel 文件（.xlsx）';
 
-/** 解析 CSV 文本为二维数组（支持 BOM、引号转义、字段内逗号与换行） */
-function parseCsv(text: string): string[][] {
-  const s = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+/** 读取 .xlsx 首个工作表为二维文本数组；第 n 行对应数组下标 n - 1（空行保留为空数组，行号不错位） */
+async function parseXlsx(buf: ArrayBuffer): Promise<string[][]> {
+  const ExcelJS = await loadExcel();
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buf);
+  const ws = wb.worksheets[0];
+  if (!ws) return [];
   const rows: string[][] = [];
-  let row: string[] = [];
-  let cell = '';
-  let quoted = false;
-  for (let i = 0; i < s.length; i++) {
-    const ch = s[i];
-    if (quoted) {
-      if (ch === '"') {
-        if (s[i + 1] === '"') { cell += '"'; i++; } else quoted = false;
-      } else cell += ch;
-      continue;
-    }
-    if (ch === '"') { quoted = true; continue; }
-    if (ch === ',') { row.push(cell); cell = ''; continue; }
-    if (ch === '\r') continue;
-    if (ch === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; continue; }
-    cell += ch;
+  for (let r = 1; r <= ws.rowCount; r++) {
+    const row = ws.getRow(r);
+    const cells: string[] = [];
+    for (let c = 1; c <= ws.columnCount; c++) cells.push(row.getCell(c).text ?? '');
+    rows.push(cells);
   }
-  if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
   return rows;
 }
 
@@ -837,9 +868,15 @@ function rowToTemplateCells(r: ProblemTagRow): string[] {
   ];
 }
 
-function downloadTemplate() {
+/** 模板下拉：工单处理组、专属类型（取值同导入校验，均允许留空） */
+const TEMPLATE_VALIDATIONS: ListValidation[] = [
+  { col: COL_NAMES.indexOf('工单处理组'), values: TEAMS, error: '工单处理组不在枚举' },
+  { col: COL_NAMES.indexOf('专属类型'), values: EXCLUSIVE_VALUES, error: EXCLUSIVE_INVALID_TEXT },
+];
+
+async function downloadTemplate() {
   const sample = allRows.value.find((r) => r.status === '启用') ?? allRows.value[0];
-  downloadCsv('问题分类导入模板.csv', TEMPLATE_COLS, sample ? [rowToTemplateCells(sample)] : []);
+  await downloadXlsx('问题分类导入模板.xlsx', TEMPLATE_COLS, sample ? [rowToTemplateCells(sample)] : [], TEMPLATE_VALIDATIONS);
   message.success('已下载导入模板');
 }
 
@@ -869,10 +906,10 @@ const TIP_NEED_UPLOAD = '请先上传文件';
 const TIP_NOTHING_TO_ADD = '没有可新增的条目';
 
 /** 导出作用于当前已选条目（含「选择全部筛选结果」跨页选中的全部） */
-function onExport() {
+async function onExport() {
   const rows = checkedRows.value;
   if (!rows.length) return;
-  downloadCsv(`问题分类导出_${todayStr()}.csv`, EXPORT_COLS, rows.map(rowToExportCells));
+  await downloadXlsx(`问题分类导出_${todayStr()}.xlsx`, EXPORT_COLS, rows.map(rowToExportCells));
   message.success(`已导出 ${rows.length} 条`);
 }
 
@@ -903,6 +940,8 @@ interface ImportResult {
   /** 缺少的必填列名 */
   missingCols: string[];
   lines: ImportLine[];
+  /** 文件不是可读取的 .xlsx */
+  fileError?: string;
 }
 const importResult = ref<ImportResult | null>(null);
 /** 确认导入后的完成提示（弹窗留在原处，底部只剩「关闭」） */
@@ -921,8 +960,9 @@ function openImport() { resetImport(); importOpen.value = true; }
 function resetImport() { importResult.value = null; importDone.value = null; }
 
 const normColName = (s: string) => s.trim().replace(/\*/g, '').trim();
-/** 表头不通过时的提示：旧版表头优先 */
-const headerErrorText = (r: ImportResult) => (r.outdated ? OUTDATED_TEMPLATE_TEXT : missingColsText(r.missingCols));
+/** 整份拦下时的提示：文件格式 → 旧版表头 → 缺必填列 */
+const headerErrorText = (r: ImportResult) => r.fileError
+  ?? (r.outdated ? OUTDATED_TEMPLATE_TEXT : missingColsText(r.missingCols));
 
 /** 表头按列名定位：返回模板各列在文件中的下标（同名列取第一个，缺列为 -1） */
 function locateColumns(header: string[]): number[] {
@@ -937,8 +977,8 @@ function locateColumns(header: string[]): number[] {
  * 产品、一 / 二 / 三级按原文完全一致匹配（不去空格）；工单处理组、专属类型、ID 去首尾空格。
  * 表头先于逐行：含旧版四列任一列即整份拒绝，再查缺必填列。
  */
-function analyzeImport(fileName: string, text: string): ImportResult {
-  const [header = [], ...body] = parseCsv(text);
+function analyzeImport(fileName: string, sheet: string[][]): ImportResult {
+  const [header = [], ...body] = sheet;
   if (header.map(normColName).some((n) => LEGACY_COL_NAMES.includes(n))) {
     return { fileName, headerOk: false, outdated: true, missingCols: [], lines: [] };
   }
@@ -1019,13 +1059,23 @@ function analyzeImport(fileName: string, text: string): ImportResult {
   return { fileName, headerOk: true, outdated: false, missingCols: [], lines };
 }
 
-function readImportFile(f: File) {
-  const reader = new FileReader();
-  reader.onload = () => {
-    importDone.value = null;
-    importResult.value = analyzeImport(f.name, String(reader.result ?? ''));
-  };
-  reader.readAsText(f, 'utf-8');
+/** 只认 .xlsx：扩展名不符或文件无法按 Excel 读取时整份拦下 */
+async function readImportFile(f: File) {
+  const fileError = (): ImportResult => ({
+    fileName: f.name, headerOk: false, outdated: false, missingCols: [], lines: [], fileError: NOT_XLSX_TEXT,
+  });
+  let result: ImportResult;
+  if (!/\.xlsx$/i.test(f.name)) {
+    result = fileError();
+  } else {
+    try {
+      result = analyzeImport(f.name, await parseXlsx(await f.arrayBuffer()));
+    } catch {
+      result = fileError();
+    }
+  }
+  importDone.value = null;
+  importResult.value = result;
 }
 
 function onImportFile(e: Event) {
@@ -1048,11 +1098,11 @@ function onDropzoneClick(e: MouseEvent) {
 }
 
 /** 失败明细：只含失败行，列＝模板列 + 末列「失败原因」 */
-function downloadImportFailures() {
+async function downloadImportFailures() {
   const fails = importResult.value?.lines.filter((l) => l.kind === '失败') ?? [];
   if (!fails.length) return;
-  downloadCsv(
-    `问题分类导入失败明细_${todayStr()}.csv`,
+  await downloadXlsx(
+    `问题分类导入失败明细_${todayStr()}.xlsx`,
     [...TEMPLATE_COLS, FAIL_REASON_COL],
     fails.map((l) => [...l.cells, l.reason]),
   );
@@ -1421,7 +1471,7 @@ function doImport(withUpdate: boolean) {
           <InboxOutlined class="dz-ic" />
           <div class="dz-main">
             <template v-if="importResult">{{ importResult.fileName }}</template>
-            <template v-else>点击选择 CSV 文件</template>
+            <template v-else>点击选择 Excel 文件</template>
           </div>
           <div class="dz-sub">
             <template v-if="importResult">点击可重新选择文件</template>
@@ -1432,7 +1482,7 @@ function doImport(withUpdate: boolean) {
               </a>
             </template>
           </div>
-          <input type="file" accept=".csv" hidden @change="onImportFile" />
+          <input type="file" accept=".xlsx" hidden @change="onImportFile" />
         </label>
 
         <div v-if="!importResult" class="import-tips">首行须为表头（同模板）</div>
