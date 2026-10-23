@@ -387,6 +387,9 @@ export const useRefundStore = defineStore('refund', () => {
 
   /* ---------------- 产线结果定时查询 ---------------- */
 
+  /** 已提示过「单已离开系统退费中、结果未回写」的退费任务，每个只提示一次 */
+  const warnedStale = new Set<string>();
+
   function settleDue(now: number = Date.now()): number {
     let changed = 0;
     for (const t of TICKETS) {
@@ -394,7 +397,12 @@ export const useRefundStore = defineStore('refund', () => {
       const run = inflightRefundRun(t.refund);
       if (!run || !run.settleAtMs) continue;
       // 结果只回写「系统退费中」的单：单已离开该子状态（如终态）时不改字段
-      if (t.nodeStatus !== REFUND_STATUS_SYSTEM) continue;
+      if (t.nodeStatus !== REFUND_STATUS_SYSTEM) {
+        if (warnedStale.has(run.id)) continue;
+        warnedStale.add(run.id);
+        console.warn(`[个册退费] ${t.no} 已离开「${REFUND_STATUS_SYSTEM}」（当前「${t.nodeStatus}」），退费结果未回写`);
+        continue;
+      }
       const r = reactive(t);
       const ref = r.refund!;
       const live = ref.runs.find((x) => x.id === run.id)!;
