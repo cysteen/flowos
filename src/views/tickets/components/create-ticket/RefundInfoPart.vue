@@ -1,13 +1,14 @@
 <script setup lang="ts">
 /**
  * 新建工单 · 「退费信息」卡（1120 个册退费工单 PRD §3.1 / §3.2）。
- * 学校 · 学生姓名 · 智学号 · 可退套餐（按学校 ＋ 智学号查询）· 订单号 · 可退金额 · 退款原因 · 退回方式。
+ * 学校 · 负责人（按学校带出，可改可清空）· 学生姓名 · 智学号 · 可退套餐（按学校 ＋ 智学号查询）· 订单号 · 可退金额 · 退款原因 · 退回方式。
  * 学校选择复用刷机信息卡的学校检索（省 / 市级联 ＋ 可搜索下拉）。字段名、枚举与提示文案取 `types/refund.ts`。
  */
 import { computed, ref, watch } from 'vue';
 import { REFUND_FIELD_LABELS as L, REFUND_REASONS, REFUND_RETURN_WAY, REFUND_TIP, formatRefundAmount, sumRefundAmount } from '@/views/tickets/types/refund';
 import type { CreateTicketRefundField, CreateTicketRefundForm } from '@/views/tickets/types/createTicket';
 import { orderSubjects, queryRefundCommodities, type RefundOrder } from '@/mock/refund/commodities';
+import { ALL_REFUND_MANAGERS, resolveSchoolManager } from '@/mock/refund/managers';
 import CreateTicketPartCard from './CreateTicketPartCard.vue';
 import FormSelect from './FormSelect.vue';
 import FlashSchoolPicker from './FlashSchoolPicker.vue';
@@ -20,6 +21,17 @@ defineProps<{
 }>();
 
 const reasonOptions = REFUND_REASONS.map((r) => ({ value: r.code, label: r.label }));
+const managerOptions = ALL_REFUND_MANAGERS.map((m) => ({ value: m.account, label: `${m.name}（${m.account}）` }));
+
+// 选学校带出负责人（校园经理 → 城市经理，都没有置空）；换学校重新带出，清空学校一并清空
+watch(() => info.value.schoolId, (id, prev) => {
+  if (id === prev) return;
+  info.value.managerAccount = id ? resolveSchoolManager(id)?.account ?? '' : '';
+});
+
+function setManager(v: unknown) {
+  info.value.managerAccount = v == null ? '' : String(v);
+}
 
 /** 可退套餐查询：未查 / 已查（含空）/ 查询失败 */
 const orders = ref<RefundOrder[] | null>(null);
@@ -100,6 +112,19 @@ const amountText = computed(() => (info.value.refundableAmount == null ? '' : `$
       </div>
 
       <div class="ri-field">
+        <label class="ri-label">{{ L.manager }}</label>
+        <div class="ri-control">
+          <FormSelect
+            :value="info.managerAccount || undefined"
+            placeholder="请选择"
+            allow-clear
+            :options="managerOptions"
+            @update:value="setManager"
+          />
+        </div>
+      </div>
+
+      <div class="ri-field ri-row-start">
         <label class="ri-label"><span class="req">*</span>{{ L.studentName }}</label>
         <div class="ri-control">
           <a-input v-model:value="info.studentName" placeholder="请输入学生姓名" :status="errors.studentName ? 'error' : ''" />
@@ -222,8 +247,10 @@ const amountText = computed(() => (info.value.refundableAmount == null ? '' : `$
   border: 1px solid #e5e7eb;
   border-radius: 6px;
 }
-.ri-orders { display: flex; flex-direction: column; gap: 6px; }
+.ri-orders { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; align-items: start; }
+.ri-row-start { grid-column-start: 1; }
 .ri-empty {
+  grid-column: 1 / -1;
   padding: 8px 10px;
   font-size: 12px;
   color: #6b7280;
@@ -236,7 +263,9 @@ const amountText = computed(() => (info.value.refundableAmount == null ? '' : `$
   flex-direction: column;
   gap: 4px;
   width: 100%;
+  min-width: 0;
   padding: 8px 10px;
+  overflow-wrap: anywhere;
   text-align: left;
   background: #fff;
   border: 1px solid #e5e7eb;
@@ -245,7 +274,7 @@ const amountText = computed(() => (info.value.refundableAmount == null ? '' : `$
 }
 .ri-order:hover { border-color: #93c5fd; }
 .ri-order.picked { border-color: #1a6fff; background: #f0f6ff; }
-.ri-order-head { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+.ri-order-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 8px; font-size: 12px; }
 .ri-order-no { font-weight: 600; color: #111827; }
 .ri-order-time { color: #6b7280; }
 .ri-commodity { display: flex; flex-direction: column; gap: 2px; }
@@ -256,5 +285,6 @@ const amountText = computed(() => (info.value.refundableAmount == null ? '' : `$
 @media (max-width: 768px) {
   .ri-grid { grid-template-columns: 1fr; }
   .ri-span2 { grid-column: auto; }
+  .ri-orders { grid-template-columns: 1fr; }
 }
 </style>

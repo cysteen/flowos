@@ -268,6 +268,7 @@ export function sumRefundAmount(items: Pick<RefundSubject, 'amount'>[]): number 
 
 export const REFUND_FIELD_LABELS = {
   school: '学校',
+  manager: '负责人',
   studentName: '学生姓名',
   studentCode: '智学号',
   packages: '可退套餐',
@@ -307,6 +308,10 @@ export const REFUND_TL = {
   create: (_source: string) => '建单',
   dispatchManager: (m: RefundManager) => `按学校派单 → ${m.kind} ${m.name}`,
   dispatchPool: `按学校未取到校园经理、城市经理 → ${REFUND_POOL_GROUP_NAME}工单池`,
+  /** 建单所填负责人与按学校带出的不同 */
+  dispatchPicked: (m: RefundManager) => `建单指定 → ${m.kind} ${m.name}`,
+  /** 按学校可带出负责人、建单时清空 */
+  dispatchPoolCleared: `建单未指定负责人 → ${REFUND_POOL_GROUP_NAME}工单池`,
   save: '保存退费信息',
   submit: (taskId: string, items: RefundSubject[]) =>
     `提交退费 · 退费任务号 ${taskId}；${items.map(refundItemText).join('；')}`,

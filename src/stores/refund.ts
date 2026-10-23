@@ -221,8 +221,13 @@ export const useRefundStore = defineStore('refund', () => {
     return n;
   }
 
-  /** 建个册退费单并按学校派单：校园经理 → 城市经理 → 教育退费审核组池 */
-  function createRefundTicket(info: RefundInfo, base: RefundCreateBase, actor: RefundActor): { ticket: Ticket; message: string } {
+  /**
+   * 建个册退费单并按建单所填负责人派单；负责人为空进教育退费审核组池。
+   * `manager` 不传时按学校取（校园经理 → 城市经理），传 `null` 表示建单时清空了负责人。
+   */
+  function createRefundTicket(
+    info: RefundInfo, base: RefundCreateBase, actor: RefundActor, manager?: RefundManager | null,
+  ): { ticket: Ticket; message: string } {
     const now = Date.now();
     const no = nextNo(now);
     const r = reactive({
@@ -265,15 +270,18 @@ export const useRefundStore = defineStore('refund', () => {
     } as Ticket);
     TICKETS.unshift(toRaw(r));
     log(r, now, { category: 'node', action: 'create', who: actor.name, role: actor.role, how: '建单', what: REFUND_TL.create(base.ticketSource) });
-    const m = resolveSchoolManager(info.schoolId);
+    const bySchool = resolveSchoolManager(info.schoolId);
+    const m = manager === undefined ? bySchool : manager ?? undefined;
     let message: string;
     if (m) {
       toManager(r, m, now);
-      log(r, now + 1, { category: 'node', action: 'transfer', ...SYS, how: '派单', what: REFUND_TL.dispatchManager(m) });
+      const what = bySchool?.account === m.account ? REFUND_TL.dispatchManager(m) : REFUND_TL.dispatchPicked(m);
+      log(r, now + 1, { category: 'node', action: 'transfer', ...SYS, how: '派单', what });
       message = REFUND_TOAST.createdToManager(no, m.name);
     } else {
       toPool(r, now);
-      log(r, now + 1, { category: 'node', action: 'transfer', ...SYS, how: '派单', what: REFUND_TL.dispatchPool });
+      const what = bySchool ? REFUND_TL.dispatchPoolCleared : REFUND_TL.dispatchPool;
+      log(r, now + 1, { category: 'node', action: 'transfer', ...SYS, how: '派单', what });
       message = REFUND_TOAST.createdToPool(no);
     }
     commit(r);
