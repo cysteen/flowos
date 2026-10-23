@@ -31,7 +31,8 @@ import type { TimelineEntry, TlAction, TlCategory, TlRole } from '@/views/ticket
 import { TICKET_NO_PREFIX } from '@/constants/ticketNo';
 import { ESCALATE_CHANNEL_TPD } from '@/views/tickets/composables/opActions';
 import {
-  XIAOZHI_BUSINESS_TYPE, XIAOZHI_CONFIRM_TIMEOUT_DAYS, XIAOZHI_POOL_GROUP_ID, XIAOZHI_POOL_GROUP_NAME,
+  XIAOZHI_BUSINESS_TYPE, XIAOZHI_CONFIRM_ACTOR, XIAOZHI_CONFIRM_TIMEOUT_DAYS,
+  XIAOZHI_POOL_GROUP_ID, XIAOZHI_POOL_GROUP_NAME,
   XIAOZHI_NOTICE_CHANNEL,
   XIAOZHI_SLA_IDLE, XIAOZHI_SYSTEM_HANDLER,
   XIAOZHI_TICKET_SOURCE, XIAOZHI_TICKET_TYPE, XIAOZHI_TL,
@@ -266,7 +267,7 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
     tl('2026-09-18 11:05:12', 'node', 'create', AGENT, AGENT_ROLE, '建单', XIAOZHI_TL.create(XIAOZHI_TICKET_SOURCE)),
     tl('2026-09-18 11:05:48', 'node', 'escalate', '系统', '系统', '系统自动流转',
       XIAOZHI_TL.autoEscalate(ESCALATE_CHANNEL_TPD, xiaozhiRdTitle(rd2.module)), { systemActor: true }),
-    tl('2026-09-18 14:30:12', 'node', 'relate', '系统', '系统', '产研回传',
+    tl('2026-09-18 14:30:12', 'node', 'relate', '系统', '系统', '产研回传 · 处理中',
       XIAOZHI_TL.rdProgress('张冬', '已复现，定位中'), { systemActor: true }),
   ];
 
@@ -325,7 +326,7 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
     tl(stamp(t3Created), 'node', 'create', AGENT, AGENT_ROLE, '建单', XIAOZHI_TL.create(XIAOZHI_TICKET_SOURCE)),
     tl(stamp(t3Created + 40_000), 'node', 'escalate', '系统', '系统', '系统自动流转',
       XIAOZHI_TL.autoEscalate(ESCALATE_CHANNEL_TPD, xiaozhiRdTitle(rd3.module)), { systemActor: true }),
-    tl(stamp(t3Settled), 'node', 'relate', '系统', '系统', '产研回传',
+    tl(stamp(t3Settled), 'node', 'relate', '系统', '系统', '产研回传 · 办结',
       XIAOZHI_TL.rdSettled('问题'), { systemActor: true }),
   ];
 
@@ -401,10 +402,10 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
     // **系统自动流转至** TPD…」—— 操作人是人、正文说是系统干的，一条自相矛盾的履历。
     tl(stamp(t4Escalated), 'node', 'escalate', AGENT, AGENT_ROLE, '升级 · 产研',
       XIAOZHI_TL.manualEscalate(ESCALATE_CHANNEL_TPD, xiaozhiRdTitle(rd4.module))),
-    tl(stamp(t4Settled), 'node', 'relate', '系统', '系统', '产研回传', XIAOZHI_TL.rdSettled('问题'), { systemActor: true }),
+    tl(stamp(t4Settled), 'node', 'relate', '系统', '系统', '产研回传 · 办结', XIAOZHI_TL.rdSettled('问题'), { systemActor: true }),
     // 一·补 B28 / B34：对客只有这一条**完成通知**，不是调研短信。
     // 本单登记了客户域账号 → 走 IM 消息那条通道（没有域账号的单走短信，两者都无则不发）
-    tl(stamp(t4Settled + 1_000), 'comm', 'sms', '系统', '系统', XIAOZHI_NOTICE_CHANNEL.im,
+    tl(stamp(t4Settled + 1_000), 'comm', 'sms', '系统', '系统', `完成通知 · ${XIAOZHI_NOTICE_CHANNEL.im}`,
       XIAOZHI_TL.completionNotice(XIAOZHI_NOTICE_CHANNEL.im, FRONTLINE_ACCOUNTS[4]), { systemActor: true }),
     // ⚠️ 关单那一条**不在这里写** —— 由装载时的 receiveReporterConfirm 产生（见上）
   ];
@@ -475,12 +476,12 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
     tl('2026-09-18 08:30:11', 'node', 'create', AGENT, AGENT_ROLE, '建单', XIAOZHI_TL.create(XIAOZHI_TICKET_SOURCE)),
     tl('2026-09-18 08:30:52', 'node', 'escalate', '系统', '系统', '系统自动流转',
       XIAOZHI_TL.autoEscalate(ESCALATE_CHANNEL_TPD, xiaozhiRdTitle(rd5.module)), { systemActor: true }),
-    tl('2026-09-19 15:12:40', 'node', 'relate', '系统', '系统', '产研回传', XIAOZHI_TL.rdSettled('问题'), { systemActor: true }),
-    tl('2026-09-20 09:18:05', 'node', 'relate', '系统', '系统', '系统自动回传',
-      XIAOZHI_TL.confirmUnresolved('滁州三中 · 赵校代', 1, ESCALATE_CHANNEL_TPD), { systemActor: true }),
-    tl('2026-09-21 08:52:11', 'node', 'relate', '系统', '系统', '产研回传', XIAOZHI_TL.rdSettled('问题'), { systemActor: true }),
-    tl('2026-09-21 09:40:33', 'node', 'relate', '系统', '系统', '系统自动回传',
-      XIAOZHI_TL.confirmUnresolved('滁州三中 · 赵校代', 2, ESCALATE_CHANNEL_TPD), { systemActor: true }),
+    tl('2026-09-19 15:12:40', 'node', 'relate', '系统', '系统', '产研回传 · 办结', XIAOZHI_TL.rdSettled('问题'), { systemActor: true }),
+    tl('2026-09-20 09:18:05', 'node', 'relate', '滁州三中 · 赵校代', XIAOZHI_CONFIRM_ACTOR, '提报人确认 · 未解决',
+      XIAOZHI_TL.confirmUnresolved('滁州三中 · 赵校代', 1, ESCALATE_CHANNEL_TPD)),
+    tl('2026-09-21 08:52:11', 'node', 'relate', '系统', '系统', '产研回传 · 办结', XIAOZHI_TL.rdSettled('问题'), { systemActor: true }),
+    tl('2026-09-21 09:40:33', 'node', 'relate', '滁州三中 · 赵校代', XIAOZHI_CONFIRM_ACTOR, '提报人确认 · 未解决',
+      XIAOZHI_TL.confirmUnresolved('滁州三中 · 赵校代', 2, ESCALATE_CHANNEL_TPD)),
   ];
 
   /**
@@ -540,10 +541,10 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
     tl(stamp(t6Created), 'node', 'create', AGENT, AGENT_ROLE, '建单', XIAOZHI_TL.create(XIAOZHI_TICKET_SOURCE)),
     tl(stamp(t6Created + 35_000), 'node', 'escalate', '系统', '系统', '系统自动流转',
       XIAOZHI_TL.autoEscalate(ESCALATE_CHANNEL_TPD, xiaozhiRdTitle(rd6.module)), { systemActor: true }),
-    tl(stamp(t6Settled), 'node', 'relate', '系统', '系统', '产研回传',
+    tl(stamp(t6Settled), 'node', 'relate', '系统', '系统', '产研回传 · 办结',
       XIAOZHI_TL.rdSettled('问题'), { systemActor: true }),
     // 完成通知（B28 / B34）：本单有客户域账号 → IM 消息。发了也没等到确认，故才走到 B7 的超时兜底
-    tl(stamp(t6Settled + 1_000), 'comm', 'sms', '系统', '系统', XIAOZHI_NOTICE_CHANNEL.im,
+    tl(stamp(t6Settled + 1_000), 'comm', 'sms', '系统', '系统', `完成通知 · ${XIAOZHI_NOTICE_CHANNEL.im}`,
       XIAOZHI_TL.completionNotice(XIAOZHI_NOTICE_CHANNEL.im, FRONTLINE_ACCOUNTS[6]), { systemActor: true }),
   ];
 
@@ -676,7 +677,7 @@ export function buildXiaozhiSeeds(nowMs: number): XiaozhiSeedBundle {
     tl('2026-09-19 10:25:06', 'node', 'accept', AGENT, AGENT_ROLE, '领取', `${AGENT} 从${XIAOZHI_POOL_GROUP_NAME}工单池领取本单。`),
     tl('2026-09-19 10:40:11', 'node', 'escalate', AGENT, AGENT_ROLE, '升级 · 产研',
       XIAOZHI_TL.manualEscalate(ESCALATE_CHANNEL_TPD, xiaozhiRdTitle(rd9.module))),
-    tl('2026-09-19 15:40:02', 'node', 'relate', '系统', '系统', '产研回传',
+    tl('2026-09-19 15:40:02', 'node', 'relate', '系统', '系统', '产研回传 · 退回',
       XIAOZHI_TL.rdReturned(AGENT, t9Reject), { systemActor: true }),
   ];
 

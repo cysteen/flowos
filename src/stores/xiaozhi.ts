@@ -2,13 +2,13 @@ import { defineStore } from 'pinia';
 import { reactive, ref, toRaw } from 'vue';
 import type { Channel, Priority, Ticket } from '@/views/tickets/types/ticket';
 import type { FeishuRecord } from '@/mock/ticketDetail';
-import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
+import type { TimelineEntry, TlRole } from '@/views/tickets/types/ticketDetail';
 import { TICKETS } from '@/mock/tickets';
 import { XIAOZHI_SEEDS } from '@/mock/xiaozhi/seedTickets';
 import { makeTicketNo } from '@/constants/ticketNo';
 import { CLOSE_REASON_RESOLVED, ESCALATE_CHANNEL_TPD } from '@/views/tickets/composables/opActions';
 import {
-  XIAOZHI_BUSINESS_TYPE, XIAOZHI_CLOSED_STATUS, XIAOZHI_CONFIRM_TIMEOUT_DAYS, XIAOZHI_NOTICE,
+  XIAOZHI_BUSINESS_TYPE, XIAOZHI_CLOSED_STATUS, XIAOZHI_CONFIRM_ACTOR, XIAOZHI_CONFIRM_TIMEOUT_DAYS, XIAOZHI_NOTICE,
   XIAOZHI_POOL_GROUP_ID, XIAOZHI_POOL_GROUP_NAME,
   XIAOZHI_RD_PLATFORM_AVAILABLE, XIAOZHI_RD_RETURNED_STATUS,
   XIAOZHI_SLA_IDLE, XIAOZHI_SYSTEM_HANDLER, XIAOZHI_TICKET_SOURCE, XIAOZHI_TICKET_TYPE, XIAOZHI_TL,
@@ -566,7 +566,7 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     });
     log(no, now, {
       category: 'node', action: 'relate', who: '系统', role: '系统', systemActor: true,
-      how: '产研回传', what: XIAOZHI_TL.rdProgress(who, note),
+      how: '产研回传 · 处理中', what: XIAOZHI_TL.rdProgress(who, note),
     });
     bump(no);
     persist();
@@ -623,7 +623,7 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     });
     log(no, now, {
       category: 'node', action: 'relate', who: '系统', role: '系统', systemActor: true,
-      how: '产研回传', what: XIAOZHI_TL.rdReturned(owner || '本单创建人', reason),
+      how: '产研回传 · 退回', what: XIAOZHI_TL.rdReturned(owner || '本单创建人', reason),
     });
     // 2026-10-21 拍板：产研回传一律不发站内通知（中间状态 / 办结 / 退回 / 确认未解决 / 关单），
     // 坐席在工单上看状态与处理履历（PRD §9.1 规则 5）。
@@ -673,7 +673,7 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     });
     log(no, now, {
       category: 'node', action: 'relate', who: '系统', role: '系统', systemActor: true,
-      how: '产研回传', what: XIAOZHI_TL.rdSettled(payload.solutionType),
+      how: '产研回传 · 办结', what: XIAOZHI_TL.rdSettled(payload.solutionType),
     });
     // 办结不发站内通知（2026-10-21 拍板，PRD §9.1 规则 5）；对客那一条照发，见下。
     // 一·补 B28 / B34：对客的「完成通知」由工单系统发，紧跟办结那一笔
@@ -700,7 +700,7 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     if (!pick) {
       log(r.no, at, {
         category: 'comm', action: 'sms', who: '系统', role: '系统', systemActor: true,
-        how: '完成通知', what: XIAOZHI_TL.completionNoticeSkipped(),
+        how: '完成通知未发出', what: XIAOZHI_TL.completionNoticeSkipped(),
       });
       /**
        * 🔴 **置待跟进标记**（一·补 B40）：只落一条履历是不够的 —— 履历要点开单才看得见，
@@ -714,8 +714,8 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     r.hasPendingNotice = false;
     log(r.no, at, {
       category: 'comm', action: 'sms', who: '系统', role: '系统', systemActor: true,
-      // `how` 是履历上的徽章，走哪条通道就写哪条；`action` 只决定图标，comm 两条通道共用
-      how: pick.channel, what: XIAOZHI_TL.completionNotice(pick.channel, pick.to),
+      // `how` 是履历上的徽章，按附录 B 带上通道名；`action` 只决定图标，comm 两条通道共用
+      how: `完成通知 · ${pick.channel}`, what: XIAOZHI_TL.completionNotice(pick.channel, pick.to),
     });
     notify(
       r, 'accepted', '完成通知', XIAOZHI_NOTICE.completed(r.no), [pick.to],
@@ -741,13 +741,18 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
    * 字段形制照售后回传 `AS_CLOSED` 落「售后已完成」那条 —— 通用单的关闭弹窗目前只把
    * 选值拼进履历文案、不落字段，小智这两条路**落字段**，让 `closeReason` 有真实值。
    *
-   * 🔴 **履历事件名由调用方给**（1023 拍板）：这两条路关单动作相同，但**是两个事件** ——
+   * 🔴 **履历事件名与操作人都由调用方给**（1023 拍板）：这两条路关单动作相同，但**是两个事件** ——
    * 「提报人确认 · 已解决」与「超时未确认」（名字照 PRD 附录 B）。原写法两条都落「自动关闭」，
    * 履历上分不出这单是提报人验收通过关的、还是没人理超时兜底关的，追责与统计口径都会错。
-   * 操作人两条都是**系统**：确认动作发生在小智工单应用里，工单系统只接接口结果、由系统代记
-   * （PRD 附录 B「事件来源是提报人在小智工单应用上的确认，由系统代记」）。
+   *
+   * 操作人两条不同：**确认已解决落提报人**（1023 拍板，覆盖附录 B 原先的「由系统代记」）——
+   * 履历上要能直接看出是哪位校代 / 渠道商验收通过的；**超时未确认落系统** —— 那一下没有提报人动作，
+   * 是系统按天数兜底判的。落系统的那条带 `systemActor`（卡片头出系统头像），落提报人的不带。
    */
-  function closeXiaozhi(r: Ticket, at: number, what: string, event: string) {
+  function closeXiaozhi(
+    r: Ticket, at: number, what: string, event: string,
+    actor: { who: string; role: TlRole; systemActor?: boolean },
+  ) {
     r.nodeStatus = XIAOZHI_CLOSED_STATUS;
     r.tab = 'done';
     // 一·补 B9：统一改系统，不是「没人才补一个」
@@ -756,7 +761,8 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     r.closeReason = CLOSE_REASON_RESOLVED;
     r.updatedAt = xiaozhiStamp(at);
     log(r.no, at, {
-      category: 'node', action: 'resolved', who: '系统', role: '系统', systemActor: true,
+      category: 'node', action: 'resolved',
+      who: actor.who, role: actor.role, systemActor: actor.systemActor,
       how: event, what,
     });
     // 关单不发站内通知（2026-10-21 拍板，PRD §9.1 规则 5）
@@ -823,7 +829,8 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     r.xiaozhi.confirmBy = who;
     if (resolved) {
       r.xiaozhi.confirmState = '已确认解决';
-      closeXiaozhi(r, now, XIAOZHI_TL.confirmResolved(who), '提报人确认 · 已解决');
+      closeXiaozhi(r, now, XIAOZHI_TL.confirmResolved(who), '提报人确认 · 已解决',
+        { who, role: XIAOZHI_CONFIRM_ACTOR });
       bump(no);
       persist();
       return true;
@@ -851,8 +858,10 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
       meta: r.xiaozhi.rdFeedbackNo,
     });
     log(no, now, {
-      category: 'node', action: 'relate', who: '系统', role: '系统', systemActor: true,
-      how: '系统自动回传',
+      // 1023 拍板：确认这一下是**提报人**做的，操作人落提报人、不落系统代记
+      // （随之不带 systemActor —— 卡片头不出系统头像）。系统自动回传那一笔记在协同时间线上。
+      category: 'node', action: 'relate', who, role: XIAOZHI_CONFIRM_ACTOR,
+      how: '提报人确认 · 未解决',
       what: XIAOZHI_TL.confirmUnresolved(who, times, ESCALATE_CHANNEL_TPD),
     });
     // 确认未解决、自动回传产研这一下不发站内通知（2026-10-21 拍板，PRD §9.1 规则 5）：
@@ -883,7 +892,8 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
       r.xiaozhi!.confirmAt = xiaozhiStamp(due);
       // 超时视为已解决是系统判的，不是哪位校代点的
       r.xiaozhi!.confirmBy = XIAOZHI_SYSTEM_HANDLER;
-      closeXiaozhi(r, due, XIAOZHI_TL.confirmTimeoutClosed(XIAOZHI_CONFIRM_TIMEOUT_DAYS), '超时未确认');
+      closeXiaozhi(r, due, XIAOZHI_TL.confirmTimeoutClosed(XIAOZHI_CONFIRM_TIMEOUT_DAYS), '超时未确认',
+        { who: '系统', role: '系统', systemActor: true });
       bump(r.no);
       settled += 1;
     }
