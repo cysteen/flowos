@@ -12,6 +12,10 @@
  * 🔴 **停用是常规动作，删除要先停用**（1023 拍板）：停用的模块不再出现在建单与升级弹窗的
  * 下拉里、已选过它的历史工单照常显示原值；启用中的那枚「删除」置灰。
  *
+ * 🔴 **编码与名称建成后不可改、两项都唯一；接收人必填**（1023 拍板）：编辑态这两项置灰，
+ * 「编辑产品模块」实际只改接收人。名称也要唯一是因为**工单上存的是名称、不是编码**
+ * （见 `rdModules.ts` 的 `findRdModuleByName`）。
+ *
  * 字典本体在 `mock/xiaozhi/rdModules.ts`，本页只做增删改查与启停；视觉与交互照
  * `docs/admin-ui-spec.md`（AdminPageHeader + stdPagination + 标准按钮变体）。
  */
@@ -21,7 +25,8 @@ import { PlusOutlined, SearchOutlined } from '@ant-design/icons-vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { stdPagination, toneOf } from '@/config/adminUi';
 import {
-  XIAOZHI_RD_MODULES, addRdModule, removeRdModule, setRdModuleEnabled, updateRdModule,
+  XIAOZHI_RD_MODULES, addRdModule, findRdModuleByCode, findRdModuleByName,
+  removeRdModule, setRdModuleEnabled, updateRdModule,
   type XiaozhiRdModule,
 } from '@/mock/xiaozhi/rdModules';
 
@@ -44,7 +49,7 @@ const cols = [
 ];
 
 const editOpen = ref(false);
-/** 非空 ＝ 编辑态，存的是打开弹窗那一刻的编码（编码本身可改，故要留原值定位行） */
+/** 非空 ＝ 编辑态，存的是被编辑那一行的编码（编码不可改，故它同时就是定位键） */
 const editingCode = ref('');
 // 启用态不在弹窗里编辑：新建默认启用，改启停走行上的「停用 / 启用」
 const form = reactive<XiaozhiRdModule>({ code: '', name: '', receiver: '', enabled: true });
@@ -63,13 +68,19 @@ function openEdit(row: XiaozhiRdModule) {
   editOpen.value = true;
 }
 
+/** 编码与名称建成后不可改，故只在新建态查重；编辑态这两项置灰、本就改不动 */
 function save() {
-  if (!form.code.trim()) { message.error('请填写产品模块编码'); return; }
-  if (!form.name.trim()) { message.error('请填写产品模块名称'); return; }
+  if (!form.receiver.trim()) { message.error('请填写接收人（域账号）'); return; }
+  if (!editingCode.value) {
+    if (!form.code.trim()) { message.error('请填写产品模块编码'); return; }
+    if (!form.name.trim()) { message.error('请填写产品模块名称'); return; }
+    if (findRdModuleByCode(form.code)) { message.error(`产品模块编码「${form.code.trim()}」已存在`); return; }
+    if (findRdModuleByName(form.name)) { message.error(`产品模块名称「${form.name.trim()}」已存在`); return; }
+  }
   const ok = editingCode.value
     ? updateRdModule(editingCode.value, { ...form })
     : addRdModule({ ...form });
-  if (!ok) { message.error(`产品模块编码「${form.code.trim()}」已存在`); return; }
+  if (!ok) { message.error('保存失败，请刷新后重试'); return; }
   message.success(`产品模块「${form.name.trim()}」已保存`);
   editOpen.value = false;
 }
@@ -174,12 +185,12 @@ function confirmRemove(row: XiaozhiRdModule) {
     >
       <a-form layout="vertical" class="edit-form">
         <a-form-item label="产品模块编码" required>
-          <a-input v-model:value="form.code" placeholder="请输入" />
+          <a-input v-model:value="form.code" :disabled="!!editingCode" placeholder="请输入" />
         </a-form-item>
         <a-form-item label="产品模块名称" required>
-          <a-input v-model:value="form.name" placeholder="请输入" />
+          <a-input v-model:value="form.name" :disabled="!!editingCode" placeholder="请输入" />
         </a-form-item>
-        <a-form-item label="接收人（域账号）">
+        <a-form-item label="接收人（域账号）" required>
           <a-input v-model:value="form.receiver" placeholder="请输入" />
         </a-form-item>
       </a-form>

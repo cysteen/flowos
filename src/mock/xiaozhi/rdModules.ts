@@ -56,7 +56,9 @@ const SEED: XiaozhiRdModule[] = [
    *
    * 四个模块全配了 `receiver` 时，「该产品模块未配置产研接收人」这条分支**永远走不到** ——
    * 等于写了也看不出来（与 `PRODUCTS_WITHOUT_AFTERSALE` 给「转售后」留反例同一个道理）。
-   * 字典本身是后台配出来的，现实里新模块上线、接收人还没配就是这个样子。
+   *
+   * 后台「产品模块维护」里接收人是**必填**（1023 拍板），所以这个状态**新建不出来**，
+   * 它代表的是从老 IM 后台**迁移进来的历史数据** —— 那道拦截就是兜它的（PRD §8「未配置接收人」）。
    */
   { code: 'PM1005', name: '学情分析', receiver: '', productLine: '精准教学产品线', enabled: true },
   /**
@@ -82,12 +84,24 @@ export function findRdModuleByCode(code: string): XiaozhiRdModule | undefined {
   return XIAOZHI_RD_MODULES.find((m) => m.code.toLowerCase() === key);
 }
 
+/**
+ * 按名称查一条 —— 🔴 **名称也是唯一的**（1023 拍板）。
+ *
+ * 编码虽是本字典的主键，但**没有别处引用它**：下拉的取值与工单上存的产品模块都是**名称**
+ * （`XiaozhiInfoPart.vue` 的 `value: m.name`、`xiaozhiReceiverOf` 按 `m.name` 查接收人）。
+ * 名称不查重则两条同名模块会把接收人查成前一条，故名称与编码同样查重、同样不分大小写。
+ */
+export function findRdModuleByName(name: string): XiaozhiRdModule | undefined {
+  const key = name.trim().toLowerCase();
+  return XIAOZHI_RD_MODULES.find((m) => m.name.toLowerCase() === key);
+}
+
 /** 下拉取值源：建单弹窗与「升级 · 产研」弹窗只给启用的模块（停用的历史取值照常显示，见 `enabled`） */
 export const enabledRdModules = (): XiaozhiRdModule[] => XIAOZHI_RD_MODULES.filter((m) => m.enabled);
 
-/** 新增一条（编码重复时不写入，返回 false 由调用方出提示）；新建的模块默认启用 */
+/** 新增一条（编码或名称重复时不写入，返回 false 由调用方出提示）；新建的模块默认启用 */
 export function addRdModule(row: XiaozhiRdModule): boolean {
-  if (findRdModuleByCode(row.code)) return false;
+  if (findRdModuleByCode(row.code) || findRdModuleByName(row.name)) return false;
   XIAOZHI_RD_MODULES.push({
     ...row,
     code: row.code.trim(),
@@ -99,18 +113,21 @@ export function addRdModule(row: XiaozhiRdModule): boolean {
 }
 
 /**
- * 按原编码改一条。编码本身可改，改成别条的编码即视为重复、不写入。
- * `productLine` 不在后台三字段之内，故按原值保留、不被编辑覆盖。
+ * 按编码改一条 —— 🔴 **只改接收人**。
+ *
+ * 编码与名称都是**建成后不可改**（1023 拍板，PRD §8）：
+ * - 编码是本字典的主键，改了就不是同一条；
+ * - 名称是工单上实际存着的那个值，改了名则已选过它的历史工单按名字查接收人会查空，
+ *   与 PRD §8「已选过它的历史工单照常显示原值」的承诺冲突。
+ *
+ * 两项在后台编辑弹窗里置灰（照常显示、不可编辑），这里一并不接受 —— 闸门落在字典层，
+ * 不只在页面上置灰（同 `removeRdModule`）。`productLine` 不在后台三字段之内，照原值保留。
  */
 export function updateRdModule(originalCode: string, row: XiaozhiRdModule): boolean {
   const idx = XIAOZHI_RD_MODULES.findIndex((m) => m.code === originalCode);
   if (idx < 0) return false;
-  const code = row.code.trim();
-  if (code.toLowerCase() !== originalCode.toLowerCase() && findRdModuleByCode(code)) return false;
   XIAOZHI_RD_MODULES[idx] = {
     ...XIAOZHI_RD_MODULES[idx],
-    code,
-    name: row.name.trim(),
     receiver: row.receiver.trim(),
   };
   return true;
