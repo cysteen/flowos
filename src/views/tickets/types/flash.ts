@@ -19,7 +19,7 @@ export const FLASH_BADGE_LABEL = '刷机单';
 
 /**
  * 是否刷机单 —— **全仓唯一判据**（1013 A1）：读工单上的 `isFlash` 标识。
- * 标识在建单时按「产品支持刷机 ∧ 问题分类是否刷机」写入，此后不随配置变化、不可修改；
+ * 标识在建单时按「产品支持刷机 ∧ 问题分类专属类型＝刷机」写入，此后不随配置变化、不可修改；
  * 不要再用工单类型、单号前缀或标题判断刷机单。
  */
 export function isFlashTicket(t: { isFlash?: boolean } | null | undefined): boolean {

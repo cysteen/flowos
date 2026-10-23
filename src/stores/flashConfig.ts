@@ -7,8 +7,8 @@ import { FLASH_LS_KEYS, readFlashCache, writeFlashCache } from './flashCache';
 /**
  * 刷机相关配置（930 教育刷机单 M28；1013 N1 / N2 调整归属；M180 删后台「刷机配置」页）：
  * - 产品刷机属性（`models`：产品分类、品牌）；是否自研机型只看自研机型表（`mock/flash/models.ts`，PRD 附录 A.4，不设页面）；
- * - 问题分类「是否刷机」（`flashTags`）：后台「问题分类」维护（1013 N2）。
- * 刷机单识别只看问题分类「是否刷机」（`isFlashScene`，10-19 C1）；产品挂了「是否刷机」开启的问题分类，建单才出现刷机类分类。
+ * - 问题分类「专属类型＝刷机」（`flashTags`）：后台「问题分类」维护（1013 N2）。
+ * 刷机单识别只看问题分类「专属类型＝刷机」（`isFlashScene`，10-19 C1）；产品挂了「专属类型＝刷机」的问题分类，建单才出现刷机类分类。
  * 失败原因码表与回传超时时长为系统内置（`types/flash.ts`，PRD 附录 A.4），不在本 store。
  *
  * 出厂值取 `mock/flash/models.ts` 与 `types/flash.ts`；改动落 `FLASH_LS_KEYS.config`。
@@ -16,7 +16,7 @@ import { FLASH_LS_KEYS, readFlashCache, writeFlashCache } from './flashCache';
 
 export interface FlashConfigSnapshot {
   models: FlashModel[];
-  /** 问题分类「是否刷机」开启的条目（键见 `flashTagKey`：产品名称 + 三级路径） */
+  /** 问题分类「专属类型＝刷机」的条目（键见 `flashTagKey`：产品名称 + 三级路径） */
   flashTags: string[];
 }
 
@@ -28,7 +28,7 @@ export function flashTagKey(productName: string, l1: string, l2: string, l3: str
   return [productName, l1, l2, l3].map((s) => s.trim()).join('\u0001');
 }
 
-/** 出厂：智慧课堂学生平板 ×「售后 → 服务申请 → 自助刷机 / 刷原生系统」默认开启「是否刷机」（1013 N2）；S10 出厂为否 */
+/** 出厂：智慧课堂学生平板 ×「售后 → 服务申请 → 自助刷机 / 刷原生系统」默认「专属类型＝刷机」（1013 N2）；S10 出厂不设 */
 function factoryFlashTags(): string[] {
   return FLASH_MODEL_SEED.filter((m) => !FLASH_TAG_OFF_MODELS.includes(m.model)).flatMap((m) => FLASH_TAG_L3S.map((l3) => flashTagKey(m.model, FLASH_TAG_L1, FLASH_TAG_L2, l3)));
 }
@@ -63,7 +63,7 @@ export const useFlashConfigStore = defineStore('flashConfig', () => {
   }
 
   /**
-   * 产品挂了刷机类问题分类（10-19 C1）：后台「问题分类」里本产品至少有一条「是否刷机」开启的分类。
+   * 产品挂了刷机类问题分类（10-19 C1）：后台「问题分类」里本产品至少有一条「专属类型＝刷机」的分类。
    * 不再看产品字段；建单页刷机类分类的显隐、修改刷机信息弹窗的产品下拉都读这一个判据（用户提报不判产品，10-19）。
    */
   function isSupportedModel(model: string): boolean {
@@ -73,9 +73,9 @@ export const useFlashConfigStore = defineStore('flashConfig', () => {
     return flashTags.value.some((k) => k.startsWith(prefix));
   }
 
-  /* ---------------- 问题分类「是否刷机」（1013 N2） ---------------- */
+  /* ---------------- 问题分类「专属类型＝刷机」（1013 N2） ---------------- */
 
-  /** 问题分类条目「是否刷机」是否开启 */
+  /** 问题分类条目是否「专属类型＝刷机」 */
   function isFlashTag(productName: string, l1: string, l2: string, l3: string): boolean {
     if (!productName || !l1 || !l2 || !l3) return false;
     return flashTags.value.includes(flashTagKey(productName, l1, l2, l3));
@@ -88,7 +88,7 @@ export const useFlashConfigStore = defineStore('flashConfig', () => {
     if (next.join('\u0002') !== cur.join('\u0002')) flashTags.value = next;
   }
 
-  /** 刷机单识别（10-19 C1）：只看所选问题分类「是否刷机」（问题分类按产品维护，键里已含产品） */
+  /** 刷机单识别（10-19 C1）：只看所选问题分类「专属类型＝刷机」（问题分类按产品维护，键里已含产品） */
   function isFlashScene(productName: string, l1: string, l2: string, l3: string): boolean {
     return isFlashTag(productName, l1, l2, l3);
   }

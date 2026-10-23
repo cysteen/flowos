@@ -18,7 +18,7 @@ export const REFUND_MARK_LABEL = '个册退费';
 
 /**
  * 是否个册退费单 —— **全仓唯一判据**：读工单上的 `isRefund` 标识。
- * 标识在建单时按「所选产品的问题分类『是否个册退费』＝是」写入（后台问题分类维护），此后不可修改。
+ * 标识在建单时按「所选产品的问题分类『专属类型＝个册退费』」写入（后台问题分类维护），此后不可修改。
  */
 export function isRefundTicket(t: { isRefund?: boolean } | null | undefined): boolean {
   return t?.isRefund === true;
@@ -33,7 +33,7 @@ export const REFUND_PRODUCT_CATEGORY = '软件服务';
 /** 识别要求的产品 */
 export const REFUND_PRODUCT_NAME = '个性化学习手册';
 /**
- * 「是否个册退费」出厂为是的问题分类：售后 → 退费申请 → 个册退费（种子单与出厂配置用）。
+ * 出厂「专属类型＝个册退费」的问题分类：售后 → 退费申请 → 个册退费（种子单与出厂配置用）。
  * 识别读后台「问题分类」的开关（`stores/refundConfig.ts`），不读这里。
  */
 export const REFUND_TAG_L1 = '售后';

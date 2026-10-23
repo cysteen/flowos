@@ -707,7 +707,7 @@ export interface Ticket {
   escalatedToNo?: string;
   /**
    * 「刷机单」标识（1013 A1）：刷机单的工单类型是咨询，靠本标识区分。
-   * 建单时由刷机服务写入（产品支持刷机 ∧ 问题分类是否刷机），此后不可修改。
+   * 建单时由刷机服务写入（产品支持刷机 ∧ 问题分类专属类型＝刷机），此后不可修改。
    * 读取一律走 `isFlashTicket(t)`（types/flash.ts），不要再按类型 / 单号 / 标题判断。
    */
   isFlash?: boolean;

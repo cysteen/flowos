@@ -3,8 +3,8 @@ import { ref, watch } from 'vue';
 import { REFUND_PRODUCT_NAME, REFUND_TAG_L1, REFUND_TAG_L2, REFUND_TAG_L3S } from '@/views/tickets/types/refund';
 
 /**
- * 个册退费单 · 问题分类「是否个册退费」（1120 PRD 1.1；写法同 `stores/flashConfig.ts` 的「是否刷机」）。
- * 后台「问题分类」维护开关，建单识别读同一份：所选产品 + 问题分类「是否个册退费」＝是 → 个册退费单。
+ * 个册退费单 · 问题分类「专属类型＝个册退费」（1120 PRD 1.1；写法同 `stores/flashConfig.ts` 的「专属类型＝刷机」）。
+ * 后台「问题分类」维护，建单识别读同一份：所选产品 + 问题分类「专属类型＝个册退费」 → 个册退费单。
  *
  * 出厂值：个性化学习手册 ×「售后 → 退费申请 → 个册退费」；改动落 `flowos-refund-config`。
  */
@@ -15,7 +15,7 @@ const CONFIG_SHAPE_VERSION = 1;
 const STALE_MS = 12 * 60 * 60 * 1000;
 
 interface RefundConfigSnapshot {
-  /** 问题分类「是否个册退费」开启的条目（键见 `refundTagKey`：产品名称 + 三级路径） */
+  /** 问题分类「专属类型＝个册退费」的条目（键见 `refundTagKey`：产品名称 + 三级路径） */
   refundTags: string[];
 }
 
@@ -53,13 +53,13 @@ export const useRefundConfigStore = defineStore('refundConfig', () => {
     }
   }, { deep: true });
 
-  /** 问题分类条目「是否个册退费」是否开启 */
+  /** 问题分类条目是否「专属类型＝个册退费」 */
   function isRefundTag(productName: string, l1: string, l2: string, l3: string): boolean {
     if (!productName || !l1 || !l2 || !l3) return false;
     return refundTags.value.includes(refundTagKey(productName, l1, l2, l3));
   }
 
-  /** 产品挂了个册退费类问题分类：本产品至少有一条「是否个册退费」开启的分类 */
+  /** 产品挂了个册退费类问题分类：本产品至少有一条「专属类型＝个册退费」的分类 */
   function hasRefundTag(productName: string): boolean {
     const key = productName.trim();
     if (!key) return false;
@@ -74,7 +74,7 @@ export const useRefundConfigStore = defineStore('refundConfig', () => {
     if (next.join('\u0002') !== cur.join('\u0002')) refundTags.value = next;
   }
 
-  /** 个册退费单识别：所选产品 + 问题分类「是否个册退费」＝是 */
+  /** 个册退费单识别：所选产品 + 问题分类「专属类型＝个册退费」 */
   function isRefundScene(productName: string, l1: string, l2: string, l3: string): boolean {
     return isRefundTag(productName, l1, l2, l3);
   }

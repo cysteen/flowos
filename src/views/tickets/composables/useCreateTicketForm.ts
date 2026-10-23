@@ -170,7 +170,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   const refundConfig = useRefundConfigStore();
   /**
    * 问题分类按产品维护（1014）：刷机分类（售后 → 服务申请 → 自助刷机 / 刷原生系统）
-   * 只对挂了刷机类问题分类的产品出现（后台「问题分类」里本产品至少一条「是否刷机」开启，10-19 C1）；其余分类各产品共用。
+   * 只对挂了刷机类问题分类的产品出现（后台「问题分类」里本产品至少一条「专属类型＝刷机」，10-19 C1）；其余分类各产品共用。
    * 读刷机配置的响应式状态，后台开关一改，建单下拉随即联动。
    */
   const productProblemTree = computed<Record<string, Record<string, string[]>>>(() => {
@@ -182,7 +182,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
         const kept = l3s.filter((l3) => {
           const isFlashPath = l1 === FLASH_TAG_L1 && l2 === FLASH_TAG_L2
             && (FLASH_TAG_L3S as readonly string[]).includes(l3);
-          // 个册退费分类（1120）只对挂了个册退费类问题分类的产品出现（后台「问题分类」本产品至少一条「是否个册退费」开启）
+          // 个册退费分类（1120）只对挂了个册退费类问题分类的产品出现（后台「问题分类」本产品至少一条「专属类型＝个册退费」）
           const isRefundPath = l1 === REFUND_TAG_L1 && l2 === REFUND_TAG_L2
             && (REFUND_TAG_L3S as readonly string[]).includes(l3);
           if (isRefundPath) return refundConfig.hasRefundTag(product);
@@ -260,7 +260,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   /* ---------------- 刷机单（930 教育刷机单 PRD §2.3 / §2.4；1013 A1–A4） ---------------- */
 
   /**
-   * 刷机单识别（10-19 C1）：只看所选问题分类「是否刷机」开启（问题分类按产品维护）。
+   * 刷机单识别（10-19 C1）：只看所选问题分类「专属类型＝刷机」（问题分类按产品维护）。
    * 命中即切到刷机接单表单：类型专属区块换成「刷机信息」卡，工单类型固定咨询、业务分类固定教育。
    */
   /** 入口固定了工单类型（升级投诉 / 刷机单关联投诉）：不做刷机单识别（预填 `noFlashScene`） */
@@ -567,7 +567,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   /* ---------------- 个册退费单（1120 个册退费工单 PRD §3.1 / §3.2） ---------------- */
 
   /**
-   * 个册退费单识别：所选产品的问题分类「是否个册退费」＝是（后台「问题分类」维护，同刷机单按问题分类识别）。
+   * 个册退费单识别：所选产品的问题分类「专属类型＝个册退费」（后台「问题分类」维护，同刷机单按问题分类识别）。
    * 入口固定了工单类型的（升级投诉 / 关联投诉 / 小智入口）不识别。
    */
   const isRefundType = computed(() => !flashSceneOff.value && refundConfig.isRefundScene(
