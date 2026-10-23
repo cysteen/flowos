@@ -7,6 +7,7 @@ import { TICKETS } from '@/mock/tickets';
 import { XIAOZHI_SEEDS } from '@/mock/xiaozhi/seedTickets';
 import { makeTicketNo } from '@/constants/ticketNo';
 import { CLOSE_REASON_RESOLVED, ESCALATE_CHANNEL_TPD } from '@/views/tickets/composables/opActions';
+import { isTicketTerminated } from '@/views/tickets/composables/complaintEscalation';
 import {
   XIAOZHI_BUSINESS_TYPE, XIAOZHI_CLOSED_STATUS, XIAOZHI_CONFIRM_ACTOR, XIAOZHI_CONFIRM_TIMEOUT_DAYS, XIAOZHI_NOTICE,
   XIAOZHI_POOL_GROUP_ID, XIAOZHI_POOL_GROUP_NAME,
@@ -549,6 +550,29 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
   /* ---------------- 回传与校代确认（一·补 B5 / B7 / B8 / B9；T1） ---------------- */
 
   /**
+   * 🔴 **终态闸门**（PRD 附录 B「产研回传 · 本单已为终态」）：本单已是终态时，
+   * 迟到的回传**只留痕、不改任何字段**，返回 `true`（接口收到了，不是失败）。
+   *
+   * 没有这道闸门时两条路都会把终态单重新打开：办结回传把 `confirmState` 重置成「未确认」、
+   * 重发完成通知，超时对账过 N 天还会再关一次；退回回传把子状态改成「已退回」、把单交回创建人。
+   *
+   * 终态判据引通用的 `isTicketTerminated`（照基线 §1 的十个终态子状态），不自列名单。
+   * ⚠️ 只管**办结 / 退回**两条 —— 附录 B 只给了这两条的文案；「处理中」回传本身不改字段，
+   * 要不要一并挡在终态外待业务定（见 需求表附录 A）。
+   */
+  function logIfTerminal(r: Ticket, kind: '办结' | '退回'): boolean {
+    if (!isTicketTerminated(r.nodeStatus ?? '')) return false;
+    const at = Date.now();
+    log(r.no, at, {
+      category: 'node', action: 'relate', who: '系统', role: '系统', systemActor: true,
+      how: '产研回传 · 本单已为终态', what: XIAOZHI_TL.rdTerminal(kind),
+    });
+    bump(r.no);
+    persist();
+    return true;
+  }
+
+  /**
    * 产研「处理中」等中间态回传：**只写处理履历留痕，不驱动本单状态**（D7）。
    */
   function receiveRdProgress(no: string, who: string, note: string): boolean {
@@ -591,6 +615,7 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
   function receiveRdReject(no: string, who: string, reason: string): boolean {
     const r = rowOf(no);
     if (!r?.xiaozhi) return false;
+    if (logIfTerminal(r, '退回')) return true;
     const now = Date.now();
     // 一·补 B31：交回创建人；建单后被编辑过的取最后编辑人
     const owner = (r.xiaozhi.lastEditor ?? r.xiaozhi.createdBy ?? '').trim();
@@ -647,6 +672,7 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
   function receiveRdSettle(no: string, who: string, payload: XiaozhiSettlePayload): boolean {
     const r = rowOf(no);
     if (!r?.xiaozhi) return false;
+    if (logIfTerminal(r, '办结')) return true;
     const now = Date.now();
     r.xiaozhi.rdSync = 'closed';
     r.xiaozhi.rdSolutionType = payload.solutionType;
