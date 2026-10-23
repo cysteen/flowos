@@ -47,6 +47,7 @@ export type FlashLsKey = (typeof FLASH_LS_KEYS)[keyof typeof FLASH_LS_KEYS];
  * v26：删转人工短信与重推结果通知（M181）：种子履历去掉转人工短信、刷机字段组去掉 handoffSmsSent；
  * 推送记录去掉回传超时时长快照（M180）。
  * v27：升级二线进池改走到组通知、删迟到回传提示（M182）；履历坐席不带角色，旧快照作废。
+ * v28：种子时刻由分钟级改到秒级（列表与查询的建单 / 更新时间带秒），v27 快照里的分钟级时间作废。
  */
 export const FLASH_CACHE_VERSION = 28;
 

@@ -58,7 +58,10 @@ export interface RefundCreateBase {
 }
 
 const LS_KEY = 'flowos-refund-cache';
-/** v4：通知文案与收件人改版（到组通知走 IM_WO_POOLED、短信带完整 H5 链接、收件人只写姓名） */
+/**
+ * v4：通知文案与收件人改版（到组通知走 IM_WO_POOLED、短信带完整 H5 链接、收件人只写姓名）
+ * v5：种子时刻由分钟级改到秒级（列表与查询的建单 / 更新时间带秒），v4 快照里的分钟级时间作废
+ */
 const CACHE_VERSION = 5;
 const STALE_MS = 12 * 60 * 60 * 1000;
 
