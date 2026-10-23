@@ -393,6 +393,8 @@ export const useRefundStore = defineStore('refund', () => {
       if (!isRefundTicket(t) || !t.refund) continue;
       const run = inflightRefundRun(t.refund);
       if (!run || !run.settleAtMs) continue;
+      // 结果只回写「系统退费中」的单：单已离开该子状态（如终态）时不改字段
+      if (t.nodeStatus !== REFUND_STATUS_SYSTEM) continue;
       const r = reactive(t);
       const ref = r.refund!;
       const live = ref.runs.find((x) => x.id === run.id)!;
