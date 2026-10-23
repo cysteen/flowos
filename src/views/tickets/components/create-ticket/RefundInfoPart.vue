@@ -99,7 +99,7 @@ const amountText = computed(() => (info.value.refundableAmount == null ? '' : `$
 <template>
   <CreateTicketPartCard title="退费信息" :body-gap="8">
     <div class="ri-grid">
-      <div class="ri-field ri-span2">
+      <div class="ri-field">
         <label class="ri-label"><span class="req">*</span>{{ L.school }}</label>
         <div class="ri-control">
           <FlashSchoolPicker
