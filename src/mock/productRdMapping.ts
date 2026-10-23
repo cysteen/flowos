@@ -89,7 +89,7 @@ export const PRODUCT_RD_MAPPINGS: ProductRdMappingRow[] = [
     externalBusinessId: 'business-readwrite', externalBusinessName: '读写科技',
     externalProductId: '20336094', externalProductName: '录音笔H1',
     mappingStatus: 'VALID', mappingMethod: 'MANUAL', matchConfidence: 100,
-    lastSyncedAt: '2026-08-17 09:30',
+    lastSyncedAt: '2026-08-17 09:30:33',
   },
   {
     productKey: 'p1', spuCode: 'TRANS-SF', productName: '三防翻译机',
@@ -98,7 +98,7 @@ export const PRODUCT_RD_MAPPINGS: ProductRdMappingRow[] = [
     externalBusinessId: 'business-trans', externalBusinessName: '翻译机',
     externalProductId: '20336101', externalProductName: '三防翻译机',
     mappingStatus: 'VALID', mappingMethod: 'API_SYNC', matchConfidence: 90,
-    lastSyncedAt: '2026-08-17 09:30',
+    lastSyncedAt: '2026-08-17 09:30:33',
   },
   {
     productKey: 'p2', spuCode: 'TRANS-HW', productName: '汉维翻译机',
@@ -108,7 +108,7 @@ export const PRODUCT_RD_MAPPINGS: ProductRdMappingRow[] = [
     mappingStatus: 'PENDING', mappingMethod: 'AUTO_RULE', matchConfidence: 75,
     pendingType: 'NEW_MATCH',
     pendingReason: '原未配置，同步 TPD 后自动匹配（名称相似 75%），需人工确认',
-    lastSyncedAt: '2026-08-17 08:00',
+    lastSyncedAt: '2026-08-17 08:00:47',
   },
   {
     productKey: 'p-h2', spuCode: 'REC-H2', productName: '讯飞录音笔H2',
@@ -122,7 +122,7 @@ export const PRODUCT_RD_MAPPINGS: ProductRdMappingRow[] = [
     externalProductId: 'RDM-SW-002', externalProductName: '软件缺陷·翻译机',
     mappingStatus: 'INVALID', mappingMethod: 'MANUAL', matchConfidence: 100,
     invalidReason: '外部产品已下架或不可用',
-    lastSyncedAt: '2026-08-16 18:00',
+    lastSyncedAt: '2026-08-16 18:00:51',
   },
 ];
 

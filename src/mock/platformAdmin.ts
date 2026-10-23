@@ -42,37 +42,37 @@ export const TENANTS: Tenant[] = [
   {
     id: 't1', name: '讯飞科技', code: 'XFKJ', status: 'active', admin: 'zhang@xfyun.cn', adminPhone: '138 0013 8001', adminLimit: 3, adminCount: 2, plan: '旗舰版', createdAt: '2025-01-15', color: '#1A6FFF',
     quota: { orderLimit: 5000, orderUsed: 3200, orderPct: 64, outboundLimit: 10000, outboundUsed: 7600, outboundPct: 76, storageLimit: 500, storageUsed: 280, storagePct: 56 },
-    logs: [{ time: '2026-04-20 14:30', action: '调整配额', user: 'admin' }, { time: '2026-04-18 09:15', action: '修改配置', user: 'admin' }, { time: '2025-01-15 10:00', action: '创建租户', user: 'admin' }],
+    logs: [{ time: '2026-04-20 14:30:33', action: '调整配额', user: 'admin' }, { time: '2026-04-18 09:15:37', action: '修改配置', user: 'admin' }, { time: '2025-01-15 10:00:02', action: '创建租户', user: 'admin' }],
   },
   {
     id: 't2', name: '教育事业部', code: 'JYSYB', status: 'active', admin: 'li@edu.cn', adminPhone: '139 0013 9002', adminLimit: 3, adminCount: 1, plan: '专业版', createdAt: '2025-02-20', color: '#10B981',
     quota: { orderLimit: 2000, orderUsed: 1450, orderPct: 73, outboundLimit: 3000, outboundUsed: 2520, outboundPct: 84, storageLimit: 200, storageUsed: 145, storagePct: 73 },
-    logs: [{ time: '2026-04-19 11:20', action: '调整外呼配额', user: 'admin' }, { time: '2025-02-20 15:30', action: '创建租户', user: 'admin' }],
+    logs: [{ time: '2026-04-19 11:20:37', action: '调整外呼配额', user: 'admin' }, { time: '2025-02-20 15:30:03', action: '创建租户', user: 'admin' }],
   },
   {
     id: 't3', name: '智能硬件部', code: 'ZNJYB', status: 'suspended', admin: 'wang@hw.cn', adminPhone: '137 0013 7003', adminLimit: 3, adminCount: 1, plan: '基础版', createdAt: '2025-03-10', color: '#9CA3AF',
     quota: { orderLimit: 500, orderUsed: 480, orderPct: 96, outboundLimit: 500, outboundUsed: 420, outboundPct: 84, storageLimit: 50, storageUsed: 42, storagePct: 84 },
-    logs: [{ time: '2026-04-21 08:00', action: '停用租户', user: 'admin' }, { time: '2026-04-10 16:45', action: '配额预警', user: 'system' }, { time: '2025-03-10 14:00', action: '创建租户', user: 'admin' }],
+    logs: [{ time: '2026-04-21 08:00:58', action: '停用租户', user: 'admin' }, { time: '2026-04-10 16:45:20', action: '配额预警', user: 'system' }, { time: '2025-03-10 14:00:51', action: '创建租户', user: 'admin' }],
   },
   {
     id: 't4', name: '科大讯飞教育BG', code: 'XFEDU', status: 'active', admin: 'admin@xf-edu.cn', adminPhone: '138 0013 8004', adminLimit: 3, adminCount: 2, plan: '旗舰版', createdAt: '2025-04-08', color: '#7C3AED',
     quota: { orderLimit: 8000, orderUsed: 5200, orderPct: 65, outboundLimit: 10000, outboundUsed: 6100, outboundPct: 61, storageLimit: 500, storageUsed: 210, storagePct: 42 },
-    logs: [{ time: '2026-05-06 10:20', action: '调整配额', user: 'admin' }, { time: '2025-04-08 09:00', action: '创建租户', user: 'admin' }],
+    logs: [{ time: '2026-05-06 10:20:05', action: '调整配额', user: 'admin' }, { time: '2025-04-08 09:00:27', action: '创建租户', user: 'admin' }],
   },
   {
     id: 't5', name: '科大讯飞客服服务', code: 'XFCS', status: 'active', admin: 'admin@xf-cs.cn', adminPhone: '138 0013 8005', adminLimit: 3, adminCount: 2, plan: '专业版', createdAt: '2025-05-12', color: '#0EA5E9',
     quota: { orderLimit: 2000, orderUsed: 1180, orderPct: 59, outboundLimit: 3000, outboundUsed: 1900, outboundPct: 63, storageLimit: 200, storageUsed: 96, storagePct: 48 },
-    logs: [{ time: '2026-05-15 14:10', action: '修改配置', user: 'admin' }, { time: '2025-05-12 15:30', action: '创建租户', user: 'admin' }],
+    logs: [{ time: '2026-05-15 14:10:42', action: '修改配置', user: 'admin' }, { time: '2025-05-12 15:30:21', action: '创建租户', user: 'admin' }],
   },
   {
     id: 't6', name: '招商银行', code: 'CMB', status: 'active', admin: 'admin@cmbchina.com', adminPhone: '138 0013 8006', adminLimit: 3, adminCount: 3, plan: '旗舰版', createdAt: '2025-06-01', color: '#C8102E',
     quota: { orderLimit: 100000, orderUsed: 61000, orderPct: 61, outboundLimit: 10000, outboundUsed: 5400, outboundPct: 54, storageLimit: 1000, storageUsed: 430, storagePct: 43 },
-    logs: [{ time: '2026-06-18 09:40', action: '调整配额', user: 'admin' }, { time: '2025-06-01 10:00', action: '创建租户', user: 'admin' }],
+    logs: [{ time: '2026-06-18 09:40:29', action: '调整配额', user: 'admin' }, { time: '2025-06-01 10:00:16', action: '创建租户', user: 'admin' }],
   },
   {
     id: 't7', name: '得物客服', code: 'DEWU', status: 'active', admin: 'admin@dewu.com', adminPhone: '138 0013 8007', adminLimit: 3, adminCount: 2, plan: '专业版', createdAt: '2025-06-20', color: '#111827',
     quota: { orderLimit: 20000, orderUsed: 14200, orderPct: 71, outboundLimit: 3000, outboundUsed: 2100, outboundPct: 70, storageLimit: 200, storageUsed: 138, storagePct: 69 },
-    logs: [{ time: '2026-06-28 16:20', action: '调整外呼配额', user: 'admin' }, { time: '2025-06-20 11:00', action: '创建租户', user: 'admin' }],
+    logs: [{ time: '2026-06-28 16:20:16', action: '调整外呼配额', user: 'admin' }, { time: '2025-06-20 11:00:56', action: '创建租户', user: 'admin' }],
   },
 ];
 

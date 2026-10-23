@@ -81,10 +81,10 @@ export function unclaimedGateOf(i: {
 }
 
 /** 履历时刻 年-月-日 时:分 */
-function nowMinuteStamp(): string {
+function nowStamp(): string {
   const d = new Date();
   const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
 /**
@@ -100,7 +100,7 @@ export function claimTicketByType(t: Ticket, roleKey: string, userName: string):
     return { ok, message: ok ? `已领取 ${t.no}` : '本单已被领取或不在工单池中' };
   }
   if (isFlashTicket(t)) return useFlashStore().claimFromPool(t.no, { name: me, role });
-  const ok = claimPoolTicket(t, WORKBENCH_HANDLER, role, nowMinuteStamp());
+  const ok = claimPoolTicket(t, WORKBENCH_HANDLER, role, nowStamp());
   // 个册退费单（1120）：领取同咨询单，落库后由个册退费服务落快照
   if (ok && isRefundTicket(t)) useRefundStore().afterClaim(t.no);
   if (ok) return { ok, message: `已领取 ${t.no}` };

@@ -78,14 +78,14 @@ const users: ListConfig = {
     { key: 'remark', label: '备注', type: 'textarea' },
   ],
   rows: [
-    { no: 'U00001', username: 'zhangsan', nickname: '张三', dept: '客服二部', phone: '138****8000', status: '启用', createdAt: '2026-05-12 09:20' },
-    { no: 'U00002', username: 'lisi', nickname: '李四', dept: '售后部', phone: '139****1234', status: '启用', createdAt: '2026-05-13 10:05' },
-    { no: 'U00003', username: 'wangwu', nickname: '王坐席', dept: '技术支持部', phone: '137****5678', status: '启用', createdAt: '2026-05-14 14:30' },
-    { no: 'U00004', username: 'zhaoliu', nickname: '赵敏', dept: '客服一部', phone: '136****9012', status: '停用', createdAt: '2026-05-15 11:11' },
-    { no: 'U00005', username: 'chenqi', nickname: '陈坐席', dept: '客服二部', phone: '135****3456', status: '启用', createdAt: '2026-05-16 16:40' },
-    { no: 'U00006', username: 'sunba', nickname: '孙莉', dept: '售后部', phone: '134****7788', status: '启用', createdAt: '2026-05-18 08:50' },
-    { no: 'U00007', username: 'linjiu', nickname: '林组长', dept: '客服一部', phone: '133****2211', status: '启用', createdAt: '2026-05-20 13:22' },
-    { no: 'U00008', username: 'zhoushi', nickname: '周杰', dept: '技术支持部', phone: '132****6655', status: '停用', createdAt: '2026-05-22 09:00' },
+    { no: 'U00001', username: 'zhangsan', nickname: '张三', dept: '客服二部', phone: '138****8000', status: '启用', createdAt: '2026-05-12 09:20:50' },
+    { no: 'U00002', username: 'lisi', nickname: '李四', dept: '售后部', phone: '139****1234', status: '启用', createdAt: '2026-05-13 10:05:50' },
+    { no: 'U00003', username: 'wangwu', nickname: '王坐席', dept: '技术支持部', phone: '137****5678', status: '启用', createdAt: '2026-05-14 14:30:27' },
+    { no: 'U00004', username: 'zhaoliu', nickname: '赵敏', dept: '客服一部', phone: '136****9012', status: '停用', createdAt: '2026-05-15 11:11:44' },
+    { no: 'U00005', username: 'chenqi', nickname: '陈坐席', dept: '客服二部', phone: '135****3456', status: '启用', createdAt: '2026-05-16 16:40:32' },
+    { no: 'U00006', username: 'sunba', nickname: '孙莉', dept: '售后部', phone: '134****7788', status: '启用', createdAt: '2026-05-18 08:50:30' },
+    { no: 'U00007', username: 'linjiu', nickname: '林组长', dept: '客服一部', phone: '133****2211', status: '启用', createdAt: '2026-05-20 13:22:16' },
+    { no: 'U00008', username: 'zhoushi', nickname: '周杰', dept: '技术支持部', phone: '132****6655', status: '停用', createdAt: '2026-05-22 09:00:03' },
   ],
 };
 
@@ -118,19 +118,19 @@ const roles: ListConfig = {
     { key: 'remark', label: '备注', type: 'textarea' },
   ],
   rows: [
-    { no: 'R001', name: '租户管理员', type: '内置', roleKey: 'tenant-admin', sort: 1, status: '启用', remark: '本租户最高权限', createdAt: '2026-05-01 00:00' },
+    { no: 'R001', name: '租户管理员', type: '内置', roleKey: 'tenant-admin', sort: 1, status: '启用', remark: '本租户最高权限', createdAt: '2026-05-01 00:00:37' },
     // 0830 角色口径（基线 §3.0）：客服 / 售后是二线专员的**分岗**，不再是两个角色，故只一行
-    { no: 'R002', name: '二线专员', type: '内置', roleKey: 'agent-l2', sort: 2, status: '启用', remark: '工单处理主力，分岗：客服 / 售后', createdAt: '2026-05-01 00:00' },
-    { no: 'R003', name: '技术支持', type: '内置', roleKey: 'tech-support', sort: 3, status: '启用', remark: '处理升级来的技术问题，不结案', createdAt: '2026-05-01 00:00' },
-    { no: 'R004', name: '二线班组长', type: '内置', roleKey: 'team-leader', sort: 4, status: '启用', remark: '派单/审批/盯时效', createdAt: '2026-05-01 00:00' },
-    { no: 'R005', name: '客诉专员', type: '内置', roleKey: 'complaint-handler', sort: 5, status: '启用', remark: '办投诉单 + 工单管控', createdAt: '2026-05-01 00:00' },
-    { no: 'R006', name: '投诉督导', type: '内置', roleKey: 'complaint-supervisor', sort: 6, status: '启用', remark: '审批 + 指派 + 盯投诉态势', createdAt: '2026-05-01 00:00' },
-    { no: 'R007', name: '工单运营', type: '内置', roleKey: 'ops-monitor', sort: 7, status: '启用', remark: '不办单，调剂/指派 + 看板 + 大盘', createdAt: '2026-05-01 00:00' },
-    { no: 'R008', name: '质检', type: '内置', roleKey: 'qa', sort: 8, status: '启用', remark: '全租户只读 + 查询中心', createdAt: '2026-05-01 00:00' },
-    { no: 'R009', name: '一线坐席', type: '内置', roleKey: 'agent-l1', sort: 9, status: '启用', remark: '接进线、建单、催单，不办单', createdAt: '2026-05-01 00:00' },
+    { no: 'R002', name: '二线专员', type: '内置', roleKey: 'agent-l2', sort: 2, status: '启用', remark: '工单处理主力，分岗：客服 / 售后', createdAt: '2026-05-01 00:00:37' },
+    { no: 'R003', name: '技术支持', type: '内置', roleKey: 'tech-support', sort: 3, status: '启用', remark: '处理升级来的技术问题，不结案', createdAt: '2026-05-01 00:00:37' },
+    { no: 'R004', name: '二线班组长', type: '内置', roleKey: 'team-leader', sort: 4, status: '启用', remark: '派单/审批/盯时效', createdAt: '2026-05-01 00:00:37' },
+    { no: 'R005', name: '客诉专员', type: '内置', roleKey: 'complaint-handler', sort: 5, status: '启用', remark: '办投诉单 + 工单管控', createdAt: '2026-05-01 00:00:37' },
+    { no: 'R006', name: '投诉督导', type: '内置', roleKey: 'complaint-supervisor', sort: 6, status: '启用', remark: '审批 + 指派 + 盯投诉态势', createdAt: '2026-05-01 00:00:37' },
+    { no: 'R007', name: '工单运营', type: '内置', roleKey: 'ops-monitor', sort: 7, status: '启用', remark: '不办单，调剂/指派 + 看板 + 大盘', createdAt: '2026-05-01 00:00:37' },
+    { no: 'R008', name: '质检', type: '内置', roleKey: 'qa', sort: 8, status: '启用', remark: '全租户只读 + 查询中心', createdAt: '2026-05-01 00:00:37' },
+    { no: 'R009', name: '一线坐席', type: '内置', roleKey: 'agent-l1', sort: 9, status: '启用', remark: '接进线、建单、催单，不办单', createdAt: '2026-05-01 00:00:37' },
     // 1130 小智工单 D20：与一线坐席平级，一线催补 / 取消 + 二线转单 / 挂起 / 下送合一
-    { no: 'R010', name: '小智坐席', type: '内置', roleKey: 'xiaozhi-agent', sort: 10, status: '启用', remark: '小智工单接单到结案，含催补 / 取消与转单 / 挂起 / 下送', createdAt: '2026-10-14 00:00' },
-    { no: 'R011', name: '售后回访专员', type: '自定义', roleKey: 'aftersale-revisit', sort: 11, status: '启用', remark: '满意度回访', createdAt: '2026-05-26 10:30' },
+    { no: 'R010', name: '小智坐席', type: '内置', roleKey: 'xiaozhi-agent', sort: 10, status: '启用', remark: '小智工单接单到结案，含催补 / 取消与转单 / 挂起 / 下送', createdAt: '2026-10-14 00:00:25' },
+    { no: 'R011', name: '售后回访专员', type: '自定义', roleKey: 'aftersale-revisit', sort: 11, status: '启用', remark: '满意度回访', createdAt: '2026-05-26 10:30:10' },
   ],
 };
 
@@ -163,11 +163,11 @@ const teams: ListConfig = {
     { key: 'status', label: '状态', type: 'radio', options: ['启用', '停用'] },
   ],
   rows: [
-    { name: '客服一组', leader: '林组长', members: 8, skills: ['售前', '投诉'], status: '启用', createdAt: '2026-05-05 09:00' },
-    { name: '客服二组', leader: '王坐席', members: 6, skills: ['咨询', 'VIP'], status: '启用', createdAt: '2026-05-06 09:00' },
-    { name: '技术支持组', leader: '陈坐席', members: 5, skills: ['技术·二线'], status: '启用', createdAt: '2026-05-07 09:00' },
-    { name: '售后服务组', leader: '孙莉', members: 7, skills: ['退换', '上门'], status: '启用', createdAt: '2026-05-08 09:00' },
-    { name: '夜班应急组', leader: '王坐席', members: 3, skills: ['投诉', '技术·二线'], status: '停用', createdAt: '2026-05-10 09:00' },
+    { name: '客服一组', leader: '林组长', members: 8, skills: ['售前', '投诉'], status: '启用', createdAt: '2026-05-05 09:00:24' },
+    { name: '客服二组', leader: '王坐席', members: 6, skills: ['咨询', 'VIP'], status: '启用', createdAt: '2026-05-06 09:00:57' },
+    { name: '技术支持组', leader: '陈坐席', members: 5, skills: ['技术·二线'], status: '启用', createdAt: '2026-05-07 09:00:50' },
+    { name: '售后服务组', leader: '孙莉', members: 7, skills: ['退换', '上门'], status: '启用', createdAt: '2026-05-08 09:00:27' },
+    { name: '夜班应急组', leader: '王坐席', members: 3, skills: ['投诉', '技术·二线'], status: '停用', createdAt: '2026-05-10 09:00:22' },
   ],
 };
 
@@ -253,10 +253,10 @@ const thirdPartyLogin: ListConfig = {
     { key: 'status', label: '状态', type: 'radio', options: ['启用', '停用'] },
   ],
   rows: [
-    { name: '企业微信扫码登录', type: '企业微信', appId: 'ww-1a2b3c4d5e', boundUsers: 64, status: '启用', createdAt: '2026-05-10 09:00' },
-    { name: '微信开放平台', type: '微信', appId: 'wx-88f0a1b2c3', boundUsers: 12, status: '启用', createdAt: '2026-05-12 14:30' },
-    { name: '钉钉免登', type: '钉钉', appId: 'ding-77x9y8z6', boundUsers: 8, status: '停用', createdAt: '2026-05-15 11:20' },
-    { name: 'OAuth2 接入（第三方门户）', type: 'OAuth2', appId: 'oauth-c1d2e3f4', boundUsers: 3, status: '启用', createdAt: '2026-05-20 16:00' },
+    { name: '企业微信扫码登录', type: '企业微信', appId: 'ww-1a2b3c4d5e', boundUsers: 64, status: '启用', createdAt: '2026-05-10 09:00:22' },
+    { name: '微信开放平台', type: '微信', appId: 'wx-88f0a1b2c3', boundUsers: 12, status: '启用', createdAt: '2026-05-12 14:30:53' },
+    { name: '钉钉免登', type: '钉钉', appId: 'ding-77x9y8z6', boundUsers: 8, status: '停用', createdAt: '2026-05-15 11:20:24' },
+    { name: 'OAuth2 接入（第三方门户）', type: 'OAuth2', appId: 'oauth-c1d2e3f4', boundUsers: 3, status: '启用', createdAt: '2026-05-20 16:00:25' },
   ],
 };
 
@@ -284,10 +284,10 @@ const connectors: ListConfig = {
     { key: 'status', label: '状态', type: 'radio', options: ['启用', '停用'] },
   ],
   rows: [
-    { name: '工单回写 Webhook', type: 'Webhook', endpoint: 'https://erp.iflytek.com/hook/ticket', lastSync: '2026-06-17 11:20', status: '启用' },
-    { name: '客户主数据 API', type: 'HTTP API', endpoint: 'https://crm.iflytek.com/api/v2', lastSync: '2026-06-17 10:05', status: '启用' },
-    { name: '工单事件 MQ', type: '消息队列', endpoint: 'kafka://10.10.20.5:9092/ticket-events', lastSync: '2026-06-17 11:30', status: '启用' },
-    { name: '历史工单同步库', type: '数据库', endpoint: 'mysql://10.10.20.9:3306/legacy', lastSync: '2026-06-16 02:00', status: '停用' },
+    { name: '工单回写 Webhook', type: 'Webhook', endpoint: 'https://erp.iflytek.com/hook/ticket', lastSync: '2026-06-17 11:20:13', status: '启用' },
+    { name: '客户主数据 API', type: 'HTTP API', endpoint: 'https://crm.iflytek.com/api/v2', lastSync: '2026-06-17 10:05:33', status: '启用' },
+    { name: '工单事件 MQ', type: '消息队列', endpoint: 'kafka://10.10.20.5:9092/ticket-events', lastSync: '2026-06-17 11:30:08', status: '启用' },
+    { name: '历史工单同步库', type: '数据库', endpoint: 'mysql://10.10.20.9:3306/legacy', lastSync: '2026-06-16 02:00:12', status: '停用' },
   ],
 };
 
@@ -315,10 +315,10 @@ const messageCenter: ListConfig = {
     { key: 'status', label: '状态', type: 'radio', options: ['启用', '停用'] },
   ],
   rows: [
-    { name: '工单受理通知', type: '短信', channel: '阿里云·讯飞客服', updatedAt: '2026-06-14 10:00', status: '启用' },
-    { name: 'SLA 临期提醒', type: '站内信', channel: '系统', updatedAt: '2026-06-13 16:30', status: '启用' },
-    { name: '工单解决回访邮件', type: '邮件', channel: 'noreply@iflytek.com', updatedAt: '2026-06-12 09:20', status: '启用' },
-    { name: '系统维护公告', type: '通知公告', channel: '全员', updatedAt: '2026-06-10 18:00', status: '停用' },
+    { name: '工单受理通知', type: '短信', channel: '阿里云·讯飞客服', updatedAt: '2026-06-14 10:00:51', status: '启用' },
+    { name: 'SLA 临期提醒', type: '站内信', channel: '系统', updatedAt: '2026-06-13 16:30:07', status: '启用' },
+    { name: '工单解决回访邮件', type: '邮件', channel: 'noreply@iflytek.com', updatedAt: '2026-06-12 09:20:29', status: '启用' },
+    { name: '系统维护公告', type: '通知公告', channel: '全员', updatedAt: '2026-06-10 18:00:07', status: '停用' },
   ],
 };
 

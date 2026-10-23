@@ -633,7 +633,7 @@ function onXiaozhiRdEvent(kind: 'progress' | 'settle' | 'reject' | 'confirmResol
     case 'settle':
       xiaozhiStore.receiveRdSettle(no, '张冬', {
         solutionType: '问题',
-        issue: { solution: '已定位并修复，请验证', solvedAt: opTimeNow().slice(0, 16) },
+        issue: { solution: '已定位并修复，请验证', solvedAt: opTimeNow() },
       });
       message.success('已记录产研回传 · 已办结');
       break;
@@ -905,7 +905,7 @@ const riskControlOpen = ref(false);
 function riskNowStamp(): string {
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 }
 
 function onRiskReport(payload: {
@@ -1687,7 +1687,7 @@ function syncEscalatedRelatedCard(ticket: Ticket, target: string) {
 function nowFullText(): string {
   const dt = new Date();
   const p = (n: number) => String(n).padStart(2, '0');
-  return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())} ${p(dt.getHours())}:${p(dt.getMinutes())}`;
+  return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())} ${p(dt.getHours())}:${p(dt.getMinutes())}:${p(dt.getSeconds())}`;
 }
 
 /**

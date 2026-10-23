@@ -49,10 +49,10 @@ const policy = ref({
 
 /* 登录日志 */
 const loginLogs = ref([
-  { time: '2026-06-19 08:30', user: '王芳', idp: '企业微信', ip: '10.21.3.45', result: '成功', device: 'Chrome/Win' },
-  { time: '2026-06-19 09:05', user: '李强', idp: '钉钉', ip: '10.21.3.88', result: '成功', device: 'Edge/Win' },
-  { time: '2026-06-19 07:50', user: 'unknown', idp: '密码', ip: '203.0.113.7', result: '失败', device: 'curl' },
-  { time: '2026-06-18 22:14', user: '吴婷', idp: '密码', ip: '10.21.4.12', result: '锁定', device: 'Chrome/Mac' },
+  { time: '2026-06-19 08:30:48', user: '王芳', idp: '企业微信', ip: '10.21.3.45', result: '成功', device: 'Chrome/Win' },
+  { time: '2026-06-19 09:05:49', user: '李强', idp: '钉钉', ip: '10.21.3.88', result: '成功', device: 'Edge/Win' },
+  { time: '2026-06-19 07:50:21', user: 'unknown', idp: '密码', ip: '203.0.113.7', result: '失败', device: 'curl' },
+  { time: '2026-06-18 22:14:13', user: '吴婷', idp: '密码', ip: '10.21.4.12', result: '锁定', device: 'Chrome/Mac' },
 ]);
 const loginCols = [
   { title: '时间', dataIndex: 'time', key: 'time', width: 160 },

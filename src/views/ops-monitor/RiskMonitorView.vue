@@ -1089,11 +1089,11 @@ function buildDefaultScanRuns(): ScanRun[] {
   ];
 }
 
-function nowStamp(withSeconds = false): string {
+// 1023 拍板：时刻一律到秒，原先的 withSeconds 开关没有了用处（两档取值相同），故去掉
+function nowStamp(): string {
   const d = new Date();
   const p = (n: number) => String(n).padStart(2, '0');
-  const base = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
-  return withSeconds ? `${base}:${p(d.getSeconds())}` : base;
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
 function normalizeScanRun(raw: Record<string, unknown>): ScanRun {
@@ -1335,7 +1335,7 @@ function doScan() {
   }
   scanning.value = true;
   const t0 = Date.now();
-  const startedAt = nowStamp(true);
+  const startedAt = nowStamp();
   try {
     applyScanLive();
     const rows = scanResult.value ?? [];
@@ -2164,7 +2164,7 @@ function tagOf(h: RiskHit): RiskLevel | null | undefined {
 /** 实时监控扫库：系统定时或人工刷新触发，只读不写 */
 function runRealtimeScan(triggerBy = '系统') {
   const t0 = Date.now();
-  const startedAt = nowStamp(true);
+  const startedAt = nowStamp();
   // 🔴 与手动筛查的 `criteriaSummaryOf` **落在扫描记录的同一列**（见 `criteriaText` 字段注释），
   // 故同一个意思必须同一个词：班组写「全部班组」、词写「全部启用词」，别一列里两种说法。
   const criteriaText = '全部班组 · 全部启用词 · 实时增量扫描';
@@ -5896,7 +5896,7 @@ function toggleWordEnabled(w: RiskWord) {
                   扫库记录起止）四处全格式对不上。格式真源取页头那枚 `.monitor-clock`，不自创写法。
                   ⚠️ 列宽已随之由 60 重量到 120，见表头那一段。
                 -->
-                <td class="hit-when">{{ h.when.slice(0, 16) }}</td>
+                <td class="hit-when">{{ h.when }}</td>
                 <td class="hit-act-cell">
                   <button
                     v-if="canRiskTag"

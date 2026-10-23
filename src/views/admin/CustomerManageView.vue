@@ -44,8 +44,8 @@ const histTickets = [
   { no: 'TK-86044', type: '投诉工单', status: '已结案', date: '2026-04-12' },
 ];
 const contacts = [
-  { time: '2026-06-18 09:12', channel: '电话', summary: '反馈产品故障，已建投诉单' },
-  { time: '2026-05-30 14:33', channel: '在线', summary: '咨询保修政策' },
+  { time: '2026-06-18 09:12:30', channel: '电话', summary: '反馈产品故障，已建投诉单' },
+  { time: '2026-05-30 14:33:12', channel: '在线', summary: '咨询保修政策' },
 ];
 function openDetail(c: Customer) { current.value = c; drawerOpen.value = true; }
 

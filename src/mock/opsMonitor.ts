@@ -934,15 +934,15 @@ export interface OpsAlertRecord {
 
 export const OPS_ALERTS: OpsAlertRecord[] = [
   {
-    id: 'al-1', when: '2026-08-04 14:02', scope: '全中心',
+    id: 'al-1', when: '2026-08-04 14:02:06', scope: '全中心',
     value: 308, threshold: 300,
     receivers: ['张组长', '李组长', '值班经理·郑'],
   },
   {
-    id: 'al-2', when: '2026-08-04 10:35', scope: '硬件缺陷组',
+    id: 'al-2', when: '2026-08-04 10:35:04', scope: '硬件缺陷组',
     value: 83, threshold: 80,
     receivers: ['陈组长'],
-    ackBy: '陈组长', ackAt: '2026-08-04 10:41',
+    ackBy: '陈组长', ackAt: '2026-08-04 10:41:35',
   },
 ];
 

@@ -130,7 +130,7 @@ export const useDerivedTicketStore = defineStore('derivedTickets', () => {
   function nowStamp() {
     const d = new Date();
     const p = (n: number) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
   }
 
   /** 解析口径：只答运行时这批。静态那批仍由 `TICKETS` 负责，两处不互相覆盖 */

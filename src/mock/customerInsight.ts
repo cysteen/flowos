@@ -264,7 +264,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
     {
       id: 'h-13800138000-1', no: 'IFLYTS-20260412-00002', title: '智能音箱连接家庭 WiFi 频繁掉线',
       type: '投诉', priority: 'P1', statusText: '已结案', tone: 'closed', channel: '电话',
-      product: '智能音箱 X1', createdAt: '2026-04-12 10:22', closedAt: '2026-04-15 17:40',
+      product: '智能音箱 X1', createdAt: '2026-04-12 10:22:27', closedAt: '2026-04-15 17:40:41',
       assignee: '林坐席', source: '客服', satisfaction: 3,
       conclusion: '指导重置网络模块后恢复，客户对处理时长不满，已致歉并赠送 3 个月会员。',
       isComplaint: true, isProcessing: false, isClosed: true,
@@ -272,7 +272,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
     {
       id: 'h-13800138000-2', no: 'IFLYZX-20260228-00001', title: '咨询音箱固件升级方式',
       type: '咨询', priority: 'P3', statusText: '已结案', tone: 'closed', channel: '在线客服',
-      product: '智能音箱 X1', createdAt: '2026-02-28 14:05', closedAt: '2026-02-28 14:31',
+      product: '智能音箱 X1', createdAt: '2026-02-28 14:05:07', closedAt: '2026-02-28 14:31:08',
       assignee: '陈坐席', source: '客服', satisfaction: 5,
       conclusion: '已引导至 APP 内一键升级，客户当场确认解决。',
       isComplaint: false, isProcessing: false, isClosed: true,
@@ -280,7 +280,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
     {
       id: 'h-13800138000-3', no: 'AS-20250922-11208', title: '智能门锁指纹模块返修',
       type: '维修', priority: 'P2', statusText: '已完成', tone: 'closed', channel: '售后',
-      product: '智能门锁 L1', createdAt: '2025-09-22 09:00', closedAt: '2025-10-08 16:00',
+      product: '智能门锁 L1', createdAt: '2025-09-22 09:00:22', closedAt: '2025-10-08 16:00:20',
       assignee: '售后 · 华东仓', source: '售后',
       conclusion: '保内更换指纹模块，寄回客户并回访确认正常。',
       isComplaint: false, isProcessing: false, isClosed: true,
@@ -290,7 +290,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
     {
       id: 'h-13788889999-1', no: 'IFLYZX-20260520-00002', title: '开放平台批量导入接口报错 500',
       type: '咨询', priority: 'P1', statusText: '已结案', tone: 'closed', channel: '邮件',
-      product: '开放平台', createdAt: '2026-05-20 11:10', closedAt: '2026-05-21 10:05',
+      product: '开放平台', createdAt: '2026-05-20 11:10:15', closedAt: '2026-05-21 10:05:27',
       assignee: '技术支持 · 周工', source: '客服', satisfaction: 5,
       conclusion: '定位为客户侧字段编码问题，提供修正样例后自测通过。',
       isComplaint: false, isProcessing: false, isClosed: true,
@@ -298,7 +298,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
     {
       id: 'h-13788889999-2', no: 'IFLYSJ-20260118-00001', title: '续约方案与并发配额咨询',
       type: '商机', priority: 'P2', statusText: '已结案', tone: 'closed', channel: '电话',
-      product: '开放平台', createdAt: '2026-01-18 15:30', closedAt: '2026-01-19 09:50',
+      product: '开放平台', createdAt: '2026-01-18 15:30:34', closedAt: '2026-01-19 09:50:20',
       assignee: '王坐席', source: '客服', satisfaction: 5,
       conclusion: '转销售跟进，已签 2026 年度续约（含并发扩容至 200 QPS）。',
       isComplaint: false, isProcessing: false, isClosed: true,
@@ -306,7 +306,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
     {
       id: 'h-13788889999-3', no: 'IFLYZX-20251106-00001', title: '账号权限变更申请',
       type: '咨询', priority: 'P3', statusText: '已结案', tone: 'closed', channel: '小程序',
-      product: '企业版', createdAt: '2025-11-06 09:12', closedAt: '2025-11-06 11:20',
+      product: '企业版', createdAt: '2025-11-06 09:12:28', closedAt: '2025-11-06 11:20:02',
       assignee: '林坐席', source: '客服', satisfaction: 4,
       conclusion: '已按授权函为 3 名管理员开通后台权限。',
       isComplaint: false, isProcessing: false, isClosed: true,
@@ -316,7 +316,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
     {
       id: 'h-13700003333-1', no: 'IFLYTS-20260605-00002', title: '智能音箱送修后功能未恢复',
       type: '投诉', priority: 'P1', statusText: '已结案', tone: 'closed', channel: '电话',
-      product: '智能音箱 X1', createdAt: '2026-06-05 10:40', closedAt: '2026-06-21 18:10',
+      product: '智能音箱 X1', createdAt: '2026-06-05 10:40:29', closedAt: '2026-06-21 18:10:14',
       assignee: '陈坐席', source: '客服', satisfaction: 2, breached: true,
       conclusion: '二次返修后功能恢复，处理周期 16 天超出承诺，客户明确表示不满。',
       isComplaint: true, isProcessing: false, isClosed: true,
@@ -324,7 +324,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
     {
       id: 'h-13700003333-2', no: 'AS-20260520-13390', title: '智能音箱主板返修（保外）',
       type: '维修', priority: 'P2', statusText: '已完成', tone: 'closed', channel: '售后',
-      product: '智能音箱 X1', createdAt: '2026-05-20 14:00', closedAt: '2026-06-04 15:30',
+      product: '智能音箱 X1', createdAt: '2026-05-20 14:00:51', closedAt: '2026-06-04 15:30:04',
       assignee: '售后 · 西南仓', source: '售后',
       conclusion: '保外付费更换主板，收费 268 元，返机后客户反馈仍有异常。',
       isComplaint: false, isProcessing: false, isClosed: true,
@@ -332,7 +332,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
     {
       id: 'h-13700003333-3', no: 'IFLYZX-20260419-00001', title: '音箱无法唤醒',
       type: '咨询', priority: 'P2', statusText: '已结案', tone: 'closed', channel: '在线客服',
-      product: '智能音箱 X1', createdAt: '2026-04-19 20:15', closedAt: '2026-04-20 09:40',
+      product: '智能音箱 X1', createdAt: '2026-04-19 20:15:53', closedAt: '2026-04-20 09:40:16',
       assignee: '王坐席', source: '客服', satisfaction: 4,
       conclusion: '远程指导恢复出厂设置后可唤醒，建议观察一周。',
       isComplaint: false, isProcessing: false, isClosed: true,
@@ -342,7 +342,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
     {
       id: 'h-13912345678-1', no: 'IFLYZX-20260401-00001', title: '扫地机器人回充失败',
       type: '咨询', priority: 'P2', statusText: '已结案', tone: 'closed', channel: '在线客服',
-      product: '扫地机器人 R2', createdAt: '2026-04-01 19:22', closedAt: '2026-04-02 10:15',
+      product: '扫地机器人 R2', createdAt: '2026-04-01 19:22:50', closedAt: '2026-04-02 10:15:32',
       assignee: '林坐席', source: '客服', satisfaction: 5,
       conclusion: '指导清洁充电极片并调整基站位置后恢复正常。',
       isComplaint: false, isProcessing: false, isClosed: true,
@@ -350,7 +350,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
     {
       id: 'h-13912345678-2', no: 'IFLYTS-20240712-00001', title: '空气净化器噪音偏大',
       type: '投诉', priority: 'P2', statusText: '已结案', tone: 'closed', channel: '电话',
-      product: '空气净化器 P3', createdAt: '2024-07-12 08:50', closedAt: '2024-07-16 16:20',
+      product: '空气净化器 P3', createdAt: '2024-07-12 08:50:48', closedAt: '2024-07-16 16:20:02',
       assignee: '陈坐席', source: '客服', satisfaction: 4,
       conclusion: '保内换机处理，客户接受。',
       isComplaint: true, isProcessing: false, isClosed: true,
@@ -360,7 +360,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
     {
       id: 'h-15800002222-1', no: 'IFLYZX-20260603-00002', title: '耳机单边无声',
       type: '咨询', priority: 'P2', statusText: '已结案', tone: 'closed', channel: 'APP',
-      product: '蓝牙耳机 Air', createdAt: '2026-06-03 21:04', closedAt: '2026-06-04 11:30',
+      product: '蓝牙耳机 Air', createdAt: '2026-06-03 21:04:19', closedAt: '2026-06-04 11:30:44',
       assignee: '王坐席', source: '客服', satisfaction: 3,
       conclusion: '判断为充电仓触点接触不良，已寄出新充电仓。',
       isComplaint: false, isProcessing: false, isClosed: true,
@@ -370,7 +370,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
     {
       id: 'h-13500001234-1', no: 'IFLYZX-20260626-00001', title: '翻译机离线包下载中断',
       type: '咨询', priority: 'P2', statusText: '已结案', tone: 'closed', channel: '在线客服',
-      product: '讯飞翻译机 T10', createdAt: '2026-06-26 10:11', closedAt: '2026-06-26 15:22',
+      product: '讯飞翻译机 T10', createdAt: '2026-06-26 10:11:52', closedAt: '2026-06-26 15:22:07',
       assignee: '林坐席', source: '客服', satisfaction: 5,
       conclusion: '更换下载节点后完成离线包安装。',
       isComplaint: false, isProcessing: false, isClosed: true,
@@ -378,7 +378,7 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
     {
       id: 'h-13500001234-2', no: 'IFLYZX-20250308-00001', title: '批量采购发票与保修凭证',
       type: '咨询', priority: 'P3', statusText: '已结案', tone: 'closed', channel: '邮件',
-      product: '讯飞翻译机 T10', createdAt: '2025-03-08 09:30', closedAt: '2025-03-09 14:00',
+      product: '讯飞翻译机 T10', createdAt: '2025-03-08 09:30:19', closedAt: '2025-03-09 14:00:21',
       assignee: '陈坐席', source: '客服', satisfaction: 5,
       conclusion: '已补开增值税专用发票并寄送保修凭证。',
       isComplaint: false, isProcessing: false, isClosed: true,
@@ -390,30 +390,30 @@ const ARCHIVE: Record<string, ArchiveTicket[]> = {
 
 const CONTACTS: Record<string, CustomerContactRow[]> = {
   '13800138000': [
-    { id: 'ct-1', kind: 'call', when: '2026-06-10 14:12', operator: '王坐席', meta: '通话 6 分 12 秒', summary: '客户情绪激动，强调本人为媒体从业者，要求当日给出明确答复，已承诺 24 小时内回电。', ticketNo: 'IFLYTS-20260610-00002' },
-    { id: 'ct-2', kind: 'im', when: '2026-06-10 09:30', operator: '一线 · 李坐席', meta: '在线会话 18 条', summary: '首次反馈播放跳曲问题，已采集日志并升级二线。', ticketNo: 'IFLYTS-20260610-00002' },
-    { id: 'ct-3', kind: 'call', when: '2026-04-15 17:20', operator: '林坐席', meta: '通话 4 分 40 秒', summary: '回访掉线问题处理结果，客户表示可用但对时长不满。', ticketNo: 'IFLYTS-20260412-00002' },
-    { id: 'ct-4', kind: 'sms', when: '2026-04-12 10:30', operator: '系统', meta: '受理通知', summary: '您反馈的问题已受理，工单号 IFLYTS-20260412-00002。', ticketNo: 'IFLYTS-20260412-00002' },
+    { id: 'ct-1', kind: 'call', when: '2026-06-10 14:12:44', operator: '王坐席', meta: '通话 6 分 12 秒', summary: '客户情绪激动，强调本人为媒体从业者，要求当日给出明确答复，已承诺 24 小时内回电。', ticketNo: 'IFLYTS-20260610-00002' },
+    { id: 'ct-2', kind: 'im', when: '2026-06-10 09:30:14', operator: '一线 · 李坐席', meta: '在线会话 18 条', summary: '首次反馈播放跳曲问题，已采集日志并升级二线。', ticketNo: 'IFLYTS-20260610-00002' },
+    { id: 'ct-3', kind: 'call', when: '2026-04-15 17:20:43', operator: '林坐席', meta: '通话 4 分 40 秒', summary: '回访掉线问题处理结果，客户表示可用但对时长不满。', ticketNo: 'IFLYTS-20260412-00002' },
+    { id: 'ct-4', kind: 'sms', when: '2026-04-12 10:30:56', operator: '系统', meta: '受理通知', summary: '您反馈的问题已受理，工单号 IFLYTS-20260412-00002。', ticketNo: 'IFLYTS-20260412-00002' },
   ],
   '13700003333': [
-    { id: 'ct-11', kind: 'call', when: '2026-07-11 14:05', operator: '王坐席', meta: '通话 11 分 03 秒', summary: '客户告知已向 12315 提交投诉，要求赔偿维修期间损失，本次通话未达成一致。', ticketNo: 'IFLYTS-20260711-00001' },
-    { id: 'ct-12', kind: 'call', when: '2026-06-21 16:40', operator: '陈坐席', meta: '通话 8 分 27 秒', summary: '告知二次返修完成，客户质疑同一故障重复发生，要求书面说明。', ticketNo: 'IFLYTS-20260605-00002' },
-    { id: 'ct-13', kind: 'im', when: '2026-06-05 10:45', operator: '一线 · 李坐席', meta: '在线会话 26 条', summary: '反馈送修后功能未恢复，已登记并转技术支持。', ticketNo: 'IFLYTS-20260605-00002' },
+    { id: 'ct-11', kind: 'call', when: '2026-07-11 14:05:02', operator: '王坐席', meta: '通话 11 分 03 秒', summary: '客户告知已向 12315 提交投诉，要求赔偿维修期间损失，本次通话未达成一致。', ticketNo: 'IFLYTS-20260711-00001' },
+    { id: 'ct-12', kind: 'call', when: '2026-06-21 16:40:37', operator: '陈坐席', meta: '通话 8 分 27 秒', summary: '告知二次返修完成，客户质疑同一故障重复发生，要求书面说明。', ticketNo: 'IFLYTS-20260605-00002' },
+    { id: 'ct-13', kind: 'im', when: '2026-06-05 10:45:34', operator: '一线 · 李坐席', meta: '在线会话 26 条', summary: '反馈送修后功能未恢复，已登记并转技术支持。', ticketNo: 'IFLYTS-20260605-00002' },
   ],
   '13788889999': [
-    { id: 'ct-21', kind: 'email', when: '2026-06-10 13:00', operator: '王坐席', meta: '发送人 王坐席', summary: '就 429 限流提供临时配额提升方案与重试指引，等待客户技术侧确认。', ticketNo: 'IFLYSJ-20260610-00006' },
-    { id: 'ct-22', kind: 'call', when: '2026-01-19 09:30', operator: '王坐席', meta: '通话 15 分 08 秒', summary: '沟通续约方案，客户确认扩容需求并同意转销售。', ticketNo: 'IFLYSJ-20260118-00001' },
+    { id: 'ct-21', kind: 'email', when: '2026-06-10 13:00:24', operator: '王坐席', meta: '发送人 王坐席', summary: '就 429 限流提供临时配额提升方案与重试指引，等待客户技术侧确认。', ticketNo: 'IFLYSJ-20260610-00006' },
+    { id: 'ct-22', kind: 'call', when: '2026-01-19 09:30:14', operator: '王坐席', meta: '通话 15 分 08 秒', summary: '沟通续约方案，客户确认扩容需求并同意转销售。', ticketNo: 'IFLYSJ-20260118-00001' },
   ],
   '13912345678': [
-    { id: 'ct-31', kind: 'call', when: '2026-06-10 16:00', operator: '王坐席', meta: '通话 3 分 51 秒', summary: '客户催问上门时间，已说明配件在途，承诺次日 12 点前反馈。', ticketNo: 'IFLYZX-20260610-00004' },
-    { id: 'ct-32', kind: 'call', when: '2026-04-02 10:05', operator: '林坐席', meta: '通话 5 分 20 秒', summary: '远程指导回充问题，客户当场验证成功。', ticketNo: 'IFLYZX-20260401-00001' },
+    { id: 'ct-31', kind: 'call', when: '2026-06-10 16:00:49', operator: '王坐席', meta: '通话 3 分 51 秒', summary: '客户催问上门时间，已说明配件在途，承诺次日 12 点前反馈。', ticketNo: 'IFLYZX-20260610-00004' },
+    { id: 'ct-32', kind: 'call', when: '2026-04-02 10:05:53', operator: '林坐席', meta: '通话 5 分 20 秒', summary: '远程指导回充问题，客户当场验证成功。', ticketNo: 'IFLYZX-20260401-00001' },
   ],
   '15800002222': [
-    { id: 'ct-41', kind: 'im', when: '2026-06-10 11:35', operator: '王坐席', meta: '在线会话 14 条', summary: '客户提出退货并提及会在社交平台反馈体验，已按自媒体标签上报班组长。', ticketNo: 'IFLYTS-20260610-00007' },
+    { id: 'ct-41', kind: 'im', when: '2026-06-10 11:35:46', operator: '王坐席', meta: '在线会话 14 条', summary: '客户提出退货并提及会在社交平台反馈体验，已按自媒体标签上报班组长。', ticketNo: 'IFLYTS-20260610-00007' },
   ],
   '13500001234': [
-    { id: 'ct-51', kind: 'im', when: '2026-07-13 09:20', operator: '一线 · 李坐席', meta: '在线会话 21 条', summary: '反馈离线长句漏译，已采集样本音频与日志，升级二线。', ticketNo: 'IFLYZX-20260713-00001' },
-    { id: 'ct-52', kind: 'call', when: '2026-06-26 15:10', operator: '林坐席', meta: '通话 4 分 05 秒', summary: '确认离线包安装完成，客户确认可用。', ticketNo: 'IFLYZX-20260626-00001' },
+    { id: 'ct-51', kind: 'im', when: '2026-07-13 09:20:11', operator: '一线 · 李坐席', meta: '在线会话 21 条', summary: '反馈离线长句漏译，已采集样本音频与日志，升级二线。', ticketNo: 'IFLYZX-20260713-00001' },
+    { id: 'ct-52', kind: 'call', when: '2026-06-26 15:10:58', operator: '林坐席', meta: '通话 4 分 05 秒', summary: '确认离线包安装完成，客户确认可用。', ticketNo: 'IFLYZX-20260626-00001' },
   ],
 };
 
@@ -439,28 +439,28 @@ const AFTERSALES: Record<string, CustomerAftersaleRow[]> = {
 
 const SURVEYS: Record<string, CustomerSurveyRow[]> = {
   '13800138000': [
-    { ticketNo: 'IFLYTS-20260412-00002', sentAt: '2026-04-15 18:00', evaluated: true, score: 3, comment: '问题解决了，但来回折腾了三天。' },
-    { ticketNo: 'IFLYZX-20260228-00001', sentAt: '2026-02-28 15:00', evaluated: true, score: 5, comment: '响应很快。' },
+    { ticketNo: 'IFLYTS-20260412-00002', sentAt: '2026-04-15 18:00:46', evaluated: true, score: 3, comment: '问题解决了，但来回折腾了三天。' },
+    { ticketNo: 'IFLYZX-20260228-00001', sentAt: '2026-02-28 15:00:53', evaluated: true, score: 5, comment: '响应很快。' },
   ],
   '13700003333': [
-    { ticketNo: 'IFLYTS-20260605-00002', sentAt: '2026-06-21 18:30', evaluated: true, score: 2, comment: '同一个问题修了两次还没好。' },
-    { ticketNo: 'IFLYZX-20260419-00001', sentAt: '2026-04-20 10:00', evaluated: true, score: 4 },
-    { ticketNo: 'IFLYTS-20260711-00001', sentAt: '2026-07-11 15:00', evaluated: false },
+    { ticketNo: 'IFLYTS-20260605-00002', sentAt: '2026-06-21 18:30:52', evaluated: true, score: 2, comment: '同一个问题修了两次还没好。' },
+    { ticketNo: 'IFLYZX-20260419-00001', sentAt: '2026-04-20 10:00:06', evaluated: true, score: 4 },
+    { ticketNo: 'IFLYTS-20260711-00001', sentAt: '2026-07-11 15:00:08', evaluated: false },
   ],
   '13788889999': [
-    { ticketNo: 'IFLYZX-20260520-00002', sentAt: '2026-05-21 10:30', evaluated: true, score: 5, comment: '技术支持很专业。' },
-    { ticketNo: 'IFLYSJ-20260118-00001', sentAt: '2026-01-19 10:20', evaluated: true, score: 5 },
+    { ticketNo: 'IFLYZX-20260520-00002', sentAt: '2026-05-21 10:30:35', evaluated: true, score: 5, comment: '技术支持很专业。' },
+    { ticketNo: 'IFLYSJ-20260118-00001', sentAt: '2026-01-19 10:20:17', evaluated: true, score: 5 },
   ],
   '13912345678': [
-    { ticketNo: 'IFLYZX-20260401-00001', sentAt: '2026-04-02 11:00', evaluated: true, score: 5 },
-    { ticketNo: 'IFLYTS-20240712-00001', sentAt: '2024-07-16 17:00', evaluated: true, score: 4 },
+    { ticketNo: 'IFLYZX-20260401-00001', sentAt: '2026-04-02 11:00:43', evaluated: true, score: 5 },
+    { ticketNo: 'IFLYTS-20240712-00001', sentAt: '2024-07-16 17:00:49', evaluated: true, score: 4 },
   ],
   '15800002222': [
-    { ticketNo: 'IFLYZX-20260603-00002', sentAt: '2026-06-04 12:00', evaluated: true, score: 3, comment: '寄新充电仓有点慢。' },
+    { ticketNo: 'IFLYZX-20260603-00002', sentAt: '2026-06-04 12:00:20', evaluated: true, score: 3, comment: '寄新充电仓有点慢。' },
   ],
   '13500001234': [
-    { ticketNo: 'IFLYZX-20260626-00001', sentAt: '2026-06-26 16:00', evaluated: true, score: 5 },
-    { ticketNo: 'IFLYZX-20250308-00001', sentAt: '2025-03-09 15:00', evaluated: true, score: 5 },
+    { ticketNo: 'IFLYZX-20260626-00001', sentAt: '2026-06-26 16:00:32', evaluated: true, score: 5 },
+    { ticketNo: 'IFLYZX-20250308-00001', sentAt: '2025-03-09 15:00:32', evaluated: true, score: 5 },
   ],
 };
 

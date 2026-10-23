@@ -26,9 +26,9 @@ const smsTpls = ref<SmsTpl[]>([
 ]);
 interface SmsLog { time: string; phone: string; tpl: string; result: string; channel?: string; content?: string; failReason?: string; }
 const smsLogs = ref<SmsLog[]>([
-  { time: '2026-06-19 10:21', phone: '138****2046', tpl: '工单创建通知', result: '成功', channel: '阿里云短信', content: '【讯飞客服】您的工单WO-001已创建，我们将尽快处理' },
-  { time: '2026-06-19 10:15', phone: '139****8821', tpl: '工单结案通知', result: '成功', channel: '阿里云短信', content: '【讯飞客服】您的工单WO-002已处理完成，感谢您的耐心' },
-  { time: '2026-06-19 09:40', phone: '137****5510', tpl: '超时提醒', result: '失败', channel: '腾讯云短信', content: '【讯飞售后】工单WO-003即将超时，请及时处理', failReason: '号码停机' },
+  { time: '2026-06-19 10:21:41', phone: '138****2046', tpl: '工单创建通知', result: '成功', channel: '阿里云短信', content: '【讯飞客服】您的工单WO-001已创建，我们将尽快处理' },
+  { time: '2026-06-19 10:15:34', phone: '139****8821', tpl: '工单结案通知', result: '成功', channel: '阿里云短信', content: '【讯飞客服】您的工单WO-002已处理完成，感谢您的耐心' },
+  { time: '2026-06-19 09:40:34', phone: '137****5510', tpl: '超时提醒', result: '失败', channel: '腾讯云短信', content: '【讯飞售后】工单WO-003即将超时，请及时处理', failReason: '号码停机' },
 ]);
 
 /* 邮件 */
@@ -43,8 +43,8 @@ const mailTpls = ref<MailTpl[]>([
   { id: 2, code: 'MAIL_SURVEY', name: '满意度调研', subject: '邀您评价本次服务', status: '已审核' },
 ]);
 const mailLogs = ref([
-  { time: '2026-06-19 09:30', to: 'zhang@qq.com', tpl: '工单处理摘要', result: '成功' },
-  { time: '2026-06-18 16:20', to: 'li@163.com', tpl: '满意度调研', result: '成功' },
+  { time: '2026-06-19 09:30:53', to: 'zhang@qq.com', tpl: '工单处理摘要', result: '成功' },
+  { time: '2026-06-18 16:20:07', to: 'li@163.com', tpl: '满意度调研', result: '成功' },
 ]);
 
 /* 站内信 */
@@ -55,8 +55,8 @@ const inTpls = ref<InTpl[]>([
   { id: 3, code: 'IN_APPROVAL', name: '审批提醒', content: '您有审批任务待处理', status: '已审核' },
 ]);
 const inLogs = ref([
-  { time: '2026-06-19 10:22', to: '李强', tpl: '工单指派', read: true },
-  { time: '2026-06-19 10:05', to: '王芳', tpl: '审批提醒', read: false },
+  { time: '2026-06-19 10:22:44', to: '李强', tpl: '工单指派', read: true },
+  { time: '2026-06-19 10:05:03', to: '王芳', tpl: '审批提醒', read: false },
 ]);
 
 /* IM 即时消息（企业 IM 机器人/应用推送：i讯飞 / 企业微信 / 飞书） */
@@ -74,9 +74,9 @@ const imTpls = ref<ImTpl[]>([
 ]);
 interface ImLog { time: string; to: string; tpl: string; result: string; app?: string; content?: string; failReason?: string; }
 const imLogs = ref<ImLog[]>([
-  { time: '2026-06-19 10:24', to: '李强（二线处理组）', tpl: '工单派发提醒', result: '成功', app: 'i讯飞机器人', content: '【工单派发】WO-001 已分派给你，请及时处理' },
-  { time: '2026-06-19 10:02', to: '客服值班群', tpl: 'SLA 临期预警', result: '成功', app: '企业微信-客服群', content: '【SLA 预警】工单WO-002 剩余 15 分钟，即将超时' },
-  { time: '2026-06-19 09:35', to: '王芳（技术支持）', tpl: '升级通知', result: '失败', app: '飞书-二线协同', content: '【升级】工单WO-003 已升级至 二线技术支持组，请关注', failReason: '机器人未启用' },
+  { time: '2026-06-19 10:24:46', to: '李强（二线处理组）', tpl: '工单派发提醒', result: '成功', app: 'i讯飞机器人', content: '【工单派发】WO-001 已分派给你，请及时处理' },
+  { time: '2026-06-19 10:02:06', to: '客服值班群', tpl: 'SLA 临期预警', result: '成功', app: '企业微信-客服群', content: '【SLA 预警】工单WO-002 剩余 15 分钟，即将超时' },
+  { time: '2026-06-19 09:35:58', to: '王芳（技术支持）', tpl: '升级通知', result: '失败', app: '飞书-二线协同', content: '【升级】工单WO-003 已升级至 二线技术支持组，请关注', failReason: '机器人未启用' },
 ]);
 
 /* 公告 */

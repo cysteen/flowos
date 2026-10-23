@@ -91,7 +91,7 @@ function saveTenant() {
       admin: form.adminEmail, adminPhone: form.adminPhone, adminLimit: limit, adminCount: 1, plan: form.plan,
       createdAt: '2026-06-21', color: colors[tenants.value.length % colors.length],
       quota: { orderLimit: form.orderLimit, orderUsed: 0, orderPct: 0, outboundLimit: form.outboundLimit, outboundUsed: 0, outboundPct: 0, storageLimit: form.storageLimit, storageUsed: 0, storagePct: 0 },
-      logs: [{ time: '2026-06-21 12:00', action: '创建租户', user: 'admin' }],
+      logs: [{ time: '2026-06-21 12:00:25', action: '创建租户', user: 'admin' }],
     });
     message.success('租户创建成功');
   }

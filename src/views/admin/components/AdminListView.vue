@@ -95,7 +95,7 @@ function onSubmit(values: Record<string, unknown>) {
     Object.assign(editing.value, values);
     message.success('已保存');
   } else {
-    rows.value = [{ ...values, [props.config.rowKey]: values[props.config.rowKey] ?? `NEW-${rows.value.length + 1}`, status: values.status || '启用', createdAt: '2026-06-17 12:00' }, ...rows.value];
+    rows.value = [{ ...values, [props.config.rowKey]: values[props.config.rowKey] ?? `NEW-${rows.value.length + 1}`, status: values.status || '启用', createdAt: '2026-06-17 12:00:20' }, ...rows.value];
     message.success('已创建');
   }
 }

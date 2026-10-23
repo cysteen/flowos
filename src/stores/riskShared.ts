@@ -538,7 +538,7 @@ export function useRiskClock(): RiskClock {
 export function agoStamp(minutesAgo: number): string {
   const d = new Date(Date.now() - minutesAgo * 60000);
   const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
 /** 今天（自然日 00:00 起）。字符串前缀比对，避免再造一次时区换算 */
@@ -595,23 +595,6 @@ export function todayStamp(minutesAgo: number, span = TODAY_SPAN_MIN): string {
   const factor = Math.min(1, elapsed / span);
   // 兜底夹一道：`minutesAgo` 万一超过 span，等比之后仍可能越过零点
   return agoStamp(Math.min(minutesAgo * factor, elapsed));
-}
-
-/**
- * `todayStamp()` 的**带秒**版本 —— 工单行的建单 / 更新时刻要到秒（1023 拍板，列表与页头统一
- * 「年-月-日 时:分:秒」）。
- *
- * 秒数不是编的：底下的 `Date.now()` 本来就带秒，只是 `agoStamp()` 格式化时截掉了。
- * 风险模块那 80 多处仍走到分的 `todayStamp` / `agoStamp`，不随本条改动 —— 本次拍板的范围是工单列表。
- */
-export function todayStampSec(minutesAgo: number, span = TODAY_SPAN_MIN): string {
-  const midnight = new Date();
-  midnight.setHours(0, 0, 0, 0);
-  const elapsed = (Date.now() - midnight.getTime()) / 60000;
-  const factor = Math.min(1, elapsed / span);
-  const d = new Date(Date.now() - Math.min(minutesAgo * factor, elapsed) * 60000);
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
 /* ---------------- 通知收件人 / 文案的公共解析（O22 / O23） ---------------- */

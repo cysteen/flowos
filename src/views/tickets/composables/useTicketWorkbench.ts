@@ -14,10 +14,10 @@ import { takeOverReturnedTicket } from '@/views/tickets/composables/aftersaleEve
 import { claimTicketByType } from '@/views/tickets/composables/poolClaim';
 
 /** 履历时刻 YYYY-MM-DD HH:mm */
-function nowMinuteStamp(): string {
+function nowStamp(): string {
   const d = new Date();
   const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 import { useTicketDraftStore } from '@/stores/ticketDrafts';
 import { useSavedFilters } from '@/views/tickets/composables/useSavedFilters';
@@ -507,7 +507,7 @@ export function useTicketWorkbench() {
     const me = isFlashTicket(t) || isXiaozhiTicket(t) ? flashHandler.value : legacyHandlerName(user.roleKey, user.name);
     const from = poolPendingOwnerOf(t);
     if (isCurrentHandler(from, user.roleKey, user.name)) return { ok: true, from };
-    const at = nowMinuteStamp();
+    const at = nowStamp();
     if (from === null) {
       if (isFlashTicket(t)) return { ok: claimFlashTicket(id).ok, from };
       const taken = takeOverReturnedTicket(t, {
@@ -574,7 +574,7 @@ export function useTicketWorkbench() {
       }
       const taken = opts.scope === 'cross-team' ? null : takeOverReturnedTicket(t, {
         assignee: opts.targetName, how: '指派', operator: user.name || WORKBENCH_HANDLER,
-        operatorRole: mapUserRole(user.roleKey), at: nowMinuteStamp(),
+        operatorRole: mapUserRole(user.roleKey), at: nowStamp(),
       });
       if (taken) {
         // 回流单被指派：直落「处理中」、首响不重计（1025 D10）

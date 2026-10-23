@@ -1,7 +1,7 @@
 import type { Ticket } from '@/views/tickets/types/ticket';
 import { resolveTicketGroupNames } from '@/views/tickets/types/ticket';
 import { mapChannelToSource } from '@/views/tickets/types/createTicket';
-import { todayStampSec } from '@/stores/riskShared';
+import { todayStamp } from '@/stores/riskShared';
 import { FLASH_SEEDS } from './flash/seedTickets';
 import { XIAOZHI_SEEDS } from './xiaozhi/seedTickets';
 import { REFUND_SEEDS } from './refund/seedTickets';
@@ -1238,7 +1238,7 @@ const BASE_TICKETS: Ticket[] = [
   // （见上方 ops-* 的说明），只在查询中心与运营监控里可查、可点开。补数据不该顺带把
   // 别的页面的条数改掉。
   //
-  // ---- 当日建单三张：rk-3、rk-8、rk-9 的 `createdAt` 走 `todayStampSec`（到秒，1023 口径）----
+  // ---- 当日建单三张：rk-3、rk-8、rk-9 的 `createdAt` 走 `todayStamp`（到秒，1023 口径）----
   // 风险监控页头「工单存量」两格下方的「今日新增 N」按 `createdAt` 是否落在自然日今天来数
   // （`RiskMonitorView.ticketStockOf`）。整份工单库的建单时刻都写死在 6~8 月，那两个数于是恒为 0：
   // 一个永远是 0 的指标，读的人分不清是"今天真没进单"还是"这一格根本不走数"。
@@ -1295,7 +1295,7 @@ const BASE_TICKETS: Ticket[] = [
     latestHandling: '已通知平台侧值班，等待网关侧回滚确认。',
     // 当日建单之一（见上方 rk-1…rk-6 段首「当日建单三张」说明）：非投诉 P0 的那一张。
     // 尚未首响、距首响超时 35 分钟，与 75 分钟前建单对得上。
-    createdAt: todayStampSec(75), updatedAt: todayStampSec(60),
+    createdAt: todayStamp(75), updatedAt: todayStamp(60),
     responded: false,
   },
   {
@@ -1381,7 +1381,7 @@ const BASE_TICKETS: Ticket[] = [
     problemDesc: '换新机器录音仍有底噪，客户不再接受换货，要求全额退货。',
     latestHandling: '暂无处理记录。',
     // 当日建单之二：投诉 P1、刚进来还没人碰，建单与更新同一刻。
-    createdAt: todayStampSec(100), updatedAt: todayStampSec(100),
+    createdAt: todayStamp(100), updatedAt: todayStamp(100),
     responded: false,
   },
   {
@@ -1395,7 +1395,7 @@ const BASE_TICKETS: Ticket[] = [
     problemDesc: '三次预约上门均爽约，客户为此三次请假，要求赔偿误工费。',
     latestHandling: '已致歉并改约本周六上午，赔偿口径待班组长确认。',
     // 当日建单之三：投诉 P1、已首响且解决时限仍充足（剩 01:36），与 3 小时前建单对得上。
-    createdAt: todayStampSec(180), updatedAt: todayStampSec(45),
+    createdAt: todayStamp(180), updatedAt: todayStamp(45),
     responded: true,
   },
 ];
@@ -1716,8 +1716,8 @@ function defaultListExtras(t: Ticket): Partial<Ticket> {
 /** 从单号 {类型前缀}-YYYYMMDD-序号 推断建单时间（mock 缺字段时补全） */
 function inferCreatedAtFromNo(no: string): string {
   const m = no.match(/^IFLY[A-Z]{2}-(\d{4})(\d{2})(\d{2})-/i);
-  if (!m) return '2026-06-10 09:00';
-  return `${m[1]}-${m[2]}-${m[3]} 09:00`;
+  if (!m) return '2026-06-10 09:00:00';
+  return `${m[1]}-${m[2]}-${m[3]} 09:00:00`;
 }
 
 function ensureTicketTimestamps(t: Ticket): Pick<Ticket, 'createdAt' | 'updatedAt'> {

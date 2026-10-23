@@ -932,16 +932,16 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     return makeTicketNo(form.ticketType as CreateFormTicketType, n, new Date());
   }
 
-  function nowMinute(): string {
+  function nowStamp(): string {
     const d = new Date();
     const p = (n: number) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
   }
 
   function buildTicket(): Ticket {
     const name = form.customer?.name ?? '未知客户';
     const no = genNo();
-    const createdAt = nowMinute();
+    const createdAt = nowStamp();
     const user = useUserStore();
     // 接入渠道与工单来源照所选来源（与刷机单 `flashBase` 同一映射），不再一律记「电话」
     const channel: Channel = form.ticketSource === 'IM'
@@ -957,7 +957,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       eventTimeline: [{
         id: `tl-${no}-create`, category: 'node', action: 'create',
         who: currentHandlerName(user.roleKey, user.name), role: mapUserRole(user.roleKey),
-        how: '创建工单', what: `客户经${form.ticketSource}反馈问题，创建工单。`, when: `${createdAt}:00`,
+        how: '创建工单', what: `客户经${form.ticketSource}反馈问题，创建工单。`, when: createdAt,
       }],
       title: form.title.trim(),
       smartMarks: form.ticketType === '投诉' ? ['升级'] : [],

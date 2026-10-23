@@ -13,12 +13,12 @@ const activeTab = ref('connectors');
 /* 连接器 */
 interface Connector { id: string; name: string; type: string; icon: string; status: 'online' | 'error' | 'idle'; lastSync: string; }
 const connectors = ref<Connector[]>([
-  { id: 'c1', name: '企业微信', type: 'IM', icon: '💬', status: 'online', lastSync: '2026-06-19 10:20' },
-  { id: 'c2', name: '飞书', type: 'IM', icon: '🪶', status: 'online', lastSync: '2026-06-19 10:18' },
-  { id: 'c3', name: '金蝶 ERP', type: 'ERP', icon: '📦', status: 'error', lastSync: '2026-06-18 22:00' },
-  { id: 'c4', name: '销售易 CRM', type: 'CRM', icon: '🤝', status: 'online', lastSync: '2026-06-19 09:55' },
-  { id: 'c5', name: '12315 平台', type: '政务', icon: '🏛️', status: 'idle', lastSync: '2026-06-15 14:00' },
-  { id: 'c6', name: '短信网关', type: '通讯', icon: '📱', status: 'online', lastSync: '2026-06-19 10:21' },
+  { id: 'c1', name: '企业微信', type: 'IM', icon: '💬', status: 'online', lastSync: '2026-06-19 10:20:42' },
+  { id: 'c2', name: '飞书', type: 'IM', icon: '🪶', status: 'online', lastSync: '2026-06-19 10:18:29' },
+  { id: 'c3', name: '金蝶 ERP', type: 'ERP', icon: '📦', status: 'error', lastSync: '2026-06-18 22:00:40' },
+  { id: 'c4', name: '销售易 CRM', type: 'CRM', icon: '🤝', status: 'online', lastSync: '2026-06-19 09:55:00' },
+  { id: 'c5', name: '12315 平台', type: '政务', icon: '🏛️', status: 'idle', lastSync: '2026-06-15 14:00:24' },
+  { id: 'c6', name: '短信网关', type: '通讯', icon: '📱', status: 'online', lastSync: '2026-06-19 10:21:41' },
 ]);
 const ST_MAP: Record<string, { tone: string; label: string; icon: any }> = {
   online: { tone: '#10b981', label: '已连接', icon: CheckCircleFilled },
@@ -28,10 +28,10 @@ const ST_MAP: Record<string, { tone: string; label: string; icon: any }> = {
 function testConn(c: Connector) { message.loading(`正在测试「${c.name}」连接…`, 1).then(() => message.success(`${c.name} 连接正常`)); }
 
 const syncLogs = [
-  { time: '2026-06-19 10:20', conn: '企业微信', action: '消息推送', result: '成功', detail: '12 条' },
-  { time: '2026-06-19 10:18', conn: '飞书', action: '工单同步', result: '成功', detail: '3 条' },
-  { time: '2026-06-18 22:00', conn: '金蝶 ERP', action: '订单拉取', result: '失败', detail: '超时(30s)' },
-  { time: '2026-06-19 09:55', conn: '销售易 CRM', action: '客户同步', result: '成功', detail: '45 条' },
+  { time: '2026-06-19 10:20:42', conn: '企业微信', action: '消息推送', result: '成功', detail: '12 条' },
+  { time: '2026-06-19 10:18:29', conn: '飞书', action: '工单同步', result: '成功', detail: '3 条' },
+  { time: '2026-06-18 22:00:40', conn: '金蝶 ERP', action: '订单拉取', result: '失败', detail: '超时(30s)' },
+  { time: '2026-06-19 09:55:00', conn: '销售易 CRM', action: '客户同步', result: '成功', detail: '45 条' },
 ];
 const logCols = [
   { title: '时间', dataIndex: 'time', key: 'time', width: 150 },

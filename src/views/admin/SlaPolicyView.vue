@@ -252,7 +252,7 @@ function matrixWith(overrides: Partial<Record<Lv, { resp: [number, Unit]; solve:
 const policies = ref<Policy[]>([
   {
     no: 'SLA001', name: 'VIP客户-紧急-学习机', types: ['投诉'], channels: [SCOPE_ALL], levels: ['大V博主'], products: ['学习机'],
-    calendar: '7×24 自然时间', priority: 1, status: '启用', updatedAt: '2026-06-14 10:20',
+    calendar: '7×24 自然时间', priority: 1, status: '启用', updatedAt: '2026-06-14 10:20:29',
     matrix: matrixWith({ 'P0 紧急': { resp: [30, '分钟'], solve: [4, '小时'] } }),
     dueSoon: { mode: 'countdown', value: 30, unit: '分钟' },
     escalations: [
@@ -262,7 +262,7 @@ const policies = ref<Policy[]>([
   },
   {
     no: 'SLA002', name: 'VIP客户-高优先级', types: [SCOPE_ALL], channels: [SCOPE_ALL], levels: ['大V博主'], products: [SCOPE_ALL],
-    calendar: '标准工作日历(9:00-18:00)', priority: 2, status: '启用', updatedAt: '2026-06-12 09:00',
+    calendar: '标准工作日历(9:00-18:00)', priority: 2, status: '启用', updatedAt: '2026-06-12 09:00:51',
     matrix: matrixWith({ 'P1 高': { resp: [1, '小时'], solve: [8, '小时'] } }),
     dueSoon: { mode: 'countdown', value: 1, unit: '小时' },
     escalations: [{ id: 1, dim: '响应', cond: '剩余 ≤ 25%', escalationRef: 'EC01' }],
@@ -270,7 +270,7 @@ const policies = ref<Policy[]>([
   },
   {
     no: 'SLA003', name: '普通客户-紧急', types: ['投诉'], channels: [SCOPE_ALL], levels: ['教师'], products: [SCOPE_ALL],
-    calendar: '7×24 自然时间', priority: 3, status: '启用', updatedAt: '2026-06-11 14:00',
+    calendar: '7×24 自然时间', priority: 3, status: '启用', updatedAt: '2026-06-11 14:00:48',
     matrix: matrixWith({ 'P0 紧急': { resp: [1, '小时'], solve: [8, '小时'] } }),
     dueSoon: { mode: 'percent', value: 80, unit: '分钟' },
     escalations: [{ id: 1, dim: '解决', cond: '已超时', escalationRef: 'EC02' }],
@@ -278,7 +278,7 @@ const policies = ref<Policy[]>([
   },
   {
     no: 'SLA004', name: '退费工单-通用', types: ['退费'], channels: [SCOPE_ALL], levels: [SCOPE_ALL], products: [SCOPE_ALL],
-    calendar: '标准工作日历(9:00-18:00)', priority: 4, status: '启用', updatedAt: '2026-06-10 16:30',
+    calendar: '标准工作日历(9:00-18:00)', priority: 4, status: '启用', updatedAt: '2026-06-10 16:30:18',
     matrix: matrixWith({ 'P1 高': { resp: [2, '小时'], solve: [24, '小时'] } }),
     dueSoon: { mode: 'percent', value: 80, unit: '分钟' },
     escalations: [{ id: 1, dim: '解决', cond: '已超时', escalationRef: 'EC02' }],
@@ -286,28 +286,28 @@ const policies = ref<Policy[]>([
   },
   {
     no: 'SLA005', name: '普通咨询-默认', types: ['咨询'], channels: [SCOPE_ALL], levels: [SCOPE_ALL], products: [SCOPE_ALL],
-    calendar: '标准工作日历(9:00-18:00)', priority: 5, status: '启用', updatedAt: '2026-06-09 10:00',
+    calendar: '标准工作日历(9:00-18:00)', priority: 5, status: '启用', updatedAt: '2026-06-09 10:00:29',
     matrix: matrixWith({ 'P2 中': { resp: [4, '小时'], solve: [48, '小时'] } }),
     dueSoon: { mode: 'none', value: 0, unit: '小时' },
     escalations: [], pauseStates: ['已挂起'], remark: '', rate: 95.1,
   },
   {
     no: 'SLA006', name: '智能硬件-售后', types: ['技术故障'], channels: [SCOPE_ALL], levels: [SCOPE_ALL], products: ['智能硬件'],
-    calendar: '标准工作日历(9:00-18:00)', priority: 6, status: '启用', updatedAt: '2026-06-08 11:00',
+    calendar: '标准工作日历(9:00-18:00)', priority: 6, status: '启用', updatedAt: '2026-06-08 11:00:55',
     matrix: matrixWith({ 'P2 中': { resp: [2, '小时'], solve: [24, '小时'] } }),
     dueSoon: { mode: 'countdown', value: 2, unit: '小时' },
     escalations: [], pauseStates: ['已挂起·待客户', '待备件'], remark: '硬件售后', rate: 92.7,
   },
   {
     no: 'SLA007', name: '低优先级-默认', types: ['咨询'], channels: [SCOPE_ALL], levels: [SCOPE_ALL], products: [SCOPE_ALL],
-    calendar: '标准工作日历(9:00-18:00)', priority: 7, status: '启用', updatedAt: '2026-06-07 09:00',
+    calendar: '标准工作日历(9:00-18:00)', priority: 7, status: '启用', updatedAt: '2026-06-07 09:00:09',
     matrix: matrixWith({ 'P3 低': { resp: [8, '小时'], solve: [72, '小时'] } }),
     dueSoon: { mode: 'none', value: 0, unit: '小时' },
     escalations: [], pauseStates: ['已挂起'], remark: '', rate: 97.8,
   },
   {
     no: 'SLA008', name: 'AI服务-技术故障', types: ['技术故障'], channels: [SCOPE_ALL], levels: [SCOPE_ALL], products: ['AI服务'],
-    calendar: '7×24 自然时间', priority: 0, status: '停用', updatedAt: '2026-06-05 15:00',
+    calendar: '7×24 自然时间', priority: 0, status: '停用', updatedAt: '2026-06-05 15:00:56',
     matrix: matrixWith({ 'P1 高': { resp: [1, '小时'], solve: [12, '小时'] } }),
     dueSoon: { mode: 'percent', value: 90, unit: '小时' },
     escalations: [{ id: 1, dim: '解决', cond: '已超时', escalationRef: 'EC02' }],
@@ -315,7 +315,7 @@ const policies = ref<Policy[]>([
   },
   {
     no: 'SLA000', name: '默认兜底策略', types: [SCOPE_ALL], channels: [SCOPE_ALL], levels: [SCOPE_ALL], products: [SCOPE_ALL],
-    calendar: '标准工作日历(9:00-18:00)', priority: 99, status: '启用', updatedAt: '2026-06-01 09:00',
+    calendar: '标准工作日历(9:00-18:00)', priority: 99, status: '启用', updatedAt: '2026-06-01 09:00:39',
     matrix: defMatrix(),
     dueSoon: { mode: 'percent', value: 80, unit: '分钟' },
     escalations: [], pauseStates: ['已挂起'], remark: '未命中任何自定义策略的工单兜底；始终启用、不可停用/删除/拖动', rate: 92.1,

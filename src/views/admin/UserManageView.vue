@@ -16,12 +16,12 @@ const keyword = ref('');
 const ORGS = ['全部机构', '一线客服部', '二线处理部', '售后服务部', '质量管理部'];
 
 const users = ref<User[]>([
-  { id: 'U1001', name: '王芳', account: 'wangfang', org: '一线客服部', post: '班组长', roles: ['二线班组长'], phone: '138****0001', status: '正常', lastLogin: '2026-06-19 08:30' },
-  { id: 'U1002', name: '李强', account: 'liqiang', org: '二线处理部', post: '高级客服', roles: ['二线专员'], phone: '139****0002', status: '正常', lastLogin: '2026-06-19 09:05' },
-  { id: 'U1003', name: '陈静', account: 'chenjing', org: '一线客服部', post: '客服专员', roles: ['一线坐席'], phone: '137****0003', status: '正常', lastLogin: '2026-06-18 17:20' },
-  { id: 'U1004', name: '赵敏', account: 'zhaomin', org: '售后服务部', post: '售后工程师', roles: ['二线专员'], phone: '136****0004', status: '正常', lastLogin: '2026-06-19 10:12' },
-  { id: 'U1005', name: '吴婷', account: 'wuting', org: '一线客服部', post: '实习坐席', roles: ['一线坐席'], phone: '135****0005', status: '锁定', lastLogin: '2026-06-10 14:00' },
-  { id: 'U1006', name: '钱进', account: 'qianjin', org: '售后服务部', post: '客服专员', roles: ['二线专员'], phone: '134****0006', status: '停用', lastLogin: '2026-05-28 11:30' },
+  { id: 'U1001', name: '王芳', account: 'wangfang', org: '一线客服部', post: '班组长', roles: ['二线班组长'], phone: '138****0001', status: '正常', lastLogin: '2026-06-19 08:30:48' },
+  { id: 'U1002', name: '李强', account: 'liqiang', org: '二线处理部', post: '高级客服', roles: ['二线专员'], phone: '139****0002', status: '正常', lastLogin: '2026-06-19 09:05:49' },
+  { id: 'U1003', name: '陈静', account: 'chenjing', org: '一线客服部', post: '客服专员', roles: ['一线坐席'], phone: '137****0003', status: '正常', lastLogin: '2026-06-18 17:20:14' },
+  { id: 'U1004', name: '赵敏', account: 'zhaomin', org: '售后服务部', post: '售后工程师', roles: ['二线专员'], phone: '136****0004', status: '正常', lastLogin: '2026-06-19 10:12:39' },
+  { id: 'U1005', name: '吴婷', account: 'wuting', org: '一线客服部', post: '实习坐席', roles: ['一线坐席'], phone: '135****0005', status: '锁定', lastLogin: '2026-06-10 14:00:11' },
+  { id: 'U1006', name: '钱进', account: 'qianjin', org: '售后服务部', post: '客服专员', roles: ['二线专员'], phone: '134****0006', status: '停用', lastLogin: '2026-05-28 11:30:05' },
 ]);
 const list = computed(() => users.value.filter((u) => {
   if (orgFilter.value !== '全部机构' && u.org !== orgFilter.value) return false;
