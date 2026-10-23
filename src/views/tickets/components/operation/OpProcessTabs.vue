@@ -28,6 +28,7 @@ import type { TicketRiskVerification } from '@/stores/riskTags';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 import { isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
+import { sameTypeCell } from '@/views/tickets/composables/sameMarkTickets';
 
 const props = defineProps<{
   detail: TicketDetailMeta;
@@ -353,6 +354,7 @@ defineExpose({ switchTab });
       <OpCustomerHistoryTab
         v-else-if="activeTab === 'customerHistory'"
         :data="tabData.customerHistory"
+        :same-type="sameTypeCell(detail)"
       />
     </div>
     </a-config-provider>

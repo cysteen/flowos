@@ -249,7 +249,7 @@ export interface AttachmentLinkRecord {
   files: AttachmentLinkFile[];
 }
 
-export type CustomerHistoryFilter = 'all' | 'unclaimed' | 'unresponded' | 'processing' | 'closed' | 'complaint';
+export type CustomerHistoryFilter = 'all' | 'unclaimed' | 'unresponded' | 'processing' | 'closed';
 
 export interface CustomerHistoryTicket {
   id: string;

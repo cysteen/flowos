@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import type { InsightStats, InsightAction } from '@/views/tickets/types/operation';
-import { insightSameTypeLabel } from '@/views/tickets/types/operation';
-import { pendingSameMarkFilter, sameMarkLabel, type SameMark } from '@/views/tickets/composables/sameMarkTickets';
+import { sameTypeLabel as sameTypeLabelOf, type SameMark } from '@/views/tickets/composables/sameMarkTickets';
 
 /** sameMark：刷机 / 小智 / 个册退费单（类型都是「咨询」）按标识出「同类单」格，其余按工单类型（10-23） */
 const props = defineProps<{ insight: InsightStats; ticketType: string; sameMark?: SameMark | null }>();
@@ -23,7 +22,7 @@ interface StatItem {
 // 上排=客户维度（弹窗看明细）；下排=本单维度（跳对应 Tab）
 const topItems = computed<StatItem[]>(() => {
   const i = props.insight;
-  const sameTypeLabel = props.sameMark ? sameMarkLabel(props.sameMark) : insightSameTypeLabel(props.ticketType);
+  const sameTypeLabel = sameTypeLabelOf(props.ticketType, props.sameMark);
   return [
     { key: 'contact', label: '联系', value: i.contactCount, unit: '次', action: { kind: 'modal', modalKey: 'contact' } },
     { key: 'history', label: '历史', value: i.historyCount, unit: '单', action: { kind: 'modal', modalKey: 'history' } },
@@ -47,12 +46,6 @@ const bottomItems = computed<StatItem[]>(() => {
     { key: 'related', label: '关联', value: i.relatedCount, unit: '个', action: { kind: 'tab', tab: 'related' } },
   ];
 });
-
-/** 带标识的单点「同类单」：「客户历史工单」Tab 落到同标识筛选 */
-function onSelect(it: StatItem) {
-  if (it.key === 'sameType' && props.sameMark) pendingSameMarkFilter.value = true;
-  emit('select', it.action);
-}
 
 function isWarn(it: StatItem) {
   return !!it.warn && it.value > 0;
@@ -94,7 +87,7 @@ function pulse(key: string) {
         class="stat-item"
         :class="{ warn: isWarn(it), bump: bumpedKeys.has(it.key) }"
         :title="`查看${it.label}明细`"
-        @click="onSelect(it)"
+        @click="emit('select', it.action)"
       >
         <span class="si-label">{{ it.label }}</span>
         <span class="si-value">{{ it.value }}<span class="si-unit">{{ it.unit }}</span></span>

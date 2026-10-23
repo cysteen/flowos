@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { ticketTypeLabel } from '@/views/tickets/utils/ticketTypeDisplay';
-import { computed, onMounted, ref, watch } from 'vue';
-import { pendingSameMarkFilter, sameMarkLabel, sameMarkOf, sameMarkTickets } from '@/views/tickets/composables/sameMarkTickets';
-import { isTicketClosed, statusDisplayName } from '@/views/tickets/types/ticket';
+import { computed, ref } from 'vue';
 import { message } from 'ant-design-vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ExportOutlined, ArrowRightOutlined } from '@ant-design/icons-vue';
@@ -12,7 +10,8 @@ import type { CustomerHistoryData, CustomerHistoryFilter, CustomerHistoryTicket 
 import { queryCenterLocation } from '@/views/query/queryCenterRoute';
 import { ticketListSourceLabel } from '@/views/tickets/types/createTicket';
 
-const props = defineProps<{ data: CustomerHistoryData }>();
+/** sameType：摘要第二段，与客户全景「同类单」格同名同数（10-23） */
+const props = defineProps<{ data: CustomerHistoryData; sameType: { label: string; count: number } }>();
 
 const route = useRoute();
 const router = useRouter();
@@ -26,46 +25,7 @@ function openInsight() {
   router.push(queryCenterLocation('customer', { q: currentPhone.value || props.data.customerName }));
 }
 
-const activeFilter = ref<CustomerHistoryFilter | 'sameMark'>('all');
-
-/**
- * 刷机 / 小智 / 个册退费单（10-23）：多一个同标识筛选，列该客户名下同标识的单，
- * 与客户全景「同类单」格同一份取数；从该格点进来时直接落到这个筛选。
- */
-const currentRow = computed(() => TICKETS.find((t) => t.no === String(route.params.ticketNo ?? '')));
-const currentMark = computed(() => sameMarkOf(currentRow.value));
-const sameMarkRows = computed<CustomerHistoryTicket[]>(() => {
-  const row = currentRow.value;
-  if (!row || !currentMark.value) return [];
-  return sameMarkTickets(row).map((t) => {
-    const closed = isTicketClosed(t.nodeStatus);
-    return {
-      id: `m-${t.no}`,
-      no: t.no,
-      title: t.title,
-      status: statusDisplayName(t.nodeStatus),
-      statusColor: closed ? '#10B981' : '#1A6FFF',
-      type: t.type,
-      typeColor: '#1A6FFF',
-      typeBgColor: '#1A6FFF1F',
-      channel: t.channel,
-      date: (t.createdAt ?? '').slice(0, 10),
-      summary: t.problemDesc ?? '',
-      isProcessing: !closed,
-      isClosed: closed,
-      isComplaint: false,
-    };
-  });
-});
-onMounted(() => {
-  if (pendingSameMarkFilter.value && currentMark.value) activeFilter.value = 'sameMark';
-  pendingSameMarkFilter.value = false;
-});
-watch(pendingSameMarkFilter, (v) => {
-  if (!v) return;
-  if (currentMark.value) activeFilter.value = 'sameMark';
-  pendingSameMarkFilter.value = false;
-});
+const activeFilter = ref<CustomerHistoryFilter>('all');
 
 /** 未认领 / 待响应按子状态判；展示名「待领取」同义 */
 const isUnclaimed = (t: CustomerHistoryTicket) => t.status === '未认领' || t.status === '待领取';
@@ -77,7 +37,6 @@ const FILTERS: { key: CustomerHistoryFilter; label: (d: CustomerHistoryData) => 
   { key: 'unresponded', label: (d) => `待响应(${d.tickets.filter(isUnresponded).length})` },
   { key: 'processing', label: (d) => `处理中(${d.processingCount})` },
   { key: 'closed', label: (d) => `已关闭(${d.closedCount})` },
-  { key: 'complaint', label: (d) => `投诉(${d.complaintCount})` },
 ];
 
 const filteredTickets = computed(() => {
@@ -91,10 +50,6 @@ const filteredTickets = computed(() => {
       return list.filter((t) => t.isProcessing);
     case 'closed':
       return list.filter((t) => t.isClosed);
-    case 'complaint':
-      return list.filter((t) => t.isComplaint);
-    case 'sameMark':
-      return sameMarkRows.value;
     default:
       return list;
   }
@@ -128,7 +83,7 @@ function openTicket(t: CustomerHistoryTicket) {
 <template>
   <div class="customer-history-tab">
     <div class="summary-bar">
-      <span>当前客户：{{ data.customerName }} · 历史工单 {{ data.totalCount }} 单 · 投诉 {{ data.complaintCount }} 单</span>
+      <span>当前客户：{{ data.customerName }} · 历史工单 {{ data.totalCount }} 单 · {{ sameType.label }} {{ sameType.count }} 单</span>
       <button type="button" class="insight-link" @click="openInsight">
         查看客户全景<ArrowRightOutlined class="link-ic" />
       </button>
@@ -146,17 +101,6 @@ function openTicket(t: CustomerHistoryTicket) {
         @click="activeFilter = f.key"
       >
         {{ f.label(data) }}
-      </button>
-      <button
-        v-if="currentMark"
-        type="button"
-        role="tab"
-        class="filter-chip"
-        :class="{ active: activeFilter === 'sameMark' }"
-        :aria-selected="activeFilter === 'sameMark'"
-        @click="activeFilter = 'sameMark'"
-      >
-        {{ sameMarkLabel(currentMark) }}({{ sameMarkRows.length }})
       </button>
     </div>
 
