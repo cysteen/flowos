@@ -59,7 +59,7 @@ export interface RefundCreateBase {
 
 const LS_KEY = 'flowos-refund-cache';
 /** v4：通知文案与收件人改版（到组通知走 IM_WO_POOLED、短信带完整 H5 链接、收件人只写姓名） */
-const CACHE_VERSION = 4;
+const CACHE_VERSION = 5;
 const STALE_MS = 12 * 60 * 60 * 1000;
 
 interface RefundCache { v: number; savedAt: number; tickets: Ticket[] }

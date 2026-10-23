@@ -48,7 +48,7 @@ export type FlashLsKey = (typeof FLASH_LS_KEYS)[keyof typeof FLASH_LS_KEYS];
  * 推送记录去掉回传超时时长快照（M180）。
  * v27：升级二线进池改走到组通知、删迟到回传提示（M182）；履历坐席不带角色，旧快照作废。
  */
-export const FLASH_CACHE_VERSION = 27;
+export const FLASH_CACHE_VERSION = 28;
 
 /** 保质期：12 小时（与风险两条线 `RISK_STALE_MS` 同口径） */
 export const FLASH_STALE_MS = 12 * 60 * 60 * 1000;
