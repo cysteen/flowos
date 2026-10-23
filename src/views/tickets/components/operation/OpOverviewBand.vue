@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import OpStatGrid from './OpStatGrid.vue';
+import { sameMarkOf } from '@/views/tickets/composables/sameMarkTickets';
 import OpAiInsight from './OpAiInsight.vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import type { InsightAction } from '@/views/tickets/types/operation';
@@ -109,7 +110,7 @@ watch(expandedCol, (v) => emit('expand-change', v !== null), { immediate: true }
           </button>
         </div>
         <div class="ob-stat-body">
-          <OpStatGrid :insight="detail.insight" :ticket-type="detail.type" @select="emit('select', $event)" />
+          <OpStatGrid :insight="detail.insight" :ticket-type="detail.type" :same-mark="sameMarkOf(detail)" @select="emit('select', $event)" />
           <OpAiInsight :insight="detail.aiInsight" :expanded="expandedCol === 'stat'" />
         </div>
       </section>

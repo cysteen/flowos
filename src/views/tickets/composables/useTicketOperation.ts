@@ -19,6 +19,7 @@ import type { Ticket, Channel, TicketType, Priority, TicketStatus } from '@/view
 import { SEED_CLAIMED_TICKET_NOS, SEED_TICKET_NOS, TICKETS } from '@/mock/tickets';
 import { TYPE_SAMPLES, typeSampleKey } from '@/mock/ticketTypeSamples';
 import { buildCustomerInsight, daysBefore, type CustomerContactRow } from '@/mock/customerInsight';
+import { sameMarkOf, sameMarkTickets } from './sameMarkTickets';
 
 /** 客户全景「联系明细」联系方式列（客户全景页联系记录的类型 → 下钻表文案） */
 const CONTACT_KIND_LABEL: Record<CustomerContactRow['kind'], string> = {
@@ -479,6 +480,8 @@ export function useTicketOperation() {
     if (t && isRefundTicket(t) && t.refund) {
       base.createdAtFull = t.eventTimeline?.find((e) => e.action === 'create')?.when ?? base.createdAtFull;
     }
+    // 客户全景「同类单」格（10-23）：刷机 / 小智 / 个册退费单按标识计该客户名下的同标识单，不按工单类型「咨询」计
+    if (t && sameMarkOf(t)) base.insight = { ...base.insight, sameTypeCount: sameMarkTickets(t).length };
     detail.value = base;
     if (t?.flash) projectFlashTimeline(t.no, true);
     // 小智单：履历以小智链路为准（建单 / 自动流转 / 回传），不沿用类型样例履历

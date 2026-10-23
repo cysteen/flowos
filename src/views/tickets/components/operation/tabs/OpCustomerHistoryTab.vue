@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ticketTypeLabel } from '@/views/tickets/utils/ticketTypeDisplay';
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
+import { pendingSameMarkFilter, sameMarkLabel, sameMarkOf, sameMarkTickets } from '@/views/tickets/composables/sameMarkTickets';
+import { isTicketClosed, statusDisplayName } from '@/views/tickets/types/ticket';
 import { message } from 'ant-design-vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ExportOutlined, ArrowRightOutlined } from '@ant-design/icons-vue';
@@ -24,7 +26,46 @@ function openInsight() {
   router.push(queryCenterLocation('customer', { q: currentPhone.value || props.data.customerName }));
 }
 
-const activeFilter = ref<CustomerHistoryFilter>('all');
+const activeFilter = ref<CustomerHistoryFilter | 'sameMark'>('all');
+
+/**
+ * 刷机 / 小智 / 个册退费单（10-23）：多一个同标识筛选，列该客户名下同标识的单，
+ * 与客户全景「同类单」格同一份取数；从该格点进来时直接落到这个筛选。
+ */
+const currentRow = computed(() => TICKETS.find((t) => t.no === String(route.params.ticketNo ?? '')));
+const currentMark = computed(() => sameMarkOf(currentRow.value));
+const sameMarkRows = computed<CustomerHistoryTicket[]>(() => {
+  const row = currentRow.value;
+  if (!row || !currentMark.value) return [];
+  return sameMarkTickets(row).map((t) => {
+    const closed = isTicketClosed(t.nodeStatus);
+    return {
+      id: `m-${t.no}`,
+      no: t.no,
+      title: t.title,
+      status: statusDisplayName(t.nodeStatus),
+      statusColor: closed ? '#10B981' : '#1A6FFF',
+      type: t.type,
+      typeColor: '#1A6FFF',
+      typeBgColor: '#1A6FFF1F',
+      channel: t.channel,
+      date: (t.createdAt ?? '').slice(0, 10),
+      summary: t.problemDesc ?? '',
+      isProcessing: !closed,
+      isClosed: closed,
+      isComplaint: false,
+    };
+  });
+});
+onMounted(() => {
+  if (pendingSameMarkFilter.value && currentMark.value) activeFilter.value = 'sameMark';
+  pendingSameMarkFilter.value = false;
+});
+watch(pendingSameMarkFilter, (v) => {
+  if (!v) return;
+  if (currentMark.value) activeFilter.value = 'sameMark';
+  pendingSameMarkFilter.value = false;
+});
 
 /** 未认领 / 待响应按子状态判；展示名「待领取」同义 */
 const isUnclaimed = (t: CustomerHistoryTicket) => t.status === '未认领' || t.status === '待领取';
@@ -52,6 +93,8 @@ const filteredTickets = computed(() => {
       return list.filter((t) => t.isClosed);
     case 'complaint':
       return list.filter((t) => t.isComplaint);
+    case 'sameMark':
+      return sameMarkRows.value;
     default:
       return list;
   }
@@ -103,6 +146,17 @@ function openTicket(t: CustomerHistoryTicket) {
         @click="activeFilter = f.key"
       >
         {{ f.label(data) }}
+      </button>
+      <button
+        v-if="currentMark"
+        type="button"
+        role="tab"
+        class="filter-chip"
+        :class="{ active: activeFilter === 'sameMark' }"
+        :aria-selected="activeFilter === 'sameMark'"
+        @click="activeFilter = 'sameMark'"
+      >
+        {{ sameMarkLabel(currentMark) }}({{ sameMarkRows.length }})
       </button>
     </div>
 
