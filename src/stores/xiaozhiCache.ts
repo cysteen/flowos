@@ -43,8 +43,11 @@ export type XiaozhiLsKey = (typeof XIAOZHI_LS_KEYS)[keyof typeof XIAOZHI_LS_KEYS
  * - v6：种子 ④ 改为「停在办结待确认、装载时走 `receiveReporterConfirm` 真实路径关单」。
  *   v5 的快照里 ④ 是按旧种子写死的终态、`closeReason` 为空，不丢弃就还是那张
  *   「关闭原因为空的已关闭工单」；④ 的各时刻也由写死日期改成相对装载时刻取。
+ * - v7：种子时刻由分钟级改到秒级（列表与查询的建单 / 更新时间带秒，PRD §5.1）。
+ *   v6 的快照里 `createdAt` / `updatedAt` / `rdIssueResult.solvedAt` 还是 `YYYY-MM-DD HH:MM`，
+ *   不丢弃就按旧值盖回去，列表照样不带秒。
  */
-export const XIAOZHI_CACHE_VERSION = 6;
+export const XIAOZHI_CACHE_VERSION = 7;
 
 /** 保质期：12 小时（与刷机 / 风险两条线同口径） */
 export const XIAOZHI_STALE_MS = 12 * 60 * 60 * 1000;
