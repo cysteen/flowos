@@ -222,8 +222,8 @@ export const useRefundStore = defineStore('refund', () => {
   }
 
   /**
-   * 建个册退费单并按建单所填负责人派单；负责人为空进教育退费审核组池。
-   * `manager` 不传时按学校取（校园经理 → 城市经理），传 `null` 表示建单时清空了负责人。
+   * 建个册退费单并按建单所填校代对接人派单；校代对接人为空进教育退费审核组池。
+   * `manager` 不传时按学校取（校园经理 → 城市经理），传 `null` 表示建单时清空了校代对接人。
    */
   function createRefundTicket(
     info: RefundInfo, base: RefundCreateBase, actor: RefundActor, manager?: RefundManager | null,

@@ -248,7 +248,7 @@ export interface CreateTicketFormState {
 export interface CreateTicketRefundForm {
   /** 学校库 ID */
   schoolId: string;
-  /** 负责人（校园经理 / 城市经理）域账号；选学校后按学校带出，可改可清空，空则进教育退费审核组池 */
+  /** 校代对接人（校园经理 / 城市经理）域账号；选学校后按学校带出，可改可清空，空则进教育退费审核组池 */
   managerAccount: string;
   studentName: string;
   /** 智学号（登录账号） */

@@ -3084,7 +3084,7 @@ watch(
           </template>
           <!-- 个册退费单（1120 PRD §5.2）：「退费信息」只读区块与退费记录表 -->
           <template v-else-if="isRefund && d.refund" #process-top>
-            <OpRefundInfoBlock :refund="d.refund!" :handler="d.lastHandler" />
+            <OpRefundInfoBlock :refund="d.refund!" :customer="d.customer.name" />
           </template>
         </OpProcessTabs>
       </div>

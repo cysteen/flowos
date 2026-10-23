@@ -629,7 +629,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     return baseOk && !Object.values(refundErrors).some(Boolean);
   }
 
-  /** 校验通过后建个册退费单并按所填负责人派单、为空进池（走个册退费服务，不走 buildTicket） */
+  /** 校验通过后建个册退费单并按所填校代对接人派单、为空进池（走个册退费服务，不走 buildTicket） */
   function submitRefund(): { ticket: Ticket; message: string } | null {
     if (!validateRefund()) return null;
     const f = form.refund;

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 新建工单 · 「退费信息」卡（1120 个册退费工单 PRD §3.1 / §3.2）。
- * 学校 · 负责人（按学校带出，可改可清空）· 学生姓名 · 智学号 · 可退套餐（按学校 ＋ 智学号查询）· 订单号 · 可退金额 · 退款原因 · 退回方式。
+ * 学校 · 校代对接人（按学校带出，可改可清空）· 学生姓名 · 智学号 · 可退套餐（按学校 ＋ 智学号查询）· 订单号 · 可退金额 · 退款原因 · 退回方式。
  * 学校选择复用刷机信息卡的学校检索（省 / 市级联 ＋ 可搜索下拉）。字段名、枚举与提示文案取 `types/refund.ts`。
  */
 import { computed, ref, watch } from 'vue';
@@ -23,7 +23,7 @@ defineProps<{
 const reasonOptions = REFUND_REASONS.map((r) => ({ value: r.code, label: r.label }));
 const managerOptions = ALL_REFUND_MANAGERS.map((m) => ({ value: m.account, label: `${m.name}（${m.account}）` }));
 
-// 选学校带出负责人（校园经理 → 城市经理，都没有置空）；换学校重新带出，清空学校一并清空
+// 选学校带出校代对接人（校园经理 → 城市经理，都没有置空）；换学校重新带出，清空学校一并清空
 watch(() => info.value.schoolId, (id, prev) => {
   if (id === prev) return;
   info.value.managerAccount = id ? resolveSchoolManager(id)?.account ?? '' : '';

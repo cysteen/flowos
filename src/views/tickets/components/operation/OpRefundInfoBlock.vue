@@ -2,7 +2,7 @@
 /**
  * 个册退费单「工单处理」Tab 顶部：退费信息（只读区块，1120 PRD §5.2）。
  * 三列 label/value 网格展示建单退费信息与移动工单 H5 最近保存值，下接退费记录表（每次提交一行，时间正序）。
- * 版式与刷机单「自动刷机结果」卡同规格（卡头标题 ＋ 行尾退费状态与最近结果时间）。
+ * 版式与刷机单「自动刷机结果」卡同规格（卡头标题 ＋ 行尾退费状态与最近更新时间）。
  * 校园经理的处理表单只在移动工单 H5，本区块无输入控件。
  */
 import { computed } from 'vue';
@@ -15,8 +15,8 @@ import {
 
 const props = defineProps<{
   refund: TicketRefund;
-  /** 当前处理人（外部处理人姓名 / 系统 / 组员）；无处理人为空 */
-  handler?: string | null;
+  /** 本单客户姓名（同工单概览「客户」）：退费记录「提交人」取它 */
+  customer?: string | null;
 }>();
 
 const EMPTY = '—';
@@ -35,8 +35,14 @@ function tone(s: string): 'ok' | 'bad' | 'auto' | 'idle' {
   return 'idle';
 }
 
-/** 处理人：只显示姓名；系统退费中为「系统」 */
-const handlerText = computed(() => v(props.handler));
+/**
+ * 校代对接人：本单的校园经理 / 城市经理，只显示姓名，不随当前处理人变。
+ * 在外部处理人名下取当前外部处理人，系统退费中、审核组内取最近一次提交退费的校园经理；都没有为「—」。
+ */
+const liaisonText = computed(() => {
+  const st = props.refund.state;
+  return v((st.manager ?? st.lastSubmitter)?.name);
+});
 
 const ownResult = computed(() => (lastRun.value ? refundOwnResultOf(lastRun.value.status) : ''));
 
@@ -50,7 +56,7 @@ const fields = computed<Field[]>(() => {
   const h = handle.value;
   const submitted = h.submitRefund === '是';
   const list: Field[] = [
-    { key: 'handler', label: '处理人', value: handlerText.value },
+    { key: 'liaison', label: '校代对接人', value: liaisonText.value },
     { key: 'school', label: '学校', value: v(i.schoolName) },
     { key: 'student', label: '学生姓名', value: v(i.studentName) },
     { key: 'code', label: '登录账号', value: v(h.studentCode || i.studentCode) },
@@ -77,7 +83,7 @@ const fields = computed<Field[]>(() => {
 const rows = computed(() => runs.value.map((r) => ({
   id: r.id,
   at: r.submittedAt,
-  by: r.submitter,
+  by: v(props.customer),
   taskId: r.taskId,
   items: r.items.map(refundItemText),
   total: formatRefundAmount(sumRefundAmount(r.items)),
@@ -86,7 +92,7 @@ const rows = computed(() => runs.value.map((r) => ({
   resultAt: v(r.resultAt),
 })));
 
-/** 卡头行尾：最近一次结果时间，无结果取提交时间 */
+/** 卡头行尾：最近一次更新时间（退费记录「更新时间」），无结果取提交时间 */
 const headTime = computed(() => (lastRun.value ? lastRun.value.resultAt ?? lastRun.value.submittedAt : ''));
 </script>
 
@@ -126,7 +132,7 @@ const headTime = computed(() => (lastRun.value ? lastRun.value.resultAt ?? lastR
           <thead>
             <tr>
               <th>提交时间</th><th>提交人</th><th>退费任务号</th><th>退费商品与金额</th>
-              <th>当前结果</th><th>驳回原因</th><th>结果时间</th>
+              <th>当前结果</th><th>驳回原因</th><th>更新时间</th>
             </tr>
           </thead>
           <tbody>
