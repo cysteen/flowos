@@ -72,10 +72,14 @@ export const XIAOZHI_RD_MODULES = reactive<XiaozhiRdModule[]>(
   SEED.map((m) => ({ ...m })),
 );
 
-/** 同一产品可对应多个模块，故编码是唯一键 —— 新建 / 改编码时据此查重 */
+/**
+ * 同一产品可对应多个模块，故编码是唯一键 —— 新建 / 改编码时据此查重。
+ * 查重**不分大小写**：`pm1001` 与 `PM1001` 视为同一个编码，否则同一个模块能用两种写法各建一条
+ * （搜索框也是按 `toLowerCase` 匹配的，两处口径得一致）。
+ */
 export function findRdModuleByCode(code: string): XiaozhiRdModule | undefined {
-  const key = code.trim();
-  return XIAOZHI_RD_MODULES.find((m) => m.code === key);
+  const key = code.trim().toLowerCase();
+  return XIAOZHI_RD_MODULES.find((m) => m.code.toLowerCase() === key);
 }
 
 /** 下拉取值源：建单弹窗与「升级 · 产研」弹窗只给启用的模块（停用的历史取值照常显示，见 `enabled`） */
@@ -102,7 +106,7 @@ export function updateRdModule(originalCode: string, row: XiaozhiRdModule): bool
   const idx = XIAOZHI_RD_MODULES.findIndex((m) => m.code === originalCode);
   if (idx < 0) return false;
   const code = row.code.trim();
-  if (code !== originalCode && findRdModuleByCode(code)) return false;
+  if (code.toLowerCase() !== originalCode.toLowerCase() && findRdModuleByCode(code)) return false;
   XIAOZHI_RD_MODULES[idx] = {
     ...XIAOZHI_RD_MODULES[idx],
     code,
