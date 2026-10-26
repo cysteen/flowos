@@ -297,7 +297,7 @@ export const STATUS_DISPLAY_NAME: Record<TicketStatus, string> = {
   已委派: '已委派',
   已退回: '已退回',
   已转出: '已转售后',
-  自动刷机中: '自动刷机中',
+  自动刷机中: '刷机申请中',
   系统退费中: '系统退费中',
   已结案: '已结案',
   已关闭: '已关闭',
