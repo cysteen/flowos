@@ -15,6 +15,7 @@ import {
   type TicketStatus,
 } from '@/views/tickets/types/ticket';
 import type { RiskLevel } from '@/config/risk';
+import { isFlashTicket } from '@/views/tickets/types/flash';
 
 // ======================================================================
 // 模块 3 · 全维度运营拆解报表
@@ -1066,7 +1067,9 @@ export function riskGradeOf(h: RiskHit): RiskLevel {
 }
 
 export function riskHitsOf(scope: OpsScope): RiskHit[] {
-  const rows = RISK_HITS.filter((h) => matchesScope(h.groupId, scope));
+  // 刷机单不参与风险监控（用户 10-26）：不产生命中
+  const rows = RISK_HITS.filter((h) => matchesScope(h.groupId, scope)
+    && !isFlashTicket(TICKETS.find((x) => x.no === h.ticketNo)));
   return [...rows].sort((a, b) => b.when.localeCompare(a.when));
 }
 
@@ -1430,6 +1433,8 @@ export function runManualScan(c: ScanCriteria, ctx: ManualScanContext = {}): Sca
   const emitted = new Set<string>();
 
   for (const t of SCANNABLE_TICKETS) {
+    // 刷机单不参与风险监控（用户 10-26）：手动筛查不纳入
+    if (isFlashTicket(TICKETS.find((x) => x.no === t.ticketNo))) continue;
     if (c.groupIds.length && !c.groupIds.includes(t.groupId)) continue;
     if (c.nodeStatuses.length) {
       const key = scanStatusFilterKey(t);

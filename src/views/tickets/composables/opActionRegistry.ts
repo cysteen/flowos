@@ -311,6 +311,7 @@ export function resolveRiskActionForm(
   roleKey: string,
   ticketType: string,
   isXiaozhi?: boolean,
+  isFlash?: boolean,
 ): RiskActionFormDef | null {
   /**
    * 🔴 **小智单一律判不出形态**（1130 小智工单 D18：不涉及风险报备）。
@@ -320,6 +321,8 @@ export function resolveRiskActionForm(
    * Tab 条上那一枚另有一道，见 `visibleProcessTabs` 的 `isXiaozhi`。
    */
   if (isXiaozhi) return null;
+  // 刷机单同理：不进行风险报备与风险管控（用户 10-26），底栏「风险报备」与页头「风险管控」一并不出
+  if (isFlash) return null;
   if (RISK_REPORT_ROLES.includes(roleKey)) return REPORT_FORM;
   if (!RISK_BY_TYPE_ROLES.includes(roleKey)) return null;
   // 第一维：原单类型。投诉单上"升不升级成投诉"是个不成立的问题，两个角色都只做协同
@@ -337,8 +340,9 @@ export function resolveRiskBarForm(
   roleKey: string,
   ticketType: string,
   isXiaozhi?: boolean,
+  isFlash?: boolean,
 ): RiskActionFormDef | null {
-  const f = resolveRiskActionForm(roleKey, ticketType, isXiaozhi);
+  const f = resolveRiskActionForm(roleKey, ticketType, isXiaozhi, isFlash);
   return f?.form === 'report' ? f : null;
 }
 
@@ -350,8 +354,9 @@ export function resolveRiskControlForm(
   roleKey: string,
   ticketType: string,
   isXiaozhi?: boolean,
+  isFlash?: boolean,
 ): RiskActionFormDef | null {
-  const f = resolveRiskActionForm(roleKey, ticketType, isXiaozhi);
+  const f = resolveRiskActionForm(roleKey, ticketType, isXiaozhi, isFlash);
   return f && f.form !== 'report' ? f : null;
 }
 
@@ -409,7 +414,7 @@ export function availableActions(ctx: ActionCtx): ActionDef[] {
   const direct = isDirectClosure(ctx.closureMode);
   const roleKey = ctx.roleKey ?? useUserStore().roleKey;
   // 底栏只认报备形态：评估 / 协同两支在页头「风险管控」上，不在这一排
-  const riskForm = resolveRiskBarForm(roleKey, ctx.ticketType, ctx.isXiaozhi);
+  const riskForm = resolveRiskBarForm(roleKey, ctx.ticketType, ctx.isXiaozhi, ctx.isFlash);
   return ACTION_DEFS
     .map((a) => {
       if (a.key !== '风险报备') return a;

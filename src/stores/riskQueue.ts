@@ -5,6 +5,7 @@ import { useRiskHistoryStore } from '@/stores/riskHistory';
 import { useRiskReportStore } from '@/stores/riskReports';
 import { SEED_RISK_ESCALATION, useDerivedTicketStore } from '@/stores/derivedTickets';
 import { TICKETS } from '@/mock/tickets';
+import { isFlashTicket } from '@/views/tickets/types/flash';
 import type { RiskHit } from '@/mock/opsReport';
 import type { RiskLevel } from '@/config/risk';
 import { isTicketClosed } from '@/views/tickets/types/ticket';
@@ -1697,6 +1698,8 @@ export const useRiskQueueStore = defineStore('riskQueue', () => {
     ticketNo: string,
     opts: { pendingHitsOnly?: boolean; forTagging?: boolean } = {},
   ): MonitorSource | null {
+    // 刷机单不参与风险监控（用户 10-26）：推不出任何来源 —— 不进监控、不可标记
+    if (isFlashTicket(TICKETS.find((x) => x.no === ticketNo))) return null;
     const hits = tags.hitsOfTicket(ticketNo);
     if (opts.pendingHitsOnly ? hits.some((h) => !tags.isJudged(h)) : hits.length) return '实时监控';
     const t: Ticket | undefined = TICKETS.find((x) => x.no === ticketNo)

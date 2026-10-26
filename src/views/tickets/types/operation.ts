@@ -319,7 +319,7 @@ const TAB_ROLE_DENY: Partial<Record<ProcessTabKey, string[]>> = {
 export function visibleProcessTabs(
   ticketType: string,
   roleKey: string,
-  opts?: { feishuActive?: boolean; isXiaozhi?: boolean },
+  opts?: { feishuActive?: boolean; isXiaozhi?: boolean; isFlash?: boolean },
 ) {
   return PROCESS_TABS.filter((t) => {
     const deny = TAB_ROLE_DENY[t.key];
@@ -329,6 +329,8 @@ export function visibleProcessTabs(
     // 2026-09-10 整条移除），而小智单的工单类型是咨询 —— 光在动作侧不登记「风险报备」
     // 只关掉底栏与页头两个按钮位，Tab 条上那一枚照样出得来。
     if (t.key === 'risk' && opts?.isXiaozhi) return false;
+    // 刷机单同理：不进行风险报备与风险管控（用户 10-26），「风险报备」Tab 整个不出
+    if (t.key === 'risk' && opts?.isFlash) return false;
     /**
      * 🔴 **小智单上「技术支持处理」Tab 整个不渲染**（1130 一·补 B10 / PRD §5.1：本轮不做技术支持路径）。
      *
@@ -365,7 +367,7 @@ export function isProcessTabVisible(
   tabKey: ProcessTabKey,
   ticketType: string,
   roleKey: string,
-  opts?: { feishuActive?: boolean; isXiaozhi?: boolean },
+  opts?: { feishuActive?: boolean; isXiaozhi?: boolean; isFlash?: boolean },
 ): boolean {
   return visibleProcessTabs(ticketType, roleKey, opts).some((t) => t.key === tabKey);
 }

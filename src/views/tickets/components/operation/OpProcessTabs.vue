@@ -28,6 +28,7 @@ import type { TicketRiskVerification } from '@/stores/riskTags';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 import { isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
+import { isFlashTicket } from '@/views/tickets/types/flash';
 import { sameTypeCell } from '@/views/tickets/composables/sameMarkTickets';
 
 const props = defineProps<{
@@ -132,6 +133,8 @@ const visibleTabs = computed(() =>
   visibleProcessTabs(props.detail.type, user.roleKey, {
     feishuActive: feishuActive.value,
     isXiaozhi: isXiaozhi.value,
+    // 刷机单不进行风险报备与风险管控（用户 10-26）：「风险报备」Tab 不出
+    isFlash: isFlashTicket(props.detail),
   }),
 );
 

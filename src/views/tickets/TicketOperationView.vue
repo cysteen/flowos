@@ -381,10 +381,10 @@ const canTagRisk = computed(
 );
 
 /** 底栏那一格取到的形态：只剩 `report` 一种；null ＝ 底栏这一格不给。小智单恒为 null（1130 D18） */
-const riskBarForm = computed(() => resolveRiskBarForm(user.roleKey, d.value.type, isXiaozhi.value)?.form ?? null);
+const riskBarForm = computed(() => resolveRiskBarForm(user.roleKey, d.value.type, isXiaozhi.value, isFlash.value)?.form ?? null);
 /** 页头「风险管控」取到的形态：`assess`（非投诉单）/ `collab`（投诉单）；null ＝ 整枚不出 */
 const riskControlForm = computed(
-  () => resolveRiskControlForm(user.roleKey, d.value.type, isXiaozhi.value)?.form ?? null,
+  () => resolveRiskControlForm(user.roleKey, d.value.type, isXiaozhi.value, isFlash.value)?.form ?? null,
 );
 
 /**
@@ -961,7 +961,7 @@ function onRiskReport(payload: {
 // 不传就又回到「Tab 条上没有这一枚、页头却给了个按钮把正文调出来」那个绕过口 —— 这里的
 // 角色黑名单只挡得住小智坐席，二线班组长 / 管理员打开小智单照样拿得到入口。
 const canViewRiskTab = computed(
-  () => isProcessTabVisible('risk', d.value.type, user.roleKey, { isXiaozhi: isXiaozhi.value }),
+  () => isProcessTabVisible('risk', d.value.type, user.roleKey, { isXiaozhi: isXiaozhi.value, isFlash: isFlash.value }),
 );
 
 /* ==================== 标题行的两枚风险状态标（《【930】》§5A.3 / §3.2 可见性） ====================

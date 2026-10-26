@@ -3,6 +3,8 @@ import { defineStore } from 'pinia';
 import { useNotifyLogStore } from '@/stores/notifyLog';
 import { useRiskHistoryStore } from '@/stores/riskHistory';
 import { useRiskQueueStore } from '@/stores/riskQueue';
+import { TICKETS } from '@/mock/tickets';
+import { isFlashTicket } from '@/views/tickets/types/flash';
 import {
   RISK_POOL_RECEIVERS,
   REPORT_ASSESS_LIMIT_MIN,
@@ -585,6 +587,8 @@ export const useRiskReportStore = defineStore('riskReports', () => {
     at: string;
   }) {
     if (!canSubmitFor(input.ticketNo)) return null;
+    // 刷机单不进行风险报备（用户 10-26）
+    if (isFlashTicket(TICKETS.find((x) => x.no === input.ticketNo))) return null;
     seq.value += 1;
     const report: RiskReport = {
       id: `rr-${String(seq.value).padStart(3, '0')}`,

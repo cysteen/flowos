@@ -111,6 +111,7 @@ import {
 import { RISK_TAG_ROLES, RISK_WORD_MAINTAIN_ROLES } from '@/config/roles';
 import { RISK_LEVELS, riskLevelText } from '@/config/risk';
 import { TICKETS } from '@/mock/tickets';
+import { isFlashTicket } from '@/views/tickets/types/flash';
 // 优先级的界面词取工单侧那一份**单一真源**：建单页下拉、班组看板都从那里取，
 // 本文件再抄一份，改天业务把「普通加急」改个说法，这一列就会静默地留在旧词上。
 // `canClaimRiskReport` 是**池内动作权**（客诉专员 + 三个管理员 scope）的全站唯一判据，
@@ -411,7 +412,8 @@ const isLiveTicket = (t: Ticket) => isLiveTicketShared(t, derivedTickets.escalat
  * 本块的底表 ＝ **全部在办工单**。下面两行分布同取这一份，
  * 故 `ΣP0..P3 ≡ 它的条数`（`Priority` 只有四个取值，没有落不进格的单）。
  */
-const liveTickets = computed(() => TICKETS.filter(isLiveTicket));
+// 刷机单不参与风险监控（用户 10-26）：页头各计数不纳入
+const liveTickets = computed(() => TICKETS.filter((t) => isLiveTicket(t) && !isFlashTicket(t)));
 
 /**
  * 第一行 · **优先级四维**。界面词取建单下拉同一份 `PRIORITY_OPTIONS`（见 `PRIORITY_RAIL_LABEL`），
