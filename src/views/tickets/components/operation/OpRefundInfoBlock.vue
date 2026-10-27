@@ -203,7 +203,7 @@ const headTime = computed(() => (lastRun.value ? lastRun.value.resultAt ?? lastR
 .rf-table-wrap { background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden; }
 .rf-table-title { padding: 6px 10px 0; font-size: 12px; line-height: 20px; font-weight: 600; color: #374151; }
 .rf-table { width: 100%; border-collapse: collapse; font-size: 12px; line-height: 20px; table-layout: fixed; }
-.rf-table .col-at { width: 132px; }
+.rf-table .col-at { width: 88px; }
 .rf-table .col-by { width: 64px; }
 .rf-table .col-task { width: 128px; }
 .rf-table .col-result { width: 72px; }
