@@ -362,7 +362,7 @@ function confirmTransfer() {
         <div class="rf-card__head"><span class="rf-card__title">退费信息</span></div>
 
         <div class="rf-row" :class="{ 'has-error': errors.submitRefund }">
-          <label class="rf-label is-required">是否提交退费：</label>
+          <label class="rf-label is-required">是否在线退费：</label>
           <div class="rf-ctl">
             <a-select v-model:value="submitRefundModel" :options="YES_NO" :disabled="!canAct" :status="errors.submitRefund ? 'error' : undefined" />
             <div v-if="errors.submitRefund" class="rf-err">{{ errors.submitRefund }}</div>
