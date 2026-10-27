@@ -150,7 +150,7 @@ const refundInProgress = computed(() => isRefund.value && d.value.status === REF
 /**
  * 个册退费单只读查看（1120 PRD 5.4）：处理人是外部处理人（校园经理 / 城市经理，只在移动工单 H5 处理）
  * 或「系统」（系统退费中）时，PC 端任何人打开都只读 —— 底栏不渲染、各写 Tab 只读（同刷机单「只读查看」）；
- * 页头关联投诉 / 新建补充照常。教育退费审核组领取后（外部处理人已清）照常处理。
+ * 页头关联投诉 / 新建补充照常。教育支持组领取后（外部处理人已清）照常处理。
  */
 const refundReadonlyView = computed(() => isRefund.value && (!!d.value.refund?.state.manager || refundInProgress.value));
 /** 调剂候选人：同组成员之外加全部校园经理、城市经理，按本单学校预选该校校园经理（PRD 第 4 章第 5 行） */
@@ -2189,6 +2189,8 @@ function onAction(payload: Record<string, unknown>) {
       // 保存＝编辑本单：产研退回时处理人优先交回最后编辑人（一·补 B31 / B33）
       xiaozhiStore.markEdited(d.value.no, currentHandlerName(user.roleKey, user.name));
     }
+    // 个册退费单：二线保存属首次响应动作集（兜底进池、校园经理未保存过的单在此记整单首响）
+    if (isRefund.value) refundStore.markRespondedOnPage(d.value.no);
     // 风险等级落第八类、不落「工单处理」的字段 diff，故与 log 分开走，见 `recordAgentRiskLevelChange`
     recordAgentRiskLevelChange();
     if (log || isFlash.value) processBaseline = snapshotProcess(); // 登记后更新基线，下次 diff 以此为准
@@ -2430,6 +2432,7 @@ function syncContactedAfterOutreach() {
   }
   // 小智单同理（基线 §1 L25 / §7 L728：电话 / 短信 / 邮件属首次响应动作集）
   if (isXiaozhi.value) xiaozhiStore.markResponded(d.value.no);
+  if (isRefund.value && !refundReadonlyView.value) refundStore.markRespondedOnPage(d.value.no);
   let touchedDunning = false;
   let touchedSupplement = false;
   for (const rec of tabData.value.dunningRecords) {

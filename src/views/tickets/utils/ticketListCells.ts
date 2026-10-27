@@ -143,7 +143,7 @@ export function isSlaVoidStop(t: Ticket): boolean {
  */
 export function isFlashSlaIdle(t: Ticket): boolean {
   if (isRefundTicket(t) && t.refund) {
-    // 个册退费单与刷机单一线同一口径（1120 一·补 补7）：未进教育退费审核组不计时，调研中显示「—」
+    // 个册退费单（10-27）：建单下送即起算，仅缺起算时刻的异常数据不计时；调研中显示「—」
     return !isFlashSlaCounted(t.refund.state) || t.nodeStatus === '调研中';
   }
   if (!isFlashTicket(t) || !t.flash) return false;
@@ -154,7 +154,7 @@ export function isFlashSlaIdle(t: Ticket): boolean {
 export const REFUND_SLA_IDLE_TIP = '未起算';
 
 /**
- * 个册退费单 SLA 未起算（外部处理人名下、系统退费中、未进过教育退费审核组）。
+ * 个册退费单 SLA 未起算（建单下送即起算，正常数据恒为已起算；兜底缺起算时刻的异常数据）。
  * 与 `isFlashSlaIdle` 的区别：起算后进「调研中」显示的「—」不算未起算。非个册退费单恒为 false。
  */
 export function isRefundSlaNotStarted(t: Ticket): boolean {

@@ -852,6 +852,8 @@ export const SLA_COLOR: Record<SlaState, string> = {
 
 /** 是否已完成首次响应（未显式标注时：未认领 / 待响应 = 未响） */
 export function isFirstResponded(t: Ticket): boolean {
+  // 个册退费单：整单首响一经记下即算已响（转办 / 调剂 / 驳回回退后 `responded` 复位不重开首响）
+  if (isRefundTicket(t) && t.refund?.state.firstRespAt) return true;
   return t.responded ?? (t.nodeStatus !== '未认领' && t.nodeStatus !== '待响应');
 }
 
@@ -885,7 +887,7 @@ export function slaSortKey(t: Ticket): { group: number; minutes: number } {
   }
   // 刷机单未计 SLA（一线、未进教育刷机处理组池，1013 A26）：无活跃钟，与终态同组
   if (isFlashTicket(t)) return { group: 4, minutes: Number.MAX_SAFE_INTEGER };
-  // 个册退费单未计 SLA（外部处理人名下、系统退费中、未进教育退费审核组）：同刷机单一线不计时
+  // 个册退费单无账本读数（建单即起算，仅缺起算时刻的异常数据）：无活跃钟，与终态同组
   if (isRefundTicket(t)) return { group: 4, minutes: Number.MAX_SAFE_INTEGER };
   if (t.slaText === '—') return { group: 4, minutes: Number.MAX_SAFE_INTEGER }; // 终态：无活跃钟
   if (isSlaPaused(t)) return { group: 3, minutes: Number.MAX_SAFE_INTEGER }; // 挂起（老四类）：冻结置底
@@ -1085,7 +1087,8 @@ export const POOL_GROUPS: PoolGroupMeta[] = [
   { id: 'edu-flash', label: '教育刷机处理组' },
   // 1130 小智工单 D21：一个大组、进池自己领，不按产品 / 优先级细分、不直派到个人
   { id: XIAOZHI_POOL_GROUP_ID, label: XIAOZHI_POOL_GROUP_NAME },
-  // 1120 个册退费单：兜底、退费成功 / 部分完成自动下送、校园经理选「否」下送都进本组工单池
+  // 通用「教育」业务处理组（教育支持组）。1120 个册退费单（10-27）：兜底、退费成功 / 部分完成自动下送、
+  // 校园经理选「否」下送都进本组工单池，与本组其他待领取工单同池，不单设退费池
   { id: REFUND_POOL_GROUP_ID, label: REFUND_POOL_GROUP_NAME },
 ];
 
@@ -1166,7 +1169,7 @@ export function visiblePoolGroupsFor(roleKey: string): PoolGroupMeta[] {
   return POOL_GROUPS.filter((g) => {
     if (g.id === EDU_FLASH_GROUP_ID) return EDU_FLASH_POOL_ROLES.has(roleKey);
     if (g.id === XIAOZHI_POOL_GROUP_ID) return XIAOZHI_POOL_ROLES.has(roleKey);
-    // 教育退费审核组：二线专员、二线班组长、管理员（同教育刷机处理组）
+    // 教育支持组：二线专员、二线班组长、管理员（同教育刷机处理组）
     if (g.id === REFUND_POOL_GROUP_ID) return EDU_FLASH_POOL_ROLES.has(roleKey);
     return true;
   });

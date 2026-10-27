@@ -40,7 +40,7 @@ const CITY_MANAGER_BY_CITY: Record<string, RefundManager> = {
   '安徽省 / 蚌埠市': CITY_MANAGERS.xuhang,
 };
 
-/** 按学校取处理人：校园经理 → 城市经理 → 都取不到返回 undefined（进教育退费审核组池） */
+/** 按学校取处理人：校园经理 → 城市经理 → 都取不到返回 undefined（进教育支持组工单池） */
 export function resolveSchoolManager(schoolId: string): RefundManager | undefined {
   const c = SCHOOL_CAMPUS[schoolId];
   if (c) return c;
@@ -50,7 +50,7 @@ export function resolveSchoolManager(schoolId: string): RefundManager | undefine
   return CITY_MANAGER_BY_CITY[cityKey];
 }
 
-/** 本校校园经理（审核组调剂时预选） */
+/** 本校校园经理（二线调剂时预选） */
 export function campusManagerOf(schoolId: string): RefundManager | undefined {
   return SCHOOL_CAMPUS[schoolId];
 }

@@ -26,7 +26,7 @@ export interface SlaClockSource {
   /** 「刷机单」标识（1013 A1）：刷机单按它分流，不看工单类型 */
   isFlash?: boolean;
   flash?: TicketFlash;
-  /** 「个册退费」标识（1120）：与刷机单同一本账本口径，进教育退费审核组起算 */
+  /** 「个册退费」标识（1120）：与刷机单同一本账本，建单下送起算、统计整单（10-27） */
   isRefund?: boolean;
   refund?: TicketRefund;
   /** 是否已首响；缺省按子状态推（未认领 / 待响应 = 未响） */
@@ -113,7 +113,7 @@ export function isFlashSlaCounted(st: Pick<FlashState, 'pool' | 'slaStartedAt'>)
  * 一线名下、未起算的刷机单）返回 `null`，调用方转调现有实现或显示「—」。
  */
 export function readSla(t: SlaClockSource, now: number = Date.now()): SlaReading | null {
-  // 个册退费单（1120 一·补 补7）：外部处理人名下、系统退费中不计；首次进教育退费审核组起算，此后不停表
+  // 个册退费单（10-27）：同通用工单，建单下送起算、统计整单；校园经理名下、系统退费中照常计时
   if (isRefundTicket(t) && t.refund) {
     return isFlashSlaCounted(t.refund.state) ? readFlashSla(t.refund.state, now) : null;
   }
@@ -149,10 +149,14 @@ export function slaStateOf(remainMs: number): SlaState {
 export function flashSlaClock(
   r: SlaReading,
   kind: 'whole' | 'first',
-  opts: { responded?: boolean; firstRespBreached?: boolean } = {},
+  opts: { responded?: boolean; firstRespBreached?: boolean; firstClosedAtMs?: number } = {},
 ): SlaClock {
   const whole = kind === 'whole';
-  const remainMs = whole ? r.remainMs : r.firstRemainMs;
+  // 个册退费单首响已记时刻：首响钟读数钉在首响那一刻（不随此后时间推移变化）
+  const firstAt = !whole ? opts.firstClosedAtMs : undefined;
+  const remainMs = whole ? r.remainMs : firstAt != null
+    ? FLASH_SLA_FIRST_LIMIT_MS - Math.max(0, firstAt - r.startedAtMs)
+    : r.firstRemainMs;
   // 首响已完成 → 首响钟按结果停表（达标 / 超时后才响的未达标）
   const firstStopped = !whole && !!opts.responded;
   const phase: SlaClock['phase'] = r.status === 'stopped' || firstStopped
@@ -172,7 +176,7 @@ export function flashSlaClock(
     warnSec: FLASH_SLA_WARN_MS / 1000,
     dueBy: whenText(whole ? r.dueAtMs : r.startedAtMs + FLASH_SLA_FIRST_LIMIT_MS),
     stopOutcome: outcome,
-    closedAt: phase === 'stopped' ? whenText(r.stoppedAtMs ?? r.startedAtMs + r.elapsedMs) : undefined,
+    closedAt: phase === 'stopped' ? whenText(firstAt ?? r.stoppedAtMs ?? r.startedAtMs + r.elapsedMs) : undefined,
   };
 }
 
@@ -180,10 +184,13 @@ export function flashSlaClock(
 export function flashSlaClocks(t: SlaClockSource, now: number = Date.now()): SlaClock[] | null {
   const r = readSla(t, now);
   if (!r) return null;
-  const responded = t.responded ?? (t.nodeStatus !== '未认领' && t.nodeStatus !== '待响应');
+  // 个册退费单：整单首响一经记下即停（转办 / 调剂 / 驳回回退后 `responded` 复位也不重开首响钟）
+  const refundFirstAt = isRefundTicket(t) ? stampMs(t.refund?.state.firstRespAt) : undefined;
+  const responded = refundFirstAt != null
+    || (t.responded ?? (t.nodeStatus !== '未认领' && t.nodeStatus !== '待响应'));
   return [
     flashSlaClock(r, 'whole'),
-    flashSlaClock(r, 'first', { responded, firstRespBreached: t.firstRespBreached }),
+    flashSlaClock(r, 'first', { responded, firstRespBreached: t.firstRespBreached, firstClosedAtMs: refundFirstAt }),
   ];
 }
 

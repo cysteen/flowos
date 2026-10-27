@@ -49,9 +49,13 @@ export const REFUND_STATUS_SYSTEM = '系统退费中' as const;
 /** 「系统退费中」的处理人 */
 export const REFUND_SYSTEM_HANDLER = '系统';
 
-/** 教育退费审核组（兜底池、退费成功自动下送、校园经理选「否」下送都进这里） */
-export const REFUND_POOL_GROUP_ID = 'edu-refund';
-export const REFUND_POOL_GROUP_NAME = '教育退费审核组';
+/**
+ * 二线落组：通用「教育」业务的处理组「教育支持组」（10-27 拍板：不单设退费审核组、不设专池）。
+ * 兜底（按学校取不到人 / 建单清空校代对接人）、退费成功 / 部分完成自动下送、校园经理选「否」下送都进本组工单池，
+ * 与本组其他待领取工单同池。id / 组名与查询中心、运营监控的「教育支持组」同值。
+ */
+export const REFUND_POOL_GROUP_ID = 'edu';
+export const REFUND_POOL_GROUP_NAME = '教育支持组';
 
 /** 外部处理人的类别（不进角色体系，只记姓名与域账号） */
 export type RefundManagerKind = '校园经理' | '城市经理';
@@ -205,14 +209,19 @@ export interface RefundRun {
 
 /** 本单的处理状态与 SLA 账本（账本字段与刷机单同名，读数走同一套 `readFlashSla`） */
 export interface RefundState {
-  /** 当前外部处理人（校园经理 / 城市经理）；在系统、池或组员名下时为空 */
+  /** 当前外部处理人（校园经理 / 城市经理）；在系统、教育支持组池或组员名下时为空 */
   manager?: RefundManager;
   /** 最近一次提交退费的校园经理（驳回回退、系统退费中的催补通知落给他） */
   lastSubmitter?: RefundManager;
   /** 关联投诉单号（弱关联，两单各自流转） */
   linkedComplaintNos?: string[];
-  /** SLA 起算：首次进入教育退费审核组的时刻；外部处理人名下、系统退费中不计 */
+  /** SLA 起算：建单下送时刻（同通用工单，统计整单）；此后在校园经理名下、系统退费中照常计时 */
   slaStartedAt?: string;
+  /**
+   * 整单首响时刻：校园经理在移动工单 H5 首次「保存」（含下送）的时刻；兜底进池的单取二线首次响应时刻。
+   * 一经写入不再改写（转办 / 调剂 / 驳回回退后再保存不重算首响）。
+   */
+  firstRespAt?: string;
   slaPausedAccumMs?: number;
   slaPausedSince?: string;
   slaStoppedAt?: string;

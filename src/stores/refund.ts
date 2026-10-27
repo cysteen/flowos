@@ -8,6 +8,7 @@ import { REFUND_SEEDS } from '@/mock/refund/seedTickets';
 import { findRefundOrder } from '@/mock/refund/commodities';
 import { resolveSchoolManager } from '@/mock/refund/managers';
 import { makeTicketNo } from '@/constants/ticketNo';
+import { readFlashSla } from '@/views/tickets/utils/slaClock';
 import { flashStamp, parseFlashStamp } from '@/views/tickets/types/flash';
 import {
   REFUND_NOTIFY_EVENTS, REFUND_PENDING_STEP_MS, REFUND_POOL_GROUP_ID, REFUND_POOL_GROUP_NAME,
@@ -27,7 +28,7 @@ import { useNotifyLogStore } from './notifyLog';
  * 已打开的列表随之刷新），履历写在工单行的 `eventTimeline` 上（处理页按「本单自有数据」读它）。
  *
  * 【写口】建单派单、移动工单 H5（保存 / 下送 / 转办）、产线结果定时查询（`settleDue`）、
- * 教育退费审核组的调剂给校园经理与下送、关联投诉。其余动作同咨询单，走处理页通用分支。
+ * 教育支持组（二线）的调剂给校园经理与下送、关联投诉。其余动作同咨询单，走处理页通用分支。
  *
  * 【持久化】个册退费单快照（含关联投诉建出的投诉单）落 localStorage，12 小时保质。
  */
@@ -61,8 +62,10 @@ const LS_KEY = 'flowos-refund-cache';
 /**
  * v4：通知文案与收件人改版（到组通知走 IM_WO_POOLED、短信带完整 H5 链接、收件人只写姓名）
  * v5：种子时刻由分钟级改到秒级（列表与查询的建单 / 更新时间带秒），v4 快照里的分钟级时间作废
+ * v6：SLA 自建单下送起算、加整单首响时刻 `firstRespAt`；二线落组由「教育退费审核组」(edu-refund) 改为
+ *     通用「教育支持组」(edu)（10-27 拍板），v5 快照里的旧起算时刻与旧组作废
  */
-const CACHE_VERSION = 5;
+const CACHE_VERSION = 6;
 const STALE_MS = 12 * 60 * 60 * 1000;
 
 interface RefundCache { v: number; savedAt: number; tickets: Ticket[] }
@@ -170,10 +173,24 @@ export const useRefundStore = defineStore('refund', () => {
 
   /* ---------------- SLA 账本（与刷机单同名字段，读数走 readFlashSla） ---------------- */
 
-  /** 首次进入教育退费审核组起算，此后不论在谁名下都照常计时 */
+  /** 同通用工单：建单下送起算、统计整单，此后在校园经理名下、系统退费中照常计时 */
   function startSla(r: Ticket, at: number) {
     const st = r.refund!.state;
     if (!st.slaStartedAt) st.slaStartedAt = flashStamp(at);
+  }
+
+  /**
+   * 整单首响（复用通用工单首响判定）：首次响应时按首响钟剩余判达标 / 未达标并关钟，记「首响时钟关闭」履历。
+   * 移动工单 H5 只有「保存」一种首响动作（下送同时保存，计入）；已首响的单不重算。
+   */
+  function firstResponse(r: Ticket, at: number) {
+    const st = r.refund!.state;
+    if (st.firstRespAt) return;
+    const read = readFlashSla(st, at);
+    if (read && read.firstRemainMs < 0) r.firstRespBreached = true;
+    st.firstRespAt = flashStamp(at);
+    const closedAt = flashStamp(at);
+    log(r, at, { category: 'sla', action: 'slaClose', ...SYS, how: '首响时钟关闭', what: '', slaClose: { clock: '首响', closedAt } });
   }
 
   function pauseSla(r: Ticket, at: number) {
@@ -206,7 +223,6 @@ export const useRefundStore = defineStore('refund', () => {
       groupId: REFUND_POOL_GROUP_ID, groupNames: [REFUND_POOL_GROUP_NAME], updatedAt: flashStamp(at),
     });
     r.refund!.state.manager = undefined;
-    startSla(r, at);
     poolIm(r);
   }
 
@@ -225,7 +241,7 @@ export const useRefundStore = defineStore('refund', () => {
   }
 
   /**
-   * 建个册退费单并按建单所填校代对接人派单；校代对接人为空进教育退费审核组池。
+   * 建个册退费单并按建单所填校代对接人派单；校代对接人为空进教育支持组工单池。SLA 自建单下送起算。
    * `manager` 不传时按学校取（校园经理 → 城市经理），传 `null` 表示建单时清空了校代对接人。
    */
   function createRefundTicket(
@@ -273,6 +289,7 @@ export const useRefundStore = defineStore('refund', () => {
     } as Ticket);
     TICKETS.unshift(toRaw(r));
     log(r, now, { category: 'node', action: 'create', who: actor.name, role: actor.role, how: '建单', what: REFUND_TL.create(base.ticketSource) });
+    startSla(r, now);
     const bySchool = resolveSchoolManager(info.schoolId);
     const m = manager === undefined ? bySchool : manager ?? undefined;
     let message: string;
@@ -308,9 +325,11 @@ export const useRefundStore = defineStore('refund', () => {
     return { ok: true, message: '' };
   }
 
-  function markResponded(r: Ticket) {
+  /** 响应：待响应 → 处理中；整单首响未记过的，此刻记首响 */
+  function markResponded(r: Ticket, at: number = Date.now()) {
     if (r.nodeStatus === '待响应') r.nodeStatus = '处理中';
     r.responded = true;
+    firstResponse(r, at);
   }
 
   function h5Save(no: string, handle: RefundHandle): RefundActionResult {
@@ -320,16 +339,16 @@ export const useRefundStore = defineStore('refund', () => {
     const m = r.refund!.state.manager!;
     const now = Date.now();
     r.refund!.handle = { ...structuredClone(toRaw(handle)), savedBy: m.name, savedAt: flashStamp(now) };
-    markResponded(r);
     r.updatedAt = flashStamp(now);
     log(r, now, { category: 'handle', action: 'handle', who: m.name, role: refundManagerTlRole(m), how: '保存', what: REFUND_TL.save });
+    markResponded(r, now);
     commit(r);
     return { ok: true, message: '已保存' };
   }
 
   /**
    * H5 下送：「是」→ 创建退费（产线受理进「系统退费中」/ 拒绝留本人「处理中」）；
-   * 「否」→ 教育退费审核组池。表单校验由页面先做（PRD 5.1 下送校验）。
+   * 「否」→ 教育支持组工单池。表单校验由页面先做（PRD 5.1 下送校验）。
    */
   function h5Forward(no: string, handle: RefundHandle): RefundActionResult {
     const gate = h5Gate(no);
@@ -339,7 +358,7 @@ export const useRefundStore = defineStore('refund', () => {
     const m = ref.state.manager!;
     const now = Date.now();
     ref.handle = { ...structuredClone(toRaw(handle)), savedBy: m.name, savedAt: flashStamp(now) };
-    markResponded(r);
+    markResponded(r, now);
     if (handle.submitRefund === '否') {
       log(r, now, { category: 'node', action: 'transfer', who: m.name, role: refundManagerTlRole(m), how: '下送', what: REFUND_TL.forwardNo(handle.remark.trim()) });
       toPool(r, now);
@@ -448,7 +467,7 @@ export const useRefundStore = defineStore('refund', () => {
     return changed;
   }
 
-  /* ---------------- PC：教育退费审核组 ---------------- */
+  /* ---------------- PC：教育支持组（二线） ---------------- */
 
   /** 领取（通用落库 `claimPoolTicket` 之后）：落快照、刷新处理页 */
   function afterClaim(no: string) {
@@ -458,7 +477,7 @@ export const useRefundStore = defineStore('refund', () => {
 
   /**
    * 单从外部处理人名下被领走 / 接走（催补待回领取等通用落库之后）：清掉外部处理人，
-   * 归属回教育退费审核组，落快照。
+   * 归属回教育支持组，落快照。
    */
   function releaseManager(no: string) {
     const r = rowOf(no);
@@ -471,7 +490,7 @@ export const useRefundStore = defineStore('refund', () => {
     commit(r);
   }
 
-  /** 同组内调剂给审核组组员（非外部处理人）：同咨询单落「待响应」，清掉外部处理人 */
+  /** 同组内调剂给组员（非外部处理人）：同咨询单落「待响应」，清掉外部处理人 */
   function assignToMember(no: string, name: string, by: RefundActor, reason?: string): RefundActionResult {
     const r = rowOf(no);
     if (!r) return { ok: false, message: '' };
@@ -495,7 +514,7 @@ export const useRefundStore = defineStore('refund', () => {
     return { ok: true, message: `已调剂给 ${m.name}` };
   }
 
-  /** 审核组下送：进「调研中」，发调研短信（不经工单运营审核） */
+  /** 二线下送：进「调研中」，发调研短信（不经工单运营审核） */
   function forwardToSurvey(no: string, by: RefundActor): RefundActionResult {
     const r = rowOf(no);
     if (!r) return { ok: false, message: '' };
@@ -521,7 +540,7 @@ export const useRefundStore = defineStore('refund', () => {
     commit(r);
   }
 
-  /** 处理页「保存」落了处理登记：待响应 → 处理中 */
+  /** 处理页「保存」/ 外呼 / 短信 / 邮件（二线首次响应动作集）：待响应 → 处理中，未记过整单首响的记首响 */
   function markRespondedOnPage(no: string) {
     const r = rowOf(no);
     if (!r || r.responded) return;

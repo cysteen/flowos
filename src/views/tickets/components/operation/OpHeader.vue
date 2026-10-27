@@ -176,7 +176,7 @@ function onLinkAftersaleClick() {
 const isFlashDetail = computed(() => isFlashTicket(props.detail) && !!props.detail.flash);
 /** 「小智工单」标识（1130 D1）：驱动页头标识徽章与「不出 SLA 条」（一·补 B1） */
 const isXiaozhiDetail = computed(() => isXiaozhiTicket(props.detail));
-/** 个册退费单（1120 一·补 补7）：与刷机单同一本账本，进教育退费审核组起算，SLA 区同口径 */
+/** 个册退费单：与刷机单同一本账本，建单下送起算（10-27），SLA 区同口径 */
 const isRefundDetail = computed(() => isRefundTicket(props.detail) && !!props.detail.refund);
 const flashSlaStartText = computed(() => {
   if (!isFlashDetail.value && !isRefundDetail.value) return undefined;

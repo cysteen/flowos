@@ -1,10 +1,11 @@
 /**
  * 个册退费单 · 工单库样本（1120 个册退费工单）。七张，覆盖各阶段：
  * ① 校园经理待处理（待响应）；② 系统退费中；③ 已驳回（回校园经理「处理中」）；
- * ④ 退费成功 · 教育退费审核组池（首次驳回、再次提交成功）；⑤ 部分完成 · 审核组组员处理中；
- * ⑥ 兜底 · 教育退费审核组池（学校未取到校园经理、城市经理）；⑦ 已结案 · 已发调研短信。
+ * ④ 退费成功 · 教育支持组工单池（首次驳回、再次提交成功）；⑤ 部分完成 · 教育支持组组员处理中；
+ * ⑥ 兜底 · 教育支持组工单池（学校未取到校园经理、城市经理）；⑦ 已结案 · 已发调研短信。
  *
- * 时刻相对装载时刻推算：SLA 账本（进教育退费审核组起算）读数随之自洽，不因种子放久而全部超时。
+ * 时刻相对装载时刻推算：SLA 账本（建单下送起算、统计整单，10-27）读数随之自洽；整单首响取校园经理
+ * 在 H5 首次保存 / 下送的时刻（`firstRespAt`），超 30 分钟才响的记首响未达标（④）。
  * 并入工单库的位置：`mock/tickets.ts`（排在种子单号集合之后，处理页按「本单自有数据」展示）。
  */
 import type { Ticket } from '@/views/tickets/types/ticket';
@@ -45,7 +46,7 @@ const no = (n: number) => `${TICKET_NO_PREFIX[REFUND_TICKET_TYPE]}-${DAY}-${Stri
 /** 建单坐席（演示用户，见 `mock/users.ts`） */
 const AGENT = '刘一线';
 const AGENT_ROLE: TlRole = '一线坐席';
-/** 教育退费审核组组员（二线专员演示账号沿用的历史处理人名，见 `WORKBENCH_HANDLER`） */
+/** 教育支持组组员（二线专员演示账号沿用的历史处理人名，见 `WORKBENCH_HANDLER`） */
 const AUDITOR = '王坐席';
 const AUDITOR_ROLE: TlRole = '二线专员';
 const SOURCE = '电话';
@@ -61,6 +62,11 @@ function tl(
     id: `refund-seed-${tlSeq}`, category, action, who, role, how, what, when,
     ...(role === '系统' ? { systemActor: true } : {}),
   };
+}
+
+/** 整单首响关钟履历（同通用工单「首响时钟关闭」） */
+function firstClose(when: string): TimelineEntry {
+  return { ...tl(when, 'sla', 'slaClose', '系统', '系统', '首响时钟关闭', ''), slaClose: { clock: '首响', closedAt: when } };
 }
 
 function subj(commodityName: string, commodityId: string, payOrderId: string, list: [string, string, number][]): RefundSubject[] {
@@ -154,13 +160,14 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
   {
     const n = no(1);
     const m = CAMPUS_MANAGERS.yangfan;
-    const c = nowMs - 50 * MIN;
+    const c = nowMs - 20 * MIN;
     const items = subj('2026春季个性化学习手册（高一）', 'CM-26S-G1-01', 'PO20260301007701', [['02', '数学', 128], ['05', '物理', 96], ['06', '化学', 96]]);
     const info: RefundInfo = {
       schoolId: 'SCH-340103-001', schoolName: '合肥市第一中学', schoolRegion: '安徽省 / 合肥市 / 庐阳区',
       studentName: '林子涵', studentCode: '47429', orderNo: 'PO20260301007701', refundableAmount: sumRefundAmount(items), reason: 6,
     };
-    const state: RefundState = { manager: m };
+    // 建单即起算：校园经理名下照常计时，未保存过 → 首响钟在走
+    const state: RefundState = { manager: m, slaStartedAt: at(c) };
     tickets.push(row(1, {
       customer: '林女士', phone: '13955100101', info,
       refund: { handle: emptyRefundHandle(info), state, runs: [] },
@@ -180,7 +187,8 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
   {
     const n = no(2);
     const m = CAMPUS_MANAGERS.yangfan;
-    const c = nowMs - 26 * HOUR;
+    const c = nowMs - 5 * HOUR;
+    const sv = c + 20 * MIN;
     const s = nowMs - 3 * HOUR;
     const items = subj('2026春季个性化学习手册（高三）', 'CM-26S-G3-02', 'PO20260303010452', [['01', '语文', 132], ['03', '英语', 132]]);
     const info: RefundInfo = {
@@ -195,7 +203,7 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
           ...emptyRefundHandle(info), submitRefund: '是', commResult: '已联系达成一致', subjects: items,
           reasonDesc: '学校本学期取消个册统一订购，家长申请退回剩余学科费用', closeAuth: '是', savedBy: m.name, savedAt: at(s),
         },
-        state: { lastSubmitter: m },
+        state: { lastSubmitter: m, slaStartedAt: at(c), firstRespAt: at(sv) },
         runs: [r1],
       },
       nodeStatus: REFUND_STATUS_SYSTEM, assignee: REFUND_SYSTEM_HANDLER, tab: 'mine',
@@ -205,7 +213,8 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
       timeline: [
         tl(at(c), 'node', 'create', AGENT, AGENT_ROLE, '建单', REFUND_TL.create(SOURCE)),
         tl(at(c + 15_000), 'node', 'transfer', '系统', '系统', '派单', REFUND_TL.dispatchManager(m)),
-        tl(at(c + 2 * HOUR), 'handle', 'handle', m.name, refundManagerTlRole(m), '保存', REFUND_TL.save),
+        tl(at(sv), 'handle', 'handle', m.name, refundManagerTlRole(m), '保存', REFUND_TL.save),
+        firstClose(at(sv)),
         tl(at(s), 'node', 'handle', m.name, refundManagerTlRole(m), '提交退费', REFUND_TL.submit(r1.taskId, items)),
         tl(at(s + 40 * MIN), 'node', 'handle', '系统', '系统', '退费结果回写', REFUND_TL.result(r1.taskId, '待退费')),
       ],
@@ -218,6 +227,7 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
     const n = no(3);
     const m = CAMPUS_MANAGERS.wujing;
     const c = nowMs - 30 * HOUR;
+    const sv = c + 25 * MIN;
     const s = nowMs - 6 * HOUR;
     const rj = nowMs - 2 * HOUR;
     const reason = '退费学科与已交付记录不符，请核对后重新提交';
@@ -234,7 +244,7 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
           ...emptyRefundHandle(info), submitRefund: '是', commResult: '已联系达成一致', subjects: items,
           reasonDesc: '学生反馈学习手册内容与课堂进度不匹配，申请退费', closeAuth: '是', savedBy: m.name, savedAt: at(s),
         },
-        state: { manager: m, lastSubmitter: m },
+        state: { manager: m, lastSubmitter: m, slaStartedAt: at(c), firstRespAt: at(sv) },
         runs: [r1],
       },
       nodeStatus: '处理中', assignee: m.name, tab: 'mine',
@@ -244,6 +254,8 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
       timeline: [
         tl(at(c), 'node', 'create', AGENT, AGENT_ROLE, '建单', REFUND_TL.create(SOURCE)),
         tl(at(c + 15_000), 'node', 'transfer', '系统', '系统', '派单', REFUND_TL.dispatchManager(m)),
+        tl(at(sv), 'handle', 'handle', m.name, refundManagerTlRole(m), '保存', REFUND_TL.save),
+        firstClose(at(sv)),
         tl(at(s), 'node', 'handle', m.name, refundManagerTlRole(m), '提交退费', REFUND_TL.submit(r1.taskId, items)),
         tl(at(rj), 'node', 'handle', '系统', '系统', '退费结果回写', REFUND_TL.result(r1.taskId, '已驳回', reason)),
         tl(at(rj + 1000), 'node', 'transfer', '系统', '系统', '驳回回退', REFUND_TL.rejectBack(reason, m.name)),
@@ -253,7 +265,7 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
     todo(n, m, rj + 1000);
   }
 
-  /* ④ 退费成功 · 教育退费审核组池（首次驳回、再次提交成功） */
+  /* ④ 退费成功 · 教育支持组工单池（首次驳回、再次提交成功；校园经理建单 5 小时后才首次下送 → 首响未达标） */
   {
     const n = no(4);
     const m = CAMPUS_MANAGERS.wujing;
@@ -278,15 +290,16 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
           ...emptyRefundHandle(info), submitRefund: '是', commResult: '已联系达成一致', subjects: items2,
           reasonDesc: '家长重复购买，申请退回重复订购的数学、英语两科', closeAuth: '是', savedBy: m.name, savedAt: at(s2),
         },
-        state: { lastSubmitter: m, slaStartedAt: at(ok + 1000) },
+        state: { lastSubmitter: m, slaStartedAt: at(c), firstRespAt: at(s1) },
         runs: [r1, r2],
       },
-      nodeStatus: '未认领', assignee: null, tab: 'pool', responded: false,
+      nodeStatus: '未认领', assignee: null, tab: 'pool', responded: false, firstRespBreached: true,
       createdAt: at(c), updatedAt: at(ok + 1000),
       timeline: [
         tl(at(c), 'node', 'create', AGENT, AGENT_ROLE, '建单', REFUND_TL.create(SOURCE)),
         tl(at(c + 15_000), 'node', 'transfer', '系统', '系统', '派单', REFUND_TL.dispatchManager(m)),
         tl(at(s1), 'node', 'handle', m.name, refundManagerTlRole(m), '提交退费', REFUND_TL.submit(r1.taskId, all)),
+        firstClose(at(s1)),
         tl(at(rj), 'node', 'handle', '系统', '系统', '退费结果回写', REFUND_TL.result(r1.taskId, '已驳回', reason)),
         tl(at(rj + 1000), 'node', 'transfer', '系统', '系统', '驳回回退', REFUND_TL.rejectBack(reason, m.name)),
         tl(at(s2), 'node', 'handle', m.name, refundManagerTlRole(m), '提交退费', REFUND_TL.submit(r2.taskId, items2)),
@@ -299,11 +312,12 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
     pooled(n, ok + 1000);
   }
 
-  /* ⑤ 部分完成 · 审核组组员处理中 */
+  /* ⑤ 部分完成 · 教育支持组组员处理中 */
   {
     const n = no(5);
     const m = CAMPUS_MANAGERS.maxiao;
     const c = nowMs - 28 * HOUR;
+    const sv = c + 15 * MIN;
     const s = nowMs - 8 * HOUR;
     const done = nowMs - 3 * HOUR;
     const claim = nowMs - 2 * HOUR;
@@ -321,7 +335,7 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
           commNote: '家长要求生物学科一并退费，生物已交付完毕不可退，需协助沟通',
           reasonDesc: '学生转校至外省，申请退回剩余学科费用', closeAuth: '是', savedBy: m.name, savedAt: at(s),
         },
-        state: { lastSubmitter: m, slaStartedAt: at(done + 1000) },
+        state: { lastSubmitter: m, slaStartedAt: at(c), firstRespAt: at(sv) },
         runs: [r1],
       },
       nodeStatus: '处理中', assignee: AUDITOR, tab: 'mine',
@@ -329,6 +343,8 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
       timeline: [
         tl(at(c), 'node', 'create', AGENT, AGENT_ROLE, '建单', REFUND_TL.create(SOURCE)),
         tl(at(c + 15_000), 'node', 'transfer', '系统', '系统', '派单', REFUND_TL.dispatchManager(m)),
+        tl(at(sv), 'handle', 'handle', m.name, refundManagerTlRole(m), '保存', REFUND_TL.save),
+        firstClose(at(sv)),
         tl(at(s), 'node', 'handle', m.name, refundManagerTlRole(m), '提交退费', REFUND_TL.submit(r1.taskId, items)),
         tl(at(done), 'node', 'handle', '系统', '系统', '退费结果回写', REFUND_TL.result(r1.taskId, '部分完成')),
         tl(at(done + 1000), 'node', 'transfer', '系统', '系统', '自动下送', REFUND_TL.autoForward('部分完成')),
@@ -339,7 +355,7 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
     pooled(n, done + 1000);
   }
 
-  /* ⑥ 兜底 · 教育退费审核组池（学校未取到校园经理、城市经理） */
+  /* ⑥ 兜底 · 教育支持组工单池（学校未取到校园经理、城市经理） */
   {
     const n = no(6);
     const c = nowMs - 12 * MIN;
@@ -350,7 +366,7 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
     };
     tickets.push(row(6, {
       customer: '赵先生', phone: '13955100106', info,
-      refund: { handle: emptyRefundHandle(info), state: { slaStartedAt: at(c + 20_000) }, runs: [] },
+      refund: { handle: emptyRefundHandle(info), state: { slaStartedAt: at(c) }, runs: [] },
       nodeStatus: '未认领', assignee: null, tab: 'pool', responded: false,
       createdAt: at(c), updatedAt: at(c),
       timeline: [
@@ -365,11 +381,11 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
   {
     const n = no(7);
     const m = CITY_MANAGERS.chengli;
-    const c = nowMs - 5 * 24 * HOUR;
-    const s = c + 6 * HOUR;
-    const ok = c + 30 * HOUR;
-    const claim = ok + 30 * MIN;
-    const fwd = ok + 3 * HOUR;
+    const c = nowMs - 2 * 24 * HOUR;
+    const s = c + 25 * MIN;
+    const ok = c + 3 * HOUR;
+    const claim = ok + 20 * MIN;
+    const fwd = ok + 1 * HOUR;
     const closed = fwd + 26 * HOUR;
     const items = subj('2026春季个性化学习手册（高一）', 'CM-26S-G1-01', 'PO20260302009947', [['02', '数学', 128], ['03', '英语', 128]]);
     const info: RefundInfo = {
@@ -387,7 +403,7 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
           notCloseReason: '教师子女按学校政策继续使用', savedBy: m.name, savedAt: at(s),
         },
         state: {
-          lastSubmitter: m, slaStartedAt: at(startedMs),
+          lastSubmitter: m, slaStartedAt: at(c), firstRespAt: at(s),
           slaPausedAccumMs: 0, slaStoppedAt: at(fwd), slaOutcome: 'met',
         },
         runs: [{ ...r1, closeAuth: '否', notCloseReason: '教师子女按学校政策继续使用' }],
@@ -399,6 +415,7 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
         tl(at(c), 'node', 'create', AGENT, AGENT_ROLE, '建单', REFUND_TL.create(SOURCE)),
         tl(at(c + 15_000), 'node', 'transfer', '系统', '系统', '派单', REFUND_TL.dispatchManager(m)),
         tl(at(s), 'node', 'handle', m.name, refundManagerTlRole(m), '提交退费', REFUND_TL.submit(r1.taskId, items)),
+        firstClose(at(s)),
         tl(at(ok), 'node', 'handle', '系统', '系统', '退费结果回写', REFUND_TL.result(r1.taskId, '退费成功')),
         tl(at(startedMs), 'node', 'transfer', '系统', '系统', '自动下送', REFUND_TL.autoForward('退费成功')),
         tl(at(claim), 'node', 'accept', AUDITOR, AUDITOR_ROLE, '领取', `${AUDITOR} 从池中领取本单。`),
