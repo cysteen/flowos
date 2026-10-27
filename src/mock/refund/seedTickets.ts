@@ -1,8 +1,8 @@
 /**
- * 个册退费单 · 工单库样本（1120 个册退费工单）。七张，覆盖各阶段：
+ * 个册退费单 · 工单库样本（1120 个册退费工单）。八张，覆盖各阶段：
  * ① 校园经理待处理（待响应）；② 系统退费中；③ 已驳回（回校园经理「处理中」）；
  * ④ 退费成功 · 教育支持组工单池（首次驳回、再次提交成功）；⑤ 部分完成 · 教育支持组组员处理中；
- * ⑥ 兜底 · 教育支持组工单池（学校未取到校园经理）；⑦ 已结案 · 已发调研短信（兜底进池后调剂给城市经理）。
+ * ⑥ 兜底 · 教育支持组工单池（学校未取到校园经理）；⑦ 已结案 · 已发调研短信（兜底进池后调剂给城市经理）；⑧ 调研中 · 已发调研短信。
  *
  * 时刻相对装载时刻推算：SLA 账本（建单下送起算、统计整单，10-27）读数随之自洽；整单首响取校园经理
  * 在 H5 首次保存 / 下送的时刻（`firstRespAt`），超 30 分钟才响的记首响未达标（④）。
@@ -432,6 +432,61 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
     notifies.push({
       ticketNo: n, event: 'ticket.survey.sent', kind: 'accepted', status: '已发送', title: '调研短信',
       receiver: '王女士(客户)', channel: '短信', content: refundSurveySmsText(n, '王女士'), when: at(fwd),
+    });
+  }
+
+  /* ⑧ 调研中 · 退费成功后教育支持组领取、审核下送，已发调研短信（解决时效暂止） */
+  {
+    const n = no(8);
+    const m = CAMPUS_MANAGERS.maxiao;
+    const c = nowMs - 26 * HOUR;
+    const sv = c + 18 * MIN;
+    const s = c + 30 * MIN;
+    const ok = c + 3 * HOUR;
+    const pooledMs = ok + 1000;
+    const claim = ok + 30 * MIN;
+    const fwd = nowMs - 2 * HOUR;
+    const items = subj('2026春季个性化学习手册（高二）', 'CM-26S-G2-03', 'PO20260307018826', [['06', '化学', 96], ['05', '物理', 104]]);
+    const info: RefundInfo = {
+      schoolId: 'SCH-341502-001', schoolName: '六安第一中学', schoolRegion: '安徽省 / 六安市 / 金安区',
+      studentName: '许诺', studentCode: '63308', orderNo: 'PO20260307018826', refundableAmount: sumRefundAmount(items), reason: 1,
+    };
+    const r1 = run(1, n, m, items, s, '退费成功', ok);
+    const sms = refundSurveySmsText(n, '许女士');
+    tickets.push(row(8, {
+      customer: '许女士', phone: '13955100108', info,
+      refund: {
+        handle: {
+          ...emptyRefundHandle(info), submitRefund: '是', commResult: '已联系达成一致', subjects: items,
+          reasonDesc: '家长误购高二册，学生实际就读高一，申请退回化学、物理两科', closeAuth: '是', savedBy: m.name, savedAt: at(s),
+        },
+        state: {
+          lastSubmitter: m, slaStartedAt: at(c), firstRespAt: at(sv),
+          slaPausedAccumMs: 0, slaPausedSince: at(fwd),
+        },
+        runs: [r1],
+      },
+      nodeStatus: '调研中', assignee: AUDITOR, tab: 'mine', nodeStep: 4,
+      slaText: '—', slaSub: '调研中', slaState: 'ok', slaMinutes: 9999,
+      createdAt: at(c), updatedAt: at(fwd + 1000),
+      timeline: [
+        tl(at(c), 'node', 'create', AGENT, AGENT_ROLE, '建单', REFUND_TL.create(SOURCE)),
+        tl(at(c + 15_000), 'node', 'transfer', '系统', '系统', '派单', REFUND_TL.dispatchManager(m)),
+        tl(at(sv), 'handle', 'handle', m.name, refundManagerTlRole(m), '保存', REFUND_TL.save),
+        firstClose(at(sv)),
+        tl(at(s), 'node', 'handle', m.name, refundManagerTlRole(m), '提交退费', REFUND_TL.submit(r1.taskId, items)),
+        tl(at(ok), 'node', 'handle', '系统', '系统', '退费结果回写', REFUND_TL.result(r1.taskId, '退费成功')),
+        tl(at(pooledMs), 'node', 'transfer', '系统', '系统', '自动下送', REFUND_TL.autoForward('退费成功')),
+        tl(at(claim), 'node', 'accept', AUDITOR, AUDITOR_ROLE, '领取', `${AUDITOR} 从池中领取本单。`),
+        tl(at(fwd), 'node', 'transfer', AUDITOR, AUDITOR_ROLE, '下送', REFUND_TL.forwardSurvey),
+        tl(at(fwd + 1000), 'comm', 'sms', '系统', '系统', '短信通知', `发送至 13955100108：${sms}`),
+      ],
+    }));
+    todo(n, m, c + 15_000);
+    pooled(n, pooledMs);
+    notifies.push({
+      ticketNo: n, event: 'ticket.survey.sent', kind: 'accepted', status: '已发送', title: '调研短信',
+      receiver: '许女士(客户)', channel: '短信', content: sms, when: at(fwd + 1000),
     });
   }
 
