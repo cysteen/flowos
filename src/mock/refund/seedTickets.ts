@@ -70,7 +70,7 @@ function firstClose(when: string): TimelineEntry {
 }
 
 function subj(commodityName: string, commodityId: string, payOrderId: string, list: [string, string, number][]): RefundSubject[] {
-  return list.map(([subjectCode, subjectName, amount]) => ({ commodityId, commodityName, payOrderId, subjectCode, subjectName, amount }));
+  return list.map(([subjectCode, subjectName, amount]) => ({ commodityId, commodityName, payOrderId, subjectCode, subjectName, amount, refundAmount: amount }));
 }
 
 const SLA_OPEN = { slaText: '08:00:00', slaSub: '充足', slaState: 'ok' as const, slaMinutes: 480 };

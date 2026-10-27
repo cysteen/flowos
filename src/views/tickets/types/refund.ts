@@ -142,6 +142,13 @@ export interface RefundSubject {
   subjectName: string;
   /** 可退金额（元） */
   amount: number;
+  /** 退费金额（元）：校园经理填写的单科退费金额，选商品时默认等于可退金额；清空为 null */
+  refundAmount?: number | null;
+}
+
+/** 单科退费金额：校园经理填写值，未填写过取可退金额 */
+export function refundAmountOf(s: Pick<RefundSubject, 'amount' | 'refundAmount'>): number | null {
+  return s.refundAmount === undefined ? s.amount : s.refundAmount;
 }
 
 /** 建单「退费信息」卡落库的值 */
@@ -258,9 +265,15 @@ export function inflightRefundRun(r: Pick<TicketRefund, 'runs'> | undefined): Re
   return r?.runs.find((x) => isRefundTaskPending(x.status));
 }
 
-/** 「〈套餐〉 · 〈学科〉 〈金额〉 元」 */
-export function refundItemText(s: Pick<RefundSubject, 'commodityName' | 'subjectName' | 'amount'>): string {
-  return `${s.commodityName} · ${s.subjectName} ${formatRefundAmount(s.amount)} 元`;
+/** 「〈套餐〉 · 〈学科〉 〈退费金额〉 元」 */
+export function refundItemText(s: Pick<RefundSubject, 'commodityName' | 'subjectName' | 'amount' | 'refundAmount'>): string {
+  const n = refundAmountOf(s);
+  return `${s.commodityName} · ${s.subjectName} ${n == null ? '—' : `${formatRefundAmount(n)} 元`}`;
+}
+
+/** 退费金额合计（按单科退费金额） */
+export function sumRefundApply(items: Pick<RefundSubject, 'amount' | 'refundAmount'>[]): number {
+  return Math.round(items.reduce((a, b) => a + (refundAmountOf(b) ?? 0), 0) * 100) / 100;
 }
 
 /** 金额两位小数 */
@@ -304,6 +317,10 @@ export const REFUND_TIP = {
   tooLong: (label: string) => `${label}最多 ${REFUND_TEXT_MAX} 字`,
   submitFailed: (msg: string) => `退费申请提交失败：${msg}`,
   submitUnavailable: '退费申请提交失败，请稍后重试',
+  amountRequired: '请填写退费金额',
+  amountPositive: '退费金额须大于 0',
+  amountDecimals: '退费金额最多两位小数',
+  amountOver: (max: string) => `退费金额不能超过 ${max} 元`,
 } as const;
 
 export const REFUND_TOAST = {

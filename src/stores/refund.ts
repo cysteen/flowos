@@ -66,8 +66,10 @@ const LS_KEY = 'flowos-refund-cache';
  *     通用「教育支持组」(edu)（10-27 拍板），v5 快照里的旧起算时刻与旧组作废
  * v7：按学校只取校园经理、取不到进池（不再派城市经理）；种子单问题分类一级改「个册退费」；
  *     选「否」下送履历改「不在线退费」（10-27 拍板），v6 快照里的旧派单与旧分类作废
+ * v8：退费商品逐学科加「退费金额」`refundAmount`（H5 可改，默认等于可退金额；提交退费按它提交，
+ *     退费记录展示它；用户 10-27），v7 快照里不带该字段的已选商品与退费记录作废
  */
-const CACHE_VERSION = 7;
+const CACHE_VERSION = 8;
 const STALE_MS = 12 * 60 * 60 * 1000;
 
 interface RefundCache { v: number; savedAt: number; tickets: Ticket[] }

@@ -10,7 +10,8 @@ import { STATUS_DISPLAY_NAME, statusStyle } from '@/views/tickets/types/ticket';
 import {
   REFUND_COMM_NOTE_PLACEHOLDER, REFUND_COMM_NOTE_RESULTS, REFUND_COMM_RESULTS, REFUND_PARTY, REFUND_REASONS,
   REFUND_RETURN_WAY, REFUND_TEXT_MAX, REFUND_TIP,
-  emptyRefundHandle, formatRefundAmount, inflightRefundRun, refundOwnResultOf, refundReasonLabel,
+  emptyRefundHandle, formatRefundAmount, inflightRefundRun, refundAmountOf, refundOwnResultOf, refundReasonLabel,
+  sumRefundApply,
   type RefundCommResult, type RefundHandle, type RefundManager, type RefundReasonCode, type RefundSubject,
 } from '@/views/tickets/types/refund';
 import FlashMobileShell from './FlashMobileShell.vue';
@@ -88,14 +89,26 @@ function clr(k: ErrKey) {
   delete errors[k];
 }
 
+/** 单科退费金额：输入框原文与逐科错误（按 订单 · 套餐 · 学科 定位） */
+const amtKey = (s: Pick<RefundSubject, 'payOrderId' | 'commodityId' | 'subjectCode'>) =>
+  `${s.payOrderId}|${s.commodityId}|${s.subjectCode}`;
+const amtText = reactive<Record<string, string>>({});
+const amtErrors = reactive<Record<string, string>>({});
+
 function clearErrors() {
   (Object.keys(errors) as ErrKey[]).forEach((k) => delete errors[k]);
+  Object.keys(amtErrors).forEach((k) => delete amtErrors[k]);
+}
+
+function resetAmtText() {
+  Object.keys(amtText).forEach((k) => delete amtText[k]);
 }
 
 function load() {
   const h = refund.value?.handle;
   Object.assign(form, h ? structuredClone(toRaw(h)) : emptyRefundHandle());
   form.subjects = (h?.subjects ?? []).map((s) => ({ ...toRaw(s) }));
+  resetAmtText();
   clearErrors();
 }
 watch(() => [no.value, ticket.value?.nodeStatus], load, { immediate: true });
@@ -142,6 +155,50 @@ const subjectGroups = computed(() => {
   return [...map.entries()].map(([name, subjects]) => ({ name, subjects }));
 });
 
+/** 金额回显：两位小数；多于两位的原样回显 */
+function amtDisplay(n: number | null): string {
+  if (n == null) return '';
+  return Math.abs(Math.round(n * 100) - n * 100) < 1e-6 ? formatRefundAmount(n) : String(n);
+}
+
+function amtValue(s: RefundSubject): string {
+  return amtText[amtKey(s)] ?? amtDisplay(refundAmountOf(s));
+}
+
+function onAmtInput(s: RefundSubject, raw: string) {
+  const k = amtKey(s);
+  const [int, ...rest] = raw.replace(/[^\d.]/g, '').split('.');
+  const v = rest.length ? `${int}.${rest.join('')}` : int;
+  amtText[k] = v;
+  const n = v === '' || v === '.' ? null : Number(v);
+  s.refundAmount = n == null || Number.isNaN(n) ? null : n;
+  delete amtErrors[k];
+}
+
+const amtTotal = computed(() => formatRefundAmount(sumRefundApply(form.subjects)));
+
+/** 单科退费金额校验：必填、大于 0、不超过可退金额、最多两位小数 */
+function checkAmounts(): boolean {
+  let ok = true;
+  form.subjects.forEach((s) => {
+    const k = amtKey(s);
+    const text = amtValue(s).trim();
+    const n = refundAmountOf(s);
+    let err = '';
+    if (!text || n == null) err = REFUND_TIP.amountRequired;
+    else if (n <= 0) err = REFUND_TIP.amountPositive;
+    else if (/\.\d{3,}$/.test(text)) err = REFUND_TIP.amountDecimals;
+    else if (n > s.amount) err = REFUND_TIP.amountOver(formatRefundAmount(s.amount));
+    if (err) {
+      amtErrors[k] = err;
+      ok = false;
+    }
+  });
+  return ok;
+}
+
+const hasAmtError = computed(() => Object.keys(amtErrors).length > 0);
+
 const lastRun = computed(() => {
   const runs = refund.value?.runs ?? [];
   return runs[runs.length - 1];
@@ -174,7 +231,14 @@ function openPicker() {
 }
 
 function onPicked(subjects: RefundSubject[]) {
-  form.subjects = subjects;
+  // 已选学科保留已填退费金额，新选学科默认带出可退金额
+  const prev = new Map(form.subjects.map((s) => [amtKey(s), s]));
+  form.subjects = subjects.map((s) => {
+    const p = prev.get(amtKey(s));
+    return { ...s, refundAmount: p ? refundAmountOf(p) : s.amount };
+  });
+  Object.keys(amtText).forEach((k) => { if (!subjects.some((s) => amtKey(s) === k)) delete amtText[k]; });
+  Object.keys(amtErrors).forEach((k) => delete amtErrors[k]);
   pickerOpen.value = false;
   if (subjects.length) delete errors.subjects;
 }
@@ -203,18 +267,19 @@ function validateForward(): boolean {
   if (!form.studentCode.trim()) errors.studentCode = '请填写登录账号';
   if (form.submitRefund === '是') {
     if (!form.subjects.length) errors.subjects = '请选择退费商品';
+    else checkAmounts();
     if (form.reason == null) errors.reason = '请选择退款原因';
     if (!form.reasonDesc.trim()) errors.reasonDesc = '请填写退款原因说明';
     if (!form.closeAuth) errors.closeAuth = '请选择是否关闭权限';
     if (form.closeAuth === '否' && !form.notCloseReason.trim()) errors.notCloseReason = '请填写不关闭权限原因';
   }
   if (needRemark.value && !form.remark.trim()) errors.remark = '请填写备注';
-  if (Object.keys(errors).length === 0) checkLength();
-  if (Object.keys(errors).length === 0 && form.submitRefund === '是') {
+  if (Object.keys(errors).length === 0 && !hasAmtError.value) checkLength();
+  if (Object.keys(errors).length === 0 && !hasAmtError.value && form.submitRefund === '是') {
     const q = queryRefundCommodities(refund.value!.info.schoolId, form.studentCode, form.orderNo);
     if (q.ok && !q.orders.length) errors.subjects = REFUND_TIP.orderNoPackages;
   }
-  if (Object.keys(errors).length) {
+  if (Object.keys(errors).length || hasAmtError.value) {
     nextTick(() => document.querySelector('.rf-row.has-error')?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
     return false;
   }
@@ -416,15 +481,32 @@ function confirmTransfer() {
             </div>
           </div>
 
-          <div v-if="form.subjects.length" class="rf-row">
-            <label class="rf-label">退费金额：</label>
+          <div v-if="form.subjects.length" class="rf-row" :class="{ 'has-error': hasAmtError }">
+            <label class="rf-label is-required">退费金额：</label>
             <div class="rf-ctl">
               <div v-for="g in subjectGroups" :key="g.name" class="rf-amt-group">
                 <div class="rf-amt-group__name">{{ g.name }}</div>
-                <div v-for="s in g.subjects" :key="s.subjectCode" class="rf-amt">
-                  <span>{{ s.subjectName }}</span>
-                  <span class="rf-amt__v">{{ formatRefundAmount(s.amount) }} 元</span>
+                <div v-for="s in g.subjects" :key="amtKey(s)" class="rf-amt-item">
+                  <div class="rf-amt">
+                    <span class="rf-amt__name">{{ s.subjectName }}</span>
+                    <a-input
+                      v-if="canAct"
+                      :value="amtValue(s)"
+                      class="rf-amt__input"
+                      inputmode="decimal"
+                      placeholder="输入退费金额"
+                      suffix="元"
+                      :status="amtErrors[amtKey(s)] ? 'error' : undefined"
+                      @update:value="(v: string) => onAmtInput(s, v)"
+                    />
+                    <span v-else class="rf-amt__v">{{ refundAmountOf(s) == null ? '—' : `${amtDisplay(refundAmountOf(s))} 元` }}</span>
+                  </div>
+                  <div v-if="amtErrors[amtKey(s)]" class="rf-err rf-amt__err">{{ amtErrors[amtKey(s)] }}</div>
                 </div>
+              </div>
+              <div class="rf-amt rf-amt--total">
+                <span>合计</span>
+                <span class="rf-amt__v">{{ amtTotal }} 元</span>
               </div>
             </div>
           </div>
@@ -727,6 +809,32 @@ function confirmTransfer() {
   justify-content: space-between;
   padding: 4px 0;
   font-size: 14px;
+}
+.rf-amt {
+  align-items: center;
+  gap: 8px;
+}
+.rf-amt__name {
+  flex: 1;
+  min-width: 0;
+}
+.rf-amt__input {
+  flex: none;
+  width: 140px;
+}
+.rf-amt__input :deep(input) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.rf-amt__err {
+  margin-top: 0;
+  text-align: right;
+}
+.rf-amt--total {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid #f2f3f5;
+  font-weight: 600;
 }
 .rf-amt__v {
   color: #1d2129;

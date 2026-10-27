@@ -9,7 +9,7 @@ import { computed } from 'vue';
 import { AccountBookOutlined } from '@ant-design/icons-vue';
 import {
   REFUND_COMM_NOTE_RESULTS, REFUND_PARTY, REFUND_RETURN_WAY,
-  formatRefundAmount, refundItemText, refundOwnResultOf, refundProgressOf, refundReasonLabel, sumRefundAmount,
+  formatRefundAmount, refundItemText, refundOwnResultOf, refundProgressOf, refundReasonLabel, sumRefundApply,
   type RefundCommResult, type RefundTaskStatus, type TicketRefund,
 } from '@/views/tickets/types/refund';
 
@@ -86,7 +86,7 @@ const rows = computed(() => runs.value.map((r) => ({
   by: v(props.customer),
   taskId: r.taskId,
   items: r.items.map(refundItemText),
-  total: formatRefundAmount(sumRefundAmount(r.items)),
+  total: formatRefundAmount(sumRefundApply(r.items)),
   status: r.status as RefundTaskStatus,
   reject: r.status === '已驳回' ? v(r.rejectReason) : EMPTY,
   resultAt: v(r.resultAt),
