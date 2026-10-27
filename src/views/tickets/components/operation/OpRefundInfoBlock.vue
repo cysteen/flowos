@@ -9,7 +9,7 @@ import { computed } from 'vue';
 import { AccountBookOutlined } from '@ant-design/icons-vue';
 import {
   REFUND_COMM_NOTE_RESULTS, REFUND_PARTY, REFUND_RETURN_WAY,
-  formatRefundAmount, refundItemText, refundOwnResultOf, refundProgressOf, refundReasonLabel, sumRefundApply,
+  formatRefundAmount, refundAmountOf, refundItemText, refundOwnResultOf, refundProgressOf, refundReasonLabel, sumRefundApply,
   type RefundCommResult, type RefundTaskStatus, type TicketRefund,
 } from '@/views/tickets/types/refund';
 
@@ -80,12 +80,20 @@ const fields = computed<Field[]>(() => {
   return list;
 });
 
+/** 记录表内商品行：同学科不重复长商品名，避免窄列把整行撑过高 */
+function refundRunItemLine(s: (typeof runs.value)[number]['items'][number]) {
+  const n = refundAmountOf(s);
+  const amt = n == null ? '—' : `${formatRefundAmount(n)} 元`;
+  return `${s.subjectName} · ${amt}`;
+}
+
 const rows = computed(() => runs.value.map((r) => ({
   id: r.id,
   at: r.submittedAt,
   by: v(props.customer),
   taskId: r.taskId,
-  items: r.items.map(refundItemText),
+  commodity: v(r.items[0]?.commodityName),
+  items: r.items.map(refundRunItemLine),
   total: formatRefundAmount(sumRefundApply(r.items)),
   status: r.status as RefundTaskStatus,
   reject: r.status === '已驳回' ? v(r.rejectReason) : EMPTY,
@@ -106,16 +114,17 @@ const headTime = computed(() => (lastRun.value ? lastRun.value.resultAt ?? lastR
 
     <div class="rf-body">
       <dl class="rf-kv">
-        <div v-for="f in fields" :key="f.key" class="rf-item" :class="{ 'span-2': f.wide }">
+        <div v-for="f in fields" :key="f.key" class="rf-item" :class="{ 'is-wide': f.wide }">
           <dt>{{ f.label }}</dt>
-          <dd><span class="rf-val" :class="f.tone ? `tone-${f.tone}` : ''">{{ f.value }}</span></dd>
+          <dd><span class="rf-val" :class="f.tone ? `tone-${f.tone}` : ''" :title="f.wide ? undefined : f.value">{{ f.value }}</span></dd>
+        </div>
+        <div v-if="subjects.length && !rows.length" class="rf-item is-full">
+          <dt>退费商品与金额</dt>
+          <dd class="rf-subs">
+            <span v-for="s in subjects" :key="`${s.commodityId}-${s.subjectCode}`" class="rf-val">{{ refundItemText(s) }}</span>
+          </dd>
         </div>
       </dl>
-
-      <div v-if="subjects.length && !rows.length" class="rf-subjects">
-        <span class="rf-sub-label">退费商品与金额</span>
-        <span v-for="s in subjects" :key="`${s.commodityId}-${s.subjectCode}`" class="rf-sub">{{ refundItemText(s) }}</span>
-      </div>
 
       <div v-if="rows.length" class="rf-table-wrap">
         <div class="rf-table-title">退费记录</div>
@@ -124,8 +133,8 @@ const headTime = computed(() => (lastRun.value ? lastRun.value.resultAt ?? lastR
             <col class="col-at" />
             <col class="col-by" />
             <col class="col-task" />
-            <col class="col-items" />
-            <col class="col-status" />
+            <col />
+            <col class="col-result" />
             <col class="col-reject" />
             <col class="col-at" />
           </colgroup>
@@ -141,9 +150,11 @@ const headTime = computed(() => (lastRun.value ? lastRun.value.resultAt ?? lastR
               <td class="by">{{ r.by }}</td>
               <td class="num task">{{ r.taskId }}</td>
               <td class="items-cell">
+                <div v-if="r.commodity !== EMPTY" class="item-commodity">{{ r.commodity }}</div>
                 <div v-for="(it, i) in r.items" :key="i" class="item-line">{{ it }}</div>
+                <div class="item-total">合计 {{ r.total }} 元</div>
               </td>
-              <td class="status"><span :class="`tone-${tone(r.status)}`">{{ r.status }}</span></td>
+              <td><span :class="`tone-${tone(r.status)}`">{{ r.status }}</span></td>
               <td class="reject" :class="{ muted: r.reject === EMPTY }">{{ r.reject }}</td>
               <td class="num at">{{ r.resultAt }}</td>
             </tr>
@@ -170,45 +181,41 @@ const headTime = computed(() => (lastRun.value ? lastRun.value.resultAt ?? lastR
   padding: 8px 12px 10px; background: #f8fafc;
   border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;
 }
-.rf-kv { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 16px; margin: 0; }
+/* 字段网格与刷机单「刷机信息」（OpFlashInfoBlock .fi-grid / .fi-item）同规格：三列、label 定宽不带冒号、值 500 字重单行省略、长文本跨两列换行 */
+.rf-kv {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 16px; margin: 0;
+}
 .rf-item { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 12px; line-height: 20px; }
-.rf-item.span-2 { grid-column: span 2; }
-.rf-item dt { flex: none; width: 84px; color: #6b7280; }
+.rf-item dt { flex: none; min-width: 72px; color: #6b7280; white-space: nowrap; }
 .rf-item dd { flex: 1; min-width: 0; margin: 0; color: #111827; }
-.rf-val { font-weight: 500; word-break: break-word; }
-.rf-subjects { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; font-size: 12px; line-height: 20px; }
-.rf-sub-label { width: 84px; color: #6b7280; flex: none; }
-.rf-sub { color: #111827; font-weight: 500; }
+.rf-val { display: inline-block; max-width: 100%; vertical-align: top; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rf-item.is-wide { grid-column: span 2; }
+.rf-item.is-full { grid-column: 1 / -1; }
+.rf-item.is-wide .rf-val,
+.rf-item.is-full .rf-val { white-space: normal; overflow-wrap: anywhere; }
+.rf-subs { display: flex; flex-wrap: wrap; gap: 0 16px; }
 .tone-ok { color: #059669; font-weight: 600; }
 .tone-bad { color: #dc2626; font-weight: 600; }
-.tone-auto { color: #0891b2; font-weight: 600; }
+.tone-auto { color: #7c3aed; font-weight: 600; }
 .tone-idle { color: #6b7280; font-weight: 600; }
-.rf-table-wrap { overflow-x: auto; background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; }
+/* 记录表与刷机单「刷机记录」（OpFlashResultCard .fr-table）同规格；列宽按卡片宽度收放，不出横向滚动 */
+.rf-table-wrap { background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden; }
 .rf-table-title { padding: 6px 10px 0; font-size: 12px; line-height: 20px; font-weight: 600; color: #374151; }
-/*
- * 列宽（table-layout: fixed，与刷机「刷机记录」同思路）：
- * 两侧时间 132；提交人 / 结果 / 任务号定宽；驳回原因 168；余宽给「退费商品与金额」。
- */
 .rf-table { width: 100%; border-collapse: collapse; font-size: 12px; line-height: 20px; table-layout: fixed; }
 .rf-table .col-at { width: 132px; }
-.rf-table .col-by { width: 68px; }
+.rf-table .col-by { width: 64px; }
 .rf-table .col-task { width: 128px; }
-.rf-table .col-status { width: 84px; }
-.rf-table .col-reject { width: 168px; }
-.rf-table .col-items { width: auto; }
+.rf-table .col-result { width: 72px; }
+.rf-table .col-reject { width: 124px; }
 .rf-table th {
-  padding: 6px 8px; text-align: left; font-weight: 600; color: #6b7280;
+  padding: 6px 10px; text-align: left; font-weight: 600; color: #6b7280;
   background: #f9fafb; border-bottom: 1px solid #e5e7eb; white-space: nowrap;
 }
-.rf-table td { padding: 6px 8px; color: #374151; border-bottom: 1px solid #f3f4f6; vertical-align: top; }
+.rf-table td { padding: 6px 10px; color: #374151; border-bottom: 1px solid #f3f4f6; vertical-align: top; overflow-wrap: anywhere; }
 .rf-table tr:last-child td { border-bottom: none; }
 .rf-table td.num { font-variant-numeric: tabular-nums; }
-.rf-table td.at { white-space: nowrap; font-size: 11px; line-height: 18px; }
-.rf-table td.by { white-space: nowrap; }
-.rf-table td.task { white-space: normal; word-break: break-all; font-size: 11px; line-height: 18px; }
-.rf-table td.status { white-space: nowrap; }
-.rf-table td.items-cell { white-space: normal; word-break: break-word; }
-.rf-table td.items-cell .item-line + .item-line { margin-top: 2px; }
-.rf-table td.reject { white-space: normal; word-break: break-word; font-size: 11px; line-height: 18px; }
-.rf-table td.reject.muted { color: #9ca3af; font-weight: 400; }
+.rf-table td.items-cell .item-commodity { color: #6b7280; }
+.rf-table td.items-cell .item-total { color: #111827; font-weight: 500; font-variant-numeric: tabular-nums; }
+.rf-table td.reject.muted { color: #9ca3af; }
 </style>
