@@ -547,10 +547,10 @@ function onDunning() {
 }
 .fs-retry:hover { background: #b91c1c; }
 
-/* 校代确认进度条（1130 一·补 B5 / B8）：与办结字段组同一块底，纯展示无按钮 */
+/* 校代确认进度条（1130 一·补 B5 / B8）：并进上方信息带同一块灰底，与通用飞书单的卡片同形；纯展示无按钮 */
 .fs-confirm {
   display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px;
-  padding: 10px 16px 12px; border-top: 1px solid #f1f5f9;
+  padding: 0 16px 8px; background: #f8fafc;
 }
 .fs-confirm-pill {
   flex: none; font-size: 12px; font-weight: 700; border-radius: 999px; padding: 3px 10px;
