@@ -6,6 +6,7 @@
  *
  * 时刻相对装载时刻推算：SLA 账本（建单下送起算、统计整单，10-27）读数随之自洽；整单首响取校园经理
  * 在 H5 首次保存 / 下送的时刻（`firstRespAt`），超 30 分钟才响的记首响未达标（④）。
+ * 经校园经理 / 城市经理提交过退费的单，「最近处理人」`lastManager` 即该人（二线转校园经理默认取它）。
  * 并入工单库的位置：`mock/tickets.ts`（排在种子单号集合之后，处理页按「本单自有数据」展示）。
  */
 import type { Ticket } from '@/views/tickets/types/ticket';
@@ -203,7 +204,7 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
           ...emptyRefundHandle(info), submitRefund: '是', commResult: '已联系达成一致', subjects: items,
           reasonDesc: '学校本学期取消个册统一订购，家长申请退回剩余学科费用', closeAuth: '是', savedBy: m.name, savedAt: at(s),
         },
-        state: { lastSubmitter: m, slaStartedAt: at(c), firstRespAt: at(sv) },
+        state: { lastSubmitter: m, lastManager: m, slaStartedAt: at(c), firstRespAt: at(sv) },
         runs: [r1],
       },
       nodeStatus: REFUND_STATUS_SYSTEM, assignee: REFUND_SYSTEM_HANDLER, tab: 'mine',
@@ -244,7 +245,7 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
           ...emptyRefundHandle(info), submitRefund: '是', commResult: '已联系达成一致', subjects: items,
           reasonDesc: '学生反馈学习手册内容与课堂进度不匹配，申请退费', closeAuth: '是', savedBy: m.name, savedAt: at(s),
         },
-        state: { manager: m, lastSubmitter: m, slaStartedAt: at(c), firstRespAt: at(sv) },
+        state: { manager: m, lastSubmitter: m, lastManager: m, slaStartedAt: at(c), firstRespAt: at(sv) },
         runs: [r1],
       },
       nodeStatus: '处理中', assignee: m.name, tab: 'mine',
@@ -290,7 +291,7 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
           ...emptyRefundHandle(info), submitRefund: '是', commResult: '已联系达成一致', subjects: items2,
           reasonDesc: '家长重复购买，申请退回重复订购的数学、英语两科', closeAuth: '是', savedBy: m.name, savedAt: at(s2),
         },
-        state: { lastSubmitter: m, slaStartedAt: at(c), firstRespAt: at(s1) },
+        state: { lastSubmitter: m, lastManager: m, slaStartedAt: at(c), firstRespAt: at(s1) },
         runs: [r1, r2],
       },
       nodeStatus: '未认领', assignee: null, tab: 'pool', responded: false, firstRespBreached: true,
@@ -335,7 +336,7 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
           commNote: '家长要求生物学科一并退费，生物已交付完毕不可退，需协助沟通',
           reasonDesc: '学生转校至外省，申请退回剩余学科费用', closeAuth: '是', savedBy: m.name, savedAt: at(s),
         },
-        state: { lastSubmitter: m, slaStartedAt: at(c), firstRespAt: at(sv) },
+        state: { lastSubmitter: m, lastManager: m, slaStartedAt: at(c), firstRespAt: at(sv) },
         runs: [r1],
       },
       nodeStatus: '处理中', assignee: AUDITOR, tab: 'mine',
@@ -404,7 +405,7 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
           notCloseReason: '教师子女按学校政策继续使用', savedBy: m.name, savedAt: at(s),
         },
         state: {
-          lastSubmitter: m, slaStartedAt: at(c), firstRespAt: at(s),
+          lastSubmitter: m, lastManager: m, slaStartedAt: at(c), firstRespAt: at(s),
           slaPausedAccumMs: 0, slaStoppedAt: at(fwd), slaOutcome: 'met',
         },
         runs: [{ ...r1, closeAuth: '否', notCloseReason: '教师子女按学校政策继续使用' }],
@@ -461,7 +462,7 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
           reasonDesc: '家长误购高二册，学生实际就读高一，申请退回化学、物理两科', closeAuth: '是', savedBy: m.name, savedAt: at(s),
         },
         state: {
-          lastSubmitter: m, slaStartedAt: at(c), firstRespAt: at(sv),
+          lastSubmitter: m, lastManager: m, slaStartedAt: at(c), firstRespAt: at(sv),
           slaPausedAccumMs: 0, slaPausedSince: at(fwd),
         },
         runs: [r1],

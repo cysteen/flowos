@@ -5,6 +5,7 @@
  * 学校 ID 与学校库（`mock/schools.ts`）同一套。
  */
 import type { RefundManager } from '@/views/tickets/types/refund';
+import { findSchoolById } from '@/mock/schools';
 
 const campus = (name: string, account: string): RefundManager => ({ name, account, kind: '校园经理' });
 const city = (name: string, account: string): RefundManager => ({ name, account, kind: '城市经理' });
@@ -43,6 +44,13 @@ export function resolveSchoolManager(schoolId: string): RefundManager | undefine
 /** 本校校园经理（二线调剂时预选） */
 export function campusManagerOf(schoolId: string): RefundManager | undefined {
   return SCHOOL_CAMPUS[schoolId];
+}
+
+/** 某校园经理负责的学校名（按学校 → 校园经理对应关系反查）；城市经理为空 */
+export function schoolsOfManager(account: string): string[] {
+  return Object.entries(SCHOOL_CAMPUS)
+    .filter(([, m]) => m.account === account)
+    .map(([id]) => findSchoolById(id)?.name ?? id);
 }
 
 /** 全部校园经理、城市经理（转办 / 调剂候选人） */

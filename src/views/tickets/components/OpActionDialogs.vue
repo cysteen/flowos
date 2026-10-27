@@ -27,6 +27,7 @@ import {
   XIAOZHI_RD_PLATFORM_AVAILABLE, XIAOZHI_RD_PRIORITIES,
   XIAOZHI_RD_PRIORITY_DEFAULT, XIAOZHI_TIP, xiaozhiReceiverOf,
 } from '../types/xiaozhi';
+import { REFUND_TO_MANAGER } from '../types/refund';
 
 const RESUME_AT_FORMAT = 'YYYY-MM-DD HH:mm';
 
@@ -64,6 +65,9 @@ const props = defineProps<{
   extraTransferTargets?: string[];
   /** 打开调剂弹窗时预选的处理人（个册退费单：本校校园经理）；不传时取候选首项 */
   defaultTransferTarget?: string;
+  /** 「转校园经理」候选（value＝域账号，label＝姓名（所属学校））与默认处理人（域账号） */
+  refundManagerOptions?: { value: string; label: string }[];
+  refundManagerDefault?: string;
 }>();
 
 const emit = defineEmits<{
@@ -186,6 +190,14 @@ const resolve = reactive({ solution: '', createCallback: true });
 const close = reactive({ reason: '', approvalGroup: '', note: '' });
 const resume = reactive({ reason: '', detail: '' });
 const returnForm = reactive({ reason: '', note: '' });
+/** 个册退费单「转校园经理」：处理人（域账号）＋ 转交原因 */
+const toManager = reactive({ account: undefined as string | undefined, reason: '' });
+
+/** 「转校园经理」处理人可按姓名、学校名（label）与域账号（value）搜索 */
+function filterManagerOption(input: string, option?: { label?: string; value?: string }) {
+  const q = input.trim().toLowerCase();
+  return `${option?.label ?? ''} ${option?.value ?? ''}`.toLowerCase().includes(q);
+}
 
 const escalateToTech = computed(() => escalate.channel.includes('技术支持'));
 const escalateToFeishu = computed(() => escalate.channel === FEISHU_ESCALATE_CHANNEL);
@@ -323,6 +335,7 @@ const DLG_CONFIG: Partial<Record<OpActionType, DlgConfig>> = {
   恢复: { title: '解除挂起', icon: PlayCircleOutlined, tone: 'success', width: 560, okTone: 'success', okText: '确认解除' },
   退回: { title: '退回工单', icon: RollbackOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认退回' },
   关闭工单: { title: '关闭工单', icon: CloseCircleOutlined, tone: 'warn', width: 520, okTone: 'primary', okText: '提交关闭审核' },
+  转校园经理: { title: REFUND_TO_MANAGER.label, icon: SwapOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确定' },
 };
 
 const cfg = computed<DlgConfig>(() => {
@@ -380,6 +393,7 @@ function resetForms() {
   close.reason = ''; close.approvalGroup = defaultApprovalGroup(); close.note = '';
   resume.reason = ''; resume.detail = '';
   returnForm.reason = ''; returnForm.note = '';
+  toManager.account = props.refundManagerDefault || undefined; toManager.reason = '';
 }
 
 watch(() => props.open, (v) => { if (v) resetForms(); });
@@ -460,6 +474,11 @@ function validate(): boolean {
       // 小智单不走关闭审批（一·补 B32）：表单里没有审核组这一栏，自然也不判它
       if (!props.isXiaozhi && !close.approvalGroup) { message.warning('请选择审核组'); return false; }
       return true;
+    case '转校园经理':
+      if (!toManager.account) { message.warning(REFUND_TO_MANAGER.pickRequired); return false; }
+      if (!toManager.reason.trim()) { message.warning(REFUND_TO_MANAGER.reasonRequired); return false; }
+      if (toManager.reason.trim().length > REFUND_TO_MANAGER.reasonMax) { message.warning(REFUND_TO_MANAGER.reasonTooLong); return false; }
+      return true;
   }
   return true;
 }
@@ -510,6 +529,10 @@ function onOk() {
     case '恢复': emit('confirm', { type: '恢复', data: { ...resume } }); break;
     case '退回': emit('confirm', { type: '退回', data: { ...returnForm } }); break;
     case '关闭工单': emit('confirm', { type: '关闭工单', data: { ...close } }); break;
+    case '转校园经理': emit('confirm', {
+      type: '转校园经理',
+      data: { account: toManager.account, reason: toManager.reason.trim() },
+    }); break;
   }
   closeModal();
 }
@@ -892,6 +915,30 @@ function onOk() {
           v-model:value="close.note"
           :rows="3"
           :placeholder="isXiaozhi ? '请补充关闭说明...' : '请补充关闭说明，供审核人判断...'"
+        />
+      </div>
+    </div>
+
+    <!-- 转校园经理（个册退费单） -->
+    <div v-else-if="action === '转校园经理'" class="op-form">
+      <div class="op-field">
+        <div class="op-label req">处理人</div>
+        <a-select
+          v-model:value="toManager.account"
+          show-search
+          allow-clear
+          :filter-option="filterManagerOption"
+          placeholder="请选择处理人"
+          style="width:100%"
+          :options="refundManagerOptions ?? []"
+        />
+      </div>
+      <div class="op-field">
+        <div class="op-label req">转交原因</div>
+        <a-textarea
+          v-model:value="toManager.reason"
+          :rows="3"
+          :placeholder="REFUND_TO_MANAGER.reasonPlaceholder"
         />
       </div>
     </div>

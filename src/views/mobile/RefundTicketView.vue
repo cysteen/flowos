@@ -8,11 +8,11 @@ import { queryRefundCommodities, type RefundOrder } from '@/mock/refund/commodit
 import { ALL_REFUND_MANAGERS } from '@/mock/refund/managers';
 import { STATUS_DISPLAY_NAME, statusStyle } from '@/views/tickets/types/ticket';
 import {
-  REFUND_COMM_NOTE_PLACEHOLDER, REFUND_COMM_NOTE_RESULTS, REFUND_COMM_RESULTS, REFUND_PARTY, REFUND_REASONS,
+  REFUND_COMM_NOTE_PLACEHOLDER, REFUND_COMM_NOTE_RESULTS, REFUND_COMM_RESULTS, REFUND_PARTIES, REFUND_REASONS,
   REFUND_RETURN_WAY, REFUND_TEXT_MAX, REFUND_TIP,
   emptyRefundHandle, formatRefundAmount, inflightRefundRun, refundAmountOf, refundOwnResultOf, refundReasonLabel,
-  sumRefundApply,
-  type RefundCommResult, type RefundHandle, type RefundManager, type RefundReasonCode, type RefundSubject,
+  refundSucceededKeys, sumRefundApply,
+  type RefundCommResult, type RefundHandle, type RefundManager, type RefundParty, type RefundReasonCode, type RefundSubject,
 } from '@/views/tickets/types/refund';
 import FlashMobileShell from './FlashMobileShell.vue';
 import RefundCommodityPicker from './RefundCommodityPicker.vue';
@@ -82,7 +82,7 @@ const history = computed(() => [...(ticket.value?.eventTimeline ?? [])].reverse(
 
 const form = reactive<RefundHandle>(emptyRefundHandle());
 type ErrKey = 'submitRefund' | 'commResult' | 'commNote' | 'orderNo' | 'studentCode' | 'subjects'
-  | 'reason' | 'reasonDesc' | 'closeAuth' | 'notCloseReason' | 'remark';
+  | 'reason' | 'reasonDesc' | 'party' | 'closeAuth' | 'notCloseReason' | 'remark';
 const errors = reactive<Partial<Record<ErrKey, string>>>({});
 
 function clr(k: ErrKey) {
@@ -127,6 +127,7 @@ const needRemark = computed(() => form.submitRefund === '否');
 const YES_NO = [{ value: '是', label: '是' }, { value: '否', label: '否' }];
 const COMM_OPTIONS = REFUND_COMM_RESULTS.map((v) => ({ value: v, label: v }));
 const REASON_OPTIONS = REFUND_REASONS.map((r) => ({ value: r.code, label: r.label }));
+const PARTY_OPTIONS = REFUND_PARTIES.map((v) => ({ value: v, label: v }));
 
 const submitRefundModel = computed({
   get: () => form.submitRefund || undefined,
@@ -139,6 +140,10 @@ const commResultModel = computed({
 const reasonModel = computed({
   get: () => form.reason ?? undefined,
   set: (v: RefundReasonCode | undefined) => { form.reason = v ?? null; delete errors.reason; },
+});
+const partyModel = computed({
+  get: () => form.party || undefined,
+  set: (v: RefundParty | undefined) => { form.party = v ?? ''; delete errors.party; },
 });
 const closeAuthModel = computed({
   get: () => form.closeAuth || undefined,
@@ -209,6 +214,8 @@ const ownResult = computed(() => (lastRun.value ? refundOwnResultOf(lastRun.valu
 
 const pickerOpen = ref(false);
 const pickerOrders = ref<RefundOrder[]>([]);
+/** 本单退费记录中已退成功的学科：再次提交时不可再选 */
+const succeededKeys = computed(() => refundSucceededKeys(refund.value));
 
 function openPicker() {
   if (!canAct.value) return;
@@ -270,6 +277,7 @@ function validateForward(): boolean {
     else checkAmounts();
     if (form.reason == null) errors.reason = '请选择退款原因';
     if (!form.reasonDesc.trim()) errors.reasonDesc = '请填写退款原因说明';
+    if (!form.party) errors.party = '请选择退费方';
     if (!form.closeAuth) errors.closeAuth = '请选择是否关闭权限';
     if (form.closeAuth === '否' && !form.notCloseReason.trim()) errors.notCloseReason = '请填写不关闭权限原因';
   }
@@ -540,9 +548,12 @@ function confirmTransfer() {
             </div>
           </div>
 
-          <div class="rf-row">
-            <label class="rf-label">退费方：</label>
-            <div class="rf-ctl"><a-input :value="REFUND_PARTY" disabled /></div>
+          <div class="rf-row" :class="{ 'has-error': errors.party }">
+            <label class="rf-label is-required">退费方：</label>
+            <div class="rf-ctl">
+              <a-select v-model:value="partyModel" :options="PARTY_OPTIONS" :disabled="!canAct" :status="errors.party ? 'error' : undefined" />
+              <div v-if="errors.party" class="rf-err">{{ errors.party }}</div>
+            </div>
           </div>
 
           <div class="rf-row" :class="{ 'has-error': errors.closeAuth }">
@@ -607,6 +618,7 @@ function confirmTransfer() {
     :open="pickerOpen"
     :orders="pickerOrders"
     :selected="form.subjects"
+    :succeeded="succeededKeys"
     @confirm="onPicked"
     @cancel="pickerOpen = false"
   />

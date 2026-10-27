@@ -91,8 +91,10 @@ export function refundReasonLabel(code?: number | null): string {
 
 /** 退回方式只有「原路退回」 */
 export const REFUND_RETURN_WAY = '原路退回';
-/** 退费方只有「我司」 */
-export const REFUND_PARTY = '我司';
+/** 退费方：「我司」「渠道」两项（用户 10-27 评审），默认「我司」 */
+export const REFUND_PARTIES = ['我司', '渠道'] as const;
+export type RefundParty = (typeof REFUND_PARTIES)[number];
+export const REFUND_PARTY: RefundParty = '我司';
 
 /** 沟通结果 */
 export const REFUND_COMM_RESULTS = ['已联系达成一致', '已联系未达成一致', '特殊原因未联系'] as const;
@@ -177,6 +179,8 @@ export interface RefundHandle {
   subjects: RefundSubject[];
   reason: RefundReasonCode | null;
   reasonDesc: string;
+  /** 退费方（「是否在线退费」为「是」时必选） */
+  party: RefundParty | '';
   closeAuth: '是' | '否' | '';
   notCloseReason: string;
   remark: string;
@@ -221,6 +225,11 @@ export interface RefundState {
   manager?: RefundManager;
   /** 最近一次提交退费的校园经理（驳回回退、系统退费中的催补通知落给他） */
   lastSubmitter?: RefundManager;
+  /**
+   * 最近处理人：最近一次在移动工单 H5 保存、下送（含选「否」）或提交退费的校园经理 / 城市经理。
+   * 二线「转校园经理」默认处理人优先取它，没有再按学校带出。
+   */
+  lastManager?: RefundManager;
   /** 关联投诉单号（弱关联，两单各自流转） */
   linkedComplaintNos?: string[];
   /** SLA 起算：建单下送时刻（同通用工单，统计整单）；此后在校园经理名下、系统退费中照常计时 */
@@ -254,6 +263,7 @@ export function emptyRefundHandle(info?: Pick<RefundInfo, 'orderNo' | 'studentCo
     subjects: [],
     reason: info?.reason ?? null,
     reasonDesc: '',
+    party: REFUND_PARTY,
     closeAuth: '',
     notCloseReason: '',
     remark: '',
@@ -323,6 +333,27 @@ export const REFUND_TIP = {
   amountOver: (max: string) => `退费金额不能超过 ${max} 元`,
 } as const;
 
+/** 二线「转校园经理」（底栏动作 + 弹窗） */
+export const REFUND_TO_MANAGER = {
+  label: '转校园经理',
+  reasonMax: 200,
+  reasonPlaceholder: '请填写转交原因',
+  pickRequired: '请选择处理人',
+  reasonRequired: '请填写转交原因',
+  reasonTooLong: '转交原因最多 200 字',
+  done: '已转校园经理',
+} as const;
+
+/** 本单退费记录中已退成功的学科（按 订单 · 套餐 · 学科 定位）；部分完成的记录不带逐科结果，不计入 */
+export function refundSucceededKeys(r: Pick<TicketRefund, 'runs'> | undefined): Set<string> {
+  const keys = new Set<string>();
+  r?.runs.forEach((run) => {
+    if (run.status !== '退费成功') return;
+    run.items.forEach((s) => keys.add(`${s.payOrderId}|${s.commodityId}|${s.subjectCode}`));
+  });
+  return keys;
+}
+
 export const REFUND_TOAST = {
   createdToManager: (no: string, name: string) => `已创建个册退费单 ${no}，已派给 ${name}`,
   createdToPool: (no: string) => `已创建个册退费单 ${no}，已转${REFUND_POOL_GROUP_NAME}`,
@@ -354,6 +385,8 @@ export const REFUND_TL = {
   autoForward: (s: RefundTaskStatus) => `${s}，自动下送${REFUND_POOL_GROUP_NAME}`,
   rejectBack: (reason: string, to: string) => `已驳回，驳回原因：${reason}；退回 ${to}`,
   assignManager: (m: RefundManager) => `调剂给${m.kind} ${m.name}`,
+  /** 二线转校园经理：「转校园经理：〈操作人〉 → 〈校园经理 / 城市经理〉 〈姓名〉；转交原因：〈原因〉」 */
+  toManager: (by: string, m: RefundManager, reason: string) => `转校园经理：${by} → ${m.kind} ${m.name}；转交原因：${reason}`,
   forwardSurvey: '下送，工单进入「调研中」',
   linkComplaint: (no: string) => `关联投诉单 ${no}`,
   linkedFromRefund: (no: string) => `关联个册退费单 ${no}`,

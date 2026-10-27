@@ -32,7 +32,6 @@ import { useRefundStore } from '@/stores/refund';
 
 import { isRefundTicket } from './types/refund';
 
-import { ALL_REFUND_MANAGERS, campusManagerOf, findRefundManager } from '@/mock/refund/managers';
 
 import { isFlashTicket, type FlashActor } from './types/flash';
 
@@ -376,15 +375,6 @@ const opDialogOpen = ref(false);
 
 const opTransferTicket = ref<Ticket | null>(null);
 
-// 个册退费单：调剂候选人加校园经理 / 城市经理，预选本校校园经理（1120 PRD 4.2）
-const opRefundTargets = computed(() => (
-  opTransferTicket.value && isRefundTicket(opTransferTicket.value) ? ALL_REFUND_MANAGERS.map((m) => m.name) : undefined
-));
-const opRefundDefault = computed(() => {
-  const t = opTransferTicket.value;
-  return t && isRefundTicket(t) && t.refund ? campusManagerOf(t.refund.info.schoolId)?.name : undefined;
-});
-
 function onOpDialogConfirm(payload: Record<string, unknown>) {
 
   const t = opTransferTicket.value;
@@ -414,12 +404,10 @@ function onOpDialogConfirm(payload: Record<string, unknown>) {
 
   }
 
-  // 个册退费单（1120 PRD 4.2）：同组内调剂走个册退费服务落库（校园经理 / 城市经理 → 待办通知；组员 → 清外部处理人）
+  // 个册退费单（1120 PRD 4.2）：同组内调剂只限本组成员，走个册退费服务落库（清外部处理人）；
+  // 交给校园经理 / 城市经理走处理页「转校园经理」（用户 10-27 方案 B）
   if (isRefundTicket(t) && data.scope === 'same') {
-    const m = findRefundManager(name);
-    const res = m
-      ? refundStore.assignToManager(t.no, m, queryActor())
-      : refundStore.assignToMember(t.no, name, queryActor(), data.reason);
+    const res = refundStore.assignToMember(t.no, name, queryActor(), data.reason);
     if (res.ok) message.success(res.message);
     else if (res.message) message.warning(res.message);
     return;
@@ -812,8 +800,6 @@ function onClearFilters() {
       :suspend-info="null"
       :return-count="0"
       :group-id="opTransferTicket?.groupId"
-      :extra-transfer-targets="opRefundTargets"
-      :default-transfer-target="opRefundDefault"
       @confirm="onOpDialogConfirm"
     />
 

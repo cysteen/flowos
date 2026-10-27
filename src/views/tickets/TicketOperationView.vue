@@ -26,10 +26,10 @@ import OpFlashInfoEditModal from './components/operation/OpFlashInfoEditModal.vu
 import OpFlashEscalateModal from './components/operation/OpFlashEscalateModal.vue';
 import OpRefundInfoBlock from './components/operation/OpRefundInfoBlock.vue';
 import {
-  REFUND_STATUS_SYSTEM, REFUND_TIP, isRefundTicket, refundLinkComplaintDesc,
+  REFUND_STATUS_SYSTEM, REFUND_TIP, inflightRefundRun, isRefundTicket, refundLinkComplaintDesc,
 } from './types/refund';
 import { useRefundStore } from '@/stores/refund';
-import { ALL_REFUND_MANAGERS, campusManagerOf, findRefundManager } from '@/mock/refund/managers';
+import { ALL_REFUND_MANAGERS, campusManagerOf, schoolsOfManager } from '@/mock/refund/managers';
 import {
   FLASH_RESULT_ESCALATE_L2, FLASH_TIP_RESULT_REQUIRED,
   FLASH_POOLS, isFlashTicket, normalizeFlashResult, type FlashActor, type FlashResult,
@@ -142,7 +142,7 @@ const isXiaozhi = computed(() => isXiaozhiTicket(d.value));
 /**
  * 个册退费单（1120）：处理页、处理表单、动作集同咨询单；本标识只用来
  * ①「工单处理」Tab 顶部出「退费信息」区块；②「系统退费中」底栏冻结（只留保存）、取消工单置灰；
- * ③ 页头出「关联投诉」不出「升级投诉」；④ 调剂候选人含校园经理 / 城市经理；⑤ 下送 / 调剂落库走个册退费服务。
+ * ③ 页头出「关联投诉」不出「升级投诉」；④ 底栏多「转校园经理」，调剂只限本组成员；⑤ 下送 / 调剂 / 转校园经理落库走个册退费服务。
  */
 const isRefund = computed(() => isRefundTicket(d.value) && !!d.value.refund);
 const refundStore = useRefundStore();
@@ -153,11 +153,30 @@ const refundInProgress = computed(() => isRefund.value && d.value.status === REF
  * 页头关联投诉 / 新建补充照常。教育支持组领取后（外部处理人已清）照常处理。
  */
 const refundReadonlyView = computed(() => isRefund.value && (!!d.value.refund?.state.manager || refundInProgress.value));
-/** 调剂候选人：同组成员之外加全部校园经理、城市经理，按本单学校预选该校校园经理（PRD 第 4 章第 5 行） */
-const refundTransferTargets = computed(() => (isRefund.value ? ALL_REFUND_MANAGERS.map((m) => m.name) : undefined));
-const refundTransferDefault = computed(() => {
-  if (!isRefund.value || !d.value.refund) return undefined;
-  return campusManagerOf(d.value.refund.info.schoolId)?.name;
+/**
+ * 「转校园经理」（用户 10-27 方案 B）：个册退费单在教育支持组组员名下处理中时出，排在「调剂」之后；
+ * 工单池未认领、外部处理人 / 系统名下（只读）、调研中及已结束不出；本单有在途退费时置灰。
+ * 个册退费单的「调剂」只剩本组成员，不再含校园经理、城市经理。
+ */
+const refundToManager = computed<{ tip?: string } | null>(() => {
+  if (!isRefund.value || !d.value.refund || refundReadonlyView.value) return null;
+  const s = d.value.status;
+  if (s === '未认领' || s === '调研中' || isTicketTerminated(s)) return null;
+  return inflightRefundRun(d.value.refund) ? { tip: REFUND_TIP.inProgress } : {};
+});
+/**
+ * 候选：全部校园经理、城市经理，显示「姓名（所属学校）」——负责多所学校用顿号连接，
+ * 无学校（城市经理）括号里写「城市经理」；value 为域账号（可按姓名、域账号、学校名搜索）
+ */
+const refundManagerOptions = ALL_REFUND_MANAGERS.map((m) => {
+  const schools = schoolsOfManager(m.account);
+  return { value: m.account, label: `${m.name}（${schools.length ? schools.join('、') : m.kind}）` };
+});
+/** 默认处理人：最近一次在 H5 保存 / 下送 / 提交退费的校园经理、城市经理；没有按学校带出；都无为空 */
+const refundManagerDefault = computed(() => {
+  const r = d.value.refund;
+  if (!isRefund.value || !r) return undefined;
+  return (r.state.lastManager ?? campusManagerOf(r.info.schoolId))?.account;
 });
 
 const ticketNo = computed(() => (route.params.ticketNo as string) || d.value.no);
@@ -380,8 +399,13 @@ const canTagRisk = computed(
   () => canTagRiskOnTicketPage(d.value.type, user.roleKey, riskTagBlockReason.value),
 );
 
-/** 底栏那一格取到的形态：只剩 `report` 一种；null ＝ 底栏这一格不给。小智单恒为 null（1130 D18） */
-const riskBarForm = computed(() => resolveRiskBarForm(user.roleKey, d.value.type, isXiaozhi.value, isFlash.value)?.form ?? null);
+/**
+ * 底栏那一格取到的形态：只剩 `report` 一种；null ＝ 底栏这一格不给。小智单恒为 null（1130 D18）；
+ * 个册退费单恒为 null（不做风险报备，风险直接关联投诉；用户 10-27 评审）
+ */
+const riskBarForm = computed(() => (isRefund.value
+  ? null
+  : resolveRiskBarForm(user.roleKey, d.value.type, isXiaozhi.value, isFlash.value)?.form ?? null));
 /** 页头「风险管控」取到的形态：`assess`（非投诉单）/ `collab`（投诉单）；null ＝ 整枚不出 */
 const riskControlForm = computed(
   () => resolveRiskControlForm(user.roleKey, d.value.type, isXiaozhi.value, isFlash.value)?.form ?? null,
@@ -924,7 +948,7 @@ function onRiskReport(payload: {
 // 不传就又回到「Tab 条上没有这一枚、页头却给了个按钮把正文调出来」那个绕过口 —— 这里的
 // 角色黑名单只挡得住小智坐席，二线班组长 / 管理员打开小智单照样拿得到入口。
 const canViewRiskTab = computed(
-  () => isProcessTabVisible('risk', d.value.type, user.roleKey, { isXiaozhi: isXiaozhi.value, isFlash: isFlash.value }),
+  () => isProcessTabVisible('risk', d.value.type, user.roleKey, { isXiaozhi: isXiaozhi.value, isFlash: isFlash.value, isRefund: isRefund.value }),
 );
 
 /* ==================== 标题行的两枚风险状态标（《【930】》§5A.3 / §3.2 可见性） ====================
@@ -2030,7 +2054,8 @@ function onFlashAction(payload: Record<string, unknown>): boolean {
 
 /**
  * 个册退费单底栏动作（1120 PRD §5.3 / 第 4 章）：其余同咨询单。返回 true ＝ 已接管。
- * - 调剂给校园经理 / 城市经理：走个册退费服务落库（待响应 + 待办通知）；
+ * - 调剂（同组内）：走个册退费服务落库（清外部处理人）；
+ * - 转校园经理：走个册退费服务落库（待响应 + 待办通知 + 履历带转交原因）；
  * - 下送：通用下送照跑（校验、履历、Toast），再由个册退费服务落「调研中」并发调研短信（不经工单运营审核）。
  */
 function onRefundAction(payload: Record<string, unknown>): boolean {
@@ -2038,14 +2063,26 @@ function onRefundAction(payload: Record<string, unknown>): boolean {
   const type = payload.type as string;
   const data = (payload.data ?? {}) as Record<string, unknown>;
   const actor = { name: currentHandlerName(user.roleKey, user.name), role: mapUserRole(user.roleKey) };
+  // 个册退费单调剂只限本组成员（校园经理、城市经理改走「转校园经理」）
   if (type === '调剂' && data.scope !== 'cross') {
-    const target = String(data.target ?? '');
-    const m = findRefundManager(target);
-    const res = m
-      ? refundStore.assignToManager(no, m, actor)
-      : refundStore.assignToMember(no, target, actor, String(data.reason ?? ''));
+    const res = refundStore.assignToMember(no, String(data.target ?? ''), actor, String(data.reason ?? ''));
     if (res.ok) message.success(res.message);
     else if (res.message) message.warning(res.message);
+    return true;
+  }
+  // 转校园经理：处理人＝所选、待响应、处理组「—」、待办通知；成功后关闭处理页回工作台
+  if (type === '转校园经理') {
+    const m = ALL_REFUND_MANAGERS.find((x) => x.account === data.account);
+    if (!m) return true;
+    const res = refundStore.assignToManager(no, m, actor, String(data.reason ?? ''));
+    if (!res.ok) {
+      if (res.message) message.warning(res.message);
+      return true;
+    }
+    message.success(res.message);
+    const here = route.path;
+    // 关闭本页签、回工单工作台
+    void router.push('/tickets').then(() => tabsStore.close(here));
     return true;
   }
   if (type === '下送' && !data.backToDelegator) {
@@ -3115,8 +3152,9 @@ watch(
       :flash-forward-ok-text="flashForwardOkText"
       :flash-consult-forward="flashFormLine === 'l2'"
       :frozen-tip="refundInProgress ? REFUND_TIP.inProgress : undefined"
-      :extra-transfer-targets="refundTransferTargets"
-      :default-transfer-target="refundTransferDefault"
+      :refund-to-manager="refundToManager"
+      :refund-manager-options="refundManagerOptions"
+      :refund-manager-default="refundManagerDefault"
       @flash-escalate="onFlashEscalateL2"
       @flash-forward-blocked="onFlashForwardBlocked"
       @claim="onClaim"

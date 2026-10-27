@@ -166,6 +166,14 @@ const props = defineProps<{
   extraTransferTargets?: string[];
   /** 调剂弹窗预选的处理人（个册退费单：本校校园经理） */
   defaultTransferTarget?: string;
+  /**
+   * 个册退费单「转校园经理」（用户 10-27 方案 B）：工单页按「教育支持组组员名下处理中」算好传入。
+   * 不传＝不展示；`tip` 有值＝置灰并悬停该句（本单有在途退费）。
+   */
+  refundToManager?: { tip?: string } | null;
+  /** 「转校园经理」弹窗：候选处理人（全部校园经理、城市经理）与默认处理人（域账号） */
+  refundManagerOptions?: { value: string; label: string }[];
+  refundManagerDefault?: string;
 }>();
 
 /** 置灰提示的兜底：调用方没给原因时至少说清"被挡住了"，不冒充一个具体理由 */
@@ -213,12 +221,12 @@ const feishuEscalateBlocked = computed(() =>
 
 const DIALOG_ACTIONS: OpActionType[] = [
   '调剂', '委派', '强结', '挂起', '恢复', '退回', '升级', '同步飞书', '转售后',
-  '标记已解决', '关闭工单',
+  '标记已解决', '关闭工单', '转校园经理',
 ];
 
-/** 底栏展示顺序（对齐参考原型 bottom-actions + 强结） */
+/** 底栏展示顺序（对齐参考原型 bottom-actions + 强结）；「转校园经理」只个册退费单有，排在「调剂」之后 */
 const BAR_ORDER: (OpActionType | '转单')[] = [
-  '下送', '升级', '风险报备', '转售后', '撤回', '调剂', '委派', '转单', '挂起', '退回', '关闭工单', '强结',
+  '下送', '升级', '风险报备', '转售后', '撤回', '调剂', '转校园经理', '委派', '转单', '挂起', '退回', '关闭工单', '强结',
 ];
 
 const dialogOpen = ref(false);
@@ -259,7 +267,7 @@ const isDelegating = computed(() => !!props.delegateTargets);
  * 「下送」不锁——在委派节点，下送=送到下一节点=回到委派节点（协办完成回送）。
  */
 const DELEGATE_LOCKED: (OpActionType | '转单')[] = [
-  '调剂', '关闭工单', '强结', '升级', '转售后', '转单', '退回', '挂起',
+  '调剂', '关闭工单', '强结', '升级', '转售后', '转单', '退回', '挂起', '转校园经理',
 ];
 const DELEGATE_LOCK_TIP = '工单委派中，协办完成后可操作';
 
@@ -270,6 +278,8 @@ const actions = computed(() =>
     isFlash: !!props.isFlash,
     // 小智单走单列的 XIAOZHI_ACTION_KEYS（1130 D16 / D18：不登记风险报备与转售后）
     isXiaozhi: !!props.isXiaozhi,
+    // 「转校园经理」只在工单页判定可出时放行（个册退费单 · 教育支持组组员名下处理中）
+    isRefund: !!props.refundToManager,
     // 刷机单按视角收一道（表一）；老工单不传，取值与改前一致
     ...(!!props.isFlash && props.flashView ? { flashView: props.flashView } : {}),
   }),
@@ -423,6 +433,11 @@ const barActions = computed<BarItem[]>(() => {
     }
     // 退回=技术支持退回给工单处理人（唯一方向），仅技术支持持单时出现
     if (key === '退回' && !props.atTechSupport) continue;
+    // 个册退费单「转校园经理」：本单有在途退费时置灰
+    if (key === '转校园经理' && props.refundToManager?.tip) {
+      items.push({ key: def.key, label: def.label, icon: def.icon, forbidden: true, forbiddenTip: props.refundToManager.tip });
+      continue;
+    }
     // 委派中：「委派」位切换为「撤销委派」——委派锁住了几乎所有动作，必须留逃生口
     if (key === '委派' && isDelegating.value) {
       items.push({ key: '撤销委派', label: '撤销委派', icon: 'UndoOutlined' });
@@ -581,6 +596,10 @@ function run(action: OpActionType | '转单') {
   }
   if (action === '升级' && feishuEscalateBlocked.value) {
     message.warning(escalatedTip.value);
+    return;
+  }
+  if (action === '转校园经理' && props.refundToManager?.tip) {
+    message.warning(props.refundToManager.tip);
     return;
   }
   if (action === '挂起' && isSuspended.value) return;
@@ -808,6 +827,8 @@ defineExpose({ openEscalate, openAftersale, openActivate });
     :frontline-account="frontlineAccount"
     :extra-transfer-targets="extraTransferTargets"
     :default-transfer-target="defaultTransferTarget"
+    :refund-manager-options="refundManagerOptions"
+    :refund-manager-default="refundManagerDefault"
     @confirm="onDialogConfirm"
   />
 

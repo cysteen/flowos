@@ -156,7 +156,10 @@ function actionTypeAllowed(
   flashView?: FlashView,
   isFlash?: boolean,
   isXiaozhi?: boolean,
+  isRefund?: boolean,
 ): boolean {
+  // 「转校园经理」只登记给个册退费单（按「个册退费」标识，不看类型）；其余单一律不给
+  if (a.key === '转校园经理') return !!isRefund;
   if (isFlash) {
     return FLASH_ACTION_KEYS.includes(a.key) && (!flashView || FLASH_VIEW_ACTION_KEYS[flashView].includes(a.key));
   }
@@ -167,6 +170,8 @@ function actionTypeAllowed(
 export const ACTION_DEFS: ActionDef[] = [
   // —— 主操作区（高频流转）——
   { key: '调剂', label: '调剂', icon: 'ArrowRightOutlined', group: 'primary', types: ALL },
+  // 个册退费单二线把单交回校园经理 / 城市经理（用户 10-27 方案 B）：类型维不给，只按标识放行，见 actionTypeAllowed
+  { key: '转校园经理', label: '转校园经理', icon: 'SwapOutlined', group: 'primary', types: [] },
   { key: '委派', label: '委派', icon: 'TeamOutlined', group: 'primary', types: ALL },
   { key: '下送', label: '下送', icon: 'VerticalAlignBottomOutlined', group: 'primary', types: ALL },
   { key: '挂起', label: '挂起', icon: 'PauseCircleOutlined', group: 'primary', types: NO_LEAD },
@@ -225,7 +230,7 @@ export const ACTION_DEFS: ActionDef[] = [
  * 留下的是 撤回 / 关闭工单 / 强结 / 取消工单 —— 都是本人在本单上收口，不涉及流转。
  */
 const DIRECT_CLOSURE_BLOCKED: OpActionType[] = [
-  '下送', '升级', '挂起', '调剂', '委派', '转单', '转售后', '退回',
+  '下送', '升级', '挂起', '调剂', '委派', '转单', '转售后', '退回', '转校园经理',
 ];
 
 /* ---------------- 风险那一枚按钮的三种形态（基线 ※29） ---------------- */
@@ -402,6 +407,8 @@ export interface ActionCtx {
   isFlash?: boolean;
   /** 「小智工单」标识（1130 D1：小智单类型为咨询，按标识走小智动作集） */
   isXiaozhi?: boolean;
+  /** 「个册退费」标识（1120）：只用来放行「转校园经理」，其余动作取值不变 */
+  isRefund?: boolean;
 }
 
 /**
@@ -424,7 +431,7 @@ export function availableActions(ctx: ActionCtx): ActionDef[] {
     .filter((a): a is ActionDef => !!a)
     .filter(
       (a) =>
-        actionTypeAllowed(a, ctx.ticketType, ctx.flashView, ctx.isFlash, ctx.isXiaozhi)
+        actionTypeAllowed(a, ctx.ticketType, ctx.flashView, ctx.isFlash, ctx.isXiaozhi, ctx.isRefund)
         // 风险那一枚的类型集随形态现算（协同形态只给投诉），刷机单上同样要过形态的类型集
         && (a.key !== '风险报备' || a.types.includes(ctx.ticketType as TicketType))
         && !a.hiddenRoles?.includes(roleKey)

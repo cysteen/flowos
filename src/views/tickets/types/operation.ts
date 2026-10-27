@@ -319,7 +319,7 @@ const TAB_ROLE_DENY: Partial<Record<ProcessTabKey, string[]>> = {
 export function visibleProcessTabs(
   ticketType: string,
   roleKey: string,
-  opts?: { feishuActive?: boolean; isXiaozhi?: boolean; isFlash?: boolean },
+  opts?: { feishuActive?: boolean; isXiaozhi?: boolean; isFlash?: boolean; isRefund?: boolean },
 ) {
   return PROCESS_TABS.filter((t) => {
     const deny = TAB_ROLE_DENY[t.key];
@@ -331,6 +331,8 @@ export function visibleProcessTabs(
     if (t.key === 'risk' && opts?.isXiaozhi) return false;
     // 刷机单同理：不进行风险报备与风险管控（用户 10-26），「风险报备」Tab 整个不出
     if (t.key === 'risk' && opts?.isFlash) return false;
+    // 个册退费单同理：不做风险报备，风险直接关联投诉（用户 10-27 评审），「风险报备」Tab 整个不出
+    if (t.key === 'risk' && opts?.isRefund) return false;
     /**
      * 🔴 **小智单上「技术支持处理」Tab 整个不渲染**（1130 一·补 B10 / PRD §5.1：本轮不做技术支持路径）。
      *
@@ -367,7 +369,7 @@ export function isProcessTabVisible(
   tabKey: ProcessTabKey,
   ticketType: string,
   roleKey: string,
-  opts?: { feishuActive?: boolean; isXiaozhi?: boolean; isFlash?: boolean },
+  opts?: { feishuActive?: boolean; isXiaozhi?: boolean; isFlash?: boolean; isRefund?: boolean },
 ): boolean {
   return visibleProcessTabs(ticketType, roleKey, opts).some((t) => t.key === tabKey);
 }

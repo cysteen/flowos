@@ -66,7 +66,9 @@ export type OpActionType =
   // 形态判定见 opActionRegistry.ts 的 resolveRiskActionForm / resolveRiskControlForm。
   | '协同处理'
   | '激活飞书' | '激活售后'
-  | '关闭工单' | '取消工单';
+  | '关闭工单' | '取消工单'
+  // 「转校园经理」：只对个册退费单（1120，用户 10-27 方案 B），落库走个册退费服务，不进通用分支
+  | '转校园经理';
 
 export interface TransferPayload { scope: 'same' | 'cross'; target: string; reason: string; }
 /** 委派到人：逐人任务说明 */

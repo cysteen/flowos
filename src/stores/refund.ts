@@ -13,7 +13,7 @@ import { flashStamp, parseFlashStamp } from '@/views/tickets/types/flash';
 import {
   REFUND_NOTIFY_EVENTS, REFUND_PENDING_STEP_MS, REFUND_POOL_GROUP_ID, REFUND_POOL_GROUP_NAME,
   REFUND_PRODUCT_CATEGORY, REFUND_PRODUCT_NAME, REFUND_RESULT_DELAY_MS, REFUND_STATUS_SYSTEM,
-  REFUND_SYSTEM_HANDLER, REFUND_TICKET_TYPE, REFUND_TIP, REFUND_TL, REFUND_TOAST,
+  REFUND_SYSTEM_HANDLER, REFUND_TICKET_TYPE, REFUND_TIP, REFUND_TL, REFUND_TOAST, REFUND_TO_MANAGER,
   emptyRefundHandle, inflightRefundRun, isRefundTicket, refundManagerTlRole, refundPooledImText,
   refundSurveySmsText, refundTodoImText, refundUrgeImText,
   type RefundHandle, type RefundInfo, type RefundManager, type RefundRun, type RefundTaskStatus,
@@ -69,8 +69,11 @@ const LS_KEY = 'flowos-refund-cache';
  * v8：退费商品逐学科加「退费金额」`refundAmount`（H5 可改，默认等于可退金额；提交退费按它提交，
  *     退费记录展示它；用户 10-27），v7 快照里不带该字段的已选商品与退费记录作废
  * v9：新增种子单 ⑧ IFLYZX-20261020-00008（调研中，已发调研短信；用户 10-27），v8 快照里没有这张单
+ * v10：本单状态加「最近处理人」`lastManager`（H5 保存 / 下送 / 提交退费写入，二线转校园经理默认取它；
+ *      用户 10-27 方案 B），v9 快照里的种子单不带该字段
+ * v11：退费信息加「退费方」`party`（我司 / 渠道两项，H5 可选，默认「我司」；用户 10-27 评审），v10 快照里的处理表单不带该字段
  */
-const CACHE_VERSION = 9;
+const CACHE_VERSION = 11;
 const STALE_MS = 12 * 60 * 60 * 1000;
 
 interface RefundCache { v: number; savedAt: number; tickets: Ticket[] }
@@ -344,6 +347,7 @@ export const useRefundStore = defineStore('refund', () => {
     const m = r.refund!.state.manager!;
     const now = Date.now();
     r.refund!.handle = { ...structuredClone(toRaw(handle)), savedBy: m.name, savedAt: flashStamp(now) };
+    r.refund!.state.lastManager = m;
     r.updatedAt = flashStamp(now);
     log(r, now, { category: 'handle', action: 'handle', who: m.name, role: refundManagerTlRole(m), how: '保存', what: REFUND_TL.save });
     markResponded(r, now);
@@ -363,6 +367,7 @@ export const useRefundStore = defineStore('refund', () => {
     const m = ref.state.manager!;
     const now = Date.now();
     ref.handle = { ...structuredClone(toRaw(handle)), savedBy: m.name, savedAt: flashStamp(now) };
+    ref.state.lastManager = m;
     markResponded(r, now);
     if (handle.submitRefund === '否') {
       log(r, now, { category: 'node', action: 'transfer', who: m.name, role: refundManagerTlRole(m), how: '下送', what: REFUND_TL.forwardNo(handle.remark.trim()) });
@@ -507,16 +512,24 @@ export const useRefundStore = defineStore('refund', () => {
     return { ok: true, message: `已同组内调剂至 ${name}` };
   }
 
-  /** 调剂给校园经理 / 城市经理（第 4 章第 5 行） */
-  function assignToManager(no: string, m: RefundManager, by: RefundActor): RefundActionResult {
+  /**
+   * 交给校园经理 / 城市经理：带 `reason` 即二线「转校园经理」（履历「转校园经理」、原因必填，用户 10-27 方案 B）；
+   * 不带为历史「调剂给校园经理」（查询中心旧路径）。落「待响应」、处理组「—」、发待办通知；SLA 不重置、首响不重算。
+   */
+  function assignToManager(no: string, m: RefundManager, by: RefundActor, reason?: string): RefundActionResult {
     const r = rowOf(no);
     if (!r) return { ok: false, message: '' };
-    if (r.nodeStatus === REFUND_STATUS_SYSTEM) return { ok: false, message: REFUND_TIP.inProgress };
+    if (r.nodeStatus === REFUND_STATUS_SYSTEM || inflightRefundRun(r.refund)) return { ok: false, message: REFUND_TIP.inProgress };
     const now = Date.now();
-    log(r, now, { category: 'node', action: 'transfer', who: by.name, role: by.role, how: '调剂', what: REFUND_TL.assignManager(m) });
+    const why = reason?.trim();
+    if (why) {
+      log(r, now, { category: 'node', action: 'transfer', who: by.name, role: by.role, how: REFUND_TO_MANAGER.label, what: REFUND_TL.toManager(by.name, m, why) });
+    } else {
+      log(r, now, { category: 'node', action: 'transfer', who: by.name, role: by.role, how: '调剂', what: REFUND_TL.assignManager(m) });
+    }
     toManager(r, m, now);
     commit(r);
-    return { ok: true, message: `已调剂给 ${m.name}` };
+    return { ok: true, message: why ? REFUND_TO_MANAGER.done : `已调剂给 ${m.name}` };
   }
 
   /** 二线下送：进「调研中」，发调研短信（不经工单运营审核） */
