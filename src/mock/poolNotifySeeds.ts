@@ -17,7 +17,7 @@ export const POOL_NOTIFY_SEEDS: Record<string, NotifyRecord[]> = {
       status: '未读',
       content:
         '您所在的受理一组来了一条新工单（IFLYZX-20260610-00011），请尽快领取处理。\n\n'
-        + '系统登陆地址：http://xfkf.iflytek.com/ngs/SSOVerifyLogin',
+        + '系统登录地址：http://xfkf.iflytek.com/ngs/SSOVerifyLogin',
     },
   ],
 };

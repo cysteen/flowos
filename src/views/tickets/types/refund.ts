@@ -412,7 +412,7 @@ export function refundH5Url(no: string): string {
 /** 通知内容里的 H5 链接（含域名；通知记录 Tab 据此渲染为可点） */
 export const REFUND_H5_LINK_RE = /((?:https?:\/\/[^\s/]+)?\/m\/refund\/ticket\?no=[A-Za-z0-9-]+)/;
 
-/** 取 IM 模板正文，「系统登陆地址」填移动工单 H5 链接（外部处理人只在 H5 处理） */
+/** 取 IM 模板正文，「系统登录地址」填移动工单 H5 链接（外部处理人只在 H5 处理） */
 function refundImBody(code: string, no: string): string {
   return (templateOf('IM', code)?.body ?? '').replace(LOGIN_URL, refundH5Url(no)).replace('${ticketNo}', no);
 }
