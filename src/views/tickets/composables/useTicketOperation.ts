@@ -449,6 +449,15 @@ export function useTicketOperation() {
           { no: refundNo, title: src?.title ?? refundNo, tag: '关联个册退费单', meta: `${(t.createdAt ?? '').slice(5, 16)} 关联` },
         ];
       }
+      // 与小智工单弱关联的投诉单（用户 2026-10-26）：关联卡指回小智工单，两单各自流转
+      const xiaozhiNo = t.type === '投诉' ? xiaozhi.xiaozhiNoLinkedTo(t.no) : undefined;
+      if (xiaozhiNo) {
+        const src = TICKETS.find((x) => x.no === xiaozhiNo);
+        base.linkedRecords = [
+          ...base.linkedRecords,
+          { no: xiaozhiNo, title: src?.title ?? xiaozhiNo, tag: '关联小智工单', meta: `${(t.createdAt ?? '').slice(5, 16)} 关联` },
+        ];
+      }
       if (t.problemDesc?.trim()) {
         base.demand = t.problemDesc.trim();
       }
@@ -795,6 +804,17 @@ export function useTicketOperation() {
     base.feishuSync = t.xiaozhi?.rdSync ?? 'none';
     base.feishuRecords = JSON.parse(JSON.stringify(t.xiaozhi?.rdRecords ?? [])) as FeishuRecord[];
     base.feishuFeedbackNo = t.xiaozhi?.rdFeedbackNo;
+    // 关联投诉（弱关联，用户 2026-10-26）：关联卡按小智字段组上的投诉单号重建，写法同刷机 / 个册退费
+    const linkedNos = t.xiaozhi?.linkedComplaintNos ?? [];
+    if (linkedNos.length) {
+      base.linkedRecords = [
+        ...base.linkedRecords.filter((r) => r.tag !== '关联投诉'),
+        ...linkedNos.map((no) => {
+          const c = TICKETS.find((x) => x.no === no);
+          return { no, title: c?.title ?? no, tag: '关联投诉', meta: `${(c?.createdAt ?? '').slice(5, 16)} 关联` };
+        }),
+      ];
+    }
     base.status = t.nodeStatus;
     if (isTicketClosed(t.nodeStatus)) opState.value = 'closed';
   }

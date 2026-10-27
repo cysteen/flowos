@@ -163,6 +163,13 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     return revisions.value[no] ?? 0;
   }
 
+  /** 与某投诉单弱关联的小智工单号（投诉单那一侧的关联卡据此指回来） */
+  function xiaozhiNoLinkedTo(complaintNo: string): string | undefined {
+    return TICKETS.find(
+      (t) => isXiaozhiTicket(t) && t.xiaozhi?.linkedComplaintNos?.includes(complaintNo),
+    )?.no;
+  }
+
   /* ---------------- 写：公共 ---------------- */
 
   function bump(no: string) {
@@ -170,7 +177,14 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
   }
 
   function persist() {
-    const tickets = TICKETS.filter((t) => isXiaozhiTicket(t) && t.xiaozhi).map((t) => toRaw(t));
+    // 弱关联建出来的投诉单也要存进本份快照（写法同刷机 / 个册退费）——
+    // 它自己不是小智单、`isXiaozhiTicket` 筛不住它，漏存则刷新后关联卡指向一张查不到的单
+    const linked = new Set(
+      TICKETS.flatMap((t) => (isXiaozhiTicket(t) ? t.xiaozhi?.linkedComplaintNos ?? [] : [])),
+    );
+    const tickets = TICKETS
+      .filter((t) => (isXiaozhiTicket(t) && t.xiaozhi) || linked.has(t.no))
+      .map((t) => toRaw(t));
     writeXiaozhiCache(XIAOZHI_LS_KEYS.tickets, { tickets } satisfies TicketsCache);
     writeXiaozhiCache(XIAOZHI_LS_KEYS.timeline, { timelines: timelines.value, seq: tlSeq } satisfies TimelineCache);
   }
@@ -938,6 +952,44 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     persist();
   }
 
+  /**
+   * 关联投诉（用户 2026-10-26 拍板「小智工单和刷机单一样，都只有关联投诉」）—— **弱关联**：
+   * 新建的投诉单与本单互相记一笔，**本单状态与处理人一概不动**，两单各自流转结案。
+   * 写法照刷机单（1013 A21 / B5）与个册退费单，三类同形。
+   *
+   * 🔴 **不是「升级投诉」**：升级投诉会关掉原单、落终态「已升级投诉」；本单不落任何终态，
+   * 故小智单上仍然**不出「升级投诉」**，只出这一枚（原 D19 / X4 的「不做关联」被本条推翻，
+   * 「不给升级投诉」那半条保留）。
+   */
+  function linkComplaint(
+    no: string,
+    complaint: Ticket,
+    by: { name: string; role: TlRole },
+  ): { ok: boolean; message: string } {
+    const r = rowOf(no);
+    if (!r?.xiaozhi) return { ok: false, message: '' };
+    const at = Date.now();
+    r.xiaozhi.linkedComplaintNos = [...(r.xiaozhi.linkedComplaintNos ?? []), complaint.no];
+    log(no, at, {
+      category: 'relate', action: 'relate', who: by.name, role: by.role,
+      how: '关联投诉', what: XIAOZHI_TL.linkComplaint(complaint.no),
+    });
+    // 建单弹窗在回调之后才把新单写进工单库：这里先落，新单上那一条关联履历才有处可写
+    if (!rawOf(complaint.no)) TICKETS.unshift(complaint);
+    const c = rawOf(complaint.no);
+    if (c) {
+      c.eventTimeline = [...(c.eventTimeline ?? []), {
+        id: `xiaozhi-link-${complaint.no}-${at}`, category: 'relate', action: 'relate',
+        who: by.name, role: by.role, how: '关联投诉',
+        what: XIAOZHI_TL.linkedFromXiaozhi(no), when: xiaozhiStamp(at),
+      }];
+    }
+    r.updatedAt = xiaozhiStamp(at);
+    bump(no);
+    persist();
+    return { ok: true, message: `已关联投诉单 ${complaint.no}` };
+  }
+
   return {
     timelines,
     revisions,
@@ -966,5 +1018,7 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     /** B7：超 N 天未确认视为已解决 */
     settleConfirmDue,
     syncStatus,
+    linkComplaint,
+    xiaozhiNoLinkedTo,
   };
 });

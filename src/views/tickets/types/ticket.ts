@@ -1356,13 +1356,16 @@ export function headerActionsByRole(roleKey: string, isXiaozhiTicket = false): {
   const isXiaozhiRole = roleKey === 'xiaozhi-agent';
   return {
     /**
-     * **升级投诉：单维**（D19 + PRD §5.1 / §9「小智单上不出升级投诉」）——
-     * 人员投诉走通用投诉流程、投诉单与小智工单不做关联；逐字稿 51:08 问「小智工单跟
-     * 人员投诉会同时吗」，答「这个概念目前没有」。
-     * ⚠️ 这里**只能判单、不能判角色**：判角色只挡住小智坐席，二线班组长 / 客诉专员 /
-     * 投诉督导 / 管理员打开同一张小智单照样能点。
+     * 页头这一格的**位置**（标签由处理页的 `linkComplaint` 决定：带标识的单上是「关联投诉」、
+     * 其余是「升级投诉」，见 `OpHeader.vue`）。
+     *
+     * 🔴 **小智单 2026-10-26 起放开**（用户原话「小智工单和刷机单一样，都只有关联投诉」）：
+     * 本格给上，但小智单走的是**关联投诉**那一支（弱关联、不关原单、不落终态），
+     * **「升级投诉」在小智单上仍然不出** —— 原 D19「投诉单与小智工单不做关联」被推翻，
+     * X4 的机制理由（升级投诉会把小智单关掉、使其不能自己结案）仍然成立，故只换这一支。
+     * ⏮️ 原先这里是 `&& !isXiaozhiTicket`，整枚都不出。
      */
-    escalateComplaint: canWorkTicket && !isTechSupport && !isXiaozhiTicket,
+    escalateComplaint: canWorkTicket && !isTechSupport,
     /**
      * 关联售后。真正的判据是**类型限制** —— 基线 §4「关联售后」行的类型集 ＝「投」，
      * 小智单是**咨询**单，这一格本就不出现；D18「不涉及转售后」说的是底栏那枚「转售后」

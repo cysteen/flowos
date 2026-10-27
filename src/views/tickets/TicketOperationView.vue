@@ -463,7 +463,9 @@ const flashEditInfo = computed(() =>
  */
 const flashLinkGate = computed(() => {
   // 个册退费单同刷机单：弱关联投诉，只在终态置灰（1120 第 6 章）
-  if (!isFlash.value && !isRefund.value) return null;
+  // 小智单同上（用户 2026-10-26「小智工单和刷机单一样，都只有关联投诉」）：本单不落终态，
+  // 故给「关联投诉」、仍不给「升级投诉」（推翻原 D19 的「不做关联」，见 types/xiaozhi.ts）
+  if (!isFlash.value && !isRefund.value && !isXiaozhi.value) return null;
   const tip = flashLinkComplaintBlockTip(d.value.status);
   return tip ? { forbidden: true, tip } : { forbidden: false };
 });
@@ -1648,11 +1650,15 @@ function finishEscalate(ticket: Ticket, targetLabel: string, processAfter?: bool
 
 function onTicketCreated(ticket: Ticket, processAfter?: boolean) {
   // 刷机单「关联投诉」（1013 A21 / B5）：新投诉单与本单弱关联，本单状态不变
+  // 个册退费单与小智单同此（小智：用户 2026-10-26），各自落自己那条链路的履历与快照
   if (flashLinkPending.value) {
     flashLinkPending.value = false;
-    const res = isRefund.value
-      ? refundStore.linkComplaint(d.value.no, ticket, { name: currentHandlerName(user.roleKey, user.name), role: mapUserRole(user.roleKey) })
-      : flashStore.linkComplaint(d.value.no, ticket, flashActor());
+    const actor = { name: currentHandlerName(user.roleKey, user.name), role: mapUserRole(user.roleKey) };
+    const res = isXiaozhi.value
+      ? xiaozhiStore.linkComplaint(d.value.no, ticket, actor)
+      : isRefund.value
+        ? refundStore.linkComplaint(d.value.no, ticket, actor)
+        : flashStore.linkComplaint(d.value.no, ticket, flashActor());
     if (res.ok) message.success(res.message);
     if (!processAfter) processTabsRef.value?.switchTab('related');
   }
@@ -2977,7 +2983,7 @@ watch(
       :customer-entry-locked="customerEntryLocked"
       :superseded-by="supersededBy"
       :escalate-gate="flashLinkGate"
-      :link-complaint="isFlash || isRefund"
+      :link-complaint="isFlash || isRefund || isXiaozhi"
       :cancel-blocked-tip="cancelBlockedTip"
       :risk-grade="titleRiskGrade"
       :risk-reporting="titleRiskReporting"
