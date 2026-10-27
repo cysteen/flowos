@@ -200,7 +200,13 @@ const statusMeta = computed(() => {
   if (kinds.has('activate') && props.syncState === 'synced') {
     return { label: '处理中', tone: 'doing' as const };
   }
-  if (props.syncState === 'feedback' || kinds.has('feedback')) {
+  /**
+   * 「收到过产研反馈」含**办结**那笔（`result`）—— PRD §5.2 第 5 档。
+   * 小智单确认未解决后 rdSync 回到 `synced`、产研重做，时间线上只剩推单与办结两类，
+   * 不认 `result` 就会掉到「已建单」，像是产研从没回过话。
+   * 通用飞书单的 `result` 只在已结案或二次激活后出现，都在上面两档先命中，不受影响。
+   */
+  if (props.syncState === 'feedback' || kinds.has('feedback') || kinds.has('result')) {
     return { label: '已反馈', tone: 'feedback' as const };
   }
   if (kinds.has('push') || props.syncState === 'synced') {
