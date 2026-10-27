@@ -61,7 +61,7 @@ const fields = computed<Field[]>(() => {
     { key: 'student', label: '学生姓名', value: v(i.studentName) },
     { key: 'code', label: '登录账号', value: v(h.studentCode || i.studentCode) },
     { key: 'order', label: '订单号', value: v(h.orderNo || i.orderNo) },
-    { key: 'amount', label: '可退金额', value: i.refundableAmount != null ? `${formatRefundAmount(i.refundableAmount)} 元` : EMPTY },
+    { key: 'amount', label: '订单金额', value: i.refundableAmount != null ? `${formatRefundAmount(i.refundableAmount)} 元` : EMPTY },
     { key: 'submit', label: '是否在线退费', value: v(h.submitRefund) },
     { key: 'comm', label: '沟通结果', value: v(h.commResult) },
     { key: 'party', label: '退费方', value: submitted ? REFUND_PARTY : EMPTY },

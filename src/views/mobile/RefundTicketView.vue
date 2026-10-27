@@ -67,7 +67,7 @@ const basicRows = computed(() => {
     ['学校名称', info.schoolName],
     ['登录账号', info.studentCode],
     ['订单号', dash(info.orderNo)],
-    ['可退金额', typeof info.refundableAmount === 'number' ? `${formatRefundAmount(info.refundableAmount)} 元` : '—'],
+    ['订单金额', typeof info.refundableAmount === 'number' ? `${formatRefundAmount(info.refundableAmount)} 元` : '—'],
     ['退款原因', dash(refundReasonLabel(info.reason))],
     ['描述内容', dash(t.problemDesc)],
     ['预处理信息', dash(t.latestHandling)],

@@ -283,7 +283,7 @@ export const REFUND_FIELD_LABELS = {
   studentCode: '智学号',
   packages: '可退套餐',
   orderNo: '订单号',
-  refundableAmount: '可退金额',
+  refundableAmount: '订单金额',
   reason: '退款原因',
   returnWay: '退回方式',
 } as const;
