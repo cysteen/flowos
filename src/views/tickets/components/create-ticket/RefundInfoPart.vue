@@ -68,6 +68,9 @@ function onQuery() {
   }
   queryFailed.value = false;
   orders.value = res.orders;
+  // 查询后默认选中购买时间最近的订单，回填订单号与可退金额；点其他订单卡可切换
+  const latest = res.orders.reduce<RefundOrder | null>((a, o) => (!a || o.purchasedAt > a.purchasedAt ? o : a), null);
+  if (latest) pickOrder(latest);
 }
 
 function orderTotal(o: RefundOrder): number {
