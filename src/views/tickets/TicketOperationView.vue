@@ -35,7 +35,7 @@ import {
   FLASH_POOLS, isFlashTicket, normalizeFlashResult, type FlashActor, type FlashResult,
 } from './types/flash';
 import {
-  XIAOZHI_CANCELLABLE_STATUSES, XIAOZHI_CONFIRM_ACTOR, XIAOZHI_RD_RETURNED_STATUS,
+  XIAOZHI_CANCELLABLE_STATUSES, XIAOZHI_RD_RETURNED_STATUS,
   XIAOZHI_TIP, XIAOZHI_TOAST,
   isXiaozhiTicket, type XiaozhiRdPriority,
 } from './types/xiaozhi';
@@ -614,45 +614,6 @@ function onXiaozhiAction(payload: Record<string, unknown>): boolean {
   // 产研协同信息都在那个 Tab 上，升完直接切过去（与飞书升级同体例）
   processTabsRef.value?.switchTab('feishu');
   return true;
-}
-
-/**
- * 「产研回传」入口（1130 一·补 B5 / B28 / B31 / B33）—— 🔴 **原型演示入口，不是产品功能**。
- *
- * 真实系统里：前三笔由 **TPD 调工单系统的接口**回传，后两笔由**提报人在小智工单应用**里点，
- * 都不经本页。小智服务里那四个写口（`receiveRdProgress` / `receiveRdSettle` /
- * `receiveRdReject` / `receiveReporterConfirm`）此前**全仓零调用方**，四条口径的成果
- * 在原型上演示不出来，故在「产研反馈」Tab 底部接上这一组。它不进 PRD、不进截图范围。
- */
-function onXiaozhiRdEvent(kind: 'progress' | 'settle' | 'reject' | 'confirmResolved' | 'confirmUnresolved') {
-  const no = d.value.no;
-  const reporter = d.value.customer?.name || XIAOZHI_CONFIRM_ACTOR;
-  switch (kind) {
-    case 'progress':
-      xiaozhiStore.receiveRdProgress(no, '张冬', '已复现，定位中');
-      message.success('已记录产研回传 · 处理中');
-      break;
-    case 'settle':
-      xiaozhiStore.receiveRdSettle(no, '张冬', {
-        solutionType: '问题',
-        issue: { solution: '已定位并修复，请验证', solvedAt: opTimeNow() },
-      });
-      message.success('已记录产研回传 · 已办结');
-      break;
-    case 'reject':
-      xiaozhiStore.receiveRdReject(no, '张冬', '信息不全，请补充复现步骤与日志后重新提交');
-      message.success('已记录产研回传 · 退回');
-      break;
-    case 'confirmResolved':
-      xiaozhiStore.receiveReporterConfirm(no, true, reporter);
-      message.success(`已记录${XIAOZHI_CONFIRM_ACTOR}确认 · 已解决`);
-      break;
-    case 'confirmUnresolved':
-      xiaozhiStore.receiveReporterConfirm(no, false, reporter);
-      message.success(`已记录${XIAOZHI_CONFIRM_ACTOR}确认 · 未解决`);
-      break;
-  }
-  reloadDetail();
 }
 
 /** 刷机服务的操作人：当前登录人在工单数据源里的处理人名 + 履历角色（一线坐席判一线重推） */
@@ -3071,7 +3032,6 @@ watch(
           @open-reopen-create="openReopenCreate"
           @mark-read="onMarkRecordRead"
           @feishu-activate="onFeishuActivate"
-          @xiaozhi-rd-event="onXiaozhiRdEvent"
           @feishu-retry="onFeishuRetry"
           @dunning="dunningModalOpen = true"
           @attachment-upload="onAttachmentTabUpload"

@@ -106,8 +106,6 @@ const emit = defineEmits<{
   'mark-read': [id: string];
   'feishu-activate': [reason: string];
   'feishu-retry': [];
-  /** 小智单「产研回传」原型演示入口（见 `OpFeishuTab` 的 `rdEventActions`） */
-  'xiaozhi-rd-event': [kind: 'progress' | 'settle' | 'reject' | 'confirmResolved' | 'confirmUnresolved'];
   dunning: [];
   closingNoteFilesAdded: [files: { name: string; size: number }[]];
   'attachment-upload': [files: { name: string; size: number }[]];
@@ -281,7 +279,6 @@ defineExpose({ switchTab });
         @activate="emit('feishu-activate', $event)"
         @retry="emit('feishu-retry')"
         @dunning="emit('dunning')"
-        @rd-event="emit('xiaozhi-rd-event', $event)"
       />
 
       <OpTechProcessTab
