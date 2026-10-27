@@ -938,8 +938,9 @@ watch(
           「落池自领」与「直通产研」两条路径（D5）改由「小智工单信息」卡上的「升级 TPD」
           勾选框分叉，故底栏不再有第二枚建单按钮；「创建并处理」本就不给小智单出。
           非小智单照旧三枚，行为未变。
+          个册退费单同样不出「创建并处理」，只留「创建」（用户 10-27 拍板）。
         -->
-        <button v-if="!isXiaozhiType" type="button" class="btn-ghost" :disabled="submitting" @click="onCreate(true)">
+        <button v-if="!isXiaozhiType && !isRefundType" type="button" class="btn-ghost" :disabled="submitting" @click="onCreate(true)">
           创建并处理
         </button>
       </div>
