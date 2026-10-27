@@ -74,8 +74,9 @@ const LS_KEY = 'flowos-refund-cache';
  * v11：退费信息加「退费方」`party`（我司 / 渠道两项，H5 可选，默认「我司」；用户 10-27 评审），v10 快照里的处理表单不带该字段
  * v12：二线记名统一为登录名「张三」（种子单领取 / 调剂 / 下送履历与处理人由「王坐席」改「张三」，领取落库记登录人姓名；
  *      用户 10-27），v11 快照里的旧记名作废
+ * v13：处理履历事件名「退费结果回写」改「退费结果更新」（种子单与产线结果回传落库同改；用户 10-27），v12 快照里的旧事件名作废
  */
-const CACHE_VERSION = 12;
+const CACHE_VERSION = 13;
 const STALE_MS = 12 * 60 * 60 * 1000;
 
 interface RefundCache { v: number; savedAt: number; tickets: Ticket[] }
@@ -451,7 +452,7 @@ export const useRefundStore = defineStore('refund', () => {
       if (live.status === '待审核' && live.pendingAtMs && now >= live.pendingAtMs) {
         live.status = '待退费';
         live.resultAt = flashStamp(live.pendingAtMs);
-        log(r, live.pendingAtMs, { category: 'node', action: 'handle', ...SYS, how: '退费结果回写', what: REFUND_TL.result(live.taskId, '待退费') });
+        log(r, live.pendingAtMs, { category: 'node', action: 'handle', ...SYS, how: '退费结果更新', what: REFUND_TL.result(live.taskId, '待退费') });
         changed += 1;
       }
       const settleAt = run.settleAtMs;
@@ -464,7 +465,7 @@ export const useRefundStore = defineStore('refund', () => {
       live.status = fin;
       live.resultAt = flashStamp(at);
       if (fin === '已驳回') live.rejectReason = live.finalRejectReason;
-      log(r, at, { category: 'node', action: 'handle', ...SYS, how: '退费结果回写', what: REFUND_TL.result(live.taskId, fin, live.rejectReason) });
+      log(r, at, { category: 'node', action: 'handle', ...SYS, how: '退费结果更新', what: REFUND_TL.result(live.taskId, fin, live.rejectReason) });
       if (fin === '已驳回') {
         const back = ref.state.lastSubmitter!;
         log(r, at + 1, { category: 'node', action: 'transfer', ...SYS, how: '驳回回退', what: REFUND_TL.rejectBack(live.rejectReason ?? '', back.name) });

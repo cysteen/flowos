@@ -871,7 +871,7 @@ function rowToTemplateCells(r: ProblemTagRow): string[] {
 
 /** 模板下拉：工单处理组、专属类型（取值同导入校验，均允许留空） */
 const TEMPLATE_VALIDATIONS: ListValidation[] = [
-  { col: COL_NAMES.indexOf('工单处理组'), values: TEAMS, error: '工单处理组不在枚举' },
+  { col: COL_NAMES.indexOf('工单处理组'), values: TEAMS, error: '工单处理组不存在' },
   { col: COL_NAMES.indexOf('专属类型'), values: EXCLUSIVE_VALUES, error: EXCLUSIVE_INVALID_TEXT },
 ];
 
@@ -1021,7 +1021,7 @@ function analyzeImport(fileName: string, sheet: string[][]): ImportResult {
     if (prodColsFilled && !prod) reasons.push('产品未找到：请先在产品管理中新增该产品');
 
     const team = teamRaw.trim();
-    if (team && !teamSet.has(team)) reasons.push(`工单处理组不在枚举：${team}`);
+    if (team && !teamSet.has(team)) reasons.push(`工单处理组不存在：${team}`);
     const exText = exRaw.trim();
     if (exText && !EXCLUSIVE_VALUES.includes(exText)) reasons.push(EXCLUSIVE_INVALID_TEXT);
     const ex = (exText || '无') as ExclusiveType;
