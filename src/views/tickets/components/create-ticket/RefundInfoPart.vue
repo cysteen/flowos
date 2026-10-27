@@ -23,7 +23,7 @@ defineProps<{
 const reasonOptions = REFUND_REASONS.map((r) => ({ value: r.code, label: r.label }));
 const managerOptions = ALL_REFUND_MANAGERS.map((m) => ({ value: m.account, label: `${m.name}（${m.account}）` }));
 
-// 选学校带出校代对接人（校园经理 → 城市经理，都没有置空）；换学校重新带出，清空学校一并清空
+// 选学校带出校代对接人（本校校园经理，没有置空；城市经理只可手动改选）；换学校重新带出，清空学校一并清空
 watch(() => info.value.schoolId, (id, prev) => {
   if (id === prev) return;
   info.value.managerAccount = id ? resolveSchoolManager(id)?.account ?? '' : '';

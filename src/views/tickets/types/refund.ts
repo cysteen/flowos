@@ -33,10 +33,11 @@ export const REFUND_PRODUCT_CATEGORY = '软件服务';
 /** 识别要求的产品 */
 export const REFUND_PRODUCT_NAME = '个性化学习手册';
 /**
- * 出厂「专属类型＝个册退费」的问题分类：售后 → 退费申请 → 个册退费（种子单与出厂配置用）。
+ * 出厂「专属类型＝个册退费」的问题分类：个册退费 → 退费申请 → 个册退费（种子单与出厂配置用）。
+ * 10-27：一级改为业务新标签的「个册退费」（10-26 会 36:44 张冬「一级……是各册退费」）；二、三级待业务给全，暂沿用原值。
  * 识别读后台「问题分类」的开关（`stores/refundConfig.ts`），不读这里。
  */
-export const REFUND_TAG_L1 = '售后';
+export const REFUND_TAG_L1 = '个册退费';
 export const REFUND_TAG_L2 = '退费申请';
 export const REFUND_TAG_L3S = ['个册退费'] as const;
 
@@ -316,7 +317,7 @@ export const REFUND_TL = {
   /** 附录 B：建单记「建单」（工单来源同咨询单另见页头） */
   create: (_source: string) => '建单',
   dispatchManager: (m: RefundManager) => `按学校派单 → ${m.kind} ${m.name}`,
-  dispatchPool: `按学校未取到校园经理、城市经理 → ${REFUND_POOL_GROUP_NAME}工单池`,
+  dispatchPool: `按学校未取到校园经理 → ${REFUND_POOL_GROUP_NAME}工单池`,
   /** 建单所填校代对接人与按学校带出的不同 */
   dispatchPicked: (m: RefundManager) => `建单指定 → ${m.kind} ${m.name}`,
   /** 按学校可带出校代对接人、建单时清空 */
@@ -325,7 +326,7 @@ export const REFUND_TL = {
   submit: (taskId: string, items: RefundSubject[]) =>
     `提交退费 · 退费任务号 ${taskId}；${items.map(refundItemText).join('；')}`,
   submitFail: (msg: string) => `提交退费未成功：${msg}`,
-  forwardNo: (remark: string) => `不提交退费，下送${REFUND_POOL_GROUP_NAME}${remark ? `；备注：${remark}` : ''}`,
+  forwardNo: (remark: string) => `不在线退费，下送${REFUND_POOL_GROUP_NAME}${remark ? `；备注：${remark}` : ''}`,
   transfer: (from: string, to: RefundManager) => `转办：${from} → ${to.kind} ${to.name}`,
   /** 附录 B：结果回写记我司退费结果；已驳回时带驳回原因（待审核 / 待退费只记产线结果） */
   result: (taskId: string, s: RefundTaskStatus, rejectReason?: string) => {

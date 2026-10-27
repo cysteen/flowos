@@ -64,8 +64,10 @@ const LS_KEY = 'flowos-refund-cache';
  * v5：种子时刻由分钟级改到秒级（列表与查询的建单 / 更新时间带秒），v4 快照里的分钟级时间作废
  * v6：SLA 自建单下送起算、加整单首响时刻 `firstRespAt`；二线落组由「教育退费审核组」(edu-refund) 改为
  *     通用「教育支持组」(edu)（10-27 拍板），v5 快照里的旧起算时刻与旧组作废
+ * v7：按学校只取校园经理、取不到进池（不再派城市经理）；种子单问题分类一级改「个册退费」；
+ *     选「否」下送履历改「不在线退费」（10-27 拍板），v6 快照里的旧派单与旧分类作废
  */
-const CACHE_VERSION = 6;
+const CACHE_VERSION = 7;
 const STALE_MS = 12 * 60 * 60 * 1000;
 
 interface RefundCache { v: number; savedAt: number; tickets: Ticket[] }
@@ -242,7 +244,7 @@ export const useRefundStore = defineStore('refund', () => {
 
   /**
    * 建个册退费单并按建单所填校代对接人派单；校代对接人为空进教育支持组工单池。SLA 自建单下送起算。
-   * `manager` 不传时按学校取（校园经理 → 城市经理），传 `null` 表示建单时清空了校代对接人。
+   * `manager` 不传时按学校取校园经理，传 `null` 表示建单时清空了校代对接人。
    */
   function createRefundTicket(
     info: RefundInfo, base: RefundCreateBase, actor: RefundActor, manager?: RefundManager | null,

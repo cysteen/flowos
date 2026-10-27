@@ -1,10 +1,9 @@
 /**
- * 学校 → 校园经理 / 城市经理对应关系（1120 个册退费单 · PRD 附录 A.2 接口的原型数据）。
+ * 学校 → 校园经理对应关系（1120 个册退费单 · PRD 附录 A.2 接口的原型数据）；城市经理只作转办 / 调剂候选。
  *
  * 校园经理、城市经理是外部处理人（一·补 补8）：不建账号、不进角色体系，工单上只记姓名与域账号。
  * 学校 ID 与学校库（`mock/schools.ts`）同一套。
  */
-import { findSchoolById } from '@/mock/schools';
 import type { RefundManager } from '@/views/tickets/types/refund';
 
 const campus = (name: string, account: string): RefundManager => ({ name, account, kind: '校园经理' });
@@ -33,21 +32,12 @@ const SCHOOL_CAMPUS: Record<string, RefundManager> = {
   'SCH-340302-002': CAMPUS_MANAGERS.hubin, // 蚌埠第二中学
 };
 
-/** 城市 → 城市经理（学校所在「省 / 市」）；芜湖暂无城市经理 */
-const CITY_MANAGER_BY_CITY: Record<string, RefundManager> = {
-  '安徽省 / 合肥市': CITY_MANAGERS.chengli,
-  '安徽省 / 六安市': CITY_MANAGERS.zhouhai,
-  '安徽省 / 蚌埠市': CITY_MANAGERS.xuhang,
-};
-
-/** 按学校取处理人：校园经理 → 城市经理 → 都取不到返回 undefined（进教育支持组工单池） */
+/**
+ * 按学校取处理人：只取校园经理，取不到返回 undefined（进教育支持组工单池）。
+ * 10-27 拍板：取不到校园经理不再派城市经理；城市经理只作转办 / 调剂对象。
+ */
 export function resolveSchoolManager(schoolId: string): RefundManager | undefined {
-  const c = SCHOOL_CAMPUS[schoolId];
-  if (c) return c;
-  const school = findSchoolById(schoolId);
-  if (!school) return undefined;
-  const cityKey = school.region.split(' / ').slice(0, 2).join(' / ');
-  return CITY_MANAGER_BY_CITY[cityKey];
+  return SCHOOL_CAMPUS[schoolId];
 }
 
 /** 本校校园经理（二线调剂时预选） */

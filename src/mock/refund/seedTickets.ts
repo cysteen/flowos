@@ -2,7 +2,7 @@
  * 个册退费单 · 工单库样本（1120 个册退费工单）。七张，覆盖各阶段：
  * ① 校园经理待处理（待响应）；② 系统退费中；③ 已驳回（回校园经理「处理中」）；
  * ④ 退费成功 · 教育支持组工单池（首次驳回、再次提交成功）；⑤ 部分完成 · 教育支持组组员处理中；
- * ⑥ 兜底 · 教育支持组工单池（学校未取到校园经理、城市经理）；⑦ 已结案 · 已发调研短信。
+ * ⑥ 兜底 · 教育支持组工单池（学校未取到校园经理）；⑦ 已结案 · 已发调研短信（兜底进池后调剂给城市经理）。
  *
  * 时刻相对装载时刻推算：SLA 账本（建单下送起算、统计整单，10-27）读数随之自洽；整单首响取校园经理
  * 在 H5 首次保存 / 下送的时刻（`firstRespAt`），超 30 分钟才响的记首响未达标（④）。
@@ -355,7 +355,7 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
     pooled(n, done + 1000);
   }
 
-  /* ⑥ 兜底 · 教育支持组工单池（学校未取到校园经理、城市经理） */
+  /* ⑥ 兜底 · 教育支持组工单池（学校未取到校园经理） */
   {
     const n = no(6);
     const c = nowMs - 12 * MIN;
@@ -377,11 +377,12 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
     pooled(n, c + 20_000);
   }
 
-  /* ⑦ 已结案 · 已发调研短信 */
+  /* ⑦ 已结案 · 已发调研短信（学校无校园经理进池，二线调剂给城市经理处理） */
   {
     const n = no(7);
     const m = CITY_MANAGERS.chengli;
     const c = nowMs - 2 * 24 * HOUR;
+    const c0 = c + 5 * MIN;
     const s = c + 25 * MIN;
     const ok = c + 3 * HOUR;
     const claim = ok + 20 * MIN;
@@ -413,7 +414,9 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
       createdAt: at(c), updatedAt: at(closed),
       timeline: [
         tl(at(c), 'node', 'create', AGENT, AGENT_ROLE, '建单', REFUND_TL.create(SOURCE)),
-        tl(at(c + 15_000), 'node', 'transfer', '系统', '系统', '派单', REFUND_TL.dispatchManager(m)),
+        tl(at(c + 15_000), 'node', 'transfer', '系统', '系统', '派单', REFUND_TL.dispatchPool),
+        tl(at(c0), 'node', 'accept', AUDITOR, AUDITOR_ROLE, '领取', `${AUDITOR} 从池中领取本单。`),
+        tl(at(c0 + MIN), 'node', 'transfer', AUDITOR, AUDITOR_ROLE, '调剂', REFUND_TL.assignManager(m)),
         tl(at(s), 'node', 'handle', m.name, refundManagerTlRole(m), '提交退费', REFUND_TL.submit(r1.taskId, items)),
         firstClose(at(s)),
         tl(at(ok), 'node', 'handle', '系统', '系统', '退费结果回写', REFUND_TL.result(r1.taskId, '退费成功')),
@@ -423,7 +426,8 @@ export function buildRefundSeeds(nowMs: number): RefundSeedBundle {
         tl(at(closed), 'node', 'resolved', '系统', '系统', '结案', '回访已解决，工单结案。'),
       ],
     }));
-    todo(n, m, c + 15_000);
+    pooled(n, c + 15_000);
+    todo(n, m, c0 + MIN);
     pooled(n, startedMs);
     notifies.push({
       ticketNo: n, event: 'ticket.survey.sent', kind: 'accepted', status: '已发送', title: '调研短信',

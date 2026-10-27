@@ -6,12 +6,15 @@ import { REFUND_PRODUCT_NAME, REFUND_TAG_L1, REFUND_TAG_L2, REFUND_TAG_L3S } fro
  * 个册退费单 · 问题分类「专属类型＝个册退费」（1120 PRD 1.1；写法同 `stores/flashConfig.ts` 的「专属类型＝刷机」）。
  * 后台「问题分类」维护，建单识别读同一份：所选产品 + 问题分类「专属类型＝个册退费」 → 个册退费单。
  *
- * 出厂值：个性化学习手册 ×「售后 → 退费申请 → 个册退费」；改动落 `flowos-refund-config`。
+ * 出厂值：个性化学习手册 ×「个册退费 → 退费申请 → 个册退费」；改动落 `flowos-refund-config`。
  */
 
 const LS_KEY = 'flowos-refund-config';
-/** 缓存数据形状版本：结构变更时 +1 */
-const CONFIG_SHAPE_VERSION = 1;
+/**
+ * 缓存版本：结构或出厂值变更时 +1
+ * v2：出厂分类一级由「售后」改为「个册退费」（10-27），v1 快照里的「售后 → 退费申请 → 个册退费」作废
+ */
+const CONFIG_SHAPE_VERSION = 2;
 const STALE_MS = 12 * 60 * 60 * 1000;
 
 interface RefundConfigSnapshot {

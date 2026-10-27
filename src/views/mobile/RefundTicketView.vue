@@ -196,7 +196,7 @@ function checkLength(): boolean {
 /** 下送校验（PRD 5.5）：必填 → 字数 → 订单无可退套餐 */
 function validateForward(): boolean {
   clearErrors();
-  if (!form.submitRefund) errors.submitRefund = '请选择是否提交退费';
+  if (!form.submitRefund) errors.submitRefund = '请选择是否在线退费';
   if (!form.commResult) errors.commResult = '请选择沟通结果';
   if (needCommNote.value && !form.commNote.trim()) errors.commNote = '请填写备注';
   if (!form.orderNo.trim()) errors.orderNo = '请填写订单号';
@@ -529,7 +529,7 @@ function confirmTransfer() {
     @cancel="pickerOpen = false"
   />
 
-  <!-- 下送二次确认（是否提交退费＝是） -->
+  <!-- 下送二次确认（是否在线退费＝是） -->
   <a-modal :open="confirmOpen" :closable="false" :footer="null" centered :width="320" @cancel="confirmOpen = false">
     <div class="rf-confirm">
       <p>是否提交退费申请？</p>
