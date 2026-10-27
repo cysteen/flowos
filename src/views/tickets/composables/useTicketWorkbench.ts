@@ -129,7 +129,13 @@ export function useTicketWorkbench() {
     // 小智单（1130 D21：进池自己领）按**当前登录人**取，不沿用老四类的演示处理人 ——
     // 否则小智坐席名下的单落不进「我的任务」，领了也看不见
     if (isXiaozhiTicket(t)) return inMineTaskScope(t, flashHandler.value);
+    // 个册退费单（1120）：二线记名为登录人姓名（用户 10-27），同样按当前登录人取
+    if (isRefundTicket(t)) return inMineTaskScope(t, flashHandler.value);
     return inMineTaskScope(t, WORKBENCH_HANDLER);
+  }
+  /** 已办数据域：个册退费单按当前登录人判「我」，其余照旧按 `WORKBENCH_HANDLER` */
+  function inDoneTabScope(t: Ticket): boolean {
+    return inDoneScope(t, isRefundTicket(t) ? flashHandler.value : WORKBENCH_HANDLER);
   }
 
   /** 一线坐席「刷机池」：一线刷机池未认领的刷机单，按进池时间正序（§9.2；列表列「进池时间」同源） */
@@ -147,7 +153,7 @@ export function useTicketWorkbench() {
       return all.value.filter(inMineTabScope);
     }
     if (activeTab.value === 'done') {
-      return all.value.filter((t) => inDoneScope(t, WORKBENCH_HANDLER));
+      return all.value.filter(inDoneTabScope);
     }
     if (activeTab.value === 'pool') {
       return all.value.filter(inPoolTabScope);
@@ -220,7 +226,7 @@ export function useTicketWorkbench() {
       // 我的任务单独数：一线坐席 / 二线专员本人建的刷机单可能不在 mine 页（§9.4 / M71）
       if (inMineTabScope(t)) map.mine++;
       if (t.tab === 'done') {
-        if (inDoneScope(t, WORKBENCH_HANDLER)) map.done++;
+        if (inDoneTabScope(t)) map.done++;
       } else if (t.tab === 'pool') {
         if (inPoolTabScope(t)) map.pool++;
       } else if (t.tab !== 'poolPending' && t.tab !== 'mine') {
@@ -503,8 +509,8 @@ export function useTicketWorkbench() {
   }
   function takeOverPoolPendingOwner(t: Ticket): { ok: boolean; from: string | null } {
     const id = t.id;
-    // 刷机单 / 小智单记登录人姓名；老四类仍按样例数据模型的处理人名落库（「我的任务」按它取数）
-    const me = isFlashTicket(t) || isXiaozhiTicket(t) ? flashHandler.value : legacyHandlerName(user.roleKey, user.name);
+    // 刷机单 / 小智单 / 个册退费单记登录人姓名；老四类仍按样例数据模型的处理人名落库（「我的任务」按它取数）
+    const me = isFlashTicket(t) || isXiaozhiTicket(t) || isRefundTicket(t) ? flashHandler.value : legacyHandlerName(user.roleKey, user.name);
     const from = poolPendingOwnerOf(t);
     if (isCurrentHandler(from, user.roleKey, user.name)) return { ok: true, from };
     const at = nowStamp();

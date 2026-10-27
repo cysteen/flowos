@@ -47,8 +47,11 @@ const no = (n: number) => `${TICKET_NO_PREFIX[REFUND_TICKET_TYPE]}-${DAY}-${Stri
 /** 建单坐席（演示用户，见 `mock/users.ts`） */
 const AGENT = '刘一线';
 const AGENT_ROLE: TlRole = '一线坐席';
-/** 教育支持组组员（二线专员演示账号沿用的历史处理人名，见 `WORKBENCH_HANDLER`） */
-const AUDITOR = '王坐席';
+/**
+ * 教育支持组组员：二线专员演示账号 13857985858 的登录名（用户 10-27：个册退费单上的二线记名统一为「张三」，
+ * 与领取、转校园经理等现场动作记的登录人姓名一致；不沿用老四类的演示处理人 `WORKBENCH_HANDLER`）
+ */
+const AUDITOR = '张三';
 const AUDITOR_ROLE: TlRole = '二线专员';
 const SOURCE = '电话';
 const L3 = REFUND_TAG_L3S[0];

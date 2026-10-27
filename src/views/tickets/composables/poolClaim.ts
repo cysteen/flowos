@@ -5,6 +5,7 @@
  *   刷新不会再领。「刷机池」页签、查询中心、客户全景、关联单、通知、首页、班组看板等入口不带标记。
  * - 老四类（咨询 / 投诉 / 建议 …）的领取落库：处理人＝本人、子状态「待响应」、进「我的任务」、处理履历记「领取」；
  *   售后转回重派的回流单仍走 `takeOverReturnedTicket`（直落「处理中」，1025 D10）。
+ *   个册退费单同此落库，但处理人记登录人姓名（不记演示处理人）。
  *   刷机单、小智单各由自己的服务落库，本文件不碰。
  */
 import type { LocationQuery, LocationQueryRaw } from 'vue-router';
@@ -100,9 +101,11 @@ export function claimTicketByType(t: Ticket, roleKey: string, userName: string):
     return { ok, message: ok ? `已领取 ${t.no}` : '本单已被领取或不在工单池中' };
   }
   if (isFlashTicket(t)) return useFlashStore().claimFromPool(t.no, { name: me, role });
-  const ok = claimPoolTicket(t, WORKBENCH_HANDLER, role, nowStamp());
-  // 个册退费单（1120）：领取同咨询单，落库后由个册退费服务落快照
-  if (ok && isRefundTicket(t)) useRefundStore().afterClaim(t.no);
+  // 个册退费单（1120）：领取同咨询单，处理人与履历记登录人姓名（用户 10-27：二线记名统一为登录名），
+  // 落库后由个册退费服务落快照；老四类仍记演示处理人 `WORKBENCH_HANDLER`
+  const refund = isRefundTicket(t);
+  const ok = claimPoolTicket(t, refund ? me : WORKBENCH_HANDLER, role, nowStamp());
+  if (ok && refund) useRefundStore().afterClaim(t.no);
   if (ok) return { ok, message: `已领取 ${t.no}` };
   return { ok, message: t.assignee ? `该工单已被 ${t.assignee} 领取` : '该工单已不在工单池中' };
 }

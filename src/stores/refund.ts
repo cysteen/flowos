@@ -72,8 +72,10 @@ const LS_KEY = 'flowos-refund-cache';
  * v10：本单状态加「最近处理人」`lastManager`（H5 保存 / 下送 / 提交退费写入，二线转校园经理默认取它；
  *      用户 10-27 方案 B），v9 快照里的种子单不带该字段
  * v11：退费信息加「退费方」`party`（我司 / 渠道两项，H5 可选，默认「我司」；用户 10-27 评审），v10 快照里的处理表单不带该字段
+ * v12：二线记名统一为登录名「张三」（种子单领取 / 调剂 / 下送履历与处理人由「王坐席」改「张三」，领取落库记登录人姓名；
+ *      用户 10-27），v11 快照里的旧记名作废
  */
-const CACHE_VERSION = 11;
+const CACHE_VERSION = 12;
 const STALE_MS = 12 * 60 * 60 * 1000;
 
 interface RefundCache { v: number; savedAt: number; tickets: Ticket[] }
