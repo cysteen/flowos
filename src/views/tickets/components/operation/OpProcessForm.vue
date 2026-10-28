@@ -510,7 +510,7 @@ function chipActiveClass(key: SupplementChip): string {
         :readonly="postCloseFieldDisabled"
         :class="{ 'cn-disabled': postCloseFieldDisabled }"
         :shell-background="postCloseFieldDisabled ? '#f5f5f5' : '#fff'"
-        :maxlength="500"
+        :maxlength="2000"
         :max-file-size-mb="200"
         rename-duplicates
         placeholder="补充结案后的跟进情况、客户反馈等"
@@ -520,7 +520,7 @@ function chipActiveClass(key: SupplementChip): string {
       />
       <div class="cn-foot">
         <span>{{ form.closingNoteUpdatedAt ? `最近提交：${form.closingNoteUpdatedBy} ${form.closingNoteUpdatedAt}` : '' }}</span>
-        <span>{{ (form.closingNote ?? '').length }}/500</span>
+        <span>{{ (form.closingNote ?? '').length }}/2000</span>
       </div>
     </OpCollapsibleSection>
   </div>

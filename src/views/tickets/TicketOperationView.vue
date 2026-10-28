@@ -26,7 +26,7 @@ import OpFlashInfoEditModal from './components/operation/OpFlashInfoEditModal.vu
 import OpFlashEscalateModal from './components/operation/OpFlashEscalateModal.vue';
 import OpRefundInfoBlock from './components/operation/OpRefundInfoBlock.vue';
 import {
-  REFUND_STATUS_SYSTEM, REFUND_TIP, inflightRefundRun, isRefundTicket, refundLinkComplaintDesc,
+  REFUND_POOL_GROUP_ID, REFUND_STATUS_SYSTEM, REFUND_TIP, inflightRefundRun, isRefundTicket, refundLinkComplaintDesc,
 } from './types/refund';
 import { useRefundStore } from '@/stores/refund';
 import { ALL_REFUND_MANAGERS, campusManagerOf, schoolsOfManager } from '@/mock/refund/managers';
@@ -1498,12 +1498,16 @@ const tabsReadonly = computed(() => supersededLocked.value);
 const postClose = computed(() => isTicketTerminated(d.value.status) && !supersededLocked.value);
 const postCloseEditable = computed(() => {
   if (!postClose.value || d.value.status === '已取消') return false;
-  if (!tabWritableFor('process', user.roleKey)) return false;
+  // 刷机单一线坐席可处理本单（D2）：一线角色本身无「工单处理」写权，最后处理组＝一线客服组时照样可补
+  const flashL1 = isFlash.value && user.roleKey === 'agent-l1';
+  if (!flashL1 && !tabWritableFor('process', user.roleKey)) return false;
   // 同组＝当前用户属于工单的最后处理组（groupId，唯一）；无最后处理组（如直接结案未分组）本期不支持
   const gid = d.value.groupId;
   if (!gid) return false;
   // 刷机单最后处理组＝教育刷机处理组时：该组即二线专员承接刷机单的组（与工作台本组池、刷机门控同一口径，X28）
   if (isFlash.value && gid === FLASH_POOLS.l2.groupId && user.roleKey === 'agent-l2') return true;
+  // 个册退费单最后处理组＝教育支持组时：该组即二线专员承接退费单的组（1120，与工单池可见口径一致）
+  if (isRefund.value && gid === REFUND_POOL_GROUP_ID && user.roleKey === 'agent-l2') return true;
   return handlerGroupOf(currentHandlerName(user.roleKey, user.name))?.id === gid;
 });
 
