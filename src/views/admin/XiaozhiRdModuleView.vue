@@ -9,8 +9,8 @@
  * 🔴 **只维护「模块 → 接收人」，不维护「产品 → 模块」**：模块按业务线而非单一产品分派，
  * 同一产品可以对应多个模块，故建单仍是人工选模块、不做「选了产品自动带出模块」。
  *
- * 🔴 **停用是常规动作，删除要先停用**（1023 拍板）：停用的模块不再出现在建单与升级弹窗的
- * 下拉里、已选过它的历史工单照常显示原值；启用中的那枚「删除」置灰。
+ * 🔴 **不支持删除，不用时停用**（2026-10-28 拍板）：停用的模块不再出现在建单与升级弹窗的
+ * 下拉里、已选过它的历史工单照常显示原值。
  *
  * 🔴 **编码与名称建成后不可改、两项都唯一；接收人必填**（1023 拍板）：编辑态这两项置灰，
  * 「编辑产品模块」实际只改接收人。名称也要唯一是因为**工单上存的是名称、不是编码**
@@ -26,7 +26,7 @@ import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { stdPagination, toneOf } from '@/config/adminUi';
 import {
   XIAOZHI_RD_MODULES, addRdModule, findRdModuleByCode, findRdModuleByName,
-  removeRdModule, setRdModuleEnabled, updateRdModule,
+  setRdModuleEnabled, updateRdModule,
   type XiaozhiRdModule,
 } from '@/mock/xiaozhi/rdModules';
 
@@ -45,7 +45,7 @@ const cols = [
   { title: '产品模块名称', dataIndex: 'name', key: 'name', width: 200 },
   { title: '接收人（域账号）', dataIndex: 'receiver', key: 'receiver' },
   { title: '状态', key: 'enabled', width: 100 },
-  { title: '操作', key: 'op', width: 200 },
+  { title: '操作', key: 'op', width: 140 },
 ];
 
 const editOpen = ref(false);
@@ -102,19 +102,6 @@ function confirmToggle(row: XiaozhiRdModule) {
   message.success(`已启用产品模块「${row.name}」`);
 }
 
-/** 🔴 删除只对停用的模块开放（1023 拍板）：启用中的那枚按钮置灰，闸门另在字典层兜一道 */
-function confirmRemove(row: XiaozhiRdModule) {
-  Modal.confirm({
-    title: '删除产品模块',
-    content: `「${row.name}」删除后不可恢复；已选过它的历史工单照常显示原值。`,
-    okText: '删除',
-    okType: 'danger',
-    onOk() {
-      if (!removeRdModule(row.code)) { message.error('启用中的产品模块不可删除，请先停用'); return; }
-      message.success(`已删除产品模块「${row.name}」`);
-    },
-  });
-}
 </script>
 
 <template>
@@ -158,16 +145,6 @@ function confirmRemove(row: XiaozhiRdModule) {
           <a-button type="link" size="small" @click="confirmToggle(record as XiaozhiRdModule)">
             {{ (record as XiaozhiRdModule).enabled ? '停用' : '启用' }}
           </a-button>
-          <!-- 置灰提示走原生 title（同底栏做法）：ant 的 tooltip 包不住 disabled 按钮的 hover -->
-          <span :title="(record as XiaozhiRdModule).enabled ? '启用中的产品模块不可删除，请先停用' : undefined">
-            <a-button
-              type="link"
-              size="small"
-              danger
-              :disabled="(record as XiaozhiRdModule).enabled"
-              @click="confirmRemove(record as XiaozhiRdModule)"
-            >删除</a-button>
-          </span>
         </template>
       </template>
       <template #emptyText>

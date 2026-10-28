@@ -33,7 +33,7 @@ export interface XiaozhiRdModule {
    */
   productLine?: string;
   /**
-   * 是否启用（1023 拍板「支持停用删除，停用后可删除」）。
+   * 是否启用（不用时停用，不支持删除）。
    *
    * 停用的模块不再出现在建单与升级弹窗的下拉里，**已选过它的历史工单照常显示原值、
    * 不回写不置空**（PRD §8）—— 故按名字查接收人 / 产品线的 `xiaozhiRdReceiverOf` 等
@@ -121,7 +121,7 @@ export function addRdModule(row: XiaozhiRdModule): boolean {
  *   与 PRD §8「已选过它的历史工单照常显示原值」的承诺冲突。
  *
  * 两项在后台编辑弹窗里置灰（照常显示、不可编辑），这里一并不接受 —— 闸门落在字典层，
- * 不只在页面上置灰（同 `removeRdModule`）。`productLine` 不在后台三字段之内，照原值保留。
+ * `productLine` 不在后台三字段之内，照原值保留。
  */
 export function updateRdModule(originalCode: string, row: XiaozhiRdModule): boolean {
   const idx = XIAOZHI_RD_MODULES.findIndex((m) => m.code === originalCode);
@@ -133,24 +133,10 @@ export function updateRdModule(originalCode: string, row: XiaozhiRdModule): bool
   return true;
 }
 
-/** 停用 / 启用一条（1023 拍板：停用是常规动作，删除要先停用） */
+/** 停用 / 启用一条（不用时停用，不支持删除） */
 export function setRdModuleEnabled(code: string, enabled: boolean): boolean {
   const row = findRdModuleByCode(code);
   if (!row) return false;
   row.enabled = enabled;
-  return true;
-}
-
-/**
- * 删一条 —— 🔴 **只许删停用的**（1023 拍板「支持停用删除，停用后可删除」）。
- *
- * 闸门落在字典层而不是只在页面上置灰按钮：启用中的模块正挂在建单与升级弹窗的下拉里，
- * 删掉会让正在选它的坐席落空；要删先停用，停用那一步已经把它从下拉里摘出去了。
- */
-export function removeRdModule(code: string): boolean {
-  const idx = XIAOZHI_RD_MODULES.findIndex((m) => m.code === code);
-  if (idx < 0) return false;
-  if (XIAOZHI_RD_MODULES[idx].enabled) return false;
-  XIAOZHI_RD_MODULES.splice(idx, 1);
   return true;
 }
