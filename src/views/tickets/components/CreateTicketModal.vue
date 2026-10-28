@@ -690,17 +690,6 @@ watch(
             </div>
           </div>
 
-          <div class="row-3">
-            <div class="inline-field">
-              <label class="inline-label xl">问题发生时间</label>
-              <a-input
-                v-model:value="form.problemTime"
-                class="inline-control field-control"
-                placeholder="请选择问题发生时间"
-              />
-            </div>
-          </div>
-
           <!-- 问题描述篇幅长，整行收尾 -->
           <div class="inline-field desc-field">
             <label class="inline-label xl"><span class="req">*</span>问题描述</label>
