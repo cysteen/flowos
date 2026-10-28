@@ -1275,7 +1275,7 @@ function doImport(withUpdate: boolean) {
           row-key="key"
           :pagination="pagination"
           size="middle"
-          :scroll="{ x: TABLE_SCROLL_X, y: 'calc(100vh - 388px)' }"
+          :scroll="{ x: TABLE_SCROLL_X, y: 'calc(100vh - 368px)' }"
         >
           <template #bodyCell="{ column, record }">
             <span v-if="column.key === 'productName'" class="cell-link" @click="openEditRow(record as ProblemTagRow)">
@@ -1550,73 +1550,81 @@ function doImport(withUpdate: boolean) {
   flex: 1; min-height: 0; display: flex; flex-direction: column;
 }
 .list-toolbar {
-  display: flex; flex-direction: column; gap: 6px;
-  padding: 10px 12px; border-bottom: 1px solid #f0f2f5;
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 8px 12px; border-bottom: 1px solid #e5e7eb; background: #f9fafb;
 }
 .toolbar-row {
-  display: flex; align-items: center; gap: 8px 32px; flex-wrap: wrap; width: 100%;
+  display: flex; align-items: center; gap: 6px 16px; flex-wrap: wrap; width: 100%;
   overflow-x: clip;
+  padding: 8px 10px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  box-sizing: border-box;
 }
 /* 维度分段 + 三个联动下拉：一组，整组不拆行 */
-.fi-scope { gap: 8px; }
-.scope-dim { flex: none; padding: 2px; }
+.fi-scope { gap: 6px; }
+.fi-scope .sel-w { width: 100px !important; }
+.fi-scope .sel-w-lg { width: 120px !important; }
+.scope-dim { flex: none; padding: 1px; background: #fff; border-radius: 6px; }
 .scope-dim :deep(.ant-segmented-item-label) {
-  min-height: 26px; line-height: 26px; padding: 0 12px; font-size: 13px;
+  min-height: 24px; line-height: 24px; padding: 0 10px; font-size: 12px;
 }
 /* 组间细分隔线：画在属性组左侧间隙正中；整组换行到行首时落在行外被裁掉 */
 .fi-group-attr {
-  position: relative; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; flex: 1 1 100%; max-width: 100%;
+  position: relative; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; flex: 1 1 100%; max-width: 100%;
 }
 /* 属性组控件收窄，使属性组与操作区（含勾选后的计数）在 1920 下同一行放下 */
-.fi-group-attr .sel-w { width: 96px !important; }
-.fi-group-attr .sel-w-lg { width: 108px !important; }
-.fi-group-attr .sel-w-sm { width: 68px !important; }
-.fi-group-attr .team-sel { width: 108px !important; }
+.fi-group-attr .sel-w { width: 88px !important; }
+.fi-group-attr .sel-w-lg { width: 100px !important; }
+.fi-group-attr .sel-w-sm { width: 64px !important; }
+.fi-group-attr .team-sel { width: 100px !important; }
 /* 专属类型 + 状态 + 操作区：一个换行单元，撑满所在行，操作区贴右 */
-.fi-tail { display: flex; align-items: center; gap: 32px; flex: 1 0 auto; }
-.fi-tail-attrs { display: flex; align-items: center; gap: 12px; flex: none; }
+.fi-tail { display: flex; align-items: center; gap: 16px; flex: 1 0 auto; }
+.fi-tail-attrs { display: flex; align-items: center; gap: 8px; flex: none; }
 .fi-ops { position: relative; margin-left: auto; }
 .fi-ops::before {
-  content: ''; position: absolute; left: -16.5px; top: 50%; width: 1px; height: 18px;
+  content: ''; position: absolute; left: -8.5px; top: 50%; width: 1px; height: 16px;
   transform: translateY(-50%); background: #e5e7eb;
 }
 .fi-group-attr::before {
-  content: ''; position: absolute; left: -16.5px; top: 50%; width: 1px; height: 18px;
+  content: ''; position: absolute; left: -8.5px; top: 50%; width: 1px; height: 16px;
   transform: translateY(-50%); background: #e5e7eb;
 }
-/* 筛选控件统一 30px 高，与工具条按钮对齐 */
+/* 筛选控件统一 28px 高，与工具条按钮对齐（紧凑工具条） */
 .toolbar-row :deep(.tb-ctl.ant-select:not(.ant-select-customize-input) .ant-select-selector) {
-  height: 30px !important; padding: 0 10px;
+  height: 28px !important; padding: 0 8px;
 }
-.toolbar-row :deep(.tb-ctl.ant-select .ant-select-selection-search-input) { height: 28px !important; }
+.toolbar-row :deep(.tb-ctl.ant-select .ant-select-selection-search-input) { height: 26px !important; }
 .toolbar-row :deep(.tb-ctl.ant-select .ant-select-selection-item),
-.toolbar-row :deep(.tb-ctl.ant-select .ant-select-selection-placeholder) { line-height: 28px !important; }
-.toolbar-row :deep(.tb-ctl.ant-select .ant-select-selection-search) { inset-inline-start: 10px; inset-inline-end: 10px; }
+.toolbar-row :deep(.tb-ctl.ant-select .ant-select-selection-placeholder) { line-height: 26px !important; }
+.toolbar-row :deep(.tb-ctl.ant-select .ant-select-selection-search) { inset-inline-start: 8px; inset-inline-end: 8px; }
 .fi-group {
   display: flex; align-items: center; gap: 8px; flex: none;
   padding: 2px 8px; border-radius: 6px; background: #f9fafb;
 }
-.fi { display: flex; align-items: center; gap: 8px; flex: none; }
+.fi { display: flex; align-items: center; gap: 6px; flex: none; }
 /* 问题分类一/二/三级联动：三项同行，作为属性组内的一个换行单元 */
-.fi-tag { display: flex; align-items: center; gap: 12px; flex: none; }
-.fl { font-size: 13px; color: #6b7280; white-space: nowrap; }
-.sel-w { width: 120px !important; }
-.sel-w-sm { width: 88px !important; }
-.sel-w-lg { width: 160px !important; }
+.fi-tag { display: flex; align-items: center; gap: 8px; flex: none; }
+.fl { font-size: 12px; color: #6b7280; white-space: nowrap; }
+.sel-w { width: 108px !important; }
+.sel-w-sm { width: 80px !important; }
+.sel-w-lg { width: 140px !important; }
 .toolbar-row :deep(.tb-ctl.ant-select .ant-select-selector) {
-  font-size: 13px; border-radius: 6px; background: #fff;
+  font-size: 12px; border-radius: 6px; background: #fff;
 }
 .toolbar-row :deep(.ant-select-selection-placeholder) { color: #9ca3af; }
 .toolbar-row :deep(.ant-select-selection-item) { font-weight: 400; }
 
 .wb-toolbar {
-  display: inline-flex; align-items: center; gap: 8px; flex: none;
+  display: inline-flex; align-items: center; gap: 6px; flex: none;
 }
 .wb-toolbar__btn {
-  display: inline-flex; align-items: center; gap: 6px; height: 30px;
-  padding: 0 12px; background: #fff; border: 1px solid #d1d5db; border-radius: 6px;
-  font-size: 13px; color: #374151; cursor: pointer; user-select: none; white-space: nowrap; flex: none;
+  display: inline-flex; align-items: center; gap: 4px; height: 28px;
+  padding: 0 10px; background: #fff; border: 1px solid #d1d5db; border-radius: 6px;
+  font-size: 12px; color: #374151; cursor: pointer; user-select: none; white-space: nowrap; flex: none;
 }
+.wb-toolbar__btn .anticon { font-size: 13px !important; }
 .wb-toolbar__btn:hover { border-color: #1a6fff; }
 .wb-toolbar__btn--primary {
   color: #fff; background: #1a6fff; border-color: #1a6fff;
