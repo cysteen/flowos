@@ -95,7 +95,7 @@ import { useFlashStore } from '@/stores/flash';
 import { useHandleLogStore } from '@/stores/handleLog';
 import type { TimelineEntry } from './types/ticketDetail';
 import { useFlashConfigStore } from '@/stores/flashConfig';
-import { resolveSupersededBy, type TicketRelation } from './composables/ticketRelations';
+import { buildTicketRelations, resolveSupersededBy, WEAK_RELATION_KINDS, type TicketRelation } from './composables/ticketRelations';
 import type { CreateTicketPrefill, Ticket } from './types/ticket';
 import type { ProcessFormDraft, InsightAction, InsightModalKey } from './types/operation';
 import type { ProcessTabKey } from './types/operation';
@@ -2334,6 +2334,36 @@ function syncSuccessionCard() {
   });
 }
 watch(() => d.value.no, () => syncSuccessionCard(), { immediate: true });
+
+/**
+ * 弱关联（关联投诉 / 关联咨询 / 关联刷机单等，用户 10-28）：关联单 Tab 与页头「关联 N」同源，
+ * 取 buildTicketRelations 的弱关联那几条逐条挂出，单号站内可点。
+ */
+function syncWeakLinkCards() {
+  const cards = tabData.value.relatedTickets;
+  for (const r of buildTicketRelations(d.value)) {
+    if (!WEAK_RELATION_KINDS.includes(r.kind) || cards.some((c) => c.no === r.no)) continue;
+    const peer = TICKETS.find((x) => x.no === r.no);
+    cards.push({
+      no: r.no,
+      title: peer?.title ?? r.title ?? r.no,
+      status: peer ? statusDisplayName(peer.nodeStatus) : '',
+      statusColor: peer ? statusStyle(peer.nodeStatus).color : '#6b7280',
+      type: peer?.type ?? '',
+      typeColor: peer?.type === '投诉' ? '#EF4444' : '#1A6FFF',
+      createdAt: peer?.createdAt ?? '',
+      createdAtFull: peer?.createdAt ?? '',
+      builder: peer?.eventTimeline?.[0]?.who ?? '—',
+      demand: peer?.problemDesc ?? '',
+      weakLink: true,
+    });
+  }
+}
+watch(
+  [() => tabData.value, () => buildTicketRelations(d.value).map((r) => r.no).join(',')],
+  () => syncWeakLinkCards(),
+  { immediate: true },
+);
 
 // 工单本身带关联售后单（「已转出」态）：载入即把售后单挂进关联单列表与客户历史，
 // 否则坐席在冻结的底栏之外找不到那张在跑的售后单。

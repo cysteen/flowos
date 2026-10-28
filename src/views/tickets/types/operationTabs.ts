@@ -69,6 +69,8 @@ export interface RelatedTicketCard {
    * 只读一行，双向可跳（点卡片站内打开对侧单）。
    */
   succession?: 'from' | 'to';
+  /** 弱关联（关联投诉 / 关联咨询等）的对侧客服单：点卡片站内打开 */
+  weakLink?: boolean;
 }
 
 export interface SimpleRecord {

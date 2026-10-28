@@ -34,7 +34,7 @@ function openRelated(t: RelatedTicketCard) {
   // 售后单在客服侧只读，跳转入口在底栏「转售后」的悬浮卡片上，卡片本身不响应
   if (t.source === '售后' || t.externalLink) return;
   // 承接关系：双向可跳，站内打开对侧客服单（§4.5）
-  if (t.succession) {
+  if (t.succession || t.weakLink) {
     router.push(`/tickets/${t.no}`);
     return;
   }
