@@ -49,7 +49,7 @@ const ownResult = computed(() => (lastRun.value ? refundOwnResultOf(lastRun.valu
 /** 退费商品与金额：最近保存的所选退费商品；未选取建单订单 */
 const subjects = computed(() => handle.value.subjects);
 
-interface Field { key: string; label: string; value: string; wide?: boolean; tone?: string }
+interface Field { key: string; label: string; value: string; /** 跨两列（短宽字段） */ wide?: boolean; /** 占满三列（长文本） */ full?: boolean; tone?: string }
 
 const fields = computed<Field[]>(() => {
   const i = props.refund.info;
@@ -70,13 +70,13 @@ const fields = computed<Field[]>(() => {
     { key: 'closeAuth', label: '是否关闭权限', value: v(h.closeAuth) },
   ];
   if (h.commResult && REFUND_COMM_NOTE_RESULTS.includes(h.commResult as RefundCommResult)) {
-    list.push({ key: 'commNote', label: '沟通备注', value: v(h.commNote), wide: true });
+    list.push({ key: 'commNote', label: '沟通备注', value: v(h.commNote), full: true });
   }
-  if (h.closeAuth === '否') list.push({ key: 'notClose', label: '不关闭权限原因', value: v(h.notCloseReason), wide: true });
-  list.push({ key: 'reasonDesc', label: '退款原因说明', value: v(h.reasonDesc), wide: true });
+  if (h.closeAuth === '否') list.push({ key: 'notClose', label: '不关闭权限原因', value: v(h.notCloseReason), full: true });
+  list.push({ key: 'reasonDesc', label: '退款原因说明', value: v(h.reasonDesc), full: true });
   if (ownResult.value) list.push({ key: 'own', label: '我司退费结果', value: ownResult.value, tone: tone(ownResult.value) });
-  if (lastRun.value?.status === '已驳回') list.push({ key: 'reject', label: '驳回原因', value: v(lastRun.value.rejectReason), wide: true });
-  if (h.remark.trim()) list.push({ key: 'remark', label: '备注', value: h.remark, wide: true });
+  if (lastRun.value?.status === '已驳回') list.push({ key: 'reject', label: '驳回原因', value: v(lastRun.value.rejectReason), full: true });
+  if (h.remark.trim()) list.push({ key: 'remark', label: '备注', value: h.remark, full: true });
   return list;
 });
 
@@ -114,9 +114,9 @@ const headTime = computed(() => (lastRun.value ? lastRun.value.resultAt ?? lastR
 
     <div class="rf-body">
       <dl class="rf-kv">
-        <div v-for="f in fields" :key="f.key" class="rf-item" :class="{ 'is-wide': f.wide }">
+        <div v-for="f in fields" :key="f.key" class="rf-item" :class="{ 'is-wide': f.wide, 'is-full': f.full }">
           <dt>{{ f.label }}</dt>
-          <dd><span class="rf-val" :class="f.tone ? `tone-${f.tone}` : ''" :title="f.wide ? undefined : f.value">{{ f.value }}</span></dd>
+          <dd><span class="rf-val" :class="f.tone ? `tone-${f.tone}` : ''" :title="f.full || f.wide ? undefined : f.value">{{ f.value }}</span></dd>
         </div>
         <div v-if="subjects.length && !rows.length" class="rf-item is-full">
           <dt>退费商品与金额</dt>
@@ -181,7 +181,7 @@ const headTime = computed(() => (lastRun.value ? lastRun.value.resultAt ?? lastR
   padding: 8px 12px 10px; background: #f8fafc;
   border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;
 }
-/* 字段网格与刷机单「刷机信息」（OpFlashInfoBlock .fi-grid / .fi-item）同规格：三列、label 定宽不带冒号、值 500 字重单行省略、长文本跨两列换行 */
+/* 字段网格与刷机单「刷机信息」（OpFlashInfoBlock .fi-grid / .fi-item）同规格：三列、label 定宽不带冒号、值 500 字重单行省略、长文本占满整行换行 */
 .rf-kv {
   display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px 16px; margin: 0;
@@ -193,7 +193,8 @@ const headTime = computed(() => (lastRun.value ? lastRun.value.resultAt ?? lastR
 .rf-item.is-wide { grid-column: span 2; }
 .rf-item.is-full { grid-column: 1 / -1; }
 .rf-item.is-wide .rf-val,
-.rf-item.is-full .rf-val { white-space: normal; overflow-wrap: anywhere; }
+.rf-item.is-full .rf-val { white-space: normal; word-break: break-word; overflow-wrap: break-word; }
+.rf-item.is-full { align-items: flex-start; }
 .rf-subs { display: flex; flex-wrap: wrap; gap: 0 16px; }
 .tone-ok { color: #059669; font-weight: 600; }
 .tone-bad { color: #dc2626; font-weight: 600; }
