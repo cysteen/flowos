@@ -26,7 +26,7 @@ import OpFlashInfoEditModal from './components/operation/OpFlashInfoEditModal.vu
 import OpFlashEscalateModal from './components/operation/OpFlashEscalateModal.vue';
 import OpRefundInfoBlock from './components/operation/OpRefundInfoBlock.vue';
 import {
-  REFUND_STATUS_SYSTEM, REFUND_TIP, inflightRefundRun, isRefundTicket, refundLinkComplaintDesc,
+  REFUND_RELATE, REFUND_STATUS_SYSTEM, REFUND_TIP, inflightRefundRun, isRefundTicket, refundLinkComplaintDesc,
 } from './types/refund';
 import { useRefundStore } from '@/stores/refund';
 import { ALL_REFUND_MANAGERS, campusManagerOf, schoolsOfManager } from '@/mock/refund/managers';
@@ -142,7 +142,7 @@ const isXiaozhi = computed(() => isXiaozhiTicket(d.value));
 /**
  * 个册退费单（1120）：处理页、处理表单、动作集同咨询单；本标识只用来
  * ①「工单处理」Tab 顶部出「退费信息」区块；②「系统退费中」底栏冻结（只留保存）、取消工单置灰；
- * ③ 页头出「关联投诉」不出「升级投诉」；④ 底栏多「转校园经理」，调剂只限本组成员；⑤ 下送 / 调剂 / 转校园经理落库走个册退费服务。
+ * ③ 页头出「关联工单」（悬停出关联投诉 / 关联咨询）不出「升级投诉」，不出催单 / 新建补充（业务 10-28）；④ 底栏多「转校园经理」，调剂只限本组成员；⑤ 下送 / 调剂 / 转校园经理落库走个册退费服务。
  */
 const isRefund = computed(() => isRefundTicket(d.value) && !!d.value.refund);
 const refundStore = useRefundStore();
@@ -150,7 +150,7 @@ const refundInProgress = computed(() => isRefund.value && d.value.status === REF
 /**
  * 个册退费单只读查看（1120 PRD 5.4）：处理人是外部处理人（校园经理 / 城市经理，只在移动工单 H5 处理）
  * 或「系统」（系统退费中）时，PC 端任何人打开都只读 —— 底栏不渲染、各写 Tab 只读（同刷机单「只读查看」）；
- * 页头关联投诉 / 新建补充照常。教育支持组领取后（外部处理人已清）照常处理。
+ * 页头关联工单照常。教育支持组领取后（外部处理人已清）照常处理。
  */
 const refundReadonlyView = computed(() => isRefund.value && (!!d.value.refund?.state.manager || refundInProgress.value));
 /**
@@ -491,6 +491,8 @@ const flashLinkGate = computed(() => {
   // 故给「关联投诉」、仍不给「升级投诉」（推翻原 D19 的「不做关联」，见 types/xiaozhi.ts）
   if (!isFlash.value && !isRefund.value && !isXiaozhi.value) return null;
   const tip = flashLinkComplaintBlockTip(d.value.status);
+  // 个册退费单页头是「关联工单」（业务 10-28），置灰原因随之改说「关联工单」
+  if (tip && isRefund.value) return { forbidden: true, tip: REFUND_RELATE.endedTip };
   return tip ? { forbidden: true, tip } : { forbidden: false };
 });
 /** 逐 Tab 写权覆盖：一线处理人放开「工单处理」「联系记录」；待领取 / 只读查看各写 Tab 只读 */
@@ -1406,9 +1408,11 @@ const customerEntryLocked = computed(
 // 第二个参数是**单维**（1130 PRD §5.1 / §9）：小智单上不出升级投诉，与「谁在看」无关
 const headerRoleGate = computed(() => headerActionsByRole(user.roleKey, isXiaozhi.value));
 // 技术支持只接手升级到本组的刷机单（沿用咨询单）；其余刷机单只读查看，页头不出新建补充（M92 / M104）
+// 个册退费单不出新建补充 / 催单（业务 10-28）
 const canSupplement = computed(() => headerRoleGate.value.supplement
-  && !(isFlash.value && user.roleKey === 'tech-support' && flashView.value !== 'tech'));
-const canDunning = computed(() => headerRoleGate.value.dunning);
+  && !(isFlash.value && user.roleKey === 'tech-support' && flashView.value !== 'tech')
+  && !isRefund.value);
+const canDunning = computed(() => headerRoleGate.value.dunning && !isRefund.value);
 // 刷机单只读查看：二线只出新建补充，一线出催单 / 新建补充 / 关联投诉（M71 / M83）
 const canEscalateComplaint = computed(
   () => headerRoleGate.value.escalateComplaint
@@ -1542,7 +1546,9 @@ const escalateModalOpen = ref(false);
 const escalateInput = ref<EscalateInput | null>(null);
 /** 建单弹窗正在为刷机单「关联投诉」建单：提交后走弱关联，不走升级投诉 */
 const flashLinkPending = ref(false);
-watch(createOpen, (v) => { if (!v) flashLinkPending.value = false; });
+/** 建单弹窗正在为个册退费单「关联咨询」建单（业务 10-28）：提交后两单互记关联 */
+const refundConsultPending = ref(false);
+watch(createOpen, (v) => { if (!v) { flashLinkPending.value = false; refundConsultPending.value = false; } });
 
 /**
  * 升级投诉入口分流（PRD §4.2，判据＝**是否跨工单类型**）：
@@ -1644,6 +1650,13 @@ function onTicketCreated(ticket: Ticket, processAfter?: boolean) {
       : isRefund.value
         ? refundStore.linkComplaint(d.value.no, ticket, actor)
         : flashStore.linkComplaint(d.value.no, ticket, flashActor());
+    if (res.ok) message.success(res.message);
+    if (!processAfter) processTabsRef.value?.switchTab('related');
+  }
+  // 个册退费单「关联咨询」（业务 10-28）：新咨询单与本单弱关联，本单状态不变、不发通知
+  else if (refundConsultPending.value) {
+    refundConsultPending.value = false;
+    const res = refundStore.linkConsult(d.value.no, ticket, { name: currentHandlerName(user.roleKey, user.name), role: mapUserRole(user.roleKey) });
     if (res.ok) message.success(res.message);
     if (!processAfter) processTabsRef.value?.switchTab('related');
   }
@@ -2862,6 +2875,21 @@ function onHeaderAction(name: string) {
       flashLinkPending.value = true;
       createOpen.value = true;
       break;
+    case '关联咨询': // 个册退费单（业务 10-28）：新建咨询单，预填同关联投诉，问题分类不限可选范围
+      if (!isRefund.value) return;
+      if (flashLinkGate.value?.forbidden) {
+        message.warning(flashLinkGate.value.tip ?? '');
+        return;
+      }
+      createPrefill.value = {
+        ...buildFlashLinkComplaintPrefill(d.value),
+        formTicketType: '咨询',
+        noFlashScene: false,
+        desc: refundLinkComplaintDesc(d.value.no),
+      };
+      refundConsultPending.value = true;
+      createOpen.value = true;
+      break;
     case '关联售后': // 投诉工单：独立动作（1025），打开售后建单弹窗，提交落 applyOpAction 的「关联售后」分支
       openLinkAftersale();
       break;
@@ -2982,6 +3010,7 @@ watch(
       :superseded-by="supersededBy"
       :escalate-gate="flashLinkGate"
       :link-complaint="isFlash || isRefund || isXiaozhi"
+      :relate-ticket="isRefund"
       :cancel-blocked-tip="cancelBlockedTip"
       :risk-grade="titleRiskGrade"
       :risk-reporting="titleRiskReporting"

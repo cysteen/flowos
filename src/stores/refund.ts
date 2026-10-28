@@ -13,7 +13,7 @@ import { flashStamp, parseFlashStamp } from '@/views/tickets/types/flash';
 import {
   REFUND_NOTIFY_EVENTS, REFUND_PENDING_STEP_MS, REFUND_POOL_GROUP_ID, REFUND_POOL_GROUP_NAME,
   REFUND_PRODUCT_CATEGORY, REFUND_PRODUCT_NAME, REFUND_RESULT_DELAY_MS, REFUND_STATUS_SYSTEM,
-  REFUND_SYSTEM_HANDLER, REFUND_TICKET_TYPE, REFUND_TIP, REFUND_TL, REFUND_TOAST, REFUND_TO_MANAGER,
+  REFUND_RELATE, REFUND_SYSTEM_HANDLER, REFUND_TICKET_TYPE, REFUND_TIP, REFUND_TL, REFUND_TOAST, REFUND_TO_MANAGER,
   emptyRefundHandle, inflightRefundRun, isRefundTicket, refundManagerTlRole, refundPooledImText,
   refundSurveySmsText, refundTodoImText, refundUrgeImText,
   type RefundHandle, type RefundInfo, type RefundManager, type RefundRun, type RefundTaskStatus,
@@ -75,8 +75,10 @@ const LS_KEY = 'flowos-refund-cache';
  * v12：二线记名统一为登录名「张三」（种子单领取 / 调剂 / 下送履历与处理人由「王坐席」改「张三」，领取落库记登录人姓名；
  *      用户 10-27），v11 快照里的旧记名作废
  * v13：处理履历事件名「退费结果回写」改「退费结果更新」（种子单与产线结果回传落库同改；用户 10-27），v12 快照里的旧事件名作废
+ * v14：个册退费单不出催单 / 新建补充，页头「关联工单」悬停出关联投诉 / 关联咨询，本单状态加「关联咨询单号」`linkedConsultNos`
+ *      （业务 10-28），v13 快照里演示时落下的催补记录与标记作废
  */
-const CACHE_VERSION = 13;
+const CACHE_VERSION = 14;
 const STALE_MS = 12 * 60 * 60 * 1000;
 
 interface RefundCache { v: number; savedAt: number; tickets: Ticket[] }
@@ -121,6 +123,11 @@ export const useRefundStore = defineStore('refund', () => {
     return TICKETS.find((t) => isRefundTicket(t) && t.refund?.state.linkedComplaintNos?.includes(complaintNo))?.no;
   }
 
+  /** 与某咨询单弱关联的个册退费单号（页头「关联工单 → 关联咨询」建出的单） */
+  function refundNoConsultLinkedTo(consultNo: string): string | undefined {
+    return TICKETS.find((t) => isRefundTicket(t) && t.refund?.state.linkedConsultNos?.includes(consultNo))?.no;
+  }
+
   /* ---------------- 写：公共 ---------------- */
 
   function bump(no: string) {
@@ -129,7 +136,9 @@ export const useRefundStore = defineStore('refund', () => {
 
   function persist() {
     try {
-      const linked = new Set(TICKETS.flatMap((t) => (isRefundTicket(t) ? t.refund?.state.linkedComplaintNos ?? [] : [])));
+      const linked = new Set(TICKETS.flatMap((t) => (isRefundTicket(t)
+        ? [...(t.refund?.state.linkedComplaintNos ?? []), ...(t.refund?.state.linkedConsultNos ?? [])]
+        : [])));
       const tickets = TICKETS.filter((t) => (isRefundTicket(t) && t.refund) || linked.has(t.no)).map((t) => toRaw(t));
       localStorage.setItem(LS_KEY, JSON.stringify({ v: CACHE_VERSION, savedAt: Date.now(), tickets } satisfies RefundCache));
     } catch {
@@ -590,6 +599,30 @@ export const useRefundStore = defineStore('refund', () => {
   }
 
   /**
+   * 关联咨询（业务 10-28）：弱关联，两单各自流转、互记单号，两单履历各记「关联咨询」；
+   * 本单子状态、处理人、SLA 不变，不发任何通知。新单按咨询单（或个册退费单）规则分派。
+   */
+  function linkConsult(no: string, consult: Ticket, by: RefundActor): RefundActionResult {
+    const r = rowOf(no);
+    if (!r) return { ok: false, message: '' };
+    const now = Date.now();
+    r.refund!.state.linkedConsultNos = [...(r.refund!.state.linkedConsultNos ?? []), consult.no];
+    log(r, now, { category: 'relate', action: 'relate', who: by.name, role: by.role, how: REFUND_RELATE.consult, what: REFUND_TL.linkConsult(consult.no) });
+    // 建单弹窗在回调之后才把新单写进工单库：这里先落，关联履历与快照才有处可写
+    if (!rawOf(consult.no)) TICKETS.unshift(consult);
+    const c = rawOf(consult.no);
+    if (c) {
+      c.eventTimeline = [...(c.eventTimeline ?? []), {
+        id: `refund-consult-${consult.no}-${now}`, category: 'relate', action: 'relate', who: by.name, role: by.role,
+        how: REFUND_RELATE.consult, what: REFUND_TL.linkedFromRefund(no), when: flashStamp(now),
+      }];
+      if (isRefundTicket(c)) bump(c.no);
+    }
+    commit(r);
+    return { ok: true, message: `已关联咨询单 ${consult.no}` };
+  }
+
+  /**
    * 催单 / 新建补充的催补通知（第 6 章）：外部处理人名下发给当前处理人；
    * 系统退费中不拉回，发给最近一次提交退费的校园经理。IM，同新系统催单 / 补充通知；
    * `detail` 为催单内容 / 补充类型。其余子状态同咨询单。
@@ -670,6 +703,7 @@ export const useRefundStore = defineStore('refund', () => {
     rowOf,
     revisionOf,
     refundNoLinkedTo,
+    refundNoConsultLinkedTo,
     createRefundTicket,
     h5ActorOf,
     h5Gate,
@@ -685,6 +719,7 @@ export const useRefundStore = defineStore('refund', () => {
     syncStatus,
     markRespondedOnPage,
     linkComplaint,
+    linkConsult,
     onCustomerUrge,
   };
 });

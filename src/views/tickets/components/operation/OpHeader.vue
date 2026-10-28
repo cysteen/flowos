@@ -3,10 +3,10 @@ import { computed } from 'vue';
 import { message } from 'ant-design-vue';
 import { FLASH_BADGE_LABEL, isFlashTicket } from '@/views/tickets/types/flash';
 import { XIAOZHI_MARK_LABEL, isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
-import { REFUND_MARK_LABEL, isRefundTicket } from '@/views/tickets/types/refund';
+import { REFUND_MARK_LABEL, REFUND_RELATE, isRefundTicket } from '@/views/tickets/types/refund';
 import { isRefundTypeItem } from '@/views/tickets/utils/ticketTypeDisplay';
 import { useUserStore } from '@/stores/user';
-import { CopyOutlined, FlagOutlined } from '@ant-design/icons-vue';
+import { CopyOutlined, DownOutlined, FlagOutlined } from '@ant-design/icons-vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import {
   PRIORITY_COLOR, softBg, csEntryAvailability, statusDisplayName, statusStyle,
@@ -82,6 +82,11 @@ const props = defineProps<{
    * 可用性只看 `escalateGate`（终态置灰），不走升级投诉的阶层 / 委派判定。
    */
   linkComplaint?: boolean;
+  /**
+   * 个册退费单（业务 10-28）：这一枚是「关联工单」，悬停展开「关联投诉」「关联咨询」两项；
+   * 可用性同 `linkComplaint`（只看 `escalateGate`，终态置灰）。
+   */
+  relateTicket?: boolean;
   /** 「取消工单」置灰原因（刷机单自动刷机中 / 已开始处理，基线 ※5）；空＝不因此置灰 */
   cancelBlockedTip?: string;
   /**
@@ -118,13 +123,13 @@ const user = useUserStore();
 const escalateVerdict = computed(() => buildEscalateVerdict(props.detail, user.roleKey));
 // 升级投诉的可用性：整页锁死 / 委派中 / 阶层判定（一线在非投诉单上可升，见 815 §3.3）
 const escalateDisabled = computed(() => {
-  if (props.linkComplaint) return props.readonly || !!props.escalateGate?.forbidden;
+  if (props.linkComplaint || props.relateTicket) return props.readonly || !!props.escalateGate?.forbidden;
   return props.readonly || !!props.escalateGate?.forbidden || delegateLocked.value || !escalateVerdict.value.entryEnabled;
 });
 const escalateTip = computed(() => {
   if (props.readonly) return READONLY_TIP;
   if (props.escalateGate?.forbidden) return props.escalateGate.tip;
-  if (props.linkComplaint) return undefined;
+  if (props.linkComplaint || props.relateTicket) return undefined;
   if (delegateLocked.value) return DELEGATE_LOCK_TIP;
   return escalateVerdict.value.entryTip;
 });
@@ -201,6 +206,11 @@ const emit = defineEmits<{
   openRelation: [rel: TicketRelation];
   openSuperseded: [];
 }>();
+
+/** 个册退费单「关联工单」悬停菜单：菜单项的 key 即动作名（关联投诉 / 关联咨询） */
+function onRelateMenuClick(info: { key: string | number }) {
+  emit('action', String(info.key));
+}
 
 async function copyTicketNo() {
   const text = props.ticketNo;
@@ -369,8 +379,28 @@ function priorityHex(p: string): string {
           升级投诉：原单升级为更高阶投诉（关原单 + 同步信息建新单 + 双向关联）。
           外投为投诉终态，入口置灰并提示改走「新建补充」
         -->
+        <a-dropdown
+          v-if="canEscalateComplaint && relateTicket"
+          :trigger="['hover']"
+          placement="bottomRight"
+          :disabled="escalateDisabled"
+        >
+          <span class="btn-slot" :title="escalateTip">
+            <button
+              type="button"
+              class="action-btn"
+              :disabled="escalateDisabled"
+            >{{ REFUND_RELATE.label }}<DownOutlined class="action-btn-caret" /></button>
+          </span>
+          <template #overlay>
+            <a-menu @click="onRelateMenuClick">
+              <a-menu-item :key="REFUND_RELATE.complaint">{{ REFUND_RELATE.complaint }}</a-menu-item>
+              <a-menu-item :key="REFUND_RELATE.consult">{{ REFUND_RELATE.consult }}</a-menu-item>
+            </a-menu>
+          </template>
+        </a-dropdown>
         <button
-          v-if="canEscalateComplaint"
+          v-else-if="canEscalateComplaint"
           type="button"
           class="action-btn"
           :disabled="escalateDisabled"
@@ -662,6 +692,7 @@ function priorityHex(p: string): string {
   cursor: default;
 }
 .btn-slot { display: inline-flex; }
+.action-btn-caret { font-size: 10px; margin-left: -2px; }
 
 .action-btn:not(:disabled):hover {
   background: #eff6ff;

@@ -35,6 +35,8 @@ export type RelationKind =
   | 'following'
   /** 刷机单「关联投诉」新建的投诉单（弱关联，两单各自流转，1013 A21 / B5） */
   | 'linkedComplaint'
+  /** 个册退费单「关联工单 → 关联咨询」新建的咨询单（弱关联，两单各自流转，业务 10-28） */
+  | 'linkedConsult'
   /** 投诉单侧：与本单弱关联的刷机单 */
   | 'linkedFlash';
 
@@ -60,6 +62,7 @@ const META: Record<RelationKind, { label: string; arrow: string }> = {
   reopen: { label: 'Reopen', arrow: '↻' },
   following: { label: '跟随主导单', arrow: '⇢' },
   linkedComplaint: { label: '关联投诉', arrow: '⇄' },
+  linkedConsult: { label: '关联咨询', arrow: '⇄' },
   linkedFlash: { label: '关联刷机单', arrow: '⇄' },
 };
 
@@ -89,7 +92,9 @@ function resolveWeakLinks(detail: TicketDetailMeta): TicketRelation[] {
   const seen = new Set<string>();
   const out: TicketRelation[] = [];
   for (const r of detail.linkedRecords ?? []) {
-    const kind: RelationKind | null = r.tag === '关联投诉' ? 'linkedComplaint' : r.tag === '关联刷机单' ? 'linkedFlash' : null;
+    const kind: RelationKind | null = r.tag === '关联投诉' ? 'linkedComplaint'
+      : r.tag === '关联咨询' ? 'linkedConsult'
+        : r.tag === '关联刷机单' ? 'linkedFlash' : null;
     if (!kind || seen.has(r.no)) continue;
     seen.add(r.no);
     out.push(rel(kind, r.no, { title: r.title }));
