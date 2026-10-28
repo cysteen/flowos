@@ -406,9 +406,33 @@ export const REFUND_RELATE = {
   endedTip: '工单已结束，不能关联工单',
 } as const;
 
-/** 关联投诉 / 关联咨询预填的问题描述 */
-export function refundLinkComplaintDesc(no: string): string {
-  return `关联个册退费单 ${no}`;
+/** 关联投诉 / 关联咨询弹窗标题（用户 10-28） */
+export function refundRelateTitle(type: '投诉' | '咨询'): string {
+  return `${REFUND_RELATE.label} · ${type}`;
+}
+
+/** 关联投诉 / 关联咨询预填的问题描述：本单问题描述＋换行＋「关联个册退费单 〈单号〉：」（用户 10-28） */
+export function refundLinkComplaintDesc(no: string, demand: string): string {
+  const head = demand.trim();
+  return `${head ? `${head}\n` : ''}关联个册退费单 ${no}：`;
+}
+
+/**
+ * 关联投诉 / 关联咨询预填的问题分类（用户 10-28）：本单路径在目标工单类型的问题分类里才带入，否则留空。
+ * 个册退费分类只属个册退费单的工单类型（咨询），投诉单里没有这条路径。`tree` 传问题分类树（`PROBLEM_TREE`）。
+ */
+export function refundRelateProblem(
+  tags: string[],
+  type: '投诉' | '咨询',
+  tree: Record<string, Record<string, string[]>>,
+): { problemL1: string; problemL2: string; problemL3: string } {
+  const [l1 = '', l2 = '', l3 = ''] = tags;
+  const inTree = !!tree[l1]?.[l2]?.includes(l3);
+  const refundPath = l1 === REFUND_TAG_L1 && l2 === REFUND_TAG_L2
+    && (REFUND_TAG_L3S as readonly string[]).includes(l3);
+  return inTree && (!refundPath || type === REFUND_TICKET_TYPE)
+    ? { problemL1: l1, problemL2: l2, problemL3: l3 }
+    : { problemL1: '', problemL2: '', problemL3: '' };
 }
 
 /* ------------------------------------------------------------------ */

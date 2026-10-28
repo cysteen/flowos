@@ -26,7 +26,7 @@ import OpFlashInfoEditModal from './components/operation/OpFlashInfoEditModal.vu
 import OpFlashEscalateModal from './components/operation/OpFlashEscalateModal.vue';
 import OpRefundInfoBlock from './components/operation/OpRefundInfoBlock.vue';
 import {
-  REFUND_RELATE, REFUND_STATUS_SYSTEM, REFUND_TIP, inflightRefundRun, isRefundTicket, refundLinkComplaintDesc,
+  REFUND_RELATE, REFUND_STATUS_SYSTEM, REFUND_TIP, inflightRefundRun, isRefundTicket, refundLinkComplaintDesc, refundRelateProblem, refundRelateTitle,
 } from './types/refund';
 import { useRefundStore } from '@/stores/refund';
 import { ALL_REFUND_MANAGERS, campusManagerOf, schoolsOfManager } from '@/mock/refund/managers';
@@ -49,7 +49,7 @@ import { useTicketOperation } from './composables/useTicketOperation';
 import {
   ESCALATE_CHANNEL_TPD, FEISHU_ESCALATE_CHANNEL, mapUserRole, pushEntry, isAftersaleSettled, trimEndPunct,
 } from './composables/opActions';
-import { AFTERSALE_INBOUND_SOURCE, normalizeTicketSource } from './types/createTicket';
+import { AFTERSALE_INBOUND_SOURCE, PROBLEM_TREE, normalizeTicketSource } from './types/createTicket';
 import { aftersaleInboundOperator, aftersaleLinkJoinedEntry, applyAftersaleResult, isAftersaleChainTicket } from './composables/aftersaleEvents';
 import { submitAftersaleResult } from '@/api/aftersaleResult';
 import OpAftersaleResultModal from './components/operation/OpAftersaleResultModal.vue';
@@ -2869,8 +2869,15 @@ function onHeaderAction(name: string) {
         message.warning(flashLinkGate.value.tip ?? '');
         return;
       }
+      // 个册退费单（用户 10-28）：标题「关联工单 · 投诉」，业务分类与类型锁定，问题分类在投诉分类里才带入，描述带本单内容
       createPrefill.value = isRefund.value
-        ? { ...buildFlashLinkComplaintPrefill(d.value), desc: refundLinkComplaintDesc(d.value.no) }
+        ? {
+          ...buildFlashLinkComplaintPrefill(d.value),
+          ...refundRelateProblem(d.value.product.issueTags, '投诉', PROBLEM_TREE),
+          title: refundRelateTitle('投诉'),
+          lockBase: true,
+          desc: refundLinkComplaintDesc(d.value.no, d.value.demand),
+        }
         : buildFlashLinkComplaintPrefill(d.value);
       flashLinkPending.value = true;
       createOpen.value = true;
@@ -2883,9 +2890,13 @@ function onHeaderAction(name: string) {
       }
       createPrefill.value = {
         ...buildFlashLinkComplaintPrefill(d.value),
+        // 沿用本单问题分类即按个册退费单建单（出「退费信息」），改选其他分类即普通咨询单（用户 10-28）
+        ...refundRelateProblem(d.value.product.issueTags, '咨询', PROBLEM_TREE),
         formTicketType: '咨询',
         noFlashScene: false,
-        desc: refundLinkComplaintDesc(d.value.no),
+        title: refundRelateTitle('咨询'),
+        lockBase: true,
+        desc: refundLinkComplaintDesc(d.value.no, d.value.demand),
       };
       refundConsultPending.value = true;
       createOpen.value = true;
