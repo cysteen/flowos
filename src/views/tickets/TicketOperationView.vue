@@ -1508,6 +1508,8 @@ const postCloseEditable = computed(() => {
   if (isFlash.value && gid === FLASH_POOLS.l2.groupId && user.roleKey === 'agent-l2') return true;
   // 个册退费单最后处理组＝教育支持组时：该组即二线专员承接退费单的组（1120，与工单池可见口径一致）
   if (isRefund.value && gid === REFUND_POOL_GROUP_ID && user.roleKey === 'agent-l2') return true;
+  // 小智单（用户 10-28）：二线专员同小智坐席，可补结案后备注
+  if (isXiaozhi.value && user.roleKey === 'agent-l2') return true;
   return handlerGroupOf(currentHandlerName(user.roleKey, user.name))?.id === gid;
 });
 
