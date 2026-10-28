@@ -150,7 +150,6 @@ const isReopenMode = computed(() => props.prefill?.mode === 'reopen');
 /** 升级投诉 · 非投诉→投诉：本页即"新建投诉单"，已知字段预填，提交即关原单 + 双向关联 */
 const isEscalateMode = computed(() => props.prefill?.mode === 'escalate');
 const modalTitle = computed(() => {
-  if (props.prefill?.title) return props.prefill.title;
   if (isChildMode.value) return '转单';
   if (isReopenMode.value) return '重新建单';
   if (isEscalateMode.value) return '升级投诉 · 新建投诉单';
@@ -481,7 +480,7 @@ watch(
               v-model:value="form.businessType"
               class="inline-control field-control"
               size="middle"
-              :disabled="isFlashType || isXiaozhiType || isRefundType || !!prefill?.lockBase"
+              :disabled="isFlashType || isXiaozhiType || isRefundType"
               :status="errors.businessType ? 'error' : ''"
               :options="BUSINESS_TYPES.map((v) => ({ value: v, label: v }))"
             />
@@ -504,7 +503,7 @@ watch(
               class="inline-control field-control"
               size="middle"
               allow-clear
-              :disabled="isFlashType || isXiaozhiType || isRefundType || !!prefill?.lockBase"
+              :disabled="isFlashType || isXiaozhiType || isRefundType"
               :status="errors.ticketType ? 'error' : ''"
               :options="ticketTypeOptions"
             />

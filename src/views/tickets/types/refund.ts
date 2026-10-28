@@ -232,8 +232,6 @@ export interface RefundState {
   lastManager?: RefundManager;
   /** 关联投诉单号（弱关联，两单各自流转） */
   linkedComplaintNos?: string[];
-  /** 关联咨询单号（页头「关联工单 → 关联咨询」建出的单，弱关联，两单各自流转；业务 10-28） */
-  linkedConsultNos?: string[];
   /** SLA 起算：建单下送时刻（同通用工单，统计整单）；此后在校园经理名下、系统退费中照常计时 */
   slaStartedAt?: string;
   /**
@@ -391,48 +389,12 @@ export const REFUND_TL = {
   toManager: (by: string, m: RefundManager, reason: string) => `转校园经理：${by} → ${m.kind} ${m.name}；转交原因：${reason}`,
   forwardSurvey: '下送，工单进入「调研中」',
   linkComplaint: (no: string) => `关联投诉单 ${no}`,
-  linkConsult: (no: string) => `关联咨询单 ${no}`,
   linkedFromRefund: (no: string) => `关联个册退费单 ${no}`,
 } as const;
 
-/**
- * 页头「关联工单」（业务 10-28）：个册退费单不出催单 / 新建补充，原「关联投诉」改为「关联工单」，
- * 悬停展开「关联投诉」「关联咨询」两项；只在终态（已结案 / 已关闭 / 已强结 / 已取消）置灰。
- */
-export const REFUND_RELATE = {
-  label: '关联工单',
-  complaint: '关联投诉',
-  consult: '关联咨询',
-  endedTip: '工单已结束，不能关联工单',
-} as const;
-
-/** 关联投诉 / 关联咨询弹窗标题（用户 10-28） */
-export function refundRelateTitle(type: '投诉' | '咨询'): string {
-  return `${REFUND_RELATE.label} · ${type}`;
-}
-
-/** 关联投诉 / 关联咨询预填的问题描述：本单问题描述＋换行＋「关联个册退费单 〈单号〉：」（用户 10-28） */
-export function refundLinkComplaintDesc(no: string, demand: string): string {
-  const head = demand.trim();
-  return `${head ? `${head}\n` : ''}关联个册退费单 ${no}：`;
-}
-
-/**
- * 关联投诉 / 关联咨询预填的问题分类（用户 10-28）：本单路径在目标工单类型的问题分类里才带入，否则留空。
- * 个册退费分类只属个册退费单的工单类型（咨询），投诉单里没有这条路径。`tree` 传问题分类树（`PROBLEM_TREE`）。
- */
-export function refundRelateProblem(
-  tags: string[],
-  type: '投诉' | '咨询',
-  tree: Record<string, Record<string, string[]>>,
-): { problemL1: string; problemL2: string; problemL3: string } {
-  const [l1 = '', l2 = '', l3 = ''] = tags;
-  const inTree = !!tree[l1]?.[l2]?.includes(l3);
-  const refundPath = l1 === REFUND_TAG_L1 && l2 === REFUND_TAG_L2
-    && (REFUND_TAG_L3S as readonly string[]).includes(l3);
-  return inTree && (!refundPath || type === REFUND_TICKET_TYPE)
-    ? { problemL1: l1, problemL2: l2, problemL3: l3 }
-    : { problemL1: '', problemL2: '', problemL3: '' };
+/** 关联投诉预填的问题描述 */
+export function refundLinkComplaintDesc(no: string): string {
+  return `关联个册退费单 ${no}`;
 }
 
 /* ------------------------------------------------------------------ */

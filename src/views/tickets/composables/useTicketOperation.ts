@@ -449,15 +449,6 @@ export function useTicketOperation() {
           { no: refundNo, title: src?.title ?? refundNo, tag: '关联个册退费单', meta: `${(t.createdAt ?? '').slice(5, 16)} 关联` },
         ];
       }
-      // 个册退费单「关联工单 → 关联咨询」建出的单（业务 10-28）：关联卡指回个册退费单，两单各自流转
-      const refundConsultNo = refund.refundNoConsultLinkedTo(t.no);
-      if (refundConsultNo) {
-        const src = TICKETS.find((x) => x.no === refundConsultNo);
-        base.linkedRecords = [
-          ...base.linkedRecords,
-          { no: refundConsultNo, title: src?.title ?? refundConsultNo, tag: '关联个册退费单', meta: `${(t.createdAt ?? '').slice(5, 16)} 关联` },
-        ];
-      }
       // 与小智工单弱关联的投诉单（用户 2026-10-26）：关联卡指回小智工单，两单各自流转
       const xiaozhiNo = t.type === '投诉' ? xiaozhi.xiaozhiNoLinkedTo(t.no) : undefined;
       if (xiaozhiNo) {
@@ -785,17 +776,6 @@ export function useTicketOperation() {
         ...linkedNos.map((no) => {
           const c = TICKETS.find((x) => x.no === no);
           return { no, title: c?.title ?? no, tag: '关联投诉', meta: `${(c?.createdAt ?? '').slice(5, 16)} 关联` };
-        }),
-      ];
-    }
-    // 关联咨询（业务 10-28）：写法同关联投诉
-    const consultNos = t.refund?.state.linkedConsultNos ?? [];
-    if (consultNos.length) {
-      base.linkedRecords = [
-        ...base.linkedRecords.filter((r) => r.tag !== '关联咨询'),
-        ...consultNos.map((no) => {
-          const c = TICKETS.find((x) => x.no === no);
-          return { no, title: c?.title ?? no, tag: '关联咨询', meta: `${(c?.createdAt ?? '').slice(5, 16)} 关联` };
         }),
       ];
     }

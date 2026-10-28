@@ -35,17 +35,15 @@ export type RelationKind =
   | 'following'
   /** 刷机单「关联投诉」新建的投诉单（弱关联，两单各自流转，1013 A21 / B5） */
   | 'linkedComplaint'
-  /** 个册退费单「关联工单 → 关联咨询」新建的咨询单（弱关联，两单各自流转，业务 10-28） */
-  | 'linkedConsult'
   /** 投诉单侧：与本单弱关联的刷机单 */
   | 'linkedFlash'
-  /** 投诉 / 咨询单侧：与本单弱关联的个册退费单 */
+  /** 投诉单侧：与本单弱关联的个册退费单 */
   | 'linkedRefund'
   /** 投诉单侧：与本单弱关联的小智工单 */
   | 'linkedXiaozhi';
 
 /** 弱关联：两单各自流转、不占父 / 子位；「关联/补充/催单」Tab 的关联单逐条列出（与页头「关联 N」同源） */
-export const WEAK_RELATION_KINDS: RelationKind[] = ['linkedComplaint', 'linkedConsult', 'linkedFlash', 'linkedRefund', 'linkedXiaozhi'];
+export const WEAK_RELATION_KINDS: RelationKind[] = ['linkedComplaint', 'linkedFlash', 'linkedRefund', 'linkedXiaozhi'];
 
 export interface TicketRelation {
   kind: RelationKind;
@@ -69,7 +67,6 @@ const META: Record<RelationKind, { label: string; arrow: string }> = {
   reopen: { label: 'Reopen', arrow: '↻' },
   following: { label: '跟随主导单', arrow: '⇢' },
   linkedComplaint: { label: '关联投诉', arrow: '⇄' },
-  linkedConsult: { label: '关联咨询', arrow: '⇄' },
   linkedFlash: { label: '关联刷机单', arrow: '⇄' },
   linkedRefund: { label: '关联个册退费单', arrow: '⇄' },
   linkedXiaozhi: { label: '关联小智工单', arrow: '⇄' },
@@ -102,10 +99,9 @@ function resolveWeakLinks(detail: TicketDetailMeta): TicketRelation[] {
   const out: TicketRelation[] = [];
   for (const r of detail.linkedRecords ?? []) {
     const kind: RelationKind | null = r.tag === '关联投诉' ? 'linkedComplaint'
-      : r.tag === '关联咨询' ? 'linkedConsult'
-        : r.tag === '关联刷机单' ? 'linkedFlash'
-          : r.tag === '关联个册退费单' ? 'linkedRefund'
-            : r.tag === '关联小智工单' ? 'linkedXiaozhi' : null;
+      : r.tag === '关联刷机单' ? 'linkedFlash'
+        : r.tag === '关联个册退费单' ? 'linkedRefund'
+          : r.tag === '关联小智工单' ? 'linkedXiaozhi' : null;
     if (!kind || seen.has(r.no)) continue;
     seen.add(r.no);
     out.push(rel(kind, r.no, { title: r.title }));

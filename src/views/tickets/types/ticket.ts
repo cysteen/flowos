@@ -770,10 +770,6 @@ export interface CreateTicketPrefill {
    * 由入口置位，不按产品 / 问题分类识别。
    */
   xiaozhiScene?: boolean;
-  /** 弹窗标题（个册退费单「关联工单」：关联工单 · 投诉 / 咨询）；不传按模式取默认标题 */
-  title?: string;
-  /** 业务分类、工单类型随入口锁定不可切换（个册退费单「关联工单」） */
-  lockBase?: boolean;
   priority?: Priority;
   /** 投诉类型（建单页独立可选） */
   complaintType?: string;
