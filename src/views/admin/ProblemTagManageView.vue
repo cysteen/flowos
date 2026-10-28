@@ -853,6 +853,10 @@ const FAIL_REASON_COL = '失败原因';
 /** 一 / 二 / 三级 ID 列下标 */
 const ID_COL_START = COL_NAMES.indexOf('问题一级 ID');
 const ID_COL_IDX: Record<TagLevel, number> = { 1: ID_COL_START, 2: ID_COL_START + 1, 3: ID_COL_START + 2 };
+/** 模板与失败明细的文件列序：每级 ID 紧跟在该级名称后（问题一级*、问题一级 ID、问题二级*…）；内部仍按 COL_NAMES 下标 */
+const FILE_COL_ORDER = [0, 1, 2, 3, 8, 4, 9, 5, 10, 6, 7];
+const toFileOrder = <T,>(cells: readonly T[]) => FILE_COL_ORDER.map((i) => cells[i]);
+const fileColOf = (name: (typeof COL_NAMES)[number]) => FILE_COL_ORDER.indexOf(COL_NAMES.indexOf(name));
 const missingColsText = (cols: string[]) => `缺少必填列：${cols.join('、')}，请下载模板核对表头`;
 /** 旧版模板的四列表头：上传文件含其中任一列即整份拒绝 */
 const LEGACY_COL_NAMES = ['是否售后', '是否小结专用', '是否刷机', '是否个册退费'];
@@ -871,13 +875,13 @@ function rowToTemplateCells(r: ProblemTagRow): string[] {
 
 /** 模板下拉：工单处理组、专属类型（取值同导入校验，均允许留空） */
 const TEMPLATE_VALIDATIONS: ListValidation[] = [
-  { col: COL_NAMES.indexOf('工单处理组'), values: TEAMS, error: '工单处理组不存在' },
-  { col: COL_NAMES.indexOf('专属类型'), values: EXCLUSIVE_VALUES, error: EXCLUSIVE_INVALID_TEXT },
+  { col: fileColOf('工单处理组'), values: TEAMS, error: '工单处理组不存在' },
+  { col: fileColOf('专属类型'), values: EXCLUSIVE_VALUES, error: EXCLUSIVE_INVALID_TEXT },
 ];
 
 async function downloadTemplate() {
   const sample = allRows.value.find((r) => r.status === '启用') ?? allRows.value[0];
-  await downloadXlsx('问题分类导入模板.xlsx', TEMPLATE_COLS, sample ? [rowToTemplateCells(sample)] : [], TEMPLATE_VALIDATIONS);
+  await downloadXlsx('问题分类导入模板.xlsx', toFileOrder(TEMPLATE_COLS), sample ? [toFileOrder(rowToTemplateCells(sample))] : [], TEMPLATE_VALIDATIONS);
   message.success('已下载导入模板');
 }
 
@@ -1104,8 +1108,8 @@ async function downloadImportFailures() {
   if (!fails.length) return;
   await downloadXlsx(
     `问题分类导入失败明细_${todayStr()}.xlsx`,
-    [...TEMPLATE_COLS, FAIL_REASON_COL],
-    fails.map((l) => [...l.cells, l.reason]),
+    [...toFileOrder(TEMPLATE_COLS), FAIL_REASON_COL],
+    fails.map((l) => [...toFileOrder(l.cells), l.reason]),
   );
   message.success(`已下载失败明细 ${fails.length} 条`);
 }
