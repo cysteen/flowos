@@ -574,7 +574,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     form.productName, form.problemL1, form.problemL2, form.problemL3,
   ));
   const refundErrors = reactive<Record<CreateTicketRefundField, string>>({
-    schoolId: '', studentName: '', studentCode: '', orderNo: '', reason: '',
+    schoolId: '', studentName: '', studentCode: '', orderNo: '', refundableAmount: '', reason: '',
   });
   function clearRefundErrors() {
     (Object.keys(refundErrors) as CreateTicketRefundField[]).forEach((k) => { refundErrors[k] = ''; });
@@ -610,8 +610,10 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     },
     { deep: true },
   );
+  // 订单金额非必填：改动即收起格式提示（清空同样收起）
+  watch(() => form.refund?.refundableAmount, () => { refundErrors.refundableAmount = ''; });
 
-  /** 退费信息卡校验：必填 → 字段中间含空格（PRD §3.2 校验表） */
+  /** 退费信息卡校验：必填 → 字段中间含空格 → 订单金额格式（PRD §3.2 校验表） */
   function validateRefund(): boolean {
     const baseOk = validate();
     clearRefundErrors();
@@ -625,6 +627,9 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     const orderNo = f.orderNo.trim();
     if (!orderNo) refundErrors.orderNo = `请填写${L.orderNo}`;
     else if (/\s/.test(orderNo)) refundErrors.orderNo = REFUND_TIP.noSpace(L.orderNo);
+    const amt = f.refundableAmount;
+    if (amt != null && amt < 0) refundErrors.refundableAmount = REFUND_TIP.orderAmountNegative;
+    else if (amt != null && Math.abs(Math.round(amt * 100) - amt * 100) > 1e-6) refundErrors.refundableAmount = REFUND_TIP.orderAmountDecimals;
     if (f.reason == null) refundErrors.reason = `请选择${L.reason}`;
     return baseOk && !Object.values(refundErrors).some(Boolean);
   }

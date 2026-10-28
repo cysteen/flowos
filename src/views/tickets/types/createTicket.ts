@@ -254,14 +254,14 @@ export interface CreateTicketRefundForm {
   /** 智学号（登录账号） */
   studentCode: string;
   orderNo: string;
-  /** 所选订单的可退金额合计；手填订单号为空 */
+  /** 订单金额（元）：选订单带出所选订单的可退金额合计，坐席可改；手填订单号时直接填写，可为空 */
   refundableAmount: number | null;
   /** 退款原因编码 */
   reason: number | null;
 }
 
-/** 「退费信息」卡里参与必填提示的字段 */
-export type CreateTicketRefundField = 'schoolId' | 'studentName' | 'studentCode' | 'orderNo' | 'reason';
+/** 「退费信息」卡里参与校验提示的字段 */
+export type CreateTicketRefundField = 'schoolId' | 'studentName' | 'studentCode' | 'orderNo' | 'refundableAmount' | 'reason';
 
 export function defaultCreateTicketRefundForm(): CreateTicketRefundForm {
   return { schoolId: '', managerAccount: '', studentName: '', studentCode: '', orderNo: '', refundableAmount: null, reason: null };

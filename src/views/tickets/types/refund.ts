@@ -331,6 +331,9 @@ export const REFUND_TIP = {
   amountPositive: '退费金额须大于 0',
   amountDecimals: '退费金额最多两位小数',
   amountOver: (max: string) => `退费金额不能超过 ${max} 元`,
+  /** 新建工单「退费信息」卡 · 订单金额 */
+  orderAmountNegative: '订单金额不能小于 0',
+  orderAmountDecimals: '订单金额最多两位小数',
 } as const;
 
 /** 二线「转校园经理」（底栏动作 + 弹窗） */

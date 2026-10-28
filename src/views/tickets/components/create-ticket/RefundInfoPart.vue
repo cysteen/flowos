@@ -1,10 +1,10 @@
 <script setup lang="ts">
 /**
  * 新建工单 · 「退费信息」卡（1120 个册退费工单 PRD §3.1 / §3.2）。
- * 学校 · 校代对接人（按学校带出，可改可清空）· 学生姓名 · 智学号 · 可退套餐（按学校 ＋ 智学号查询）· 订单号 · 可退金额 · 退款原因 · 退回方式。
+ * 学校 · 校代对接人（按学校带出，可改可清空）· 学生姓名 · 智学号 · 可退套餐（按学校 ＋ 智学号查询）· 订单号 · 订单金额（选订单带出，可改）· 退款原因 · 退回方式。
  * 学校选择复用刷机信息卡的学校检索（省 / 市级联 ＋ 可搜索下拉）。字段名、枚举与提示文案取 `types/refund.ts`。
  */
-import { computed, ref, watch } from 'vue';
+import { ref, watch } from 'vue';
 import { REFUND_FIELD_LABELS as L, REFUND_REASONS, REFUND_RETURN_WAY, REFUND_TIP, formatRefundAmount, sumRefundAmount } from '@/views/tickets/types/refund';
 import type { CreateTicketRefundField, CreateTicketRefundForm } from '@/views/tickets/types/createTicket';
 import { orderSubjects, queryRefundCommodities, type RefundOrder } from '@/mock/refund/commodities';
@@ -46,7 +46,7 @@ function resetQuery() {
   pickedOrderNo.value = '';
 }
 
-// 改学校或智学号：已带出的列表、订单号、可退金额清空
+// 改学校或智学号：已带出的列表、订单号、订单金额清空
 watch(() => [info.value.schoolId, info.value.studentCode.trim()] as const, (now, prev) => {
   if (!prev || (now[0] === prev[0] && now[1] === prev[1])) return;
   if (orders.value !== null || pickedOrderNo.value) {
@@ -68,7 +68,7 @@ function onQuery() {
   }
   queryFailed.value = false;
   orders.value = res.orders;
-  // 查询后默认选中购买时间最近的订单，回填订单号与可退金额；点其他订单卡可切换
+  // 查询后默认选中购买时间最近的订单，回填订单号与订单金额；点其他订单卡可切换（重新带出金额）
   const latest = res.orders.reduce<RefundOrder | null>((a, o) => (!a || o.purchasedAt > a.purchasedAt ? o : a), null);
   if (latest) pickOrder(latest);
 }
@@ -83,10 +83,10 @@ function pickOrder(o: RefundOrder) {
   info.value.refundableAmount = orderTotal(o);
 }
 
-/** 手改订单号：与所选订单不符时可退金额置空（手填订单号时为空） */
+/** 手改订单号：与所选订单不符时，所选订单带出的订单金额置空；未选订单时手填的订单金额保留 */
 function onOrderNoInput(v: string) {
   info.value.orderNo = v;
-  if (v.trim() !== pickedOrderNo.value) {
+  if (pickedOrderNo.value && v.trim() !== pickedOrderNo.value) {
     pickedOrderNo.value = '';
     info.value.refundableAmount = null;
   }
@@ -96,7 +96,26 @@ function setReason(v: unknown) {
   info.value.reason = v == null ? null : Number(v);
 }
 
-const amountText = computed(() => (info.value.refundableAmount == null ? '' : `${formatRefundAmount(info.value.refundableAmount)} 元`));
+/** 订单金额：选订单带出，坐席可改；输入框原文与表单金额双向同步（只收数字与一个小数点） */
+const amountInput = ref('');
+
+function parseAmount(text: string): number | null {
+  if (text === '' || text === '.') return null;
+  const n = Number(text);
+  return Number.isNaN(n) ? null : n;
+}
+
+watch(() => info.value.refundableAmount, (n) => {
+  if (parseAmount(amountInput.value) === n) return;
+  amountInput.value = n == null ? '' : formatRefundAmount(n);
+}, { immediate: true });
+
+function onAmountInput(raw: string) {
+  const [int, ...rest] = (raw ?? '').replace(/[^\d.]/g, '').split('.');
+  const v = rest.length ? `${int}.${rest.join('')}` : int;
+  amountInput.value = v;
+  info.value.refundableAmount = parseAmount(v);
+}
 </script>
 
 <template>
@@ -193,7 +212,14 @@ const amountText = computed(() => (info.value.refundableAmount == null ? '' : `$
       <div class="ri-field">
         <label class="ri-label">{{ L.refundableAmount }}</label>
         <div class="ri-control">
-          <div class="ri-readonly">{{ amountText || '—' }}</div>
+          <a-input
+            :value="amountInput"
+            placeholder="请输入订单金额"
+            suffix="元"
+            :status="errors.refundableAmount ? 'error' : ''"
+            @update:value="onAmountInput"
+          />
+          <div v-if="errors.refundableAmount" class="ri-error">{{ errors.refundableAmount }}</div>
         </div>
       </div>
 
