@@ -610,7 +610,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     },
     { deep: true },
   );
-  // 订单金额非必填：改动即收起格式提示（清空同样收起）
+  // 订单金额改动即收起提示
   watch(() => form.refund?.refundableAmount, () => { refundErrors.refundableAmount = ''; });
 
   /** 退费信息卡校验：必填 → 字段中间含空格 → 订单金额格式（PRD §3.2 校验表） */
@@ -628,8 +628,10 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     if (!orderNo) refundErrors.orderNo = `请填写${L.orderNo}`;
     else if (/\s/.test(orderNo)) refundErrors.orderNo = REFUND_TIP.noSpace(L.orderNo);
     const amt = f.refundableAmount;
-    if (amt != null && amt < 0) refundErrors.refundableAmount = REFUND_TIP.orderAmountNegative;
-    else if (amt != null && Math.abs(Math.round(amt * 100) - amt * 100) > 1e-6) refundErrors.refundableAmount = REFUND_TIP.orderAmountDecimals;
+    // 订单金额必填（用户 10-28）：选订单时已带出，手填订单号时须坐席填写
+    if (amt == null) refundErrors.refundableAmount = `请填写${L.refundableAmount}`;
+    else if (amt < 0) refundErrors.refundableAmount = REFUND_TIP.orderAmountNegative;
+    else if (Math.abs(Math.round(amt * 100) - amt * 100) > 1e-6) refundErrors.refundableAmount = REFUND_TIP.orderAmountDecimals;
     if (f.reason == null) refundErrors.reason = `请选择${L.reason}`;
     return baseOk && !Object.values(refundErrors).some(Boolean);
   }

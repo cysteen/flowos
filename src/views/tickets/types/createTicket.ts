@@ -254,7 +254,7 @@ export interface CreateTicketRefundForm {
   /** 智学号（登录账号） */
   studentCode: string;
   orderNo: string;
-  /** 订单金额（元）：选订单带出所选订单的可退金额合计，坐席可改；手填订单号时直接填写，可为空 */
+  /** 订单金额（元）：选订单带出所选订单的可退金额合计，坐席可改；手填订单号时直接填写；建单必填 */
   refundableAmount: number | null;
   /** 退款原因编码 */
   reason: number | null;

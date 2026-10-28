@@ -210,7 +210,7 @@ function onAmountInput(raw: string) {
         </div>
       </div>
       <div class="ri-field">
-        <label class="ri-label">{{ L.refundableAmount }}</label>
+        <label class="ri-label"><span class="req">*</span>{{ L.refundableAmount }}</label>
         <div class="ri-control">
           <a-input
             :value="amountInput"
