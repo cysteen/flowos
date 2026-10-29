@@ -11,17 +11,19 @@ import { XIAOZHI_RD_PRIORITY_DEFAULT, type XiaozhiRdPriority } from '@/views/tic
  */
 export type CreateFormTicketType = '投诉' | '建议' | '商机' | '咨询';
 
+/** 业务类型（建单「工单基础」卡）；淘云沿用通用建单规则，无专属字段 */
 export type BusinessType =
-  | '无线音乐'
-  | '智能硬件'
   | '教育'
-  | '学习机'
   | '听见'
-  | '合肥窗启'
-  | '医疗'
-  | '开放平台'
+  | '淘云'
   | '政法'
-  | '其他';
+  | '医疗'
+  | '其他'
+  | '学习机'
+  | '智能硬件'
+  | '无线音乐'
+  | '开放平台'
+  | '合肥窗启';
 
 /** 工单来源枚举（建单下拉）。跨组调剂只会出现在系统写入的存量单上，不进建单选项。 */
 export type TicketSource =
@@ -233,9 +235,6 @@ export interface CreateTicketFormState {
   /** 投诉接收时间（非必填，日期时间） */
   complaintReceiveTime: string;
   problemTime: string;
-  /** 建议专属 */
-  suggestL1: string;
-  suggestL2: string;
   /** 刷机专属：「刷机信息」卡（930 教育刷机单 P1 / PRD §2.4） */
   flash: CreateTicketFlashForm;
   /** 小智专属：「小智工单信息」卡（1130 小智工单 D1 / D27） */
@@ -359,17 +358,19 @@ export function defaultCreateTicketFlashForm(): CreateTicketFlashForm {
   };
 }
 
+/** 业务类型选项：顺序同《工单建单字段》表 */
 export const BUSINESS_TYPES: BusinessType[] = [
-  '无线音乐',
-  '智能硬件',
   '教育',
-  '学习机',
   '听见',
-  '合肥窗启',
-  '医疗',
-  '开放平台',
+  '淘云',
   '政法',
+  '医疗',
   '其他',
+  '学习机',
+  '智能硬件',
+  '无线音乐',
+  '开放平台',
+  '合肥窗启',
 ];
 export const CREATE_TICKET_TYPES: CreateFormTicketType[] = ['投诉', '建议', '商机', '咨询'];
 
@@ -545,13 +546,6 @@ export {
   isComplaintCategoryComplete,
 } from './complaintCategoryTree';
 export type { ComplaintNature, ComplaintKind } from './complaintCategoryTree';
-
-export const SUGGEST_L1_OPTIONS = ['产品体验', '功能优化', '服务流程'];
-export const SUGGEST_L2_MAP: Record<string, string[]> = {
-  产品体验: ['功能建议', '交互优化'],
-  功能优化: ['性能', '稳定性'],
-  服务流程: ['响应时效', '回访机制'],
-};
 
 export const MOCK_CUSTOMER: CustomerInfo = {
   id: 'c-001',

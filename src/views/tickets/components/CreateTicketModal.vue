@@ -24,14 +24,11 @@ import {
   complaintPlatformsBySource,
   PRIOR_FEEDBACK_OPTIONS,
   SERVICE_REVIEW_OPTIONS,
-  COMPLAINT_L1_OPTIONS,
-  COMPLAINT_L2_MAP,
   CUSTOM_PLATFORM_OPTION,
-  SUGGEST_L1_OPTIONS,
-  SUGGEST_L2_MAP,
   formatCustomerSubline,
   maskPhone,
 } from '@/views/tickets/types/createTicket';
+import { CREATE_COMPLAINT_L1_OPTIONS, CREATE_COMPLAINT_L2_MAP } from '@/views/tickets/types/complaintCreateCategory';
 import { useCreateTicketForm } from '@/views/tickets/composables/useCreateTicketForm';
 import OpTextareaAttach from '@/views/tickets/components/operation/shared/OpTextareaAttach.vue';
 import { TICKETS } from '@/mock/tickets';
@@ -75,6 +72,7 @@ const {
   productNameOptions,
   showTypePart,
   typePartSubtitle,
+  hidesSnAndDesc,
   showChannelComplaintFields,
   reset,
   applyPrefill,
@@ -167,7 +165,7 @@ const showParentInTitle = computed(
 );
 
 const complaintL2Options = computed(
-  () => COMPLAINT_L2_MAP[form.complaintL1] ?? [],
+  () => CREATE_COMPLAINT_L2_MAP[form.complaintL1] ?? [],
 );
 
 /**
@@ -207,7 +205,6 @@ watch(
     if (!stillValid) form.complaintPlatforms = [{ platform: '', complaintNo: '' }];
   },
 );
-const suggestL2Options = computed(() => SUGGEST_L2_MAP[form.suggestL1] ?? []);
 
 function onCancel() {
   emit('update:open', false);
@@ -351,6 +348,11 @@ watch(
       // 从草稿箱继续编辑：恢复表单快照
       reset();
       Object.assign(form, draft.form);
+      // 旧草稿里的投诉分类不在建单投诉分类字典里：置空由坐席重选
+      if (!(CREATE_COMPLAINT_L1_OPTIONS as readonly string[]).includes(form.complaintL1)) {
+        form.complaintL1 = '';
+        form.complaintL2 = '';
+      }
       syncTitle();
       activeDraftId.value = draft.id;
     } else if (props.prefill) {
@@ -367,19 +369,12 @@ watch(
   },
 );
 
+/** 投诉一类变更 → 二类联动；二类原本为空（原单旧分类被置空）时保持为空，由坐席选 */
 watch(
   () => form.complaintL1,
   () => {
-    const opts = COMPLAINT_L2_MAP[form.complaintL1] ?? [];
-    if (!opts.includes(form.complaintL2)) form.complaintL2 = opts[0] ?? '';
-  },
-);
-
-watch(
-  () => form.suggestL1,
-  () => {
-    const opts = SUGGEST_L2_MAP[form.suggestL1] ?? [];
-    if (!opts.includes(form.suggestL2)) form.suggestL2 = opts[0] ?? '';
+    const opts = CREATE_COMPLAINT_L2_MAP[form.complaintL1] ?? [];
+    if (!opts.includes(form.complaintL2)) form.complaintL2 = form.complaintL2 ? (opts[0] ?? '') : '';
   },
 );
 
@@ -475,7 +470,7 @@ watch(
       <CreateTicketPartCard title="工单基础">
         <div class="row-3 basic-row">
           <div class="inline-field basic-field">
-            <label class="inline-label xl"><span class="req">*</span>业务分类</label>
+            <label class="inline-label xl"><span class="req">*</span>业务类型</label>
             <FormSelect
               v-model:value="form.businessType"
               class="inline-control field-control"
@@ -629,8 +624,8 @@ watch(
                 @change="onProductCategoryChange"
               />
             </div>
-            <!-- 刷机单不出设备SN（改在「刷机信息」卡填），产品名称占满剩下两列，长产品名整段可见 -->
-            <div class="inline-field" :class="{ 'span-2': isFlashType }">
+            <!-- 刷机单不出设备SN（改在「刷机信息」卡填）、建议 / 商机单不采集设备SN：产品名称占满剩下两列，长产品名整段可见 -->
+            <div class="inline-field" :class="{ 'span-2': isFlashType || hidesSnAndDesc }">
               <label class="inline-label xl"><span class="req">*</span>产品名称</label>
               <FormSelect
                 :key="form.productCategory"
@@ -644,7 +639,7 @@ watch(
                 @change="onProductNameChange"
               />
             </div>
-            <div v-if="!isFlashType" class="inline-field">
+            <div v-if="!isFlashType && !hidesSnAndDesc" class="inline-field">
               <label class="inline-label xl">设备SN</label>
               <a-input
                 v-model:value="form.deviceSn"
@@ -690,8 +685,8 @@ watch(
             </div>
           </div>
 
-          <!-- 问题描述篇幅长，整行收尾 -->
-          <div class="inline-field desc-field">
+          <!-- 问题描述篇幅长，整行收尾；建议 / 商机单不采集问题描述（含附件） -->
+          <div v-if="!hidesSnAndDesc" class="inline-field desc-field">
             <label class="inline-label xl"><span class="req">*</span>问题描述</label>
             <!-- 带附件文本框：与处理页问题原因、处理结果同一组件；小智单附件亦在此上传，不放在「小智工单信息」卡 -->
             <div class="inline-control field-control desc-attach" :class="{ 'has-error': errors.description }">
@@ -802,7 +797,8 @@ watch(
               <FormSelect
                 v-model:value="form.complaintL1"
                 class="inline-control field-control"
-                :options="COMPLAINT_L1_OPTIONS.map((v) => ({ value: v, label: v }))"
+                :status="errors.complaintL1 ? 'error' : ''"
+                :options="CREATE_COMPLAINT_L1_OPTIONS.map((v) => ({ value: v, label: v }))"
               />
             </div>
             <div class="inline-field">
@@ -810,6 +806,7 @@ watch(
               <FormSelect
                 v-model:value="form.complaintL2"
                 class="inline-control field-control"
+                :status="errors.complaintL2 ? 'error' : ''"
                 :options="complaintL2Options.map((v) => ({ value: v, label: v }))"
               />
             </div>
@@ -835,27 +832,6 @@ watch(
               class="inline-control field-control"
               :auto-size="{ minRows: 2, maxRows: 6 }"
             />
-          </div>
-        </template>
-
-        <template v-else-if="form.ticketType === '建议'">
-          <div class="row-2">
-            <div class="inline-field">
-              <label class="inline-label xl"><span class="req">*</span>建议分类一级</label>
-              <FormSelect
-                v-model:value="form.suggestL1"
-                class="inline-control field-control"
-                :options="SUGGEST_L1_OPTIONS.map((v) => ({ value: v, label: v }))"
-              />
-            </div>
-            <div class="inline-field">
-              <label class="inline-label xl"><span class="req">*</span>建议分类二级</label>
-              <FormSelect
-                v-model:value="form.suggestL2"
-                class="inline-control field-control"
-                :options="suggestL2Options.map((v) => ({ value: v, label: v }))"
-              />
-            </div>
           </div>
         </template>
       </CreateTicketPartCard>
@@ -1071,8 +1047,8 @@ watch(
 }
 .row-3.basic-row {
   /*
-   * 业务分类 / 优先级 / 工单类型 / 工单来源 四项同一行（覆盖 .row-3 的三列）。
-   * 按各项最长取值分宽：优先级「P2（普通加急）」、工单来源「客户服务小程序」、业务分类四字、工单类型两字，弹窗常规宽度下都整段可见
+   * 业务类型 / 优先级 / 工单类型 / 工单来源 四项同一行（覆盖 .row-3 的三列）。
+   * 按各项最长取值分宽：优先级「P2（普通加急）」、工单来源「客户服务小程序」、业务类型四字、工单类型两字，弹窗常规宽度下都整段可见
    */
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 0.92fr) minmax(0, 1.27fr);
   gap: 10px;

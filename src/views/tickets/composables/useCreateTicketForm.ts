@@ -25,6 +25,7 @@ import {
   type CreateTicketFlashField,
   type CreateTicketXiaozhiField,
 } from '@/views/tickets/types/createTicket';
+import { CREATE_COMPLAINT_L1_OPTIONS, CREATE_COMPLAINT_L2_MAP } from '@/views/tickets/types/complaintCreateCategory';
 import type { Channel } from '@/views/tickets/types/ticket';
 import { currentHandlerName } from '@/views/tickets/types/ticket';
 import {
@@ -84,7 +85,7 @@ export interface FlashSubmitBlock {
 
 function defaultForm(): CreateTicketFormState {
   return {
-    // 业务分类、工单类型、优先级、客户、产品、问题分类、问题描述一律不预选（04 新建工单 F4.0 未定默认值），
+    // 业务类型、工单类型、优先级、客户、产品、问题分类、问题描述一律不预选（04 新建工单 F4.0 未定默认值），
     // 由坐席选填；优先级与工单类型的联动见 CreateTicketModal
     businessType: '',
     ticketType: '',
@@ -111,12 +112,10 @@ function defaultForm(): CreateTicketFormState {
     businessLine: '学习机业务线',
     priorFeedback: '是-400',
     serviceReview: '',
-    complaintL1: '产品问题',
-    complaintL2: '产品质量',
+    complaintL1: '产品质量投诉',
+    complaintL2: '产品质量故障',
     complaintReceiveTime: '',
     problemTime: '',
-    suggestL1: '产品体验',
-    suggestL2: '功能建议',
     flash: defaultCreateTicketFlashForm(),
     xiaozhi: defaultCreateTicketXiaozhiForm(),
     refund: defaultCreateTicketRefundForm(),
@@ -141,7 +140,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   const customerSearchTooMany = ref(false);
   let searchTimer: ReturnType<typeof setTimeout> | null = null;
   /**
-   * 预填批量赋值期间置位：产品分类与业务分类两个联动 watcher 直接跳过。
+   * 预填批量赋值期间置位：产品分类与业务类型两个联动 watcher 直接跳过。
    *
    * 两个 watcher 是给**坐席手动改**准备的——改分类要连带换产品名、按客户标识重取档案。
    * 预填是整批灌值，灌完就是最终值，联动一跑反而把刚填进去的产品名换成分类首项、
@@ -164,6 +163,8 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     title: false,
     problemTime: false,
     complaintType: false,
+    complaintL1: false,
+    complaintL2: false,
   });
 
   const flashConfig = useFlashConfigStore();
@@ -239,9 +240,22 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     () => PRODUCT_NAMES[form.productCategory] ?? [],
   );
 
-  const showTypePart = computed(
-    () => form.ticketType === '投诉' || form.ticketType === '建议',
+  /** 类型专属卡：只剩投诉（建议分类已删，10-29 建单字段表） */
+  const showTypePart = computed(() => form.ticketType === '投诉');
+  /**
+   * 建议单、商机单不采集设备SN 与问题描述（含附件）（10-29 建单字段表）：
+   * 两处控件不渲染、不校验、不落库；切到这两类时清空已填内容。
+   */
+  const hidesSnAndDesc = computed(
+    () => form.ticketType === '建议' || form.ticketType === '商机',
   );
+  watch(hidesSnAndDesc, (on) => {
+    if (!on) return;
+    form.deviceSn = '';
+    form.description = '';
+    form.descriptionAttachments = [];
+    errors.description = false;
+  });
   const typePartSubtitle = computed(() => `「${form.ticketType}」工单专属字段`);
   /**
    * 投诉专属字段的**来源门控**（0803）：
@@ -261,7 +275,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
 
   /**
    * 刷机单识别（10-19 C1）：只看所选问题分类「专属类型＝刷机」（问题分类按产品维护）。
-   * 命中即切到刷机接单表单：类型专属区块换成「刷机信息」卡，工单类型固定咨询、业务分类固定教育。
+   * 命中即切到刷机接单表单：类型专属区块换成「刷机信息」卡，工单类型固定咨询、业务类型固定教育。
    */
   /** 入口固定了工单类型（升级投诉 / 刷机单关联投诉）：不做刷机单识别（预填 `noFlashScene`） */
   const flashSceneOff = ref(false);
@@ -412,7 +426,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     syncTitle();
   });
 
-  // 刷机单：工单类型固定咨询（1013 A1）、业务分类固定「教育」（PRD §2.4），两个控件锁定，与落库一致（预填 / 草稿恢复同样收口）
+  // 刷机单：工单类型固定咨询（1013 A1）、业务类型固定「教育」（PRD §2.4），两个控件锁定，与落库一致（预填 / 草稿恢复同样收口）
   watch(
     () => [isFlashType.value, form.ticketType, form.businessType] as const,
     ([on, t, b]) => {
@@ -481,7 +495,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   );
 
   /**
-   * 小智单：工单类型锁「咨询」（D1）、业务分类锁「教育」（D4）、**工单来源锁 IM**（D24）。
+   * 小智单：工单类型锁「咨询」（D1）、业务类型锁「教育」（D4）、**工单来源锁 IM**（D24）。
    * 三个控件置灰，与落库一致（预填 / 草稿恢复同样收口）。
    */
   watch(
@@ -588,7 +602,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     }
   });
 
-  // 工单类型固定咨询、业务分类固定教育（同刷机单）
+  // 工单类型固定咨询、业务类型固定教育（同刷机单）
   watch(
     () => [isRefundType.value, form.ticketType, form.businessType] as const,
     ([on, t, b]) => {
@@ -791,8 +805,14 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       form.problemL2 = p.problemL2 ?? Object.keys(PROBLEM_TREE[p.problemL1] ?? {})[0] ?? '';
       form.problemL3 = p.problemL3 ?? PROBLEM_TREE[p.problemL1]?.[form.problemL2]?.[0] ?? '';
     }
-    if (p.complaintL1) form.complaintL1 = p.complaintL1;
-    if (p.complaintL2) form.complaintL2 = p.complaintL2;
+    // 原单投诉分类可能是处理页三级树的旧值：不在建单投诉分类字典里即置空，由坐席重选
+    if (p.complaintL1) {
+      const l1Ok = (CREATE_COMPLAINT_L1_OPTIONS as readonly string[]).includes(p.complaintL1);
+      form.complaintL1 = l1Ok ? p.complaintL1 : '';
+      form.complaintL2 = l1Ok && p.complaintL2 && CREATE_COMPLAINT_L2_MAP[p.complaintL1]?.includes(p.complaintL2)
+        ? p.complaintL2
+        : '';
+    }
     if (p.complaintType) form.complaintType = normalizeComplaintType(p.complaintType);
     // 预填的平台/编号落到第一组
     if (p.complaintPlatform || p.complaintNo) {
@@ -903,11 +923,13 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     errors.problemL1 = !form.problemL1;
     errors.problemL2 = !form.problemL2;
     errors.problemL3 = !form.problemL3;
-    errors.description = !form.description.trim();
+    errors.description = !hidesSnAndDesc.value && !form.description.trim();
     errors.title = !form.title.trim();
     errors.problemTime = false;
     errors.complaintType =
       showChannelComplaintFields.value && !form.complaintType;
+    errors.complaintL1 = form.ticketType === '投诉' && !form.complaintL1;
+    errors.complaintL2 = form.ticketType === '投诉' && !form.complaintL2;
 
     const hasError = Object.values(errors).some(Boolean);
     if (hasError) {
@@ -977,13 +999,14 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       customerRegion: form.customer?.region || undefined,
       customerAddress: form.customer?.address || undefined,
       vip: form.customer?.vip ?? false,
-      // 业务分类 / 产品 / SN / 问题分类按建单所填落工单行：处理页侧栏「工单信息」只取本单（不落样例单的台账）
+      // 业务类型 / 产品 / SN / 问题分类按建单所填落工单行：处理页侧栏「工单信息」只取本单（不落样例单的台账）
       businessType: form.businessType || undefined,
       // 归属业务线 / 投诉类型只在投诉渠道字段区（showChannelComplaintFields）采集；
       // 门控关着时表单里那份是缺省值、坐席没见过，不落库
       businessLine: showChannelComplaintFields.value ? (form.businessLine || undefined) : undefined,
       productCategory: form.productCategory || undefined,
-      sn: form.deviceSn.trim() || undefined,
+      // 建议 / 商机单不采集 SN 与问题描述（含附件），不落库
+      sn: hidesSnAndDesc.value ? undefined : (form.deviceSn.trim() || undefined),
       problemL1: form.problemL1 || undefined,
       problemL2: form.problemL2 || undefined,
       problemL3: form.problemL3 || undefined,
@@ -992,8 +1015,8 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       complaintL1: form.ticketType === '投诉' ? (form.complaintL1 || undefined) : undefined,
       complaintL2: form.ticketType === '投诉' ? (form.complaintL2 || undefined) : undefined,
       product: form.productName,
-      problemDesc: form.description.trim(),
-      problemDescAttachments: [...form.descriptionAttachments],
+      problemDesc: hidesSnAndDesc.value ? '' : form.description.trim(),
+      problemDescAttachments: hidesSnAndDesc.value ? [] : [...form.descriptionAttachments],
       // 结案方式建单时选定、此后不可改（基线 §1「结案方式」小节），故只在这里落一次
       closureMode: form.closureMode,
       // 建单时刻：处理页页头建单时间与履历首条「创建工单」取它（D3：新单只画本单数据）
@@ -1028,7 +1051,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   );
 
   /**
-   * 业务分类变更 —— **不清空已绑定客户**。
+   * 业务类型变更 —— **不清空已绑定客户**。
    *
    * 分类变的是"这张单归哪条业务线"，不是客户换了人；客户标识全局唯一，
    * 让坐席重搜一遍搜到的还是同一条，纯属多做一遍。改分类多半是纠错
@@ -1048,7 +1071,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       const latest = findCustomerById(form.customer.id);
       if (!latest) {
         clearCustomer();
-        message.warning('该客户在当前业务分类下不可用，请重新选择客户');
+        message.warning('该客户在当前业务类型下不可用，请重新选择客户');
         return;
       }
       form.customer = { ...latest };
@@ -1073,6 +1096,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     productNameOptions,
     showTypePart,
     typePartSubtitle,
+    hidesSnAndDesc,
     showChannelComplaintFields,
     reset,
     applyPrefill,
