@@ -49,6 +49,9 @@ const flashCard = computed(() => isFlashTicket(props.detail) && !!props.detail.f
     <div v-if="createComplaintCategory" class="kv">
       <span class="k">投诉分类</span><span class="v">{{ createComplaintCategory }}</span>
     </div>
+    <div v-if="createComplaintCategory && detail.serviceComplaintCategory" class="kv">
+      <span class="k">服务投诉分类</span><span class="v">{{ detail.serviceComplaintCategory }}</span>
+    </div>
 
     <div class="divider" />
 

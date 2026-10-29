@@ -32,7 +32,11 @@ import {
   formatCustomerSubline,
   maskPhone,
 } from '@/views/tickets/types/createTicket';
-import { CREATE_COMPLAINT_L1_OPTIONS, CREATE_COMPLAINT_L2_MAP } from '@/views/tickets/types/complaintCreateCategory';
+import {
+  CREATE_COMPLAINT_L1_OPTIONS,
+  CREATE_COMPLAINT_L2_MAP,
+  SERVICE_COMPLAINT_CATEGORY_OPTIONS,
+} from '@/views/tickets/types/complaintCreateCategory';
 import { useCreateTicketForm } from '@/views/tickets/composables/useCreateTicketForm';
 import OpTextareaAttach from '@/views/tickets/components/operation/shared/OpTextareaAttach.vue';
 import { TICKETS } from '@/mock/tickets';
@@ -78,6 +82,7 @@ const {
   typePartSubtitle,
   hidesSnAndDesc,
   showChannelComplaintFields,
+  showServiceComplaintCategory,
   reset,
   applyPrefill,
   onTitleInput,
@@ -364,6 +369,11 @@ watch(
       if (!(CREATE_COMPLAINT_L1_OPTIONS as readonly string[]).includes(form.complaintL1)) {
         form.complaintL1 = '';
         form.complaintL2 = '';
+      }
+      // 服务投诉分类：草稿不满足淘云服务投诉条件或取值不在字典内即置空
+      if (!showServiceComplaintCategory.value
+        || !(SERVICE_COMPLAINT_CATEGORY_OPTIONS as readonly string[]).includes(form.serviceComplaintCategory ?? '')) {
+        form.serviceComplaintCategory = '';
       }
       syncTitle();
       activeDraftId.value = draft.id;
@@ -821,6 +831,15 @@ watch(
                 class="inline-control field-control"
                 :status="errors.complaintL2 ? 'error' : ''"
                 :options="complaintL2Options.map((v) => ({ value: v, label: v }))"
+              />
+            </div>
+            <div v-if="showServiceComplaintCategory" class="inline-field">
+              <label class="inline-label xl"><span class="req">*</span>服务投诉分类</label>
+              <FormSelect
+                v-model:value="form.serviceComplaintCategory"
+                class="inline-control field-control"
+                :status="errors.serviceComplaintCategory ? 'error' : ''"
+                :options="SERVICE_COMPLAINT_CATEGORY_OPTIONS.map((v) => ({ value: v, label: v }))"
               />
             </div>
             <div v-if="showChannelComplaintFields" class="inline-field">

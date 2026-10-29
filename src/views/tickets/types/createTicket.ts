@@ -232,6 +232,8 @@ export interface CreateTicketFormState {
   serviceReview: string;
   complaintL1: string;
   complaintL2: string;
+  /** 服务投诉分类（淘云 · 投诉二类「对人员服务态度不满」时必填，见 complaintCreateCategory.ts） */
+  serviceComplaintCategory: string;
   /** 投诉接收时间（非必填，日期时间） */
   complaintReceiveTime: string;
   problemTime: string;

@@ -280,6 +280,7 @@ export function useTicketOperation() {
        */
       base.createComplaintL1 = t.complaintL1 ?? '';
       base.createComplaintL2 = t.complaintL2 ?? '';
+      base.serviceComplaintCategory = t.serviceComplaintCategory ?? '';
       // D3 外投演示单：投诉渠道记录 + 分类与 PRD 附录一致，便于验「补充投诉信息」全字段
       if (t.no === 'IFLYTS-20260817-00001') {
         base.complaint.categories = [

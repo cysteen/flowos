@@ -25,7 +25,12 @@ import {
   type CreateTicketFlashField,
   type CreateTicketXiaozhiField,
 } from '@/views/tickets/types/createTicket';
-import { CREATE_COMPLAINT_L1_OPTIONS, CREATE_COMPLAINT_L2_MAP } from '@/views/tickets/types/complaintCreateCategory';
+import {
+  CREATE_COMPLAINT_L1_OPTIONS,
+  CREATE_COMPLAINT_L2_MAP,
+  SERVICE_COMPLAINT_CATEGORY_OPTIONS,
+  needsServiceComplaintCategory,
+} from '@/views/tickets/types/complaintCreateCategory';
 import type { Channel } from '@/views/tickets/types/ticket';
 import { currentHandlerName } from '@/views/tickets/types/ticket';
 import {
@@ -114,6 +119,7 @@ function defaultForm(): CreateTicketFormState {
     serviceReview: '',
     complaintL1: '产品质量投诉',
     complaintL2: '产品质量故障',
+    serviceComplaintCategory: '',
     complaintReceiveTime: '',
     problemTime: '',
     flash: defaultCreateTicketFlashForm(),
@@ -165,6 +171,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     complaintType: false,
     complaintL1: false,
     complaintL2: false,
+    serviceComplaintCategory: false,
   });
 
   const flashConfig = useFlashConfigStore();
@@ -270,6 +277,18 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       form.ticketType === '投诉' &&
       (form.ticketSource === '内投渠道' || form.ticketSource === '外投渠道'),
   );
+  /**
+   * 服务投诉分类（淘云专属）：业务类型＝淘云 ∧ 工单类型＝投诉 ∧ 投诉二类＝「对人员服务态度不满」时出现且必填；
+   * 条件不再满足即清空，落库同样只在满足时带上。
+   */
+  const showServiceComplaintCategory = computed(() =>
+    needsServiceComplaintCategory(form.businessType, form.ticketType, form.complaintL2),
+  );
+  watch(showServiceComplaintCategory, (on) => {
+    if (on) return;
+    form.serviceComplaintCategory = '';
+    errors.serviceComplaintCategory = false;
+  });
 
   /* ---------------- 刷机单（930 教育刷机单 PRD §2.3 / §2.4；1013 A1–A4） ---------------- */
 
@@ -813,6 +832,12 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
         ? p.complaintL2
         : '';
     }
+    // 服务投诉分类：只在本单满足淘云服务投诉条件、且取值在字典内时带入
+    form.serviceComplaintCategory = p.serviceComplaintCategory
+      && needsServiceComplaintCategory(form.businessType, form.ticketType, form.complaintL2)
+      && (SERVICE_COMPLAINT_CATEGORY_OPTIONS as readonly string[]).includes(p.serviceComplaintCategory)
+      ? p.serviceComplaintCategory
+      : '';
     if (p.complaintType) form.complaintType = normalizeComplaintType(p.complaintType);
     // 预填的平台/编号落到第一组
     if (p.complaintPlatform || p.complaintNo) {
@@ -930,6 +955,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       showChannelComplaintFields.value && !form.complaintType;
     errors.complaintL1 = form.ticketType === '投诉' && !form.complaintL1;
     errors.complaintL2 = form.ticketType === '投诉' && !form.complaintL2;
+    errors.serviceComplaintCategory = showServiceComplaintCategory.value && !form.serviceComplaintCategory;
 
     const hasError = Object.values(errors).some(Boolean);
     if (hasError) {
@@ -1014,6 +1040,9 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
       complaintType: showChannelComplaintFields.value ? (form.complaintType || undefined) : undefined,
       complaintL1: form.ticketType === '投诉' ? (form.complaintL1 || undefined) : undefined,
       complaintL2: form.ticketType === '投诉' ? (form.complaintL2 || undefined) : undefined,
+      serviceComplaintCategory: showServiceComplaintCategory.value
+        ? (form.serviceComplaintCategory || undefined)
+        : undefined,
       product: form.productName,
       problemDesc: hidesSnAndDesc.value ? '' : form.description.trim(),
       problemDescAttachments: hidesSnAndDesc.value ? [] : [...form.descriptionAttachments],
@@ -1098,6 +1127,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     typePartSubtitle,
     hidesSnAndDesc,
     showChannelComplaintFields,
+    showServiceComplaintCategory,
     reset,
     applyPrefill,
     onTitleInput,

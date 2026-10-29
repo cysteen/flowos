@@ -64,3 +64,26 @@ export const CREATE_COMPLAINT_L2_MAP: Record<string, string[]> = {
     '配件（耗材）投诉',
   ],
 };
+
+/**
+ * 服务投诉分类（淘云专属）：业务类型＝淘云 ∧ 工单类型＝投诉 ∧ 投诉二类＝「对人员服务态度不满」时出现，必填。
+ */
+export const SERVICE_COMPLAINT_TRIGGER_BUSINESS_TYPE = '淘云';
+export const SERVICE_COMPLAINT_TRIGGER_L2 = '对人员服务态度不满';
+export const SERVICE_COMPLAINT_CATEGORY_OPTIONS = [
+  '客服',
+  '非客服',
+  '客服-工单',
+  '客服-售后',
+] as const;
+
+/** 是否需要采集「服务投诉分类」 */
+export function needsServiceComplaintCategory(
+  businessType: string | undefined,
+  ticketType: string | undefined,
+  complaintL2: string | undefined,
+): boolean {
+  return businessType === SERVICE_COMPLAINT_TRIGGER_BUSINESS_TYPE
+    && ticketType === '投诉'
+    && complaintL2 === SERVICE_COMPLAINT_TRIGGER_L2;
+}

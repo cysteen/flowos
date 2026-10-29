@@ -468,6 +468,8 @@ export interface Ticket {
   complaintL1?: string;
   /** 投诉二类 */
   complaintL2?: string;
+  /** 服务投诉分类（淘云投诉单 · 二类「对人员服务态度不满」时建单必填） */
+  serviceComplaintCategory?: string;
   /** 问题分类（新建工单 · 产品问题） */
   problemL1?: string;
   problemL2?: string;
@@ -777,6 +779,8 @@ export interface CreateTicketPrefill {
   complaintL1?: string;
   /** 投诉二类 */
   complaintL2?: string;
+  /** 服务投诉分类（仅淘云 · 二类「对人员服务态度不满」时带入） */
+  serviceComplaintCategory?: string;
   /** 投诉平台（目标=外投时带入） */
   complaintPlatform?: string;
   /** 外部投诉编号（目标=外投时带入） */
