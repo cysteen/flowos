@@ -821,9 +821,9 @@ export function useTicketOperation() {
 
   /**
    * 小智单的页头 / 速览带 / 侧栏取值与小智种子单自洽（形制同 `applyFlashOverview`）：
-   * 建单人取小智履历的建单操作人、建单时间取工单行、业务分类取工单行（教育，D4）、
+   * 建单人取小智履历的建单操作人、建单时间取工单行、业务类型取工单行（教育，D4）、
    * 产品与问题分类取工单行、工单来源 IM（D24）—— 不沿用类型样例的台账，
-   * 否则页头会出现「建单人：李一线 / 业务分类：学习机」这类与本单对不上的取值。
+   * 否则页头会出现「建单人：李一线 / 业务类型：学习机」这类与本单对不上的取值。
    */
   function applyXiaozhiOverview(base: TicketDetailMeta, t: Ticket) {
     const createEvent = xiaozhi.timelineOf(t.no).find((e) => e.action === 'create');

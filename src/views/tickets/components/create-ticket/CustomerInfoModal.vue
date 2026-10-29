@@ -97,7 +97,7 @@ const SCHOOL_CATALOG: SchoolRecord[] = SCHOOL_LIBRARY;
 const props = defineProps<{
   open: boolean;
   editing: boolean;
-  /** 当前工单业务分类，决定加载基线页 or 教育客户页 */
+  /** 当前工单业务类型，决定加载基线页 or 教育客户页 */
   businessType?: BusinessType | string;
   initial?: CustomerInfo | null;
   /** 新建时从搜索框带入的联系方式（搜索只按联系方式，故一定是一条联系方式） */
@@ -392,7 +392,7 @@ function onSave() {
         </div>
       </div>
 
-      <!-- 教育客户页 · 行⑥⑦⑧（仅业务分类=教育）。不加分区标题：
+      <!-- 教育客户页 · 行⑥⑦⑧（仅业务类型=教育）。不加分区标题：
            整页就是一列 key-value，为 3 行再起一个小节反而打断阅读；
            "哪些字段属于哪个分类"是规格约束，不需要在页面上向坐席解释。 -->
       <template v-if="isEducationPage">

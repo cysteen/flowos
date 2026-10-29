@@ -69,7 +69,7 @@ export interface EventField {
 export const DICT_TICKET_TYPE = ['投诉', '建议', '商机', '咨询', '表扬'] as const;
 /** 工单来源 */
 export const DICT_SOURCE = ['电话', 'IM', '内投渠道', '外投渠道', '客户服务小程序', '售后系统'] as const;
-/** 业务分类 */
+/** 业务类型 */
 export const DICT_BIZ_TYPE = [
   '无线音乐',
   '智能硬件',
@@ -129,7 +129,7 @@ const BASE: EventField[] = [
   { key: 'isFlash', label: '是否刷机单', type: 'boolean', desc: '建单时写入的刷机单标识，刷机单的工单类型为咨询。需要把刷机单与普通咨询单分开通知时用它作条件' },
   { key: 'isXiaozhi', label: '是否小智工单', type: 'boolean', desc: '建单时写入的小智工单标识，小智工单的工单类型也是咨询。需要把小智工单与普通咨询单分开通知时用它作条件' },
   { key: 'source', label: '工单来源', type: 'enum', enumValues: DICT_SOURCE, desc: '客户从哪个渠道来的。对客短信的抑制条件主要靠它' },
-  { key: 'bizType', label: '业务分类', type: 'enum', enumValues: DICT_BIZ_TYPE, desc: '工单归属的业务线。常用作条件，按业务线区分通知策略' },
+  { key: 'bizType', label: '业务类型', type: 'enum', enumValues: DICT_BIZ_TYPE, desc: '工单归属的业务线。常用作条件，按业务线区分通知策略' },
   { key: 'productName', label: '产品名称', type: 'string', desc: '工单关联的产品型号，来自产品主数据。模板中常用于区分不同产品的通知文案' },
   { key: 'customerName', label: '客户名称', type: 'string', desc: '联系人姓名，用于对客短信的称呼' },
   { key: 'customerPhone', label: '客户手机号', type: 'phone', isRecipient: true, desc: '对客短信的收件号码。选「客户」类型收件人时取的就是它' },
@@ -856,7 +856,7 @@ export const EVAL_LOGS: EvalLog[] = [
   { time: '2026-07-28 14:22:10', ticketNo: 'IFLYZX-20260728-00001', ruleId: 'R02', ruleName: '建单受理通知', recipient: '138****2046', channel: '短信', result: '已发送' },
   { time: '2026-07-28 14:18:44', ticketNo: 'IFLYZX-20260728-00002', ruleId: 'R02', ruleName: '建单受理通知', recipient: '139****8821', channel: '短信', result: '已跳过', skipReason: '不满足触发条件：工单来源「内投渠道」属于排除项' },
   { time: '2026-07-28 14:18:44', ticketNo: 'IFLYZX-20260728-00002', ruleId: 'R01', ruleName: '建单派发通知', recipient: '陈静（投诉专席）', channel: 'IM', result: '已发送' },
-  { time: '2026-07-28 13:55:02', ticketNo: 'IFLYZX-20260728-00003', ruleId: 'R02', ruleName: '建单受理通知', recipient: '137****5510', channel: '短信', result: '已跳过', skipReason: '不满足触发条件：业务分类「无线音乐」属于排除项' },
+  { time: '2026-07-28 13:55:02', ticketNo: 'IFLYZX-20260728-00003', ruleId: 'R02', ruleName: '建单受理通知', recipient: '137****5510', channel: '短信', result: '已跳过', skipReason: '不满足触发条件：业务类型「无线音乐」属于排除项' },
   { time: '2026-07-28 11:40:31', ticketNo: 'IFLYZX-20260727-00003', ruleId: 'R10', ruleName: '审核提醒', recipient: '—', channel: 'IM', result: '已跳过', skipReason: '收件人解析为空：该审批单未配置审核组' },
   { time: '2026-07-28 10:12:07', ticketNo: 'IFLYZX-20260727-00002', ruleId: 'R11', ruleName: '评论区 @ 提醒', recipient: '钱伟（技术支持）', channel: 'IM', result: '发送失败', skipReason: '渠道返回：该用户未完成 i讯飞账号映射' },
   { time: '2026-07-28 09:30:55', ticketNo: 'IFLYZX-20260727-00001', ruleId: 'R08', ruleName: '退回提醒（技术支持）', recipient: '—', channel: 'IM', result: '已跳过', skipReason: '不满足触发条件：退回来源环节为「调研」' },

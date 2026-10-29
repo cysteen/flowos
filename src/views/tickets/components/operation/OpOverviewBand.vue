@@ -71,7 +71,8 @@ watch(expandedCol, (v) => emit('expand-change', v !== null), { immediate: true }
             </div>
             <div class="hi-text">{{ detail.productIssue }}</div>
           </div>
-          <div class="handle-item">
+          <!-- 建议单、商机单建单不填问题描述（含附件），整块不出 -->
+          <div v-if="detail.type !== '建议' && detail.type !== '商机'" class="handle-item">
             <div class="hi-meta">
               <span class="hi-label">问题描述</span>
             </div>

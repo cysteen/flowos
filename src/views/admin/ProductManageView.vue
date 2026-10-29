@@ -66,7 +66,7 @@ const cols = [
   { title: 'BGBU', dataIndex: 'bgbu', key: 'bgbu', width: 130 },
   { title: '业务线', dataIndex: 'bizline', key: 'bizline', width: 130 },
   { title: '产品线', dataIndex: 'prodline', key: 'prodline', width: 130 },
-  { title: '业务分类', dataIndex: 'bizcat', key: 'bizcat', width: 110 },
+  { title: '业务类型', dataIndex: 'bizcat', key: 'bizcat', width: 110 },
   { title: '产品分类', dataIndex: 'prodcat', key: 'prodcat', width: 150 },
   { title: '操作', key: 'op', width: 80, fixed: 'right' as const },
 ];
@@ -134,7 +134,7 @@ function goRdMapping() { router.push('/admin/product-rd-mapping'); }
           <a-form-item label="BGBU"><a-select v-model:value="filter.bgbu" placeholder="请选择" class="fw" allow-clear /></a-form-item>
           <a-form-item label="业务线"><a-select v-model:value="filter.bizline" placeholder="请选择" class="fw" allow-clear /></a-form-item>
           <a-form-item label="产品线"><a-select v-model:value="filter.prodline" placeholder="请选择" class="fw" allow-clear /></a-form-item>
-          <a-form-item label="业务分类"><a-select v-model:value="filter.bizcat" placeholder="请选择" class="fw" allow-clear /></a-form-item>
+          <a-form-item label="业务类型"><a-select v-model:value="filter.bizcat" placeholder="请选择" class="fw" allow-clear /></a-form-item>
           <a-form-item label="产品分类"><a-select v-model:value="filter.prodcat" placeholder="请选择" class="fw" allow-clear /></a-form-item>
           <a-form-item label="产品名称"><a-input v-model:value="filter.name" placeholder="请输入产品名称" class="fw" allow-clear /></a-form-item>
         </a-form>

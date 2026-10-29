@@ -36,7 +36,7 @@ interface Strategy {
 const TICKET_TYPE_OPTS = [...CREATE_TICKET_TYPES, '表扬'];                  // 投诉/建议/商机/咨询/表扬
 const CALL_NATURE_OPTS = ['无', '无声通话', '非我司产品', '重复来电 - 不同问题', '重复来电 - 同一问题', '骚扰用户 - 纯骚扰', '骚扰用户 - 业务骚扰']; // 小结·话务性质
 const PROD_CAT_OPTS = [...PRODUCT_CATEGORIES, '综合类问题'];                // 产品分类
-const BIZ_TYPE_OPTS = [...BUSINESS_TYPES]; // 业务分类，与建单弹窗同源
+const BIZ_TYPE_OPTS = [...BUSINESS_TYPES]; // 业务类型，与建单弹窗同源
 const SOURCE_OPTS = [...TICKET_SOURCE_OPTIONS]; // 工单来源，与建单弹窗同源
 const TAG_OPTS = ['二次下送'];                                             // 工单标记
 
@@ -171,7 +171,7 @@ function saveCallbackKey() { callbackKeyEditing.value = false; message.success('
               <a-checkbox-group v-model:value="cur.list.afterProdCat" :options="PROD_CAT_OPTS" />
             </div>
             <div class="chk-row">
-              <span class="chk-label">业务分类</span>
+              <span class="chk-label">业务类型</span>
               <a-checkbox-group v-model:value="cur.list.afterBizType" :options="BIZ_TYPE_OPTS" />
             </div>
             <div class="chk-row">

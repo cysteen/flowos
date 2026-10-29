@@ -378,7 +378,7 @@ const isDraftView = computed(() => wb.isDraftView.value);
 function openCreate() { editingDraftId.value = null; createPrefill.value = null; createOpen.value = true; }
 /**
  * 「新建小智工单」（1130 小智工单 D3；按钮名照一·补 B22）：与通用「新建工单」两枚并存。
- * 入口置位 `xiaozhiScene`，建单弹窗据此切小智表单（工单类型锁咨询、业务分类锁教育、来源锁 IM）。
+ * 入口置位 `xiaozhiScene`，建单弹窗据此切小智表单（工单类型锁咨询、业务类型锁教育、来源锁 IM）。
  * 按技能组判身份是容联云 / UAP 侧的事（W7），这里只落结果 —— 入口对哪些角色渲染见 `XIAOZHI_CREATE_ROLES`。
  */
 function openCreateXiaozhi() {

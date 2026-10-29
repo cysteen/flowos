@@ -677,7 +677,8 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
         <div v-else-if="colKey === 'summary'" class="col-summary cell-summary">
           <a-popover trigger="hover" placement="rightTop" :mouse-enter-delay="0.2">
             <div class="summary-stack">
-              <div class="summary-line">
+              <!-- 建议单、商机单建单不填问题描述，问题行与悬浮卡问题描述块都不出 -->
+              <div v-if="t.type !== '建议' && t.type !== '商机'" class="summary-line">
                 <span class="hi-label">问题</span>
                 <span class="hi-text line-clamp">{{ t.problemDesc || '—' }}</span>
               </div>
@@ -689,7 +690,7 @@ watch(() => [props.rows, props.visibleColumns, gridTemplateColumns.value], () =>
             <template #content>
               <div class="summary-pop">
                 <div class="sp-title"><span class="sp-type">{{ ticketTypeLabel(t) }}</span>{{ t.title }}</div>
-                <div class="sp-block">
+                <div v-if="t.type !== '建议' && t.type !== '商机'" class="sp-block">
                   <div class="hi-meta">
                     <span class="hi-label">问题描述</span>
                   </div>

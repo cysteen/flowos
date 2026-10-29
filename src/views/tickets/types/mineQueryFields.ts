@@ -48,7 +48,7 @@ export const MINE_FILTER_FIELD_DEFS: MineFilterFieldDef[] = [
   { key: 'xiaozhiMark', label: '小智工单' },
   // 个册退费标识（1120 PRD 第 8 章：个册退费单类型为咨询，按标识筛选）
   { key: 'refundMark', label: REFUND_MARK_LABEL },
-  { key: 'businessType', label: '业务分类', defaultVisible: true },
+  { key: 'businessType', label: '业务类型', defaultVisible: true },
   { key: 'productCategory', label: '产品分类', fixed: true },
   { key: 'productName', label: '产品名称', fixed: true },
   { key: 'nodeStatus', label: '当前状态', fixed: true },
@@ -70,7 +70,7 @@ const ALL_KEYS = MINE_FILTER_FIELD_DEFS.map((f) => f.key);
  * 而 loadOptionalVisible 是 `{...默认, ...已存}` —— 已存的 false 会把新默认原样压回去。
  * 不换 key 的话，只有从没打开过这个页面的浏览器才吃得到新默认，改了等于没改。
  *
- * v2（0903）：业务分类 / 工单类型 / 客户名称 改为默认展示。
+ * v2（0903）：业务类型 / 工单类型 / 客户名称 改为默认展示。
  * v3（0923）：新增 SLA 项，默认展示。
  */
 const LS_KEY = 'flowos-mine-query-fields.v3';
