@@ -278,8 +278,6 @@ function chipActiveClass(key: SupplementChip): string {
     <OpCollapsibleSection
       title="处理记录"
       :icon="FileTextOutlined"
-      badge="必填"
-      badge-variant="required"
       :expanded="expandedSections.record"
       @toggle="emit('toggleSection', 'record')"
     >
@@ -334,10 +332,6 @@ function chipActiveClass(key: SupplementChip): string {
       :expanded="expandedSections.service"
       @toggle="emit('toggleSection', 'service')"
     >
-      <div class="section-subhead">
-        <span class="sub-title">服务方式与解决结论</span>
-        <span class="sub-hint">结案前确认</span>
-      </div>
       <div class="field-row field-row--service">
         <div class="field inline">
           <label><span class="req">*</span>服务类型</label>
@@ -595,11 +589,6 @@ function chipActiveClass(key: SupplementChip): string {
   display: flex; justify-content: space-between; gap: 8px;
   margin-top: -4px; font-size: 12px; color: #9ca3af;
 }
-.section-subhead {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-}
-.sub-title { font-size: 12px; font-weight: 600; color: #111827; }
-.sub-hint { font-size: 11px; color: #9ca3af; }
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field.inline { flex: 1; min-width: 0; }
 .field label { font-size: 12px; font-weight: 600; color: #374151; }
