@@ -1,14 +1,22 @@
 <script setup lang="ts">
 import OpTextareaAttach from './shared/OpTextareaAttach.vue';
 
-defineProps<{
+withDefaults(defineProps<{
   problemCause: string;
   processResult: string;
   problemCauseAttachments: string[];
   processResultAttachments: string[];
   /** 只读：两个正文框不可编辑、附件入口不出（原生 textarea 拦不住 antd 的 component-disabled） */
   readonly?: boolean;
-}>();
+  /** 是否出「问题原因」（含其附件）；建议 / 商机单只留处理结果 */
+  showProblemCause?: boolean;
+  /** 字段名前加必填红星（只标识，不做拦截） */
+  required?: boolean;
+}>(), {
+  readonly: false,
+  showProblemCause: true,
+  required: false,
+});
 
 const emit = defineEmits<{
   'update:problemCause': [value: string];
@@ -20,8 +28,8 @@ const emit = defineEmits<{
 
 <template>
   <div class="record-fields">
-    <div class="field">
-      <label>问题原因</label>
+    <div v-if="showProblemCause" class="field">
+      <label><span v-if="required" class="req">*</span>问题原因</label>
       <OpTextareaAttach
         :model-value="problemCause"
         :attachments="problemCauseAttachments"
@@ -33,7 +41,7 @@ const emit = defineEmits<{
     </div>
 
     <div class="field">
-      <label>处理结果</label>
+      <label><span v-if="required" class="req">*</span>处理结果</label>
       <OpTextareaAttach
         :model-value="processResult"
         :attachments="processResultAttachments"
@@ -50,4 +58,5 @@ const emit = defineEmits<{
 .record-fields { display: flex; flex-direction: column; gap: 10px; }
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field label { font-size: 12px; font-weight: 600; color: #374151; }
+.field label .req { color: #ef4444; margin-right: 2px; }
 </style>

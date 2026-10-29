@@ -215,7 +215,7 @@ export const TYPE_SAMPLES: Record<string, TicketTypeSample> = {
       problemCause: '客户建议智能门锁 L1 增加临时密码 / 访客分享功能。',
       processResult: '已记录产品建议并提交产品组评估，纳入需求池跟踪。',
       processResultAttachments: [],
-      suggestAccepted: false,
+      suggestAccepted: null,
     },
     tabData: {
       currentFlowNode: '工单处理',

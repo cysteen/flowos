@@ -676,7 +676,7 @@ export const DEFAULT_PROCESS_DRAFT = {
       demand: '预约联系用户',
     },
   ] as AppointmentRecord[],
-  suggestAccepted: false,
+  suggestAccepted: null,
   leadCategory: '',
   leadStage: 'invalid' as const,
   leadNo: '',

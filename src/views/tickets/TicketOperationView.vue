@@ -1747,8 +1747,8 @@ const BASE_PROCESS_FIELDS: { key: keyof ProcessFormDraft; label: string }[] = [
   { key: 'serviceType', label: '服务类型' },
   { key: 'serviceMethod', label: '服务方式' },
   { key: 'conclusion', label: '问题解决结论' },
-  { key: 'serviceSolution', label: '解决方案' },
-  { key: 'leadCategory', label: '商机归类' },
+  { key: 'serviceSolution', label: '退让方案' },
+  { key: 'leadCategory', label: '商机分类' },
   { key: 'leadNo', label: '商机编号' },
   { key: 'closingNote', label: '结案后备注' },
 ];

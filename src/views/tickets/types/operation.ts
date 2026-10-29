@@ -202,9 +202,9 @@ export interface ProcessFormDraft {
   appointmentNeeded: boolean;
   /** 预约回访记录（每条一个预约时间点） */
   appointmentRecords: AppointmentRecord[];
-  /** 建议专属 · 是否采纳（建议服务结论；默认否，无下级字段） */
-  suggestAccepted: boolean;
-  /** 商机专属 · 商机归类 */
+  /** 建议专属 · 是否采纳（建议服务结论；默认空 ＝ 两项都不选中，无下级字段） */
+  suggestAccepted: boolean | null;
+  /** 商机专属 · 商机分类 */
   leadCategory: string;
   /** 商机专属 · 商机解决结论 */
   leadStage: 'resolved' | 'unresolvedRejected' | 'noContact' | 'invalid' | 'toSales';
@@ -499,6 +499,16 @@ export const SERVICE_TYPE_TO_METHODS: Record<string, readonly string[]> = {
   '硬件维修/退换货': ['业务线/电商/门店售后'],
 };
 
+/** 处理表单 · 咨询 / 投诉单可选的服务类型（不含「商务合作」，商机单固定该值） */
+export const PROCESS_SERVICE_TYPE_OPTIONS = SERVICE_TYPE_OPTIONS.filter((t) => t !== '商务合作');
+
+/** 建议单服务类型 / 服务方式：系统按工单类型自动填充，不可改 */
+export const SUGGEST_SERVICE_TYPE = '需求建议';
+export const SUGGEST_SERVICE_METHOD = '短信/电话回复';
+/** 商机单服务类型 / 服务方式：系统按工单类型自动填充，不可改 */
+export const LEAD_SERVICE_TYPE = '商务合作';
+export const LEAD_SERVICE_METHOD = '与需求人建立联系';
+
 /** 问题解决结论（独立平铺，不级联） */
 export const RESOLUTION_CONCLUSION_OPTIONS = [
   '已解决：技术方案解决',
@@ -508,16 +518,15 @@ export const RESOLUTION_CONCLUSION_OPTIONS = [
   '未解决：有方案，用户对方案不认可',
   '未解决：联系不上用户',
   '未解决：无解决方案',
-  '无效商机',
   '转销售渠道处理',
   '转售后网点处理',
   '需求待评估（仅学习机使用）',
 ] as const;
 
-/** 触发「解决方案」枚举的结论 */
+/** 触发「退让方案」枚举的结论（仅投诉单） */
 export const SERVICE_SOLUTION_CONCLUSION = '已解决：服务方案解决';
 
-/** 解决方案（服务方案解决时） */
+/** 退让方案（投诉单 · 服务方案解决时） */
 export const SERVICE_SOLUTION_OPTIONS = [
   '免费维修',
   '折扣维修',
@@ -527,7 +536,7 @@ export const SERVICE_SOLUTION_OPTIONS = [
   '其他',
 ] as const;
 
-/** 商机归类 */
+/** 商机分类 */
 export const LEAD_CATEGORY_OPTIONS: { label: string; value: string }[] = [
   { label: '大区商机', value: '大区商机' },
   { label: '机器人商机', value: '机器人商机' },
@@ -537,14 +546,6 @@ export const LEAD_CATEGORY_OPTIONS: { label: string; value: string }[] = [
   { label: '海外商机', value: '海外商机' },
   { label: '听见商机', value: '听见商机' },
   { label: '录音笔商机', value: '录音笔商机' },
-  { label: '翻译机商机', value: '翻译机商机' },
-  { label: '耳机商机', value: '耳机商机' },
-  { label: '智能汽车商机', value: '智能汽车商机' },
-  { label: '助听器商机', value: '助听器商机' },
-  { label: '工牌录音笔商机', value: '工牌录音笔商机' },
-  { label: '眼镜商机', value: '眼镜商机' },
-  { label: '办公读写商机（英语通、英语宝）', value: '办公读写商机（英语通、英语宝）' },
-  { label: '其他商机（参观，活动邀约，展厅邀约，展厅搭建，采访邀约）', value: '其他商机（参观，活动邀约，展厅邀约，展厅搭建，采访邀约）' },
 ];
 
 /** 商机解决结论 */

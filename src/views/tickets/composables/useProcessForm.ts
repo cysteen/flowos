@@ -1,5 +1,8 @@
 import { computed, ref, watch } from 'vue';
 import type { ProcessFormDraft, SupplementChip, SectionKey } from '@/views/tickets/types/operation';
+import {
+  SUGGEST_SERVICE_TYPE, SUGGEST_SERVICE_METHOD, LEAD_SERVICE_TYPE, LEAD_SERVICE_METHOD,
+} from '@/views/tickets/types/operation';
 import { DEFAULT_PROCESS_DRAFT } from '@/mock/ticketDetail';
 import { TYPE_SAMPLES } from '@/mock/ticketTypeSamples';
 import { SEED_CLAIMED_TICKET_NOS, TICKETS } from '@/mock/tickets';
@@ -40,7 +43,7 @@ const BLANK_PROCESS_DRAFT: ProcessFormDraft = {
   riskDescriptionAttachments: [],
   appointmentNeeded: false,
   appointmentRecords: [],
-  suggestAccepted: false,
+  suggestAccepted: null,
   leadCategory: '',
   leadNo: '',
   closingNote: '',
@@ -59,17 +62,27 @@ function buildDraft(type: string, ticketNo?: string): ProcessFormDraft {
     || isAftersaleChainTicket(row)
     || !SEED_CLAIMED_TICKET_NOS.has(ticketNo!)
   );
-  if (blank) return structuredClone(BLANK_PROCESS_DRAFT);
-  return {
-    ...DEFAULT_PROCESS_DRAFT,
-    ...(TYPE_SAMPLES[type]?.processDraft ?? {}),
-  };
+  const draft: ProcessFormDraft = blank
+    ? structuredClone(BLANK_PROCESS_DRAFT)
+    : { ...DEFAULT_PROCESS_DRAFT, ...(TYPE_SAMPLES[type]?.processDraft ?? {}) };
+  return withAutoService(type, draft);
+}
+
+/**
+ * 建议 / 商机单的服务类型、服务方式按工单类型自动填充（只读，随表单落库）。
+ * 在建表单时写入，处理页取变更基线时已含这两个值，不会被登记成一次用户修改。
+ */
+function withAutoService(type: string, draft: ProcessFormDraft): ProcessFormDraft {
+  if (type === '建议') return { ...draft, serviceType: SUGGEST_SERVICE_TYPE, serviceMethod: SUGGEST_SERVICE_METHOD };
+  if (type === '商机') return { ...draft, serviceType: LEAD_SERVICE_TYPE, serviceMethod: LEAD_SERVICE_METHOD };
+  return draft;
 }
 
 // 预约已迁出为独立 Tab，不再计入「补充处理」已填项
 function countFilledSupplements(form: ProcessFormDraft): number {
   let n = 0;
-  if (form.complaintMark && complaintCategoryFilled(form) && form.complaintNote) n += 1;
+  // 投诉备注选填，不计入判填
+  if (form.complaintMark && complaintCategoryFilled(form)) n += 1;
   if (
     form.platformFollowups.length > 0
     && form.complaintChannelReply.trim()
@@ -77,10 +90,9 @@ function countFilledSupplements(form: ProcessFormDraft): number {
   ) n += 1;
   // riskFlag 为空 ＝ 坐席还没碰过这个字段，不计入已填。
   // 明确选了「无风险」才算填过——两者在界面上都不展开下级字段，但一个是判断、一个是没判断。
+  // 「疑似风险」不要求风险描述，选了即算填过
   if (form.riskFlag === '有风险') {
     if (form.riskLevel && form.riskDescription.trim()) n += 1;
-  } else if (form.riskFlag === '疑似风险') {
-    if (form.riskDescription.trim()) n += 1;
   } else if (form.riskFlag) {
     n += 1;
   }

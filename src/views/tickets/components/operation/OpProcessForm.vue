@@ -17,8 +17,12 @@ import {
   RESOLUTION_CONCLUSION_OPTIONS,
   SERVICE_SOLUTION_CONCLUSION,
   SERVICE_SOLUTION_OPTIONS,
-  SERVICE_TYPE_OPTIONS,
+  PROCESS_SERVICE_TYPE_OPTIONS,
   SERVICE_TYPE_TO_METHODS,
+  SUGGEST_SERVICE_TYPE,
+  SUGGEST_SERVICE_METHOD,
+  LEAD_SERVICE_TYPE,
+  LEAD_SERVICE_METHOD,
   LEAD_CATEGORY_OPTIONS,
   LEAD_STAGE_OPTIONS,
   deriveAppointmentNeeded,
@@ -158,8 +162,8 @@ function onConclusionChange(v: string) {
   const next = v ?? '';
   patch({
     conclusion: next,
-    // 切离「服务方案解决」时清空解决方案
-    serviceSolution: next === SERVICE_SOLUTION_CONCLUSION ? props.form.serviceSolution : '',
+    // 退让方案只在投诉单「服务方案解决」时有；其余情况一律清空
+    serviceSolution: isComplaint.value && next === SERVICE_SOLUTION_CONCLUSION ? props.form.serviceSolution : '',
   });
 }
 
@@ -177,9 +181,10 @@ function onServiceMethodChange(method: string) {
 
 const conclusionOptions = RESOLUTION_CONCLUSION_OPTIONS.map((v) => ({ label: v, value: v }));
 const serviceSolutionOptions = SERVICE_SOLUTION_OPTIONS.map((v) => ({ label: v, value: v }));
-const serviceTypeOptions = SERVICE_TYPE_OPTIONS.map((v) => ({ label: v, value: v }));
+const serviceTypeOptions = PROCESS_SERVICE_TYPE_OPTIONS.map((v) => ({ label: v, value: v }));
+/** 退让方案：仅投诉单选「已解决：服务方案解决」时出现 */
 const showServiceSolution = computed(
-  () => props.form.conclusion === SERVICE_SOLUTION_CONCLUSION,
+  () => isComplaint.value && props.form.conclusion === SERVICE_SOLUTION_CONCLUSION,
 );
 /** 旧枚举残留（如「代金券」）不在新清单内时清空，避免下拉显示脏值 */
 watch(
@@ -221,7 +226,8 @@ function complaintCategoryFilled(f: ProcessFormDraft): boolean {
 function isChipFilled(key: SupplementChip): boolean {
   const f = props.form;
   switch (key) {
-    case 'complaint': return !!(f.complaintMark && complaintCategoryFilled(f) && f.complaintNote.trim());
+    // 投诉备注选填：只看投诉标记与投诉分类
+    case 'complaint': return !!(f.complaintMark && complaintCategoryFilled(f));
     case 'external': {
       const rows = f.platformFollowups;
       const plats = (props.complaintPlatforms ?? []).filter((p) => p.platform);
@@ -231,8 +237,7 @@ function isChipFilled(key: SupplementChip): boolean {
     }
     case 'risk': {
       if (f.riskFlag === '有风险') return !!(f.riskLevel && f.riskDescription.trim());
-      if (f.riskFlag === '疑似风险') return !!f.riskDescription.trim();
-      // 空 ＝ 还没判断过（面板上一个选项都不选中），与明确选「无风险」不是一回事
+      // 「疑似风险」不要求风险描述，选了即算填齐；空 ＝ 还没判断过（面板上一个选项都不选中），与明确选「无风险」不是一回事
       return !!f.riskFlag;
     }
     case 'appointment': return deriveAppointmentNeeded(f.appointmentRecords) && isAppointmentFilled(f.appointmentRecords);
@@ -312,6 +317,8 @@ function chipActiveClass(key: SupplementChip): string {
         :problem-cause-attachments="form.problemCauseAttachments"
         :process-result-attachments="form.processResultAttachments"
         :readonly="contentLocked"
+        :show-problem-cause="!isSuggest && !isLead"
+        required
         @update:problem-cause="(v) => patch({ problemCause: v })"
         @update:process-result="(v) => patch({ processResult: v })"
         @update:problem-cause-attachments="(v) => patch({ problemCauseAttachments: v })"
@@ -333,7 +340,7 @@ function chipActiveClass(key: SupplementChip): string {
       </div>
       <div class="field-row field-row--service">
         <div class="field inline">
-          <label>服务类型</label>
+          <label><span class="req">*</span>服务类型</label>
           <FormSelect
             :value="form.serviceType || undefined"
             :options="serviceTypeOptions"
@@ -343,7 +350,7 @@ function chipActiveClass(key: SupplementChip): string {
           />
         </div>
         <div class="field inline">
-          <label>服务方式</label>
+          <label><span class="req">*</span>服务方式</label>
           <FormSelect
             :value="form.serviceMethod || undefined"
             :options="serviceMethodOptions"
@@ -353,7 +360,7 @@ function chipActiveClass(key: SupplementChip): string {
           />
         </div>
         <div class="field inline">
-          <label>问题解决结论</label>
+          <label><span class="req">*</span>问题解决结论</label>
           <FormSelect
             :value="form.conclusion || undefined"
             :options="conclusionOptions"
@@ -363,7 +370,7 @@ function chipActiveClass(key: SupplementChip): string {
           />
         </div>
         <div v-if="showServiceSolution" class="field inline">
-          <label><span class="req">*</span>解决方案</label>
+          <label><span class="req">*</span>退让方案</label>
           <FormSelect
             :value="form.serviceSolution || undefined"
             :options="serviceSolutionOptions"
@@ -375,7 +382,7 @@ function chipActiveClass(key: SupplementChip): string {
       </div>
     </OpCollapsibleSection>
 
-    <!-- ===== 建议：服务与结论(是否采纳) ===== -->
+    <!-- ===== 建议：服务与结论(服务类型/服务方式自动填充只读 + 问题解决结论 + 是否采纳) ===== -->
     <template v-if="isSuggest">
       <OpCollapsibleSection
         title="服务与结论"
@@ -385,20 +392,51 @@ function chipActiveClass(key: SupplementChip): string {
         :expanded="expandedSections.service"
         @toggle="emit('toggleSection', 'service')"
       >
-        <div class="field inline conclusion-row">
-          <label>是否采纳</label>
-          <a-radio-group
-            :value="form.suggestAccepted"
-            @update:value="(v: boolean) => patch({ suggestAccepted: v })"
-          >
-            <a-radio :value="true">是</a-radio>
-            <a-radio :value="false">否</a-radio>
-          </a-radio-group>
+        <div class="field-row field-row--service">
+          <div class="field inline">
+            <label><span class="req">*</span>服务类型</label>
+            <FormSelect
+              :value="form.serviceType || SUGGEST_SERVICE_TYPE"
+              :options="[{ label: SUGGEST_SERVICE_TYPE, value: SUGGEST_SERVICE_TYPE }]"
+              disabled
+              style="width: 100%"
+            />
+          </div>
+          <div class="field inline">
+            <label><span class="req">*</span>服务方式</label>
+            <FormSelect
+              :value="form.serviceMethod || SUGGEST_SERVICE_METHOD"
+              :options="[{ label: SUGGEST_SERVICE_METHOD, value: SUGGEST_SERVICE_METHOD }]"
+              disabled
+              style="width: 100%"
+            />
+          </div>
+          <div class="field inline">
+            <label><span class="req">*</span>问题解决结论</label>
+            <FormSelect
+              :value="form.conclusion || undefined"
+              :options="conclusionOptions"
+              placeholder="请选择"
+              style="width: 100%"
+              @update:value="(v) => onConclusionChange(String(v ?? ''))"
+            />
+          </div>
+          <div class="field inline">
+            <label>是否采纳</label>
+            <a-radio-group
+              class="accept-radios"
+              :value="form.suggestAccepted ?? undefined"
+              @update:value="(v: boolean) => patch({ suggestAccepted: v })"
+            >
+              <a-radio :value="true">是</a-radio>
+              <a-radio :value="false">否</a-radio>
+            </a-radio-group>
+          </div>
         </div>
       </OpCollapsibleSection>
     </template>
 
-    <!-- ===== 商机：服务与结论(商机归类 + 商机解决结论 + 商机编号) ===== -->
+    <!-- ===== 商机：服务与结论(服务类型/服务方式自动填充只读；商机分类 + 商机解决结论 + 商机编号) ===== -->
     <template v-if="isLead">
       <OpCollapsibleSection
         title="服务与结论"
@@ -410,7 +448,29 @@ function chipActiveClass(key: SupplementChip): string {
       >
         <div class="field-row field-row--lead">
           <div class="field inline">
-            <label>商机归类</label>
+            <label><span class="req">*</span>服务类型</label>
+            <FormSelect
+              :value="form.serviceType || LEAD_SERVICE_TYPE"
+              :options="[{ label: LEAD_SERVICE_TYPE, value: LEAD_SERVICE_TYPE }]"
+              disabled
+              style="width: 100%"
+            />
+          </div>
+          <div class="field inline">
+            <label><span class="req">*</span>服务方式</label>
+            <FormSelect
+              :value="form.serviceMethod || LEAD_SERVICE_METHOD"
+              :options="[{ label: LEAD_SERVICE_METHOD, value: LEAD_SERVICE_METHOD }]"
+              disabled
+              style="width: 100%"
+            />
+          </div>
+          <!-- 第一行两项与第二行三项等宽对齐：占位第三格 -->
+          <div class="field inline" aria-hidden="true" />
+        </div>
+        <div class="field-row field-row--lead">
+          <div class="field inline">
+            <label><span class="req">*</span>商机分类</label>
             <FormSelect
               :value="form.leadCategory || undefined"
               :options="LEAD_CATEGORY_OPTIONS"
@@ -420,7 +480,7 @@ function chipActiveClass(key: SupplementChip): string {
             />
           </div>
           <div class="field inline">
-            <label>商机解决结论</label>
+            <label><span class="req">*</span>商机解决结论</label>
             <FormSelect
               :value="form.leadStage"
               :options="LEAD_STAGE_OPTIONS"
@@ -491,6 +551,7 @@ function chipActiveClass(key: SupplementChip): string {
         :readonly="contentLocked"
         :is-primary-handler="isPrimaryHandler"
         :ticket-no="ticketNo"
+        :ticket-source="ticketSource"
         @update:form="emit('update:form', $event)"
       />
     </OpCollapsibleSection>
@@ -545,6 +606,8 @@ function chipActiveClass(key: SupplementChip): string {
 .field label .req { color: #ef4444; margin-right: 2px; }
 .field-row { display: flex; gap: 8px; }
 .field-row--lead { align-items: flex-start; flex-wrap: nowrap; }
+.field-row--lead + .field-row--lead { margin-top: 10px; }
+.accept-radios { min-height: 32px; align-items: center; }
 .field-row--flash { align-items: flex-start; margin-bottom: 10px; }
 .flash-err { font-size: 12px; line-height: 18px; color: #ef4444; }
 .field-row .field.inline { flex: 1 1 0; min-width: 0; }
