@@ -249,11 +249,11 @@ function isChipFilled(key: SupplementChip): boolean {
 const incompleteChipCount = computed(
   () => supplementChips.value.filter((c) => !isChipFilled(c.key)).length,
 );
-const supplementBadge = computed(() =>
-  incompleteChipCount.value > 0
-    ? `待填 ${incompleteChipCount.value} 项`
-    : '已填齐',
-);
+/** 只读（查看态）不出缺填提醒，填齐照常标「已填齐」 */
+const supplementBadge = computed(() => {
+  if (incompleteChipCount.value === 0) return '已填齐';
+  return contentLocked.value ? '' : `待填 ${incompleteChipCount.value} 项`;
+});
 const supplementBadgeVariant = computed(() =>
   (incompleteChipCount.value > 0 ? 'warn' : 'count') as 'warn' | 'count',
 );
@@ -288,7 +288,7 @@ function chipActiveClass(key: SupplementChip): string {
             <FormSelect
               :value="form.flashResult || undefined"
               :options="flashResultOptions"
-              placeholder="请选择"
+              :placeholder="contentLocked ? '' : '请选择'"
               style="width: 100%"
               :status="flashErrors?.flashResult ? 'error' : ''"
               @update:value="onFlashResultChange"
@@ -302,6 +302,7 @@ function chipActiveClass(key: SupplementChip): string {
             :model-value="form.flashRecord ?? ''"
             :attachments="form.flashRecordAttachments ?? []"
             :readonly="contentLocked"
+            :shell-background="contentLocked ? '#f5f5f5' : '#fff'"
             placeholder="描述核实、联系与处理过程…"
             @update:model-value="(v: string) => patch({ flashRecord: v })"
             @update:attachments="(v: string[]) => patch({ flashRecordAttachments: v })"
@@ -316,7 +317,7 @@ function chipActiveClass(key: SupplementChip): string {
         :process-result-attachments="form.processResultAttachments"
         :readonly="contentLocked"
         :show-problem-cause="!isSuggest && !isLead"
-        required
+        :required="!contentLocked"
         @update:problem-cause="(v) => patch({ problemCause: v })"
         @update:process-result="(v) => patch({ processResult: v })"
         @update:problem-cause-attachments="(v) => patch({ problemCauseAttachments: v })"
@@ -334,41 +335,41 @@ function chipActiveClass(key: SupplementChip): string {
     >
       <div class="field-row field-row--service">
         <div class="field inline">
-          <label><span class="req">*</span>服务类型</label>
+          <label><span v-if="!contentLocked" class="req">*</span>服务类型</label>
           <FormSelect
             :value="form.serviceType || undefined"
             :options="serviceTypeOptions"
-            placeholder="请选择"
+            :placeholder="contentLocked ? '' : '请选择'"
             style="width: 100%"
             @update:value="(v) => onServiceTypeChange(String(v ?? ''))"
           />
         </div>
         <div class="field inline">
-          <label><span class="req">*</span>服务方式</label>
+          <label><span v-if="!contentLocked" class="req">*</span>服务方式</label>
           <FormSelect
             :value="form.serviceMethod || undefined"
             :options="serviceMethodOptions"
-            placeholder="请选择"
+            :placeholder="contentLocked ? '' : '请选择'"
             style="width: 100%"
             @update:value="(v) => onServiceMethodChange(String(v ?? ''))"
           />
         </div>
         <div class="field inline">
-          <label><span class="req">*</span>问题解决结论</label>
+          <label><span v-if="!contentLocked" class="req">*</span>问题解决结论</label>
           <FormSelect
             :value="form.conclusion || undefined"
             :options="conclusionOptions"
-            placeholder="请选择"
+            :placeholder="contentLocked ? '' : '请选择'"
             style="width: 100%"
             @update:value="(v) => onConclusionChange(String(v ?? ''))"
           />
         </div>
         <div v-if="showServiceSolution" class="field inline">
-          <label><span class="req">*</span>退让方案</label>
+          <label><span v-if="!contentLocked" class="req">*</span>退让方案</label>
           <FormSelect
             :value="form.serviceSolution || undefined"
             :options="serviceSolutionOptions"
-            placeholder="请选择"
+            :placeholder="contentLocked ? '' : '请选择'"
             style="width: 100%"
             @update:value="(v) => patch({ serviceSolution: String(v ?? '') })"
           />
@@ -386,7 +387,7 @@ function chipActiveClass(key: SupplementChip): string {
       >
         <div class="field-row field-row--service field-row--cols3">
           <div class="field inline">
-            <label><span class="req">*</span>服务类型</label>
+            <label><span v-if="!contentLocked" class="req">*</span>服务类型</label>
             <FormSelect
               :value="form.serviceType || SUGGEST_SERVICE_TYPE"
               :options="[{ label: SUGGEST_SERVICE_TYPE, value: SUGGEST_SERVICE_TYPE }]"
@@ -395,7 +396,7 @@ function chipActiveClass(key: SupplementChip): string {
             />
           </div>
           <div class="field inline">
-            <label><span class="req">*</span>服务方式</label>
+            <label><span v-if="!contentLocked" class="req">*</span>服务方式</label>
             <FormSelect
               :value="form.serviceMethod || SUGGEST_SERVICE_METHOD"
               :options="[{ label: SUGGEST_SERVICE_METHOD, value: SUGGEST_SERVICE_METHOD }]"
@@ -404,11 +405,11 @@ function chipActiveClass(key: SupplementChip): string {
             />
           </div>
           <div class="field inline">
-            <label><span class="req">*</span>问题解决结论</label>
+            <label><span v-if="!contentLocked" class="req">*</span>问题解决结论</label>
             <FormSelect
               :value="form.conclusion || undefined"
               :options="conclusionOptions"
-              placeholder="请选择"
+              :placeholder="contentLocked ? '' : '请选择'"
               style="width: 100%"
               @update:value="(v) => onConclusionChange(String(v ?? ''))"
             />
@@ -438,7 +439,7 @@ function chipActiveClass(key: SupplementChip): string {
       >
         <div class="field-row field-row--service field-row--cols3">
           <div class="field inline">
-            <label><span class="req">*</span>服务类型</label>
+            <label><span v-if="!contentLocked" class="req">*</span>服务类型</label>
             <FormSelect
               :value="form.serviceType || LEAD_SERVICE_TYPE"
               :options="[{ label: LEAD_SERVICE_TYPE, value: LEAD_SERVICE_TYPE }]"
@@ -447,7 +448,7 @@ function chipActiveClass(key: SupplementChip): string {
             />
           </div>
           <div class="field inline">
-            <label><span class="req">*</span>服务方式</label>
+            <label><span v-if="!contentLocked" class="req">*</span>服务方式</label>
             <FormSelect
               :value="form.serviceMethod || LEAD_SERVICE_METHOD"
               :options="[{ label: LEAD_SERVICE_METHOD, value: LEAD_SERVICE_METHOD }]"
@@ -456,21 +457,21 @@ function chipActiveClass(key: SupplementChip): string {
             />
           </div>
           <div class="field inline">
-            <label><span class="req">*</span>商机分类</label>
+            <label><span v-if="!contentLocked" class="req">*</span>商机分类</label>
             <FormSelect
               :value="form.leadCategory || undefined"
               :options="LEAD_CATEGORY_OPTIONS"
-              placeholder="请选择或搜索"
+              :placeholder="contentLocked ? '' : '请选择或搜索'"
               style="width: 100%"
               @update:value="onLeadCategoryChange"
             />
           </div>
           <div class="field inline">
-            <label><span class="req">*</span>商机解决结论</label>
+            <label><span v-if="!contentLocked" class="req">*</span>商机解决结论</label>
             <FormSelect
               :value="form.leadStage"
               :options="LEAD_STAGE_OPTIONS"
-              placeholder="请选择或搜索"
+              :placeholder="contentLocked ? '' : '请选择或搜索'"
               style="width: 100%"
               @update:value="onLeadStageChange"
             />
@@ -482,7 +483,7 @@ function chipActiveClass(key: SupplementChip): string {
               :value="form.leadNo"
               :disabled="leadNoDisabled"
               :maxlength="64"
-              placeholder="CRM 商机单号"
+              :placeholder="leadNoDisabled ? '' : 'CRM 商机单号'"
               @update:value="(v: string) => patch({ leadNo: v })"
             />
           </div>
@@ -511,12 +512,12 @@ function chipActiveClass(key: SupplementChip): string {
               chipActiveClass(c.key),
               {
                 filled: isChipFilled(c.key),
-                'need-fill': !isChipFilled(c.key),
+                'need-fill': !contentLocked && !isChipFilled(c.key),
               },
             ]"
             @click.stop="emit('selectChip', c.key)"
           >
-            <span v-if="!isChipFilled(c.key)" class="chip-need-dot" />
+            <span v-if="!contentLocked && !isChipFilled(c.key)" class="chip-need-dot" />
             {{ c.label }}
             <CheckOutlined v-if="isChipFilled(c.key)" class="chip-check" />
           </button>
@@ -556,7 +557,7 @@ function chipActiveClass(key: SupplementChip): string {
         :maxlength="2000"
         :max-file-size-mb="200"
         rename-duplicates
-        placeholder="补充结案后的跟进情况、客户反馈等"
+        :placeholder="postCloseFieldDisabled ? '' : '补充结案后的跟进情况、客户反馈等'"
         @update:model-value="(v: string) => patch({ closingNote: v })"
         @update:attachments="(v: string[]) => patch({ closingNoteAttachments: v })"
         @files-added="emit('closingNoteFilesAdded', $event)"

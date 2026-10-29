@@ -123,8 +123,9 @@ watch(
   { immediate: true },
 );
 
-const missChannelReply = computed(() => followupRows.value.length > 0 && !props.form.complaintChannelReply.trim());
-const missChannelReconcile = computed(() => followupRows.value.length > 0 && !props.form.complaintChannelReconcile);
+// 缺填提醒（红字 / 浅红边框）只在可写时出；只读（查看态）一律不出
+const missChannelReply = computed(() => !props.readonly && followupRows.value.length > 0 && !props.form.complaintChannelReply.trim());
+const missChannelReconcile = computed(() => !props.readonly && followupRows.value.length > 0 && !props.form.complaintChannelReconcile);
 const missChannelAny = computed(() => missChannelReply.value || missChannelReconcile.value);
 
 /** 单一写出口：只读态在此统一拦一道 */
@@ -201,20 +202,20 @@ function onComplaintCat3Change(v: string | number | string[] | undefined) {
   });
 }
 
-const missComplaintMark = computed(() => !props.form.complaintMark);
-const missComplaintCat1 = computed(() => !props.form.complaintCat1);
-const missComplaintCat2 = computed(() => !!props.form.complaintCat1 && !props.form.complaintCat2);
+const missComplaintMark = computed(() => !props.readonly && !props.form.complaintMark);
+const missComplaintCat1 = computed(() => !props.readonly && !props.form.complaintCat1);
+const missComplaintCat2 = computed(() => !props.readonly && !!props.form.complaintCat1 && !props.form.complaintCat2);
 const missComplaintCat3 = computed(
-  () => !!props.form.complaintCat2 && !props.form.complaintCat3,
+  () => !props.readonly && !!props.form.complaintCat2 && !props.form.complaintCat3,
 );
 const missComplainedRole = computed(
-  () => showComplainedRole.value && !props.form.complainedRole?.length,
+  () => !props.readonly && showComplainedRole.value && !props.form.complainedRole?.length,
 );
 const missRiskLevel = computed(
-  () => props.form.riskFlag === '有风险' && !props.form.riskLevel,
+  () => !props.readonly && props.form.riskFlag === '有风险' && !props.form.riskLevel,
 );
 const missRiskDesc = computed(
-  () => props.form.riskFlag === '有风险' && !props.form.riskDescription.trim(),
+  () => !props.readonly && props.form.riskFlag === '有风险' && !props.form.riskDescription.trim(),
 );
 
 // ---- 风险监控侧的现行结论（只读回显） ----
@@ -305,13 +306,13 @@ const riskMonitorDiff = computed(() => {
   <div v-if="activeChip === 'complaint'" class="chip-panel">
     <div class="complaint-cat-row complaint-top-row">
       <div class="cat-item" :class="{ 'is-missing': missComplaintMark }">
-        <label class="field-label-sm"><span class="req">*</span>投诉标记</label>
+        <label class="field-label-sm"><span v-if="!readonly" class="req">*</span>投诉标记</label>
         <FormSelect
           class="cat-select"
           :class="{ 'ctrl-missing': missComplaintMark }"
           :value="form.complaintMark || undefined"
           :options="complaintMarkOpts"
-          placeholder="请选择或搜索"
+          :placeholder="readonly ? '' : '请选择或搜索'"
           @update:value="onComplaintMarkChange"
         />
         <p v-if="missComplaintMark" class="field-err">请选择</p>
@@ -322,7 +323,7 @@ const riskMonitorDiff = computed(() => {
           class="cat-select"
           :value="form.backendPush || undefined"
           :options="backendPushOptions"
-          placeholder="请选择或搜索"
+          :placeholder="readonly ? '' : '请选择或搜索'"
           allow-clear
           @update:value="(v) => update({ backendPush: String(v ?? '') })"
         />
@@ -330,39 +331,39 @@ const riskMonitorDiff = computed(() => {
     </div>
     <div class="complaint-cat-row">
       <div class="cat-item" :class="{ 'is-missing': missComplaintCat1 }">
-        <label class="field-label-sm"><span class="req">*</span>投诉分类一</label>
+        <label class="field-label-sm"><span v-if="!readonly" class="req">*</span>投诉分类一</label>
         <FormSelect
           class="cat-select"
           :class="{ 'ctrl-missing': missComplaintCat1 }"
           :value="form.complaintCat1 || undefined"
           :options="complaintL1Options"
-          placeholder="请选择或搜索"
+          :placeholder="readonly ? '' : '请选择或搜索'"
           @update:value="onComplaintCat1Change"
         />
         <p v-if="missComplaintCat1" class="field-err">请选择</p>
       </div>
       <div class="cat-item" :class="{ 'is-missing': missComplaintCat2 }">
-        <label class="field-label-sm"><span class="req">*</span>投诉分类二</label>
+        <label class="field-label-sm"><span v-if="!readonly" class="req">*</span>投诉分类二</label>
         <FormSelect
           class="cat-select"
           :class="{ 'ctrl-missing': missComplaintCat2 }"
           :value="form.complaintCat2 || undefined"
           :options="complaintL2Options"
-          :disabled="!form.complaintCat1"
-          placeholder="请选择或搜索"
+          :disabled="readonly || !form.complaintCat1"
+          :placeholder="readonly ? '' : '请选择或搜索'"
           @update:value="onComplaintCat2Change"
         />
         <p v-if="missComplaintCat2" class="field-err">请选择</p>
       </div>
       <div class="cat-item" :class="{ 'is-missing': missComplaintCat3 }">
-        <label class="field-label-sm"><span class="req">*</span>投诉分类三</label>
+        <label class="field-label-sm"><span v-if="!readonly" class="req">*</span>投诉分类三</label>
         <FormSelect
           class="cat-select"
           :class="{ 'ctrl-missing': missComplaintCat3 }"
           :value="form.complaintCat3 || undefined"
           :options="complaintL3Options"
-          :disabled="!form.complaintCat2"
-          placeholder="请选择或搜索"
+          :disabled="readonly || !form.complaintCat2"
+          :placeholder="readonly ? '' : '请选择或搜索'"
           @update:value="onComplaintCat3Change"
         />
         <p v-if="missComplaintCat3" class="field-err">请选择</p>
@@ -372,14 +373,14 @@ const riskMonitorDiff = computed(() => {
         class="cat-item"
         :class="{ 'is-missing': missComplainedRole }"
       >
-        <label class="field-label-sm"><span class="req">*</span>被投诉角色</label>
+        <label class="field-label-sm"><span v-if="!readonly" class="req">*</span>被投诉角色</label>
         <FormSelect
           mode="multiple"
           class="cat-select complained-role-select"
           :class="{ 'ctrl-missing': missComplainedRole }"
           :value="form.complainedRole"
           :options="complainedRoleOptions"
-          placeholder="请选择或搜索"
+          :placeholder="readonly ? '' : '请选择或搜索'"
           :max-tag-count="2"
           @update:value="(v) => update({ complainedRole: Array.isArray(v) ? v : [] })"
         />
@@ -395,6 +396,7 @@ const riskMonitorDiff = computed(() => {
         :min-input-height="40"
         :maxlength="2000"
         :readonly="readonly"
+        :shell-background="readonly ? '#f5f5f5' : '#fff'"
         @update:model-value="(v) => update({ complaintNote: v })"
         @update:attachments="(v) => update({ complaintNoteAttachments: v })"
       />
@@ -412,16 +414,16 @@ const riskMonitorDiff = computed(() => {
       />
       <div class="ext-followup-row">
         <div class="ext-followup-field">
-          <label class="field-label-sm"><span class="req">*</span>平台回复结果<span v-if="missChannelAny" class="ext-hint">请填写平台回复结果并选择平台和解</span></label>
+          <label class="field-label-sm"><span v-if="!readonly" class="req">*</span>平台回复结果<span v-if="missChannelAny" class="ext-hint">请填写平台回复结果并选择平台和解</span></label>
           <a-input
             :value="form.complaintChannelReply"
             :class="{ 'ctrl-missing': missChannelReply }"
-            placeholder="填写平台回复结果"
+            :placeholder="readonly ? '' : '填写平台回复结果'"
             @update:value="(v: string) => update({ complaintChannelReply: v ?? '' })"
           />
         </div>
         <div class="ext-followup-field ext-followup-reconcile">
-          <label class="field-label-sm"><span class="req">*</span>平台和解</label>
+          <label class="field-label-sm"><span v-if="!readonly" class="req">*</span>平台和解</label>
           <a-radio-group
             :value="form.complaintChannelReconcile || undefined"
             class="ext-radio"
@@ -453,13 +455,13 @@ const riskMonitorDiff = computed(() => {
           <a-radio v-for="opt in RISK_FLAG_OPTIONS" :key="opt" :value="opt">{{ opt }}</a-radio>
         </a-radio-group>
         <template v-if="form.riskFlag === '有风险'">
-          <label class="field-label-sm risk-level-label"><span class="req">*</span>风险等级</label>
+          <label class="field-label-sm risk-level-label"><span v-if="!readonly" class="req">*</span>风险等级</label>
           <FormSelect
             class="risk-level-select"
             :class="{ 'ctrl-missing': missRiskLevel }"
             :value="form.riskLevel || undefined"
             :options="riskLevelOptions"
-            placeholder="请选择或搜索"
+            :placeholder="readonly ? '' : '请选择或搜索'"
             @update:value="onRiskLevelChange"
           />
         </template>
@@ -480,12 +482,12 @@ const riskMonitorDiff = computed(() => {
         class="field"
         :class="{ 'is-missing': missRiskDesc }"
       >
-        <label><span class="req">*</span>风险描述</label>
+        <label><span v-if="!readonly" class="req">*</span>风险描述</label>
         <a-textarea
           :value="form.riskDescription"
           :rows="3"
           :status="missRiskDesc ? 'error' : undefined"
-          placeholder="描述风险点、影响范围与建议处置…（必填）"
+          :placeholder="readonly ? '' : '描述风险点、影响范围与建议处置…（必填）'"
           @update:value="(v: string) => updateRiskSelfReport({ riskDescription: v ?? '' })"
         />
         <p v-if="missRiskDesc" class="field-err">请填写风险描述</p>

@@ -11,7 +11,7 @@ const props = withDefaults(defineProps<{
   shellBackground?: string;
   shellRadius?: number;
   /**
-   * 只读：正文不可编辑、附件添加/移除入口不出。
+   * 只读：正文不可编辑、附件添加/移除入口不出、不显示占位词。
    *
    * ⚠️ 这里用的是**原生 textarea**，`a-config-provider :component-disabled` 管不到它
    * （那个只作用于 antd 组件）。协同信息区此前的只读态因此只收掉了按钮、正文仍可输入，
@@ -121,7 +121,7 @@ function removeFile(name: string) {
         class="textarea-input"
         :style="{ minHeight: `${minInputHeight}px` }"
         :value="modelValue"
-        :placeholder="placeholder"
+        :placeholder="readonly ? '' : placeholder"
         :readonly="readonly"
         :maxlength="maxlength"
         @input="emit('update:modelValue', ($event.target as HTMLTextAreaElement).value)"
