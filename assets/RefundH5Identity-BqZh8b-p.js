@@ -1,0 +1,1 @@
+var e=`fanyang3`;function t(e){let t=Array.isArray(e)?e[0]:e;return typeof t==`string`&&t.trim()?t.trim():void 0}export{t as n,e as t};
