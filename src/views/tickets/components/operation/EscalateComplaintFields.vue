@@ -37,7 +37,7 @@ withDefaults(defineProps<{
   <section class="ecf" aria-label="投诉工单专属字段">
     <h4 class="ecf-title">投诉工单专属字段</h4>
 
-    <!-- 投诉一类 / 二类：两项必填（级联取建单弹窗同一份分类树） -->
+    <!-- 投诉一类 / 二类：两项必填（级联取新建投诉单用的两级分类） -->
     <div class="ecf-grid">
       <div class="ecf-field">
         <label class="ecf-label"><span class="ecf-req">*</span>投诉一类</label>

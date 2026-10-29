@@ -6,8 +6,10 @@ import { ArrowUpOutlined, CloseOutlined, DownOutlined, PlusOutlined, UpOutlined 
 import OpActionModal from './OpActionModal.vue';
 import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import {
-  COMPLAINT_L1_OPTIONS,
-  COMPLAINT_L2_MAP,
+  CREATE_COMPLAINT_L1_OPTIONS,
+  CREATE_COMPLAINT_L2_MAP,
+} from '@/views/tickets/types/complaintCreateCategory';
+import {
   CUSTOM_PLATFORM_OPTION,
   ticketSourceOptionsForRole,
   complaintPlatformsBySource,
@@ -56,9 +58,10 @@ const syncOpen = ref(false);
  * 判据与建单弹窗同一个函数，别在这里另写一份过滤。
  */
 const sourceOptions = computed(() => ticketSourceOptionsForRole(user.roleKey, source.value));
-const cat1Options = COMPLAINT_L1_OPTIONS.map((v) => ({ value: v, label: v }));
+/** 投诉分类走新建投诉单用的两级分类（`complaintCreateCategory.ts`），不用处理页的三级树 */
+const cat1Options = CREATE_COMPLAINT_L1_OPTIONS.map((v) => ({ value: v, label: v }));
 function cat2OptionsOf(cat1: string) {
-  return (COMPLAINT_L2_MAP[cat1] ?? []).map((v) => ({ value: v, label: v }));
+  return (CREATE_COMPLAINT_L2_MAP[cat1] ?? []).map((v) => ({ value: v, label: v }));
 }
 
 /** 平台字典随来源切换：外投渠道=外部平台，内投渠道=内部渠道，其余来源无平台 */

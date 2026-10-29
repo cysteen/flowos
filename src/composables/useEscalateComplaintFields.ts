@@ -1,13 +1,17 @@
 import { computed, reactive, watch } from 'vue';
 import type { Ticket } from '@/views/tickets/types/ticket';
-import { COMPLAINT_L1_OPTIONS, COMPLAINT_L2_MAP } from '@/views/tickets/types/createTicket';
+import {
+  CREATE_COMPLAINT_L1_OPTIONS,
+  CREATE_COMPLAINT_L2_MAP,
+} from '@/views/tickets/types/complaintCreateCategory';
 
 /**
  * 风险评估选「升级」时要补齐的那一段：**投诉单专属建单要素**（投诉一类 / 投诉二类）
  * 加**升级说明**，三项均必填，升级说明排在两项分类之后、段内最后一项。
  *
- * 【与建单弹窗的关系】两项分类的取值域与级联取建单弹窗那一份（`types/createTicket.ts`）：
- * 走 `COMPLAINT_L1_OPTIONS` + `COMPLAINT_L2_MAP`。**本文件不新造任何枚举**。
+ * 【取值域】两项分类走新建投诉单用的两级分类（`types/complaintCreateCategory.ts`）：
+ * `CREATE_COMPLAINT_L1_OPTIONS` + `CREATE_COMPLAINT_L2_MAP`，与升级投诉弹窗同一份。
+ * 处理页与「补充投诉信息」的三级树不在这里用。**本文件不新造任何枚举**。
  *
  * 【字段范围】只这三项，**不按原单来源分岔**：任何非投诉单升级都出同一份字段表。
  * 投诉平台 / 编号、投诉类型、归属业务线、前期是否反馈、投诉接收时间、服务回溯
@@ -79,10 +83,10 @@ export function useEscalateComplaintFields() {
   const errors = reactive<EscalateComplaintFieldErrors>(emptyErrors());
 
   const complaintL1Options = computed(() =>
-    COMPLAINT_L1_OPTIONS.map((v) => ({ value: v, label: v })),
+    CREATE_COMPLAINT_L1_OPTIONS.map((v) => ({ value: v, label: v })),
   );
   const complaintL2Options = computed(() =>
-    (COMPLAINT_L2_MAP[fields.complaintL1] ?? []).map((v) => ({ value: v, label: v })),
+    (CREATE_COMPLAINT_L2_MAP[fields.complaintL1] ?? []).map((v) => ({ value: v, label: v })),
   );
 
   function clearErrors() {
@@ -94,11 +98,11 @@ export function useEscalateComplaintFields() {
     clearErrors();
   }
 
-  // 投诉一类 → 二类级联，与建单弹窗同一条：二类不在新一类的取值域里就落到首项
+  // 投诉一类 → 二类级联：二类不在新一类的取值域里就落到首项
   watch(
     () => fields.complaintL1,
     () => {
-      const opts = COMPLAINT_L2_MAP[fields.complaintL1] ?? [];
+      const opts = CREATE_COMPLAINT_L2_MAP[fields.complaintL1] ?? [];
       if (!opts.includes(fields.complaintL2)) fields.complaintL2 = opts[0] ?? '';
     },
   );
