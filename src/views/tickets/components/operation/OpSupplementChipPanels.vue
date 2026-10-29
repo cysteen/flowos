@@ -443,7 +443,7 @@ const riskMonitorDiff = computed(() => {
     非处理人：同一套控件的禁用态（这里的 a-config-provider 覆盖 OpProcessForm 外层那一层），
     值照常回显，`updateRiskSelfReport` 再硬拦一道。
   -->
-  <div v-else-if="activeChip === 'risk'" class="chip-panel panel-neutral">
+  <div v-else-if="activeChip === 'risk'" class="chip-panel risk-panel panel-neutral">
     <a-config-provider :component-disabled="!selfReportWritable">
       <div class="field inline-row risk-row">
         <label>风险标记</label>
@@ -615,8 +615,9 @@ const riskMonitorDiff = computed(() => {
   white-space: nowrap;
 }
 
-/* 投诉渠道：不加外框，内容与投诉定性面板左缘对齐 */
-.ext-panel.panel-neutral {
+/* 投诉渠道、风险标记：不加外框，内容与投诉定性面板左缘对齐 */
+.ext-panel.panel-neutral,
+.risk-panel.panel-neutral {
   background: transparent; border: 0; border-radius: 0; padding: 0;
 }
 .ext-empty {
