@@ -381,12 +381,10 @@ function chipActiveClass(key: SupplementChip): string {
       <OpCollapsibleSection
         title="服务与结论"
         :icon="CheckCircleOutlined"
-        badge="结案前确认"
-        badge-variant="hint"
         :expanded="expandedSections.service"
         @toggle="emit('toggleSection', 'service')"
       >
-        <div class="field-row field-row--service">
+        <div class="field-row field-row--service field-row--cols3">
           <div class="field inline">
             <label><span class="req">*</span>服务类型</label>
             <FormSelect
@@ -435,12 +433,10 @@ function chipActiveClass(key: SupplementChip): string {
       <OpCollapsibleSection
         title="服务与结论"
         :icon="CheckCircleOutlined"
-        badge="结案前确认"
-        badge-variant="hint"
         :expanded="expandedSections.service"
         @toggle="emit('toggleSection', 'service')"
       >
-        <div class="field-row field-row--lead">
+        <div class="field-row field-row--service field-row--cols3">
           <div class="field inline">
             <label><span class="req">*</span>服务类型</label>
             <FormSelect
@@ -459,10 +455,6 @@ function chipActiveClass(key: SupplementChip): string {
               style="width: 100%"
             />
           </div>
-          <!-- 第一行两项与第二行三项等宽对齐：占位第三格 -->
-          <div class="field inline" aria-hidden="true" />
-        </div>
-        <div class="field-row field-row--lead">
           <div class="field inline">
             <label><span class="req">*</span>商机分类</label>
             <FormSelect
@@ -590,14 +582,14 @@ function chipActiveClass(key: SupplementChip): string {
 .field label { font-size: 12px; font-weight: 600; color: #374151; }
 .field label .req { color: #ef4444; margin-right: 2px; }
 .field-row { display: flex; gap: 8px; }
-.field-row--lead { align-items: flex-start; flex-wrap: nowrap; }
-.field-row--lead + .field-row--lead { margin-top: 10px; }
 .accept-radios { min-height: 28px; align-items: center; }
 .field-row--flash { align-items: flex-start; margin-bottom: 10px; }
 .flash-err { font-size: 12px; line-height: 18px; color: #ef4444; }
 .field-row .field.inline { flex: 1 1 0; min-width: 0; }
 .field-row--service { align-items: flex-start; flex-wrap: nowrap; }
 .field-row--service .field.inline { flex: 1 1 0; min-width: 0; }
+/* 建议 / 商机：与咨询同列宽的三列栅格，超出三项折行左对齐 */
+.field-row--cols3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 8px; }
 .field-row :deep(.ant-select-selector) {
   height: 28px;
   min-height: 28px;
@@ -636,8 +628,6 @@ function chipActiveClass(key: SupplementChip): string {
 .locked-text { flex: 1; min-width: 0; }
 .sel-icon { color: #9ca3af; font-size: 12px; }
 .sel-arrow { color: #9ca3af; margin-left: auto; font-size: 10px; }
-.conclusion-row { flex-direction: row; align-items: center; gap: 12px; flex-wrap: wrap; }
-.conclusion-row label { width: 96px; flex: none; }
 /* 防止单选项文字被挤断行 */
 .process-form :deep(.ant-radio-wrapper) { white-space: nowrap; }
 .process-form :deep(.ant-radio-group) { display: inline-flex; flex-wrap: wrap; gap: 4px 12px; }
