@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
 import { message } from 'ant-design-vue';
-import { PlusOutlined } from '@ant-design/icons-vue';
+import { PlusOutlined, UserAddOutlined, EditOutlined } from '@ant-design/icons-vue';
 import type { BusinessType, CustomerContactType, CustomerInfo } from '@/views/tickets/types/createTicket';
 import { SCHOOL_LIBRARY, type SchoolRecord } from '@/mock/schools';
 import {
@@ -283,7 +283,6 @@ function onSave() {
 <template>
   <a-modal
     :open="open"
-    :title="modalTitle"
     :width="560"
     centered
     ok-text="确定"
@@ -293,6 +292,13 @@ function onSave() {
     @cancel="onCancel"
     @ok="onSave"
   >
+    <!-- 标题左侧图标徽标：规格同 OpActionModal -->
+    <template #title>
+      <div class="cim-title">
+        <span class="cim-icon"><EditOutlined v-if="editing" /><UserAddOutlined v-else /></span>
+        <span class="cim-title-text">{{ modalTitle }}</span>
+      </div>
+    </template>
     <div class="form">
       <!-- 行1：客户姓名 -->
       <div class="field">
@@ -434,6 +440,14 @@ function onSave() {
 </template>
 
 <style scoped>
+.cim-title { display: flex; align-items: center; gap: 10px; }
+.cim-icon {
+  display: flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: 8px; font-size: 16px; flex: none;
+  background: #eff6ff; color: #1a6fff;
+}
+.cim-title-text { font-size: 15px; font-weight: 700; color: #111827; line-height: 1.3; }
+
 .form {
   display: flex;
   flex-direction: column;

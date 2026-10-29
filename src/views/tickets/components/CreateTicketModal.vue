@@ -9,6 +9,10 @@ import {
   CloseOutlined,
   WarningOutlined,
   UserAddOutlined,
+  FileAddOutlined,
+  SwapOutlined,
+  ReloadOutlined,
+  ArrowUpOutlined,
 } from '@ant-design/icons-vue';
 import type { Ticket, CreateTicketPrefill, Priority } from '@/views/tickets/types/ticket';
 import { isTicketClosed } from '@/views/tickets/types/ticket';
@@ -155,6 +159,14 @@ const modalTitle = computed(() => {
   if (isXiaozhiType.value) return `新建工单 · ${XIAOZHI_MARK_LABEL}`;
   return '新建工单';
 });
+/** 标题左侧图标徽标：规格同 OpActionModal（32px 圆角块 + 配色），按入口取图标 */
+const headIcon = computed(() => {
+  if (isChildMode.value) return SwapOutlined;
+  if (isReopenMode.value) return ReloadOutlined;
+  if (isEscalateMode.value) return ArrowUpOutlined;
+  return FileAddOutlined;
+});
+const headTone = computed(() => (isEscalateMode.value ? 'warn' : 'primary'));
 const parentMetaLabel = computed(() => {
   if (isReopenMode.value) return 'Reopen 原单';
   if (isEscalateMode.value) return '升级自原单';
@@ -451,6 +463,7 @@ watch(
   >
     <div class="modal-header">
       <div class="modal-title-row">
+        <span class="modal-icon" :class="`tone-${headTone}`"><component :is="headIcon" /></span>
         <span class="modal-title">{{ modalTitle }}</span>
         <template v-if="showParentInTitle">
           <span class="title-sep">·</span>
@@ -953,6 +966,18 @@ watch(
   flex: 1;
   padding-right: 12px;
 }
+.modal-icon {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  font-size: 16px;
+}
+.modal-icon.tone-primary { background: #eff6ff; color: #1a6fff; }
+.modal-icon.tone-warn { background: #fff7ed; color: #ea580c; }
 .modal-title {
   flex: none;
   font-size: 16px;
