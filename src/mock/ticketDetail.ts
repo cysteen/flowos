@@ -143,6 +143,9 @@ export interface TicketDetailMeta {
     afterSaleEnabled: boolean;
   };
   complaint: ComplaintInfo;
+  /** 建单投诉一类 / 二类（建单分类，取自工单行 `Ticket.complaintL1/L2`；「工单信息」卡只读展示） */
+  createComplaintL1?: string;
+  createComplaintL2?: string;
   childTickets: ChildTicket[];
   linkedRecords: LinkedRecord[];
   /** 相似工单推荐（AI 助手）；没有可推荐的单时为空 */

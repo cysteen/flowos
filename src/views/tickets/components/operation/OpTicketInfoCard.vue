@@ -12,6 +12,12 @@ const props = defineProps<{ detail: TicketDetailMeta }>();
 const complaintCategories = computed(
   () => (props.detail.complaint?.categories ?? []).filter((c) => c.cat1 && c.cat2),
 );
+/** 建单投诉一类 / 二类（仅投诉单，有值才出） */
+const createComplaintCategory = computed(() =>
+  props.detail.type === '投诉'
+    ? [props.detail.createComplaintL1, props.detail.createComplaintL2].filter(Boolean).join(' / ')
+    : '',
+);
 /** 只展示填了平台的组——建单页平台/编号成对多组，编号可留空 */
 const complaintPlatforms = computed(
   () => (props.detail.complaint?.platforms ?? []).filter((p) => p.platform),
@@ -30,6 +36,9 @@ const flashCard = computed(() => isFlashTicket(props.detail) && !!props.detail.f
     <div class="meta-row">
       <div class="kv"><span class="k">业务类型</span><span class="v">{{ detail.businessType }}</span></div>
       <div class="kv"><span class="k">业务线</span><span class="v">{{ detail.businessLine }}</span></div>
+    </div>
+    <div v-if="createComplaintCategory" class="kv">
+      <span class="k">投诉分类</span><span class="v">{{ createComplaintCategory }}</span>
     </div>
 
     <div class="divider" />

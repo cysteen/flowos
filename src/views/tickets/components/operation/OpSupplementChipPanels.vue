@@ -10,7 +10,7 @@ import type { ProcessFormDraft, RiskFlag, RiskLevel, SupplementChip } from '@/vi
 import {
   RISK_FLAG_OPTIONS,
   RISK_LEVEL_SELECT_OPTIONS,
-  complaintMarkOptions,
+  COMPLAINT_MARK_BASE_OPTIONS,
   COMPLAINT_MARK_REGULATOR_OPTIONS,
   BACKEND_PUSH_OPTIONS,
 } from '@/views/tickets/types/operation';
@@ -25,8 +25,10 @@ import {
 const props = defineProps<{
   activeChip: SupplementChip;
   form: ProcessFormDraft;
-  /** 建单投诉平台，用于控制「有责/无责」类标记显隐 */
+  /** 建单投诉平台 */
   complaintPlatform?: string;
+  /** 工单来源：内投渠道 / 外投渠道时投诉标记追加「有责/无责」类选项 */
+  ticketSource?: string;
   /** 建单投诉平台列表（投诉渠道跟进：平台 + 编号 + 投诉内容） */
   complaintPlatforms?: {
     platform: string;
@@ -57,8 +59,17 @@ const emit = defineEmits<{ 'update:form': [form: ProcessFormDraft] }>();
 const riskTags = useRiskTagStore();
 const riskQueue = useRiskQueueStore();
 const riskLevelOptions = RISK_LEVEL_SELECT_OPTIONS;
+/** 内投 / 外投渠道来源的单可选「有责/无责」类投诉标记 */
+const isChannelComplaintSource = computed(
+  () => props.ticketSource === '内投渠道' || props.ticketSource === '外投渠道',
+);
+const allowedComplaintMarks = computed<string[]>(() =>
+  isChannelComplaintSource.value
+    ? [...COMPLAINT_MARK_BASE_OPTIONS, ...COMPLAINT_MARK_REGULATOR_OPTIONS]
+    : [...COMPLAINT_MARK_BASE_OPTIONS],
+);
 const complaintMarkOpts = computed(() =>
-  complaintMarkOptions(props.complaintPlatform).map((v) => ({ label: v, value: v })),
+  allowedComplaintMarks.value.map((v) => ({ label: v, value: v })),
 );
 const complaintL1Options = COMPLAINT_L1_OPTIONS.map((v) => ({ label: v, value: v }));
 const complaintL2Options = computed(() =>
@@ -134,12 +145,12 @@ function onComplaintMarkChange(v: string | number | string[] | undefined) {
 }
 
 watch(
-  () => props.complaintPlatform,
+  () => props.ticketSource,
   () => {
     const mark = props.form.complaintMark;
     if (!mark) return;
-    const allowed = complaintMarkOptions(props.complaintPlatform);
-    if (!allowed.includes(mark) && (COMPLAINT_MARK_REGULATOR_OPTIONS as readonly string[]).includes(mark)) {
+    const allowed = allowedComplaintMarks.value;
+    if (!allowed.includes(mark) &&(COMPLAINT_MARK_REGULATOR_OPTIONS as readonly string[]).includes(mark)) {
       update({ complaintMark: '' });
     }
   },
@@ -160,13 +171,13 @@ function updateRiskSelfReport(partial: Partial<ProcessFormDraft>) {
 }
 
 function onRiskFlagChange(flag: RiskFlag) {
-  const needsDesc = flag === '有风险' || flag === '疑似风险';
+  // 风险等级与风险描述都只随「有风险」出现，切走即清空
   const hasRisk = flag === '有风险';
   updateRiskSelfReport({
     riskFlag: flag,
     riskLevel: hasRisk ? props.form.riskLevel : '',
-    riskDescription: needsDesc ? props.form.riskDescription : '',
-    riskDescriptionAttachments: needsDesc ? props.form.riskDescriptionAttachments : [],
+    riskDescription: hasRisk ? props.form.riskDescription : '',
+    riskDescriptionAttachments: hasRisk ? props.form.riskDescriptionAttachments : [],
   });
 }
 
@@ -199,14 +210,11 @@ const missComplaintCat3 = computed(
 const missComplainedRole = computed(
   () => showComplainedRole.value && !props.form.complainedRole?.length,
 );
-const missComplaintNote = computed(() => !props.form.complaintNote.trim());
 const missRiskLevel = computed(
   () => props.form.riskFlag === '有风险' && !props.form.riskLevel,
 );
 const missRiskDesc = computed(
-  () =>
-    (props.form.riskFlag === '疑似风险' || props.form.riskFlag === '有风险')
-    && !props.form.riskDescription.trim(),
+  () => props.form.riskFlag === '有风险' && !props.form.riskDescription.trim(),
 );
 
 // ---- 风险监控侧的现行结论（只读回显） ----
@@ -276,7 +284,7 @@ const riskMonitorDiff = computed(() => {
   if (!v) return '';
   const parts: string[] = [];
   if (v.flag && props.form.riskFlag && props.form.riskFlag !== v.flag) {
-    parts.push(`「是否有风险」本页为「${props.form.riskFlag}」，监控结论为「${v.flag}」`);
+    parts.push(`「风险标记」本页为「${props.form.riskFlag}」，监控结论为「${v.flag}」`);
   }
   if (v.grade && props.form.riskLevel && props.form.riskLevel !== v.grade) {
     parts.push(`「风险等级」本页为「${riskLevelText(props.form.riskLevel)}」，监控工单级为「${riskLevelText(v.grade)}」`);
@@ -378,11 +386,10 @@ const riskMonitorDiff = computed(() => {
         <p v-if="missComplainedRole" class="field-err">请选择</p>
       </div>
     </div>
-    <div class="field" :class="{ 'is-missing': missComplaintNote }">
-      <label><span class="req">*</span>投诉备注</label>
+    <div class="field">
+      <label>投诉备注</label>
       <OpTextareaAttach
         class="attach-ctrl"
-        :class="{ 'ctrl-missing': missComplaintNote }"
         :model-value="form.complaintNote"
         :attachments="form.complaintNoteAttachments"
         :min-input-height="40"
@@ -390,7 +397,6 @@ const riskMonitorDiff = computed(() => {
         @update:model-value="(v) => update({ complaintNote: v })"
         @update:attachments="(v) => update({ complaintNoteAttachments: v })"
       />
-      <p v-if="missComplaintNote" class="field-err">请填写投诉备注</p>
     </div>
   </div>
 
@@ -414,7 +420,7 @@ const riskMonitorDiff = computed(() => {
           />
         </div>
         <div class="ext-followup-field ext-followup-reconcile">
-          <label class="field-label-sm"><span class="req">*</span>是否和解</label>
+          <label class="field-label-sm"><span class="req">*</span>平台和解</label>
           <a-radio-group
             :value="form.complaintChannelReconcile || undefined"
             class="ext-radio"
@@ -425,7 +431,7 @@ const riskMonitorDiff = computed(() => {
           </a-radio-group>
         </div>
       </div>
-      <p v-if="missChannelAny" class="ext-hint">请填写平台回复结果并选择是否和解</p>
+      <p v-if="missChannelAny" class="ext-hint">请填写平台回复结果并选择平台和解</p>
     </div>
   </div>
 
@@ -438,7 +444,7 @@ const riskMonitorDiff = computed(() => {
   <div v-else-if="activeChip === 'risk'" class="chip-panel panel-neutral">
     <a-config-provider :component-disabled="!selfReportWritable">
       <div class="field inline-row risk-row">
-        <label>是否有风险</label>
+        <label>风险标记</label>
         <a-radio-group
           :value="form.riskFlag || undefined"
           class="radio-row"
@@ -470,7 +476,7 @@ const riskMonitorDiff = computed(() => {
         <p v-if="riskMonitorDiff" class="rm-diff">{{ riskMonitorDiff }}</p>
       </div>
       <div
-        v-if="form.riskFlag === '疑似风险' || form.riskFlag === '有风险'"
+        v-if="form.riskFlag === '有风险'"
         class="field"
         :class="{ 'is-missing': missRiskDesc }"
       >
