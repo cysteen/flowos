@@ -526,8 +526,7 @@ function chipActiveClass(key: SupplementChip): string {
           >
             <span v-if="!isChipFilled(c.key)" class="chip-need-dot" />
             {{ c.label }}
-            <span v-if="!isChipFilled(c.key) && c.key !== 'risk'" class="chip-need-tag">待填</span>
-            <CheckOutlined v-else class="chip-check" />
+            <CheckOutlined v-if="isChipFilled(c.key)" class="chip-check" />
           </button>
         </div>
       </template>
@@ -642,56 +641,28 @@ function chipActiveClass(key: SupplementChip): string {
 /* 防止单选项文字被挤断行 */
 .process-form :deep(.ant-radio-wrapper) { white-space: nowrap; }
 .process-form :deep(.ant-radio-group) { display: inline-flex; flex-wrap: wrap; gap: 4px 12px; }
-.chip-row { display: flex; gap: 8px; flex-wrap: nowrap; }
+/* 分段切换：浅灰底槽，选中项白底浮起；待填小橙点、填齐小绿勾 */
+.chip-row {
+  display: inline-flex; gap: 2px; flex-wrap: nowrap;
+  padding: 2px; border-radius: 8px; background: #f3f4f6;
+}
 .chip {
   display: inline-flex; align-items: center; gap: 6px;
-  padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 500;
-  border: 1px solid #e5e7eb; background: #f9fafb; color: #6b7280; cursor: pointer;
+  height: 26px; padding: 0 12px; border-radius: 6px; font-size: 12px; font-weight: 500;
+  border: none; background: transparent; color: #6b7280; cursor: pointer;
   white-space: nowrap; flex: none;
 }
-.chip.need-fill {
-  border-color: #e5e7eb;
-  background: #fff;
-  color: #6b7280;
-  font-weight: 500;
-}
-.chip.need-fill.active,
-.chip.need-fill.active-external,
-.chip.need-fill.active-risk,
-.chip.need-fill.active-appointment {
-  /* 选中态交给 .active*，不再叠加大红描边 */
-  box-shadow: none;
-}
+.chip:hover { color: #374151; }
 .chip-need-dot {
   width: 5px; height: 5px; border-radius: 50%; background: #f59e0b; flex: none;
 }
-.chip-need-tag {
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1;
-  padding: 2px 5px;
-  border-radius: 3px;
-  color: #b45309;
-  background: #fffbeb;
-  border: 1px solid #fde68a;
-  flex: none;
-}
-/* 选中态只变底色与字色，边框保持与未选中一致（蓝描边与输入框聚焦态撞色） */
-.chip.active {
-  background: #eff6ff; color: #1a6fff;
-  font-weight: 600;
-}
-.chip.active-external {
-  background: #eff6ff; color: #1a6fff;
-  font-weight: 600;
-}
-.chip.active-risk {
-  background: #eff6ff; color: #1a6fff;
-  font-weight: 600;
-}
+.chip.active,
+.chip.active-external,
+.chip.active-risk,
 .chip.active-appointment {
-  background: #eff6ff; color: #1a6fff;
+  background: #fff; color: #1a6fff;
   font-weight: 600;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(15, 23, 42, 0.04);
 }
 .chip-dot { width: 6px; height: 6px; border-radius: 3px; background: #f59e0b; flex: none; }
 .chip-check { font-size: 11px; flex: none; color: #10b981; }
