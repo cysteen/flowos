@@ -63,6 +63,19 @@ withDefaults(defineProps<{
       </div>
     </div>
 
+    <!-- 服务投诉分类：淘云 ∧ 投诉二类「对人员服务态度不满」时出现，必填 -->
+    <div v-if="ctl.showServiceComplaintCategory.value" class="ecf-field">
+      <label class="ecf-label"><span class="ecf-req">*</span>服务投诉分类</label>
+      <FormSelect
+        v-model:value="ctl.fields.serviceComplaintCategory"
+        class="ecf-control"
+        :status="ctl.errors.serviceComplaintCategory ? 'error' : ''"
+        :options="ctl.serviceComplaintCategoryOptions.value"
+        placeholder="请选择服务投诉分类"
+      />
+      <p v-if="ctl.errors.serviceComplaintCategory" class="ecf-err">{{ ctl.errors.serviceComplaintCategory }}</p>
+    </div>
+
     <!-- 升级说明：段内最后一项，必填。整行占满，不进上面那张两列栅格 -->
     <div class="ecf-field">
       <label class="ecf-label"><span class="ecf-req">*</span>{{ adviceLabel }}</label>

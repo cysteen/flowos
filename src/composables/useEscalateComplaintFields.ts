@@ -3,7 +3,11 @@ import type { Ticket } from '@/views/tickets/types/ticket';
 import {
   CREATE_COMPLAINT_L1_OPTIONS,
   CREATE_COMPLAINT_L2_MAP,
+  SERVICE_COMPLAINT_CATEGORY_OPTIONS,
+  needsServiceComplaintCategory,
 } from '@/views/tickets/types/complaintCreateCategory';
+import { TICKETS } from '@/mock/tickets';
+import { useDerivedTicketStore } from '@/stores/derivedTickets';
 
 /**
  * 风险评估选「升级」时要补齐的那一段：**投诉单专属建单要素**（投诉一类 / 投诉二类）
@@ -34,6 +38,8 @@ import {
 export interface EscalateComplaintFieldsState {
   complaintL1: string;
   complaintL2: string;
+  /** 服务投诉分类（本单业务类型＝淘云 ∧ 投诉二类＝「对人员服务态度不满」时必填） */
+  serviceComplaintCategory: string;
   /** 升级说明（选「不升级」时同一个格子在宿主弹窗里叫「处理意见」） */
   advice: string;
 }
@@ -42,6 +48,7 @@ export interface EscalateComplaintFieldsState {
 export interface EscalateComplaintFieldErrors {
   complaintL1: string;
   complaintL2: string;
+  serviceComplaintCategory: string;
   advice: string;
 }
 
@@ -52,12 +59,13 @@ export interface EscalateComplaintFieldErrors {
 export type EscalateComplaintPayload = Pick<
   EscalateComplaintFieldsState,
   'complaintL1' | 'complaintL2'
->;
+> & { serviceComplaintCategory?: string };
 
 function emptyFields(): EscalateComplaintFieldsState {
   return {
     complaintL1: '',
     complaintL2: '',
+    serviceComplaintCategory: '',
     advice: '',
   };
 }
@@ -66,6 +74,7 @@ function emptyErrors(): EscalateComplaintFieldErrors {
   return {
     complaintL1: '',
     complaintL2: '',
+    serviceComplaintCategory: '',
     advice: '',
   };
 }
@@ -75,12 +84,36 @@ export function escalateComplaintOverrides(p: EscalateComplaintPayload): Partial
   return {
     complaintL1: p.complaintL1,
     complaintL2: p.complaintL2,
+    // 恒带这个键：新单由原单抄件派生，不满足条件时须显式覆盖为空
+    serviceComplaintCategory: p.serviceComplaintCategory || undefined,
   };
 }
 
-export function useEscalateComplaintFields() {
+/** 按单号取工单行上的业务类型（静态工单库 → 运行时派生单），供宿主传给本 composable */
+export function ticketBusinessTypeOf(ticketNo?: string): string | undefined {
+  if (!ticketNo) return undefined;
+  return (TICKETS.find((t) => t.no === ticketNo) ?? useDerivedTicketStore().find(ticketNo))?.businessType;
+}
+
+/**
+ * `businessType`：本单业务类型的取值来源（宿主传入）；不传则视为非淘云，「服务投诉分类」不出。
+ */
+export function useEscalateComplaintFields(businessType?: () => string | undefined) {
   const fields = reactive<EscalateComplaintFieldsState>(emptyFields());
   const errors = reactive<EscalateComplaintFieldErrors>(emptyErrors());
+
+  /** 服务投诉分类（淘云专属）：业务类型＝淘云 ∧ 投诉二类＝「对人员服务态度不满」时出现且必填 */
+  const showServiceComplaintCategory = computed(() =>
+    needsServiceComplaintCategory(businessType?.(), '投诉', fields.complaintL2),
+  );
+  const serviceComplaintCategoryOptions = computed(() =>
+    SERVICE_COMPLAINT_CATEGORY_OPTIONS.map((v) => ({ value: v, label: v })),
+  );
+  watch(showServiceComplaintCategory, (on) => {
+    if (on) return;
+    fields.serviceComplaintCategory = '';
+    errors.serviceComplaintCategory = '';
+  });
 
   const complaintL1Options = computed(() =>
     CREATE_COMPLAINT_L1_OPTIONS.map((v) => ({ value: v, label: v })),
@@ -111,14 +144,18 @@ export function useEscalateComplaintFields() {
   watch(fields, () => {
     if (fields.complaintL1) errors.complaintL1 = '';
     if (fields.complaintL2) errors.complaintL2 = '';
+    if (fields.serviceComplaintCategory) errors.serviceComplaintCategory = '';
     if (fields.advice.trim()) errors.advice = '';
   });
 
-  /** 必填校验：三项都得填，缺项各自出红字 */
+  /** 必填校验：三项都得填（淘云服务投诉另加服务投诉分类），缺项各自出红字 */
   function validate(): boolean {
     clearErrors();
     if (!fields.complaintL1) errors.complaintL1 = '请选择投诉一类';
     if (!fields.complaintL2) errors.complaintL2 = '请选择投诉二类';
+    if (showServiceComplaintCategory.value && !fields.serviceComplaintCategory) {
+      errors.serviceComplaintCategory = '请选择服务投诉分类';
+    }
     if (!fields.advice.trim()) errors.advice = '请填写升级说明';
     return !Object.values(errors).some(Boolean);
   }
@@ -128,6 +165,9 @@ export function useEscalateComplaintFields() {
     return {
       complaintL1: fields.complaintL1,
       complaintL2: fields.complaintL2,
+      ...(showServiceComplaintCategory.value && fields.serviceComplaintCategory
+        ? { serviceComplaintCategory: fields.serviceComplaintCategory }
+        : {}),
     };
   }
 
@@ -136,6 +176,8 @@ export function useEscalateComplaintFields() {
     errors,
     complaintL1Options,
     complaintL2Options,
+    showServiceComplaintCategory,
+    serviceComplaintCategoryOptions,
     reset,
     clearErrors,
     validate,

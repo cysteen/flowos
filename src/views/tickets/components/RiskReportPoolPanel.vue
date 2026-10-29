@@ -34,6 +34,7 @@ import { useRiskReportStore, type RiskReport } from '@/stores/riskReports';
 // 直接改状态做不到这两件事，而留痕正是这条队列的凭据。
 import { isComplaintPoolTicket, useRiskPoolStore } from '@/stores/riskPool';
 import { assessDecisionLabel, isFlashAssessTarget, useRiskReportAssess } from '@/composables/useRiskReportAssess';
+import { ticketBusinessTypeOf } from '@/composables/useEscalateComplaintFields';
 // 风险等级四选一 + 风险备注：与风险监控页评估处置工作面共用同一份（落库走 recordTagFor）
 import { useRiskLevelFields } from '@/composables/useRiskLevelFields';
 import RiskLevelFields from './operation/RiskLevelFields.vue';
@@ -78,7 +79,7 @@ const {
   showEscalateFields,
   openAssess,
   confirmAssess,
-} = useRiskReportAssess({ level: assessLevel });
+} = useRiskReportAssess({ level: assessLevel, businessTypeOf: ticketBusinessTypeOf });
 
 /**
  * 能不能动手。**投诉督导看得见、一枚动作没有**——它已去权，只看数据。

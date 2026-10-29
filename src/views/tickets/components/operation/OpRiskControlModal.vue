@@ -14,6 +14,7 @@ import RiskCollabFields from './RiskCollabFields.vue';
 // 用 `makeRiskLevelFieldsView` 包一层薄适配器交给同一个组件渲染。
 import RiskLevelFields from './RiskLevelFields.vue';
 import { assessDecisionLabel, useRiskReportAssess } from '@/composables/useRiskReportAssess';
+import { ticketBusinessTypeOf } from '@/composables/useEscalateComplaintFields';
 import { makeRiskLevelFieldsView, useRiskLevelFields } from '@/composables/useRiskLevelFields';
 import { useRiskCollabFields } from '@/composables/useRiskCollabFields';
 import { useRiskPoolStore } from '@/stores/riskPool';
@@ -121,7 +122,7 @@ const {
   openAssess,
   confirmAssess,
   canAssessReport,
-} = useRiskReportAssess({ level: assessLevel });
+} = useRiskReportAssess({ level: assessLevel, businessTypeOf: ticketBusinessTypeOf });
 
 /** 本单**未出结论**的那条条目（至多一条：同单在队至多一条，基线 ※29） */
 const openItem = computed<RiskPoolItem | null>(

@@ -296,6 +296,8 @@ export interface EscalateOnComplaintInput {
   platforms: ComplaintPlatformPick[];
   /** 投诉问题描述（必填） */
   note: string;
+  /** 服务投诉分类（原单淘云 ∧ 任一组二类「对人员服务态度不满」时必填，其余不带） */
+  serviceComplaintCategory?: string;
 }
 
 export type EscalateInput = EscalateOnComplaintInput;
@@ -323,6 +325,7 @@ export function summarizeEscalateInput(input: EscalateOnComplaintInput): string[
   return [
     `工单来源：${input.source}`,
     cats.length ? `投诉分类：${cats.join('；')}` : '',
+    input.serviceComplaintCategory ? `服务投诉分类：${input.serviceComplaintCategory}` : '',
     plats.length ? `投诉平台：${plats.join('；')}` : '',
     `投诉问题描述：${input.note}`,
   ].filter(Boolean);
@@ -363,6 +366,7 @@ export function buildEscalatedTicket(
     tab: 'mine',
     ticketSource: input.source,
     escalatedFromNo: detail.no,
+    serviceComplaintCategory: input.serviceComplaintCategory || undefined,
     customerPhone: detail.customer.contacts.find((c) => c.type === 'phone')?.value,
     productCategory: detail.product.category,
     problemDesc: [

@@ -8,6 +8,8 @@ import type { TicketDetailMeta } from '@/mock/ticketDetail';
 import {
   CREATE_COMPLAINT_L1_OPTIONS,
   CREATE_COMPLAINT_L2_MAP,
+  SERVICE_COMPLAINT_CATEGORY_OPTIONS,
+  needsServiceComplaintCategory,
 } from '@/views/tickets/types/complaintCreateCategory';
 import {
   CUSTOM_PLATFORM_OPTION,
@@ -50,6 +52,7 @@ const source = ref<string | undefined>(undefined);
 const categories = ref<ComplaintCategoryPick[]>([{ cat1: '', cat2: '' }]);
 const platforms = ref<ComplaintPlatformPick[]>([]);
 const note = ref('');
+const serviceComplaintCategory = ref<string | undefined>(undefined);
 const syncOpen = ref(false);
 
 /**
@@ -80,6 +83,7 @@ watch(
     categories.value = [{ cat1: '', cat2: '' }];
     platforms.value = [];
     note.value = '';
+    serviceComplaintCategory.value = undefined;
     syncOpen.value = false;
   },
 );
@@ -108,10 +112,20 @@ function removePlatform(i: number) {
 
 const validCategories = computed(() => categories.value.filter((c) => c.cat1 && c.cat2));
 
+/** 服务投诉分类（淘云专属）：原单业务类型＝淘云 ∧ 任一组二类＝「对人员服务态度不满」时出现且必填 */
+const serviceCategoryOptions = SERVICE_COMPLAINT_CATEGORY_OPTIONS.map((v) => ({ value: v, label: v }));
+const showServiceCategory = computed(() =>
+  categories.value.some((c) => needsServiceComplaintCategory(props.detail.businessType, '投诉', c.cat2)),
+);
+watch(showServiceCategory, (on) => {
+  if (!on) serviceComplaintCategory.value = undefined;
+});
+
 const canSubmit = computed(() => {
   if (!verdict.value.entryEnabled) return false;
   if (!source.value || !note.value.trim()) return false;
   if (!validCategories.value.length) return false;
+  if (showServiceCategory.value && !serviceComplaintCategory.value) return false;
   // 外投渠道：至少一个平台；选「其他」时须手填名称
   if (isExternal.value) {
     const rows = platforms.value.filter((p) => p.platform);
@@ -137,6 +151,9 @@ function onSubmit() {
       .filter((p) => p.platform)
       .map((p) => ({ ...p, complaintNo: p.complaintNo.trim() })),
     note: note.value.trim(),
+    ...(showServiceCategory.value && serviceComplaintCategory.value
+      ? { serviceComplaintCategory: serviceComplaintCategory.value }
+      : {}),
   });
   close();
 }
@@ -208,6 +225,16 @@ function onSubmit() {
             ><CloseOutlined /></button>
           </div>
         </div>
+      </div>
+
+      <div v-if="showServiceCategory" class="op-field">
+        <div class="op-label req">服务投诉分类</div>
+        <ASelect
+          v-model:value="serviceComplaintCategory"
+          :options="serviceCategoryOptions"
+          placeholder="选择服务投诉分类"
+          style="width:100%"
+        />
       </div>
 
       <!-- 投诉平台 + 编号：成对多组，仅内投/外投渠道有 -->

@@ -16,6 +16,7 @@ import { isComplaintPoolTicket } from '@/stores/riskPool';
 // 选「升级」时要补齐的投诉单专属建单要素（投诉一类 / 二类）：字段、级联与校验只此一份，三处评估弹窗共用
 import {
   escalateComplaintOverrides,
+  ticketBusinessTypeOf,
   useEscalateComplaintFields,
   type EscalateComplaintPayload,
 } from '@/composables/useEscalateComplaintFields';
@@ -259,7 +260,11 @@ export function assessDecisionLabel(decision: AssessDecision | '', flash: boolea
  * 页头那个弹窗的**投诉支**另有一份自持的风险等级段，但它走 `props.open`、从不经过
  * `openAssess`，两段不会同时出现。
  */
-export function useRiskReportAssess(opts?: { level?: RiskLevelFieldsCtl }) {
+export function useRiskReportAssess(opts?: {
+  level?: RiskLevelFieldsCtl;
+  /** 按单号取本单业务类型（宿主传入，「服务投诉分类」的显隐判据之一）；不传按工单行取 */
+  businessTypeOf?: (ticketNo: string) => string | undefined;
+}) {
   const user = useUserStore();
   const reportStore = useRiskPoolStore();
 
@@ -277,7 +282,11 @@ export function useRiskReportAssess(opts?: { level?: RiskLevelFieldsCtl }) {
    * 切到「不升级」段落隐藏但**状态留在这里不清**，切回来原样还在；
    * 提交「不升级」时 `payload()` 根本不会被调到，两项分类一律不落库。
    */
-  const escalateFields = useEscalateComplaintFields();
+  const escalateFields = useEscalateComplaintFields(() => {
+    const no = assessTarget.value?.ticketNo;
+    if (!no) return undefined;
+    return (opts?.businessTypeOf ?? ticketBusinessTypeOf)(no);
+  });
   const showEscalateFields = computed(() =>
     showEscalateComplaintFields(assessDecision.value, assessTarget.value?.ticketNo),
   );

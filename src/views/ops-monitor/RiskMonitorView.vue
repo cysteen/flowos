@@ -38,7 +38,7 @@ import { makeRiskLevelFieldsView } from '@/composables/useRiskLevelFields';
 // 选「升级」后那一段投诉专属建单要素（投诉一类 / 二类）：与工单页底栏、风险报备池两个评估入口
 // **共用同一个组件**，字段、级联与校验全在 `useEscalateComplaintFields`，本页不另写一份
 import EscalateComplaintFields from '@/views/tickets/components/operation/EscalateComplaintFields.vue';
-import { useEscalateComplaintFields } from '@/composables/useEscalateComplaintFields';
+import { ticketBusinessTypeOf, useEscalateComplaintFields } from '@/composables/useEscalateComplaintFields';
 // 「风险管控」弹窗下半**投诉支**那三项（处理意见 / 建议事项 /「其他」的具体建议）：
 // 与工单页页头「风险管控」弹窗、风险工单池的协同处理弹窗**共用同一份**，字段、校验与
 // 落库（`submitTo`）全在 `useRiskCollabFields` 里，本页不另写一套
@@ -654,7 +654,9 @@ function todayPrefix() {
  * composable、渲染走共享组件 `EscalateComplaintFields`，与工单页底栏、风险报备池两个评估入口
  * **同一份实现**。整段显隐同样是共享的 `showEscalateComplaintFields`，本页不自判一遍。
  */
-const escalateFields = useEscalateComplaintFields();
+const escalateFields = useEscalateComplaintFields(
+  () => ticketBusinessTypeOf(entryTagTarget.value?.ticketNo),
+);
 
 /**
  * 结论正文那一格。值存在 `escalateFields.fields.advice` 上，本 ref 只是个读写代理：
