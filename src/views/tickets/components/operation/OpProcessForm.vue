@@ -593,30 +593,45 @@ function chipActiveClass(key: SupplementChip): string {
 .field-row { display: flex; gap: 8px; }
 .field-row--lead { align-items: flex-start; flex-wrap: nowrap; }
 .field-row--lead + .field-row--lead { margin-top: 10px; }
-.accept-radios { min-height: 32px; align-items: center; }
+.accept-radios { min-height: 28px; align-items: center; }
 .field-row--flash { align-items: flex-start; margin-bottom: 10px; }
 .flash-err { font-size: 12px; line-height: 18px; color: #ef4444; }
 .field-row .field.inline { flex: 1 1 0; min-width: 0; }
 .field-row--service { align-items: flex-start; flex-wrap: nowrap; }
 .field-row--service .field.inline { flex: 1 1 0; min-width: 0; }
 .field-row :deep(.ant-select-selector) {
-  height: 32px;
-  min-height: 32px;
+  height: 28px;
+  min-height: 28px;
   font-size: 12px;
 }
 .field-row :deep(.ant-select-selection-item),
 .field-row :deep(.ant-select-selection-placeholder) {
   font-size: 12px;
-  line-height: 30px;
+  line-height: 26px;
 }
 .field-row :deep(.ant-input) {
-  height: 32px;
+  height: 28px;
   font-size: 12px;
+}
+/* 工单处理 Tab 内单行控件统一 28px（含补充处理各面板里未单独定高的下拉 / 输入框） */
+.process-form :deep(.ant-select-single .ant-select-selector) {
+  height: 28px;
+  min-height: 28px;
+}
+.process-form :deep(.ant-select-single .ant-select-selection-item),
+.process-form :deep(.ant-select-single .ant-select-selection-placeholder) {
+  line-height: 26px;
+}
+.process-form :deep(.ant-select-single .ant-select-selection-search-input) {
+  height: 26px;
+}
+.process-form :deep(input.ant-input) {
+  height: 28px;
 }
 .select-like {
   display: flex; align-items: center; gap: 6px;
   padding: 6px 8px; background: #fff; border: 1px solid #e5e7eb;
-  border-radius: 6px; font-size: 12px; color: #111827; min-height: 32px;
+  border-radius: 6px; font-size: 12px; color: #111827; min-height: 28px;
 }
 .select-like.locked { color: #6b7280; justify-content: space-between; }
 .locked-text { flex: 1; min-width: 0; }

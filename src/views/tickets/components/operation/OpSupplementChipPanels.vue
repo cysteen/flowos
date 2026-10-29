@@ -505,20 +505,16 @@ const riskMonitorDiff = computed(() => {
 .inline-row { flex-direction: row; align-items: center; gap: 12px; }
 .inline-row .field-label-sm { flex: none; white-space: nowrap; }
 .flex1 { flex: 1; min-width: 0; }
-/* 投诉标记行（2 列）+ 分类行（3～4 列） */
+/* 投诉标记行 + 分类行：同一套三列栅格，两行控件左缘与宽度对齐（被投诉角色折到第三行首列） */
 .complaint-cat-row {
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
   gap: 10px;
   min-width: 0;
 }
-.complaint-top-row .cat-item {
-  flex: 1 1 0;
-}
-/* 标签与控件同一行（key–value）；缺填提示折到下一整行 */
+/* 标签与控件同一行（key–value），标签等宽右对齐；缺填提示折到控件下方 */
 .cat-item {
-  flex: 1 1 0;
   min-width: 0;
   display: flex;
   flex-direction: row;
@@ -527,53 +523,55 @@ const riskMonitorDiff = computed(() => {
   gap: 4px 8px;
 }
 .cat-item .field-label-sm {
-  flex: none;
+  flex: 0 0 72px;
+  width: 72px;
+  text-align: right;
   white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
 }
 .cat-item .cat-select { flex: 1 1 0; min-width: 0; width: auto; }
-.cat-item .field-err { flex: 1 1 100%; }
+.cat-item .field-err { flex: 1 1 100%; padding-left: 80px; }
 .cat-select { width: 100%; }
 .cat-select :deep(.ant-select-selector) {
-  height: 32px;
-  min-height: 32px;
+  height: 28px;
+  min-height: 28px;
   font-size: 12px;
 }
 .cat-select :deep(.ant-select-selection-item),
 .cat-select :deep(.ant-select-selection-placeholder) {
   font-size: 12px;
-  line-height: 30px;
+  line-height: 26px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 @media (max-width: 960px) {
   .complaint-cat-row {
-    flex-wrap: wrap;
-  }
-  .cat-item {
-    flex: 1 1 calc(50% - 5px);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 .complained-role-select {
   width: 100%;
 }
 .complained-role-select :deep(.ant-select-selector) {
-  min-height: 32px;
+  min-height: 28px;
   height: auto;
-  padding-top: 2px;
-  padding-bottom: 2px;
+  padding-top: 1px;
+  padding-bottom: 1px;
 }
 .complained-role-select :deep(.ant-select-selection-item) {
   font-size: 11px;
-  line-height: 20px;
-  height: 22px;
+  line-height: 18px;
+  height: 20px;
   margin-top: 1px;
   margin-bottom: 1px;
   max-width: 100%;
 }
 .complained-role-select :deep(.ant-select-selection-placeholder) {
   font-size: 12px;
-  line-height: 28px;
+  line-height: 24px;
 }
 
 .req {
@@ -645,14 +643,14 @@ const riskMonitorDiff = computed(() => {
   flex: 0 0 132px;
 }
 .ext-followup-field :deep(.ant-input) {
-  height: 32px;
+  height: 28px;
   font-size: 12px;
 }
 .ext-radio {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 32px;
+  min-height: 28px;
 }
 .ext-hint {
   margin: 0;
