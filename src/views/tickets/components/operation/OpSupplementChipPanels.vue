@@ -412,10 +412,10 @@ const riskMonitorDiff = computed(() => {
       />
       <div class="ext-followup-row">
         <div class="ext-followup-field">
-          <label class="field-label-sm"><span class="req">*</span>平台回复结果</label>
+          <label class="field-label-sm"><span class="req">*</span>平台回复结果<span v-if="missChannelAny" class="ext-hint">请填写平台回复结果并选择平台和解</span></label>
           <a-input
             :value="form.complaintChannelReply"
-            :status="missChannelReply ? 'warning' : undefined"
+            :class="{ 'ctrl-missing': missChannelReply }"
             placeholder="填写平台回复结果"
             @update:value="(v: string) => update({ complaintChannelReply: v ?? '' })"
           />
@@ -432,7 +432,6 @@ const riskMonitorDiff = computed(() => {
           </a-radio-group>
         </div>
       </div>
-      <p v-if="missChannelAny" class="ext-hint">请填写平台回复结果并选择平台和解</p>
     </div>
   </div>
 
@@ -589,7 +588,8 @@ const riskMonitorDiff = computed(() => {
 .field.is-missing label { color: #b91c1c; }
 .ctrl-missing :deep(.ant-select-selector),
 .attach-ctrl.ctrl-missing :deep(textarea),
-.attach-ctrl.ctrl-missing :deep(.ant-input) {
+.attach-ctrl.ctrl-missing :deep(.ant-input),
+.ant-input.ctrl-missing {
   border-color: #fca5a5 !important;
 }
 .radio-missing {
@@ -613,9 +613,9 @@ const riskMonitorDiff = computed(() => {
   white-space: nowrap;
 }
 
-/* 投诉渠道：单块紧凑 */
+/* 投诉渠道：不加外框，内容与投诉定性面板左缘对齐 */
 .ext-panel.panel-neutral {
-  padding: 12px;
+  background: transparent; border: 0; border-radius: 0; padding: 0;
 }
 .ext-empty {
   font-size: 12px;
@@ -652,11 +652,19 @@ const riskMonitorDiff = computed(() => {
   gap: 8px;
   min-height: 28px;
 }
+/* 标签行定高：缺填提示跟在标签后同一行，出现/消失不推动下方控件 */
+.ext-followup-field > .field-label-sm {
+  height: 16px;
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .ext-hint {
-  margin: 0;
+  margin: 0 0 0 8px;
   font-size: 11px;
-  color: #b45309;
-  line-height: 1.4;
+  font-weight: 400;
+  color: #ef4444;
 }
 @media (max-width: 720px) {
   .ext-followup-row {
