@@ -676,20 +676,21 @@ function chipActiveClass(key: SupplementChip): string {
   border: 1px solid #fde68a;
   flex: none;
 }
+/* 选中态只变底色与字色，边框保持与未选中一致（蓝描边与输入框聚焦态撞色） */
 .chip.active {
-  border-color: #1a6fff; background: #eff6ff; color: #1a6fff;
+  background: #eff6ff; color: #1a6fff;
   font-weight: 600;
 }
 .chip.active-external {
-  border-color: #1a6fff; background: #eff6ff; color: #1a6fff;
+  background: #eff6ff; color: #1a6fff;
   font-weight: 600;
 }
 .chip.active-risk {
-  border-color: #1a6fff; background: #eff6ff; color: #1a6fff;
+  background: #eff6ff; color: #1a6fff;
   font-weight: 600;
 }
 .chip.active-appointment {
-  border-color: #1a6fff; background: #eff6ff; color: #1a6fff;
+  background: #eff6ff; color: #1a6fff;
   font-weight: 600;
 }
 .chip-dot { width: 6px; height: 6px; border-radius: 3px; background: #f59e0b; flex: none; }
