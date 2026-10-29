@@ -449,7 +449,7 @@ export interface Ticket {
   customerGender?: string;
   /** 设备 SN（筛选） */
   sn?: string;
-  /** 业务分类（新建工单 · 工单基础） */
+  /** 业务类型（新建工单 · 工单基础） */
   businessType?: string;
   /** 工单来源（与 channel 互补，列表列展示） */
   ticketSource?: string;
@@ -744,7 +744,7 @@ export interface CreateTicketPrefill {
   parentTitle?: string;
   customerName?: string;
   customerPhone?: string;
-  /** 客户标识：业务分类变更后按它重取档案 */
+  /** 客户标识：业务类型变更后按它重取档案 */
   customerId?: string;
   /** 客户地区 */
   customerRegion?: string;
@@ -766,7 +766,7 @@ export interface CreateTicketPrefill {
   noFlashScene?: boolean;
   /**
    * 本次建单走**小智工单入口**（1130 D1 / D3）：切小智表单，工单类型锁「咨询」、
-   * 业务分类锁「教育」、工单来源锁「IM」，并在「小智工单信息」卡上出「升级 TPD」勾选框。
+   * 业务类型锁「教育」、工单来源锁「IM」，并在「小智工单信息」卡上出「升级 TPD」勾选框。
    * 由入口置位，不按产品 / 问题分类识别。
    */
   xiaozhiScene?: boolean;

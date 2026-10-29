@@ -1221,12 +1221,12 @@ function resolveScanTicketDims(raw: RawScannableTicket): Pick<ScannableTicket, '
   const preset = SCAN_TICKET_DIMS[raw.ticketNo];
   if (found?.productCategory && found.product) {
     return {
-      businessType: found.businessType ?? preset?.businessType ?? BUSINESS_TYPES[0],
+      businessType: found.businessType ?? preset?.businessType ?? '无线音乐',
       productCategory: found.productCategory,
       productName: found.product,
     };
   }
-  return preset ?? { businessType: BUSINESS_TYPES[0], productCategory: PRODUCT_CATEGORIES[0], productName: PRODUCT_NAMES[PRODUCT_CATEGORIES[0]][0] };
+  return preset ?? { businessType: '无线音乐', productCategory: PRODUCT_CATEGORIES[0], productName: PRODUCT_NAMES[PRODUCT_CATEGORIES[0]][0] };
 }
 
 function enrichScannableTicket(raw: RawScannableTicket): ScannableTicket {
