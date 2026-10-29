@@ -23,6 +23,15 @@ const complaintPlatforms = computed(
   () => (props.detail.complaint?.platforms ?? []).filter((p) => p.platform),
 );
 
+/** 投诉信息区有没有可展示的字段：全空时连小标题一起不出 */
+const hasComplaintInfo = computed(() => {
+  const c = props.detail.complaint;
+  return !!(
+    c?.complaintType || complaintCategories.value.length || complaintPlatforms.value.length
+    || c?.priorFeedback || c?.receivedAt || c?.serviceReview
+  );
+});
+
 /** 刷机单：刷机信息（含设备SN）在「工单处理」Tab 的「刷机信息」区块展示（PRD §5.3），本卡不重复 */
 const flashCard = computed(() => isFlashTicket(props.detail) && !!props.detail.flash);
 </script>
@@ -68,7 +77,7 @@ const flashCard = computed(() => isFlashTicket(props.detail) && !!props.detail.f
     <div v-if="!flashCard" class="kv"><span class="k">设备SN</span><span class="v sn">{{ detail.product.sn }}</span></div>
 
     <!-- 投诉（仅投诉单）。字段随建单页有值才出——渠道门控下未采集的字段不占位。 -->
-    <template v-if="detail.type === '投诉'">
+    <template v-if="detail.type === '投诉' && hasComplaintInfo">
       <div class="divider" />
       <div class="sub-title">投诉信息</div>
 
