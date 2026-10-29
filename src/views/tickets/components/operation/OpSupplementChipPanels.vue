@@ -393,6 +393,7 @@ const riskMonitorDiff = computed(() => {
         :model-value="form.complaintNote"
         :attachments="form.complaintNoteAttachments"
         :min-input-height="40"
+        :maxlength="2000"
         :readonly="readonly"
         @update:model-value="(v) => update({ complaintNote: v })"
         @update:attachments="(v) => update({ complaintNoteAttachments: v })"
@@ -515,16 +516,22 @@ const riskMonitorDiff = computed(() => {
 .complaint-top-row .cat-item {
   flex: 1 1 0;
 }
+/* 标签与控件同一行（key–value）；缺填提示折到下一整行 */
 .cat-item {
   flex: 1 1 0;
   min-width: 0;
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
 }
 .cat-item .field-label-sm {
+  flex: none;
   white-space: nowrap;
 }
+.cat-item .cat-select { flex: 1 1 0; min-width: 0; width: auto; }
+.cat-item .field-err { flex: 1 1 100%; }
 .cat-select { width: 100%; }
 .cat-select :deep(.ant-select-selector) {
   height: 32px;

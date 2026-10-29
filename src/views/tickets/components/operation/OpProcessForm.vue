@@ -532,9 +532,6 @@ function chipActiveClass(key: SupplementChip): string {
         </div>
       </template>
 
-      <div v-if="incompleteChipCount > 0" class="supp-hint">
-        还有 {{ incompleteChipCount }} 项待完善
-      </div>
 
       <OpSupplementChipPanels
         :active-chip="effectiveChip"
@@ -682,9 +679,4 @@ function chipActiveClass(key: SupplementChip): string {
 }
 .chip-dot { width: 6px; height: 6px; border-radius: 3px; background: #f59e0b; flex: none; }
 .chip-check { font-size: 11px; flex: none; color: #10b981; }
-.supp-hint {
-  margin: -2px 0 2px;
-  font-size: 11px;
-  color: #9ca3af;
-}
 </style>
