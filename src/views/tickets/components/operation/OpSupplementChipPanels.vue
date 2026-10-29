@@ -400,6 +400,10 @@ const riskMonitorDiff = computed(() => {
         @update:model-value="(v) => update({ complaintNote: v })"
         @update:attachments="(v) => update({ complaintNoteAttachments: v })"
       />
+      <div class="cn-foot">
+        <span></span>
+        <span>{{ (form.complaintNote ?? '').length }}/2000</span>
+      </div>
     </div>
   </div>
 
@@ -500,6 +504,10 @@ const riskMonitorDiff = computed(() => {
 .chip-panel { display: flex; flex-direction: column; gap: 12px; }
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field label { font-size: 12px; font-weight: 600; color: #374151; }
+.cn-foot {
+  display: flex; justify-content: space-between; gap: 8px;
+  margin-top: -4px; font-size: 12px; color: #9ca3af;
+}
 .field-label-sm { font-size: 11px; font-weight: 500; color: #6b7280; }
 .field-row { display: flex; gap: 8px; }
 .field-row .field { flex: 1 1 0; min-width: 0; }

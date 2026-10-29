@@ -71,9 +71,10 @@ function buildDraft(type: string, ticketNo?: string): ProcessFormDraft {
 /**
  * 建议 / 商机单的服务类型、服务方式按工单类型自动填充（只读，随表单落库）。
  * 在建表单时写入，处理页取变更基线时已含这两个值，不会被登记成一次用户修改。
+ * 建议单的问题解决结论初值为空（与「是否采纳」一致），已保存的结论由处理页按履历回放覆盖。
  */
 function withAutoService(type: string, draft: ProcessFormDraft): ProcessFormDraft {
-  if (type === '建议') return { ...draft, serviceType: SUGGEST_SERVICE_TYPE, serviceMethod: SUGGEST_SERVICE_METHOD };
+  if (type === '建议') return { ...draft, serviceType: SUGGEST_SERVICE_TYPE, serviceMethod: SUGGEST_SERVICE_METHOD, conclusion: '' };
   if (type === '商机') return { ...draft, serviceType: LEAD_SERVICE_TYPE, serviceMethod: LEAD_SERVICE_METHOD };
   return draft;
 }
