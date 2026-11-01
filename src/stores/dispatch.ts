@@ -1238,9 +1238,14 @@ export const useDispatchStore = defineStore('dispatch', () => {
     const succLogs = engineLogsSince(succFrom);
     const succEntered = new Set(succLogs.map((x) => x.ticketNo));
     let succ = 0;
-    for (const no of succEntered) {
+    for (const no of [...succEntered]) {
       const assigned = succLogs.filter((x) => x.ticketNo === no && x.status === null && !!x.chosen && !!x.path && ENGINE_ASSIGN_PATHS.includes(x.path));
-      if (!assigned.length) continue;
+      if (!assigned.length) {
+        // 仍在排队 / 等原处理人的单尚无派单结果，不计入（结果出来后再计）
+        const st = ticketStateOf(no)?.status;
+        if (st === '排队中' || st === '等原处理人') succEntered.delete(no);
+        continue;
+      }
       const lastSeq = Math.max(...assigned.map((x) => x.seq));
       const undone = logs.value.some((x) => x.ticketNo === no && x.seq > lastSeq
         && ((x.kind === '人工' && !!x.manual && UNDO_ACTIONS.includes(x.manual.action)) || x.trigger === '跨班次回收'));
