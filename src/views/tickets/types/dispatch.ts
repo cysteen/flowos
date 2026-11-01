@@ -26,7 +26,7 @@ export type RunMode = '试运行' | '正式派单';
 export type DispatchStatus = '等原处理人' | '排队中' | '派单失败回池';
 export const DISPATCH_STATUSES: DispatchStatus[] = ['等原处理人', '排队中', '派单失败回池'];
 
-/** 坐席状态（11.5）：以工单系统签入状态为准，与话务条解耦 */
+/** 坐席状态（11.5）：与顶栏话务条联动，话务条签入、小休、签出即为派单签入状态 */
 export type SignInStatus = '签入' | '小休' | '签出';
 export const SIGN_IN_STATUSES: SignInStatus[] = ['签入', '小休', '签出'];
 
@@ -201,7 +201,17 @@ export interface DispatchAgent {
   lastTakenAt: number | null;
   /** 近期派单与领取时刻（ms，近 N 小时接单量因子；只留 24 小时内） */
   recentTakes: number[];
+  /** 本次签入起点（ms）；非签入为 null（在岗时长，13.2 派单均衡度） */
+  signInSince?: number | null;
+  /** 当日已累计在岗时长（ms，不含本次签入中的时长） */
+  onDutyMs?: number;
+  /** `onDutyMs` 所属日期（YYYY-MM-DD），跨日清零 */
+  onDutyDay?: string;
 }
+
+/** 上线阶段（第 17 章）：试运行 → 单组试点 → 多组 → 全量 */
+export type RolloutStage = '试运行' | '单组试点' | '多组' | '全量';
+export const ROLLOUT_STAGES: RolloutStage[] = ['试运行', '单组试点', '多组', '全量'];
 
 /* ------------------------------------------------------------------ */
 /* 配置（14.2）                                                          */
@@ -384,7 +394,7 @@ export interface ScoreDetail {
 }
 
 /** 人工动作（13.1「人工动作」列） */
-export type ManualAction = '班组长指派' | '改派' | '调剂到人' | '调剂到池' | '升级三线指定人' | '二线领取';
+export type ManualAction = '班组长指派' | '改派' | '调剂到人' | '调剂到池' | '升级三线指定人' | '二线领取' | '升级投诉直派';
 
 /** 派单日志条目（13.1） */
 export interface DispatchLogEntry {

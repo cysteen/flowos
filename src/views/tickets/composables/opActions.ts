@@ -10,6 +10,7 @@ import type { RoleKey } from '@/config/roles';
 import { AFTERSALE_INBOUND_SOURCE, normalizeTicketSource } from '@/views/tickets/types/createTicket';
 import { handlerGroupOf } from '@/views/tickets/types/ticket';
 import { useFlashStore } from '@/stores/flash';
+import { useDispatchStore } from '@/stores/dispatch';
 // 终态判定单一实现：与头部按钮、只读锁同源，避免两处各写一份正则再漂
 import { isTicketTerminated } from './complaintEscalation';
 import { aftersaleLinkDemotedEntry } from './aftersaleEvents';
@@ -1195,6 +1196,8 @@ export function applyOpAction(
 
     case '取消工单': {
       detail.status = '已取消';
+      // 【1215】取消工单同步撤出排队与预留（4.4）
+      useDispatchStore().withdrawTicket(detail.no);
       terminateClocks(detail, timeline, true); // 业务中止：停表结果=中止(灰)，不计达标/未达标
       pushEntry(timeline, {
         category: 'node', action: 'transfer', who: operator, role: operatorRole,

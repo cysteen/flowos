@@ -20,7 +20,7 @@ import {
 } from '@/views/tickets/types/xiaozhi';
 import { XIAOZHI_LS_KEYS, readXiaozhiCache, writeXiaozhiCache } from './xiaozhiCache';
 import { useNotifyLogStore } from './notifyLog';
-import { useDispatchStore } from './dispatch';
+import { registerPoolArrivalNotifier, useDispatchStore } from './dispatch';
 
 /**
  * 小智工单 · 小智服务（1130 小智工单 D1 / D5–D14 / D21 / D24 / D27）。
@@ -214,6 +214,15 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
   ) {
     useNotifyLogStore().emit({ ticketNo: r.no, event, kind, title, receivers, content, channel });
   }
+
+  // 【1215】11.6 到组通知：派单引擎在该发待领取提醒的时点交回本服务发；直通 TPD 的单不进入派单、不发
+  registerPoolArrivalNotifier('xiaozhi', (t) => {
+    if (!isXiaozhiTicket(t)) return false;
+    if (t.nodeStatus === '未认领' && !t.assignee) {
+      notify(t, 'group', '新单待领取', XIAOZHI_NOTICE.pooled(t.no), [XIAOZHI_POOL_GROUP_NAME], 'ticket.pooled');
+    }
+    return true;
+  });
 
   /* ---------------- 种子与缓存装载 ---------------- */
 
@@ -424,11 +433,8 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     } else {
       // 平台不可用那一支也走这里：单子留在池里等人领，产研要素先存着、重新提交时直接用
       if (platformDown) r.xiaozhi!.rd = buildRdInfo(input);
-      // 人工跟进那条路：新单进池待领取，提醒本组全员（D21 一个大组、进池自己领）
-      notify(
-        r, 'group', '新单待领取', XIAOZHI_NOTICE.pooled(no),
-        [XIAOZHI_POOL_GROUP_NAME], 'ticket.pooled',
-      );
+      // 人工跟进那条路：新单进池待领取，提醒本组全员（D21 一个大组、进池自己领）。
+      // 【1215】到组通知同待领取提醒口径（11.6）：由派单判定后按池形态发（正常态仅兜底回池时发），见本服务的到组通知登记
       bump(no);
       persist();
       // 【1215】人工跟进的小智单落池后进入派单（12.2）

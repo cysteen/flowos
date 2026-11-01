@@ -624,6 +624,12 @@ export function useTicketWorkbench() {
         t.tab = 'mine';
         t.assignee = opts.targetName;
         t.responded = false;
+        // 【1215】处理履历「指派 → 〈姓名〉」（13.1）
+        t.eventTimeline = [...(t.eventTimeline ?? []), {
+          id: `tl-${t.no}-assign-${(t.eventTimeline?.length ?? 0) + 1}`,
+          category: 'node', action: 'transfer', who: user.name || WORKBENCH_HANDLER, role: mapUserRole(user.roleKey),
+          how: '指派', what: `指派 → ${opts.targetName}`, when: nowStamp(),
+        }];
       }
       // 个册退费单（1120）：指派同咨询单，落库后由个册退费服务落快照
       if (isRefundTicket(t)) useRefundStore().afterClaim(t.no);

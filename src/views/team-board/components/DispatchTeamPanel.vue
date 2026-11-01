@@ -21,7 +21,7 @@ import { slaUrgencyCompare } from '@/views/tickets/types/ticket';
 import type { PoolMode } from '@/views/tickets/types/dispatch';
 import {
   DISPATCH_STATUS_ORDER, DISPATCH_STATUS_STYLE, MODE_TAG_STYLE, SIGN_IN_COLOR,
-  groupModeDisabledTip, groupSwitchDisabledTip, modeTagOf, personalSwitchDisabledTip, reserveTipOf,
+  groupModeDisabledTip, groupSwitchDisabledTip, modeTagOf, personalSwitchDisabledTip, reassignableTicketsOf, reserveTipOf,
   waitMinutesOf, waitText,
 } from '@/views/tickets/composables/dispatchUi';
 
@@ -49,7 +49,7 @@ const poolView = computed(() => {
 });
 const effectiveTag = computed(() => (groupId.value ? modeTagOf(dispatch.effectiveModeOf(groupId.value)) : null));
 
-const tab = ref<'members' | 'pool'>('members');
+const tab = ref<'members' | 'pool' | 'transit'>('members');
 
 /** 外部入口（「去指派」）：切到池内工单 */
 function showPool() {
@@ -211,8 +211,25 @@ const poolTickets = computed(() => {
 
 const assignOpen = ref(false);
 const assignTicket = ref<Ticket | null>(null);
+const assignMode = ref<'assign' | 'reassign'>('assign');
 function openAssign(t: Ticket) {
   assignTicket.value = t;
+  assignMode.value = 'assign';
+  assignOpen.value = true;
+}
+
+/* ---------------- 本组在途工单 · 改派（9.3） ---------------- */
+
+const transitTickets = computed(() => {
+  void dispatch.ticketStates;
+  void dispatch.logs;
+  const gid = groupId.value;
+  if (!gid) return [];
+  return reassignableTicketsOf(gid, reactiveTickets).sort(slaUrgencyCompare);
+});
+function openReassign(t: Ticket) {
+  assignTicket.value = t;
+  assignMode.value = 'reassign';
   assignOpen.value = true;
 }
 
@@ -224,6 +241,7 @@ function slaText(t: Ticket): string {
 
 const memberCols = 'minmax(132px, 1.2fr) 84px minmax(150px, 1.2fr) 72px minmax(180px, 2fr) 84px 148px';
 const poolCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 120px 104px 120px 76px';
+const transitCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 100px 104px 120px 76px';
 </script>
 
 <template>
@@ -277,6 +295,7 @@ const poolCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 120px 104px 120px
         <div class="tabs">
           <div class="tab" :class="{ on: tab === 'members' }" @click="tab = 'members'">成员</div>
           <div class="tab" :class="{ on: tab === 'pool' }" @click="tab = 'pool'">池内工单 {{ poolTickets.length }}</div>
+          <div class="tab" :class="{ on: tab === 'transit' }" @click="tab = 'transit'">在途工单 {{ transitTickets.length }}</div>
         </div>
       </div>
     </div>
@@ -341,6 +360,29 @@ const poolCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 120px 104px 120px
         </div>
       </div>
       <div v-if="!members.length" class="empty">本组暂无成员</div>
+    </div>
+
+    <!-- 在途工单 · 改派 -->
+    <div v-else-if="tab === 'transit'" class="tbl">
+      <div class="thead grid" :style="{ gridTemplateColumns: transitCols }">
+        <div class="th">工单号</div>
+        <div class="th">标题</div>
+        <div class="th">优先级</div>
+        <div class="th">处理人</div>
+        <div class="th">子状态</div>
+        <div class="th">首响 SLA</div>
+        <div class="th">操作</div>
+      </div>
+      <div v-for="t in transitTickets" :key="t.no" class="trow grid" :style="{ gridTemplateColumns: transitCols }">
+        <div class="td"><span class="link mono" @click="router.push(`/tickets/${t.no}`)">{{ t.no }}</span></div>
+        <div class="td"><span class="ellipsis" :title="t.title">{{ t.type }} · {{ t.title }}</span></div>
+        <div class="td">{{ t.priority }}</div>
+        <div class="td">{{ t.assignee }}</div>
+        <div class="td">{{ t.nodeStatus }}</div>
+        <div class="td" :class="{ danger: t.slaMinutes < 0 && !t.responded }">{{ slaText(t) }}</div>
+        <div class="td"><span class="link" @click="openReassign(t)">改派</span></div>
+      </div>
+      <div v-if="!transitTickets.length" class="empty">本组暂无在途工单</div>
     </div>
 
     <!-- 池内工单 -->
@@ -466,7 +508,7 @@ const poolCols = 'minmax(190px, 1.4fr) minmax(160px, 2fr) 60px 120px 104px 120px
     </OpActionModal>
 
     <DispatchProfileDrawer v-model:open="profileOpen" :name="profileName" />
-    <DispatchAssignModal v-model:open="assignOpen" :ticket="assignTicket" :group-id="groupId" />
+    <DispatchAssignModal v-model:open="assignOpen" :ticket="assignTicket" :group-id="groupId" :mode="assignMode" />
   </div>
 </template>
 

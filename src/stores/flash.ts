@@ -29,7 +29,7 @@ import { formatSlaClock, isFlashSlaCounted, readFlashSla, slaStateOf } from '@/v
 import { LOGIN_URL, templateOf } from '@/mock/notifyRules';
 import { useNotifyLogStore } from './notifyLog';
 import { useFlashConfigStore } from './flashConfig';
-import { useDispatchStore } from './dispatch';
+import { registerPoolArrivalNotifier, useDispatchStore } from './dispatch';
 import { FLASH_LS_KEYS, readFlashCache, writeFlashCache } from './flashCache';
 import { routeAftersaleEvent, type AftersaleEvent } from '@/views/tickets/composables/aftersaleEvents';
 import { techEscalationRowPatch, techReturnRowPatch } from '@/views/tickets/composables/techEscalation';
@@ -473,7 +473,8 @@ export const useFlashStore = defineStore('flash', () => {
     });
     // 到组通知（PRD §11.1 / 1013 B14）：每次进池都通知全组，同一张单再次进池照发；
     // 调研中催补进一线刷机池（分派表第 10 行）走催补通知，不另发；升级二线进池同走到组通知（escalateToL2）
-    if (reason !== '回访期间客户催补') notifyPoolArrival(r, pool);
+    // 【1215】教育刷机处理组池的到组通知同待领取提醒口径（11.6）：由派单判定后按池形态发，见本服务的到组通知登记
+    if (reason !== '回访期间客户催补' && pool !== 'l2') notifyPoolArrival(r, pool);
     // 【1215】转二线人工进教育刷机处理组池即进入派单（12.3）；一线刷机池不进入派单
     if (pool === 'l2') queueMicrotask(() => useDispatchStore().dispatchTicket(r, '新单', { poolId: meta.groupId }));
   }
@@ -499,6 +500,13 @@ export const useFlashStore = defineStore('flash', () => {
       channel: 'IM',
     });
   }
+
+  // 【1215】11.6 到组通知：教育刷机处理组池的单由派单引擎在该发待领取提醒的时点交回本服务发
+  registerPoolArrivalNotifier('flash', (t) => {
+    if (!isFlashTicket(t)) return false;
+    notifyPoolArrival(t, 'l2');
+    return true;
+  });
 
   function pushInternal(r: Ticket, by: FlashActor, trigger: FlashPushTrigger, at: number) {
     const f = r.flash!;
@@ -1159,8 +1167,7 @@ export const useFlashStore = defineStore('flash', () => {
       category: 'node', action: 'escalate', who: by.name, role: by.role, how: '升级二线',
       what: FLASH_TL.escalateL2(record),
     });
-    // 升级二线进池沿用咨询单到组通知（同模板、IM，1021）
-    notifyPoolArrival(r, 'l2');
+    // 升级二线进池沿用咨询单到组通知（同模板、IM，1021）；【1215】按待领取提醒口径由派单判定后发（11.6）
     bump(ticketNo);
     persist();
     // 【1215】一线升级二线进教育刷机处理组池即进入派单（12.3）

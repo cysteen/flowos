@@ -4,6 +4,7 @@ import { message } from 'ant-design-vue';
 import { useTicketDraftStore } from '@/stores/ticketDrafts';
 import { useUserStore } from '@/stores/user';
 import { useDispatchStore } from '@/stores/dispatch';
+import { directToInitiator } from '@/views/tickets/composables/dispatchUi';
 import {
   SearchOutlined,
   PlusOutlined,
@@ -322,13 +323,17 @@ function onCreate(processAfter = false) {
   if (!validate()) return;
   submitting.value = true;
   const ticket = buildTicket();
-  // 【1215】「创建」进入派单（新单）；「创建并处理」由建单人自行处理、升级投诉自主发起直派发起人，不进入派单
-  if (!processAfter && !(isEscalateMode.value && useUserStore().roleKey !== 'agent-l1')) {
+  // 【1215】「创建」进入派单（新单）；「创建并处理」由建单人自行处理，不进入派单。
+  // 升级投诉（11.2）：一线发起、客诉专员代客户发起（「创建」）的新投诉单进入派单、按出池规则派出；
+  // 自主发起（非一线「创建并处理」，发起人本人处理）直派发起人，计入在途、超出记超额指派并写派单日志
+  const selfInitiated = isEscalateMode.value && processAfter && useUserStore().roleKey !== 'agent-l1';
+  if (!selfInitiated && (!processAfter || isEscalateMode.value)) {
     useDispatchStore().dispatchNewTicket(ticket);
   }
   emit('created', ticket, processAfter);
   // 新单落工单库：打开处理页取得到本单的问题描述与附件（调用方已自行落库的不重复写入）
   if (!TICKETS.some((x) => x.no === ticket.no)) TICKETS.unshift(ticket);
+  if (selfInitiated) directToInitiator(TICKETS.find((x) => x.no === ticket.no) ?? ticket);
   let msg = `工单 ${ticket.no} 已创建${processAfter ? '，进入处理页' : ''}`;
   if (isChildMode.value) msg = `子工单 ${ticket.no} 已创建${processAfter ? '，进入处理页' : ''}`;
   else if (isReopenMode.value) msg = `Reopen 工单 ${ticket.no} 已创建${processAfter ? '，进入处理页' : ''}`;

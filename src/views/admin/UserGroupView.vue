@@ -5,86 +5,150 @@ import {
   PlusOutlined, TeamOutlined, UserOutlined, EditOutlined, CrownOutlined,
 } from '@ant-design/icons-vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import { useDispatchStore } from '@/stores/dispatch';
+import { useUserStore } from '@/stores/user';
+import { MODE_TONE } from '@/views/admin/dispatch/dispatchUi';
+import type { DispatchRole } from '@/views/tickets/types/dispatch';
 
-// 用户分组（PRD-70，D3：BPM 用户分组 与 服务班组合并）：分组（含技能/排班/负责人）+ 成员。
+// 用户分组（PRD-70，D3：BPM 用户分组 与 服务班组合并）：分组（含排班/负责人）+ 成员。
+// 【1215】14.7：组主数据统一为用户分组一套 —— 业务班组即派单组（一组一池），成员取派单坐席；
+// 组编辑增班组开关（关闭走二次确认）、本组形态只读；组级技能移除，处理能力由成员人员画像表达。
 interface Group {
   key: string; name: string; type: '业务班组' | '审批组' | '虚拟组';
-  leader: string; skills: string[]; shift: string; count: number;
+  leader: string; shift: string;
 }
-interface Member { id: string; name: string; role: string; ext: string; status: '在线' | '小休' | '离线'; tickets: number; }
+interface Member { id: string; name: string; role: string; ext: string; status: string; tickets: number; }
 
-const groups = ref<Group[]>([
-  { key: 'g1', name: '一线客服组', type: '业务班组', leader: '王芳', skills: ['投诉', '咨询'], shift: '三班倒', count: 18 },
-  { key: 'g2', name: '二线处理组', type: '业务班组', leader: '李强', skills: ['投诉', '技术'], shift: '白班', count: 9 },
-  { key: 'g3', name: '售后服务组', type: '业务班组', leader: '赵敏', skills: ['售后', '退换货'], shift: '两班', count: 12 },
-  { key: 'g4', name: '商机跟进组', type: '业务班组', leader: '孙磊', skills: ['商机'], shift: '白班', count: 6 },
-  { key: 'g5', name: '班长审批组', type: '审批组', leader: '周琳', skills: ['审批'], shift: '—', count: 4 },
-  { key: 'g6', name: '质检虚拟组', type: '虚拟组', leader: '吴昊', skills: ['质检'], shift: '—', count: 3 },
+const dispatch = useDispatchStore();
+const user = useUserStore();
+
+/** 本地维护的分组（不进入派单的一线客服组、审批组、虚拟组）；派单组取派单 store */
+const localGroups = ref<Group[]>([
+  { key: 'line1', name: '一线客服组', type: '业务班组', leader: '王芳', shift: '三班倒' },
+  { key: 'g5', name: '班长审批组', type: '审批组', leader: '周琳', shift: '—' },
+  { key: 'g6', name: '质检虚拟组', type: '虚拟组', leader: '吴昊', shift: '—' },
 ]);
-const selected = ref('g1');
-const sel = computed(() => groups.value.find((g) => g.key === selected.value)!);
+/** 派单组的排班（本页维护） */
+const dispatchShift = reactive<Record<string, string>>({});
+
+const groups = computed<Group[]>(() => [
+  localGroups.value[0],
+  ...dispatch.groups.map((g) => ({
+    key: g.id, name: g.label, type: '业务班组' as const, leader: g.leaders.join('、'), shift: dispatchShift[g.id] ?? '白班',
+  })),
+  ...localGroups.value.slice(1),
+]);
+const selected = ref('line1');
+const sel = computed(() => groups.value.find((g) => g.key === selected.value) ?? groups.value[0]);
+const isDispatchGroup = (key: string) => dispatch.isDispatchPool(key);
+const selGroup = computed(() => dispatch.groupOf(selected.value));
 
 const memberMap: Record<string, Member[]> = reactive({
-  g1: [
+  line1: [
     { id: 'u1', name: '王芳', role: '二线班组长', ext: '8001', status: '在线', tickets: 0 },
     { id: 'u2', name: '陈静', role: '一线坐席', ext: '8012', status: '在线', tickets: 5 },
     { id: 'u3', name: '刘洋', role: '一线坐席', ext: '8013', status: '小休', tickets: 3 },
     { id: 'u4', name: '黄勇', role: '一线坐席', ext: '8014', status: '在线', tickets: 7 },
     { id: 'u5', name: '周敏', role: '一线坐席', ext: '8015', status: '离线', tickets: 0 },
   ],
-  g2: [
-    { id: 'u6', name: '李强', role: '二线班组长', ext: '8101', status: '在线', tickets: 2 },
-    { id: 'u7', name: '杨帆', role: '二线专员', ext: '8112', status: '在线', tickets: 4 },
-    { id: 'u8', name: '林峰', role: '二线专员', ext: '8113', status: '在线', tickets: 6 },
-  ],
-  g3: [
-    { id: 'u9', name: '赵敏', role: '二线班组长', ext: '8201', status: '在线', tickets: 1 },
-    { id: 'u10', name: '钱进', role: '二线专员', ext: '8212', status: '小休', tickets: 3 },
-  ],
-  g4: [{ id: 'u11', name: '孙磊', role: '二线班组长', ext: '8301', status: '在线', tickets: 2 }],
   g5: [{ id: 'u12', name: '周琳', role: '投诉督导', ext: '8401', status: '在线', tickets: 0 }],
   g6: [{ id: 'u13', name: '吴昊', role: '质检', ext: '8501', status: '在线', tickets: 0 }],
 });
-const members = computed(() => memberMap[selected.value] ?? []);
+
+/** 派单角色 → 组内角色（0830 九角色） */
+const ROLE_LABEL: Partial<Record<DispatchRole, string>> = { 班组长: '二线班组长', 督导: '投诉督导', 运营: '工单运营' };
+
+function membersOf(key: string): Member[] {
+  if (!isDispatchGroup(key)) return memberMap[key] ?? [];
+  void dispatch.ticketStates;
+  return dispatch.membersOf(key).map((a) => ({
+    id: a.name,
+    name: a.name,
+    role: a.roles.map((r) => ROLE_LABEL[r] ?? r).join('、'),
+    ext: a.staffNo,
+    status: a.signIn,
+    tickets: dispatch.inTransitOf(a.name),
+  }));
+}
+const members = computed(() => membersOf(selected.value));
+const countOf = (key: string) => membersOf(key).length;
 
 const TYPE_TONE: Record<string, string> = { 业务班组: 'blue', 审批组: 'orange', 虚拟组: 'purple' };
-const ST_TONE: Record<string, string> = { 在线: 'green', 小休: 'orange', 离线: 'default' };
-const memCols = [
+const ST_TONE: Record<string, string> = { 在线: 'green', 签入: 'green', 小休: 'orange', 离线: 'default', 签出: 'default' };
+const memCols = computed(() => [
   { title: '成员', dataIndex: 'name', key: 'name', width: 140 },
   { title: '组内角色', dataIndex: 'role', key: 'role', width: 110 },
-  { title: '分机', dataIndex: 'ext', key: 'ext', width: 90 },
+  { title: isDispatchGroup(selected.value) ? '工号' : '分机', dataIndex: 'ext', key: 'ext', width: 90 },
   { title: '状态', dataIndex: 'status', key: 'status', width: 90 },
   { title: '在办工单', dataIndex: 'tickets', key: 'tickets', width: 100 },
   { title: '操作', key: 'op', width: 110 },
-];
+]);
 const TYPE_OPTS = ['业务班组', '审批组', '虚拟组'];
 const SHIFT_OPTS = ['白班', '两班', '三班倒', '—'];
-const SKILL_OPTS = ['投诉', '咨询', '刷机', '技术', '售后', '退换货', '商机', '审批', '质检'];
 // 角色下拉取 0830 九角色（基线 §3.0）
 const ROLE_OPTS = ['一线坐席', '二线专员', '技术支持', '二线班组长', '客诉专员', '投诉督导', '工单运营', '质检', '管理员'];
 
-function syncCount(key: string) { const g = groups.value.find((x) => x.key === key); if (g) g.count = (memberMap[key] ?? []).length; }
+/* —— 班组开关（8.1 / 8.2）· 本组形态（5.4 只读） —— */
+function switchTip(key: string): string | undefined {
+  if (!dispatch.config.globalSwitch) return '全局开关已关闭，班组开关暂不生效';
+  if (dispatch.groupOf(key)?.mode === '停派态') return '本组已由管理员停派';
+  return undefined;
+}
+function applySwitch(key: string, on: boolean, after?: () => void) {
+  const g = dispatch.groupOf(key);
+  if (!g || g.switchOn === on) { after?.(); return; }
+  const apply = () => {
+    const r = dispatch.setGroupSwitch(key, on, user.name);
+    if (r.ok) message.success(r.message); else if (r.message) message.error(r.message);
+    after?.();
+  };
+  if (!on) {
+    Modal.confirm({
+      title: '关闭班组开关',
+      content: `关闭后${dispatch.poolLabel(key)}转为降级态，本组成员不再接本组池的自动派单。确定关闭？`,
+      okText: '确定', cancelText: '取消', onOk: apply,
+    });
+  } else apply();
+}
 
-// —— 分组 新建/编辑（含排班/技能）——
+// —— 分组 新建/编辑（含排班）——
 let gSeq = 7;
 const groupModalOpen = ref(false);
 const gMode = ref<'create' | 'edit'>('create');
-const gf = reactive<Group>({ key: '', name: '', type: '业务班组', leader: '', skills: [], shift: '白班', count: 0 });
-function openCreateGroup() { gMode.value = 'create'; Object.assign(gf, { key: '', name: '', type: '业务班组', leader: '', skills: [], shift: '白班', count: 0 }); groupModalOpen.value = true; }
-function openEditGroup() { gMode.value = 'edit'; Object.assign(gf, { ...sel.value, skills: [...sel.value.skills] }); groupModalOpen.value = true; }
+const gf = reactive<Group & { switchOn: boolean }>({ key: '', name: '', type: '业务班组', leader: '', shift: '白班', switchOn: true });
+const gfDispatch = computed(() => gMode.value === 'edit' && isDispatchGroup(gf.key));
+function openCreateGroup() {
+  gMode.value = 'create';
+  Object.assign(gf, { key: '', name: '', type: '业务班组', leader: '', shift: '白班', switchOn: true });
+  groupModalOpen.value = true;
+}
+function openEditGroup() {
+  gMode.value = 'edit';
+  Object.assign(gf, { ...sel.value, switchOn: dispatch.groupOf(sel.value.key)?.switchOn ?? true });
+  groupModalOpen.value = true;
+}
 function saveGroup() {
   if (!gf.name) { message.error('请填写分组名称'); return; }
   if (gMode.value === 'edit') {
-    const g = groups.value.find((x) => x.key === gf.key);
-    if (g) Object.assign(g, { ...gf, skills: [...gf.skills] });
-    message.success('分组已更新');
-  } else {
-    const key = 'g' + gSeq++;
-    groups.value.push({ ...gf, key, count: 0, skills: [...gf.skills] });
-    memberMap[key] = [];
-    selected.value = key;
-    message.success(`分组「${gf.name}」已创建`);
+    const dg = dispatch.groupOf(gf.key);
+    if (dg) {
+      dg.label = gf.name;
+      dg.leaders = gf.leader.split(/[、,，\s]+/).filter(Boolean);
+      dispatchShift[gf.key] = gf.shift;
+    } else {
+      const g = localGroups.value.find((x) => x.key === gf.key);
+      if (g) Object.assign(g, { name: gf.name, type: gf.type, leader: gf.leader, shift: gf.shift });
+    }
+    groupModalOpen.value = false;
+    if (dg && dg.switchOn !== gf.switchOn) applySwitch(gf.key, gf.switchOn, () => message.success('分组已更新'));
+    else message.success('分组已更新');
+    return;
   }
+  const key = 'g' + gSeq++;
+  localGroups.value.push({ key, name: gf.name, type: gf.type, leader: gf.leader, shift: gf.shift });
+  memberMap[key] = [];
+  selected.value = key;
+  message.success(`分组「${gf.name}」已创建`);
   groupModalOpen.value = false;
 }
 
@@ -95,30 +159,56 @@ const mf = reactive<Member>({ id: '', name: '', role: '一线坐席', ext: '', s
 function openAddMember() { Object.assign(mf, { id: '', name: '', role: '一线坐席', ext: '', status: '在线', tickets: 0 }); memModalOpen.value = true; }
 function saveMember() {
   if (!mf.name) { message.error('请填写成员姓名'); return; }
-  memberMap[selected.value].push({ ...mf, id: 'u' + mSeq++ });
-  syncCount(selected.value);
+  const a = dispatch.agentOf(mf.name);
+  if (isDispatchGroup(selected.value)) {
+    if (!a) { message.error('该成员不是派单坐席，请先在用户管理中维护'); return; }
+    if (!a.groupIds.includes(selected.value)) a.groupIds = [...a.groupIds, selected.value];
+  } else {
+    (memberMap[selected.value] ??= []).push({ ...mf, id: 'u' + mSeq++ });
+  }
   message.success(`已添加成员「${mf.name}」`);
   memModalOpen.value = false;
 }
 function setLeader(m: Member) {
-  const arr = memberMap[selected.value];
-  arr.forEach((x) => { if (x.role === '班组长') x.role = '一线坐席'; });
-  m.role = '班组长';
-  if (sel.value) sel.value.leader = m.name;
+  const dg = dispatch.groupOf(selected.value);
+  if (dg) {
+    dg.leaders = [m.name];
+  } else {
+    const arr = memberMap[selected.value] ?? [];
+    arr.forEach((x) => { if (x.role === '班组长') x.role = '一线坐席'; });
+    m.role = '班组长';
+    const g = localGroups.value.find((x) => x.key === selected.value);
+    if (g) g.leader = m.name;
+  }
   message.success(`已将 ${m.name} 设为组长`);
+}
+function isLeader(m: Member): boolean {
+  const dg = dispatch.groupOf(selected.value);
+  return dg ? dg.leaders.includes(m.name) : m.role === '班组长';
 }
 function removeMember(m: Member) {
   Modal.confirm({
     title: '移除成员', icon: null, content: `确定将「${m.name}」移出本组？`,
     okText: '确认移除', okType: 'danger', cancelText: '取消',
-    onOk: () => { const arr = memberMap[selected.value]; const i = arr.findIndex((x) => x.id === m.id); if (i >= 0) arr.splice(i, 1); syncCount(selected.value); message.success('已移除'); },
+    onOk: () => {
+      const key = selected.value;
+      const a = isDispatchGroup(key) ? dispatch.agentOf(m.name) : undefined;
+      if (a) {
+        a.groupIds = a.groupIds.filter((id) => id !== key);
+      } else {
+        const arr = memberMap[key] ?? [];
+        const i = arr.findIndex((x) => x.id === m.id);
+        if (i >= 0) arr.splice(i, 1);
+      }
+      message.success('已移除');
+    },
   });
 }
 </script>
 
 <template>
   <div class="user-group">
-    <AdminPageHeader title="用户分组" subtitle="按班组/审批组/虚拟组管理成员与技能；技能路由、排班依此分派">
+    <AdminPageHeader title="用户分组" subtitle="按班组/审批组/虚拟组管理成员；组池、派单候选范围与报表均取用户分组">
       <template #actions>
         <a-button type="primary" @click="openCreateGroup"><template #icon><PlusOutlined /></template>新建分组</a-button>
       </template>
@@ -133,7 +223,7 @@ function removeMember(m: Member) {
             <div class="gi-ic"><TeamOutlined /></div>
             <div class="gi-body">
               <div class="gi-name">{{ g.name }}<a-tag :color="TYPE_TONE[g.type]" class="gi-tag">{{ g.type }}</a-tag></div>
-              <div class="gi-sub"><CrownOutlined /> {{ g.leader }} · {{ g.count }} 人</div>
+              <div class="gi-sub"><CrownOutlined /> {{ g.leader || '—' }} · {{ countOf(g.key) }} 人</div>
             </div>
           </div>
         </div>
@@ -154,7 +244,7 @@ function removeMember(m: Member) {
               </div>
               <div class="gd-kv">
                 <span class="gd-label">负责人</span>
-                <span class="gd-val">{{ sel.leader }}</span>
+                <span class="gd-val">{{ sel.leader || '—' }}</span>
               </div>
               <div class="gd-kv">
                 <span class="gd-label">排班</span>
@@ -162,15 +252,27 @@ function removeMember(m: Member) {
               </div>
               <div class="gd-kv">
                 <span class="gd-label">成员数</span>
-                <span class="gd-val">{{ sel.count }} 人</span>
+                <span class="gd-val">{{ members.length }} 人</span>
               </div>
-              <div class="gd-kv gd-full">
-                <span class="gd-label">技能标签</span>
-                <span class="gd-val">
-                  <a-tag v-for="s in sel.skills" :key="s" color="blue">{{ s }}</a-tag>
-                  <span v-if="!sel.skills.length" class="gd-empty">未配置</span>
-                </span>
-              </div>
+              <template v-if="selGroup">
+                <div class="gd-kv">
+                  <span class="gd-label">班组开关</span>
+                  <span class="gd-val">
+                    <a-tooltip :title="switchTip(selGroup.id)">
+                      <a-switch
+                        size="small"
+                        :checked="selGroup.switchOn"
+                        :disabled="!!switchTip(selGroup.id)"
+                        @change="(v: unknown) => applySwitch(selGroup!.id, !!v)"
+                      />
+                    </a-tooltip>
+                  </span>
+                </div>
+                <div class="gd-kv">
+                  <span class="gd-label">本组形态</span>
+                  <span class="gd-val"><a-tag :color="MODE_TONE[dispatch.groupModeOf(selGroup.id)]">{{ dispatch.groupModeOf(selGroup.id) }}</a-tag></span>
+                </div>
+              </template>
             </div>
           </div>
         </div>
@@ -180,11 +282,11 @@ function removeMember(m: Member) {
           <a-table :columns="memCols" :data-source="members" row-key="id" :pagination="false" size="middle">
             <template #bodyCell="{ column, record }">
               <span v-if="column.key === 'name'" class="mem-name"><a-avatar size="small"><template #icon><UserOutlined /></template></a-avatar>{{ record.name }}</span>
-              <a-tag v-else-if="column.key === 'role'" :color="record.role === '班组长' ? 'gold' : 'default'">{{ record.role }}</a-tag>
+              <a-tag v-else-if="column.key === 'role'" :color="isLeader(record as Member) ? 'gold' : 'default'">{{ record.role }}</a-tag>
               <a-tag v-else-if="column.key === 'status'" :color="ST_TONE[record.status]">{{ record.status }}</a-tag>
               <span v-else-if="column.key === 'tickets'"><b>{{ record.tickets }}</b></span>
               <template v-else-if="column.key === 'op'">
-                <a-button type="link" size="small" :disabled="record.role === '班组长'" @click="setLeader(record as Member)">设组长</a-button>
+                <a-button type="link" size="small" :disabled="isLeader(record as Member)" @click="setLeader(record as Member)">设组长</a-button>
                 <a-button type="link" size="small" danger @click="removeMember(record as Member)">移除</a-button>
               </template>
             </template>
@@ -197,10 +299,19 @@ function removeMember(m: Member) {
     <a-modal v-model:open="groupModalOpen" :title="gMode === 'edit' ? '编辑分组' : '新建分组'" :width="540" :ok-text="gMode === 'edit' ? '保存' : '创建'" cancel-text="取消" @ok="saveGroup">
       <a-form layout="vertical" class="g-form">
         <a-form-item label="分组名称" required class="half"><a-input v-model:value="gf.name" placeholder="如：一线客服组" /></a-form-item>
-        <a-form-item label="分组类型" class="half"><a-select v-model:value="gf.type" :options="TYPE_OPTS.map((v)=>({value:v,label:v}))" /></a-form-item>
+        <a-form-item label="分组类型" class="half"><a-select v-model:value="gf.type" :disabled="gfDispatch" :options="TYPE_OPTS.map((v)=>({value:v,label:v}))" /></a-form-item>
         <a-form-item label="负责人" class="half"><a-input v-model:value="gf.leader" placeholder="组长姓名" /></a-form-item>
         <a-form-item label="排班" class="half"><a-select v-model:value="gf.shift" :options="SHIFT_OPTS.map((v)=>({value:v,label:v}))" /></a-form-item>
-        <a-form-item label="技能标签（技能路由依据）" class="full"><a-select v-model:value="gf.skills" mode="multiple" :options="SKILL_OPTS.map((v)=>({value:v,label:v}))" placeholder="选择该组承接的技能" /></a-form-item>
+        <template v-if="gfDispatch">
+          <a-form-item label="班组开关" class="half">
+            <a-tooltip :title="switchTip(gf.key)">
+              <a-switch v-model:checked="gf.switchOn" :disabled="!!switchTip(gf.key)" />
+            </a-tooltip>
+          </a-form-item>
+          <a-form-item label="本组形态" class="half">
+            <a-tag :color="MODE_TONE[dispatch.groupModeOf(gf.key)]">{{ dispatch.groupModeOf(gf.key) }}</a-tag>
+          </a-form-item>
+        </template>
       </a-form>
     </a-modal>
 
@@ -244,9 +355,6 @@ function removeMember(m: Member) {
   gap: 12px;
   min-width: 0;
 }
-.gd-kv.gd-full {
-  grid-column: 1 / -1;
-}
 .gd-label {
   flex: none;
   width: 64px;
@@ -263,7 +371,6 @@ function removeMember(m: Member) {
   gap: 6px;
   align-items: center;
 }
-.gd-empty { color: #d1d5db; }
 .mem-name { display: flex; align-items: center; gap: 8px; }
 .g-form { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
 .g-form .full { grid-column: 1 / -1; }

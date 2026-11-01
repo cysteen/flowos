@@ -15,7 +15,7 @@ import { isFlashTicket } from '@/views/tickets/types/flash';
 import { isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
 import { isRefundTicket } from '@/views/tickets/types/refund';
 import type { Ticket } from '@/views/tickets/types/ticket';
-import type { DispatchAgent, DispatchStatus, OccupyResult, PoolMode, SignInStatus } from '@/views/tickets/types/dispatch';
+import { IN_TRANSIT_COUNT_RULE, type DispatchAgent, type DispatchStatus, type OccupyResult, type PoolMode, type SignInStatus } from '@/views/tickets/types/dispatch';
 import { mapUserRole } from './opActions';
 import { takeOverReturnedTicket } from './aftersaleEvents';
 
@@ -209,7 +209,7 @@ export function assignInTeam(ticket: Ticket, assignee: string): OccupyResult {
       });
       const entry = {
         category: 'node' as const, action: 'transfer' as const, who: operator, role,
-        how: '指派', what: `${operator} 指派本单给 ${assignee}。`, when: at,
+        how: '指派', what: `指派 → ${assignee}`, when: at,
       };
       if (isXiaozhiTicket(t)) {
         useXiaozhiStore().syncStatus(t.no, t.nodeStatus, { assignee });
@@ -221,5 +221,83 @@ export function assignInTeam(ticket: Ticket, assignee: string): OccupyResult {
     if (isRefundTicket(t)) useRefundStore().afterClaim(t.no);
   }
   dispatch.recordManualTake(t, assignee, '班组长指派', operator);
+  writeOverCapEntry(t, assignee);
   return { ok: true, message: `已指派给${assignee}` };
+}
+
+/** 超出个人上限时补记「超额指派」履历（13.1）：取本单最近一条人工派单日志 */
+export function writeOverCapEntry(t: Ticket, name: string) {
+  const dispatch = useDispatchStore();
+  const manual = dispatch.logsOf(t.no).filter((x) => x.kind === '人工');
+  const last = manual[manual.length - 1];
+  if (last?.overCap !== '超额指派' || last.manual?.target !== name) return;
+  const v = dispatch.agentView(name);
+  if (!v) return;
+  const entry = {
+    category: 'node' as const, action: 'transfer' as const, who: '系统', role: '系统' as const, systemActor: true,
+    how: '超额指派', what: `${name}在途 ${v.inTransit} / 上限 ${v.cap}，记超额指派`, when: stamp(),
+  };
+  if (isFlashTicket(t)) useFlashStore().logProcess(t.no, { name: '系统', role: '系统' }, entry);
+  else if (isXiaozhiTicket(t)) useXiaozhiStore().appendLog(t.no, entry);
+  else t.eventTimeline = [...(t.eventTimeline ?? []), { id: `tl-${t.no}-overcap-${(t.eventTimeline?.length ?? 0) + 1}`, ...entry }];
+}
+
+/**
+ * 升级投诉 · 自主发起（7.3 / 11.2）：新投诉单直派发起人本人，不进入派单；计入其在途，不受上限拦截，
+ * 超出记超额指派并写派单日志。调用时新单已落工单库。
+ */
+export function directToInitiator(ticket: Ticket): void {
+  const t = reactive(ticket) as Ticket;
+  const name = t.assignee;
+  if (!name) return;
+  const dispatch = useDispatchStore();
+  if (!dispatch.agentOf(name)) return;
+  Object.assign(t, { tab: 'mine', nodeStatus: t.nodeStatus === '未认领' ? '待响应' : t.nodeStatus, responded: false });
+  dispatch.recordManualTake(t, name, '升级投诉直派', useUserStore().name || name);
+  writeOverCapEntry(t, name);
+}
+
+/* ------------------------------------------------------------------ */
+/* 改派（9.3）                                                            */
+/* ------------------------------------------------------------------ */
+
+/** 改派可选工单：归属本组的在途工单（已派出、已领取），刷机单由刷机服务调剂，不在此列 */
+export function reassignableTicketsOf(groupId: string, tickets: Ticket[]): Ticket[] {
+  return tickets.filter((t) => t.groupId === groupId && !!t.assignee && !t.archived && !t.isDraft
+    && IN_TRANSIT_COUNT_RULE[t.nodeStatus] === 'assignee' && !isFlashTicket(t));
+}
+
+/**
+ * 班组长改派落库（9.3）：改派原因必填、最多 200 字；先确认工单仍在原处理人名下 → 换处理人（子状态不变，SLA 不停钟不重置）→
+ * 履历「指派 → 〈姓名〉；原因：〈原因〉」→ 交 store 记「改派」人工日志与超额指派。
+ */
+export function reassignInTeam(ticket: Ticket, assignee: string, reason: string, expectedFrom: string | null): OccupyResult {
+  const dispatch = useDispatchStore();
+  const user = useUserStore();
+  const t = reactive(ticket) as Ticket;
+  const r = reason.trim();
+  if (!r) return { ok: false, message: '请填写改派原因' };
+  if (r.length > 200) return { ok: false, message: '改派原因最多 200 字' };
+  // 先到先得：弹窗打开后工单已被他人改动（换了处理人或已离开在途），按「该工单已被领取」处理
+  if (!t.assignee || t.assignee !== expectedFrom || IN_TRANSIT_COUNT_RULE[t.nodeStatus] !== 'assignee') {
+    return { ok: false, message: dispatch.checkOccupy(undefined).message };
+  }
+  const operator = user.name;
+  const role = mapUserRole(user.roleKey);
+  const at = stamp();
+  Object.assign(t, { assignee, tab: 'mine', updatedAt: at });
+  const entry = {
+    category: 'node' as const, action: 'transfer' as const, who: operator, role,
+    how: '改派', what: `指派 → ${assignee}；原因：${r}`, when: at,
+  };
+  if (isXiaozhiTicket(t)) {
+    useXiaozhiStore().syncStatus(t.no, t.nodeStatus, { assignee });
+    useXiaozhiStore().appendLog(t.no, entry);
+  } else {
+    t.eventTimeline = [...(t.eventTimeline ?? []), { id: `tl-${t.no}-reassign-${(t.eventTimeline?.length ?? 0) + 1}`, ...entry }];
+  }
+  if (isRefundTicket(t)) useRefundStore().afterClaim(t.no);
+  dispatch.recordManualTake(t, assignee, '改派', operator, r);
+  writeOverCapEntry(t, assignee);
+  return { ok: true, message: `已改派给${assignee}` };
 }

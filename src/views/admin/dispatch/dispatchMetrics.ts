@@ -95,8 +95,13 @@ const PATH_ITEMS: { name: string; color: string; hit: (l: DispatchLogEntry) => b
   { name: '调剂', color: '#ef4444', hit: (l) => l.kind === '人工' && (l.manual?.action === '调剂到人' || l.manual?.action === '调剂到池') },
 ];
 
+/** 派单均衡度只计当日在岗满该时长的坐席（13.2） */
+export const BALANCE_MIN_ON_DUTY_HOURS = 2;
+
 export function computeStats(
   logs: DispatchLogEntry[], agents: DispatchAgent[], range: RangeKey, poolIds: string[] | null, now: number,
+  /** 坐席当日在岗小时数（签入时长） */
+  onDutyHoursOf: (name: string) => number = () => 0,
 ): MonitorStats {
   const from = rangeStart(range, now);
   const w: Window = { from, to: now + 1, poolIds };
@@ -119,13 +124,16 @@ export function computeStats(
     if (seg.wait != null && y.wait != null) firstRespDelta = (seg.wait + (seg.resp ?? 0)) - (y.wait + (y.resp ?? 0));
   }
 
-  // 派单均衡度：当日在班坐席的接单量（派单与领取）标准差 / 平均值
+  // 派单均衡度（13.2）：各坐席当日每在岗小时接单量（派单与领取）的标准差 / 平均值；仅计当日在岗 2 小时及以上的坐席，不含直派规则单
   const dayFrom = rangeStart('today', now);
   const todayTakes = scoped.filter((l) => parseAt(l.at) >= dayFrom && (isEngineAssign(l) || isManualTake(l)) && l.path !== '直派规则');
-  const pool = agents.filter((a) => a.signedInToday && !a.disabled && (!poolIds || a.groupIds.some((g) => poolIds.includes(g))));
+  const pool = agents
+    .filter((a) => !a.disabled && (!poolIds || a.groupIds.some((g) => poolIds.includes(g))))
+    .map((a) => ({ a, hours: onDutyHoursOf(a.name) }))
+    .filter((x) => x.hours >= BALANCE_MIN_ON_DUTY_HOURS);
   let balance: number | null = null;
   if (pool.length >= 2 && todayTakes.length) {
-    const counts = pool.map((a) => todayTakes.filter((l) => (l.kind === '判定' ? l.chosen?.name : l.manual?.target) === a.name).length);
+    const counts = pool.map(({ a, hours }) => todayTakes.filter((l) => (l.kind === '判定' ? l.chosen?.name : l.manual?.target) === a.name).length / hours);
     const mean = counts.reduce((s, x) => s + x, 0) / counts.length;
     if (mean > 0) {
       const sd = Math.sqrt(counts.reduce((s, x) => s + (x - mean) ** 2, 0) / counts.length);

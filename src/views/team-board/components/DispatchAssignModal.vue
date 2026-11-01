@@ -1,24 +1,28 @@
 <script setup lang="ts">
 /**
- * 【1215】班组长指派弹窗（PRD 9.3）：标题「指派」，按钮 [ 取消 ] [ 确定 ]。
+ * 【1215】班组长指派 / 改派弹窗（PRD 9.3）：标题「指派」/「改派」，按钮 [ 取消 ] [ 确定 ]；改派另有必填「改派原因」。
  * 候选为归属本组池的本组成员（不含当前处理人），每行「姓名 · 签入状态 · 在途 N / 上限 M」，
  * 画像匹配标「匹配」，超限 / 已满标橙色；不校验画像与个人开关，未签入、将超上限二次确认。
  * 跨组走调剂，本弹窗不出跨组选项。
  */
 import { computed, ref, watch } from 'vue';
 import { message, Modal } from 'ant-design-vue';
-import { UserAddOutlined } from '@ant-design/icons-vue';
+import { SwapOutlined, UserAddOutlined } from '@ant-design/icons-vue';
 import OpActionModal from '@/views/tickets/components/operation/OpActionModal.vue';
 import type { Ticket } from '@/views/tickets/types/ticket';
 import { useDispatchStore } from '@/stores/dispatch';
-import { SIGN_IN_COLOR, assignCandidatesOf, assignInTeam, type AssignCandidate } from '@/views/tickets/composables/dispatchUi';
+import {
+  SIGN_IN_COLOR, assignCandidatesOf, assignInTeam, reassignInTeam, type AssignCandidate,
+} from '@/views/tickets/composables/dispatchUi';
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   open: boolean;
   ticket: Ticket | null;
   /** 归属池（＝组）id */
   groupId: string | null;
-}>();
+  /** 指派：池内未领取工单；改派：已派出、已领取的在途工单（9.3） */
+  mode?: 'assign' | 'reassign';
+}>(), { mode: 'assign' });
 
 const emit = defineEmits<{
   'update:open': [v: boolean];
@@ -27,9 +31,17 @@ const emit = defineEmits<{
 
 const dispatch = useDispatchStore();
 const picked = ref<string | undefined>(undefined);
+const reason = ref('');
+/** 打开弹窗时的处理人：确定时比对，期间被他人改动即按「该工单已被领取」处理 */
+const fromAssignee = ref<string | null>(null);
+const isReassign = computed(() => props.mode === 'reassign');
+const verb = computed(() => (isReassign.value ? '改派' : '指派'));
 
 watch(() => props.open, (v) => {
-  if (v) picked.value = undefined;
+  if (!v) return;
+  picked.value = undefined;
+  reason.value = '';
+  fromAssignee.value = props.ticket?.assignee ?? null;
 });
 
 const candidates = computed<AssignCandidate[]>(() => {
@@ -47,7 +59,7 @@ function filterOption(input: string, option: { value?: string }) {
 function confirmStep(content: string): Promise<boolean> {
   return new Promise((resolve) => {
     Modal.confirm({
-      title: '指派',
+      title: verb.value,
       content,
       okText: '确定',
       cancelText: '取消',
@@ -65,10 +77,20 @@ async function onOk() {
     message.warning('请选择处理人');
     return;
   }
-  if (c.signIn !== '签入' && !(await confirmStep(`${c.name}当前未签入，确定指派？`))) return;
+  if (isReassign.value) {
+    if (!reason.value.trim()) {
+      message.warning('请填写改派原因');
+      return;
+    }
+    if (reason.value.trim().length > 200) {
+      message.warning('改派原因最多 200 字');
+      return;
+    }
+  }
+  if (c.signIn !== '签入' && !(await confirmStep(`${c.name}当前未签入，确定${verb.value}？`))) return;
   if (c.inTransit + 1 > c.cap
-    && !(await confirmStep(`${c.name}在途 ${c.inTransit} / 上限 ${c.cap}，指派后将记超额指派，确定指派？`))) return;
-  const res = assignInTeam(t, c.name);
+    && !(await confirmStep(`${c.name}在途 ${c.inTransit} / 上限 ${c.cap}，${verb.value}后将记超额指派，确定${verb.value}？`))) return;
+  const res = isReassign.value ? reassignInTeam(t, c.name, reason.value, fromAssignee.value) : assignInTeam(t, c.name);
   if (res.ok) message.success(res.message);
   else message.warning(res.message);
   emit('update:open', false);
@@ -79,9 +101,9 @@ async function onOk() {
 <template>
   <OpActionModal
     :open="open"
-    title="指派"
+    :title="verb"
     :subtitle="ticket ? ticket.no : ''"
-    :icon="UserAddOutlined"
+    :icon="isReassign ? SwapOutlined : UserAddOutlined"
     tone="primary"
     ok-tone="primary"
     :width="480"
@@ -116,6 +138,10 @@ async function onOk() {
           </a-select-option>
         </a-select>
       </div>
+      <div v-if="isReassign" class="dam-row top">
+        <div class="op-label req">改派原因</div>
+        <a-textarea v-model:value="reason" :maxlength="200" show-count :rows="3" placeholder="请填写改派原因" />
+      </div>
     </div>
   </OpActionModal>
 </template>
@@ -129,6 +155,8 @@ async function onOk() {
   align-items: center;
 }
 .dam-row > .op-label { white-space: nowrap; }
+.dam-row.top { align-items: start; }
+.dam-row.top > .op-label { line-height: 32px; }
 .dam-ro { font-size: 14px; line-height: 32px; color: #111827; }
 .dam-select { width: 100%; }
 .dam-opt { display: flex; align-items: center; gap: 6px; min-width: 0; }

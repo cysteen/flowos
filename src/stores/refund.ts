@@ -20,7 +20,7 @@ import {
   type TicketRefund,
 } from '@/views/tickets/types/refund';
 import { useNotifyLogStore } from './notifyLog';
-import { useDispatchStore } from './dispatch';
+import { registerPoolArrivalNotifier, useDispatchStore } from './dispatch';
 
 /**
  * 个册退费单 · 个册退费服务（1120 个册退费工单 PRD 第 3–7 章）。
@@ -175,6 +175,13 @@ export const useRefundStore = defineStore('refund', () => {
     });
   }
 
+  // 【1215】11.6 到组通知：派单引擎在该发待领取提醒的时点交回本服务发
+  registerPoolArrivalNotifier('refund', (t) => {
+    if (!isRefundTicket(t)) return false;
+    poolIm(t);
+    return true;
+  });
+
   function surveySms(r: Ticket, at: number) {
     const content = refundSurveySmsText(r.no, r.customer);
     useNotifyLogStore().emit({
@@ -236,8 +243,8 @@ export const useRefundStore = defineStore('refund', () => {
       groupId: REFUND_POOL_GROUP_ID, groupNames: [REFUND_POOL_GROUP_NAME], updatedAt: flashStamp(at),
     });
     r.refund!.state.manager = undefined;
-    poolIm(r);
-    // 【1215】进教育支持组池即进入派单（12.4）；调用方落完履历与快照后再判定
+    // 【1215】进教育支持组池即进入派单（12.4）；调用方落完履历与快照后再判定。
+    // 到组通知同待领取提醒口径（11.6）：由派单判定后按池形态发（正常态仅兜底回池时发），见下方登记
     queueMicrotask(() => useDispatchStore().dispatchTicket(r, '新单', { poolId: REFUND_POOL_GROUP_ID }));
   }
 
