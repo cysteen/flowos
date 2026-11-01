@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { isFlashTicket } from '@/views/tickets/types/flash';
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
 import { UserSwitchOutlined } from '@ant-design/icons-vue';
@@ -45,6 +45,12 @@ import AssignModal, {
   type AssignTicket,
 } from '@/views/team-board/components/AssignModal.vue';
 import { TEAM_MEMBERS } from '@/mock/teamBoard';
+import DispatchAssignModal from '@/views/team-board/components/DispatchAssignModal.vue';
+import { useDispatchStore } from '@/stores/dispatch';
+import { DISPATCH_STATUSES } from './types/dispatch';
+import {
+  DISPATCH_STATUS_STYLE, MODE_TAG_STYLE, claimDisabledTip, modeTagOf, reserveTipOf, waitMinutesOf, waitText,
+} from './composables/dispatchUi';
 import { useTicketWorkbench } from './composables/useTicketWorkbench';
 import { poolEntryQuery } from './composables/poolClaim';
 import { useTicketColumns } from './composables/useTicketColumns';
@@ -153,11 +159,66 @@ const POOL_FLASH_EXTRA_COLUMNS = [
 const showPoolFlashColumns = computed(
   () => wb.isPoolTab.value && visiblePoolGroupsFor(user.roleKey).some((g) => g.id === 'edu-flash'),
 );
+
+/* —— 【1215】工单池 · 派单（PRD 第 10 章）—— */
+const dispatch = useDispatchStore();
+/** 派单状态、匹配我、所在池、等待时长四列 */
+const POOL_DISPATCH_COLUMNS = [
+  { key: 'dispatchStatus', label: '派单状态', width: 112, after: 'priority' },
+  { key: 'dispatchMatch', label: '匹配我', width: 76, after: 'priority' },
+  { key: 'dispatchPool', label: '所在池', width: 140, after: 'sla' },
+  { key: 'dispatchWait', label: '等待时长', width: 104, after: 'sla' },
+];
 const listExtraColumns = computed(() => {
   if (wb.showSuspendColumns.value) return SUSPEND_EXTRA_COLUMNS;
-  if (showPoolFlashColumns.value) return POOL_FLASH_EXTRA_COLUMNS;
+  if (wb.isPoolTab.value) {
+    return showPoolFlashColumns.value ? [...POOL_DISPATCH_COLUMNS, ...POOL_FLASH_EXTRA_COLUMNS] : POOL_DISPATCH_COLUMNS;
+  }
   return undefined;
 });
+
+/** 分钟级时钟：等待时长按分钟走 */
+const nowMs = ref(Date.now());
+const nowTimer = window.setInterval(() => { nowMs.value = Date.now(); }, 30_000);
+onBeforeUnmount(() => window.clearInterval(nowTimer));
+
+/** 本人在派单中的画像是否已配置（未配置时「匹配我」置灰，10.1） */
+const myProfileConfigured = computed(() => !!dispatch.agentOf(user.name) && !!dispatch.agentView(user.name)?.profileConfigured);
+function dispatchStatusCell(t: Ticket) {
+  return dispatch.dispatchStatusOf(t.no);
+}
+function matchesMeCell(t: Ticket): boolean {
+  return myProfileConfigured.value && dispatch.matchesMe(t, user.name);
+}
+
+/** 池分段（10.1）：本人可见的各组池「〈组名〉池 · 〈N〉 张」，降级 / 停派另标；点选即按组池筛选 */
+const poolSegments = computed(() => {
+  void dispatch.groups;
+  void dispatch.config;
+  const ids = wb.poolGroups.value.map((g) => g.id).filter((id) => dispatch.isDispatchPool(id));
+  return ids.map((id) => ({
+    id,
+    label: dispatch.poolLabel(id),
+    count: wb.tabRows.value.filter((t) => t.groupId === id).length,
+    tag: modeTagOf(dispatch.effectiveModeOf(id)),
+  }));
+});
+function togglePoolSegment(id: string) {
+  const cur = wb.poolDispatchFilter.value.pools;
+  wb.setPoolDispatchFilter({ pools: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] });
+}
+const dispatchStatusOptions = DISPATCH_STATUSES.map((s) => ({ value: s, label: s }));
+const poolFilterOptions = computed(() => poolSegments.value.map((p) => ({ value: p.id, label: p.label })));
+
+/** 工单池行内：「领取」未签入置灰（10.2）；班组长等另有「指派」 */
+function poolRowActionsDispatch(): { label: string; primary?: boolean; disabled?: boolean; tip?: string }[] {
+  const tip = claimDisabledTip(user.name);
+  const acts: { label: string; primary?: boolean; disabled?: boolean; tip?: string }[] = [
+    tip ? { label: '领取', primary: true, disabled: true, tip } : { label: '领取', primary: true },
+  ];
+  if (canAssign.value) acts.push({ label: '指派' });
+  return acts;
+}
 
 /** 领取刷机单：刷机服务落状态与履历，Toast「已领取 〈单号〉」；已被他人领取时提示领取人（§9.2 / §9.3） */
 function claimFlash(t: Ticket) {
@@ -340,8 +401,8 @@ const isPoolFamilyTab = computed(() => isPoolFamily(wb.activeTab.value));
 /** 催补待回：行内只出「领取」「调剂」，不设勾选与批量领取（PRD-02 §7⑤-B） */
 const isPoolPendingTab = computed(() => wb.activeTab.value === 'poolPending');
 const batchActions = computed(() => {
-  if (isPoolPendingTab.value) return [];
-  if (isPoolFamilyTab.value) return canAssign.value ? ['领取', '指派'] : ['领取'];
+  // 工单池单次只领 1 张、不设勾选与批量领取（【1215】10.2）
+  if (isPoolFamilyTab.value) return [];
   return wb.isMineTab.value ? ['调剂', '退回'] : [];
 });
 /** 批量调剂：所选工单含已转出单时置灰并悬停提示；不含时照常 */
@@ -355,9 +416,7 @@ const batchDisabledTips = computed<Record<string, string>>(() => {
   if (hasOut) tips['调剂'] = TRANSFERRED_OUT_BATCH_TRANSFER_TIP;
   return tips;
 });
-const showBatchToolbar = computed(
-  () => wb.isMineTab.value || (isPoolFamilyTab.value && !isPoolPendingTab.value),
-);
+const showBatchToolbar = computed(() => wb.isMineTab.value);
 const structuredFilterVariant = computed<'done' | 'pool' | 'mine'>(() => {
   if (wb.isDoneTab.value) return 'done';
   if (isPoolFamilyTab.value) return 'pool';
@@ -405,14 +464,37 @@ function openOperation(t: Ticket) {
  * 弹窗直接复用班组看板那只 `AssignModal`（它本就是 B6 调剂的批量壳），不另画一个。
  */
 const canAssign = computed(() => canAssignTicket(user.roleKey));
+/**
+ * 【1215】指派（9.3）：单张指派给归属本组池的本组成员，跨组走调剂；
+ * 弹窗与班组看板池视图共用 `DispatchAssignModal`。
+ */
 const assignOpen = ref(false);
-const assignPreselect = ref<string[]>([]);
-const assignRef = ref<InstanceType<typeof AssignModal> | null>(null);
+const assignTicket = ref<Ticket | null>(null);
+const assignGroupId = computed(() => {
+  const t = assignTicket.value;
+  if (!t) return null;
+  return dispatch.ticketStates[t.no]?.poolId ?? (dispatch.isDispatchPool(t.groupId) ? t.groupId! : null);
+});
 
-/** 候选工单＝当前页签筛选后的全量池内单（不止本页），与弹窗内可勾选范围一致 */
-const assignTickets = computed<AssignTicket[]>(() =>
+function openAssign(t: Ticket) {
+  const st = dispatch.ticketStates[t.no];
+  const gid = st?.poolId ?? t.groupId;
+  if (!gid || !dispatch.isDispatchPool(gid)) {
+    // 不进入派单的组池（一线客服组等）保持现行指派
+    openLegacyAssign([t.id]);
+    return;
+  }
+  assignTicket.value = t;
+  assignOpen.value = true;
+}
+
+/* 现行指派弹窗：只用于不进入派单的组池 */
+const legacyAssignOpen = ref(false);
+const legacyAssignPreselect = ref<string[]>([]);
+const legacyAssignRef = ref<InstanceType<typeof AssignModal> | null>(null);
+const legacyAssignTickets = computed<AssignTicket[]>(() =>
   wb.sorted.value
-    .filter((t) => t.tab === 'pool' && t.assignee === null)
+    .filter((t) => t.tab === 'pool' && t.assignee === null && !dispatch.isDispatchPool(t.groupId))
     .map((t) => ({
       id: t.id,
       no: t.no,
@@ -423,32 +505,19 @@ const assignTickets = computed<AssignTicket[]>(() =>
       createdAt: t.createdAt ?? '',
     })),
 );
-
-function openAssign(preselect: string[]) {
-  if (preselect.length === 0) {
-    message.info('请先勾选要指派的工单');
-    return;
-  }
-  assignPreselect.value = preselect;
-  assignOpen.value = true;
+function openLegacyAssign(preselect: string[]) {
+  legacyAssignPreselect.value = preselect;
+  legacyAssignOpen.value = true;
 }
-
-function onAssignSubmit(p: AssignSubmitPayload) {
-  assignRef.value?.setSubmitting(true);
-  const rows = wb.assignTickets(p.ticketIds, {
-    scope: p.scope,
-    targetId: p.targetId,
-    targetName: p.targetName,
-  });
-  assignRef.value?.setSubmitting(false);
-  const failed = rows.filter((r) => !r.ok);
-  if (failed.length > 0) {
-    // 池内单随时可能被别人先领走 —— 交给弹窗的部分失败态，不静默吞掉
-    assignRef.value?.applyResults(rows);
+function onLegacyAssignSubmit(p: AssignSubmitPayload) {
+  legacyAssignRef.value?.setSubmitting(true);
+  const rows = wb.assignTickets(p.ticketIds, { scope: p.scope, targetId: p.targetId, targetName: p.targetName });
+  legacyAssignRef.value?.setSubmitting(false);
+  if (rows.some((r) => !r.ok)) {
+    legacyAssignRef.value?.applyResults(rows);
     return;
   }
-  assignOpen.value = false;
-  wb.clearSelection();
+  legacyAssignOpen.value = false;
   message.success(`已指派 ${rows.length} 张工单给 ${p.targetName}`);
 }
 
@@ -525,20 +594,19 @@ function onAction(label: string, t: Ticket) {
     takeOverPending(t);
     return;
   }
-  if (label === '领取' && isFlashTicket(t)) {
+  if (label === '领取' && isFlashTicket(t) && flashPoolTabOpen.value) {
     claimFlash(t);
     return;
   }
   if (label === '领取') {
-    if (wb.claimTicket(t.id)) {
-      message.success(`已领取 ${t.no}，转入「我的任务」`);
-    } else {
-      message.warning('该工单已被他人认领');
-    }
+    // 【1215】先到先得 ＋ 未签入不可领；领取不校验画像、不受个人上限约束（10.2）
+    const res = wb.claimTicketWithResult(t.id);
+    if (res.ok) message.success(`已领取 ${t.no}`);
+    else message.warning(res.message || '该工单已被领取');
     return;
   }
   if (label === '指派') {
-    openAssign([t.id]);
+    openAssign(t);
     return;
   }
   if (label === '调剂' || label === '退回') {
@@ -580,10 +648,6 @@ function onBatch(action: string) {
     if (claimed > 0) message.success(`已领取 ${claimed} 单`);
     if (failed > 0) message.warning(`${failed} 单领取失败或已被他人领取`);
     clearFlashSelection();
-    return;
-  }
-  if (action === '指派') {
-    openAssign([...wb.selectedIds.value]);
     return;
   }
   if (action === '领取') {
@@ -765,6 +829,56 @@ function onConfirmSaveFilter(name: string) {
         />
       </div>
 
+      <!-- 【1215】工单池 · 组池分段与派单筛选（10.1） -->
+      <div v-if="!flashPoolTabOpen && wb.isPoolTab.value" class="pool-dispatch-bar">
+        <div class="pdb-segs" role="list">
+          <button
+            v-for="p in poolSegments"
+            :key="p.id"
+            type="button"
+            class="pdb-seg"
+            :class="{ on: wb.poolDispatchFilter.value.pools.includes(p.id) }"
+            @click="togglePoolSegment(p.id)"
+          >
+            <span>{{ p.label }} · {{ p.count }} 张</span>
+            <span
+              v-if="p.tag"
+              class="pdb-mode"
+              :style="{ color: MODE_TAG_STYLE[p.tag].color, background: MODE_TAG_STYLE[p.tag].bg, borderColor: MODE_TAG_STYLE[p.tag].border }"
+            >{{ p.tag }}</span>
+          </button>
+        </div>
+        <div class="pdb-filters">
+          <a-select
+            class="pdb-select"
+            mode="multiple"
+            :max-tag-count="1"
+            allow-clear
+            placeholder="派单状态"
+            :options="dispatchStatusOptions"
+            :value="wb.poolDispatchFilter.value.statuses"
+            @update:value="(v: unknown) => wb.setPoolDispatchFilter({ statuses: Array.isArray(v) ? (v as string[]) : [] })"
+          />
+          <a-select
+            class="pdb-select"
+            mode="multiple"
+            :max-tag-count="1"
+            allow-clear
+            placeholder="组池"
+            :options="poolFilterOptions"
+            :value="wb.poolDispatchFilter.value.pools"
+            @update:value="(v: unknown) => wb.setPoolDispatchFilter({ pools: Array.isArray(v) ? (v as string[]) : [] })"
+          />
+          <a-tooltip :title="myProfileConfigured ? undefined : '人员画像未配置'">
+            <a-checkbox
+              :checked="wb.poolDispatchFilter.value.matchMe"
+              :disabled="!myProfileConfigured"
+              @update:checked="(v: boolean) => wb.setPoolDispatchFilter({ matchMe: v })"
+            >匹配我</a-checkbox>
+          </a-tooltip>
+        </div>
+      </div>
+
       <!-- ④ AI 建议条（仅我的任务；置于工具行之下，避免顶挤搜索栏） -->
       <AiSuggestionBar
         v-if="!flashPoolTabOpen && wb.showAiBar.value && !isDraftView"
@@ -834,7 +948,8 @@ function onConfirmSaveFilter(name: string) {
                     ? 'pool'
                     : 'default'
             "
-            :row-actions-fn="isPoolPendingTab ? poolPendingRowActions : undefined"
+            :row-actions-fn="isPoolPendingTab ? poolPendingRowActions : wb.isPoolTab.value ? poolRowActionsDispatch : undefined"
+            :selectable="wb.isPoolTab.value ? false : undefined"
             :show-appointment-column="wb.showAppointmentColumn.value"
             :extra-columns="listExtraColumns"
             :visible-columns="visibleColumns"
@@ -858,12 +973,37 @@ function onConfirmSaveFilter(name: string) {
             <template #cell-flashFail="{ ticket }">
               <span class="flash-cell" :title="flashFailCellText(ticket)">{{ flashFailCellText(ticket) }}</span>
             </template>
+            <template #cell-dispatchStatus="{ ticket }">
+              <span
+                v-if="dispatchStatusCell(ticket)"
+                class="dsp-tag"
+                :style="{
+                  color: DISPATCH_STATUS_STYLE[dispatchStatusCell(ticket)!].color,
+                  background: DISPATCH_STATUS_STYLE[dispatchStatusCell(ticket)!].bg,
+                  borderColor: DISPATCH_STATUS_STYLE[dispatchStatusCell(ticket)!].border,
+                }"
+                :title="dispatchStatusCell(ticket) === '等原处理人' ? reserveTipOf(ticket.no) : undefined"
+              >{{ dispatchStatusCell(ticket) }}</span>
+              <span v-else class="dsp-empty">—</span>
+            </template>
+            <template #cell-dispatchMatch="{ ticket }">
+              <span v-if="matchesMeCell(ticket)" class="dsp-match">匹配我</span>
+              <span v-else class="dsp-empty">—</span>
+            </template>
+            <template #cell-dispatchPool="{ ticket }">
+              <span class="dsp-plain" :title="ticket.groupId ? dispatch.poolLabel(ticket.groupId) : '—'">
+                {{ ticket.groupId && dispatch.isDispatchPool(ticket.groupId) ? dispatch.poolLabel(ticket.groupId) : (ticket.groupNames?.[0] ? `${ticket.groupNames[0]}池` : '—') }}
+              </span>
+            </template>
+            <template #cell-dispatchWait="{ ticket }">
+              <span class="dsp-plain">{{ waitText(waitMinutesOf(ticket, nowMs)) }}</span>
+            </template>
           </TicketRichList>
           <!-- 无分页：全量快照展示（PRD §8.2②），仅保留总数/已选统计 -->
           <div class="pager">
             <div class="pager-left">
               <span class="pager-total">共 {{ wb.total.value }} 条</span>
-              <span v-if="wb.isMineTab.value || (isPoolFamilyTab && !isPoolPendingTab)" class="pager-selected">已选 {{ wb.selectedCount.value }} 项</span>
+              <span v-if="wb.isMineTab.value" class="pager-selected">已选 {{ wb.selectedCount.value }} 项</span>
             </div>
           </div>
         </template>
@@ -877,14 +1017,19 @@ function onConfirmSaveFilter(name: string) {
       @created="onCreated"
     />
 
-    <AssignModal
-      ref="assignRef"
+    <DispatchAssignModal
       v-model:open="assignOpen"
-      :preselected-ids="assignPreselect"
+      :ticket="assignTicket"
+      :group-id="assignGroupId"
+    />
+    <AssignModal
+      ref="legacyAssignRef"
+      v-model:open="legacyAssignOpen"
+      :preselected-ids="legacyAssignPreselect"
       :candidates="TEAM_MEMBERS"
-      :tickets="assignTickets"
+      :tickets="legacyAssignTickets"
       :can-cross-team="canAssign"
-      @submit="onAssignSubmit"
+      @submit="onLegacyAssignSubmit"
     />
 
     <AiSuggestionDrawer
@@ -1000,6 +1145,47 @@ function onConfirmSaveFilter(name: string) {
   min-width: 0;
 }
 .suspend-time { font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* 【1215】工单池 · 组池分段与派单筛选 */
+.pool-dispatch-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.pdb-segs { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.pdb-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+  color: #374151;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pdb-seg:hover { background: #f9fafb; }
+.pdb-seg.on { color: #1a6fff; background: #eff6ff; border-color: #bfdbfe; font-weight: 600; }
+.pdb-mode, .dsp-tag, .dsp-match {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.dsp-match { color: #059669; background: #ecfdf5; border-color: #a7f3d0; }
+.dsp-empty { color: #9ca3af; }
+.dsp-plain { font-size: 12px; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pdb-filters { display: flex; align-items: center; gap: 10px; flex: none; }
+.pdb-select { width: 168px; }
 .flash-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .flash-plain {
   font-size: 12px;

@@ -13,6 +13,7 @@ import type { FlashActor } from '@/views/tickets/types/flash';
 import { mapUserRole } from '@/views/tickets/composables/opActions';
 import { takeOverReturnedTicket } from '@/views/tickets/composables/aftersaleEvents';
 import { claimTicketByType } from '@/views/tickets/composables/poolClaim';
+import { DISPATCH_STATUS_ORDER } from '@/views/tickets/composables/dispatchUi';
 
 /** 履历时刻 YYYY-MM-DD HH:mm */
 function nowStamp(): string {
@@ -96,6 +97,7 @@ export function useTicketWorkbench() {
 
   const user = useUserStore();
   const flash = useFlashStore();
+  const dispatch = useDispatchStore();
   // 小智种子单的履历与缓存（种子单本身已随 XIAOZHI_SEEDS 并入 TICKETS）
   useXiaozhiStore().hydrate();
 
@@ -110,7 +112,27 @@ export function useTicketWorkbench() {
   const flashHandler = computed(() => currentHandlerName(user.roleKey, user.name));
 
   function inPoolTabScope(t: Ticket): boolean {
-    return inGroupPoolScope(t, poolGroupIdsForTicket(t, visiblePoolGroupIds.value));
+    if (!inGroupPoolScope(t, poolGroupIdsForTicket(t, visiblePoolGroupIds.value))) return false;
+    // 【1215】投诉对象为本人的工单不可见（10.1）
+    return dispatch.ticketStates[t.no]?.complaintTarget !== user.name;
+  }
+
+  /**
+   * 【1215】工单池页签的派单筛选（10.1）：「匹配我」、派单状态多选、组池多选。列表不按画像过滤，
+   * 只有勾选「匹配我」时才只列匹配的单。
+   */
+  const poolDispatchFilter = ref<{ matchMe: boolean; statuses: string[]; pools: string[] }>({
+    matchMe: false, statuses: [], pools: [],
+  });
+  function matchPoolDispatchFilter(t: Ticket): boolean {
+    const f = poolDispatchFilter.value;
+    if (f.pools.length && !f.pools.includes(t.groupId ?? '')) return false;
+    if (f.statuses.length && !f.statuses.includes(dispatch.dispatchStatusOf(t.no) ?? '')) return false;
+    if (f.matchMe && !dispatch.matchesMe(t, user.name)) return false;
+    return true;
+  }
+  function setPoolDispatchFilter(patch: Partial<{ matchMe: boolean; statuses: string[]; pools: string[] }>) {
+    poolDispatchFilter.value = { ...poolDispatchFilter.value, ...patch };
   }
   /** 催补待回数据域：915 §9.3 父域，去掉处理人为当前用户的单（那些在「我的任务」） */
   function inPoolPendingTabScope(t: Ticket): boolean {
@@ -185,6 +207,7 @@ export function useTicketWorkbench() {
         if (!matchMineQuery(t, doneQuery.value)) return false;
       } else if (activeTab.value === 'pool' || activeTab.value === 'poolPending') {
         if (!matchMineQuery(t, poolQuery.value)) return false;
+        if (activeTab.value === 'pool' && !matchPoolDispatchFilter(t)) return false;
       }
       if (kw) {
         if (structuredTab) {
@@ -209,6 +232,10 @@ export function useTicketWorkbench() {
       } else {
         list.sort((a, b) => compareByMineSort(a, b, mineSortRule.value));
       }
+    } else if (activeTab.value === 'pool') {
+      // 【1215】派单失败回池在前，其后排队中、等原处理人；同类按首响 SLA 剩余升序（10.1）
+      const rankOf = (t: Ticket) => DISPATCH_STATUS_ORDER[dispatch.dispatchStatusOf(t.no) ?? ''] ?? 3;
+      list.sort((a, b) => rankOf(a) - rankOf(b) || slaUrgencyCompare(a, b));
     } else {
       list.sort(slaUrgencyCompare);
     }
@@ -356,6 +383,7 @@ export function useTicketWorkbench() {
     mineQuery.value = EMPTY_MINE_QUERY();
     poolQuery.value = EMPTY_MINE_QUERY();
     doneQuery.value = DEFAULT_DONE_QUERY();
+    poolDispatchFilter.value = { matchMe: false, statuses: [], pools: [] };
   }
   function setChip(chip: ChipKey | string, onApplyOptionalVisible?: (v: Record<string, boolean>) => void) {
     const prevChip = activeChip.value;
@@ -458,9 +486,13 @@ export function useTicketWorkbench() {
   }
   /** 领取本组工单池中的工单 → 转入我的任务（与处理页同一个按类型分派的口子，见 `poolClaim.ts`） */
   function claimTicket(id: string): boolean {
+    return claimTicketWithResult(id).ok;
+  }
+  /** 同 `claimTicket`，带提示文案（【1215】先到先得「该工单已被领取」、未签入「签入后可领取」） */
+  function claimTicketWithResult(id: string): { ok: boolean; message: string } {
     const t = all.value.find((x) => x.id === id);
-    if (!t) return false;
-    return claimTicketByType(t, user.roleKey, user.name).ok;
+    if (!t) return { ok: false, message: '' };
+    return claimTicketByType(t, user.roleKey, user.name);
   }
   /** 批量领取工单池工单，返回成功/失败数量 */
   function claimTickets(ids: Iterable<string>): { claimed: number; failed: number } {
@@ -616,7 +648,8 @@ export function useTicketWorkbench() {
     selectedCount, allPageSelected, aiSuggestions, aiSummary, showAiBar,
     isDraftView, showAppointmentColumn, showSuspendColumns, isMineTab, isDoneTab, isPoolTab, usesStructuredFilter,
     setTab, setChip, setMineQuery, setDoneQuery, setStructuredQuery, saveCurrentFilter, removeSavedFilterChip, applyMineQuery, applyStructuredQuery, setMineSortRule, setSearch, toggleSelect, toggleSelectAllOnPage, clearSelection,
-    addTicket, claimTicket, claimTickets, claimFlashTicket, poolPendingOwnerOf, takeOverPoolPending, assignTickets, flashPoolRows, dismissAiSuggestion, ticketById,
+    poolDispatchFilter, setPoolDispatchFilter,
+    addTicket, claimTicket, claimTicketWithResult, claimTickets, claimFlashTicket, poolPendingOwnerOf, takeOverPoolPending, assignTickets, flashPoolRows, dismissAiSuggestion, ticketById,
     removeDraft: (id: string) => draftStore.remove(id),
   };
 }

@@ -38,6 +38,7 @@ import AssignModal, {
 } from './components/AssignModal.vue';
 import MetricTipIcon from '@/components/MetricTipIcon.vue';
 import ApproveDrillDrawer from './components/ApproveDrillDrawer.vue';
+import DispatchTeamPanel from './components/DispatchTeamPanel.vue';
 import {
   LEADER_TEAMS,
   getTeamBoardSnapshot,
@@ -405,9 +406,20 @@ function onAssignSubmit(p: AssignSubmitPayload) {
 
 const approveOpen = ref(false);
 
+/** 【1215】「去指派」进本组派单 · 池内工单（9.3）；本人未任派单组班组长时沿用现行指派弹窗 */
+const dispatchPanelRef = ref<InstanceType<typeof DispatchTeamPanel> | null>(null);
+const dispatchAnchor = ref<HTMLElement | null>(null);
+function goDispatchPool(): boolean {
+  if (!dispatchPanelRef.value || !dispatchAnchor.value?.offsetHeight) return false;
+  dispatchPanelRef.value.showPool();
+  dispatchAnchor.value.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  return true;
+}
+
 function onTodoClick(key: string) {
-  if (key === 'assign') openAssign();
-  else if (key === 'approve') approveOpen.value = true;
+  if (key === 'assign') {
+    if (!goDispatchPool()) openAssign();
+  } else if (key === 'approve') approveOpen.value = true;
 }
 
 function goApprovalCenter() {
@@ -1039,6 +1051,11 @@ watch(teamId, () => {
         </div>
         <div class="ld-ft">{{ loadFilter ? `已筛「${loadFilter}」· 再点取消` : '点档筛选组员表' }}</div>
       </div>
+    </div>
+
+    <!-- 【1215】本组派单：本组开关 / 形态、成员派单设置、池内工单指派 -->
+    <div ref="dispatchAnchor">
+      <DispatchTeamPanel ref="dispatchPanelRef" />
     </div>
 
     <!-- ③ 主体：组员明细全宽 -->

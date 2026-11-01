@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { message } from 'ant-design-vue';
 import {
   CoffeeOutlined, CustomerServiceOutlined, DownOutlined, PhoneFilled,
@@ -10,6 +10,8 @@ import DialPadPopover from '@/components/cti/DialPadPopover.vue';
 import SignInModal from '@/components/cti/SignInModal.vue';
 import { useOutboundCall } from '@/composables/useOutboundCall';
 import { useCtiStore, type BreakReason, type ReadyMode, READY_MODE_LABELS } from '@/stores/cti';
+import { useUserStore } from '@/stores/user';
+import { syncSignInFromCti } from '@/views/tickets/composables/dispatchUi';
 
 const READY_MENU: { key: ReadyMode; label: string }[] = [
   { key: 'ticket_work', label: READY_MODE_LABELS.ticket_work },
@@ -25,7 +27,15 @@ const BREAK_MENU: { key: BreakReason; label: string }[] = [
 ];
 
 const cti = useCtiStore();
+const user = useUserStore();
 const { requestOutboundCall, checkCanCall } = useOutboundCall();
+
+/**
+ * 【1215】话务条「签入 / 小休 / 签出」联动派单签入状态（11.5：签入即在班）。
+ * 只跟随变化、不在挂载时回写：刷新后话务条回到未签入，不把派单侧已有的签入状态冲掉。
+ * 签入后由派单 store 先看预留给本人的单、再选排队单。
+ */
+watch(() => cti.workStatus, (s) => syncSignInFromCti(user.name, s));
 
 const readyActive = computed(() => cti.workStatus === 'ready');
 const breakActive = computed(() => cti.workStatus === 'break');
