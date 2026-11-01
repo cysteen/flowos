@@ -21,6 +21,7 @@ import CreateTicketModal from '@/views/tickets/components/CreateTicketModal.vue'
 import OpAiAssistant from '@/views/tickets/components/operation/OpAiAssistant.vue';
 import OpStatDetailModal from '@/views/tickets/components/operation/OpStatDetailModal.vue';
 import HomePerformancePanel from '@/views/home/components/HomePerformancePanel.vue';
+import HomeDispatchCard from '@/views/home/components/HomeDispatchCard.vue';
 import { queryCenterLocation } from '@/views/query/queryCenterRoute';
 
 /** 个人门户通用知识推荐（无工单上下文） */
@@ -351,6 +352,9 @@ function openDrillTicket(no: string) {
         </div>
       </div>
     </section>
+
+    <!-- 【1215】我的派单：本人人员画像、熟练度、个人上限只读（仅派单坐席） -->
+    <HomeDispatchCard />
 
     <!-- ④ 我的效能：区头自带今天/本周/本月/自定义 -->
     <HomePerformancePanel @drill="openMetricDrill" />

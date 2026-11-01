@@ -6,7 +6,7 @@ import type { Dayjs } from 'dayjs';
 import { useDispatchStore } from '@/stores/dispatch';
 import { stdPagination } from '@/config/adminUi';
 import {
-  DISPATCH_ROLES, PROFICIENCIES, defaultDispatchConfig,
+  DISPATCH_ROLES, PROFICIENCIES, ROLLOUT_STAGES, defaultDispatchConfig,
   type DispatchConfig, type DispatchRole, type Proficiency, type RunMode, type ScoreFactor,
 } from '@/views/tickets/types/dispatch';
 import {
@@ -15,6 +15,7 @@ import {
 import { parseAt } from './dispatchMetrics';
 import PoolRuleList from './PoolRuleList.vue';
 import PoolModeSwitchModal from './PoolModeSwitchModal.vue';
+import RolloutStageModal from './RolloutStageModal.vue';
 
 const props = defineProps<{ tab?: string; focusRuleId?: string }>();
 const emit = defineEmits<{ 'update:tab': [v: string] }>();
@@ -64,6 +65,18 @@ function onRunMode() {
   } else apply();
 }
 const modeOpen = ref(false);
+
+/* 上线阶段（第 17 章）：试运行 → 单组试点 → 多组 → 全量，每步由管理员确认；可退回上一步 */
+const stage = computed(() => store.rolloutStage());
+const nextStage = computed(() => ROLLOUT_STAGES[ROLLOUT_STAGES.indexOf(stage.value) + 1] ?? null);
+const prevStage = computed(() => ROLLOUT_STAGES[ROLLOUT_STAGES.indexOf(stage.value) - 1] ?? null);
+const stageTip = computed(() => (store.config.globalSwitch ? '' : '全局开关已关闭，请先在派单策略开启'));
+const stageOpen = ref(false);
+const stageDir = ref<'forward' | 'back'>('forward');
+function openStage(dir: 'forward' | 'back') {
+  stageDir.value = dir;
+  stageOpen.value = true;
+}
 
 const RUN_FIELDS: { key: keyof RunThresholds; label: string; prefix?: string; unit: string; min: number; max: number }[] = [
   { key: 'autoFailRate', label: '自动降级 · 派单失败率', prefix: '5 分钟内 ≥', unit: '%', min: 1, max: 100 },
@@ -203,6 +216,18 @@ watch(() => store.config, (c) => {
             <a-button size="small" @click="modeOpen = true">切换</a-button>
           </div>
         </div>
+        <div class="st-row">
+          <span class="st-k">上线阶段</span>
+          <div class="st-v">
+            <a-tag color="blue">{{ stage }}</a-tag>
+            <a-tooltip :title="stageTip || undefined">
+              <a-button v-if="nextStage" size="small" :disabled="!!stageTip" @click="openStage('forward')">推进至{{ nextStage }}</a-button>
+            </a-tooltip>
+            <a-tooltip :title="stageTip || undefined">
+              <a-button v-if="prevStage" size="small" :disabled="!!stageTip" @click="openStage('back')">退回至{{ prevStage }}</a-button>
+            </a-tooltip>
+          </div>
+        </div>
         <div v-for="fd in RUN_FIELDS" :key="fd.key" class="st-row">
           <span class="st-k">{{ fd.label }}</span>
           <div class="st-v">
@@ -334,6 +359,7 @@ watch(() => store.config, (c) => {
     </section>
 
     <PoolModeSwitchModal v-model:open="modeOpen" scope="global" />
+    <RolloutStageModal v-model:open="stageOpen" :direction="stageDir" />
   </div>
 </template>
 
