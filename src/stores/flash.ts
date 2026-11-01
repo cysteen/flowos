@@ -1543,7 +1543,8 @@ export const useFlashStore = defineStore('flash', () => {
       nodeStatus: techPool ? r.nodeStatus : '待响应',
       assignee: by.name,
       tab: 'mine',
-      responded: false,
+      // 整单首响已记成的不重计（【1215】13.3）
+      responded: !!r.responded,
       updatedAt: flashStamp(now),
     });
     log(ticketNo, now, {
@@ -1569,16 +1570,41 @@ export const useFlashStore = defineStore('flash', () => {
       nodeStatus: '待响应',
       assignee: target,
       tab: 'mine',
-      responded: false,
+      // 整单首响已记成的不重计（【1215】9.3 / 13.3）
+      responded: !!r.responded,
       updatedAt: flashStamp(now),
     });
     log(ticketNo, now, {
       category: 'node', action: 'accept', who: by.name, role: by.role, how: '指派',
-      what: `指派给 ${target}。`,
+      what: `指派 → ${target}`,
     });
     bump(ticketNo);
     persist();
-    return { ok: true, message: `已将 ${ticketNo} 指派给 ${target}` };
+    return { ok: true, message: `已指派给${target}` };
+  }
+
+  /**
+   * 班组长改派（【1215】智能派单 9.3 / 12.3）：二线刷机处理组的在途单换处理人；改派原因必填、最多 200 字。
+   * 子状态不变，SLA 不停钟、不重置，整单首响已记成的不重计；写履历「指派 → 〈姓名〉；原因：〈原因〉」。
+   */
+  function reassign(ticketNo: string, target: string, by: FlashActor, reason: string): FlashActionResult {
+    const r = rowOf(ticketNo);
+    if (!r?.flash) return { ok: false, message: FLASH_TIP_REPUSH_STATE };
+    const why = reason.trim();
+    if (!why) return { ok: false, message: '请填写改派原因' };
+    if (why.length > 200) return { ok: false, message: '改派原因最多 200 字' };
+    if (!r.assignee || r.flash.state.pool !== 'l2' || r.nodeStatus === '自动刷机中' || isTicketClosed(r.nodeStatus)) {
+      return { ok: false, message: '该工单已被领取' };
+    }
+    const now = Date.now();
+    Object.assign(r, { assignee: target, tab: 'mine', updatedAt: flashStamp(now) });
+    log(ticketNo, now, {
+      category: 'node', action: 'transfer', who: by.name, role: by.role, how: '改派',
+      what: `指派 → ${target}；原因：${why}`,
+    });
+    bump(ticketNo);
+    persist();
+    return { ok: true, message: `已改派给${target}` };
   }
 
   /**
@@ -1953,6 +1979,7 @@ export const useFlashStore = defineStore('flash', () => {
     poolEnteredAtOf,
     claimFromPool,
     assignFromPool,
+    reassign,
     transferOwner,
   };
 });

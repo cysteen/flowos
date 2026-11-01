@@ -14,7 +14,7 @@ import type { WorkStatus } from '@/stores/cti';
 import { isFlashTicket } from '@/views/tickets/types/flash';
 import { isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
 import { isRefundTicket } from '@/views/tickets/types/refund';
-import type { Ticket } from '@/views/tickets/types/ticket';
+import { isFirstResponded, type Ticket } from '@/views/tickets/types/ticket';
 import { IN_TRANSIT_COUNT_RULE, type DispatchAgent, type DispatchStatus, type OccupyResult, type PoolMode, type SignInStatus } from '@/views/tickets/types/dispatch';
 import { mapUserRole } from './opActions';
 import { takeOverReturnedTicket } from './aftersaleEvents';
@@ -203,7 +203,8 @@ export function assignInTeam(ticket: Ticket, assignee: string): OccupyResult {
       Object.assign(t, {
         tab: 'mine',
         assignee,
-        responded: false,
+        // 整单首响已记成的不重计（9.3）
+        responded: isFirstResponded(t),
         nodeStatus: t.nodeStatus === '未认领' ? '待响应' : t.nodeStatus,
         updatedAt: at,
       });
@@ -261,10 +262,10 @@ export function directToInitiator(ticket: Ticket): void {
 /* 改派（9.3）                                                            */
 /* ------------------------------------------------------------------ */
 
-/** 改派可选工单：归属本组的在途工单（已派出、已领取），刷机单由刷机服务调剂，不在此列 */
+/** 改派可选工单：归属本组的在途工单（已派出、已领取）；刷机单只含二线刷机单（一线刷机池不进入派单，12.3） */
 export function reassignableTicketsOf(groupId: string, tickets: Ticket[]): Ticket[] {
   return tickets.filter((t) => t.groupId === groupId && !!t.assignee && !t.archived && !t.isDraft
-    && IN_TRANSIT_COUNT_RULE[t.nodeStatus] === 'assignee' && !isFlashTicket(t));
+    && IN_TRANSIT_COUNT_RULE[t.nodeStatus] === 'assignee' && (!isFlashTicket(t) || t.flash?.state.pool === 'l2'));
 }
 
 /**
@@ -285,6 +286,14 @@ export function reassignInTeam(ticket: Ticket, assignee: string, reason: string,
   const operator = user.name;
   const role = mapUserRole(user.roleKey);
   const at = stamp();
+  if (isFlashTicket(t)) {
+    // 二线刷机单走刷机服务落库：写处理人、履历并落刷机缓存（12.3）
+    const res = useFlashStore().reassign(t.no, assignee, { name: operator, role }, r);
+    if (!res.ok) return { ok: false, message: res.message };
+    dispatch.recordManualTake(t, assignee, '改派', operator, r);
+    writeOverCapEntry(t, assignee);
+    return { ok: true, message: `已改派给${assignee}` };
+  }
   Object.assign(t, { assignee, tab: 'mine', updatedAt: at });
   const entry = {
     category: 'node' as const, action: 'transfer' as const, who: operator, role,

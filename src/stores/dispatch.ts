@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { reactive, ref, toRaw } from 'vue';
 import { TICKETS } from '@/mock/tickets';
-import { POOL_GROUPS, type Ticket } from '@/views/tickets/types/ticket';
+import { POOL_GROUPS, isFirstResponded, type Ticket } from '@/views/tickets/types/ticket';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
 import { CUSTOMER_DIRECTORY } from '@/views/tickets/types/createTicket';
 import { isFlashTicket } from '@/views/tickets/types/flash';
@@ -833,6 +833,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
     if (isRefundTicket(t)) useRefundStore().afterClaim(t.no);
   }
 
+  /** 派出落处理人：整单首响一经记成不因换人重计（9.3 / 11.1 / 13.3），首响标记沿用工单行现值 */
   function writeAssign(t: Ticket, name: string, at: number) {
     const keepStatus = t.nodeStatus === '已升级技术支持';
     const toProcessing = !!ticketStates.value[t.no]?.prevHandler && t.returnedFromAftersale;
@@ -840,7 +841,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
       assignee: name,
       tab: 'mine',
       nodeStatus: keepStatus ? t.nodeStatus : toProcessing ? '处理中' : '待响应',
-      responded: toProcessing ? true : false,
+      responded: toProcessing ? true : !!t.responded,
       updatedAt: stamp(at),
     });
     if (isXiaozhiTicket(t)) useXiaozhiStore().syncStatus(t.no, t.nodeStatus, { assignee: name });
@@ -1106,7 +1107,8 @@ export const useDispatchStore = defineStore('dispatch', () => {
   function redispatchToPool(ticket: Ticket, poolId: string, trigger: '调剂到池' | '升级三线' = '调剂到池', operator?: string, reason?: string): DispatchResult | null {
     const t = reactive(ticket) as Ticket;
     const keep = t.nodeStatus === '已升级技术支持';
-    Object.assign(t, { assignee: null, tab: 'pool', groupId: poolId, ...(keep ? {} : { nodeStatus: '未认领' }) });
+    // 落池前把首响结论落成显式值：子状态改「未认领」后不再能由子状态推出（9.4 首响已记成的不重计）
+    Object.assign(t, { responded: isFirstResponded(t), assignee: null, tab: 'pool', groupId: poolId, ...(keep ? {} : { nodeStatus: '未认领' }) });
     if (trigger === '调剂到池') {
       manualLog(t, '调剂到池', operator ?? operatorName(), poolLabel(poolId), reason);
       writeTimeline(t, '调剂到池', `调剂到池 → ${poolLabel(poolId)}${reason ? `；原因：${reason}` : ''}`, Date.now());
@@ -1198,7 +1200,8 @@ export const useDispatchStore = defineStore('dispatch', () => {
     const prev = opts.prevHandler ?? t.assignee ?? null;
     const now = Date.now();
     touchRow(t);
-    Object.assign(t, { assignee: null, tab: 'pool', nodeStatus: '未认领', updatedAt: stamp(now) });
+    // 已记成的首响不重计（11.1）：落池前把首响结论落成显式值
+    Object.assign(t, { responded: isFirstResponded(t), assignee: null, tab: 'pool', nodeStatus: '未认领', updatedAt: stamp(now) });
     writeTimeline(t, '回访打回', `${opts.reason ?? '客户回访反馈未解决'}，打回本单归属池重新派送`, now);
     return run(t, '回访打回', { prevHandler: prev }, true);
   }

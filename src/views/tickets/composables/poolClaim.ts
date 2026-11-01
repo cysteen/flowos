@@ -13,7 +13,7 @@ import { takeOverReturnedTicket } from './aftersaleEvents';
 import { mapUserRole } from './opActions';
 import type { TlRole } from '@/views/tickets/types/ticketDetail';
 import {
-  currentHandlerName, inGroupPoolScope, poolGroupIdsForTicket, visiblePoolGroupsFor, POOL_GROUPS, WORKBENCH_HANDLER,
+  currentHandlerName, inGroupPoolScope, isFirstResponded, poolGroupIdsForTicket, visiblePoolGroupsFor, POOL_GROUPS, WORKBENCH_HANDLER,
   type PoolGroupMeta, type Ticket,
 } from '@/views/tickets/types/ticket';
 import { useUserStore } from '@/stores/user';
@@ -151,7 +151,8 @@ export function claimPoolTicket(t: Ticket, who: string, role: TlRole, at: string
   }
   t.tab = 'mine';
   t.assignee = who;
-  t.responded = false;
+  // 【1215】整单首响已记成的不重计（回访打回 / 调剂到池后留池的单，11.1 / 13.3）
+  t.responded = isFirstResponded(t);
   // 630 §4.1：领取 未认领 → 待响应；池里其他子状态（如跨组调剂落池）不改
   if (t.nodeStatus === '未认领') t.nodeStatus = '待响应';
   t.eventTimeline = [...(t.eventTimeline ?? []), {

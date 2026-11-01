@@ -54,6 +54,7 @@ import {
   poolGroupIdsForTicket,
   resolveTicketGroupNames,
   slaUrgencyCompare,
+  isFirstResponded,
   WORKBENCH_HANDLER,
   type ChipKey,
   type ChipMeta,
@@ -558,7 +559,7 @@ export function useTicketWorkbench() {
       } else {
         t.tab = 'mine';
         t.assignee = me;
-        t.responded = false;
+        t.responded = isFirstResponded(t);
       }
       // 个册退费单（1120）：池内领取同咨询单，落库后由个册退费服务落快照（同 `claimTicketByType`）
       if (isRefundTicket(t)) useRefundStore().afterClaim(t.no);
@@ -623,7 +624,7 @@ export function useTicketWorkbench() {
       } else {
         t.tab = 'mine';
         t.assignee = opts.targetName;
-        t.responded = false;
+        t.responded = isFirstResponded(t);
         // 【1215】处理履历「指派 → 〈姓名〉」（13.1）
         t.eventTimeline = [...(t.eventTimeline ?? []), {
           id: `tl-${t.no}-assign-${(t.eventTimeline?.length ?? 0) + 1}`,
