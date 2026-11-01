@@ -187,6 +187,19 @@ export function applyTransferDispatch(
   return { handled: true, message: `已调剂给${name}` };
 }
 
+/**
+ * 列表侧（查询中心行内调剂、工作台批量调剂）复用处理页同一套调剂落库：到池清空处理人、改归属池并重新派送；
+ * 到人指定人直派并记派单日志。列表侧无处理页详情与本页履历，传空壳。
+ */
+export function applyTransferToRow(
+  row: Ticket,
+  input: TransferDispatchInput,
+  operator: string,
+  role: TlRole,
+): { message: string; handled: boolean } {
+  return applyTransferDispatch({ no: row.no } as TicketDetailMeta, [], input, operator, role);
+}
+
 /* ------------------------------------------------------------------ */
 /* 升级三线                                                              */
 /* ------------------------------------------------------------------ */
@@ -207,6 +220,7 @@ export function scheduleEscalateDispatch(
   timeline: TimelineEntry[],
   input: EscalateDispatchInput,
   operator: string,
+  role: TlRole = '二线专员',
 ): string {
   const store = useDispatchStore();
   const label = store.poolLabel(TECH_POOL_ID);
@@ -219,6 +233,13 @@ export function scheduleEscalateDispatch(
       if (!row) return;
       const target = reactive(row) as Ticket;
       Object.assign(target, { assignee: name, tab: 'mine', updatedAt: stampNow() });
+      // 刷机单的工单行由刷机服务落库（刷机缓存）：经刷机履历写一条指定记录并落快照
+      if (isFlashTicket(target)) {
+        useFlashStore().logProcess(target.no, { name: operator, role }, {
+          category: 'node', action: 'transfer', who: operator, role,
+          how: '升级三线指定人', what: `指定技术支持 ${name} 处理${reason ? `；说明：${reason}` : ''}`,
+        });
+      }
       store.recordManualTake(target, name, '升级三线指定人', operator, reason);
       writeOverCapEntry(target, timeline, name);
     });

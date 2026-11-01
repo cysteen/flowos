@@ -10,7 +10,7 @@ import {
   type DispatchConfig, type DispatchRole, type Proficiency, type RunMode, type ScoreFactor,
 } from '@/views/tickets/types/dispatch';
 import {
-  DEFAULT_RUN_THRESHOLDS, MODE_TONE, configFieldsText, opts, rangeError, type RunThresholds,
+  DEFAULT_RUN_THRESHOLDS, MODE_TONE, configFieldsText, opts, pickRunThresholds, rangeError, type RunThresholds,
 } from './dispatchUi';
 import { parseAt } from './dispatchMetrics';
 import PoolRuleList from './PoolRuleList.vue';
@@ -32,14 +32,7 @@ watch(() => props.tab, (v) => { if (v && TABS.some((t) => t.key === v)) active.v
 watch(active, (v) => emit('update:tab', v));
 
 /* ================= 运行设置 ================= */
-const cfgExtra = () => store.config as unknown as Record<string, unknown>;
-function readRun(): RunThresholds {
-  const c = cfgExtra();
-  const out = { ...DEFAULT_RUN_THRESHOLDS };
-  (Object.keys(out) as (keyof RunThresholds)[]).forEach((k) => { if (typeof c[k] === 'number') out[k] = c[k] as number; });
-  return out;
-}
-const run = reactive<RunThresholds>(readRun());
+const run = reactive<RunThresholds>(pickRunThresholds(store.config));
 
 function onGlobalSwitch(on: boolean) {
   Modal.confirm({
@@ -86,7 +79,7 @@ function saveRun() {
     const e = rangeError(run[fd.key], fd.min, fd.max);
     if (e) { message.error(e); return; }
   }
-  const r = store.updateConfig({ ...run } as unknown as Partial<DispatchConfig>);
+  const r = store.updateConfig({ ...run });
   if (r.ok) message.success(r.message); else message.error(r.message);
 }
 
@@ -176,7 +169,7 @@ watch(() => store.config, (c) => {
   Object.assign(out, pickOut(c));
   cap.roleBase = { ...c.roleBase };
   cap.proficiencyCoef = { ...c.proficiencyCoef };
-  Object.assign(run, readRun());
+  Object.assign(run, pickRunThresholds(c));
 });
 </script>
 

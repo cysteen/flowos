@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { reactive, ref } from 'vue';
+import { reactive, ref, toRaw } from 'vue';
 import { TICKETS } from '@/mock/tickets';
 import { POOL_GROUPS, type Ticket } from '@/views/tickets/types/ticket';
 import type { TimelineEntry } from '@/views/tickets/types/ticketDetail';
@@ -32,13 +32,15 @@ import { useRefundStore } from './refund';
  * 【数据】坐席、组、入池规则、配置、工单派单状态、派单日志、审计都在本 store；工单行只改处理人 / 子状态 / 归属组 / 履历，
  * 派单状态（等原处理人 / 排队中 / 派单失败回池）按工单号存在 `ticketStates`，不写进工单行。
  * 【持久化】`flowos-dispatch` 一个键，带版本号 `DISPATCH_CACHE_VERSION`；改种子必须升版本号。
+ * 派单改写过的通用工单整行随本键落库、store 建立时回放到工单库（`main.ts` 启动即建立），刷新前后工单行与派单状态 / 日志一致；
+ * 刷机 / 小智 / 个册退费单的工单行由各自服务缓存落库。
  * 【引擎】`dispatchTicket(ticket, trigger)` 走第 2、4 章主流程：入池 → 形态 → 原处理人优先（含投诉预留）→ 门槛 → 评分 → 派出 / 留池；
  * 试运行只写建议到派单日志、不改处理人。定时判定（预留到期、排队放宽、兜底、名额释放）由 `tick()` 驱动，store 内每 30 秒跑一次。
  */
 
 const LS_KEY = 'flowos-dispatch';
 /** 种子版本闸：改种子（坐席 / 组 / 规则 / 默认配置）必须加一 */
-export const DISPATCH_CACHE_VERSION = 1;
+export const DISPATCH_CACHE_VERSION = 2;
 const LOG_LIMIT = 800;
 const AUDIT_LIMIT = 400;
 const TICK_MS = 30_000;
@@ -106,10 +108,12 @@ function seedAgents(now: number): DispatchAgent[] {
     ...o,
   });
   return [
-    a('王坐席', 'E2001', ['二线专员'], ['line2'], {
+    // 王坐席：教育刷机处理组种子单的二线处理人（flash 种子）
+    a('王坐席', 'E2001', ['二线专员'], ['line2', 'edu-flash'], {
       proficiency: '专家', lastTakenAt: now - 20 * MIN, recentTakes: [now - 20 * MIN, now - 55 * MIN, now - 90 * MIN],
     }),
-    a('张三', 'E2002', ['二线专员'], ['line2', DEFAULT_POOL_ID], {
+    // 张三：二线专员演示账号；同属教育刷机处理组（刷机池演示）、教育支持组（个册退费种子单的组员）
+    a('张三', 'E2002', ['二线专员'], ['line2', DEFAULT_POOL_ID, 'edu-flash', 'edu'], {
       profile: { ...ANY, ticketTypes: ['咨询', '建议'], products: [{ category: '智能硬件' }] },
       lastTakenAt: now - 50 * MIN, recentTakes: [now - 50 * MIN],
     }),
@@ -173,6 +177,22 @@ interface Persisted {
   logs: DispatchLogEntry[];
   audits: DispatchAuditEntry[];
   seq: number;
+  /**
+   * 派单改写过的通用工单行快照（处理人 / 子状态 / 归属池 / 履历等整行），启动时回放到工单库，
+   * 刷新前后工单行与派单状态、派单日志一致。刷机 / 小智 / 个册退费单的工单行由各自服务的缓存落库，不在此存。
+   */
+  rows?: Record<string, Ticket>;
+  health?: DispatchHealthState;
+}
+
+/** 自动降级判定的运行态（5.3 / 5.4） */
+interface DispatchHealthState {
+  /** 各项指标自此刻起持续达标（null＝当前未达标） */
+  okSince: number | null;
+  /** 引擎无响应起始时刻（开发态开关模拟） */
+  engineDownSince: number | null;
+  /** 坐席状态数据停止同步起始时刻（开发态开关模拟） */
+  syncStalledSince: number | null;
 }
 
 function readCache(): Persisted | null {
@@ -241,6 +261,26 @@ export interface DispatchPoolView {
   configuredCount: number;
 }
 
+/** 自动降级指标视图（5.3）：供分派监控「确认回切」与监控卡片 */
+export interface DispatchHealthView {
+  /** 5 分钟内派单失败率（%）；样本不足为 null */
+  failRate: number | null;
+  /** 15 分钟内自动派单成功率（%）；样本不足为 null */
+  successRate: number | null;
+  /** 坐席状态数据未同步时长（分钟） */
+  syncStaleMinutes: number;
+  /** 引擎无响应时长（分钟） */
+  engineDownMinutes: number;
+  /** 当前触发的自动降级条件（文案）；空＝各项指标达标 */
+  breaches: string[];
+  /** 各项指标连续达标起始时刻；未达标为 null */
+  okSince: number | null;
+  /** 已连续达标分钟数 */
+  okMinutes: number;
+  /** 自动降级后已满足回切条件（各项指标连续 N 分钟达标） */
+  resumeReady: boolean;
+}
+
 /** 坐席视图（负载、标识） */
 export interface DispatchAgentView {
   agent: DispatchAgent;
@@ -269,11 +309,65 @@ export const useDispatchStore = defineStore('dispatch', () => {
   const logs = ref<DispatchLogEntry[]>(cached?.logs ?? []);
   const audits = ref<DispatchAuditEntry[]>(cached?.audits ?? []);
   let seq = cached?.seq ?? 0;
+  const health = ref<DispatchHealthState>(cached?.health ?? { okSince: null, engineDownSince: null, syncStalledSince: null });
 
   // 默认池（综合处理组）不在旧缓存里时补上
   if (!groups.value.some((g) => g.id === DEFAULT_POOL_ID)) {
     groups.value.push({ id: DEFAULT_POOL_ID, label: DEFAULT_POOL_LABEL, switchOn: true, mode: '正常态', leaders: [LEADER] });
   }
+
+  /* ---------------- 工单行快照（刷新前后一致） ---------------- */
+
+  /** 派单改写过的通用工单（按工单号）；持久化时取工单库里的现行整行 */
+  const touchedRows = new Map<string, Ticket>();
+  const savedRows: Record<string, Ticket> = cached?.rows ?? {};
+
+  function isSpecialTicket(t: Ticket): boolean {
+    return isFlashTicket(t) || isXiaozhiTicket(t) || isRefundTicket(t);
+  }
+
+  /** 记下派单改写过的工单（专属工单由各自服务落库）；建单弹窗先判定、后落工单库，故同时记住对象本身 */
+  let persistQueued = false;
+  function touchRow(t: Ticket) {
+    if (isSpecialTicket(t)) return;
+    touchedRows.set(t.no, toRaw(t));
+    // 调用方在派单之后同一轮里还会补写工单行（处理页履历、超额指派等），本轮结束再落一次
+    if (!persistQueued) {
+      persistQueued = true;
+      queueMicrotask(() => {
+        persistQueued = false;
+        persist();
+      });
+    }
+  }
+
+  function rowSnapshots(): Record<string, Ticket> {
+    const out: Record<string, Ticket> = { ...savedRows };
+    for (const [no, obj] of touchedRows) {
+      const row = TICKETS.find((x) => x.no === no) ?? obj;
+      out[no] = clone(toRaw(row));
+    }
+    return out;
+  }
+
+  /** 启动回放：工单库为种子态时，把派单改写过的工单行恢复到刷新前（工单库里没有的新建单补回） */
+  function replayRows() {
+    for (const [no, saved] of Object.entries(savedRows)) {
+      if (!saved || isSpecialTicket(saved)) continue;
+      const existing = TICKETS.find((x) => x.no === no);
+      if (existing) {
+        const r = reactive(existing) as unknown as Record<string, unknown>;
+        Object.keys(existing).forEach((k) => { if (!(k in saved)) delete r[k]; });
+        Object.assign(r, clone(saved));
+        touchedRows.set(no, existing);
+      } else {
+        const row = clone(saved);
+        TICKETS.unshift(row);
+        touchedRows.set(no, row);
+      }
+    }
+  }
+  replayRows();
 
   function persist() {
     try {
@@ -289,6 +383,8 @@ export const useDispatchStore = defineStore('dispatch', () => {
         logs: logs.value.slice(-LOG_LIMIT),
         audits: audits.value.slice(-AUDIT_LIMIT),
         seq,
+        rows: rowSnapshots(),
+        health: health.value,
       };
       localStorage.setItem(LS_KEY, JSON.stringify(data));
     } catch {
@@ -806,6 +902,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
 
     let d: Decision;
     try {
+      if (health.value.engineDownSince && decideMode !== '停派态') throw new Error('engine down');
       d = decide(t, st, trigger, decideMode, now);
     } catch {
       d = { path: '兜底回池', assignee: null, status: '派单失败回池', relaxLevel: st.relaxLevel, failReason: '引擎异常' };
@@ -878,6 +975,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
 
     if (write) {
       const target = reactive(t) as Ticket;
+      touchRow(target);
       if (actualAssign) {
         writePool(target, st.poolId, now);
         writeAssign(target, actualAssign, now);
@@ -1028,6 +1126,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
     }
     recordTake(assignee, Date.now());
     manualLog(t, action, operator ?? operatorName(), assignee, reason, overCap);
+    touchRow(t);
     persist();
   }
 
@@ -1088,6 +1187,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
       chosen: { name, staffNo: a.staffNo, groupLabel: g?.label ?? '' }, chosenScore: s, status: null,
       snapshot: snapshotOf(t, st, now),
     });
+    touchRow(t);
     writeAssign(t, name, now);
     recordTake(name, now);
     writeTimeline(t, '系统派单', reasonText, now);
@@ -1110,21 +1210,96 @@ export const useDispatchStore = defineStore('dispatch', () => {
     while (guard < 20 && releaseCapacity(name)) guard += 1;
   }
 
-  /** 自动降级（5.3，P0 只判派单失败率）：5 分钟内派单失败率 ≥ 20%（至少 5 次判定） */
-  function checkAutoDegrade(now: number) {
-    if (!config.value.globalSwitch || config.value.globalMode !== '正常态' || config.value.runMode === '试运行') return;
-    const from = now - 5 * MIN;
-    const recent = logs.value.filter((x) => x.kind === '判定' && x.trigger === '新单' && parseStamp(x.at) >= from);
-    if (recent.length < 5) return;
-    const failed = recent.filter((x) => x.status === '派单失败回池').length;
-    if (failed / recent.length >= 0.2) {
-      config.value.globalMode = '降级态';
-      config.value.autoDegraded = true;
-      audit('池形态', '全局', '正常态', '降级态', SYSTEM, '5 分钟内派单失败率 ≥ 20%');
-      const receivers = [...new Set(groups.value.flatMap((g) => g.leaders))];
-      notify('—', 'timeout', '自动降级', receivers, '智能派单已自动转为降级态：5 分钟内派单失败率 ≥ 20%。工单按入池规则留组池，请组内领取或指派。', '站内信');
-      clearStatuses(groups.value.map((g) => g.id), true);
+  /* ---------------- 自动降级（5.3）· 回切条件（5.4） ---------------- */
+
+  /** 指标统计的最少样本（进入派单的工单数），样本不足不判 */
+  const HEALTH_MIN_SAMPLE = 5;
+  const FAIL_WINDOW_MIN = 5;
+  const SUCCESS_WINDOW_MIN = 15;
+  /** 引擎派出的判定路径（不含预留 / 排队 / 留池 / 兜底） */
+  const ENGINE_ASSIGN_PATHS: DispatchPath[] = ['原处理人', '加权评分', '组内放宽'];
+  /** 派出后被人工改派 / 调剂、被回收即不计成功 */
+  const UNDO_ACTIONS: ManualAction[] = ['改派', '调剂到人', '调剂到池', '班组长指派'];
+
+  /** 正式派单、正常态下进入派单的判定记录（自动降级只看引擎真正执行主流程的判定） */
+  function engineLogsSince(from: number): DispatchLogEntry[] {
+    return logs.value.filter((x) => x.kind === '判定' && x.runMode === '正式派单' && x.effectiveMode === '正常态' && parseStamp(x.at) >= from);
+  }
+
+  function healthMetrics(now: number): Omit<DispatchHealthView, 'okSince' | 'okMinutes' | 'resumeReady'> {
+    const c = config.value;
+    // 派单失败率＝派单失败回池的工单数 ÷ 进入派单的工单数（5.3）
+    const failLogs = engineLogsSince(now - FAIL_WINDOW_MIN * MIN);
+    const failEntered = new Set(failLogs.map((x) => x.ticketNo));
+    const failed = new Set(failLogs.filter((x) => x.status === '派单失败回池').map((x) => x.ticketNo));
+    const failRate = failEntered.size >= HEALTH_MIN_SAMPLE ? Math.round((failed.size / failEntered.size) * 100) : null;
+    // 自动派单成功率＝引擎派出且未被回收、未被人工改派的工单 ÷ 进入派单的工单（16 章）
+    const succFrom = now - SUCCESS_WINDOW_MIN * MIN;
+    const succLogs = engineLogsSince(succFrom);
+    const succEntered = new Set(succLogs.map((x) => x.ticketNo));
+    let succ = 0;
+    for (const no of succEntered) {
+      const assigned = succLogs.filter((x) => x.ticketNo === no && x.status === null && !!x.chosen && !!x.path && ENGINE_ASSIGN_PATHS.includes(x.path));
+      if (!assigned.length) continue;
+      const lastSeq = Math.max(...assigned.map((x) => x.seq));
+      const undone = logs.value.some((x) => x.ticketNo === no && x.seq > lastSeq
+        && ((x.kind === '人工' && !!x.manual && UNDO_ACTIONS.includes(x.manual.action)) || x.trigger === '跨班次回收'));
+      if (!undone) succ += 1;
     }
+    const successRate = succEntered.size >= HEALTH_MIN_SAMPLE ? Math.round((succ / succEntered.size) * 100) : null;
+    const syncStaleMinutes = health.value.syncStalledSince ? Math.max(0, Math.floor((now - health.value.syncStalledSince) / MIN)) : 0;
+    const engineDownMinutes = health.value.engineDownSince ? Math.max(0, Math.floor((now - health.value.engineDownSince) / MIN)) : 0;
+    const breaches: string[] = [];
+    if (failRate != null && failRate >= c.autoFailRate) breaches.push(`${FAIL_WINDOW_MIN} 分钟内派单失败率 ≥ ${c.autoFailRate}%`);
+    if (successRate != null && successRate < c.autoSuccessRate) breaches.push(`${SUCCESS_WINDOW_MIN} 分钟内自动派单成功率 ＜ ${c.autoSuccessRate}%`);
+    if (health.value.syncStalledSince && syncStaleMinutes > c.autoSyncMinutes) breaches.push(`坐席状态数据超过 ${c.autoSyncMinutes} 分钟未同步`);
+    if (health.value.engineDownSince && engineDownMinutes >= c.autoEngineMinutes) breaches.push(`引擎连续 ${c.autoEngineMinutes} 分钟无响应`);
+    return { failRate, successRate, syncStaleMinutes, engineDownMinutes, breaches };
+  }
+
+  /** 自动降级指标视图（含回切条件「各项指标连续 N 分钟达标」） */
+  function healthView(now: number = Date.now()): DispatchHealthView {
+    const m = healthMetrics(now);
+    const okSince = m.breaches.length ? null : health.value.okSince ?? now;
+    const okMinutes = okSince == null ? 0 : Math.max(0, Math.floor((now - okSince) / MIN));
+    const resumeReady = config.value.autoDegraded && okSince != null && now - okSince >= config.value.resumeOkMinutes * MIN;
+    return { ...m, okSince, okMinutes, resumeReady };
+  }
+
+  /** 自动降级后是否满足回切条件 */
+  function resumeReady(now: number = Date.now()): boolean {
+    return healthView(now).resumeReady;
+  }
+
+  /** 定时判定里更新达标起点，满足任一条件即转全局降级态（停派态不自动进入） */
+  function checkAutoDegrade(now: number) {
+    const m = healthMetrics(now);
+    const okSince = m.breaches.length ? null : health.value.okSince ?? now;
+    if (okSince !== health.value.okSince) health.value = { ...health.value, okSince };
+    if (!m.breaches.length) return;
+    if (!config.value.globalSwitch || config.value.globalMode !== '正常态' || config.value.runMode === '试运行') return;
+    const cause = m.breaches.join('；');
+    config.value.globalMode = '降级态';
+    config.value.autoDegraded = true;
+    audit('池形态', '全局', '正常态', '降级态', SYSTEM, cause);
+    const receivers = ['全部管理员', ...new Set(groups.value.flatMap((g) => g.leaders))];
+    const text = `智能派单已自动转为降级态：${cause}。工单按入池规则留组池，请组内领取或指派。`;
+    notify('—', 'timeout', '自动降级', receivers, text, '站内信');
+    notify('—', 'timeout', '自动降级', receivers, text, 'IM');
+    clearStatuses(groups.value.map((g) => g.id), true);
+  }
+
+  /**
+   * 开发态开关：模拟引擎无响应 / 坐席状态数据停止同步（自动降级条件演示用）。
+   * 引擎无响应期间新判定按「引擎异常」兜底回池。
+   */
+  function simulateEngineDown(on: boolean, now: number = Date.now()) {
+    health.value = { ...health.value, engineDownSince: on ? health.value.engineDownSince ?? now : null };
+    persist();
+  }
+  function simulateAgentSyncStall(on: boolean, now: number = Date.now()) {
+    health.value = { ...health.value, syncStalledSince: on ? health.value.syncStalledSince ?? now : null };
+    persist();
   }
 
   /** 定时判定：预留到期、排队放宽、兜底、名额释放（4.2 / 4.4） */
@@ -1185,6 +1360,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
       globalMode: globalEffectiveMode(), groupMode: groupModeOf(st.poolId), effectiveMode: effectiveModeOf(st.poolId), runMode: config.value.runMode,
       path: '兜底回池', relaxLevel: st.relaxLevel, failReason: reason, status: '派单失败回池', snapshot: snapshotOf(t, st, now),
     });
+    touchRow(t);
     writeTimeline(t, '兜底回池', text, now);
     commitSpecial(t);
     notify(t.no, 'timeout', '兜底回池通知', g?.leaders ?? [], `${t.no}自动派单未派出（${reason}），请指派或调剂。`, '站内信');
@@ -1246,6 +1422,10 @@ export const useDispatchStore = defineStore('dispatch', () => {
     if (reason.length > 200) return { ok: false, message: '切换原因最多 200 字' };
     const before = config.value.globalMode;
     if (before === mode) return { ok: false, message: '请选择切换后的形态' };
+    // 自动降级的回切须各项指标连续达标后由管理员确认（5.4）
+    if (config.value.autoDegraded && mode === '正常态' && !resumeReady()) {
+      return { ok: false, message: `各项指标连续 ${config.value.resumeOkMinutes} 分钟达标后可回切` };
+    }
     audit('池形态', '全局', before, mode, operator, reason.trim() || undefined);
     config.value.globalMode = mode;
     config.value.autoDegraded = false;
@@ -1478,6 +1658,15 @@ export const useDispatchStore = defineStore('dispatch', () => {
     if (next.noSlaFallbackMinutes <= next.relaxQueueMinutes) return { ok: false, message: '兜底排队时长须大于放宽排队时长' };
     if (Object.values(next.roleBase).some((v) => !Number.isInteger(v) || v < 1 || v > 50)) return { ok: false, message: '请输入 1–50 的整数' };
     if (Object.values(next.proficiencyCoef).some((v) => v < 0.1 || v > 3)) return { ok: false, message: '请输入 0.1–3 的数值' };
+    // 运行设置 · 自动降级 / 回切 / 小休阈值（14.2）
+    const RUN_RANGES: [keyof DispatchConfig, number, number][] = [
+      ['autoFailRate', 1, 100], ['autoSuccessRate', 1, 100], ['autoSyncMinutes', 5, 120],
+      ['autoEngineMinutes', 1, 30], ['resumeOkMinutes', 1, 60], ['idleToBreakMinutes', 5, 240],
+    ];
+    for (const [k, lo, hi] of RUN_RANGES) {
+      const v = next[k] as number;
+      if (!Number.isInteger(v) || v < lo || v > hi) return { ok: false, message: `请输入 ${lo}–${hi} 的整数` };
+    }
     const changed = (Object.keys(patch) as (keyof DispatchConfig)[]).filter((k) => JSON.stringify(config.value[k]) !== JSON.stringify(next[k]));
     if (changed.length) audit('派单策略', '全局', changed.join('、'), '已修改', operator);
     // 开关、形态、运行方式走各自 action（带审计与重派）
@@ -1542,6 +1731,12 @@ export const useDispatchStore = defineStore('dispatch', () => {
         /* 定时判定异常不影响页面 */
       }
     }, TICK_MS);
+    // 刷新 / 关页前把派单改写过的工单行现值落一次
+    window.addEventListener('pagehide', () => persist());
+    // 开发态开关：控制台 `__flowosDispatch.simulateEngineDown(true)` 等模拟自动降级条件
+    if (import.meta.env.DEV) {
+      (window as unknown as Record<string, unknown>).__flowosDispatch = { simulateEngineDown, simulateAgentSyncStall, tick, healthView };
+    }
   }
 
   return {
@@ -1551,6 +1746,8 @@ export const useDispatchStore = defineStore('dispatch', () => {
     groupOf, isDispatchPool, poolLabel, globalEffectiveMode, groupModeOf, effectiveModeOf, membersOf,
     agentOf, agentView, defaultCapOf, capOf, inTransitOf, resolvePool, profileMatches, matchesMe,
     ticketStateOf, dispatchStatusOf, logsOf, poolViews, nextRulePriority, validatePoolRule, validateProfile,
+    // 自动降级 · 回切
+    health, healthView, resumeReady, simulateEngineDown, simulateAgentSyncStall,
     // 引擎
     dispatchTicket, dispatchNewTicket, redispatchToPool, resolveForAftersale, releaseCapacity, onAgentAvailable, tick, resumePools,
     // 先到先得 · 人工动作

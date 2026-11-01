@@ -6,7 +6,7 @@ import { useDispatchStore } from '@/stores/dispatch';
 import { stdPagination } from '@/config/adminUi';
 import { SIGN_IN_STATUSES, type DispatchAuditEntry } from '@/views/tickets/types/dispatch';
 import { MODE_TONE, SIGN_TONE, useClock, waitText } from './dispatchUi';
-import { computeStats, minText, parseAt, type RangeKey } from './dispatchMetrics';
+import { computeStats, minText, type RangeKey } from './dispatchMetrics';
 import PoolModeSwitchModal from './PoolModeSwitchModal.vue';
 import DispatchLogDrawer from './DispatchLogDrawer.vue';
 
@@ -54,16 +54,11 @@ const modeOpen = ref(false);
 const modeScope = ref<'global' | string>('global');
 function openMode(scope: 'global' | string) { modeScope.value = scope; modeOpen.value = true; }
 
-const resumeMinutes = computed(() => Number((store.config as unknown as Record<string, unknown>).resumeOkMinutes ?? 10));
-/** 自动降级后各项指标连续达标：达标窗口内无派单失败回池，且降级已满窗口时长 */
+const resumeMinutes = computed(() => store.config.resumeOkMinutes);
+/** 自动降级后各项指标连续 N 分钟达标（5.4，由派单引擎判定） */
 const canResume = computed(() => {
   void clock.value;
-  if (!store.config.autoDegraded) return false;
-  const win = resumeMinutes.value * 60_000;
-  const now = Date.now();
-  const degradedAt = [...store.audits].reverse().find((a) => a.kind === '池形态' && a.target === '全局' && a.operator === '系统');
-  if (degradedAt && now - parseAt(degradedAt.at) < win) return false;
-  return !store.logs.some((l) => l.status === '派单失败回池' && now - parseAt(l.at) < win);
+  return store.resumeReady();
 });
 
 const groupModeRows = computed(() => {

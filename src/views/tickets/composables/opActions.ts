@@ -977,7 +977,7 @@ export function applyOpAction(
         const person = techMode === 'person' && !!member;
         const msg = scheduleEscalateDispatch(detail, timeline, {
           mode: person ? 'person' : 'pool', member: person ? member : undefined, reason: note ?? '',
-        }, operator);
+        }, operator, operatorRole);
         pushEntry(timeline, {
           category: 'node', action: 'escalate', who: operator, role: operatorRole,
           how: '升级',

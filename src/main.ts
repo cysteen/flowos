@@ -3,6 +3,7 @@ import { createPinia } from 'pinia';
 import App from './App.vue';
 import router from './router';
 import { useFlashStore } from './stores/flash';
+import { useDispatchStore } from './stores/dispatch';
 import './styles/global.css';
 import './styles/page-tabs.css';
 
@@ -15,6 +16,12 @@ try {
   useFlashStore();
 } catch (err) {
   console.error('[FlowOS] flash store init failed', err);
+}
+// 【1215】智能派单随应用启动：回放派单改写过的工单行，任何页面进来工单与派单状态一致
+try {
+  useDispatchStore();
+} catch (err) {
+  console.error('[FlowOS] dispatch store init failed', err);
 }
 app.use(router);
 

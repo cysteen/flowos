@@ -12,7 +12,7 @@ import { useFlashStore } from '@/stores/flash';
 import type { FlashActor } from '@/views/tickets/types/flash';
 import { mapUserRole } from '@/views/tickets/composables/opActions';
 import { takeOverReturnedTicket } from '@/views/tickets/composables/aftersaleEvents';
-import { claimTicketByType } from '@/views/tickets/composables/poolClaim';
+import { claimTicketByType, visiblePoolGroupsForUser } from '@/views/tickets/composables/poolClaim';
 import { DISPATCH_STATUS_ORDER } from '@/views/tickets/composables/dispatchUi';
 
 /** 履历时刻 YYYY-MM-DD HH:mm */
@@ -54,7 +54,6 @@ import {
   poolGroupIdsForTicket,
   resolveTicketGroupNames,
   slaUrgencyCompare,
-  visiblePoolGroupsFor,
   WORKBENCH_HANDLER,
   type ChipKey,
   type ChipMeta,
@@ -106,7 +105,8 @@ export function useTicketWorkbench() {
    * 老四类的分组维持演示态全给；教育刷机处理组只给二线专员 / 二线班组长 / 管理员；
    * 一线刷机池的单不进这两个页签（见 `poolGroupIdsForTicket`）。
    */
-  const poolGroups = computed(() => visiblePoolGroupsFor(user.roleKey));
+  // 【1215】二线专员、小智坐席、技术支持只看本人所在各组池（10.1），见 `visiblePoolGroupsForUser`
+  const poolGroups = computed(() => visiblePoolGroupsForUser(user.roleKey, user.name));
   const visiblePoolGroupIds = computed(() => poolGroups.value.map((g) => g.id));
   /** 当前登录人在工单数据源里的处理人名（刷机单按它判本人已领 / 本人建） */
   const flashHandler = computed(() => currentHandlerName(user.roleKey, user.name));

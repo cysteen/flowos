@@ -29,6 +29,8 @@ import { mapUserRole, type TransferPayload } from './composables/opActions';
 import { useFlashStore } from '@/stores/flash';
 
 import { useRefundStore } from '@/stores/refund';
+import { useDispatchStore } from '@/stores/dispatch';
+import { applyTransferToRow } from './components/operation/dispatch/transferDispatch';
 
 import { isRefundTicket } from './types/refund';
 
@@ -389,6 +391,25 @@ function onOpDialogConfirm(payload: Record<string, unknown>) {
   const data = payload.data as TransferPayload;
 
   const name = data.target.split(' ')[0];
+
+  // 【1215】调剂到池 / 到人：与处理页同一套落库（到池清空处理人、改归属池并重新派送；到人记派单日志）
+  if (data.mode && !(isFlashTicket(t) && t.nodeStatus === '自动刷机中')) {
+    const actor = queryActor();
+    if (data.mode === 'person' && isRefundTicket(t)) {
+      const res = refundStore.assignToMember(t.no, name, actor, data.reason);
+      if (res.ok && t.assignee) useDispatchStore().recordManualTake(t, t.assignee, '调剂到人', actor.name, data.reason);
+      if (res.ok) message.success(res.message);
+      else if (res.message) message.warning(res.message);
+      return;
+    }
+    const r = applyTransferToRow(t, {
+      mode: data.mode, target: name, groupId: data.groupId, poolId: data.poolId, reason: data.reason,
+    }, actor.name, actor.role);
+    if (r.handled) {
+      message.success(r.message);
+      return;
+    }
+  }
 
   // 刷机单：走刷机服务落库（子状态、履历、刷机缓存），见 1130 PRD §4.2
 

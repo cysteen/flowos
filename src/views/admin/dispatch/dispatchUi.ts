@@ -7,8 +7,8 @@ import {
   BUSINESS_TYPES, PROBLEM_TREE, PRODUCT_CATEGORIES, PRODUCT_NAMES, TICKET_SOURCE_OPTIONS,
 } from '@/views/tickets/types/createTicket';
 import {
-  DISPATCH_CUSTOMER_TYPES, DISPATCH_TICKET_TYPES, PRIORITY_LEVEL, PROFILE_DIMS,
-  type AgentProfile, type DimSel, type PoolMode, type PoolRuleConditions, type ProductPick,
+  DISPATCH_CUSTOMER_TYPES, DISPATCH_TICKET_TYPES, PRIORITY_LEVEL, PROFILE_DIMS, defaultDispatchConfig,
+  type AgentProfile, type DimSel, type DispatchConfig, type PoolMode, type PoolRuleConditions, type ProductPick,
 } from '@/views/tickets/types/dispatch';
 import type { Priority } from '@/views/tickets/types/ticket';
 
@@ -138,20 +138,19 @@ export function configFieldsText(raw: string): string {
 }
 
 /**
- * 运行设置里的自动降级 / 回切 / 小休阈值（14.2）：随派单策略一起保存在配置里。
- * 默认值见 PRD 14.2 运行设置。
+ * 运行设置里的自动降级 / 回切 / 小休阈值（14.2）：`DispatchConfig` 正式字段，随派单策略一起保存。
+ * 默认值见 PRD 14.2 运行设置（`defaultDispatchConfig`）。
  */
-export interface RunThresholds {
-  autoFailRate: number;
-  autoSuccessRate: number;
-  autoSyncMinutes: number;
-  autoEngineMinutes: number;
-  resumeOkMinutes: number;
-  idleToBreakMinutes: number;
+export const RUN_THRESHOLD_KEYS = [
+  'autoFailRate', 'autoSuccessRate', 'autoSyncMinutes', 'autoEngineMinutes', 'resumeOkMinutes', 'idleToBreakMinutes',
+] as const;
+export type RunThresholds = Pick<DispatchConfig, typeof RUN_THRESHOLD_KEYS[number]>;
+export function pickRunThresholds(c: DispatchConfig): RunThresholds {
+  const out = {} as RunThresholds;
+  RUN_THRESHOLD_KEYS.forEach((k) => { out[k] = c[k]; });
+  return out;
 }
-export const DEFAULT_RUN_THRESHOLDS: RunThresholds = {
-  autoFailRate: 20, autoSuccessRate: 60, autoSyncMinutes: 30, autoEngineMinutes: 3, resumeOkMinutes: 10, idleToBreakMinutes: 30,
-};
+export const DEFAULT_RUN_THRESHOLDS: RunThresholds = pickRunThresholds(defaultDispatchConfig());
 
 /** 数值范围校验：返回 PRD 14.2 文案「请输入 〈下限〉–〈上限〉 的〈整数 / 数值〉」或空串 */
 export function rangeError(v: unknown, min: number, max: number, decimal = false): string {

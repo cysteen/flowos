@@ -239,6 +239,18 @@ export interface DispatchConfig {
   /** 全局形态是否由自动降级进入（5.3；回切须管理员确认） */
   autoDegraded: boolean;
   runMode: RunMode;
+  /** 自动降级 · 派单失败率：5 分钟内 ≥ N%（5.3） */
+  autoFailRate: number;
+  /** 自动降级 · 自动派单成功率：15 分钟内 ＜ N% */
+  autoSuccessRate: number;
+  /** 自动降级 · 坐席状态数据超过 N 分钟未同步 */
+  autoSyncMinutes: number;
+  /** 自动降级 · 引擎连续 N 分钟无响应 */
+  autoEngineMinutes: number;
+  /** 回切提示 · 各项指标连续达标 N 分钟（5.4） */
+  resumeOkMinutes: number;
+  /** 无操作转小休 N 分钟 */
+  idleToBreakMinutes: number;
   /* 出池规则 */
   originalFirst: boolean;
   windowConsultDays: number;
@@ -267,6 +279,12 @@ export function defaultDispatchConfig(): DispatchConfig {
     globalMode: '正常态',
     autoDegraded: false,
     runMode: '试运行',
+    autoFailRate: 20,
+    autoSuccessRate: 60,
+    autoSyncMinutes: 30,
+    autoEngineMinutes: 3,
+    resumeOkMinutes: 10,
+    idleToBreakMinutes: 30,
     originalFirst: true,
     windowConsultDays: 7,
     windowComplaintDays: 15,

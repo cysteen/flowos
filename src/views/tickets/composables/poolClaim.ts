@@ -13,9 +13,10 @@ import { takeOverReturnedTicket } from './aftersaleEvents';
 import { mapUserRole } from './opActions';
 import type { TlRole } from '@/views/tickets/types/ticketDetail';
 import {
-  currentHandlerName, inGroupPoolScope, poolGroupIdsForTicket, visiblePoolGroupsFor, WORKBENCH_HANDLER,
-  type Ticket,
+  currentHandlerName, inGroupPoolScope, poolGroupIdsForTicket, visiblePoolGroupsFor, POOL_GROUPS, WORKBENCH_HANDLER,
+  type PoolGroupMeta, type Ticket,
 } from '@/views/tickets/types/ticket';
+import { useUserStore } from '@/stores/user';
 import { isFlashTicket } from '@/views/tickets/types/flash';
 import { isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
 import { useFlashStore } from '@/stores/flash';
@@ -54,10 +55,25 @@ export function canAutoClaim(t: Pick<Ticket, 'nodeStatus' | 'tab' | 'assignee'> 
   return t.nodeStatus === '未认领' && t.tab === 'pool' && !t.assignee?.trim();
 }
 
-/** 本单此刻在当前角色可见的工单池里、无人认领（与工作台「工单池」页签同一判据） */
+/** 接派单的坐席角色：工单池只看本人所在各组池（【1215】10.1 / 14.7，可见组按成员所属组判定） */
+const DISPATCH_AGENT_ROLE_KEYS = new Set(['agent-l2', 'xiaozhi-agent', 'tech-support']);
+
+/**
+ * 工单池 / 催补待回的可见分组：二线专员、小智坐席、技术支持按派单坐席所属组（本人所在各组池）；
+ * 班组长、管理员等其余角色按角色取（`visiblePoolGroupsFor`）。不在派单坐席名册的账号同按角色取。
+ */
+export function visiblePoolGroupsForUser(roleKey: string, userName?: string): PoolGroupMeta[] {
+  const byRole = visiblePoolGroupsFor(roleKey);
+  if (!DISPATCH_AGENT_ROLE_KEYS.has(roleKey)) return byRole;
+  const agent = useDispatchStore().agentOf(userName ?? useUserStore().name);
+  if (!agent) return byRole;
+  return POOL_GROUPS.filter((g) => agent.groupIds.includes(g.id));
+}
+
+/** 本单此刻在当前登录人可见的工单池里、无人认领（与工作台「工单池」页签同一判据） */
 export function inVisiblePool(t: Ticket | undefined, roleKey: string): boolean {
   if (!t) return false;
-  const ids = visiblePoolGroupsFor(roleKey).map((g) => g.id);
+  const ids = visiblePoolGroupsForUser(roleKey).map((g) => g.id);
   return inGroupPoolScope(t, poolGroupIdsForTicket(t, ids));
 }
 

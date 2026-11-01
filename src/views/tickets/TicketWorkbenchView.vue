@@ -14,7 +14,6 @@ import {
   isPoolFamily,
   isTicketTab,
   RISK_REPORT_TAB,
-  visiblePoolGroupsFor,
   canAssignTicket,
   canTransferTicket,
   isTransferredOut,
@@ -57,7 +56,10 @@ import { useTicketColumns } from './composables/useTicketColumns';
 import { useMineQueryFields } from './composables/useMineQueryFields';
 import { hasMineQuery } from './types/mineQuery';
 import type { OpActionType, ReturnPayload, TransferPayload } from './composables/opActions';
-import { MAX_RETURN_COUNT } from './composables/opActions';
+import { MAX_RETURN_COUNT, mapUserRole } from './composables/opActions';
+import { applyTransferToRow } from './components/operation/dispatch/transferDispatch';
+import { useRefundStore } from '@/stores/refund';
+import { isRefundTicket } from './types/refund';
 import type { CreateTicketPrefill, Ticket } from './types/ticket';
 
 const user = useUserStore();
@@ -157,11 +159,12 @@ const POOL_FLASH_EXTRA_COLUMNS = [
   { key: 'flashFail', label: '失败原因', width: 160 },
 ];
 const showPoolFlashColumns = computed(
-  () => wb.isPoolTab.value && visiblePoolGroupsFor(user.roleKey).some((g) => g.id === 'edu-flash'),
+  () => wb.isPoolTab.value && wb.poolGroups.value.some((g) => g.id === 'edu-flash'),
 );
 
 /* —— 【1215】工单池 · 派单（PRD 第 10 章）—— */
 const dispatch = useDispatchStore();
+const refundStore = useRefundStore();
 /** 派单状态、匹配我、所在池、等待时长四列 */
 const POOL_DISPATCH_COLUMNS = [
   { key: 'dispatchStatus', label: '派单状态', width: 112, after: 'priority' },
@@ -370,13 +373,35 @@ function onOpDialogConfirm(payload: Record<string, unknown>) {
   const type = payload.type as string;
 
   if (type === '调剂') {
-    const { target } = payload.data as TransferPayload;
-    const name = target.split(' ')[0];
+    const data = payload.data as TransferPayload;
+    const name = data.target.split(' ')[0];
+    const label = tickets.length === 1 ? tickets[0].no : `${tickets.length} 单`;
+    // 【1215】与处理页同一套落库：到池清空处理人、改归属池并重新派送；到人记派单日志
+    if (data.mode) {
+      const actor = { name: user.name, role: mapUserRole(user.roleKey) };
+      let msg = '';
+      for (const t of tickets) {
+        if (data.mode === 'person' && isRefundTicket(t)) {
+          const res = refundStore.assignToMember(t.no, name, actor, data.reason);
+          if (res.ok && t.assignee) dispatch.recordManualTake(t, t.assignee, '调剂到人', actor.name, data.reason);
+          msg = res.ok ? res.message : msg;
+          continue;
+        }
+        const r = applyTransferToRow(t, {
+          mode: data.mode, target: name, groupId: data.groupId, poolId: data.poolId, reason: data.reason,
+        }, actor.name, actor.role);
+        if (r.handled) msg = r.message;
+      }
+      if (tickets.length === 1 && msg) message.success(msg);
+      else message.success(data.mode === 'pool' ? `已对 ${label} 调剂到${data.target}` : `已对 ${label} 调剂至 ${name}`);
+      wb.clearSelection();
+      opTargetTickets.value = [];
+      return;
+    }
     for (const t of tickets) {
       t.assignee = name;
       t.myTransferAction = true;
     }
-    const label = tickets.length === 1 ? tickets[0].no : `${tickets.length} 单`;
     message.success(tickets.length === 1 ? `已调剂至 ${name}` : `已对 ${label} 调剂至 ${name}`);
   } else if (type === '退回') {
     for (const t of tickets) {

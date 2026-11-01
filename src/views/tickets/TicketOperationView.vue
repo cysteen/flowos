@@ -65,6 +65,7 @@ import { opTimeNow } from './utils/opTime';
 import { isFlashSlaCounted } from './utils/slaClock';
 import { isTechEscalateChannel, techEscalationRowPatch, techReturnRowPatch } from './composables/techEscalation';
 import { SEED_TICKET_NOS, TICKETS } from '@/mock/tickets';
+import { useDispatchStore } from '@/stores/dispatch';
 import { canAutoClaim, claimTicketByType, inVisiblePool, isPoolEntry, unclaimedGateOf, withoutPoolEntry } from './composables/poolClaim';
 import { useRiskTagStore } from '@/stores/riskTags';
 import { useRiskReportStore } from '@/stores/riskReports';
@@ -2072,6 +2073,9 @@ function onRefundAction(payload: Record<string, unknown>): boolean {
   // 个册退费单调剂只限本组成员（校园经理、城市经理改走「转校园经理」）
   if (type === '调剂' && data.scope !== 'cross') {
     const res = refundStore.assignToMember(no, String(data.target ?? ''), actor, String(data.reason ?? ''));
+    // 【1215】调剂到人记派单日志（结束排队 / 预留、超额指派）
+    const row = TICKETS.find((x) => x.no === no);
+    if (res.ok && row?.assignee) useDispatchStore().recordManualTake(row, row.assignee, '调剂到人', actor.name, String(data.reason ?? ''));
     if (res.ok) message.success(res.message);
     else if (res.message) message.warning(res.message);
     return true;
