@@ -78,20 +78,38 @@ export interface DispatchOutcome {
   /** 组名，写履历用 */
   groupLabel: string;
   assignee: string | null;
+  /** 派到人时的判定路径（原处理人 / 加权评分 / 组内放宽），写履历用 */
+  reason?: string;
+}
+
+/** 分派上下文：售后转回时带本单上一处理人（【1215】11.1：原处理人取本单上一处理人，不受时间窗限制） */
+export interface DispatchContext {
+  trigger?: '新单' | '售后转回';
+  prevAssignee?: string | null;
 }
 
 /**
  * 分派规则的接入口：`AS_RETURNED` 不自带落点，落点由客服侧**现行分派规则**决定（N16）。
  * 调用方注入；派到人就给那个人，落池就落「未认领」，本模块不另写一套规则。
  */
-export type DispatchResolver = (ticket: Ticket) => DispatchOutcome;
+export type DispatchResolver = (ticket: Ticket, ctx?: DispatchContext) => DispatchOutcome;
+
+/** 派单引擎（`stores/dispatch.ts` 加载时注册）；返回 null 时回落原落池口径 */
+type EngineResolver = (ticket: Ticket, ctx?: DispatchContext) => DispatchOutcome | null;
+let engineResolver: EngineResolver | null = null;
+
+/** 派单引擎注册口（【1215】智能派单）：种子单在引擎注册前构建，仍走原落池口径 */
+export function registerDispatchEngine(fn: EngineResolver | null) {
+  engineResolver = fn;
+}
 
 /**
- * 原型里的现行分派落点：回本单所属组的工单池「未认领」，由组内领取或班组长指派。
- * 原型没有运行时派单引擎（「智能分派」后台页只有配置，不执行），工作台的分派也只有
- * 领取 / 指派两条人工路径，故这里不派到人。接入派单引擎后只换这一个 resolver。
+ * 现行分派落点：交派单引擎（【1215】）判定 —— 派到人或留本单归属池「未认领」。
+ * 引擎未注册（种子构建期）时回本单所属组的工单池「未认领」，由组内领取或班组长指派。
  */
-export const dispatchByCurrentRule: DispatchResolver = (t) => {
+export const dispatchByCurrentRule: DispatchResolver = (t, ctx) => {
+  const viaEngine = engineResolver?.(t, ctx);
+  if (viaEngine) return viaEngine;
   const g = POOL_GROUPS.find((x) => x.id === t.groupId) ?? POOL_GROUPS[0];
   return { groupId: g.id, groupLabel: g.label, assignee: null };
 };
@@ -357,9 +375,9 @@ function applyReturned(t: Ticket, e: AftersaleEvent, dispatch: DispatchResolver)
   // N16：清空处理人 → 按现行分派规则重新派单；原处理人只留履历
   const prev = t.assignee;
   const cleared: Ticket = { ...t, assignee: null };
-  const to = dispatch(cleared);
+  const to = dispatch(cleared, { trigger: '售后转回', prevAssignee: prev });
   // 《【1025】》§3.3：「回流重新派单（原处理人 〈姓名〉）」：派至 〈处理人〉 或 进入 〈组名〉 工单池 · 未认领
-  const dest = to.assignee ? `派至 ${to.assignee}` : `进入 ${to.groupLabel} 工单池 · 未认领`;
+  const dest = to.assignee ? `派至 ${to.assignee}${to.reason ? `（${to.reason}）` : ''}` : `进入 ${to.groupLabel} 工单池 · 未认领`;
   const timeline = withEntries(t, [
     returnedEntry,
     {
@@ -531,8 +549,13 @@ function buildInboundTicket(
     createdAt: e.at, updatedAt: e.at, responded: false,
   };
   // ③ 按投诉现行分派规则、④ 系统派单进客服工单池：落池「未认领」（N5-c）
-  const to = dispatch(draft);
-  const t: Ticket = { ...draft, groupId: to.groupId };
+  const to = dispatch(draft, { trigger: '新单' });
+  const t: Ticket = {
+    ...draft,
+    groupId: to.groupId,
+    // 【1215】引擎派到人：落「待响应」进处理人名下
+    ...(to.assignee ? { assignee: to.assignee, tab: 'mine' as const, nodeStatus: '待响应' as const } : {}),
+  };
   return {
     ...t,
     eventTimeline: entries.map((p, i) => ({ id: `as-${s.no}-${i + 1}`, ...p })),

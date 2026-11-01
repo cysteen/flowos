@@ -1094,6 +1094,8 @@ export const POOL_GROUPS: PoolGroupMeta[] = [
   // 通用「教育」业务处理组（教育支持组）。1120 个册退费单（10-27）：兜底、退费成功 / 部分完成自动下送、
   // 校园经理选「否」下送都进本组工单池，与本组其他待领取工单同池，不单设退费池
   { id: REFUND_POOL_GROUP_ID, label: REFUND_POOL_GROUP_NAME },
+  // 【1215】智能派单：入池规则未命中的默认池（综合处理组池，PRD 3.1）
+  { id: 'general', label: '综合处理组' },
 ];
 
 /**
