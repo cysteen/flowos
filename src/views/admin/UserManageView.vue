@@ -1,9 +1,14 @@
 <script setup lang="ts">
-import { ref, computed, reactive } from 'vue';
+import { ref, computed, reactive, onMounted, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { message } from 'ant-design-vue';
-import { PlusOutlined, UserOutlined, ImportOutlined, KeyOutlined, InboxOutlined } from '@ant-design/icons-vue';
+import { PlusOutlined, UserOutlined, ImportOutlined, KeyOutlined, InboxOutlined, TeamOutlined, HistoryOutlined } from '@ant-design/icons-vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { stdPagination } from '@/config/adminUi';
+import { useDispatchStore } from '@/stores/dispatch';
+import type { DispatchRole } from '@/views/tickets/types/dispatch';
+import DispatchSettingsDrawer from './dispatch/DispatchSettingsDrawer.vue';
+import BatchProfileModal from './dispatch/BatchProfileModal.vue';
 
 // 用户管理增强（PRD-50）：机构/岗位/角色多维 + 状态 + 新建抽屉 + 启停/重置密码。
 interface User {
@@ -23,6 +28,33 @@ const users = ref<User[]>([
   { id: 'U1005', name: '吴婷', account: 'wuting', org: '一线客服部', post: '实习坐席', roles: ['一线坐席'], phone: '135****0005', status: '锁定', lastLogin: '2026-06-10 14:00:11' },
   { id: 'U1006', name: '钱进', account: 'qianjin', org: '售后服务部', post: '客服专员', roles: ['二线专员'], phone: '134****0006', status: '停用', lastLogin: '2026-05-28 11:30:05' },
 ]);
+// 【1215】参与派单的坐席（派单 store）并入用户列表：坐席行有「派单设置」（PRD 14.7）
+const dispatch = useDispatchStore();
+const ROLE_LABEL: Record<DispatchRole, string> = {
+  二线专员: '二线专员', 小智工单处理人: '二线专员', 二线刷机处理人: '二线专员', 技术支持: '技术支持',
+  班组长: '二线班组长', 客诉专员: '客诉专员', 督导: '投诉督导', 运营: '工单运营', 管理员: '管理员',
+};
+const POST_LABEL: Partial<Record<DispatchRole, string>> = { 班组长: '班组长', 技术支持: '技术支持工程师', 督导: '质检', 运营: '运营专员' };
+users.value.push(...dispatch.agents
+  .filter((a) => !users.value.some((u) => u.name === a.name))
+  .map((a): User => ({
+    id: a.staffNo,
+    name: a.name,
+    account: a.staffNo.toLowerCase(),
+    org: '二线处理部',
+    post: POST_LABEL[a.roles[0]] ?? '高级客服',
+    roles: [...new Set(a.roles.map((r) => ROLE_LABEL[r]))],
+    phone: `138****${a.staffNo.replace(/\D/g, '').slice(-4)}`,
+    status: a.disabled ? '停用' : '正常',
+    lastLogin: '—',
+  })));
+const isAgent = (name: string) => !!dispatch.agentOf(name);
+function dispatchCell(name: string) {
+  const v = dispatch.agentView(name);
+  if (!v) return null;
+  return { inTransit: v.inTransit, cap: v.cap, configured: v.profileConfigured, overLimit: v.overLimit, overAssigned: v.overAssigned };
+}
+
 const list = computed(() => users.value.filter((u) => {
   if (orgFilter.value !== '全部机构' && u.org !== orgFilter.value) return false;
   if (statusFilter.value !== '全部' && u.status !== statusFilter.value) return false;
@@ -36,9 +68,43 @@ const cols = [
   { title: '机构', dataIndex: 'org', key: 'org', width: 130 },
   { title: '岗位', dataIndex: 'post', key: 'post', width: 110 },
   { title: '角色', dataIndex: 'roles', key: 'roles' },
+  { title: '派单', key: 'dispatch', width: 190 },
   { title: '状态', dataIndex: 'status', key: 'status', width: 90 },
   { title: '最近登录', dataIndex: 'lastLogin', key: 'lastLogin', width: 150 },
-  { title: '操作', key: 'op', width: 180 },
+  { title: '操作', key: 'op', width: 260 },
+];
+
+// —— 派单设置 / 批量设置画像 / 画像变更记录（PRD 6.5 / 14.7） ——
+const route = useRoute();
+const settingsOpen = ref(false);
+const settingsName = ref<string | null>(null);
+function openSettings(name: string) { settingsName.value = name; settingsOpen.value = true; }
+function openFromQuery() {
+  const q = route.query.agent;
+  if (typeof q === 'string' && isAgent(q)) { keyword.value = q; openSettings(q); }
+}
+onMounted(openFromQuery);
+watch(() => route.query.agent, openFromQuery);
+
+const selectedKeys = ref<string[]>([]);
+const rowSelection = computed(() => ({
+  selectedRowKeys: selectedKeys.value,
+  onChange: (keys: (string | number)[]) => { selectedKeys.value = keys.map(String); },
+  getCheckboxProps: (r: User) => ({ disabled: !isAgent(r.name) }),
+}));
+const selectedNames = computed(() => users.value.filter((u) => selectedKeys.value.includes(u.id)).map((u) => u.name));
+const batchOpen = ref(false);
+
+const recordOpen = ref(false);
+const PROFILE_AUDIT_KINDS = ['人员画像', '熟练度', '个人上限', '个人开关'];
+const profileAudits = computed(() => [...dispatch.audits].filter((a) => PROFILE_AUDIT_KINDS.includes(a.kind)).reverse());
+const recordCols = [
+  { title: '时间', dataIndex: 'at', key: 'at', width: 160 },
+  { title: '操作人', dataIndex: 'operator', key: 'operator', width: 90 },
+  { title: '坐席', dataIndex: 'target', key: 'target', width: 90 },
+  { title: '类型', dataIndex: 'kind', key: 'kind', width: 90 },
+  { title: '变更前', dataIndex: 'before', key: 'before', ellipsis: true },
+  { title: '变更后', dataIndex: 'after', key: 'after', ellipsis: true },
 ];
 
 const drawerOpen = ref(false);
@@ -74,6 +140,8 @@ function doImport() { if (!importN.value) { message.warning('请先选择 Excel/
   <div class="user-manage">
     <AdminPageHeader title="用户管理" subtitle="管理租户内用户的机构/岗位/角色归属、账号状态与密码">
       <template #actions>
+        <a-button @click="recordOpen = true"><template #icon><HistoryOutlined /></template>画像变更记录</a-button>
+        <a-button :disabled="!selectedNames.length" @click="batchOpen = true"><template #icon><TeamOutlined /></template>批量设置画像</a-button>
         <a-button @click="openImport"><template #icon><ImportOutlined /></template>导入</a-button>
         <a-button type="primary" @click="openNew"><template #icon><PlusOutlined /></template>新建用户</a-button>
       </template>
@@ -85,7 +153,7 @@ function doImport() { if (!importN.value) { message.warning('请先选择 Excel/
         <a-input-search v-model:value="keyword" placeholder="搜索姓名/账号/手机" style="width: 220px" allow-clear />
       </div>
     </div>
-    <a-table :columns="cols" :data-source="list" row-key="id" :pagination="stdPagination()" size="middle">
+    <a-table :columns="cols" :data-source="list" row-key="id" :pagination="stdPagination()" size="middle" :row-selection="rowSelection">
       <template #bodyCell="{ column, record }">
         <span v-if="column.key === 'name'" class="un">
           <a-avatar size="small"><template #icon><UserOutlined /></template></a-avatar><b>{{ record.name }}</b><span class="uid">{{ record.id }}</span>
@@ -94,9 +162,19 @@ function doImport() { if (!importN.value) { message.warning('请先选择 Excel/
         <template v-else-if="column.key === 'roles'">
           <a-tag v-for="r in record.roles" :key="r" color="blue">{{ r }}</a-tag>
         </template>
+        <template v-else-if="column.key === 'dispatch'">
+          <template v-if="dispatchCell(record.name)">
+            <span class="dsp-load">在途 {{ dispatchCell(record.name)!.inTransit }} / 上限 {{ dispatchCell(record.name)!.cap }}</span>
+            <a-tag v-if="!dispatchCell(record.name)!.configured" class="dsp-tag">画像未配置</a-tag>
+            <a-tag v-if="dispatchCell(record.name)!.overAssigned" color="red" class="dsp-tag">超额指派</a-tag>
+            <a-tag v-else-if="dispatchCell(record.name)!.overLimit" color="orange" class="dsp-tag">超限</a-tag>
+          </template>
+          <span v-else class="uid">—</span>
+        </template>
         <a-tag v-else-if="column.key === 'status'" :color="ST_TONE[record.status]">{{ record.status }}</a-tag>
         <template v-else-if="column.key === 'op'">
           <a-button type="link" size="small" @click="openEdit(record as User)">编辑</a-button>
+          <a-button v-if="isAgent(record.name)" type="link" size="small" @click="openSettings(record.name)">派单设置</a-button>
           <a-button type="link" size="small" @click="resetPwd(record as User)"><KeyOutlined />重置密码</a-button>
           <a-button type="link" size="small" :danger="record.status !== '停用'" @click="toggle(record as User)">{{ record.status === '停用' ? '启用' : '停用' }}</a-button>
         </template>
@@ -116,6 +194,16 @@ function doImport() { if (!importN.value) { message.warning('请先选择 Excel/
         <a-space><a-button @click="drawerOpen = false">取消</a-button><a-button type="primary" @click="saveUser">保存</a-button></a-space>
       </template>
     </a-drawer>
+
+    <DispatchSettingsDrawer v-model:open="settingsOpen" :name="settingsName" />
+    <BatchProfileModal v-model:open="batchOpen" :names="selectedNames" @done="selectedKeys = []" />
+    <a-modal v-model:open="recordOpen" title="画像变更记录" :width="900" :footer="null">
+      <a-table :columns="recordCols" :data-source="profileAudits" row-key="id" size="middle" :pagination="stdPagination()" :locale="{ emptyText: '暂无记录' }">
+        <template #bodyCell="{ column, record }">
+          <span v-if="column.key === 'before' || column.key === 'after'" :title="record[column.key as string]">{{ record[column.key as string] }}</span>
+        </template>
+      </a-table>
+    </a-modal>
 
     <!-- 导入用户 -->
     <a-modal v-model:open="importOpen" title="导入用户" :width="460" ok-text="开始导入" cancel-text="取消" @ok="doImport">
@@ -142,5 +230,7 @@ function doImport() { if (!importN.value) { message.warning('请先选择 Excel/
 .un { display: flex; align-items: center; gap: 8px; }
 .uid { font-size: 12px; color: #9ca3af; font-weight: 400; }
 .acct { color: #374151; }
+.dsp-load { font-size: 12px; color: #374151; margin-right: 6px; }
+.dsp-tag { margin-inline-end: 4px; }
 :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; }
 </style>

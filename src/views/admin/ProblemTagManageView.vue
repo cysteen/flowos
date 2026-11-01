@@ -1235,7 +1235,7 @@ function doImport(withUpdate: boolean) {
                     </div>
                     <template #overlay>
                       <a-menu class="batch-menu">
-                        <a-menu-item v-for="act in ['处理组', '启用', '停用']" :key="act" :disabled="!hasRowSelection" @click="onBatch(act)">
+                        <a-menu-item v-for="act in ['启用', '停用']" :key="act" :disabled="!hasRowSelection" @click="onBatch(act)">
                           <a-tooltip :title="hasRowSelection ? undefined : TIP_NEED_CHECK" placement="left">
                             <span class="menu-tip">{{ act }}</span>
                           </a-tooltip>
@@ -1392,7 +1392,7 @@ function doImport(withUpdate: boolean) {
         </a-form-item>
 
         <a-form-item label="处理组">
-          <a-select v-model:value="form.team" placeholder="请选择处理组" show-search allow-clear :filter-option="filterByLabel" :options="toOpts(TEAMS)" />
+          <a-select v-model:value="form.team" placeholder="—" disabled :options="toOpts(TEAMS)" />
         </a-form-item>
         <a-form-item label="专属类型">
           <a-radio-group v-model:value="form.exclusive" button-style="solid">

@@ -1,0 +1,159 @@
+/**
+ * 【1215】分派监控统计（PRD 13.2 引擎层指标 / 13.5 统计卡 / 14.1 派单路径占比）。
+ * 只读：取 dispatch store 的派单日志与坐席、工单库的处理履历换算，不写任何数据。
+ */
+import { TICKETS } from '@/mock/tickets';
+import type { DispatchAgent, DispatchLogEntry } from '@/views/tickets/types/dispatch';
+
+const MIN = 60_000;
+
+export function parseAt(s?: string): number {
+  if (!s) return NaN;
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/.exec(s);
+  if (!m) return NaN;
+  return new Date(+m[1], +m[2] - 1, +m[3], +(m[4] ?? 0), +(m[5] ?? 0), +(m[6] ?? 0)).getTime();
+}
+
+function median(xs: number[]): number | null {
+  if (!xs.length) return null;
+  const s = [...xs].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+
+export type RangeKey = 'today' | '7d' | '30d';
+export function rangeStart(r: RangeKey, now: number): number {
+  const d = new Date(now);
+  d.setHours(0, 0, 0, 0);
+  const days = r === 'today' ? 0 : r === '7d' ? 6 : 29;
+  return d.getTime() - days * 24 * 60 * MIN;
+}
+
+/** 引擎派出：正式派单下的判定且中选坐席、派单状态为空 */
+export function isEngineAssign(l: DispatchLogEntry): boolean {
+  return l.kind === '判定' && l.runMode === '正式派单' && !!l.chosen && !l.status && !l.trial;
+}
+/** 人工拿单（领取 / 指派 / 调剂到人 / 升级三线指定人），带目标坐席 */
+function isManualTake(l: DispatchLogEntry): boolean {
+  return l.kind === '人工' && !!l.manual?.target && l.manual.action !== '调剂到池';
+}
+
+interface Window { from: number; to: number; poolIds: string[] | null }
+
+function inWindow(l: DispatchLogEntry, w: Window): boolean {
+  const t = parseAt(l.at);
+  return t >= w.from && t < w.to && (!w.poolIds || w.poolIds.includes(l.poolId));
+}
+
+/** 首响两段（13.3 首响拆段）：池等待、派单后首响，单位分钟 */
+function firstRespSegments(logs: DispatchLogEntry[], w: Window) {
+  const byTicket = new Map<string, DispatchLogEntry[]>();
+  for (const l of logs) {
+    if (!byTicket.has(l.ticketNo)) byTicket.set(l.ticketNo, []);
+    byTicket.get(l.ticketNo)!.push(l);
+  }
+  const waits: number[] = [];
+  const resps: number[] = [];
+  for (const [no, ls] of byTicket) {
+    const sorted = [...ls].sort((a, b) => a.seq - b.seq);
+    const enter = sorted.find((l) => l.kind === '判定');
+    const take = sorted.find((l) => isEngineAssign(l) || isManualTake(l));
+    if (!enter || !take || !inWindow(take, w)) continue;
+    const enterAt = parseAt(enter.at);
+    const takeAt = parseAt(take.at);
+    if (takeAt >= enterAt) waits.push((takeAt - enterAt) / MIN);
+    const who = take.kind === '判定' ? take.chosen?.name : take.manual?.target;
+    const t = TICKETS.find((x) => x.no === no);
+    const first = (t?.eventTimeline ?? [])
+      .filter((e) => e.who === who && parseAt(e.when) >= takeAt)
+      .map((e) => parseAt(e.when))
+      .sort((a, b) => a - b)[0];
+    if (first != null && Number.isFinite(first)) resps.push((first - takeAt) / MIN);
+  }
+  return { wait: median(waits), resp: median(resps) };
+}
+
+export interface MonitorStats {
+  waitMedian: number | null;
+  respMedian: number | null;
+  /** 较昨日（仅今日范围）：两段合计变化，分钟 */
+  firstRespDelta: number | null;
+  balance: number | null;
+  successRate: number | null;
+  fallbackRate: number | null;
+  enteredCount: number;
+  pathShare: { name: string; count: number; pct: number; color: string }[];
+  pathTotal: number;
+}
+
+const PATH_ITEMS: { name: string; color: string; hit: (l: DispatchLogEntry) => boolean }[] = [
+  { name: '直派规则', color: '#8b5cf6', hit: (l) => isEngineAssign(l) && l.path === '直派规则' },
+  { name: '原处理人', color: '#0ea5e9', hit: (l) => isEngineAssign(l) && l.path === '原处理人' },
+  { name: '加权评分', color: '#1a6fff', hit: (l) => isEngineAssign(l) && (l.path === '加权评分' || l.path === '组内放宽') },
+  { name: '二线领取', color: '#10b981', hit: (l) => l.kind === '人工' && l.manual?.action === '二线领取' },
+  { name: '班组长指派', color: '#f59e0b', hit: (l) => l.kind === '人工' && (l.manual?.action === '班组长指派' || l.manual?.action === '改派') },
+  { name: '调剂', color: '#ef4444', hit: (l) => l.kind === '人工' && (l.manual?.action === '调剂到人' || l.manual?.action === '调剂到池') },
+];
+
+export function computeStats(
+  logs: DispatchLogEntry[], agents: DispatchAgent[], range: RangeKey, poolIds: string[] | null, now: number,
+): MonitorStats {
+  const from = rangeStart(range, now);
+  const w: Window = { from, to: now + 1, poolIds };
+  const scoped = logs.filter((l) => !poolIds || poolIds.includes(l.poolId));
+  const inRange = scoped.filter((l) => inWindow(l, w));
+
+  // 进入派单：正式派单下有判定记录的工单
+  const formal = inRange.filter((l) => l.kind === '判定' && l.runMode === '正式派单');
+  const entered = new Set(formal.map((l) => l.ticketNo));
+  const reassigned = new Set(inRange.filter((l) => l.kind === '人工' && l.manual?.action === '改派').map((l) => l.ticketNo));
+  const recycled = new Set(inRange.filter((l) => l.trigger === '跨班次回收').map((l) => l.ticketNo));
+  const success = new Set(formal.filter((l) => isEngineAssign(l) && l.path !== '直派规则').map((l) => l.ticketNo)
+    .filter((no) => !reassigned.has(no) && !recycled.has(no)));
+  const fallback = new Set(formal.filter((l) => l.path === '兜底回池').map((l) => l.ticketNo));
+
+  const seg = firstRespSegments(scoped, w);
+  let firstRespDelta: number | null = null;
+  if (range === 'today') {
+    const y = firstRespSegments(scoped, { from: from - 24 * 60 * MIN, to: from, poolIds });
+    if (seg.wait != null && y.wait != null) firstRespDelta = (seg.wait + (seg.resp ?? 0)) - (y.wait + (y.resp ?? 0));
+  }
+
+  // 派单均衡度：当日在班坐席的接单量（派单与领取）标准差 / 平均值
+  const dayFrom = rangeStart('today', now);
+  const todayTakes = scoped.filter((l) => parseAt(l.at) >= dayFrom && (isEngineAssign(l) || isManualTake(l)) && l.path !== '直派规则');
+  const pool = agents.filter((a) => a.signedInToday && !a.disabled && (!poolIds || a.groupIds.some((g) => poolIds.includes(g))));
+  let balance: number | null = null;
+  if (pool.length >= 2 && todayTakes.length) {
+    const counts = pool.map((a) => todayTakes.filter((l) => (l.kind === '判定' ? l.chosen?.name : l.manual?.target) === a.name).length);
+    const mean = counts.reduce((s, x) => s + x, 0) / counts.length;
+    if (mean > 0) {
+      const sd = Math.sqrt(counts.reduce((s, x) => s + (x - mean) ** 2, 0) / counts.length);
+      balance = Math.round((sd / mean) * 100) / 100;
+    }
+  }
+
+  const pathCounts = PATH_ITEMS.map((p) => ({ name: p.name, color: p.color, count: inRange.filter(p.hit).length }));
+  const pathTotal = pathCounts.reduce((s, x) => s + x.count, 0);
+
+  return {
+    waitMedian: seg.wait,
+    respMedian: seg.resp,
+    firstRespDelta,
+    balance,
+    successRate: entered.size ? Math.round((success.size / entered.size) * 1000) / 10 : null,
+    fallbackRate: entered.size ? Math.round((fallback.size / entered.size) * 1000) / 10 : null,
+    enteredCount: entered.size,
+    pathShare: pathCounts.map((p) => ({ ...p, pct: pathTotal ? Math.round((p.count / pathTotal) * 1000) / 10 : 0 })),
+    pathTotal,
+  };
+}
+
+export function minText(v: number | null): string {
+  if (v == null) return '—';
+  if (v < 1) return '<1 分钟';
+  if (v < 60) return `${Math.round(v)} 分钟`;
+  const h = Math.floor(v / 60);
+  const m = Math.round(v % 60);
+  return m ? `${h} 小时 ${m} 分钟` : `${h} 小时`;
+}
