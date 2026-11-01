@@ -14,6 +14,9 @@ import { useFlashStore } from '@/stores/flash';
 import { isTicketTerminated } from './complaintEscalation';
 import { aftersaleLinkDemotedEntry } from './aftersaleEvents';
 import { opTimeNow } from '@/views/tickets/utils/opTime';
+import {
+  applyTransferDispatch, scheduleEscalateDispatch, techPoolLabel,
+} from '@/views/tickets/components/operation/dispatch/transferDispatch';
 
 /** 升级通道 · 飞书项目（消费者BG专属，走 OpenAPI 推送产研反馈单） */
 export const FEISHU_ESCALATE_CHANNEL = '飞书项目 · 产研反馈单';
@@ -70,7 +73,18 @@ export type OpActionType =
   // 「转校园经理」：只对个册退费单（1120，用户 10-27 方案 B），落库走个册退费服务，不进通用分支
   | '转校园经理';
 
-export interface TransferPayload { scope: 'same' | 'cross'; target: string; reason: string; }
+/**
+ * 调剂（【1215】PRD 9.4）：`mode` 到人 / 到池。`scope` 保留给按旧形态读取的入口（到池＝cross）；
+ * 到人时 `target` 为处理人姓名、`groupId` 为调剂后归属组（此人非归属组成员时）；到池时 `poolId` 为目标池。
+ */
+export interface TransferPayload {
+  scope: 'same' | 'cross';
+  target: string;
+  reason: string;
+  mode?: 'person' | 'pool';
+  groupId?: string;
+  poolId?: string;
+}
 /** 委派到人：逐人任务说明 */
 export interface DelegateAssigneeTask { name: string; task: string; }
 export interface DelegatePayload {
@@ -134,6 +148,8 @@ export interface EscalatePayload {
   channel: string;
   group: string;
   member: string;
+  /** 升级 · 三线技术支持的方式（【1215】PRD 9.5）：到技术支持池 / 指定技术支持（`member` 为所选技术支持） */
+  techMode?: 'pool' | 'person';
   detail: string;
   /** 飞书项目通道必选：问题反馈分类 */
   feedbackCategory?: string;
@@ -757,7 +773,18 @@ export function applyOpAction(
       return { opState, suspendInfo, message: '已保存，可稍后继续处理' };
 
     case '调剂': {
-      // 同组内=调剂到人（直接换处理人）；跨组=调剂到组（转入目标组工单池，由组内领取，不指定人）
+      // 【1215】调剂到人（指定人直派）/ 调剂到池（进池重新派送），落工单行与派单日志
+      if (payload.data.mode) {
+        const r = applyTransferDispatch(detail, timeline, {
+          mode: payload.data.mode,
+          target: payload.data.target,
+          groupId: payload.data.groupId,
+          poolId: payload.data.poolId,
+          reason: payload.data.reason,
+        }, operator, operatorRole);
+        if (r.handled) return { opState, suspendInfo, message: r.message };
+      }
+      // 不在工单库的样例单：只记履历
       const { scope, target, reason } = payload.data;
       const isCross = scope === 'cross';
       if (isCross) {
@@ -917,7 +944,7 @@ export function applyOpAction(
        * 两者动作集只差「领取 / 指派」「退回」三格（※14b），判它们一律读状态，
        * 不再另留 escalateTarget 字段——同一件事不留第二个真源。
        */
-      const { channel, group, member, detail: note, feedbackCategory } = payload.data;
+      const { channel, group, member, detail: note, feedbackCategory, techMode } = payload.data;
       // 飞书项目通道：建关联 + 演示预反馈/关单时间线（原型默认落到 closed 以便点二次激活）
       if (channel === FEISHU_ESCALATE_CHANNEL) {
         const feedbackNo = feishuFeedbackNo();
@@ -945,6 +972,19 @@ export function applyOpAction(
       // 升级目标直接进状态：技术支持组 → 「已升级技术支持」（处理人转到该组池、由组员领取）；
       // RDM / TPD 等产研系统 → 「已升级产研」（服务节点，处理人仍是原二线）
       detail.status = toTech ? '已升级技术支持' : '已升级产研';
+      // 【1215】三线二选一：到技术支持池由引擎派出，指定技术支持直派；二线仍为主责
+      if (toTech && techMode) {
+        const person = techMode === 'person' && !!member;
+        const msg = scheduleEscalateDispatch(detail, timeline, {
+          mode: person ? 'person' : 'pool', member: person ? member : undefined, reason: note ?? '',
+        }, operator);
+        pushEntry(timeline, {
+          category: 'node', action: 'escalate', who: operator, role: operatorRole,
+          how: '升级',
+          what: `${person ? `升级三线 → ${member}` : `升级三线 → ${techPoolLabel()}`}${note ? `。说明：${note}` : ''}`,
+        });
+        return { opState, suspendInfo, message: msg };
+      }
       const dest = toTech && group ? `${channel} · ${group}${member ? ` · ${member.split(' ')[0]}` : ''}` : channel;
       pushEntry(timeline, {
         category: 'node', action: 'escalate', who: operator, role: operatorRole,

@@ -13,6 +13,7 @@ import {
   CloudUploadOutlined, CloseCircleOutlined, InteractionOutlined, RedoOutlined, RobotOutlined,
 } from '@ant-design/icons-vue';
 import RecordingPlayer from './operation/RecordingPlayer.vue';
+import DispatchDecisionDetail from './operation/dispatch/DispatchDecisionDetail.vue';
 import { formatOpTime } from '@/views/tickets/utils/opTime';
 import {
   CATEGORY_META, softBg,
@@ -171,7 +172,9 @@ const filteredEntries = computed(() => {
             <span class="when">{{ formatOpTime(e.when) }}</span>
           </div>
 
-          <div v-if="e.what" class="what">{{ e.what }}</div>
+          <!-- 系统派单：正文 ＋ 派单路径、原因、得分与因子明细（【1215】PRD 13.1） -->
+          <DispatchDecisionDetail v-if="e.how === '系统派单'" :entry="e" />
+          <div v-else-if="e.what" class="what">{{ e.what }}</div>
 
           <!-- 工单处理字段变更（handle 事件）：补充/修改 明细 -->
           <div v-if="e.changes?.length" class="chg-list">

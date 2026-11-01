@@ -20,6 +20,7 @@ import { buildEscalateVerdict, isTicketTerminated } from '../../composables/comp
 import { buildTicketRelations, type TicketRelation } from '../../composables/ticketRelations';
 import OpRelationList from './OpRelationList.vue';
 import OpSupersededBanner from './OpSupersededBanner.vue';
+import DispatchStatusTag from './dispatch/DispatchStatusTag.vue';
 import { RISK_LEVEL_STYLE, riskLevelText, type RiskLevel } from '@/config/risk';
 
 const props = defineProps<{
@@ -282,6 +283,8 @@ function priorityHex(p: string): string {
           >
             <span class="badge-dot" :style="{ background: statusBadge.color }" />{{ statusText }}
           </span>
+          <!-- 【1215】在池工单的派单状态：排队中 / 等原处理人 / 派单失败回池 -->
+          <DispatchStatusTag v-if="!isSuperseded" :ticket-no="ticketNo" />
           <!--
             类型位徽章 —— **三档互斥，恒只出一枚**：
             · 刷机单只出「刷机单」，不再并排「咨询」（1014）；

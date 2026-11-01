@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
-import { message } from 'ant-design-vue';
+import { message, Modal } from 'ant-design-vue';
 import dayjs, { type Dayjs } from 'dayjs';
 import {
   SwapOutlined, TeamOutlined, StopOutlined, PauseCircleOutlined,
@@ -12,7 +12,7 @@ import OpActionModal from './operation/OpActionModal.vue';
 import AftersaleCreateForm from './operation/AftersaleCreateForm.vue';
 import type { SuspendInfo, OpActionType, AftersaleContext, AftersalePayload } from '../composables/opActions';
 import {
-  TRANSFER_TARGETS_SAME, TRANSFER_TARGET_GROUPS, CROSS_GROUP_TRANSFER_ROLES,
+  CROSS_GROUP_TRANSFER_ROLES,
   DELEGATE_TARGETS, REVIEWERS, FORCE_CLOSE_REASONS, APPROVERS,
   SUSPEND_REASONS, ESCALATE_CHANNELS, ESCALATE_CHANNEL_TPD, ESCALATE_GROUPS, ESCALATE_MEMBERS,
   FEISHU_SPACES, CLOSE_REASONS,
@@ -28,6 +28,7 @@ import {
   XIAOZHI_RD_PRIORITY_DEFAULT, XIAOZHI_TIP, xiaozhiReceiverOf,
 } from '../types/xiaozhi';
 import { REFUND_TO_MANAGER } from '../types/refund';
+import { useTransferOptions, TRANSFER_REASON_MAX } from './operation/dispatch/useTransferOptions';
 
 const RESUME_AT_FORMAT = 'YYYY-MM-DD HH:mm';
 
@@ -76,7 +77,14 @@ const emit = defineEmits<{
 }>();
 
 const user = useUserStore();
-const transfer = reactive({ scope: 'same' as 'same' | 'cross', target: TRANSFER_TARGETS_SAME[0], reason: '' });
+/** 调剂（【1215】PRD 9.4）：到人 / 到池 */
+const transfer = reactive({
+  mode: 'person' as 'person' | 'pool',
+  target: undefined as string | undefined,
+  groupId: undefined as string | undefined,
+  poolId: undefined as string | undefined,
+  reason: '',
+});
 
 /**
  * 跨组调剂权限：二线专员仅同组内，其余按 `CROSS_GROUP_TRANSFER_ROLES` 放行。
@@ -87,24 +95,13 @@ const transfer = reactive({ scope: 'same' as 'same' | 'cross', target: TRANSFER_
  */
 const canCrossGroup = computed(() => CROSS_GROUP_TRANSFER_ROLES.includes(user.roleKey));
 
-const transferToGroup = computed(() => transfer.scope === 'cross');
-
-/** 同组内→选人；跨组→选组（不指定组内的人） */
-const transferTargetOptions = computed(() =>
-  (transferToGroup.value
-    ? TRANSFER_TARGET_GROUPS
-    : [...(props.extraTransferTargets ?? []), ...TRANSFER_TARGETS_SAME])
-    .map((t) => ({ value: t, label: t })),
-);
-
-/** 同组内的缺省目标：调用方给了预选处理人用它，否则取候选首项 */
-function sameScopeDefault(): string {
-  return props.defaultTransferTarget ?? TRANSFER_TARGETS_SAME[0];
-}
-
-/** 切换范围后重置为新候选首项，避免残留上一范围的目标 */
-watch(() => transfer.scope, (scope) => {
-  transfer.target = scope === 'same' ? sameScopeDefault() : TRANSFER_TARGET_GROUPS[0];
+const transferOpts = useTransferOptions(() => props.ticketNo, () => canCrossGroup.value);
+/** 所选处理人不是归属组成员时的归属组候选：只属一个组时直接取该组，属多组时由调剂人选择 */
+const transferGroupChoices = computed(() => transferOpts.groupChoicesFor(transfer.target));
+const showTransferGroup = computed(() => transfer.mode === 'person' && transferGroupChoices.value.length > 1);
+watch(() => transfer.target, () => {
+  const choices = transferGroupChoices.value;
+  transfer.groupId = choices.length === 1 ? choices[0].value : undefined;
 });
 let delegateTaskSeq = 0;
 function createDelegateTask(name = '', task = '') {
@@ -153,6 +150,9 @@ const escalate = reactive({
   rdPriority: XIAOZHI_RD_PRIORITY_DEFAULT as string,
   frontlineAccount: '',
   attachments: [] as string[],
+  /** 升级 · 三线技术支持（【1215】PRD 9.5）：到技术支持池 / 指定技术支持 */
+  techMode: 'pool' as 'pool' | 'person',
+  techMember: undefined as string | undefined,
 });
 
 /** 接收人（域账号）由产品模块带出、不可改（W2），与建单弹窗同一个读口 */
@@ -250,7 +250,8 @@ const escalateGroupOptions = computed(() => {
  * 小智单的派发靠「产品模块 → 接收人」（W2），再选一个组是多问一道、且与接收人口径打架。
  */
 const showEscalateGroup = computed(
-  () => !escalateToFeishu.value && !escalateToXiaozhiRd.value && escalateGroupOptions.value.length > 0,
+  () => !escalateToFeishu.value && !escalateToXiaozhiRd.value && !escalateToTech.value
+    && escalateGroupOptions.value.length > 0,
 );
 
 const delegateGroupOptions = computed(() =>
@@ -321,7 +322,8 @@ interface DlgConfig {
 }
 
 const DLG_CONFIG: Partial<Record<OpActionType, DlgConfig>> = {
-  调剂: { title: '调剂工单', icon: SwapOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认调剂' },
+  // 【1215】PRD 9.4：标题「调剂」，按钮 [ 取消 ] [ 确定 ]
+  调剂: { title: '调剂', icon: SwapOutlined, tone: 'primary', width: 520, okTone: 'primary', okText: '确定' },
   委派: { title: '委派工单', icon: TeamOutlined, tone: 'primary', width: 560, okTone: 'primary', okText: '确认委派' },
   下送: { title: '下送审核', icon: StopOutlined, tone: 'primary', width: 480, okTone: 'primary', okText: '确认下送' },
   强结: { title: '强结', icon: StopOutlined, tone: 'warn', width: 480, okTone: 'danger', okText: '提交强结审批' },
@@ -365,7 +367,13 @@ function defaultApprovalGroup() {
 }
 
 function resetForms() {
-  transfer.scope = 'same'; transfer.target = sameScopeDefault(); transfer.reason = '';
+  transfer.mode = 'person';
+  transfer.target = props.defaultTransferTarget || undefined;
+  transfer.groupId = undefined;
+  transfer.poolId = undefined;
+  transfer.reason = '';
+  escalate.techMode = 'pool';
+  escalate.techMember = undefined;
   delegate.mode = 'person';
   resetDelegateTasks();
   delegate.group = DELEGATE_GROUPS[0];
@@ -405,14 +413,15 @@ function closeModal() {
 function validate(): boolean {
   switch (props.action) {
     case '调剂':
-      if (transfer.scope === 'cross' && !canCrossGroup.value) {
-        message.warning('仅二线班组长 / 客诉专员 / 投诉督导 / 工单运营 / 管理员可跨组调剂');
+      if (transfer.mode === 'person') {
+        if (!transfer.target) { message.warning('请选择处理人'); return false; }
+        if (showTransferGroup.value && !transfer.groupId) { message.warning('请选择调剂后的归属组'); return false; }
+      } else if (!transfer.poolId) {
+        message.warning('请选择目标池');
         return false;
       }
-      if (!transfer.target) {
-        message.warning(transferToGroup.value ? '请选择目标处理组' : '请选择目标处理人');
-        return false;
-      }
+      if (!transfer.reason.trim()) { message.warning('请填写调剂原因'); return false; }
+      if (transfer.reason.trim().length > TRANSFER_REASON_MAX) { message.warning('调剂原因最多 200 字'); return false; }
       return true;
     case '强结':
       if (!forceClose.reason) { message.warning('请选择强结原因'); return false; }
@@ -440,6 +449,10 @@ function validate(): boolean {
     case '升级':
       if (escalateToFeishu.value && !escalate.feedbackCategory) {
         message.warning('请选择问题反馈分类');
+        return false;
+      }
+      if (escalateToTech.value && !escalateToXiaozhiRd.value && escalate.techMode === 'person' && !escalate.techMember) {
+        message.warning('请选择技术支持');
         return false;
       }
       // 小智单「升级 · 产研」三道（1130 PRD §5.4），与建单侧同口径
@@ -483,10 +496,62 @@ function validate(): boolean {
   return true;
 }
 
+/** 指定人将超个人上限：二次确认后再提交（PRD 9.4 / 7.3） */
+function confirmOverCap(name: string | undefined, verb: '调剂' | '升级', go: () => void) {
+  const over = transferOpts.overCapOf(name);
+  if (!over) { go(); return; }
+  Modal.confirm({
+    title: `${name}在途 ${over.inTransit} / 上限 ${over.cap}，${verb}后将记超额指派，确定${verb}？`,
+    okText: '确定',
+    cancelText: '取消',
+    onOk: go,
+  });
+}
+
+function transferPayload() {
+  const reason = transfer.reason.trim();
+  if (transfer.mode === 'pool') {
+    return {
+      mode: 'pool' as const, scope: 'cross' as const, poolId: transfer.poolId,
+      target: transferOpts.poolLabel(transfer.poolId ?? ''), reason,
+    };
+  }
+  return { mode: 'person' as const, scope: 'same' as const, target: transfer.target ?? '', groupId: transfer.groupId, reason };
+}
+
+function escalatePayload() {
+  const tech = escalateToTech.value && !escalateToXiaozhiRd.value;
+  return {
+    ...escalate,
+    rdReceiver: escalateReceiver.value,
+    xiaozhiRd: escalateToXiaozhiRd.value,
+    ...(tech ? {
+      group: '',
+      techMode: escalate.techMode,
+      member: escalate.techMode === 'person' ? escalate.techMember ?? '' : '',
+    } : {}),
+  };
+}
+
 function onOk() {
   if (!validate()) return;
+  // 指定人直派（调剂到人 / 升级指定技术支持）超上限时先二次确认
+  if (props.action === '调剂' && transfer.mode === 'person') {
+    confirmOverCap(transfer.target, '调剂', () => {
+      emit('confirm', { type: '调剂', data: transferPayload() });
+      closeModal();
+    });
+    return;
+  }
+  if (props.action === '升级' && escalateToTech.value && !escalateToXiaozhiRd.value && escalate.techMode === 'person') {
+    confirmOverCap(escalate.techMember, '升级', () => {
+      emit('confirm', { type: '升级', data: escalatePayload() });
+      closeModal();
+    });
+    return;
+  }
   switch (props.action) {
-    case '调剂': emit('confirm', { type: '调剂', data: { ...transfer } }); break;
+    case '调剂': emit('confirm', { type: '调剂', data: transferPayload() }); break;
     case '委派': {
       const data = delegate.mode === 'person'
         ? {
@@ -510,10 +575,7 @@ function onOk() {
       data: { ...suspend, serviceType: props.serviceType ?? '', serviceMethod: props.serviceMethod ?? '' },
     }); break;
     // 小智单那一支额外带上「接收人」—— 它是产品模块带出来的只读值，落库要用
-    case '升级': emit('confirm', {
-      type: '升级',
-      data: { ...escalate, rdReceiver: escalateReceiver.value, xiaozhiRd: escalateToXiaozhiRd.value },
-    }); break;
+    case '升级': emit('confirm', { type: '升级', data: escalatePayload() }); break;
     case '同步飞书': emit('confirm', { type: '同步飞书', data: { ...syncFeishu } }); break;
     case '转售后':
     case '关联售后': {
@@ -555,34 +617,41 @@ function onOk() {
     <!-- 调剂 -->
     <div v-if="action === '调剂'" class="op-form">
       <div class="op-field">
-        <div class="op-label req">调剂范围</div>
-        <a-radio-group v-model:value="transfer.scope">
-          <a-radio value="same">同组内（调剂到人）</a-radio>
-          <a-radio
-            value="cross"
-            :disabled="!canCrossGroup"
-            :title="canCrossGroup ? undefined : '仅二线班组长 / 客诉专员 / 投诉督导 / 工单运营 / 管理员可跨组调剂'"
-          >跨组（调剂到组）</a-radio>
+        <div class="op-label req">调剂方式</div>
+        <a-radio-group v-model:value="transfer.mode">
+          <a-radio value="person">到人</a-radio>
+          <a-radio value="pool">到池</a-radio>
         </a-radio-group>
-        <div v-if="!canCrossGroup" class="op-hint">仅二线班组长 / 客诉专员 / 投诉督导 / 工单运营 / 管理员可跨组调剂</div>
       </div>
-      <div class="op-field">
-        <div class="op-label req">{{ transferToGroup ? '目标处理组' : '目标处理人' }}</div>
-        <a-select
-          v-model:value="transfer.target"
-          show-search
-          :filter-option="filterMemberOption"
-          :placeholder="transferToGroup ? '请选择目标处理组' : '请选择目标处理人'"
-          style="width:100%"
-          :options="transferTargetOptions"
-        />
-        <div v-if="transferToGroup" class="op-hint">
-          跨组调剂到组，不指定组内具体处理人；工单转入该组工单池，由组内领取。
+      <template v-if="transfer.mode === 'person'">
+        <div class="op-field">
+          <div class="op-label req">处理人</div>
+          <a-select
+            v-model:value="transfer.target"
+            show-search
+            :filter-option="filterMemberOption"
+            placeholder="请选择处理人"
+            style="width:100%"
+            :options="transferOpts.personOptions.value"
+          />
         </div>
+        <div v-if="showTransferGroup" class="op-field">
+          <div class="op-label req">归属组</div>
+          <a-radio-group v-model:value="transfer.groupId" :options="transferGroupChoices" />
+        </div>
+      </template>
+      <div v-else class="op-field">
+        <div class="op-label req">目标池</div>
+        <a-select
+          v-model:value="transfer.poolId"
+          placeholder="请选择目标池"
+          style="width:100%"
+          :options="transferOpts.poolOptions.value"
+        />
       </div>
       <div class="op-field">
-        <div class="op-label">调剂原因</div>
-        <a-textarea v-model:value="transfer.reason" :rows="2" placeholder="请输入调剂原因..." />
+        <div class="op-label req">调剂原因</div>
+        <a-textarea v-model:value="transfer.reason" :rows="2" placeholder="请输入调剂原因" />
       </div>
     </div>
 
@@ -809,13 +878,21 @@ function onOk() {
       <template v-else>
         <template v-if="escalateToTech">
           <div class="op-field">
-            <div class="op-label">目标人员</div>
+            <div class="op-label req">升级方式</div>
+            <a-radio-group v-model:value="escalate.techMode">
+              <a-radio value="pool">到技术支持池</a-radio>
+              <a-radio value="person">指定技术支持</a-radio>
+            </a-radio-group>
+          </div>
+          <div v-if="escalate.techMode === 'person'" class="op-field">
+            <div class="op-label req">技术支持</div>
             <a-select
-              v-model:value="escalate.member"
+              v-model:value="escalate.techMember"
               show-search
               :filter-option="filterMemberOption"
+              placeholder="请选择技术支持"
               style="width:100%"
-              :options="ESCALATE_MEMBERS.map((m) => ({ value: m, label: m }))"
+              :options="transferOpts.techOptions.value"
             />
           </div>
         </template>
