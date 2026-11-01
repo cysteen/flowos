@@ -22,6 +22,7 @@ import { useFlashStore } from '@/stores/flash';
 import { useXiaozhiStore } from '@/stores/xiaozhi';
 import { isRefundTicket } from '@/views/tickets/types/refund';
 import { useRefundStore } from '@/stores/refund';
+import { useDispatchStore } from '@/stores/dispatch';
 
 const POOL_ENTRY_KEY = 'from';
 const POOL_ENTRY_VALUE = 'pool';
@@ -94,6 +95,17 @@ function nowStamp(): string {
  * 小智单 → 小智服务 `claimFromPool`；刷机单 → 刷机服务 `claimFromPool`；其余 → `claimPoolTicket`。
  */
 export function claimTicketByType(t: Ticket, roleKey: string, userName: string): { ok: boolean; message: string } {
+  // 【1215】先到先得 ＋ 未签入不可领（10.2）；领取不校验画像、不受个人上限约束
+  const dispatch = useDispatchStore();
+  const me = currentHandlerName(roleKey, userName);
+  const gate = dispatch.checkClaim(t, me);
+  if (!gate.ok) return gate;
+  const res = claimByType(t, roleKey, userName);
+  if (res.ok && t.assignee) dispatch.recordManualTake(t, t.assignee, '二线领取', me);
+  return res;
+}
+
+function claimByType(t: Ticket, roleKey: string, userName: string): { ok: boolean; message: string } {
   const role = mapUserRole(roleKey);
   const me = currentHandlerName(roleKey, userName);
   if (isXiaozhiTicket(t)) {

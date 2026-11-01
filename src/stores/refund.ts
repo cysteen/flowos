@@ -20,6 +20,7 @@ import {
   type TicketRefund,
 } from '@/views/tickets/types/refund';
 import { useNotifyLogStore } from './notifyLog';
+import { useDispatchStore } from './dispatch';
 
 /**
  * 个册退费单 · 个册退费服务（1120 个册退费工单 PRD 第 3–7 章）。
@@ -236,6 +237,8 @@ export const useRefundStore = defineStore('refund', () => {
     });
     r.refund!.state.manager = undefined;
     poolIm(r);
+    // 【1215】进教育支持组池即进入派单（12.4）；调用方落完履历与快照后再判定
+    queueMicrotask(() => useDispatchStore().dispatchTicket(r, '新单', { poolId: REFUND_POOL_GROUP_ID }));
   }
 
   /* ---------------- 建单 ---------------- */

@@ -20,6 +20,7 @@ import {
 } from '@/views/tickets/types/xiaozhi';
 import { XIAOZHI_LS_KEYS, readXiaozhiCache, writeXiaozhiCache } from './xiaozhiCache';
 import { useNotifyLogStore } from './notifyLog';
+import { useDispatchStore } from './dispatch';
 
 /**
  * 小智工单 · 小智服务（1130 小智工单 D1 / D5–D14 / D21 / D24 / D27）。
@@ -430,6 +431,8 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
       );
       bump(no);
       persist();
+      // 【1215】人工跟进的小智单落池后进入派单（12.2）
+      queueMicrotask(() => useDispatchStore().dispatchTicket(r, '新单', { poolId: XIAOZHI_POOL_GROUP_ID }));
     }
     return { kind: 'create', ticket: r, degraded: platformDown };
   }
@@ -941,6 +944,14 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     return settled;
   }
 
+  /** 外部服务（【1215】派单引擎）写一条系统履历并落快照 */
+  function appendLog(no: string, partial: Omit<TimelineEntry, 'id' | 'when'>) {
+    if (!rowOf(no)) return;
+    log(no, Date.now(), partial);
+    bump(no);
+    persist();
+  }
+
   /** 处理页改了状态后同步回工单库（领取 / 调剂等走通用咨询单流程时用） */
   function syncStatus(no: string, status: string, opts?: { assignee?: string | null }) {
     const r = rowOf(no);
@@ -1018,6 +1029,7 @@ export const useXiaozhiStore = defineStore('xiaozhi', () => {
     /** B7：超 N 天未确认视为已解决 */
     settleConfirmDue,
     syncStatus,
+    appendLog,
     linkComplaint,
     xiaozhiNoLinkedTo,
   };

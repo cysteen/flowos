@@ -1528,7 +1528,11 @@ export const useDispatchStore = defineStore('dispatch', () => {
     });
   }
 
-  /* ---------------- 定时器 ---------------- */
+  /* ---------------- 定时器 · 注册 ---------------- */
+
+  // 接入售后回传的派单落点（`aftersaleEvents.dispatchByCurrentRule`）：store 建立时注册，
+  // 不在模块加载时注册 —— 种子单在模块加载期经同一函数构建，须仍走原落池口径
+  registerDispatchEngine((t, ctx) => resolveForAftersale(t, ctx));
 
   if (typeof window !== 'undefined') {
     window.setInterval(() => {
@@ -1562,14 +1566,3 @@ export const useDispatchStore = defineStore('dispatch', () => {
   };
 });
 
-/**
- * 接入售后回传的派单落点（`aftersaleEvents.dispatchByCurrentRule`）。
- * 模块加载即注册；种子单在本模块之前构建，仍走原落池口径。pinia 未就绪时返回 null（回落原口径）。
- */
-registerDispatchEngine((t, ctx) => {
-  try {
-    return useDispatchStore().resolveForAftersale(t, ctx);
-  } catch {
-    return null;
-  }
-});

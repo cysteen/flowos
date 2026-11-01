@@ -2,6 +2,7 @@ import { isFlashTicket } from '@/views/tickets/types/flash';
 import { isXiaozhiTicket } from '@/views/tickets/types/xiaozhi';
 import { useXiaozhiStore } from '@/stores/xiaozhi';
 import { useRefundStore } from '@/stores/refund';
+import { useDispatchStore } from '@/stores/dispatch';
 import { isRefundTicket } from '@/views/tickets/types/refund';
 import { computed, ref, watch } from 'vue';
 import { buildAiSuggestions } from '@/mock/aiSuggestions';
@@ -594,6 +595,8 @@ export function useTicketWorkbench() {
       }
       // 个册退费单（1120）：指派同咨询单，落库后由个册退费服务落快照
       if (isRefundTicket(t)) useRefundStore().afterClaim(t.no);
+      // 【1215】结束排队 / 预留、写派单日志，超出个人上限记超额指派（7.3）
+      if (opts.scope === 'in-team') useDispatchStore().recordManualTake(t, opts.targetName, '班组长指派', user.name);
       rows.push({ id, ok: true });
     }
     return rows;
