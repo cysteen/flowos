@@ -91,7 +91,7 @@ function goEdit(name: string) { router.push({ path: '/admin/users', query: { age
 <style scoped>
 .block { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; }
 .ap-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }
-.muted { color: #9ca3af; font-size: 12px; }
+.muted { color: #9ca3af; font-size: 12px; margin-left: 4px; }
 .full { color: #ea580c; }
 :deep(.ant-table-thead > tr > th) { background: #f3f4f6; color: #6b7280; font-size: 12px; }
 </style>

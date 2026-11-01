@@ -123,7 +123,7 @@ function openAssign(t: Ticket) { assignTicket.value = t; assignOpen.value = true
             </a-tooltip>
           </template>
           <span v-else-if="column.key === 'leaders'">{{ record.leaders.join('、') || '—' }}</span>
-          <span v-else-if="column.key === 'maxWait'">{{ waitText(record.maxWaitMin) }}</span>
+          <span v-else-if="column.key === 'maxWait'">{{ waitText(record.waitingOriginal + record.queued + record.failed ? record.maxWaitMin : 0) }}</span>
           <span v-else-if="column.key === 'members'">{{ record.configuredCount }} / {{ record.memberCount }}</span>
           <template v-else-if="column.key === 'op'">
             <a-button type="link" size="small" @click="detailId = record.id">详情</a-button>

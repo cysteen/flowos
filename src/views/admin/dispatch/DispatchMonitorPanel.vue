@@ -36,7 +36,7 @@ const backlog = computed(() => {
   const rows = poolRows.value.filter((p) => !poolScope.value || poolScope.value.includes(p.id));
   return {
     count: rows.reduce((s, p) => s + p.waitingOriginal + p.queued + p.failed, 0),
-    maxWait: rows.reduce((m, p) => Math.max(m, p.maxWaitMin), 0),
+    maxWait: rows.filter((p) => p.waitingOriginal + p.queued + p.failed).reduce((m, p) => Math.max(m, p.maxWaitMin), 0),
   };
 });
 
@@ -223,7 +223,7 @@ const logOpen = ref(false);
       <a-table :columns="backlogCols" :data-source="backlogTableRows" row-key="id" size="middle" :pagination="false">
         <template #bodyCell="{ column, record }">
           <a-tag v-if="column.key === 'mode'" :color="MODE_TONE[record.effectiveMode as keyof typeof MODE_TONE]">{{ record.effectiveMode }}</a-tag>
-          <span v-else-if="column.key === 'maxWait'">{{ waitText(record.maxWaitMin) }}</span>
+          <span v-else-if="column.key === 'maxWait'">{{ waitText(record.waitingOriginal + record.queued + record.failed ? record.maxWaitMin : 0) }}</span>
         </template>
       </a-table>
     </section>
@@ -272,7 +272,7 @@ const logOpen = ref(false);
 .b-sub { font-size: 12px; font-weight: normal; color: #9ca3af; }
 .hd-btn { margin-left: auto; }
 .load-filters { display: flex; gap: 8px; }
-.muted { color: #9ca3af; font-size: 12px; }
+.muted { color: #9ca3af; font-size: 12px; margin-left: 4px; }
 .stat-row { display: flex; gap: 16px; }
 .stat-card { flex: 1; border: 1px solid #eef0f3; border-radius: 8px; padding: 14px 18px; position: relative; overflow: hidden; min-height: 104px; }
 .stat-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--accent); }

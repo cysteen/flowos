@@ -66,16 +66,16 @@ const rows = computed(() => {
 });
 
 const cols = [
-  { title: '判定时间', dataIndex: 'at', key: 'at', width: 160 },
+  { title: '判定时间', dataIndex: 'at', key: 'at', width: 150 },
   { title: '工单号', dataIndex: 'ticketNo', key: 'ticketNo', width: 170 },
-  { title: '序号', dataIndex: 'seq', key: 'seq', width: 60, align: 'center' as const },
-  { title: '触发 / 动作', key: 'trigger', width: 120 },
-  { title: '归属池', key: 'pool', width: 190 },
-  { title: '池形态', key: 'mode', width: 90 },
-  { title: '判定路径', key: 'path', width: 110 },
+  { title: '序号', dataIndex: 'seq', key: 'seq', width: 50, align: 'center' as const },
+  { title: '触发 / 动作', key: 'trigger', width: 96 },
+  { title: '归属池', key: 'pool', width: 170 },
+  { title: '池形态', key: 'mode', width: 80 },
+  { title: '判定路径', key: 'path', width: 100 },
   { title: '中选坐席', key: 'chosen', width: 150 },
-  { title: '失败原因', key: 'fail', width: 120 },
-  { title: '标记', key: 'flag', width: 150 },
+  { title: '失败原因', key: 'fail', width: 110 },
+  { title: '标记', key: 'flag', width: 110 },
 ];
 
 function gateItems(l: DispatchLogEntry) {
@@ -115,7 +115,7 @@ function exportCsv() {
 </script>
 
 <template>
-  <a-drawer :open="open" title="派单日志" :width="1180" placement="right" @update:open="emit('update:open', $event)">
+  <a-drawer :open="open" title="派单日志" :width="1320" placement="right" @update:open="emit('update:open', $event)">
     <div class="lg-filters">
       <a-input v-model:value="f.no" placeholder="工单号" allow-clear style="width: 190px" />
       <a-range-picker v-model:value="f.range" show-time format="YYYY-MM-DD HH:mm" style="width: 330px" :allow-clear="false" />
@@ -134,7 +134,6 @@ function exportCsv() {
       row-key="id"
       size="middle"
       :pagination="stdPagination()"
-      :scroll="{ x: 1400 }"
       :locale="{ emptyText: '暂无派单记录' }"
     >
       <template #bodyCell="{ column, record }">
