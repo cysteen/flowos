@@ -7,7 +7,7 @@ import { useDispatchStore } from '@/stores/dispatch';
 import { stdPagination } from '@/config/adminUi';
 import {
   DISPATCH_ROLES, PROFICIENCIES, ROLLOUT_STAGES, defaultDispatchConfig,
-  type DispatchConfig, type DispatchRole, type Proficiency, type RunMode, type ScoreFactor,
+  type DispatchConfig, type DispatchRole, type Proficiency, type ScoreFactor,
 } from '@/views/tickets/types/dispatch';
 import {
   DEFAULT_RUN_THRESHOLDS, MODE_TONE, configFieldsText, opts, pickRunThresholds, rangeError, type RunThresholds,
@@ -47,29 +47,14 @@ function onGlobalSwitch(on: boolean) {
     },
   });
 }
-const runModeUi = ref<RunMode>(store.config.runMode);
-watch(() => store.config.runMode, (v) => { runModeUi.value = v; });
-function onRunMode() {
-  const mode = runModeUi.value;
-  if (mode === store.config.runMode) return;
-  const apply = () => {
-    const r = store.setRunMode(mode);
-    if (r.ok) message.success(r.message); else message.error(r.message);
-    runModeUi.value = store.config.runMode;
-  };
-  if (mode === '正式派单') {
-    Modal.confirm({
-      title: '切换运行方式', content: '切换后将按规则实际派单，确定切换？', okText: '确定', cancelText: '取消',
-      onOk: apply, onCancel: () => { runModeUi.value = store.config.runMode; },
-    });
-  } else apply();
-}
+// 运行方式只读（14.2 / 第 17 章）：只随上线阶段推进、退回联动变更
 const modeOpen = ref(false);
 
 /* 上线阶段（第 17 章）：试运行 → 单组试点 → 多组 → 全量，每步由管理员确认；可退回上一步 */
 const stage = computed(() => store.rolloutStage());
 const nextStage = computed(() => ROLLOUT_STAGES[ROLLOUT_STAGES.indexOf(stage.value) + 1] ?? null);
-const prevStage = computed(() => ROLLOUT_STAGES[ROLLOUT_STAGES.indexOf(stage.value) - 1] ?? null);
+// 正式派单下未开启班组开关：阶段显示试运行，只出「推进至单组试点」
+const prevStage = computed(() => (store.rolloutNoSwitch() ? null : ROLLOUT_STAGES[ROLLOUT_STAGES.indexOf(stage.value) - 1] ?? null));
 const stageTip = computed(() => (store.config.globalSwitch ? '' : '全局开关已关闭，请先在派单策略开启'));
 const stageOpen = ref(false);
 const stageDir = ref<'forward' | 'back'>('forward');
@@ -201,12 +186,7 @@ watch(() => store.config, (c) => {
         </div>
         <div class="st-row">
           <span class="st-k">运行方式</span>
-          <div class="st-v">
-            <a-radio-group v-model:value="runModeUi" @change="onRunMode">
-              <a-radio value="试运行">试运行</a-radio>
-              <a-radio value="正式派单">正式派单</a-radio>
-            </a-radio-group>
-          </div>
+          <div class="st-v"><span class="st-readonly">{{ store.config.runMode }}</span></div>
         </div>
         <div class="st-row">
           <span class="st-k">全局形态</span>
@@ -220,6 +200,7 @@ watch(() => store.config, (c) => {
           <span class="st-k">上线阶段</span>
           <div class="st-v">
             <a-tag color="blue">{{ stage }}</a-tag>
+            <a-tag v-if="store.rolloutNoSwitch()">未开启班组开关</a-tag>
             <a-tooltip :title="stageTip || undefined">
               <a-button v-if="nextStage" size="small" :disabled="!!stageTip" @click="openStage('forward')">推进至{{ nextStage }}</a-button>
             </a-tooltip>
@@ -371,6 +352,7 @@ watch(() => store.config, (c) => {
 .st-k { width: 210px; flex: none; color: #374151; font-size: 13px; }
 .st-v { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .st-unit { color: #6b7280; font-size: 13px; }
+.st-readonly { color: #111827; font-size: 13px; }
 .st-sec { font-size: 13px; font-weight: 600; color: #111827; padding-left: 10px; border-left: 3px solid #1a6fff; margin: 18px 0 6px; display: flex; align-items: center; gap: 10px; }
 .st-sec:first-child { margin-top: 0; }
 .st-sec-sub { font-size: 12px; font-weight: normal; color: #9ca3af; }

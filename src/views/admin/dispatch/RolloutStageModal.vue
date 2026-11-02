@@ -167,7 +167,9 @@ const conditions = computed<CondRow[]>(() => {
 
 const effectText = computed(() => {
   switch (to.value) {
-    case '单组试点': return isForward.value ? '运行方式切为正式派单；只开启试点组的班组开关，其余组关闭班组开关、保持降级态' : '只保留试点组开启班组开关，其余组关闭班组开关';
+    case '单组试点':
+      if (!isForward.value) return '只保留试点组开启班组开关，其余组关闭班组开关';
+      return `${store.rolloutNoSwitch() ? '运行方式保持正式派单' : '运行方式切为正式派单'}；只开启试点组的班组开关，其余组关闭班组开关、保持降级态`;
     case '多组': return isForward.value ? '开启所选组的班组开关' : '关闭所选组的班组开关';
     case '全量': return '开启全部组的班组开关';
     case '试运行': return '运行方式切回试运行，引擎只出派单建议、不实际派单';

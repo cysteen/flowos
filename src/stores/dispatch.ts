@@ -1643,12 +1643,21 @@ export const useDispatchStore = defineStore('dispatch', () => {
 
   const ROLLOUT_TARGET = '上线阶段';
 
-  /** 当前上线阶段：试运行；正式派单下按开启班组开关的组数判定单组试点 / 多组 / 全量 */
+  /**
+   * 当前上线阶段（第 17 章）：运行方式为试运行即试运行；正式派单下按开启班组开关的组数判定 ——
+   * 0 个组视同未上线、显示「试运行」（见 `rolloutNoSwitch`），1 个组单组试点，全部组全量，其余多组。
+   */
   function rolloutStage(): RolloutStage {
     if (config.value.runMode === '试运行') return '试运行';
     const on = groups.value.filter((g) => g.switchOn).length;
+    if (on === 0) return '试运行';
     if (on >= groups.value.length) return '全量';
-    return on <= 1 ? '单组试点' : '多组';
+    return on === 1 ? '单组试点' : '多组';
+  }
+
+  /** 正式派单下未开启任何班组开关（阶段显示「试运行」，行内标「未开启班组开关」，只能推进至单组试点） */
+  function rolloutNoSwitch(): boolean {
+    return config.value.runMode === '正式派单' && !groups.value.some((g) => g.switchOn);
   }
 
   /** 进入某阶段的时刻（取最近一次推进 / 退回到该阶段的审计；试运行另认全局开关开启） */
@@ -1694,7 +1703,8 @@ export const useDispatchStore = defineStore('dispatch', () => {
       audit('运行方式', '全局', config.value.runMode, '试运行', operator);
       config.value.runMode = '试运行';
     } else {
-      if (from === '试运行') {
+      // 正式派单下未开启班组开关时推进：运行方式保持正式派单，只开启试点组
+      if (from === '试运行' && config.value.runMode !== '正式派单') {
         audit('运行方式', '全局', config.value.runMode, '正式派单', operator);
         config.value.runMode = '正式派单';
       }
@@ -2031,7 +2041,7 @@ export const useDispatchStore = defineStore('dispatch', () => {
     checkOccupy, checkClaim, recordManualTake, withdrawTicket,
     // 形态 · 开关 · 运行方式 · 上线阶段
     setGlobalSwitch, setGlobalMode, setGroupSwitch, setGroupMode, setRunMode,
-    rolloutStage, rolloutStageSince, setRolloutStage, onDutyHoursOf,
+    rolloutStage, rolloutNoSwitch, rolloutStageSince, setRolloutStage, onDutyHoursOf,
     // 入池规则
     addPoolRule, updatePoolRule, setPoolRuleEnabled, removePoolRule,
     // 坐席
