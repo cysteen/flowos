@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 派单策略（PRD 14.2）：运行设置 / 入池规则 / 出池规则 / 个人上限 / 开关记录；各页签底部 [重置][保存]，保存即生效、记审计
 import { computed, reactive, ref, watch } from 'vue';
-import { message, Modal } from 'ant-design-vue';
+import { message } from 'ant-design-vue';
 import { CheckCircleFilled, CheckOutlined, RocketOutlined } from '@ant-design/icons-vue';
 import type { Dayjs } from 'dayjs';
 import { useDispatchStore } from '@/stores/dispatch';
@@ -16,6 +16,7 @@ import {
 import { parseAt } from './dispatchMetrics';
 import PoolRuleList from './PoolRuleList.vue';
 import PoolModeSwitchModal from './PoolModeSwitchModal.vue';
+import DispatchConfirmModal from './DispatchConfirmModal.vue';
 import RolloutStageModal from './RolloutStageModal.vue';
 import './dispatchForm.css';
 import './dispatchTheme.css';
@@ -38,17 +39,15 @@ watch(active, (v) => emit('update:tab', v));
 /* ================= 运行设置 ================= */
 const run = reactive<RunThresholds>(pickRunThresholds(store.config));
 
-function onGlobalSwitch(on: boolean) {
-  Modal.confirm({
-    title: on ? '开启全局开关' : '关闭全局开关',
-    content: on ? '开启后各组按班组开关接入自动派单。确定开启？' : '关闭后全部组池停止自动派单，已派出工单不收回。确定关闭？',
-    okText: '确定',
-    cancelText: '取消',
-    onOk: () => {
-      const r = store.setGlobalSwitch(on);
-      if (r.ok) message.success(r.message); else message.error(r.message);
-    },
-  });
+/** 全局开关二次确认（8.2）：null＝未打开 */
+const globalSwitchTo = ref<boolean | null>(null);
+const globalSwitchOpen = computed({ get: () => globalSwitchTo.value !== null, set: (v: boolean) => { if (!v) globalSwitchTo.value = null; } });
+function onGlobalSwitch(on: boolean) { globalSwitchTo.value = on; }
+function onGlobalSwitchOk() {
+  const on = globalSwitchTo.value;
+  if (on === null) return;
+  const r = store.setGlobalSwitch(on);
+  if (r.ok) message.success(r.message); else message.error(r.message);
 }
 // 运行方式只读（14.2 / 第 17 章）：只随上线阶段推进、退回联动变更
 const modeOpen = ref(false);
@@ -508,6 +507,13 @@ watch(() => store.config, (c) => {
     </section>
 
     <PoolModeSwitchModal v-model:open="modeOpen" scope="global" />
+    <DispatchConfirmModal
+      v-model:open="globalSwitchOpen"
+      :title="globalSwitchTo ? '开启全局开关' : '关闭全局开关'"
+      :tip="globalSwitchTo ? '开启后各组按班组开关接入自动派单。确定开启？' : '关闭后全部组池停止自动派单，已派出工单不收回。确定关闭？'"
+      :danger="globalSwitchTo === false"
+      @ok="onGlobalSwitchOk"
+    />
     <RolloutStageModal v-model:open="stageOpen" :direction="stageDir" />
   </div>
 </template>

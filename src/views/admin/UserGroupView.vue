@@ -8,6 +8,7 @@ import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { useDispatchStore } from '@/stores/dispatch';
 import { useUserStore } from '@/stores/user';
 import { MODE_TONE } from '@/views/admin/dispatch/dispatchUi';
+import DispatchConfirmModal from '@/views/admin/dispatch/DispatchConfirmModal.vue';
 import type { DispatchRole } from '@/views/tickets/types/dispatch';
 
 // 用户分组（PRD-70，D3：BPM 用户分组 与 服务班组合并）：分组（含排班/负责人）+ 成员。
@@ -102,14 +103,14 @@ function applySwitch(key: string, on: boolean, after?: () => void) {
     if (r.ok) message.success(r.message); else if (r.message) message.error(r.message);
     after?.();
   };
-  if (!on) {
-    Modal.confirm({
-      title: '关闭班组开关',
-      content: `关闭后${dispatch.poolLabel(key)}转为混合派单，本组成员不再接本组池的自动派单。确定关闭？`,
-      okText: '确定', cancelText: '取消', onOk: apply,
-    });
-  } else apply();
+  if (!on) switchOff.value = { key, apply };
+  else apply();
 }
+/** 关闭班组开关 · 二次确认（8.2） */
+const switchOff = ref<{ key: string; apply: () => void } | null>(null);
+const switchOffOpen = computed({ get: () => !!switchOff.value, set: (v: boolean) => { if (!v) switchOff.value = null; } });
+const switchOffTip = computed(() => (switchOff.value ? `关闭后${dispatch.poolLabel(switchOff.value.key)}转为混合派单，本组成员不再接本组池的自动派单。确定关闭？` : ''));
+function onSwitchOffOk() { switchOff.value?.apply(); }
 
 // —— 分组 新建/编辑（含排班）——
 let gSeq = 7;
@@ -324,6 +325,8 @@ function removeMember(m: Member) {
         <a-form-item label="状态" class="half"><a-select v-model:value="mf.status" :options="['在线','小休','离线'].map((v)=>({value:v,label:v}))" /></a-form-item>
       </a-form>
     </a-modal>
+
+    <DispatchConfirmModal v-model:open="switchOffOpen" title="关闭班组开关" :tip="switchOffTip" ok-text="确定关闭" danger @ok="onSwitchOffOk" />
   </div>
 </template>
 

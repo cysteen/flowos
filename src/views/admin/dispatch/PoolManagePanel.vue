@@ -1,13 +1,14 @@
 <script setup lang="ts">
 // 工单池管理（PRD 14.3）：一组一池；派单方式、班组开关、派单状态计数与成员画像配置；池详情列池内待领工单，管理员可指派
 import { computed, ref } from 'vue';
-import { message, Modal } from 'ant-design-vue';
+import { message } from 'ant-design-vue';
 import { TICKETS } from '@/mock/tickets';
 import { useDispatchStore } from '@/stores/dispatch';
 import { DEFAULT_POOL_ID, PRIORITY_LEVEL } from '@/views/tickets/types/dispatch';
 import type { Ticket } from '@/views/tickets/types/ticket';
 import { MODE_TONE, useClock, waitText } from './dispatchUi';
 import PoolModeSwitchModal from './PoolModeSwitchModal.vue';
+import DispatchConfirmModal from './DispatchConfirmModal.vue';
 import PoolAssignModal from './PoolAssignModal.vue';
 import { SwapOutlined } from '@ant-design/icons-vue';
 import './dispatchTheme.css';
@@ -47,17 +48,23 @@ function switchTip(id: string): string | undefined {
 function onSwitch(id: string, on: boolean) {
   const g = store.groupOf(id);
   if (!g) return;
-  const apply = () => {
-    const r = store.setGroupSwitch(id, on);
-    if (r.ok) message.success(r.message); else message.error(r.message);
-  };
   if (!on) {
-    Modal.confirm({
-      title: '关闭班组开关',
-      content: `关闭后${store.poolLabel(id)}转为混合派单，本组成员不再接本组池的自动派单。确定关闭？`,
-      okText: '确定', cancelText: '取消', onOk: apply,
-    });
-  } else apply();
+    switchOffId.value = id;
+    return;
+  }
+  applySwitch(id, on);
+}
+function applySwitch(id: string, on: boolean) {
+  const r = store.setGroupSwitch(id, on);
+  if (r.ok) message.success(r.message); else message.error(r.message);
+}
+/** 关闭班组开关 · 二次确认（8.2） */
+const switchOffId = ref<string | null>(null);
+const switchOffOpen = computed({ get: () => !!switchOffId.value, set: (v: boolean) => { if (!v) switchOffId.value = null; } });
+const switchOffTip = computed(() => (switchOffId.value ? `关闭后${store.poolLabel(switchOffId.value)}转为混合派单，本组成员不再接本组池的自动派单。确定关闭？` : ''));
+function onSwitchOffOk() {
+  const id = switchOffId.value;
+  if (id) applySwitch(id, false);
 }
 
 const modeOpen = ref(false);
@@ -190,6 +197,7 @@ function openAssign(t: Ticket) { assignTicket.value = t; assignOpen.value = true
     </a-drawer>
 
     <PoolModeSwitchModal v-model:open="modeOpen" :scope="modeScope" />
+    <DispatchConfirmModal v-model:open="switchOffOpen" title="关闭班组开关" :tip="switchOffTip" ok-text="确定关闭" danger @ok="onSwitchOffOk" />
     <PoolAssignModal v-model:open="assignOpen" :ticket="assignTicket" :pool-id="detailId ?? ''" @done="refresh++" />
   </section>
 </template>

@@ -203,6 +203,7 @@ function submit() {
     @ok="submit"
   >
     <div class="op-form">
+      <div class="op-tip op-tip-warn">{{ effectText }}；已派出、已领取的工单不收回</div>
       <div class="op-field op-field-h">
         <span class="op-label">当前阶段</span>
         <span class="rs-val">{{ from }}</span>
@@ -217,10 +218,6 @@ function submit() {
           <a-select v-if="pickKind === 'single'" v-model:value="single" :options="singleOpts" placeholder="请选择" style="width: 100%" />
           <a-select v-else v-model:value="multi" mode="multiple" :options="multiOpts" placeholder="请选择" style="width: 100%" />
         </div>
-      </div>
-      <div class="op-field op-field-h">
-        <span class="op-label">影响</span>
-        <span class="rs-val muted">{{ effectText }}；已派出、已领取的工单不收回</span>
       </div>
 
       <div v-if="isForward && conditions.length" class="rs-cond">
@@ -251,7 +248,6 @@ function submit() {
 <style scoped>
 .rs-val { font-size: 13px; color: #111827; }
 .rs-val.strong { font-weight: 600; }
-.rs-val.muted { color: #6b7280; }
 .rs-grow { flex: 1; min-width: 0; }
 .rs-cond { margin-top: 4px; }
 .rs-cond-hd { font-size: 13px; font-weight: 600; color: #111827; margin-bottom: 8px; }
