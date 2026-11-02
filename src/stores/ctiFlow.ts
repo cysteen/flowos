@@ -134,6 +134,17 @@ export function flowMembers(): FlowMember[] {
   ];
 }
 
+/** 班组看板可选的班组：班组长看本人任班组长的组，其余可进看板的角色看全部 */
+export function teamBoardGroups(roleKey: string, name: string): WorkTimeGroup[] {
+  const all = workTimeGroups();
+  return roleKey === 'team-leader' ? all.filter((g) => g.leaders.includes(name)) : all;
+}
+
+/** 组员（二线专员，每人只算第一个所属组） */
+export function groupMembersOf(groupId: string): FlowMember[] {
+  return flowMembers().filter((m) => m.groupId === groupId);
+}
+
 /** 工作时长统计可选的班组：有成员的处理组（派单组）+ 上表各组 */
 export function workTimeGroups(): WorkTimeGroup[] {
   const withMembers = new Set(flowMembers().map((m) => m.groupId));

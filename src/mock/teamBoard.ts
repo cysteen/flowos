@@ -1440,3 +1440,187 @@ export function getTeamBoardSnapshot(teamId: string): TeamBoardSnapshot {
     conclusion: '今日进线 142（+45）、升级 23（+6）；超时未结 14 单（+3），建议优先清 P0/P1',
   };
 }
+
+/* ==========================================================================
+ * 按真实班组生成看板快照（班组看板顶部「班组」筛选用）
+ *
+ * 输入真实班组（组 id、组名、组员）；组员口径＝二线专员、每人只算第一个所属组，
+ * 与工作时长分布块、筛选项「（N人）」同一份名单。量级按人头估：
+ *   人均日新增 9、下送 7.5、结案 6、在办 12、积压（超解决时效）1.0、升级 1.5 ……（见 PER_HEAD），
+ *   再乘一个按组 id 定的 0.85–1.15 浮动，避免几组数字成比例。
+ *
+ * 不随组切换（维持基准数据）：未分派 / 去指派、催单、补充、预约、待审批、问题 TOP10 及各下钻明细。
+ *
+ * 生成后逐条满足的加总关系（与文件头「数值自洽关系」同一套）：
+ * - 优先级分布合计 ＝ 班组积压
+ * - 组员 forwardToday 之和 ＝ 今日下送
+ * - 当日时段趋势三线之和 ＝ 今日 新增 / 下送 / 结案；近 30 天末点 ＝ 今日三值，前一点 ＝ 昨日三值，卡片环比＝两点之差
+ * - 24 小时联络率分母 ＝ 近 30 天倒数第二点（昨日）的新增
+ * - 今日新增 ＝ 创建 + 转入，转入 ＝ 关注区「转入」；今日退回 ＝ 关注区「退回」
+ * - 首响 / 解决超时率 ＝ 超时单数 ÷ 今日新增；服务不满意占比 ＝ 不满意单数 ÷ 今日已评
+ * - 负载档按组员 workload 与阈值（<15 / 15–30 / >30）现算
+ * ========================================================================== */
+
+export interface GroupBoardInput {
+  id: string;
+  label: string;
+  members: { name: string; online?: MemberRow['online'] }[];
+}
+
+export interface GroupBoardSnapshot extends TeamBoardSnapshot {
+  trafficHourly: TrafficPoint[];
+  trafficDaily: TrafficPoint[];
+}
+
+/** 人均量级（日 / 时点） */
+const PER_HEAD = {
+  inbound: 9, forward: 7.5, closed: 6,
+  inboundY: 6.5, forwardY: 6.2, closedY: 7,
+  workload: 12, backlog: 1.0, escalated: 1.5, escalatedY: 1.2,
+  transferIn: 0.4, returned: 0.25, returnedY: 0.3,
+  delegated: 0.3, suspended: 0.25, transferredOut: 0.2,
+  firstOver: 0.2, resolveOver: 0.4, evaluated: 5, bad: 0.35, badY: 0.25,
+  overdue: 1.9,
+} as const;
+
+function groupHash(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0) / 4294967296;
+}
+
+/** 最大余数分配：按权重把 total 分成整数，和恰为 total */
+function apportionInt(total: number, weights: number[]): number[] {
+  const sum = weights.reduce((s, w) => s + w, 0);
+  if (!sum || total <= 0) return weights.map(() => 0);
+  const raw = weights.map((w) => (w / sum) * total);
+  const out = raw.map(Math.floor);
+  let rest = total - out.reduce((s, x) => s + x, 0);
+  raw
+    .map((v, i) => ({ i, frac: v - Math.floor(v) }))
+    .sort((a, b) => b.frac - a.frac)
+    .forEach(({ i }) => { if (rest > 0) { out[i] += 1; rest -= 1; } });
+  return out;
+}
+
+function signed(n: number): string {
+  return n > 0 ? `+${n}` : String(n);
+}
+function tone(n: number, upIsGood: boolean): 'good' | 'bad' | 'neutral' {
+  if (n === 0) return 'neutral';
+  return (n > 0) === upIsGood ? 'good' : 'bad';
+}
+function countFocus(v: number): Partial<BoardMetric> {
+  return { value: String(v), delta: '0', deltaTone: 'neutral', ...(v ? {} : { sub: undefined }) };
+}
+function pct(a: number, b: number): string {
+  return b ? `${((a / b) * 100).toFixed(1)}%` : '0.0%';
+}
+
+export function getGroupBoardSnapshot(g: GroupBoardInput): GroupBoardSnapshot {
+  const n = g.members.length;
+  const f = 0.85 + groupHash(g.id) * 0.3;
+  const q = (perHead: number, min = 0) => Math.max(min, Math.round(perHead * n * f));
+
+  const inbound = q(PER_HEAD.inbound, n ? 1 : 0);
+  const forward = q(PER_HEAD.forward);
+  const closed = q(PER_HEAD.closed);
+  const inboundY = q(PER_HEAD.inboundY, n ? 1 : 0);
+  const forwardY = q(PER_HEAD.forwardY);
+  const closedY = q(PER_HEAD.closedY);
+  const transferIn = Math.min(inbound, q(PER_HEAD.transferIn));
+  const created = inbound - transferIn;
+  const returned = q(PER_HEAD.returned);
+  const returnedY = q(PER_HEAD.returnedY);
+  const escalated = q(PER_HEAD.escalated);
+  const escalatedY = q(PER_HEAD.escalatedY);
+  const backlog = q(PER_HEAD.backlog);
+  const firstOver = Math.min(inbound, q(PER_HEAD.firstOver));
+  const resolveOver = Math.min(inbound, q(PER_HEAD.resolveOver));
+  const evaluated = q(PER_HEAD.evaluated, n ? 1 : 0);
+  const bad = Math.min(evaluated, q(PER_HEAD.bad));
+  const badY = q(PER_HEAD.badY);
+  const contacted = Math.round(inboundY * 0.918);
+
+  // 组员：真实组员，个人属性沿用基准名册的同位行，数量按组合计分配
+  const base = g.members.map((_, i) => TEAM_MEMBERS[i % TEAM_MEMBERS.length]);
+  const fwd = apportionInt(forward, base.map((b) => b.forwardToday));
+  const load = apportionInt(q(PER_HEAD.workload), base.map((b) => b.workload));
+  const over = apportionInt(q(PER_HEAD.overdue), base.map((b) => b.overdue + 0.5));
+  const members: MemberRow[] = g.members.map((m, i) => {
+    const workload = load[i];
+    return {
+      ...base[i],
+      id: `${g.id}-${i + 1}`,
+      name: m.name,
+      online: m.online ?? base[i].online,
+      workload,
+      loadLevel: workload > 30 ? '满载' : workload >= 15 ? '适中' : '空闲',
+      forwardToday: fwd[i],
+      overdue: over[i],
+    };
+  });
+
+  const priorityBuckets = apportionInt(backlog, PRIORITY_BUCKETS.map((b) => b.count))
+    .map((count, i) => ({ ...PRIORITY_BUCKETS[i], count }));
+
+  // 趋势：时段按基准形状分配到今日三值；30 天按基准形状缩放，末两点钉到昨日 / 今日
+  const hourIn = apportionInt(inbound, TRAFFIC_HOURLY.map((p) => p.inbound + 0.01));
+  const hourFwd = apportionInt(forward, TRAFFIC_HOURLY.map((p) => p.forward + 0.01));
+  const hourCls = apportionInt(closed, TRAFFIC_HOURLY.map((p) => p.closed + 0.01));
+  const trafficHourly = TRAFFIC_HOURLY.map((p, i) => ({ t: p.t, inbound: hourIn[i], forward: hourFwd[i], closed: hourCls[i] }));
+  const last = TRAFFIC_DAILY.length - 1;
+  const sIn = inboundY / TRAFFIC_DAILY[last - 1].inbound;
+  const sFwd = forwardY / TRAFFIC_DAILY[last - 1].forward;
+  const sCls = closedY / TRAFFIC_DAILY[last - 1].closed;
+  const trafficDaily = TRAFFIC_DAILY.map((p, i) => {
+    if (i === last) return { t: p.t, inbound, forward, closed };
+    if (i === last - 1) return { t: p.t, inbound: inboundY, forward: forwardY, closed: closedY };
+    return { t: p.t, inbound: Math.round(p.inbound * sIn), forward: Math.round(p.forward * sFwd), closed: Math.round(p.closed * sCls) };
+  });
+
+  const dIn = inbound - inboundY;
+  const dFwd = forward - forwardY;
+  const dEsc = escalated - escalatedY;
+  const dRet = returned - returnedY;
+  const dBad = bad - badY;
+
+  return {
+    teamId: g.id,
+    openingBacklog: BOARD_OPENING_BACKLOG,
+    backlog: patchMetric(BOARD_BACKLOG, { value: String(backlog), delta: '0', deltaTone: 'neutral' }),
+    focus: [
+      // 未分派 / 催单 / 补充 / 预约维持基准（与「去指派」及事件明细同源，不随组切换）
+      focusOf('unassigned', {}),
+      // 按人数生成的时点值：环比不另造，记 0；为 0 时不显示「最久…」副文案
+      focusOf('delegated', countFocus(q(PER_HEAD.delegated))),
+      focusOf('suspended', countFocus(q(PER_HEAD.suspended))),
+      focusOf('transferredOut', countFocus(q(PER_HEAD.transferredOut))),
+      focusOf('returned', { value: String(returned), delta: signed(dRet), deltaTone: tone(dRet, false) }),
+      focusOf('transferIn', countFocus(transferIn)),
+      focusOf('urge', {}),
+      focusOf('supplement', {}),
+      focusOf('appointment', {}),
+    ],
+    metrics: [
+      patchMetric(BOARD_METRICS[0], { value: String(inbound), sub: `创建 ${created} 转入${transferIn}`, delta: signed(dIn) }),
+      patchMetric(BOARD_METRICS[1], { value: String(forward), delta: signed(dFwd), deltaTone: tone(dFwd, true) }),
+      patchMetric(BOARD_METRICS[2], { value: String(escalated), delta: signed(dEsc), deltaTone: tone(dEsc, false) }),
+      patchMetric(BOARD_METRICS[3], { value: String(returned), delta: signed(dRet), deltaTone: tone(dRet, false) }),
+      patchMetric(BOARD_METRICS[4], { value: pct(contacted, inboundY), sub: `${inboundY}单，${contacted}单已联络`, delta: '0', deltaTone: 'neutral' }),
+      patchMetric(BOARD_METRICS[5], { value: pct(firstOver, inbound), sub: `首响超 ${firstOver} / ${inbound} · 平均超 0.8h`, delta: '0', deltaTone: 'neutral' }),
+      patchMetric(BOARD_METRICS[6], { value: pct(resolveOver, inbound), sub: `解决超 ${resolveOver} / ${inbound} · 平均超 2.4h`, delta: '0', deltaTone: 'neutral' }),
+      patchMetric(BOARD_METRICS[7], { value: String(bad), sub: `服务分 1–3 分 · 占今日已评 ${pct(bad, evaluated)}`, delta: signed(dBad), deltaTone: tone(dBad, false) }),
+    ],
+    todos: BOARD_TODOS,
+    members,
+    priorityBuckets,
+    trafficScale: n / TEAM_MEMBERS.length,
+    trafficHourly,
+    trafficDaily,
+    conclusion: `今日进线 ${inbound}（${signed(dIn)}）、升级 ${escalated}（${signed(dEsc)}），超时未结 ${backlog} 单`,
+  };
+}

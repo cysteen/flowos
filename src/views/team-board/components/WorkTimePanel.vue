@@ -5,34 +5,22 @@
  * 数据取话务条状态流水（stores/ctiFlow.ts）：本组各工作类型（就绪子状态）与外呼忙碌段的时长、占比；
  * 「状态存疑」＝线下类工作状态期间又有工单操作的时段，单独列示（已含在对应线下类型的时长里，不另加进合计）。
  * 只出组级，不出个人列表与排名。可见性随「班组看板」菜单权限（config/roles.ts 各角色 menus 含 team-board，路由守卫按此放行），
- * 块内不另设角色判断；班组长看本人任班组长的组，其余可进看板的角色看全部有成员的组。
+ * 块内不另设角色判断；班组跟随看板顶部「班组」筛选（由看板传入 groupId），统计人数与筛选项「（N人）」同一口径。
  */
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref } from 'vue';
 import { ExclamationCircleOutlined } from '@ant-design/icons-vue';
 import MetricTipIcon from '@/components/MetricTipIcon.vue';
-import { useDispatchStore } from '@/stores/dispatch';
-import { useUserStore } from '@/stores/user';
-import { SUSPECT_WINDOW_MIN, useCtiFlowStore, workTimeGroups } from '@/stores/ctiFlow';
+import { groupMembersOf, SUSPECT_WINDOW_MIN, useCtiFlowStore } from '@/stores/ctiFlow';
 
-const dispatch = useDispatchStore();
-const user = useUserStore();
+const props = defineProps<{ groupId: string }>();
 const flow = useCtiFlowStore();
 
 const nowMs = ref(Date.now());
 const timer = window.setInterval(() => { nowMs.value = Date.now(); }, 30_000);
 onBeforeUnmount(() => window.clearInterval(timer));
 
-/** 有流水成员的组：班组长看本人任班组长的组，其余可进班组看板的角色看全部 */
-const groups = computed(() => {
-  void dispatch.groups;
-  const all = workTimeGroups();
-  if (user.roleKey === 'team-leader') return all.filter((g) => g.leaders.includes(user.name));
-  return all;
-});
-const groupId = ref<string | null>(null);
-watch(groups, (gs) => {
-  if (!gs.some((g) => g.id === groupId.value)) groupId.value = gs[0]?.id ?? null;
-}, { immediate: true });
+/** 统计人数：本组组员（二线专员、每人只算第一个所属组） */
+const memberCount = computed(() => (props.groupId ? groupMembersOf(props.groupId).length : 0));
 
 type RangeKey = 'today' | '7d' | '14d';
 const RANGES: { key: RangeKey; label: string; days: number }[] = [
@@ -43,7 +31,7 @@ const RANGES: { key: RangeKey; label: string; days: number }[] = [
 const range = ref<RangeKey>('7d');
 
 const dist = computed(() => {
-  if (!groupId.value) return null;
+  if (!props.groupId) return null;
   void flow.segments.length;
   void flow.ops.length;
   const now = nowMs.value;
@@ -51,7 +39,7 @@ const dist = computed(() => {
   d0.setHours(0, 0, 0, 0);
   const days = RANGES.find((r) => r.key === range.value)!.days;
   const from = d0.getTime() - (days - 1) * 24 * 3_600_000;
-  return flow.distribution(groupId.value, from, now, now);
+  return flow.distribution(props.groupId, from, now, now);
 });
 
 /**
@@ -94,22 +82,10 @@ const suspectTip = { define: `线下类工作状态期间又有工单操作的�
 </script>
 
 <template>
-  <div v-if="groups.length && dist" class="card wtp">
+  <div v-if="dist" class="card wtp">
     <div class="card-hd">
       <div class="hd-main">
         <h3 class="hd-title">工作时长分布</h3>
-        <div class="wtp-groups" role="tablist">
-          <button
-            v-for="g in groups"
-            :key="g.id"
-            type="button"
-            class="wtp-group"
-            :class="{ on: g.id === groupId }"
-            @click="groupId = g.id"
-          >
-            {{ g.label }}
-          </button>
-        </div>
       </div>
       <div class="seg">
         <div
@@ -133,7 +109,7 @@ const suspectTip = { define: `线下类工作状态期间又有工单操作的�
         </div>
         <div class="wtp-stat">
           <span class="wtp-stat-l">统计人数</span>
-          <span class="wtp-stat-v">{{ dist.memberCount }}</span>
+          <span class="wtp-stat-v">{{ memberCount }}</span>
           <span class="wtp-stat-u">人</span>
         </div>
         <div class="wtp-stat wtp-suspect">
@@ -187,14 +163,6 @@ const suspectTip = { define: `线下类工作状态期间又有工单操作的�
 }
 .hd-main { display: flex; align-items: center; gap: 14px; min-width: 0; flex-wrap: wrap; }
 .hd-title { margin: 0; font-size: 15px; font-weight: 700; color: #0f172a; line-height: 1.3; }
-.wtp-groups { display: flex; gap: 6px; flex-wrap: wrap; }
-.wtp-group {
-  display: inline-flex; align-items: center; gap: 6px;
-  height: 28px; padding: 0 10px; font-size: 12px; color: #475569; font-family: inherit;
-  background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; cursor: pointer; white-space: nowrap;
-}
-.wtp-group:hover { background: #f9fafb; }
-.wtp-group.on { color: #1a6fff; background: #eff6ff; border-color: #bfdbfe; font-weight: 600; }
 
 .seg { display: flex; background: #f1f5f9; border-radius: 6px; padding: 2px; gap: 2px; }
 .seg-i { padding: 3px 10px; font-size: 12px; color: #64748b; border-radius: 4px; cursor: pointer; }

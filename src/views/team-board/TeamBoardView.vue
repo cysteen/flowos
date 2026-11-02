@@ -41,8 +41,7 @@ import ApproveDrillDrawer from './components/ApproveDrillDrawer.vue';
 import DispatchTeamPanel from './components/DispatchTeamPanel.vue';
 import WorkTimePanel from './components/WorkTimePanel.vue';
 import {
-  LEADER_TEAMS,
-  getTeamBoardSnapshot,
+  getGroupBoardSnapshot,
   URGE_EVENTS,
   SUPPLEMENT_EVENTS,
   APPOINTMENT_EVENTS,
@@ -53,8 +52,6 @@ import {
   TRANSFERRED_OUT_DRILL,
   DELEGATED_DRILL,
   TRANSFER_DRILL,
-  TRAFFIC_HOURLY,
-  TRAFFIC_DAILY,
   PROBLEM_TOP10,
   type MemberRow,
   type PeopleDrillRow,
@@ -62,15 +59,41 @@ import {
 } from '@/mock/teamBoard';
 import { boardTip } from '@/mock/teamBoardTips';
 import { useUserStore } from '@/stores/user';
+import { useDispatchStore } from '@/stores/dispatch';
+import { groupMembersOf, teamBoardGroups } from '@/stores/ctiFlow';
 
 const router = useRouter();
 const user = useUserStore();
 
 /* ========================= ⓪ 班组切换（组长可管多组） ========================= */
-const teamId = ref(LEADER_TEAMS[0].value);
-const teamOptions = LEADER_TEAMS.map((t) => ({ value: t.value, label: `${t.label}（${t.size}人）` }));
-const board = computed(() => getTeamBoardSnapshot(teamId.value));
-const currentTeam = computed(() => LEADER_TEAMS.find((t) => t.value === teamId.value) ?? LEADER_TEAMS[0]);
+/**
+ * 真实班组：班组长看本人任班组长的组，其余可进看板的角色看全部（stores/ctiFlow teamBoardGroups）。
+ * 组员口径＝二线专员、每人只算第一个所属组，「（N人）」、组员明细与工作时长分布同一份名单。
+ */
+const dispatch = useDispatchStore();
+const leaderTeams = computed(() => {
+  void dispatch.groups;
+  return teamBoardGroups(user.roleKey, user.name).map((g) => {
+    const members = groupMembersOf(g.id);
+    return { value: g.id, label: g.label, size: members.length, members };
+  });
+});
+const teamId = ref(leaderTeams.value[0]?.value ?? '');
+watch(leaderTeams, (ts) => {
+  if (!ts.some((t) => t.value === teamId.value)) teamId.value = ts[0]?.value ?? '';
+});
+const teamOptions = computed(() => leaderTeams.value.map((t) => ({ value: t.value, label: `${t.label}（${t.size}人）` })));
+const currentTeam = computed(() => leaderTeams.value.find((t) => t.value === teamId.value)
+  ?? leaderTeams.value[0] ?? { value: '', label: '', size: 0, members: [] });
+const ONLINE_OF_SIGN_IN: Record<string, MemberRow['online']> = { 签入: '在线', 小休: '小休', 签出: '离线' };
+const board = computed(() => getGroupBoardSnapshot({
+  id: currentTeam.value.value,
+  label: currentTeam.value.label,
+  members: currentTeam.value.members.map((m) => {
+    const a = dispatch.agentOf(m.name);
+    return { name: m.name, online: a ? ONLINE_OF_SIGN_IN[a.signIn] : undefined };
+  }),
+}));
 
 /** 问候标题：与个人门户同语汇 */
 const greeting = computed(() => {
@@ -602,17 +625,8 @@ function memberInitial(name: string) {
 /* ========================= ⑤ 趋势卡 ========================= */
 
 const gran = ref<'hour' | 'day'>('day');
-const trafficPoints = computed(() => {
-  const base = gran.value === 'hour' ? TRAFFIC_HOURLY : TRAFFIC_DAILY;
-  const s = board.value.trafficScale;
-  if (s === 1) return base;
-  return base.map((p) => ({
-    t: p.t,
-    inbound: Math.round(p.inbound * s),
-    forward: Math.round(p.forward * s),
-    closed: Math.round(p.closed * s),
-  }));
-});
+/** 趋势取本组快照里按人数生成的两组序列（时段之和、末点与今日指标卡一致） */
+const trafficPoints = computed(() => (gran.value === 'hour' ? board.value.trafficHourly : board.value.trafficDaily));
 
 /**
  * 结案画虚线：稳态下结案与进线几乎重合（这正是「收支平衡」的表现），
@@ -719,7 +733,7 @@ watch(teamId, () => {
               :dropdown-match-select-width="false"
             />
           </div>
-          <span class="filter-meta">管辖 {{ LEADER_TEAMS.length }} 组</span>
+          <span class="filter-meta">管辖 {{ leaderTeams.length }} 组</span>
         </div>
       </div>
     </div>
@@ -1060,7 +1074,7 @@ watch(teamId, () => {
     </div>
 
     <!-- 工作时长分布：本组各工作类型时长与占比（话务条状态流水，组级） -->
-    <WorkTimePanel />
+    <WorkTimePanel :group-id="teamId" />
 
     <!-- ③ 主体：组员明细全宽 -->
     <div class="body">
