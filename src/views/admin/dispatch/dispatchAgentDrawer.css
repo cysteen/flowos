@@ -1,0 +1,91 @@
+/* 坐席派单相关抽屉：编辑人员画像、派单设置等共用壳层（紧凑） */
+.da-shell { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.da-block {
+  border: 1px solid #eef0f3;
+  border-radius: 8px;
+  padding: 10px 12px 12px;
+  background: #fafbfc;
+}
+.da-block-hd {
+  margin: 0 0 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #eef0f3;
+  font-size: 12px;
+  font-weight: 600;
+  color: #111827;
+  line-height: 1.3;
+}
+.da-block-hd .req { font-style: normal; color: #ef4444; font-weight: 600; margin-left: 2px; }
+.da-block-compact { padding: 8px 12px; }
+.da-inline-meta {
+  display: flex; align-items: baseline; gap: 10px; font-size: 12px; line-height: 1.45; min-width: 0;
+}
+.da-inline-meta .k { flex: none; color: #6b7280; width: 56px; }
+.da-inline-meta .v { flex: 1; min-width: 0; color: #111827; word-break: break-word; }
+.da-subsec {
+  margin-top: 8px; padding-top: 8px; border-top: 1px solid #eef0f3;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px;
+}
+.da-subsec-k { font-size: 12px; font-weight: 500; color: #374151; flex: none; }
+.da-subsec-k .req { font-style: normal; color: #ef4444; margin-left: 2px; }
+.da-radio-line { display: flex; flex-wrap: wrap; gap: 4px 16px; line-height: 28px; font-size: 13px; }
+.da-field {
+  display: flex; align-items: flex-start; gap: 10px;
+  font-size: 12px; line-height: 1.45; min-width: 0;
+}
+.da-field-k { flex: none; width: 56px; color: #6b7280; }
+.da-field-v { flex: 1; min-width: 0; color: #111827; word-break: break-word; }
+.da-kv-grid { display: flex; flex-direction: column; gap: 8px; }
+.da-kv {
+  display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 10px; align-items: center;
+  font-size: 12px; min-width: 0;
+}
+.da-kv-k { color: #6b7280; }
+.da-kv-k .req { font-style: normal; color: #ef4444; margin-left: 1px; }
+.da-kv-stack { margin-top: 8px; }
+.da-kv-v { color: #111827; min-width: 0; word-break: break-word; line-height: 1.4; }
+.da-kv-v b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.da-row-switch {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  font-size: 12px; color: #374151; padding-top: 8px; margin-top: 8px; border-top: 1px solid #eef0f3;
+}
+
+/* 熟练度 · 个人上限 · 个人开关 */
+.da-cap-block { padding-bottom: 10px; }
+.da-cap { display: flex; flex-direction: column; gap: 0; min-width: 0; }
+.da-cap-part { padding: 2px 0 10px; }
+.da-cap-part + .da-cap-part {
+  padding-top: 10px; border-top: 1px solid #eef0f3;
+}
+.da-cap-lb {
+  display: block; margin-bottom: 6px;
+  font-size: 12px; font-weight: 600; color: #374151; line-height: 1.3;
+}
+.da-cap-lb .req { font-style: normal; color: #ef4444; margin-left: 1px; }
+.da-cap-panel {
+  background: #fff; border: 1px solid #eef0f3; border-radius: 6px;
+  padding: 8px 10px 10px; min-width: 0;
+}
+.da-cap-default {
+  margin: 0 0 8px; font-size: 11px; line-height: 1.45; color: #6b7280;
+}
+.da-cap-fields {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px 20px; align-items: end;
+}
+.da-cap-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.da-cap-field > span:first-child { font-size: 11px; color: #9ca3af; line-height: 1.2; }
+.da-cap-num { width: 100%; max-width: 140px; }
+.da-cap-field.is-read { align-items: flex-end; text-align: right; padding-bottom: 2px; }
+.da-cap-field.is-read b {
+  font-size: 20px; font-weight: 700; color: #111827; line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.da-cap-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-top: 10px; padding-top: 10px; border-top: 1px solid #eef0f3;
+  font-size: 12px; color: #374151;
+}
+.da-cap-foot-lb { font-weight: 500; }
+
+.da-foot { display: flex; justify-content: flex-end; gap: 8px; }

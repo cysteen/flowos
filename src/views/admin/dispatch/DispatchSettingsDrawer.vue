@@ -6,6 +6,7 @@ import { useDispatchStore } from '@/stores/dispatch';
 import { PROFICIENCIES, type DispatchRole, type Proficiency } from '@/views/tickets/types/dispatch';
 import ProfileDimEditor from './ProfileDimEditor.vue';
 import { draftFromProfile, profileFromDraft, type ProfileDraft } from './profileDraft';
+import './dispatchAgentDrawer.css';
 
 const props = defineProps<{ open: boolean; name: string | null }>();
 const emit = defineEmits<{ 'update:open': [v: boolean]; saved: [] }>();
@@ -44,6 +45,8 @@ const personalTip = computed(() => {
   if (!a || !a.groupIds.length) return undefined;
   return a.groupIds.every((g) => store.groupOf(g)?.switchOn === false) ? '所在组均已退出自动派单，个人开关暂不生效' : undefined;
 });
+
+const drawerBodyStyle = { padding: '12px 16px 16px', background: '#fff' };
 
 function close() { emit('update:open', false); }
 
@@ -97,47 +100,70 @@ function save() {
 </script>
 
 <template>
-  <a-drawer :open="open" :title="title" :width="640" placement="right" @update:open="emit('update:open', $event)">
-    <template v-if="agent">
-      <div class="ds-sec">所属组</div>
-      <div class="ds-ro">{{ groupsText }}</div>
-
-      <div class="ds-sec">人员画像</div>
-      <ProfileDimEditor v-model="draft" :group-ids="agent.groupIds" />
-
-      <div class="ds-sec">熟练度</div>
-      <a-radio-group v-model:value="proficiency">
-        <a-radio v-for="p in PROFICIENCIES" :key="p" :value="p">{{ p }}</a-radio>
-      </a-radio-group>
-
-      <div class="ds-sec">个人上限</div>
-      <div class="ds-kvs">
-        <div class="ds-kv"><span>默认值</span><b>{{ defaultCapText }}</b></div>
-        <div class="ds-kv">
-          <span>个人值</span>
-          <a-input-number v-model:value="capValue" :precision="0" :placeholder="`按默认值 ${view?.defaultCap ?? ''}`" style="width: 140px" />
+  <a-drawer
+    :open="open"
+    :title="title"
+    :width="600"
+    placement="right"
+    :body-style="drawerBodyStyle"
+    @update:open="emit('update:open', $event)"
+  >
+    <div v-if="agent" class="da-shell">
+      <section class="da-block da-block-compact">
+        <div class="da-inline-meta">
+          <span class="k">所属组</span>
+          <span class="v">{{ groupsText }}</span>
         </div>
-        <div class="ds-kv"><span>当前在途</span><b>在途 {{ view?.inTransit ?? 0 }}</b></div>
-      </div>
+      </section>
 
-      <div class="ds-sec">个人开关</div>
-      <a-tooltip :title="personalTip">
-        <a-switch v-model:checked="personal" :disabled="!!personalTip" />
-      </a-tooltip>
-    </template>
+      <section class="da-block">
+        <h4 class="da-block-hd">人员画像</h4>
+        <ProfileDimEditor v-model="draft" :group-ids="agent.groupIds" />
+      </section>
+
+      <section class="da-block da-cap-block">
+        <div class="da-cap">
+          <div class="da-cap-part">
+            <span class="da-cap-lb">熟练度<em class="req">*</em></span>
+            <a-radio-group v-model:value="proficiency" class="da-radio-line">
+              <a-radio v-for="p in PROFICIENCIES" :key="p" :value="p">{{ p }}</a-radio>
+            </a-radio-group>
+          </div>
+
+          <div class="da-cap-part">
+            <span class="da-cap-lb">个人上限</span>
+            <div class="da-cap-panel">
+              <p class="da-cap-default">默认值 {{ defaultCapText }}</p>
+              <div class="da-cap-fields">
+                <label class="da-cap-field">
+                  <span>个人值</span>
+                  <a-input-number
+                    v-model:value="capValue"
+                    size="small"
+                    :precision="0"
+                    :placeholder="`${view?.defaultCap ?? '—'}`"
+                    class="da-cap-num"
+                  />
+                </label>
+                <div class="da-cap-field is-read">
+                  <span>当前在途</span>
+                  <b>{{ view?.inTransit ?? 0 }}</b>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="da-cap-foot">
+            <span class="da-cap-foot-lb">个人开关</span>
+            <a-tooltip :title="personalTip">
+              <a-switch v-model:checked="personal" size="small" :disabled="!!personalTip" />
+            </a-tooltip>
+          </div>
+        </div>
+      </section>
+    </div>
     <template #footer>
-      <div class="ds-foot"><a-button @click="close">取消</a-button><a-button type="primary" @click="save">保存</a-button></div>
+      <div class="da-foot"><a-button @click="close">取消</a-button><a-button type="primary" @click="save">保存</a-button></div>
     </template>
   </a-drawer>
 </template>
-
-<style scoped>
-.ds-sec { font-size: 13px; font-weight: 600; color: #111827; padding-left: 10px; border-left: 3px solid #1a6fff; margin: 20px 0 10px; }
-.ds-sec:first-child { margin-top: 0; }
-.ds-ro { font-size: 13px; color: #374151; }
-.ds-kvs { display: flex; flex-direction: column; gap: 8px; max-width: 420px; }
-.ds-kv { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; }
-.ds-kv span { color: #6b7280; }
-.ds-kv b { color: #374151; font-weight: 500; }
-.ds-foot { display: flex; justify-content: flex-end; gap: 10px; }
-</style>
