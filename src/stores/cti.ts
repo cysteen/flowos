@@ -1,4 +1,6 @@
 import { defineStore } from 'pinia';
+import { DEFAULT_WORK_TYPE, OUTBOUND_ITEM, workTypeOf } from '@/mock/ctiWorkTypes';
+import { useCtiFlowStore } from '@/stores/ctiFlow';
 
 // 软电话(CTI) —— 对齐 iFLY-FlowOS-坐席视角.pen · ropW8 双层状态模型（workStatus + callSession）。
 
@@ -7,8 +9,11 @@ export type WorkStatus = 'offline' | 'logged_in' | 'ready' | 'break' | 'busy';
 export type SignInChannel = 'sip' | 'browser';
 /** 签入号码模式：软号单呼 / 手机号双呼 */
 export type SignInNumberMode = 'soft' | 'mobile';
-/** 就绪子态：坐席当前主工作模式（下拉在「就绪」高亮时展示） */
-export type ReadyMode = 'ticket_work' | 'outbound' | 'offline_comm';
+/**
+ * 就绪子态：坐席当前工作类型 key，取自按班组配置的工作类型字典（mock/ctiWorkTypes.ts）。
+ * 外呼不是子态：外呼通话自动进入忙碌（busy），挂断后恢复原状态。
+ */
+export type ReadyMode = string;
 export type BreakReason = 'meeting' | 'training' | 'tea' | 'meal';
 export type CallStatus = 'dialing' | 'ringing' | 'connected';
 
@@ -29,18 +34,6 @@ export interface CallSession {
   /** 累计保持时长（毫秒），挂断后可写入联系记录 */
   holdAccumMs: number;
 }
-
-export const READY_MODE_LABELS: Record<ReadyMode, string> = {
-  ticket_work: '工单处理',
-  outbound: '外呼',
-  offline_comm: '线下沟通',
-};
-
-export const READY_MODE_CAPSULE: Record<ReadyMode, string> = {
-  ticket_work: '工单处理中',
-  outbound: '外呼中',
-  offline_comm: '线下沟通中',
-};
 
 export const BREAK_LABELS: Record<BreakReason, string> = {
   meeting: '开会中',
@@ -112,7 +105,9 @@ export const useCtiStore = defineStore('cti', {
     lastSignInNumbers: loadLastSignInNumbers(),
     workStatus: 'offline' as WorkStatus,
     workStatusSince: 0,
-    readyMode: 'ticket_work' as ReadyMode,
+    readyMode: DEFAULT_WORK_TYPE as ReadyMode,
+    /** 验证测试 / 远程协助等可关联工单的子态所选工单（可不选） */
+    readyTicketNo: null as string | null,
     breakReason: 'training' as BreakReason,
     workStatusBeforeCall: null as WorkStatus | null,
     callSession: null as CallSession | null,
@@ -124,7 +119,10 @@ export const useCtiStore = defineStore('cti', {
     workButtonsDisabled: (s): boolean => s.workStatus === 'busy',
     dropdownLabel(state): string {
       if (state.workStatus === 'busy') return '忙碌';
-      if (state.workStatus === 'ready') return READY_MODE_CAPSULE[state.readyMode];
+      if (state.workStatus === 'ready') {
+        const capsule = workTypeOf(state.readyMode)?.capsule ?? '工单处理中';
+        return state.readyTicketNo ? `${capsule} · ${state.readyTicketNo}` : capsule;
+      }
       if (state.workStatus === 'break') return BREAK_LABELS[state.breakReason];
       if (state.workStatus === 'logged_in') return '未就绪';
       return '未就绪';
@@ -152,6 +150,22 @@ export const useCtiStore = defineStore('cti', {
       this.workStatus = status;
       this.workStatusSince = Date.now();
       this.ensureClock();
+      this.logFlow();
+    },
+    /** 当前状态写入状态流水（同状态同子态同关联单不重复记） */
+    logFlow() {
+      const s = this.workStatus;
+      let sub: string | null = null;
+      let ticketNo: string | null = null;
+      if (s === 'ready') {
+        sub = this.readyMode;
+        ticketNo = this.readyTicketNo;
+      } else if (s === 'break') sub = this.breakReason;
+      else if (s === 'busy') {
+        sub = OUTBOUND_ITEM.key;
+        ticketNo = this.callSession?.ticketId || null;
+      }
+      useCtiFlowStore().transition(s, sub, ticketNo);
     },
     signIn() {
       this.touchWorkStatus('logged_in');
@@ -185,19 +199,27 @@ export const useCtiStore = defineStore('cti', {
       this.workStatusSince = 0;
       this.signInChannel = null;
       this.signInNumberMode = null;
+      this.logFlow();
       return true;
     },
     // mode 不写默认值 —— 默认参数里引用 this 会让 TS 推不出 this 类型（TS2683）
     setReady(mode?: ReadyMode) {
       if (this.workButtonsDisabled) return;
+      if (mode && mode !== this.readyMode) this.readyTicketNo = null;
       this.readyMode = mode ?? this.readyMode;
+      if (!workTypeOf(this.readyMode)?.linkTicket) this.readyTicketNo = null;
       this.touchWorkStatus('ready');
     },
-    setReadyMode(mode: ReadyMode) {
+    /** 切换就绪子态；可关联工单的子态可带一张关联工单（不选传 null） */
+    setReadyMode(mode: ReadyMode, ticketNo: string | null = null) {
       if (this.workButtonsDisabled) return;
       this.readyMode = mode;
+      this.readyTicketNo = workTypeOf(mode)?.linkTicket ? ticketNo : null;
       if (this.workStatus !== 'ready') this.touchWorkStatus('ready');
-      else this.workStatusSince = Date.now();
+      else {
+        this.workStatusSince = Date.now();
+        this.logFlow();
+      }
     },
     setLoggedIn() {
       if (this.workButtonsDisabled) return;
@@ -251,6 +273,8 @@ export const useCtiStore = defineStore('cti', {
         holdSince: null,
         holdAccumMs: 0,
       };
+      this.logFlow();
+      if (ticketId) useCtiFlowStore().noteOp(ticketId);
       this.schedulePhaseTransitions();
       return true;
     },
@@ -291,7 +315,10 @@ export const useCtiStore = defineStore('cti', {
       const restore = this.workStatusBeforeCall ?? 'ready';
       this.workStatusBeforeCall = null;
       if (restore !== 'offline') this.touchWorkStatus(restore);
-      else this.workStatus = 'offline';
+      else {
+        this.workStatus = 'offline';
+        this.logFlow();
+      }
     },
   },
 });

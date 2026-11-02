@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
+import { useHandleLogStore } from '@/stores/handleLog';
 import { message } from 'ant-design-vue';
 import {
   CoffeeOutlined, CustomerServiceOutlined, DownOutlined, PhoneFilled,
@@ -9,15 +11,15 @@ import CtiAuthIcon from '@/components/cti/CtiAuthIcon.vue';
 import DialPadPopover from '@/components/cti/DialPadPopover.vue';
 import SignInModal from '@/components/cti/SignInModal.vue';
 import { useOutboundCall } from '@/composables/useOutboundCall';
-import { useCtiStore, type BreakReason, type ReadyMode, READY_MODE_LABELS } from '@/stores/cti';
+import { useCtiStore, type BreakReason } from '@/stores/cti';
+import { useCtiFlowStore } from '@/stores/ctiFlow';
+import { useDispatchStore } from '@/stores/dispatch';
 import { useUserStore } from '@/stores/user';
 import { syncSignInFromCti } from '@/views/tickets/composables/dispatchUi';
-
-const READY_MENU: { key: ReadyMode; label: string }[] = [
-  { key: 'ticket_work', label: READY_MODE_LABELS.ticket_work },
-  { key: 'outbound', label: READY_MODE_LABELS.outbound },
-  { key: 'offline_comm', label: READY_MODE_LABELS.offline_comm },
-];
+import { useCtiWorkReminders } from '@/composables/useCtiWorkReminders';
+import { DEFAULT_WORK_TYPE, workTypeOf, workTypesOfGroup } from '@/mock/ctiWorkTypes';
+import { TICKETS } from '@/mock/tickets';
+import { isTicketClosed } from '@/views/tickets/types/ticket';
 
 const BREAK_MENU: { key: BreakReason; label: string }[] = [
   { key: 'meeting', label: '开会' },
@@ -28,7 +30,40 @@ const BREAK_MENU: { key: BreakReason; label: string }[] = [
 
 const cti = useCtiStore();
 const user = useUserStore();
+const dispatch = useDispatchStore();
+const flow = useCtiFlowStore();
 const { requestOutboundCall, checkCanCall } = useOutboundCall();
+useCtiWorkReminders();
+
+/** 就绪子态菜单：取本人所在班组的工作类型字典（首个处理组），未配置的组取缺省清单 */
+const READY_MENU = computed(() => workTypesOfGroup(dispatch.agentOf(user.name)?.groupIds[0]));
+
+/** 可关联的工单：本人名下在办（未结、非草稿），最近更新在前 */
+const myOpenTickets = computed(() =>
+  TICKETS
+    .filter((t) => t.assignee === user.name && !t.archived && !t.isDraft && !isTicketClosed(t.nodeStatus))
+    .sort((a, b) => String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? '')))
+    .slice(0, 12),
+);
+const LINK_PREFIX = 'link:';
+const NO_LINK = '__none__';
+
+const route = useRoute();
+/** 工单操作信号：打开工单处理页 */
+watch(
+  () => (route.name === 'ticket-operation' ? String(route.params.ticketNo ?? '') : ''),
+  (no) => { if (no && cti.isSignedIn) flow.noteOp(no); },
+  { immediate: true },
+);
+/** 工单操作信号：保存处理（写入「工单处理」履历） */
+const stopHandleLog = useHandleLogStore().$onAction(({ name, args, after }) => {
+  if (name !== 'append') return;
+  after(() => { if (cti.isSignedIn) flow.noteOp(String(args[0] ?? '') || null); });
+});
+onBeforeUnmount(stopHandleLog);
+/** 进行中的流水段定时落盘，刷新后以此收尾 */
+const heartbeat = window.setInterval(() => { if (cti.isSignedIn) flow.heartbeat(); }, 30_000);
+onBeforeUnmount(() => window.clearInterval(heartbeat));
 
 /**
  * 【1215】话务条「签入 / 小休 / 签出」联动派单签入状态（11.5：签入即在班）。
@@ -72,9 +107,15 @@ const dropdownWide = computed(() =>
   cti.workStatus === 'break' || cti.workStatus === 'ready',
 );
 
+/** 胶囊带关联单号时按内容放宽（只放宽胶囊本身） */
+const dropdownLinked = computed(() => cti.workStatus === 'ready' && !!cti.readyTicketNo);
+
 const menuSelectedKeys = computed(() => {
   if (cti.workStatus === 'busy') return ['busy'];
-  if (cti.workStatus === 'ready') return [cti.readyMode];
+  if (cti.workStatus === 'ready') {
+    if (!workTypeOf(cti.readyMode)?.linkTicket) return [cti.readyMode];
+    return [cti.readyMode, `${LINK_PREFIX}${cti.readyMode}:${cti.readyTicketNo ?? NO_LINK}`];
+  }
   if (cti.workStatus === 'break') return [cti.breakReason];
   return ['logged_in'];
 });
@@ -89,8 +130,13 @@ function signOut() {
 function onMenuClick({ key }: { key: string | number }) {
   const k = String(key);
   if (k === 'busy' || k === 'logged_in') return;
-  if (['ticket_work', 'outbound', 'offline_comm'].includes(k)) {
-    cti.setReadyMode(k as ReadyMode);
+  if (k.startsWith(LINK_PREFIX)) {
+    const [type, no] = k.slice(LINK_PREFIX.length).split(':');
+    cti.setReadyMode(type, no && no !== NO_LINK ? no : null);
+    return;
+  }
+  if (READY_MENU.value.some((t) => t.key === k)) {
+    cti.setReadyMode(k);
     return;
   }
   if (['meeting', 'training', 'tea', 'meal'].includes(k)) {
@@ -117,7 +163,7 @@ function onMenuClick({ key }: { key: string | number }) {
           type="button"
           :class="{ 'is-active': readyActive, 'is-disabled': disabled }"
           :disabled="disabled"
-          @click="cti.setReady('ticket_work')"
+          @click="cti.setReady(DEFAULT_WORK_TYPE)"
         >
           <span class="cti-work-btn__icon"><CustomerServiceOutlined /></span>
           <span class="cti-work-btn__label">就绪</span>
@@ -137,11 +183,12 @@ function onMenuClick({ key }: { key: string | number }) {
         <a-dropdown :disabled="disabled" placement="bottomLeft" trigger="click">
           <button
             class="status-dd"
-            :class="[dropdownTone, { wide: dropdownWide }]"
+            :class="[dropdownTone, { wide: dropdownWide, linked: dropdownLinked }]"
             type="button"
             :disabled="disabled"
+            :title="dropdownLinked ? cti.dropdownLabel : undefined"
           >
-            <span>{{ cti.dropdownLabel }}</span>
+            <span class="dd-text">{{ cti.dropdownLabel }}</span>
             <DownOutlined class="dd-arr" />
           </button>
           <template #overlay>
@@ -150,9 +197,27 @@ function onMenuClick({ key }: { key: string | number }) {
                 <a-menu-item key="busy" disabled>忙碌（外呼通话中）</a-menu-item>
               </template>
               <template v-else-if="cti.workStatus === 'ready'">
-                <a-menu-item v-for="item in READY_MENU" :key="item.key">
-                  {{ item.label }}
-                </a-menu-item>
+                <template v-for="item in READY_MENU" :key="item.key">
+                  <a-sub-menu
+                    v-if="item.linkTicket"
+                    :key="item.key"
+                    :title="item.label"
+                    popup-class-name="cti-link-popup"
+                  >
+                    <a-menu-item :key="`${LINK_PREFIX}${item.key}:${NO_LINK}`">不关联工单</a-menu-item>
+                    <a-menu-item-group v-if="myOpenTickets.length" title="关联我的在办工单">
+                      <a-menu-item
+                        v-for="t in myOpenTickets"
+                        :key="`${LINK_PREFIX}${item.key}:${t.no}`"
+                        :title="`${t.no} ${t.title}`"
+                      >
+                        <span class="link-no">{{ t.no }}</span>
+                        <span class="link-title">{{ t.title }}</span>
+                      </a-menu-item>
+                    </a-menu-item-group>
+                  </a-sub-menu>
+                  <a-menu-item v-else :key="item.key">{{ item.label }}</a-menu-item>
+                </template>
               </template>
               <template v-else-if="cti.workStatus === 'break'">
                 <a-menu-item v-for="item in BREAK_MENU" :key="item.key">
@@ -312,9 +377,21 @@ function onMenuClick({ key }: { key: string | number }) {
   color: #6b7280; font-family: inherit;
 }
 .status-dd.wide { width: 148px; }
+.status-dd.linked { width: auto; min-width: 148px; max-width: 300px; }
+.status-dd .dd-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .status-dd[disabled] { opacity: 0.55; cursor: not-allowed; }
 .status-dd .dd-arr { font-size: 10px; color: #9ca3af; }
 .status-dd.ready { color: #10b981; }
 .status-dd.break { color: #d97706; background: #fffbeb; border-color: #fcd34d; }
 .status-dd.busy { color: #2563eb; background: #eff6ff; border-color: #bfdbfe; font-weight: 600; }
+</style>
+
+<style>
+/* 关联工单二级菜单（浮层挂在 body 下，不能用 scoped） */
+.cti-link-popup .ant-menu-sub { max-height: 360px; overflow-y: auto; min-width: 280px; }
+.cti-link-popup .link-no { font-size: 12px; color: #111827; font-variant-numeric: tabular-nums; margin-right: 8px; }
+.cti-link-popup .link-title {
+  display: inline-block; max-width: 140px; vertical-align: bottom;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: #6b7280;
+}
 </style>
