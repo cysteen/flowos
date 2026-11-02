@@ -17,7 +17,7 @@ export interface WorkTypeDef {
   label: string;
   /** 状态胶囊文案 */
   capsule: string;
-  /** 线下类工作：参与「长时间未确认」提醒与「状态存疑」统计 */
+  /** 线下类工作：参与「状态存疑」统计（及其「占线下类工作」的分母） */
   offline: boolean;
   /** 切换时自动关联当前激活的工单 */
   linkTicket: boolean;

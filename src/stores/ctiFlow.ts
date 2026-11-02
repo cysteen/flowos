@@ -403,8 +403,10 @@ export const useCtiFlowStore = defineStore('ctiFlow', () => {
       if (!opsByWho.has(o.who)) opsByWho.set(o.who, []);
       opsByWho.get(o.who)!.push(o.at);
     });
+    // 只取本组统计人数口径内的人（二线专员、按第一个所属组归）；班组长等其他角色签入话务条的流水不计入
+    const inScope = new Set(groupMembersOf(groupId).map((m) => m.name));
     segs.forEach((s) => {
-      if (s.groupId !== groupId) return;
+      if (s.groupId !== groupId || !inScope.has(s.who)) return;
       const a = Math.max(s.start, from);
       const b = Math.min(s.end ?? now, to, now);
       if (b <= a) return;

@@ -54,6 +54,7 @@
 
 import { TICKETS } from './tickets';
 import { isTicketClosed, type Ticket } from '@/views/tickets/types/ticket';
+import { waitText } from '@/views/tickets/composables/dispatchUi';
 
 /* ==========================================================================
  * 【旧】PRD-07 班组看板 —— TeamBoardView.vue 仍在引用，勿删
@@ -1552,7 +1553,8 @@ export function getGroupBoardSnapshot(g: GroupBoardInput): GroupBoardSnapshot {
   const dUnassigned = unassigned - q(PER_HEAD.unassignedPrev);
   /** 最久等待：按组定在 20–140 分钟 */
   const waitMin = 20 + Math.floor(groupHash(`${g.id}|wait`) * 120);
-  const waitText = waitMin >= 60 ? `${Math.floor(waitMin / 60)}h${String(waitMin % 60).padStart(2, '0')}m` : `${waitMin}m`;
+  // 格式与派单池列表「等待时长」同一函数（X 小时 Y 分 / Y 分钟）
+  const waitLabel = waitText(waitMin);
 
   // 组员：真实组员，个人属性沿用基准名册的同位行，数量按组合计分配
   const base = g.members.map((_, i) => TEAM_MEMBERS[i % TEAM_MEMBERS.length]);
@@ -1608,7 +1610,7 @@ export function getGroupBoardSnapshot(g: GroupBoardInput): GroupBoardSnapshot {
         value: String(unassigned),
         delta: signed(dUnassigned),
         deltaTone: dUnassigned > 0 ? 'bad' : dUnassigned < 0 ? 'good' : 'neutral',
-        sub: unassigned ? `最久等待 ${waitText}` : undefined,
+        sub: unassigned ? `最久等待 ${waitLabel}` : undefined,
       }),
       // 按人数生成的时点值：环比不另造，记 0；为 0 时不显示「最久…」副文案
       focusOf('delegated', countFocus(q(PER_HEAD.delegated))),
