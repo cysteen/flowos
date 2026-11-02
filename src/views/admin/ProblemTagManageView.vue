@@ -16,11 +16,15 @@ import {
   productTitleByKey, type ProductTreeNode,
 } from '@/mock/productTree';
 import { FLASH_MODEL_SEED } from '@/mock/flash/models';
-import { flashTagKey, useFlashConfigStore } from '@/stores/flashConfig';
-import { refundTagKey, useRefundConfigStore } from '@/stores/refundConfig';
+import {
+  PROBLEM_TEAM_OPTIONS, problemTeamIdByLabel, problemTeamLabel, useProblemTagsStore,
+  type ProblemExclusive, type ProblemTagRow,
+} from '@/stores/problemTags';
 
 const router = useRouter();
 const userStore = useUserStore();
+/** 问题分类的唯一数据源：本页是唯一写方，其他页面只读引用 */
+const tagStore = useProblemTagsStore();
 /** 删除入口（行删除 / 批量删除）仅管理员展示：三类管理员 scope 均算 */
 const isAdmin = computed(() => !!userStore.role.adminScope);
 
@@ -32,6 +36,9 @@ const PRODUCT_BIZ_TYPE: Record<string, string> = {
   'p-h1': '听见', 'p-h2': '听见', p1: '智能硬件', p2: '智能硬件', p3: '开放平台',
   ...Object.fromEntries(FLASH_MODEL_SEED.map((m) => [`p-edu-${m.id}`, '教育'])),
   'p-edu-zxw-handbook': '教育',
+  'p-edu-t20': '学习机', 'p-edu-x3pro': '学习机',
+  'p-hw-x1': '智能硬件', 'p-hw-r2': '智能硬件', 'p-hw-air': '智能硬件', 'p-hw-l1': '智能硬件',
+  'p-zxw-member': '教育', 'p-zxw-tingjian': '听见',
 };
 
 /** 产品叶子 → 各级归属（BGBU / 业务线 / 产品线 / 产品分类 / 业务类型），筛选、导入、导出共用 */
@@ -56,35 +63,10 @@ function pinfo(productKey: string): ProductInfo {
 }
 
 /** 专属类型：一条问题分类至多一种专属用途，「无」＝普通分类 */
-type ExclusiveType = '无' | '售后' | '小结' | '刷机' | '个册退费';
+type ExclusiveType = ProblemExclusive;
 /** 专属类型的四个取值（不含「无」）：导入模板该列只认这四个，留空＝无 */
 const EXCLUSIVE_VALUES: readonly string[] = ['售后', '小结', '刷机', '个册退费'];
 const EXCLUSIVE_TYPES = ['无', ...EXCLUSIVE_VALUES] as ExclusiveType[];
-
-interface ProblemTagRow {
-  key: string;
-  productKey: string;
-  productName: string;
-  tagL1: string;
-  tagL2: string;
-  tagL3: string;
-  /** 处理组；空串＝未配置（走流程兜底组），列表显示「—」 */
-  team: string;
-  /**
-   * 专属类型：售后＝只能新建售后工单；小结＝只供容联云小结使用，新建工单不可选；
-   * 刷机（1013 N2 / 10-19 C1）＝本产品选本分类建单即识别为刷机单（刷机单识别只看「专属类型＝刷机」）；
-   * 个册退费（1120）＝本产品选本分类建单即识别为个册退费单
-   */
-  exclusive: ExclusiveType;
-  status: '启用' | '停用';
-  /** 问题分类一 / 二 / 三级 ID（老系统数字串；同产品同路径前缀共用同一 ID） */
-  tagL1Id: string;
-  tagL2Id: string;
-  tagL3Id: string;
-  /** 更新人 / 更新时间：任何写操作后刷新为操作人与操作时刻 */
-  maintainer: string;
-  maintainedAt: string;
-}
 
 /**
  * 筛选项排序（左→右）：
@@ -110,39 +92,12 @@ const emptyFilter = () => ({
 const draftFilter = reactive(emptyFilter());
 const appliedFilter = reactive(emptyFilter());
 
-const TAG_L1 = ['云空间', '我的文件', '相机', '网络', '账号/密码', '整机/设备', '语音翻译', '会议/会话翻译', '屏幕', '记录导出', '售后', '蓝牙', '设置/系统', '个册退费'];
-const TAG_L2_MAP: Record<string, string[]> = {
-  '云空间': ['操作指导', '功能介绍', '软件问题'],
-  '我的文件': ['功能介绍', '软件问题'],
-  '相机': ['功能介绍'],
-  '网络': ['功能介绍'],
-  '账号/密码': ['操作指导'],
-  '整机/设备': ['功能介绍', '信息咨询'],
-  '语音翻译': ['操作指导', '软件问题'],
-  '会议/会话翻译': ['软件问题'],
-  '屏幕': ['功能异常'],
-  '记录导出': ['操作指导'],
-  '售后': ['服务申请', '政策咨询', '问题反馈'],
-  '蓝牙': ['操作指导'],
-  '设置/系统': ['软件问题'],
-  '个册退费': ['退费申请'],
-};
-const TAG_L3_MAP: Record<string, string[]> = {
-  '操作指导': ['如何领取/升级云空间', '如何退出/切换账号', '如何上传/查看/编辑/下载/删除文件', '如何切换男声女声', '如何导出翻译记录', '如何断开连接'],
-  '功能介绍': ['云空间存储大小咨询', '文件名称是否支持添加符号', '视频是否支持实时字幕', '是否支持修改IP地址', '文件已上传云空间是否支持直接转写', '导出格式咨询', '录音笔IP地址咨询'],
-  '软件问题': ['邮件分享失败', '无法领取云空间', '文件日期/时间显示异常', '翻译结果没有语音播报', '翻译延迟/卡顿/反应慢', '翻译失败(服务准备中,请稍等)', '无法切换翻译识别模式', '加载失败/打不开/闪退'],
-  '功能异常': ['显示内容异常(图标/乱码/字体/方向等)'],
-  '服务申请': ['维修请求', '自助刷机', '刷原生系统'],
-  '政策咨询': ['退换货政策'],
-  '信息咨询': ['设备丢失'],
-  '问题反馈': ['设备维修后故障仍存在'],
-  '退费申请': ['个册退费'],
-};
-/** 处理组：系统中已有的处理组名称；导入「工单处理组」按名称完全一致匹配本清单 */
-const TEAMS = ['工单-处理组', '售后系统组', '综合组', '受理一组', '受理二组', '硬件缺陷组', '技术支持组'];
+/** 处理组：取用户分组（行里存组 id、显示组名）；导入「工单处理组」按组名完全一致匹配 */
+const TEAM_OPTS = PROBLEM_TEAM_OPTIONS.map((g) => ({ label: g.label, value: g.id }));
+const TEAM_LABELS = PROBLEM_TEAM_OPTIONS.map((g) => g.label);
 /** 处理组筛选专用取值「为空」：筛出处理组留空的分类；新增 / 编辑与批量改处理组不含此项 */
 const TEAM_EMPTY = '__team_empty__';
-const filterTeamOpts = [{ label: '为空', value: TEAM_EMPTY }, ...TEAMS.map((t) => ({ label: t, value: t }))];
+const filterTeamOpts = [{ label: '为空', value: TEAM_EMPTY }, ...TEAM_OPTS];
 
 /** 维度 → 各级下拉对应的产品归属字段（末级用产品 key，保证同名产品不串）；产品维度三级、组织维度四级 */
 const SCOPE_FIELDS: Record<ScopeDim, (keyof ProductInfo)[]> = {
@@ -240,97 +195,8 @@ watch(
   },
 );
 
-/**
- * 种子行：产品 key · 一/二/三级 · 处理组（空＝未配置）· 专属类型 · 状态
- * · 一/二/三级 ID · 更新人 · 更新时间
- */
-type SeedTuple = [
-  string, string, string, string, string, ExclusiveType, '启用' | '停用',
-  string, string, string, string, string,
-];
-const SEED_ROWS: SeedTuple[] = [
-  ['p-h1', '云空间', '操作指导', '如何领取/升级云空间', '工单-处理组', '无', '启用', '110201', '2104011', '31060101', '孙系统', '2026-09-08 10:12:05'],
-  ['p-h1', '云空间', '功能介绍', '云空间存储大小咨询', '工单-处理组', '小结', '启用', '110201', '2104012', '31060102', '周运营', '2026-09-26 15:40:31'],
-  ['p-h1', '我的文件', '功能介绍', '文件名称是否支持添加符号', '工单-处理组', '无', '启用', '110202', '2104013', '31060103', '孙系统', '2026-09-08 10:12:05'],
-  ['p-h1', '我的文件', '软件问题', '邮件分享失败', '工单-处理组', '无', '启用', '110202', '2104014', '31060104', '孙系统', '2026-09-08 10:12:05'],
-  ['p-h1', '相机', '功能介绍', '视频是否支持实时字幕', '工单-处理组', '无', '启用', '110203', '2104015', '31060105', '赵管理', '2026-09-15 09:31:47'],
-  ['p-h1', '网络', '功能介绍', '是否支持修改IP地址', '工单-处理组', '无', '启用', '110204', '2104016', '31060106', '孙系统', '2026-09-08 10:12:05'],
-  ['p-h1', '账号/密码', '操作指导', '如何退出/切换账号', '工单-处理组', '无', '启用', '110205', '2104017', '31060107', '周运营', '2026-10-06 11:05:12'],
-  ['p-h2', '云空间', '操作指导', '如何上传/查看/编辑/下载/删除文件', '工单-处理组', '无', '启用', '110211', '2104021', '31060201', '孙系统', '2026-09-09 14:22:38'],
-  ['p-h2', '云空间', '软件问题', '无法领取云空间', '工单-处理组', '无', '启用', '110211', '2104022', '31060202', '孙系统', '2026-09-09 14:22:38'],
-  ['p-h2', '我的文件', '功能介绍', '文件已上传云空间是否支持直接转写', '工单-处理组', '无', '启用', '110212', '2104024', '31060203', '赵管理', '2026-09-18 16:48:09'],
-  ['p-h2', '我的文件', '软件问题', '文件日期/时间显示异常', '工单-处理组', '无', '启用', '110212', '2104025', '31060204', '孙系统', '2026-09-09 14:22:38'],
-  ['p-h2', '云空间', '功能介绍', '导出格式咨询', '', '无', '启用', '110211', '2104023', '31060205', '周运营', '2026-09-29 10:03:56'],
-  ['p-h2', '整机/设备', '功能介绍', '录音笔IP地址咨询', '工单-处理组', '小结', '停用', '110213', '2104026', '31060206', '周运营', '2026-10-07 17:26:20'],
-  ['p1', '语音翻译', '操作指导', '如何切换男声女声', '工单-处理组', '无', '启用', '110221', '2104031', '31060301', '孙系统', '2026-09-10 09:15:44'],
-  ['p1', '语音翻译', '软件问题', '翻译结果没有语音播报', '工单-处理组', '无', '启用', '110221', '2104032', '31060302', '孙系统', '2026-09-10 09:15:44'],
-  ['p1', '会议/会话翻译', '软件问题', '翻译延迟/卡顿/反应慢', '工单-处理组', '无', '启用', '110222', '2104033', '31060303', '赵管理', '2026-09-22 13:37:02'],
-  ['p1', '屏幕', '功能异常', '显示内容异常(图标/乱码/字体/方向等)', '工单-处理组', '无', '启用', '110223', '2104034', '31060304', '孙系统', '2026-09-10 09:15:44'],
-  ['p1', '记录导出', '操作指导', '如何导出翻译记录', '工单-处理组', '无', '启用', '110224', '2104035', '31060305', '孙系统', '2026-09-10 09:15:44'],
-  ['p1', '售后', '服务申请', '维修请求', '售后系统组', '售后', '启用', '110225', '2104036', '31060306', '周运营', '2026-09-30 15:58:27'],
-  ['p1', '售后', '政策咨询', '退换货政策', '售后系统组', '售后', '启用', '110225', '2104037', '31060307', '周运营', '2026-09-30 15:58:27'],
-  ['p2', '会议/会话翻译', '软件问题', '翻译失败(服务准备中,请稍等)', '工单-处理组', '无', '启用', '110231', '2104041', '31060401', '孙系统', '2026-09-11 11:20:13'],
-  ['p2', '会议/会话翻译', '软件问题', '无法切换翻译识别模式', '工单-处理组', '无', '启用', '110231', '2104041', '31060402', '孙系统', '2026-09-11 11:20:13'],
-  ['p2', '语音翻译', '软件问题', '翻译结果没有语音播报', '工单-处理组', '无', '启用', '110232', '2104042', '31060403', '赵管理', '2026-09-24 10:44:51'],
-  ['p2', '蓝牙', '操作指导', '如何断开连接', '工单-处理组', '无', '启用', '110233', '2104043', '31060404', '孙系统', '2026-09-11 11:20:13'],
-  ['p2', '整机/设备', '信息咨询', '设备丢失', '', '小结', '启用', '110234', '2104044', '31060405', '周运营', '2026-10-02 09:52:36'],
-  ['p2', '售后', '问题反馈', '设备维修后故障仍存在', '售后系统组', '售后', '停用', '110235', '2104045', '31060406', '赵管理', '2026-10-05 14:09:18'],
-  ['p3', '账号/密码', '操作指导', '如何退出/切换账号', '技术支持组', '无', '启用', '110241', '2104051', '31060501', '孙系统', '2026-09-12 16:30:40'],
-  ['p3', '网络', '功能介绍', '是否支持修改IP地址', '技术支持组', '无', '启用', '110242', '2104052', '31060502', '孙系统', '2026-09-12 16:30:40'],
-  ['p3', '设置/系统', '软件问题', '加载失败/打不开/闪退', '技术支持组', '无', '启用', '110243', '2104053', '31060503', '赵管理', '2026-09-25 11:18:24'],
-  // 智慧课堂学生平板：售后 → 服务申请 → 自助刷机 / 刷原生系统（「专属类型＝刷机」默认开启，1013 N2；实际取值以刷机配置为准）
-  ...FLASH_MODEL_SEED.flatMap((m, i): SeedTuple[] => ['自助刷机', '刷原生系统'].map((l3, j): SeedTuple => [
-    `p-edu-${m.id}`, '售后', '服务申请', l3, '', '刷机', '启用',
-    String(110301 + i), String(2104101 + i), String(31060701 + i * 2 + j), '周运营', '2026-10-13 16:20:00',
-  ])),
-  // 个性化学习手册：个册退费 → 退费申请 → 个册退费（「专属类型＝个册退费」默认开启，1120；一级取业务新标签，10-27；实际取值以个册退费配置为准）
-  ['p-edu-zxw-handbook', '个册退费', '退费申请', '个册退费', '', '个册退费', '启用', '110401', '2104201', '31060801', '周运营', '2026-10-22 10:00:00'],
-];
-
-/**
- * 「专属类型＝刷机」存刷机配置（`stores/flashConfig.ts`），建单识别读同一份（1013 A2 / N2）：
- * 种子行按配置回显；本页任何写操作后把当前「专属类型＝刷机」的条目整体写回配置。
- */
-const flashConfig = useFlashConfigStore();
-/** 「专属类型＝个册退费」存个册退费配置（`stores/refundConfig.ts`），写法同「专属类型＝刷机」 */
-const refundConfig = useRefundConfigStore();
-
-/** 种子行专属类型：刷机 / 个册退费以配置为准（配置未开启即为「无」），售后 / 小结取种子值 */
-function seedExclusive(seed: ExclusiveType, productName: string, path: [string, string, string]): ExclusiveType {
-  if (flashConfig.isFlashTag(productName, ...path)) return '刷机';
-  if (refundConfig.isRefundTag(productName, ...path)) return '个册退费';
-  return seed === '刷机' || seed === '个册退费' ? '无' : seed;
-}
-
-const allRows = ref<ProblemTagRow[]>(SEED_ROWS.map((t, i) => {
-  const [productKey, tagL1, tagL2, tagL3, team, seed, status, tagL1Id, tagL2Id, tagL3Id, maintainer, maintainedAt] = t;
-  const productName = productTitleByKey(productKey);
-  return {
-    key: String(i + 1),
-    productKey,
-    productName,
-    tagL1, tagL2, tagL3, team,
-    exclusive: seedExclusive(seed, productName, [tagL1, tagL2, tagL3]),
-    status,
-    tagL1Id, tagL2Id, tagL3Id, maintainer, maintainedAt,
-  };
-}));
-let rowSeq = allRows.value.length + 1;
-
-watch(
-  allRows,
-  (rows) => flashConfig.replaceFlashTags(
-    rows.filter((r) => r.exclusive === '刷机').map((r) => flashTagKey(r.productName, r.tagL1, r.tagL2, r.tagL3)),
-  ),
-  { deep: true },
-);
-watch(
-  allRows,
-  (rows) => refundConfig.replaceRefundTags(
-    rows.filter((r) => r.exclusive === '个册退费').map((r) => refundTagKey(r.productName, r.tagL1, r.tagL2, r.tagL3)),
-  ),
-  { deep: true },
-);
+/** 列表数据：问题分类 store 的行（本页增删改都经 store 写方法） */
+const allRows = computed(() => tagStore.rows);
 
 /** 写操作留痕：操作人取当前登录用户，时刻精确到秒 */
 function stampNow() {
@@ -499,20 +365,13 @@ function confirmBatchTeam() {
     message.warning('请选择处理组');
     return;
   }
-  const keys = new Set(checkedRowKeys.value);
+  const keys = [...checkedRowKeys.value];
   const team = batchTeamValue.value;
-  const stamp = stampNow();
-  let n = 0;
-  for (const r of allRows.value) {
-    if (keys.has(r.key)) {
-      r.team = team;
-      Object.assign(r, stamp);
-      n += 1;
-    }
-  }
+  const n = allRows.value.filter((r) => keys.includes(r.key)).length;
+  tagStore.patchRows(keys, { team, ...stampNow() });
   batchTeamOpen.value = false;
   clearSelection();
-  message.success(`已将 ${n} 条的处理组更新为「${team}」`);
+  message.success(`已将 ${n} 条的处理组更新为「${problemTeamLabel(team)}」`);
 }
 
 function batchSetStatus(status: '启用' | '停用') {
@@ -526,15 +385,9 @@ function batchSetStatus(status: '启用' | '停用') {
     okText: isEnable ? '确认启用' : '确认停用',
     cancelText: '取消',
     onOk: () => {
-      const keySet = new Set(keys);
-      const stamp = stampNow();
-      for (const r of allRows.value) {
-        // 已是目标状态的条不写入，更新人 / 更新时间不刷新（仍计入成功条数）
-        if (keySet.has(r.key) && r.status !== status) {
-          r.status = status;
-          Object.assign(r, stamp);
-        }
-      }
+      // 已是目标状态的条不写入，更新人 / 更新时间不刷新（仍计入成功条数）
+      const changed = allRows.value.filter((r) => keys.includes(r.key) && r.status !== status).map((r) => r.key);
+      tagStore.patchRows(changed, { status, ...stampNow() });
       clearSelection();
       message.success(`已${status} ${keys.length} 条`);
     },
@@ -550,7 +403,7 @@ function batchDelete() {
     okType: 'danger',
     cancelText: '取消',
     onOk: () => {
-      allRows.value = allRows.value.filter((r) => !keys.includes(r.key));
+      tagStore.removeRows(keys);
       clearSelection();
       message.success(`已删除 ${keys.length} 条`);
     },
@@ -587,9 +440,24 @@ function goProductManage() {
   router.push({ name: 'admin-products' });
 }
 
-const tagL1List = ref([...TAG_L1]);
-const tagL2Map = ref<Record<string, string[]>>({ ...TAG_L2_MAP });
-const tagL3Map = ref<Record<string, string[]>>({ ...TAG_L3_MAP });
+/** 级联候选：全部行里已有的一级、一级下的二级、同名二级下的三级（新增保存后随行入库即出现在候选里） */
+const tagL1List = computed(() => [...new Set(allRows.value.map((r) => r.tagL1))]);
+const tagL2Map = computed(() => {
+  const m: Record<string, string[]> = {};
+  for (const r of allRows.value) {
+    const xs = (m[r.tagL1] ??= []);
+    if (!xs.includes(r.tagL2)) xs.push(r.tagL2);
+  }
+  return m;
+});
+const tagL3Map = computed(() => {
+  const m: Record<string, string[]> = {};
+  for (const r of allRows.value) {
+    const xs = (m[r.tagL2] ??= []);
+    if (!xs.includes(r.tagL3)) xs.push(r.tagL3);
+  }
+  return m;
+});
 
 const form = reactive({
   productKey: undefined as string | undefined,
@@ -639,12 +507,6 @@ watch(() => form.tagL1, () => {
 });
 watch(() => form.tagL2, () => { if (!hydratingForm) form.tagL3 = ''; });
 
-function ensureTagOption(list: string[], val: string) {
-  const v = val.trim();
-  if (v && !list.includes(v)) list.push(v);
-  return v;
-}
-
 function resetForm() {
   Object.assign(form, {
     productKey: undefined,
@@ -679,14 +541,8 @@ function saveForm() {
     message.error('请完整填写所属产品与三级分类');
     return;
   }
-  ensureTagOption(tagL1List.value, tagL1);
-  if (!tagL2Map.value[tagL1]) tagL2Map.value[tagL1] = [];
-  ensureTagOption(tagL2Map.value[tagL1], tagL2);
-  if (!tagL3Map.value[tagL2]) tagL3Map.value[tagL2] = [];
-  ensureTagOption(tagL3Map.value[tagL2], tagL3);
-
   const payload: ProblemTagRow = {
-    key: editingKey.value ?? String(rowSeq++),
+    key: editingKey.value ?? '',
     productKey: form.productKey,
     productName: productTitleByKey(form.productKey),
     tagL1, tagL2, tagL3,
@@ -701,8 +557,7 @@ function saveForm() {
     if (prev) payload.tagL3Id = prev.tagL3Id;
   }
   if (editingKey.value) {
-    const i = allRows.value.findIndex((r) => r.key === editingKey.value);
-    if (i >= 0) allRows.value[i] = payload;
+    tagStore.updateRow(editingKey.value, payload);
     message.success('问题分类已更新');
   } else {
     const dup = allRows.value.some((r) =>
@@ -710,15 +565,14 @@ function saveForm() {
       && r.tagL1 === payload.tagL1 && r.tagL2 === payload.tagL2 && r.tagL3 === payload.tagL3,
     );
     if (dup) { message.error('同一产品下该分类路径已存在'); return; }
-    allRows.value.unshift(payload);
+    tagStore.addRows([{ ...payload, key: tagStore.nextKey() }]);
     message.success('问题分类已新增');
   }
   formOpen.value = false;
 }
 
 function onListStatusChange(row: ProblemTagRow, checked: boolean) {
-  row.status = checked ? '启用' : '停用';
-  Object.assign(row, stampNow());
+  tagStore.patchRows([row.key], { status: checked ? '启用' : '停用', ...stampNow() });
   message.success(checked ? '已启用' : '已停用');
 }
 
@@ -751,8 +605,7 @@ function confirmDelete() {
   const row = delTarget.value;
   if (!row) return;
   const cascade = [...delCascade.value];
-  const i = allRows.value.findIndex((r) => r.key === row.key);
-  if (i >= 0) allRows.value.splice(i, 1);
+  tagStore.removeRows([row.key]);
   checkedRowKeys.value = checkedRowKeys.value.filter((k) => k !== row.key);
   delOpen.value = false;
   const cascadeText = cascade.length
@@ -864,18 +717,20 @@ const OUTDATED_TEMPLATE_TEXT = '导入模板已更新，请下载最新模板';
 const EXCLUSIVE_INVALID_TEXT = '专属类型取值非法：只能填售后、小结、刷机、个册退费，或留空';
 /** 专属类型写入文件：「无」留空（留空＝无，导出文件可直接重传） */
 const exclusiveCell = (t: ExclusiveType) => (t === '无' ? '' : t);
+/** 处理组写入文件：组名（未配置留空） */
+const teamCell = (id: string) => (id ? problemTeamLabel(id) : '');
 
 function rowToTemplateCells(r: ProblemTagRow): string[] {
   const p = pinfo(r.productKey);
   return [
     p.bizType, p.prodCat, r.productName, r.tagL1, r.tagL2, r.tagL3,
-    r.team, exclusiveCell(r.exclusive), r.tagL1Id, r.tagL2Id, r.tagL3Id,
+    teamCell(r.team), exclusiveCell(r.exclusive), r.tagL1Id, r.tagL2Id, r.tagL3Id,
   ];
 }
 
 /** 模板下拉：工单处理组、专属类型（取值同导入校验，均允许留空） */
 const TEMPLATE_VALIDATIONS: ListValidation[] = [
-  { col: fileColOf('工单处理组'), values: TEAMS, error: '工单处理组不存在' },
+  { col: fileColOf('工单处理组'), values: TEAM_LABELS, error: '工单处理组不存在' },
   { col: fileColOf('专属类型'), values: EXCLUSIVE_VALUES, error: EXCLUSIVE_INVALID_TEXT },
 ];
 
@@ -895,7 +750,7 @@ function rowToExportCells(r: ProblemTagRow): string[] {
   const p = pinfo(r.productKey);
   return [
     p.bgbu, p.bizLine, p.prodLine, p.bizType, p.prodCat, r.productName,
-    r.tagL1, r.tagL2, r.tagL3, r.team, exclusiveCell(r.exclusive), r.status,
+    r.tagL1, r.tagL2, r.tagL3, teamCell(r.team), exclusiveCell(r.exclusive), r.status,
     r.maintainer, r.maintainedAt, r.tagL1Id, r.tagL2Id, r.tagL3Id,
   ];
 }
@@ -990,7 +845,6 @@ function analyzeImport(fileName: string, sheet: string[][]): ImportResult {
   const colIdx = locateColumns(header);
   const missingCols = REQUIRED_COL_IDX.filter((i) => colIdx[i] < 0).map((i) => COL_NAMES[i]);
   if (missingCols.length) return { fileName, headerOk: false, outdated: false, missingCols, lines: [] };
-  const teamSet = new Set(TEAMS);
   const leafIndex = new Map(allRows.value.map((r) => [nodeKeyOf(r.productKey, [r.tagL1, r.tagL2, r.tagL3], 3), r]));
   const owners: Record<TagLevel, Map<string, string>> = {
     1: idOwners(1, allRows.value), 2: idOwners(2, allRows.value), 3: idOwners(3, allRows.value),
@@ -1024,8 +878,9 @@ function analyzeImport(fileName: string, sheet: string[][]): ImportResult {
       : undefined;
     if (prodColsFilled && !prod) reasons.push('产品未找到：请先在产品管理中新增该产品');
 
-    const team = teamRaw.trim();
-    if (team && !teamSet.has(team)) reasons.push(`工单处理组不存在：${team}`);
+    const teamName = teamRaw.trim();
+    const team = teamName ? (problemTeamIdByLabel(teamName) ?? '') : '';
+    if (teamName && !team) reasons.push(`工单处理组不存在：${teamName}`);
     const exText = exRaw.trim();
     if (exText && !EXCLUSIVE_VALUES.includes(exText)) reasons.push(EXCLUSIVE_INVALID_TEXT);
     const ex = (exText || '无') as ExclusiveType;
@@ -1140,20 +995,20 @@ function doImport(withUpdate: boolean) {
         const id = firstIdOf.get(nodeKeyOf(pk, path, lv));
         if (id) provided[lv] = id;
       }
-      allRows.value.unshift({
-        key: String(rowSeq++),
+      // 逐条入库：后一条定 ID 时要看到前一条
+      tagStore.addRows([{
+        key: tagStore.nextKey(),
         productKey: pk,
         productName: pinfo(pk).name,
         tagL1, tagL2, tagL3,
         team: ln.team, exclusive: ln.exclusive, status: '启用',
         ...resolveTagIds(pk, path, provided),
         ...stamp,
-      });
+      }]);
       added += 1;
     } else if (ln.kind === '更新' && withUpdate) {
-      const r = allRows.value.find((x) => x.key === ln.targetKey);
-      if (!r) continue;
-      Object.assign(r, { team: ln.team, exclusive: ln.exclusive, status: '启用' }, stamp);
+      if (!ln.targetKey || !allRows.value.some((x) => x.key === ln.targetKey)) continue;
+      tagStore.patchRows([ln.targetKey], { team: ln.team, exclusive: ln.exclusive, status: '启用', ...stamp });
       updated += 1;
     }
   }
@@ -1235,7 +1090,7 @@ function doImport(withUpdate: boolean) {
                     </div>
                     <template #overlay>
                       <a-menu class="batch-menu">
-                        <a-menu-item v-for="act in ['启用', '停用']" :key="act" :disabled="!hasRowSelection" @click="onBatch(act)">
+                        <a-menu-item v-for="act in ['处理组', '启用', '停用']" :key="act" :disabled="!hasRowSelection" @click="onBatch(act)">
                           <a-tooltip :title="hasRowSelection ? undefined : TIP_NEED_CHECK" placement="left">
                             <span class="menu-tip">{{ act }}</span>
                           </a-tooltip>
@@ -1285,7 +1140,7 @@ function doImport(withUpdate: boolean) {
               {{ (record as ProblemTagRow).tagL3 }}
             </span>
             <span v-else-if="column.key === 'team'" :class="{ 'cell-empty': !(record as ProblemTagRow).team }">
-              {{ (record as ProblemTagRow).team || '—' }}
+              {{ (record as ProblemTagRow).team ? problemTeamLabel((record as ProblemTagRow).team) : '—' }}
             </span>
             <span v-else-if="column.key === 'exclusive'" :class="{ 'cell-empty': (record as ProblemTagRow).exclusive === '无' }">
               {{ (record as ProblemTagRow).exclusive === '无' ? '—' : (record as ProblemTagRow).exclusive }}
@@ -1392,7 +1247,7 @@ function doImport(withUpdate: boolean) {
         </a-form-item>
 
         <a-form-item label="处理组">
-          <a-select v-model:value="form.team" placeholder="—" disabled :options="toOpts(TEAMS)" />
+          <a-select v-model:value="form.team" placeholder="请选择处理组" show-search allow-clear :filter-option="filterByLabel" :options="TEAM_OPTS" />
         </a-form-item>
         <a-form-item label="专属类型">
           <a-radio-group v-model:value="form.exclusive" button-style="solid">
@@ -1418,7 +1273,8 @@ function doImport(withUpdate: boolean) {
             v-model:value="batchTeamValue"
             placeholder="请选择处理组"
             show-search
-            :options="toOpts(TEAMS)"
+            :filter-option="filterByLabel"
+            :options="TEAM_OPTS"
             style="width: 100%"
           />
         </a-form-item>
