@@ -73,6 +73,14 @@ export interface GroupDistribution {
   /** 状态存疑：线下子状态期间又有工单操作的时段 */
   suspectMs: number;
   memberCount: number;
+  /** 按人拆分：各类型时长（键同 items）、合计、状态存疑；只含区间内有流水的人 */
+  byMember: Record<string, MemberDist>;
+}
+
+export interface MemberDist {
+  ms: Record<string, number>;
+  totalMs: number;
+  suspectMs: number;
 }
 
 /* ------------------------------------------------------------------ */
@@ -373,6 +381,7 @@ export const useCtiFlowStore = defineStore('ctiFlow', () => {
     const ms: Record<string, number> = {};
     let suspect = 0;
     const members = new Set<string>();
+    const byMember: Record<string, { ms: Record<string, number>; suspectMs: number }> = {};
     const opsByWho = new Map<string, number[]>();
     allOps.forEach((o) => {
       if (!opsByWho.has(o.who)) opsByWho.set(o.who, []);
@@ -389,6 +398,8 @@ export const useCtiFlowStore = defineStore('ctiFlow', () => {
       if (!key) return;
       members.add(s.who);
       ms[key] = (ms[key] ?? 0) + (b - a);
+      const mm = (byMember[s.who] ??= { ms: {}, suspectMs: 0 });
+      mm.ms[key] = (mm.ms[key] ?? 0) + (b - a);
       if (s.status === 'ready' && workTypeOf(key)?.offline) {
         // 线下子状态期间的工单操作：每次计其后 SUSPECT_WINDOW_MIN，重叠合并，截到本段
         let cover = 0;
@@ -402,6 +413,7 @@ export const useCtiFlowStore = defineStore('ctiFlow', () => {
             if (en > st) { cover += en - st; curEnd = en; }
           });
         suspect += cover;
+        byMember[s.who].suspectMs += cover;
       }
     });
     const defs = [
@@ -418,7 +430,14 @@ export const useCtiFlowStore = defineStore('ctiFlow', () => {
     const total = defs.reduce((s, d) => s + (ms[d.key] ?? 0), 0);
     const items = defs.map((d) => ({ ...d, ms: ms[d.key] ?? 0, pct: total ? ((ms[d.key] ?? 0) / total) * 100 : 0 }));
     const offlineMs = items.filter((i) => workTypeOf(i.key)?.offline).reduce((s, i) => s + i.ms, 0);
-    return { items, totalMs: total, offlineMs, suspectMs: suspect, memberCount: members.size };
+    const keys = new Set(defs.map((d) => d.key));
+    const memberRows: Record<string, MemberDist> = {};
+    Object.entries(byMember).forEach(([who, v]) => {
+      const rowMs: Record<string, number> = {};
+      keys.forEach((k) => { rowMs[k] = v.ms[k] ?? 0; });
+      memberRows[who] = { ms: rowMs, totalMs: Object.values(rowMs).reduce((s, x) => s + x, 0), suspectMs: v.suspectMs };
+    });
+    return { items, totalMs: total, offlineMs, suspectMs: suspect, memberCount: members.size, byMember: memberRows };
   }
 
   return {

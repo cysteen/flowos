@@ -604,6 +604,9 @@ function numOf(v: string | number): number {
 }
 
 /** 默认排序：超时 desc → 跟进率 asc → 下送 desc（三级键，健康日不退化为无序） */
+/** 组员明细的默认顺序（不随表头点击排序变化），工作时长分布的成员明细沿用 */
+const defaultMemberOrder = computed(() => [...board.value.members].sort(defaultCompare).map((m) => m.name));
+
 function defaultCompare(a: MemberRow, b: MemberRow) {
   if (a.overdue !== b.overdue) return b.overdue - a.overdue;
   const fa = numOf(a.followRate);
@@ -1117,7 +1120,7 @@ watch(teamId, () => {
     </div>
 
     <!-- 工作时长分布：本组各工作类型时长与占比（话务条状态流水，组级） -->
-    <WorkTimePanel :group-id="teamId" />
+    <WorkTimePanel :group-id="teamId" :member-order="defaultMemberOrder" />
 
     <!-- ③ 主体：组员明细全宽 -->
     <div class="body">
