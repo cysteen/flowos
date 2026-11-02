@@ -147,12 +147,7 @@ export function waitText(min: number): string {
 
 /** 派单策略字段 → 中文名（审计记录展示 updateConfig 记下的字段键） */
 export const CONFIG_FIELD_LABEL: Record<string, string> = {
-  originalFirst: '优先派回原处理人',
-  windowConsultDays: '多少天内处理过算原处理人 · 咨询及其他',
-  windowComplaintDays: '多少天内处理过算原处理人 · 投诉',
-  originalSameProblem: '仅限同一问题分类',
-  reserveMinutes: '投诉单为原处理人保留时长',
-  reserveSlaPercent: '投诉单保留不超过首次响应剩余时限的比例',
+  originalChain: '优先派回原处理人',
   factors: '打分因素',
   recentHours: '最近接单的统计范围',
   relaxEnabled: '放宽产品范围',

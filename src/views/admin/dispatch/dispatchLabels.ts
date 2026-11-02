@@ -2,7 +2,9 @@
  * 派单概念的界面名称（【1215】PRD 14.2 出池规则 / 13.1 派单日志 / 14.1 派单路径占比）。
  * 只做显示映射，内部取值（门槛 key、判定路径、失败原因、因子 key）不变。
  */
-import type { DispatchFailReason, DispatchPath, GateKey, ScoreFactorKey } from '@/views/tickets/types/dispatch';
+import type {
+  DispatchFailReason, DispatchPath, GateKey, OriginalExclusion, OriginalRelation, ScoreFactorKey,
+} from '@/views/tickets/types/dispatch';
 
 /** 接单条件（门槛 4.1） */
 export const GATE_LABEL: Record<GateKey, string> = {
@@ -46,13 +48,27 @@ export const FACTOR_LABEL: Record<ScoreFactorKey, string> = {
   idle: '空闲时间长',
 };
 
+/** 原处理人例外（4.2 不派回、不保留） */
+export const EXCLUSION_LABEL: Record<OriginalExclusion, string> = {
+  被投诉人: '被投诉人是原处理人',
+  不在所属组或已停用: '原处理人不在所属组或已停用',
+  上次回访不满意: '上次回访不满意',
+  小智退回: '小智工单产研退回、确认未解决',
+};
+
 export function pathLabel(p?: DispatchPath | null): string {
   return p ? PATH_LABEL[p] ?? p : '';
+}
+/** 判定路径带命中关系：「派回原处理人 · 本单退回」「为原处理人保留 · 同客户近期」 */
+export function pathWithRelation(p?: DispatchPath | null, relation?: OriginalRelation | null): string {
+  const base = pathLabel(p);
+  return relation && (p === '原处理人' || p === '预留') ? `${base} · ${relation}` : base;
 }
 export function failLabel(r?: DispatchFailReason | null): string {
   return r ? FAIL_LABEL[r] ?? r : '';
 }
-/** 履历正文里的路径名（如「（加权评分）」）换成界面名称 */
+/** 履历正文里的路径名（如「（加权评分）」「（原处理人 · 本单退回）」）换成界面名称 */
 export function replacePathNames(text: string): string {
-  return text.replace(/（(直派规则|原处理人|加权评分|预留|排队|组内放宽|兜底回池|留池)）/g, (_, p: DispatchPath) => `（${PATH_LABEL[p]}）`);
+  return text.replace(/（(直派规则|原处理人|加权评分|预留|排队|组内放宽|兜底回池|留池)( · [^）]+)?）/g,
+    (_, p: DispatchPath, rel?: string) => `（${PATH_LABEL[p]}${rel ?? ''}）`);
 }

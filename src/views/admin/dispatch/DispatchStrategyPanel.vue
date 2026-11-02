@@ -7,12 +7,12 @@ import type { Dayjs } from 'dayjs';
 import { useDispatchStore } from '@/stores/dispatch';
 import { stdPagination } from '@/config/adminUi';
 import {
-  DISPATCH_ROLES, GATE_ORDER, PROFICIENCIES, defaultDispatchConfig,
-  type DispatchConfig, type DispatchRole, type Proficiency, type ScoreFactor,
+  DISPATCH_ROLES, GATE_ORDER, PROFICIENCIES, RESERVE_COMPLAINT_ONLY, defaultDispatchConfig,
+  type DispatchConfig, type DispatchRole, type OriginalExclusion, type OriginalRelation, type Proficiency, type ScoreFactor,
 } from '@/views/tickets/types/dispatch';
 import { configFieldsText, opts, rangeError } from './dispatchUi';
 import { parseAt } from './dispatchMetrics';
-import { FACTOR_LABEL, GATE_LABEL } from './dispatchLabels';
+import { EXCLUSION_LABEL, FACTOR_LABEL, GATE_LABEL } from './dispatchLabels';
 import PoolRuleList from './PoolRuleList.vue';
 import './dispatchForm.css';
 import './dispatchTheme.css';
@@ -32,11 +32,9 @@ watch(() => props.tab, (v) => { if (v && TABS.some((t) => t.key === v)) active.v
 watch(active, (v) => emit('update:tab', v));
 
 /* ================= 出池规则 ================= */
-type OutForm = Pick<DispatchConfig, 'originalFirst' | 'windowConsultDays' | 'windowComplaintDays' | 'originalSameProblem'
-  | 'reserveMinutes' | 'reserveSlaPercent' | 'factors' | 'recentHours' | 'relaxEnabled' | 'relaxMaxLevel'
+type OutForm = Pick<DispatchConfig, 'originalChain' | 'factors' | 'recentHours' | 'relaxEnabled' | 'relaxMaxLevel'
   | 'relaxQueueMinutes' | 'relaxSlaPercent' | 'fallbackSlaPercent' | 'noSlaFallbackMinutes'>;
-const OUT_KEYS: (keyof OutForm)[] = ['originalFirst', 'windowConsultDays', 'windowComplaintDays', 'originalSameProblem',
-  'reserveMinutes', 'reserveSlaPercent', 'factors', 'recentHours', 'relaxEnabled', 'relaxMaxLevel',
+const OUT_KEYS: (keyof OutForm)[] = ['originalChain', 'factors', 'recentHours', 'relaxEnabled', 'relaxMaxLevel',
   'relaxQueueMinutes', 'relaxSlaPercent', 'fallbackSlaPercent', 'noSlaFallbackMinutes'];
 function pickOut(c: DispatchConfig): OutForm {
   const o = {} as Record<string, unknown>;
@@ -52,10 +50,23 @@ function resetOut() { Object.assign(out, pickOut(defaultDispatchConfig())); }
 function factorShare(w: number | null | undefined) {
   return weightSum.value > 0 && w ? Math.round((w / weightSum.value) * 100) : 0;
 }
+/** 步骤 ② 关系链：各行的适用场景与原处理人取法（PRD 4.2，次序固定） */
+const RELATION_META: Record<OriginalRelation, { scene: string; handler: string }> = {
+  本单退回: { scene: '售后转回、回访打回', handler: '本单上一处理人' },
+  关联单: { scene: '承接子单、升级投诉、外投', handler: '原单最后一名二线及以上处理人' },
+  同客户近期: { scene: '同一客户的新单', handler: '该客户最近一次工单的处理人' },
+};
+/** 步骤 ② 下方只读的通用约束 */
+const CHAIN_RULES = [
+  { label: '接单条件', text: '同步骤 1' },
+  { label: '层级', text: '只认二线及以上；技术支持组池只认三线' },
+  { label: '保留', text: '原处理人当日签入过；一张单只保留一次，保留给次序最靠前的原处理人' },
+  { label: '不派回', text: (Object.keys(EXCLUSION_LABEL) as OriginalExclusion[]).map((k) => EXCLUSION_LABEL[k]).join('；') },
+];
 function saveOut() {
   const checks: [unknown, number, number][] = [
-    [out.windowConsultDays, 1, 30], [out.windowComplaintDays, 1, 30],
-    [out.reserveMinutes, 1, 60], [out.reserveSlaPercent, 1, 100],
+    ...out.originalChain.filter((x) => x.relation !== '本单退回').map((x) => [x.days, 1, 30] as [unknown, number, number]),
+    ...out.originalChain.flatMap((x) => [[x.reserveMinutes, 1, 60], [x.reserveSlaPercent, 1, 100]] as [unknown, number, number][]),
     ...out.factors.map((x: ScoreFactor) => [x.weight, 0, 100] as [unknown, number, number]),
     [out.recentHours, 1, 24], [out.relaxQueueMinutes, 1, 120],
     [out.relaxSlaPercent, 1, 100], [out.fallbackSlaPercent, 1, 100], [out.noSlaFallbackMinutes, 1, 999],
@@ -64,6 +75,7 @@ function saveOut() {
     const e = rangeError(v, a, b);
     if (e) { message.error(e); return; }
   }
+  if (!out.originalChain.some((x) => x.enabled)) { message.error('请至少启用一种原处理人关系'); return; }
   const r = store.updateConfig(JSON.parse(JSON.stringify(out)) as Partial<DispatchConfig>);
   if (r.ok) message.success(r.message); else message.error(r.message);
 }
@@ -151,33 +163,56 @@ watch(() => store.config, (c) => {
           <span v-for="g in GATES" :key="g" class="gate"><CheckCircleFilled />{{ g }}</span>
         </div>
       </div>
-      <div class="cs" :class="{ off: !out.originalFirst }">
+      <div class="cs">
         <div class="cs-hd">
           <span class="cs-seq">2</span>
-          <div class="cs-ti"><div class="cs-name">优先派回原处理人</div><div class="cs-desc">原处理人满足接单条件时直接派回</div></div>
-          <div class="cs-op"><a-switch v-model:checked="out.originalFirst" /></div>
+          <div class="cs-ti"><div class="cs-name">优先派回原处理人</div><div class="cs-desc">按以下次序查找原处理人，满足接单条件时直接派回</div></div>
         </div>
         <div class="cs-bd">
-        <div class="dpf-grid">
-          <div class="dpf-item"><span class="dpf-label">原处理人范围</span><div class="dpf-ctl"><a-checkbox v-model:checked="out.originalSameProblem">仅限同一问题分类</a-checkbox></div></div>
-          <div class="dpf-item">
-            <span class="dpf-label">多少天内处理过算原处理人 · 咨询及其他</span>
-            <div class="dpf-ctl"><a-input-number v-model:value="out.windowConsultDays" :precision="0" style="width: 100px" /><span class="dpf-unit">天</span></div>
-          </div>
-          <div class="dpf-item">
-            <span class="dpf-label">多少天内处理过算原处理人 · 投诉</span>
-            <div class="dpf-ctl"><a-input-number v-model:value="out.windowComplaintDays" :precision="0" style="width: 100px" /><span class="dpf-unit">天</span></div>
-          </div>
+        <div class="oc-wrap">
+          <table class="oc-table">
+            <thead>
+              <tr><th class="oc-seq">次序</th><th>关系</th><th>原处理人</th><th>有效期</th><th>人不在时</th><th class="oc-on">启用</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="(row, i) in out.originalChain" :key="row.relation" :class="{ off: !row.enabled }">
+                <td class="oc-seq">{{ i + 1 }}</td>
+                <td><div class="oc-name">{{ row.relation }}</div><div class="oc-sub">{{ RELATION_META[row.relation].scene }}</div></td>
+                <td class="oc-handler">{{ RELATION_META[row.relation].handler }}</td>
+                <td class="oc-nowrap">
+                  <span v-if="row.days === null" class="oc-text">不限</span>
+                  <span v-else class="oc-inline"><a-input-number v-model:value="row.days" :precision="0" :disabled="!row.enabled" style="width: 72px" />天内</span>
+                  <div v-if="row.relation === '同客户近期'" class="oc-same">
+                    <a-checkbox v-model:checked="row.sameProblem" :disabled="!row.enabled">仅限同一问题分类</a-checkbox>
+                  </div>
+                </td>
+                <td class="oc-absent-cell">
+                  <a-radio-group v-model:value="row.absent" :disabled="!row.enabled" class="oc-absent">
+                    <a-radio value="转下一步">转下一步</a-radio>
+                    <a-radio value="保留">
+                      <span class="oc-reserve">
+                        <span class="oc-inline">
+                          {{ RESERVE_COMPLAINT_ONLY[row.relation] ? '投诉单保留' : '保留' }}
+                          <a-input-number v-model:value="row.reserveMinutes" :precision="0" :disabled="!row.enabled || row.absent !== '保留'" style="width: 64px" />
+                          分钟，
+                        </span>
+                        <span class="oc-inline">
+                          且不超过首次响应剩余时限的
+                          <a-input-number v-model:value="row.reserveSlaPercent" :precision="0" :disabled="!row.enabled || row.absent !== '保留'" style="width: 64px" />
+                          %
+                        </span>
+                      </span>
+                    </a-radio>
+                  </a-radio-group>
+                </td>
+                <td class="oc-on"><a-switch v-model:checked="row.enabled" size="small" /></td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-        <div class="dpf-grid one">
-          <div class="dpf-item last">
-            <span class="dpf-label">投诉单为原处理人保留</span>
-            <div class="dpf-ctl">
-              <a-input-number v-model:value="out.reserveMinutes" :precision="0" style="width: 100px" /><span class="dpf-unit">分钟，且不超过首次响应剩余时限的</span>
-              <a-input-number v-model:value="out.reserveSlaPercent" :precision="0" style="width: 100px" /><span class="dpf-unit">%</span>
-            </div>
-          </div>
-        </div>
+        <dl class="oc-rules">
+          <template v-for="r in CHAIN_RULES" :key="r.label"><dt>{{ r.label }}</dt><dd>{{ r.text }}</dd></template>
+        </dl>
         </div>
       </div>
       <div class="cs">
@@ -396,6 +431,35 @@ watch(() => store.config, (c) => {
 .gate { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #374151; }
 .gate :deep(.anticon) { color: #10b981; }
 @media (max-width: 640px) { .cs-bd { margin-left: 0; } }
+
+/* 优先派回原处理人 · 关系链三行表 */
+.oc-wrap { border: 1px solid #eef0f3; border-radius: 6px; overflow-x: auto; background: #fff; }
+.oc-table { width: 100%; min-width: 960px; border-collapse: collapse; font-size: 13px; }
+.oc-table th {
+  background: #f3f4f6; color: #6b7280; font-size: 12px; font-weight: 600;
+  padding: 8px 12px; text-align: left; border-bottom: 1px solid #eef0f3; white-space: nowrap;
+}
+.oc-table td { padding: 8px 12px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; color: #374151; }
+.oc-table tbody tr:last-child td { border-bottom: none; }
+.oc-table tr.off td:not(.oc-on) { opacity: 0.55; }
+.oc-seq { width: 48px; text-align: center !important; color: #6b7280; }
+.oc-on { width: 56px; text-align: center !important; }
+.oc-name { font-weight: 600; color: #111827; }
+.oc-sub { font-size: 12px; color: #6b7280; margin-top: 2px; min-width: 96px; }
+.oc-handler { min-width: 120px; }
+.oc-absent-cell { min-width: 560px; }
+.oc-same { margin-top: 6px; }
+.oc-nowrap { white-space: nowrap; }
+.oc-text { color: #4b5563; }
+.oc-absent { display: flex; flex-direction: column; gap: 6px; }
+.oc-reserve { display: inline-flex; align-items: center; flex-wrap: wrap; row-gap: 6px; }
+.oc-inline { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; color: #374151; }
+.oc-rules {
+  display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px;
+  margin: 10px 0 0; font-size: 12px; line-height: 1.6;
+}
+.oc-rules dt { color: #6b7280; }
+.oc-rules dd { margin: 0; color: #374151; }
 
 /* 综合打分（对齐 factor-row） */
 .wsum { margin-left: auto; font-size: 12px; font-weight: normal; color: #6b7280; }
