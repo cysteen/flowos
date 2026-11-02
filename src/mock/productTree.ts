@@ -42,6 +42,18 @@ export const PRODUCT_TREE_DATA: ProductTreeNode[] = [
             ],
           },
           {
+            // 讯飞听见（转写服务，与录音笔同属听见；产品分类与建单页同为「软件服务」）
+            key: 'px-tingjian', title: '讯飞听见产品线', kind: '产品线',
+            children: [
+              {
+                key: 'fl-tingjian-soft', title: '软件服务', kind: '产品分类',
+                children: [
+                  { key: 'p-zxw-tingjian', title: '讯飞听见', kind: '产品' },
+                ],
+              },
+            ],
+          },
+          {
             // 建单「智能硬件」分类下的产品（问题分类按产品维护，11-02 D2；产品分类与建单页同为「智能硬件」）
             key: 'px-home', title: '智能家居产品线', kind: '产品线',
             children: [
@@ -117,7 +129,6 @@ export const PRODUCT_TREE_DATA: ProductTreeNode[] = [
                   { key: 'p-edu-zxw-handbook', title: '个性化学习手册', kind: '产品' },
                   // 建单「软件服务」分类下的产品（11-02 D2）
                   { key: 'p-zxw-member', title: '智学网会员', kind: '产品' },
-                  { key: 'p-zxw-tingjian', title: '讯飞听见', kind: '产品' },
                 ],
               },
             ],
@@ -133,7 +144,7 @@ export const PRODUCT_TREE_KIND_COLOR: Record<ProductTreeNode['kind'], string> = 
 };
 
 export const PRODUCT_TREE_DEFAULT_EXPANDED = [
-  'bg-consumer', 'yx-hw', 'px-rec', 'fl-rec', 'px-trans', 'fl-trans', 'px-home', 'fl-home',
+  'bg-consumer', 'yx-hw', 'px-rec', 'fl-rec', 'px-trans', 'fl-trans', 'px-tingjian', 'fl-tingjian-soft', 'px-home', 'fl-home',
   'bg-fin', 'yx-ops', 'px-cs', 'fl-qc',
   'bg-edu', 'yx-class', 'px-tablet', 'fl-tablet', 'yx-zxw', 'px-zxw', 'fl-zxw-soft',
 ];

@@ -19,7 +19,7 @@ import { refundTagKey, useRefundConfigStore } from './refundConfig';
 
 const LS_KEY = 'flowos-problem-tags';
 /** 种子版本闸：改种子行必须加一 */
-export const PROBLEM_TAGS_CACHE_VERSION = 1;
+export const PROBLEM_TAGS_CACHE_VERSION = 2;
 
 /** 专属类型：一条问题分类至多一种专属用途，「无」＝普通分类 */
 export type ProblemExclusive = '无' | '售后' | '小结' | '刷机' | '个册退费';
@@ -136,6 +136,8 @@ const SEED_ROWS: SeedTuple[] = [
     `p-edu-${m.id}`, '售后', '服务申请', l3, 'edu-flash', '刷机', '启用',
     String(110301 + i), String(2104101 + i), String(31060701 + i * 2 + j), '周运营', '2026-10-13 16:20:00',
   ])),
+  // 平板 S10 出厂不挂刷机类分类：同路径下补维修请求（一 / 二级 ID 与本产品刷机行共用）
+  ['p-edu-FM-S10', '售后', '服务申请', '维修请求', 'hardware', '售后', '启用', '110307', '2104107', '31060715', '周运营', '2026-11-02 09:00:00'],
   // 个性化学习手册：个册退费 → 退费申请 → 个册退费（「专属类型＝个册退费」默认开启，1120；实际取值以个册退费配置为准）
   ['p-edu-zxw-handbook', '个册退费', '退费申请', '个册退费', 'edu', '个册退费', '启用', '110401', '2104201', '31060801', '周运营', '2026-10-22 10:00:00'],
 ];
@@ -153,6 +155,7 @@ const COMMON_TAGS: Record<string, { team: string; l2s: Record<string, string[]> 
 const COMMON_TAG_PRODUCTS: [string, string[]][] = [
   ['p-edu-t20', ['功能异常', '设备故障', '账号问题']],
   ['p-edu-x3pro', ['功能异常', '设备故障']],
+  ['p-edu-FM-S10', ['功能异常', '设备故障']],
   ['p-hw-x1', ['功能异常', '设备故障']],
   ['p-hw-r2', ['功能异常', '设备故障']],
   ['p-hw-air', ['功能异常', '设备故障']],
