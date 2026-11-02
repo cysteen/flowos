@@ -8,9 +8,9 @@ import MineFilterMultiSelect from '@/views/tickets/components/MineFilterMultiSel
 import {
   BUSINESS_TYPES,
   CREATE_TICKET_TYPES,
-  PROBLEM_TREE,
   TICKET_SOURCE_OPTIONS,
 } from '@/views/tickets/types/createTicket';
+import { useProblemTagsStore } from '@/stores/problemTags';
 import {
   DEFAULT_DONE_QUERY,
   EMPTY_MINE_QUERY,
@@ -77,16 +77,18 @@ const productNameOptions = computed(() =>
   productNamesForCategory(props.modelValue.productCategory),
 );
 
-const problemL1Options = computed(() => Object.keys(PROBLEM_TREE));
+/** 问题分类只读引用后台「问题分类」：不分产品的并集（含停用，历史工单要能筛到） */
+const problemTags = useProblemTagsStore();
+const problemL1Options = computed(() => Object.keys(problemTags.unionTree));
 
 const problemL2Options = computed(() =>
-  props.modelValue.problemL1 ? Object.keys(PROBLEM_TREE[props.modelValue.problemL1] ?? {}) : [],
+  props.modelValue.problemL1 ? Object.keys(problemTags.unionTree[props.modelValue.problemL1] ?? {}) : [],
 );
 
 const problemL3Options = computed(() => {
   const { problemL1, problemL2 } = props.modelValue;
   if (!problemL1 || !problemL2) return [];
-  return PROBLEM_TREE[problemL1]?.[problemL2] ?? [];
+  return problemTags.unionTree[problemL1]?.[problemL2] ?? [];
 });
 
 function buildPresetRange(days: number): [Dayjs, Dayjs] {

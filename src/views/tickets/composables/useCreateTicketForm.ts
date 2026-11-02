@@ -8,7 +8,6 @@ import {
   type CustomerInfo,
   BUSINESS_TYPES,
   CUSTOMER_SEARCH_LIMIT,
-  PROBLEM_TREE,
   PRODUCT_NAMES,
   buildAutoTitle,
   findCustomerById,
@@ -68,6 +67,7 @@ import { findSchoolById } from '@/mock/schools';
 import { ALL_REFUND_MANAGERS } from '@/mock/refund/managers';
 import { useUserStore } from '@/stores/user';
 import { useFlashConfigStore } from '@/stores/flashConfig';
+import { useProblemTagsStore } from '@/stores/problemTags';
 import { mapUserRole } from '@/views/tickets/composables/opActions';
 
 /** 「刷机信息」卡必填项：字段 → 展示名 + 提示动词（输入类「请填写」、选择类「请选择」，PRD §2.3 第 1 条） */
@@ -176,15 +176,17 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
 
   const flashConfig = useFlashConfigStore();
   const refundConfig = useRefundConfigStore();
+  /** 问题分类只读引用后台「问题分类」（`stores/problemTags`） */
+  const problemTags = useProblemTagsStore();
   /**
-   * 问题分类按产品维护（1014）：刷机分类（售后 → 服务申请 → 自助刷机 / 刷原生系统）
-   * 只对挂了刷机类问题分类的产品出现（后台「问题分类」里本产品至少一条「专属类型＝刷机」，10-19 C1）；其余分类各产品共用。
-   * 读刷机配置的响应式状态，后台开关一改，建单下拉随即联动。
+   * 问题分类按产品维护（1014 / 11-02 D2）：候选只取所选产品下启用的分类（小结类不进建单候选）。
+   * 刷机分类（售后 → 服务申请 → 自助刷机 / 刷原生系统）只对挂了刷机类问题分类的产品出现
+   * （后台「问题分类」里本产品至少一条「专属类型＝刷机」，10-19 C1）；读刷机配置的响应式状态，后台开关一改，建单下拉随即联动。
    */
   const productProblemTree = computed<Record<string, Record<string, string[]>>>(() => {
     const product = form.productName ?? '';
     const tree: Record<string, Record<string, string[]>> = {};
-    for (const [l1, l2Map] of Object.entries(PROBLEM_TREE)) {
+    for (const [l1, l2Map] of Object.entries(problemTags.treeForCreate(product))) {
       const l2Out: Record<string, string[]> = {};
       for (const [l2, l3s] of Object.entries(l2Map)) {
         const kept = l3s.filter((l3) => {
@@ -220,7 +222,7 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
   function fallbackProblem() {
     const tree = productProblemTree.value;
     // 只回落「问题分类里有、但本产品下没有」的选中值；落不到问题分类上的预填值原样保留
-    const full = PROBLEM_TREE[form.problemL1];
+    const full = problemTags.unionTree[form.problemL1];
     if (!form.problemL1 || !full) return;
     if (!tree[form.problemL1]) {
       const def = defaultForm();
@@ -821,8 +823,8 @@ export function useCreateTicketForm(prefill: () => CreateTicketPrefill | null | 
     // 传空串＝清空三级分类（原单问题落不到问题树上时由坐席显式选，三项仍必填）
     if (p.problemL1 !== undefined) {
       form.problemL1 = p.problemL1;
-      form.problemL2 = p.problemL2 ?? Object.keys(PROBLEM_TREE[p.problemL1] ?? {})[0] ?? '';
-      form.problemL3 = p.problemL3 ?? PROBLEM_TREE[p.problemL1]?.[form.problemL2]?.[0] ?? '';
+      form.problemL2 = p.problemL2 ?? Object.keys(problemTags.unionTree[p.problemL1] ?? {})[0] ?? '';
+      form.problemL3 = p.problemL3 ?? problemTags.unionTree[p.problemL1]?.[form.problemL2]?.[0] ?? '';
     }
     // 原单投诉分类可能是处理页三级树的旧值：不在建单投诉分类字典里即置空，由坐席重选
     if (p.complaintL1) {
