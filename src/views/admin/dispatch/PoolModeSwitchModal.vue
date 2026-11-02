@@ -15,16 +15,12 @@ const store = useDispatchStore();
 const isGlobal = computed(() => props.scope === 'global');
 const scopeText = computed(() => (isGlobal.value ? '全局' : store.poolLabel(props.scope)));
 const currentShown = computed<PoolMode>(() => (isGlobal.value ? store.globalEffectiveMode() : store.poolModeOf(props.scope)));
-/** 与 store 比较的当前值：全局取全局派单方式（开关关闭时为人工派单），工单池取本池派单方式 */
+/** 与 store 比较的当前值：全局取全局派单方式，工单池取本池派单方式 */
 const currentRaw = computed<PoolMode>(() => {
-  if (isGlobal.value) return store.config.globalSwitch ? store.config.globalMode : '人工派单';
+  if (isGlobal.value) return store.config.globalMode;
   return store.poolOf(props.scope)?.mode ?? '自动派单';
 });
-const choices = computed(() => POOL_MODES.map((m) => ({
-  mode: m,
-  current: m === currentRaw.value,
-  switchOff: m !== currentRaw.value && isGlobal.value && !store.config.globalSwitch && m !== '人工派单',
-})));
+const choices = computed(() => POOL_MODES.map((m) => ({ mode: m, current: m === currentRaw.value })));
 
 const target = ref<PoolMode | undefined>(undefined);
 const reason = ref('');
@@ -70,12 +66,7 @@ function submit() {
       <div class="op-field op-field-h">
         <span class="op-label req">切换为</span>
         <a-radio-group v-model:value="target">
-          <template v-for="c in choices" :key="c.mode">
-            <a-tooltip v-if="c.switchOff" title="全局开关已关闭，请先在派单策略开启">
-              <a-radio :value="c.mode" disabled>{{ c.mode }}</a-radio>
-            </a-tooltip>
-            <a-radio v-else :value="c.mode" :disabled="c.current">{{ c.mode }}</a-radio>
-          </template>
+          <a-radio v-for="c in choices" :key="c.mode" :value="c.mode" :disabled="c.current">{{ c.mode }}</a-radio>
         </a-radio-group>
       </div>
       <div class="op-field op-field-h op-field-h-top">

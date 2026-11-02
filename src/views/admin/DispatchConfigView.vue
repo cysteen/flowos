@@ -16,7 +16,7 @@ const router = useRouter();
 
 const DISPATCH_PAGE_META: Record<string, { title: string; subtitle: string }> = {
   'dispatch-monitor': { title: '分派监控', subtitle: '派单效果、派单方式、池积压与处理人负载；派单日志查询。' },
-  'dispatch-strategy': { title: '派单策略', subtitle: '运行设置、入池规则、出池规则与个人上限；保存即生效。' },
+  'dispatch-strategy': { title: '派单策略', subtitle: '入池规则、出池规则与个人上限；保存即生效。' },
   'dispatch-pool': { title: '工单池管理', subtitle: '新建工单池并选择处理组；各池的派单方式、派单状态与成员画像配置，池内待领工单可指派。' },
   'dispatch-routing': { title: '路由规则', subtitle: '入池规则只读一览；新增与编辑在派单策略 · 入池规则。' },
   'dispatch-profile': { title: '坐席画像', subtitle: '坐席的人员画像、熟练度、个人上限与个人开关。' },
@@ -26,7 +26,7 @@ const pageKey = computed(() => (DISPATCH_PAGE_META[routeKey.value] ? routeKey.va
 const pageHeader = computed(() => DISPATCH_PAGE_META[pageKey.value]);
 
 const strategyTab = computed({
-  get: () => (typeof route.query.tab === 'string' ? route.query.tab : 'run'),
+  get: () => (typeof route.query.tab === 'string' ? route.query.tab : 'inpool'),
   set: (v: string) => {
     if (route.query.tab === v) return;
     router.replace({ path: route.path, query: { ...route.query, tab: v, rule: undefined } });

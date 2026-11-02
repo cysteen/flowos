@@ -1,109 +1,35 @@
 <script setup lang="ts">
-// 派单策略（PRD 14.2）：运行设置 / 入池规则 / 出池规则 / 个人上限 / 开关记录；各页签底部 [重置][保存]，保存即生效、记审计
+// 派单策略（PRD 14.2）：入池规则 / 出池规则 / 个人上限 / 开关记录；各页签底部 [重置][保存]，保存即生效、记审计
 import { computed, reactive, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
-import { CheckCircleFilled, CheckOutlined, RocketOutlined } from '@ant-design/icons-vue';
+import { CheckCircleFilled } from '@ant-design/icons-vue';
 import type { Dayjs } from 'dayjs';
 import { useDispatchStore } from '@/stores/dispatch';
 import { stdPagination } from '@/config/adminUi';
 import {
-  DISPATCH_ROLES, GATE_ORDER, PROFICIENCIES, ROLLOUT_STAGES, defaultDispatchConfig, stricterMode,
+  DISPATCH_ROLES, GATE_ORDER, PROFICIENCIES, defaultDispatchConfig,
   type DispatchConfig, type DispatchRole, type Proficiency, type ScoreFactor,
 } from '@/views/tickets/types/dispatch';
-import {
-  DEFAULT_RUN_THRESHOLDS, MODE_TONE, configFieldsText, opts, pickRunThresholds, rangeError, type RunThresholds,
-} from './dispatchUi';
+import { configFieldsText, opts, rangeError } from './dispatchUi';
 import { parseAt } from './dispatchMetrics';
 import { FACTOR_LABEL, GATE_LABEL } from './dispatchLabels';
 import PoolRuleList from './PoolRuleList.vue';
-import PoolModeSwitchModal from './PoolModeSwitchModal.vue';
-import DispatchConfirmModal from './DispatchConfirmModal.vue';
-import RolloutStageModal from './RolloutStageModal.vue';
 import './dispatchForm.css';
 import './dispatchTheme.css';
 
 const props = defineProps<{ tab?: string; focusRuleId?: string }>();
 const emit = defineEmits<{ 'update:tab': [v: string] }>();
 const store = useDispatchStore();
-const router = useRouter();
 
 const TABS = [
-  { key: 'run', label: '运行设置' },
   { key: 'inpool', label: '入池规则' },
   { key: 'outpool', label: '出池规则' },
   { key: 'cap', label: '个人上限' },
   { key: 'audit', label: '开关记录' },
 ];
-const active = ref(TABS.some((t) => t.key === props.tab) ? props.tab! : 'run');
+const active = ref(TABS.some((t) => t.key === props.tab) ? props.tab! : 'inpool');
 watch(() => props.tab, (v) => { if (v && TABS.some((t) => t.key === v)) active.value = v; });
 watch(active, (v) => emit('update:tab', v));
-
-/* ================= 运行设置 ================= */
-const run = reactive<RunThresholds>(pickRunThresholds(store.config));
-
-/** 全局开关二次确认（8.2）：null＝未打开 */
-const globalSwitchTo = ref<boolean | null>(null);
-const globalSwitchOpen = computed({ get: () => globalSwitchTo.value !== null, set: (v: boolean) => { if (!v) globalSwitchTo.value = null; } });
-function onGlobalSwitch(on: boolean) { globalSwitchTo.value = on; }
-function onGlobalSwitchOk() {
-  const on = globalSwitchTo.value;
-  if (on === null) return;
-  const r = store.setGlobalSwitch(on);
-  if (r.ok) message.success(r.message); else message.error(r.message);
-}
-// 运行方式只读（14.2 / 第 17 章）：只随上线阶段推进、退回联动变更
-const modeOpen = ref(false);
-
-/* 上线阶段（第 17 章，按池计）：试运行 → 单池试点 → 多池 → 全量，每步由管理员确认；可退回上一步 */
-const stage = computed(() => store.rolloutStage());
-const nextStage = computed(() => ROLLOUT_STAGES[ROLLOUT_STAGES.indexOf(stage.value) + 1] ?? null);
-// 正式派单下没有自动派单的池：阶段显示试运行，只出「推进至单池试点」
-const prevStage = computed(() => (store.rolloutNoAutoGroup() ? null : ROLLOUT_STAGES[ROLLOUT_STAGES.indexOf(stage.value) - 1] ?? null));
-const stageTip = computed(() => (store.config.globalSwitch ? '' : '全局开关已关闭，请先在派单策略开启'));
-const stageIdx = computed(() => ROLLOUT_STAGES.indexOf(stage.value));
-const stageOpen = ref(false);
-const stageDir = ref<'forward' | 'back'>('forward');
-function openStage(dir: 'forward' | 'back') {
-  stageDir.value = dir;
-  stageOpen.value = true;
-}
-
-/**
- * 本阶段运行的池（14.2 / 第 17 章，按启用池）：
- * - 试运行：出建议的池＝全局开关开启时，全局派单方式与本池派单方式取较严者不为人工派单的池；
- * - 单池试点：试点池（处理组）；多池 / 全量：自动派单的池（N / M），其余启用池列为混合 / 人工派单的池。
- */
-const stagePools = computed(() => {
-  void store.pools;
-  const list = store.enabledPools();
-  const total = list.length;
-  if (store.config.runMode === '试运行') {
-    const on = store.config.globalSwitch ? list.filter((p) => stricterMode(store.config.globalMode, p.mode) !== '人工派单') : [];
-    return { label: '出建议的池', on, rest: [] as typeof list, total, pilot: false };
-  }
-  const on = list.filter((p) => p.mode === '自动派单');
-  const rest = list.filter((p) => p.mode !== '自动派单');
-  return { label: on.length === 1 ? '试点池' : '自动派单的池', on, rest: on.length === 1 ? [] : rest, total, pilot: on.length === 1 };
-});
-function goPool(id: string) { router.push({ path: '/admin/dispatch-pool', query: { pool: id } }); }
-
-const RUN_FIELDS: { key: keyof RunThresholds; label: string; prefix?: string; unit: string; min: number; max: number }[] = [
-  { key: 'autoFailRate', label: '自动转混合 · 派单失败率', prefix: '5 分钟内 ≥', unit: '%', min: 1, max: 100 },
-  { key: 'autoSuccessRate', label: '自动转混合 · 自动派单成功率', prefix: '15 分钟内 ＜', unit: '%', min: 1, max: 100 },
-  { key: 'autoSyncMinutes', label: '自动转混合 · 数据未同步', prefix: '超过', unit: '分钟', min: 5, max: 120 },
-  { key: 'autoEngineMinutes', label: '自动转混合 · 引擎无响应', prefix: '连续', unit: '分钟', min: 1, max: 30 },
-  { key: 'resumeOkMinutes', label: '恢复提示 · 指标连续达标', unit: '分钟', min: 1, max: 60 },
-];
-function resetRun() { Object.assign(run, DEFAULT_RUN_THRESHOLDS); }
-function saveRun() {
-  for (const fd of RUN_FIELDS) {
-    const e = rangeError(run[fd.key], fd.min, fd.max);
-    if (e) { message.error(e); return; }
-  }
-  const r = store.updateConfig({ ...run });
-  if (r.ok) message.success(r.message); else message.error(r.message);
-}
 
 /* ================= 出池规则 ================= */
 type OutForm = Pick<DispatchConfig, 'originalFirst' | 'windowConsultDays' | 'windowComplaintDays' | 'originalSameProblem'
@@ -168,7 +94,7 @@ function saveCap() {
 const af = reactive<{ range: [Dayjs, Dayjs] | undefined; operator?: string; target: string; kind?: string }>({
   range: undefined, operator: undefined, target: '', kind: undefined,
 });
-const auditKinds = ['全局开关', '个人开关', '派单方式', '运行方式', '入池规则', '人员画像', '熟练度', '个人上限', '派单策略'];
+const auditKinds = ['派单方式', '个人开关', '入池规则', '人员画像', '熟练度', '个人上限', '派单策略'];
 const operatorOpts = computed(() => opts([...new Set(store.audits.map((a) => a.operator))]));
 const auditRows = computed(() => [...store.audits].reverse().filter((a) => {
   if (af.kind && a.kind !== af.kind) return false;
@@ -196,7 +122,6 @@ watch(() => store.config, (c) => {
   Object.assign(out, pickOut(c));
   cap.roleBase = { ...c.roleBase };
   cap.proficiencyCoef = { ...c.proficiencyCoef };
-  Object.assign(run, pickRunThresholds(c));
 });
 </script>
 
@@ -206,112 +131,6 @@ watch(() => store.config, (c) => {
       <a-tabs v-model:active-key="active" class="st-tabs">
         <a-tab-pane v-for="t in TABS" :key="t.key" :tab="t.label" />
       </a-tabs>
-
-      <!-- 运行设置 -->
-      <div v-if="active === 'run'" class="st-tab-pane run-tab">
-        <section class="run-panel">
-        <div class="run-card">
-          <header class="run-top">
-            <div class="run-top-id">
-              <span class="run-top-ic"><RocketOutlined /></span>
-              <div class="run-top-tx">
-                <span class="run-top-title">上线阶段</span>
-                <span v-if="store.rolloutNoAutoGroup()" class="run-top-note">无自动派单池</span>
-              </div>
-            </div>
-            <ol class="ro-steps">
-              <li v-for="(s, i) in ROLLOUT_STAGES" :key="s" :class="{ done: i < stageIdx, cur: i === stageIdx }">
-                <span class="ro-dot"><CheckOutlined v-if="i < stageIdx" /><template v-else>{{ i + 1 }}</template></span>
-                <span class="ro-name">{{ s }}</span>
-              </li>
-            </ol>
-            <div class="ro-ops">
-              <a-tooltip :title="stageTip || undefined">
-                <a-button v-if="prevStage" size="small" :disabled="!!stageTip" @click="openStage('back')">退回至{{ prevStage }}</a-button>
-              </a-tooltip>
-              <a-tooltip :title="stageTip || undefined">
-                <a-button v-if="nextStage" type="primary" size="small" :disabled="!!stageTip" @click="openStage('forward')">推进至{{ nextStage }}</a-button>
-              </a-tooltip>
-            </div>
-          </header>
-
-          <div class="run-body">
-            <div class="run-col">
-              <div class="run-block-hd">
-                <span class="run-block-title">开关与派单方式</span>
-                <span class="run-block-tip">全局派单开关、运行方式、全局派单方式与本阶段运行的池</span>
-              </div>
-              <div class="run-kv">
-                <div class="run-kv-row">
-                  <span class="run-kv-label">全局开关</span>
-                  <span class="run-kv-ctl"><a-switch :checked="store.config.globalSwitch" @change="(v: unknown) => onGlobalSwitch(!!v)" /></span>
-                </div>
-                <div class="run-kv-row">
-                  <span class="run-kv-label">运行方式</span>
-                  <span class="run-kv-ctl"><span class="dpf-val">{{ store.config.runMode }}</span></span>
-                </div>
-                <div class="run-kv-row">
-                  <span class="run-kv-label">全局派单方式</span>
-                  <span class="run-kv-ctl">
-                    <span class="dx-status" :class="`is-${MODE_TONE[store.globalEffectiveMode()]}`">{{ store.globalEffectiveMode() }}</span>
-                    <span v-if="store.config.autoDegraded" class="dx-status is-orange">自动转混合</span>
-                    <a-button type="link" size="small" @click="modeOpen = true">切换</a-button>
-                  </span>
-                </div>
-                <div class="run-kv-row run-pool-row">
-                  <span class="run-kv-label">{{ stagePools.label }}</span>
-                  <span class="run-kv-ctl run-pools">
-                    <template v-if="stagePools.pilot">
-                      <a class="run-pool" @click="goPool(stagePools.on[0].id)">{{ stagePools.on[0].name }}</a>
-                      <span class="run-pool-sub">（{{ store.groupOf(stagePools.on[0].groupId)?.label ?? '—' }}）</span>
-                    </template>
-                    <template v-else>
-                      <template v-for="(p, i) in stagePools.on" :key="p.id">
-                        <a class="run-pool" @click="goPool(p.id)">{{ p.name }}</a><span v-if="i < stagePools.on.length - 1" class="run-pool-sep">、</span>
-                      </template>
-                      <span v-if="!stagePools.on.length" class="run-pool-sub">—</span>
-                      <span class="run-pool-sub">（{{ stagePools.on.length }} / {{ stagePools.total }}）</span>
-                    </template>
-                  </span>
-                </div>
-                <div v-if="stagePools.rest.length" class="run-kv-row run-pool-row">
-                  <span class="run-kv-label">混合 / 人工派单的池</span>
-                  <span class="run-kv-ctl run-pools">
-                    <template v-for="(p, i) in stagePools.rest" :key="p.id">
-                      <a class="run-pool" @click="goPool(p.id)">{{ p.name }}</a><span v-if="i < stagePools.rest.length - 1" class="run-pool-sep">、</span>
-                    </template>
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div class="run-col run-col-thresh">
-              <div class="run-thresh-sect">
-                <div class="run-block-hd">
-                  <span class="run-block-title">自动转混合与恢复</span>
-                  <span class="run-block-tip">触发自动转混合与提示恢复的指标阈值</span>
-                </div>
-                <ul class="run-thresh-list">
-                  <li v-for="fd in RUN_FIELDS" :key="fd.key" class="run-th-item">
-                    <span class="run-th-label">{{ fd.label.replace('自动转混合 · ', '') }}</span>
-                    <div class="run-th-ctl">
-                      <span v-if="fd.prefix" class="run-th-prefix">{{ fd.prefix }}</span>
-                      <a-input-number v-model:value="run[fd.key]" :precision="0" size="small" class="run-num" />
-                      <span class="run-th-unit">{{ fd.unit }}</span>
-                    </div>
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="panel-foot">
-          <a-button @click="resetRun">重置</a-button>
-          <a-button type="primary" @click="saveRun">保存</a-button>
-        </div>
-        </section>
-      </div>
 
       <!-- 入池规则 -->
       <div v-else-if="active === 'inpool'" class="st-tab-pane">
@@ -509,7 +328,7 @@ watch(() => store.config, (c) => {
           <span class="meta-chip-val">{{ auditRows.length }}</span>
           <span class="meta-chip-lb">条记录</span>
         </div>
-        <span class="meta-hint">全局 / 班组 / 个人开关、派单方式、运行方式等变更审计</span>
+        <span class="meta-hint">派单方式切换、个人开关等变更审计</span>
       </div>
       <div class="audit-toolbar">
         <a-range-picker v-model:value="af.range" size="small" class="audit-range" />
@@ -537,16 +356,6 @@ watch(() => store.config, (c) => {
         </section>
       </div>
     </section>
-
-    <PoolModeSwitchModal v-model:open="modeOpen" scope="global" />
-    <DispatchConfirmModal
-      v-model:open="globalSwitchOpen"
-      :title="globalSwitchTo ? '开启全局开关' : '关闭全局开关'"
-      :tip="globalSwitchTo ? '开启后各工单池按本池派单方式接入自动派单。确定开启？' : '关闭后全部工单池停止自动派单，已派出工单不收回。确定关闭？'"
-      :danger="globalSwitchTo === false"
-      @ok="onGlobalSwitchOk"
-    />
-    <RolloutStageModal v-model:open="stageOpen" :direction="stageDir" />
   </div>
 </template>
 
@@ -559,115 +368,9 @@ watch(() => store.config, (c) => {
 .st-tabs :deep(.ant-tabs-tab) { padding: 6px 0; font-size: 13px; line-height: 20px; }
 .st-tabs :deep(.ant-tabs-tab + .ant-tabs-tab) { margin-left: 24px; }
 .st-tabs :deep(.ant-tabs-ink-bar) { height: 2px; }
-.st-tab-pane.run-tab { gap: 0; }
-.run-panel, .outpool-panel, .cap-panel, .audit-panel { padding: 0; border: none; background: transparent; border-radius: 0; }
+.outpool-panel, .cap-panel, .audit-panel { padding: 0; border: none; background: transparent; border-radius: 0; }
 .outpool-panel { padding: 0; }
 .outpool-lead { margin: 0 0 14px; font-size: 12px; color: #9ca3af; line-height: 1.45; }
-
-/* 运行设置 · 单卡片聚合（阶段 + 表单同一外框） */
-.run-card {
-  border: 1px solid #eef0f3;
-  border-radius: 8px;
-  overflow: hidden;
-  background: #fff;
-}
-.run-top {
-  display: flex;
-  align-items: center;
-  gap: 16px 20px;
-  flex-wrap: wrap;
-  padding: 14px 18px;
-  background: linear-gradient(180deg, #fafbfc 0%, #fff 100%);
-  border-bottom: 1px solid #eef0f3;
-}
-.run-top-id { display: flex; align-items: center; gap: 10px; flex: none; min-width: 0; }
-.run-top-ic {
-  width: 32px; height: 32px; border-radius: 8px; flex: none;
-  display: inline-flex; align-items: center; justify-content: center;
-  font-size: 15px; color: #1a6fff; background: #eff6ff;
-}
-.run-top-tx { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.run-top-title { font-size: 13px; font-weight: 600; color: #111827; line-height: 1.35; }
-.run-top-note { font-size: 12px; color: #9ca3af; line-height: 1.35; }
-.ro-steps {
-  display: flex; align-items: center; list-style: none; margin: 0; padding: 0;
-  flex: 1; min-width: min(100%, 520px);
-}
-.ro-steps li { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; font-size: 12px; color: #6b7280; white-space: nowrap; }
-.ro-steps li:last-child { flex: none; }
-.ro-steps li:not(:last-child)::after {
-  content: ''; flex: 1; height: 2px; background: #e5e7eb; margin: 0 8px; min-width: 4px; border-radius: 1px;
-}
-.ro-steps li.done:not(:last-child)::after { background: #93c5fd; }
-.ro-dot {
-  width: 22px; height: 22px; border-radius: 50%; border: 1px solid #d1d5db; background: #fff;
-  display: flex; align-items: center; justify-content: center; font-size: 10px; flex: none;
-}
-.ro-steps li.done { color: #374151; }
-.ro-steps li.done .ro-dot { border-color: #1a6fff; color: #1a6fff; background: #eff6ff; }
-.ro-steps li.cur { color: #111827; font-weight: 600; }
-.ro-steps li.cur .ro-dot { border-color: #1a6fff; background: #1a6fff; color: #fff; }
-.ro-ops { display: flex; gap: 8px; flex-wrap: wrap; flex: none; margin-left: auto; }
-
-.run-body {
-  display: grid;
-  grid-template-columns: minmax(260px, 0.92fr) minmax(340px, 1.08fr);
-  gap: 0;
-  align-items: stretch;
-}
-.run-col { padding: 16px 18px 18px; min-width: 0; }
-.run-col + .run-col { border-left: 1px solid #eef0f3; }
-.run-block-hd { margin-bottom: 10px; min-width: 0; }
-.run-block-hd-sub { margin-top: 18px; padding-top: 14px; border-top: 1px solid #f2f3f5; }
-.run-block-title { font-size: 13px; font-weight: 600; color: #111827; margin-right: 8px; }
-.run-block-tip { font-size: 12px; color: #9ca3af; font-weight: normal; }
-.run-kv { display: flex; flex-direction: column; }
-.run-kv-row {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  min-height: 40px; padding: 6px 0; border-bottom: 1px solid #f2f3f5;
-}
-.run-kv-row:last-child { border-bottom: none; }
-.run-kv-label { flex: 1; min-width: 0; font-size: 13px; color: #374151; line-height: 1.4; }
-.run-kv-ctl { display: inline-flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; flex: none; }
-/* 本阶段运行的池：池名可点，跳工单池管理定位 */
-.run-pool-row .run-kv-label { flex: none; }
-.run-kv-ctl.run-pools { flex: 1; min-width: 0; gap: 0; font-size: 13px; line-height: 1.5; text-align: right; }
-.run-pool { color: #1a6fff; cursor: pointer; }
-.run-pool:hover { color: #4d8fff; }
-.run-pool-sep { color: #6b7280; }
-.run-pool-sub { color: #6b7280; white-space: nowrap; }
-
-/* 阈值区：左指标名 + 右「前缀 + 数字 + 单位」单行 */
-.run-col-thresh { display: flex; flex-direction: column; gap: 0; min-width: 0; }
-.run-thresh-list { list-style: none; margin: 0; padding: 0; }
-.run-th-item {
-  display: grid;
-  grid-template-columns: 108px minmax(0, 1fr);
-  gap: 8px 14px;
-  align-items: center;
-  padding: 8px 0;
-  border-bottom: 1px solid #f2f3f5;
-}
-.run-th-item:last-child { border-bottom: none; }
-.run-th-label { font-size: 12px; color: #374151; line-height: 1.35; font-weight: 500; }
-.run-th-ctl {
-  display: flex; align-items: center; flex-wrap: nowrap; gap: 6px;
-  min-width: 0; justify-content: flex-start;
-}
-.run-th-prefix, .run-th-unit { font-size: 12px; color: #9ca3af; white-space: nowrap; flex: none; }
-.run-num { width: 72px !important; flex: none; }
-
-@media (max-width: 960px) {
-  .run-top { flex-direction: column; align-items: stretch; }
-  .ro-steps { min-width: 0; width: 100%; order: 2; }
-  .ro-ops { margin-left: 0; width: 100%; justify-content: flex-end; order: 3; }
-  .run-top-id { order: 1; }
-  .run-body { grid-template-columns: minmax(0, 1fr); }
-  .run-col + .run-col { border-left: none; border-top: 1px solid #eef0f3; }
-  .run-th-item { grid-template-columns: minmax(0, 1fr); gap: 6px; }
-  .run-kv-row { flex-wrap: wrap; }
-  .run-kv-ctl { justify-content: flex-start; }
-}
 
 /* 出池规则 · 链式步骤卡（对齐 dispatch-config chain-row） */
 .cs-list { display: flex; flex-direction: column; gap: 8px; }

@@ -8,8 +8,8 @@ import {
 } from '@/views/tickets/types/createTicket';
 import { joinProblemPath, splitProblemPath, useProblemTagsStore } from '@/stores/problemTags';
 import {
-  DISPATCH_CUSTOMER_TYPES, DISPATCH_TICKET_TYPES, PRIORITY_LEVEL, PROFILE_DIMS, defaultDispatchConfig,
-  type AgentProfile, type DimSel, type DispatchConfig, type PoolMode, type PoolRuleConditions, type ProductPick,
+  DISPATCH_CUSTOMER_TYPES, DISPATCH_TICKET_TYPES, PRIORITY_LEVEL, PROFILE_DIMS,
+  type AgentProfile, type DimSel, type PoolMode, type PoolRuleConditions, type ProductPick,
 } from '@/views/tickets/types/dispatch';
 import type { Priority } from '@/views/tickets/types/ticket';
 
@@ -163,31 +163,11 @@ export const CONFIG_FIELD_LABEL: Record<string, string> = {
   noSlaFallbackMinutes: '退回工单池 · 无首次响应时限时排队超过',
   roleBase: '角色基准值',
   proficiencyCoef: '熟练度系数',
-  autoFailRate: '自动转混合 · 派单失败率',
-  autoSuccessRate: '自动转混合 · 自动派单成功率',
-  autoSyncMinutes: '自动转混合 · 数据未同步',
-  autoEngineMinutes: '自动转混合 · 引擎无响应',
-  resumeOkMinutes: '恢复提示 · 指标连续达标',
   idleToBreakMinutes: '无操作转小休',
 };
 export function configFieldsText(raw: string): string {
   return raw.split('、').map((k) => CONFIG_FIELD_LABEL[k] ?? k).join('、');
 }
-
-/**
- * 运行设置里的自动转混合 / 恢复 / 小休阈值（14.2）：`DispatchConfig` 正式字段，随派单策略一起保存。
- * 默认值见 PRD 14.2 运行设置（`defaultDispatchConfig`）。
- */
-export const RUN_THRESHOLD_KEYS = [
-  'autoFailRate', 'autoSuccessRate', 'autoSyncMinutes', 'autoEngineMinutes', 'resumeOkMinutes', 'idleToBreakMinutes',
-] as const;
-export type RunThresholds = Pick<DispatchConfig, typeof RUN_THRESHOLD_KEYS[number]>;
-export function pickRunThresholds(c: DispatchConfig): RunThresholds {
-  const out = {} as RunThresholds;
-  RUN_THRESHOLD_KEYS.forEach((k) => { out[k] = c[k]; });
-  return out;
-}
-export const DEFAULT_RUN_THRESHOLDS: RunThresholds = pickRunThresholds(defaultDispatchConfig());
 
 /** 数值范围校验：返回 PRD 14.2 文案「请输入 〈下限〉–〈上限〉 的〈整数 / 数值〉」或空串 */
 export function rangeError(v: unknown, min: number, max: number, decimal = false): string {

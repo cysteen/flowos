@@ -177,7 +177,7 @@ const assignOpen = ref(false);
 const assignTicket = ref<Ticket | null>(null);
 function openAssign(t: Ticket) { assignTicket.value = t; assignOpen.value = true; }
 
-/* ---------------- 定位到池（?pool=池 id，自派单策略 · 运行设置跳入） ---------------- */
+/* ---------------- 定位到池（?pool=池 id） ---------------- */
 const route = useRoute();
 const focusPoolId = ref<string | null>(null);
 let focusTimer: ReturnType<typeof setTimeout> | undefined;
